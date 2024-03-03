@@ -49,30 +49,36 @@ const socialCount = SOCIALS.filter(social => social.active).length;
           HackerNews
         </LinkButton>
       </p>
+      <p>
+        <LinkButton
+          className="underline decoration-dashed underline-offset-4 hover:text-skin-accent"
+          href="https://thenewstack.io/"
+        >
+          The New Stack
+        </LinkButton>
+      </p>
+
+      <p>
+        <LinkButton
+          className="underline decoration-dashed underline-offset-4 hover:text-skin-accent"
+          href="https://medium.com/"
+        >
+          Medium
+        </LinkButton>
+      </p>
+
+      <p>
+        <LinkButton
+          className="underline decoration-dashed underline-offset-4 hover:text-skin-accent"
+          href="https://www.oschina.net/"
+        >
+          OSChina
+        </LinkButton>
+      </p>
 
     </section>
 
     <Hr />
-
-    {
-      featuredPosts.length > 0 && (
-        <>
-          <section id="featured">
-            <h2>Featured</h2>
-            <ul>
-              {featuredPosts.map(({ data, slug }) => (
-                <Card
-                  href={`/posts/${slug}/`}
-                  frontmatter={data}
-                  secHeading={false}
-                />
-              ))}
-            </ul>
-          </section>
-          {recentPosts.length > 0 && <Hr />}
-        </>
-      )
-    }
 
     {
       recentPosts.length > 0 && (
