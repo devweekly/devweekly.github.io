@@ -33,16 +33,7 @@ const socialCount = SOCIALS.filter(social => social.active).length;
           README
         </LinkButton>
       </p>
-      
-      {
-        // only display if at least one social link is enabled
-        socialCount > 0 && (
-          <div class="social-wrapper">
-            <div class="social-links">Social Links:</div>
-            <Socials />
-          </div>
-        )
-      }
+
     </section>
 
     <Hr />
