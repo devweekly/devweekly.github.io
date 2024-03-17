@@ -1,0 +1,32 @@
+name: Update File
+
+on:
+  schedule:
+    - cron: '0 * * * *'  # This will run the workflow every hour
+
+jobs:
+  update-file:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v2
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v2
+      with:
+        node-version: 14
+
+    - name: Install Dependencies
+      run: npm install
+
+    - name: Update File
+      run: node updateFile.js
+
+    - name: Commit and Push Changes
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add .
+        git commit -m "Update file with latest data"
+        git push
