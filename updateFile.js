@@ -1,6 +1,10 @@
 const fs = require('fs');
 
-fs.writeFile('/src/content/blog/data.json', updatedData, (err) => {
+const data = {
+    'HELLO': 'WORLD'
+}
+
+fs.writeFile('/src/content/blog/data.json', data, (err) => {
     if (err) {
       console.error(err);
       return;
