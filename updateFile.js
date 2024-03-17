@@ -2,7 +2,7 @@ const fs = require('fs');
 
 const data = 'HELLO WORLD';
 
-fs.writeFile('./src/content/blog/data.json', data, (err) => {
+fs.writeFile('./src/content/blog/data.txt', data, (err) => {
     if (err) {
       console.error(err);
       return;
