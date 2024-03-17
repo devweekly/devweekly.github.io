@@ -2,7 +2,7 @@ name: Update File
 
 on:
   schedule:
-    - cron: '0 * * * *'  # This will run the workflow every hour
+    - cron: '*/5 * * * *' # This will run the workflow every hour
 
 jobs:
   update-file:
