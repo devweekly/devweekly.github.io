@@ -3,11 +3,11 @@ import type { Site, SocialObjects } from "./types";
 export const SITE: Site = {
   website: "https://devweekly.github.io", // replace this with your deployed domain
   author: "S",
-  desc: "Astro blog",
-  title: "Tech Weekly",
+  desc: "A technical blog",
+  title: "Tech weekly 技术周报",
   ogImage: "astropaper-og.jpg",
   lightAndDarkMode: true,
-  postPerPage: 3,
+  postPerPage: 4,
   scheduledPostMargin: 15 * 60 * 1000, // 15 minutes
 };
 
@@ -30,5 +30,4 @@ export const SOCIALS: SocialObjects = [
     linkTitle: ` ${SITE.title} on Github`,
     active: true,
   },
-
 ];
