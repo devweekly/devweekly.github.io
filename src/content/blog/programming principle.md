@@ -2,7 +2,7 @@
 author: W
 featured: false
 draft: false
-description:
+description: programming rules
 pubDatetime: 2024-03-27T00:22:00Z
 title: 程序设计原则
 tags:
