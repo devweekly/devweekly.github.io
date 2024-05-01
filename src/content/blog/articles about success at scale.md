@@ -23,13 +23,13 @@ tags:
 
 [React at 60fps: improving scrolling comments in Figma](https://www.figma.com/blog/improving-scrolling-comments-in-figma/)
 
-[]()
+[A Netflix Web Performance Case Study](https://medium.com/dev-channel/a-netflix-web-performance-case-study-c0bcde26a9d9)
 
-[]()
+[Shopping for speed on eBay.com](https://web.dev/case-studies/shopping-for-speed-on-ebay)
 
-[]()
+[How CLS optimizations increased Yahoo! JAPAN News's page views per session by 15%](https://web.dev/case-studies/yahoo-japan-news)
 
-[]()
+[How We Improved Our Core Web Vitals (Case Study)](https://www.smashingmagazine.com/2021/05/core-web-vitals-case-study/)
 
 []()
 
