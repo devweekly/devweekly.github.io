@@ -31,13 +31,13 @@ tags:
 
 [How We Improved Our Core Web Vitals (Case Study)](https://www.smashingmagazine.com/2021/05/core-web-vitals-case-study/)
 
-[]()
+[How to build a great developer experience](https://blog.apideck.com/how-to-build-a-great-developer-experience)
 
-[]()
+[Rebuilding our tech stack for the new Facebook.com](https://engineering.fb.com/2020/05/08/web/facebook-redesign/)
 
-[]()
+[Frontend at Lyft: An Overview](https://eng.lyft.com/frontend-at-lyft-an-overview-f934c1524370)
 
-[]()
+[Migrating Notion's marketing site to Next.js](https://www.notion.so/blog/migrating-notion-marketing-to-next-js)
 
 []()
 
