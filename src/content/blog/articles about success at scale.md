@@ -39,9 +39,9 @@ tags:
 
 [Migrating Notion's marketing site to Next.js](https://www.notion.so/blog/migrating-notion-marketing-to-next-js)
 
-[]()
+[10 Insights from Adopting TypeScript at Scale](https://www.bloomberg.com/company/stories/10-insights-adopting-typescript-at-scale/)
 
-[]()
+[Using Monorepos Is Not That Bad](https://medhat.dev/blog/using-monorepos-is-not-that-bad-case-study/)
 
 []()
 
