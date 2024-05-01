@@ -43,10 +43,10 @@ tags:
 
 [Using Monorepos Is Not That Bad](https://medhat.dev/blog/using-monorepos-is-not-that-bad-case-study/)
 
-[]()
+[Rebuilding a featured news section with modern CSS: Vox news](https://ishadeed.com/article/rebuild-featured-news-modern-css/)
 
-[]()
+[Around The Artifacts Of Design Systems (Case Study)](https://www.smashingmagazine.com/2022/04/artifacts-design-systems/)
 
-[]()
+[When life gives you lemons, write better error messages](https://wix-ux.com/when-life-gives-you-lemons-write-better-error-messages-46c5223e1a2f)
 
 []()
