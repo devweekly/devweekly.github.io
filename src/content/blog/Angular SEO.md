@@ -46,15 +46,15 @@ SEO tools
 
 - [PageSpeed Insights](https://pagespeed.web.dev/)
 
-- []()
+- [web-check](https://web-check.xyz/)
 
-- []()
+- [shodan free tool](https://www.shodan.io/)
 
-- []()
+- [Python SEO analyzer](https://github.com/sethblack/python-seo-analyzer)
 
-[]()
+- [webpagetest by Catchpoint](https://www.webpagetest.org/)
 
-[]()
+- [cloudflare radar](https://radar.cloudflare.com)
 
 []()
 
