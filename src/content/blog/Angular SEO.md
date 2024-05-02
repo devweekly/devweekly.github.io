@@ -11,10 +11,10 @@ tags:
 
 [Angular SEO: 9 Tips and 5 Tools for Your Angular Website](https://asperbrothers.com/blog/angular-seo/) This is very good article, we could refer to following parts:
 
-- 1. use Angular Server Side Rendering (SSR),
-- 2. set up website title and meta,
-- 3. use ngSkipHydration if needed,
-- 4. enable canonical URLs and avoid hash urls
+- use Angular Server Side Rendering (SSR),
+- set up website title and meta,
+- use ngSkipHydration if needed,
+- enable canonical URLs and avoid hash urls
 
 [Search engine optimization with Angular 17](https://www.ganatan.com/tutorials/search-engine-optimization-with-angular) notice about using Lighthouse tool and sitemap to improve SEO.
 
