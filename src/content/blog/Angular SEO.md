@@ -44,6 +44,14 @@ SEO tools
 
 - [Search Console tools](https://search.google.com/search-console/about)
 
+- [PageSpeed Insights](https://pagespeed.web.dev/)
+
+- []()
+
+- []()
+
+- []()
+
 []()
 
 []()
