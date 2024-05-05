@@ -124,6 +124,20 @@ const socialImageURL = new URL(
       })(window, document, "clarity", "script", "m71stty0ys");
     </script>
   </head>
+
+  <!-- Google tag (gtag.js) -->
+  <script async src="https://www.googletagmanager.com/gtag/js?id=G-PYCY78WG4Y"
+  ></script>
+  <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag() {
+      dataLayer.push(arguments);
+    }
+    gtag("js", new Date());
+
+    gtag("config", "G-PYCY78WG4Y");
+  </script>
+
   <body>
     <slot />
   </body>
