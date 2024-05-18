@@ -25,8 +25,8 @@ tags:
 
 [Discover the best developer blogs on any tech stack](https://bloggingfordevs.com/trends/)
 
-[Python探索金庸小说世界](https://juejin.cn/post/7137926207496486949?utm_source=pocket_saves)
+[Python探索金庸小说世界](https://juejin.cn/post/7137926207496486949)
 
-[選擇無聊的技術](https://boringtechnology.club/index_zh_TW.html?utm_source=pocket_saves)
+[選擇無聊的技術](https://boringtechnology.club/index_zh_TW.html)
 
 []()
