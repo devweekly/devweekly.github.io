@@ -3,11 +3,11 @@ import type { Site, SocialObjects } from "./types";
 export const SITE: Site = {
   website: "https://devweekly.github.io", // replace this with your deployed domain
   author: "S",
-  desc: "A technical blog",
-  title: "Dev Weekly",
+  desc: "A weekly technical blog",
+  title: "Dev Weekly 技术周报",
   ogImage: "astropaper-og.jpg",
   lightAndDarkMode: true,
-  postPerPage: 4,
+  postPerPage: 5,
   scheduledPostMargin: 15 * 60 * 1000, // 15 minutes
 };
 
