@@ -4,7 +4,7 @@ featured: false
 draft: false
 description: 本地编译和调试Angular18，学习Angular的SSR代码
 pubDatetime: 2024-11-01T00:22:00Z
-title: How to build Angular18 in local machine and code reading for ServerSideRendering
+title: Local build Angular18 and code reading Ng ServerSideRendering
 tags:
   - Angular
 ---
