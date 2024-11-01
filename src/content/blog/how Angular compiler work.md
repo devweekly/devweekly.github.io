@@ -2,7 +2,7 @@
 author: W
 featured: false
 draft: false
-description: 本地编译和调试Angular18，学习Angular的SSR代码
+description: Angular的装饰器@component是如何工作的，从源代码开始学起
 pubDatetime: 2024-11-01T00:22:00Z
 title: How decorator @component work, how Angular compiler work
 tags:
