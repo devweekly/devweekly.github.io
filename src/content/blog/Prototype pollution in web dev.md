@@ -17,7 +17,7 @@ tags:
 
 ### 关于zone.js注入的方法
 
-这是我翻github发现的一个函数，正好跟这个主题关联起来了 https://github.com/DataDog/browser-sdk/blob/main/packages/core/src/tools/getZoneJsOriginalValue.ts 这个函数可以得到zonejs注入前原始的函数，其实zonejs就是把它们存入了window.Zone对象下面的**symbol**函数里面，然后通过browserWindow.Zone.**symbol**(functionName) 就可以拿回原始的函数了。
+这是我翻github发现的一个函数，正好跟这个主题关联起来了 https://github.com/DataDog/browser-sdk/blob/main/packages/core/src/tools/getZoneJsOriginalValue.ts 这个函数可以得到zonejs注入前原始的函数，其实zonejs就是把它们存入了window.Zone对象下面的\_\_symbol\_\_函数里面，然后通过browserWindow.Zone.\_\_symbol\_\_(functionName) 就可以拿回原始的函数了。
 
 ### 参考资料
 
