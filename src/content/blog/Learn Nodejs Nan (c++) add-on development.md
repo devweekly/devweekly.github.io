@@ -61,6 +61,8 @@ Node.js NAN（Native Abstractions for Node.js）是一个 C++ 框架，它提供
 
 如何从Nan里面发出一个event给调用者（nodejs的javascript代码），可以参考我这里问Gemini的问题 https://g.co/gemini/share/10103f8a8d2a
 
+另外如果我们用Rust语言来写，可以用这个基础库 https://github.com/napi-rs/
+
 ### 参考资料
 
 https://github.com/airbnb/node-memwatch
@@ -70,3 +72,5 @@ https://github.com/nodejs/nan
 https://nodejs.org/api/v8.html
 
 https://github.com/nodejs/node-addon-examples
+
+https://github.com/napi-rs/
