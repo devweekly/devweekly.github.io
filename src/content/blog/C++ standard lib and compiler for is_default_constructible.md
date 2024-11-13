@@ -11,7 +11,7 @@ tags:
 
 ### 问题
 
-最近在看c++相关的内容，发现这个标准库函数 https://en.cppreference.com/w/cpp/types/is_default_constructible 它可以assert有没有默认构造器，我好奇它的内部实现，就查了一下，比如微软的STL是这样的 https://github.com/microsoft/STL/blob/main/stl/inc/type_traits，GCC大概是这样的 https://github.com/gcc-mirror/gcc/blob/master/libstdc%2B%2B-v3/include/std/type_traits
+最近在看c++相关的内容，发现这个标准库函数 https://en.cppreference.com/w/cpp/types/is_default_constructible 它可以assert有没有默认构造器，我好奇它的内部实现，就查了一下，比如微软的STL是这样的 https://github.com/microsoft/STL/blob/main/stl/inc/type_traits ，GCC大概是这样的 https://github.com/gcc-mirror/gcc/blob/master/libstdc%2B%2B-v3/include/std/type_traits
 
 问题来了，它们大概都用了类似\_\_is_constructible这样的内部函数或者结构，但是再往下就找不到了
 
