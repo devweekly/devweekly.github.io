@@ -57,7 +57,9 @@ Node.js NAN（Native Abstractions for Node.js）是一个 C++ 框架，它提供
 
 另外我们能看到info这个变量，这也是Nan文档写的不清晰的地方，这个可以认为是输入参数数组（类似c语言argv），但是这个名字太迷惑人了。
 
-另外通过阅读代码我们能看到，Nan可以直接和V8内核进行交互，虽然有这个https://nodejs.org/api/v8.html 标准API，但是提供的功能丰富程度没法和Nan相比
+另外通过阅读代码我们能看到，Nan可以直接和V8内核进行交互，虽然有这个https://nodejs.org/api/v8.html 标准API，但是提供的功能丰富程度没法和Nan相比。
+
+如何从Nan里面发出一个event给调用者（nodejs的javascript代码），可以参考我这里问Gemini的问题 https://g.co/gemini/share/10103f8a8d2a
 
 ### 参考资料
 
@@ -66,3 +68,5 @@ https://github.com/airbnb/node-memwatch
 https://github.com/nodejs/nan
 
 https://nodejs.org/api/v8.html
+
+https://github.com/nodejs/node-addon-examples
