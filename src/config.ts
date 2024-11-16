@@ -3,8 +3,8 @@ import type { Site, SocialObjects } from "./types";
 export const SITE: Site = {
   website: "https://devweekly.github.io", // replace this with your deployed domain
   author: "SW",
-  desc: "A weekly technical blog, SW的技术周报：关于架构设计，AI，GenAI，Web，产品思维，设计，新奇，思想火花等等",
-  title: "Dev Weekly, SW的技术周报",
+  desc: "A weekly technical blog,programming,architecture,SW编程技术周报,关于架构设计,AI/LLM,Web,产品思维,设计,新奇,思想火花等等",
+  title: "Dev Weekly, SW编程技术周报",
   ogImage: "astropaper-og.jpg",
   lightAndDarkMode: true,
   postPerPage: 5,
