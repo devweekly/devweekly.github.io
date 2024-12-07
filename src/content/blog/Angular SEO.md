@@ -6,7 +6,7 @@ description: How Angular improve SEO (Search Engine Optimization)
 pubDatetime: 2024-05-02T01:02:03Z
 title: Angular SEO
 tags:
-  - weekly
+  - web
 ---
 
 [Angular SEO: 9 Tips and 5 Tools for Your Angular Website](https://asperbrothers.com/blog/angular-seo/) This is very good article, we could refer to following parts:

@@ -7,6 +7,7 @@ pubDatetime: 2024-11-01T01:24:00Z
 title: Prototype pollution in web dev
 tags:
   - Angular
+  - web
 ---
 
 ### 如何解决

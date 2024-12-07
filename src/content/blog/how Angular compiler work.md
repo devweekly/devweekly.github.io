@@ -7,6 +7,7 @@ pubDatetime: 2024-11-01T00:22:00Z
 title: How decorator @component work, how Angular compiler work
 tags:
   - Angular
+  - web
 ---
 
 对Angular的代码比较感兴趣，读读源代码学习学习。
