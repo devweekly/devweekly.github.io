@@ -51,6 +51,8 @@ https://replicate.com/pricing
 
 https://cohere.com/
 
+https://modelscope.cn/models/LLM-Research/Meta-Llama-3-8B-Instruct
+
 ### 结论
 
 TODO
