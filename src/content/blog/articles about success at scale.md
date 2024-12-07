@@ -6,7 +6,7 @@ description: tech blog
 pubDatetime: 2024-05-01T01:02:03Z
 title: articles about success at scale
 tags:
-  - weekly
+  - web
 ---
 
 [Making Instagram.com faster: Part 1](https://instagram-engineering.com/making-instagram-com-faster-part-1-62cc0c327538)

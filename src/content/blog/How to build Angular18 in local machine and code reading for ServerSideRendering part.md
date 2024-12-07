@@ -7,6 +7,7 @@ pubDatetime: 2024-11-01T00:22:00Z
 title: Local build Angular18 and code reading Ng ServerSideRendering
 tags:
   - Angular
+  - web
 ---
 
 对Angular的Server Side Rendering （SSR）比较感兴趣，在本地读读源代码学习学习。
