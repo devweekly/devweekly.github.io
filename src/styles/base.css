@@ -1,32 +1,6 @@
-@import 'tailwindcss';
-
-@config '../../tailwind.config.cjs';
-
-/*
-  The default border color has changed to `currentColor` in Tailwind CSS v4,
-  so we've added these compatibility styles to make sure everything still
-  looks the same as it did with Tailwind CSS v3.
-
-  If we ever want to remove these styles, we need to add an explicit border
-  color utility to any element that depends on these defaults.
-*/
-@layer base {
-  *,
-  ::after,
-  ::before,
-  ::backdrop,
-  ::file-selector-button {
-    border-color: var(--color-gray-200, currentColor);
-  }
-}
-
-@utility display-none {
-  @apply hidden;
-}
-
-@utility focus-outline {
-  @apply outline-2 outline-offset-1 outline-skin-fill focus-visible:no-underline focus-visible:outline-dashed;
-}
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 @layer base {
   :root,
@@ -75,28 +49,28 @@
     sm:scale-110;
   }
   .prose {
-    @apply prose-headings:mb-3! prose-headings:text-skin-base! 
-    prose-h3:italic prose-p:text-skin-base! 
-    prose-a:text-skin-base! prose-a:decoration-dashed! prose-a:underline-offset-8
-    prose-a:hover:text-skin-accent prose-blockquote:border-l-skin-accent!
+    @apply prose-headings:!mb-3 prose-headings:!text-skin-base 
+    prose-h3:italic prose-p:!text-skin-base 
+    prose-a:!text-skin-base prose-a:!decoration-dashed prose-a:underline-offset-8
+    hover:prose-a:text-skin-accent prose-blockquote:!border-l-skin-accent
     prose-blockquote:border-opacity-50 prose-blockquote:opacity-80
-    prose-figcaption:text-skin-base! prose-figcaption:opacity-70
-    prose-strong:text-skin-base!
+    prose-figcaption:!text-skin-base prose-figcaption:opacity-70
+    prose-strong:!text-skin-base
 
     
-    prose-code:rounded-sm prose-code:bg-skin-card 
+    prose-code:rounded prose-code:bg-skin-card 
     prose-code:bg-opacity-75 prose-code:p-1 
-    prose-code:before:content-none! prose-code:after:content-none!
-    prose-ol:text-skin-base! 
-    prose-ul:overflow-x-clip prose-ul:text-skin-base! prose-li:marker:text-skin-accent!
+    prose-code:before:!content-none prose-code:after:!content-none
+    prose-ol:!text-skin-base 
+    prose-ul:overflow-x-clip prose-ul:!text-skin-base prose-li:marker:!text-skin-accent
     prose-table:text-skin-base prose-th:border
     prose-th:border-skin-line prose-td:border 
-    prose-td:border-skin-line prose-img:my-2! 
+    prose-td:border-skin-line prose-img:!my-2 
     prose-img:mx-auto prose-img:border-2 
-    prose-img:border-skin-line prose-hr:border-skin-line!;
+    prose-img:border-skin-line prose-hr:!border-skin-line;
   }
   .prose a {
-    @apply break-words hover:text-skin-accent!;
+    @apply break-words hover:!text-skin-accent;
   }
   .prose thead th:first-child,
   tbody td:first-child,
@@ -148,5 +122,14 @@
 
   pre > code {
     white-space: pre;
+  }
+}
+
+@layer components {
+  .display-none {
+    @apply hidden;
+  }
+  .focus-outline {
+    @apply outline-2 outline-offset-1 outline-skin-fill focus-visible:no-underline focus-visible:outline-dashed;
   }
 }
