@@ -1,6 +1,8 @@
 ---
-layout: ../layouts/AboutLayout.astro
-title: "memo"
+layout: ../layouts/NoteLayout.astro
+title: "Note"
 ---
 
-I am a developer
+I am a developer.
+
+xxx.
