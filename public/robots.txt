@@ -1,3 +1,0 @@
-User-agent: *
-Disallow: /private/
-Sitemap: https://devweekly.github.io/sitemap.xml
