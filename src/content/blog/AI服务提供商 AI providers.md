@@ -13,6 +13,10 @@ tags:
 
 如果自己的电脑性能一般不能host LLM，又不能用openai（因为在China）。那么花点小钱买AI服务，使用比如llama这样的LLM模型就是一个方案。但是貌似市面上这种服务有点多，我这里做个简单的收集，后续用了再更新。
 
+### 结果 (2025Mar11为止)
+
+https://openrouter.ai/ 个人选择openrouter
+
 ### 研究
 
 首先就是几大云服务提供商，比如AWS，Azure，这里不赘述。
@@ -34,8 +38,6 @@ https://blog.cloudflare.com/meta-llama-3-available-on-cloudflare-workers-ai/ clo
 https://mistral.ai/
 
 https://www.together.ai/
-
-https://openrouter.ai/
 
 https://fireworks.ai/
 
