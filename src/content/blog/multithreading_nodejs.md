@@ -6,7 +6,7 @@ tags:
 author: W
 featured: true
 draft: false
-description: tech weekly
+description: Node.js learning
 ---
 
 ![title image](https://images.unsplash.com/photo-1690736159167-b00621eba9f6?ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D&auto=format&fit=crop&w=687&q=80)
