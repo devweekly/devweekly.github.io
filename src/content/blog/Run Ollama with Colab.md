@@ -13,14 +13,16 @@ According to this document: https://medium.com/google-cloud/gemma-3-ollama-on-co
 
 It is necessary first step to install some packages:
 
-`! sudo apt update && sudo apt install pciutils lshw`
+```
+! sudo apt update && sudo apt install pciutils lshw
+```
 
 Then normal Ollama installation and running steps as below:
 
-`
+```
 !curl -fsSL https://ollama.com/install.sh | sh
 
 !nohup ollama serve > ollama.log 2>&1 &
 
 ! ollama run gemma3:12b “What is the capital of the Netherlands?”
-`
+```
