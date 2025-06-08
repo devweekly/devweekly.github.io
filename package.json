@@ -17,10 +17,10 @@
   },
   "dependencies": {
     "@astrojs/check": "^0.9.4",
-    "@astrojs/rss": "^4.0.11",
+    "@astrojs/rss": "^4.0.12",
     "@extractus/feed-extractor": "^7.0.9",
     "@resvg/resvg-js": "^2.6.0",
-    "astro": "^5.8.1",
+    "astro": "^5.9.1",
     "fuse.js": "^7.0.0",
     "github-slugger": "^2.0.0",
     "remark-collapse": "^0.1.2",
@@ -31,7 +31,7 @@
   },
   "devDependencies": {
     "@astrojs/react": "^4.3.0",
-    "@astrojs/sitemap": "^3.4.0",
+    "@astrojs/sitemap": "^3.4.1",
     "@astrojs/tailwind": "^6.0.2",
     "@divriots/jampack": "^0.25.0",
     "@tailwindcss/typography": "^0.5.13",
