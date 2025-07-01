@@ -15,25 +15,25 @@ export default defineConfig({
       applyBaseStyles: false,
     }),
     react(),
-    // mermaid({
-    //   theme: "forest",
-    //   iconPacks: [
-    //     {
-    //       name: "logos",
-    //       loader: () =>
-    //         fetch("https://unpkg.com/@iconify-json/logos@1/icons.json").then(
-    //           res => res.json()
-    //         ),
-    //     },
-    //     {
-    //       name: "iconoir",
-    //       loader: () =>
-    //         fetch("https://unpkg.com/@iconify-json/iconoir@1/icons.json").then(
-    //           res => res.json()
-    //         ),
-    //     },
-    //   ],
-    // }),
+    mermaid({
+      theme: "forest",
+      iconPacks: [
+        {
+          name: "logos",
+          loader: () =>
+            fetch("https://unpkg.com/@iconify-json/logos@1/icons.json").then(
+              res => res.json()
+            ),
+        },
+        {
+          name: "iconoir",
+          loader: () =>
+            fetch("https://unpkg.com/@iconify-json/iconoir@1/icons.json").then(
+              res => res.json()
+            ),
+        },
+      ],
+    }),
     sitemap(),
   ],
   markdown: {
