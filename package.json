@@ -20,7 +20,7 @@
     "@astrojs/rss": "^4.0.12",
     "@extractus/feed-extractor": "^7.0.9",
     "@resvg/resvg-js": "^2.6.0",
-    "astro": "^5.11.0",
+    "astro": "^5.12.0",
     "astro-mermaid": "^1.0.3",
     "fuse.js": "^7.0.0",
     "github-slugger": "^2.0.0",
