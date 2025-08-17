@@ -27,6 +27,8 @@ Cloudflare worker AI，AutoRAG，AI Gateway [https://developers.cloudflare.com/w
 
 [trancy](https://www.trancy.org/)
 
+Read Frog - Open Source Immersive Translate | 🐸 陪读蛙 - 开源沉浸式翻译](https://github.com/mengxi-ream/read-frog)
+
 [流畅阅读 浏览器双语翻译插件](https://fluent.thinkstu.com/)
 
 [kiss-translator 简约翻译](https://github.com/fishjar/kiss-translator)
