@@ -1,0 +1,14 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm view astro version)",
+      "Bash(npm view @astrojs/check version)",
+      "Bash(npm view @astrojs/rss version)",
+      "Bash(npm view @astrojs/react version)",
+      "Bash(npm view @astrojs/sitemap version)",
+      "Bash(npm view @astrojs/tailwind version)",
+      "Bash(pnpm update:*)",
+      "Bash(npm update astro @astrojs/rss @astrojs/sitemap)"
+    ]
+  }
+}
