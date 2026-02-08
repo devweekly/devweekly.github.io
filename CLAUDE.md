@@ -1,97 +1,68 @@
-# Self-Maintenance Rule
+# CLAUDE.md
 
-After any large refactor, architectural change, or multi-file modification:
-- Append a short "Lessons Learned" entry
-- Focus on mistakes, constraints, or things to avoid next time
-- Keep it concise (under 6 bullet points), also log datetime
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-# Dev Weekly - 技术博客系统
+## Project Overview
 
-## 项目简介
+Dev Weekly is a technical blog system built with Astro 5 and deployed to GitHub Pages at https://devweekly.github.io. It uses the Islands architecture pattern with static HTML generation and selective React hydration for interactive components.
 
-这是一个基于 **Astro 5** 构建的现代化技术博客系统，用于发布编程技术周报。
+## Development Commands
 
-- **网站**: https://devweekly.github.io
-- **作者**: SW
-- **主题**: 编程、架构设计、AI/LLM、Web开发、产品思维
+```bash
+# Development
+pnpm dev              # Start development server
+pnpm start            # Alias for pnpm dev
 
-## 核心架构
+# Build & Preview
+pnpm build            # Production build (runs astro build + jampack optimization)
+pnpm preview          # Preview production build locally
 
-### Islands 架构
-- 大部分内容生成静态 HTML
-- 交互组件（搜索、卡片）使用 React + TypeScript
-- 按需加载 JavaScript，优化性能
+# Code Quality
+pnpm lint             # Run ESLint
+pnpm format           # Auto-format code with Prettier
+pnpm format:check     # Check formatting without making changes
 
-### 技术栈
-
-| 类别 | 技术 |
-|------|------|
-| 框架 | Astro 5.16.2, React 19 |
-| 语言 | TypeScript 5.5.4 |
-| 样式 | Tailwind CSS 3.4.7 |
-| 搜索 | Fuse.js (客户端模糊搜索) |
-| 图表 | Mermaid |
-| 构建 | Vite |
-
-## 项目结构
-
-```
-src/
-├── components/          # 组件（.astro 和 .tsx）
-│   ├── Search.tsx      # 搜索组件（React + Fuse.js）
-│   ├── Card.tsx        # 文章卡片
-│   └── ...
-├── layouts/            # 布局模板
-├── pages/              # 页面路由
-│   ├── index.astro     # 首页
-│   ├── posts/          # 文章列表和详情
-│   ├── tags/           # 标签页
-│   └── ...
-├── content/blog/       # 博客文章（Markdown）
-└── utils/              # 工具函数
+# Git Workflow
+pnpm cz               # Commitizen for conventional commits
 ```
 
-## 内容管理
+**Note:** This project does not have a test suite configured.
 
-### 文章格式
+## High-Level Architecture
 
-文章存储在 `src/content/blog/`，使用 Markdown 格式，带 YAML frontmatter：
+### Islands Architecture
+- Static HTML generation for most content
+- Interactive components (Search, Card) use React + TypeScript
+- Minimal JavaScript shipped to client (only for interactive islands)
 
-```yaml
----
-title: "文章标题"
-description: "文章描述"
-pubDatetime: 2024-01-31T10:00:00Z
-tags: ["web", "typescript"]
-draft: false          # 草稿不会被发布
-featured: true        # 精选文章
----
+### Content Layer
+- Blog posts stored as Markdown files in `src/content/blog/`
+- Frontmatter schema validated with Zod (defined in `src/content/config.ts`)
+- Content collection API from Astro
+
+### Build Pipeline
+1. Astro builds static HTML pages
+2. Jampack optimizes the `dist/` folder (images, CSS, JS compression)
+3. Sitemap and RSS feed generation
+4. OG image generation using Satori
+
+### TypeScript Path Aliases
+```typescript
+@assets/*      → src/assets/*
+@config        → src/config.ts
+@components/*  → src/components/*
+@content/*     → src/content/*
+@layouts/*     → src/layouts/*
+@pages/*       → src/pages/*
+@styles/*      → src/styles/*
+@utils/*       → src/utils/*
 ```
 
-### 内容 Schema
+## Critical Implementation Details
 
-在 `src/content/config.ts` 中定义，使用 Zod 验证。
+### RSS Feed Rendering in Astro 5
 
-## 关键功能
-
-### 1. 搜索
-- 客户端实现，使用 Fuse.js
-- 搜索标题和描述
-- URL 参数同步 `?q=`
-
-### 2. OG 图片
-- 自动生成 OpenGraph 图片
-- 使用 Satori + @resvg/resvg-js
-- 每篇文章有专属 OG 图片
-
-### 3. RSS Feed
-
-- 自动生成 `/rss.xml`
-- 包含最近发布的文章
-
-**重要：RSS 内容渲染实现**
-
-在 Astro 5 中，内容集合的 `post.body` 默认不包含原始 Markdown 内容，需要使用 `render()` 函数配合 `experimental_AstroContainer` 来渲染 HTML：
+**IMPORTANT:** In Astro 5, content collection entries don't include raw Markdown in `post.body`. To render blog content for RSS feeds, you must use the `render()` function with `experimental_AstroContainer`:
 
 ```typescript
 // src/pages/rss.xml.ts
@@ -101,26 +72,26 @@ import sanitizeHtml from "sanitize-html";
 
 export async function GET() {
   const posts = await getCollection("blog");
-  
+
   const items = await Promise.all(
     posts.map(async post => {
       const { Content } = await render(post);
       const html = await renderContentToHtml(Content);
-      
+
       return {
         link: `posts/${post.slug}/`,
         title: post.data.title,
         description: post.data.description,
         pubDate: new Date(post.data.pubDatetime),
-        content: sanitizeHtml(html),  // 完整文章内容
+        content: sanitizeHtml(html),
       };
     })
   );
-  
+
   return rss({ title, description, site, items });
 }
 
-// 使用 AstroContainer 渲染组件为 HTML
+// Use AstroContainer to render component to HTML
 async function renderContentToHtml(Component: any): Promise<string> {
   const { experimental_AstroContainer } = await import("astro/container");
   const container = await experimental_AstroContainer.create();
@@ -128,92 +99,53 @@ async function renderContentToHtml(Component: any): Promise<string> {
 }
 ```
 
-**依赖包：**
-```bash
-pnpm add sanitize-html markdown-it
-pnpm add -D @types/sanitize-html @types/markdown-it
-```
+**Common mistake:** Trying to access `post.body` directly will result in RSS feeds with only titles/descriptions but no content.
 
-**常见错误：** 如果 RSS 只有标题没有内容，是因为错误地直接访问 `post.body` 而不是使用 `render()`。
+### Content Publishing Rules
 
-### 4. 标签系统
-- 多标签支持
-- 标签页面自动生成
-- `/tags/[tag]` 路由
+- **Scheduled Posts:** Articles with future `pubDatetime` are published with a 15-minute tolerance (configured in `src/config.ts`)
+- **Draft Articles:** Posts with `draft: true` in frontmatter will not be published
 
-## 开发命令
+### Site Configuration
 
-```bash
-# 安装依赖
-pnpm install
-
-# 开发服务器
-pnpm dev
-
-# 构建
-pnpm build
-
-# 预览
-pnpm preview
-
-# 格式化
-pnpm format
-```
-
-## 配置
-
-### 站点配置 (`src/config.ts`)
-
+Main configuration in `src/config.ts`:
 ```typescript
 SITE: {
   website: "https://devweekly.github.io"
   author: "SW"
   title: "Dev Weekly - SW编程技术周报"
   postPerPage: 5
-  scheduledPostMargin: 15min  // 定时发布容差
+  scheduledPostMargin: 15 * 60 * 1000  // 15 minutes in ms
 }
 ```
 
-### Tailwind 配置
+## Technology Stack
 
-在 `tailwind.config.cjs` 中定义主题、颜色、字体等。
+- **Astro 5.17.1** - Static site generator with Islands architecture
+- **React 19** - Interactive UI components
+- **TypeScript** - Type-safe development
+- **Tailwind CSS 3.4.7** - Utility-first CSS framework
+- **Fuse.js** - Client-side fuzzy search
+- **Mermaid** - Diagram rendering in markdown
+- **Jampack** - Post-build optimization
+- **Satori** - Dynamic OG image generation
 
-## 添加新文章
+## Git Workflow
 
-1. 在 `src/content/blog/` 创建 `.md` 文件
-2. 添加 frontmatter（标题、描述、日期、标签）
-3. 写文章正文（Markdown）
-4. 文章自动出现在列表中
+- **Husky** runs pre-commit hooks
+- **lint-staged** auto-formats staged files before commit
+- **Commitizen** enforces conventional commit messages
+- Use `pnpm cz` instead of `git commit` for properly formatted commits
 
-## 注意事项
-
-- 文章 `pubDatetime` 支持未来时间（15分钟容差）
-- `draft: true` 的文章不会发布
-- OG 图片建议尺寸 ≥1200x630
-- 使用 `pnpm` 作为包管理器
-- 提交前会自动运行 lint-staged 格式化代码
-
-## 性能优化
-
-- 静态站点生成（SSG）
-- Islands 架构（最小 JS 传输）
-- 视图过渡动画
-- 图片懒加载
-- Jampack 构建后优化
-
-## SEO
-
-- 自动 sitemap 生成
-- OpenGraph 图片
-- robots.txt
-- RSS feed
-- 结构化数据
-
-
-
-# Self-Maintenance Rule
+## Self-Maintenance Rule
 
 After any large refactor, architectural change, or multi-file modification:
-- Append a short "Lessons Learned" entry 
+- Append a short "Lessons Learned" entry below
 - Focus on mistakes, constraints, or things to avoid next time
 - Keep it concise (under 6 bullet points), also log datetime
+
+---
+
+## Lessons Learned
+
+<!-- Future entries go here -->
