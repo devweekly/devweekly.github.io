@@ -95,11 +95,14 @@ pnpm cz               # Commitizen for conventional commits
 ### TypeScript Configuration
 - **Strict mode enabled** (extends `astro/tsconfigs/strict`)
 - **Path aliases** (configured in `tsconfig.json`):
-  - `@components/*` → `src/components/*`
-  - `@utils/*` → `src/utils/*`
-  - `@layouts/*` → `src/layouts/*`
-  - `@config` → `src/config.ts`
   - `@assets/*` → `src/assets/*`
+  - `@config` → `src/config.ts`
+  - `@components/*` → `src/components/*`
+  - `@content/*` → `src/content/*`
+  - `@layouts/*` → `src/layouts/*`
+  - `@pages/*` → `src/pages/*`
+  - `@styles/*` → `src/styles/*`
+  - `@utils/*` → `src/utils/*`
 
 ### Import Order Convention
 1. External libraries (`react`, `astro:content`)
@@ -284,6 +287,7 @@ pnpm format:check     # Formatting issues
 - **Astro Docs**: https://docs.astro.build
 - **Tailwind Docs**: https://tailwindcss.com/docs
 - **Site URL**: https://devweekly.github.io
+- **Architecture**: [Why Subagent Maintenance?](docs/architecture/why-subagent-maintenance.md)
 
 ---
 
@@ -329,6 +333,8 @@ When updating AGENTS.md:
 | Date | Change | Updated By |
 |------|--------|------------|
 | 2026-02-08 | Added Self-Maintenance section | @agents-maintainer |
+| 2026-02-08 | Added architecture report on subagent maintenance | @agents-maintainer |
+| 2026-02-08 | Verified dependencies, scripts, and updated TypeScript path aliases | @agents-maintainer |
 
 ### Example Usage
 
