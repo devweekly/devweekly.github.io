@@ -6,7 +6,7 @@ import sanitizeHtml from "sanitize-html";
 
 export async function GET() {
   const posts = await getCollection("blog");
-  const sortedPosts = getSortedPosts(posts);
+  const sortedPosts = getSortedPosts(posts).slice(0, 10);
 
   const items = await Promise.all(
     sortedPosts.map(async post => {
