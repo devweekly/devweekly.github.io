@@ -1,3 +1,10 @@
+# Self-Maintenance Rule
+
+After any large refactor, architectural change, or multi-file modification:
+- Append a short "Lessons Learned" entry
+- Focus on mistakes, constraints, or things to avoid next time
+- Keep it concise (under 6 bullet points), also log datetime
+
 # Dev Weekly - 技术博客系统
 
 ## 项目简介
@@ -78,8 +85,56 @@ featured: true        # 精选文章
 - 每篇文章有专属 OG 图片
 
 ### 3. RSS Feed
+
 - 自动生成 `/rss.xml`
 - 包含最近发布的文章
+
+**重要：RSS 内容渲染实现**
+
+在 Astro 5 中，内容集合的 `post.body` 默认不包含原始 Markdown 内容，需要使用 `render()` 函数配合 `experimental_AstroContainer` 来渲染 HTML：
+
+```typescript
+// src/pages/rss.xml.ts
+import { getCollection, render } from "astro:content";
+import rss from "@astrojs/rss";
+import sanitizeHtml from "sanitize-html";
+
+export async function GET() {
+  const posts = await getCollection("blog");
+  
+  const items = await Promise.all(
+    posts.map(async post => {
+      const { Content } = await render(post);
+      const html = await renderContentToHtml(Content);
+      
+      return {
+        link: `posts/${post.slug}/`,
+        title: post.data.title,
+        description: post.data.description,
+        pubDate: new Date(post.data.pubDatetime),
+        content: sanitizeHtml(html),  // 完整文章内容
+      };
+    })
+  );
+  
+  return rss({ title, description, site, items });
+}
+
+// 使用 AstroContainer 渲染组件为 HTML
+async function renderContentToHtml(Component: any): Promise<string> {
+  const { experimental_AstroContainer } = await import("astro/container");
+  const container = await experimental_AstroContainer.create();
+  return await container.renderToString(Component);
+}
+```
+
+**依赖包：**
+```bash
+pnpm add sanitize-html markdown-it
+pnpm add -D @types/sanitize-html @types/markdown-it
+```
+
+**常见错误：** 如果 RSS 只有标题没有内容，是因为错误地直接访问 `post.body` 而不是使用 `render()`。
 
 ### 4. 标签系统
 - 多标签支持
@@ -153,3 +208,12 @@ SITE: {
 - robots.txt
 - RSS feed
 - 结构化数据
+
+
+
+# Self-Maintenance Rule
+
+After any large refactor, architectural change, or multi-file modification:
+- Append a short "Lessons Learned" entry 
+- Focus on mistakes, constraints, or things to avoid next time
+- Keep it concise (under 6 bullet points), also log datetime
