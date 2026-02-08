@@ -1,430 +1,268 @@
-# AGENTS.md - Dev Weekly 技术周报系统架构说明
+# AGENTS.md - Dev Weekly Development Guide
 
-## 项目概述
+> **CRITICAL INSTRUCTION**: This document is designed to be self-maintaining. When making changes to the project, you MUST consider whether AGENTS.md needs updating. If you detect changes to `package.json`, `tsconfig.json`, directory structure, or any other configuration mentioned in this document, invoke `@agents-maintainer` to update the relevant sections. Always check the Maintenance Log at the end of this file before and after making updates.
 
-**Dev Weekly** 是一个基于 Astro 5 构建的现代化技术博客系统，专门用于发布编程技术周报。项目采用 Islands 架构，实现了高性能的静态站点生成与按需交互的完美平衡。
+## Quick Commands Reference
 
-- **网站地址**: https://devweekly.github.io
-- **作者**: SW
-- **主题**: 编程、架构设计、AI/LLM、Web、产品思维、设计
-
-## 技术栈
-
-### 核心框架
-- **Astro 5.16.2** - 静态站点生成器，支持 Islands 架构
-- **React 19** - 用于交互式组件（搜索、卡片）
-- **TypeScript 5.5.4** - 全栈类型安全
-- **Tailwind CSS 3.4.7** - 原子化 CSS 框架
-
-### 关键集成
-- **@astrojs/react** - React 组件集成
-- **@astrojs/sitemap** - 自动站点地图生成
-- **@astrojs/rss** - RSS feed 支持
-- **astro-mermaid** - Mermaid 图表支持
-
-### 工具库
-- **Fuse.js** - 客户端模糊搜索
-- **Satori + @resvg/resvg-js** - 动态 OG 图片生成
-- **remark-toc** - Markdown 目录自动生成
-- **remark-collapse** - 可折叠内容块
-- **github-slugger** - URL 友好的 slug 生成
-
-### 开发工具
-- **ESLint + Prettier** - 代码规范
-- **Husky + lint-staged** - Git 钩子
-- **Commitizen** - 规范化提交
-- **Jampack** - 构建后优化
-
-## 项目结构
-
-```
-devweekly.github.io/
-├── src/
-│   ├── assets/               # 静态资源（图标等）
-│   │   └── socialIcons.ts
-│   ├── components/           # 组件库
-│   │   ├── Card.tsx          # 文章卡片（React）
-│   │   ├── Search.tsx        # 搜索组件（React + Fuse.js）
-│   │   ├── Datetime.tsx      # 日期时间显示
-│   │   ├── Header.astro      # 导航栏
-│   │   ├── Footer.astro      # 页脚
-│   │   ├── Pagination.astro  # 分页
-│   │   ├── Breadcrumbs.astro # 面包屑导航
-│   │   ├── ShareLinks.astro  # 分享链接
-│   │   ├── Socials.astro     # 社交媒体图标
-│   │   ├── Tag.astro         # 标签
-│   │   ├── Hr.astro          # 分隔线
-│   │   └── LinkButton.astro  # 链接按钮
-│   ├── layouts/              # 布局模板
-│   │   ├── Layout.astro      # 基础布局（HTML 结构、meta）
-│   │   ├── Main.astro        # 主页布局
-│   │   ├── Posts.astro       # 文章列表布局
-│   │   ├── PostDetails.astro # 文章详情布局
-│   │   ├── TagPosts.astro    # 标签文章列表布局
-│   │   ├── AboutLayout.astro # 关于页布局
-│   │   └── NoteLayout.astro  # 笔记页布局
-│   ├── pages/                # 页面路由
-│   │   ├── index.astro       # 首页
-│   │   ├── 404.astro         # 404 错误页
-│   │   ├── search.astro      # 搜索页
-│   │   ├── about.md          # 关于页
-│   │   ├── note.md           # 笔记页
-│   │   ├── posts/
-│   │   │   ├── index.astro   # 文章列表
-│   │   │   └── [slug]/
-│   │   │       ├── index.astro     # 动态文章详情
-│   │   │       └── index.png.ts    # 动态 OG 图片
-│   │   ├── tags/
-│   │   │   ├── index.astro         # 标签列表
-│   │   │   └── [tag]/
-│   │   │       ├── index.astro     # 标签文章列表
-│   │   │       └── [page].astro    # 标签分页
-│   │   ├── og.png.ts         # 全局 OG 图片
-│   │   ├── robots.txt.ts     # robots.txt 生成
-│   │   └── rss.xml.ts        # RSS feed 生成
-│   ├── content/              # 内容集合
-│   │   ├── config.ts         # 内容 schema 定义
-│   │   └── blog/             # 博客文章（Markdown）
-│   │       ├── 2024Jan06.md
-│   │       ├── 2024Jan13.md
-│   │       └── ...
-│   ├── utils/                # 工具函数
-│   │   ├── getSortedPosts.ts      # 文章排序与过滤
-│   │   ├── getPostsByTag.ts       # 按标签过滤
-│   │   ├── getPagination.ts       # 分页计算
-│   │   ├── getPageNumbers.ts      # 页码生成
-│   │   ├── getUniqueTags.ts       # 标签去重
-│   │   ├── generateOgImages.tsx   # OG 图片生成
-│   │   ├── postFilter.ts          # 文章过滤逻辑
-│   │   ├── slugify.ts             # Slug 生成
-│   │   └── og-templates/
-│   │       ├── post.tsx           # 文章 OG 模板
-│   │       └── site.tsx           # 站点 OG 模板
-│   ├── styles/               # 全局样式
-│   ├── config.ts             # 站点配置
-│   ├── types.ts              # TypeScript 类型定义
-│   └── env.d.ts              # 环境类型声明
-├── public/                   # 公共静态资源
-├── astro.config.ts           # Astro 配置
-├── tailwind.config.cjs       # Tailwind 配置
-├── tsconfig.json             # TypeScript 配置
-└── package.json              # 项目依赖
-```
-
-## 核心架构
-
-### 1. Islands 架构
-
-Astro 采用 Islands 架构，实现了最优性能：
-
-- **静态优先**: 大部分内容生成为静态 HTML
-- **按需交互**: 仅在需要时加载 JavaScript
-- **组件隔离**: 每个交互组件独立加载
-
-**交互式组件**（使用 React）:
-- `Search.tsx` - 搜索功能
-- `Card.tsx` - 文章卡片（支持视图过渡）
-- `Datetime.tsx` - 日期时间显示
-
-**静态组件**（使用 Astro）:
-- 所有布局和其他组件
-
-### 2. 内容管理系统
-
-#### 内容 Schema (src/content/config.ts)
-
-```typescript
-const blog = defineCollection({
-  type: "content",
-  schema: {
-    author: string        // 作者（默认: SITE.author）
-    pubDatetime: date     // 发布时间（必需）
-    modDatetime: date     // 修改时间（可选）
-    title: string         // 标题（必需）
-    featured: boolean     // 是否精选（可选）
-    draft: boolean        // 是否草稿（可选）
-    tags: array          // 标签（默认: ["others"]）
-    ogImage: image/string // OG 图片（可选，≥1200x630）
-    description: string   // 描述（必需）
-    canonicalURL: string  // 规范 URL（可选）
-  }
-})
-```
-
-#### 内容特性
-
-- **基于文件系统**: 所有文章存储在 `src/content/blog/`
-- **Markdown 格式**: 支持 YAML frontmatter + Markdown 正文
-- **类型验证**: 使用 Zod schema 进行运行时验证
-- **草稿系统**: `draft: true` 的文章不会发布
-- **定时发布**: 支持未来日期的文章（15分钟容差）
-- **标签分类**: 支持多标签
-- **精选文章**: `featured: true` 可高亮显示
-
-### 3. 路由系统
-
-#### 文件系统路由
-
-Astro 自动根据文件结构生成路由：
-
-```
-/ ──────────────────────────> index.astro
-/posts ─────────────────────> posts/index.astro
-/posts/2024Jan06 ───────────> posts/[slug]/index.astro
-/tags ──────────────────────> tags/index.astro
-/tags/web ──────────────────> tags/[tag]/index.astro
-/tags/web/2 ────────────────> tags/[tag]/[page].astro
-/search ────────────────────> search.astro
-/about ─────────────────────> about.md
-/note ──────────────────────> note.md
-```
-
-#### 动态路由
-
-- `[slug]` - 文章 slug（从文件名生成）
-- `[tag]` - 标签名称
-- `[page]` - 分页页码
-
-### 4. 搜索功能
-
-#### 实现方式 (src/components/Search.tsx)
-
-- **客户端搜索**: 使用 Fuse.js 实现模糊搜索
-- **搜索范围**: 文章标题和描述
-- **URL 同步**: 搜索词存储在 URL 参数 `?q=`
-- **实时反馈**: 即时显示搜索结果
-- **配置**:
-  - 最小搜索字符: 2
-  - 模糊匹配阈值: 0.5
-  - 搜索键: title, description
-
-### 5. OG 图片生成
-
-#### 技术实现 (src/utils/generateOgImages.tsx)
-
-1. **React 组件** → 使用 Satori 转为 **SVG**
-2. **SVG** → 使用 @resvg/resvg-js 转为 **PNG**
-3. **动态生成**: 每篇文章自动生成专属 OG 图片
-
-#### 模板
-
-- `og-templates/site.tsx` - 站点默认 OG 图片
-- `og-templates/post.tsx` - 文章 OG 图片模板
-
-### 6. RSS Feed
-
-自动生成 RSS feed (`/rss.xml`)，包含：
-- 最近发布的文章
-- 完整内容或摘要
-- 文章元数据
-
-### 7. 主题系统
-
-- **明暗模式**: 支持自动切换
-- **代码高亮**: one-dark-pro 主题
-- **Mermaid 图表**: forest 主题
-- **图标集**: logos + iconoir
-
-## 配置文件
-
-### 站点配置 (src/config.ts)
-
-```typescript
-export const SITE = {
-  website: "https://devweekly.github.io",
-  author: "SW",
-  desc: "A weekly technical blog...",
-  title: "Dev Weekly - SW编程技术周报",
-  ogImage: "astropaper-og.jpg",
-  lightAndDarkMode: true,
-  postPerPage: 5,                    // 每页显示 5 篇文章
-  scheduledPostMargin: 15 * 60 * 1000 // 定时发布容差 15 分钟
-}
-
-export const LOCALE = {
-  lang: "en",
-  langTag: ["en-EN"]
-}
-
-export const SOCIALS = [
-  {
-    name: "Github",
-    href: "https://github.com/devweekly/devweekly.github.io",
-    active: true
-  }
-]
-```
-
-### Astro 配置 (astro.config.ts)
-
-- **集成**: Tailwind, React, Mermaid, Sitemap
-- **Markdown**:
-  - remark-toc: 自动目录
-  - remark-collapse: 可折叠内容
-  - Shiki 代码高亮
-- **样式策略**: `scopedStyleStrategy: "where"`
-
-## 工具函数
-
-### 文章处理
-
-| 函数 | 功能 | 路径 |
-|------|------|------|
-| `getSortedPosts()` | 获取已排序的文章列表（过滤草稿和未来文章） | utils/getSortedPosts.ts |
-| `getPostsByTag()` | 根据标签过滤文章 | utils/getPostsByTag.ts |
-| `getUniqueTags()` | 获取所有唯一标签 | utils/getUniqueTags.ts |
-| `postFilter()` | 文章过滤逻辑 | utils/postFilter.ts |
-| `slugify()` | 生成 URL 友好的 slug | utils/slugify.ts |
-
-### 分页
-
-| 函数 | 功能 | 路径 |
-|------|------|------|
-| `getPagination()` | 计算分页数据 | utils/getPagination.ts |
-| `getPageNumbers()` | 生成页码数组 | utils/getPageNumbers.ts |
-
-### 图片生成
-
-| 函数 | 功能 | 路径 |
-|------|------|------|
-| `generateOgImages()` | 生成 OG 图片 | utils/generateOgImages.tsx |
-
-## 开发工作流
-
-### 本地开发
+**Package Manager**: `pnpm` (v10.24.0 required)
 
 ```bash
-# 安装依赖
-pnpm install
+# Development
+pnpm dev              # Start dev server (http://localhost:4321)
+pnpm build            # Build for production (outputs to dist/)
+pnpm preview          # Preview production build locally
+pnpm sync             # Sync Astro content collections
 
-# 启动开发服务器
-pnpm dev
+# Code Quality
+pnpm lint             # Run ESLint on all files
+pnpm format           # Format all files with Prettier
+pnpm format:check     # Check formatting without modifying files
 
-# 类型检查
-pnpm astro check
-
-# 代码格式化
-pnpm format
+# Git workflow (Husky + lint-staged configured)
+git add .
+pnpm cz               # Commitizen for conventional commits
 ```
 
-### 构建部署
+**Note**: This project has no test framework configured. Add Vitest or Playwright if testing is needed.
 
+---
+
+## Code Style Guidelines
+
+### TypeScript Configuration
+- **Strict mode enabled** (extends `astro/tsconfigs/strict`)
+- **Path aliases** (configured in `tsconfig.json`):
+  - `@components/*` → `src/components/*`
+  - `@utils/*` → `src/utils/*`
+  - `@layouts/*` → `src/layouts/*`
+  - `@config` → `src/config.ts`
+  - `@assets/*` → `src/assets/*`
+
+### Import Order Convention
+1. External libraries (`react`, `astro:content`)
+2. Type imports (`import type { ... }`)
+3. Internal aliases (`@components/*`, `@utils/*`)
+4. Relative imports (for same-directory files only)
+
+### Formatting (Prettier)
+```json
+{
+  "semi": true,
+  "tabWidth": 2,
+  "printWidth": 80,
+  "singleQuote": false,
+  "trailingComma": "es5",
+  "arrowParens": "avoid"
+}
+```
+
+### ESLint Rules
+- Extends: `eslint:recommended`, `plugin:astro/recommended`
+- TypeScript parser for `.ts/.tsx` files
+- Astro parser for `.astro` files
+
+### Naming Conventions
+- **Components**: PascalCase (`Card.tsx`, `Header.astro`)
+- **Utilities**: camelCase (`getSortedPosts.ts`, `slugify.ts`)
+- **Types/Interfaces**: PascalCase with descriptive names
+- **Constants**: UPPER_SNAKE_CASE for true constants
+- **Props interfaces**: Named `Props` (exported from component file)
+
+### Component Patterns
+
+**React Components (.tsx)**:
+```typescript
+import type { CollectionEntry } from "astro:content";
+
+export interface Props {
+  href?: string;
+  frontmatter: CollectionEntry<"blog">["data"];
+  secHeading?: boolean;
+}
+
+export default function Card({ href, frontmatter, secHeading = true }: Props) {
+  // Component logic
+}
+```
+
+**Astro Components (.astro)**:
+```astro
+---
+import { SITE } from "@config";
+
+export interface Props {
+  activeNav?: "posts" | "tags" | "about" | "note" | "search";
+}
+
+const { activeNav } = Astro.props;
+---
+
+<!-- Template -->
+
+<style>
+  /* Scoped styles with @apply directive */
+  .nav-container {
+    @apply mx-auto flex max-w-3xl flex-col items-center;
+  }
+</style>
+```
+
+### Error Handling
+- Use early returns for guard clauses
+- Prefer explicit error handling over try-catch where possible
+- For Astro content collections, always handle undefined cases gracefully
+
+### Styling Conventions
+- **Tailwind CSS** for all styling
+- Use `@apply` in `<style>` blocks for complex reusable classes
+- Custom CSS properties for theming (`--skin-*` variables)
+- Dark mode supported via `class="dark"` on html element
+
+---
+
+## Project Architecture
+
+### Tech Stack
+- **Framework**: Astro 5.17.1 (Static Site Generation)
+- **UI Components**: React 19 (islands architecture)
+- **Language**: TypeScript 5.5.4 (strict mode)
+- **Styling**: Tailwind CSS 3.4.7
+- **Content**: Markdown with YAML frontmatter
+
+### Project Structure
+```
+src/
+├── components/           # UI components (.astro/.tsx)
+│   ├── Card.tsx         # React: Article cards
+│   ├── Search.tsx       # React: Fuse.js search
+│   ├── Header.astro     # Astro: Navigation
+│   └── Footer.astro     # Astro: Site footer
+├── layouts/             # Page layouts
+│   ├── Layout.astro     # Base layout (HTML, meta)
+│   ├── Posts.astro      # Article list layout
+│   └── PostDetails.astro # Article detail layout
+├── pages/               # File-based routing
+│   ├── index.astro      # Homepage
+│   ├── posts/           # Article routes
+│   ├── tags/            # Tag pages
+│   └── rss.xml.ts       # RSS feed endpoint
+├── content/blog/        # Markdown articles
+├── utils/               # Helper functions
+└── config.ts            # Site configuration
+```
+
+### Content Schema (Zod-validated)
+```yaml
+---
+author: string           # Default: SITE.author
+pubDatetime: date        # Required: Publish date
+modDatetime: date        # Optional: Modified date
+title: string           # Required
+featured: boolean       # Optional: Highlight post
+draft: boolean          # Optional: Exclude from build
+tags: string[]          # Default: ["others"]
+description: string     # Required: Summary
+ogImage: string         # Optional: ≥1200x630
+---
+```
+
+### Key Utilities
+- `getSortedPosts()` - Filter and sort articles by date
+- `postFilter()` - Exclude drafts and future posts
+- `getUniqueTags()` - Extract all tags from posts
+- `slugify()` - Generate URL-friendly slugs
+
+### Build Pipeline
+1. Astro SSG generates static HTML
+2. Jampack optimizes images and assets
+3. Output to `dist/` directory
+4. Deployed to GitHub Pages via GitHub Actions
+
+### Pre-commit Hooks
+Husky + lint-staged automatically runs:
 ```bash
-# 构建生产版本
-pnpm build
-
-# 预览构建结果
-pnpm preview
+prettier --write --plugin=prettier-plugin-astro
 ```
 
-构建流程：
-1. Astro 构建静态站点 → `dist/`
-2. Jampack 优化（图片压缩、资源优化）
+On files: `*.{js,jsx,ts,tsx,md,mdx,json,astro}`
 
-### 代码规范
-
-- **Prettier**: 自动格式化
-- **ESLint**: 代码检查
-- **lint-staged**: Git 提交前自动格式化
-- **Commitizen**: 规范化 commit 消息
-
-## 性能优化
-
-### 构建时优化
-- 静态站点生成（SSG）
-- 图片优化和压缩
-- CSS 和 JS 最小化
-- Jampack 后处理优化
-
-### 运行时优化
-- Islands 架构（最小 JS 传输）
-- 视图过渡动画（View Transitions API）
-- 图片懒加载
-- 作用域样式（避免全局污染）
-
-### SEO 优化
-- 自动 sitemap
-- RSS feed
-- OpenGraph 图片
-- robots.txt
-- 结构化数据
-- 响应式设计
-
-## 扩展指南
-
-### 添加新文章
-
-1. 在 `src/content/blog/` 创建 Markdown 文件
-2. 添加 frontmatter:
-
-```markdown
----
-title: "文章标题"
-description: "文章描述"
-pubDatetime: 2024-01-31T10:00:00Z
-tags: ["web", "typescript"]
 ---
 
-文章正文...
+## Common Tasks
+
+### Adding a New Component
+1. Create file in `src/components/`
+2. Use appropriate extension (`.astro` for static, `.tsx` for interactive)
+3. Export interface `Props` for type safety
+4. Import via alias: `import Component from "@components/Component"`
+
+### Adding a New Article
+1. Create `.md` file in `src/content/blog/`
+2. Use naming: `YYYYMonDD.md` (e.g., `2025Dec15.md`)
+3. Add required frontmatter
+4. Run `pnpm sync` to update types
+
+### Adding a New Page
+1. Create `.astro` or `.md` file in `src/pages/`
+2. Use appropriate layout from `src/layouts/`
+3. Route auto-generated from file path
+
+### Debugging Build Issues
+```bash
+pnpm astro check      # TypeScript type checking
+pnpm lint             # ESLint errors
+pnpm format:check     # Formatting issues
 ```
 
-3. 文章自动出现在列表中
+---
 
-### 添加新页面
+## External Resources
 
-1. 在 `src/pages/` 创建 `.astro` 或 `.md` 文件
-2. 选择合适的布局
-3. 路由自动生成
-
-### 自定义组件
-
-1. React 组件 → `src/components/*.tsx`
-2. Astro 组件 → `src/components/*.astro`
-3. 在页面中导入使用
-
-### 修改主题
-
-1. 编辑 `src/config.ts` - 站点配置
-2. 编辑 `tailwind.config.cjs` - 样式配置
-3. 编辑 `astro.config.ts` - Mermaid 主题等
-
-## 常见问题
-
-### Q: 如何创建草稿？
-A: 在文章 frontmatter 中添加 `draft: true`
-
-### Q: 如何定时发布？
-A: 设置 `pubDatetime` 为未来时间（15分钟容差）
-
-### Q: 如何自定义 OG 图片？
-A: 在 frontmatter 中指定 `ogImage: "path/to/image.jpg"`
-
-### Q: 如何添加新的社交链接？
-A: 编辑 `src/config.ts` 中的 `SOCIALS` 数组
-
-### Q: 搜索功能如何工作？
-A: 客户端使用 Fuse.js 实时搜索，无需后端
-
-## 依赖管理
-
-- **包管理器**: pnpm 10.24.0
-- **Node 版本**: 建议使用 LTS 版本
-- **更新依赖**: 定期运行 `pnpm update`
-
-## License
-
-MIT License
-
-## 贡献指南
-
-1. Fork 项目
-2. 创建特性分支
-3. 提交规范化 commit（使用 Commitizen）
-4. 推送到分支
-5. 创建 Pull Request
+- **Astro Docs**: https://docs.astro.build
+- **Tailwind Docs**: https://tailwindcss.com/docs
+- **Site URL**: https://devweekly.github.io
 
 ---
 
-**最后更新**: 2026-01-31
-**维护者**: SW
-**GitHub**: https://github.com/devweekly/devweekly.github.io
+## Self-Maintenance
+
+This document is designed to be self-maintaining through automated agents.
+
+### How to Update This Document
+
+When project changes occur, invoke the documentation maintainer agent:
+
+```
+@agents-maintainer analyze recent changes and update AGENTS.md accordingly
+```
+
+### Auto-Update Triggers
+
+The following changes should prompt an AGENTS.md update:
+
+| Change Type | Affected Sections |
+|------------|-------------------|
+| `package.json` modified | Quick Commands, Tech Stack |
+| `tsconfig.json` modified | TypeScript Configuration |
+| New npm scripts added | Quick Commands |
+| New dependencies added | Tech Stack |
+| Directory structure changed | Project Structure |
+| New conventions established | Code Style Guidelines |
+| Build pipeline modified | Build Pipeline |
+| External resources changed | External Resources |
+
+### Update Guidelines
+
+When updating AGENTS.md:
+
+1. **Analyze** - Read relevant config files (`package.json`, `tsconfig.json`, etc.)
+2. **Identify** - Find which sections need updates
+3. **Preserve** - Maintain existing formatting and structure
+4. **Document** - Add entry to Maintenance Log with date
+5. **Verify** - Ensure changes are accurate and complete
+
+### Maintenance Log
+
+| Date | Change | Updated By |
+|------|--------|------------|
+| 2026-02-08 | Added Self-Maintenance section | @agents-maintainer |
