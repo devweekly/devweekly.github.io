@@ -189,10 +189,10 @@ const { activeNav } = Astro.props;
 ## Project Architecture
 
 ### Tech Stack
-- **Framework**: Astro 5.17.1 (Static Site Generation)
+- **Framework**: Astro 5.17.2 (Static Site Generation)
 - **UI Components**: React 19 (islands architecture)
-- **Language**: TypeScript 5.5.4 (strict mode)
-- **Styling**: Tailwind CSS 3.4.7
+- **Language**: TypeScript 5.9.3 (strict mode)
+- **Styling**: Tailwind CSS 3.4.19
 - **Content**: Markdown with YAML frontmatter
 
 ### Project Structure
@@ -335,6 +335,7 @@ When updating AGENTS.md:
 | 2026-02-08 | Added Self-Maintenance section | @agents-maintainer |
 | 2026-02-08 | Added architecture report on subagent maintenance | @agents-maintainer |
 | 2026-02-08 | Verified dependencies, scripts, and updated TypeScript path aliases | @agents-maintainer |
+| 2026-02-13 | Updated Tech Stack versions (Astro, Tailwind, React, TS) | @agents-maintainer |
 
 ### Example Usage
 
