@@ -9,13 +9,23 @@ tags:
   - llm
 ---
 
-### 问题
+# 问题
 
 如何写一个好的Claude.md？
 
-### 观点
+# 观点
 
-### 参考
+## Claude.md 标准结构
+
+## Claude.md 不应该包含什么，应该包含什么？
+
+## Claude.md 如何做到自我进化？
+
+## Claude.md 小tips
+
+## 一个金融服务的技术公司相关项目的示例
+
+# 参考
 
 https://news.ycombinator.com/item?id=46098838 \*very good\*\*
 
