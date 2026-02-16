@@ -1,151 +1,50 @@
-# CLAUDE.md
+# Claude 助手指南
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+## 常用命令
 
-## Project Overview
+- **启动开发服务器**: `pnpm dev` (运行在 http://localhost:4321)
+- **构建生产版本**: `pnpm build` (输出到 `dist/` 目录)
+- **预览生产构建**: `pnpm preview`
+- **同步内容集合**: `pnpm sync`
+- **代码格式化**: `pnpm format` (使用 Prettier)
+- **代码检查**: `pnpm lint` (使用 ESLint)
+- **Git 提交**: `pnpm cz` (使用 Commitizen)
 
-Dev Weekly is a technical blog system built with Astro 5 and deployed to GitHub Pages at https://devweekly.github.io. It uses the Islands architecture pattern with static HTML generation and selective React hydration for interactive components.
+## 技术栈
 
-## Development Commands
+- **框架**: Astro 5.17.2
+- **UI 库**: React 19 (Islands 架构)
+- **语言**: TypeScript 5.9.3 (严格模式)
+- **样式**: Tailwind CSS 3.4.19
+- **内容管理**: Markdown + YAML Frontmatter
 
-```bash
-# Development
-pnpm dev              # Start development server
-pnpm start            # Alias for pnpm dev
+## 项目结构
 
-# Build & Preview
-pnpm build            # Production build (runs astro build + jampack optimization)
-pnpm preview          # Preview production build locally
+- `src/components/`: UI 组件 (.astro/.tsx)
+- `src/layouts/`: 页面布局
+- `src/pages/`: 页面路由 (文件系统路由)
+- `src/content/`: 内容集合 (博客文章等)
+- `src/utils/`: 工具函数
+- `src/config.ts`: 站点配置
 
-# Code Quality
-pnpm lint             # Run ESLint
-pnpm format           # Auto-format code with Prettier
-pnpm format:check     # Check formatting without making changes
+## 代码风格与规范
 
-# Git Workflow
-pnpm cz               # Commitizen for conventional commits
-```
+### TypeScript
+- 启用严格模式 (`strict: true`)
+- 使用路径别名 (如 `@components/*`, `@utils/*`)
+- 优先使用接口 (`interface`) 定义 Props
 
-**Note:** This project does not have a test suite configured.
+### 命名规范
+- **组件**: PascalCase (如 `Card.tsx`, `Header.astro`)
+- **工具函数**: camelCase (如 `getSortedPosts.ts`)
+- **常量**: UPPER_SNAKE_CASE
+- **类型/接口**: PascalCase
 
-## High-Level Architecture
+### 样式规范
+- 使用 **Tailwind CSS** 进行样式开发
+- 复杂样式在 `<style>` 块中使用 `@apply`
+- 支持暗黑模式 (`class="dark"`)
 
-### Islands Architecture
-- Static HTML generation for most content
-- Interactive components (Search, Card) use React + TypeScript
-- Minimal JavaScript shipped to client (only for interactive islands)
-
-### Content Layer
-- Blog posts stored as Markdown files in `src/content/blog/`
-- Frontmatter schema validated with Zod (defined in `src/content/config.ts`)
-- Content collection API from Astro
-
-### Build Pipeline
-1. Astro builds static HTML pages
-2. Jampack optimizes the `dist/` folder (images, CSS, JS compression)
-3. Sitemap and RSS feed generation
-4. OG image generation using Satori
-
-### TypeScript Path Aliases
-```typescript
-@assets/*      → src/assets/*
-@config        → src/config.ts
-@components/*  → src/components/*
-@content/*     → src/content/*
-@layouts/*     → src/layouts/*
-@pages/*       → src/pages/*
-@styles/*      → src/styles/*
-@utils/*       → src/utils/*
-```
-
-## Critical Implementation Details
-
-### RSS Feed Rendering in Astro 5
-
-**IMPORTANT:** In Astro 5, content collection entries don't include raw Markdown in `post.body`. To render blog content for RSS feeds, you must use the `render()` function with `experimental_AstroContainer`:
-
-```typescript
-// src/pages/rss.xml.ts
-import { getCollection, render } from "astro:content";
-import rss from "@astrojs/rss";
-import sanitizeHtml from "sanitize-html";
-
-export async function GET() {
-  const posts = await getCollection("blog");
-
-  const items = await Promise.all(
-    posts.map(async post => {
-      const { Content } = await render(post);
-      const html = await renderContentToHtml(Content);
-
-      return {
-        link: `posts/${post.slug}/`,
-        title: post.data.title,
-        description: post.data.description,
-        pubDate: new Date(post.data.pubDatetime),
-        content: sanitizeHtml(html),
-      };
-    })
-  );
-
-  return rss({ title, description, site, items });
-}
-
-// Use AstroContainer to render component to HTML
-async function renderContentToHtml(Component: any): Promise<string> {
-  const { experimental_AstroContainer } = await import("astro/container");
-  const container = await experimental_AstroContainer.create();
-  return await container.renderToString(Component);
-}
-```
-
-**Common mistake:** Trying to access `post.body` directly will result in RSS feeds with only titles/descriptions but no content.
-
-### Content Publishing Rules
-
-- **Scheduled Posts:** Articles with future `pubDatetime` are published with a 15-minute tolerance (configured in `src/config.ts`)
-- **Draft Articles:** Posts with `draft: true` in frontmatter will not be published
-
-### Site Configuration
-
-Main configuration in `src/config.ts`:
-```typescript
-SITE: {
-  website: "https://devweekly.github.io"
-  author: "SW"
-  title: "Dev Weekly - SW编程技术周报"
-  postPerPage: 5
-  scheduledPostMargin: 15 * 60 * 1000  // 15 minutes in ms
-}
-```
-
-## Technology Stack
-
-- **Astro 5.17.1** - Static site generator with Islands architecture
-- **React 19** - Interactive UI components
-- **TypeScript** - Type-safe development
-- **Tailwind CSS 3.4.7** - Utility-first CSS framework
-- **Fuse.js** - Client-side fuzzy search
-- **Mermaid** - Diagram rendering in markdown
-- **Jampack** - Post-build optimization
-- **Satori** - Dynamic OG image generation
-
-## Git Workflow
-
-- **Husky** runs pre-commit hooks
-- **lint-staged** auto-formats staged files before commit
-- **Commitizen** enforces conventional commit messages
-- Use `pnpm cz` instead of `git commit` for properly formatted commits
-
-## Self-Maintenance Rule
-
-After any large refactor, architectural change, or multi-file modification:
-- Append a short "Lessons Learned" entry below
-- Focus on mistakes, constraints, or things to avoid next time
-- Keep it concise (under 6 bullet points), also log datetime
-
----
-
-## Lessons Learned
-
-<!-- Future entries go here -->
+### 错误处理
+- 使用卫语句 (Guard Clauses) 提前返回
+- 优先显式处理错误
