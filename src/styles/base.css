@@ -1,6 +1,18 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@source "../src/";
+
+@theme {
+  --font-mono: "IBM Plex Mono", monospace;
+  
+  --color-skin-fill: rgb(var(--color-fill));
+  --color-skin-base: rgb(var(--color-text-base));
+  --color-skin-accent: rgb(var(--color-accent));
+  --color-skin-inverted: rgb(var(--color-fill));
+  --color-skin-card: rgb(var(--color-card));
+  --color-skin-card-muted: rgb(var(--color-card-muted));
+  --color-skin-line: rgb(var(--color-border));
+}
 
 @layer base {
   :root,
@@ -30,7 +42,7 @@
   }
   body {
     @apply flex min-h-[100svh] flex-col bg-skin-fill font-mono text-skin-base 
-    selection:bg-skin-accent selection:bg-opacity-70 selection:text-skin-inverted;
+    selection:bg-skin-accent selection:text-skin-inverted;
   }
   section,
   footer {
@@ -49,45 +61,96 @@
     sm:scale-110;
   }
   .prose {
-    @apply prose-headings:!mb-3 prose-headings:!text-skin-base 
-    prose-h3:italic prose-p:!text-skin-base 
-    prose-a:!text-skin-base prose-a:!decoration-dashed prose-a:underline-offset-8
-    hover:prose-a:text-skin-accent prose-blockquote:!border-l-skin-accent
-    prose-blockquote:border-opacity-50 prose-blockquote:opacity-80
-    prose-figcaption:!text-skin-base prose-figcaption:opacity-70
-    prose-strong:!text-skin-base
-
-    
-    prose-code:rounded prose-code:bg-skin-card 
-    prose-code:bg-opacity-75 prose-code:p-1 
-    prose-code:before:!content-none prose-code:after:!content-none
-    prose-ol:!text-skin-base 
-    prose-ul:overflow-x-clip prose-ul:!text-skin-base prose-li:marker:!text-skin-accent
-    prose-table:text-skin-base prose-th:border
-    prose-th:border-skin-line prose-td:border 
-    prose-td:border-skin-line prose-img:!my-2 
-    prose-img:mx-auto prose-img:border-2 
-    prose-img:border-skin-line prose-hr:!border-skin-line;
+    color: rgb(var(--color-text-base));
+  }
+  .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+    margin-bottom: 0.75rem;
+    color: rgb(var(--color-text-base));
+  }
+  .prose h3 {
+    font-style: italic;
+  }
+  .prose p {
+    color: rgb(var(--color-text-base));
   }
   .prose a {
-    @apply break-words hover:!text-skin-accent;
+    color: rgb(var(--color-text-base));
+    text-decoration: dashed underline;
+    text-underline-offset: 8px;
+  }
+  .prose a:hover {
+    color: rgb(var(--color-accent));
+  }
+  .prose blockquote {
+    border-left-color: rgb(var(--color-accent));
+    opacity: 0.8;
+  }
+  .prose figcaption {
+    color: rgb(var(--color-text-base));
+    opacity: 0.7;
+  }
+  .prose strong {
+    color: rgb(var(--color-text-base));
+  }
+  .prose code {
+    border-radius: 0.25rem;
+    background-color: rgb(var(--color-card));
+    padding: 0.25rem;
+  }
+  .prose code::before,
+  .prose code::after {
+    content: none;
+  }
+  .prose ol {
+    color: rgb(var(--color-text-base));
+  }
+  .prose ul {
+    overflow-x: clip;
+    color: rgb(var(--color-text-base));
+  }
+  .prose li::marker {
+    color: rgb(var(--color-accent));
+  }
+  .prose table {
+    color: rgb(var(--color-text-base));
+  }
+  .prose th {
+    border: 1px solid rgb(var(--color-border));
+  }
+  .prose td {
+    border: 1px solid rgb(var(--color-border));
+  }
+  .prose img {
+    margin: 0.5rem auto;
+    border: 2px solid rgb(var(--color-border));
+  }
+  .prose hr {
+    border-color: rgb(var(--color-border));
+  }
+  .prose a {
+    word-break: break-words;
+  }
+  .prose a:hover {
+    color: rgb(var(--color-accent)) !important;
   }
   .prose thead th:first-child,
-  tbody td:first-child,
-  tfoot td:first-child {
+  .prose tbody td:first-child,
+  .prose tfoot td:first-child {
     padding-left: 0.5714286em;
   }
   .prose h2#table-of-contents {
-    @apply mb-2;
+    margin-bottom: 0.5rem;
   }
   .prose details {
-    @apply inline-block cursor-pointer select-none text-skin-base;
+    display: inline-block;
+    cursor: pointer;
+    user-select: none;
+    color: rgb(var(--color-text-base));
   }
   .prose summary {
-    @apply focus-outline;
   }
   .prose h2#table-of-contents + p {
-    @apply hidden;
+    display: none;
   }
 
   /* ===== scrollbar ===== */
@@ -107,29 +170,25 @@
 
   /* Handle */
   ::-webkit-scrollbar-thumb {
-    @apply bg-skin-card;
+    @apply rounded-sm bg-skin-line;
   }
 
   /* Handle on hover */
   ::-webkit-scrollbar-thumb:hover {
-    @apply bg-skin-card-muted;
+    background: rgba(var(--color-text-base), 0.5);
   }
 
-  code,
-  blockquote {
-    word-wrap: break-word;
+  /* ===== focus ===== */
+  * {
+    @apply focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-skin-fill;
   }
 
-  pre > code {
-    white-space: pre;
+  /* ===== selection ===== */
+  ::selection {
+    @apply bg-skin-accent text-skin-inverted;
   }
-}
 
-@layer components {
-  .display-none {
-    @apply hidden;
-  }
   .focus-outline {
-    @apply outline-2 outline-offset-1 outline-skin-fill focus-visible:no-underline focus-visible:outline-dashed;
+    @apply focus-visible:rounded-sm focus-visible:outline-2 focus-visible:outline-dashed focus-visible:outline-offset-2 focus-visible:outline-skin-fill;
   }
 }
