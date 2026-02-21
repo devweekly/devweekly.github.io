@@ -287,6 +287,7 @@ pnpm format:check     # Formatting issues
 - **Astro Docs**: https://docs.astro.build
 - **Tailwind Docs**: https://tailwindcss.com/docs
 - **Site URL**: https://devweekly.github.io
+- **PI.md**: Project-specific guidelines for Pi Agent
 - **Architecture**: [Why Subagent Maintenance?](docs/architecture/why-subagent-maintenance.md)
 
 ---
@@ -336,6 +337,7 @@ When updating AGENTS.md:
 | 2026-02-08 | Added architecture report on subagent maintenance | @agents-maintainer |
 | 2026-02-08 | Verified dependencies, scripts, and updated TypeScript path aliases | @agents-maintainer |
 | 2026-02-13 | Updated Tech Stack versions (Astro, Tailwind, React, TS) | @agents-maintainer |
+| 2026-02-19 | Added PI.md reference to External Resources | @agents-maintainer |
 
 ### Example Usage
 

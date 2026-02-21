@@ -1,0 +1,13 @@
+{
+  "providers": {
+    "anti-local": {
+      "baseUrl": "http://127.0.0.1:8045/v1",
+      "api": "openai-completions",
+      "apiKey": "sk-4108f3d3d03745a28fd847f94217e3bf",
+      "models": [
+        { "id": "gemini-3-flash" },
+        { "id": "gemini-3-pro-low" }
+      ]
+    }
+  }
+}
