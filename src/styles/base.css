@@ -46,7 +46,7 @@
   }
   section,
   footer {
-    @apply mx-auto max-w-4xl px-4;
+    @apply mx-auto max-w-6xl px-4;
   }
   a {
     @apply outline-2 outline-offset-1 outline-skin-fill 
@@ -77,6 +77,7 @@
     color: rgb(var(--color-text-base));
     text-decoration: dashed underline;
     text-underline-offset: 8px;
+    word-break: break-word;
   }
   .prose a:hover {
     color: rgb(var(--color-accent));
