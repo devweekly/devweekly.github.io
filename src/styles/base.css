@@ -62,9 +62,11 @@
   }
   .prose {
     color: rgb(var(--color-text-base));
+    line-height: 1.8;
   }
   .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
-    margin-bottom: 0.75rem;
+    margin-top: 2rem;
+    margin-bottom: 1rem;
     color: rgb(var(--color-text-base));
   }
   .prose h3 {
@@ -72,6 +74,7 @@
   }
   .prose p {
     color: rgb(var(--color-text-base));
+    margin-bottom: 1.25rem;
   }
   .prose a {
     color: rgb(var(--color-text-base));
@@ -104,10 +107,15 @@
   }
   .prose ol {
     color: rgb(var(--color-text-base));
+    margin-bottom: 1.25rem;
   }
   .prose ul {
     overflow-x: clip;
     color: rgb(var(--color-text-base));
+    margin-bottom: 1.25rem;
+  }
+  .prose li {
+    margin-bottom: 0.5rem;
   }
   .prose li::marker {
     color: rgb(var(--color-accent));
@@ -140,6 +148,7 @@
     padding-left: 0.5714286em;
   }
   .prose h2#table-of-contents {
+    margin-top: 1rem;
     margin-bottom: 0.5rem;
   }
   .prose details {
