@@ -54,7 +54,10 @@ const { activeNav } = Astro.props;
             <line x1="6" y1="6" x2="18" y2="18" class="close"></line>
           </svg>
         </button>
-        <ul id="menu-items" class="display-none sm:flex">
+        <ul
+          id="menu-items"
+          class="flex flex-wrap items-center justify-center gap-x-4 sm:hidden"
+        >
           <li>
             <a href="/posts/" class={activeNav === "posts" ? "active" : ""}>
               Posts
@@ -146,7 +149,13 @@ const { activeNav } = Astro.props;
     @apply flex w-full flex-col items-center sm:ml-2 sm:flex-row sm:justify-end sm:space-x-4 sm:py-0;
   }
   nav ul {
-    @apply mt-4 flex flex-col gap-2 sm:ml-0 sm:mt-0 sm:flex-row sm:gap-x-5 sm:gap-y-0;
+    @apply mt-4 hidden w-full flex-row flex-wrap items-center justify-center gap-x-4 gap-y-2 sm:ml-0 sm:mt-0 sm:flex sm:w-auto sm:justify-end sm:gap-x-5;
+  }
+  nav ul.display-none {
+    @apply hidden;
+  }
+  nav ul:not(.display-none) {
+    @apply flex;
   }
   nav ul li {
     @apply flex items-center justify-center;
