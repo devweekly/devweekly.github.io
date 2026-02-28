@@ -48,6 +48,14 @@ https://github.com/hjanuschka/shitty-extensions
 
 https://github.com/nicobailon/pi-interactive-shell
 
+https://github.com/mitsuhiko/agent-stuff
+
+https://github.com/tmustier/pi-extensions
+
+https://instagit.com/badlogic/pi-mono/how-to-create-custom-extensions-for-pi-coding-agent/
+
+https://github.com/joelhans/bmo-agent/ A self-improving AI coding agent that runs in your terminal. bmo uses LLM-powered tool execution to complete tasks, and autonomously builds new tools and skills when it encounters limitations. It features multi-provider LLM routing, sandboxed tool execution, session persistence with cost tracking, and a self-improvement loop driven by reflections and periodic maintenance.
+
 https://github.com/nicobailon/pi-interview-tool Interactive form tool for pi-agent to gather user responses with keyboard navigation, themes, and image attachments
 
 https://github.com/yukukotani/pi-voice Headless voice interface for the Pi Coding Agent
