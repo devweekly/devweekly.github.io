@@ -25,6 +25,8 @@ https://github.com/badlogic/pi-skills
 
 https://github.com/Dicklesworthstone/pi_agent_rust \*\*
 
+https://buildwithpi.com/
+
 https://github.com/nicobailon/pi-messenger Multi-agent communication extension for pi coding agent
 
 https://github.com/disler/pi-vs-claude-code Comparison between open source PI agent and closed source Claude Code agent 还有一些extension
@@ -195,3 +197,5 @@ https://github.com/openxjarvis/pi-mono-python Python port of pi-mono: fully-alig
 https://github.com/witt3rd/pipy Python ports of pi-mono packages - LLM streaming, agent framework, TUI components, and coding assistant
 
 https://github.com/witt3rd/pipy-agent Agent framework with tool execution, built on pipy-ai. Python port inspired by Mario Zechner's pi-mono/agent. \*\*\*
+
+https://github.com/w-winter/dot314 Extensions, skills, prompts, and themes for Pi coding agent. There is an emphasis here on making Pi and RepoPrompt co-operate well.
