@@ -8,6 +8,7 @@ import Hr from "@components/Hr.astro";
 import Card from "@components/Card";
 import Socials from "@components/Socials.astro";
 import getSortedPosts from "@utils/getSortedPosts";
+import { slugifyStr } from "@utils/slugify";
 import { SOCIALS } from "@config";
 
 const posts = await getCollection("blog");
@@ -28,11 +29,11 @@ const socialCount = SOCIALS.filter(social => social.active).length;
           <h2>Recent Posts</h2>
           <ul>
             {recentPosts.map(
-              ({ data, slug }, index) =>
+              (post, index) =>
                 index < 4 && (
                   <Card
-                    href={`/posts/${slug}/`}
-                    frontmatter={data}
+                    href={`/posts/${slugifyStr(post.data.title)}/`}
+                    frontmatter={post.data}
                     secHeading={false}
                   />
                 )
