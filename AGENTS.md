@@ -203,6 +203,8 @@ src/
 │   ├── Search.tsx       # React: Fuse.js search
 │   ├── Header.astro     # Astro: Navigation
 │   └── Footer.astro     # Astro: Site footer
+├── content/              # Blog content (loaded via content.config.ts)
+│   └── blog/            # Markdown articles (*.md)
 ├── layouts/             # Page layouts
 │   ├── Layout.astro     # Base layout (HTML, meta)
 │   ├── Posts.astro      # Article list layout
@@ -212,9 +214,9 @@ src/
 │   ├── posts/           # Article routes
 │   ├── tags/            # Tag pages
 │   └── rss.xml.ts       # RSS feed endpoint
-├── content/blog/        # Markdown articles
 ├── utils/               # Helper functions
-└── config.ts            # Site configuration
+├── config.ts            # Site configuration
+└── content.config.ts   # Astro v6 content collection config
 ```
 
 ### Content Schema (Zod-validated)
@@ -231,6 +233,25 @@ description: string     # Required: Summary
 ogImage: string         # Optional: ≥1200x630
 ---
 ```
+
+### Astro v6 Content API (Breaking Changes)
+
+This project uses Astro v6 content collections with the following API changes:
+
+**1. Content Collection Config**
+- Config file: `src/content.config.ts` (not `src/content/config.ts`)
+- Uses `loader: glob()` from `astro/loaders` instead of `type: "content"`
+
+**2. Entry IDs**
+- Access entries via `post.id` (file path without extension), not `post.slug`
+- Example: `src/content/blog/2025Dec15.md` → id = `"2025Dec15"`
+
+**3. Content Rendering**
+- Use `render(post)` from `astro:content` instead of `post.render()`
+- Example: `const { Content } = await render(post);`
+
+**4. View Transitions**
+- Use `ClientRouter` from `astro:transitions` (replaces `ViewTransitions`)
 
 ### Key Utilities
 - `getSortedPosts()` - Filter and sort articles by date
@@ -338,6 +359,7 @@ When updating AGENTS.md:
 | 2026-02-08 | Verified dependencies, scripts, and updated TypeScript path aliases | @agents-maintainer |
 | 2026-02-13 | Updated Tech Stack versions (Astro, Tailwind, React, TS) | @agents-maintainer |
 | 2026-02-19 | Added PI.md reference to External Resources | @agents-maintainer |
+| 2026-04-20 | Updated Project Structure (content.config.ts location) and Content Schema (Astro v6 API: loader, id, render, ClientRouter) | @agents-maintainer |
 
 ### Example Usage
 
