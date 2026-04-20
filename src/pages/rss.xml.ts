@@ -1,6 +1,7 @@
 import rss from "@astrojs/rss";
 import { getCollection, render } from "astro:content";
 import getSortedPosts from "@utils/getSortedPosts";
+import { slugifyStr } from "@utils/slugify";
 import { SITE } from "@config";
 import sanitizeHtml from "sanitize-html";
 
@@ -17,7 +18,7 @@ export async function GET() {
       const htmlContent = await renderContentToHtml(Content);
 
       return {
-        link: `posts/${post.slug}/`,
+        link: `posts/${slugifyStr(post.data.title)}/`,
         title: post.data.title,
         description: post.data.description,
         pubDate: new Date(post.data.modDatetime ?? post.data.pubDatetime),
