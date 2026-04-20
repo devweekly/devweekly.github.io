@@ -264,6 +264,7 @@ This project uses Astro v6 content collections with the following API changes:
 2. Jampack optimizes images and assets
 3. Output to `dist/` directory
 4. Deployed to GitHub Pages via GitHub Actions
+5. **Node.js 22** required by Astro (>= 22.12.0) - configured in `.github/workflows/astro.yml`
 
 ### Pre-commit Hooks
 Husky + lint-staged automatically runs:
@@ -360,6 +361,7 @@ When updating AGENTS.md:
 | 2026-02-13 | Updated Tech Stack versions (Astro, Tailwind, React, TS) | @agents-maintainer |
 | 2026-02-19 | Added PI.md reference to External Resources | @agents-maintainer |
 | 2026-04-20 | Updated Project Structure (content.config.ts location) and Content Schema (Astro v6 API: loader, id, render, ClientRouter) | @agents-maintainer |
+| 2026-04-20 | Updated Build Pipeline with Node.js 22 requirement in withastro/action | @agents-maintainer |
 
 ### Example Usage
 
