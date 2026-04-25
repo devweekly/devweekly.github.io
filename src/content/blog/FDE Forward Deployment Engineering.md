@@ -46,3 +46,19 @@ https://10clouds.com/blog/a-i/what-is-a-forward-deployed-engineer/
 https://ai-engineering-trend.medium.com/the-forward-deployed-engineer-fde-from-palantir-the-silver-bullet-for-ai-to-b-03d578f24b63
 
 https://invisibletech.ai/blog/what-is-forward-deployed-engineering
+
+https://newsletter.pragmaticengineer.com/p/forward-deployed-engineers
+
+https://blog.palantir.com/dev-versus-delta-demystifying-engineering-roles-at-palantir-ad44c2a6e87
+
+https://www.reddit.com/r/cscareerquestions/comments/4o7hyi/working_at_palantir/
+
+https://www.gartner.com/reviews/market/data-and-analytics/vendor/palantir-technologies
+
+https://www.youtube.com/watch?v=1NzDv8r8WzQ
+
+https://www.xiaoyuzhoufm.com/episode/68c6eb41a56ca3e0c4629d0f
+
+https://www.youtube.com/watch?v=H-G76kecXfY
+
+https://www.reddit.com/r/ExperiencedDevs/comments/1qxtynq/forward_deployed_engineer_role/
