@@ -207,3 +207,29 @@ https://github.com/witt3rd/pipy Python ports of pi-mono packages - LLM streaming
 https://github.com/witt3rd/pipy-agent Agent framework with tool execution, built on pipy-ai. Python port inspired by Mario Zechner's pi-mono/agent. \*\*\*
 
 https://github.com/w-winter/dot314 Extensions, skills, prompts, and themes for Pi coding agent. There is an emphasis here on making Pi and RepoPrompt co-operate well.
+
+https://pi-for-excel.vercel.app/ https://github.com/tmustier/pi-for-excel/tree/main
+
+https://lazypi.org/videos.html
+
+https://github.com/JoviDeCroock/pi-setup
+
+https://github.com/ruizrica/agent-pi
+
+https://github.com/tintinweb/pi-subagents
+
+https://github.com/jbexta/AgentPilot
+
+https://github.com/tintinweb/pi-supervisor
+
+https://github.com/telagod/pi-agent-colony
+
+https://github.com/nicobailon/pi-intercom
+
+https://github.com/xiaotonng/pikiclaw
+
+https://github.com/aliou/pi-harness
+
+https://github.com/pithings/pi-vscode
+
+https://github.com/nicobailon/pi-boomerang
