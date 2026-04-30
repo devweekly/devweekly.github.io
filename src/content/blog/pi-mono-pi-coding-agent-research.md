@@ -233,3 +233,21 @@ https://github.com/aliou/pi-harness
 https://github.com/pithings/pi-vscode
 
 https://github.com/nicobailon/pi-boomerang
+
+https://github.com/ogulcancelik/pi-extensions
+
+https://github.com/HenryLach/taskplane
+
+https://github.com/rawwerks/ypi
+
+https://github.com/stablyai/orca
+
+https://github.com/tmdgusya/roach-pi
+
+https://github.com/vaslabs/pi-web-agent
+
+https://github.com/minghinmatthewlam/pi-gui
+
+https://github.com/HazAT/pi-interactive-subagents
+
+https://github.com/injaneity/pi-computer-use
