@@ -208,7 +208,7 @@ https://github.com/witt3rd/pipy-agent Agent framework with tool execution, built
 
 https://github.com/w-winter/dot314 Extensions, skills, prompts, and themes for Pi coding agent. There is an emphasis here on making Pi and RepoPrompt co-operate well.
 
-https://pi-for-excel.vercel.app/ https://github.com/tmustier/pi-for-excel/tree/main
+https://pi-for-excel.vercel.app/
 
 https://lazypi.org/videos.html
 
