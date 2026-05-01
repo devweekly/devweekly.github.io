@@ -50,11 +50,18 @@ const socialImageURL = new URL(
     <meta name="title" content={title} />
     <meta name="description" content={description} />
     <meta name="author" content={author} />
+    <meta
+      name="keywords"
+      content="Developer Weekly, 开发者周报, 开发周报, 编程周报, 技术周报, Dev Weekly, programming weekly, coding newsletter, AI, LLM, Web开发, 架构设计, software engineering weekly"
+    />
+    <meta name="robots" content="index, follow" />
+    <meta name="language" content="en" />
     <link rel="sitemap" href="/sitemap-index.xml" />
     <link rel="rss" href="/rss" />
     <link rel="feed" href="/rss" />
 
     <!-- Open Graph / Facebook -->
+    <meta property="og:type" content={pubDatetime ? "article" : "website"} />
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:url" content={canonicalURL} />
