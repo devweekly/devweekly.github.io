@@ -17,6 +17,8 @@ tags:
 
 ###
 
+https://github.com/earendil-works/pi
+
 [pi-mono-agent](https://github.com/saga/pi-mono-agent) **\***
 
 https://github.com/qualisero/awesome-pi-agent
@@ -218,6 +220,8 @@ https://github.com/ruizrica/agent-pi
 
 https://github.com/tintinweb/pi-subagents
 
+- Claude Code-style autonomous sub-agents to pi.
+
 https://github.com/jbexta/AgentPilot
 
 https://github.com/tintinweb/pi-supervisor
@@ -236,7 +240,12 @@ https://github.com/nicobailon/pi-boomerang
 
 https://github.com/ogulcancelik/pi-extensions
 
+- pi-goal Break work into tasks, spawn parallel worker agents
+- pi-web-browse Browse the web via a headless browser (CDP)
+
 https://github.com/HenryLach/taskplane
+
+- https://medium.com/@henry_49934/welcome-to-taskplane-authors-note-ad3a0278fdd3
 
 https://github.com/rawwerks/ypi
 
@@ -244,10 +253,32 @@ https://github.com/stablyai/orca
 
 https://github.com/tmdgusya/roach-pi
 
+Clarify and Plan
+
 https://github.com/vaslabs/pi-web-agent
 
 https://github.com/minghinmatthewlam/pi-gui
 
+Electron desktop shell for pi sessions.
+
 https://github.com/HazAT/pi-interactive-subagents
 
 https://github.com/injaneity/pi-computer-use
+
+https://github.com/xibbon/PiSwift
+
+https://ricky42613.github.io/piserini
+
+https://newsletter.pragmaticengineer.com/p/building-pi-and-what-makes-self-modifying
+
+https://github.com/rcarmo/piclaw
+
+https://github.com/withastro/flue
+
+https://lazypi.org/videos.html
+
+https://github.com/getpaseo/paseo
+
+https://github.com/MasuRii/pi-permission-system
+
+https://github.com/ifiokjr/oh-pi
