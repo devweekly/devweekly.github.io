@@ -6,7 +6,7 @@ export const SITE: Site = {
   desc: "Developer Weekly 开发者周报，编程技术、架构设计、AI/LLM、产品思维与设计资源。开发周报, 编程周报, 技术周报, programming weekly",
   title: "开发者周报 | Developer Weekly Newsletter",
   ogImage: "astropaper-og.jpg",
-  lightAndDarkMode: true,
+  lightAndDarkMode: false,
   postPerPage: 5,
   scheduledPostMargin: 15 * 60 * 1000, // 15 minutes
 };
