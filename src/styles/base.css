@@ -17,20 +17,20 @@
 @layer base {
   :root,
   html[data-theme="light"] {
-    --color-fill: 255, 255, 255;
-    --color-text-base: 51, 51, 51;
-    --color-accent: 167, 139, 250;
-    --color-card: 248, 248, 248;
-    --color-card-muted: 238, 238, 238;
-    --color-border: 229, 229, 229;
+    --color-fill: 249, 246, 239;
+    --color-text-base: 34, 28, 23;
+    --color-accent: 139, 90, 43;
+    --color-card: 245, 240, 232;
+    --color-card-muted: 239, 232, 220;
+    --color-border: 217, 209, 196;
   }
   html[data-theme="dark"] {
-    --color-fill: 15, 23, 42;
-    --color-text-base: 226, 232, 240;
-    --color-accent: 129, 140, 248;
-    --color-card: 30, 41, 59;
-    --color-card-muted: 51, 65, 85;
-    --color-border: 51, 65, 85;
+    --color-fill: 26, 24, 21;
+    --color-text-base: 245, 240, 232;
+    --color-accent: 209, 170, 124;
+    --color-card: 37, 34, 30;
+    --color-card-muted: 51, 47, 42;
+    --color-border: 66, 61, 55;
   }
   #sun-svg,
   html[data-theme="dark"] #moon-svg {
