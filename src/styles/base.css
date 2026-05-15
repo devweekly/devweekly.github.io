@@ -46,7 +46,7 @@
   }
   section,
   footer {
-    @apply mx-auto max-w-5xl px-4 sm:px-6 md:px-8 lg:px-12;
+    @apply mx-auto max-w-3xl px-6 sm:px-8;
   }
   a {
     @apply outline-2 outline-offset-1 outline-skin-fill 
@@ -62,19 +62,24 @@
   }
   .prose {
     color: rgb(var(--color-text-base));
-    line-height: 1.7;
+    line-height: 1.9;
   }
   .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
-    margin-top: 1.5rem;
-    margin-bottom: 0.75rem;
+    margin-top: 2.5rem;
+    margin-bottom: 1rem;
     color: rgb(var(--color-text-base));
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .prose h2 {
+    font-size: 1.5rem;
   }
   .prose h3 {
     font-style: italic;
   }
   .prose p {
     color: rgb(var(--color-text-base));
-    margin-bottom: 0.75rem;
+    margin-bottom: 1.25rem;
   }
   .prose a {
     color: rgb(var(--color-text-base));
