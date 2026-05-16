@@ -46,7 +46,7 @@
   }
   section,
   footer {
-    @apply mx-auto max-w-4xl px-6 sm:px-8;
+    @apply mx-auto max-w-4xl px-4 sm:px-8;
   }
   a {
     @apply outline-2 outline-offset-1 outline-skin-fill 
@@ -62,14 +62,25 @@
   }
   .prose {
     color: rgb(var(--color-text-base));
-    line-height: 1.9;
+    line-height: 1.6;
+  }
+  @media (min-width: 640px) {
+    .prose {
+      line-height: 1.9;
+    }
   }
   .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
-    margin-top: 2.5rem;
-    margin-bottom: 1rem;
+    margin-top: 1.5rem;
+    margin-bottom: 0.75rem;
     color: rgb(var(--color-text-base));
     font-weight: 600;
     letter-spacing: -0.01em;
+  }
+  @media (min-width: 640px) {
+    .prose h1, .prose h2, .prose h3, .prose h4, .prose h5, .prose h6 {
+      margin-top: 2.5rem;
+      margin-bottom: 1rem;
+    }
   }
   .prose h2 {
     font-size: 1.5rem;
@@ -79,7 +90,12 @@
   }
   .prose p {
     color: rgb(var(--color-text-base));
-    margin-bottom: 1.25rem;
+    margin-bottom: 0.875rem;
+  }
+  @media (min-width: 640px) {
+    .prose p {
+      margin-bottom: 1.25rem;
+    }
   }
   .prose a {
     color: rgb(var(--color-text-base));

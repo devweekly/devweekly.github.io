@@ -17,7 +17,7 @@ export default function Card({ href, frontmatter, secHeading = true }: Props) {
   };
 
   return (
-    <li className="py-10 border-b border-skin-line">
+    <li className="py-6 sm:py-10 border-b border-skin-line">
       <a
         href={href}
         className="inline-block focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-skin-accent focus-visible:ring-offset-2 rounded"
@@ -33,7 +33,9 @@ export default function Card({ href, frontmatter, secHeading = true }: Props) {
         modDatetime={modDatetime}
         className="mt-2 text-sm opacity-70"
       />
-      <p className="mt-3 leading-relaxed opacity-80">{description}</p>
+      <p className="mt-3 leading-snug sm:leading-relaxed opacity-80">
+        {description}
+      </p>
     </li>
   );
 }
