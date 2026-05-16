@@ -62,7 +62,7 @@
   }
   .prose {
     color: rgb(var(--color-text-base));
-    line-height: 1.6;
+    line-height: 1.7;
   }
   @media (min-width: 640px) {
     .prose {
