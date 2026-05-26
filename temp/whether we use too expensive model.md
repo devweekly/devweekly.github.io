@@ -816,3 +816,1689 @@ trace
 [7]: https://arxiv.org/abs/2509.07571?utm_source=chatgpt.com "Towards Generalized Routing: Model and Agent Orchestration for Adaptive and Efficient Inference"
 
 
+-------------
+
+
+`complexity.py` 不应该只是：
+
+```python
+complexity = len(prompt)
+```
+
+否则会完全失效。
+
+你真正需要的是：
+
+# “Cognitive Complexity Estimator”
+
+即：
+
+> 这个步骤到底需要多少“智能密度”？
+
+而不是：
+
+> token 有多少
+
+---
+
+我建议：
+
+# complexity.py 应该是一个多层 heuristic system
+
+结构类似：
+
+```text
+complexity.py
+├── lexical complexity
+├── task type detection
+├── ambiguity estimation
+├── reasoning depth estimation
+├── architecture signal detection
+├── debugging signal detection
+├── uncertainty estimation
+└── final weighted score
+```
+
+---
+
+# 一、核心设计目标
+
+你最终想回答：
+
+```text
+这个步骤是否真的需要：
+- GPT-5
+- Opus
+- Deep reasoning
+```
+
+所以：
+
+complexity.py 必须识别：
+
+| 类型                    | 是否需要强模型 |
+| --------------------- | ------- |
+| boilerplate           | ❌       |
+| formatting            | ❌       |
+| retrieval             | ❌       |
+| code migration        | ⚠️      |
+| root cause analysis   | ✅       |
+| architecture tradeoff | ✅       |
+| ambiguity resolution  | ✅       |
+
+---
+
+# 二、建议的数据结构
+
+先定义：
+
+```python
+from dataclasses import dataclass
+
+@dataclass
+class ComplexityReport:
+    score: float
+
+    lexical_complexity: float
+    reasoning_depth: float
+    ambiguity: float
+    architecture_complexity: float
+    debugging_complexity: float
+    context_dependency: float
+
+    recommended_tier: str
+
+    signals: list[str]
+```
+
+---
+
+# 三、第一层：Lexical Complexity（最低价值）
+
+仅作为弱 signal。
+
+```python
+def lexical_complexity(text: str) -> float:
+    tokens = text.split()
+
+    unique_ratio = len(set(tokens)) / max(len(tokens), 1)
+
+    avg_word_length = sum(len(t) for t in tokens) / max(len(tokens), 1)
+
+    score = (
+        min(len(tokens) / 1000, 1.0) * 0.3
+        + unique_ratio * 0.4
+        + min(avg_word_length / 10, 1.0) * 0.3
+    )
+
+    return round(score, 2)
+```
+
+但：
+
+# 不要太依赖它
+
+因为：
+
+```text
+长 prompt != 高复杂度
+```
+
+---
+
+# 四、最重要：Task Pattern Detection
+
+这个才是核心。
+
+例如：
+
+```python
+TASK_PATTERNS = {
+    "architecture": [
+        "tradeoff",
+        "scalability",
+        "distributed",
+        "design",
+        "microservice",
+        "eventual consistency",
+    ],
+
+    "debugging": [
+        "why",
+        "bug",
+        "issue",
+        "race condition",
+        "not working",
+        "unexpected",
+    ],
+
+    "mechanical": [
+        "refactor",
+        "rename",
+        "format",
+        "convert",
+        "generate",
+        "scaffold",
+    ],
+
+    "ambiguity": [
+        "should we",
+        "which approach",
+        "best way",
+        "compare",
+        "pros and cons",
+    ]
+}
+```
+
+然后：
+
+```python
+def detect_signals(text: str):
+    text = text.lower()
+
+    results = {}
+
+    for category, patterns in TASK_PATTERNS.items():
+        matches = sum(1 for p in patterns if p in text)
+
+        results[category] = matches
+
+    return results
+```
+
+---
+
+# 五、Reasoning Depth（真正关键）
+
+这是核心中的核心。
+
+例如：
+
+```python
+REASONING_SIGNALS = [
+    "why",
+    "root cause",
+    "tradeoff",
+    "because",
+    "therefore",
+    "compare",
+    "evaluate",
+    "pros and cons",
+    "architecture",
+    "failure mode",
+    "edge case",
+]
+```
+
+评分：
+
+```python
+def reasoning_depth(text: str) -> float:
+    text = text.lower()
+
+    hits = sum(1 for s in REASONING_SIGNALS if s in text)
+
+    return min(hits / 5, 1.0)
+```
+
+---
+
+# 六、Architecture Complexity（很值钱）
+
+这个特别重要。
+
+因为：
+
+Architecture reasoning
+往往最需要高级模型。
+
+```python
+ARCHITECTURE_SIGNALS = [
+    "distributed",
+    "event-driven",
+    "kafka",
+    "microservice",
+    "tradeoff",
+    "consistency",
+    "latency",
+    "scalability",
+    "throughput",
+    "fault tolerance",
+]
+```
+
+---
+
+# 七、Debugging Complexity
+
+debugging 是很 expensive 的 cognitive work。
+
+尤其：
+
+* async
+* race condition
+* cross-platform
+* browser extension
+* lifecycle
+
+这些。
+
+```python
+DEBUG_SIGNALS = [
+    "android",
+    "ios",
+    "firefox",
+    "race condition",
+    "proxy",
+    "serialization",
+    "deadlock",
+    "timing",
+    "lifecycle",
+]
+```
+
+---
+
+# 八、真正高级：Context Dependency
+
+这个非常重要。
+
+例如：
+
+```text
+需要理解：
+- 多文件
+- 长历史
+- earlier decisions
+- previous bugs
+```
+
+这种会强烈推动：
+
+```text
+需要大 context model
+```
+
+检测：
+
+```python
+CONTEXT_SIGNALS = [
+    "previously",
+    "earlier",
+    "existing codebase",
+    "legacy",
+    "multi-module",
+    "cross-file",
+]
+```
+
+---
+
+# 九、最终聚合
+
+真正重要的是：
+
+# weighted scoring
+
+```python
+def calculate_complexity(report):
+
+    score = (
+        report.reasoning_depth * 0.30
+        + report.architecture_complexity * 0.25
+        + report.debugging_complexity * 0.20
+        + report.ambiguity * 0.15
+        + report.context_dependency * 0.10
+    )
+
+    return round(score, 2)
+```
+
+注意：
+
+# lexical complexity 权重很低
+
+这是关键。
+
+---
+
+# 十、Model Tier Mapping
+
+例如：
+
+```python
+def recommend_model(score):
+
+    if score < 0.3:
+        return "cheap"
+
+    elif score < 0.6:
+        return "mid"
+
+    elif score < 0.8:
+        return "strong"
+
+    else:
+        return "frontier"
+```
+
+对应：
+
+| Tier     | Example     |
+| -------- | ----------- |
+| cheap    | GPT-4o-mini |
+| mid      | Sonnet      |
+| strong   | GPT-5       |
+| frontier | Opus        |
+
+---
+
+# 十一、真正高级版（强烈推荐）
+
+不要只分析：
+
+```text
+user prompt
+```
+
+而是分析：
+
+# execution trace
+
+例如：
+
+```json
+{
+  "steps": [
+    {
+      "action": "grep"
+    },
+    {
+      "action": "read_file"
+    },
+    {
+      "action": "reasoning"
+    },
+    {
+      "action": "retry"
+    }
+  ]
+}
+```
+
+你会得到：
+
+```text
+high retries
++ high uncertainty
++ many failed attempts
+=> true complexity
+```
+
+这个比 prompt 分析强太多。
+
+---
+
+# 十二、真正有价值的 Signal（非常关键）
+
+你真正要检测的是：
+
+| Signal                   | 含义                  |
+| ------------------------ | ------------------- |
+| retries                  | 模型 struggling       |
+| backtracking             | reasoning difficult |
+| contradictory hypotheses | ambiguity           |
+| many tool calls          | exploration         |
+| repeated fixes           | debugging hardness  |
+| context switching        | cognitive load      |
+
+这些：
+
+# 比 prompt 本身重要 10 倍
+
+---
+
+# 十三、一个更接近未来的设计
+
+你甚至可以做：
+
+```python
+complexity = {
+    "mechanical": 0.2,
+    "reasoning": 0.8,
+    "debugging": 0.9,
+    "architecture": 0.95
+}
+```
+
+然后：
+
+# phase-aware routing
+
+例如：
+
+```text
+当前阶段：
+- debugging
+- high uncertainty
+=> escalate to Opus
+```
+
+任务结束：
+
+```text
+debugging结束
+=> downgrade
+```
+
+这已经接近：
+
+# dynamic agent compute allocation
+
+---
+
+# 十四、最终建议（非常重要）
+
+不要一开始就：
+
+```text
+ML classifier
+embedding router
+```
+
+先做：
+
+# heuristic profiler
+
+原因：
+
+1. 可解释
+2. 容易调试
+3. 容易积累经验
+4. 能快速验证思路
+5. 更适合 agent workflow
+
+很多 routing paper 最后都会：
+
+```text
+learned router + heuristic fallback
+```
+
+因为纯 ML routing 很容易失控。
+
+---
+
+# 十五、我会怎么实现 v1
+
+v1：
+
+```text
+prompt analysis
++ trace analysis
++ retry analysis
++ uncertainty analysis
+```
+
+输出：
+
+```json
+{
+  "complexity": 0.74,
+  "primary_driver": "debugging",
+  "reasoning_density": 0.61,
+  "recommended_model": "opus",
+  "overkill_probability": 0.12
+}
+```
+
+这已经很强了。
+
+
+
+-------------
+
+
+`reasoning_depth.py` 是你整个系统里最核心、最有研究价值的部分。
+
+因为：
+
+# complexity ≠ reasoning depth
+
+例如：
+
+| 任务                  | complexity | reasoning depth |
+| ------------------- | ---------- | --------------- |
+| 大规模代码生成             | 高          | 低               |
+| root cause analysis | 中          | 高               |
+| 架构tradeoff          | 中          | 极高              |
+| 文档整理                | 高          | 极低              |
+
+真正 expensive 的不是 token。
+
+而是：
+
+# “认知链条长度”
+
+即：
+
+```text id="tw8d2i"
+需要多少层推理依赖
+才能得到正确答案
+```
+
+---
+
+# 一、你真正要检测什么
+
+不是：
+
+```text id="rj9m2n"
+是否出现 "why"
+```
+
+而是：
+
+# 是否存在：
+
+| 类型                       | 示例                           |
+| ------------------------ | ---------------------------- |
+| causal reasoning         | because A causes B           |
+| multi-hop reasoning      | A→B→C                        |
+| uncertainty handling     | maybe X, unless Y            |
+| hypothesis generation    | possible causes              |
+| tradeoff analysis        | latency vs consistency       |
+| abstraction jumping      | code ↔ architecture          |
+| counterfactual reasoning | if we changed X              |
+| constraint solving       | satisfy A/B/C simultaneously |
+
+这些才是真正昂贵的 reasoning。
+
+---
+
+# 二、核心设计思路
+
+你应该把：
+
+```text id="t68um9"
+reasoning depth
+```
+
+看成：
+
+# “推理链复杂度”
+
+例如：
+
+| 层数 | 类型                           |
+| -- | ---------------------------- |
+| 0  | retrieval                    |
+| 1  | direct transformation        |
+| 2  | simple inference             |
+| 3  | multi-step reasoning         |
+| 4  | hypothesis evaluation        |
+| 5  | architecture/system thinking |
+
+---
+
+# 三、v1 不要上 ML
+
+千万别一开始：
+
+```text id="rqf5h1"
+bert classifier
+embedding scorer
+```
+
+因为：
+
+reasoning 是 highly interpretable 的。
+
+你最开始：
+
+# heuristic + trace analysis
+
+就够强了。
+
+---
+
+# 四、建议结构
+
+```python id="mjk5p3"
+from dataclasses import dataclass
+
+@dataclass
+class ReasoningReport:
+    score: float
+
+    causal_reasoning: float
+    multi_hop_reasoning: float
+    ambiguity_handling: float
+    tradeoff_analysis: float
+    hypothesis_generation: float
+    abstraction_switching: float
+
+    reasoning_density: float
+
+    signals: list[str]
+```
+
+---
+
+# 五、第一层：Causal Reasoning
+
+检测：
+
+```text id="g49w35"
+because
+therefore
+due to
+causes
+results in
+leads to
+```
+
+例如：
+
+```python id="5dy6tv"
+CAUSAL_SIGNALS = [
+    "because",
+    "therefore",
+    "due to",
+    "causes",
+    "results in",
+    "leads to",
+    "as a result",
+]
+```
+
+---
+
+# 六、Multi-Hop Reasoning（非常关键）
+
+真正强模型擅长：
+
+# 多跳推理
+
+例如：
+
+```text id="34og70"
+Firefox Android
+→ extension lifecycle different
+→ storage serialization issue
+→ Vue proxy object breaks
+→ browser API cloning failure
+```
+
+这是：
+
+# 4-hop reasoning chain
+
+---
+
+你需要检测：
+
+* sequential dependency
+* nested logic
+* layered inference
+
+例如：
+
+```python id="h5x1zj"
+MULTI_HOP_SIGNALS = [
+    "then",
+    "which means",
+    "therefore",
+    "if",
+    "unless",
+    "depends on",
+    "in turn",
+]
+```
+
+但更高级的是：
+
+# trace-based chain depth
+
+例如：
+
+```json id="0m6bnj"
+[
+  "hypothesis",
+  "test",
+  "rejected",
+  "new hypothesis",
+  "cross-check",
+  "final synthesis"
+]
+```
+
+这个才是真 reasoning。
+
+---
+
+# 七、Tradeoff Analysis（超级重要）
+
+强模型最贵的地方：
+
+# tradeoff reasoning
+
+例如：
+
+```text id="xtt0ki"
+latency vs consistency
+simplicity vs flexibility
+cost vs accuracy
+```
+
+检测：
+
+```python id="4py2h0"
+TRADEOFF_SIGNALS = [
+    "tradeoff",
+    "pros and cons",
+    "advantage",
+    "disadvantage",
+    "however",
+    "on the other hand",
+    "balance",
+]
+```
+
+---
+
+# 八、Hypothesis Generation（最值钱）
+
+这是 frontier model 很强的能力。
+
+例如：
+
+```text id="c7zhyu"
+Possible causes:
+1. Android Firefox lifecycle
+2. MV2 incompatibility
+3. Proxy serialization
+4. timing issue
+```
+
+这是：
+
+# search-space exploration
+
+非常 expensive。
+
+检测：
+
+```python id="pj51lz"
+HYPOTHESIS_SIGNALS = [
+    "possible cause",
+    "might be",
+    "could be",
+    "likely",
+    "hypothesis",
+    "suspect",
+    "one explanation",
+]
+```
+
+---
+
+# 九、Abstraction Switching（高级 signal）
+
+这是很少有人研究，但极其关键的。
+
+例如：
+
+```text id="mz04jh"
+code
+↕
+runtime
+↕
+browser lifecycle
+↕
+architecture
+↕
+platform differences
+```
+
+这种：
+
+# abstraction level switching
+
+非常消耗 reasoning。
+
+---
+
+检测：
+
+```python id="lq39wx"
+ABSTRACTION_SIGNALS = [
+    "architecture",
+    "runtime",
+    "lifecycle",
+    "system-level",
+    "platform",
+    "memory model",
+    "execution model",
+]
+```
+
+---
+
+# 十、真正高级：Reasoning Density
+
+这是我最推荐你研究的东西。
+
+定义：
+
+# reasoning_density
+
+```text id="16f44o"
+(reasoning sentences)
+/
+(total sentences)
+```
+
+例如：
+
+```text id="6gz9x6"
+“Rename this file”
+```
+
+density ≈ 0
+
+而：
+
+```text id="lt0j3w"
+“The issue likely happens because Android Firefox
+uses different extension process lifecycle handling...”
+```
+
+density 很高。
+
+---
+
+简单实现：
+
+```python id="omq0eo"
+def reasoning_density(text, reasoning_hits):
+
+    sentences = max(text.count("."), 1)
+
+    return min(reasoning_hits / sentences, 1.0)
+```
+
+---
+
+# 十一、真正真正重要：Trace-Based Reasoning
+
+这是你系统未来最强部分。
+
+不要只分析 prompt。
+
+分析：
+
+# execution trace
+
+例如：
+
+```json id="e7z95w"
+[
+  {
+    "type": "hypothesis"
+  },
+  {
+    "type": "tool_call"
+  },
+  {
+    "type": "verification"
+  },
+  {
+    "type": "backtrack"
+  },
+  {
+    "type": "alternative_hypothesis"
+  }
+]
+```
+
+---
+
+# 十二、Backtracking 是超级 signal
+
+例如：
+
+```text id="jq9b2q"
+initial assumption failed
+→ retry
+→ another theory
+→ compare evidence
+```
+
+这意味着：
+
+# reasoning difficulty 很高
+
+检测：
+
+```python id="35l82l"
+BACKTRACK_SIGNALS = [
+    "retry",
+    "alternative",
+    "another possibility",
+    "however",
+    "that assumption was incorrect",
+]
+```
+
+---
+
+# 十三、最终聚合方式
+
+```python id="wjlwm7"
+score = (
+    causal * 0.15
+    + multi_hop * 0.25
+    + tradeoff * 0.20
+    + hypothesis * 0.20
+    + abstraction * 0.10
+    + ambiguity * 0.10
+)
+```
+
+---
+
+# 十四、真正高级版（非常推荐）
+
+不要只输出：
+
+```json id="77mhcz"
+{
+  "score": 0.82
+}
+```
+
+输出：
+
+```json id="69wjkt"
+{
+  "score": 0.82,
+
+  "reasoning_type": "debugging + architecture",
+
+  "dominant_signal": "hypothesis_generation",
+
+  "estimated_chain_depth": 5,
+
+  "backtracking_detected": true,
+
+  "reasoning_density": 0.74,
+
+  "requires_frontier_model": true
+}
+```
+
+---
+
+# 十五、未来真正高级方向（研究价值巨大）
+
+你最终可以研究：
+
+# “Reasoning Topology”
+
+例如：
+
+```text id="11nq6h"
+linear reasoning
+tree reasoning
+graph reasoning
+backtracking reasoning
+speculative reasoning
+```
+
+不同 topology：
+
+对不同 model 的要求完全不同。
+
+---
+
+# 十六、你真正的突破点
+
+现在大部分 routing：
+
+只看：
+
+```text id="7n8q2r"
+prompt embedding
+```
+
+但真正决定：
+
+# 是否需要 Opus/GPT-5
+
+的是：
+
+```text id="m0jj6x"
+reasoning topology
++
+hypothesis branching
++
+backtracking complexity
+```
+
+这个方向现在几乎没人认真做。
+
+---
+
+# 十七、v1 最推荐方案
+
+别太复杂。
+
+v1：
+
+```text id="lw7wvf"
+prompt analysis
++
+trace analysis
++
+retry/backtracking detection
++
+tradeoff detection
++
+hypothesis detection
+```
+
+就已经比 90% routing system advanced 了。
+
+
+------------
+
+
+`workflow_classifier.py` 是整个系统真正的“大脑”。
+
+因为：
+
+* `complexity.py` 解决：
+
+  > “难不难”
+
+* `reasoning_depth.py` 解决：
+
+  > “推理深不深”
+
+而：
+
+# `workflow_classifier.py`
+
+解决的是：
+
+# “这个任务本质上是什么 workflow？”
+
+这决定：
+
+* 是否适合 cheap-first
+* 是否适合 escalation
+* 是否需要 frontier model
+* 是否需要 verifier
+* 是否需要 planner
+* 是否应该 parallelize
+
+---
+
+# 一、核心思想（非常重要）
+
+你不要分类：
+
+```text id="7i7e0j"
+“这是 coding”
+```
+
+而要分类：
+
+# “认知工作流类型”
+
+例如：
+
+| Workflow                  | 特征                |
+| ------------------------- | ----------------- |
+| Mechanical Transformation | 低认知               |
+| Retrieval-Augmented       | 查资料               |
+| Exploratory Debugging     | 高 backtracking    |
+| Architecture Design       | 高 tradeoff        |
+| Hypothesis Testing        | 高 uncertainty     |
+| Speculative Exploration   | search space 大    |
+| Iterative Refinement      | rewrite-heavy     |
+| Verification Workflow     | correctness-heavy |
+
+这是整个系统最关键的 abstraction。
+
+---
+
+# 二、为什么 workflow classification 非常重要
+
+因为：
+
+# 同样 complexity
+
+workflow 完全不同。
+
+例如：
+
+| Task                           | Complexity | Workflow     |
+| ------------------------------ | ---------- | ------------ |
+| generate 3000 LOC              | 高          | mechanical   |
+| diagnose Android Firefox issue | 高          | exploratory  |
+| compare Kafka vs Redpanda      | 中          | architecture |
+| migrate Angular to Vue         | 中          | iterative    |
+
+而：
+
+# 模型需求完全不同
+
+---
+
+# 三、真正关键的 insight
+
+你最终 routing 的不是：
+
+```text id="bhjlwm"
+prompt
+```
+
+而是：
+
+# “workflow topology”
+
+例如：
+
+| Workflow              | 推荐             |
+| --------------------- | -------------- |
+| Mechanical            | cheap model    |
+| Architecture          | strong model   |
+| Exploratory debugging | frontier       |
+| Verification          | verifier model |
+| Retrieval             | RAG + mini     |
+
+---
+
+# 四、推荐架构
+
+```python id="kn4yvo"
+from dataclasses import dataclass
+from enum import Enum
+
+class WorkflowType(str, Enum):
+
+    MECHANICAL = "mechanical"
+    RETRIEVAL = "retrieval"
+    DEBUGGING = "debugging"
+    ARCHITECTURE = "architecture"
+    EXPLORATION = "exploration"
+    VERIFICATION = "verification"
+    ITERATIVE_REFINEMENT = "iterative_refinement"
+    TRANSFORMATION = "transformation"
+
+
+@dataclass
+class WorkflowReport:
+
+    primary_workflow: WorkflowType
+
+    secondary_workflows: list[WorkflowType]
+
+    confidence: float
+
+    escalation_risk: float
+
+    ambiguity_level: float
+
+    suggested_strategy: str
+
+    signals: list[str]
+```
+
+---
+
+# 五、真正重要：不要只看 prompt
+
+workflow classifier：
+
+# 必须分析 trace
+
+例如：
+
+```json id="rpdg2g"
+[
+  "search",
+  "read_file",
+  "grep",
+  "retry",
+  "compare",
+  "backtrack",
+  "rewrite"
+]
+```
+
+workflow 就已经很明显了。
+
+---
+
+# 六、Mechanical Workflow
+
+这种：
+
+# 不应该使用 Opus/GPT-5
+
+检测：
+
+```python id="63w02y"
+MECHANICAL_SIGNALS = [
+    "rename",
+    "refactor",
+    "format",
+    "convert",
+    "generate boilerplate",
+    "scaffold",
+]
+```
+
+Trace 特征：
+
+```text id="yyqv9h"
+- low retries
+- low ambiguity
+- repetitive edits
+- deterministic operations
+```
+
+---
+
+# 七、Exploratory Debugging（超级重要）
+
+这是：
+
+# 最 expensive workflow
+
+例如：
+
+```text id="bzkn3j"
+Firefox Android extension issue
+```
+
+真正 workflow：
+
+```text id="f61ns9"
+hypothesis
+→ test
+→ fail
+→ alternative hypothesis
+→ compare
+→ retry
+→ root cause
+```
+
+---
+
+检测：
+
+```python id="a5o7y7"
+DEBUGGING_SIGNALS = [
+    "bug",
+    "issue",
+    "unexpected",
+    "not working",
+    "fails",
+    "race condition",
+]
+```
+
+但更重要的是：
+
+# trace signals
+
+```python id="qcfjqy"
+DEBUG_TRACE_SIGNALS = {
+    "retries": 3,
+    "backtracks": 2,
+    "hypothesis_count": 4,
+}
+```
+
+---
+
+# 八、Architecture Workflow
+
+这是：
+
+# tradeoff-heavy workflow
+
+例如：
+
+```text id="cfggw8"
+DuckDB + Snowflake
+Kafka vs Redpanda
+microservice design
+```
+
+核心特征：
+
+```text id="ys86c4"
+- compare systems
+- evaluate tradeoffs
+- long-term consequences
+- scalability
+```
+
+---
+
+检测：
+
+```python id="x8fthc"
+ARCHITECTURE_SIGNALS = [
+    "tradeoff",
+    "scalability",
+    "distributed",
+    "event-driven",
+    "consistency",
+    "throughput",
+    "latency",
+]
+```
+
+---
+
+# 九、Verification Workflow（容易被忽视）
+
+很多任务：
+
+不是生成。
+
+而是：
+
+# correctness verification
+
+例如：
+
+```text id="1n8fy9"
+- security review
+- SQL correctness
+- financial logic validation
+- compliance checking
+```
+
+这种 workflow：
+
+需要：
+
+```text id="pqajp9"
+careful reasoning
++
+cross-checking
+```
+
+但不一定需要 creative intelligence。
+
+---
+
+# 十、Transformation Workflow
+
+例如：
+
+```text id="q2j7ta"
+Angular → Vue
+Java → Kotlin
+REST → GraphQL
+```
+
+这种 workflow：
+
+通常：
+
+```text id="g1u8ca"
+high token
+low reasoning
+medium consistency requirements
+```
+
+很适合：
+
+# cheap + verifier
+
+---
+
+# 十一、真正高级：Workflow Transition Detection
+
+这是非常高级的方向。
+
+因为：
+
+workflow 会变化。
+
+例如：
+
+```text id="zkz7cu"
+initial debugging
+→ root cause found
+→ mechanical fixing
+```
+
+此时：
+
+# 应该 downgrade model
+
+---
+
+你应该分析：
+
+```json id="i7mbgi"
+[
+  {
+    "phase": "exploration"
+  },
+  {
+    "phase": "hypothesis_testing"
+  },
+  {
+    "phase": "mechanical_fixing"
+  }
+]
+```
+
+---
+
+# 十二、Workflow Topology（最有研究价值）
+
+真正高级的系统：
+
+不是分类 workflow。
+
+而是识别：
+
+# workflow graph
+
+例如：
+
+```text id="f4u08j"
+retrieval
+  ↓
+exploration
+  ↓
+architecture reasoning
+  ↓
+verification
+  ↓
+mechanical implementation
+```
+
+不同阶段：
+
+模型需求完全不同。
+
+---
+
+# 十三、最关键：Escalation Risk
+
+这个特别重要。
+
+例如：
+
+| Workflow       | escalation risk |
+| -------------- | --------------- |
+| mechanical     | low             |
+| retrieval      | low             |
+| transformation | medium          |
+| debugging      | high            |
+| architecture   | high            |
+
+---
+
+你可以：
+
+```python id="4t3m4d"
+ESCALATION_RISK = {
+    "mechanical": 0.1,
+    "retrieval": 0.2,
+    "transformation": 0.4,
+    "architecture": 0.8,
+    "debugging": 0.9,
+}
+```
+
+---
+
+# 十四、真正高级版（强烈推荐）
+
+不要只输出：
+
+```json id="0b84s7"
+{
+  "workflow": "debugging"
+}
+```
+
+输出：
+
+```json id="8a8zxr"
+{
+  "primary_workflow": "exploratory_debugging",
+
+  "secondary_workflows": [
+    "verification",
+    "transformation"
+  ],
+
+  "workflow_transitions": [
+    "exploration",
+    "hypothesis_testing",
+    "mechanical_fixing"
+  ],
+
+  "escalation_risk": 0.91,
+
+  "recommended_strategy": {
+    "start": "sonnet",
+    "escalate_if": [
+      "multiple failed hypotheses",
+      "cross-platform inconsistency"
+    ],
+    "downgrade_after": [
+      "root cause identified"
+    ]
+  }
+}
+```
+
+---
+
+# 十五、最重要的 insight
+
+最终：
+
+# workflow 比 prompt 更重要
+
+因为：
+
+```text id="54of8e"
+“debug Firefox Android extension”
+```
+
+prompt 本身无法说明：
+
+* 是 trivial
+* 还是 deep runtime issue
+
+但：
+
+workflow trace 可以。
+
+---
+
+# 十六、你最终其实在做什么
+
+你在做：
+
+# “AI Workload Classification”
+
+非常像：
+
+| Cloud FinOps       | AI Agent FinOps      |
+| ------------------ | -------------------- |
+| CPU profile        | reasoning profile    |
+| workload type      | workflow type        |
+| autoscaling        | model escalation     |
+| compute allocation | reasoning allocation |
+
+这是很新的方向。
+
+---
+
+# 十七、v1 最推荐实现
+
+别太复杂。
+
+v1：
+
+```text id="of0pt0"
+prompt signals
++
+trace signals
++
+retry analysis
++
+backtracking analysis
++
+tool usage patterns
+```
+
+就已经非常强了。
+
+---
+
+# 十八、最终推荐架构（非常关键）
+
+我会：
+
+```text id="1q1vow"
+workflow_classifier.py
+    ↓
+
+complexity.py
+    ↓
+
+reasoning_depth.py
+    ↓
+
+routing_recommender.py
+```
+
+因为：
+
+workflow 是顶层语义。
+
+其它分析：
+
+* complexity
+* reasoning
+* escalation
+
+都应该依赖 workflow context。
