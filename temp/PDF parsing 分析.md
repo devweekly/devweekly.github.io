@@ -21,6 +21,8 @@ https://azure.microsoft.com/en-us/products/ai-foundry/tools/content-understandin
 
 https://github.com/datalab-to/chandra
 
+https://github.com/datalab-to/marker
+
 https://www.extend.ai/
 
 https://huggingface.co/PaddlePaddle/PaddleOCR-VL-1.6
@@ -28,4 +30,6 @@ https://huggingface.co/PaddlePaddle/PaddleOCR-VL-1.6
 https://github.com/docling-project/docling
 
 https://www.applied-ai.com/briefings/pdf-parsing-benchmark/
+
+https://olmocr.allenai.org/
 

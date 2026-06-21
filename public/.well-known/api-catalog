@@ -1,0 +1,46 @@
+{
+  "linkset": [
+    {
+      "anchor": "https://devweekly.github.io/",
+      "href": "https://devweekly.github.io/rss.xml",
+      "rel": "alternate",
+      "type": "application/rss+xml",
+      "title": "Developer Weekly RSS Feed"
+    },
+    {
+      "anchor": "https://devweekly.github.io/",
+      "href": "https://devweekly.github.io/posts/",
+      "rel": "service-doc",
+      "type": "text/html",
+      "title": "All Posts"
+    },
+    {
+      "anchor": "https://devweekly.github.io/",
+      "href": "https://devweekly.github.io/search",
+      "rel": "search",
+      "type": "text/html",
+      "title": "Search Posts"
+    },
+    {
+      "anchor": "https://devweekly.github.io/",
+      "href": "https://devweekly.github.io/tags/",
+      "rel": "related",
+      "type": "text/html",
+      "title": "All Tags"
+    },
+    {
+      "anchor": "https://devweekly.github.io/",
+      "href": "https://devweekly.github.io/about",
+      "rel": "author",
+      "type": "text/html",
+      "title": "About"
+    },
+    {
+      "anchor": "https://devweekly.github.io/",
+      "href": "https://devweekly.github.io/.well-known/agent-skills/index.json",
+      "rel": "related",
+      "type": "application/json",
+      "title": "Agent Skills Discovery Index"
+    }
+  ]
+}

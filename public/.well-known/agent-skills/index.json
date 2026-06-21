@@ -1,0 +1,40 @@
+{
+  "$schema": "https://agentskills.io/schemas/discovery-index/v0.2.0.json",
+  "skills": [
+    {
+      "name": "devweekly-agents-md",
+      "type": "text/markdown",
+      "description": "Project-wide operating rules for AI agents working on the Dev Weekly Astro blog. Covers tech stack, content schema, mandatory self-maintenance, code style, and common commands.",
+      "url": "https://devweekly.github.io/AGENTS.md",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "name": "devweekly-claude-md",
+      "type": "text/markdown",
+      "description": "Claude-specific guidance for this repository: common pnpm commands, Astro/React/Tailwind/TypeScript conventions, naming rules, and styling preferences.",
+      "url": "https://devweekly.github.io/CLAUDE.md",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "name": "devweekly-pi-md",
+      "type": "text/markdown",
+      "description": "Pi agent guide with project-specific commands, path aliases, content naming conventions, and validation steps for the Dev Weekly blog.",
+      "url": "https://devweekly.github.io/PI.md",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "name": "devweekly-warp-md",
+      "type": "text/markdown",
+      "description": "WARP terminal guidance for navigating the Astro project, content collections, routing, component architecture, and styling system.",
+      "url": "https://devweekly.github.io/WARP.md",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    },
+    {
+      "name": "devweekly-api-catalog",
+      "type": "application/linkset+json",
+      "description": "RFC 9727 API catalog pointing to RSS feed, search, posts, tags, about page, and agent skills index.",
+      "url": "https://devweekly.github.io/.well-known/api-catalog",
+      "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+    }
+  ]
+}

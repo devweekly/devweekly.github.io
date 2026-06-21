@@ -1,4 +1,7 @@
 User-agent: *
 Allow: /
 
+# AI Content Signals (https://contentsignals.org/)
+Content-Signal: ai-train=no, search=yes, ai-input=no
+
 Sitemap: https://devweekly.github.io/sitemap-index.xml
