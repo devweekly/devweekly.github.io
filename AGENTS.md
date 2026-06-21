@@ -311,6 +311,10 @@ pnpm format:check     # Formatting issues
 - **Site URL**: https://devweekly.github.io
 - **PI.md**: Project-specific guidelines for Pi Agent
 - **Architecture**: [Why Subagent Maintenance?](docs/architecture/why-subagent-maintenance.md)
+- **Agent Skills Discovery**: `/.well-known/agent-skills/index.json`
+- **API Catalog (RFC 9727)**: `/.well-known/api-catalog`
+- **Content Signals**: https://contentsignals.org/
+- **Agent Readiness Skills**: https://isitagentready.com/
 
 ---
 
@@ -362,6 +366,7 @@ When updating AGENTS.md:
 | 2026-02-19 | Added PI.md reference to External Resources | @agents-maintainer |
 | 2026-04-20 | Updated Project Structure (content.config.ts location) and Content Schema (Astro v6 API: loader, id, render, ClientRouter) | @agents-maintainer |
 | 2026-04-20 | Updated Build Pipeline with Node.js 22 requirement in withastro/action | @agents-maintainer |
+| 2026-06-12 | Added Agent Discovery resources (api-catalog, skills index, content signals) | @agents-maintainer |
 
 ### Example Usage
 
