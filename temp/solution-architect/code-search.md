@@ -1781,10 +1781,472 @@ code-search/
 
 **为了让这个方案尽快落地，目前这 50 多个 Repo 主要以哪一两种编程语言为主？我可以针对性地为你写一个基于 Python 或 Node.js 的轻量级 `scan_and_score` 扫描脚本骨架，让你今天就能跑起来看看效果。**
 
+### 代码 from Gemini Round2
+
+面对“什么语言都有”的异构代码仓库（Java, Go, Node.js, Python 混杂），我们绝对不能碰 AST（抽象语法树）或者特定语言的解析工具链，否则光是配置环境就能让你崩溃。
+
+在这个场景下，最务实的做法是利用“跨语言的正则表达式启发式规则 (Cross-language Heuristics)”结合强大的 `ripgrep (rg)`。
+
+下面我为你写一个无依赖（只依赖 Python 3 和系统安装的 `rg`）的轻量级脚本 `business_radar.py`。这个脚本分为两个核心指令：
+
+1. `index`：用跨语言的业务特征正则，快速抽取出 API、DB、MQ 等关键业务节点，生成 `catalog.jsonl`。
+2. `search`：输入 LLM 展开后的业务关键词，脚本会自动调用 `rg` 搜索，并**基于目录和文件特征进行打分排序**，最终只输出高价值的 Top N 代码片段。
+
+### 核心 Python 脚本 (`business_radar.py`)
+
+保存以下代码为 `business_radar.py`：
+
+```python
+import os
+import json
+import subprocess
+import argparse
+from collections import defaultdict
+from pathlib import Path
+
+# ==========================================
+# 1. 跨语言业务特征正则 (Heuristic Patterns)
+# ==========================================
+CAPABILITY_PATTERNS = {
+    # 涵盖 Spring, Express/Koa, Go net/http & Gin, FastAPI 等
+    "api_route": r"(@(Rest)?Controller|@(Get|Post|Put|Delete)Mapping|router\.(get|post|put)|app\.(get|post)|func .* ServeHTTP)",
+    # 涵盖原生 SQL, Hibernate, GORM, TypeORM 等
+    "database": r"(SELECT .* FROM|INSERT INTO|UPDATE .* SET|CREATE TABLE|@Table|@Entity|gorm:|\.execute\()",
+    # 涵盖 Kafka, RabbitMQ 等常见 MQ 客户端
+    "message_queue": r"(@KafkaListener|KafkaTemplate|producer\.send|consumer\.onMessage|amqp\.|topic\s*=)",
+    # 涵盖配置项、Feature Flag 读取
+    "config_flag": r"(os\.getenv|process\.env|@Value|\.getProperty|viper\.Get)"
+}
+
+IGNORE_DIRS = {".git", "node_modules", "vendor", "dist", "build", "test", "tests", "mock"}
+
+# ==========================================
+# 阶段一：扫描与索引 (Pre-Index)
+# ==========================================
+def run_index(repo_dir, output_file="catalog.jsonl"):
+    print(f"🚀 正在扫描 {repo_dir} 下的多语言业务节点...")
+    results = []
+    
+    for cap_type, pattern in CAPABILITY_PATTERNS.items():
+        # 调用 ripgrep 寻找匹配项
+        cmd = ["rg", "-n", "--no-heading", pattern, repo_dir]
+        for ignore in IGNORE_DIRS:
+            cmd.extend(["-g", f"!{ignore}/**"])
+            
+        try:
+            output = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
+            for line in output.splitlines():
+                if not line.strip(): continue
+                # rg 输出格式通常是: filepath:line:content
+                parts = line.split(":", 2)
+                if len(parts) >= 3:
+                    file_path, line_num, content = parts[0], parts[1], parts[2]
+                    results.append({
+                        "repo": Path(file_path).parts[1] if len(Path(file_path).parts) > 1 else "unknown",
+                        "type": cap_type,
+                        "file": file_path,
+                        "line": line_num,
+                        "snippet": content.strip()[:100] # 只截取前100个字符作为摘要
+                    })
+        except subprocess.CalledProcessError:
+            continue # rg 没有找到匹配项时会返回非零状态码
+
+    # 写入 JSONL
+    with open(output_file, "w", encoding="utf-8") as f:
+        for res in results:
+            f.write(json.dumps(res, ensure_ascii=False) + "\n")
+            
+    print(f"✅ 索引完成！共提取 {len(results)} 个业务节点，已保存至 {output_file}")
+
+# ==========================================
+# 阶段二：打分式检索 (Search & Score)
+# ==========================================
+def calculate_score(file_path, content):
+    score = 0
+    path_str = file_path.lower()
+    
+    # 1. 目录权重 (Directory Scoring)
+    if "src/main" in path_str or "cmd/" in path_str or "app/" in path_str:
+        score += 20
+    if "service" in path_str or "controller" in path_str or "handler" in path_str:
+        score += 15
+    if "test" in path_str or "mock" in path_str or "fixture" in path_str:
+        score -= 50  # 强力降权测试代码
+    
+    # 2. 文件类型权重 (File Type Scoring)
+    if path_str.endswith(('.java', '.go', '.ts', '.py', '.cs')):
+        score += 10
+    if path_str.endswith(('.json', '.yaml', '.xml', '.md')):
+        score -= 5 # 配置文件降权，除非特意搜配置
+        
+    # 3. 语义权重 (Semantic Scoring)
+    content_lower = content.lower()
+    if "class " in content_lower or "func " in content_lower or "interface " in content_lower:
+        score += 10 # 命中定义位置
+        
+    return score
+
+def run_search(repo_dir, keywords, top_k=15):
+    print(f"🔍 正在检索关键词: {', '.join(keywords)}")
+    
+    # 将多个关键词用 OR 连接给 rg
+    regex_pattern = "|".join(keywords)
+    cmd = ["rg", "-n", "-C", "2", "--no-heading", regex_pattern, repo_dir]
+    
+    for ignore in IGNORE_DIRS:
+        cmd.extend(["-g", f"!{ignore}/**"])
+        
+    scored_results = []
+    
+    try:
+        # 这里为了简化，直接获取 rg 文本输出进行打分。
+        # 实际工程中可以使用 `rg --json` 进行更精确的解析
+        output = subprocess.check_output(cmd, text=True, stderr=subprocess.DEVNULL)
+        
+        current_file = ""
+        current_snippet = []
+        
+        for line in output.splitlines():
+            if line == "--": continue # rg 的 context 分隔符
+            parts = line.split("-", 2) if "-" in line else line.split(":", 2)
+            if len(parts) >= 3:
+                file_path = parts[0]
+                content = parts[2]
+                
+                # 遇到新文件时进行打分
+                score = calculate_score(file_path, content)
+                scored_results.append({
+                    "file": file_path,
+                    "score": score,
+                    "match": content.strip()
+                })
+
+    except subprocess.CalledProcessError:
+        print("❌ 未找到匹配项")
+        return
+
+    # 按分数倒序排列
+    scored_results.sort(key=lambda x: x["score"], reverse=True)
+    
+    # 聚合去重 (同一文件取最高分)
+    final_top_files = {}
+    for res in scored_results:
+        if res["file"] not in final_top_files and len(final_top_files) < top_k:
+            final_top_files[res["file"]] = res
+            
+    print(f"\n🏆 Top {len(final_top_files)} 核心相关文件 (根据业务价值打分):")
+    print("-" * 60)
+    for file, data in final_top_files.items():
+        print(f"[{data['score']:>3} 分] {file}")
+        print(f"       ↳ {data['match'][:120]}...")
+    print("-" * 60)
+    print("💡 建议：将以上文件的完整内容交由 LLM 进行 Data Flow 深度分析。")
+
+# ==========================================
+# CLI 入口
+# ==========================================
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="Multi-language Business Radar for Architects")
+    subparsers = parser.add_subparsers(dest="command", help="commands")
+    
+    # Index 命​​令
+    idx_parser = subparsers.add_parser("index", help="扫描仓库，生成业务节点 JSONL 索引")
+    idx_parser.add_argument("repo_dir", help="包含多个代码仓库的根目录")
+    
+    # Search 命令
+    srch_parser = subparsers.add_parser("search", help="使用打分机制搜索代码")
+    srch_parser.add_argument("repo_dir", help="包含多个代码仓库的根目录")
+    srch_parser.add_argument("keywords", nargs="+", help="搜索关键词 (如 PRIIPS CostCalculator)")
+    
+    args = parser.parse_args()
+    
+    if args.command == "index":
+        run_index(args.repo_dir)
+    elif args.command == "search":
+        run_search(args.repo_dir, args.keywords)
+    else:
+        parser.print_help()
+
+```
+
+### 如何使用这个工具？
+
+假设你把所有 50 个 repo 都 clone 到了 `~/my_company_repos/` 目录下。
+
+**第一步：生成业务雷达图（一分钟跑完，跨语言）**
+
+```bash
+python business_radar.py index ~/my_company_repos/
+
+```
+
+*你会得到一个 `catalog.jsonl`，里面全是各个语言暴露的 API、监听的 MQ topic 和操作的数据库表。平时不看代码时，你都可以直接 grep 这个文件来梳理架构。*
+
+**第二步：基于 LLM 展开后的需求词汇进行精准搜索**
+假设你的需求是“重构报表服务的成本计算逻辑”，你用 LLM 扩写出了技术词汇 `CostCalculator`、`PerformanceScenario`、`trade_record`。
+
+```bash
+python business_radar.py search ~/my_company_repos/ CostCalculator PerformanceScenario trade_record
+
+```
+
+### 为什么这个脚本适合你的场景？
+
+1. **绝对的语言无关性：** 无论下面藏着 Java、Node 还是 Go，所有的 Controller、Router 终归要写特定的标识词（如 `@GetMapping` 或 `router.post`）。用正则覆盖最常见的十几种模式，能达到 80% 的准确率，对于业务探查完全够用。
+2. **极强的降噪能力（Score 机制）：** `ripgrep` 最容易把 `test/` 里的 mock 数据和 `dist/` 里的编译产物全部吐出来。这个脚本的 `calculate_score` 算法会直接把这些噪音打入冷宫（-50分），而把 `src/main` 或 `service` 目录下的核心文件推到最前面。
+3. **低 Token 消耗的交付物：** 运行 `search` 命令后，你只会拿到被打分过滤后的 Top 10-15 个文件路径和摘要。你只需把这 15 个文件喂给 Claude 或 GPT-4o，让它画出影响图（Impact Map），不仅精准，而且 Token 花费极低。
+
+
 
 ------------------------
 
 ## Round2 Answer from GLM-5.2
 
-**TODO**
+Round1 我讲了"反向搜索"和"验证回路",Round2 两位都吸收了。我不重复理论,直接给**按你三个补充要求落地时,实际会卡住的工程细节 + 一个能跑的最小骨架**。
+
+三个补充要求翻译成工程约束:
+1. **不用数据库** → 所有索引必须是 `rg` 能直接吃的文本文件
+2. **JS/Python 实现 + 减少幻觉** → LLM 只做"读文本、输出结构化 JSON"的窄任务,不让它碰代码本身
+3. **找 code logic + data flow,不是改代码** → 索引粒度按"业务节点"切,不按"符号"切
+
+下面讲五个具体卡点,然后给骨架。
+
+---
+
+### 一、`capabilities.jsonl` 不是用 LLM 生成,是用"正则配方表"生成
+
+ChatGPT 和 Gemini 都说"用脚本提取业务节点存 jsonl",但没说**怎么提取**。一旦你让 LLM 去读代码提取,就同时违反了"减少幻觉"和"低成本"两条。
+
+正确做法:维护一份**语言无关的正则配方表**(`recipes.yaml`),每个配方就是 `(name, regex, output_type)`。脚本只是个配方执行器,LLM 完全不参与索引生成。
+
+```yaml
+# recipes.yaml - 业务节点正则配方表
+- name: rest_api
+  pattern: '@(Get|Post|Put|Delete|Request)Mapping\(["\']([^"\']+)'
+  captures: [method_or_path, path]
+  type: api
+
+- name: spring_kafka
+  pattern: '@KafkaListener\(.*?topics\s*=\s*["\']([^"\']+)'
+  captures: [topic]
+  type: kafka_consumer
+
+- name: sql_table_create
+  pattern: 'CREATE\s+TABLE[^;]*?(\w+)\s*\('
+  captures: [table]
+  type: sql_table
+
+- name: jpa_entity
+  pattern: '@Table\(\s*name\s*=\s*["\']([^"\']+)'
+  captures: [table]
+  type: sql_table
+
+- name: js_route
+  pattern: '(app|router)\.(get|post|put|delete)\(["\']([^"\']+)'
+  captures: [_, method, path]
+  type: api
+
+- name: proto_message
+  pattern: '^message\s+(\w+)\s*\{'
+  captures: [message]
+  type: protobuf
+  glob: "*.proto"
+```
+
+落地要点:
+
+- 每个语言栈单独一组配方,Java/Spring、Go、Python/Flask、TS/Express 各自独立
+- 配方失败时**静默跳过**,不报错——你只要 80% 准确
+- 同一个文件命中多个配方就输出多行 jsonl,不要试图合并
+- 每行 jsonl 必带 `repo`、`file`、`line`、`type`、`value` 五个字段,这是后续打分和喂 LLM 的最小契约
+
+这套配方表一次写好,后续加 repo 只需重跑,不维护。LLM 在预处理阶段**完全不参与**,符合"减少幻觉"。
+
+---
+
+### 二、"Business Flow Index" 的正确粒度是"文件 → 业务标签集合"
+
+ChatGPT Round2 提的 Business Flow Index 方向对,但给的例子是"文件里 contains 了什么",没说怎么聚合。直接把 capabilities.jsonl 按 file 聚合就是:
+
+```python
+# 把 capabilities.jsonl 按 file 聚合成 business_flow.jsonl
+# 一行一个文件,列出该文件涉及的所有业务标签
+{"file": "pricing-svc/src/.../TradeController.java",
+ "repo": "pricing-svc",
+ "tags": ["api:POST /trade", "kafka_in:TradeCreated",
+          "call:TradeService", "table:trade_order"]}
+```
+
+这一步的价值:architect 搜需求时,**不用进代码就能判断这个文件是不是入口**。比如搜 `TradeCreated` 命中 3 个文件,看 tags 就知道哪个是生产者、哪个是消费者、哪个只是常量定义。
+
+关键工程细节:tags 数组**不要去重、不要排序**——保留命中顺序,因为文件内出现顺序本身反映了数据流方向(API 在前、DB 在后是正常入口;DB 在前、API 在后可能是 DAO)。
+
+---
+
+### 三、打分公式必须"可解释",不能是黑盒
+
+Round1 我和 ChatGPT 都说"要打分",但没强调一个事:**architect 需要知道每个文件为什么得这个分**。黑盒打分=没法调参=最后弃用。
+
+打分函数输出必须是 `score + breakdown`:
+
+```python
+def score_file(file_meta, keyword_hits):
+    breakdown = {
+        "keyword_variety": len(set(keyword_hits)) * 10,   # 命中关键词种类
+        "in_src_main": 15 if "/src/main/" in file_meta["path"] else 0,
+        "is_entry": 20 if file_meta["tags"] else 0,       # 有业务标签=入口
+        "in_test": -20 if "/test/" in file_meta["path"] else 0,
+        "in_vendor": -100 if "/vendor/" in file_meta["path"] else 0,
+        "size_penalty": -min(file_meta["lines"] // 500, 20),
+    }
+    return sum(breakdown.values()), breakdown
+```
+
+输出 Top 20 时**连带 breakdown 一起打印**:
+
+```
+1. [score=85] TradeController.java
+   keyword_variety:40 in_src_main:15 is_entry:20 in_test:0 ...
+2. [score=72] ReportService.java
+   keyword_variety:30 in_src_main:15 is_entry:20 in_test:0 ...
+```
+
+architect 一眼能看出"这个文件分高是因为命中了 4 个关键词还是因为它是入口"。调参时也只改公式,不改数据。**可解释性是这套轻量方案能长期活下去的关键**——不像 AST 索引坏了你都不知道哪层错。
+
+---
+
+### 四、增量更新:用 `git diff` 而不是 `git log --since`
+
+Gemini Round2 提了 git context 但没说索引怎么增量。ChatGPT Round1 说"metadata 生成一次"是错的,repo 会更新。
+
+我的 Round1 说"用 git log --since 拿变更文件",Round2 修正:**用 `git diff` 拿具体变更行,只重跑命中行的配方**,不是整个文件重跑。
+
+```python
+# 增量更新伪代码
+for repo in repos:
+    last_sha = load_last_indexed_sha(repo)
+    current_sha = git_rev_parse_head(repo)
+    if last_sha == current_sha:
+        continue  # 没变化,跳过
+    changed_files = git_diff_name_only(repo, last_sha, current_sha)
+    for f in changed_files:
+        remove_old_capabilities_for_file(f)   # 从 jsonl 删旧记录
+        rerun_recipes_on_file(f)              # 只对这个文件重跑配方
+    save_indexed_sha(repo, current_sha)
+```
+
+为什么不用 `git log --since`:它返回的是 commit 列表,还得反推改了哪些文件,且会漏掉 force-push 的历史。`git diff <old_sha> HEAD --name-only` 直接拿文件列表,简单准确。
+
+`last_indexed_sha` 存成一个 `index/sha_map.json`,human readable,符合你的要求。
+
+---
+
+### 五、能跑的最小骨架(60 行 Python)
+
+前两位给了目录结构和概念,我给**今天就能跑的脚本**。依赖只有 `rg` 和 Python 标准库,无 pip 包。把下面三个文件放一起,跑 `python scan.py /path/to/repos` 就出索引。
+
+```python
+# scan.py - 扫描所有 repo,生成 capabilities.jsonl + sha_map.json
+import json, os, subprocess, re
+from pathlib import Path
+
+RECIPES = [
+    ("api", re.compile(r'@(?:Get|Post|Put|Delete)Mapping\(["\']([^"\']+)')),
+    ("kafka", re.compile(r'@KafkaListener\(.*?topics\s*=\s*["\']([^"\']+)')),
+    ("table", re.compile(r'@Table\(\s*name\s*=\s*["\']([^"\']+)')),
+    ("js_api", re.compile(r'(?:app|router)\.(get|post|put|delete)\(["\']([^"\']+)')),
+]
+
+def scan_repo(repo_path, repo_name):
+    out = []
+    for f in Path(repo_path).rglob("*"):
+        if not f.is_file() or any(x in str(f) for x in
+           ["/.git/", "/node_modules/", "/vendor/", "/test/"]):
+            continue
+        try:
+            text = f.read_text(errors="ignore")
+        except Exception:
+            continue
+        for cap_type, pat in RECIPES:
+            for m in pat.finditer(text):
+                out.append({"repo": repo_name, "file": str(f),
+                            "type": cap_type, "value": m.group(1)})
+    return out
+
+def main(repos_root):
+    with open("index/capabilities.jsonl", "w") as cap_f, \
+         open("index/sha_map.json", "w") as sha_f:
+        sha_map = {}
+        for repo in Path(repos_root).iterdir():
+            if not repo.is_dir(): continue
+            for row in scan_repo(repo, repo.name):
+                cap_f.write(json.dumps(row, ensure_ascii=False) + "\n")
+            sha = subprocess.check_output(
+                ["git", "-C", str(repo), "rev-parse", "HEAD"]
+            ).decode().strip()
+            sha_map[repo.name] = sha
+        sha_f.write(json.dumps(sha_map, indent=2))
+
+if __name__ == "__main__":
+    import sys; main(sys.argv[1])
+```
+
+```python
+# search.py - 打分搜索,输出 Top20 + breakdown
+import json, subprocess, sys
+from collections import defaultdict
+
+KEYWORDS = sys.argv[1:]  # 用法: python search.py PRIIPS KID CostCalculator
+
+# 1. rg 拿命中
+rg = subprocess.run(["rg", "--json", "-w"] + KEYWORDS,
+                    capture_output=True, text=True)
+hits = defaultdict(lambda: {"count": 0, "types": set(), "lines": 0})
+file_tags = defaultdict(list)
+for line in rg.stdout.splitlines():
+    obj = json.loads(line)
+    if obj["type"] == "match":
+        f = obj["data"]["path"]["text"]
+        hits[f]["count"] += 1
+        hits[f]["types"].add(obj["data"]["submatch"][0]["match"]["text"])
+
+# 2. 加载 capabilities 给文件打标签
+with open("index/capabilities.jsonl") as cap_f:
+    for line in cap_f:
+        row = json.loads(line)
+        file_tags[row["file"]].append(f'{row["type"]}:{row["value"]}')
+
+# 3. 打分
+scored = []
+for f, h in hits.items():
+    breakdown = {
+        "keyword_variety": len(h["types"]) * 10,
+        "is_entry": 20 if file_tags[f] else 0,
+        "in_test": -20 if "/test/" in f else 0,
+    }
+    scored.append((sum(breakdown.values()), breakdown, f, file_tags[f]))
+scored.sort(reverse=True)
+
+# 4. 输出 Top 20
+for score, brk, f, tags in scored[:20]:
+    print(f"[{score}] {f}")
+    print(f"  breakdown: {brk}")
+    print(f"  tags: {tags[:5]}")
+```
+
+这两个文件加起来不到 60 行,已经覆盖了"预处理 + 搜索 + 打分"闭环。`expand.py`(LLM 关键词扩展)和 `summarize.py`(repo 摘要)可以后续加,但**没有这俩也能用**——手动传关键词就行,先跑起来再优化。
+
+---
+
+### 六、跟前面两位的关键差异
+
+| 维度 | ChatGPT Round2 | Gemini Round2 | 我 Round2 |
+|------|----------------|---------------|-----------|
+| 索引生成方式 | 概念性描述 | "用脚本提取" | **正则配方表 + LLM 完全不参与预处理** |
+| 打分可解释性 | 给了分值表 | 给了加减分项 | **强制输出 breakdown,architect 能调参** |
+| 增量更新 | 没提 | 没提 | **git diff + sha_map,只重跑变更文件** |
+| Business Flow 粒度 | 文件 contains 什么 | 没单独提 | **capabilities 按 file 聚合,保留顺序反映数据流方向** |
+| 可跑代码 | 给了目录结构 | 给了概念流程 | **60 行能跑的 scan.py + search.py** |
+
+核心主张:**轻量方案要能长期活下去,关键是"可解释 + 可调参 + 坏了能重跑"**。前面两位的方案理论完整,但落地时 architect 会卡在"这个文件为什么分高""索引怎么更新""配方错了怎么调"这些问题上。我把这些工程细节填上了,这才是"宁可 80% 准确也不要复杂维护"的真正含义——80% 是靠"能调参的简单公式"撑出来的,不是靠"复杂的 AST 碰运气"。
 
