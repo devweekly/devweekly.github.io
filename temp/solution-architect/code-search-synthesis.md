@@ -863,3 +863,214 @@ def _find_repo_root(file_path: str) -> Path:
 7. **采用本报告第 9 节的分阶段演进路径**(避免一次到位的工程灾难)
 
 **一句话总结**:四家合起来给了一套完整的"漏斗式代码搜索"理论,但都缺了"LLM 调用可靠性"和"端到端可跑闭环"两块。本报告补全这两块,并给出明确的 trade-off 边界和演进路径。系统的价值不在"建得多复杂",而在"什么时候可以停止投入"。
+
+---
+
+# Round 3: 两个补充需求的落地设计
+
+> 补充需求 3:**尽量减少人的输入和调整**,用户没时间调参,但可能给简单额外 prompt
+> 补充需求 4:**适当使用 lite 模型**(haiku/gpt-4o-mini)做 evaluation / LLM as judge,增加判断灵活性
+
+Round 1-2 的设计假设用户愿意手动传 `--keywords`、`--repos`、`--repos-root`,并维护打分权重。实际工程中 architect 没这个时间。Round 3 聚焦"零参数 + 分层 LLM"。
+
+---
+
+## 11. 补充需求 3: 减少人工输入
+
+### 11.1 问题:Round 2 的五种人工负担
+
+| 负担 | Round 2 做法 | 用户痛点 |
+|------|-------------|---------|
+| 每次搜索传 repos_root | `--repos-root /path/to/repos` | 路径长,记不住 |
+| 手动调打分权重 | 看 raw score 判断"多少分算高" | 不同需求分数分布不同,无基准 |
+| --no-llm 模式手传关键词 | `--keywords A B C` | 用户不知道该传什么 |
+| 不知道哪些配方有效 | 盲目维护 recipes.yaml | 加了一堆零命中配方 |
+| 无 hint 机制 | 需求文本要写很长 | 想给简单方向提示,没有入口 |
+
+### 11.2 设计:五个自动化改造
+
+**改造 1: config.json 自动存取 repos_root**
+
+scan.py 在 `update_index()` 时把 `repos_root` 写入 `index/config.json`。search.py 的 `search_and_rank()` 自动读 config.json,用户不再需要传 `--repos-root`。
+
+```python
+# scan.py
+def _save_config(index_dir, repos_root):
+    config = {"repos_root": str(repos_root), "indexed_at": ...}
+    json.dump(config, open(index_dir / "config.json", "w"))
+
+# search.py
+def search_and_rank(..., repos_root=None):
+    if repos_root is None:
+        config = load_config(index_dir)
+        repos_root = Path(config["repos_root"])
+```
+
+**改造 2: 打分 min-max 归一化**
+
+raw score 跟关键词数量、文件大小强相关,不同需求之间不可比。归一化到 0-100 后,Top 文件总是 100,architect 不需要判断"多少分算高"。
+
+```python
+# search.py - 归一化(在排序前)
+raw_scores = [s.score for s in scored]
+min_s, max_s = min(raw_scores), max(raw_scores)
+if max_s > min_s:
+    for s in scored:
+        s.score = int(100 * (s.score - min_s) / (max_s - min_s))
+```
+
+**改造 3: --no-llm 模式自动提取关键词**
+
+用正则分词 + 骆驼式拆分 + 中文二字提取 + 通配符,从需求文本自动提取关键词。不需要 LLM,也不需要用户手传。
+
+```python
+def _auto_extract_keywords(text: str) -> list[str]:
+    en_words = re.findall(r'[A-Za-z][A-Za-z0-9_]+', text)
+    # 骆驼式拆分: PdfExporter -> Pdf, Exporter, PdfExporter
+    cn_words = re.findall(r'[\u4e00-\u9fa5]{2,4}', text)
+    # 加通配符版本
+    naming = [f"{w[:4]}*" for w in en_words if len(w) > 4]
+    return _dedup(en_words + cn_words + naming)
+```
+
+**改造 4: 配方命中率报告**
+
+index 命令跑完后,自动统计每个配方的命中数,输出报告 + 零命中配方列表。architect 一眼看出哪些配方该删。
+
+```
+============================================================
+配方命中率报告 (50 个 repo)
+============================================================
+  spring_rest_api                     245 命中
+  spring_kafka_consumer                12 命中
+  nestjs_route                          0 命中 ← 零命中,可删
+```
+
+**改造 5: --hint 参数注入三处**
+
+用户可以传简单提示(`--hint "重点关注 Kafka 消费者"`),hint 注入到:
+1. 关键词扩展 prompt(让 LLM 优先考虑 hint 方向)
+2. 打分公式(hint 里的词在文件 tags 里命中,额外 +15 分/词)
+3. Impact Map prompt(让 LLM 重点分析 hint 指向的方面)
+
+### 11.3 改造后的使用方式
+
+```bash
+# Round 2 的用法(已废弃)
+python cli.py search --requirement "..." --keywords A B C --repos svc1 svc2 --repos-root /path/to/repos
+
+# Round 3 的用法
+python cli.py search "需求文本"
+python cli.py search "需求文本" --hint "重点关注 Kafka"
+python cli.py search "需求文本" --no-llm          # 零成本验证
+```
+
+---
+
+## 12. 补充需求 4: 分层 LLM (lite 模型做 judge)
+
+### 12.1 问题:Round 2 的全有或全无
+
+Round 2 只有两种模式:
+- 调 LLM:所有环节都用主模型(sonnet),成本高
+- --no-llm:完全不用 LLM,中文关键词提取效果差,无 judge
+
+实际需求是:**简单判断用 lite 模型(haiku,成本 1/10),复杂推理才用主模型**。
+
+### 12.2 设计:llm_lite_call + 两个 LLM as Judge 环节
+
+**新增 llm_lite_call()**
+
+跟 `llm_call()` 签名一致,但用 `LLM_LITE_MODEL` 环境变量(默认 `claude-haiku-4-5-20251001` 或 `gpt-4o-mini`)。共享同一套 schema 校验 + retry + fallback 逻辑。
+
+```python
+# llm_call.py
+def llm_lite_call(prompt, output_schema, max_retry=2) -> T:
+    """用 lite 模型做简单判断,成本约主模型 1/10"""
+    lite_model = os.getenv("LLM_LITE_MODEL", "claude-haiku-4-5-20251001")
+    # ... 同 llm_call 的 retry + schema 校验逻辑
+```
+
+**Phase 1.5: 文件相关性 judge(新增)**
+
+rg 打分只看关键词命中,不判断语义。`Report` 可能命中 ReportConfig(配置)、ReportGenerator(业务)、ReportTest(测试)。lite 模型看文件摘要(tags + hits),判断是否真的相关,过滤误命中。
+
+```python
+def _judge_and_filter(top_files, requirement, hint):
+    """用 lite 模型判断 Top 文件是否真的跟需求相关"""
+    file_summaries = [f"{sf.file}\n tags: {sf.tags[:5]}\n hits: {sf.hits[:3]}" for sf in top_files]
+    result = llm_lite_call(judge_prompt, JudgeResultSchema)
+    return [sf for sf in top_files if sf.file in relevant_files]
+```
+
+**Phase 3.5: unknowns judge(新增)**
+
+LLM 生成的 unknowns 里,有些是"搜一下就能回答"的(如"有没有其他 Kafka 消费者"),有些是"真的需要问人"的。lite 模型区分两类,把可自动解决的标记 `who_to_ask = "可自动解决(建议搜: TradeCreated)"`。
+
+### 12.3 更新后的 8 阶段流水线
+
+```mermaid
+flowchart TB
+    subgraph "Phase 1: 搜索准备 (lite 模型)"
+        A[需求文本] --> B[关键词扩展<br/>llm_lite_call]
+        B --> C[Repo 筛选<br/>llm_lite_call]
+        C --> D[rg 搜索 + 打分<br/>归一化 0-100]
+    end
+
+    subgraph "Phase 1.5: 文件 Judge (lite 模型, 新增)"
+        D --> E[文件相关性 judge<br/>过滤误命中]
+    end
+
+    subgraph "Phase 2: 线索追踪 (lite 模型)"
+        E --> F[提取出口线索]
+        F --> G{需要继续搜?}
+        G -->|是| D
+        G -->|否| H
+    end
+
+    subgraph "Phase 3: 综合 (主模型)"
+        H[Context 拼装] --> I[Impact Map 生成<br/>llm_call 主模型]
+        I --> J[verify.py 验证]
+    end
+
+    subgraph "Phase 3.5: Unknowns Judge (lite 模型, 新增)"
+        J --> K[判断 unknowns<br/>哪些可自动解决]
+        K --> L[最终交付]
+    end
+```
+
+### 12.4 三种运行模式
+
+| 模式 | 命令 | LLM 调用 | 适用场景 |
+|------|------|---------|---------|
+| **默认(分层)** | `search "需求"` | lite 做简单判断 + 主模型做 Impact Map | 日常使用,质量优先 |
+| **lite** | `search "需求" --lite` | 全程 lite 模型 | 快速验证,成本优先 |
+| **no-llm** | `search "需求" --no-llm` | 完全不用 LLM | 验证索引质量,零成本 |
+
+### 12.5 成本对比
+
+以 50 个 repo 的典型搜索为例:
+
+| 环节 | Round 2 (全主模型) | Round 3 (分层) | Round 3 (--lite) |
+|------|-------------------|---------------|-------------------|
+| 关键词扩展 | $0.02 | $0.002 (lite) | $0.002 (lite) |
+| Repo 筛选 | $0.05 | $0.005 (lite) | $0.005 (lite) |
+| 文件 judge | 无 | $0.008 (lite) | $0.008 (lite) |
+| 线索筛选 | $0.04 | $0.004 (lite) | $0.004 (lite) |
+| Impact Map | $0.15 | $0.15 (主) | $0.015 (lite) |
+| unknowns judge | 无 | $0.003 (lite) | $0.003 (lite) |
+| **总计** | **$0.26** | **$0.17** | **$0.04** |
+
+Round 3 分层模式比 Round 2 省 35%,同时新增两个 judge 环节提升质量。`--lite` 模式省 85%,适合快速验证。
+
+---
+
+## 13. Round 3 更新后的最终推荐
+
+在 Round 2 的 7 条推荐基础上,追加 3 条:
+
+8. **采用 Round 3 的零参数搜索**(config.json 自动存取 + 归一化 + auto_extract_keywords),用户只需要 `python cli.py search "需求"`
+9. **采用 Round 3 的分层 LLM**(llm_lite_call + Phase 1.5/3.5 judge),简单判断用 lite 模型,复杂推理留给主模型
+10. **采用 Round 3 的 --hint 机制**,让用户用一句话给方向提示,注入到关键词扩展 + 打分 + Impact Map 三处
+
+**Round 3 一句话总结**:Round 2 解决了"能不能跑",Round 3 解决了"愿不愿意用"。零参数搜索降低使用门槛,分层 LLM 在控制成本的同时增加 judge 环节提升质量。系统的终极目标不是"功能多",而是"architect 每天愿意打开它"。
