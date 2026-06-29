@@ -1,0 +1,168 @@
+# recipes.yaml - 业务节点正则配方表(单一可信源)
+# 版本化存 git,变更触发全量重建
+# 注意: pattern 中的单引号字符用 \x27 表示,避免 YAML 单引号字符串冲突
+version: "1.2"
+
+recipes:
+  # === Java / Spring ===
+  - name: spring_rest_api
+    pattern: '@(?:Get|Post|Put|Delete|Request)Mapping\(["\x27]([^"\x27]+)'
+    type: api
+    flow: in
+    lang: [java]
+
+  - name: spring_kafka_consumer
+    pattern: '@KafkaListener\(.*?topics\s*=\s*["\x27]([^"\x27]+)'
+    type: kafka_consumer
+    flow: in
+    lang: [java]
+
+  - name: spring_kafka_producer
+    pattern: '(?:kafkaTemplate|KafkaProducer)\.send\(["\x27]([^"\x27]+)'
+    type: kafka_producer
+    flow: out
+    lang: [java]
+
+  - name: jpa_table
+    pattern: '@Table\(\s*name\s*=\s*["\x27]([^"\x27]+)'
+    type: db_table
+    flow: bidirectional
+    lang: [java]
+
+  - name: spring_feign_client
+    pattern: '@FeignClient\(.*?name\s*=\s*["\x27]([^"\x27]+)'
+    type: downstream_service
+    flow: out
+    lang: [java]
+
+  - name: spring_service
+    pattern: '@Service\s*\n\s*(?:public\s+)?class\s+(\w+)'
+    type: service_class
+    flow: bidirectional
+    lang: [java]
+
+  - name: spring_controller_class
+    pattern: '@(?:Rest)?Controller\s*\n\s*(?:public\s+)?class\s+(\w+)'
+    type: controller_class
+    flow: in
+    lang: [java]
+
+  # === SQL ===
+  - name: sql_create_table
+    pattern: 'CREATE\s+TABLE[^;]*?(\w+)\s*\('
+    type: db_table
+    flow: bidirectional
+    lang: [sql]
+    glob: "*.sql"
+
+  - name: sql_select_from
+    pattern: 'FROM\s+(\w+)'
+    type: db_read
+    flow: in
+    lang: [sql]
+    glob: "*.sql"
+
+  - name: sql_insert_into
+    pattern: 'INSERT\s+INTO\s+(\w+)'
+    type: db_write
+    flow: out
+    lang: [sql]
+    glob: "*.sql"
+
+  # === JavaScript / TypeScript / Node.js ===
+  - name: express_route
+    pattern: '(?:app|router)\.(get|post|put|delete)\(["\x27]([^"\x27]+)'
+    type: api
+    flow: in
+    lang: [javascript, typescript]
+
+  - name: nestjs_controller
+    pattern: '@Controller\(["\x27]([^"\x27]+)'
+    type: api_prefix
+    flow: in
+    lang: [typescript]
+
+  - name: nestjs_route
+    pattern: '@(Get|Post|Put|Delete)\(["\x27]([^"\x27]+)'
+    type: api
+    flow: in
+    lang: [typescript]
+    combine_with: parent_controller
+
+  - name: js_kafka_producer
+    pattern: '(?:producer|kafka)\.send\(["\x27]([^"\x27]+)'
+    type: kafka_producer
+    flow: out
+    lang: [javascript, typescript]
+
+  - name: js_require_import
+    pattern: '(?:require|from)\s*\(?\s*["\x27]([^"\x27]+)["\x27]'
+    type: import
+    flow: bidirectional
+    lang: [javascript, typescript]
+
+  # === Go ===
+  - name: go_http_handler
+    pattern: 'http\.HandleFunc\(["\x27]([^"\x27]+)'
+    type: api
+    flow: in
+    lang: [go]
+
+  - name: go_func
+    pattern: '^func\s+(?:\(\w+\s+\*?\w+\)\s+)?(\w+)\s*\('
+    type: function
+    flow: bidirectional
+    lang: [go]
+
+  - name: go_struct
+    pattern: '^type\s+(\w+)\s+struct\s*\{'
+    type: struct
+    flow: bidirectional
+    lang: [go]
+
+  # === Protobuf / GraphQL ===
+  - name: proto_message
+    pattern: '^message\s+(\w+)\s*\{'
+    type: proto_message
+    flow: bidirectional
+    lang: [protobuf]
+    glob: "*.proto"
+
+  - name: graphql_type
+    pattern: '^type\s+(\w+)\s*\{'
+    type: graphql_type
+    flow: bidirectional
+    lang: [graphql]
+    glob: "*.graphql"
+
+  # === Python ===
+  - name: python_flask_route
+    pattern: '@(?:app|bp)\.route\(["\x27]([^"\x27]+)'
+    type: api
+    flow: in
+    lang: [python]
+
+  - name: python_fastapi_route
+    pattern: '@(?:app|router)\.(get|post|put|delete)\(["\x27]([^"\x27]+)'
+    type: api
+    flow: in
+    lang: [python]
+
+  - name: python_class
+    pattern: '^class\s+(\w+)\s*[:\(]'
+    type: class
+    flow: bidirectional
+    lang: [python]
+
+  # === 配置 / Feature Flag ===
+  - name: spring_value_config
+    pattern: '@Value\(["\x27]([^"\x27]+)'
+    type: config
+    flow: bidirectional
+    lang: [java]
+
+  - name: env_var_usage
+    pattern: '(?:os\.getenv|process\.env)\(["\x27]?([^"\x27)\s]+)'
+    type: config
+    flow: bidirectional
+    lang: [python, javascript, typescript]
