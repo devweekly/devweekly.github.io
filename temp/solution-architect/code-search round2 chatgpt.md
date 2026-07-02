@@ -2,11 +2,11 @@
 
 代码搜索策略，作为solution architect，我需要针对某个新需求（这个需求的业务背景我也不熟悉），可能需要搜索50多个甚至更多的内部github repo，我已经把这些repo clone到本地，但是代码搜索效率，包括token花费都不理想。给我设计一个搜索策略，做一些预处理，结合grep或者其它工具，做一下提效
 
-**补充要求**：
-
 1. 尽量减少额外工具或者数据库的依赖，类似于entity graph尽量存成human readable的json或者其它格式
 2. 如果可能，尽量使用JavaScript或者Python来完成任务，减少幻觉产生，规范输出
 3. 我的目的不是改代码，不是100%准确，而是尽量从代码库找到业务需求相关的code logic和data flow
+4. :**尽量减少人的输入和调整**,用户没时间调参,但可能给简单额外 prompt
+5. :**适当使用 lite 模型**(haiku/gpt-4o-mini)做 evaluation或者类似LLM as judge的任务,增加判断和分析的灵活性
 
 
 
