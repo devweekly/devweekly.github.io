@@ -3,7 +3,7 @@ author: W
 featured: false
 draft: false
 description: 著名公开的 AI/ML 课程资源汇总
-pubDatetime: 2026-07-05T02:02:03Z
+pubDatetime: 2026-07-04T02:02:03Z
 title: AI时代的大学课程
 tags:
   - ai
