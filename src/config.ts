@@ -4,7 +4,7 @@ export const SITE: Site = {
   website: "https://devweekly.github.io", // replace this with your deployed domain
   author: "SW",
   desc: "Developer Weekly 开发者周报，编程技术、架构设计、AI/LLM、产品思维与设计资源。开发周报, 编程周报, 技术周报, programming weekly",
-  title: "开发者周报 | Developer Weekly Newsletter",
+  title: "开发者周报 Developer Weekly",
   ogImage: "astropaper-og.jpg",
   lightAndDarkMode: false,
   postPerPage: 5,
