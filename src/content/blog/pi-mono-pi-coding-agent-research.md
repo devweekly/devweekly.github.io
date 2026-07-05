@@ -282,3 +282,21 @@ https://github.com/getpaseo/paseo
 https://github.com/MasuRii/pi-permission-system
 
 https://github.com/ifiokjr/oh-pi
+
+https://github.com/tintinweb/pi-gitnexus
+
+https://github.com/disler/pi-agent-observability
+
+https://github.com/jmfederico/pi-web
+
+https://github.com/BlackBeltTechnology/pi-agent-dashboard
+
+https://github.com/Gentleman-Programming/gentle-pi
+
+https://github.com/open-gsd/gsd-pi/
+
+https://github.com/cellinlab/how-pi-agent-works Pi Agent 原理与实现：从零到一实现一个 AI Agent
+
+https://github.com/agegr/pi-web
+
+https://github.com/czottmann/pi-automode
