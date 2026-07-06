@@ -3,7 +3,7 @@ author: W
 featured: false
 draft: false
 description: Pi-mono Pi Coding Agent 研究 - 探索 AI 编程助手的架构设计与实现
-pubDatetime: 2026-02-28T10:00:00Z
+pubDatetime: 2026-06-28T10:00:00Z
 title: pi-mono pi coding agent 研究
 tags:
   - AI
@@ -18,6 +18,8 @@ tags:
 ###
 
 https://github.com/earendil-works/pi
+
+https://pi.dev/packages
 
 [pi-mono-agent](https://github.com/saga/pi-mono-agent) **\***
 
