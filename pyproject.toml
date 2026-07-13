@@ -1,0 +1,9 @@
+[project]
+name = "devweekly-github-io"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "docling>=2.112.0",
+]
