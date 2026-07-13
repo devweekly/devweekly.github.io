@@ -1,0 +1,32 @@
+[
+  {
+    "index": 1,
+    "filename": "picture_1.jpg",
+    "path": "images/picture_1.jpg",
+    "format": "jpg",
+    "width": 904,
+    "height": 494,
+    "upscaled": true,
+    "page": 3
+  },
+  {
+    "index": 2,
+    "filename": "picture_2.jpg",
+    "path": "images/picture_2.jpg",
+    "format": "jpg",
+    "width": 1298,
+    "height": 1678,
+    "upscaled": true,
+    "page": 5
+  },
+  {
+    "index": 3,
+    "filename": "picture_3.jpg",
+    "path": "images/picture_3.jpg",
+    "format": "jpg",
+    "width": 1282,
+    "height": 1692,
+    "upscaled": true,
+    "page": 7
+  }
+]
