@@ -201,6 +201,7 @@ const { activeNav } = Astro.props;
 - **Language**: TypeScript 5.9.3 (strict mode)
 - **Styling**: Tailwind CSS 3.4.19
 - **Content**: Markdown with YAML frontmatter
+- **Python tooling**: Docling plus `httpx[socks]` for SOCKS-aware Hugging Face downloads
 
 ### Project Structure
 ```
@@ -374,6 +375,7 @@ When updating AGENTS.md:
 | 2026-04-20 | Updated Project Structure (content.config.ts location) and Content Schema (Astro v6 API: loader, id, render, ClientRouter) | @agents-maintainer |
 | 2026-04-20 | Updated Build Pipeline with Node.js 22 requirement in withastro/action | @agents-maintainer |
 | 2026-06-12 | Added Agent Discovery resources (api-catalog, skills index, content signals) | @agents-maintainer |
+| 2026-07-13 | Declared httpx[socks] for Docling proxy-compatible runtime support | @agents-maintainer |
 
 ### Example Usage
 
