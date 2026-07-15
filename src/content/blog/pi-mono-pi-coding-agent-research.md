@@ -265,7 +265,7 @@ Electron desktop shell for pi sessions.
 
 https://github.com/HazAT/pi-interactive-subagents
 
-https://github.com/injaneity/pi-computer-use
+https://github.com/injaneity/pi-computer-use Let Pi control your apps on MacOS & Windows
 
 https://github.com/xibbon/PiSwift
 
@@ -302,3 +302,5 @@ https://github.com/cellinlab/how-pi-agent-works Pi Agent 原理与实现：从�
 https://github.com/agegr/pi-web
 
 https://github.com/czottmann/pi-automode
+
+https://github.com/AgwaB/pi-workflow lets Pi run named, repeatable multi-step workflows: research, code review, spec conformance checks, impact review, and project-specific team routines.
