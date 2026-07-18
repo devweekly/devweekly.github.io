@@ -1,77 +1,116 @@
 ---
 name: "tidy-chatgpt-text"
-description: "整理 ChatGPT 生成的啰嗦 markdown 文本：合并碎片段落、去掉代码块多余空行、把引用块碎片改成行内文字。当用户要求整理/精简 ChatGPT 或其他 LLM 输出的 markdown 格式、去掉多余换行分段、且不修改文字内容时调用。"
+description: "LLM Markdown Normalizer：规范化 ChatGPT/Claude/Gemini 输出的 markdown，覆盖段落合并、ASCII 图转 Mermaid、列表/表格/引用修复、伪 Key-Value 转表格、去过度强调与模板化表达。当用户要求整理/精简 LLM 输出、去 AI 味、且不改技术内容时调用。"
 ---
 
-# 整理 ChatGPT 啰嗦文本
+# LLM Markdown Normalizer（LLM 输出规范化）
 
-ChatGPT 等 LLM 生成的 markdown 常出现"半句话单独成段""代码块内每步插空行""散词零碎换行"等啰嗦格式。本 skill 用于在不改动任何文字内容的前提下，把这些碎片整理成紧凑、连贯的 markdown。
+ChatGPT / Claude / Gemini 等模型生成的 markdown 普遍存在碎片化分段、滥用 blockquote、ASCII 伪流程图、过度强调、模板化表达等"AI 味"问题。本 skill 不只是整理换行，而是对 LLM 输出做**规范化（Normalization）**，产出紧凑、专业、可读的 markdown。
 
 ## 何时调用
 
-- 用户说"整理一下这个 markdown 格式""去掉没必要的换行分段""精简格式但不要改内容"
-- 文本来自 ChatGPT / Claude / 其他 LLM 输出，且呈现明显的碎片化分段
-- 用户明确要求"不要修改内容，只整理格式"
+- 用户说"整理一下这个 markdown""去掉没必要的换行分段""精简格式""去 AI 味"
+- 文本来自 LLM 输出，呈现明显的碎片化、过度强调、ASCII 图、模板化表达
+- 用户要求"不要改内容，只整理格式"（走格式整理层级）
+- 用户要求"清理一下这篇 LLM 生成的文章"（可走完整去 AI 味层级）
 
-## 红线原则（不可违反）
+## 两级红线原则
 
-1. **不修改任何文字内容**：字、词、标点保留原样。不增删字符，不替换同义词，不加逗号/句号
-2. **只整理格式**：合并碎片段落、去掉代码块内多余空行、把 blockquote 碎片改成行内文字
-3. **保留结构**：标题层级、表格、列表、代码块本身、合理的引用块（如并列示例引用）一律保留
+### Level 1：格式整理（默认，不改动文字）
 
-## 六种典型啰嗦模式及处理
+1. **不修改任何文字内容**：字、词、标点保留原样，不增删字符，不替换同义词
+2. **只整理格式**：合并碎片、清理空行、修复列表/表格、转换 ASCII 图、把 blockquote 碎片改行内
+3. **保留结构**：标题层级、表格、合理引用块、代码块围栏一律保留
 
-### 模式 1：半句引导 + 引用块 + 半句收尾
+### Level 2：去 AI 味（用户明确要求"去 AI 味""清理表达"时启用）
 
-**特征**：一个 blockquote 被半句引导语和半句收尾夹击，概念词被单独引用强调。
+在 Level 1 基础上，允许：
+4. 删除滥用 Emoji（🚀📌💡✨ 等技术文档无意义装饰）
+5. 合并/删除模板化引导语（"真正重要的是""值得注意的是""核心在于"）
+6. 删除重复 Heading（Heading 文字与紧随其后的正文首句重复时）
+7. 合并机械重复的过渡句
 
-**改前**：
+**判断**：用户说"整理格式"→ Level 1；用户说"去 AI 味""清理表达""规范化"→ Level 2。
+
+---
+
+## 六大分类规则
+
+### 一、段落规范化（合并碎片、清理空行、修复列表、修复编号）
+
+**P1. 空行爆炸**（★★★★★）
+
+多个连续空行压缩为单个空行；标题与正文间不留多余空行。
+
+改前：
 ```
-因为它最终输出的是
+第一句。
 
-> Research Report
 
-而不是 Search Result。
+
+第二句。
 ```
-
-**改后**：
+改后：
 ```
-因为它最终输出的是 Research Report 而不是 Search Result。
-```
+第一句。
 
-**判断**：单概念被半句夹击 → 合并成行内文字，去掉 blockquote。若是多个并列示例引用（如四个问句列表），保留 blockquote。
-
-### 模式 2：代码块内每步插空行
-
-**特征**：流程图/列表型代码块里，每个步骤之间插一个空行，导致竖排稀疏。
-
-**改前**：
-```
-Input
-    ↓
-
-Research Goal
-    ↓
-
-Hypothesis Planning
-```
-
-**改后**：
-```
-Input
-    ↓
-Research Goal
-    ↓
-Hypothesis Planning
+第二句。
 ```
 
-**判断**：去掉代码块内空行，保留换行。代码块本身（``` 围栏）保留。
+**P2. 标题后空一大片**（★★★★）
 
-### 模式 3：单字/单词成段
+改前：
+```
+## Architecture
 
-**特征**：连词、引导词、动词单独成段（如"叫""或者""包括：""形成""建立""而是"）。
 
-**改前**：
+
+下面开始正文
+```
+改后：
+```
+## Architecture
+
+下面开始正文
+```
+
+**P3. 一个句子拆五段**（★★★★★）
+
+改前：
+```
+我建议。
+
+不要。
+
+这样。
+
+做。
+```
+改后：
+```
+我建议。不要。这样。做。
+```
+
+**P4. 短句被空行拆碎**（★★★★★）
+
+改前：
+```
+它们其实都是同一个东西。
+
+所以 Agent 第一件事情不是搜索。
+
+而是 Entity Resolution。
+```
+改后：
+```
+它们其实都是同一个东西。所以 Agent 第一件事情不是搜索。而是 Entity Resolution。
+```
+
+**P5. 单字/单词成段**（★★★★★）
+
+连词、引导词、动词单独成段（"叫""或者""包括：""形成""建立""而是"）并入相邻段落。
+
+改前：
 ```
 不要叫 Search。叫
 
@@ -81,39 +120,14 @@ Hypothesis Planning
 
 > Domain Research Agent
 ```
-
-**改后**：
+改后：
 ```
 不要叫 Search。叫 Enterprise Research Agent 或者 Domain Research Agent。
 ```
 
-**判断**：把单字词并入相邻段落。若它连接的是引用块碎片，连同引用块一起合并成行内文字。
+**P6. 散词零碎换行**（★★★★★）
 
-### 模式 4：短句被空行拆碎
-
-**特征**：本应连贯的几句话被空行拆成多个独立段落。
-
-**改前**：
-```
-它们其实都是同一个东西。
-
-所以 Agent 第一件事情不是搜索。
-
-而是 Entity Resolution。
-```
-
-**改后**：
-```
-它们其实都是同一个东西。所以 Agent 第一件事情不是搜索。而是 Entity Resolution。
-```
-
-**判断**：合并为一段。保留原句号，不加新标点。
-
-### 模式 5：散词零碎换行
-
-**特征**：一串并列名词/术语每个单独成段。
-
-**改前**：
+改前：
 ```
 然后去外部：
 
@@ -122,35 +136,16 @@ ECB
 ESMA
 
 ISSB
-
-GRI
-
-SASB
-
-新闻
-
-GitHub
-
-Paper
-
-全部融合。
+```
+改后：
+```
+然后去外部：ECB、ESMA、ISSB
 ```
 
-**改后**：
+**P7. 成对零碎句**（★★★★★）
+
+改前：
 ```
-然后去外部：ECB、ESMA、ISSB、GRI、SASB、新闻、GitHub、Paper，全部融合。
-```
-
-**判断**：若是纯名词列举，合并为逗号分隔句；若每个词带说明（"X 找 Y"），用模式 6 处理。
-
-### 模式 6：成对零碎句
-
-**特征**：名词 + 动宾短语被空行拆成两行，形成"系统名\n\n动作对象"的碎片。
-
-**改前**：
-```
-Agent 会自动去：
-
 Confluence
 
 找 ESG Project
@@ -158,217 +153,366 @@ Confluence
 GitHub
 
 找 ESG Repository
-
-LeanIX
-
-找 ESG Capability
 ```
-
-**改后**：
+改后：
 ```
-Agent 会自动去：
-
 Confluence 找 ESG Project
 GitHub 找 ESG Repository
-LeanIX 找 ESG Capability
 ```
 
-**判断**：把"系统名"和"找 X"合并为一行，多对成对行组成紧凑列表。
+**P8. Bullet 爆炸**（★★★★★）
 
-### 模式 7：ASCII 图、伪流程图、伪关系图
+改前：
+```
+-
 
-**特征**：使用空格、缩进、箭头、Unicode 箭头、树形字符等拼凑流程图、关系图、实体图、树结构。这类 ASCII 图在 Markdown 中可读性较差，应转换为普通文字、Markdown 表格或 Mermaid 图。
+Confluence
 
-**改前**（属性树）
+-
 
-```text
-Entity
-    id
-    type
-    aliases
-    summary
+GitHub
+
+-
+
+Jira
+```
+改后：
+```
+- Confluence
+- GitHub
+- Jira
 ```
 
-**改后**（Markdown 表格）
+**P9. 编号列表碎裂**（★★★★）
 
-```markdown
-| Entity 属性 |
-|-------------|
-| id |
-| type |
-| aliases |
-| summary |
+改前：
+```
+1.
+
+First
+
+2.
+
+Second
+```
+改后：
+```
+1. First
+2. Second
 ```
 
-**改前**（关系图）
+**P10. 列表之间空行过多**（★★★★）
 
-```text
-Vendor
-    ↓ uses
+改前：
+```
+- A
 
-Application
+- B
 
-Application
-    ↓ implemented_by
-
-Repository
+- C
+```
+改后：
+```
+- A
+- B
+- C
 ```
 
-**改后**（Mermaid）
+### 二、Markdown 规范化（Heading、Table、Blockquote、Code Block、List）
 
-````markdown
-```mermaid
-graph LR
+**P11. 滥用 blockquote**（★★★★★）
 
-Vendor -->|uses| Application
-Application -->|implemented_by| Repository
+单概念被半句引导 + 半句收尾夹击的 blockquote → 合并成行内文字。
+
+改前：
 ```
-````
+最终输出的是
 
+> Research Report
 
-**改前**（流程）
+而不是
 
-```text
+> Search Result
+```
+改后：
+```
+最终输出的是 Research Report，而不是 Search Result。
+```
+
+真正的 blockquote 保留（引用原话、对话示例）：
+```
+> "Programs must be written for people to read."
+```
+
+**P12. 代码块内每步插空行**（★★★★）
+
+改前：
+```
+Input
+    ↓
+
+Research Goal
+    ↓
+
+Hypothesis Planning
+```
+改后（若保留代码块）：
+```
 Input
     ↓
 Research Goal
     ↓
-Evidence Collection
-    ↓
-Report
+Hypothesis Planning
+```
+注意：若属于 ASCII 流程图，按 P17 转 Mermaid。
+
+**P13. Markdown Table 前后垃圾空行**（★★★）
+
+表格前后多余空行压缩为单空行。
+
+**P14. 连续代码块合并**（★★★★）
+
+若多个连续同语言代码块实际属于同一文件，合并为一个代码块。
+
+改前：
+````
+```ts
+const a = 1;
 ```
 
-**改后**（Mermaid）
-
-````markdown
-```mermaid
-flowchart TD
-
-Input
-    --> Research Goal
-    --> Evidence Collection
-    --> Report
+```ts
+const b = 2;
+```
+````
+改后：
+````
+```ts
+const a = 1;
+const b = 2;
 ```
 ````
 
+**P15. Heading 套 Heading**（★★★★）
 
-**改前**（树）
+子 Heading 下只有一句话时，降级为正文，不要 Heading 炸裂。
 
-```text
-Research
+改前：
+```
+## Vendor
 
-    Vendor
+### Background
 
-        Product
+Background 内容
+```
+改后（若 Background 仅一句）：
+```
+## Vendor
 
-        Pricing
-
-    Technology
-
-        API
-
-        Security
+Background 内容
 ```
 
-**改后**（Mermaid）
+### 三、图形规范化（ASCII → Mermaid / Table / 自然语言）
 
-````markdown
-```mermaid
-mindmap
-  root((Research))
-    Vendor
-      Product
-      Pricing
-    Technology
-      API
-      Security
-```
-````
+**P16. ASCII 图、伪流程图、伪关系图**（★★★★★）
 
-#### 判断
+使用空格、缩进、箭头、Unicode 箭头、树形字符拼凑的图，转换为 Mermaid 或表格。
 
-发现下列 ASCII 图，应自动转换，而不是保留原样：
-
-| 原始形式 | 转换方式                    |
-| ---- | ----------------------- |
-| 属性树  | 普通文字或 Markdown 表格       |
-| 实体关系 | Mermaid graph           |
-| 流程   | Mermaid flowchart       |
-| 树结构  | Mermaid mindmap         |
+| 原始形式 | 转换方式 |
+|----|------|
+| 属性树 | 普通文字或 Markdown 表格 |
+| 实体关系 | Mermaid graph |
+| 流程 | Mermaid flowchart |
+| 树结构 | Mermaid mindmap |
 | 状态迁移 | Mermaid stateDiagram-v2 |
 | 时序交互 | Mermaid sequenceDiagram |
-| 架构关系 | Mermaid graph           |
+| 架构关系 | Mermaid graph |
 | 生命周期 | Mermaid stateDiagram-v2 |
 
-#### 自动识别特征
+**自动识别特征**（满足任意即视为 ASCII 图）：
+- 多行只有一个词/短语，通过缩进表达层级
+- 连续出现 `↓`、`↑`、`→`、`←`、`->`、`-->`、`=>`
+- 连续出现 `│`、`├──`、`└──`
+- 多列仅靠空格对齐形成关系
+- 连续多行只有节点名，没有完整句子
 
-满足以下任意情况，可认为属于 ASCII 图：
+**转换原则**：
+1. 说明性内容（属性、组成、包含）→ 普通文字或表格
+2. 图性内容（流程、关系、状态、时序）→ Mermaid
+3. Mermaid 无法准确表达 → 自然语言，不保留 ASCII 图
+4. 除非用户明确要求保留，否则禁止输出 ASCII 图
 
-* 多行只有一个词或短语，通过缩进表达层级
-* 连续出现 `↓`、`↑`、`→`、`←`
-* 连续出现 `->`、`-->`、`=>`
-* 连续出现 `│`、`├──`、`└──`
-* 多列仅依靠空格对齐形成关系
-* 连续多行只有节点名称，没有完整句子
-* 通过空行和缩进模拟流程图、关系图或树
+**P17. Mermaid 缺失**（★★★★★）
 
-#### 转换原则
+LLM 喜欢 `Planner ↓ Collector ↓ Writer` 竖排，直接生成 Mermaid：
 
-1. 如果内容本质是说明（属性、组成、包含关系），优先转换为普通文字或 Markdown 表格。
-2. 如果内容本质是图（流程、关系、状态、时序、架构），优先转换为 Mermaid。
-3. 若 Mermaid 无法准确表达，则改写为自然语言，不保留 ASCII 图。
-4. 除非用户明确要求保留原始 ASCII 图，否则禁止输出 ASCII 图。
+```mermaid
+flowchart TD
+    Planner --> Collector --> Writer
+```
 
-### 判断边界速查
+### 四、结构规范化（Key-Value、Definition、伪表格、伪流程图）
+
+**P18. 伪 Key-Value / Definition List 爆炸**（★★★★★）
+
+改前：
+```
+Vendor
+
+Riskconcile
+
+Product
+
+Reconciliation
+```
+改后：
+```
+| Key | Value |
+|-----|-------|
+| Vendor | Riskconcile |
+| Product | Reconciliation |
+```
+或行内：`Vendor：Riskconcile` `Product：Reconciliation`
+
+**P19. 伪表格**（★★★★★）
+
+靠空格对齐的伪表格转为真正的 Markdown Table。
+
+改前：
+```
+Vendor      Riskconcile
+Product     Recon
+Language    Java
+```
+改后：
+```
+| Vendor | Riskconcile |
+| Product | Recon |
+| Language | Java |
+```
+
+### 五、强调规范化（过度加粗、重复标题、重复引导语、Emoji）
+
+**P20. 过度强调**（★★★★★）
+
+改前：
+```
+**Enterprise Search**
+
+不是
+
+**Enterprise RAG**
+
+而是
+
+**Research Platform**
+```
+改后：
+```
+Enterprise Search 不是 Enterprise RAG，而是 Research Platform。
+```
+
+**P21. Emoji 滥用**（★★★★，Level 2）
+
+技术文档中的装饰性 Emoji（🚀📌💡✨🔥）全部删除。代码/配置中有语义的 Emoji 保留。
+
+**P22. 重复 Heading**（★★★★，Level 2）
+
+Heading 文字与紧随正文首句重复时，删除重复正文首句。
+
+改前：
+```
+## Summary
+
+Summary
+......
+```
+改后：
+```
+## Summary
+......
+```
+
+### 六、LLM 风格去除（模板化表达、机械过渡句）
+
+**P23. 无意义强调引导语**（★★★★★，Level 2）
+
+连续出现时合并或删除冗余引导语：
+- "真正重要的是："
+- "其实真正重要的是："
+- "核心在于："
+- "关键点在于："
+- "值得注意的是："
+- "需要强调的是："
+
+**处理**：保留首个作为引出，后续删除；或直接合并到正文句。
+
+**P24. 机械过渡句**（★★★★，Level 2）
+
+LLM 喜欢的过渡套话（"接下来我们来看""值得一提的是""不仅如此"等）连续出现时合并/删除，保留信息密度。
+
+---
+
+## 判断边界速查
 
 | 元素 | 保留 | 合并/整理 |
 |------|------|----------|
 | 并列示例引用块（多例） | ✓ | |
 | 单概念被半句夹击的引用块 | | ✓ 改行内 |
+| 真正的原话引用 | ✓ | |
 | 代码块围栏（```） | ✓ | |
-| 代码块内空行 | | ✓ 去掉 |
+| 代码块内空行 | | ✓ 去掉/转 Mermaid |
 | 标题层级（#/##/###） | ✓ | |
+| 单句子标题 | | ✓ 降级为正文 |
 | 表格 | ✓ | |
+| 伪表格（空格对齐） | | ✓ 转 Markdown Table |
 | 列表（- / *） | ✓ | |
-| 单字成段的连词/引导词 | | ✓ 并入相邻 |
-| 被空行拆碎的连贯短句 | | ✓ 合并一段 |
+| 列表项间多余空行 | | ✓ 去掉 |
+| 单字成段的连词 | | ✓ 并入相邻 |
+| 被空行拆碎的短句 | | ✓ 合并一段 |
 | 散词列举 | | ✓ 逗号分隔或列表 |
+| ASCII 图 / 伪流程图 | | ✓ 转 Mermaid/表格/自然语言 |
+| 伪 Key-Value | | ✓ 转表格或行内 |
+| 过度加粗碎片 | | ✓ 合并为正常句 |
+| 装饰性 Emoji | | ✓ 删除（Level 2） |
+| 模板化引导语 | | ✓ 合并/删除（Level 2） |
 | 文字内容、标点 | ✓ 原样 | |
-| ASCII 图 / 伪流程图 / 树形图 | | ✓ 转换为普通文字、Markdown 表格或 Mermaid |
-
 
 ## 操作流程
 
-1. **通读全文**，识别上述六种模式的出现位置
-2. **不要使用ASCII图**，ASCII表达的顺序图、树形图、关系图，自动识别并转换为普通文字、Markdown 表格或 Mermaid（模式 7）
+1. **判断层级**：用户要"格式整理"→ Level 1；要"去 AI 味"→ Level 2
+2. **通读全文**，按六大分类识别问题位置
 3. **按段落处理**，从前往后逐段整理：
-   - 引用块碎片 → 合并成行内（模式 1/3）
-   - 代码块内空行 → 去掉（模式 2）
-   - 短句碎片 → 合并段落（模式 4）
-   - 散词 → 逗号分隔或列表（模式 5/6）
-4. **保留所有结构元素**：标题、表格、列表、合理引用块、代码块围栏
-5. **校验**：整理后字数应与原文一致（可用 `wc -m` 对比），仅换行/空行/引用符号变化
-6. **不增删任何字符**：标点、文字、空格一律原样
+   - 段落：合并碎片、清理空行（P1-P10）
+   - Markdown：修 blockquote、列表、表格、Heading（P11-P15）
+   - 图形：ASCII 图转 Mermaid/表格（P16-P17）
+   - 结构：伪 Key-Value/伪表格转表格（P18-P19）
+   - 强调：合并过度加粗、删 Emoji、去重复 Heading（P20-P22，Level 2）
+   - 风格：合并/删模板化引导语（P23-P24，Level 2）
+4. **保留所有结构元素**：标题、表格、合理引用块、代码块围栏、合理列表
+5. **校验**：Level 1 用 diff 验证文字零修改；Level 2 检查信息未丢失
 
 ## 校验命令
 
-整理完成后，用以下命令验证未改动文字内容（只对比可见字符，忽略空白差异）：
+Level 1 整理后，验证文字内容零修改（忽略空白）：
 
 ```bash
-# 原文与整理后对比，去掉所有空白后应完全一致
 diff <(tr -d '[:space:]' < original.md) <(tr -d '[:space:]' < tidied.md)
 ```
 
-若无输出，说明文字内容零修改，只整理了格式。
+无输出 = 文字零修改，只整理了格式。
+
+Level 2 不适用此校验（允许删除 Emoji、模板化表达）。
 
 ## 反模式（不要做）
 
 - ❌ 把并列示例引用块合并成一句（破坏示例结构）
 - ❌ 删除代码块围栏（代码块必须保留）
-- ❌ 为了合并句子而添加逗号/连词（标点不增不减）
-- ❌ 修改任何文字、替换同义词、调整语序
-- ❌ 删除表格、列表、标题等结构性元素
+- ❌ 为了合并句子而添加逗号/连词（Level 1 标点不增不减）
+- ❌ 修改任何文字、替换同义词、调整语序（Level 1）
+- ❌ 删除表格、合理列表、标题等结构性元素
 - ❌ 把合理的段落拆分当成啰嗦合并掉（只整理明显碎片）
 - ❌ 保留仅依赖缩进、空格或箭头组成的 ASCII 图
-- ❌ 使用 Unicode 箭头（↓、↑、→ 等）模拟流程图或关系图
-- ❌ 将可以使用 Mermaid 表达的流程、关系、状态、树结构继续保留为 ASCII 图
+- ❌ 使用 Unicode 箭头（↓、↑、→）模拟流程图或关系图
+- ❌ 将可用 Mermaid 表达的流程/关系/状态/树保留为 ASCII 图
+- ❌ Level 1 时删除 Emoji 或模板化表达（需 Level 2 授权）
+- ❌ Level 2 时删除有信息量的内容（只删装饰和冗余）
