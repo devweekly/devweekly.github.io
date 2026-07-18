@@ -1,518 +1,191 @@
 ---
 name: "tidy-chatgpt-text"
-description: "LLM Markdown Normalizer：规范化 ChatGPT/Claude/Gemini 输出的 markdown，覆盖段落合并、ASCII 图转 Mermaid、列表/表格/引用修复、伪 Key-Value 转表格、去过度强调与模板化表达。当用户要求整理/精简 LLM 输出、去 AI 味、且不改技术内容时调用。"
+description: "LLM Markdown Normalizer：多阶段 Pipeline 规范化 ChatGPT/Claude/Gemini 输出。Parse→Whitespace→Paragraph→Markdown→Diagram→Structure→AIStyle→Validate。当用户要求整理/精简 LLM 输出、去 AI 味、且不改技术内容时调用。"
 ---
 
-# LLM Markdown Normalizer（LLM 输出规范化）
+# LLM Markdown Normalizer
 
-ChatGPT / Claude / Gemini 等模型生成的 markdown 普遍存在碎片化分段、滥用 blockquote、ASCII 伪流程图、过度强调、模板化表达等"AI 味"问题。本 skill 不只是整理换行，而是对 LLM 输出做**规范化（Normalization）**，产出紧凑、专业、可读的 markdown。
+把 LLM（ChatGPT/Claude/Gemini）输出的 markdown 规范化为紧凑、专业、可读的文档。
+
+**设计思路**：不是规则集合（P1/P2/...），而是多阶段 **Normalization Pipeline**，像 Prettier/clang-format 一样按 Pass 执行。规则按 Pass 组织，易于扩展——新增 Mermaid 图类型或新的 LLM 输出模式时，只需往对应 Pass 加规则。
 
 ## 何时调用
 
-- 用户说"整理一下这个 markdown""去掉没必要的换行分段""精简格式""去 AI 味"
-- 文本来自 LLM 输出，呈现明显的碎片化、过度强调、ASCII 图、模板化表达
-- 用户要求"不要改内容，只整理格式"（走格式整理层级）
-- 用户要求"清理一下这篇 LLM 生成的文章"（可走完整去 AI 味层级）
+- 用户说"整理 markdown""去掉换行分段""精简格式""去 AI 味""规范化"
+- 文本来自 LLM 输出，呈现碎片化、ASCII 图、过度强调、模板化表达
+- 用户要求"不改内容只整理格式"（Level 1）或"清理表达"（Level 2）
 
-## 两级红线原则
+## 两级模式
 
-### Level 1：格式整理（默认，不改动文字）
+- **Level 1 格式整理**（默认）：不改动文字，只整理格式 + 转换 ASCII 图
+- **Level 2 去 AI 味**（用户明确要求"去 AI 味/清理表达/规范化"）：可删 Emoji、模板化引导语、第一人称语气、口头禅
 
-1. **不修改任何文字内容**：字、词、标点保留原样，不增删字符，不替换同义词
-2. **只整理格式**：合并碎片、清理空行、修复列表/表格、转换 ASCII 图、把 blockquote 碎片改行内
-3. **保留结构**：标题层级、表格、合理引用块、代码块围栏一律保留
+## 三条核心原则
 
-### Level 2：去 AI 味（用户明确要求"去 AI 味""清理表达"时启用）
-
-在 Level 1 基础上，允许：
-4. 删除滥用 Emoji（🚀📌💡✨ 等技术文档无意义装饰）
-5. 合并/删除模板化引导语（"真正重要的是""值得注意的是""核心在于"）
-6. 删除重复 Heading（Heading 文字与紧随其后的正文首句重复时）
-7. 合并机械重复的过渡句
-
-**判断**：用户说"整理格式"→ Level 1；用户说"去 AI 味""清理表达""规范化"→ Level 2。
+1. **信息密度**：每一段表达一个完整观点。不拆碎（一句拆四段），不灌水（三个引导句配一句正文）。
+2. **语义完整性**：整理后仍保持自然语言可读。不允许出现拼错语义的合并（如"叫 Enterprise Search Research Agent"）。
+3. **输出目标**：符合 GitHub README / 技术文档规范——Paragraph ≤ 一个观点，Heading 不连续空，Diagram 用 Mermaid，Table 用 Markdown，Code Fence 完整，List 紧凑。
 
 ---
 
-## 六大分类规则
-
-### 一、段落规范化（合并碎片、清理空行、修复列表、修复编号）
-
-**P1. 空行爆炸**（★★★★★）
-
-多个连续空行压缩为单个空行；标题与正文间不留多余空行。
-
-改前：
-```
-第一句。
-
-
-
-第二句。
-```
-改后：
-```
-第一句。
-
-第二句。
-```
-
-**P2. 标题后空一大片**（★★★★）
-
-改前：
-```
-## Architecture
-
-
-
-下面开始正文
-```
-改后：
-```
-## Architecture
-
-下面开始正文
-```
-
-**P3. 一个句子拆五段**（★★★★★）
-
-改前：
-```
-我建议。
-
-不要。
-
-这样。
-
-做。
-```
-改后：
-```
-我建议。不要。这样。做。
-```
-
-**P4. 短句被空行拆碎**（★★★★★）
-
-改前：
-```
-它们其实都是同一个东西。
-
-所以 Agent 第一件事情不是搜索。
-
-而是 Entity Resolution。
-```
-改后：
-```
-它们其实都是同一个东西。所以 Agent 第一件事情不是搜索。而是 Entity Resolution。
-```
-
-**P5. 单字/单词成段**（★★★★★）
-
-连词、引导词、动词单独成段（"叫""或者""包括：""形成""建立""而是"）并入相邻段落。
-
-改前：
-```
-不要叫 Search。叫
-
-> Enterprise Research Agent
-
-或者
-
-> Domain Research Agent
-```
-改后：
-```
-不要叫 Search。叫 Enterprise Research Agent 或者 Domain Research Agent。
-```
-
-**P6. 散词零碎换行**（★★★★★）
-
-改前：
-```
-然后去外部：
-
-ECB
-
-ESMA
-
-ISSB
-```
-改后：
-```
-然后去外部：ECB、ESMA、ISSB
-```
-
-**P7. 成对零碎句**（★★★★★）
-
-改前：
-```
-Confluence
-
-找 ESG Project
-
-GitHub
-
-找 ESG Repository
-```
-改后：
-```
-Confluence 找 ESG Project
-GitHub 找 ESG Repository
-```
-
-**P8. Bullet 爆炸**（★★★★★）
-
-改前：
-```
--
-
-Confluence
-
--
-
-GitHub
-
--
-
-Jira
-```
-改后：
-```
-- Confluence
-- GitHub
-- Jira
-```
-
-**P9. 编号列表碎裂**（★★★★）
-
-改前：
-```
-1.
-
-First
-
-2.
-
-Second
-```
-改后：
-```
-1. First
-2. Second
-```
-
-**P10. 列表之间空行过多**（★★★★）
-
-改前：
-```
-- A
-
-- B
-
-- C
-```
-改后：
-```
-- A
-- B
-- C
-```
-
-### 二、Markdown 规范化（Heading、Table、Blockquote、Code Block、List）
-
-**P11. 滥用 blockquote**（★★★★★）
-
-单概念被半句引导 + 半句收尾夹击的 blockquote → 合并成行内文字。
-
-改前：
-```
-最终输出的是
-
-> Research Report
-
-而不是
-
-> Search Result
-```
-改后：
-```
-最终输出的是 Research Report，而不是 Search Result。
-```
-
-真正的 blockquote 保留（引用原话、对话示例）：
-```
-> "Programs must be written for people to read."
-```
-
-**P12. 代码块内每步插空行**（★★★★）
-
-改前：
-```
-Input
-    ↓
-
-Research Goal
-    ↓
-
-Hypothesis Planning
-```
-改后（若保留代码块）：
-```
-Input
-    ↓
-Research Goal
-    ↓
-Hypothesis Planning
-```
-注意：若属于 ASCII 流程图，按 P17 转 Mermaid。
-
-**P13. Markdown Table 前后垃圾空行**（★★★）
-
-表格前后多余空行压缩为单空行。
-
-**P14. 连续代码块合并**（★★★★）
-
-若多个连续同语言代码块实际属于同一文件，合并为一个代码块。
-
-改前：
-````
-```ts
-const a = 1;
-```
-
-```ts
-const b = 2;
-```
-````
-改后：
-````
-```ts
-const a = 1;
-const b = 2;
-```
-````
-
-**P15. Heading 套 Heading**（★★★★）
-
-子 Heading 下只有一句话时，降级为正文，不要 Heading 炸裂。
-
-改前：
-```
-## Vendor
-
-### Background
-
-Background 内容
-```
-改后（若 Background 仅一句）：
-```
-## Vendor
-
-Background 内容
-```
-
-### 三、图形规范化（ASCII → Mermaid / Table / 自然语言）
-
-**P16. ASCII 图、伪流程图、伪关系图**（★★★★★）
-
-使用空格、缩进、箭头、Unicode 箭头、树形字符拼凑的图，转换为 Mermaid 或表格。
-
-| 原始形式 | 转换方式 |
-|----|------|
-| 属性树 | 普通文字或 Markdown 表格 |
-| 实体关系 | Mermaid graph |
-| 流程 | Mermaid flowchart |
-| 树结构 | Mermaid mindmap |
-| 状态迁移 | Mermaid stateDiagram-v2 |
-| 时序交互 | Mermaid sequenceDiagram |
-| 架构关系 | Mermaid graph |
-| 生命周期 | Mermaid stateDiagram-v2 |
-
-**自动识别特征**（满足任意即视为 ASCII 图）：
-- 多行只有一个词/短语，通过缩进表达层级
-- 连续出现 `↓`、`↑`、`→`、`←`、`->`、`-->`、`=>`
-- 连续出现 `│`、`├──`、`└──`
-- 多列仅靠空格对齐形成关系
-- 连续多行只有节点名，没有完整句子
-
-**转换原则**：
-1. 说明性内容（属性、组成、包含）→ 普通文字或表格
-2. 图性内容（流程、关系、状态、时序）→ Mermaid
-3. Mermaid 无法准确表达 → 自然语言，不保留 ASCII 图
-4. 除非用户明确要求保留，否则禁止输出 ASCII 图
-
-**P17. Mermaid 缺失**（★★★★★）
-
-LLM 喜欢 `Planner ↓ Collector ↓ Writer` 竖排，直接生成 Mermaid：
+## Normalization Pipeline
 
 ```mermaid
 flowchart TD
-    Planner --> Collector --> Writer
+    Parse --> Whitespace
+    Whitespace --> Paragraph
+    Paragraph --> Markdown
+    Markdown --> Diagram
+    Diagram --> Structure
+    Structure --> AIStyle
+    AIStyle --> Validation
+    Validation --> Output
 ```
 
-### 四、结构规范化（Key-Value、Definition、伪表格、伪流程图）
+模型按 Pipeline 顺序工作，每个 Pass 只做一类事，不跨 Pass 混合处理。
 
-**P18. 伪 Key-Value / Definition List 爆炸**（★★★★★）
+### Pass 1: Parse（识别块类型）
 
-改前：
-```
-Vendor
+通读全文，给每个块打标签：`heading` / `paragraph` / `list` / `table` / `code` / `blockquote` / `ascii-diagram` / `pseudo-kv` / `pseudo-table`。
 
-Riskconcile
+**ASCII 图识别特征**（满足任意即标记为 `ascii-diagram`）：
+- 多行只有一个词/短语，通过缩进表达层级
+- 连续出现 `↓` `↑` `→` `←` `->` `-->` `=>` `│` `├──` `└──`
+- 多列仅靠空格对齐
+- 连续多行只有节点名，没有完整句子
 
-Product
+### Pass 2: Whitespace Normalize
 
-Reconciliation
-```
-改后：
-```
-| Key | Value |
-|-----|-------|
-| Vendor | Riskconcile |
-| Product | Reconciliation |
-```
-或行内：`Vendor：Riskconcile` `Product：Reconciliation`
+- 多个连续空行 → 压缩为单个空行
+- 标题与正文间多余空行 → 单空行
+- 表格/代码块前后垃圾空行 → 单空行
+- 行尾空白 → 去掉
 
-**P19. 伪表格**（★★★★★）
+### Pass 3: Paragraph Normalize
 
-靠空格对齐的伪表格转为真正的 Markdown Table。
+合并碎片段落，保证信息密度和语义完整性。
 
-改前：
-```
-Vendor      Riskconcile
-Product     Recon
-Language    Java
-```
-改后：
-```
-| Vendor | Riskconcile |
-| Product | Recon |
-| Language | Java |
-```
+- **句子拆五段** → 合并为一段
+- **短句被空行拆碎** → 合并；合并时允许**句号→逗号**调整以保持可读（如"…不是搜索，而是 Entity Resolution"），但不增删标点
+- **单字/单词成段**（连词/引导词"叫/或者/而是/包括/形成"）→ 并入相邻段落
+- **散词零碎换行** → 逗号分隔句或列表
+- **成对零碎句**（"系统名\n\n动作"）→ 合并为成对行或列表
+- **一句拆四段+引导句过多** → 合并为一段，保留首个引导语
 
-### 五、强调规范化（过度加粗、重复标题、重复引导语、Emoji）
+**语义完整性检查**：合并后通读，确认没有拼错语义的合并。若合并后读不通，保留原分段。
 
-**P20. 过度强调**（★★★★★）
+### Pass 4: Markdown Normalize
 
-改前：
-```
-**Enterprise Search**
+修复 markdown 结构问题。
 
-不是
+- **blockquote 滥用**：单概念被半句夹击的引用块 → 改行内文字；并列示例引用/原话引用 → 保留
+- **Bullet 爆炸**（`-\n\n项`）→ 紧凑列表 `- 项`
+- **编号列表碎裂**（`1.\n\nFirst`）→ `1. First`
+- **列表密度**：每项 <15 字 → 紧凑无空行；每项多内容 → 保留空行分隔
+- **代码块内空行** → 去掉（若属 ASCII 图，转 Pass 5）
+- **连续代码块**：同语言同文件 → 合并为一个代码块
+- **Code Fence 修复**：补全缺失的闭合围栏
+- **Heading 套 Heading**：子 Heading 下仅一句话 → 降级为正文
+- **连续 Heading 检测**：`## A` → `### B` → `#### C` → `##### D` → 一句话，自动降级，避免目录无意义
+- **Heading 合法性**：`#` 后无内容、跳级（`#` 直接到 `###`）→ 修复
 
-**Enterprise RAG**
+### Pass 5: Diagram Normalize
 
-而是
+ASCII 图转换为 Mermaid 或表格，**不保留 ASCII 图**（除非用户明确要求）。
 
-**Research Platform**
-```
-改后：
-```
-Enterprise Search 不是 Enterprise RAG，而是 Research Platform。
-```
+**转换原则**：
+1. 说明性内容（属性/组成/包含）→ 列表或 Markdown 表格
+2. 图性内容（流程/关系/状态/时序/架构）→ Mermaid
+3. Mermaid 无法表达 → 自然语言
 
-**P21. Emoji 滥用**（★★★★，Level 2）
+**Mermaid 类型按内容映射**（不写死，Mermaid 新增图类型时按需扩展）：
 
-技术文档中的装饰性 Emoji（🚀📌💡✨🔥）全部删除。代码/配置中有语义的 Emoji 保留。
+| 内容性质 | Mermaid 类型 |
+|---------|-------------|
+| 流程 | flowchart |
+| 关系 | graph |
+| 状态迁移/生命周期 | stateDiagram-v2 |
+| 时序交互 | sequenceDiagram |
+| 树/思维导图 | mindmap |
+| 类关系 | classDiagram |
+| 实体关系 | erDiagram |
+| 用户旅程 | journey |
+| 需求 | requirementDiagram |
+| 时间线 | timeline |
+| Git 流程 | gitGraph |
+| 象限 | quadrantChart |
 
-**P22. 重复 Heading**（★★★★，Level 2）
+**Mermaid 节点名转义**（关键，否则渲染错误）：
+- 节点名含空格/特殊字符 → 用引号包裹：`"Company Background"`
+- 或用下划线：`Company_Background`
+- 边标签用 `|...|`：`A -->|uses| B`
 
-Heading 文字与紧随正文首句重复时，删除重复正文首句。
+**转换时不得添加原文没有的文字**：表头/引导语只能用原文已有词汇。
 
-改前：
-```
-## Summary
+### Pass 6: Structure Normalize
 
-Summary
-......
-```
-改后：
-```
-## Summary
-......
-```
+修复伪结构。
 
-### 六、LLM 风格去除（模板化表达、机械过渡句）
+- **伪 Key-Value / Definition List**：
+  - 少于 5 行 → 行内 `Key：Value`
+  - 超过 5 行 → Markdown Table
+- **伪表格**（空格对齐）→ Markdown Table
+- **属性树** → 列表或表格
+- **重复 Heading**：Heading 文字与紧随正文首句重复 → 删重复正文（Level 2）
 
-**P23. 无意义强调引导语**（★★★★★，Level 2）
+### Pass 7: AI Style Normalize（Level 2）
 
-连续出现时合并或删除冗余引导语：
-- "真正重要的是："
-- "其实真正重要的是："
-- "核心在于："
-- "关键点在于："
-- "值得注意的是："
-- "需要强调的是："
+去除 AI 味，只删装饰和冗余，不删有信息量内容。
 
-**处理**：保留首个作为引出，后续删除；或直接合并到正文句。
+- **装饰性 Emoji**（🚀📌💡✨🔥）→ 删除；代码/配置中有语义的 Emoji 保留
+- **标题去第一人称**："我建议定位成 X" → "X 定位"；"我觉得最值得做的是 X" → "X"
+- **第一人称语气**："我建议/我觉得/我认为/我不会定位为" → 去除或改客观表述
+- **口头禅**："其实/当然/确实/总的来说/综上所述" → 删除
+- **模板化引导语**："真正重要的是/值得注意的是/核心在于/关键点在于/需要强调的是" → 连续出现时保留首个，其余删除
+- **机械过渡句**："接下来我们来看/值得一提的是/不仅如此" → 合并/删除
 
-**P24. 机械过渡句**（★★★★，Level 2）
+### Pass 8: Validation
 
-LLM 喜欢的过渡套话（"接下来我们来看""值得一提的是""不仅如此"等）连续出现时合并/删除，保留信息密度。
+- **Level 1 文字校验**（纯段落整理）：`diff` 去空白后对比，无输出 = 零修改
+- **图形转换校验**：原节点名全部保留在 Mermaid/表格中
+- **语义完整性校验**：通读整理后文本，确认无拼错语义的合并
+- **Markdown 合法性校验**：Heading 层级连续、Code Fence 配对、表格列数一致
 
 ---
 
-## 判断边界速查
+## 输出目标规范
 
-| 元素 | 保留 | 合并/整理 |
-|------|------|----------|
-| 并列示例引用块（多例） | ✓ | |
-| 单概念被半句夹击的引用块 | | ✓ 改行内 |
-| 真正的原话引用 | ✓ | |
-| 代码块围栏（```） | ✓ | |
-| 代码块内空行 | | ✓ 去掉/转 Mermaid |
-| 标题层级（#/##/###） | ✓ | |
-| 单句子标题 | | ✓ 降级为正文 |
-| 表格 | ✓ | |
-| 伪表格（空格对齐） | | ✓ 转 Markdown Table |
-| 列表（- / *） | ✓ | |
-| 列表项间多余空行 | | ✓ 去掉 |
-| 单字成段的连词 | | ✓ 并入相邻 |
-| 被空行拆碎的短句 | | ✓ 合并一段 |
-| 散词列举 | | ✓ 逗号分隔或列表 |
-| ASCII 图 / 伪流程图 | | ✓ 转 Mermaid/表格/自然语言 |
-| 伪 Key-Value | | ✓ 转表格或行内 |
-| 过度加粗碎片 | | ✓ 合并为正常句 |
-| 装饰性 Emoji | | ✓ 删除（Level 2） |
-| 模板化引导语 | | ✓ 合并/删除（Level 2） |
-| 文字内容、标点 | ✓ 原样 | |
+整理后输出应符合：
 
-## 操作流程
-
-1. **判断层级**：用户要"格式整理"→ Level 1；要"去 AI 味"→ Level 2
-2. **通读全文**，按六大分类识别问题位置
-3. **按段落处理**，从前往后逐段整理：
-   - 段落：合并碎片、清理空行（P1-P10）
-   - Markdown：修 blockquote、列表、表格、Heading（P11-P15）
-   - 图形：ASCII 图转 Mermaid/表格（P16-P17）
-   - 结构：伪 Key-Value/伪表格转表格（P18-P19）
-   - 强调：合并过度加粗、删 Emoji、去重复 Heading（P20-P22，Level 2）
-   - 风格：合并/删模板化引导语（P23-P24，Level 2）
-4. **保留所有结构元素**：标题、表格、合理引用块、代码块围栏、合理列表
-5. **校验**：Level 1 用 diff 验证文字零修改；Level 2 检查信息未丢失
+| 元素 | 规范 |
+|------|------|
+| Paragraph | ≤ 一个完整观点 |
+| Heading | 不连续空 Heading，层级连续 |
+| Diagram | Mermaid（节点名转义） |
+| Table | Markdown Table |
+| Code | Fence 完整配对 |
+| List | 紧凑（短项）/分空行（长项） |
+| 空行 | 单空行分隔，无爆炸 |
 
 ## 校验命令
 
-Level 1 整理后，验证文字内容零修改（忽略空白）：
+Level 1 纯段落整理后：
 
 ```bash
 diff <(tr -d '[:space:]' < original.md) <(tr -d '[:space:]' < tidied.md)
 ```
 
-无输出 = 文字零修改，只整理了格式。
+无输出 = 文字零修改。图形转换场景不适用此命令（Mermaid 语法字符是新增的），改用节点名保留校验。
 
-Level 2 不适用此校验（允许删除 Emoji、模板化表达）。
+## 反模式
 
-## 反模式（不要做）
-
-- ❌ 把并列示例引用块合并成一句（破坏示例结构）
-- ❌ 删除代码块围栏（代码块必须保留）
-- ❌ 为了合并句子而添加逗号/连词（Level 1 标点不增不减）
-- ❌ 修改任何文字、替换同义词、调整语序（Level 1）
-- ❌ 删除表格、合理列表、标题等结构性元素
-- ❌ 把合理的段落拆分当成啰嗦合并掉（只整理明显碎片）
-- ❌ 保留仅依赖缩进、空格或箭头组成的 ASCII 图
-- ❌ 使用 Unicode 箭头（↓、↑、→）模拟流程图或关系图
-- ❌ 将可用 Mermaid 表达的流程/关系/状态/树保留为 ASCII 图
-- ❌ Level 1 时删除 Emoji 或模板化表达（需 Level 2 授权）
-- ❌ Level 2 时删除有信息量的内容（只删装饰和冗余）
+- ❌ 把并列示例引用块合并成一句
+- ❌ 删除代码块围栏
+- ❌ 合并时拼错语义（"叫 Enterprise Search Research Agent"）
+- ❌ Mermaid 节点名含空格不加引号（渲染错误）
+- ❌ 转换时添加原文没有的文字
+- ❌ Level 1 时删除 Emoji/模板化表达（需 Level 2 授权）
+- ❌ Level 2 时删除有信息量内容
+- ❌ 保留 ASCII 图（除非用户明确要求）
+- ❌ 跨 Pass 混合处理（应按 Pipeline 顺序）
+- ❌ 继续堆规则编号而不归入对应 Pass
