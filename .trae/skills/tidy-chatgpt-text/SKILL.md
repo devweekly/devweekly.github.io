@@ -286,6 +286,17 @@ Summary:
     "issueTokens": 1850,
     "savings": "85%"
   },
+  "symbols": {
+    "headings": [
+      { "level": 2, "text": "系统架构", "line": 44 },
+      { "level": 2, "text": "数据流向", "line": 63 }
+    ],
+    "tables": [{ "line": 80, "rows": 5 }],
+    "codeBlocks": [{ "line": 12, "lang": "python" }],
+    "diagrams": [{ "line": 45, "type": "ascii-flow" }],
+    "entities": ["Planner", "Collector", "Analyzer"],
+    "mermaid": [{ "line": 70, "type": "flowchart" }]
+  },
   "issues": [
     {
       "id": "issue-001",
@@ -294,17 +305,18 @@ Summary:
       "severity": "medium",
       "confidence": 0.97,
       "action": "llm_required",
-      "location": {
-        "startLine": 45,
-        "endLine": 62
-      },
+      "location": { "startLine": 45, "endLine": 62 },
       "context": {
         "before": "## 系统架构\n",
         "chunk": "Planner\n  ↓\nCollector\n  ↓\nAnalyzer\n  ↓\nReporter",
         "after": "\n## 数据流向\n"
       },
       "sample": "Planner\n ↓\nCollector",
-      "suggestion": "Convert to mermaid flowchart"
+      "suggestion": "Convert to mermaid flowchart",
+      "evidence": {
+        "matched": ["连续 4 行包含 ↓ 箭头", "每行均为短词", "无标点符号"],
+        "why": "ASCII 箭头流程图无法渲染，且无法被 Symbol Table 索引为 diagram 实体"
+      }
     },
     {
       "id": "issue-002",
@@ -317,7 +329,11 @@ Summary:
       "context": {
         "chunk": "自动搜索\n\n企业内部\n\n所有资料\n\n和外部\n\n公开信息"
       },
-      "suggestion": "Merge fragmented sentences"
+      "suggestion": "Merge fragmented sentences",
+      "evidence": {
+        "matched": ["连续 5 个短段落", "每段小于 8 字符", "无句号"],
+        "why": "碎片化段落破坏信息密度，且无法被 Document IR 识别为完整 Section.Purpose"
+      }
     },
     {
       "id": "issue-003",
@@ -328,7 +344,11 @@ Summary:
       "action": "auto_fix",
       "location": { "startLine": 12, "endLine": 18 },
       "applied": true,
-      "detail": "Merged 2 adjacent unordered lists"
+      "detail": "Merged 2 adjacent unordered lists",
+      "evidence": {
+        "matched": ["两个相邻 list 节点", "同为 unordered", "中间仅隔空行"],
+        "why": "同类列表分离降低结构一致性"
+      }
     },
     {
       "id": "issue-004",
@@ -345,20 +365,28 @@ Summary:
           "nodes": ["Vendor", "Application", "Service", "Database"],
           "edges": [["Vendor", "Application"], ["Application", "Service"], ["Service", "Database"]]
         },
-        "mermaidPreview": "flowchart TD\n    N8024[Vendor]\n    N5520[Application]\n    N8024 --> N5520\n    ..."
+        "mermaidPreview": "flowchart TD\n    Vendor\n    Application\n    Vendor --> Application\n    ..."
       }
     }
   ],
-  "aiScore": {
-    "total": 0.29,
-    "breakdown": {
-      "phrase": 0.22,
-      "heading": 0,
-      "emoji": 0,
-      "fragmentation": 1
+  "quality": {
+    "overall": 0.29,
+    "radar": {
+      "readability": 0.78,
+      "fragmentation": 1.0,
+      "redundancy": 0.15,
+      "structure": 0.85,
+      "aiStyle": 0.22,
+      "consistency": 0.90,
+      "markdownQuality": 0.95,
+      "technicalWriting": 0.70
     },
-    "phraseCount": 1,
-    "sentenceCount": 15,
+    "metrics": {
+      "phraseCount": 1,
+      "sentenceCount": 15,
+      "firstPersonHeading": 0,
+      "emojiCount": 0
+    },
     "recommendCleanup": true
   },
   "validation": {
@@ -480,15 +508,17 @@ normalize.mjs 单文件架构（v2）：
   │   └── mermaid-validation   # mermaid 节点名转义检查
   ├── analyzers
   │   ├── ascii-score          # 多维打分（短行/箭头/树字符/无标点/缩进）
-  │   ├── ai-score             # 多维评分（phrase/heading/emoji/fragmentation）
-  │   └── diagram-ir           # 结构化 IR 提取（flow/tree）
+  │   ├── ai-score             # v2 多维 Quality Model（readability/fragmentation/redundancy/structure/aiStyle/consistency/markdownQuality/technicalWriting）
+  │   ├── diagram-ir           # 结构化 IR 提取（flow/tree）
+  │   └── symbol-table         # v2 Document Index 提取（headings/tables/codeBlocks/diagrams/mermaid/entities）
   ├── generators
   │   └── mermaid              # 从 Diagram IR 生成 mermaid 代码
   ├── validators
   │   ├── markdown             # markdown 合法性
   │   ├── mermaid              # mermaid 语法检测
   │   └── semantic             # L0 文字一致性校验
-  ├── issue-schema             # Issue JSON 输出
+  ├── explainability           # v2 Issue → Evidence 升级（deriveMatched/deriveWhy）
+  ├── issue-schema             # Issue JSON 输出（含 symbols/quality/evidence）
   └── cli                      # 命令行入口（check/report/fix）
 ```
 
@@ -499,8 +529,10 @@ normalize.mjs 单文件架构（v2）：
 3. **AST Mutation Layer**：所有 AST 修改经 `cloneNode/createNode/replaceNode/removeNode`，避免直接构造 node
 4. **ASCII 评分制**：多维打分（短行 0.3 + 箭头 0.3 + 树字符 0.2 + 无标点 0.2 + 缩进 0.1），避免 "价格下降 ↓ 20%" 误判
 5. **Diagram IR + Generator**：detector 提取结构化 IR `{type, nodes, edges}`，generator 生成 mermaid，可测试可自动
-6. **多维 AI Score**：phrase(0.4) + heading(0.25) + emoji(0.15) + fragmentation(0.2) 加权综合分
-7. **Profile rules 配置**：每个 profile 含 `allowEmoji/preferTable/aiCleanup/asciiDiagramAction` 等规则配置
+6. **v2 多维 Quality Model**：从单一 AI Score 扩展为 8 维 radar（readability/fragmentation/redundancy/structure/aiStyle/consistency/markdownQuality/technicalWriting）
+7. **v2 Symbol Table**：`extractSymbolTable` 提取 Document Index（headings/tables/codeBlocks/diagrams/mermaid/entities），Pass 通过 `ctx.symbols` 访问，无需遍历 AST
+8. **v2 Issue → Evidence**：每个 issue 自动带 `evidence.matched` + `evidence.why`（Explainability），支持企业 Audit 场景
+9. **Profile rules 配置**：每个 profile 含 `allowEmoji/preferTable/aiCleanup/asciiDiagramAction` 等规则配置
 
 **依赖**（package.json）：
 
@@ -560,3 +592,208 @@ diff <(tr -d '[:space:]' < original.md) <(tr -d '[:space:]' < tidied.md)
 - ❌ 删除代码块围栏
 - ❌ LLM 手动模拟 JS 已有的确定性规则（应调用 normalize.mjs）
 - ❌ 把全文送 LLM（应使用 chunk-based token optimization）
+
+---
+
+## Architecture Evolution (v2 Roadmap)
+
+当前版本是 **Compiler + Rule Engine + LLM Pass** 架构。v2 方向是从"Markdown Formatter"演进为"Document Compiler"：Markdown 只是输入格式，核心价值转向文档 IR、静态分析、质量评估、自动重构和语义保持转换。
+
+### 三个最高优先级方向
+
+| 优先级 | 方向 | 收益 |
+|--------|------|------|
+| ⭐⭐⭐⭐⭐ | **引入 Document IR + Symbol Table**，让 Pass 面向语义对象而不是直接遍历 mdast | 从"Markdown Formatter"演进为"文档编译器"，可扩展性最高 |
+| ⭐⭐⭐⭐⭐ | **将 Pass 改为 DAG，并把修改统一收敛到 Transformation Plan** | 消除 Rule 冲突，支持并行执行、增量执行和更复杂的优化 |
+| ⭐⭐⭐⭐☆ | **把 Issue 升级为 Evidence / Finding，并加入 Explainability** | 与企业 Agent、Research、Audit 场景统一，输出不仅是修复结果，还有可追溯的决策依据 |
+
+### 方向 1：Pass 从线性改为 DAG
+
+当前 Pipeline 是线性的 `Pass1 → Pass2 → Pass3`。但很多 Rule 有依赖关系，形成 DAG。
+
+```mermaid
+flowchart TD
+    AsciiDetection -->|produces| diagramIR
+    DiagramGenerator -->|consumes| diagramIR
+    MermaidValidator -->|consumes| mermaid
+```
+
+Pass 接口增加依赖声明：
+
+```ts
+interface Pass {
+    id: string;
+    dependsOn: string[];
+    produces: string[];
+    consumes: string[];
+}
+```
+
+整个 Pipeline 自动拓扑排序，新增 Pass 不需要修改 Pipeline。
+
+### 方向 2：Rule 不直接修改 AST，改为 Transformation Proposal
+
+当前 `Pass → AST Mutation` 直接改 AST。两个 Rule 可能修改同一节点（Heading Rule 修改、Fragment Rule 删除），没有 Resolution。
+
+建议变为：
+
+```mermaid
+flowchart TD
+    Pass --> Transformation_Proposal
+    Transformation_Proposal --> Planner
+    Planner --> Conflict_Resolver
+    Conflict_Resolver --> AST_Apply
+```
+
+Pass 输出 Edit Proposal（targetNode / operation / confidence / reason），最后统一 Merge，参考 Rust Compiler / Clang。极大提升可维护性。
+
+### 方向 3：Issue 升级为 Evidence
+
+当前 Issue 只是 `{rule, location, suggestion}`。实际上它已经是 Evidence：包含 Confidence、Location、Suggestion。
+
+升级后的处理链路：
+
+```mermaid
+flowchart TD
+    Evidence --> Hypothesis
+    Hypothesis --> Decision
+    Decision --> Transformation
+```
+
+LLM 看到的是 **Evidence Collection**，而不是 Issue Collection。这和 Enterprise Research Agent 统一。
+
+**Issue Schema 已扩展支持 Evidence 字段**（见下方 Issue Schema 的 `evidence` / `why` 字段）。
+
+### 方向 4：Rule Engine 支持 Explainability
+
+当前 `AI Score: 0.42` 没有解释。建议每个 Decision 可追溯：
+
+```mermaid
+flowchart TD
+    Evidence --> Rule
+    Rule --> Why
+    Why --> Confidence
+    Confidence --> Action
+```
+
+```json
+{
+  "rule": "Fragment",
+  "matched": ["连续三个 paragraph", "每段小于12字符", "没有句号"],
+  "confidence": 0.93
+}
+```
+
+以后可以回答：为什么改？为什么没改？为什么建议 LLM？企业特别喜欢 Explainability。
+
+### 方向 5：AST 增加 Symbol Table
+
+当前 Rule 每次都要遍历 AST。建议增加 Symbol Table：
+
+```mermaid
+flowchart TD
+    AST --> Document_Symbols
+```
+
+Symbol 类型：Heading、Table、Code、Diagram、Entity、Reference、Mermaid。
+
+形成 `Document Index` 后，Rule 不需要遍历 AST，直接：
+
+```ts
+ctx.symbols.headings
+ctx.symbols.tables
+ctx.symbols.codeBlocks
+```
+
+复杂度下降很多，大型文档收益非常明显。
+
+**normalize.mjs 已实现 Symbol Table 提取**（见 `extractSymbolTable`），当前 issues schema 的 `symbols` 字段输出文档索引。
+
+### 方向 6：AI Score 拆成多个 Quality Model
+
+当前单一 `AI Score: 0.38`。建议拆成多维 Quality Model：
+
+```ts
+quality = {
+  readability,
+  fragmentation,
+  redundancy,
+  structure,
+  aiStyle,
+  consistency,
+  markdownQuality,
+  technicalWriting,
+}
+```
+
+最终 `Radar → Overall`，不同 Profile（Technical Doc / Blog / RFC / Paper / Architecture）使用不同权重。
+
+**normalize.mjs 已将 AI Score 扩展为多维 Quality Model**（见 Issue Schema 的 `quality` 字段）。
+
+### 方向 7：引入 Document IR
+
+当前 `Markdown → AST → Rule`。建议引入 Document IR：
+
+```mermaid
+flowchart TD
+    Markdown --> AST
+    AST --> Document_IR
+    Document_IR --> Pass
+    Pass --> Markdown
+```
+
+Document IR 不是 mdast，而是语义对象：Heading、Paragraph、Definition、Warning、Diagram、Code、Entity、Reference、Section。
+
+甚至 Section 可分解为：
+
+```mermaid
+flowchart TD
+    Section --> Purpose
+    Purpose --> Evidence
+    Evidence --> Conclusion
+```
+
+以后 LLM 根本不用看 Markdown，直接消费 IR。
+
+### 方向 8：Pass 支持增量执行（Incremental）
+
+当前每次 `Parse → 全部 Pass`。建议增量执行：
+
+```mermaid
+flowchart TD
+    Document_Hash --> Changed_Region
+    Changed_Region --> Affected_Pass
+    Affected_Pass --> Incremental
+```
+
+例如只修改 `20~30 行`，那么 Whitespace、Fragment、AI Phrase 即可，Diagram Pass 根本不用重新跑。
+
+### 方向 9：Profile 升级为 Policy
+
+当前 Profile 只是预设名（technical-doc / blog / rfc / architecture）。建议升级为声明式 Policy：
+
+```yaml
+policy:
+  objective:
+    readability
+  allowSemanticRewrite:
+    true
+  allowHeadingMerge:
+    false
+  diagram:
+    ascii:
+      convert
+    mermaid:
+      validate
+  quality:
+    fragmentation:
+      warning
+    aiStyle:
+      error
+```
+
+以后企业可以直接写自己的规范。
+
+### v2 定位
+
+从代码和 Skill 的复杂度来看，项目定位已经接近 **Document Compiler**：Markdown 只是输入格式，核心价值是文档的 IR、静态分析、质量评估、自动重构和语义保持转换。这个定位更容易扩展到 AsciiDoc、reStructuredText、HTML、Confluence 等其他文档格式。

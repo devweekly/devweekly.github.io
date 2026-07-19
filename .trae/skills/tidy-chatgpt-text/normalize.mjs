@@ -197,7 +197,35 @@ function getContextChunk(fullLines, startLine, endLine, beforeLines = 2, afterLi
 //    - applied(change): 记录已应用的修复
 //    - canAuto: 是否允许自动修复
 //    - mutate: AST mutation 工具集
+//    - symbols: v2 Symbol Table（Document Index）
 // ============================================================
+
+// v2: Explainability — 自动推导 issue 的 matched 和 why
+function deriveMatched(issue) {
+  const sample = issue.sample || '';
+  const rule = issue.rule || '';
+  if (rule.includes('ascii') || rule.includes('diagram')) {
+    return ['包含箭头/树字符的 ASCII 图', '无法被 Markdown 渲染器渲染'];
+  }
+  if (rule.includes('phrase')) return [`检测到 AI 口头禅: "${sample}"`];
+  if (rule.includes('first-person')) return [`标题含第一人称: "${sample}"`];
+  if (rule.includes('fragment')) return ['连续短段落', '每段小于 20 字符', '破坏信息密度'];
+  if (rule.includes('mermaid')) return ['Mermaid 节点名含空格未转义'];
+  if (rule.includes('lang')) return ['代码块缺少语言标识'];
+  return [rule];
+}
+
+function deriveWhy(issue) {
+  const rule = issue.rule || '';
+  const suggestion = issue.suggestion || '';
+  if (suggestion) return suggestion;
+  if (rule.includes('ascii')) return 'ASCII 图无法渲染，应转为 Mermaid 或表格';
+  if (rule.includes('phrase')) return 'AI 口头禅降低专业性，应删除';
+  if (rule.includes('first-person')) return '第一人称语气不符合技术文档规范';
+  if (rule.includes('fragment')) return '碎片化段落无法被 Document IR 识别为完整 Section';
+  if (rule.includes('mermaid')) return '节点名未转义会导致 Mermaid 渲染错误';
+  return '';
+}
 
 class RuleContext {
   constructor({ tree, fullLines, profile, profileName, level, mode }) {
@@ -228,10 +256,18 @@ class RuleContext {
     return unistVisit(this.tree, test, fn);
   }
 
+  // v2: Issue 升级为 Evidence
+  // 每个 issue 自动带 explainability（matched + why），调用方可传入自定义 evidence 覆盖
   report(issue) {
+    // 自动生成基础 evidence（如果调用方未提供）
+    const autoEvidence = issue.evidence || {
+      matched: deriveMatched(issue),
+      why: deriveWhy(issue),
+    };
     const fullIssue = {
       id: `issue-${String(this.issueCounter++).padStart(3, '0')}`,
       ...issue,
+      evidence: autoEvidence,
       applied: issue.applied ?? false,
     };
     this.issues.push(fullIssue);
@@ -860,6 +896,8 @@ function nodeId(name) {
 // ============================================================
 
 function computeAiScore(tree, _profile) {
+  // v2: 多维 Quality Model
+  // 从单一 AI Score 扩展为 readability/fragmentation/redundancy/structure/aiStyle/consistency/markdownQuality/technicalWriting
   const breakdown = {};
 
   // 1. Phrase density
@@ -883,8 +921,10 @@ function computeAiScore(tree, _profile) {
   // 2. Heading pattern（第一人称在 heading 中）
   let headingCount = 0;
   let firstPersonHeading = 0;
+  const headingLevels = [];
   unistVisit(tree, 'heading', (node) => {
     headingCount++;
+    headingLevels.push(node.depth || 0);
     const text = collectText(node);
     for (const phrase of AI_FIRST_PERSON) {
       if (text.includes(phrase)) {
@@ -901,27 +941,78 @@ function computeAiScore(tree, _profile) {
   breakdown.emoji = fullText.length > 0 ? Math.min(1, emojiCount / (fullText.length / 500)) : 0;
 
   // 4. Fragmentation（短段落比例）
-  // 阈值 20 字，且需要连续 >= 2 个短段落才算碎片
   const paragraphs = [];
   unistVisit(tree, 'paragraph', (node) => paragraphs.push(collectText(node)));
   const shortParas = paragraphs.filter((p) => p.length > 0 && p.length < 20).length;
-  // 归一化: 30% 短段落 = 满分
   breakdown.fragmentation = paragraphs.length > 0 ? Math.min(1, shortParas / paragraphs.length / 0.3) : 0;
 
-  // 加权综合分
+  // === v2 Quality Model 多维扩展 ===
+
+  // 5. Readability: 平均句长合理性 + 段落长度分布
+  const avgSentenceLen = sentenceCount > 0 ? fullText.length / sentenceCount : 0;
+  // 理想句长 15-40 字，偏离越多可读性越低
+  const readabilityDeviation = avgSentenceLen < 15 ? (15 - avgSentenceLen) / 15 : avgSentenceLen > 40 ? (avgSentenceLen - 40) / 40 : 0;
+  breakdown.readability = Math.max(0, Math.min(1, 1 - readabilityDeviation));
+
+  // 6. Redundancy: 重复短语/重复段落比例
+  const paraTexts = paragraphs.map((p) => p.trim()).filter((p) => p.length > 0);
+  const uniqueParas = new Set(paraTexts).size;
+  breakdown.redundancy = paraTexts.length > 0 ? Math.min(1, (paraTexts.length - uniqueParas) / paraTexts.length) : 0;
+
+  // 7. Structure: heading 层级连续性（跳级扣分）
+  let structurePenalty = 0;
+  for (let i = 1; i < headingLevels.length; i++) {
+    if (headingLevels[i] - headingLevels[i - 1] > 1) structurePenalty++;
+  }
+  breakdown.structure = headingLevels.length > 1 ? Math.max(0, 1 - structurePenalty / headingLevels.length) : 1;
+
+  // 8. aiStyle: phrase + firstPersonHeading + emoji 综合
+  breakdown.aiStyle = Math.min(1, breakdown.phrase * 0.5 + breakdown.heading * 0.3 + breakdown.emoji * 0.2);
+
+  // 9. Consistency: 列表类型一致性（ordered/unordered 混用扣分）
+  let listCount = 0;
+  let orderedCount = 0;
+  let unorderedCount = 0;
+  unistVisit(tree, 'list', (node) => {
+    listCount++;
+    if (node.ordered) orderedCount++;
+    else unorderedCount++;
+  });
+  // 单一类型 = 高一致性
+  breakdown.consistency = listCount > 0 ? 1 - (Math.min(orderedCount, unorderedCount) / listCount) : 1;
+
+  // 10. markdownQuality: 代码块语言标识完整度
+  let codeCount = 0;
+  let codeWithLang = 0;
+  unistVisit(tree, 'code', (node) => {
+    codeCount++;
+    if (node.lang && node.lang.trim().length > 0) codeWithLang++;
+  });
+  breakdown.markdownQuality = codeCount > 0 ? codeWithLang / codeCount : 1;
+
+  // 11. technicalWriting: 标题层级深度合理性 + 段落数/标题数比例
+  const avgParaPerHeading = headingCount > 0 ? paragraphs.length / headingCount : 0;
+  // 理想: 每个标题下 2-5 段
+  const twDeviation = avgParaPerHeading < 1 ? (1 - avgParaPerHeading) : avgParaPerHeading > 8 ? (avgParaPerHeading - 8) / 8 : 0;
+  breakdown.technicalWriting = Math.max(0, Math.min(1, 1 - twDeviation));
+
+  // 旧版加权综合分（向后兼容 aiScore.total）
   const weights = { phrase: 0.4, heading: 0.25, emoji: 0.15, fragmentation: 0.2 };
   const total = Object.entries(weights).reduce(
     (sum, [k, w]) => sum + (breakdown[k] || 0) * w,
     0
   );
 
+  const round2 = (n) => Math.round(n * 100) / 100;
+
   return {
-    total: Math.round(total * 100) / 100,
+    // 旧版字段（向后兼容）
+    total: round2(total),
     breakdown: {
-      phrase: Math.round(breakdown.phrase * 100) / 100,
-      heading: Math.round(breakdown.heading * 100) / 100,
-      emoji: Math.round(breakdown.emoji * 100) / 100,
-      fragmentation: Math.round(breakdown.fragmentation * 100) / 100,
+      phrase: round2(breakdown.phrase),
+      heading: round2(breakdown.heading),
+      emoji: round2(breakdown.emoji),
+      fragmentation: round2(breakdown.fragmentation),
     },
     phraseCount,
     sentenceCount,
@@ -929,7 +1020,84 @@ function computeAiScore(tree, _profile) {
     headingCount,
     emojiCount,
     recommendCleanup: total > 0.25 || phraseCount > 3,
+    // v2 Quality Model 多维
+    quality: {
+      overall: round2(total),
+      radar: {
+        readability: round2(breakdown.readability),
+        fragmentation: round2(breakdown.fragmentation),
+        redundancy: round2(breakdown.redundancy),
+        structure: round2(breakdown.structure),
+        aiStyle: round2(breakdown.aiStyle),
+        consistency: round2(breakdown.consistency),
+        markdownQuality: round2(breakdown.markdownQuality),
+        technicalWriting: round2(breakdown.technicalWriting),
+      },
+      metrics: {
+        phraseCount,
+        sentenceCount,
+        firstPersonHeading,
+        emojiCount,
+      },
+      recommendCleanup: total > 0.25 || phraseCount > 3,
+    },
   };
+}
+
+// ============================================================
+//  v2: Symbol Table 提取（Document Index）
+//  Rule 不需要遍历 AST，直接通过 ctx.symbols 访问文档结构
+// ============================================================
+function extractSymbolTable(tree) {
+  const symbols = {
+    headings: [],
+    tables: [],
+    codeBlocks: [],
+    diagrams: [],
+    entities: [],
+    mermaid: [],
+  };
+
+  unistVisit(tree, 'heading', (node) => {
+    symbols.headings.push({
+      level: node.depth,
+      text: collectText(node),
+      line: getStartLine(node),
+    });
+  });
+
+  unistVisit(tree, 'table', (node) => {
+    const rows = node.children ? node.children.length : 0;
+    symbols.tables.push({ line: getStartLine(node), rows });
+  });
+
+  unistVisit(tree, 'code', (node) => {
+    const lang = node.lang || '';
+    symbols.codeBlocks.push({ line: getStartLine(node), lang });
+    // mermaid 块单独索引
+    if (lang.toLowerCase() === 'mermaid') {
+      symbols.mermaid.push({
+        line: getStartLine(node),
+        type: detectMermaidType(node.value || ''),
+      });
+    }
+  });
+
+  // 收集实体名（heading 文本 + 列表项首词）作为轻量 entity 索引
+  const entitySet = new Set();
+  unistVisit(tree, 'heading', (node) => {
+    const text = collectText(node).trim();
+    if (text.length > 0 && text.length <= 40) entitySet.add(text);
+  });
+  symbols.entities = Array.from(entitySet).slice(0, 50);
+
+  return symbols;
+}
+
+function detectMermaidType(code) {
+  const firstLine = code.split('\n').find((l) => l.trim().length > 0) || '';
+  const m = firstLine.match(/^(flowchart|graph|stateDiagram|sequenceDiagram|mindmap|classDiagram|erDiagram|journey|requirementDiagram|timeline|gitGraph|quadrantChart)/i);
+  return m ? m[1].toLowerCase() : 'unknown';
 }
 
 // ============================================================
@@ -990,9 +1158,19 @@ function buildIssueSchema(document, profileName, level, ctx, validation, totalTo
       llmRequired,
       appliedFixes: ctx.changes.length,
     },
+    // v2: Symbol Table（Document Index），Rule 通过 ctx.symbols 访问文档结构
+    symbols: ctx.symbols || {},
     appliedFixes: ctx.changes,
     issues: ctx.issues,
+    // 旧版 aiScore（向后兼容）
     aiScore: ctx.aiScore || { total: 0, breakdown: {}, recommendCleanup: false },
+    // v2: 多维 Quality Model
+    quality: (ctx.aiScore && ctx.aiScore.quality) || {
+      overall: 0,
+      radar: {},
+      metrics: {},
+      recommendCleanup: false,
+    },
     validation,
   };
 }
@@ -1030,6 +1208,17 @@ function buildCheckReport(ctx) {
   if (ctx.aiScore) {
     const b = ctx.aiScore.breakdown;
     lines.push(`  AI Score:   ${ctx.aiScore.total} (phrase=${b.phrase}, heading=${b.heading}, emoji=${b.emoji}, frag=${b.fragmentation})`);
+    // v2: 多维 Quality Model
+    if (ctx.aiScore.quality && ctx.aiScore.quality.radar) {
+      const r = ctx.aiScore.quality.radar;
+      lines.push(`  Quality:    readability=${r.readability}, structure=${r.structure}, aiStyle=${r.aiStyle}, consistency=${r.consistency}, mdQuality=${r.markdownQuality}`);
+    }
+    // v2: Symbol Table 统计
+    if (ctx.symbols) {
+      const s = ctx.symbols;
+      const symbolCount = (s.headings?.length || 0) + (s.tables?.length || 0) + (s.codeBlocks?.length || 0) + (s.mermaid?.length || 0);
+      lines.push(`  Symbols:    ${symbolCount} (${s.headings?.length || 0} headings, ${s.tables?.length || 0} tables, ${s.codeBlocks?.length || 0} code, ${s.mermaid?.length || 0} mermaid)`);
+    }
     if (ctx.aiScore.recommendCleanup) lines.push('    ⚠ recommend L2 cleanup');
   }
 
@@ -1055,6 +1244,9 @@ function runPipeline(input, opts) {
     level,
     mode,
   });
+
+  // v2: 提取 Symbol Table（Document Index），供 Pass 通过 ctx.symbols 访问
+  ctx.symbols = extractSymbolTable(tree);
 
   // 运行 Pass Pipeline
   runPasses(ctx);
