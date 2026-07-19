@@ -56,7 +56,12 @@
     "prettier-plugin-tailwindcss": "^0.7.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "typescript-eslint": "^8.56.0"
+    "remark-gfm": "^4.0.1",
+    "remark-parse": "^11.0.0",
+    "remark-stringify": "^11.0.0",
+    "typescript-eslint": "^8.56.0",
+    "unified": "^11.0.0",
+    "unist-util-visit": "^5.1.0"
   },
   "config": {
     "commitizen": {

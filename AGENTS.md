@@ -376,6 +376,7 @@ When updating AGENTS.md:
 | 2026-04-20 | Updated Build Pipeline with Node.js 22 requirement in withastro/action | @agents-maintainer |
 | 2026-06-12 | Added Agent Discovery resources (api-catalog, skills index, content signals) | @agents-maintainer |
 | 2026-07-13 | Declared httpx[socks] for Docling proxy-compatible runtime support | @agents-maintainer |
+| 2026-07-19 | Added devDependencies (unified, remark-parse, remark-stringify) for tidy-chatgpt-text skill normalizer engine | @agents-maintainer |
 
 ### Example Usage
 
