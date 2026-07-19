@@ -286,25 +286,173 @@ class RuleContext {
     insert: insertNode,
     mergeChildren: mergeChildren,
   };
+
+  // v2: Transformation Proposal —— Pass 输出 Edit 而不直接 mutate
+  // edit: { targetNode, parent, index, operation: 'replace'|'remove'|'insert', newNode?, confidence, reason, rule }
+  propose(edit) {
+    if (!this._proposals) this._proposals = [];
+    this._proposals.push({ ...edit, pass: edit.pass || 'unknown' });
+  }
 }
 
 // ============================================================
-//  6. Pass 基类 & Pipeline
+//  v2: Planner + Conflict Resolver
+//  多个 Rule 可能对同一节点提出 Edit，按 confidence 仲裁，保留胜者
+// ============================================================
+function resolveConflicts(proposals) {
+  // 按 targetNode 分组（用节点引用作 key）
+  const groups = new Map();
+  for (const p of proposals) {
+    const key = p.targetNode || null;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(p);
+  }
+  const resolved = [];
+  for (const [, group] of groups) {
+    if (group.length === 1) {
+      resolved.push(group[0]);
+    } else {
+      // 冲突：按 confidence 降序，保留最高（同分保留首个）
+      group.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+      const winner = group[0];
+      winner.conflictResolved = true;
+      winner.conflictLosers = group.slice(1).map((g) => ({ rule: g.rule, confidence: g.confidence }));
+      resolved.push(winner);
+    }
+  }
+  return resolved;
+}
+
+// v2: 统一应用 Edits（按 location 倒序，避免 index 漂移）
+function applyEdits(ctx, edits) {
+  // 按 startLine 倒序排序
+  edits.sort((a, b) => {
+    const la = a.targetNode?.position?.start?.line || a.location?.startLine || 0;
+    const lb = b.targetNode?.position?.start?.line || b.location?.startLine || 0;
+    return lb - la;
+  });
+  for (const edit of edits) {
+    try {
+      if (edit.operation === 'remove' && edit.parent && edit.index != null) {
+        removeNode(edit.parent, edit.index);
+        ctx.applied(edit.rule, edit.pass, { operation: 'remove', reason: edit.reason });
+      } else if (edit.operation === 'replace' && edit.parent && edit.index != null && edit.newNode) {
+        replaceNode(edit.parent, edit.index, edit.newNode);
+        ctx.applied(edit.rule, edit.pass, { operation: 'replace', reason: edit.reason });
+      } else if (edit.operation === 'insert' && edit.parent && edit.index != null && edit.newNode) {
+        insertNode(edit.parent, edit.index, edit.newNode);
+        ctx.applied(edit.rule, edit.pass, { operation: 'insert', reason: edit.reason });
+      }
+    } catch (e) {
+      // 应用失败不阻断流程
+      ctx.report({
+        rule: edit.rule,
+        pass: 'applyEdits',
+        severity: 'low',
+        confidence: 0,
+        action: 'error',
+        location: { startLine: -1, endLine: -1 },
+        context: { chunk: '' },
+        sample: '',
+        suggestion: `Edit apply failed: ${e.message}`,
+      });
+    }
+  }
+}
+
+// ============================================================
+//  6. Pass 基类 & Pipeline (v2: DAG + Transformation Proposal)
 //
-//  每个 Pass: { name, levels, run(ctx) }
-//  Pipeline 是 Pass 数组，按顺序执行。
-//  新增 Pass 只需 push 到 pipeline 数组。
+//  v2 Pass 接口:
+//    { name, levels, dependsOn, produces, consumes, run(ctx) }
+//
+//  v2 DAG: Pipeline 按拓扑排序执行，Pass 通过 produces/consumes 声明依赖
+//  v2 Transformation: Pass 不直接 mutate AST，而是 ctx.propose(edit) 输出 Edit Proposal
+//    Planner 收集所有 proposals → ConflictResolver 按节点+confidence 仲裁 → applyEdits 统一应用
 // ============================================================
 
 const pipeline = [];
 
 function registerPass(pass) {
+  // v2: 补全 DAG 元数据
+  if (!pass.dependsOn) pass.dependsOn = [];
+  if (!pass.produces) pass.produces = [];
+  if (!pass.consumes) pass.consumes = [];
   pipeline.push(pass);
 }
 
+// v2: 拓扑排序（Kahn's algorithm）
+function topoSortPasses(passes) {
+  const inDegree = new Map();
+  const graph = new Map();
+  for (const p of passes) {
+    inDegree.set(p.name, 0);
+    graph.set(p.name, []);
+  }
+  for (const p of passes) {
+    for (const dep of p.dependsOn || []) {
+      if (inDegree.has(dep)) {
+        graph.get(dep).push(p.name);
+        inDegree.set(p.name, inDegree.get(p.name) + 1);
+      }
+    }
+  }
+  const queue = passes.filter((p) => inDegree.get(p.name) === 0);
+  const sorted = [];
+  while (queue.length > 0) {
+    const p = queue.shift();
+    sorted.push(p);
+    for (const next of graph.get(p.name)) {
+      inDegree.set(next, inDegree.get(next) - 1);
+      if (inDegree.get(next) === 0) {
+        const np = passes.find((x) => x.name === next);
+        if (np) queue.push(np);
+      }
+    }
+  }
+  // 环检测：如果 sorted 不全，剩余的按原顺序追加（降级为线性）
+  if (sorted.length < passes.length) {
+    for (const p of passes) {
+      if (!sorted.includes(p)) sorted.push(p);
+    }
+  }
+  return sorted;
+}
+
 function runPasses(ctx) {
-  for (const pass of pipeline) {
-    if (!pass.levels.includes(ctx.level)) continue;
+  // v2: 按拓扑排序执行
+  const activePasses = pipeline.filter((p) => p.levels.includes(ctx.level));
+  const sorted = topoSortPasses(activePasses);
+
+  // v2: Incremental Execution —— 如果 ctx._affectedPasses 非空，只跑受影响的 Pass
+  // 同时包含其依赖（dependsOn 闭包），保证 DAG 完整性
+  let passesToRun = sorted;
+  if (ctx._affectedPasses && ctx._affectedPasses.length > 0) {
+    const affectedNames = new Set(ctx._affectedPasses.map((p) => p.name));
+    // 闭包扩展：受影响 Pass 的依赖也必须执行
+    const visited = new Set();
+    const queue = Array.from(affectedNames);
+    while (queue.length > 0) {
+      const name = queue.shift();
+      if (visited.has(name)) continue;
+      visited.add(name);
+      const pass = sorted.find((p) => p.name === name);
+      if (pass) {
+        for (const dep of pass.dependsOn || []) {
+          if (!visited.has(dep)) queue.push(dep);
+        }
+      }
+    }
+    passesToRun = sorted.filter((p) => visited.has(p.name));
+    // 记录跳过的 Pass
+    ctx._skippedPasses = sorted.filter((p) => !visited.has(p.name)).map((p) => p.name);
+  }
+
+  // v2: 分两阶段——Phase 1 收集 proposals，Phase 2 统一 apply
+  // 如果 Pass 直接 mutate（旧式），仍然支持；如果 Pass 调用 ctx.propose，走 Planner
+  ctx._proposals = [];
+
+  for (const pass of passesToRun) {
     try {
       pass.run(ctx);
     } catch (e) {
@@ -320,6 +468,12 @@ function runPasses(ctx) {
         suggestion: `Pass error: ${e.message}`,
       });
     }
+  }
+
+  // v2: Planner + Conflict Resolver + AST Apply
+  if (ctx._proposals && ctx._proposals.length > 0) {
+    const resolved = resolveConflicts(ctx._proposals);
+    applyEdits(ctx, resolved);
   }
 }
 
@@ -1101,6 +1255,288 @@ function detectMermaidType(code) {
 }
 
 // ============================================================
+//  v2: Document IR（语义对象层）
+//  把 mdast 转换为语义 IR: Heading/Paragraph/Definition/Warning/Diagram/Code/Entity/Reference/Section
+//  Pass 可以消费 IR 而不是直接遍历 mdast
+// ============================================================
+function buildDocumentIR(tree) {
+  const sections = [];
+  let currentSection = null;
+  const entities = new Set();
+  const references = [];
+
+  for (const node of tree.children || []) {
+    const line = getStartLine(node);
+    if (node.type === 'heading') {
+      // 新 Section 开始
+      if (currentSection) sections.push(currentSection);
+      currentSection = {
+        type: 'Section',
+        heading: {
+          level: node.depth,
+          text: collectText(node),
+          line,
+        },
+        purpose: null,
+        children: [],
+        line,
+      };
+      // heading 文本作为 entity
+      const text = collectText(node).trim();
+      if (text) entities.add(text);
+    } else if (node.type === 'paragraph') {
+      const text = collectText(node);
+      const irNode = classifyParagraph(text, line);
+      if (currentSection) {
+        currentSection.children.push(irNode);
+        if (!currentSection.purpose) currentSection.purpose = text.slice(0, 80);
+      } else {
+        // heading 前的内容
+        sections.push(irNode);
+      }
+      // 提取引用/链接
+      extractReferences(node, references, entities);
+    } else if (node.type === 'code') {
+      const irNode = {
+        type: 'Code',
+        lang: node.lang || '',
+        line,
+        value: (node.value || '').slice(0, 200),
+      };
+      if (currentSection) currentSection.children.push(irNode);
+      else sections.push(irNode);
+      if ((node.lang || '').toLowerCase() === 'mermaid') {
+        if (currentSection) currentSection.children.push({ type: 'Diagram', diagramType: 'mermaid', line });
+      }
+    } else if (node.type === 'table') {
+      const irNode = { type: 'Table', rows: (node.children || []).length, line };
+      if (currentSection) currentSection.children.push(irNode);
+      else sections.push(irNode);
+    } else if (node.type === 'list') {
+      const irNode = {
+        type: 'List',
+        ordered: !!node.ordered,
+        items: (node.children || []).map((c) => collectText(c).slice(0, 60)),
+        line,
+      };
+      if (currentSection) currentSection.children.push(irNode);
+      else sections.push(irNode);
+    } else if (node.type === 'blockquote') {
+      const text = collectText(node);
+      const irNode = { type: 'Warning', text: text.slice(0, 200), line };
+      if (currentSection) currentSection.children.push(irNode);
+      else sections.push(irNode);
+    }
+  }
+  if (currentSection) sections.push(currentSection);
+
+  // 统计：递归遍历所有 Section 内的 children，得到全局 paragraph/code/table/list 数量
+  let paragraphCount = 0;
+  let codeCount = 0;
+  let tableCount = 0;
+  let listCount = 0;
+  let warningCount = 0;
+  let definitionCount = 0;
+  let diagramCount = 0;
+  const sectionObjs = sections.filter((s) => s.type === 'Section');
+  for (const sec of sectionObjs) {
+    for (const child of sec.children || []) {
+      if (child.type === 'Paragraph') paragraphCount++;
+      else if (child.type === 'Code') codeCount++;
+      else if (child.type === 'Table') tableCount++;
+      else if (child.type === 'List') listCount++;
+      else if (child.type === 'Warning') warningCount++;
+      else if (child.type === 'Definition') definitionCount++;
+      else if (child.type === 'Diagram') diagramCount++;
+    }
+  }
+  // 顶层的非 Section 节点也计入
+  for (const s of sections) {
+    if (s.type === 'Section') continue;
+    if (s.type === 'Paragraph') paragraphCount++;
+    else if (s.type === 'Code') codeCount++;
+    else if (s.type === 'Table') tableCount++;
+    else if (s.type === 'List') listCount++;
+    else if (s.type === 'Warning') warningCount++;
+    else if (s.type === 'Definition') definitionCount++;
+  }
+
+  return {
+    type: 'Document',
+    sections,
+    entities: Array.from(entities).slice(0, 100),
+    references,
+    stats: {
+      sectionCount: sectionObjs.length,
+      paragraphCount,
+      codeCount,
+      tableCount,
+      listCount,
+      warningCount,
+      definitionCount,
+      diagramCount,
+    },
+  };
+}
+
+// 段落分类: Definition（含：）/ Warning（含警告/注意） / Paragraph
+function classifyParagraph(text, line) {
+  const trimmed = text.trim();
+  if (/^[^：:\n]{1,20}[：:]/.test(trimmed) && trimmed.length < 80) {
+    const [term, ...rest] = trimmed.split(/[：:]/);
+    return { type: 'Definition', term: term.trim(), value: rest.join(':').trim(), line };
+  }
+  if (/(警告|注意|warning|caution|danger)/i.test(trimmed)) {
+    return { type: 'Warning', text: trimmed.slice(0, 200), line };
+  }
+  return { type: 'Paragraph', text: trimmed.slice(0, 300), line };
+}
+
+function extractReferences(node, references, entities) {
+  if (!node.children) return;
+  for (const child of node.children) {
+    if (child.type === 'link' && child.url) {
+      references.push({ url: child.url, text: collectText(child).slice(0, 60) });
+    }
+    if (child.type === 'text') {
+      // 提取大写专有名词作为 entity
+      const matches = child.value.match(/\b[A-Z][a-zA-Z]{2,}\b/g);
+      if (matches) for (const m of matches) entities.add(m);
+    }
+    extractReferences(child, references, entities);
+  }
+}
+
+// ============================================================
+//  v2: Incremental Execution（增量执行）
+//  Document Hash → Changed Region → Affected Pass → Incremental
+// ============================================================
+const crypto = await import('node:crypto');
+
+function computeDocumentHash(input) {
+  return crypto.createHash('sha256').update(input).digest('hex').slice(0, 16);
+}
+
+// 检测变更区域（基于行级 diff）
+function detectChangedRegions(oldLines, newLines) {
+  const regions = [];
+  const maxLen = Math.max(oldLines.length, newLines.length);
+  let i = 0;
+  while (i < maxLen) {
+    if (oldLines[i] !== newLines[i]) {
+      const start = i;
+      while (i < maxLen && oldLines[i] !== newLines[i]) i++;
+      regions.push({ startLine: start + 1, endLine: i, lineCount: i - start });
+    } else {
+      i++;
+    }
+  }
+  return regions;
+}
+
+// 根据变更区域 + Symbol Table 计算受影响的 Pass
+function computeAffectedPasses(changedRegions, symbols, allPasses) {
+  if (changedRegions.length === 0) return [];
+  const affectedPassNames = new Set();
+
+  for (const region of changedRegions) {
+    // 检查变更区域涉及哪些 symbol 类型
+    const touchesHeading = (symbols.headings || []).some((h) => h.line >= region.startLine && h.line <= region.endLine);
+    const touchesCode = (symbols.codeBlocks || []).some((c) => c.line >= region.startLine && c.line <= region.endLine);
+    const touchesTable = (symbols.tables || []).some((t) => t.line >= region.startLine && t.line <= region.endLine);
+    const touchesMermaid = (symbols.mermaid || []).some((m) => m.line >= region.startLine && m.line <= region.endLine);
+
+    // 映射到 Pass
+    if (touchesHeading) {
+      affectedPassNames.add('whitespace');
+      affectedPassNames.add('block-structure');
+    }
+    if (touchesCode) {
+      affectedPassNames.add('inline-structure');
+      affectedPassNames.add('mermaid-validation');
+      // code 块可能是 ASCII 图，需要重新检测
+      affectedPassNames.add('diagram-detection');
+    }
+    if (touchesTable) affectedPassNames.add('block-structure');
+    if (touchesMermaid) affectedPassNames.add('mermaid-validation');
+
+    // Whitespace/Fragment/AI Phrase 几乎总是需要重跑（文本变更）
+    affectedPassNames.add('whitespace');
+    affectedPassNames.add('fragment-detection');
+    affectedPassNames.add('ai-score');
+    // paragraph 变更也可能引入新的 ASCII 图（在 paragraph 节点内）
+    affectedPassNames.add('diagram-detection');
+  }
+
+  // 过滤出实际存在的 Pass
+  return allPasses.filter((p) => affectedPassNames.has(p.name));
+}
+
+// ============================================================
+//  v2: Policy（声明式配置）
+//  Profile 升级为 Policy，支持 yaml 声明式配置
+// ============================================================
+function parsePolicy(yamlText) {
+  // 轻量 yaml 解析（避免引入 js-yaml 依赖），支持简单 key: value 嵌套
+  const policy = {};
+  const stack = [{ obj: policy, indent: -1 }];
+  for (const rawLine of yamlText.split('\n')) {
+    if (!rawLine.trim() || rawLine.trim().startsWith('#')) continue;
+    const indent = rawLine.length - rawLine.trimStart().length;
+    const line = rawLine.trim();
+    const colonIdx = line.indexOf(':');
+    if (colonIdx === -1) continue;
+    const key = line.slice(0, colonIdx).trim();
+    const value = line.slice(colonIdx + 1).trim();
+
+    // 弹栈到合适层级
+    while (stack.length > 1 && stack[stack.length - 1].indent >= indent) stack.pop();
+    const parent = stack[stack.length - 1].obj;
+
+    if (value === '') {
+      // 新嵌套层
+      const child = {};
+      parent[key] = child;
+      stack.push({ obj: child, indent });
+    } else {
+      // 叶子值
+      parent[key] = parseYamlValue(value);
+    }
+  }
+  return policy;
+}
+
+function parseYamlValue(v) {
+  if (v === 'true') return true;
+  if (v === 'false') return false;
+  if (v === 'null' || v === '~') return null;
+  if (/^-?\d+$/.test(v)) return parseInt(v, 10);
+  if (/^-?\d+\.\d+$/.test(v)) return parseFloat(v);
+  // 去引号
+  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+    return v.slice(1, -1);
+  }
+  return v;
+}
+
+// 把 Policy 合并到 Profile，生成增强后的 profile
+function applyPolicy(baseProfile, policy) {
+  const merged = { ...baseProfile };
+  if (policy.objective) merged.objective = policy.objective;
+  if (typeof policy.allowSemanticRewrite === 'boolean') merged.allowSemanticRewrite = policy.allowSemanticRewrite;
+  if (typeof policy.allowHeadingMerge === 'boolean') merged.allowHeadingMerge = policy.allowHeadingMerge;
+  if (policy.diagram) {
+    if (policy.diagram.ascii) merged.asciiDiagramAction = policy.diagram.ascii.convert || merged.asciiDiagramAction;
+    if (policy.diagram.mermaid) merged.mermaidValidate = policy.diagram.mermaid.validate !== false;
+  }
+  if (policy.quality) {
+    merged.qualityThresholds = policy.quality;
+  }
+  merged.policy = policy;
+  return merged;
+}
+
+// ============================================================
 //  11. Validators
 // ============================================================
 
@@ -1158,8 +1594,12 @@ function buildIssueSchema(document, profileName, level, ctx, validation, totalTo
       llmRequired,
       appliedFixes: ctx.changes.length,
     },
+    // v2: Document Hash（用于增量执行）
+    documentHash: ctx.documentHash || null,
     // v2: Symbol Table（Document Index），Rule 通过 ctx.symbols 访问文档结构
     symbols: ctx.symbols || {},
+    // v2: Document IR（语义对象层），LLM 可直接消费 IR 而不读 Markdown
+    documentIR: ctx.documentIR || null,
     appliedFixes: ctx.changes,
     issues: ctx.issues,
     // 旧版 aiScore（向后兼容）
@@ -1171,6 +1611,8 @@ function buildIssueSchema(document, profileName, level, ctx, validation, totalTo
       metrics: {},
       recommendCleanup: false,
     },
+    // v2: Transformation Proposals（如果有冲突解决记录）
+    proposals: ctx._proposalSummary || null,
     validation,
   };
 }
@@ -1205,6 +1647,12 @@ function buildCheckReport(ctx) {
   lines.push(`  Applied:    ${ctx.changes.length} fixes`);
   lines.push(`  Auto-fix:   ${autoFixable.length} (pass --fix to apply)`);
   lines.push(`  LLM-req:    ${llmRequired.length} (pass --json to export)`);
+
+  // v2: Document Hash（用于增量执行和缓存）
+  if (ctx.documentHash) {
+    lines.push(`  Doc Hash:   ${ctx.documentHash}`);
+  }
+
   if (ctx.aiScore) {
     const b = ctx.aiScore.breakdown;
     lines.push(`  AI Score:   ${ctx.aiScore.total} (phrase=${b.phrase}, heading=${b.heading}, emoji=${b.emoji}, frag=${b.fragmentation})`);
@@ -1219,7 +1667,38 @@ function buildCheckReport(ctx) {
       const symbolCount = (s.headings?.length || 0) + (s.tables?.length || 0) + (s.codeBlocks?.length || 0) + (s.mermaid?.length || 0);
       lines.push(`  Symbols:    ${symbolCount} (${s.headings?.length || 0} headings, ${s.tables?.length || 0} tables, ${s.codeBlocks?.length || 0} code, ${s.mermaid?.length || 0} mermaid)`);
     }
+    // v2: Document IR 统计
+    if (ctx.documentIR && ctx.documentIR.stats) {
+      const st = ctx.documentIR.stats;
+      lines.push(`  Doc IR:     ${st.sectionCount} sections, ${st.paragraphCount} paragraphs, ${st.codeCount} code, ${st.tableCount} tables, ${st.listCount} lists`);
+      if (ctx.documentIR.entities) {
+        lines.push(`  Entities:   ${ctx.documentIR.entities.length} indexed`);
+      }
+    }
     if (ctx.aiScore.recommendCleanup) lines.push('    ⚠ recommend L2 cleanup');
+  }
+
+  // v2: Incremental Execution 信息
+  if (ctx._affectedPasses && ctx._affectedPasses.length > 0) {
+    const affected = ctx._affectedPasses.map((p) => p.name).join(', ');
+    const skipped = (ctx._skippedPasses || []).join(', ') || '(none)';
+    const regions = (ctx._changedRegions || []).length;
+    lines.push(`  Incremental:`);
+    lines.push(`    Changed regions: ${regions}`);
+    lines.push(`    Affected passes: ${affected}`);
+    lines.push(`    Skipped passes:  ${skipped}`);
+  }
+
+  // v2: Transformation Proposals 信息
+  if (ctx._proposalSummary) {
+    const ps = ctx._proposalSummary;
+    lines.push(`  Proposals:  ${ps.applied}/${ps.total} applied, ${ps.conflicts} conflicts resolved`);
+  }
+
+  // v2: Policy 信息（如果启用了 policy）
+  if (ctx.profile && ctx.profile.policy) {
+    const policyKeys = Object.keys(ctx.profile.policy);
+    lines.push(`  Policy:     ${policyKeys.length} keys loaded (${policyKeys.slice(0, 3).join(', ')}${policyKeys.length > 3 ? '...' : ''})`);
   }
 
   return lines.join('\n');
@@ -1230,10 +1709,20 @@ function buildCheckReport(ctx) {
 // ============================================================
 
 function runPipeline(input, opts) {
-  const { level = 'L1', profileName = 'technical-doc', mode = 'fix' } = opts;
-  const profile = PROFILES[profileName] || PROFILES['technical-doc'];
+  const { level = 'L1', profileName = 'technical-doc', mode = 'fix', policy: policyText, incremental, basePath } = opts;
+  let profile = PROFILES[profileName] || PROFILES['technical-doc'];
+
+  // v2: Policy 声明式配置（覆盖 Profile）
+  if (policyText) {
+    const policy = parsePolicy(policyText);
+    profile = applyPolicy(profile, policy);
+  }
+
   const fullLines = input.split('\n');
   const totalTokens = input.length / 2;
+
+  // v2: Document Hash（用于增量执行和缓存）
+  const documentHash = computeDocumentHash(input);
 
   const tree = parseMarkdown(input);
   const ctx = new RuleContext({
@@ -1247,9 +1736,30 @@ function runPipeline(input, opts) {
 
   // v2: 提取 Symbol Table（Document Index），供 Pass 通过 ctx.symbols 访问
   ctx.symbols = extractSymbolTable(tree);
+  // v2: 构建 Document IR（语义对象层），供 Pass 通过 ctx.documentIR 访问
+  ctx.documentIR = buildDocumentIR(tree);
+  ctx.documentHash = documentHash;
 
-  // 运行 Pass Pipeline
+  // v2: Incremental Execution —— 如果指定了 --base，只跑受影响的 Pass
+  if (incremental && basePath) {
+    const oldLines = fs.readFileSync(basePath, 'utf8').split('\n');
+    const changedRegions = detectChangedRegions(oldLines, fullLines);
+    ctx._changedRegions = changedRegions;
+    ctx._affectedPasses = computeAffectedPasses(changedRegions, ctx.symbols, pipeline);
+    // 标记只跑受影响的 Pass（runPasses 会检查 ctx._affectedPasses）
+  }
+
+  // 运行 Pass Pipeline（v2: DAG 拓扑排序 + Transformation Proposal）
   runPasses(ctx);
+
+  // v2: 记录 Proposal Summary（冲突解决信息）
+  if (ctx._proposals && ctx._proposals.length > 0) {
+    ctx._proposalSummary = {
+      total: ctx._proposals.length,
+      applied: ctx.changes.filter((c) => c.operation).length,
+      conflicts: ctx._proposals.filter((p) => p.conflictResolved).length,
+    };
+  }
 
   // Stringify
   const normalized = stringifyMarkdown(tree);
@@ -1297,10 +1807,16 @@ Options:
   -o <file>                 Output normalized markdown to file
   --doc <name>              Document name for issue schema
 
+  --policy <file>           v2: Load declarative YAML policy file (overrides profile)
+  --incremental             v2: Enable incremental execution (requires --base)
+  --base <file>             v2: Baseline file for incremental diff
+
 Examples:
   node normalize.mjs input.md --check
   node normalize.mjs input.md --report --json issues.json
   node normalize.mjs input.md --fix -o output.md
+  node normalize.mjs input.md --policy team.yaml --level L2
+  node normalize.mjs input.md --incremental --base prev.md --fix -o output.md
   cat file.md | node normalize.mjs --level L2
 `);
 }
@@ -1320,6 +1836,10 @@ function main() {
   let outFile = null;
   let jsonFile = null;
   let docName = 'input.md';
+  // v2: Policy + Incremental
+  let policyFile = null;
+  let incremental = false;
+  let baseFile = null;
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -1331,6 +1851,9 @@ function main() {
     else if (a === '--json') jsonFile = argv[++i];
     else if (a === '-o') outFile = argv[++i];
     else if (a === '--doc') docName = argv[++i];
+    else if (a === '--policy') policyFile = argv[++i];
+    else if (a === '--incremental') incremental = true;
+    else if (a === '--base') baseFile = argv[++i];
     else if (!a.startsWith('-') && !input) {
       input = fs.readFileSync(a, 'utf8');
       docName = path.basename(a);
@@ -1347,7 +1870,36 @@ function main() {
     }
   }
 
-  const result = runPipeline(input, { level, profileName, mode, document: docName });
+  // v2: 加载 Policy 文件
+  let policyText = null;
+  if (policyFile) {
+    try {
+      policyText = fs.readFileSync(policyFile, 'utf8');
+    } catch (e) {
+      console.error(`Error: cannot read policy file ${policyFile}: ${e.message}`);
+      process.exit(1);
+    }
+  }
+
+  // v2: Incremental 校验
+  if (incremental && !baseFile) {
+    console.error('Error: --incremental requires --base <file>');
+    process.exit(1);
+  }
+  if (baseFile && !incremental) {
+    // 给出 --base 但没开 --incremental，自动启用
+    incremental = true;
+  }
+
+  const result = runPipeline(input, {
+    level,
+    profileName,
+    mode,
+    document: docName,
+    policy: policyText,
+    incremental,
+    basePath: baseFile,
+  });
 
   if (mode === 'check') {
     console.log(result.checkReport);

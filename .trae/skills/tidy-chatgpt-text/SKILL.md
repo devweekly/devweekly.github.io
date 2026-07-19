@@ -251,6 +251,18 @@ node normalize.mjs input.md --report --json issues.json
 # 3. fix 模式：自动修复高置信度问题 + 输出
 node normalize.mjs input.md --fix -o output.md
 # 自动修复 confidence >= 阈值的问题，其余记录到 issues
+
+# === v2 新增参数 ===
+
+# --policy：加载声明式 YAML Policy，覆盖 Profile
+node normalize.mjs input.md --policy team.yaml --level L2
+
+# --incremental + --base：增量执行，只跑受影响的 Pass
+node normalize.mjs input.md --incremental --base prev.md --fix -o output.md
+# --base 单独给出时自动启用 incremental
+
+# 组合使用
+node normalize.mjs input.md --policy team.yaml --incremental --base prev.md --check
 ```
 
 ### Check 模式输出示例
@@ -258,16 +270,26 @@ node normalize.mjs input.md --fix -o output.md
 ```
 Found 12 issues:
 
-  ✓ 12 excessive blank lines           [auto-fixable, confidence 0.99]
-  ✓ 5 broken lists                      [auto-fixable, confidence 0.92]
-  ✓ 2 unclosed fences                   [auto-fixable, confidence 0.95]
-  ⚠ 3 ASCII diagrams                    [llm-required, confidence 0.78]
-  ⚠ 4 AI phrases                        [llm-required, confidence 0.62]
-  ⚠ 1 heading skip-level                [auto-fixable, confidence 0.90]
+  ⚠  1 ascii-diagram                  [llm-required, confidence 0.6]
+  ✓  1 diagram-ir-extracted           [auto-fixable, confidence 0.85]
+  ⚠  2 ai-phrase                      [llm-required, confidence 0.62]
+  ⚠  8 fragment-sentence              [llm-required, confidence 0.92]
 
 Summary:
-  Auto-fixable: 20 (pass --fix to apply)
-  LLM-required: 7 (pass --json to export)
+  Applied:    0 fixes
+  Auto-fix:   1 (pass --fix to apply)
+  LLM-req:    11 (pass --json to export)
+  Doc Hash:   e6d34dc38cc43544
+  AI Score:   0.24 (phrase=0.09, heading=0, emoji=0, frag=1)
+  Quality:    readability=1, structure=1, aiStyle=0.04, consistency=1, mdQuality=1
+  Symbols:    51 (10 headings, 1 tables, 23 code, 17 mermaid)
+  Doc IR:     10 sections, 29 paragraphs, 23 code, 1 tables, 2 lists
+  Entities:   62 indexed
+  Incremental:
+    Changed regions: 21
+    Affected passes: whitespace, block-structure, inline-structure, diagram-detection, ai-score, fragment-detection, mermaid-validation
+    Skipped passes:  (none)
+  Policy:     5 keys loaded (objective, allowSemanticRewrite, allowHeadingMerge...)
 ```
 
 ---
@@ -522,17 +544,20 @@ normalize.mjs 单文件架构（v2）：
   └── cli                      # 命令行入口（check/report/fix）
 ```
 
-**v2 关键改进**：
+**v2 关键改进**（9 个 Document Compiler 方向，全部已实现）：
 
 1. **全树遍历**：用 `unist-util-visit` 替代自定义 walker，规则能看到 nested list / blockquote / table cell
-2. **Pass Pipeline**：显式 Pass 数组，新增 Pass 只需 `registerPass()`，不改主流程
-3. **AST Mutation Layer**：所有 AST 修改经 `cloneNode/createNode/replaceNode/removeNode`，避免直接构造 node
+2. **Pass Pipeline + DAG**：显式 Pass 数组，`dependsOn/produces/consumes` 声明依赖，`topoSortPasses` 自动拓扑排序
+3. **AST Mutation Layer + Transformation Proposal**：所有 AST 修改经 `cloneNode/createNode/replaceNode/removeNode`；Pass 通过 `ctx.propose(edit)` 输出 Edit，`resolveConflicts` 按 confidence 仲裁，`applyEdits` 统一应用
 4. **ASCII 评分制**：多维打分（短行 0.3 + 箭头 0.3 + 树字符 0.2 + 无标点 0.2 + 缩进 0.1），避免 "价格下降 ↓ 20%" 误判
 5. **Diagram IR + Generator**：detector 提取结构化 IR `{type, nodes, edges}`，generator 生成 mermaid，可测试可自动
 6. **v2 多维 Quality Model**：从单一 AI Score 扩展为 8 维 radar（readability/fragmentation/redundancy/structure/aiStyle/consistency/markdownQuality/technicalWriting）
 7. **v2 Symbol Table**：`extractSymbolTable` 提取 Document Index（headings/tables/codeBlocks/diagrams/mermaid/entities），Pass 通过 `ctx.symbols` 访问，无需遍历 AST
-8. **v2 Issue → Evidence**：每个 issue 自动带 `evidence.matched` + `evidence.why`（Explainability），支持企业 Audit 场景
-9. **Profile rules 配置**：每个 profile 含 `allowEmoji/preferTable/aiCleanup/asciiDiagramAction` 等规则配置
+8. **v2 Issue → Evidence + Explainability**：每个 issue 自动带 `evidence.matched` + `evidence.why`，支持企业 Audit 场景
+9. **v2 Document IR**：`buildDocumentIR` 把 mdast 转换为语义对象（Section/Paragraph/Definition/Warning/Diagram/Code/Entity/Reference），LLM 可直接消费 IR
+10. **v2 Incremental Execution**：`computeDocumentHash` + `detectChangedRegions` + `computeAffectedPasses`，只跑受影响的 Pass，跳过的记录在 `ctx._skippedPasses`
+11. **v2 Policy**：`parsePolicy` + `applyPolicy` 支持声明式 YAML 配置，覆盖 Profile
+12. **Profile rules 配置**：每个 profile 含 `allowEmoji/preferTable/aiCleanup/asciiDiagramAction` 等规则配置
 
 **依赖**（package.json）：
 
@@ -595,21 +620,33 @@ diff <(tr -d '[:space:]' < original.md) <(tr -d '[:space:]' < tidied.md)
 
 ---
 
-## Architecture Evolution (v2 Roadmap)
+## Architecture Evolution (v2 — Implemented)
 
-当前版本是 **Compiler + Rule Engine + LLM Pass** 架构。v2 方向是从"Markdown Formatter"演进为"Document Compiler"：Markdown 只是输入格式，核心价值转向文档 IR、静态分析、质量评估、自动重构和语义保持转换。
+当前版本是 **Document Compiler** 架构（Compiler + Rule Engine + LLM Pass）。v2 已从"Markdown Formatter"演进为"Document Compiler"：Markdown 是输入格式，核心价值是文档 IR、静态分析、质量评估、自动重构和语义保持转换。
 
-### 三个最高优先级方向
+### v2 实现状态总览
+
+| # | 方向 | 状态 | 实现位置 |
+|---|------|------|---------|
+| 1 | Pass DAG（dependsOn/produces/consumes + 拓扑排序） | ✅ Implemented | `registerPass` / `topoSortPasses` / `runPasses` |
+| 2 | Transformation Proposal（Pass 不直接 mutate，输出 Edit） | ✅ Implemented | `ctx.propose` / `resolveConflicts` / `applyEdits` |
+| 3 | Issue → Evidence（matched + why） | ✅ Implemented | `deriveMatched` / `deriveWhy` / `RuleContext.report` |
+| 4 | Rule Engine Explainability | ✅ Implemented | 每个 issue 自动带 `evidence.matched` + `evidence.why` |
+| 5 | AST Symbol Table（Document Index） | ✅ Implemented | `extractSymbolTable` / `detectMermaidType` / `ctx.symbols` |
+| 6 | 多维 Quality Model（8 维 radar） | ✅ Implemented | `computeAiScore` 返回 `quality.radar` |
+| 7 | Document IR（语义对象层） | ✅ Implemented | `buildDocumentIR` / `classifyParagraph` / `extractReferences` |
+| 8 | Incremental Execution（Document Hash + Affected Pass） | ✅ Implemented | `computeDocumentHash` / `detectChangedRegions` / `computeAffectedPasses` |
+| 9 | Policy（声明式 YAML） | ✅ Implemented | `parsePolicy` / `applyPolicy` / `--policy` CLI flag |
+
+### 三个最高优先级方向（全部已实现）
 
 | 优先级 | 方向 | 收益 |
 |--------|------|------|
-| ⭐⭐⭐⭐⭐ | **引入 Document IR + Symbol Table**，让 Pass 面向语义对象而不是直接遍历 mdast | 从"Markdown Formatter"演进为"文档编译器"，可扩展性最高 |
-| ⭐⭐⭐⭐⭐ | **将 Pass 改为 DAG，并把修改统一收敛到 Transformation Plan** | 消除 Rule 冲突，支持并行执行、增量执行和更复杂的优化 |
-| ⭐⭐⭐⭐☆ | **把 Issue 升级为 Evidence / Finding，并加入 Explainability** | 与企业 Agent、Research、Audit 场景统一，输出不仅是修复结果，还有可追溯的决策依据 |
+| ⭐⭐⭐⭐⭐ | **Document IR + Symbol Table** ✅ | 从"Markdown Formatter"演进为"文档编译器"，可扩展性最高 |
+| ⭐⭐⭐⭐⭐ | **Pass DAG + Transformation Plan** ✅ | 消除 Rule 冲突，支持并行执行、增量执行和更复杂的优化 |
+| ⭐⭐⭐⭐☆ | **Issue → Evidence + Explainability** ✅ | 与企业 Agent、Research、Audit 场景统一，输出不仅是修复结果，还有可追溯的决策依据 |
 
-### 方向 1：Pass 从线性改为 DAG
-
-当前 Pipeline 是线性的 `Pass1 → Pass2 → Pass3`。但很多 Rule 有依赖关系，形成 DAG。
+### 方向 1：Pass 从线性改为 DAG ✅
 
 ```mermaid
 flowchart TD
@@ -618,24 +655,20 @@ flowchart TD
     MermaidValidator -->|consumes| mermaid
 ```
 
-Pass 接口增加依赖声明：
+Pass 接口已扩展 `dependsOn/produces/consumes`，`topoSortPasses` 用 Kahn's algorithm 自动拓扑排序，新增 Pass 不需要修改 Pipeline。环检测：检测到环时降级为线性追加，不阻断流程。
 
 ```ts
 interface Pass {
-    id: string;
-    dependsOn: string[];
-    produces: string[];
-    consumes: string[];
+    name: string;
+    levels: string[];
+    dependsOn: string[];   // v2: 声明依赖
+    produces: string[];    // v2: 声明产出
+    consumes: string[];    // v2: 声明消费
+    run(ctx: RuleContext): void;
 }
 ```
 
-整个 Pipeline 自动拓扑排序，新增 Pass 不需要修改 Pipeline。
-
-### 方向 2：Rule 不直接修改 AST，改为 Transformation Proposal
-
-当前 `Pass → AST Mutation` 直接改 AST。两个 Rule 可能修改同一节点（Heading Rule 修改、Fragment Rule 删除），没有 Resolution。
-
-建议变为：
+### 方向 2：Transformation Proposal ✅
 
 ```mermaid
 flowchart TD
@@ -645,13 +678,9 @@ flowchart TD
     Conflict_Resolver --> AST_Apply
 ```
 
-Pass 输出 Edit Proposal（targetNode / operation / confidence / reason），最后统一 Merge，参考 Rust Compiler / Clang。极大提升可维护性。
+Pass 通过 `ctx.propose(edit)` 输出 Edit Proposal（`{targetNode, operation, confidence, reason, rule}`），`resolveConflicts` 按节点 + confidence 仲裁保留胜者，`applyEdits` 按 startLine 倒序统一应用（避免 index 漂移）。旧式直接 mutate 的 Pass 仍兼容。
 
-### 方向 3：Issue 升级为 Evidence
-
-当前 Issue 只是 `{rule, location, suggestion}`。实际上它已经是 Evidence：包含 Confidence、Location、Suggestion。
-
-升级后的处理链路：
+### 方向 3：Issue → Evidence ✅
 
 ```mermaid
 flowchart TD
@@ -660,13 +689,9 @@ flowchart TD
     Decision --> Transformation
 ```
 
-LLM 看到的是 **Evidence Collection**，而不是 Issue Collection。这和 Enterprise Research Agent 统一。
+每个 issue 自动带 `evidence.matched`（检测到什么）和 `evidence.why`（为什么需要修）。调用方可传入自定义 evidence 覆盖自动推导。LLM 看到的是 **Evidence Collection**，与企业 Agent / Research / Audit 场景统一。
 
-**Issue Schema 已扩展支持 Evidence 字段**（见下方 Issue Schema 的 `evidence` / `why` 字段）。
-
-### 方向 4：Rule Engine 支持 Explainability
-
-当前 `AI Score: 0.42` 没有解释。建议每个 Decision 可追溯：
+### 方向 4：Rule Engine Explainability ✅
 
 ```mermaid
 flowchart TD
@@ -676,63 +701,59 @@ flowchart TD
     Confidence --> Action
 ```
 
+每个 issue 的 `evidence` 字段可回答：为什么改？为什么没改？为什么建议 LLM？
+
 ```json
 {
-  "rule": "Fragment",
-  "matched": ["连续三个 paragraph", "每段小于12字符", "没有句号"],
-  "confidence": 0.93
+  "rule": "fragment-sentence",
+  "evidence": {
+    "matched": ["连续短段落", "每段小于 20 字符", "破坏信息密度"],
+    "why": "碎片化段落无法被 Document IR 识别为完整 Section"
+  },
+  "confidence": 0.92
 }
 ```
 
-以后可以回答：为什么改？为什么没改？为什么建议 LLM？企业特别喜欢 Explainability。
-
-### 方向 5：AST 增加 Symbol Table
-
-当前 Rule 每次都要遍历 AST。建议增加 Symbol Table：
+### 方向 5：AST Symbol Table ✅
 
 ```mermaid
 flowchart TD
     AST --> Document_Symbols
 ```
 
-Symbol 类型：Heading、Table、Code、Diagram、Entity、Reference、Mermaid。
-
-形成 `Document Index` 后，Rule 不需要遍历 AST，直接：
+`extractSymbolTable` 提取 Document Index：headings / tables / codeBlocks / diagrams / mermaid / entities。Pass 通过 `ctx.symbols.*` 访问，无需遍历 AST。大型文档收益明显。
 
 ```ts
-ctx.symbols.headings
-ctx.symbols.tables
-ctx.symbols.codeBlocks
+ctx.symbols.headings    // [{ level, text, line }]
+ctx.symbols.tables      // [{ line, rows }]
+ctx.symbols.codeBlocks  // [{ line, lang }]
+ctx.symbols.mermaid     // [{ line, type }]
+ctx.symbols.entities    // string[]
 ```
 
-复杂度下降很多，大型文档收益非常明显。
-
-**normalize.mjs 已实现 Symbol Table 提取**（见 `extractSymbolTable`），当前 issues schema 的 `symbols` 字段输出文档索引。
-
-### 方向 6：AI Score 拆成多个 Quality Model
-
-当前单一 `AI Score: 0.38`。建议拆成多维 Quality Model：
+### 方向 6：多维 Quality Model ✅
 
 ```ts
 quality = {
-  readability,
-  fragmentation,
-  redundancy,
-  structure,
-  aiStyle,
-  consistency,
-  markdownQuality,
-  technicalWriting,
+  overall,             // 加权综合分
+  radar: {
+    readability,        // 平均句长合理性
+    fragmentation,      // 短段落比例
+    redundancy,         // 重复段落比例
+    structure,          // heading 层级连续性
+    aiStyle,            // phrase + firstPerson + emoji 综合
+    consistency,        // 列表类型一致性
+    markdownQuality,    // 代码块语言标识完整度
+    technicalWriting,   // 段落/标题比例合理性
+  },
+  metrics: { phraseCount, sentenceCount, firstPersonHeading, emojiCount },
+  recommendCleanup,
 }
 ```
 
-最终 `Radar → Overall`，不同 Profile（Technical Doc / Blog / RFC / Paper / Architecture）使用不同权重。
+Issue Schema 同时保留旧版 `aiScore` 字段（向后兼容）和新版 `quality` 字段。
 
-**normalize.mjs 已将 AI Score 扩展为多维 Quality Model**（见 Issue Schema 的 `quality` 字段）。
-
-### 方向 7：引入 Document IR
-
-当前 `Markdown → AST → Rule`。建议引入 Document IR：
+### 方向 7：Document IR ✅
 
 ```mermaid
 flowchart TD
@@ -742,22 +763,19 @@ flowchart TD
     Pass --> Markdown
 ```
 
-Document IR 不是 mdast，而是语义对象：Heading、Paragraph、Definition、Warning、Diagram、Code、Entity、Reference、Section。
+`buildDocumentIR` 把 mdast 转换为语义 IR：`Section / Paragraph / Definition / Warning / Diagram / Code / Entity / Reference / List / Table`。段落自动分类（Definition 含冒号 / Warning 含警告词）。Issue Schema 输出 `documentIR` 字段，LLM 可直接消费 IR 而不读 Markdown。
 
-甚至 Section 可分解为：
-
-```mermaid
-flowchart TD
-    Section --> Purpose
-    Purpose --> Evidence
-    Evidence --> Conclusion
+```ts
+interface DocumentIR {
+  type: 'Document';
+  sections: (Section | Paragraph | Code | Table | List | Warning)[];
+  entities: string[];
+  references: { url, text }[];
+  stats: { sectionCount, paragraphCount, codeCount, tableCount, listCount, warningCount, definitionCount, diagramCount };
+}
 ```
 
-以后 LLM 根本不用看 Markdown，直接消费 IR。
-
-### 方向 8：Pass 支持增量执行（Incremental）
-
-当前每次 `Parse → 全部 Pass`。建议增量执行：
+### 方向 8：Incremental Execution ✅
 
 ```mermaid
 flowchart TD
@@ -766,34 +784,32 @@ flowchart TD
     Affected_Pass --> Incremental
 ```
 
-例如只修改 `20~30 行`，那么 Whitespace、Fragment、AI Phrase 即可，Diagram Pass 根本不用重新跑。
+- `computeDocumentHash`：SHA-256 前 16 字符，用于缓存和变更检测
+- `detectChangedRegions`：基于行级 diff，输出 `[{startLine, endLine, lineCount}]`
+- `computeAffectedPasses`：根据变更区域涉及的 symbol 类型（heading/code/table/mermaid）映射到 Pass，并闭包扩展依赖
+- `runPasses`：只跑受影响的 Pass（含依赖），跳过的 Pass 记录在 `ctx._skippedPasses`
 
-### 方向 9：Profile 升级为 Policy
+CLI：`--incremental --base <file>` 启用。Check Report 输出 Changed regions / Affected passes / Skipped passes。
 
-当前 Profile 只是预设名（technical-doc / blog / rfc / architecture）。建议升级为声明式 Policy：
+### 方向 9：Policy（声明式 YAML） ✅
 
 ```yaml
 policy:
-  objective:
-    readability
-  allowSemanticRewrite:
-    true
-  allowHeadingMerge:
-    false
+  objective: readability
+  allowSemanticRewrite: true
+  allowHeadingMerge: false
   diagram:
     ascii:
-      convert
+      convert: mermaid
     mermaid:
-      validate
+      validate: true
   quality:
-    fragmentation:
-      warning
-    aiStyle:
-      error
+    fragmentation: warning
+    aiStyle: error
 ```
 
-以后企业可以直接写自己的规范。
+`parsePolicy` 轻量 YAML 解析（避免引入 js-yaml 依赖，支持简单嵌套），`applyPolicy` 把 Policy 合并到 Profile 生成增强 profile。CLI：`--policy <file>` 加载。Check Report 显示加载的 Policy key 数量。
 
 ### v2 定位
 
-从代码和 Skill 的复杂度来看，项目定位已经接近 **Document Compiler**：Markdown 只是输入格式，核心价值是文档的 IR、静态分析、质量评估、自动重构和语义保持转换。这个定位更容易扩展到 AsciiDoc、reStructuredText、HTML、Confluence 等其他文档格式。
+从代码和 Skill 的复杂度来看，项目定位已经是 **Document Compiler**：Markdown 是输入格式，核心价值是文档的 IR、静态分析、质量评估、自动重构和语义保持转换。这个定位更容易扩展到 AsciiDoc、reStructuredText、HTML、Confluence 等其他文档格式——只需替换 Parser，IR / Pass / Validator 可复用。
