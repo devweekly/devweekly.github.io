@@ -304,3 +304,5 @@ https://github.com/agegr/pi-web
 https://github.com/czottmann/pi-automode
 
 https://github.com/AgwaB/pi-workflow lets Pi run named, repeatable multi-step workflows: research, code review, spec conformance checks, impact review, and project-specific team routines.
+
+https://github.com/barvhaim/pi-openwiki LangChain's openwiki agent based on PI harness
