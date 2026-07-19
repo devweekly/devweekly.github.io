@@ -1,0 +1,46 @@
+[
+  {
+    "rule": "ascii-diagram",
+    "pass": "diagram-detection",
+    "action": "llm_required",
+    "confidence": 0.8,
+    "applied": false,
+    "location": {
+      "startLine": 5,
+      "endLine": 11
+    }
+  },
+  {
+    "rule": "diagram-ir-extracted",
+    "pass": "diagram-detection",
+    "action": "auto_fix",
+    "confidence": 0.85,
+    "applied": true,
+    "location": {
+      "startLine": 5,
+      "endLine": 11
+    }
+  },
+  {
+    "rule": "ascii-diagram",
+    "pass": "diagram-detection",
+    "action": "llm_required",
+    "confidence": 0.7,
+    "applied": false,
+    "location": {
+      "startLine": 15,
+      "endLine": 18
+    }
+  },
+  {
+    "rule": "diagram-ir-extracted",
+    "pass": "diagram-detection",
+    "action": "auto_fix",
+    "confidence": 0.85,
+    "applied": true,
+    "location": {
+      "startLine": 15,
+      "endLine": 18
+    }
+  }
+]

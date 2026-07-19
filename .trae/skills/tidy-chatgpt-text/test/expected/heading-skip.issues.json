@@ -1,0 +1,24 @@
+[
+  {
+    "rule": "heading-skip-level",
+    "pass": "block-structure",
+    "action": "auto_fix",
+    "confidence": 0.9,
+    "applied": true,
+    "location": {
+      "startLine": 5,
+      "endLine": 5
+    }
+  },
+  {
+    "rule": "heading-skip-level",
+    "pass": "block-structure",
+    "action": "auto_fix",
+    "confidence": 0.9,
+    "applied": true,
+    "location": {
+      "startLine": 7,
+      "endLine": 7
+    }
+  }
+]

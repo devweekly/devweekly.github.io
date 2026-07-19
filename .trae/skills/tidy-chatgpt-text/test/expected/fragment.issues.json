@@ -1,0 +1,46 @@
+[
+  {
+    "rule": "fragment-sentence",
+    "pass": "fragment-detection",
+    "action": "llm_required",
+    "confidence": 0.92,
+    "applied": false,
+    "location": {
+      "startLine": 3,
+      "endLine": 5
+    }
+  },
+  {
+    "rule": "fragment-sentence",
+    "pass": "fragment-detection",
+    "action": "llm_required",
+    "confidence": 0.92,
+    "applied": false,
+    "location": {
+      "startLine": 5,
+      "endLine": 7
+    }
+  },
+  {
+    "rule": "fragment-sentence",
+    "pass": "fragment-detection",
+    "action": "llm_required",
+    "confidence": 0.92,
+    "applied": false,
+    "location": {
+      "startLine": 7,
+      "endLine": 9
+    }
+  },
+  {
+    "rule": "fragment-sentence",
+    "pass": "fragment-detection",
+    "action": "llm_required",
+    "confidence": 0.92,
+    "applied": false,
+    "location": {
+      "startLine": 9,
+      "endLine": 11
+    }
+  }
+]

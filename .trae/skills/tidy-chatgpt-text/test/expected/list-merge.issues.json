@@ -1,0 +1,13 @@
+[
+  {
+    "rule": "merge-adjacent-lists",
+    "pass": "block-structure",
+    "action": "auto_fix",
+    "confidence": 0.85,
+    "applied": true,
+    "location": {
+      "startLine": 5,
+      "endLine": 9
+    }
+  }
+]

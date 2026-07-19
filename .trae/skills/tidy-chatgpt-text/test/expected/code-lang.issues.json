@@ -1,0 +1,24 @@
+[
+  {
+    "rule": "code-block-missing-lang",
+    "pass": "inline-structure",
+    "action": "llm_required",
+    "confidence": 0.95,
+    "applied": false,
+    "location": {
+      "startLine": 3,
+      "endLine": 6
+    }
+  },
+  {
+    "rule": "code-block-missing-lang",
+    "pass": "inline-structure",
+    "action": "llm_required",
+    "confidence": 0.95,
+    "applied": false,
+    "location": {
+      "startLine": 12,
+      "endLine": 14
+    }
+  }
+]

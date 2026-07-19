@@ -1,0 +1,90 @@
+[
+  {
+    "rule": "ai-phrase",
+    "pass": "ai-score",
+    "action": "llm_required",
+    "confidence": 0.62,
+    "applied": false,
+    "location": {
+      "startLine": 5,
+      "endLine": 5
+    }
+  },
+  {
+    "rule": "ai-phrase",
+    "pass": "ai-score",
+    "action": "llm_required",
+    "confidence": 0.62,
+    "applied": false,
+    "location": {
+      "startLine": 5,
+      "endLine": 5
+    }
+  },
+  {
+    "rule": "ai-phrase",
+    "pass": "ai-score",
+    "action": "llm_required",
+    "confidence": 0.62,
+    "applied": false,
+    "location": {
+      "startLine": 7,
+      "endLine": 7
+    }
+  },
+  {
+    "rule": "ai-phrase",
+    "pass": "ai-score",
+    "action": "llm_required",
+    "confidence": 0.62,
+    "applied": false,
+    "location": {
+      "startLine": 7,
+      "endLine": 7
+    }
+  },
+  {
+    "rule": "ai-phrase",
+    "pass": "ai-score",
+    "action": "llm_required",
+    "confidence": 0.62,
+    "applied": false,
+    "location": {
+      "startLine": 9,
+      "endLine": 9
+    }
+  },
+  {
+    "rule": "ai-phrase",
+    "pass": "ai-score",
+    "action": "llm_required",
+    "confidence": 0.62,
+    "applied": false,
+    "location": {
+      "startLine": 9,
+      "endLine": 9
+    }
+  },
+  {
+    "rule": "ai-phrase",
+    "pass": "ai-score",
+    "action": "llm_required",
+    "confidence": 0.62,
+    "applied": false,
+    "location": {
+      "startLine": 11,
+      "endLine": 11
+    }
+  },
+  {
+    "rule": "ai-first-person-heading",
+    "pass": "ai-score",
+    "action": "llm_required",
+    "confidence": 0.75,
+    "applied": false,
+    "location": {
+      "startLine": 3,
+      "endLine": 3
+    }
+  }
+]

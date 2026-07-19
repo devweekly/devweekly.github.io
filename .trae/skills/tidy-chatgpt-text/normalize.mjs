@@ -1,19 +1,17 @@
 #!/usr/bin/env node
 /**
- * LLM Markdown Normalizer Engine — 单文件可执行（ESM，基于 unified/remark）
+ * LLM Markdown Normalizer — V1
+ *
+ * 定位：基于 mdast 的 Markdown 静态分析与自动规范化引擎。
+ * JS 负责确定性分析与机械修复，LLM 只负责需要语义理解的改写和转换。
  *
  * Hybrid Architecture:
  *   JS  →  AST 解析 + 确定性机械修复 + 检测 + Issue 生成
- *   LLM → 语义保持改写 + 去 AI 味 + ASCII→Mermaid（需要语义判断）
+ *   LLM → 语义保持改写 + 去 AI 味 + ASCII→Mermaid
  *
- * 架构改进（v2）:
- *   1. 使用 unist-util-visit 进行全树遍历（含 nested list/blockquote/table cell）
- *   2. Pass Pipeline 架构：显式 Pass 数组，每个 Pass 接收 RuleContext
- *   3. AST Mutation Layer：所有 mutation 经安全工具（cloneNode/replaceNode/createNode）
- *   4. ASCII 图评分制：多维打分（short lines + arrows + tree chars + no punctuation）
- *   5. AI Score 多维：phrase + heading + emoji + fragmentation
- *   6. Diagram IR + Mermaid Generator：detector 与 generator 分离
- *   7. Profile 配置增强：每个 profile 含 rules 配置
+ * 双 API（Rule 修改 AST 的两种方式）:
+ *   ctx.fix(...)     — 95% 场景：deterministic + local + conflict-free，直接 mutate
+ *   ctx.propose(...) —  5% 场景：LLM Rewrite / Heading Merge / Diagram Conversion / Paragraph Merge
  *
  * 三种运行模式:
  *   --check   Dry Run，只检测输出问题清单，退出码 0/1
@@ -28,62 +26,54 @@ import remarkGfm from 'remark-gfm';
 import { visit as unistVisit } from 'unist-util-visit';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 // ============================================================
-//  1. Config & Profiles（含 rules 配置）
+//  1. Config & Profiles（strict / default / relaxed + extends）
 // ============================================================
 
 const PROFILES = {
-  'technical-doc': {
-    headingDepth: 3,
-    confidenceThreshold: 0.80,
-    mermaid: true,
+  strict: {
+    confidenceThreshold: 0.90,
     rules: {
       allowEmoji: false,
       preferTable: true,
       aiCleanup: true,
-      maxHeadingDepth: 4,
       asciiDiagramAction: 'mermaid',
     },
   },
-  'blog': {
-    headingDepth: 4,
+  default: {
+    confidenceThreshold: 0.80,
+    rules: {
+      allowEmoji: false,
+      preferTable: true,
+      aiCleanup: true,
+      asciiDiagramAction: 'mermaid',
+    },
+  },
+  relaxed: {
     confidenceThreshold: 0.70,
-    mermaid: true,
     rules: {
       allowEmoji: true,
       preferTable: false,
       aiCleanup: true,
-      maxHeadingDepth: 5,
       asciiDiagramAction: 'mermaid',
-    },
-  },
-  'rfc': {
-    headingDepth: 3,
-    confidenceThreshold: 0.90,
-    mermaid: false,
-    rules: {
-      allowEmoji: false,
-      preferTable: true,
-      aiCleanup: false,
-      maxHeadingDepth: 4,
-      asciiDiagramAction: 'preserve',
-    },
-  },
-  'architecture': {
-    headingDepth: 4,
-    confidenceThreshold: 0.80,
-    mermaid: true,
-    rules: {
-      allowEmoji: false,
-      preferTable: true,
-      aiCleanup: true,
-      maxHeadingDepth: 4,
-      asciiDiagramAction: 'mermaid',
-      allowedMermaidTypes: ['erDiagram', 'sequenceDiagram', 'flowchart', 'classDiagram'],
     },
   },
 };
+
+// resolveProfile: 支持 extends + rules 覆盖（programmatic 用，CLI 用预设名）
+function resolveProfile(name, overrides) {
+  const base = PROFILES[name] || PROFILES.default;
+  if (!overrides) return base;
+  const extended = overrides.extends ? resolveProfile(overrides.extends) : base;
+  return {
+    ...extended,
+    ...overrides,
+    extends: undefined,
+    rules: { ...extended.rules, ...(overrides.rules || {}) },
+  };
+}
 
 const AI_PHRASES = [
   '真正重要的是', '其实真正重要的是', '核心在于', '关键点在于', '值得注意的是',
@@ -95,7 +85,43 @@ const AI_PHRASES = [
 const AI_FIRST_PERSON = ['我建议', '我觉得', '我认为', '我会', '我不会', '我想', '我们需要', '我们可以'];
 
 // ============================================================
-//  2. Parser & Stringifier
+//  2. Rule Metadata Registry
+//
+//  Rule 不再只是代码，而是 Metadata。
+//  CLI / Report / Docs 全部可从 RULES 自动生成。
+//  投入极低，收益极高。
+// ============================================================
+
+const RULES = {};
+
+function registerRule(meta) {
+  if (!meta.id) throw new Error('registerRule: id is required');
+  RULES[meta.id] = {
+    id: meta.id,
+    category: meta.category || 'general',
+    autofix: meta.autofix ?? false,
+    llm: meta.llm ?? false,
+    confidence: meta.confidence ?? 0,
+    tags: meta.tags || [],
+    description: meta.description || '',
+  };
+}
+
+// Pre-declare all rule metadata（Pass 内引用这些 id）
+registerRule({ id: 'remove-empty-paragraph', category: 'whitespace', autofix: true, llm: false, confidence: 0.99, tags: ['paragraph'], description: 'Remove empty paragraph' });
+registerRule({ id: 'trim-trailing-whitespace', category: 'whitespace', autofix: true, llm: false, confidence: 0.99, tags: ['text'], description: 'Trim trailing whitespace' });
+registerRule({ id: 'merge-adjacent-lists', category: 'structure', autofix: true, llm: false, confidence: 0.85, tags: ['list'], description: 'Merge adjacent lists of same type' });
+registerRule({ id: 'heading-skip-level', category: 'structure', autofix: true, llm: false, confidence: 0.90, tags: ['heading'], description: 'Fix heading skip level' });
+registerRule({ id: 'code-block-missing-lang', category: 'validation', autofix: false, llm: true, confidence: 0.95, tags: ['code'], description: 'Code block missing language identifier' });
+registerRule({ id: 'ascii-diagram', category: 'diagram', autofix: false, llm: true, confidence: 0.78, tags: ['ascii', 'mermaid'], description: 'ASCII diagram detected, convert to mermaid or table' });
+registerRule({ id: 'diagram-ir-extracted', category: 'diagram', autofix: true, llm: false, confidence: 0.85, tags: ['ascii', 'ir'], description: 'Auto-extracted Diagram IR from ASCII' });
+registerRule({ id: 'ai-phrase', category: 'ai-style', autofix: false, llm: true, confidence: 0.62, tags: ['phrase'], description: 'AI template phrase detected' });
+registerRule({ id: 'ai-first-person-heading', category: 'ai-style', autofix: false, llm: true, confidence: 0.75, tags: ['heading', 'first-person'], description: 'First-person voice in heading' });
+registerRule({ id: 'fragment-sentence', category: 'structure', autofix: false, llm: true, confidence: 0.92, tags: ['paragraph', 'fragment'], description: 'Fragmented short paragraphs should merge' });
+registerRule({ id: 'mermaid-node-name-escape', category: 'validation', autofix: false, llm: true, confidence: 0.95, tags: ['mermaid'], description: 'Mermaid node name needs escaping' });
+
+// ============================================================
+//  3. Parser & Stringifier
 // ============================================================
 
 const parser = unified().use(remarkParse).use(remarkGfm);
@@ -109,7 +135,7 @@ const parseMarkdown = (text) => parser.parse(text);
 const stringifyMarkdown = (tree) => stringifier.stringify(tree);
 
 // ============================================================
-//  3. AST Mutation Layer（安全工具）
+//  4. AST Mutation Layer（安全工具）
 //
 //  所有 AST 修改都经过这里，避免直接构造 node 导致 position/data 缺失。
 // ============================================================
@@ -156,7 +182,7 @@ function mergeChildren(parent, startIdx, endIdx, mergedChildren) {
 }
 
 // ============================================================
-//  4. AST Utils（基于 unist-util-visit）
+//  5. AST Utils（基于 unist-util-visit）
 // ============================================================
 
 function collectText(node) {
@@ -188,19 +214,16 @@ function getContextChunk(fullLines, startLine, endLine, beforeLines = 2, afterLi
 }
 
 // ============================================================
-//  5. RuleContext（Pass 执行上下文）
+//  6. RuleContext（Pass 执行上下文，双 API）
 //
-//  每个 Pass 接收 RuleContext，包含:
-//    - tree, fullLines, profile, level, mode
-//    - visit(test, fn): 全树遍历（含 nested）
-//    - report(issue): 记录 issue
-//    - applied(change): 记录已应用的修复
-//    - canAuto: 是否允许自动修复
-//    - mutate: AST mutation 工具集
-//    - symbols: v2 Symbol Table（Document Index）
+//  ctx.fix(...)     — 95% 场景：deterministic + local + conflict-free
+//                     内部：check threshold → mutate → record change → record applied issue
+//  ctx.propose(...) — 5% 场景：可能冲突的操作（LLM Rewrite / Heading Merge / Diagram Conversion / Paragraph Merge）
+//                     输出 Edit Proposal，由 Planner 统一仲裁 + 应用
+//  ctx.report(...)  — 只检测，不修改
 // ============================================================
 
-// v2: Explainability — 自动推导 issue 的 matched 和 why
+// Explainability — 自动推导 issue 的 matched 和 why
 function deriveMatched(issue) {
   const sample = issue.sample || '';
   const rule = issue.rule || '';
@@ -212,6 +235,10 @@ function deriveMatched(issue) {
   if (rule.includes('fragment')) return ['连续短段落', '每段小于 20 字符', '破坏信息密度'];
   if (rule.includes('mermaid')) return ['Mermaid 节点名含空格未转义'];
   if (rule.includes('lang')) return ['代码块缺少语言标识'];
+  if (rule.includes('empty-paragraph')) return ['空段落无内容'];
+  if (rule.includes('trailing-whitespace')) return ['行尾有多余空白字符'];
+  if (rule.includes('merge') && rule.includes('list')) return ['两个相邻同类 list 节点', '中间仅隔空行'];
+  if (rule.includes('heading') && rule.includes('skip')) return ['Heading 层级跳跃'];
   return [rule];
 }
 
@@ -222,8 +249,12 @@ function deriveWhy(issue) {
   if (rule.includes('ascii')) return 'ASCII 图无法渲染，应转为 Mermaid 或表格';
   if (rule.includes('phrase')) return 'AI 口头禅降低专业性，应删除';
   if (rule.includes('first-person')) return '第一人称语气不符合技术文档规范';
-  if (rule.includes('fragment')) return '碎片化段落无法被 Document IR 识别为完整 Section';
+  if (rule.includes('fragment')) return '碎片化段落破坏信息密度';
   if (rule.includes('mermaid')) return '节点名未转义会导致 Mermaid 渲染错误';
+  if (rule.includes('empty-paragraph')) return '空段落占用版面，应删除';
+  if (rule.includes('trailing-whitespace')) return '行尾空白造成 diff 噪音';
+  if (rule.includes('merge') && rule.includes('list')) return '同类列表分离降低结构一致性';
+  if (rule.includes('heading') && rule.includes('skip')) return 'Heading 跳级破坏文档结构';
   return '';
 }
 
@@ -240,6 +271,7 @@ class RuleContext {
     this.issues = [];
     this.issueCounter = 1;
     this.aiScore = null;
+    this.symbols = null;
     this.stats = {
       emptyParagraphs: 0,
       mergedLists: 0,
@@ -250,28 +282,76 @@ class RuleContext {
       mermaidIssues: 0,
       trailingWhitespace: 0,
     };
+    this._proposals = [];
   }
 
   visit(test, fn) {
     return unistVisit(this.tree, test, fn);
   }
 
-  // v2: Issue 升级为 Evidence
-  // 每个 issue 自动带 explainability（matched + why），调用方可传入自定义 evidence 覆盖
+  // ===== 95% 场景：deterministic + local + conflict-free =====
+  // 调用方传入 apply() 回调执行 mutation，ctx.fix 负责阈值判断 + 记录
+  fix({ rule, pass, confidence, location, sample = '', suggestion = '', context, apply }) {
+    if (this.canAuto && confidence >= (this.profile.confidenceThreshold || 0)) {
+      // 执行 mutation
+      if (typeof apply === 'function') apply();
+      this.changes.push({ rule, pass, action: 'applied', location });
+      this.issues.push({
+        id: `issue-${String(this.issueCounter++).padStart(3, '0')}`,
+        rule, pass,
+        severity: 'low',
+        confidence,
+        action: 'auto_fix',
+        applied: true,
+        location,
+        context: context || { chunk: '' },
+        sample,
+        suggestion,
+        evidence: {
+          matched: deriveMatched({ rule, sample }),
+          why: deriveWhy({ rule, suggestion }),
+        },
+      });
+    } else {
+      // check 模式或低于阈值：只报告
+      this.issues.push({
+        id: `issue-${String(this.issueCounter++).padStart(3, '0')}`,
+        rule, pass,
+        severity: 'low',
+        confidence,
+        action: 'auto_fix',
+        applied: false,
+        location,
+        context: context || { chunk: '' },
+        sample,
+        suggestion,
+        evidence: {
+          matched: deriveMatched({ rule, sample }),
+          why: deriveWhy({ rule, suggestion }),
+        },
+      });
+    }
+  }
+
+  // ===== 只检测不修改 =====
   report(issue) {
-    // 自动生成基础 evidence（如果调用方未提供）
-    const autoEvidence = issue.evidence || {
-      matched: deriveMatched(issue),
-      why: deriveWhy(issue),
-    };
     const fullIssue = {
       id: `issue-${String(this.issueCounter++).padStart(3, '0')}`,
       ...issue,
-      evidence: autoEvidence,
+      evidence: issue.evidence || {
+        matched: deriveMatched(issue),
+        why: deriveWhy(issue),
+      },
       applied: issue.applied ?? false,
     };
     this.issues.push(fullIssue);
     return fullIssue;
+  }
+
+  // ===== 5% 场景：可能冲突的操作，输出 Edit Proposal =====
+  // edit: { targetNode, parent, index, operation, newNode?, confidence, reason, rule, pass }
+  propose(edit) {
+    this._proposals.push(edit);
   }
 
   applied(rule, pass, detail = {}) {
@@ -286,21 +366,15 @@ class RuleContext {
     insert: insertNode,
     mergeChildren: mergeChildren,
   };
-
-  // v2: Transformation Proposal —— Pass 输出 Edit 而不直接 mutate
-  // edit: { targetNode, parent, index, operation: 'replace'|'remove'|'insert', newNode?, confidence, reason, rule }
-  propose(edit) {
-    if (!this._proposals) this._proposals = [];
-    this._proposals.push({ ...edit, pass: edit.pass || 'unknown' });
-  }
 }
 
 // ============================================================
-//  v2: Planner + Conflict Resolver
+//  7. Planner + Conflict Resolver（仅用于 ctx.propose 的 5% 场景）
+//
 //  多个 Rule 可能对同一节点提出 Edit，按 confidence 仲裁，保留胜者
 // ============================================================
+
 function resolveConflicts(proposals) {
-  // 按 targetNode 分组（用节点引用作 key）
   const groups = new Map();
   for (const p of proposals) {
     const key = p.targetNode || null;
@@ -312,7 +386,6 @@ function resolveConflicts(proposals) {
     if (group.length === 1) {
       resolved.push(group[0]);
     } else {
-      // 冲突：按 confidence 降序，保留最高（同分保留首个）
       group.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
       const winner = group[0];
       winner.conflictResolved = true;
@@ -323,9 +396,8 @@ function resolveConflicts(proposals) {
   return resolved;
 }
 
-// v2: 统一应用 Edits（按 location 倒序，避免 index 漂移）
 function applyEdits(ctx, edits) {
-  // 按 startLine 倒序排序
+  // 按 startLine 倒序排序，避免 index 漂移
   edits.sort((a, b) => {
     const la = a.targetNode?.position?.start?.line || a.location?.startLine || 0;
     const lb = b.targetNode?.position?.start?.line || b.location?.startLine || 0;
@@ -344,10 +416,9 @@ function applyEdits(ctx, edits) {
         ctx.applied(edit.rule, edit.pass, { operation: 'insert', reason: edit.reason });
       }
     } catch (e) {
-      // 应用失败不阻断流程
       ctx.report({
         rule: edit.rule,
-        pass: 'applyEdits',
+        pass: edit.pass || 'applyEdits',
         severity: 'low',
         confidence: 0,
         action: 'error',
@@ -361,98 +432,50 @@ function applyEdits(ctx, edits) {
 }
 
 // ============================================================
-//  6. Pass 基类 & Pipeline (v2: DAG + Transformation Proposal)
+//  8. Pass Pipeline（简单 after: [] 依赖，拓扑排序）
 //
-//  v2 Pass 接口:
-//    { name, levels, dependsOn, produces, consumes, run(ctx) }
+//  Pass 接口:
+//    { name, levels, after: [], run(ctx) }
 //
-//  v2 DAG: Pipeline 按拓扑排序执行，Pass 通过 produces/consumes 声明依赖
-//  v2 Transformation: Pass 不直接 mutate AST，而是 ctx.propose(edit) 输出 Edit Proposal
-//    Planner 收集所有 proposals → ConflictResolver 按节点+confidence 仲裁 → applyEdits 统一应用
+//  after: ['diagram-detection']  表示此 Pass 在 diagram-detection 之后执行
+//  不需要 produces/consumes/resources，Markdown 用不着 Compiler Framework 那一套
 // ============================================================
 
 const pipeline = [];
 
 function registerPass(pass) {
-  // v2: 补全 DAG 元数据
-  if (!pass.dependsOn) pass.dependsOn = [];
-  if (!pass.produces) pass.produces = [];
-  if (!pass.consumes) pass.consumes = [];
+  if (!pass.after) pass.after = [];
   pipeline.push(pass);
 }
 
-// v2: 拓扑排序（Kahn's algorithm）
+// 简单拓扑排序（DFS，基于 after 约束）
 function topoSortPasses(passes) {
-  const inDegree = new Map();
-  const graph = new Map();
-  for (const p of passes) {
-    inDegree.set(p.name, 0);
-    graph.set(p.name, []);
-  }
-  for (const p of passes) {
-    for (const dep of p.dependsOn || []) {
-      if (inDegree.has(dep)) {
-        graph.get(dep).push(p.name);
-        inDegree.set(p.name, inDegree.get(p.name) + 1);
-      }
-    }
-  }
-  const queue = passes.filter((p) => inDegree.get(p.name) === 0);
   const sorted = [];
-  while (queue.length > 0) {
-    const p = queue.shift();
-    sorted.push(p);
-    for (const next of graph.get(p.name)) {
-      inDegree.set(next, inDegree.get(next) - 1);
-      if (inDegree.get(next) === 0) {
-        const np = passes.find((x) => x.name === next);
-        if (np) queue.push(np);
-      }
+  const visited = new Set();
+  const visiting = new Set();
+
+  function visit(pass) {
+    if (visited.has(pass.name)) return;
+    if (visiting.has(pass.name)) return; // 环检测：跳过
+    visiting.add(pass.name);
+    for (const afterName of pass.after || []) {
+      const dep = passes.find((p) => p.name === afterName);
+      if (dep) visit(dep);
     }
+    visiting.delete(pass.name);
+    visited.add(pass.name);
+    sorted.push(pass);
   }
-  // 环检测：如果 sorted 不全，剩余的按原顺序追加（降级为线性）
-  if (sorted.length < passes.length) {
-    for (const p of passes) {
-      if (!sorted.includes(p)) sorted.push(p);
-    }
-  }
+
+  for (const p of passes) visit(p);
   return sorted;
 }
 
 function runPasses(ctx) {
-  // v2: 按拓扑排序执行
   const activePasses = pipeline.filter((p) => p.levels.includes(ctx.level));
   const sorted = topoSortPasses(activePasses);
 
-  // v2: Incremental Execution —— 如果 ctx._affectedPasses 非空，只跑受影响的 Pass
-  // 同时包含其依赖（dependsOn 闭包），保证 DAG 完整性
-  let passesToRun = sorted;
-  if (ctx._affectedPasses && ctx._affectedPasses.length > 0) {
-    const affectedNames = new Set(ctx._affectedPasses.map((p) => p.name));
-    // 闭包扩展：受影响 Pass 的依赖也必须执行
-    const visited = new Set();
-    const queue = Array.from(affectedNames);
-    while (queue.length > 0) {
-      const name = queue.shift();
-      if (visited.has(name)) continue;
-      visited.add(name);
-      const pass = sorted.find((p) => p.name === name);
-      if (pass) {
-        for (const dep of pass.dependsOn || []) {
-          if (!visited.has(dep)) queue.push(dep);
-        }
-      }
-    }
-    passesToRun = sorted.filter((p) => visited.has(p.name));
-    // 记录跳过的 Pass
-    ctx._skippedPasses = sorted.filter((p) => !visited.has(p.name)).map((p) => p.name);
-  }
-
-  // v2: 分两阶段——Phase 1 收集 proposals，Phase 2 统一 apply
-  // 如果 Pass 直接 mutate（旧式），仍然支持；如果 Pass 调用 ctx.propose，走 Planner
-  ctx._proposals = [];
-
-  for (const pass of passesToRun) {
+  for (const pass of sorted) {
     try {
       pass.run(ctx);
     } catch (e) {
@@ -470,7 +493,7 @@ function runPasses(ctx) {
     }
   }
 
-  // v2: Planner + Conflict Resolver + AST Apply
+  // 5% 场景：统一应用 Proposals（如果有）
   if (ctx._proposals && ctx._proposals.length > 0) {
     const resolved = resolveConflicts(ctx._proposals);
     applyEdits(ctx, resolved);
@@ -478,15 +501,15 @@ function runPasses(ctx) {
 }
 
 // ============================================================
-//  7. Passes
+//  9. Passes
 // ============================================================
 
-// ---- Pass 1: Whitespace ----
+// ---- Pass 1: Whitespace（95% 用 ctx.fix） ----
 registerPass({
   name: 'whitespace',
   levels: ['L0', 'L1', 'L2'],
   run(ctx) {
-    // 1.1 移除空 paragraph（用 visit 遍历整棵树，含 nested）
+    // 1.1 移除空 paragraph
     const emptyParas = [];
     unistVisit(ctx.tree, 'paragraph', (node, index, parent) => {
       if ((node.children || []).length === 0) {
@@ -496,27 +519,19 @@ registerPass({
     emptyParas.reverse();
     for (const { node, index, parent } of emptyParas) {
       const line = getStartLine(node);
-      const confidence = 0.99;
-      if (ctx.canAuto && confidence >= ctx.profile.confidenceThreshold) {
-        if (parent) ctx.mutate.remove(parent, index);
-        ctx.applied('remove-empty-paragraph', this.name, { line });
-        ctx.stats.emptyParagraphs++;
-      } else {
-        ctx.report({
-          rule: 'remove-empty-paragraph',
-          pass: 'whitespace',
-          severity: 'low',
-          confidence,
-          action: 'auto_fix',
-          location: { startLine: line, endLine: line },
-          context: { chunk: '' },
-          sample: '',
-          suggestion: 'Remove empty paragraph',
-        });
-      }
+      ctx.fix({
+        rule: 'remove-empty-paragraph',
+        pass: 'whitespace',
+        confidence: 0.99,
+        location: { startLine: line, endLine: line },
+        apply: () => {
+          if (parent) ctx.mutate.remove(parent, index);
+          ctx.stats.emptyParagraphs++;
+        },
+      });
     }
 
-    // 1.2 行尾空白去除（text 节点内）
+    // 1.2 行尾空白去除
     if (ctx.canAuto) {
       let count = 0;
       unistVisit(ctx.tree, 'text', (node) => {
@@ -535,19 +550,19 @@ registerPass({
         }
       });
       if (count > 0) {
-        ctx.applied('trim-trailing-whitespace', this.name, { count });
+        ctx.applied('trim-trailing-whitespace', 'whitespace', { count });
         ctx.stats.trailingWhitespace += count;
       }
     }
   },
 });
 
-// ---- Pass 2: Block Structure（用 visit 遍历全树，含 nested） ----
+// ---- Pass 2: Block Structure（95% 用 ctx.fix） ----
 registerPass({
   name: 'block-structure',
   levels: ['L0', 'L1', 'L2'],
   run(ctx) {
-    // 2.1 相邻同类列表合并（root level + nested）
+    // 2.1 相邻同类列表合并
     const listPairs = [];
     unistVisit(ctx.tree, 'list', (node, index, parent) => {
       if (!parent || typeof index !== 'number') return;
@@ -558,68 +573,55 @@ registerPass({
     });
     listPairs.reverse();
     for (const { node, next, index, parent } of listPairs) {
-      const confidence = 0.85;
       const startLine = getStartLine(node);
       const endLine = getEndLine(next);
-      if (ctx.canAuto && confidence >= ctx.profile.confidenceThreshold) {
-        node.children.push(...next.children);
-        ctx.mutate.remove(parent, index + 1);
-        ctx.applied('merge-adjacent-lists', this.name, { line: startLine });
-        ctx.stats.mergedLists++;
-      } else {
-        ctx.report({
-          rule: 'merge-adjacent-lists',
-          pass: 'block-structure',
-          severity: 'low',
-          confidence,
-          action: 'auto_fix',
-          location: { startLine, endLine },
-          context: getContextChunk(ctx.fullLines, startLine, endLine, 1, 1),
-          sample: '',
-          suggestion: 'Merge adjacent lists of same type',
-        });
-      }
+      ctx.fix({
+        rule: 'merge-adjacent-lists',
+        pass: 'block-structure',
+        confidence: 0.85,
+        location: { startLine, endLine },
+        context: getContextChunk(ctx.fullLines, startLine, endLine, 1, 1),
+        apply: () => {
+          node.children.push(...next.children);
+          ctx.mutate.remove(parent, index + 1);
+          ctx.stats.mergedLists++;
+        },
+      });
     }
 
-    // 2.2 Heading 跳级检测与修复
+    // 2.2 Heading 跳级修复
     const headings = [];
     unistVisit(ctx.tree, 'heading', (h) => headings.push(h));
     for (let i = 0; i < headings.length - 1; i++) {
       const cur = headings[i];
       const next = headings[i + 1];
       if (next.depth > cur.depth + 1) {
-        const confidence = 0.90;
         const startLine = getStartLine(next);
         const endLine = getEndLine(next);
         const sample = `h${cur.depth} → h${next.depth}`;
-        if (ctx.canAuto && confidence >= ctx.profile.confidenceThreshold) {
-          next.depth = cur.depth + 1;
-          ctx.applied('heading-skip-level', this.name, { line: startLine, detail: sample });
-          ctx.stats.headingSkips++;
-        } else {
-          ctx.report({
-            rule: 'heading-skip-level',
-            pass: 'block-structure',
-            severity: 'medium',
-            confidence,
-            action: 'auto_fix',
-            location: { startLine, endLine },
-            context: getContextChunk(ctx.fullLines, startLine, endLine, 1, 1),
-            sample,
-            suggestion: `Promote heading to h${cur.depth + 1}`,
-          });
-        }
+        ctx.fix({
+          rule: 'heading-skip-level',
+          pass: 'block-structure',
+          confidence: 0.90,
+          location: { startLine, endLine },
+          context: getContextChunk(ctx.fullLines, startLine, endLine, 1, 1),
+          sample,
+          suggestion: `Promote heading to h${cur.depth + 1}`,
+          apply: () => {
+            next.depth = cur.depth + 1;
+            ctx.stats.headingSkips++;
+          },
+        });
       }
     }
   },
 });
 
-// ---- Pass 3: Inline Structure ----
+// ---- Pass 3: Inline Structure（只检测） ----
 registerPass({
   name: 'inline-structure',
   levels: ['L0', 'L1', 'L2'],
   run(ctx) {
-    // 代码块缺语言标注（只能报告，不能自动补全）
     unistVisit(ctx.tree, 'code', (code) => {
       if (!code.lang || code.lang.trim() === '') {
         const startLine = getStartLine(code);
@@ -640,14 +642,13 @@ registerPass({
   },
 });
 
-// ---- Pass 4: Diagram Detection（评分制） ----
+// ---- Pass 4: Diagram Detection（report + 可选 propose for 5% 场景） ----
 registerPass({
   name: 'diagram-detection',
   levels: ['L0', 'L1', 'L2'],
   run(ctx) {
     unistVisit(ctx.tree, (node) => {
       if (node.type !== 'paragraph' && node.type !== 'code') return;
-      // 跳过 mermaid 代码块（已经是图，不需要转）
       if (node.type === 'code' && node.lang && node.lang.includes('mermaid')) return;
       const text = node.type === 'code' ? (node.value || '') : collectText(node);
       if (!text || text.length < 4) return;
@@ -671,7 +672,7 @@ registerPass({
         });
         ctx.stats.asciiDiagrams++;
 
-        // 如果 profile 要求 mermaid 且 diagramType 可识别，尝试自动生成 IR
+        // 自动提取 Diagram IR（如果可识别）
         if (ctx.profile.rules.asciiDiagramAction === 'mermaid' && score.diagramType !== 'unknown') {
           const ir = parseDiagramIR(text, score.diagramType);
           if (ir && ir.nodes.length > 0) {
@@ -695,7 +696,7 @@ registerPass({
   },
 });
 
-// ---- Pass 5: AI Score（多维评分） ----
+// ---- Pass 5: AI Score（4 维：phrase + heading + emoji + fragment） ----
 registerPass({
   name: 'ai-score',
   levels: ['L0', 'L1', 'L2'],
@@ -703,7 +704,7 @@ registerPass({
     const score = computeAiScore(ctx.tree, ctx.profile);
     ctx.aiScore = score;
 
-    // 为每个 AI 短语生成 issue（基于 paragraph 定位）
+    // 为每个 AI 短语生成 issue
     const phraseOccurrences = [];
     unistVisit(ctx.tree, 'paragraph', (node) => {
       const text = collectText(node);
@@ -738,7 +739,7 @@ registerPass({
       });
     }
 
-    // 第一人称出现在 heading，单独报告
+    // 第一人称出现在 heading
     if (score.firstPersonHeading > 0) {
       unistVisit(ctx.tree, 'heading', (node) => {
         const text = collectText(node);
@@ -764,7 +765,7 @@ registerPass({
   },
 });
 
-// ---- Pass 6: Fragment Sentence Detection ----
+// ---- Pass 6: Fragment Detection（report，合并走 LLM） ----
 registerPass({
   name: 'fragment-detection',
   levels: ['L0', 'L1', 'L2'],
@@ -796,7 +797,7 @@ registerPass({
   },
 });
 
-// ---- Pass 7: Mermaid Validation ----
+// ---- Pass 7: Mermaid Validation（只检测） ----
 registerPass({
   name: 'mermaid-validation',
   levels: ['L0', 'L1', 'L2'],
@@ -832,7 +833,7 @@ registerPass({
 });
 
 // ============================================================
-//  8. ASCII Diagram Scoring（多维打分，避免误判）
+//  10. ASCII Diagram Scoring（多维打分，避免误判）
 // ============================================================
 
 function scoreAsciiDiagram(text) {
@@ -842,7 +843,6 @@ function scoreAsciiDiagram(text) {
   const breakdown = {};
   let score = 0;
 
-  // 1. 短行比例（每行 < 30 字符）
   const shortLines = lines.filter((l) => l.trim().length < 30).length;
   const shortRatio = shortLines / lines.length;
   if (shortRatio >= 0.7) {
@@ -852,7 +852,6 @@ function scoreAsciiDiagram(text) {
     breakdown.shortLines = 0;
   }
 
-  // 2. 箭头/连接符
   const arrowChars = (text.match(/[↓↑→←]/g) || []).length;
   const arrowSymbols = (text.match(/(-->|->|=>|==>|↑|↓)/g) || []).length;
   const totalArrows = arrowChars + arrowSymbols;
@@ -866,7 +865,6 @@ function scoreAsciiDiagram(text) {
     breakdown.arrows = 0;
   }
 
-  // 3. 树形字符
   const treeChars = (text.match(/[│├└─┌┐┘]{3,}/g) || []).length;
   if (treeChars >= 1) {
     score += 0.2;
@@ -875,7 +873,6 @@ function scoreAsciiDiagram(text) {
     breakdown.treeChars = 0;
   }
 
-  // 4. 无句末标点（不是完整句子）
   const punctCount = (text.match(/[。.！!？?]/g) || []).length;
   if (punctCount === 0 && lines.length >= 2) {
     score += 0.2;
@@ -884,7 +881,6 @@ function scoreAsciiDiagram(text) {
     breakdown.noPunctuation = 0;
   }
 
-  // 5. 缩进层级（暗示树结构）
   const indentLevels = new Set();
   for (const l of lines) {
     const indent = l.match(/^(\s*)/)[1].length;
@@ -897,7 +893,6 @@ function scoreAsciiDiagram(text) {
     breakdown.indentHierarchy = 0;
   }
 
-  // 判断图类型
   let diagramType = 'unknown';
   if (treeChars >= 1 || indentLevels.size >= 2) {
     diagramType = 'tree';
@@ -913,10 +908,10 @@ function scoreAsciiDiagram(text) {
 }
 
 // ============================================================
-//  9. Diagram IR + Mermaid Generator
+//  11. Diagram IR + Mermaid Generator
 //
 //  Detector 提取结构化 IR，Generator 生成 mermaid 代码。
-//  这样可测试、可自动生成，减少对 LLM 的依赖。
+//  可测试、可自动生成，减少对 LLM 的依赖。
 // ============================================================
 
 function parseDiagramIR(text, diagramType) {
@@ -935,21 +930,15 @@ function parseDiagramIR(text, diagramType) {
   }
 
   if (diagramType === 'flow') {
-    // 支持两种格式:
-    //   1. 单行多节点: A --> B --> C
-    //   2. 跨行箭头: A\n  ↓\nB\n  ↓\nC
-    // 把箭头单独成行的格式合并成 "A ↓ B ↓ C" 单行
     const arrowOnlyRe = /^[↓↑→←│├└─]+$|^(-->|->|=>|==>|─{2,}>?)$/;
     const merged = [];
     for (const line of lines) {
       const trimmed = line.trim();
       if (arrowOnlyRe.test(trimmed)) {
-        // 箭头行：附加到上一行末尾（用空格分隔）
         if (merged.length > 0) {
           merged[merged.length - 1] += ' ' + trimmed + ' ';
         }
       } else {
-        // 普通节点行：如果上一行以箭头结尾（被附加过），说明应该和上一行合并
         if (merged.length > 0 && /(?:↓|↑|→|←|-->|->|=>|==>)\s*$/.test(merged[merged.length - 1])) {
           merged[merged.length - 1] += trimmed;
         } else {
@@ -971,23 +960,16 @@ function parseDiagramIR(text, diagramType) {
       }
     }
   } else if (diagramType === 'tree') {
-    // 两种树形格式:
-    //   1. 缩进式: "Root\n  Child1\n  Child2"
-    //   2. 树字符式: "Root\n├── Child1\n├── Child2\n└── Child3"
     const hasTreeChars = lines.some((l) => /[│├└]/.test(l));
     if (hasTreeChars) {
-      // 树字符式：根据 ├── └── 前缀判断层级
       const rootName = addNode(lines[0].replace(/[│├└─]/g, '').trim());
-      const rootIndent = 0;
-      const stack = [{ indent: rootIndent, name: rootName }];
+      const stack = [{ indent: 0, name: rootName }];
       for (let i = 1; i < lines.length; i++) {
         const line = lines[i];
-        // 计算层级：│ 的数量 + (├ 或 └ 的深度)
         const bars = (line.match(/│/g) || []).length;
         const indent = bars;
         const name = addNode(line.replace(/[│├└─]/g, '').trim());
         if (!name) continue;
-        // 弹出栈中 indent >= 当前的
         while (stack.length > 1 && stack[stack.length - 1].indent >= indent) {
           stack.pop();
         }
@@ -997,8 +979,7 @@ function parseDiagramIR(text, diagramType) {
         stack.push({ indent, name });
       }
     } else {
-      // 缩进式
-      const stack = []; // [{ indent, name }]
+      const stack = [];
       for (const line of lines) {
         const indent = line.match(/^(\s*)/)[1].length;
         const name = addNode(line.trim());
@@ -1040,21 +1021,20 @@ function generateMermaid(ir) {
 }
 
 // 节点 ID：保留原词可读性，空格替换为下划线，禁止无意义缩写
-// 含其他特殊字符（括号/引号/斜杠）的节点，ID 仍转下划线，但渲染时需要加引号标签（由调用方判断）
 function nodeId(name) {
   return name.replace(/[^a-zA-Z0-9]/g, '_');
 }
 
 // ============================================================
-//  10. AI Score（多维评分）
+//  12. AI Score（4 维：phrase + heading + emoji + fragment）
+//
+//  Rule Engine 做不到真正判断 readability/coherence/style 等维度，
+//  这些交给 LLM。Rule-based Prior + LLM Review 即可。
 // ============================================================
 
 function computeAiScore(tree, _profile) {
-  // v2: 多维 Quality Model
-  // 从单一 AI Score 扩展为 readability/fragmentation/redundancy/structure/aiStyle/consistency/markdownQuality/technicalWriting
   const breakdown = {};
 
-  // 1. Phrase density
   let fullText = '';
   let sentenceCount = 0;
   let phraseCount = 0;
@@ -1072,13 +1052,10 @@ function computeAiScore(tree, _profile) {
   });
   breakdown.phrase = sentenceCount > 0 ? Math.min(1, phraseCount / sentenceCount / 0.3) : 0;
 
-  // 2. Heading pattern（第一人称在 heading 中）
   let headingCount = 0;
   let firstPersonHeading = 0;
-  const headingLevels = [];
   unistVisit(tree, 'heading', (node) => {
     headingCount++;
-    headingLevels.push(node.depth || 0);
     const text = collectText(node);
     for (const phrase of AI_FIRST_PERSON) {
       if (text.includes(phrase)) {
@@ -1089,68 +1066,15 @@ function computeAiScore(tree, _profile) {
   });
   breakdown.heading = headingCount > 0 ? Math.min(1, firstPersonHeading / headingCount) : 0;
 
-  // 3. Emoji density
   const emojiRegex = /[\u{1F300}-\u{1F9FF}\u{2600}-\u{27BF}\u{1F000}-\u{1F02F}\u{1F0A0}-\u{1F0FF}]/gu;
   const emojiCount = (fullText.match(emojiRegex) || []).length;
   breakdown.emoji = fullText.length > 0 ? Math.min(1, emojiCount / (fullText.length / 500)) : 0;
 
-  // 4. Fragmentation（短段落比例）
   const paragraphs = [];
   unistVisit(tree, 'paragraph', (node) => paragraphs.push(collectText(node)));
   const shortParas = paragraphs.filter((p) => p.length > 0 && p.length < 20).length;
   breakdown.fragmentation = paragraphs.length > 0 ? Math.min(1, shortParas / paragraphs.length / 0.3) : 0;
 
-  // === v2 Quality Model 多维扩展 ===
-
-  // 5. Readability: 平均句长合理性 + 段落长度分布
-  const avgSentenceLen = sentenceCount > 0 ? fullText.length / sentenceCount : 0;
-  // 理想句长 15-40 字，偏离越多可读性越低
-  const readabilityDeviation = avgSentenceLen < 15 ? (15 - avgSentenceLen) / 15 : avgSentenceLen > 40 ? (avgSentenceLen - 40) / 40 : 0;
-  breakdown.readability = Math.max(0, Math.min(1, 1 - readabilityDeviation));
-
-  // 6. Redundancy: 重复短语/重复段落比例
-  const paraTexts = paragraphs.map((p) => p.trim()).filter((p) => p.length > 0);
-  const uniqueParas = new Set(paraTexts).size;
-  breakdown.redundancy = paraTexts.length > 0 ? Math.min(1, (paraTexts.length - uniqueParas) / paraTexts.length) : 0;
-
-  // 7. Structure: heading 层级连续性（跳级扣分）
-  let structurePenalty = 0;
-  for (let i = 1; i < headingLevels.length; i++) {
-    if (headingLevels[i] - headingLevels[i - 1] > 1) structurePenalty++;
-  }
-  breakdown.structure = headingLevels.length > 1 ? Math.max(0, 1 - structurePenalty / headingLevels.length) : 1;
-
-  // 8. aiStyle: phrase + firstPersonHeading + emoji 综合
-  breakdown.aiStyle = Math.min(1, breakdown.phrase * 0.5 + breakdown.heading * 0.3 + breakdown.emoji * 0.2);
-
-  // 9. Consistency: 列表类型一致性（ordered/unordered 混用扣分）
-  let listCount = 0;
-  let orderedCount = 0;
-  let unorderedCount = 0;
-  unistVisit(tree, 'list', (node) => {
-    listCount++;
-    if (node.ordered) orderedCount++;
-    else unorderedCount++;
-  });
-  // 单一类型 = 高一致性
-  breakdown.consistency = listCount > 0 ? 1 - (Math.min(orderedCount, unorderedCount) / listCount) : 1;
-
-  // 10. markdownQuality: 代码块语言标识完整度
-  let codeCount = 0;
-  let codeWithLang = 0;
-  unistVisit(tree, 'code', (node) => {
-    codeCount++;
-    if (node.lang && node.lang.trim().length > 0) codeWithLang++;
-  });
-  breakdown.markdownQuality = codeCount > 0 ? codeWithLang / codeCount : 1;
-
-  // 11. technicalWriting: 标题层级深度合理性 + 段落数/标题数比例
-  const avgParaPerHeading = headingCount > 0 ? paragraphs.length / headingCount : 0;
-  // 理想: 每个标题下 2-5 段
-  const twDeviation = avgParaPerHeading < 1 ? (1 - avgParaPerHeading) : avgParaPerHeading > 8 ? (avgParaPerHeading - 8) / 8 : 0;
-  breakdown.technicalWriting = Math.max(0, Math.min(1, 1 - twDeviation));
-
-  // 旧版加权综合分（向后兼容 aiScore.total）
   const weights = { phrase: 0.4, heading: 0.25, emoji: 0.15, fragmentation: 0.2 };
   const total = Object.entries(weights).reduce(
     (sum, [k, w]) => sum + (breakdown[k] || 0) * w,
@@ -1160,7 +1084,6 @@ function computeAiScore(tree, _profile) {
   const round2 = (n) => Math.round(n * 100) / 100;
 
   return {
-    // 旧版字段（向后兼容）
     total: round2(total),
     breakdown: {
       phrase: round2(breakdown.phrase),
@@ -1174,42 +1097,24 @@ function computeAiScore(tree, _profile) {
     headingCount,
     emojiCount,
     recommendCleanup: total > 0.25 || phraseCount > 3,
-    // v2 Quality Model 多维
-    quality: {
-      overall: round2(total),
-      radar: {
-        readability: round2(breakdown.readability),
-        fragmentation: round2(breakdown.fragmentation),
-        redundancy: round2(breakdown.redundancy),
-        structure: round2(breakdown.structure),
-        aiStyle: round2(breakdown.aiStyle),
-        consistency: round2(breakdown.consistency),
-        markdownQuality: round2(breakdown.markdownQuality),
-        technicalWriting: round2(breakdown.technicalWriting),
-      },
-      metrics: {
-        phraseCount,
-        sentenceCount,
-        firstPersonHeading,
-        emojiCount,
-      },
-      recommendCleanup: total > 0.25 || phraseCount > 3,
-    },
   };
 }
 
 // ============================================================
-//  v2: Symbol Table 提取（Document Index）
-//  Rule 不需要遍历 AST，直接通过 ctx.symbols 访问文档结构
+//  13. Symbol Table（简化版：5 个 key，结束）
+//
+//  Markdown 没有 namespace/scope/cross-reference 这种语义，
+//  不需要演进成 Language Server。保持:
+//    { headings, tables, codeBlocks, diagrams, links }
 // ============================================================
+
 function extractSymbolTable(tree) {
   const symbols = {
     headings: [],
     tables: [],
     codeBlocks: [],
     diagrams: [],
-    entities: [],
-    mermaid: [],
+    links: [],
   };
 
   unistVisit(tree, 'heading', (node) => {
@@ -1228,316 +1133,22 @@ function extractSymbolTable(tree) {
   unistVisit(tree, 'code', (node) => {
     const lang = node.lang || '';
     symbols.codeBlocks.push({ line: getStartLine(node), lang });
-    // mermaid 块单独索引
     if (lang.toLowerCase() === 'mermaid') {
-      symbols.mermaid.push({
-        line: getStartLine(node),
-        type: detectMermaidType(node.value || ''),
-      });
+      symbols.diagrams.push({ line: getStartLine(node), type: 'mermaid' });
     }
   });
 
-  // 收集实体名（heading 文本 + 列表项首词）作为轻量 entity 索引
-  const entitySet = new Set();
-  unistVisit(tree, 'heading', (node) => {
-    const text = collectText(node).trim();
-    if (text.length > 0 && text.length <= 40) entitySet.add(text);
+  unistVisit(tree, 'link', (node) => {
+    if (node.url) {
+      symbols.links.push({ url: node.url, text: collectText(node).slice(0, 60), line: getStartLine(node) });
+    }
   });
-  symbols.entities = Array.from(entitySet).slice(0, 50);
 
   return symbols;
 }
 
-function detectMermaidType(code) {
-  const firstLine = code.split('\n').find((l) => l.trim().length > 0) || '';
-  const m = firstLine.match(/^(flowchart|graph|stateDiagram|sequenceDiagram|mindmap|classDiagram|erDiagram|journey|requirementDiagram|timeline|gitGraph|quadrantChart)/i);
-  return m ? m[1].toLowerCase() : 'unknown';
-}
-
 // ============================================================
-//  v2: Document IR（语义对象层）
-//  把 mdast 转换为语义 IR: Heading/Paragraph/Definition/Warning/Diagram/Code/Entity/Reference/Section
-//  Pass 可以消费 IR 而不是直接遍历 mdast
-// ============================================================
-function buildDocumentIR(tree) {
-  const sections = [];
-  let currentSection = null;
-  const entities = new Set();
-  const references = [];
-
-  for (const node of tree.children || []) {
-    const line = getStartLine(node);
-    if (node.type === 'heading') {
-      // 新 Section 开始
-      if (currentSection) sections.push(currentSection);
-      currentSection = {
-        type: 'Section',
-        heading: {
-          level: node.depth,
-          text: collectText(node),
-          line,
-        },
-        purpose: null,
-        children: [],
-        line,
-      };
-      // heading 文本作为 entity
-      const text = collectText(node).trim();
-      if (text) entities.add(text);
-    } else if (node.type === 'paragraph') {
-      const text = collectText(node);
-      const irNode = classifyParagraph(text, line);
-      if (currentSection) {
-        currentSection.children.push(irNode);
-        if (!currentSection.purpose) currentSection.purpose = text.slice(0, 80);
-      } else {
-        // heading 前的内容
-        sections.push(irNode);
-      }
-      // 提取引用/链接
-      extractReferences(node, references, entities);
-    } else if (node.type === 'code') {
-      const irNode = {
-        type: 'Code',
-        lang: node.lang || '',
-        line,
-        value: (node.value || '').slice(0, 200),
-      };
-      if (currentSection) currentSection.children.push(irNode);
-      else sections.push(irNode);
-      if ((node.lang || '').toLowerCase() === 'mermaid') {
-        if (currentSection) currentSection.children.push({ type: 'Diagram', diagramType: 'mermaid', line });
-      }
-    } else if (node.type === 'table') {
-      const irNode = { type: 'Table', rows: (node.children || []).length, line };
-      if (currentSection) currentSection.children.push(irNode);
-      else sections.push(irNode);
-    } else if (node.type === 'list') {
-      const irNode = {
-        type: 'List',
-        ordered: !!node.ordered,
-        items: (node.children || []).map((c) => collectText(c).slice(0, 60)),
-        line,
-      };
-      if (currentSection) currentSection.children.push(irNode);
-      else sections.push(irNode);
-    } else if (node.type === 'blockquote') {
-      const text = collectText(node);
-      const irNode = { type: 'Warning', text: text.slice(0, 200), line };
-      if (currentSection) currentSection.children.push(irNode);
-      else sections.push(irNode);
-    }
-  }
-  if (currentSection) sections.push(currentSection);
-
-  // 统计：递归遍历所有 Section 内的 children，得到全局 paragraph/code/table/list 数量
-  let paragraphCount = 0;
-  let codeCount = 0;
-  let tableCount = 0;
-  let listCount = 0;
-  let warningCount = 0;
-  let definitionCount = 0;
-  let diagramCount = 0;
-  const sectionObjs = sections.filter((s) => s.type === 'Section');
-  for (const sec of sectionObjs) {
-    for (const child of sec.children || []) {
-      if (child.type === 'Paragraph') paragraphCount++;
-      else if (child.type === 'Code') codeCount++;
-      else if (child.type === 'Table') tableCount++;
-      else if (child.type === 'List') listCount++;
-      else if (child.type === 'Warning') warningCount++;
-      else if (child.type === 'Definition') definitionCount++;
-      else if (child.type === 'Diagram') diagramCount++;
-    }
-  }
-  // 顶层的非 Section 节点也计入
-  for (const s of sections) {
-    if (s.type === 'Section') continue;
-    if (s.type === 'Paragraph') paragraphCount++;
-    else if (s.type === 'Code') codeCount++;
-    else if (s.type === 'Table') tableCount++;
-    else if (s.type === 'List') listCount++;
-    else if (s.type === 'Warning') warningCount++;
-    else if (s.type === 'Definition') definitionCount++;
-  }
-
-  return {
-    type: 'Document',
-    sections,
-    entities: Array.from(entities).slice(0, 100),
-    references,
-    stats: {
-      sectionCount: sectionObjs.length,
-      paragraphCount,
-      codeCount,
-      tableCount,
-      listCount,
-      warningCount,
-      definitionCount,
-      diagramCount,
-    },
-  };
-}
-
-// 段落分类: Definition（含：）/ Warning（含警告/注意） / Paragraph
-function classifyParagraph(text, line) {
-  const trimmed = text.trim();
-  if (/^[^：:\n]{1,20}[：:]/.test(trimmed) && trimmed.length < 80) {
-    const [term, ...rest] = trimmed.split(/[：:]/);
-    return { type: 'Definition', term: term.trim(), value: rest.join(':').trim(), line };
-  }
-  if (/(警告|注意|warning|caution|danger)/i.test(trimmed)) {
-    return { type: 'Warning', text: trimmed.slice(0, 200), line };
-  }
-  return { type: 'Paragraph', text: trimmed.slice(0, 300), line };
-}
-
-function extractReferences(node, references, entities) {
-  if (!node.children) return;
-  for (const child of node.children) {
-    if (child.type === 'link' && child.url) {
-      references.push({ url: child.url, text: collectText(child).slice(0, 60) });
-    }
-    if (child.type === 'text') {
-      // 提取大写专有名词作为 entity
-      const matches = child.value.match(/\b[A-Z][a-zA-Z]{2,}\b/g);
-      if (matches) for (const m of matches) entities.add(m);
-    }
-    extractReferences(child, references, entities);
-  }
-}
-
-// ============================================================
-//  v2: Incremental Execution（增量执行）
-//  Document Hash → Changed Region → Affected Pass → Incremental
-// ============================================================
-const crypto = await import('node:crypto');
-
-function computeDocumentHash(input) {
-  return crypto.createHash('sha256').update(input).digest('hex').slice(0, 16);
-}
-
-// 检测变更区域（基于行级 diff）
-function detectChangedRegions(oldLines, newLines) {
-  const regions = [];
-  const maxLen = Math.max(oldLines.length, newLines.length);
-  let i = 0;
-  while (i < maxLen) {
-    if (oldLines[i] !== newLines[i]) {
-      const start = i;
-      while (i < maxLen && oldLines[i] !== newLines[i]) i++;
-      regions.push({ startLine: start + 1, endLine: i, lineCount: i - start });
-    } else {
-      i++;
-    }
-  }
-  return regions;
-}
-
-// 根据变更区域 + Symbol Table 计算受影响的 Pass
-function computeAffectedPasses(changedRegions, symbols, allPasses) {
-  if (changedRegions.length === 0) return [];
-  const affectedPassNames = new Set();
-
-  for (const region of changedRegions) {
-    // 检查变更区域涉及哪些 symbol 类型
-    const touchesHeading = (symbols.headings || []).some((h) => h.line >= region.startLine && h.line <= region.endLine);
-    const touchesCode = (symbols.codeBlocks || []).some((c) => c.line >= region.startLine && c.line <= region.endLine);
-    const touchesTable = (symbols.tables || []).some((t) => t.line >= region.startLine && t.line <= region.endLine);
-    const touchesMermaid = (symbols.mermaid || []).some((m) => m.line >= region.startLine && m.line <= region.endLine);
-
-    // 映射到 Pass
-    if (touchesHeading) {
-      affectedPassNames.add('whitespace');
-      affectedPassNames.add('block-structure');
-    }
-    if (touchesCode) {
-      affectedPassNames.add('inline-structure');
-      affectedPassNames.add('mermaid-validation');
-      // code 块可能是 ASCII 图，需要重新检测
-      affectedPassNames.add('diagram-detection');
-    }
-    if (touchesTable) affectedPassNames.add('block-structure');
-    if (touchesMermaid) affectedPassNames.add('mermaid-validation');
-
-    // Whitespace/Fragment/AI Phrase 几乎总是需要重跑（文本变更）
-    affectedPassNames.add('whitespace');
-    affectedPassNames.add('fragment-detection');
-    affectedPassNames.add('ai-score');
-    // paragraph 变更也可能引入新的 ASCII 图（在 paragraph 节点内）
-    affectedPassNames.add('diagram-detection');
-  }
-
-  // 过滤出实际存在的 Pass
-  return allPasses.filter((p) => affectedPassNames.has(p.name));
-}
-
-// ============================================================
-//  v2: Policy（声明式配置）
-//  Profile 升级为 Policy，支持 yaml 声明式配置
-// ============================================================
-function parsePolicy(yamlText) {
-  // 轻量 yaml 解析（避免引入 js-yaml 依赖），支持简单 key: value 嵌套
-  const policy = {};
-  const stack = [{ obj: policy, indent: -1 }];
-  for (const rawLine of yamlText.split('\n')) {
-    if (!rawLine.trim() || rawLine.trim().startsWith('#')) continue;
-    const indent = rawLine.length - rawLine.trimStart().length;
-    const line = rawLine.trim();
-    const colonIdx = line.indexOf(':');
-    if (colonIdx === -1) continue;
-    const key = line.slice(0, colonIdx).trim();
-    const value = line.slice(colonIdx + 1).trim();
-
-    // 弹栈到合适层级
-    while (stack.length > 1 && stack[stack.length - 1].indent >= indent) stack.pop();
-    const parent = stack[stack.length - 1].obj;
-
-    if (value === '') {
-      // 新嵌套层
-      const child = {};
-      parent[key] = child;
-      stack.push({ obj: child, indent });
-    } else {
-      // 叶子值
-      parent[key] = parseYamlValue(value);
-    }
-  }
-  return policy;
-}
-
-function parseYamlValue(v) {
-  if (v === 'true') return true;
-  if (v === 'false') return false;
-  if (v === 'null' || v === '~') return null;
-  if (/^-?\d+$/.test(v)) return parseInt(v, 10);
-  if (/^-?\d+\.\d+$/.test(v)) return parseFloat(v);
-  // 去引号
-  if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
-    return v.slice(1, -1);
-  }
-  return v;
-}
-
-// 把 Policy 合并到 Profile，生成增强后的 profile
-function applyPolicy(baseProfile, policy) {
-  const merged = { ...baseProfile };
-  if (policy.objective) merged.objective = policy.objective;
-  if (typeof policy.allowSemanticRewrite === 'boolean') merged.allowSemanticRewrite = policy.allowSemanticRewrite;
-  if (typeof policy.allowHeadingMerge === 'boolean') merged.allowHeadingMerge = policy.allowHeadingMerge;
-  if (policy.diagram) {
-    if (policy.diagram.ascii) merged.asciiDiagramAction = policy.diagram.ascii.convert || merged.asciiDiagramAction;
-    if (policy.diagram.mermaid) merged.mermaidValidate = policy.diagram.mermaid.validate !== false;
-  }
-  if (policy.quality) {
-    merged.qualityThresholds = policy.quality;
-  }
-  merged.policy = policy;
-  return merged;
-}
-
-// ============================================================
-//  11. Validators
+//  14. Validators
 // ============================================================
 
 function validate(tree, original, normalized, level, ctx) {
@@ -1570,7 +1181,7 @@ function validate(tree, original, normalized, level, ctx) {
 }
 
 // ============================================================
-//  12. Issue Schema Output
+//  15. Issue Schema Output（保留 evidence，去掉 v2 冗余字段）
 // ============================================================
 
 function buildIssueSchema(document, profileName, level, ctx, validation, totalTokens) {
@@ -1594,31 +1205,17 @@ function buildIssueSchema(document, profileName, level, ctx, validation, totalTo
       llmRequired,
       appliedFixes: ctx.changes.length,
     },
-    // v2: Document Hash（用于增量执行）
-    documentHash: ctx.documentHash || null,
-    // v2: Symbol Table（Document Index），Rule 通过 ctx.symbols 访问文档结构
     symbols: ctx.symbols || {},
-    // v2: Document IR（语义对象层），LLM 可直接消费 IR 而不读 Markdown
-    documentIR: ctx.documentIR || null,
     appliedFixes: ctx.changes,
     issues: ctx.issues,
-    // 旧版 aiScore（向后兼容）
     aiScore: ctx.aiScore || { total: 0, breakdown: {}, recommendCleanup: false },
-    // v2: 多维 Quality Model
-    quality: (ctx.aiScore && ctx.aiScore.quality) || {
-      overall: 0,
-      radar: {},
-      metrics: {},
-      recommendCleanup: false,
-    },
-    // v2: Transformation Proposals（如果有冲突解决记录）
-    proposals: ctx._proposalSummary || null,
+    rules: Object.values(RULES),
     validation,
   };
 }
 
 // ============================================================
-//  13. Reporter（人类可读的 check 模式输出）
+//  16. Reporter（人类可读的 check 模式输出）
 // ============================================================
 
 function buildCheckReport(ctx) {
@@ -1639,7 +1236,9 @@ function buildCheckReport(ctx) {
     const first = list[0];
     const icon = first.action === 'auto_fix' ? '✓' : '⚠';
     const tag = first.action === 'auto_fix' ? 'auto-fixable' : 'llm-required';
-    lines.push(`  ${icon} ${String(list.length).padStart(2, ' ')} ${rule.padEnd(30)} [${tag}, confidence ${first.confidence}]`);
+    const meta = RULES[rule] || {};
+    const category = meta.category ? `(${meta.category})` : '';
+    lines.push(`  ${icon} ${String(list.length).padStart(2, ' ')} ${rule.padEnd(30)} [${tag}, confidence ${first.confidence}] ${category}`);
   }
 
   lines.push('');
@@ -1648,81 +1247,34 @@ function buildCheckReport(ctx) {
   lines.push(`  Auto-fix:   ${autoFixable.length} (pass --fix to apply)`);
   lines.push(`  LLM-req:    ${llmRequired.length} (pass --json to export)`);
 
-  // v2: Document Hash（用于增量执行和缓存）
-  if (ctx.documentHash) {
-    lines.push(`  Doc Hash:   ${ctx.documentHash}`);
-  }
-
   if (ctx.aiScore) {
     const b = ctx.aiScore.breakdown;
     lines.push(`  AI Score:   ${ctx.aiScore.total} (phrase=${b.phrase}, heading=${b.heading}, emoji=${b.emoji}, frag=${b.fragmentation})`);
-    // v2: 多维 Quality Model
-    if (ctx.aiScore.quality && ctx.aiScore.quality.radar) {
-      const r = ctx.aiScore.quality.radar;
-      lines.push(`  Quality:    readability=${r.readability}, structure=${r.structure}, aiStyle=${r.aiStyle}, consistency=${r.consistency}, mdQuality=${r.markdownQuality}`);
-    }
-    // v2: Symbol Table 统计
     if (ctx.symbols) {
       const s = ctx.symbols;
-      const symbolCount = (s.headings?.length || 0) + (s.tables?.length || 0) + (s.codeBlocks?.length || 0) + (s.mermaid?.length || 0);
-      lines.push(`  Symbols:    ${symbolCount} (${s.headings?.length || 0} headings, ${s.tables?.length || 0} tables, ${s.codeBlocks?.length || 0} code, ${s.mermaid?.length || 0} mermaid)`);
-    }
-    // v2: Document IR 统计
-    if (ctx.documentIR && ctx.documentIR.stats) {
-      const st = ctx.documentIR.stats;
-      lines.push(`  Doc IR:     ${st.sectionCount} sections, ${st.paragraphCount} paragraphs, ${st.codeCount} code, ${st.tableCount} tables, ${st.listCount} lists`);
-      if (ctx.documentIR.entities) {
-        lines.push(`  Entities:   ${ctx.documentIR.entities.length} indexed`);
-      }
+      lines.push(`  Symbols:    ${s.headings?.length || 0} headings, ${s.tables?.length || 0} tables, ${s.codeBlocks?.length || 0} code, ${s.diagrams?.length || 0} diagrams, ${s.links?.length || 0} links`);
     }
     if (ctx.aiScore.recommendCleanup) lines.push('    ⚠ recommend L2 cleanup');
   }
 
-  // v2: Incremental Execution 信息
-  if (ctx._affectedPasses && ctx._affectedPasses.length > 0) {
-    const affected = ctx._affectedPasses.map((p) => p.name).join(', ');
-    const skipped = (ctx._skippedPasses || []).join(', ') || '(none)';
-    const regions = (ctx._changedRegions || []).length;
-    lines.push(`  Incremental:`);
-    lines.push(`    Changed regions: ${regions}`);
-    lines.push(`    Affected passes: ${affected}`);
-    lines.push(`    Skipped passes:  ${skipped}`);
-  }
-
-  // v2: Transformation Proposals 信息
-  if (ctx._proposalSummary) {
-    const ps = ctx._proposalSummary;
-    lines.push(`  Proposals:  ${ps.applied}/${ps.total} applied, ${ps.conflicts} conflicts resolved`);
-  }
-
-  // v2: Policy 信息（如果启用了 policy）
-  if (ctx.profile && ctx.profile.policy) {
-    const policyKeys = Object.keys(ctx.profile.policy);
-    lines.push(`  Policy:     ${policyKeys.length} keys loaded (${policyKeys.slice(0, 3).join(', ')}${policyKeys.length > 3 ? '...' : ''})`);
-  }
+  // Rule Metadata 统计（从 RULES registry 自动生成）
+  const ruleCount = Object.keys(RULES).length;
+  const categories = [...new Set(Object.values(RULES).map((r) => r.category))];
+  lines.push(`  Rules:      ${ruleCount} registered (${categories.join(', ')})`);
 
   return lines.join('\n');
 }
 
 // ============================================================
-//  14. Pipeline Runner
+//  17. Pipeline Runner
 // ============================================================
 
 function runPipeline(input, opts) {
-  const { level = 'L1', profileName = 'technical-doc', mode = 'fix', policy: policyText, incremental, basePath } = opts;
-  let profile = PROFILES[profileName] || PROFILES['technical-doc'];
-
-  // v2: Policy 声明式配置（覆盖 Profile）
-  if (policyText) {
-    const policy = parsePolicy(policyText);
-    profile = applyPolicy(profile, policy);
-  }
+  const { level = 'L1', profileName = 'default', mode = 'fix', document: docName } = opts;
+  const profile = resolveProfile(profileName);
 
   const fullLines = input.split('\n');
   const totalTokens = input.length / 2;
-
-  // v2: Document Hash（用于增量执行和缓存）
-  const documentHash = computeDocumentHash(input);
 
   const tree = parseMarkdown(input);
   const ctx = new RuleContext({
@@ -1734,42 +1286,21 @@ function runPipeline(input, opts) {
     mode,
   });
 
-  // v2: 提取 Symbol Table（Document Index），供 Pass 通过 ctx.symbols 访问
+  // Symbol Table（简化版，Pass 通过 ctx.symbols 访问）
   ctx.symbols = extractSymbolTable(tree);
-  // v2: 构建 Document IR（语义对象层），供 Pass 通过 ctx.documentIR 访问
-  ctx.documentIR = buildDocumentIR(tree);
-  ctx.documentHash = documentHash;
 
-  // v2: Incremental Execution —— 如果指定了 --base，只跑受影响的 Pass
-  if (incremental && basePath) {
-    const oldLines = fs.readFileSync(basePath, 'utf8').split('\n');
-    const changedRegions = detectChangedRegions(oldLines, fullLines);
-    ctx._changedRegions = changedRegions;
-    ctx._affectedPasses = computeAffectedPasses(changedRegions, ctx.symbols, pipeline);
-    // 标记只跑受影响的 Pass（runPasses 会检查 ctx._affectedPasses）
-  }
-
-  // 运行 Pass Pipeline（v2: DAG 拓扑排序 + Transformation Proposal）
+  // 运行 Pass Pipeline（topo sort + dual API）
   runPasses(ctx);
-
-  // v2: 记录 Proposal Summary（冲突解决信息）
-  if (ctx._proposals && ctx._proposals.length > 0) {
-    ctx._proposalSummary = {
-      total: ctx._proposals.length,
-      applied: ctx.changes.filter((c) => c.operation).length,
-      conflicts: ctx._proposals.filter((p) => p.conflictResolved).length,
-    };
-  }
 
   // Stringify
   const normalized = stringifyMarkdown(tree);
 
-  // Validate（用 normalized 后的 tree）
+  // Validate
   const treeAfter = parseMarkdown(normalized);
   const validation = validate(treeAfter, input, normalized, level, ctx);
 
   const issueSchema = buildIssueSchema(
-    opts.document || 'input.md',
+    docName || 'input.md',
     profileName,
     level,
     ctx,
@@ -1787,7 +1318,7 @@ function runPipeline(input, opts) {
 }
 
 // ============================================================
-//  15. CLI
+//  18. CLI
 // ============================================================
 
 function printUsage() {
@@ -1802,23 +1333,41 @@ Modes (choose one):
 
 Options:
   --level L0|L1|L2          Normalization level (default: L1)
-  --profile <name>          Profile: technical-doc|blog|rfc|architecture
+  --profile <name>          Profile: strict|default|relaxed (default: default)
   --json <file>             Output issues.json to file (use with --report)
   -o <file>                 Output normalized markdown to file
   --doc <name>              Document name for issue schema
-
-  --policy <file>           v2: Load declarative YAML policy file (overrides profile)
-  --incremental             v2: Enable incremental execution (requires --base)
-  --base <file>             v2: Baseline file for incremental diff
+  --list-rules              List all registered rules with metadata
 
 Examples:
   node normalize.mjs input.md --check
   node normalize.mjs input.md --report --json issues.json
   node normalize.mjs input.md --fix -o output.md
-  node normalize.mjs input.md --policy team.yaml --level L2
-  node normalize.mjs input.md --incremental --base prev.md --fix -o output.md
+  node normalize.mjs input.md --profile strict --level L2
+  node normalize.mjs --list-rules
   cat file.md | node normalize.mjs --level L2
 `);
+}
+
+function listRules() {
+  console.log('Registered Rules:\n');
+  const byCategory = {};
+  for (const rule of Object.values(RULES)) {
+    if (!byCategory[rule.category]) byCategory[rule.category] = [];
+    byCategory[rule.category].push(rule);
+  }
+  for (const [cat, rules] of Object.entries(byCategory)) {
+    console.log(`[${cat}]`);
+    for (const r of rules) {
+      const flags = [
+        r.autofix ? 'autofix' : '',
+        r.llm ? 'llm' : '',
+      ].filter(Boolean).join(',');
+      console.log(`  ${r.id.padEnd(30)} confidence=${r.confidence} [${flags}] tags=[${r.tags.join(',')}]`);
+      if (r.description) console.log(`    ${r.description}`);
+    }
+    console.log('');
+  }
 }
 
 function main() {
@@ -1829,17 +1378,18 @@ function main() {
     process.exit(0);
   }
 
+  if (argv.includes('--list-rules')) {
+    listRules();
+    process.exit(0);
+  }
+
   let input = '';
   let level = 'L1';
-  let profileName = 'technical-doc';
+  let profileName = 'default';
   let mode = 'fix';
   let outFile = null;
   let jsonFile = null;
   let docName = 'input.md';
-  // v2: Policy + Incremental
-  let policyFile = null;
-  let incremental = false;
-  let baseFile = null;
 
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -1847,13 +1397,10 @@ function main() {
     else if (a === '--report') mode = 'report';
     else if (a === '--fix') mode = 'fix';
     else if (a === '--level') level = argv[++i] || 'L1';
-    else if (a === '--profile') profileName = argv[++i] || 'technical-doc';
+    else if (a === '--profile') profileName = argv[++i] || 'default';
     else if (a === '--json') jsonFile = argv[++i];
     else if (a === '-o') outFile = argv[++i];
     else if (a === '--doc') docName = argv[++i];
-    else if (a === '--policy') policyFile = argv[++i];
-    else if (a === '--incremental') incremental = true;
-    else if (a === '--base') baseFile = argv[++i];
     else if (!a.startsWith('-') && !input) {
       input = fs.readFileSync(a, 'utf8');
       docName = path.basename(a);
@@ -1870,36 +1417,7 @@ function main() {
     }
   }
 
-  // v2: 加载 Policy 文件
-  let policyText = null;
-  if (policyFile) {
-    try {
-      policyText = fs.readFileSync(policyFile, 'utf8');
-    } catch (e) {
-      console.error(`Error: cannot read policy file ${policyFile}: ${e.message}`);
-      process.exit(1);
-    }
-  }
-
-  // v2: Incremental 校验
-  if (incremental && !baseFile) {
-    console.error('Error: --incremental requires --base <file>');
-    process.exit(1);
-  }
-  if (baseFile && !incremental) {
-    // 给出 --base 但没开 --incremental，自动启用
-    incremental = true;
-  }
-
-  const result = runPipeline(input, {
-    level,
-    profileName,
-    mode,
-    document: docName,
-    policy: policyText,
-    incremental,
-    basePath: baseFile,
-  });
+  const result = runPipeline(input, { level, profileName, mode, document: docName });
 
   if (mode === 'check') {
     console.log(result.checkReport);
@@ -1923,4 +1441,9 @@ function main() {
   }
 }
 
-main();
+// Export for programmatic use（test runner / library import）
+export { runPipeline, registerPass, registerRule, RULES, PROFILES, resolveProfile };
+
+// ESM 入口守卫：只在直接执行时运行 CLI，import 时不运行
+const isMainModule = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (isMainModule) main();

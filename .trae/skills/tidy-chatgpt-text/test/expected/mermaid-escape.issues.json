@@ -1,0 +1,13 @@
+[
+  {
+    "rule": "mermaid-node-name-escape",
+    "pass": "mermaid-validation",
+    "action": "llm_required",
+    "confidence": 0.95,
+    "applied": false,
+    "location": {
+      "startLine": 4,
+      "endLine": 4
+    }
+  }
+]
