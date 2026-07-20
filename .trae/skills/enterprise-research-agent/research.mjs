@@ -2,31 +2,57 @@
 /**
  * Enterprise Research Agent — ResearchSession Machinery (single-file)
  *
- * v3 设计：Research = Investigation + Analysis
+ * 设计：Research = Investigation + Analysis，由 Question Tree + Decision Loop 驱动
  *   - Investigation: 收集 Evidence, 建立 Canonical Identity, 形成 Evidence Graph
  *   - Analysis: 发现 Gap, 检测 Contradiction, 评估 Confidence, 形成 Finding
+ *   - Question Tree: 由 Evidence 驱动动态生长，受 Ontology + Budget 约束
+ *   - Decision Loop: 确定性判断 Continue / Finish（Expand-Converge 模型）
+ *   - Claim Model: 结论作为一等对象，分类型管理（Fact/Statistic/Analysis/...）
+ *   - Traceability: 每条 Claim 必须可追溯到 Evidence + Source，Claim Coverage Ratio ≥ 0.9
  *
  * Core Objects:
  *   - ResearchSession: 贯穿全流程的工作上下文（Research Context）
- *     { goal, plan, graph, findings, gaps, contradictions, confidence, report,
- *       visitedSources, pendingQuestions, rejectedHypotheses }
+ *     { goal, contract, budget, plan, questionTree, graph, claims,
+ *       findings, gaps, contradictions, confidence, report,
+ *       visitedSources, pendingQuestions, rejectedHypotheses, _lastSnapshot }
+ *   - ResearchContract: 用户确认的研究契约 { question, scope, expectedOutput, evidenceRequirement }
+ *   - ResearchBudget: 研究预算 { depth, maxQuestions, maxEvidence, timeLimitMinutes }
+ *   - QuestionTree: 动态问题树（Evidence-driven, Ontology-guided, Budget-aware）
+ *   - ClaimStore: Claim 一等对象存储（type + evidenceIds + reasoning + verified）
  *   - EvidenceGraph: Working Memory（entities + relationships + evidence + aliases）
  *   - Evidence: 可追溯单元 { source, uri, content, confidence, lastUpdated, claims, metadata }
  *   - Canonical Identity: aliases 合并到统一实体
  *   - Contradiction: 同一实体的同一属性出现冲突值（基于 claims 检测）
  *   - Confidence: high/medium/low，基于 evidence 数量 / source 权重 / cross validation / freshness
  *
- * Workflow:
- *   Question → Planning → Investigation (Collection + Identity + Correlation)
- *            → Analysis (Gap + Contradiction + Confidence) → External Verification → Report
+ * Workflow (Expand-Converge):
+ *   Question → Contract → Planning + Budget + Root Questions
+ *            ↻ Evidence Collection → Identity → Correlation → Question Generation → Decision
+ *            → Analysis (Gap + Contradiction + Confidence + Claim Coverage)
+ *            → External Verification → Report (with Traceability Layer)
  *
- * 设计原则：
- *   - Evidence First / Identity Before Search / Entity-Centric / Traceable by Design
- *   - Connector Agnostic（Connector Adapter 统一输出 Evidence）
- *   - Incremental Knowledge（ResearchSession 持久化）
- *   - 不做完整 Knowledge Graph / OWL / RDF / SPARQL
- *   - 不强调 Multi-Agent 框架
- *   - 不发明 DSL Rule Language
+ * 设计原则（Research Heuristics）：
+ *   - Goal-driven: 所有子问题必须服务于研究目标
+ *   - Evidence-driven: 新问题必须由已有证据触发
+ *   - Ontology-guided: 只沿领域模型允许的关系扩展
+ *   - Novelty-seeking: 优先探索能带来新 Entity/Relationship/Conflict/Gap 的方向
+ *   - Budget-aware: 受 depth / maxQuestions / maxEvidence / time 约束
+ *   - Confidence-driven: 关键结论置信度不足时优先补证据
+ *
+ * Research Rules（硬约束）：
+ *   - 不创建无证据支撑的 fact/statistic/historical/expert_opinion claim
+ *   - 每条 fact 必须有 claim_id + evidence_id + source_id
+ *   - 证据不足时标注为 hypothesis，不写为结论
+ *   - 不隐藏冲突证据
+ *   - 每个来源必须可检索（uri 非空）
+ *   - 区分 observed / inference / recommendation
+ *
+ * 不做：
+ *   - 完整 Knowledge Graph / OWL / RDF / SPARQL
+ *   - Multi-Agent 框架强调
+ *   - DSL Rule Language
+ *   - SQLite / Neo4j 持久化（仅 JSON）
+ *   - 独立 Verification Agent（由 LLM 自检 + Claim Coverage 校验承担）
  */
 
 import fs from 'fs';
@@ -236,7 +262,10 @@ class EvidenceGraph {
     const existingByName = this._findEntityIdByNameOrAlias(name);
     if (existingByName) {
       const existing = this.entities.get(existingByName);
-      for (const a of aliases) this._registerAlias(a, existingByName);
+      for (const a of aliases) {
+        if (!existing.aliases.includes(a)) existing.aliases.push(a);
+        this._registerAlias(a, existingByName);
+      }
       existing.properties = { ...existing.properties, ...properties };
       if (summary && !existing.summary) existing.summary = summary;
       return { id: existingByName, entity: existing, merged: true };
@@ -246,8 +275,12 @@ class EvidenceGraph {
       const existingByAlias = this._findEntityIdByNameOrAlias(alias);
       if (existingByAlias) {
         const existing = this.entities.get(existingByAlias);
+        if (!existing.aliases.includes(name)) existing.aliases.push(name);
         this._registerAlias(name, existingByAlias);
-        for (const a of aliases) this._registerAlias(a, existingByAlias);
+        for (const a of aliases) {
+          if (!existing.aliases.includes(a)) existing.aliases.push(a);
+          this._registerAlias(a, existingByAlias);
+        }
         existing.properties = { ...existing.properties, ...properties };
         if (summary && !existing.summary) existing.summary = summary;
         return { id: existingByAlias, entity: existing, merged: true };
@@ -492,7 +525,351 @@ class EvidenceGraph {
 }
 
 // ============================================================
-// 3. Gap Analysis（deterministic，基于 Ontology）
+// 3. Research Contract & Budget
+//
+//    Research Contract：用户确认研究范围与证据要求，避免 Agent 跑偏。
+//    Research Budget：限制 depth / maxQuestions / maxEvidence / time，防止无限发散。
+//
+//    Contract 不是配置文件，是 Agent 与用户的"研究契约"——
+//    Agent 必须先 set-contract，让用户确认后再开始研究。
+// ============================================================
+
+const DEFAULT_BUDGET = {
+  depth: 3,              // Question Tree 最大深度
+  maxQuestions: 40,      // Question Tree 节点数上限
+  maxEvidence: 300,      // Evidence 总数上限
+  timeLimitMinutes: 8,   // 时间预算（分钟）
+};
+
+const DEFAULT_EVIDENCE_REQUIREMENT = {
+  minSources: 3,                  // 最少独立 source 数
+  primarySourceRatio: 0.6,        // 主源占比（Vendor / Regulation / Academic / 官方文档）
+  claimCoverageRatio: 0.9,        // Claim Coverage Ratio 下限
+};
+
+function createContract({ question, scope = {}, expectedOutput = {}, evidenceRequirement = {} }) {
+  if (!question || !question.trim()) {
+    throw new Error('Contract question is required');
+  }
+  return {
+    question: question.trim(),
+    scope: scope || {},
+    expectedOutput: {
+      type: (expectedOutput && expectedOutput.type) || 'research_report',
+      ...(expectedOutput || {}),
+    },
+    evidenceRequirement: {
+      ...DEFAULT_EVIDENCE_REQUIREMENT,
+      ...evidenceRequirement,
+    },
+    createdAt: new Date().toISOString(),
+    confirmedAt: null, // 用户确认后由 LLM 通过 set-contract --confirm 写入
+  };
+}
+
+function createBudget({ depth, maxQuestions, maxEvidence, timeLimitMinutes } = {}) {
+  const b = {
+    depth: depth != null ? Number(depth) : DEFAULT_BUDGET.depth,
+    maxQuestions: maxQuestions != null ? Number(maxQuestions) : DEFAULT_BUDGET.maxQuestions,
+    maxEvidence: maxEvidence != null ? Number(maxEvidence) : DEFAULT_BUDGET.maxEvidence,
+    timeLimitMinutes: timeLimitMinutes != null ? Number(timeLimitMinutes) : DEFAULT_BUDGET.timeLimitMinutes,
+  };
+  if (b.depth < 1) throw new Error('budget.depth must be >= 1');
+  if (b.maxQuestions < 1) throw new Error('budget.maxQuestions must be >= 1');
+  if (b.maxEvidence < 1) throw new Error('budget.maxEvidence must be >= 1');
+  if (b.timeLimitMinutes < 1) throw new Error('budget.timeLimitMinutes must be >= 1');
+  return b;
+}
+
+// 检查预算使用情况：返回 { withinBudget, usage, reasons[] }
+//    session 必须有 graph / questionTree / createdAt
+function checkBudget(session) {
+  const b = session.budget || DEFAULT_BUDGET;
+  const reasons = [];
+  const usage = {
+    depth: session.questionTree ? session.questionTree.maxDepth() : 0,
+    questions: session.questionTree ? session.questionTree.questions.size : 0,
+    evidence: session.graph ? session.graph.evidence.size : 0,
+    elapsedMinutes: session.createdAt
+      ? (Date.now() - new Date(session.createdAt).getTime()) / 60000
+      : 0,
+  };
+
+  if (usage.depth >= b.depth) reasons.push(`depth ${usage.depth} >= ${b.depth}`);
+  if (usage.questions >= b.maxQuestions) reasons.push(`questions ${usage.questions} >= ${b.maxQuestions}`);
+  if (usage.evidence >= b.maxEvidence) reasons.push(`evidence ${usage.evidence} >= ${b.maxEvidence}`);
+  if (usage.elapsedMinutes >= b.timeLimitMinutes) {
+    reasons.push(`time ${usage.elapsedMinutes.toFixed(1)}min >= ${b.timeLimitMinutes}min`);
+  }
+
+  return {
+    withinBudget: reasons.length === 0,
+    usage,
+    limit: { ...b },
+    reasons,
+  };
+}
+
+// ============================================================
+// 4. Research Question Tree（Evidence-driven 动态生长）
+//
+//    不是一次性规划，而是 Evidence-driven 动态生长。
+//    每条新 Evidence 可触发新 Question；每个新 Question 受 Ontology + Budget 约束。
+//
+//    Question 字段：
+//      - id, text, parentId, depth, status
+//      - triggeredByEvidenceId / triggeredByEntityId  ← Evidence-driven 的体现
+//      - planItemId                                      ← 与 plan 关联（plan 是骨架，QuestionTree 是活的）
+//      - generatedEntityIds / generatedRelationshipIds  ← 答案产出
+//      - createdAt / updatedAt
+//
+//    status: open → investigating → answered | pruned
+// ============================================================
+
+const QUESTION_STATUS = ['open', 'investigating', 'answered', 'pruned'];
+
+class QuestionTree {
+  constructor() {
+    this.questions = new Map(); // id → question
+    this._counter = 0;
+  }
+
+  addQuestion({ text, parentId = null, triggeredByEvidenceId = null, triggeredByEntityId = null, planItemId = null }) {
+    if (!text || !text.trim()) throw new Error('Question text is required');
+
+    let depth = 0;
+    if (parentId) {
+      const parent = this.questions.get(parentId);
+      if (!parent) throw new Error(`Parent question not found: ${parentId}`);
+      depth = parent.depth + 1;
+    }
+
+    this._counter++;
+    const id = `q${this._counter}`;
+    const q = {
+      id,
+      text: text.trim(),
+      parentId,
+      depth,
+      status: 'open',
+      triggeredByEvidenceId: triggeredByEvidenceId || null,
+      triggeredByEntityId: triggeredByEntityId || null,
+      planItemId: planItemId || null,
+      generatedEntityIds: [],
+      generatedRelationshipIds: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: null,
+    };
+    this.questions.set(id, q);
+    return { id, question: q };
+  }
+
+  updateQuestion(id, { status, generatedEntityIds, generatedRelationshipIds }) {
+    const q = this.questions.get(id);
+    if (!q) throw new Error(`Question not found: ${id}`);
+    if (status != null) {
+      if (!QUESTION_STATUS.includes(status)) {
+        throw new Error(`Invalid status: ${status}. Valid: ${QUESTION_STATUS.join(', ')}`);
+      }
+      q.status = status;
+    }
+    if (generatedEntityIds != null) {
+      for (const eid of generatedEntityIds) {
+        if (!q.generatedEntityIds.includes(eid)) q.generatedEntityIds.push(eid);
+      }
+    }
+    if (generatedRelationshipIds != null) {
+      for (const rid of generatedRelationshipIds) {
+        if (!q.generatedRelationshipIds.includes(rid)) q.generatedRelationshipIds.push(rid);
+      }
+    }
+    q.updatedAt = new Date().toISOString();
+    return q;
+  }
+
+  getQuestion(id) {
+    return this.questions.get(id) || null;
+  }
+
+  listQuestions({ status, parentId } = {}) {
+    let all = Array.from(this.questions.values());
+    if (status) all = all.filter((q) => q.status === status);
+    if (parentId !== undefined) all = all.filter((q) => q.parentId === parentId);
+    return all;
+  }
+
+  maxDepth() {
+    let max = 0;
+    for (const q of this.questions.values()) {
+      if (q.depth > max) max = q.depth;
+    }
+    return max;
+  }
+
+  stats() {
+    const byStatus = { open: 0, investigating: 0, answered: 0, pruned: 0 };
+    for (const q of this.questions.values()) byStatus[q.status] = (byStatus[q.status] || 0) + 1;
+    return {
+      total: this.questions.size,
+      ...byStatus,
+      maxDepth: this.maxDepth(),
+    };
+  }
+
+  toJSON() {
+    return {
+      questions: Array.from(this.questions.values()),
+      counter: this._counter,
+    };
+  }
+
+  static fromJSON(data) {
+    const t = new QuestionTree();
+    t._counter = (data && data.counter) || 0;
+    for (const q of (data && data.questions) || []) t.questions.set(q.id, q);
+    return t;
+  }
+}
+
+// ============================================================
+// 5. Claim Model（来自 可追踪.md，分类型管理）
+//
+//    Claim 是 Research Report 的最小结论单元，比 Evidence 更接近"判断"。
+//    每条 Claim 必须可追溯到 Evidence + Source；类型决定证据要求。
+//
+//    类型与证据要求：
+//      fact / statistic / historical / expert_opinion → 必须有 evidenceIds
+//      analysis                                          → 必须有 evidenceIds + reasoning
+//      recommendation                                    → 必须有 reasoning
+//
+//    Claim Coverage Ratio = (Claims with Evidence) / Total Claims
+//      目标 ≥ 0.9（由 contract.evidenceRequirement.claimCoverageRatio 配置）
+// ============================================================
+
+const CLAIM_TYPES = ['fact', 'statistic', 'historical', 'expert_opinion', 'analysis', 'recommendation'];
+
+const CLAIM_EVIDENCE_REQUIREMENTS = {
+  fact: { requiresEvidence: true, requiresReasoning: false },
+  statistic: { requiresEvidence: true, requiresReasoning: false },
+  historical: { requiresEvidence: true, requiresReasoning: false },
+  expert_opinion: { requiresEvidence: true, requiresReasoning: false },
+  analysis: { requiresEvidence: true, requiresReasoning: true },
+  recommendation: { requiresEvidence: false, requiresReasoning: true },
+};
+
+class ClaimStore {
+  constructor() {
+    this.claims = new Map(); // id → claim
+    this._counter = 0;
+  }
+
+  addClaim({ text, type, evidenceIds = [], reasoning = '', confidence = 0.5, supportingClaimIds = [], entityId = null }) {
+    if (!text || !text.trim()) throw new Error('Claim text is required');
+    if (!CLAIM_TYPES.includes(type)) {
+      throw new Error(`Invalid claim type: ${type}. Valid: ${CLAIM_TYPES.join(', ')}`);
+    }
+    const req = CLAIM_EVIDENCE_REQUIREMENTS[type];
+    if (req.requiresEvidence && (!evidenceIds || evidenceIds.length === 0)) {
+      throw new Error(`Claim of type "${type}" requires at least one evidenceId`);
+    }
+    if (req.requiresReasoning && (!reasoning || !reasoning.trim())) {
+      throw new Error(`Claim of type "${type}" requires reasoning`);
+    }
+
+    this._counter++;
+    const id = `c${this._counter}`;
+    const claim = {
+      id,
+      text: text.trim(),
+      type,
+      evidenceIds: [...evidenceIds],
+      reasoning: reasoning || '',
+      confidence,
+      supportingClaimIds: [...supportingClaimIds],
+      entityId: entityId || null,
+      verified: false,
+      verificationNote: '',
+      createdAt: new Date().toISOString(),
+      updatedAt: null,
+    };
+    this.claims.set(id, claim);
+    return { id, claim };
+  }
+
+  verifyClaim(id, { verified = true, note = '' } = {}) {
+    const c = this.claims.get(id);
+    if (!c) throw new Error(`Claim not found: ${id}`);
+    c.verified = !!verified;
+    c.verificationNote = note || c.verificationNote;
+    c.updatedAt = new Date().toISOString();
+    return c;
+  }
+
+  linkEvidence(id, evidenceIds) {
+    const c = this.claims.get(id);
+    if (!c) throw new Error(`Claim not found: ${id}`);
+    if (!Array.isArray(evidenceIds)) evidenceIds = [evidenceIds];
+    for (const evId of evidenceIds) {
+      if (!c.evidenceIds.includes(evId)) c.evidenceIds.push(evId);
+    }
+    c.updatedAt = new Date().toISOString();
+    return c;
+  }
+
+  getClaim(id) {
+    return this.claims.get(id) || null;
+  }
+
+  listClaims({ type, verified } = {}) {
+    let all = Array.from(this.claims.values());
+    if (type) all = all.filter((c) => c.type === type);
+    if (verified === true) all = all.filter((c) => c.verified);
+    if (verified === false) all = all.filter((c) => !c.verified);
+    return all;
+  }
+
+  // Claim Coverage Ratio = claims with evidence / total claims
+  coverage() {
+    const all = Array.from(this.claims.values());
+    if (all.length === 0) {
+      return {
+        total: 0,
+        withEvidence: 0,
+        verified: 0,
+        coverageRatio: 1.0,
+        verifiedRatio: 1.0,
+        unverifiedClaimIds: [],
+      };
+    }
+    const withEvidence = all.filter((c) => c.evidenceIds.length > 0);
+    const verified = all.filter((c) => c.verified);
+    return {
+      total: all.length,
+      withEvidence: withEvidence.length,
+      verified: verified.length,
+      coverageRatio: Number((withEvidence.length / all.length).toFixed(3)),
+      verifiedRatio: Number((verified.length / all.length).toFixed(3)),
+      unverifiedClaimIds: all.filter((c) => !c.verified).map((c) => c.id),
+    };
+  }
+
+  toJSON() {
+    return {
+      claims: Array.from(this.claims.values()),
+      counter: this._counter,
+    };
+  }
+
+  static fromJSON(data) {
+    const s = new ClaimStore();
+    s._counter = (data && data.counter) || 0;
+    for (const c of (data && data.claims) || []) s.claims.set(c.id, c);
+    return s;
+  }
+}
+
+// ============================================================
+// 6. Gap Analysis（deterministic，基于 Ontology）
 // ============================================================
 
 function analyzeGaps(graph) {
@@ -772,24 +1149,135 @@ function _overallRationale(graph, overall) {
 }
 
 // ============================================================
-// 6. Research Report Schema + Validation
+// 9. Decision & Budget（Expand-Converge 核心）
+//
+//    确定性 Decision 函数 —— 不用 LLM，不用 ML，不用 Tree Search。
+//    比较 current snapshot 与 last snapshot：
+//      - 新 Entity / Relationship / Conflict / Gap  → Continue
+//      - 关键 Confidence 仍低                       → Continue
+//      - 仍有 open/investigating Question           → Continue
+//      - Budget 超限                                → Finish
+//      - 否则                                        → Finish
+//
+//    Decide 后会把当前 snapshot 写回 session._lastSnapshot，供下次 diff。
+// ============================================================
+
+function decide(session) {
+  const budgetCheck = checkBudget(session);
+
+  // 若 confidence 未评估，则先计算一次（确保 Decision 有最新信号）
+  let confidence = session.confidence;
+  if (!confidence && session.graph && session.graph.entities.size > 0) {
+    confidence = assessConfidence(session.graph);
+    // 不写回 session.confidence（只用于本次 Decision），避免副作用
+  }
+
+  const snapshot = {
+    entityCount: session.graph ? session.graph.entities.size : 0,
+    evidenceCount: session.graph ? session.graph.evidence.size : 0,
+    relationshipCount: session.graph ? session.graph.relationships.length : 0,
+    gapCount: session.gaps ? session.gaps.length : 0,
+    contradictionCount: session.contradictions ? session.contradictions.length : 0,
+    openQuestions:
+      (session.questionTree ? session.questionTree.listQuestions({ status: 'open' }).length : 0) +
+      (session.questionTree ? session.questionTree.listQuestions({ status: 'investigating' }).length : 0),
+  };
+
+  const last = session._lastSnapshot || null;
+  const reasons = [];
+  let decision = 'finish';
+
+  // Budget 超限 → 强制 Finish
+  if (!budgetCheck.withinBudget) {
+    reasons.push(`Budget exceeded: ${budgetCheck.reasons.join('; ')}`);
+    decision = 'finish';
+  } else {
+    // 与上次 snapshot 比较 —— Expand 阶段
+    if (last) {
+      const dEnt = snapshot.entityCount - last.entityCount;
+      const dRel = snapshot.relationshipCount - last.relationshipCount;
+      const dCon = snapshot.contradictionCount - last.contradictionCount;
+      const dGap = snapshot.gapCount - last.gapCount;
+      if (dEnt > 0) { reasons.push(`new Entity (+${dEnt})`); decision = 'continue'; }
+      if (dRel > 0) { reasons.push(`new Relationship (+${dRel})`); decision = 'continue'; }
+      if (dCon > 0) { reasons.push(`new Conflict (+${dCon})`); decision = 'continue'; }
+      if (dGap > 0) { reasons.push(`new Gap (+${dGap})`); decision = 'continue'; }
+    } else {
+      // 首次 decide → 一定 Continue（除非 graph 空）
+      if (snapshot.entityCount > 0 || snapshot.evidenceCount > 0) {
+        reasons.push('first snapshot with evidence');
+        decision = 'continue';
+      }
+    }
+    // Confidence-driven：关键结论置信度不足 → Continue
+    if (confidence && confidence.level === 'low') {
+      reasons.push('overall confidence is low');
+      decision = 'continue';
+    }
+    // 仍有开放问题 → Continue
+    if (snapshot.openQuestions > 0) {
+      reasons.push(`${snapshot.openQuestions} open question(s)`);
+      decision = 'continue';
+    }
+    // Converge：没有新增价值 → Finish
+    if (decision === 'finish') {
+      reasons.push('no new value — converging to report');
+    }
+  }
+
+  // 写回 snapshot（用于下次 diff）
+  session._lastSnapshot = snapshot;
+
+  return {
+    decision, // 'continue' | 'finish'
+    reasons,
+    snapshot,
+    lastSnapshot: last,
+    budget: budgetCheck,
+    confidence: confidence ? { level: confidence.level, score: confidence.score } : null,
+  };
+}
+
+// ============================================================
+// 10. Research Report Schema + Validation（含 Traceability Layer）
 //
 //    每个结论必须可追溯到证据。企业最怕："AI 怎么知道的？"
-//    Report 包含 8 个 required sections：
+//    Report 9 个 required section：
 //      task, executiveSummary, keyFindings, supportingEvidence,
-//      confidence, conflicts, knowledgeGaps, recommendations
+//      confidence, conflicts, knowledgeGaps, recommendations, traceability
+//
+//    Traceability Layer：
+//      - claimCoverageRatio: Claims with Evidence / Total Claims
+//      - totalClaims / claimsWithEvidence / verifiedClaims
+//      - unverifiedClaimIds[]
+//      - sourceCount / evidenceCount
+//
+//    Claim Type Rules（由 validateReport 强制）：
+//      - fact/statistic/historical/expert_opinion MUST have evidenceIds
+//      - analysis MUST have evidenceIds + reasoning
+//      - recommendation MUST have reasoning
 // ============================================================
 
 const REPORT_REQUIRED_SECTIONS = [
   'task', 'executiveSummary', 'keyFindings', 'supportingEvidence',
-  'confidence', 'conflicts', 'knowledgeGaps', 'recommendations',
+  'confidence', 'conflicts', 'knowledgeGaps', 'recommendations', 'traceability',
 ];
 
 const CONFIDENCE_LEVELS = ['high', 'medium', 'low'];
 
-function validateReport(report, graph) {
+// 默认 Claim Coverage Ratio 阈值（可被 contract.evidenceRequirement.claimCoverageRatio 覆盖）
+const DEFAULT_CLAIM_COVERAGE_THRESHOLD = 0.9;
+
+function validateReport(report, graph, options = {}) {
   const errors = [];
   const warnings = [];
+
+  // options.contract 可携带 evidenceRequirement.claimCoverageRatio
+  const claimCoverageThreshold =
+    (options.contract && options.contract.evidenceRequirement && options.contract.evidenceRequirement.claimCoverageRatio)
+    || DEFAULT_CLAIM_COVERAGE_THRESHOLD;
+  // options.claims 可携带 ClaimStore（用于校验 claimId 引用 + Claim 类型规则）
+  const claims = options.claims || null;
 
   for (const section of REPORT_REQUIRED_SECTIONS) {
     if (!(section in report)) errors.push(`Missing required section: ${section}`);
@@ -799,8 +1287,11 @@ function validateReport(report, graph) {
     report.keyFindings.forEach((f, i) => {
       if (!f.id) errors.push(`keyFindings[${i}]: missing id`);
       if (!f.statement) errors.push(`keyFindings[${i}] (${f.id || '?'}): missing statement`);
-      if (!f.evidenceIds || f.evidenceIds.length === 0) {
-        errors.push(`keyFindings[${i}] (${f.id || '?'}): must have at least one evidenceId`);
+      // keyFindings 可引用 claimIds 或直接引用 evidenceIds（二选一即可）
+      const hasEvidence = f.evidenceIds && f.evidenceIds.length > 0;
+      const hasClaims = f.claimIds && f.claimIds.length > 0;
+      if (!hasEvidence && !hasClaims) {
+        errors.push(`keyFindings[${i}] (${f.id || '?'}): must have at least one evidenceId or claimId`);
       }
       if (f.confidence && !CONFIDENCE_LEVELS.includes(f.confidence)) {
         errors.push(`keyFindings[${i}] (${f.id}): confidence must be one of ${CONFIDENCE_LEVELS.join('/')}`);
@@ -809,6 +1300,14 @@ function validateReport(report, graph) {
         for (const evId of f.evidenceIds) {
           if (!graph.evidence.has(evId)) {
             errors.push(`keyFindings[${i}] (${f.id}): evidenceId ${evId} not found in graph`);
+          }
+        }
+      }
+      // 校验 claimId 引用
+      if (f.claimIds && claims) {
+        for (const cId of f.claimIds) {
+          if (!claims.claims.has(cId)) {
+            errors.push(`keyFindings[${i}] (${f.id}): claimId ${cId} not found in claim store`);
           }
         }
       }
@@ -854,15 +1353,64 @@ function validateReport(report, graph) {
     }
   }
 
+  // Traceability Layer 校验
+  if (report.traceability) {
+    const t = report.traceability;
+    if (typeof t.claimCoverageRatio !== 'number') {
+      errors.push('traceability.claimCoverageRatio must be a number');
+    } else if (claims && claims.claims.size > 0 && t.claimCoverageRatio < claimCoverageThreshold) {
+      errors.push(
+        `traceability.claimCoverageRatio ${t.claimCoverageRatio} < required ${claimCoverageThreshold}`
+      );
+    }
+    if (typeof t.totalClaims !== 'number') {
+      warnings.push('traceability.totalClaims should be a number');
+    }
+    if (!Array.isArray(t.unverifiedClaimIds)) {
+      warnings.push('traceability.unverifiedClaimIds should be an array');
+    }
+  }
+
+  // Claim 类型规则校验（当 ClaimStore 提供时）
+  if (claims) {
+    for (const claim of claims.claims.values()) {
+      const req = CLAIM_EVIDENCE_REQUIREMENTS[claim.type];
+      if (req.requiresEvidence && claim.evidenceIds.length === 0) {
+        errors.push(`Claim ${claim.id} (type=${claim.type}): requires at least one evidenceId`);
+      }
+      if (req.requiresReasoning && !claim.reasoning) {
+        errors.push(`Claim ${claim.id} (type=${claim.type}): requires reasoning`);
+      }
+      // evidenceIds 必须在 graph 中存在
+      for (const evId of claim.evidenceIds) {
+        if (!graph.evidence.has(evId)) {
+          errors.push(`Claim ${claim.id}: evidenceId ${evId} not found in graph`);
+        }
+      }
+    }
+  }
+
   return { valid: errors.length === 0, errors, warnings };
 }
 
-// 生成报告模板：预填 supportingEvidence + knowledgeGaps + conflicts
+// 生成报告模板：预填 supportingEvidence + knowledgeGaps + conflicts + traceability
 function reportTemplate(session) {
   const graph = session.graph;
   const gaps = session.gaps.length ? session.gaps : analyzeGaps(graph);
   const contradictions = session.contradictions.length ? session.contradictions : analyzeContradictions(graph);
   const confidence = session.confidence || assessConfidence(graph);
+  const claimCoverage = session.claims ? session.claims.coverage() : null;
+  const sources = new Set(Array.from(graph.evidence.values()).map((e) => e.source));
+
+  const traceability = {
+    claimCoverageRatio: claimCoverage ? claimCoverage.coverageRatio : 1.0,
+    totalClaims: claimCoverage ? claimCoverage.total : 0,
+    claimsWithEvidence: claimCoverage ? claimCoverage.withEvidence : 0,
+    verifiedClaims: claimCoverage ? claimCoverage.verified : 0,
+    unverifiedClaimIds: claimCoverage ? claimCoverage.unverifiedClaimIds : [],
+    sourceCount: sources.size,
+    evidenceCount: graph.evidence.size,
+  };
 
   return {
     task: session.goal || '',
@@ -896,6 +1444,7 @@ function reportTemplate(session) {
       severity: g.severity,
     })),
     recommendations: [],
+    traceability,
   };
 }
 
@@ -922,10 +1471,21 @@ function graphToMermaid(graph, { maxNodes = 50 } = {}) {
 }
 
 // ============================================================
-// 8. ResearchSession（贯穿全流程的工作上下文 / Research Context）
+// 11. ResearchSession（贯穿全流程的工作上下文 / Research Context）
 //
-//    v3 核心对象：把所有概念自然串联起来。
+//    核心对象：把所有概念自然串联起来。
 //    不引入数据库 / 状态机 / 框架，仅是一个逻辑模型 + JSON 持久化。
+//
+//    字段：
+//      - goal:               研究目标
+//      - contract:           Research Contract（用户确认的研究契约）
+//      - budget:             Research Budget（depth/maxQuestions/maxEvidence/time）
+//      - plan:               骨架子任务
+//      - questionTree:       动态问题树（Evidence-driven, Expand-Converge）
+//      - graph:              EvidenceGraph（Working Memory）
+//      - claims:             ClaimStore（一等 Claim 对象 + Coverage）
+//      - findings/gaps/contradictions/confidence: 由 analyze() 计算
+//      - _lastSnapshot:      上次 decide() 的快照（用于 diff 判断新增价值）
 //
 //    LLM 在每个 Phase 都应调用 session-context 查看"我现在研究到哪里"。
 // ============================================================
@@ -934,17 +1494,41 @@ class ResearchSession {
   constructor(goal) {
     this.goal = goal;
     this.createdAt = new Date().toISOString();
-    this.plan = [];              // [{ id, objective, status, createdAt, updatedAt }]
+    this.contract = null;          // ResearchContract
+    this.budget = null;            // ResearchBudget（如未设置，checkBudget 用 DEFAULT_BUDGET）
+    this.plan = [];                // [{ id, objective, status, createdAt, updatedAt }]
+    this.questionTree = new QuestionTree(); // 动态问题树
     this.graph = new EvidenceGraph();
-    this.findings = [];          // 报告撰写时填充
-    this.gaps = [];              // 由 analyze() 计算
-    this.contradictions = [];    // 由 analyze() 计算
-    this.confidence = null;      // 由 analyze() 计算
+    this.claims = new ClaimStore();         // Claim 一等对象
+    this.findings = [];            // 报告撰写时填充
+    this.gaps = [];                // 由 analyze() 计算
+    this.contradictions = [];      // 由 analyze() 计算
+    this.confidence = null;        // 由 analyze() 计算
     this.report = null;
-    this.visitedSources = [];    // [{ source, uri, at }]
-    this.pendingQuestions = [];  // LLM 填充
+    this.visitedSources = [];      // [{ source, uri, at }]
+    this.pendingQuestions = [];    // LLM 填充（自由文本，与 QuestionTree 互补）
     this.rejectedHypotheses = []; // LLM 填充
     this._planCounter = 0;
+    this._lastSnapshot = null;     // 上次 decide() 的 snapshot
+  }
+
+  // ----- Contract & Budget -----
+
+  setContract(contract) {
+    if (!contract || !contract.question) throw new Error('Contract must have question');
+    this.contract = contract;
+    return this.contract;
+  }
+
+  confirmContract() {
+    if (!this.contract) throw new Error('No contract to confirm. Call setContract first.');
+    this.contract.confirmedAt = new Date().toISOString();
+    return this.contract;
+  }
+
+  setBudget(budget) {
+    this.budget = budget;
+    return this.budget;
   }
 
   // ----- Plan -----
@@ -967,6 +1551,34 @@ class ResearchSession {
     item.status = status;
     item.updatedAt = new Date().toISOString();
     return item;
+  }
+
+  // ----- Question Tree（委托给 QuestionTree）-----
+
+  addQuestion({ text, parentId = null, triggeredByEvidenceId = null, triggeredByEntityId = null, planItemId = null }) {
+    return this.questionTree.addQuestion({ text, parentId, triggeredByEvidenceId, triggeredByEntityId, planItemId });
+  }
+
+  updateQuestion(id, { status, generatedEntityIds, generatedRelationshipIds }) {
+    return this.questionTree.updateQuestion(id, { status, generatedEntityIds, generatedRelationshipIds });
+  }
+
+  // ----- Claim Store（委托给 ClaimStore）-----
+
+  addClaim({ text, type, evidenceIds = [], reasoning = '', confidence = 0.5, supportingClaimIds = [], entityId = null }) {
+    return this.claims.addClaim({ text, type, evidenceIds, reasoning, confidence, supportingClaimIds, entityId });
+  }
+
+  verifyClaim(id, { verified = true, note = '' } = {}) {
+    return this.claims.verifyClaim(id, { verified, note });
+  }
+
+  linkClaimEvidence(claimId, evidenceIds) {
+    return this.claims.linkEvidence(claimId, evidenceIds);
+  }
+
+  claimCoverage() {
+    return this.claims.coverage();
   }
 
   // ----- Visited Sources -----
@@ -1011,11 +1623,33 @@ class ResearchSession {
     };
   }
 
+  // ----- Decision（Expand-Converge）-----
+
+  decide() {
+    return decide(this);
+  }
+
+  checkBudget() {
+    return checkBudget(this);
+  }
+
   // ----- Research Context（LLM 判断"研究到哪里"的依据）-----
 
   context() {
     return {
       goal: this.goal,
+      contract: this.contract
+        ? {
+            question: this.contract.question,
+            confirmed: !!this.contract.confirmedAt,
+            claimCoverageThreshold: this.contract.evidenceRequirement
+              ? this.contract.evidenceRequirement.claimCoverageRatio
+              : DEFAULT_CLAIM_COVERAGE_THRESHOLD,
+          }
+        : null,
+      budget: this.budget
+        ? checkBudget(this)
+        : { usingDefaults: true, ...checkBudget(this) },
       planProgress: {
         total: this.plan.length,
         done: this.plan.filter((p) => p.status === 'done').length,
@@ -1023,7 +1657,9 @@ class ResearchSession {
         pending: this.plan.filter((p) => p.status === 'pending').length,
         skipped: this.plan.filter((p) => p.status === 'skipped').length,
       },
+      questionTree: this.questionTree.stats(),
       graph: this.graph.stats(),
+      claims: this.claims.coverage(),
       openGaps: this.gaps.length,
       openContradictions: this.contradictions.length,
       confidence: this.confidence ? this.confidence.level : 'unassessed',
@@ -1031,6 +1667,7 @@ class ResearchSession {
       rejectedHypotheses: this.rejectedHypotheses.length,
       visitedSources: this.visitedSources.length,
       hasReport: !!this.report,
+      lastSnapshot: this._lastSnapshot,
     };
   }
 
@@ -1040,8 +1677,12 @@ class ResearchSession {
     return {
       goal: this.goal,
       createdAt: this.createdAt,
+      contract: this.contract,
+      budget: this.budget,
       plan: this.plan,
+      questionTree: this.questionTree.toJSON(),
       graph: this.graph.toJSON(),
+      claims: this.claims.toJSON(),
       findings: this.findings,
       gaps: this.gaps,
       contradictions: this.contradictions,
@@ -1051,14 +1692,19 @@ class ResearchSession {
       pendingQuestions: this.pendingQuestions,
       rejectedHypotheses: this.rejectedHypotheses,
       _planCounter: this._planCounter,
+      _lastSnapshot: this._lastSnapshot,
     };
   }
 
   static fromJSON(data) {
     const s = new ResearchSession(data.goal);
     s.createdAt = data.createdAt;
+    s.contract = data.contract || null;
+    s.budget = data.budget || null;
     s.plan = data.plan || [];
+    s.questionTree = QuestionTree.fromJSON(data.questionTree || {});
     s.graph = EvidenceGraph.fromJSON(data.graph || {});
+    s.claims = ClaimStore.fromJSON(data.claims || {});
     s.findings = data.findings || [];
     s.gaps = data.gaps || [];
     s.contradictions = data.contradictions || [];
@@ -1068,12 +1714,13 @@ class ResearchSession {
     s.pendingQuestions = data.pendingQuestions || [];
     s.rejectedHypotheses = data.rejectedHypotheses || [];
     s._planCounter = data._planCounter || 0;
+    s._lastSnapshot = data._lastSnapshot || null;
     return s;
   }
 }
 
 // ============================================================
-// 9. Persistence
+// 12. Persistence
 // ============================================================
 
 function saveSession(session, file) {
@@ -1088,7 +1735,7 @@ function loadSession(file) {
 }
 
 // ============================================================
-// 10. CLI
+// 13. CLI
 // ============================================================
 
 function printUsage() {
@@ -1096,17 +1743,35 @@ function printUsage() {
 Usage: node research.mjs <command> [options]
 
 Enterprise Research Agent — Evidence-driven research machinery.
-Research = Investigation + Analysis. ResearchSession is the working context.
+Research = Investigation + Analysis, driven by Question Tree + Decision Loop.
+ResearchSession is the working context. Claim Coverage Ratio ≥ 0.9 enforced.
 
 Commands:
   init --goal <name> [--session <file>]                          Initialize new research session
-  session-status [--session <file>]                              Show full session context (goal, plan, graph, analysis)
+
+  set-contract --question <text> [--scope <json>]                Set Research Contract (user must confirm)
+                  [--expected-output <json>] [--min-sources 3]
+                  [--primary-source-ratio 0.6] [--claim-coverage-ratio 0.9]
+                  [--confirm] [--session <file>]
+  set-budget [--depth 3] [--max-questions 40]                    Set Research Budget
+              [--max-evidence 300] [--time-limit-minutes 8] [--session <file>]
+  confirm-contract [--session <file>]                            Mark contract as confirmed by user
+
+  session-status [--session <file>]                              Show full session context (contract, budget, plan, questions, graph, claims, analysis)
   session-context [--session <file>]                             Output Research Context as JSON (for LLM self-check)
 
   add-plan-item --objective <text> [--session <file>]            Add investigation sub-task to plan
   update-plan-item --id <id> --status <status> [--session <file>] Update plan item status
+
+  add-question --text <text> [--parent <id>]                     Add question to Question Tree (root if no --parent)
+                [--triggered-by-evidence <id>] [--triggered-by-entity <id>]
+                [--plan-item <id>] [--session <file>]
+  update-question --id <id> [--status <status>]                  Update question status / generated artifacts
+                  [--generated-entities e1,e2] [--generated-relationships r1,r2] [--session <file>]
+  list-questions [--status <S>] [--parent <id>] [--session <file>] List questions (default: all)
+
   record-source --source <S> [--uri <U>] [--session <file>]      Record visited Connector Adapter source
-  add-pending-question <text> [--session <file>]                 Add open question to research context
+  add-pending-question <text> [--session <file>]                 Add open question to research context (free text)
   reject-hypothesis --hypothesis <text> [--reason <text>] [--session <file>]
                                                                   Record rejected hypothesis
 
@@ -1121,46 +1786,98 @@ Commands:
   add-relationship --from <id> --to <id> --type <T> [--confidence 0.5] [--evidence ev1,ev2] [--session <file>]
   resolve-identity --canonical <id> --aliases <id1,id2> [--session <file>]
 
+  add-claim --text <text> --type <T>                             Add a Claim (first-class conclusion unit)
+              [--evidence ev1,ev2] [--reasoning <text>] [--confidence 0.5]
+              [--supports c1,c2] [--entity <id>] [--session <file>]
+              T = fact|statistic|historical|expert_opinion|analysis|recommendation
+              (fact/statistic/historical/expert_opinion require --evidence; analysis requires --evidence + --reasoning;
+               recommendation requires --reasoning)
+  verify-claim --id <id> [--verified] [--note <text>] [--session <file>] Mark claim as verified/unverified
+  link-claim-evidence --id <id> --evidence <ev1,ev2,...> [--session <file>] Attach additional evidence to existing claim
+  list-claims [--type <T>] [--verified] [--session <file>]       List claims (filter by type or verification status)
+  coverage [--session <file>]                                    Show Claim Coverage Ratio
+
   analyze [--session <file>]                                     Run Gap + Contradiction + Confidence together
   analyze-gaps [--session <file>]                                Compute gaps based on Ontology
   analyze-contradictions [--session <file>]                      Detect contradictions based on claims
   assess-confidence [--entity <id>] [--session <file>]           Assess confidence (per entity or overall)
 
+  decide [--session <file>]                                      Deterministic Decision: Continue or Finish?
+                                                                  (based on new Entity/Relationship/Conflict/Gap,
+                                                                   open questions, confidence, budget)
+  check-budget [--session <file>]                                Show budget usage vs limits
+
   show-graph [--session <file>] [--max-nodes 50]                 Output Mermaid flowchart
-  report-template [--output <file>] [--session <file>]           Generate report template (pre-fills evidence + gaps + conflicts)
-  validate-report --report <file> [--session <file>]             Validate report schema
+  report-template [--output <file>] [--session <file>]           Generate report template (pre-fills evidence + gaps + conflicts + traceability)
+  validate-report --report <file> [--session <file>]             Validate report schema (incl. Traceability Layer + Claim rules)
 
 Options:
-  --session <file>     Session file path (default: ./research-session.json)
-  --goal <name>        Research goal (for init)
-  --objective <text>   Plan item objective
-  --status <status>    Plan item status: pending | in_progress | done | skipped
-  --type <T>           Entity type (Vendor, Application, Repository, Team, Person, Project,
-                       Capability, BusinessProcess, Regulation, Control, Incident, Risk, Contract, Document)
-  --name <N>           Entity name
-  --aliases <list>     Comma-separated aliases
-  --summary <text>     Entity summary
-  --props <list>       Comma-separated key=value properties
-  --source <S>         Connector Adapter source (Confluence, GitHub, Jira, LeanIX, ServiceNow,
-                       Vendor, Regulation, External, News, Academic, Web, ...)
-  --uri <U>            Evidence URI
-  --content <C>        Evidence content
-  --confidence <n>     Confidence 0-1 (default 0.5)
-  --last-updated <d>   Source last-updated ISO date (for Freshness assessment)
-  --claims <list>      Comma-separated property=value claims (for Contradiction Detection)
-  --from <id>          Source entity ID
-  --to <id>            Target entity ID
-  --evidence <list>    Comma-separated evidence IDs
-  --canonical <id>     Canonical entity ID (for resolve-identity)
-  --hypothesis <text>  Hypothesis text (for reject-hypothesis)
-  --reason <text>      Rejection reason
-  --output <file>      Output file path
-  --max-nodes <n>      Max nodes for Mermaid export (default 50)
-  --help, -h           Show this help
+  --session <file>                  Session file path (default: ./research-session.json)
+  --goal <name>                     Research goal (for init)
+  --question <text>                 Research Contract question
+  --scope <json>                    Research Contract scope (JSON string)
+  --expected-output <json>          Research Contract expected output (JSON string)
+  --min-sources <n>                 Min independent sources (default 3)
+  --primary-source-ratio <n>        Primary source ratio 0-1 (default 0.6)
+  --claim-coverage-ratio <n>        Claim Coverage Ratio threshold 0-1 (default 0.9)
+  --confirm                         Mark contract as confirmed (with set-contract)
+  --depth <n>                       Budget: max Question Tree depth (default 3)
+  --max-questions <n>               Budget: max questions (default 40)
+  --max-evidence <n>                Budget: max evidence count (default 300)
+  --time-limit-minutes <n>          Budget: time limit in minutes (default 8)
+  --objective <text>                Plan item objective
+  --status <status>                 Plan item status: pending | in_progress | done | skipped
+                                    Question status: open | investigating | answered | pruned
+  --text <text>                     Question text (for add-question) or Claim text (for add-claim)
+  --type <T>                        Entity type (Vendor, Application, Repository, Team, Person, Project,
+                                    Capability, BusinessProcess, Regulation, Control, Incident, Risk, Contract, Document)
+                                    OR Claim type (fact, statistic, historical, expert_opinion, analysis, recommendation)
+  --parent <id>                     Parent question ID (for add-question)
+  --triggered-by-evidence <id>      Evidence that triggered this question
+  --triggered-by-entity <id>        Entity that triggered this question
+  --plan-item <id>                  Associated plan item ID
+  --generated-entities <list>       Comma-separated entity IDs generated by answering this question
+  --generated-relationships <list>  Comma-separated relationship IDs generated by answering this question
+  --name <N>                        Entity name
+  --aliases <list>                  Comma-separated aliases
+  --summary <text>                  Entity summary
+  --props <list>                    Comma-separated key=value properties
+  --source <S>                      Connector Adapter source (Confluence, GitHub, Jira, LeanIX, ServiceNow,
+                                    Vendor, Regulation, External, News, Academic, Web, ...)
+  --uri <U>                         Evidence URI
+  --content <C>                     Evidence content
+  --confidence <n>                  Confidence 0-1 (default 0.5)
+  --last-updated <d>                Source last-updated ISO date (for Freshness assessment)
+  --claims <list>                   Comma-separated property=value claims (for Contradiction Detection)
+  --from <id>                       Source entity ID
+  --to <id>                         Target entity ID
+  --evidence <list>                 Comma-separated evidence IDs (for add-relationship or add-claim)
+  --reasoning <text>                Claim reasoning (required for analysis/recommendation claim types)
+  --supports <list>                 Comma-separated supporting claim IDs
+  --entity <id>                     Entity ID (for link-evidence, add-claim)
+  --verified                        Mark claim as verified (default true; use --verified false to unverify)
+  --note <text>                     Verification note (for verify-claim)
+  --canonical <id>                  Canonical entity ID (for resolve-identity)
+  --hypothesis <text>               Hypothesis text (for reject-hypothesis)
+  --reason <text>                   Rejection reason
+  --output <file>                   Output file path
+  --max-nodes <n>                   Max nodes for Mermaid export (default 50)
+  --help, -h                        Show this help
 
 Examples:
   node research.mjs init --goal "Research RiskConcile"
+
+  # Set contract and budget (Phase 0)
+  node research.mjs set-contract --question "Research RiskConcile as a vendor" \\
+    --scope '{"industry":"RegTech"}' --min-sources 4 --claim-coverage-ratio 0.95 --confirm
+  node research.mjs set-budget --depth 3 --max-questions 30 --time-limit-minutes 10
+
+  # Plan + Question Tree (Phase 1)
   node research.mjs add-plan-item --objective "Identify vendor background"
+  node research.mjs add-question --text "What is RiskConcile?" --plan-item p1
+  node research.mjs add-question --text "Which applications use RiskConcile?" --parent q1 --plan-item p2
+
+  # Evidence Collection (Phase 2)
   node research.mjs add-entity --type Vendor --name "RiskConcile" --aliases "RC,riskconcile-api" --props "website=https://riskconcile.com"
   node research.mjs add-evidence --source GitHub --uri "https://github.com/org/riskconcile-api" \\
     --content "Repo exists, 142 commits" --confidence 0.95 --last-updated 2025-09-12 \\
@@ -1170,10 +1887,26 @@ Examples:
   node research.mjs link-evidence --entity e1 --evidence ev1
   node research.mjs add-relationship --from e1 --to e2 --type used_by --evidence ev1
   node research.mjs resolve-identity --canonical e1 --aliases e2,e3
-  node research.mjs analyze                  # runs Gap + Contradiction + Confidence
-  node research.mjs analyze-contradictions   # detects conflicting owner: Team A vs Team B
-  node research.mjs assess-confidence        # overall confidence with factors
-  node research.mjs session-context          # JSON snapshot for LLM self-check
+
+  # Question Tree growth (Phase 2-4, Evidence-driven)
+  node research.mjs add-question --text "Which team owns the riskconcile-api repo?" \\
+    --parent q2 --triggered-by-evidence ev1 --triggered-by-entity e2
+  node research.mjs update-question --id q2 --status answered --generated-entities e2
+
+  # Claims (Phase 5)
+  node research.mjs add-claim --text "RiskConcile is used by RC Migration Tool" --type fact \\
+    --evidence ev1,ev2 --confidence 0.9
+  node research.mjs add-claim --text "Resolve owner conflict before signing contract" --type recommendation \\
+    --reasoning "Owner discrepancy blocks contract ownership assignment"
+  node research.mjs verify-claim --id c1 --note "Cross-validated with LeanIX"
+  node research.mjs coverage
+
+  # Analysis + Decision Loop
+  node research.mjs analyze
+  node research.mjs decide                  # Continue or Finish? (deterministic)
+  node research.mjs check-budget            # Budget usage
+
+  # Report
   node research.mjs report-template --output report.json
   node research.mjs validate-report --report report.json
 `);
@@ -1230,6 +1963,80 @@ function main() {
         saveSession(s, sessionFile);
         console.log(`✓ Initialized research session: "${goal}"`);
         console.log(`  Session: ${sessionFile}`);
+        console.log(`  Next: set-contract --question <text> --confirm`);
+        break;
+      }
+
+      case 'set-contract': {
+        const s = loadSession(sessionFile);
+        const question = argValue(argv, '--question');
+        if (!question) {
+          console.error('Error: --question is required');
+          process.exit(1);
+        }
+        const scopeStr = argValue(argv, '--scope');
+        const expectedOutStr = argValue(argv, '--expected-output');
+        const minSources = argValue(argv, '--min-sources');
+        const primaryRatio = argValue(argv, '--primary-source-ratio');
+        const coverageRatio = argValue(argv, '--claim-coverage-ratio');
+        const confirm = argv.includes('--confirm');
+
+        let scope = {};
+        let expectedOutput = {};
+        try { if (scopeStr) scope = JSON.parse(scopeStr); } catch (e) {
+          console.error(`Error: --scope is not valid JSON: ${e.message}`);
+          process.exit(1);
+        }
+        try { if (expectedOutStr) expectedOutput = JSON.parse(expectedOutStr); } catch (e) {
+          console.error(`Error: --expected-output is not valid JSON: ${e.message}`);
+          process.exit(1);
+        }
+        const evidenceRequirement = {};
+        if (minSources) evidenceRequirement.minSources = Number(minSources);
+        if (primaryRatio) evidenceRequirement.primarySourceRatio = Number(primaryRatio);
+        if (coverageRatio) evidenceRequirement.claimCoverageRatio = Number(coverageRatio);
+
+        const contract = createContract({ question, scope, expectedOutput, evidenceRequirement });
+        if (confirm) contract.confirmedAt = new Date().toISOString();
+        s.setContract(contract);
+        saveSession(s, sessionFile);
+        console.log(`✓ Set Research Contract`);
+        console.log(`  Question:    ${contract.question}`);
+        console.log(`  Confirmed:   ${contract.confirmedAt ? 'yes' : 'no (run confirm-contract after user review)'}`);
+        console.log(`  Evidence req:`);
+        console.log(`    min sources:           ${contract.evidenceRequirement.minSources}`);
+        console.log(`    primary source ratio:  ${contract.evidenceRequirement.primarySourceRatio}`);
+        console.log(`    claim coverage ratio:  ${contract.evidenceRequirement.claimCoverageRatio}`);
+        break;
+      }
+
+      case 'confirm-contract': {
+        const s = loadSession(sessionFile);
+        s.confirmContract();
+        saveSession(s, sessionFile);
+        console.log(`✓ Contract confirmed at ${s.contract.confirmedAt}`);
+        break;
+      }
+
+      case 'set-budget': {
+        const s = loadSession(sessionFile);
+        const depth = argValue(argv, '--depth');
+        const maxQ = argValue(argv, '--max-questions');
+        const maxE = argValue(argv, '--max-evidence');
+        const tlm = argValue(argv, '--time-limit-minutes');
+        const budget = createBudget({
+          depth: depth != null ? Number(depth) : undefined,
+          maxQuestions: maxQ != null ? Number(maxQ) : undefined,
+          maxEvidence: maxE != null ? Number(maxE) : undefined,
+          timeLimitMinutes: tlm != null ? Number(tlm) : undefined,
+        });
+        s.setBudget(budget);
+        saveSession(s, sessionFile);
+        console.log(`✓ Set Research Budget`);
+        console.log(`  depth:             ${budget.depth}`);
+        console.log(`  max questions:     ${budget.maxQuestions}`);
+        console.log(`  max evidence:      ${budget.maxEvidence}`);
+        console.log(`  time limit (min):  ${budget.timeLimitMinutes}`);
         break;
       }
 
@@ -1239,6 +2046,15 @@ function main() {
         console.log(`Goal:          ${ctx.goal}`);
         console.log(`Created:       ${s.createdAt}`);
         console.log(``);
+        console.log(`Contract:      ${ctx.contract ? ctx.contract.question : '(not set)'}` +
+          (ctx.contract ? ` [${ctx.contract.confirmed ? 'confirmed' : 'unconfirmed'}]` : ''));
+        console.log(`  Coverage threshold: ${ctx.contract ? ctx.contract.claimCoverageThreshold : DEFAULT_CLAIM_COVERAGE_THRESHOLD}`);
+        console.log(``);
+        console.log(`Budget:        ${s.budget ? `depth=${s.budget.depth}, maxQ=${s.budget.maxQuestions}, maxE=${s.budget.maxEvidence}, time=${s.budget.timeLimitMinutes}min` : '(using defaults)'}`);
+        const bu = ctx.budget;
+        console.log(`  Usage:       depth=${bu.usage.depth}, questions=${bu.usage.questions}, evidence=${bu.usage.evidence}, elapsed=${bu.usage.elapsedMinutes.toFixed(1)}min`);
+        if (!bu.withinBudget) console.log(`  ⚠ Exceeded:  ${bu.reasons.join('; ')}`);
+        console.log(``);
         console.log(`Plan:          ${ctx.planProgress.total} items ` +
           `(done=${ctx.planProgress.done}, in_progress=${ctx.planProgress.inProgress}, ` +
           `pending=${ctx.planProgress.pending}, skipped=${ctx.planProgress.skipped})`);
@@ -1247,12 +2063,24 @@ function main() {
           console.log(`  ${icon} ${p.id}: ${p.objective} [${p.status}]`);
         }
         console.log(``);
+        console.log(`Question Tree: ${ctx.questionTree.total} questions ` +
+          `(open=${ctx.questionTree.open}, investigating=${ctx.questionTree.investigating}, ` +
+          `answered=${ctx.questionTree.answered}, pruned=${ctx.questionTree.pruned}, maxDepth=${ctx.questionTree.maxDepth})`);
+        console.log(``);
         console.log(`Graph:`);
         console.log(`  Entities:       ${ctx.graph.entityCount}`);
         console.log(`  Evidence:       ${ctx.graph.evidenceCount}`);
         console.log(`  Relationships:  ${ctx.graph.relationshipCount}`);
         const types = Object.entries(ctx.graph.entityTypes || {}).map(([k, v]) => `${k}=${v}`).join(', ');
         if (types) console.log(`  By type:        ${types}`);
+        console.log(``);
+        console.log(`Claims:`);
+        console.log(`  Total:          ${ctx.claims.total}`);
+        console.log(`  With evidence:  ${ctx.claims.withEvidence} (coverage=${ctx.claims.coverageRatio})`);
+        console.log(`  Verified:       ${ctx.claims.verified} (ratio=${ctx.claims.verifiedRatio})`);
+        if (ctx.claims.unverifiedClaimIds.length) {
+          console.log(`  Unverified:     ${ctx.claims.unverifiedClaimIds.join(', ')}`);
+        }
         console.log(``);
         console.log(`Analysis:`);
         console.log(`  Gaps:           ${ctx.openGaps}`);
@@ -1300,6 +2128,86 @@ function main() {
         break;
       }
 
+      case 'add-question': {
+        const s = loadSession(sessionFile);
+        const text = argValue(argv, '--text');
+        const parentId = argValue(argv, '--parent') || null;
+        const triggeredByEvidence = argValue(argv, '--triggered-by-evidence') || null;
+        const triggeredByEntity = argValue(argv, '--triggered-by-entity') || null;
+        const planItem = argValue(argv, '--plan-item') || null;
+        if (!text) {
+          console.error('Error: --text is required');
+          process.exit(1);
+        }
+        const result = s.addQuestion({
+          text, parentId, triggeredByEvidenceId: triggeredByEvidence,
+          triggeredByEntityId: triggeredByEntity, planItemId: planItem,
+        });
+        saveSession(s, sessionFile);
+        console.log(`✓ Added question ${result.id} (depth=${result.question.depth})`);
+        if (parentId) console.log(`  Parent:           ${parentId}`);
+        if (triggeredByEvidence) console.log(`  Triggered by ev:  ${triggeredByEvidence}`);
+        if (triggeredByEntity) console.log(`  Triggered by ent: ${triggeredByEntity}`);
+        if (planItem) console.log(`  Plan item:        ${planItem}`);
+        break;
+      }
+
+      case 'update-question': {
+        const s = loadSession(sessionFile);
+        const id = argValue(argv, '--id');
+        const status = argValue(argv, '--status');
+        const genEnt = parseList(argValue(argv, '--generated-entities'));
+        const genRel = parseList(argValue(argv, '--generated-relationships'));
+        if (!id) {
+          console.error('Error: --id is required');
+          process.exit(1);
+        }
+        s.updateQuestion(id, {
+          status: status || undefined,
+          generatedEntityIds: genEnt.length ? genEnt : undefined,
+          generatedRelationshipIds: genRel.length ? genRel : undefined,
+        });
+        saveSession(s, sessionFile);
+        console.log(`✓ Updated question ${id}`);
+        if (status) console.log(`  Status:                 ${status}`);
+        if (genEnt.length) console.log(`  Generated entities:     ${genEnt.join(', ')}`);
+        if (genRel.length) console.log(`  Generated relationships:${genRel.join(', ')}`);
+        break;
+      }
+
+      case 'list-questions': {
+        const s = loadSession(sessionFile);
+        const status = argValue(argv, '--status');
+        // 区分 "--parent" 未出现 vs "--parent <id>" vs "--parent" (root only)
+        const parentIdx = argv.indexOf('--parent');
+        let parentId;
+        if (parentIdx < 0) {
+          parentId = undefined; // 不过滤
+        } else {
+          const next = argv[parentIdx + 1];
+          parentId = next && !next.startsWith('--') ? next : null; // null = root only
+        }
+        const list = s.questionTree.listQuestions({
+          status: status || undefined,
+          parentId,
+        });
+        if (list.length === 0) {
+          console.log('No questions found');
+          break;
+        }
+        console.log(`Questions (${list.length}):`);
+        for (const q of list) {
+          const indent = '  '.repeat(q.depth);
+          const trigger = q.triggeredByEvidenceId ? ` [ev:${q.triggeredByEvidenceId}]` : '';
+          const triggerE = q.triggeredByEntityId ? ` [ent:${q.triggeredByEntityId}]` : '';
+          const plan = q.planItemId ? ` (plan:${q.planItemId})` : '';
+          console.log(`${indent}${q.id} [${q.status}] (d=${q.depth}) ${q.text}${trigger}${triggerE}${plan}`);
+          if (q.generatedEntityIds.length) console.log(`${indent}  ↳ entities: ${q.generatedEntityIds.join(', ')}`);
+          if (q.generatedRelationshipIds.length) console.log(`${indent}  ↳ rels:     ${q.generatedRelationshipIds.join(', ')}`);
+        }
+        break;
+      }
+
       case 'record-source': {
         const s = loadSession(sessionFile);
         const source = argValue(argv, '--source');
@@ -1316,7 +2224,13 @@ function main() {
 
       case 'add-pending-question': {
         const s = loadSession(sessionFile);
-        const q = argv.slice(1).join(' ').trim();
+        // 过滤掉 --session 及其值，剩余 tokens 拼成问题文本
+        const tokens = argv.slice(1).filter((tok, i, arr) => {
+          if (tok === '--session') return false;
+          if (i > 0 && arr[i - 1] === '--session') return false;
+          return true;
+        });
+        const q = tokens.join(' ').trim();
         if (!q || q.startsWith('--')) {
           console.error('Error: question text is required (positional argument)');
           process.exit(1);
@@ -1514,6 +2428,138 @@ function main() {
         break;
       }
 
+      case 'add-claim': {
+        const s = loadSession(sessionFile);
+        const text = argValue(argv, '--text');
+        const type = argValue(argv, '--type');
+        const evidenceIds = parseList(argValue(argv, '--evidence'));
+        const reasoning = argValue(argv, '--reasoning') || '';
+        const confidence = parseFloat(argValue(argv, '--confidence') || '0.5');
+        const supportingClaimIds = parseList(argValue(argv, '--supports'));
+        const entityId = argValue(argv, '--entity') || null;
+        if (!text || !type) {
+          console.error('Error: --text and --type are required');
+          process.exit(1);
+        }
+        try {
+          const result = s.addClaim({
+            text, type, evidenceIds, reasoning, confidence,
+            supportingClaimIds, entityId,
+          });
+          saveSession(s, sessionFile);
+          console.log(`✓ Added claim ${result.id} (type=${type}, confidence=${confidence})`);
+          if (evidenceIds.length) console.log(`  Evidence:    ${evidenceIds.join(', ')}`);
+          if (reasoning) console.log(`  Reasoning:   ${reasoning}`);
+          if (supportingClaimIds.length) console.log(`  Supports:    ${supportingClaimIds.join(', ')}`);
+          if (entityId) console.log(`  Entity:      ${entityId}`);
+        } catch (e) {
+          console.error(`Error: ${e.message}`);
+          process.exit(1);
+        }
+        break;
+      }
+
+      case 'verify-claim': {
+        const s = loadSession(sessionFile);
+        const id = argValue(argv, '--id');
+        if (!id) {
+          console.error('Error: --id is required');
+          process.exit(1);
+        }
+        // 支持 --verified (boolean flag) 或 --verified false 显式取消验证
+        const verifiedIdx = argv.indexOf('--verified');
+        let verified = true;
+        if (verifiedIdx >= 0) {
+          const next = argv[verifiedIdx + 1];
+          if (next === undefined || next.startsWith('--')) {
+            verified = true; // boolean flag: --verified
+          } else if (next === 'true' || next === '') {
+            verified = true;
+          } else if (next === 'false') {
+            verified = false;
+          } else {
+            verified = true; // unknown value, treat as truthy flag
+          }
+        }
+        const note = argValue(argv, '--note') || '';
+        const c = s.verifyClaim(id, { verified, note });
+        saveSession(s, sessionFile);
+        console.log(`✓ Claim ${id} marked ${c.verified ? 'verified' : 'unverified'}`);
+        if (note) console.log(`  Note: ${note}`);
+        break;
+      }
+
+      case 'link-claim-evidence': {
+        const s = loadSession(sessionFile);
+        const id = argValue(argv, '--id');
+        if (!id) {
+          console.error('Error: --id is required');
+          process.exit(1);
+        }
+        const evList = argValue(argv, '--evidence');
+        if (!evList) {
+          console.error('Error: --evidence <ev1,ev2,...> is required');
+          process.exit(1);
+        }
+        const evidenceIds = evList.split(',').map((x) => x.trim()).filter(Boolean);
+        const c = s.linkClaimEvidence(id, evidenceIds);
+        saveSession(s, sessionFile);
+        console.log(`✓ Linked ${evidenceIds.length} evidence to claim ${id}`);
+        console.log(`  Evidence: ${c.evidenceIds.join(', ')}`);
+        break;
+      }
+
+      case 'list-claims': {
+        const s = loadSession(sessionFile);
+        const type = argValue(argv, '--type');
+        const verifiedFlag = argv.includes('--verified');
+        let verifiedFilter;
+        if (verifiedFlag) {
+          // 支持 --verified false
+          const idx = argv.indexOf('--verified');
+          const next = argv[idx + 1];
+          verifiedFilter = next === 'false' ? false : true;
+        }
+        const list = s.claims.listClaims({ type: type || undefined, verified: verifiedFilter });
+        if (list.length === 0) {
+          console.log('No claims found');
+          break;
+        }
+        console.log(`Claims (${list.length}):`);
+        for (const c of list) {
+          const v = c.verified ? '✓' : '·';
+          console.log(`  ${v} ${c.id} [${c.type}] (conf=${c.confidence}) ${c.text}`);
+          if (c.evidenceIds.length) console.log(`      evidence: ${c.evidenceIds.join(', ')}`);
+          if (c.reasoning) console.log(`      reasoning: ${c.reasoning}`);
+          if (c.verificationNote) console.log(`      note: ${c.verificationNote}`);
+        }
+        const cov = s.claims.coverage();
+        console.log(`\nCoverage: ${cov.withEvidence}/${cov.total} = ${cov.coverageRatio} (verified: ${cov.verified}/${cov.total} = ${cov.verifiedRatio})`);
+        break;
+      }
+
+      case 'coverage': {
+        const s = loadSession(sessionFile);
+        const cov = s.claimCoverage();
+        console.log(`Claim Coverage:`);
+        console.log(`  Total claims:         ${cov.total}`);
+        console.log(`  Claims with evidence: ${cov.withEvidence}`);
+        console.log(`  Coverage ratio:       ${cov.coverageRatio}`);
+        console.log(`  Verified claims:      ${cov.verified}`);
+        console.log(`  Verified ratio:       ${cov.verifiedRatio}`);
+        if (cov.unverifiedClaimIds.length) {
+          console.log(`  Unverified:           ${cov.unverifiedClaimIds.join(', ')}`);
+        }
+        const threshold = s.contract && s.contract.evidenceRequirement
+          ? s.contract.evidenceRequirement.claimCoverageRatio
+          : DEFAULT_CLAIM_COVERAGE_THRESHOLD;
+        if (cov.total > 0) {
+          const status = cov.coverageRatio >= threshold ? '✓ pass' : '✗ below threshold';
+          console.log(`  Threshold:            ${threshold} (${status})`);
+        }
+        break;
+      }
+
       case 'analyze': {
         const s = loadSession(sessionFile);
         const result = s.analyze();
@@ -1609,6 +2655,66 @@ function main() {
         break;
       }
 
+      case 'decide': {
+        const s = loadSession(sessionFile);
+        // 确保 analysis 已跑过
+        if (!s.confidence) s.analyze();
+        const result = s.decide();
+        saveSession(s, sessionFile);
+        const icon = result.decision === 'continue' ? '↻' : '✓';
+        console.log(`${icon} Decision: ${result.decision.toUpperCase()}`);
+        console.log(`  Reasons:`);
+        for (const r of result.reasons) console.log(`    - ${r}`);
+        console.log(`  Snapshot:`);
+        console.log(`    entities:       ${result.snapshot.entityCount}`);
+        console.log(`    evidence:       ${result.snapshot.evidenceCount}`);
+        console.log(`    relationships:  ${result.snapshot.relationshipCount}`);
+        console.log(`    gaps:           ${result.snapshot.gapCount}`);
+        console.log(`    contradictions: ${result.snapshot.contradictionCount}`);
+        console.log(`    open questions: ${result.snapshot.openQuestions}`);
+        if (result.lastSnapshot) {
+          console.log(`  Last snapshot diff:`);
+          console.log(`    Δentities:       ${result.snapshot.entityCount - result.lastSnapshot.entityCount}`);
+          console.log(`    Δrelationships:  ${result.snapshot.relationshipCount - result.lastSnapshot.relationshipCount}`);
+          console.log(`    Δgaps:           ${result.snapshot.gapCount - result.lastSnapshot.gapCount}`);
+          console.log(`    Δcontradictions: ${result.snapshot.contradictionCount - result.lastSnapshot.contradictionCount}`);
+        }
+        if (result.confidence) {
+          console.log(`  Confidence:    ${result.confidence.level} (score=${result.confidence.score})`);
+        }
+        console.log(`  Budget: ${result.budget.withinBudget ? '✓ within' : '✗ exceeded'}`);
+        if (!result.budget.withinBudget) {
+          console.log(`    ${result.budget.reasons.join('; ')}`);
+        }
+        if (result.decision === 'continue') {
+          console.log(`\n→ Continue Expand: collect more evidence, generate new questions.`);
+        } else {
+          console.log(`\n→ Converge to Report: run 'report-template' to finalize.`);
+        }
+        break;
+      }
+
+      case 'check-budget': {
+        const s = loadSession(sessionFile);
+        const result = checkBudget(s);
+        console.log(`Budget: ${result.withinBudget ? '✓ within' : '✗ exceeded'}`);
+        console.log(`  Limits:`);
+        console.log(`    depth:             ${result.limit.depth}`);
+        console.log(`    max questions:     ${result.limit.maxQuestions}`);
+        console.log(`    max evidence:      ${result.limit.maxEvidence}`);
+        console.log(`    time limit (min):  ${result.limit.timeLimitMinutes}`);
+        console.log(`  Usage:`);
+        console.log(`    depth:             ${result.usage.depth}`);
+        console.log(`    questions:         ${result.usage.questions}`);
+        console.log(`    evidence:          ${result.usage.evidence}`);
+        console.log(`    elapsed (min):     ${result.usage.elapsedMinutes.toFixed(1)}`);
+        if (!result.withinBudget) {
+          console.log(`  ⚠ Exceeded:`);
+          for (const r of result.reasons) console.log(`    - ${r}`);
+        }
+        break;
+      }
+
       case 'report-template': {
         const s = loadSession(sessionFile);
         // 确保 analysis 已跑过
@@ -1623,6 +2729,9 @@ function main() {
           console.log(`✓ Report template written to ${outputPath}`);
           console.log(`  Pre-filled: ${template.supportingEvidence.length} evidence, ` +
             `${template.conflicts.length} conflicts, ${template.knowledgeGaps.length} gaps`);
+          console.log(`  Traceability: coverage=${template.traceability.claimCoverageRatio} ` +
+            `(${template.traceability.claimsWithEvidence}/${template.traceability.totalClaims} claims), ` +
+            `${template.traceability.sourceCount} sources, ${template.traceability.evidenceCount} evidence`);
         } else {
           console.log(json);
         }
@@ -1637,7 +2746,10 @@ function main() {
           process.exit(1);
         }
         const report = JSON.parse(fs.readFileSync(reportFile, 'utf8'));
-        const result = validateReport(report, s.graph);
+        const result = validateReport(report, s.graph, {
+          contract: s.contract,
+          claims: s.claims,
+        });
         if (result.valid) {
           console.log('✓ Report is valid');
           if (result.warnings.length) {
@@ -1673,19 +2785,43 @@ if (isMainModule) main();
 
 // Exports for programmatic use
 export {
+  // Ontology
   ONTOLOGY,
-  SOURCE_WEIGHTS,
+  validateEntityType,
+  validateRelation,
+  // Graph + Evidence
   EvidenceGraph,
-  ResearchSession,
+  getSourceWeight,
+  SOURCE_WEIGHTS,
+  // Contract + Budget
+  DEFAULT_BUDGET,
+  DEFAULT_EVIDENCE_REQUIREMENT,
+  DEFAULT_CLAIM_COVERAGE_THRESHOLD,
+  createContract,
+  createBudget,
+  checkBudget,
+  // Question Tree
+  QuestionTree,
+  QUESTION_STATUS,
+  // Claim Store
+  ClaimStore,
+  CLAIM_TYPES,
+  CLAIM_EVIDENCE_REQUIREMENTS,
+  // Analysis
   analyzeGaps,
   analyzeContradictions,
   assessConfidence,
+  // Decision
+  decide,
+  // Report
+  REPORT_REQUIRED_SECTIONS,
+  CONFIDENCE_LEVELS,
   validateReport,
   reportTemplate,
+  // Visualization
   graphToMermaid,
+  // Session + Persistence
+  ResearchSession,
   saveSession,
   loadSession,
-  validateRelation,
-  validateEntityType,
-  getSourceWeight,
 };
