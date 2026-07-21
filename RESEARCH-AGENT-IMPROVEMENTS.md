@@ -1,632 +1,622 @@
-# Enterprise Research Agent 提升建议
+# Enterprise Research Agent 提升建议（基于 AERS 参考项目）
 
-> 基于 `temp/research-agent/` 参考项目的架构思想，对比当前实现提出的提升方向。
+> 参考项目：[ref-only/Auto-Empirical-Research-Skills](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills) —— **70 个 collection / 1151 个 skill 的经济学实证研究 skill 体系**。
+> 核心参考：[aer-workflow](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-workflow/SKILL.md) + [design-principles](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/docs/design-principles.md) + [desk-rejection-audit](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/docs/desk-rejection-audit.md) + [source-register](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/docs/source-register.md) + [claim-evidence-ledger](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/examples/replication-package-skeleton/docs/claim-evidence-ledger.csv)
 > **只提建议，不改动现有代码和文档。**
 
 ---
 
-## 一、Evidence 定位精度：从 Content 到 Fragment
+## 一、AERS 的核心架构思想（与 Enterprise Research Agent 高度可类比）
 
-### 当前实现
+虽然 AERS 面向"经济学实证论文"、我们的 enterprise-research-agent 面向"企业调查"，但两者本质都是 **Evidence-driven 知识生产工作流**。AERS 有 11 条 Design Principles，以下 7 条与我们的场景高度相关：
 
-Evidence 只有 `content`（free text）和 `uri`：
-
-```json
-{
-  "id": "ev1",
-  "source": "GitHub",
-  "uri": "https://github.com/org/riskconcile-api",
-  "content": "Repo exists, CODEOWNERS=Team B, daily commits"
-}
-```
-
-### 问题
-
-`content` 是 LLM 抽取后的自由文本，丢失了原始文档中的**精确位置信息**。当需要人工复核时，无法快速定位到原文出处。
-
-### 建议
-
-增加 `fragment` 字段，分离 **quote**（精确引用）和 **context**（上下文）：
-
-```json
-{
-  "id": "ev1",
-  "source": "GitHub",
-  "uri": "https://github.com/org/riskconcile-api/blob/main/CODEOWNERS",
-  "fragment": {
-    "quote": "* @team-b",
-    "context": "CODEOWNERS file, line 1-3",
-    "section": "CODEOWNERS"
-  },
-  "content": "Repo ownership assigned to Team B per CODEOWNERS"
-}
-```
-
-**按 Source 类型的定位规范**：
-
-| Source 类型 | Quote | Context |
-|------------|-------|---------|
-| GitHub | 代码行 / 文件路径 | repo / file / line range |
-| Confluence | 段落内容 | page / heading / paragraph |
-| Jira | 字段值 | ticket / field |
-| LeanIX | 属性值 | app / fact sheet / field |
-| Web | 文本片段 | URL / heading / paragraph |
-
-**收益**：
-- 人工复核时可直接定位原文
-- Claim 验证时可直接检查 quote 是否被断章取义
-- 报告中的引用更精确（`> "quote"` 而非 paraphrase）
+| AERS Principle | 对应到 Enterprise Research Agent |
+|---------------|---------------------------------|
+| 1. Identification Before Prose | **契约优先于研究**（已有 Research Contract） |
+| 2. One Contribution Per Paper | **聚焦核心问题**（已有 Root Question / Plan） |
+| 4. Modern Econometrics | **现代分析方法**（已有 Gap / Contradiction / Confidence） |
+| 5. The Replication Package Is Part of the Paper | **报告必须可复现**（已有 Traceability Layer） |
+| 6. Editor Time Is the Scarcest Resource | **用户体验优先**（每条命令、每个报告都要有 reviewable 颗粒度） |
+| 7. Anticipate, Don't React | **主动分析**（已有 Decision Loop） |
+| 9. Skills Are Routers, Not Replacements | **Skill 边界清晰**（当前设计已采用） |
+| 11. Self-Verifying Gates | **每个阶段有 hard gate**（部分覆盖，建议补强） |
 
 ---
 
-## 二、Source Card：从字符串到一等对象
+## 二、提升建议（10 条）
 
-### 当前实现
+### 建议 1：建立"Stage Gate"质控门体系
 
-Source 只是一个字符串字段：`"GitHub"`、`"LeanIX"`、`"External"`。
+**AERS 模式**（[aer-workflow §Quality Gates](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-workflow/SKILL.md#L57-L66)）：
 
-权重通过 `SOURCE_WEIGHTS` 常量硬编码：
-
-```javascript
-const SOURCE_WEIGHTS = {
-  Vendor: 0.9,
-  Regulation: 0.95,
-  GitHub: 0.8,
-  // ...
-};
+```text
+Gate A (after step 3): contribution sentence written, venue chosen, design survives
+Gate B (after step 5): every claim in the draft body traces to an exhibit or a verified citation
+Gate C (after step 8): aer-consistency reports all-pass
+Gate D (after step 9): aer-referee-sim verdict ≥ major R&R on two consecutive fresh runs
+Gate E (after step 11): aer-submission preflight all green
 ```
 
-### 问题
+**当前实现**：通过 `set-contract` 和 `analyze` 命令做阶段控制，但**没有"门控"概念**——即使 contract 未 confirm、Claim Coverage < 0.9，研究也可继续。
 
-1. 同一 Source 类型下的不同实例没有区分（如 GitHub 上的官方 repo vs 个人 fork）
-2. Source 的元数据（title/author/retrieved/authority）未记录
-3. Source 权重是静态的，无法根据实例动态调整
+**建议**：引入显式的 **Stage Gate** 机制：
 
-### 建议
+| Gate | 触发条件 | 校验 | 不通过时的处理 |
+|------|---------|------|----------------|
+| **G0 Contract** | 第一次 add-evidence | `contract.confirmedAt != null` | 拒绝并提示 `set-contract --confirm` |
+| **G1 Entity Quality** | 第一次 analyze | 所有 entity 满足 `requiredProperties` | 警告并列出缺失字段 |
+| **G2 Claim Coverage** | decide → finish | `coverage ≥ contract.claimCoverageRatio` | 拒绝 Finish，列出未覆盖 claim |
+| **G3 Conflict Disclosed** | report-template | `conflicts` section 完整 | 拒绝生成报告模板 |
+| **G4 Budget Honored** | decide | `usage ≤ budget` | 警告 |
 
-引入 **Source Card** 作为一等对象：
+**实现方式**：
+- 每个 gate 是一个 JS 函数 `gate_<name>(session) → {pass: bool, issues: []}`
+- 关键命令（`add-evidence` / `analyze` / `decide` / `report-template`）自动调用 gate
+- `decide` 默认要求所有 gate 通过才能返回 `finish`
 
-```json
-{
-  "id": "src1",
-  "type": "system_of_record",
-  "name": "GitHub",
-  "uri": "https://github.com/org/riskconcile-api",
-  "authority": 0.85,
-  "retrievedAt": "2026-07-20T10:00:00Z",
-  "metadata": {
-    "org": "org",
-    "repo": "riskconcile-api",
-    "lastCommit": "2026-07-19"
-  }
-}
-```
-
-**Source 类型体系**：
-
-| 类型 | 说明 | 示例 | 基础权重 |
-|------|------|------|---------|
-| `system_of_record` | 企业内部系统记录 | LeanIX、GitHub CODEOWNERS、ServiceNow | 0.8-0.9 |
-| `official` | 官方来源 | Vendor 官网、Regulation 原文 | 0.9-0.95 |
-| `peer_reviewed` | 同行评审 | 学术论文 | 0.85 |
-| `industry` | 行业分析 | Gartner、IDC | 0.7 |
-| `engineering` | 工程实践 | 技术博客、GitHub 开源 | 0.6-0.7 |
-| `news` | 新闻报道 | 科技媒体 | 0.4-0.5 |
-| `social` | 社交媒体 | Twitter、Reddit | 0.2-0.3 |
-
-**Evidence → Source 的关联**：
-
-```json
-{
-  "id": "ev1",
-  "sourceId": "src1",
-  "fragment": { "quote": "* @team-b", "context": "CODEOWNERS line 1" },
-  "content": "..."
-}
-```
-
-**收益**：
-- Source 元数据可追溯（何时获取、从哪个具体 URI）
-- 动态权重：同一 Source 类型下，不同实例可有不同 authority
-- 支持 Source 过期检测（`retrievedAt` 过旧可提示重新获取）
+**收益**：从"友好建议"升级为"硬约束"，避免 low-quality research 产出。
 
 ---
 
-## 三、Hypothesis 生命周期：从 Rejected 到 Active
+### 建议 2：设计"Headline Number Register"——内部一致性审计
 
-### 当前实现
+**AERS 模式**（[aer-consistency](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-consistency/SKILL.md#L30-L54)）：
 
-只有 `rejectedHypotheses`（已排除的假设）：
-
-```json
-{
-  "rejectedHypotheses": [
-    { "hypothesis": "RC Migration Tool is deprecated", "reason": "Still daily commits" }
-  ]
-}
+```text
+NUMBER            SOURCE            ABSTRACT  INTRO  RESULTS  CONCL  MATCH
+4.2 log points    Tab 3 col 4       yes       yes    yes      yes    OK
+s.e. 1.1          Tab 3 col 4       yes       no     yes      no     OK
 ```
 
-### 问题
+**当前实现**：报告是 LLM 自由生成的 Markdown，**没有 mechanism 保证**：
+- Executive Summary 的数字与 keyFindings 一致
+- keyFindings.evidenceIds 引用的 Evidence 真实存在
+- 同一 Claim 在不同章节的描述一致
 
-Hypothesis 只在被拒绝时记录，**没有 Active Hypothesis 的概念**。研究过程中产生的待验证假设没有被追踪。
-
-### 建议
-
-引入完整的 **Hypothesis 生命周期**：
+**建议**：引入 **Claim Register**（类似 AERS 的 Headline Number Register）：
 
 ```json
 {
-  "hypotheses": [
+  "claimRegister": [
     {
-      "id": "h1",
+      "id": "cr1",
+      "claimId": "c1",
       "text": "RiskConcile is used by RC Migration Tool",
-      "status": "confirmed",
-      "evidenceIds": ["ev1", "ev2"],
       "confidence": 0.92,
-      "createdAt": "...",
-      "resolvedAt": "..."
-    },
-    {
-      "id": "h2",
-      "text": "RiskConcile has a Contract with Legal",
-      "status": "pending",
-      "evidenceIds": [],
-      "confidence": 0.0
+      "appearsIn": ["executiveSummary", "keyFindings.f1"],
+      "consistent": true
     }
   ]
 }
 ```
 
-**状态流转**：
-
-```
-pending → investigating → confirmed / rejected / uncertain
-```
-
-**与 Question Tree 的关系**：
-
-- Hypothesis 是"我认为什么可能是真的"
-- Question 是"我需要验证什么"
-- 一个 Hypothesis 可触发多个 Question
-- 一个 Question 的答案可确认/否定多个 Hypothesis
-
-**收益**：
-- 研究过程的可解释性：为什么问这个问题？→ 为了验证某个假设
-- 避免重复探索：已 confirmed/rejected 的假设不再产生新问题
-- 报告可展示"研究假设 → 验证过程 → 结论"的完整链条
-
----
-
-## 四、Claim Graph 渲染：从 JSON 模板到结构化报告
-
-### 当前实现
-
-`report-template` 生成 JSON 骨架，LLM 填写后 `validate-report` 校验：
-
-```json
-{
-  "task": "...",
-  "executiveSummary": "",
-  "keyFindings": [],
-  "supportingEvidence": [],
-  "confidence": {},
-  "conflicts": [],
-  "knowledgeGaps": [],
-  "recommendations": [],
-  "traceability": {}
-}
-```
-
-### 问题
-
-1. 报告是"填空式"生成，不是由 Claim Graph **渲染**出来的
-2. keyFindings 和 supportingEvidence 有重复数据
-3. 没有展示 Claim 之间的依赖关系（supportingClaimIds 存在但未在报告中体现）
-
-### 建议
-
-**报告由 Claim Graph 渲染**，而非自由生成：
-
-```markdown
-## Executive Summary
-
-RiskConcile 是 RegTech 供应商（[Claim c1](#)），
-企业内部已在 1 个 Application 中使用（[Claim c2](#)）。
-LeanIX 与 GitHub 在 owner 上存在冲突（[Claim c3](#)）。
-Claim Coverage: 92%。
-
-## Key Findings
-
-### F1: RiskConcile 被 RC Migration Tool 使用
-
-**Claim**: [c1] fact (confidence: 0.92, verified)
-
-**Evidence**:
-- [ev1] LeanIX: App registered, owner=Team A
-- [ev2] GitHub: CODEOWNERS=Team B
-
-**Reasoning**: Both systems reference RiskConcile as a dependency.
-
----
-
-### F2: Application owner 在 LeanIX 与 GitHub 间存在冲突
-
-**Claim**: [c3] analysis (confidence: 0.85, verified)
-
-**Evidence**:
-- [ev1] LeanIX: owner=Team A
-- [ev2] GitHub: owner=Team B
-
-**Conflict**: Same property "owner" has conflicting values across systems.
-
-**Reasoning**: This suggests a process gap in ownership assignment.
-```
-
-**渲染规则**：
-
-1. **Executive Summary** 由 high-confidence + verified Claim 自动摘要
-2. **Key Findings** 按 Claim type 分组（fact → analysis → recommendation）
-3. **每个 Finding** 必须展示：Claim text → Evidence list → Reasoning（如为 analysis/recommendation）
-4. **Conflicts** 直接嵌入相关 Finding，而非单独章节
-5. **Traceability Layer** 自动生成，不需要 LLM 填写
-
-**收益**：
-- 报告内容与 Claim Graph 强一致，避免"报告写了但 Graph 没更新"的不一致
-- 人工复核时可直接从报告跳转到 Evidence
-- 减少 LLM 自由发挥的空间，降低 hallucination
-
----
-
-## 五、Feedback Loop：从单次研究到持续改进
-
-### 当前实现
-
-研究是单次流程：Contract → Investigation → Analysis → Report → 结束。
-
-没有用户反馈循环。
-
-### 建议
-
-引入 **Feedback Loop**：
-
-```mermaid
-flowchart LR
-    Report --> UserReview["User Review"]
-    UserReview --> Feedback["Feedback"]
-    Feedback --> UpdateContract["Update Contract"]
-    UpdateContract --> ContinueResearch["Continue Research"]
-    ContinueResearch --> NewReport["Updated Report"]
-```
-
-**反馈类型**：
-
-| 反馈 | 动作 |
-|------|------|
-| "深入研究 X" | 添加新 Plan Item + Question，继续 Expand |
-| "X 的证据不足" | 提升 Claim Coverage，补充 Evidence |
-| "X 的结论有误" | 标记 Claim 为 disputed，重新验证 |
-| "忽略 Y" | 添加 Rejected Hypothesis，prune 相关 Question |
-
 **CLI 扩展**：
 
 ```bash
-# 用户反馈
-node research.mjs user-feedback --type "deep_dive" --target "Contract information" --note "Need more details on contract terms"
+# 自动检测 claim 一致性
+node research.mjs audit-claims
 
-# 继续研究（基于反馈）
-node research.mjs continue-research --session research-session.json
+# 输出
+# ✓ cr1: appears in [executiveSummary, keyFindings.f1], consistent
+# ✗ cr2: appears in [executiveSummary, keyFindings.f3], text mismatch:
+#   - summary: "...used by 2 applications"
+#   - finding: "...used by 1 application (RC Migration Tool)"
 ```
 
+**实现方式**：
+- `report-template` 接受 claim IDs 作为参数，自动生成 claimRegister
+- `audit-claims` 命令扫描报告 JSON，提取所有 claim 出现位置，比对文本
+
 **收益**：
-- 研究不是一次性任务，而是可迭代的
-- 用户反馈沉淀为新的 Question / Hypothesis
-- 避免"重新从头研究"的重复工作
+- 报告内"自相矛盾"被自动发现
+- 数字错误、表述不一致被系统性检测
+- 报告审计从"LLM 自检"升级为"deterministic check"
 
 ---
 
-## 六、External Verification 增强：从可选到自动
+### 建议 3：建立"Source Register"——数据源元数据
 
-### 当前实现
+**AERS 模式**（[source-register.md](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/docs/source-register.md)）：
 
-External Verification 是 Phase 6（可选阶段），由 LLM 手动触发 WebSearch/WebFetch。
-
-```bash
-# 手动触发
-node research.mjs add-evidence --source External --uri "..." --content "..."
+```markdown
+| Topic | Source | Repo surfaces that depend on it | Review trigger |
+|---|---|---|---|
+| AER submission length, abstract, disclosure | https://www.aeaweb.org/journals/aer/submissions | README.md, SKILL.md | Before each release |
 ```
 
-### 问题
+**当前实现**：`add-evidence --source` 接受字符串（`GitHub`、`LeanIX`、`External`），但**没有 Source 元数据机制**：
+- 这个 Source 来自哪个具体 URI？
+- 该 Source 何时获取的？是否过期？
+- 该 Source 类型的基本 authority 是多少？
 
-1. 不是自动化的——依赖 LLM 判断哪些 Claim 需要外部验证
-2. 没有系统性地覆盖所有 unverified Claim
-3. 外部证据与内部证据的冲突检测不主动
+**建议**：引入 **Source Register** 作为 session 内的一等对象：
 
-### 建议
-
-**自动化 External Verification**：
-
-```javascript
-// 自动识别需要外部验证的 Claim
-function needsExternalVerification(claim) {
-  return (
-    !claim.verified &&
-    claim.confidence < 0.7 &&
-    claim.type === 'fact' &&
-    claim.evidenceIds.length < 2
-  );
-}
-
-// 自动触发外部搜索
-async function externalVerify(session) {
-  const toVerify = session.claims
-    .filter(needsExternalVerification)
-    .slice(0, 5); // 每次最多验证 5 个
-  
-  for (const claim of toVerify) {
-    // 使用 WebSearch/WebFetch 获取外部证据
-    const externalEvidence = await searchExternal(claim.text);
-    session.addEvidence({
-      source: 'External',
-      content: externalEvidence.summary,
-      confidence: externalEvidence.confidence,
-      // ...
-    });
+```json
+{
+  "sourceRegister": [
+    {
+      "id": "src1",
+      "type": "system_of_record",
+      "name": "GitHub",
+      "uri": "https://github.com/org/riskconcile-api",
+      "authority": 0.85,
+      "retrievedAt": "2026-07-20T10:00:00Z",
+      "metadata": {
+        "org": "org",
+        "repo": "riskconcile-api",
+        "lastCommit": "2026-07-19"
+      }
+    }
+  ],
+  "evidenceToSource": {
+    "ev1": "src1",
+    "ev2": "src1"
   }
 }
 ```
 
-**CLI 扩展**：
+**Source Type 体系**（按 authority 从高到低）：
 
-```bash
-# 自动外部验证
-node research.mjs auto-verify --max-claims 5
-
-# 外部验证结果
-node research.mjs list-external-evidence
-```
-
-**收益**：
-- 减少 LLM 判断负担
-- 系统性覆盖未验证 Claim
-- 自动发现内部与外部证据的冲突
-
----
-
-## 七、ResearchSession 历史：从单文件到时间线
-
-### 当前实现
-
-每个研究任务一个 JSON 文件，覆盖式保存：
-
-```bash
-./research-session.json
-```
-
-### 问题
-
-1. 无法查看研究过程的"时间线"
-2. 无法回滚到某个 Decision Point
-3. 无法对比两个版本的变化
-
-### 建议
-
-**引入 Session 历史版本**：
-
-```
-research-session/
-├── session.json          # 当前版本
-├── history/
-│   ├── 001-init.json
-│   ├── 002-contract.json
-│   ├── 003-budget.json
-│   ├── 004-decide-continue.json
-│   ├── 005-decide-continue.json
-│   └── 006-decide-finish.json
-```
-
-每个 `decide` 调用、每个 `analyze` 调用自动保存一个快照。
+| Type | Base Authority | 示例 |
+|------|---------------|------|
+| `system_of_record` | 0.85 | LeanIX、GitHub CODEOWNERS、ServiceNow |
+| `official` | 0.92 | Vendor 官网、Regulation 原文 |
+| `internal_doc` | 0.80 | Confluence、Notion |
+| `engineering` | 0.65 | 技术博客、开源 repo |
+| `news` | 0.45 | 科技媒体 |
+| `social` | 0.25 | Twitter、Reddit |
 
 **CLI 扩展**：
 
 ```bash
-# 查看历史
-node research.mjs history
+# 注册 Source
+node research.mjs register-source --name GitHub --type system_of_record \
+  --uri "https://github.com/org/riskconcile-api" \
+  --authority 0.85 --retrieved-at 2026-07-20
 
-# 对比两个版本
-node research.mjs diff --from 004 --to 006
+# 查看 Source 列表
+node research.mjs list-sources
 
-# 回滚到某个版本
-node research.mjs rollback --to 004
+# 检测过期 Source
+node research.mjs stale-sources --threshold-days 30
 ```
 
 **收益**：
-- 可追溯研究过程的每一步演变
-- 可复盘"为什么在这个点决定 Continue/Finish"
-- 支持 A/B 对比不同研究路径
+- Evidence 关联的 Source 关系显式化
+- Source authority 可追溯（不是硬编码常量）
+- Source 过期检测自动化
 
 ---
 
-## 八、Confidence 可视化：从数字到雷达图
+### 建议 4：增加"Conflict Disclosure"硬约束
 
-### 当前实现
+**AERS 模式**（[design-principles §6](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/docs/design-principles.md#L31-L40)）：
 
-Confidence 是一个 score（0-1）+ level（high/medium/low）：
+> Editor Time Is the Scarcest Resource
+> Every formatting, length, and clarity rule... is designed to make the first 10 minutes of editor review as efficient as possible
 
-```json
-{
-  "level": "medium",
-  "score": 0.475,
-  "rationale": "avg score 0.47, 2 entities, 3 evidence, 2 contradictions, 4 gaps"
+**AERS 实践**（[desk-rejection-audit](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/docs/desk-rejection-audit.md)）：把常见 desk-rejection 原因列成 Stage 1-5 的硬性 checklist。
+
+**当前实现**：
+- `analyze-contradictions` 检测冲突，但**只是计算**，没有强制披露
+- 报告中 `conflicts` 字段是 LLM 自由填写，可能隐瞒
+
+**建议**：在 `report-template` 和 `validate-report` 阶段强制 **Conflict Disclosure**：
+
+```javascript
+// validate-report 中的硬约束
+const detectedConflicts = analyzeContradictions(session);
+if (detectedConflicts.length > 0 && report.conflicts.length === 0) {
+  return { 
+    valid: false, 
+    error: `Detected ${detectedConflicts.length} conflicts not disclosed in report. Use analyze-contradictions to list them.` 
+  };
+}
+
+// 必须显式说明"无冲突"
+if (detectedConflicts.length === 0 && report.conflicts.length === 0) {
+  report.conflicts.push({ text: "No contradictions detected across evidence sources.", severity: "info" });
 }
 ```
 
-### 问题
-
-1. 单一数字难以直观反映多维度的置信度
-2. perEntity 的 confidence 没有可视化展示
-3. 用户无法快速识别哪个维度拉低了置信度
-
-### 建议
-
-**Confidence Radar Chart**（Mermaid 或文本形式）：
-
-```markdown
-## Confidence Assessment
-
-Overall: **medium** (0.475)
-
-```
-Evidence Count    [████░░░░░░] 0.4
-Source Diversity  [██░░░░░░░░] 0.2
-Source Authority  [██████░░░░] 0.6
-Cross Validation  [░░░░░░░░░░] 0.0
-Freshness         [██████░░░░] 0.6
-Contradiction     [██░░░░░░░░] 0.2  (penalty)
-```
-
-**Per-Entity 对比**：
-
-```
-Entity          Score  Level  Gap  Conflict  Evidence
-RiskConcile     0.72   high   1    0         5
-RC Migration    0.45   medium 2    1         3
-Team A          0.30   low    3    0         1
-```
+**实现方式**：
+- `report-template` 自动填入 detected conflicts
+- `validate-report` 强制要求 `conflicts` section 包含所有 detected conflicts
+- 拒绝"零冲突 + 高 confidence"的虚假报告
 
 **收益**：
-- 一眼看出哪个维度需要补充
-- 快速识别 weakest entity，优先补充证据
-- 报告中的 confidence 更有说服力
+- 避免"模型隐瞒矛盾"
+- 用户一眼看到所有内部证据冲突
+- 报告可信度提升
 
 ---
 
-## 九、Ontology 扩展性：从常量到配置
+### 建议 5：拆分为 Router + 多个专项 Skill
 
-### 当前实现
+**AERS 模式**（[aer-workflow](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-workflow/SKILL.md) 自身就是一个 router）：
 
-Ontology 是 `research.mjs` 中的硬编码常量：
-
-```javascript
-const ONTOLOGY = {
-  Vendor: { ... },
-  Application: { ... },
-  // ...
-};
+```text
+aer-workflow (router)
+├─ aer-topic-selection
+├─ aer-literature
+├─ aer-identification
+├─ aer-robustness
+├─ aer-paper-body
+├─ aer-introduction
+├─ aer-tables-figures
+├─ aer-consistency
+├─ aer-referee-sim
+├─ aer-replication
+├─ aer-submission
+└─ aer-rebuttal
 ```
 
-### 问题
+**核心思想**（[design-principles §9](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/docs/design-principles.md#L49-L51)）：
 
-1. 添加新 entity type 需要修改代码
-2. 不同行业/企业的 Ontology 需求不同（如金融行业需要 `Regulation`、`Control`，制造业可能需要 `Equipment`、`Line`）
-3. 无法在运行时动态扩展
+> Skills Are Routers, Not Replacements
+> Each skill in this repository solves one slice. aer-workflow exists to compose them.
 
-### 建议
+**当前实现**：enterprise-research-agent 是一个**单体 skill**（82KB / 2827 行），试图覆盖 Contract、Investigation、Analysis、Report 全流程。
 
-**Ontology 配置文件化**：
+**建议**：按 AERS 模式拆分为 router + 多个专项 skill：
 
-```yaml
-# ontology.yaml
-Vendor:
-  description: External supplier
-  properties:
-    website: string
-    category: string
-  requiredProperties: [website]
-  relations:
-    used_by: Application
-    contracted_by: Contract
+```
+enterprise-research-agent/          # router
+├── SKILL.md                       # 路由 + 工作流
+├── research.mjs                    # 核心 CLI（保留）
+├── skills/
+│   ├── era-contract/              # Research Contract 管理
+│   │   ├── SKILL.md
+│   │   └── contract.mjs
+│   ├── era-investigation/         # 调查阶段（Question Tree、Entity、Evidence）
+│   │   ├── SKILL.md
+│   │   └── investigation.mjs
+│   ├── era-analysis/              # 分析阶段（Gap、Contradiction、Confidence）
+│   │   ├── SKILL.md
+│   │   └── analysis.mjs
+│   ├── era-decision/              # Decision Loop
+│   │   ├── SKILL.md
+│   │   └── decision.mjs
+│   └── era-report/                # 报告生成（Traceability、Validation）
+│       ├── SKILL.md
+│       └── report.mjs
+```
 
-# 企业可自定义
-CustomEquipment:
-  description: Manufacturing equipment
-  properties:
-    model: string
-    manufacturer: string
-  requiredProperties: [model]
-  relations:
-    located_at: Factory
+**Router 设计**（参考 AERS）：
+
+```markdown
+# Enterprise Research Agent Router
+
+## Default Sequence
+1. era-contract — set research contract, confirm with user
+2. era-investigation — question tree, entity, evidence, relationship
+3. era-analysis — gap / contradiction / confidence
+4. era-decision — continue or finish?
+5. era-report — generate report with traceability
+
+## Routing Map
+- "Research vendor X" → era-investigation (vendor type)
+- "What conflicts exist?" → era-analysis (contradiction only)
+- "Is the report valid?" → era-report (validation)
+```
+
+**收益**：
+- 每个专项 skill 体积小，LLM 上下文负担小
+- 渐进披露（progressive disclosure）：router 轻，专项 skill 按需加载
+- 复用性提升：era-analysis 可被其他 skill 复用
+- 符合 AERS 设计原则 9
+
+---
+
+### 建议 6：建立"Claim-Evidence Ledger"——可审计账本
+
+**AERS 模式**（[claim-evidence-ledger.csv](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/examples/replication-package-skeleton/docs/claim-evidence-ledger.csv)）：
+
+```csv
+claim_id,claim_text,claim_location,evidence_type,evidence_ref,status,notes
+C-001,"[Main abstract result, stated as a complete sentence]","Abstract paragraph 1","exhibit","label:tab:main","NEEDS-EVIDENCE","..."
+C-002,"[Mechanism or heterogeneity claim]","Introduction paragraph 5","exhibit","label:fig:mechanism","NEEDS-EVIDENCE","..."
+```
+
+**当前实现**：Claim 存储在 `claims[]` 数组中，每个 Claim 有 `evidenceIds`、`reasoning`、`verified`，但**没有**：
+- Claim 在报告中的具体位置（哪个 section、哪个 finding）
+- 报告外的 evidence 来源（如外部 PDF、URL）
+- 状态流转记录（NEEDS-EVIDENCE → OK）
+
+**建议**：引入 **Claim-Evidence Ledger**（CSV 格式，可外部审计）：
+
+```csv
+claim_id,claim_text,claim_location,evidence_type,evidence_ref,verified,notes
+c1,RiskConcile used by RC Migration Tool,executiveSummary:1,evidence,ev1;ev2,true,Cross-validated with LeanIX
+c3,LeanIX/GitHub owner conflict,keyFindings:f2,analysis,ev1;ev2,true,Suggests process gap
+c4,Resolve owner before contract,recommendations:r1,recommendation,,false,No evidence required
 ```
 
 **CLI 扩展**：
 
 ```bash
-# 加载自定义 Ontology
-node research.mjs load-ontology --file ontology.yaml
+# 导出 ledger
+node research.mjs export-ledger --format csv --output claim-evidence-ledger.csv
 
-# 查看当前 Ontology
-node research.mjs show-ontology
+# 导入已有 ledger（合并/校验）
+node research.mjs import-ledger --file claim-evidence-ledger.csv
 
-# 验证实体是否符合 Ontology
-node research.mjs validate-ontology --entity e1
+# 审计 ledger
+node research.mjs audit-ledger
+# 输出
+# ✓ All claims have evidence references (except recommendations)
+# ✓ All evidence IDs exist in session
+# ✗ c2: evidence ev99 not found
 ```
 
 **收益**：
-- 零代码扩展：业务用户可自行定义 Ontology
-- 行业适配：金融、制造、医疗等不同行业的 Ontology 可独立维护
-- 版本管理：Ontology 变更可追溯
+- 报告审计可使用标准 CSV 工具（Excel、awk、Pandas）
+- 第三方可独立验证 Claim 是否有证据支撑
+- 报告外的外部证据可显式记录
+- 符合 AERS Replication Package 模式
 
 ---
 
-## 十、命令补齐与交互体验
+### 建议 7：增强"外部审计"——对抗式 Reviewer
 
-### 当前实现
+**AERS 模式**（[aer-referee-sim](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-referee-sim/SKILL.md)）：
 
-36 个命令，参数较多，容易出错：
+> Use when a complete draft needs the adversarial desk screen and three simulated referee reports before submission.
+
+**当前实现**：当前是**自检模式**（`validate-report` + LLM self-check），没有对抗式外部审计。
+
+**建议**：引入 **Era-Referee-Sim** 技能（参考 AERS）：
+
+```javascript
+// 三个独立 reviewer 视角
+const REVIEWERS = {
+  methodologist: {
+    focus: ['identification', 'sample size', 'confounders'],
+    questions: [
+      "Is the evidence sufficient to support this claim?",
+      "Are there alternative explanations?",
+      "What's the weakest link in the chain?"
+    ]
+  },
+  domain_expert: {
+    focus: ['ontology', 'entities', 'relationships'],
+    questions: [
+      "Are the entity types aligned with industry standards?",
+      "Are critical relationships missing?",
+      "Is the coverage scope correct?"
+    ]
+  },
+  skeptic: {
+    focus: ['confidence', 'contradictions', 'gaps'],
+    questions: [
+      "What could be wrong with this research?",
+      "Where is the weakest evidence?",
+      "What gaps are unacknowledged?"
+    ]
+  }
+};
+```
+
+**CLI 扩展**：
 
 ```bash
-node research.mjs add-evidence --source GitHub --uri "..." --content "..." --confidence 0.95 --last-updated 2025-09-12 --claims "owner=Team B,status=Active"
+# 运行对抗式评审
+node research.mjs review-as --role skeptic
+node research.mjs review-as --role methodologist
+node research.mjs review-as --role domain-expert
+
+# 完整三 reviewer 模拟
+node research.mjs referee-sim
+# 输出
+# === Methodologist Review ===
+# ✓ Sample size sufficient
+# ✗ Weak evidence for c3 (only 2 sources)
+# 
+# === Domain Expert Review ===
+# ✓ Vendor/Application/Repository entities appropriate
+# ✗ Missing Contract entity
+#
+# === Skeptic Review ===
+# ✗ c5: "RiskConcile is critical" - no evidence for "critical"
+# ✗ Unacknowledged gap: no evidence of Contract
 ```
 
-### 建议
-
-1. **命令别名**：
-   ```bash
-   node research.mjs ae --source GitHub --uri "..."  # add-evidence
-   node research.mjs ae -s GitHub -u "..."            # 短参数
-   ```
-
-2. **交互式提示**：
-   ```bash
-   node research.mjs interactive
-   # > What would you like to do?
-   # 1. Add evidence
-   # 2. Add entity
-   # 3. Run analysis
-   ```
-
-3. **批量导入**（从 CSV/JSON）：
-   ```bash
-   node research.mjs import-evidence --file evidence.csv
-   node research.mjs import-entities --file entities.json
-   ```
-
-4. **Tab 补全脚本**：
-   ```bash
-   # 生成 shell 补全脚本
-   node research.mjs completion --shell zsh > ~/.zsh/completions/_research
-   ```
-
 **收益**：
-- 降低使用门槛
-- 减少参数错误
-- 支持批量操作（大规模数据导入）
+- 在用户提交报告前，先过对抗式审查
+- 模拟三个不同视角的 reviewer，避免单一视角盲点
+- 提前发现"模型自吹自擂"的问题
 
 ---
 
-## 总结：优先级排序
+### 建议 8：增强"Knowledge Decay"机制——证据时效性
 
-| 优先级 | 建议 | 工作量 | 影响 |
+**AERS 模式**（[aer-replication §Data and Code Availability](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-replication/SKILL.md#L21-L35)）：
+
+> 5-year preservation commitment, replicator assistance commitment
+
+**当前实现**：
+- Evidence 有 `lastUpdated` 字段
+- `assess-confidence` 中提到 `>365 天扣分`
+- **但**：没有强制 mechanism 提醒重新获取
+
+**建议**：引入 **Knowledge Decay** 机制：
+
+```javascript
+// 检查 stale evidence
+function detectStaleEvidence(session) {
+  const STALE_THRESHOLDS = {
+    system_of_record: 30,   // 30 天
+    official: 90,
+    internal_doc: 60,
+    engineering: 180,
+    news: 14,
+    social: 7
+  };
+  
+  const stale = [];
+  for (const ev of session.evidence) {
+    const sourceType = session.sourceRegister[ev.sourceId]?.type;
+    const threshold = STALE_THRESHOLDS[sourceType] || 90;
+    const ageDays = daysSince(ev.lastUpdated);
+    if (ageDays > threshold) {
+      stale.push({ evidenceId: ev.id, ageDays, threshold, sourceType });
+    }
+  }
+  return stale;
+}
+```
+
+**CLI 扩展**：
+
+```bash
+# 检测过期证据
+node research.mjs stale-evidence
+# 输出
+# ev1 (GitHub): 45 days old, threshold 30 days
+# ev5 (News): 21 days old, threshold 14 days
+
+# 重新获取并更新
+node research.mjs refresh-evidence --id ev1
+
+# 报告生成时自动警告
+node research.mjs report-template --output report.json
+# ⚠ 2 stale evidence detected, consider refreshing
+```
+
+**收益**：
+- 自动检测过期证据，避免基于过时数据做判断
+- 知识有"保质期"，研究结果有"时间戳"
+- 与 Confidence Assessment 形成闭环
+
+---
+
+### 建议 9：设计"Compactness"——核心可压缩视图
+
+**AERS 模式**（[aer-workflow §Default Sequence](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-workflow/SKILL.md#L40-L55)）：
+
+> 12 个步骤，每步 1-2 行描述。
+
+**当前实现**：`session-status` 输出**全量 session**（contract + budget + plan + questions + graph + claims + analysis），可能非常长（数百行 JSON）。
+
+**建议**：分层级输出，按"用户场景"提供不同粒度：
+
+| 场景 | 命令 | 输出粒度 |
+|------|------|---------|
+| "我应该继续吗？" | `decide` | 1 行 + reasoning |
+| "现在研究到哪了？" | `session-status --tldr` | 10-20 行（关键指标） |
+| "具体细节是什么？" | `session-status --full` | 全量 JSON |
+| "我有多少证据？" | `session-summary` | 统计数字（仅数字） |
+| "哪些 Claim 未覆盖？" | `coverage --gaps` | 仅未覆盖 Claim 列表 |
+
+**实现**：
+
+```bash
+# 紧凑视图
+node research.mjs session-status --tldr
+# Goal: Research RiskConcile
+# Progress: 45/200 evidence, 12/30 questions, 8/15 claims
+# Coverage: 0.85 (target 0.9)
+# Decision: Continue (1 new entity in last cycle)
+# Budget: depth 2/3, questions 12/40, evidence 45/300
+```
+
+**收益**：
+- 用户快速理解研究状态
+- LLM 上下文负担小（不需要每次加载全量 session）
+- 适合"progress check"类高频查询
+
+---
+
+### 建议 10：建立"Reflexivity"——可重放性
+
+**AERS 模式**：[replication-package-skeleton](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/examples/replication-package-skeleton/) 提供了**完整的可重放项目**：
+
+```
+replication-package/
+├── README.md
+├── LICENSE
+├── data/{raw,intermediate,codebook}/
+├── code/{00_setup,01_clean,02_analysis,03_tables,04_figures}.do
+├── output/{tables,figures}/
+└── docs/{exhibit-register.md, claim-evidence-ledger.csv}
+```
+
+**核心思想**：
+- 数据 + 代码 + 文档 + 产出 = 完整可重放
+- README 在项目第一天就写（不是接受后补）
+
+**当前实现**：
+- research.mjs 是 deterministic CLI（可重放）
+- Session JSON 是状态文件（可重放）
+- **但**：缺少"研究项目模板"概念——一个完整的 enterprise research project 应该长什么样？
+
+**建议**：引入 **Research Project Template**：
+
+```
+research-project/
+├── session.json                    # 当前 session 状态
+├── README.md                       # 研究目标、scope、plan
+├── evidence/
+│   ├── github-ev1.json             # 缓存的 evidence
+│   ├── confluence-ev2.json
+│   └── ...
+├── claim-evidence-ledger.csv       # 可审计账本
+├── research-log.md                 # 每次 decide 的时间线
+└── report/
+    ├── draft-v1.json
+    ├── draft-v2.json
+    └── final.md
+```
+
+**CLI 扩展**：
+
+```bash
+# 初始化研究项目（创建模板）
+node research.mjs init-project --goal "Research RiskConcile" --path ./research-projects/riskconcile
+
+# 重放（从 session.json 重新生成报告）
+node research.mjs replay --session ./research-projects/riskconcile/session.json
+
+# 导出研究项目
+node research.mjs export-project --output research-projects/riskconcile.tar.gz
+```
+
+**收益**：
+- 完整研究项目可打包、可重放、可分享
+- 第三方可独立验证研究过程
+- 与 AERS Replication Package 模式对齐
+
+---
+
+## 三、总结：与 AERS 的差异分析
+
+| 维度 | AERS | 当前 Enterprise Research Agent | 差距 |
+|------|-----|-------------------------------|------|
+| **Skill 拆分** | Router + 14 个专项 | 单体 skill | 大（建议 5） |
+| **Stage Gates** | 5 个硬质控门 | 软建议 | 大（建议 1） |
+| **Claim Ledger** | CSV 格式可审计 | 内存数组 | 中（建议 6） |
+| **External Audit** | 对抗式 3 reviewer | LLM 自检 | 大（建议 7） |
+| **Source Register** | 独立 source-register.md | 字符串 | 中（建议 3） |
+| **Knowledge Decay** | 5 年承诺 + 定期 re-run | lastUpdated 字段 | 中（建议 8） |
+| **Consistency Audit** | 数字一致性 + 样本量 + 单位 | 无 | 大（建议 2） |
+| **Conflict Disclosure** | 强制 | 软建议 | 中（建议 4） |
+| **Compactness** | 12 步 1-2 行 | 全量 JSON | 小（建议 9） |
+| **Replicability** | 完整 project 模板 | session.json | 中（建议 10） |
+
+## 四、优先级排序
+
+| 优先级 | 建议 | 工作量 | 收益 |
 |--------|------|--------|------|
-| P0 | **Evidence Fragment 定位** | 小 | 追溯精度 ↑ |
-| P0 | **Source Card 体系** | 中 | 可信度评估 ↑ |
-| P1 | **Hypothesis 生命周期** | 中 | 研究可解释性 ↑ |
-| P1 | **Claim Graph 渲染报告** | 中 | 报告质量 ↑ |
-| P1 | **Confidence 可视化** | 小 | 用户体验 ↑ |
-| P2 | **Feedback Loop** | 大 | 迭代能力 ↑ |
-| P2 | **External Verification 自动化** | 中 | 验证覆盖 ↑ |
-| P2 | **Session 历史版本** | 中 | 可追溯性 ↑ |
-| P3 | **Ontology 配置化** | 中 | 扩展性 ↑ |
-| P3 | **交互体验优化** | 小 | 易用性 ↑ |
+| **P0** | 建议 1（Stage Gates） | 中 | 质控硬约束 |
+| **P0** | 建议 2（Claim Audit） | 小 | 报告一致性 |
+| **P1** | 建议 3（Source Register） | 中 | Evidence 可信度 |
+| **P1** | 建议 4（Conflict Disclosure） | 小 | 报告透明度 |
+| **P1** | 建议 7（Referee-Sim） | 大 | 对抗式审查 |
+| **P2** | 建议 5（Skill 拆分） | 大 | LLM 上下文优化 |
+| **P2** | 建议 6（Claim Ledger） | 中 | 第三方审计 |
+| **P2** | 建议 8（Knowledge Decay） | 小 | 时效性管理 |
+| **P3** | 建议 9（Compactness） | 小 | 用户体验 |
+| **P3** | 建议 10（Replicability） | 中 | 完整工作流 |
 
 ---
 
@@ -634,10 +624,13 @@ node research.mjs add-evidence --source GitHub --uri "..." --content "..." --con
 
 | 参考文件 | 核心思想 | 对应建议 |
 |---------|---------|---------|
-| `v1.md` | Enterprise Research Agent 定位、数据源分层、Entity Resolution | 已内化到当前设计 |
-| `v2.md` | 从 Search 到 Research 的演进 | 已内化到当前设计 |
-| `v3.md` | Research/Investigation/Analysis 分离、Evidence Model | 已内化到当前设计 |
-| `v4.md` | Question Tree、5 原则、Expand-Converge | 已内化到当前设计 |
-| `可追踪.md` | Claim-Evidence-Source Graph、Traceability Layer、Reviewer Agent | #2, #4, #6 |
-| `本体论.md` | 最小可行 Ontology、Schema 与实例分离 | #9 |
-| `chatgpt-cn.md` | 架构愿景、企业知识工作痛点 | 已内化到当前设计 |
+| [aer-workflow](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-workflow/SKILL.md) | Router + 12 步 Default Sequence | #5 |
+| [design-principles](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/docs/design-principles.md) | 11 条设计原则 | 总纲 |
+| [desk-rejection-audit](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/docs/desk-rejection-audit.md) | 5 Stage 硬性 checklist | #1 |
+| [aer-consistency](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-consistency/SKILL.md) | Headline Number Register | #2 |
+| [source-register](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/docs/source-register.md) | Source 元数据 | #3 |
+| [aer-identification](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-identification/SKILL.md) | Master Decision Tree | 设计模式参考 |
+| [aer-replication](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-replication/SKILL.md) | Replication Package 模板 | #10 |
+| [claim-evidence-ledger.csv](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/examples/replication-package-skeleton/docs/claim-evidence-ledger.csv) | CSV 账本 | #6 |
+| [aer-referee-sim](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-referee-sim/SKILL.md) | 对抗式评审 | #7 |
+| [replication-package-skeleton](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/examples/replication-package-skeleton/) | 完整项目结构 | #10 |
