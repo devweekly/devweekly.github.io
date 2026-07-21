@@ -1,0 +1,15 @@
+{
+  "id": "coverage--zero-claims",
+  "category": "claim",
+  "title": "No claims yields neutral coverage",
+  "input": {
+    "claims": []
+  },
+  "expected": {
+    "coverageRatio": 1.0,
+    "verifiedRatio": 1.0,
+    "total": 0,
+    "withEvidence": 0,
+    "unverifiedCount": 0
+  }
+}

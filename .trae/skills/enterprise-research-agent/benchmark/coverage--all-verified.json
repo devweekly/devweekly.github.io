@@ -1,0 +1,18 @@
+{
+  "id": "coverage--all-verified",
+  "category": "claim",
+  "title": "All claims verified with evidence",
+  "input": {
+    "claims": [
+      { "id": "c1", "text": "RiskConcile is a vendor", "type": "fact", "evidenceIds": ["ev1"], "verified": true, "confidence": 0.9 },
+      { "id": "c2", "text": "Used by 3 apps", "type": "statistic", "evidenceIds": ["ev1", "ev2"], "verified": true, "confidence": 0.85 }
+    ]
+  },
+  "expected": {
+    "coverageRatio": 1.0,
+    "verifiedRatio": 1.0,
+    "total": 2,
+    "withEvidence": 2,
+    "unverifiedCount": 0
+  }
+}

@@ -1,6 +1,7 @@
 {
-  "id": "evidence-quality",
-  "title": "Evidence quality classification",
+  "id": "evidence-quality--duplicate-outdated",
+  "category": "evidence-quality",
+  "title": "Duplicate and outdated evidence are classified correctly",
   "input": {
     "entities": [
       { "id": "e1", "type": "Application", "name": "RC Migration Tool", "properties": {} }
@@ -37,9 +38,7 @@
     "relationships": []
   },
   "expected": {
-    "ev1Classification": "system_of_record",
-    "ev2Classification": "duplicate",
-    "ev3Classification": "outdated",
+    "classifications": ["system_of_record", "duplicate", "outdated"],
     "ev1QualityScore": 0.948,
     "ev2QualityScore": 0.948,
     "ev3QualityScore": 0.29,

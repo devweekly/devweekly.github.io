@@ -1,0 +1,18 @@
+{
+  "id": "gap--missing-relation",
+  "category": "gap",
+  "title": "Entity missing expected relation triggers gap",
+  "input": {
+    "entities": [
+      { "id": "e1", "type": "Application", "name": "RC Migration Tool", "properties": { "owner": "Team A", "lifecycle": "active" } }
+    ],
+    "evidence": [
+      { "id": "ev1", "source": "GitHub", "entityId": "e1", "content": "CODEOWNERS", "claims": [{ "property": "owner", "value": "Team A" }] }
+    ],
+    "relationships": []
+  },
+  "expected": {
+    "count": 2,
+    "types": ["missing_relation", "missing_relation"]
+  }
+}

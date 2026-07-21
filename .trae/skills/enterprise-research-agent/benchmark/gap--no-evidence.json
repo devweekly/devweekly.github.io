@@ -1,0 +1,16 @@
+{
+  "id": "gap--no-evidence",
+  "category": "gap",
+  "title": "Entity without evidence triggers no_evidence gap",
+  "input": {
+    "entities": [
+      { "id": "e1", "type": "Application", "name": "RC Migration Tool", "properties": { "owner": "Team A", "lifecycle": "active" } }
+    ],
+    "evidence": [],
+    "relationships": []
+  },
+  "expected": {
+    "count": 3,
+    "types": ["missing_relation", "missing_relation", "no_evidence"]
+  }
+}

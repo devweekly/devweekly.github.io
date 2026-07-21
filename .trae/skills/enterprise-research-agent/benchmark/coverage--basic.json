@@ -1,0 +1,19 @@
+{
+  "id": "coverage--basic",
+  "category": "claim",
+  "title": "Basic claim coverage with mixed types",
+  "input": {
+    "claims": [
+      { "id": "c1", "text": "RiskConcile is a vendor", "type": "fact", "evidenceIds": ["ev1"], "confidence": 0.9 },
+      { "id": "c2", "text": "Used by 3 applications", "type": "statistic", "evidenceIds": ["ev1"], "confidence": 0.8 },
+      { "id": "c3", "text": "Resolve owner discrepancy", "type": "recommendation", "reasoning": "Conflict exists", "evidenceIds": [], "confidence": 0.6 }
+    ]
+  },
+  "expected": {
+    "coverageRatio": 0.667,
+    "verifiedRatio": 0,
+    "total": 3,
+    "withEvidence": 2,
+    "unverifiedCount": 3
+  }
+}

@@ -2003,23 +2003,26 @@ function _buildGraphFromFixture(input) {
 function _buildClaimStoreFromFixture(input) {
   const store = new ClaimStore();
   for (const c of input.claims || []) {
-    store.addClaim({
+    const claim = store.addClaim({
       text: c.text,
       type: c.type,
       evidenceIds: c.evidenceIds || [],
       reasoning: c.reasoning || '',
       confidence: c.confidence != null ? c.confidence : 0.5,
-      verified: c.verified === true,
     });
+    if (c.verified === true) {
+      store.verifyClaim(claim.id, { verified: true });
+    }
   }
   return store;
 }
 
 function _runBenchmarkTask(task) {
-  const result = { task: task.id, title: task.title, passed: false, actual: {}, expected: task.expected, errors: [] };
+  const category = task.category || task.id;
+  const result = { task: task.id, category, title: task.title, passed: false, actual: {}, expected: task.expected, errors: [] };
   try {
-    switch (task.id) {
-      case 'claim-coverage': {
+    switch (category) {
+      case 'claim': {
         const store = _buildClaimStoreFromFixture(task.input);
         const cov = store.coverage();
         result.actual = {
@@ -2027,30 +2030,32 @@ function _runBenchmarkTask(task) {
           verifiedRatio: cov.verifiedRatio,
           total: cov.total,
           withEvidence: cov.withEvidence,
+          unverifiedCount: cov.total - cov.verified,
         };
         break;
       }
-      case 'gap-detection': {
+      case 'gap': {
         const graph = _buildGraphFromFixture(task.input);
         const gaps = analyzeGaps(graph);
         result.actual = {
           count: gaps.length,
-          gapTypes: gaps.map((g) => g.gapType).sort(),
+          types: gaps.map((g) => g.gapType),
           severities: gaps.map((g) => g.severity).sort(),
         };
         break;
       }
-      case 'contradiction-detection': {
+      case 'contradiction': {
         const graph = _buildGraphFromFixture(task.input);
         const contradictions = analyzeContradictions(graph);
         result.actual = {
           count: contradictions.length,
           properties: contradictions.map((c) => c.property).sort(),
           values: contradictions.map((c) => c.values.map((v) => v.value).sort()).sort(),
+          unknown: contradictions.map((c) => c.unknown),
         };
         break;
       }
-      case 'confidence-assessment': {
+      case 'confidence': {
         const graph = _buildGraphFromFixture(task.input);
         const confidence = assessConfidence(graph);
         result.actual = {
@@ -2065,9 +2070,7 @@ function _runBenchmarkTask(task) {
         const byId = {};
         for (const q of qualities) byId[q.evidenceId] = q;
         result.actual = {
-          ev1Classification: byId.ev1?.classification,
-          ev2Classification: byId.ev2?.classification,
-          ev3Classification: byId.ev3?.classification,
+          classifications: qualities.map((q) => q.classification),
           ev1QualityScore: byId.ev1?.qualityScore,
           ev2QualityScore: byId.ev2?.qualityScore,
           ev3QualityScore: byId.ev3?.qualityScore,
@@ -2076,7 +2079,7 @@ function _runBenchmarkTask(task) {
         break;
       }
       default:
-        throw new Error(`Unknown benchmark task: ${task.id}`);
+        throw new Error(`Unknown benchmark category: ${category}`);
     }
 
     for (const [key, expectedValue] of Object.entries(task.expected)) {

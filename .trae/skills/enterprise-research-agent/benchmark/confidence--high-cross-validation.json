@@ -1,0 +1,20 @@
+{
+  "id": "confidence--high-cross-validation",
+  "category": "confidence",
+  "title": "Multiple independent sources cross-validate high confidence",
+  "input": {
+    "entities": [
+      { "id": "e1", "type": "Application", "name": "RC Migration Tool", "properties": { "owner": "Team A", "lifecycle": "active" } }
+    ],
+    "evidence": [
+      { "id": "ev1", "source": "GitHub", "entityId": "e1", "content": "CODEOWNERS says Team A", "lastUpdated": "2026-07-18", "claims": [{ "property": "owner", "value": "Team A" }] },
+      { "id": "ev2", "source": "LeanIX", "entityId": "e1", "content": "App registry says Team A", "lastUpdated": "2026-07-15", "claims": [{ "property": "owner", "value": "Team A" }] },
+      { "id": "ev3", "source": "ServiceNow", "entityId": "e1", "content": "CMDB says Team A", "lastUpdated": "2026-07-10", "claims": [{ "property": "owner", "value": "Team A" }] }
+    ],
+    "relationships": []
+  },
+  "expected": {
+    "level": "high",
+    "score": 0.865
+  }
+}

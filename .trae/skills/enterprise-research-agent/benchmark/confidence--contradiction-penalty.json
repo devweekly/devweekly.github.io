@@ -1,0 +1,19 @@
+{
+  "id": "confidence--contradiction-penalty",
+  "category": "confidence",
+  "title": "Contradiction between sources lowers confidence",
+  "input": {
+    "entities": [
+      { "id": "e1", "type": "Application", "name": "RC Migration Tool", "properties": { "owner": "Team A" } }
+    ],
+    "evidence": [
+      { "id": "ev1", "source": "GitHub", "entityId": "e1", "content": "CODEOWNERS says Team A", "lastUpdated": "2026-07-18", "claims": [{ "property": "owner", "value": "Team A" }] },
+      { "id": "ev2", "source": "LeanIX", "entityId": "e1", "content": "LeanIX says Team B", "lastUpdated": "2026-07-15", "claims": [{ "property": "owner", "value": "Team B" }] }
+    ],
+    "relationships": []
+  },
+  "expected": {
+    "level": "medium",
+    "score": 0.595
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "id": "confidence--stale-evidence",
+  "category": "confidence",
+  "title": "Stale evidence reduces confidence score",
+  "input": {
+    "entities": [
+      { "id": "e1", "type": "Application", "name": "RC Migration Tool", "properties": { "owner": "Team A" } }
+    ],
+    "evidence": [
+      { "id": "ev1", "source": "GitHub", "entityId": "e1", "content": "CODEOWNERS", "lastUpdated": "2024-01-01", "claims": [{ "property": "owner", "value": "Team A" }] }
+    ],
+    "relationships": []
+  },
+  "expected": {
+    "level": "medium",
+    "score": 0.49
+  }
+}

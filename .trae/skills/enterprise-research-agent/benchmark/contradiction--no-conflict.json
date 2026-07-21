@@ -1,0 +1,21 @@
+{
+  "id": "contradiction--no-conflict",
+  "category": "contradiction",
+  "title": "Consistent evidence produces no contradiction",
+  "input": {
+    "entities": [
+      { "id": "e1", "type": "Application", "name": "RC Migration Tool", "properties": { "owner": "Team A" } }
+    ],
+    "evidence": [
+      { "id": "ev1", "source": "GitHub", "entityId": "e1", "content": "CODEOWNERS says Team A", "claims": [{ "property": "owner", "value": "Team A" }] },
+      { "id": "ev2", "source": "LeanIX", "entityId": "e1", "content": "LeanIX says Team A", "claims": [{ "property": "owner", "value": "Team A" }] }
+    ],
+    "relationships": []
+  },
+  "expected": {
+    "count": 0,
+    "properties": [],
+    "values": [],
+    "unknown": []
+  }
+}

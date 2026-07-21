@@ -1,0 +1,21 @@
+{
+  "id": "contradiction--owner-conflict",
+  "category": "contradiction",
+  "title": "Two sources disagree on entity owner",
+  "input": {
+    "entities": [
+      { "id": "e1", "type": "Application", "name": "RC Migration Tool", "properties": { "owner": "Team A" } }
+    ],
+    "evidence": [
+      { "id": "ev1", "source": "GitHub", "entityId": "e1", "content": "CODEOWNERS says Team A", "claims": [{ "property": "owner", "value": "Team A" }] },
+      { "id": "ev2", "source": "LeanIX", "entityId": "e1", "content": "LeanIX says Team B", "claims": [{ "property": "owner", "value": "Team B" }] }
+    ],
+    "relationships": []
+  },
+  "expected": {
+    "count": 1,
+    "properties": ["owner"],
+    "values": [["Team A", "Team B"]],
+    "unknown": [true]
+  }
+}
