@@ -1,5 +1,6 @@
 {
-  "id": "multi-source",
+  "id": "coverage--multi-source",
+  "category": "coverage",
   "title": "Vendor research should collect evidence from multiple sources",
   "setup": {
     "goal": "Research RiskConcile",

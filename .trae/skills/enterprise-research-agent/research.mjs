@@ -2120,7 +2120,7 @@ function runBenchmark({ taskId = null } = {}) {
 }
 
 function _runScenario(scenario) {
-  const result = { scenario: scenario.id, title: scenario.title, passed: false, errors: [] };
+  const result = { scenario: scenario.id, category: scenario.category || 'eval', title: scenario.title, passed: false, errors: [] };
   try {
     const session = new ResearchSession(scenario.setup?.goal || 'Eval');
 

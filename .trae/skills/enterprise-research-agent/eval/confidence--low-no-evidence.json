@@ -1,0 +1,24 @@
+{
+  "id": "confidence--low-no-evidence",
+  "category": "confidence",
+  "title": "Entity without evidence yields low confidence",
+  "setup": {
+    "goal": "Research RiskConcile ownership",
+    "contract": {
+      "question": "Who owns the RC Migration Tool?",
+      "scope": {},
+      "expectedOutput": { "type": "ownership-analysis" },
+      "evidenceRequirement": { "minSources": 2, "primarySourceRatio": 0.6, "claimCoverageRatio": 0.9 }
+    },
+    "graph": {
+      "entities": [
+        { "id": "e1", "type": "Application", "name": "RC Migration Tool", "properties": { "owner": "Team A", "lifecycle": "active" } }
+      ],
+      "evidence": [],
+      "relationships": []
+    }
+  },
+  "assertions": [
+    { "type": "confidence_level", "level": "low" }
+  ]
+}

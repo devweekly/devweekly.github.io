@@ -1,5 +1,6 @@
 {
-  "id": "contract-first",
+  "id": "contract--valid",
+  "category": "contract",
   "title": "Research must start with a valid contract",
   "setup": {
     "goal": "Research RiskConcile",

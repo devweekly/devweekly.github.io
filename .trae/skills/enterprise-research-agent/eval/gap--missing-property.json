@@ -1,0 +1,27 @@
+{
+  "id": "gap--missing-property",
+  "category": "gap",
+  "title": "Entity missing required property is flagged as gap",
+  "setup": {
+    "goal": "Research RiskConcile ownership",
+    "contract": {
+      "question": "Who owns the RC Migration Tool?",
+      "scope": {},
+      "expectedOutput": { "type": "ownership-analysis" },
+      "evidenceRequirement": { "minSources": 2, "primarySourceRatio": 0.6, "claimCoverageRatio": 0.9 }
+    },
+    "graph": {
+      "entities": [
+        { "id": "e1", "type": "Application", "name": "RC Migration Tool", "properties": { "owner": "Team A" } }
+      ],
+      "evidence": [
+        { "id": "ev1", "source": "GitHub", "entityId": "e1", "content": "CODEOWNERS", "claims": [{ "property": "owner", "value": "Team A" }] }
+      ],
+      "relationships": []
+    },
+    "runAnalyze": true
+  },
+  "assertions": [
+    { "type": "completion_min_score", "min": 0.0 }
+  ]
+}

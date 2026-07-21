@@ -1,5 +1,6 @@
 {
-  "id": "embedded-source-metadata",
+  "id": "evidence-quality--system-vs-hearsay",
+  "category": "evidence-quality",
   "title": "Evidence should carry embedded source metadata",
   "setup": {
     "goal": "Research RiskConcile",

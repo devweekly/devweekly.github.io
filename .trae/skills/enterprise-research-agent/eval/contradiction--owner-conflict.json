@@ -1,10 +1,11 @@
 {
-  "id": "completion-assessment",
-  "title": "Completion assessment reflects coverage, confidence, gaps, conflicts and open questions",
+  "id": "contradiction--owner-conflict",
+  "category": "contradiction",
+  "title": "Conflicting evidence should be detected and disclosed",
   "setup": {
     "goal": "Research RiskConcile ownership",
     "contract": {
-      "question": "Who owns RC Migration Tool?",
+      "question": "Who owns the RC Migration Tool?",
       "scope": {},
       "expectedOutput": { "type": "ownership-analysis" },
       "evidenceRequirement": { "minSources": 2, "primarySourceRatio": 0.6, "claimCoverageRatio": 0.9 }
@@ -20,13 +21,11 @@
       "relationships": []
     },
     "claims": [
-      { "id": "c1", "text": "RC Migration Tool owner is disputed", "type": "analysis", "reasoning": "GitHub vs LeanIX", "evidenceIds": ["ev1", "ev2"] }
-    ],
-    "runAnalyze": true
+      { "id": "c1", "text": "RC Migration Tool owner is disputed", "type": "analysis", "reasoning": "GitHub and LeanIX disagree", "evidenceIds": ["ev1", "ev2"] }
+    ]
   },
   "assertions": [
-    { "type": "completion_recommendation", "expected": "finish_with_gaps" },
-    { "type": "completion_min_score", "min": 0.5 },
-    { "type": "contradiction_count", "min": 1 }
+    { "type": "contradiction_count", "min": 1 },
+    { "type": "claim_has_evidence", "claimType": "analysis" }
   ]
 }

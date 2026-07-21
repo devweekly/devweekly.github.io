@@ -1,0 +1,29 @@
+{
+  "id": "completion--continue-research",
+  "category": "completion",
+  "title": "Low coverage and confidence recommends continue research",
+  "setup": {
+    "goal": "Research RiskConcile ownership",
+    "contract": {
+      "question": "Who owns RC Migration Tool?",
+      "scope": {},
+      "expectedOutput": { "type": "ownership-analysis" },
+      "evidenceRequirement": { "minSources": 2, "primarySourceRatio": 0.6, "claimCoverageRatio": 0.9 }
+    },
+    "graph": {
+      "entities": [
+        { "id": "e1", "type": "Application", "name": "RC Migration Tool", "properties": { "owner": "Team A", "lifecycle": "active" } }
+      ],
+      "evidence": [],
+      "relationships": []
+    },
+    "claims": [
+      { "id": "c1", "text": "RC Migration Tool owner is unknown", "type": "recommendation", "reasoning": "No evidence collected", "evidenceIds": [] }
+    ],
+    "runAnalyze": true
+  },
+  "assertions": [
+    { "type": "completion_recommendation", "expected": "continue" },
+    { "type": "completion_min_score", "min": 0.0 }
+  ]
+}

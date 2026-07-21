@@ -1,0 +1,18 @@
+{
+  "id": "coverage--zero-claims",
+  "category": "coverage",
+  "title": "No claims yields neutral coverage",
+  "setup": {
+    "goal": "Research RiskConcile",
+    "contract": {
+      "question": "What is RiskConcile?",
+      "scope": {},
+      "expectedOutput": { "type": "vendor-intel-report" },
+      "evidenceRequirement": { "minSources": 2, "primarySourceRatio": 0.6, "claimCoverageRatio": 0.9 }
+    },
+    "claims": []
+  },
+  "assertions": [
+    { "type": "coverage_min", "min": 1.0 }
+  ]
+}

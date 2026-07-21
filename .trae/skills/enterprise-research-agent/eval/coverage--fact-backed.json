@@ -1,5 +1,6 @@
 {
-  "id": "claim-coverage",
+  "id": "coverage--fact-backed",
+  "category": "coverage",
   "title": "Every fact claim must be backed by evidence",
   "setup": {
     "goal": "Research RiskConcile",

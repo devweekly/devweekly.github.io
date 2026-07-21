@@ -1,0 +1,53 @@
+{
+  "id": "evidence-quality--duplicate-outdated",
+  "category": "evidence-quality",
+  "title": "Duplicate and outdated evidence are classified correctly",
+  "setup": {
+    "goal": "Research RiskConcile",
+    "contract": {
+      "question": "What is RiskConcile?",
+      "scope": {},
+      "expectedOutput": { "type": "vendor-intel-report" },
+      "evidenceRequirement": { "minSources": 2, "primarySourceRatio": 0.6, "claimCoverageRatio": 0.9 }
+    },
+    "graph": {
+      "entities": [
+        { "id": "e1", "type": "Vendor", "name": "RiskConcile", "properties": {} }
+      ],
+      "evidence": [
+        {
+          "id": "ev1",
+          "source": "GitHub",
+          "entityId": "e1",
+          "content": "CODEOWNERS says Team A",
+          "lastUpdated": "2026-07-19",
+          "sourceMetadata": { "type": "system_of_record", "authority": 0.85, "independence": 1.0 },
+          "claims": [{ "property": "owner", "value": "Team A" }]
+        },
+        {
+          "id": "ev2",
+          "source": "GitHub",
+          "entityId": "e1",
+          "content": "CODEOWNERS says Team A",
+          "lastUpdated": "2026-07-19",
+          "sourceMetadata": { "type": "system_of_record", "authority": 0.85, "independence": 1.0 },
+          "claims": [{ "property": "owner", "value": "Team A" }]
+        },
+        {
+          "id": "ev3",
+          "source": "Wiki",
+          "entityId": "e1",
+          "content": "Owner might be Team C",
+          "lastUpdated": "2025-01-01",
+          "sourceMetadata": { "type": "hearsay", "authority": 0.2, "independence": 0.5 },
+          "claims": [{ "property": "owner", "value": "Team C" }]
+        }
+      ],
+      "relationships": []
+    }
+  },
+  "assertions": [
+    { "type": "evidence_quality_max", "evidenceId": "ev2", "max": 0.95 },
+    { "type": "evidence_quality_max", "evidenceId": "ev3", "max": 0.35 }
+  ]
+}
