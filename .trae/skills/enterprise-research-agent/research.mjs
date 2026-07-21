@@ -732,7 +732,7 @@ class QuestionTree {
 }
 
 // ============================================================
-// 5. Claim Model（来自 可追踪.md，分类型管理）
+// 5. Claim Model（分类型管理）
 //
 //    Claim 是 Research Report 的最小结论单元，比 Evidence 更接近"判断"。
 //    每条 Claim 必须可追溯到 Evidence + Source；类型决定证据要求。

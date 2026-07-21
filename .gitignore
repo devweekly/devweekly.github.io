@@ -5,6 +5,8 @@ dist/
 # dependencies
 node_modules/
 
+ref-only/
+
 .cache/
 
 # logs

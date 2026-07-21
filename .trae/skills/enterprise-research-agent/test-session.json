@@ -1,0 +1,49 @@
+{
+  "goal": "Test",
+  "createdAt": "2026-07-20T10:16:50.728Z",
+  "contract": {
+    "question": "Test research",
+    "scope": {},
+    "expectedOutput": {
+      "type": "research_report"
+    },
+    "evidenceRequirement": {
+      "minSources": 3,
+      "primarySourceRatio": 0.6,
+      "claimCoverageRatio": 0.9
+    },
+    "createdAt": "2026-07-20T10:16:50.753Z",
+    "confirmedAt": "2026-07-20T10:16:50.753Z"
+  },
+  "budget": null,
+  "plan": [],
+  "questionTree": {
+    "questions": [],
+    "counter": 0
+  },
+  "graph": {
+    "entities": [],
+    "relationships": [],
+    "evidence": [],
+    "aliases": [],
+    "counters": {
+      "entity": 0,
+      "evidence": 0,
+      "relationship": 0
+    }
+  },
+  "claims": {
+    "claims": [],
+    "counter": 0
+  },
+  "findings": [],
+  "gaps": [],
+  "contradictions": [],
+  "confidence": null,
+  "report": null,
+  "visitedSources": [],
+  "pendingQuestions": [],
+  "rejectedHypotheses": [],
+  "_planCounter": 0,
+  "_lastSnapshot": null
+}
