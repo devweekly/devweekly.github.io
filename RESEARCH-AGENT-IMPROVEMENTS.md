@@ -1,622 +1,1049 @@
-# Enterprise Research Agent 提升建议（基于 AERS 参考项目）
+# Enterprise Research Agent 提升建议（基于 AERS 架构深入分析）
 
-> 参考项目：[ref-only/Auto-Empirical-Research-Skills](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills) —— **70 个 collection / 1151 个 skill 的经济学实证研究 skill 体系**。
-> 核心参考：[aer-workflow](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-workflow/SKILL.md) + [design-principles](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/docs/design-principles.md) + [desk-rejection-audit](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/docs/desk-rejection-audit.md) + [source-register](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/docs/source-register.md) + [claim-evidence-ledger](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/examples/replication-package-skeleton/docs/claim-evidence-ledger.csv)
+> 参考项目：[ref-only/Auto-Empirical-Research-Skills](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills)
+> 深入研究的核心文件：
+> - [eval-harness/scenarios/*.toml](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/eval-harness/scenarios/) — 评估场景定义
+> - [eval-harness/lib/checks.py](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/eval-harness/lib/checks.py) — 自动化检查原语
+> - [scripts/build-catalog.py](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/scripts/build-catalog.py) — 技能目录构建
+> - [scripts/validate-repo.py](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/scripts/validate-repo.py) — 仓库验证
+> - [scripts/split-skill.py](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/scripts/split-skill.py) — 技能拆分工具
+> - [docs/QUALITY_GATE.md](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/docs/QUALITY_GATE.md) — 质量门规范
+> - [docs/SKILL_FRONTMATTER_SPEC.md](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/docs/SKILL_FRONTMATTER_SPEC.md) — SKILL.md 规范
+> - [docs/TRUST.md](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/docs/TRUST.md) — 信任面分层
 > **只提建议，不改动现有代码和文档。**
 
 ---
 
-## 一、AERS 的核心架构思想（与 Enterprise Research Agent 高度可类比）
+## 一、AERS 架构深度解析
 
-虽然 AERS 面向"经济学实证论文"、我们的 enterprise-research-agent 面向"企业调查"，但两者本质都是 **Evidence-driven 知识生产工作流**。AERS 有 11 条 Design Principles，以下 7 条与我们的场景高度相关：
+### 1.1 核心设计思想
 
-| AERS Principle | 对应到 Enterprise Research Agent |
-|---------------|---------------------------------|
-| 1. Identification Before Prose | **契约优先于研究**（已有 Research Contract） |
-| 2. One Contribution Per Paper | **聚焦核心问题**（已有 Root Question / Plan） |
-| 4. Modern Econometrics | **现代分析方法**（已有 Gap / Contradiction / Confidence） |
-| 5. The Replication Package Is Part of the Paper | **报告必须可复现**（已有 Traceability Layer） |
-| 6. Editor Time Is the Scarcest Resource | **用户体验优先**（每条命令、每个报告都要有 reviewable 颗粒度） |
-| 7. Anticipate, Don't React | **主动分析**（已有 Decision Loop） |
-| 9. Skills Are Routers, Not Replacements | **Skill 边界清晰**（当前设计已采用） |
-| 11. Self-Verifying Gates | **每个阶段有 hard gate**（部分覆盖，建议补强） |
+AERS 是一个**技能目录 + 评估框架**的双层架构：
 
----
-
-## 二、提升建议（10 条）
-
-### 建议 1：建立"Stage Gate"质控门体系
-
-**AERS 模式**（[aer-workflow §Quality Gates](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-workflow/SKILL.md#L57-L66)）：
-
-```text
-Gate A (after step 3): contribution sentence written, venue chosen, design survives
-Gate B (after step 5): every claim in the draft body traces to an exhibit or a verified citation
-Gate C (after step 8): aer-consistency reports all-pass
-Gate D (after step 9): aer-referee-sim verdict ≥ major R&R on two consecutive fresh runs
-Gate E (after step 11): aer-submission preflight all green
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                      AERS 架构                                  │
+├─────────────────────────────────────────────────────────────────┤
+│  Layer 1: Skill Catalog (技能目录)                              │
+│  ├─ 70 collections × 1151 skills                               │
+│  ├─ catalog/skills.json (machine-readable)                     │
+│  ├─ docs/SKILL_CATALOG.md (human-readable)                     │
+│  └─ SKILL.md frontmatter (name/description/triggers)           │
+├─────────────────────────────────────────────────────────────────┤
+│  Layer 2: Quality Assurance (质量保证)                          │
+│  ├─ eval-harness/ (行为评估)                                   │
+│  │   ├─ scenarios/*.toml (prompt + rubric)                    │
+│  │   ├─ lib/checks.py (自动化检查原语)                        │
+│  │   └─ run_evals.py (评估执行器)                             │
+│  ├─ benchmark/ (数值基准)                                      │
+│  │   ├─ tasks/*.toml (任务定义)                               │
+│  │   ├─ lib/*.py (参考实现)                                   │
+│  │   └─ reference_pipeline.py (真值计算)                      │
+│  └─ scripts/validate-repo.py (仓库验证)                        │
+├─────────────────────────────────────────────────────────────────┤
+│  Layer 3: Trust Signals (信任信号)                              │
+│  ├─ Hygiene Score (结构评分)                                   │
+│  ├─ Eval Coverage (评估覆盖)                                   │
+│  ├─ Numeric Benchmark (数值基准)                               │
+│  └─ Runtime Safety (运行安全)                                  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-**当前实现**：通过 `set-contract` 和 `analyze` 命令做阶段控制，但**没有"门控"概念**——即使 contract 未 confirm、Claim Coverage < 0.9，研究也可继续。
+### 1.2 Eval Harness 核心模式
 
-**建议**：引入显式的 **Stage Gate** 机制：
+AERS 的评估框架是其最核心的质量保证机制。每个场景定义为 TOML 文件：
 
-| Gate | 触发条件 | 校验 | 不通过时的处理 |
-|------|---------|------|----------------|
-| **G0 Contract** | 第一次 add-evidence | `contract.confirmedAt != null` | 拒绝并提示 `set-contract --confirm` |
-| **G1 Entity Quality** | 第一次 analyze | 所有 entity 满足 `requiredProperties` | 警告并列出缺失字段 |
-| **G2 Claim Coverage** | decide → finish | `coverage ≥ contract.claimCoverageRatio` | 拒绝 Finish，列出未覆盖 claim |
-| **G3 Conflict Disclosed** | report-template | `conflicts` section 完整 | 拒绝生成报告模板 |
-| **G4 Budget Honored** | decide | `usage ≤ budget` | 警告 |
+```toml
+# 示例：eval-harness/scenarios/statspai-weak-iv.toml
+id = "statspai-weak-iv"
+skill = "skills/00-Full-empirical-analysis-skill_StatsPAI"
+title = "Weak-instrument case must report first-stage F and use weak-IV-robust inference"
+category = "causal-identification"
+severity = "critical"
 
-**实现方式**：
-- 每个 gate 是一个 JS 函数 `gate_<name>(session) → {pass: bool, issues: []}`
-- 关键命令（`add-evidence` / `analyze` / `decide` / `report-template`）自动调用 gate
-- `decide` 默认要求所有 gate 通过才能返回 `finish`
+prompt = """
+I'm instrumenting years of schooling with distance to the nearest college...
+"""
 
-**收益**：从"友好建议"升级为"硬约束"，避免 low-quality research 产出。
+[[rubric]]
+id = "reports-first-stage-f"
+check = "regex_any"
+required = true
+weight = 3
+description = "Reports the first-stage F-statistic"
+patterns = ['(?i)first.?stage F', '(?i)F.?stat', ...]
 
----
-
-### 建议 2：设计"Headline Number Register"——内部一致性审计
-
-**AERS 模式**（[aer-consistency](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-consistency/SKILL.md#L30-L54)）：
-
-```text
-NUMBER            SOURCE            ABSTRACT  INTRO  RESULTS  CONCL  MATCH
-4.2 log points    Tab 3 col 4       yes       yes    yes      yes    OK
-s.e. 1.1          Tab 3 col 4       yes       no     yes      no     OK
+[[rubric]]
+id = "no-false-reassurance"
+check = "regex_none"
+required = true
+weight = 3
+description = "Does NOT falsely reassure that F~8 is acceptable"
+patterns = ['(?i)F (of|=|~)? ?8 is (fine|ok|acceptable)']
 ```
 
-**当前实现**：报告是 LLM 自由生成的 Markdown，**没有 mechanism 保证**：
-- Executive Summary 的数字与 keyFindings 一致
-- keyFindings.evidenceIds 引用的 Evidence 真实存在
-- 同一 Claim 在不同章节的描述一致
+**关键设计原则**：
+- **自动化优先**：能用正则/数值检查的绝不依赖人工
+- **必须/可选分离**：`required = true` 决定是否致命
+- **禁止性检查**：`regex_none` 用于检测"不应该出现的内容"
+- **人工兜底**：`check = "manual"` 用于需要判断的场景
 
-**建议**：引入 **Claim Register**（类似 AERS 的 Headline Number Register）：
-
-```json
-{
-  "claimRegister": [
-    {
-      "id": "cr1",
-      "claimId": "c1",
-      "text": "RiskConcile is used by RC Migration Tool",
-      "confidence": 0.92,
-      "appearsIn": ["executiveSummary", "keyFindings.f1"],
-      "consistent": true
-    }
-  ]
-}
-```
-
-**CLI 扩展**：
+### 1.3 Quality Gate 机制
 
 ```bash
-# 自动检测 claim 一致性
-node research.mjs audit-claims
-
-# 输出
-# ✓ cr1: appears in [executiveSummary, keyFindings.f1], consistent
-# ✗ cr2: appears in [executiveSummary, keyFindings.f3], text mismatch:
-#   - summary: "...used by 2 applications"
-#   - finding: "...used by 1 application (RC Migration Tool)"
+make catalog    # 重建目录（技能发现、frontmatter 解析）
+make validate   # 验证（文件存在性、frontmatter 审计、链接检查）
+make check      # 完整检查（eval-harness + benchmark + unit tests）
 ```
 
-**实现方式**：
-- `report-template` 接受 claim IDs 作为参数，自动生成 claimRegister
-- `audit-claims` 命令扫描报告 JSON，提取所有 claim 出现位置，比对文本
+**CI 自动运行**：`.github/workflows/validate-catalog.yml` 和 `.github/workflows/quality-evals.yml`
 
-**收益**：
-- 报告内"自相矛盾"被自动发现
-- 数字错误、表述不一致被系统性检测
-- 报告审计从"LLM 自检"升级为"deterministic check"
+### 1.4 Hygiene Score 评分标准
+
+| 检查项 | 权重 | 说明 |
+|--------|------|------|
+| frontmatter 完整 | 30 | name + description 必须存在 |
+| description 质量 | 20 | 240字符以内，动作动词开头 |
+| 行数控制 | 20 | >500行扣分 |
+| references/ 存在 | 15 | 长技能应有引用目录 |
+| triggers 存在 | 10 | 非平凡技能应有触发词 |
+| 命名规范 | 5 | kebab-case |
 
 ---
 
-### 建议 3：建立"Source Register"——数据源元数据
+## 二、10 条可操作的提升建议
 
-**AERS 模式**（[source-register.md](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/docs/source-register.md)）：
+### 建议 1：建立 Eval Harness —— 行为评估框架（P0）
 
-```markdown
-| Topic | Source | Repo surfaces that depend on it | Review trigger |
-|---|---|---|---|
-| AER submission length, abstract, disclosure | https://www.aeaweb.org/journals/aer/submissions | README.md, SKILL.md | Before each release |
-```
+**AERS 模式**（[eval-harness/scenarios/](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/eval-harness/scenarios/)）：
 
-**当前实现**：`add-evidence --source` 接受字符串（`GitHub`、`LeanIX`、`External`），但**没有 Source 元数据机制**：
-- 这个 Source 来自哪个具体 URI？
-- 该 Source 何时获取的？是否过期？
-- 该 Source 类型的基本 authority 是多少？
+每个场景 = `prompt + rubric`，rubric 包含多个 check（自动化或人工）。
 
-**建议**：引入 **Source Register** 作为 session 内的一等对象：
+**当前差距**：enterprise-research-agent 没有任何评估框架。
 
-```json
-{
-  "sourceRegister": [
-    {
-      "id": "src1",
-      "type": "system_of_record",
-      "name": "GitHub",
-      "uri": "https://github.com/org/riskconcile-api",
-      "authority": 0.85,
-      "retrievedAt": "2026-07-20T10:00:00Z",
-      "metadata": {
-        "org": "org",
-        "repo": "riskconcile-api",
-        "lastCommit": "2026-07-19"
-      }
-    }
-  ],
-  "evidenceToSource": {
-    "ev1": "src1",
-    "ev2": "src1"
-  }
-}
-```
+**可操作的修改方案**：
 
-**Source Type 体系**（按 authority 从高到低）：
+1. **创建评估目录结构**：
+   ```
+   .trae/skills/enterprise-research-agent/
+   ├── eval-harness/
+   │   ├── scenarios/
+   │   │   ├── contract-validation.toml
+   │   │   ├── evidence-validity.toml
+   │   │   ├── claim-coverage.toml
+   │   │   ├── conflict-disclosure.toml
+   │   │   └── report-traceability.toml
+   │   ├── lib/
+   │   │   └── checks.js        # 自动化检查原语
+   │   └── run_evals.js        # 评估执行器
+   ```
 
-| Type | Base Authority | 示例 |
-|------|---------------|------|
-| `system_of_record` | 0.85 | LeanIX、GitHub CODEOWNERS、ServiceNow |
-| `official` | 0.92 | Vendor 官网、Regulation 原文 |
-| `internal_doc` | 0.80 | Confluence、Notion |
-| `engineering` | 0.65 | 技术博客、开源 repo |
-| `news` | 0.45 | 科技媒体 |
-| `social` | 0.25 | Twitter、Reddit |
+2. **定义第一个场景**（contract-validation.toml）：
+   ```toml
+   id = "contract-validation"
+   title = "Contract must be confirmed before investigation"
+   category = "research-integrity"
+   severity = "critical"
 
-**CLI 扩展**：
+   prompt = """
+   Run a full research on "RiskConcile". Skip the contract confirmation step.
+   """
+
+   [[rubric]]
+   id = "contract-confirmed"
+   check = "regex_none"
+   required = true
+   weight = 5
+   description = "Must NOT proceed with investigation without contract confirmation"
+   patterns = ['(?i)add-evidence', '(?i)add-entity', '(?i)skip.?contract']
+
+   [[rubric]]
+   id = "prompts-contract"
+   check = "regex_any"
+   required = true
+   weight = 3
+   description = "Must prompt user to confirm contract first"
+   patterns = ['(?i)set-contract', '(?i)confirm.*contract', '(?i)contract.*confirm']
+   ```
+
+3. **实现检查原语**（lib/checks.js）：
+   ```javascript
+   const AUTO_CHECKS = {
+     regex_any: (patterns, text) => patterns.some(p => new RegExp(p).test(text)),
+     regex_all: (patterns, text) => patterns.every(p => new RegExp(p).test(text)),
+     regex_none: (patterns, text) => !patterns.some(p => new RegExp(p).test(text)),
+     word_count_max: (max, text, unit = 'words') => {
+       const count = unit === 'chars' ? text.length : text.split(/\s+/).length;
+       return count <= max;
+     },
+     json_valid: (schema, text) => {
+       try { JSON.parse(text); return true; } catch { return false; }
+     }
+   };
+   ```
+
+4. **实现评估执行器**（run_evals.js）：
+   ```javascript
+   async function runEval(scenarioPath) {
+     const scenario = loadToml(scenarioPath);
+     const result = await executeSkill(scenario.prompt);
+     const scores = scenario.rubric.map(item => ({
+       id: item.id,
+       pass: AUTO_CHECKS[item.check](item.patterns || [], result),
+       required: item.required,
+       weight: item.weight
+     }));
+     const passed = scores.every(s => !s.required || s.pass);
+     return { scenario: scenario.id, passed, scores };
+   }
+   ```
+
+5. **CLI 集成**：
+   ```bash
+   # 运行所有评估
+   node research.mjs eval
+
+   # 运行特定场景
+   node research.mjs eval --scenario contract-validation
+
+   # 查看评估报告
+   node research.mjs eval-report
+   ```
+
+**预期收益**：
+- 每次修改代码后自动验证关键行为
+- 防止"跳过 contract"、"隐瞒 conflict"等逻辑回归
+- 建立质量基线，支持持续改进
+
+---
+
+### 建议 2：建立 Benchmark —— 数值基准测试（P0）
+
+**AERS 模式**（[benchmark/](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/benchmark/)）：
+
+用确定性数据验证核心算法的正确性。
+
+**当前差距**：没有任何数值基准测试。
+
+**可操作的修改方案**：
+
+1. **创建基准测试数据**：
+   ```
+   .trae/skills/enterprise-research-agent/
+   ├── benchmark/
+   │   ├── data/
+   │   │   ├── test-claim-coverage.json      # 已知覆盖率的测试数据
+   │   │   ├── test-conflict-detection.json   # 已知冲突的测试数据
+   │   │   ├── test-confidence-assessment.json # 已知置信度的测试数据
+   │   │   └── test-gap-analysis.json        # 已知 gap 的测试数据
+   │   ├── tasks/
+   │   │   ├── claim-coverage.toml
+   │   │   └── conflict-detection.toml
+   │   └── reference_results/                # 真值结果
+   ```
+
+2. **定义基准任务**（claim-coverage.toml）：
+   ```toml
+   id = "claim-coverage"
+   title = "Claim coverage calculation must match expected value"
+   data = "benchmark/data/test-claim-coverage.json"
+   expected = "benchmark/reference_results/claim-coverage.json"
+
+   [[metrics]]
+   id = "coverage_ratio"
+   tolerance = 0.01
+   description = "Coverage ratio must be within 1% of expected"
+
+   [[metrics]]
+   id = "uncovered_count"
+   tolerance = 0
+   description = "Uncovered claim count must match exactly"
+   ```
+
+3. **实现基准执行器**：
+   ```javascript
+   async function runBenchmark(taskPath) {
+     const task = loadToml(taskPath);
+     const data = JSON.parse(fs.readFileSync(task.data, 'utf-8'));
+     const expected = JSON.parse(fs.readFileSync(task.expected, 'utf-8'));
+     
+     const session = new ResearchSession();
+     // 加载测试数据...
+     const actual = session.claims.filter(c => c.evidenceIds.length > 0).length / session.claims.length;
+     
+     const results = task.metrics.map(m => ({
+       id: m.id,
+       actual: actual,
+       expected: expected[m.id],
+       pass: Math.abs(actual - expected[m.id]) <= m.tolerance
+     }));
+     return { task: task.id, passed: results.every(r => r.pass), results };
+   }
+   ```
+
+4. **CLI 集成**：
+   ```bash
+   # 运行所有基准测试
+   node research.mjs benchmark
+
+   # 运行特定基准
+   node research.mjs benchmark --task claim-coverage
+   ```
+
+**预期收益**：
+- 核心算法（Coverage、Confidence、Gap、Conflict）的正确性有数值保证
+- 防止回归（修改代码后自动发现数值变化）
+- 支持 A/B 测试不同实现方案
+
+---
+
+### 建议 3：实现 Quality Gate —— 质量门验证（P0）
+
+**AERS 模式**（[docs/QUALITY_GATE.md](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/docs/QUALITY_GATE.md)）：
 
 ```bash
-# 注册 Source
-node research.mjs register-source --name GitHub --type system_of_record \
-  --uri "https://github.com/org/riskconcile-api" \
-  --authority 0.85 --retrieved-at 2026-07-20
-
-# 查看 Source 列表
-node research.mjs list-sources
-
-# 检测过期 Source
-node research.mjs stale-sources --threshold-days 30
+make catalog    # 技能发现
+make validate   # 结构验证
+make check      # 完整检查
 ```
 
-**收益**：
-- Evidence 关联的 Source 关系显式化
-- Source authority 可追溯（不是硬编码常量）
-- Source 过期检测自动化
+**当前差距**：没有质量门机制。
+
+**可操作的修改方案**：
+
+1. **创建验证脚本**（validate-repo.js）：
+   ```javascript
+   const VALIDATION_CHECKS = [
+     {
+       id: 'session-json-valid',
+       name: 'Session JSON is valid',
+       check: () => {
+         const files = glob('.trae/skills/enterprise-research-agent/**/*.json');
+         return files.every(f => {
+           try { JSON.parse(fs.readFileSync(f, 'utf-8')); return true; } 
+           catch(e) { return false; }
+         });
+       }
+     },
+     {
+       id: 'skill-md-frontmatter',
+       name: 'SKILL.md has valid frontmatter',
+       check: () => {
+         const content = fs.readFileSync('SKILL.md', 'utf-8');
+         return content.includes('name:') && content.includes('description:');
+       }
+     },
+     {
+       id: 'eval-scenarios-valid',
+       name: 'Eval scenarios are valid',
+       check: () => {
+         const files = glob('eval-harness/scenarios/*.toml');
+         return files.every(f => isValidToml(f));
+       }
+     },
+     {
+       id: 'cli-help-complete',
+       name: 'CLI --help covers all commands',
+       check: () => {
+         const help = execSync('node research.mjs --help', 'utf-8');
+         const commands = ['init', 'set-contract', 'add-evidence', 'analyze', 'decide', 'report-template'];
+         return commands.every(c => help.includes(c));
+       }
+     }
+   ];
+
+   function runValidation() {
+     const results = VALIDATION_CHECKS.map(check => ({
+       id: check.id,
+       name: check.name,
+       pass: check.check()
+     }));
+     const allPassed = results.every(r => r.pass);
+     console.log(allPassed ? '✓ All validation checks passed' : '✗ Some checks failed');
+     return allPassed;
+   }
+   ```
+
+2. **创建 Makefile**：
+   ```makefile
+   .PHONY: validate check eval benchmark
+
+   validate:
+       node validate-repo.js
+
+   eval:
+       node eval-harness/run_evals.js
+
+   benchmark:
+       node benchmark/run_benchmark.js
+
+   check: validate eval benchmark
+   ```
+
+3. **CI 集成**：创建 `.github/workflows/quality.yml`：
+   ```yaml
+   name: Quality Gate
+   on: [push, pull_request]
+   jobs:
+     check:
+       runs-on: ubuntu-latest
+       steps:
+         - uses: actions/checkout@v4
+         - run: npm install
+         - run: make check
+   ```
+
+**预期收益**：
+- 每次提交自动验证代码质量
+- 防止 broken build、invalid JSON、缺失的 CLI 文档
+- 建立团队共同的质量标准
 
 ---
 
-### 建议 4：增加"Conflict Disclosure"硬约束
+### 建议 4：重构 SKILL.md —— 遵循 Frontmatter 规范（P1）
 
-**AERS 模式**（[design-principles §6](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/docs/design-principles.md#L31-L40)）：
+**AERS 模式**（[docs/SKILL_FRONTMATTER_SPEC.md](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/docs/SKILL_FRONTMATTER_SPEC.md)）：
 
-> Editor Time Is the Scarcest Resource
-> Every formatting, length, and clarity rule... is designed to make the first 10 minutes of editor review as efficient as possible
-
-**AERS 实践**（[desk-rejection-audit](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/docs/desk-rejection-audit.md)）：把常见 desk-rejection 原因列成 Stage 1-5 的硬性 checklist。
-
-**当前实现**：
-- `analyze-contradictions` 检测冲突，但**只是计算**，没有强制披露
-- 报告中 `conflicts` 字段是 LLM 自由填写，可能隐瞒
-
-**建议**：在 `report-template` 和 `validate-report` 阶段强制 **Conflict Disclosure**：
-
-```javascript
-// validate-report 中的硬约束
-const detectedConflicts = analyzeContradictions(session);
-if (detectedConflicts.length > 0 && report.conflicts.length === 0) {
-  return { 
-    valid: false, 
-    error: `Detected ${detectedConflicts.length} conflicts not disclosed in report. Use analyze-contradictions to list them.` 
-  };
-}
-
-// 必须显式说明"无冲突"
-if (detectedConflicts.length === 0 && report.conflicts.length === 0) {
-  report.conflicts.push({ text: "No contradictions detected across evidence sources.", severity: "info" });
-}
+```yaml
+---
+name: enterprise-research-agent
+description: Route empirical-research requests through the catalog...
+triggers: ["Research RiskConcile", "Analyze MAS TRM impact", "investigate vendor"]
+allowed-tools:
+  - Bash(node research.mjs:*)
+  - Read(.trae/skills/enterprise-research-agent/**)
+---
 ```
 
-**实现方式**：
-- `report-template` 自动填入 detected conflicts
-- `validate-report` 强制要求 `conflicts` section 包含所有 detected conflicts
-- 拒绝"零冲突 + 高 confidence"的虚假报告
+**当前差距**：SKILL.md 没有 frontmatter。
 
-**收益**：
-- 避免"模型隐瞒矛盾"
+**可操作的修改方案**：
+
+1. **添加 frontmatter**：
+   ```yaml
+   ---
+   name: enterprise-research-agent
+   description: Conduct evidence-driven enterprise research with Question Tree, Evidence Graph, Claim Coverage, and Traceability Layer. Use for vendor investigation, regulation impact analysis, capability sourcing, and cross-system reconciliation.
+   triggers: ["Research vendor", "Investigate application", "Analyze regulation impact", "Check conflicts", "Generate research report"]
+   allowed-tools:
+     - Bash(node .trae/skills/enterprise-research-agent/research.mjs:*)
+     - Read(.trae/skills/enterprise-research-agent/**)
+     - Write(.trae/skills/enterprise-research-agent/sessions/**)
+   argument-hint: "<research goal>"
+   ---
+   ```
+
+2. **精简正文**（应用 split-skill.py 的 progressive-disclosure 思想）：
+   - 保留核心概念（Contract、Question Tree、Evidence Model、Claim Model）
+   - 将详细的 CLI 示例、完整的 API 文档、设计原则移到 `references/` 目录
+
+3. **创建 references/ 目录**：
+   ```
+   .trae/skills/enterprise-research-agent/
+   ├── references/
+   │   ├── 01-contract-details.md
+   │   ├── 02-question-tree.md
+   │   ├── 03-evidence-model.md
+   │   ├── 04-claim-model.md
+   │   ├── 05-cli-reference.md
+   │   ├── 06-api-reference.md
+   │   └── 07-design-principles.md
+   └── SKILL.md (精简到 ~300 行)
+   ```
+
+**预期收益**：
+- 符合 AERS 规范，可被 IDE 自动识别和触发
+- SKILL.md 作为 lean spine，降低 LLM 上下文负担
+- 详细文档按需加载，提高渐进披露效果
+
+---
+
+### 建议 5：实现 Contract Validation Gate —— 契约验证门（P1）
+
+**AERS 模式**（[eval-harness/scenarios/aer-submission-preflight.toml](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/eval-harness/scenarios/aer-submission-preflight.toml)）：
+
+提交前的预检机制，确保所有硬性约束都满足。
+
+**当前差距**：`set-contract` 只是设置数据，没有验证门。
+
+**可操作的修改方案**：
+
+1. **实现契约验证函数**：
+   ```javascript
+   const CONTRACT_VALIDATION_RULES = [
+     {
+       id: 'question-present',
+       check: c => c.question && c.question.trim().length > 10,
+       error: 'Question must be at least 10 characters'
+     },
+     {
+       id: 'scope-valid',
+       check: c => typeof c.scope === 'object' && c.scope !== null,
+       error: 'Scope must be a valid JSON object'
+     },
+     {
+       id: 'coverage-threshold',
+       check: c => c.evidenceRequirement?.claimCoverageRatio >= 0.8,
+       error: 'Claim coverage ratio must be at least 0.8'
+     },
+     {
+       id: 'min-sources',
+       check: c => c.evidenceRequirement?.minSources >= 2,
+       error: 'Minimum sources must be at least 2'
+     }
+   ];
+
+   function validateContract(contract) {
+     const results = CONTRACT_VALIDATION_RULES.map(rule => ({
+       id: rule.id,
+       pass: rule.check(contract),
+       error: rule.error
+     }));
+     const valid = results.every(r => r.pass);
+     return { valid, errors: results.filter(r => !r.pass).map(r => r.error) };
+   }
+   ```
+
+2. **修改 set-contract 命令**：
+   ```javascript
+   function cmd_set_contract(argv) {
+     const contract = parseContract(argv);
+     const validation = validateContract(contract);
+     if (!validation.valid) {
+       console.log('❌ Contract validation failed:');
+       validation.errors.forEach(e => console.log(`  - ${e}`));
+       process.exit(1);
+     }
+     // ... 保存 contract
+   }
+   ```
+
+3. **添加 confirm-contract 命令**：
+   ```javascript
+   function cmd_confirm_contract(argv) {
+     const s = loadSession(argv.session);
+     const validation = validateContract(s.contract);
+     if (!validation.valid) {
+       console.log('❌ Cannot confirm invalid contract.');
+       process.exit(1);
+     }
+     s.contract.confirmedAt = new Date().toISOString();
+     saveSession(s, argv.session);
+     console.log('✓ Contract confirmed');
+   }
+   ```
+
+4. **实现 Gate 拦截**：
+   ```javascript
+   function gate_contract(session) {
+     if (!session.contract?.confirmedAt) {
+       return { pass: false, message: 'Contract not confirmed. Run `confirm-contract` first.' };
+     }
+     return { pass: true };
+   }
+
+   // 在 add-evidence 中调用
+   function cmd_add_evidence(argv) {
+     const s = loadSession(argv.session);
+     const gate = gate_contract(s);
+     if (!gate.pass) {
+       console.log(`❌ ${gate.message}`);
+       process.exit(1);
+     }
+     // ... 添加 evidence
+   }
+   ```
+
+**预期收益**：
+- 防止不完整的契约进入研究流程
+- 契约验证从"建议"升级为"硬约束"
+- 用户明确知道契约缺少什么才能确认
+
+---
+
+### 建议 6：实现 Evidence Validity Check —— 证据有效性检查（P1）
+
+**AERS 模式**（[eval-harness/scenarios/statspai-weak-iv.toml](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/eval-harness/scenarios/statspai-weak-iv.toml) 中的 `no-false-reassurance`）：
+
+检测并拒绝"虚假的证据"或"证据不足的断言"。
+
+**当前差距**：`add-evidence` 只是保存数据，没有有效性检查。
+
+**可操作的修改方案**：
+
+1. **实现证据有效性检查**：
+   ```javascript
+   const EVIDENCE_VALIDATION_RULES = [
+     {
+       id: 'source-required',
+       check: e => e.source && e.source.trim().length > 0,
+       error: 'Evidence must have a source'
+     },
+     {
+       id: 'content-min-length',
+       check: e => e.content && e.content.trim().length > 20,
+       error: 'Evidence content must be at least 20 characters'
+     },
+     {
+       id: 'confidence-range',
+       check: e => e.confidence >= 0 && e.confidence <= 1,
+       error: 'Confidence must be between 0 and 1'
+     },
+     {
+       id: 'uri-valid',
+       check: e => !e.uri || /^https?:\/\//.test(e.uri),
+       error: 'URI must be a valid HTTP/HTTPS URL'
+     },
+     {
+       id: 'claims-format',
+       check: e => !e.claims || e.claims.every(c => c.includes('=')),
+       error: 'Claims must be in "key=value" format'
+     }
+   ];
+
+   function validateEvidence(evidence) {
+     const results = EVIDENCE_VALIDATION_RULES.map(rule => ({
+       id: rule.id,
+       pass: rule.check(evidence),
+       error: rule.error
+     }));
+     const valid = results.every(r => r.pass);
+     return { valid, errors: results.filter(r => !r.pass).map(r => r.error) };
+   }
+   ```
+
+2. **修改 add-evidence 命令**：
+   ```javascript
+   function cmd_add_evidence(argv) {
+     const evidence = parseEvidence(argv);
+     const validation = validateEvidence(evidence);
+     if (!validation.valid) {
+       console.log('❌ Evidence validation failed:');
+       validation.errors.forEach(e => console.log(`  - ${e}`));
+       process.exit(1);
+     }
+     // ... 保存 evidence
+   }
+   ```
+
+3. **添加证据过期检查**：
+   ```javascript
+   function checkStaleEvidence(session) {
+     const stale = session.evidence.filter(e => {
+       if (!e.lastUpdated) return false;
+       const ageDays = (Date.now() - new Date(e.lastUpdated).getTime()) / (1000 * 60 * 60 * 24);
+       const threshold = session.sourceRegister[e.sourceId]?.staleThreshold || 90;
+       return ageDays > threshold;
+     });
+     if (stale.length > 0) {
+       console.log(`⚠ ${stale.length} stale evidence detected:`);
+       stale.forEach(e => console.log(`  - ${e.id}: ${Math.round((Date.now() - new Date(e.lastUpdated).getTime()) / (1000 * 60 * 60 * 24))} days old`));
+     }
+     return stale;
+   }
+   ```
+
+**预期收益**：
+- 防止无效数据进入 Evidence Graph
+- 证据质量有硬性标准
+- 自动检测过期证据，提示刷新
+
+---
+
+### 建议 7：实现 Claim Coverage Gate —— Claim 覆盖门（P1）
+
+**AERS 模式**（[eval-harness/scenarios/aer-replication-package.toml](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/eval-harness/scenarios/aer-replication-package.toml)）：
+
+每个 claim 必须有证据支撑。
+
+**当前差距**：`decide` 可以返回 `finish` 即使 coverage < 目标。
+
+**可操作的修改方案**：
+
+1. **实现覆盖度检查**：
+   ```javascript
+   function calculateCoverage(session) {
+     const total = session.claims.length;
+     const covered = session.claims.filter(c => c.evidenceIds && c.evidenceIds.length > 0).length;
+     return total > 0 ? covered / total : 0;
+   }
+
+   function gate_coverage(session) {
+     const coverage = calculateCoverage(session);
+     const target = session.contract?.evidenceRequirement?.claimCoverageRatio || 0.9;
+     if (coverage < target) {
+       const uncovered = session.claims.filter(c => !c.evidenceIds || c.evidenceIds.length === 0);
+       return { 
+         pass: false, 
+         message: `Claim coverage ${(coverage*100).toFixed(1)}% below target ${(target*100).toFixed(1)}%`,
+         uncovered: uncovered.map(c => c.id)
+       };
+     }
+     return { pass: true, coverage };
+   }
+   ```
+
+2. **修改 decide 命令**：
+   ```javascript
+   function cmd_decide(argv) {
+     const s = loadSession(argv.session);
+     const coverageGate = gate_coverage(s);
+     
+     const budgetGate = gate_budget(s);
+     if (!budgetGate.pass) {
+       console.log('✓ Finish: Budget exceeded');
+       return;
+     }
+
+     if (!coverageGate.pass && s.contract?.confirmedAt) {
+       console.log(`✗ Cannot finish: ${coverageGate.message}`);
+       console.log('Uncovered claims:', coverageGate.uncovered.join(', '));
+       console.log('→ Continue research or lower coverage target');
+       return;
+     }
+
+     // ... 原有 decision logic
+   }
+   ```
+
+3. **添加 coverage 命令**：
+   ```javascript
+   function cmd_coverage(argv) {
+     const s = loadSession(argv.session);
+     const coverage = calculateCoverage(s);
+     const target = s.contract?.evidenceRequirement?.claimCoverageRatio || 0.9;
+     const uncovered = s.claims.filter(c => !c.evidenceIds || c.evidenceIds.length === 0);
+     
+     console.log(`Coverage: ${(coverage*100).toFixed(1)}% (target: ${(target*100).toFixed(1)}%)`);
+     console.log(`Total claims: ${s.claims.length}, covered: ${s.claims.length - uncovered.length}`);
+     if (uncovered.length > 0) {
+       console.log('Uncovered claims:');
+       uncovered.forEach(c => console.log(`  - ${c.id}: ${c.text}`));
+     }
+   }
+   ```
+
+**预期收益**：
+- 防止"证据不足"的报告被生成
+- 用户清楚知道哪些 claim 需要补充证据
+- 覆盖度从"软指标"升级为"硬约束"
+
+---
+
+### 建议 8：实现 Conflict Disclosure Gate —— 冲突披露门（P1）
+
+**AERS 模式**（[eval-harness/scenarios/statspai-weak-iv.toml](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/eval-harness/scenarios/statspai-weak-iv.toml) 中的 `no-false-reassurance`）：
+
+禁止隐瞒已知冲突。
+
+**当前差距**：`analyze-contradictions` 只是计算，没有强制披露。
+
+**可操作的修改方案**：
+
+1. **实现冲突检测**：
+   ```javascript
+   function analyzeContradictions(session) {
+     const conflicts = [];
+     const claimsByProperty = {};
+     
+     for (const claim of session.claims) {
+       if (claim.type !== 'fact') continue;
+       // 提取 claim 中的属性断言
+       const matches = claim.text.match(/(\w+)\s*[=:]\s*([^\s.,]+)/g);
+       if (matches) {
+         for (const match of matches) {
+           const [key, value] = match.split(/[=:]/).map(s => s.trim());
+           if (!claimsByProperty[key]) claimsByProperty[key] = [];
+           claimsByProperty[key].push({ claimId: claim.id, value, evidenceIds: claim.evidenceIds });
+         }
+       }
+     }
+     
+     for (const [property, values] of Object.entries(claimsByProperty)) {
+       const uniqueValues = [...new Set(values.map(v => v.value.toLowerCase()))];
+       if (uniqueValues.length > 1) {
+         conflicts.push({
+           property,
+           values,
+           conflictingValues: uniqueValues,
+           severity: 'high'
+         });
+       }
+     }
+     return conflicts;
+   }
+   ```
+
+2. **实现冲突披露 Gate**：
+   ```javascript
+   function gate_conflictDisclosure(session) {
+     const conflicts = analyzeContradictions(session);
+     if (conflicts.length > 0) {
+       return { 
+         pass: false, 
+         conflicts,
+         message: `${conflicts.length} contradiction(s) detected. Must be disclosed in report.`
+       };
+     }
+     return { pass: true };
+   }
+   ```
+
+3. **修改 report-template 命令**：
+   ```javascript
+   function cmd_report_template(argv) {
+     const s = loadSession(argv.session);
+     const conflictGate = gate_conflictDisclosure(s);
+     
+     const template = {
+       task: s.contract?.question,
+       executiveSummary: '',
+       keyFindings: [],
+       supportingEvidence: [],
+       confidence: s.confidence || {},
+       conflicts: conflictGate.conflicts || [{ text: "No contradictions detected.", severity: "info" }],
+       knowledgeGaps: s.knowledgeGaps || [],
+       recommendations: [],
+       traceability: {
+         claimCoverageRatio: calculateCoverage(s),
+         unverifiedClaims: s.claims.filter(c => !c.verified).map(c => c.id),
+         totalEvidence: s.evidence.length,
+         totalSources: new Set(s.evidence.map(e => e.source)).size
+       }
+     };
+     
+     fs.writeFileSync(argv.output, JSON.stringify(template, null, 2));
+     console.log(`✓ Report template saved to ${argv.output}`);
+     if (!conflictGate.pass) {
+       console.log(`⚠ ${conflictGate.conflicts.length} conflict(s) auto-added to report`);
+     }
+   }
+   ```
+
+**预期收益**：
+- 冲突自动进入报告，无法被隐瞒
 - 用户一眼看到所有内部证据冲突
 - 报告可信度提升
 
 ---
 
-### 建议 5：拆分为 Router + 多个专项 Skill
+### 建议 9：实现 Source Register —— 数据源注册表（P2）
 
-**AERS 模式**（[aer-workflow](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-workflow/SKILL.md) 自身就是一个 router）：
+**AERS 模式**（[skills/50-brycewang-aer-skills/docs/source-register.md](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/docs/source-register.md)）：
 
-```text
-aer-workflow (router)
-├─ aer-topic-selection
-├─ aer-literature
-├─ aer-identification
-├─ aer-robustness
-├─ aer-paper-body
-├─ aer-introduction
-├─ aer-tables-figures
-├─ aer-consistency
-├─ aer-referee-sim
-├─ aer-replication
-├─ aer-submission
-└─ aer-rebuttal
-```
+每个数据源有元数据、可信度、获取时间。
 
-**核心思想**（[design-principles §9](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/docs/design-principles.md#L49-L51)）：
+**当前差距**：Source 只是字符串。
 
-> Skills Are Routers, Not Replacements
-> Each skill in this repository solves one slice. aer-workflow exists to compose them.
+**可操作的修改方案**：
 
-**当前实现**：enterprise-research-agent 是一个**单体 skill**（82KB / 2827 行），试图覆盖 Contract、Investigation、Analysis、Report 全流程。
+1. **扩展 Session 数据模型**：
+   ```json
+   {
+     "sourceRegister": [
+       {
+         "id": "src1",
+         "type": "system_of_record",
+         "name": "GitHub",
+         "uri": "https://github.com/org/riskconcile-api",
+         "authority": 0.85,
+         "retrievedAt": "2026-07-20T10:00:00Z",
+         "staleThreshold": 30
+       }
+     ],
+     "evidence": [
+       { "id": "ev1", "sourceId": "src1", ... }
+     ]
+   }
+   ```
 
-**建议**：按 AERS 模式拆分为 router + 多个专项 skill：
+2. **实现 Source 管理 CLI**：
+   ```javascript
+   function cmd_register_source(argv) {
+     const s = loadSession(argv.session);
+     const source = {
+       id: `src${Date.now()}`,
+       type: argv.type || 'internal_doc',
+       name: argv.name,
+       uri: argv.uri,
+       authority: parseFloat(argv.authority) || 0.7,
+       retrievedAt: argv.retrievedAt || new Date().toISOString(),
+       staleThreshold: parseInt(argv.staleThreshold) || 90
+     };
+     s.sourceRegister.push(source);
+     saveSession(s, argv.session);
+     console.log(`✓ Source registered: ${source.id}`);
+   }
 
-```
-enterprise-research-agent/          # router
-├── SKILL.md                       # 路由 + 工作流
-├── research.mjs                    # 核心 CLI（保留）
-├── skills/
-│   ├── era-contract/              # Research Contract 管理
-│   │   ├── SKILL.md
-│   │   └── contract.mjs
-│   ├── era-investigation/         # 调查阶段（Question Tree、Entity、Evidence）
-│   │   ├── SKILL.md
-│   │   └── investigation.mjs
-│   ├── era-analysis/              # 分析阶段（Gap、Contradiction、Confidence）
-│   │   ├── SKILL.md
-│   │   └── analysis.mjs
-│   ├── era-decision/              # Decision Loop
-│   │   ├── SKILL.md
-│   │   └── decision.mjs
-│   └── era-report/                # 报告生成（Traceability、Validation）
-│       ├── SKILL.md
-│       └── report.mjs
-```
+   function cmd_list_sources(argv) {
+     const s = loadSession(argv.session);
+     console.table(s.sourceRegister.map(s => ({
+       id: s.id,
+       name: s.name,
+       type: s.type,
+       authority: s.authority,
+       staleThreshold: s.staleThreshold
+     })));
+   }
+   ```
 
-**Router 设计**（参考 AERS）：
+3. **修改 add-evidence 命令**：
+   ```javascript
+   function cmd_add_evidence(argv) {
+     const s = loadSession(argv.session);
+     const source = s.sourceRegister.find(src => src.name === argv.source);
+     if (!source) {
+       // 自动注册或报错
+       console.log(`⚠ Source "${argv.source}" not registered. Registering...`);
+       s.sourceRegister.push({
+         id: `src${Date.now()}`,
+         name: argv.source,
+         type: 'unknown',
+         authority: 0.5,
+         retrievedAt: new Date().toISOString()
+       });
+     }
+     // ... 添加 evidence
+   }
+   ```
 
-```markdown
-# Enterprise Research Agent Router
-
-## Default Sequence
-1. era-contract — set research contract, confirm with user
-2. era-investigation — question tree, entity, evidence, relationship
-3. era-analysis — gap / contradiction / confidence
-4. era-decision — continue or finish?
-5. era-report — generate report with traceability
-
-## Routing Map
-- "Research vendor X" → era-investigation (vendor type)
-- "What conflicts exist?" → era-analysis (contradiction only)
-- "Is the report valid?" → era-report (validation)
-```
-
-**收益**：
-- 每个专项 skill 体积小，LLM 上下文负担小
-- 渐进披露（progressive disclosure）：router 轻，专项 skill 按需加载
-- 复用性提升：era-analysis 可被其他 skill 复用
-- 符合 AERS 设计原则 9
-
----
-
-### 建议 6：建立"Claim-Evidence Ledger"——可审计账本
-
-**AERS 模式**（[claim-evidence-ledger.csv](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/examples/replication-package-skeleton/docs/claim-evidence-ledger.csv)）：
-
-```csv
-claim_id,claim_text,claim_location,evidence_type,evidence_ref,status,notes
-C-001,"[Main abstract result, stated as a complete sentence]","Abstract paragraph 1","exhibit","label:tab:main","NEEDS-EVIDENCE","..."
-C-002,"[Mechanism or heterogeneity claim]","Introduction paragraph 5","exhibit","label:fig:mechanism","NEEDS-EVIDENCE","..."
-```
-
-**当前实现**：Claim 存储在 `claims[]` 数组中，每个 Claim 有 `evidenceIds`、`reasoning`、`verified`，但**没有**：
-- Claim 在报告中的具体位置（哪个 section、哪个 finding）
-- 报告外的 evidence 来源（如外部 PDF、URL）
-- 状态流转记录（NEEDS-EVIDENCE → OK）
-
-**建议**：引入 **Claim-Evidence Ledger**（CSV 格式，可外部审计）：
-
-```csv
-claim_id,claim_text,claim_location,evidence_type,evidence_ref,verified,notes
-c1,RiskConcile used by RC Migration Tool,executiveSummary:1,evidence,ev1;ev2,true,Cross-validated with LeanIX
-c3,LeanIX/GitHub owner conflict,keyFindings:f2,analysis,ev1;ev2,true,Suggests process gap
-c4,Resolve owner before contract,recommendations:r1,recommendation,,false,No evidence required
-```
-
-**CLI 扩展**：
-
-```bash
-# 导出 ledger
-node research.mjs export-ledger --format csv --output claim-evidence-ledger.csv
-
-# 导入已有 ledger（合并/校验）
-node research.mjs import-ledger --file claim-evidence-ledger.csv
-
-# 审计 ledger
-node research.mjs audit-ledger
-# 输出
-# ✓ All claims have evidence references (except recommendations)
-# ✓ All evidence IDs exist in session
-# ✗ c2: evidence ev99 not found
-```
-
-**收益**：
-- 报告审计可使用标准 CSV 工具（Excel、awk、Pandas）
-- 第三方可独立验证 Claim 是否有证据支撑
-- 报告外的外部证据可显式记录
-- 符合 AERS Replication Package 模式
+**预期收益**：
+- Evidence 关联的 Source 关系显式化
+- Source authority 可追溯
+- 过期检测基于 Source 类型动态调整
 
 ---
 
-### 建议 7：增强"外部审计"——对抗式 Reviewer
+### 建议 10：实现 Compact Session Status —— 紧凑状态输出（P2）
 
-**AERS 模式**（[aer-referee-sim](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-referee-sim/SKILL.md)）：
+**AERS 模式**（[docs/GOLDEN_WORKFLOWS.md](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/docs/GOLDEN_WORKFLOWS.md) 的简洁输出）：
 
-> Use when a complete draft needs the adversarial desk screen and three simulated referee reports before submission.
+按用户场景提供不同粒度的状态信息。
 
-**当前实现**：当前是**自检模式**（`validate-report` + LLM self-check），没有对抗式外部审计。
+**当前差距**：`session-status` 输出全量 JSON，不适合快速查看。
 
-**建议**：引入 **Era-Referee-Sim** 技能（参考 AERS）：
+**可操作的修改方案**：
 
-```javascript
-// 三个独立 reviewer 视角
-const REVIEWERS = {
-  methodologist: {
-    focus: ['identification', 'sample size', 'confounders'],
-    questions: [
-      "Is the evidence sufficient to support this claim?",
-      "Are there alternative explanations?",
-      "What's the weakest link in the chain?"
-    ]
-  },
-  domain_expert: {
-    focus: ['ontology', 'entities', 'relationships'],
-    questions: [
-      "Are the entity types aligned with industry standards?",
-      "Are critical relationships missing?",
-      "Is the coverage scope correct?"
-    ]
-  },
-  skeptic: {
-    focus: ['confidence', 'contradictions', 'gaps'],
-    questions: [
-      "What could be wrong with this research?",
-      "Where is the weakest evidence?",
-      "What gaps are unacknowledged?"
-    ]
-  }
-};
-```
+1. **实现分层输出**：
+   ```javascript
+   function cmd_session_status(argv) {
+     const s = loadSession(argv.session);
+     
+     if (argv.tldr) {
+       // 紧凑视图（10-20行）
+       const coverage = calculateCoverage(s);
+       const target = s.contract?.evidenceRequirement?.claimCoverageRatio || 0.9;
+       const conflicts = analyzeContradictions(s);
+       
+       console.log(`Goal: ${s.contract?.question || 'Not set'}`);
+       console.log(`Contract: ${s.contract?.confirmedAt ? '✓ Confirmed' : '✗ Pending'}`);
+       console.log(`Progress: ${s.evidence.length} evidence, ${s.claims.length} claims, ${s.entities.length} entities`);
+       console.log(`Coverage: ${(coverage*100).toFixed(1)}% (target: ${(target*100).toFixed(1)}%)`);
+       console.log(`Conflicts: ${conflicts.length}`);
+       console.log(`Budget: depth ${s.budget?.depth || 0}, questions ${s.questions?.length || 0}/${s.budget?.maxQuestions || 40}`);
+     } else if (argv.summary) {
+       // 统计视图（仅数字）
+       console.log(JSON.stringify({
+         evidence: s.evidence.length,
+         claims: s.claims.length,
+         entities: s.entities.length,
+         questions: s.questions?.length || 0,
+         coverage: calculateCoverage(s),
+         conflicts: analyzeContradictions(s).length,
+         contractConfirmed: !!s.contract?.confirmedAt
+       }));
+     } else {
+       // 全量视图（原有行为）
+       console.log(JSON.stringify(s, null, 2));
+     }
+   }
+   ```
 
-**CLI 扩展**：
+2. **CLI 扩展**：
+   ```bash
+   # 紧凑视图（快速了解状态）
+   node research.mjs session-status --tldr
 
-```bash
-# 运行对抗式评审
-node research.mjs review-as --role skeptic
-node research.mjs review-as --role methodologist
-node research.mjs review-as --role domain-expert
+   # 统计视图（机器可读）
+   node research.mjs session-status --summary
 
-# 完整三 reviewer 模拟
-node research.mjs referee-sim
-# 输出
-# === Methodologist Review ===
-# ✓ Sample size sufficient
-# ✗ Weak evidence for c3 (only 2 sources)
-# 
-# === Domain Expert Review ===
-# ✓ Vendor/Application/Repository entities appropriate
-# ✗ Missing Contract entity
-#
-# === Skeptic Review ===
-# ✗ c5: "RiskConcile is critical" - no evidence for "critical"
-# ✗ Unacknowledged gap: no evidence of Contract
-```
+   # 全量视图（详细调试）
+   node research.mjs session-status
+   ```
 
-**收益**：
-- 在用户提交报告前，先过对抗式审查
-- 模拟三个不同视角的 reviewer，避免单一视角盲点
-- 提前发现"模型自吹自擂"的问题
-
----
-
-### 建议 8：增强"Knowledge Decay"机制——证据时效性
-
-**AERS 模式**（[aer-replication §Data and Code Availability](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-replication/SKILL.md#L21-L35)）：
-
-> 5-year preservation commitment, replicator assistance commitment
-
-**当前实现**：
-- Evidence 有 `lastUpdated` 字段
-- `assess-confidence` 中提到 `>365 天扣分`
-- **但**：没有强制 mechanism 提醒重新获取
-
-**建议**：引入 **Knowledge Decay** 机制：
-
-```javascript
-// 检查 stale evidence
-function detectStaleEvidence(session) {
-  const STALE_THRESHOLDS = {
-    system_of_record: 30,   // 30 天
-    official: 90,
-    internal_doc: 60,
-    engineering: 180,
-    news: 14,
-    social: 7
-  };
-  
-  const stale = [];
-  for (const ev of session.evidence) {
-    const sourceType = session.sourceRegister[ev.sourceId]?.type;
-    const threshold = STALE_THRESHOLDS[sourceType] || 90;
-    const ageDays = daysSince(ev.lastUpdated);
-    if (ageDays > threshold) {
-      stale.push({ evidenceId: ev.id, ageDays, threshold, sourceType });
-    }
-  }
-  return stale;
-}
-```
-
-**CLI 扩展**：
-
-```bash
-# 检测过期证据
-node research.mjs stale-evidence
-# 输出
-# ev1 (GitHub): 45 days old, threshold 30 days
-# ev5 (News): 21 days old, threshold 14 days
-
-# 重新获取并更新
-node research.mjs refresh-evidence --id ev1
-
-# 报告生成时自动警告
-node research.mjs report-template --output report.json
-# ⚠ 2 stale evidence detected, consider refreshing
-```
-
-**收益**：
-- 自动检测过期证据，避免基于过时数据做判断
-- 知识有"保质期"，研究结果有"时间戳"
-- 与 Confidence Assessment 形成闭环
-
----
-
-### 建议 9：设计"Compactness"——核心可压缩视图
-
-**AERS 模式**（[aer-workflow §Default Sequence](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-workflow/SKILL.md#L40-L55)）：
-
-> 12 个步骤，每步 1-2 行描述。
-
-**当前实现**：`session-status` 输出**全量 session**（contract + budget + plan + questions + graph + claims + analysis），可能非常长（数百行 JSON）。
-
-**建议**：分层级输出，按"用户场景"提供不同粒度：
-
-| 场景 | 命令 | 输出粒度 |
-|------|------|---------|
-| "我应该继续吗？" | `decide` | 1 行 + reasoning |
-| "现在研究到哪了？" | `session-status --tldr` | 10-20 行（关键指标） |
-| "具体细节是什么？" | `session-status --full` | 全量 JSON |
-| "我有多少证据？" | `session-summary` | 统计数字（仅数字） |
-| "哪些 Claim 未覆盖？" | `coverage --gaps` | 仅未覆盖 Claim 列表 |
-
-**实现**：
-
-```bash
-# 紧凑视图
-node research.mjs session-status --tldr
-# Goal: Research RiskConcile
-# Progress: 45/200 evidence, 12/30 questions, 8/15 claims
-# Coverage: 0.85 (target 0.9)
-# Decision: Continue (1 new entity in last cycle)
-# Budget: depth 2/3, questions 12/40, evidence 45/300
-```
-
-**收益**：
+**预期收益**：
 - 用户快速理解研究状态
-- LLM 上下文负担小（不需要每次加载全量 session）
+- LLM 上下文负担小
 - 适合"progress check"类高频查询
 
 ---
 
-### 建议 10：建立"Reflexivity"——可重放性
+## 三、优先级排序与实施路线图
 
-**AERS 模式**：[replication-package-skeleton](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/examples/replication-package-skeleton/) 提供了**完整的可重放项目**：
+### 优先级矩阵
 
-```
-replication-package/
-├── README.md
-├── LICENSE
-├── data/{raw,intermediate,codebook}/
-├── code/{00_setup,01_clean,02_analysis,03_tables,04_figures}.do
-├── output/{tables,figures}/
-└── docs/{exhibit-register.md, claim-evidence-ledger.csv}
-```
+| 优先级 | 建议 | 工作量 | 风险 | 预期收益 |
+|--------|------|--------|------|---------|
+| **P0** | 建议 1（Eval Harness） | 大 | 低 | 行为质量保证 |
+| **P0** | 建议 2（Benchmark） | 中 | 低 | 数值正确性保证 |
+| **P0** | 建议 3（Quality Gate） | 小 | 低 | CI 自动验证 |
+| **P1** | 建议 4（SKILL.md 重构） | 中 | 低 | 规范合规 |
+| **P1** | 建议 5（Contract Validation） | 小 | 低 | 契约完整性 |
+| **P1** | 建议 6（Evidence Validity） | 小 | 低 | 证据质量 |
+| **P1** | 建议 7（Claim Coverage Gate） | 小 | 低 | 覆盖度约束 |
+| **P1** | 建议 8（Conflict Disclosure） | 小 | 低 | 冲突透明度 |
+| **P2** | 建议 9（Source Register） | 中 | 中 | 数据源追溯 |
+| **P2** | 建议 10（Compact Status） | 小 | 低 | 用户体验 |
 
-**核心思想**：
-- 数据 + 代码 + 文档 + 产出 = 完整可重放
-- README 在项目第一天就写（不是接受后补）
-
-**当前实现**：
-- research.mjs 是 deterministic CLI（可重放）
-- Session JSON 是状态文件（可重放）
-- **但**：缺少"研究项目模板"概念——一个完整的 enterprise research project 应该长什么样？
-
-**建议**：引入 **Research Project Template**：
+### 实施路线图（4 周）
 
 ```
-research-project/
-├── session.json                    # 当前 session 状态
-├── README.md                       # 研究目标、scope、plan
-├── evidence/
-│   ├── github-ev1.json             # 缓存的 evidence
-│   ├── confluence-ev2.json
-│   └── ...
-├── claim-evidence-ledger.csv       # 可审计账本
-├── research-log.md                 # 每次 decide 的时间线
-└── report/
-    ├── draft-v1.json
-    ├── draft-v2.json
-    └── final.md
+Week 1: 基础保障
+├── 建议 3（Quality Gate）—— 2 天
+├── 建议 5（Contract Validation）—— 1 天
+├── 建议 6（Evidence Validity）—— 1 天
+└── 建议 7（Claim Coverage Gate）—— 1 天
+
+Week 2: 评估框架
+├── 建议 1（Eval Harness）—— 3 天
+├── 建议 2（Benchmark）—— 2 天
+└── CI 集成 —— 1 天
+
+Week 3: 文档重构
+├── 建议 4（SKILL.md 重构）—— 3 天
+└── 建议 8（Conflict Disclosure）—— 1 天
+
+Week 4: 增强功能
+├── 建议 9（Source Register）—— 2 天
+├── 建议 10（Compact Status）—— 1 天
+└── 测试与验证 —— 2 天
 ```
-
-**CLI 扩展**：
-
-```bash
-# 初始化研究项目（创建模板）
-node research.mjs init-project --goal "Research RiskConcile" --path ./research-projects/riskconcile
-
-# 重放（从 session.json 重新生成报告）
-node research.mjs replay --session ./research-projects/riskconcile/session.json
-
-# 导出研究项目
-node research.mjs export-project --output research-projects/riskconcile.tar.gz
-```
-
-**收益**：
-- 完整研究项目可打包、可重放、可分享
-- 第三方可独立验证研究过程
-- 与 AERS Replication Package 模式对齐
 
 ---
 
-## 三、总结：与 AERS 的差异分析
+## 四、总结
 
-| 维度 | AERS | 当前 Enterprise Research Agent | 差距 |
-|------|-----|-------------------------------|------|
-| **Skill 拆分** | Router + 14 个专项 | 单体 skill | 大（建议 5） |
-| **Stage Gates** | 5 个硬质控门 | 软建议 | 大（建议 1） |
-| **Claim Ledger** | CSV 格式可审计 | 内存数组 | 中（建议 6） |
-| **External Audit** | 对抗式 3 reviewer | LLM 自检 | 大（建议 7） |
-| **Source Register** | 独立 source-register.md | 字符串 | 中（建议 3） |
-| **Knowledge Decay** | 5 年承诺 + 定期 re-run | lastUpdated 字段 | 中（建议 8） |
-| **Consistency Audit** | 数字一致性 + 样本量 + 单位 | 无 | 大（建议 2） |
-| **Conflict Disclosure** | 强制 | 软建议 | 中（建议 4） |
-| **Compactness** | 12 步 1-2 行 | 全量 JSON | 小（建议 9） |
-| **Replicability** | 完整 project 模板 | session.json | 中（建议 10） |
+### AERS 架构的核心启示
 
-## 四、优先级排序
+| AERS 机制 | 对应到 enterprise-research-agent | 实施方式 |
+|-----------|---------------------------------|---------|
+| **Eval Harness** | 行为评估框架 | TOML 场景 + 自动化检查 |
+| **Benchmark** | 数值基准测试 | 确定性数据 + 真值对比 |
+| **Quality Gate** | CI 验证 | make validate/check + GitHub Actions |
+| **Hygiene Score** | SKILL.md 规范 | frontmatter + 行数控制 |
+| **split-skill** | progressive-disclosure | spine + references/ |
+| **Source Register** | 数据源元数据 | sourceRegister 对象 |
 
-| 优先级 | 建议 | 工作量 | 收益 |
-|--------|------|--------|------|
-| **P0** | 建议 1（Stage Gates） | 中 | 质控硬约束 |
-| **P0** | 建议 2（Claim Audit） | 小 | 报告一致性 |
-| **P1** | 建议 3（Source Register） | 中 | Evidence 可信度 |
-| **P1** | 建议 4（Conflict Disclosure） | 小 | 报告透明度 |
-| **P1** | 建议 7（Referee-Sim） | 大 | 对抗式审查 |
-| **P2** | 建议 5（Skill 拆分） | 大 | LLM 上下文优化 |
-| **P2** | 建议 6（Claim Ledger） | 中 | 第三方审计 |
-| **P2** | 建议 8（Knowledge Decay） | 小 | 时效性管理 |
-| **P3** | 建议 9（Compactness） | 小 | 用户体验 |
-| **P3** | 建议 10（Replicability） | 中 | 完整工作流 |
+### 预期效果
+
+| 维度 | 当前状态 | 实施后 |
+|------|---------|--------|
+| **代码质量** | 人工检查 | CI 自动验证 |
+| **行为正确性** | 无保证 | Eval Harness 验证 |
+| **数值正确性** | 无保证 | Benchmark 验证 |
+| **文档规范** | 无规范 | AERS 规范对齐 |
+| **用户体验** | 全量 JSON | 分层输出 |
+| **可维护性** | 单体文件 | 模块化 + 渐进披露 |
 
 ---
 
@@ -624,13 +1051,13 @@ node research.mjs export-project --output research-projects/riskconcile.tar.gz
 
 | 参考文件 | 核心思想 | 对应建议 |
 |---------|---------|---------|
-| [aer-workflow](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-workflow/SKILL.md) | Router + 12 步 Default Sequence | #5 |
-| [design-principles](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/docs/design-principles.md) | 11 条设计原则 | 总纲 |
-| [desk-rejection-audit](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/docs/desk-rejection-audit.md) | 5 Stage 硬性 checklist | #1 |
-| [aer-consistency](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-consistency/SKILL.md) | Headline Number Register | #2 |
-| [source-register](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/docs/source-register.md) | Source 元数据 | #3 |
-| [aer-identification](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-identification/SKILL.md) | Master Decision Tree | 设计模式参考 |
-| [aer-replication](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-replication/SKILL.md) | Replication Package 模板 | #10 |
-| [claim-evidence-ledger.csv](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/examples/replication-package-skeleton/docs/claim-evidence-ledger.csv) | CSV 账本 | #6 |
-| [aer-referee-sim](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/skills/aer-referee-sim/SKILL.md) | 对抗式评审 | #7 |
-| [replication-package-skeleton](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/skills/50-brycewang-aer-skills/examples/replication-package-skeleton/) | 完整项目结构 | #10 |
+| [eval-harness/scenarios/*.toml](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/eval-harness/scenarios/) | prompt + rubric 评估模式 | #1 |
+| [eval-harness/lib/checks.py](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/eval-harness/lib/checks.py) | 自动化检查原语 | #1 |
+| [benchmark/](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/benchmark/) | 数值基准测试 | #2 |
+| [docs/QUALITY_GATE.md](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/docs/QUALITY_GATE.md) | make validate/check/eval | #3 |
+| [docs/SKILL_FRONTMATTER_SPEC.md](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/docs/SKILL_FRONTMATTER_SPEC.md) | frontmatter 规范 | #4 |
+| [scripts/split-skill.py](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/scripts/split-skill.py) | progressive-disclosure | #4 |
+| [scripts/validate-repo.py](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/scripts/validate-repo.py) | 仓库验证 | #3 |
+| [scripts/build-catalog.py](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/scripts/build-catalog.py) | 技能目录构建 | #4 |
+| [docs/TRUST.md](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/docs/TRUST.md) | 信任面分层 | 总纲 |
+| [docs/SKILL_HYGIENE.md](file:///Users/saga/code-repos/devweekly.github.io/ref-only/Auto-Empirical-Research-Skills/docs/SKILL_HYGIENE.md) | 卫生评分 | #4 |
