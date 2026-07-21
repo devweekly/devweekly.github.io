@@ -273,6 +273,7 @@ This project uses Astro v6 content collections with the following API changes:
 3. Output to `dist/` directory
 4. Deployed to GitHub Pages via GitHub Actions
 5. **Node.js 22** required by Astro (>= 22.12.0) - configured in `.github/workflows/astro.yml`
+6. `research-agent-check` CI job validates Enterprise Research Agent: checkout → pnpm 10.24.0 → Node.js 22 → `pnpm install` → `pnpm lint` → `node .trae/skills/enterprise-research-agent/research.mjs benchmark` → `node .trae/skills/enterprise-research-agent/research.mjs eval`
 
 ### Pre-commit Hooks
 Husky + lint-staged automatically runs:
@@ -377,6 +378,7 @@ When updating AGENTS.md:
 | 2026-06-12 | Added Agent Discovery resources (api-catalog, skills index, content signals) | @agents-maintainer |
 | 2026-07-13 | Declared httpx[socks] for Docling proxy-compatible runtime support | @agents-maintainer |
 | 2026-07-19 | Added devDependencies (unified, remark-parse, remark-stringify) for tidy-chatgpt-text skill normalizer engine | @agents-maintainer |
+| 2026-07-21 | Added research-agent-check CI job for benchmark + eval | @agents-maintainer |
 
 ### Example Usage
 

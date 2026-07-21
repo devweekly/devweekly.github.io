@@ -1,0 +1,23 @@
+{
+  "id": "claim-coverage",
+  "title": "Every fact claim must be backed by evidence",
+  "setup": {
+    "goal": "Research RiskConcile",
+    "contract": {
+      "question": "What is RiskConcile?",
+      "scope": {},
+      "expectedOutput": { "type": "vendor-intel-report" },
+      "evidenceRequirement": { "minSources": 2, "primarySourceRatio": 0.6, "claimCoverageRatio": 0.9 }
+    },
+    "claims": [
+      { "id": "c1", "text": "RiskConcile is a vendor", "type": "fact", "evidenceIds": ["ev1"] },
+      { "id": "c2", "text": "RiskConcile is used internally", "type": "fact", "evidenceIds": ["ev2"] },
+      { "id": "c3", "text": "RiskConcile has a mobile app", "type": "fact", "evidenceIds": ["ev3"] },
+      { "id": "c4", "text": "Investigate mobile strategy", "type": "recommendation", "reasoning": "Mobile presence unclear", "evidenceIds": [] }
+    ]
+  },
+  "assertions": [
+    { "type": "claim_has_evidence", "claimType": "fact" },
+    { "type": "coverage_min", "min": 0.75 }
+  ]
+}

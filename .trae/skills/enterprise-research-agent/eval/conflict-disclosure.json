@@ -1,0 +1,30 @@
+{
+  "id": "conflict-disclosure",
+  "title": "Conflicting evidence should be detected and disclosed",
+  "setup": {
+    "goal": "Research RiskConcile ownership",
+    "contract": {
+      "question": "Who owns the RC Migration Tool?",
+      "scope": {},
+      "expectedOutput": { "type": "ownership-analysis" },
+      "evidenceRequirement": { "minSources": 2, "primarySourceRatio": 0.6, "claimCoverageRatio": 0.9 }
+    },
+    "graph": {
+      "entities": [
+        { "id": "e1", "type": "Application", "name": "RC Migration Tool", "properties": { "owner": "Team A", "lifecycle": "active" } }
+      ],
+      "evidence": [
+        { "id": "ev1", "source": "GitHub", "entityId": "e1", "content": "CODEOWNERS", "claims": [{ "property": "owner", "value": "Team A" }] },
+        { "id": "ev2", "source": "LeanIX", "entityId": "e1", "content": "App registry", "claims": [{ "property": "owner", "value": "Team B" }] }
+      ],
+      "relationships": []
+    },
+    "claims": [
+      { "id": "c1", "text": "RC Migration Tool owner is disputed", "type": "analysis", "reasoning": "GitHub and LeanIX disagree", "evidenceIds": ["ev1", "ev2"] }
+    ]
+  },
+  "assertions": [
+    { "type": "contradiction_count", "min": 1 },
+    { "type": "claim_has_evidence", "claimType": "analysis" }
+  ]
+}

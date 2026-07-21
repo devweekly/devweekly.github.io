@@ -1,0 +1,31 @@
+{
+  "id": "multi-source",
+  "title": "Vendor research should collect evidence from multiple sources",
+  "setup": {
+    "goal": "Research RiskConcile",
+    "contract": {
+      "question": "What is RiskConcile?",
+      "scope": {},
+      "expectedOutput": { "type": "vendor-intel-report" },
+      "evidenceRequirement": { "minSources": 2, "primarySourceRatio": 0.6, "claimCoverageRatio": 0.9 }
+    },
+    "graph": {
+      "entities": [
+        { "id": "e1", "type": "Vendor", "name": "RiskConcile", "properties": { "website": "https://riskconcile.com" } }
+      ],
+      "evidence": [
+        { "id": "ev1", "source": "GitHub", "entityId": "e1", "content": "Repo exists", "claims": [] },
+        { "id": "ev2", "source": "LeanIX", "entityId": "e1", "content": "App registered", "claims": [] }
+      ],
+      "relationships": []
+    },
+    "claims": [
+      { "id": "c1", "text": "RiskConcile is a vendor", "type": "fact", "evidenceIds": ["ev1", "ev2"] }
+    ]
+  },
+  "assertions": [
+    { "type": "contract_valid" },
+    { "type": "coverage_min", "min": 1.0 },
+    { "type": "claim_has_evidence", "claimType": "fact" }
+  ]
+}

@@ -344,7 +344,7 @@ class EvidenceGraph {
   //     - claims:         结构化断言 [{ property, value }]，用于 Contradiction Detection
   //     - metadata:       Connector Adapter 附加信息（free-form object）
 
-  addEvidence({ source, uri, content, confidence = 0.5, lastUpdated, extractedAt, claims = [], metadata = {} }) {
+  addEvidence({ source, uri, content, confidence = 0.5, lastUpdated, extractedAt, claims = [], metadata = {}, sourceMetadata = null }) {
     if (!source) throw new Error('Evidence source is required');
     if (!uri && !content) throw new Error('Evidence must have uri or content');
     this._counters.evidence++;
@@ -359,6 +359,7 @@ class EvidenceGraph {
       extractedAt: extractedAt || new Date().toISOString(),
       claims: claims.map((c) => ({ property: String(c.property), value: String(c.value) })),
       metadata: metadata || {},
+      sourceMetadata: sourceMetadata || null,
     };
     this.evidence.set(id, ev);
     return ev;
@@ -932,6 +933,17 @@ function analyzeGaps(graph) {
 //      → 同实体的 owner 属性冲突
 // ============================================================
 
+function _alternativeInterpretationsForProperty(property) {
+  const map = {
+    owner: ['Different systems use different ownership definitions', 'Team reassignment is in progress', 'Data synchronization delay'],
+    lifecycle: ['Different environments have different statuses', 'Legacy data not updated'],
+    criticality: ['Business criticality differs from technical criticality', 'Assessment is context-dependent'],
+    headquarters: ['Subsidiary vs parent company location', 'Remote-first workforce'],
+    category: ['Vendor category differs by procurement system', 'Product line classification mismatch'],
+  };
+  return map[property] || ['Sources may define this property differently', 'Further investigation needed'];
+}
+
 function analyzeContradictions(graph) {
   const contradictions = [];
 
@@ -972,6 +984,8 @@ function analyzeContradictions(graph) {
           values,
           description: `${entity.name} (${entity.type}) has conflicting ${property}: ${values.map((v) => v.value).join(' vs ')}`,
           severity: 'high',
+          alternativeInterpretations: _alternativeInterpretationsForProperty(property),
+          unknown: true,
         });
       }
     }
@@ -1149,6 +1163,167 @@ function _overallRationale(graph, overall) {
 }
 
 // ============================================================
+// 8.5 Evidence Quality & Source Metadata Helpers
+//
+//    Evidence 内嵌 sourceMetadata：{ type, authority, independence, retrievedAt }
+//    不做独立 Source Register / Source DB，避免引入 MDM 生命周期。
+// ============================================================
+
+const SOURCE_TYPE_AUTHORITY = {
+  system_of_record: 0.85,
+  official: 0.92,
+  primary: 0.80,
+  secondary: 0.60,
+  hearsay: 0.20,
+  generated: 0.10,
+};
+
+function _defaultAuthorityForSourceType(type) {
+  return SOURCE_TYPE_AUTHORITY[type] || 0.5;
+}
+
+function _evidenceContentHash(ev) {
+  const str = `${ev.source}|${ev.uri}|${ev.content}`;
+  let h = 0;
+  for (let i = 0; i < str.length; i++) {
+    h = (h << 5) - h + str.charCodeAt(i);
+    h |= 0;
+  }
+  return String(h);
+}
+
+function _evidenceFreshness(ev) {
+  const now = Date.now();
+  if (ev.lastUpdated) {
+    const t = new Date(ev.lastUpdated).getTime();
+    if (!Number.isNaN(t)) {
+      const ageDays = (now - t) / (1000 * 60 * 60 * 24);
+      if (ageDays > 365) return { score: 0.2, flag: 'stale_365d' };
+      if (ageDays > 180) return { score: 0.5, flag: 'stale_180d' };
+      if (ageDays > 90) return { score: 0.8, flag: 'stale_90d' };
+      return { score: 1.0, flag: null };
+    }
+  }
+  return { score: 0.7, flag: 'no_lastUpdated' };
+}
+
+function assessEvidenceQuality(evidenceArray) {
+  const evidenceList = Array.isArray(evidenceArray) ? evidenceArray : Array.from(evidenceArray.values ? evidenceArray.values() : []);
+  const contentHashes = new Map(); // hash → ev.id
+  const results = [];
+
+  for (const ev of evidenceList) {
+    const sourceMetadata = ev.sourceMetadata || {};
+    const type = sourceMetadata.type || 'unknown';
+    const authority = sourceMetadata.authority || _defaultAuthorityForSourceType(type);
+    const independence = sourceMetadata.independence != null ? sourceMetadata.independence : 1.0;
+    const { score: freshnessScore, flag: freshnessFlag } = _evidenceFreshness(ev);
+
+    const hash = _evidenceContentHash(ev);
+    let classification = type;
+    let flags = [];
+    if (freshnessFlag) flags.push(freshnessFlag);
+
+    if (contentHashes.has(hash) && contentHashes.get(hash) !== ev.id) {
+      classification = 'duplicate';
+      flags.push('duplicate');
+    } else {
+      contentHashes.set(hash, ev.id);
+    }
+
+    if (freshnessScore < 0.5 && classification !== 'duplicate') {
+      classification = 'outdated';
+    }
+
+    const qualityScore = Number(((authority * 0.35 + freshnessScore * 0.35 + independence * 0.3)).toFixed(3));
+
+    results.push({
+      evidenceId: ev.id,
+      classification,
+      authority,
+      freshnessScore,
+      independence,
+      qualityScore,
+      flags,
+    });
+  }
+
+  return results;
+}
+
+function assessEvidenceQualityById(graph, evidenceId) {
+  const ev = graph.evidence.get(evidenceId);
+  if (!ev) throw new Error(`Evidence not found: ${evidenceId}`);
+  const [result] = assessEvidenceQuality([ev]);
+  return result;
+}
+
+function adjustConfidenceByCoverage(confidence, coverage) {
+  if (!coverage || coverage.total === 0) return confidence;
+  const ratio = coverage.coverageRatio;
+  let score = confidence.score;
+  if (ratio < 0.5) score -= 0.3;
+  else if (ratio < 0.7) score -= 0.15;
+  else if (ratio < 0.9) score -= 0.05;
+  score = Math.max(0, Math.min(1, score));
+  return {
+    ...confidence,
+    score: Number(score.toFixed(3)),
+    level: _scoreToLevel(score),
+    coveragePenalty: Number((confidence.score - score).toFixed(3)),
+  };
+}
+
+function assessCompletion(session) {
+  const coverage = session.claims ? session.claims.coverage() : { coverageRatio: 1.0, total: 0 };
+  const rawConfidence = session.confidence || (session.graph.entities.size > 0 ? assessConfidence(session.graph) : { score: 0, level: 'low' });
+  const confidence = adjustConfidenceByCoverage(rawConfidence, coverage);
+  const gaps = session.gaps.length ? session.gaps : analyzeGaps(session.graph);
+  const contradictions = session.contradictions.length ? session.contradictions : analyzeContradictions(session.graph);
+  const openQuestions = session.questionTree
+    ? session.questionTree.listQuestions({ status: 'open' }).length +
+      session.questionTree.listQuestions({ status: 'investigating' }).length
+    : 0;
+
+  const coverageRatio = coverage.total === 0 ? 1.0 : coverage.coverageRatio;
+  const confidenceScore = confidence.score;
+  const remainingUnknowns = gaps.length;
+  const remainingRisks = contradictions.length;
+
+  const unknownPenalty = Math.min(1, remainingUnknowns * 0.15);
+  const riskPenalty = Math.min(1, remainingRisks * 0.2);
+  const questionPenalty = Math.min(1, openQuestions * 0.1);
+
+  const completionScore = Number((
+    coverageRatio * 0.3 +
+    confidenceScore * 0.3 +
+    (1 - unknownPenalty) * 0.15 +
+    (1 - riskPenalty) * 0.15 +
+    (1 - questionPenalty) * 0.1
+  ).toFixed(3));
+
+  let recommendation;
+  if (completionScore >= 0.85 && coverageRatio >= 0.9 && remainingUnknowns === 0 && remainingRisks === 0) {
+    recommendation = 'finish';
+  } else if (completionScore >= 0.6) {
+    recommendation = 'finish_with_gaps';
+  } else {
+    recommendation = 'continue';
+  }
+
+  return {
+    coverageRatio,
+    confidenceLevel: confidence.level,
+    confidenceScore,
+    remainingUnknowns,
+    remainingRisks,
+    openQuestions,
+    completionScore,
+    recommendation,
+  };
+}
+
+// ============================================================
 // 9. Decision & Budget（Expand-Converge 核心）
 //
 //    确定性 Decision 函数 —— 不用 LLM，不用 ML，不用 Tree Search。
@@ -1171,6 +1346,14 @@ function decide(session) {
     confidence = assessConfidence(session.graph);
     // 不写回 session.confidence（只用于本次 Decision），避免副作用
   }
+  // Coverage 影响 confidence：低 coverage 时 confidence 降级
+  const claimCoverage = session.claims ? session.claims.coverage() : null;
+  if (confidence) {
+    confidence = adjustConfidenceByCoverage(confidence, claimCoverage);
+  }
+
+  // Completion Assessment：综合研究完整度
+  const completion = assessCompletion(session);
 
   const snapshot = {
     entityCount: session.graph ? session.graph.entities.size : 0,
@@ -1223,6 +1406,14 @@ function decide(session) {
     if (decision === 'finish') {
       reasons.push('no new value — converging to report');
     }
+    // Completion Assessment：综合完整度不足时继续研究
+    if (completion.recommendation === 'continue' && decision === 'finish') {
+      reasons.push(`completion score ${completion.completionScore} too low — continue research`);
+      decision = 'continue';
+    }
+    if (decision === 'finish') {
+      reasons.push(`completion assessment: ${completion.recommendation}`);
+    }
   }
 
   // 写回 snapshot（用于下次 diff）
@@ -1235,6 +1426,7 @@ function decide(session) {
     lastSnapshot: last,
     budget: budgetCheck,
     confidence: confidence ? { level: confidence.level, score: confidence.score } : null,
+    completion,
   };
 }
 
@@ -1359,8 +1551,8 @@ function validateReport(report, graph, options = {}) {
     if (typeof t.claimCoverageRatio !== 'number') {
       errors.push('traceability.claimCoverageRatio must be a number');
     } else if (claims && claims.claims.size > 0 && t.claimCoverageRatio < claimCoverageThreshold) {
-      errors.push(
-        `traceability.claimCoverageRatio ${t.claimCoverageRatio} < required ${claimCoverageThreshold}`
+      warnings.push(
+        `traceability.claimCoverageRatio ${t.claimCoverageRatio} < threshold ${claimCoverageThreshold} — confidence will be downgraded`
       );
     }
     if (typeof t.totalClaims !== 'number') {
@@ -1398,10 +1590,12 @@ function reportTemplate(session) {
   const graph = session.graph;
   const gaps = session.gaps.length ? session.gaps : analyzeGaps(graph);
   const contradictions = session.contradictions.length ? session.contradictions : analyzeContradictions(graph);
-  const confidence = session.confidence || assessConfidence(graph);
+  const rawConfidence = session.confidence || assessConfidence(graph);
   const claimCoverage = session.claims ? session.claims.coverage() : null;
+  const confidence = adjustConfidenceByCoverage(rawConfidence, claimCoverage);
   const sources = new Set(Array.from(graph.evidence.values()).map((e) => e.source));
 
+  const completion = assessCompletion(session);
   const traceability = {
     claimCoverageRatio: claimCoverage ? claimCoverage.coverageRatio : 1.0,
     totalClaims: claimCoverage ? claimCoverage.total : 0,
@@ -1410,6 +1604,7 @@ function reportTemplate(session) {
     unverifiedClaimIds: claimCoverage ? claimCoverage.unverifiedClaimIds : [],
     sourceCount: sources.size,
     evidenceCount: graph.evidence.size,
+    completion,
   };
 
   return {
@@ -1436,6 +1631,8 @@ function reportTemplate(session) {
       values: c.values,
       evidenceIds: c.values.flatMap((v) => v.evidenceIds),
       severity: c.severity,
+      alternativeInterpretations: c.alternativeInterpretations || [],
+      unknown: c.unknown === true,
     })),
     knowledgeGaps: gaps.map((g) => ({
       description: `${g.entityName} (${g.entityType}): missing ${g.detail}`,
@@ -1735,7 +1932,324 @@ function loadSession(file) {
 }
 
 // ============================================================
-// 13. CLI
+// 13. Benchmark & Eval Harness
+// ============================================================
+
+const BENCHMARK_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'benchmark');
+const EVAL_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), 'eval');
+
+function _jsonFixturePath(dir, id) {
+  return path.join(dir, `${id}.json`);
+}
+
+function _listFixtures(dir) {
+  if (!fs.existsSync(dir)) return [];
+  return fs.readdirSync(dir)
+    .filter((f) => f.endsWith('.json'))
+    .map((f) => f.replace(/\.json$/, ''))
+    .sort();
+}
+
+function _approxEqual(a, b, epsilon = 0.001) {
+  if (typeof a === 'number' && typeof b === 'number') {
+    return Math.abs(a - b) <= epsilon;
+  }
+  if (Array.isArray(a) && Array.isArray(b)) {
+    if (a.length !== b.length) return false;
+    return a.every((v, i) => _approxEqual(v, b[i], epsilon));
+  }
+  return a === b;
+}
+
+function _buildGraphFromFixture(input) {
+  const graph = new EvidenceGraph();
+  for (const e of input.entities || []) {
+    graph.addEntity({
+      type: e.type,
+      name: e.name,
+      aliases: e.aliases || [],
+      summary: e.summary || '',
+      properties: e.properties || {},
+    });
+  }
+  const evidenceIdMap = {};
+  for (const ev of input.evidence || []) {
+    const created = graph.addEvidence({
+      source: ev.source,
+      uri: ev.uri || '',
+      content: ev.content || '',
+      confidence: ev.confidence != null ? ev.confidence : 0.5,
+      lastUpdated: ev.lastUpdated || '',
+      claims: ev.claims || [],
+      sourceMetadata: ev.sourceMetadata || null,
+    });
+    evidenceIdMap[ev.id] = created.id;
+    if (ev.entityId && graph.getEntity(ev.entityId)) {
+      graph.linkEvidence({ entityId: ev.entityId, evidenceId: created.id });
+    }
+  }
+  for (const r of input.relationships || []) {
+    graph.addRelationship({
+      from: r.from,
+      to: r.to,
+      type: r.type,
+      confidence: r.confidence != null ? r.confidence : 0.5,
+      evidence: (r.evidenceIds || []).map((id) => evidenceIdMap[id] || id).filter(Boolean),
+    });
+  }
+  return graph;
+}
+
+function _buildClaimStoreFromFixture(input) {
+  const store = new ClaimStore();
+  for (const c of input.claims || []) {
+    store.addClaim({
+      text: c.text,
+      type: c.type,
+      evidenceIds: c.evidenceIds || [],
+      reasoning: c.reasoning || '',
+      confidence: c.confidence != null ? c.confidence : 0.5,
+      verified: c.verified === true,
+    });
+  }
+  return store;
+}
+
+function _runBenchmarkTask(task) {
+  const result = { task: task.id, title: task.title, passed: false, actual: {}, expected: task.expected, errors: [] };
+  try {
+    switch (task.id) {
+      case 'claim-coverage': {
+        const store = _buildClaimStoreFromFixture(task.input);
+        const cov = store.coverage();
+        result.actual = {
+          coverageRatio: cov.coverageRatio,
+          verifiedRatio: cov.verifiedRatio,
+          total: cov.total,
+          withEvidence: cov.withEvidence,
+        };
+        break;
+      }
+      case 'gap-detection': {
+        const graph = _buildGraphFromFixture(task.input);
+        const gaps = analyzeGaps(graph);
+        result.actual = {
+          count: gaps.length,
+          gapTypes: gaps.map((g) => g.gapType).sort(),
+          severities: gaps.map((g) => g.severity).sort(),
+        };
+        break;
+      }
+      case 'contradiction-detection': {
+        const graph = _buildGraphFromFixture(task.input);
+        const contradictions = analyzeContradictions(graph);
+        result.actual = {
+          count: contradictions.length,
+          properties: contradictions.map((c) => c.property).sort(),
+          values: contradictions.map((c) => c.values.map((v) => v.value).sort()).sort(),
+        };
+        break;
+      }
+      case 'confidence-assessment': {
+        const graph = _buildGraphFromFixture(task.input);
+        const confidence = assessConfidence(graph);
+        result.actual = {
+          level: confidence.level,
+          score: confidence.score,
+        };
+        break;
+      }
+      case 'evidence-quality': {
+        const graph = _buildGraphFromFixture(task.input);
+        const qualities = assessEvidenceQuality(graph.evidence);
+        const byId = {};
+        for (const q of qualities) byId[q.evidenceId] = q;
+        result.actual = {
+          ev1Classification: byId.ev1?.classification,
+          ev2Classification: byId.ev2?.classification,
+          ev3Classification: byId.ev3?.classification,
+          ev1QualityScore: byId.ev1?.qualityScore,
+          ev2QualityScore: byId.ev2?.qualityScore,
+          ev3QualityScore: byId.ev3?.qualityScore,
+          count: qualities.length,
+        };
+        break;
+      }
+      default:
+        throw new Error(`Unknown benchmark task: ${task.id}`);
+    }
+
+    for (const [key, expectedValue] of Object.entries(task.expected)) {
+      if (!_approxEqual(result.actual[key], expectedValue)) {
+        result.errors.push(`${key}: expected ${JSON.stringify(expectedValue)}, got ${JSON.stringify(result.actual[key])}`);
+      }
+    }
+    result.passed = result.errors.length === 0;
+  } catch (err) {
+    result.errors.push(err.message);
+    result.passed = false;
+  }
+  return result;
+}
+
+function runBenchmark({ taskId = null } = {}) {
+  const ids = taskId ? [taskId] : _listFixtures(BENCHMARK_DIR);
+  if (ids.length === 0) {
+    console.log('No benchmark fixtures found.');
+    return { passed: true, results: [] };
+  }
+
+  const results = [];
+  let allPassed = true;
+  for (const id of ids) {
+    const file = _jsonFixturePath(BENCHMARK_DIR, id);
+    if (!fs.existsSync(file)) {
+      results.push({ task: id, passed: false, errors: ['Fixture not found'] });
+      allPassed = false;
+      continue;
+    }
+    const task = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const r = _runBenchmarkTask(task);
+    results.push(r);
+    if (!r.passed) allPassed = false;
+  }
+  return { passed: allPassed, results };
+}
+
+function _runScenario(scenario) {
+  const result = { scenario: scenario.id, title: scenario.title, passed: false, errors: [] };
+  try {
+    const session = new ResearchSession(scenario.setup?.goal || 'Eval');
+
+    // Apply contract
+    if (scenario.setup?.contract) {
+      session.setContract(createContract(scenario.setup.contract));
+    }
+
+    // Build graph
+    if (scenario.setup?.graph) {
+      session.graph = _buildGraphFromFixture(scenario.setup.graph);
+    }
+
+    // Build claims
+    if (scenario.setup?.claims) {
+      session.claims = _buildClaimStoreFromFixture({ claims: scenario.setup.claims });
+    }
+
+    // Run analysis if requested
+    if (scenario.setup?.runAnalyze) {
+      session.analyze();
+    }
+
+    // Assertions
+    for (const assertion of scenario.assertions || []) {
+      switch (assertion.type) {
+        case 'contract_valid': {
+          if (!session.contract) {
+            result.errors.push('contract_valid: no contract set');
+          } else if (!session.contract.question || !session.contract.question.trim()) {
+            result.errors.push('contract_valid: contract question is empty');
+          }
+          break;
+        }
+        case 'claim_has_evidence': {
+          const claims = session.claims.listClaims({ type: assertion.claimType || undefined });
+          const bad = claims.filter((c) => c.evidenceIds.length === 0);
+          if (bad.length) {
+            result.errors.push(`claim_has_evidence: ${bad.length} ${assertion.claimType || 'claim'}(s) without evidence: ${bad.map((c) => c.id).join(', ')}`);
+          }
+          break;
+        }
+        case 'coverage_min': {
+          const cov = session.claims.coverage();
+          if (cov.coverageRatio < assertion.min) {
+            result.errors.push(`coverage_min: ${cov.coverageRatio} < ${assertion.min}`);
+          }
+          break;
+        }
+        case 'contradiction_count': {
+          const contradictions = analyzeContradictions(session.graph);
+          if (contradictions.length < assertion.min) {
+            result.errors.push(`contradiction_count: ${contradictions.length} < ${assertion.min}`);
+          }
+          break;
+        }
+        case 'confidence_level': {
+          const confidence = assessConfidence(session.graph);
+          const expected = assertion.level;
+          const order = { low: 0, medium: 1, high: 2 };
+          if (order[confidence.level] < order[expected]) {
+            result.errors.push(`confidence_level: ${confidence.level} < ${expected}`);
+          }
+          break;
+        }
+        case 'evidence_quality_min': {
+          const q = assessEvidenceQualityById(session.graph, assertion.evidenceId);
+          if (q.qualityScore < assertion.min) {
+            result.errors.push(`evidence_quality_min ${assertion.evidenceId}: ${q.qualityScore} < ${assertion.min}`);
+          }
+          break;
+        }
+        case 'evidence_quality_max': {
+          const q = assessEvidenceQualityById(session.graph, assertion.evidenceId);
+          if (q.qualityScore > assertion.max) {
+            result.errors.push(`evidence_quality_max ${assertion.evidenceId}: ${q.qualityScore} > ${assertion.max}`);
+          }
+          break;
+        }
+        case 'completion_recommendation': {
+          const completion = assessCompletion(session);
+          if (completion.recommendation !== assertion.expected) {
+            result.errors.push(`completion_recommendation: ${completion.recommendation} !== ${assertion.expected}`);
+          }
+          break;
+        }
+        case 'completion_min_score': {
+          const completion = assessCompletion(session);
+          if (completion.completionScore < assertion.min) {
+            result.errors.push(`completion_min_score: ${completion.completionScore} < ${assertion.min}`);
+          }
+          break;
+        }
+        default:
+          result.errors.push(`Unknown assertion type: ${assertion.type}`);
+      }
+    }
+
+    result.passed = result.errors.length === 0;
+  } catch (err) {
+    result.errors.push(err.message);
+    result.passed = false;
+  }
+  return result;
+}
+
+function runEval({ scenarioId = null } = {}) {
+  const ids = scenarioId ? [scenarioId] : _listFixtures(EVAL_DIR);
+  if (ids.length === 0) {
+    console.log('No eval scenarios found.');
+    return { passed: true, results: [] };
+  }
+
+  const results = [];
+  let allPassed = true;
+  for (const id of ids) {
+    const file = _jsonFixturePath(EVAL_DIR, id);
+    if (!fs.existsSync(file)) {
+      results.push({ scenario: id, passed: false, errors: ['Scenario not found'] });
+      allPassed = false;
+      continue;
+    }
+    const scenario = JSON.parse(fs.readFileSync(file, 'utf8'));
+    const r = _runScenario(scenario);
+    results.push(r);
+    if (!r.passed) allPassed = false;
+  }
+  return { passed: allPassed, results };
+}
+
+// ============================================================
+// 14. CLI
 // ============================================================
 
 function printUsage() {
@@ -1781,7 +2295,11 @@ Commands:
   list-entities [--type <T>] [--session <file>]
 
   add-evidence --source <S> [--uri <U>] [--content <C>] [--confidence 0.5]
-                [--last-updated <ISO date>] [--claims prop=val,...] [--session <file>]
+               [--last-updated <ISO date>] [--claims prop=val,...]
+               [--source-type system_of_record|official|primary|secondary|hearsay|generated]
+               [--source-authority 0.85] [--source-independence 1.0]
+               [--source-retrieved-at <ISO date>] [--session <file>]
+  assess-evidence --id <evidenceId> [--session <file>]
   link-evidence --entity <id> --evidence <id> [--session <file>]
   add-relationship --from <id> --to <id> --type <T> [--confidence 0.5] [--evidence ev1,ev2] [--session <file>]
   resolve-identity --canonical <id> --aliases <id1,id2> [--session <file>]
@@ -1804,12 +2322,16 @@ Commands:
 
   decide [--session <file>]                                      Deterministic Decision: Continue or Finish?
                                                                   (based on new Entity/Relationship/Conflict/Gap,
-                                                                   open questions, confidence, budget)
+                                                                   open questions, confidence, budget, completion)
+  completion-assessment [--session <file>]                       Output completion assessment (coverage/confidence/unknowns/risks/questions)
   check-budget [--session <file>]                                Show budget usage vs limits
 
   show-graph [--session <file>] [--max-nodes 50]                 Output Mermaid flowchart
   report-template [--output <file>] [--session <file>]           Generate report template (pre-fills evidence + gaps + conflicts + traceability)
   validate-report --report <file> [--session <file>]             Validate report schema (incl. Traceability Layer + Claim rules)
+
+  benchmark [--task <id>]                                        Run deterministic algorithm benchmarks
+  eval [--scenario <id>]                                         Run behavioral eval scenarios
 
 Options:
   --session <file>                  Session file path (default: ./research-session.json)
@@ -1862,6 +2384,12 @@ Options:
   --reason <text>                   Rejection reason
   --output <file>                   Output file path
   --max-nodes <n>                   Max nodes for Mermaid export (default 50)
+  --source-type <type>              Evidence source metadata type
+  --source-authority <0-1>          Evidence source authority score
+  --source-independence <0-1>       Evidence source independence score
+  --source-retrieved-at <ISO date>  Evidence source retrieved timestamp
+  --task <id>                       Benchmark task id
+  --scenario <id>                   Eval scenario id
   --help, -h                        Show this help
 
 Examples:
@@ -2291,6 +2819,18 @@ function main() {
         break;
       }
 
+      case 'assess-evidence': {
+        const s = loadSession(sessionFile);
+        const evidenceId = argValue(argv, '--id');
+        if (!evidenceId) {
+          console.error('Error: --id is required');
+          process.exit(1);
+        }
+        const result = assessEvidenceQualityById(s.graph, evidenceId);
+        console.log(JSON.stringify(result, null, 2));
+        break;
+      }
+
       case 'add-entity': {
         const s = loadSession(sessionFile);
         const type = argValue(argv, '--type');
@@ -2362,15 +2902,28 @@ function main() {
         const confidence = parseFloat(argValue(argv, '--confidence') || '0.5');
         const lastUpdated = argValue(argv, '--last-updated') || '';
         const claims = parseClaims(argValue(argv, '--claims'));
+        const sourceType = argValue(argv, '--source-type') || '';
+        const sourceAuthority = parseFloat(argValue(argv, '--source-authority') || '0');
+        const sourceIndependence = parseFloat(argValue(argv, '--source-independence') || '0');
+        const sourceRetrievedAt = argValue(argv, '--source-retrieved-at') || '';
         if (!source) {
           console.error('Error: --source is required');
           process.exit(1);
         }
-        const ev = s.graph.addEvidence({ source, uri, content, confidence, lastUpdated, claims });
+        const sourceMetadata = sourceType
+          ? {
+              type: sourceType,
+              authority: sourceAuthority || _defaultAuthorityForSourceType(sourceType),
+              independence: sourceIndependence || 1.0,
+              retrievedAt: sourceRetrievedAt || new Date().toISOString(),
+            }
+          : null;
+        const ev = s.graph.addEvidence({ source, uri, content, confidence, lastUpdated, claims, sourceMetadata });
         saveSession(s, sessionFile);
         console.log(`✓ Added evidence ${ev.id}: source=${source}, confidence=${confidence}` +
           (lastUpdated ? `, lastUpdated=${lastUpdated}` : '') +
-          (claims.length ? `, claims=${claims.length}` : ''));
+          (claims.length ? `, claims=${claims.length}` : '') +
+          (ev.sourceMetadata ? `, sourceMetadata=${ev.sourceMetadata.type}` : ''));
         break;
       }
 
@@ -2694,6 +3247,14 @@ function main() {
         break;
       }
 
+      case 'completion-assessment': {
+        const s = loadSession(sessionFile);
+        if (!s.confidence) s.analyze();
+        const result = assessCompletion(s);
+        console.log(JSON.stringify(result, null, 2));
+        break;
+      }
+
       case 'check-budget': {
         const s = loadSession(sessionFile);
         const result = checkBudget(s);
@@ -2765,6 +3326,34 @@ function main() {
           }
           process.exit(1);
         }
+        break;
+      }
+
+      case 'benchmark': {
+        const taskId = argValue(argv, '--task');
+        const { passed, results } = runBenchmark({ taskId });
+        console.log(`Benchmark: ${passed ? '✓ all passed' : '✗ some failed'} (${results.length} task(s))\n`);
+        for (const r of results) {
+          console.log(`${r.passed ? '✓' : '✗'} ${r.task}${r.title ? ` — ${r.title}` : ''}`);
+          if (!r.passed) {
+            for (const e of r.errors) console.log(`    · ${e}`);
+          }
+        }
+        if (!passed) process.exit(1);
+        break;
+      }
+
+      case 'eval': {
+        const scenarioId = argValue(argv, '--scenario');
+        const { passed, results } = runEval({ scenarioId });
+        console.log(`Eval: ${passed ? '✓ all passed' : '✗ some failed'} (${results.length} scenario(s))\n`);
+        for (const r of results) {
+          console.log(`${r.passed ? '✓' : '✗'} ${r.scenario}${r.title ? ` — ${r.title}` : ''}`);
+          if (!r.passed) {
+            for (const e of r.errors) console.log(`    · ${e}`);
+          }
+        }
+        if (!passed) process.exit(1);
         break;
       }
 

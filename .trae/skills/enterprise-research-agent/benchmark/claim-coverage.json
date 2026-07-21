@@ -1,0 +1,18 @@
+{
+  "id": "claim-coverage",
+  "title": "Claim coverage ratio calculation",
+  "input": {
+    "claims": [
+      { "id": "c1", "text": "RiskConcile is a vendor", "type": "fact", "evidenceIds": ["ev1", "ev2"], "confidence": 0.9 },
+      { "id": "c2", "text": "Used by 3 applications", "type": "statistic", "evidenceIds": ["ev1"], "confidence": 0.8 },
+      { "id": "c3", "text": "Resolve owner discrepancy before contracting", "type": "recommendation", "reasoning": "Two teams claim ownership", "evidenceIds": [], "confidence": 0.6 },
+      { "id": "c4", "text": "Resolve before contracting", "type": "recommendation", "reasoning": "Legal risk", "evidenceIds": [], "confidence": 0.5 }
+    ]
+  },
+  "expected": {
+    "coverageRatio": 0.5,
+    "verifiedRatio": 0,
+    "total": 4,
+    "withEvidence": 2
+  }
+}

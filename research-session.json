@@ -1,0 +1,36 @@
+{
+  "goal": "Test P1",
+  "createdAt": "2026-07-21T13:08:58.085Z",
+  "contract": null,
+  "budget": null,
+  "plan": [],
+  "questionTree": {
+    "questions": [],
+    "counter": 0
+  },
+  "graph": {
+    "entities": [],
+    "relationships": [],
+    "evidence": [],
+    "aliases": [],
+    "counters": {
+      "entity": 0,
+      "evidence": 0,
+      "relationship": 0
+    }
+  },
+  "claims": {
+    "claims": [],
+    "counter": 0
+  },
+  "findings": [],
+  "gaps": [],
+  "contradictions": [],
+  "confidence": null,
+  "report": null,
+  "visitedSources": [],
+  "pendingQuestions": [],
+  "rejectedHypotheses": [],
+  "_planCounter": 0,
+  "_lastSnapshot": null
+}

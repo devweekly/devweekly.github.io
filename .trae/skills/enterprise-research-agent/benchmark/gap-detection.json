@@ -1,0 +1,30 @@
+{
+  "id": "gap-detection",
+  "title": "Ontology-based gap detection",
+  "input": {
+    "entities": [
+      {
+        "id": "e1",
+        "type": "Vendor",
+        "name": "RiskConcile",
+        "properties": { "website": "https://riskconcile.com" }
+      },
+      {
+        "id": "e2",
+        "type": "Application",
+        "name": "RC Migration Tool",
+        "properties": { "owner": "Team A", "lifecycle": "active" }
+      }
+    ],
+    "evidence": [
+      { "id": "ev1", "source": "GitHub", "entityId": "e1", "content": "Vendor website", "claims": [] },
+      { "id": "ev2", "source": "LeanIX", "entityId": "e2", "content": "App data", "claims": [] }
+    ],
+    "relationships": []
+  },
+  "expected": {
+    "count": 4,
+    "gapTypes": ["missing_relation", "missing_relation", "missing_relation", "missing_relation"],
+    "severities": ["medium", "medium", "medium", "medium"]
+  }
+}

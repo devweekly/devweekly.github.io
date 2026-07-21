@@ -27,6 +27,29 @@ jobs:
         with:
             node-version: 22
 
+  research-agent-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.24.0
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'pnpm'
+      - name: Install dependencies
+        run: pnpm install
+      - name: Lint
+        run: pnpm lint
+      - name: Benchmark
+        run: node .trae/skills/enterprise-research-agent/research.mjs benchmark
+      - name: Eval
+        run: node .trae/skills/enterprise-research-agent/research.mjs eval
+
   deploy:
     needs: build
     runs-on: ubuntu-latest
