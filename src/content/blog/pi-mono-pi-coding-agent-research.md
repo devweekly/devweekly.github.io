@@ -308,3 +308,5 @@ https://github.com/AgwaB/pi-workflow lets Pi run named, repeatable multi-step wo
 https://github.com/barvhaim/pi-openwiki LangChain's openwiki agent based on PI harness
 
 https://github.com/buchidonggua/dg-ai-notes Pi-Agent SDK 深度教程
+
+https://github.com/algal/pi-openai-server-compaction adds Codex-style remote compaction for OpenAI models
