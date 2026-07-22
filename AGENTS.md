@@ -380,6 +380,7 @@ When updating AGENTS.md:
 | 2026-07-19 | Added devDependencies (unified, remark-parse, remark-stringify) for tidy-chatgpt-text skill normalizer engine | @agents-maintainer |
 | 2026-07-21 | Added research-agent-check CI job for benchmark + eval | @agents-maintainer |
 | 2026-07-22 | Added devDependencies (fast-glob, simple-git, yaml) for research-repo skill deterministic analysis | @agents-maintainer |
+| 2026-07-22 | Added core devDependencies (web-tree-sitter, tree-sitter-wasms, graphology) for research-repo AST analyzer pipeline | @agents-maintainer |
 
 ### Example Usage
 

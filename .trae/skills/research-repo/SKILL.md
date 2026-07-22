@@ -87,6 +87,7 @@ research-{repo-name}-{YYYYMMDD}/
 │   ├── evaluations.json        # Evaluation/benchmark/rubric discovery
 │   ├── git_history.json        # Git log, contributors, refactors, tags
 │   ├── ci.json                 # CI/CD pipeline discovery
+│   ├── symbols.json            # Semantic Index: functions, classes, calls, strings
 │   └── interesting_files.json  # Ranked file list for LLM reading priority
 ├── 01-hypotheses.md            # LLM-generated hypotheses (from Evidence Store)
 ├── 02-evidence/                # LLM subagent evidence collection
@@ -207,21 +208,46 @@ Answer first:
 
 ---
 
-## Two-Layer Architecture
+## Analyzer Pipeline Architecture
 
-The skill operates in two distinct layers. **~70% of the work is deterministic (script), ~30% is reasoning (LLM).**
+The skill uses a **multi-layer Analyzer Pipeline**. Deterministic analyzers run first via `research-repo.mjs`, producing a structured Evidence Store. The LLM never traverses the repository directly — it queries the Evidence Store.
 
-### Layer 1: Deterministic (Script — "Discover & Extract")
+**~70% of the work is deterministic (script), ~30% is reasoning (LLM).**
 
-`research-repo.mjs` runs first, producing the Evidence Store. The LLM never traverses the repository directly.
+### Analyzer Pipeline
 
-**Usage:**
+```mermaid
+flowchart LR
+  Repo[Repository] --> TS["Tree-sitter<br/>Unified AST Parser"]
+  TS --> A1[Import Analyzer]
+  TS --> A2[Prompt Analyzer]
+  TS --> A3[Tool Analyzer]
+  TS --> A4[Entrypoint Analyzer]
+  TS --> A5[Symbol Indexer]
+
+  A1 --> ES[Evidence Store]
+  A2 --> ES
+  A3 --> ES
+  A4 --> ES
+  A5 --> ES
+
+  DA[Discovery Analyzer] --> ES
+  TA[Test Analyzer] --> ES
+  EA[Eval Analyzer] --> ES
+  GA[Git Analyzer] --> ES
+  CA[CI Analyzer] --> ES
+  RA[Ranking Analyzer] --> ES
+
+  ES --> LLM["LLM reads Evidence Store<br/>→ generates report.md"]
+```
+
+### Usage
 
 ```bash
 # Copy script to working folder
-cp .trae/skills/research-repo/research-repo.mjs research-{repo}/{date}/
+cp .trae/skills/research-repo/research-repo.mjs research-{repo}-{date}/
 
-# Run individual commands (each prints JSON to stdout)
+# Run individual analyzers (each prints JSON to stdout)
 node research-repo.mjs discovery    <repoPath>  > evidence-store/discovery.json
 node research-repo.mjs architecture <repoPath>  > evidence-store/architecture.json
 node research-repo.mjs entrypoints  <repoPath>  > evidence-store/entrypoints.json
@@ -231,81 +257,97 @@ node research-repo.mjs tests        <repoPath>  > evidence-store/tests.json
 node research-repo.mjs evaluations  <repoPath>  > evidence-store/evaluations.json
 node research-repo.mjs git          <repoPath>  > evidence-store/git_history.json
 node research-repo.mjs ci           <repoPath>  > evidence-store/ci.json
+node research-repo.mjs symbols      <repoPath>  > evidence-store/symbols.json
 node research-repo.mjs ranking      <repoPath>  > evidence-store/interesting_files.json
 
-# Or run all at once (produces combined JSON with all 10 keys)
+# Or run all at once (produces combined JSON with all 11 keys)
 node research-repo.mjs all <repoPath> > evidence-store/full.json
 ```
 
-| Command | Output JSON | What it discovers | Scriptable % |
-|---------|------------|-------------------|-------------|
-| `discovery` | `discovery.json` | Manifest, file tree, top-level dirs, file counts | 100% |
-| `architecture` | `architecture.json` | Import graph, dependency edges, cycles, PageRank centrality | 90% |
-| `entrypoints` | `entrypoints.json` | CLI entry, server entry, SDK entry, example files | 100% |
-| `prompts` | `prompts.json` | System prompts, templates, few-shot, variables ({{tool}}, {{history}}) | 100% |
-| `tools` | `tools.json` | Tool registrations (@tool, Tool(), server.tool, ToolNode), schemas | 95% |
-| `tests` | `tests.json` | Test files, function counts, categories (unit/integration/e2e), patterns | 100% |
-| `evaluations` | `evaluations.json` | Eval dirs, benchmark files, rubrics, metrics, datasets | 100% |
-| `git` | `git_history.json` | Commits, contributors, top active modules, largest refactors, tags | 95% |
-| `ci` | `ci.json` | CI provider, workflows, triggers, jobs | 100% |
-| `ranking` | `interesting_files.json` | Scored file list (README +50, high-centrality +50, entry +30) → top 20 | 100% |
+### Analyzer Catalog
 
-### Layer 2: Reasoning (LLM — "Judge & Synthesize")
+| Command | Output JSON | Analyzer | AST-powered | Scriptable |
+|---------|------------|----------|-------------|-----------|
+| `discovery` | `discovery.json` | Manifest, file tree, top-level dirs | No | 100% |
+| `architecture` | `architecture.json` | Import graph, PageRank, cycles | **Tree-sitter** | 90% |
+| `entrypoints` | `entrypoints.json` | CLI/server/sdk/example entry | **Tree-sitter** | 100% |
+| `prompts` | `prompts.json` | System prompts, templates, variables | **Tree-sitter** | 100% |
+| `tools` | `tools.json` | @tool/Tool()/server.tool registration | **Tree-sitter** | 95% |
+| `tests` | `tests.json` | Test categorization, pattern detection | No | 100% |
+| `evaluations` | `evaluations.json` | Eval/benchmark/rubric discovery | No | 100% |
+| `git` | `git_history.json` | Commits, contributors, refactors, tags | No | 95% |
+| `ci` | `ci.json` | CI provider, workflows, triggers | No | 100% |
+| `symbols` | `symbols.json` | **Semantic Index** (see below) | **Tree-sitter** | 95% |
+| `ranking` | `interesting_files.json` | File scoring → top 20 reading priority | No | 100% |
+
+### Semantic Index (`symbols` command)
+
+The Semantic Index is a **symbol-level index** of the entire repository, built by Tree-sitter. LLM queries this index instead of scanning code.
+
+```json
+{
+  "functions": [
+    { "name": "govern", "file": "custodian/govern.py", "line": 203, "params": ["band", "cap"], "decorators": ["@govern"] }
+  ],
+  "classes": [
+    { "name": "Claim", "file": "packs/base.py", "line": 59, "bases": ["dataclass"], "methods": ["verify"] }
+  ],
+  "imports": [
+    { "file": "govern.py", "what": "Band", "from": "types" }
+  ],
+  "calls": [
+    { "file": "govern.py", "line": 250, "caller": "charge_customer", "callee": "decide" }
+  ],
+  "strings": [
+    { "file": "prompt.ts", "line": 10, "name": "SYSTEM_PROMPT", "length": 500 }
+  ]
+}
+```
+
+**What the Semantic Index enables:**
+
+| Query | Before (LLM scans code) | After (LLM queries index) |
+|-------|------------------------|--------------------------|
+| "Find all tools" | Read every file | `tools.json` → instant |
+| "Who calls `decide()`?" | Grep + guess | `symbols.json` calls[] where callee="decide" |
+| "What does `Claim` inherit?" | Find class, read bases | `symbols.json` classes[] where name="Claim" |
+| "Where are prompts defined?" | Grep "prompt" | `prompts.json` + `symbols.json` strings[] |
+| "Which module is most central?" | Read all imports | `architecture.json` centrality.topByPageRank |
+
+### LLM Reasoning Layer
 
 After the Evidence Store is populated, the LLM:
 
-1. **Reads** `interesting_files.json` to know what to read first
-2. **Generates hypotheses** from `architecture.json` centrality + cycles
-3. **Dispatches subagents** to read specific files and collect evidence
-4. **Cross-validates** findings against multiple evidence sources
-5. **Compares** with similar projects
-6. **Writes** `report.md`
+1. **Reads** `interesting_files.json` → knows what to read first
+2. **Queries** `symbols.json` → finds function/class definitions without scanning
+3. **Generates hypotheses** from `architecture.json` centrality + cycles
+4. **Dispatches subagents** to read specific files (identified by Semantic Index)
+5. **Cross-validates** findings against multiple evidence sources
+6. **Compares** with similar projects
+7. **Writes** `report.md`
 
-```mermaid
-flowchart LR
-  subgraph "Layer 1: Deterministic (Script)"
-    S1[discovery] --> ES[Evidence Store]
-    S2[architecture] --> ES
-    S3[entrypoints] --> ES
-    S4[prompts] --> ES
-    S5[tools] --> ES
-    S6[tests] --> ES
-    S7[evaluations] --> ES
-    S8[git] --> ES
-    S9[ci] --> ES
-    S10[ranking] --> ES
-  end
+**Key principle**: Scripts produce **facts** (AST structures, symbol indices, centrality scores). LLM produces **interpretation** (what the architecture means, why decisions were made). The LLM never does work that a script can do.
 
-  ES --> LLM
+### Core Dependencies
 
-  subgraph "Layer 2: Reasoning (LLM)"
-    LLM["Read Evidence Store<br/>→ Generate hypotheses"] --> SA[Dispatch subagents]
-    SA --> CV[Cross-validate]
-    CV --> CA[Comparative analysis]
-    CA --> RPT[Write report.md]
-  end
-```
+All dependencies are in root `package.json` devDependencies. The script uses dynamic `import()` with graceful fallback — zero hard dependencies, but Tree-sitter is expected to be installed.
 
-**Key principle**: Scripts produce **facts** (file counts, import graphs, test counts, centrality scores). LLM produces **interpretation** (what the architecture means, why decisions were made). The LLM never does work that a script can do.
+| Package | Role | Stars | Fallback |
+|---------|------|-------|----------|
+| `web-tree-sitter` | Unified multi-language AST parser (WASM) | ★★★★★ | Regex heuristics |
+| `tree-sitter-wasms` | Pre-built WASM grammars (Python/TS/JS/Rust/Go/Java) | ★★★★★ | N/A |
+| `graphology` | Graph algorithms (PageRank, centrality, cycles) | ★★★★★ | Pure JS implementations |
+| `fast-glob` | High-performance file matching | ★★★★★ | Built-in `readdirSync` |
+| `simple-git` | Git history analysis | ★★★★★ | `child_process` shell-out |
+| `yaml` | Parse GitHub Actions / CI configs | ★★★★ | Regex extraction |
 
-### Recommended Packages
-
-The script uses zero mandatory dependencies (Node.js built-ins only). These optional packages enhance analysis quality when installed (already in root `package.json` devDependencies):
-
-| Package | Purpose | Required |
-|---------|---------|----------|
-| `fast-glob` | High-performance file matching | No (fallback: built-in `readdirSync`) |
-| `simple-git` | Git history analysis | No (fallback: `child_process` shell-out to `git`) |
-| `yaml` | Parse GitHub Actions / CI configs | No (fallback: regex extraction) |
-
-**Advanced packages** (not installed, recommended for deeper AST analysis):
+**Advanced packages** (not installed, optional for deeper analysis):
 
 | Package | Purpose |
 |---------|---------|
-| `ts-morph` | TypeScript Compiler API wrapper — precise AST parsing |
-| `web-tree-sitter` | Multi-language AST (Python, Go, Rust, JS/TS) via WASM |
-| `dependency-cruiser` | Dependency graph + circular dependency detection |
-| `madge` | Call graph generation + circular detection |
+| `ts-morph` | TypeScript Compiler API — semantic analysis (findReferences, getType) |
+| `dependency-cruiser` | Dependency graph + architecture rule enforcement |
+| `madge` | Call graph generation + circular dependency detection |
 
 ---
 
@@ -369,15 +411,18 @@ Avoid reading source files sequentially. Continuously refine hypotheses as new e
 ```mermaid
 flowchart TD
   A[Repository] --> WF["Create Working Folder<br/>research-{repo}-{date}/"]
-  WF --> DA["Layer 1: Deterministic Analysis<br/>node research-repo.mjs all"]
+  WF --> DA["Analyzer Pipeline<br/>node research-repo.mjs all"]
 
-  DA --> ES["Evidence Store<br/>10 JSON files"]
+  DA --> TS["Tree-sitter AST<br/>(Python/TS/JS/Rust/Go)"]
+  TS --> ES["Evidence Store<br/>11 JSON files"]
 
   ES --> RANK["Read interesting_files.json<br/>→ LLM reading priority"]
+  ES --> SYM["Query symbols.json<br/>→ Find functions/classes/calls"]
   ES --> HYP["Read architecture.json<br/>→ Generate hypotheses"]
   ES --> ARCH["Read architecture.json<br/>→ Identify core modules"]
 
-  RANK --> E["Layer 2: Dispatch subagents<br/>(parallel, evidence-grounded)"]
+  RANK --> E["Dispatch subagents<br/>(parallel, evidence-grounded)"]
+  SYM --> E
   HYP --> E
   ARCH --> E
 

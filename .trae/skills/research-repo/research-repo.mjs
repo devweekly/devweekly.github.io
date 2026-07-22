@@ -13,10 +13,14 @@
  *   node research-repo.mjs git          <repoPath>  # Git history analysis
  *   node research-repo.mjs ci           <repoPath>  # CI/CD discovery
  *   node research-repo.mjs ranking      <repoPath>  # Interesting files ranking
+ *   node research-repo.mjs symbols      <repoPath>  # Semantic Index (functions, classes, imports, calls, strings)
  *   node research-repo.mjs all          <repoPath>  # Complete Evidence Store
  *
  * Zero-dependency fallback: works with Node.js built-ins only.
  * Optionally uses fast-glob, simple-git, yaml if installed (dynamic import).
+ * Optionally uses web-tree-sitter + tree-sitter-wasms for AST-based analysis
+ * (imports, prompts, tools, entrypoints, symbols). Falls back to regex heuristics
+ * when Tree-sitter is unavailable.
  *
  * Each command prints JSON to stdout. Errors go to stderr, exit(1) on error.
  */
@@ -24,6 +28,7 @@
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
 import { join, extname, basename, relative, sep, dirname } from "node:path";
 import { execSync } from "node:child_process";
+import { pathToFileURL } from "node:url";
 
 // Swallow EPIPE errors when downstream (e.g. `head`) closes the pipe early.
 process.stdout?.on?.("error", (err) => {
@@ -168,6 +173,578 @@ async function loadOptionalPackages() {
   try { fastGlob = (await import("fast-glob")).default; } catch { /* optional */ }
   try { simpleGit = (await import("simple-git")).simpleGit; } catch { /* optional */ }
   try { yaml = (await import("yaml")).default; } catch { /* optional */ }
+}
+
+// ---------------------------------------------------------------------------
+// Tree-sitter (optional, for AST-based analysis)
+// ---------------------------------------------------------------------------
+
+let Parser = null;
+let wasmDir = null;
+const languageCache = new Map(); // ext -> Language
+const parserCache = new Map(); // ext -> Parser instance
+const treeCache = new Map(); // filePath -> tree
+
+const TS_LANG_MAP = {
+  ".py": "tree-sitter-python.wasm",
+  ".ts": "tree-sitter-typescript.wasm",
+  ".tsx": "tree-sitter-typescript.wasm",
+  ".js": "tree-sitter-javascript.wasm",
+  ".jsx": "tree-sitter-javascript.wasm",
+  ".mjs": "tree-sitter-javascript.wasm",
+  ".cjs": "tree-sitter-javascript.wasm",
+  ".rs": "tree-sitter-rust.wasm",
+  ".go": "tree-sitter-go.wasm",
+  ".java": "tree-sitter-java.wasm",
+};
+
+const JS_EXTS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
+const FUNCTION_NODE_TYPES = new Set([
+  "function_definition", "function_declaration", "function_item", "method_declaration",
+]);
+const CLASS_NODE_TYPES = new Set(["class_definition", "class_declaration"]);
+
+async function initTreeSitter() {
+  if (Parser) return Parser;
+  try {
+    // Pre-check: verify WASM runtime file exists at process.cwd() before init,
+    // so we don't trigger Emscripten's noisy stdout output on missing files.
+    const wasmRuntimePath = join(
+      process.cwd(), "node_modules", "web-tree-sitter", "tree-sitter.wasm"
+    );
+    if (!existsSync(wasmRuntimePath)) {
+      return null;
+    }
+    const wasmsPkgPath = join(process.cwd(), "node_modules", "tree-sitter-wasms", "out");
+    if (!existsSync(wasmsPkgPath)) {
+      return null;
+    }
+    const mod = await import("web-tree-sitter");
+    const parserCtor = mod.default || mod.Parser || mod;
+    await parserCtor.init({
+      locateFile: (filename) =>
+        pathToFileURL(join(process.cwd(), "node_modules", "web-tree-sitter", filename)).href,
+    });
+    // Only set module-level Parser after successful init
+    Parser = parserCtor;
+    wasmDir = wasmsPkgPath;
+    return Parser;
+  } catch (e) {
+    console.error("Tree-sitter not available, falling back to regex:", e.message);
+    return null;
+  }
+}
+
+async function getParserForFile(filePath) {
+  if (!Parser || !wasmDir) return null;
+  const ext = extname(filePath);
+  if (parserCache.has(ext)) return parserCache.get(ext);
+  const wasmFile = TS_LANG_MAP[ext];
+  if (!wasmFile) return null;
+  const wasmPath = join(wasmDir, wasmFile);
+  if (!existsSync(wasmPath)) return null;
+  try {
+    const Language = Parser.Language;
+    const language = await Language.load(wasmPath);
+    const parser = new Parser();
+    parser.setLanguage(language);
+    parserCache.set(ext, parser);
+    return parser;
+  } catch {
+    return null;
+  }
+}
+
+async function parseFileAST(filePath) {
+  if (treeCache.has(filePath)) return treeCache.get(filePath);
+  const parser = await getParserForFile(filePath);
+  if (!parser) return null;
+  try {
+    const content = readFileSync(filePath, "utf-8");
+    const tree = parser.parse(content);
+    treeCache.set(filePath, tree);
+    return tree;
+  } catch {
+    return null;
+  }
+}
+
+// --- AST traversal utilities ---
+
+function walkAST(node, visitor, parentStack) {
+  visitor(node, parentStack || []);
+  const newStack = (parentStack || []).concat(node);
+  for (const child of node.children) {
+    walkAST(child, visitor, newStack);
+  }
+}
+
+function findChild(node, type) {
+  return node.children.find((c) => c.type === type);
+}
+
+function findChildren(node, type) {
+  return node.children.filter((c) => c.type === type);
+}
+
+function stripStringQuotes(s) {
+  return s.replace(/^["'`]|["'`]$/g, "");
+}
+
+function findEnclosingFuncName(parentStack) {
+  for (let i = parentStack.length - 1; i >= 0; i--) {
+    if (FUNCTION_NODE_TYPES.has(parentStack[i].type)) {
+      const id = findChild(parentStack[i], "identifier");
+      if (id) return id.text;
+    }
+  }
+  return null;
+}
+
+function extractFunctionParams(funcNode) {
+  const params = [];
+  const paramsNode =
+    findChild(funcNode, "parameters") ||
+    findChild(funcNode, "formal_parameters") ||
+    findChild(funcNode, "parameter_list");
+  if (!paramsNode) return params;
+  for (const child of paramsNode.children) {
+    if (
+      child.type === "identifier" ||
+      child.type === "typed_parameter" ||
+      child.type === "parameter" ||
+      child.type === "required_parameter" ||
+      child.type === "optional_parameter"
+    ) {
+      const id = findChild(child, "identifier") ||
+        (child.type === "identifier" ? child : null);
+      if (id) params.push(id.text);
+    }
+  }
+  return params;
+}
+
+function getDecoratorsFromParent(parentStack) {
+  const decos = [];
+  const parent = parentStack[parentStack.length - 1];
+  if (parent && parent.type === "decorated_definition") {
+    for (const child of parent.children) {
+      if (child.type === "decorator") decos.push(child.text.trim());
+    }
+  }
+  return decos;
+}
+
+// --- AST-based extractors (return null if AST unavailable) ---
+
+/** Extract import module strings from AST. Returns string[] or null. */
+async function extractImportsAST(filePath) {
+  const tree = await parseFileAST(filePath);
+  if (!tree) return null;
+  const ext = extname(filePath);
+  const isJs = JS_EXTS.includes(ext);
+  const imports = [];
+
+  walkAST(tree.rootNode, (node) => {
+    if (ext === ".py") {
+      if (node.type === "import_from_statement") {
+        const mod = findChild(node, "dotted_name");
+        if (mod) imports.push(mod.text);
+      } else if (node.type === "import_statement") {
+        for (const child of node.children) {
+          if (child.type === "dotted_name") imports.push(child.text);
+        }
+      }
+    } else if (isJs) {
+      if (node.type === "import_statement") {
+        const str = findChild(node, "string");
+        if (str) imports.push(stripStringQuotes(str.text));
+      } else if (node.type === "lexical_declaration" || node.type === "variable_declaration") {
+        for (const decl of findChildren(node, "variable_declarator")) {
+          const call = findChild(decl, "call_expression");
+          if (call) {
+            const fn = findChild(call, "identifier");
+            if (fn && fn.text === "require") {
+              const args = findChild(call, "arguments");
+              if (args) {
+                const str = findChild(args, "string");
+                if (str) imports.push(stripStringQuotes(str.text));
+              }
+            }
+          }
+        }
+      }
+    } else if (ext === ".rs") {
+      if (node.type === "use_declaration") {
+        const text = node.text.replace(/^use\s+/, "").replace(/;$/, "");
+        if (text) imports.push(text);
+      }
+    } else if (ext === ".go") {
+      if (node.type === "import_declaration") {
+        for (const child of node.children) {
+          if (child.type === "interpreted_string_literal") {
+            imports.push(stripStringQuotes(child.text));
+          } else if (child.type === "import_spec_list") {
+            for (const spec of findChildren(child, "import_spec")) {
+              const str = findChild(spec, "interpreted_string_literal");
+              if (str) imports.push(stripStringQuotes(str.text));
+            }
+          }
+        }
+      }
+    }
+  });
+
+  return [...new Set(imports)];
+}
+
+/** Extract prompt-like assignments from AST. Returns array or null. */
+async function extractPromptsAST(filePath, repoPath) {
+  const tree = await parseFileAST(filePath);
+  if (!tree) return null;
+  const ext = extname(filePath);
+  const isPy = ext === ".py";
+  const isJs = JS_EXTS.includes(ext);
+  const relPath = relative(repoPath, filePath);
+  const prompts = [];
+
+  walkAST(tree.rootNode, (node) => {
+    let name = null;
+    let valueNode = null;
+
+    if (isPy && node.type === "assignment") {
+      const left = node.children[0];
+      if (left && left.type === "identifier") {
+        name = left.text;
+        valueNode = node.children.find(
+          (c) => c.type === "string" || c.type === "concatenated_string"
+        );
+      }
+    } else if (isJs && node.type === "variable_declarator") {
+      const id = findChild(node, "identifier");
+      if (id) {
+        name = id.text;
+        valueNode = node.children.find(
+          (c) => c.type === "string" || c.type === "template_string"
+        );
+      }
+    }
+
+    if (name && valueNode) {
+      const upper = name.toUpperCase();
+      const lower = name.toLowerCase();
+      let type = null;
+      if (upper.includes("SYSTEM_PROMPT") || upper.includes("SYSTEM_MESSAGE")) type = "system";
+      else if (upper.includes("ASSISTANT")) type = "assistant";
+      else if (lower.includes("prompt")) type = "prompt";
+      else if (lower.includes("template")) type = "template";
+      else if (upper === name && name.length > 4) type = "constant";
+
+      if (type) {
+        prompts.push({
+          file: relPath,
+          line: node.startPosition.row + 1,
+          type,
+          snippet: node.text.trim().slice(0, 200),
+        });
+      }
+    }
+
+    // Template strings with {{variables}} (JS)
+    if (isJs && node.type === "template_string") {
+      const text = node.text;
+      if (/\{\{\s*(tool|history|memory|input|context|user)\s*\}\}/.test(text)) {
+        prompts.push({
+          file: relPath,
+          line: node.startPosition.row + 1,
+          type: "template-variable",
+          snippet: text.trim().slice(0, 200),
+        });
+      }
+    }
+  });
+
+  return prompts;
+}
+
+/** Extract tool registrations from AST. Returns array or null. */
+async function extractToolsAST(filePath, repoPath) {
+  const tree = await parseFileAST(filePath);
+  if (!tree) return null;
+  const relPath = relative(repoPath, filePath);
+  const tools = [];
+
+  walkAST(tree.rootNode, (node) => {
+    if (node.type === "decorated_definition") {
+      const decorator = findChild(node, "decorator");
+      if (!decorator) return;
+      let decoName = "";
+      const idChild = decorator.children.find(
+        (c) => c.type === "identifier" || c.type === "attribute" || c.type === "call"
+      );
+      if (idChild) decoName = idChild.text;
+
+      const lower = decoName.toLowerCase();
+      let framework = null;
+      if (decoName === "tool") framework = "langchain";
+      else if (decoName === "agent.tool") framework = "agent.tool";
+      else if (decoName === "mcp.tool") framework = "mcp-tool";
+      else if (decoName === "server.tool") framework = "mcp-server-tool";
+      else if (lower.includes("tool")) framework = "decorator-tool";
+
+      if (framework) {
+        const funcDef = findChild(node, "function_definition");
+        const classDef = findChild(node, "class_definition");
+        const classDecl = findChild(node, "class_declaration");
+        const funcDecl = findChild(node, "function_declaration");
+        const target = funcDef || classDef || classDecl || funcDecl;
+        if (target) {
+          const id = findChild(target, "identifier");
+          if (id) {
+            tools.push({ name: id.text, file: relPath, framework, schema: null });
+          }
+        }
+      }
+    }
+
+    // Class declarations/definitions with names ending in "Tool"
+    if (CLASS_NODE_TYPES.has(node.type)) {
+      const id = findChild(node, "identifier");
+      if (id && id.text.endsWith("Tool") && id.text !== "Tool") {
+        tools.push({ name: id.text, file: relPath, framework: "class-Tool", schema: null });
+      }
+    }
+  });
+
+  return tools;
+}
+
+/** Extract entrypoint signals from AST. Returns array or null. */
+async function extractEntrypointsAST(filePath, repoPath) {
+  const tree = await parseFileAST(filePath);
+  if (!tree) return null;
+  const ext = extname(filePath);
+  const isPy = ext === ".py";
+  const isJs = JS_EXTS.includes(ext);
+  const relPath = relative(repoPath, filePath);
+  const signals = [];
+
+  walkAST(tree.rootNode, (node) => {
+    if (FUNCTION_NODE_TYPES.has(node.type)) {
+      const id = findChild(node, "identifier");
+      if (id && ["main", "cli", "serve", "start"].includes(id.text)) {
+        signals.push({
+          path: relPath,
+          type: id.text === "serve" ? "server" : "cli",
+          reason: `${ext} function: ${id.text}() (AST)`,
+        });
+      }
+    }
+
+    if (isPy && node.type === "if_statement") {
+      const text = node.text;
+      if (/if\s+__name__\s*==\s*['"]__main__['"]/.test(text)) {
+        signals.push({
+          path: relPath,
+          type: "cli",
+          reason: "Python __main__ guard (AST)",
+        });
+      }
+    }
+
+    if (isJs && node.type === "export_statement") {
+      const hasDefault = node.children.some((c) => c.type === "default");
+      if (hasDefault) {
+        const funcDecl = findChild(node, "function_declaration");
+        if (funcDecl) {
+          const id = findChild(funcDecl, "identifier");
+          if (id) {
+            signals.push({
+              path: relPath,
+              type: "sdk",
+              reason: `JS export default function: ${id.text}() (AST)`,
+            });
+          }
+        }
+      }
+    }
+  });
+
+  return signals;
+}
+
+/** Extract full symbol index from a file via AST. Returns object or null. */
+async function extractSymbolsAST(filePath, repoPath) {
+  const tree = await parseFileAST(filePath);
+  if (!tree) return null;
+  const ext = extname(filePath);
+  const isPy = ext === ".py";
+  const isJs = JS_EXTS.includes(ext);
+  const isRs = ext === ".rs";
+  const isGo = ext === ".go";
+  const relPath = relative(repoPath, filePath);
+
+  const functions = [];
+  const classes = [];
+  const imports = [];
+  const calls = [];
+  const strings = [];
+
+  walkAST(tree.rootNode, (node, parentStack) => {
+    // --- Imports ---
+    if (isPy) {
+      if (node.type === "import_from_statement") {
+        const mod = findChild(node, "dotted_name");
+        const whatNodes = node.children.filter((c) => c.type === "dotted_name").slice(1);
+        const what = whatNodes.map((n) => n.text).join(", ") || "*";
+        imports.push({ file: relPath, what, from: mod ? mod.text : "" });
+      } else if (node.type === "import_statement") {
+        for (const child of node.children) {
+          if (child.type === "dotted_name") {
+            imports.push({ file: relPath, what: child.text, from: "" });
+          }
+        }
+      }
+    } else if (isJs && node.type === "import_statement") {
+      const str = findChild(node, "string");
+      const from = str ? stripStringQuotes(str.text) : "";
+      const importClause = findChild(node, "import_clause");
+      const what = importClause ? importClause.text : "*";
+      imports.push({ file: relPath, what, from });
+    } else if (isRs && node.type === "use_declaration") {
+      const text = node.text.replace(/^use\s+/, "").replace(/;$/, "");
+      imports.push({ file: relPath, what: text, from: "" });
+    } else if (isGo && node.type === "import_declaration") {
+      for (const child of node.children) {
+        if (child.type === "interpreted_string_literal") {
+          imports.push({ file: relPath, what: stripStringQuotes(child.text), from: "" });
+        } else if (child.type === "import_spec_list") {
+          for (const spec of findChildren(child, "import_spec")) {
+            const str = findChild(spec, "interpreted_string_literal");
+            if (str) imports.push({ file: relPath, what: stripStringQuotes(str.text), from: "" });
+          }
+        }
+      }
+    }
+
+    // --- Functions ---
+    if (FUNCTION_NODE_TYPES.has(node.type)) {
+      const id = findChild(node, "identifier");
+      if (id) {
+        functions.push({
+          name: id.text,
+          file: relPath,
+          line: node.startPosition.row + 1,
+          params: extractFunctionParams(node),
+          decorators: getDecoratorsFromParent(parentStack),
+        });
+      }
+    }
+
+    // --- Classes ---
+    if (CLASS_NODE_TYPES.has(node.type)) {
+      const id = findChild(node, "identifier");
+      if (id) {
+        const bases = [];
+        if (isPy) {
+          const argList = findChild(node, "argument_list");
+          if (argList) {
+            for (const child of argList.children) {
+              if (child.type === "identifier" || child.type === "attribute") bases.push(child.text);
+            }
+          }
+        } else {
+          const heritage = findChild(node, "class_heritage");
+          if (heritage) {
+            for (const child of heritage.children) {
+              if (child.type === "identifier" || child.type === "member_expression") bases.push(child.text);
+            }
+          }
+        }
+        const methods = [];
+        const body = findChild(node, "block") || findChild(node, "class_body");
+        if (body) {
+          for (const child of body.children) {
+            if (FUNCTION_NODE_TYPES.has(child.type)) {
+              const methodId = findChild(child, "identifier");
+              if (methodId) methods.push(methodId.text);
+            }
+          }
+        }
+        classes.push({
+          name: id.text,
+          file: relPath,
+          line: node.startPosition.row + 1,
+          bases,
+          methods,
+        });
+      }
+    }
+
+    // --- Calls ---
+    const callType = isPy ? "call" : "call_expression";
+    if (node.type === callType) {
+      const fnNode = node.children.find(
+        (c) => c.type === "identifier" || c.type === "attribute" || c.type === "member_expression"
+      );
+      const callee = fnNode ? fnNode.text : null;
+      const caller = findEnclosingFuncName(parentStack);
+      if (callee) {
+        calls.push({ file: relPath, line: node.startPosition.row + 1, caller, callee });
+      }
+    }
+
+    // --- String assignments (prompts/templates/constants) ---
+    if (isPy && node.type === "assignment") {
+      const left = node.children[0];
+      const right = node.children.find(
+        (c) => c.type === "string" || c.type === "concatenated_string"
+      );
+      if (left && left.type === "identifier" && right) {
+        const name = left.text;
+        const upper = name.toUpperCase();
+        const lower = name.toLowerCase();
+        if (
+          upper.includes("PROMPT") ||
+          upper.includes("SYSTEM") ||
+          lower.includes("template") ||
+          (upper === name && name.length > 4)
+        ) {
+          strings.push({
+            file: relPath,
+            line: node.startPosition.row + 1,
+            name,
+            length: right.text.length,
+          });
+        }
+      }
+    } else if (isJs && node.type === "variable_declarator") {
+      const id = findChild(node, "identifier");
+      const val = node.children.find(
+        (c) => c.type === "string" || c.type === "template_string"
+      );
+      if (id && val) {
+        const name = id.text;
+        const upper = name.toUpperCase();
+        const lower = name.toLowerCase();
+        if (
+          upper.includes("PROMPT") ||
+          upper.includes("SYSTEM") ||
+          lower.includes("template") ||
+          (upper === name && name.length > 4)
+        ) {
+          strings.push({
+            file: relPath,
+            line: node.startPosition.row + 1,
+            name,
+            length: val.text.length,
+          });
+        }
+      }
+    }
+  });
+
+  return { functions, classes, imports, calls, strings };
 }
 
 // ---------------------------------------------------------------------------
@@ -699,10 +1276,11 @@ function analyzeDiscovery(repoPath) {
 
 /**
  * architecture command — Dependency graph + centrality + cycles.
+ * Uses AST-based import extraction when Tree-sitter is available, regex fallback otherwise.
  * @param {string} repoPath
  * @returns {object}
  */
-function analyzeArchitecture(repoPath) {
+async function analyzeArchitecture(repoPath) {
   const entries = walkDir(repoPath, 8);
   const sourceFiles = entries.filter(
     (e) => e.type === "file" && SOURCE_EXTENSIONS.has(e.ext)
@@ -712,12 +1290,19 @@ function analyzeArchitecture(repoPath) {
   const edges = [];
   const nodeIdSet = new Set();
 
-  for (const file of sourceFiles) {
-    const relPath = relative(repoPath, file.path);
-    const moduleId = pathToModuleId(relPath);
-    const imports = parseImports(file.path);
-    nodes.push({ id: moduleId, path: relPath, imports });
-    nodeIdSet.add(moduleId);
+  // Parse imports in parallel; AST used when available, regex fallback per file
+  const nodeResults = await Promise.all(
+    sourceFiles.map(async (file) => {
+      const relPath = relative(repoPath, file.path);
+      const moduleId = pathToModuleId(relPath);
+      const astImports = await extractImportsAST(file.path);
+      const imports = astImports !== null ? astImports : parseImports(file.path);
+      return { id: moduleId, path: relPath, imports };
+    })
+  );
+  for (const node of nodeResults) {
+    nodes.push(node);
+    nodeIdSet.add(node.id);
   }
 
   // Build edges; only keep edges whose target resolves to an existing node id.
@@ -769,10 +1354,11 @@ function analyzeArchitecture(repoPath) {
 
 /**
  * entrypoints command — Entry point detection.
+ * Uses AST-based detection when Tree-sitter is available, regex fallback otherwise.
  * @param {string} repoPath
  * @returns {object}
  */
-function analyzeEntrypoints(repoPath) {
+async function analyzeEntrypoints(repoPath) {
   const entries = walkDir(repoPath, 6);
   const entrypoints = [];
   const seen = new Set();
@@ -809,37 +1395,49 @@ function analyzeEntrypoints(repoPath) {
     }
   }
 
-  // 3. Content-based detection
-  for (const e of entries) {
-    if (e.type !== "file") continue;
-    if (!SOURCE_EXTENSIONS.has(e.ext)) continue;
-    const relPath = relative(repoPath, e.path);
+  // 3. AST-based detection (preferred) + regex fallback per file
+  const sourceFiles = entries.filter(
+    (e) => e.type === "file" && SOURCE_EXTENSIONS.has(e.ext)
+  );
+  const astResults = await Promise.all(
+    sourceFiles.map(async (file) => {
+      const relPath = relative(repoPath, file.path);
+      const astSignals = await extractEntrypointsAST(file.path, repoPath);
+      if (astSignals !== null) return { relPath, signals: astSignals, useRegex: false };
+      // Regex fallback
+      const content = readFileSafe(file.path);
+      if (!content) return { relPath, signals: [], useRegex: false };
+      const signals = [];
+      if (file.ext === ".py") {
+        if (/if\s+__name__\s*==\s*['"]__main__['"]\s*:/.test(content)) {
+          signals.push({ path: relPath, type: "cli", reason: "Python __main__ guard" });
+        }
+        if (/def\s+main\s*\(/.test(content) && /argparse|click|typer|sys\.argv/.test(content)) {
+          signals.push({ path: relPath, type: "cli", reason: "Python main() with argparse/click/typer" });
+        }
+      } else if ([".ts", ".js", ".mjs", ".tsx", ".jsx"].includes(file.ext)) {
+        if (/createServer\s*\(|app\.listen\s*\(|server\.listen\s*\(/.test(content)) {
+          signals.push({ path: relPath, type: "server", reason: "JS server.listen / createServer" });
+        }
+        if (/process\.argv|yargs|commander|inquirer/.test(content) && /export\s+(default\s+)?(async\s+)?function\s+main|function\s+main\s*\(/.test(content)) {
+          signals.push({ path: relPath, type: "cli", reason: "JS CLI with argv/yargs/commander + main()" });
+        }
+      } else if (file.ext === ".go") {
+        if (/func\s+main\s*\(\)/.test(content)) {
+          signals.push({ path: relPath, type: "cli", reason: "Go func main()" });
+        }
+      } else if (file.ext === ".rs") {
+        if (/fn\s+main\s*\(\)/.test(content)) {
+          signals.push({ path: relPath, type: "cli", reason: "Rust fn main()" });
+        }
+      }
+      return { relPath, signals, useRegex: true };
+    })
+  );
+  for (const { relPath, signals } of astResults) {
     if (seen.has(relPath)) continue;
-    const content = readFileSafe(e.path);
-    if (!content) continue;
-
-    if (e.ext === ".py") {
-      if (/if\s+__name__\s*==\s*['"]__main__['"]\s*:/.test(content)) {
-        addEntrypoint(relPath, "cli", "Python __main__ guard");
-      }
-      if (/def\s+main\s*\(/.test(content) && /argparse|click|typer|sys\.argv/.test(content)) {
-        addEntrypoint(relPath, "cli", "Python main() with argparse/click/typer");
-      }
-    } else if ([".ts", ".js", ".mjs", ".tsx", ".jsx"].includes(e.ext)) {
-      if (/createServer\s*\(|app\.listen\s*\(|server\.listen\s*\(/.test(content)) {
-        addEntrypoint(relPath, "server", "JS server.listen / createServer");
-      }
-      if (/process\.argv|yargs|commander|inquirer/.test(content) && /export\s+(default\s+)?(async\s+)?function\s+main|function\s+main\s*\(/.test(content)) {
-        addEntrypoint(relPath, "cli", "JS CLI with argv/yargs/commander + main()");
-      }
-    } else if (e.ext === ".go") {
-      if (/func\s+main\s*\(\)/.test(content)) {
-        addEntrypoint(relPath, "cli", "Go func main()");
-      }
-    } else if (e.ext === ".rs") {
-      if (/fn\s+main\s*\(\)/.test(content)) {
-        addEntrypoint(relPath, "cli", "Rust fn main()");
-      }
+    for (const sig of signals) {
+      addEntrypoint(sig.path, sig.type, sig.reason);
     }
   }
 
@@ -875,18 +1473,55 @@ function analyzeEntrypoints(repoPath) {
 
 /**
  * prompts command — Prompt discovery.
+ * Uses AST-based discovery when Tree-sitter is available, regex fallback otherwise.
  * Scans .py/.ts/.js/.md for prompt markers and template variables.
  * @param {string} repoPath
  * @returns {object}
  */
-function analyzePrompts(repoPath) {
+async function analyzePrompts(repoPath) {
   const entries = walkDir(repoPath, 8);
   const files = entries.filter(
     (e) => e.type === "file" && PROMPT_FILE_EXTENSIONS.has(e.ext)
   );
 
-  const prompts = [];
-  for (const f of files) {
+  // Partition files: code files (AST-eligible) vs markdown (always regex)
+  const codeExts = new Set([".py", ".ts", ".tsx", ".js", ".jsx", ".mjs"]);
+  const codeFiles = files.filter((f) => codeExts.has(f.ext));
+  const mdFiles = files.filter((f) => !codeExts.has(f.ext));
+
+  // AST-based extraction for code files (with regex fallback per file)
+  const codeResults = await Promise.all(
+    codeFiles.map(async (f) => {
+      const astPrompts = await extractPromptsAST(f.path, repoPath);
+      if (astPrompts !== null) return astPrompts;
+      // Regex fallback
+      const content = readFileSafe(f.path);
+      if (!content) return [];
+      const prompts = [];
+      const lines = content.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        for (const marker of PROMPT_MARKERS) {
+          marker.regex.lastIndex = 0;
+          const match = marker.regex.exec(line);
+          if (match) {
+            prompts.push({
+              file: relative(repoPath, f.path),
+              line: i + 1,
+              type: marker.type,
+              snippet: line.trim().slice(0, 200),
+            });
+            break;
+          }
+        }
+      }
+      return prompts;
+    })
+  );
+
+  // Regex for markdown files
+  const mdPrompts = [];
+  for (const f of mdFiles) {
     const content = readFileSafe(f.path);
     if (!content) continue;
     const lines = content.split(/\r?\n/);
@@ -896,19 +1531,19 @@ function analyzePrompts(repoPath) {
         marker.regex.lastIndex = 0;
         const match = marker.regex.exec(line);
         if (match) {
-          const snippet = line.trim().slice(0, 200);
-          prompts.push({
+          mdPrompts.push({
             file: relative(repoPath, f.path),
             line: i + 1,
             type: marker.type,
-            snippet,
+            snippet: line.trim().slice(0, 200),
           });
-          break; // one marker per line is enough
+          break;
         }
       }
     }
   }
 
+  const prompts = [...codeResults.flat(), ...mdPrompts];
   return { totalPrompts: prompts.length, prompts };
 }
 
@@ -941,11 +1576,12 @@ function extractSchemaNear(content, startIndex, maxChars = 400) {
 
 /**
  * tools command — Tool/function discovery.
+ * Uses AST-based discovery when Tree-sitter is available, regex fallback otherwise.
  * Detects tool registrations across multiple frameworks.
  * @param {string} repoPath
  * @returns {object}
  */
-function analyzeTools(repoPath) {
+async function analyzeTools(repoPath) {
   const entries = walkDir(repoPath, 8);
   const files = entries.filter(
     (e) => e.type === "file" && TOOL_FILE_EXTENSIONS.has(e.ext)
@@ -954,7 +1590,32 @@ function analyzeTools(repoPath) {
   const tools = [];
   const seen = new Set();
 
-  for (const f of files) {
+  // Try AST first per file; regex fallback when AST unavailable
+  const results = await Promise.all(
+    files.map(async (f) => {
+      const astTools = await extractToolsAST(f.path, repoPath);
+      if (astTools !== null) return { ast: true, tools: astTools, file: f };
+      return { ast: false, tools: null, file: f };
+    })
+  );
+
+  // Process AST results; collect files that need regex fallback
+  const regexFiles = [];
+  for (const r of results) {
+    if (r.ast) {
+      for (const t of r.tools) {
+        const key = `${t.file}:${t.framework}:${t.name}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        tools.push(t);
+      }
+    } else {
+      regexFiles.push(r.file);
+    }
+  }
+
+  // Regex fallback for files where AST was unavailable
+  for (const f of regexFiles) {
     const content = readFileSafe(f.path);
     if (!content) continue;
     const relPath = relative(repoPath, f.path);
@@ -965,7 +1626,6 @@ function analyzeTools(repoPath) {
       while ((match = pattern.regex.exec(content)) !== null) {
         const name = match[1];
         if (!name) continue;
-        // For ToolNode([...]) capture the inner list as a single "ToolNode" entry
         const key = `${relPath}:${pattern.framework}:${name}`;
         if (seen.has(key)) continue;
         seen.add(key);
@@ -1363,10 +2023,10 @@ function analyzeCI(repoPath) {
  * @param {string} repoPath
  * @returns {object}
  */
-function analyzeRanking(repoPath) {
+async function analyzeRanking(repoPath) {
   const discovery = analyzeDiscovery(repoPath);
-  const architecture = analyzeArchitecture(repoPath);
-  const entrypoints = analyzeEntrypoints(repoPath);
+  const architecture = await analyzeArchitecture(repoPath);
+  const entrypoints = await analyzeEntrypoints(repoPath);
   const tests = analyzeTests(repoPath);
 
   const indegreeMap = {};
@@ -1441,6 +2101,57 @@ function analyzeRanking(repoPath) {
 }
 
 // ---------------------------------------------------------------------------
+// Command: symbols
+// ---------------------------------------------------------------------------
+
+/**
+ * symbols command — Semantic Index Analyzer.
+ * Builds a symbol-level index (functions, classes, imports, calls, strings)
+ * via AST traversal. Falls back to empty arrays when Tree-sitter unavailable.
+ * @param {string} repoPath
+ * @returns {object}
+ */
+async function analyzeSymbols(repoPath) {
+  const entries = walkDir(repoPath, 8);
+  const sourceFiles = entries.filter(
+    (e) => e.type === "file" && SOURCE_EXTENSIONS.has(e.ext)
+  );
+
+  const results = await Promise.all(
+    sourceFiles.map(async (file) => {
+      const symbols = await extractSymbolsAST(file.path, repoPath);
+      return symbols || { functions: [], classes: [], imports: [], calls: [], strings: [] };
+    })
+  );
+
+  const functions = [];
+  const classes = [];
+  const imports = [];
+  const calls = [];
+  const strings = [];
+  for (const r of results) {
+    functions.push(...r.functions);
+    classes.push(...r.classes);
+    imports.push(...r.imports);
+    calls.push(...r.calls);
+    strings.push(...r.strings);
+  }
+
+  return {
+    totalFunctions: functions.length,
+    totalClasses: classes.length,
+    totalImports: imports.length,
+    totalCalls: calls.length,
+    totalStrings: strings.length,
+    functions,
+    classes,
+    imports,
+    calls,
+    strings,
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Command: all
 // ---------------------------------------------------------------------------
 
@@ -1449,18 +2160,19 @@ function analyzeRanking(repoPath) {
  * @param {string} repoPath
  * @returns {object}
  */
-function analyzeAll(repoPath) {
+async function analyzeAll(repoPath) {
   return {
     discovery: analyzeDiscovery(repoPath),
-    architecture: analyzeArchitecture(repoPath),
-    entrypoints: analyzeEntrypoints(repoPath),
-    prompts: analyzePrompts(repoPath),
-    tools: analyzeTools(repoPath),
+    architecture: await analyzeArchitecture(repoPath),
+    entrypoints: await analyzeEntrypoints(repoPath),
+    prompts: await analyzePrompts(repoPath),
+    tools: await analyzeTools(repoPath),
     tests: analyzeTests(repoPath),
     evaluations: analyzeEvaluations(repoPath),
     git: analyzeGit(repoPath),
     ci: analyzeCI(repoPath),
-    ranking: analyzeRanking(repoPath),
+    ranking: await analyzeRanking(repoPath),
+    symbols: await analyzeSymbols(repoPath),
   };
 }
 
@@ -1479,6 +2191,7 @@ const COMMANDS = {
   git: analyzeGit,
   ci: analyzeCI,
   ranking: analyzeRanking,
+  symbols: analyzeSymbols,
   all: analyzeAll,
 };
 
@@ -1488,7 +2201,7 @@ async function main() {
 
   if (!command || !repoPath) {
     console.error(
-      "Usage: node research-repo.mjs <discovery|architecture|entrypoints|prompts|tools|tests|evaluations|git|ci|ranking|all> <repoPath>"
+      "Usage: node research-repo.mjs <discovery|architecture|entrypoints|prompts|tools|tests|evaluations|git|ci|ranking|symbols|all> <repoPath>"
     );
     process.exit(1);
   }
@@ -1510,9 +2223,10 @@ async function main() {
     : dirname(repoPath);
 
   await loadOptionalPackages();
+  await initTreeSitter();
 
   try {
-    const result = COMMANDS[command](absPath);
+    const result = await COMMANDS[command](absPath);
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
   } catch (err) {
     console.error(`Error running '${command}': ${err && err.message ? err.message : String(err)}`);
