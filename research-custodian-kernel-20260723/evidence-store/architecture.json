@@ -1,0 +1,5243 @@
+{
+  "totalNodes": 304,
+  "totalEdges": 435,
+  "nodes": [
+    {
+      "id": "caduceus.__init__",
+      "path": "caduceus/__init__.py",
+      "imports": [
+        "caduceus.refs",
+        "caduceus.errors",
+        "caduceus.vault",
+        "caduceus.broker",
+        "caduceus.grants"
+      ]
+    },
+    {
+      "id": "caduceus.audit",
+      "path": "caduceus/audit.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "pathlib",
+        "typing",
+        "caduceus.errors",
+        "hashlib",
+        "hmac",
+        "json",
+        "os",
+        "time"
+      ]
+    },
+    {
+      "id": "caduceus.broker",
+      "path": "caduceus/broker.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "typing",
+        "caduceus.audit",
+        "caduceus.errors",
+        "caduceus.grants",
+        "caduceus.refs",
+        "caduceus.vault",
+        "hashlib",
+        "os",
+        "subprocess"
+      ]
+    },
+    {
+      "id": "caduceus.cli",
+      "path": "caduceus/cli.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "caduceus.broker",
+        "caduceus.errors",
+        "caduceus.refs",
+        "caduceus.vault",
+        "argparse",
+        "getpass",
+        "json",
+        "os",
+        "sys",
+        "time"
+      ]
+    },
+    {
+      "id": "caduceus.crypto",
+      "path": "caduceus/crypto.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "caduceus.errors",
+        "cryptography.hazmat.primitives.ciphers.aead",
+        "hashlib",
+        "hmac",
+        "json",
+        "os"
+      ]
+    },
+    {
+      "id": "caduceus.errors",
+      "path": "caduceus/errors.py",
+      "imports": [
+        "__future__"
+      ]
+    },
+    {
+      "id": "caduceus.grants",
+      "path": "caduceus/grants.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "typing",
+        "caduceus.errors",
+        "fnmatch",
+        "time"
+      ]
+    },
+    {
+      "id": "caduceus.receipts",
+      "path": "caduceus/receipts.py",
+      "imports": [
+        "caduceus.vault",
+        "caduceus.receipts",
+        "__future__",
+        "caduceus",
+        "hashlib",
+        "hmac"
+      ]
+    },
+    {
+      "id": "caduceus.refs",
+      "path": "caduceus/refs.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "re"
+      ]
+    },
+    {
+      "id": "caduceus.vault",
+      "path": "caduceus/vault.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "pathlib",
+        "typing",
+        "caduceus",
+        "caduceus.errors",
+        "caduceus.refs",
+        "getpass",
+        "json",
+        "os",
+        "stat",
+        "time"
+      ]
+    },
+    {
+      "id": "custodian.__init__",
+      "path": "custodian/__init__.py",
+      "imports": [
+        "custodian.types",
+        "custodian.govern",
+        "custodian.session",
+        "custodian.receipt",
+        "custodian.signing",
+        "custodian.bus",
+        "custodian.middleware",
+        "custodian.client",
+        "importlib.metadata"
+      ]
+    },
+    {
+      "id": "custodian._encoding",
+      "path": "custodian/_encoding.py",
+      "imports": [
+        "__future__",
+        "os",
+        "re",
+        "sys",
+        "io"
+      ]
+    },
+    {
+      "id": "custodian.adapters.__init__",
+      "path": "custodian/adapters/__init__.py",
+      "imports": [
+        "custodian.adapters.base",
+        "custodian.adapters.pipeline",
+        "custodian.adapters.registry",
+        "custodian.adapters.nemoclaw"
+      ]
+    },
+    {
+      "id": "custodian.adapters.base",
+      "path": "custodian/adapters/base.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "typing",
+        "enum",
+        "time"
+      ]
+    },
+    {
+      "id": "custodian.adapters.builtin.__init__",
+      "path": "custodian/adapters/builtin/__init__.py",
+      "imports": [
+        "custodian.adapters.builtin.spend_sentinel",
+        "custodian.adapters.builtin.prompt_injection_guard",
+        "custodian.adapters.builtin.secret_leak_guard",
+        "custodian.adapters.builtin.pii_redactor",
+        "custodian.adapters.builtin.context_anchor",
+        "custodian.adapters.builtin.repetition_breaker",
+        "custodian.adapters.builtin.tool_confabulation_guard",
+        "custodian.adapters.builtin.scope_fence",
+        "custodian.adapters.builtin.kernel_self_protection",
+        "custodian.adapters.builtin.path_fence",
+        "custodian.adapters.builtin.egress_domain_guard"
+      ]
+    },
+    {
+      "id": "custodian.adapters.builtin._paths",
+      "path": "custodian/adapters/builtin/_paths.py",
+      "imports": [
+        "__future__",
+        "typing",
+        "custodian.adapters.base",
+        "os",
+        "re"
+      ]
+    },
+    {
+      "id": "custodian.adapters.builtin.context_anchor",
+      "path": "custodian/adapters/builtin/context_anchor.py",
+      "imports": [
+        "__future__",
+        "custodian.adapters.base"
+      ]
+    },
+    {
+      "id": "custodian.adapters.builtin.egress_domain_guard",
+      "path": "custodian/adapters/builtin/egress_domain_guard.py",
+      "imports": [
+        "__future__",
+        "urllib.parse",
+        "custodian.adapters.base",
+        "re"
+      ]
+    },
+    {
+      "id": "custodian.adapters.builtin.kernel_self_protection",
+      "path": "custodian/adapters/builtin/kernel_self_protection.py",
+      "imports": [
+        "__future__",
+        "custodian.adapters.base",
+        "custodian.adapters.builtin._paths",
+        "os",
+        "re"
+      ]
+    },
+    {
+      "id": "custodian.adapters.builtin.path_fence",
+      "path": "custodian/adapters/builtin/path_fence.py",
+      "imports": [
+        "__future__",
+        "custodian.adapters.base",
+        "custodian.adapters.builtin._paths",
+        "fnmatch",
+        "os",
+        "re",
+        "shlex"
+      ]
+    },
+    {
+      "id": "custodian.adapters.builtin.pii_redactor",
+      "path": "custodian/adapters/builtin/pii_redactor.py",
+      "imports": [
+        "__future__",
+        "custodian.adapters.base",
+        "re"
+      ]
+    },
+    {
+      "id": "custodian.adapters.builtin.prompt_injection_guard",
+      "path": "custodian/adapters/builtin/prompt_injection_guard.py",
+      "imports": [
+        "__future__",
+        "custodian.adapters.base",
+        "base64",
+        "re"
+      ]
+    },
+    {
+      "id": "custodian.adapters.builtin.repetition_breaker",
+      "path": "custodian/adapters/builtin/repetition_breaker.py",
+      "imports": [
+        "__future__",
+        "custodian.adapters.base",
+        "hashlib",
+        "json",
+        "time"
+      ]
+    },
+    {
+      "id": "custodian.adapters.builtin.scope_fence",
+      "path": "custodian/adapters/builtin/scope_fence.py",
+      "imports": [
+        "__future__",
+        "urllib.parse",
+        "custodian.adapters.base",
+        "custodian.adapters.builtin._paths",
+        "fnmatch",
+        "os",
+        "re"
+      ]
+    },
+    {
+      "id": "custodian.adapters.builtin.secret_leak_guard",
+      "path": "custodian/adapters/builtin/secret_leak_guard.py",
+      "imports": [
+        "__future__",
+        "custodian.adapters.base",
+        "math",
+        "re"
+      ]
+    },
+    {
+      "id": "custodian.adapters.builtin.spend_sentinel",
+      "path": "custodian/adapters/builtin/spend_sentinel.py",
+      "imports": [
+        "__future__",
+        "custodian.adapters.base",
+        "re",
+        "time"
+      ]
+    },
+    {
+      "id": "custodian.adapters.builtin.tool_confabulation_guard",
+      "path": "custodian/adapters/builtin/tool_confabulation_guard.py",
+      "imports": [
+        "__future__",
+        "custodian.adapters.base",
+        "difflib"
+      ]
+    },
+    {
+      "id": "custodian.adapters.nemoclaw",
+      "path": "custodian/adapters/nemoclaw.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "typing",
+        "custodian.exceptions",
+        "custodian.adapters.nemoclaw",
+        "json",
+        "shutil",
+        "subprocess"
+      ]
+    },
+    {
+      "id": "custodian.adapters.pipeline",
+      "path": "custodian/adapters/pipeline.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "typing",
+        "custodian.adapters.base"
+      ]
+    },
+    {
+      "id": "custodian.adapters.registry",
+      "path": "custodian/adapters/registry.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "typing",
+        "custodian.adapters.base",
+        "custodian.adapters.builtin",
+        "custodian.adapters.pipeline",
+        "importlib.metadata",
+        "hashlib",
+        "importlib.util",
+        "shutil",
+        "sys",
+        "yaml"
+      ]
+    },
+    {
+      "id": "custodian.audit",
+      "path": "custodian/audit.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "typing",
+        "custodian.exceptions",
+        "custodian.types",
+        "json",
+        "os",
+        "time"
+      ]
+    },
+    {
+      "id": "custodian.backends.base",
+      "path": "custodian/backends/base.py",
+      "imports": [
+        "__future__",
+        "abc"
+      ]
+    },
+    {
+      "id": "custodian.backends.twilio_verify",
+      "path": "custodian/backends/twilio_verify.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "typing",
+        "custodian.backends.base",
+        "custodian.exceptions",
+        "logging",
+        "requests"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.ai.anthropic-chat.scripts.execute",
+      "path": "custodian/bundled_skills/ai/anthropic-chat/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.ai.cohere-embed.scripts.execute",
+      "path": "custodian/bundled_skills/ai/cohere-embed/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.ai.openai-chat.scripts.execute",
+      "path": "custodian/bundled_skills/ai/openai-chat/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.ai.replicate-run.scripts.execute",
+      "path": "custodian/bundled_skills/ai/replicate-run/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.ai.together-infer.scripts.execute",
+      "path": "custodian/bundled_skills/ai/together-infer/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.alerts.pagerduty-alert.scripts.execute",
+      "path": "custodian/bundled_skills/alerts/pagerduty-alert/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.alerts.telegram-send.scripts.execute",
+      "path": "custodian/bundled_skills/alerts/telegram-send/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.alerts.twilio-voice-call.scripts.execute",
+      "path": "custodian/bundled_skills/alerts/twilio-voice-call/scripts/execute.py",
+      "imports": [
+        "xml.sax.saxutils",
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.calendar.calendar-create.scripts.execute",
+      "path": "custodian/bundled_skills/calendar/calendar-create/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "urllib.parse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.calendar.calendar-delete.scripts.execute",
+      "path": "custodian/bundled_skills/calendar/calendar-delete/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.calendar.calendar-event-create.scripts.execute",
+      "path": "custodian/bundled_skills/calendar/calendar-event-create/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "json",
+        "os",
+        "sys",
+        "requests"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.calendar.calendar-event-list.scripts.execute",
+      "path": "custodian/bundled_skills/calendar/calendar-event-list/scripts/execute.py",
+      "imports": [
+        "datetime",
+        "argparse",
+        "json",
+        "os",
+        "sys",
+        "requests"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.calendar.calendar-list.scripts.execute",
+      "path": "custodian/bundled_skills/calendar/calendar-list/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.calendar.calendar-update.scripts.execute",
+      "path": "custodian/bundled_skills/calendar/calendar-update/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.cloud.s3-delete.scripts.execute",
+      "path": "custodian/bundled_skills/cloud/s3-delete/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "boto3"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.cloud.s3-get.scripts.execute",
+      "path": "custodian/bundled_skills/cloud/s3-get/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "boto3"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.cloud.s3-list.scripts.execute",
+      "path": "custodian/bundled_skills/cloud/s3-list/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "boto3"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.cloud.s3-put.scripts.execute",
+      "path": "custodian/bundled_skills/cloud/s3-put/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "boto3"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.communication.discord-webhook.scripts.execute",
+      "path": "custodian/bundled_skills/communication/discord-webhook/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.communication.email-send.scripts.execute",
+      "path": "custodian/bundled_skills/communication/email-send/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.communication.push-notification.scripts.execute",
+      "path": "custodian/bundled_skills/communication/push-notification/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.communication.slack-channel-list.scripts.execute",
+      "path": "custodian/bundled_skills/communication/slack-channel-list/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.communication.slack-message.scripts.execute",
+      "path": "custodian/bundled_skills/communication/slack-message/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.communication.sms-send.scripts.execute",
+      "path": "custodian/bundled_skills/communication/sms-send/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.communication.webhook-post.scripts.execute",
+      "path": "custodian/bundled_skills/communication/webhook-post/scripts/execute.py",
+      "imports": [
+        "urllib.parse",
+        "argparse",
+        "requests"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.database.mongodb-find.scripts.execute",
+      "path": "custodian/bundled_skills/database/mongodb-find/scripts/execute.py",
+      "imports": [
+        "pymongo",
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.database.mysql-query.scripts.execute",
+      "path": "custodian/bundled_skills/database/mysql-query/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "pymysql"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.database.postgres-query.scripts.execute",
+      "path": "custodian/bundled_skills/database/postgres-query/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "psycopg2"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.database.redis-delete.scripts.execute",
+      "path": "custodian/bundled_skills/database/redis-delete/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "urllib.parse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.database.redis-get.scripts.execute",
+      "path": "custodian/bundled_skills/database/redis-get/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "urllib.parse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.database.redis-set.scripts.execute",
+      "path": "custodian/bundled_skills/database/redis-set/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "urllib.parse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.design-impeccable.scripts.execute",
+      "path": "custodian/bundled_skills/design-impeccable/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.design-taste.scripts.execute",
+      "path": "custodian/bundled_skills/design-taste/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.docker.docker-exec.scripts.execute",
+      "path": "custodian/bundled_skills/docker/docker-exec/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.docker.docker-list.scripts.execute",
+      "path": "custodian/bundled_skills/docker/docker-list/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.docker.docker-logs.scripts.execute",
+      "path": "custodian/bundled_skills/docker/docker-logs/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.docker.docker-start.scripts.execute",
+      "path": "custodian/bundled_skills/docker/docker-start/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.docker.docker-stop.scripts.execute",
+      "path": "custodian/bundled_skills/docker/docker-stop/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.files.file-list.scripts.execute",
+      "path": "custodian/bundled_skills/files/file-list/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.files.file-read.scripts.execute",
+      "path": "custodian/bundled_skills/files/file-read/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.files.file-write.scripts.execute",
+      "path": "custodian/bundled_skills/files/file-write/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.files.shell-exec.scripts.execute",
+      "path": "custodian/bundled_skills/files/shell-exec/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.github.github-comment.scripts.execute",
+      "path": "custodian/bundled_skills/github/github-comment/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "json",
+        "os",
+        "sys",
+        "requests"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.github.github-commit-list.scripts.execute",
+      "path": "custodian/bundled_skills/github/github-commit-list/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.github.github-file-read.scripts.execute",
+      "path": "custodian/bundled_skills/github/github-file-read/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.github.github-issue-create.scripts.execute",
+      "path": "custodian/bundled_skills/github/github-issue-create/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "json",
+        "os",
+        "sys",
+        "requests"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.github.github-issue-list.scripts.execute",
+      "path": "custodian/bundled_skills/github/github-issue-list/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "json",
+        "os",
+        "sys",
+        "requests"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.github.github-pr-list.scripts.execute",
+      "path": "custodian/bundled_skills/github/github-pr-list/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "json",
+        "os",
+        "sys",
+        "requests"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.github.github-release-create.scripts.execute",
+      "path": "custodian/bundled_skills/github/github-release-create/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.github.github-release-list.scripts.execute",
+      "path": "custodian/bundled_skills/github/github-release-list/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.github.github-repo-list.scripts.execute",
+      "path": "custodian/bundled_skills/github/github-repo-list/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "json",
+        "os",
+        "sys",
+        "requests"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.memory.kv-delete.scripts.execute",
+      "path": "custodian/bundled_skills/memory/kv-delete/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.memory.kv-get.scripts.execute",
+      "path": "custodian/bundled_skills/memory/kv-get/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.memory.kv-list.scripts.execute",
+      "path": "custodian/bundled_skills/memory/kv-list/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.memory.kv-set.scripts.execute",
+      "path": "custodian/bundled_skills/memory/kv-set/scripts/execute.py",
+      "imports": [
+        "datetime",
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.memory.sqlite-query.scripts.execute",
+      "path": "custodian/bundled_skills/memory/sqlite-query/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.modal.modal-deploy.scripts.execute",
+      "path": "custodian/bundled_skills/modal/modal-deploy/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "importlib.util"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.modal.modal-function-list.scripts.execute",
+      "path": "custodian/bundled_skills/modal/modal-function-list/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "modal",
+        "requests"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.modal.modal-invoke.scripts.execute",
+      "path": "custodian/bundled_skills/modal/modal-invoke/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "modal",
+        "requests"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.monitoring.dns-lookup.scripts.execute",
+      "path": "custodian/bundled_skills/monitoring/dns-lookup/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.monitoring.http-health-check.scripts.execute",
+      "path": "custodian/bundled_skills/monitoring/http-health-check/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.monitoring.ip-geolocation.scripts.execute",
+      "path": "custodian/bundled_skills/monitoring/ip-geolocation/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.monitoring.ping-host.scripts.execute",
+      "path": "custodian/bundled_skills/monitoring/ping-host/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.monitoring.port-scan.scripts.execute",
+      "path": "custodian/bundled_skills/monitoring/port-scan/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.monitoring.ssl-cert-check.scripts.execute",
+      "path": "custodian/bundled_skills/monitoring/ssl-cert-check/scripts/execute.py",
+      "imports": [
+        "datetime",
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.monitoring.whois-lookup.scripts.execute",
+      "path": "custodian/bundled_skills/monitoring/whois-lookup/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.nvidia.huggingface-infer.scripts.execute",
+      "path": "custodian/bundled_skills/nvidia/huggingface-infer/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "json",
+        "os",
+        "sys",
+        "requests"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.nvidia.nim-job-status.scripts.execute",
+      "path": "custodian/bundled_skills/nvidia/nim-job-status/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "json",
+        "os",
+        "sys",
+        "requests"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.nvidia.nim-job-submit.scripts.execute",
+      "path": "custodian/bundled_skills/nvidia/nim-job-submit/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.nvidia.nim-model-list.scripts.execute",
+      "path": "custodian/bundled_skills/nvidia/nim-model-list/scripts/execute.py",
+      "imports": [
+        "json"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.nvidia.openai-complete.scripts.execute",
+      "path": "custodian/bundled_skills/nvidia/openai-complete/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "json",
+        "os",
+        "sys",
+        "requests"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.payments.stripe-spend.scripts._core",
+      "path": "custodian/bundled_skills/payments/stripe-spend/scripts/_core.py",
+      "imports": [
+        "pathlib",
+        "contextlib",
+        "json",
+        "os",
+        "random",
+        "secrets",
+        "shutil",
+        "sys",
+        "time",
+        "requests",
+        "recipes",
+        "fcntl",
+        "msvcrt"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.payments.stripe-spend.scripts.approve",
+      "path": "custodian/bundled_skills/payments/stripe-spend/scripts/approve.py",
+      "imports": [
+        "argparse",
+        "json",
+        "sys",
+        "time",
+        "_core",
+        "notify"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.payments.stripe-spend.scripts.approve_v2",
+      "path": "custodian/bundled_skills/payments/stripe-spend/scripts/approve_v2.py",
+      "imports": [
+        "pathlib",
+        "custodian.types",
+        "argparse",
+        "sys",
+        "time",
+        "_core",
+        "notify",
+        "json"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.payments.stripe-spend.scripts.authority",
+      "path": "custodian/bundled_skills/payments/stripe-spend/scripts/authority.py",
+      "imports": [
+        "pathlib",
+        "json",
+        "os",
+        "random",
+        "sys"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.payments.stripe-spend.scripts.earn",
+      "path": "custodian/bundled_skills/payments/stripe-spend/scripts/earn.py",
+      "imports": [
+        "argparse",
+        "sqlite3",
+        "sys",
+        "_core"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.payments.stripe-spend.scripts.execute",
+      "path": "custodian/bundled_skills/payments/stripe-spend/scripts/execute.py",
+      "imports": [
+        "pathlib",
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.payments.stripe-spend.scripts.kill_toggle",
+      "path": "custodian/bundled_skills/payments/stripe-spend/scripts/kill_toggle.py",
+      "imports": [
+        "pathlib",
+        "argparse",
+        "sqlite3",
+        "sys",
+        "time"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.payments.stripe-spend.scripts.notify",
+      "path": "custodian/bundled_skills/payments/stripe-spend/scripts/notify.py",
+      "imports": [
+        "pathlib",
+        "json",
+        "os",
+        "random",
+        "secrets",
+        "sys",
+        "time",
+        "requests"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.payments.stripe-spend.scripts.recipes.__init__",
+      "path": "custodian/bundled_skills/payments/stripe-spend/scripts/recipes/__init__.py",
+      "imports": [
+        "."
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.payments.stripe-spend.scripts.recipes.status_alert",
+      "path": "custodian/bundled_skills/payments/stripe-spend/scripts/recipes/status_alert.py",
+      "imports": [
+        "pathlib",
+        "os",
+        "sys",
+        "requests"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.payments.stripe-spend.scripts.refund",
+      "path": "custodian/bundled_skills/payments/stripe-spend/scripts/refund.py",
+      "imports": [
+        "argparse",
+        "json",
+        "sqlite3",
+        "sys",
+        "_core",
+        "notify"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.payments.stripe-spend.scripts.spend",
+      "path": "custodian/bundled_skills/payments/stripe-spend/scripts/spend.py",
+      "imports": [
+        "argparse",
+        "sqlite3",
+        "sys",
+        "time",
+        "_core",
+        "notify"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.payments.stripe-spend.scripts.spend_v2",
+      "path": "custodian/bundled_skills/payments/stripe-spend/scripts/spend_v2.py",
+      "imports": [
+        "pathlib",
+        "custodian.policy",
+        "custodian.types",
+        "argparse",
+        "sys",
+        "_core",
+        "notify"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.scheduling.cron-create.scripts.execute",
+      "path": "custodian/bundled_skills/scheduling/cron-create/scripts/execute.py",
+      "imports": [
+        "datetime",
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.scheduling.cron-delete.scripts.execute",
+      "path": "custodian/bundled_skills/scheduling/cron-delete/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.scheduling.cron-list.scripts.execute",
+      "path": "custodian/bundled_skills/scheduling/cron-list/scripts/execute.py",
+      "imports": [
+        "json"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.scheduling.task-queue-add.scripts.execute",
+      "path": "custodian/bundled_skills/scheduling/task-queue-add/scripts/execute.py",
+      "imports": [
+        "datetime",
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.scheduling.task-queue-list.scripts.execute",
+      "path": "custodian/bundled_skills/scheduling/task-queue-list/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.security.hmac-verify.scripts.execute",
+      "path": "custodian/bundled_skills/security/hmac-verify/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.security.jwt-decode.scripts.execute",
+      "path": "custodian/bundled_skills/security/jwt-decode/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.security.paladin-import.scripts.execute",
+      "path": "custodian/bundled_skills/security/paladin-import/scripts/execute.py",
+      "imports": [
+        "pathlib",
+        "paladin",
+        "paladin.errors",
+        "paladin.vault",
+        "paladin.broker",
+        "argparse",
+        "json",
+        "sys"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.security.secrets-scan.scripts.execute",
+      "path": "custodian/bundled_skills/security/secrets-scan/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.stripe.stripe-balance.scripts.execute",
+      "path": "custodian/bundled_skills/stripe/stripe-balance/scripts/execute.py",
+      "imports": [
+        "json"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.stripe.stripe-charge-list.scripts.execute",
+      "path": "custodian/bundled_skills/stripe/stripe-charge-list/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.stripe.stripe-customer-create.scripts.execute",
+      "path": "custodian/bundled_skills/stripe/stripe-customer-create/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.stripe.stripe-customer-lookup.scripts.execute",
+      "path": "custodian/bundled_skills/stripe/stripe-customer-lookup/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.stripe.stripe-invoice-send.scripts.execute",
+      "path": "custodian/bundled_skills/stripe/stripe-invoice-send/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.stripe.stripe-payout.scripts.execute",
+      "path": "custodian/bundled_skills/stripe/stripe-payout/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.stripe.stripe-price-list.scripts.execute",
+      "path": "custodian/bundled_skills/stripe/stripe-price-list/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.stripe.stripe-refund-list.scripts.execute",
+      "path": "custodian/bundled_skills/stripe/stripe-refund-list/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.stripe.stripe-subscription-cancel.scripts.execute",
+      "path": "custodian/bundled_skills/stripe/stripe-subscription-cancel/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.stripe.stripe-subscription-create.scripts.execute",
+      "path": "custodian/bundled_skills/stripe/stripe-subscription-create/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.utilities.base64-decode.scripts.execute",
+      "path": "custodian/bundled_skills/utilities/base64-decode/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.utilities.base64-encode.scripts.execute",
+      "path": "custodian/bundled_skills/utilities/base64-encode/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.utilities.currency-convert.scripts.execute",
+      "path": "custodian/bundled_skills/utilities/currency-convert/scripts/execute.py",
+      "imports": [
+        "argparse",
+        "requests"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.utilities.hash-sha256.scripts.execute",
+      "path": "custodian/bundled_skills/utilities/hash-sha256/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.utilities.json-transform.scripts.execute",
+      "path": "custodian/bundled_skills/utilities/json-transform/scripts/execute.py",
+      "imports": [
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.utilities.timezone-lookup.scripts.execute",
+      "path": "custodian/bundled_skills/utilities/timezone-lookup/scripts/execute.py",
+      "imports": [
+        "datetime",
+        "zoneinfo",
+        "backports.zoneinfo",
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.utilities.url-parse.scripts.execute",
+      "path": "custodian/bundled_skills/utilities/url-parse/scripts/execute.py",
+      "imports": [
+        "urllib.parse",
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.web.http-get.scripts.execute",
+      "path": "custodian/bundled_skills/web/http-get/scripts/execute.py",
+      "imports": [
+        "urllib.parse",
+        "argparse",
+        "requests"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.web.http-post.scripts.execute",
+      "path": "custodian/bundled_skills/web/http-post/scripts/execute.py",
+      "imports": [
+        "urllib.parse",
+        "argparse",
+        "requests"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.web.news-search.scripts.execute",
+      "path": "custodian/bundled_skills/web/news-search/scripts/execute.py",
+      "imports": [
+        "html.parser",
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.web.web-scrape.scripts.execute",
+      "path": "custodian/bundled_skills/web/web-scrape/scripts/execute.py",
+      "imports": [
+        "html.parser",
+        "urllib.parse",
+        "argparse",
+        "requests"
+      ]
+    },
+    {
+      "id": "custodian.bundled_skills.web.web-search.scripts.execute",
+      "path": "custodian/bundled_skills/web/web-search/scripts/execute.py",
+      "imports": [
+        "html.parser",
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.bus",
+      "path": "custodian/bus.py",
+      "imports": [
+        "__future__",
+        "collections",
+        "typing",
+        "pathlib",
+        "custodian.bus",
+        "logging",
+        "time"
+      ]
+    },
+    {
+      "id": "custodian.cli.__init__",
+      "path": "custodian/cli/__init__.py",
+      "imports": []
+    },
+    {
+      "id": "custodian.cli._version",
+      "path": "custodian/cli/_version.py",
+      "imports": [
+        "__future__",
+        "importlib.metadata",
+        "argparse"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_adapters",
+      "path": "custodian/cli/cmd_adapters.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.adapters.registry",
+        "custodian.adapters.base",
+        "json",
+        "sys"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_approve",
+      "path": "custodian/cli/cmd_approve.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.backends.twilio_verify",
+        "custodian.exceptions",
+        "custodian.storage.sqlite",
+        "custodian.types",
+        "custodian.universal_ledger",
+        "os",
+        "sys"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_audit",
+      "path": "custodian/cli/cmd_audit.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.storage.sqlite",
+        "custodian.types",
+        "sys"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_backup",
+      "path": "custodian/cli/cmd_backup.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "json",
+        "os",
+        "sqlite3",
+        "tempfile",
+        "time",
+        "zipfile"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_beancount",
+      "path": "custodian/cli/cmd_beancount.py",
+      "imports": [
+        "__future__",
+        "datetime",
+        "pathlib",
+        "custodian.config",
+        "custodian.storage.sqlite",
+        "argparse",
+        "sys",
+        "time"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_codex_guard",
+      "path": "custodian/cli/cmd_codex_guard.py",
+      "imports": [
+        "__future__",
+        "datetime",
+        "pathlib",
+        "custodian.codex_guard.receipts",
+        "json",
+        "sys"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_confirm",
+      "path": "custodian/cli/cmd_confirm.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.config",
+        "custodian.storage.sqlite",
+        "custodian.types",
+        "custodian.universal_ledger",
+        "sys",
+        "time",
+        "uuid"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_console",
+      "path": "custodian/cli/cmd_console.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.codex_guard.approvals",
+        "custodian.codex_guard.receipts",
+        "custodian.control.policy",
+        "custodian.control.filesystem_policy",
+        "custodian.control.ledger_access_policy",
+        "custodian.executor.capability",
+        "custodian.universal_ledger",
+        "os",
+        "json",
+        "sys",
+        "time",
+        "msvcrt",
+        "select"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_demo_receipt",
+      "path": "custodian/cli/cmd_demo_receipt.py",
+      "imports": [
+        "pathlib",
+        "custodian",
+        "json",
+        "tempfile",
+        "time"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_demo_verify",
+      "path": "custodian/cli/cmd_demo_verify.py",
+      "imports": [
+        "__future__",
+        "custodian.packs.base",
+        "copy"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_deny",
+      "path": "custodian/cli/cmd_deny.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.storage.sqlite",
+        "custodian.types",
+        "custodian.universal_ledger",
+        "sys"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_doctor",
+      "path": "custodian/cli/cmd_doctor.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "importlib.metadata",
+        "importlib.util",
+        "os",
+        "shutil",
+        "subprocess",
+        "custodian"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_earn_and_buy",
+      "path": "custodian/cli/cmd_earn_and_buy.py",
+      "imports": [
+        "__future__",
+        "datetime",
+        "custodian.packs.base",
+        "custodian.tools.registry",
+        "pathlib",
+        "custodian.govern",
+        "custodian.types",
+        "custodian.cli.cmd_generate_report",
+        "custodian.cli.cmd_send_report",
+        "copy",
+        "os",
+        "sys",
+        "urllib.request",
+        "json",
+        "tempfile"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_executor",
+      "path": "custodian/cli/cmd_executor.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.executor.capability",
+        "custodian.tools.registry",
+        "custodian.executor.service",
+        "hmac",
+        "os",
+        "sys",
+        "time"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_generate_report",
+      "path": "custodian/cli/cmd_generate_report.py",
+      "imports": [
+        "__future__",
+        "datetime",
+        "pathlib",
+        "typing",
+        "custodian.govern",
+        "custodian.types",
+        "custodian.inference.router",
+        "hashlib",
+        "json",
+        "os",
+        "sys",
+        "time",
+        "uuid",
+        "tempfile",
+        "re"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_init",
+      "path": "custodian/cli/cmd_init.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.policy.loader",
+        "custodian.storage.sqlite",
+        "custodian.types",
+        "shutil"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_kill",
+      "path": "custodian/cli/cmd_kill.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.storage.sqlite",
+        "custodian.types",
+        "custodian.universal_ledger",
+        "sys",
+        "uuid"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_poison_tests",
+      "path": "custodian/cli/cmd_poison_tests.py",
+      "imports": [
+        "__future__",
+        "custodian.packs.base",
+        "sys"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_request",
+      "path": "custodian/cli/cmd_request.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.backends.twilio_verify",
+        "custodian.cli.cmd_init",
+        "custodian.exceptions",
+        "custodian.policy.evaluator",
+        "custodian.policy.loader",
+        "custodian.storage.sqlite",
+        "custodian.types",
+        "custodian.universal_ledger",
+        "os",
+        "sys",
+        "uuid"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_resume",
+      "path": "custodian/cli/cmd_resume.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.storage.sqlite",
+        "custodian.types",
+        "custodian.universal_ledger",
+        "sys",
+        "uuid"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_send_report",
+      "path": "custodian/cli/cmd_send_report.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "typing",
+        "custodian.govern",
+        "custodian.types",
+        "json",
+        "os",
+        "urllib.request",
+        "urllib.parse",
+        "tempfile",
+        "base64"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_setup",
+      "path": "custodian/cli/cmd_setup.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.cli.cmd_doctor",
+        "shutil",
+        "subprocess",
+        "sys"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_status",
+      "path": "custodian/cli/cmd_status.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.ledger",
+        "custodian.storage.sqlite",
+        "custodian.types",
+        "sys"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_status_enhanced",
+      "path": "custodian/cli/cmd_status_enhanced.py",
+      "imports": [
+        "__future__",
+        "datetime",
+        "pathlib",
+        "custodian.config",
+        "custodian.storage.sqlite",
+        "sys",
+        "time"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_tools",
+      "path": "custodian/cli/cmd_tools.py",
+      "imports": [
+        "__future__",
+        "custodian.tools.registry",
+        "json",
+        "sys"
+      ]
+    },
+    {
+      "id": "custodian.cli.cmd_validate",
+      "path": "custodian/cli/cmd_validate.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.exceptions",
+        "custodian.policy.loader",
+        "sys"
+      ]
+    },
+    {
+      "id": "custodian.cli.main",
+      "path": "custodian/cli/main.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.cli.menu",
+        "custodian.cli",
+        "custodian.cli._version",
+        "custodian.config",
+        "custodian.tools.registry",
+        "custodian._encoding",
+        "argparse",
+        "difflib",
+        "sys"
+      ]
+    },
+    {
+      "id": "custodian.cli.menu",
+      "path": "custodian/cli/menu.py",
+      "imports": [
+        "__future__",
+        "custodian.cli.main",
+        "sys"
+      ]
+    },
+    {
+      "id": "custodian.client",
+      "path": "custodian/client.py",
+      "imports": [
+        "custodian.client",
+        "__future__",
+        "dataclasses",
+        "typing",
+        "custodian.types",
+        "custodian.govern",
+        "hashlib",
+        "json",
+        "logging",
+        "time",
+        "uuid"
+      ]
+    },
+    {
+      "id": "custodian.config",
+      "path": "custodian/config.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "pathlib",
+        "custodian.exceptions",
+        "os"
+      ]
+    },
+    {
+      "id": "custodian.control.__init__",
+      "path": "custodian/control/__init__.py",
+      "imports": [
+        ".contracts",
+        ".policy",
+        ".service"
+      ]
+    },
+    {
+      "id": "custodian.control.contracts",
+      "path": "custodian/control/contracts.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "enum",
+        "typing",
+        "uuid",
+        "custodian.types",
+        "time"
+      ]
+    },
+    {
+      "id": "custodian.control.filesystem_policy",
+      "path": "custodian/control/filesystem_policy.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "pathlib",
+        "uuid",
+        "custodian.adapters.builtin._paths",
+        "json",
+        "os",
+        "msvcrt",
+        "fcntl"
+      ]
+    },
+    {
+      "id": "custodian.control.ledger_access_policy",
+      "path": "custodian/control/ledger_access_policy.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "pathlib",
+        "uuid",
+        "json",
+        "os",
+        "msvcrt",
+        "fcntl"
+      ]
+    },
+    {
+      "id": "custodian.control.policy",
+      "path": "custodian/control/policy.py",
+      "imports": [
+        "__future__",
+        "contextlib",
+        "dataclasses",
+        "pathlib",
+        "uuid",
+        "fnmatch",
+        "json",
+        "os",
+        "threading",
+        "time",
+        "msvcrt",
+        "fcntl"
+      ]
+    },
+    {
+      "id": "custodian.control.service",
+      "path": "custodian/control/service.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "typing",
+        "custodian.control.contracts",
+        "time"
+      ]
+    },
+    {
+      "id": "custodian.custodian.policy.enforcer",
+      "path": "custodian/custodian/policy/enforcer.py",
+      "imports": [
+        "__future__",
+        "typing",
+        "custodian.policy.evaluator",
+        "custodian.policy.schema",
+        "custodian.types",
+        "json",
+        "os",
+        "urllib.error",
+        "urllib.request",
+        "time"
+      ]
+    },
+    {
+      "id": "custodian.egress_proxy",
+      "path": "custodian/egress_proxy.py",
+      "imports": [
+        "__future__",
+        "typing",
+        "urllib.parse",
+        "http.server",
+        "select",
+        "socket",
+        "socketserver",
+        "threading"
+      ]
+    },
+    {
+      "id": "custodian.exceptions",
+      "path": "custodian/exceptions.py",
+      "imports": []
+    },
+    {
+      "id": "custodian.executor.__init__",
+      "path": "custodian/executor/__init__.py",
+      "imports": []
+    },
+    {
+      "id": "custodian.executor.capability",
+      "path": "custodian/executor/capability.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "pathlib",
+        "typing",
+        "uuid",
+        "custodian.exceptions",
+        "os",
+        "hashlib",
+        "hmac",
+        "json",
+        "platform",
+        "time"
+      ]
+    },
+    {
+      "id": "custodian.executor.client",
+      "path": "custodian/executor/client.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "typing",
+        "custodian.exceptions",
+        "json",
+        "socket"
+      ]
+    },
+    {
+      "id": "custodian.executor.service",
+      "path": "custodian/executor/service.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "typing",
+        "custodian.executor.capability",
+        "custodian.tools.registry",
+        "json",
+        "os",
+        "socket",
+        "socketserver",
+        "threading"
+      ]
+    },
+    {
+      "id": "custodian.govern",
+      "path": "custodian/govern.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "typing",
+        "custodian.types",
+        "custodian.bus",
+        "custodian.receipt",
+        "custodian.policy",
+        "custodian.policy.evaluator",
+        "custodian.config",
+        "pathlib",
+        "custodian.policy.schema",
+        "custodian.packs.base",
+        "functools",
+        "hashlib",
+        "inspect",
+        "os",
+        "time",
+        "uuid",
+        "json"
+      ]
+    },
+    {
+      "id": "custodian.inference.__init__",
+      "path": "custodian/inference/__init__.py",
+      "imports": []
+    },
+    {
+      "id": "custodian.inference.router",
+      "path": "custodian/inference/router.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "pathlib",
+        "typing",
+        "custodian.policy.gate",
+        "custodian.tools.registry",
+        "custodian.universal_ledger",
+        "json",
+        "os",
+        "urllib.error",
+        "urllib.request",
+        "re",
+        "uuid"
+      ]
+    },
+    {
+      "id": "custodian.ledger",
+      "path": "custodian/ledger.py",
+      "imports": [
+        "__future__",
+        "typing",
+        "custodian.storage.base",
+        "custodian.types"
+      ]
+    },
+    {
+      "id": "custodian.middleware",
+      "path": "custodian/middleware.py",
+      "imports": [
+        "__future__",
+        "typing",
+        "fastapi",
+        "custodian.middleware",
+        "custodian.govern",
+        "custodian.types",
+        "json",
+        "logging",
+        "math",
+        "uuid",
+        "hashlib"
+      ]
+    },
+    {
+      "id": "custodian.packs.__init__",
+      "path": "custodian/packs/__init__.py",
+      "imports": []
+    },
+    {
+      "id": "custodian.packs.agent",
+      "path": "custodian/packs/agent.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "pathlib",
+        "typing",
+        "custodian.packs.base",
+        "json",
+        "urllib.request"
+      ]
+    },
+    {
+      "id": "custodian.packs.base",
+      "path": "custodian/packs/base.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "enum",
+        "pathlib",
+        "typing",
+        "json"
+      ]
+    },
+    {
+      "id": "custodian.packs.cloud.__init__",
+      "path": "custodian/packs/cloud/__init__.py",
+      "imports": []
+    },
+    {
+      "id": "custodian.packs.cloud.extractor",
+      "path": "custodian/packs/cloud/extractor.py",
+      "imports": [
+        "__future__",
+        "custodian.packs.agent",
+        "custodian.packs.base"
+      ]
+    },
+    {
+      "id": "custodian.packs.cloud.pack",
+      "path": "custodian/packs/cloud/pack.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.packs.base",
+        "json",
+        "yaml"
+      ]
+    },
+    {
+      "id": "custodian.packs.engine",
+      "path": "custodian/packs/engine.py",
+      "imports": [
+        "__future__",
+        "custodian.packs.base",
+        "custodian.policy.schema",
+        "custodian.types",
+        "custodian.policy.enforcer",
+        "custodian.policy.evaluator",
+        "copy"
+      ]
+    },
+    {
+      "id": "custodian.packs.narration",
+      "path": "custodian/packs/narration.py",
+      "imports": [
+        "__future__"
+      ]
+    },
+    {
+      "id": "custodian.packs.purchasing.__init__",
+      "path": "custodian/packs/purchasing/__init__.py",
+      "imports": []
+    },
+    {
+      "id": "custodian.packs.purchasing.extractor",
+      "path": "custodian/packs/purchasing/extractor.py",
+      "imports": [
+        "__future__",
+        "custodian.packs.agent",
+        "custodian.packs.base"
+      ]
+    },
+    {
+      "id": "custodian.packs.purchasing.pack",
+      "path": "custodian/packs/purchasing/pack.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.packs.base",
+        "json",
+        "yaml"
+      ]
+    },
+    {
+      "id": "custodian.packs.refunds.__init__",
+      "path": "custodian/packs/refunds/__init__.py",
+      "imports": []
+    },
+    {
+      "id": "custodian.packs.refunds.corpus.__init__",
+      "path": "custodian/packs/refunds/corpus/__init__.py",
+      "imports": []
+    },
+    {
+      "id": "custodian.packs.refunds.extractor",
+      "path": "custodian/packs/refunds/extractor.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.packs.agent",
+        "custodian.packs.base"
+      ]
+    },
+    {
+      "id": "custodian.packs.refunds.pack",
+      "path": "custodian/packs/refunds/pack.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.packs.base",
+        "json",
+        "yaml"
+      ]
+    },
+    {
+      "id": "custodian.packs.registry",
+      "path": "custodian/packs/registry.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "pathlib",
+        "typing",
+        "custodian.packs.base",
+        "custodian.packs.refunds.pack",
+        "custodian.packs.purchasing.pack",
+        "custodian.packs.cloud.pack"
+      ]
+    },
+    {
+      "id": "custodian.packs.test_runner",
+      "path": "custodian/packs/test_runner.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "pathlib",
+        "typing",
+        "custodian.packs.registry",
+        "custodian.packs.engine",
+        "custodian.policy.schema",
+        "custodian.types",
+        "custodian.packs.base",
+        "json",
+        "logging",
+        "sys",
+        "yaml"
+      ]
+    },
+    {
+      "id": "custodian.policy.__init__",
+      "path": "custodian/policy/__init__.py",
+      "imports": [
+        "custodian.policy.evaluator",
+        "custodian.policy.loader",
+        "custodian.policy.schema"
+      ]
+    },
+    {
+      "id": "custodian.policy.autorank",
+      "path": "custodian/policy/autorank.py",
+      "imports": [
+        "__future__",
+        "typing",
+        "custodian.policy.schema",
+        "custodian.types",
+        "time"
+      ]
+    },
+    {
+      "id": "custodian.policy.enforcer",
+      "path": "custodian/policy/enforcer.py",
+      "imports": [
+        "__future__",
+        "typing",
+        "custodian.policy.evaluator",
+        "custodian.policy.schema",
+        "custodian.types",
+        "json",
+        "os",
+        "urllib.error",
+        "urllib.request",
+        "time"
+      ]
+    },
+    {
+      "id": "custodian.policy.envelope",
+      "path": "custodian/policy/envelope.py",
+      "imports": [
+        "__future__",
+        "typing",
+        "custodian.policy.schema",
+        "custodian.storage.base",
+        "time"
+      ]
+    },
+    {
+      "id": "custodian.policy.evaluator",
+      "path": "custodian/policy/evaluator.py",
+      "imports": [
+        "__future__",
+        "typing",
+        "custodian.policy.schema",
+        "custodian.types",
+        "custodian.policy.autorank",
+        "custodian.policy.envelope",
+        "custodian.policy.margin",
+        "custodian.policy.self_dealing",
+        "logging",
+        "math"
+      ]
+    },
+    {
+      "id": "custodian.policy.gate",
+      "path": "custodian/policy/gate.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.policy",
+        "custodian.policy.evaluator",
+        "custodian.types",
+        "json"
+      ]
+    },
+    {
+      "id": "custodian.policy.loader",
+      "path": "custodian/policy/loader.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "typing",
+        "custodian.exceptions",
+        "custodian.policy.schema",
+        "custodian.types",
+        "yaml"
+      ]
+    },
+    {
+      "id": "custodian.policy.margin",
+      "path": "custodian/policy/margin.py",
+      "imports": [
+        "__future__",
+        "typing",
+        "custodian.policy.schema"
+      ]
+    },
+    {
+      "id": "custodian.policy.schema",
+      "path": "custodian/policy/schema.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "typing",
+        "custodian.exceptions",
+        "custodian.types"
+      ]
+    },
+    {
+      "id": "custodian.policy.self_dealing",
+      "path": "custodian/policy/self_dealing.py",
+      "imports": [
+        "__future__",
+        "typing",
+        "custodian.policy.schema"
+      ]
+    },
+    {
+      "id": "custodian.receipt",
+      "path": "custodian/receipt.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "typing",
+        "hashlib",
+        "json",
+        "time",
+        "uuid"
+      ]
+    },
+    {
+      "id": "custodian.sandbox",
+      "path": "custodian/sandbox.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "typing",
+        "custodian.exceptions",
+        "functools",
+        "os",
+        "shutil",
+        "subprocess"
+      ]
+    },
+    {
+      "id": "custodian.session",
+      "path": "custodian/session.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "typing",
+        "custodian.types",
+        "custodian.govern",
+        "collections",
+        "uuid"
+      ]
+    },
+    {
+      "id": "custodian.signing",
+      "path": "custodian/signing.py",
+      "imports": [
+        "custodian.signing",
+        "__future__",
+        "dataclasses",
+        "enum",
+        "pathlib",
+        "typing",
+        "cryptography.exceptions",
+        "cryptography.hazmat.primitives",
+        "cryptography.hazmat.primitives.asymmetric.ed25519",
+        "custodian.receipt",
+        "json"
+      ]
+    },
+    {
+      "id": "custodian.storage.base",
+      "path": "custodian/storage/base.py",
+      "imports": [
+        "__future__",
+        "abc",
+        "typing",
+        "custodian.types"
+      ]
+    },
+    {
+      "id": "custodian.storage.sqlite",
+      "path": "custodian/storage/sqlite.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "typing",
+        "custodian.exceptions",
+        "custodian.storage.base",
+        "custodian.types",
+        "json",
+        "sqlite3",
+        "time"
+      ]
+    },
+    {
+      "id": "custodian.tools.__init__",
+      "path": "custodian/tools/__init__.py",
+      "imports": [
+        "custodian.tools.registry"
+      ]
+    },
+    {
+      "id": "custodian.tools.registry",
+      "path": "custodian/tools/registry.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "pathlib",
+        "typing",
+        "custodian.universal_ledger",
+        "custodian.policy.gate",
+        "custodian.executor.client",
+        "custodian",
+        "custodian.types",
+        "custodian.exceptions",
+        "custodian.sandbox",
+        "custodian.egress_proxy",
+        "json",
+        "os",
+        "re",
+        "subprocess",
+        "sys",
+        "yaml",
+        "uuid"
+      ]
+    },
+    {
+      "id": "custodian.types",
+      "path": "custodian/types.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "enum",
+        "typing",
+        "time",
+        "uuid"
+      ]
+    },
+    {
+      "id": "custodian.universal_ledger",
+      "path": "custodian/universal_ledger.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "pathlib",
+        "typing",
+        "custodian.exceptions",
+        "custodian.adapters.builtin.secret_leak_guard",
+        "hashlib",
+        "json",
+        "re",
+        "sqlite3",
+        "time",
+        "uuid"
+      ]
+    },
+    {
+      "id": "custodian.verify_kit",
+      "path": "custodian/verify_kit.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "typing",
+        "importlib.resources",
+        "custodian.packs.base",
+        "custodian.packs.refunds.pack",
+        "custodian._encoding",
+        "io",
+        "argparse",
+        "json",
+        "os",
+        "re",
+        "subprocess",
+        "sys",
+        "time",
+        "urllib.request"
+      ]
+    },
+    {
+      "id": "paladin.__init__",
+      "path": "paladin/__init__.py",
+      "imports": [
+        "paladin.refs",
+        "paladin.errors",
+        "paladin.vault",
+        "paladin.broker",
+        "paladin.grants"
+      ]
+    },
+    {
+      "id": "paladin._encoding",
+      "path": "paladin/_encoding.py",
+      "imports": [
+        "__future__",
+        "os",
+        "re",
+        "sys",
+        "io"
+      ]
+    },
+    {
+      "id": "paladin._prompt",
+      "path": "paladin/_prompt.py",
+      "imports": [
+        "__future__",
+        "sys",
+        "msvcrt",
+        "termios",
+        "tty",
+        "getpass"
+      ]
+    },
+    {
+      "id": "paladin.audit",
+      "path": "paladin/audit.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "pathlib",
+        "typing",
+        "paladin.errors",
+        "hashlib",
+        "hmac",
+        "json",
+        "os",
+        "threading",
+        "time"
+      ]
+    },
+    {
+      "id": "paladin.backup",
+      "path": "paladin/backup.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "pathlib",
+        "typing",
+        "paladin",
+        "paladin.errors",
+        "paladin.vault",
+        "json",
+        "os",
+        "time",
+        "zipfile",
+        "tempfile"
+      ]
+    },
+    {
+      "id": "paladin.broker",
+      "path": "paladin/broker.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "typing",
+        "urllib.parse",
+        "paladin.audit",
+        "paladin.errors",
+        "paladin.grants",
+        "paladin.refs",
+        "paladin.vault",
+        "hashlib",
+        "http.client",
+        "ipaddress",
+        "os",
+        "re",
+        "ssl",
+        "subprocess"
+      ]
+    },
+    {
+      "id": "paladin.cli",
+      "path": "paladin/cli.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "paladin._prompt",
+        "paladin.broker",
+        "paladin.errors",
+        "paladin.refs",
+        "paladin.vault",
+        "paladin",
+        "paladin.sandbox",
+        "importlib.metadata",
+        "paladin.menu",
+        "paladin._encoding",
+        "argparse",
+        "getpass",
+        "json",
+        "os",
+        "sys",
+        "time"
+      ]
+    },
+    {
+      "id": "paladin.crypto",
+      "path": "paladin/crypto.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "paladin.errors",
+        "cryptography.hazmat.primitives.ciphers.aead",
+        "hashlib",
+        "hmac",
+        "json",
+        "os"
+      ]
+    },
+    {
+      "id": "paladin.egress",
+      "path": "paladin/egress.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "typing",
+        "paladin.broker",
+        "paladin.egress_client",
+        "paladin.errors",
+        "hmac",
+        "os",
+        "secrets",
+        "socket",
+        "tempfile",
+        "threading"
+      ]
+    },
+    {
+      "id": "paladin.egress_client",
+      "path": "paladin/egress_client.py",
+      "imports": [
+        "paladin.egress_client",
+        "__future__",
+        "typing",
+        "json",
+        "os",
+        "socket",
+        "struct"
+      ]
+    },
+    {
+      "id": "paladin.errors",
+      "path": "paladin/errors.py",
+      "imports": [
+        "__future__"
+      ]
+    },
+    {
+      "id": "paladin.git_credential",
+      "path": "paladin/git_credential.py",
+      "imports": [
+        "__future__",
+        "typing",
+        "paladin.broker",
+        "paladin.refs",
+        "paladin.vault",
+        "subprocess",
+        "sys"
+      ]
+    },
+    {
+      "id": "paladin.grants",
+      "path": "paladin/grants.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "typing",
+        "paladin.errors",
+        "fnmatch",
+        "time"
+      ]
+    },
+    {
+      "id": "paladin.importer",
+      "path": "paladin/importer.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "pathlib",
+        "typing",
+        "paladin.errors",
+        "paladin.refs",
+        "paladin.vault",
+        "fnmatch",
+        "json",
+        "os",
+        "re",
+        "shutil",
+        "subprocess",
+        "csv",
+        "io"
+      ]
+    },
+    {
+      "id": "paladin.menu",
+      "path": "paladin/menu.py",
+      "imports": [
+        "__future__",
+        "paladin.cli",
+        "sys",
+        "shlex"
+      ]
+    },
+    {
+      "id": "paladin.receipts",
+      "path": "paladin/receipts.py",
+      "imports": [
+        "paladin.vault",
+        "paladin.receipts",
+        "__future__",
+        "paladin",
+        "hashlib",
+        "hmac"
+      ]
+    },
+    {
+      "id": "paladin.refs",
+      "path": "paladin/refs.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "re"
+      ]
+    },
+    {
+      "id": "paladin.sandbox",
+      "path": "paladin/sandbox.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "typing",
+        "paladin.broker",
+        "paladin.egress",
+        "paladin.errors",
+        "functools",
+        "os",
+        "shutil",
+        "subprocess",
+        "warnings"
+      ]
+    },
+    {
+      "id": "paladin.vault",
+      "path": "paladin/vault.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "pathlib",
+        "typing",
+        "paladin",
+        "paladin.errors",
+        "paladin.refs",
+        "paladin._prompt",
+        "getpass",
+        "json",
+        "os",
+        "stat",
+        "time",
+        "fcntl",
+        "msvcrt"
+      ]
+    },
+    {
+      "id": "tests.conftest",
+      "path": "tests/conftest.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.policy.loader",
+        "custodian.storage.sqlite",
+        "custodian.types",
+        "tempfile",
+        "pytest",
+        "yaml"
+      ]
+    },
+    {
+      "id": "tests.test_adapters",
+      "path": "tests/test_adapters.py",
+      "imports": [
+        "custodian.adapters.base",
+        "custodian.adapters.pipeline",
+        "custodian.adapters.registry",
+        "custodian.adapters.builtin",
+        "caduceus.broker",
+        "json",
+        "pytest",
+        "base64"
+      ]
+    },
+    {
+      "id": "tests.test_audit",
+      "path": "tests/test_audit.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.audit",
+        "custodian.exceptions",
+        "custodian.types",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_autorank",
+      "path": "tests/test_autorank.py",
+      "imports": [
+        "__future__",
+        "custodian.policy.autorank",
+        "custodian.policy.schema",
+        "custodian.types",
+        "custodian.policy",
+        "time",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_backends",
+      "path": "tests/test_backends.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.backends.twilio_verify",
+        "custodian.exceptions",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_backends_twilio",
+      "path": "tests/test_backends_twilio.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.backends.twilio_verify",
+        "pytest",
+        "requests"
+      ]
+    },
+    {
+      "id": "tests.test_beancount",
+      "path": "tests/test_beancount.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.cli",
+        "custodian.storage.sqlite",
+        "custodian.types",
+        "argparse",
+        "time",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_bus",
+      "path": "tests/test_bus.py",
+      "imports": [
+        "custodian.bus",
+        "custodian"
+      ]
+    },
+    {
+      "id": "tests.test_caduceus",
+      "path": "tests/test_caduceus.py",
+      "imports": [
+        "caduceus.vault",
+        "caduceus.broker",
+        "caduceus.grants",
+        "caduceus.audit",
+        "caduceus.refs",
+        "caduceus.errors",
+        "custodian.receipt",
+        "caduceus.receipts",
+        "json",
+        "subprocess",
+        "sys",
+        "pytest",
+        "stat"
+      ]
+    },
+    {
+      "id": "tests.test_cli",
+      "path": "tests/test_cli.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.cli.main",
+        "custodian.storage.sqlite",
+        "custodian.types",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_confirm",
+      "path": "tests/test_confirm.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.cli",
+        "custodian.storage.sqlite",
+        "custodian.types",
+        "argparse",
+        "time",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_demo_verify",
+      "path": "tests/test_demo_verify.py",
+      "imports": [
+        "__future__",
+        "custodian.packs.base",
+        "custodian.packs.engine",
+        "custodian.policy.schema",
+        "custodian.types",
+        "subprocess",
+        "sys",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_earn_and_buy",
+      "path": "tests/test_earn_and_buy.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "unittest.mock",
+        "custodian.cli",
+        "io",
+        "custodian.tools.registry",
+        "os",
+        "subprocess",
+        "sys",
+        "pytest",
+        "contextlib"
+      ]
+    },
+    {
+      "id": "tests.test_enforcer",
+      "path": "tests/test_enforcer.py",
+      "imports": [
+        "custodian.policy",
+        "custodian.types",
+        "os",
+        "tempfile",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_envelope",
+      "path": "tests/test_envelope.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.policy.envelope",
+        "custodian.policy.schema",
+        "custodian.storage.sqlite",
+        "custodian.types",
+        "time",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_generate_report",
+      "path": "tests/test_generate_report.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.cli.cmd_generate_report",
+        "custodian.cli.cmd_send_report",
+        "json",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "types",
+        "pytest",
+        "hashlib"
+      ]
+    },
+    {
+      "id": "tests.test_govern",
+      "path": "tests/test_govern.py",
+      "imports": [
+        "pathlib",
+        "custodian",
+        "json",
+        "tempfile",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_hermes_bridge",
+      "path": "tests/test_hermes_bridge.py",
+      "imports": [
+        "custodian.tools.registry",
+        "custodian.adapters.pipeline",
+        "custodian.adapters.builtin",
+        "integrations.hermes.bridge",
+        "integrations.hermes.capsule",
+        "integrations.hermes.introspection",
+        "caduceus.vault",
+        "caduceus.broker",
+        "json",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_inference_router",
+      "path": "tests/test_inference_router.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "unittest.mock",
+        "custodian.inference.router",
+        "json",
+        "urllib.error",
+        "urllib.request",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_kill_switch",
+      "path": "tests/test_kill_switch.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.policy.evaluator",
+        "custodian.policy.loader",
+        "custodian.storage.sqlite",
+        "custodian.types",
+        "dashboard.api.operator",
+        "pytest",
+        "yaml"
+      ]
+    },
+    {
+      "id": "tests.test_ledger",
+      "path": "tests/test_ledger.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.ledger",
+        "custodian.storage.sqlite",
+        "custodian.types",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_margin",
+      "path": "tests/test_margin.py",
+      "imports": [
+        "__future__",
+        "custodian.policy.margin",
+        "custodian.policy.schema",
+        "custodian.types",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_middleware",
+      "path": "tests/test_middleware.py",
+      "imports": [
+        "custodian.middleware",
+        "json",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_nemoclaw_adapter",
+      "path": "tests/test_nemoclaw_adapter.py",
+      "imports": [
+        "custodian.adapters.nemoclaw",
+        "custodian.exceptions",
+        "subprocess",
+        "pytest",
+        "json",
+        "shutil"
+      ]
+    },
+    {
+      "id": "tests.test_packs_agent",
+      "path": "tests/test_packs_agent.py",
+      "imports": [
+        "__future__",
+        "custodian.packs.agent",
+        "custodian.packs.base",
+        "json",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_packs_base",
+      "path": "tests/test_packs_base.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "custodian.packs.base",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_packs_engine",
+      "path": "tests/test_packs_engine.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "custodian.packs.base",
+        "custodian.packs.engine",
+        "custodian.policy.loader",
+        "custodian.types",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_packs_narration",
+      "path": "tests/test_packs_narration.py",
+      "imports": [
+        "__future__",
+        "custodian.packs.narration",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_packs_registry",
+      "path": "tests/test_packs_registry.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.packs.base",
+        "custodian.packs.registry",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_pages_frontend_index",
+      "path": "tests/test_pages_frontend_index.py",
+      "imports": [
+        "pathlib"
+      ]
+    },
+    {
+      "id": "tests.test_pages_frontend_operator",
+      "path": "tests/test_pages_frontend_operator.py",
+      "imports": [
+        "pathlib"
+      ]
+    },
+    {
+      "id": "tests.test_pages_frontend_tour_flow",
+      "path": "tests/test_pages_frontend_tour_flow.py",
+      "imports": [
+        "pathlib"
+      ]
+    },
+    {
+      "id": "tests.test_poison_tests",
+      "path": "tests/test_poison_tests.py",
+      "imports": [
+        "__future__",
+        "custodian.cli",
+        "custodian.packs.base",
+        "argparse",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_policy",
+      "path": "tests/test_policy.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.exceptions",
+        "custodian.policy.evaluator",
+        "custodian.policy.loader",
+        "custodian.policy.schema",
+        "custodian.types",
+        "pytest",
+        "yaml"
+      ]
+    },
+    {
+      "id": "tests.test_policy_extended",
+      "path": "tests/test_policy_extended.py",
+      "imports": [
+        "__future__",
+        "dataclasses",
+        "custodian.policy.evaluator",
+        "custodian.policy.loader",
+        "custodian.types",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_purchasing_pack",
+      "path": "tests/test_purchasing_pack.py",
+      "imports": [
+        "pathlib",
+        "custodian.packs.base",
+        "custodian.packs.engine",
+        "custodian.packs.purchasing.pack",
+        "custodian.policy.loader",
+        "custodian.types",
+        "json",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_receipt",
+      "path": "tests/test_receipt.py",
+      "imports": [
+        "custodian.receipt",
+        "json",
+        "hashlib"
+      ]
+    },
+    {
+      "id": "tests.test_refund_extractor",
+      "path": "tests/test_refund_extractor.py",
+      "imports": [
+        "pathlib",
+        "custodian.packs.agent",
+        "custodian.packs.engine",
+        "custodian.packs.refunds.extractor",
+        "custodian.packs.refunds.pack",
+        "custodian.policy.loader",
+        "custodian.types",
+        "json",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_refund_pack",
+      "path": "tests/test_refund_pack.py",
+      "imports": [
+        "pathlib",
+        "custodian.packs.base",
+        "custodian.packs.engine",
+        "custodian.packs.refunds.pack",
+        "custodian.policy.loader",
+        "custodian.types",
+        "json",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_self_approval_regression",
+      "path": "tests/test_self_approval_regression.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.backends.base",
+        "custodian.backends.twilio_verify",
+        "custodian.types",
+        "argparse",
+        "ast",
+        "pytest",
+        "inspect",
+        "dataclasses"
+      ]
+    },
+    {
+      "id": "tests.test_self_dealing",
+      "path": "tests/test_self_dealing.py",
+      "imports": [
+        "__future__",
+        "custodian.policy.self_dealing",
+        "custodian.policy.schema",
+        "custodian.types",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_session",
+      "path": "tests/test_session.py",
+      "imports": [
+        "custodian.session",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_status_enhanced",
+      "path": "tests/test_status_enhanced.py",
+      "imports": [
+        "__future__",
+        "datetime",
+        "pathlib",
+        "custodian.cli",
+        "custodian.storage.sqlite",
+        "custodian.types",
+        "argparse",
+        "time",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_storage",
+      "path": "tests/test_storage.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian.exceptions",
+        "custodian.storage.sqlite",
+        "custodian.types",
+        "time",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_stress",
+      "path": "tests/test_stress.py",
+      "imports": [
+        "__future__",
+        "pathlib",
+        "custodian",
+        "custodian.bus",
+        "custodian.receipt",
+        "custodian.session",
+        "json",
+        "math",
+        "threading",
+        "time",
+        "pytest"
+      ]
+    },
+    {
+      "id": "tests.test_tools",
+      "path": "tests/test_tools.py",
+      "imports": [
+        "pathlib",
+        "custodian.tools.registry",
+        "dashboard.app",
+        "custodian.policy",
+        "custodian.policy.evaluator",
+        "custodian.types",
+        "json",
+        "os",
+        "subprocess",
+        "sys",
+        "tempfile",
+        "pytest",
+        "io",
+        "unittest.mock"
+      ]
+    },
+    {
+      "id": "tests.test_types",
+      "path": "tests/test_types.py",
+      "imports": [
+        "__future__",
+        "custodian.types",
+        "time"
+      ]
+    },
+    {
+      "id": "tests.test_verify_kit_installable",
+      "path": "tests/test_verify_kit_installable.py",
+      "imports": [
+        "pathlib",
+        "importlib.resources",
+        "subprocess",
+        "sys",
+        "importlib.util",
+        "zipfile",
+        "shutil",
+        "venv"
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "from": "caduceus.__init__",
+      "to": "caduceus.refs"
+    },
+    {
+      "from": "caduceus.__init__",
+      "to": "caduceus.errors"
+    },
+    {
+      "from": "caduceus.__init__",
+      "to": "caduceus.vault"
+    },
+    {
+      "from": "caduceus.__init__",
+      "to": "caduceus.broker"
+    },
+    {
+      "from": "caduceus.__init__",
+      "to": "caduceus.grants"
+    },
+    {
+      "from": "caduceus.audit",
+      "to": "caduceus.errors"
+    },
+    {
+      "from": "caduceus.broker",
+      "to": "caduceus.audit"
+    },
+    {
+      "from": "caduceus.broker",
+      "to": "caduceus.errors"
+    },
+    {
+      "from": "caduceus.broker",
+      "to": "caduceus.grants"
+    },
+    {
+      "from": "caduceus.broker",
+      "to": "caduceus.refs"
+    },
+    {
+      "from": "caduceus.broker",
+      "to": "caduceus.vault"
+    },
+    {
+      "from": "caduceus.cli",
+      "to": "caduceus.broker"
+    },
+    {
+      "from": "caduceus.cli",
+      "to": "caduceus.errors"
+    },
+    {
+      "from": "caduceus.cli",
+      "to": "caduceus.refs"
+    },
+    {
+      "from": "caduceus.cli",
+      "to": "caduceus.vault"
+    },
+    {
+      "from": "caduceus.crypto",
+      "to": "caduceus.errors"
+    },
+    {
+      "from": "caduceus.grants",
+      "to": "caduceus.errors"
+    },
+    {
+      "from": "caduceus.receipts",
+      "to": "caduceus.vault"
+    },
+    {
+      "from": "caduceus.receipts",
+      "to": "caduceus.receipts"
+    },
+    {
+      "from": "caduceus.vault",
+      "to": "caduceus.errors"
+    },
+    {
+      "from": "caduceus.vault",
+      "to": "caduceus.refs"
+    },
+    {
+      "from": "custodian.__init__",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.__init__",
+      "to": "custodian.govern"
+    },
+    {
+      "from": "custodian.__init__",
+      "to": "custodian.session"
+    },
+    {
+      "from": "custodian.__init__",
+      "to": "custodian.receipt"
+    },
+    {
+      "from": "custodian.__init__",
+      "to": "custodian.signing"
+    },
+    {
+      "from": "custodian.__init__",
+      "to": "custodian.bus"
+    },
+    {
+      "from": "custodian.__init__",
+      "to": "custodian.middleware"
+    },
+    {
+      "from": "custodian.__init__",
+      "to": "custodian.client"
+    },
+    {
+      "from": "custodian.adapters.__init__",
+      "to": "custodian.adapters.base"
+    },
+    {
+      "from": "custodian.adapters.__init__",
+      "to": "custodian.adapters.pipeline"
+    },
+    {
+      "from": "custodian.adapters.__init__",
+      "to": "custodian.adapters.registry"
+    },
+    {
+      "from": "custodian.adapters.__init__",
+      "to": "custodian.adapters.nemoclaw"
+    },
+    {
+      "from": "custodian.adapters.builtin.__init__",
+      "to": "custodian.adapters.builtin.spend_sentinel"
+    },
+    {
+      "from": "custodian.adapters.builtin.__init__",
+      "to": "custodian.adapters.builtin.prompt_injection_guard"
+    },
+    {
+      "from": "custodian.adapters.builtin.__init__",
+      "to": "custodian.adapters.builtin.secret_leak_guard"
+    },
+    {
+      "from": "custodian.adapters.builtin.__init__",
+      "to": "custodian.adapters.builtin.pii_redactor"
+    },
+    {
+      "from": "custodian.adapters.builtin.__init__",
+      "to": "custodian.adapters.builtin.context_anchor"
+    },
+    {
+      "from": "custodian.adapters.builtin.__init__",
+      "to": "custodian.adapters.builtin.repetition_breaker"
+    },
+    {
+      "from": "custodian.adapters.builtin.__init__",
+      "to": "custodian.adapters.builtin.tool_confabulation_guard"
+    },
+    {
+      "from": "custodian.adapters.builtin.__init__",
+      "to": "custodian.adapters.builtin.scope_fence"
+    },
+    {
+      "from": "custodian.adapters.builtin.__init__",
+      "to": "custodian.adapters.builtin.kernel_self_protection"
+    },
+    {
+      "from": "custodian.adapters.builtin.__init__",
+      "to": "custodian.adapters.builtin.path_fence"
+    },
+    {
+      "from": "custodian.adapters.builtin.__init__",
+      "to": "custodian.adapters.builtin.egress_domain_guard"
+    },
+    {
+      "from": "custodian.adapters.builtin._paths",
+      "to": "custodian.adapters.base"
+    },
+    {
+      "from": "custodian.adapters.builtin.context_anchor",
+      "to": "custodian.adapters.base"
+    },
+    {
+      "from": "custodian.adapters.builtin.egress_domain_guard",
+      "to": "custodian.adapters.base"
+    },
+    {
+      "from": "custodian.adapters.builtin.kernel_self_protection",
+      "to": "custodian.adapters.base"
+    },
+    {
+      "from": "custodian.adapters.builtin.kernel_self_protection",
+      "to": "custodian.adapters.builtin._paths"
+    },
+    {
+      "from": "custodian.adapters.builtin.path_fence",
+      "to": "custodian.adapters.base"
+    },
+    {
+      "from": "custodian.adapters.builtin.path_fence",
+      "to": "custodian.adapters.builtin._paths"
+    },
+    {
+      "from": "custodian.adapters.builtin.pii_redactor",
+      "to": "custodian.adapters.base"
+    },
+    {
+      "from": "custodian.adapters.builtin.prompt_injection_guard",
+      "to": "custodian.adapters.base"
+    },
+    {
+      "from": "custodian.adapters.builtin.repetition_breaker",
+      "to": "custodian.adapters.base"
+    },
+    {
+      "from": "custodian.adapters.builtin.scope_fence",
+      "to": "custodian.adapters.base"
+    },
+    {
+      "from": "custodian.adapters.builtin.scope_fence",
+      "to": "custodian.adapters.builtin._paths"
+    },
+    {
+      "from": "custodian.adapters.builtin.secret_leak_guard",
+      "to": "custodian.adapters.base"
+    },
+    {
+      "from": "custodian.adapters.builtin.spend_sentinel",
+      "to": "custodian.adapters.base"
+    },
+    {
+      "from": "custodian.adapters.builtin.tool_confabulation_guard",
+      "to": "custodian.adapters.base"
+    },
+    {
+      "from": "custodian.adapters.nemoclaw",
+      "to": "custodian.exceptions"
+    },
+    {
+      "from": "custodian.adapters.nemoclaw",
+      "to": "custodian.adapters.nemoclaw"
+    },
+    {
+      "from": "custodian.adapters.pipeline",
+      "to": "custodian.adapters.base"
+    },
+    {
+      "from": "custodian.adapters.registry",
+      "to": "custodian.adapters.base"
+    },
+    {
+      "from": "custodian.adapters.registry",
+      "to": "custodian.adapters.pipeline"
+    },
+    {
+      "from": "custodian.audit",
+      "to": "custodian.exceptions"
+    },
+    {
+      "from": "custodian.audit",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.backends.twilio_verify",
+      "to": "custodian.backends.base"
+    },
+    {
+      "from": "custodian.backends.twilio_verify",
+      "to": "custodian.exceptions"
+    },
+    {
+      "from": "custodian.bundled_skills.payments.stripe-spend.scripts.approve",
+      "to": "custodian.bundled_skills.payments.stripe-spend.scripts._core"
+    },
+    {
+      "from": "custodian.bundled_skills.payments.stripe-spend.scripts.approve",
+      "to": "custodian.bundled_skills.payments.stripe-spend.scripts.notify"
+    },
+    {
+      "from": "custodian.bundled_skills.payments.stripe-spend.scripts.approve_v2",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.bundled_skills.payments.stripe-spend.scripts.approve_v2",
+      "to": "custodian.bundled_skills.payments.stripe-spend.scripts._core"
+    },
+    {
+      "from": "custodian.bundled_skills.payments.stripe-spend.scripts.approve_v2",
+      "to": "custodian.bundled_skills.payments.stripe-spend.scripts.notify"
+    },
+    {
+      "from": "custodian.bundled_skills.payments.stripe-spend.scripts.earn",
+      "to": "custodian.bundled_skills.payments.stripe-spend.scripts._core"
+    },
+    {
+      "from": "custodian.bundled_skills.payments.stripe-spend.scripts.refund",
+      "to": "custodian.bundled_skills.payments.stripe-spend.scripts._core"
+    },
+    {
+      "from": "custodian.bundled_skills.payments.stripe-spend.scripts.refund",
+      "to": "custodian.bundled_skills.payments.stripe-spend.scripts.notify"
+    },
+    {
+      "from": "custodian.bundled_skills.payments.stripe-spend.scripts.spend",
+      "to": "custodian.bundled_skills.payments.stripe-spend.scripts._core"
+    },
+    {
+      "from": "custodian.bundled_skills.payments.stripe-spend.scripts.spend",
+      "to": "custodian.bundled_skills.payments.stripe-spend.scripts.notify"
+    },
+    {
+      "from": "custodian.bundled_skills.payments.stripe-spend.scripts.spend_v2",
+      "to": "custodian.control.policy"
+    },
+    {
+      "from": "custodian.bundled_skills.payments.stripe-spend.scripts.spend_v2",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.bundled_skills.payments.stripe-spend.scripts.spend_v2",
+      "to": "custodian.bundled_skills.payments.stripe-spend.scripts._core"
+    },
+    {
+      "from": "custodian.bundled_skills.payments.stripe-spend.scripts.spend_v2",
+      "to": "custodian.bundled_skills.payments.stripe-spend.scripts.notify"
+    },
+    {
+      "from": "custodian.bundled_skills.security.paladin-import.scripts.execute",
+      "to": "paladin.errors"
+    },
+    {
+      "from": "custodian.bundled_skills.security.paladin-import.scripts.execute",
+      "to": "paladin.vault"
+    },
+    {
+      "from": "custodian.bundled_skills.security.paladin-import.scripts.execute",
+      "to": "paladin.broker"
+    },
+    {
+      "from": "custodian.bus",
+      "to": "custodian.bus"
+    },
+    {
+      "from": "custodian.cli.cmd_adapters",
+      "to": "custodian.adapters.registry"
+    },
+    {
+      "from": "custodian.cli.cmd_adapters",
+      "to": "custodian.adapters.base"
+    },
+    {
+      "from": "custodian.cli.cmd_approve",
+      "to": "custodian.backends.twilio_verify"
+    },
+    {
+      "from": "custodian.cli.cmd_approve",
+      "to": "custodian.exceptions"
+    },
+    {
+      "from": "custodian.cli.cmd_approve",
+      "to": "custodian.storage.sqlite"
+    },
+    {
+      "from": "custodian.cli.cmd_approve",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.cli.cmd_approve",
+      "to": "custodian.universal_ledger"
+    },
+    {
+      "from": "custodian.cli.cmd_audit",
+      "to": "custodian.storage.sqlite"
+    },
+    {
+      "from": "custodian.cli.cmd_audit",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.cli.cmd_beancount",
+      "to": "custodian.config"
+    },
+    {
+      "from": "custodian.cli.cmd_beancount",
+      "to": "custodian.storage.sqlite"
+    },
+    {
+      "from": "custodian.cli.cmd_codex_guard",
+      "to": "paladin.receipts"
+    },
+    {
+      "from": "custodian.cli.cmd_confirm",
+      "to": "custodian.config"
+    },
+    {
+      "from": "custodian.cli.cmd_confirm",
+      "to": "custodian.storage.sqlite"
+    },
+    {
+      "from": "custodian.cli.cmd_confirm",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.cli.cmd_confirm",
+      "to": "custodian.universal_ledger"
+    },
+    {
+      "from": "custodian.cli.cmd_console",
+      "to": "paladin.receipts"
+    },
+    {
+      "from": "custodian.cli.cmd_console",
+      "to": "custodian.control.policy"
+    },
+    {
+      "from": "custodian.cli.cmd_console",
+      "to": "custodian.control.filesystem_policy"
+    },
+    {
+      "from": "custodian.cli.cmd_console",
+      "to": "custodian.control.ledger_access_policy"
+    },
+    {
+      "from": "custodian.cli.cmd_console",
+      "to": "custodian.executor.capability"
+    },
+    {
+      "from": "custodian.cli.cmd_console",
+      "to": "custodian.universal_ledger"
+    },
+    {
+      "from": "custodian.cli.cmd_demo_verify",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "custodian.cli.cmd_deny",
+      "to": "custodian.storage.sqlite"
+    },
+    {
+      "from": "custodian.cli.cmd_deny",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.cli.cmd_deny",
+      "to": "custodian.universal_ledger"
+    },
+    {
+      "from": "custodian.cli.cmd_earn_and_buy",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "custodian.cli.cmd_earn_and_buy",
+      "to": "custodian.tools.registry"
+    },
+    {
+      "from": "custodian.cli.cmd_earn_and_buy",
+      "to": "custodian.govern"
+    },
+    {
+      "from": "custodian.cli.cmd_earn_and_buy",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.cli.cmd_earn_and_buy",
+      "to": "custodian.cli.cmd_generate_report"
+    },
+    {
+      "from": "custodian.cli.cmd_earn_and_buy",
+      "to": "custodian.cli.cmd_send_report"
+    },
+    {
+      "from": "custodian.cli.cmd_executor",
+      "to": "custodian.executor.capability"
+    },
+    {
+      "from": "custodian.cli.cmd_executor",
+      "to": "custodian.tools.registry"
+    },
+    {
+      "from": "custodian.cli.cmd_executor",
+      "to": "custodian.executor.service"
+    },
+    {
+      "from": "custodian.cli.cmd_generate_report",
+      "to": "custodian.govern"
+    },
+    {
+      "from": "custodian.cli.cmd_generate_report",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.cli.cmd_generate_report",
+      "to": "custodian.inference.router"
+    },
+    {
+      "from": "custodian.cli.cmd_init",
+      "to": "custodian.policy.loader"
+    },
+    {
+      "from": "custodian.cli.cmd_init",
+      "to": "custodian.storage.sqlite"
+    },
+    {
+      "from": "custodian.cli.cmd_init",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.cli.cmd_kill",
+      "to": "custodian.storage.sqlite"
+    },
+    {
+      "from": "custodian.cli.cmd_kill",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.cli.cmd_kill",
+      "to": "custodian.universal_ledger"
+    },
+    {
+      "from": "custodian.cli.cmd_poison_tests",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "custodian.cli.cmd_request",
+      "to": "custodian.backends.twilio_verify"
+    },
+    {
+      "from": "custodian.cli.cmd_request",
+      "to": "custodian.cli.cmd_init"
+    },
+    {
+      "from": "custodian.cli.cmd_request",
+      "to": "custodian.exceptions"
+    },
+    {
+      "from": "custodian.cli.cmd_request",
+      "to": "custodian.policy.evaluator"
+    },
+    {
+      "from": "custodian.cli.cmd_request",
+      "to": "custodian.policy.loader"
+    },
+    {
+      "from": "custodian.cli.cmd_request",
+      "to": "custodian.storage.sqlite"
+    },
+    {
+      "from": "custodian.cli.cmd_request",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.cli.cmd_request",
+      "to": "custodian.universal_ledger"
+    },
+    {
+      "from": "custodian.cli.cmd_resume",
+      "to": "custodian.storage.sqlite"
+    },
+    {
+      "from": "custodian.cli.cmd_resume",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.cli.cmd_resume",
+      "to": "custodian.universal_ledger"
+    },
+    {
+      "from": "custodian.cli.cmd_send_report",
+      "to": "custodian.govern"
+    },
+    {
+      "from": "custodian.cli.cmd_send_report",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.cli.cmd_setup",
+      "to": "custodian.cli.cmd_doctor"
+    },
+    {
+      "from": "custodian.cli.cmd_status",
+      "to": "custodian.ledger"
+    },
+    {
+      "from": "custodian.cli.cmd_status",
+      "to": "custodian.storage.sqlite"
+    },
+    {
+      "from": "custodian.cli.cmd_status",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.cli.cmd_status_enhanced",
+      "to": "custodian.config"
+    },
+    {
+      "from": "custodian.cli.cmd_status_enhanced",
+      "to": "custodian.storage.sqlite"
+    },
+    {
+      "from": "custodian.cli.cmd_tools",
+      "to": "custodian.tools.registry"
+    },
+    {
+      "from": "custodian.cli.cmd_validate",
+      "to": "custodian.exceptions"
+    },
+    {
+      "from": "custodian.cli.cmd_validate",
+      "to": "custodian.policy.loader"
+    },
+    {
+      "from": "custodian.cli.main",
+      "to": "custodian.cli.menu"
+    },
+    {
+      "from": "custodian.cli.main",
+      "to": "paladin.cli"
+    },
+    {
+      "from": "custodian.cli.main",
+      "to": "custodian.cli._version"
+    },
+    {
+      "from": "custodian.cli.main",
+      "to": "custodian.config"
+    },
+    {
+      "from": "custodian.cli.main",
+      "to": "custodian.tools.registry"
+    },
+    {
+      "from": "custodian.cli.main",
+      "to": "custodian._encoding"
+    },
+    {
+      "from": "custodian.cli.menu",
+      "to": "custodian.cli.main"
+    },
+    {
+      "from": "custodian.client",
+      "to": "custodian.client"
+    },
+    {
+      "from": "custodian.client",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.client",
+      "to": "custodian.govern"
+    },
+    {
+      "from": "custodian.config",
+      "to": "custodian.exceptions"
+    },
+    {
+      "from": "custodian.control.__init__",
+      "to": "custodian.control.contracts"
+    },
+    {
+      "from": "custodian.control.__init__",
+      "to": "custodian.control.policy"
+    },
+    {
+      "from": "custodian.control.__init__",
+      "to": "custodian.control.service"
+    },
+    {
+      "from": "custodian.control.contracts",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.control.filesystem_policy",
+      "to": "custodian.adapters.builtin._paths"
+    },
+    {
+      "from": "custodian.control.service",
+      "to": "custodian.control.contracts"
+    },
+    {
+      "from": "custodian.custodian.policy.enforcer",
+      "to": "custodian.policy.evaluator"
+    },
+    {
+      "from": "custodian.custodian.policy.enforcer",
+      "to": "custodian.policy.schema"
+    },
+    {
+      "from": "custodian.custodian.policy.enforcer",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.executor.capability",
+      "to": "custodian.exceptions"
+    },
+    {
+      "from": "custodian.executor.client",
+      "to": "custodian.exceptions"
+    },
+    {
+      "from": "custodian.executor.service",
+      "to": "custodian.executor.capability"
+    },
+    {
+      "from": "custodian.executor.service",
+      "to": "custodian.tools.registry"
+    },
+    {
+      "from": "custodian.govern",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.govern",
+      "to": "custodian.bus"
+    },
+    {
+      "from": "custodian.govern",
+      "to": "custodian.receipt"
+    },
+    {
+      "from": "custodian.govern",
+      "to": "custodian.control.policy"
+    },
+    {
+      "from": "custodian.govern",
+      "to": "custodian.policy.evaluator"
+    },
+    {
+      "from": "custodian.govern",
+      "to": "custodian.config"
+    },
+    {
+      "from": "custodian.govern",
+      "to": "custodian.policy.schema"
+    },
+    {
+      "from": "custodian.govern",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "custodian.inference.router",
+      "to": "custodian.policy.gate"
+    },
+    {
+      "from": "custodian.inference.router",
+      "to": "custodian.tools.registry"
+    },
+    {
+      "from": "custodian.inference.router",
+      "to": "custodian.universal_ledger"
+    },
+    {
+      "from": "custodian.ledger",
+      "to": "custodian.storage.base"
+    },
+    {
+      "from": "custodian.ledger",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.middleware",
+      "to": "custodian.middleware"
+    },
+    {
+      "from": "custodian.middleware",
+      "to": "custodian.govern"
+    },
+    {
+      "from": "custodian.middleware",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.packs.agent",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "custodian.packs.cloud.extractor",
+      "to": "custodian.packs.agent"
+    },
+    {
+      "from": "custodian.packs.cloud.extractor",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "custodian.packs.cloud.pack",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "custodian.packs.engine",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "custodian.packs.engine",
+      "to": "custodian.policy.schema"
+    },
+    {
+      "from": "custodian.packs.engine",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.packs.engine",
+      "to": "custodian.policy.enforcer"
+    },
+    {
+      "from": "custodian.packs.engine",
+      "to": "custodian.policy.evaluator"
+    },
+    {
+      "from": "custodian.packs.purchasing.extractor",
+      "to": "custodian.packs.agent"
+    },
+    {
+      "from": "custodian.packs.purchasing.extractor",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "custodian.packs.purchasing.pack",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "custodian.packs.refunds.extractor",
+      "to": "custodian.packs.agent"
+    },
+    {
+      "from": "custodian.packs.refunds.extractor",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "custodian.packs.refunds.pack",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "custodian.packs.registry",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "custodian.packs.registry",
+      "to": "custodian.packs.refunds.pack"
+    },
+    {
+      "from": "custodian.packs.registry",
+      "to": "custodian.packs.purchasing.pack"
+    },
+    {
+      "from": "custodian.packs.registry",
+      "to": "custodian.packs.cloud.pack"
+    },
+    {
+      "from": "custodian.packs.test_runner",
+      "to": "custodian.packs.registry"
+    },
+    {
+      "from": "custodian.packs.test_runner",
+      "to": "custodian.packs.engine"
+    },
+    {
+      "from": "custodian.packs.test_runner",
+      "to": "custodian.policy.schema"
+    },
+    {
+      "from": "custodian.packs.test_runner",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.packs.test_runner",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "custodian.policy.__init__",
+      "to": "custodian.policy.evaluator"
+    },
+    {
+      "from": "custodian.policy.__init__",
+      "to": "custodian.policy.loader"
+    },
+    {
+      "from": "custodian.policy.__init__",
+      "to": "custodian.policy.schema"
+    },
+    {
+      "from": "custodian.policy.autorank",
+      "to": "custodian.policy.schema"
+    },
+    {
+      "from": "custodian.policy.autorank",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.policy.enforcer",
+      "to": "custodian.policy.evaluator"
+    },
+    {
+      "from": "custodian.policy.enforcer",
+      "to": "custodian.policy.schema"
+    },
+    {
+      "from": "custodian.policy.enforcer",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.policy.envelope",
+      "to": "custodian.policy.schema"
+    },
+    {
+      "from": "custodian.policy.envelope",
+      "to": "custodian.storage.base"
+    },
+    {
+      "from": "custodian.policy.evaluator",
+      "to": "custodian.policy.schema"
+    },
+    {
+      "from": "custodian.policy.evaluator",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.policy.evaluator",
+      "to": "custodian.policy.autorank"
+    },
+    {
+      "from": "custodian.policy.evaluator",
+      "to": "custodian.policy.envelope"
+    },
+    {
+      "from": "custodian.policy.evaluator",
+      "to": "custodian.policy.margin"
+    },
+    {
+      "from": "custodian.policy.evaluator",
+      "to": "custodian.policy.self_dealing"
+    },
+    {
+      "from": "custodian.policy.gate",
+      "to": "custodian.control.policy"
+    },
+    {
+      "from": "custodian.policy.gate",
+      "to": "custodian.policy.evaluator"
+    },
+    {
+      "from": "custodian.policy.gate",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.policy.loader",
+      "to": "custodian.exceptions"
+    },
+    {
+      "from": "custodian.policy.loader",
+      "to": "custodian.policy.schema"
+    },
+    {
+      "from": "custodian.policy.loader",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.policy.margin",
+      "to": "custodian.policy.schema"
+    },
+    {
+      "from": "custodian.policy.schema",
+      "to": "custodian.exceptions"
+    },
+    {
+      "from": "custodian.policy.schema",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.policy.self_dealing",
+      "to": "custodian.policy.schema"
+    },
+    {
+      "from": "custodian.sandbox",
+      "to": "custodian.exceptions"
+    },
+    {
+      "from": "custodian.session",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.session",
+      "to": "custodian.govern"
+    },
+    {
+      "from": "custodian.signing",
+      "to": "custodian.signing"
+    },
+    {
+      "from": "custodian.signing",
+      "to": "custodian.exceptions"
+    },
+    {
+      "from": "custodian.signing",
+      "to": "custodian.receipt"
+    },
+    {
+      "from": "custodian.storage.base",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.storage.sqlite",
+      "to": "custodian.exceptions"
+    },
+    {
+      "from": "custodian.storage.sqlite",
+      "to": "custodian.storage.base"
+    },
+    {
+      "from": "custodian.storage.sqlite",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.tools.__init__",
+      "to": "custodian.tools.registry"
+    },
+    {
+      "from": "custodian.tools.registry",
+      "to": "custodian.universal_ledger"
+    },
+    {
+      "from": "custodian.tools.registry",
+      "to": "custodian.policy.gate"
+    },
+    {
+      "from": "custodian.tools.registry",
+      "to": "custodian.executor.client"
+    },
+    {
+      "from": "custodian.tools.registry",
+      "to": "custodian.types"
+    },
+    {
+      "from": "custodian.tools.registry",
+      "to": "custodian.exceptions"
+    },
+    {
+      "from": "custodian.tools.registry",
+      "to": "custodian.sandbox"
+    },
+    {
+      "from": "custodian.tools.registry",
+      "to": "custodian.egress_proxy"
+    },
+    {
+      "from": "custodian.universal_ledger",
+      "to": "custodian.exceptions"
+    },
+    {
+      "from": "custodian.universal_ledger",
+      "to": "custodian.adapters.builtin.secret_leak_guard"
+    },
+    {
+      "from": "custodian.verify_kit",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "custodian.verify_kit",
+      "to": "custodian.packs.refunds.pack"
+    },
+    {
+      "from": "custodian.verify_kit",
+      "to": "custodian._encoding"
+    },
+    {
+      "from": "paladin.__init__",
+      "to": "paladin.refs"
+    },
+    {
+      "from": "paladin.__init__",
+      "to": "paladin.errors"
+    },
+    {
+      "from": "paladin.__init__",
+      "to": "paladin.vault"
+    },
+    {
+      "from": "paladin.__init__",
+      "to": "paladin.broker"
+    },
+    {
+      "from": "paladin.__init__",
+      "to": "paladin.grants"
+    },
+    {
+      "from": "paladin.audit",
+      "to": "paladin.errors"
+    },
+    {
+      "from": "paladin.backup",
+      "to": "paladin.errors"
+    },
+    {
+      "from": "paladin.backup",
+      "to": "paladin.vault"
+    },
+    {
+      "from": "paladin.broker",
+      "to": "paladin.audit"
+    },
+    {
+      "from": "paladin.broker",
+      "to": "paladin.errors"
+    },
+    {
+      "from": "paladin.broker",
+      "to": "paladin.grants"
+    },
+    {
+      "from": "paladin.broker",
+      "to": "paladin.refs"
+    },
+    {
+      "from": "paladin.broker",
+      "to": "paladin.vault"
+    },
+    {
+      "from": "paladin.broker",
+      "to": "custodian.client"
+    },
+    {
+      "from": "paladin.cli",
+      "to": "paladin._prompt"
+    },
+    {
+      "from": "paladin.cli",
+      "to": "paladin.broker"
+    },
+    {
+      "from": "paladin.cli",
+      "to": "paladin.errors"
+    },
+    {
+      "from": "paladin.cli",
+      "to": "paladin.refs"
+    },
+    {
+      "from": "paladin.cli",
+      "to": "paladin.vault"
+    },
+    {
+      "from": "paladin.cli",
+      "to": "paladin.sandbox"
+    },
+    {
+      "from": "paladin.cli",
+      "to": "paladin.menu"
+    },
+    {
+      "from": "paladin.cli",
+      "to": "paladin._encoding"
+    },
+    {
+      "from": "paladin.crypto",
+      "to": "paladin.errors"
+    },
+    {
+      "from": "paladin.egress",
+      "to": "paladin.broker"
+    },
+    {
+      "from": "paladin.egress",
+      "to": "paladin.egress_client"
+    },
+    {
+      "from": "paladin.egress",
+      "to": "paladin.errors"
+    },
+    {
+      "from": "paladin.egress_client",
+      "to": "paladin.egress_client"
+    },
+    {
+      "from": "paladin.git_credential",
+      "to": "paladin.broker"
+    },
+    {
+      "from": "paladin.git_credential",
+      "to": "paladin.refs"
+    },
+    {
+      "from": "paladin.git_credential",
+      "to": "paladin.vault"
+    },
+    {
+      "from": "paladin.grants",
+      "to": "paladin.errors"
+    },
+    {
+      "from": "paladin.importer",
+      "to": "paladin.errors"
+    },
+    {
+      "from": "paladin.importer",
+      "to": "paladin.refs"
+    },
+    {
+      "from": "paladin.importer",
+      "to": "paladin.vault"
+    },
+    {
+      "from": "paladin.menu",
+      "to": "paladin.cli"
+    },
+    {
+      "from": "paladin.receipts",
+      "to": "paladin.vault"
+    },
+    {
+      "from": "paladin.receipts",
+      "to": "paladin.receipts"
+    },
+    {
+      "from": "paladin.sandbox",
+      "to": "paladin.broker"
+    },
+    {
+      "from": "paladin.sandbox",
+      "to": "paladin.egress"
+    },
+    {
+      "from": "paladin.sandbox",
+      "to": "paladin.errors"
+    },
+    {
+      "from": "paladin.vault",
+      "to": "paladin.errors"
+    },
+    {
+      "from": "paladin.vault",
+      "to": "paladin.refs"
+    },
+    {
+      "from": "paladin.vault",
+      "to": "paladin._prompt"
+    },
+    {
+      "from": "tests.conftest",
+      "to": "custodian.policy.loader"
+    },
+    {
+      "from": "tests.conftest",
+      "to": "custodian.storage.sqlite"
+    },
+    {
+      "from": "tests.conftest",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_adapters",
+      "to": "custodian.adapters.base"
+    },
+    {
+      "from": "tests.test_adapters",
+      "to": "custodian.adapters.pipeline"
+    },
+    {
+      "from": "tests.test_adapters",
+      "to": "custodian.adapters.registry"
+    },
+    {
+      "from": "tests.test_adapters",
+      "to": "caduceus.broker"
+    },
+    {
+      "from": "tests.test_audit",
+      "to": "custodian.audit"
+    },
+    {
+      "from": "tests.test_audit",
+      "to": "custodian.exceptions"
+    },
+    {
+      "from": "tests.test_audit",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_autorank",
+      "to": "custodian.policy.autorank"
+    },
+    {
+      "from": "tests.test_autorank",
+      "to": "custodian.policy.schema"
+    },
+    {
+      "from": "tests.test_autorank",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_autorank",
+      "to": "custodian.control.policy"
+    },
+    {
+      "from": "tests.test_backends",
+      "to": "custodian.backends.twilio_verify"
+    },
+    {
+      "from": "tests.test_backends",
+      "to": "custodian.exceptions"
+    },
+    {
+      "from": "tests.test_backends_twilio",
+      "to": "custodian.backends.twilio_verify"
+    },
+    {
+      "from": "tests.test_beancount",
+      "to": "paladin.cli"
+    },
+    {
+      "from": "tests.test_beancount",
+      "to": "custodian.storage.sqlite"
+    },
+    {
+      "from": "tests.test_beancount",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_bus",
+      "to": "custodian.bus"
+    },
+    {
+      "from": "tests.test_caduceus",
+      "to": "caduceus.vault"
+    },
+    {
+      "from": "tests.test_caduceus",
+      "to": "caduceus.broker"
+    },
+    {
+      "from": "tests.test_caduceus",
+      "to": "caduceus.grants"
+    },
+    {
+      "from": "tests.test_caduceus",
+      "to": "caduceus.audit"
+    },
+    {
+      "from": "tests.test_caduceus",
+      "to": "caduceus.refs"
+    },
+    {
+      "from": "tests.test_caduceus",
+      "to": "caduceus.errors"
+    },
+    {
+      "from": "tests.test_caduceus",
+      "to": "custodian.receipt"
+    },
+    {
+      "from": "tests.test_caduceus",
+      "to": "caduceus.receipts"
+    },
+    {
+      "from": "tests.test_cli",
+      "to": "custodian.cli.main"
+    },
+    {
+      "from": "tests.test_cli",
+      "to": "custodian.storage.sqlite"
+    },
+    {
+      "from": "tests.test_cli",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_confirm",
+      "to": "paladin.cli"
+    },
+    {
+      "from": "tests.test_confirm",
+      "to": "custodian.storage.sqlite"
+    },
+    {
+      "from": "tests.test_confirm",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_demo_verify",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "tests.test_demo_verify",
+      "to": "custodian.packs.engine"
+    },
+    {
+      "from": "tests.test_demo_verify",
+      "to": "custodian.policy.schema"
+    },
+    {
+      "from": "tests.test_demo_verify",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_earn_and_buy",
+      "to": "paladin.cli"
+    },
+    {
+      "from": "tests.test_earn_and_buy",
+      "to": "custodian.tools.registry"
+    },
+    {
+      "from": "tests.test_enforcer",
+      "to": "custodian.control.policy"
+    },
+    {
+      "from": "tests.test_enforcer",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_envelope",
+      "to": "custodian.policy.envelope"
+    },
+    {
+      "from": "tests.test_envelope",
+      "to": "custodian.policy.schema"
+    },
+    {
+      "from": "tests.test_envelope",
+      "to": "custodian.storage.sqlite"
+    },
+    {
+      "from": "tests.test_envelope",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_generate_report",
+      "to": "custodian.cli.cmd_generate_report"
+    },
+    {
+      "from": "tests.test_generate_report",
+      "to": "custodian.cli.cmd_send_report"
+    },
+    {
+      "from": "tests.test_generate_report",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_hermes_bridge",
+      "to": "custodian.tools.registry"
+    },
+    {
+      "from": "tests.test_hermes_bridge",
+      "to": "custodian.adapters.pipeline"
+    },
+    {
+      "from": "tests.test_hermes_bridge",
+      "to": "caduceus.vault"
+    },
+    {
+      "from": "tests.test_hermes_bridge",
+      "to": "caduceus.broker"
+    },
+    {
+      "from": "tests.test_inference_router",
+      "to": "custodian.inference.router"
+    },
+    {
+      "from": "tests.test_kill_switch",
+      "to": "custodian.policy.evaluator"
+    },
+    {
+      "from": "tests.test_kill_switch",
+      "to": "custodian.policy.loader"
+    },
+    {
+      "from": "tests.test_kill_switch",
+      "to": "custodian.storage.sqlite"
+    },
+    {
+      "from": "tests.test_kill_switch",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_ledger",
+      "to": "custodian.ledger"
+    },
+    {
+      "from": "tests.test_ledger",
+      "to": "custodian.storage.sqlite"
+    },
+    {
+      "from": "tests.test_ledger",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_margin",
+      "to": "custodian.policy.margin"
+    },
+    {
+      "from": "tests.test_margin",
+      "to": "custodian.policy.schema"
+    },
+    {
+      "from": "tests.test_margin",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_middleware",
+      "to": "custodian.middleware"
+    },
+    {
+      "from": "tests.test_nemoclaw_adapter",
+      "to": "custodian.adapters.nemoclaw"
+    },
+    {
+      "from": "tests.test_nemoclaw_adapter",
+      "to": "custodian.exceptions"
+    },
+    {
+      "from": "tests.test_packs_agent",
+      "to": "custodian.packs.agent"
+    },
+    {
+      "from": "tests.test_packs_agent",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "tests.test_packs_base",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "tests.test_packs_engine",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "tests.test_packs_engine",
+      "to": "custodian.packs.engine"
+    },
+    {
+      "from": "tests.test_packs_engine",
+      "to": "custodian.policy.loader"
+    },
+    {
+      "from": "tests.test_packs_engine",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_packs_narration",
+      "to": "custodian.packs.narration"
+    },
+    {
+      "from": "tests.test_packs_registry",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "tests.test_packs_registry",
+      "to": "custodian.packs.registry"
+    },
+    {
+      "from": "tests.test_poison_tests",
+      "to": "paladin.cli"
+    },
+    {
+      "from": "tests.test_poison_tests",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "tests.test_policy",
+      "to": "custodian.exceptions"
+    },
+    {
+      "from": "tests.test_policy",
+      "to": "custodian.policy.evaluator"
+    },
+    {
+      "from": "tests.test_policy",
+      "to": "custodian.policy.loader"
+    },
+    {
+      "from": "tests.test_policy",
+      "to": "custodian.policy.schema"
+    },
+    {
+      "from": "tests.test_policy",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_policy_extended",
+      "to": "custodian.policy.evaluator"
+    },
+    {
+      "from": "tests.test_policy_extended",
+      "to": "custodian.policy.loader"
+    },
+    {
+      "from": "tests.test_policy_extended",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_purchasing_pack",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "tests.test_purchasing_pack",
+      "to": "custodian.packs.engine"
+    },
+    {
+      "from": "tests.test_purchasing_pack",
+      "to": "custodian.packs.purchasing.pack"
+    },
+    {
+      "from": "tests.test_purchasing_pack",
+      "to": "custodian.policy.loader"
+    },
+    {
+      "from": "tests.test_purchasing_pack",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_receipt",
+      "to": "custodian.receipt"
+    },
+    {
+      "from": "tests.test_refund_extractor",
+      "to": "custodian.packs.agent"
+    },
+    {
+      "from": "tests.test_refund_extractor",
+      "to": "custodian.packs.engine"
+    },
+    {
+      "from": "tests.test_refund_extractor",
+      "to": "custodian.packs.refunds.extractor"
+    },
+    {
+      "from": "tests.test_refund_extractor",
+      "to": "custodian.packs.refunds.pack"
+    },
+    {
+      "from": "tests.test_refund_extractor",
+      "to": "custodian.policy.loader"
+    },
+    {
+      "from": "tests.test_refund_extractor",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_refund_pack",
+      "to": "custodian.packs.base"
+    },
+    {
+      "from": "tests.test_refund_pack",
+      "to": "custodian.packs.engine"
+    },
+    {
+      "from": "tests.test_refund_pack",
+      "to": "custodian.packs.refunds.pack"
+    },
+    {
+      "from": "tests.test_refund_pack",
+      "to": "custodian.policy.loader"
+    },
+    {
+      "from": "tests.test_refund_pack",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_self_approval_regression",
+      "to": "custodian.backends.base"
+    },
+    {
+      "from": "tests.test_self_approval_regression",
+      "to": "custodian.backends.twilio_verify"
+    },
+    {
+      "from": "tests.test_self_approval_regression",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_self_dealing",
+      "to": "custodian.policy.self_dealing"
+    },
+    {
+      "from": "tests.test_self_dealing",
+      "to": "custodian.policy.schema"
+    },
+    {
+      "from": "tests.test_self_dealing",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_session",
+      "to": "custodian.session"
+    },
+    {
+      "from": "tests.test_status_enhanced",
+      "to": "paladin.cli"
+    },
+    {
+      "from": "tests.test_status_enhanced",
+      "to": "custodian.storage.sqlite"
+    },
+    {
+      "from": "tests.test_status_enhanced",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_storage",
+      "to": "custodian.exceptions"
+    },
+    {
+      "from": "tests.test_storage",
+      "to": "custodian.storage.sqlite"
+    },
+    {
+      "from": "tests.test_storage",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_stress",
+      "to": "custodian.bus"
+    },
+    {
+      "from": "tests.test_stress",
+      "to": "custodian.receipt"
+    },
+    {
+      "from": "tests.test_stress",
+      "to": "custodian.session"
+    },
+    {
+      "from": "tests.test_tools",
+      "to": "custodian.tools.registry"
+    },
+    {
+      "from": "tests.test_tools",
+      "to": "custodian.control.policy"
+    },
+    {
+      "from": "tests.test_tools",
+      "to": "custodian.policy.evaluator"
+    },
+    {
+      "from": "tests.test_tools",
+      "to": "custodian.types"
+    },
+    {
+      "from": "tests.test_types",
+      "to": "custodian.types"
+    }
+  ],
+  "cycles": [
+    [
+      "caduceus.receipts",
+      "caduceus.receipts"
+    ],
+    [
+      "custodian.bus",
+      "custodian.bus"
+    ],
+    [
+      "custodian.signing",
+      "custodian.signing"
+    ],
+    [
+      "custodian.middleware",
+      "custodian.middleware"
+    ],
+    [
+      "custodian.client",
+      "custodian.client"
+    ],
+    [
+      "custodian.adapters.nemoclaw",
+      "custodian.adapters.nemoclaw"
+    ],
+    [
+      "paladin.receipts",
+      "paladin.receipts"
+    ],
+    [
+      "custodian.cli.main",
+      "custodian.cli.menu",
+      "custodian.cli.main"
+    ],
+    [
+      "paladin.egress_client",
+      "paladin.egress_client"
+    ],
+    [
+      "paladin.cli",
+      "paladin.menu",
+      "paladin.cli"
+    ]
+  ],
+  "centrality": {
+    "topByInDegree": [
+      {
+        "id": "custodian.types",
+        "value": 59
+      },
+      {
+        "id": "custodian.packs.base",
+        "value": 23
+      },
+      {
+        "id": "custodian.exceptions",
+        "value": 21
+      },
+      {
+        "id": "custodian.storage.sqlite",
+        "value": 20
+      },
+      {
+        "id": "custodian.policy.schema",
+        "value": 18
+      },
+      {
+        "id": "custodian.adapters.base",
+        "value": 17
+      },
+      {
+        "id": "custodian.policy.loader",
+        "value": 12
+      },
+      {
+        "id": "paladin.errors",
+        "value": 12
+      },
+      {
+        "id": "custodian.policy.evaluator",
+        "value": 11
+      },
+      {
+        "id": "custodian.tools.registry",
+        "value": 10
+      }
+    ],
+    "topByPageRank": [
+      {
+        "id": "custodian.types",
+        "value": 0.06143369319350313
+      },
+      {
+        "id": "custodian.exceptions",
+        "value": 0.043468874948327955
+      },
+      {
+        "id": "custodian.bus",
+        "value": 0.032617888427262744
+      },
+      {
+        "id": "custodian.adapters.base",
+        "value": 0.03258142589113563
+      },
+      {
+        "id": "custodian.packs.base",
+        "value": 0.02818485785477158
+      },
+      {
+        "id": "custodian.policy.schema",
+        "value": 0.02006683418919014
+      },
+      {
+        "id": "paladin.egress_client",
+        "value": 0.016782481696012586
+      },
+      {
+        "id": "paladin.errors",
+        "value": 0.015973896459525357
+      },
+      {
+        "id": "custodian.storage.sqlite",
+        "value": 0.012246967967589785
+      },
+      {
+        "id": "caduceus.errors",
+        "value": 0.011937950377505259
+      }
+    ]
+  }
+}

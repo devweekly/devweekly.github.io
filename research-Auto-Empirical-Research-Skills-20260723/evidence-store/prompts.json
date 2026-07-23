@@ -1,0 +1,3215 @@
+{
+  "totalPrompts": 535,
+  "prompts": [
+    {
+      "file": "demo-StatsPAI-skill/card_returns_to_schooling_pipeline.py",
+      "line": 342,
+      "type": "template",
+      "snippet": "template=\"aer\","
+    },
+    {
+      "file": "demo-StatsPAI-skill/card_returns_to_schooling_pipeline.py",
+      "line": 361,
+      "type": "template",
+      "snippet": "template=\"aer\","
+    },
+    {
+      "file": "demo-StatsPAI-skill/card_returns_to_schooling_pipeline.py",
+      "line": 389,
+      "type": "template",
+      "snippet": "template=\"aer\","
+    },
+    {
+      "file": "demo-StatsPAI-skill/card_returns_to_schooling_pipeline.py",
+      "line": 407,
+      "type": "template",
+      "snippet": "template=\"aer\","
+    },
+    {
+      "file": "demo-StatsPAI-skill/card_returns_to_schooling_pipeline.py",
+      "line": 471,
+      "type": "template",
+      "snippet": "template=\"aer\","
+    },
+    {
+      "file": "demo-StatsPAI-skill/card_returns_to_schooling_pipeline.py",
+      "line": 487,
+      "type": "template",
+      "snippet": "template=\"aer\","
+    },
+    {
+      "file": "demo-StatsPAI-skill/card_returns_to_schooling_pipeline.py",
+      "line": 662,
+      "type": "template",
+      "snippet": "template=\"aer\","
+    },
+    {
+      "file": "demo-StatsPAI-skill/card_returns_to_schooling_pipeline.py",
+      "line": 703,
+      "type": "template",
+      "snippet": "c = sp.collect(\"Card (1995) — Returns to schooling, replication\", template=\"aer\")"
+    },
+    {
+      "file": "demo-notebooks/_statspai_pipeline_outputs_5.2/full_analysis.py",
+      "line": 127,
+      "type": "template",
+      "snippet": "c1 = sp.collect(\"Table 1. Summary statistics (multi-panel)\", template=\"aer\")"
+    },
+    {
+      "file": "demo-notebooks/_statspai_pipeline_outputs_5.2/full_analysis.py",
+      "line": 317,
+      "type": "template",
+      "snippet": "*models_main, template=\"aer\","
+    },
+    {
+      "file": "demo-notebooks/_statspai_pipeline_outputs_5.2/full_analysis.py",
+      "line": 373,
+      "type": "template",
+      "snippet": "rt = sp.regtable(*gmodels, template=\"aer\","
+    },
+    {
+      "file": "demo-notebooks/_statspai_pipeline_outputs_5.2/full_analysis.py",
+      "line": 446,
+      "type": "template",
+      "snippet": "rt_rob = sp.regtable(*rob_models.values(), template=\"aer\","
+    },
+    {
+      "file": "demo-notebooks/_statspai_pipeline_outputs_5.2/full_analysis.py",
+      "line": 528,
+      "type": "template",
+      "snippet": "c = sp.collect(\"LaLonde NSW Training — Replication Package\", template=\"aer\")"
+    },
+    {
+      "file": "demo-notebooks/statsPAI_pipeline_v2.py",
+      "line": 774,
+      "type": "template",
+      "snippet": "c = sp.collect(\"Lalonde NSW Replication — StatsPAI v2 Pipeline\", template=\"aer\")"
+    },
+    {
+      "file": "eval-harness/run_evals.py",
+      "line": 386,
+      "type": "prompt",
+      "snippet": "def judge(prompt: str) -> dict[str, Any]:"
+    },
+    {
+      "file": "eval-harness/run_evals.py",
+      "line": 399,
+      "type": "prompt",
+      "snippet": "f\"# Judge prompt: {s['id']}\","
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/obsidian-project-memory/scripts/project_kb.py",
+      "line": 301,
+      "type": "template",
+      "snippet": "template = TEXT[key][note_language]"
+    },
+    {
+      "file": "skills/35-bahayonghang-academic-writing-skills/skills/latex-thesis-zh/scripts/analyze_experiment.py",
+      "line": 32,
+      "type": "prompt",
+      "snippet": "prompt = ["
+    },
+    {
+      "file": "skills/35-bahayonghang-academic-writing-skills/skills/latex-thesis-zh/scripts/detect_template.py",
+      "line": 119,
+      "type": "template",
+      "snippet": "print(f\"Template: {result['template']}\")"
+    },
+    {
+      "file": "skills/35-bahayonghang-academic-writing-skills/skills/latex-thesis-zh/scripts/map_structure.py",
+      "line": 69,
+      "type": "template",
+      "snippet": "self.template: Optional[str] = None"
+    },
+    {
+      "file": "skills/35-bahayonghang-academic-writing-skills/skills/latex-thesis-zh/scripts/map_structure.py",
+      "line": 116,
+      "type": "template",
+      "snippet": "self.template = self._detect_template(content)"
+    },
+    {
+      "file": "skills/35-bahayonghang-academic-writing-skills/skills/latex-thesis-zh/scripts/map_structure.py",
+      "line": 248,
+      "type": "template",
+      "snippet": "if self.template:"
+    },
+    {
+      "file": "skills/35-bahayonghang-academic-writing-skills/skills/latex-thesis-zh/scripts/map_structure.py",
+      "line": 250,
+      "type": "template",
+      "snippet": "lines.append(f\"Template: {template_info['name'] if template_info else self.template}\")"
+    },
+    {
+      "file": "skills/35-bahayonghang-academic-writing-skills/skills/latex-thesis-zh/scripts/map_structure.py",
+      "line": 302,
+      "type": "template",
+      "snippet": "template = mapper.template"
+    },
+    {
+      "file": "skills/35-bahayonghang-academic-writing-skills/skills/latex-thesis-zh/scripts/map_structure.py",
+      "line": 304,
+      "type": "template",
+      "snippet": "if template:"
+    },
+    {
+      "file": "skills/35-bahayonghang-academic-writing-skills/skills/latex-thesis-zh/scripts/map_structure.py",
+      "line": 305,
+      "type": "template",
+      "snippet": "print(f\"Template: {template}\")"
+    },
+    {
+      "file": "skills/35-bahayonghang-academic-writing-skills/skills/latex-thesis-zh/scripts/map_structure.py",
+      "line": 310,
+      "type": "template",
+      "snippet": "print(\"Template: Unknown (generic)\")"
+    },
+    {
+      "file": "skills/35-bahayonghang-academic-writing-skills/skills/typst-paper/scripts/analyze_experiment.py",
+      "line": 32,
+      "type": "prompt",
+      "snippet": "prompt = ["
+    },
+    {
+      "file": "skills/50-brycewang-aer-skills/scripts/run_skillopt_gate.py",
+      "line": 119,
+      "type": "prompt",
+      "snippet": "prompt = item.get(\"prompt\")"
+    },
+    {
+      "file": "skills/50-brycewang-aer-skills/scripts/validate_repo.py",
+      "line": 1009,
+      "type": "template",
+      "snippet": "\"- Template: `templates/python/`\","
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/skill-creator/eval-viewer/generate_review.py",
+      "line": 87,
+      "type": "prompt",
+      "snippet": "prompt = \"\""
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/skill-creator/eval-viewer/generate_review.py",
+      "line": 95,
+      "type": "prompt",
+      "snippet": "prompt = metadata.get(\"prompt\", \"\")"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/skill-creator/eval-viewer/generate_review.py",
+      "line": 99,
+      "type": "prompt",
+      "snippet": "if prompt:"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/skill-creator/eval-viewer/generate_review.py",
+      "line": 103,
+      "type": "prompt",
+      "snippet": "if not prompt:"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/skill-creator/eval-viewer/generate_review.py",
+      "line": 110,
+      "type": "prompt",
+      "snippet": "prompt = match.group(1).strip()"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/skill-creator/eval-viewer/generate_review.py",
+      "line": 113,
+      "type": "prompt",
+      "snippet": "if prompt:"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/skill-creator/eval-viewer/generate_review.py",
+      "line": 116,
+      "type": "prompt",
+      "snippet": "if not prompt:"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/skill-creator/eval-viewer/generate_review.py",
+      "line": 117,
+      "type": "prompt",
+      "snippet": "prompt = \"(No prompt found)\""
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/skill-creator/eval-viewer/generate_review.py",
+      "line": 258,
+      "type": "template",
+      "snippet": "template = template_path.read_text()"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/skill-creator/scripts/improve_description.py",
+      "line": 20,
+      "type": "prompt",
+      "snippet": "def _call_claude(prompt: str, model: str | None, timeout: int = 300) -> str:"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/skill-creator/scripts/improve_description.py",
+      "line": 79,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\"You are optimizing a skill description for a Claude Code skill called \"{skill_name}\". A \"skill\" is sort of like a prompt, but with progressive disclosure -- there's a title and descriptio"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/skill-creator/eval-viewer/generate_review.py",
+      "line": 87,
+      "type": "prompt",
+      "snippet": "prompt = \"\""
+    },
+    {
+      "file": "skills/68-research-productivity-skills/skill-creator/eval-viewer/generate_review.py",
+      "line": 95,
+      "type": "prompt",
+      "snippet": "prompt = metadata.get(\"prompt\", \"\")"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/skill-creator/eval-viewer/generate_review.py",
+      "line": 99,
+      "type": "prompt",
+      "snippet": "if prompt:"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/skill-creator/eval-viewer/generate_review.py",
+      "line": 103,
+      "type": "prompt",
+      "snippet": "if not prompt:"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/skill-creator/eval-viewer/generate_review.py",
+      "line": 110,
+      "type": "prompt",
+      "snippet": "prompt = match.group(1).strip()"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/skill-creator/eval-viewer/generate_review.py",
+      "line": 113,
+      "type": "prompt",
+      "snippet": "if prompt:"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/skill-creator/eval-viewer/generate_review.py",
+      "line": 116,
+      "type": "prompt",
+      "snippet": "if not prompt:"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/skill-creator/eval-viewer/generate_review.py",
+      "line": 117,
+      "type": "prompt",
+      "snippet": "prompt = \"(No prompt found)\""
+    },
+    {
+      "file": "skills/68-research-productivity-skills/skill-creator/eval-viewer/generate_review.py",
+      "line": 258,
+      "type": "template",
+      "snippet": "template = template_path.read_text()"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/skill-creator/scripts/improve_description.py",
+      "line": 20,
+      "type": "prompt",
+      "snippet": "def _call_claude(prompt: str, model: str | None, timeout: int = 300) -> str:"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/skill-creator/scripts/improve_description.py",
+      "line": 79,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\"You are optimizing a skill description for a Claude Code skill called \"{skill_name}\". A \"skill\" is sort of like a prompt, but with progressive disclosure -- there's a title and descriptio"
+    },
+    {
+      "file": "tests/test_toml_compat.py",
+      "line": 20,
+      "type": "prompt",
+      "snippet": "prompt = \"\"\""
+    },
+    {
+      "file": "docs/en/09-replication-and-reproducible-research.md",
+      "line": 119,
+      "type": "template",
+      "snippet": "| **Function** | Academic LaTeX/Beamer + R template: multi-agent review, quality gates, adversarial QA, replication protocol |"
+    },
+    {
+      "file": "eval-harness/README.md",
+      "line": 112,
+      "type": "prompt",
+      "snippet": "prompt = \"\"\" ...the user request handed to the agent... \"\"\""
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/README.md",
+      "line": 84,
+      "type": "template",
+      "snippet": "| **1. Single multi-column table** (Stata `outreg2` / R `modelsummary` equivalent) | One Table 2 / Table 3 / Table A1 with progressive columns | `rt = sp.regtable(M1, M2, ..., template=\"aer\", title=.."
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/README.md",
+      "line": 85,
+      "type": "template",
+      "snippet": "| **2. Multi-panel paper format** | Tables 2 + 3 + A1 + A2 in one document | `sp.paper_tables(main=, heterogeneity=, robustness=, placebo=, template=\"aer\").to_docx(\"paper_tables.docx\")` |"
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/README.md",
+      "line": 95,
+      "type": "template",
+      "snippet": "rt = sp.regtable(M1, M2, M3, template=\"qje\")     # QJE styling"
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/README.md",
+      "line": 109,
+      "type": "template",
+      "snippet": "| **Show every estimated parameter verbatim** (controls AND intercept) | `sp.regtable(*models, template=\"aer\", ...)` with NEITHER `keep=` NOR `drop=` | Add `drop=[\"Intercept\"]` to suppress the constan"
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/README.md",
+      "line": 264,
+      "type": "template",
+      "snippet": "| **1. 单张多列表格**（Stata `outreg2` / R `modelsummary` 等价物） | 一张 Table 2 / Table 3 / Table A1，多列对比 | `rt = sp.regtable(M1, M2, ..., template=\"aer\", title=...)` 然后 `rt.to_word(...) · rt.to_excel(...) · rt."
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/README.md",
+      "line": 265,
+      "type": "template",
+      "snippet": "| **2. 论文级多面板** | Table 2 + 3 + A1 + A2 整本一份文件 | `sp.paper_tables(main=, heterogeneity=, robustness=, placebo=, template=\"aer\").to_docx(...)` |"
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/README.md",
+      "line": 296,
+      "type": "template",
+      "snippet": "| **完整变量列表导出**（含 Intercept + 全部控制） | `sp.regtable(*models, template=\"aer\", ...)`，不传 `keep=` 也不传 `drop=` | 想去掉常数 → `drop=[\"Intercept\"]`；想 focal-only → `keep=[focal]`（IV 三件套 / 交互项才用） |"
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 124,
+      "type": "template",
+      "snippet": "rt = sp.regtable(M1, M2, template=\"aer\", coef_labels={\"training\":\"Job training\"},"
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 142,
+      "type": "template",
+      "snippet": "c = sp.collect(\"Replication\", template=\"aer\")"
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 287,
+      "type": "template",
+      "snippet": "| §4 | **Table 2**: main results — progressive controls | `rt = sp.regtable(M1...M5, template=\"aer\"); rt.to_word(...); rt.to_excel(...)` | `tables/table2_main.{tex,docx,xlsx}` |"
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 308,
+      "type": "template",
+      "snippet": "| **1. Single multi-column table** (the outreg2 / `summary_col` equivalent) | Exporting *one* Table 2 / Table 3 / Table A1 with progressive columns | `rt = sp.regtable(M1, M2, ..., template=\"aer\", tit"
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 309,
+      "type": "template",
+      "snippet": "| **2. Multi-panel paper format** (Tables 2 + 3 + A1 + A2 in one file) | Producing the *paper-tables block* — main + heterogeneity + robustness + placebo as a single document | `pt = sp.paper_tables(m"
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 310,
+      "type": "template",
+      "snippet": "| **3. Full session bundle** (Stata 15 `collect` equivalent) | Replication appendix that mixes summary stats + balance + multiple regression tables + headings + prose in **one** file | `c = sp.collect"
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 318,
+      "type": "template",
+      "snippet": "rt = sp.regtable(M1, M2, M3, template=\"qje\")    # QJE styling; default = full coef list (incl. intercept)"
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 321,
+      "type": "template",
+      "snippet": "#   • drop the constant only:    sp.regtable(M1, M2, M3, template=\"qje\", drop=[\"Intercept\"])"
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 322,
+      "type": "template",
+      "snippet": "#   • focal-coefficient only:    sp.regtable(M1, M2, M3, template=\"qje\", keep=[\"x\"])"
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 590,
+      "type": "template",
+      "snippet": "c1 = sp.collect(\"Table 1. Summary statistics\", template=\"aer\")"
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 897,
+      "type": "template",
+      "snippet": "template=\"aer\",                  # auto-applies SE label, star levels, font"
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 939,
+      "type": "template",
+      "snippet": "template=\"aer\","
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 961,
+      "type": "template",
+      "snippet": "template=\"aer\","
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 981,
+      "type": "template",
+      "snippet": "template=\"aer\","
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 1005,
+      "type": "template",
+      "snippet": "template=\"aer\","
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 1074,
+      "type": "template",
+      "snippet": "template=\"aer\","
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 1096,
+      "type": "template",
+      "snippet": "template=\"aer\","
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 1279,
+      "type": "template",
+      "snippet": "template=\"aer\","
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 1333,
+      "type": "template",
+      "snippet": "template=\"aer\","
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 1347,
+      "type": "template",
+      "snippet": "template=\"aer\","
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 1449,
+      "type": "template",
+      "snippet": "template      = \"aer\","
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 1460,
+      "type": "template",
+      "snippet": "c = sp.collect(\"Effect of Training on Wages — Replication\", template=\"aer\")"
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 1503,
+      "type": "template",
+      "snippet": "print(c)                # → <Collection title='...' template='aer' items=8 kinds=['heading','summary','balance',...]>"
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 1555,
+      "type": "template",
+      "snippet": "template=\"aer\",                  # journal preset: aer/qje/econometrica/restat/jf/aeja/jpe/restud"
+    },
+    {
+      "file": "skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md",
+      "line": 2194,
+      "type": "template",
+      "snippet": "| Forgetting `template=\"aer\"` (or `qje`/`econometrica`/`restat`/`jf`/`jpe`/`restud`/`aeja`) on `regtable` | Without `template=`, you lose the journal-correct SE label, star levels, and notes. List pre"
+    },
+    {
+      "file": "skills/02-luwill-research-skills/paper-slide-deck/SKILL.md",
+      "line": 260,
+      "type": "prompt",
+      "snippet": "4. If `Layout:` specified in outline, include layout guidance in prompt:"
+    },
+    {
+      "file": "skills/02-luwill-research-skills/research-proposal/SKILL.md",
+      "line": 508,
+      "type": "template",
+      "snippet": "pandoc proposal.md -o proposal.pdf --template=academic.latex"
+    },
+    {
+      "file": "skills/03-K-Dense-AI-claude-scientific-skills/literature-review/SKILL.md",
+      "line": 217,
+      "type": "template",
+      "snippet": "1. **Create Review Document** from template:"
+    },
+    {
+      "file": "skills/04-K-Dense-AI-claude-scientific-writer/literature-review/SKILL.md",
+      "line": 214,
+      "type": "template",
+      "snippet": "1. **Create Review Document** from template:"
+    },
+    {
+      "file": "skills/06-fuhaoda-stats-paper-writing/stat-writing/references/50-review-report.md",
+      "line": 70,
+      "type": "template",
+      "snippet": "- Markdown template: `assets/reviewer-report-template.md`"
+    },
+    {
+      "file": "skills/06-fuhaoda-stats-paper-writing/stat-writing/references/50-review-report.md",
+      "line": 71,
+      "type": "template",
+      "snippet": "- LaTeX template: `assets/reviewer-report-template.tex`"
+    },
+    {
+      "file": "skills/07-Orchestra-Research-AI-Research-SKILLs/academic-plotting/SKILL.md",
+      "line": 211,
+      "type": "prompt",
+      "snippet": "- [ ] Write a detailed prompt: style block + layout + connections + constraints"
+    },
+    {
+      "file": "skills/07-Orchestra-Research-AI-Research-SKILLs/academic-plotting/SKILL.md",
+      "line": 256,
+      "type": "prompt",
+      "snippet": "PROMPT = \"\"\""
+    },
+    {
+      "file": "skills/07-Orchestra-Research-AI-Research-SKILLs/academic-plotting/references/style-guide.md",
+      "line": 39,
+      "type": "template",
+      "snippet": "Template: `\u0000sepackage[final]{neurips_2025}`"
+    },
+    {
+      "file": "skills/07-Orchestra-Research-AI-Research-SKILLs/academic-plotting/references/style-guide.md",
+      "line": 49,
+      "type": "template",
+      "snippet": "Template: `\u0000sepackage{icml2026}`"
+    },
+    {
+      "file": "skills/07-Orchestra-Research-AI-Research-SKILLs/academic-plotting/references/style-guide.md",
+      "line": 58,
+      "type": "template",
+      "snippet": "Template: `\u0000sepackage{iclr2026_conference}`"
+    },
+    {
+      "file": "skills/07-Orchestra-Research-AI-Research-SKILLs/academic-plotting/references/style-guide.md",
+      "line": 67,
+      "type": "template",
+      "snippet": "Template: `\u0000sepackage[hyperref]{acl2025}`"
+    },
+    {
+      "file": "skills/08-ndpvt-web-latex-document-skill/SKILL.md",
+      "line": 115,
+      "type": "template",
+      "snippet": "2. Select template: `cheatsheet.tex` (general, 3-col landscape), `cheatsheet-exam.tex` (exam formula, 2-col portrait), or `cheatsheet-code.tex` (programming, 4-col landscape)."
+    },
+    {
+      "file": "skills/09-meleantonio-awesome-econ-ai-stuff/README-original.md",
+      "line": 120,
+      "type": "template",
+      "snippet": "Or open an [Issue](https://github.com/meleantonio/awesome-econ-ai-stuff/issues/new?template=skill-proposal.md)."
+    },
+    {
+      "file": "skills/11-James-Traina-compound-science/agents/workflow/reproducibility-auditor.md",
+      "line": 276,
+      "type": "template",
+      "snippet": "Cite the canonical template: github.com/social-science-data-editors/template_README (endorsed by AEA, RES, EJ, CJE)."
+    },
+    {
+      "file": "skills/11-James-Traina-compound-science/skills/bayesian-estimation/references/diagnostics-guide.md",
+      "line": 151,
+      "type": "template",
+      "snippet": "# Reporting template:"
+    },
+    {
+      "file": "skills/11-James-Traina-compound-science/skills/slfg/references/orchestration-patterns.md",
+      "line": 18,
+      "type": "prompt",
+      "snippet": "prompt: \"Review src/estimators/ for identification and standard error issues. Send findings to team-lead via Teammate write.\","
+    },
+    {
+      "file": "skills/11-James-Traina-compound-science/skills/slfg/references/orchestration-patterns.md",
+      "line": 40,
+      "type": "prompt",
+      "snippet": "prompt: \"Find all estimation-related files in this codebase\","
+    },
+    {
+      "file": "skills/11-James-Traina-compound-science/skills/slfg/references/orchestration-patterns.md",
+      "line": 51,
+      "type": "prompt",
+      "snippet": "prompt: \"Audit simulation code for convergence issues. Send findings to team-lead.\","
+    },
+    {
+      "file": "skills/11-James-Traina-compound-science/skills/slfg/references/orchestration-patterns.md",
+      "line": 90,
+      "type": "prompt",
+      "snippet": "prompt: `Review estimation code for methodological correctness."
+    },
+    {
+      "file": "skills/11-James-Traina-compound-science/skills/slfg/references/orchestration-patterns.md",
+      "line": 100,
+      "type": "prompt",
+      "snippet": "prompt: `Review code for numerical issues."
+    },
+    {
+      "file": "skills/11-James-Traina-compound-science/skills/slfg/references/orchestration-patterns.md",
+      "line": 110,
+      "type": "prompt",
+      "snippet": "prompt: `Review identification strategy."
+    },
+    {
+      "file": "skills/11-James-Traina-compound-science/skills/slfg/references/orchestration-patterns.md",
+      "line": 150,
+      "type": "prompt",
+      "snippet": "prompt: \"Claim task #1. Research IV estimation with heterogeneous effects. Mark complete and send summary to team-lead.\","
+    },
+    {
+      "file": "skills/11-James-Traina-compound-science/skills/slfg/references/orchestration-patterns.md",
+      "line": 158,
+      "type": "prompt",
+      "snippet": "prompt: \"Wait for task #2 to unblock. Read research from task #1. Create detailed estimation strategy. Mark complete.\","
+    },
+    {
+      "file": "skills/11-James-Traina-compound-science/skills/slfg/references/orchestration-patterns.md",
+      "line": 166,
+      "type": "prompt",
+      "snippet": "prompt: \"Wait for task #3 to unblock. Read plan. Implement the IV estimator with proper standard errors. Mark complete.\","
+    },
+    {
+      "file": "skills/11-James-Traina-compound-science/skills/slfg/references/orchestration-patterns.md",
+      "line": 174,
+      "type": "prompt",
+      "snippet": "prompt: \"Wait for task #4 to unblock. Write Monte Carlo simulations to validate estimator properties. Mark complete with results.\","
+    },
+    {
+      "file": "skills/11-James-Traina-compound-science/skills/slfg/references/orchestration-patterns.md",
+      "line": 182,
+      "type": "prompt",
+      "snippet": "prompt: \"Wait for task #5 to unblock. Review the complete pipeline for numerical stability. Send final assessment to team-lead.\","
+    },
+    {
+      "file": "skills/11-James-Traina-compound-science/skills/slfg/references/orchestration-patterns.md",
+      "line": 223,
+      "type": "prompt",
+      "snippet": "Task({ team_name: \"file-review-swarm\", name: \"worker-1\", subagent_type: \"general-purpose\", prompt: swarmPrompt, run_in_background: true })"
+    },
+    {
+      "file": "skills/11-James-Traina-compound-science/skills/slfg/references/orchestration-patterns.md",
+      "line": 224,
+      "type": "prompt",
+      "snippet": "Task({ team_name: \"file-review-swarm\", name: \"worker-2\", subagent_type: \"general-purpose\", prompt: swarmPrompt, run_in_background: true })"
+    },
+    {
+      "file": "skills/11-James-Traina-compound-science/skills/slfg/references/orchestration-patterns.md",
+      "line": 225,
+      "type": "prompt",
+      "snippet": "Task({ team_name: \"file-review-swarm\", name: \"worker-3\", subagent_type: \"general-purpose\", prompt: swarmPrompt, run_in_background: true })"
+    },
+    {
+      "file": "skills/11-James-Traina-compound-science/skills/slfg/references/orchestration-patterns.md",
+      "line": 251,
+      "type": "prompt",
+      "snippet": "prompt: \"Review estimation code. Send findings to team-lead via Teammate write.\","
+    },
+    {
+      "file": "skills/12-pedrohcgs-claude-code-my-workflow/dot-claude/agents/domain-reviewer.md",
+      "line": 9,
+      "type": "template",
+      "snippet": "TEMPLATE: Domain-Specific Substance Reviewer"
+    },
+    {
+      "file": "skills/12-pedrohcgs-claude-code-my-workflow/dot-claude/rules/plan-first-workflow.md",
+      "line": 43,
+      "type": "template",
+      "snippet": "**Template:** `templates/requirements-spec.md`"
+    },
+    {
+      "file": "skills/12-pedrohcgs-claude-code-my-workflow/dot-claude/rules/session-logging.md",
+      "line": 4,
+      "type": "template",
+      "snippet": "**Template:** `templates/session-log.md`"
+    },
+    {
+      "file": "skills/12-pedrohcgs-claude-code-my-workflow/dot-claude/skills/data-analysis/SKILL.md",
+      "line": 87,
+      "type": "template",
+      "snippet": "Follow this template:"
+    },
+    {
+      "file": "skills/14-luischanci-claude-code-research-starter/dot-claude/rules/session-logging.md",
+      "line": 4,
+      "type": "template",
+      "snippet": "**Template:** `templates/session-log.md`"
+    },
+    {
+      "file": "skills/14-luischanci-claude-code-research-starter/dot-claude/skills/stata/packages/estout.md",
+      "line": 493,
+      "type": "template",
+      "snippet": "## Publication Template: AER Style"
+    },
+    {
+      "file": "skills/14-luischanci-claude-code-research-starter/dot-claude/skills/stata/packages/estout.md",
+      "line": 523,
+      "type": "template",
+      "snippet": "## Publication Template: Multi-Panel"
+    },
+    {
+      "file": "skills/14-luischanci-claude-code-research-starter/dot-claude/skills/stata/packages/tabout.md",
+      "line": 340,
+      "type": "template",
+      "snippet": "## Template: Baseline Characteristics Table (Table 1)"
+    },
+    {
+      "file": "skills/14-luischanci-claude-code-research-starter/dot-claude/skills/stata/packages/tabout.md",
+      "line": 380,
+      "type": "template",
+      "snippet": "## Template: Multi-Format Output Program"
+    },
+    {
+      "file": "skills/14-luischanci-claude-code-research-starter/dot-claude/skills/stata/packages/tabout.md",
+      "line": 411,
+      "type": "template",
+      "snippet": "## Template: Batch Stratified Tables"
+    },
+    {
+      "file": "skills/15-Felpix-Studios-social-science-research/CLAUDE.md",
+      "line": 285,
+      "type": "template",
+      "snippet": "- **Session log template:** `templates/session-log.md`"
+    },
+    {
+      "file": "skills/15-Felpix-Studios-social-science-research/agents/domain-reviewer.md",
+      "line": 10,
+      "type": "template",
+      "snippet": "TEMPLATE: Domain-Specific Substance Reviewer"
+    },
+    {
+      "file": "skills/15-Felpix-Studios-social-science-research/rules/plan-first-workflow.md",
+      "line": 51,
+      "type": "template",
+      "snippet": "**Template:** `templates/requirements-spec.md`"
+    },
+    {
+      "file": "skills/15-Felpix-Studios-social-science-research/skills/data-finder/SKILL.md",
+      "line": 41,
+      "type": "prompt",
+      "snippet": "Task prompt: \"You are an Explorer agent. Research question: [question]."
+    },
+    {
+      "file": "skills/15-Felpix-Studios-social-science-research/skills/data-finder/SKILL.md",
+      "line": 58,
+      "type": "prompt",
+      "snippet": "Task prompt: \"You are an Explorer agent. Research question: [question]."
+    },
+    {
+      "file": "skills/15-Felpix-Studios-social-science-research/skills/data-finder/SKILL.md",
+      "line": 80,
+      "type": "prompt",
+      "snippet": "Task prompt: \"You are an Explorer-Critic agent. Research question: [question]."
+    },
+    {
+      "file": "skills/15-Felpix-Studios-social-science-research/skills/lit-review/SKILL.md",
+      "line": 44,
+      "type": "prompt",
+      "snippet": "Task prompt: \"You are a Librarian agent. Topic: [topic]. Search angle: Top Journals."
+    },
+    {
+      "file": "skills/15-Felpix-Studios-social-science-research/skills/lit-review/SKILL.md",
+      "line": 54,
+      "type": "prompt",
+      "snippet": "Task prompt: \"You are a Librarian agent. Topic: [topic]. Search angle: NBER + SSRN + IZA."
+    },
+    {
+      "file": "skills/15-Felpix-Studios-social-science-research/skills/lit-review/SKILL.md",
+      "line": 62,
+      "type": "prompt",
+      "snippet": "Task prompt: \"You are a Librarian agent. Topic: [topic]. Search angle: Secondary Journals."
+    },
+    {
+      "file": "skills/15-Felpix-Studios-social-science-research/skills/lit-review/SKILL.md",
+      "line": 72,
+      "type": "prompt",
+      "snippet": "Task prompt: \"You are a Librarian agent. Topic: [topic]. Search angle: Citation Chain — BACKWARD."
+    },
+    {
+      "file": "skills/15-Felpix-Studios-social-science-research/skills/lit-review/SKILL.md",
+      "line": 82,
+      "type": "prompt",
+      "snippet": "Task prompt: \"You are a Librarian agent. Topic: [topic]. Search angle: Citation Chain — FORWARD."
+    },
+    {
+      "file": "skills/15-Felpix-Studios-social-science-research/skills/quality-gate/SKILL.md",
+      "line": 67,
+      "type": "prompt",
+      "snippet": "Task prompt: \"You are the verifier agent. Paper draft: [path]."
+    },
+    {
+      "file": "skills/15-Felpix-Studios-social-science-research/skills/review-paper/SKILL.md",
+      "line": 44,
+      "type": "prompt",
+      "snippet": "Task prompt: \"You are the domain-reviewer agent. Review the manuscript at [path]."
+    },
+    {
+      "file": "skills/15-Felpix-Studios-social-science-research/skills/write-paper/SKILL.md",
+      "line": 90,
+      "type": "prompt",
+      "snippet": "Task prompt: \"Review the draft at manuscripts/[filename] for argument structure, identification assumptions, and citation fidelity. Check that the identification strategy is clearly stated, assumption"
+    },
+    {
+      "file": "skills/16-hsantanna88-clo-author/README-original.md",
+      "line": 25,
+      "type": "prompt",
+      "snippet": "Then paste this prompt:"
+    },
+    {
+      "file": "skills/16-hsantanna88-clo-author/dot-claude/rules/quality.md",
+      "line": 68,
+      "type": "prompt",
+      "snippet": "The Orchestrator includes the severity level in the critic's prompt:"
+    },
+    {
+      "file": "skills/16-hsantanna88-clo-author/dot-claude/rules/workflow.md",
+      "line": 47,
+      "type": "template",
+      "snippet": "**Template:** `templates/requirements-spec.md`"
+    },
+    {
+      "file": "skills/16-hsantanna88-clo-author/dot-claude/skills/review/SKILL.md",
+      "line": 67,
+      "type": "prompt",
+      "snippet": "3. Their assigned disposition and pet peeves, injected into the prompt:"
+    },
+    {
+      "file": "skills/16-hsantanna88-clo-author/dot-claude/skills/strategize/SKILL.md",
+      "line": 106,
+      "type": "template",
+      "snippet": "For observational, quasi-experimental, or natural experiment designs, adapt the PAP template:"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/agents/README.md",
+      "line": 280,
+      "type": "template",
+      "snippet": "**Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates."
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/agents/README.md",
+      "line": 296,
+      "type": "template",
+      "snippet": "**Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates."
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/agents/README.md",
+      "line": 314,
+      "type": "template",
+      "snippet": "**Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates."
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/agents/README.md",
+      "line": 328,
+      "type": "template",
+      "snippet": "**Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates."
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/agents/README.md",
+      "line": 352,
+      "type": "template",
+      "snippet": "**Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates."
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/agents/README.md",
+      "line": 368,
+      "type": "template",
+      "snippet": "**Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates."
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/agents/README.md",
+      "line": 383,
+      "type": "template",
+      "snippet": "**Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates."
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/agents/README.md",
+      "line": 429,
+      "type": "template",
+      "snippet": "**Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates."
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/agents/README.md",
+      "line": 446,
+      "type": "template",
+      "snippet": "**Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates."
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/agents/README.md",
+      "line": 461,
+      "type": "template",
+      "snippet": "**Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates."
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/agents/README.md",
+      "line": 520,
+      "type": "template",
+      "snippet": "**Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates."
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/agents/README.md",
+      "line": 541,
+      "type": "template",
+      "snippet": "**Invocation template:** See the appropriate WORKFLOW_PHASE*.md or mode reference file for stage-specific invocation templates."
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/agents/README.md",
+      "line": 558,
+      "type": "template",
+      "snippet": "**Invocation template:** See `framework-development-mode.md` for the invocation pattern."
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/agents/README.md",
+      "line": 577,
+      "type": "template",
+      "snippet": "**Invocation template:** See the search-agent definition file for invocation patterns used across multiple modes and stages."
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/agents/code-reviewer.md",
+      "line": 257,
+      "type": "template",
+      "snippet": "**cr1 Base Template:**"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/agents/code-reviewer.md",
+      "line": 432,
+      "type": "template",
+      "snippet": "**cr2+ Investigation Script Template:**"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/agents/code-reviewer.md",
+      "line": 829,
+      "type": "prompt",
+      "snippet": "3. **The Phase 1-3 protocol (Code Review, Execution Log Review, Output Data Inspection) is replaced** by the Per-Script Execution Cycle defined in the orchestrator's RV-2 prompt: copy, strip log, re-e"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/agents/report-writer.md",
+      "line": 530,
+      "type": "prompt",
+      "snippet": "**Override: Section-Source Mapping.** The standard Section-Source Mapping discipline is replaced by the specific sections defined in the orchestrator's RV-4 prompt: Executive Summary, Synthesis of Met"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/agents/search-agent.md",
+      "line": 152,
+      "type": "prompt",
+      "snippet": "Organize findings by relevance to the search prompt:"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/agent-authoring/references/integration-checklist.md",
+      "line": 29,
+      "type": "template",
+      "snippet": "- `**Invocation template:**` reference to the appropriate `agent_reference/WORKFLOW_PHASE*.md` or mode reference file"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/SKILL.md",
+      "line": 379,
+      "type": "template",
+      "snippet": "│          ├─ Report template: Read {BASE_DIR}/agent_reference/REPRODUCTION_REPORT_TEMPLATE.md"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/SKILL.md",
+      "line": 543,
+      "type": "template",
+      "snippet": "**Emergency Context Reset Template:**"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_AUTHORING.md",
+      "line": 16,
+      "type": "prompt",
+      "snippet": "prompt: \"\"\"**BASE_DIR:** {BASE_DIR}"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_PROFILING.md",
+      "line": 387,
+      "type": "prompt",
+      "snippet": "prompt: \"\"\"**BASE_DIR:** {BASE_DIR}"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_PROFILING.md",
+      "line": 461,
+      "type": "prompt",
+      "snippet": "prompt: \"\"\"**BASE_DIR:** {BASE_DIR}"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_PROFILING.md",
+      "line": 522,
+      "type": "prompt",
+      "snippet": "prompt: \"\"\"**BASE_DIR:** {BASE_DIR}"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_PROFILING.md",
+      "line": 585,
+      "type": "prompt",
+      "snippet": "prompt: \"\"\"**BASE_DIR:** {BASE_DIR}"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_PROFILING.md",
+      "line": 676,
+      "type": "prompt",
+      "snippet": "prompt: \"\"\"**BASE_DIR:** {BASE_DIR}"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/WORKFLOW_PHASE_DO_PROFILING.md",
+      "line": 722,
+      "type": "template",
+      "snippet": "When a code-reviewer QAP review returns a BLOCKER, the orchestrator re-invokes the data-ingest agent to create a revised script. Use this template:"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/ad-hoc-collaboration-mode.md",
+      "line": 184,
+      "type": "prompt",
+      "snippet": "For agents without a dedicated section (source-researcher, plan-checker, research-synthesizer), the orchestrator provides equivalent context directly in the prompt:"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/ad-hoc-collaboration-mode.md",
+      "line": 226,
+      "type": "prompt",
+      "snippet": "**Output cap override:** When dispatching agents in Ad Hoc Collaboration mode, include this instruction in the prompt: \"Output cap is relaxed to 2000 words. Your findings will be relayed directly to t"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/data-lookup-mode.md",
+      "line": 49,
+      "type": "template",
+      "snippet": "### Invocation Template: Simple Lookup (Default)"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/data-lookup-mode.md",
+      "line": 54,
+      "type": "prompt",
+      "snippet": "prompt: \"\"\"You are answering a specific data lookup question."
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/data-lookup-mode.md",
+      "line": 84,
+      "type": "template",
+      "snippet": "### Invocation Template: Deep Lookup (source-researcher)"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/data-lookup-mode.md",
+      "line": 91,
+      "type": "prompt",
+      "snippet": "prompt: \"\"\"**BASE_DIR:** {BASE_DIR}"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/framework-development-mode.md",
+      "line": 169,
+      "type": "template",
+      "snippet": "### Phase 1 Exploration Prompt Template: Incorporate Learnings"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/full-pipeline-mode.md",
+      "line": 398,
+      "type": "prompt",
+      "snippet": "prompt: \"\"\"Generate code for: {transformation_description}"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/full-pipeline-mode.md",
+      "line": 427,
+      "type": "prompt",
+      "snippet": "prompt: \"\"\"Execute the following approved code:"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/full-pipeline-mode.md",
+      "line": 1039,
+      "type": "prompt",
+      "snippet": "prompt: \"\"\"**BASE_DIR:** {BASE_DIR}"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/full-pipeline-mode.md",
+      "line": 1244,
+      "type": "prompt",
+      "snippet": "prompt: \"\"\"**BASE_DIR:** {BASE_DIR}"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/full-pipeline-mode.md",
+      "line": 1306,
+      "type": "prompt",
+      "snippet": "prompt: \"\"\"**BASE_DIR:** {BASE_DIR}"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/full-pipeline-mode.md",
+      "line": 1403,
+      "type": "prompt",
+      "snippet": "prompt: \"\"\"**BASE_DIR:** {BASE_DIR}"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/full-pipeline-mode.md",
+      "line": 1451,
+      "type": "prompt",
+      "snippet": "prompt: \"\"\"Previous attempt encountered: {error_description}"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/reproducibility-verification-mode.md",
+      "line": 183,
+      "type": "prompt",
+      "snippet": "prompt: \"\"\"[prompt below]\"\"\","
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/reproducibility-verification-mode.md",
+      "line": 188,
+      "type": "template",
+      "snippet": "**Prompt template:**"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/reproducibility-verification-mode.md",
+      "line": 272,
+      "type": "prompt",
+      "snippet": "prompt: \"\"\"[prompt below]\"\"\","
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/reproducibility-verification-mode.md",
+      "line": 277,
+      "type": "template",
+      "snippet": "**Prompt template:**"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/reproducibility-verification-mode.md",
+      "line": 335,
+      "type": "prompt",
+      "snippet": "prompt: \"\"\"[prompt below]\"\"\","
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/reproducibility-verification-mode.md",
+      "line": 340,
+      "type": "template",
+      "snippet": "**Prompt template:**"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/reproducibility-verification-mode.md",
+      "line": 581,
+      "type": "prompt",
+      "snippet": "prompt: \"\"\"You are a Debugger. Read and follow the protocol in"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/revision-and-extension-mode.md",
+      "line": 148,
+      "type": "template",
+      "snippet": "When dispatching subagents for re-executed stages during a revision, include this additional context beyond the standard invocation template:"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/daaf-orchestrator/references/revision-and-extension-mode.md",
+      "line": 159,
+      "type": "prompt",
+      "snippet": "Example addition to subagent prompt:"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/data-scientist/references/data-documentation.md",
+      "line": 292,
+      "type": "template",
+      "snippet": "template = f\"\"\"# Data Dictionary: {dataset_name}"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/data-scientist/references/research-questions.md",
+      "line": 103,
+      "type": "template",
+      "snippet": "When proposing an approach, use this template:"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/data-scientist/references/visualization-execution.md",
+      "line": 187,
+      "type": "template",
+      "snippet": "Build a reusable theme or configuration that encodes these standards. Apply it to every figure. Both plotnine (via `theme()`) and plotly (via `layout(template=)`) support this pattern. Define once, ap"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/education-data-query/references/fetch-patterns.md",
+      "line": 367,
+      "type": "template",
+      "snippet": "template = meta[\"url_template\"]"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/education-data-query/references/fetch-patterns.md",
+      "line": 434,
+      "type": "template",
+      "snippet": "template = meta[\"url_template\"]"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/education-data-source-scorecard/references/data-quality.md",
+      "line": 286,
+      "type": "template",
+      "snippet": "Standard caveat template:"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/plotly/references/gotchas.md",
+      "line": 269,
+      "type": "template",
+      "snippet": "fig = px.scatter(df, x=\"x\", y=\"y\", template=\"plotly_dark\")"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/plotly/references/styling.md",
+      "line": 29,
+      "type": "template",
+      "snippet": "fig = px.scatter(df, x=\"x\", y=\"y\", template=\"plotly_dark\")"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/plotly/references/styling.md",
+      "line": 32,
+      "type": "template",
+      "snippet": "fig.update_layout(template=\"plotly_white\")"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/plotly/references/styling.md",
+      "line": 42,
+      "type": "template",
+      "snippet": "fig.update_layout(template=\"plotly_dark+presentation\")"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/plotly/references/styling.md",
+      "line": 429,
+      "type": "template",
+      "snippet": "template=\"simple_white\","
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/plotly/references/styling.md",
+      "line": 442,
+      "type": "template",
+      "snippet": "template=\"plotly_dark\","
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/plotly/references/styling.md",
+      "line": 452,
+      "type": "template",
+      "snippet": "template=\"simple_white\","
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/r-python-translation/SKILL.md",
+      "line": 239,
+      "type": "prompt",
+      "snippet": "**How the orchestrator passes the directive:** The orchestrator adds the following to the agent prompt:"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/skill-authoring/references/references-resources.md",
+      "line": 339,
+      "type": "template",
+      "snippet": "Copy the starter template:"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/skill-authoring/references/structure.md",
+      "line": 385,
+      "type": "template",
+      "snippet": "ALWAYS use this exact template:"
+    },
+    {
+      "file": "skills/17-DAAF-Contribution-Community-daaf/dot-claude/skills/stata-python-translation/SKILL.md",
+      "line": 275,
+      "type": "prompt",
+      "snippet": "**How the orchestrator passes the directive:** The orchestrator adds the following to the agent prompt:"
+    },
+    {
+      "file": "skills/19-CuellarC05-vera-economic-intelligence/ai-augmented-economist.SKILL.md",
+      "line": 17,
+      "type": "prompt",
+      "snippet": "- prompt: |"
+    },
+    {
+      "file": "skills/19-CuellarC05-vera-economic-intelligence/research/doc-coauthoring.SKILL.md",
+      "line": 17,
+      "type": "prompt",
+      "snippet": "- prompt: |"
+    },
+    {
+      "file": "skills/19-CuellarC05-vera-economic-intelligence/research/policy-brief-writing.SKILL.md",
+      "line": 17,
+      "type": "prompt",
+      "snippet": "- prompt: |"
+    },
+    {
+      "file": "skills/19-CuellarC05-vera-economic-intelligence/research/research-director.SKILL.md",
+      "line": 17,
+      "type": "prompt",
+      "snippet": "- prompt: |"
+    },
+    {
+      "file": "skills/19-CuellarC05-vera-economic-intelligence/research/research-paper-writing.SKILL.md",
+      "line": 17,
+      "type": "prompt",
+      "snippet": "- prompt: |"
+    },
+    {
+      "file": "skills/23-Learning-Bayesian-Statistics-baygent-skills/bayesian-workflow/references/model-comparison.md",
+      "line": 97,
+      "type": "template",
+      "snippet": "Template:"
+    },
+    {
+      "file": "skills/23-Learning-Bayesian-Statistics-baygent-skills/causal-inference/references/refutation.md",
+      "line": 450,
+      "type": "template",
+      "snippet": "**Reporting language template:**"
+    },
+    {
+      "file": "skills/24-Imbad0202-academic-research-skills/academic-paper/examples/plan_mode_guided_writing.md",
+      "line": 79,
+      "type": "template",
+      "snippet": "Now let me help you sharpen your argument. Try to fill in this template:"
+    },
+    {
+      "file": "skills/24-Imbad0202-academic-research-skills/academic-paper-reviewer/SKILL.md",
+      "line": 337,
+      "type": "template",
+      "snippet": "The Devil's Advocate uses a dedicated format, not the standard reviewer template:"
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/README-original.md",
+      "line": 264,
+      "type": "prompt",
+      "snippet": "Task(subagent_type=\"diverga:a1\", prompt=\"Refine my research question...\")"
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/README-original.md",
+      "line": 267,
+      "type": "prompt",
+      "snippet": "Task(subagent_type=\"diverga:b1\", prompt=\"Literature search...\")"
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/README-original.md",
+      "line": 268,
+      "type": "prompt",
+      "snippet": "Task(subagent_type=\"diverga:b2\", prompt=\"Quality appraisal...\")"
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/README-original.md",
+      "line": 269,
+      "type": "prompt",
+      "snippet": "Task(subagent_type=\"diverga:c5\", prompt=\"Meta-analysis orchestration...\")"
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/agents/g5.md",
+      "line": 80,
+      "type": "template",
+      "snippet": "Discussion section following a rigid template: restate findings -> compare to literature -> state implications -> acknowledge limitations -> suggest future research. Each subsection mechanically mirro"
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/agents/i0.md",
+      "line": 50,
+      "type": "prompt",
+      "snippet": "prompt=\"\"\""
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/agents/i0.md",
+      "line": 68,
+      "type": "prompt",
+      "snippet": "prompt=\"\"\""
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/agents/i0.md",
+      "line": 87,
+      "type": "prompt",
+      "snippet": "prompt=\"\"\""
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/agents/i1.md",
+      "line": 161,
+      "type": "prompt",
+      "snippet": "prompt=\"\"\""
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/agents/i2.md",
+      "line": 214,
+      "type": "prompt",
+      "snippet": "prompt=\"\"\""
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/skills/e2/SKILL.md",
+      "line": 349,
+      "type": "template",
+      "snippet": "**High-Quality Code Entry Template:**"
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/skills/e2/SKILL.md",
+      "line": 508,
+      "type": "template",
+      "snippet": "**IRR Reporting Template:**"
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/skills/humanize/SKILL.md",
+      "line": 713,
+      "type": "prompt",
+      "snippet": "Task(subagent_type=\"diverga:g5\", model=\"sonnet\", prompt=\"...\")"
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/skills/humanize/SKILL.md",
+      "line": 716,
+      "type": "prompt",
+      "snippet": "Task(subagent_type=\"diverga:g6\", model=\"opus\", prompt=\"...\")"
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/skills/humanize/SKILL.md",
+      "line": 719,
+      "type": "prompt",
+      "snippet": "Task(subagent_type=\"diverga:f5\", model=\"haiku\", prompt=\"...\")"
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/skills/i0/SKILL.md",
+      "line": 119,
+      "type": "prompt",
+      "snippet": "prompt=\"\"\""
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/skills/i0/SKILL.md",
+      "line": 137,
+      "type": "prompt",
+      "snippet": "prompt=\"\"\""
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/skills/i0/SKILL.md",
+      "line": 156,
+      "type": "prompt",
+      "snippet": "prompt=\"\"\""
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/skills/i0/SKILL.md",
+      "line": 255,
+      "type": "prompt",
+      "snippet": "prompt=\"Fetch papers from Semantic Scholar for query: {query}. Save to data/raw/semantic_scholar/\")"
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/skills/i0/SKILL.md",
+      "line": 257,
+      "type": "prompt",
+      "snippet": "prompt=\"Fetch papers from OpenAlex for query: {query}. Save to data/raw/openalex/\")"
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/skills/i0/SKILL.md",
+      "line": 259,
+      "type": "prompt",
+      "snippet": "prompt=\"Fetch papers from arXiv for query: {query}. Save to data/raw/arxiv/\")"
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/skills/i1/SKILL.md",
+      "line": 249,
+      "type": "prompt",
+      "snippet": "prompt=\"\"\""
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/skills/i2/SKILL.md",
+      "line": 225,
+      "type": "prompt",
+      "snippet": "prompt=\"\"\""
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/skills/memory/SKILL.md",
+      "line": 685,
+      "type": "prompt",
+      "snippet": "prompt=\"Help me develop hypotheses for my research\""
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/skills/memory/SKILL.md",
+      "line": 691,
+      "type": "prompt",
+      "snippet": "# 3. Injects into agent system prompt:"
+    },
+    {
+      "file": "skills/25-HosungYou-Diverga/skills/orchestrator/SKILL.md",
+      "line": 122,
+      "type": "prompt",
+      "snippet": "Spawn teammate for each selected persona with prompt:"
+    },
+    {
+      "file": "skills/26-Data-Wise-scholar/skills/mathematical/asymptotic-theory/.backups/SKILL-2025-12-09T03-53-59-605Z.md",
+      "line": 390,
+      "type": "template",
+      "snippet": "## Template: Asymptotic Result"
+    },
+    {
+      "file": "skills/26-Data-Wise-scholar/skills/mathematical/asymptotic-theory/SKILL.md",
+      "line": 557,
+      "type": "template",
+      "snippet": "## Template: Asymptotic Result"
+    },
+    {
+      "file": "skills/26-Data-Wise-scholar/skills/writing/methods-communicator/SKILL.md",
+      "line": 65,
+      "type": "template",
+      "snippet": "## Template: Interpreting Indirect Effects"
+    },
+    {
+      "file": "skills/27-dariia-m-my_claude_skills/abstract/SKILL.md",
+      "line": 103,
+      "type": "template",
+      "snippet": "Here is the formula laid out as a template:"
+    },
+    {
+      "file": "skills/28-maxwell2732-paper-replicate-agent-demo/dot-claude/rules/plan-first-workflow.md",
+      "line": 43,
+      "type": "template",
+      "snippet": "**Template:** `templates/requirements-spec.md`"
+    },
+    {
+      "file": "skills/28-maxwell2732-paper-replicate-agent-demo/dot-claude/rules/session-logging.md",
+      "line": 4,
+      "type": "template",
+      "snippet": "**Template:** `templates/session-log.md`"
+    },
+    {
+      "file": "skills/28-maxwell2732-paper-replicate-agent-demo/dot-claude/skills/data-analysis/SKILL.md",
+      "line": 88,
+      "type": "template",
+      "snippet": "Follow this template:"
+    },
+    {
+      "file": "skills/29-quarcs-lab-project20XXy/README-original.md",
+      "line": 3,
+      "type": "template",
+      "snippet": "> **Template:** `project20XXy` — a reusable, multi-language research project template built on [Quarto](https://quarto.org/)."
+    },
+    {
+      "file": "skills/31-thalysandratos-claude-code-skills/README-original.md",
+      "line": 117,
+      "type": "template",
+      "snippet": "Or open an [Issue](https://github.com/meleantonio/awesome-econ-ai-stuff/issues/new?template=skill-proposal.md)."
+    },
+    {
+      "file": "skills/32-dylantmoore-stata-skill/plugins/stata/skills/stata/packages/estout.md",
+      "line": 27,
+      "type": "template",
+      "snippet": "- [Publication Template: AER Style](#publication-template-aer-style)"
+    },
+    {
+      "file": "skills/32-dylantmoore-stata-skill/plugins/stata/skills/stata/packages/estout.md",
+      "line": 28,
+      "type": "template",
+      "snippet": "- [Publication Template: Multi-Panel](#publication-template-multi-panel)"
+    },
+    {
+      "file": "skills/32-dylantmoore-stata-skill/plugins/stata/skills/stata/packages/estout.md",
+      "line": 513,
+      "type": "template",
+      "snippet": "## Publication Template: AER Style"
+    },
+    {
+      "file": "skills/32-dylantmoore-stata-skill/plugins/stata/skills/stata/packages/estout.md",
+      "line": 543,
+      "type": "template",
+      "snippet": "## Publication Template: Multi-Panel"
+    },
+    {
+      "file": "skills/32-dylantmoore-stata-skill/plugins/stata/skills/stata/packages/tabout.md",
+      "line": 340,
+      "type": "template",
+      "snippet": "## Template: Baseline Characteristics Table (Table 1)"
+    },
+    {
+      "file": "skills/32-dylantmoore-stata-skill/plugins/stata/skills/stata/packages/tabout.md",
+      "line": 380,
+      "type": "template",
+      "snippet": "## Template: Multi-Format Output Program"
+    },
+    {
+      "file": "skills/32-dylantmoore-stata-skill/plugins/stata/skills/stata/packages/tabout.md",
+      "line": 411,
+      "type": "template",
+      "snippet": "## Template: Batch Stratified Tables"
+    },
+    {
+      "file": "skills/32-dylantmoore-stata-skill/plugins/stata-c-plugins/skills/stata-c-plugins/references/testing_strategy.md",
+      "line": 49,
+      "type": "template",
+      "snippet": "### Script Template: `tests/generate_test_data.py` (or `.R`)"
+    },
+    {
+      "file": "skills/32-dylantmoore-stata-skill/plugins/stata-c-plugins/skills/stata-c-plugins/references/testing_strategy.md",
+      "line": 126,
+      "type": "template",
+      "snippet": "### Script Template: `tests/run_tests.do`"
+    },
+    {
+      "file": "skills/32-dylantmoore-stata-skill/plugins/stata-c-plugins/skills/stata-c-plugins/references/testing_strategy.md",
+      "line": 190,
+      "type": "template",
+      "snippet": "### Script Template: `tests/test_features.do`"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/agent-identifier/SKILL.md",
+      "line": 187,
+      "type": "template",
+      "snippet": "**Standard template:**"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/agent-identifier/SKILL.md",
+      "line": 261,
+      "type": "system",
+      "snippet": "\"systemPrompt\": \"You are...\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/agent-identifier/examples/agent-creation-prompt.md",
+      "line": 35,
+      "type": "system",
+      "snippet": "\"systemPrompt\": \"You are... **Your Core Responsibilities:**...\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/agent-identifier/examples/agent-creation-prompt.md",
+      "line": 52,
+      "type": "system",
+      "snippet": "[systemPrompt from JSON]"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/agent-identifier/examples/agent-creation-prompt.md",
+      "line": 67,
+      "type": "system",
+      "snippet": "\"systemPrompt\": \"You are an expert code quality reviewer specializing in identifying issues in software implementations.\\n\\n**Your Core Responsibilities:**\\n1. Analyze code changes for quality issues "
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/agent-identifier/examples/agent-creation-prompt.md",
+      "line": 146,
+      "type": "system",
+      "snippet": "\"systemPrompt\": \"You are an expert test engineer specializing in creating comprehensive unit tests...\\n\\n**Your Core Responsibilities:**\\n1. Analyze code to understand behavior\\n2. Generate test cases"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/agent-identifier/references/agent-creation-system-prompt.md",
+      "line": 59,
+      "type": "system",
+      "snippet": "\"systemPrompt\": \"The complete system prompt that will govern the agent's behavior, written in second person ('You are...', 'You will...') and structured for maximum clarity and effectiveness\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/agent-identifier/references/agent-creation-system-prompt.md",
+      "line": 87,
+      "type": "system",
+      "snippet": "\"systemPrompt\": \"You are an expert code quality reviewer...\\n\\n**Your Core Responsibilities:**\\n1. Analyze code changes for quality issues\\n2. Check adherence to best practices\\n...\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/agent-identifier/references/agent-creation-system-prompt.md",
+      "line": 186,
+      "type": "prompt",
+      "snippet": "Always define clear output format in system prompt:"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/agent-identifier/references/agent-creation-system-prompt.md",
+      "line": 201,
+      "type": "system",
+      "snippet": "3. Get JSON output (identifier, whenToUse, systemPrompt)"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/bug-detective/SKILL.md",
+      "line": 33,
+      "type": "template",
+      "snippet": "**Question template:**"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/command-development/SKILL.md",
+      "line": 625,
+      "type": "template",
+      "snippet": "Template: @${CLAUDE_PLUGIN_ROOT}/templates/docs.md"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/command-development/SKILL.md",
+      "line": 741,
+      "type": "template",
+      "snippet": "Template: @${CLAUDE_PLUGIN_ROOT}/templates/review.md"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/command-development/examples/plugin-commands.md",
+      "line": 325,
+      "type": "template",
+      "snippet": "Template: @${CLAUDE_PLUGIN_ROOT}/templates/review-report.md"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/command-development/references/plugin-features-reference.md",
+      "line": 99,
+      "type": "template",
+      "snippet": "Read template: @${CLAUDE_PLUGIN_ROOT}/templates/report.md"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/command-development/references/plugin-features-reference.md",
+      "line": 106,
+      "type": "template",
+      "snippet": "Read template: @/path/to/plugins/plugin-name/templates/report.md"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/command-development/references/plugin-features-reference.md",
+      "line": 144,
+      "type": "template",
+      "snippet": "Use this template: @${CLAUDE_PLUGIN_ROOT}/templates/api-report.md"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/command-development/references/plugin-features-reference.md",
+      "line": 255,
+      "type": "template",
+      "snippet": "Template: @${CLAUDE_PLUGIN_ROOT}/templates/component-docs.md"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/command-development/references/plugin-features-reference.md",
+      "line": 432,
+      "type": "template",
+      "snippet": "Template: @${CLAUDE_PLUGIN_ROOT}/templates/review-report.md"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/daily-paper-generator/example/daily paper example.md",
+      "line": 22,
+      "type": "few-shot",
+      "snippet": "Universal Brain-Computer Interfaces are constrained by the limited cross-subject and cross-task generalization of EEG signals. Most existing foundation models employ generic deep learning architecture"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/daily-paper-generator/example/daily paper example.md",
+      "line": 59,
+      "type": "few-shot",
+      "snippet": "Universal Brain-Computer Interfaces are constrained by the limited cross-subject and cross-task generalization of EEG signals. Most existing foundation models employ generic deep learning architecture"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/.archive/nlp.md",
+      "line": 1109,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/.archive/nlp.md",
+      "line": 1145,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/.archive/nlp.md",
+      "line": 2241,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/.archive/nlp.md",
+      "line": 2524,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/.archive/nlp.md",
+      "line": 2552,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/.archive/nlp.md",
+      "line": 2585,
+      "type": "prompt",
+      "snippet": "prompt = f\"Problem: {problem}\\nSolution: Let's think step by step.\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/.archive/nlp.md",
+      "line": 2636,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/.archive/nlp.md",
+      "line": 2746,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/.archive/nlp.md",
+      "line": 2795,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/.archive/nlp.md",
+      "line": 2813,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/.archive/nlp.md",
+      "line": 2844,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/.archive/nlp.md",
+      "line": 3428,
+      "type": "system",
+      "snippet": "system_prompt = \"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/aimo-2-2025.md",
+      "line": 418,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/aimo-2-2025.md",
+      "line": 446,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/aimo-2-2025.md",
+      "line": 479,
+      "type": "prompt",
+      "snippet": "prompt = f\"Problem: {problem}\\nSolution: Let's think step by step.\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/aimo-2-2025.md",
+      "line": 530,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/aimo-2-2025.md",
+      "line": 640,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/aimo-2-2025.md",
+      "line": 689,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/aimo-2-2025.md",
+      "line": 707,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/aimo-2-2025.md",
+      "line": 738,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/aimo-2-2025.md",
+      "line": 1148,
+      "type": "system",
+      "snippet": "system_prompt = \"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/arc-prize-2025.md",
+      "line": 280,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/arc-prize-2025.md",
+      "line": 316,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/arc-prize-2025.md",
+      "line": 1412,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/konwinski-prize-2025-comparison.md",
+      "line": 151,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/konwinski-prize-2025-comparison.md",
+      "line": 588,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/konwinski-prize-2025-comparison.md",
+      "line": 726,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/konwinski-prize-2025-comparison.md",
+      "line": 959,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/konwinski-prize-2025-comparison.md",
+      "line": 1081,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/konwinski-prize-2025-comparison.md",
+      "line": 1105,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/konwinski-prize-2025.md",
+      "line": 212,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/konwinski-prize-2025.md",
+      "line": 231,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/konwinski-prize-2025.md",
+      "line": 248,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/konwinski-prize-2025.md",
+      "line": 333,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/kaggle-learner/references/knowledge/nlp/konwinski-prize-2025.md",
+      "line": 441,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/rethinking-papers-kaiming-he.md",
+      "line": 847,
+      "type": "template",
+      "snippet": "### Abstract Template:"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/rethinking-papers-kaiming-he.md",
+      "line": 855,
+      "type": "template",
+      "snippet": "### Introduction Template:"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/rethinking-papers-kaiming-he.md",
+      "line": 875,
+      "type": "template",
+      "snippet": "### Unification Template:"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/rethinking-papers-kaiming-he.md",
+      "line": 885,
+      "type": "template",
+      "snippet": "### Conclusion Template:"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/review-response.md",
+      "line": 21,
+      "type": "template",
+      "snippet": "**Template:**"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/review-response.md",
+      "line": 45,
+      "type": "template",
+      "snippet": "**Template:**"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/review-response.md",
+      "line": 71,
+      "type": "template",
+      "snippet": "**Template:**"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/review-response.md",
+      "line": 95,
+      "type": "template",
+      "snippet": "**Template:**"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/review-response.md",
+      "line": 115,
+      "type": "template",
+      "snippet": "**Template:**"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/review-response.md",
+      "line": 134,
+      "type": "template",
+      "snippet": "**Template:**"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/review-response.md",
+      "line": 155,
+      "type": "template",
+      "snippet": "**Template:**"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/review-response.md",
+      "line": 238,
+      "type": "template",
+      "snippet": "**Template:**"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/review-response.md",
+      "line": 252,
+      "type": "template",
+      "snippet": "**Template:**"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/structure.md",
+      "line": 19,
+      "type": "template",
+      "snippet": "**Example Template:**"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/structure.md",
+      "line": 42,
+      "type": "template",
+      "snippet": "**Example Template:**"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/structure.md",
+      "line": 64,
+      "type": "template",
+      "snippet": "**Example Template:**"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/structure.md",
+      "line": 89,
+      "type": "template",
+      "snippet": "**Example Template:**"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/structure.md",
+      "line": 115,
+      "type": "template",
+      "snippet": "**Example Template:**"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/structure.md",
+      "line": 141,
+      "type": "template",
+      "snippet": "**Example Template:**"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/structure.md",
+      "line": 168,
+      "type": "template",
+      "snippet": "**Example Template:**"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/structure.md",
+      "line": 193,
+      "type": "template",
+      "snippet": "**Example Template:**"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/structure.md",
+      "line": 219,
+      "type": "template",
+      "snippet": "**Example Template:**"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/ml-paper-writing/references/knowledge/structure.md",
+      "line": 245,
+      "type": "template",
+      "snippet": "**Example Template:**"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/obsidian-cli/SKILL.md",
+      "line": 49,
+      "type": "template",
+      "snippet": "obsidian create name=\"New Note\" content=\"# Hello\" template=\"Template\" silent"
+    },
+    {
+      "file": "skills/33-Galaxy-Dawn-claude-scholar/skills/skill-quality-reviewer/references/examples-good.md",
+      "line": 320,
+      "type": "template",
+      "snippet": "**Example template:**"
+    },
+    {
+      "file": "skills/35-bahayonghang-academic-writing-skills/skills/industrial-ai-research/references/modules/SURVEY_OUTLINE.md",
+      "line": 95,
+      "type": "prompt",
+      "snippet": "Present both `outline.yml` and `taxonomy.md` to the user with this exact prompt:"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/README-original.md",
+      "line": 1448,
+      "type": "template",
+      "snippet": "- [x] **Document-based pipeline input** — `/idea-discovery` and `/research-pipeline` auto-detect `RESEARCH_BRIEF.md` in project root. Detailed context replaces one-line prompt. Template: `templates/RE"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/ablation-planner/SKILL.md",
+      "line": 35,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/auto-paper-improvement-loop/SKILL.md",
+      "line": 60,
+      "type": "prompt",
+      "snippet": "Concatenate all section files into a single text block for the review prompt:"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/auto-paper-improvement-loop/SKILL.md",
+      "line": 78,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/auto-paper-improvement-loop/SKILL.md",
+      "line": 159,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/auto-review-loop/SKILL.md",
+      "line": 74,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/auto-review-loop/SKILL.md",
+      "line": 243,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/auto-review-loop-llm/SKILL.md",
+      "line": 63,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/auto-review-loop-llm/SKILL.md",
+      "line": 120,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/auto-review-loop-llm/SKILL.md",
+      "line": 220,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/auto-review-loop-minimax/SKILL.md",
+      "line": 31,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/auto-review-loop-minimax/SKILL.md",
+      "line": 110,
+      "type": "prompt",
+      "snippet": "- prompt: [Full review prompt with context]"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/auto-review-loop-minimax/SKILL.md",
+      "line": 238,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/experiment-bridge/SKILL.md",
+      "line": 114,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/grant-proposal/SKILL.md",
+      "line": 438,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/grant-proposal/SKILL.md",
+      "line": 467,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/idea-creator/SKILL.md",
+      "line": 61,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/idea-discovery/SKILL.md",
+      "line": 55,
+      "type": "template",
+      "snippet": "> 💡 Create a brief from the template: `cp templates/RESEARCH_BRIEF_TEMPLATE.md RESEARCH_BRIEF.md`"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/paper-figure/SKILL.md",
+      "line": 208,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/paper-illustration/SKILL.md",
+      "line": 494,
+      "type": "template",
+      "snippet": "**STRICT Review Template:**"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/paper-plan/SKILL.md",
+      "line": 216,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/paper-poster/SKILL.md",
+      "line": 622,
+      "type": "template",
+      "snippet": "- Template: article + tcbposter (rows=20)"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/paper-poster/SKILL.md",
+      "line": 769,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/paper-slides/SKILL.md",
+      "line": 324,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/paper-write/SKILL.md",
+      "line": 301,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/rebuttal/SKILL.md",
+      "line": 183,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/research-refine/SKILL.md",
+      "line": 324,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/research-refine/SKILL.md",
+      "line": 504,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/research-review/SKILL.md",
+      "line": 40,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/result-to-claim/SKILL.md",
+      "line": 45,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex/auto-paper-improvement-loop/SKILL.md",
+      "line": 58,
+      "type": "prompt",
+      "snippet": "Concatenate all section files into a single text block for the review prompt:"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex/auto-review-loop-minimax/SKILL.md",
+      "line": 108,
+      "type": "prompt",
+      "snippet": "- prompt: [Full review prompt with context]"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex/paper-illustration/SKILL.md",
+      "line": 492,
+      "type": "template",
+      "snippet": "**STRICT Review Template:**"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex/paper-poster/SKILL.md",
+      "line": 622,
+      "type": "template",
+      "snippet": "- Template: article + tcbposter (rows=20)"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex/paper-poster/SKILL.md",
+      "line": 769,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex/paper-slides/SKILL.md",
+      "line": 324,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-claude-review/auto-paper-improvement-loop/SKILL.md",
+      "line": 60,
+      "type": "prompt",
+      "snippet": "Concatenate all section files into a single text block for the review prompt:"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-claude-review/auto-paper-improvement-loop/SKILL.md",
+      "line": 76,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-claude-review/auto-paper-improvement-loop/SKILL.md",
+      "line": 157,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-claude-review/auto-review-loop/SKILL.md",
+      "line": 72,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-claude-review/auto-review-loop/SKILL.md",
+      "line": 231,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-claude-review/novelty-check/SKILL.md",
+      "line": 47,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-claude-review/paper-figure/SKILL.md",
+      "line": 206,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-claude-review/paper-plan/SKILL.md",
+      "line": 187,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-claude-review/paper-write/SKILL.md",
+      "line": 255,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-claude-review/research-refine/SKILL.md",
+      "line": 260,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-claude-review/research-refine/SKILL.md",
+      "line": 436,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-claude-review/research-review/SKILL.md",
+      "line": 42,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-gemini-review/auto-paper-improvement-loop/SKILL.md",
+      "line": 60,
+      "type": "prompt",
+      "snippet": "Concatenate all section files into a single text block for the review prompt:"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-gemini-review/auto-paper-improvement-loop/SKILL.md",
+      "line": 76,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-gemini-review/auto-paper-improvement-loop/SKILL.md",
+      "line": 157,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-gemini-review/auto-review-loop/SKILL.md",
+      "line": 72,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-gemini-review/auto-review-loop/SKILL.md",
+      "line": 231,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-gemini-review/grant-proposal/SKILL.md",
+      "line": 436,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-gemini-review/grant-proposal/SKILL.md",
+      "line": 466,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-gemini-review/idea-creator/SKILL.md",
+      "line": 59,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-gemini-review/idea-creator/SKILL.md",
+      "line": 117,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-gemini-review/novelty-check/SKILL.md",
+      "line": 47,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-gemini-review/paper-figure/SKILL.md",
+      "line": 206,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-gemini-review/paper-plan/SKILL.md",
+      "line": 187,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-gemini-review/paper-poster/SKILL.md",
+      "line": 624,
+      "type": "template",
+      "snippet": "- Template: article + tcbposter (rows=20)"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-gemini-review/paper-poster/SKILL.md",
+      "line": 721,
+      "type": "prompt",
+      "snippet": "- prompt: [STRICT visual rubric + scoring instructions]"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-gemini-review/paper-poster/SKILL.md",
+      "line": 773,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-gemini-review/paper-slides/SKILL.md",
+      "line": 325,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-gemini-review/paper-write/SKILL.md",
+      "line": 255,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-gemini-review/research-refine/SKILL.md",
+      "line": 260,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-gemini-review/research-refine/SKILL.md",
+      "line": 436,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/skills-codex-gemini-review/research-review/SKILL.md",
+      "line": 42,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/42-wanshuiyin-ARIS/skills/training-check/SKILL.md",
+      "line": 69,
+      "type": "prompt",
+      "snippet": "prompt: |"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/analysis/dataviz/interactive-viz-guide/SKILL.md",
+      "line": 55,
+      "type": "template",
+      "snippet": "template=\"plotly_white\","
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/analysis/dataviz/interactive-viz-guide/SKILL.md",
+      "line": 83,
+      "type": "template",
+      "snippet": "template=\"plotly_white\""
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/analysis/dataviz/plotly-interactive-guide/SKILL.md",
+      "line": 53,
+      "type": "template",
+      "snippet": "template='plotly_white'"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/analysis/dataviz/plotly-interactive-guide/SKILL.md",
+      "line": 69,
+      "type": "template",
+      "snippet": "template='plotly_white'"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/analysis/dataviz/plotly-interactive-guide/SKILL.md",
+      "line": 87,
+      "type": "template",
+      "snippet": "template='plotly_white'"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/analysis/dataviz/plotly-interactive-guide/SKILL.md",
+      "line": 120,
+      "type": "template",
+      "snippet": "template='plotly_white',"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/analysis/dataviz/plotly-interactive-guide/SKILL.md",
+      "line": 157,
+      "type": "template",
+      "snippet": "template='plotly_white',"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/analysis/dataviz/plotly-interactive-guide/SKILL.md",
+      "line": 210,
+      "type": "template",
+      "snippet": "template='plotly_white',"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/analysis/dataviz/plotly-interactive-guide/SKILL.md",
+      "line": 255,
+      "type": "template",
+      "snippet": "return px.histogram(df, x=selected_var, nbins=30, template='plotly_white')"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/analysis/statistics/sem-guide/SKILL.md",
+      "line": 168,
+      "type": "template",
+      "snippet": "**Reporting template:**"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/domains/ai-ml/ai-model-benchmarking/SKILL.md",
+      "line": 197,
+      "type": "few-shot",
+      "snippet": "- **Use the same number of few-shot examples** as the original benchmark paper."
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/domains/ai-ml/anomaly-detection-papers-guide/SKILL.md",
+      "line": 146,
+      "type": "few-shot",
+      "snippet": "1. **Zero/few-shot AD** — Detect anomalies without normal training data"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/domains/ai-ml/llm-evaluation-guide/SKILL.md",
+      "line": 188,
+      "type": "few-shot",
+      "snippet": "Comparing models with different prompt formats or few-shot counts."
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/domains/ai-ml/llm-evaluation-guide/SKILL.md",
+      "line": 194,
+      "type": "few-shot",
+      "snippet": "When publishing LLM evaluation results, report: model name and version, parameter count and architecture, evaluation dataset with version number, exact prompts used (include in appendix), number of fe"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/domains/ai-ml/npcpy-research-guide/SKILL.md",
+      "line": 74,
+      "type": "few-shot",
+      "snippet": "\"Find the top 5 most cited papers on few-shot learning \""
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/domains/ai-ml/prompt-engineering-research/SKILL.md",
+      "line": 95,
+      "type": "template",
+      "snippet": "template = templates.get(task_type, templates['literature_summary'])"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/domains/ai-ml/prompt-engineering-research/SKILL.md",
+      "line": 150,
+      "type": "prompt",
+      "snippet": "prompt = prompt_template.format(**case)"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/domains/ai-ml/prompt-engineering-research/SKILL.md",
+      "line": 233,
+      "type": "few-shot",
+      "snippet": "- Brown, T., et al. (2020). Language models are few-shot learners. *NeurIPS*."
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/domains/ai-ml/transformer-architecture-guide/SKILL.md",
+      "line": 137,
+      "type": "prompt",
+      "snippet": "prompt = \"The key innovation of the Transformer is\""
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/domains/biomedical/bioagents-guide/SKILL.md",
+      "line": 80,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\""
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/domains/chemistry/retrosynthesis-guide/SKILL.md",
+      "line": 120,
+      "type": "template",
+      "snippet": "print(f\"  Template: {result.get('template', 'N/A')}\")"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/domains/humanities/ethical-philosophy-guide/SKILL.md",
+      "line": 39,
+      "type": "template",
+      "snippet": "Framework application template:"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/literature/fulltext/zotero-ai-butler-guide/SKILL.md",
+      "line": 133,
+      "type": "template",
+      "snippet": "Template: |"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/literature/metadata/academic-paper-summarizer/SKILL.md",
+      "line": 67,
+      "type": "prompt",
+      "snippet": "**Example extraction prompt:**"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/research/automation/ai-scientist-v2-guide/SKILL.md",
+      "line": 81,
+      "type": "template",
+      "snippet": "template: \"icml\"      # Paper template (icml, neurips, iclr)"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/research/automation/ai-scientist-v2-guide/SKILL.md",
+      "line": 167,
+      "type": "template",
+      "snippet": "template=\"neurips\","
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/research/deep-research/khoj-research-guide/SKILL.md",
+      "line": 126,
+      "type": "few-shot",
+      "snippet": "few-shot learning?"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/research/deep-research/khoj-research-guide/SKILL.md",
+      "line": 129,
+      "type": "few-shot",
+      "snippet": "few-shot learning. The main arguments include:"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/research/deep-research/local-deep-research-guide/SKILL.md",
+      "line": 87,
+      "type": "few-shot",
+      "snippet": "few-shot learning in NLP as of 2024?\""
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/research/deep-research/local-deep-research-guide/SKILL.md",
+      "line": 103,
+      "type": "few-shot",
+      "snippet": "\"What are the most effective methods for few-shot learning \""
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/research/funding/grant-budget-guide/SKILL.md",
+      "line": 136,
+      "type": "template",
+      "snippet": "Budget Justification Template:"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/research/funding/grant-writing-guide/SKILL.md",
+      "line": 66,
+      "type": "template",
+      "snippet": "template = f\"\"\""
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/research/methodology/grad-school-guide/SKILL.md",
+      "line": 51,
+      "type": "few-shot",
+      "snippet": "Question: Can morphological decomposition improve few-shot translation"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/research/paper-review/rebuttal-writing-guide/SKILL.md",
+      "line": 22,
+      "type": "template",
+      "snippet": "Response Letter Template:"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/tools/document/anystyle-api/SKILL.md",
+      "line": 96,
+      "type": "few-shot",
+      "snippet": "Brown, T. B., Mann, B., Ryder, N., Subbiah, M., et al. (2020). Language models are few-shot learners. NeurIPS 33, 1877-1901.\"\"\""
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/tools/document/large-document-reader/SKILL.md",
+      "line": 131,
+      "type": "template",
+      "snippet": "Process each chapter with a standardized analysis template:"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/tools/document/markdown-academic-guide/SKILL.md",
+      "line": 145,
+      "type": "template",
+      "snippet": "--template=custom-template.tex \\"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/tools/document/pdf-extraction-guide/SKILL.md",
+      "line": 269,
+      "type": "template",
+      "snippet": "--template=ieee.tex \\"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/tools/knowledge-graph/knowledge-graph-construction/SKILL.md",
+      "line": 279,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\"Based on the following knowledge graph context, answer the question."
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/tools/knowledge-graph/notero-zotero-notion-guide/SKILL.md",
+      "line": 134,
+      "type": "template",
+      "snippet": "When a paper syncs, Notero can use a Notion template:"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/tools/knowledge-graph/rag-methodology-guide/SKILL.md",
+      "line": 263,
+      "type": "prompt",
+      "snippet": "prompt = f\"\"\"Based on the following research paper excerpts, answer the question."
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/tools/knowledge-graph/zotero-markdb-connect-guide/SKILL.md",
+      "line": 35,
+      "type": "template",
+      "snippet": "**Note Template:**"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/writing/composition/research-paper-writer/SKILL.md",
+      "line": 80,
+      "type": "few-shot",
+      "snippet": "correctness by 34.2% over the base model and 12.8% over few-shot prompting,"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/writing/composition/research-paper-writer/SKILL.md",
+      "line": 148,
+      "type": "few-shot",
+      "snippet": "GPT-4 (few-shot)  & 55.8 & 72.4 & 71.2 & 2.3s \\\\"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/writing/composition/scientific-writing-guide/SKILL.md",
+      "line": 72,
+      "type": "template",
+      "snippet": "Example template:"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/writing/composition/scientific-writing-guide/SKILL.md",
+      "line": 117,
+      "type": "template",
+      "snippet": "template: elsevier.tex"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/writing/latex/md-to-pdf-academic/SKILL.md",
+      "line": 167,
+      "type": "template",
+      "snippet": "--template=eisvogel"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/writing/latex/md-to-pdf-academic/SKILL.md",
+      "line": 183,
+      "type": "template",
+      "snippet": "pandoc $(PAPER).md -o $(PAPER).pdf $(PANDOC_FLAGS) --template=eisvogel"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/writing/latex/md-to-pdf-academic/SKILL.md",
+      "line": 207,
+      "type": "template",
+      "snippet": "pandoc paper.md -o paper.pdf --template=my-template.tex"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/writing/latex/md-to-pdf-academic/SKILL.md",
+      "line": 228,
+      "type": "template",
+      "snippet": "- Eisvogel LaTeX Template: https://github.com/Wandmalfarbe/pandoc-latex-template"
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/writing/polish/academic-translation-guide/SKILL.md",
+      "line": 146,
+      "type": "prompt",
+      "snippet": "prompt = \"\"\"Translate the following Chinese academic abstract to English."
+    },
+    {
+      "file": "skills/43-wentorai-research-plugins/skills/writing/templates/conference-paper-template/SKILL.md",
+      "line": 31,
+      "type": "template",
+      "snippet": "### LaTeX Template: General Conference Paper"
+    },
+    {
+      "file": "skills/50-brycewang-aer-skills/skills/aer-replication/SKILL.md",
+      "line": 219,
+      "type": "template",
+      "snippet": "- Data source register template: `examples/replication-package-skeleton/data/codebook/source-register.md`"
+    },
+    {
+      "file": "skills/50-brycewang-aer-skills/skills/aer-replication/SKILL.md",
+      "line": 220,
+      "type": "template",
+      "snippet": "- Exhibit register template: `examples/replication-package-skeleton/docs/exhibit-register.md`"
+    },
+    {
+      "file": "skills/50-brycewang-aer-skills/skills/aer-replication/SKILL.md",
+      "line": 221,
+      "type": "template",
+      "snippet": "- Language template: `templates/stata/`, `templates/r/`, or `templates/python/`"
+    },
+    {
+      "file": "skills/50-brycewang-aer-skills/skills/aer-topic-selection/SKILL.md",
+      "line": 46,
+      "type": "template",
+      "snippet": "Force the contribution into one sentence with this template:"
+    },
+    {
+      "file": "skills/54-scdenney-open-science-skills/skills/text-classification/SKILL.md",
+      "line": 33,
+      "type": "few-shot",
+      "snippet": "**Few-shot prompting**: Add labeled examples to the prompt. Results are inconsistent — adding examples helps some models but degrades others (Chae & Davidson 2025). Always compare few-shot against zer"
+    },
+    {
+      "file": "skills/54-scdenney-open-science-skills/skills/text-classification/SKILL.md",
+      "line": 70,
+      "type": "few-shot",
+      "snippet": "- If zero-shot F1 is inadequate, iterate in this order: (1) revise codebook definitions, (2) add few-shot examples, (3) fine-tune on labeled data. Do not skip to fine-tuning before testing whether the"
+    },
+    {
+      "file": "skills/54-scdenney-open-science-skills/skills/text-classification/SKILL.md",
+      "line": 78,
+      "type": "few-shot",
+      "snippet": "- For **ensemble approaches**, run a matrix of models rather than a single pair. Benoit, De Marchi & Laver (2025) use a 3×3 design — three summarizer models (Claude, GPT, Gemini) × three scorer models"
+    },
+    {
+      "file": "skills/54-scdenney-open-science-skills/skills/text-classification/SKILL.md",
+      "line": 101,
+      "type": "few-shot",
+      "snippet": "- [ ] Learning regime (zero-shot, few-shot, fine-tuning, instruction-tuning, or encoder-only fine-tuning) chosen based on data characteristics and available resources, not convenience"
+    },
+    {
+      "file": "skills/54-scdenney-open-science-skills/skills/text-classification/reference/example-codebook-and-prompt.md",
+      "line": 167,
+      "type": "prompt",
+      "snippet": "- **Section 5 (Pilot Testing and Validation)**: Before hand-coding, run Halterman & Keith's Stage 1 label-free tests on THIS prompt: (I) does the model only return `anti_immigration`, `pro_immigration"
+    },
+    {
+      "file": "skills/56-hanlulong-econ-writing-skill/econ-write/SKILL.md",
+      "line": 468,
+      "type": "template",
+      "snippet": "- Include a README following the Social Science Data Editors template: Data Availability & Provenance Statements, Dataset List, Computational Requirements (software versions, hardware, expected runtim"
+    },
+    {
+      "file": "skills/58-charlescoverdale-econstack/briefing-note/SKILL.md",
+      "line": 302,
+      "type": "template",
+      "snippet": "template: [template]"
+    },
+    {
+      "file": "skills/60-regisely-superpapers/skills/journal-guidelines/SKILL.md",
+      "line": 42,
+      "type": "template",
+      "snippet": "4. **If the journal provides a LaTeX template:** download it via web, adapt the paper to the template's structure, map existing `\\input{}` table calls to the template's expectations, preserve the bibl"
+    },
+    {
+      "file": "skills/60-regisely-superpapers/skills/journal-guidelines/SKILL.md",
+      "line": 44,
+      "type": "template",
+      "snippet": "5. **If no template:** adjust the existing paper — margins, font, spacing, citation style — to meet the requirements without breaking the replication pipeline."
+    },
+    {
+      "file": "skills/65-game-theory-paper-writer/references/paper-writing.md",
+      "line": 45,
+      "type": "template",
+      "snippet": "Contribution sentence template:"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/Foreign-CF-study/SKILL.md",
+      "line": 787,
+      "type": "template",
+      "snippet": "out_path='main.tex', template='template/main.tex'):"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/command-development/SKILL.md",
+      "line": 625,
+      "type": "template",
+      "snippet": "Template: @${CLAUDE_PLUGIN_ROOT}/templates/docs.md"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/command-development/SKILL.md",
+      "line": 740,
+      "type": "template",
+      "snippet": "Template: @${CLAUDE_PLUGIN_ROOT}/templates/review.md"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/command-development/examples/plugin-commands.md",
+      "line": 325,
+      "type": "template",
+      "snippet": "Template: @${CLAUDE_PLUGIN_ROOT}/templates/review-report.md"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/command-development/references/plugin-features-reference.md",
+      "line": 99,
+      "type": "template",
+      "snippet": "Read template: @${CLAUDE_PLUGIN_ROOT}/templates/report.md"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/command-development/references/plugin-features-reference.md",
+      "line": 106,
+      "type": "template",
+      "snippet": "Read template: @/path/to/plugins/plugin-name/templates/report.md"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/command-development/references/plugin-features-reference.md",
+      "line": 144,
+      "type": "template",
+      "snippet": "Use this template: @${CLAUDE_PLUGIN_ROOT}/templates/api-report.md"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/command-development/references/plugin-features-reference.md",
+      "line": 255,
+      "type": "template",
+      "snippet": "Template: @${CLAUDE_PLUGIN_ROOT}/templates/component-docs.md"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/command-development/references/plugin-features-reference.md",
+      "line": 432,
+      "type": "template",
+      "snippet": "Template: @${CLAUDE_PLUGIN_ROOT}/templates/review-report.md"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/marp-slides-creator/SKILL.md",
+      "line": 298,
+      "type": "prompt",
+      "snippet": "- prompt:"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/marp-slides-creator/SKILL.md",
+      "line": 367,
+      "type": "prompt",
+      "snippet": "- prompt:"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/marp-slides-creator/SKILL.md",
+      "line": 423,
+      "type": "prompt",
+      "snippet": "- prompt:"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/marp-slides-creator/SKILL.md",
+      "line": 477,
+      "type": "prompt",
+      "snippet": "- prompt:"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/referee-report/SKILL.md",
+      "line": 194,
+      "type": "template",
+      "snippet": "1. **Assemble the report** using this template:"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/skill-creator/SKILL.md",
+      "line": 122,
+      "type": "template",
+      "snippet": "ALWAYS use this exact template:"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/skill-creator/SKILL.md",
+      "line": 362,
+      "type": "template",
+      "snippet": "Present the eval set to the user for review using the HTML template:"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/skill-creator/agents/analyzer.md",
+      "line": 11,
+      "type": "prompt",
+      "snippet": "You receive these parameters in your prompt:"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/skill-creator/agents/analyzer.md",
+      "line": 197,
+      "type": "prompt",
+      "snippet": "You receive these parameters in your prompt:"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/skill-creator/agents/comparator.md",
+      "line": 13,
+      "type": "prompt",
+      "snippet": "You receive these parameters in your prompt:"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/skill-creator/agents/grader.md",
+      "line": 13,
+      "type": "prompt",
+      "snippet": "You receive these parameters in your prompt:"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/stata/packages/estout.md",
+      "line": 27,
+      "type": "template",
+      "snippet": "- [Publication Template: AER Style](#publication-template-aer-style)"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/stata/packages/estout.md",
+      "line": 28,
+      "type": "template",
+      "snippet": "- [Publication Template: Multi-Panel](#publication-template-multi-panel)"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/stata/packages/estout.md",
+      "line": 513,
+      "type": "template",
+      "snippet": "## Publication Template: AER Style"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/stata/packages/estout.md",
+      "line": 543,
+      "type": "template",
+      "snippet": "## Publication Template: Multi-Panel"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/stata/packages/tabout.md",
+      "line": 340,
+      "type": "template",
+      "snippet": "## Template: Baseline Characteristics Table (Table 1)"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/stata/packages/tabout.md",
+      "line": 380,
+      "type": "template",
+      "snippet": "## Template: Multi-Format Output Program"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/stata/packages/tabout.md",
+      "line": 411,
+      "type": "template",
+      "snippet": "## Template: Batch Stratified Tables"
+    },
+    {
+      "file": "skills/67-econfin-workflow-toolkit/web-research/SKILL.md",
+      "line": 44,
+      "type": "template",
+      "snippet": "**Subagent Instructions Template:**"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/command-development/SKILL.md",
+      "line": 625,
+      "type": "template",
+      "snippet": "Template: @${CLAUDE_PLUGIN_ROOT}/templates/docs.md"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/command-development/SKILL.md",
+      "line": 740,
+      "type": "template",
+      "snippet": "Template: @${CLAUDE_PLUGIN_ROOT}/templates/review.md"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/command-development/examples/plugin-commands.md",
+      "line": 325,
+      "type": "template",
+      "snippet": "Template: @${CLAUDE_PLUGIN_ROOT}/templates/review-report.md"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/command-development/references/plugin-features-reference.md",
+      "line": 99,
+      "type": "template",
+      "snippet": "Read template: @${CLAUDE_PLUGIN_ROOT}/templates/report.md"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/command-development/references/plugin-features-reference.md",
+      "line": 106,
+      "type": "template",
+      "snippet": "Read template: @/path/to/plugins/plugin-name/templates/report.md"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/command-development/references/plugin-features-reference.md",
+      "line": 144,
+      "type": "template",
+      "snippet": "Use this template: @${CLAUDE_PLUGIN_ROOT}/templates/api-report.md"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/command-development/references/plugin-features-reference.md",
+      "line": 255,
+      "type": "template",
+      "snippet": "Template: @${CLAUDE_PLUGIN_ROOT}/templates/component-docs.md"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/command-development/references/plugin-features-reference.md",
+      "line": 432,
+      "type": "template",
+      "snippet": "Template: @${CLAUDE_PLUGIN_ROOT}/templates/review-report.md"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/literature-survey-generator/SKILL.md",
+      "line": 85,
+      "type": "template",
+      "snippet": "**Agent prompt template:**"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/marp-slides-creator/SKILL.md",
+      "line": 298,
+      "type": "prompt",
+      "snippet": "- prompt:"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/marp-slides-creator/SKILL.md",
+      "line": 367,
+      "type": "prompt",
+      "snippet": "- prompt:"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/marp-slides-creator/SKILL.md",
+      "line": 423,
+      "type": "prompt",
+      "snippet": "- prompt:"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/marp-slides-creator/SKILL.md",
+      "line": 477,
+      "type": "prompt",
+      "snippet": "- prompt:"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/skill-creator/SKILL.md",
+      "line": 122,
+      "type": "template",
+      "snippet": "ALWAYS use this exact template:"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/skill-creator/SKILL.md",
+      "line": 362,
+      "type": "template",
+      "snippet": "Present the eval set to the user for review using the HTML template:"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/skill-creator/agents/analyzer.md",
+      "line": 11,
+      "type": "prompt",
+      "snippet": "You receive these parameters in your prompt:"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/skill-creator/agents/analyzer.md",
+      "line": 197,
+      "type": "prompt",
+      "snippet": "You receive these parameters in your prompt:"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/skill-creator/agents/comparator.md",
+      "line": 13,
+      "type": "prompt",
+      "snippet": "You receive these parameters in your prompt:"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/skill-creator/agents/grader.md",
+      "line": 13,
+      "type": "prompt",
+      "snippet": "You receive these parameters in your prompt:"
+    },
+    {
+      "file": "skills/68-research-productivity-skills/web-research/SKILL.md",
+      "line": 44,
+      "type": "template",
+      "snippet": "**Subagent Instructions Template:**"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "hasEvaluation": true,
+  "evalFiles": [
+    "custodian/cli/cmd_earn_and_buy.py",
+    "custodian/policy/evaluator.py"
+  ],
+  "evalDirs": [],
+  "patterns": [
+    "score",
+    "benchmark",
+    "judge",
+    "evaluation",
+    "eval"
+  ],
+  "metrics": [
+    "score"
+  ]
+}

@@ -1,0 +1,88 @@
+{
+  "hasCI": true,
+  "provider": "github-actions",
+  "workflows": [
+    {
+      "name": "check-external-links.yml",
+      "path": ".github/workflows/check-external-links.yml",
+      "triggers": [
+        "schedule",
+        "workflow_dispatch"
+      ],
+      "jobs": [
+        "links",
+        "triage-issue"
+      ]
+    },
+    {
+      "name": "check-tools-links.yml",
+      "path": ".github/workflows/check-tools-links.yml",
+      "triggers": [
+        "schedule",
+        "workflow_dispatch"
+      ],
+      "jobs": [
+        "tools-links",
+        "triage-issue"
+      ]
+    },
+    {
+      "name": "quality-evals.yml",
+      "path": ".github/workflows/quality-evals.yml",
+      "triggers": [
+        "push",
+        "pull_request",
+        "workflow_dispatch"
+      ],
+      "jobs": [
+        "quality"
+      ]
+    },
+    {
+      "name": "scorecard.yml",
+      "path": ".github/workflows/scorecard.yml",
+      "triggers": [
+        "push",
+        "schedule",
+        "workflow_dispatch"
+      ],
+      "jobs": [
+        "scorecard"
+      ]
+    },
+    {
+      "name": "sync-aer-skills.yml",
+      "path": ".github/workflows/sync-aer-skills.yml",
+      "triggers": [
+        "schedule",
+        "workflow_dispatch"
+      ],
+      "jobs": [
+        "sync"
+      ]
+    },
+    {
+      "name": "sync-statspai-skill.yml",
+      "path": ".github/workflows/sync-statspai-skill.yml",
+      "triggers": [
+        "schedule",
+        "workflow_dispatch"
+      ],
+      "jobs": [
+        "sync"
+      ]
+    },
+    {
+      "name": "validate-catalog.yml",
+      "path": ".github/workflows/validate-catalog.yml",
+      "triggers": [
+        "pull_request",
+        "push",
+        "workflow_dispatch"
+      ],
+      "jobs": [
+        "validate"
+      ]
+    }
+  ]
+}

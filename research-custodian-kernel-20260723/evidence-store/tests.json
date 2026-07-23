@@ -1,0 +1,356 @@
+{
+  "totalTestFiles": 48,
+  "totalTestFunctions": 764,
+  "byCategory": {
+    "unit": 48,
+    "integration": 0,
+    "e2e": 0
+  },
+  "byModule": {
+    "runner": 2,
+    "adapters": 35,
+    "audit": 22,
+    "autorank": 12,
+    "backends": 7,
+    "backends_twilio": 9,
+    "beancount": 10,
+    "bus": 7,
+    "caduceus": 32,
+    "cli": 31,
+    "confirm": 9,
+    "demo_verify": 7,
+    "earn_and_buy": 11,
+    "enforcer": 11,
+    "envelope": 13,
+    "generate_report": 41,
+    "govern": 9,
+    "hermes_bridge": 11,
+    "inference_router": 12,
+    "kill_switch": 15,
+    "ledger": 14,
+    "margin": 16,
+    "middleware": 0,
+    "nemoclaw_adapter": 17,
+    "packs_agent": 16,
+    "packs_base": 36,
+    "packs_engine": 13,
+    "packs_narration": 16,
+    "packs_registry": 9,
+    "pages_frontend_index": 3,
+    "pages_frontend_operator": 11,
+    "pages_frontend_tour_flow": 2,
+    "poison_tests": 9,
+    "policy": 44,
+    "policy_extended": 13,
+    "purchasing_pack": 6,
+    "receipt": 6,
+    "refund_extractor": 4,
+    "refund_pack": 6,
+    "self_approval_regression": 9,
+    "self_dealing": 14,
+    "session": 8,
+    "status_enhanced": 10,
+    "storage": 21,
+    "stress": 53,
+    "tools": 68,
+    "types": 27,
+    "verify_kit_installable": 7
+  },
+  "patterns": [
+    "corpus",
+    "poison",
+    "regression",
+    "stress",
+    "verify-kit"
+  ],
+  "fileDetails": [
+    {
+      "path": "custodian/packs/test_runner.py",
+      "category": "unit",
+      "module": "runner",
+      "testFunctionCount": 2
+    },
+    {
+      "path": "tests/test_adapters.py",
+      "category": "unit",
+      "module": "adapters",
+      "testFunctionCount": 35
+    },
+    {
+      "path": "tests/test_audit.py",
+      "category": "unit",
+      "module": "audit",
+      "testFunctionCount": 22
+    },
+    {
+      "path": "tests/test_autorank.py",
+      "category": "unit",
+      "module": "autorank",
+      "testFunctionCount": 12
+    },
+    {
+      "path": "tests/test_backends.py",
+      "category": "unit",
+      "module": "backends",
+      "testFunctionCount": 7
+    },
+    {
+      "path": "tests/test_backends_twilio.py",
+      "category": "unit",
+      "module": "backends_twilio",
+      "testFunctionCount": 9
+    },
+    {
+      "path": "tests/test_beancount.py",
+      "category": "unit",
+      "module": "beancount",
+      "testFunctionCount": 10
+    },
+    {
+      "path": "tests/test_bus.py",
+      "category": "unit",
+      "module": "bus",
+      "testFunctionCount": 7
+    },
+    {
+      "path": "tests/test_caduceus.py",
+      "category": "unit",
+      "module": "caduceus",
+      "testFunctionCount": 32
+    },
+    {
+      "path": "tests/test_cli.py",
+      "category": "unit",
+      "module": "cli",
+      "testFunctionCount": 31
+    },
+    {
+      "path": "tests/test_confirm.py",
+      "category": "unit",
+      "module": "confirm",
+      "testFunctionCount": 9
+    },
+    {
+      "path": "tests/test_demo_verify.py",
+      "category": "unit",
+      "module": "demo_verify",
+      "testFunctionCount": 7
+    },
+    {
+      "path": "tests/test_earn_and_buy.py",
+      "category": "unit",
+      "module": "earn_and_buy",
+      "testFunctionCount": 11
+    },
+    {
+      "path": "tests/test_enforcer.py",
+      "category": "unit",
+      "module": "enforcer",
+      "testFunctionCount": 11
+    },
+    {
+      "path": "tests/test_envelope.py",
+      "category": "unit",
+      "module": "envelope",
+      "testFunctionCount": 13
+    },
+    {
+      "path": "tests/test_generate_report.py",
+      "category": "unit",
+      "module": "generate_report",
+      "testFunctionCount": 41
+    },
+    {
+      "path": "tests/test_govern.py",
+      "category": "unit",
+      "module": "govern",
+      "testFunctionCount": 9
+    },
+    {
+      "path": "tests/test_hermes_bridge.py",
+      "category": "unit",
+      "module": "hermes_bridge",
+      "testFunctionCount": 11
+    },
+    {
+      "path": "tests/test_inference_router.py",
+      "category": "unit",
+      "module": "inference_router",
+      "testFunctionCount": 12
+    },
+    {
+      "path": "tests/test_kill_switch.py",
+      "category": "unit",
+      "module": "kill_switch",
+      "testFunctionCount": 15
+    },
+    {
+      "path": "tests/test_ledger.py",
+      "category": "unit",
+      "module": "ledger",
+      "testFunctionCount": 14
+    },
+    {
+      "path": "tests/test_margin.py",
+      "category": "unit",
+      "module": "margin",
+      "testFunctionCount": 16
+    },
+    {
+      "path": "tests/test_middleware.py",
+      "category": "unit",
+      "module": "middleware",
+      "testFunctionCount": 0
+    },
+    {
+      "path": "tests/test_nemoclaw_adapter.py",
+      "category": "unit",
+      "module": "nemoclaw_adapter",
+      "testFunctionCount": 17
+    },
+    {
+      "path": "tests/test_packs_agent.py",
+      "category": "unit",
+      "module": "packs_agent",
+      "testFunctionCount": 16
+    },
+    {
+      "path": "tests/test_packs_base.py",
+      "category": "unit",
+      "module": "packs_base",
+      "testFunctionCount": 36
+    },
+    {
+      "path": "tests/test_packs_engine.py",
+      "category": "unit",
+      "module": "packs_engine",
+      "testFunctionCount": 13
+    },
+    {
+      "path": "tests/test_packs_narration.py",
+      "category": "unit",
+      "module": "packs_narration",
+      "testFunctionCount": 16
+    },
+    {
+      "path": "tests/test_packs_registry.py",
+      "category": "unit",
+      "module": "packs_registry",
+      "testFunctionCount": 9
+    },
+    {
+      "path": "tests/test_pages_frontend_index.py",
+      "category": "unit",
+      "module": "pages_frontend_index",
+      "testFunctionCount": 3
+    },
+    {
+      "path": "tests/test_pages_frontend_operator.py",
+      "category": "unit",
+      "module": "pages_frontend_operator",
+      "testFunctionCount": 11
+    },
+    {
+      "path": "tests/test_pages_frontend_tour_flow.py",
+      "category": "unit",
+      "module": "pages_frontend_tour_flow",
+      "testFunctionCount": 2
+    },
+    {
+      "path": "tests/test_poison_tests.py",
+      "category": "unit",
+      "module": "poison_tests",
+      "testFunctionCount": 9
+    },
+    {
+      "path": "tests/test_policy.py",
+      "category": "unit",
+      "module": "policy",
+      "testFunctionCount": 44
+    },
+    {
+      "path": "tests/test_policy_extended.py",
+      "category": "unit",
+      "module": "policy_extended",
+      "testFunctionCount": 13
+    },
+    {
+      "path": "tests/test_purchasing_pack.py",
+      "category": "unit",
+      "module": "purchasing_pack",
+      "testFunctionCount": 6
+    },
+    {
+      "path": "tests/test_receipt.py",
+      "category": "unit",
+      "module": "receipt",
+      "testFunctionCount": 6
+    },
+    {
+      "path": "tests/test_refund_extractor.py",
+      "category": "unit",
+      "module": "refund_extractor",
+      "testFunctionCount": 4
+    },
+    {
+      "path": "tests/test_refund_pack.py",
+      "category": "unit",
+      "module": "refund_pack",
+      "testFunctionCount": 6
+    },
+    {
+      "path": "tests/test_self_approval_regression.py",
+      "category": "unit",
+      "module": "self_approval_regression",
+      "testFunctionCount": 9
+    },
+    {
+      "path": "tests/test_self_dealing.py",
+      "category": "unit",
+      "module": "self_dealing",
+      "testFunctionCount": 14
+    },
+    {
+      "path": "tests/test_session.py",
+      "category": "unit",
+      "module": "session",
+      "testFunctionCount": 8
+    },
+    {
+      "path": "tests/test_status_enhanced.py",
+      "category": "unit",
+      "module": "status_enhanced",
+      "testFunctionCount": 10
+    },
+    {
+      "path": "tests/test_storage.py",
+      "category": "unit",
+      "module": "storage",
+      "testFunctionCount": 21
+    },
+    {
+      "path": "tests/test_stress.py",
+      "category": "unit",
+      "module": "stress",
+      "testFunctionCount": 53
+    },
+    {
+      "path": "tests/test_tools.py",
+      "category": "unit",
+      "module": "tools",
+      "testFunctionCount": 68
+    },
+    {
+      "path": "tests/test_types.py",
+      "category": "unit",
+      "module": "types",
+      "testFunctionCount": 27
+    },
+    {
+      "path": "tests/test_verify_kit_installable.py",
+      "category": "unit",
+      "module": "verify_kit_installable",
+      "testFunctionCount": 7
+    }
+  ]
+}

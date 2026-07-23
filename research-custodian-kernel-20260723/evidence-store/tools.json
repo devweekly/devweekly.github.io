@@ -1,0 +1,17 @@
+{
+  "totalTools": 2,
+  "tools": [
+    {
+      "name": "e",
+      "file": "custodian/bundled_skills/communication/webhook-post/scripts/execute.py",
+      "framework": "generic-tool-call",
+      "schema": null
+    },
+    {
+      "name": "anthropic",
+      "file": "custodian/inference/router.py",
+      "framework": "generic-tool-call",
+      "schema": null
+    }
+  ]
+}

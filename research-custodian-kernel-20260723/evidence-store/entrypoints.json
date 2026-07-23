@@ -1,0 +1,359 @@
+{
+  "entrypoints": [
+    {
+      "path": "caduceus/cli.py",
+      "type": "cli",
+      "reason": "cli entrypoint file"
+    },
+    {
+      "path": "custodian/cli/main.py",
+      "type": "cli",
+      "reason": "main entrypoint file"
+    },
+    {
+      "path": "paladin/cli.py",
+      "type": "cli",
+      "reason": "cli entrypoint file"
+    },
+    {
+      "path": "custodian/bundled_skills/calendar/calendar-event-create/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/calendar/calendar-event-list/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/communication/discord-webhook/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/communication/email-send/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/communication/push-notification/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/communication/slack-channel-list/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/communication/slack-message/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/communication/sms-send/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/communication/webhook-post/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/docker/docker-exec/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/docker/docker-list/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/docker/docker-logs/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/docker/docker-start/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/docker/docker-stop/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/files/file-list/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/files/file-read/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/files/file-write/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/files/shell-exec/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/github/github-comment/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/github/github-file-read/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/github/github-issue-create/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/github/github-issue-list/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/github/github-pr-list/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/github/github-repo-list/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/memory/kv-delete/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/memory/kv-get/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/memory/kv-list/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/memory/kv-set/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/memory/sqlite-query/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/modal/modal-deploy/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/modal/modal-function-list/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/modal/modal-invoke/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/nvidia/huggingface-infer/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/nvidia/nim-job-status/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/nvidia/nim-job-submit/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/nvidia/openai-complete/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/payments/stripe-spend/scripts/approve.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/payments/stripe-spend/scripts/approve_v2.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/payments/stripe-spend/scripts/authority.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/payments/stripe-spend/scripts/earn.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/payments/stripe-spend/scripts/kill_toggle.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/payments/stripe-spend/scripts/refund.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/payments/stripe-spend/scripts/spend.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/payments/stripe-spend/scripts/spend_v2.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/scheduling/cron-create/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/scheduling/cron-delete/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/scheduling/task-queue-add/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/scheduling/task-queue-list/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/security/paladin-import/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/stripe/stripe-customer-lookup/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/stripe/stripe-invoice-send/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/stripe/stripe-payout/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/stripe/stripe-subscription-cancel/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/stripe/stripe-subscription-create/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/utilities/base64-decode/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/utilities/base64-encode/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/utilities/currency-convert/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/utilities/hash-sha256/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/utilities/json-transform/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/utilities/timezone-lookup/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/utilities/url-parse/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/web/http-get/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/web/http-post/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/web/news-search/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/web/web-scrape/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/bundled_skills/web/web-search/scripts/execute.py",
+      "type": "tool",
+      "reason": "Python __main__ guard (deep/bundled)"
+    },
+    {
+      "path": "custodian/packs/test_runner.py",
+      "type": "cli",
+      "reason": "Python __main__ guard"
+    },
+    {
+      "path": "custodian/verify_kit.py",
+      "type": "cli",
+      "reason": "Python __main__ guard"
+    }
+  ]
+}

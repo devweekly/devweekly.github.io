@@ -1,0 +1,121 @@
+{
+  "totalCommits": 208,
+  "totalContributors": 15,
+  "firstCommit": {
+    "date": "2026-04-02T17:42:00-07:00",
+    "hash": "7a467ee5ee2d957650fc78578c86612d9578982a",
+    "subject": "Initial release: Awesome Agent Skills for Empirical Research"
+  },
+  "lastCommit": {
+    "date": "2026-07-20T03:43:33Z",
+    "hash": "89571febf48b10e638dfb9391b3cada7a609e65b",
+    "subject": "feat: harden whole-repo skill encapsulation — router stats validation, catalog query guidance, 10 new routing rows"
+  },
+  "topActiveModules": [
+    {
+      "module": "skills",
+      "commits": 4036
+    },
+    {
+      "module": "demo-notebooks",
+      "commits": 404
+    },
+    {
+      "module": "docs",
+      "commits": 219
+    },
+    {
+      "module": "catalog",
+      "commits": 116
+    },
+    {
+      "module": "demo-StatsPAI-skill",
+      "commits": 116
+    },
+    {
+      "module": "benchmark",
+      "commits": 92
+    },
+    {
+      "module": "scripts",
+      "commits": 70
+    },
+    {
+      "module": "README.md",
+      "commits": 64
+    },
+    {
+      "module": ".github",
+      "commits": 57
+    },
+    {
+      "module": "eval-harness",
+      "commits": 54
+    }
+  ],
+  "largestRefactors": [
+    {
+      "hash": "2728065d988f275a9a9b257228aaaadf3851b79a",
+      "date": "2026-04-02T19:07:17-07:00",
+      "subject": "Add 35 new skill collections for empirical research (09-43)",
+      "filesChanged": 2611
+    },
+    {
+      "hash": "8bf3789f59715a067040a6c478d59287b8fe3e45",
+      "date": "2026-06-18T15:36:43-07:00",
+      "subject": "feat(skills): add collections 67 (econfin toolkit) and 68 (research productivity)",
+      "filesChanged": 399
+    },
+    {
+      "hash": "21948ff1fd2c0f3ddfb7aed897bd43195fb35b72",
+      "date": "2026-06-03T00:26:29-07:00",
+      "subject": "Bench/empirical benchmark depth (#12)",
+      "filesChanged": 371
+    },
+    {
+      "hash": "48b83f61bbc4c793af33fca7784188b9e98ebd3e",
+      "date": "2026-05-03T12:56:16-07:00",
+      "subject": "feat(demo): add LaLonde 5.2 pipeline outputs across StatsPAI/Stata/R + scaffold test-skill",
+      "filesChanged": 189
+    },
+    {
+      "hash": "a2689e715fea0e511b540fa4905a8a639493c3d9",
+      "date": "2026-06-22T14:49:32-07:00",
+      "subject": "chore(skills/aer-skills): sync from upstream AER-skills (#29)",
+      "filesChanged": 112
+    },
+    {
+      "hash": "50addfaeb337cfa830837f48d47b9e7e0d674708",
+      "date": "2026-04-02T18:20:45-07:00",
+      "subject": "Add skill source documents and remove unrelated tool reference section",
+      "filesChanged": 108
+    },
+    {
+      "hash": "6ac16b0bc2219c892fbca8468a1a95d7c2cfb269",
+      "date": "2026-04-25T03:03:27-07:00",
+      "subject": "feat(skills): launch full empirical analysis skill family + LaLonde demos",
+      "filesChanged": 100
+    },
+    {
+      "hash": "81c0f2b7f438062e4506c04260b0f4b5391235c6",
+      "date": "2026-06-04T00:00:45-07:00",
+      "subject": "Bench: empirical-benchmark-depth — catalog depth, tools catalog, skill 64 (#14)",
+      "filesChanged": 99
+    },
+    {
+      "hash": "afe6b6f32f8cf633ed16b6ec740f2682a27d0579",
+      "date": "2026-07-16T01:47:56+08:00",
+      "subject": "fix: restore green CI, repair unloadable SKILL.md files, catch docs up to skill #70 (#57)",
+      "filesChanged": 88
+    },
+    {
+      "hash": "653ba26fddb010c714cb57a7bad237edbb1a2ed3",
+      "date": "2026-04-29T23:22:01-07:00",
+      "subject": "feat(demo): extend LaLonde pipeline outputs with v2 runners and multi-format tables",
+      "filesChanged": 83
+    }
+  ],
+  "tags": [
+    "v2026.07"
+  ]
+}
