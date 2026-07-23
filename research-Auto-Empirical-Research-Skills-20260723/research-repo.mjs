@@ -337,6 +337,241 @@ function findNodeModules() {
   return null;
 }
 
+// ===========================================================================
+// RepositoryContext — shared analysis context for all analyzers
+//
+// Centralizes file tree traversal, AST parsing, content caching, manifest
+// discovery, and git metadata. Every Analyzer receives the same context,
+// eliminating duplicated `walkDir`, `readFileSync`, and Tree-sitter parses.
+// ===========================================================================
+
+class RepositoryContext {
+  /**
+   * @param {string} repoPath — absolute path to the repository root
+   * @param {object} [options]
+   * @param {number} [options.maxDepth=8] — max traversal depth
+   */
+  constructor(repoPath, options = {}) {
+    this.repoPath = repoPath;
+    this.options = { maxDepth: 8, ...options };
+    this.nodeModulesDir = findNodeModules();
+
+    // Lazy caches
+    this._entries = null;
+    this._files = null;
+    this._dirs = null;
+    this._contentCache = new Map();
+    this._astCache = new Map();
+    this._manifest = undefined;
+    this._gitInfo = null;
+    this._isGitRepo = null;
+  }
+
+  // -------------------------------------------------------------------------
+  // File system access
+  // -------------------------------------------------------------------------
+
+  /** All entries (files + dirs) discovered under the repo root. */
+  get entries() {
+    if (this._entries === null) {
+      this._entries = walkDir(this.repoPath, this.options.maxDepth);
+    }
+    return this._entries;
+  }
+
+  /** File entries only. */
+  get files() {
+    if (this._files === null) {
+      this._files = this.entries.filter((e) => e.type === "file");
+    }
+    return this._files;
+  }
+
+  /** Directory entries only. */
+  get dirs() {
+    if (this._dirs === null) {
+      this._dirs = this.entries.filter((e) => e.type === "dir");
+    }
+    return this._dirs;
+  }
+
+  /** Source code files only (extensions in SOURCE_EXTENSIONS). */
+  get sourceFiles() {
+    return this.files.filter((f) => SOURCE_EXTENSIONS.has(f.ext));
+  }
+
+  /** Absolute path of a relative path inside the repository. */
+  resolve(relPath) {
+    return join(this.repoPath, relPath);
+  }
+
+  /** Relative path from an absolute path inside the repository. */
+  rel(absolutePath) {
+    return relative(this.repoPath, absolutePath);
+  }
+
+  /** Read file content safely, cached. */
+  readFile(relPath) {
+    if (this._contentCache.has(relPath)) return this._contentCache.get(relPath);
+    const content = readFileSafe(join(this.repoPath, relPath));
+    this._contentCache.set(relPath, content);
+    return content;
+  }
+
+  /** Read absolute file path safely. */
+  readFileAbsolute(absolutePath) {
+    const relPath = relative(this.repoPath, absolutePath);
+    return this.readFile(relPath);
+  }
+
+  /** Check if a relative path exists inside the repo. */
+  exists(relPath) {
+    return existsSync(join(this.repoPath, relPath));
+  }
+
+  // -------------------------------------------------------------------------
+  // Manifest / language
+  // -------------------------------------------------------------------------
+
+  /** Detected project manifest (the highest-priority manifest rule wins). */
+  get manifest() {
+    if (this._manifest === undefined) {
+      this._manifest = this._detectManifest();
+    }
+    return this._manifest;
+  }
+
+  _detectManifest() {
+    const manifestRules = PROJECT_DISCOVERY_RULES
+      .filter((r) => r.category === "manifest" && r.parser)
+      .sort((a, b) => b.priority - a.priority);
+    for (const m of manifestRules) {
+      const fullPath = join(this.repoPath, m.file);
+      if (!existsSync(fullPath)) continue;
+      try {
+        const content = readFileSync(fullPath, "utf-8");
+        return { language: m.language, entry: m.file, ...m.parser(content) };
+      } catch {
+        return { language: m.language, entry: m.file, name: "unknown", version: "unknown" };
+      }
+    }
+    return null;
+  }
+
+  /** Primary programming language of the repository. */
+  get language() {
+    return this.manifest?.language ?? this._inferLanguage();
+  }
+
+  _inferLanguage() {
+    const counts = countByExtension(this.files);
+    const ranked = Object.entries(counts)
+      .filter(([ext]) => SOURCE_EXTENSIONS.has(ext))
+      .sort((a, b) => b[1] - a[1]);
+    if (ranked.length === 0) return "unknown";
+    const topExt = ranked[0][0];
+    for (const [lang, exts] of Object.entries(LANGUAGE_EXTENSIONS)) {
+      if (exts.includes(topExt)) return lang;
+    }
+    return "unknown";
+  }
+
+  // -------------------------------------------------------------------------
+  // Tree-sitter AST access
+  // -------------------------------------------------------------------------
+
+  /**
+   * Parse a file with Tree-sitter and return its AST.
+   * Results are cached by absolute path.
+   */
+  async parseAST(filePath) {
+    await initTreeSitter();
+    if (this._astCache.has(filePath)) return this._astCache.get(filePath);
+    const tree = await parseFileAST(filePath);
+    this._astCache.set(filePath, tree);
+    return tree;
+  }
+
+  /** Parse a file identified by its repo-relative path. */
+  async parseRelAST(relPath) {
+    return this.parseAST(join(this.repoPath, relPath));
+  }
+
+  // -------------------------------------------------------------------------
+  // Git helpers
+  // -------------------------------------------------------------------------
+
+  get isGitRepo() {
+    if (this._isGitRepo === null) {
+      this._isGitRepo = git(this.repoPath, "rev-parse", "--is-inside-work-tree")
+        .trim() === "true";
+    }
+    return this._isGitRepo;
+  }
+
+  /** Run a git subcommand inside the repository. */
+  git(...args) {
+    return git(this.repoPath, ...args);
+  }
+
+  // -------------------------------------------------------------------------
+  // Discovery helpers
+  // -------------------------------------------------------------------------
+
+  /** Test files discovered via filename regex patterns. */
+  get testFiles() {
+    return this.files.filter((f) => isTestFile(f.name));
+  }
+
+  /** Files inside directories named as architecture signals. */
+  get architectureSignalFiles() {
+    return this.files.filter((f) => {
+      const parts = relative(this.repoPath, f.path).split(sep);
+      return parts.some((p) => ARCHITECTURE_SIGNAL_DIRS.has(p.toLowerCase()));
+    });
+  }
+}
+
+// ===========================================================================
+// Analyzer Interface — all analyzers implement this contract
+//
+// Pluggable design: a new analyzer only needs to implement the interface and
+// be registered in the ANALYZERS array. The AnalyzerPipeline handles dispatch.
+// ===========================================================================
+
+/**
+ * @typedef {Object} AnalyzerContext
+ * @property {string} command — current command name (for phase output)
+ */
+
+/**
+ * Base analyzer class. Subclasses override `supports()` and `analyze()`.
+ */
+class BaseAnalyzer {
+  /** Analyzer id, e.g. "discovery" */
+  get id() {
+    throw new Error("Analyzer must define id");
+  }
+
+  /**
+   * Return true if this analyzer applies to the given repository.
+   * Override to gate analyzers by manifest language, file existence, etc.
+   */
+  supports(_ctx) {
+    return true;
+  }
+
+  /**
+   * Run analysis and write results into the evidence store.
+   * @param {RepositoryContext} ctx
+   * @param {Record<string, unknown>} store — evidence store object
+   * @param {AnalyzerContext} analyzerCtx
+   */
+  async analyze(_ctx, _store, _analyzerCtx) {
+    throw new Error(`Analyzer ${_ctx?.id} must implement analyze()`);
+  }
+}
+
 async function initTreeSitter() {
   if (Parser) return Parser;
   try {
@@ -472,8 +707,8 @@ function getDecoratorsFromParent(parentStack) {
 // --- AST-based extractors (return null if AST unavailable) ---
 
 /** Extract import module strings from AST. Returns string[] or null. */
-async function extractImportsAST(filePath) {
-  const tree = await parseFileAST(filePath);
+async function extractImportsAST(filePath, tree = null) {
+  if (!tree) tree = await parseFileAST(filePath);
   if (!tree) return null;
   const ext = extname(filePath);
   const isJs = JS_EXTS.includes(ext);
@@ -708,8 +943,8 @@ async function extractEntrypointsAST(filePath, repoPath) {
 }
 
 /** Extract full symbol index from a file via AST. Returns object or null. */
-async function extractSymbolsAST(filePath, repoPath) {
-  const tree = await parseFileAST(filePath);
+async function extractSymbolsAST(filePath, repoPath, tree = null) {
+  if (!tree) tree = await parseFileAST(filePath);
   if (!tree) return null;
   const ext = extname(filePath);
   const isPy = ext === ".py";
@@ -1377,87 +1612,17 @@ function topN(obj, n = 10) {
 // ---------------------------------------------------------------------------
 
 /**
- * discovery command — Repository metadata, file tree, manifest.
+ * Legacy compatibility wrapper for discovery analysis.
+ * New code should use AnalyzerPipeline with DiscoveryAnalyzer.
  * @param {string} repoPath
  * @returns {object}
  */
 function analyzeDiscovery(repoPath) {
-  // Detect manifest — sort manifest rules by priority, first match wins
-  const manifestRules = PROJECT_DISCOVERY_RULES
-    .filter((r) => r.category === "manifest")
-    .sort((a, b) => b.priority - a.priority);
-
-  let manifest = null;
-  for (const m of manifestRules) {
-    const fullPath = join(repoPath, m.file);
-    if (existsSync(fullPath)) {
-      try {
-        const content = readFileSync(fullPath, "utf-8");
-        manifest = { language: m.language, entry: m.file, ...m.parser(content) };
-      } catch {
-        manifest = { language: m.language, entry: m.file, name: "unknown", version: "unknown" };
-      }
-      break;
-    }
-  }
-
-  // Scan for metadata and agent files via PROJECT_DISCOVERY_RULES
-  const metadataFiles = [];
-  const agentFiles = [];
-  for (const r of PROJECT_DISCOVERY_RULES) {
-    if (r.category !== "metadata" && r.category !== "agent") continue;
-    if (existsSync(join(repoPath, r.file))) {
-      if (r.category === "metadata") metadataFiles.push(r.file);
-      else agentFiles.push(r.file);
-    }
-  }
-
-  const entries = walkDir(repoPath, 2);
-  const dirs = entries
-    .filter((e) => e.type === "dir")
-    .map((e) => relative(repoPath, e.path));
-  const files = entries.filter((e) => e.type === "file");
-
-  const topLevelDirs = dirs
-    .filter((d) => !d.includes(sep) && d.length > 0)
-    .sort();
-
-  const importantDirs = dirs
-    .filter((d) => {
-      const filesInDir = files.filter((f) => {
-        const relFile = relative(repoPath, f.path);
-        return relFile.startsWith(d + sep);
-      });
-      return filesInDir.some((f) => SOURCE_EXTENSIONS.has(f.ext));
-    })
-    .slice(0, 20);
-
-  // Architecture signal directories — where the architecture lives
-  const architectureSignalDirs = dirs
-    .filter((d) => d.split(sep).some((p) => ARCHITECTURE_SIGNAL_DIRS.has(p.toLowerCase())))
-    .slice(0, 20);
-
-  const fileCount = countByExtension(files);
-  const testFiles = findTestFiles(files);
-  const hasReadme = metadataFiles.some((f) => f.toLowerCase().startsWith("readme"));
-  const hasCI = CI_FILES.some((ci) => existsSync(join(repoPath, ci.path)));
-
-  return {
-    repoName: manifest ? manifest.name : basename(repoPath),
-    repoPath,
-    analyzedAt: new Date().toISOString(),
-    manifest,
-    hasReadme,
-    hasCI,
-    topLevelDirs,
-    importantDirs,
-    architectureSignalDirs,
-    metadataFiles,
-    agentFiles,
-    fileCount,
-    testFileCount: testFiles.length,
-    totalSourceFiles: files.filter((f) => SOURCE_EXTENSIONS.has(f.ext)).length,
-  };
+  const ctx = new RepositoryContext(repoPath);
+  const analyzer = new DiscoveryAnalyzer();
+  const store = {};
+  analyzer.analyze(ctx, store, { command: "discovery" });
+  return store.discovery;
 }
 
 // ---------------------------------------------------------------------------
@@ -1465,77 +1630,22 @@ function analyzeDiscovery(repoPath) {
 // ---------------------------------------------------------------------------
 
 /**
- * architecture command — Dependency graph + centrality + cycles.
- * Uses AST-based import extraction when Tree-sitter is available, regex fallback otherwise.
+ * Legacy compatibility wrapper for architecture analysis.
+ * New code should use AnalyzerPipeline with ArchitectureAnalyzer.
  * @param {string} repoPath
  * @returns {object}
  */
 async function analyzeArchitecture(repoPath) {
-  const entries = walkDir(repoPath, 8);
-  const sourceFiles = entries.filter(
-    (e) => e.type === "file" && SOURCE_EXTENSIONS.has(e.ext)
-  );
+  const ctx = new RepositoryContext(repoPath);
+  const store = {};
 
-  const nodes = [];
-  const edges = [];
-  const nodeIdSet = new Set();
+  // Legacy wrapper runs symbols first so architecture can reuse imports.
+  const symbolsAnalyzer = new SymbolsAnalyzer();
+  await symbolsAnalyzer.analyze(ctx, store, { command: "symbols" });
 
-  // Parse imports in parallel; AST used when available, regex fallback per file
-  const nodeResults = await Promise.all(
-    sourceFiles.map(async (file) => {
-      const relPath = relative(repoPath, file.path);
-      const moduleId = pathToModuleId(relPath);
-      const astImports = await extractImportsAST(file.path);
-      const imports = astImports !== null ? astImports : parseImports(file.path);
-      return { id: moduleId, path: relPath, imports };
-    })
-  );
-  for (const node of nodeResults) {
-    nodes.push(node);
-    nodeIdSet.add(node.id);
-  }
-
-  // Build edges; only keep edges whose target resolves to an existing node id.
-  // Try a few resolution strategies for resilience.
-  for (const node of nodes) {
-    for (const imp of node.imports) {
-      const targetId = normalizeImportToId(imp, node.path);
-      // Exact match
-      if (nodeIdSet.has(targetId)) {
-        edges.push({ from: node.id, to: targetId });
-        continue;
-      }
-      // Suffix match: any node id ending with .targetId or equal to last segment
-      const lastSeg = targetId.includes(".") ? targetId.split(".").pop() : targetId;
-      const candidates = [...nodeIdSet].filter(
-        (id) => id === lastSeg || id.endsWith("." + lastSeg)
-      );
-      if (candidates.length === 1) {
-        edges.push({ from: node.id, to: candidates[0] });
-      } else if (candidates.length > 1) {
-        // Prefer the shortest candidate (closest match)
-        const best = candidates.sort((a, b) => a.length - b.length)[0];
-        edges.push({ from: node.id, to: best });
-      }
-    }
-  }
-
-  const nodeIds = nodes.map((n) => n.id);
-  const inDegree = computeInDegree(nodeIds, edges);
-  const pageRank = computePageRank(nodeIds, edges, 20, 0.85);
-  const cycles = detectCycles(nodeIds, edges, 20);
-
-  return {
-    totalNodes: nodes.length,
-    totalEdges: edges.length,
-    nodes: nodes.map((n) => ({ id: n.id, path: n.path, imports: n.imports })),
-    edges,
-    cycles,
-    centrality: {
-      topByInDegree: topN(inDegree, 10),
-      topByPageRank: topN(pageRank, 10),
-    },
-  };
+  const analyzer = new ArchitectureAnalyzer();
+  await analyzer.analyze(ctx, store, { command: "architecture" });
+  return store.architecture;
 }
 
 // ---------------------------------------------------------------------------
@@ -2354,110 +2464,670 @@ async function analyzeRanking(repoPath) {
 // ---------------------------------------------------------------------------
 
 /**
- * symbols command — Semantic Index Analyzer.
- * Builds a symbol-level index (functions, classes, imports, calls, strings)
- * via AST traversal. Falls back to empty arrays when Tree-sitter unavailable.
+ * Legacy compatibility wrapper for symbols analysis.
+ * New code should use AnalyzerPipeline with SymbolsAnalyzer.
  * @param {string} repoPath
  * @returns {object}
  */
 async function analyzeSymbols(repoPath) {
-  const entries = walkDir(repoPath, 8);
-  const sourceFiles = entries.filter(
-    (e) => e.type === "file" && SOURCE_EXTENSIONS.has(e.ext)
-  );
+  const ctx = new RepositoryContext(repoPath);
+  const analyzer = new SymbolsAnalyzer();
+  const store = {};
+  await analyzer.analyze(ctx, store, { command: "symbols" });
+  return store.symbols;
+}
 
-  const results = await Promise.all(
-    sourceFiles.map(async (file) => {
-      const symbols = await extractSymbolsAST(file.path, repoPath);
-      return symbols || { functions: [], classes: [], imports: [], calls: [], strings: [] };
-    })
-  );
+// ===========================================================================
+// AnalyzerPipeline — executes registered analyzers against a repository
+//
+// Phase 1 design: existing analyzer functions are wrapped by adapters so the
+// pipeline contract is in place without rewriting every analyzer.
+// Phase 2+: migrate each adapter into a true Analyzer class.
+// ===========================================================================
 
-  const functions = [];
-  const classes = [];
-  const imports = [];
-  const calls = [];
-  const strings = [];
-  for (const r of results) {
-    functions.push(...r.functions);
-    classes.push(...r.classes);
-    imports.push(...r.imports);
-    calls.push(...r.calls);
-    strings.push(...r.strings);
+/**
+ * Adapter that wraps a legacy analyzer function `(repoPath) => result`.
+ * The function receives a RepositoryContext instead of a raw repoPath, so
+ * future refactoring can gradually move shared logic into the context.
+ */
+class FunctionAnalyzerAdapter extends BaseAnalyzer {
+  constructor(id, fn, options = {}) {
+    super();
+    this._id = id;
+    this._fn = fn;
+    this._options = options;
   }
 
-  return {
-    totalFunctions: functions.length,
-    totalClasses: classes.length,
-    totalImports: imports.length,
-    totalCalls: calls.length,
-    totalStrings: strings.length,
-    functions,
-    classes,
-    imports,
-    calls,
-    strings,
-  };
+  get id() {
+    return this._id;
+  }
+
+  supports(ctx) {
+    if (this._options.needsGit && !ctx.isGitRepo) return false;
+    return true;
+  }
+
+  async analyze(ctx, store, analyzerCtx) {
+    const result = await this._fn(ctx.repoPath);
+    store[this._id] = result;
+  }
 }
 
 // ---------------------------------------------------------------------------
-// Command: all
+// True Analyzer: DiscoveryAnalyzer (uses RepositoryContext)
+//
+// This analyzer demonstrates how a Phase 1 analyzer consumes RepositoryContext
+// instead of rescanning the repository. It uses ctx.manifest, ctx.files,
+// ctx.dirs, ctx.testFiles, and ctx.exists() to produce the discovery evidence.
 // ---------------------------------------------------------------------------
 
-/**
- * all command — Complete Evidence Store.
- * @param {string} repoPath
- * @returns {object}
- */
-async function analyzeAll(repoPath) {
-  return {
-    discovery: analyzeDiscovery(repoPath),
-    architecture: await analyzeArchitecture(repoPath),
-    entrypoints: await analyzeEntrypoints(repoPath),
-    prompts: await analyzePrompts(repoPath),
-    tools: await analyzeTools(repoPath),
-    tests: analyzeTests(repoPath),
-    evaluations: analyzeEvaluations(repoPath),
-    git: analyzeGit(repoPath),
-    ci: analyzeCI(repoPath),
-    ranking: await analyzeRanking(repoPath),
-    symbols: await analyzeSymbols(repoPath),
-  };
+class DiscoveryAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "discovery";
+  }
+
+  supports(_ctx) {
+    return true;
+  }
+
+  analyze(ctx, store, _analyzerCtx) {
+    // Scan for metadata and agent files via PROJECT_DISCOVERY_RULES
+    const metadataFiles = [];
+    const agentFiles = [];
+    for (const r of PROJECT_DISCOVERY_RULES) {
+      if (r.category !== "metadata" && r.category !== "agent") continue;
+      if (ctx.exists(r.file)) {
+        if (r.category === "metadata") metadataFiles.push(r.file);
+        else agentFiles.push(r.file);
+      }
+    }
+
+    const dirs = ctx.dirs.map((d) => ctx.rel(d.path));
+    const files = ctx.files;
+
+    const topLevelDirs = dirs
+      .filter((d) => !d.includes(sep) && d.length > 0)
+      .sort();
+
+    const importantDirs = dirs
+      .filter((d) => {
+        const filesInDir = files.filter((f) => {
+          const relFile = ctx.rel(f.path);
+          return relFile.startsWith(d + sep);
+        });
+        return filesInDir.some((f) => SOURCE_EXTENSIONS.has(f.ext));
+      })
+      .slice(0, 20);
+
+    // Architecture signal directories — where the architecture lives
+    const architectureSignalDirs = dirs
+      .filter((d) => d.split(sep).some((p) => ARCHITECTURE_SIGNAL_DIRS.has(p.toLowerCase())))
+      .slice(0, 20);
+
+    const fileCount = countByExtension(files);
+    const testFiles = ctx.testFiles;
+    const hasReadme = metadataFiles.some((f) => f.toLowerCase().startsWith("readme"));
+    const hasCI = CI_FILES.some((ci) => ctx.exists(ci.path));
+
+    store[this.id] = {
+      repoName: ctx.manifest ? ctx.manifest.name : basename(ctx.repoPath),
+      repoPath: ctx.repoPath,
+      analyzedAt: new Date().toISOString(),
+      manifest: ctx.manifest,
+      hasReadme,
+      hasCI,
+      topLevelDirs,
+      importantDirs,
+      architectureSignalDirs,
+      metadataFiles,
+      agentFiles,
+      fileCount,
+      testFileCount: testFiles.length,
+      totalSourceFiles: files.filter((f) => SOURCE_EXTENSIONS.has(f.ext)).length,
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// True Analyzer: SymbolsAnalyzer (uses RepositoryContext AST cache)
+//
+// Builds the Semantic Index by walking source files once and reusing parsed ASTs
+// from RepositoryContext. This avoids re-parsing the same file for architecture,
+// prompts, tools, and entrypoint analyzers.
+// ---------------------------------------------------------------------------
+
+class SymbolsAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "symbols";
+  }
+
+  supports(_ctx) {
+    return true;
+  }
+
+  async analyze(ctx, store, _analyzerCtx) {
+    const sourceFiles = ctx.sourceFiles;
+
+    const results = await Promise.all(
+      sourceFiles.map(async (file) => {
+        const tree = await ctx.parseAST(file.path);
+        const symbols = await extractSymbolsAST(file.path, ctx.repoPath, tree);
+        return symbols || { functions: [], classes: [], imports: [], calls: [], strings: [] };
+      })
+    );
+
+    const functions = [];
+    const classes = [];
+    const imports = [];
+    const calls = [];
+    const strings = [];
+    for (const r of results) {
+      functions.push(...r.functions);
+      classes.push(...r.classes);
+      imports.push(...r.imports);
+      calls.push(...r.calls);
+      strings.push(...r.strings);
+    }
+
+    store[this.id] = {
+      totalFunctions: functions.length,
+      totalClasses: classes.length,
+      totalImports: imports.length,
+      totalCalls: calls.length,
+      totalStrings: strings.length,
+      functions,
+      classes,
+      imports,
+      calls,
+      strings,
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// True Analyzer: ArchitectureAnalyzer (uses RepositoryContext + symbols cache)
+//
+// Builds the module dependency graph. When SymbolsAnalyzer has already run,
+// it reuses the collected imports to avoid re-parsing every source file.
+// Otherwise it falls back to per-file import extraction.
+// ---------------------------------------------------------------------------
+
+class ArchitectureAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "architecture";
+  }
+
+  supports(_ctx) {
+    return true;
+  }
+
+  async analyze(ctx, store, _analyzerCtx) {
+    const sourceFiles = ctx.sourceFiles;
+    const fileImports = new Map(); // relPath -> string[]
+
+    // Prefer symbols imports if SymbolsAnalyzer ran before us.
+    const symbols = store.symbols;
+    if (symbols && Array.isArray(symbols.imports)) {
+      for (const imp of symbols.imports) {
+        // For "from x import y" the module is in `from`; for "import x" it is in `what`.
+        const moduleName = imp.from || imp.what;
+        if (!moduleName) continue;
+        const list = fileImports.get(imp.file) || [];
+        list.push(moduleName);
+        fileImports.set(imp.file, list);
+      }
+    } else {
+      // Fallback: parse imports per file (still uses ctx AST cache)
+      await Promise.all(
+        sourceFiles.map(async (file) => {
+          const relPath = ctx.rel(file.path);
+          const tree = await ctx.parseAST(file.path);
+          const astImports = await extractImportsAST(file.path, tree);
+          const imports = astImports !== null ? astImports : parseImports(file.path);
+          fileImports.set(relPath, imports);
+        })
+      );
+    }
+
+    const nodes = [];
+    const nodeIdSet = new Set();
+    for (const file of sourceFiles) {
+      const relPath = ctx.rel(file.path);
+      const moduleId = pathToModuleId(relPath);
+      nodes.push({ id: moduleId, path: relPath, imports: fileImports.get(relPath) || [] });
+      nodeIdSet.add(moduleId);
+    }
+
+    // Build edges; only keep edges whose target resolves to an existing node id.
+    const edges = [];
+    for (const node of nodes) {
+      for (const imp of node.imports) {
+        const targetId = normalizeImportToId(imp, node.path);
+        // Exact match
+        if (nodeIdSet.has(targetId)) {
+          edges.push({ from: node.id, to: targetId });
+          continue;
+        }
+        // Suffix match: any node id ending with .targetId or equal to last segment
+        const lastSeg = targetId.includes(".") ? targetId.split(".").pop() : targetId;
+        const candidates = [...nodeIdSet].filter(
+          (id) => id === lastSeg || id.endsWith("." + lastSeg)
+        );
+        if (candidates.length === 1) {
+          edges.push({ from: node.id, to: candidates[0] });
+        } else if (candidates.length > 1) {
+          // Prefer the shortest candidate (closest match)
+          const best = candidates.sort((a, b) => a.length - b.length)[0];
+          edges.push({ from: node.id, to: best });
+        }
+      }
+    }
+
+    const nodeIds = nodes.map((n) => n.id);
+    const inDegree = computeInDegree(nodeIds, edges);
+    const pageRank = computePageRank(nodeIds, edges, 20, 0.85);
+    const cycles = detectCycles(nodeIds, edges, 20);
+
+    store[this.id] = {
+      totalNodes: nodes.length,
+      totalEdges: edges.length,
+      nodes: nodes.map((n) => ({ id: n.id, path: n.path, imports: n.imports })),
+      edges,
+      cycles,
+      centrality: {
+        topByInDegree: topN(inDegree, 10),
+        topByPageRank: topN(pageRank, 10),
+      },
+    };
+  }
+}
+
+const ANALYZERS = [
+  new DiscoveryAnalyzer(),
+  new SymbolsAnalyzer(),
+  new ArchitectureAnalyzer(),
+  new FunctionAnalyzerAdapter("entrypoints", analyzeEntrypoints),
+  new FunctionAnalyzerAdapter("prompts", analyzePrompts),
+  new FunctionAnalyzerAdapter("tools", analyzeTools),
+  new FunctionAnalyzerAdapter("tests", analyzeTests),
+  new FunctionAnalyzerAdapter("evaluations", analyzeEvaluations),
+  new FunctionAnalyzerAdapter("git", analyzeGit, { needsGit: true }),
+  new FunctionAnalyzerAdapter("ci", analyzeCI),
+  new FunctionAnalyzerAdapter("ranking", analyzeRanking),
+];
+
+// ===========================================================================
+// EvidenceStore — graph-based research evidence layer
+//
+// Wraps the flat analyzer outputs (discovery, symbols, architecture, ...) and
+// exposes a unified graph view: nodes (functions, classes, modules, prompts,
+// tools, tests) connected by edges (imports, calls, tested_by, documents, ...).
+//
+// This is the layer the LLM consumes. Every conclusion can be traced back to
+// deterministic evidence nodes and edges.
+// ===========================================================================
+
+class EvidenceStore {
+  constructor(flatStore = {}) {
+    this._store = flatStore;
+    this._nodes = new Map();
+    this._edges = [];
+    this._indexByKind = new Map();
+    this._indexByFile = new Map();
+    this._outgoing = new Map();
+    this._incoming = new Map();
+    this._built = false;
+  }
+
+  // -------------------------------------------------------------------------
+  // Graph construction
+  // -------------------------------------------------------------------------
+
+  ensureBuilt() {
+    if (this._built) return;
+    this._buildGraph();
+    this._built = true;
+  }
+
+  _buildGraph() {
+    const discovery = this._store.discovery || {};
+    const symbols = this._store.symbols || {};
+    const architecture = this._store.architecture || {};
+    const tests = this._store.tests || {};
+    const entrypoints = this._store.entrypoints || {};
+    const prompts = this._store.prompts || {};
+    const tools = this._store.tools || {};
+
+    // Modules from architecture
+    for (const mod of architecture.nodes || []) {
+      this.addNode("module", mod.id, mod.id, { path: mod.path, imports: mod.imports });
+    }
+
+    // Module dependency edges
+    for (const edge of architecture.edges || []) {
+      this.addEdge(edge.from, edge.to, "imports");
+    }
+
+    // Functions / classes / calls / imports
+    for (const fn of symbols.functions || []) {
+      const id = this._symbolId("function", fn.file, fn.name, fn.line);
+      this.addNode("function", id, fn.name, { file: fn.file, line: fn.line, params: fn.params, decorators: fn.decorators });
+      this.addEdge(this._moduleIdFromPath(fn.file), id, "contains");
+    }
+
+    for (const cls of symbols.classes || []) {
+      const id = this._symbolId("class", cls.file, cls.name, cls.line);
+      this.addNode("class", id, cls.name, { file: cls.file, line: cls.line, bases: cls.bases, methods: cls.methods });
+      this.addEdge(this._moduleIdFromPath(cls.file), id, "contains");
+    }
+
+    for (const call of symbols.calls || []) {
+      const callerId = call.caller ? this._symbolId("function", call.file, call.caller, null) : null;
+      const calleeId = this._symbolId("function", null, call.callee, null);
+      if (calleeId) {
+        // Ensure callee node exists even if its definition was not indexed.
+        this.addNode("function", calleeId, call.callee, {});
+      }
+      if (callerId) {
+        this.addNode("function", callerId, call.caller, { file: call.file });
+      }
+      if (callerId && calleeId) {
+        this.addEdge(callerId, calleeId, "calls");
+      }
+    }
+
+    // Imports as module dependency edges (redundant with architecture but typed)
+    for (const imp of symbols.imports || []) {
+      const fromMod = this._moduleIdFromPath(imp.file);
+      const toMod = imp.from || imp.what;
+      if (fromMod && toMod) {
+        this.addEdge(fromMod, toMod, "imports");
+      }
+    }
+
+    // Strings as prompt/template candidates
+    for (const s of symbols.strings || []) {
+      const id = this._symbolId("string", s.file, s.name, s.line);
+      this.addNode("string", id, s.name, { file: s.file, line: s.line, length: s.length });
+    }
+
+    // Entrypoints
+    for (const ep of entrypoints.entrypoints || []) {
+      const id = this._symbolId("entrypoint", ep.path, ep.path, null);
+      this.addNode("entrypoint", id, ep.path, { type: ep.type, reason: ep.reason });
+      this.addEdge(id, this._moduleIdFromPath(ep.path), "executes");
+    }
+
+    // Tools
+    for (const t of tools.tools || []) {
+      const id = this._symbolId("tool", t.file, t.name, t.line);
+      this.addNode("tool", id, t.name, { file: t.file, line: t.line, framework: t.framework });
+    }
+
+    // Tests
+    for (const tf of tests.testFiles || []) {
+      const id = this._symbolId("test", tf.path, tf.path, null);
+      this.addNode("test", id, tf.path, { path: tf.path, language: tf.language, functions: tf.functions });
+      this.addEdge(id, this._moduleIdFromPath(tf.path), "tests");
+    }
+
+    // Architecture signals
+    for (const dir of discovery.architectureSignalDirs || []) {
+      const id = `dir:${dir}`;
+      this.addNode("architecture_signal", id, dir, { path: dir });
+    }
+  }
+
+  _moduleIdFromPath(filePath) {
+    if (!filePath) return null;
+    return pathToModuleId(filePath);
+  }
+
+  _symbolId(kind, filePath, name, line) {
+    const loc = filePath ? `${filePath}:${line || "?"}` : `global:${name}`;
+    return `${kind}:${name}@${loc}`;
+  }
+
+  addNode(kind, id, name, properties = {}) {
+    if (this._nodes.has(id)) return this._nodes.get(id);
+    const node = { kind, id, name, ...properties };
+    this._nodes.set(id, node);
+
+    let kindList = this._indexByKind.get(kind);
+    if (!kindList) {
+      kindList = [];
+      this._indexByKind.set(kind, kindList);
+    }
+    kindList.push(node);
+
+    const file = properties.file || properties.path;
+    if (file) {
+      let fileList = this._indexByFile.get(file);
+      if (!fileList) {
+        fileList = [];
+        this._indexByFile.set(file, fileList);
+      }
+      fileList.push(node);
+    }
+
+    return node;
+  }
+
+  addEdge(from, to, kind) {
+    if (!from || !to || from === to) return;
+    const edge = { from, to, kind };
+    this._edges.push(edge);
+
+    this._pushToMap(this._outgoing, from, edge);
+    this._pushToMap(this._incoming, to, edge);
+  }
+
+  _pushToMap(map, key, value) {
+    let list = map.get(key);
+    if (!list) {
+      list = [];
+      map.set(key, list);
+    }
+    list.push(value);
+  }
+
+  // -------------------------------------------------------------------------
+  // Query API
+  // -------------------------------------------------------------------------
+
+  /** Raw flat evidence by analyzer id. */
+  get(id) {
+    return this._store[id];
+  }
+
+  /** All evidence keys. */
+  keys() {
+    return Object.keys(this._store);
+  }
+
+  /** All graph nodes, optionally filtered by kind. */
+  nodes(kind) {
+    this.ensureBuilt();
+    if (kind) return this._indexByKind.get(kind) || [];
+    return [...this._nodes.values()];
+  }
+
+  /** All graph edges, optionally filtered by kind. */
+  edges(kind) {
+    this.ensureBuilt();
+    if (kind) return this._edges.filter((e) => e.kind === kind);
+    return this._edges;
+  }
+
+  /** Find a node by id. */
+  node(id) {
+    this.ensureBuilt();
+    return this._nodes.get(id) || null;
+  }
+
+  /** Find nodes by name across all kinds. */
+  findByName(name) {
+    this.ensureBuilt();
+    return [...this._nodes.values()].filter((n) => n.name === name);
+  }
+
+  /** Find all nodes defined in a file. */
+  nodesInFile(filePath) {
+    this.ensureBuilt();
+    return this._indexByFile.get(filePath) || [];
+  }
+
+  /** Who calls this function/symbol? */
+  callersOf(name) {
+    this.ensureBuilt();
+    const matches = this.findByName(name);
+    const result = [];
+    for (const m of matches) {
+      const incoming = this._incoming.get(m.id) || [];
+      for (const edge of incoming.filter((e) => e.kind === "calls")) {
+        result.push(this._nodes.get(edge.from));
+      }
+    }
+    return result.filter(Boolean);
+  }
+
+  /** What does this function/symbol call? */
+  callsOf(name) {
+    this.ensureBuilt();
+    const matches = this.findByName(name);
+    const result = [];
+    for (const m of matches) {
+      const outgoing = this._outgoing.get(m.id) || [];
+      for (const edge of outgoing.filter((e) => e.kind === "calls")) {
+        result.push(this._nodes.get(edge.to));
+      }
+    }
+    return result.filter(Boolean);
+  }
+
+  /** Which modules import this module? */
+  usedBy(moduleId) {
+    this.ensureBuilt();
+    const incoming = this._incoming.get(moduleId) || [];
+    return incoming
+      .filter((e) => e.kind === "imports")
+      .map((e) => this._nodes.get(e.from))
+      .filter(Boolean);
+  }
+
+  /** Which modules does this module import? */
+  importsOf(moduleId) {
+    this.ensureBuilt();
+    const outgoing = this._outgoing.get(moduleId) || [];
+    return outgoing
+      .filter((e) => e.kind === "imports")
+      .map((e) => this._nodes.get(e.to))
+      .filter(Boolean);
+  }
+
+  /** Subgraph: module dependency graph as adjacency list. */
+  moduleGraph() {
+    this.ensureBuilt();
+    const modules = this.nodes("module");
+    const adj = {};
+    for (const m of modules) adj[m.id] = [];
+    for (const edge of this.edges("imports")) {
+      if (adj[edge.from] && this._nodes.has(edge.to)) {
+        adj[edge.from].push(edge.to);
+      }
+    }
+    return { modules, adjacency: adj };
+  }
+
+  /** Find tests related to a source file path. */
+  testsFor(filePath) {
+    this.ensureBuilt();
+    return this.nodes("test").filter((t) => {
+      const testName = t.name || "";
+      const base = basename(filePath).replace(/\.[^.]+$/, "");
+      return testName.includes(base) || testName.replace(/test_|_test|\.test/g, "") === base;
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // Serialization
+  // -------------------------------------------------------------------------
+
+  /**
+   * Return the flat evidence store for JSON serialization.
+   * This keeps the CLI output backward-compatible.
+   */
+  toJSON() {
+    return this._store;
+  }
+}
+
+class AnalyzerPipeline {
+  constructor(analyzers = ANALYZERS) {
+    this.analyzers = analyzers;
+    this._byId = new Map(analyzers.map((a) => [a.id, a]));
+  }
+
+  getAnalyzer(id) {
+    return this._byId.get(id);
+  }
+
+  /**
+   * Run a single analyzer by id.
+   * @param {string} id
+   * @param {RepositoryContext} ctx
+   * @returns {Promise<unknown>} the analyzer's result
+   */
+  async run(id, ctx) {
+    const analyzer = this._byId.get(id);
+    if (!analyzer) {
+      throw new Error(`Unknown analyzer: ${id}`);
+    }
+    if (!analyzer.supports(ctx)) {
+      return { skipped: true, reason: "not supported for this repository" };
+    }
+    const store = {};
+    await analyzer.analyze(ctx, store, { command: id });
+    return store[id];
+  }
+
+  /**
+   * Run all analyzers and return a graph-based EvidenceStore.
+   * @param {RepositoryContext} ctx
+   * @returns {Promise<EvidenceStore>}
+   */
+  async runAll(ctx) {
+    const store = {};
+    for (const analyzer of this.analyzers) {
+      if (!analyzer.supports(ctx)) {
+        store[analyzer.id] = { skipped: true, reason: "not supported for this repository" };
+        continue;
+      }
+      await analyzer.analyze(ctx, store, { command: analyzer.id });
+    }
+    return new EvidenceStore(store);
+  }
 }
 
 // ---------------------------------------------------------------------------
 // CLI entrypoint
 // ---------------------------------------------------------------------------
 
-const COMMANDS = {
-  discovery: analyzeDiscovery,
-  architecture: analyzeArchitecture,
-  entrypoints: analyzeEntrypoints,
-  prompts: analyzePrompts,
-  tools: analyzeTools,
-  tests: analyzeTests,
-  evaluations: analyzeEvaluations,
-  git: analyzeGit,
-  ci: analyzeCI,
-  ranking: analyzeRanking,
-  symbols: analyzeSymbols,
-  all: analyzeAll,
-};
-
 async function main() {
   const command = process.argv[2];
   const repoPath = process.argv[3];
+  const validCommands = new Set([...ANALYZERS.map((a) => a.id), "all"]);
 
   if (!command || !repoPath) {
     console.error(
-      "Usage: node research-repo.mjs <discovery|architecture|entrypoints|prompts|tools|tests|evaluations|git|ci|ranking|symbols|all> <repoPath>"
+      `Usage: node research-repo.mjs <${[...validCommands].join("|")}> <repoPath>`
     );
     process.exit(1);
   }
 
-  if (!COMMANDS[command]) {
+  if (!validCommands.has(command)) {
     console.error(
-      `Unknown command: ${command}. Valid: ${Object.keys(COMMANDS).join(", ")}`
+      `Unknown command: ${command}. Valid: ${[...validCommands].join(", ")}`
     );
     process.exit(1);
   }
@@ -2475,7 +3145,11 @@ async function main() {
   await initTreeSitter();
 
   try {
-    const result = await COMMANDS[command](absPath);
+    const ctx = new RepositoryContext(absPath);
+    const pipeline = new AnalyzerPipeline();
+    const result = command === "all"
+      ? await pipeline.runAll(ctx)
+      : await pipeline.run(command, ctx);
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
   } catch (err) {
     console.error(`Error running '${command}': ${err && err.message ? err.message : String(err)}`);
@@ -2484,7 +3158,29 @@ async function main() {
   }
 }
 
-main().catch((err) => {
-  console.error(`Fatal: ${err && err.message ? err.message : String(err)}`);
-  process.exit(1);
-});
+const isMainModule = () => {
+  try {
+    return process.argv[1] ? import.meta.url === pathToFileURL(process.argv[1]).href : false;
+  } catch {
+    return false;
+  }
+};
+
+if (isMainModule()) {
+  main().catch((err) => {
+    console.error(`Fatal: ${err && err.message ? err.message : String(err)}`);
+    process.exit(1);
+  });
+}
+
+// Public API for programmatic use (e.g. tests, LLM subagents, Research Planner)
+export {
+  RepositoryContext,
+  BaseAnalyzer,
+  AnalyzerPipeline,
+  EvidenceStore,
+  LANGUAGE_EXTENSIONS,
+  SOURCE_EXTENSIONS,
+  PROJECT_DISCOVERY_RULES,
+  ARCHITECTURE_SIGNAL_DIRS,
+};
