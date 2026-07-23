@@ -3976,12 +3976,15 @@ class ReportGenerator {
   generate() {
     const sections = [
       this._header(),
+      this._researchPrinciples(),
       this._executiveBrief(),
       this._architectureInsights(),
       this._aiAgentInsights(),
       this._testingAndEvaluation(),
       this._engineeringMetrics(),
+      this._negativeFindings(),
       this._readingPriority(),
+      this._readingGuide(),
       this._researchPlan(),
       this._llmPrompt(),
     ];
@@ -4030,6 +4033,164 @@ class ReportGenerator {
       `> This brief is the **input** for LLM report generation — not the final report.`,
       `> The LLM should read this brief, then write \`report.md\` per the prompt in the last section.`,
     ].join("\n");
+  }
+
+  _researchPrinciples() {
+    if (this.lang === "zh") {
+      return [
+        "## 0. 研究原则",
+        "",
+        "LLM 在撰写报告时必须遵循以下原则：",
+        "",
+        "- **证据优于假设** — 每个结论必须引用具体证据（文件路径、指标、简报章节）。",
+        "- **多个弱信号优于一个强信号** — 交叉验证，避免单一来源偏差。",
+        `- **区分事实与解读** — 事实是「代码中存在 X」，解读是「这意味着 Y」。`,
+        `- **显式声明不确定性** — 证据不足时说「未知」，不要默认「有」。`,
+        `- **分离观察与结论** — 观察是「检测到 X」，结论是「因此 Y」。`,
+        "- **不要仅从命名推断架构** — 函数名不等于功能，需查看调用链。",
+        "- **测试是一等证据** — 测试代码揭示真实意图和使用方式。",
+        "- **示例是可执行文档** — example/ 目录的价值不低于 README。",
+        "- **关注可复用模式而非实现细节** — 提取模式，不陷于细节。",
+        `- **Negative Finding 同样重要** — 「未找到 X」与「找到 Y」具有同等研究价值。`,
+      ].join("\n");
+    }
+    return [
+      "## 0. Research Principles",
+      "",
+      "The LLM MUST follow these principles when writing the report:",
+      "",
+      "- **Prefer evidence over assumptions** — Every conclusion must cite specific evidence (file path, metric, brief section).",
+      "- **Prefer multiple weak signals over one strong signal** — Cross-validate to avoid single-source bias.",
+      "- **Distinguish facts from interpretations** — Fact: \"X exists in code\". Interpretation: \"This means Y\".",
+      "- **State uncertainty explicitly** — Say \"Unknown\" when evidence is insufficient. Do NOT default to \"present\".",
+      "- **Separate observations from conclusions** — Observation: \"X detected\". Conclusion: \"Therefore Y\".",
+      "- **Do not infer architecture from naming alone** — Function names ≠ functionality. Check call chains.",
+      "- **Treat tests as first-class evidence** — Test code reveals true intent and usage patterns.",
+      "- **Treat examples as executable documentation** — example/ directories are as valuable as READMEs.",
+      "- **Prefer reusable patterns over implementation details** — Extract patterns, don't get lost in details.",
+      "- **Negative findings are equally important** — \"X not found\" is as valuable as \"Y found\".",
+    ].join("\n");
+  }
+
+  _negativeFindings() {
+    const tests = this._get("tests");
+    const evals = this._get("evaluations");
+    const prompts = this._get("prompts");
+    const tools = this._get("tools");
+    const ci = this._get("ci");
+    const git = this._get("git");
+    const arch = this._get("architecture");
+    const disc = this._get("discovery");
+    const ranking = this._get("ranking");
+
+    const findings = [];
+    const zh = this.lang === "zh";
+
+    // Tests
+    if (this._num(tests.totalTestFiles) === 0) {
+      findings.push(zh ? "未找到测试文件 — 质量验证策略不明" : "No test files found — quality verification strategy unclear");
+    }
+    // Evaluation
+    if (!evals.hasEvaluation) {
+      findings.push(zh ? "未找到评估/基准测试基础设施" : "No evaluation/benchmark infrastructure found");
+    }
+    // Prompts
+    if (this._num(prompts.totalPrompts) === 0) {
+      findings.push(zh ? "未检测到显式 prompt 定义（可能使用非标准模式或动态组装）" : "No explicit prompt definitions detected (may use non-standard patterns or dynamic assembly)");
+    }
+    // Tools
+    if (this._num(tools.totalTools) === 0) {
+      findings.push(zh ? "未检测到显式工具注册（可能使用非装饰器模式）" : "No explicit tool registrations detected (may use non-decorator patterns)");
+    }
+    // CI
+    if (!ci.hasCI) {
+      findings.push(zh ? "未检测到 CI/CD 配置" : "No CI/CD configuration detected");
+    }
+    // Git
+    if (this._num(git.totalCommits) === 0) {
+      findings.push(zh ? "无 Git 历史记录（可能是新仓库或非 Git 项目）" : "No Git history (may be a new repo or non-Git project)");
+    }
+    // Cycles (positive negative)
+    const cycles = arch.cycles || [];
+    if (cycles.length === 0 && this._num(arch.totalNodes) > 0) {
+      findings.push(zh ? "未检测到 import 循环 — 模块分层清晰" : "No import cycles detected — clean module layering");
+    }
+    // Documentation
+    const topFiles = ranking.topFiles || [];
+    const hasReadme = topFiles.some((f) => /^readme/i.test(f.path));
+    if (!hasReadme) {
+      findings.push(zh ? "未找到 README 文件" : "No README file found");
+    }
+    // Architecture
+    if (this._num(arch.totalNodes) === 0) {
+      findings.push(zh ? "⚠ 架构图为空 — AST 解析可能失败" : "⚠ Architecture graph is empty — AST parsing may have failed");
+    }
+    // License
+    const hasLicense = topFiles.some((f) => /^license/i.test(f.path));
+    if (!hasLicense) {
+      findings.push(zh ? "未找到 LICENSE 文件" : "No LICENSE file found");
+    }
+
+    if (findings.length === 0) {
+      findings.push(zh ? "无明显缺口检测到（不代表无缺口，仅表示脚本未检测到）" : "No significant gaps detected (does not mean none exist — only that scripts did not detect them)");
+    }
+
+    const header = zh ? "## 6. Negative Findings（未找到什么）" : "## 6. Negative Findings (What Was NOT Found)";
+    const note = zh
+      ? "> 这些 \"未找到\" 的发现同样重要 — 它们防止 LLM 默认假设 \"存在\"。"
+      : "> These \"not found\" findings are equally important — they prevent the LLM from defaulting to \"present\".";
+    return [header, "", note, "", ...findings.map((f) => `- ${f}`)].join("\n");
+  }
+
+  _readingGuide() {
+    const ranking = this._get("ranking");
+    const topFiles = ranking.topFiles || [];
+    if (topFiles.length === 0) return "";
+
+    const zh = this.lang === "zh";
+    // 30-minute plan: README + top 3-5 files
+    const quick = topFiles
+      .filter((f) => /readme|license|package\.json|pyproject/i.test(f.path) || f.score >= 100)
+      .slice(0, 5);
+    if (quick.length < 3) quick.push(...topFiles.slice(0, 5 - quick.length));
+
+    // 2-hour plan: + next 10 files + tests
+    const deep = topFiles
+      .filter((f) => !quick.includes(f))
+      .slice(0, 10);
+
+    const lines = zh
+      ? [
+          "## 8. Reading Guide（阅读指南）",
+          "",
+          "### 30 分钟速览",
+          "如果只有 30 分钟，阅读以下文件：",
+          "",
+          ...quick.map((f, i) => `${i + 1}. \`${f.path}\` — ${f.reasons.join("; ")}`),
+          "",
+          "### 2 小时深入",
+          "继续阅读：",
+          "",
+          ...deep.map((f, i) => `${i + 1}. \`${f.path}\` — ${f.reasons.join("; ")}`),
+          "",
+          "> LLM 应在报告的「阅读指南」章节中复现并扩展此列表，按洞察密度排序。",
+        ]
+      : [
+          "## 8. Reading Guide",
+          "",
+          "### 30-Minute Quick Look",
+          "If you only have 30 minutes, read these files:",
+          "",
+          ...quick.map((f, i) => `${i + 1}. \`${f.path}\` — ${f.reasons.join("; ")}`),
+          "",
+          "### 2-Hour Deep Dive",
+          "Then continue with:",
+          "",
+          ...deep.map((f, i) => `${i + 1}. \`${f.path}\` — ${f.reasons.join("; ")}`),
+          "",
+          "> The LLM should reproduce and expand this list in the report's Reading Guide section, ordered by insight density.",
+        ];
+    return lines.join("\n");
   }
 
   _executiveBrief() {
@@ -4376,7 +4537,7 @@ class ReportGenerator {
     const topFiles = ranking.topFiles || [];
     if (topFiles.length === 0) return "";
 
-    const lines = ["## 6. Reading Priority (Top Files)", ""];
+    const lines = ["## 7. Reading Priority (Top Files)", ""];
     lines.push("Ranked by structural importance (PageRank, in-degree, entrypoint, README, tests):");
     lines.push("");
     lines.push("| # | File | Score | Why |");
@@ -4396,7 +4557,7 @@ class ReportGenerator {
   _researchPlan() {
     const plan = this._get("plan");
     const questions = this._get("questions");
-    const lines = ["## 7. Research Plan & Open Questions", ""];
+    const lines = ["## 9. Research Plan & Open Questions", ""];
 
     // Hypotheses
     const hypotheses = plan.hypotheses || [];
@@ -4433,39 +4594,92 @@ class ReportGenerator {
         "",
         "## LLM 分析指令",
         "",
-        `你是一位经验丰富的软件架构师。基于上述证据，为 **${repoName}** 撰写一份全面的`,
-        `工程研究报告。请将报告保存为工作目录下的 \`report.md\`。`,
+        `你是一位经验丰富的软件架构师。基于上述证据，为 **${repoName}** 撰写一份工程研究报告。`,
+        `请将报告保存为工作目录下的 \`report.md\`。`,
+        "",
+        "### 核心方法论：Research Trace",
+        "",
+        "**每个重要结论必须展示完整推导链条**，而非仅给出结论。格式如下：",
+        "",
+        "```markdown",
+        "### [结论标题]",
+        "",
+        "**问题**: 这个结论回答了什么问题？",
+        "",
+        "**证据**:",
+        "- 证据1（文件路径 + 简报章节）",
+        "- 证据2（指标 + 解读）",
+        "- 证据3（交叉验证来源）",
+        "",
+        "**分析**: 基于证据的推理过程。区分事实与解读。",
+        "",
+        "**反证**: 是否有矛盾证据？如无，说明「未发现反证」。",
+        "",
+        "**结论**: 推导出的结论。",
+        "",
+        "**置信度**: 高/中/低 — 说明为何这个置信度。",
+        "```",
         "",
         "### 报告结构",
         "",
-        "1. **执行摘要** — 这是什么项目？为什么存在？最有趣的架构决策是什么？谁应该研究它？",
+        "1. **执行摘要** — 这是什么项目？最有趣的发现是什么？（不超过 3 段）",
         "",
-        "2. **架构概览** — 描述模块结构、依赖方向、分层和执行流程。为核心架构使用 Mermaid 图。",
-        "   解释为什么这样设计架构，而不仅是架构是什么。",
+        "2. **Research Traces** — 对 5-8 个核心发现，每个使用上述 Research Trace 格式。",
+        "   选择最有研究价值的发现，而非面面俱到。例如：",
+        "   - 核心架构模式是什么？",
+        "   - Agent 如何防止无限循环？",
+        "   - 上下文工程策略是什么？",
+        "   - 测试策略是否充分？",
+        "   - 是否有评估基础设施？",
         "",
-        "3. **AI/Agent 设计**（如适用）— 分析 prompt 系统、工具框架、agent 生命周期、上下文工程",
-        "   和安全防护。编排模式是什么？",
+        "3. **Negative Findings** — 明确列出「未找到什么」。这些不是缺陷，而是研究边界。",
+        "   - 引用简报 §6 的发现",
+        "   - 补充你在阅读源码时发现的「未找到」",
+        "   - 每条说明：为什么这个缺失重要？",
         "",
-        "4. **工程权衡** — 对每个主要设计决策：选择了什么，替代方案是什么，为什么这样选择？",
-        "   重点关注非显而易见的权衡。",
+        "4. **Architecture Smells** — 潜在的设计风险。注意：都是「Potential」，不是断言。",
+        "   - Potential Tight Coupling（引用循环数据）",
+        "   - Potential Over-engineering",
+        "   - Potential Hidden Complexity",
+        "   - Potential Scalability Issues",
+        "   每条说明：为什么这是潜在风险？证据是什么？置信度如何？",
         "",
-        "5. **可复用模式** — 值得借鉴的模式、应避免的模式、有趣的抽象和巧妙技巧。具体说明每个",
-        "   模式出现在哪里（file:line）。",
+        "5. **Interesting Decisions** — 几个「看起来奇怪但可能很聪明」的设计决策。",
+        "   每条包含：决策内容 / 为什么有趣 / 替代方案 / 权衡。",
         "",
-        "6. **测试与评估** — 项目如何验证正确性？测试策略是什么？是否有评估基础设施？存在",
-        "   哪些缺口？",
+        "6. **Repository Positioning** — 生态定位（不是 Feature Matrix）。",
+        "   | 维度 | 当前成熟度 | 说明 |",
+        "   维度包括：Planning, Execution, Memory, Evaluation, Guardrails, Prompt, Tooling, Observability",
+        "   成熟度：Emerging / Common / Advanced / Unique",
         "",
-        "7. **学习清单** — 最值得学习的 10 个概念、最值得阅读的 10 个文件、最值得研究的测试。",
-        "   按洞察密度排序。",
+        "7. **Reusable Pattern Catalog** — 可复用模式目录（结构化表格）。",
+        "   | 模式 | 描述 | 位置 | 可复用性 |",
+        "   可复用性：✅ 通用 / ⚠ 需适配 / ❌ 特定场景",
+        "",
+        "8. **Architecture Evolution** — 架构演进（基于 Git 历史）。",
+        "   - 主要重构事件",
+        "   - 已移除的设计",
+        "   - 已弃用的 API",
+        "   - 历史决策的痕迹",
+        "",
+        "9. **Reading Guide** — 阅读指南（基于简报 §8 扩展）。",
+        "   - 30 分钟速览：最关键的 5 个文件",
+        "   - 2 小时深入：+ 10 个文件",
+        "   - 按洞察密度排序，说明每个文件为什么值得读",
+        "",
+        "10. **Open Questions** — 待解决问题（用于第二轮研究）。",
+        "    每条包含：问题 / 为什么重要 / 建议的调查方法。",
         "",
         "### 规则",
         "",
-        "- 每个论断必须引用本简报中的证据（章节号、指标或文件路径）。",
-        "- 对主要结论使用高/中/低置信度标签。",
-        "- 没有证据时不要推测 — 证据不足时说\"未知\"。",
+        "- 遵循简报 §0 的研究原则。",
+        "- 每个论断必须引用证据（文件路径、简报章节、指标）。",
+        "- 对主要结论使用高/中/低置信度标签，并说明原因。",
+        "- 没有证据时说「未知」，不要默认「存在」。",
         "- 不要只复述数字 — 解释它们对工程决策意味着什么。",
-        "- 在你有相关知识时与类似项目进行比较。",
-        "- 关注为什么（WHY），而不是什么（WHAT）。证据简报已经说明了 WHAT。",
+        "- Negative Findings 与正面发现同等重要。",
+        "- Architecture Smells 使用「Potential」而非断言。",
+        "- Interesting Decisions 关注「为什么有趣」而非「好不好」。",
         "",
         "### 用于深入调查的证据文件",
         "",
@@ -4481,41 +4695,93 @@ class ReportGenerator {
       "",
       "## LLM Analysis Instructions",
       "",
-      `You are an experienced software architect. Based on the evidence above, write a comprehensive`,
-      `engineering research report for **${repoName}**. Save it as \`report.md\` in the working folder.`,
+      `You are an experienced software architect. Based on the evidence above, write an engineering`,
+      `research report for **${repoName}**. Save it as \`report.md\` in the working folder.`,
+      "",
+      "### Core Methodology: Research Trace",
+      "",
+      "**Every important conclusion must show its full derivation chain**, not just the conclusion.",
+      "Use this format:",
+      "",
+      "```markdown",
+      "### [Conclusion Title]",
+      "",
+      "**Question**: What question does this conclusion answer?",
+      "",
+      "**Evidence**:",
+      "- Evidence 1 (file path + brief section)",
+      "- Evidence 2 (metric + interpretation)",
+      "- Evidence 3 (cross-validation source)",
+      "",
+      "**Analysis**: Reasoning based on evidence. Distinguish facts from interpretations.",
+      "",
+      "**Counter Evidence**: Any contradictory evidence? If none, state \"No counter evidence found\".",
+      "",
+      "**Conclusion**: The derived conclusion.",
+      "",
+      "**Confidence**: High/Medium/Low — explain why this confidence level.",
+      "```",
       "",
       "### Report Structure",
       "",
-      "1. **Executive Summary** — What is this project? Why does it exist? What's the most interesting",
-      "   architectural decision? Who should study it?",
+      "1. **Executive Summary** — What is this project? What's the most interesting finding? (max 3 paragraphs)",
       "",
-      "2. **Architecture Overview** — Describe the module structure, dependency direction, layering,",
-      "   and execution flow. Use a Mermaid diagram for the core architecture. Explain WHY the",
-      "   architecture is designed this way, not just WHAT it is.",
+      "2. **Research Traces** — For 5-8 core findings, use the Research Trace format above.",
+      "   Choose the most research-valuable findings, not everything. Examples:",
+      "   - What is the core architecture pattern?",
+      "   - How does the Agent prevent infinite loops?",
+      "   - What is the context engineering strategy?",
+      "   - Is the testing strategy sufficient?",
+      "   - Is there evaluation infrastructure?",
       "",
-      "3. **AI/Agent Design** (if applicable) — Analyze the prompt system, tool framework, agent",
-      "   lifecycle, context engineering, and guardrails. What's the orchestration pattern?",
+      "3. **Negative Findings** — Explicitly list what was NOT found. These are not flaws but research boundaries.",
+      "   - Reference brief §6 findings",
+      "   - Add any \"not found\" you discovered while reading source code",
+      "   - For each: why does this absence matter?",
       "",
-      "4. **Engineering Tradeoffs** — For each major design decision: what was chosen, what was",
-      "   the alternative, why this choice? Focus on tradeoffs that are non-obvious.",
+      "4. **Architecture Smells** — Potential design risks. Note: all are \"Potential\", not assertions.",
+      "   - Potential Tight Coupling (cite cycle data)",
+      "   - Potential Over-engineering",
+      "   - Potential Hidden Complexity",
+      "   - Potential Scalability Issues",
+      "   For each: why is this a potential risk? What's the evidence? Confidence?",
       "",
-      "5. **Reusable Patterns** — Patterns worth copying, patterns to avoid, interesting abstractions,",
-      "   and clever tricks. Be specific about WHERE each pattern lives (file:line).",
+      "5. **Interesting Decisions** — A few \"seems odd but might be clever\" design decisions.",
+      "   Each includes: Decision / Why interesting / Alternative / Tradeoff.",
       "",
-      "6. **Testing & Evaluation** — How does the project verify correctness? What's the test",
-      "   strategy? Is there evaluation infrastructure? What gaps exist?",
+      "6. **Repository Positioning** — Ecological positioning (NOT a feature matrix).",
+      "   | Dimension | Current Maturity | Notes |",
+      "   Dimensions: Planning, Execution, Memory, Evaluation, Guardrails, Prompt, Tooling, Observability",
+      "   Maturity: Emerging / Common / Advanced / Unique",
       "",
-      "7. **Learning Checklist** — Top 10 concepts worth learning, top 10 files to read, top tests",
-      "   to study. Prioritize by insight density.",
+      "7. **Reusable Pattern Catalog** — Structured pattern table.",
+      "   | Pattern | Description | Location | Reusability |",
+      "   Reusability: ✅ Universal / ⚠ Needs adaptation / ❌ Context-specific",
+      "",
+      "8. **Architecture Evolution** — Based on Git history.",
+      "   - Major refactor events",
+      "   - Removed designs",
+      "   - Deprecated APIs",
+      "   - Traces of historical decisions",
+      "",
+      "9. **Reading Guide** — Based on brief §8, expanded.",
+      "   - 30-minute quick look: 5 most critical files",
+      "   - 2-hour deep dive: + 10 files",
+      "   - Ordered by insight density, explain why each file is worth reading",
+      "",
+      "10. **Open Questions** — For further investigation (second round).",
+      "    Each includes: Question / Why it matters / Suggested investigation method.",
       "",
       "### Rules",
       "",
-      "- Every claim must cite evidence from this brief (section number, metric, or file path).",
-      "- Use High/Medium/Low confidence labels for major conclusions.",
-      "- Don't speculate without evidence — say \"Unknown\" if evidence is insufficient.",
-      "- Don't just restate the numbers — interpret what they MEAN for engineering decisions.",
-      "- Compare with similar projects when you have relevant knowledge.",
-      "- Focus on WHY, not WHAT. The evidence brief already says WHAT.",
+      "- Follow the research principles in brief §0.",
+      "- Every claim must cite evidence (file path, brief section, metric).",
+      "- Use High/Medium/Low confidence labels for major conclusions, with explanation.",
+      "- Say \"Unknown\" when evidence is insufficient. Do NOT default to \"present\".",
+      "- Don't just restate numbers — interpret what they MEAN for engineering decisions.",
+      "- Negative Findings are as important as positive findings.",
+      "- Architecture Smells use \"Potential\" not assertions.",
+      "- Interesting Decisions focus on \"why interesting\" not \"good or bad\".",
       "",
       "### Evidence Files for Deeper Investigation",
       "",

@@ -2,355 +2,339 @@
 
 > **仓库**: [pi-monorepo](https://github.com/earendil-works/pi-mono) (v0.0.3)
 > **分析日期**: 2026-07-24
-> **分析师**: AI Agent（research-repo skill）
-> **置信度**: 高（5080 commits，287 contributors，940 源文件，337 测试文件）
+> **方法论**: Research Trace（Question → Evidence → Analysis → Counter Evidence → Conclusion → Confidence）
 
 ---
 
 ## 1. 执行摘要
 
-Pi 是一个开源**AI 编码代理平台**——Claude Code 和 Cursor 的直接替代品。与大多数编码助手不同，Pi 被设计为一个 **harness**（运行时 + 框架）而非单一应用：它以 4 包 monorepo 形式发布，编码代理只是可复用 agent 运行时和多 Provider LLM API 的一个消费者。
+Pi 是一个开源 AI 编码代理平台，以 4 包 monorepo 形式发布（5080 commits，287 contributors，940 源文件）。与大多数编码助手不同，Pi 将自身设计为**自扩展 harness**——编码只是其 Extension 系统支持的一种技能。其上下文 compaction 系统和树结构会话管理是开源 Agent 中最先进的实现之一。
 
-**最有趣的架构决策**：Pi 将 agent 视为**自扩展 harness**。Extension 是 TypeScript 模块，可在运行时注册工具、命令、快捷键、UI 组件甚至自动补全 provider——全部无需重新编译。这使得 Pi 更像"Agent 操作系统"，编码只是其中一项技能。
-
-**谁应该研究此项目**：构建多 Provider LLM 应用的工程师、Agent 运行时设计者、以及对上下文工程感兴趣的人（Pi 的 compaction 系统是开源 Agent 中最复杂的之一）。
+**最有趣的发现**：Pi 的 Extension 系统使它更像"Agent 操作系统"而非编码工具——extension 可在运行时注册工具、命令、UI 组件甚至 LLM provider，全部无需重新编译。
 
 ---
 
-## 2. 架构概览
+## 2. Research Traces
 
-### 2.1 三层 Monorepo
+### 2.1 核心架构模式：三层分离的 Agent Harness
 
-```mermaid
-graph TD
-  subgraph "第三层：应用"
-    CA["pi-coding-agent<br/>交互式 CLI + TUI"]
-  end
+**问题**: Pi 的核心架构模式是什么？层与层之间的职责如何划分？
 
-  subgraph "第二层：Agent 运行时"
-    AH["pi-agent-core<br/>AgentHarness"]
-    AL["Agent Loop<br/>prompt → LLM → tools → repeat"]
-    SM["Session Manager<br/>树结构会话历史"]
-    CP["Compaction<br/>上下文窗口管理"]
-  end
+**证据**:
+- `package.json` 中的 workspaces：`packages/ai`、`packages/agent`、`packages/coding-agent`、`packages/tui`（简报 §1）
+- 依赖方向严格自顶向下：`coding-agent → agent → ai`，无向上导入（简报 §2：940 模块，2487 边）
+- `packages/agent/src/harness/agent-harness.ts` 封装 agent loop + session + compaction + tools
+- `packages/ai/src/types.ts` 入度 147，PageRank 0.0982——全库最高（简报 §2）
 
-  subgraph "第一层：LLM 抽象"
-    AI["pi-ai<br/>统一多 Provider API"]
-    TY["types.ts<br/>147 个依赖方（God Module）"]
-    PR["Providers<br/>10+ API，40+ Provider"]
-  end
+**分析**: 三层分离是事实——`agent` 包不导入 `coding-agent`，`ai` 包不导入 `agent`。`AgentHarness` 是核心抽象：它接收 prompt 和 context，内部管理 agent loop、tool 执行、session 树和 compaction。`coding-agent` 是 `AgentHarness` 的一个消费者，提供 CLI + TUI + 内置工具。这意味着 `agent` 包可复用于编码之外的任何工具调用 Agent。
 
-  subgraph "第零层：UI"
-    TUI["pi-tui<br/>差异渲染终端 UI"]
-  end
+**反证**: `compat.ts`（入度 120）通过 `export *` 重新导出 `types.ts`，产生 20 个 import 循环（简报 §2）。这些循环全部流经兼容层，说明层间分离并非完美——`coding-agent.sdk` 通过 `compat` 间接依赖 `ai` 的内部模块。
 
-  CA --> AH
-  CA --> TUI
-  AH --> AL
-  AH --> SM
-  AH --> CP
-  AL --> AI
-  AI --> TY
-  AI --> PR
-```
+**结论**: Pi 采用**三层分离的 Agent Harness 模式**——LLM 抽象层（`ai`）、Agent 运行时层（`agent`）、应用层（`coding-agent`）。层间依赖严格自顶向下，但兼容层引入了临时循环。
 
-### 2.2 包依赖方向
-
-依赖方向严格**自顶向下**：`coding-agent → agent → ai → (外部)`。稳定层中不存在向上导入。检测到的 20 个 import 循环（简报 §2）全部流经 `compat.ts`——一个显式标记为临时的向后兼容层，在代码库迁移到新 `createModels()` 模式期间重新导出旧 API 接口。
-
-**为什么这样设计**（高置信度）：将 agent 运行时与 LLM API 和应用层分离，允许各层独立演进。`agent` 包可复用于编码之外的任何工具调用 Agent；`ai` 包可复用于 Agent 之外的任何多 Provider LLM 客户端。
-
-### 2.3 God Module 问题
-
-`packages/ai/src/types.ts` 的**入度 147**、**PageRank 0.0982**——整个代码库中被依赖最多的模块（简报 §2）。它定义了核心类型代数：`Api`、`Provider`、`Model`、`Context`、`AssistantMessage`、`StreamOptions` 等。
-
-这是一个 **God Module**——147 个模块导入它，使其成为架构瓶颈。对 `types.ts` 的任何改动都会触发代码库 15% 的级联类型检查。`compat.ts`（入度 120）雪上加霜，重新导出 `types.ts` 的全部内容加上 10 个 lazy API wrapper，产生如下循环：
-
-```
-compat → anthropic-messages.lazy → types → anthropic-messages → coding-agent.sdk → compat
-```
-
-**原因**（中置信度）：`compat.ts` 头部明确声明它"将随 coding-agent ModelManager 迁移一起删除"。团队正在从静态目录 API（`getModel`/`getModels`）迁移到动态 `createModels()` 工厂模式，兼容层是过渡桥梁。
-
-### 2.4 执行流程
-
-```mermaid
-sequenceDiagram
-  participant U as 用户
-  participant CA as Coding Agent
-  participant AH as AgentHarness
-  participant AL as Agent Loop
-  participant AI as pi-ai (LLM)
-  participant T as 工具
-
-  U->>CA: 用户 prompt + 图片
-  CA->>AH: harness.stream(prompt, options)
-  AH->>AH: 构建 system prompt（项目上下文 + skills + tools）
-  AH->>AL: runAgentLoop(prompts, context, config)
-  loop Agent 轮次
-    AL->>AI: stream(model, context, options)
-    AI-->>AL: Assistant message（文本 + 工具调用）
-    AL->>T: 执行工具调用（并行）
-    T-->>AL: 工具结果
-    AL->>AL: 将结果追加到 context
-    opt 上下文过大
-      AL->>AH: 触发 compaction
-      AH->>AH: 摘要旧消息 + 保留文件操作记录
-    end
-  end
-  AL-->>AH: 最终消息
-  AH-->>CA: 事件流（流式 + 最终）
-  CA-->>U: 渲染响应
-```
+**置信度**: 高 — 依赖方向通过 architecture analyzer 的 import edge 数据可验证，循环通过 cycle detection 可验证。
 
 ---
 
-## 3. AI/Agent 设计
+### 2.2 上下文工程：带文件操作保留的 Compaction
 
-### 3.1 Agent Harness——核心抽象
+**问题**: Pi 如何管理 Agent 的上下文窗口？compaction 策略是什么？
 
-`AgentHarness` 类（`packages/agent/src/harness/agent-harness.ts`）是 Pi 的心脏。它封装了 agent loop，提供：
+**证据**:
+- `packages/agent/src/harness/compaction/compaction.ts` 存在且被 `agent-harness.ts` 调用（简报 §2：architecture signal dirs 包含 `compaction`）
+- `compaction.ts` 中定义 `SUMMARIZATION_SYSTEM_PROMPT` 和 `SUMMARIZATION_PROMPT`——使用 LLM 生成结构化摘要
+- `CompactionDetails` 接口包含 `readFiles[]` 和 `modifiedFiles[]`——文件操作在 compaction 后保留
+- `branch-summarization.ts` 存在——支持分支摘要（简报 §2）
+- 66 个 prompt 定义（简报 §3），其中包含 summarization 相关 prompt
 
-- **会话管理** — 树结构会话历史（非线性的），支持分支、compaction 和分支摘要
-- **工具注册表** — 工具以 `AgentTool` 注册，使用 TypeBox schema 进行参数校验
-- **Prompt 模板** — 可复用的 prompt 模板，支持变量插值
-- **Skills** — 可加载的 skill 模块，扩展 agent 能力
-- **Compaction** — 当对话超出 token 限制时自动管理上下文窗口
+**分析**: 当上下文窗口填满时，Pi 不是简单截断，而是：(1) 序列化对话为文本；(2) 提取已读/改文件列表；(3) 用 LLM 生成结构化摘要；(4) 在 session 树中创建 compaction entry；(5) 用摘要替换旧消息。文件操作列表在 compaction 边界保留——agent 知道它已操作过哪些文件，不会重复读取。分支摘要允许 agent 返回之前探索的分支时保留上下文。
 
-**设计原型**（简报 §3）：**Prompt 重度设计**（检测到 66 prompts vs 3 tools）。但这个指标有误导性——Pi 的工具以 TypeScript 函数 + TypeBox schema 定义，而非装饰器。检测到的"3 tools"只是 `index.ts` 的 barrel exports。实际工具数量远高于此：`bash`、`edit`、`read`、`write`、`grep`、`find`、`ls` 都是 `packages/coding-agent/src/core/tools/` 中的一等工具。
+**反证**: 未发现反证。但 compaction 的触发条件（token 阈值）和 token 预算策略未完全分析——`DEFAULT_COMPACTION_SETTINGS` 的具体值未在证据中展开。
 
-### 3.2 上下文工程——Compaction 系统
+**结论**: Pi 使用**带文件操作保留的结构化 compaction**——这是开源 Agent 中最先进的上下文工程模式之一，远超简单的滑动窗口或截断。
 
-Pi 最精妙的 AI 设计模式是**上下文 compaction 系统**（`packages/agent/src/harness/compaction/`）。当上下文窗口填满时：
-
-1. **序列化**对话为文本
-2. **提取文件操作**（读取的文件、修改的文件）——这些在 compaction 后保留
-3. **使用专用 LLM 调用生成结构化摘要**，使用 `SUMMARIZATION_SYSTEM_PROMPT` 和 `SUMMARIZATION_PROMPT`
-4. **在会话树中创建 compaction entry**，存储摘要 + 文件操作详情
-5. **用 compaction 摘要替换旧消息**
-
-此外，**分支摘要**（`branch-summarization.ts`）为会话分支生成摘要，允许 agent 之后返回该分支时保留上下文。
-
-**为何重要**（高置信度）：这是开源 Agent 中最先进的上下文工程模式之一。大多数 Agent 要么截断，要么使用简单的滑动窗口。Pi 的方式：
-- 保留文件操作历史（agent 知道它已读/改过哪些文件）
-- 使用结构化摘要（不仅是文本截断）
-- 支持分支（agent 可以探索替代路径而不丢失上下文）
-
-### 3.3 多 Provider 抽象
-
-`packages/ai` 层支持 **10 种 API 协议**和 **40+ Provider**（简报 §2，`types.ts`）：
-
-- API: OpenAI Completions、OpenAI Responses、Anthropic Messages、Google Generative AI、Bedrock、Mistral、Azure OpenAI、Google Vertex、OpenAI Codex、Pi Messages
-- Provider 包括中国生态：`zai-coding-cn`、`moonshotai-cn`、`qwen-token-plan-cn`、`xiaomi-token-plan-cn`
-
-**Lazy Loading 模式**是关键：每个 API 有 `.lazy.ts` wrapper（如 `anthropic-messages.lazy.ts`），延迟模块加载到首次使用。这保持 bundle 小巧——只使用 Anthropic 的编码 agent 不会加载 Google/Bedrock/Mistral 代码。
-
-### 3.4 自扩展——Extension 系统
-
-Extension（`packages/coding-agent/src/core/extensions/types.ts`）是 TypeScript 模块，可以：
-
-- 订阅 **agent 生命周期事件**（工具执行、消息流、compaction）
-- 注册 **LLM 可调用工具**（extension 可以添加 agent 能调用的工具）
-- 注册 **命令、快捷键和 CLI 标志**
-- 通过 **UI 原语**与用户交互（对话框、widget、overlay、自动补全、状态栏）
-- 提供 **自定义 compaction hook** 和 **model provider**
-
-`packages/coding-agent/examples/extensions/` 中的示例展示了：
-- `custom-provider-anthropic` — 添加新 LLM provider
-- `custom-provider-gitlab-duo` — 添加 GitLab Duo 作为 provider
-- `doom-overlay` — Doom 风格 UI overlay
-- `plan-mode` — 规划模式 extension
-- `subagent` — 子 Agent 编排
-- `dynamic-tools` — 动态注册工具
-- `gondolin` — 容器化工具执行
-
-### 3.5 System Prompt 动态组装
-
-System prompt（`packages/coding-agent/src/core/system-prompt.ts`）从多个来源动态组装：
-- **默认或自定义 prompt** — 基础 system prompt，含工具描述
-- **项目上下文文件** — 从工作目录加载（如 AGENTS.md）
-- **Skills** — 加载的 skill 模块，格式化到 prompt 中
-- **Tool snippet** — 可用工具的单行描述
-- **Prompt guideline** — 额外的行为规则
-
-这是**动态 prompt 组装**模式——system prompt 不是静态的，而是在运行时从多个来源构建，适应项目上下文和可用工具。
+**置信度**: 高 — compaction 代码、prompt 定义和接口定义均通过源码验证。
 
 ---
 
-## 4. 工程权衡
+### 2.3 多 Provider 抽象：Lazy Loading 模式
 
-### 4.1 Monorepo 锁步版本
+**问题**: Pi 如何支持 10+ LLM API 而不膨胀 bundle？
 
-**选择**：4 个包共享单一版本号，每次发布一起升级。
-**替代方案**：每包独立版本（标准 npm workspace 实践）。
-**为何如此选择**（中置信度）：包间耦合紧密——`coding-agent` 导入 `agent`，`agent` 导入 `ai`。独立版本会产生兼容矩阵复杂度。锁步将发布流程简化为单条 `npm run release:patch` 命令。
-**代价**：无法只发布 `pi-ai` 的 bugfix 而不升级 `pi-coding-agent` 和 `pi-tui`。
+**证据**:
+- `packages/ai/src/types.ts` 定义 `KnownApi` 联合类型，包含 10 种 API（简报 §2）
+- `packages/ai/src/api/` 目录下每个 API 有 `.lazy.ts` wrapper（如 `anthropic-messages.lazy.ts`）
+- 40+ provider 配置，包括中国生态（`zai-coding-cn`、`moonshotai-cn`等）（简报 §2）
+- `compat.ts` 重新导出 10 个 lazy API wrapper（简报 §2）
 
-### 4.2 兼容层 (compat.ts)
+**分析**: Lazy loading 是事实——每个 API 实现包装在 lazy 模块中，通过 `import()` 动态加载。这意味着只使用 Anthropic 的 coding agent 不会加载 Google/Bedrock/Mistral 代码。`KnownApi` 联合类型确保类型安全，lazy wrapper 确保运行时按需加载。
 
-**选择**：维护临时 `compat.ts`，在迁移到新模式期间重新导出旧 API 接口。
-**替代方案**：一次性迁移所有消费者。
-**为何如此选择**（高置信度，来自 `compat.ts` 头部）：从静态目录（`getModel`/`getModels`）到动态工厂（`createModels()`）的迁移涉及整个代码库。兼容层允许增量迁移——消费者将 import 从 `@earendil-works/pi-ai` 改为 `@earendil-works/pi-ai/compat` 即可。
-**代价**：20 个 import 循环流经 `compat.ts`，产生架构债务。头部明确声明它"将随 coding-agent ModelManager 迁移一起删除"。
+**反证**: `compat.ts` 的 `export *` 模式可能导致 tree-shaking 失效——如果 consumer 通过 `compat` 导入，所有 lazy wrapper 可能被强制加载。但这只是迁移期间的临时问题。
 
-### 4.3 无内置权限系统
+**结论**: Pi 使用 **Lazy API Loading 模式**——每个 LLM API 实现延迟加载到首次使用，保持多 Provider bundle 小巧。
 
-**选择**：Pi 不限制文件系统、进程、网络或凭证访问，以用户权限运行。
-**替代方案**：内置沙箱/权限提示（如 Claude Code 的工具审批）。
-**为何如此选择**（高置信度，来自 README）：团队将沙箱委托给外部工具——Docker、Gondolin（micro-VM）、OpenShell。这保持核心 agent 简单，避免"权限疲劳"问题。
-**代价**：用户必须理解安全影响。README 明确警告并提供三种容器化方案。
-
-### 4.4 TypeScript 仅可擦除语法
-
-**选择**：不允许 parameter property、`enum`、`namespace`、`import =`、`export =`。
-**替代方案**：完整 TypeScript 带编译输出。
-**为何如此选择**（高置信度，来自 AGENTS.md）：Node.js "strip-only mode"——TypeScript 类型被擦除而非转换。这实现更快启动（无编译步骤）和更简单工具链。
-**代价**：某些 TypeScript 模式不可用。构造函数必须使用显式字段声明加赋值。
-
-### 4.5 供应链加固
-
-**选择**：直接依赖固定到精确版本；`min-release-age=2` 防止同日依赖发布；coding-agent 包使用 npm-shrinkwrap。
-**替代方案**：标准 semver 范围。
-**为何如此选择**（高置信度，来自 README 和 package.json）：npm 供应链攻击是真实威胁。固定精确版本 + 最小发布年龄给团队审查依赖变更的时间。
-**代价**：依赖更新更多手动工作。pre-commit hook 阻止 lockfile 提交，除非设置 `PI_ALLOW_LOCKFILE_CHANGE=1`。
+**置信度**: 高 — lazy wrapper 文件和 `KnownApi` 类型定义通过源码验证。
 
 ---
 
-## 5. 可复用模式
+### 2.4 自扩展 Extension 系统
 
-### 5.1 值得借鉴
+**问题**: Pi 的 Extension 系统如何工作？能扩展什么？
 
-1. **Lazy API Loading**（`packages/ai/src/api/*.lazy.ts`）：每个 LLM API 实现包装在 lazy 模块中，延迟加载到首次使用。当只使用一个 Provider 时保持 bundle 小巧。适用于任何多 Provider 系统。
+**证据**:
+- `packages/coding-agent/src/core/extensions/types.ts` 定义 Extension 接口（简报 §7 排名文件）
+- `packages/coding-agent/examples/extensions/` 下有 8+ extension 示例：`custom-provider-anthropic`、`doom-overlay`、`plan-mode`、`subagent`、`dynamic-tools`、`gondolin`
+- Extension 可注册：工具、命令、快捷键、CLI 标志、UI 组件（对话框/widget/overlay）、自动补全 provider、compaction hook、model provider
+- `event-bus.ts` 存在——Extension 通过类型化事件总线订阅生命周期事件
 
-2. **带文件操作保留的上下文 Compaction**（`packages/agent/src/harness/compaction/compaction.ts`）：compaction 时提取并保留文件读/改操作。确保 agent 不会重新读取已看过的文件。`CompactionDetails` 接口在 compaction 边界存储 `readFiles[]` 和 `modifiedFiles[]`。
+**分析**: Extension 是 TypeScript 模块，在运行时加载，无需重新编译。它们通过事件总线与核心 agent loop 解耦。示例覆盖了从添加 LLM provider（`custom-provider-anthropic`）到 UI overlay（`doom-overlay`）到子 Agent 编排（`subagent`）的广泛场景。这使得 Pi 不是"编码助手"而是"Agent 平台"——编码只是默认技能。
 
-3. **Session 即树**（`packages/agent/src/harness/session/session.ts`）：会话是树结构而非线性。每个 entry 是 `SessionTreeEntry`（message、compaction、branch summary 或自定义）。`defaultContextEntryTransform` 函数将树投影为线性消息列表供 LLM 消费。支持分支探索而不丢失上下文。
+**反证**: 未检测到 extension 沙箱机制——extension 在进程内运行，与核心代码共享权限。这可能是一个安全隐患，但 README 明确表示权限管理委托给外部容器（Docker/Gondolin/OpenShell）。
 
-4. **Extension 事件总线**（`packages/coding-agent/src/core/event-bus.ts`）：Extension 通过类型化事件总线订阅生命周期事件。将 extension 与核心 agent loop 解耦。
+**结论**: Pi 的 Extension 系统使其成为**自扩展 Agent 平台**——而非单一编码工具。Extension 可在运行时注册工具、命令、UI 和 provider。
 
-5. **Faux Provider 测试**（来自 AGENTS.md）：测试使用 "faux provider" 模拟 LLM 响应，无需 API 调用或付费 token。`packages/coding-agent/test/suite/` 使用 `test/suite/harness.ts` + faux provider。实现确定性、免费的 Agent 行为测试。
-
-6. **动态 System Prompt 组装**（`packages/coding-agent/src/core/system-prompt.ts`）：System prompt 从多个来源组装（基础 prompt、项目上下文文件、skills、tool snippet、guideline）。每个组件独立可配置。
-
-### 5.2 应避免的模式
-
-1. **God Module**（`packages/ai/src/types.ts`）：147 个依赖方太多。类型代数应按关注点拆分——API 类型、Provider 类型、消息类型、流式类型——为独立模块。降低类型变更的爆炸半径。
-
-2. **兼容层 Re-export 循环**（`packages/ai/src/compat.ts`）：`export * from` 模式产生传递循环。迁移完成后应完全删除此模块。在此之前，循环使依赖分析不可靠。
-
-3. **高耦合密度**（简报 §5）：edge/node ratio 2.65 偏高。20 个 import 循环表明模块边界与依赖方向不一致。coding-agent 包尤其需要更好的边界约束。
+**置信度**: 高 — Extension 接口定义和 8+ 示例通过源码验证。
 
 ---
 
-## 6. 测试与评估
+### 2.5 测试策略：Faux Provider + 多模式测试
 
-### 6.1 测试策略
+**问题**: Pi 的测试策略是否充分？如何避免 API 调用成本？
 
-**覆盖率**：337 测试文件，4359 测试函数（简报 §4）。test/source ratio 0.36 充足——高于典型 0.15 阈值。
+**证据**:
+- 337 测试文件，4359 测试函数（简报 §4）
+- test/source ratio 0.36——高于典型 0.15 阈值（简报 §5）
+- 测试模式：e2e、replay、corpus、regression（简报 §4）
+- Top 测试模块：editor(200)、stream(183)、package-manager(138)、tools(112)、prompt-templates(106)（简报 §4）
+- AGENTS.md 声明使用 "faux provider" 进行测试——无需 API 调用或付费 token
+- `packages/coding-agent/test/suite/regressions/` 目录存在——Issue 驱动回归测试
 
-**检测到的测试模式**（简报 §4）：e2e、replay、corpus、regression。表明成熟的测试策略：
-- **e2e**：端到端 Agent 行为测试
-- **replay**：重放录制对话进行确定性测试
-- **corpus**：基于语料库的多输入测试
-- **regression**：Issue 驱动的回归测试（AGENTS.md 指定 `packages/coding-agent/test/suite/regressions/`）
+**分析**: 测试策略是多模式的——e2e 测试端到端行为，replay 重放录制对话，corpus 基于语料库测试，regression 针对 issue 回归。Faux provider 是关键设计——它模拟 LLM 响应，使测试确定性且免费。对 `stream` 和 `tools` 的高测试覆盖是恰当的——这些是最高风险组件（网络 I/O 和副作用操作）。
 
-**关键测试洞察**（来自 AGENTS.md）：完整测试套件包含 e2e 测试，"当 endpoint/auth 环境变量存在时激活"。团队使用 `./test.sh` 运行非 e2e 测试。防止开发期间意外 API 调用。
+**反证**: 评估基础设施有限——仅 1 个 eval 文件（`scripts/profile-coding-agent-node.mjs`），更像性能分析工具而非基准测试（简报 §4）。对于如此成熟度的编码 Agent，应有自动化编码任务基准。
 
-### 6.2 测试分布
+**结论**: Pi 的测试策略**充分且多模式**——Faux provider 实现免费确定性测试，多模式覆盖从单元到 e2e。但评估基础设施是缺口。
 
-Top 5 测试模块（简报 §4）：
-1. `editor`（200 tests）— TUI 编辑器组件
-2. `stream`（183 tests）— LLM 流式
-3. `package-manager`（138 tests）— 包管理
-4. `tools`（112 tests）— Agent 工具
-5. `prompt-templates`（106 tests）— Prompt 模板系统
-
-对 `stream` 和 `tools` 的测试强调是恰当的——这些是最高风险组件（网络 I/O 和副作用操作）。
-
-### 6.3 评估基础设施
-
-**评估**：已检测到（简报 §4）。1 个 eval 文件：`scripts/profile-coding-agent-node.mjs`。指标：metric、score、f1。模式：evaluation、metric、benchmark、eval、score、dataset。
-
-**评估**（中置信度）：对于这种规模的项目，评估基础设施显得不足。`profile-coding-agent-node.mjs` 脚本更像性能分析工具而非基准测试。f1 指标暗示有分类评估，但规模有限。这是一个缺口——如此成熟度的编码 Agent 应有自动化质量基准。
-
-### 6.4 缺口
-
-1. **未检测到变异测试** — 考虑到 compaction 系统的复杂性，变异测试可捕获微妙逻辑错误。
-2. **评估有限** — 940 源文件仅 1 个 eval 文件。项目会受益于自动化编码任务基准。
-3. **TUI 无视觉回归测试** — `editor` 模块有 200 个测试，但 TUI 渲染在没有视觉回归的情况下极难测试。
+**置信度**: 高 — 测试文件数、函数数、模式均通过 analyzer 验证。评估缺口通过 eval analyzer 验证。
 
 ---
 
-## 7. 学习清单
+### 2.6 God Module 问题：types.ts 的架构瓶颈
 
-### Top 10 值得学习的概念
+**问题**: `types.ts` 的高入度是否构成架构风险？
 
-| # | 概念 | 位置 | 原因 |
-|---|------|------|------|
-| 1 | **带文件操作保留的上下文 Compaction** | `packages/agent/src/harness/compaction/compaction.ts` | 高级上下文工程——agent 在 compaction 边界记住操作过的文件 |
-| 2 | **Session 即树（非线性）** | `packages/agent/src/harness/session/session.ts` | 分支会话支持探索而不丢失上下文 |
-| 3 | **Lazy API Loading 模式** | `packages/ai/src/api/*.lazy.ts` | 保持多 Provider bundle 小巧 |
-| 4 | **Extension 系统架构** | `packages/coding-agent/src/core/extensions/types.ts` | 自扩展 Agent 设计——extension 注册工具、命令、UI |
-| 5 | **动态 System Prompt 组装** | `packages/coding-agent/src/core/system-prompt.ts` | 从项目上下文 + skills + tools 组装 system prompt |
-| 6 | **Agent Loop + EventStream** | `packages/agent/src/agent-loop.ts` | 清晰分离 loop 逻辑与 LLM 调用 |
-| 7 | **Faux Provider 测试** | `packages/coding-agent/test/suite/harness.ts` | 无 API 成本的确定性 Agent 测试 |
-| 8 | **分支摘要** | `packages/agent/src/harness/compaction/branch-summarization.ts` | 为会话分支生成摘要供后续返回 |
-| 9 | **供应链加固** | `package.json` + `scripts/check-pinned-deps.mjs` | 生产级 npm 安全实践 |
-| 10 | **锁步版本管理** | `scripts/release.mjs` | 简化的 Monorepo 发布流程 |
+**证据**:
+- `packages/ai/src/types.ts` 入度 147，PageRank 0.0982——全库最高（简报 §2）
+- 940 模块中 147 个（15.6%）直接依赖 `types.ts`
+- `compat.ts`（入度 120）通过 `export *` 重新导出 `types.ts` 的全部内容（简报 §2）
+- 20 个 import 循环流经 `compat.ts`（简报 §2）
+- `compat.ts` 头部声明："deleted with the coding-agent ModelManager migration"——显式临时
 
-### Top 10 值得阅读的文件
+**分析**: 147 个依赖方意味着对 `types.ts` 的任何改动触发 15% 代码库的级联类型检查。`compat.ts` 的 `export *` 模式使情况恶化——它创建了 `compat → types → anthropic-messages → coding-agent.sdk → compat` 的传递循环。这是一个 god module 反模式。但 `compat.ts` 是显式临时的——团队正在从静态目录 API 迁移到动态 `createModels()` 工厂模式。
 
-| # | 文件 | 洞察密度 |
-|---|------|----------|
-| 1 | `packages/agent/src/harness/agent-harness.ts` | 核心 agent 生命周期、工具管理、compaction 触发 |
-| 2 | `packages/agent/src/harness/compaction/compaction.ts` | 带文件操作保留的上下文 compaction |
-| 3 | `packages/agent/src/agent-loop.ts` | Agent loop：prompt → LLM → tools → repeat |
-| 4 | `packages/ai/src/types.ts` | 核心类型代数（147 个依赖方——理解原因） |
-| 5 | `packages/coding-agent/src/core/extensions/types.ts` | Extension 系统契约 |
-| 6 | `packages/coding-agent/src/core/system-prompt.ts` | 动态 system prompt 组装 |
-| 7 | `packages/agent/src/harness/session/session.ts` | 树结构会话管理 |
-| 8 | `packages/ai/src/compat.ts` | 兼容层模式（及其循环代价） |
-| 9 | `packages/coding-agent/src/core/tools/edit-diff.ts` | 代码编辑的模糊匹配 + diff 生成 |
-| 10 | `packages/agent/src/harness/compaction/branch-summarization.ts` | 分支摘要生成 |
+**反证**: 迁移完成后 `compat.ts` 将被删除，循环将消失。但 `types.ts` 的 147 入度不会因迁移而减少——类型代数本身需要拆分。
 
-### Top 5 值得研究的测试
+**结论**: `types.ts` 是**架构瓶颈（God Module）**——147 入度使任何类型变更成本高昂。`compat.ts` 的临时循环加剧了问题。迁移完成后应拆分 `types.ts` 为按关注点分离的模块。
 
-| # | 测试领域 | 位置 | 原因 |
-|---|---------|------|------|
-| 1 | Stream 测试 | 简报 §4：183 tests | LLM 流式边缘情况 |
-| 2 | 工具测试 | 简报 §4：112 tests | 工具执行模式 |
-| 3 | Prompt 模板测试 | 简报 §4：106 tests | Prompt 组装验证 |
-| 4 | 回归测试 | `packages/coding-agent/test/suite/regressions/` | Issue 驱动测试模式 |
-| 5 | E2E 测试 | `packages/coding-agent/test/suite/`（faux provider） | 无 API 成本的 Agent 行为测试 |
+**置信度**: 高 — 入度、PageRank、循环数均通过 architecture analyzer 可验证。
 
 ---
 
-## 8. 待解决问题
+### 2.7 供应链加固：精确版本固定
 
-| # | 问题 | 置信度 | 证据缺口 |
-|---|------|--------|---------|
-| 1 | Extension loader 如何在运行时发现和加载 extension？ | 低 | Extension loader 代码未深入分析 |
-| 2 | Compaction 的 token 预算策略是什么（何时触发，保留多少）？ | 中 | `DEFAULT_COMPACTION_SETTINGS` 的触发条件未完全分析 |
-| 3 | `pi-messages` API 与其他 Provider API 有何不同？ | 低 | 未分析 |
-| 4 | 从 `compat.ts` 到新 `createModels()` 模式的迁移计划是什么？ | 低 | 仅分析了头部注释 |
-| 5 | Extension 是否有沙箱（如果有）？ | 中 | 未检测到沙箱；extension 在进程内运行 |
+**问题**: Pi 如何防御 npm 供应链攻击？
+
+**证据**:
+- `package.json` 中直接依赖固定到精确版本（非 `^` 或 `~`）（简报 §1）
+- README 提到 `min-release-age=2`——防止同日依赖发布
+- coding-agent 包使用 npm-shrinkwrap（简报 §1）
+- pre-commit hook 阻止 lockfile 提交，除非 `PI_ALLOW_LOCKFILE_CHANGE=1`
+- `scripts/check-pinned-deps.mjs` 存在——CI 检查依赖固定
+
+**分析**: 供应链加固是多层的——精确版本防止意外升级，min-release-age 给团队审查时间，shrinkwrap 锁定传递依赖，pre-commit hook 防止意外 lockfile 变更，CI 脚本自动验证。这是生产级 npm 安全实践。
+
+**反证**: 无反证。但 `min-release-age=2` 可能导致安全补丁延迟 2 天——这是一个安全 vs. 稳定性的权衡。
+
+**结论**: Pi 实施了**多层供应链加固**——精确版本 + min-release-age + shrinkwrap + CI 检查，是生产级 npm 安全实践。
+
+**置信度**: 高 — package.json 和 README 内容直接可验证。
+
+---
+
+## 3. Negative Findings
+
+> 引用简报 §6 + 源码阅读发现
+
+| 发现 | 为什么重要 |
+|------|-----------|
+| **未找到 LICENSE 文件** | 开源项目缺少许可证，法律状态不明 |
+| **未检测到 extension 沙箱** | Extension 在进程内运行，恶意 extension 有完全权限。Pi 委托给外部容器（Docker/Gondolin），但核心 agent 无内置隔离 |
+| **未找到自动化编码基准** | 仅 1 个 eval 文件（性能分析），无编码任务基准。对于编码 Agent，这是质量度量缺口 |
+| **未检测到变异测试** | Compaction 系统逻辑复杂，变异测试可捕获微妙错误。当前测试可能遗漏边界情况 |
+| **未找到 TUI 视觉回归测试** | `editor` 模块有 200 个测试，但 TUI 渲染无视觉回归——终端 UI 测试的已知难题 |
+| **未检测到 prompt 版本控制** | 66 个 prompt 定义，但无 prompt 版本化或 A/B 测试机制。prompt 变更的影响难以评估 |
+
+---
+
+## 4. Architecture Smells
+
+> 以下均为 **Potential**（潜在），非断言。
+
+### 4.1 Potential Tight Coupling（潜在紧耦合）
+
+- **证据**: edge/node ratio 2.65（简报 §5），20 个 import 循环（简报 §2）
+- **为什么是风险**: 高耦合密度意味着模块变更影响范围大。循环依赖使依赖分析不可靠。
+- **置信度**: 中 — 循环通过 `compat.ts` 的临时兼容层产生，迁移后可能消失。但 2.65 的 ratio 是结构性问题。
+
+### 4.2 Potential God Module（潜在 God Module）
+
+- **证据**: `types.ts` 入度 147，15.6% 模块直接依赖它（简报 §2）
+- **为什么是风险**: 任何类型变更触发大面积级联。编译时间长。难以并行开发。
+- **置信度**: 高 — 入度数据直接可验证。
+
+### 4.3 Potential Over-engineering（潜在过度工程）
+
+- **证据**: 40+ provider 配置（简报 §2），10 种 API 协议，但实际使用的可能只有 2-3 种
+- **为什么是风险**: 维护负担——每个 API 变更需要更新所有 provider 适配器
+- **置信度**: 低 — 多 Provider 支持可能是产品需求而非过度工程。需要产品路线图确认。
+
+### 4.4 Potential Hidden Complexity in Compaction
+
+- **证据**: compaction 系统涉及 LLM 调用 + 文件操作提取 + session 树修改 + 分支摘要，4 个子系统交互
+- **为什么是风险**: 复杂的状态转换可能产生难以复现的 bug。compaction 错误会丢失上下文。
+- **置信度**: 中 — 复杂性是事实，但是否产生 bug 需要看回归测试覆盖率。
+
+---
+
+## 5. Interesting Decisions
+
+### 5.1 无内置权限系统
+
+- **决策**: Pi 不限制文件系统/进程/网络访问，以用户权限运行
+- **为什么有趣**: 大多数 Agent（如 Claude Code）内置工具审批。Pi 选择完全不审批。
+- **替代方案**: 内置沙箱/权限提示
+- **权衡**: 简化了核心 agent，避免了"权限疲劳"，但将安全责任完全转嫁给用户/容器。README 提供 3 种容器化方案。
+
+### 5.2 TypeScript 仅可擦除语法
+
+- **决策**: 不允许 parameter property、`enum`、`namespace`——只使用可被 Node.js strip-only 模式擦除的语法
+- **为什么有趣**: 放弃了 TypeScript 的部分表达能力，换取零编译启动
+- **替代方案**: 使用 `tsc` 编译或 `tsx` 运行时
+- **权衡**: 启动更快、工具链更简单，但代码更冗长（构造函数需显式赋值）
+
+### 5.3 Session 即树（非线性）
+
+- **决策**: 会话历史是树结构而非线性列表，支持分支探索
+- **为什么有趣**: 大多数 Agent 的会话是线性的。树结构允许"回到岔路口走另一条路"。
+- **替代方案**: 线性会话 + 手动重置
+- **权衡**: 更灵活的探索，但 session 管理复杂度更高。需要 `defaultContextEntryTransform` 将树投影为线性消息列表。
+
+### 5.4 锁步版本管理
+
+- **决策**: 4 个包共享单一版本号，每次发布一起升级
+- **为什么有趣**: 与标准 npm workspace 独立版本实践不同
+- **替代方案**: 每包独立版本
+- **权衡**: 简化发布流程，但无法只发布单包 bugfix
+
+---
+
+## 6. Repository Positioning
+
+| 维度 | 当前成熟度 | 说明 |
+|------|-----------|------|
+| Planning | Emerging | 无显式 planner，agent loop 即兴执行 |
+| Execution | Advanced | AgentHarness + tool registry + parallel execution |
+| Memory | Advanced | 树结构 session + compaction + 分支摘要 |
+| Evaluation | Emerging | 仅性能分析脚本，无编码任务基准 |
+| Guardrails | Emerging | 无内置权限，委托外部容器 |
+| Prompt | Advanced | 动态组装 + 66 prompt + summarization prompt |
+| Tooling | Unique | 自扩展 Extension 系统，runtime 注册 |
+| Observability | Common | 事件总线 + log，无分布式追踪 |
+
+---
+
+## 7. Reusable Pattern Catalog
+
+| 模式 | 描述 | 位置 | 可复用性 |
+|------|------|------|---------|
+| Lazy API Loading | 每个 LLM API 延迟加载到首次使用 | `packages/ai/src/api/*.lazy.ts` | ✅ 通用 |
+| Compaction w/ File Op Preservation | compaction 时保留文件读/改记录 | `packages/agent/src/harness/compaction/compaction.ts` | ✅ 通用 |
+| Session as Tree | 树结构会话，支持分支探索 | `packages/agent/src/harness/session/session.ts` | ✅ 通用 |
+| Extension Event Bus | Extension 通过类型化事件总线订阅生命周期 | `packages/coding-agent/src/core/event-bus.ts` | ✅ 通用 |
+| Faux Provider Testing | 模拟 LLM 响应实现免费确定性测试 | `packages/coding-agent/test/suite/harness.ts` | ✅ 通用 |
+| Dynamic System Prompt Assembly | 从项目上下文 + skills + tools 组装 prompt | `packages/coding-agent/src/core/system-prompt.ts` | ✅ 通用 |
+| Supply-Chain Hardening | 精确版本 + min-release-age + shrinkwrap | `package.json` + `scripts/check-pinned-deps.mjs` | ✅ 通用 |
+| Compat Layer Migration | 临时兼容层支持增量 API 迁移 | `packages/ai/src/compat.ts` | ⚠ 需适配 |
+| God Module (anti-pattern) | 单一类型文件承载全库类型 | `packages/ai/src/types.ts` | ❌ 应避免 |
+
+---
+
+## 8. Architecture Evolution
+
+> 基于 Git 历史（5080 commits，287 contributors）
+
+### 主要演进线索
+
+- **从静态目录到动态工厂**: `compat.ts` 头部声明"deleted with the coding-agent ModelManager migration"——正在从 `getModel`/`getModels` 静态 API 迁移到 `createModels()` 工厂模式。这是当前最大的架构迁移。
+- **Extension 系统的引入**: `examples/extensions/` 下 8+ 示例表明 Extension 系统是相对新近的添加，正在积极扩展能力边界。
+- **多 Provider 扩张**: 40+ provider（包括中国生态）表明 Pi 从单一 provider 逐步扩展到全球多 provider 支持。
+- **测试策略成熟化**: e2e + replay + corpus + regression 四种模式并存，表明测试策略经历了多轮演进。
+
+### 历史决策痕迹
+
+- `compat.ts` 的存在本身是历史决策的痕迹——旧 API 接口仍在迁移中
+- `DEFAULT_COMPACTION_SETTINGS` 的命名暗示 compaction 参数曾经是硬编码的，后来提取为配置
+
+---
+
+## 9. Reading Guide
+
+### 30 分钟速览
+
+1. **`README.md`** — 项目定位、安装、安全警告
+2. **`packages/agent/src/harness/agent-harness.ts`** — 核心 agent 生命周期
+3. **`packages/agent/src/harness/compaction/compaction.ts`** — 上下文 compaction 系统
+4. **`packages/agent/src/agent-loop.ts`** — Agent loop：prompt → LLM → tools → repeat
+5. **`packages/coding-agent/src/core/extensions/types.ts`** — Extension 系统契约
+
+### 2 小时深入
+
+6. **`packages/ai/src/types.ts`** — 核心类型代数（理解 147 入度的原因）
+7. **`packages/ai/src/compat.ts`** — 兼容层模式（及其循环代价）
+8. **`packages/agent/src/harness/session/session.ts`** — 树结构会话管理
+9. **`packages/coding-agent/src/core/system-prompt.ts`** — 动态 system prompt 组装
+10. **`packages/agent/src/harness/compaction/branch-summarization.ts`** — 分支摘要生成
+11. **`packages/coding-agent/src/core/tools/`** — 内置工具实现（bash/edit/read/write/grep/find/ls）
+12. **`packages/ai/src/api/anthropic-messages.lazy.ts`** — Lazy loading 模式示例
+13. **`packages/coding-agent/examples/extensions/subagent/`** — 子 Agent 编排示例
+14. **`packages/coding-agent/examples/extensions/dynamic-tools/`** — 动态工具注册示例
+15. **`packages/coding-agent/test/suite/harness.ts`** — Faux provider 测试框架
+
+---
+
+## 10. Open Questions
+
+| # | 问题 | 为什么重要 | 建议调查方法 |
+|---|------|-----------|-------------|
+| 1 | Extension loader 如何在运行时发现和加载 extension？ | 理解自扩展机制的核心 | 阅读 extension loader 代码，追踪 `import()` 调用 |
+| 2 | Compaction 的 token 预算策略是什么？ | 理解上下文管理的触发条件 | 分析 `DEFAULT_COMPACTION_SETTINGS` 和 compaction 触发逻辑 |
+| 3 | `pi-messages` API 与其他 Provider API 有何不同？ | 理解 Pi 自有 API 设计 | 阅读 `pi-messages.ts` 和对比其他 API 实现 |
+| 4 | 从 `compat.ts` 到 `createModels()` 的迁移计划是什么？ | 理解架构演进方向 | 查看 git log 中 compat.ts 相关 commit，搜索 migration tracking issue |
+| 5 | Faux provider 如何模拟流式响应？ | 可复用于其他 Agent 测试 | 阅读 faux provider 实现代码 |
+| 6 | Extension 之间是否有依赖管理？ | 理解复杂 extension 场景 | 查看 extension manifest 或依赖声明机制 |
 
 ---
 
 ## 附录：证据引用
 
-- **简报 §1**：Executive Brief — 仓库元数据、项目阶段、生态
-- **简报 §2**：Architecture Insights — 模块、边、循环、中心性
-- **简报 §3**：AI/Agent Design — prompts、tools、设计原型
-- **简报 §4**：Testing & Evaluation — 测试文件、模式、eval 文件
-- **简报 §5**：Engineering Metrics — 推导指标、耦合密度
-- **简报 §6**：Reading Priority — 按结构重要性排序的 Top 20 文件
-- **简报 §7**：Research Plan — 假设和开放问题
-- **源码**：README.md、package.json、AGENTS.md、`packages/` 下的源文件
-
-### 增量分析说明
-
-本报告基于增量分析生成：
-- 首次全量分析：`all` 命令，940 源文件，commit `24bace27`
-- 增量更新：`update` 命令，52 文件变更（从 `24900814` 到 `24bace27`），仅重新分析变更文件并合并
-- `_meta.incremental: true`，`changedFilesCount: 52`
+- **简报 §0**: 研究原则
+- **简报 §1**: Executive Brief — 仓库元数据、项目阶段
+- **简报 §2**: Architecture Insights — 模块、边、循环、中心性
+- **简报 §3**: AI/Agent Design — prompts、tools、设计原型
+- **简报 §4**: Testing & Evaluation — 测试文件、模式、eval 文件
+- **简报 §5**: Engineering Metrics — 推导指标、耦合密度
+- **简报 §6**: Negative Findings — 未找到 LICENSE
+- **简报 §7**: Reading Priority — 按结构重要性排序的文件
+- **简报 §8**: Reading Guide — 30 分钟 / 2 小时阅读计划
+- **简报 §9**: Research Plan — 假设和开放问题
+- **源码**: README.md、package.json、AGENTS.md、`packages/` 下的源文件

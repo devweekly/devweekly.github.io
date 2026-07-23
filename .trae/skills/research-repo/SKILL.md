@@ -283,13 +283,31 @@ node research-repo.mjs update <repoPath> > evidence-store/full.json
 
 The `report` command produces an **Evidence Brief** — a structured Markdown file that:
 
-1. **Condenses** all 11 analyzer outputs into a human-readable summary
-2. **Derives insights** computable from the data (coupling assessment, design archetype, project stage, test coverage analysis)
-3. **Highlights anomalies** (import cycles, low test coverage, missing CI)
-4. **Provides reading priority** (top 20 files ranked by structural importance)
-5. **Ends with an LLM analysis prompt** instructing the agent to write `report.md`
+1. **Research Principles** (§0) — 10 principles guiding how the LLM should think (evidence over assumptions, negative findings matter, etc.)
+2. **Condenses** all 11 analyzer outputs into a human-readable summary (§1-§5)
+3. **Negative Findings** (§6) — What was NOT found, preventing the LLM from defaulting to "present"
+4. **Reading Priority** (§7) — Top 20 files ranked by structural importance
+5. **Reading Guide** (§8) — Time-boxed reading plans (30-minute quick look + 2-hour deep dive)
+6. **Research Plan** (§9) — Hypotheses with confidence levels and open questions
+7. **LLM Analysis Prompt** — Instructs the agent to write `report.md` using Research Trace methodology
 
-The LLM agent reads the Evidence Brief, optionally dives deeper into specific JSON evidence files, then writes the final `report.md` with architectural interpretation, tradeoff analysis, and engineering insights.
+The LLM agent reads the Evidence Brief, optionally dives deeper into specific JSON evidence files, then writes the final `report.md` using **Research Trace methodology** — every important conclusion shows its full derivation chain:
+
+```
+Question → Evidence → Analysis → Counter Evidence → Conclusion → Confidence
+```
+
+**Report structure** (10 sections):
+1. Executive Summary
+2. Research Traces (5-8 core findings, each with full derivation chain)
+3. Negative Findings (what was NOT found and why it matters)
+4. Architecture Smells (potential risks, not assertions)
+5. Interesting Decisions (seems odd but might be clever)
+6. Repository Positioning (ecological positioning, not feature matrix)
+7. Reusable Pattern Catalog (structured pattern table)
+8. Architecture Evolution (from Git history)
+9. Reading Guide (30-min / 2-hour plans)
+10. Open Questions (for second-round research)
 
 ```mermaid
 flowchart LR
