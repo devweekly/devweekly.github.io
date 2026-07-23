@@ -14,7 +14,9 @@
  *   node research-repo.mjs ci           <repoPath>  # CI/CD discovery
  *   node research-repo.mjs ranking      <repoPath>  # Interesting files ranking
  *   node research-repo.mjs symbols      <repoPath>  # Semantic Index (functions, classes, imports, calls, strings)
- *   node research-repo.mjs all          <repoPath>  # Complete Evidence Store
+ *   node research-repo.mjs all          <repoPath>  # Complete Evidence Store (includes plan + questions)
+ *   node research-repo.mjs plan         <repoPath>  # Research plan: goal → hypotheses → evidence → reading plan
+ *   node research-repo.mjs questions    <repoPath>  # Gap-driven questions for LLM reasoning layer
  *
  * Zero-dependency fallback: works with Node.js built-ins only.
  * Optionally uses fast-glob, simple-git, yaml if installed (dynamic import).
@@ -768,8 +770,8 @@ async function extractImportsAST(filePath, tree = null) {
 }
 
 /** Extract prompt-like assignments from AST. Returns array or null. */
-async function extractPromptsAST(filePath, repoPath) {
-  const tree = await parseFileAST(filePath);
+async function extractPromptsAST(filePath, repoPath, tree = null) {
+  if (!tree) tree = await parseFileAST(filePath);
   if (!tree) return null;
   const ext = extname(filePath);
   const isPy = ext === ".py";
@@ -837,8 +839,8 @@ async function extractPromptsAST(filePath, repoPath) {
 }
 
 /** Extract tool registrations from AST. Returns array or null. */
-async function extractToolsAST(filePath, repoPath) {
-  const tree = await parseFileAST(filePath);
+async function extractToolsAST(filePath, repoPath, tree = null) {
+  if (!tree) tree = await parseFileAST(filePath);
   if (!tree) return null;
   const relPath = relative(repoPath, filePath);
   const tools = [];
@@ -889,8 +891,8 @@ async function extractToolsAST(filePath, repoPath) {
 }
 
 /** Extract entrypoint signals from AST. Returns array or null. */
-async function extractEntrypointsAST(filePath, repoPath) {
-  const tree = await parseFileAST(filePath);
+async function extractEntrypointsAST(filePath, repoPath, tree = null) {
+  if (!tree) tree = await parseFileAST(filePath);
   if (!tree) return null;
   const ext = extname(filePath);
   const isPy = ext === ".py";
@@ -1653,164 +1655,17 @@ async function analyzeArchitecture(repoPath) {
 // ---------------------------------------------------------------------------
 
 /**
- * entrypoints command — Entry point detection.
- * Uses AST-based detection when Tree-sitter is available, regex fallback otherwise.
+ * Legacy compatibility wrapper for entrypoints analysis.
+ * New code should use AnalyzerPipeline with EntrypointsAnalyzer.
  * @param {string} repoPath
  * @returns {object}
  */
 async function analyzeEntrypoints(repoPath) {
-  const entries = walkDir(repoPath, 6);
-  const entrypoints = [];
-  const seen = new Set();
-
-  const addEntrypoint = (relPath, type, reason) => {
-    if (seen.has(relPath)) return;
-    seen.add(relPath);
-    entrypoints.push({ path: relPath, type, reason });
-  };
-
-  // 1. Filename-based detection (with depth/library filtering)
-  for (const e of entries) {
-    if (e.type !== "file") continue;
-    const name = e.name;
-    const relPath = relative(repoPath, e.path);
-    const depth = relPath.split(sep).length;
-    const isDeep = depth > 3;
-    const isBundled = /bundled_skills|vendor|node_modules|site-packages/.test(relPath);
-    const isLibOrTest = /(?:^|[\\/])(?:lib|libs|utils|helpers|internal|common|tests?|__tests__|spec)[\\/]/.test(relPath)
-      || /^tests?[\\/]/.test(relPath);
-    for (const ep of ENTRY_POINT_FILES) {
-      if (ep.names.includes(name)) {
-        if (isDeep || isBundled) {
-          addEntrypoint(relPath, "tool", ep.reason + " (deep/bundled)");
-        } else if (isLibOrTest) {
-          addEntrypoint(relPath, "tool", ep.reason + " (library/test dir)");
-        } else {
-          addEntrypoint(relPath, ep.type, ep.reason);
-        }
-        break;
-      }
-    }
-  }
-
-  // 2. Directory-based detection (bin/, scripts/, examples/)
-  for (const e of entries) {
-    if (e.type !== "file") continue;
-    const parts = relative(repoPath, e.path).split(sep);
-    if (parts.length < 2) continue;
-    const topDir = parts[0];
-    if (topDir === "bin") {
-      addEntrypoint(relative(repoPath, e.path), "cli", "file under bin/");
-    } else if (topDir === "examples" || topDir === "example") {
-      addEntrypoint(relative(repoPath, e.path), "example", "file under examples/");
-    } else if (topDir === "scripts" && ENTRYPOINT_DIR_NAMES.has("scripts")) {
-      addEntrypoint(relative(repoPath, e.path), "cli", "file under scripts/");
-    }
-  }
-
-  // 3. AST-based detection (preferred) + regex fallback per file
-  const sourceFiles = entries.filter(
-    (e) => e.type === "file" && SOURCE_EXTENSIONS.has(e.ext)
-  );
-  const astResults = await Promise.all(
-    sourceFiles.map(async (file) => {
-      const relPath = relative(repoPath, file.path);
-      const astSignals = await extractEntrypointsAST(file.path, repoPath);
-      if (astSignals !== null) return { relPath, signals: astSignals, useRegex: false };
-      // Regex fallback
-      const content = readFileSafe(file.path);
-      if (!content) return { relPath, signals: [], useRegex: false };
-      const signals = [];
-      if (file.ext === ".py") {
-        if (/if\s+__name__\s*==\s*['"]__main__['"]\s*:/.test(content)) {
-          signals.push({ path: relPath, type: "cli", reason: "Python __main__ guard" });
-        }
-        if (/def\s+main\s*\(/.test(content) && /argparse|click|typer|sys\.argv/.test(content)) {
-          signals.push({ path: relPath, type: "cli", reason: "Python main() with argparse/click/typer" });
-        }
-      } else if ([".ts", ".js", ".mjs", ".tsx", ".jsx"].includes(file.ext)) {
-        if (/createServer\s*\(|app\.listen\s*\(|server\.listen\s*\(/.test(content)) {
-          signals.push({ path: relPath, type: "server", reason: "JS server.listen / createServer" });
-        }
-        if (/process\.argv|yargs|commander|inquirer/.test(content) && /export\s+(default\s+)?(async\s+)?function\s+main|function\s+main\s*\(/.test(content)) {
-          signals.push({ path: relPath, type: "cli", reason: "JS CLI with argv/yargs/commander + main()" });
-        }
-      } else if (file.ext === ".go") {
-        if (/func\s+main\s*\(\)/.test(content)) {
-          signals.push({ path: relPath, type: "cli", reason: "Go func main()" });
-        }
-      } else if (file.ext === ".rs") {
-        if (/fn\s+main\s*\(\)/.test(content)) {
-          signals.push({ path: relPath, type: "cli", reason: "Rust fn main()" });
-        }
-      }
-      return { relPath, signals, useRegex: true };
-    })
-  );
-  for (const { relPath, signals } of astResults) {
-    if (seen.has(relPath)) continue;
-    // Filter out deep paths (tool scripts, bundled skills, etc.)
-    // depth > 3 catches skills/X/scripts/Y.py (depth 4) but not custodian/cli/main.py (depth 3)
-    const depth = relPath.split(sep).length;
-    const isDeep = depth > 3;
-    const isBundled = /bundled_skills|vendor|node_modules|site-packages/.test(relPath);
-    // Library/test/utility directories are not CLI entrypoints even with main() or __main__
-    const isLibOrTest = /(?:^|[\\/])(?:lib|libs|utils|helpers|internal|common|tests?|__tests__|spec)[\\/]/.test(relPath)
-      || /^tests?[\\/]/.test(relPath);
-    for (const sig of signals) {
-      if (isDeep || isBundled) {
-        // Categorize as "tool" instead of "cli" for deep/bundled scripts
-        addEntrypoint(sig.path, "tool", sig.reason + " (deep/bundled)");
-      } else if (isLibOrTest && sig.type === "cli") {
-        // main() or __main__ in lib/tests/ is likely a demo/test helper, not a CLI entrypoint
-        addEntrypoint(sig.path, "tool", sig.reason + " (library/test dir)");
-      } else {
-        addEntrypoint(sig.path, sig.type, sig.reason);
-      }
-    }
-  }
-
-  // 4. Manifest-declared entry points
-  const pkgJsonPath = join(repoPath, "package.json");
-  if (existsSync(pkgJsonPath)) {
-    try {
-      const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
-      if (pkg.bin) {
-        const bins = typeof pkg.bin === "string" ? { [pkg.name]: pkg.bin } : pkg.bin;
-        for (const [binName, binPath] of Object.entries(bins)) {
-          addEntrypoint(binPath, "cli", `package.json bin: ${binName}`);
-        }
-      }
-    } catch { /* ignore */ }
-  }
-  const pyprojectPath = join(repoPath, "pyproject.toml");
-  if (existsSync(pyprojectPath)) {
-    const content = readFileSync(pyprojectPath, "utf-8");
-    // Only parse [project.scripts] and [tool.poetry.scripts] sections
-    let inScripts = false;
-    for (const line of content.split(/\r?\n/)) {
-      if (/^\s*\[(project\.scripts|tool\.poetry\.scripts|project\.entry-points\.[\w.-]+)\]/.test(line)) {
-        inScripts = true;
-        continue;
-      }
-      if (/^\s*\[/.test(line)) {
-        inScripts = false;
-        continue;
-      }
-      if (inScripts) {
-        // Match: key = "module.path:function" or key = "module.path"
-        const m = line.match(/^([A-Za-z_][\w-]*)\s*=\s*"([^"]+)"/);
-        if (m) {
-          const modulePath = m[2].includes(":") ? m[2].split(":")[0] : m[2];
-          // Convert Python module path to file path (custodian.cli.main → custodian/cli/main.py)
-          const scriptPath = modulePath.replace(/\./g, "/") + ".py";
-          addEntrypoint(scriptPath, "cli", `pyproject.toml script: ${m[1]}`);
-        }
-      }
-    }
-  }
-
-  return { entrypoints };
+  const ctx = new RepositoryContext(repoPath);
+  const analyzer = new EntrypointsAnalyzer();
+  const store = {};
+  await analyzer.analyze(ctx, store, { command: "entrypoints" });
+  return store.entrypoints;
 }
 
 // ---------------------------------------------------------------------------
@@ -1818,79 +1673,17 @@ async function analyzeEntrypoints(repoPath) {
 // ---------------------------------------------------------------------------
 
 /**
- * prompts command — Prompt discovery.
- * Uses AST-based discovery when Tree-sitter is available, regex fallback otherwise.
- * Scans .py/.ts/.js/.md for prompt markers and template variables.
+ * Legacy compatibility wrapper for prompts analysis.
+ * New code should use AnalyzerPipeline with PromptsAnalyzer.
  * @param {string} repoPath
  * @returns {object}
  */
 async function analyzePrompts(repoPath) {
-  const entries = walkDir(repoPath, 8);
-  const files = entries.filter(
-    (e) => e.type === "file" && PROMPT_FILE_EXTENSIONS.has(e.ext)
-  );
-
-  // Partition files: code files (AST-eligible) vs markdown (always regex)
-  const codeExts = new Set([".py", ".ts", ".tsx", ".js", ".jsx", ".mjs"]);
-  const codeFiles = files.filter((f) => codeExts.has(f.ext));
-  const mdFiles = files.filter((f) => !codeExts.has(f.ext));
-
-  // AST-based extraction for code files (with regex fallback per file)
-  const codeResults = await Promise.all(
-    codeFiles.map(async (f) => {
-      const astPrompts = await extractPromptsAST(f.path, repoPath);
-      if (astPrompts !== null) return astPrompts;
-      // Regex fallback
-      const content = readFileSafe(f.path);
-      if (!content) return [];
-      const prompts = [];
-      const lines = content.split(/\r?\n/);
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        for (const marker of PROMPT_MARKERS) {
-          marker.regex.lastIndex = 0;
-          const match = marker.regex.exec(line);
-          if (match) {
-            prompts.push({
-              file: relative(repoPath, f.path),
-              line: i + 1,
-              type: marker.type,
-              snippet: line.trim().slice(0, 200),
-            });
-            break;
-          }
-        }
-      }
-      return prompts;
-    })
-  );
-
-  // Regex for markdown files
-  const mdPrompts = [];
-  for (const f of mdFiles) {
-    const content = readFileSafe(f.path);
-    if (!content) continue;
-    const lines = content.split(/\r?\n/);
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      for (const marker of PROMPT_MARKERS) {
-        marker.regex.lastIndex = 0;
-        const match = marker.regex.exec(line);
-        if (match) {
-          mdPrompts.push({
-            file: relative(repoPath, f.path),
-            line: i + 1,
-            type: marker.type,
-            snippet: line.trim().slice(0, 200),
-          });
-          break;
-        }
-      }
-    }
-  }
-
-  const prompts = [...codeResults.flat(), ...mdPrompts];
-  return { totalPrompts: prompts.length, prompts };
+  const ctx = new RepositoryContext(repoPath);
+  const analyzer = new PromptsAnalyzer();
+  const store = {};
+  await analyzer.analyze(ctx, store, { command: "prompts" });
+  return store.prompts;
 }
 
 // ---------------------------------------------------------------------------
@@ -1921,72 +1714,17 @@ function extractSchemaNear(content, startIndex, maxChars = 400) {
 }
 
 /**
- * tools command — Tool/function discovery.
- * Uses AST-based discovery when Tree-sitter is available, regex fallback otherwise.
- * Detects tool registrations across multiple frameworks.
+ * Legacy compatibility wrapper for tools analysis.
+ * New code should use AnalyzerPipeline with ToolsAnalyzer.
  * @param {string} repoPath
  * @returns {object}
  */
 async function analyzeTools(repoPath) {
-  const entries = walkDir(repoPath, 8);
-  const files = entries.filter(
-    (e) => e.type === "file" && TOOL_FILE_EXTENSIONS.has(e.ext)
-  );
-
-  const tools = [];
-  const seen = new Set();
-
-  // Try AST first per file; regex fallback when AST unavailable
-  const results = await Promise.all(
-    files.map(async (f) => {
-      const astTools = await extractToolsAST(f.path, repoPath);
-      if (astTools !== null) return { ast: true, tools: astTools, file: f };
-      return { ast: false, tools: null, file: f };
-    })
-  );
-
-  // Process AST results; collect files that need regex fallback
-  const regexFiles = [];
-  for (const r of results) {
-    if (r.ast) {
-      for (const t of r.tools) {
-        const key = `${t.file}:${t.framework}:${t.name}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        tools.push(t);
-      }
-    } else {
-      regexFiles.push(r.file);
-    }
-  }
-
-  // Regex fallback for files where AST was unavailable
-  for (const f of regexFiles) {
-    const content = readFileSafe(f.path);
-    if (!content) continue;
-    const relPath = relative(repoPath, f.path);
-
-    for (const pattern of TOOL_PATTERNS) {
-      pattern.regex.lastIndex = 0;
-      let match;
-      while ((match = pattern.regex.exec(content)) !== null) {
-        const name = match[1];
-        if (!name) continue;
-        const key = `${relPath}:${pattern.framework}:${name}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        const schema = extractSchemaNear(content, match.index);
-        tools.push({
-          name,
-          file: relPath,
-          framework: pattern.framework,
-          schema,
-        });
-      }
-    }
-  }
-
-  return { totalTools: tools.length, tools };
+  const ctx = new RepositoryContext(repoPath);
+  const analyzer = new ToolsAnalyzer();
+  const store = {};
+  await analyzer.analyze(ctx, store, { command: "tools" });
+  return store.tools;
 }
 
 // ---------------------------------------------------------------------------
@@ -1994,46 +1732,17 @@ async function analyzeTools(repoPath) {
 // ---------------------------------------------------------------------------
 
 /**
- * tests command — Test discovery + categorization.
+ * Legacy compatibility wrapper for tests analysis.
+ * New code should use AnalyzerPipeline with TestsAnalyzer.
  * @param {string} repoPath
  * @returns {object}
  */
 function analyzeTests(repoPath) {
-  const entries = walkDir(repoPath, 8);
-  const testFiles = entries.filter(
-    (e) => e.type === "file" && isTestFile(basename(e.path))
-  );
-
-  const byCategory = { unit: 0, integration: 0, e2e: 0 };
-  const byModule = {};
-  let totalFunctions = 0;
-
-  const fileDetails = testFiles.map((f) => {
-    const relPath = relative(repoPath, f.path);
-    const category = categorizeTestCategory(f.path);
-    const module = categorizeTestModule(f.path, repoPath);
-    const functionCount = countTestFunctions(f.path);
-    byCategory[category] = (byCategory[category] || 0) + 1;
-    byModule[module] = (byModule[module] || 0) + functionCount;
-    totalFunctions += functionCount;
-    return {
-      path: relPath,
-      category,
-      module,
-      testFunctionCount: functionCount,
-    };
-  });
-
-  const patterns = detectTestPatterns(testFiles);
-
-  return {
-    totalTestFiles: testFiles.length,
-    totalTestFunctions: totalFunctions,
-    byCategory,
-    byModule,
-    patterns,
-    fileDetails,
-  };
+  const ctx = new RepositoryContext(repoPath);
+  const analyzer = new TestsAnalyzer();
+  const store = {};
+  analyzer.analyze(ctx, store, { command: "tests" });
+  return store.tests;
 }
 
 // ---------------------------------------------------------------------------
@@ -2041,75 +1750,17 @@ function analyzeTests(repoPath) {
 // ---------------------------------------------------------------------------
 
 /**
- * evaluations command — Evaluation/benchmark discovery.
+ * Legacy compatibility wrapper for evaluations analysis.
+ * New code should use AnalyzerPipeline with EvaluationsAnalyzer.
  * @param {string} repoPath
  * @returns {object}
  */
 function analyzeEvaluations(repoPath) {
-  const entries = walkDir(repoPath, 8);
-  const evalFiles = [];
-  const evalDirs = new Set();
-  const patterns = new Set();
-  const metrics = new Set();
-
-  // 1. Directory-based detection
-  for (const e of entries) {
-    if (e.type !== "dir") continue;
-    const name = basename(e.path).toLowerCase();
-    if (EVAL_DIR_NAMES.has(name)) {
-      evalDirs.add(relative(repoPath, e.path));
-    }
-  }
-
-  // 2. File-based detection (by name and content)
-  for (const e of entries) {
-    if (e.type !== "file") continue;
-    const name = basename(e.path).toLowerCase();
-    const relPath = relative(repoPath, e.path);
-    const isEvalByName = EVAL_KEYWORDS.some((kw) => name.includes(kw));
-    // Check if file is inside an eval directory (only for source files, not docs/configs)
-    const isInEvalDir = SOURCE_EXTENSIONS.has(e.ext) && [...evalDirs].some((d) => relPath.startsWith(d + sep) || relPath.startsWith(d + "/"));
-    let isEvalByContent = false;
-    // Only scan content for source files; docs/configs use filename-only detection
-    // to avoid false positives (README mentioning "benchmark" is not an eval file)
-    if (SOURCE_EXTENSIONS.has(e.ext)) {
-      const content = readFileSafe(e.path);
-      if (content) {
-        let matchCount = 0;
-        for (const kw of EVAL_KEYWORDS) {
-          const re = new RegExp(`\\b${kw.replace(/_/g, "[_]")}\\b`, "i");
-          if (re.test(content)) {
-            matchCount++;
-            patterns.add(kw);
-          }
-        }
-        // Require at least 2 keyword matches to reduce false positives
-        isEvalByContent = matchCount >= 2;
-        // Detect metric names
-        const metricRegexes = [
-          /\b(accuracy|pass_rate|pass@k|f1|precision|recall|bleu|rouge|exact_match|exact-match)\b/gi,
-          /\b(score|metric|accuracy_score|recall_score|precision_score)\b/gi,
-        ];
-        for (const re of metricRegexes) {
-          let m;
-          while ((m = re.exec(content)) !== null) {
-            metrics.add(m[1].toLowerCase());
-          }
-        }
-      }
-    }
-    if (isEvalByName || isEvalByContent || isInEvalDir) {
-      evalFiles.push(relPath);
-    }
-  }
-
-  return {
-    hasEvaluation: evalFiles.length > 0 || evalDirs.size > 0,
-    evalFiles: [...new Set(evalFiles)],
-    evalDirs: [...evalDirs],
-    patterns: [...patterns],
-    metrics: [...metrics],
-  };
+  const ctx = new RepositoryContext(repoPath);
+  const analyzer = new EvaluationsAnalyzer();
+  const store = {};
+  analyzer.analyze(ctx, store, { command: "evaluations" });
+  return store.evaluations;
 }
 
 // ---------------------------------------------------------------------------
@@ -2141,8 +1792,15 @@ function isGitRepo(repoPath) {
  * @param {string} repoPath
  * @returns {object}
  */
+/**
+ * Legacy compatibility wrapper for git analysis.
+ * New code should use AnalyzerPipeline with GitAnalyzer.
+ * @param {string} repoPath
+ * @returns {object}
+ */
 function analyzeGit(repoPath) {
-  if (!isGitRepo(repoPath)) {
+  const ctx = new RepositoryContext(repoPath);
+  if (!ctx.isGitRepo) {
     return {
       totalCommits: 0,
       totalContributors: 0,
@@ -2154,88 +1812,10 @@ function analyzeGit(repoPath) {
       note: "not a git repository (or git unavailable)",
     };
   }
-
-  // Total commits
-  const totalCommitsRaw = git(repoPath, "rev-list", "--count", "HEAD").trim();
-  const totalCommits = parseInt(totalCommitsRaw, 10) || 0;
-
-  // First / last commit
-  const lastCommitRaw = git(
-    repoPath, "log", "-1", "--format=%cI|%H|%s"
-  ).trim();
-  const firstCommitRaw = git(
-    repoPath, "log", "--max-parents=0", "-1", "--format=%cI|%H|%s"
-  ).trim();
-  const parseCommit = (raw) => {
-    if (!raw) return null;
-    const [date, hash, ...subjectParts] = raw.split("|");
-    return { date, hash, subject: subjectParts.join("|") };
-  };
-  const lastCommit = parseCommit(lastCommitRaw);
-  const firstCommit = parseCommit(firstCommitRaw);
-
-  // Contributors
-  const shortlog = git(repoPath, "shortlog", "-sne", "HEAD").trim();
-  const contributors = shortlog
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((line) => {
-      const m = line.match(/^\s*(\d+)\s+(.+)$/);
-      return m ? { commits: parseInt(m[1], 10), name: m[2].trim() } : null;
-    })
-    .filter(Boolean);
-  const totalContributors = contributors.length;
-
-  // Top active modules: count commits per top-level dir
-  const moduleCounts = {};
-  const logLines = git(
-    repoPath, "log", "--name-only", "--format=", "HEAD"
-  ).split(/\r?\n/).filter(Boolean);
-  for (const line of logLines) {
-    const top = line.split(sep)[0];
-    if (!top || top === ".") continue;
-    moduleCounts[top] = (moduleCounts[top] || 0) + 1;
-  }
-  const topActiveModules = Object.entries(moduleCounts)
-    .map(([module, commits]) => ({ module, commits }))
-    .sort((a, b) => b.commits - a.commits)
-    .slice(0, 10);
-
-  // Largest refactors: commits touching the most files
-  const commitStatRaw = git(
-    repoPath, "log", "--name-only", "--format=@@@%H|%cI|%s", "HEAD"
-  );
-  const largestRefactors = [];
-  if (commitStatRaw) {
-    const blocks = commitStatRaw.split(/@@@/).filter(Boolean);
-    for (const block of blocks) {
-      const lines = block.split(/\r?\n/).filter(Boolean);
-      if (lines.length === 0) continue;
-      const [hash, date, ...subjectParts] = lines[0].split("|");
-      const subject = subjectParts.join("|");
-      const fileCount = lines.length - 1;
-      if (fileCount > 0) {
-        largestRefactors.push({ hash, date, subject, filesChanged: fileCount });
-      }
-    }
-  }
-  largestRefactors.sort((a, b) => b.filesChanged - a.filesChanged);
-  const largestRefactorsTop = largestRefactors.slice(0, 10);
-
-  // Tags
-  const tagsRaw = git(repoPath, "tag", "--sort=-creatordate").trim();
-  const tags = tagsRaw ? tagsRaw.split(/\r?\n/).slice(0, 50) : [];
-
-  return {
-    totalCommits,
-    totalContributors,
-    contributors: contributors.slice(0, 20),
-    firstCommit,
-    lastCommit,
-    topActiveModules,
-    largestRefactors: largestRefactorsTop,
-    tags,
-  };
+  const analyzer = new GitAnalyzer();
+  const store = {};
+  analyzer.analyze(ctx, store, { command: "git" });
+  return store.git;
 }
 
 // ---------------------------------------------------------------------------
@@ -2742,18 +2322,749 @@ class ArchitectureAnalyzer extends BaseAnalyzer {
   }
 }
 
+// ---------------------------------------------------------------------------
+// True Analyzer: EntrypointsAnalyzer (uses RepositoryContext)
+// ---------------------------------------------------------------------------
+
+class EntrypointsAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "entrypoints";
+  }
+
+  supports(_ctx) {
+    return true;
+  }
+
+  async analyze(ctx, store, _analyzerCtx) {
+    const entries = ctx.files.filter((f) => f.depth <= 6);
+    const entrypoints = [];
+    const seen = new Set();
+
+    const addEntrypoint = (relPath, type, reason) => {
+      if (seen.has(relPath)) return;
+      seen.add(relPath);
+      entrypoints.push({ path: relPath, type, reason });
+    };
+
+    // 1. Filename-based detection (with depth/library filtering)
+    for (const e of entries) {
+      const relPath = ctx.rel(e.path);
+      const depth = relPath.split(sep).length;
+      const isDeep = depth > 3;
+      const isBundled = /bundled_skills|vendor|node_modules|site-packages/.test(relPath);
+      const isLibOrTest = /(?:^|[\\/])(?:lib|libs|utils|helpers|internal|common|tests?|__tests__|spec)[\\/]/.test(relPath)
+        || /^tests?[\\/]/.test(relPath);
+      for (const ep of ENTRY_POINT_FILES) {
+        if (ep.names.includes(e.name)) {
+          if (isDeep || isBundled) {
+            addEntrypoint(relPath, "tool", ep.reason + " (deep/bundled)");
+          } else if (isLibOrTest) {
+            addEntrypoint(relPath, "tool", ep.reason + " (library/test dir)");
+          } else {
+            addEntrypoint(relPath, ep.type, ep.reason);
+          }
+          break;
+        }
+      }
+    }
+
+    // 2. Directory-based detection (bin/, scripts/, examples/)
+    for (const e of entries) {
+      const parts = ctx.rel(e.path).split(sep);
+      if (parts.length < 2) continue;
+      const topDir = parts[0];
+      if (topDir === "bin") {
+        addEntrypoint(ctx.rel(e.path), "cli", "file under bin/");
+      } else if (topDir === "examples" || topDir === "example") {
+        addEntrypoint(ctx.rel(e.path), "example", "file under examples/");
+      } else if (topDir === "scripts" && ENTRYPOINT_DIR_NAMES.has("scripts")) {
+        addEntrypoint(ctx.rel(e.path), "cli", "file under scripts/");
+      }
+    }
+
+    // 3. AST-based detection (preferred) + regex fallback per file
+    const sourceFiles = entries.filter((e) => SOURCE_EXTENSIONS.has(e.ext));
+    const astResults = await Promise.all(
+      sourceFiles.map(async (file) => {
+        const relPath = ctx.rel(file.path);
+        const tree = await ctx.parseAST(file.path);
+        const astSignals = await extractEntrypointsAST(file.path, ctx.repoPath, tree);
+        if (astSignals !== null) return { relPath, signals: astSignals, useRegex: false };
+        // Regex fallback
+        const content = ctx.readFileAbsolute(file.path);
+        if (!content) return { relPath, signals: [], useRegex: false };
+        const signals = [];
+        if (file.ext === ".py") {
+          if (/if\s+__name__\s*==\s*['"]__main__['"]\s*:/.test(content)) {
+            signals.push({ path: relPath, type: "cli", reason: "Python __main__ guard" });
+          }
+          if (/def\s+main\s*\(/.test(content) && /argparse|click|typer|sys\.argv/.test(content)) {
+            signals.push({ path: relPath, type: "cli", reason: "Python main() with argparse/click/typer" });
+          }
+        } else if ([".ts", ".js", ".mjs", ".tsx", ".jsx"].includes(file.ext)) {
+          if (/createServer\s*\(|app\.listen\s*\(|server\.listen\s*\(/.test(content)) {
+            signals.push({ path: relPath, type: "server", reason: "JS server.listen / createServer" });
+          }
+          if (/process\.argv|yargs|commander|inquirer/.test(content) && /export\s+(default\s+)?(async\s+)?function\s+main|function\s+main\s*\(/.test(content)) {
+            signals.push({ path: relPath, type: "cli", reason: "JS CLI with argv/yargs/commander + main()" });
+          }
+        } else if (file.ext === ".go") {
+          if (/func\s+main\s*\(\)/.test(content)) {
+            signals.push({ path: relPath, type: "cli", reason: "Go func main()" });
+          }
+        } else if (file.ext === ".rs") {
+          if (/fn\s+main\s*\(\)/.test(content)) {
+            signals.push({ path: relPath, type: "cli", reason: "Rust fn main()" });
+          }
+        }
+        return { relPath, signals, useRegex: true };
+      })
+    );
+    for (const { relPath, signals } of astResults) {
+      if (seen.has(relPath)) continue;
+      const depth = relPath.split(sep).length;
+      const isDeep = depth > 3;
+      const isBundled = /bundled_skills|vendor|node_modules|site-packages/.test(relPath);
+      const isLibOrTest = /(?:^|[\\/])(?:lib|libs|utils|helpers|internal|common|tests?|__tests__|spec)[\\/]/.test(relPath)
+        || /^tests?[\\/]/.test(relPath);
+      for (const sig of signals) {
+        if (isDeep || isBundled) {
+          addEntrypoint(sig.path, "tool", sig.reason + " (deep/bundled)");
+        } else if (isLibOrTest && sig.type === "cli") {
+          addEntrypoint(sig.path, "tool", sig.reason + " (library/test dir)");
+        } else {
+          addEntrypoint(sig.path, sig.type, sig.reason);
+        }
+      }
+    }
+
+    // 4. Manifest-declared entry points
+    const pkgJsonPath = join(ctx.repoPath, "package.json");
+    if (existsSync(pkgJsonPath)) {
+      try {
+        const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
+        if (pkg.bin) {
+          const bins = typeof pkg.bin === "string" ? { [pkg.name]: pkg.bin } : pkg.bin;
+          for (const [binName, binPath] of Object.entries(bins)) {
+            addEntrypoint(binPath, "cli", `package.json bin: ${binName}`);
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    const pyprojectPath = join(ctx.repoPath, "pyproject.toml");
+    if (existsSync(pyprojectPath)) {
+      const content = readFileSync(pyprojectPath, "utf-8");
+      let inScripts = false;
+      for (const line of content.split(/\r?\n/)) {
+        if (/^\s*\[(project\.scripts|tool\.poetry\.scripts|project\.entry-points\.[\w.-]+)\]/.test(line)) {
+          inScripts = true;
+          continue;
+        }
+        if (/^\s*\[/.test(line)) {
+          inScripts = false;
+          continue;
+        }
+        if (inScripts) {
+          const m = line.match(/^([A-Za-z_][\w-]*)\s*=\s*"([^"]+)"/);
+          if (m) {
+            const modulePath = m[2].includes(":") ? m[2].split(":")[0] : m[2];
+            const scriptPath = modulePath.replace(/\./g, "/") + ".py";
+            addEntrypoint(scriptPath, "cli", `pyproject.toml script: ${m[1]}`);
+          }
+        }
+      }
+    }
+
+    store[this.id] = { entrypoints };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// True Analyzer: PromptsAnalyzer (uses RepositoryContext AST cache)
+// ---------------------------------------------------------------------------
+
+class PromptsAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "prompts";
+  }
+
+  supports(_ctx) {
+    return true;
+  }
+
+  async analyze(ctx, store, _analyzerCtx) {
+    const files = ctx.files.filter((f) => PROMPT_FILE_EXTENSIONS.has(f.ext));
+    const codeExts = new Set([".py", ".ts", ".tsx", ".js", ".jsx", ".mjs"]);
+    const codeFiles = files.filter((f) => codeExts.has(f.ext));
+    const mdFiles = files.filter((f) => !codeExts.has(f.ext));
+
+    // AST-based extraction for code files (with regex fallback per file)
+    const codeResults = await Promise.all(
+      codeFiles.map(async (f) => {
+        const tree = await ctx.parseAST(f.path);
+        const astPrompts = await extractPromptsAST(f.path, ctx.repoPath, tree);
+        if (astPrompts !== null) return astPrompts;
+        // Regex fallback
+        const content = ctx.readFileAbsolute(f.path);
+        if (!content) return [];
+        const prompts = [];
+        const lines = content.split(/\r?\n/);
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          for (const marker of PROMPT_MARKERS) {
+            marker.regex.lastIndex = 0;
+            const match = marker.regex.exec(line);
+            if (match) {
+              prompts.push({
+                file: ctx.rel(f.path),
+                line: i + 1,
+                type: marker.type,
+                snippet: line.trim().slice(0, 200),
+              });
+              break;
+            }
+          }
+        }
+        return prompts;
+      })
+    );
+
+    // Regex for markdown files
+    const mdPrompts = [];
+    for (const f of mdFiles) {
+      const content = ctx.readFileAbsolute(f.path);
+      if (!content) continue;
+      const lines = content.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        for (const marker of PROMPT_MARKERS) {
+          marker.regex.lastIndex = 0;
+          const match = marker.regex.exec(line);
+          if (match) {
+            mdPrompts.push({
+              file: ctx.rel(f.path),
+              line: i + 1,
+              type: marker.type,
+              snippet: line.trim().slice(0, 200),
+            });
+            break;
+          }
+        }
+      }
+    }
+
+    const prompts = [...codeResults.flat(), ...mdPrompts];
+    store[this.id] = { totalPrompts: prompts.length, prompts };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// True Analyzer: ToolsAnalyzer (uses RepositoryContext AST cache)
+// ---------------------------------------------------------------------------
+
+class ToolsAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "tools";
+  }
+
+  supports(_ctx) {
+    return true;
+  }
+
+  async analyze(ctx, store, _analyzerCtx) {
+    const files = ctx.files.filter((f) => TOOL_FILE_EXTENSIONS.has(f.ext));
+    const tools = [];
+    const seen = new Set();
+
+    // Try AST first per file; regex fallback when AST unavailable
+    const results = await Promise.all(
+      files.map(async (f) => {
+        const tree = await ctx.parseAST(f.path);
+        const astTools = await extractToolsAST(f.path, ctx.repoPath, tree);
+        if (astTools !== null) return { ast: true, tools: astTools, file: f };
+        return { ast: false, tools: null, file: f };
+      })
+    );
+
+    // Process AST results; collect files that need regex fallback
+    const regexFiles = [];
+    for (const r of results) {
+      if (r.ast) {
+        for (const t of r.tools) {
+          const key = `${t.file}:${t.framework}:${t.name}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          tools.push(t);
+        }
+      } else {
+        regexFiles.push(r.file);
+      }
+    }
+
+    // Regex fallback for files where AST was unavailable
+    for (const f of regexFiles) {
+      const content = ctx.readFileAbsolute(f.path);
+      if (!content) continue;
+      const relPath = ctx.rel(f.path);
+
+      for (const pattern of TOOL_PATTERNS) {
+        pattern.regex.lastIndex = 0;
+        let match;
+        while ((match = pattern.regex.exec(content)) !== null) {
+          const name = match[1];
+          if (!name) continue;
+          const key = `${relPath}:${pattern.framework}:${name}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const schema = extractSchemaNear(content, match.index);
+          tools.push({
+            name,
+            file: relPath,
+            framework: pattern.framework,
+            schema,
+          });
+        }
+      }
+    }
+
+    store[this.id] = { totalTools: tools.length, tools };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// True Analyzer: TestsAnalyzer (uses RepositoryContext)
+// ---------------------------------------------------------------------------
+
+class TestsAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "tests";
+  }
+
+  supports(_ctx) {
+    return true;
+  }
+
+  analyze(ctx, store, _analyzerCtx) {
+    const testFiles = ctx.files.filter((f) => isTestFile(f.name));
+
+    const byCategory = { unit: 0, integration: 0, e2e: 0 };
+    const byModule = {};
+    let totalFunctions = 0;
+
+    const fileDetails = testFiles.map((f) => {
+      const relPath = ctx.rel(f.path);
+      const category = categorizeTestCategory(f.path);
+      const module = categorizeTestModule(f.path, ctx.repoPath);
+      const functionCount = countTestFunctions(f.path);
+      byCategory[category] = (byCategory[category] || 0) + 1;
+      byModule[module] = (byModule[module] || 0) + functionCount;
+      totalFunctions += functionCount;
+      return {
+        path: relPath,
+        category,
+        module,
+        testFunctionCount: functionCount,
+      };
+    });
+
+    const patterns = detectTestPatterns(testFiles);
+
+    store[this.id] = {
+      totalTestFiles: testFiles.length,
+      totalTestFunctions: totalFunctions,
+      byCategory,
+      byModule,
+      patterns,
+      fileDetails,
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// True Analyzer: EvaluationsAnalyzer (uses RepositoryContext)
+// ---------------------------------------------------------------------------
+
+class EvaluationsAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "evaluations";
+  }
+
+  supports(_ctx) {
+    return true;
+  }
+
+  analyze(ctx, store, _analyzerCtx) {
+    const evalFiles = [];
+    const evalDirs = new Set();
+    const patterns = new Set();
+    const metrics = new Set();
+
+    // 1. Directory-based detection
+    for (const d of ctx.dirs) {
+      const name = basename(d.path).toLowerCase();
+      if (EVAL_DIR_NAMES.has(name)) {
+        evalDirs.add(ctx.rel(d.path));
+      }
+    }
+
+    // 2. File-based detection (by name and content)
+    for (const f of ctx.files) {
+      const name = f.name.toLowerCase();
+      const relPath = ctx.rel(f.path);
+      const isEvalByName = EVAL_KEYWORDS.some((kw) => name.includes(kw));
+      // Only source files inside eval dirs (not docs/configs)
+      const isInEvalDir =
+        SOURCE_EXTENSIONS.has(f.ext) &&
+        [...evalDirs].some(
+          (d) => relPath.startsWith(d + sep) || relPath.startsWith(d + "/")
+        );
+      let isEvalByContent = false;
+      if (SOURCE_EXTENSIONS.has(f.ext)) {
+        const content = ctx.readFileAbsolute(f.path);
+        if (content) {
+          let matchCount = 0;
+          for (const kw of EVAL_KEYWORDS) {
+            const re = new RegExp(`\\b${kw.replace(/_/g, "[_]")}\\b`, "i");
+            if (re.test(content)) {
+              matchCount++;
+              patterns.add(kw);
+            }
+          }
+          isEvalByContent = matchCount >= 2;
+          const metricRegexes = [
+            /\b(accuracy|pass_rate|pass@k|f1|precision|recall|bleu|rouge|exact_match|exact-match)\b/gi,
+            /\b(score|metric|accuracy_score|recall_score|precision_score)\b/gi,
+          ];
+          for (const re of metricRegexes) {
+            let m;
+            while ((m = re.exec(content)) !== null) {
+              metrics.add(m[1].toLowerCase());
+            }
+          }
+        }
+      }
+      if (isEvalByName || isEvalByContent || isInEvalDir) {
+        evalFiles.push(relPath);
+      }
+    }
+
+    store[this.id] = {
+      hasEvaluation: evalFiles.length > 0 || evalDirs.size > 0,
+      evalFiles: [...new Set(evalFiles)],
+      evalDirs: [...evalDirs],
+      patterns: [...patterns],
+      metrics: [...metrics],
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// True Analyzer: GitAnalyzer (uses RepositoryContext)
+// ---------------------------------------------------------------------------
+
+class GitAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "git";
+  }
+
+  supports(ctx) {
+    return ctx.isGitRepo;
+  }
+
+  analyze(ctx, store, _analyzerCtx) {
+    const repoPath = ctx.repoPath;
+
+    // Total commits
+    const totalCommitsRaw = git(repoPath, "rev-list", "--count", "HEAD").trim();
+    const totalCommits = parseInt(totalCommitsRaw, 10) || 0;
+
+    // First / last commit
+    const lastCommitRaw = git(repoPath, "log", "-1", "--format=%cI|%H|%s").trim();
+    const firstCommitRaw = git(
+      repoPath,
+      "log",
+      "--max-parents=0",
+      "-1",
+      "--format=%cI|%H|%s"
+    ).trim();
+    const parseCommit = (raw) => {
+      if (!raw) return null;
+      const [date, hash, ...subjectParts] = raw.split("|");
+      return { date, hash, subject: subjectParts.join("|") };
+    };
+    const lastCommit = parseCommit(lastCommitRaw);
+    const firstCommit = parseCommit(firstCommitRaw);
+
+    // Contributors
+    const shortlog = git(repoPath, "shortlog", "-sne", "HEAD").trim();
+    const contributors = shortlog
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => {
+        const m = line.match(/^\s*(\d+)\s+(.+)$/);
+        return m ? { commits: parseInt(m[1], 10), name: m[2].trim() } : null;
+      })
+      .filter(Boolean);
+    const totalContributors = contributors.length;
+
+    // Top active modules: count commits per top-level dir
+    const moduleCounts = {};
+    const logLines = git(repoPath, "log", "--name-only", "--format=", "HEAD")
+      .split(/\r?\n/)
+      .filter(Boolean);
+    for (const line of logLines) {
+      const top = line.split(sep)[0];
+      if (!top || top === ".") continue;
+      moduleCounts[top] = (moduleCounts[top] || 0) + 1;
+    }
+    const topActiveModules = Object.entries(moduleCounts)
+      .map(([module, commits]) => ({ module, commits }))
+      .sort((a, b) => b.commits - a.commits)
+      .slice(0, 10);
+
+    // Largest refactors: commits touching the most files
+    const commitStatRaw = git(
+      repoPath,
+      "log",
+      "--name-only",
+      "--format=@@@%H|%cI|%s",
+      "HEAD"
+    );
+    const largestRefactors = [];
+    if (commitStatRaw) {
+      const blocks = commitStatRaw.split(/@@@/).filter(Boolean);
+      for (const block of blocks) {
+        const lines = block.split(/\r?\n/).filter(Boolean);
+        if (lines.length === 0) continue;
+        const [hash, date, ...subjectParts] = lines[0].split("|");
+        const subject = subjectParts.join("|");
+        const fileCount = lines.length - 1;
+        if (fileCount > 0) {
+          largestRefactors.push({ hash, date, subject, filesChanged: fileCount });
+        }
+      }
+    }
+    largestRefactors.sort((a, b) => b.filesChanged - a.filesChanged);
+    const largestRefactorsTop = largestRefactors.slice(0, 10);
+
+    // Tags
+    const tagsRaw = git(repoPath, "tag", "--sort=-creatordate").trim();
+    const tags = tagsRaw ? tagsRaw.split(/\r?\n/).slice(0, 50) : [];
+
+    store[this.id] = {
+      totalCommits,
+      totalContributors,
+      contributors: contributors.slice(0, 20),
+      firstCommit,
+      lastCommit,
+      topActiveModules,
+      largestRefactors: largestRefactorsTop,
+      tags,
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// True Analyzer: CIAnalyzer (uses RepositoryContext)
+// ---------------------------------------------------------------------------
+
+class CIAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "ci";
+  }
+
+  supports(_ctx) {
+    return true;
+  }
+
+  analyze(ctx, store, _analyzerCtx) {
+    const workflows = [];
+    let provider = null;
+    let hasCI = false;
+
+    for (const ci of CI_FILES) {
+      const fullPath = join(ctx.repoPath, ci.path);
+      if (ci.type === "file") {
+        if (existsSync(fullPath)) {
+          hasCI = true;
+          provider = ci.provider;
+          workflows.push({
+            name: basename(ci.path),
+            path: ci.path,
+            triggers: [],
+            jobs: [],
+          });
+        }
+      } else {
+        if (existsSync(fullPath) && statSync(fullPath).isDirectory()) {
+          hasCI = true;
+          provider = ci.provider;
+          let entries;
+          try {
+            entries = readdirSync(fullPath, { withFileTypes: true });
+          } catch {
+            entries = [];
+          }
+          for (const entry of entries) {
+            if (!entry.isFile()) continue;
+            const ext = extname(entry.name);
+            if (ext !== ".yml" && ext !== ".yaml") continue;
+            const wfPath = join(fullPath, entry.name);
+            const { triggers, jobs } = parseWorkflow(wfPath);
+            workflows.push({
+              name: entry.name,
+              path: join(ci.path, entry.name),
+              triggers,
+              jobs,
+            });
+          }
+        }
+      }
+    }
+
+    // Jenkinsfile parse
+    const jenkinsfilePath = join(ctx.repoPath, "Jenkinsfile");
+    if (existsSync(jenkinsfilePath)) {
+      hasCI = true;
+      provider = provider || "jenkins";
+      const content = readFileSafe(jenkinsfilePath);
+      const stages = [];
+      const stageRe = /stage\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+      let m;
+      while ((m = stageRe.exec(content)) !== null) stages.push(m[1]);
+      workflows.push({
+        name: "Jenkinsfile",
+        path: "Jenkinsfile",
+        triggers: [],
+        jobs: stages,
+      });
+    }
+
+    store[this.id] = { hasCI, provider, workflows };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// True Analyzer: RankingAnalyzer (uses RepositoryContext + prior evidence)
+// ---------------------------------------------------------------------------
+
+class RankingAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "ranking";
+  }
+
+  supports(_ctx) {
+    return true;
+  }
+
+  analyze(ctx, store, _analyzerCtx) {
+    // Reuse results from analyzers that ran before us.
+    const architecture = store.architecture || {};
+    const entrypoints = store.entrypoints || {};
+    const tests = store.tests || {};
+
+    const indegreeMap = {};
+    for (const { id, value } of architecture.centrality?.topByInDegree || []) {
+      indegreeMap[id] = value;
+    }
+    const pagerankMap = {};
+    for (const { id, value } of architecture.centrality?.topByPageRank || []) {
+      pagerankMap[id] = value;
+    }
+    const highIndegreePaths = new Set(
+      (architecture.centrality?.topByInDegree || [])
+        .map(({ id }) => {
+          const node = architecture.nodes?.find((n) => n.id === id);
+          return node ? node.path : null;
+        })
+        .filter(Boolean)
+    );
+    const highPagerankPaths = new Set(
+      (architecture.centrality?.topByPageRank || [])
+        .map(({ id }) => {
+          const node = architecture.nodes?.find((n) => n.id === id);
+          return node ? node.path : null;
+        })
+        .filter(Boolean)
+    );
+    const entrypointPaths = new Set(
+      (entrypoints.entrypoints || []).map((e) => e.path)
+    );
+    const testPaths = new Set(
+      (tests.fileDetails || []).map((t) => t.path)
+    );
+
+    const allFiles = ctx.files;
+    const scored = [];
+    for (const f of allFiles) {
+      const relPath = ctx.rel(f.path);
+      const name = f.name.toLowerCase();
+      let score = 0;
+      const reasons = [];
+
+      if (name === "readme.md" || name === "readme.rst" || name === "readme") {
+        score += 50;
+        reasons.push("README (+50)");
+      }
+      if (IMPORTANT_FILES.has(relPath) || IMPORTANT_FILES.has(name)) {
+        score += 40;
+        reasons.push("important file (+40)");
+      }
+      if (
+        relPath
+          .split(sep)
+          .some((p) => p.toLowerCase() === "examples" || p.toLowerCase() === "example")
+      ) {
+        score += 30;
+        reasons.push("examples (+30)");
+      }
+      if (testPaths.has(relPath)) {
+        score += 20;
+        reasons.push("test (+20)");
+      }
+      if (
+        relPath
+          .split(sep)
+          .some((p) => p.toLowerCase() === "docs" || p.toLowerCase() === "doc")
+      ) {
+        score += 20;
+        reasons.push("docs (+20)");
+      }
+      if (highIndegreePaths.has(relPath)) {
+        score += 40;
+        reasons.push("high in-degree (+40)");
+      }
+      if (highPagerankPaths.has(relPath)) {
+        score += 50;
+        reasons.push("high PageRank (+50)");
+      }
+      if (entrypointPaths.has(relPath)) {
+        score += 30;
+        reasons.push("entrypoint (+30)");
+      }
+
+      if (score > 0) {
+        scored.push({ path: relPath, score, reasons });
+      }
+    }
+
+    scored.sort((a, b) => b.score - a.score);
+    store[this.id] = { topFiles: scored.slice(0, 20) };
+  }
+}
+
 const ANALYZERS = [
   new DiscoveryAnalyzer(),
   new SymbolsAnalyzer(),
   new ArchitectureAnalyzer(),
-  new FunctionAnalyzerAdapter("entrypoints", analyzeEntrypoints),
-  new FunctionAnalyzerAdapter("prompts", analyzePrompts),
-  new FunctionAnalyzerAdapter("tools", analyzeTools),
-  new FunctionAnalyzerAdapter("tests", analyzeTests),
-  new FunctionAnalyzerAdapter("evaluations", analyzeEvaluations),
-  new FunctionAnalyzerAdapter("git", analyzeGit, { needsGit: true }),
-  new FunctionAnalyzerAdapter("ci", analyzeCI),
-  new FunctionAnalyzerAdapter("ranking", analyzeRanking),
+  new EntrypointsAnalyzer(),
+  new PromptsAnalyzer(),
+  new ToolsAnalyzer(),
+  new TestsAnalyzer(),
+  new EvaluationsAnalyzer(),
+  new GitAnalyzer(),
+  new CIAnalyzer(),
+  new RankingAnalyzer(),
 ];
 
 // ===========================================================================
@@ -3062,6 +3373,449 @@ class EvidenceStore {
   }
 }
 
+// ===========================================================================
+// ResearchPlanner — goal-driven research design
+//
+// Transforms a high-level research goal into a set of falsifiable hypotheses,
+// an evidence-gathering plan, and a prioritized reading plan. All reasoning is
+// grounded in the deterministic EvidenceStore graph.
+// ===========================================================================
+
+const DEFAULT_RESEARCH_GOAL =
+  "understand the repository architecture, design ideas, engineering tradeoffs, and reusable patterns";
+
+class ResearchPlanner {
+  /**
+   * @param {string} goal
+   * @param {EvidenceStore} evidenceStore
+   */
+  constructor(goal, evidenceStore) {
+    this.goal = goal || DEFAULT_RESEARCH_GOAL;
+    this.store = evidenceStore;
+  }
+
+  plan() {
+    this.store.ensureBuilt();
+    const hypotheses = this._generateHypotheses();
+    const evidencePlan = this._buildEvidencePlan(hypotheses);
+    const readingPlan = this._buildReadingPlan(hypotheses, evidencePlan);
+    return {
+      goal: this.goal,
+      hypotheses,
+      evidencePlan,
+      readingPlan,
+    };
+  }
+
+  _generateHypotheses() {
+    const discovery = this.store.get("discovery") || {};
+    const architecture = this.store.get("architecture") || {};
+    const entrypoints = this.store.get("entrypoints") || {};
+    const tests = this.store.get("tests") || {};
+    const evaluations = this.store.get("evaluations") || {};
+    const prompts = this.store.get("prompts") || {};
+    const tools = this.store.get("tools") || {};
+    const gitInfo = this.store.get("git") || {};
+
+    const hypotheses = [];
+
+    // H1: Purpose
+    const hasReadme = discovery.hasReadme;
+    const hasManifest = Boolean(discovery.manifest);
+    hypotheses.push({
+      id: "H1-purpose",
+      statement: "The repository purpose and target audience can be inferred from README and manifest",
+      confidence: hasReadme && hasManifest ? "high" : hasReadme || hasManifest ? "medium" : "low",
+      evidence: [
+        ...(hasReadme ? ["README.md exists"] : []),
+        ...(hasManifest ? [`manifest: ${discovery.manifest.entry}`] : []),
+      ],
+      gaps: [
+        ...(hasReadme ? [] : ["README.md missing"]),
+        ...(hasManifest ? [] : ["No recognized package manifest"]),
+      ],
+    });
+
+    // H2: AI/Agent nature
+    const hasAgentFiles = (discovery.agentFiles || []).length > 0;
+    const hasPrompts = (prompts.totalPrompts || 0) > 0;
+    const hasTools = (tools.totalTools || 0) > 0;
+    const signalDirs = discovery.architectureSignalDirs || [];
+    const agentLikeDirs = signalDirs.filter((d) =>
+      /\b(agent|agents|prompt|prompts|tool|tools|memory|context|planner|executor)\b/.test(d)
+    );
+    const aiScore = [hasAgentFiles, hasPrompts, hasTools, agentLikeDirs.length > 0].filter(Boolean).length;
+    hypotheses.push({
+      id: "H2-ai-agent",
+      statement: "This is an AI-agent / LLM-related project with prompts and/or tools",
+      confidence: aiScore >= 3 ? "high" : aiScore >= 1 ? "medium" : "low",
+      evidence: [
+        ...(hasAgentFiles ? ["agent instruction files found"] : []),
+        ...(hasPrompts ? [`${prompts.totalPrompts} prompt-like strings`] : []),
+        ...(hasTools ? [`${tools.totalTools} tool registrations`] : []),
+        ...(agentLikeDirs.length ? [`architecture signal dirs: ${agentLikeDirs.join(", ")}`] : []),
+      ],
+      gaps: aiScore === 0 ? ["No prompt/tool/agent signals detected"] : [],
+    });
+
+    // H3: Modular architecture
+    const nodeCount = architecture.totalNodes || 0;
+    const edgeCount = architecture.totalEdges || 0;
+    const cycleCount = (architecture.cycles || []).length;
+    hypotheses.push({
+      id: "H3-modular",
+      statement: "The codebase has a modular architecture with identifiable dependency layers",
+      confidence: nodeCount > 10 && edgeCount > 5 ? "high" : nodeCount > 0 ? "medium" : "low",
+      evidence: [
+        `${nodeCount} modules`,
+        `${edgeCount} import edges`,
+        ...(cycleCount ? [`${cycleCount} import cycles detected`] : []),
+      ],
+      gaps: nodeCount === 0 ? ["No module dependency graph available"] : [],
+    });
+
+    // H4: Testing
+    const testFileCount = tests.totalTestFiles || 0;
+    hypotheses.push({
+      id: "H4-testing",
+      statement: "The project relies on automated tests for correctness",
+      confidence: testFileCount > 5 ? "high" : testFileCount > 0 ? "medium" : "low",
+      evidence: [
+        `${testFileCount} test files`,
+        `${tests.totalTestFunctions || 0} test functions`,
+        ...(tests.patterns || []).map((p) => `pattern: ${p}`),
+      ],
+      gaps: testFileCount === 0 ? ["No test files detected"] : [],
+    });
+
+    // H5: Entry points
+    const epCount = (entrypoints.entrypoints || []).length;
+    const cliCount = (entrypoints.entrypoints || []).filter((e) => e.type === "cli").length;
+    hypotheses.push({
+      id: "H5-entrypoints",
+      statement: "Entry points reveal the primary interfaces (CLI, server, SDK)",
+      confidence: epCount > 0 ? "high" : "low",
+      evidence: [
+        `${epCount} entry points`,
+        `${cliCount} CLI entry points`,
+        ...(entrypoints.entrypoints || [])
+          .slice(0, 5)
+          .map((e) => `${e.type}: ${e.path}`),
+      ],
+      gaps: epCount === 0 ? ["No entry points detected"] : [],
+    });
+
+    // H6: Evaluation
+    const hasEval = evaluations.hasEvaluation;
+    hypotheses.push({
+      id: "H6-evaluation",
+      statement: "The project measures quality through benchmarks or evaluations",
+      confidence: hasEval ? "high" : "low",
+      evidence: [
+        ...(hasEval ? ["evaluation/benchmark artifacts found"] : []),
+        ...(evaluations.patterns || []).slice(0, 5).map((p) => `pattern: ${p}`),
+        ...(evaluations.metrics || []).slice(0, 5).map((m) => `metric: ${m}`),
+      ],
+      gaps: hasEval ? [] : ["No evaluation or benchmark artifacts detected"],
+    });
+
+    // H7: Maturity
+    const totalCommits = gitInfo.totalCommits || 0;
+    const totalContributors = gitInfo.totalContributors || 0;
+    hypotheses.push({
+      id: "H7-maturity",
+      statement: "The project is actively maintained with a non-trivial development history",
+      confidence: totalCommits > 50 && totalContributors > 1 ? "high" : totalCommits > 0 ? "medium" : "low",
+      evidence: [
+        `${totalCommits} commits`,
+        `${totalContributors} contributors`,
+        ...(gitInfo.lastCommit ? [`last commit: ${gitInfo.lastCommit.date}`] : []),
+      ],
+      gaps: totalCommits === 0 ? ["No Git history available"] : [],
+    });
+
+    return hypotheses;
+  }
+
+  _buildEvidencePlan(hypotheses) {
+    const plan = [];
+    const discovery = this.store.get("discovery") || {};
+    const ranking = this.store.get("ranking") || {};
+    const topFiles = (ranking.topFiles || []).map((f) => f.path);
+
+    for (const h of hypotheses) {
+      if (h.gaps.length === 0) continue;
+      for (const gap of h.gaps) {
+        if (gap.includes("README")) {
+          plan.push({
+            hypothesisId: h.id,
+            source: "manual",
+            query: "read README.md or project documentation",
+            priority: "high",
+          });
+        } else if (gap.includes("manifest")) {
+          plan.push({
+            hypothesisId: h.id,
+            source: "manual",
+            query: "inspect package manifest for dependencies and scripts",
+            priority: "high",
+          });
+        } else if (gap.includes("entry") || gap.includes("interface")) {
+          plan.push({
+            hypothesisId: h.id,
+            source: "entrypoints",
+            query: "trace entry point call graphs",
+            priority: "high",
+          });
+        } else if (gap.includes("test")) {
+          plan.push({
+            hypothesisId: h.id,
+            source: "tests",
+            query: "inspect examples or manual validation workflows",
+            priority: "medium",
+          });
+        } else if (gap.includes("eval")) {
+          plan.push({
+            hypothesisId: h.id,
+            source: "evaluations",
+            query: "search for ad-hoc validation scripts",
+            priority: "medium",
+          });
+        } else {
+          plan.push({
+            hypothesisId: h.id,
+            source: "auto",
+            query: `resolve gap: ${gap}`,
+            priority: "medium",
+          });
+        }
+      }
+    }
+
+    // Add file-specific evidence queries from ranking
+    for (const file of topFiles.slice(0, 10)) {
+      plan.push({
+        hypothesisId: "H3-modular",
+        source: "ranking",
+        query: `read ${file}`,
+        priority: "high",
+      });
+    }
+
+    // Add architecture signal directory queries
+    for (const dir of (discovery.architectureSignalDirs || []).slice(0, 10)) {
+      plan.push({
+        hypothesisId: "H3-modular",
+        source: "discovery",
+        query: `explore architecture signal directory: ${dir}`,
+        priority: "medium",
+      });
+    }
+
+    return plan;
+  }
+
+  _buildReadingPlan(hypotheses, evidencePlan) {
+    const ranking = this.store.get("ranking") || {};
+    const entrypoints = this.store.get("entrypoints") || {};
+    const discovery = this.store.get("discovery") || {};
+    const agentFiles = discovery.agentFiles || [];
+
+    const scoredFiles = new Map();
+
+    // Seed from ranking
+    for (const item of ranking.topFiles || []) {
+      scoredFiles.set(item.path, { path: item.path, score: item.score, reasons: [...item.reasons] });
+    }
+
+    // Boost entry points
+    for (const ep of entrypoints.entrypoints || []) {
+      const entry = scoredFiles.get(ep.path) || { path: ep.path, score: 0, reasons: [] };
+      entry.score += 30;
+      entry.reasons.push(`entrypoint (${ep.type})`);
+      scoredFiles.set(ep.path, entry);
+    }
+
+    // Ensure README and agent instructions are included
+    for (const candidate of ["README.md", "AGENTS.md", "CLAUDE.md", ...agentFiles]) {
+      if ((discovery.metadataFiles || []).includes(candidate) || agentFiles.includes(candidate)) {
+        const entry = scoredFiles.get(candidate) || { path: candidate, score: 0, reasons: [] };
+        entry.score += 40;
+        entry.reasons.push("critical documentation");
+        scoredFiles.set(candidate, entry);
+      }
+    }
+
+    const sorted = [...scoredFiles.values()]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 20);
+
+    return sorted.map((item) => ({
+      file: item.path,
+      reason: [...new Set(item.reasons)].join("; "),
+      priority: item.score >= 60 ? "high" : item.score >= 30 ? "medium" : "low",
+      estimatedEffort: item.path.endsWith(".md") ? "low" : "medium",
+    }));
+  }
+}
+
+// ===========================================================================
+// QuestionGenerator — gap-driven question generation
+//
+// Reads the EvidenceStore and emits concrete research questions for the LLM
+// layer. Each question points to the exact evidence gap and suggests which
+// analyzer output or files to consult.
+// ===========================================================================
+
+class QuestionGenerator {
+  /**
+   * @param {EvidenceStore} evidenceStore
+   */
+  constructor(evidenceStore) {
+    this.store = evidenceStore;
+  }
+
+  generate() {
+    this.store.ensureBuilt();
+    const gaps = this._identifyGaps();
+    const questions = gaps.map((gap) => this._gapToQuestion(gap));
+    return { questions };
+  }
+
+  _identifyGaps() {
+    const gaps = [];
+    const discovery = this.store.get("discovery") || {};
+    const architecture = this.store.get("architecture") || {};
+    const entrypoints = this.store.get("entrypoints") || {};
+    const tests = this.store.get("tests") || {};
+    const evaluations = this.store.get("evaluations") || {};
+    const prompts = this.store.get("prompts") || {};
+    const tools = this.store.get("tools") || {};
+    const ranking = this.store.get("ranking") || {};
+
+    if (!discovery.hasReadme) {
+      gaps.push({ category: "purpose", severity: "high", detail: "No README.md found" });
+    }
+    if (!discovery.manifest) {
+      gaps.push({ category: "purpose", severity: "medium", detail: "No recognized package manifest" });
+    }
+
+    const modules = architecture.nodes || [];
+    const highCentrality = [
+      ...(architecture.centrality?.topByInDegree || []),
+      ...(architecture.centrality?.topByPageRank || []),
+    ];
+    if (modules.length > 0 && highCentrality.length === 0) {
+      gaps.push({ category: "architecture", severity: "medium", detail: "Modules exist but centrality is unclear" });
+    }
+    if ((architecture.cycles || []).length > 0) {
+      gaps.push({ category: "architecture", severity: "medium", detail: `${architecture.cycles.length} import cycles detected` });
+    }
+
+    if ((entrypoints.entrypoints || []).length === 0) {
+      gaps.push({ category: "entrypoints", severity: "high", detail: "No entry points detected" });
+    } else {
+      const cliEps = entrypoints.entrypoints.filter((e) => e.type === "cli");
+      if (cliEps.length > 0) {
+        gaps.push({ category: "entrypoints", severity: "medium", detail: "CLI entry points need usage semantics" });
+      }
+    }
+
+    if ((tests.totalTestFiles || 0) === 0) {
+      gaps.push({ category: "testing", severity: "medium", detail: "No automated tests detected" });
+    }
+
+    if (!evaluations.hasEvaluation) {
+      gaps.push({ category: "evaluation", severity: "medium", detail: "No evaluation or benchmark artifacts detected" });
+    }
+
+    if ((prompts.totalPrompts || 0) > 0 && (tools.totalTools || 0) === 0) {
+      gaps.push({ category: "prompts", severity: "medium", detail: "Prompts exist but tool binding is unclear" });
+    }
+    if ((tools.totalTools || 0) > 0 && (prompts.totalPrompts || 0) === 0) {
+      gaps.push({ category: "tools", severity: "medium", detail: "Tools exist but prompt orchestration is unclear" });
+    }
+    if ((prompts.totalPrompts || 0) > 0) {
+      gaps.push({ category: "prompts", severity: "low", detail: "Prompt lifecycle (versioning, assembly, compression) needs inspection" });
+    }
+
+    // High-centrality modules that are not in the top reading list
+    const topPaths = new Set((ranking.topFiles || []).map((f) => f.path));
+    for (const { id } of highCentrality.slice(0, 5)) {
+      const node = modules.find((n) => n.id === id);
+      if (node && !topPaths.has(node.path)) {
+        gaps.push({ category: "architecture", severity: "low", detail: `High-centrality module not yet prioritized: ${node.path}` });
+      }
+    }
+
+    return gaps;
+  }
+
+  _gapToQuestion(gap) {
+    const templates = {
+      purpose: {
+        high: "What problem does this repository solve, and who are its intended users?",
+        medium: "How is the project packaged and what are its declared dependencies/scripts?",
+        low: "What additional metadata (LICENSE, CONTRIBUTING, CHANGELOG) clarifies project intent?",
+      },
+      architecture: {
+        high: "What are the core architectural layers and how do they interact?",
+        medium: "How is responsibility divided among the top modules, and where are the dependency boundaries?",
+        low: "What design patterns or conventions explain the module organization?",
+      },
+      entrypoints: {
+        high: "How does a user or downstream system invoke this project?",
+        medium: "What commands or APIs does the CLI/server expose?",
+        low: "What initialization or configuration is required before running?",
+      },
+      testing: {
+        high: "How is correctness validated in this codebase?",
+        medium: "Which modules have the most test coverage, and which are under-tested?",
+        low: "What test fixtures or mocking strategies are used?",
+      },
+      evaluation: {
+        high: "How does the project measure success or quality?",
+        medium: "What metrics, datasets, or judges are used for evaluation?",
+        low: "Are there any benchmarks or leaderboards documented?",
+      },
+      prompts: {
+        high: "How are prompts composed, versioned, and rendered at runtime?",
+        medium: "What role do system, assistant, and few-shot prompts play?",
+        low: "Are prompts statically defined or dynamically assembled?",
+      },
+      tools: {
+        high: "How are tools registered, discovered, and invoked by the agent/runtime?",
+        medium: "What is the schema contract between tools and callers?",
+        low: "Are tools decorated, wrapped, or provided by a framework?",
+      },
+    };
+
+    const bySeverity = templates[gap.category] || templates.architecture;
+    const question = bySeverity[gap.severity] || bySeverity.medium;
+
+    return {
+      category: gap.category,
+      question,
+      priority: gap.severity,
+      evidenceGap: gap.detail,
+      suggestedSources: this._sourcesForGap(gap.category),
+    };
+  }
+
+  _sourcesForGap(category) {
+    const map = {
+      purpose: ["discovery.metadataFiles", "discovery.manifest", "ranking.topFiles"],
+      architecture: ["architecture.nodes", "architecture.edges", "architecture.centrality", "discovery.architectureSignalDirs"],
+      entrypoints: ["entrypoints.entrypoints", "ranking.topFiles"],
+      testing: ["tests.fileDetails", "tests.byModule", "tests.patterns"],
+      evaluation: ["evaluations.evalFiles", "evaluations.patterns", "evaluations.metrics"],
+      prompts: ["prompts.prompts", "symbols.strings", "tools.tools"],
+      tools: ["tools.tools", "symbols.functions", "architecture.edges"],
+    };
+    return map[category] || ["discovery", "ranking.topFiles"];
+  }
+}
+
 class AnalyzerPipeline {
   constructor(analyzers = ANALYZERS) {
     this.analyzers = analyzers;
@@ -3093,6 +3847,7 @@ class AnalyzerPipeline {
 
   /**
    * Run all analyzers and return a graph-based EvidenceStore.
+   * Also synthesizes a research plan and gap-driven questions from the evidence.
    * @param {RepositoryContext} ctx
    * @returns {Promise<EvidenceStore>}
    */
@@ -3105,7 +3860,12 @@ class AnalyzerPipeline {
       }
       await analyzer.analyze(ctx, store, { command: analyzer.id });
     }
-    return new EvidenceStore(store);
+    const evidenceStore = new EvidenceStore(store);
+    const planner = new ResearchPlanner(DEFAULT_RESEARCH_GOAL, evidenceStore);
+    store.plan = planner.plan();
+    const questionGenerator = new QuestionGenerator(evidenceStore);
+    store.questions = questionGenerator.generate();
+    return evidenceStore;
   }
 }
 
@@ -3116,7 +3876,8 @@ class AnalyzerPipeline {
 async function main() {
   const command = process.argv[2];
   const repoPath = process.argv[3];
-  const validCommands = new Set([...ANALYZERS.map((a) => a.id), "all"]);
+  const syntheticCommands = new Set(["plan", "questions"]);
+  const validCommands = new Set([...ANALYZERS.map((a) => a.id), "all", ...syntheticCommands]);
 
   if (!command || !repoPath) {
     console.error(
@@ -3147,9 +3908,15 @@ async function main() {
   try {
     const ctx = new RepositoryContext(absPath);
     const pipeline = new AnalyzerPipeline();
-    const result = command === "all"
-      ? await pipeline.runAll(ctx)
-      : await pipeline.run(command, ctx);
+    let result;
+    if (command === "all") {
+      result = await pipeline.runAll(ctx);
+    } else if (syntheticCommands.has(command)) {
+      const evidenceStore = await pipeline.runAll(ctx);
+      result = command === "plan" ? evidenceStore.get("plan") : evidenceStore.get("questions");
+    } else {
+      result = await pipeline.run(command, ctx);
+    }
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
   } catch (err) {
     console.error(`Error running '${command}': ${err && err.message ? err.message : String(err)}`);
@@ -3179,6 +3946,8 @@ export {
   BaseAnalyzer,
   AnalyzerPipeline,
   EvidenceStore,
+  ResearchPlanner,
+  QuestionGenerator,
   LANGUAGE_EXTENSIONS,
   SOURCE_EXTENSIONS,
   PROJECT_DISCOVERY_RULES,
