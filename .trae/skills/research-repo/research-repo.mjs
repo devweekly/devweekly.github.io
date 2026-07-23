@@ -37,37 +37,152 @@ process.stdout?.on?.("error", (err) => {
 });
 
 // ---------------------------------------------------------------------------
-// Constants
+// Repository Discovery Configuration
+//
+// Unified configuration for repository discovery and analysis.
+// Adding a new language or discovery category only requires editing this section.
+//
+//   Repository Discovery Config
+//   ├── IGNORED_DIRS              — directories skipped during traversal
+//   ├── LANGUAGE_EXTENSIONS       — single source of truth for language→extensions
+//   ├── SOURCE_EXTENSIONS         — auto-generated from LANGUAGE_EXTENSIONS
+//   ├── PROJECT_DISCOVERY_RULES   — unified discovery rules with categories + priority
+//   ├── ARCHITECTURE_SIGNAL_DIRS  — directories that reveal architecture
+//   ├── IMPORTANT_FILES           — files to prioritize for reading
+//   ├── ENTRY_POINT_FILES         — entry point filenames by type
+//   ├── PROMPT_FILE_PATTERNS      — glob patterns for prompt file discovery
+//   ├── TEST_FILE_REGEXES         — regex patterns for test file classification
+//   └── Content scanning patterns (PROMPT_MARKERS, TOOL_PATTERNS, etc.)
 // ---------------------------------------------------------------------------
 
+// 1. IGNORED_DIRS — directories skipped during file traversal
+//    NOTE: examples/, demo/, docs/, benchmark/, eval/, tests/ are NOT ignored
+//    — they are research priorities.
 const IGNORED_DIRS = new Set([
-  "node_modules", ".git", "__pycache__", "vendor", "dist", "build",
-  ".next", ".nuxt", ".cache", ".turbo", "coverage", ".pytest_cache",
-  ".mypy_cache", ".ruff_cache", "target", ".gradle", ".idea", ".vscode",
-  ".svn", ".hg", "out", "obj", ".tox", ".venv", "venv", "env",
+  // VCS
+  ".git", ".svn", ".hg",
+  // JavaScript
+  "node_modules", ".next", ".nuxt", ".turbo", ".cache", "dist", "build", "coverage",
+  // Python
+  "__pycache__", ".pytest_cache", ".mypy_cache", ".ruff_cache", ".tox", ".venv", "venv", "env",
+  // Rust
+  "target",
+  // Java / Kotlin
+  ".gradle", ".idea",
+  // .NET
+  "out", "obj",
+  // Common
+  ".vscode", "vendor", "tmp", "temp", "logs",
 ]);
 
-const MANIFEST_FILES = [
-  { file: "package.json", language: "javascript", parser: parsePackageJson },
-  { file: "pyproject.toml", language: "python", parser: parsePyproject },
-  { file: "setup.py", language: "python", parser: parseSetupPy },
-  { file: "Cargo.toml", language: "rust", parser: parseCargoToml },
-  { file: "go.mod", language: "go", parser: parseGoMod },
-];
-
-const SOURCE_EXTENSIONS = new Set([
-  ".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs",
-  ".rs", ".go", ".java", ".kt", ".swift", ".rb", ".cs",
-]);
-
-const SOURCE_EXTENSIONS_BY_LANG = {
-  python: [".py"],
+// 2. LANGUAGE_EXTENSIONS — single source of truth for language → extensions
+//    SOURCE_EXTENSIONS is auto-generated; never edit it manually.
+const LANGUAGE_EXTENSIONS = {
   javascript: [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"],
+  python: [".py"],
   rust: [".rs"],
   go: [".go"],
+  java: [".java"],
+  kotlin: [".kt"],
+  csharp: [".cs"],
+  cpp: [".cpp", ".cc", ".cxx", ".hpp", ".h"],
+  swift: [".swift"],
+  ruby: [".rb"],
+  php: [".php"],
+  scala: [".scala"],
+  dart: [".dart"],
 };
 
-const TEST_PATTERNS = [
+// Auto-generated — all source file extensions across all languages
+const SOURCE_EXTENSIONS = new Set(Object.values(LANGUAGE_EXTENSIONS).flat());
+
+// Code file extensions for scanning (JS + Python + Rust + Go + Java)
+const CODE_FILE_EXTENSIONS = new Set([
+  ...LANGUAGE_EXTENSIONS.javascript,
+  ...LANGUAGE_EXTENSIONS.python,
+  ...LANGUAGE_EXTENSIONS.rust,
+  ...LANGUAGE_EXTENSIONS.go,
+  ...LANGUAGE_EXTENSIONS.java,
+]);
+
+// Prompt scanning extensions (code + markdown)
+const PROMPT_FILE_EXTENSIONS = new Set([...CODE_FILE_EXTENSIONS, ".md"]);
+// Tool scanning extensions (code only, no markdown)
+const TOOL_FILE_EXTENSIONS = CODE_FILE_EXTENSIONS;
+
+// 3. PROJECT_DISCOVERY_RULES — unified discovery with categories and priority
+//    Higher priority = checked first; first match wins for manifests.
+//    Categories: manifest, metadata, agent, ci, tests
+const PROJECT_DISCOVERY_RULES = [
+  // Manifests (package manager entry points)
+  { category: "manifest", file: "package.json", language: "javascript", parser: parsePackageJson, priority: 100 },
+  { category: "manifest", file: "pyproject.toml", language: "python", parser: parsePyproject, priority: 100 },
+  { category: "manifest", file: "Cargo.toml", language: "rust", parser: parseCargoToml, priority: 100 },
+  { category: "manifest", file: "go.mod", language: "go", parser: parseGoMod, priority: 100 },
+  { category: "manifest", file: "setup.py", language: "python", parser: parseSetupPy, priority: 90 },
+  { category: "manifest", file: "setup.cfg", language: "python", parser: parseSetupCfg, priority: 85 },
+  { category: "manifest", file: "requirements.txt", language: "python", parser: parseRequirementsTxt, priority: 80 },
+  // Metadata (project-level docs)
+  { category: "metadata", file: "README.md", priority: 95 },
+  { category: "metadata", file: "README.rst", priority: 95 },
+  { category: "metadata", file: "README", priority: 95 },
+  { category: "metadata", file: "LICENSE", priority: 85 },
+  { category: "metadata", file: "CONTRIBUTING.md", priority: 75 },
+  { category: "metadata", file: "CHANGELOG.md", priority: 70 },
+  { category: "metadata", file: "SECURITY.md", priority: 70 },
+  // Agent instructions (AI coding agent configs)
+  { category: "agent", file: "AGENTS.md", priority: 95 },
+  { category: "agent", file: "CLAUDE.md", priority: 95 },
+  { category: "agent", file: join(".github", "copilot-instructions.md"), priority: 90 },
+  { category: "agent", file: ".cursorrules", priority: 85 },
+  // Test config
+  { category: "tests", file: "pytest.ini", priority: 70 },
+  { category: "tests", file: "conftest.py", priority: 65 },
+  { category: "tests", file: "jest.config.js", priority: 70 },
+  { category: "tests", file: "jest.config.ts", priority: 70 },
+  { category: "tests", file: "vitest.config.ts", priority: 70 },
+];
+
+// 4. ARCHITECTURE_SIGNAL_DIRS — directories that reveal where the architecture lives
+const ARCHITECTURE_SIGNAL_DIRS = new Set([
+  "src", "lib", "core", "engine", "runtime", "internal",
+  "planner", "runner", "executor", "agent", "agents",
+  "memory", "context", "prompt", "prompts",
+  "tool", "tools",
+  "eval", "evaluation", "benchmark", "benchmarks",
+  "tests", "examples", "docs",
+]);
+
+// 5. IMPORTANT_FILES — files to prioritize for reading (used in ranking)
+const IMPORTANT_FILES = new Set([
+  "README.md", "AGENTS.md", "CLAUDE.md",
+  join(".github", "copilot-instructions.md"), ".cursorrules",
+  "LICENSE", "CONTRIBUTING.md", "CHANGELOG.md", "SECURITY.md",
+]);
+
+// 6. ENTRY_POINT_FILES — entry point filenames by type
+const ENTRY_POINT_FILES = [
+  { names: ["cli.ts", "cli.js", "cli.mjs", "cli.py", "cli.rs", "cli.go"], type: "cli", reason: "cli entrypoint file" },
+  { names: ["server.ts", "server.js", "server.py", "server.rs", "server.go"], type: "server", reason: "server entrypoint file" },
+  { names: ["app.ts", "app.js", "app.py", "app.rs", "app.go"], type: "server", reason: "app entrypoint file" },
+  { names: ["main.ts", "main.js", "main.mjs", "main.py", "main.rs", "main.go"], type: "cli", reason: "main entrypoint file" },
+  { names: ["index.ts", "index.js", "index.mjs", "index.py"], type: "sdk", reason: "package index entrypoint" },
+  { names: ["__main__.py"], type: "cli", reason: "Python __main__ entrypoint" },
+];
+
+const ENTRYPOINT_DIR_NAMES = new Set(["bin", "scripts", "examples", "example"]);
+
+// 7. PROMPT_FILE_PATTERNS — glob patterns for prompt file discovery
+const PROMPT_FILE_PATTERNS = [
+  "**/*prompt*",
+  "**/prompts/**",
+  "**/*.prompt",
+  "**/*.jinja",
+  "**/*.mustache",
+];
+
+// 8. TEST_FILE_REGEXES — regex patterns for test file classification
+const TEST_FILE_REGEXES = [
   { regex: /^test_.*\.py$|.*_test\.py$|^test.*\.py$/, lang: "python" },
   { regex: /\.test\.(ts|tsx|js|jsx)$/, lang: "javascript" },
   { regex: /\.spec\.(ts|tsx|js|jsx)$/, lang: "javascript" },
@@ -75,6 +190,19 @@ const TEST_PATTERNS = [
   { regex: /^Test.*\.java$|.*Test\.java$/, lang: "java" },
   { regex: /_test\.rs$/, lang: "rust" },
 ];
+
+// 8b. TEST_DISCOVERY_PATTERNS — glob patterns for test directory/file discovery
+const TEST_DISCOVERY_PATTERNS = [
+  "**/*.test.*",
+  "**/*.spec.*",
+  "**/tests/**",
+  "**/test/**",
+  "**/e2e/**",
+  "**/eval/**",
+  "**/benchmark/**",
+];
+
+// 9. Content scanning patterns (regex-based, for specific analyzers)
 
 const TEST_FUNCTION_REGEX = {
   python: /^\s*(def\s+test_|class\s+Test)/gm,
@@ -103,19 +231,7 @@ const IMPORT_REGEX = {
   ],
 };
 
-// Entry-point filename / pattern heuristics
-const ENTRYPOINT_FILES = [
-  { names: ["cli.ts", "cli.js", "cli.mjs", "cli.py", "cli.rs", "cli.go"], type: "cli", reason: "cli entrypoint file" },
-  { names: ["server.ts", "server.js", "server.py", "server.rs", "server.go"], type: "server", reason: "server entrypoint file" },
-  { names: ["app.ts", "app.js", "app.py", "app.rs", "app.go"], type: "server", reason: "app entrypoint file" },
-  { names: ["main.ts", "main.js", "main.mjs", "main.py", "main.rs", "main.go"], type: "cli", reason: "main entrypoint file" },
-  { names: ["index.ts", "index.js", "index.mjs", "index.py"], type: "sdk", reason: "package index entrypoint" },
-  { names: ["__main__.py"], type: "cli", reason: "Python __main__ entrypoint" },
-];
-
-const ENTRYPOINT_DIR_NAMES = new Set(["bin", "scripts", "examples", "example"]);
-
-// Prompt markers
+// Prompt content markers (regex-based, for scanning file content)
 const PROMPT_MARKERS = [
   { type: "system", regex: /\b(SYSTEM_PROMPT|system_prompt|systemPrompt|System\.Message|system_message)\b/g },
   { type: "assistant", regex: /\b(ASSISTANT_PROMPT|assistant_prompt|Assistant\.Message)\b/g },
@@ -125,7 +241,7 @@ const PROMPT_MARKERS = [
   { type: "template-variable", regex: /\{\{\s*(tool|history|memory|input|context|user)\s*\}\}/g },
 ];
 
-// Tool registration patterns
+// Tool registration patterns (regex-based)
 const TOOL_PATTERNS = [
   { framework: "langchain", regex: /@tool\s*\n?\s*def\s+(\w+)/g },
   { framework: "langchain-py", regex: /@tool\s*\(?[^)]*\)?\s*\n\s*def\s+(\w+)/g },
@@ -140,9 +256,6 @@ const TOOL_PATTERNS = [
   { framework: "typescript-tool", regex: /(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\([^)]*\)\s*:\s*(?:Promise<)?Tool/g },
 ];
 
-const PROMPT_FILE_EXTENSIONS = new Set([".py", ".ts", ".js", ".md", ".tsx", ".jsx", ".mjs"]);
-const TOOL_FILE_EXTENSIONS = new Set([".py", ".ts", ".js", ".tsx", ".jsx", ".mjs"]);
-
 // Evaluation patterns
 const EVAL_KEYWORDS = [
   "eval", "evaluation", "benchmark", "golden", "judge", "rubric",
@@ -150,7 +263,7 @@ const EVAL_KEYWORDS = [
 ];
 const EVAL_DIR_NAMES = new Set(["eval", "evals", "benchmark", "benchmarks", "evaluation", "evaluations", "tests-eval"]);
 
-// CI file locations
+// CI file locations (detailed, for CI analyzer — includes provider info)
 const CI_FILES = [
   { path: join(".github", "workflows"), provider: "github-actions", type: "dir" },
   { path: ".gitlab-ci.yml", provider: "gitlab-ci", type: "file" },
@@ -438,7 +551,7 @@ async function extractPromptsAST(filePath, repoPath) {
       else if (upper.includes("ASSISTANT")) type = "assistant";
       else if (lower.includes("prompt")) type = "prompt";
       else if (lower.includes("template")) type = "template";
-      else if (upper === name && name.length > 4) type = "constant";
+      else if (upper.includes("FEW_SHOT") || upper.includes("FEWSHOT") || upper.includes("INSTRUCTION")) type = "few-shot";
 
       if (type) {
         prompts.push({
@@ -913,6 +1026,45 @@ function parseSetupPy(content) {
   };
 }
 
+/** Parse setup.cfg minimally. */
+function parseSetupCfg(content) {
+  const nameMatch = content.match(/^name\s*=\s*(.+)/m);
+  const versionMatch = content.match(/^version\s*=\s*(.+)/m);
+  const dependencies = [];
+  const depMatch = content.match(/\[options\][\s\S]*?install_requires\s*=\s*\n([\s\S]*?)(\n\[|\n$|$)/);
+  if (depMatch) {
+    for (const line of depMatch[1].split(/\r?\n/)) {
+      const m = line.match(/^\s*([A-Za-z_][\w.-]+)/);
+      if (m) dependencies.push(m[1]);
+    }
+  }
+  return {
+    name: nameMatch ? nameMatch[1].trim() : "unknown",
+    version: versionMatch ? versionMatch[1].trim() : "unknown",
+    entry: "setup.cfg",
+    scripts: [],
+    dependencies,
+  };
+}
+
+/** Parse requirements.txt minimally. */
+function parseRequirementsTxt(content) {
+  const dependencies = [];
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("-")) continue;
+    const pkgName = trimmed.split(/[><=~!@;\s]/)[0];
+    if (pkgName) dependencies.push(pkgName);
+  }
+  return {
+    name: "unknown",
+    version: "unknown",
+    entry: "requirements.txt",
+    scripts: [],
+    dependencies,
+  };
+}
+
 /** Parse Cargo.toml minimally. */
 function parseCargoToml(content) {
   const nameMatch = content.match(/^name\s*=\s*"([^"]+)"/m);
@@ -958,7 +1110,7 @@ function parseGoMod(content) {
 
 /** Return true if filename matches a known test pattern. */
 function isTestFile(fileName) {
-  return TEST_PATTERNS.some((p) => p.regex.test(fileName));
+  return TEST_FILE_REGEXES.some((p) => p.regex.test(fileName));
 }
 
 /** Find test files among walked entries. */
@@ -1209,9 +1361,13 @@ function topN(obj, n = 10) {
  * @returns {object}
  */
 function analyzeDiscovery(repoPath) {
-  // Detect manifest
+  // Detect manifest — sort manifest rules by priority, first match wins
+  const manifestRules = PROJECT_DISCOVERY_RULES
+    .filter((r) => r.category === "manifest")
+    .sort((a, b) => b.priority - a.priority);
+
   let manifest = null;
-  for (const m of MANIFEST_FILES) {
+  for (const m of manifestRules) {
     const fullPath = join(repoPath, m.file);
     if (existsSync(fullPath)) {
       try {
@@ -1221,6 +1377,17 @@ function analyzeDiscovery(repoPath) {
         manifest = { language: m.language, entry: m.file, name: "unknown", version: "unknown" };
       }
       break;
+    }
+  }
+
+  // Scan for metadata and agent files via PROJECT_DISCOVERY_RULES
+  const metadataFiles = [];
+  const agentFiles = [];
+  for (const r of PROJECT_DISCOVERY_RULES) {
+    if (r.category !== "metadata" && r.category !== "agent") continue;
+    if (existsSync(join(repoPath, r.file))) {
+      if (r.category === "metadata") metadataFiles.push(r.file);
+      else agentFiles.push(r.file);
     }
   }
 
@@ -1244,16 +1411,15 @@ function analyzeDiscovery(repoPath) {
     })
     .slice(0, 20);
 
+  // Architecture signal directories — where the architecture lives
+  const architectureSignalDirs = dirs
+    .filter((d) => d.split(sep).some((p) => ARCHITECTURE_SIGNAL_DIRS.has(p.toLowerCase())))
+    .slice(0, 20);
+
   const fileCount = countByExtension(files);
   const testFiles = findTestFiles(files);
-  const hasReadme = existsSync(join(repoPath, "README.md"))
-    || existsSync(join(repoPath, "README.rst"))
-    || existsSync(join(repoPath, "README"));
-  const hasCI = existsSync(join(repoPath, ".github", "workflows"))
-    || existsSync(join(repoPath, ".gitlab-ci.yml"))
-    || existsSync(join(repoPath, "Jenkinsfile"))
-    || existsSync(join(repoPath, ".circleci"))
-    || existsSync(join(repoPath, "azure-pipelines.yml"));
+  const hasReadme = metadataFiles.some((f) => f.toLowerCase().startsWith("readme"));
+  const hasCI = CI_FILES.some((ci) => existsSync(join(repoPath, ci.path)));
 
   return {
     repoName: manifest ? manifest.name : basename(repoPath),
@@ -1264,6 +1430,9 @@ function analyzeDiscovery(repoPath) {
     hasCI,
     topLevelDirs,
     importantDirs,
+    architectureSignalDirs,
+    metadataFiles,
+    agentFiles,
     fileCount,
     testFileCount: testFiles.length,
     totalSourceFiles: files.filter((f) => SOURCE_EXTENSIONS.has(f.ext)).length,
@@ -1374,7 +1543,7 @@ async function analyzeEntrypoints(repoPath) {
     if (e.type !== "file") continue;
     const name = e.name;
     const relPath = relative(repoPath, e.path);
-    for (const ep of ENTRYPOINT_FILES) {
+    for (const ep of ENTRY_POINT_FILES) {
       if (ep.names.includes(name)) {
         addEntrypoint(relPath, ep.type, ep.reason);
         break;
@@ -1392,6 +1561,8 @@ async function analyzeEntrypoints(repoPath) {
       addEntrypoint(relative(repoPath, e.path), "cli", "file under bin/");
     } else if (topDir === "examples" || topDir === "example") {
       addEntrypoint(relative(repoPath, e.path), "example", "file under examples/");
+    } else if (topDir === "scripts" && ENTRYPOINT_DIR_NAMES.has("scripts")) {
+      addEntrypoint(relative(repoPath, e.path), "cli", "file under scripts/");
     }
   }
 
@@ -1436,8 +1607,24 @@ async function analyzeEntrypoints(repoPath) {
   );
   for (const { relPath, signals } of astResults) {
     if (seen.has(relPath)) continue;
+    // Filter out deep paths (tool scripts, bundled skills, etc.)
+    // depth > 3 catches skills/X/scripts/Y.py (depth 4) but not custodian/cli/main.py (depth 3)
+    const depth = relPath.split(sep).length;
+    const isDeep = depth > 3;
+    const isBundled = /bundled_skills|vendor|node_modules|site-packages/.test(relPath);
+    // Library/test/utility directories are not CLI entrypoints even with main() or __main__
+    const isLibOrTest = /(?:^|[\\/])(?:lib|libs|utils|helpers|internal|common|tests?|__tests__|spec)[\\/]/.test(relPath)
+      || /^tests?[\\/]/.test(relPath);
     for (const sig of signals) {
-      addEntrypoint(sig.path, sig.type, sig.reason);
+      if (isDeep || isBundled) {
+        // Categorize as "tool" instead of "cli" for deep/bundled scripts
+        addEntrypoint(sig.path, "tool", sig.reason + " (deep/bundled)");
+      } else if (isLibOrTest && sig.type === "cli") {
+        // main() or __main__ in lib/tests/ is likely a demo/test helper, not a CLI entrypoint
+        addEntrypoint(sig.path, "tool", sig.reason + " (library/test dir)");
+      } else {
+        addEntrypoint(sig.path, sig.type, sig.reason);
+      }
     }
   }
 
@@ -1457,10 +1644,27 @@ async function analyzeEntrypoints(repoPath) {
   const pyprojectPath = join(repoPath, "pyproject.toml");
   if (existsSync(pyprojectPath)) {
     const content = readFileSync(pyprojectPath, "utf-8");
-    const scriptRe = /^([A-Za-z_][\w-]*)\s*=\s*"([^:]+):[^"]*"/gm;
-    let m;
-    while ((m = scriptRe.exec(content)) !== null) {
-      addEntrypoint(m[2], "cli", `pyproject.toml script: ${m[1]}`);
+    // Only parse [project.scripts] and [tool.poetry.scripts] sections
+    let inScripts = false;
+    for (const line of content.split(/\r?\n/)) {
+      if (/^\s*\[(project\.scripts|tool\.poetry\.scripts|project\.entry-points\.[\w.-]+)\]/.test(line)) {
+        inScripts = true;
+        continue;
+      }
+      if (/^\s*\[/.test(line)) {
+        inScripts = false;
+        continue;
+      }
+      if (inScripts) {
+        // Match: key = "module.path:function" or key = "module.path"
+        const m = line.match(/^([A-Za-z_][\w-]*)\s*=\s*"([^"]+)"/);
+        if (m) {
+          const modulePath = m[2].includes(":") ? m[2].split(":")[0] : m[2];
+          // Convert Python module path to file path (custodian.cli.main → custodian/cli/main.py)
+          const scriptPath = modulePath.replace(/\./g, "/") + ".py";
+          addEntrypoint(scriptPath, "cli", `pyproject.toml script: ${m[1]}`);
+        }
+      }
     }
   }
 
@@ -1719,19 +1923,26 @@ function analyzeEvaluations(repoPath) {
   for (const e of entries) {
     if (e.type !== "file") continue;
     const name = basename(e.path).toLowerCase();
+    const relPath = relative(repoPath, e.path);
     const isEvalByName = EVAL_KEYWORDS.some((kw) => name.includes(kw));
+    // Check if file is inside an eval directory
+    const isInEvalDir = [...evalDirs].some((d) => relPath.startsWith(d + sep) || relPath.startsWith(d + "/"));
     let isEvalByContent = false;
-    let contentMetrics = [];
-    if (isEvalByName || SOURCE_EXTENSIONS.has(e.ext) || e.ext === ".md" || e.ext === ".json" || e.ext === ".yaml" || e.ext === ".yml") {
+    // Only scan content for source files; docs/configs use filename-only detection
+    // to avoid false positives (README mentioning "benchmark" is not an eval file)
+    if (SOURCE_EXTENSIONS.has(e.ext)) {
       const content = readFileSafe(e.path);
       if (content) {
+        let matchCount = 0;
         for (const kw of EVAL_KEYWORDS) {
           const re = new RegExp(`\\b${kw.replace(/_/g, "[_]")}\\b`, "i");
           if (re.test(content)) {
-            isEvalByContent = true;
+            matchCount++;
             patterns.add(kw);
           }
         }
+        // Require at least 2 keyword matches to reduce false positives
+        isEvalByContent = matchCount >= 2;
         // Detect metric names
         const metricRegexes = [
           /\b(accuracy|pass_rate|pass@k|f1|precision|recall|bleu|rouge|exact_match|exact-match)\b/gi,
@@ -1745,8 +1956,8 @@ function analyzeEvaluations(repoPath) {
         }
       }
     }
-    if (isEvalByName || isEvalByContent) {
-      evalFiles.push(relative(repoPath, e.path));
+    if (isEvalByName || isEvalByContent || isInEvalDir) {
+      evalFiles.push(relPath);
     }
   }
 
@@ -2065,6 +2276,11 @@ async function analyzeRanking(repoPath) {
     if (name === "readme.md" || name === "readme.rst" || name === "readme") {
       score += 50;
       reasons.push("README (+50)");
+    }
+    // Boost important files (AGENTS.md, CLAUDE.md, LICENSE, etc.)
+    if (IMPORTANT_FILES.has(relPath) || IMPORTANT_FILES.has(name)) {
+      score += 40;
+      reasons.push("important file (+40)");
     }
     if (relPath.split(sep).some((p) => p.toLowerCase() === "examples" || p.toLowerCase() === "example")) {
       score += 30;
