@@ -267,7 +267,16 @@ node research-repo.mjs all <repoPath> > evidence-store/full.json
 # Generate the Evidence Brief (Markdown) for LLM report generation
 # This condenses all analyzer outputs into a structured brief with derived insights
 # and an LLM analysis prompt. Pipe to a file for the LLM to read.
+# Use --lang=zh for Chinese evidence brief + Chinese LLM analysis prompt.
 node research-repo.mjs report <repoPath> > evidence-brief.md
+node research-repo.mjs report --lang=zh <repoPath> > evidence-brief.md
+
+# Incremental update: when the repo gets new code (git pull), update evidence
+# without re-running everything from scratch. Uses git diff to detect changed
+# files, re-analyzes only those, merges with previous results, and rebuilds
+# architecture graph + ranking + plan + questions + report.
+# Requires evidence-store/full.json from a previous 'all' run.
+node research-repo.mjs update <repoPath> > evidence-store/full.json
 ```
 
 ### Report Generation Workflow
@@ -292,6 +301,46 @@ flowchart LR
   LLM -->|writes| Final["report.md<br/>architecture analysis + tradeoffs + insights"]
 ```
 
+### Incremental Analysis (`update` command)
+
+When the repository gets new code (e.g., `git pull`), re-running `all` from scratch is wasteful. The `update` command performs **incremental analysis**:
+
+1. **Load** previous `evidence-store/full.json` (must contain `_meta.lastCommit`)
+2. **Detect changes** via `git diff --name-only <lastCommit>..HEAD`
+3. **Re-analyze only changed files** — analyzers process only the changed file set
+4. **Merge results** — for each analyzer, filter out old entries for changed files, add new entries
+5. **Rebuild aggregates** — architecture graph, centrality, ranking are rebuilt from merged symbols
+6. **Regenerate** plan, questions, and evidence brief from merged data
+7. **Save** with updated `_meta` (new `lastCommit`, `incremental: true`, `changedFilesCount`)
+
+```mermaid
+flowchart TD
+  Prev["Previous full.json<br/>_meta.lastCommit = abc123"] --> Diff["git diff abc123..HEAD"]
+  Diff --> Changed["Changed files set"]
+  Changed -->|filter| CTX["RepositoryContext<br/>changedFiles = Set"]
+  CTX --> Analyzers["Run analyzers<br/>(only changed files)"]
+  Analyzers --> Merge["Merge: prev.filter(not changed)<br/>+ new results"]
+  Merge --> Rebuild["Rebuild architecture graph<br/>+ ranking + plan + questions + report"]
+  Rebuild --> Save["Save full.json<br/>_meta.lastCommit = HEAD"]
+```
+
+**What gets merged incrementally** (file-level analyzers):
+- `symbols` — functions, classes, imports, calls, strings (filtered by `file` field)
+- `entrypoints` — entry points (filtered by `path` field)
+- `prompts` — prompt definitions (filtered by `file` field)
+- `tools` — tool registrations (filtered by `file` field)
+- `tests` — test files (filtered by `file` field, aggregates recomputed)
+- `evaluations` — eval files (filtered by path, set-deduplicated)
+
+**What always re-runs** (cheap or needs full scan):
+- `discovery` — full file tree scan
+- `git` — git history
+- `ci` — CI workflow scan
+- `architecture` — rebuilt from merged symbols
+- `ranking` — rebuilt from merged architecture + entrypoints
+
+**Language support**: Use `--lang=zh` with `all` or `report` commands to generate Chinese evidence briefs and Chinese LLM analysis prompts.
+
 ### Analyzer Catalog
 
 | Command | Output JSON | Analyzer | AST-powered | Scriptable |
@@ -308,6 +357,7 @@ flowchart LR
 | `symbols` | `symbols.json` | **Semantic Index** (see below) | **Tree-sitter** | 95% |
 | `ranking` | `interesting_files.json` | File scoring → top 20 reading priority | No | 100% |
 | `report` | `evidence-brief.md` | **Evidence Brief** — condensed data + derived insights + LLM prompt | No | 100% |
+| `update` | `full.json` | **Incremental analysis** — git diff → re-analyze changed files → merge | **Tree-sitter** | 90% |
 
 ### Semantic Index (`symbols` command)
 

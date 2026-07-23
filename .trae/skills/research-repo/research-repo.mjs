@@ -384,10 +384,13 @@ class RepositoryContext {
     this.repoPath = repoPath;
     this.options = { maxDepth: 8, ...options };
     this.nodeModulesDir = findNodeModules();
+    this.changedFiles = options.changedFiles ?? null;
+    this.lang = options.lang || null;
 
     // Lazy caches
     this._entries = null;
     this._files = null;
+    this._filteredFiles = null;
     this._dirs = null;
     this._contentCache = new Map();
     this._astCache = new Map();
@@ -408,12 +411,25 @@ class RepositoryContext {
     return this._entries;
   }
 
-  /** File entries only. */
-  get files() {
+  /** All file entries (not affected by changedFiles filter). */
+  get allFiles() {
     if (this._files === null) {
       this._files = this.entries.filter((e) => e.type === "file");
     }
     return this._files;
+  }
+
+  /** File entries only. If changedFiles is set, only files in changedFiles are returned. */
+  get files() {
+    if (this.changedFiles && this.changedFiles.size > 0) {
+      if (this._filteredFiles === null) {
+        this._filteredFiles = this.allFiles.filter((f) =>
+          this.changedFiles.has(this.rel(f.path))
+        );
+      }
+      return this._filteredFiles;
+    }
+    return this.allFiles;
   }
 
   /** Directory entries only. */
@@ -422,6 +438,11 @@ class RepositoryContext {
       this._dirs = this.entries.filter((e) => e.type === "dir");
     }
     return this._dirs;
+  }
+
+  /** All source code files (not affected by changedFiles filter). */
+  get allSourceFiles() {
+    return this.allFiles.filter((f) => SOURCE_EXTENSIONS.has(f.ext));
   }
 
   /** Source code files only (extensions in SOURCE_EXTENSIONS). */
@@ -2164,7 +2185,7 @@ class DiscoveryAnalyzer extends BaseAnalyzer {
     }
 
     const dirs = ctx.dirs.map((d) => ctx.rel(d.path));
-    const files = ctx.files;
+    const files = ctx.allFiles;
 
     const topLevelDirs = dirs
       .filter((d) => !d.includes(sep) && d.length > 0)
@@ -2817,7 +2838,7 @@ class EvaluationsAnalyzer extends BaseAnalyzer {
     }
 
     // 2. File-based detection (by name and content)
-    for (const f of ctx.files) {
+    for (const f of ctx.allFiles) {
       const name = f.name.toLowerCase();
       const relPath = ctx.rel(f.path);
       const isEvalByName = EVAL_KEYWORDS.some((kw) => name.includes(kw));
@@ -3946,9 +3967,10 @@ class QuestionGenerator {
  * The LLM produces interpretation, tradeoff analysis, and narrative.
  */
 class ReportGenerator {
-  constructor(evidenceStore) {
+  constructor(evidenceStore, options = {}) {
     this.store = evidenceStore;
     this.s = evidenceStore._store;
+    this.lang = options.lang === "zh" ? "zh" : "en";
   }
 
   generate() {
@@ -3992,6 +4014,15 @@ class ReportGenerator {
     const disc = this._get("discovery");
     const repoName = disc.repoName || "unknown";
     const date = new Date().toISOString().split("T")[0];
+    if (this.lang === "zh") {
+      return [
+        `# 证据简报：${repoName}`,
+        "",
+        `> 生成时间：${date}，由 research-repo skill（确定性分析）生成。`,
+        `> 本简报是 LLM 报告生成的**输入**，并非最终报告。`,
+        `> LLM 应阅读本简报，然后按照最后一节的提示撰写 \`report.md\`。`,
+      ].join("\n");
+    }
     return [
       `# Evidence Brief: ${repoName}`,
       "",
@@ -4396,6 +4427,55 @@ class ReportGenerator {
   _llmPrompt() {
     const disc = this._get("discovery");
     const repoName = disc.repoName || "this repository";
+    if (this.lang === "zh") {
+      return [
+        "---",
+        "",
+        "## LLM 分析指令",
+        "",
+        `你是一位经验丰富的软件架构师。基于上述证据，为 **${repoName}** 撰写一份全面的`,
+        `工程研究报告。请将报告保存为工作目录下的 \`report.md\`。`,
+        "",
+        "### 报告结构",
+        "",
+        "1. **执行摘要** — 这是什么项目？为什么存在？最有趣的架构决策是什么？谁应该研究它？",
+        "",
+        "2. **架构概览** — 描述模块结构、依赖方向、分层和执行流程。为核心架构使用 Mermaid 图。",
+        "   解释为什么这样设计架构，而不仅是架构是什么。",
+        "",
+        "3. **AI/Agent 设计**（如适用）— 分析 prompt 系统、工具框架、agent 生命周期、上下文工程",
+        "   和安全防护。编排模式是什么？",
+        "",
+        "4. **工程权衡** — 对每个主要设计决策：选择了什么，替代方案是什么，为什么这样选择？",
+        "   重点关注非显而易见的权衡。",
+        "",
+        "5. **可复用模式** — 值得借鉴的模式、应避免的模式、有趣的抽象和巧妙技巧。具体说明每个",
+        "   模式出现在哪里（file:line）。",
+        "",
+        "6. **测试与评估** — 项目如何验证正确性？测试策略是什么？是否有评估基础设施？存在",
+        "   哪些缺口？",
+        "",
+        "7. **学习清单** — 最值得学习的 10 个概念、最值得阅读的 10 个文件、最值得研究的测试。",
+        "   按洞察密度排序。",
+        "",
+        "### 规则",
+        "",
+        "- 每个论断必须引用本简报中的证据（章节号、指标或文件路径）。",
+        "- 对主要结论使用高/中/低置信度标签。",
+        "- 没有证据时不要推测 — 证据不足时说\"未知\"。",
+        "- 不要只复述数字 — 解释它们对工程决策意味着什么。",
+        "- 在你有相关知识时与类似项目进行比较。",
+        "- 关注为什么（WHY），而不是什么（WHAT）。证据简报已经说明了 WHAT。",
+        "",
+        "### 用于深入调查的证据文件",
+        "",
+        "以下 JSON 文件包含完整证据（如需更多细节请阅读）：",
+        "- `evidence-store/full.json` — 完整分析输出",
+        "- `evidence-store/symbols.json` — 函数/类/导入/调用索引",
+        "- `evidence-store/architecture.json` — 依赖图 + 中心性",
+        "- `evidence-store/interesting_files.json` — 排序后的文件阅读优先级",
+      ].join("\n");
+    }
     return [
       "---",
       "",
@@ -4497,10 +4577,144 @@ class AnalyzerPipeline {
     store.plan = planner.plan();
     const questionGenerator = new QuestionGenerator(evidenceStore);
     store.questions = questionGenerator.generate();
-    const reportGenerator = new ReportGenerator(evidenceStore);
+    const reportGenerator = new ReportGenerator(evidenceStore, { lang: ctx.lang || "en" });
     store.report = reportGenerator.generate();
+    store._meta = {
+      lastCommit: ctx.isGitRepo ? ctx.git("rev-parse", "HEAD").trim() : null,
+      analyzedAt: new Date().toISOString(),
+      repoPath: ctx.repoPath,
+      incremental: false,
+    };
     return evidenceStore;
   }
+}
+
+// ---------------------------------------------------------------------------
+// Incremental analysis merge utilities
+//
+// Used by the `update` command to merge previously-saved analysis results with
+// freshly-analyzed changed files. Per-file evidence (symbols, entrypoints,
+// prompts, tools, tests) is merged by file path; full-scan evidence
+// (discovery, git, ci) is replaced by the new run.
+// ---------------------------------------------------------------------------
+
+function mergeAnalysisResults(prevStore, newStore, changedFiles) {
+  const merged = {};
+
+  // discovery, git, ci: 直接用新的（全量扫描）
+  merged.discovery = newStore.discovery || prevStore.discovery;
+  merged.git = newStore.git || prevStore.git;
+  merged.ci = newStore.ci || prevStore.ci;
+
+  // symbols: 按文件过滤合并
+  if (prevStore.symbols && newStore.symbols) {
+    merged.symbols = mergeByKey(
+      prevStore.symbols,
+      newStore.symbols,
+      changedFiles,
+      ["functions", "classes", "imports", "calls", "strings"],
+      "file"
+    );
+  } else {
+    merged.symbols = newStore.symbols || prevStore.symbols;
+  }
+
+  // entrypoints: 按 path 过滤合并
+  if (prevStore.entrypoints && newStore.entrypoints) {
+    merged.entrypoints = mergeByKey(
+      prevStore.entrypoints,
+      newStore.entrypoints,
+      changedFiles,
+      ["entrypoints"],
+      "path"
+    );
+  } else {
+    merged.entrypoints = newStore.entrypoints || prevStore.entrypoints;
+  }
+
+  // prompts: 按 file 过滤合并
+  if (prevStore.prompts && newStore.prompts) {
+    merged.prompts = mergeByKey(
+      prevStore.prompts,
+      newStore.prompts,
+      changedFiles,
+      ["prompts"],
+      "file"
+    );
+  } else {
+    merged.prompts = newStore.prompts || prevStore.prompts;
+  }
+
+  // tools: 按 file 过滤合并
+  if (prevStore.tools && newStore.tools) {
+    merged.tools = mergeByKey(
+      prevStore.tools,
+      newStore.tools,
+      changedFiles,
+      ["tools"],
+      "file"
+    );
+  } else {
+    merged.tools = newStore.tools || prevStore.tools;
+  }
+
+  // tests: 按 file 过滤合并（testFiles 数组中每项有 file 属性）
+  if (prevStore.tests && newStore.tests) {
+    merged.tests = mergeByKey(
+      prevStore.tests,
+      newStore.tests,
+      changedFiles,
+      ["testFiles"],
+      "file"
+    );
+    // 重新计算聚合计数
+    if (merged.tests.testFiles) {
+      merged.tests.totalTestFiles = merged.tests.testFiles.length;
+      merged.tests.totalTestFunctions = merged.tests.testFiles.reduce(
+        (sum, f) => sum + (f.testCount || 0),
+        0
+      );
+    }
+  } else {
+    merged.tests = newStore.tests || prevStore.tests;
+  }
+
+  // evaluations: evalFiles 是字符串数组
+  if (prevStore.evaluations && newStore.evaluations) {
+    const prevEvalFiles = (prevStore.evaluations.evalFiles || []).filter(
+      (f) => !changedFiles.has(f)
+    );
+    const newEvalFiles = newStore.evaluations.evalFiles || [];
+    merged.evaluations = {
+      ...newStore.evaluations,
+      evalFiles: [...new Set([...prevEvalFiles, ...newEvalFiles])],
+    };
+    merged.evaluations.hasEvaluation =
+      merged.evaluations.evalFiles.length > 0 ||
+      (merged.evaluations.evalDirs || []).length > 0;
+  } else {
+    merged.evaluations = newStore.evaluations || prevStore.evaluations;
+  }
+
+  return merged;
+}
+
+function mergeByKey(prev, next, changedFiles, arrayKeys, fileField) {
+  const result = { ...next };
+  for (const key of arrayKeys) {
+    const prevArr = prev[key] || [];
+    const newArr = next[key] || [];
+    // 保留未变更文件的旧数据
+    const kept = prevArr.filter((item) => !changedFiles.has(item[fileField]));
+    // 合并新数据
+    result[key] = [...kept, ...newArr];
+    // 更新 total 计数
+    const totalKey = `total${key.charAt(0).toUpperCase()}${key.slice(1)}`;
+    if (prev[totalKey] !== undefined || next[totalKey] !== undefined) {
+      result[totalKey] = result[key].length;
+    }
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------
@@ -4508,9 +4722,13 @@ class AnalyzerPipeline {
 // ---------------------------------------------------------------------------
 
 async function main() {
-  const command = process.argv[2];
-  const repoPath = process.argv[3];
-  const syntheticCommands = new Set(["plan", "questions", "report"]);
+  // Filter out --lang= flag before parsing positional args
+  const langFlag = process.argv.find((a) => a.startsWith("--lang="));
+  const lang = langFlag ? langFlag.split("=")[1] : "en";
+  const positional = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+  const command = positional[0];
+  const repoPath = positional[1];
+  const syntheticCommands = new Set(["plan", "questions", "report", "update"]);
   const validCommands = new Set([...ANALYZERS.map((a) => a.id), "all", ...syntheticCommands]);
 
   if (!command || !repoPath) {
@@ -4540,15 +4758,97 @@ async function main() {
   await initTreeSitter();
 
   try {
+    if (command === "update") {
+      // 1. 读取前一次分析的 full.json
+      const fullJsonPath = join(process.cwd(), "evidence-store", "full.json");
+      if (!existsSync(fullJsonPath)) {
+        console.error("Error: evidence-store/full.json not found. Run 'all' first.");
+        process.exit(1);
+      }
+      const previousData = JSON.parse(readFileSync(fullJsonPath, "utf-8"));
+      const lastCommit = previousData._meta?.lastCommit;
+      if (!lastCommit) {
+        console.error("Error: No lastCommit in previous data. Run 'all' first.");
+        process.exit(1);
+      }
+
+      // 2. 获取变更文件
+      const ctx = new RepositoryContext(absPath);
+      if (!ctx.isGitRepo) {
+        console.error("Error: update requires a git repository.");
+        process.exit(1);
+      }
+      const diffOutput = ctx.git("diff", "--name-only", `${lastCommit}..HEAD`);
+      const changedFiles = new Set(diffOutput.split("\n").filter(Boolean));
+
+      if (changedFiles.size === 0) {
+        console.error(`No changes since ${lastCommit.substring(0, 8)}.`);
+        process.exit(0);
+      }
+
+      console.error(
+        `[update] ${changedFiles.size} files changed since ${lastCommit.substring(0, 8)}`
+      );
+
+      // 3. 用 changedFiles 创建新 context
+      const updateCtx = new RepositoryContext(absPath, { changedFiles });
+
+      // 4. 运行分析器（仅处理变更文件）
+      const pipeline = new AnalyzerPipeline();
+      const newStore = {};
+      for (const analyzer of pipeline.analyzers) {
+        if (!analyzer.supports(updateCtx)) continue;
+        await analyzer.analyze(updateCtx, newStore, { command: analyzer.id });
+      }
+
+      // 5. 合并结果
+      const mergedStore = mergeAnalysisResults(previousData, newStore, changedFiles);
+
+      // 6. 重建架构图和排名（需要全量数据）
+      // ArchitectureAnalyzer 和 RankingAnalyzer 需要从合并后的 symbols 重建
+      // 创建一个不受 changedFiles 限制的 context 用于重建
+      const rebuildCtx = new RepositoryContext(absPath);
+      // 先把合并后的 symbols 放入 store
+      const rebuildStore = { ...mergedStore };
+      // 重新运行 architecture analyzer（它会从 store.symbols 读取）
+      const archAnalyzer = pipeline.getAnalyzer("architecture");
+      if (archAnalyzer && archAnalyzer.supports(rebuildCtx)) {
+        await archAnalyzer.analyze(rebuildCtx, rebuildStore, { command: "architecture" });
+      }
+      // 重新运行 ranking analyzer
+      const rankAnalyzer = pipeline.getAnalyzer("ranking");
+      if (rankAnalyzer && rankAnalyzer.supports(rebuildCtx)) {
+        await rankAnalyzer.analyze(rebuildCtx, rebuildStore, { command: "ranking" });
+      }
+
+      // 7. 重新生成 plan, questions, report
+      const evidenceStore = new EvidenceStore(rebuildStore);
+      rebuildStore.plan = new ResearchPlanner(DEFAULT_RESEARCH_GOAL, evidenceStore).plan();
+      rebuildStore.questions = new QuestionGenerator(evidenceStore).generate();
+      rebuildStore.report = new ReportGenerator(evidenceStore, { lang: "en" }).generate();
+      rebuildStore._meta = {
+        lastCommit: rebuildCtx.git("rev-parse", "HEAD").trim(),
+        analyzedAt: new Date().toISOString(),
+        repoPath: absPath,
+        incremental: true,
+        changedFilesCount: changedFiles.size,
+        baseCommit: lastCommit,
+      };
+
+      process.stdout.write(JSON.stringify(evidenceStore, null, 2) + "\n");
+      return;
+    }
+
     const ctx = new RepositoryContext(absPath);
     const pipeline = new AnalyzerPipeline();
     let result;
     if (command === "all") {
+      ctx.lang = lang;
       result = await pipeline.runAll(ctx);
     } else if (command === "report") {
       const evidenceStore = await pipeline.runAll(ctx);
-      // Report is Markdown, not JSON — print directly.
-      process.stdout.write(evidenceStore.get("report") + "\n");
+      const reportGenerator = new ReportGenerator(evidenceStore, { lang });
+      process.stdout.write(reportGenerator.generate() + "\n");
       return;
     } else if (syntheticCommands.has(command)) {
       const evidenceStore = await pipeline.runAll(ctx);
