@@ -89,6 +89,7 @@ research-{repo-name}-{YYYYMMDD}/
 │   ├── ci.json                 # CI/CD pipeline discovery
 │   ├── symbols.json            # Semantic Index: functions, classes, calls, strings
 │   └── interesting_files.json  # Ranked file list for LLM reading priority
+├── evidence-brief.md           # Condensed evidence + derived insights + LLM prompt (from `report` command)
 ├── 01-hypotheses.md            # LLM-generated hypotheses (from Evidence Store)
 ├── 02-evidence/                # LLM subagent evidence collection
 │   ├── architecture.md         # Subagent: core architecture
@@ -99,7 +100,7 @@ research-{repo-name}-{YYYYMMDD}/
 ├── 03-cross-validation.md      # Cross validation results
 ├── 04-comparative.md           # Comparative analysis
 ├── research-repo.mjs           # Copied from skill directory
-└── report.md                   # Final report (the deliverable)
+└── report.md                   # Final report (LLM-generated from evidence brief)
 ```
 
 ### Evidence Store Benefits
@@ -260,8 +261,35 @@ node research-repo.mjs ci           <repoPath>  > evidence-store/ci.json
 node research-repo.mjs symbols      <repoPath>  > evidence-store/symbols.json
 node research-repo.mjs ranking      <repoPath>  > evidence-store/interesting_files.json
 
-# Or run all at once (produces combined JSON with all 11 keys)
+# Or run all at once (produces combined JSON with all keys including 'report')
 node research-repo.mjs all <repoPath> > evidence-store/full.json
+
+# Generate the Evidence Brief (Markdown) for LLM report generation
+# This condenses all analyzer outputs into a structured brief with derived insights
+# and an LLM analysis prompt. Pipe to a file for the LLM to read.
+node research-repo.mjs report <repoPath> > evidence-brief.md
+```
+
+### Report Generation Workflow
+
+The `report` command produces an **Evidence Brief** — a structured Markdown file that:
+
+1. **Condenses** all 11 analyzer outputs into a human-readable summary
+2. **Derives insights** computable from the data (coupling assessment, design archetype, project stage, test coverage analysis)
+3. **Highlights anomalies** (import cycles, low test coverage, missing CI)
+4. **Provides reading priority** (top 20 files ranked by structural importance)
+5. **Ends with an LLM analysis prompt** instructing the agent to write `report.md`
+
+The LLM agent reads the Evidence Brief, optionally dives deeper into specific JSON evidence files, then writes the final `report.md` with architectural interpretation, tradeoff analysis, and engineering insights.
+
+```mermaid
+flowchart LR
+  All["node research-repo.mjs all"] -->|JSON| ES[Evidence Store]
+  ES --> Report["node research-repo.mjs report"]
+  Report -->|Markdown| Brief["evidence-brief.md<br/>condensed data + derived insights + LLM prompt"]
+  Brief --> LLM["LLM reads brief<br/>+ optional JSON drill-down"]
+  ES -->|JSON drill-down| LLM
+  LLM -->|writes| Final["report.md<br/>architecture analysis + tradeoffs + insights"]
 ```
 
 ### Analyzer Catalog
@@ -279,6 +307,7 @@ node research-repo.mjs all <repoPath> > evidence-store/full.json
 | `ci` | `ci.json` | CI provider, workflows, triggers | No | 100% |
 | `symbols` | `symbols.json` | **Semantic Index** (see below) | **Tree-sitter** | 95% |
 | `ranking` | `interesting_files.json` | File scoring → top 20 reading priority | No | 100% |
+| `report` | `evidence-brief.md` | **Evidence Brief** — condensed data + derived insights + LLM prompt | No | 100% |
 
 ### Semantic Index (`symbols` command)
 
@@ -318,15 +347,16 @@ The Semantic Index is a **symbol-level index** of the entire repository, built b
 
 After the Evidence Store is populated, the LLM:
 
-1. **Reads** `interesting_files.json` → knows what to read first
-2. **Queries** `symbols.json` → finds function/class definitions without scanning
-3. **Generates hypotheses** from `architecture.json` centrality + cycles
-4. **Dispatches subagents** to read specific files (identified by Semantic Index)
-5. **Cross-validates** findings against multiple evidence sources
-6. **Compares** with similar projects
-7. **Writes** `report.md`
+1. **Reads** the Evidence Brief (`report` command output) → gets condensed data + derived insights + analysis prompt
+2. **Reads** `interesting_files.json` → knows what to read first
+3. **Queries** `symbols.json` → finds function/class definitions without scanning
+4. **Generates hypotheses** from `architecture.json` centrality + cycles
+5. **Dispatches subagents** to read specific files (identified by Semantic Index)
+6. **Cross-validates** findings against multiple evidence sources
+7. **Compares** with similar projects
+8. **Writes** `report.md` — the final engineering analysis report
 
-**Key principle**: Scripts produce **facts** (AST structures, symbol indices, centrality scores). LLM produces **interpretation** (what the architecture means, why decisions were made). The LLM never does work that a script can do.
+**Key principle**: Scripts produce **facts** (AST structures, symbol indices, centrality scores) and **computable insights** (coupling assessment, design archetype, test coverage analysis). LLM produces **interpretation** (what the architecture means, why decisions were made, engineering tradeoffs). The LLM never does work that a script can do.
 
 ### Core Dependencies
 
@@ -414,14 +444,16 @@ flowchart TD
   WF --> DA["Analyzer Pipeline<br/>node research-repo.mjs all"]
 
   DA --> TS["Tree-sitter AST<br/>(Python/TS/JS/Rust/Go)"]
-  TS --> ES["Evidence Store<br/>11 JSON files"]
+  TS --> ES["Evidence Store<br/>11 JSON files + evidence-brief.md"]
 
+  ES --> BRIEF["Read evidence-brief.md<br/>→ condensed data + derived insights<br/>+ LLM analysis prompt"]
   ES --> RANK["Read interesting_files.json<br/>→ LLM reading priority"]
   ES --> SYM["Query symbols.json<br/>→ Find functions/classes/calls"]
   ES --> HYP["Read architecture.json<br/>→ Generate hypotheses"]
   ES --> ARCH["Read architecture.json<br/>→ Identify core modules"]
 
-  RANK --> E["Dispatch subagents<br/>(parallel, evidence-grounded)"]
+  BRIEF --> E["Dispatch subagents<br/>(parallel, evidence-grounded)"]
+  RANK --> E
   SYM --> E
   HYP --> E
   ARCH --> E

@@ -14,7 +14,9 @@
  *   node research-repo.mjs ci           <repoPath>  # CI/CD discovery
  *   node research-repo.mjs ranking      <repoPath>  # Interesting files ranking
  *   node research-repo.mjs symbols      <repoPath>  # Semantic Index (functions, classes, imports, calls, strings)
- *   node research-repo.mjs all          <repoPath>  # Complete Evidence Store
+ *   node research-repo.mjs all          <repoPath>  # Complete Evidence Store (includes plan + questions)
+ *   node research-repo.mjs plan         <repoPath>  # Research plan: goal → hypotheses → evidence → reading plan
+ *   node research-repo.mjs questions    <repoPath>  # Gap-driven questions for LLM reasoning layer
  *
  * Zero-dependency fallback: works with Node.js built-ins only.
  * Optionally uses fast-glob, simple-git, yaml if installed (dynamic import).
@@ -296,12 +298,39 @@ let Parser = null;
 let wasmDir = null;
 const languageCache = new Map(); // ext -> Language
 const parserCache = new Map(); // ext -> Parser instance
+const parserPending = new Map(); // ext -> Promise<Parser|null> (dedup concurrent load)
 const treeCache = new Map(); // filePath -> tree
+
+/**
+ * Map items with limited concurrency to avoid overwhelming the WASM runtime.
+ * Tree-sitter's WASM runtime is not safe under high concurrency — concurrent
+ * parse calls can trigger "Aborted()" / "memory access out of bounds" crashes
+ * that corrupt the runtime for all subsequent operations.
+ */
+async function mapWithConcurrency(items, concurrency, fn) {
+  const results = new Array(items.length);
+  let index = 0;
+  async function worker() {
+    while (index < items.length) {
+      const i = index++;
+      try {
+        results[i] = await fn(items[i], i);
+      } catch (e) {
+        // Catch WASM crashes that throw RuntimeError; return null for this item.
+        results[i] = null;
+      }
+    }
+  }
+  const workers = [];
+  for (let w = 0; w < Math.min(concurrency, items.length); w++) workers.push(worker());
+  await Promise.all(workers);
+  return results;
+}
 
 const TS_LANG_MAP = {
   ".py": "tree-sitter-python.wasm",
   ".ts": "tree-sitter-typescript.wasm",
-  ".tsx": "tree-sitter-typescript.wasm",
+  ".tsx": "tree-sitter-tsx.wasm",
   ".js": "tree-sitter-javascript.wasm",
   ".jsx": "tree-sitter-javascript.wasm",
   ".mjs": "tree-sitter-javascript.wasm",
@@ -608,20 +637,31 @@ async function getParserForFile(filePath) {
   if (!Parser || !wasmDir) return null;
   const ext = extname(filePath);
   if (parserCache.has(ext)) return parserCache.get(ext);
+  // Dedup: if a load is already in-flight for this extension, await it.
+  if (parserPending.has(ext)) return parserPending.get(ext);
+
   const wasmFile = TS_LANG_MAP[ext];
   if (!wasmFile) return null;
   const wasmPath = join(wasmDir, wasmFile);
   if (!existsSync(wasmPath)) return null;
-  try {
-    const Language = Parser.Language;
-    const language = await Language.load(wasmPath);
-    const parser = new Parser();
-    parser.setLanguage(language);
-    parserCache.set(ext, parser);
-    return parser;
-  } catch {
-    return null;
-  }
+
+  const pending = (async () => {
+    try {
+      const Language = Parser.Language;
+      const language = await Language.load(wasmPath);
+      const parser = new Parser();
+      parser.setLanguage(language);
+      parserCache.set(ext, parser);
+      return parser;
+    } catch {
+      return null;
+    } finally {
+      parserPending.delete(ext);
+    }
+  })();
+
+  parserPending.set(ext, pending);
+  return pending;
 }
 
 async function parseFileAST(filePath) {
@@ -631,6 +671,9 @@ async function parseFileAST(filePath) {
   try {
     const content = readFileSync(filePath, "utf-8");
     const tree = parser.parse(content);
+    // Touch rootNode to trigger WASM errors early (within try-catch).
+    // Some files cause "memory access out of bounds" at rootNode access.
+    const _root = tree.rootNode;
     treeCache.set(filePath, tree);
     return tree;
   } catch {
@@ -768,8 +811,8 @@ async function extractImportsAST(filePath, tree = null) {
 }
 
 /** Extract prompt-like assignments from AST. Returns array or null. */
-async function extractPromptsAST(filePath, repoPath) {
-  const tree = await parseFileAST(filePath);
+async function extractPromptsAST(filePath, repoPath, tree = null) {
+  if (!tree) tree = await parseFileAST(filePath);
   if (!tree) return null;
   const ext = extname(filePath);
   const isPy = ext === ".py";
@@ -837,8 +880,8 @@ async function extractPromptsAST(filePath, repoPath) {
 }
 
 /** Extract tool registrations from AST. Returns array or null. */
-async function extractToolsAST(filePath, repoPath) {
-  const tree = await parseFileAST(filePath);
+async function extractToolsAST(filePath, repoPath, tree = null) {
+  if (!tree) tree = await parseFileAST(filePath);
   if (!tree) return null;
   const relPath = relative(repoPath, filePath);
   const tools = [];
@@ -889,8 +932,8 @@ async function extractToolsAST(filePath, repoPath) {
 }
 
 /** Extract entrypoint signals from AST. Returns array or null. */
-async function extractEntrypointsAST(filePath, repoPath) {
-  const tree = await parseFileAST(filePath);
+async function extractEntrypointsAST(filePath, repoPath, tree = null) {
+  if (!tree) tree = await parseFileAST(filePath);
   if (!tree) return null;
   const ext = extname(filePath);
   const isPy = ext === ".py";
@@ -1653,164 +1696,17 @@ async function analyzeArchitecture(repoPath) {
 // ---------------------------------------------------------------------------
 
 /**
- * entrypoints command — Entry point detection.
- * Uses AST-based detection when Tree-sitter is available, regex fallback otherwise.
+ * Legacy compatibility wrapper for entrypoints analysis.
+ * New code should use AnalyzerPipeline with EntrypointsAnalyzer.
  * @param {string} repoPath
  * @returns {object}
  */
 async function analyzeEntrypoints(repoPath) {
-  const entries = walkDir(repoPath, 6);
-  const entrypoints = [];
-  const seen = new Set();
-
-  const addEntrypoint = (relPath, type, reason) => {
-    if (seen.has(relPath)) return;
-    seen.add(relPath);
-    entrypoints.push({ path: relPath, type, reason });
-  };
-
-  // 1. Filename-based detection (with depth/library filtering)
-  for (const e of entries) {
-    if (e.type !== "file") continue;
-    const name = e.name;
-    const relPath = relative(repoPath, e.path);
-    const depth = relPath.split(sep).length;
-    const isDeep = depth > 3;
-    const isBundled = /bundled_skills|vendor|node_modules|site-packages/.test(relPath);
-    const isLibOrTest = /(?:^|[\\/])(?:lib|libs|utils|helpers|internal|common|tests?|__tests__|spec)[\\/]/.test(relPath)
-      || /^tests?[\\/]/.test(relPath);
-    for (const ep of ENTRY_POINT_FILES) {
-      if (ep.names.includes(name)) {
-        if (isDeep || isBundled) {
-          addEntrypoint(relPath, "tool", ep.reason + " (deep/bundled)");
-        } else if (isLibOrTest) {
-          addEntrypoint(relPath, "tool", ep.reason + " (library/test dir)");
-        } else {
-          addEntrypoint(relPath, ep.type, ep.reason);
-        }
-        break;
-      }
-    }
-  }
-
-  // 2. Directory-based detection (bin/, scripts/, examples/)
-  for (const e of entries) {
-    if (e.type !== "file") continue;
-    const parts = relative(repoPath, e.path).split(sep);
-    if (parts.length < 2) continue;
-    const topDir = parts[0];
-    if (topDir === "bin") {
-      addEntrypoint(relative(repoPath, e.path), "cli", "file under bin/");
-    } else if (topDir === "examples" || topDir === "example") {
-      addEntrypoint(relative(repoPath, e.path), "example", "file under examples/");
-    } else if (topDir === "scripts" && ENTRYPOINT_DIR_NAMES.has("scripts")) {
-      addEntrypoint(relative(repoPath, e.path), "cli", "file under scripts/");
-    }
-  }
-
-  // 3. AST-based detection (preferred) + regex fallback per file
-  const sourceFiles = entries.filter(
-    (e) => e.type === "file" && SOURCE_EXTENSIONS.has(e.ext)
-  );
-  const astResults = await Promise.all(
-    sourceFiles.map(async (file) => {
-      const relPath = relative(repoPath, file.path);
-      const astSignals = await extractEntrypointsAST(file.path, repoPath);
-      if (astSignals !== null) return { relPath, signals: astSignals, useRegex: false };
-      // Regex fallback
-      const content = readFileSafe(file.path);
-      if (!content) return { relPath, signals: [], useRegex: false };
-      const signals = [];
-      if (file.ext === ".py") {
-        if (/if\s+__name__\s*==\s*['"]__main__['"]\s*:/.test(content)) {
-          signals.push({ path: relPath, type: "cli", reason: "Python __main__ guard" });
-        }
-        if (/def\s+main\s*\(/.test(content) && /argparse|click|typer|sys\.argv/.test(content)) {
-          signals.push({ path: relPath, type: "cli", reason: "Python main() with argparse/click/typer" });
-        }
-      } else if ([".ts", ".js", ".mjs", ".tsx", ".jsx"].includes(file.ext)) {
-        if (/createServer\s*\(|app\.listen\s*\(|server\.listen\s*\(/.test(content)) {
-          signals.push({ path: relPath, type: "server", reason: "JS server.listen / createServer" });
-        }
-        if (/process\.argv|yargs|commander|inquirer/.test(content) && /export\s+(default\s+)?(async\s+)?function\s+main|function\s+main\s*\(/.test(content)) {
-          signals.push({ path: relPath, type: "cli", reason: "JS CLI with argv/yargs/commander + main()" });
-        }
-      } else if (file.ext === ".go") {
-        if (/func\s+main\s*\(\)/.test(content)) {
-          signals.push({ path: relPath, type: "cli", reason: "Go func main()" });
-        }
-      } else if (file.ext === ".rs") {
-        if (/fn\s+main\s*\(\)/.test(content)) {
-          signals.push({ path: relPath, type: "cli", reason: "Rust fn main()" });
-        }
-      }
-      return { relPath, signals, useRegex: true };
-    })
-  );
-  for (const { relPath, signals } of astResults) {
-    if (seen.has(relPath)) continue;
-    // Filter out deep paths (tool scripts, bundled skills, etc.)
-    // depth > 3 catches skills/X/scripts/Y.py (depth 4) but not custodian/cli/main.py (depth 3)
-    const depth = relPath.split(sep).length;
-    const isDeep = depth > 3;
-    const isBundled = /bundled_skills|vendor|node_modules|site-packages/.test(relPath);
-    // Library/test/utility directories are not CLI entrypoints even with main() or __main__
-    const isLibOrTest = /(?:^|[\\/])(?:lib|libs|utils|helpers|internal|common|tests?|__tests__|spec)[\\/]/.test(relPath)
-      || /^tests?[\\/]/.test(relPath);
-    for (const sig of signals) {
-      if (isDeep || isBundled) {
-        // Categorize as "tool" instead of "cli" for deep/bundled scripts
-        addEntrypoint(sig.path, "tool", sig.reason + " (deep/bundled)");
-      } else if (isLibOrTest && sig.type === "cli") {
-        // main() or __main__ in lib/tests/ is likely a demo/test helper, not a CLI entrypoint
-        addEntrypoint(sig.path, "tool", sig.reason + " (library/test dir)");
-      } else {
-        addEntrypoint(sig.path, sig.type, sig.reason);
-      }
-    }
-  }
-
-  // 4. Manifest-declared entry points
-  const pkgJsonPath = join(repoPath, "package.json");
-  if (existsSync(pkgJsonPath)) {
-    try {
-      const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
-      if (pkg.bin) {
-        const bins = typeof pkg.bin === "string" ? { [pkg.name]: pkg.bin } : pkg.bin;
-        for (const [binName, binPath] of Object.entries(bins)) {
-          addEntrypoint(binPath, "cli", `package.json bin: ${binName}`);
-        }
-      }
-    } catch { /* ignore */ }
-  }
-  const pyprojectPath = join(repoPath, "pyproject.toml");
-  if (existsSync(pyprojectPath)) {
-    const content = readFileSync(pyprojectPath, "utf-8");
-    // Only parse [project.scripts] and [tool.poetry.scripts] sections
-    let inScripts = false;
-    for (const line of content.split(/\r?\n/)) {
-      if (/^\s*\[(project\.scripts|tool\.poetry\.scripts|project\.entry-points\.[\w.-]+)\]/.test(line)) {
-        inScripts = true;
-        continue;
-      }
-      if (/^\s*\[/.test(line)) {
-        inScripts = false;
-        continue;
-      }
-      if (inScripts) {
-        // Match: key = "module.path:function" or key = "module.path"
-        const m = line.match(/^([A-Za-z_][\w-]*)\s*=\s*"([^"]+)"/);
-        if (m) {
-          const modulePath = m[2].includes(":") ? m[2].split(":")[0] : m[2];
-          // Convert Python module path to file path (custodian.cli.main → custodian/cli/main.py)
-          const scriptPath = modulePath.replace(/\./g, "/") + ".py";
-          addEntrypoint(scriptPath, "cli", `pyproject.toml script: ${m[1]}`);
-        }
-      }
-    }
-  }
-
-  return { entrypoints };
+  const ctx = new RepositoryContext(repoPath);
+  const analyzer = new EntrypointsAnalyzer();
+  const store = {};
+  await analyzer.analyze(ctx, store, { command: "entrypoints" });
+  return store.entrypoints;
 }
 
 // ---------------------------------------------------------------------------
@@ -1818,79 +1714,17 @@ async function analyzeEntrypoints(repoPath) {
 // ---------------------------------------------------------------------------
 
 /**
- * prompts command — Prompt discovery.
- * Uses AST-based discovery when Tree-sitter is available, regex fallback otherwise.
- * Scans .py/.ts/.js/.md for prompt markers and template variables.
+ * Legacy compatibility wrapper for prompts analysis.
+ * New code should use AnalyzerPipeline with PromptsAnalyzer.
  * @param {string} repoPath
  * @returns {object}
  */
 async function analyzePrompts(repoPath) {
-  const entries = walkDir(repoPath, 8);
-  const files = entries.filter(
-    (e) => e.type === "file" && PROMPT_FILE_EXTENSIONS.has(e.ext)
-  );
-
-  // Partition files: code files (AST-eligible) vs markdown (always regex)
-  const codeExts = new Set([".py", ".ts", ".tsx", ".js", ".jsx", ".mjs"]);
-  const codeFiles = files.filter((f) => codeExts.has(f.ext));
-  const mdFiles = files.filter((f) => !codeExts.has(f.ext));
-
-  // AST-based extraction for code files (with regex fallback per file)
-  const codeResults = await Promise.all(
-    codeFiles.map(async (f) => {
-      const astPrompts = await extractPromptsAST(f.path, repoPath);
-      if (astPrompts !== null) return astPrompts;
-      // Regex fallback
-      const content = readFileSafe(f.path);
-      if (!content) return [];
-      const prompts = [];
-      const lines = content.split(/\r?\n/);
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        for (const marker of PROMPT_MARKERS) {
-          marker.regex.lastIndex = 0;
-          const match = marker.regex.exec(line);
-          if (match) {
-            prompts.push({
-              file: relative(repoPath, f.path),
-              line: i + 1,
-              type: marker.type,
-              snippet: line.trim().slice(0, 200),
-            });
-            break;
-          }
-        }
-      }
-      return prompts;
-    })
-  );
-
-  // Regex for markdown files
-  const mdPrompts = [];
-  for (const f of mdFiles) {
-    const content = readFileSafe(f.path);
-    if (!content) continue;
-    const lines = content.split(/\r?\n/);
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      for (const marker of PROMPT_MARKERS) {
-        marker.regex.lastIndex = 0;
-        const match = marker.regex.exec(line);
-        if (match) {
-          mdPrompts.push({
-            file: relative(repoPath, f.path),
-            line: i + 1,
-            type: marker.type,
-            snippet: line.trim().slice(0, 200),
-          });
-          break;
-        }
-      }
-    }
-  }
-
-  const prompts = [...codeResults.flat(), ...mdPrompts];
-  return { totalPrompts: prompts.length, prompts };
+  const ctx = new RepositoryContext(repoPath);
+  const analyzer = new PromptsAnalyzer();
+  const store = {};
+  await analyzer.analyze(ctx, store, { command: "prompts" });
+  return store.prompts;
 }
 
 // ---------------------------------------------------------------------------
@@ -1921,72 +1755,17 @@ function extractSchemaNear(content, startIndex, maxChars = 400) {
 }
 
 /**
- * tools command — Tool/function discovery.
- * Uses AST-based discovery when Tree-sitter is available, regex fallback otherwise.
- * Detects tool registrations across multiple frameworks.
+ * Legacy compatibility wrapper for tools analysis.
+ * New code should use AnalyzerPipeline with ToolsAnalyzer.
  * @param {string} repoPath
  * @returns {object}
  */
 async function analyzeTools(repoPath) {
-  const entries = walkDir(repoPath, 8);
-  const files = entries.filter(
-    (e) => e.type === "file" && TOOL_FILE_EXTENSIONS.has(e.ext)
-  );
-
-  const tools = [];
-  const seen = new Set();
-
-  // Try AST first per file; regex fallback when AST unavailable
-  const results = await Promise.all(
-    files.map(async (f) => {
-      const astTools = await extractToolsAST(f.path, repoPath);
-      if (astTools !== null) return { ast: true, tools: astTools, file: f };
-      return { ast: false, tools: null, file: f };
-    })
-  );
-
-  // Process AST results; collect files that need regex fallback
-  const regexFiles = [];
-  for (const r of results) {
-    if (r.ast) {
-      for (const t of r.tools) {
-        const key = `${t.file}:${t.framework}:${t.name}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        tools.push(t);
-      }
-    } else {
-      regexFiles.push(r.file);
-    }
-  }
-
-  // Regex fallback for files where AST was unavailable
-  for (const f of regexFiles) {
-    const content = readFileSafe(f.path);
-    if (!content) continue;
-    const relPath = relative(repoPath, f.path);
-
-    for (const pattern of TOOL_PATTERNS) {
-      pattern.regex.lastIndex = 0;
-      let match;
-      while ((match = pattern.regex.exec(content)) !== null) {
-        const name = match[1];
-        if (!name) continue;
-        const key = `${relPath}:${pattern.framework}:${name}`;
-        if (seen.has(key)) continue;
-        seen.add(key);
-        const schema = extractSchemaNear(content, match.index);
-        tools.push({
-          name,
-          file: relPath,
-          framework: pattern.framework,
-          schema,
-        });
-      }
-    }
-  }
-
-  return { totalTools: tools.length, tools };
+  const ctx = new RepositoryContext(repoPath);
+  const analyzer = new ToolsAnalyzer();
+  const store = {};
+  await analyzer.analyze(ctx, store, { command: "tools" });
+  return store.tools;
 }
 
 // ---------------------------------------------------------------------------
@@ -1994,46 +1773,17 @@ async function analyzeTools(repoPath) {
 // ---------------------------------------------------------------------------
 
 /**
- * tests command — Test discovery + categorization.
+ * Legacy compatibility wrapper for tests analysis.
+ * New code should use AnalyzerPipeline with TestsAnalyzer.
  * @param {string} repoPath
  * @returns {object}
  */
 function analyzeTests(repoPath) {
-  const entries = walkDir(repoPath, 8);
-  const testFiles = entries.filter(
-    (e) => e.type === "file" && isTestFile(basename(e.path))
-  );
-
-  const byCategory = { unit: 0, integration: 0, e2e: 0 };
-  const byModule = {};
-  let totalFunctions = 0;
-
-  const fileDetails = testFiles.map((f) => {
-    const relPath = relative(repoPath, f.path);
-    const category = categorizeTestCategory(f.path);
-    const module = categorizeTestModule(f.path, repoPath);
-    const functionCount = countTestFunctions(f.path);
-    byCategory[category] = (byCategory[category] || 0) + 1;
-    byModule[module] = (byModule[module] || 0) + functionCount;
-    totalFunctions += functionCount;
-    return {
-      path: relPath,
-      category,
-      module,
-      testFunctionCount: functionCount,
-    };
-  });
-
-  const patterns = detectTestPatterns(testFiles);
-
-  return {
-    totalTestFiles: testFiles.length,
-    totalTestFunctions: totalFunctions,
-    byCategory,
-    byModule,
-    patterns,
-    fileDetails,
-  };
+  const ctx = new RepositoryContext(repoPath);
+  const analyzer = new TestsAnalyzer();
+  const store = {};
+  analyzer.analyze(ctx, store, { command: "tests" });
+  return store.tests;
 }
 
 // ---------------------------------------------------------------------------
@@ -2041,75 +1791,17 @@ function analyzeTests(repoPath) {
 // ---------------------------------------------------------------------------
 
 /**
- * evaluations command — Evaluation/benchmark discovery.
+ * Legacy compatibility wrapper for evaluations analysis.
+ * New code should use AnalyzerPipeline with EvaluationsAnalyzer.
  * @param {string} repoPath
  * @returns {object}
  */
 function analyzeEvaluations(repoPath) {
-  const entries = walkDir(repoPath, 8);
-  const evalFiles = [];
-  const evalDirs = new Set();
-  const patterns = new Set();
-  const metrics = new Set();
-
-  // 1. Directory-based detection
-  for (const e of entries) {
-    if (e.type !== "dir") continue;
-    const name = basename(e.path).toLowerCase();
-    if (EVAL_DIR_NAMES.has(name)) {
-      evalDirs.add(relative(repoPath, e.path));
-    }
-  }
-
-  // 2. File-based detection (by name and content)
-  for (const e of entries) {
-    if (e.type !== "file") continue;
-    const name = basename(e.path).toLowerCase();
-    const relPath = relative(repoPath, e.path);
-    const isEvalByName = EVAL_KEYWORDS.some((kw) => name.includes(kw));
-    // Check if file is inside an eval directory (only for source files, not docs/configs)
-    const isInEvalDir = SOURCE_EXTENSIONS.has(e.ext) && [...evalDirs].some((d) => relPath.startsWith(d + sep) || relPath.startsWith(d + "/"));
-    let isEvalByContent = false;
-    // Only scan content for source files; docs/configs use filename-only detection
-    // to avoid false positives (README mentioning "benchmark" is not an eval file)
-    if (SOURCE_EXTENSIONS.has(e.ext)) {
-      const content = readFileSafe(e.path);
-      if (content) {
-        let matchCount = 0;
-        for (const kw of EVAL_KEYWORDS) {
-          const re = new RegExp(`\\b${kw.replace(/_/g, "[_]")}\\b`, "i");
-          if (re.test(content)) {
-            matchCount++;
-            patterns.add(kw);
-          }
-        }
-        // Require at least 2 keyword matches to reduce false positives
-        isEvalByContent = matchCount >= 2;
-        // Detect metric names
-        const metricRegexes = [
-          /\b(accuracy|pass_rate|pass@k|f1|precision|recall|bleu|rouge|exact_match|exact-match)\b/gi,
-          /\b(score|metric|accuracy_score|recall_score|precision_score)\b/gi,
-        ];
-        for (const re of metricRegexes) {
-          let m;
-          while ((m = re.exec(content)) !== null) {
-            metrics.add(m[1].toLowerCase());
-          }
-        }
-      }
-    }
-    if (isEvalByName || isEvalByContent || isInEvalDir) {
-      evalFiles.push(relPath);
-    }
-  }
-
-  return {
-    hasEvaluation: evalFiles.length > 0 || evalDirs.size > 0,
-    evalFiles: [...new Set(evalFiles)],
-    evalDirs: [...evalDirs],
-    patterns: [...patterns],
-    metrics: [...metrics],
-  };
+  const ctx = new RepositoryContext(repoPath);
+  const analyzer = new EvaluationsAnalyzer();
+  const store = {};
+  analyzer.analyze(ctx, store, { command: "evaluations" });
+  return store.evaluations;
 }
 
 // ---------------------------------------------------------------------------
@@ -2141,8 +1833,15 @@ function isGitRepo(repoPath) {
  * @param {string} repoPath
  * @returns {object}
  */
+/**
+ * Legacy compatibility wrapper for git analysis.
+ * New code should use AnalyzerPipeline with GitAnalyzer.
+ * @param {string} repoPath
+ * @returns {object}
+ */
 function analyzeGit(repoPath) {
-  if (!isGitRepo(repoPath)) {
+  const ctx = new RepositoryContext(repoPath);
+  if (!ctx.isGitRepo) {
     return {
       totalCommits: 0,
       totalContributors: 0,
@@ -2154,88 +1853,10 @@ function analyzeGit(repoPath) {
       note: "not a git repository (or git unavailable)",
     };
   }
-
-  // Total commits
-  const totalCommitsRaw = git(repoPath, "rev-list", "--count", "HEAD").trim();
-  const totalCommits = parseInt(totalCommitsRaw, 10) || 0;
-
-  // First / last commit
-  const lastCommitRaw = git(
-    repoPath, "log", "-1", "--format=%cI|%H|%s"
-  ).trim();
-  const firstCommitRaw = git(
-    repoPath, "log", "--max-parents=0", "-1", "--format=%cI|%H|%s"
-  ).trim();
-  const parseCommit = (raw) => {
-    if (!raw) return null;
-    const [date, hash, ...subjectParts] = raw.split("|");
-    return { date, hash, subject: subjectParts.join("|") };
-  };
-  const lastCommit = parseCommit(lastCommitRaw);
-  const firstCommit = parseCommit(firstCommitRaw);
-
-  // Contributors
-  const shortlog = git(repoPath, "shortlog", "-sne", "HEAD").trim();
-  const contributors = shortlog
-    .split(/\r?\n/)
-    .filter(Boolean)
-    .map((line) => {
-      const m = line.match(/^\s*(\d+)\s+(.+)$/);
-      return m ? { commits: parseInt(m[1], 10), name: m[2].trim() } : null;
-    })
-    .filter(Boolean);
-  const totalContributors = contributors.length;
-
-  // Top active modules: count commits per top-level dir
-  const moduleCounts = {};
-  const logLines = git(
-    repoPath, "log", "--name-only", "--format=", "HEAD"
-  ).split(/\r?\n/).filter(Boolean);
-  for (const line of logLines) {
-    const top = line.split(sep)[0];
-    if (!top || top === ".") continue;
-    moduleCounts[top] = (moduleCounts[top] || 0) + 1;
-  }
-  const topActiveModules = Object.entries(moduleCounts)
-    .map(([module, commits]) => ({ module, commits }))
-    .sort((a, b) => b.commits - a.commits)
-    .slice(0, 10);
-
-  // Largest refactors: commits touching the most files
-  const commitStatRaw = git(
-    repoPath, "log", "--name-only", "--format=@@@%H|%cI|%s", "HEAD"
-  );
-  const largestRefactors = [];
-  if (commitStatRaw) {
-    const blocks = commitStatRaw.split(/@@@/).filter(Boolean);
-    for (const block of blocks) {
-      const lines = block.split(/\r?\n/).filter(Boolean);
-      if (lines.length === 0) continue;
-      const [hash, date, ...subjectParts] = lines[0].split("|");
-      const subject = subjectParts.join("|");
-      const fileCount = lines.length - 1;
-      if (fileCount > 0) {
-        largestRefactors.push({ hash, date, subject, filesChanged: fileCount });
-      }
-    }
-  }
-  largestRefactors.sort((a, b) => b.filesChanged - a.filesChanged);
-  const largestRefactorsTop = largestRefactors.slice(0, 10);
-
-  // Tags
-  const tagsRaw = git(repoPath, "tag", "--sort=-creatordate").trim();
-  const tags = tagsRaw ? tagsRaw.split(/\r?\n/).slice(0, 50) : [];
-
-  return {
-    totalCommits,
-    totalContributors,
-    contributors: contributors.slice(0, 20),
-    firstCommit,
-    lastCommit,
-    topActiveModules,
-    largestRefactors: largestRefactorsTop,
-    tags,
-  };
+  const analyzer = new GitAnalyzer();
+  const store = {};
+  analyzer.analyze(ctx, store, { command: "git" });
+  return store.git;
 }
 
 // ---------------------------------------------------------------------------
@@ -2569,8 +2190,13 @@ class DiscoveryAnalyzer extends BaseAnalyzer {
     const hasReadme = metadataFiles.some((f) => f.toLowerCase().startsWith("readme"));
     const hasCI = CI_FILES.some((ci) => ctx.exists(ci.path));
 
+    const repoName =
+      ctx.manifest?.name && ctx.manifest.name !== "unknown"
+        ? ctx.manifest.name
+        : basename(ctx.repoPath);
+
     store[this.id] = {
-      repoName: ctx.manifest ? ctx.manifest.name : basename(ctx.repoPath),
+      repoName,
       repoPath: ctx.repoPath,
       analyzedAt: new Date().toISOString(),
       manifest: ctx.manifest,
@@ -2608,13 +2234,11 @@ class SymbolsAnalyzer extends BaseAnalyzer {
   async analyze(ctx, store, _analyzerCtx) {
     const sourceFiles = ctx.sourceFiles;
 
-    const results = await Promise.all(
-      sourceFiles.map(async (file) => {
-        const tree = await ctx.parseAST(file.path);
-        const symbols = await extractSymbolsAST(file.path, ctx.repoPath, tree);
-        return symbols || { functions: [], classes: [], imports: [], calls: [], strings: [] };
-      })
-    );
+    const results = await mapWithConcurrency(sourceFiles, 10, async (file) => {
+      const tree = await ctx.parseAST(file.path);
+      const symbols = await extractSymbolsAST(file.path, ctx.repoPath, tree);
+      return symbols || { functions: [], classes: [], imports: [], calls: [], strings: [] };
+    });
 
     const functions = [];
     const classes = [];
@@ -2622,6 +2246,7 @@ class SymbolsAnalyzer extends BaseAnalyzer {
     const calls = [];
     const strings = [];
     for (const r of results) {
+      if (!r) continue;
       functions.push(...r.functions);
       classes.push(...r.classes);
       imports.push(...r.imports);
@@ -2678,15 +2303,13 @@ class ArchitectureAnalyzer extends BaseAnalyzer {
       }
     } else {
       // Fallback: parse imports per file (still uses ctx AST cache)
-      await Promise.all(
-        sourceFiles.map(async (file) => {
-          const relPath = ctx.rel(file.path);
-          const tree = await ctx.parseAST(file.path);
-          const astImports = await extractImportsAST(file.path, tree);
-          const imports = astImports !== null ? astImports : parseImports(file.path);
-          fileImports.set(relPath, imports);
-        })
-      );
+      await mapWithConcurrency(sourceFiles, 10, async (file) => {
+        const relPath = ctx.rel(file.path);
+        const tree = await ctx.parseAST(file.path);
+        const astImports = await extractImportsAST(file.path, tree);
+        const imports = astImports !== null ? astImports : parseImports(file.path);
+        fileImports.set(relPath, imports);
+      });
     }
 
     const nodes = [];
@@ -2742,18 +2365,815 @@ class ArchitectureAnalyzer extends BaseAnalyzer {
   }
 }
 
+// ---------------------------------------------------------------------------
+// True Analyzer: EntrypointsAnalyzer (uses RepositoryContext)
+// ---------------------------------------------------------------------------
+
+class EntrypointsAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "entrypoints";
+  }
+
+  supports(_ctx) {
+    return true;
+  }
+
+  async analyze(ctx, store, _analyzerCtx) {
+    const entries = ctx.files.filter((f) => f.depth <= 6);
+    const entrypoints = [];
+    const seen = new Set();
+
+    const addEntrypoint = (relPath, type, reason) => {
+      if (seen.has(relPath)) return;
+      seen.add(relPath);
+      entrypoints.push({ path: relPath, type, reason });
+    };
+
+    // 1. Filename-based detection (with depth/library filtering)
+    for (const e of entries) {
+      const relPath = ctx.rel(e.path);
+      const depth = relPath.split(sep).length;
+      const isDeep = depth > 3;
+      const isBundled = /bundled_skills|vendor|node_modules|site-packages/.test(relPath);
+      const isLibOrTest = /(?:^|[\\/])(?:lib|libs|utils|helpers|internal|common|tests?|__tests__|spec)[\\/]/.test(relPath)
+        || /^tests?[\\/]/.test(relPath);
+      for (const ep of ENTRY_POINT_FILES) {
+        if (ep.names.includes(e.name)) {
+          if (isDeep || isBundled) {
+            addEntrypoint(relPath, "tool", ep.reason + " (deep/bundled)");
+          } else if (isLibOrTest) {
+            addEntrypoint(relPath, "tool", ep.reason + " (library/test dir)");
+          } else {
+            addEntrypoint(relPath, ep.type, ep.reason);
+          }
+          break;
+        }
+      }
+    }
+
+    // 2. Directory-based detection (bin/, scripts/, examples/)
+    for (const e of entries) {
+      const parts = ctx.rel(e.path).split(sep);
+      if (parts.length < 2) continue;
+      const topDir = parts[0];
+      if (topDir === "bin") {
+        addEntrypoint(ctx.rel(e.path), "cli", "file under bin/");
+      } else if (topDir === "examples" || topDir === "example") {
+        addEntrypoint(ctx.rel(e.path), "example", "file under examples/");
+      } else if (topDir === "scripts" && ENTRYPOINT_DIR_NAMES.has("scripts")) {
+        addEntrypoint(ctx.rel(e.path), "cli", "file under scripts/");
+      }
+    }
+
+    // 3. AST-based detection (preferred) + regex fallback per file
+    const sourceFiles = entries.filter((e) => SOURCE_EXTENSIONS.has(e.ext));
+    const astResults = await mapWithConcurrency(sourceFiles, 10, async (file) => {
+        const relPath = ctx.rel(file.path);
+        const tree = await ctx.parseAST(file.path);
+        const astSignals = await extractEntrypointsAST(file.path, ctx.repoPath, tree);
+        if (astSignals !== null) return { relPath, signals: astSignals, useRegex: false };
+        // Regex fallback
+        const content = ctx.readFileAbsolute(file.path);
+        if (!content) return { relPath, signals: [], useRegex: false };
+        const signals = [];
+        if (file.ext === ".py") {
+          if (/if\s+__name__\s*==\s*['"]__main__['"]\s*:/.test(content)) {
+            signals.push({ path: relPath, type: "cli", reason: "Python __main__ guard" });
+          }
+          if (/def\s+main\s*\(/.test(content) && /argparse|click|typer|sys\.argv/.test(content)) {
+            signals.push({ path: relPath, type: "cli", reason: "Python main() with argparse/click/typer" });
+          }
+        } else if ([".ts", ".js", ".mjs", ".tsx", ".jsx"].includes(file.ext)) {
+          if (/createServer\s*\(|app\.listen\s*\(|server\.listen\s*\(/.test(content)) {
+            signals.push({ path: relPath, type: "server", reason: "JS server.listen / createServer" });
+          }
+          if (/process\.argv|yargs|commander|inquirer/.test(content) && /export\s+(default\s+)?(async\s+)?function\s+main|function\s+main\s*\(/.test(content)) {
+            signals.push({ path: relPath, type: "cli", reason: "JS CLI with argv/yargs/commander + main()" });
+          }
+        } else if (file.ext === ".go") {
+          if (/func\s+main\s*\(\)/.test(content)) {
+            signals.push({ path: relPath, type: "cli", reason: "Go func main()" });
+          }
+        } else if (file.ext === ".rs") {
+          if (/fn\s+main\s*\(\)/.test(content)) {
+            signals.push({ path: relPath, type: "cli", reason: "Rust fn main()" });
+          }
+        }
+        return { relPath, signals, useRegex: true };
+      });
+    for (const r of astResults) {
+      if (!r) continue;
+      const { relPath, signals } = r;
+      if (seen.has(relPath)) continue;
+      const depth = relPath.split(sep).length;
+      const isDeep = depth > 3;
+      const isBundled = /bundled_skills|vendor|node_modules|site-packages/.test(relPath);
+      const isLibOrTest = /(?:^|[\\/])(?:lib|libs|utils|helpers|internal|common|tests?|__tests__|spec)[\\/]/.test(relPath)
+        || /^tests?[\\/]/.test(relPath);
+      for (const sig of signals) {
+        if (isDeep || isBundled) {
+          addEntrypoint(sig.path, "tool", sig.reason + " (deep/bundled)");
+        } else if (isLibOrTest && sig.type === "cli") {
+          addEntrypoint(sig.path, "tool", sig.reason + " (library/test dir)");
+        } else {
+          addEntrypoint(sig.path, sig.type, sig.reason);
+        }
+      }
+    }
+
+    // 4. Manifest-declared entry points
+    const pkgJsonPath = join(ctx.repoPath, "package.json");
+    if (existsSync(pkgJsonPath)) {
+      try {
+        const pkg = JSON.parse(readFileSync(pkgJsonPath, "utf-8"));
+        if (pkg.bin) {
+          const bins = typeof pkg.bin === "string" ? { [pkg.name]: pkg.bin } : pkg.bin;
+          for (const [binName, binPath] of Object.entries(bins)) {
+            addEntrypoint(binPath, "cli", `package.json bin: ${binName}`);
+          }
+        }
+      } catch { /* ignore */ }
+    }
+    const pyprojectPath = join(ctx.repoPath, "pyproject.toml");
+    if (existsSync(pyprojectPath)) {
+      const content = readFileSync(pyprojectPath, "utf-8");
+      let inScripts = false;
+      for (const line of content.split(/\r?\n/)) {
+        if (/^\s*\[(project\.scripts|tool\.poetry\.scripts|project\.entry-points\.[\w.-]+)\]/.test(line)) {
+          inScripts = true;
+          continue;
+        }
+        if (/^\s*\[/.test(line)) {
+          inScripts = false;
+          continue;
+        }
+        if (inScripts) {
+          const m = line.match(/^([A-Za-z_][\w-]*)\s*=\s*"([^"]+)"/);
+          if (m) {
+            const modulePath = m[2].includes(":") ? m[2].split(":")[0] : m[2];
+            const scriptPath = modulePath.replace(/\./g, "/") + ".py";
+            addEntrypoint(scriptPath, "cli", `pyproject.toml script: ${m[1]}`);
+          }
+        }
+      }
+    }
+
+    store[this.id] = { entrypoints };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// True Analyzer: PromptsAnalyzer (uses RepositoryContext AST cache)
+// ---------------------------------------------------------------------------
+
+class PromptsAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "prompts";
+  }
+
+  supports(_ctx) {
+    return true;
+  }
+
+  async analyze(ctx, store, _analyzerCtx) {
+    const files = ctx.files.filter((f) => PROMPT_FILE_EXTENSIONS.has(f.ext));
+    const codeExts = new Set([".py", ".ts", ".tsx", ".js", ".jsx", ".mjs"]);
+    const codeFiles = files.filter((f) => codeExts.has(f.ext));
+    const mdFiles = files.filter((f) => !codeExts.has(f.ext));
+
+    // AST-based extraction for code files (with regex fallback per file)
+    const codeResults = await mapWithConcurrency(codeFiles, 10, async (f) => {
+        const tree = await ctx.parseAST(f.path);
+        const astPrompts = await extractPromptsAST(f.path, ctx.repoPath, tree);
+        if (astPrompts !== null) return astPrompts;
+        // Regex fallback
+        const content = ctx.readFileAbsolute(f.path);
+        if (!content) return [];
+        const prompts = [];
+        const lines = content.split(/\r?\n/);
+        for (let i = 0; i < lines.length; i++) {
+          const line = lines[i];
+          for (const marker of PROMPT_MARKERS) {
+            marker.regex.lastIndex = 0;
+            const match = marker.regex.exec(line);
+            if (match) {
+              prompts.push({
+                file: ctx.rel(f.path),
+                line: i + 1,
+                type: marker.type,
+                snippet: line.trim().slice(0, 200),
+              });
+              break;
+            }
+          }
+        }
+        return prompts;
+      });
+
+    // Regex for markdown files
+    const mdPrompts = [];
+    for (const f of mdFiles) {
+      const content = ctx.readFileAbsolute(f.path);
+      if (!content) continue;
+      const lines = content.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        for (const marker of PROMPT_MARKERS) {
+          marker.regex.lastIndex = 0;
+          const match = marker.regex.exec(line);
+          if (match) {
+            mdPrompts.push({
+              file: ctx.rel(f.path),
+              line: i + 1,
+              type: marker.type,
+              snippet: line.trim().slice(0, 200),
+            });
+            break;
+          }
+        }
+      }
+    }
+
+    const prompts = [...codeResults.filter(Boolean).flat(), ...mdPrompts];
+    store[this.id] = { totalPrompts: prompts.length, prompts };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// True Analyzer: ToolsAnalyzer (uses RepositoryContext AST cache)
+// ---------------------------------------------------------------------------
+
+class ToolsAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "tools";
+  }
+
+  supports(_ctx) {
+    return true;
+  }
+
+  async analyze(ctx, store, _analyzerCtx) {
+    // The tool cross-reference step needs entrypoints; ensure they exist even when
+    // this analyzer is run in isolation (e.g. `node research-repo.mjs tools <repo>`).
+    if (!store.entrypoints) {
+      const entrypointsAnalyzer = new EntrypointsAnalyzer();
+      if (entrypointsAnalyzer.supports(ctx)) {
+        await entrypointsAnalyzer.analyze(ctx, store, { command: "entrypoints" });
+      }
+    }
+
+    const files = ctx.files.filter((f) => TOOL_FILE_EXTENSIONS.has(f.ext));
+    const tools = [];
+    const seen = new Set();
+
+    // Try AST first per file; regex fallback when AST unavailable
+    const results = await mapWithConcurrency(files, 10, async (f) => {
+        const tree = await ctx.parseAST(f.path);
+        const astTools = await extractToolsAST(f.path, ctx.repoPath, tree);
+        if (astTools !== null) return { ast: true, tools: astTools, file: f };
+        return { ast: false, tools: null, file: f };
+      });
+
+    // Process AST results; collect files that need regex fallback
+    const regexFiles = [];
+    for (const r of results) {
+      if (!r) continue;
+      if (r.ast) {
+        for (const t of r.tools) {
+          const key = `${t.file}:${t.framework}:${t.name}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          tools.push(t);
+        }
+      } else {
+        regexFiles.push(r.file);
+      }
+    }
+
+    // Regex fallback for files where AST was unavailable
+    for (const f of regexFiles) {
+      const content = ctx.readFileAbsolute(f.path);
+      if (!content) continue;
+      const relPath = ctx.rel(f.path);
+
+      for (const pattern of TOOL_PATTERNS) {
+        pattern.regex.lastIndex = 0;
+        let match;
+        while ((match = pattern.regex.exec(content)) !== null) {
+          const name = match[1];
+          if (!name) continue;
+          const key = `${relPath}:${pattern.framework}:${name}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          const schema = extractSchemaNear(content, match.index);
+          tools.push({
+            name,
+            file: relPath,
+            framework: pattern.framework,
+            schema,
+          });
+        }
+      }
+    }
+
+    // Cross-reference entrypoints labeled as "tool" for standalone executable scripts
+    // (e.g. bundled_skills/*/scripts/execute.py, skills/*/scripts/*.py) so that
+    // simple argparse/sys.argv tools are represented even when they lack decorator/class patterns.
+    const entrypoints = store.entrypoints?.entrypoints || [];
+    for (const ep of entrypoints) {
+      if (ep.type !== "tool") continue;
+      const relPath = ep.path;
+      const fileName = basename(relPath);
+      const baseName = fileName.replace(/\.[^.]+$/, "");
+
+      // Ignore library/test modules that the entrypoints analyzer may have mis-tagged as tool.
+      const isLibraryOrTest = /(?:^|[\\/])(?:lib|libs|utils|helpers|internal|common|tests?|__tests__|spec|benchmark)[\\/]/.test(
+        relPath
+      );
+      if (isLibraryOrTest) continue;
+
+      // Only accept tool scripts that live inside a recognized skill/tool/agent directory.
+      const isInToolSpace = /(?:^|[\\/])(?:skills?|bundled_skills?|tools?|agents?|hooks?|plugins?)[\\/]/.test(relPath);
+      if (!isInToolSpace) continue;
+
+      // Derive a readable tool name from the parent directory when possible:
+      // custodian/bundled_skills/ai/openai-chat/scripts/execute.py -> openai-chat
+      const GENERIC_DIR_NAMES = new Set([
+        "scripts",
+        "hooks",
+        "dot-claude",
+        "examples",
+        "src",
+        "lib",
+        "libs",
+        "utils",
+        "helpers",
+        "tools",
+        "common",
+        "internal",
+      ]);
+      const parts = relPath.split(sep);
+      let derivedName = baseName;
+      const scriptsIdx = parts.indexOf("scripts");
+      const hooksIdx = parts.indexOf("hooks");
+      const toolDirIdx = scriptsIdx > 0 ? scriptsIdx : hooksIdx > 0 ? hooksIdx : -1;
+      if (toolDirIdx > 0 && !GENERIC_DIR_NAMES.has(parts[toolDirIdx - 1])) {
+        derivedName = parts[toolDirIdx - 1];
+      } else if (parts.length >= 2) {
+        const parent = parts[parts.length - 2];
+        if (!GENERIC_DIR_NAMES.has(parent)) {
+          derivedName = parent;
+        }
+      }
+      const key = `${relPath}:script-tool:${derivedName}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      tools.push({
+        name: derivedName,
+        file: relPath,
+        framework: "script-tool",
+        schema: null,
+      });
+    }
+
+    store[this.id] = { totalTools: tools.length, tools };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// True Analyzer: TestsAnalyzer (uses RepositoryContext)
+// ---------------------------------------------------------------------------
+
+class TestsAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "tests";
+  }
+
+  supports(_ctx) {
+    return true;
+  }
+
+  analyze(ctx, store, _analyzerCtx) {
+    const testFiles = ctx.files.filter((f) => isTestFile(f.name));
+
+    const byCategory = { unit: 0, integration: 0, e2e: 0 };
+    const byModule = {};
+    let totalFunctions = 0;
+
+    const fileDetails = testFiles.map((f) => {
+      const relPath = ctx.rel(f.path);
+      const category = categorizeTestCategory(f.path);
+      const module = categorizeTestModule(f.path, ctx.repoPath);
+      const functionCount = countTestFunctions(f.path);
+      byCategory[category] = (byCategory[category] || 0) + 1;
+      byModule[module] = (byModule[module] || 0) + functionCount;
+      totalFunctions += functionCount;
+      return {
+        path: relPath,
+        category,
+        module,
+        testFunctionCount: functionCount,
+      };
+    });
+
+    const patterns = detectTestPatterns(testFiles);
+
+    store[this.id] = {
+      totalTestFiles: testFiles.length,
+      totalTestFunctions: totalFunctions,
+      byCategory,
+      byModule,
+      patterns,
+      fileDetails,
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// True Analyzer: EvaluationsAnalyzer (uses RepositoryContext)
+// ---------------------------------------------------------------------------
+
+class EvaluationsAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "evaluations";
+  }
+
+  supports(_ctx) {
+    return true;
+  }
+
+  analyze(ctx, store, _analyzerCtx) {
+    const evalFiles = [];
+    const evalDirs = new Set();
+    const patterns = new Set();
+    const metrics = new Set();
+
+    // 1. Directory-based detection
+    for (const d of ctx.dirs) {
+      const name = basename(d.path).toLowerCase();
+      if (EVAL_DIR_NAMES.has(name)) {
+        evalDirs.add(ctx.rel(d.path));
+      }
+    }
+
+    // 2. File-based detection (by name and content)
+    for (const f of ctx.files) {
+      const name = f.name.toLowerCase();
+      const relPath = ctx.rel(f.path);
+      const isEvalByName = EVAL_KEYWORDS.some((kw) => name.includes(kw));
+      // Only source files inside eval dirs (not docs/configs)
+      const isInEvalDir =
+        SOURCE_EXTENSIONS.has(f.ext) &&
+        [...evalDirs].some(
+          (d) => relPath.startsWith(d + sep) || relPath.startsWith(d + "/")
+        );
+      let isEvalByContent = false;
+      if (SOURCE_EXTENSIONS.has(f.ext)) {
+        const content = ctx.readFileAbsolute(f.path);
+        if (content) {
+          let matchCount = 0;
+          for (const kw of EVAL_KEYWORDS) {
+            const re = new RegExp(`\\b${kw.replace(/_/g, "[_]")}\\b`, "i");
+            if (re.test(content)) {
+              matchCount++;
+              patterns.add(kw);
+            }
+          }
+          isEvalByContent = matchCount >= 2;
+          const metricRegexes = [
+            /\b(accuracy|pass_rate|pass@k|f1|precision|recall|bleu|rouge|exact_match|exact-match)\b/gi,
+            /\b(score|metric|accuracy_score|recall_score|precision_score)\b/gi,
+          ];
+          for (const re of metricRegexes) {
+            let m;
+            while ((m = re.exec(content)) !== null) {
+              metrics.add(m[1].toLowerCase());
+            }
+          }
+        }
+      }
+      if (isEvalByName || isEvalByContent || isInEvalDir) {
+        evalFiles.push(relPath);
+      }
+    }
+
+    store[this.id] = {
+      hasEvaluation: evalFiles.length > 0 || evalDirs.size > 0,
+      evalFiles: [...new Set(evalFiles)],
+      evalDirs: [...evalDirs],
+      patterns: [...patterns],
+      metrics: [...metrics],
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// True Analyzer: GitAnalyzer (uses RepositoryContext)
+// ---------------------------------------------------------------------------
+
+class GitAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "git";
+  }
+
+  supports(ctx) {
+    return ctx.isGitRepo;
+  }
+
+  analyze(ctx, store, _analyzerCtx) {
+    const repoPath = ctx.repoPath;
+
+    // Total commits
+    const totalCommitsRaw = git(repoPath, "rev-list", "--count", "HEAD").trim();
+    const totalCommits = parseInt(totalCommitsRaw, 10) || 0;
+
+    // First / last commit
+    const lastCommitRaw = git(repoPath, "log", "-1", "--format=%cI|%H|%s").trim();
+    const firstCommitRaw = git(
+      repoPath,
+      "log",
+      "--max-parents=0",
+      "-1",
+      "--format=%cI|%H|%s"
+    ).trim();
+    const parseCommit = (raw) => {
+      if (!raw) return null;
+      const [date, hash, ...subjectParts] = raw.split("|");
+      return { date, hash, subject: subjectParts.join("|") };
+    };
+    const lastCommit = parseCommit(lastCommitRaw);
+    const firstCommit = parseCommit(firstCommitRaw);
+
+    // Contributors
+    const shortlog = git(repoPath, "shortlog", "-sne", "HEAD").trim();
+    const contributors = shortlog
+      .split(/\r?\n/)
+      .filter(Boolean)
+      .map((line) => {
+        const m = line.match(/^\s*(\d+)\s+(.+)$/);
+        return m ? { commits: parseInt(m[1], 10), name: m[2].trim() } : null;
+      })
+      .filter(Boolean);
+    const totalContributors = contributors.length;
+
+    // Top active modules: count commits per top-level dir
+    const moduleCounts = {};
+    const logLines = git(repoPath, "log", "--name-only", "--format=", "HEAD")
+      .split(/\r?\n/)
+      .filter(Boolean);
+    for (const line of logLines) {
+      const top = line.split(sep)[0];
+      if (!top || top === ".") continue;
+      moduleCounts[top] = (moduleCounts[top] || 0) + 1;
+    }
+    const topActiveModules = Object.entries(moduleCounts)
+      .map(([module, commits]) => ({ module, commits }))
+      .sort((a, b) => b.commits - a.commits)
+      .slice(0, 10);
+
+    // Largest refactors: commits touching the most files
+    const commitStatRaw = git(
+      repoPath,
+      "log",
+      "--name-only",
+      "--format=@@@%H|%cI|%s",
+      "HEAD"
+    );
+    const largestRefactors = [];
+    if (commitStatRaw) {
+      const blocks = commitStatRaw.split(/@@@/).filter(Boolean);
+      for (const block of blocks) {
+        const lines = block.split(/\r?\n/).filter(Boolean);
+        if (lines.length === 0) continue;
+        const [hash, date, ...subjectParts] = lines[0].split("|");
+        const subject = subjectParts.join("|");
+        const fileCount = lines.length - 1;
+        if (fileCount > 0) {
+          largestRefactors.push({ hash, date, subject, filesChanged: fileCount });
+        }
+      }
+    }
+    largestRefactors.sort((a, b) => b.filesChanged - a.filesChanged);
+    const largestRefactorsTop = largestRefactors.slice(0, 10);
+
+    // Tags
+    const tagsRaw = git(repoPath, "tag", "--sort=-creatordate").trim();
+    const tags = tagsRaw ? tagsRaw.split(/\r?\n/).slice(0, 50) : [];
+
+    store[this.id] = {
+      totalCommits,
+      totalContributors,
+      contributors: contributors.slice(0, 20),
+      firstCommit,
+      lastCommit,
+      topActiveModules,
+      largestRefactors: largestRefactorsTop,
+      tags,
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// True Analyzer: CIAnalyzer (uses RepositoryContext)
+// ---------------------------------------------------------------------------
+
+class CIAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "ci";
+  }
+
+  supports(_ctx) {
+    return true;
+  }
+
+  analyze(ctx, store, _analyzerCtx) {
+    const workflows = [];
+    let provider = null;
+    let hasCI = false;
+
+    for (const ci of CI_FILES) {
+      const fullPath = join(ctx.repoPath, ci.path);
+      if (ci.type === "file") {
+        if (existsSync(fullPath)) {
+          hasCI = true;
+          provider = ci.provider;
+          workflows.push({
+            name: basename(ci.path),
+            path: ci.path,
+            triggers: [],
+            jobs: [],
+          });
+        }
+      } else {
+        if (existsSync(fullPath) && statSync(fullPath).isDirectory()) {
+          hasCI = true;
+          provider = ci.provider;
+          let entries;
+          try {
+            entries = readdirSync(fullPath, { withFileTypes: true });
+          } catch {
+            entries = [];
+          }
+          for (const entry of entries) {
+            if (!entry.isFile()) continue;
+            const ext = extname(entry.name);
+            if (ext !== ".yml" && ext !== ".yaml") continue;
+            const wfPath = join(fullPath, entry.name);
+            const { triggers, jobs } = parseWorkflow(wfPath);
+            workflows.push({
+              name: entry.name,
+              path: join(ci.path, entry.name),
+              triggers,
+              jobs,
+            });
+          }
+        }
+      }
+    }
+
+    // Jenkinsfile parse
+    const jenkinsfilePath = join(ctx.repoPath, "Jenkinsfile");
+    if (existsSync(jenkinsfilePath)) {
+      hasCI = true;
+      provider = provider || "jenkins";
+      const content = readFileSafe(jenkinsfilePath);
+      const stages = [];
+      const stageRe = /stage\s*\(\s*['"]([^'"]+)['"]\s*\)/g;
+      let m;
+      while ((m = stageRe.exec(content)) !== null) stages.push(m[1]);
+      workflows.push({
+        name: "Jenkinsfile",
+        path: "Jenkinsfile",
+        triggers: [],
+        jobs: stages,
+      });
+    }
+
+    store[this.id] = { hasCI, provider, workflows };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// True Analyzer: RankingAnalyzer (uses RepositoryContext + prior evidence)
+// ---------------------------------------------------------------------------
+
+class RankingAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "ranking";
+  }
+
+  supports(_ctx) {
+    return true;
+  }
+
+  analyze(ctx, store, _analyzerCtx) {
+    // Reuse results from analyzers that ran before us.
+    const architecture = store.architecture || {};
+    const entrypoints = store.entrypoints || {};
+    const tests = store.tests || {};
+
+    const indegreeMap = {};
+    for (const { id, value } of architecture.centrality?.topByInDegree || []) {
+      indegreeMap[id] = value;
+    }
+    const pagerankMap = {};
+    for (const { id, value } of architecture.centrality?.topByPageRank || []) {
+      pagerankMap[id] = value;
+    }
+    const highIndegreePaths = new Set(
+      (architecture.centrality?.topByInDegree || [])
+        .map(({ id }) => {
+          const node = architecture.nodes?.find((n) => n.id === id);
+          return node ? node.path : null;
+        })
+        .filter(Boolean)
+    );
+    const highPagerankPaths = new Set(
+      (architecture.centrality?.topByPageRank || [])
+        .map(({ id }) => {
+          const node = architecture.nodes?.find((n) => n.id === id);
+          return node ? node.path : null;
+        })
+        .filter(Boolean)
+    );
+    const entrypointPaths = new Set(
+      (entrypoints.entrypoints || []).map((e) => e.path)
+    );
+    const testPaths = new Set(
+      (tests.fileDetails || []).map((t) => t.path)
+    );
+
+    const allFiles = ctx.files;
+    const scored = [];
+    for (const f of allFiles) {
+      const relPath = ctx.rel(f.path);
+      const name = f.name.toLowerCase();
+      let score = 0;
+      const reasons = [];
+
+      if (name === "readme.md" || name === "readme.rst" || name === "readme") {
+        score += 50;
+        reasons.push("README (+50)");
+      }
+      if (IMPORTANT_FILES.has(relPath) || IMPORTANT_FILES.has(name)) {
+        score += 40;
+        reasons.push("important file (+40)");
+      }
+      if (
+        relPath
+          .split(sep)
+          .some((p) => p.toLowerCase() === "examples" || p.toLowerCase() === "example")
+      ) {
+        score += 30;
+        reasons.push("examples (+30)");
+      }
+      if (testPaths.has(relPath)) {
+        score += 20;
+        reasons.push("test (+20)");
+      }
+      if (
+        relPath
+          .split(sep)
+          .some((p) => p.toLowerCase() === "docs" || p.toLowerCase() === "doc")
+      ) {
+        score += 20;
+        reasons.push("docs (+20)");
+      }
+      if (highIndegreePaths.has(relPath)) {
+        score += 40;
+        reasons.push("high in-degree (+40)");
+      }
+      if (highPagerankPaths.has(relPath)) {
+        score += 50;
+        reasons.push("high PageRank (+50)");
+      }
+      if (entrypointPaths.has(relPath)) {
+        score += 30;
+        reasons.push("entrypoint (+30)");
+      }
+
+      if (score > 0) {
+        scored.push({ path: relPath, score, reasons });
+      }
+    }
+
+    scored.sort((a, b) => b.score - a.score);
+    store[this.id] = { topFiles: scored.slice(0, 20) };
+  }
+}
+
 const ANALYZERS = [
   new DiscoveryAnalyzer(),
   new SymbolsAnalyzer(),
   new ArchitectureAnalyzer(),
-  new FunctionAnalyzerAdapter("entrypoints", analyzeEntrypoints),
-  new FunctionAnalyzerAdapter("prompts", analyzePrompts),
-  new FunctionAnalyzerAdapter("tools", analyzeTools),
-  new FunctionAnalyzerAdapter("tests", analyzeTests),
-  new FunctionAnalyzerAdapter("evaluations", analyzeEvaluations),
-  new FunctionAnalyzerAdapter("git", analyzeGit, { needsGit: true }),
-  new FunctionAnalyzerAdapter("ci", analyzeCI),
-  new FunctionAnalyzerAdapter("ranking", analyzeRanking),
+  new EntrypointsAnalyzer(),
+  new PromptsAnalyzer(),
+  new ToolsAnalyzer(),
+  new TestsAnalyzer(),
+  new EvaluationsAnalyzer(),
+  new GitAnalyzer(),
+  new CIAnalyzer(),
+  new RankingAnalyzer(),
 ];
 
 // ===========================================================================
@@ -3062,6 +3482,972 @@ class EvidenceStore {
   }
 }
 
+// ===========================================================================
+// ResearchPlanner — goal-driven research design
+//
+// Transforms a high-level research goal into a set of falsifiable hypotheses,
+// an evidence-gathering plan, and a prioritized reading plan. All reasoning is
+// grounded in the deterministic EvidenceStore graph.
+// ===========================================================================
+
+const DEFAULT_RESEARCH_GOAL =
+  "understand the repository architecture, design ideas, engineering tradeoffs, and reusable patterns";
+
+class ResearchPlanner {
+  /**
+   * @param {string} goal
+   * @param {EvidenceStore} evidenceStore
+   */
+  constructor(goal, evidenceStore) {
+    this.goal = goal || DEFAULT_RESEARCH_GOAL;
+    this.store = evidenceStore;
+  }
+
+  plan() {
+    this.store.ensureBuilt();
+    const hypotheses = this._generateHypotheses();
+    const evidencePlan = this._buildEvidencePlan(hypotheses);
+    const readingPlan = this._buildReadingPlan(hypotheses, evidencePlan);
+    return {
+      goal: this.goal,
+      hypotheses,
+      evidencePlan,
+      readingPlan,
+    };
+  }
+
+  _generateHypotheses() {
+    const discovery = this.store.get("discovery") || {};
+    const architecture = this.store.get("architecture") || {};
+    const entrypoints = this.store.get("entrypoints") || {};
+    const tests = this.store.get("tests") || {};
+    const evaluations = this.store.get("evaluations") || {};
+    const prompts = this.store.get("prompts") || {};
+    const tools = this.store.get("tools") || {};
+    const gitInfo = this.store.get("git") || {};
+
+    const hypotheses = [];
+
+    // H1: Purpose
+    const hasReadme = discovery.hasReadme;
+    const hasManifest = Boolean(discovery.manifest);
+    hypotheses.push({
+      id: "H1-purpose",
+      statement: "The repository purpose and target audience can be inferred from README and manifest",
+      confidence: hasReadme && hasManifest ? "high" : hasReadme || hasManifest ? "medium" : "low",
+      evidence: [
+        ...(hasReadme ? ["README.md exists"] : []),
+        ...(hasManifest ? [`manifest: ${discovery.manifest.entry}`] : []),
+      ],
+      gaps: [
+        ...(hasReadme ? [] : ["README.md missing"]),
+        ...(hasManifest ? [] : ["No recognized package manifest"]),
+      ],
+    });
+
+    // H2: AI/Agent nature
+    const hasAgentFiles = (discovery.agentFiles || []).length > 0;
+    const hasPrompts = (prompts.totalPrompts || 0) > 0;
+    const hasTools = (tools.totalTools || 0) > 0;
+    const signalDirs = discovery.architectureSignalDirs || [];
+    const agentLikeDirs = signalDirs.filter((d) =>
+      /\b(agent|agents|prompt|prompts|tool|tools|memory|context|planner|executor)\b/.test(d)
+    );
+    const aiScore = [hasAgentFiles, hasPrompts, hasTools, agentLikeDirs.length > 0].filter(Boolean).length;
+    hypotheses.push({
+      id: "H2-ai-agent",
+      statement: "This is an AI-agent / LLM-related project with prompts and/or tools",
+      confidence: aiScore >= 3 ? "high" : aiScore >= 1 ? "medium" : "low",
+      evidence: [
+        ...(hasAgentFiles ? ["agent instruction files found"] : []),
+        ...(hasPrompts ? [`${prompts.totalPrompts} prompt-like strings`] : []),
+        ...(hasTools ? [`${tools.totalTools} tool registrations`] : []),
+        ...(agentLikeDirs.length ? [`architecture signal dirs: ${agentLikeDirs.join(", ")}`] : []),
+      ],
+      gaps: aiScore === 0 ? ["No prompt/tool/agent signals detected"] : [],
+    });
+
+    // H3: Modular architecture
+    const nodeCount = architecture.totalNodes || 0;
+    const edgeCount = architecture.totalEdges || 0;
+    const cycleCount = (architecture.cycles || []).length;
+    hypotheses.push({
+      id: "H3-modular",
+      statement: "The codebase has a modular architecture with identifiable dependency layers",
+      confidence: nodeCount > 10 && edgeCount > 5 ? "high" : nodeCount > 0 ? "medium" : "low",
+      evidence: [
+        `${nodeCount} modules`,
+        `${edgeCount} import edges`,
+        ...(cycleCount ? [`${cycleCount} import cycles detected`] : []),
+      ],
+      gaps: nodeCount === 0 ? ["No module dependency graph available"] : [],
+    });
+
+    // H4: Testing
+    const testFileCount = tests.totalTestFiles || 0;
+    hypotheses.push({
+      id: "H4-testing",
+      statement: "The project relies on automated tests for correctness",
+      confidence: testFileCount > 5 ? "high" : testFileCount > 0 ? "medium" : "low",
+      evidence: [
+        `${testFileCount} test files`,
+        `${tests.totalTestFunctions || 0} test functions`,
+        ...(tests.patterns || []).map((p) => `pattern: ${p}`),
+      ],
+      gaps: testFileCount === 0 ? ["No test files detected"] : [],
+    });
+
+    // H5: Entry points
+    const epCount = (entrypoints.entrypoints || []).length;
+    const cliCount = (entrypoints.entrypoints || []).filter((e) => e.type === "cli").length;
+    hypotheses.push({
+      id: "H5-entrypoints",
+      statement: "Entry points reveal the primary interfaces (CLI, server, SDK)",
+      confidence: epCount > 0 ? "high" : "low",
+      evidence: [
+        `${epCount} entry points`,
+        `${cliCount} CLI entry points`,
+        ...(entrypoints.entrypoints || [])
+          .slice(0, 5)
+          .map((e) => `${e.type}: ${e.path}`),
+      ],
+      gaps: epCount === 0 ? ["No entry points detected"] : [],
+    });
+
+    // H6: Evaluation
+    const hasEval = evaluations.hasEvaluation;
+    hypotheses.push({
+      id: "H6-evaluation",
+      statement: "The project measures quality through benchmarks or evaluations",
+      confidence: hasEval ? "high" : "low",
+      evidence: [
+        ...(hasEval ? ["evaluation/benchmark artifacts found"] : []),
+        ...(evaluations.patterns || []).slice(0, 5).map((p) => `pattern: ${p}`),
+        ...(evaluations.metrics || []).slice(0, 5).map((m) => `metric: ${m}`),
+      ],
+      gaps: hasEval ? [] : ["No evaluation or benchmark artifacts detected"],
+    });
+
+    // H7: Maturity
+    const totalCommits = gitInfo.totalCommits || 0;
+    const totalContributors = gitInfo.totalContributors || 0;
+    hypotheses.push({
+      id: "H7-maturity",
+      statement: "The project is actively maintained with a non-trivial development history",
+      confidence: totalCommits > 50 && totalContributors > 1 ? "high" : totalCommits > 0 ? "medium" : "low",
+      evidence: [
+        `${totalCommits} commits`,
+        `${totalContributors} contributors`,
+        ...(gitInfo.lastCommit ? [`last commit: ${gitInfo.lastCommit.date}`] : []),
+      ],
+      gaps: totalCommits === 0 ? ["No Git history available"] : [],
+    });
+
+    return hypotheses;
+  }
+
+  _buildEvidencePlan(hypotheses) {
+    const plan = [];
+    const discovery = this.store.get("discovery") || {};
+    const ranking = this.store.get("ranking") || {};
+    const topFiles = (ranking.topFiles || []).map((f) => f.path);
+
+    for (const h of hypotheses) {
+      if (h.gaps.length === 0) continue;
+      for (const gap of h.gaps) {
+        if (gap.includes("README")) {
+          plan.push({
+            hypothesisId: h.id,
+            source: "manual",
+            query: "read README.md or project documentation",
+            priority: "high",
+          });
+        } else if (gap.includes("manifest")) {
+          plan.push({
+            hypothesisId: h.id,
+            source: "manual",
+            query: "inspect package manifest for dependencies and scripts",
+            priority: "high",
+          });
+        } else if (gap.includes("entry") || gap.includes("interface")) {
+          plan.push({
+            hypothesisId: h.id,
+            source: "entrypoints",
+            query: "trace entry point call graphs",
+            priority: "high",
+          });
+        } else if (gap.includes("test")) {
+          plan.push({
+            hypothesisId: h.id,
+            source: "tests",
+            query: "inspect examples or manual validation workflows",
+            priority: "medium",
+          });
+        } else if (gap.includes("eval")) {
+          plan.push({
+            hypothesisId: h.id,
+            source: "evaluations",
+            query: "search for ad-hoc validation scripts",
+            priority: "medium",
+          });
+        } else {
+          plan.push({
+            hypothesisId: h.id,
+            source: "auto",
+            query: `resolve gap: ${gap}`,
+            priority: "medium",
+          });
+        }
+      }
+    }
+
+    // Add file-specific evidence queries from ranking
+    for (const file of topFiles.slice(0, 10)) {
+      plan.push({
+        hypothesisId: "H3-modular",
+        source: "ranking",
+        query: `read ${file}`,
+        priority: "high",
+      });
+    }
+
+    // Add architecture signal directory queries
+    for (const dir of (discovery.architectureSignalDirs || []).slice(0, 10)) {
+      plan.push({
+        hypothesisId: "H3-modular",
+        source: "discovery",
+        query: `explore architecture signal directory: ${dir}`,
+        priority: "medium",
+      });
+    }
+
+    return plan;
+  }
+
+  _buildReadingPlan(hypotheses, evidencePlan) {
+    const ranking = this.store.get("ranking") || {};
+    const entrypoints = this.store.get("entrypoints") || {};
+    const discovery = this.store.get("discovery") || {};
+    const agentFiles = discovery.agentFiles || [];
+
+    const scoredFiles = new Map();
+
+    // Seed from ranking
+    for (const item of ranking.topFiles || []) {
+      scoredFiles.set(item.path, { path: item.path, score: item.score, reasons: [...item.reasons] });
+    }
+
+    // Boost entry points
+    for (const ep of entrypoints.entrypoints || []) {
+      const entry = scoredFiles.get(ep.path) || { path: ep.path, score: 0, reasons: [] };
+      entry.score += 30;
+      entry.reasons.push(`entrypoint (${ep.type})`);
+      scoredFiles.set(ep.path, entry);
+    }
+
+    // Ensure README and agent instructions are included
+    for (const candidate of ["README.md", "AGENTS.md", "CLAUDE.md", ...agentFiles]) {
+      if ((discovery.metadataFiles || []).includes(candidate) || agentFiles.includes(candidate)) {
+        const entry = scoredFiles.get(candidate) || { path: candidate, score: 0, reasons: [] };
+        entry.score += 40;
+        entry.reasons.push("critical documentation");
+        scoredFiles.set(candidate, entry);
+      }
+    }
+
+    const sorted = [...scoredFiles.values()]
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 20);
+
+    return sorted.map((item) => ({
+      file: item.path,
+      reason: [...new Set(item.reasons)].join("; "),
+      priority: item.score >= 60 ? "high" : item.score >= 30 ? "medium" : "low",
+      estimatedEffort: item.path.endsWith(".md") ? "low" : "medium",
+    }));
+  }
+}
+
+// ===========================================================================
+// QuestionGenerator — gap-driven question generation
+//
+// Reads the EvidenceStore and emits concrete research questions for the LLM
+// layer. Each question points to the exact evidence gap and suggests which
+// analyzer output or files to consult.
+// ===========================================================================
+
+class QuestionGenerator {
+  /**
+   * @param {EvidenceStore} evidenceStore
+   */
+  constructor(evidenceStore) {
+    this.store = evidenceStore;
+  }
+
+  generate() {
+    this.store.ensureBuilt();
+    const gaps = this._identifyGaps();
+    const questions = gaps.map((gap) => this._gapToQuestion(gap));
+    return { questions };
+  }
+
+  _identifyGaps() {
+    const gaps = [];
+    const discovery = this.store.get("discovery") || {};
+    const architecture = this.store.get("architecture") || {};
+    const entrypoints = this.store.get("entrypoints") || {};
+    const tests = this.store.get("tests") || {};
+    const evaluations = this.store.get("evaluations") || {};
+    const prompts = this.store.get("prompts") || {};
+    const tools = this.store.get("tools") || {};
+    const ranking = this.store.get("ranking") || {};
+
+    if (!discovery.hasReadme) {
+      gaps.push({ category: "purpose", severity: "high", detail: "No README.md found" });
+    }
+    if (!discovery.manifest) {
+      gaps.push({ category: "purpose", severity: "medium", detail: "No recognized package manifest" });
+    }
+
+    const modules = architecture.nodes || [];
+    const highCentrality = [
+      ...(architecture.centrality?.topByInDegree || []),
+      ...(architecture.centrality?.topByPageRank || []),
+    ];
+    if (modules.length > 0 && highCentrality.length === 0) {
+      gaps.push({ category: "architecture", severity: "medium", detail: "Modules exist but centrality is unclear" });
+    }
+    if ((architecture.cycles || []).length > 0) {
+      gaps.push({ category: "architecture", severity: "medium", detail: `${architecture.cycles.length} import cycles detected` });
+    }
+
+    if ((entrypoints.entrypoints || []).length === 0) {
+      gaps.push({ category: "entrypoints", severity: "high", detail: "No entry points detected" });
+    } else {
+      const cliEps = entrypoints.entrypoints.filter((e) => e.type === "cli");
+      if (cliEps.length > 0) {
+        gaps.push({ category: "entrypoints", severity: "medium", detail: "CLI entry points need usage semantics" });
+      }
+    }
+
+    if ((tests.totalTestFiles || 0) === 0) {
+      gaps.push({ category: "testing", severity: "medium", detail: "No automated tests detected" });
+    }
+
+    if (!evaluations.hasEvaluation) {
+      gaps.push({ category: "evaluation", severity: "medium", detail: "No evaluation or benchmark artifacts detected" });
+    }
+
+    if ((prompts.totalPrompts || 0) > 0 && (tools.totalTools || 0) === 0) {
+      gaps.push({ category: "prompts", severity: "medium", detail: "Prompts exist but tool binding is unclear" });
+    }
+    if ((tools.totalTools || 0) > 0 && (prompts.totalPrompts || 0) === 0) {
+      gaps.push({ category: "tools", severity: "medium", detail: "Tools exist but prompt orchestration is unclear" });
+    }
+    if ((prompts.totalPrompts || 0) > 0 && (tools.totalTools || 0) > 0) {
+      gaps.push({ category: "prompts", severity: "medium", detail: "Both prompts and tools exist; their orchestration needs inspection" });
+    }
+    if ((prompts.totalPrompts || 0) > 0) {
+      gaps.push({ category: "prompts", severity: "low", detail: "Prompt lifecycle (versioning, assembly, compression) needs inspection" });
+    }
+    if ((tools.totalTools || 0) > 0) {
+      gaps.push({ category: "tools", severity: "low", detail: "Tool lifecycle (registration, discovery, invocation) needs inspection" });
+    }
+
+    // High-centrality modules that are not in the top reading list
+    const topPaths = new Set((ranking.topFiles || []).map((f) => f.path));
+    for (const { id } of highCentrality.slice(0, 5)) {
+      const node = modules.find((n) => n.id === id);
+      if (node && !topPaths.has(node.path)) {
+        gaps.push({ category: "architecture", severity: "low", detail: `High-centrality module not yet prioritized: ${node.path}` });
+      }
+    }
+
+    return gaps;
+  }
+
+  _gapToQuestion(gap) {
+    const templates = {
+      purpose: {
+        high: "What problem does this repository solve, and who are its intended users?",
+        medium: "How is the project packaged and what are its declared dependencies/scripts?",
+        low: "What additional metadata (LICENSE, CONTRIBUTING, CHANGELOG) clarifies project intent?",
+      },
+      architecture: {
+        high: "What are the core architectural layers and how do they interact?",
+        medium: "How is responsibility divided among the top modules, and where are the dependency boundaries?",
+        low: "What design patterns or conventions explain the module organization?",
+      },
+      entrypoints: {
+        high: "How does a user or downstream system invoke this project?",
+        medium: "What commands or APIs does the CLI/server expose?",
+        low: "What initialization or configuration is required before running?",
+      },
+      testing: {
+        high: "How is correctness validated in this codebase?",
+        medium: "Which modules have the most test coverage, and which are under-tested?",
+        low: "What test fixtures or mocking strategies are used?",
+      },
+      evaluation: {
+        high: "How does the project measure success or quality?",
+        medium: "What metrics, datasets, or judges are used for evaluation?",
+        low: "Are there any benchmarks or leaderboards documented?",
+      },
+      prompts: {
+        high: "How are prompts composed, versioned, and rendered at runtime?",
+        medium: "What role do system, assistant, and few-shot prompts play?",
+        low: "Are prompts statically defined or dynamically assembled?",
+      },
+      tools: {
+        high: "How are tools registered, discovered, and invoked by the agent/runtime?",
+        medium: "What is the schema contract between tools and callers?",
+        low: "Are tools decorated, wrapped, or provided by a framework?",
+      },
+    };
+
+    const bySeverity = templates[gap.category] || templates.architecture;
+    const question = bySeverity[gap.severity] || bySeverity.medium;
+
+    return {
+      category: gap.category,
+      question,
+      priority: gap.severity,
+      evidenceGap: gap.detail,
+      suggestedSources: this._sourcesForGap(gap.category),
+    };
+  }
+
+  _sourcesForGap(category) {
+    const map = {
+      purpose: ["discovery.metadataFiles", "discovery.manifest", "ranking.topFiles"],
+      architecture: ["architecture.nodes", "architecture.edges", "architecture.centrality", "discovery.architectureSignalDirs"],
+      entrypoints: ["entrypoints.entrypoints", "ranking.topFiles"],
+      testing: ["tests.fileDetails", "tests.byModule", "tests.patterns"],
+      evaluation: ["evaluations.evalFiles", "evaluations.patterns", "evaluations.metrics"],
+      prompts: ["prompts.prompts", "symbols.strings", "tools.tools"],
+      tools: ["tools.tools", "symbols.functions", "architecture.edges"],
+    };
+    return map[category] || ["discovery", "ranking.topFiles"];
+  }
+}
+
+// ===========================================================================
+// Report Generator — produces an Evidence Brief for LLM analysis
+// ===========================================================================
+
+/**
+ * The ReportGenerator does NOT produce the final report.
+ * It produces a structured **Evidence Brief** (Markdown) that condenses all
+ * analyzer outputs into an LLM-friendly format, highlights computable
+ * insights (patterns, anomalies, engineering metrics), and ends with an
+ * analysis prompt that instructs the LLM on how to write `report.md`.
+ *
+ * Design principle: Scripts produce facts + computable insights.
+ * The LLM produces interpretation, tradeoff analysis, and narrative.
+ */
+class ReportGenerator {
+  constructor(evidenceStore) {
+    this.store = evidenceStore;
+    this.s = evidenceStore._store;
+  }
+
+  generate() {
+    const sections = [
+      this._header(),
+      this._executiveBrief(),
+      this._architectureInsights(),
+      this._aiAgentInsights(),
+      this._testingAndEvaluation(),
+      this._engineeringMetrics(),
+      this._readingPriority(),
+      this._researchPlan(),
+      this._llmPrompt(),
+    ];
+    return sections.filter(Boolean).join("\n\n");
+  }
+
+  // -- Helpers --------------------------------------------------------------
+
+  _get(key) {
+    return this.s[key] || {};
+  }
+
+  _num(value) {
+    return typeof value === "number" ? value : Array.isArray(value) ? value.length : 0;
+  }
+
+  _pct(numerator, denominator) {
+    if (!denominator) return "N/A";
+    return ((numerator / denominator) * 100).toFixed(1) + "%";
+  }
+
+  _topN(arr, n, key) {
+    if (!arr || arr.length === 0) return [];
+    return [...arr].sort((a, b) => (b[key] || 0) - (a[key] || 0)).slice(0, n);
+  }
+
+  // -- Sections -------------------------------------------------------------
+
+  _header() {
+    const disc = this._get("discovery");
+    const repoName = disc.repoName || "unknown";
+    const date = new Date().toISOString().split("T")[0];
+    return [
+      `# Evidence Brief: ${repoName}`,
+      "",
+      `> Generated: ${date} by research-repo skill (deterministic analysis).`,
+      `> This brief is the **input** for LLM report generation — not the final report.`,
+      `> The LLM should read this brief, then write \`report.md\` per the prompt in the last section.`,
+    ].join("\n");
+  }
+
+  _executiveBrief() {
+    const disc = this._get("discovery");
+    const git = this._get("git");
+    const ci = this._get("ci");
+    const manifest = disc.manifest || {};
+    const fileCount = disc.fileCount || {};
+    const topLangs = Object.entries(fileCount)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([ext, count]) => `${ext} (${count})`)
+      .join(", ");
+    const totalSource = this._num(disc.totalSourceFiles);
+
+    const lines = [
+      "## 1. Executive Brief",
+      "",
+      `| Dimension | Value |`,
+      `|-----------|-------|`,
+      `| Repository | ${disc.repoName || "unknown"} |`,
+      `| Manifest | ${manifest.entry || "none"} (${manifest.language || "unknown"}) |`,
+      `| Version | ${manifest.version || "N/A"} |`,
+      `| Source files | ${totalSource} |`,
+      `| Top languages | ${topLangs || "N/A"} |`,
+      `| Top-level dirs | ${(disc.topLevelDirs || []).slice(0, 10).join(", ")} |`,
+      `| Commits | ${this._num(git.totalCommits)} |`,
+      `| Contributors | ${this._num(git.totalContributors)} |`,
+      `| CI provider | ${ci.hasCI ? ci.provider || "detected" : "none"} |`,
+    ];
+
+    // Derived: project stage
+    const commits = this._num(git.totalCommits);
+    const contributors = this._num(git.totalContributors);
+    let stage = "early-stage";
+    if (commits > 500 && contributors > 5) stage = "mature";
+    else if (commits > 100 || contributors > 2) stage = "growing";
+    lines.push(`| **Project stage** | ${stage} (${commits} commits, ${contributors} contributors) |`);
+
+    // Derived: language ecosystem
+    const lang = manifest.language || "unknown";
+    const ecosystems = {
+      python: "Python ecosystem",
+      typescript: "TypeScript/Node ecosystem",
+      javascript: "JavaScript/Node ecosystem",
+      rust: "Rust ecosystem",
+      go: "Go ecosystem",
+    };
+    lines.push(`| **Ecosystem** | ${ecosystems[lang] || lang} |`);
+
+    return lines.join("\n");
+  }
+
+  _architectureInsights() {
+    const arch = this._get("architecture");
+    const symbols = this._get("symbols");
+    const entrypoints = this._get("entrypoints");
+    const nodes = this._num(arch.totalNodes);
+    const edges = this._num(arch.totalEdges);
+    const cycles = arch.cycles || [];
+    const funcs = this._num(symbols.totalFunctions);
+    const classes = this._num(symbols.totalClasses);
+
+    if (nodes === 0) {
+      return [
+        "## 2. Architecture Insights",
+        "",
+        "**WARNING**: No architecture graph was built. This may indicate AST parsing failures.",
+        "The LLM should investigate file structure manually from discovery data.",
+      ].join("\n");
+    }
+
+    const edgeNodeRatio = nodes > 0 ? (edges / nodes).toFixed(2) : "N/A";
+    const lines = [
+      "## 2. Architecture Insights",
+      "",
+      `| Metric | Value | Interpretation |`,
+      `|--------|-------|----------------|`,
+      `| Modules | ${nodes} | — |`,
+      `| Import edges | ${edges} | edge/node ratio: ${edgeNodeRatio} |`,
+      `| Import cycles | ${cycles.length} | ${cycles.length > 0 ? "⚠ tight coupling detected" : "no cycles — clean layering"} |`,
+      `| Functions | ${funcs} | ${funcs > 0 ? `${(funcs / nodes).toFixed(1)} funcs/module` : "N/A"} |`,
+      `| Classes | ${classes} | ${classes > 0 ? `${(classes / nodes).toFixed(1)} classes/module` : "N/A"} |`,
+    ];
+
+    // Coupling assessment
+    const ratio = edges / nodes;
+    let coupling = "low";
+    if (ratio > 2.0) coupling = "high — tightly coupled, changes ripple widely";
+    else if (ratio > 1.0) coupling = "moderate — typical for mid-size projects";
+    lines.push("");
+    lines.push(`**Coupling assessment**: edge/node ratio ${edgeNodeRatio} → ${coupling}`);
+
+    // Cycles detail
+    if (cycles.length > 0) {
+      lines.push("");
+      lines.push("**Import cycles** (potential design issues):");
+      for (const cycle of cycles.slice(0, 5)) {
+        lines.push(`  - \`${cycle.join(" → ")}\``);
+      }
+      if (cycles.length > 5) lines.push(`  - ... and ${cycles.length - 5} more`);
+    }
+
+    // Centrality — most depended-upon modules
+    const topInDegree = this._topN(arch.centrality?.topByInDegree, 10, "value");
+    if (topInDegree.length > 0) {
+      lines.push("");
+      lines.push("**Most depended-upon modules** (high in-degree = core/foundation):");
+      for (const { id, value } of topInDegree) {
+        lines.push(`  - \`${id}\` (in-degree: ${value})`);
+      }
+    }
+
+    // PageRank — most influential modules
+    const topPageRank = this._topN(arch.centrality?.topByPageRank, 10, "value");
+    if (topPageRank.length > 0) {
+      lines.push("");
+      lines.push("**Most influential modules** (high PageRank = architectural bottleneck):");
+      for (const { id, value } of topPageRank) {
+        lines.push(`  - \`${id}\` (PageRank: ${value.toFixed(4)})`);
+      }
+    }
+
+    // Entrypoints summary
+    const eps = entrypoints.entrypoints || [];
+    if (eps.length > 0) {
+      const byType = {};
+      for (const ep of eps) byType[ep.type] = (byType[ep.type] || 0) + 1;
+      const summary = Object.entries(byType)
+        .map(([t, c]) => `${t}: ${c}`)
+        .join(", ");
+      lines.push("");
+      lines.push(`**Entry points**: ${eps.length} total (${summary})`);
+      // Sample entrypoints
+      lines.push("  Sample entry points:");
+      for (const ep of eps.slice(0, 8)) {
+        lines.push(`  - [${ep.type}] \`${ep.path}\` — ${ep.reason}`);
+      }
+    }
+
+    return lines.join("\n");
+  }
+
+  _aiAgentInsights() {
+    const prompts = this._get("prompts");
+    const tools = this._get("tools");
+    const symbols = this._get("symbols");
+    const totalPrompts = this._num(prompts.totalPrompts);
+    const totalTools = this._num(tools.totalTools);
+
+    if (totalPrompts === 0 && totalTools === 0) {
+      // Check if there are prompt-like strings
+      const promptStrings = (symbols.strings || []).filter(
+        (s) => /prompt|system|instruction/i.test(s.name || "")
+      );
+      if (promptStrings.length === 0) {
+        return [
+          "## 3. AI / Agent Design",
+          "",
+          "No prompts or tools detected. This may not be an AI/Agent project,",
+          "or prompt/tool definitions use non-standard patterns.",
+        ].join("\n");
+      }
+    }
+
+    const lines = ["## 3. AI / Agent Design", ""];
+
+    // Prompt analysis
+    if (totalPrompts > 0) {
+      const promptByType = {};
+      for (const p of prompts.prompts || []) {
+        promptByType[p.type] = (promptByType[p.type] || 0) + 1;
+      }
+      lines.push(`**Prompts**: ${totalPrompts} detected`);
+      lines.push(`  By type: ${Object.entries(promptByType).map(([t, c]) => `${t} (${c})`).join(", ")}`);
+      // Sample prompts
+      lines.push("  Sample prompts:");
+      for (const p of (prompts.prompts || []).slice(0, 5)) {
+        const snippet = (p.snippet || "").slice(0, 120);
+        lines.push(`  - [${p.type}] \`${p.file}:${p.line}\` ${snippet}...`);
+      }
+    }
+
+    // Tool analysis
+    if (totalTools > 0) {
+      const toolByFw = {};
+      for (const t of tools.tools || []) {
+        toolByFw[t.framework] = (toolByFw[t.framework] || 0) + 1;
+      }
+      lines.push("");
+      lines.push(`**Tools**: ${totalTools} detected`);
+      lines.push(`  By framework: ${Object.entries(toolByFw).map(([f, c]) => `${f} (${c})`).join(", ")}`);
+      // Sample tools
+      lines.push("  Sample tools:");
+      for (const t of (tools.tools || []).slice(0, 8)) {
+        lines.push(`  - [${t.framework}] \`${t.name}\` — \`${t.file}\``);
+      }
+    }
+
+    // Derived: design archetype
+    if (totalPrompts > 0 || totalTools > 0) {
+      lines.push("");
+      lines.push("**Design archetype** (derived):");
+      if (totalTools > 0 && totalPrompts > 0) {
+        const ratio = (totalTools / totalPrompts).toFixed(1);
+        lines.push(`  - Tools/Prompts ratio: ${ratio} → ${ratio > 3 ? "tool-heavy design (capabilities primarily tool-driven)" : ratio < 0.3 ? "prompt-heavy design (capabilities primarily instruction-driven)" : "balanced prompt+tool design"}`);
+      } else if (totalTools > 0) {
+        lines.push("  - Tool-only design (no explicit prompts detected) — capabilities are entirely tool-driven");
+      } else if (totalPrompts > 0) {
+        lines.push("  - Prompt-only design (no explicit tools detected) — capabilities are instruction-driven");
+      }
+    }
+
+    return lines.join("\n");
+  }
+
+  _testingAndEvaluation() {
+    const tests = this._get("tests");
+    const evals = this._get("evaluations");
+    const disc = this._get("discovery");
+    const totalTestFiles = this._num(tests.totalTestFiles);
+    const totalTestFuncs = this._num(tests.totalTestFunctions);
+    const totalSource = this._num(disc.totalSourceFiles);
+    const testRatio = totalSource > 0 ? (totalTestFiles / totalSource).toFixed(2) : "N/A";
+
+    const lines = ["## 4. Testing & Evaluation", ""];
+
+    // Testing
+    if (totalTestFiles > 0) {
+      lines.push(`**Testing**: ${totalTestFiles} test files, ${totalTestFuncs} test functions`);
+      lines.push(`  Test/source ratio: ${testRatio} → ${testRatio !== "N/A" && parseFloat(testRatio) < 0.15 ? "⚠ below typical 0.15 threshold" : "adequate coverage"}`);
+      // Test patterns
+      if (tests.patterns && tests.patterns.length > 0) {
+        lines.push(`  Test patterns detected: ${tests.patterns.join(", ")}`);
+      }
+      // Test by module
+      if (tests.byModule && Object.keys(tests.byModule).length > 0) {
+        const topModules = Object.entries(tests.byModule)
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 5);
+        lines.push("  Tests by module (top 5):");
+        for (const [mod, count] of topModules) {
+          lines.push(`    - \`${mod}\`: ${count} tests`);
+        }
+      }
+    } else {
+      lines.push("**Testing**: No test files detected. ⚠ This is a significant quality risk.");
+    }
+
+    // Evaluation
+    lines.push("");
+    if (evals.hasEvaluation) {
+      lines.push(`**Evaluation**: Detected`);
+      if (evals.evalFiles && evals.evalFiles.length > 0) {
+        lines.push(`  Eval files: ${evals.evalFiles.length}`);
+        for (const f of evals.evalFiles.slice(0, 5)) {
+          lines.push(`    - \`${f}\``);
+        }
+      }
+      if (evals.metrics && evals.metrics.length > 0) {
+        lines.push(`  Metrics: ${evals.metrics.join(", ")}`);
+      }
+      if (evals.patterns && evals.patterns.length > 0) {
+        lines.push(`  Patterns: ${evals.patterns.join(", ")}`);
+      }
+    } else {
+      lines.push("**Evaluation**: No evaluation/benchmark artifacts detected.");
+      lines.push("  The LLM should investigate whether evaluation is done externally or is absent.");
+    }
+
+    return lines.join("\n");
+  }
+
+  _engineeringMetrics() {
+    const arch = this._get("architecture");
+    const tests = this._get("tests");
+    const git = this._get("git");
+    const ci = this._get("ci");
+    const symbols = this._get("symbols");
+    const disc = this._get("discovery");
+
+    const nodes = this._num(arch.totalNodes);
+    const edges = this._num(arch.totalEdges);
+    const cycles = (arch.cycles || []).length;
+    const funcs = this._num(symbols.totalFunctions);
+    const calls = this._num(symbols.totalCalls);
+    const testFiles = this._num(tests.totalTestFiles);
+    const commits = this._num(git.totalCommits);
+    const contributors = this._num(git.totalContributors);
+
+    const lines = [
+      "## 5. Engineering Metrics",
+      "",
+      "| Metric | Value |",
+      "|--------|-------|",
+      `| Modules (AST nodes) | ${nodes} |`,
+      `| Import edges | ${edges} |`,
+      `| Import cycles | ${cycles} |`,
+      `| Functions indexed | ${funcs} |`,
+      `| Call relations | ${calls} |`,
+      `| Test files | ${testFiles} |`,
+      `| Total commits | ${commits} |`,
+      `| Contributors | ${contributors} |`,
+    ];
+
+    // Derived complexity indicators
+    lines.push("");
+    lines.push("**Derived indicators**:");
+    const ratio = nodes > 0 ? edges / nodes : 0;
+    lines.push(`  - Coupling density: ${ratio.toFixed(2)} edges/module`);
+    if (cycles > 0) {
+      lines.push(`  - Cycle count: ${cycles} — ${cycles > 3 ? "⚠ multiple cycles suggest architectural debt" : "minor coupling issues"}`);
+    }
+    if (funcs > 0 && calls > 0) {
+      lines.push(`  - Call density: ${(calls / funcs).toFixed(1)} calls/function`);
+    }
+    if (commits > 0) {
+      const commitsPerContributor = contributors > 0 ? (commits / contributors).toFixed(0) : "N/A";
+      lines.push(`  - Commit intensity: ${commitsPerContributor} commits/contributor`);
+    }
+
+    // CI assessment
+    if (ci.hasCI) {
+      lines.push(`  - CI: ${ci.provider || "detected"} with ${(ci.workflows || []).length} workflow(s)`);
+    } else {
+      lines.push("  - CI: none detected ⚠");
+    }
+
+    // Architecture signal dirs
+    const signalDirs = disc.architectureSignalDirs || [];
+    if (signalDirs.length > 0) {
+      lines.push("");
+      lines.push("**Architecture signal directories** (high structural importance):");
+      for (const d of signalDirs.slice(0, 10)) {
+        lines.push(`  - \`${d}\``);
+      }
+    }
+
+    return lines.join("\n");
+  }
+
+  _readingPriority() {
+    const ranking = this._get("ranking");
+    const topFiles = ranking.topFiles || [];
+    if (topFiles.length === 0) return "";
+
+    const lines = ["## 6. Reading Priority (Top Files)", ""];
+    lines.push("Ranked by structural importance (PageRank, in-degree, entrypoint, README, tests):");
+    lines.push("");
+    lines.push("| # | File | Score | Why |");
+    lines.push("|---|------|-------|-----|");
+    for (let i = 0; i < Math.min(topFiles.length, 20); i++) {
+      const f = topFiles[i];
+      lines.push(`| ${i + 1} | \`${f.path}\` | ${f.score} | ${f.reasons.join("; ")} |`);
+    }
+
+    lines.push("");
+    lines.push("**LLM guidance**: Read files in this order. The first 5-10 files typically reveal");
+    lines.push("the core architecture. Prioritize README, then high-PageRank modules, then entrypoints.");
+
+    return lines.join("\n");
+  }
+
+  _researchPlan() {
+    const plan = this._get("plan");
+    const questions = this._get("questions");
+    const lines = ["## 7. Research Plan & Open Questions", ""];
+
+    // Hypotheses
+    const hypotheses = plan.hypotheses || [];
+    if (hypotheses.length > 0) {
+      lines.push("### Hypotheses (from evidence)");
+      for (const h of hypotheses) {
+        const icon = h.confidence === "high" ? "✓" : h.confidence === "medium" ? "?" : "⚠";
+        lines.push(`- **${icon} ${h.id}** (${h.confidence}): ${h.statement}`);
+        if (h.gaps && h.gaps.length > 0) {
+          lines.push(`  - Gaps: ${h.gaps.join("; ")}`);
+        }
+      }
+    }
+
+    // Questions
+    const qs = questions.questions || [];
+    if (qs.length > 0) {
+      lines.push("");
+      lines.push("### Open Questions (from evidence gaps)");
+      for (const q of qs) {
+        lines.push(`- [${q.priority}] **${q.category}**: ${q.question}`);
+      }
+    }
+
+    return lines.join("\n");
+  }
+
+  _llmPrompt() {
+    const disc = this._get("discovery");
+    const repoName = disc.repoName || "this repository";
+    return [
+      "---",
+      "",
+      "## LLM Analysis Instructions",
+      "",
+      `You are an experienced software architect. Based on the evidence above, write a comprehensive`,
+      `engineering research report for **${repoName}**. Save it as \`report.md\` in the working folder.`,
+      "",
+      "### Report Structure",
+      "",
+      "1. **Executive Summary** — What is this project? Why does it exist? What's the most interesting",
+      "   architectural decision? Who should study it?",
+      "",
+      "2. **Architecture Overview** — Describe the module structure, dependency direction, layering,",
+      "   and execution flow. Use a Mermaid diagram for the core architecture. Explain WHY the",
+      "   architecture is designed this way, not just WHAT it is.",
+      "",
+      "3. **AI/Agent Design** (if applicable) — Analyze the prompt system, tool framework, agent",
+      "   lifecycle, context engineering, and guardrails. What's the orchestration pattern?",
+      "",
+      "4. **Engineering Tradeoffs** — For each major design decision: what was chosen, what was",
+      "   the alternative, why this choice? Focus on tradeoffs that are non-obvious.",
+      "",
+      "5. **Reusable Patterns** — Patterns worth copying, patterns to avoid, interesting abstractions,",
+      "   and clever tricks. Be specific about WHERE each pattern lives (file:line).",
+      "",
+      "6. **Testing & Evaluation** — How does the project verify correctness? What's the test",
+      "   strategy? Is there evaluation infrastructure? What gaps exist?",
+      "",
+      "7. **Learning Checklist** — Top 10 concepts worth learning, top 10 files to read, top tests",
+      "   to study. Prioritize by insight density.",
+      "",
+      "### Rules",
+      "",
+      "- Every claim must cite evidence from this brief (section number, metric, or file path).",
+      "- Use High/Medium/Low confidence labels for major conclusions.",
+      "- Don't speculate without evidence — say \"Unknown\" if evidence is insufficient.",
+      "- Don't just restate the numbers — interpret what they MEAN for engineering decisions.",
+      "- Compare with similar projects when you have relevant knowledge.",
+      "- Focus on WHY, not WHAT. The evidence brief already says WHAT.",
+      "",
+      "### Evidence Files for Deeper Investigation",
+      "",
+      "The following JSON files contain full evidence (read them if you need more detail):",
+      "- `evidence-store/full.json` — complete analysis output",
+      "- `evidence-store/symbols.json` — function/class/import/call index",
+      "- `evidence-store/architecture.json` — dependency graph + centrality",
+      "- `evidence-store/interesting_files.json` — ranked file reading priority",
+    ].join("\n");
+  }
+}
+
 class AnalyzerPipeline {
   constructor(analyzers = ANALYZERS) {
     this.analyzers = analyzers;
@@ -3093,6 +4479,7 @@ class AnalyzerPipeline {
 
   /**
    * Run all analyzers and return a graph-based EvidenceStore.
+   * Also synthesizes a research plan and gap-driven questions from the evidence.
    * @param {RepositoryContext} ctx
    * @returns {Promise<EvidenceStore>}
    */
@@ -3105,7 +4492,14 @@ class AnalyzerPipeline {
       }
       await analyzer.analyze(ctx, store, { command: analyzer.id });
     }
-    return new EvidenceStore(store);
+    const evidenceStore = new EvidenceStore(store);
+    const planner = new ResearchPlanner(DEFAULT_RESEARCH_GOAL, evidenceStore);
+    store.plan = planner.plan();
+    const questionGenerator = new QuestionGenerator(evidenceStore);
+    store.questions = questionGenerator.generate();
+    const reportGenerator = new ReportGenerator(evidenceStore);
+    store.report = reportGenerator.generate();
+    return evidenceStore;
   }
 }
 
@@ -3116,7 +4510,8 @@ class AnalyzerPipeline {
 async function main() {
   const command = process.argv[2];
   const repoPath = process.argv[3];
-  const validCommands = new Set([...ANALYZERS.map((a) => a.id), "all"]);
+  const syntheticCommands = new Set(["plan", "questions", "report"]);
+  const validCommands = new Set([...ANALYZERS.map((a) => a.id), "all", ...syntheticCommands]);
 
   if (!command || !repoPath) {
     console.error(
@@ -3147,9 +4542,20 @@ async function main() {
   try {
     const ctx = new RepositoryContext(absPath);
     const pipeline = new AnalyzerPipeline();
-    const result = command === "all"
-      ? await pipeline.runAll(ctx)
-      : await pipeline.run(command, ctx);
+    let result;
+    if (command === "all") {
+      result = await pipeline.runAll(ctx);
+    } else if (command === "report") {
+      const evidenceStore = await pipeline.runAll(ctx);
+      // Report is Markdown, not JSON — print directly.
+      process.stdout.write(evidenceStore.get("report") + "\n");
+      return;
+    } else if (syntheticCommands.has(command)) {
+      const evidenceStore = await pipeline.runAll(ctx);
+      result = command === "plan" ? evidenceStore.get("plan") : evidenceStore.get("questions");
+    } else {
+      result = await pipeline.run(command, ctx);
+    }
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
   } catch (err) {
     console.error(`Error running '${command}': ${err && err.message ? err.message : String(err)}`);
@@ -3179,6 +4585,8 @@ export {
   BaseAnalyzer,
   AnalyzerPipeline,
   EvidenceStore,
+  ResearchPlanner,
+  QuestionGenerator,
   LANGUAGE_EXTENSIONS,
   SOURCE_EXTENSIONS,
   PROJECT_DISCOVERY_RULES,

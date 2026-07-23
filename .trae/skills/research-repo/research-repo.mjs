@@ -298,12 +298,39 @@ let Parser = null;
 let wasmDir = null;
 const languageCache = new Map(); // ext -> Language
 const parserCache = new Map(); // ext -> Parser instance
+const parserPending = new Map(); // ext -> Promise<Parser|null> (dedup concurrent load)
 const treeCache = new Map(); // filePath -> tree
+
+/**
+ * Map items with limited concurrency to avoid overwhelming the WASM runtime.
+ * Tree-sitter's WASM runtime is not safe under high concurrency — concurrent
+ * parse calls can trigger "Aborted()" / "memory access out of bounds" crashes
+ * that corrupt the runtime for all subsequent operations.
+ */
+async function mapWithConcurrency(items, concurrency, fn) {
+  const results = new Array(items.length);
+  let index = 0;
+  async function worker() {
+    while (index < items.length) {
+      const i = index++;
+      try {
+        results[i] = await fn(items[i], i);
+      } catch (e) {
+        // Catch WASM crashes that throw RuntimeError; return null for this item.
+        results[i] = null;
+      }
+    }
+  }
+  const workers = [];
+  for (let w = 0; w < Math.min(concurrency, items.length); w++) workers.push(worker());
+  await Promise.all(workers);
+  return results;
+}
 
 const TS_LANG_MAP = {
   ".py": "tree-sitter-python.wasm",
   ".ts": "tree-sitter-typescript.wasm",
-  ".tsx": "tree-sitter-typescript.wasm",
+  ".tsx": "tree-sitter-tsx.wasm",
   ".js": "tree-sitter-javascript.wasm",
   ".jsx": "tree-sitter-javascript.wasm",
   ".mjs": "tree-sitter-javascript.wasm",
@@ -610,20 +637,31 @@ async function getParserForFile(filePath) {
   if (!Parser || !wasmDir) return null;
   const ext = extname(filePath);
   if (parserCache.has(ext)) return parserCache.get(ext);
+  // Dedup: if a load is already in-flight for this extension, await it.
+  if (parserPending.has(ext)) return parserPending.get(ext);
+
   const wasmFile = TS_LANG_MAP[ext];
   if (!wasmFile) return null;
   const wasmPath = join(wasmDir, wasmFile);
   if (!existsSync(wasmPath)) return null;
-  try {
-    const Language = Parser.Language;
-    const language = await Language.load(wasmPath);
-    const parser = new Parser();
-    parser.setLanguage(language);
-    parserCache.set(ext, parser);
-    return parser;
-  } catch {
-    return null;
-  }
+
+  const pending = (async () => {
+    try {
+      const Language = Parser.Language;
+      const language = await Language.load(wasmPath);
+      const parser = new Parser();
+      parser.setLanguage(language);
+      parserCache.set(ext, parser);
+      return parser;
+    } catch {
+      return null;
+    } finally {
+      parserPending.delete(ext);
+    }
+  })();
+
+  parserPending.set(ext, pending);
+  return pending;
 }
 
 async function parseFileAST(filePath) {
@@ -633,6 +671,9 @@ async function parseFileAST(filePath) {
   try {
     const content = readFileSync(filePath, "utf-8");
     const tree = parser.parse(content);
+    // Touch rootNode to trigger WASM errors early (within try-catch).
+    // Some files cause "memory access out of bounds" at rootNode access.
+    const _root = tree.rootNode;
     treeCache.set(filePath, tree);
     return tree;
   } catch {
@@ -2193,13 +2234,11 @@ class SymbolsAnalyzer extends BaseAnalyzer {
   async analyze(ctx, store, _analyzerCtx) {
     const sourceFiles = ctx.sourceFiles;
 
-    const results = await Promise.all(
-      sourceFiles.map(async (file) => {
-        const tree = await ctx.parseAST(file.path);
-        const symbols = await extractSymbolsAST(file.path, ctx.repoPath, tree);
-        return symbols || { functions: [], classes: [], imports: [], calls: [], strings: [] };
-      })
-    );
+    const results = await mapWithConcurrency(sourceFiles, 10, async (file) => {
+      const tree = await ctx.parseAST(file.path);
+      const symbols = await extractSymbolsAST(file.path, ctx.repoPath, tree);
+      return symbols || { functions: [], classes: [], imports: [], calls: [], strings: [] };
+    });
 
     const functions = [];
     const classes = [];
@@ -2207,6 +2246,7 @@ class SymbolsAnalyzer extends BaseAnalyzer {
     const calls = [];
     const strings = [];
     for (const r of results) {
+      if (!r) continue;
       functions.push(...r.functions);
       classes.push(...r.classes);
       imports.push(...r.imports);
@@ -2263,15 +2303,13 @@ class ArchitectureAnalyzer extends BaseAnalyzer {
       }
     } else {
       // Fallback: parse imports per file (still uses ctx AST cache)
-      await Promise.all(
-        sourceFiles.map(async (file) => {
-          const relPath = ctx.rel(file.path);
-          const tree = await ctx.parseAST(file.path);
-          const astImports = await extractImportsAST(file.path, tree);
-          const imports = astImports !== null ? astImports : parseImports(file.path);
-          fileImports.set(relPath, imports);
-        })
-      );
+      await mapWithConcurrency(sourceFiles, 10, async (file) => {
+        const relPath = ctx.rel(file.path);
+        const tree = await ctx.parseAST(file.path);
+        const astImports = await extractImportsAST(file.path, tree);
+        const imports = astImports !== null ? astImports : parseImports(file.path);
+        fileImports.set(relPath, imports);
+      });
     }
 
     const nodes = [];
@@ -2389,8 +2427,7 @@ class EntrypointsAnalyzer extends BaseAnalyzer {
 
     // 3. AST-based detection (preferred) + regex fallback per file
     const sourceFiles = entries.filter((e) => SOURCE_EXTENSIONS.has(e.ext));
-    const astResults = await Promise.all(
-      sourceFiles.map(async (file) => {
+    const astResults = await mapWithConcurrency(sourceFiles, 10, async (file) => {
         const relPath = ctx.rel(file.path);
         const tree = await ctx.parseAST(file.path);
         const astSignals = await extractEntrypointsAST(file.path, ctx.repoPath, tree);
@@ -2423,9 +2460,10 @@ class EntrypointsAnalyzer extends BaseAnalyzer {
           }
         }
         return { relPath, signals, useRegex: true };
-      })
-    );
-    for (const { relPath, signals } of astResults) {
+      });
+    for (const r of astResults) {
+      if (!r) continue;
+      const { relPath, signals } = r;
       if (seen.has(relPath)) continue;
       const depth = relPath.split(sep).length;
       const isDeep = depth > 3;
@@ -2504,8 +2542,7 @@ class PromptsAnalyzer extends BaseAnalyzer {
     const mdFiles = files.filter((f) => !codeExts.has(f.ext));
 
     // AST-based extraction for code files (with regex fallback per file)
-    const codeResults = await Promise.all(
-      codeFiles.map(async (f) => {
+    const codeResults = await mapWithConcurrency(codeFiles, 10, async (f) => {
         const tree = await ctx.parseAST(f.path);
         const astPrompts = await extractPromptsAST(f.path, ctx.repoPath, tree);
         if (astPrompts !== null) return astPrompts;
@@ -2531,8 +2568,7 @@ class PromptsAnalyzer extends BaseAnalyzer {
           }
         }
         return prompts;
-      })
-    );
+      });
 
     // Regex for markdown files
     const mdPrompts = [];
@@ -2558,7 +2594,7 @@ class PromptsAnalyzer extends BaseAnalyzer {
       }
     }
 
-    const prompts = [...codeResults.flat(), ...mdPrompts];
+    const prompts = [...codeResults.filter(Boolean).flat(), ...mdPrompts];
     store[this.id] = { totalPrompts: prompts.length, prompts };
   }
 }
@@ -2591,18 +2627,17 @@ class ToolsAnalyzer extends BaseAnalyzer {
     const seen = new Set();
 
     // Try AST first per file; regex fallback when AST unavailable
-    const results = await Promise.all(
-      files.map(async (f) => {
+    const results = await mapWithConcurrency(files, 10, async (f) => {
         const tree = await ctx.parseAST(f.path);
         const astTools = await extractToolsAST(f.path, ctx.repoPath, tree);
         if (astTools !== null) return { ast: true, tools: astTools, file: f };
         return { ast: false, tools: null, file: f };
-      })
-    );
+      });
 
     // Process AST results; collect files that need regex fallback
     const regexFiles = [];
     for (const r of results) {
+      if (!r) continue;
       if (r.ast) {
         for (const t of r.tools) {
           const key = `${t.file}:${t.framework}:${t.name}`;
@@ -3896,6 +3931,523 @@ class QuestionGenerator {
   }
 }
 
+// ===========================================================================
+// Report Generator — produces an Evidence Brief for LLM analysis
+// ===========================================================================
+
+/**
+ * The ReportGenerator does NOT produce the final report.
+ * It produces a structured **Evidence Brief** (Markdown) that condenses all
+ * analyzer outputs into an LLM-friendly format, highlights computable
+ * insights (patterns, anomalies, engineering metrics), and ends with an
+ * analysis prompt that instructs the LLM on how to write `report.md`.
+ *
+ * Design principle: Scripts produce facts + computable insights.
+ * The LLM produces interpretation, tradeoff analysis, and narrative.
+ */
+class ReportGenerator {
+  constructor(evidenceStore) {
+    this.store = evidenceStore;
+    this.s = evidenceStore._store;
+  }
+
+  generate() {
+    const sections = [
+      this._header(),
+      this._executiveBrief(),
+      this._architectureInsights(),
+      this._aiAgentInsights(),
+      this._testingAndEvaluation(),
+      this._engineeringMetrics(),
+      this._readingPriority(),
+      this._researchPlan(),
+      this._llmPrompt(),
+    ];
+    return sections.filter(Boolean).join("\n\n");
+  }
+
+  // -- Helpers --------------------------------------------------------------
+
+  _get(key) {
+    return this.s[key] || {};
+  }
+
+  _num(value) {
+    return typeof value === "number" ? value : Array.isArray(value) ? value.length : 0;
+  }
+
+  _pct(numerator, denominator) {
+    if (!denominator) return "N/A";
+    return ((numerator / denominator) * 100).toFixed(1) + "%";
+  }
+
+  _topN(arr, n, key) {
+    if (!arr || arr.length === 0) return [];
+    return [...arr].sort((a, b) => (b[key] || 0) - (a[key] || 0)).slice(0, n);
+  }
+
+  // -- Sections -------------------------------------------------------------
+
+  _header() {
+    const disc = this._get("discovery");
+    const repoName = disc.repoName || "unknown";
+    const date = new Date().toISOString().split("T")[0];
+    return [
+      `# Evidence Brief: ${repoName}`,
+      "",
+      `> Generated: ${date} by research-repo skill (deterministic analysis).`,
+      `> This brief is the **input** for LLM report generation — not the final report.`,
+      `> The LLM should read this brief, then write \`report.md\` per the prompt in the last section.`,
+    ].join("\n");
+  }
+
+  _executiveBrief() {
+    const disc = this._get("discovery");
+    const git = this._get("git");
+    const ci = this._get("ci");
+    const manifest = disc.manifest || {};
+    const fileCount = disc.fileCount || {};
+    const topLangs = Object.entries(fileCount)
+      .sort(([, a], [, b]) => b - a)
+      .slice(0, 5)
+      .map(([ext, count]) => `${ext} (${count})`)
+      .join(", ");
+    const totalSource = this._num(disc.totalSourceFiles);
+
+    const lines = [
+      "## 1. Executive Brief",
+      "",
+      `| Dimension | Value |`,
+      `|-----------|-------|`,
+      `| Repository | ${disc.repoName || "unknown"} |`,
+      `| Manifest | ${manifest.entry || "none"} (${manifest.language || "unknown"}) |`,
+      `| Version | ${manifest.version || "N/A"} |`,
+      `| Source files | ${totalSource} |`,
+      `| Top languages | ${topLangs || "N/A"} |`,
+      `| Top-level dirs | ${(disc.topLevelDirs || []).slice(0, 10).join(", ")} |`,
+      `| Commits | ${this._num(git.totalCommits)} |`,
+      `| Contributors | ${this._num(git.totalContributors)} |`,
+      `| CI provider | ${ci.hasCI ? ci.provider || "detected" : "none"} |`,
+    ];
+
+    // Derived: project stage
+    const commits = this._num(git.totalCommits);
+    const contributors = this._num(git.totalContributors);
+    let stage = "early-stage";
+    if (commits > 500 && contributors > 5) stage = "mature";
+    else if (commits > 100 || contributors > 2) stage = "growing";
+    lines.push(`| **Project stage** | ${stage} (${commits} commits, ${contributors} contributors) |`);
+
+    // Derived: language ecosystem
+    const lang = manifest.language || "unknown";
+    const ecosystems = {
+      python: "Python ecosystem",
+      typescript: "TypeScript/Node ecosystem",
+      javascript: "JavaScript/Node ecosystem",
+      rust: "Rust ecosystem",
+      go: "Go ecosystem",
+    };
+    lines.push(`| **Ecosystem** | ${ecosystems[lang] || lang} |`);
+
+    return lines.join("\n");
+  }
+
+  _architectureInsights() {
+    const arch = this._get("architecture");
+    const symbols = this._get("symbols");
+    const entrypoints = this._get("entrypoints");
+    const nodes = this._num(arch.totalNodes);
+    const edges = this._num(arch.totalEdges);
+    const cycles = arch.cycles || [];
+    const funcs = this._num(symbols.totalFunctions);
+    const classes = this._num(symbols.totalClasses);
+
+    if (nodes === 0) {
+      return [
+        "## 2. Architecture Insights",
+        "",
+        "**WARNING**: No architecture graph was built. This may indicate AST parsing failures.",
+        "The LLM should investigate file structure manually from discovery data.",
+      ].join("\n");
+    }
+
+    const edgeNodeRatio = nodes > 0 ? (edges / nodes).toFixed(2) : "N/A";
+    const lines = [
+      "## 2. Architecture Insights",
+      "",
+      `| Metric | Value | Interpretation |`,
+      `|--------|-------|----------------|`,
+      `| Modules | ${nodes} | — |`,
+      `| Import edges | ${edges} | edge/node ratio: ${edgeNodeRatio} |`,
+      `| Import cycles | ${cycles.length} | ${cycles.length > 0 ? "⚠ tight coupling detected" : "no cycles — clean layering"} |`,
+      `| Functions | ${funcs} | ${funcs > 0 ? `${(funcs / nodes).toFixed(1)} funcs/module` : "N/A"} |`,
+      `| Classes | ${classes} | ${classes > 0 ? `${(classes / nodes).toFixed(1)} classes/module` : "N/A"} |`,
+    ];
+
+    // Coupling assessment
+    const ratio = edges / nodes;
+    let coupling = "low";
+    if (ratio > 2.0) coupling = "high — tightly coupled, changes ripple widely";
+    else if (ratio > 1.0) coupling = "moderate — typical for mid-size projects";
+    lines.push("");
+    lines.push(`**Coupling assessment**: edge/node ratio ${edgeNodeRatio} → ${coupling}`);
+
+    // Cycles detail
+    if (cycles.length > 0) {
+      lines.push("");
+      lines.push("**Import cycles** (potential design issues):");
+      for (const cycle of cycles.slice(0, 5)) {
+        lines.push(`  - \`${cycle.join(" → ")}\``);
+      }
+      if (cycles.length > 5) lines.push(`  - ... and ${cycles.length - 5} more`);
+    }
+
+    // Centrality — most depended-upon modules
+    const topInDegree = this._topN(arch.centrality?.topByInDegree, 10, "value");
+    if (topInDegree.length > 0) {
+      lines.push("");
+      lines.push("**Most depended-upon modules** (high in-degree = core/foundation):");
+      for (const { id, value } of topInDegree) {
+        lines.push(`  - \`${id}\` (in-degree: ${value})`);
+      }
+    }
+
+    // PageRank — most influential modules
+    const topPageRank = this._topN(arch.centrality?.topByPageRank, 10, "value");
+    if (topPageRank.length > 0) {
+      lines.push("");
+      lines.push("**Most influential modules** (high PageRank = architectural bottleneck):");
+      for (const { id, value } of topPageRank) {
+        lines.push(`  - \`${id}\` (PageRank: ${value.toFixed(4)})`);
+      }
+    }
+
+    // Entrypoints summary
+    const eps = entrypoints.entrypoints || [];
+    if (eps.length > 0) {
+      const byType = {};
+      for (const ep of eps) byType[ep.type] = (byType[ep.type] || 0) + 1;
+      const summary = Object.entries(byType)
+        .map(([t, c]) => `${t}: ${c}`)
+        .join(", ");
+      lines.push("");
+      lines.push(`**Entry points**: ${eps.length} total (${summary})`);
+      // Sample entrypoints
+      lines.push("  Sample entry points:");
+      for (const ep of eps.slice(0, 8)) {
+        lines.push(`  - [${ep.type}] \`${ep.path}\` — ${ep.reason}`);
+      }
+    }
+
+    return lines.join("\n");
+  }
+
+  _aiAgentInsights() {
+    const prompts = this._get("prompts");
+    const tools = this._get("tools");
+    const symbols = this._get("symbols");
+    const totalPrompts = this._num(prompts.totalPrompts);
+    const totalTools = this._num(tools.totalTools);
+
+    if (totalPrompts === 0 && totalTools === 0) {
+      // Check if there are prompt-like strings
+      const promptStrings = (symbols.strings || []).filter(
+        (s) => /prompt|system|instruction/i.test(s.name || "")
+      );
+      if (promptStrings.length === 0) {
+        return [
+          "## 3. AI / Agent Design",
+          "",
+          "No prompts or tools detected. This may not be an AI/Agent project,",
+          "or prompt/tool definitions use non-standard patterns.",
+        ].join("\n");
+      }
+    }
+
+    const lines = ["## 3. AI / Agent Design", ""];
+
+    // Prompt analysis
+    if (totalPrompts > 0) {
+      const promptByType = {};
+      for (const p of prompts.prompts || []) {
+        promptByType[p.type] = (promptByType[p.type] || 0) + 1;
+      }
+      lines.push(`**Prompts**: ${totalPrompts} detected`);
+      lines.push(`  By type: ${Object.entries(promptByType).map(([t, c]) => `${t} (${c})`).join(", ")}`);
+      // Sample prompts
+      lines.push("  Sample prompts:");
+      for (const p of (prompts.prompts || []).slice(0, 5)) {
+        const snippet = (p.snippet || "").slice(0, 120);
+        lines.push(`  - [${p.type}] \`${p.file}:${p.line}\` ${snippet}...`);
+      }
+    }
+
+    // Tool analysis
+    if (totalTools > 0) {
+      const toolByFw = {};
+      for (const t of tools.tools || []) {
+        toolByFw[t.framework] = (toolByFw[t.framework] || 0) + 1;
+      }
+      lines.push("");
+      lines.push(`**Tools**: ${totalTools} detected`);
+      lines.push(`  By framework: ${Object.entries(toolByFw).map(([f, c]) => `${f} (${c})`).join(", ")}`);
+      // Sample tools
+      lines.push("  Sample tools:");
+      for (const t of (tools.tools || []).slice(0, 8)) {
+        lines.push(`  - [${t.framework}] \`${t.name}\` — \`${t.file}\``);
+      }
+    }
+
+    // Derived: design archetype
+    if (totalPrompts > 0 || totalTools > 0) {
+      lines.push("");
+      lines.push("**Design archetype** (derived):");
+      if (totalTools > 0 && totalPrompts > 0) {
+        const ratio = (totalTools / totalPrompts).toFixed(1);
+        lines.push(`  - Tools/Prompts ratio: ${ratio} → ${ratio > 3 ? "tool-heavy design (capabilities primarily tool-driven)" : ratio < 0.3 ? "prompt-heavy design (capabilities primarily instruction-driven)" : "balanced prompt+tool design"}`);
+      } else if (totalTools > 0) {
+        lines.push("  - Tool-only design (no explicit prompts detected) — capabilities are entirely tool-driven");
+      } else if (totalPrompts > 0) {
+        lines.push("  - Prompt-only design (no explicit tools detected) — capabilities are instruction-driven");
+      }
+    }
+
+    return lines.join("\n");
+  }
+
+  _testingAndEvaluation() {
+    const tests = this._get("tests");
+    const evals = this._get("evaluations");
+    const disc = this._get("discovery");
+    const totalTestFiles = this._num(tests.totalTestFiles);
+    const totalTestFuncs = this._num(tests.totalTestFunctions);
+    const totalSource = this._num(disc.totalSourceFiles);
+    const testRatio = totalSource > 0 ? (totalTestFiles / totalSource).toFixed(2) : "N/A";
+
+    const lines = ["## 4. Testing & Evaluation", ""];
+
+    // Testing
+    if (totalTestFiles > 0) {
+      lines.push(`**Testing**: ${totalTestFiles} test files, ${totalTestFuncs} test functions`);
+      lines.push(`  Test/source ratio: ${testRatio} → ${testRatio !== "N/A" && parseFloat(testRatio) < 0.15 ? "⚠ below typical 0.15 threshold" : "adequate coverage"}`);
+      // Test patterns
+      if (tests.patterns && tests.patterns.length > 0) {
+        lines.push(`  Test patterns detected: ${tests.patterns.join(", ")}`);
+      }
+      // Test by module
+      if (tests.byModule && Object.keys(tests.byModule).length > 0) {
+        const topModules = Object.entries(tests.byModule)
+          .sort(([, a], [, b]) => b - a)
+          .slice(0, 5);
+        lines.push("  Tests by module (top 5):");
+        for (const [mod, count] of topModules) {
+          lines.push(`    - \`${mod}\`: ${count} tests`);
+        }
+      }
+    } else {
+      lines.push("**Testing**: No test files detected. ⚠ This is a significant quality risk.");
+    }
+
+    // Evaluation
+    lines.push("");
+    if (evals.hasEvaluation) {
+      lines.push(`**Evaluation**: Detected`);
+      if (evals.evalFiles && evals.evalFiles.length > 0) {
+        lines.push(`  Eval files: ${evals.evalFiles.length}`);
+        for (const f of evals.evalFiles.slice(0, 5)) {
+          lines.push(`    - \`${f}\``);
+        }
+      }
+      if (evals.metrics && evals.metrics.length > 0) {
+        lines.push(`  Metrics: ${evals.metrics.join(", ")}`);
+      }
+      if (evals.patterns && evals.patterns.length > 0) {
+        lines.push(`  Patterns: ${evals.patterns.join(", ")}`);
+      }
+    } else {
+      lines.push("**Evaluation**: No evaluation/benchmark artifacts detected.");
+      lines.push("  The LLM should investigate whether evaluation is done externally or is absent.");
+    }
+
+    return lines.join("\n");
+  }
+
+  _engineeringMetrics() {
+    const arch = this._get("architecture");
+    const tests = this._get("tests");
+    const git = this._get("git");
+    const ci = this._get("ci");
+    const symbols = this._get("symbols");
+    const disc = this._get("discovery");
+
+    const nodes = this._num(arch.totalNodes);
+    const edges = this._num(arch.totalEdges);
+    const cycles = (arch.cycles || []).length;
+    const funcs = this._num(symbols.totalFunctions);
+    const calls = this._num(symbols.totalCalls);
+    const testFiles = this._num(tests.totalTestFiles);
+    const commits = this._num(git.totalCommits);
+    const contributors = this._num(git.totalContributors);
+
+    const lines = [
+      "## 5. Engineering Metrics",
+      "",
+      "| Metric | Value |",
+      "|--------|-------|",
+      `| Modules (AST nodes) | ${nodes} |`,
+      `| Import edges | ${edges} |`,
+      `| Import cycles | ${cycles} |`,
+      `| Functions indexed | ${funcs} |`,
+      `| Call relations | ${calls} |`,
+      `| Test files | ${testFiles} |`,
+      `| Total commits | ${commits} |`,
+      `| Contributors | ${contributors} |`,
+    ];
+
+    // Derived complexity indicators
+    lines.push("");
+    lines.push("**Derived indicators**:");
+    const ratio = nodes > 0 ? edges / nodes : 0;
+    lines.push(`  - Coupling density: ${ratio.toFixed(2)} edges/module`);
+    if (cycles > 0) {
+      lines.push(`  - Cycle count: ${cycles} — ${cycles > 3 ? "⚠ multiple cycles suggest architectural debt" : "minor coupling issues"}`);
+    }
+    if (funcs > 0 && calls > 0) {
+      lines.push(`  - Call density: ${(calls / funcs).toFixed(1)} calls/function`);
+    }
+    if (commits > 0) {
+      const commitsPerContributor = contributors > 0 ? (commits / contributors).toFixed(0) : "N/A";
+      lines.push(`  - Commit intensity: ${commitsPerContributor} commits/contributor`);
+    }
+
+    // CI assessment
+    if (ci.hasCI) {
+      lines.push(`  - CI: ${ci.provider || "detected"} with ${(ci.workflows || []).length} workflow(s)`);
+    } else {
+      lines.push("  - CI: none detected ⚠");
+    }
+
+    // Architecture signal dirs
+    const signalDirs = disc.architectureSignalDirs || [];
+    if (signalDirs.length > 0) {
+      lines.push("");
+      lines.push("**Architecture signal directories** (high structural importance):");
+      for (const d of signalDirs.slice(0, 10)) {
+        lines.push(`  - \`${d}\``);
+      }
+    }
+
+    return lines.join("\n");
+  }
+
+  _readingPriority() {
+    const ranking = this._get("ranking");
+    const topFiles = ranking.topFiles || [];
+    if (topFiles.length === 0) return "";
+
+    const lines = ["## 6. Reading Priority (Top Files)", ""];
+    lines.push("Ranked by structural importance (PageRank, in-degree, entrypoint, README, tests):");
+    lines.push("");
+    lines.push("| # | File | Score | Why |");
+    lines.push("|---|------|-------|-----|");
+    for (let i = 0; i < Math.min(topFiles.length, 20); i++) {
+      const f = topFiles[i];
+      lines.push(`| ${i + 1} | \`${f.path}\` | ${f.score} | ${f.reasons.join("; ")} |`);
+    }
+
+    lines.push("");
+    lines.push("**LLM guidance**: Read files in this order. The first 5-10 files typically reveal");
+    lines.push("the core architecture. Prioritize README, then high-PageRank modules, then entrypoints.");
+
+    return lines.join("\n");
+  }
+
+  _researchPlan() {
+    const plan = this._get("plan");
+    const questions = this._get("questions");
+    const lines = ["## 7. Research Plan & Open Questions", ""];
+
+    // Hypotheses
+    const hypotheses = plan.hypotheses || [];
+    if (hypotheses.length > 0) {
+      lines.push("### Hypotheses (from evidence)");
+      for (const h of hypotheses) {
+        const icon = h.confidence === "high" ? "✓" : h.confidence === "medium" ? "?" : "⚠";
+        lines.push(`- **${icon} ${h.id}** (${h.confidence}): ${h.statement}`);
+        if (h.gaps && h.gaps.length > 0) {
+          lines.push(`  - Gaps: ${h.gaps.join("; ")}`);
+        }
+      }
+    }
+
+    // Questions
+    const qs = questions.questions || [];
+    if (qs.length > 0) {
+      lines.push("");
+      lines.push("### Open Questions (from evidence gaps)");
+      for (const q of qs) {
+        lines.push(`- [${q.priority}] **${q.category}**: ${q.question}`);
+      }
+    }
+
+    return lines.join("\n");
+  }
+
+  _llmPrompt() {
+    const disc = this._get("discovery");
+    const repoName = disc.repoName || "this repository";
+    return [
+      "---",
+      "",
+      "## LLM Analysis Instructions",
+      "",
+      `You are an experienced software architect. Based on the evidence above, write a comprehensive`,
+      `engineering research report for **${repoName}**. Save it as \`report.md\` in the working folder.`,
+      "",
+      "### Report Structure",
+      "",
+      "1. **Executive Summary** — What is this project? Why does it exist? What's the most interesting",
+      "   architectural decision? Who should study it?",
+      "",
+      "2. **Architecture Overview** — Describe the module structure, dependency direction, layering,",
+      "   and execution flow. Use a Mermaid diagram for the core architecture. Explain WHY the",
+      "   architecture is designed this way, not just WHAT it is.",
+      "",
+      "3. **AI/Agent Design** (if applicable) — Analyze the prompt system, tool framework, agent",
+      "   lifecycle, context engineering, and guardrails. What's the orchestration pattern?",
+      "",
+      "4. **Engineering Tradeoffs** — For each major design decision: what was chosen, what was",
+      "   the alternative, why this choice? Focus on tradeoffs that are non-obvious.",
+      "",
+      "5. **Reusable Patterns** — Patterns worth copying, patterns to avoid, interesting abstractions,",
+      "   and clever tricks. Be specific about WHERE each pattern lives (file:line).",
+      "",
+      "6. **Testing & Evaluation** — How does the project verify correctness? What's the test",
+      "   strategy? Is there evaluation infrastructure? What gaps exist?",
+      "",
+      "7. **Learning Checklist** — Top 10 concepts worth learning, top 10 files to read, top tests",
+      "   to study. Prioritize by insight density.",
+      "",
+      "### Rules",
+      "",
+      "- Every claim must cite evidence from this brief (section number, metric, or file path).",
+      "- Use High/Medium/Low confidence labels for major conclusions.",
+      "- Don't speculate without evidence — say \"Unknown\" if evidence is insufficient.",
+      "- Don't just restate the numbers — interpret what they MEAN for engineering decisions.",
+      "- Compare with similar projects when you have relevant knowledge.",
+      "- Focus on WHY, not WHAT. The evidence brief already says WHAT.",
+      "",
+      "### Evidence Files for Deeper Investigation",
+      "",
+      "The following JSON files contain full evidence (read them if you need more detail):",
+      "- `evidence-store/full.json` — complete analysis output",
+      "- `evidence-store/symbols.json` — function/class/import/call index",
+      "- `evidence-store/architecture.json` — dependency graph + centrality",
+      "- `evidence-store/interesting_files.json` — ranked file reading priority",
+    ].join("\n");
+  }
+}
+
 class AnalyzerPipeline {
   constructor(analyzers = ANALYZERS) {
     this.analyzers = analyzers;
@@ -3945,6 +4497,8 @@ class AnalyzerPipeline {
     store.plan = planner.plan();
     const questionGenerator = new QuestionGenerator(evidenceStore);
     store.questions = questionGenerator.generate();
+    const reportGenerator = new ReportGenerator(evidenceStore);
+    store.report = reportGenerator.generate();
     return evidenceStore;
   }
 }
@@ -3956,7 +4510,7 @@ class AnalyzerPipeline {
 async function main() {
   const command = process.argv[2];
   const repoPath = process.argv[3];
-  const syntheticCommands = new Set(["plan", "questions"]);
+  const syntheticCommands = new Set(["plan", "questions", "report"]);
   const validCommands = new Set([...ANALYZERS.map((a) => a.id), "all", ...syntheticCommands]);
 
   if (!command || !repoPath) {
@@ -3991,6 +4545,11 @@ async function main() {
     let result;
     if (command === "all") {
       result = await pipeline.runAll(ctx);
+    } else if (command === "report") {
+      const evidenceStore = await pipeline.runAll(ctx);
+      // Report is Markdown, not JSON — print directly.
+      process.stdout.write(evidenceStore.get("report") + "\n");
+      return;
     } else if (syntheticCommands.has(command)) {
       const evidenceStore = await pipeline.runAll(ctx);
       result = command === "plan" ? evidenceStore.get("plan") : evidenceStore.get("questions");
