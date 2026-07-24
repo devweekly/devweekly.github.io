@@ -31,7 +31,7 @@
     "remark-collapse": "^0.1.2",
     "remark-toc": "^9.0.0",
     "sanitize-html": "^2.17.0",
-    "satori": "^0.19.2",
+    "satori": "^0.29.0",
     "tailwindcss": "^4.2.2",
     "ts-morph": "^28.0.0",
     "typescript": "^6.0.3"
@@ -51,7 +51,7 @@
     "eslint": "^10.0.0",
     "eslint-plugin-astro": "^1.7.0",
     "fast-glob": "^3.3.0",
-    "graphology": "^0.25.0",
+    "graphology": "^0.26.0",
     "husky": "^8.0.3",
     "lint-staged": "^15.5.2",
     "prettier": "^3.8.1",
@@ -63,12 +63,12 @@
     "remark-parse": "^11.0.0",
     "remark-stringify": "^11.0.0",
     "simple-git": "^3.25.0",
-    "tree-sitter-wasms": "",
+    "tree-sitter-wasms": "^0.1.13",
     "typescript-eslint": "^8.58.2",
     "unified": "^11.0.0",
     "unist-util-visit": "^5.1.0",
-    "web-tree-sitter": "^0.22.0",
-    "yaml": "^2.4.0"
+    "web-tree-sitter": "^0.26.0",
+    "yaml": "^2.9.0"
   },
   "config": {
     "commitizen": {

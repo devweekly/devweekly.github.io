@@ -220,9 +220,38 @@ Answer first:
 
 ## Analyzer Pipeline Architecture
 
-The skill uses a **multi-layer Analyzer Pipeline**. Deterministic analyzers run first via `research-repo.mjs`, producing a structured Evidence Store. The LLM never traverses the repository directly — it queries the Evidence Store.
+The skill uses a **two-tier Analyzer Pipeline**:
+
+1. **Fact Extractors** (11 analyzers) — answer "what does the repo contain?" by scanning files, ASTs, git history, CI configs.
+2. **Inference Engines** (7 analyzers) — answer "why is it designed this way?" by reasoning over the Fact Extractors' output.
+
+The LLM never traverses the repository directly — it queries the Evidence Store produced by both tiers.
 
 **~70% of the work is deterministic (script), ~30% is reasoning (LLM).**
+
+### Architecture Semantics Layer (Inference Engines)
+
+Added 2026-07. Seven rule-based analyzers that elevate the Evidence Store from fact extraction to architecture reasoning. Each produces structured JSON with confidence scores and evidence, surfaced in Evidence Brief §2.5 and in `analyze-output.mjs` `summarize()`.
+
+| Analyzer | Input | Output | Key Value |
+|----------|-------|--------|-----------|
+| `ArchitecturePatternAnalyzer` | discovery dirs + symbols + graph | Pattern (Hexagonal/Pipeline/Plugin/FSM/…) + confidence | Tells architect "what kind of architecture is this?" |
+| `ResponsibilityAnalyzer` | module naming + symbols + graph | Module → Responsibility matrix (e.g., `planner/` → "Task Planning") | Replaces "top PageRank" with semantic role labels |
+| `StabilityAnalyzer` | architecture graph + symbols | Robert C. Martin A/I metrics + Zone (Pain/Uselessness/Sweet Spot) per module | Identifies god modules and over-abstract components |
+| `ChangeCouplingAnalyzer` | git log --name-only | File pairs that change together, classified as structural (have import) or logical (no import but co-change) | Surfaces hidden logical dependencies — "Git already analyzed, one step further" |
+| `InformationFlowAnalyzer` | entrypoints + calls + symbols + responsibility | End-to-end labeled flows (Request → Planner → Executor → LLM → Response) | Shows architect the request lifecycle at a glance |
+| `DependencySmellAnalyzer` | graph + pattern + stability + responsibility | Layer violations, circular deps (context-classified), hub modules, unstable dependencies | Risk assessment with severity and context |
+| `CapabilityOntologyAnalyzer` | responsibility + tools + prompts + evals + symbols | 10-capability maturity matrix (Planning/Execution/Retrieval/Memory/Evaluation/Safety/Tool/Context/IO/Persistence) | Answers "what can this system do? what's missing?" |
+
+**Dependency order** (MUST be preserved in `ANALYZERS` array):
+`ArchitecturePattern → Responsibility → (Stability, ChangeCoupling, InformationFlow, DependencySmell) → CapabilityOntology`
+
+**Rule-based, not LLM** — per architectural directive. All 7 analyzers use deterministic rules (directory naming, symbol patterns, graph shape, git history). The LLM interprets their output; it does not generate it.
+
+**Known limitations** (for future iteration):
+- Java Eclipse plugin paths (`plugins/org.jkiss.dbeaver.*`) confuse module-level grouping because dots in directory names collide with the dotted module-ID scheme.
+- `InformationFlowAnalyzer` LLM-call-site detection is regex-based on symbol names; Rust projects with generic function names may miss call sites.
+- `ArchitecturePatternAnalyzer` may false-positive "Compiler" for repos with SQL/data parsers (lexer/parser/ast directories).
 
 ### Tool Detection Strategies
 

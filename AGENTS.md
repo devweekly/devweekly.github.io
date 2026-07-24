@@ -385,6 +385,7 @@ When updating AGENTS.md:
 | 2026-07-25 | research-repo: fixed tool over-classification — exclude barrel index.* exports, drop plugins/ from tool-space, preserve SDK type in deep/bundled locations | @agents-maintainer |
 | 2026-07-25 | research-repo: fixed eval false positives — require LLM-context for name-based detection, strip package/import lines, raise content threshold to ≥3 keywords | @agents-maintainer |
 | 2026-07-25 | research-repo: filter test files in EntrypointsAnalyzer (isTestPath) to prevent test fixtures with main() being tagged as tools | @agents-maintainer |
+| 2026-07-25 | research-repo: added Architecture Semantics Layer — 7 inference analyzers (Pattern, Responsibility, Stability A/I, ChangeCoupling, InformationFlow, DependencySmell, CapabilityOntology) + refactored analyze-output.mjs to surface semantic layer | @agents-maintainer |
 
 ### Example Usage
 

@@ -12,6 +12,6 @@ export default tseslint.config(
     },
   },
   {
-    ignores: ['dist/', 'node_modules/', '.astro/'],
+    ignores: ['dist/', 'node_modules/', '.astro/', 'ref-only/', 'research-*/', '.trae/'],
   }
 );
