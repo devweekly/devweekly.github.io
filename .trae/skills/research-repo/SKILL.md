@@ -215,6 +215,25 @@ The skill uses a **multi-layer Analyzer Pipeline**. Deterministic analyzers run 
 
 **~70% of the work is deterministic (script), ~30% is reasoning (LLM).**
 
+### Tool Detection Strategies
+
+The ToolsAnalyzer uses three complementary detection strategies to cover the diverse ways AI tools are registered across frameworks:
+
+1. **AST-based decorator detection** — `@tool`, `@mcp.tool`, `@server.tool`, `@agent.tool` (Python/TS)
+2. **Regex fallback** — `function(name,`, `Tool(name`, `ToolNode([...])`, `server.tool(...)` patterns
+3. **Schema-first / registry-array detection** — Files containing `ToolDef` / `BaseToolDef` / `Tool[]` type annotations are scanned for `name: '...'` object properties. This catches MCP-server-style tool registrations like:
+   ```typescript
+   export const RPC_TOOLS: ToolDef[] = [
+     { name: 'get_procurement_opportunities', description: '...', inputSchema: {...} },
+     ...
+   ];
+   ```
+4. **Script-tool cross-reference** — Entrypoints labeled "tool" inside `skills/`/`tools/`/`agents/` directories (e.g., `execute.py`) are added as script-tools
+
+### Evaluation Detection (False-Positive Safe)
+
+The EvaluationsAnalyzer restricts name-based detection to **source files only** — images (`.webp`, `.jpg`), blog posts (`.md`), and other non-source files with "benchmark"/"eval" in the filename are NOT classified as evaluation files. Content-based detection (≥2 keyword matches) remains the primary signal.
+
 ### Analyzer Pipeline
 
 ```mermaid
@@ -286,9 +305,9 @@ The `report` command produces an **Evidence Brief** — a structured Markdown fi
 1. **Research Principles** (§0) — 10 principles guiding how the LLM should think (evidence over assumptions, negative findings matter, etc.)
 2. **Condenses** all 11 analyzer outputs into a human-readable summary (§1-§5)
 3. **Ontology View** (§5.5) — Object type distribution, relationship type distribution, semantic objects, and question-driven query examples (Palantir-inspired)
-4. **Negative Findings** (§6) — What was NOT found, preventing the LLM from defaulting to "present"
+4. **Negative Findings** (§6) — What was NOT found, preventing the LLM from defaulting to "present". Checks: tests, evaluations, prompts, tools, CI/CD, git history, import cycles, README, LICENSE, CONTRIBUTING, SECURITY, CHANGELOG, AI Agent instruction files (AGENTS.md/CLAUDE.md), architecture graph integrity. Uses `discovery.metadataFiles` (source of truth) — not `ranking.topFiles` (ranked subset) — to avoid false negatives.
 5. **Reading Priority** (§7) — Top 20 files ranked by structural importance
-6. **Reading Guide** (§8) — Time-boxed reading plans (30-minute quick look + 2-hour deep dive)
+6. **Reading Guide** (§8) — Time-boxed reading plans (30-minute quick look + 2-hour deep dive). The 30-minute plan prioritizes **root-level README + high-scoring source files** over sub-package READMEs (e.g., `sdk/go/README.md`, `blog-site/README.md` are excluded) to maximize architectural insight per minute.
 7. **Research Plan** (§9) — Hypotheses with confidence levels and open questions
 8. **LLM Analysis Prompt** — Instructs the agent to write `report.md` using Ontology-driven Research Trace methodology
 

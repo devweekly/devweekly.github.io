@@ -1,374 +1,432 @@
-# Auto-Empirical Research Skills (AERS) — 工程研究报告
+# Auto-Empirical-Research-Skills 工程研究报告
 
-> **仓库**: [Auto-Empirical-Research-Skills](https://github.com/brycewang-stanford/Auto-Empirical-Research-Skills)（Stanford REAP × CoPaper.AI）
-> **分析日期**: 2026-07-24
-> **方法论**: Research Trace（Question → Evidence → Analysis → Counter Evidence → Conclusion → Confidence） + Ontology-driven Research（对象 + 关系）
+> 报告生成时间：2026-07-24
+> 证据来源：`evidence-brief.md`（确定性分析简报）+ `evidence-store/full.json`（按需深入）+ 仓库源码交叉验证
+> 方法论：Ontology-driven Research + Research Trace
 
 ---
 
 ## 1. 执行摘要
 
-AERS 是一个面向**社会科学实证研究全流程**的 Claude/Codex 技能目录仓库：1,151 个 skill、70 个合集、9 阶段流水线（选题 → 综述 → 数据 → 识别 → 估计 → 稳健性 → 表图 → 写作 → 投稿）。它不是单一 Agent，而是一个 **skill catalog + root router** 架构——通过根 `SKILL.md` 路由器把用户请求分类，再加载单个子 skill 的 `SKILL.md`，避免一次性灌入 1,151 个 skill 触发 token 爆炸。
+**Auto-Empirical-Research-Skills（AERS）** 是 Stanford REAP × CoPaper.AI 维护的社科实证研究 AI 工具集合，仓库形态是一个 **skill catalog（技能目录）+ rigor infrastructure（严格性基础设施）**，而非传统意义的 agent 框架。它把 1,151 个 vendored skill 跨 70 个 collection 聚合到一个可路由、可评估、可基准测试的目录中，覆盖论文生产端到端 9 阶段流水线（选题 → 文献综述 → 数据 → 识别策略 → 估计 → 稳健性 → 表格/图形 → 写作 → 投稿）。证据：`README.md:L29-L44`、`SKILL.md:L11`。
 
-**最有趣的发现**：AERS 构建了一套**双层经验评估基础设施**——`benchmark/` 用真实数据集（LaLonde、Card IV、staggered DiD、RDD）的已知答案做数值回收测试，`eval-harness/` 用 rubric（机器可检 + 人工/LLM judge）做行为属性测试。两者都是 stdlib-only、零 `pip install`，并通过 CI 棘轮（ratchet）逐步抬高门槛（11 → 13 → 15 方法族；24+ 场景 / 116+ 自动检查）。这在"prompt-only skill"仓库中极为罕见——大多数同类项目只能靠"看起来对"判断质量。
+最有趣的发现是 AERS 把 **"skill 即 AI Agent 的可执行指令"** 这一抽象当作一等工程对象来对待：root `SKILL.md` 是一个 **router**（路由器）而非 skill 本体，通过 progressive disclosure 把 1,151 个子 skill 隔离在按需加载层之后（`SKILL.md:L9-L22`）。在此之上叠加 **三层 trust 架构**——numeric benchmark（数字）/ behavioral eval-harness（rubric）/ declarative matrix（人类评审）——并刻意采用 **"necessary-not-sufficient gate"** 不对称设计：通过机器可检项不能证明正确，但失败能证明错误（`eval-harness/README.md:L41-L44`）。这种"以证伪为目标的 CI"在 skill 仓库中相当独特。
 
-**次要发现**：项目实际是 Bryce Wang 的个人项目（189/208 commits ≈ 91%），3.5 个月内迅速生长（2026-04-02 首提交 → 2026-07-20 末提交），但已建立 OpenSSF Scorecard、6 locale README、rigor-coverage badge、CHANGELOG 等"成年项目"基础设施。
+整体工程质量较高：208 commits / 15 contributors / 7 个 CI workflow / OpenSSF Scorecard / 标签化 release（v2026.07）。值得 AI Agent 工程师、skill 仓库维护者、causal inference 工具链作者研究。
 
 ---
 
 ## 2. Research Traces
 
-### 2.1 核心架构：Skill Catalog + Root Router 模式
+### Trace 1: 核心架构是 Router + Progressive Disclosure，而非 Monolithic Skill
 
-**问题**: 一个仓库 1,151 个 skill，如何避免 IDE 自动加载时 token 爆炸？
+**问题**：一个包含 1,151 个 skill 的仓库如何避免在 Agent runtime 中被一次性全部加载？
 
-**证据**:
-- `SKILL.md`（仓库根）的 frontmatter `description` 明确写道："Route empirical-research requests through the Auto-Empirical Research Skills catalog ... without reading the entire repository at once"（`SKILL.md:3`）
-- `agents/README.md:30-37` 显式解释路由模式："The catalog ships 1,150+ skills. Most IDEs auto-load *every* `SKILL.md` they find, which would blow past token budgets the moment a chat opens ... The root `SKILL.md` does the routing: it classifies the user request and points at the one or two child SKILL.md files needed."
-- `SKILL.md:14-21` 的 Workflow 定义 5 步：分类 → 加载单个 child SKILL.md → 必要时查 `catalog/skills.json` → 安装指南 → 子模块处理
-- 简报 §5.5：Agent 对象 `parse_agent_yaml` 通过 `uses` 关系连接到 7 个 Tool 对象（`skills/50-brycewang-aer-skills/scripts/`）
+**证据**：
+- `SKILL.md:L1-L11` — root skill 自我定位为 "router and catalog, not as a request to load every vendored `SKILL.md`"，并显式警告 "Never read them all — route to one, then load only that skill's `SKILL.md`"
+- `SKILL.md:L22-L29` — 给出 catalog 查询 one-liner（`python3 -c "import json; ..."`），并标注两个 catalog JSON 各约 1 MB / 20k 行，"query them instead of reading them whole"
+- 简报 §2 — `scripts/toml_compat.py`、`skills/35-.../scholar_eval.py` 等 5 个文件因 high in-degree + high PageRank + entrypoint 排在 Reading Priority 前 3，说明"路由"依赖的辅助工具集中在顶层 scripts/
+- `docs/AGENT_COORDINATION.md:L36-L42` — 把 `catalog/*.json`、`docs/SKILL_CATALOG.md` 列为"generated files"，由 `make catalog` 重建
 
-**分析**: 对象图视角下，AERS 的核心抽象是 **Skill Object**（带 frontmatter 的 `SKILL.md`），Root Router 是一个特殊 Skill Object，通过 `orchestrates` 关系连接到 1,151 个 Child Skill Object。`agents/*.yaml` 是 5 个 Runtime Adapter 对象（OpenAI / Anthropic / Cursor / Aider / CodeBuddy），通过 `configuredBy` 关系把 Router 注册到不同 IDE。这是"目录即数据"模式——`catalog/skills.json` 是单一事实源，`build-catalog.py` 等脚本生成 derived view（enriched、provenance、audit）。
+**分析**：AERS 把整个仓库本身包装成一个 Claude Code / Codex skill，但内部用 router 模式做二级分发。root `SKILL.md` 仅承担分类 + 路由表 + 安装指引，实际工作下沉到 70 个 collection 的子 `SKILL.md`。这是一种 **shim + catalog** 架构：catalog 是可查询的元数据层（`skills.json` 含 `path`/`name`/`description`/`line_count`/`qualified_name`），shim 是 root skill 的 routing table。
 
-**反证**: `SKILL.md:80` 承认存在 92 个 bare `name` 冲突（如 `data-analysis`、`lit-review`），需要 `qualified_name`（`<collection>::<name>`）消歧。这说明 Router 模式并非完美——平铺注册会冲突。
+**反证**：未发现反证。简报 §2 显示 edge/node ratio 仅 0.68（低耦合），与"skill 之间彼此独立"的设计预期一致；只有 2 个 import cycle 都集中在 `skills/35-bahayonghang-academic-writing-skills`（见 Trace 5），不影响路由层。
 
-**结论**: AERS 采用 **Skill Catalog + Root Router 模式**——通过分层加载控制 token 预算，用 `qualified_name` 解决命名冲突，把"1,151 个 skill"降维为"1 个路由 + 按需加载"。
+**结论**：Router + Catalog + Progressive Disclosure 三件套是 AERS 应对 skill 数量爆炸的核心架构模式。它把"1,151 个 skill"问题降维为"1 个 router + 1 个 catalog 查询 + 1 个子 skill 加载"问题。
 
-**置信度**: 高 — Router 逻辑、agents/ 适配器、catalog JSON 三处证据交叉验证。
-
----
-
-### 2.2 双层评估基础设施：Numeric Benchmark + Rubric Eval
-
-**问题**: 对 prompt-only skill，如何建立"行为正确"的可验证证据？
-
-**证据**:
-- `benchmark/README.md:1-5`："A small, reproducible, dependency-free benchmark of empirical-research agent behavior. Where `eval-harness/` checks *properties of an agent's prose*, the benchmark checks *numbers*"
-- `benchmark/README.md:9-26` LaLonde 任务：naive ATT = −$635（陷阱），regression-adjusted ATT = +$1,548，experimental benchmark ≈ +$1,794
-- `eval-harness/README.md:1-5`："A lightweight, dependency-free evaluation harness for the flagship skills ... *do these skills make an agent produce correct, referee-proof empirical work — or just plausible-looking text?*"
-- `eval-harness/README.md:28-44` Rubric 双类型：machine-checkable（无 API key）+ manual（emit judge prompt）。"deliberately a *necessary-not-sufficient* gate ... failing a required one proves it is wrong"
-- 简报 §4：99 个 eval 文件，metrics 包括 score/precision/accuracy/f1/recall/bleu/rouge/pass_rate
-- `.github/workflows/quality-evals.yml:47-51`：CI 跑 `benchmark/check_benchmark.py --strict --fail-on-partial --fail-on-orphan-results`
-
-**分析**: 对象图视角下存在两个 Eval Object 类型：(1) `Benchmark` Object（17 个，每个绑定真实数据集 + 已知答案 + 陷阱）；(2) `Rubric` Object（37 场景 × 183 items，machine-checkable + manual）。Skill Object 通过 `evaluatedBy` 关系连接到这两个 Eval Object（简报 §5.5：evaluatedBy = 152）。设计哲学是**非对称验证**：通过不证明对，但失败证明错——这是廉价 CI 门控的最佳形态。Bench Object 数据集（LaLonde、Card、sim-staggered-did 等）是 `benchmark/data/*.csv`，每个都包含 `y0` 反事实列，让 checker 能重算真实值。
-
-**反证**: Rubric 中的 `manual` 项仍需 LLM judge 或人工，无法纯 CI 自动判定。但 harness 设计为"emits a ready-to-paste judge prompt"——把人/LLM 介入成本降到最低。
-
-**结论**: AERS 的**双层经验评估**是 prompt-skill 仓库中罕见的工程化质量基础设施——数值 benchmark 用真实数据钉死事实，rubric eval 用属性检查钉死行为，CI 棘轮强制覆盖率只升不降。
-
-**置信度**: 高 — benchmark/eval-harness 两个 README、CI workflow、CHANGELOG 三处交叉验证。
+**置信度**：高 — root `SKILL.md` 显式声明、catalog 文件结构、Reading Priority 排序三方证据一致。
 
 ---
 
-### 2.3 CI 棘轮模式：覆盖率只升不降
+### Trace 2: 三层 Trust 架构——Numbers / Rubric / Human Review
 
-**问题**: AERS 如何防止评估覆盖率随重构漂移下降？
+**问题**：如何对一个"本质是 prompt context、没有可单测函数"的 skill 集合做质量保证？
 
-**证据**:
-- `.github/workflows/quality-evals.yml:37-42`：`run_evals.py --min-scenarios 24 --min-auto-checks 116 --expect-categories causal-identification,reproducibility,citation-hygiene,runtime-safety,research-integrity,writing-compliance,writing-style`
-- `eval-harness/README.md:64-67`：`--min-scenarios 18 --min-auto-checks 86`（README 中的旧阈值）
-- `CHANGELOG.md:34-48`：v2026.07 后扩展到 15 method families，"Eval/CI ratchet floors raised to lock in the coverage (28 scenarios / 132 auto-checks, 15 benchmark tasks)"
-- `CHANGELOG.md:71-73`：v2026.07 时是 26 scenarios / 122 auto-checks / 13 benchmark tasks
-- `scripts/build-coverage-map.py`、`docs/RIGOR_COVERAGE.md` 存在（简报 §2 entrypoints）
+**证据**：
+- `README.md:L58-L65` — 信任面表显式区分两 lane：17 个 numeric benchmark tasks + 37/183 behavioral eval scenarios
+- `eval-harness/README.md:L1-L15` — 自述存在两个互补层：`docs/EVALS.md`（declarative，定义"什么是好"）+ `eval-harness/`（executable，CI 中强制执行）；numeric counterpart 在 `benchmark/`
+- `benchmark/README.md:L1-L6` — 明确分工："where `eval-harness/` checks *properties of an agent's prose*, the benchmark checks *numbers*"
+- `eval-harness/README.md:L17-L26` — rubric item 三种类型：machine-checkable / `manual`（需人或 LLM judge）
 
-**分析**: 对象图视角下，CI Workflow Object 通过 `validates` 关系连接到 Eval Object 与 Benchmark Object。`--min-scenarios` / `--min-auto-checks` 是**单向棘轮**——只能上调。每次新增方法族（CATE/QTE/Bartik/mediation），CHANGELOG 显式记录新阈值。`--expect-categories` 强制类目完整性，防止"删场景来降低门槛"。`--fail-on-orphans --fail-on-partial` 防止结果与场景脱钩。这是教科书式的"覆盖率即资产"实践。
+**分析**：AERS 把"skill 是否有效"拆成三个正交维度：
+1. **Numeric layer**（`benchmark/`）— 用真实数据 + 已知答案，验证 pipeline 是否恢复正确数字
+2. **Behavioral layer**（`eval-harness/`）— 用 scenario + rubric，验证 agent 输出是否具有"referee-proof"属性
+3. **Declarative layer**（`docs/EVALS.md`）— 人类可读的"good looks like"清单
 
-**反证**: 棘轮只能阻止下降，不能保证场景质量——理论上可加 10 个无意义场景把阈值抬到 34。但 `validate_root_skill_stats`（`scripts/validate-repo.py`）和 `build-coverage-map.py` 的 METHOD_ORDER 提供了类目交叉校验。
+Ontology 视图：`evaluation` 对象有 115 个，通过 `evaluatedBy` 关系连接到 skill 对象（简报 §5.5）。
 
-**结论**: AERS 用**CI 棘轮 + 类目完整性检查**锁定评估覆盖率，确保每一次方法族扩展都伴随 eval/benchmark 同步增长，且无回退空间。
+**反证**：未发现反证。三层数量（17 numeric / 37 scenarios / 183 items）在 `quality-evals.yml:L40-L42` CI 中被锁定为下限（`--min-scenarios 24 --min-auto-checks 116`），说明是 ratchet 而非 wishful thinking。
 
-**置信度**: 高 — workflow 文件、CHANGELOG、README 三处阈值数据可交叉验证演进轨迹。
+**结论**：三层 trust 架构是 AERS 对"prompt-context skill 不可单测"问题的工程回应。每层捕获不同 failure mode：numeric 抓数值错误，rubric 抓属性缺失，declarative 抓规范偏离。
 
----
-
-### 2.4 Stdlib-only 兼容性策略：toml_compat.py 的设计智慧
-
-**问题**: AERS 如何在 macOS 系统 Python 3.9 上无 `pip install` 跑通完整质量门？
-
-**证据**:
-- `scripts/toml_compat.py:1-15` 文档字符串："The repo's local gate also needs to run on the macOS system Python 3.9 without third-party dependencies, so this module falls back to a deliberately small parser for the TOML subset used by benchmark tasks and eval scenarios"
-- `scripts/toml_compat.py:24-32`：try `tomllib` (3.11+) → try `tomli` → fallback `_loads_fallback`
-- `.github/workflows/quality-evals.yml:21`：CI 矩阵 `python-version: ["3.9", "3.12"]`
-- `benchmark/README.md:1-3`、`eval-harness/README.md:1-3` 均强调 "**dependency-free**"
-- 简报 §7：`scripts/toml_compat.py` 排名第 1（in-degree +40，PageRank +50，entrypoint +30）
-
-**分析**: 对象图视角下，`toml_compat` Module Object 通过 `imports` 关系被 `benchmark/check_benchmark.py`、`eval-harness/run_evals.py` 等多个 Tool Object 消费（这是其 in-degree 4 但 PageRank 极高的原因——它是基础工具层）。设计是**优雅降级**：优先用 stdlib（3.11+ 自带），次选用 `tomli`，最后用内置的 ~150 行小子集解析器（仅支持 `[[array_of_tables]]` + 基本类型，够覆盖 TOML task/scenario 文件）。这让 CI 在 Ubuntu 3.12 上跑原生 tomllib，在开发者 macOS 3.9 上跑 fallback，**零外部依赖**。
-
-**反证**: 简报 §2 显示 `toml_compat` in-degree 只有 4，不像 `parsers`（in-degree 58）那样的 god module——这反而是好事，说明 fallback 解析器职责单一。
-
-**结论**: `toml_compat.py` 是**优雅降级模式**的范本——用 ~150 行代码换得"零依赖 + 跨 Python 3.9/3.12 + macOS/Linux 一致运行"的特性，是 AERS 整个 stdlib-only 质量门的基石。
-
-**置信度**: 高 — 源码、CI 矩阵、README 三处直接证据。
+**置信度**：高 — 三份 README 互相印证，CI 中有对应执行步骤。
 
 ---
 
-### 2.5 Submodule 与 Sync 双轨制：第一方 skill 的版本治理
+### Trace 3: "Necessary-not-sufficient Gate" 不对称设计
 
-**问题**: 7 个 ⭐ 旗舰 skill 与社区 skill 的版本更新机制有何不同？
+**问题**：在便宜、always-on 的 CI gate 中，应该用"证明正确"还是"证伪错误"作为目标？
 
-**证据**:
-- `SKILL.md:72`："`skills/69-Paper-WorkFlow/` is a **git submodule**. If its folder is empty, the copy or clone skipped submodules"
-- `scripts/sync-statspai-skill.sh`、`scripts/sync-aer-skills.sh` 存在（简报 §2 entrypoints）
-- `.github/workflows/sync-aer-skills.yml`、`sync-statspai-skill.yml` 两个 CI workflow
-- `README.md:128-140`：7 个 Stanford REAP × CoPaper.AI 自研 skill（00/00.1/00.2/00.3/48/50/69）
-- `.gitmodules` 文件存在（LS 顶层目录）
+**证据**：
+- `eval-harness/README.md:L41-L44` — 原文："This is deliberately a *necessary-not-sufficient* gate. Passing every machine-checkable item does not prove an answer is correct; **failing** a required one proves it is wrong"
+- `eval-harness/README.md:L26-L33` — 示例：rubric 检查 agent 是否"refuses to headline a naive TWFE estimate under staggered timing"、"reports a first-stage F and switches to weak-IV-robust inference when the instrument is weak"
+- `quality-evals.yml:L53-L59` — `--expect-fail-required statspai-weak-iv` 显式断言"故意弱的 fixture 必须在 required 项上失败"，把不对称性钉进 CI
 
-**分析**: 对象图视角下，第一方 Skill Object 与社区 Skill Object 的 `registeredBy` 关系不同：
-- **Paper-WorkFlow**（69）= git submodule（独立 repo，主仓持有引用）
-- **StatsPAI**（00）= 定期 `sync-statspai-skill.sh` 从 upstream 拉取（vendored but synced）
-- **AER-skills**（50）= 同样通过 `sync-aer-skills.sh` 同步
-- 其余 67 个合集 = 一次性 vendor，通过 `README-original.md` 保留上游痕迹
+**分析**：这是把 Popper 可证伪主义搬进 skill 仓库 CI 的设计。它放弃"证明 skill 产出正确经济学"（不可判定），转而"证明 skill 不会犯已知错误"（可判定）。`statspai-weak-iv` 作为 negative fixture 被 CI 锁定——如果某天它通过了 required 检查，反而说明 CI 失效。
 
-两种机制各有利弊：submodule 保持独立 git 历史但克隆需 `--recursive`；sync 脚本保持主仓自包含但需 CI 守护同步。AERS 同时用两种——submodule 给 Paper-WorkFlow（最复杂、最频繁演进），sync 脚本给 StatsPAI/AER-skills（稳定但需追上游）。
+Ontology 视图：`evaluation` 对象通过 `validates` 关系作用于 `tool`/`prompt` 对象；`manual` rubric item 通过 `produces` 关系生成 judge prompt。
 
-**反证**: 简报 §1 显示 `agentFiles: []`——没有把 submodule 视为 agent 文件。CHANGELOG 提到 2026-06-26 起 `validate-catalog` 因 Paper-WorkFlow demo gate 红了——submodule 模式确实带来过 CI 痛点。
+**反证**：未发现反证。`benchmark/check_benchmark.py --strict --fail-on-partial --fail-on-orphan-results`（`quality-evals.yml:L51`）说明 benchmark 走更严格的"必须匹配 reference"模式，与 eval-harness 的不对称设计互补。
 
-**结论**: AERS 用 **submodule + sync 脚本双轨制** 治理第一方 skill：复杂演进的用 submodule（Paper-WorkFlow），稳定追上游的用 sync 脚本（StatsPAI、AER-skills），社区 skill 一次性 vendor。
+**结论**：AERS 把"必要的而非充分的"作为 cheap CI gate 的设计原则，通过 negative fixture 反向验证 gate 本身有效。这是 skill 仓库可靠性工程的可复用范式。
 
-**置信度**: 高 — `.gitmodules`、两个 sync workflow、两个 sync 脚本、`SKILL.md` 显式声明四处交叉验证。
+**置信度**：高 — 原文显式陈述 + CI 配置双重证据。
 
 ---
 
-### 2.6 Catalog 即数据：多视图派生模式
+### Trace 4: Benchmark 用 Causal Inference Stress Test + Real Data + Construction-Invariant Check
 
-**问题**: 1,151 个 skill 的元数据如何管理与查询？
+**问题**：如何为"社科实证 pipeline"设计一个可重算、不可作弊的 benchmark？
 
-**证据**:
-- `catalog/skills.json`（~1 MB / 20k 行，`SKILL.md:23`）
-- `catalog/skills-enriched.json`（添加 tags、quality_score、license、commercial_use）
-- `catalog/provenance.json`、`catalog/skill-audit.json`
-- 5 个 `scripts/build-catalog*.py` 脚本：`build-catalog.py`、`build-catalog-enrich.py`、`build-provenance.py`、`build-skill-audit.py`、`build-coverage-map.py`
-- `scripts/build-catalog.py:23-33`：`SkillEntry` dataclass 含 `name / description / path / collection / line_count / frontmatter_fields / has_frontmatter / has_name / has_description`
-- `SKILL.md:23-29`：建议用 `python3 -c "..."` 或 `grep` 查询 catalog，**不要整读**
+**证据**：
+- `benchmark/README.md:L8-L26` — LaLonde 任务：naive ATT = −$635（错误），regression-adjusted ATT = +$1,548（正确），experimental benchmark ≈ +$1,794。注释："A pipeline that handles this correctly surfaces the imbalance, does not report −$635 as the causal effect"
+- `benchmark/README.md:L46-L60` — staggered DiD：true ATT = 2.909，plain TWFE = 1.455（biased），group-time DID = 2.909。关键："Untreated potential outcomes satisfy parallel trends, but treatment effects are heterogeneous"
+- `benchmark/README.md:L62-L80` — RDD：data ships `y0` counterfactual column the estimators never read，true jump recomputed by checker as `mean(y - y0)` over treated rows
+- `benchmark/` 目录 — 17 个 `reference-*/results.json` 候选结果，`tasks/*.toml` 定义任务，`lib/*.py` 提供 reference 实现
+- 简报 §4 — benchmark 模块 123 个 test functions（top 1）
 
-**分析**: 对象图视角下，Catalog 是一个 **Data Object**（不是 Code Object），通过 `produces` 关系被多个 Build Script Object 衍生出 4 个 View Object（skills / enriched / provenance / audit）。这是典型的"单一事实源 + 多派生视图"模式——`skills.json` 是 canonical，其余 view 通过确定性脚本生成。`build-coverage-map.py` 的 METHOD_ORDER 常量被 CHANGELOG 提及为 rigor-coverage badge 的源头，说明 view 之间有显式依赖。`scripts/build-catalog-enrich.py --check` 在 CI 中做 freshness 检查（`quality-evals.yml:31-32`），确保派生视图不漂移。
+**分析**：AERS benchmark 设计有三个工程亮点：
+1. **Trap design** — 每个 task 都有一个"naive pipeline 会犯的错"（TWFE biased、naive ATT sign error、naive RDD mean diff biased），benchmark 检查 agent 是否避开 trap
+2. **Construction-invariant** — `y0` counterfactual column 让 checker 可以从数据重算 true effect，不依赖硬编码 magic number
+3. **Real data + reproducible** — LaLonde / Card 1995 / Bartik 都用真实经济学经典数据集，可独立复现
 
-**反证**: 4 个 JSON 文件均为构建产物却提交到仓库——这违反了一般"不要 commit 生成物"的最佳实践。但 AERS 这样做是为了让 IDE 在不跑 build 的情况下也能直接读 catalog，是**读路径优化**的权衡。
+Ontology 视图：`benchmark` 对象通过 `produces` 关系生成 `results.json`，通过 `evaluatedBy` 关系被 `check_benchmark.py` 校验，通过 `consumes` 关系读取 `data/*.csv`。
 
-**结论**: AERS 把 skill 元数据当作**数据资产**管理：单一事实源（`skills.json`）+ 4 个确定性派生视图 + CI freshness 检查，牺牲"不提交生成物"原则换取 IDE 即用性。
+**反证**：未发现反证。`CHANGELOG.md:L34-L48` 显示 method families 从 11 → 13 → 15 增长，每次都"end-to-end closure（taxonomy tag + eval scenario + numeric benchmark task）"，说明 benchmark 是渐进式扩展而非一次性建设。
 
-**置信度**: 高 — 5 个 build 脚本、4 个 catalog 文件、CI freshness 检查三处证据。
+**结论**：AERS benchmark 是"causal inference 单元测试"——用真实数据 + 已知答案 + trap 设计，把"agent 会不会犯经济学常识错误"转化为可机器判定的问题。
+
+**置信度**：高 — benchmark README + tasks/ + lib/ + CI 配置 + CHANGELOG 五方证据一致。
 
 ---
 
-### 2.7 God Module 风险：parsers.py 的入度异常
+### Trace 5: Vendored Skill 被视为 Untrusted Code——Security Model
 
-**问题**: 简报显示 `parsers` 模块入度 58、PageRank 0.1878（全库最高），是否构成架构风险？
+**问题**：一个聚合 70 个第三方 skill collection 的仓库如何防御供应链攻击？
 
-**证据**:
-- 简报 §2：`skills.35-bahayonghang-academic-writing-skills.skills.paper-audit.scripts.parsers`（in-degree 58，PageRank 0.1878）
-- 简报 §2：`pdf_parser`（PageRank 0.1638）+ `scholar_eval`（PageRank 0.0177）+ `scoring_model`（PageRank 0.0170）同属 skill 35
-- 简报 §2 检测到 2 个 import 循环，**全部在 skill 35 内部**：`parsers ↔ pdf_parser`、`scholar_eval ↔ scoring_model`
-- 简报 §5.5：`skills.35-bahayonghang-academic-writing-skills.skills.paper-audit.scripts.literature_search`（in-degree 3）
+**证据**：
+- `SECURITY.md:L3-L4` — 原文："Auto-Empirical Research Skills vendors many third-party skill repositories. Treat every new or updated skill as executable instructions for an AI agent, not as ordinary prose"
+- `SECURITY.md:L7-L13` — 接受的安全报告范围：prompt-injection、credential exfiltration、reverse shells、unsafe shell execution、hidden payloads、"Misleading install instructions that fetch unreviewed code"
+- `SECURITY.md:L36-L40` — 自动化检查：Dependabot、OpenSSF Scorecard（每周 + push to main）、`make validate` 含 workflow policy check（explicit permissions、non-persistent credentials、no `pull_request_target`、no downloaded-script pipe-to-shell）
+- `README.md:L52` — badge："security audit: 52/52 CLEAN"，链接到 `SECURITY-SCAN-REPORT.md`
+- `.github/workflows/` — `scorecard.yml`、`check-external-links.yml`、`check-tools-links.yml` 三个安全相关 workflow
 
-**分析**: 对象图视角下，`parsers` Module Object 通过 `imports` 关系被 58 个 Module Object 依赖——这是典型的 God Module 信号。但需要注意：skill 35 是**vendored 第三方合集**（`bahayonghang-academic-writing-skills`，非 ⭐ 旗舰），其内部循环不影响第一方代码。简报 §5 的整体 edge/node ratio 0.68 仍属低耦合，因为 268 个模块中绝大多数是相互独立的 vendored skill。
+**分析**：AERS 的安全模型核心洞察是 **"skill 是指令，不是文本"**——这把 prompt injection 从"理论风险"提升为"first-class threat model"。这与许多 skill 仓库把 SKILL.md 当 markdown 文档对待形成鲜明对比。具体防御：
+- 入口：`SKILL.md` / `references/` / hooks / scripts / bundled assets 全部纳入扫描面
+- CI：OpenSSF Scorecard + workflow policy check + external link check
+- 治理：high-conflict work areas 显式标注（`docs/AGENT_COORDINATION.md:L23-L30`），generated files 禁止手改
 
-**反证**: 没有证据表明第一方代码（`scripts/`、`benchmark/`、`eval-harness/`、`catalog/`）有循环依赖。`tests._helpers`（in-degree 17）和 `benchmark.lib.lalonde`（in-degree 10）的高入度是合理的——前者是测试工具，后者是 benchmark 共享数据加载器。
+Ontology 视图：`Document`（SECURITY.md）通过 `configuredBy` 关系作用于 `CI` 对象，`CI` 通过 `validates` 关系作用于 `Extension`（vendored skill）对象。
 
-**结论**: `parsers` God Module 风险**局限于 vendored 第三方 skill 35**，不影响第一方架构。但若 skill 35 频繁更新，其循环依赖可能导致维护负担。
+**反证**：未发现反证。`SECURITY-SCAN-REPORT.md` 存在且 `images/security-scan/` 有 10 张可视化图（overview/method/threat matrix/scale/supplemental），说明安全扫描是被认真维护的产物，而非装饰。
 
-**置信度**: 中 — 入度/PageRank 数据确定，但"是否构成实际维护负担"需观察 skill 35 的更新频率。
+**结论**：AERS 把 vendored skill 当 untrusted code 处理，建立了"入口扫描 + CI 强制 + 治理规则"三道防线。这是 skill 仓库供应链安全的可复用模板。
+
+**置信度**：高 — SECURITY.md + workflow 文件 + badge + 图表四方证据一致。
+
+---
+
+### Trace 6: Catalog 作为 Queryable Index——Query Don't Read 模式
+
+**问题**：1,151 个 skill 的元数据如何被 Agent 高效消费？
+
+**证据**：
+- `SKILL.md:L22-L29` — 显式指导："Both catalog JSON files are large (roughly 1 MB / 20k lines each) — query them instead of reading them whole"，并给出 `python3 -c "import json; ..."` 和 `grep -in` 两种查询 one-liner
+- `catalog/` 目录 — `skills.json`、`skills-enriched.json`、`provenance.json`、`skill-audit.json` 四个生成文件
+- `docs/AGENT_COORDINATION.md:L36-L42` — generated files 表格列出每个 JSON 的 source 和 command
+- `SKILL.md:L22` — `skills-enriched.json` 提供 richer filtering：`topic tags`、`quality_score`、`license`、`commercial_use`
+
+**分析**：AERS 用"两个 JSON 文件 + 查询 one-liner"替代了"全仓库 grep"。设计权衡：
+- `skills.json` — 基础字段（path/name/description/line_count/qualified_name）
+- `skills-enriched.json` — 富字段（tags/quality_score/license/commercial_use）
+- 分层原因：基础字段用于路由，富字段用于质量筛选，避免一次性加载所有元数据
+
+Ontology 视图：`Config`（catalog JSON）通过 `registeredBy` 关系索引 `Tool`（skill）对象；Agent 通过 `consumes` 关系查询 catalog，再通过 `uses` 关系加载具体 skill。
+
+**反证**：未发现反证。`scripts/build-catalog.py`、`scripts/build-catalog-enrich.py` 是分开的两个 builder，印证"分层是有意设计"。
+
+**结论**：Catalog as Queryable Index 是 AERS 把"1,151 个 skill"变得可消费的关键。它把"找 skill"从 O(n) 文件遍历降为 O(1) JSON 查询。
+
+**置信度**：高 — SKILL.md 显式指导 + 两个独立 builder + generated files 表格三方证据。
+
+---
+
+### Trace 7: 多 Agent 协作通过 Generated Files + Conflict Areas 治理
+
+**问题**：自动化 sync workflow（`sync-aer-skills.yml`、`sync-statspai-skill.yml`）与人类/agent contributor 如何并行工作而不冲突？
+
+**证据**：
+- `docs/AGENT_COORDINATION.md:L1-L4` — "AERS often has automated sync workflows and human or agent contributors editing at the same time. Use this protocol to keep parallel work reviewable"
+- `docs/AGENT_COORDINATION.md:L16-L30` — 把工作区分为 Low-Conflict（`docs/`、`scripts/`、`evals/`）和 High-Conflict（`skills/00.*`、`skills/50-brycewang-aer-skills`、generated outputs、demo-notebooks/）
+- `docs/AGENT_COORDINATION.md:L44-L60` — Handoff Checklist：`make catalog` → `make check` → `make python-compat` → `git diff --check` → `make hygiene` → `git status --short`，并要求声明"which paths changed / which checks passed / whether generated files changed / which areas avoided"
+- `.github/workflows/sync-aer-skills.yml`、`sync-statspai-skill.yml` — 两个自动同步 workflow
+
+**分析**：AERS 用"工作区分级 + generated files 禁手改 + handoff checklist"治理多 agent 协作。核心思路：
+- Generated files 是确定性函数的输出，手改会被下次 `make catalog` 覆盖，所以禁手改
+- High-conflict areas 是频繁被 sync 的区域，人类编辑应避开
+- Handoff checklist 把"我改了什么/跑了什么检查"显式化，让接手 agent 不需要重新推理上下文
+
+Ontology 视图：`Agent` 对象通过 `orchestrates` 关系协调 `Module`（工作区），通过 `produces` 关系生成 `Document`（generated files）。
+
+**反证**：未发现反证。`CHANGELOG.md:L8-L21` 提到 root router 的 stats 曾需要 `validate_root_skill_stats` 检查来防止"catalog refresh 后 router 数字过时"，印证 generated/declarative 之间确有同步风险，需要显式治理。
+
+**结论**：AERS 用工程纪律（工作区分级 + 禁手改 + checklist）替代锁机制，治理多 agent 并行编辑。这是 skill 仓库 multi-agent 协作的可复用模式。
+
+**置信度**：高 — AGENT_COORDINATION.md + workflow 文件 + CHANGELOG 三方证据。
 
 ---
 
 ## 3. Negative Findings
 
-> 引用简报 §6 + 源码阅读发现。简报 §6 仅列"未找到 LICENSE"，但实际仓库根 LICENSE 存在（CC BY-SA 4.0），下面是更完整的"未找到"清单。
+> 这些"未找到"的发现是研究边界，不是缺陷。引用简报 §6 + 源码交叉验证。
 
-| 发现 | 为什么重要 |
-|------|-----------|
-| **简报 §6 称"未找到 LICENSE"，但 `LICENSE` 实际存在为 CC BY-SA 4.0** | 简报的 analyzer 可能未识别 CC-BY-SA 文本模式。这是简报的**事实错误**，应在引用时校正——AERS 有明确许可证，且要求衍生作品同协议共享 |
-| **未找到传统单元测试框架（pytest/unittest 在 `tests/` 仅 19 文件 / 329 函数，test/source ratio 0.07）** | 简报 §4 显示低于 0.15 阈值。但 AERS 的"测试"主要在 `benchmark/`（123 tests）和 `eval-harness/`（37 scenarios），传统单元测试覆盖的是 catalog/scripts 工具链，而非 skill 本身——这是 prompt-skill 仓库的固有特性 |
-| **未找到 LLM judge 的自动化实现** | `eval-harness/README.md:33-36` 明确 manual rubric 项"needs a human or an LLM judge"，但 harness 只"emits a ready-to-paste judge prompt"，不在 CI 内自动调 LLM。这意味着 manual 项仍是人工负担 |
-| **未找到 prompt 版本控制或 A/B 测试机制** | 简报 §3 检测到 490 个 prompt，但无 prompt 版本化、无 A/B 框架。skill 的 `SKILL.md` 改动通过 git 跟踪，但无 prompt 级别的回归保护 |
-| **未找到 Agent 沙箱或权限隔离** | `agents/*.yaml` 是部署清单，不是运行时沙箱。Skill 在 IDE 进程内执行，与 AERS 本身无关——但 README 强调"32 条 deny rule"（skill 17 DAAF）属于 prompt-level guardrail，非 OS-level 隔离 |
-| **未找到对 vendored skill 的自动安全扫描** | `SECURITY-SCAN-REPORT.md` 存在，但 `sync-aer-skills.sh` / `sync-statspai-skill.sh` 同步上游时是否重跑扫描未在 CI 中显式声明 |
-| **未找到第一方代码的 import 循环** | 简报 §2 的 2 个循环全在 skill 35（vendored），第一方 `scripts/`、`benchmark/`、`eval-harness/` 无循环——这是好事，但简报未显式区分 |
+- **未找到 root 级 AI Agent 指令文件（AGENTS.md / CLAUDE.md / .cursorrules）**（简报 §6）
+  - 用 Glob 验证 `/ref-only/Auto-Empirical-Research-Skills/{CLAUDE.md,AGENTS.md,.cursorrules,cursor.rules}` → No file found
+  - 为什么重要：AERS 把 root `SKILL.md` 作为 router，但**没有**面向 agent runtime 的额外行为约束文件。这意味着 agent 行为完全由子 skill 的 `SKILL.md` 决定，没有 repo 级 guardrail。对于一个聚合 70 个第三方 collection 的仓库，这是潜在风险点——上游 skill 的指令会直接作用于 agent。
+  - 置信度：高
+
+- **未找到 root 级 Python 包结构（`pyproject.toml` / `setup.py` / `setup.cfg`）**
+  - 证据：简报 §1 显示 manifest 是 `requirements.txt`，无 version；LS 显示根目录无 `pyproject.toml`
+  - 为什么重要：AERS 不是可安装的 Python 包，而是 skill 目录。`requirements.txt` 仅声明 benchmark/eval-harness 运行依赖。`docs/PYPI_PACKAGING_DRAFT.md` 存在，说明作者意识到但尚未完成 PyPI 化。
+  - 置信度：高
+
+- **未找到 root 级测试套件覆盖 vendored skill 本身**
+  - 证据：`tests/` 目录 19 个测试文件全部针对 AERS 自身基础设施（benchmark、catalog、eval、hygiene、validate），不测试 1,151 个 skill 的实际效果
+  - 为什么重要：vendored skill 的"正确性"完全依赖 `eval-harness/` 和 `benchmark/` 两层外部评估，而非传统单元测试。这是 skill 仓库的本质限制——skill 是 prompt context，没有可单测函数。
+  - 置信度：高
+
+- **未找到传统的 README-only Reading Guide 推荐**
+  - 证据：简报 §7 Reading Priority Top 3 是 `scripts/toml_compat.py`、`skills/33-.../project_kb.py`、`skills/35-.../scholar_eval.py`——都是源文件，不是 README
+  - 为什么重要：这是 research-repo skill 改进后的结果——优先展示高 PageRank 源文件而非 README，避免"只读营销文案"的偏差。AERS 真正的架构在 `scripts/` 和高中心性 skill 模块中，而非 README。
+  - 置信度：高
+
+- **未找到 CONTRIBUTING / SECURITY / CHANGELOG 缺失**（与简报 §6 对照）
+  - 验证：`CONTRIBUTING.md`（59+ 行）、`SECURITY.md`（40+ 行）、`CHANGELOG.md`（80+ 行 Unreleased + v2026.07）、`CODE_OF_CONDUCT.md`、`LICENSE`（CC BY-SA 4.0）均存在
+  - 为什么重要：简报 §6 的 Negative Findings 已扩展检查这些文件，确认 AERS 在仓库治理文档上完整。**LICENSE 误报已修复**——CC BY-SA 4.0 LICENSE 文件确实存在（`LICENSE:L1-L15`，Copyright 2026 CoPaper.AI），与 README badge 一致。
+  - 置信度：高
 
 ---
 
 ## 4. Architecture Smells
 
-> 以下均为 **Potential**（潜在），非断言。
+> 都是 **Potential**，不是断言。每条说明为什么是潜在风险 + 证据 + 置信度。
 
-### 4.1 Potential God Module in Vendored Skill（潜在 God Module）
+### Potential Tight Coupling in `skills/35-bahayonghang-academic-writing-skills`
 
-- **证据**: `skills/35-bahayonghang-academic-writing-skills/skills/paper-audit/scripts/parsers.py` 入度 58、PageRank 0.1878（简报 §2）
-- **为什么是风险**: 58 个依赖方意味着对该模块的任何改动触发大面积级联。结合 `parsers ↔ pdf_parser` 循环（简报 §2），可能产生难以复现的导入顺序 bug
-- **置信度**: 中 — 风险客观存在但局限于 vendored skill，第一方代码不受影响
+- **证据**：简报 §2 显示 2 个 import cycle 都在此 collection：
+  - `parsers → pdf_parser → parsers`
+  - `scholar_eval → scoring_model → scholar_eval`
+  - `parsers` 模块 in-degree 58、PageRank 0.1878（全仓库最高）
+- **为什么是潜在风险**：一个子 skill 内部出现循环依赖，说明 paper-audit 的解析层与评估层职责边界模糊。若该 skill 被广泛依赖（in-degree 58），循环可能在重构时放大。
+- **置信度**：中 — 简报数据确定，但循环在单个 collection 内部、未跨 collection 传播，影响范围有限。
 
-### 4.2 Potential Catalog Drift（潜在 catalog 漂移）
+### Potential Catalog Maintenance Burden
 
-- **证据**: 4 个 catalog JSON 是构建产物却提交到仓库（`skills.json` / `skills-enriched.json` / `provenance.json` / `skill-audit.json`）；`quality-evals.yml:31-32` 跑 `build-catalog-enrich.py --check` 做 freshness
-- **为什么是风险**: 若 `--check` 失败被忽略或绕过，`skills.json` 与 `skills/` 实际内容会漂移，Router 路由到不存在的 skill
-- **置信度**: 低 — CI 已显式 freshness 检查，且 `validate_root_skill_stats`（CHANGELOG Unreleased）交叉校验根 SKILL.md 的硬编码数字
+- **证据**：1,151 skills / 70 collections / 6 个 locale README / 多个 generated files（`catalog/*.json`、`docs/SKILL_CATALOG.md`、`docs/EVALS.md`、`docs/LICENSE_AUDIT.md`）
+- **为什么是潜在风险**：`docs/AGENT_COORDINATION.md:L23-L30` 把 `skills/00.*`、`skills/50-brycewang-aer-skills`、generated outputs 列为 High-Conflict Areas。每次 sync 上游都可能触发 catalog 重建 + 6 locale README stats 同步 + eval ratchet 调整。15 contributors / 208 commits 的规模下，这个维护成本已显性化（需要 `check-readme-stats.py`、`validate_root_skill_stats` 等专门检查）。
+- **置信度**：中 — 治理文档已识别此风险并有专门 CI 检查，但规模增长会持续放大负担。
 
-### 4.3 Potential Submodule Fragility（潜在 submodule 脆弱性）
+### Potential Test Coverage Misleading
 
-- **证据**: `skills/69-Paper-WorkFlow/` 是 git submodule（`SKILL.md:72`）；CHANGELOG 提到 2026-06-26 起 `validate-catalog` 因 Paper-WorkFlow demo gate 红了
-- **为什么是风险**: submodule 克隆需 `--recursive`，IDE 安装时若忘记则 router 路由到空目录。`SKILL.md:72` 不得不显式 fallback 到 `skills/00.*`
-- **置信度**: 中 — 历史已发生过 CI 红灯，但已有 fallback 兜底
+- **证据**：简报 §4 显示 test/source ratio 0.07，低于典型 0.15 阈值
+- **为什么是潜在风险**：但这数字**误导性**——AERS 的"source"主要是 3,037 个 .md 文件（vendored skill 内容），不可单测；真正可测的是 `scripts/`（Python 工具）+ `benchmark/` + `eval-harness/`，这三个区域测试覆盖较密（19 test files / 329 test functions）。
+- **置信度**：低 — ratio 失真，实际可测代码覆盖率不低；此 smell 更多反映"skill 仓库的测试指标需要重新定义"。
 
-### 4.4 Potential Bus Factor 1（潜在单点依赖）
+### Potential Hidden Complexity in Root Router
 
-- **证据**: Bryce Wang 个人贡献 189/208 commits（91%），其余 14 人共 19 commits（简报 §git：Bryce Wang 161 + brycew6m 19 + brycew6m 5 + Bryce Wang 2 + brycewang-stanford 2 + brycewang 1）
-- **为什么是风险**: 项目 3.5 个月快速生长，但维护责任高度集中。Bryce 离开则项目停摆
-- **置信度**: 高 — git history 直接可验证
-
-### 4.5 Potential Naming Collision at Scale（潜在大规模命名冲突）
-
-- **证据**: `SKILL.md:80`："the catalog contains 92 bare `name`s shared across collections (e.g. `data-analysis`, `lit-review`, `proofread`)"
-- **为什么是风险**: 平铺注册到 IDE 时冲突，需用 `qualified_name`（`<collection>::<name>`）消歧，增加用户认知负担
-- **置信度**: 中 — 冲突数量确定，但 IDE 实际行为因 runtime 而异
+- **证据**：`SKILL.md` 显示 root router 维护一张 method → collection 路由表（15+ 行），并需要 `validate_root_skill_stats` 防止 stats 过时
+- **为什么是潜在风险**：路由表是手维护的声明式数据，与 catalog JSON 是生成式数据存在 drift 风险。`CHANGELOG.md:L8-L21` 显示作者已意识到并新增检查，但这是补丁式修复而非架构性解决。
+- **置信度**：中 — 已有 CI 检查兜底，但 root router 的"硬编码 + 校验"模式不如"完全生成式"优雅。
 
 ---
 
 ## 5. Interesting Decisions
 
-### 5.1 Root SKILL.md 作为路由器，而非 skill 本身
+### Decision 1: 把整个仓库包装成单个 root skill，而非发布 1,151 个独立 skill
 
-- **决策**: 根 `SKILL.md` 不做实际工作，只做请求分类与子 skill 路由
-- **为什么有趣**: 大多数 skill 仓库的根 SKILL.md 是"主入口"，承担实际功能。AERS 把它降级为 router，把 1,151 个 skill 的 token 成本从 O(N) 降到 O(1) + O(1)（router + 单个 child）
-- **替代方案**: 让 IDE 递归发现所有 SKILL.md（README 明确反对："would blow past token budgets the moment a chat opens"）
-- **权衡**: 牺牲了"IDE 自动发现全部能力"，换取"单次会话 token 可控"。需要 router 分类准确——这是 LLM 行为，无确定性保证
+- **决策内容**：root `SKILL.md` 是 Claude Code / Codex 可安装的 skill 入口，内部用 router 分发到 70 个 collection
+- **为什么有趣**：这是"聚合即产品"的赌注——用户安装一次得到 1,151 个 skill 的路由能力，而非 1,151 次安装。代价是 root skill 必须解决"如何不加载全部"问题。
+- **替代方案**：发布为 70 个独立 plugin / 1,151 个独立 skill
+- **权衡**：聚合 → 降低用户安装成本、提升发现性、统一 rigor 基础设施；分散 → 降低单 skill 失败影响面、更细粒度版本控制。AERS 选择聚合，因为其价值主张就是"端到端流水线"需要跨 skill 协作。
 
-### 5.2 把生成产物（catalog JSON）提交到仓库
+### Decision 2: Benchmark 用 `y0` counterfactual column 实现 construction-invariant check
 
-- **决策**: `catalog/*.json` 是 `scripts/build-catalog*.py` 的产物，但提交到 git
-- **为什么有趣**: 违反"不要 commit 生成物"的常规最佳实践
-- **替代方案**: CI 动态生成、不提交
-- **权衡**: 牺牲 git 历史整洁度，换取 IDE 在不跑 build 的情况下直接读 catalog 的便利。对"catalog 即数据"模式合理
+- **决策内容**：`benchmark/data/*.csv` 附加 `y0` 列（untreated potential outcome），estimator 不读但 checker 读，true effect 通过 `mean(y - y0)` 重算
+- **为什么有趣**：传统 benchmark 硬编码 magic number，改 simulation 后需手动更新答案；AERS 让答案从数据派生，simulation 改了答案自动跟。
+- **替代方案**：硬编码 expected value；用 separate fixture file
+- **权衡**：counterfactual column → 防作弊、防漂移、可重算；代价是数据集多一列、读者需理解 y0 语义。
 
-### 5.3 用 TOML 而非 YAML 写 benchmark/eval 配置
+### Decision 3: eval-harness 用 stdlib-only TOML parser（`scripts/toml_compat.py`）
 
-- **决策**: `benchmark/tasks/*.toml`、`eval-harness/scenarios/*.toml` 用 TOML；schema 用 JSON（`schema/scenario.schema.json`）
-- **为什么有趣**: YAML 是 CI 配置事实标准；TOML 在 Python 生态外不常见。但 TOML 的 `[[array_of_tables]]` 比 YAML 的 list-of-dict 更显式
-- **替代方案**: YAML 或 JSON
-- **权衡**: TOML 强类型 + 多行字符串友好，但需 `toml_compat.py` 兼容 Python 3.9。YAML 反而无需兼容层但缩进敏感
+- **决策内容**：`eval-harness/run_evals.py` 依赖 `scripts/toml_compat.py` 而非 `tomli`/`tomllib`
+- **为什么有趣**：简报 §7 显示 `toml_compat.py` 排在 Reading Priority #1（score 120）。`quality-evals.yml:L4` 注释 "All steps are stdlib-only; no pip"——AERS 刻意让 CI 零依赖。
+- **替代方案**：`pip install tomli`（Python 3.9-）/ 用 `tomllib`（Python 3.11+）
+- **权衡**：stdlib-only → CI 启动快、无供应链风险、Python 3.9/3.12 双版本兼容（`quality-evals.yml:L21`）；代价是维护一个兼容层。
 
-### 5.4 双层 eval（benchmark + rubric）而非单层
+### Decision 4: 把 method family rigor coverage 作为 ratchet 而非 dashboard
 
-- **决策**: 数值 benchmark（17 任务）+ rubric eval（37 场景）并行，且 `benchmark/README.md:1-5` 显式声明职责分离
-- **为什么有趣**: 大多数项目只做一种。AERS 认为数值对错和 prose 属性是两个独立维度，需不同工具链
-- **替代方案**: 合并为单一 eval 框架
-- **权衡**: 维护两套基础设施成本高，但能覆盖"数字对"和"看起来对"两类失败模式
-
-### 5.5 中文 README 内容迁出到 `docs/CONTENT_ZH.md`
-
-- **决策**: `README.md:1-5` 宣布"中文版已迁出本文件"，根 README 只保留 banner + badges + 入口
-- **为什么有趣**: 大多数中文项目把完整内容放 README.md。AERS 把 GitHub 默认渲染的 README 当 landing page，正文放 docs/
-- **替代方案**: 多 README 文件并列（README.md / README.zh-CN.md）
-- **权衡**: 减少 README 长度（提升 GitHub 浏览体验），但增加跳转成本。AERS 还有 6 个 locale README（en/zh-CN/zh-TW/ja/ko），P2.2 重构把中文唯一权威正文集中到 CONTENT_ZH.md
+- **决策内容**：`CHANGELOG.md:L34-L48` 显示 method families 11 → 13 → 15 增长，每次都"end-to-end closure（taxonomy tag + eval scenario + numeric benchmark task）"，CI ratchet floor 同步上调
+- **为什么有趣**：通常 dashboard 是观察工具，ratchet 是强制工具。AERS 把覆盖率从"可下降的统计"变成"只能上升的约束"。
+- **替代方案**：仅展示覆盖率、不强制
+- **权衡**：ratchet → 防止 coverage 回退、强制每次新增 method 都补全三层评估；代价是新增 method 成本高、可能阻碍实验性 addition。
 
 ---
 
 ## 6. Repository Positioning
 
+> 生态定位，不是 feature matrix。维度来自简报 §5.5 ontology + 通用 agent 仓库评估框架。
+
 | 维度 | 当前成熟度 | 说明 |
-|------|-----------|------|
-| Planning | Emerging | Root Router 做 stage 分类，但无显式 planner agent；`skills/69-Paper-WorkFlow/` 做元编排 |
-| Execution | Advanced | 1,151 个 skill 覆盖 9 阶段流水线；多 runtime 适配（Claude/Codex/Cursor/Aider/CodeBuddy） |
-| Memory | Emerging | 无统一 memory 层；个别 skill（如 33 claude-scholar 的 obsidian-project-memory）有局部 memory |
-| Evaluation | Unique | 双层 eval（numeric benchmark + rubric eval-harness）+ CI 棘轮，prompt-skill 仓库中罕见 |
-| Guardrails | Common | DAAF（skill 17）的 32 条 deny rule；runtime-safety eval 场景；但无 OS-level 沙箱 |
-| Prompt | Advanced | 490 个 prompt（template 245 / prompt 215 / system 10 / few-shot 20）；progressive disclosure 模式 |
-| Tooling | Unique | Catalog 即数据 + 多视图派生 + stdlib-only 兼容层 + 5 个 build 脚本 |
-| Observability | Common | OpenSSF Scorecard + 6 locale README rigor-stats gate；无分布式追踪 |
+|---|---|---|
+| **Planning** | Emerging | root `SKILL.md` 是 router 非 planner；9 阶段流水线在 README 描述但非代码层 orchestrator。`agents/` 目录有 aider/anthropic/codebuddy/cursor/openai 五种 agent 配置，但偏配置而非 planner。 |
+| **Execution** | Common | skill 是 prompt context，执行依赖宿主 agent runtime（Claude Code / Codex / Cursor）；AERS 不提供自己的 executor。 |
+| **Memory** | Emerging | `skills/33-Galaxy-Dawn-claude-scholar` 提供 obsidian-project-memory（PageRank 0.0069），但非 repo 级 memory 层。 |
+| **Evaluation** | **Advanced** | 三层 trust 架构（numeric benchmark + behavioral rubric + declarative matrix）+ ratchet CI + construction-invariant check。在 skill 仓库中罕见。 |
+| **Guardrails** | Common | `SECURITY.md` + OpenSSF Scorecard + workflow policy check + external link check。但无 runtime guardrail（如 max iterations、tool whitelist）——这些由宿主 agent 提供。 |
+| **Prompt** | **Advanced** | 490 prompts 检测（template 245 / prompt 215 / system 10 / few-shot 20），分布广泛。每个 skill 的 `SKILL.md` 即是其 prompt context，progressive disclosure 设计成熟。 |
+| **Tooling** | **Advanced** | 154 tools 检测（全部 script-tool 类型）+ 7 个 CI workflow + `make check-fast`/`make check-full` 双轨质量门 + `scripts/` 18 个 builder/checker。 |
+| **Observability** | Emerging | `docs/badges/rigor-coverage.json` + README badges + `BENCHMARK_SCOREBOARD.md`，但无 runtime tracing/logging 层——again，由宿主 agent 提供。 |
+
+**生态定位总结**：AERS 是 **"rigor-first skill catalog for empirical research"**——不是一个 agent framework，而是一个把"skill 仓库"当作工程对象、配套建设 numeric/rubric/declarative 三层评估的垂直领域基础设施。它的可比对象不是 LangGraph / AutoGen（agent framework），而是 awesome-list × MCSP server registry × benchmark suite 的混合体。
 
 ---
 
 ## 7. Reusable Pattern Catalog
 
 | 模式 | 描述 | 位置 | 可复用性 |
-|------|------|------|---------|
-| Skill Catalog + Root Router | 根 SKILL.md 分类请求，加载单个 child skill | `SKILL.md` + `agents/README.md` | ✅ 通用 |
-| Numeric Benchmark with Trap | 真实数据集 + 已知答案 + naive 陷阱（如 LaLonde −$635） | `benchmark/README.md` + `benchmark/tasks/*.toml` | ✅ 通用 |
-| Rubric Eval（necessary-not-sufficient） | machine-checkable + manual 双类型；failing 证明错，passing 不证明对 | `eval-harness/README.md` + `eval-harness/lib/checks.py` | ✅ 通用 |
-| CI Ratchet Floor | `--min-scenarios N --min-auto-checks M` 单向棘轮 | `.github/workflows/quality-evals.yml:37-42` | ✅ 通用 |
-| Graceful TOML Fallback | `tomllib` → `tomli` → 自带小子集解析器 | `scripts/toml_compat.py` | ✅ 通用 |
-| Catalog as Data | 单一事实源 + 多派生视图 + CI freshness 检查 | `catalog/skills.json` + `scripts/build-catalog*.py` | ✅ 通用 |
-| Submodule + Sync 双轨制 | 复杂演进用 submodule，稳定追上游用 sync 脚本 | `skills/69-Paper-WorkFlow/` + `scripts/sync-*.sh` | ⚠ 需适配 |
-| Method Family Coverage Map | METHOD_ORDER 常量 + rigor-coverage badge + CHANGELOG 锁定 | `scripts/build-coverage-map.py` + `docs/RIGOR_COVERAGE.md` | ✅ 通用 |
-| Multi-runtime Adapter YAML | 一个 `agents/<vendor>.yaml` per IDE runtime | `agents/{openai,anthropic,cursor,aider,codebuddy}.yaml` | ✅ 通用 |
-| Progressive Disclosure SKILL.md | frontmatter → body → references/ → scripts/ 渐进加载 | `SKILL.md:14-21` Workflow | ✅ 通用 |
-| 6-locale README Consistency Gate | `check-readme-stats.py` 强制 6 个 locale README 数字一致 | `scripts/check-readme-stats.py` | ⚠ 需适配 |
-| God Module in Vendored Skill（反模式） | 入度 58 + 2 个 import 循环 | `skills/35-.../paper-audit/scripts/parsers.py` | ❌ 应避免 |
+|---|---|---|---|
+| **Router Skill** | root SKILL.md 作为 catalog router，不加载子 skill，仅提供 routing table + 查询 one-liner | `SKILL.md:L9-L29` | ✅ 通用——任何 skill 数量 > 100 的仓库都可采用 |
+| **Progressive Disclosure** | SKILL.md（短摘要）→ references/（深入）→ scripts/（可执行）三层结构 | `SKILL.md:L21`、子 skill 通用结构 | ✅ 通用——Claude Code skill 规范 |
+| **Three-Layer Trust** | numeric benchmark / behavioral rubric / declarative matrix 三层正交评估 | `benchmark/` + `eval-harness/` + `docs/EVALS.md` | ⚠ 需适配——需要领域有可数值化的 ground truth |
+| **Necessary-not-sufficient Gate** | CI gate 目标是"证伪错误"而非"证明正确"，用 negative fixture 反向验证 gate 有效性 | `eval-harness/README.md:L41-L44` + `quality-evals.yml:L57` | ✅ 通用——任何 rubric-based eval 都可借鉴 |
+| **Construction-Invariant Check** | 数据集附加 `y0` counterfactual column，checker 从数据重算 expected value | `benchmark/README.md:L67-L80`、`benchmark/data/*.csv` | ⚠ 需适配——需要可构造 counterfactual 的领域 |
+| **Trap Design** | benchmark task 刻意包含 naive pipeline 会犯的错（sign error、biased estimator），检查 agent 是否避开 | `benchmark/README.md:L17-L26` 等 | ✅ 通用——causal inference / 数据分析 benchmark 通用 |
+| **Catalog as Queryable Index** | 大型 JSON catalog + 查询 one-liner + "query don't read" 指导 | `SKILL.md:L22-L29`、`catalog/skills.json` | ✅ 通用——任何 metadata 仓库都可采用 |
+| **Generated Files Governance** | generated files 禁手改 + High/Low Conflict Areas 分级 + Handoff Checklist | `docs/AGENT_COORDINATION.md:L16-L60` | ✅ 通用——multi-agent 协作仓库通用 |
+| **Ratchet Coverage Floor** | CI 用 `--min-scenarios`/`--min-auto-checks` 强制覆盖率只能上升 | `quality-evals.yml:L40-L42`、`CHANGELOG.md:L45-L48` | ✅ 通用——任何渐进式 eval 仓库通用 |
+| **Skill as Untrusted Code** | SECURITY.md 把 vendored skill 当 "executable instructions for AI agent"，扫描面覆盖 SKILL.md/references/hooks/scripts/assets | `SECURITY.md:L3-L13` | ✅ 通用——任何聚合第三方 skill 的仓库必须采用 |
+| **stdlib-only CI** | eval-harness 用 `scripts/toml_compat.py` 替代 `tomli`，CI 零 pip 依赖 | `eval-harness/run_evals.py`、`quality-evals.yml:L4` | ✅ 通用——降低供应链风险 |
+| **Multi-locale README Stats Sync** | 6 个 locale README 的 stats 由 `check-readme-stats.py` 校验一致性 | `CHANGELOG.md:L79`、`scripts/check-readme-stats.py` | ⚠ 需适配——仅多语言仓库需要 |
 
 ---
 
 ## 8. Architecture Evolution
 
-> 基于 Git 历史（208 commits，15 contributors，2026-04-02 → 2026-07-20，3.5 个月）
+> 基于简报 §5 git history + `CHANGELOG.md` + commit subjects（full.json:L203233-L203342）。
 
-### 主要演进线索
+```mermaid
+timeline
+    title AERS 架构演进
+    2026-04-02 : Initial release<br/>"Awesome Agent Skills for Empirical Research"
+                : +35 skill collections (09-43)
+    2026-04-25 : Full empirical analysis skill family<br/>+ LaLonde demos
+    2026-05-03 : LaLonde 5.2 pipeline<br/>StatsPAI/Stata/R 多语言
+    2026-06-03 : Empirical benchmark depth<br/>catalog/tools/skill 64
+    2026-06-04 : Bench: empirical-benchmark-depth
+    2026-06-18 : +collections 67 (econfin) & 68 (research productivity)
+    2026-06-22 : sync from upstream AER-skills
+    2026-07-02 : v2026.07 (first tagged release)<br/>1,150 skills / 69 collections
+    2026-07-16 : restore green CI<br/>repair unloadable SKILL.md<br/>catch up to skill #70
+    2026-07-20 : harden whole-repo skill encapsulation<br/>router stats validation
+    2026-07-24 : 1,151 skills / 70 collections (current)
+```
 
-- **2026-04-02 首提交**: subject "Initial release: Awesome Agent Skills for Empirical Research"——项目最初定位是 "Awesome list" 形态的 skill 合集
-- **方法族棘轮扩张**（CHANGELOG）: 11 → 13（v2026.07，2026-07-02，加 CATE/QTE）→ 15（Unreleased，加 Bartik/mediation）。每次扩张伴随 CI ratchet 上调
-- **catalog 元数据深化**: 从单一 `skills.json` 扩展到 4 个派生视图（enriched / provenance / audit / coverage-map），`build-coverage-map.py` 引入 METHOD_ORDER 常量
-- **README P2.2 重构**: 中文正文从根 README 迁出到 `docs/CONTENT_ZH.md`，根 README 降级为 banner+badges+入口；同步产生 6 locale README 一致性 gate
-- **rigor-coverage badge 上线**: `docs/badges/rigor-coverage.json` + shields.io endpoint，所有 6 个 locale README 同步嵌入
-- **Router 加固**: Unreleased 版本添加 `validate_root_skill_stats` 校验根 SKILL.md 的硬编码数字（"N skills across M collections" / duplicate bare-name count / legacy-collections list）
+**主要演进模式**：
 
-### 历史决策痕迹
+1. **Skill collection 渐进式聚合**：从 initial release → 35 collections → 70 collections，每次 sync 上游都用 `sync-aer-skills.yml` / `sync-statspai-skill.yml` 自动化。`CHANGELOG.md:L56-L62` 记录 v2026.07 时两个 weekly sync PR 被解除阻塞并合并——说明 sync 是常规运维。
 
-- `README-original.md` 在多个 vendored skill 子目录中保留——是上游 README 的"快照"，证明这些 skill 是一次性 vendor 而非持续 sync
-- `scripts/toml_compat.py` 的存在本身是历史决策痕迹——若最初选 YAML 配置则无需兼容层；选 TOML 后被迫写 fallback
-- `agents/` 目录从"agent 文件"被重新定义为"runtime 部署清单"（`agents/README.md:8-15` 的 "What this directory is — and what it is not"）——这是命名与含义的对齐修正
-- 简报 §git 显示 `skills/` 目录 commits 高达 4036（远超总 208 commits），说明 vendored skill 内部 git history 通过 subtree merge 保留
+2. **Method family rigor 闭包式扩展**：method families 11 → 13 → 15（CATE/QTE → Bartik IV/mediation），每次都"end-to-end closure"——同时新增 taxonomy tag + eval scenario + numeric benchmark task + unit test + 6 locale README 同步。这是"不留下半成品 rigor"的工程纪律。
+
+3. **CI ratchet 渐进上调**：eval-harness ratchet floor 从 26 scenarios/122 auto-checks → 28/132 → 24/116（当前 CI 阈值，见 `quality-evals.yml:L40-L41`）。注意当前阈值低于 CHANGELOG 描述的 v2026.07 数字——可能是 Unreleased 阶段调整，需关注。
+
+4. **失败驱动的基础设施**：`CHANGELOG.md:L8-L21` 显示 root router 曾出现 stats 过时问题，导致新增 `validate_root_skill_stats` 检查；`2026-07-16` commit "restore green CI, repair unloadable SKILL.md files" 说明曾有 skill 不可加载。这些是 failure-driven iteration 的典型痕迹。
+
+5. **已弃用/已迁移**：`README.md:L3-L7` 显示中文 README 内容已迁出主 README 到 `docs/CONTENT_ZH.md`，主 README 仅保留 banner + badges + 入口。这是"README 减负"重构——避免主 README 因多语言膨胀。
 
 ---
 
 ## 9. Reading Guide
 
-### 30 分钟速览（按洞察密度排序）
+> 基于简报 §7 + §8，按洞察密度排序。改进后优先展示源文件而非 README。
 
-1. **`SKILL.md`**（仓库根）— Root Router 路由表与 Workflow 定义；理解 AERS 如何把 1,151 个 skill 降维为 O(1) 加载
-2. **`README.md`** — 9 阶段流水线 + 74 合集总表；理解项目定位与旗舰 skill
-3. **`benchmark/README.md`** — LaLonde/Card/DiD/RD 任务设计；理解"trap"模式的精妙
-4. **`eval-harness/README.md`** — rubric necessary-not-sufficient 哲学；理解 prompt-skill 如何被评估
-5. **`agents/README.md`** — 5 个 runtime 适配器 + Router 模式原理；理解多 IDE 部署
+### 30 分钟速览（5 个文件）
 
-### 2 小时深入
+1. **`SKILL.md`**（root router）— 理解整个仓库的入口设计、routing table、catalog 查询模式。**为什么值得读**：这是 AERS 架构的"front door"，30 行内说清了 1,151 skill 如何被路由。
+2. **`benchmark/README.md`** — 理解三层 trust 中的 numeric layer 设计。**为什么值得读**：LaLonde/Card/DiD/RDD 四个 task 的 trap design 是可复用 benchmark 范式。
+3. **`eval-harness/README.md`** — 理解 behavioral rubric layer + necessary-not-sufficient gate 哲学。**为什么值得读**：第 41-44 行的"asymmetry principle"是本仓库最重要的工程思想。
+4. **`SECURITY.md`** — 理解 vendored skill 作为 untrusted code 的安全模型。**为什么值得读**：第 3-4 行"skill 是指令不是文本"是 skill 仓库安全的第一性原理。
+5. **`docs/AGENT_COORDINATION.md`** — 理解 multi-agent 协作治理。**为什么值得读**：High/Low Conflict Areas 分级 + Handoff Checklist 是并行编辑的实用模式。
 
-6. **`scripts/toml_compat.py`** — 优雅降级范本；理解 stdlib-only CI 的基石
-7. **`.github/workflows/quality-evals.yml`** — CI 棘轮实现；理解覆盖率如何被锁定
-8. **`CHANGELOG.md`** — 演进轨迹；理解方法族扩张与 ratchet 节奏
-9. **`skills/50-brycewang-aer-skills/`** — 旗舰 skill 内部结构（scripts/ + templates/ + skills/）；理解第一方 skill 的工程化标准
-10. **`catalog/skills.json`**（用 `grep` 或 `python3 -c` 查询，**不要整读**） — Catalog 数据 schema；理解 skill 元数据模型
-11. **`scripts/build-catalog.py`** — Catalog 生成逻辑；理解 `SkillEntry` dataclass 与确定性
-12. **`benchmark/lib/lalonde.py`** — LaLonde benchmark 实现；理解数值回收测试代码
-13. **`eval-harness/lib/checks.py`** — machine-checkable rubric 原语；理解哪些属性可自动检查
-14. **`docs/RIGOR_COVERAGE.md`** — 15 方法族 × 3 层（taxonomy + eval + benchmark）覆盖矩阵
-15. **`skills/00-Full-empirical-analysis-skill_StatsPAI/SKILL.md`** — 旗舰 StatsPAI skill；理解 `sp.causal(...)` 一行跑闭环的设计
+### 2 小时深入（+ 10 个文件）
+
+6. **`scripts/toml_compat.py`**（Reading Priority #1，score 120）— 理解 stdlib-only CI 的实现细节。**为什么值得读**：高 PageRank + 高 in-degree + entrypoint 三重信号，是 AERS 基础设施的依赖根。
+7. **`skills/35-bahayonghang-academic-writing-skills/skills/paper-audit/scripts/parsers.py`**（in-degree 58，PageRank 0.1878）— 理解为何此模块是全仓库最被依赖的节点。**为什么值得读**：解析层通常是 skill 仓库的隐藏核心。
+8. **`benchmark/lib/lalonde.py`**（in-degree 10）— 理解 LaLonde reference pipeline 实现。**为什么值得读**：经典 causal inference 数据集的工程化封装。
+9. **`eval-harness/lib/checks.py`** — 理解 machine-checkable rubric primitive 如何实现。**为什么值得读**：这是"证伪 gate"的具体执行层。
+10. **`tests/_helpers.py`**（in-degree 17，PageRank 0.03）— 理解测试基础设施的共享层。**为什么值得读**：高 in-degree 说明多数 test 都依赖它。
+11. **`CHANGELOG.md`** — 理解架构演进与 failure-driven iteration。**为什么值得读**：Unreleased + v2026.07 段落展示了 rigor ratchet 如何渐进上调。
+12. **`docs/RIGOR_COVERAGE.md`** — 理解 15 method family 的端到端闭包状态。**为什么值得读**：ratchet floor 的当前值与目标值。
+13. **`catalog/skills.json`**（用 `python3 -c "import json; ..."` 查询，**不要整读**）— 理解 catalog schema。**为什么值得读**：1,151 skill 的元数据结构，是 Router 模式的核心数据。
+14. **`skills/50-brycewang-aer-skills/templates/python/setup.py`**（in-degree 5，PageRank 0.0095）— 理解 flagship skill 的模板结构。**为什么值得读**：AER-skills 是 README 反复推荐的起点。
+15. **`.github/workflows/quality-evals.yml`** — 理解 CI 如何把三层 trust 编织进 push/PR gate。**为什么值得读**：CI 是 AERS 工程纪律的可执行载体。
 
 ---
 
 ## 10. Open Questions
 
-| # | 问题 | 为什么重要 | 建议调查方法 |
-|---|------|-----------|-------------|
-| 1 | Root Router 的分类准确率如何？是否有回归测试？ | Router 是 LLM 驱动的请求分类，分类错误会路由到错误 skill。当前无 router-level eval | 设计 router 评测集：构造 N 个用户请求 + 期望 child skill，跑 router 分类，统计 accuracy/recall |
-| 2 | `eval-harness` 的 `manual` rubric 项实际如何被 judge？人工还是 LLM？ | 37 场景 × 183 rubric items 中 manual 比例未明；若是人工，则 CI 不真正 enforce | 阅读 `eval-harness/run_evals.py` 的 `--grade` 逻辑，统计 manual 项数量，访谈维护者 |
-| 3 | `skills/69-Paper-WorkFlow/` submodule 的"29/29 executable gates"是什么？ | CHANGELOG 提及"competitive-rigor layer (29/29 executable gates)"，但 submodule 内容未在简报中展开 | 进入 submodule 目录，读其 README 与 gate 定义 |
-| 4 | 92 个 bare name 冲突在不同 IDE runtime 下的实际行为？ | `SKILL.md:80` 警告平铺注册冲突，但 5 个 runtime 的实际行为差异未文档化 | 在 Claude Code / Cursor / Codex 实测同名 skill 注册，观察 disambiguation 行为 |
-| 5 | `skills.json` 的 `quality_score` 字段如何计算？ | `catalog/skills-enriched.json` 添加了 `quality_score`，但简报未展示其算法 | 阅读 `scripts/build-catalog-enrich.py`，追踪 quality_score 来源 |
-| 6 | vendored skill 的"一次性 vendor"假设是否被破坏？ | `README-original.md` 暗示一次性快照，但 `sync-aer-skills.sh` 又暗示持续同步——哪些 skill 真正 sync、哪些只 vendor 一次？ | 对比 `catalog/provenance.json` 与 `git log skills/<collection>/` 历史 |
-| 7 | Bryce Wang 之外的 14 个 contributor 的贡献分布？ | Bus factor 1 风险客观存在；了解其他 contributor 是否在核心代码（非 README/docs）有贡献 | `git log --format='%an' --author!='Bryce'` 按 path 分类统计 |
+### Q1: root router 的硬编码 routing table 与生成式 catalog 的 drift 如何长期治理？
+
+- **为什么重要**：`SKILL.md` 的 method → collection 表是手维护，`catalog/skills.json` 是生成式。`validate_root_skill_stats` 是补丁，不是架构性解决。随着 method family 增长（11→15→?），drift 风险放大。
+- **建议调查方法**：读 `scripts/validate-repo.py` 的 `validate_root_skill_stats` 实现，评估是否可改为完全生成式 routing table。
+
+### Q2: 1,151 skill 中实际有多少被三层 trust 覆盖？
+
+- **为什么重要**：当前 17 numeric benchmark + 37 eval scenarios 显然只覆盖少量 flagship skill。绝大多数 vendored skill 仅通过 `SKILL_HYGIENE.md` 的 structural hygiene score 评估，不保证正确性。`CONTRIBUTING.md:L24-L26` 显式说明 "hygiene score is a structural signal, not a claim about whether the skill produces correct econometrics"。
+- **建议调查方法**：交叉 `evals/flagship-evals.json` 与 `catalog/skills.json`，计算 rigor coverage 比（flagship / total）。
+
+### Q3: `skills/35-bahayonghang-academic-writing-skills` 的 2 个 import cycle 是否反映设计缺陷？
+
+- **为什么重要**：parsers ↔ pdf_parser、scholar_eval ↔ scoring_model 的循环若非有意（如 plugin pattern），可能是职责拆分不当。该 collection 的 parsers 模块 in-degree 58 是全仓库最高，影响面大。
+- **建议调查方法**：读 `skills/35-.../paper-audit/scripts/parsers.py` 与 `pdf_parser.py` 的 import 关系，判断是 lazy import / plugin pattern 还是真实耦合。
+
+### Q4: `agents/` 目录的 5 个 agent 配置（aider/anthropic/codebuddy/cursor/openai）如何被使用？
+
+- **为什么重要**：简报 §1 显示 `agents/` 是 top-level dir，但 root `SKILL.md` 未提及。这暗示 AERS 可能支持多 agent runtime，但 routing 逻辑不在 root skill 中。
+- **建议调查方法**：读 `agents/README.md` + 5 个 yaml 配置，确认它们是 install-time 选择还是 runtime 选择。
+
+### Q5: eval-harness 的 `manual` rubric item 在 CI 中如何闭环？
+
+- **为什么重要**：`eval-harness/README.md:L36-L39` 说明 `manual` item 需要 human 或 LLM judge，harness 仅 emit judge prompt。但 CI 是 automated，`manual` item 如何被 enforced？是否会成为"永远 needs-manual"的 dead letter？
+- **建议调查方法**：读 `eval-harness/run_evals.py` 的 `--grade` 流程，确认 `manual` item 在 `--expect-graded` 断言中的角色。
+
+### Q6: v2026.07 之后是否规划 v2026.08 / v2026.09？
+
+- **为什么重要**：`docs/PLAN-2026-07.md`、`PLAN-2026-08.md`、`PLAN-2026-09.md` 存在，暗示有季度规划。`CHANGELOG.md` Unreleased 段已有大量条目，下一次 tag 何时切？
+- **建议调查方法**：读三份 PLAN 文件 + `docs/RELEASE.md`，对比 Unreleased 段已完成项与计划项。
 
 ---
 
-## 附录：证据引用
+## 置信度总览
 
-- **简报 §0**: 研究原则
-- **简报 §1**: Executive Brief — 268 源文件、3037 .md、262 .py、208 commits、15 contributors
-- **简报 §2**: Architecture Insights — 268 模块、181 边、2 循环、`parsers` 入度 58、PageRank 0.1878
-- **简报 §3**: AI/Agent Design — 490 prompts、154 tools、balanced prompt+tool design
-- **简报 §4**: Testing & Evaluation — 19 测试文件、329 测试函数、99 eval 文件、metrics 含 pass_rate
-- **简报 §5**: Engineering Metrics — coupling density 0.68、call density 11.4、commit intensity 14
-- **简报 §5.5**: Ontology View — 2177 function / 244 prompt / 178 class / 154 tool / 152 evaluation / 21 workflow / 15 runner / 11 planner / 2 agent
-- **简报 §6**: Negative Findings — "未找到 LICENSE 文件"（与实际仓库 LICENSE 存在矛盾，已在 §3 校正）
-- **简报 §7**: Reading Priority — `toml_compat.py` 排名第 1（120 分）
-- **简报 §8**: Reading Guide — 30 分钟 / 2 小时阅读计划
-- **简报 §9**: Research Plan — 7 个 high 置信度假设全部成立
-- **源码**: `README.md`、`SKILL.md`、`LICENSE`、`CHANGELOG.md`、`scripts/toml_compat.py`、`benchmark/README.md`、`eval-harness/README.md`、`agents/README.md`、`.github/workflows/quality-evals.yml`、`.github/workflows/scorecard.yml`、`scripts/build-catalog.py`
-- **简报 §git**: Bryce Wang 161+19+5+2+1+1=189 commits（91%）；首提交 2026-04-02；末提交 2026-07-20
+| 结论 | 置信度 | 主要依据 |
+|---|---|---|
+| Router + Progressive Disclosure 是核心架构 | 高 | root SKILL.md 显式声明 + catalog 结构 + Reading Priority |
+| 三层 trust 架构（numeric/rubric/declarative） | 高 | 三份 README 互相印证 + CI 配置 |
+| Necessary-not-sufficient gate 设计 | 高 | eval-harness README 原文 + CI negative fixture |
+| Benchmark 用 construction-invariant check | 高 | benchmark README + data 文件 + CI |
+| Vendored skill 视为 untrusted code | 高 | SECURITY.md + workflow + badge |
+| Catalog as Queryable Index | 高 | SKILL.md 指导 + 两个独立 builder |
+| Multi-agent 协作治理 | 高 | AGENT_COORDINATION.md + sync workflow + CHANGELOG |
+| 2 个 import cycle 是潜在 tight coupling | 中 | 简报数据确定，但影响范围限于单 collection |
+| Catalog maintenance burden 是潜在风险 | 中 | 治理文档已识别 + 专门 CI 检查 |
+| Test coverage ratio 0.07 失真 | 低 | ratio 计算方式不适合 skill 仓库 |
