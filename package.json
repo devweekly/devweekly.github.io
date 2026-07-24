@@ -33,6 +33,7 @@
     "sanitize-html": "^2.17.0",
     "satori": "^0.19.2",
     "tailwindcss": "^4.2.2",
+    "ts-morph": "^28.0.0",
     "typescript": "^6.0.3"
   },
   "devDependencies": {
@@ -58,16 +59,16 @@
     "prettier-plugin-tailwindcss": "^0.7.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "simple-git": "^3.25.0",
-    "tree-sitter-wasms": "^0.1.0",
-    "web-tree-sitter": "^0.22.0",
-    "yaml": "^2.4.0",
     "remark-gfm": "^4.0.1",
     "remark-parse": "^11.0.0",
     "remark-stringify": "^11.0.0",
-    "typescript-eslint": "^8.56.0",
+    "simple-git": "^3.25.0",
+    "tree-sitter-wasms": "",
+    "typescript-eslint": "^8.58.2",
     "unified": "^11.0.0",
-    "unist-util-visit": "^5.1.0"
+    "unist-util-visit": "^5.1.0",
+    "web-tree-sitter": "^0.22.0",
+    "yaml": "^2.4.0"
   },
   "config": {
     "commitizen": {
