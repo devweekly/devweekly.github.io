@@ -78,17 +78,11 @@ focus:
 ```
 research-{repo-name}-{YYYYMMDD}/
 ├── evidence-store/             # Deterministic analysis output (script-generated)
-│   ├── discovery.json          # Repository metadata, manifest, file tree
-│   ├── architecture.json       # Dependency graph + centrality + cycles
-│   ├── entrypoints.json        # Entry point detection (cli/server/sdk/example)
-│   ├── prompts.json            # Prompt discovery (system/template/few-shot)
-│   ├── tools.json              # Tool/function registration discovery
-│   ├── tests.json              # Test inventory + categorization + patterns
-│   ├── evaluations.json        # Evaluation/benchmark/rubric discovery
-│   ├── git_history.json        # Git log, contributors, refactors, tags
-│   ├── ci.json                 # CI/CD pipeline discovery
-│   ├── symbols.json            # Semantic Index: functions, classes, calls, strings
-│   └── interesting_files.json  # Ranked file list for LLM reading priority
+│   ├── full.json               # Slim index: all sections as summaries + _ref pointers (< 300KB, git-friendly)
+│   ├── symbols.json            # Full Semantic Index: functions, classes, calls, strings (gitignored, regenerable)
+│   ├── ontology.json           # Full Ontology: objects + semantic relationships (gitignored, regenerable)
+│   ├── architecture.json       # Full dependency graph: nodes + edges (gitignored, regenerable)
+│   └── ...                     # Individual analyzer outputs (if run separately)
 ├── evidence-brief.md           # Condensed evidence + derived insights + LLM prompt (from `report` command)
 ├── 01-hypotheses.md            # LLM-generated hypotheses (from Evidence Store)
 ├── 02-evidence/                # LLM subagent evidence collection
@@ -102,6 +96,21 @@ research-{repo-name}-{YYYYMMDD}/
 ├── research-repo.mjs           # Copied from skill directory
 └── report.md                   # Final report (LLM-generated from evidence brief)
 ```
+
+### Slim `full.json` Design
+
+The `all` command automatically splits large sections into separate files when `evidence-store/` exists in the working directory:
+
+| Section | In slim `full.json` | In separate file | Rationale |
+|---------|---------------------|------------------|-----------|
+| `symbols` | Summary counts + `_ref` | `symbols.json` | Raw function/class/call arrays are 1-40MB |
+| `ontology` | Type/rel summaries + `_ref` | `ontology.json` | Object/relationship arrays are 0.5-7MB |
+| `architecture` | Node/edge counts + cycles + centrality + `_ref` | `architecture.json` | Graph nodes/edges are 0.1-1.5MB |
+| All other sections | Full data | — | Small enough for git (< 30KB each) |
+
+**Size impact**: slim `full.json` is 76-256KB (git-friendly), down from 6-105MB. The split files are `.gitignore`d and regenerable via `node research-repo.mjs all <repo>`.
+
+**Backward compatibility**: The `update` command auto-loads split files if they exist. If `symbols.json` / `ontology.json` / `architecture.json` are absent (old-format `full.json`), the data is read from `full.json` directly.
 
 ### Evidence Store Benefits
 

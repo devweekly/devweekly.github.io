@@ -29,6 +29,12 @@ pnpm-debug.log*
 # ignore Jampack cache files
 .jampack/
 
+# research-repo skill: large evidence files (regenerable from full.json + repo)
+research-*/evidence-store/symbols.json
+research-*/evidence-store/ontology.json
+research-*/evidence-store/architecture.json
+research-*/analyze.err
+
 # yarn
 .yarn/*
 !.yarn/patches
