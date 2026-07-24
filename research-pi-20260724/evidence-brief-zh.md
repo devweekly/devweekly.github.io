@@ -163,6 +163,81 @@ Use ...
   - `packages/agent/src/harness/utils`
   - `packages/agent/test`
 
+## 5.5. Ontology View（对象视图）
+
+> 受 Palantir Ontology 启发：将仓库视为工程对象图，而非文件集合。
+> 每个重要概念都是一个对象，对象之间有语义关系，证据关联到对象。
+
+### 对象类型分布
+
+| 类型 | 数量 |
+|------|------|
+| function | 2975 |
+| prompt | 36 |
+| agent | 36 |
+| workflow | 10 |
+| runner | 10 |
+| planner | 10 |
+| evaluation | 7 |
+| tool | 3 |
+
+### 关系类型分布
+
+| 关系 | 数量 |
+|------|------|
+| calls | 76173 |
+| imports | 4206 |
+| uses | 47 |
+| evaluatedBy | 7 |
+
+### 语义对象（非 function/class）
+
+| 类型 | 名称 | 文件 | 属性 |
+|------|------|------|------|
+| prompt | prompt | packages/agent/src/harness/agent-harness.ts | promptType=prompt, variables=, line=363 |
+| prompt | prompt | packages/agent/src/harness/compaction/branch-summarization.ts | promptType=prompt, variables=, line=173 |
+| prompt | system | packages/agent/src/harness/compaction/compaction.ts | promptType=system, variables=, line=446 |
+| prompt | prompt | packages/agent/src/harness/compaction/compaction.ts | promptType=prompt, variables=, line=450 |
+| prompt | prompt | packages/agent/test/agent-loop.test.ts | promptType=prompt, variables=, line=1050 |
+| prompt | prompt | packages/agent/test/harness/compaction.test.ts | promptType=prompt, variables=, line=531 |
+| prompt | system | packages/ai/test/total-tokens.test.ts | promptType=system, variables=, line=35 |
+| prompt | assistant | packages/coding-agent/examples/extensions/auto-commit-on-exit.ts | promptType=assistant, variables=, line=22 |
+| prompt | system | packages/coding-agent/examples/extensions/handoff.ts | promptType=system, variables=, line=21 |
+| prompt | template | packages/coding-agent/examples/extensions/notify.ts | promptType=template, variables=, line=16 |
+| prompt | system | packages/coding-agent/examples/extensions/qna.ts | promptType=system, variables=, line=14 |
+| prompt | few-shot | packages/coding-agent/examples/extensions/tic-tac-toe.ts | promptType=few-shot, variables=, line=710 |
+| prompt | prompt | packages/coding-agent/src/core/compaction/branch-summarization.ts | promptType=prompt, variables=, line=258 |
+| prompt | prompt | packages/coding-agent/src/core/compaction/compaction.ts | promptType=prompt, variables=, line=467 |
+| prompt | system | packages/coding-agent/src/core/compaction/utils.ts | promptType=system, variables=, line=156 |
+| prompt | prompt | packages/coding-agent/src/core/system-prompt.ts | promptType=prompt, variables=, line=121 |
+| prompt | prompt | packages/coding-agent/test/args.test.ts | promptType=prompt, variables=, line=48 |
+| prompt | template | packages/coding-agent/test/prompt-templates.test.ts | promptType=template, variables=, line=203 |
+| prompt | prompt | packages/coding-agent/test/suite/agent-session-model-extension.test.ts | promptType=prompt, variables=, line=352 |
+| prompt | prompt | packages/coding-agent/test/suite/agent-session-prompt.test.ts | promptType=prompt, variables=, line=177 |
+| prompt | prompt | packages/tui/src/components/input.ts | promptType=prompt, variables=, line=380 |
+| prompt | prompt | scripts/session-transcripts.ts | promptType=prompt, variables=, line=260 |
+| prompt | system | packages/agent/CHANGELOG.md | promptType=system, variables=, line=299 |
+| prompt | system | packages/agent/README.md | promptType=system, variables=, line=29 |
+| prompt | system | packages/agent/docs/hooks.md | promptType=system, variables=, line=204 |
+| prompt | prompt | packages/agent/docs/models.md | promptType=prompt, variables=, line=581 |
+| prompt | system | packages/ai/README.md | promptType=system, variables=, line=123 |
+| prompt | prompt | packages/ai/README.md | promptType=prompt, variables=, line=1475 |
+| prompt | system | packages/coding-agent/CHANGELOG.md | promptType=system, variables=, line=3349 |
+| prompt | prompt | packages/coding-agent/README.md | promptType=prompt, variables=, line=546 |
+
+### 问题驱动查询示例
+
+> 以下是基于对象图的研究查询路径（Question → Object → Relationship → Evidence）
+
+**查询**: Agent 使用了哪些工具和 prompt？
+  Agent(agentLoop) → uses → tool(index)
+  证据: packages/agent/src/agent-loop.ts, packages/agent/src/index.ts
+**查询**: 仓库中有多少 prompt 对象？它们的类型分布是什么？
+  Prompt 对象: 36 个
+
+> LLM 应在报告中使用对象驱动语言（如「Agent 对象通过 uses 关系连接到 Tool 对象」），
+> 而非文件驱动语言（如「agent.ts 导入了 tool.ts」）。
+
 ## 6. Negative Findings（未找到什么）
 
 > 这些 "未找到" 的发现同样重要 — 它们防止 LLM 默认假设 "存在"。
@@ -251,6 +326,17 @@ the core architecture. Prioritize README, then high-PageRank modules, then entry
 
 你是一位经验丰富的软件架构师。基于上述证据，为 **pi-monorepo** 撰写一份工程研究报告。
 请将报告保存为工作目录下的 `report.md`。
+
+### 核心方法论：Ontology-driven Research（对象驱动研究）
+
+将仓库视为工程对象图（简报 §5.5），而非文件集合。每个重要概念是一个 Object（Agent、Tool、Prompt、Test 等），
+Object 之间有语义关系（uses、testedBy、configuredBy 等）。
+
+Research Trace 应使用对象驱动语言：
+- ❌「agent.ts 导入了 tool.ts」
+- ✅「Agent 对象通过 uses 关系连接到 Tool 对象」
+
+查询路径：Question → Object → Relationship → Evidence → Answer
 
 ### 核心方法论：Research Trace
 

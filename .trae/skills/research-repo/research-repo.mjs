@@ -258,6 +258,12 @@ const TOOL_PATTERNS = [
   { framework: "typescript-tool", regex: /(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\([^)]*\)\s*:\s*(?:Promise<)?Tool/g },
 ];
 
+// Schema-first tool detection: files that declare tool arrays typed as ToolDef[] / Tool[]
+// (common in MCP servers). We detect the type annotation first, then extract `name: '...'`
+// values from the same file. This avoids false positives from generic `name:` properties.
+const SCHEMA_FIRST_TOOL_TYPE_PATTERN =
+  /\b(?:ToolDef|BaseToolDef|PublicToolShape|ToolRegistry)\b|\bTool\[\]/;
+
 // Evaluation patterns
 const EVAL_KEYWORDS = [
   "eval", "evaluation", "benchmark", "golden", "judge", "rubric",
@@ -2697,6 +2703,38 @@ class ToolsAnalyzer extends BaseAnalyzer {
       }
     }
 
+    // Schema-first / registry-array tool detection (common in MCP servers).
+    // Pattern: `export const RPC_TOOLS: ToolDef[] = [ { name: 'foo', ... }, ... ]`
+    // We detect the type annotation first, then extract `name: '...'` values.
+    // This catches tools that decorators and class-name patterns miss.
+    const SCHEMA_FIRST_NAME_RE = /\bname\s*:\s*['"]([a-zA-Z_][\w-]*)['"]/g;
+    for (const f of files) {
+      const content = ctx.readFileAbsolute(f.path);
+      if (!content) continue;
+      if (!SCHEMA_FIRST_TOOL_TYPE_PATTERN.test(content)) continue;
+      const relPath = ctx.rel(f.path);
+      // Reset regex state for each file
+      SCHEMA_FIRST_NAME_RE.lastIndex = 0;
+      let match;
+      while ((match = SCHEMA_FIRST_NAME_RE.exec(content)) !== null) {
+        const name = match[1];
+        if (!name) continue;
+        // Filter out common false positives: generic object names
+        const lower = name.toLowerCase();
+        if (["react", "vue", "angular", "svelte", "default", "main", "app", "config"].includes(lower)) continue;
+        const key = `${relPath}:schema-first:${name}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const schema = extractSchemaNear(content, match.index);
+        tools.push({
+          name,
+          file: relPath,
+          framework: "schema-first",
+          schema,
+        });
+      }
+    }
+
     // Cross-reference entrypoints labeled as "tool" for standalone executable scripts
     // (e.g. bundled_skills/*/scripts/execute.py, skills/*/scripts/*.py) so that
     // simple argparse/sys.argv tools are represented even when they lack decorator/class patterns.
@@ -2838,10 +2876,15 @@ class EvaluationsAnalyzer extends BaseAnalyzer {
     }
 
     // 2. File-based detection (by name and content)
+    // NOTE: Name-based detection is restricted to source files to avoid false
+    // positives (e.g., blog posts, images, slide decks with "benchmark" in
+    // the filename were being misclassified as evaluation files).
     for (const f of ctx.allFiles) {
       const name = f.name.toLowerCase();
       const relPath = ctx.rel(f.path);
-      const isEvalByName = EVAL_KEYWORDS.some((kw) => name.includes(kw));
+      // Name-based detection: only source files (no images, docs, data files)
+      const isEvalByName =
+        SOURCE_EXTENSIONS.has(f.ext) && EVAL_KEYWORDS.some((kw) => name.includes(kw));
       // Only source files inside eval dirs (not docs/configs)
       const isInEvalDir =
         SOURCE_EXTENSIONS.has(f.ext) &&
@@ -4698,20 +4741,40 @@ class ReportGenerator {
     if (cycles.length === 0 && this._num(arch.totalNodes) > 0) {
       findings.push(zh ? "未检测到 import 循环 — 模块分层清晰" : "No import cycles detected — clean module layering");
     }
-    // Documentation
-    const topFiles = ranking.topFiles || [];
-    const hasReadme = topFiles.some((f) => /^readme/i.test(f.path));
+    // Documentation & metadata — use discovery.metadataFiles (source of truth)
+    // NOTE: Do NOT use ranking.topFiles — it is a ranked subset and may omit
+    // root-level LICENSE/README even when they exist (false negatives observed
+    // in 6/8 ref-only repos). metadataFiles is populated by MetadataRules from
+    // the actual file tree.
+    const metadataFiles = (disc.metadataFiles || []).map((f) => f.toLowerCase());
+    const hasReadme = metadataFiles.some((f) => f.startsWith("readme"));
     if (!hasReadme) {
       findings.push(zh ? "未找到 README 文件" : "No README file found");
+    }
+    const hasLicense = metadataFiles.some((f) => f.startsWith("license"));
+    if (!hasLicense) {
+      findings.push(zh ? "未找到 LICENSE 文件" : "No LICENSE file found");
+    }
+    const hasContributing = metadataFiles.some((f) => f.startsWith("contributing"));
+    if (!hasContributing) {
+      findings.push(zh ? "未找到 CONTRIBUTING 指南（外部贡献流程不明）" : "No CONTRIBUTING guide found (external contribution process unclear)");
+    }
+    const hasSecurity = metadataFiles.some((f) => f.startsWith("security"));
+    if (!hasSecurity) {
+      findings.push(zh ? "未找到 SECURITY 策略（漏洞报告流程不明）" : "No SECURITY policy found (vulnerability reporting process unclear)");
+    }
+    const hasChangelog = metadataFiles.some((f) => f.startsWith("changelog"));
+    if (!hasChangelog) {
+      findings.push(zh ? "未找到 CHANGELOG（版本演进缺乏结构化记录）" : "No CHANGELOG found (version evolution lacks structured record)");
+    }
+    // Agent instructions (AI-agent readiness)
+    const agentFiles = (disc.agentFiles || []).map((f) => f.toLowerCase());
+    if (agentFiles.length === 0) {
+      findings.push(zh ? "未找到 AI Agent 指令文件（AGENTS.md / CLAUDE.md 等）" : "No AI Agent instruction files found (AGENTS.md / CLAUDE.md etc.)");
     }
     // Architecture
     if (this._num(arch.totalNodes) === 0) {
       findings.push(zh ? "⚠ 架构图为空 — AST 解析可能失败" : "⚠ Architecture graph is empty — AST parsing may have failed");
-    }
-    // License
-    const hasLicense = topFiles.some((f) => /^license/i.test(f.path));
-    if (!hasLicense) {
-      findings.push(zh ? "未找到 LICENSE 文件" : "No LICENSE file found");
     }
 
     if (findings.length === 0) {
@@ -4731,15 +4794,42 @@ class ReportGenerator {
     if (topFiles.length === 0) return "";
 
     const zh = this.lang === "zh";
-    // 30-minute plan: README + top 3-5 files
-    const quick = topFiles
-      .filter((f) => /readme|license|package\.json|pyproject/i.test(f.path) || f.score >= 100)
-      .slice(0, 5);
-    if (quick.length < 3) quick.push(...topFiles.slice(0, 5 - quick.length));
+    // 30-minute plan: ROOT README + top-scoring source files.
+    // NOTE: Do NOT include sub-package READMEs (e.g., sdk/go/README.md,
+    // blog-site/README.md) — they add noise without revealing architecture.
+    // Only root-level README/LICENSE/manifest qualify as "quick orientation".
+    const isRootMeta = (p) =>
+      /^(readme|license|package\.json|pyproject\.toml|cargo\.toml|agents\.md|claude\.md)$/i.test(p);
+    const isSourceFile = (p) =>
+      /\.(ts|tsx|js|jsx|py|rs|go|java|rb|ex|exs|zig|nim|kt|swift)$/i.test(p) &&
+      !/\.(test|spec)\./i.test(p);
+    const quick = [];
+    // 1. Root README/manifest first
+    for (const f of topFiles) {
+      if (isRootMeta(f.path)) quick.push(f);
+      if (quick.length >= 2) break;
+    }
+    // 2. Fill with top-scoring source files (not tests, not sub-READMEs)
+    for (const f of topFiles) {
+      if (quick.length >= 5) break;
+      if (quick.includes(f)) continue;
+      if (/\/readme/i.test(f.path)) continue; // skip sub-package READMEs
+      if (!isSourceFile(f.path)) continue;
+      quick.push(f);
+    }
+    // 3. Fallback: if still < 3, use top files regardless
+    if (quick.length < 3) {
+      for (const f of topFiles) {
+        if (quick.length >= 5) break;
+        if (quick.includes(f)) continue;
+        quick.push(f);
+      }
+    }
 
-    // 2-hour plan: + next 10 files + tests
+    // 2-hour plan: + next 10 source files + key tests
     const deep = topFiles
       .filter((f) => !quick.includes(f))
+      .filter((f) => isSourceFile(f.path) || /\/readme/i.test(f.path))
       .slice(0, 10);
 
     const lines = zh

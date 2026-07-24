@@ -3504,6 +3504,428 @@ class EvidenceStore {
 }
 
 // ===========================================================================
+// Ontology: Object Types and Relationship Types
+//
+// Inspired by Palantir's ontology approach: treat the repository as a graph
+// of engineering objects (not just files). Every significant concept is an
+// Object with typed Relationships and linked Evidence.
+// ===========================================================================
+
+const OBJECT_TYPES = [
+  "repository",
+  "module",
+  "function",
+  "class",
+  "agent",
+  "planner",
+  "runner",
+  "tool",
+  "prompt",
+  "test",
+  "evaluation",
+  "workflow",
+  "config",
+  "document",
+  "dataset",
+];
+
+const RELATIONSHIP_TYPES = [
+  "imports",
+  "calls",
+  "extends",
+  "implements",
+  "creates",
+  "uses",
+  "references",
+  "owns",
+  "testedBy",
+  "configuredBy",
+  "evaluatedBy",
+  "documentedBy",
+  "benchmarkedBy",
+];
+
+// Classification rules: name/path patterns → object type
+// Order matters: first match wins (more specific patterns first)
+const CLASSIFICATION_RULES = [
+  { type: "agent", patterns: [/agent/i, /harness/i], field: "name" },
+  { type: "planner", patterns: [/plan/i, /strateg/i], field: "name" },
+  { type: "runner", patterns: [/runner/i, /executor/i, /loop/i, /run\b/i], field: "name" },
+  { type: "evaluation", patterns: [/eval/i, /benchmark/i, /score/i, /metric/i], field: "name" },
+  { type: "workflow", patterns: [/workflow/i, /pipeline/i, /ci\b/i], field: "name" },
+];
+
+/**
+ * Classifies raw symbols, prompts, tools, tests, etc. into semantic Objects.
+ * Inspired by Palantir's Object Discovery: everything is an Entity with a type.
+ *
+ * Input: existing analyzer outputs (symbols, prompts, tools, tests, evaluations, ci)
+ * Output: typed Objects with properties, ready for relationship building.
+ */
+class ObjectClassifier {
+  /**
+   * @param {Record<string, any>} store — raw analyzer outputs
+   * @returns {{ objects: Array, summary: Record<string, number> }}
+   */
+  classify(store) {
+    const objects = [];
+    const seen = new Set(); // dedup by key
+
+    // 1. Classify prompts → Prompt objects
+    const prompts = store.prompts?.prompts || [];
+    for (const p of prompts) {
+      const key = `prompt:${p.file}:${p.name || p.type}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      objects.push({
+        id: key,
+        type: "prompt",
+        name: p.name || p.type || "unnamed",
+        file: p.file,
+        properties: {
+          promptType: p.type,
+          variables: p.variables || [],
+          line: p.line,
+        },
+        evidence: [p.file],
+      });
+    }
+
+    // 2. Classify tools → Tool objects
+    const tools = store.tools?.tools || [];
+    for (const t of tools) {
+      const key = `tool:${t.name}:${t.file}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      objects.push({
+        id: key,
+        type: "tool",
+        name: t.name,
+        file: t.file,
+        properties: {
+          framework: t.framework,
+          schema: t.schema,
+        },
+        evidence: [t.file],
+      });
+    }
+
+    // 3. Classify tests → Test objects
+    const testFiles = store.tests?.testFiles || [];
+    for (const tf of testFiles) {
+      const key = `test:${tf.file}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      objects.push({
+        id: key,
+        type: "test",
+        name: tf.file.split("/").pop(),
+        file: tf.file,
+        properties: {
+          testCount: tf.testCount || 0,
+          patterns: tf.patterns || [],
+        },
+        evidence: [tf.file],
+      });
+    }
+
+    // 4. Classify evaluations → Evaluation objects
+    const evalFiles = store.evaluations?.evalFiles || [];
+    for (const ef of evalFiles) {
+      const key = `eval:${ef}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      objects.push({
+        id: key,
+        type: "evaluation",
+        name: ef.split("/").pop(),
+        file: ef,
+        properties: {},
+        evidence: [ef],
+      });
+    }
+
+    // 5. Classify CI workflows → Workflow objects
+    const ciWorkflows = store.ci?.workflows || [];
+    for (const w of ciWorkflows) {
+      const key = `workflow:${w.path || w.name}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      objects.push({
+        id: key,
+        type: "workflow",
+        name: w.name || (w.path ? w.path.split("/").pop() : "unnamed"),
+        file: w.path,
+        properties: {
+          triggers: w.triggers || [],
+          jobs: w.jobs || [],
+        },
+        evidence: [w.path].filter(Boolean),
+      });
+    }
+
+    // 6. Classify functions/classes → semantic types
+    const symbols = store.symbols || {};
+    const allFuncs = symbols.functions || [];
+    const allClasses = symbols.classes || [];
+
+    for (const fn of allFuncs) {
+      const semanticType = this._classifyByName(fn.name);
+      const key = `${semanticType}:${fn.file}:${fn.name}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      objects.push({
+        id: key,
+        type: semanticType,
+        name: fn.name,
+        file: fn.file,
+        properties: {
+          line: fn.line,
+          params: fn.params || 0,
+          exported: fn.exported || false,
+        },
+        evidence: [fn.file],
+      });
+    }
+
+    for (const cls of allClasses) {
+      const semanticType = this._classifyByName(cls.name, "class");
+      const key = `${semanticType}:${cls.file}:${cls.name}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      objects.push({
+        id: key,
+        type: semanticType,
+        name: cls.name,
+        file: cls.file,
+        properties: {
+          line: cls.line,
+          methods: cls.methods || 0,
+          exported: cls.exported || false,
+        },
+        evidence: [cls.file],
+      });
+    }
+
+    // 7. Classify config files → Config objects
+    const disc = store.discovery || {};
+    const allFiles = disc.allFiles || [];
+    for (const f of allFiles) {
+      if (/\.(ya?ml|toml|ini|env|json)$/.test(f) && !/node_modules|\.git/.test(f)) {
+        const key = `config:${f}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        objects.push({
+          id: key,
+          type: "config",
+          name: f.split("/").pop(),
+          file: f,
+          properties: {},
+          evidence: [f],
+        });
+      }
+    }
+
+    // 8. Classify documents → Document objects
+    for (const f of allFiles) {
+      if (/\.(md|rst|txt)$/.test(f) && !/node_modules|\.git/.test(f)) {
+        const key = `doc:${f}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        objects.push({
+          id: key,
+          type: "document",
+          name: f.split("/").pop(),
+          file: f,
+          properties: {},
+          evidence: [f],
+        });
+      }
+    }
+
+    // Build summary
+    const summary = {};
+    for (const obj of objects) {
+      summary[obj.type] = (summary[obj.type] || 0) + 1;
+    }
+
+    return { objects, summary };
+  }
+
+  /**
+   * Classify a function/class name into a semantic object type.
+   * Returns "function" or "class" if no semantic match.
+   * @param {string} name
+   * @param {string} defaultType
+   * @returns {string}
+   */
+  _classifyByName(name, defaultType = "function") {
+    if (!name) return defaultType;
+    for (const rule of CLASSIFICATION_RULES) {
+      for (const pattern of rule.patterns) {
+        if (pattern.test(name)) return rule.type;
+      }
+    }
+    return defaultType;
+  }
+}
+
+/**
+ * Builds semantic relationships between classified Objects.
+ * Inspired by Palantir's Relationship Discovery: Object identity is less
+ * important than how Objects connect.
+ *
+ * Input: classified Objects + raw analyzer outputs
+ * Output: typed Relationships (testedBy, configuredBy, usesTool, etc.)
+ */
+class RelationshipBuilder {
+  /**
+   * @param {Array} objects — from ObjectClassifier
+   * @param {Record<string, any>} store — raw analyzer outputs
+   * @returns {{ relationships: Array, summary: Record<string, number> }}
+   */
+  build(objects, store) {
+    const rels = [];
+    const symbols = store.symbols || {};
+
+    // 1. Structural relationships (from symbols)
+    // imports
+    for (const imp of symbols.imports || []) {
+      rels.push({
+        type: "imports",
+        source: imp.file,
+        target: imp.target,
+        evidence: [imp.file],
+      });
+    }
+    // calls
+    for (const call of symbols.calls || []) {
+      rels.push({
+        type: "calls",
+        source: `${call.file}:${call.caller}`,
+        target: call.callee,
+        evidence: [call.file],
+      });
+    }
+
+    // 2. Semantic: testedBy (function/class → test file)
+    const testObjects = objects.filter((o) => o.type === "test");
+    const funcObjects = objects.filter((o) => o.type === "function" || o.type === "class");
+    for (const fn of funcObjects) {
+      const baseName = fn.name.replace(/\.(ts|js|py|tsx)$/, "");
+      for (const test of testObjects) {
+        const testName = test.name.replace(/\.(test|spec)\.(ts|js|py|tsx)$/, "");
+        if (testName.includes(baseName) || baseName.includes(testName)) {
+          rels.push({
+            type: "testedBy",
+            source: `${fn.type}:${fn.file}:${fn.name}`,
+            target: test.id,
+            evidence: [test.file],
+          });
+        }
+      }
+    }
+
+    // 3. Semantic: configuredBy (module → config file)
+    const configObjects = objects.filter((o) => o.type === "config");
+    const moduleFiles = new Set(funcObjects.map((f) => f.file));
+    for (const cfg of configObjects) {
+      // Match by directory proximity
+      const cfgDir = cfg.file.split("/").slice(0, -1).join("/");
+      for (const modFile of moduleFiles) {
+        const modDir = modFile.split("/").slice(0, -1).join("/");
+        if (modDir === cfgDir) {
+          rels.push({
+            type: "configuredBy",
+            source: modFile,
+            target: cfg.id,
+            evidence: [cfg.file],
+          });
+          break; // one config per module is enough
+        }
+      }
+    }
+
+    // 4. Semantic: documentedBy (module → README/doc)
+    const docObjects = objects.filter((o) => o.type === "document");
+    for (const doc of docObjects) {
+      if (!/^readme/i.test(doc.name)) continue;
+      const docDir = doc.file === "README.md" ? "" : doc.file.split("/").slice(0, -1).join("/");
+      for (const fn of funcObjects) {
+        const fnDir = fn.file.split("/").slice(0, -1).join("/");
+        if (fnDir === docDir) {
+          rels.push({
+            type: "documentedBy",
+            source: `${fn.type}:${fn.file}:${fn.name}`,
+            target: doc.id,
+            evidence: [doc.file],
+          });
+          break;
+        }
+      }
+    }
+
+    // 5. Semantic: usesTool / usesPrompt (agent → tool/prompt)
+    const agentObjects = objects.filter(
+      (o) => o.type === "agent" || o.type === "runner" || o.type === "planner",
+    );
+    const toolObjects = objects.filter((o) => o.type === "tool");
+    const promptObjects = objects.filter((o) => o.type === "prompt");
+
+    for (const agent of agentObjects) {
+      // Agent uses Tool: if agent file imports or is near tool file
+      for (const tool of toolObjects) {
+        if (agent.file === tool.file || this._sharesDirectory(agent.file, tool.file)) {
+          rels.push({
+            type: "uses",
+            source: agent.id,
+            target: tool.id,
+            evidence: [agent.file, tool.file],
+          });
+        }
+      }
+      // Agent uses Prompt: if agent file is near prompt file
+      for (const prompt of promptObjects) {
+        if (agent.file === prompt.file || this._sharesDirectory(agent.file, prompt.file)) {
+          rels.push({
+            type: "uses",
+            source: agent.id,
+            target: prompt.id,
+            evidence: [agent.file, prompt.file],
+          });
+        }
+      }
+    }
+
+    // 6. Semantic: evaluatedBy (module → evaluation)
+    const evalObjects = objects.filter((o) => o.type === "evaluation");
+    for (const ev of evalObjects) {
+      rels.push({
+        type: "evaluatedBy",
+        source: "repository",
+        target: ev.id,
+        evidence: [ev.file],
+      });
+    }
+
+    // Build summary
+    const summary = {};
+    for (const r of rels) {
+      summary[r.type] = (summary[r.type] || 0) + 1;
+    }
+
+    return { relationships: rels, summary };
+  }
+
+  _sharesDirectory(a, b) {
+    if (!a || !b) return false;
+    const dirA = a.split("/").slice(0, -1).join("/");
+    const dirB = b.split("/").slice(0, -1).join("/");
+    return dirA === dirB && dirA !== "";
+  }
+}
+
+// ===========================================================================
 // ResearchPlanner — goal-driven research design
 //
 // Transforms a high-level research goal into a set of falsifiable hypotheses,
@@ -3982,6 +4404,7 @@ class ReportGenerator {
       this._aiAgentInsights(),
       this._testingAndEvaluation(),
       this._engineeringMetrics(),
+      this._ontologyView(),
       this._negativeFindings(),
       this._readingPriority(),
       this._readingGuide(),
@@ -4070,6 +4493,166 @@ class ReportGenerator {
       "- **Prefer reusable patterns over implementation details** — Extract patterns, don't get lost in details.",
       "- **Negative findings are equally important** — \"X not found\" is as valuable as \"Y found\".",
     ].join("\n");
+  }
+
+  _ontologyView() {
+    const ontology = this.s.ontology;
+    if (!ontology) return "";
+    const zh = this.lang === "zh";
+    const objects = ontology.objects || [];
+    const relationships = ontology.relationships || [];
+    const objSummary = ontology.objectSummary || {};
+    const relSummary = ontology.relSummary || {};
+
+    if (objects.length === 0) return "";
+
+    const lines = zh
+      ? [
+          "## 5.5. Ontology View（对象视图）",
+          "",
+          "> 受 Palantir Ontology 启发：将仓库视为工程对象图，而非文件集合。",
+          "> 每个重要概念都是一个对象，对象之间有语义关系，证据关联到对象。",
+          "",
+          "### 对象类型分布",
+          "",
+          "| 类型 | 数量 |",
+          "|------|------|",
+          ...Object.entries(objSummary)
+            .sort((a, b) => b[1] - a[1])
+            .map(([type, count]) => `| ${type} | ${count} |`),
+          "",
+          "### 关系类型分布",
+          "",
+          "| 关系 | 数量 |",
+          "|------|------|",
+          ...Object.entries(relSummary)
+            .sort((a, b) => b[1] - a[1])
+            .map(([type, count]) => `| ${type} | ${count} |`),
+          "",
+          "### 语义对象（非 function/class）",
+          "",
+          "| 类型 | 名称 | 文件 | 属性 |",
+          "|------|------|------|------|",
+          ...objects
+            .filter((o) => !["function", "class", "config", "document"].includes(o.type))
+            .slice(0, 30)
+            .map((o) => {
+              const props = Object.entries(o.properties || {})
+                .map(([k, v]) => `${k}=${v}`)
+                .join(", ");
+              return `| ${o.type} | ${o.name} | ${o.file} | ${props || "—"} |`;
+            }),
+          "",
+          "### 问题驱动查询示例",
+          "",
+          "> 以下是基于对象图的研究查询路径（Question → Object → Relationship → Evidence）",
+          "",
+          ...this._buildQueryExamples(objects, relationships, zh),
+          "",
+          "> LLM 应在报告中使用对象驱动语言（如「Agent 对象通过 uses 关系连接到 Tool 对象」），",
+          "> 而非文件驱动语言（如「agent.ts 导入了 tool.ts」）。",
+        ]
+      : [
+          "## 5.5. Ontology View",
+          "",
+          "> Inspired by Palantir Ontology: treat the repository as a graph of engineering objects,",
+          "> not a collection of files. Every concept is an Object with typed Relationships and linked Evidence.",
+          "",
+          "### Object Type Distribution",
+          "",
+          "| Type | Count |",
+          "|------|-------|",
+          ...Object.entries(objSummary)
+            .sort((a, b) => b[1] - a[1])
+            .map(([type, count]) => `| ${type} | ${count} |`),
+          "",
+          "### Relationship Type Distribution",
+          "",
+          "| Relationship | Count |",
+          "|--------------|-------|",
+          ...Object.entries(relSummary)
+            .sort((a, b) => b[1] - a[1])
+            .map(([type, count]) => `| ${type} | ${count} |`),
+          "",
+          "### Semantic Objects (non-function/class)",
+          "",
+          "| Type | Name | File | Properties |",
+          "|------|------|------|------------|",
+          ...objects
+            .filter((o) => !["function", "class", "config", "document"].includes(o.type))
+            .slice(0, 30)
+            .map((o) => {
+              const props = Object.entries(o.properties || {})
+                .map(([k, v]) => `${k}=${v}`)
+                .join(", ");
+              return `| ${o.type} | ${o.name} | ${o.file} | ${props || "—" } |`;
+            }),
+          "",
+          "### Question-Driven Query Examples",
+          "",
+          "> The following are research query paths through the object graph (Question → Object → Relationship → Evidence)",
+          "",
+          ...this._buildQueryExamples(objects, relationships, zh),
+          "",
+          "> The LLM should use object-driven language in the report (e.g., \"The Agent object connects",
+          "> to the Tool object via the uses relationship\") rather than file-driven language.",
+        ];
+    return lines.join("\n");
+  }
+
+  _buildQueryExamples(objects, relationships, zh) {
+    // Build 3-5 query examples based on discovered objects
+    const examples = [];
+    const agents = objects.filter((o) => o.type === "agent");
+    const tools = objects.filter((o) => o.type === "tool");
+    const prompts = objects.filter((o) => o.type === "prompt");
+    const tests = objects.filter((o) => o.type === "test");
+    const runners = objects.filter((o) => o.type === "runner");
+
+    if (agents.length > 0 || runners.length > 0) {
+      const agent = (agents[0] || runners[0]);
+      const usesRels = relationships.filter((r) => r.source === agent.id && r.type === "uses");
+      if (usesRels.length > 0) {
+        const targets = usesRels.map((r) => objects.find((o) => o.id === r.target)).filter(Boolean);
+        if (zh) {
+          examples.push("**查询**: Agent 使用了哪些工具和 prompt？");
+          examples.push(`  Agent(${agent.name}) → uses → ${targets.map((t) => `${t.type}(${t.name})`).join(", ")}`);
+          examples.push(`  证据: ${agent.file}, ${targets.map((t) => t.file).join(", ")}`);
+        } else {
+          examples.push("**Query**: What tools and prompts does the Agent use?");
+          examples.push(`  Agent(${agent.name}) → uses → ${targets.map((t) => `${t.type}(${t.name})`).join(", ")}`);
+          examples.push(`  Evidence: ${agent.file}, ${targets.map((t) => t.file).join(", ")}`);
+        }
+      }
+    }
+
+    if (tests.length > 0) {
+      const testedRels = relationships.filter((r) => r.type === "testedBy");
+      if (testedRels.length > 0) {
+        const example = testedRels[0];
+        if (zh) {
+          examples.push("**查询**: 哪些对象有测试覆盖？");
+          examples.push(`  ${example.source} → testedBy → ${example.target}`);
+          examples.push(`  证据: ${example.evidence.join(", ")}`);
+        } else {
+          examples.push("**Query**: Which objects have test coverage?");
+          examples.push(`  ${example.source} → testedBy → ${example.target}`);
+          examples.push(`  Evidence: ${example.evidence.join(", ")}`);
+        }
+      }
+    }
+
+    if (prompts.length > 0) {
+      if (zh) {
+        examples.push(`**查询**: 仓库中有多少 prompt 对象？它们的类型分布是什么？`);
+        examples.push(`  Prompt 对象: ${prompts.length} 个`);
+      } else {
+        examples.push(`**Query**: How many prompt objects are in the repository? What are their types?`);
+        examples.push(`  Prompt objects: ${prompts.length} total`);
+      }
+    }
+
+    return examples.length > 0 ? examples : (zh ? ["（未找到足够的对象关系来构建查询示例）"] : ["(Insufficient object relationships to build query examples)"]);
   }
 
   _negativeFindings() {
@@ -4597,6 +5180,17 @@ class ReportGenerator {
         `你是一位经验丰富的软件架构师。基于上述证据，为 **${repoName}** 撰写一份工程研究报告。`,
         `请将报告保存为工作目录下的 \`report.md\`。`,
         "",
+        "### 核心方法论：Ontology-driven Research（对象驱动研究）",
+        "",
+        "将仓库视为工程对象图（简报 §5.5），而非文件集合。每个重要概念是一个 Object（Agent、Tool、Prompt、Test 等），",
+        "Object 之间有语义关系（uses、testedBy、configuredBy 等）。",
+        "",
+        "Research Trace 应使用对象驱动语言：",
+        `- ❌「agent.ts 导入了 tool.ts」`,
+        `- ✅「Agent 对象通过 uses 关系连接到 Tool 对象」`,
+        "",
+        "查询路径：Question → Object → Relationship → Evidence → Answer",
+        "",
         "### 核心方法论：Research Trace",
         "",
         "**每个重要结论必须展示完整推导链条**，而非仅给出结论。格式如下：",
@@ -4697,6 +5291,18 @@ class ReportGenerator {
       "",
       `You are an experienced software architect. Based on the evidence above, write an engineering`,
       `research report for **${repoName}**. Save it as \`report.md\` in the working folder.`,
+      "",
+      "### Core Methodology: Ontology-driven Research",
+      "",
+      "Treat the repository as a graph of engineering objects (brief §5.5), not a collection of files.",
+      "Every significant concept is an Object (Agent, Tool, Prompt, Test, etc.) with semantic",
+      "Relationships (uses, testedBy, configuredBy, etc.).",
+      "",
+      "Research Traces should use object-driven language:",
+      "- ❌ \"agent.ts imports tool.ts\"",
+      "- ✅ \"The Agent object connects to the Tool object via the uses relationship\"",
+      "",
+      "Query path: Question → Object → Relationship → Evidence → Answer",
       "",
       "### Core Methodology: Research Trace",
       "",
@@ -4839,6 +5445,12 @@ class AnalyzerPipeline {
       await analyzer.analyze(ctx, store, { command: analyzer.id });
     }
     const evidenceStore = new EvidenceStore(store);
+    // Ontology: classify objects and build semantic relationships
+    const classifier = new ObjectClassifier();
+    const { objects, summary: objectSummary } = classifier.classify(store);
+    const relBuilder = new RelationshipBuilder();
+    const { relationships, summary: relSummary } = relBuilder.build(objects, store);
+    store.ontology = { objects, relationships, objectSummary, relSummary };
     const planner = new ResearchPlanner(DEFAULT_RESEARCH_GOAL, evidenceStore);
     store.plan = planner.plan();
     const questionGenerator = new QuestionGenerator(evidenceStore);

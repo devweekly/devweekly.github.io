@@ -285,11 +285,12 @@ The `report` command produces an **Evidence Brief** — a structured Markdown fi
 
 1. **Research Principles** (§0) — 10 principles guiding how the LLM should think (evidence over assumptions, negative findings matter, etc.)
 2. **Condenses** all 11 analyzer outputs into a human-readable summary (§1-§5)
-3. **Negative Findings** (§6) — What was NOT found, preventing the LLM from defaulting to "present"
-4. **Reading Priority** (§7) — Top 20 files ranked by structural importance
-5. **Reading Guide** (§8) — Time-boxed reading plans (30-minute quick look + 2-hour deep dive)
-6. **Research Plan** (§9) — Hypotheses with confidence levels and open questions
-7. **LLM Analysis Prompt** — Instructs the agent to write `report.md` using Research Trace methodology
+3. **Ontology View** (§5.5) — Object type distribution, relationship type distribution, semantic objects, and question-driven query examples (Palantir-inspired)
+4. **Negative Findings** (§6) — What was NOT found, preventing the LLM from defaulting to "present"
+5. **Reading Priority** (§7) — Top 20 files ranked by structural importance
+6. **Reading Guide** (§8) — Time-boxed reading plans (30-minute quick look + 2-hour deep dive)
+7. **Research Plan** (§9) — Hypotheses with confidence levels and open questions
+8. **LLM Analysis Prompt** — Instructs the agent to write `report.md` using Ontology-driven Research Trace methodology
 
 The LLM agent reads the Evidence Brief, optionally dives deeper into specific JSON evidence files, then writes the final `report.md` using **Research Trace methodology** — every important conclusion shows its full derivation chain:
 
