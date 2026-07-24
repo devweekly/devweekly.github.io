@@ -3536,6 +3536,1086 @@ class RankingAnalyzer extends BaseAnalyzer {
   }
 }
 
+// ===========================================================================
+// Architecture Semantics Layer (2026-07)
+//
+// The analyzers above are Fact Extractors — they answer "what does the repo
+// contain?" The seven analyzers below are Inference Engines — they answer
+// "why is it designed this way? what responsibilities does it carry? what
+// capabilities does it have? what are the architectural risks?"
+//
+// Dependency order (MUST be preserved in ANALYZERS array):
+//   ArchitecturePattern → Responsibility → (Stability, ChangeCoupling,
+//     InformationFlow, DependencySmell) → CapabilityOntology
+// ===========================================================================
+
+// --- Pattern signatures --------------------------------------------------
+// Each pattern has: name, dirSignals (match against dir names), required
+// (min signals to match), symbolSignals (optional class/function name
+// patterns), and optional graph validation flag.
+const ARCHITECTURE_PATTERNS = [
+  {
+    name: "Hexagonal (Ports & Adapters)",
+    dirSignals: ["domain", "application", "adapters", "adapter", "ports", "port"],
+    required: 2,
+    graphCheck: "layered_direction", // domain ↛ infrastructure
+  },
+  {
+    name: "Clean Architecture",
+    dirSignals: ["entities", "usecases", "use_cases", "interface", "interfaces", "frameworks", "infrastructure"],
+    required: 2,
+    graphCheck: "layered_direction",
+  },
+  {
+    name: "Onion",
+    dirSignals: ["core", "infrastructure", "application", "domain"],
+    required: 2,
+    graphCheck: "layered_direction",
+  },
+  {
+    name: "Layered",
+    dirSignals: ["presentation", "business", "persistence", "ui", "services", "data", "repository", "repositories"],
+    required: 2,
+  },
+  {
+    name: "Pipeline",
+    dirSignals: ["parser", "planner", "executor", "evaluator", "reporter", "stages", "pipeline", "pipelines"],
+    required: 2,
+    graphCheck: "linear_chain",
+  },
+  {
+    name: "Plugin",
+    dirSignals: ["plugins", "plugin", "registry", "extensions", "hooks", "addon", "addons"],
+    required: 2,
+    symbolSignals: [/\bregisterPlugin\b/, /\bloadPlugin\b/, /\bPluginRegistry\b/, /\bcreatePlugin\b/],
+  },
+  {
+    name: "Event-Driven",
+    dirSignals: ["events", "handlers", "bus", "dispatcher", "subscribers", "publishers", "listeners"],
+    required: 2,
+    symbolSignals: [/\bpublish\b/, /\bsubscribe\b/, /\bEventBus\b/, /\bemit\b/, /\bdispatch\b/],
+  },
+  {
+    name: "Actor Model",
+    dirSignals: ["actors", "actor", "mailbox", "messages", "props"],
+    required: 2,
+    symbolSignals: [/\bActor\b/, /\bActorRef\b/, /\bMailbox\b/, /\btell\b/, /\bask\b/],
+  },
+  {
+    name: "Workflow Engine",
+    dirSignals: ["workflow", "workflows", "steps", "tasks", "engine", "dag"],
+    required: 2,
+    symbolSignals: [/\bWorkflow\b/, /\bStep\b/, /\bTask\b/, /\bDAG\b/],
+  },
+  {
+    name: "Finite State Machine",
+    dirSignals: ["states", "transitions", "state_machine", "fsm"],
+    required: 1,
+    symbolSignals: [/\bStateMachine\b/, /\bState\b/, /\bTransition\b/, /\bfsm\b/i],
+  },
+  {
+    name: "Dataflow",
+    dirSignals: ["sources", "transforms", "sinks", "streams", "operators"],
+    required: 2,
+  },
+  {
+    name: "Compiler",
+    dirSignals: ["lexer", "tokenizer", "parser", "ast", "codegen", "ir", "semantic", "optimizer"],
+    required: 2,
+    symbolSignals: [/\bToken\b/, /\bAST\b/, /\bparse\b/, /\blex\b/, /\bcodegen\b/],
+  },
+  {
+    name: "Blackboard",
+    dirSignals: ["blackboard", "knowledge", "controllers"],
+    required: 2,
+  },
+  {
+    name: "Microservices",
+    dirSignals: ["services", "service"],
+    required: 1,
+    multiInstanceCheck: true, // need ≥3 service dirs or shared/ + services/
+  },
+  {
+    name: "Monorepo",
+    dirSignals: ["packages", "apps", "libs", "modules"],
+    required: 2,
+    multiManifestCheck: true,
+  },
+];
+
+// --- Responsibility signatures ------------------------------------------
+// Maps module naming patterns to a Responsibility label and Capability tags.
+// Used by ResponsibilityAnalyzer and CapabilityOntologyAnalyzer.
+const RESPONSIBILITY_RULES = [
+  { responsibility: "Task Planning", keywords: ["planner", "planning", "plan", "scheduler", "strategy", "orchestrat"], capabilities: ["planning"] },
+  { responsibility: "Tool Execution", keywords: ["executor", "execute", "runner", "runtime", "action"], capabilities: ["execution"] },
+  { responsibility: "Tool Registry", keywords: ["tool", "tools", "toolkit"], capabilities: ["tool"] },
+  { responsibility: "Context & Memory", keywords: ["memory", "context", "state", "session", "history", "buffer"], capabilities: ["memory", "context"] },
+  { responsibility: "Prompt Assembly", keywords: ["prompt", "template", "templating"], capabilities: ["prompt"] },
+  { responsibility: "Quality Assessment", keywords: ["eval", "evaluation", "benchmark", "metric", "metrics", "judge"], capabilities: ["evaluation"] },
+  { responsibility: "Retrieval", keywords: ["retriev", "rag", "search", "index", "embed"], capabilities: ["retrieval"] },
+  { responsibility: "Safety & Guardrails", keywords: ["guard", "guardrail", "safety", "filter", "policy", "validate", "schema"], capabilities: ["safety"] },
+  { responsibility: "LLM Interface", keywords: ["llm", "model", "inference", "openai", "anthropic", "client", "provider"], capabilities: ["execution"] },
+  { responsibility: "I/O & Transport", keywords: ["api", "http", "transport", "server", "route", "router", "request"], capabilities: ["io"] },
+  { responsibility: "Persistence", keywords: ["db", "database", "storage", "store", "persist", "repository", "cache"], capabilities: ["persistence"] },
+  { responsibility: "Parsing", keywords: ["parser", "lexer", "tokenizer", "ast", "parse"], capabilities: ["parsing"] },
+  { responsibility: "Agent Lifecycle", keywords: ["agent", "harness", "loop", "turn"], capabilities: ["execution", "context"] },
+  { responsibility: "Configuration", keywords: ["config", "configuration", "settings"], capabilities: [] },
+  { responsibility: "Developer Tooling", keywords: ["cli", "command", "cmd", "dev", "debug"], capabilities: [] },
+];
+
+// --- Fixed Capability Ontology ------------------------------------------
+// The 10 capabilities every AI/Agent system can have. Used by
+// CapabilityOntologyAnalyzer to assess maturity and find gaps.
+const CAPABILITY_ONTOLOGY = [
+  "planning",
+  "execution",
+  "retrieval",
+  "memory",
+  "evaluation",
+  "safety",
+  "tool",
+  "context",
+  "io",
+  "persistence",
+];
+
+/**
+ * ArchitecturePatternAnalyzer — infers the repo's architecture pattern from
+ * directory layout + symbol names + import-graph shape.
+ *
+ * Rule-based (no LLM). Identifies Hexagonal/Clean/Onion/Layered/Pipeline/
+ * Plugin/Event-Driven/Actor/Workflow/FSM/Dataflow/Compiler/Blackboard/
+ * Microservices/Monorepo with confidence scores.
+ */
+class ArchitecturePatternAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "archPattern";
+  }
+  supports(_ctx) {
+    return true;
+  }
+  async analyze(ctx, store, _analyzerCtx) {
+    const discovery = store.discovery || {};
+    const arch = store.architecture || {};
+    const symbols = store.symbols || {};
+
+    // Candidate directory names: top-level + architecture signal dirs.
+    const allDirs = new Set([
+      ...(discovery.topLevelDirs || []),
+      ...(discovery.architectureSignalDirs || []),
+    ]);
+    // Also scan one level deep (e.g., src/domain, packages/core).
+    for (const f of ctx.files) {
+      const rel = ctx.rel(f.path);
+      const parts = rel.split(sep);
+      if (parts.length >= 2 && parts[0] !== "node_modules" && parts[0] !== "vendor") {
+        allDirs.add(parts[parts.length - 1]);
+        if (parts.length >= 3 && parts[0] === "src") allDirs.add(parts[1]);
+      }
+    }
+    const dirNames = [...allDirs].map((d) => d.toLowerCase());
+
+    // Symbol names for symbol-signal patterns.
+    const symbolNames = [
+      ...(symbols.classes || []).map((c) => c.name || ""),
+      ...(symbols.functions || []).map((f) => f.name || ""),
+    ];
+
+    const matches = [];
+    for (const pattern of ARCHITECTURE_PATTERNS) {
+      const matchedDirs = pattern.dirSignals.filter((sig) =>
+        dirNames.some((d) => d === sig || d.includes(sig))
+      );
+      let matchedSymbols = [];
+      if (pattern.symbolSignals) {
+        matchedSymbols = pattern.symbolSignals
+          .filter((re) => symbolNames.some((n) => re.test(n)))
+          .map((re) => re.source);
+      }
+
+      const totalSignals = matchedDirs.length + matchedSymbols.length;
+      if (totalSignals < pattern.required) continue;
+
+      // Base confidence: 0.4 for meeting required, +0.15 per extra signal.
+      let confidence = 0.4 + 0.15 * (totalSignals - pattern.required);
+
+      // Multi-instance check (Microservices / Monorepo).
+      if (pattern.multiInstanceCheck) {
+        const serviceDirs = dirNames.filter((d) => d === "service" || d.endsWith("-service"));
+        if (serviceDirs.length >= 3) confidence += 0.2;
+        else if (serviceDirs.length < 2) continue; // require ≥2 service dirs
+      }
+      if (pattern.multiManifestCheck) {
+        // Count manifests in subdirs (package.json, Cargo.toml, etc.)
+        const manifestCount = (ctx.files || []).filter((f) =>
+          ["package.json", "Cargo.toml", "pyproject.toml", "go.mod", "pom.xml"].includes(f.name)
+        ).length;
+        if (manifestCount >= 3) confidence += 0.2;
+        else continue;
+      }
+
+      // Graph validation: check layer direction or linear chain.
+      if (pattern.graphCheck === "layered_direction" && arch.edges) {
+        // For Hexagonal/Clean/Onion: verify domain doesn't import infrastructure.
+        const hasDomain = matchedDirs.includes("domain") || matchedDirs.includes("entities") || matchedDirs.includes("core");
+        const hasInfra = matchedDirs.includes("infrastructure") || matchedDirs.includes("frameworks") || matchedDirs.includes("adapters");
+        if (hasDomain && hasInfra) {
+          // Sample edges — if any edge goes infra→domain, that's expected (dependency inversion).
+          // If any edge goes domain→infra, that's a violation (but still confirms layered structure).
+          const infraToDomain = arch.edges.some((e) => /infra|adapter|framework/i.test(e.from) && /domain|entit|core/i.test(e.to));
+          if (infraToDomain) confidence += 0.1; // dependency inversion confirmed
+        }
+      }
+      if (pattern.graphCheck === "linear_chain" && arch.edges) {
+        // Pipeline: verify a linear chain exists among the matched dirs.
+        // Check if there's a path parser→planner→executor→evaluator.
+        const chain = matchedDirs;
+        let chainConfirmed = false;
+        for (let i = 0; i < chain.length - 1; i++) {
+          const fromRe = new RegExp(chain[i], "i");
+          const toRe = new RegExp(chain[i + 1], "i");
+          if (arch.edges.some((e) => fromRe.test(e.from) && toRe.test(e.to))) {
+            chainConfirmed = true;
+            break;
+          }
+        }
+        if (chainConfirmed) confidence += 0.15;
+      }
+
+      confidence = Math.min(confidence, 0.95);
+
+      const evidence = [
+        ...matchedDirs.map((d) => `dir: ${d}/`),
+        ...matchedSymbols.map((s) => `symbol: ${s}`),
+      ];
+      matches.push({
+        pattern: pattern.name,
+        confidence: Number(confidence.toFixed(2)),
+        evidence,
+        matchedDirs,
+        matchedSymbols,
+      });
+    }
+
+    matches.sort((a, b) => b.confidence - a.confidence);
+    const primaryPattern = matches.length > 0 ? matches[0].pattern : "Unknown";
+    const allPatterns = matches.map((m) => m.pattern);
+
+    store[this.id] = {
+      primaryPattern,
+      patterns: matches,
+      allPatterns,
+      unknown: matches.length === 0,
+    };
+  }
+}
+
+/**
+ * ResponsibilityAnalyzer — maps each top-level module to a Responsibility
+ * (e.g., planner/ → "Task Planning") based on naming + symbol content.
+ *
+ * Produces a Responsibility Matrix that's far more useful to architects than
+ * "top PageRank modules".
+ */
+class ResponsibilityAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "responsibility";
+  }
+  supports(_ctx) {
+    return true;
+  }
+  async analyze(ctx, store, _analyzerCtx) {
+    const discovery = store.discovery || {};
+    const symbols = store.symbols || {};
+    const arch = store.architecture || {};
+
+    // Group files by top-level module (first path segment).
+    const moduleFiles = new Map(); // moduleName → [{path, symbols}]
+    for (const f of ctx.sourceFiles || ctx.files || []) {
+      const rel = ctx.rel(f.path);
+      const parts = rel.split(sep);
+      if (parts.length < 2) continue;
+      // Use first 2 segments for monorepo (packages/foo) or 1 for flat (src).
+      const mod = parts.length >= 3 && ["packages", "apps", "libs", "plugins"].includes(parts[0])
+        ? `${parts[0]}/${parts[1]}`
+        : parts[0];
+      if (!moduleFiles.has(mod)) moduleFiles.set(mod, []);
+      moduleFiles.get(mod).push(rel);
+    }
+
+    // Also group architecture nodes by module.
+    const moduleEdges = new Map(); // moduleName → {out: Set, in: Set}
+    for (const edge of arch.edges || []) {
+      const fromMod = this._moduleOf(edge.from);
+      const toMod = this._moduleOf(edge.to);
+      if (fromMod === toMod) continue;
+      if (!moduleEdges.has(fromMod)) moduleEdges.set(fromMod, { out: new Set(), in: new Set() });
+      if (!moduleEdges.has(toMod)) moduleEdges.set(toMod, { out: new Set(), in: new Set() });
+      moduleEdges.get(fromMod).out.add(toMod);
+      moduleEdges.get(toMod).in.add(fromMod);
+    }
+
+    // Map file paths to symbols.
+    const symbolsByFile = new Map();
+    for (const cls of symbols.classes || []) {
+      if (!cls.file) continue;
+      if (!symbolsByFile.has(cls.file)) symbolsByFile.set(cls.file, []);
+      symbolsByFile.get(cls.file).push(cls.name);
+    }
+    for (const fn of symbols.functions || []) {
+      if (!fn.file) continue;
+      if (!symbolsByFile.has(fn.file)) symbolsByFile.set(fn.file, []);
+      symbolsByFile.get(fn.file).push(fn.name);
+    }
+
+    const responsibilities = [];
+    const matrix = {};
+
+    for (const [mod, files] of moduleFiles.entries()) {
+      // Collect all symbol names in this module.
+      const modSymbols = [];
+      for (const file of files) {
+        const syms = symbolsByFile.get(file) || [];
+        modSymbols.push(...syms);
+      }
+      // Also include the module name itself for keyword matching.
+      const modNameLower = mod.toLowerCase();
+      const allText = [modNameLower, ...modSymbols.map((s) => s.toLowerCase())];
+
+      // Score each responsibility rule.
+      let bestRule = null;
+      let bestScore = 0;
+      let bestEvidence = [];
+      for (const rule of RESPONSIBILITY_RULES) {
+        const dirHits = rule.keywords.filter((kw) => modNameLower.includes(kw));
+        const symHits = rule.keywords.filter((kw) =>
+          modSymbols.some((s) => s.toLowerCase().includes(kw))
+        );
+        const score = dirHits.length * 2 + symHits.length;
+        if (score > bestScore) {
+          bestScore = score;
+          bestRule = rule;
+          bestEvidence = [
+            ...dirHits.map((k) => `dir name contains "${k}"`),
+            ...symHits.slice(0, 3).map((k) => {
+              const sym = modSymbols.find((s) => s.toLowerCase().includes(k));
+              return `symbol: ${sym}`;
+            }),
+          ];
+        }
+      }
+
+      if (bestRule && bestScore > 0) {
+        const confidence = Math.min(0.5 + bestScore * 0.1, 0.95);
+        const edges = moduleEdges.get(mod) || { out: new Set(), in: new Set() };
+        responsibilities.push({
+          module: mod,
+          responsibility: bestRule.responsibility,
+          capabilities: bestRule.capabilities,
+          confidence: Number(confidence.toFixed(2)),
+          evidence: bestEvidence,
+          fileCount: files.length,
+          dependencies: {
+            outgoing: [...edges.out].slice(0, 5),
+            incoming: [...edges.in].slice(0, 5),
+          },
+        });
+        matrix[mod] = bestRule.responsibility;
+      } else {
+        // Unmapped module — still record for completeness.
+        responsibilities.push({
+          module: mod,
+          responsibility: "Uncategorized",
+          capabilities: [],
+          confidence: 0.0,
+          evidence: [],
+          fileCount: files.length,
+          dependencies: { outgoing: [], incoming: [] },
+        });
+        matrix[mod] = "Uncategorized";
+      }
+    }
+
+    // Sort by file count descending (most significant modules first).
+    responsibilities.sort((a, b) => b.fileCount - a.fileCount);
+
+    store[this.id] = {
+      responsibilities,
+      responsibilityMatrix: matrix,
+      totalModules: responsibilities.length,
+      mappedModules: responsibilities.filter((r) => r.responsibility !== "Uncategorized").length,
+    };
+  }
+
+  _moduleOf(nodeId) {
+    // Convert dotted module ID back to first path segment.
+    const parts = nodeId.split(".");
+    if (parts.length >= 3 && ["packages", "apps", "libs", "plugins"].includes(parts[0])) {
+      return `${parts[0]}/${parts[1]}`;
+    }
+    return parts[0];
+  }
+}
+
+/**
+ * StabilityAnalyzer — Robert C. Martin's A/I metrics at module level.
+ *
+ *   I (Instability) = Ce / (Ca + Ce)
+ *   A (Abstractness) = (interfaces + abstract classes) / total classes
+ *
+ * Zone classification:
+ *   I < 0.3 && A > 0.7  → Zone of Uselessness (over-abstract)
+ *   I > 0.7 && A < 0.3  → Zone of Pain (concrete, hard to change)
+ *   Near main sequence   → Sweet Spot
+ */
+class StabilityAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "stability";
+  }
+  supports(_ctx) {
+    return true;
+  }
+  async analyze(ctx, store, _analyzerCtx) {
+    const arch = store.architecture || {};
+    const symbols = store.symbols || {};
+    const discovery = store.discovery || {};
+
+    // Group nodes by top-level module.
+    const moduleNodes = new Map(); // moduleName → Set<nodeId>
+    for (const node of arch.nodes || []) {
+      const mod = this._moduleOf(node.id);
+      if (!moduleNodes.has(mod)) moduleNodes.set(mod, new Set());
+      moduleNodes.get(mod).add(node.id);
+    }
+
+    // Count afferent (Ca) and efferent (Ce) couplings at module level.
+    const ca = new Map(); // moduleName → Set<depends-on-module>
+    const ce = new Map(); // moduleName → Set<depended-on-by-module>
+    for (const edge of arch.edges || []) {
+      const fromMod = this._moduleOf(edge.from);
+      const toMod = this._moduleOf(edge.to);
+      if (fromMod === toMod) continue;
+      if (!ce.has(fromMod)) ce.set(fromMod, new Set());
+      ce.get(fromMod).add(toMod);
+      if (!ca.has(toMod)) ca.set(toMod, new Set());
+      ca.get(toMod).add(fromMod);
+    }
+
+    // Count abstracts (interfaces, abstract classes, protocols, traits) per module.
+    const abstractsPerModule = new Map();
+    const totalPerModule = new Map();
+    for (const cls of symbols.classes || []) {
+      const mod = cls.file ? this._moduleOf(pathToModuleId(cls.file)) : "unknown";
+      totalPerModule.set(mod, (totalPerModule.get(mod) || 0) + 1);
+      const name = cls.name || "";
+      const isAbstract = /\b(Interface|Protocol|Trait|Mixin|Abstract|Base|ABC)\b/.test(name)
+        || cls.modifiers?.includes?.("abstract")
+        || cls.modifiers?.includes?.("protocol");
+      if (isAbstract) {
+        abstractsPerModule.set(mod, (abstractsPerModule.get(mod) || 0) + 1);
+      }
+    }
+
+    const modules = [];
+    for (const [mod, nodes] of moduleNodes.entries()) {
+      const caVal = (ca.get(mod) || new Set()).size;
+      const ceVal = (ce.get(mod) || new Set()).size;
+      const total = caVal + ceVal;
+      const instability = total > 0 ? ceVal / total : 0;
+      const totalClasses = totalPerModule.get(mod) || 0;
+      const abstractClasses = abstractsPerModule.get(mod) || 0;
+      const abstractness = totalClasses > 0 ? abstractClasses / totalClasses : 0;
+
+      let zone;
+      if (total === 0) zone = "isolated";
+      else if (instability < 0.3 && abstractness > 0.7) zone = "zone_of_uselessness";
+      else if (instability > 0.7 && abstractness < 0.3) zone = "zone_of_pain";
+      else if (Math.abs(instability + abstractness - 1) < 0.3) zone = "sweet_spot";
+      else zone = "transitioning";
+
+      modules.push({
+        module: mod,
+        ca: caVal,
+        ce: ceVal,
+        instability: Number(instability.toFixed(3)),
+        abstractness: Number(abstractness.toFixed(3)),
+        totalClasses,
+        abstractClasses,
+        zone,
+        nodeCount: nodes.size,
+      });
+    }
+
+    modules.sort((a, b) => (b.ca + b.ce) - (a.ca + a.ce));
+
+    // Summary distribution for A-I graph.
+    const zoneDistribution = {};
+    for (const m of modules) {
+      zoneDistribution[m.zone] = (zoneDistribution[m.zone] || 0) + 1;
+    }
+
+    store[this.id] = {
+      modules,
+      zoneDistribution,
+      totalModules: modules.length,
+      painModules: modules.filter((m) => m.zone === "zone_of_pain").slice(0, 5),
+      uselessnessModules: modules.filter((m) => m.zone === "zone_of_uselessness").slice(0, 5),
+    };
+  }
+
+  _moduleOf(nodeId) {
+    const parts = nodeId.split(".");
+    if (parts.length >= 3 && ["packages", "apps", "libs", "plugins"].includes(parts[0])) {
+      return `${parts[0]}/${parts[1]}`;
+    }
+    return parts[0];
+  }
+}
+
+/**
+ * ChangeCouplingAnalyzer — detects files that frequently change together in
+ * git history, even without import dependencies.
+ *
+ * Re-runs `git log --name-only` (the raw data is NOT cached in GitAnalyzer
+ * — only the count is). Produces coupled pairs with co-change ratio and
+ * classifies them as structural (have import dep) or logical (no import dep
+ * but change together — the high-value signal).
+ */
+class ChangeCouplingAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "changeCoupling";
+  }
+  supports(ctx) {
+    return !!ctx.repoPath;
+  }
+  async analyze(ctx, store, _analyzerCtx) {
+    const repoPath = ctx.repoPath;
+    const arch = store.architecture || {};
+
+    // Get the full file list per commit (top 200 commits to bound runtime).
+    const logRaw = git(
+      repoPath,
+      "log",
+      "--name-only",
+      "--format=@@@%H",
+      "-n",
+      "200",
+      "HEAD"
+    );
+
+    if (!logRaw || logRaw.trim().length === 0) {
+      store[this.id] = { coupledPairs: [], totalCommitsAnalyzed: 0 };
+      return;
+    }
+
+    const commits = logRaw.split(/@@@/).filter(Boolean);
+    const pairCounts = new Map(); // "fileA|fileB" → count
+    const fileCounts = new Map(); // file → commit count
+    const totalCommits = commits.length;
+
+    for (const block of commits) {
+      const lines = block.split(/\r?\n/).filter(Boolean);
+      if (lines.length < 2) continue;
+      const files = lines.slice(1).filter((l) => l.trim().length > 0);
+      // Count individual file frequencies.
+      for (const f of files) {
+        fileCounts.set(f, (fileCounts.get(f) || 0) + 1);
+      }
+      // Count pairs (only if commit touches ≤ 30 files — larger commits are
+      // usually merges/refactors and pollute the signal).
+      if (files.length > 30) continue;
+      for (let i = 0; i < files.length; i++) {
+        for (let j = i + 1; j < files.length; j++) {
+          const a = files[i] < files[j] ? files[i] : files[j];
+          const b = files[i] < files[j] ? files[j] : files[i];
+          const key = `${a}|${b}`;
+          pairCounts.set(key, (pairCounts.get(key) || 0) + 1);
+        }
+      }
+    }
+
+    // Build a set of import edges for structural-dependency classification.
+    const edgeSet = new Set();
+    for (const edge of arch.edges || []) {
+      edgeSet.add(`${edge.from}|${edge.to}`);
+      edgeSet.add(`${edge.to}|${edge.from}`);
+    }
+    // Also check file-path co-occurrence (same directory = likely related).
+    const sameDir = (a, b) => {
+      const dirA = a.split(sep).slice(0, -1).join(sep);
+      const dirB = b.split(sep).slice(0, -1).join(sep);
+      return dirA === dirB;
+    };
+
+    // Filter pairs: co-change count ≥ 3 (statistical significance).
+    const coupledPairs = [];
+    for (const [key, count] of pairCounts.entries()) {
+      if (count < 3) continue;
+      const [fileA, fileB] = key.split("|");
+      const ratioA = fileCounts.get(fileA) > 0 ? count / fileCounts.get(fileA) : 0;
+      const ratioB = fileCounts.get(fileB) > 0 ? count / fileCounts.get(fileB) : 0;
+      const coChangeRatio = (ratioA + ratioB) / 2;
+      const idA = pathToModuleId(fileA);
+      const idB = pathToModuleId(fileB);
+      const hasStructuralDep = edgeSet.has(`${idA}|${idB}`);
+      coupledPairs.push({
+        files: [fileA, fileB],
+        coChangeCount: count,
+        coChangeRatio: Number(coChangeRatio.toFixed(2)),
+        hasImportDep: hasStructuralDep,
+        type: hasStructuralDep ? "structural" : "logical",
+        sameDirectory: sameDir(fileA, fileB),
+      });
+    }
+
+    coupledPairs.sort((a, b) => b.coChangeCount - a.coChangeCount);
+
+    store[this.id] = {
+      coupledPairs: coupledPairs.slice(0, 30),
+      totalPairs: coupledPairs.length,
+      logicalPairs: coupledPairs.filter((p) => p.type === "logical").length,
+      totalCommitsAnalyzed: totalCommits,
+    };
+  }
+}
+
+/**
+ * InformationFlowAnalyzer — infers end-to-end information flows by following
+ * entrypoints → call graph → LLM call sites → output handlers.
+ *
+ * Produces labeled flows like:
+ *   Request → Planner → Executor → LLM → Parser → Response
+ */
+class InformationFlowAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "informationFlow";
+  }
+  supports(_ctx) {
+    return true;
+  }
+  async analyze(ctx, store, _analyzerCtx) {
+    const entrypoints = store.entrypoints || {};
+    const symbols = store.symbols || {};
+    const arch = store.architecture || {};
+    const responsibility = store.responsibility || {};
+
+    // Build adjacency list from architecture edges.
+    const adj = new Map(); // nodeId → Set<targetId>
+    for (const edge of arch.edges || []) {
+      if (!adj.has(edge.from)) adj.set(edge.from, new Set());
+      adj.get(edge.from).add(edge.to);
+    }
+
+    // Identify LLM call sites (functions/classes with LLM-related names).
+    const LLM_NAME_RE = /\b(openai|anthropic|claude|gpt|llm|chat_completion|complete|call_model|invoke_model|chat)\b/i;
+    const llmNodes = new Set();
+    for (const fn of symbols.functions || []) {
+      if (fn.name && LLM_NAME_RE.test(fn.name) && fn.file) {
+        llmNodes.add(pathToModuleId(fn.file));
+      }
+    }
+    for (const cls of symbols.classes || []) {
+      if (cls.name && LLM_NAME_RE.test(cls.name) && cls.file) {
+        llmNodes.add(pathToModuleId(cls.file));
+      }
+    }
+
+    // Identify request entrypoints (cli/server type, NOT sdk/tool).
+    const requestEntries = (entrypoints.entrypoints || []).filter(
+      (ep) => ep.type === "cli" || ep.type === "server"
+    );
+
+    // Build a responsibility lookup by module.
+    const respByModule = new Map();
+    for (const r of responsibility.responsibilities || []) {
+      respByModule.set(r.module, r.responsibility);
+    }
+
+    // For each request entry, do a BFS (depth 6) and label each node with its
+    // responsibility. Detect if the flow passes through an LLM node.
+    const flows = [];
+    for (const entry of requestEntries.slice(0, 8)) {
+      const startId = pathToModuleId(entry.path);
+      const visited = new Set([startId]);
+      const queue = [{ id: startId, depth: 0, path: [startId] }];
+      let llmHit = null;
+      let maxDepth = 0;
+
+      while (queue.length > 0 && queue[0].depth < 6) {
+        const { id, depth, path } = queue.shift();
+        if (llmNodes.has(id) && !llmHit) {
+          llmHit = { node: id, depth };
+        }
+        maxDepth = Math.max(maxDepth, depth);
+        const neighbors = adj.get(id) || new Set();
+        // Follow only the most-connected neighbor to avoid explosion.
+        const next = [...neighbors].slice(0, 3);
+        for (const n of next) {
+          if (visited.has(n)) continue;
+          visited.add(n);
+          queue.push({ id: n, depth: depth + 1, path: [...path, n] });
+        }
+      }
+
+      // Build labeled steps from the longest path found.
+      // For simplicity, use the entry's responsibility chain.
+      const entryModule = this._moduleOf(startId);
+      const steps = [
+        { step: 1, module: entryModule, role: respByModule.get(entryModule) || "Entry Point", node: startId },
+      ];
+
+      // Walk the visited set and pick distinct responsibilities.
+      const seenResponsibilities = new Set([steps[0].role]);
+      for (const nodeId of visited) {
+        const mod = this._moduleOf(nodeId);
+        const role = respByModule.get(mod);
+        if (role && !seenResponsibilities.has(role) && role !== "Uncategorized") {
+          steps.push({
+            step: steps.length + 1,
+            module: mod,
+            role,
+            node: nodeId,
+            isLLMCall: llmNodes.has(nodeId),
+          });
+          seenResponsibilities.add(role);
+        }
+        if (steps.length >= 7) break;
+      }
+
+      flows.push({
+        name: `${entry.path} → ${llmHit ? "LLM" : "output"}`,
+        entrypoint: entry.path,
+        steps,
+        reachesLLM: !!llmHit,
+        llmNode: llmHit ? llmHit.node : null,
+        confidence: Number((0.4 + steps.length * 0.08).toFixed(2)),
+        coverage: steps.length >= 4 ? "complete" : steps.length >= 2 ? "partial" : "minimal",
+      });
+    }
+
+    store[this.id] = {
+      flows,
+      totalFlows: flows.length,
+      llmCallSites: [...llmNodes].slice(0, 10),
+      reachesLLM: flows.some((f) => f.reachesLLM),
+    };
+  }
+
+  _moduleOf(nodeId) {
+    const parts = nodeId.split(".");
+    if (parts.length >= 3 && ["packages", "apps", "libs", "plugins"].includes(parts[0])) {
+      return `${parts[0]}/${parts[1]}`;
+    }
+    return parts[0];
+  }
+}
+
+/**
+ * DependencySmellAnalyzer — detects architectural smells in the dependency graph.
+ *
+ * Smell types:
+ *   - layer_violation: module depends in the wrong direction (e.g., domain → infrastructure)
+ *   - circular_dependency: cycles, classified by context (plugin registration = acceptable)
+ *   - hub_module: in-degree > 20 (god module)
+ *   - unstable_dependency: stable module depends on unstable module
+ */
+class DependencySmellAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "dependencySmell";
+  }
+  supports(_ctx) {
+    return true;
+  }
+  async analyze(ctx, store, _analyzerCtx) {
+    const arch = store.architecture || {};
+    const pattern = store.archPattern || {};
+    const stability = store.stability || {};
+    const responsibility = store.responsibility || {};
+
+    const smells = [];
+
+    // 1. Layer violations — depends on pattern.
+    const primaryPattern = pattern.primaryPattern || "";
+    const isLayered = /Hexagonal|Clean|Onion|Layered/.test(primaryPattern);
+    if (isLayered) {
+      // Define layer hierarchy: domain/core/entities (high) → application → infrastructure/adapters (low)
+      const layerRank = (mod) => {
+        const m = mod.toLowerCase();
+        if (/domain|entit|core/.test(m)) return 3;
+        if (/application|service/.test(m)) return 2;
+        if (/infrastruct|adapter|framework|persistence|ui/.test(m)) return 1;
+        return 0; // unknown
+      };
+      for (const edge of arch.edges || []) {
+        const fromMod = this._moduleOf(edge.from);
+        const toMod = this._moduleOf(edge.to);
+        const fromRank = layerRank(fromMod);
+        const toRank = layerRank(toMod);
+        // Violation: high-rank layer depends on low-rank layer.
+        if (fromRank > 0 && toRank > 0 && fromRank > toRank) {
+          smells.push({
+            type: "layer_violation",
+            severity: fromRank - toRank >= 2 ? "high" : "medium",
+            from: fromMod,
+            to: toMod,
+            fromLayer: this._layerName(fromRank),
+            toLayer: this._layerName(toRank),
+            rule: `${this._layerName(fromRank)} should not depend on ${this._layerName(toRank)} (${primaryPattern})`,
+            evidence: `import edge: ${fromMod} → ${toMod}`,
+          });
+        }
+      }
+    }
+
+    // 2. Circular dependencies — classify by context.
+    const respByModule = new Map();
+    for (const r of responsibility.responsibilities || []) {
+      respByModule.set(r.module, r.responsibility);
+    }
+    for (const cycle of arch.cycles || []) {
+      if (cycle.length < 3) continue; // skip 2-node cycles (often bidirectional plugins)
+      const modules = [...new Set(cycle.map((n) => this._moduleOf(n)))];
+      const responsibilities = modules.map((m) => respByModule.get(m) || "Unknown");
+      // Plugin registration cycles are acceptable.
+      const isPluginCycle = responsibilities.some((r) => /Plugin|Registry|Configuration/.test(r));
+      // Business-logic cycles are bad.
+      const isBusinessCycle = responsibilities.some((r) => /Planning|Execution|Persistence/.test(r));
+      smells.push({
+        type: "circular_dependency",
+        severity: isPluginCycle ? "low" : isBusinessCycle ? "high" : "medium",
+        cycle: cycle.slice(0, 6),
+        modules,
+        context: isPluginCycle ? "plugin_registration" : isBusinessCycle ? "business_logic" : "general",
+        acceptable: isPluginCycle,
+        rule: isPluginCycle
+          ? "Circular deps in plugin registration are acceptable (registry ↔ plugin)"
+          : "Circular deps in business logic indicate tight coupling",
+      });
+    }
+
+    // 3. Hub modules (god module smell) — in-degree > 20.
+    const inDegree = new Map();
+    for (const edge of arch.edges || []) {
+      inDegree.set(edge.to, (inDegree.get(edge.to) || 0) + 1);
+    }
+    for (const [node, deg] of inDegree.entries()) {
+      if (deg >= 20) {
+        smells.push({
+          type: "hub_module",
+          severity: deg >= 40 ? "high" : "medium",
+          module: this._moduleOf(node),
+          node,
+          inDegree: deg,
+          rule: `Module with in-degree ${deg} (≥20) is a god module — too many dependents`,
+        });
+      }
+    }
+
+    // 4. Unstable dependency — stable module (I < 0.3) depends on unstable (I > 0.7).
+    const stabilityByModule = new Map();
+    for (const m of stability.modules || []) {
+      stabilityByModule.set(m.module, m);
+    }
+    for (const edge of arch.edges || []) {
+      const fromMod = this._moduleOf(edge.from);
+      const toMod = this._moduleOf(edge.to);
+      const fromStab = stabilityByModule.get(fromMod);
+      const toStab = stabilityByModule.get(toMod);
+      if (fromStab && toStab && fromStab.instability < 0.3 && toStab.instability > 0.7) {
+        smells.push({
+          type: "unstable_dependency",
+          severity: "medium",
+          from: fromMod,
+          to: toMod,
+          fromInstability: fromStab.instability,
+          toInstability: toStab.instability,
+          rule: "Stable module (I<0.3) should not depend on unstable module (I>0.7)",
+        });
+      }
+    }
+
+    // Deduplicate and sort.
+    const seen = new Set();
+    const deduped = smells.filter((s) => {
+      const key = `${s.type}|${s.from || s.module || ""}|${s.to || ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    const severityRank = { high: 3, medium: 2, low: 1 };
+    deduped.sort((a, b) => (severityRank[b.severity] || 0) - (severityRank[a.severity] || 0));
+
+    store[this.id] = {
+      smells: deduped.slice(0, 30),
+      totalSmells: deduped.length,
+      byType: {
+        layer_violation: deduped.filter((s) => s.type === "layer_violation").length,
+        circular_dependency: deduped.filter((s) => s.type === "circular_dependency").length,
+        hub_module: deduped.filter((s) => s.type === "hub_module").length,
+        unstable_dependency: deduped.filter((s) => s.type === "unstable_dependency").length,
+      },
+      highSeverity: deduped.filter((s) => s.severity === "high").length,
+    };
+  }
+
+  _moduleOf(nodeId) {
+    const parts = nodeId.split(".");
+    if (parts.length >= 3 && ["packages", "apps", "libs", "plugins"].includes(parts[0])) {
+      return `${parts[0]}/${parts[1]}`;
+    }
+    return parts[0];
+  }
+  _layerName(rank) {
+    return rank === 3 ? "Domain" : rank === 2 ? "Application" : rank === 1 ? "Infrastructure" : "Unknown";
+  }
+}
+
+/**
+ * CapabilityOntologyAnalyzer — assesses the repo against a fixed 10-capability
+ * ontology (Planning, Execution, Retrieval, Memory, Evaluation, Safety, Tool,
+ * Context, I/O, Persistence).
+ *
+ * For each capability: maturity score, modules, evidence, coverage label.
+ * Identifies missing capabilities (high-value for architects evaluating
+ * whether a repo fits their use case).
+ */
+class CapabilityOntologyAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "capabilityOntology";
+  }
+  supports(_ctx) {
+    return true;
+  }
+  async analyze(ctx, store, _analyzerCtx) {
+    const responsibility = store.responsibility || {};
+    const tools = store.tools || {};
+    const prompts = store.prompts || {};
+    const evals = store.evaluations || {};
+    const symbols = store.symbols || {};
+
+    // Build capability → modules/evidence map from ResponsibilityAnalyzer output.
+    const capabilityModules = new Map(); // capability → [{module, evidence, fileCount}]
+    for (const r of responsibility.responsibilities || []) {
+      for (const cap of r.capabilities) {
+        if (!capabilityModules.has(cap)) capabilityModules.set(cap, []);
+        capabilityModules.get(cap).push({
+          module: r.module,
+          evidence: r.evidence,
+          fileCount: r.fileCount,
+          confidence: r.confidence,
+        });
+      }
+    }
+
+    // Augment with direct signals:
+    // - Tools → "tool" capability
+    if ((tools.tools || []).length > 0) {
+      if (!capabilityModules.has("tool")) capabilityModules.set("tool", []);
+      capabilityModules.get("tool").push({
+        module: "(tools analyzer)",
+        evidence: [`detected ${tools.totalTools} tools`],
+        fileCount: tools.totalTools,
+        confidence: 0.9,
+      });
+    }
+    // - Prompts → "context" capability (prompt assembly)
+    if ((prompts.prompts || []).length > 0) {
+      if (!capabilityModules.has("context")) capabilityModules.set("context", []);
+      capabilityModules.get("context").push({
+        module: "(prompts analyzer)",
+        evidence: [`detected ${prompts.totalPrompts} prompts`],
+        fileCount: prompts.totalPrompts,
+        confidence: 0.85,
+      });
+    }
+    // - Evaluations → "evaluation" capability
+    if (evals.hasEvaluation || (evals.evalFiles || []).length > 0) {
+      if (!capabilityModules.has("evaluation")) capabilityModules.set("evaluation", []);
+      capabilityModules.get("evaluation").push({
+        module: "(evaluations analyzer)",
+        evidence: [`detected ${(evals.evalFiles || []).length} eval files`],
+        fileCount: (evals.evalFiles || []).length,
+        confidence: 0.9,
+      });
+    }
+
+    // Count symbols per capability (heuristic: symbol name contains capability keyword).
+    const symbolCounts = new Map();
+    const CAP_KEYWORDS = {
+      planning: ["plan", "planner", "schedul", "decompos", "strateg"],
+      execution: ["execut", "run", "invoke", "call"],
+      retrieval: ["retriev", "search", "rag", "embed", "index"],
+      memory: ["memory", "remember", "history", "buffer", "session"],
+      evaluation: ["eval", "benchmark", "metric", "judge", "score"],
+      safety: ["guard", "filter", "validate", "policy", "safety"],
+      tool: ["tool", "function_call"],
+      context: ["context", "prompt", "template"],
+      io: ["http", "request", "response", "server", "route"],
+      persistence: ["store", "save", "load", "cache", "persist", "repository"],
+    };
+    for (const fn of symbols.functions || []) {
+      const name = (fn.name || "").toLowerCase();
+      for (const [cap, keywords] of Object.entries(CAP_KEYWORDS)) {
+        if (keywords.some((kw) => name.includes(kw))) {
+          symbolCounts.set(cap, (symbolCounts.get(cap) || 0) + 1);
+        }
+      }
+    }
+
+    // Build capability assessment.
+    const capabilities = [];
+    for (const cap of CAPABILITY_ONTOLOGY) {
+      const modules = capabilityModules.get(cap) || [];
+      const symCount = symbolCounts.get(cap) || 0;
+      const moduleCount = modules.length;
+      const totalFiles = modules.reduce((s, m) => s + (m.fileCount || 0), 0);
+
+      // Maturity: weighted combination of module count, symbol count, file count.
+      let maturity = 0;
+      maturity += Math.min(moduleCount * 0.2, 0.4);
+      maturity += Math.min(symCount * 0.01, 0.3);
+      maturity += Math.min(totalFiles * 0.005, 0.3);
+      maturity = Math.min(maturity, 0.95);
+
+      let coverage;
+      if (maturity === 0) coverage = "missing";
+      else if (maturity < 0.2) coverage = "weak";
+      else if (maturity < 0.5) coverage = "moderate";
+      else coverage = "strong";
+
+      capabilities.push({
+        capability: cap,
+        maturity: Number(maturity.toFixed(2)),
+        coverage,
+        moduleCount,
+        symbolCount: symCount,
+        modules: modules.slice(0, 5).map((m) => m.module),
+        evidence: modules.slice(0, 3).flatMap((m) => m.evidence || []),
+      });
+    }
+
+    // Build matrix and summaries.
+    const capabilityMatrix = {};
+    for (const c of capabilities) capabilityMatrix[c.capability] = c.coverage;
+    const missingCapabilities = capabilities.filter((c) => c.coverage === "missing").map((c) => c.capability);
+    const strongCapabilities = capabilities.filter((c) => c.coverage === "strong").map((c) => c.capability);
+    const weakCapabilities = capabilities.filter((c) => c.coverage === "weak").map((c) => c.capability);
+
+    capabilities.sort((a, b) => b.maturity - a.maturity);
+
+    store[this.id] = {
+      capabilities,
+      capabilityMatrix,
+      missingCapabilities,
+      strongCapabilities,
+      weakCapabilities,
+      totalCapabilities: CAPABILITY_ONTOLOGY.length,
+      coveredCapabilities: CAPABILITY_ONTOLOGY.length - missingCapabilities.length,
+    };
+  }
+}
+
 const ANALYZERS = [
   new DiscoveryAnalyzer(),
   new SymbolsAnalyzer(),
@@ -3548,6 +4628,16 @@ const ANALYZERS = [
   new GitAnalyzer(),
   new CIAnalyzer(),
   new RankingAnalyzer(),
+  // --- Architecture Semantics Layer (inference engines) ---
+  // Order matters: Pattern → Responsibility → (Stability, ChangeCoupling,
+  // InformationFlow, DependencySmell) → CapabilityOntology.
+  new ArchitecturePatternAnalyzer(),
+  new ResponsibilityAnalyzer(),
+  new StabilityAnalyzer(),
+  new ChangeCouplingAnalyzer(),
+  new InformationFlowAnalyzer(),
+  new DependencySmellAnalyzer(),
+  new CapabilityOntologyAnalyzer(),
 ];
 
 // ===========================================================================
