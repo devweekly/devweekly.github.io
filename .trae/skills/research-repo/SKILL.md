@@ -237,11 +237,61 @@ The ToolsAnalyzer uses three complementary detection strategies to cover the div
      ...
    ];
    ```
-4. **Script-tool cross-reference** — Entrypoints labeled "tool" inside `skills/`/`tools/`/`agents/` directories (e.g., `execute.py`) are added as script-tools
+   Mode 2 (constant reference) resolves `name: CONSTANT.to_owned()` by scanning
+   for `const CONSTANT: &str = "..."` in the same file. Catches Rust builtin
+   tools like buzz's `load_skill`.
+4. **Script-tool cross-reference** — Entrypoints labeled "tool" inside `skills/`/`bundled_skills/`/`tools/`/`agents/`/`hooks/` directories (e.g., `execute.py`) are added as script-tools.
+
+   **Guards against false positives** (added 2026-07):
+   - Barrel exports (`index.ts`/`index.js`/`index.py`) are excluded — they're
+     package entrypoints, not standalone tools. Without this filter, open-design
+     produced 121 false tools and pi produced 52 false tools.
+   - The `plugins/` directory is NOT treated as a tool space — Eclipse/IDE
+     plugins (dbeaver) and webpack/vite plugins (apps/daemon/src/plugins/) are
+     not agent tools.
+   - Test files are filtered via `isTestPath()` before AST and filename-based
+     entrypoint detection, so test fixtures with `main()` (e.g.
+     `MySQLErrorsTest.java` in dbeaver) don't get tagged as tools.
+
+### SDK Entrypoint Preservation
+
+The EntrypointsAnalyzer no longer reclassifies SDK entrypoints (`index.ts`/
+`index.js`/`index.py`) as "tool" when they live in deep or bundled locations.
+These files are barrel exports, not executable tools — preserving their `sdk`
+type prevents the ToolsAnalyzer from picking them up as script-tools.
+
+### Java / JVM Support (added 2026-07)
+
+Java projects are now first-class citizens:
+
+- **Manifest detection**: `pom.xml` (Maven) and `build.gradle` / `build.gradle.kts`
+  (Gradle) are recognized. The pom.xml parser extracts groupId/artifactId/version
+  (skipping `<parent>`), declared `<dependency>` entries, and reactor `<module>`
+  sub-projects.
+- **Import extraction**: `import foo.bar.Baz;` and `import static foo.bar.Baz.method;`
+  are extracted via both tree-sitter AST and regex fallback. Wildcard imports
+  (`import foo.bar.*;`) are normalized to `foo.bar`.
+- **Module ID normalization**: `.java` / `.kt` / `.kts` extensions are stripped
+  from module IDs, so `org.jkiss.dbeaver.core.CoreCommands` (from an import)
+  correctly suffix-matches `plugins.org.jkiss.dbeaver.core.src.org.jkiss.dbeaver.core.CoreCommands`
+  (from a file path).
 
 ### Evaluation Detection (False-Positive Safe)
 
-The EvaluationsAnalyzer restricts name-based detection to **source files only** — images (`.webp`, `.jpg`), blog posts (`.md`), and other non-source files with "benchmark"/"eval" in the filename are NOT classified as evaluation files. Content-based detection (≥2 keyword matches) remains the primary signal.
+The EvaluationsAnalyzer restricts name-based detection to **source files only** — images (`.webp`, `.jpg`), blog posts (`.md`), and other non-source files with "benchmark"/"eval" in the filename are NOT classified as evaluation files.
+
+**Tightened heuristics** (2026-07):
+- **Name-based detection** now requires LLM-specific context in the file
+  content (at least one of: `prompt`, `llm`, `model`, `judge`, `agent`,
+  `dataset`, `benchmark`, `harness`, `system_prompt`, `chat`, `completion`,
+  `embedding`, `retrieval`, `rag`). This filters out Java `DBPEvaluationContext.java`
+  (database query evaluation context, not LLM eval).
+- **Package/import declarations are stripped** before LLM-context testing,
+  so Java package names like `org.jkiss.dbeaver.model` don't trigger a false
+  `model` match.
+- **Content-based detection threshold** raised from ≥2 to ≥3 keyword matches
+  (or ≥2 matches + LLM context). This filters out generic JS libraries
+  (e.g., `leaflet.js` matched "metric" + "accuracy" + "score" from CSS/map code).
 
 ### Analyzer Pipeline
 

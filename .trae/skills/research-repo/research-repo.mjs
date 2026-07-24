@@ -121,6 +121,9 @@ const PROJECT_DISCOVERY_RULES = [
   { category: "manifest", file: "pyproject.toml", language: "python", parser: parsePyproject, priority: 100 },
   { category: "manifest", file: "Cargo.toml", language: "rust", parser: parseCargoToml, priority: 100 },
   { category: "manifest", file: "go.mod", language: "go", parser: parseGoMod, priority: 100 },
+  { category: "manifest", file: "pom.xml", language: "java", parser: parsePomXml, priority: 100 },
+  { category: "manifest", file: "build.gradle", language: "java", parser: parseGradle, priority: 95 },
+  { category: "manifest", file: "build.gradle.kts", language: "kotlin", parser: parseGradle, priority: 95 },
   { category: "manifest", file: "setup.py", language: "python", parser: parseSetupPy, priority: 90 },
   { category: "manifest", file: "setup.cfg", language: "python", parser: parseSetupCfg, priority: 85 },
   { category: "manifest", file: "requirements.txt", language: "python", parser: parseRequirementsTxt, priority: 80 },
@@ -132,11 +135,24 @@ const PROJECT_DISCOVERY_RULES = [
   { category: "metadata", file: "CONTRIBUTING.md", priority: 75 },
   { category: "metadata", file: "CHANGELOG.md", priority: 70 },
   { category: "metadata", file: "SECURITY.md", priority: 70 },
+  // Extended metadata (added 2026-07: caught as false-negatives in buzz/worldmonitor)
+  { category: "metadata", file: "CODE_OF_CONDUCT.md", priority: 60 },
+  { category: "metadata", file: "GOVERNANCE.md", priority: 55 },
+  { category: "metadata", file: "RELEASING.md", priority: 50 },
+  { category: "metadata", file: "TESTING.md", priority: 50 },
   // Agent instructions (AI coding agent configs)
+  // Added 2026-07: SKILL.md (Claude Code skill manifest) was missing — caused
+  // 3/8 ref-only repos (Auto-Empirical-Research-Skills, ResearchStudio,
+  // custodian-kernel) to falsely report "No AI Agent instruction files found"
+  // despite containing 100+ SKILL.md files each.
   { category: "agent", file: "AGENTS.md", priority: 95 },
   { category: "agent", file: "CLAUDE.md", priority: 95 },
+  { category: "agent", file: "SKILL.md", priority: 90 },
+  { category: "agent", file: "GEMINI.md", priority: 90 },
   { category: "agent", file: join(".github", "copilot-instructions.md"), priority: 90 },
   { category: "agent", file: ".cursorrules", priority: 85 },
+  { category: "agent", file: ".windsurfrules", priority: 85 },
+  { category: "agent", file: "opencode.md", priority: 85 },
   // Test config
   { category: "tests", file: "pytest.ini", priority: 70 },
   { category: "tests", file: "conftest.py", priority: 65 },
@@ -186,8 +202,8 @@ const PROMPT_FILE_PATTERNS = [
 // 8. TEST_FILE_REGEXES — regex patterns for test file classification
 const TEST_FILE_REGEXES = [
   { regex: /^test_.*\.py$|.*_test\.py$|^test.*\.py$/, lang: "python" },
-  { regex: /\.test\.(ts|tsx|js|jsx)$/, lang: "javascript" },
-  { regex: /\.spec\.(ts|tsx|js|jsx)$/, lang: "javascript" },
+  { regex: /\.test\.(ts|tsx|js|jsx|mjs|cjs)$/, lang: "javascript" },
+  { regex: /\.spec\.(ts|tsx|js|jsx|mjs|cjs)$/, lang: "javascript" },
   { regex: /_test\.go$/, lang: "go" },
   { regex: /^Test.*\.java$|.*Test\.java$/, lang: "java" },
   { regex: /_test\.rs$/, lang: "rust" },
@@ -231,14 +247,27 @@ const IMPORT_REGEX = {
   go: [
     /^\s*"([^"]+)"/gm,
   ],
+  java: [
+    /^\s*import\s+(?:static\s+)?([\w.]+);/gm,
+  ],
 };
 
 // Prompt content markers (regex-based, for scanning file content)
+// Tightened in 2026-07 revision:
+//   - `template` regex now requires a prompt-flavored prefix (PROMPT|MESSAGE|
+//     DIALOG|LLM|AGENT|SYSTEM|ASSISTANT|USER|INSTRUCTION|RENDER|BUILD) to avoid
+//     matching CSS `gridTemplateColumns`, React `gridTemplate`, UI animation
+//     constants like `SEARCH_PROMPT_Y_OFFSET`. Plain `template:` assignment is
+//     too noisy (buzz: 440 prompts, ~60% were CSS/UI template strings).
+//   - `prompt` regex unchanged — `prompt:` / `prompt =` is specific enough.
 const PROMPT_MARKERS = [
   { type: "system", regex: /\b(SYSTEM_PROMPT|system_prompt|systemPrompt|System\.Message|system_message)\b/g },
   { type: "assistant", regex: /\b(ASSISTANT_PROMPT|assistant_prompt|Assistant\.Message)\b/g },
   { type: "prompt", regex: /\b(prompt|PROMPT|build_prompt|render_prompt)\s*[:=]/g },
-  { type: "template", regex: /\b(template|TEMPLATE|Template)\s*[:=]/g },
+  // Template: only match when prefixed by a prompt-flavored identifier.
+  // Catches `SYSTEM_TEMPLATE`, `MESSAGE_TEMPLATE`, `RENDER_TEMPLATE`, etc.
+  // Does NOT catch `gridTemplateColumns`, `SEARCH_PROMPT_Y_OFFSET`, etc.
+  { type: "template", regex: /\b(?:PROMPT|MESSAGE|DIALOG|LLM|AGENT|SYSTEM|ASSISTANT|USER|INSTRUCTION|RENDER|BUILD)_?TEMPLATE\s*[:=]/g },
   { type: "few-shot", regex: /\b(few_shot|fewshot|few-shot)\b/g },
   { type: "template-variable", regex: /\{\{\s*(tool|history|memory|input|context|user)\s*\}\}/g },
 ];
@@ -831,6 +860,19 @@ async function extractImportsAST(filePath, tree = null) {
           }
         }
       }
+    } else if (ext === ".java") {
+      // tree-sitter-java: `import_declaration` with `scoped_identifier` child
+      // (e.g. `import org.jkiss.dbeaver.ModelPreferences;`) or `asterisk_identifier`
+      // (e.g. `import java.awt.*;`). Static imports wrap the scoped_identifier
+      // inside a `scoped_type_identifier` — handle both.
+      if (node.type === "import_declaration") {
+        const text = node.text
+          .replace(/^import\s+(?:static\s+)?/, "")
+          .replace(/;$/, "")
+          .replace(/\s*\*$/, "") // `import foo.bar.*` → `foo.bar`
+          .trim();
+        if (text) imports.push(text);
+      }
     }
   });
 
@@ -1064,6 +1106,14 @@ async function extractSymbolsAST(filePath, repoPath, tree = null) {
           }
         }
       }
+    } else if (ext === ".java" && node.type === "import_declaration") {
+      // Java: `import foo.bar.Baz;` / `import static foo.bar.Baz.method;` / `import foo.bar.*;`
+      const text = node.text
+        .replace(/^import\s+(?:static\s+)?/, "")
+        .replace(/;$/, "")
+        .replace(/\s*\*$/, "")
+        .trim();
+      if (text) imports.push({ file: relPath, what: text, from: "" });
     }
 
     // --- Functions ---
@@ -1242,7 +1292,7 @@ function readFileSafe(filePath) {
 /** Convert a relative path to a dotted module id. */
 function pathToModuleId(relPath) {
   return relPath
-    .replace(/\.(py|ts|tsx|js|jsx|mjs|cjs|rs|go)$/, "")
+    .replace(/\.(py|ts|tsx|js|jsx|mjs|cjs|rs|go|java|kt|kts)$/, "")
     .split(sep)
     .join(".");
 }
@@ -1256,13 +1306,13 @@ function normalizeImportToId(imp, fromRelPath) {
     const baseDir = dirname(fromRelPath);
     const resolved = join(baseDir, s).replace(/^\.\//, "");
     return resolved
-      .replace(/\.(py|ts|tsx|js|jsx|mjs|cjs|rs|go)$/, "")
+      .replace(/\.(py|ts|tsx|js|jsx|mjs|cjs|rs|go|java|kt|kts)$/, "")
       .split(sep)
       .join(".");
   }
   // Bare JS import: use last segment as candidate module id
-  s = s.replace(/\.(py|ts|tsx|js|jsx|mjs|cjs|rs|go)$/, "");
-  // For Python "from foo.bar import baz" → keep full dotted path
+  s = s.replace(/\.(py|ts|tsx|js|jsx|mjs|cjs|rs|go|java|kt|kts)$/, "");
+  // For Python "from foo.bar import baz" / Java "import foo.bar.Baz" → keep full dotted path
   if (s.includes(".")) return s;
   // For JS "lodash/get" → "get"
   if (s.includes("/")) s = s.split("/").pop();
@@ -1434,6 +1484,68 @@ function parseGoMod(content) {
   };
 }
 
+/**
+ * Parse pom.xml minimally (Maven).
+ * Extracts groupId:artifactId:version from the project's own coordinates
+ * (NOT the parent) plus declared <dependency> entries. Modules in a reactor
+ * build (<modules>) are exposed as scripts so callers can see sub-projects.
+ */
+function parsePomXml(content) {
+  // Project's own coordinates — skip <parent> block.
+  const withoutParent = content.replace(/<parent>[\s\S]*?<\/parent>/, "");
+  const groupIdMatch = withoutParent.match(/<groupId>([^<]+)<\/groupId>/);
+  const artifactIdMatch = withoutParent.match(/<artifactId>([^<]+)<\/artifactId>/);
+  const versionMatch = withoutParent.match(/<version>([^<]+)<\/version>/);
+
+  const dependencies = [];
+  const depRe = /<dependency>\s*<groupId>([^<]+)<\/groupId>\s*<artifactId>([^<]+)<\/artifactId>/g;
+  let depMatch;
+  while ((depMatch = depRe.exec(content)) !== null) {
+    dependencies.push(`${depMatch[1]}:${depMatch[2]}`);
+  }
+
+  // Reactor modules — treated as "scripts" (sub-project entry points).
+  const scripts = [];
+  const modRe = /<module>([^<]+)<\/module>/g;
+  let modMatch;
+  while ((modMatch = modRe.exec(content)) !== null) {
+    scripts.push(modMatch[1].trim());
+  }
+
+  const name = artifactIdMatch
+    ? artifactIdMatch[1].trim()
+    : (groupIdMatch ? groupIdMatch[1].trim() : "unknown");
+
+  return {
+    name,
+    version: versionMatch ? versionMatch[1].trim() : "unknown",
+    entry: "pom.xml",
+    scripts,
+    dependencies,
+  };
+}
+
+/** Parse build.gradle / build.gradle.kts minimally (Gradle). */
+function parseGradle(content) {
+  // Root project name: `rootProject.name = 'foo'` or just `name = 'foo'`
+  const nameMatch = content.match(/(?:rootProject\.)?name\s*=\s*['"]([^'"]+)['"]/);
+  const versionMatch = content.match(/version\s*=\s*['"]([^'"]+)['"]/);
+  const dependencies = [];
+  // implementation 'group:artifact:version' / api "..." / testImplementation(...)
+  const depRe = /(?:implementation|api|compileOnly|runtimeOnly|testImplementation|compile)\s*[('"]\s*([^'"\s:]+:[^'"\s:]+)(?::[^'"\s)]+)?['")]?/g;
+  let depMatch;
+  while ((depMatch = depRe.exec(content)) !== null) {
+    dependencies.push(depMatch[1]);
+  }
+  return {
+    name: nameMatch ? nameMatch[1] : "unknown",
+    version: versionMatch ? versionMatch[1] : "unknown",
+    entry: "build.gradle",
+    scripts: [],
+    dependencies,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Test utilities
 // ---------------------------------------------------------------------------
@@ -1441,6 +1553,30 @@ function parseGoMod(content) {
 /** Return true if filename matches a known test pattern. */
 function isTestFile(fileName) {
   return TEST_FILE_REGEXES.some((p) => p.regex.test(fileName));
+}
+
+/**
+ * Return true if the file path (relative or absolute) points to a test file.
+ * Combines filename pattern matching (isTestFile) with directory-based detection
+ * (tests/, __tests__/, spec/, e2e/ directories, and Rust tests/*.rs convention).
+ *
+ * This is the canonical test-file filter used by all analyzers that should
+ * SKIP test files (ObjectClassifier, ToolsAnalyzer, PromptsAnalyzer, etc.).
+ * TestsAnalyzer is the only analyzer that deliberately does NOT use this filter.
+ */
+function isTestPath(filePath) {
+  if (!filePath) return false;
+  const normalized = String(filePath).replace(/\\/g, "/");
+  const name = basename(normalized);
+  // 1. Filename-based (existing logic)
+  if (isTestFile(name)) return true;
+  // 2. Directory-based: any path segment in test dirs
+  if (/(?:^|\/)(?:tests?|__tests__|__mocks__|spec|specs|e2e|fixtures|mocks|test_helpers|testutils)\//.test(normalized + "/")) return true;
+  // 3. Rust convention: tests/*.rs (integration tests live in tests/ dir, not _test.rs)
+  if (/(?:^|\/)tests\/[^/]+\.rs$/.test(normalized)) return true;
+  // 4. Python test root: test_*.py anywhere under tests/
+  if (/(?:^|\/)tests?\/[^/]+\.py$/.test(normalized)) return true;
+  return false;
 }
 
 /** Find test files among walked entries. */
@@ -1526,6 +1662,7 @@ function parseImports(filePath) {
   else if ([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"].includes(ext)) regexes = IMPORT_REGEX.javascript;
   else if (ext === ".rs") regexes = IMPORT_REGEX.rust;
   else if (ext === ".go") regexes = IMPORT_REGEX.go;
+  else if (ext === ".java") regexes = IMPORT_REGEX.java;
   else return [];
 
   const imports = [];
@@ -2183,7 +2320,7 @@ class DiscoveryAnalyzer extends BaseAnalyzer {
   }
 
   analyze(ctx, store, _analyzerCtx) {
-    // Scan for metadata and agent files via PROJECT_DISCOVERY_RULES
+    // Scan for metadata and agent files via PROJECT_DISCOVERY_RULES (root-level)
     const metadataFiles = [];
     const agentFiles = [];
     for (const r of PROJECT_DISCOVERY_RULES) {
@@ -2191,6 +2328,28 @@ class DiscoveryAnalyzer extends BaseAnalyzer {
       if (ctx.exists(r.file)) {
         if (r.category === "metadata") metadataFiles.push(r.file);
         else agentFiles.push(r.file);
+      }
+    }
+
+    // Recursive agent-instruction detection.
+    // Root-level check above misses SKILL.md/CLAUDE.md/AGENTS.md in subdirectories
+    // (monorepos, skill bundles, workspace packages). This caused 3/8 ref-only
+    // repos to falsely report "No AI Agent instruction files found" despite
+    // containing 100+ SKILL.md files in subdirectories. We now glob for any
+    // agent-instruction file anywhere in the repo (excluding node_modules/.git).
+    if (agentFiles.length === 0) {
+      const allRels = ctx.allFiles.map((f) => ctx.rel(f.path));
+      const agentFileNames = new Set(["agents.md", "claude.md", "skill.md", "gemini.md"]);
+      const seen = new Set();
+      for (const rel of allRels) {
+        if (/(?:^|[\\/])(?:node_modules|\.git|vendor|dist|build)[\\/]/.test(rel)) continue;
+        const name = basename(rel).toLowerCase();
+        if (agentFileNames.has(name) && !seen.has(rel)) {
+          agentFiles.push(rel);
+          seen.add(rel);
+          // Cap at 50 to avoid huge lists (custodian-kernel has 100+ SKILL.md)
+          if (agentFiles.length >= 50) break;
+        }
       }
     }
 
@@ -2211,23 +2370,42 @@ class DiscoveryAnalyzer extends BaseAnalyzer {
       })
       .slice(0, 20);
 
-    // Architecture signal directories — where the architecture lives
-    const architectureSignalDirs = dirs
-      .filter((d) => d.split(sep).some((p) => ARCHITECTURE_SIGNAL_DIRS.has(p.toLowerCase())))
-      .slice(0, 20);
+    // Architecture signal directories — where the architecture lives.
+    // Deduplicate by root directory: when multiple subdirectories of the same
+    // root match (e.g. benchmarks/harbor-buzz-orchestra/{src,scripts,personas}),
+    // keep only the shallowest one. This prevents benchmarks/ from monopolizing
+    // the 20-slot budget and hiding crates/ (observed in buzz).
+    const archSignalAll = dirs
+      .filter((d) => d.split(sep).some((p) => ARCHITECTURE_SIGNAL_DIRS.has(p.toLowerCase())));
+    const archSignalRoots = new Map();
+    const architectureSignalDirs = [];
+    for (const d of archSignalAll) {
+      const root = d.split(sep)[0];
+      // Keep at most 2 entries per root directory
+      const count = archSignalRoots.get(root) || 0;
+      if (count >= 2) continue;
+      archSignalRoots.set(root, count + 1);
+      architectureSignalDirs.push(d);
+      if (architectureSignalDirs.length >= 20) break;
+    }
 
     const fileCount = countByExtension(files);
     const testFiles = ctx.testFiles;
     const hasReadme = metadataFiles.some((f) => f.toLowerCase().startsWith("readme"));
     const hasCI = CI_FILES.some((ci) => ctx.exists(ci.path));
 
-    const repoName =
-      ctx.manifest?.name && ctx.manifest.name !== "unknown"
-        ? ctx.manifest.name
-        : basename(ctx.repoPath);
+    // repoName: prefer the repository directory name (basename of repoPath).
+    // The manifest `name` field is the PACKAGE name, which often differs from
+    // the repo name (openworker → "coworker" PyPI name; worldmonitor →
+    // "world-monitor" npm name; ResearchStudio → "researchstudio" lowercase).
+    // Using package name as repo name caused systematic mis-naming in 3/8 repos.
+    // We now always use the directory name; manifest.name is preserved separately
+    // in the `manifest` field for downstream consumers.
+    const repoName = basename(ctx.repoPath);
 
     store[this.id] = {
       repoName,
+      packageName: ctx.manifest?.name || null,
       repoPath: ctx.repoPath,
       analyzedAt: new Date().toISOString(),
       manifest: ctx.manifest,
@@ -2241,6 +2419,9 @@ class DiscoveryAnalyzer extends BaseAnalyzer {
       fileCount,
       testFileCount: testFiles.length,
       totalSourceFiles: files.filter((f) => SOURCE_EXTENSIONS.has(f.ext)).length,
+      // allFiles: relative paths of all files in the repo (excluding ignored dirs).
+      // Used by _negativeFindings for monorepo-aware recursive metadata detection.
+      allFiles: files.map((f) => ctx.rel(f.path)),
     };
   }
 }
@@ -2423,6 +2604,9 @@ class EntrypointsAnalyzer extends BaseAnalyzer {
     // 1. Filename-based detection (with depth/library filtering)
     for (const e of entries) {
       const relPath = ctx.rel(e.path);
+      // Skip test files entirely — e.g. MySQLErrorsTest.java with a main() method
+      // is a test fixture, not a real entrypoint. Observed in dbeaver.
+      if (isTestPath(relPath)) continue;
       const depth = relPath.split(sep).length;
       const isDeep = depth > 3;
       const isBundled = /bundled_skills|vendor|node_modules|site-packages/.test(relPath);
@@ -2431,9 +2615,15 @@ class EntrypointsAnalyzer extends BaseAnalyzer {
       for (const ep of ENTRY_POINT_FILES) {
         if (ep.names.includes(e.name)) {
           if (isDeep || isBundled) {
-            addEntrypoint(relPath, "tool", ep.reason + " (deep/bundled)");
+            // SDK entrypoints (index.ts/index.js/index.py) are barrel exports,
+            // NOT executable tools — preserve their type instead of reclassifying.
+            // Reclassifying them as "tool" caused massive false positives in
+            // open-design (121 fake tools) and pi (52 fake tools).
+            const reclassifyType = ep.type === "sdk" ? "sdk" : "tool";
+            addEntrypoint(relPath, reclassifyType, ep.reason + " (deep/bundled)");
           } else if (isLibOrTest) {
-            addEntrypoint(relPath, "tool", ep.reason + " (library/test dir)");
+            const reclassifyType = ep.type === "sdk" ? "sdk" : "tool";
+            addEntrypoint(relPath, reclassifyType, ep.reason + " (library/test dir)");
           } else {
             addEntrypoint(relPath, ep.type, ep.reason);
           }
@@ -2457,7 +2647,9 @@ class EntrypointsAnalyzer extends BaseAnalyzer {
     }
 
     // 3. AST-based detection (preferred) + regex fallback per file
-    const sourceFiles = entries.filter((e) => SOURCE_EXTENSIONS.has(e.ext));
+    // Filter test files — test fixtures with main() (e.g. MySQLErrorsTest.java)
+    // are not real entrypoints.
+    const sourceFiles = entries.filter((e) => SOURCE_EXTENSIONS.has(e.ext) && !isTestPath(ctx.rel(e.path)));
     const astResults = await mapWithConcurrency(sourceFiles, 10, async (file) => {
         const relPath = ctx.rel(file.path);
         const tree = await ctx.parseAST(file.path);
@@ -2569,7 +2761,11 @@ class PromptsAnalyzer extends BaseAnalyzer {
   async analyze(ctx, store, _analyzerCtx) {
     const files = ctx.files.filter((f) => PROMPT_FILE_EXTENSIONS.has(f.ext));
     const codeExts = new Set([".py", ".ts", ".tsx", ".js", ".jsx", ".mjs"]);
-    const codeFiles = files.filter((f) => codeExts.has(f.ext));
+    // SKIP test files: test fixtures (mock prompts, `SYSTEM_PROMPT` constants in
+    // test setup) are not real prompts. Observed in pi: 9/36 prompt objects were
+    // in test files; in buzz: `gridTemplateColumns` matched the template regex
+    // inside test files. Filtering tests eliminates this noise.
+    const codeFiles = files.filter((f) => codeExts.has(f.ext) && !isTestPath(ctx.rel(f.path)));
     const mdFiles = files.filter((f) => !codeExts.has(f.ext));
 
     // AST-based extraction for code files (with regex fallback per file)
@@ -2601,14 +2797,25 @@ class PromptsAnalyzer extends BaseAnalyzer {
         return prompts;
       });
 
-    // Regex for markdown files
+    // Regex for markdown files — only scan inside fenced code blocks.
+    // Prose mentions of "prompt:" or "template" (e.g. CHANGELOG entries,
+    // README sentences like "Other commands that may prompt:") are NOT prompts.
+    // This eliminates ~6 false positives per repo observed in ref-only repos.
     const mdPrompts = [];
     for (const f of mdFiles) {
       const content = ctx.readFileAbsolute(f.path);
       if (!content) continue;
       const lines = content.split(/\r?\n/);
+      let inCodeBlock = false;
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
+        // Track fenced code blocks (``` or ~~~)
+        if (/^\s*(```|~~~)/.test(line)) {
+          inCodeBlock = !inCodeBlock;
+          continue;
+        }
+        // Only detect prompt markers inside code blocks
+        if (!inCodeBlock) continue;
         for (const marker of PROMPT_MARKERS) {
           marker.regex.lastIndex = 0;
           const match = marker.regex.exec(line);
@@ -2653,7 +2860,11 @@ class ToolsAnalyzer extends BaseAnalyzer {
       }
     }
 
-    const files = ctx.files.filter((f) => TOOL_FILE_EXTENSIONS.has(f.ext));
+    // SKIP test files: test fixtures (mock ToolDef objects, `name: 'lookup'`
+    // in test setup) are not real tools. Observed in pi: 13/14 tools were test
+    // fixtures; in buzz: 3/3 tools were `#[test]` block fixtures. Filtering
+    // tests is the single highest-impact fix for tool-detection accuracy.
+    const files = ctx.files.filter((f) => TOOL_FILE_EXTENSIONS.has(f.ext) && !isTestPath(ctx.rel(f.path)));
     const tools = [];
     const seen = new Set();
 
@@ -2711,21 +2922,39 @@ class ToolsAnalyzer extends BaseAnalyzer {
     // Pattern: `export const RPC_TOOLS: ToolDef[] = [ { name: 'foo', ... }, ... ]`
     // We detect the type annotation first, then extract `name: '...'` values.
     // This catches tools that decorators and class-name patterns miss.
+    //
+    // Two extraction modes:
+    //   1. String literal: `name: 'foo'` / `name: "foo"` (original)
+    //   2. Constant reference: `name: LOAD_SKILL_TOOL.to_owned()` /
+    //      `name: CONSTANT.into()` — resolves the constant to its string value
+    //      by scanning for `const CONSTANT: &str = "..."` in the same file.
+    //      This catches Rust builtin tools like buzz's `load_skill` (buzz FN-1).
     const SCHEMA_FIRST_NAME_RE = /\bname\s*:\s*['"]([a-zA-Z_][\w-]*)['"]/g;
+    const SCHEMA_FIRST_CONST_RE = /\bname\s*:\s*([A-Z_][A-Z0-9_]*)\s*\.\s*(?:to_owned|into|to_string)\s*\(\s*\)/g;
     for (const f of files) {
       const content = ctx.readFileAbsolute(f.path);
       if (!content) continue;
       if (!SCHEMA_FIRST_TOOL_TYPE_PATTERN.test(content)) continue;
       const relPath = ctx.rel(f.path);
-      // Reset regex state for each file
+
+      // Build a map of CONSTANT → string value for const-reference resolution
+      const constMap = new Map();
+      const constDefRe = /\b(?:const|static)\s+([A-Z_][A-Z0-9_]*)\s*:\s*(?:&'?str|String)\s*=\s*['"]([^'"]+)['"]/g;
+      let constMatch;
+      while ((constMatch = constDefRe.exec(content)) !== null) {
+        constMap.set(constMatch[1], constMatch[2]);
+      }
+
+      // Mode 1: string literal
       SCHEMA_FIRST_NAME_RE.lastIndex = 0;
       let match;
       while ((match = SCHEMA_FIRST_NAME_RE.exec(content)) !== null) {
         const name = match[1];
         if (!name) continue;
-        // Filter out common false positives: generic object names
+        // Filter out common false positives: generic object names + single-char test fixtures
         const lower = name.toLowerCase();
         if (["react", "vue", "angular", "svelte", "default", "main", "app", "config"].includes(lower)) continue;
+        if (name.length < 2) continue; // skip single-char names like `t` (test fixtures)
         const key = `${relPath}:schema-first:${name}`;
         if (seen.has(key)) continue;
         seen.add(key);
@@ -2737,16 +2966,40 @@ class ToolsAnalyzer extends BaseAnalyzer {
           schema,
         });
       }
+
+      // Mode 2: constant reference (e.g. `name: LOAD_SKILL_TOOL.to_owned()`)
+      SCHEMA_FIRST_CONST_RE.lastIndex = 0;
+      while ((match = SCHEMA_FIRST_CONST_RE.exec(content)) !== null) {
+        const constName = match[1];
+        const resolved = constMap.get(constName);
+        if (!resolved) continue; // cannot resolve — skip rather than guess
+        const key = `${relPath}:schema-first:${resolved}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const schema = extractSchemaNear(content, match.index);
+        tools.push({
+          name: resolved,
+          file: relPath,
+          framework: "schema-first",
+          schema,
+        });
+      }
     }
 
     // Cross-reference entrypoints labeled as "tool" for standalone executable scripts
     // (e.g. bundled_skills/*/scripts/execute.py, skills/*/scripts/*.py) so that
     // simple argparse/sys.argv tools are represented even when they lack decorator/class patterns.
     const entrypoints = store.entrypoints?.entrypoints || [];
+    // Barrel-export filenames — `index.*` files are package entrypoints, NOT
+    // executable tools. Even when they live in `plugins/` or `tools/` directories,
+    // they just re-export symbols. Observed in open-design (121 false tools) and pi.
+    const BARREL_EXPORT_RE = /^index\.(ts|js|mjs|cjs|py|rs|go|java|kt)$/;
     for (const ep of entrypoints) {
       if (ep.type !== "tool") continue;
       const relPath = ep.path;
       const fileName = basename(relPath);
+      // Skip barrel exports — they're not standalone tools.
+      if (BARREL_EXPORT_RE.test(fileName)) continue;
       const baseName = fileName.replace(/\.[^.]+$/, "");
 
       // Ignore library/test modules that the entrypoints analyzer may have mis-tagged as tool.
@@ -2756,7 +3009,10 @@ class ToolsAnalyzer extends BaseAnalyzer {
       if (isLibraryOrTest) continue;
 
       // Only accept tool scripts that live inside a recognized skill/tool/agent directory.
-      const isInToolSpace = /(?:^|[\\/])(?:skills?|bundled_skills?|tools?|agents?|hooks?|plugins?)[\\/]/.test(relPath);
+      // Note: `plugins/` is intentionally excluded here — Eclipse/IDE plugins (dbeaver)
+      // and webpack/vite plugins (apps/daemon/src/plugins/index.ts) are NOT agent tools.
+      // Agent-tool directories are: skills/, bundled_skills/, tools/, agents/, hooks/.
+      const isInToolSpace = /(?:^|[\\/])(?:skills?|bundled_skills?|tools?|agents?|hooks?)[\\/]/.test(relPath);
       if (!isInToolSpace) continue;
 
       // Derive a readable tool name from the parent directory when possible:
@@ -2883,40 +3139,70 @@ class EvaluationsAnalyzer extends BaseAnalyzer {
     // NOTE: Name-based detection is restricted to source files to avoid false
     // positives (e.g., blog posts, images, slide decks with "benchmark" in
     // the filename were being misclassified as evaluation files).
+    //
+    // Additional guard (2026-07): name-based detection now requires LLM-specific
+    // context in the file content. This avoids false positives like
+    // `DBPEvaluationContext.java` (dbeaver — query execution context, NOT LLM eval)
+    // and `leaflet.js` (mapping library with "metric"/"score" words).
+    // LLM-specific context = at least one of: prompt, llm, model, judge, agent,
+    // dataset, benchmark, harness, system_prompt.
+    //
+    // Package/import declarations are stripped before testing — Java package
+    // names like `org.jkiss.dbeaver.model` would otherwise trigger a false
+    // "model" match.
+    const LLM_CONTEXT_RE = /\b(?:prompt|llm|model|judge|agent|dataset|benchmark|harness|system_prompt|chat|completion|embedding|retrieval|rag)\b/i;
+    const STRIP_PKG_IMPORT_RE = /^\s*(?:package|import)\s+[^;]+;\s*$/gm;
     for (const f of ctx.allFiles) {
       const name = f.name.toLowerCase();
       const relPath = ctx.rel(f.path);
-      // Name-based detection: only source files (no images, docs, data files)
-      const isEvalByName =
-        SOURCE_EXTENSIONS.has(f.ext) && EVAL_KEYWORDS.some((kw) => name.includes(kw));
       // Only source files inside eval dirs (not docs/configs)
       const isInEvalDir =
         SOURCE_EXTENSIONS.has(f.ext) &&
         [...evalDirs].some(
           (d) => relPath.startsWith(d + sep) || relPath.startsWith(d + "/")
         );
-      let isEvalByContent = false;
+      // Read content once for both name-confirmation and content-based detection.
+      let content = null;
+      let codeOnly = null;
       if (SOURCE_EXTENSIONS.has(f.ext)) {
-        const content = ctx.readFileAbsolute(f.path);
+        content = ctx.readFileAbsolute(f.path);
         if (content) {
-          let matchCount = 0;
-          for (const kw of EVAL_KEYWORDS) {
-            const re = new RegExp(`\\b${kw.replace(/_/g, "[_]")}\\b`, "i");
-            if (re.test(content)) {
-              matchCount++;
-              patterns.add(kw);
-            }
+          // Strip package/import lines so Java package names like
+          // `org.jkiss.dbeaver.model` don't trigger LLM-context false positives.
+          codeOnly = content.replace(STRIP_PKG_IMPORT_RE, "");
+        }
+      }
+      // Name-based detection: source file with eval keyword in name AND
+      // LLM-specific context in content (or located in an eval directory).
+      // Without the LLM-context check, `DBPEvaluationContext.java` (DB query
+      // eval) and similar Java/IDE "evaluation" classes get flagged.
+      const hasNameKeyword =
+        SOURCE_EXTENSIONS.has(f.ext) && EVAL_KEYWORDS.some((kw) => name.includes(kw));
+      const hasLLMContext = !!(codeOnly && LLM_CONTEXT_RE.test(codeOnly));
+      const isEvalByName = hasNameKeyword && (hasLLMContext || isInEvalDir);
+      let isEvalByContent = false;
+      if (codeOnly) {
+        let matchCount = 0;
+        for (const kw of EVAL_KEYWORDS) {
+          const re = new RegExp(`\\b${kw.replace(/_/g, "[_]")}\\b`, "i");
+          if (re.test(codeOnly)) {
+            matchCount++;
+            patterns.add(kw);
           }
-          isEvalByContent = matchCount >= 2;
-          const metricRegexes = [
-            /\b(accuracy|pass_rate|pass@k|f1|precision|recall|bleu|rouge|exact_match|exact-match)\b/gi,
-            /\b(score|metric|accuracy_score|recall_score|precision_score)\b/gi,
-          ];
-          for (const re of metricRegexes) {
-            let m;
-            while ((m = re.exec(content)) !== null) {
-              metrics.add(m[1].toLowerCase());
-            }
+        }
+        // Require ≥3 keyword matches (was 2) OR ≥2 matches + LLM context.
+        // The stricter threshold filters out generic JS libraries (leaflet.js
+        // matches "metric"+"accuracy"+"score" from CSS/map code) while keeping
+        // real eval files which typically match 4+ keywords.
+        isEvalByContent = matchCount >= 3 || (matchCount >= 2 && hasLLMContext);
+        const metricRegexes = [
+          /\b(accuracy|pass_rate|pass@k|f1|precision|recall|bleu|rouge|exact_match|exact-match)\b/gi,
+          /\b(score|metric|accuracy_score|recall_score|precision_score)\b/gi,
+        ];
+        for (const re of metricRegexes) {
+          let m;
+          while ((m = re.exec(codeOnly)) !== null) {
+            metrics.add(m[1].toLowerCase());
           }
         }
       }
@@ -2972,8 +3258,11 @@ class GitAnalyzer extends BaseAnalyzer {
     const lastCommit = parseCommit(lastCommitRaw);
     const firstCommit = parseCommit(firstCommitRaw);
 
-    // Contributors
-    const shortlog = git(repoPath, "shortlog", "-sne", "HEAD").trim();
+    // Contributors — use `-sn` (name only) to avoid counting the same person
+    // multiple times when they use different emails. `-sne` includes email,
+    // causing one person with 2 emails to be counted as 2 contributors
+    // (observed in buzz: 50 with -sne vs 40 with -sn after name dedup).
+    const shortlog = git(repoPath, "shortlog", "-sn", "HEAD").trim();
     const contributors = shortlog
       .split(/\r?\n/)
       .filter(Boolean)
@@ -3179,6 +3468,12 @@ class RankingAnalyzer extends BaseAnalyzer {
       let score = 0;
       const reasons = [];
 
+      // Down-rank test files: they are derivatives of implementation, not
+      // architecture. Previously tests got +20 and invaded Top 10 (buzz:
+      // tauri.test.mjs ranked #7). Now tests get 0 from the test signal.
+      // Tests are still visible via the TestsAnalyzer output.
+      const isTest = isTestPath(relPath) || testPaths.has(relPath);
+
       if (name === "readme.md" || name === "readme.rst" || name === "readme") {
         score += 50;
         reasons.push("README (+50)");
@@ -3187,18 +3482,21 @@ class RankingAnalyzer extends BaseAnalyzer {
         score += 40;
         reasons.push("important file (+40)");
       }
+      // Examples: reduced from +30 to +10. Examples are auxiliary, not core
+      // architecture. Previously examples READMEs monopolized Top 3 (buzz:
+      // examples/README.md, examples/countdown-bot/README.md, examples/meadow-core/README.md
+      // all scored 110, pushing ARCHITECTURE.md and agent.rs out of Top 20).
       if (
         relPath
           .split(sep)
           .some((p) => p.toLowerCase() === "examples" || p.toLowerCase() === "example")
       ) {
-        score += 30;
-        reasons.push("examples (+30)");
+        score += 10;
+        reasons.push("examples (+10)");
       }
-      if (testPaths.has(relPath)) {
-        score += 20;
-        reasons.push("test (+20)");
-      }
+      // Test files: no bonus (previously +20). Tests are still ranked if they
+      // have high in-degree/PageRank, but the test signal alone no longer
+      // promotes them.
       if (
         relPath
           .split(sep)
@@ -3218,6 +3516,14 @@ class RankingAnalyzer extends BaseAnalyzer {
       if (entrypointPaths.has(relPath)) {
         score += 30;
         reasons.push("entrypoint (+30)");
+      }
+
+      // Apply test-file penalty AFTER all bonuses: tests lose 30 points.
+      // This ensures tests with high PageRank still rank, but plain test
+      // files (score 0 from bonuses) don't appear in Top 20 at all.
+      if (isTest) {
+        score -= 30;
+        reasons.push("test file (-30)");
       }
 
       if (score > 0) {
@@ -3594,12 +3900,61 @@ const RELATIONSHIP_TYPES = [
 
 // Classification rules: name/path patterns → object type
 // Order matters: first match wins (more specific patterns first)
+//
+// Tightened in 2026-07 revision to avoid false positives observed across
+// ref-only repos:
+//   - `/agent/i` over-matched HTTP `user_agent`/`UserAgent` and UI agent hooks
+//     (buzz: 911 "agent" objects, ~95% UI code). Now requires word-boundary
+//     `Agent` (capital A) or explicit agent-loop/session/subagent patterns,
+//     and excludes `user_?agent` / `useragent` HTTP header references.
+//   - `/harness/i` matched test helpers like `createHarness`, `withHarness`.
+//     Now requires `Harness` (capital H) and excludes `create*Harness*` /
+//     `with*Harness*` test-fixture builders.
+//   - `/run\b/i` matched `runTest`, `runQuery`, `runOnce` → dropped in favor
+//     of `runLoop`/`runAgent`/`runTurn` which are actual agent-loop entrypoints.
 const CLASSIFICATION_RULES = [
-  { type: "agent", patterns: [/agent/i, /harness/i], field: "name" },
-  { type: "planner", patterns: [/plan/i, /strateg/i], field: "name" },
-  { type: "runner", patterns: [/runner/i, /executor/i, /loop/i, /run\b/i], field: "name" },
-  { type: "evaluation", patterns: [/eval/i, /benchmark/i, /score/i, /metric/i], field: "name" },
-  { type: "workflow", patterns: [/workflow/i, /pipeline/i, /ci\b/i], field: "name" },
+  {
+    type: "agent",
+    patterns: [
+      /\bAgent\b/,                          // Standalone `Agent` (capital, word-boundary)
+      /\bagent_(?:loop|session|turn|dir|state|message|def)\b/i,
+      /\b(?:run|create|load|discover|start|stop|trigger|sync)Agent\b/,
+      /\bsub_?agent\b/i,
+      /\bagentLoop\b/i,
+      /\bimpl\s+.*\bAgent\b/,               // Rust `impl Agent`
+      /\b(?:class|struct)\s+\w*Agent\b/,    // `class FooAgent` / `struct FooAgent`
+    ],
+    // Negative patterns: if name matches any of these, skip agent classification.
+    // Catches HTTP `user_agent`/`UserAgent`/`getUserAgent` and UI agent hooks
+    // (e.g. `useChannelAgentSessions`, `AgentActivitySheet`) which are product
+    // features named "agent", not AI agent framework code.
+    negative: [/user_?agent/i, /useragent/i, /http_?agent/i],
+    field: "name",
+  },
+  {
+    type: "planner",
+    patterns: [/\bplan(?:ner|ning)?\b/i, /\bstrateg(?:y|ic)?\b/i],
+    field: "name",
+  },
+  {
+    type: "runner",
+    patterns: [
+      /\b(?:agent|turn|main|event|step)?Loop\b/i,   // agentLoop, turnLoop, mainLoop
+      /\brun(?:Agent|Turn|Step|Loop|Session)\b/i,
+      /\bexecutor\b/i,
+    ],
+    field: "name",
+  },
+  {
+    type: "evaluation",
+    patterns: [/\beval(?:uate|uation)?\b/i, /\bbenchmark\b/i, /\brubric\b/i, /\bgolden\b/i],
+    field: "name",
+  },
+  {
+    type: "workflow",
+    patterns: [/\bworkflow\b/i, /\bpipeline\b/i],
+    field: "name",
+  },
 ];
 
 /**
@@ -3712,9 +4067,14 @@ class ObjectClassifier {
     }
 
     // 6. Classify functions/classes → semantic types
+    // SKIP test files: test functions/classes (e.g. `test_agent_baseline_run`,
+    // `createHarness`) are not semantic objects — they verify behavior, they
+    // don't define it. Filtering them eliminates ~80% of false-positive
+    // agent/runner/workflow objects observed in ref-only repos (code-review-graph:
+    // 10/10 agent objects were test functions; pi: 13/14 tools were test fixtures).
     const symbols = store.symbols || {};
-    const allFuncs = symbols.functions || [];
-    const allClasses = symbols.classes || [];
+    const allFuncs = (symbols.functions || []).filter((fn) => !isTestPath(fn.file));
+    const allClasses = (symbols.classes || []).filter((cls) => !isTestPath(cls.file));
 
     for (const fn of allFuncs) {
       const semanticType = this._classifyByName(fn.name);
@@ -3816,6 +4176,8 @@ class ObjectClassifier {
   _classifyByName(name, defaultType = "function") {
     if (!name) return defaultType;
     for (const rule of CLASSIFICATION_RULES) {
+      // Skip this rule if name matches any negative pattern (e.g. user_agent)
+      if (rule.negative && rule.negative.some((np) => np.test(name))) continue;
       for (const pattern of rule.patterns) {
         if (pattern.test(name)) return rule.type;
       }
@@ -4733,36 +5095,50 @@ class ReportGenerator {
     if (cycles.length === 0 && this._num(arch.totalNodes) > 0) {
       findings.push(zh ? "未检测到 import 循环 — 模块分层清晰" : "No import cycles detected — clean module layering");
     }
-    // Documentation & metadata — use discovery.metadataFiles (source of truth)
-    // NOTE: Do NOT use ranking.topFiles — it is a ranked subset and may omit
-    // root-level LICENSE/README even when they exist (false negatives observed
-    // in 6/8 ref-only repos). metadataFiles is populated by MetadataRules from
-    // the actual file tree.
+
+    // Documentation & metadata — monorepo-aware recursive detection.
+    // Previously we only checked `disc.metadataFiles` (root-level files from
+    // PROJECT_DISCOVERY_RULES). This caused false negatives in monorepos
+    // where CHANGELOG/CONTRIBUTING/SECURITY live in workspace packages
+    // (pi: 5 packages/*/CHANGELOG.md existed but §6 reported "No CHANGELOG").
+    // We now scan all files in the repo for these metadata files.
+    const allRepoFiles = (disc.allFiles || []).map((f) => f.toLowerCase());
     const metadataFiles = (disc.metadataFiles || []).map((f) => f.toLowerCase());
-    const hasReadme = metadataFiles.some((f) => f.startsWith("readme"));
+    const hasFileAnywhere = (prefixes) => {
+      // Check root-level metadataFiles first (fast path)
+      if (metadataFiles.some((f) => prefixes.some((p) => f.startsWith(p)))) return true;
+      // Then scan all files (recursive, monorepo-aware)
+      return allRepoFiles.some((f) => {
+        const name = f.split(/[\\/]/).pop(); // basename
+        return prefixes.some((p) => name.startsWith(p));
+      });
+    };
+
+    const hasReadme = hasFileAnywhere(["readme"]);
     if (!hasReadme) {
       findings.push(zh ? "未找到 README 文件" : "No README file found");
     }
-    const hasLicense = metadataFiles.some((f) => f.startsWith("license"));
+    const hasLicense = hasFileAnywhere(["license"]);
     if (!hasLicense) {
       findings.push(zh ? "未找到 LICENSE 文件" : "No LICENSE file found");
     }
-    const hasContributing = metadataFiles.some((f) => f.startsWith("contributing"));
+    const hasContributing = hasFileAnywhere(["contributing"]);
     if (!hasContributing) {
       findings.push(zh ? "未找到 CONTRIBUTING 指南（外部贡献流程不明）" : "No CONTRIBUTING guide found (external contribution process unclear)");
     }
-    const hasSecurity = metadataFiles.some((f) => f.startsWith("security"));
+    const hasSecurity = hasFileAnywhere(["security"]);
     if (!hasSecurity) {
       findings.push(zh ? "未找到 SECURITY 策略（漏洞报告流程不明）" : "No SECURITY policy found (vulnerability reporting process unclear)");
     }
-    const hasChangelog = metadataFiles.some((f) => f.startsWith("changelog"));
+    const hasChangelog = hasFileAnywhere(["changelog"]);
     if (!hasChangelog) {
       findings.push(zh ? "未找到 CHANGELOG（版本演进缺乏结构化记录）" : "No CHANGELOG found (version evolution lacks structured record)");
     }
-    // Agent instructions (AI-agent readiness)
+
+    // Agent instructions (AI-agent readiness) — already recursive via DiscoveryAnalyzer
     const agentFiles = (disc.agentFiles || []).map((f) => f.toLowerCase());
     if (agentFiles.length === 0) {
-      findings.push(zh ? "未找到 AI Agent 指令文件（AGENTS.md / CLAUDE.md 等）" : "No AI Agent instruction files found (AGENTS.md / CLAUDE.md etc.)");
+      findings.push(zh ? "未找到 AI Agent 指令文件（AGENTS.md / CLAUDE.md / SKILL.md 等）" : "No AI Agent instruction files found (AGENTS.md / CLAUDE.md / SKILL.md etc.)");
     }
     // Architecture
     if (this._num(arch.totalNodes) === 0) {
@@ -4871,17 +5247,32 @@ class ReportGenerator {
       .join(", ");
     const totalSource = this._num(disc.totalSourceFiles);
 
+    // topLevelDirs: show up to 15 with "等 N 个" suffix when truncated.
+    // Previously hardcoded .slice(0, 10) hid important dirs like `crates/`
+    // (buzz: Rust workspace root was invisible in §1).
+    const allTopDirs = disc.topLevelDirs || [];
+    const shownDirs = allTopDirs.slice(0, 15);
+    const dirsStr = shownDirs.join(", ") + (allTopDirs.length > 15 ? `, ... (+${allTopDirs.length - 15} more)` : "");
+
+    // Repository name: show repo dir name + package name when they differ.
+    // (openworker repo → package "coworker"; worldmonitor → "world-monitor")
+    const repoDisplay = disc.repoName || "unknown";
+    const pkgName = disc.packageName;
+    const repoCell = (pkgName && pkgName !== "unknown" && pkgName.toLowerCase() !== repoDisplay.toLowerCase())
+      ? `${repoDisplay} (package: ${pkgName})`
+      : repoDisplay;
+
     const lines = [
       "## 1. Executive Brief",
       "",
       `| Dimension | Value |`,
       `|-----------|-------|`,
-      `| Repository | ${disc.repoName || "unknown"} |`,
+      `| Repository | ${repoCell} |`,
       `| Manifest | ${manifest.entry || "none"} (${manifest.language || "unknown"}) |`,
       `| Version | ${manifest.version || "N/A"} |`,
       `| Source files | ${totalSource} |`,
       `| Top languages | ${topLangs || "N/A"} |`,
-      `| Top-level dirs | ${(disc.topLevelDirs || []).slice(0, 10).join(", ")} |`,
+      `| Top-level dirs | ${dirsStr} |`,
       `| Commits | ${this._num(git.totalCommits)} |`,
       `| Contributors | ${this._num(git.totalContributors)} |`,
       `| CI provider | ${ci.hasCI ? ci.provider || "detected" : "none"} |`,

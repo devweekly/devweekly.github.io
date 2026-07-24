@@ -381,6 +381,10 @@ When updating AGENTS.md:
 | 2026-07-21 | Added research-agent-check CI job for benchmark + eval | @agents-maintainer |
 | 2026-07-22 | Added devDependencies (fast-glob, simple-git, yaml) for research-repo skill deterministic analysis | @agents-maintainer |
 | 2026-07-22 | Added core devDependencies (web-tree-sitter, tree-sitter-wasms, graphology) for research-repo AST analyzer pipeline | @agents-maintainer |
+| 2026-07-25 | research-repo: added Java/JVM support (pom.xml, build.gradle, Java imports AST+regex, .java module ID normalization) | @agents-maintainer |
+| 2026-07-25 | research-repo: fixed tool over-classification — exclude barrel index.* exports, drop plugins/ from tool-space, preserve SDK type in deep/bundled locations | @agents-maintainer |
+| 2026-07-25 | research-repo: fixed eval false positives — require LLM-context for name-based detection, strip package/import lines, raise content threshold to ≥3 keywords | @agents-maintainer |
+| 2026-07-25 | research-repo: filter test files in EntrypointsAnalyzer (isTestPath) to prevent test fixtures with main() being tagged as tools | @agents-maintainer |
 
 ### Example Usage
 

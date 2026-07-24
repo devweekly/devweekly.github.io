@@ -1,0 +1,43 @@
+./run-research-batch.sh: line 40: 0..3: syntax error: invalid arithmetic operator (error token is "..3")
+[06:48:06] START code-review-graph
+[06:48:06] START ResearchStudio
+[06:48:06] START openworker
+[06:48:06] START Auto-Empirical-Research-Skills
+./run-research-batch.sh: line 33: evidence-store/full.json: No such file or directory
+./run-research-batch.sh: line 33: evidence-brief.md: No such file or directory
+[06:48:12] DONE  code-review-graph (full.json  bytes, brief  bytes)
+./run-research-batch.sh: line 33: evidence-store/full.json: No such file or directory
+./run-research-batch.sh: line 33: evidence-brief.md: No such file or directory
+[06:48:13] DONE  openworker (full.json  bytes, brief  bytes)
+./run-research-batch.sh: line 33: evidence-store/full.json: No such file or directory
+./run-research-batch.sh: line 33: evidence-brief.md: No such file or directory
+[06:48:17] DONE  ResearchStudio (full.json  bytes, brief  bytes)
+./run-research-batch.sh: line 33: evidence-store/full.json: No such file or directory
+./run-research-batch.sh: line 33: evidence-brief.md: No such file or directory
+[06:48:35] DONE  Auto-Empirical-Research-Skills (full.json  bytes, brief  bytes)
+./run-research-batch.sh: line 47: 4..7: syntax error: invalid arithmetic operator (error token is "..7")
+[06:48:35] START buzz
+[06:48:35] START worldmonitor
+[06:48:35] START custodian-kernel
+[06:48:35] START pi
+./run-research-batch.sh: line 33: evidence-store/full.json: No such file or directory
+./run-research-batch.sh: line 33: evidence-brief.md: No such file or directory
+[06:48:38] DONE  custodian-kernel (full.json  bytes, brief  bytes)
+./run-research-batch.sh: line 33: evidence-store/full.json: No such file or directory
+./run-research-batch.sh: line 33: evidence-brief.md: No such file or directory
+[06:48:49] DONE  pi (full.json  bytes, brief  bytes)
+./run-research-batch.sh: line 33: evidence-store/full.json: No such file or directory
+./run-research-batch.sh: line 33: evidence-brief.md: No such file or directory
+[06:49:03] DONE  buzz (full.json  bytes, brief  bytes)
+./run-research-batch.sh: line 33: evidence-store/full.json: No such file or directory
+./run-research-batch.sh: line 33: evidence-brief.md: No such file or directory
+[06:49:23] DONE  worldmonitor (full.json  bytes, brief  bytes)
+=== ALL DONE ===
+research-Auto-Empirical-Research-Skills-20260724: full=OK, brief=OK
+research-ResearchStudio-20260724: full=OK, brief=OK
+research-buzz-20260724: full=OK, brief=OK
+research-code-review-graph-20260724: full=OK, brief=OK
+research-custodian-kernel-20260724: full=OK, brief=OK
+research-openworker-20260724: full=OK, brief=OK
+research-pi-20260724: full=OK, brief=OK
+research-worldmonitor-20260724: full=OK, brief=OK
