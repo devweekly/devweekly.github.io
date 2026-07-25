@@ -469,15 +469,26 @@ The `report` command produces an **Evidence Brief** — a structured Markdown fi
 7. **Research Plan** (§9) — Hypotheses with confidence levels and open questions
 8. **LLM Analysis Prompt** — Instructs the agent to write `report.md` using Ontology-driven Research Trace methodology
 
-The LLM agent reads the Evidence Brief, optionally dives deeper into specific JSON evidence files, then writes the final `report.md` using **Research Trace methodology** — every important conclusion shows its full derivation chain:
+The LLM agent reads the Evidence Brief, optionally dives deeper into specific JSON evidence files, then writes the final `report.md` using **Research Trace methodology** — every Trace shows its full derivation chain AND explains why it shifts the reader's understanding:
 
 ```
-Question → Evidence → Analysis → Counter Evidence → Conclusion → Confidence
+Importance → Question → Evidence → Analysis → Counter Evidence → Fact / Interpretation → Why it matters → Confidence
 ```
+
+**Report quality principles** (added 2026-07, iterated from senior-architect review):
+
+| Principle | Why it matters |
+|-----------|----------------|
+| **Trace density over coverage** | Every Trace must answer one architectural question whose answer would change an engineer's understanding. Low-value Traces should be deleted, not kept to pad the count. 5 sharp Traces beat 8 mediocre ones. |
+| **Importance ranking** | Each Trace tagged Critical / High / Medium / Low. Readers can skim Critical/High first. |
+| **Why it matters** | One sentence per Trace explaining how the reader would misread the system without this insight. Palantir-style architecture review column. |
+| **Fact vs Interpretation** | Facts are undisputed (e.g., "20 cycles exist"); Interpretations are judgments (e.g., "17 are framework artifacts"). Readers know what is evidence vs what is your judgment. |
+| **Compressed Executive Summary** | Three-part only: Identity / Key Discovery / Recommendation. No tech-stack listing. Forces author to identify the single most understanding-shifting finding. |
+| **Unified Confidence standard** | High = ≥3 independent evidence sources; Medium = 2; Low = 1; Speculative = no direct evidence (reasoning only). All confidence labels MUST conform. |
 
 **Report structure** (10 sections):
-1. Executive Summary
-2. Research Traces (5-8 core findings, each with full derivation chain)
+1. Executive Summary (Identity / Key Discovery / Recommendation — 3 sentences, not 3 paragraphs)
+2. Research Traces (5 truly important findings, NOT 5-8 for coverage; each with Importance / Fact / Interpretation / Why it matters / Confidence)
 3. Negative Findings (what was NOT found and why it matters)
 4. Architecture Smells (potential risks, not assertions)
 5. Interesting Decisions (seems odd but might be clever)
