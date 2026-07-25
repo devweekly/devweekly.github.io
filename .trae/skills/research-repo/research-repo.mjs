@@ -3660,7 +3660,7 @@ const ARCHITECTURE_PATTERNS = [
   {
     name: "Monorepo",
     dirSignals: ["packages", "apps", "libs", "modules"],
-    required: 2,
+    required: 1,
     multiManifestCheck: true,
   },
 ];
@@ -3677,7 +3677,7 @@ const RESPONSIBILITY_RULES = [
   { responsibility: "Quality Assessment", keywords: ["eval", "evaluation", "benchmark", "metric", "metrics", "judge"], capabilities: ["evaluation"] },
   { responsibility: "Retrieval", keywords: ["retriev", "rag", "search", "index", "embed"], capabilities: ["retrieval"] },
   { responsibility: "Safety & Guardrails", keywords: ["guard", "guardrail", "safety", "filter", "policy", "validate", "schema"], capabilities: ["safety"] },
-  { responsibility: "LLM Interface", keywords: ["llm", "model", "inference", "openai", "anthropic", "client", "provider"], capabilities: ["execution"] },
+  { responsibility: "LLM Interface", keywords: ["llm", "inference", "openai", "anthropic", "claude", "gemini", "mistral", "deepseek", "qwen", "bedrock", "vertex", "completion"], capabilities: ["execution"] },
   { responsibility: "I/O & Transport", keywords: ["api", "http", "transport", "server", "route", "router", "request"], capabilities: ["io"] },
   { responsibility: "Persistence", keywords: ["db", "database", "storage", "store", "persist", "repository", "cache"], capabilities: ["persistence"] },
   { responsibility: "Parsing", keywords: ["parser", "lexer", "tokenizer", "ast", "parse"], capabilities: ["parsing"] },
@@ -3685,6 +3685,42 @@ const RESPONSIBILITY_RULES = [
   { responsibility: "Configuration", keywords: ["config", "configuration", "settings"], capabilities: [] },
   { responsibility: "Developer Tooling", keywords: ["cli", "command", "cmd", "dev", "debug"], capabilities: [] },
 ];
+
+/**
+ * Tokenize a symbol name into lowercase tokens for keyword matching.
+ * Splits on CamelCase boundaries, underscores, hyphens, and dots.
+ * Examples:
+ *   "resetCapabilitiesCache" → ["reset", "capabilities", "cache"]
+ *   "CacheManager"           → ["cache", "manager"]
+ *   "openai_chat"            → ["openai", "chat"]
+ *   "HTTPServer"             → ["http", "server"]
+ *   "couldBeEmoji"           → ["could", "be", "emoji"]
+ *
+ * This replaces the old `s.toLowerCase().includes(kw)` substring match that
+ * caused false positives like "db" matching "couldBeEmoji" (couldBe → db).
+ */
+function tokenizeSymbol(name) {
+  if (!name) return [];
+  return name
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")   // camelCase → camel_Case
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1_$2") // HTTPServer → HTTP_Server
+    .split(/[_\-.\s]+/)
+    .map((t) => t.toLowerCase())
+    .filter(Boolean);
+}
+
+/**
+ * Check if a keyword matches any symbol via token-prefix matching.
+ * A keyword matches if any token of the symbol STARTS WITH the keyword.
+ * This supports intentional prefix keywords like "retriev" (matches
+ * "retrieve", "retrieval") and "persist" (matches "persistence", "persistent").
+ */
+function symbolTokensMatchKw(kw, symbols) {
+  const kwLower = kw.toLowerCase();
+  return symbols.some((s) =>
+    tokenizeSymbol(s).some((token) => token.startsWith(kwLower))
+  );
+}
 
 // --- Fixed Capability Ontology ------------------------------------------
 // The 10 capabilities every AI/Agent system can have. Used by
@@ -3868,9 +3904,14 @@ class ResponsibilityAnalyzer extends BaseAnalyzer {
     const arch = store.architecture || {};
 
     // Group files by top-level module (first path segment).
+    // Test files are excluded so that test fixtures (e.g., tmp_db, test_cache)
+    // don't pollute the module's responsibility classification. Previously,
+    // the "tests" directory was tagged "Persistence" because test setup code
+    // used database fixtures.
     const moduleFiles = new Map(); // moduleName → [{path, symbols}]
     for (const f of ctx.sourceFiles || ctx.files || []) {
       const rel = ctx.rel(f.path);
+      if (isTestPath(rel)) continue;
       const parts = rel.split(sep);
       if (parts.length < 2) continue;
       // Use first 2 segments for monorepo (packages/foo) or 1 for flat (src).
@@ -3931,8 +3972,12 @@ class ResponsibilityAnalyzer extends BaseAnalyzer {
       let bestEvidence = [];
       for (const rule of RESPONSIBILITY_RULES) {
         const dirHits = rule.keywords.filter(segmentMatchesKw);
+        // Use CamelCase token-prefix matching instead of substring match.
+        // This prevents false positives like "db" matching "couldBeEmoji"
+        // (couldBe → db) while still supporting prefix keywords like
+        // "retriev" (matches token "retrieve", "retrieval").
         const symHits = rule.keywords.filter((kw) =>
-          modSymbols.some((s) => s.toLowerCase().includes(kw))
+          symbolTokensMatchKw(kw, modSymbols)
         );
         const score = dirHits.length * 2 + symHits.length;
         if (score > bestScore) {
@@ -3941,14 +3986,20 @@ class ResponsibilityAnalyzer extends BaseAnalyzer {
           bestEvidence = [
             ...dirHits.map((k) => `dir segment matches "${k}"`),
             ...symHits.slice(0, 3).map((k) => {
-              const sym = modSymbols.find((s) => s.toLowerCase().includes(k));
+              const sym = modSymbols.find((s) =>
+                tokenizeSymbol(s).some((t) => t.startsWith(k.toLowerCase()))
+              );
               return `symbol: ${sym}`;
             }),
           ];
         }
       }
 
-      if (bestRule && bestScore > 0) {
+      // Require score ≥ 2: a single symbol match (score 1) is too weak to
+      // classify a module. This prevents e.g., "resetCapabilitiesCache" alone
+      // from tagging the entire tui/ module as "Persistence". One directory
+      // match (score 2) or two symbol matches (score 2) are minimum evidence.
+      if (bestRule && bestScore >= 2) {
         const confidence = Math.min(0.5 + bestScore * 0.1, 0.95);
         const edges = moduleEdges.get(mod) || { out: new Set(), in: new Set() };
         responsibilities.push({

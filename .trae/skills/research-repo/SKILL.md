@@ -252,8 +252,32 @@ Added 2026-07. Seven rule-based analyzers that elevate the Evidence Store from f
 - Java Eclipse plugin paths (`plugins/org.jkiss.dbeaver.*`) confuse module-level grouping because dots in directory names collide with the dotted module-ID scheme.
 - `InformationFlowAnalyzer` LLM-call-site detection is regex-based on symbol names (`LLM_NAME_RE` covers openai/anthropic/claude/gpt/llm/gemini/mistral/deepseek/qwen/bedrock/vertex/completion/inference/generate, etc.). This is deliberately broad to maximize recall, but produces false positives on repos with generic names like `palette_generator` or `DesignSystemFlow` (open-design). Tuning precision without losing recall requires language-specific call-site analysis (e.g., resolving `openai.chat.completions.create(...)` via call graph, not name regex).
 - `reachesLLM` may be false-negative for Rust projects: `mod llm;` declarations and `use crate::llm` imports are not resolved to full module paths in the architecture graph, so the LLM call-site node has 0 in/out edges and is never reached by BFS. Verified on buzz (`crates.buzz-agent.src.llm` is a graph node with 0 edges).
-- `ArchitecturePatternAnalyzer` uses **path-segment exact match** (not substring) for directory signals — `d.includes(sig)` caused massive false positives ("ast" matched "contrast", "ir" matched "first"/"directory"). Segment match requires `seg === sig || seg.startsWith(sig + "-") || seg.startsWith(sig + "_")`. As a result, repos that don't follow conventional directory naming (e.g., ng-zorro-antd's Angular component layout, pyod's `models/`-centric layout) correctly report `Unknown` rather than a false-positive pattern.
-- `ResponsibilityAnalyzer` uses the same path-segment exact match for directory-name keywords. This fixed dbeaver (where "db" was substring-matching "dbeaver", tagging all 22 modules as "Persistence"). Symbol-name matching still uses substring (`s.toLowerCase().includes(kw)`) because symbol names are single tokens, not paths — "planner" in `TaskPlanner` is a legitimate match.
+
+**Matching strategy** (added 2026-07, iterated through deep-comparison on 14 ref-only repos):
+
+The three matching layers below were all migrated from `String.includes()` substring match to segment/token-prefix match, after deep-comparison revealed systematic false positives:
+
+| Layer | Old (substring) | New (segment/token) | False positive fixed |
+|-------|-----------------|---------------------|----------------------|
+| `ArchitecturePatternAnalyzer` dir signals | `d.includes(sig)` | `seg === sig \|\| seg.startsWith(sig+"-") \|\| seg.startsWith(sig+"_")` | "ast" matched "contrast"; "ir" matched "first"/"directory" → dbeaver/ng-zorro-antd/topcoat falsely tagged Compiler |
+| `ResponsibilityAnalyzer` dir keywords | `modNameLower.includes(kw)` | Same segment match as above | "db" matched "dbeaver" → all 22 dbeaver modules tagged Persistence |
+| `ResponsibilityAnalyzer` symbol keywords | `s.toLowerCase().includes(kw)` | `tokenizeSymbol(s).some(t => t.startsWith(kw))` | "db" matched "couldBeEmoji" (couldBe→db) → pi tui tagged Persistence |
+
+`tokenizeSymbol()` splits CamelCase / snake_case / kebab-case names into lowercase tokens: `resetCapabilitiesCache` → `["reset","capabilities","cache"]`, `couldBeEmoji` → `["could","be","emoji"]`. Token-prefix matching still supports intentional prefix keywords like `retriev` (matches token `retrieve`, `retrieval`) and `persist` (matches `persistence`, `persistent`).
+
+**Minimum-score threshold**: `ResponsibilityAnalyzer` now requires `bestScore ≥ 2` (was `> 0`). One directory match (score 2) or two symbol matches (score 2) are minimum evidence. A single symbol match (score 1) is too weak — e.g., `resetCapabilitiesCache` alone should not tag the entire `tui/` module as "Persistence".
+
+**Test-file exclusion**: `ResponsibilityAnalyzer` now skips test files via `isTestPath()` when building the module→files map. Previously, test fixtures with database/cache setup (e.g., `tmp_db`, `test_cache`) polluted module responsibility classification — `tests/` directories were being tagged "Persistence" in dbeaver and custodian-kernel.
+
+**LLM Interface keyword refinement**: Removed generic keywords `model`, `client`, `provider` from the LLM Interface rule (they matched data models, HTTP clients, and any provider, causing false positives on non-AI repos like dbeaver). Kept only LLM-specific terms: `llm`, `inference`, `openai`, `anthropic`, `claude`, `gemini`, `mistral`, `deepseek`, `qwen`, `bedrock`, `vertex`, `completion`. This correctly reclassified dbeaver.model from "LLM Interface" (false positive — it's a data model) to "Persistence" (correct — it contains `DBDatabaseException`, `getStorageId`).
+
+**Monorepo pattern**: Lowered `required` dirSignals from 2 to 1 — a single `packages/` directory plus ≥3 manifests (multiManifestCheck) is sufficient evidence. Previously, pi (5 manifests under `packages/`) was reported "Unknown" because it only had 1 of [packages, apps, libs, modules]; now correctly "Monorepo(0.60)".
+
+**Verified reclassifications** (14 ref-only repos, 2026-07-25):
+- dbeaver: Compiler→Plugin; dbeaver.model: LLM Interface→Persistence; tests/: excluded
+- pi: Unknown→Monorepo; tui: Persistence→Uncategorized; packages/ai: I/O&Transport→LLM Interface
+- pyod: Safety&Guardrails→Quality Assessment (guard/guardrail keywords no longer match via token-prefix)
+- custodian-kernel: custodian: LLM Interface→Safety & Guardrails; tests/: excluded
 
 ### Tool Detection Strategies
 
