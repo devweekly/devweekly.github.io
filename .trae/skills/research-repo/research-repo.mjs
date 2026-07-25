@@ -2894,11 +2894,24 @@ class ToolsAnalyzer extends BaseAnalyzer {
       });
 
     // Process AST results; collect files that need regex fallback
+    // Filter false-positive tool names: platform utilities (_is_wsl, mac, win),
+    // generic config names, and framework names that AST detection may pick up
+    // from decorators on utility functions.
+    const TOOL_FP_NAMES = new Set([
+      "react", "vue", "angular", "svelte", "default", "main", "app", "config",
+      "mac", "win", "linux", "unix", "darwin", "windows",
+      "_is_wsl", "is_wsl", "is_windows", "is_mac", "is_linux", "is_darwin",
+      "platform", "os", "env", "environment",
+      "options", "settings", "params", "args", "props", "state",
+      "data", "value", "key", "type", "id", "url", "host", "port",
+      "name", "title", "label", "description", "content",
+    ]);
     const regexFiles = [];
     for (const r of results) {
       if (!r) continue;
       if (r.ast) {
         for (const t of r.tools) {
+          if (t.name && TOOL_FP_NAMES.has(t.name.toLowerCase())) continue;
           const key = `${t.file}:${t.framework}:${t.name}`;
           if (seen.has(key)) continue;
           seen.add(key);
@@ -2969,8 +2982,20 @@ class ToolsAnalyzer extends BaseAnalyzer {
         const name = match[1];
         if (!name) continue;
         // Filter out common false positives: generic object names + single-char test fixtures
+        // + platform/env detection utilities (observed in open-design: _is_wsl, mac, win)
         const lower = name.toLowerCase();
-        if (["react", "vue", "angular", "svelte", "default", "main", "app", "config"].includes(lower)) continue;
+        const TOOL_FALSE_POSITIVE_NAMES = new Set([
+          "react", "vue", "angular", "svelte", "default", "main", "app", "config",
+          // Platform/environment detection — not AI tools
+          "mac", "win", "linux", "unix", "darwin", "windows",
+          "_is_wsl", "is_wsl", "is_windows", "is_mac", "is_linux", "is_darwin",
+          "platform", "os", "env", "environment",
+          // Generic config/option names
+          "options", "settings", "params", "args", "props", "state",
+          "data", "value", "key", "type", "id", "url", "host", "port",
+          "name", "title", "label", "description", "content",
+        ]);
+        if (TOOL_FALSE_POSITIVE_NAMES.has(lower)) continue;
         if (name.length < 2) continue; // skip single-char names like `t` (test fixtures)
         const key = `${relPath}:schema-first:${name}`;
         if (seen.has(key)) continue;
@@ -3032,6 +3057,12 @@ class ToolsAnalyzer extends BaseAnalyzer {
       const isInToolSpace = /(?:^|[\\/])(?:skills?|bundled_skills?|tools?|agents?|hooks?)[\\/]/.test(relPath);
       if (!isInToolSpace) continue;
 
+      // Filter out platform-specific packaging/build directories. `tools/pack/src/mac/`
+      // and `tools/pack/src/win/` are platform build targets, not AI tools. Observed
+      // in open-design: `mac` and `win` were falsely detected as script-tools.
+      const PLATFORM_DIR_RE = /(?:^|[\\/])(?:mac|win|linux|darwin|windows|ios|android|arm64|x64|x86)[\\/]/i;
+      if (PLATFORM_DIR_RE.test(relPath)) continue;
+
       // Derive a readable tool name from the parent directory when possible:
       // custodian/bundled_skills/ai/openai-chat/scripts/execute.py -> openai-chat
       const GENERIC_DIR_NAMES = new Set([
@@ -3072,7 +3103,20 @@ class ToolsAnalyzer extends BaseAnalyzer {
       });
     }
 
-    store[this.id] = { totalTools: tools.length, tools };
+    // Cross-file name deduplication: the same tool name may be detected in
+    // multiple files (e.g., idea_spark in 4 files, sandbox_available in 2
+    // files). Keep the first occurrence by name to avoid inflated counts.
+    // Different frameworks with the same name are kept separately.
+    const dedupedTools = [];
+    const nameFrameworkSeen = new Set();
+    for (const t of tools) {
+      const dedupKey = `${t.name}:${t.framework}`;
+      if (nameFrameworkSeen.has(dedupKey)) continue;
+      nameFrameworkSeen.add(dedupKey);
+      dedupedTools.push(t);
+    }
+
+    store[this.id] = { totalTools: dedupedTools.length, tools: dedupedTools };
   }
 }
 
@@ -4301,8 +4345,17 @@ class InformationFlowAnalyzer extends BaseAnalyzer {
     }
 
     // Identify LLM call sites (functions/classes with LLM-related names).
-    // Broadened to catch provider names, completion verbs, and model terms.
-    const LLM_NAME_RE = /\b(openai|anthropic|claude|gpt|llm|chat_completion|completion|complete|call_model|invoke_model|chat|gemini|mistral|deepseek|qwen|bedrock|vertex|ai_client|model_client|inference|generate)\b/i;
+    // Tightened to LLM-specific provider/model names only. Previously included
+    // generic terms (generate, complete, chat, inference, vertex) that caused
+    // false positives on non-AI repos:
+    //   - ng-zorro-antd: "generate" matched color.generate, generate-site
+    //   - dbeaver: matched a function in DeploymentId.java
+    //   - open-design: "complete" matched autocomplete components
+    // Removed terms: generate, complete, completion, chat, inference, vertex,
+    //   call_model, invoke_model, ai_client, model_client
+    // Kept: provider names (openai/anthropic/claude/gpt/gemini/mistral/deepseek/
+    //   qwen/bedrock) + LLM-specific terms (llm, chat_completion).
+    const LLM_NAME_RE = /\b(openai|anthropic|claude|gpt|llm|chat_completion|gemini|mistral|deepseek|qwen|bedrock)\b/i;
     const llmNodes = new Set();
     for (const fn of symbols.functions || []) {
       if (fn.name && LLM_NAME_RE.test(fn.name) && fn.file) {
@@ -4592,6 +4645,51 @@ class CapabilityOntologyAnalyzer extends BaseAnalyzer {
     const prompts = store.prompts || {};
     const evals = store.evaluations || {};
     const symbols = store.symbols || {};
+    const infoFlow = store.informationFlow || {};
+
+    // AI-context gate: the 10 capability domains (Planning/Execution/Retrieval/
+    // Memory/Evaluation/Safety/Tool/Context/IO/Persistence) are AI-agent-specific.
+    // Applying them to non-AI repos (dbeaver=SQL client, pyod=ML library,
+    // ng-zorro-antd=UI library, topcoat=styling) produces false positives:
+    // SQL executors match "execution", database buffers match "memory",
+    // HTTP routes match "io", etc.
+    //
+    // Gate: if the repo has NO tools, NO prompts, NO LLM call sites, and NO
+    // "LLM Interface" responsibility, it is not an AI agent project. Report
+    // all capabilities as "n/a" with a clear reason.
+    const hasTools = (tools.tools || []).length > 0;
+    const hasPrompts = (prompts.prompts || []).length > 0;
+    const hasLLMCallSites = (infoFlow.llmCallSites || []).length > 0;
+    const hasLLMResponsibility = (responsibility.responsibilities || []).some(
+      (r) => r.responsibility === "LLM Interface"
+    );
+    const isAIProject = hasTools || hasPrompts || hasLLMCallSites || hasLLMResponsibility;
+
+    if (!isAIProject) {
+      const capabilities = CAPABILITY_ONTOLOGY.map((cap) => ({
+        capability: cap,
+        maturity: 0,
+        coverage: "n/a",
+        moduleCount: 0,
+        symbolCount: 0,
+        modules: [],
+        evidence: [],
+      }));
+      store[this.id] = {
+        totalCapabilities: CAPABILITY_ONTOLOGY.length,
+        coveredCapabilities: 0,
+        capabilities,
+        capabilityMatrix: Object.fromEntries(
+          CAPABILITY_ONTOLOGY.map((c) => [c, "n/a"])
+        ),
+        missingCapabilities: [],
+        strongCapabilities: [],
+        weakCapabilities: [],
+        isAIProject: false,
+        reason: "No AI signals detected (no tools, prompts, LLM call sites, or LLM Interface responsibility). Capability assessment is not applicable.",
+      };
+      return;
+    }
 
     // Build capability → modules/evidence map from ResponsibilityAnalyzer output.
     const capabilityModules = new Map(); // capability → [{module, evidence, fileCount}]
@@ -4639,24 +4737,35 @@ class CapabilityOntologyAnalyzer extends BaseAnalyzer {
       });
     }
 
-    // Count symbols per capability (heuristic: symbol name contains capability keyword).
+    // Count symbols per capability using CamelCase token-prefix matching.
+    // Previously used `name.includes(kw)` substring match, which caused false
+    // positives: "execut" matched "executeSQL", "run" matched "runQuery",
+    // "store" matched "restoreData". Token matching: "executeSQL" → tokens
+    // ["execute", "sql"], keyword "execut" matches token "execute" via prefix.
+    //
+    // Keywords are AI-context-specific: generic terms like "run", "call",
+    // "save", "load", "http", "request", "response" were removed because they
+    // match common software functions in any repo. The AI-context gate above
+    // already ensures we only assess AI projects, but tightening keywords
+    // further reduces noise within AI repos (e.g., a util function named
+    // "httpGet" in an AI agent should NOT count as "io" capability by itself).
     const symbolCounts = new Map();
     const CAP_KEYWORDS = {
-      planning: ["plan", "planner", "schedul", "decompos", "strateg"],
-      execution: ["execut", "run", "invoke", "call"],
-      retrieval: ["retriev", "search", "rag", "embed", "index"],
-      memory: ["memory", "remember", "history", "buffer", "session"],
-      evaluation: ["eval", "benchmark", "metric", "judge", "score"],
-      safety: ["guard", "filter", "validate", "policy", "safety"],
+      planning: ["plan", "schedul", "decompos", "strateg", "orchestrat"],
+      execution: ["execut", "invoke", "dispatch", "perform"],
+      retrieval: ["retriev", "search", "rag", "embed", "index", "query"],
+      memory: ["memory", "remember", "history", "retention"],
+      evaluation: ["eval", "benchmark", "metric", "judge", "score", "assess"],
+      safety: ["guard", "validate", "policy", "safety", "moderat", "redteam"],
       tool: ["tool", "function_call"],
-      context: ["context", "prompt", "template"],
-      io: ["http", "request", "response", "server", "route"],
-      persistence: ["store", "save", "load", "cache", "persist", "repository"],
+      context: ["context", "prompt", "template", "instruction"],
+      io: ["stream", "websocket", "sse", "pipe"],
+      persistence: ["persist", "repository", "database", "kvstore"],
     };
     for (const fn of symbols.functions || []) {
-      const name = (fn.name || "").toLowerCase();
+      const tokens = tokenizeSymbol(fn.name || "");
       for (const [cap, keywords] of Object.entries(CAP_KEYWORDS)) {
-        if (keywords.some((kw) => name.includes(kw))) {
+        if (keywords.some((kw) => tokens.some((t) => t.startsWith(kw)))) {
           symbolCounts.set(cap, (symbolCounts.get(cap) || 0) + 1);
         }
       }
@@ -4711,6 +4820,7 @@ class CapabilityOntologyAnalyzer extends BaseAnalyzer {
       weakCapabilities,
       totalCapabilities: CAPABILITY_ONTOLOGY.length,
       coveredCapabilities: CAPABILITY_ONTOLOGY.length - missingCapabilities.length,
+      isAIProject: true,
     };
   }
 }

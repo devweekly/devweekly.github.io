@@ -307,6 +307,50 @@ The ToolsAnalyzer uses three complementary detection strategies to cover the div
    - Test files are filtered via `isTestPath()` before AST and filename-based
      entrypoint detection, so test fixtures with `main()` (e.g.
      `MySQLErrorsTest.java` in dbeaver) don't get tagged as tools.
+   - **Platform-specific packaging directories** (`/mac/`, `/win/`, `/linux/`,
+     `/darwin/`, `/ios/`, `/android/`) are filtered from script-tool detection.
+     Observed in open-design: `tools/pack/src/mac/app.ts` and `tools/pack/src/win/app.ts`
+     were falsely detected as tools `mac` and `win`.
+   - **False-positive name filter** applied to ALL detection strategies (AST,
+     regex, schema-first): platform utilities (`_is_wsl`, `mac`, `win`, `linux`),
+     generic config names (`options`, `settings`, `params`, `data`, `value`,
+     `key`, `type`, `id`), and framework names (`react`, `vue`, `angular`).
+   - **Cross-file name deduplication**: the same tool name in multiple files
+     (within the same framework) is deduplicated to the first occurrence.
+     Observed: `idea_spark` appeared 4x in ResearchStudio (68→10 tools after
+     dedup), `sandbox_available` 2x in custodian-kernel.
+
+### Capability Ontology AI-Context Gate (added 2026-07)
+
+The 10 capability domains (Planning/Execution/Retrieval/Memory/Evaluation/
+Safety/Tool/Context/IO/Persistence) are **AI-agent-specific**. Applying them
+to non-AI repos produces false positives: SQL executors match "execution",
+database buffers match "memory", HTTP routes match "io", code generators match
+"generate".
+
+**Gate**: if the repo has NO tools, NO prompts, NO LLM call sites, AND NO
+"LLM Interface" responsibility, it is classified as `isAIProject: false` and
+all capabilities are reported as `"n/a"` with a clear reason. The
+`capabilityOntology` output includes an `isAIProject` boolean field.
+
+**Verified on 14 ref-only repos** (5 non-AI repos correctly gated):
+- dbeaver (SQL client): `isAIProject: false` — previously had strong=execution,memory,context,persistence
+- pyod (ML library): `isAIProject: false` — previously had strong=evaluation
+- ng-zorro-antd (UI library): `isAIProject: false` — previously had strong=retrieval + 8 weak
+- topcoat (styling): `isAIProject: false` — previously had strong=memory,context,io
+- litehybrid (Rust): `isAIProject: false` — previously had weak=memory,safety,persistence
+
+**LLM call-site regex tightened**: `LLM_NAME_RE` was broadened in a prior
+iteration to include `generate`, `complete`, `chat`, `inference`, `vertex`,
+which caused false positives on non-AI repos (ng-zorro-antd's `color.generate`,
+dbeaver's `DeploymentId.java`). Tightened to LLM-specific provider/model names
+only: `openai|anthropic|claude|gpt|llm|chat_completion|gemini|mistral|deepseek|qwen|bedrock`.
+
+**Capability keyword matching**: `CAP_KEYWORDS` migrated from `name.includes(kw)`
+substring match to `tokenizeSymbol()` token-prefix match (same fix as
+ResponsibilityAnalyzer). Generic keywords (`run`, `call`, `save`, `load`,
+`http`, `request`, `response`, `server`, `route`, `buffer`, `session`,
+`cache`) were removed because they match common software functions.
 
 ### SDK Entrypoint Preservation
 
