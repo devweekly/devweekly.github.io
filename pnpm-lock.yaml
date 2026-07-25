@@ -154,8 +154,8 @@ importers:
         specifier: ^5.1.0
         version: 5.1.0
       web-tree-sitter:
-        specifier: ^0.26.0
-        version: 0.26.11
+        specifier: ^0.22.0
+        version: 0.22.0
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
@@ -5033,8 +5033,8 @@ packages:
   web-namespaces@2.0.1:
     resolution: {integrity: sha512-bKr1DkiNa2krS7qxNtdrtHAmzuYGFQLiQ13TsorsdT6ULTkPLKuu5+GsFpDlg6JFjUTwX2DyhMPG2be8uPrqsQ==}
 
-  web-tree-sitter@0.26.11:
-    resolution: {integrity: sha512-Q5Dm3YTIXSXuH6FxX6RuzX2Qwpc4DPGiYMU87Wg5Z8OIStiQFiUex4zMDc0vBTw78EphaYJacncJghCHzbZptg==}
+  web-tree-sitter@0.22.0:
+    resolution: {integrity: sha512-cLZAelfLRzJmxhUEz5YnE1POR9wK4Xq2zN9VPa4xEoW6DvCDoeBtdwbWr2wZtUpn68vKqeF4lwrzi0yQxooRHg==}
 
   webidl-conversions@3.0.1:
     resolution: {integrity: sha512-2JAn3z8AR6rjK8Sm8orRC0h/bcl/DqL7tRPdGZ4I1CjdF+EaMLmYxBHyXuKL849eucPFhvBoxMsflfOb8kxaeQ==}
@@ -10337,7 +10337,7 @@ snapshots:
 
   web-namespaces@2.0.1: {}
 
-  web-tree-sitter@0.26.11: {}
+  web-tree-sitter@0.22.0: {}
 
   webidl-conversions@3.0.1: {}
 

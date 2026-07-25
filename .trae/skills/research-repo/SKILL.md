@@ -250,8 +250,10 @@ Added 2026-07. Seven rule-based analyzers that elevate the Evidence Store from f
 
 **Known limitations** (for future iteration):
 - Java Eclipse plugin paths (`plugins/org.jkiss.dbeaver.*`) confuse module-level grouping because dots in directory names collide with the dotted module-ID scheme.
-- `InformationFlowAnalyzer` LLM-call-site detection is regex-based on symbol names; Rust projects with generic function names may miss call sites.
-- `ArchitecturePatternAnalyzer` may false-positive "Compiler" for repos with SQL/data parsers (lexer/parser/ast directories).
+- `InformationFlowAnalyzer` LLM-call-site detection is regex-based on symbol names (`LLM_NAME_RE` covers openai/anthropic/claude/gpt/llm/gemini/mistral/deepseek/qwen/bedrock/vertex/completion/inference/generate, etc.). This is deliberately broad to maximize recall, but produces false positives on repos with generic names like `palette_generator` or `DesignSystemFlow` (open-design). Tuning precision without losing recall requires language-specific call-site analysis (e.g., resolving `openai.chat.completions.create(...)` via call graph, not name regex).
+- `reachesLLM` may be false-negative for Rust projects: `mod llm;` declarations and `use crate::llm` imports are not resolved to full module paths in the architecture graph, so the LLM call-site node has 0 in/out edges and is never reached by BFS. Verified on buzz (`crates.buzz-agent.src.llm` is a graph node with 0 edges).
+- `ArchitecturePatternAnalyzer` uses **path-segment exact match** (not substring) for directory signals — `d.includes(sig)` caused massive false positives ("ast" matched "contrast", "ir" matched "first"/"directory"). Segment match requires `seg === sig || seg.startsWith(sig + "-") || seg.startsWith(sig + "_")`. As a result, repos that don't follow conventional directory naming (e.g., ng-zorro-antd's Angular component layout, pyod's `models/`-centric layout) correctly report `Unknown` rather than a false-positive pattern.
+- `ResponsibilityAnalyzer` uses the same path-segment exact match for directory-name keywords. This fixed dbeaver (where "db" was substring-matching "dbeaver", tagging all 22 modules as "Persistence"). Symbol-name matching still uses substring (`s.toLowerCase().includes(kw)`) because symbol names are single tokens, not paths — "planner" in `TaskPlanner` is a legitimate match.
 
 ### Tool Detection Strategies
 

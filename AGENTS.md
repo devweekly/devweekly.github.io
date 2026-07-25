@@ -386,6 +386,7 @@ When updating AGENTS.md:
 | 2026-07-25 | research-repo: fixed eval false positives — require LLM-context for name-based detection, strip package/import lines, raise content threshold to ≥3 keywords | @agents-maintainer |
 | 2026-07-25 | research-repo: filter test files in EntrypointsAnalyzer (isTestPath) to prevent test fixtures with main() being tagged as tools | @agents-maintainer |
 | 2026-07-25 | research-repo: added Architecture Semantics Layer — 7 inference analyzers (Pattern, Responsibility, Stability A/I, ChangeCoupling, InformationFlow, DependencySmell, CapabilityOntology) + refactored analyze-output.mjs to surface semantic layer | @agents-maintainer |
+| 2026-07-25 | research-repo: fixed 3 P0 false-positive bugs — (1) Compiler pattern now requires ≥1 specialized signal (codegen/optimizer/semantic/ir) via requiredSpecialized gate; (2) ResponsibilityAnalyzer keyword matching switched from substring to path-segment exact match (fixes dbeaver "db"→"dbeaver" matching all modules as Persistence); (3) ArchitecturePatternAnalyzer dir-signal matching switched from substring to path-segment exact match (fixes "ast"→"contrast", "ir"→"first"/"directory" causing Compiler false positives on dbeaver/ng-zorro-antd/topcoat). Also broadened LLM_NAME_RE with gemini/mistral/deepseek/qwen/bedrock/vertex/inference/generate. Re-analyzed all 14 ref-only repos; Compiler false positives eliminated (dbeaver→Plugin, ng-zorro-antd→Unknown, topcoat→Event-Driven) | @agents-maintainer |
 
 ### Example Usage
 

@@ -330,6 +330,7 @@ async function loadOptionalPackages() {
 // ---------------------------------------------------------------------------
 
 let Parser = null;
+let LanguageExport = null;
 let wasmDir = null;
 const languageCache = new Map(); // ext -> Language
 const parserCache = new Map(); // ext -> Parser instance
@@ -667,19 +668,32 @@ async function initTreeSitter() {
 
     // Pre-check: verify WASM runtime file exists before init,
     // so we don't trigger Emscripten's noisy stdout output on missing files.
-    const wasmRuntimePath = join(nodeModulesDir, "web-tree-sitter", "tree-sitter.wasm");
+    // web-tree-sitter >=0.25 renamed the runtime from `tree-sitter.wasm` to
+    // `web-tree-sitter.wasm`. Check both for backward compatibility.
+    const wtsDir = join(nodeModulesDir, "web-tree-sitter");
+    const wasmRuntimePath = existsSync(join(wtsDir, "web-tree-sitter.wasm"))
+      ? join(wtsDir, "web-tree-sitter.wasm")
+      : join(wtsDir, "tree-sitter.wasm");
     if (!existsSync(wasmRuntimePath)) return null;
 
     const wasmsPkgPath = join(nodeModulesDir, "tree-sitter-wasms", "out");
     if (!existsSync(wasmsPkgPath)) return null;
 
     const mod = await import("web-tree-sitter");
+    // web-tree-sitter >=0.25 changed exports:
+    //   Old: mod.default = Parser, Parser.Language = Language
+    //   New: mod.Parser = Parser, mod.Language = Language (separate export)
     const parserCtor = mod.default || mod.Parser || mod;
+    // Language may be on Parser (old) or a top-level export (new).
+    LanguageExport = mod.Language || parserCtor.Language || null;
+
+    // Init the WASM runtime. The locateFile callback resolves the runtime
+    // .wasm file (not the language .wasm files — those are loaded separately).
     await parserCtor.init({
       locateFile: (filename) =>
         pathToFileURL(join(nodeModulesDir, "web-tree-sitter", filename)).href,
     });
-    // Only set module-level Parser after successful init
+    // Only set module-level vars after successful init
     Parser = parserCtor;
     wasmDir = wasmsPkgPath;
     return Parser;
@@ -703,7 +717,10 @@ async function getParserForFile(filePath) {
 
   const pending = (async () => {
     try {
-      const Language = Parser.Language;
+      // Use the Language export captured at init time (handles both old
+      // Parser.Language and new mod.Language APIs).
+      const Language = LanguageExport || Parser.Language;
+      if (!Language) return null;
       const language = await Language.load(wasmPath);
       const parser = new Parser();
       parser.setLanguage(language);
@@ -3620,9 +3637,14 @@ const ARCHITECTURE_PATTERNS = [
   },
   {
     name: "Compiler",
+    // parser/lexer/ast alone are too generic (SQL parsers, config parsers trigger
+    // false positives). Require at least one compiler-specific signal (codegen,
+    // optimizer, semantic analysis, IR generation) to confirm.
     dirSignals: ["lexer", "tokenizer", "parser", "ast", "codegen", "ir", "semantic", "optimizer"],
     required: 2,
-    symbolSignals: [/\bToken\b/, /\bAST\b/, /\bparse\b/, /\blex\b/, /\bcodegen\b/],
+    requiredSpecialized: 1, // must have ≥1 of: codegen, optimizer, semantic, ir
+    specializedSignals: ["codegen", "optimizer", "semantic", "ir"],
+    symbolSignals: [/\bToken\b/, /\bAST\b/, /\bparse\b/, /\blex\b/, /\bcodegen\b/, /\bIRGen\b/, /\boptimize\b/],
   },
   {
     name: "Blackboard",
@@ -3724,8 +3746,14 @@ class ArchitecturePatternAnalyzer extends BaseAnalyzer {
 
     const matches = [];
     for (const pattern of ARCHITECTURE_PATTERNS) {
+      // Exact segment match: require a directory segment to EQUAL the signal
+      // (or start with `sig-`/`sig_`). Substring matching caused massive false
+      // positives — e.g., "ast" matched "contrast", "ir" matched "first"/"directory",
+      // which then satisfied the Compiler specialized-signal gate.
       const matchedDirs = pattern.dirSignals.filter((sig) =>
-        dirNames.some((d) => d === sig || d.includes(sig))
+        dirNames.some(
+          (d) => d === sig || d.startsWith(`${sig}-`) || d.startsWith(`${sig}_`)
+        )
       );
       let matchedSymbols = [];
       if (pattern.symbolSignals) {
@@ -3736,6 +3764,15 @@ class ArchitecturePatternAnalyzer extends BaseAnalyzer {
 
       const totalSignals = matchedDirs.length + matchedSymbols.length;
       if (totalSignals < pattern.required) continue;
+
+      // Specialized-signal gate (e.g., Compiler requires ≥1 of codegen/optimizer/
+      // semantic/ir to avoid false positives from SQL/config parsers).
+      if (pattern.requiredSpecialized && pattern.specializedSignals) {
+        const specializedHits = pattern.specializedSignals.filter((sig) =>
+          matchedDirs.includes(sig)
+        );
+        if (specializedHits.length < pattern.requiredSpecialized) continue;
+      }
 
       // Base confidence: 0.4 for meeting required, +0.15 per extra signal.
       let confidence = 0.4 + 0.15 * (totalSignals - pattern.required);
@@ -3880,15 +3917,20 @@ class ResponsibilityAnalyzer extends BaseAnalyzer {
         modSymbols.push(...syms);
       }
       // Also include the module name itself for keyword matching.
-      const modNameLower = mod.toLowerCase();
-      const allText = [modNameLower, ...modSymbols.map((s) => s.toLowerCase())];
+      // Path-segment match: split module ID on dots/slashes and require a
+      // segment to EQUAL the keyword (or start with `kw-`). This prevents
+      // false matches like "db" inside "dbeaver" or "plan" inside "explainer".
+      const modSegments = mod.toLowerCase().split(/[./\\]+/);
+      const segmentMatchesKw = (kw) =>
+        modSegments.some(
+          (seg) => seg === kw || seg.startsWith(`${kw}-`) || seg.startsWith(`${kw}_`)
+        );
 
-      // Score each responsibility rule.
       let bestRule = null;
       let bestScore = 0;
       let bestEvidence = [];
       for (const rule of RESPONSIBILITY_RULES) {
-        const dirHits = rule.keywords.filter((kw) => modNameLower.includes(kw));
+        const dirHits = rule.keywords.filter(segmentMatchesKw);
         const symHits = rule.keywords.filter((kw) =>
           modSymbols.some((s) => s.toLowerCase().includes(kw))
         );
@@ -3897,7 +3939,7 @@ class ResponsibilityAnalyzer extends BaseAnalyzer {
           bestScore = score;
           bestRule = rule;
           bestEvidence = [
-            ...dirHits.map((k) => `dir name contains "${k}"`),
+            ...dirHits.map((k) => `dir segment matches "${k}"`),
             ...symHits.slice(0, 3).map((k) => {
               const sym = modSymbols.find((s) => s.toLowerCase().includes(k));
               return `symbol: ${sym}`;
