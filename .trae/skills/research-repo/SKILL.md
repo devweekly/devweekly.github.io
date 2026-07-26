@@ -27,24 +27,6 @@ description: "研究一个开源 Repository，提炼其架构、设计思想、�
 
 ---
 
-## 适用的 Repository
-
-特别适用于：
-
-- AI Agent 框架（OpenAI Agents SDK、Claude Code、Codex CLI、LangGraph、PydanticAI、CrewAI、AutoGen）
-- AI 编程 Agent（OpenHands、Continue、Cline、Goose、Aider、Cursor）
-- MCP Server
-- 研究系统
-- RAG 框架
-- Evaluation 框架
-- 编译器项目
-- 数据库
-- 分布式系统
-- 浏览器
-- 开发者工具（uv、Ruff、Bun、Vite）
-
----
-
 ## 输入
 
 Repository 已克隆到本地。
@@ -95,6 +77,7 @@ research-{repo-name}-{YYYYMMDD}/
 ├── research-repo.mjs           # Copied from skill directory
 └── report.md                   # Final report with Research Traces (Stage 7, only cites Validated RQs)
 ```
+
 
 ### 精简版 `full.json` 设计
 
@@ -153,7 +136,7 @@ research-{repo-name}-{YYYYMMDD}/
 
 ### LLM Evidence 文件格式
 
-每个 `RQ-*.md` 文件遵循如下格式（v3: 增强的 Finding 结构）：
+每个 `RQ-*.md` 文件遵循如下格式：
 
 ```markdown
 ## Research Question
@@ -558,7 +541,7 @@ cd research-{repo}-{date}
 node ../.trae/skills/research-repo/research-repo.mjs subagent-prompts <repoPath>
 ```
 
-生成内容（v3）：
+生成内容：
 
 | Prompt 文件 | 目标输出 | 说明 |
 |-------------|----------|------|
@@ -606,7 +589,7 @@ Stage 7: 07-report-writer         (Research Trace 格式，禁止创建新 Findi
 9. **Architecture Fitness**（t.md 第十三建议）：报告新增 §6 **Architecture Fitness** 章节（Neal Ford 的 Architecture Fitness Function 思想），按 Modularity/Extensibility/Testability/Observability/Evolution/Performance/Developer Experience 7 维评分（★1-5）。比 Smell 更高级，关注架构是否持续满足设计目标。
 10. **Architecture Compression**（t.md 第十一建议）：报告新增 §7 **Architecture Compression** 章节，300/100/30 字三级摘要。"如果压缩不了，说明其实没有理解"——迫使作者提炼核心架构。
 11. **What NOT to Learn**（t.md 第十二建议）：报告新增 §10 **What NOT to Learn** 章节，明确区分"值得学"和"不要抄"。很多项目真正值得学的只有 10%，其它是历史包袱。
-12. **Enhanced Finding 结构**：每个 Finding 必须包含 Counter Evidence、Alternative Interpretation、Unknowns（v2 已有，v3 保留）。
+12. **Enhanced Finding 结构**：每个 Finding 必须包含 Counter Evidence、Alternative Interpretation、Unknowns。
 13. **Evidence Budget**：每个 RQ Agent 最多读取 50 个文件 / 200 个符号（v2 已有，v3 保留）。
 14. **Shared Findings**：RQ Agent 将跨 RQ 共享的发现写入 `shared-findings.md`，避免重复（v2 已有，v3 保留）。
 15. **RQ 生命周期**：Open → Investigating → Validated / Rejected / Needs Evidence（v2 已有，v3 保留）。
