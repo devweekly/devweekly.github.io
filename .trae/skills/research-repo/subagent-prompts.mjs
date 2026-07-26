@@ -365,19 +365,28 @@ Constraints:
 - **Execution Graph must be based on actual call chains**, do not speculate.`,
   }),
 
-  "03-research-agent": (repoName, lang, questionIndex, questionText) => ({
+  "03-research-agent": (repoName, lang, questionIndex) => ({
     target: `RQ-${String(questionIndex).padStart(3, "0")}.md`,
     text:
       lang === "zh"
-        ? `# RQ-${String(questionIndex).padStart(3, "0")}: ${questionText} — ${repoName}
+        ? `# RQ-${String(questionIndex).padStart(3, "0")} Agent — ${repoName}
 
-**Research Question**: ${questionText}
+你是编号为 RQ-${String(questionIndex).padStart(3, "0")} 的 Research Question Agent。
 
-你是一位软件架构师。你的首要目标**不是**总结架构，而是**验证或推翻** \`01-hypotheses.md\` 中与该问题相关的假设。
+## 第一步：读取你负责的 Research Question
+
+**立即打开** \`00-research-questions.md\`，找到第 ${questionIndex} 个问题（标题为 \`## Q${questionIndex}: ...\`）。
+将该问题的完整陈述作为你的 Research Question。**不要使用任何占位符或默认问题**——必须使用 \`00-research-questions.md\` 中真实生成的第 ${questionIndex} 个问题。
+
+同时读取该问题下的 **Priority / Reason / Expected Evidence / Hypothesis** 字段，这些是 00-question-planner 为你提供的调查方向。
+
+## 调查目标
+
+你的首要目标**不是**总结架构，而是**验证或推翻** \`01-hypotheses.md\` 中与该问题相关的假设（参考 00-research-questions.md 中该问题的 Hypothesis 字段）。
 
 必读输入：
-- \`00-research-questions.md\`（找到你的问题）
-- \`01-hypotheses.md\`（找到相关假设）
+- \`00-research-questions.md\`（找到你负责的第 ${questionIndex} 个问题）
+- \`01-hypotheses.md\`（找到相关假设，参考其置信度演进历史）
 - \`02-ontology.md\`（共享语义层，引用其中的 Component/Interface/Relation/Execution Graph）
 - \`evidence-brief.md\`
 - \`evidence-store/full.json\`
@@ -388,11 +397,14 @@ Constraints:
 - 最多读取 **200 个符号**（函数/类）
 - 当置信度稳定时停止
 
-输出结构：
+## 输出结构
+
+\`\`\`markdown
+# RQ-${String(questionIndex).padStart(3, "0")}: {从 00-research-questions.md 读取的真实问题陈述}
 
 ## Research Question
 
-${questionText}
+{真实问题陈述（从 00-research-questions.md ## Q${questionIndex} 复制）}
 
 ## Hypothesis Evaluation
 
@@ -422,21 +434,32 @@ ${questionText}
 - [ ] Validated
 - [ ] Rejected
 - [ ] Needs Evidence
+\`\`\`
 
 约束：
+- **第一行标题必须使用从 00-research-questions.md 读取的真实问题陈述**，不要使用 "Dynamic Question ${questionIndex}" 等占位符。
 - 每个 Finding 必须引用至少一个证据源。
 - 不要从命名推断功能；必须查看调用链或实现。
 - 区分事实与解读。
 - **必须**包含 Counter Evidence 和 Alternative Interpretation。`
-        : `# RQ-${String(questionIndex).padStart(3, "0")}: ${questionText} — ${repoName}
+        : `# RQ-${String(questionIndex).padStart(3, "0")} Agent — ${repoName}
 
-**Research Question**: ${questionText}
+You are the Research Question Agent numbered RQ-${String(questionIndex).padStart(3, "0")}.
 
-You are a software architect. Your primary goal is **NOT** to summarize architecture, but to **evaluate whether any hypothesis in** \`01-hypotheses.md\` **related to this question is supported, refuted, or unaffected**.
+## Step 1: Read Your Assigned Research Question
+
+**Open** \`00-research-questions.md\` **immediately** and find the ${questionIndex}-th question (heading \`## Q${questionIndex}: ...\`).
+Use that question's full statement as your Research Question. **Do NOT use any placeholder or default question** — you must use the real ${questionIndex}-th question generated in \`00-research-questions.md\`.
+
+Also read the **Priority / Reason / Expected Evidence / Hypothesis** fields under that question; these are the investigation directions provided by the 00-question-planner.
+
+## Investigation Goal
+
+Your primary goal is **NOT** to summarize architecture, but to **evaluate whether any hypothesis in** \`01-hypotheses.md\` **related to this question is supported, refuted, or unaffected** (refer to the Hypothesis field of your question in 00-research-questions.md).
 
 Required inputs:
-- \`00-research-questions.md\` (find your question)
-- \`01-hypotheses.md\` (find related hypotheses)
+- \`00-research-questions.md\` (find your assigned ${questionIndex}-th question)
+- \`01-hypotheses.md\` (find related hypotheses; refer to their confidence evolution history)
 - \`02-ontology.md\` (shared semantic layer; reference Component/Interface/Relation/Execution Graph)
 - \`evidence-brief.md\`
 - \`evidence-store/full.json\`
@@ -447,11 +470,14 @@ Required inputs:
 - Maximum **200 symbols** (functions/classes)
 - Stop when confidence stabilizes
 
-Output structure:
+## Output Structure
+
+\`\`\`markdown
+# RQ-${String(questionIndex).padStart(3, "0")}: {real question statement read from 00-research-questions.md}
 
 ## Research Question
 
-${questionText}
+{real question statement (copied from 00-research-questions.md ## Q${questionIndex})}
 
 ## Hypothesis Evaluation
 
@@ -481,8 +507,10 @@ If you discover findings that other Research Questions might care about, list th
 - [ ] Validated
 - [ ] Rejected
 - [ ] Needs Evidence
+\`\`\`
 
 Constraints:
+- **The first-line title must use the real question statement read from 00-research-questions.md**; do NOT use placeholders like "Dynamic Question ${questionIndex}".
 - Every Finding must cite at least one evidence source.
 - Do not infer function from name alone; inspect call chains or implementation.
 - Separate fact from interpretation.
@@ -950,12 +978,15 @@ export function writeSubagentPrompts(repoPath, options = {}) {
 
   for (const [key, factory] of Object.entries(PROMPTS)) {
     if (key === "03-research-agent") {
-      // Generate 5 dynamic research agent prompts (placeholder questions)
+      // Generate 5 RQ agent prompts. The actual question text is NOT hardcoded here —
+      // each subagent reads 00-research-questions.md at runtime to find its assigned
+      // question (Stage 0 must run before Stage 3). This enforces the "dynamic question
+      // planning" principle from plan4.md §1.
       for (let i = 1; i <= 5; i++) {
-        const { target, text } = factory(repoName, lang, i, `{Dynamic Question ${i}}`);
+        const { target, text } = factory(repoName, lang, i);
         const header = lang === "zh"
-          ? `<!-- Target output: ${target} -->\n<!-- Repo: ${repoName} | Lang: ${lang} -->\n\n`
-          : `<!-- Target output: ${target} -->\n<!-- Repo: ${repoName} | Lang: ${lang} -->\n\n`;
+          ? `<!-- Target output: ${target} -->\n<!-- Repo: ${repoName} | Lang: ${lang} | Question: read from 00-research-questions.md ## Q${i} -->\n\n`
+          : `<!-- Target output: ${target} -->\n<!-- Repo: ${repoName} | Lang: ${lang} | Question: read from 00-research-questions.md ## Q${i} -->\n\n`;
         writeFileSync(join(outDir, `${key}-${i}.md`), header + text, "utf-8");
       }
     } else {

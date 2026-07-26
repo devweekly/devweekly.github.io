@@ -565,7 +565,7 @@ node ../.trae/skills/research-repo/research-repo.mjs subagent-prompts --lang=zh 
 | `subagents/00-question-planner.md` | `00-research-questions.md` | **动态生成** 5 个最适合该仓库的 Research Question（非固定模板） |
 | `subagents/01-hypothesis.md` | `01-hypotheses.md` | **贝叶斯假设**：3-5 个假设，每个含置信度演进历史（Prior → Posterior） |
 | `subagents/02-ontology.md` | `02-ontology.md` | **行为本体**：静态对象 + Execution Graph（Behavior Ontology） |
-| `subagents/03-research-agent-1.md` ~ `-5.md` | `RQ-001.md` ~ `RQ-005.md` | 动态 RQ Agent（并行），每个回答一个 Research Question |
+| `subagents/03-research-agent-1.md` ~ `-5.md` | `RQ-001.md` ~ `RQ-005.md` | 动态 RQ Agent（并行）。Prompt 文件**不硬编码问题文本**——每个 subagent 在执行时从 `00-research-questions.md` 读取第 N 个问题（`## QN`），确保 Stage 0 的动态规划结果真正驱动 Stage 3 |
 | `subagents/04-opponent.md` | `04-opponent.md` | **反证者**：对每个 Finding 进行攻击（直接矛盾/测试反例/替代解释/缺失证据） |
 | `subagents/05-cross-validation.md` | `05-cross-validation.md` | 交叉验证 + **Evidence Graph**（统一证据关系图） |
 | `subagents/06-comparative.md` | `06-comparative.md` | 与**显式列出**的同类项目对比（禁止自行编造） |

@@ -398,6 +398,7 @@ When updating AGENTS.md:
 | 2026-07-26 | research-repo: fixed update/lang, added subagent-prompts, updated SKILL.md | @agents-maintainer |
 | 2026-07-26 | research-repo: fixed subagent-prompts output dir + run-all-repos-v2.sh now generates evidence-store | @agents-maintainer |
 | 2026-07-26 | research-repo: v2 Question-centric Pipeline (Topic→RQ, Ontology Mapper, shared findings, enhanced Finding, RQ lifecycle) | @agents-maintainer |
+| 2026-07-27 | research-repo: fixed plan4.md §1 dynamic question planning bug — 03-research-agent prompt no longer hardcodes `{Dynamic Question N}` placeholder; each RQ subagent now reads its assigned question from `00-research-questions.md ## QN` at runtime, ensuring Stage 0 output truly drives Stage 3. SKILL.md Stage 3 description updated to document the runtime-read mechanism | @agents-maintainer |
 | 2026-07-27 | research-repo: v3 Pipeline (Dynamic Question Planner, Bayesian Hypothesis, Behavior Ontology, Opponent Agent, Evidence Graph, Research Trace) | @agents-maintainer |
 
 ### Example Usage
