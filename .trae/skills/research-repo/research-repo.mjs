@@ -284,6 +284,9 @@ const TOOL_PATTERNS = [
   { framework: "mcp-tool", regex: /@mcp\.tool\s*\n?\s*(?:async\s+)?def\s+(\w+)/g },
   { framework: "mcp-server-tool", regex: /@server\.tool\s*\n?\s*(?:async\s+)?def\s+(\w+)/g },
   { framework: "typescript-tool", regex: /(?:export\s+)?(?:async\s+)?function\s+(\w+)\s*\([^)]*\)\s*:\s*(?:Promise<)?Tool/g },
+  // Factory function pattern: createEditTool, createWriteTool, etc.
+  // Common in TypeScript/JavaScript agent frameworks where tools are created via factory functions
+  { framework: "factory-function", regex: /(?:export\s+)?function\s+(create\w+Tool)\s*\(/g },
 ];
 
 // Schema-first tool detection: files that declare tool arrays typed as ToolDef[] / Tool[]
@@ -2647,15 +2650,16 @@ class EntrypointsAnalyzer extends BaseAnalyzer {
       }
     }
 
-    // 2. Directory-based detection (bin/, scripts/, examples/)
+    // 2. Directory-based detection (bin/, scripts/)
+    // Note: examples/ directory is intentionally excluded — example files are
+    // demonstration code, not executable entry points. Counting them as entrypoints
+    // caused massive false positives (e.g., 98 example files in one repo).
     for (const e of entries) {
       const parts = ctx.rel(e.path).split(sep);
       if (parts.length < 2) continue;
       const topDir = parts[0];
       if (topDir === "bin") {
         addEntrypoint(ctx.rel(e.path), "cli", "file under bin/");
-      } else if (topDir === "examples" || topDir === "example") {
-        addEntrypoint(ctx.rel(e.path), "example", "file under examples/");
       } else if (topDir === "scripts" && ENTRYPOINT_DIR_NAMES.has("scripts")) {
         addEntrypoint(ctx.rel(e.path), "cli", "file under scripts/");
       }
@@ -2943,6 +2947,42 @@ class ToolsAnalyzer extends BaseAnalyzer {
             schema,
           });
         }
+      }
+    }
+
+    // Factory function pattern detection (also run on all files, not just regex fallback)
+    // This catches tools created via factory functions like createEditTool, createBashTool
+    // Pattern: `export function createEditTool(` or `export async function createEditTool(`
+    const FACTORY_TOOL_RE = /(?:export\s+)?(?:async\s+)?function\s+(create\w+Tool)\s*\(/g;
+    for (const f of files) {
+      const content = ctx.readFileAbsolute(f.path);
+      if (!content) continue;
+      const relPath = ctx.rel(f.path);
+      
+      FACTORY_TOOL_RE.lastIndex = 0;
+      let match;
+      while ((match = FACTORY_TOOL_RE.exec(content)) !== null) {
+        const funcName = match[1];
+        if (!funcName) continue;
+        // Extract tool name from function name: createEditTool -> edit
+        const toolName = funcName.replace(/^create/, "").replace(/Tool$/, "").toLowerCase();
+        // Filter out utility functions that aren't real tools:
+        // - Names > 15 chars are likely compound phrases (e.g., "tooldefinitionfromagent")
+        // - Names containing "definition", "wrapper", "manager", "handler", "builder",
+        //   "factory", "registry", "config", "provider", "resolver", "adapter",
+        //   "converter", "transformer" indicate utility/converter functions
+        if (toolName.length > 15) continue;
+        if (/definition|wrapper|manager|handler|builder|factory|registry|config|provider|resolver|adapter|converter|transformer/.test(toolName)) continue;
+        const key = `${relPath}:factory-function:${toolName}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const schema = extractSchemaNear(content, match.index);
+        tools.push({
+          name: toolName,
+          file: relPath,
+          framework: "factory-function",
+          schema,
+        });
       }
     }
 
@@ -4405,7 +4445,14 @@ class InformationFlowAnalyzer extends BaseAnalyzer {
     //   call_model, invoke_model, ai_client, model_client
     // Kept: provider names (openai/anthropic/claude/gpt/gemini/mistral/deepseek/
     //   qwen/bedrock) + LLM-specific terms (llm, chat_completion).
-    const LLM_NAME_RE = /\b(openai|anthropic|claude|gpt|llm|chat_completion|gemini|mistral|deepseek|qwen|bedrock)\b/i;
+    // LLM call site detection via symbol names.
+    // Two patterns needed because \b word boundary doesn't work for camelCase:
+    //   - `convertToLlm` has no \b before "Llm" (preceded by lowercase "o")
+    //   - `llmContext` has no \b after "llm" (followed by uppercase "C")
+    // Pattern 1: \b for snake_case/PascalCase boundaries (openai, anthropic, etc.)
+    // Pattern 2: camelCase-aware — matches "Llm" after lowercase letter, or "llm"/"LLM"
+    //            at non-letter boundary, with non-letter or end-of-string after
+    const LLM_NAME_RE = /\b(?:openai|anthropic|claude|gpt|chat_completion|gemini|mistral|deepseek|qwen|bedrock)\b|(?:(?:^|[^a-zA-Z])llm|(?:^|[^a-zA-Z])LLM|[a-z]Llm)(?:[^a-zA-Z]|$)/i;
     const llmNodes = new Set();
     for (const fn of symbols.functions || []) {
       if (fn.name && LLM_NAME_RE.test(fn.name) && fn.file) {
@@ -4434,8 +4481,10 @@ class InformationFlowAnalyzer extends BaseAnalyzer {
       respByModule.set(r.module, r.responsibility);
     }
 
-    // For each request entry, do a BFS (depth 6) and label each node with its
+    // For each request entry, do a BFS (depth 10) and label each node with its
     // responsibility. Detect if the flow passes through an LLM node.
+    // Increased from depth 6 to 10 to handle larger repos where LLM call sites
+    // are deeper in the call graph (e.g., worldmonitor: entry → gateway → handler → ... → LLM).
     const flows = [];
     for (const entry of requestEntries.slice(0, 8)) {
       const startId = pathToModuleId(entry.path);
@@ -4444,15 +4493,17 @@ class InformationFlowAnalyzer extends BaseAnalyzer {
       let llmHit = null;
       let maxDepth = 0;
 
-      while (queue.length > 0 && queue[0].depth < 6) {
+      while (queue.length > 0 && queue[0].depth < 10) {
         const { id, depth, path } = queue.shift();
         if (llmNodes.has(id) && !llmHit) {
           llmHit = { node: id, depth };
         }
         maxDepth = Math.max(maxDepth, depth);
         const neighbors = adj.get(id) || new Set();
-        // Follow only the most-connected neighbor to avoid explosion.
-        const next = [...neighbors].slice(0, 3);
+        // Follow top 5 most-connected neighbors (raised from 3 to 5).
+        // Rationale: LLM call sites may be in the 4th-5th neighbor's subgraph.
+        // Limiting to 3 caused false negatives in repos with multiple LLM integration paths.
+        const next = [...neighbors].slice(0, 5);
         for (const n of next) {
           if (visited.has(n)) continue;
           visited.add(n);
@@ -4735,13 +4786,19 @@ class CapabilityOntologyAnalyzer extends BaseAnalyzer {
     // Gate: if the repo has NO tools, NO prompts, NO LLM call sites, and NO
     // "LLM Interface" responsibility, it is not an AI agent project. Report
     // all capabilities as "n/a" with a clear reason.
+    //
+    // Strengthened gate (2026-07-26): LLM call sites alone are insufficient.
+    // A repo with only LLM utility functions (e.g., encoders, helpers) but no
+    // tools or prompts is likely a library/SDK, not an AI agent. Require at
+    // least one of: tools, prompts, OR (LLM call sites + LLM Interface responsibility).
     const hasTools = (tools.tools || []).length > 0;
     const hasPrompts = (prompts.prompts || []).length > 0;
     const hasLLMCallSites = (infoFlow.llmCallSites || []).length > 0;
     const hasLLMResponsibility = (responsibility.responsibilities || []).some(
       (r) => r.responsibility === "LLM Interface"
     );
-    const isAIProject = hasTools || hasPrompts || hasLLMCallSites || hasLLMResponsibility;
+    // New logic: tools OR prompts are strong signals. LLM call sites alone are weak.
+    const isAIProject = hasTools || hasPrompts || (hasLLMCallSites && hasLLMResponsibility);
 
     if (!isAIProject) {
       const capabilities = CAPABILITY_ONTOLOGY.map((cap) => ({
@@ -5356,9 +5413,13 @@ class ConstraintAnalyzer extends BaseAnalyzer {
   _extractDependencies(disc, store) {
     const deps = {};
     const manifest = disc.manifest || {};
-    const raw = manifest.dependencies || manifest.devDependencies || {};
-    const depNames = Array.isArray(raw) ? raw : Object.keys(raw);
+    
+    // Only check required dependencies, ignore optional/dev dependencies
+    // This prevents false positives like pyod's optional openai dependency
+    const requiredDeps = manifest.dependencies || {};
+    const depNames = Array.isArray(requiredDeps) ? requiredDeps : Object.keys(requiredDeps);
     const joined = depNames.join(" ").toLowerCase();
+    
     if (joined.includes("sqlite")) deps.sqlite = "sqlite3";
     if (joined.includes("sqlcipher")) deps.sqlcipher = "sqlcipher";
     if (joined.includes("openai")) deps.openai = "openai";
@@ -5367,6 +5428,7 @@ class ConstraintAnalyzer extends BaseAnalyzer {
     if (joined.includes("fastapi")) deps.fastapi = "fastapi";
     if (joined.includes("express")) deps.express = "express";
     if (joined.includes("flask")) deps.flask = "flask";
+    
     // Also check symbols for implicit LLM deps (Rust repos may not declare openai package)
     if (!deps.openai && !deps.anthropic && !deps.llm) {
       const sym = store.symbols || {};
@@ -5767,6 +5829,27 @@ class ConsistencyAnalyzer extends BaseAnalyzer {
             "LLM should verify LLM call sites by reading the actual file — if false positive, note InformationFlowAnalyzer over-broad regex; if real, note CapabilityOntology gate bug.",
         });
       }
+    }
+
+    // ── C7: AI project classification vs InformationFlow LLM reachability ──
+    // CapabilityOntology says isAIProject=true but InformationFlowAnalyzer
+    // found no LLM call sites or no flows reach LLM. This is a contradiction —
+    // if it's an AI project, there should be LLM calls somewhere.
+    if (isAI && (infoFlow.llmCallSites || []).length === 0) {
+      contradictions.push({
+        id: `C${contradictions.length + 1}`,
+        topic: "AI project classification vs LLM call sites",
+        severity: "high",
+        sourceA: { analyzer: "CapabilityOntology", claim: "isAIProject=true" },
+        sourceB: {
+          analyzer: "InformationFlowAnalyzer",
+          claim: "0 LLM call sites detected",
+        },
+        interpretation:
+          "CapabilityOntology classified this as an AI project (has prompts/tools/LLM-Interface responsibility) but InformationFlowAnalyzer found no LLM call sites via regex. Possible causes: (1) LLM calls use non-standard names not in LLM_NAME_RE, (2) LLM calls are in files not parsed by SymbolsAnalyzer, (3) AI project classification is a false positive (prompts/tools are test fixtures or docs).",
+        recommendation:
+          "LLM should verify by searching for actual LLM API calls (openai.chat.completions.create, anthropic.messages.create, etc.) in source code. If real LLM calls exist, note InformationFlowAnalyzer regex gap; if not, note CapabilityOntology false positive.",
+      });
     }
 
     // ── Summary ─────────────────────────────────────────────────────────
@@ -7161,7 +7244,9 @@ const EVIDENCE_SOURCE_WEIGHTS = {
   manifest: 0.10,  // package.json/pyproject.toml/Cargo.toml
   regex: 0.05,     // Regex scan (prompts, evaluations)
   keyword: 0.03,   // Keyword matching (responsibility, capability)
-  inference: 0.02, // Inference engine output (derived, not primary)
+  inference: 0.08, // Inference engine output (Decision/Constraint/Assumption analyzers)
+                   // Raised from 0.02 to 0.08: Architecture Knowledge Layer findings
+                   // were being rejected (confidence < 0.02) due to too-low weight.
 };
 
 /**
@@ -7795,7 +7880,14 @@ class VerificationLoop {
     const relevantCon = (con.contradictions || []).find((c) => {
       const topic = (c.topic || "").toLowerCase();
       const findingText = (finding.finding || "").toLowerCase();
-      return findingText.includes(topic) || topic.includes(finding.questionId.toLowerCase());
+      // Match by topic keywords (not questionId, which never matches natural language topics)
+      // Extract key terms from topic and check if they appear in finding text
+      const topicTerms = topic.split(/\s+/).filter(t => t.length > 3); // Skip short words
+      const hasTopicMatch = topicTerms.some(term => findingText.includes(term));
+      // Also check if finding's question category matches contradiction topic
+      const questionCategory = finding.questionId.toLowerCase(); // e.g., "q1", "q2"
+      const topicMatchesQuestion = topic.includes(questionCategory);
+      return hasTopicMatch || topicMatchesQuestion;
     });
     if (relevantCon) {
       counters.push({
@@ -7819,7 +7911,8 @@ class VerificationLoop {
 
     // Rule V3: Negative findings (checkedLocations but no support) are
     // always "verified" — there's nothing to contradict.
-    if (finding.support.length === 0 && finding.checkedLocations.length > 0 && counters.length === 0) {
+    // BUT: Do NOT override V2's "rejected" status (low confidence + counter evidence).
+    if (verifiedStatus !== "rejected" && finding.support.length === 0 && finding.checkedLocations.length > 0 && counters.length === 0) {
       verifiedStatus = "verified";
       note = "Negative finding (searched, found nothing) — verified by absence";
     }
@@ -9475,8 +9568,46 @@ class ReportGenerator {
       "",
       "## LLM Analysis Instructions",
       "",
-      `You are an experienced software architect. Based on the evidence above, write an engineering`,
+      `You are an experienced software architect. Based on the evidence above, write an`,
       `research report for **${repoName}**. Save it as \`report.md\` in the working folder.`,
+      "",
+      "### v2 Pipeline: 4-Phase Execution (plan0726.md Part 2)",
+      "",
+      "This brief uses the v2 pipeline with standardized Findings (see the ★ Findings section above).",
+      `Total ${fCount} Findings; after verification: ${vSum.verified || 0} verified / ${fDowngraded} downgraded / ${fRejected} rejected.`,
+      "",
+      "Execute in these 4 phases (do NOT skip):",
+      "",
+      "**Phase 1 — Planning (low reasoning_effort)**: Identify which Research Questions Q1-Q11 are most valuable for this repo. No analysis needed, just prioritize.",
+      "",
+      "**Phase 2 — Finding Validation (medium reasoning_effort)**: For each Finding in the ★ Findings section, perform Merge/Split/Reject/Verify:",
+      "- If multiple Findings describe the same phenomenon → Merge",
+      "- If one Finding conflates multiple phenomena → Split",
+      "- If verified=rejected or counter evidence outweighs support → Reject",
+      "- If counter evidence exists but is weaker than support → Keep and downgrade confidence",
+      "- Detect Conflicts between Findings (the script-level ConsistencyAnalyzer may have missed some)",
+      "",
+      "**Phase 3 — Architecture Reasoning (high reasoning_effort, thinking=enabled)**: Based on validated Findings, answer Why/Impact/Tradeoff:",
+      "- Why: Why was it designed this way? (not 'what is it')",
+      "- Impact: What are the consequences of this design choice? (performance/maintainability/extensibility)",
+      "- Tradeoff: What was sacrificed? What was gained?",
+      "",
+      "**Phase 4 — Executive Summary (low reasoning_effort)**: Generate the Markdown report. Three-part Executive Summary: Identity / Key Discovery / Recommendation.",
+      "",
+      "### Constraints (Do NOT)",
+      "",
+      "- **Do NOT** recommend technologies not present in the repository.",
+      "- **Do NOT** invent architecture not supported by evidence.",
+      "- **Do NOT** speculate beyond what Findings + Evidence Store show.",
+      "- **Do NOT** ignore counter evidence — if a Finding has counter[], address it explicitly.",
+      "- **Do NOT** cite verified=rejected Findings as conclusions.",
+      "- **Do NOT** write Architecture Score / Radar / Heatmap / SWOT / Best Practice / Future Work sections (low value, plan0726.md Part 7).",
+      "- **Do NOT** pad the report with low-value Traces — 5 sharp Traces beat 8 mediocre ones.",
+      "",
+      "### Finding Citation Format",
+      "",
+      "When citing Findings in Traces, use: `[F-001 @ Q1, confidence=0.85, verified]`.",
+      "Readers should be able to trace from a Trace back to the corresponding entry in the Findings section.",
       "",
       "### Core Methodology: Ontology-driven Research",
       "",
