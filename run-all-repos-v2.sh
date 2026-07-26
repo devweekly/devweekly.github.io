@@ -60,9 +60,16 @@ run_one() {
     fi
   fi
 
-  # Run analyzer to produce evidence-brief.md
-  if ! node "$SKILL" report "ref-only/$repo" --lang=zh > "$brief" 2> "$err"; then
-    echo "FAIL ${repo} (evidence-brief step, see ${err})"
+  # Run 'all' to generate evidence-store (needed by subagent workflow)
+  mkdir -p "${dir}/evidence-store"
+  if ! (cd "$dir" && node "../$SKILL" all "../ref-only/$repo" --lang=zh > evidence-store/full.json 2>> "$err"); then
+    echo "FAIL ${repo} (all step, see ${err})"
+    return 1
+  fi
+
+  # Run report to produce evidence-brief.md
+  if ! (cd "$dir" && node "../$SKILL" report "../ref-only/$repo" --lang=zh > evidence-brief.md 2>> "$err"); then
+    echo "FAIL ${repo} (report step, see ${err})"
     return 1
   fi
 

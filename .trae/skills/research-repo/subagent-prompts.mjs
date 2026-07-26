@@ -8,7 +8,7 @@
  */
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
-import { basename } from "node:path";
+import { basename, join } from "node:path";
 
 const PROMPTS = {
   "01-hypothesis": (repoName, lang) => ({
@@ -471,7 +471,8 @@ Every Trace must answer an architecture question that changes the reader's under
 export function writeSubagentPrompts(repoPath, options = {}) {
   const lang = options.lang === "zh" ? "zh" : "en";
   const repoName = basename(repoPath);
-  const outDir = "subagents";
+  const baseDir = options.outDir || process.cwd();
+  const outDir = join(baseDir, "subagents");
   if (!existsSync(outDir)) {
     mkdirSync(outDir, { recursive: true });
   }
@@ -481,7 +482,7 @@ export function writeSubagentPrompts(repoPath, options = {}) {
     const header = lang === "zh"
       ? `<!-- Target output: ${target} -->\n<!-- Repo: ${repoName} | Lang: ${lang} -->\n\n`
       : `<!-- Target output: ${target} -->\n<!-- Repo: ${repoName} | Lang: ${lang} -->\n\n`;
-    writeFileSync(`${outDir}/${key}.md`, header + text, "utf-8");
+    writeFileSync(join(outDir, `${key}.md`), header + text, "utf-8");
   }
 
   const index = lang === "zh"
@@ -540,6 +541,6 @@ Dispatch subagents in the following order (use Task tool; independent stages can
 - output: \`report.md\`
 `;
 
-  writeFileSync(`${outDir}/README.md`, index, "utf-8");
+  writeFileSync(join(outDir, "README.md"), index, "utf-8");
   return outDir;
 }

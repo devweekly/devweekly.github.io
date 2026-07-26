@@ -259,8 +259,10 @@ node .trae/skills/research-repo/research-repo.mjs report <repoPath> > evidence-b
 node .trae/skills/research-repo/research-repo.mjs report --lang=zh <repoPath> > evidence-brief.md
 
 # Generate subagent prompt files for the multi-stage LLM workflow.
-# Writes subagents/*.md in the working folder. Then dispatch each prompt to an LLM subagent.
-node .trae/skills/research-repo/research-repo.mjs subagent-prompts --lang=zh <repoPath>
+# Run this inside the working folder (research-{repo}-{date}), after 'all'.
+# Writes subagents/*.md in the current directory. Then dispatch each prompt to an LLM subagent.
+cd research-{repo}-{date}
+node ../.trae/skills/research-repo/research-repo.mjs subagent-prompts --lang=zh <repoPath>
 
 # Incremental update: when the repo gets new code (git pull), update evidence
 # without re-running everything from scratch. Uses git diff to detect changed
@@ -537,7 +539,8 @@ flowchart TD
 `subagent-prompts` 命令会根据 `--lang` 在 working folder 下生成 `subagents/*.md`，每个文件对应一个 subagent 任务：
 
 ```bash
-node .trae/skills/research-repo/research-repo.mjs subagent-prompts --lang=zh <repoPath>
+cd research-{repo}-{date}
+node ../.trae/skills/research-repo/research-repo.mjs subagent-prompts --lang=zh <repoPath>
 ```
 
 生成内容：
