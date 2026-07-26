@@ -5,6 +5,8 @@
  * The `subagent-prompts` command writes these prompts into the working folder
  * as `subagents/*.md`. The main Agent then dispatches each prompt to an LLM
  * subagent, which reads the evidence store and writes the target artifact.
+ *
+ * v2: Question-centric pipeline with Ontology Mapper and shared findings.
  */
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -49,220 +51,442 @@ For each hypothesis include:
 Write output to \`01-hypotheses.md\`. Only list hypotheses, no extra summary.`,
   }),
 
-  "02-evidence-architecture": (repoName, lang) => ({
-    target: "02-evidence/architecture.md",
+  "02-ontology": (repoName, lang) => ({
+    target: "02-ontology.md",
     text:
       lang === "zh"
-        ? `# 架构深度分析 — ${repoName}
+        ? `# Ontology Mapper — ${repoName}
 
-你是一位软件架构师。请基于证据深入分析 ${repoName} 的核心架构，输出到 \`02-evidence/architecture.md\`。
+你是一位本体工程师。请从证据中提取 ${repoName} 的**共享语义层**，输出到 \`02-ontology.md\`。
 
 必读输入：
+- \`evidence-brief.md\`（§5.5 Ontology 视图）
+- \`evidence-store/ontology.json\`（脚本生成的原始本体数据）
+- \`evidence-store/full.json\`（capabilityOntology、responsibility 章节）
+- \`evidence-store/symbols.json\`（关键函数/类定义）
+
+你的任务**不是**重新分析架构，而是提取并标准化以下语义对象：
+
+## 实体类型
+
+- **Component**：核心模块/组件（如 Agent、Planner、Executor、ToolRegistry）
+- **Interface**：组件间的接口/协议（如 LLMProvider、ToolExecutor、ContextStore）
+- **Service**：提供特定能力的服务（如 PromptAssembler、EvidenceCollector）
+- **Adapter**：与外部系统交互的适配器（如 OpenAIAdapter、MCPClient）
+- **Workflow**：端到端的业务流程（如 AgentLoop、ResearchPipeline）
+- **Prompt**：Prompt 模板/变量（如 system_prompt、user_template）
+- **Tool**：Tool 定义/注册（如 @tool、Tool()、server.tool）
+
+## 输出格式
+
+\`\`\`markdown
+# Ontology — ${repoName}
+
+## Components
+
+| Name | Responsibility | Key Files | Depends On |
+|------|---------------|-----------|------------|
+| Agent | Orchestrates planning/execution | src/agent.ts | Planner, Executor |
+
+## Interfaces
+
+| Name | Purpose | Implemented By |
+|------|---------|----------------|
+| LLMProvider | Abstracts LLM calls | OpenAIAdapter, AnthropicAdapter |
+
+## Relations
+
+| From | To | Relation Type | Description |
+|------|----|----|------------|
+| Agent | Planner | uses | Delegates planning tasks |
+| Agent | LLMProvider | depends_on | Calls LLM for reasoning |
+
+## Capabilities
+
+| Capability | Provided By | Evidence |
+|------------|-------------|----------|
+| Multi-agent orchestration | Agent | src/agent.ts:L45-L80 |
+\`\`\`
+
+约束：
+- 每个实体必须有明确的文件路径证据。
+- 不要推断功能；必须查看实现或调用链。
+- 如果 \`evidence-store/ontology.json\` 已包含完整数据，直接引用而非重复。`
+        : `# Ontology Mapper — ${repoName}
+
+You are an ontology engineer. Extract the **shared semantic layer** of ${repoName} from the evidence and write output to \`02-ontology.md\`.
+
+Required inputs:
+- \`evidence-brief.md\` (§5.5 Ontology View)
+- \`evidence-store/ontology.json\` (script-generated raw ontology data)
+- \`evidence-store/full.json\` (capabilityOntology, responsibility sections)
+- \`evidence-store/symbols.json\` (key function/class definitions)
+
+Your task is **NOT** to re-analyze architecture, but to extract and standardize the following semantic objects:
+
+## Entity Types
+
+- **Component**: Core modules/components (e.g., Agent, Planner, Executor, ToolRegistry)
+- **Interface**: Interfaces/protocols between components (e.g., LLMProvider, ToolExecutor, ContextStore)
+- **Service**: Services providing specific capabilities (e.g., PromptAssembler, EvidenceCollector)
+- **Adapter**: Adapters interacting with external systems (e.g., OpenAIAdapter, MCPClient)
+- **Workflow**: End-to-end business processes (e.g., AgentLoop, ResearchPipeline)
+- **Prompt**: Prompt templates/variables (e.g., system_prompt, user_template)
+- **Tool**: Tool definitions/registrations (e.g., @tool, Tool(), server.tool)
+
+## Output Format
+
+\`\`\`markdown
+# Ontology — ${repoName}
+
+## Components
+
+| Name | Responsibility | Key Files | Depends On |
+|------|---------------|-----------|------------|
+| Agent | Orchestrates planning/execution | src/agent.ts | Planner, Executor |
+
+## Interfaces
+
+| Name | Purpose | Implemented By |
+|------|---------|----------------|
+| LLMProvider | Abstracts LLM calls | OpenAIAdapter, AnthropicAdapter |
+
+## Relations
+
+| From | To | Relation Type | Description |
+|------|----|----|------------|
+| Agent | Planner | uses | Delegates planning tasks |
+| Agent | LLMProvider | depends_on | Calls LLM for reasoning |
+
+## Capabilities
+
+| Capability | Provided By | Evidence |
+|------------|-------------|----------|
+| Multi-agent orchestration | Agent | src/agent.ts:L45-L80 |
+\`\`\`
+
+Constraints:
+- Every entity must have explicit file-path evidence.
+- Do not infer functionality; inspect implementation or call chains.
+- If \`evidence-store/ontology.json\` already contains complete data, reference it instead of duplicating.`,
+  }),
+
+  "RQ-001-architecture-pattern": (repoName, lang) => ({
+    target: "RQ-001-architecture-pattern.md",
+    text:
+      lang === "zh"
+        ? `# RQ-001: 核心架构模式 — ${repoName}
+
+**Research Question**: ${repoName} 采用什么核心架构模式？它是如何在规划与执行之间实现分离的？
+
+你是一位软件架构师。你的首要目标**不是**总结架构，而是**验证或推翻** \`01-hypotheses.md\` 中与架构相关的假设。
+
+必读输入：
+- \`01-hypotheses.md\`（找到与架构相关的假设）
+- \`02-ontology.md\`（共享语义层，引用其中的 Component/Interface/Relation）
 - \`evidence-brief.md\`
-- \`evidence-store/full.json\`（architecture、responsibility、dependencySmell、stability、informationFlow 等章节）
+- \`evidence-store/full.json\`（architecture、responsibility、stability 章节）
 - \`evidence-store/interesting_files.json\` 中排名前 20 的文件
-- 必要时读取 \`evidence-store/symbols.json\` 定位关键函数/类
+
+**Evidence Budget**：
+- 最多读取 **50 个文件**
+- 最多读取 **200 个符号**（函数/类）
+- 当置信度稳定时停止（不要为了凑数而过度阅读）
 
 输出结构：
+
+## Research Question
+
+${repoName} 采用什么核心架构模式？它是如何在规划与执行之间实现分离的？
+
+## Hypothesis Evaluation
+
+| 假设 | 状态 | 证据 |
+|------|------|------|
+| H-XXX: ... | 支持 / 反驳 / 证据不足 | ... |
 
 ## Findings
 
 ### Finding 1: {标题}
 - **Conclusion**: ...
 - **Evidence**: \`file.py:L10-L30\`, 或简报 §X
+- **Counter Evidence**: 哪些证据与这个结论矛盾？（例如：没有测试验证、没有运行时注册等）
+- **Alternative Interpretation**: 还有什么其他解释？（例如：可能只是 wrapper 而非真正的抽象）
 - **Confidence**: High / Medium / Low
-- **Reason**: 为什么得出这个结论
+- **Unknowns**: 还需要哪些源码验证？
 
-## Open Questions
-- 还需要哪些源码验证？
-- 哪些证据之间存在冲突？
+## Shared Findings
+
+如果你发现了其他 Research Question 可能关心的发现，列在这里供后续 Agent 引用：
+
+- **SF-001**: {简述} — 详见 \`shared-findings.md\`
+
+## RQ Status
+
+- [x] Investigating
+- [ ] Validated
+- [ ] Rejected
+- [ ] Needs Evidence
 
 约束：
 - 每个 Finding 必须引用至少一个证据源。
 - 不要从命名推断功能；必须查看调用链或实现。
-- 区分事实与解读。`
-        : `# Architecture Deep Dive — ${repoName}
+- 区分事实与解读。
+- **必须**包含 Counter Evidence 和 Alternative Interpretation。`
+        : `# RQ-001: Core Architecture Pattern — ${repoName}
 
-You are a software architect. Deeply analyze the core architecture of ${repoName} based on the evidence and write output to \`02-evidence/architecture.md\`.
+**Research Question**: What core architecture pattern does ${repoName} use? How does it enforce separation between planning and execution?
+
+You are a software architect. Your primary goal is **NOT** to summarize architecture, but to **evaluate whether any hypothesis in** \`01-hypotheses.md\` **is supported, refuted, or unaffected** by the architecture evidence.
 
 Required inputs:
+- \`01-hypotheses.md\` (find architecture-related hypotheses)
+- \`02-ontology.md\` (shared semantic layer; reference Component/Interface/Relation)
 - \`evidence-brief.md\`
-- \`evidence-store/full.json\` (architecture, responsibility, dependencySmell, stability, informationFlow sections)
+- \`evidence-store/full.json\` (architecture, responsibility, stability sections)
 - Top 20 files from \`evidence-store/interesting_files.json\`
-- \`evidence-store/symbols.json\` when locating key functions/classes
+
+**Evidence Budget**:
+- Maximum **50 files**
+- Maximum **200 symbols** (functions/classes)
+- Stop when confidence stabilizes (do not over-read just to fill quota)
 
 Output structure:
+
+## Research Question
+
+What core architecture pattern does ${repoName} use? How does it enforce separation between planning and execution?
+
+## Hypothesis Evaluation
+
+| Hypothesis | Status | Evidence |
+|------------|--------|----------|
+| H-XXX: ... | supported / refuted / insufficient | ... |
 
 ## Findings
 
 ### Finding 1: {Title}
 - **Conclusion**: ...
 - **Evidence**: \`file.py:L10-L30\` or brief §X
+- **Counter Evidence**: What evidence contradicts this conclusion? (e.g., no tests verify this, no runtime registration found)
+- **Alternative Interpretation**: What other explanations are possible? (e.g., might merely be a wrapper rather than true abstraction)
 - **Confidence**: High / Medium / Low
-- **Reason**: why this conclusion follows
+- **Unknowns**: What source-code verification is still needed?
 
-## Open Questions
-- What source code still needs verification?
-- Which evidence sources conflict?
+## Shared Findings
+
+If you discover findings that other Research Questions might care about, list them here for subsequent agents to reference:
+
+- **SF-001**: {brief description} — see \`shared-findings.md\`
+
+## RQ Status
+
+- [x] Investigating
+- [ ] Validated
+- [ ] Rejected
+- [ ] Needs Evidence
 
 Constraints:
 - Every Finding must cite at least one evidence source.
 - Do not infer function from name alone; inspect call chains or implementation.
-- Separate fact from interpretation.`,
+- Separate fact from interpretation.
+- **Must** include Counter Evidence and Alternative Interpretation.`,
   }),
 
-  "02-evidence-guardrails": (repoName, lang) => ({
-    target: "02-evidence/guardrails.md",
+  "RQ-002-llm-provider-isolation": (repoName, lang) => ({
+    target: "RQ-002-llm-provider-isolation.md",
     text:
       lang === "zh"
-        ? `# Guardrails 与安全分析 — ${repoName}
+        ? `# RQ-002: LLM Provider 隔离机制 — ${repoName}
 
-分析 ${repoName} 在 AI/Agent 场景下的 guardrails、安全机制、适配器与边界处理。输出到 \`02-evidence/guardrails.md\`。
+**Research Question**: ${repoName} 如何隔离 LLM Provider？它是真正的抽象还是仅仅是 wrapper？
+
+你的首要目标是**验证或推翻** \`01-hypotheses.md\` 中与 LLM 集成相关的假设。
 
 必读输入：
-- \`evidence-brief.md\`（capabilityOntology、safety、§6 Negative Findings）
-- \`evidence-store/full.json\`
-- \`evidence-store/prompts.json\`、\`evidence-store/tools.json\`
-- 关键源码文件（如 middleware、policy、approval、validation 相关）
+- \`01-hypotheses.md\`
+- \`02-ontology.md\`（查找 LLMProvider Interface 及其 Implemented By）
+- \`evidence-brief.md\`
+- \`evidence-store/full.json\`（capabilityOntology、informationFlow 章节）
+- 关键源码（LLM 调用点、Provider 注册、Adapter 实现）
 
-输出结构同 architecture.md：Findings + Open Questions。
+**Evidence Budget**：最多 50 个文件 / 200 个符号
 
-重点关注：
-- 输入校验、权限控制、token 保护
-- Tool 审批、human-in-the-loop、rate limiting
-- 错误处理、重试、降级策略
-- 与外部 LLM/服务交互的安全边界`
-        : `# Guardrails & Safety Analysis — ${repoName}
+输出结构同 RQ-001：Research Question → Hypothesis Evaluation → Findings（含 Counter Evidence / Alternative / Unknowns）→ Shared Findings → RQ Status
 
-Analyze guardrails, safety mechanisms, adapters, and boundary handling for ${repoName} in AI/Agent scenarios. Write output to \`02-evidence/guardrails.md\`.
+约束：
+- 如果 \`02-ontology.md\` 中已定义 LLMProvider Interface，直接引用。
+- 必须查看实际调用链，不要仅从类名推断。
+- 如果没有找到 LLM 隔离机制，明确记录为 Negative Finding。`
+        : `# RQ-002: LLM Provider Isolation — ${repoName}
+
+**Research Question**: How does ${repoName} isolate LLM providers? Is it a true abstraction or merely a wrapper?
+
+Your primary goal is to **evaluate whether any hypothesis in** \`01-hypotheses.md\` **related to LLM integration is supported, refuted, or unaffected**.
 
 Required inputs:
-- \`evidence-brief.md\` (capabilityOntology, safety, §6 Negative Findings)
-- \`evidence-store/full.json\`
-- \`evidence-store/prompts.json\`, \`evidence-store/tools.json\`
-- Key source files (middleware, policy, approval, validation)
+- \`01-hypotheses.md\`
+- \`02-ontology.md\` (find LLMProvider Interface and its Implemented By)
+- \`evidence-brief.md\`
+- \`evidence-store/full.json\` (capabilityOntology, informationFlow sections)
+- Key source files (LLM call sites, Provider registration, Adapter implementations)
 
-Output structure follows architecture.md: Findings + Open Questions.
+**Evidence Budget**: Maximum 50 files / 200 symbols
 
-Focus areas:
-- Input validation, authorization, token protection
-- Tool approval, human-in-the-loop, rate limiting
-- Error handling, retries, fallback strategies
-- Security boundaries with external LLM/services`,
+Output structure follows RQ-001: Research Question → Hypothesis Evaluation → Findings (with Counter Evidence / Alternative / Unknowns) → Shared Findings → RQ Status
+
+Constraints:
+- If \`02-ontology.md\` already defines LLMProvider Interface, reference it directly.
+- Must inspect actual call chains; do not infer from class names alone.
+- If no LLM isolation mechanism is found, explicitly record as Negative Finding.`,
   }),
 
-  "02-evidence-testing": (repoName, lang) => ({
-    target: "02-evidence/testing.md",
+  "RQ-003-tool-determinism": (repoName, lang) => ({
+    target: "RQ-003-tool-determinism.md",
     text:
       lang === "zh"
-        ? `# 测试与正确性分析 — ${repoName}
+        ? `# RQ-003: Tool 执行确定性 — ${repoName}
 
-分析 ${repoName} 的测试策略、Evaluation 基础设施与正确性验证缺口。输出到 \`02-evidence/testing.md\`。
+**Research Question**: ${repoName} 如何保证 Tool 执行的确定性？
+
+你的首要目标是**验证或推翻** \`01-hypotheses.md\` 中与 Tool 执行相关的假设。
 
 必读输入：
-- \`evidence-brief.md\`（§7 Correctness、§6 Negative Findings）
-- \`evidence-store/tests.json\`、\`evidence-store/evaluations.json\`
-- \`evidence-store/full.json\`
+- \`01-hypotheses.md\`
+- \`02-ontology.md\`（查找 Tool 相关 Component/Interface）
+- \`evidence-brief.md\`
+- \`evidence-store/tools.json\`
+- 关键源码（Tool 注册、执行器、错误处理、重试逻辑）
 
-输出结构：Findings + Open Questions。
+**Evidence Budget**：最多 50 个文件 / 200 个符号
+
+输出结构同 RQ-001。
 
 重点关注：
-- 测试覆盖率与测试类别分布（unit/integration/e2e/benchmark）
-- Eval 文件是否真正评估 AI 行为，还是性能基准
-- 边界情况、对抗输入、prompt injection 测试是否缺失
-- CI 门禁与质量信号`
-        : `# Testing & Correctness Analysis — ${repoName}
+- Tool 注册机制（静态 vs 动态）
+- 执行沙箱/隔离
+- 错误处理与重试策略
+- 幂等性保证
+- 超时与取消机制`
+        : `# RQ-003: Tool Execution Determinism — ${repoName}
 
-Analyze the testing strategy, evaluation infrastructure, and correctness-validation gaps of ${repoName}. Write output to \`02-evidence/testing.md\`.
+**Research Question**: How does ${repoName} ensure deterministic tool execution?
+
+Your primary goal is to **evaluate whether any hypothesis in** \`01-hypotheses.md\` **related to tool execution is supported, refuted, or unaffected**.
 
 Required inputs:
-- \`evidence-brief.md\` (§7 Correctness, §6 Negative Findings)
-- \`evidence-store/tests.json\`, \`evidence-store/evaluations.json\`
-- \`evidence-store/full.json\`
+- \`01-hypotheses.md\`
+- \`02-ontology.md\` (find Tool-related Component/Interface)
+- \`evidence-brief.md\`
+- \`evidence-store/tools.json\`
+- Key source files (Tool registration, executor, error handling, retry logic)
 
-Output structure: Findings + Open Questions.
+**Evidence Budget**: Maximum 50 files / 200 symbols
+
+Output structure follows RQ-001.
 
 Focus areas:
-- Test coverage and category distribution (unit/integration/e2e/benchmark)
-- Whether eval files assess AI behavior or only performance
-- Missing boundary, adversarial, or prompt-injection tests
-- CI gates and quality signals`,
+- Tool registration mechanism (static vs dynamic)
+- Execution sandboxing/isolation
+- Error handling and retry strategies
+- Idempotency guarantees
+- Timeout and cancellation mechanisms`,
   }),
 
-  "02-evidence-ai-patterns": (repoName, lang) => ({
-    target: "02-evidence/ai-patterns.md",
+  "RQ-004-context-propagation": (repoName, lang) => ({
+    target: "RQ-004-context-propagation.md",
     text:
       lang === "zh"
-        ? `# AI Agent 模式分析 — ${repoName}
+        ? `# RQ-004: Context 传播机制 — ${repoName}
 
-分析 ${repoName} 中的 AI Agent 设计模式。输出到 \`02-evidence/ai-patterns.md\`。
+**Research Question**: ${repoName} 中 Context 是如何在组件间传播的？
+
+你的首要目标是**验证或推翻** \`01-hypotheses.md\` 中与 Context 管理相关的假设。
 
 必读输入：
-- \`evidence-brief.md\`（capabilityOntology、prompts、tools、entrypoints）
-- \`evidence-store/prompts.json\`、\`evidence-store/tools.json\`
-- \`evidence-store/full.json\`
-- 关键源码（agent loop、planner、executor、tool registry、context）
+- \`01-hypotheses.md\`
+- \`02-ontology.md\`（查找 Context 相关 Component/Interface）
+- \`evidence-brief.md\`
+- \`evidence-store/full.json\`（informationFlow 章节）
+- 关键源码（Context 定义、传递路径、压缩/截断逻辑）
 
-输出结构：Findings + Open Questions。
+**Evidence Budget**：最多 50 个文件 / 200 个符号
+
+输出结构同 RQ-001。
 
 重点关注：
-- Agent 生命周期：planning、execution、reflection、retry、cancellation
-- Prompt 生命周期：versioning、assembly、compression、template
-- Tool 注册、调用、与 Agent 的绑定关系
-- Context propagation、multi-agent、human approval、streaming
-- 与 MCP / OpenAI Agents / LangGraph 等模式的对比`
-        : `# AI Agent Pattern Analysis — ${repoName}
+- Context 数据结构
+- 跨组件传递方式（参数传递 vs 全局状态 vs 事件总线）
+- Context 压缩/截断策略
+- Multi-agent 场景下的 Context 隔离
+- Human-in-the-loop 的 Context 切换`
+        : `# RQ-004: Context Propagation — ${repoName}
 
-Analyze AI Agent design patterns in ${repoName}. Write output to \`02-evidence/ai-patterns.md\`.
+**Research Question**: How is context propagated between components in ${repoName}?
+
+Your primary goal is to **evaluate whether any hypothesis in** \`01-hypotheses.md\` **related to context management is supported, refuted, or unaffected**.
 
 Required inputs:
-- \`evidence-brief.md\` (capabilityOntology, prompts, tools, entrypoints)
-- \`evidence-store/prompts.json\`, \`evidence-store/tools.json\`
-- \`evidence-store/full.json\`
-- Key source files (agent loop, planner, executor, tool registry, context)
+- \`01-hypotheses.md\`
+- \`02-ontology.md\` (find Context-related Component/Interface)
+- \`evidence-brief.md\`
+- \`evidence-store/full.json\` (informationFlow section)
+- Key source files (Context definition, propagation paths, compression/truncation logic)
 
-Output structure: Findings + Open Questions.
+**Evidence Budget**: Maximum 50 files / 200 symbols
+
+Output structure follows RQ-001.
 
 Focus areas:
-- Agent lifecycle: planning, execution, reflection, retry, cancellation
-- Prompt lifecycle: versioning, assembly, compression, templates
-- Tool registration, invocation, and binding to agents
-- Context propagation, multi-agent, human approval, streaming
-- Comparison with MCP / OpenAI Agents / LangGraph patterns`,
+- Context data structure
+- Cross-component propagation method (parameter passing vs global state vs event bus)
+- Context compression/truncation strategies
+- Context isolation in multi-agent scenarios
+- Context switching for human-in-the-loop`,
   }),
 
-  "02-evidence-evolution": (repoName, lang) => ({
-    target: "02-evidence/evolution.md",
+  "RQ-005-architecture-evolution": (repoName, lang) => ({
+    target: "RQ-005-architecture-evolution.md",
     text:
       lang === "zh"
-        ? `# 架构演化分析 — ${repoName}
+        ? `# RQ-005: 架构演化路径 — ${repoName}
 
-基于 git 历史与代码结构，推断 ${repoName} 的架构演化路径与技术债。输出到 \`02-evidence/evolution.md\`。
+**Research Question**: ${repoName} 的架构是如何演化的？有哪些关键的重构节点？
+
+你的首要目标是**验证或推翻** \`01-hypotheses.md\` 中与架构演化相关的假设。
 
 必读输入：
+- \`01-hypotheses.md\`
+- \`02-ontology.md\`
 - \`evidence-brief.md\`
 - \`evidence-store/git_history.json\`
-- \`evidence-store/full.json\`（architecture、dependencySmell、stability）
-- \`evidence-store/interesting_files.json\`
+- \`evidence-store/full.json\`（architecture、dependencySmell、stability 章节）
 
-输出结构：Findings + Open Questions。
+**Evidence Budget**：最多 50 个文件 / 200 个符号
+
+输出结构同 RQ-001。
 
 重点关注：
 - 提交量、贡献者、主要重构节点
-- 模块增长方式： monolith → split？新增产品形态？
+- 模块增长方式：monolith → split？新增产品形态？
 - 循环依赖、hub modules、不稳定依赖的演化趋势
 - 测试/eval 基础设施是早期还是后期加入`
-        : `# Architecture Evolution Analysis — ${repoName}
+        : `# RQ-005: Architecture Evolution Path — ${repoName}
 
-Infer the architectural evolution path and technical debt of ${repoName} from git history and code structure. Write output to \`02-evidence/evolution.md\`.
+**Research Question**: How has ${repoName}'s architecture evolved? What are the key refactoring points?
+
+Your primary goal is to **evaluate whether any hypothesis in** \`01-hypotheses.md\` **related to architecture evolution is supported, refuted, or unaffected**.
 
 Required inputs:
+- \`01-hypotheses.md\`
+- \`02-ontology.md\`
 - \`evidence-brief.md\`
 - \`evidence-store/git_history.json\`
-- \`evidence-store/full.json\` (architecture, dependencySmell, stability)
-- \`evidence-store/interesting_files.json\`
+- \`evidence-store/full.json\` (architecture, dependencySmell, stability sections)
 
-Output structure: Findings + Open Questions.
+**Evidence Budget**: Maximum 50 files / 200 symbols
+
+Output structure follows RQ-001.
 
 Focus areas:
 - Commit volume, contributors, major refactoring points
@@ -281,21 +505,36 @@ Focus areas:
 
 必读输入：
 - \`01-hypotheses.md\`
-- \`02-evidence/*.md\`
+- \`02-ontology.md\`
+- \`RQ-*.md\`（所有 Research Question 文件）
+- \`shared-findings.md\`（如果存在）
 - \`evidence-brief.md\`
 - \`evidence-store/full.json\`
 
+你的任务：
+
+1. **更新 Research Question 状态**：根据每个 RQ 文件的证据，将其状态更新为 Validated / Rejected / Needs Evidence
+2. **验证假设**：检查每个假设是否被支持、反驳或证据不足
+3. **识别证据间冲突**：找出不同 RQ 文件之间的矛盾
+4. **校准置信度**：哪些 Finding 应该升级/降级？
+
 输出结构：
+
+## Research Question 状态追踪
+
+| RQ | 状态 | 关键发现 | 置信度 |
+|----|------|----------|--------|
+| RQ-001 | Validated / Rejected / Needs Evidence | ... | High / Medium / Low |
 
 ## 假设验证
 
 | 假设 | 支持证据 | 矛盾证据 | 结论 | 置信度 |
 |------|----------|----------|------|--------|
-| ...  | ...      | ...      | 成立 / 不成立 / 证据不足 | High / Medium / Low |
+| H-XXX: ... | ... | ... | 成立 / 不成立 / 证据不足 | High / Medium / Low |
 
 ## 证据间冲突
 
-- 冲突 A：... vs ...
+- 冲突 A：RQ-001 Finding 1 vs RQ-003 Finding 2
 - 裁决：...
 
 ## 置信度校准
@@ -312,21 +551,36 @@ You are a reviewer. Cross-validate the evidence produced by previous subagents a
 
 Required inputs:
 - \`01-hypotheses.md\`
-- \`02-evidence/*.md\`
+- \`02-ontology.md\`
+- \`RQ-*.md\` (all Research Question files)
+- \`shared-findings.md\` (if present)
 - \`evidence-brief.md\`
 - \`evidence-store/full.json\`
 
+Your tasks:
+
+1. **Update Research Question status**: Based on evidence in each RQ file, update status to Validated / Rejected / Needs Evidence
+2. **Validate hypotheses**: Check whether each hypothesis is supported, refuted, or has insufficient evidence
+3. **Identify evidence conflicts**: Find contradictions between different RQ files
+4. **Calibrate confidence**: Which Findings should be upgraded/downgraded?
+
 Output structure:
+
+## Research Question Status Tracking
+
+| RQ | Status | Key Findings | Confidence |
+|----|--------|--------------|------------|
+| RQ-001 | Validated / Rejected / Needs Evidence | ... | High / Medium / Low |
 
 ## Hypothesis Validation
 
 | Hypothesis | Supporting Evidence | Contradicting Evidence | Verdict | Confidence |
 |------------|---------------------|------------------------|---------|------------|
-| ...        | ...                 | ...                    | holds / refuted / insufficient | High / Medium / Low |
+| H-XXX: ... | ... | ... | holds / refuted / insufficient | High / Medium / Low |
 
 ## Evidence Conflicts
 
-- Conflict A: ... vs ...
+- Conflict A: RQ-001 Finding 1 vs RQ-003 Finding 2
 - Resolution: ...
 
 ## Confidence Calibration
@@ -345,19 +599,29 @@ Output structure:
       lang === "zh"
         ? `# 对比分析 — ${repoName}
 
-将 ${repoName} 与同类知名项目或模式进行对比，输出到 \`04-comparative.md\`。
+将 ${repoName} 与**以下显式列出的项目**进行对比，输出到 \`04-comparative.md\`。
+
+**只允许对比以下项目**（禁止自行编造其他项目）：
+- OpenAI Agents SDK
+- LangGraph
+- Claude Code
+- Codex
+- AutoGen
+- CrewAI
+- MCP
 
 必读输入：
 - \`evidence-brief.md\`
-- \`02-evidence/architecture.md\` 与 \`02-evidence/ai-patterns.md\`
+- \`02-ontology.md\`
+- \`RQ-001-architecture-pattern.md\` 与 \`RQ-002-llm-provider-isolation.md\`
 - \`03-cross-validation.md\`
 
 输出结构：
 
 ## 对比维度
 
-| 维度 | ${repoName} | 同类项目 A | 同类项目 B | 差异含义 |
-|------|-------------|------------|------------|----------|
+| 维度 | ${repoName} | OpenAI Agents SDK | LangGraph | 差异含义 |
+|------|-------------|-------------------|-----------|----------|
 
 维度建议：
 - 架构模式（Plugin / Pipeline / Graph / Monolith）
@@ -377,19 +641,29 @@ Output structure:
 - 哪些设计选择可能在其它场景下成为陷阱？`
         : `# Comparative Analysis — ${repoName}
 
-Compare ${repoName} with similar well-known projects or patterns. Write output to \`04-comparative.md\`.
+Compare ${repoName} with the **explicitly listed projects below** and write output to \`04-comparative.md\`.
+
+**Only compare against these projects** (do NOT invent other projects):
+- OpenAI Agents SDK
+- LangGraph
+- Claude Code
+- Codex
+- AutoGen
+- CrewAI
+- MCP
 
 Required inputs:
 - \`evidence-brief.md\`
-- \`02-evidence/architecture.md\` and \`02-evidence/ai-patterns.md\`
+- \`02-ontology.md\`
+- \`RQ-001-architecture-pattern.md\` and \`RQ-002-llm-provider-isolation.md\`
 - \`03-cross-validation.md\`
 
 Output structure:
 
 ## Comparison Dimensions
 
-| Dimension | ${repoName} | Peer A | Peer B | Implication |
-|-----------|-------------|--------|--------|-------------|
+| Dimension | ${repoName} | OpenAI Agents SDK | LangGraph | Implication |
+|-----------|-------------|-------------------|-----------|-------------|
 
 Suggested dimensions:
 - Architecture pattern (Plugin / Pipeline / Graph / Monolith)
@@ -417,10 +691,16 @@ Suggested dimensions:
 
 你是首席软件架构师。请综合所有证据与 subagent 产出，撰写最终工程研究报告 \`report.md\`。
 
+**严格限制**：
+- **禁止创建新的 Finding**。只整合经过 \`03-cross-validation.md\` 验证的 Finding。
+- **禁止重新解释**。只引用已被标记为 Validated 的 Research Question。
+- **禁止推测**。如果证据不足，明确说「未知」。
+
 必读输入：
 - \`evidence-brief.md\`
 - \`01-hypotheses.md\`
-- \`02-evidence/*.md\`
+- \`02-ontology.md\`
+- \`RQ-*.md\`（只引用状态为 Validated 的）
 - \`03-cross-validation.md\`
 - \`04-comparative.md\`（若存在）
 
@@ -443,10 +723,16 @@ Suggested dimensions:
 
 You are the lead software architect. Synthesize all evidence and subagent outputs into the final engineering research report \`report.md\`.
 
+**Strict constraints**:
+- **Never create new findings**. Only summarize validated findings accepted by \`03-cross-validation.md\`.
+- **Never re-interpret**. Only cite Research Questions marked as Validated.
+- **Never speculate**. If evidence is insufficient, explicitly say "unknown".
+
 Required inputs:
 - \`evidence-brief.md\`
 - \`01-hypotheses.md\`
-- \`02-evidence/*.md\`
+- \`02-ontology.md\`
+- \`RQ-*.md\` (only cite those with status = Validated)
 - \`03-cross-validation.md\`
 - \`04-comparative.md\` (if present)
 
@@ -486,7 +772,7 @@ export function writeSubagentPrompts(repoPath, options = {}) {
   }
 
   const index = lang === "zh"
-    ? `# Subagent 执行顺序
+    ? `# Subagent 执行顺序（v2: Question-centric Pipeline）
 
 请按以下顺序派发 subagent（可用 Task 工具并行执行无依赖的阶段）：
 
@@ -494,26 +780,40 @@ export function writeSubagentPrompts(repoPath, options = {}) {
 - prompt: \`subagents/01-hypothesis.md\`
 - output: \`01-hypotheses.md\`
 
-## Stage 2 — 证据收集（并行）
-- \`subagents/02-evidence-architecture.md\` → \`02-evidence/architecture.md\`
-- \`subagents/02-evidence-guardrails.md\` → \`02-evidence/guardrails.md\`
-- \`subagents/02-evidence-testing.md\` → \`02-evidence/testing.md\`
-- \`subagents/02-evidence-ai-patterns.md\` → \`02-evidence/ai-patterns.md\`
-- \`subagents/02-evidence-evolution.md\` → \`02-evidence/evolution.md\`
+## Stage 2 — Ontology Mapper（共享语义层）
+- prompt: \`subagents/02-ontology.md\`
+- output: \`02-ontology.md\`
 
-## Stage 3 — 交叉验证
+## Stage 3 — Research Question Agents（并行）
+- \`subagents/RQ-001-architecture-pattern.md\` → \`RQ-001-architecture-pattern.md\`
+- \`subagents/RQ-002-llm-provider-isolation.md\` → \`RQ-002-llm-provider-isolation.md\`
+- \`subagents/RQ-003-tool-determinism.md\` → \`RQ-003-tool-determinism.md\`
+- \`subagents/RQ-004-context-propagation.md\` → \`RQ-004-context-propagation.md\`
+- \`subagents/RQ-005-architecture-evolution.md\` → \`RQ-005-architecture-evolution.md\`
+
+每个 RQ Agent 会：
+1. 读取 \`01-hypotheses.md\` 和 \`02-ontology.md\`
+2. 验证或推翻相关假设
+3. 输出 Findings（含 Counter Evidence / Alternative Interpretation / Unknowns）
+4. 更新 RQ 状态（Open → Investigating → Validated / Rejected / Needs Evidence）
+5. 将跨 RQ 共享的发现写入 \`shared-findings.md\`
+
+## Stage 4 — 交叉验证
 - prompt: \`subagents/03-cross-validation.md\`
 - output: \`03-cross-validation.md\`
+- 任务：更新 RQ 状态、验证假设、识别冲突、校准置信度
 
-## Stage 4 — 对比分析（可选）
+## Stage 5 — 对比分析（可选）
 - prompt: \`subagents/04-comparative.md\`
 - output: \`04-comparative.md\`
+- 限制：只允许对比显式列出的项目（OpenAI Agents SDK / LangGraph / Claude Code / Codex / AutoGen / CrewAI / MCP）
 
-## Stage 5 — 最终报告
+## Stage 6 — 最终报告
 - prompt: \`subagents/05-report-writer.md\`
 - output: \`report.md\`
+- 限制：禁止创建新 Finding；只整合 Validated 的 RQ
 `
-    : `# Subagent Execution Order
+    : `# Subagent Execution Order (v2: Question-centric Pipeline)
 
 Dispatch subagents in the following order (use Task tool; independent stages can run in parallel):
 
@@ -521,24 +821,38 @@ Dispatch subagents in the following order (use Task tool; independent stages can
 - prompt: \`subagents/01-hypothesis.md\`
 - output: \`01-hypotheses.md\`
 
-## Stage 2 — Evidence Collection (parallel)
-- \`subagents/02-evidence-architecture.md\` → \`02-evidence/architecture.md\`
-- \`subagents/02-evidence-guardrails.md\` → \`02-evidence/guardrails.md\`
-- \`subagents/02-evidence-testing.md\` → \`02-evidence/testing.md\`
-- \`subagents/02-evidence-ai-patterns.md\` → \`02-evidence/ai-patterns.md\`
-- \`subagents/02-evidence-evolution.md\` → \`02-evidence/evolution.md\`
+## Stage 2 — Ontology Mapper (Shared Semantic Layer)
+- prompt: \`subagents/02-ontology.md\`
+- output: \`02-ontology.md\`
 
-## Stage 3 — Cross Validation
+## Stage 3 — Research Question Agents (parallel)
+- \`subagents/RQ-001-architecture-pattern.md\` → \`RQ-001-architecture-pattern.md\`
+- \`subagents/RQ-002-llm-provider-isolation.md\` → \`RQ-002-llm-provider-isolation.md\`
+- \`subagents/RQ-003-tool-determinism.md\` → \`RQ-003-tool-determinism.md\`
+- \`subagents/RQ-004-context-propagation.md\` → \`RQ-004-context-propagation.md\`
+- \`subagents/RQ-005-architecture-evolution.md\` → \`RQ-005-architecture-evolution.md\`
+
+Each RQ Agent will:
+1. Read \`01-hypotheses.md\` and \`02-ontology.md\`
+2. Evaluate whether hypotheses are supported, refuted, or unaffected
+3. Output Findings (with Counter Evidence / Alternative Interpretation / Unknowns)
+4. Update RQ status (Open → Investigating → Validated / Rejected / Needs Evidence)
+5. Write cross-RQ shared findings to \`shared-findings.md\`
+
+## Stage 4 — Cross Validation
 - prompt: \`subagents/03-cross-validation.md\`
 - output: \`03-cross-validation.md\`
+- Tasks: Update RQ status, validate hypotheses, identify conflicts, calibrate confidence
 
-## Stage 4 — Comparative Analysis (optional)
+## Stage 5 — Comparative Analysis (optional)
 - prompt: \`subagents/04-comparative.md\`
 - output: \`04-comparative.md\`
+- Constraint: Only compare against explicitly listed projects (OpenAI Agents SDK / LangGraph / Claude Code / Codex / AutoGen / CrewAI / MCP)
 
-## Stage 5 — Final Report
+## Stage 6 — Final Report
 - prompt: \`subagents/05-report-writer.md\`
 - output: \`report.md\`
+- Constraint: Never create new findings; only integrate Validated RQs
 `;
 
   writeFileSync(join(outDir, "README.md"), index, "utf-8");

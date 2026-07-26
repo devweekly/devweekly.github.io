@@ -397,6 +397,7 @@ When updating AGENTS.md:
 | 2026-07-26 | research-repo: v3 Question-centric Pipeline (SKILL.md + synthesis label) | @agents-maintainer |
 | 2026-07-26 | research-repo: fixed update/lang, added subagent-prompts, updated SKILL.md | @agents-maintainer |
 | 2026-07-26 | research-repo: fixed subagent-prompts output dir + run-all-repos-v2.sh now generates evidence-store | @agents-maintainer |
+| 2026-07-26 | research-repo: v2 Question-centric Pipeline (Topic→RQ, Ontology Mapper, shared findings, enhanced Finding, RQ lifecycle) | @agents-maintainer |
 
 ### Example Usage
 

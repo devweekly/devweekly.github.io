@@ -85,16 +85,17 @@ research-{repo-name}-{YYYYMMDD}/
 │   └── ...                     # Individual analyzer outputs (if run separately)
 ├── evidence-brief.md           # Condensed evidence + derived insights + LLM prompt (from `report` command)
 ├── 01-hypotheses.md            # LLM-generated hypotheses (from Evidence Store)
-├── 02-evidence/                # LLM subagent evidence collection
-│   ├── architecture.md         # Subagent: core architecture
-│   ├── guardrails.md           # Subagent: guardrails & adapters
-│   ├── testing.md              # Subagent: testing & evaluation
-│   ├── ai-patterns.md          # Subagent: AI-specific design
-│   └── evolution.md            # Subagent: architecture evolution
-├── 03-cross-validation.md      # Cross validation results
-├── 04-comparative.md           # Comparative analysis
+├── 02-ontology.md              # Shared Semantic Layer (Palantir-style Ontology)
+├── RQ-001-architecture-pattern.md      # Research Question: core architecture
+├── RQ-002-llm-provider-isolation.md    # Research Question: LLM provider isolation
+├── RQ-003-tool-determinism.md          # Research Question: tool execution determinism
+├── RQ-004-context-propagation.md       # Research Question: context propagation
+├── RQ-005-architecture-evolution.md    # Research Question: architecture evolution
+├── shared-findings.md          # Cross-RQ shared findings (written by RQ agents)
+├── 03-cross-validation.md      # Cross validation + RQ status tracking
+├── 04-comparative.md           # Comparative analysis (explicit project list only)
 ├── research-repo.mjs           # Copied from skill directory
-└── report.md                   # Final report (LLM-generated from evidence brief)
+└── report.md                   # Final report (LLM-generated, only cites Validated RQs)
 ```
 
 ### 精简版 `full.json` 设计
@@ -509,23 +510,25 @@ flowchart TD
   HYP --> E
   ARCH --> E
 
-  E --> E1["architecture.md"]
-  E --> E2["guardrails.md"]
-  E --> E3["testing.md"]
-  E --> E4["ai-patterns.md"]
-  E --> E5["evolution.md"]
+  HYP --> ONT["Ontology Mapper<br/>→ 02-ontology.md"]
 
-  E1 --> F["Cross Validate<br/>→ 03-cross-validation.md"]
-  E2 --> F
-  E3 --> F
-  E4 --> F
-  E5 --> F
+  ONT --> RQ1["RQ-001: Architecture Pattern"]
+  ONT --> RQ2["RQ-002: LLM Provider Isolation"]
+  ONT --> RQ3["RQ-003: Tool Determinism"]
+  ONT --> RQ4["RQ-004: Context Propagation"]
+  ONT --> RQ5["RQ-005: Architecture Evolution"]
 
-  F --> CA["Comparative Analysis<br/>→ 04-comparative.md"]
-  F --> EV["Architecture Evolution"]
+  RQ1 --> SF["shared-findings.md"]
+  RQ2 --> SF
+  RQ3 --> SF
+  RQ4 --> SF
+  RQ5 --> SF
 
-  CA --> M["Write report.md"]
-  EV --> M
+  SF --> F["Cross Validate<br/>→ 03-cross-validation.md<br/>(Update RQ Status)"]
+
+  F --> CA["Comparative Analysis<br/>→ 04-comparative.md<br/>(Explicit project list only)"]
+
+  CA --> M["Write report.md<br/>(Only Validated RQs)"]
 ```
 
 ---
@@ -548,14 +551,15 @@ node ../.trae/skills/research-repo/research-repo.mjs subagent-prompts --lang=zh 
 | Prompt 文件 | 目标输出 | 说明 |
 |-------------|----------|------|
 | `subagents/01-hypothesis.md` | `01-hypotheses.md` | 基于 Evidence Brief 生成 3-5 个可检验架构假设 |
-| `subagents/02-evidence-architecture.md` | `02-evidence/architecture.md` | 核心架构深度分析 |
-| `subagents/02-evidence-guardrails.md` | `02-evidence/guardrails.md` | Guardrails、安全、适配器分析 |
-| `subagents/02-evidence-testing.md` | `02-evidence/testing.md` | 测试与正确性分析 |
-| `subagents/02-evidence-ai-patterns.md` | `02-evidence/ai-patterns.md` | AI Agent 模式分析 |
-| `subagents/02-evidence-evolution.md` | `02-evidence/evolution.md` | 架构演化分析 |
-| `subagents/03-cross-validation.md` | `03-cross-validation.md` | 交叉验证假设与证据冲突 |
-| `subagents/04-comparative.md` | `04-comparative.md` | 与同类项目对比（可选） |
-| `subagents/05-report-writer.md` | `report.md` | 综合所有产出撰写最终报告 |
+| `subagents/02-ontology.md` | `02-ontology.md` | **共享语义层**：提取 Component/Interface/Service/Adapter/Workflow/Prompt/Tool |
+| `subagents/RQ-001-architecture-pattern.md` | `RQ-001-architecture-pattern.md` | RQ: 核心架构模式（验证假设 + Counter Evidence + Alternative） |
+| `subagents/RQ-002-llm-provider-isolation.md` | `RQ-002-llm-provider-isolation.md` | RQ: LLM Provider 隔离机制 |
+| `subagents/RQ-003-tool-determinism.md` | `RQ-003-tool-determinism.md` | RQ: Tool 执行确定性 |
+| `subagents/RQ-004-context-propagation.md` | `RQ-004-context-propagation.md` | RQ: Context 传播机制 |
+| `subagents/RQ-005-architecture-evolution.md` | `RQ-005-architecture-evolution.md` | RQ: 架构演化路径 |
+| `subagents/03-cross-validation.md` | `03-cross-validation.md` | 交叉验证 + 更新 RQ 状态（Validated/Rejected/Needs Evidence） |
+| `subagents/04-comparative.md` | `04-comparative.md` | 与**显式列出**的同类项目对比（禁止自行编造） |
+| `subagents/05-report-writer.md` | `report.md` | **禁止创建新 Finding**；只整合 Validated RQ |
 | `subagents/README.md` | — | 执行顺序速查表 |
 
 ### 派发 Subagent
@@ -566,15 +570,27 @@ node ../.trae/skills/research-repo/research-repo.mjs subagent-prompts --lang=zh 
 2. 把对应 `subagents/XX.md` 的完整 prompt 贴进去。
 3. 要求 subagent 读完证据后，把输出写入对应的 target 文件。
 
-**执行顺序**：
+**执行顺序（v2: Question-centric Pipeline）**：
 
 ```
 Stage 1: 01-hypothesis
-Stage 2: 02-evidence-*      (5 个可并行)
-Stage 3: 03-cross-validation
-Stage 4: 04-comparative     (可选)
-Stage 5: 05-report-writer
+Stage 2: 02-ontology              (共享语义层)
+Stage 3: RQ-001 ~ RQ-005          (5 个并行，每个回答一个 Research Question)
+Stage 4: 03-cross-validation      (更新 RQ 状态、验证假设、识别冲突)
+Stage 5: 04-comparative           (可选，只对比显式列出的项目)
+Stage 6: 05-report-writer         (禁止创建新 Finding，只整合 Validated RQ)
 ```
+
+**关键设计变更（v2）**：
+
+1. **Question-centric**：每个 RQ Agent 回答一个明确的 Research Question，而不是负责一个主题。Question 天然逼 AI 去找证据。
+2. **Ontology Mapper**：生成共享的 `02-ontology.md`（Component/Interface/Relation/Capability），作为所有后续 Agent 的统一语义层（Palantir 思想）。
+3. **Hypothesis-driven**：每个 RQ Agent 的首要目标是验证或推翻 `01-hypotheses.md` 中的假设，而不是单纯产出 Findings。
+4. **Enhanced Finding 结构**：每个 Finding 必须包含 Counter Evidence、Alternative Interpretation、Unknowns。
+5. **Evidence Budget**：每个 RQ Agent 最多读取 50 个文件 / 200 个符号，当置信度稳定时停止。
+6. **Shared Findings**：RQ Agent 将跨 RQ 共享的发现写入 `shared-findings.md`，避免重复。
+7. **RQ 生命周期**：每个 RQ 有状态追踪（Open → Investigating → Validated / Rejected / Needs Evidence），Cross Validation 更新状态，Report Writer 只引用 Validated。
+8. **Report Writer 权限限制**：禁止创建新 Finding、禁止重新解释、禁止推测。
 
 Subagent 不是读所有源码，而是**读 Evidence Brief + 相关 JSON + 被 Semantic Index 定位的关键文件**。这保证了可扩展性：LLM 只读它必须读的文件，而不是整个仓库。
 
