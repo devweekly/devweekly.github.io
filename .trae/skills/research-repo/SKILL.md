@@ -335,6 +335,66 @@ interface EvidenceMeta {
 - "ArchitecturePatternAnalyzer (strength=moderate) says X, but its _meta.limitations note Y; we verified via source that..."
 - "InformationFlowAnalyzer (strength=weak) detected 3 LLM call sites — we treat this as a lead, not a conclusion, and inspected each call site manually."
 
+### Architecture Knowledge Layer
+
+Three analyzers promote Evidence Store from "code facts" to "architecture knowledge" — answering **WHY** the system is designed this way, not just **WHAT** it contains. Each produces ADR-like structured output the LLM can cite directly.
+
+#### A. DecisionAnalyzer
+
+Extracts deliberate design choices from analyzer outputs. 6 decision categories:
+
+| Category | Source | Example |
+|----------|--------|---------|
+| structural | ArchitecturePattern | "Adopt Event-Driven architecture pattern" |
+| modular | Responsibility | "Separate concerns across 3 modules" |
+| capability | Tools vs Prompts ratio | "Tool-heavy design (62 tools, 15.5 ratio)" |
+| integration | InformationFlow | "Centralize LLM call sites across 2 files" |
+| quality | Tests.testPatterns | "Adopt multi-strategy testing: corpus, poison, stress" |
+| negative | CapabilityOntology (missing) | "Deliberately omit memory, planning capability" |
+
+Each decision carries `benefit`, `tradeoff`, `alternatives`, `confidence`. Negative decisions (deliberate omissions) include `benefit` and `tradeoff` for the omission itself.
+
+#### B. ConstraintAnalyzer
+
+Extracts requirements that drive decisions. 5 constraint sources:
+
+| Source | Detection | Example |
+|--------|-----------|---------|
+| manifest | dependency names | "Must support local persistent storage (sqlite)" / "Must integrate with external LLM provider" |
+| code | test patterns | "Must resist adversarial inputs (poison testing)" / "Must handle high load (stress testing)" |
+| config | CI provider | "Must pass CI on GitHub (3 workflows)" |
+| pattern | ArchitecturePattern | "Must support third-party extensions (Plugin)" / "Must handle async event flow (Event-Driven)" |
+| entrypoint | entrypoint type distribution | "Must run as CLI tool (not long-running service)" |
+
+Each constraint carries `drivesDecisions[]` (which decisions this constraint forces) and `affectedModules[]`.
+
+#### C. AssumptionAnalyzer
+
+Extracts implicit beliefs the system depends on. Assumptions are the most dangerous because they break silently. 7 assumption categories:
+
+| Category | Detection | Risk |
+|----------|-----------|------|
+| availability | LLM call sites + retry symbol search | high (if no retry) / low (if retry present) |
+| input | poison test presence | high (if no poison tests) / medium (if present) |
+| runtime | manifest.language | low |
+| storage | Persistence responsibility | medium |
+| memory | capabilityOntology.memory | medium |
+| network | external LLM constraint | high |
+| determinism | no LLM + isAIProject=false | low |
+
+Each assumption carries `risk` (high/medium/low), `brokenIf` (what condition breaks it), `evidence[]`, `confidence`. Strength is **weak** because assumptions are inferred from absence.
+
+#### LLM consumption
+
+The three analyzers are surfaced in:
+1. **Evidence Brief §2.7** "架构知识层（决策 / 约束 / 假设）" — full tables + top-3 decision detail + high-risk assumption detail
+2. **Findings (Q9/Q10/Q11)** — each Decision/Constraint/Assumption becomes a Finding bound to a Research Question, with auto-computed confidence and verification status
+
+LLM should:
+- Cite decisions as `[D-001, confidence=0.80]` in Research Traces
+- Treat high-risk assumptions as "Open Questions" or "Risks" in the report
+- Link constraints to decisions: "Decision D-001 is driven by Constraint C-001"
+
 ### Findings Store + Verification Loop
 
 Between Evidence Store and LLM, a **Findings Store** data layer makes Findings the canonical unit the LLM consumes; raw analyzer output becomes supporting evidence.
@@ -406,6 +466,9 @@ interface Finding {
 | Q6 | Is this an AI project? What concrete signals confirm or refute? | critical |
 | Q7 | How is correctness validated (tests vs evaluation)? | medium |
 | Q8 | What contradicts the README or self-presentation? | high |
+| Q9 | What architecture decisions were made, and what are their tradeoffs? | critical |
+| Q10 | What constraints drive these decisions (and which modules do they affect)? | high |
+| Q11 | What implicit assumptions does the system depend on, and where would they break? | high |
 
 **Confidence auto-calculation**:
 

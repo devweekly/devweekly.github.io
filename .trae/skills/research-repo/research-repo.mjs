@@ -4937,6 +4937,647 @@ class CapabilityOntologyAnalyzer extends BaseAnalyzer {
   }
 }
 
+// ===========================================================================
+// Architecture Knowledge Layer — Decision / Constraint / Assumption
+//
+// Promotes Evidence Store from "code facts" to "architecture knowledge".
+// Three analyzers extract WHY the system is designed this way, not just WHAT
+// it contains. Each produces ADR-like structured output that the LLM can cite
+// directly in the report.
+// ===========================================================================
+
+/**
+ * DecisionAnalyzer — extracts Architecture Decisions from analyzer outputs.
+ *
+ * A Decision is a deliberate design choice (not a fact). Examples:
+ *   - "Planning and Execution are separated" (from Responsibility matrix)
+ *   - "Tool-heavy design" (from Tools/Prompts ratio)
+ *   - "Event-Driven architecture" (from ArchitecturePattern)
+ *   - "Centralized LLM call sites" (from InformationFlow)
+ *
+ * Output schema per decision:
+ *   { id, decision, category, evidence[], benefit, tradeoff, alternatives, confidence }
+ */
+class DecisionAnalyzer extends BaseAnalyzer {
+  get id() { return "decisions"; }
+  supports(_ctx) { return true; }
+
+  async analyze(_ctx, store, _analyzerCtx) {
+    const decisions = [];
+    let counter = 0;
+    const mkId = () => `D-${String(++counter).padStart(3, "0")}`;
+
+    // D1: Architecture pattern decision
+    const ap = store.archPattern || {};
+    if (ap.primaryPattern && ap.primaryPattern !== "Unknown") {
+      const patternMatch = (ap.patterns || []).find((p) => p.pattern === ap.primaryPattern);
+      decisions.push({
+        id: mkId(),
+        decision: `Adopt ${ap.primaryPattern} architecture pattern`,
+        category: "structural",
+        evidence: (patternMatch?.evidence || []).slice(0, 3),
+        benefit: this._patternBenefit(ap.primaryPattern),
+        tradeoff: this._patternTradeoff(ap.primaryPattern),
+        alternatives: this._patternAlternatives(ap.primaryPattern),
+        confidence: Math.min(0.9, (patternMatch?.confidence || 0.4) + 0.3),
+      });
+    }
+
+    // D2: Responsibility separation decision
+    const resp = store.responsibility || {};
+    const responsibilities = (resp.responsibilities || []).filter((r) => r.responsibility !== "Uncategorized");
+    if (responsibilities.length >= 2) {
+      const distinct = new Set(responsibilities.map((r) => r.responsibility));
+      if (distinct.size >= 2) {
+        decisions.push({
+          id: mkId(),
+          decision: `Separate concerns across ${responsibilities.length} modules (${[...distinct].slice(0, 3).join(" / ")})`,
+          category: "modular",
+          evidence: responsibilities.slice(0, 3).map((r) => `${r.module} → ${r.responsibility}`),
+          benefit: "Independent evolution of concerns; team can specialize per module",
+          tradeoff: "Higher integration complexity; cross-cutting concerns need explicit wiring",
+          alternatives: "Single monolithic module with internal separation",
+          confidence: 0.7,
+        });
+      }
+    }
+
+    // D3: Tool-heavy vs Prompt-heavy decision
+    const tools = store.tools || {};
+    const prompts = store.prompts || {};
+    const toolCount = tools.totalTools || 0;
+    const promptCount = prompts.totalPrompts || 0;
+    if (toolCount > 0 || promptCount > 0) {
+      if (toolCount > promptCount * 3) {
+        decisions.push({
+          id: mkId(),
+          decision: `Tool-heavy design (${toolCount} tools vs ${promptCount} prompts, ratio ${(toolCount / Math.max(1, promptCount)).toFixed(1)})`,
+          category: "capability",
+          evidence: [`tools.totalTools=${toolCount}`, `prompts.totalPrompts=${promptCount}`],
+          benefit: "Capabilities are explicit, testable, and composable; deterministic execution paths",
+          tradeoff: "Tool registry maintenance overhead; less flexible than free-form LLM reasoning",
+          alternatives: "Prompt-heavy design (fewer tools, more LLM autonomy)",
+          confidence: 0.8,
+        });
+      } else if (promptCount > toolCount * 2) {
+        decisions.push({
+          id: mkId(),
+          decision: `Prompt-heavy design (${promptCount} prompts vs ${toolCount} tools)`,
+          category: "capability",
+          evidence: [`prompts.totalPrompts=${promptCount}`, `tools.totalTools=${toolCount}`],
+          benefit: "Flexible LLM reasoning; lower tool registry maintenance",
+          tradeoff: "Less deterministic; harder to test; prompt drift risk",
+          alternatives: "Tool-heavy design (more tools, less LLM autonomy)",
+          confidence: 0.8,
+        });
+      }
+    }
+
+    // D4: LLM call site centralization decision
+    const iflow = store.informationFlow || {};
+    const llmCallSites = iflow.llmCallSites || [];
+    if (llmCallSites.length > 0) {
+      const files = new Set(llmCallSites.map((c) => c.file || c.location || ""));
+      const centralized = files.size <= Math.max(2, Math.ceil(llmCallSites.length / 3));
+      decisions.push({
+        id: mkId(),
+        decision: `${centralized ? "Centralize" : "Distribute"} LLM call sites across ${files.size} file(s) (${llmCallSites.length} total call sites)`,
+        category: "integration",
+        evidence: llmCallSites.slice(0, 3).map((c) => `${c.file || c.location}:${c.line || ""}`),
+        benefit: centralized
+          ? "Single point of LLM interaction; easy to audit, rate-limit, and mock"
+          : "LLM calls co-located with consumers; lower latency, context-aware",
+        tradeoff: centralized
+          ? "Bottleneck risk; single point of failure for LLM interactions"
+          : "Harder to audit; LLM behavior may vary across call sites",
+        alternatives: centralized ? "Distribute call sites to consumers" : "Centralize via a gateway",
+        confidence: 0.65,
+      });
+    }
+
+    // D5: Test strategy decision
+    const tests = store.tests || {};
+    const testPatterns = tests.testPatterns || [];
+    if (testPatterns.length > 0) {
+      decisions.push({
+        id: mkId(),
+        decision: `Adopt multi-strategy testing: ${testPatterns.join(", ")}`,
+        category: "quality",
+        evidence: [`tests.testPatterns=[${testPatterns.join(", ")}]`, `tests.totalTestFiles=${tests.totalTestFiles || 0}`],
+        benefit: "Coverage across correctness (corpus), robustness (poison/stress), and regression",
+        tradeoff: "Test suite maintenance cost; longer CI runs",
+        alternatives: "Single-strategy testing (e.g., only unit tests)",
+        confidence: 0.75,
+      });
+    }
+
+    // D6: Negative decisions — capabilities deliberately absent
+    const cap = store.capabilityOntology || {};
+    const matrix = cap.capabilityMatrix || {};
+    const missing = Object.entries(matrix).filter(([, v]) => v === "missing" || v === "n/a").map(([k]) => k);
+    if (cap.isAIProject === true && missing.length > 0) {
+      decisions.push({
+        id: mkId(),
+        decision: `Deliberately omit ${missing.slice(0, 4).join(", ")} capability (not implemented despite AI context)`,
+        category: "negative",
+        evidence: [`capabilityOntology.capabilityMatrix: ${missing.map((m) => `${m}=${matrix[m]}`).join(", ")}`],
+        benefit: this._negativeBenefit(missing),
+        tradeoff: this._negativeTradeoff(missing),
+        alternatives: "Implement the missing capabilities",
+        confidence: 0.5,
+      });
+    }
+
+    store[this.id] = {
+      decisions,
+      totalDecisions: decisions.length,
+      byCategory: this._groupByCategory(decisions),
+      _meta: {
+        source: "inference",
+        strength: "moderate",
+        assumptions: [
+          "Decisions are inferred from analyzer outputs, not from ADR docs or commit messages",
+          "A 'decision' here means an observable design choice, not a documented rationale",
+        ],
+        limitations: [
+          "Cannot access ADR (Architecture Decision Records) if they exist only in docs/",
+          "Negative decisions (deliberate omissions) are inferred from absence, which may be a coverage gap",
+        ],
+        possibleFalsePositives: [
+          "A missing capability may be under-development, not deliberately omitted",
+          "Tool/prompt ratio may reflect project stage, not a deliberate design philosophy",
+        ],
+        checkedLocations: [
+          "archPattern.primaryPattern",
+          "responsibility.responsibilities[]",
+          "tools.totalTools vs prompts.totalPrompts",
+          "informationFlow.llmCallSites[]",
+          "tests.testPatterns[]",
+          "capabilityOntology.capabilityMatrix (for negative decisions)",
+        ],
+        coverage: "5 decision categories: structural / modular / capability / integration / quality / negative",
+      },
+    };
+  }
+
+  _patternBenefit(p) {
+    const map = {
+      "Event-Driven": "Loose coupling between producers and consumers; easy to add new event handlers",
+      "Hexagonal": "Domain logic isolated from adapters; testable without external dependencies",
+      "Pipeline": "Stages are independent and composable; easy to add new stages",
+      "Plugin": "Extension without modification; third-party extensibility",
+      "Microservices": "Independent deployment and scaling; technology diversity",
+      "Layered": "Clear separation of concerns; easy to understand",
+      "FSM": "Explicit state transitions; deterministic behavior",
+    };
+    return map[p] || "Pattern-specific structural benefits";
+  }
+
+  _patternTradeoff(p) {
+    const map = {
+      "Event-Driven": "Eventual consistency; harder to trace event flow; debugging complexity",
+      "Hexagonal": "Higher abstraction overhead; more boilerplate for simple domains",
+      "Pipeline": "Stage coordination overhead; harder to handle cross-cutting concerns",
+      "Plugin": "Plugin API stability burden; versioning complexity",
+      "Microservices": "Distributed system complexity; network failure modes; deployment overhead",
+      "Layered": "Performance overhead from layering; rigid hierarchy",
+      "FSM": "State explosion for complex domains; harder to model concurrent behavior",
+    };
+    return map[p] || "Pattern-specific tradeoffs";
+  }
+
+  _patternAlternatives(p) {
+    const map = {
+      "Event-Driven": "Direct method calls / Request-Response",
+      "Hexagonal": "Traditional layered architecture",
+      "Pipeline": "Single-pass processing / Visitor pattern",
+      "Plugin": "Hardcoded extensions / Strategy pattern",
+      "Microservices": "Modular monolith",
+      "Layered": "Hexagonal / Clean Architecture",
+      "FSM": "State pattern / ad-hoc control flow",
+    };
+    return map[p] || "Alternative architecture patterns";
+  }
+
+  _negativeBenefit(missing) {
+    const benefits = {
+      memory: "Stateless design; easier to scale horizontally",
+      planning: "Simple reactive loop; lower latency",
+      reflection: "Deterministic execution; predictable cost",
+      retrieval: "No vector store dependency; simpler deployment",
+    };
+    return missing.slice(0, 2).map((m) => benefits[m]).filter(Boolean).join("; ") || "Simpler design scope";
+  }
+
+  _negativeTradeoff(missing) {
+    const tradeoffs = {
+      memory: "Cannot maintain conversation context across sessions",
+      planning: "Cannot handle multi-step tasks requiring foresight",
+      reflection: "Cannot self-correct errors; lower quality on complex tasks",
+      retrieval: "Cannot leverage external knowledge; limited to model's training data",
+    };
+    return missing.slice(0, 2).map((m) => tradeoffs[m]).filter(Boolean).join("; ") || "Reduced capability scope";
+  }
+
+  _groupByCategory(decisions) {
+    const groups = {};
+    for (const d of decisions) groups[d.category] = (groups[d.category] || 0) + 1;
+    return groups;
+  }
+}
+
+/**
+ * ConstraintAnalyzer — extracts architectural Constraints.
+ *
+ * A Constraint is a requirement that drives design decisions. Sources:
+ *   - README (explicit "must support X")
+ *   - manifest dependencies (implicit: depends on sqlite → local storage)
+ *   - code patterns (try/catch/retry → fault tolerance)
+ *   - config patterns (env vars → configurability)
+ *
+ * Output schema per constraint:
+ *   { id, constraint, source, evidence[], drivesDecisions[], affectedModules[], confidence }
+ */
+class ConstraintAnalyzer extends BaseAnalyzer {
+  get id() { return "constraints"; }
+  supports(_ctx) { return true; }
+
+  async analyze(ctx, store, _analyzerCtx) {
+    const constraints = [];
+    let counter = 0;
+    const mkId = () => `C-${String(++counter).padStart(3, "0")}`;
+
+    // K1: Dependencies imply constraints
+    const disc = store.discovery || {};
+    const deps = this._extractDependencies(disc, store);
+    if (deps.sqlite || deps.sqlcipher) {
+      constraints.push({
+        id: mkId(),
+        constraint: "Must support local persistent storage (embedded SQL)",
+        source: "manifest",
+        evidence: [`dependency: ${deps.sqlite || deps.sqlcipher}`],
+        drivesDecisions: ["Use SQLite as embedded database", "No external database service required"],
+        affectedModules: this._modulesWithKeyword(store, ["storage", "db", "database", "persist"]),
+        confidence: 0.85,
+      });
+    }
+    if (deps.openai || deps.anthropic || deps.llm) {
+      constraints.push({
+        id: mkId(),
+        constraint: "Must integrate with external LLM provider (network dependency)",
+        source: "manifest",
+        evidence: [`dependency: ${deps.openai || deps.anthropic || deps.llm}`],
+        drivesDecisions: ["Centralize LLM call sites", "Handle network failures and rate limits"],
+        affectedModules: this._modulesWithKeyword(store, ["llm", "openai", "anthropic", "inference"]),
+        confidence: 0.9,
+      });
+    }
+    if (deps.fastapi || deps.express || deps.flask) {
+      constraints.push({
+        id: mkId(),
+        constraint: "Must expose HTTP API",
+        source: "manifest",
+        evidence: [`dependency: ${deps.fastapi || deps.express || deps.flask}`],
+        drivesDecisions: ["Adopt request/response lifecycle", "Implement API routing layer"],
+        affectedModules: this._modulesWithKeyword(store, ["api", "route", "endpoint", "server"]),
+        confidence: 0.85,
+      });
+    }
+
+    // K2: Test patterns imply quality constraints
+    const tests = store.tests || {};
+    const testPatterns = tests.testPatterns || [];
+    if (testPatterns.includes("poison")) {
+      constraints.push({
+        id: mkId(),
+        constraint: "Must resist adversarial / malformed inputs (poison testing)",
+        source: "code",
+        evidence: ["tests.testPatterns includes 'poison'"],
+        drivesDecisions: ["Implement input validation layer", "Sandbox untrusted execution"],
+        affectedModules: this._modulesWithKeyword(store, ["sandbox", "validate", "guard", "safety"]),
+        confidence: 0.75,
+      });
+    }
+    if (testPatterns.includes("stress")) {
+      constraints.push({
+        id: mkId(),
+        constraint: "Must handle high load / stress conditions",
+        source: "code",
+        evidence: ["tests.testPatterns includes 'stress'"],
+        drivesDecisions: ["Implement backpressure / rate limiting", "Profile under load"],
+        affectedModules: this._modulesWithKeyword(store, ["limit", "queue", "throttle", "pool"]),
+        confidence: 0.7,
+      });
+    }
+
+    // K3: Entry point shape implies deployment constraint
+    const eps = store.entrypoints || {};
+    const allEps = eps.entrypoints || [];
+    const cliEps = allEps.filter((e) => e.type === "cli").length;
+    if (cliEps > 0 && cliEps >= allEps.length * 0.8) {
+      constraints.push({
+        id: mkId(),
+        constraint: "Must run as a CLI tool (not a long-running service)",
+        source: "code",
+        evidence: [`${cliEps} CLI entry points out of ${allEps.length} total`],
+        drivesDecisions: ["Design for one-shot execution", "No persistent process state"],
+        affectedModules: this._modulesWithKeyword(store, ["cli", "command", "main"]),
+        confidence: 0.8,
+      });
+    }
+
+    // K4: Architecture pattern implies constraints
+    const ap = store.archPattern || {};
+    if (ap.primaryPattern === "Plugin") {
+      constraints.push({
+        id: mkId(),
+        constraint: "Must support third-party extensions (plugin architecture)",
+        source: "code",
+        evidence: ["archPattern.primaryPattern=Plugin"],
+        drivesDecisions: ["Stabilize plugin API surface", "Version the plugin contract"],
+        affectedModules: this._modulesWithKeyword(store, ["plugin", "extension", "hook"]),
+        confidence: 0.75,
+      });
+    }
+    if (ap.primaryPattern === "Event-Driven") {
+      constraints.push({
+        id: mkId(),
+        constraint: "Must handle asynchronous event flow (eventual consistency)",
+        source: "code",
+        evidence: ["archPattern.primaryPattern=Event-Driven"],
+        drivesDecisions: ["Implement event bus / queue", "Handle out-of-order events"],
+        affectedModules: this._modulesWithKeyword(store, ["event", "bus", "queue", "handler"]),
+        confidence: 0.75,
+      });
+    }
+
+    // K5: CI / toolchain constraints
+    const ci = store.ci || {};
+    if (ci.provider && ci.provider !== "none") {
+      constraints.push({
+        id: mkId(),
+        constraint: `Must pass CI on ${ci.provider} (${(ci.workflows || []).length} workflow(s))`,
+        source: "config",
+        evidence: [`ci.provider=${ci.provider}`, `ci.workflows=${(ci.workflows || []).length}`],
+        drivesDecisions: ["Keep CI green", "Pin dependency versions"],
+        affectedModules: [],
+        confidence: 0.6,
+      });
+    }
+
+    store[this.id] = {
+      constraints,
+      totalConstraints: constraints.length,
+      bySource: this._groupBySource(constraints),
+      _meta: {
+        source: "inference",
+        strength: "moderate",
+        assumptions: [
+          "Dependencies in manifest reflect runtime requirements (not just build-time)",
+          "Test patterns reflect quality requirements, not just test style",
+          "Entry point shape reflects deployment model",
+        ],
+        limitations: [
+          "Cannot read README text for explicit constraint statements (e.g., 'Must support streaming')",
+          "Issue tracker and design docs are not accessible; constraints stated there are missed",
+          "Config files (.env.example) are not scanned; env-var constraints are inferred from code only",
+        ],
+        possibleFalsePositives: [
+          "A dependency may be transitively pulled in, not directly required by the architecture",
+          "Test patterns may reflect test author preference, not a hard constraint",
+        ],
+        checkedLocations: [
+          "discovery.manifest.dependencies",
+          "tests.testPatterns",
+          "entrypoints.entrypoints (type distribution)",
+          "archPattern.primaryPattern",
+          "ci.provider + ci.workflows",
+        ],
+        coverage: "5 constraint sources: manifest / code / config / pattern / ci",
+      },
+    };
+  }
+
+  _extractDependencies(disc, store) {
+    const deps = {};
+    const manifest = disc.manifest || {};
+    const raw = manifest.dependencies || manifest.devDependencies || {};
+    const depNames = Array.isArray(raw) ? raw : Object.keys(raw);
+    const joined = depNames.join(" ").toLowerCase();
+    if (joined.includes("sqlite")) deps.sqlite = "sqlite3";
+    if (joined.includes("sqlcipher")) deps.sqlcipher = "sqlcipher";
+    if (joined.includes("openai")) deps.openai = "openai";
+    if (joined.includes("anthropic")) deps.anthropic = "anthropic";
+    if (/[\b\/]llm\b|langchain|llama/.test(joined)) deps.llm = "langchain/llama";
+    if (joined.includes("fastapi")) deps.fastapi = "fastapi";
+    if (joined.includes("express")) deps.express = "express";
+    if (joined.includes("flask")) deps.flask = "flask";
+    // Also check symbols for implicit LLM deps (Rust repos may not declare openai package)
+    if (!deps.openai && !deps.anthropic && !deps.llm) {
+      const sym = store.symbols || {};
+      const fns = sym.functions || [];
+      const hasLlmCall = fns.some((f) => /openai|anthropic|claude|gemini|llm_call/i.test(f.name || ""));
+      if (hasLlmCall) deps.llm = "symbol-implicit";
+    }
+    return deps;
+  }
+
+  _modulesWithKeyword(store, keywords) {
+    const resp = store.responsibility || {};
+    return (resp.responsibilities || [])
+      .filter((r) => keywords.some((k) => (r.module || "").toLowerCase().includes(k)))
+      .map((r) => r.module)
+      .slice(0, 5);
+  }
+
+  _groupBySource(constraints) {
+    const groups = {};
+    for (const c of constraints) groups[c.source] = (groups[c.source] || 0) + 1;
+    return groups;
+  }
+}
+
+/**
+ * AssumptionAnalyzer — extracts implicit Assumptions.
+ *
+ * Assumptions are unstated beliefs the system depends on. They are the most
+ * dangerous because they break silently. Sources:
+ *   - LLM call without retry → "LLM always available"
+ *   - No input validation → "Inputs are always well-formed"
+ *   - Sync file I/O → "Files are local and fast"
+ *   - Hardcoded path → "Specific OS / filesystem layout"
+ *
+ * Output schema per assumption:
+ *   { id, assumption, evidence[], confidence, risk, brokenIf }
+ */
+class AssumptionAnalyzer extends BaseAnalyzer {
+  get id() { return "assumptions"; }
+  supports(_ctx) { return true; }
+
+  async analyze(_ctx, store, _analyzerCtx) {
+    const assumptions = [];
+    let counter = 0;
+    const mkId = () => `A-${String(++counter).padStart(3, "0")}`;
+
+    // A1: LLM availability assumption
+    const iflow = store.informationFlow || {};
+    const llmCallSites = iflow.llmCallSites || [];
+    if (llmCallSites.length > 0) {
+      // Check if there's retry logic
+      const sym = store.symbols || {};
+      const fns = sym.functions || [];
+      const hasRetry = fns.some((f) => /retry|backoff|with_retry/i.test(f.name || ""));
+      assumptions.push({
+        id: mkId(),
+        assumption: hasRetry
+          ? "LLM service is mostly available (retry logic present but assumes transient failures only)"
+          : "LLM service is always available (no retry logic detected)",
+        evidence: hasRetry
+          ? ["symbols: retry/backoff function found"]
+          : [`informationFlow.llmCallSites=${llmCallSites.length} (no retry symbol found)`],
+        confidence: hasRetry ? 0.6 : 0.7,
+        risk: hasRetry ? "low" : "high",
+        brokenIf: "LLM provider has extended outage, or rate limit exhausts retry budget",
+      });
+    }
+
+    // A2: Input well-formedness assumption
+    const tests = store.tests || {};
+    const testPatterns = tests.testPatterns || [];
+    const hasPoisonTests = testPatterns.includes("poison");
+    assumptions.push({
+      id: mkId(),
+      assumption: hasPoisonTests
+        ? "Inputs may be adversarial (poison tests present, partial validation assumed)"
+        : "Inputs are always well-formed (no poison/adversarial tests detected)",
+      evidence: hasPoisonTests
+        ? ["tests.testPatterns includes 'poison'"]
+        : ["tests.testPatterns does NOT include 'poison'"],
+      confidence: 0.65,
+      risk: hasPoisonTests ? "medium" : "high",
+      brokenIf: "Adversarial input reaches core logic; unvalidated paths crash or misbehave",
+    });
+
+    // A3: Python/Node version assumption
+    const disc = store.discovery || {};
+    const manifest = disc.manifest || {};
+    const lang = manifest.language || "";
+    if (lang === "python") {
+      assumptions.push({
+        id: mkId(),
+        assumption: "Python 3.x runtime is available (specific version not validated)",
+        evidence: [`discovery.manifest.language=python`],
+        confidence: 0.5,
+        risk: "low",
+        brokenIf: "Deployed on Python 2.x or incompatible 3.x version",
+      });
+    } else if (lang === "typescript" || lang === "javascript") {
+      assumptions.push({
+        id: mkId(),
+        assumption: "Node.js runtime is available (specific version not validated)",
+        evidence: [`discovery.manifest.language=${lang}`],
+        confidence: 0.5,
+        risk: "low",
+        brokenIf: "Deployed on incompatible Node.js version (e.g., missing fetch API on old Node)",
+      });
+    }
+
+    // A4: Local filesystem assumption (based on storage patterns)
+    const resp = store.responsibility || {};
+    const hasStorage = (resp.responsibilities || []).some((r) => r.responsibility === "Persistence");
+    if (hasStorage) {
+      assumptions.push({
+        id: mkId(),
+        assumption: "Local filesystem is available and writable (persistence detected)",
+        evidence: ["responsibility: Persistence module present"],
+        confidence: 0.7,
+        risk: "medium",
+        brokenIf: "Deployed in read-only filesystem (container, serverless) or network-mounted storage with high latency",
+      });
+    }
+
+    // A5: Single-user / no concurrency assumption
+    const ap = store.archPattern || {};
+    const cap = store.capabilityOntology || {};
+    const matrix = cap.capabilityMatrix || {};
+    if (matrix.memory === "missing" || matrix.memory === "n/a") {
+      assumptions.push({
+        id: mkId(),
+        assumption: "No cross-session memory required (stateless or single-session design)",
+        evidence: [`capabilityOntology.capabilityMatrix.memory=${matrix.memory || "n/a"}`],
+        confidence: 0.6,
+        risk: "medium",
+        brokenIf: "Multi-turn conversation spans sessions; user expects continuity",
+      });
+    }
+
+    // A6: Network reliability assumption
+    const con = store.constraints || {};
+    const hasExternalLLM = (con.constraints || []).some((c) => c.constraint.includes("external LLM"));
+    if (hasExternalLLM) {
+      assumptions.push({
+        id: mkId(),
+        assumption: "Network to LLM provider is reliable (latency < timeout)",
+        evidence: ["constraints: external LLM provider dependency"],
+        confidence: 0.7,
+        risk: "high",
+        brokenIf: "Network partition, DNS failure, or provider-side throttling causes timeouts",
+      });
+    }
+
+    // A7: Determinism assumption (if no LLM)
+    if (llmCallSites.length === 0 && (cap.isAIProject === false)) {
+      assumptions.push({
+        id: mkId(),
+        assumption: "System behavior is deterministic (no LLM / non-deterministic AI calls detected)",
+        evidence: ["informationFlow.llmCallSites=0", "capabilityOntology.isAIProject=false"],
+        confidence: 0.75,
+        risk: "low",
+        brokenIf: "LLM or probabilistic component is introduced without updating tests",
+      });
+    }
+
+    store[this.id] = {
+      assumptions,
+      totalAssumptions: assumptions.length,
+      byRisk: this._groupByRisk(assumptions),
+      highRiskCount: assumptions.filter((a) => a.risk === "high").length,
+      _meta: {
+        source: "inference",
+        strength: "weak",
+        assumptions: [
+          "Assumptions are inferred from absence (no retry → assumes availability), which is inherently uncertain",
+          "Only code-derivable assumptions are extracted; cultural/team assumptions are out of scope",
+        ],
+        limitations: [
+          "Cannot read README 'Prerequisites' section for explicit assumption statements",
+          "Assumption risk levels are heuristic, not domain-calibrated",
+          "Absence of evidence is not evidence of absence — a missing retry symbol may mean retry is implemented elsewhere",
+        ],
+        possibleFalsePositives: [
+          "No retry symbol may not mean no retry logic (could be in a dependency)",
+          "No poison tests may not mean inputs are trusted (could be validated upstream)",
+        ],
+        checkedLocations: [
+          "informationFlow.llmCallSites (count + retry symbol search)",
+          "tests.testPatterns (poison presence)",
+          "discovery.manifest.language",
+          "responsibility.responsibilities (Persistence presence)",
+          "capabilityOntology.capabilityMatrix.memory",
+          "constraints.constraints (external LLM)",
+        ],
+        coverage: "7 assumption categories: availability / input / runtime / storage / memory / network / determinism",
+      },
+    };
+  }
+
+  _groupByRisk(assumptions) {
+    const groups = { high: 0, medium: 0, low: 0 };
+    for (const a of assumptions) groups[a.risk] = (groups[a.risk] || 0) + 1;
+    return groups;
+  }
+}
+
 /**
  * ConsistencyAnalyzer — cross-analyzer contradiction detection (post-processor).
  *
@@ -5178,6 +5819,10 @@ const ANALYZERS = [
   new InformationFlowAnalyzer(),
   new DependencySmellAnalyzer(),
   new CapabilityOntologyAnalyzer(),
+  // --- Architecture Knowledge Layer: Decision / Constraint / Assumption ---
+  new DecisionAnalyzer(),
+  new ConstraintAnalyzer(),
+  new AssumptionAnalyzer(),
   // --- Post-processor: runs LAST, compares claims across analyzers ---
   new ConsistencyAnalyzer(),
 ];
@@ -6483,6 +7128,27 @@ const RESEARCH_QUESTIONS = [
     importance: "high",
     sources: ["consistency", "discovery", "capabilityOntology", "evaluations"],
   },
+  {
+    id: "Q9",
+    question: "What architecture decisions were made, and what are their tradeoffs?",
+    category: "decision",
+    importance: "critical",
+    sources: ["decisions", "archPattern", "responsibility", "tools", "informationFlow", "tests"],
+  },
+  {
+    id: "Q10",
+    question: "What constraints drive these decisions (and which modules do they affect)?",
+    category: "constraint",
+    importance: "high",
+    sources: ["constraints", "discovery", "tests", "archPattern", "entrypoints", "ci"],
+  },
+  {
+    id: "Q11",
+    question: "What implicit assumptions does the system depend on, and where would they break?",
+    category: "assumption",
+    importance: "high",
+    sources: ["assumptions", "informationFlow", "tests", "responsibility", "capabilityOntology", "constraints"],
+  },
 ];
 
 /**
@@ -6584,6 +7250,9 @@ class FindingsGenerator {
       Q6: () => this._q6AiProject(),
       Q7: () => this._q7Correctness(),
       Q8: () => this._q8ReadmeContradictions(),
+      Q9: () => this._q9Decisions(),
+      Q10: () => this._q10Constraints(),
+      Q11: () => this._q11Assumptions(),
     };
     const handler = handlers[q.id];
     if (!handler) return [];
@@ -6889,6 +7558,144 @@ class FindingsGenerator {
     return findings;
   }
 
+  // ── Q9: Architecture decisions ────────────────────────────────────────
+  _q9Decisions() {
+    const da = this.store.get("decisions") || {};
+    const findings = [];
+    const decisions = da.decisions || [];
+    if (decisions.length === 0) {
+      findings.push({
+        finding: "No architecture decisions extracted (DecisionAnalyzer produced 0 decisions).",
+        confidence: this._conf(["inference"]) * 0.5,
+        coverage: 0,
+        support: [],
+        counter: [],
+        limitations: ["DecisionAnalyzer infers decisions from analyzer outputs; repos with implicit/unconventional patterns may yield nothing."],
+        checkedLocations: ["archPattern", "responsibility", "tools", "informationFlow", "tests", "capabilityOntology"],
+      });
+      return findings;
+    }
+    // Top 3 decisions (by confidence)
+    const top = [...decisions].sort((a, b) => (b.confidence || 0) - (a.confidence || 0)).slice(0, 3);
+    for (const d of top) {
+      findings.push({
+        finding: `Decision ${d.id}: ${d.decision} (category=${d.category}, confidence=${(d.confidence || 0).toFixed(2)}). Benefit: ${d.benefit}. Tradeoff: ${d.tradeoff}.`,
+        confidence: this._conf(["inference"]) * (d.confidence || 0.5),
+        coverage: Math.min(1, (d.evidence || []).length / 3),
+        support: (d.evidence || []).slice(0, 3).map((e) => ({ source: "inference", ref: `decisions.${d.id}.evidence`, detail: String(e).slice(0, 100) })),
+        counter: [],
+        limitations: [
+          `Alternative considered: ${d.alternatives || "n/a"}`,
+          "Decision rationale is inferred from code shape, not from ADR docs",
+        ],
+        checkedLocations: ["decisions.decisions[] (DecisionAnalyzer output)"],
+      });
+    }
+    // Negative decisions summary
+    const negative = decisions.filter((d) => d.category === "negative");
+    if (negative.length > 0) {
+      findings.push({
+        finding: `${negative.length} negative decision(s) detected — capabilities deliberately omitted: ${negative.map((d) => d.decision.replace(/Deliberately omit/, "").replace(/capability.*/, "").trim()).join("; ")}.`,
+        confidence: this._conf(["inference"]) * 0.5,
+        coverage: 0.4,
+        support: negative.map((d) => ({ source: "inference", ref: `decisions.${d.id}`, detail: d.decision })),
+        counter: [],
+        limitations: ["Negative decisions are inferred from absence; the capability may be under-development rather than deliberately omitted."],
+        checkedLocations: ["capabilityOntology.capabilityMatrix (missing/n/a entries)"],
+      });
+    }
+    return findings;
+  }
+
+  // ── Q10: Constraints ──────────────────────────────────────────────────
+  _q10Constraints() {
+    const ca = this.store.get("constraints") || {};
+    const findings = [];
+    const constraints = ca.constraints || [];
+    if (constraints.length === 0) {
+      findings.push({
+        finding: "No constraints extracted (ConstraintAnalyzer produced 0 constraints).",
+        confidence: this._conf(["inference"]) * 0.5,
+        coverage: 0,
+        support: [],
+        counter: [],
+        limitations: ["ConstraintAnalyzer infers constraints from dependencies, test patterns, entry points, and CI; repos with implicit constraints may yield nothing."],
+        checkedLocations: ["discovery.manifest.dependencies", "tests.testPatterns", "entrypoints", "archPattern", "ci"],
+      });
+      return findings;
+    }
+    // Group by source
+    const bySource = {};
+    for (const c of constraints) (bySource[c.source] = bySource[c.source] || []).push(c);
+    for (const [source, items] of Object.entries(bySource)) {
+      const top = items.slice(0, 2);
+      for (const c of top) {
+        findings.push({
+          finding: `Constraint ${c.id} (${source}): ${c.constraint}. Drives: ${(c.drivesDecisions || []).slice(0, 2).join("; ") || "n/a"}. Affects: ${(c.affectedModules || []).slice(0, 3).join(", ") || "n/a"}.`,
+          confidence: this._conf(["inference"]) * (c.confidence || 0.7),
+          coverage: Math.min(1, (c.affectedModules || []).length / 3),
+          support: (c.evidence || []).slice(0, 2).map((e) => ({ source: "inference", ref: `constraints.${c.id}.evidence`, detail: String(e).slice(0, 100) })),
+          counter: [],
+          limitations: ["Constraint is inferred from dependency/test/pattern, not from explicit README statement."],
+          checkedLocations: [`constraints.constraints[] (source=${source})`],
+        });
+      }
+    }
+    return findings;
+  }
+
+  // ── Q11: Assumptions ──────────────────────────────────────────────────
+  _q11Assumptions() {
+    const aa = this.store.get("assumptions") || {};
+    const findings = [];
+    const assumptions = aa.assumptions || [];
+    if (assumptions.length === 0) {
+      findings.push({
+        finding: "No assumptions extracted (AssumptionAnalyzer produced 0 assumptions).",
+        confidence: this._conf(["inference"]) * 0.5,
+        coverage: 0,
+        support: [],
+        counter: [],
+        limitations: ["AssumptionAnalyzer infers assumptions from absence (no retry → assumes availability); inherently uncertain."],
+        checkedLocations: ["informationFlow.llmCallSites", "tests.testPatterns", "discovery.manifest", "responsibility", "capabilityOntology"],
+      });
+      return findings;
+    }
+    // High-risk assumptions first
+    const sorted = [...assumptions].sort((a, b) => {
+      const order = { high: 0, medium: 1, low: 2 };
+      return order[a.risk] - order[b.risk];
+    });
+    for (const a of sorted.slice(0, 4)) {
+      findings.push({
+        finding: `Assumption ${a.id} (risk=${a.risk}): ${a.assumption}. Broken if: ${a.brokenIf}.`,
+        confidence: this._conf(["inference"]) * (a.confidence || 0.6),
+        coverage: 0.5,
+        support: (a.evidence || []).slice(0, 2).map((e) => ({ source: "inference", ref: `assumptions.${a.id}.evidence`, detail: String(e).slice(0, 100) })),
+        counter: [],
+        limitations: [
+          "Assumption inferred from absence of evidence (e.g., no retry symbol → assumes availability)",
+          "Risk level is heuristic, not domain-calibrated",
+        ],
+        checkedLocations: ["assumptions.assumptions[] (AssumptionAnalyzer output)"],
+      });
+    }
+    // High-risk summary
+    const highRisk = assumptions.filter((a) => a.risk === "high");
+    if (highRisk.length > 0) {
+      findings.push({
+        finding: `${highRisk.length} high-risk assumption(s) detected. These are the most likely failure modes under unexpected conditions.`,
+        confidence: this._conf(["inference"]) * 0.7,
+        coverage: 0.6,
+        support: highRisk.slice(0, 3).map((a) => ({ source: "inference", ref: `assumptions.${a.id}`, detail: a.assumption.slice(0, 80) })),
+        counter: [],
+        limitations: ["High-risk classification is heuristic; domain-specific calibration needed."],
+        checkedLocations: ["assumptions.assumptions[] (risk=high)"],
+      });
+    }
+    return findings;
+  }
+
   // ── Helpers ───────────────────────────────────────────────────────────
 
   /**
@@ -7100,6 +7907,7 @@ class ReportGenerator {
       this._executiveBrief(),
       this._architectureInsights(),
       this._architectureSemantics(),
+      this._architectureKnowledge(),
       this._aiAgentInsights(),
       this._testingAndEvaluation(),
       this._engineeringMetrics(),
@@ -7202,7 +8010,7 @@ class ReportGenerator {
    * v2 Findings section — the canonical unit the LLM consumes.
    *
    * Plan ref: plan0726.md Part 1 + Part 2
-   *   - Every Finding binds to a Research Question (Q1-Q8)
+   *   - Every Finding binds to a Research Question (Q1-Q11)
    *   - Confidence/Coverage/Importance auto-computed (not "High/Med/Low")
    *   - Counter Evidence + Verified status from VerificationLoop
    *   - Negative Evidence recorded as "checkedLocations" with "nothing found"
@@ -7221,8 +8029,8 @@ class ReportGenerator {
     lines.push(zh ? "## ★ Findings（v2 规范化发现）" : "## ★ Findings (v2 normalized)");
     lines.push("");
     lines.push(zh
-      ? "> 每个 Finding 绑定一个 Research Question (Q1-Q8)，并携带自动计算的 confidence / coverage / importance。"
-      : "> Every Finding binds to a Research Question (Q1-Q8) with auto-computed confidence / coverage / importance."
+      ? "> 每个 Finding 绑定一个 Research Question (Q1-Q11)，并携带自动计算的 confidence / coverage / importance。"
+      : "> Every Finding binds to a Research Question (Q1-Q11) with auto-computed confidence / coverage / importance."
     );
     lines.push(zh
       ? "> LLM 应优先消费本节；下方各 analyzer 章节作为支持证据。verified=downgraded/rejected 的 Finding 不应直接引用，需先核查。"
@@ -8111,6 +8919,114 @@ class ReportGenerator {
     return lines.join("\n");
   }
 
+  /**
+   * Architecture Knowledge Layer — Decisions / Constraints / Assumptions.
+   *
+   * Promotes Evidence Store from "code facts" to "architecture knowledge".
+   * Three ADR-like sections that the LLM can cite directly:
+   *   - Decisions: deliberate design choices with benefit/tradeoff/alternatives
+   *   - Constraints: requirements that drive decisions, with affected modules
+   *   - Assumptions: implicit beliefs the system depends on, with risk + brokenIf
+   *
+   * Placed after Architecture Semantics (which covers Pattern/Responsibility/
+   * Stability/etc.) and before AI Agent Insights, because Decisions/Constraints/
+   * Assumptions are higher-level abstractions that synthesize the semantic layer.
+   */
+  _architectureKnowledge() {
+    const dec = this._get("decisions") || {};
+    const con = this._get("constraints") || {};
+    const asm = this._get("assumptions") || {};
+    const decisions = dec.decisions || [];
+    const constraints = con.constraints || [];
+    const assumptions = asm.assumptions || [];
+    if (decisions.length === 0 && constraints.length === 0 && assumptions.length === 0) return null;
+
+    const zh = this.lang === "zh";
+    const lines = [];
+    lines.push(zh ? "## 2.7. 架构知识层（决策 / 约束 / 假设）" : "## 2.7. Architecture Knowledge (Decisions / Constraints / Assumptions)");
+    lines.push("");
+    lines.push(zh
+      ? "> 从代码事实上升到架构知识：**为什么这样设计**（Decision）、**受什么约束**（Constraint）、**依赖什么假设**（Assumption）。"
+      : "> Promotes code facts to architecture knowledge: **why designed this way** (Decision), **what constrains it** (Constraint), **what it assumes** (Assumption)."
+    );
+    lines.push("");
+
+    // ── Decisions ─────────────────────────────────────────────
+    if (decisions.length > 0) {
+      lines.push(zh ? `### 决策（${decisions.length}）` : `### Decisions (${decisions.length})`);
+      lines.push("");
+      lines.push("| ID | Category | Decision | Benefit | Tradeoff | Confidence |");
+      lines.push("|----|----------|----------|---------|----------|------------|");
+      for (const d of decisions) {
+        const decisionShort = (d.decision || "").replace(/\|/g, "\\|").slice(0, 80);
+        const benefitShort = (d.benefit || "").replace(/\|/g, "\\|").slice(0, 60);
+        const tradeoffShort = (d.tradeoff || "").replace(/\|/g, "\\|").slice(0, 60);
+        lines.push(`| ${d.id} | ${d.category} | ${decisionShort} | ${benefitShort} | ${tradeoffShort} | ${(d.confidence || 0).toFixed(2)} |`);
+      }
+      lines.push("");
+      // Detailed decisions (top 3)
+      const topDecisions = [...decisions].sort((a, b) => (b.confidence || 0) - (a.confidence || 0)).slice(0, 3);
+      for (const d of topDecisions) {
+        lines.push(`#### ${d.id}: ${d.decision}`);
+        lines.push("");
+        lines.push(`- **Category**: ${d.category}`);
+        lines.push(`- **Confidence**: ${(d.confidence || 0).toFixed(2)}`);
+        lines.push(`- **Benefit**: ${d.benefit}`);
+        lines.push(`- **Tradeoff**: ${d.tradeoff}`);
+        lines.push(`- **Alternatives considered**: ${d.alternatives || "n/a"}`);
+        if ((d.evidence || []).length > 0) {
+          lines.push(zh ? `- **证据**:` : `- **Evidence**:`);
+          for (const e of d.evidence) lines.push(`  - ${e}`);
+        }
+        lines.push("");
+      }
+    }
+
+    // ── Constraints ───────────────────────────────────────────
+    if (constraints.length > 0) {
+      lines.push(zh ? `### 约束（${constraints.length}）` : `### Constraints (${constraints.length})`);
+      lines.push("");
+      lines.push("| ID | Source | Constraint | Drives | Affected Modules | Confidence |");
+      lines.push("|----|--------|------------|--------|------------------|------------|");
+      for (const c of constraints) {
+        const constraintShort = (c.constraint || "").replace(/\|/g, "\\|").slice(0, 70);
+        const drivesShort = (c.drivesDecisions || []).slice(0, 1).join("; ").replace(/\|/g, "\\|").slice(0, 50);
+        const modulesShort = (c.affectedModules || []).slice(0, 2).join(", ").replace(/\|/g, "\\|").slice(0, 40);
+        lines.push(`| ${c.id} | ${c.source} | ${constraintShort} | ${drivesShort} | ${modulesShort} | ${(c.confidence || 0).toFixed(2)} |`);
+      }
+      lines.push("");
+    }
+
+    // ── Assumptions ───────────────────────────────────────────
+    if (assumptions.length > 0) {
+      lines.push(zh ? `### 假设（${assumptions.length}，${assumptions.filter((a) => a.risk === "high").length} 高风险）` : `### Assumptions (${assumptions.length}, ${assumptions.filter((a) => a.risk === "high").length} high-risk)`);
+      lines.push("");
+      lines.push("| ID | Risk | Assumption | Broken if |");
+      lines.push("|----|------|------------|-----------|");
+      for (const a of assumptions) {
+        const assumptionShort = (a.assumption || "").replace(/\|/g, "\\|").slice(0, 80);
+        const brokenShort = (a.brokenIf || "").replace(/\|/g, "\\|").slice(0, 60);
+        const riskIcon = a.risk === "high" ? "🔴" : a.risk === "medium" ? "🟡" : "🟢";
+        lines.push(`| ${a.id} | ${riskIcon} ${a.risk} | ${assumptionShort} | ${brokenShort} |`);
+      }
+      lines.push("");
+      // High-risk assumptions detail
+      const highRisk = assumptions.filter((a) => a.risk === "high");
+      if (highRisk.length > 0) {
+        lines.push(zh ? `#### 高风险假设详情` : `#### High-risk assumption detail`);
+        lines.push("");
+        for (const a of highRisk) {
+          lines.push(`- **${a.id}**: ${a.assumption}`);
+          lines.push(`  - ${zh ? "破裂条件" : "Broken if"}: ${a.brokenIf}`);
+          lines.push(`  - ${zh ? "证据" : "Evidence"}: ${(a.evidence || []).join("; ")}`);
+        }
+        lines.push("");
+      }
+    }
+
+    return lines.join("\n");
+  }
+
   _aiAgentInsights() {
     const prompts = this._get("prompts");
     const tools = this._get("tools");
@@ -8386,7 +9302,7 @@ class ReportGenerator {
         "",
         "请按以下 4 阶段执行（不要跳过）：",
         "",
-        "**Phase 1 — Planning（低 reasoning_effort）**: 确认 Research Questions Q1-Q8 中哪些对本仓库最有价值。不必分析，只排序。",
+        "**Phase 1 — Planning（低 reasoning_effort）**: 确认 Research Questions Q1-Q11 中哪些对本仓库最有价值。不必分析，只排序。",
         "",
         "**Phase 2 — Finding Validation（中 reasoning_effort）**: 对 ★ Findings 章节中的每个 Finding 执行 Merge/Split/Reject/Verify：",
         "- 若多个 Finding 描述同一现象 → Merge",
