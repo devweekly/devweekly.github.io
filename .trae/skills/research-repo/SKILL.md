@@ -1,6 +1,6 @@
 ---
 name: "research-repo"
-description: "Research an open-source repository and extract architecture, design ideas, engineering tradeoffs, and reusable patterns. Invoke when user asks to study/research/analyze a repo's architecture, design patterns, or AI Agent harness."
+description: "研究一个开源 Repository，提炼其架构、设计思想、工程权衡与可复用模式。当用户要求研究/分析某个仓库的架构、设计模式或 AI Agent 实现时调用。"
 ---
 
 # Repository 研究
@@ -235,38 +235,39 @@ flowchart LR
 ### 用法
 
 ```bash
-# Copy script to working folder
-cp .trae/skills/research-repo/research-repo.mjs research-{repo}-{date}/
-
 # Run individual analyzers (each prints JSON to stdout)
-node research-repo.mjs discovery    <repoPath>  > evidence-store/discovery.json
-node research-repo.mjs architecture <repoPath>  > evidence-store/architecture.json
-node research-repo.mjs entrypoints  <repoPath>  > evidence-store/entrypoints.json
-node research-repo.mjs prompts      <repoPath>  > evidence-store/prompts.json
-node research-repo.mjs tools        <repoPath>  > evidence-store/tools.json
-node research-repo.mjs tests        <repoPath>  > evidence-store/tests.json
-node research-repo.mjs evaluations  <repoPath>  > evidence-store/evaluations.json
-node research-repo.mjs git          <repoPath>  > evidence-store/git_history.json
-node research-repo.mjs ci           <repoPath>  > evidence-store/ci.json
-node research-repo.mjs symbols      <repoPath>  > evidence-store/symbols.json
-node research-repo.mjs ranking      <repoPath>  > evidence-store/interesting_files.json
+node .trae/skills/research-repo/research-repo.mjs discovery    <repoPath>  > evidence-store/discovery.json
+node .trae/skills/research-repo/research-repo.mjs architecture <repoPath>  > evidence-store/architecture.json
+node .trae/skills/research-repo/research-repo.mjs entrypoints  <repoPath>  > evidence-store/entrypoints.json
+node .trae/skills/research-repo/research-repo.mjs prompts      <repoPath>  > evidence-store/prompts.json
+node .trae/skills/research-repo/research-repo.mjs tools        <repoPath>  > evidence-store/tools.json
+node .trae/skills/research-repo/research-repo.mjs tests        <repoPath>  > evidence-store/tests.json
+node .trae/skills/research-repo/research-repo.mjs evaluations  <repoPath>  > evidence-store/evaluations.json
+node .trae/skills/research-repo/research-repo.mjs git          <repoPath>  > evidence-store/git_history.json
+node .trae/skills/research-repo/research-repo.mjs ci           <repoPath>  > evidence-store/ci.json
+node .trae/skills/research-repo/research-repo.mjs symbols      <repoPath>  > evidence-store/symbols.json
+node .trae/skills/research-repo/research-repo.mjs ranking      <repoPath>  > evidence-store/interesting_files.json
 
 # Or run all at once (produces combined JSON with all keys including 'report')
-node research-repo.mjs all <repoPath> > evidence-store/full.json
+node .trae/skills/research-repo/research-repo.mjs all <repoPath> > evidence-store/full.json
 
 # Generate the Evidence Brief (Markdown) for LLM report generation
 # This condenses all analyzer outputs into a structured brief with derived insights
 # and an LLM analysis prompt. Pipe to a file for the LLM to read.
 # Use --lang=zh for Chinese evidence brief + Chinese LLM analysis prompt.
-node research-repo.mjs report <repoPath> > evidence-brief.md
-node research-repo.mjs report --lang=zh <repoPath> > evidence-brief.md
+node .trae/skills/research-repo/research-repo.mjs report <repoPath> > evidence-brief.md
+node .trae/skills/research-repo/research-repo.mjs report --lang=zh <repoPath> > evidence-brief.md
+
+# Generate subagent prompt files for the multi-stage LLM workflow.
+# Writes subagents/*.md in the working folder. Then dispatch each prompt to an LLM subagent.
+node .trae/skills/research-repo/research-repo.mjs subagent-prompts --lang=zh <repoPath>
 
 # Incremental update: when the repo gets new code (git pull), update evidence
 # without re-running everything from scratch. Uses git diff to detect changed
 # files, re-analyzes only those, merges with previous results, and rebuilds
 # architecture graph + ranking + plan + questions + report.
 # Requires evidence-store/full.json from a previous 'all' run.
-node research-repo.mjs update <repoPath> > evidence-store/full.json
+node .trae/skills/research-repo/research-repo.mjs update <repoPath> > evidence-store/full.json
 ```
 
 ### Report 生成工作流
@@ -489,7 +490,7 @@ Takeaway
 ```mermaid
 flowchart TD
   A[Repository] --> WF["Create Working Folder<br/>research-{repo}-{date}/"]
-  WF --> DA["Analyzer Pipeline<br/>node research-repo.mjs all"]
+  WF --> DA["Analyzer Pipeline<br/>node .trae/skills/research-repo/research-repo.mjs all"]
 
   DA --> TS["Tree-sitter AST<br/>(Python/TS/JS/Rust/Go)"]
   TS --> ES["Evidence Store<br/>11 JSON files + evidence-brief.md"]
@@ -524,6 +525,62 @@ flowchart TD
   CA --> M["Write report.md"]
   EV --> M
 ```
+
+---
+
+## 多阶段 LLM Subagent 工作流
+
+上面的 mermaid 图不是装饰，而是必须被执行的工作流。`research-repo.mjs` 负责前两级（Analyzer Pipeline + Evidence Store）；后面的 LLM 推理层由 Agent 通过 `Task` 工具派发 subagent 完成。
+
+### 生成 Prompt 文件
+
+`subagent-prompts` 命令会根据 `--lang` 在 working folder 下生成 `subagents/*.md`，每个文件对应一个 subagent 任务：
+
+```bash
+node .trae/skills/research-repo/research-repo.mjs subagent-prompts --lang=zh <repoPath>
+```
+
+生成内容：
+
+| Prompt 文件 | 目标输出 | 说明 |
+|-------------|----------|------|
+| `subagents/01-hypothesis.md` | `01-hypotheses.md` | 基于 Evidence Brief 生成 3-5 个可检验架构假设 |
+| `subagents/02-evidence-architecture.md` | `02-evidence/architecture.md` | 核心架构深度分析 |
+| `subagents/02-evidence-guardrails.md` | `02-evidence/guardrails.md` | Guardrails、安全、适配器分析 |
+| `subagents/02-evidence-testing.md` | `02-evidence/testing.md` | 测试与正确性分析 |
+| `subagents/02-evidence-ai-patterns.md` | `02-evidence/ai-patterns.md` | AI Agent 模式分析 |
+| `subagents/02-evidence-evolution.md` | `02-evidence/evolution.md` | 架构演化分析 |
+| `subagents/03-cross-validation.md` | `03-cross-validation.md` | 交叉验证假设与证据冲突 |
+| `subagents/04-comparative.md` | `04-comparative.md` | 与同类项目对比（可选） |
+| `subagents/05-report-writer.md` | `report.md` | 综合所有产出撰写最终报告 |
+| `subagents/README.md` | — | 执行顺序速查表 |
+
+### 派发 Subagent
+
+每个 prompt 文件都要交给一个独立的 LLM subagent 执行。使用 `Task` 工具（`subagent_type=general_purpose_task`），query 内容：
+
+1. 告知 subagent 当前 working folder 路径。
+2. 把对应 `subagents/XX.md` 的完整 prompt 贴进去。
+3. 要求 subagent 读完证据后，把输出写入对应的 target 文件。
+
+**执行顺序**：
+
+```
+Stage 1: 01-hypothesis
+Stage 2: 02-evidence-*      (5 个可并行)
+Stage 3: 03-cross-validation
+Stage 4: 04-comparative     (可选)
+Stage 5: 05-report-writer
+```
+
+Subagent 不是读所有源码，而是**读 Evidence Brief + 相关 JSON + 被 Semantic Index 定位的关键文件**。这保证了可扩展性：LLM 只读它必须读的文件，而不是整个仓库。
+
+### 为什么这样设计
+
+- **脚本层只做确定性事实**：AST、符号、图、文件树、git 历史。
+- **Subagent 层做解释与综合**：架构意味着什么、为什么这样设计、工程权衡。
+- **分阶段降低单次上下文压力**：每个 subagent 只聚焦一个领域，输出可以被下一阶段验证和引用。
+- **可追踪**：每个产物都有明确输入 prompt 和输出文件，便于复核。
 
 ---
 

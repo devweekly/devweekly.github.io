@@ -1,13 +1,36 @@
 #!/bin/bash
-# Batch regenerate evidence-brief.md AND report.md for all ref-only repos using the latest skill.
+# Batch regenerate evidence-brief.md for all ref-only repos using the latest skill.
 # Runs N repos in parallel (PARALLEL=4) to bound memory/CPU.
+# Note: this script only generates evidence-brief.md. report.md must be produced
+# separately by an LLM reading evidence-brief.md.
 # Usage: bash run-all-repos-v2.sh [par_level]
 set -u
 
 PARALLEL="${1:-4}"
 DATE=20260726
 SKILL=.trae/skills/research-repo/research-repo.mjs
-SKILL_VERSION=$(stat -f "%m" "$SKILL")
+
+# Cross-platform file mtime (seconds since epoch)
+file_mtime() {
+  local f="$1"
+  if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    stat -c %Y "$f" 2>/dev/null || echo 0
+  else
+    stat -f %m "$f" 2>/dev/null || echo 0
+  fi
+}
+
+# Cross-platform format epoch as human-readable date
+fmt_mtime() {
+  local ts="$1"
+  if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    date -d "@$ts" 2>/dev/null || echo "$ts"
+  else
+    date -r "$ts" 2>/dev/null || echo "$ts"
+  fi
+}
+
+SKILL_VERSION=$(file_mtime "$SKILL")
 
 REPOS=(
   OfficeCLI ResearchStudio Vibe-Trading buzz code-review-graph
@@ -16,7 +39,7 @@ REPOS=(
   Auto-Empirical-Research-Skills
 )
 
-echo "Skill mtime: ${SKILL_VERSION} ($(date -r ${SKILL_VERSION}))"
+echo "Skill mtime: ${SKILL_VERSION} ($(fmt_mtime ${SKILL_VERSION}))"
 echo "Parallel: ${PARALLEL}, Total repos: ${#REPOS[@]}"
 echo "Start: $(date)"
 
@@ -25,30 +48,24 @@ run_one() {
   local dir="research-${repo}-${DATE}"
   mkdir -p "$dir"
   local brief="${dir}/evidence-brief.md"
-  local report="${dir}/report.md"
   local err="${dir}/stderr.log"
 
-  # Skip if both files exist AND were generated after SKILL_VERSION
-  if [ -s "$brief" ] && [ -s "$report" ]; then
-    brief_mtime=$(stat -f "%m" "$brief" 2>/dev/null || echo 0)
-    report_mtime=$(stat -f "%m" "$report" 2>/dev/null || echo 0)
-    if [ "$brief_mtime" -gt "$SKILL_VERSION" ] && [ "$report_mtime" -gt "$SKILL_VERSION" ]; then
+  # Skip if evidence-brief.md exists AND was generated after SKILL_VERSION
+  if [ -s "$brief" ]; then
+    local brief_mtime
+    brief_mtime=$(file_mtime "$brief")
+    if [ "$brief_mtime" -gt "$SKILL_VERSION" ]; then
       echo "SKIP ${repo} (already up-to-date)"
       return 0
     fi
   fi
 
-  # Step 1: evidence-brief.md (analyzes repo + writes Evidence Brief)
+  # Run analyzer to produce evidence-brief.md
   if ! node "$SKILL" report "ref-only/$repo" --lang=zh > "$brief" 2> "$err"; then
     echo "FAIL ${repo} (evidence-brief step, see ${err})"
     return 1
   fi
 
-  # Step 2: report.md (LLM-generated from evidence-brief)
-  # The skill itself doesn't have a separate report sub-command — `report` already
-  # produces the evidence-brief; the LLM-generated report.md is produced by reading
-  # evidence-brief.md and asking the LLM. Since CLI LLM is not available in this
-  # environment, we leave report.md untouched if it exists; otherwise empty.
   echo "OK  ${repo} -> ${brief}"
 }
 

@@ -31,6 +31,7 @@ import { readFileSync, readdirSync, statSync, existsSync, writeFileSync } from "
 import { join, extname, basename, relative, sep, dirname } from "node:path";
 import { execSync } from "node:child_process";
 import { pathToFileURL, fileURLToPath } from "node:url";
+import { writeSubagentPrompts } from "./subagent-prompts.mjs";
 
 // Swallow EPIPE errors when downstream (e.g. `head`) closes the pipe early.
 process.stdout?.on?.("error", (err) => {
@@ -11345,7 +11346,7 @@ async function main() {
   const command = positional[0];
   const repoPath = positional[1];
   const syntheticCommands = new Set(["plan", "questions", "report", "update"]);
-  const validCommands = new Set([...ANALYZERS.map((a) => a.id), "all", ...syntheticCommands]);
+  const validCommands = new Set([...ANALYZERS.map((a) => a.id), "all", ...syntheticCommands, "subagent-prompts"]);
 
   if (!command || !repoPath) {
     console.error(
@@ -11369,6 +11370,12 @@ async function main() {
   const absPath = statSync(repoPath).isDirectory()
     ? repoPath
     : dirname(repoPath);
+
+  if (command === "subagent-prompts") {
+    const outDir = writeSubagentPrompts(absPath, { lang });
+    console.error(`Subagent prompts written to ${outDir}/`);
+    return;
+  }
 
   await loadOptionalPackages();
   await initTreeSitter();
@@ -11455,7 +11462,7 @@ async function main() {
       const evidenceStore = new EvidenceStore(rebuildStore);
       rebuildStore.plan = new ResearchPlanner(DEFAULT_RESEARCH_GOAL, evidenceStore).plan();
       rebuildStore.questions = new QuestionGenerator(evidenceStore).generate();
-      rebuildStore.report = new ReportGenerator(evidenceStore, { lang: "en" }).generate();
+      rebuildStore.report = new ReportGenerator(evidenceStore, { lang }).generate();
       rebuildStore._meta = {
         lastCommit: rebuildCtx.git("rev-parse", "HEAD").trim(),
         analyzedAt: new Date().toISOString(),
@@ -11517,7 +11524,7 @@ async function main() {
         }
       }
 
-      process.stdout.write(JSON.stringify(evidenceStore, null, 2) + "\n");
+      process.stdout.write(JSON.stringify(rebuildStore, null, 2) + "\n");
       return;
     }
 
