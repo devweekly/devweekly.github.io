@@ -108,9 +108,6 @@ research-{repo-name}-{YYYYMMDD}/
 | `architecture` | Node/edge counts + cycles + centrality + `_ref` | `architecture.json` | Graph nodes/edges are 0.1-1.5MB |
 | All other sections | Full data | — | Small enough for git (< 30KB each) |
 
-**体积影响**：精简版 `full.json` 为 76-256KB（适合 git），原本可达 6-105MB。拆分后的文件被 `.gitignore` 排除，可通过 `node research-repo.mjs all <repo>` 重新生成。
-
-**向后兼容**：`update` 命令会自动加载已存在的拆分文件。如果 `symbols.json` / `ontology.json` / `architecture.json` 不存在（旧格式 `full.json`），则直接从 `full.json` 读取数据。
 
 ### Evidence Store 的优势
 
@@ -225,13 +222,11 @@ research-{repo-name}-{YYYYMMDD}/
 1. **Fact Extractor**（11 个 Analyzer）—— 回答“这个 Repository 包含什么？”，通过扫描文件、AST、Git 历史、CI 配置。
 2. **Inference Engine**（7 个 Analyzer）—— 回答“为什么这样设计？”，通过对 Fact Extractor 的输出进行推理。
 
-LLM 不会直接遍历 Repository，而是查询由两级 Analyzer 共同产出的 Evidence Store。
-
-**约 70% 的工作是确定性的（脚本），约 30% 是推理（LLM）。**
+注意：LLM不能直接遍历 Repository，而是查询由两级 Analyzer 共同产出的 Evidence Store。
 
 ### Architecture Semantics Layer（Inference Engine）
 
-七个基于规则的 Analyzer 将 Evidence Store 从事实提取提升到架构推理。每个 Analyzer 都产出带 Confidence 分数与 Evidence 的结构化 JSON，并在 Evidence Brief §2.5 以及 `analyze-output.mjs` 的 `summarize()` 中呈现。
+七个基于规则的 Analyzer从事实提取提升到架构推理。每个 Analyzer 都产出带 Confidence 分数与 Evidence 的结构化 JSON，并在 Evidence Brief §2.5 以及 `analyze-output.mjs` 的 `summarize()` 中呈现。
 
 | Analyzer | Input | Output | 核心价值 |
 |----------|-------|--------|----------|
@@ -239,7 +234,7 @@ LLM 不会直接遍历 Repository，而是查询由两级 Analyzer 共同产出�
 | `ResponsibilityAnalyzer` | module naming + symbols + graph | Module → Responsibility 矩阵（例如 `planner/` → “Task Planning”） | 用语义角色标签替代“top PageRank” |
 | `StabilityAnalyzer` | architecture graph + symbols | Robert C. Martin A/I 指标 + Zone（Pain/Uselessness/Sweet Spot）per module | 识别 god module 与过度抽象的组件 |
 | `ChangeCouplingAnalyzer` | git log --name-only | 一起变更的文件对，分为 structural（有 import）或 logical（无 import 但共同变更） | 揭示隐藏的逻辑依赖——“Git 已经分析过了，再往前走一步” |
-| `InformationFlowAnalyzer` | entrypoints + calls + symbols + responsibility | 端到端带标签的流（Request → Planner → Executor → LLM → Response） | 让架构师一眼看清请求生命周期 |
+| `InformationFlowAnalyzer` | entrypoints + calls + symbols + responsibility | 端到端带标签的流（Request → Planner → Executor → LLM → Response） | 让架构师看清请求生命周期 |
 | `DependencySmellAnalyzer` | graph + pattern + stability + responsibility | 层级违规、循环依赖（带上下文分类）、hub module、不稳定依赖 | 带严重级别与上下文的风险评估 |
 | `CapabilityOntologyAnalyzer` | responsibility + tools + prompts + evals + symbols | 10 维能力成熟度矩阵（Planning/Execution/Retrieval/Memory/Evaluation/Safety/Tool/Context/IO/Persistence） | 回答“这个系统能做什么？缺少什么？” |
 
@@ -248,28 +243,6 @@ LLM 不会直接遍历 Repository，而是查询由两级 Analyzer 共同产出�
 
 **基于规则，而非 LLM** —— 按架构指令要求。全部 7 个 Analyzer 都使用确定性规则（目录命名、符号模式、图形状、Git 历史）。LLM 负责解释它们的输出，而不是生成它们。
 
-**已知限制**（供未来迭代参考）：
-- Java Eclipse plugin 路径（`plugins/org.example.*`）会干扰模块级分组，因为目录名中的点与点分 module-ID 方案冲突。
-- `InformationFlowAnalyzer` 的 LLM 调用点检测基于符号名的正则（`LLM_NAME_RE` 覆盖 openai/anthropic/claude/gpt/llm/gemini/mistral/deepseek/qwen/bedrock/vertex/completion/inference/generate 等）。这是故意放宽以最大化召回率，但会在 `palette_generator` 或 `DesignSystemFlow` 这类通用名称上产生误报。要在不损失召回的前提下提升精度，需要语言特定的调用点分析（例如通过调用图解析 `openai.chat.completions.create(...)`，而不是名称正则）。
-- `reachesLLM` 在 Rust 项目中可能存在漏报：`mod llm;` 声明和 `use crate::llm` import 在 architecture graph 中未被解析为完整模块路径，因此 LLM 调用点节点的 in/out 边为 0，BFS 无法到达。
-
-**匹配策略**：以下三个匹配层均使用 segment/token-prefix 匹配（而非子串），以避免系统性误报：
-
-| 层级 | 匹配策略 | 依据 |
-|------|----------|------|
-| `ArchitecturePatternAnalyzer` 目录信号 | `seg === sig \|\| seg.startsWith(sig+"-") \|\| seg.startsWith(sig+"_")` | 防止 “ast” 匹配 “contrast”；“ir” 匹配 “first”/“directory” |
-| `ResponsibilityAnalyzer` 目录关键词 | 同上 | 防止 “db” 匹配 “database”（避免所有数据库模块被误标为 Persistence） |
-| `ResponsibilityAnalyzer` 符号关键词 | `tokenizeSymbol(s).some(t => t.startsWith(kw))` | 防止 “db” 匹配 “couldBeEmoji”（couldBe→db） |
-
-`tokenizeSymbol()` 将 CamelCase / snake_case / kebab-case 名称拆分为小写 token：`resetCapabilitiesCache` → `["reset","capabilities","cache"]`，`couldBeEmoji` → `["could","be","emoji"]`。Token-prefix 匹配支持有意的前缀关键词，如 `retriev`（匹配 token `retrieve`、`retrieval`）和 `persist`（匹配 `persistence`、`persistent`）。
-
-**最低分数阈值**：`ResponsibilityAnalyzer` 要求 `bestScore ≥ 2`。一次目录匹配（2 分）或两次符号匹配（2 分）是最低证据。单次符号匹配（1 分）太弱——例如，仅 `resetCapabilitiesCache` 不应把整个模块标记为 “Persistence”。
-
-**测试文件排除**：`ResponsibilityAnalyzer` 在构建 module→files 映射时通过 `isTestPath()` 跳过测试文件，防止带有数据库/缓存 fixture 的测试（如 `tmp_db`、`test_cache`）污染模块职责分类。
-
-**LLM Interface 关键词精化**：LLM Interface 规则仅使用 LLM 专属术语：`llm`、`inference`、`openai`、`anthropic`、`claude`、`gemini`、`mistral`、`deepseek`、`qwen`、`bedrock`、`vertex`、`completion`。通用词（`model`、`client`、`provider`）被排除——它们会匹配数据模型、HTTP client 和任意 provider，在非 AI Repository 上造成误报。
-
-**Monorepo 模式**：`required` 的 dirSignals 阈值为 1——单个 `packages/` 目录加上 ≥3 个 manifest（multiManifestCheck）即构成充分证据。
 
 ### Evidence Quality Layer
 
