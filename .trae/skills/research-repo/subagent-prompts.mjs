@@ -5,8 +5,6 @@
  * The `subagent-prompts` command writes these prompts into the working folder
  * as `subagents/*.md`. The main Agent then dispatches each prompt to an LLM
  * subagent, which reads the evidence store and writes the target artifact.
- *
- * v3: Dynamic Question Planning + Evidence Graph + Behavior Ontology + Bayesian Hypothesis + Opponent Agent + Research Trace
  */
 
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
@@ -688,7 +686,7 @@ export function writeSubagentPrompts(repoPath, options = {}) {
     }
   }
 
-  const index = `# Subagent 执行顺序（v3: Dynamic Question Planning + Evidence Graph + Behavior Ontology + Bayesian Hypothesis + Opponent Agent + Research Trace）
+  const index = `# Subagent 执行顺序
 
 请按以下顺序派发 subagent（可用 Task 工具并行执行无依赖的阶段）：
 
