@@ -33,16 +33,50 @@ const PROMPTS = {
 - OpenAI Agents SDK 应该问：为什么 Runner 是核心？为什么 Tool 不允许递归？为什么 Memory 没做？
 - DuckDB 应该问：为什么不用 Volcano？为什么 Vectorized？为什么 Push-based？
 
+## 两阶段流程
+
+### 阶段 1：候选生成（8-10 个）
+
+先头脑风暴 8-10 个候选问题，覆盖不同维度（架构 / 设计决策 / 工程权衡 / 演进 / 反模式）。
+
+### 阶段 2：5 维打分与筛选（选出 Top 5）
+
+每个候选问题按以下 5 维标准打分（每维 1-5 分）：
+
+| 维度 | 含义 | 1 分 | 5 分 |
+|------|------|------|------|
+| **Impact** | 能否改变工程师对系统的理解 | 表层事实（用了什么技术） | 颠覆性洞察（为什么这样设计） |
+| **Novelty** | 是否 README 已回答 | README 直接写了 | 必须读源码才能回答 |
+| **Evidence Rich** | Repository 能否回答 | 无证据或纯推测 | 多个文件/测试/提交可验证 |
+| **Transferable** | 答案是否有迁移价值 | 仅适用于本项目 | 可迁移到其他系统 |
+| **Controversial** | 是否存在其他可能设计 | 只有一种合理做法 | 存在明显的设计权衡 |
+
+**筛选规则**：
+- 总分 = 5 维之和（最高 25 分）
+- **Controversial = 1 的问题直接淘汰**（没有争议的问题不值得研究）
+- **Evidence Rich = 1 的问题直接淘汰**（无法验证的问题不值得研究）
+- 选出总分最高的 5 个
+
 ## 输出格式
 
 \`\`\`markdown
 # Research Questions — ${repoName}
 
+## 候选问题打分表
+
+| # | 候选问题 | Impact | Novelty | Evidence | Transferable | Controversial | 总分 | 入选 |
+|---|---------|--------|---------|----------|--------------|---------------|------|------|
+| 1 | ... | 5 | 4 | 5 | 4 | 3 | 21 | ✓ |
+| 2 | ... | 4 | 5 | 4 | 5 | 4 | 22 | ✓ |
+| ... | ... | ... | ... | ... | ... | ... | ... | ... |
+
 ## Q1: {问题陈述}
 - **Priority**: Critical / High / Medium
+- **Importance**: Critical / High / Medium / Low（与 Confidence 独立）
 - **Reason**: 为什么这个问题对理解 ${repoName} 至关重要？
 - **Expected Evidence**: 预期在哪些文件中找到答案？
 - **Hypothesis**: 初步假设（可证伪）
+- **Score**: Impact=N/5, Novelty=N/5, Evidence=N/5, Transferable=N/5, Controversial=N/5, 总分=N/25
 
 ## Q2: {问题陈述}
 ...
@@ -60,8 +94,10 @@ const PROMPTS = {
 约束：
 - 每个问题必须是**可证伪的**（能回答"是"或"否"）。
 - 每个问题必须有明确的**证据预期**（不要问无法验证的问题）。
+- **Controversial = 1 或 Evidence Rich = 1 的问题必须淘汰**。
 - 优先选择**会改变读者对系统理解**的问题。
-- 不要问表面问题（如"用了什么技术栈"），要问深层问题（如"为什么这样设计"）。`
+- 不要问表面问题（如"用了什么技术栈"），要问深层问题（如"为什么这样设计"）。
+- 不是问很多，而是问**最值得问的问题**。`
         : `# Dynamic Research Question Planner — ${repoName}
 
 You are a research methodology expert. Read the evidence and **dynamically generate** the 5 most appropriate Research Questions for ${repoName}.
@@ -78,16 +114,50 @@ Examples:
 - OpenAI Agents SDK should ask: Why is Runner the core? Why don't Tools allow recursion? Why wasn't Memory implemented?
 - DuckDB should ask: Why not Volcano? Why Vectorized? Why Push-based?
 
+## Two-Phase Process
+
+### Phase 1: Candidate Generation (8-10 questions)
+
+Brainstorm 8-10 candidate questions covering different dimensions (architecture / design decisions / engineering tradeoffs / evolution / anti-patterns).
+
+### Phase 2: 5-Dimension Scoring & Selection (pick Top 5)
+
+Score each candidate on 5 dimensions (1-5 points each):
+
+| Dimension | Meaning | 1 point | 5 points |
+|-----------|---------|---------|----------|
+| **Impact** | Can it change an engineer's understanding | Surface fact (what tech) | Disruptive insight (why designed this way) |
+| **Novelty** | Is it already answered in README | README says it directly | Must read source to answer |
+| **Evidence Rich** | Can the repo answer it | No evidence, pure speculation | Multiple files/tests/commits verify |
+| **Transferable** | Does the answer transfer elsewhere | Only applies to this project | Transfers to other systems |
+| **Controversial** | Are there alternative designs | Only one reasonable approach | Clear design tradeoff exists |
+
+**Selection rules**:
+- Total = sum of 5 dimensions (max 25)
+- **Controversial = 1 questions are eliminated** (no controversy = not worth researching)
+- **Evidence Rich = 1 questions are eliminated** (unverifiable = not worth researching)
+- Pick top 5 by total score
+
 ## Output Format
 
 \`\`\`markdown
 # Research Questions — ${repoName}
 
+## Candidate Scoring Table
+
+| # | Candidate Question | Impact | Novelty | Evidence | Transferable | Controversial | Total | Selected |
+|---|-------------------|--------|---------|----------|--------------|---------------|-------|----------|
+| 1 | ... | 5 | 4 | 5 | 4 | 3 | 21 | ✓ |
+| 2 | ... | 4 | 5 | 4 | 5 | 4 | 22 | ✓ |
+| ... | ... | ... | ... | ... | ... | ... | ... | ... |
+
 ## Q1: {Question Statement}
 - **Priority**: Critical / High / Medium
+- **Importance**: Critical / High / Medium / Low (independent from Confidence)
 - **Reason**: Why is this question critical for understanding ${repoName}?
 - **Expected Evidence**: Which files are expected to contain answers?
 - **Hypothesis**: Initial hypothesis (falsifiable)
+- **Score**: Impact=N/5, Novelty=N/5, Evidence=N/5, Transferable=N/5, Controversial=N/5, Total=N/25
 
 ## Q2: {Question Statement}
 ...
@@ -105,8 +175,10 @@ Examples:
 Constraints:
 - Each question must be **falsifiable** (can answer "yes" or "no").
 - Each question must have explicit **evidence expectations** (don't ask unverifiable questions).
+- **Controversial = 1 or Evidence Rich = 1 questions MUST be eliminated**.
 - Prioritize questions that **change the reader's understanding** of the system.
-- Don't ask surface questions (e.g., "what tech stack was used"), ask deep questions (e.g., "why was it designed this way").`,
+- Don't ask surface questions (e.g., "what tech stack was used"), ask deep questions (e.g., "why was it designed this way").
+- Not many questions, but **the most worth asking**.`,
   }),
 
   "01-hypothesis": (repoName, lang) => ({
@@ -127,7 +199,7 @@ Constraints:
 2. **先验置信度**（0-100%，基于初步证据）
 3. **支持证据**（引用具体文件路径或简报章节）
 4. **若成立，意味着什么**（对架构理解的影响）
-5. **若成立，意味着什么**（替代解释）
+5. **若不成立，意味着什么**（替代解释）
 6. **如何验证**（需要查看哪些源码/测试/文档）
 7. **置信度演进历史**（表格形式）：
 
@@ -139,6 +211,21 @@ Constraints:
 | tests/ | 80% | 测试验证了关键路径 |
 | git_history.json | 91% | 重构历史支持假设 |
 \`\`\`
+
+8. **Competing Hypothesis（竞争假设，必须包含）**：
+
+为每个主假设提出一个**最可能的竞争假设**——即对同一组证据的另一种合理解释。竞争假设也必须有置信度。
+
+\`\`\`markdown
+### Competing Hypothesis（竞争假设）
+- **陈述**: {对同一证据的另一种解释，一句话}
+- **先验置信度**: N%
+- **置信度**: N%（低于主假设）
+- **为何不如主假设**: {简述}
+- **如何证伪竞争假设**: {需要哪些证据}
+\`\`\`
+
+**竞争假设的价值**：Opponent Agent 将攻击主假设并尝试支持竞争假设。只有当主假设的置信度**远高于**竞争假设时，结论才稳定。
 
 输出到 \`01-hypotheses.md\`。只写假设，不写无关总结。`
         : `# Bayesian Hypothesis Generator — ${repoName}
@@ -167,6 +254,21 @@ For each hypothesis include:
 | tests/ | 80% | Tests verify critical paths |
 | git_history.json | 91% | Refactoring history supports hypothesis |
 \`\`\`
+
+8. **Competing Hypothesis** (MANDATORY):
+
+For each main hypothesis, propose the **most plausible competing hypothesis** — an alternative explanation for the same evidence. The competing hypothesis must also have a confidence.
+
+\`\`\`markdown
+### Competing Hypothesis
+- **Statement**: {alternative explanation of the same evidence, one sentence}
+- **Prior confidence**: N%
+- **Confidence**: N% (lower than main hypothesis)
+- **Why weaker than main**: {brief}
+- **How to falsify competing hypothesis**: {what evidence needed}
+\`\`\`
+
+**Value of competing hypothesis**: The Opponent Agent will attack the main hypothesis and try to support the competing one. A conclusion is stable only when the main hypothesis confidence is **significantly higher** than the competing one.
 
 Write output to \`01-hypotheses.md\`. Only list hypotheses, no extra summary.`,
   }),
@@ -213,6 +315,24 @@ Prompt
   ↓ CALLS
 LLM
 \`\`\`
+
+## Part 3: Decision Ontology（Palantir 风格，扩展）
+
+Palantir Ontology 真正强大的不仅是静态对象和行为图，还包括**决策层**。提取以下类型（如证据支持）：
+
+- **Decision**：架构决策（如"Planner 与 Runner 解耦"）
+- **Policy**：约束策略（如"Tool 不允许递归"）
+- **Constraint**：技术约束（如"必须单进程"）
+- **Observation**：观察到的现象（如"测试覆盖了 80% 的核心路径"）
+- **Resolution**：研究结论（如"Planner 解耦是为了支持多执行器"）
+
+决策关系动词（用于 Execution Graph 之外的语义层）：
+- \`EXECUTES\` / \`EMITS\` / \`TRIGGERS\` / \`CALLS\`（行为）
+- \`JUSTIFIES\`（Decision JUSTIFIES Module —— 决策证明模块存在）
+- \`SUPPORTS\`（Observation SUPPORTS Finding）
+- \`PROVES\`（Finding PROVES Resolution）
+- \`ANSWERS\`（Resolution ANSWERS Question）
+- \`CONSTRAINS\`（Policy CONSTRAINS Component）
 
 输出格式：
 
@@ -263,12 +383,25 @@ graph TD
 | Tool | Observation | returns | Produces result |
 | Observation | Memory | stores in | Persists state |
 | Memory | Planner | feeds back to | Provides context |
+
+## Decisions（如证据支持）
+
+| Decision | Type | Evidence | Justifies |
+|----------|------|----------|-----------|
+| Separate Planner from Runner | structural | src/runner.ts:L20 | Planner module exists |
+
+## Policies & Constraints（如证据支持）
+
+| Policy/Constraint | Type | Constrains | Evidence |
+|-------------------|------|------------|----------|
+| Tools must not recurse | policy | Tool | docs/tools.md:L15 |
 \`\`\`
 
 约束：
 - 每个实体必须有明确的文件路径证据。
 - 不要推断功能；必须查看实现或调用链。
-- **Execution Graph 必须基于实际调用链**，不要臆测。`
+- **Execution Graph 必须基于实际调用链**，不要臆测。
+- **Decisions / Policies / Constraints 只在证据支持时输出**；无证据则省略该章节，不要编造。`
         : `# Behavior Ontology Mapper — ${repoName}
 
 You are an ontology engineer. Extract the **shared semantic layer** of ${repoName}, including both **static objects** and **behavior graph**, and write output to \`02-ontology.md\`.
@@ -307,6 +440,24 @@ Prompt
   ↓ CALLS
 LLM
 \`\`\`
+
+## Part 3: Decision Ontology (Palantir-style extension)
+
+What makes Palantir Ontology powerful is not just static objects and behavior graphs, but the **decision layer**. Extract the following types (when evidence supports them):
+
+- **Decision**: Architectural decisions (e.g., "Separate Planner from Runner")
+- **Policy**: Constraint policies (e.g., "Tools must not recurse")
+- **Constraint**: Technical constraints (e.g., "Must be single-process")
+- **Observation**: Observed phenomena (e.g., "Tests cover 80% of critical paths")
+- **Resolution**: Research conclusions (e.g., "Planner decoupling enables multiple executors")
+
+Decision relation verbs (semantic layer beyond Execution Graph):
+- \`EXECUTES\` / \`EMITS\` / \`TRIGGERS\` / \`CALLS\` (behavior)
+- \`JUSTIFIES\` (Decision JUSTIFIES Module — decision explains module existence)
+- \`SUPPORTS\` (Observation SUPPORTS Finding)
+- \`PROVES\` (Finding PROVES Resolution)
+- \`ANSWERS\` (Resolution ANSWERS Question)
+- \`CONSTRAINS\` (Policy CONSTRAINS Component)
 
 Output format:
 
@@ -357,6 +508,18 @@ graph TD
 | Tool | Observation | returns | Produces result |
 | Observation | Memory | stores in | Persists state |
 | Memory | Planner | feeds back to | Provides context |
+
+## Decisions (if evidence supports)
+
+| Decision | Type | Evidence | Justifies |
+|----------|------|----------|-----------|
+| Separate Planner from Runner | structural | src/runner.ts:L20 | Planner module exists |
+
+## Policies & Constraints (if evidence supports)
+
+| Policy/Constraint | Type | Constrains | Evidence |
+|-------------------|------|------------|----------|
+| Tools must not recurse | policy | Tool | docs/tools.md:L15 |
 \`\`\`
 
 Constraints:
@@ -416,10 +579,11 @@ Constraints:
 
 ### Finding 1: {标题}
 - **Conclusion**: ...
+- **Importance**: Critical / High / Medium / Low（与 Confidence 独立——这个 Finding 对理解架构有多重要）
 - **Evidence**: \`file.py:L10-L30\`, 或简报 §X
 - **Counter Evidence**: 哪些证据与这个结论矛盾？
 - **Alternative Interpretation**: 还有什么其他解释？
-- **Confidence**: High / Medium / Low
+- **Confidence**: High / Medium / Low（证据强度——证据有多强，不是结论有多重要）
 - **Unknowns**: 还需要哪些源码验证？
 
 ## Shared Findings
@@ -489,10 +653,11 @@ Required inputs:
 
 ### Finding 1: {Title}
 - **Conclusion**: ...
+- **Importance**: Critical / High / Medium / Low (independent from Confidence — how important is this Finding for understanding the architecture)
 - **Evidence**: \`file.py:L10-L30\` or brief §X
 - **Counter Evidence**: What evidence contradicts this conclusion?
 - **Alternative Interpretation**: What other explanations are possible?
-- **Confidence**: High / Medium / Low
+- **Confidence**: High / Medium / Low (evidence strength — how strong the evidence is, NOT how important the conclusion is)
 - **Unknowns**: What source-code verification is still needed?
 
 ## Shared Findings
@@ -836,6 +1001,20 @@ Suggested dimensions:
 - **禁止重新解释**。只引用已被标记为 Validated 的 Research Question。
 - **禁止推测**。如果证据不足，明确说「未知」。
 
+**反伪造约束（Anti-Fabrication，最高优先级）**：
+
+历史审计发现 LLM 会系统性地伪造 Finding 引用——发明 ID、篡改置信度、翻转 verified 状态、甚至颠倒 Finding 内容。以下规则为强制要求，违反任一条均为严重错误：
+
+- **ID 完整性**：你引用的每个 \`[F-XXX]\` 必须对应 evidence-brief.md ★ Findings 章节中的真实 Finding ID。禁止发明新 ID，禁止跳过 ID，禁止把 F-005 的内容归给 F-010。
+- **置信度逐字引用**：你引用的 \`confidence=X.XX\` 必须与 brief Findings 表格的 Confidence 列**逐字符匹配**（包括小数位）。禁止四舍五入、篡改或凭记忆重写。
+- **状态不得反转**：brief 中标记为 \`✅ verified\` 的 Finding，在你的报告中不得被描述为 \`rejected\` 或 \`downgraded\`，反之亦然。若要质疑一个 verified Finding，必须先逐字引用 brief 行，再提供源码反证——但**不得修改 Verified 字段本身**。
+- **数字完整性**：所有计数（tools/prompts/evals/tests）必须逐字引用自 brief。若 brief 说"检测到 10 个 tools"，报告不得说"12 个"或"8 个"。若你怀疑某个计数，应在 Architecture Smells 中提出，**不得**默默修改数字。
+- **内容不得伪造**：引用 Finding 文本时，必须与 brief 的 \`finding\` 字段匹配。若 brief F-006 写"Detected 10 tools"，报告不得写"No tools detected"。
+- **先引用再批判**（强制）：对于你打算 Reject / Downgrade / 重新解释的每个 Finding，必须**先逐字引用 brief 的完整行**（ID / Q / Importance / Confidence / Coverage / Verified / Finding 文本），**再**给出判断。这防止"稻草人"批判——攻击 brief 从未做出的声明。
+- **矛盾双向检查**：当你声称 brief"自相矛盾"或"ConsistencyAnalyzer 漏检了矛盾"时，必须先逐字引用 brief §A \`consistency.contradictions[]\` 和 \`consistency.warnings[]\` 的实际内容，再解释你认为漏检了什么。禁止在 brief 实际列出了矛盾时声称"无矛盾"。
+
+**Finding 引用格式**：在 Trace 中引用 Finding 时使用 \`[F-001 @ Q1, confidence=0.85, verified]\`。读者应能从 Trace 追溯回 Findings 章节的对应条目。
+
 必读输入：
 - \`evidence-brief.md\`
 - \`00-research-questions.md\`
@@ -879,14 +1058,76 @@ Evidence Graph: [引用 05-cross-validation.md 中的 Evidence Graph]
 报告结构遵循 SKILL.md 中的 "Report 结构（Question-centric）"：
 1. Executive Summary
 2. Research Traces（按 Research Question 组织，记录调查过程）
-3. Negative Findings
-4. Architecture Smells
-5. Interesting Decisions
-6. Repository Positioning
-7. Reusable Pattern Catalog
-8. Architecture Evolution
-9. Reading Guide
-10. Open Questions
+3. Engineering Decisions（Palantir 风格 Decision Report——见下方格式）
+4. Negative Findings
+5. Architecture Smells
+6. Architecture Fitness（Modularity/Extensibility/Testability 等评分——见下方格式）
+7. Architecture Compression（300/100/30 字摘要——见下方格式）
+8. Repository Positioning
+9. Reusable Pattern Catalog
+10. What NOT to Learn（不值得复制的内容——见下方格式）
+11. Architecture Evolution
+12. Reading Guide
+13. Open Questions
+
+## Engineering Decisions 格式（第 3 章）
+
+Palantir Research 是 Decision Report，不是 Architecture Report。每个 Decision 必须包含：
+
+\`\`\`markdown
+### Decision D-001: {决策标题}
+- **Decision**: {一句话决策陈述}
+- **Why**: {为什么做这个决策}
+- **Evidence**: \`file.py:L10-L30\`, [F-XXX]
+- **Tradeoff**: {放弃了什么}
+- **Alternative**: {考虑过但拒绝的替代方案}
+- **Status**: Accepted / Deprecated / Superseded
+- **Learning**: {可迁移的工程教训}
+\`\`\`
+
+## Architecture Fitness 格式（第 6 章）
+
+按以下维度评分（★1-5），引用证据：
+
+\`\`\`markdown
+| Dimension | Score | Evidence | Note |
+|-----------|-------|----------|------|
+| Modularity | ★★★★☆ | architecture.json: 0 cycles | 清晰的模块边界 |
+| Extensibility | ★★★☆☆ | plugins/ dir | 插件机制存在但文档少 |
+| Testability | ★★★★★ | testFileCount=120 | 测试覆盖核心路径 |
+| Observability | ★★☆☆☆ | 无 metrics | 缺少可观测性 |
+| Evolution | ★★★★☆ | git_history: 稳定增长 | 健康的演进节奏 |
+| Performance | ★★★☆☆ | benchmark/ | 有基准但未持续 |
+| Developer Experience | ★★★★☆ | docs/ 完整 | 文档质量高 |
+\`\`\`
+
+## Architecture Compression 格式（第 7 章）
+
+\`\`\`markdown
+### Architecture in 300 words
+{300 字摘要——核心架构、关键决策、主要权衡}
+
+### Architecture in 100 words
+{100 字摘要——压缩到本质}
+
+### Architecture in 30 words
+{30 字摘要——一句话定义这个系统}
+\`\`\`
+
+如果压缩不了，说明其实没有理解。
+
+## What NOT to Learn 格式（第 10 章）
+
+\`\`\`markdown
+### 值得学习（Things worth learning）
+- ★★★★★ {模式/决策/思想} — {为何值得}
+- ★★★★☆ {模式/决策/思想} — {为何值得}
+
+### 不值得复制（Things NOT worth copying）
+- {具体内容} — {为何不值得（历史包袱/临时方案/特定上下文）}
+\`\`\`
+
+很多项目真正值得学的只有 10%，其它是历史包袱。明确区分"值得学"和"不要抄"。
 
 每条架构结论优先引用 \`[R-XXX]\` 或源码路径；原始 \`[F-XXX]\` 仅作为支持证据。
 禁止让 Analyzer 成为叙事主体；禁止复述 Analyzer 之间的争论。
@@ -899,6 +1140,20 @@ You are the lead software architect. Synthesize all evidence and subagent output
 - **Never create new findings**. Only summarize validated findings accepted by \`05-cross-validation.md\`.
 - **Never re-interpret**. Only cite Research Questions marked as Validated.
 - **Never speculate**. If evidence is insufficient, explicitly say "unknown".
+
+**Anti-Fabrication Constraints (HIGHEST PRIORITY)**:
+
+Audits of prior reports found the LLM systematically fabricated Finding citations — inventing IDs, altering confidence values, flipping verified status, and even inverting Finding content. The following rules are MANDATORY; violating any one is a critical error:
+
+- **ID Integrity**: Every \`[F-XXX]\` you cite MUST correspond to a Finding ID in the brief's ★ Findings section. Do NOT invent new IDs, do NOT skip IDs, and do NOT attribute F-005's content to F-010.
+- **Confidence Verbatim**: The \`confidence=X.XX\` in your citation MUST match the brief's Findings table Confidence column **character-for-character** (including decimal places). Do NOT round, alter, or rewrite from memory.
+- **No Status Inversion**: A Finding marked \`✅ verified\` in the brief MUST NOT be described as \`rejected\` or \`downgraded\` in your report, and vice versa. To challenge a verified Finding, first quote the brief row verbatim, then provide source-code counter-evidence — but **do NOT modify the Verified field itself**.
+- **Number Integrity**: All counts (tools/prompts/evals/tests) MUST be quoted verbatim from the brief. If the brief says 'detected 10 tools', the report must NOT say '12 tools' or '8 tools'. If you doubt a count, raise it in Architecture Smells — do NOT silently alter the number.
+- **No Content Fabrication**: When quoting a Finding's text, it MUST match the brief's \`finding\` field. If brief F-006 reads 'Detected 10 tools', the report must NOT say 'No tools detected'.
+- **Quote-then-Critique Workflow** (MANDATORY): For every Finding you intend to Reject / Downgrade / reinterpret, you MUST **first quote the brief's full row verbatim** (ID / Q / Importance / Confidence / Coverage / Verified / Finding text), THEN give your judgment. This prevents 'strawman' critiques — attacking claims the brief never made.
+- **Contradiction Bidirectional Check**: When you claim the brief is 'self-contradictory' or 'ConsistencyAnalyzer missed a contradiction', you MUST first quote the actual contents of brief §A \`consistency.contradictions[]\` and \`consistency.warnings[]\`, then explain what you believe was missed. Do NOT claim the brief says 'no contradictions' when it actually lists some.
+
+**Finding Citation Format**: When citing Findings in Traces, use \`[F-001 @ Q1, confidence=0.85, verified]\`. Readers should be able to trace from a Trace back to the corresponding entry in the Findings section.
 
 Required inputs:
 - \`evidence-brief.md\`
@@ -940,17 +1195,79 @@ Confidence: High / Medium / Low
 Evidence Graph: [cite Evidence Graph from 05-cross-validation.md]
 \`\`\`
 
-Follow the "Report 结构（Question-centric）" section in SKILL.md:
+Follow the "Report Structure (Question-centric)" section in SKILL.md:
 1. Executive Summary
 2. Research Traces (organized by Research Question, recording investigation process)
-3. Negative Findings
-4. Architecture Smells
-5. Interesting Decisions
-6. Repository Positioning
-7. Reusable Pattern Catalog
-8. Architecture Evolution
-9. Reading Guide
-10. Open Questions
+3. Engineering Decisions (Palantir-style Decision Report — see format below)
+4. Negative Findings
+5. Architecture Smells
+6. Architecture Fitness (Modularity/Extensibility/Testability scoring — see format below)
+7. Architecture Compression (300/100/30 word summary — see format below)
+8. Repository Positioning
+9. Reusable Pattern Catalog
+10. What NOT to Learn (things not worth copying — see format below)
+11. Architecture Evolution
+12. Reading Guide
+13. Open Questions
+
+## Engineering Decisions Format (Section 3)
+
+Palantir Research is a Decision Report, not an Architecture Report. Every Decision must include:
+
+\`\`\`markdown
+### Decision D-001: {Decision Title}
+- **Decision**: {one-sentence decision statement}
+- **Why**: {why this decision was made}
+- **Evidence**: \`file.py:L10-L30\`, [F-XXX]
+- **Tradeoff**: {what was given up}
+- **Alternative**: {alternative considered but rejected}
+- **Status**: Accepted / Deprecated / Superseded
+- **Learning**: {transferable engineering lesson}
+\`\`\`
+
+## Architecture Fitness Format (Section 6)
+
+Score each dimension (★1-5) with evidence:
+
+\`\`\`markdown
+| Dimension | Score | Evidence | Note |
+|-----------|-------|----------|------|
+| Modularity | ★★★★☆ | architecture.json: 0 cycles | Clear module boundaries |
+| Extensibility | ★★★☆☆ | plugins/ dir | Plugin mechanism exists but poorly documented |
+| Testability | ★★★★★ | testFileCount=120 | Tests cover critical paths |
+| Observability | ★★☆☆☆ | no metrics | Lacks observability |
+| Evolution | ★★★★☆ | git_history: steady growth | Healthy evolution pace |
+| Performance | ★★★☆☆ | benchmark/ | Has benchmarks but not continuous |
+| Developer Experience | ★★★★☆ | docs/ complete | High-quality documentation |
+\`\`\`
+
+## Architecture Compression Format (Section 7)
+
+\`\`\`markdown
+### Architecture in 300 words
+{300-word summary — core architecture, key decisions, main tradeoffs}
+
+### Architecture in 100 words
+{100-word summary — compressed to the essence}
+
+### Architecture in 30 words
+{30-word summary — one sentence defining this system}
+\`\`\`
+
+If you cannot compress it, you haven't really understood it.
+
+## What NOT to Learn Format (Section 10)
+
+\`\`\`markdown
+### Things worth learning
+- ★★★★★ {pattern/decision/idea} — {why worth learning}
+- ★★★★☆ {pattern/decision/idea} — {why worth learning}
+
+### Things NOT worth copying
+- {specific item} — {why not worth (historical baggage / temporary workaround / specific context)}
+\`\`\`
+
+Many projects have only ~10% truly worth learning; the rest is historical baggage. Clearly distinguish "worth learning" from "do not copy".
 
 Cite \`[R-XXX]\` or source-code paths for architectural conclusions; raw \`[F-XXX]\` may only appear as supporting evidence.
 Never center the narrative around analyzer outputs; never narrate analyzer disagreements as report body.
