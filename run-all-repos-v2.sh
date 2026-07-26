@@ -46,7 +46,7 @@ echo "Start: $(date)"
 run_one() {
   local repo="$1"
   local dir="research-${repo}-${DATE}"
-  mkdir -p "$dir"
+  mkdir -p "$dir/evidence-store"
   local brief="${dir}/evidence-brief.md"
   local err="${dir}/stderr.log"
 
@@ -61,14 +61,13 @@ run_one() {
   fi
 
   # Run 'all' to generate evidence-store (needed by subagent workflow)
-  mkdir -p "${dir}/evidence-store"
-  if ! (cd "$dir" && node "../$SKILL" all "../ref-only/$repo" --lang=zh > evidence-store/full.json 2>> "$err"); then
+  if ! (cd "$dir" && node "../$SKILL" all "../ref-only/$repo" --lang=zh > evidence-store/full.json 2> stderr.log); then
     echo "FAIL ${repo} (all step, see ${err})"
     return 1
   fi
 
   # Run report to produce evidence-brief.md
-  if ! (cd "$dir" && node "../$SKILL" report "../ref-only/$repo" --lang=zh > evidence-brief.md 2>> "$err"); then
+  if ! (cd "$dir" && node "../$SKILL" report "../ref-only/$repo" --lang=zh > evidence-brief.md 2>> stderr.log); then
     echo "FAIL ${repo} (report step, see ${err})"
     return 1
   fi

@@ -84,18 +84,16 @@ research-{repo-name}-{YYYYMMDD}/
 │   ├── architecture.json       # Full dependency graph: nodes + edges (gitignored, regenerable)
 │   └── ...                     # Individual analyzer outputs (if run separately)
 ├── evidence-brief.md           # Condensed evidence + derived insights + LLM prompt (from `report` command)
-├── 01-hypotheses.md            # LLM-generated hypotheses (from Evidence Store)
-├── 02-ontology.md              # Shared Semantic Layer (Palantir-style Ontology)
-├── RQ-001-architecture-pattern.md      # Research Question: core architecture
-├── RQ-002-llm-provider-isolation.md    # Research Question: LLM provider isolation
-├── RQ-003-tool-determinism.md          # Research Question: tool execution determinism
-├── RQ-004-context-propagation.md       # Research Question: context propagation
-├── RQ-005-architecture-evolution.md    # Research Question: architecture evolution
+├── 00-research-questions.md    # Dynamically generated Research Questions (Stage 0)
+├── 01-hypotheses.md            # Bayesian hypotheses with confidence evolution (Stage 1)
+├── 02-ontology.md              # Behavior Ontology: static objects + Execution Graph (Stage 2)
+├── RQ-001.md ... RQ-005.md     # Dynamic Research Question agents (Stage 3, parallel)
 ├── shared-findings.md          # Cross-RQ shared findings (written by RQ agents)
-├── 03-cross-validation.md      # Cross validation + RQ status tracking
-├── 04-comparative.md           # Comparative analysis (explicit project list only)
+├── 04-opponent.md              # Opponent Agent: attack each Finding (Stage 4)
+├── 05-cross-validation.md      # Cross validation + Evidence Graph (Stage 5)
+├── 06-comparative.md           # Comparative analysis (explicit project list only, Stage 6)
 ├── research-repo.mjs           # Copied from skill directory
-└── report.md                   # Final report (LLM-generated, only cites Validated RQs)
+└── report.md                   # Final report with Research Traces (Stage 7, only cites Validated RQs)
 ```
 
 ### 精简版 `full.json` 设计
@@ -155,22 +153,32 @@ research-{repo-name}-{YYYYMMDD}/
 
 ### LLM Evidence 文件格式
 
-每个 `02-evidence/*.md` 文件遵循如下格式：
+每个 `RQ-*.md` 文件遵循如下格式（v3: 增强的 Finding 结构）：
 
 ```markdown
-# {Focus Area}
+## Research Question
+{动态生成的问题陈述}
+
+## Hypothesis Evaluation
+| 假设 | 状态 | 证据 | 置信度演进 |
+|------|------|------|------------|
+| H-XXX: ... | 支持 / 反驳 / 证据不足 | ... | 15% → 62% → 80% |
 
 ## Findings
-
 ### Finding 1: {Title}
+- **Conclusion**: ...
+- **Evidence**: `file.py:L10-L30`, brief §X
+- **Counter Evidence**: 与结论矛盾的证据（必须包含）
+- **Alternative Interpretation**: 其他解释（必须包含）
+- **Confidence**: High / Medium / Low
+- **Unknowns**: 还需要哪些源码验证
 
-**Conclusion**: ...
-**Evidence**: `file.py:L10-L30`, `test.py:L5-L20`
-**Confidence**: High / Medium / Low
-**Reason**: ...
+## Shared Findings
+- **SF-001**: {简述} — 详见 shared-findings.md
 
-## Open Questions
-- ...
+## RQ Status
+- [x] Investigating
+- [ ] Validated / Rejected / Needs Evidence
 ```
 
 ### 命名约定
@@ -510,13 +518,15 @@ flowchart TD
   HYP --> E
   ARCH --> E
 
-  HYP --> ONT["Ontology Mapper<br/>→ 02-ontology.md"]
+  HYP --> QP["Question Planner<br/>→ 00-research-questions.md<br/>(动态生成，非固定模板)"]
 
-  ONT --> RQ1["RQ-001: Architecture Pattern"]
-  ONT --> RQ2["RQ-002: LLM Provider Isolation"]
-  ONT --> RQ3["RQ-003: Tool Determinism"]
-  ONT --> RQ4["RQ-004: Context Propagation"]
-  ONT --> RQ5["RQ-005: Architecture Evolution"]
+  QP --> ONT["Behavior Ontology Mapper<br/>→ 02-ontology.md<br/>(静态对象 + Execution Graph)"]
+
+  ONT --> RQ1["RQ-001<br/>(Dynamic Question)"]
+  ONT --> RQ2["RQ-002<br/>(Dynamic Question)"]
+  ONT --> RQ3["RQ-003<br/>(Dynamic Question)"]
+  ONT --> RQ4["RQ-004<br/>(Dynamic Question)"]
+  ONT --> RQ5["RQ-005<br/>(Dynamic Question)"]
 
   RQ1 --> SF["shared-findings.md"]
   RQ2 --> SF
@@ -524,11 +534,13 @@ flowchart TD
   RQ4 --> SF
   RQ5 --> SF
 
-  SF --> F["Cross Validate<br/>→ 03-cross-validation.md<br/>(Update RQ Status)"]
+  SF --> OPP["Opponent Agent<br/>→ 04-opponent.md<br/>(攻击每个 Finding)"]
 
-  F --> CA["Comparative Analysis<br/>→ 04-comparative.md<br/>(Explicit project list only)"]
+  OPP --> F["Cross Validate + Evidence Graph<br/>→ 05-cross-validation.md<br/>(Update RQ Status)"]
 
-  CA --> M["Write report.md<br/>(Only Validated RQs)"]
+  F --> CA["Comparative Analysis<br/>→ 06-comparative.md<br/>(Explicit project list only)"]
+
+  CA --> M["Write report.md<br/>(Research Trace 格式<br/>Only Validated RQs)"]
 ```
 
 ---
@@ -546,20 +558,18 @@ cd research-{repo}-{date}
 node ../.trae/skills/research-repo/research-repo.mjs subagent-prompts --lang=zh <repoPath>
 ```
 
-生成内容：
+生成内容（v3）：
 
 | Prompt 文件 | 目标输出 | 说明 |
 |-------------|----------|------|
-| `subagents/01-hypothesis.md` | `01-hypotheses.md` | 基于 Evidence Brief 生成 3-5 个可检验架构假设 |
-| `subagents/02-ontology.md` | `02-ontology.md` | **共享语义层**：提取 Component/Interface/Service/Adapter/Workflow/Prompt/Tool |
-| `subagents/RQ-001-architecture-pattern.md` | `RQ-001-architecture-pattern.md` | RQ: 核心架构模式（验证假设 + Counter Evidence + Alternative） |
-| `subagents/RQ-002-llm-provider-isolation.md` | `RQ-002-llm-provider-isolation.md` | RQ: LLM Provider 隔离机制 |
-| `subagents/RQ-003-tool-determinism.md` | `RQ-003-tool-determinism.md` | RQ: Tool 执行确定性 |
-| `subagents/RQ-004-context-propagation.md` | `RQ-004-context-propagation.md` | RQ: Context 传播机制 |
-| `subagents/RQ-005-architecture-evolution.md` | `RQ-005-architecture-evolution.md` | RQ: 架构演化路径 |
-| `subagents/03-cross-validation.md` | `03-cross-validation.md` | 交叉验证 + 更新 RQ 状态（Validated/Rejected/Needs Evidence） |
-| `subagents/04-comparative.md` | `04-comparative.md` | 与**显式列出**的同类项目对比（禁止自行编造） |
-| `subagents/05-report-writer.md` | `report.md` | **禁止创建新 Finding**；只整合 Validated RQ |
+| `subagents/00-question-planner.md` | `00-research-questions.md` | **动态生成** 5 个最适合该仓库的 Research Question（非固定模板） |
+| `subagents/01-hypothesis.md` | `01-hypotheses.md` | **贝叶斯假设**：3-5 个假设，每个含置信度演进历史（Prior → Posterior） |
+| `subagents/02-ontology.md` | `02-ontology.md` | **行为本体**：静态对象 + Execution Graph（Behavior Ontology） |
+| `subagents/03-research-agent-1.md` ~ `-5.md` | `RQ-001.md` ~ `RQ-005.md` | 动态 RQ Agent（并行），每个回答一个 Research Question |
+| `subagents/04-opponent.md` | `04-opponent.md` | **反证者**：对每个 Finding 进行攻击（直接矛盾/测试反例/替代解释/缺失证据） |
+| `subagents/05-cross-validation.md` | `05-cross-validation.md` | 交叉验证 + **Evidence Graph**（统一证据关系图） |
+| `subagents/06-comparative.md` | `06-comparative.md` | 与**显式列出**的同类项目对比（禁止自行编造） |
+| `subagents/07-report-writer.md` | `report.md` | **Research Trace 格式**：禁止创建新 Finding，只整合 Validated RQ |
 | `subagents/README.md` | — | 执行顺序速查表 |
 
 ### 派发 Subagent
@@ -570,27 +580,31 @@ node ../.trae/skills/research-repo/research-repo.mjs subagent-prompts --lang=zh 
 2. 把对应 `subagents/XX.md` 的完整 prompt 贴进去。
 3. 要求 subagent 读完证据后，把输出写入对应的 target 文件。
 
-**执行顺序（v2: Question-centric Pipeline）**：
+**执行顺序（v3: Dynamic Question Planning + Evidence Graph + Behavior Ontology + Bayesian + Opponent + Research Trace）**：
 
 ```
-Stage 1: 01-hypothesis
-Stage 2: 02-ontology              (共享语义层)
-Stage 3: RQ-001 ~ RQ-005          (5 个并行，每个回答一个 Research Question)
-Stage 4: 03-cross-validation      (更新 RQ 状态、验证假设、识别冲突)
-Stage 5: 04-comparative           (可选，只对比显式列出的项目)
-Stage 6: 05-report-writer         (禁止创建新 Finding，只整合 Validated RQ)
+Stage 0: 00-question-planner      (动态生成 Research Questions，非固定模板)
+Stage 1: 01-hypothesis            (贝叶斯假设，含置信度演进历史)
+Stage 2: 02-ontology              (行为本体：静态对象 + Execution Graph)
+Stage 3: RQ-001 ~ RQ-005          (5 个并行，每个回答一个动态生成的 Research Question)
+Stage 4: 04-opponent              (反证者：攻击每个 Finding)
+Stage 5: 05-cross-validation      (交叉验证 + Evidence Graph + 更新 RQ 状态)
+Stage 6: 06-comparative           (可选，只对比显式列出的项目)
+Stage 7: 07-report-writer         (Research Trace 格式，禁止创建新 Finding)
 ```
 
-**关键设计变更（v2）**：
+**关键设计变更（v3 相对 v2）**：
 
-1. **Question-centric**：每个 RQ Agent 回答一个明确的 Research Question，而不是负责一个主题。Question 天然逼 AI 去找证据。
-2. **Ontology Mapper**：生成共享的 `02-ontology.md`（Component/Interface/Relation/Capability），作为所有后续 Agent 的统一语义层（Palantir 思想）。
-3. **Hypothesis-driven**：每个 RQ Agent 的首要目标是验证或推翻 `01-hypotheses.md` 中的假设，而不是单纯产出 Findings。
-4. **Enhanced Finding 结构**：每个 Finding 必须包含 Counter Evidence、Alternative Interpretation、Unknowns。
-5. **Evidence Budget**：每个 RQ Agent 最多读取 50 个文件 / 200 个符号，当置信度稳定时停止。
-6. **Shared Findings**：RQ Agent 将跨 RQ 共享的发现写入 `shared-findings.md`，避免重复。
-7. **RQ 生命周期**：每个 RQ 有状态追踪（Open → Investigating → Validated / Rejected / Needs Evidence），Cross Validation 更新状态，Report Writer 只引用 Validated。
-8. **Report Writer 权限限制**：禁止创建新 Finding、禁止重新解释、禁止推测。
+1. **动态 Research Question Planner**（替代固定 RQ）：不同项目产生不同的问题。OpenAI Agents SDK 问"为什么 Runner 是核心"，DuckDB 问"为什么不用 Volcano"。不再使用固定模板（Architecture / LLM / Tool / Context / Evolution）。
+2. **Bayesian Hypothesis**：假设包含置信度演进历史（Prior → Posterior），而非一次性判断。整个研究过程不断更新 belief。
+3. **Behavior Ontology**：Ontology 不再只是静态对象（Component/Interface/Tool），还包含行为图（Execution Graph）：Tool EXECUTES Workflow → Workflow EMITS Event → Event TRIGGERS Prompt → Prompt CALLS LLM。
+4. **Opponent Agent**：新增反证者角色，对每个 Finding 进行攻击（寻找直接矛盾、测试反例、替代解释、缺失证据）。Proposer → Opponent → Judge 比 Reviewer Alone 更稳定。
+5. **Evidence Graph**：Cross Validation 构建统一证据关系图：Evidence → supports → Finding → answers → RQ → validates → Hypothesis → produces → Resolution。Report Writer 查询 Evidence Graph 而非读所有 Markdown。
+6. **Research Trace 格式**：Report 不再是 Question → Conclusion，而是 Question → Investigation → Turning Point → Resolution，记录调查过程而非只写结论。
+7. **Enhanced Finding 结构**：每个 Finding 必须包含 Counter Evidence、Alternative Interpretation、Unknowns（v2 已有，v3 保留）。
+8. **Evidence Budget**：每个 RQ Agent 最多读取 50 个文件 / 200 个符号（v2 已有，v3 保留）。
+9. **Shared Findings**：RQ Agent 将跨 RQ 共享的发现写入 `shared-findings.md`，避免重复（v2 已有，v3 保留）。
+10. **RQ 生命周期**：Open → Investigating → Validated / Rejected / Needs Evidence（v2 已有，v3 保留）。
 
 Subagent 不是读所有源码，而是**读 Evidence Brief + 相关 JSON + 被 Semantic Index 定位的关键文件**。这保证了可扩展性：LLM 只读它必须读的文件，而不是整个仓库。
 
