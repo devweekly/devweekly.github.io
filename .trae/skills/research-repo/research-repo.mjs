@@ -10802,7 +10802,7 @@ async function main() {
     : dirname(repoPath);
 
   if (command === "subagent-prompts") {
-    const outDir = writeSubagentPrompts(absPath, { lang, outDir: process.cwd() });
+    const outDir = writeSubagentPrompts(absPath, { outDir: process.cwd() });
     console.error(`Subagent prompts written to ${outDir}/`);
     return;
   }

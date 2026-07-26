@@ -13,11 +13,9 @@ import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { basename, join } from "node:path";
 
 const PROMPTS = {
-  "00-question-planner": (repoName, lang) => ({
+  "00-question-planner": (repoName) => ({
     target: "00-research-questions.md",
-    text:
-      lang === "zh"
-        ? `# 动态 Research Question 规划器 — ${repoName}
+    text: `# 动态 Research Question 规划器 — ${repoName}
 
 你是一位研究方法论专家。请阅读证据，为 ${repoName} **动态生成**最适合的 5 个 Research Question。
 
@@ -97,95 +95,12 @@ const PROMPTS = {
 - **Controversial = 1 或 Evidence Rich = 1 的问题必须淘汰**。
 - 优先选择**会改变读者对系统理解**的问题。
 - 不要问表面问题（如"用了什么技术栈"），要问深层问题（如"为什么这样设计"）。
-- 不是问很多，而是问**最值得问的问题**。`
-        : `# Dynamic Research Question Planner — ${repoName}
-
-You are a research methodology expert. Read the evidence and **dynamically generate** the 5 most appropriate Research Questions for ${repoName}.
-
-Required inputs:
-- \`evidence-brief.md\` (research principles, analyzer summaries, research plan)
-- \`evidence-store/full.json\` (discovery, architecture, capabilityOntology, entrypoints)
-- \`evidence-store/interesting_files.json\` (top 20 reading priority)
-
-**Do NOT use fixed templates** (e.g., Architecture / LLM / Tool / Context / Evolution).
-Different projects should produce different questions.
-
-Examples:
-- OpenAI Agents SDK should ask: Why is Runner the core? Why don't Tools allow recursion? Why wasn't Memory implemented?
-- DuckDB should ask: Why not Volcano? Why Vectorized? Why Push-based?
-
-## Two-Phase Process
-
-### Phase 1: Candidate Generation (8-10 questions)
-
-Brainstorm 8-10 candidate questions covering different dimensions (architecture / design decisions / engineering tradeoffs / evolution / anti-patterns).
-
-### Phase 2: 5-Dimension Scoring & Selection (pick Top 5)
-
-Score each candidate on 5 dimensions (1-5 points each):
-
-| Dimension | Meaning | 1 point | 5 points |
-|-----------|---------|---------|----------|
-| **Impact** | Can it change an engineer's understanding | Surface fact (what tech) | Disruptive insight (why designed this way) |
-| **Novelty** | Is it already answered in README | README says it directly | Must read source to answer |
-| **Evidence Rich** | Can the repo answer it | No evidence, pure speculation | Multiple files/tests/commits verify |
-| **Transferable** | Does the answer transfer elsewhere | Only applies to this project | Transfers to other systems |
-| **Controversial** | Are there alternative designs | Only one reasonable approach | Clear design tradeoff exists |
-
-**Selection rules**:
-- Total = sum of 5 dimensions (max 25)
-- **Controversial = 1 questions are eliminated** (no controversy = not worth researching)
-- **Evidence Rich = 1 questions are eliminated** (unverifiable = not worth researching)
-- Pick top 5 by total score
-
-## Output Format
-
-\`\`\`markdown
-# Research Questions — ${repoName}
-
-## Candidate Scoring Table
-
-| # | Candidate Question | Impact | Novelty | Evidence | Transferable | Controversial | Total | Selected |
-|---|-------------------|--------|---------|----------|--------------|---------------|-------|----------|
-| 1 | ... | 5 | 4 | 5 | 4 | 3 | 21 | ✓ |
-| 2 | ... | 4 | 5 | 4 | 5 | 4 | 22 | ✓ |
-| ... | ... | ... | ... | ... | ... | ... | ... | ... |
-
-## Q1: {Question Statement}
-- **Priority**: Critical / High / Medium
-- **Importance**: Critical / High / Medium / Low (independent from Confidence)
-- **Reason**: Why is this question critical for understanding ${repoName}?
-- **Expected Evidence**: Which files are expected to contain answers?
-- **Hypothesis**: Initial hypothesis (falsifiable)
-- **Score**: Impact=N/5, Novelty=N/5, Evidence=N/5, Transferable=N/5, Controversial=N/5, Total=N/25
-
-## Q2: {Question Statement}
-...
-
-## Q3: {Question Statement}
-...
-
-## Q4: {Question Statement}
-...
-
-## Q5: {Question Statement}
-...
-\`\`\`
-
-Constraints:
-- Each question must be **falsifiable** (can answer "yes" or "no").
-- Each question must have explicit **evidence expectations** (don't ask unverifiable questions).
-- **Controversial = 1 or Evidence Rich = 1 questions MUST be eliminated**.
-- Prioritize questions that **change the reader's understanding** of the system.
-- Don't ask surface questions (e.g., "what tech stack was used"), ask deep questions (e.g., "why was it designed this way").
-- Not many questions, but **the most worth asking**.`,
+- 不是问很多，而是问**最值得问的问题**。`,
   }),
 
-  "01-hypothesis": (repoName, lang) => ({
+  "01-hypothesis": (repoName) => ({
     target: "01-hypotheses.md",
-    text:
-      lang === "zh"
-        ? `# 贝叶斯假设生成器 — ${repoName}
+    text: `# 贝叶斯假设生成器 — ${repoName}
 
 你是一位软件架构研究员。请阅读证据，为 ${repoName} 生成 **3-5 个可检验的架构级假设**，并使用**贝叶斯置信度演进**方法。
 
@@ -227,57 +142,12 @@ Constraints:
 
 **竞争假设的价值**：Opponent Agent 将攻击主假设并尝试支持竞争假设。只有当主假设的置信度**远高于**竞争假设时，结论才稳定。
 
-输出到 \`01-hypotheses.md\`。只写假设，不写无关总结。`
-        : `# Bayesian Hypothesis Generator — ${repoName}
-
-You are a software architecture researcher. Read the evidence and generate **3-5 testable, architecture-level hypotheses** for ${repoName} using **Bayesian confidence evolution**.
-
-Required inputs:
-- \`evidence-brief.md\`
-- \`evidence-store/full.json\` (summary fields)
-- \`evidence-store/interesting_files.json\`
-
-For each hypothesis include:
-1. **Hypothesis statement** (one sentence, falsifiable)
-2. **Prior confidence** (0-100%, based on initial evidence)
-3. **Supporting evidence** (cite file paths or brief sections)
-4. **If true, what it implies** (impact on architectural understanding)
-5. **If false, what it implies** (alternative explanation)
-6. **How to verify** (which source files/tests/docs to inspect)
-7. **Confidence evolution history** (table format):
-
-\`\`\`markdown
-| Evidence Source | Confidence Change | Reason |
-|-----------------|-------------------|--------|
-| Prior | 15% | Initial observation |
-| architecture.json | 62% | Found modular design |
-| tests/ | 80% | Tests verify critical paths |
-| git_history.json | 91% | Refactoring history supports hypothesis |
-\`\`\`
-
-8. **Competing Hypothesis** (MANDATORY):
-
-For each main hypothesis, propose the **most plausible competing hypothesis** — an alternative explanation for the same evidence. The competing hypothesis must also have a confidence.
-
-\`\`\`markdown
-### Competing Hypothesis
-- **Statement**: {alternative explanation of the same evidence, one sentence}
-- **Prior confidence**: N%
-- **Confidence**: N% (lower than main hypothesis)
-- **Why weaker than main**: {brief}
-- **How to falsify competing hypothesis**: {what evidence needed}
-\`\`\`
-
-**Value of competing hypothesis**: The Opponent Agent will attack the main hypothesis and try to support the competing one. A conclusion is stable only when the main hypothesis confidence is **significantly higher** than the competing one.
-
-Write output to \`01-hypotheses.md\`. Only list hypotheses, no extra summary.`,
+输出到 \`01-hypotheses.md\`。只写假设，不写无关总结。`,
   }),
 
-  "02-ontology": (repoName, lang) => ({
+  "02-ontology": (repoName) => ({
     target: "02-ontology.md",
-    text:
-      lang === "zh"
-        ? `# 行为本体映射器 — ${repoName}
+    text: `# 行为本体映射器 — ${repoName}
 
 你是一位本体工程师。请从证据中提取 ${repoName} 的**共享语义层**，包括**静态对象**和**行为图**，输出到 \`02-ontology.md\`。
 
@@ -401,138 +271,12 @@ graph TD
 - 每个实体必须有明确的文件路径证据。
 - 不要推断功能；必须查看实现或调用链。
 - **Execution Graph 必须基于实际调用链**，不要臆测。
-- **Decisions / Policies / Constraints 只在证据支持时输出**；无证据则省略该章节，不要编造。`
-        : `# Behavior Ontology Mapper — ${repoName}
-
-You are an ontology engineer. Extract the **shared semantic layer** of ${repoName}, including both **static objects** and **behavior graph**, and write output to \`02-ontology.md\`.
-
-Required inputs:
-- \`evidence-brief.md\` (§5.5 Ontology View)
-- \`evidence-store/ontology.json\`
-- \`evidence-store/full.json\` (capabilityOntology, responsibility sections)
-- \`evidence-store/symbols.json\`
-
-Your task is **NOT** to re-analyze architecture, but to extract and standardize:
-
-## Part 1: Static Objects
-
-- **Component**: Core modules/components
-- **Interface**: Interfaces/protocols between components
-- **Service**: Services providing specific capabilities
-- **Adapter**: Adapters interacting with external systems
-- **Workflow**: End-to-end business processes
-- **Prompt**: Prompt templates/variables
-- **Tool**: Tool definitions/registrations
-
-## Part 2: Behavior Ontology (Execution Graph)
-
-**Not Dependency Graph, but Behavior Ontology**.
-
-Example:
-\`\`\`
-Tool
-  ↓ EXECUTES
-Workflow
-  ↓ EMITS
-Event
-  ↓ TRIGGERS
-Prompt
-  ↓ CALLS
-LLM
-\`\`\`
-
-## Part 3: Decision Ontology (Palantir-style extension)
-
-What makes Palantir Ontology powerful is not just static objects and behavior graphs, but the **decision layer**. Extract the following types (when evidence supports them):
-
-- **Decision**: Architectural decisions (e.g., "Separate Planner from Runner")
-- **Policy**: Constraint policies (e.g., "Tools must not recurse")
-- **Constraint**: Technical constraints (e.g., "Must be single-process")
-- **Observation**: Observed phenomena (e.g., "Tests cover 80% of critical paths")
-- **Resolution**: Research conclusions (e.g., "Planner decoupling enables multiple executors")
-
-Decision relation verbs (semantic layer beyond Execution Graph):
-- \`EXECUTES\` / \`EMITS\` / \`TRIGGERS\` / \`CALLS\` (behavior)
-- \`JUSTIFIES\` (Decision JUSTIFIES Module — decision explains module existence)
-- \`SUPPORTS\` (Observation SUPPORTS Finding)
-- \`PROVES\` (Finding PROVES Resolution)
-- \`ANSWERS\` (Resolution ANSWERS Question)
-- \`CONSTRAINS\` (Policy CONSTRAINS Component)
-
-Output format:
-
-\`\`\`markdown
-# Ontology — ${repoName}
-
-## Components
-
-| Name | Responsibility | Key Files | Depends On |
-|------|---------------|-----------|------------|
-| Agent | Orchestrates planning/execution | src/agent.ts | Planner, Executor |
-
-## Interfaces
-
-| Name | Purpose | Implemented By |
-|------|---------|----------------|
-| LLMProvider | Abstracts LLM calls | OpenAIAdapter, AnthropicAdapter |
-
-## Relations
-
-| From | To | Relation Type | Description |
-|------|----|----|------------|
-| Agent | Planner | uses | Delegates planning tasks |
-
-## Capabilities
-
-| Capability | Provided By | Evidence |
-|------------|-------------|----------|
-| Multi-agent orchestration | Agent | src/agent.ts:L45-L80 |
-
-## Execution Graph (Behavior Ontology)
-
-\`\`\`mermaid
-graph TD
-    A[Planner] -->|generates| B[Task]
-    B -->|dispatches to| C[Executor]
-    C -->|invokes| D[Tool]
-    D -->|returns| E[Observation]
-    E -->|stores in| F[Memory]
-    F -->|feeds back to| A
-\`\`\`
-
-| From | To | Relation | Description |
-|------|----|----|------------|
-| Planner | Task | generates | Creates execution plan |
-| Task | Executor | dispatches to | Assigns work |
-| Executor | Tool | invokes | Calls tool implementation |
-| Tool | Observation | returns | Produces result |
-| Observation | Memory | stores in | Persists state |
-| Memory | Planner | feeds back to | Provides context |
-
-## Decisions (if evidence supports)
-
-| Decision | Type | Evidence | Justifies |
-|----------|------|----------|-----------|
-| Separate Planner from Runner | structural | src/runner.ts:L20 | Planner module exists |
-
-## Policies & Constraints (if evidence supports)
-
-| Policy/Constraint | Type | Constrains | Evidence |
-|-------------------|------|------------|----------|
-| Tools must not recurse | policy | Tool | docs/tools.md:L15 |
-\`\`\`
-
-Constraints:
-- Every entity must have explicit file-path evidence.
-- Do not infer functionality; inspect implementation or call chains.
-- **Execution Graph must be based on actual call chains**, do not speculate.`,
+- **Decisions / Policies / Constraints 只在证据支持时输出**；无证据则省略该章节，不要编造。`,
   }),
 
-  "03-research-agent": (repoName, lang, questionIndex) => ({
+  "03-research-agent": (repoName, questionIndex) => ({
     target: `RQ-${String(questionIndex).padStart(3, "0")}.md`,
-    text:
-      lang === "zh"
-        ? `# RQ-${String(questionIndex).padStart(3, "0")} Agent — ${repoName}
+    text: `# RQ-${String(questionIndex).padStart(3, "0")} Agent — ${repoName}
 
 你是编号为 RQ-${String(questionIndex).padStart(3, "0")} 的 Research Question Agent。
 
@@ -605,88 +349,12 @@ Constraints:
 - 每个 Finding 必须引用至少一个证据源。
 - 不要从命名推断功能；必须查看调用链或实现。
 - 区分事实与解读。
-- **必须**包含 Counter Evidence 和 Alternative Interpretation。`
-        : `# RQ-${String(questionIndex).padStart(3, "0")} Agent — ${repoName}
-
-You are the Research Question Agent numbered RQ-${String(questionIndex).padStart(3, "0")}.
-
-## Step 1: Read Your Assigned Research Question
-
-**Open** \`00-research-questions.md\` **immediately** and find the ${questionIndex}-th question (heading \`## Q${questionIndex}: ...\`).
-Use that question's full statement as your Research Question. **Do NOT use any placeholder or default question** — you must use the real ${questionIndex}-th question generated in \`00-research-questions.md\`.
-
-Also read the **Priority / Reason / Expected Evidence / Hypothesis** fields under that question; these are the investigation directions provided by the 00-question-planner.
-
-## Investigation Goal
-
-Your primary goal is **NOT** to summarize architecture, but to **evaluate whether any hypothesis in** \`01-hypotheses.md\` **related to this question is supported, refuted, or unaffected** (refer to the Hypothesis field of your question in 00-research-questions.md).
-
-Required inputs:
-- \`00-research-questions.md\` (find your assigned ${questionIndex}-th question)
-- \`01-hypotheses.md\` (find related hypotheses; refer to their confidence evolution history)
-- \`02-ontology.md\` (shared semantic layer; reference Component/Interface/Relation/Execution Graph)
-- \`evidence-brief.md\`
-- \`evidence-store/full.json\`
-- Top 20 files from \`evidence-store/interesting_files.json\`
-
-**Evidence Budget**:
-- Maximum **50 files**
-- Maximum **200 symbols** (functions/classes)
-- Stop when confidence stabilizes
-
-## Output Structure
-
-\`\`\`markdown
-# RQ-${String(questionIndex).padStart(3, "0")}: {real question statement read from 00-research-questions.md}
-
-## Research Question
-
-{real question statement (copied from 00-research-questions.md ## Q${questionIndex})}
-
-## Hypothesis Evaluation
-
-| Hypothesis | Status | Evidence | Confidence Evolution |
-|------------|--------|----------|----------------------|
-| H-XXX: ... | supported / refuted / insufficient | ... | 15% → 62% → 80% |
-
-## Findings
-
-### Finding 1: {Title}
-- **Conclusion**: ...
-- **Importance**: Critical / High / Medium / Low (independent from Confidence — how important is this Finding for understanding the architecture)
-- **Evidence**: \`file.py:L10-L30\` or brief §X
-- **Counter Evidence**: What evidence contradicts this conclusion?
-- **Alternative Interpretation**: What other explanations are possible?
-- **Confidence**: High / Medium / Low (evidence strength — how strong the evidence is, NOT how important the conclusion is)
-- **Unknowns**: What source-code verification is still needed?
-
-## Shared Findings
-
-If you discover findings that other Research Questions might care about, list them here:
-
-- **SF-001**: {brief description} — see \`shared-findings.md\`
-
-## RQ Status
-
-- [x] Investigating
-- [ ] Validated
-- [ ] Rejected
-- [ ] Needs Evidence
-\`\`\`
-
-Constraints:
-- **The first-line title must use the real question statement read from 00-research-questions.md**; do NOT use placeholders like "Dynamic Question ${questionIndex}".
-- Every Finding must cite at least one evidence source.
-- Do not infer function from name alone; inspect call chains or implementation.
-- Separate fact from interpretation.
-- **Must** include Counter Evidence and Alternative Interpretation.`,
+- **必须**包含 Counter Evidence 和 Alternative Interpretation。`,
   }),
 
-  "04-opponent": (repoName, lang) => ({
+  "04-opponent": (repoName) => ({
     target: "04-opponent.md",
-    text:
-      lang === "zh"
-        ? `# 反证者（Opponent Agent） — ${repoName}
+    text: `# 反证者（Opponent Agent） — ${repoName}
 
 你是一位怀疑论者。你的职责只有一个：**证明每个 Finding 是错的**。
 
@@ -721,50 +389,12 @@ Constraints:
 约束：
 - 不要接受任何 Finding 为真；你的工作是质疑。
 - 每个攻击必须有证据支持（不要臆测）。
-- 如果找不到反例，明确说"未找到反例"。`
-        : `# Opponent Agent — ${repoName}
-
-You are a skeptic. Your sole responsibility is to **prove each Finding is wrong**.
-
-Required inputs:
-- \`RQ-*.md\` (all Research Question files)
-- \`evidence-brief.md\`
-- \`evidence-store/full.json\`
-
-For each Finding, you must:
-
-1. **Find direct contradictions**: Are there direct calls/cycles/exceptions?
-2. **Find test counterexamples**: Are there tests proving this conclusion wrong?
-3. **Find alternative explanations**: Is there a simpler explanation?
-4. **Find missing evidence**: Is there evidence that should exist but doesn't?
-
-Output format:
-
-\`\`\`markdown
-# Opponent Report — ${repoName}
-
-## RQ-001
-
-### Finding 1: {Title}
-- **Attack 1**: Direct contradiction — {description}
-- **Attack 2**: Test counterexample — {description}
-- **Attack 3**: Alternative explanation — {description}
-- **Attack 4**: Missing evidence — {description}
-- **Verdict**: Finding holds / partially holds / does not hold
-- **Recommendation**: What additional evidence is needed to confirm?
-\`\`\`
-
-Constraints:
-- Do not accept any Finding as true; your job is to question.
-- Every attack must be evidence-supported (no speculation).
-- If no counterexample is found, explicitly say "no counterexample found".`,
+- 如果找不到反例，明确说"未找到反例"。`,
   }),
 
-  "05-cross-validation": (repoName, lang) => ({
+  "05-cross-validation": (repoName) => ({
     target: "05-cross-validation.md",
-    text:
-      lang === "zh"
-        ? `# 交叉验证 + Evidence Graph — ${repoName}
+    text: `# 交叉验证 + Evidence Graph — ${repoName}
 
 你是一位审稿人。请交叉验证所有证据，并构建 **Evidence Graph**，输出到 \`05-cross-validation.md\`。
 
@@ -829,80 +459,12 @@ graph LR
 
 ## 开放问题
 
-- 还需要哪些源码验证才能下结论？`
-        : `# Cross Validation + Evidence Graph — ${repoName}
-
-You are a reviewer. Cross-validate all evidence and build the **Evidence Graph**, outputting to \`05-cross-validation.md\`.
-
-Required inputs:
-- \`00-research-questions.md\`
-- \`01-hypotheses.md\`
-- \`02-ontology.md\`
-- \`RQ-*.md\` (all Research Question files)
-- \`04-opponent.md\` (opponent report)
-- \`evidence-brief.md\`
-- \`evidence-store/full.json\`
-
-Your tasks:
-
-1. **Update Research Question status**: Based on evidence and opponent report, update each RQ's status
-2. **Validate hypotheses**: Check whether each hypothesis is supported, refuted, or has insufficient evidence
-3. **Identify evidence conflicts**: Find contradictions between different RQ files
-4. **Calibrate confidence**: Which Findings should be upgraded/downgraded?
-5. **Build Evidence Graph**: Unified evidence relationship graph
-
-## Evidence Graph Format
-
-\`\`\`mermaid
-graph LR
-    E1[Evidence: src/agent.ts] -->|supports| F1[Finding 1]
-    F1 -->|answers| Q1[RQ-001]
-    Q1 -->|validates| H1[Hypothesis 1]
-    H1 -->|produces| R1[Resolution]
-\`\`\`
-
-| Evidence | Supports | Finding | Answers | RQ | Validates | Hypothesis | Confidence |
-|----------|----------|---------|---------|----|----|------------|------------|
-| src/agent.ts:L45-L80 | supports | F1 | answers | Q1 | validates | H1 | 0.85 |
-
-Output structure:
-
-## Research Question Status Tracking
-
-| RQ | Status | Key Findings | Confidence | Opponent Verdict |
-|----|--------|--------------|------------|------------------|
-| RQ-001 | Validated / Rejected / Needs Evidence | ... | High / Medium / Low | holds / partially holds / does not hold |
-
-## Hypothesis Validation
-
-| Hypothesis | Supporting Evidence | Contradicting Evidence | Verdict | Confidence |
-|------------|---------------------|------------------------|---------|------------|
-| H-XXX: ... | ... | ... | holds / refuted / insufficient | High / Medium / Low |
-
-## Evidence Conflicts
-
-- Conflict A: RQ-001 Finding 1 vs RQ-003 Finding 2
-- Resolution: ...
-
-## Confidence Calibration
-
-- Which Findings should be upgraded and why?
-- Which Findings should be downgraded and why?
-
-## Evidence Graph
-
-(see table above)
-
-## Open Questions
-
-- What source-code verification is still needed?`,
+- 还需要哪些源码验证才能下结论？`,
   }),
 
-  "06-comparative": (repoName, lang) => ({
+  "06-comparative": (repoName) => ({
     target: "06-comparative.md",
-    text:
-      lang === "zh"
-        ? `# 对比分析 — ${repoName}
+    text: `# 对比分析 — ${repoName}
 
 将 ${repoName} 与**以下显式列出的项目**进行对比，输出到 \`06-comparative.md\`。
 
@@ -943,56 +505,12 @@ Output structure:
 
 ## 反模式警告
 
-- 哪些设计选择可能在其它场景下成为陷阱？`
-        : `# Comparative Analysis — ${repoName}
-
-Compare ${repoName} with the **explicitly listed projects below** and write output to \`06-comparative.md\`.
-
-**Only compare against these projects** (do NOT invent other projects):
-- OpenAI Agents SDK
-- LangGraph
-- Claude Code
-- Codex
-- AutoGen
-- CrewAI
-- MCP
-
-Required inputs:
-- \`evidence-brief.md\`
-- \`02-ontology.md\`
-- \`RQ-*.md\` (select 2-3 most relevant)
-- \`05-cross-validation.md\`
-
-Output structure:
-
-## Comparison Dimensions
-
-| Dimension | ${repoName} | OpenAI Agents SDK | LangGraph | Implication |
-|-----------|-------------|-------------------|-----------|-------------|
-
-Suggested dimensions:
-- Architecture pattern (Plugin / Pipeline / Graph / Monolith)
-- Agent orchestration style
-- Prompt / Tool lifecycle
-- Guardrails depth
-- Extensibility mechanism
-- Test / Eval strategy
-
-## Reusable Patterns
-
-- Which practices are worth migrating elsewhere?
-- What preconditions are required?
-
-## Anti-pattern Warnings
-
-- Which design choices could become traps in other contexts?`,
+- 哪些设计选择可能在其它场景下成为陷阱？`,
   }),
 
-  "07-report-writer": (repoName, lang) => ({
+  "07-report-writer": (repoName) => ({
     target: "report.md",
-    text:
-      lang === "zh"
-        ? `# Research Trace 报告撰写 — ${repoName}
+    text: `# Research Trace 报告撰写 — ${repoName}
 
 你是首席软件架构师。请综合所有证据与 subagent 产出，撰写最终工程研究报告 \`report.md\`。
 
@@ -1131,152 +649,11 @@ Palantir Research 是 Decision Report，不是 Architecture Report。每个 Deci
 
 每条架构结论优先引用 \`[R-XXX]\` 或源码路径；原始 \`[F-XXX]\` 仅作为支持证据。
 禁止让 Analyzer 成为叙事主体；禁止复述 Analyzer 之间的争论。
-每个 Trace 必须回答一个会改变工程师对系统理解的架构问题。`
-        : `# Research Trace Report Writer — ${repoName}
-
-You are the lead software architect. Synthesize all evidence and subagent outputs into the final engineering research report \`report.md\`.
-
-**Strict constraints**:
-- **Never create new findings**. Only summarize validated findings accepted by \`05-cross-validation.md\`.
-- **Never re-interpret**. Only cite Research Questions marked as Validated.
-- **Never speculate**. If evidence is insufficient, explicitly say "unknown".
-
-**Anti-Fabrication Constraints (HIGHEST PRIORITY)**:
-
-Audits of prior reports found the LLM systematically fabricated Finding citations — inventing IDs, altering confidence values, flipping verified status, and even inverting Finding content. The following rules are MANDATORY; violating any one is a critical error:
-
-- **ID Integrity**: Every \`[F-XXX]\` you cite MUST correspond to a Finding ID in the brief's ★ Findings section. Do NOT invent new IDs, do NOT skip IDs, and do NOT attribute F-005's content to F-010.
-- **Confidence Verbatim**: The \`confidence=X.XX\` in your citation MUST match the brief's Findings table Confidence column **character-for-character** (including decimal places). Do NOT round, alter, or rewrite from memory.
-- **No Status Inversion**: A Finding marked \`✅ verified\` in the brief MUST NOT be described as \`rejected\` or \`downgraded\` in your report, and vice versa. To challenge a verified Finding, first quote the brief row verbatim, then provide source-code counter-evidence — but **do NOT modify the Verified field itself**.
-- **Number Integrity**: All counts (tools/prompts/evals/tests) MUST be quoted verbatim from the brief. If the brief says 'detected 10 tools', the report must NOT say '12 tools' or '8 tools'. If you doubt a count, raise it in Architecture Smells — do NOT silently alter the number.
-- **No Content Fabrication**: When quoting a Finding's text, it MUST match the brief's \`finding\` field. If brief F-006 reads 'Detected 10 tools', the report must NOT say 'No tools detected'.
-- **Quote-then-Critique Workflow** (MANDATORY): For every Finding you intend to Reject / Downgrade / reinterpret, you MUST **first quote the brief's full row verbatim** (ID / Q / Importance / Confidence / Coverage / Verified / Finding text), THEN give your judgment. This prevents 'strawman' critiques — attacking claims the brief never made.
-- **Contradiction Bidirectional Check**: When you claim the brief is 'self-contradictory' or 'ConsistencyAnalyzer missed a contradiction', you MUST first quote the actual contents of brief §A \`consistency.contradictions[]\` and \`consistency.warnings[]\`, then explain what you believe was missed. Do NOT claim the brief says 'no contradictions' when it actually lists some.
-
-**Finding Citation Format**: When citing Findings in Traces, use \`[F-001 @ Q1, confidence=0.85, verified]\`. Readers should be able to trace from a Trace back to the corresponding entry in the Findings section.
-
-Required inputs:
-- \`evidence-brief.md\`
-- \`00-research-questions.md\`
-- \`01-hypotheses.md\`
-- \`02-ontology.md\`
-- \`RQ-*.md\` (only cite those with status = Validated)
-- \`04-opponent.md\`
-- \`05-cross-validation.md\` (contains Evidence Graph)
-- \`06-comparative.md\` (if present)
-
-**Research Trace Format** (not Summary, but record investigation process):
-
-For each Research Question, write in the following structure:
-
-\`\`\`markdown
-## RQ-001: {Question}
-
-### Investigation
-
-Initially believed...
-
-Found contrary evidence...
-
-Read tests...
-
-Changed belief...
-
-### Turning Point
-
-The key evidence that changed understanding was...
-
-### Resolution
-
-Final resolution: ...
-
-Confidence: High / Medium / Low
-
-Evidence Graph: [cite Evidence Graph from 05-cross-validation.md]
-\`\`\`
-
-Follow the "Report Structure (Question-centric)" section in SKILL.md:
-1. Executive Summary
-2. Research Traces (organized by Research Question, recording investigation process)
-3. Engineering Decisions (Palantir-style Decision Report — see format below)
-4. Negative Findings
-5. Architecture Smells
-6. Architecture Fitness (Modularity/Extensibility/Testability scoring — see format below)
-7. Architecture Compression (300/100/30 word summary — see format below)
-8. Repository Positioning
-9. Reusable Pattern Catalog
-10. What NOT to Learn (things not worth copying — see format below)
-11. Architecture Evolution
-12. Reading Guide
-13. Open Questions
-
-## Engineering Decisions Format (Section 3)
-
-Palantir Research is a Decision Report, not an Architecture Report. Every Decision must include:
-
-\`\`\`markdown
-### Decision D-001: {Decision Title}
-- **Decision**: {one-sentence decision statement}
-- **Why**: {why this decision was made}
-- **Evidence**: \`file.py:L10-L30\`, [F-XXX]
-- **Tradeoff**: {what was given up}
-- **Alternative**: {alternative considered but rejected}
-- **Status**: Accepted / Deprecated / Superseded
-- **Learning**: {transferable engineering lesson}
-\`\`\`
-
-## Architecture Fitness Format (Section 6)
-
-Score each dimension (★1-5) with evidence:
-
-\`\`\`markdown
-| Dimension | Score | Evidence | Note |
-|-----------|-------|----------|------|
-| Modularity | ★★★★☆ | architecture.json: 0 cycles | Clear module boundaries |
-| Extensibility | ★★★☆☆ | plugins/ dir | Plugin mechanism exists but poorly documented |
-| Testability | ★★★★★ | testFileCount=120 | Tests cover critical paths |
-| Observability | ★★☆☆☆ | no metrics | Lacks observability |
-| Evolution | ★★★★☆ | git_history: steady growth | Healthy evolution pace |
-| Performance | ★★★☆☆ | benchmark/ | Has benchmarks but not continuous |
-| Developer Experience | ★★★★☆ | docs/ complete | High-quality documentation |
-\`\`\`
-
-## Architecture Compression Format (Section 7)
-
-\`\`\`markdown
-### Architecture in 300 words
-{300-word summary — core architecture, key decisions, main tradeoffs}
-
-### Architecture in 100 words
-{100-word summary — compressed to the essence}
-
-### Architecture in 30 words
-{30-word summary — one sentence defining this system}
-\`\`\`
-
-If you cannot compress it, you haven't really understood it.
-
-## What NOT to Learn Format (Section 10)
-
-\`\`\`markdown
-### Things worth learning
-- ★★★★★ {pattern/decision/idea} — {why worth learning}
-- ★★★★☆ {pattern/decision/idea} — {why worth learning}
-
-### Things NOT worth copying
-- {specific item} — {why not worth (historical baggage / temporary workaround / specific context)}
-\`\`\`
-
-Many projects have only ~10% truly worth learning; the rest is historical baggage. Clearly distinguish "worth learning" from "do not copy".
-
-Cite \`[R-XXX]\` or source-code paths for architectural conclusions; raw \`[F-XXX]\` may only appear as supporting evidence.
-Never center the narrative around analyzer outputs; never narrate analyzer disagreements as report body.
-Every Trace must answer an architecture question that changes the reader's understanding of the system.`,
+每个 Trace 必须回答一个会改变工程师对系统理解的架构问题。`,
   }),
 };
 
 export function writeSubagentPrompts(repoPath, options = {}) {
-  const lang = options.lang === "zh" ? "zh" : "en";
   const repoName = basename(repoPath);
   const baseDir = options.outDir || process.cwd();
   const outDir = join(baseDir, "subagents");
@@ -1300,23 +677,18 @@ export function writeSubagentPrompts(repoPath, options = {}) {
       // question (Stage 0 must run before Stage 3). This enforces the "dynamic question
       // planning" principle from plan4.md §1.
       for (let i = 1; i <= 5; i++) {
-        const { target, text } = factory(repoName, lang, i);
-        const header = lang === "zh"
-          ? `<!-- Target output: ${target} -->\n<!-- Repo: ${repoName} | Lang: ${lang} | Question: read from 00-research-questions.md ## Q${i} -->\n\n`
-          : `<!-- Target output: ${target} -->\n<!-- Repo: ${repoName} | Lang: ${lang} | Question: read from 00-research-questions.md ## Q${i} -->\n\n`;
+        const { target, text } = factory(repoName, i);
+        const header = `<!-- Target output: ${target} -->\n<!-- Repo: ${repoName} | Question: read from 00-research-questions.md ## Q${i} -->\n\n`;
         writeFileSync(join(outDir, `${key}-${i}.md`), header + text, "utf-8");
       }
     } else {
-      const { target, text } = factory(repoName, lang);
-      const header = lang === "zh"
-        ? `<!-- Target output: ${target} -->\n<!-- Repo: ${repoName} | Lang: ${lang} -->\n\n`
-        : `<!-- Target output: ${target} -->\n<!-- Repo: ${repoName} | Lang: ${lang} -->\n\n`;
+      const { target, text } = factory(repoName);
+      const header = `<!-- Target output: ${target} -->\n<!-- Repo: ${repoName} -->\n\n`;
       writeFileSync(join(outDir, `${key}.md`), header + text, "utf-8");
     }
   }
 
-  const index = lang === "zh"
-    ? `# Subagent 执行顺序（v3: Dynamic Question Planning + Evidence Graph + Behavior Ontology + Bayesian Hypothesis + Opponent Agent + Research Trace）
+  const index = `# Subagent 执行顺序（v3: Dynamic Question Planning + Evidence Graph + Behavior Ontology + Bayesian Hypothesis + Opponent Agent + Research Trace）
 
 请按以下顺序派发 subagent（可用 Task 工具并行执行无依赖的阶段）：
 
@@ -1370,61 +742,6 @@ export function writeSubagentPrompts(repoPath, options = {}) {
 - output: \`report.md\`
 - 限制：禁止创建新 Finding；只整合 Validated 的 RQ
 - 格式：Research Trace（记录调查过程，不是 Summary）
-`
-    : `# Subagent Execution Order (v3: Dynamic Question Planning + Evidence Graph + Behavior Ontology + Bayesian Hypothesis + Opponent Agent + Research Trace)
-
-Dispatch subagents in the following order (use Task tool; independent stages can run in parallel):
-
-## Stage 0 — Dynamic Research Question Planning
-- prompt: \`subagents/00-question-planner.md\`
-- output: \`00-research-questions.md\`
-- Task: Dynamically generate 5 most appropriate Research Questions based on evidence (do NOT use fixed templates)
-
-## Stage 1 — Bayesian Hypothesis Generation
-- prompt: \`subagents/01-hypothesis.md\`
-- output: \`01-hypotheses.md\`
-- Task: Generate 3-5 hypotheses, each with confidence evolution history (Prior → Posterior)
-
-## Stage 2 — Behavior Ontology Mapper
-- prompt: \`subagents/02-ontology.md\`
-- output: \`02-ontology.md\`
-- Task: Extract static objects (Component/Interface/Service/Adapter/Workflow/Prompt/Tool) + Behavior Graph (Execution Graph)
-
-## Stage 3 — Dynamic Research Question Agents (parallel)
-- \`subagents/03-research-agent-1.md\` → \`RQ-001.md\`
-- \`subagents/03-research-agent-2.md\` → \`RQ-002.md\`
-- \`subagents/03-research-agent-3.md\` → \`RQ-003.md\`
-- \`subagents/03-research-agent-4.md\` → \`RQ-004.md\`
-- \`subagents/03-research-agent-5.md\` → \`RQ-005.md\`
-
-Each RQ Agent will:
-1. Read \`00-research-questions.md\` (find your question)
-2. Read \`01-hypotheses.md\` and \`02-ontology.md\`
-3. Evaluate whether hypotheses are supported, refuted, or unaffected (with confidence evolution)
-4. Output Findings (with Counter Evidence / Alternative Interpretation / Unknowns)
-5. Update RQ status (Open → Investigating → Validated / Rejected / Needs Evidence)
-6. Write cross-RQ shared findings to \`shared-findings.md\`
-
-## Stage 4 — Opponent Agent
-- prompt: \`subagents/04-opponent.md\`
-- output: \`04-opponent.md\`
-- Task: Attack each Finding (find direct contradictions / test counterexamples / alternative explanations / missing evidence)
-
-## Stage 5 — Cross Validation + Evidence Graph
-- prompt: \`subagents/05-cross-validation.md\`
-- output: \`05-cross-validation.md\`
-- Tasks: Update RQ status, validate hypotheses, identify conflicts, calibrate confidence, build Evidence Graph
-
-## Stage 6 — Comparative Analysis (optional)
-- prompt: \`subagents/06-comparative.md\`
-- output: \`06-comparative.md\`
-- Constraint: Only compare against explicitly listed projects (OpenAI Agents SDK / LangGraph / Claude Code / Codex / AutoGen / CrewAI / MCP)
-
-## Stage 7 — Research Trace Report
-- prompt: \`subagents/07-report-writer.md\`
-- output: \`report.md\`
-- Constraint: Never create new findings; only integrate Validated RQs
-- Format: Research Trace (record investigation process, not Summary)
 `;
 
   writeFileSync(join(outDir, "README.md"), index, "utf-8");
