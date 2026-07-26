@@ -3924,6 +3924,35 @@ class ArchitecturePatternAnalyzer extends BaseAnalyzer {
       patterns: matches,
       allPatterns,
       unknown: matches.length === 0,
+      _meta: {
+        source: "keyword+graph",
+        strength: "moderate",
+        assumptions: [
+          "Architecture patterns are signaled by directory names (segment match, not substring)",
+          "Specialized signals gate high-stakes patterns (e.g., Compiler requires codegen/optimizer/semantic/ir)",
+          "Graph validation (layered direction, linear chain) confirms pattern with +0.1-0.15 confidence",
+          "Multi-instance checks (≥3 service dirs, ≥3 manifests) confirm Microservices/Monorepo",
+        ],
+        limitations: [
+          "Cannot detect patterns with no directory-name signal (e.g., pattern implemented purely in code structure)",
+          "Hexagonal/Clean/Onion patterns share dir signals (domain, adapters, infrastructure) and may be indistinguishable",
+          "Compiler specialized-signal gate may still false-positive on repos with parser/interpreter subsets (e.g., template engines)",
+          "Pattern detection is recall-oriented; precision depends on directory naming conventions",
+        ],
+        possibleFalsePositives: [
+          "Repos with 'core/' dir may trigger Hexagonal/Clean/Onion even when no layered architecture exists",
+          "Repos with 'plugins/' dir may trigger Plugin pattern even if plugins/ contains unrelated code",
+          "Repos with 'service/' suffix dirs may trigger Microservices with <3 instances (downgraded confidence)",
+        ],
+        checkedLocations: [
+          "discovery.topLevelDirs + 1-level deep dirs",
+          "discovery.architectureSignalDirs",
+          "symbols.classes[].name + symbols.functions[].name (regex symbol signals)",
+          "architecture.edges[] (graph validation)",
+          "manifest files count (package.json/Cargo.toml/pyproject.toml/go.mod/pom.xml)",
+        ],
+        coverage: "Directory-driven pattern detection; misses code-only patterns",
+      },
     };
   }
 }
@@ -4082,6 +4111,32 @@ class ResponsibilityAnalyzer extends BaseAnalyzer {
       responsibilityMatrix: matrix,
       totalModules: responsibilities.length,
       mappedModules: responsibilities.filter((r) => r.responsibility !== "Uncategorized").length,
+      _meta: {
+        source: "keyword",
+        strength: "moderate",
+        assumptions: [
+          "Module boundaries = first 1-2 path segments (packages/foo for monorepo, top dir for flat layout)",
+          "Test files are excluded (isTestPath) so test fixtures don't pollute module classification",
+          "One directory match (score 2) or two symbol matches (score 2) are minimum evidence; single symbol match (score 1) is too weak",
+        ],
+        limitations: [
+          "Cannot detect responsibilities that span multiple modules (e.g., 'security' implemented across crypto/ + auth/)",
+          "Keyword matching is segment/token-prefix; unconventional naming (e.g., 'dataRepo' for persistence) may be missed",
+          "Modules with generic names (components/, utils/) often get Uncategorized or false-positive matches",
+        ],
+        possibleFalsePositives: [
+          "Modules named 'search' or 'query' may be tagged Retrieval even when not RAG (e.g., DB search, file search)",
+          "Modules named 'storage' may be tagged Persistence even for in-memory caches",
+          "Symbol token-prefix 'persist' may match 'persistenceLayer' in non-DB contexts",
+        ],
+        checkedLocations: [
+          "discovery.topLevelDirs + 1-level deep dirs",
+          "symbols.functions[].name (CamelCase tokenized)",
+          "symbols.classes[].name (CamelCase tokenized)",
+          "architecture.edges[] (for module dependency context)",
+        ],
+        coverage: "100% of non-test source files grouped into modules",
+      },
     };
   }
 
@@ -4451,6 +4506,34 @@ class InformationFlowAnalyzer extends BaseAnalyzer {
       totalFlows: flows.length,
       llmCallSites: [...llmNodes].slice(0, 10),
       reachesLLM: flows.some((f) => f.reachesLLM),
+      _meta: {
+        source: "regex+graph",
+        strength: "weak",
+        assumptions: [
+          "LLM call sites are detected via regex on symbol names (LLM_NAME_RE: openai/anthropic/claude/gpt/llm/gemini/mistral/deepseek/qwen/bedrock/chat_completion)",
+          "Entry points are CLI tools, tools, or HTTP handlers from EntrypointsAnalyzer",
+          "Flow steps are matched by module responsibility (ResponsibilityAnalyzer)",
+          "BFS from entry point reaches LLM call site → flow.reachesLLM=true",
+        ],
+        limitations: [
+          "LLM_NAME_RE is recall-oriented; may false-positive on non-LLM symbols (e.g., 'palette_generator', 'completions' as variable name)",
+          "Rust mod/use declarations are not resolved to full module paths → reachesLLM may be false-negative for Rust (buzz verified)",
+          "Java Eclipse extension-points (plugin.xml) are not parsed → dbeaver AI subsystem was invisible to this analyzer",
+          "BFS is bounded by graph connectivity; isolated LLM call sites with 0 in/out edges are never reached",
+        ],
+        possibleFalsePositives: [
+          "Symbol names containing 'gpt'/'llm'/'completion' as substrings (e.g., 'Completions' type in ng-zorro-antd)",
+          "Variables named 'openai'/'anthropic' that are not actual LLM clients",
+          "Test fixtures with mock LLM clients",
+        ],
+        checkedLocations: [
+          "symbols.functions[].name + symbols.classes[].name (regex LLM_NAME_RE)",
+          "entrypoints.cli[] + entrypoints.tools[] + entrypoints.http[]",
+          "architecture.edges[] (BFS traversal)",
+          "responsibility.responsibilities[] (flow step labeling)",
+        ],
+        coverage: "Symbol-name regex; misses LLM calls via DI/registry/extension-point",
+      },
     };
   }
 
@@ -4821,6 +4904,254 @@ class CapabilityOntologyAnalyzer extends BaseAnalyzer {
       totalCapabilities: CAPABILITY_ONTOLOGY.length,
       coveredCapabilities: CAPABILITY_ONTOLOGY.length - missingCapabilities.length,
       isAIProject: true,
+      _meta: {
+        source: "inference",
+        strength: "moderate",
+        assumptions: [
+          "AI project gate: repo is AI-project iff it has tools OR prompts OR LLM call sites OR LLM-Interface responsibility",
+          "Capability maturity = weighted(module count, symbol count, file count), capped at 0.95",
+          "Capability keywords are AI-context-specific (generic terms like run/call/save/load removed)",
+          "Non-AI repos get all capabilities 'n/a' (gate prevents false positives on UI/SQL/ML libraries)",
+        ],
+        limitations: [
+          "Maturity score is heuristic, not benchmarked against ground truth",
+          "Cannot detect capabilities implemented via composition (e.g., 'planning' via tool calls alone)",
+          "Symbol keyword matching may miss capabilities implemented via indirect patterns (e.g., dependency injection)",
+          "AI-context gate may under-classify repos with implicit AI usage (no explicit prompts/tools/LLM symbols)",
+        ],
+        possibleFalsePositives: [
+          "Repos with 'agent' in name but no actual AI logic may pass the gate (e.g., cargo-agent)",
+          "Capability keyword 'tool' matches any 'tool' symbol, including non-AI tooling",
+          "EvaluationsAnalyzer false positives propagate (hasEvaluation=true from metric/score in type names)",
+        ],
+        checkedLocations: [
+          "responsibility.responsibilities[].capabilities (cross-analyzer input)",
+          "tools.tools[] (auto-adds 'tool' capability)",
+          "prompts.prompts[] (auto-adds 'context' capability)",
+          "evaluations.evalFiles[] + hasEvaluation (auto-adds 'evaluation' capability)",
+          "symbols.functions[].name (tokenized for keyword matching)",
+        ],
+        coverage: "All 10 capabilities assessed for AI projects; n/a for non-AI projects",
+      },
+    };
+  }
+}
+
+/**
+ * ConsistencyAnalyzer — cross-analyzer contradiction detection (post-processor).
+ *
+ * Runs LAST in the pipeline. Compares claims across analyzers and flags:
+ *   - Contradictions: two analyzers make incompatible claims (severity: high)
+ *   - Warnings: one analyzer's output is suspicious given another's (severity: medium/low)
+ *
+ * Design rationale: with 7 inference engines, disagreements are inevitable.
+ * Surfacing them in the Evidence Brief lets the LLM (and reader) prioritize
+ * investigation rather than blindly trusting whichever analyzer ran last.
+ *
+ * Output: store.consistency = { contradictions, warnings, summary }
+ * The Evidence Brief surfaces contradictions FIRST (before PageRank, before
+ * Architecture Insights), because self-detected conflicts are the most
+ * research-valuable findings.
+ */
+class ConsistencyAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "consistency";
+  }
+  supports(_ctx) {
+    return true;
+  }
+  async analyze(_ctx, store, _analyzerCtx) {
+    const contradictions = [];
+    const warnings = [];
+
+    const cap = store.capabilityOntology || {};
+    const resp = store.responsibility || {};
+    const prompts = store.prompts || {};
+    const tools = store.tools || {};
+    const evals = store.evaluations || {};
+    const infoFlow = store.informationFlow || {};
+    const archPattern = store.archPattern || {};
+    const tests = store.tests || {};
+
+    const isAI = cap.isAIProject === true;
+    const matrix = cap.capabilityMatrix || {};
+
+    // ── C1: AI-project gate vs concrete AI signals ──────────────────────
+    // CapabilityOntology says isAIProject=false but other analyzers found
+    // prompts, tools, or LLM call sites. This is a direct contradiction —
+    // the AI-context gate may have under-classified.
+    if (!isAI) {
+      const promptCount = (prompts.prompts || []).length;
+      const toolCount = (tools.tools || []).length;
+      const llmCallSiteCount = (infoFlow.llmCallSites || []).length;
+      const llmRespCount = (resp.responsibilities || []).filter(
+        (r) => r.responsibility === "LLM Interface"
+      ).length;
+      if (promptCount > 0 || toolCount > 0 || llmCallSiteCount > 0 || llmRespCount > 0) {
+        const sources = [];
+        if (promptCount > 0) sources.push(`PromptsAnalyzer found ${promptCount} prompts`);
+        if (toolCount > 0) sources.push(`ToolsAnalyzer found ${toolCount} tools`);
+        if (llmCallSiteCount > 0) sources.push(`InformationFlowAnalyzer found ${llmCallSiteCount} LLM call sites`);
+        if (llmRespCount > 0) sources.push(`ResponsibilityAnalyzer tagged ${llmRespCount} modules as "LLM Interface"`);
+        contradictions.push({
+          id: `C${contradictions.length + 1}`,
+          topic: "AI project classification",
+          severity: "high",
+          sourceA: { analyzer: "CapabilityOntology", claim: "isAIProject=false" },
+          sourceB: { analyzer: sources.length === 1 ? sources[0].split(" ")[0] : "multiple", claim: sources.join("; ") },
+          interpretation:
+            "CapabilityOntology's AI-context gate may have under-classified this repo. The gate requires tools OR prompts OR LLM call sites OR LLM-Interface responsibility, but one of these signals exists.",
+          recommendation:
+            "LLM should verify by reading actual prompt/tool files — they may be test fixtures, docs, or false positives from regex matching.",
+        });
+      }
+    }
+
+    // ── C2: Responsibility "Retrieval" vs CapabilityOntology "retrieval" ──
+    // Responsibility tags a module as "Retrieval" but CapabilityOntology
+    // reports retrieval=missing/n/a. Suggests ResponsibilityAnalyzer false positive.
+    const retrievalRespModules = (resp.responsibilities || []).filter(
+      (r) => r.responsibility === "Retrieval"
+    );
+    if (retrievalRespModules.length > 0) {
+      const capRetrieval = matrix.retrieval;
+      if (capRetrieval === "missing" || capRetrieval === "n/a" || capRetrieval === undefined) {
+        contradictions.push({
+          id: `C${contradictions.length + 1}`,
+          topic: "Retrieval capability",
+          severity: "medium",
+          sourceA: {
+            analyzer: "ResponsibilityAnalyzer",
+            claim: `tagged ${retrievalRespModules.length} module(s) as Retrieval: ${retrievalRespModules.slice(0, 3).map((m) => m.module).join(", ")}`,
+          },
+          sourceB: {
+            analyzer: "CapabilityOntology",
+            claim: `retrieval=${capRetrieval || "undefined"}`,
+          },
+          interpretation:
+            "ResponsibilityAnalyzer may have false-positive Retrieval classification (keyword 'retriev'/'search'/'query' matched non-RAG symbols). CapabilityOntology found no retrieval evidence (no vector store, no embed, no RAG pipeline).",
+          recommendation:
+            "LLM should inspect the Retrieval-tagged module's actual symbols — if they are non-AI search/query (DB query, file search), classify as ResponsibilityAnalyzer false positive.",
+        });
+      }
+    }
+
+    // ── C3: Tools count vs CapabilityOntology "tool" coverage ───────────
+    // ToolsAnalyzer detected many tools but CapabilityOntology says tool=missing.
+    // Should not happen (CapabilityOntology auto-adds tool capability from
+    // ToolsAnalyzer output), but if it does, indicates a bug.
+    const toolCount = (tools.tools || []).length;
+    const capTool = matrix.tool;
+    if (toolCount >= 3 && (capTool === "missing" || capTool === "n/a")) {
+      contradictions.push({
+        id: `C${contradictions.length + 1}`,
+        topic: "Tool capability",
+        severity: "high",
+        sourceA: { analyzer: "ToolsAnalyzer", claim: `detected ${toolCount} tools` },
+        sourceB: { analyzer: "CapabilityOntology", claim: `tool=${capTool}` },
+        interpretation:
+          "CapabilityOntology should auto-mark tool capability from ToolsAnalyzer output. A 'missing' result with ≥3 tools indicates either a CapabilityOntology bug or the AI-context gate rejected the project.",
+        recommendation: "LLM should note this as an analyzer bug; trust ToolsAnalyzer's count.",
+      });
+    }
+
+    // ── C4: ArchitecturePattern vs Responsibility distribution ──────────
+    // Pattern=Microservices but no module tagged "Service/API" → warning.
+    // Pattern=Plugin but no module tagged "Plugin Interface" → warning.
+    // These are warnings (not contradictions) — pattern detection is allowed
+    // to use signals ResponsibilityAnalyzer doesn't cover.
+    const primaryPattern = archPattern.primaryPattern;
+    if (primaryPattern && primaryPattern !== "Unknown") {
+      const respSet = new Set((resp.responsibilities || []).map((r) => r.responsibility));
+      if (primaryPattern === "Microservices" && !respSet.has("API") && !respSet.has("Service")) {
+        warnings.push({
+          id: `W${warnings.length + 1}`,
+          topic: "Pattern-Responsibility coverage",
+          severity: "low",
+          sourceA: { analyzer: "ArchitecturePatternAnalyzer", claim: "primaryPattern=Microservices" },
+          sourceB: { analyzer: "ResponsibilityAnalyzer", claim: "no module tagged 'API' or 'Service'" },
+          interpretation:
+            "Pattern detection may have triggered on directory names like 'service/' without semantic confirmation. Microservices pattern expects service-tier responsibilities.",
+        });
+      }
+      if (primaryPattern === "Plugin" && !respSet.has("Plugin Interface")) {
+        warnings.push({
+          id: `W${warnings.length + 1}`,
+          topic: "Pattern-Responsibility coverage",
+          severity: "low",
+          sourceA: { analyzer: "ArchitecturePatternAnalyzer", claim: "primaryPattern=Plugin" },
+          sourceB: { analyzer: "ResponsibilityAnalyzer", claim: "no module tagged 'Plugin Interface'" },
+          interpretation:
+            "Plugin pattern detected via 'plugins/' dir or extension-point symbols, but no module has Plugin-Interface responsibility. May indicate ResponsibilityAnalyzer keyword gap, or plugins/ contains unrelated code.",
+        });
+      }
+    }
+
+    // ── C5: Tests present vs Evaluations absent ─────────────────────────
+    // Common gap: tests exist but no eval infrastructure. Not a contradiction
+    // (tests != evals) but worth flagging as a research-relevant warning.
+    const testCount = tests.totalTestFiles || 0;
+    const evalFileCount = (evals.evalFiles || []).length;
+    if (testCount >= 10 && evalFileCount === 0 && !evals.hasEvaluation) {
+      warnings.push({
+        id: `W${warnings.length + 1}`,
+        topic: "Test vs Evaluation coverage",
+        severity: "medium",
+        sourceA: { analyzer: "TestsAnalyzer", claim: `${testCount} test files` },
+        sourceB: { analyzer: "EvaluationsAnalyzer", claim: "0 eval files, hasEvaluation=false" },
+        interpretation:
+          "Project has substantial test suite but no eval infrastructure. For AI projects, this means unit/integration tests exist but no benchmark/leaderboard/quality-eval harness. May be acceptable (pre-eval stage) or a gap.",
+        recommendation: "LLM should note this in Negative Findings: 'No evaluation infrastructure despite test coverage'.",
+      });
+    }
+
+    // ── C6: InformationFlow LLM call sites vs CapabilityOntology isAIProject ──
+    // Subset of C1 but specifically for LLM call sites — these are the strongest
+    // AI signal and most surprising when CapabilityOntology says not-AI.
+    if (!isAI && (infoFlow.llmCallSites || []).length > 0) {
+      // Already covered by C1 if other AI signals exist; only emit separate
+      // contradiction if C1 did not fire (i.e., LLM call sites are the ONLY signal).
+      const otherSignals =
+        (prompts.prompts || []).length > 0 ||
+        (tools.tools || []).length > 0 ||
+        (resp.responsibilities || []).some((r) => r.responsibility === "LLM Interface");
+      if (!otherSignals) {
+        contradictions.push({
+          id: `C${contradictions.length + 1}`,
+          topic: "LLM call sites vs AI classification",
+          severity: "high",
+          sourceA: { analyzer: "CapabilityOntology", claim: "isAIProject=false" },
+          sourceB: {
+            analyzer: "InformationFlowAnalyzer",
+            claim: `found ${(infoFlow.llmCallSites || []).length} LLM call sites`,
+          },
+          interpretation:
+            "InformationFlowAnalyzer detected LLM call sites via regex (openai/anthropic/claude/gpt/...). CapabilityOntology's AI-context gate should have triggered on this — possible gate logic bug, OR InformationFlowAnalyzer false positive (e.g., LLM_NAME_RE matched a variable named 'completions' that's not LLM-related).",
+          recommendation:
+            "LLM should verify LLM call sites by reading the actual file — if false positive, note InformationFlowAnalyzer over-broad regex; if real, note CapabilityOntology gate bug.",
+        });
+      }
+    }
+
+    // ── Summary ─────────────────────────────────────────────────────────
+    const totalContradictions = contradictions.length;
+    const totalWarnings = warnings.length;
+    const overall = totalContradictions > 0 ? "has-conflicts" : totalWarnings > 0 ? "has-warnings" : "stable";
+
+    store[this.id] = {
+      contradictions,
+      warnings,
+      summary: {
+        totalContradictions,
+        totalWarnings,
+        overall,
+        message:
+          overall === "stable"
+            ? "No cross-analyzer contradictions detected. All analyzers agree."
+            : overall === "has-warnings"
+            ? `${totalWarnings} warning(s) — analyzers agree on major claims but minor inconsistencies exist.`
+            : `${totalContradictions} contradiction(s) and ${totalWarnings} warning(s) — analyzers disagree on major claims. LLM should prioritize investigation.`,
+      },
     };
   }
 }
@@ -4847,6 +5178,8 @@ const ANALYZERS = [
   new InformationFlowAnalyzer(),
   new DependencySmellAnalyzer(),
   new CapabilityOntologyAnalyzer(),
+  // --- Post-processor: runs LAST, compares claims across analyzers ---
+  new ConsistencyAnalyzer(),
 ];
 
 // ===========================================================================
@@ -6071,6 +6404,650 @@ class QuestionGenerator {
 }
 
 // ===========================================================================
+// Findings Generator — v2 pipeline: Evidence → Question-bound Findings
+//
+// Plan reference: plan0726.md Part 1 (①②④⑤⑥⑦)
+//   - Evidence Store → Findings Store (Question/Finding/Evidence/Counter/
+//     Confidence/Coverage/Importance/Limitations)
+//   - Every Finding binds to a Research Question
+//   - Confidence auto-computed from evidence source weights (not "High/Med/Low")
+//   - Coverage auto-computed from scanned/matched ratios
+//   - Importance auto-assigned per question category
+//   - Negative Evidence recorded as "checkedLocations" with "nothing found"
+//
+// Output: store.findings = { schema, questions, findings[], summary }
+// The ReportGenerator surfaces this as the FIRST section in Evidence Brief,
+// before consistency checks and executive brief — because Findings are the
+// canonical unit the LLM should consume (plan0726.md Part 2 Phase 2).
+// ===========================================================================
+
+/**
+ * Canonical Research Questions. Every Finding MUST bind to one of these.
+ * Plan ref: "不要 Architecture 这种分类，改成 Q1/Q2/..."
+ * Each question is falsifiable and answerable from Evidence Store.
+ */
+const RESEARCH_QUESTIONS = [
+  {
+    id: "Q1",
+    question: "How does a request enter the system and what is the entry shape?",
+    category: "architecture",
+    importance: "critical",
+    sources: ["entrypoints", "discovery", "architecture"],
+  },
+  {
+    id: "Q2",
+    question: "Where is orchestration/control-flow, and what pattern (pipeline/graph/fsm) is used?",
+    category: "architecture",
+    importance: "critical",
+    sources: ["archPattern", "informationFlow", "responsibility"],
+  },
+  {
+    id: "Q3",
+    question: "Does Retrieval (RAG) really exist, and what is the evidence strength?",
+    category: "capability",
+    importance: "high",
+    sources: ["responsibility", "capabilityOntology", "symbols", "prompts"],
+  },
+  {
+    id: "Q4",
+    question: "Where is prompt management and what is the prompt lifecycle?",
+    category: "ai",
+    importance: "high",
+    sources: ["prompts", "symbols", "tools"],
+  },
+  {
+    id: "Q5",
+    question: "What is the tool registry/invocation pattern, and how are tools bound to agents?",
+    category: "ai",
+    importance: "high",
+    sources: ["tools", "entrypoints", "symbols"],
+  },
+  {
+    id: "Q6",
+    question: "Is this an AI project? What concrete signals confirm or refute this?",
+    category: "ai",
+    importance: "critical",
+    sources: ["capabilityOntology", "prompts", "tools", "informationFlow", "responsibility"],
+  },
+  {
+    id: "Q7",
+    question: "How is correctness validated (tests vs evaluation), and where are the gaps?",
+    category: "testing",
+    importance: "medium",
+    sources: ["tests", "evaluations", "consistency"],
+  },
+  {
+    id: "Q8",
+    question: "What contradicts the README or self-presentation (false claims, hidden gaps)?",
+    category: "meta",
+    importance: "high",
+    sources: ["consistency", "discovery", "capabilityOntology", "evaluations"],
+  },
+];
+
+/**
+ * Evidence source weights for Confidence auto-calculation.
+ * Plan ref: "AST + Graph + Git + Runtime → Confidence=0.96, 不是 High"
+ *
+ * Rationale: AST-extracted facts are most reliable (parser-grounded).
+ * Graph-derived facts are structural but inferred. Git facts are historical.
+ * Regex/keyword facts are recall-oriented and may false-positive.
+ */
+const EVIDENCE_SOURCE_WEIGHTS = {
+  ast: 0.40,       // Tree-sitter parsed symbols, calls, imports
+  graph: 0.25,     // Architecture graph (PageRank, cycles, centrality)
+  git: 0.15,       // Git history (commit count, change coupling)
+  manifest: 0.10,  // package.json/pyproject.toml/Cargo.toml
+  regex: 0.05,     // Regex scan (prompts, evaluations)
+  keyword: 0.03,   // Keyword matching (responsibility, capability)
+  inference: 0.02, // Inference engine output (derived, not primary)
+};
+
+/**
+ * FINDING_SCHEMA — the JSON Schema every Finding conforms to.
+ * Plan ref: "不是 Markdown，是 JSON Schema，GLM 最喜欢这种"
+ * LLM consumes this schema directly (Phase 2: Finding Validation).
+ */
+const FINDING_SCHEMA = {
+  type: "object",
+  required: ["id", "questionId", "finding", "confidence", "importance", "coverage", "support", "counter", "limitations", "verified"],
+  properties: {
+    id: { type: "string", pattern: "^F-\\d{3}$" },
+    questionId: { type: "string", pattern: "^Q\\d+$" },
+    question: { type: "string" },
+    finding: { type: "string" },
+    confidence: { type: "number", minimum: 0, maximum: 1 },
+    importance: { type: "string", enum: ["critical", "high", "medium", "low"] },
+    coverage: { type: "number", minimum: 0, maximum: 1 },
+    support: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          source: { type: "string", enum: ["ast", "graph", "git", "manifest", "regex", "keyword", "inference"] },
+          ref: { type: "string" },
+          detail: { type: "string" },
+        },
+      },
+    },
+    counter: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          source: { type: "string" },
+          ref: { type: "string" },
+          detail: { type: "string" },
+        },
+      },
+    },
+    limitations: { type: "array", items: { type: "string" } },
+    checkedLocations: { type: "array", items: { type: "string" } },
+    verified: { type: "string", enum: ["verified", "downgraded", "rejected", "pending"] },
+    verificationNote: { type: "string" },
+  },
+};
+
+class FindingsGenerator {
+  /**
+   * @param {EvidenceStore} evidenceStore
+   */
+  constructor(evidenceStore) {
+    this.store = evidenceStore;
+    this.findingCounter = 0;
+  }
+
+  generate() {
+    this.store.ensureBuilt();
+    const findings = [];
+    for (const q of RESEARCH_QUESTIONS) {
+      const qFindings = this._findingsForQuestion(q);
+      findings.push(...qFindings);
+    }
+    const summary = this._summary(findings);
+    return {
+      schema: "findings-v1",
+      generatedAt: new Date().toISOString(),
+      questions: RESEARCH_QUESTIONS.map((q) => ({ id: q.id, question: q.question, category: q.category, importance: q.importance })),
+      findings,
+      summary,
+    };
+  }
+
+  _findingsForQuestion(q) {
+    const handlers = {
+      Q1: () => this._q1EntryShape(),
+      Q2: () => this._q2Orchestration(),
+      Q3: () => this._q3Retrieval(),
+      Q4: () => this._q4PromptManagement(),
+      Q5: () => this._q5ToolRegistry(),
+      Q6: () => this._q6AiProject(),
+      Q7: () => this._q7Correctness(),
+      Q8: () => this._q8ReadmeContradictions(),
+    };
+    const handler = handlers[q.id];
+    if (!handler) return [];
+    try {
+      return handler().map((f) => this._finalize(f, q));
+    } catch (_e) {
+      return [];
+    }
+  }
+
+  // ── Q1: Entry shape ───────────────────────────────────────────────────
+  _q1EntryShape() {
+    const eps = this.store.get("entrypoints") || {};
+    const disc = this.store.get("discovery") || {};
+    const findings = [];
+    const allEps = eps.entrypoints || [];
+    if (allEps.length === 0) {
+      findings.push({
+        finding: "No entry points detected by AST or filename scan.",
+        confidence: this._conf(["ast", "regex"]),
+        coverage: 0,
+        support: [],
+        counter: [],
+        limitations: ["EntrypointsAnalyzer relies on AST main() detection and filename patterns; may miss framework-specific entry hooks (e.g., Spring Boot, plugin.xml)."],
+        checkedLocations: ["**/cli.py", "**/main.py", "**/index.ts", "**/__main__.py", "manifest scripts field"],
+      });
+      return findings;
+    }
+    const byType = {};
+    for (const e of allEps) byType[e.type] = (byType[e.type] || 0) + 1;
+    const typeSummary = Object.entries(byType).map(([t, c]) => `${t}=${c}`).join(", ");
+    const sampleEps = allEps.slice(0, 3).map((e) => `${e.file || e.path || e.name}`).join("; ");
+    findings.push({
+      finding: `Repository exposes ${allEps.length} entry points (${typeSummary}). Sample: ${sampleEps}.`,
+      confidence: this._conf(["ast", "regex", "manifest"]),
+      coverage: Math.min(1, allEps.length / 10),
+      support: [
+        { source: "ast", ref: "entrypoints.entrypoints", detail: `${allEps.length} entry points via AST main() / filename scan` },
+        { source: "manifest", ref: "discovery.manifest", detail: disc.manifest ? `manifest=${disc.manifest.entry}` : "no manifest" },
+      ],
+      counter: [],
+      limitations: ["Framework-specific entry hooks (e.g., Spring Boot application.properties, plugin.xml) may not be detected."],
+      checkedLocations: ["**/cli.py", "**/main.py", "**/index.ts", "manifest scripts field", "package.json bin"],
+    });
+    return findings;
+  }
+
+  // ── Q2: Orchestration pattern ─────────────────────────────────────────
+  _q2Orchestration() {
+    const ap = this.store.get("archPattern") || {};
+    const iflow = this.store.get("informationFlow") || {};
+    const findings = [];
+    if (ap.primaryPattern && ap.primaryPattern !== "Unknown") {
+      const patternMatch = (ap.patterns || []).find((p) => p.pattern === ap.primaryPattern);
+      const conf = patternMatch ? patternMatch.confidence : 0.4;
+      findings.push({
+        finding: `Primary architecture pattern is **${ap.primaryPattern}** (confidence ${conf.toFixed(2)}).`,
+        confidence: this._conf(["keyword", "graph"]) * (0.5 + conf * 0.5),
+        coverage: ap.unknown ? 0 : Math.max(0.3, conf),
+        support: (patternMatch?.evidence || []).slice(0, 3).map((e) => ({ source: "keyword", ref: "archPattern.patterns", detail: e })),
+        counter: [],
+        limitations: (ap._meta?.limitations || []).slice(0, 2),
+        checkedLocations: ap._meta?.checkedLocations || [],
+      });
+    } else {
+      findings.push({
+        finding: "No recognizable architecture pattern detected (Unknown).",
+        confidence: this._conf(["keyword"]) * 0.5,
+        coverage: 0,
+        support: [],
+        counter: [],
+        limitations: ["Pattern detection is directory-name driven; code-only patterns are missed."],
+        checkedLocations: ["discovery.topLevelDirs", "discovery.architectureSignalDirs"],
+      });
+    }
+    if ((iflow.flows || []).length > 0) {
+      const reachesLLM = iflow.reachesLLM === true;
+      findings.push({
+        finding: `Information flow analyzer detected ${iflow.totalFlows} end-to-end flows${reachesLLM ? ", with at least one reaching an LLM call site" : "; none reach an LLM call site"}.`,
+        confidence: this._conf(["regex", "graph"]) * (iflow._meta?.strength === "weak" ? 0.6 : 0.8),
+        coverage: Math.min(1, iflow.totalFlows / 5),
+        support: [
+          { source: "regex", ref: "informationFlow.llmCallSites", detail: `${(iflow.llmCallSites || []).length} LLM call sites` },
+          { source: "graph", ref: "informationFlow.flows", detail: `${iflow.totalFlows} flows via BFS` },
+        ],
+        counter: [],
+        limitations: (iflow._meta?.limitations || []).slice(0, 2),
+        checkedLocations: iflow._meta?.checkedLocations || [],
+      });
+    }
+    return findings;
+  }
+
+  // ── Q3: Retrieval (RAG) ───────────────────────────────────────────────
+  _q3Retrieval() {
+    const cap = this.store.get("capabilityOntology") || {};
+    const resp = this.store.get("responsibility") || {};
+    const sym = this.store.get("symbols") || {};
+    const findings = [];
+    const matrix = cap.capabilityMatrix || {};
+    const retrievalCap = matrix.retrieval;
+    const retrievalRespModules = (resp.responsibilities || []).filter((r) => r.responsibility === "Retrieval");
+
+    // Primary finding: capability verdict
+    if (retrievalCap && retrievalCap !== "missing" && retrievalCap !== "n/a") {
+      findings.push({
+        finding: `Retrieval capability is **${retrievalCap}** (maturity assessed).`,
+        confidence: this._conf(["inference", "keyword"]),
+        coverage: cap._meta?.coverage ? 0.7 : 0.5,
+        support: [
+          { source: "inference", ref: "capabilityOntology.capabilityMatrix.retrieval", detail: `retrieval=${retrievalCap}` },
+        ],
+        counter: [],
+        limitations: (cap._meta?.limitations || []).slice(0, 2),
+        checkedLocations: ["responsibility.responsibilities", "symbols.functions[].name", "tools.tools[]"],
+      });
+    } else {
+      // Negative finding — searched but found nothing
+      findings.push({
+        finding: `No Retrieval (RAG) capability detected. CapabilityOntology reports retrieval=${retrievalCap || "n/a"}.`,
+        confidence: this._conf(["inference", "keyword"]) * 0.8,
+        coverage: 0.6,
+        support: [
+          { source: "inference", ref: "capabilityOntology.capabilityMatrix.retrieval", detail: `retrieval=${retrievalCap || "n/a"}` },
+        ],
+        counter: retrievalRespModules.length > 0
+          ? [{ source: "keyword", ref: "responsibility.responsibilities", detail: `ResponsibilityAnalyzer tagged ${retrievalRespModules.length} module(s) as Retrieval: ${retrievalRespModules.slice(0, 2).map((m) => m.module).join(", ")}` }]
+          : [],
+        limitations: ["CapabilityOntology gate may under-classify repos with implicit RAG (no explicit vector store symbols)."],
+        checkedLocations: ["embedding/", "vector/", "faiss/", "pgvector/", "chroma/", "symbols.functions[].name (retriev/embed/vector search)", "prompts.prompts[]"],
+      });
+    }
+    return findings;
+  }
+
+  // ── Q4: Prompt management ─────────────────────────────────────────────
+  _q4PromptManagement() {
+    const prompts = this.store.get("prompts") || {};
+    const findings = [];
+    const total = prompts.totalPrompts || 0;
+    if (total === 0) {
+      findings.push({
+        finding: "No prompts detected by AST or regex scan.",
+        confidence: this._conf(["ast", "regex"]) * 0.7,
+        coverage: 0.5,
+        support: [],
+        counter: [],
+        limitations: ["PromptsAnalyzer detects SYSTEM_PROMPT/INSTRUCTION/PROMPT variable assignments; dynamic prompt assembly may be missed."],
+        checkedLocations: ["**/*.py (SYSTEM_PROMPT/INSTRUCTION/PROMPT)", "**/*.ts (systemPrompt/instruction)", "prompts/", "**/prompt*.ts"],
+      });
+      return findings;
+    }
+    const byType = {};
+    for (const p of prompts.prompts || []) byType[p.type] = (byType[p.type] || 0) + 1;
+    findings.push({
+      finding: `Detected ${total} prompts (${Object.entries(byType).map(([t, c]) => `${t}=${c}`).join(", ")}).`,
+      confidence: this._conf(["ast", "regex"]),
+      coverage: Math.min(1, total / 5),
+      support: (prompts.prompts || []).slice(0, 3).map((p) => ({ source: "regex", ref: `prompts.prompts (${p.file}:${p.line})`, detail: (p.snippet || "").slice(0, 80) })),
+      counter: [],
+      limitations: ["Prompt lifecycle (versioning, assembly, compression) cannot be inferred from static scan."],
+      checkedLocations: ["**/*.py (SYSTEM_PROMPT/INSTRUCTION)", "**/*.ts (systemPrompt/instruction)", "prompts/", "**/prompt*.ts"],
+    });
+    return findings;
+  }
+
+  // ── Q5: Tool registry ─────────────────────────────────────────────────
+  _q5ToolRegistry() {
+    const tools = this.store.get("tools") || {};
+    const findings = [];
+    const total = tools.totalTools || 0;
+    if (total === 0) {
+      findings.push({
+        finding: "No tools detected by AST decorator or schema-first scan.",
+        confidence: this._conf(["ast", "regex"]) * 0.7,
+        coverage: 0.5,
+        support: [],
+        counter: [],
+        limitations: ["ToolsAnalyzer detects @tool decorator, Tool() class, RPC_TOOLS schema; custom frameworks may be missed."],
+        checkedLocations: ["@tool decorator", "Tool()/ToolNode()", "RPC_TOOLS/ToolDef[]", "skills/*/execute.py", "bundled_skills/*/"],
+      });
+      return findings;
+    }
+    const byFw = {};
+    for (const t of tools.tools || []) byFw[t.framework] = (byFw[t.framework] || 0) + 1;
+    findings.push({
+      finding: `Detected ${total} tools (${Object.entries(byFw).map(([f, c]) => `${f}=${c}`).join(", ")}).`,
+      confidence: this._conf(["ast", "regex"]),
+      coverage: Math.min(1, total / 10),
+      support: (tools.tools || []).slice(0, 3).map((t) => ({ source: "ast", ref: `tools.tools (${t.file})`, detail: `[${t.framework}] ${t.name}` })),
+      counter: [],
+      limitations: ["Tool-agent binding (which agent calls which tool) requires call-graph resolution, not yet implemented."],
+      checkedLocations: ["@tool/@mcp.tool/@agent.tool", "Tool()/ToolNode()", "RPC_TOOLS[]", "skills/*/execute.py", "bundled_skills/*/"],
+    });
+    return findings;
+  }
+
+  // ── Q6: AI project confirmation ───────────────────────────────────────
+  _q6AiProject() {
+    const cap = this.store.get("capabilityOntology") || {};
+    const prompts = this.store.get("prompts") || {};
+    const tools = this.store.get("tools") || {};
+    const iflow = this.store.get("informationFlow") || {};
+    const findings = [];
+    const isAI = cap.isAIProject === true;
+    const signals = [];
+    if ((prompts.totalPrompts || 0) > 0) signals.push({ source: "regex", ref: "prompts.totalPrompts", detail: `${prompts.totalPrompts} prompts` });
+    if ((tools.totalTools || 0) > 0) signals.push({ source: "ast", ref: "tools.totalTools", detail: `${tools.totalTools} tools` });
+    if ((iflow.llmCallSites || []).length > 0) signals.push({ source: "regex", ref: "informationFlow.llmCallSites", detail: `${iflow.llmCallSites.length} LLM call sites` });
+
+    findings.push({
+      finding: isAI
+        ? `Confirmed AI project. Signals: ${signals.map((s) => s.detail).join("; ")}.`
+        : `Not classified as AI project. CapabilityOntology gate found insufficient AI signals.`,
+      confidence: isAI
+        ? this._conf(["inference", ...signals.map((s) => s.source)])
+        : this._conf(["inference"]) * 0.6,
+      coverage: signals.length / 4,
+      support: isAI ? signals : [{ source: "inference", ref: "capabilityOntology.isAIProject", detail: "isAIProject=false" }],
+      counter: isAI ? [] : signals,
+      limitations: (cap._meta?.limitations || []).slice(0, 2),
+      checkedLocations: ["prompts.prompts[]", "tools.tools[]", "informationFlow.llmCallSites[]", "responsibility.responsibilities[] (LLM Interface)"],
+    });
+    return findings;
+  }
+
+  // ── Q7: Correctness validation ────────────────────────────────────────
+  _q7Correctness() {
+    const tests = this.store.get("tests") || {};
+    const evals = this.store.get("evaluations") || {};
+    const findings = [];
+    const testCount = tests.totalTestFiles || 0;
+    const evalCount = (evals.evalFiles || []).length;
+    findings.push({
+      finding: testCount > 0
+        ? `Test suite: ${testCount} files, ${tests.totalTestFunctions || 0} test functions.`
+        : "No test files detected.",
+      confidence: this._conf(["ast", "regex"]),
+      coverage: Math.min(1, testCount / 50),
+      support: testCount > 0
+        ? [{ source: "ast", ref: "tests.totalTestFiles", detail: `${testCount} test files, ${tests.totalTestFunctions || 0} functions` }]
+        : [],
+      counter: [],
+      limitations: ["Test quality (assertion density, coverage) cannot be inferred from file/function count alone."],
+      checkedLocations: ["**/test_*.py", "**/*_test.go", "**/*.test.ts", "**/*.spec.ts", "**/tests/", "**/__tests__/"],
+    });
+    if (evalCount > 0 || evals.hasEvaluation) {
+      findings.push({
+        finding: `Evaluation infrastructure detected: ${evalCount} eval files, hasEvaluation=${evals.hasEvaluation}.`,
+        confidence: this._conf(["regex", "keyword"]),
+        coverage: Math.min(1, evalCount / 3),
+        support: [{ source: "regex", ref: "evaluations.evalFiles", detail: `${evalCount} eval files; patterns: ${(evals.patterns || []).join(", ")}` }],
+        counter: [],
+        limitations: ["EvaluationsAnalyzer detects score/benchmark/judge keywords; may false-positive on type names containing 'score'."],
+        checkedLocations: ["**/eval*.py", "**/benchmark*", "**/leaderboard*", "evaluations/", "metrics/"],
+      });
+    } else {
+      findings.push({
+        finding: "No evaluation infrastructure detected (no eval files, hasEvaluation=false).",
+        confidence: this._conf(["regex", "keyword"]) * 0.8,
+        coverage: 0.4,
+        support: [],
+        counter: [],
+        limitations: ["EvaluationsAnalyzer keyword-based; may miss eval logic embedded in test files."],
+        checkedLocations: ["**/eval*.py", "**/benchmark*", "**/leaderboard*", "evaluations/", "metrics/"],
+      });
+    }
+    return findings;
+  }
+
+  // ── Q8: README contradictions ─────────────────────────────────────────
+  _q8ReadmeContradictions() {
+    const con = this.store.get("consistency") || {};
+    const findings = [];
+    const contradictions = con.contradictions || [];
+    const warnings = con.warnings || [];
+    if (contradictions.length === 0 && warnings.length === 0) {
+      findings.push({
+        finding: "No cross-analyzer contradictions or warnings detected. All analyzers agree.",
+        confidence: this._conf(["inference"]),
+        coverage: 1,
+        support: [{ source: "inference", ref: "consistency.summary", detail: con.summary?.message || "stable" }],
+        counter: [],
+        limitations: ["ConsistencyAnalyzer only checks 6 rule patterns (C1-C6); subtle disagreements may exist."],
+        checkedLocations: ["capabilityOntology vs prompts/tools/informationFlow", "responsibility vs capabilityOntology", "tests vs evaluations"],
+      });
+      return findings;
+    }
+    for (const c of contradictions.slice(0, 3)) {
+      findings.push({
+        finding: `Contradiction ${c.id}: ${c.topic} — ${c.sourceA.analyzer} says "${c.sourceA.claim}" but ${c.sourceB.analyzer} says "${c.sourceB.claim}".`,
+        confidence: this._conf(["inference"]) * 0.9,
+        coverage: 0.8,
+        support: [
+          { source: "inference", ref: `consistency.contradictions.${c.id}.sourceA`, detail: c.sourceA.claim },
+          { source: "inference", ref: `consistency.contradictions.${c.id}.sourceB`, detail: c.sourceB.claim },
+        ],
+        counter: [],
+        limitations: [c.interpretation || ""],
+        checkedLocations: [`${c.sourceA.analyzer} output`, `${c.sourceB.analyzer} output`],
+      });
+    }
+    return findings;
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────
+
+  /**
+   * Auto-compute confidence from evidence sources.
+   * Plan ref: "AST + Graph + Git + Runtime → Confidence=0.96"
+   * Sums the weights of distinct evidence sources, capped at 0.95.
+   */
+  _conf(sources) {
+    const seen = new Set();
+    let sum = 0;
+    for (const s of sources) {
+      if (!seen.has(s)) {
+        seen.add(s);
+        sum += EVIDENCE_SOURCE_WEIGHTS[s] || 0;
+      }
+    }
+    return Math.min(0.95, sum);
+  }
+
+  _finalize(f, q) {
+    this.findingCounter += 1;
+    return {
+      id: `F-${String(this.findingCounter).padStart(3, "0")}`,
+      questionId: q.id,
+      question: q.question,
+      finding: f.finding,
+      confidence: Number((f.confidence || 0).toFixed(2)),
+      importance: f.importance || q.importance,
+      coverage: Number((f.coverage || 0).toFixed(2)),
+      support: f.support || [],
+      counter: f.counter || [],
+      limitations: f.limitations || [],
+      checkedLocations: f.checkedLocations || [],
+      verified: "pending",
+      verificationNote: "",
+    };
+  }
+
+  _summary(findings) {
+    const byImportance = { critical: 0, high: 0, medium: 0, low: 0 };
+    for (const f of findings) byImportance[f.importance] = (byImportance[f.importance] || 0) + 1;
+    const verified = findings.filter((f) => f.verified === "verified").length;
+    const downgraded = findings.filter((f) => f.verified === "downgraded").length;
+    const hasCounter = findings.filter((f) => f.counter.length > 0).length;
+    return {
+      total: findings.length,
+      byImportance,
+      verifiedCount: verified,
+      downgradedCount: downgraded,
+      findingsWithCounterEvidence: hasCounter,
+      averageConfidence: findings.length > 0
+        ? Number((findings.reduce((s, f) => s + f.confidence, 0) / findings.length).toFixed(2))
+        : 0,
+    };
+  }
+}
+
+// ===========================================================================
+// Verification Loop — v2 pipeline: Finding → Counter Evidence → Verified
+//
+// Plan reference: plan0726.md Part 6
+//   Finding → Counter Evidence → Still Valid? → Verified Finding
+//
+// For each Finding, the loop:
+//   1. Searches for Counter Evidence in other analyzers' outputs
+//   2. If counter evidence found, downgrades confidence
+//   3. Marks Finding as verified / downgraded / rejected
+//
+// This is the script-layer Verification Loop. The LLM Phase 2 (Finding
+// Validation) builds on top of this with Merge/Split/Reject decisions.
+// ===========================================================================
+
+class VerificationLoop {
+  /**
+   * @param {object} findingsOutput - Output of FindingsGenerator.generate()
+   * @param {EvidenceStore} evidenceStore
+   */
+  constructor(findingsOutput, evidenceStore) {
+    this.findingsOutput = findingsOutput || {};
+    this.findings = this.findingsOutput.findings || [];
+    this.store = evidenceStore;
+  }
+
+  run() {
+    const verified = this.findings.map((f) => this._verify(f));
+    const summary = this._summary(verified);
+    return {
+      ...this.findingsOutput,
+      findings: verified,
+      verificationSummary: summary,
+    };
+  }
+
+  _verify(finding) {
+    const counters = [...finding.counter];
+    let downgraded = false;
+    let note = "";
+
+    // Rule V1: If ConsistencyAnalyzer flagged a contradiction on this topic,
+    // the finding's confidence must be downgraded.
+    const con = this.store.get("consistency") || {};
+    const relevantCon = (con.contradictions || []).find((c) => {
+      const topic = (c.topic || "").toLowerCase();
+      const findingText = (finding.finding || "").toLowerCase();
+      return findingText.includes(topic) || topic.includes(finding.questionId.toLowerCase());
+    });
+    if (relevantCon) {
+      counters.push({
+        source: "inference",
+        ref: `consistency.contradictions.${relevantCon.id}`,
+        detail: relevantCon.interpretation,
+      });
+      downgraded = true;
+      note = `Downgraded due to contradiction ${relevantCon.id}: ${relevantCon.topic}`;
+    }
+
+    // Rule V2: If the finding's confidence is already low (<0.3) and has
+    // counter evidence, mark as "rejected" — too weak to publish.
+    let verifiedStatus = "verified";
+    if (downgraded && finding.confidence < 0.3) {
+      verifiedStatus = "rejected";
+      note = `Rejected: confidence ${finding.confidence.toFixed(2)} < 0.3 after counter evidence`;
+    } else if (downgraded) {
+      verifiedStatus = "downgraded";
+    }
+
+    // Rule V3: Negative findings (checkedLocations but no support) are
+    // always "verified" — there's nothing to contradict.
+    if (finding.support.length === 0 && finding.checkedLocations.length > 0 && counters.length === 0) {
+      verifiedStatus = "verified";
+      note = "Negative finding (searched, found nothing) — verified by absence";
+    }
+
+    return {
+      ...finding,
+      counter: counters,
+      verified: verifiedStatus,
+      verificationNote: note,
+      confidence: downgraded
+        ? Number((finding.confidence * 0.6).toFixed(2))
+        : finding.confidence,
+    };
+  }
+
+  _summary(findings) {
+    const status = { verified: 0, downgraded: 0, rejected: 0, pending: 0 };
+    for (const f of findings) status[f.verified] = (status[f.verified] || 0) + 1;
+    return {
+      total: findings.length,
+      ...status,
+      counterEvidenceFound: findings.filter((f) => f.counter.length > 0).length,
+      averageConfidenceAfterVerification: findings.length > 0
+        ? Number((findings.reduce((s, f) => s + f.confidence, 0) / findings.length).toFixed(2))
+        : 0,
+    };
+  }
+}
+
+// ===========================================================================
 // Report Generator — produces an Evidence Brief for LLM analysis
 // ===========================================================================
 
@@ -6089,12 +7066,37 @@ class ReportGenerator {
     this.store = evidenceStore;
     this.s = evidenceStore._store;
     this.lang = options.lang === "zh" ? "zh" : "en";
+    this._findingsCache = null; // lazy: FindingsGenerator + VerificationLoop output
+  }
+
+  /**
+   * v2 pipeline: run FindingsGenerator + VerificationLoop, cache result.
+   * Plan ref: plan0726.md Part 1 + Part 6 — Findings are the canonical
+   * unit the LLM consumes. Verification Loop adds Counter Evidence and
+   * marks each Finding as verified/downgraded/rejected.
+   */
+  _findings() {
+    if (this._findingsCache) return this._findingsCache;
+    try {
+      const gen = new FindingsGenerator(this.store);
+      const raw = gen.generate();
+      const loop = new VerificationLoop(raw, this.store);
+      this._findingsCache = loop.run();
+    } catch (_e) {
+      this._findingsCache = { findings: [], summary: { total: 0 }, verificationSummary: { total: 0 } };
+    }
+    // Also persist to store so `analyze-output.mjs` and downstream consumers
+    // can access it via store.findings.
+    this.s.findings = this._findingsCache;
+    return this._findingsCache;
   }
 
   generate() {
     const sections = [
       this._header(),
       this._researchPrinciples(),
+      this._findingsSection(),
+      this._consistencyFindings(),
       this._executiveBrief(),
       this._architectureInsights(),
       this._architectureSemantics(),
@@ -6194,6 +7196,104 @@ class ReportGenerator {
       "- **Trace density over coverage** — Every Trace must answer one architectural question whose answer would change an engineer's understanding of the system. Low-value Traces should be deleted, not kept to pad the count. 5 sharp Traces beat 8 mediocre ones.",
       "- **Confidence MUST follow a unified standard** — High: ≥3 independent evidence sources; Medium: 2 sources; Low: 1 source; Speculative: no direct evidence (reasoning only). All confidence labels MUST conform to this definition.",
     ].join("\n");
+  }
+
+  /**
+   * v2 Findings section — the canonical unit the LLM consumes.
+   *
+   * Plan ref: plan0726.md Part 1 + Part 2
+   *   - Every Finding binds to a Research Question (Q1-Q8)
+   *   - Confidence/Coverage/Importance auto-computed (not "High/Med/Low")
+   *   - Counter Evidence + Verified status from VerificationLoop
+   *   - Negative Evidence recorded as "checkedLocations" with "nothing found"
+   *
+   * Placed BEFORE consistency and executive brief, because Findings are the
+   * primary input for LLM Phase 2 (Finding Validation). The raw analyzer
+   * sections below serve as supporting evidence for verification.
+   */
+  _findingsSection() {
+    const out = this._findings();
+    const findings = out.findings || [];
+    if (findings.length === 0) return null;
+
+    const zh = this.lang === "zh";
+    const lines = [];
+    lines.push(zh ? "## ★ Findings（v2 规范化发现）" : "## ★ Findings (v2 normalized)");
+    lines.push("");
+    lines.push(zh
+      ? "> 每个 Finding 绑定一个 Research Question (Q1-Q8)，并携带自动计算的 confidence / coverage / importance。"
+      : "> Every Finding binds to a Research Question (Q1-Q8) with auto-computed confidence / coverage / importance."
+    );
+    lines.push(zh
+      ? "> LLM 应优先消费本节；下方各 analyzer 章节作为支持证据。verified=downgraded/rejected 的 Finding 不应直接引用，需先核查。"
+      : "> LLM should consume this section first; analyzer sections below serve as supporting evidence. Findings with verified=downgraded/rejected must not be cited without re-verification."
+    );
+    lines.push("");
+
+    // Summary
+    const summary = out.summary || {};
+    const vSum = out.verificationSummary || {};
+    lines.push(zh
+      ? `**总览**: ${summary.total || 0} findings (${(summary.byImportance || {}).critical || 0} critical / ${(summary.byImportance || {}).high || 0} high / ${(summary.byImportance || {}).medium || 0} medium / ${(summary.byImportance || {}).low || 0} low); 平均置信度 ${summary.averageConfidence || 0}; 验证后: ${vSum.verified || 0} verified / ${vSum.downgraded || 0} downgraded / ${vSum.rejected || 0} rejected`
+      : `**Summary**: ${summary.total || 0} findings (${(summary.byImportance || {}).critical || 0} critical / ${(summary.byImportance || {}).high || 0} high / ${(summary.byImportance || {}).medium || 0} medium / ${(summary.byImportance || {}).low || 0} low); avg confidence ${summary.averageConfidence || 0}; after verification: ${vSum.verified || 0} verified / ${vSum.downgraded || 0} downgraded / ${vSum.rejected || 0} rejected`
+    );
+    lines.push("");
+
+    // Research Questions index
+    const questions = out.questions || [];
+    if (questions.length > 0) {
+      lines.push(zh ? "### Research Questions" : "### Research Questions");
+      lines.push("");
+      for (const q of questions) {
+        lines.push(`- **${q.id}** [${q.importance}] ${q.question}`);
+      }
+      lines.push("");
+    }
+
+    // Findings table (compact view)
+    lines.push(zh ? "### Findings 表" : "### Findings table");
+    lines.push("");
+    lines.push("| ID | Q | Importance | Confidence | Coverage | Verified | Finding |");
+    lines.push("|----|---|------------|------------|----------|----------|---------|");
+    for (const f of findings) {
+      const findingShort = (f.finding || "").replace(/\|/g, "\\|").slice(0, 120);
+      const verifiedIcon = f.verified === "verified" ? "✅"
+        : f.verified === "downgraded" ? "⚠️"
+        : f.verified === "rejected" ? "❌"
+        : "⏳";
+      lines.push(`| ${f.id} | ${f.questionId} | ${f.importance} | ${f.confidence.toFixed(2)} | ${f.coverage.toFixed(2)} | ${verifiedIcon} ${f.verified} | ${findingShort} |`);
+    }
+    lines.push("");
+
+    // Detailed findings (full structure)
+    lines.push(zh ? "### Findings 详情（JSON Schema 化）" : "### Findings detail (JSON-schema structured)");
+    lines.push("");
+    for (const f of findings) {
+      lines.push(`#### ${f.id} — ${f.questionId}: ${f.question}`);
+      lines.push("");
+      lines.push(`- **Finding**: ${f.finding}`);
+      lines.push(`- **Importance**: ${f.importance}`);
+      lines.push(`- **Confidence**: ${f.confidence.toFixed(2)} ${zh ? "(自动计算: " : "(auto-computed: "}${[...new Set((f.support || []).map((s) => s.source))].join("+") || "none"}${zh ? ")" : ")"};`);
+      lines.push(`- **Coverage**: ${f.coverage.toFixed(2)} ${zh ? "(扫描覆盖范围)" : "(scan coverage)"}`);
+      lines.push(`- **Verified**: ${f.verified}${f.verificationNote ? ` — ${f.verificationNote}` : ""}`);
+      if ((f.support || []).length > 0) {
+        lines.push(zh ? "- **Support（支持证据）**:" : "- **Support**:");
+        for (const s of f.support) lines.push(`  - [${s.source}] ${s.ref} — ${s.detail}`);
+      }
+      if ((f.counter || []).length > 0) {
+        lines.push(zh ? "- **Counter（反证）**:" : "- **Counter evidence**:");
+        for (const c of f.counter) lines.push(`  - [${c.source}] ${c.ref} — ${c.detail}`);
+      }
+      if ((f.checkedLocations || []).length > 0) {
+        lines.push(zh ? `- **Checked Locations（已检查位置）**: ${f.checkedLocations.join(", ")}` : `- **Checked Locations**: ${f.checkedLocations.join(", ")}`);
+      }
+      if ((f.limitations || []).length > 0) {
+        lines.push(zh ? `- **Limitations**: ${f.limitations.join("; ")}` : `- **Limitations**: ${f.limitations.join("; ")}`);
+      }
+      lines.push("");
+    }
+
+    return lines.join("\n");
   }
 
   _ontologyView() {
@@ -6538,6 +7638,105 @@ class ReportGenerator {
     return lines.join("\n");
   }
 
+  /**
+   * Cross-analyzer consistency findings — FIRST priority in the brief.
+   *
+   * Self-detected contradictions are the most research-valuable findings:
+   * they tell the LLM "here is where the analyzers disagree, investigate
+   * before trusting either side". Surfacing them before PageRank / Architecture
+   * Insights reframes the brief from "analyzer output dump" to "research agenda".
+   */
+  _consistencyFindings() {
+    const con = this._get("consistency");
+    if (!con || (con.contradictions || []).length === 0 && (con.warnings || []).length === 0) {
+      return null;
+    }
+
+    const lines = [];
+    if (this.lang === "zh") {
+      lines.push("## A. 跨分析器一致性检查（首要优先级）");
+      lines.push("");
+      lines.push("> 系统自己发现自己的矛盾，是最值钱的研究线索。");
+      lines.push("> LLM 应优先调查矛盾，再决定信任哪个分析器。");
+      lines.push("");
+      lines.push(`**总体状态**: ${con.summary?.message || "未知"}`);
+      lines.push("");
+    } else {
+      lines.push("## A. Cross-Analyzer Consistency (First Priority)");
+      lines.push("");
+      lines.push("> Self-detected contradictions are the most research-valuable findings.");
+      lines.push("> The LLM should investigate contradictions before trusting either analyzer.");
+      lines.push("");
+      lines.push(`**Overall status**: ${con.summary?.message || "unknown"}`);
+      lines.push("");
+    }
+
+    const contradictions = con.contradictions || [];
+    const warnings = con.warnings || [];
+
+    if (contradictions.length > 0) {
+      if (this.lang === "zh") {
+        lines.push(`### 矛盾（${contradictions.length} 条，severity=high/medium）`);
+        lines.push("");
+        lines.push("| ID | Topic | Severity | Source A | Source B | Interpretation |");
+        lines.push("|----|-------|----------|----------|----------|----------------|");
+        for (const c of contradictions) {
+          lines.push(`| ${c.id} | ${c.topic} | ${c.severity} | ${c.sourceA.analyzer}: ${c.sourceA.claim} | ${c.sourceB.analyzer}: ${c.sourceB.claim} | ${c.interpretation} |`);
+        }
+        lines.push("");
+        for (const c of contradictions) {
+          lines.push(`#### ${c.id}: ${c.topic}`);
+          lines.push("");
+          lines.push(`- **Source A**: ${c.sourceA.analyzer} — ${c.sourceA.claim}`);
+          lines.push(`- **Source B**: ${c.sourceB.analyzer} — ${c.sourceB.claim}`);
+          lines.push(`- **解读**: ${c.interpretation}`);
+          if (c.recommendation) lines.push(`- **建议**: ${c.recommendation}`);
+          lines.push("");
+        }
+      } else {
+        lines.push(`### Contradictions (${contradictions.length}, severity=high/medium)`);
+        lines.push("");
+        lines.push("| ID | Topic | Severity | Source A | Source B | Interpretation |");
+        lines.push("|----|-------|----------|----------|----------|----------------|");
+        for (const c of contradictions) {
+          lines.push(`| ${c.id} | ${c.topic} | ${c.severity} | ${c.sourceA.analyzer}: ${c.sourceA.claim} | ${c.sourceB.analyzer}: ${c.sourceB.claim} | ${c.interpretation} |`);
+        }
+        lines.push("");
+        for (const c of contradictions) {
+          lines.push(`#### ${c.id}: ${c.topic}`);
+          lines.push("");
+          lines.push(`- **Source A**: ${c.sourceA.analyzer} — ${c.sourceA.claim}`);
+          lines.push(`- **Source B**: ${c.sourceB.analyzer} — ${c.sourceB.claim}`);
+          lines.push(`- **Interpretation**: ${c.interpretation}`);
+          if (c.recommendation) lines.push(`- **Recommendation**: ${c.recommendation}`);
+          lines.push("");
+        }
+      }
+    }
+
+    if (warnings.length > 0) {
+      if (this.lang === "zh") {
+        lines.push(`### 警告（${warnings.length} 条，severity=medium/low）`);
+        lines.push("");
+        lines.push("| ID | Topic | Severity | Source A | Source B | Interpretation |");
+        lines.push("|----|-------|----------|----------|----------|----------------|");
+        for (const w of warnings) {
+          lines.push(`| ${w.id} | ${w.topic} | ${w.severity} | ${w.sourceA.analyzer}: ${w.sourceA.claim} | ${w.sourceB.analyzer}: ${w.sourceB.claim} | ${w.interpretation} |`);
+        }
+      } else {
+        lines.push(`### Warnings (${warnings.length}, severity=medium/low)`);
+        lines.push("");
+        lines.push("| ID | Topic | Severity | Source A | Source B | Interpretation |");
+        lines.push("|----|-------|----------|----------|----------|----------------|");
+        for (const w of warnings) {
+          lines.push(`| ${w.id} | ${w.topic} | ${w.severity} | ${w.sourceA.analyzer}: ${w.sourceA.claim} | ${w.sourceB.analyzer}: ${w.sourceB.claim} | ${w.interpretation} |`);
+        }
+      }
+    }
+
+    return lines.join("\n");
+  }
+
   _executiveBrief() {
     const disc = this._get("discovery");
     const git = this._get("git");
@@ -6866,6 +8065,49 @@ class ReportGenerator {
       lines.push("");
     }
 
+    // --- 8. Evidence Metadata (analyzer self-disclosure) ---
+    // Each inference analyzer ships _meta with assumptions, limitations,
+    // possible false positives, and checked locations. Surfacing these in
+    // the brief lets the LLM (and reader) calibrate trust per-analyzer
+    // rather than treating all conclusions as equally reliable.
+    const metaSources = [
+      { key: "archPattern", label: isZh ? "架构模式分析器" : "ArchitecturePatternAnalyzer" },
+      { key: "responsibility", label: isZh ? "职责分析器" : "ResponsibilityAnalyzer" },
+      { key: "informationFlow", label: isZh ? "信息流分析器" : "InformationFlowAnalyzer" },
+      { key: "capabilityOntology", label: isZh ? "能力本体分析器" : "CapabilityOntologyAnalyzer" },
+    ];
+    const anyMeta = metaSources.some((s) => this._get(s.key)?._meta);
+    if (anyMeta) {
+      lines.push(isZh ? "### 证据质量元信息（分析器自评）" : "### Evidence Quality Metadata (Analyzer Self-Disclosure)");
+      lines.push(isZh
+        ? "> 每个推理分析器附带 _meta：source（证据来源）/ strength（强度）/ assumptions（假设）/ limitations（限制）/ possibleFalsePositives（可能误报）/ checkedLocations（查了哪里）。"
+        : "> Each inference analyzer ships _meta: source / strength / assumptions / limitations / possibleFalsePositives / checkedLocations."
+      );
+      lines.push(isZh
+        ? "> LLM 引用 analyzer 结论时应参考其 strength：strong > moderate > weak。weak 的 analyzer 结论需要 LLM 通过源码核查后再相信。"
+        : "> When citing analyzer claims, LLM should reference strength: strong > moderate > weak. Weak-analyzer claims require LLM source-code verification before trusting."
+      );
+      lines.push("");
+      for (const s of metaSources) {
+        const meta = this._get(s.key)?._meta;
+        if (!meta) continue;
+        lines.push(`**${s.label}** — source: \`${meta.source}\`, strength: \`${meta.strength}\`, coverage: ${meta.coverage || "n/a"}`);
+        if (meta.assumptions && meta.assumptions.length > 0) {
+          lines.push(isZh ? `- 假设:` : `- Assumptions:`);
+          for (const a of meta.assumptions) lines.push(`  - ${a}`);
+        }
+        if (meta.limitations && meta.limitations.length > 0) {
+          lines.push(isZh ? `- 限制:` : `- Limitations:`);
+          for (const l of meta.limitations) lines.push(`  - ${l}`);
+        }
+        if (meta.possibleFalsePositives && meta.possibleFalsePositives.length > 0) {
+          lines.push(isZh ? `- 可能误报:` : `- Possible false positives:`);
+          for (const fp of meta.possibleFalsePositives) lines.push(`  - ${fp}`);
+        }
+        lines.push("");
+      }
+    }
+
     return lines.join("\n");
   }
 
@@ -7123,6 +8365,11 @@ class ReportGenerator {
   _llmPrompt() {
     const disc = this._get("discovery");
     const repoName = disc.repoName || "this repository";
+    const findings = this._findings();
+    const fCount = (findings.findings || []).length;
+    const vSum = findings.verificationSummary || {};
+    const fDowngraded = vSum.downgraded || 0;
+    const fRejected = vSum.rejected || 0;
     if (this.lang === "zh") {
       return [
         "---",
@@ -7131,6 +8378,44 @@ class ReportGenerator {
         "",
         `你是一位经验丰富的软件架构师。基于上述证据，为 **${repoName}** 撰写一份工程研究报告。`,
         `请将报告保存为工作目录下的 \`report.md\`。`,
+        "",
+        "### v2 Pipeline: 4 阶段执行（plan0726.md Part 2）",
+        "",
+        "本简报采用 v2 pipeline，已生成规范化 Findings（见上方 ★ Findings 章节）。",
+        `共 ${fCount} 个 Finding；验证后: ${vSum.verified || 0} verified / ${fDowngraded} downgraded / ${fRejected} rejected。`,
+        "",
+        "请按以下 4 阶段执行（不要跳过）：",
+        "",
+        "**Phase 1 — Planning（低 reasoning_effort）**: 确认 Research Questions Q1-Q8 中哪些对本仓库最有价值。不必分析，只排序。",
+        "",
+        "**Phase 2 — Finding Validation（中 reasoning_effort）**: 对 ★ Findings 章节中的每个 Finding 执行 Merge/Split/Reject/Verify：",
+        "- 若多个 Finding 描述同一现象 → Merge",
+        "- 若一个 Finding 混淆多个现象 → Split",
+        "- 若 verified=rejected 或反证强于支持证据 → Reject",
+        "- 若反证存在但仍弱于支持证据 → 保留并降级 confidence",
+        "- 检测 Findings 之间的 Conflict（脚本层 ConsistencyAnalyzer 可能漏检）",
+        "",
+        "**Phase 3 — Architecture Reasoning（高 reasoning_effort, thinking=enabled）**: 基于验证后的 Findings，回答 Why/Impact/Tradeoff：",
+        "- Why: 为什么这样设计？（不是「是什么」）",
+        "- Impact: 这个设计选择的影响是什么？（性能/可维护性/可扩展性）",
+        "- Tradeoff: 牺牲了什么？换取了什么？",
+        "",
+        "**Phase 4 — Executive Summary（低 reasoning_effort）**: 生成 Markdown 报告。三段式 Executive Summary：Identity / Key Discovery / Recommendation。",
+        "",
+        "### Constraints（Do NOT）",
+        "",
+        "- **Do NOT** recommend technologies not present in the repository.",
+        "- **Do NOT** invent architecture not supported by evidence.",
+        "- **Do NOT** speculate beyond what Findings + Evidence Store show.",
+        "- **Do NOT** ignore counter evidence — if a Finding has counter[], address it explicitly.",
+        "- **Do NOT** cite verified=rejected Findings as conclusions.",
+        "- **Do NOT** write Architecture Score / Radar / Heatmap / SWOT / Best Practice / Future Work sections (低价值，plan0726.md Part 7).",
+        "- **Do NOT** pad the report with low-value Traces — 5 sharp Traces beat 8 mediocre ones.",
+        "",
+        "### Finding 引用规范",
+        "",
+        "在 Trace 中引用 Finding 时使用格式：`[F-001 @ Q1, confidence=0.85, verified]`。",
+        "读者应能从 Trace 反向定位到 Findings 章节的对应条目。",
         "",
         "### 核心方法论：Ontology-driven Research（对象驱动研究）",
         "",
@@ -7256,6 +8541,9 @@ class ReportGenerator {
         "- 每个论断必须引用证据（文件路径、简报章节、指标）。",
         "- 置信度标签必须符合 §0 统一标准：High=≥3 源 / Medium=2 源 / Low=1 源 / Speculative=无直接证据。",
         "- Trace 数量上限 5 个，宁缺毋滥。低价值 Trace 应删除而非保留凑数。",
+        "- **简报 §A 的矛盾必须优先处理**：每条 high-severity 矛盾应成为一个 Research Trace（或并入相关 Trace），",
+        "  因为「系统自己发现自己的矛盾」是最值钱的研究线索。如果矛盾解决后证明是某 analyzer 的假阳性，",
+        "  在 Fact / Interpretation 中明确指出哪个 analyzer 误判、为什么。如果矛盾无法解决，作为 Open Question。",
         "- 没有证据时说「未知」，不要默认「存在」。",
         "- 不要只复述数字 — 解释它们对工程决策意味着什么。",
         "- Negative Findings 与正面发现同等重要。",
@@ -7405,6 +8693,10 @@ class ReportGenerator {
       "- Every claim must cite evidence (file path, brief section, metric).",
       "- Confidence labels MUST follow the §0 unified standard: High=≥3 sources / Medium=2 / Low=1 / Speculative=none.",
       "- Trace count capped at 5. Prefer fewer, sharper Traces over more mediocre ones.",
+      "- **Brief §A contradictions MUST be prioritized**: every high-severity contradiction should become a Research Trace",
+      "  (or be folded into a related Trace), because \"self-detected contradictions are the most research-valuable",
+      "  findings\". If resolution reveals an analyzer false positive, name the misfiring analyzer and the reason in",
+      "  Fact / Interpretation. If the contradiction cannot be resolved, list it as an Open Question.",
       "- Say \"Unknown\" when evidence is insufficient. Do NOT default to \"present\".",
       "- Don't just restate numbers — interpret what they MEAN for engineering decisions.",
       "- Negative Findings are as important as positive findings.",

@@ -279,6 +279,197 @@ The three matching layers below were all migrated from `String.includes()` subst
 - pyod: Safety&Guardrails→Quality Assessment (guard/guardrail keywords no longer match via token-prefix)
 - custodian-kernel: custodian: LLM Interface→Safety & Guardrails; tests/: excluded
 
+### Evidence Quality Layer (added 2026-07-26)
+
+The biggest report-quality win is no longer "more analyzers" but **more metadata per conclusion**. Two script-layer additions (no new analyzer) make the Evidence Brief self-disclose where each conclusion comes from and where analyzers disagree:
+
+#### A. ConsistencyAnalyzer (post-processor, runs LAST)
+
+A new analyzer class registered at the end of `ANALYZERS`. It compares claims across the 7 inference engines and emits two lists:
+
+| Output | Severity | Triggered when |
+|--------|----------|----------------|
+| `contradictions[]` | high/medium | Two analyzers make incompatible claims (e.g., CapabilityOntology `isAIProject=false` but PromptsAnalyzer found prompts — C1) |
+| `warnings[]` | medium/low | One analyzer's output is suspicious given another's (e.g., 160 test files but 0 eval files — W1) |
+
+Six rules are implemented (C1–C4 contradictions, C5–C6 warnings):
+
+| ID | Topic | Sources compared | What it catches |
+|----|-------|-------------------|-----------------|
+| C1 | AI-project classification | CapabilityOntology vs (Prompts/Tools/InformationFlow/Responsibility) | AI-context gate under-classified a repo with concrete AI signals |
+| C2 | Retrieval capability | ResponsibilityAnalyzer vs CapabilityOntology | ResponsibilityAnalyzer false-positive Retrieval tagging (non-RAG search/query symbols) |
+| C3 | Tool capability | ToolsAnalyzer vs CapabilityOntology | CapabilityOntology bug: ≥3 tools but `tool=missing` (should auto-propagate) |
+| C4 | Pattern-Responsibility coverage | ArchitecturePatternAnalyzer vs ResponsibilityAnalyzer | Microservices/Plugin pattern with no Service/Plugin-Interface responsibility |
+| W1 | Pattern-Responsibility coverage (low) | same as C4 | Downgraded form of C4 |
+| C5 | Test vs Evaluation coverage | TestsAnalyzer vs EvaluationsAnalyzer | Substantial test suite but no eval infrastructure (research-relevant gap) |
+| C6 | LLM call sites vs isAIProject | InformationFlowAnalyzer vs CapabilityOntology | LLM call sites are the ONLY AI signal (subset of C1, separate emit when C1 didn't fire) |
+
+**Brief placement**: `_consistencyFindings()` is the FIRST section in the brief (before Executive Brief, before Architecture Insights). The prompt header reads "系统自己发现自己的矛盾，是最值钱的研究线索。LLM 应优先调查矛盾，再决定信任哪个分析器。"
+
+**LLM prompt rule** (added to `_llmPrompt()`): Every high-severity contradiction MUST become a Research Trace (or be merged into one). If the contradiction resolves to an analyzer false positive, the Trace must say which analyzer misjudged and why. If unresolvable, it goes to Open Questions.
+
+#### B. EvidenceMeta (analyzer self-disclosure via `_meta`)
+
+Four inference engines now ship a `_meta` block alongside their primary output. The block is surfaced in Evidence Brief §2.5 under "### 证据质量元信息（分析器自评）":
+
+```typescript
+interface EvidenceMeta {
+  source: "keyword" | "keyword+graph" | "regex+graph" | "inference";
+  strength: "strong" | "moderate" | "weak";
+  assumptions: string[];           // what the analyzer takes for granted
+  limitations: string[];           // what it cannot detect
+  possibleFalsePositives: string[];// known FP patterns
+  checkedLocations: string[];      // where it looked (negative evidence scope)
+  coverage: string;                // % or qualitative description
+}
+```
+
+| Analyzer | source | strength | Why this strength |
+|----------|--------|----------|--------------------|
+| `ArchitecturePatternAnalyzer` | keyword+graph | moderate | Directory-name driven; misses code-only patterns |
+| `ResponsibilityAnalyzer` | keyword | moderate | Token-prefix match; misses unconventional naming |
+| `InformationFlowAnalyzer` | regex+graph | **weak** | Recall-oriented LLM_NAME_RE; known FP on `palette_generator`, `Completions` type names; Rust `mod` resolution gap |
+| `CapabilityOntologyAnalyzer` | inference | moderate | Heuristic maturity score; gated by AI context |
+
+**LLM consumption rule** (in `_llmPrompt()`): When citing analyzer claims, LLM should reference `strength`. `weak`-analyzer claims require LLM source-code verification before trusting. This is the script-layer hook for the user's principle "不是全部一样可靠".
+
+**What this enables in the report**:
+- "ArchitecturePatternAnalyzer (strength=moderate) says X, but its _meta.limitations note Y; we verified via source that..."
+- "InformationFlowAnalyzer (strength=weak) detected 3 LLM call sites — we treat this as a lead, not a conclusion, and inspected each call site manually."
+- Contrast with the old behavior where every analyzer output was implicitly equally reliable.
+
+### v2 Pipeline: Findings Store + Verification Loop (added 2026-07-26)
+
+Plan reference: `plan0726.md` — Research Agent v2 upgrade.
+
+The biggest v2 change is **not** new analyzers but a new **data layer** between Evidence Store and LLM: the **Findings Store**. Findings are the canonical unit the LLM consumes; raw analyzer output becomes supporting evidence.
+
+#### Pipeline (v2)
+
+```
+Repository
+      │
+      ▼
+Fact Extractors (11) + Inference Engines (7) + ConsistencyAnalyzer
+      │
+      ▼
+Evidence Store (raw analyzer output, unchanged)
+      │
+      ▼
+FindingsGenerator          ← NEW: Evidence → Question-bound Findings
+      │
+      ▼
+VerificationLoop           ← NEW: Finding → Counter Evidence → Verified
+      │
+      ▼
+Verified Findings Store (store.findings)
+      │
+      ▼
+ReportGenerator._findingsSection()  ← FIRST section in Evidence Brief
+      │
+      ▼
+LLM (4-phase: Planning → Validation → Reasoning → Reporting)
+      │
+      ▼
+report.md
+```
+
+#### A. FindingsGenerator (script-layer, deterministic)
+
+**Input**: EvidenceStore (all analyzer outputs)
+**Output**: `store.findings = { schema, questions, findings[], summary }`
+
+Each Finding conforms to `FINDING_SCHEMA`:
+
+```typescript
+interface Finding {
+  id: string;              // F-001, F-002, ...
+  questionId: string;      // Q1-Q8 (canonical Research Questions)
+  question: string;        // The question text
+  finding: string;         // The conclusion (1-2 sentences)
+  confidence: number;      // 0.0-0.95, auto-computed from evidence sources
+  importance: "critical" | "high" | "medium" | "low";  // auto from question
+  coverage: number;        // 0.0-1.0, scan coverage ratio
+  support: Evidence[];     // positive evidence with source type
+  counter: Evidence[];     // negative evidence (from ConsistencyAnalyzer)
+  limitations: string[];   // what this Finding cannot claim
+  checkedLocations: string[];  // where the analyzer looked (negative evidence scope)
+  verified: "verified" | "downgraded" | "rejected" | "pending";
+  verificationNote: string;
+}
+```
+
+**8 canonical Research Questions** (every Finding binds to one):
+
+| ID | Question | Importance |
+|----|----------|------------|
+| Q1 | How does a request enter the system and what is the entry shape? | critical |
+| Q2 | Where is orchestration/control-flow, and what pattern is used? | critical |
+| Q3 | Does Retrieval (RAG) really exist, and what is the evidence strength? | high |
+| Q4 | Where is prompt management and what is the prompt lifecycle? | high |
+| Q5 | What is the tool registry/invocation pattern? | high |
+| Q6 | Is this an AI project? What concrete signals confirm or refute? | critical |
+| Q7 | How is correctness validated (tests vs evaluation)? | medium |
+| Q8 | What contradicts the README or self-presentation? | high |
+
+**Confidence auto-calculation** (no more "High/Med/Low"):
+
+| Source | Weight | Rationale |
+|--------|--------|-----------|
+| ast | 0.40 | Tree-sitter parsed (most reliable) |
+| graph | 0.25 | Architecture graph (structural, inferred) |
+| git | 0.15 | Git history (historical) |
+| manifest | 0.10 | package.json/pyproject.toml |
+| regex | 0.05 | Regex scan (recall-oriented) |
+| keyword | 0.03 | Keyword matching (token-prefix) |
+| inference | 0.02 | Inference engine (derived) |
+
+Sum of distinct source weights, capped at 0.95. Example: `ast + graph + git = 0.80`.
+
+#### B. VerificationLoop (script-layer, deterministic)
+
+**Input**: FindingsGenerator output + EvidenceStore
+**Output**: Verified Findings (same schema, with `verified` and `verificationNote` filled)
+
+3 rules:
+
+| Rule | Condition | Action |
+|------|-----------|--------|
+| V1 | ConsistencyAnalyzer flagged a contradiction on this Finding's topic | Add counter evidence, mark downgraded |
+| V2 | After V1, confidence < 0.3 | Mark rejected (too weak to publish) |
+| V3 | Negative finding (no support, has checkedLocations, no counter) | Mark verified (absence is evidence) |
+
+#### C. ReportGenerator changes
+
+- **New `_findingsSection()`**: Placed as the **FIRST** section in Evidence Brief (before consistency, before executive brief). Displays Findings table + detailed JSON-schema-structured Findings.
+- **New `_findings()` lazy method**: Runs FindingsGenerator + VerificationLoop, caches result, persists to `store.findings`.
+- **LLM Prompt updated**: 4-phase pipeline (Planning → Validation → Reasoning → Reporting) with per-phase `reasoning_effort` guidance. 7 `Do NOT` Constraints. Finding citation format `[F-001 @ Q1, confidence=0.85, verified]`.
+
+#### D. LLM 4-phase pipeline (plan0726.md Part 2)
+
+| Phase | Script output | LLM work | reasoning_effort |
+|-------|---------------|----------|------------------|
+| 1. Planning | Research Questions Q1-Q8 | Sort questions by relevance to this repo | low |
+| 2. Finding Validation | Verified Findings JSON | Merge / Split / Reject / Verify / Detect Conflict | medium |
+| 3. Architecture Reasoning | Verified Findings + Evidence Store | Why / Impact / Tradeoff | high (thinking=enabled) |
+| 4. Executive Summary | — | Generate Markdown report | low |
+
+#### E. Constraints (plan0726.md Part 3)
+
+7 `Do NOT` rules added to LLM prompt:
+1. Do NOT recommend technologies not present
+2. Do NOT invent architecture not supported by evidence
+3. Do NOT speculate beyond Findings + Evidence Store
+4. Do NOT ignore counter evidence (counter[] must be addressed)
+5. Do NOT cite verified=rejected Findings as conclusions
+6. Do NOT write Architecture Score / Radar / Heatmap / SWOT / Best Practice / Future Work
+7. Do NOT pad with low-value Traces (5 sharp > 8 mediocre)
+
+#### Verified behavior
+
+- **custodian-kernel**: 10 Findings, all verified (no contradictions). Confidence range 0.02-0.55.
+- **ng-zorro-antd**: 10 Findings, 9 verified + 1 rejected (F-010, confidence 0.02 < 0.3 after counter evidence from C1 contradiction).
+
 ### Tool Detection Strategies
 
 The ToolsAnalyzer uses three complementary detection strategies to cover the diverse ways AI tools are registered across frameworks:
