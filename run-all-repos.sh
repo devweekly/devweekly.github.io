@@ -1,42 +1,27 @@
 #!/bin/bash
-# 批量运行 research-repo skill 生成所有 ref-only repo 的 evidence-brief.md
+# Batch generate evidence-brief.md for all ref-only repos
+# Usage: bash run-all-repos.sh
 
 set -e
 
-REF_ONLY_DIR="/Users/saga/code-repos/devweekly.github.io/ref-only"
-SKILL_DIR="/Users/saga/code-repos/devweekly.github.io/.trae/skills/research-repo"
-WORK_DIR="/Users/saga/code-repos/devweekly.github.io"
+REPOS=(
+  OfficeCLI ResearchStudio Vibe-Trading buzz code-review-graph
+  custodian-kernel dbeaver litehybrid ng-zorro-antd open-design
+  openworker page-agent pi pyod tensortrade topcoat unsloth worldmonitor
+)
 
-# 获取所有 repo 名称
-REPOS=$(ls -1 "$REF_ONLY_DIR" | grep -v '\.' || true)
+DATE=20260726
+SKILL=.trae/skills/research-repo/research-repo.mjs
 
-echo "=========================================="
-echo "批量运行 research-repo skill"
-echo "=========================================="
-echo ""
-
-for repo in $REPOS; do
-  echo "处理: $repo"
-  echo "------------------------------------------"
-
-  # 创建工作目录
-  WORK_SUBDIR="$WORK_DIR/research-$repo-$(date +%Y%m%d)"
-  mkdir -p "$WORK_SUBDIR"
-
-  # 复制 research-repo.mjs 到工作目录
-  cp "$SKILL_DIR/research-repo.mjs" "$WORK_SUBDIR/"
-
-  # 运行分析
-  cd "$WORK_SUBDIR"
-  node research-repo.mjs all "$REF_ONLY_DIR/$repo" 2>&1 | tee analyze.log
-
-  # 生成 evidence-brief.md
-  node research-repo.mjs report --lang=zh "$REF_ONLY_DIR/$repo" > evidence-brief.md 2>> analyze.log
-
-  echo "✓ $repo 完成: $WORK_SUBDIR"
-  echo ""
+for repo in "${REPOS[@]}"; do
+  OUT_DIR="research-${repo}-${DATE}"
+  mkdir -p "$OUT_DIR"
+  echo "=== Processing $repo ==="
+  node "$SKILL" report "ref-only/$repo" --lang=zh > "$OUT_DIR/evidence-brief.md" 2> "$OUT_DIR/stderr.log" || {
+    echo "FAILED: $repo (see $OUT_DIR/stderr.log)"
+    continue
+  }
+  echo "OK: $repo -> $OUT_DIR/evidence-brief.md"
 done
 
-echo "=========================================="
-echo "所有 repo 处理完成"
-echo "=========================================="
+echo "=== All done ==="

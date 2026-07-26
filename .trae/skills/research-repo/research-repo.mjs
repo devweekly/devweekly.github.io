@@ -297,10 +297,18 @@ const SCHEMA_FIRST_TOOL_TYPE_PATTERN =
 
 // Evaluation patterns
 const EVAL_KEYWORDS = [
-  "eval", "evaluation", "benchmark", "golden", "judge", "rubric",
-  "dataset", "score", "pass_rate", "accuracy", "metric", "leaderboard",
+  // AI-eval-specific terms — "benchmark" and "dataset" are NOT here because
+  // they're too generic (every performance benchmark matches them).
+  "eval", "evaluation", "golden", "judge", "rubric",
+  "pass_rate", "accuracy", "leaderboard",
+  // "score" / "metric" are weak on their own — kept for ≥3-match threshold.
+  "score", "metric",
 ];
-const EVAL_DIR_NAMES = new Set(["eval", "evals", "benchmark", "benchmarks", "evaluation", "evaluations", "tests-eval"]);
+// Eval directory names — "benchmark"/"benchmarks" intentionally excluded.
+// Performance benchmark dirs (Rust cargo bench, JMH, Google Benchmark, etc.)
+// are ubiquitous and have nothing to do with AI evaluation.
+// Only count directories that explicitly say "eval" / "evaluation".
+const EVAL_DIR_NAMES = new Set(["eval", "evals", "evaluation", "evaluations", "tests-eval"]);
 
 // CI file locations (detailed, for CI analyzer — includes provider info)
 const CI_FILES = [
@@ -940,13 +948,30 @@ async function extractPromptsAST(filePath, repoPath, tree = null) {
       else if (lower.includes("template")) type = "template";
       else if (upper.includes("FEW_SHOT") || upper.includes("FEWSHOT") || upper.includes("INSTRUCTION")) type = "few-shot";
 
-      if (type) {
-        prompts.push({
-          file: relPath,
-          line: node.startPosition.row + 1,
-          type,
-          snippet: node.text.trim().slice(0, 200),
-        });
+      // Filter false positives: many variables match prompt/template/instruction
+      // keywords but hold non-prompt values (filenames, version strings, empty
+      // strings, short identifiers). Observed false positives across ref-only:
+      //   - `prompt = ''` / `instructions: str = ""` (empty)
+      //   - `_GEMMA4_TEMPLATE_FILE = "gemma-4.jinja"` (filename in name)
+      //   - `TEMPLATE_VERSION = "attention_golden_section_modal.v1"` (version)
+      //   - `template = "gpt-oss"` (short identifier, not a prompt)
+      //   - `instruction_name = "AGENTS.md"` (filename in value)
+      //   - `instructions = f"{instructions}\n\n{...}"` (string accumulator —
+      //     self-referential re-assignment, not a new prompt definition)
+      if (type && !isFalsePositivePrompt(name, valueNode.text)) {
+        // Detect string accumulator pattern: the value references the same
+        // variable being assigned (e.g., `instructions = f"{instructions}..."`).
+        // These are append steps, not new prompt definitions. Keep only the
+        // initial assignment (which doesn't self-reference).
+        const selfRefPattern = new RegExp(`\\{${name}\\}|\\$\\{${name}\\}`);
+        if (!selfRefPattern.test(valueNode.text)) {
+          prompts.push({
+            file: relPath,
+            line: node.startPosition.row + 1,
+            type,
+            snippet: node.text.trim().slice(0, 200),
+          });
+        }
       }
     }
 
@@ -965,6 +990,88 @@ async function extractPromptsAST(filePath, repoPath, tree = null) {
   });
 
   return prompts;
+}
+
+/**
+ * Detect false-positive prompt values — variables that match prompt/template/
+ * instruction keywords by name but hold non-prompt values.
+ *
+ * Heuristics (any one triggers false-positive classification):
+ * 1. Empty or whitespace-only string value
+ * 2. Variable name ends with `_FILE` / `_PATH` / `_FILENAME` (file path holder)
+ * 3. Variable name contains `VERSION` (version string holder)
+ * 4. Value is a short filename-like token (e.g., "gpt-oss", "gemma-4.jinja",
+ *    "AGENTS.md") — identified by: no whitespace, ≤24 chars, and contains a
+ *    dot extension OR is a single kebab/snake case identifier
+ * 5. Variable name is exactly `instruction_name` / `instruction_file` /
+ *    `prompt_file` etc. (these hold filenames/identifiers, not prompts)
+ * 6. Variable name ends with `_EVENT` / `_PREFIX` / `_SUFFIX` / `_ID` /
+ *    `_KEY` / `_TYPE` / `_CONST` / `_QUEUE` — identifier holders, not prompts
+ * 7. Value is a template string with `${...}` interpolation and ≤30 chars —
+ *    dynamic ID/value generator, not a static prompt
+ */
+function isFalsePositivePrompt(varName, valueText) {
+  if (!valueText) return true;
+  // Strip Python string prefixes (f, r, b, rb, fr, etc.) and surrounding quotes.
+  // f"{REMOTE_ROOT}/prompts" → {REMOTE_ROOT}/prompts
+  const stripped = valueText.replace(/^(?:[rbf]|rb|fr|rf|br)+/i, "").trim();
+  const value = stripped.replace(/^(['"`])+/, "").replace(/(['"`])+$/, "").trim();
+  // 1. Empty or whitespace-only
+  if (value.length === 0) return true;
+  if (value.length <= 1 && /\s/.test(value)) return true;
+
+  const upperName = varName.toUpperCase();
+  // 2. Variable name indicates file path holder
+  if (/(?:_FILE|_PATH|_FILENAME|_LOCATION)$/.test(upperName)) return true;
+  // 3. Variable name indicates version holder
+  if (upperName.includes("VERSION")) return true;
+  // 5. Variable name indicates identifier/filename holder (not prompt content)
+  if (/(?:^|_)(?:NAME|FILE|DIR|DIRECTORY|KEY|ID|TOKEN|LABEL)$/.test(upperName)) return true;
+  // `instruction_name` / `prompt_name` etc. — name holder, not prompt
+  if (/(?:NAME|FILE)$/.test(upperName) && /(?:INSTRUCTION|PROMPT|TEMPLATE)/.test(upperName)) return true;
+  // 6. Variable name indicates event/queue/prefix/type holder
+  if (/(?:_EVENT|_PREFIX|_SUFFIX|_TYPE|_CONST|_QUEUE|_CHANNEL|_THREAD|_TOPIC|_URL|_URI)$/.test(upperName)) return true;
+
+  // 7. Template string with ${...} interpolation and short — dynamic value
+  if (/\$\{[^}]+\}/.test(value) && value.length <= 30) return true;
+  // 7b. Python f-string with {...} interpolation and short — dynamic value.
+  // Observed: REMOTE_PROMPTS = f"{REMOTE_ROOT}/prompts" (path builder, not prompt).
+  if (/\{[A-Z_][A-Z0-9_]*\}/.test(value) && value.length <= 60) {
+    // If the value looks like a path (contains `/` or `\`), it's a path builder.
+    if (/[\/\\]/.test(value)) return true;
+    // Short f-string with interpolation that's not a path — still suspicious.
+    if (value.length <= 30) return true;
+  }
+
+  // 8. CSS / layout template values — these match `template` keyword
+  // (gridTemplateColumns, gridTemplateRows, etc.) but are CSS, not LLM prompts.
+  // Observed: gridTemplateColumns = `repeat(${weeks.length}, minmax(0, 1fr))`
+  if (/\b(?:repeat|minmax|grid-template|auto-fit|auto-fill|1fr|fit-content)\b/.test(value)) {
+    return true;
+  }
+
+  // 9. Path-like values — strings containing `/` and ending with a path/file
+  // extension are paths, not prompts.
+  // Observed: REMOTE_PROMPTS = f"{REMOTE_ROOT}/prompts",
+  //           remote_prompt = f"{REMOTE_PROMPTS}/{...}.system-prompt.md"
+  if (/[\/\\]\w*\.[a-z0-9]{1,8}$/i.test(value)) return true;
+  // Path-like values ending with a directory name (no extension) and short.
+  if (/[\/\\][a-z_\-]+$/i.test(value) && value.length <= 60 && !/\s/.test(value)) {
+    return true;
+  }
+
+  // 4. Value is a short filename-like token (no spaces, short, has extension
+  //    or is a single identifier). Real prompts are multi-word sentences.
+  //    Strip surrounding quotes first.
+  if (value.length <= 28 && !/\s/.test(value)) {
+    // Has a file extension (e.g., "gemma-4.jinja", "AGENTS.md")
+    if (/\.[a-z0-9]{1,8}$/i.test(value)) return true;
+    // Single identifier with optional separators (kebab/snake case, colons,
+    // dots, underscores) — covers event names like "unsloth:prompt-queue-stop",
+    // thread ID prefixes like "__LOCALID_", version IDs like "attention.golden.v1"
+    if (/^[a-zA-Z_][a-zA-Z0-9_\-:.]*$/i.test(value)) return true;
+  }
+  return false;
 }
 
 /** Extract tool registrations from AST. Returns array or null. */
@@ -2792,13 +2899,18 @@ class PromptsAnalyzer extends BaseAnalyzer {
         const tree = await ctx.parseAST(f.path);
         const astPrompts = await extractPromptsAST(f.path, ctx.repoPath, tree);
         if (astPrompts !== null) return astPrompts;
-        // Regex fallback
+        // Regex fallback (only used when AST parsing fails)
         const content = ctx.readFileAbsolute(f.path);
         if (!content) return [];
         const prompts = [];
         const lines = content.split(/\r?\n/);
         for (let i = 0; i < lines.length; i++) {
           const line = lines[i];
+          // Skip Python kwargs / shell flags: `prompt=` preceded by `,` or `(`
+          // or `--prop` is a kwarg/flag, not a variable assignment. The AST
+          // path correctly filters these (only matches `assignment` nodes),
+          // but this regex fallback needs the same guard.
+          if (/(?:[,(]\s*|--prop\s+)prompt\s*=/i.test(line)) continue;
           for (const marker of PROMPT_MARKERS) {
             marker.regex.lastIndex = 0;
             const match = marker.regex.exec(line);
@@ -2835,6 +2947,11 @@ class PromptsAnalyzer extends BaseAnalyzer {
         }
         // Only detect prompt markers inside code blocks
         if (!inCodeBlock) continue;
+        // Skip shell CLI flag context: `--prop prompt=...` / `--prompt=...` /
+        // `--prop promptTitle=...`. These are CLI argument assignments, not
+        // LLM prompt definitions. Observed: OfficeCLI data-validation docs
+        // use `--prop prompt="Age must be 18-120"` to set Excel UI prompts.
+        if (/--(?:prop|prompt|option)\s+\w*\s*prompt/i.test(line)) continue;
         for (const marker of PROMPT_MARKERS) {
           marker.regex.lastIndex = 0;
           const match = marker.regex.exec(line);
@@ -3066,6 +3183,182 @@ class ToolsAnalyzer extends BaseAnalyzer {
       }
     }
 
+    // Map.set + factory-function registration (e.g., page-agent pattern).
+    // Pattern: `tools.set('name', tool({...}))` or `tools.set("name", factory(...))`
+    // This catches tools registered via imperative Map.set with string-literal
+    // names, common in TypeScript/JavaScript agents that use a Map<string, Tool>
+    // registry instead of decorators.
+    // Observed: page-agent uses `tools.set('done', tool({...}))` for 9 tools,
+    // none of which are caught by decorator/class/schema-first patterns.
+    const MAP_SET_TOOL_RE = /\.set\(\s*['"]([a-zA-Z_][\w-]*)['"]\s*,\s*(?:tool|createTool|makeTool|defineTool|factory)\s*\(/g;
+    for (const f of files) {
+      const content = ctx.readFileAbsolute(f.path);
+      if (!content) continue;
+      const relPath = ctx.rel(f.path);
+      MAP_SET_TOOL_RE.lastIndex = 0;
+      let match;
+      while ((match = MAP_SET_TOOL_RE.exec(content)) !== null) {
+        const name = match[1];
+        if (!name) continue;
+        const lower = name.toLowerCase();
+        if (TOOL_FP_NAMES.has(lower)) continue;
+        if (name.length < 2) continue;
+        const key = `${relPath}:map-set:${name}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        const schema = extractSchemaNear(content, match.index);
+        tools.push({
+          name,
+          file: relPath,
+          framework: "map-set",
+          schema,
+        });
+      }
+    }
+
+    // FastMCP tuple registration (e.g., pyod pattern).
+    // Pattern 1: `mcp.tool()(fn_name)` — function-call-as-decorator factory.
+    //   Unlike `@mcp.tool()` (Decorator node in AST), `mcp.tool()(fn)` is a
+    //   CallExpression wrapping a CallExpression, common in FastMCP's
+    //   programmatic registration API.
+    // Pattern 2: `_TOOL_FUNCTIONS = (fn1, fn2, ...)` followed by a loop
+    //   `for fn in _TOOL_FUNCTIONS: mcp.tool()(fn)`. We detect the tuple
+    //   assignment and extract each function name as a tool.
+    // Observed: pyod's mcp_server.py defines `_TOOL_FUNCTIONS = (profile_data,
+    //   plan_detection, build_detector, ...)` and registers 10 MCP tools via
+    //   `mcp.tool()(fn)` loop — none caught by existing patterns.
+    const MCP_TUPLE_ASSIGN_RE = /([A-Z_][A-Z0-9_]*)\s*=\s*\(\s*([a-zA-Z_][\w]*)\s*,/g;
+    const MCP_TUPLE_ITEM_RE = /([a-zA-Z_][\w]*)\s*,?/g;
+    const MCP_TOOL_CALL_RE = /mcp\.tool\(\)\s*\(\s*([a-zA-Z_][\w]*)\s*\)/g;
+    for (const f of files) {
+      const content = ctx.readFileAbsolute(f.path);
+      if (!content) continue;
+      // Skip if no mcp.tool() call — avoids false positives from arbitrary tuples
+      if (!/mcp\.tool\(\)/.test(content)) continue;
+      const relPath = ctx.rel(f.path);
+
+      // Pattern 1: direct mcp.tool()(fn_name) calls
+      MCP_TOOL_CALL_RE.lastIndex = 0;
+      let match;
+      while ((match = MCP_TOOL_CALL_RE.exec(content)) !== null) {
+        const fnName = match[1];
+        if (!fnName) continue;
+        // Tool name = function name (FastMCP uses function name as tool name)
+        const toolName = fnName.toLowerCase().replace(/^make_/, "").replace(/^create_/, "");
+        if (TOOL_FP_NAMES.has(toolName)) continue;
+        if (toolName.length < 2) continue;
+        const key = `${relPath}:mcp-tuple:${toolName}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        tools.push({
+          name: toolName,
+          file: relPath,
+          framework: "mcp-tuple",
+          schema: null,
+        });
+      }
+
+      // Pattern 2: tuple assignment + loop registration
+      // Find `<NAME> = (fn1, fn2, ...)` where NAME suggests tools
+      MCP_TUPLE_ASSIGN_RE.lastIndex = 0;
+      while ((match = MCP_TUPLE_ASSIGN_RE.exec(content)) !== null) {
+        const tupleName = match[1];
+        const firstFn = match[2];
+        // Only treat as tool tuple if name suggests tools OR file has mcp.tool() loop
+        const nameSuggestsTools = /TOOL|TOOL_FUNC|TOOLS|REGISTER/.test(tupleName);
+        if (!nameSuggestsTools) continue;
+        // Extract the full tuple content between ( and )
+        const tupleStart = match.index + match[0].length - 1; // position of first (
+        // Find matching close paren
+        let depth = 1;
+        let end = tupleStart + 1;
+        while (end < content.length && depth > 0) {
+          if (content[end] === "(") depth++;
+          else if (content[end] === ")") depth--;
+          end++;
+        }
+        const tupleContent = content.slice(tupleStart + 1, end - 1);
+        // Extract function names from tuple
+        const fnNames = [];
+        const itemRe = /\b([a-zA-Z_][\w]*)\b/g;
+        let itemMatch;
+        while ((itemMatch = itemRe.exec(tupleContent)) !== null) {
+          const name = itemMatch[1];
+          // Skip keywords and common non-function words
+          if (["True", "False", "None", "self", "cls"].includes(name)) continue;
+          fnNames.push(name);
+        }
+        for (const fnName of fnNames) {
+          const toolName = fnName.toLowerCase().replace(/^make_/, "").replace(/^create_/, "");
+          if (TOOL_FP_NAMES.has(toolName)) continue;
+          if (toolName.length < 2) continue;
+          const key = `${relPath}:mcp-tuple:${toolName}`;
+          if (seen.has(key)) continue;
+          seen.add(key);
+          tools.push({
+            name: toolName,
+            file: relPath,
+            framework: "mcp-tuple",
+            schema: null,
+          });
+        }
+      }
+    }
+
+    // Imperative registry.register pattern (e.g., openworker pattern).
+    // Pattern: `registry.register(make_*_tool(...))` or `registry.register(*_tool())`
+    //   where the factory function name encodes the tool name. This catches
+    //   Python agents that build a ToolRegistry imperatively at runtime rather
+    //   than using decorators.
+    // Only matches `registry.register(` (singular) — NOT `register_all`,
+    //   because `register_all(factory(...))` typically passes a list of tools
+    //   built by a multi-tool factory (e.g., `git_tools()`, `file_tools()`),
+    //   and we can't extract individual tool names from the factory name alone.
+    // Observed: openworker's coworker/agent.py registers ~12 tools via
+    //   `registry.register(make_send_message_tool(secrets))` /
+    //   `registry.register(propose_plan_tool())` — none caught by existing
+    //   patterns because they're plain function calls, not decorators.
+    const REGISTRY_REGISTER_RE = /\bregistry\s*\.\s*register\s*\(\s*(?:make_?|create_?)?([a-zA-Z_][\w]*)\s*\(/g;
+    for (const f of files) {
+      const content = ctx.readFileAbsolute(f.path);
+      if (!content) continue;
+      // Skip if no registry.register call — avoids scanning every file
+      if (!/\bregistry\s*\.\s*register\s*\(/.test(content)) continue;
+      const relPath = ctx.rel(f.path);
+      REGISTRY_REGISTER_RE.lastIndex = 0;
+      let match;
+      while ((match = REGISTRY_REGISTER_RE.exec(content)) !== null) {
+        const fnName = match[1];
+        if (!fnName) continue;
+        // Skip multi-tool factories: function names ending with `_tools`
+        // (plural) typically return a list of tools, not a single tool.
+        // e.g., `file_tools()`, `git_tools()`, `subscription_tools()`
+        if (/_tools$/.test(fnName)) continue;
+        // Derive tool name from factory function name:
+        //   make_send_message_tool -> send_message
+        //   propose_plan_tool -> propose_plan
+        //   ask_user_tool -> ask_user
+        //   make_web_search_tool -> web_search
+        let toolName = fnName
+          .replace(/^(make|create)_/, "")
+          .replace(/_tool$/, "")
+          .toLowerCase();
+        if (TOOL_FP_NAMES.has(toolName)) continue;
+        if (toolName.length < 2) continue;
+        // Skip generic utility names that aren't tools
+        if (/^(?:build|main|app|config|setup|init|get|set|run|start|stop|close|open)$/.test(toolName)) continue;
+        const key = `${relPath}:registry-register:${toolName}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        tools.push({
+          name: toolName,
+          file: relPath,
+          framework: "registry-register",
+          schema: null,
+        });
+      }
+    }
+
     // Cross-reference entrypoints labeled as "tool" for standalone executable scripts
     // (e.g. bundled_skills/*/scripts/execute.py, skills/*/scripts/*.py) so that
     // simple argparse/sys.argv tools are represented even when they lack decorator/class patterns.
@@ -3244,16 +3537,44 @@ class EvaluationsAnalyzer extends BaseAnalyzer {
     // Java IDE evaluation classes (query execution context, NOT LLM eval)
     // and mapping libraries with "metric"/"score" words.
     // LLM-specific context = at least one of: prompt, llm, model, judge, agent,
-    // dataset, benchmark, harness, system_prompt.
+    // harness, system_prompt, chat, completion, embedding, retrieval, rag.
+    //
+    // "benchmark" and "dataset" were removed from LLM_CONTEXT_RE because they
+    // caused circular false positives: every file inside a `benchmarks/`
+    // directory contains the word "benchmark" in comments (e.g., "every
+    // benchmark app"), which then satisfied the LLM-context check and
+    // classified performance benchmarks as AI evaluation files.
+    // Observed false positive: topcoat (46 Rust bench files in benchmarks/
+    // detected as 46 AI eval files — actually axum-maud/leptos/nextjs
+    // performance comparisons).
     //
     // Package/import declarations are stripped before testing — Java package
     // names like `com.example.model` would otherwise trigger a false
     // "model" match.
-    const LLM_CONTEXT_RE = /\b(?:prompt|llm|model|judge|agent|dataset|benchmark|harness|system_prompt|chat|completion|embedding|retrieval|rag)\b/i;
+    const LLM_CONTEXT_RE = /\b(?:prompt|llm|model|judge|agent|harness|system_prompt|chat|completion|embedding|retrieval|rag)\b/i;
     const STRIP_PKG_IMPORT_RE = /^\s*(?:package|import)\s+[^;]+;\s*$/gm;
+    // Skip minified/bundled vendor assets — they contain every keyword by
+    // accident (e.g., worldmonitor's `public/pro/assets/clerk-*.js` bundles
+    // matched `score`, `metric`, `accuracy`, `model` and produced 44 false
+    // eval files). Heuristics: very long average line length OR known
+    // bundle filename patterns.
+    const BUNDLE_FILE_RE = /(?:[-.]min\.|vendor\/|assets\/|\/dist\/|\/build\/|public\/|\.bundle\.)/i;
+    const isBundleFile = (relPath, content) => {
+      if (BUNDLE_FILE_RE.test(relPath)) return true;
+      if (!content) return false;
+      // Minified JS: average line length > 500 chars is a strong signal.
+      const lines = content.split("\n", 200);
+      if (lines.length === 0) return false;
+      const totalLen = lines.reduce((s, l) => s + l.length, 0);
+      return totalLen / lines.length > 500;
+    };
     for (const f of ctx.allFiles) {
       const name = f.name.toLowerCase();
       const relPath = ctx.rel(f.path);
+      // Exclude test files — test fixtures with `score`/`metric`/`accuracy`
+      // words (e.g., worldmonitor `tests/*.test.mjs` for clerk SDK) caused
+      // false-positive eval detection.
+      if (isTestPath(relPath)) continue;
       // Only source files inside eval dirs (not docs/configs)
       const isInEvalDir =
         SOURCE_EXTENSIONS.has(f.ext) &&
@@ -3266,6 +3587,8 @@ class EvaluationsAnalyzer extends BaseAnalyzer {
       if (SOURCE_EXTENSIONS.has(f.ext)) {
         content = ctx.readFileAbsolute(f.path);
         if (content) {
+          // Skip bundle/minified files — they pollute keyword counts.
+          if (isBundleFile(relPath, content)) continue;
           // Strip package/import lines so Java package names like
           // Java package names like `com.example.model` don't trigger LLM-context false positives.
           codeOnly = content.replace(STRIP_PKG_IMPORT_RE, "");
@@ -3670,14 +3993,40 @@ const ARCHITECTURE_PATTERNS = [
   },
   {
     name: "Layered",
-    dirSignals: ["presentation", "business", "persistence", "ui", "services", "data", "repository", "repositories"],
+    // Strong signals = classic layered-architecture terms (presentation/business/
+    // persistence/repository). Weak signals = generic dir names (ui/services/data)
+    // that appear in many non-layered projects (UI toolkits, data pipelines,
+    // Tauri apps with frontend/components/ui + backend/services).
+    // To avoid false positives, require ≥1 strong signal + ≥1 other signal.
+    // Pure weak-signal matches (e.g., ui + services + data scattered across
+    // unrelated modules) are NOT enough — they appear in every modern web app.
+    // Observed false positives:
+    //   - topcoat: crates/*/src/ui + benchmarks/data (UI toolkit + bench data)
+    //   - unsloth: studio/frontend/src/components/ui + studio/backend/hub/services
+    //              + scripts/data (Tauri app + scripts)
+    dirSignals: [
+      "presentation", "business", "persistence", "repository", "repositories", // strong
+      "ui", "services", "data", // weak
+    ],
     required: 2,
+    requiredSpecialized: 1,
+    specializedSignals: ["presentation", "business", "persistence", "repository", "repositories"],
   },
   {
     name: "Pipeline",
     dirSignals: ["parser", "planner", "executor", "evaluator", "reporter", "stages", "pipeline", "pipelines"],
     required: 2,
     graphCheck: "linear_chain",
+    // Specialized-signal gate: `pipeline/` or `pipelines/` alone is ambiguous —
+    // it may be a business-domain directory (oil/gas pipelines, CI pipelines,
+    // data pipelines as a product feature) rather than a software architecture
+    // pattern. Require ≥1 specialized signal (parser/planner/executor/evaluator/
+    // reporter/stages) to confirm the architecture pattern.
+    // Observed false positive: worldmonitor's `pipeline/` dir refers to physical
+    // oil/gas pipelines (PipelineStatusPanel, chokepoint monitoring), not a
+    // software Pipeline architecture.
+    requiredSpecialized: 1,
+    specializedSignals: ["parser", "planner", "executor", "evaluator", "reporter", "stages"],
   },
   {
     name: "Plugin",
@@ -3690,6 +4039,20 @@ const ARCHITECTURE_PATTERNS = [
     dirSignals: ["events", "handlers", "bus", "dispatcher", "subscribers", "publishers", "listeners"],
     required: 2,
     symbolSignals: [/\bpublish\b/, /\bsubscribe\b/, /\bEventBus\b/, /\bemit\b/, /\bdispatch\b/],
+    // Specialized-signal gate: pure symbol matches (publish/subscribe/emit) are
+    // too weak — these verbs appear in many non-Event-Driven contexts:
+    //   - Reactive programming libraries (@maverick-js/signals emits signal changes)
+    //   - Rust async primitives (tokio::broadcast::subscribe)
+    //   - Conformance/log tracers (emit() as trace recording)
+    //   - Redis pub/sub as transport layer (not architectural Event-Driven)
+    //   - SSE/session-scoped event buses (notification, not architecture)
+    // Require ≥1 directory signal (events/ handlers/ bus/ dispatcher/ etc.) to
+    // confirm the architectural pattern. Symbols alone may match observer
+    // patterns, reactive primitives, or logging conventions.
+    // Observed false positives: buzz (tokio::broadcast + conformance emit),
+    // topcoat (@maverick-js/signals publish/subscribe), Vibe-Trading (session-
+    // scoped EventBus for SSE), custodian-kernel (EventBus as side channel).
+    requiredDirSignal: 1,
   },
   {
     name: "Actor Model",
@@ -3843,13 +4206,37 @@ class ArchitecturePatternAnalyzer extends BaseAnalyzer {
       ...(discovery.architectureSignalDirs || []),
     ]);
     // Also scan one level deep (e.g., src/domain, packages/core).
-    for (const f of ctx.files) {
-      const rel = ctx.rel(f.path);
+    // Iterate ctx.dirs (directory entries) directly — iterating ctx.files and
+    // taking parts[parts.length-1] would add the FILE BASENAME (e.g.,
+    // "semantic-pr.yml"), which then matched `startsWith("semantic-")` and
+    // triggered Compiler false positives on repos with a semantic-pr.yml
+    // GitHub Actions workflow.
+    //
+    // Java Eclipse plugin packaging guard: skip directories whose path
+    // contains segments with multiple dots (e.g., `plugins/org.jkiss.dbeaver.ui/`,
+    // `features/org.eclipse.platform.feature/`). These are Java package names
+    // materialized as directory names, NOT architectural layering signals.
+    // Without this guard, dbeaver's `plugins/org.jkiss.dbeaver.ui/` and
+    // `plugins/org.jkiss.dbeaver.data.repositories/` were misread as
+    // `dir: ui/` and `dir: repositories/` — falsely triggering the Layered
+    // pattern with confidence 0.70.
+    const isJavaPackageSegment = (seg) =>
+      typeof seg === "string" && (seg.split(".").length - 1) >= 2;
+    for (const d of ctx.dirs) {
+      const rel = ctx.rel(d.path);
       const parts = rel.split(sep);
-      if (parts.length >= 2 && parts[0] !== "node_modules" && parts[0] !== "vendor") {
-        allDirs.add(parts[parts.length - 1]);
-        if (parts.length >= 3 && parts[0] === "src") allDirs.add(parts[1]);
+      if (parts.length < 1) continue;
+      if (parts[0] === "node_modules" || parts[0] === "vendor") continue;
+      // Skip Java plugin packaging paths entirely (plugins/<dotted.name>/...).
+      if (parts[0] === "plugins" || parts[0] === "features") {
+        if (parts.length >= 2 && isJavaPackageSegment(parts[1])) continue;
       }
+      // Skip any segment that looks like a Java package name (≥2 dots).
+      if (parts.some(isJavaPackageSegment)) continue;
+      // Add the immediate directory name (last path segment).
+      allDirs.add(parts[parts.length - 1]);
+      // Also add the second-level directory for src/<dir>/... layouts.
+      if (parts.length >= 2 && parts[0] === "src") allDirs.add(parts[1]);
     }
     const dirNames = [...allDirs].map((d) => d.toLowerCase());
 
@@ -3882,11 +4269,20 @@ class ArchitecturePatternAnalyzer extends BaseAnalyzer {
 
       // Specialized-signal gate (e.g., Compiler requires ≥1 of codegen/optimizer/
       // semantic/ir to avoid false positives from SQL/config parsers).
+      // Layered requires ≥1 classic term (presentation/business/persistence/
+      // repository) — pure ui/services/data matches are too weak (every modern
+      // web app has these).
       if (pattern.requiredSpecialized && pattern.specializedSignals) {
         const specializedHits = pattern.specializedSignals.filter((sig) =>
           matchedDirs.includes(sig)
         );
         if (specializedHits.length < pattern.requiredSpecialized) continue;
+      }
+
+      // Required-dir-signal gate (e.g., Event-Driven requires ≥1 dir signal,
+      // pure symbol matches like publish/subscribe/emit are too weak).
+      if (pattern.requiredDirSignal && matchedDirs.length < pattern.requiredDirSignal) {
+        continue;
       }
 
       // Base confidence: 0.4 for meeting required, +0.15 per extra signal.
@@ -4776,6 +5172,75 @@ class CapabilityOntologyAnalyzer extends BaseAnalyzer {
     const symbols = store.symbols || {};
     const infoFlow = store.informationFlow || {};
 
+    // Detect MCP server archetype: repos that EXPOSE tools to AI clients via
+    // MCP protocol (FastMCP, @mcp.tool decorators, McpServer class) but do NOT
+    // themselves invoke LLMs. These are tool providers, not AI agents.
+    // Distinction matters because:
+    //   - OfficeCLI's McpServer.cs exposes 11 tools but doesn't call any LLM
+    //   - pyod's mcp_server.py exposes 10 tools but the core library is
+    //     outlier detection (statistics, not LLM)
+    //   - unsloth's mcp_server.py exposes tools AND studio/backend calls LLMs
+    //     → hybrid archetype (both provider and consumer)
+    const mcpExposedTools = (tools.tools || []).filter((t) =>
+      ["mcp-tool", "mcp-server-tool", "mcp-tuple"].includes(t.framework)
+    );
+    const hasMcpServerExposure = mcpExposedTools.length > 0;
+    // Detect actual LLM client calls (not just symbol names). Symbol-name
+    // matching (LLM_NAME_RE) is recall-oriented and matches any function/class
+    // with "llm"/"openai" in its name. Real LLM consumers have actual SDK
+    // call expressions OR HTTP calls to LLM API endpoints in source code.
+    const llmClientCallPatterns = [
+      // SDK method chains
+      /\bopenai\s*\.\s*chat\s*\.\s*completions\s*\.\s*create\b/,
+      /\banthropic\s*\.\s*messages\s*\.\s*create\b/,
+      /\bclient\s*\.\s*chat\s*\.\s*completions\s*\.\s*create\b/,
+      /\bclient\s*\.\s*messages\s*\.\s*create\b/,
+      /\bchat\s*\.\s*completions\s*\.\s*create\b/,
+      /\bcompletions\s*\.\s*create\b/,
+      /\bChatCompletion\s*\.\s*create\b/,
+      /\bvertexai\s*\.\s*GenerativeModel\b/,
+      /\bbedrock\s*\.\s*invoke_model\b/,
+      /\bllm\s*\.\s*generate\b/,
+      /\bllm\s*\.\s*invoke\b/,
+      /\bllm\s*\.\s*stream\b/,
+      /\bllm\s*\.\s*predict\b/,
+      /\bllm\s*\.\s*complete\b/,
+      /\bgenerator\s*\.\s*send_completion_request\b/,
+      /\bmodel\s*\.\s*generate_content\b/,
+      // HTTP calls to LLM API endpoints (catches repos that call LLM APIs
+      // via urllib/requests instead of the official SDK)
+      /\bapi\.openai\.com\b/,
+      /\bapi\.anthropic\.com\b/,
+      /\bgenerativelanguage\.googleapis\.com\b/,
+      /\bbedrock-runtime\.[a-z0-9-]+\.amazonaws\.com\b/,
+    ];
+    let llmClientCallCount = 0;
+    let llmClientCallSample = null;
+    const llmClientFiles = new Set();
+    const codeExts = new Set([".py", ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cs", ".java", ".go", ".rs"]);
+    const codeFiles = ctx.files.filter((f) => codeExts.has(f.ext) && !isTestPath(ctx.rel(f.path)));
+    for (const f of codeFiles) {
+      const content = ctx.readFileAbsolute(f.path);
+      if (!content) continue;
+      for (const pattern of llmClientCallPatterns) {
+        if (pattern.test(content)) {
+          llmClientCallCount++;
+          llmClientFiles.add(ctx.rel(f.path));
+          if (!llmClientCallSample) {
+            const match = content.match(pattern);
+            if (match) {
+              llmClientCallSample = {
+                file: ctx.rel(f.path),
+                pattern: match[0],
+              };
+            }
+          }
+          break; // one match per file is enough
+        }
+      }
+    }
+    const hasRealLLMClientCalls = llmClientCallCount > 0;
+
     // AI-context gate: the 10 capability domains (Planning/Execution/Retrieval/
     // Memory/Evaluation/Safety/Tool/Context/IO/Persistence) are AI-agent-specific.
     // Applying them to non-AI repos (SQL clients, ML libraries, UI libraries,
@@ -4800,6 +5265,31 @@ class CapabilityOntologyAnalyzer extends BaseAnalyzer {
     // New logic: tools OR prompts are strong signals. LLM call sites alone are weak.
     const isAIProject = hasTools || hasPrompts || (hasLLMCallSites && hasLLMResponsibility);
 
+    // Determine archetype (consumes LLM vs exposes tools vs both vs neither).
+    //   - "ai-agent": has real LLM client calls (consumes LLM)
+    //   - "mcp-server": exposes MCP tools but doesn't consume LLM
+    //   - "hybrid": both exposes MCP tools AND consumes LLM
+    //   - "library": has LLM utilities (symbol names) but no client calls or MCP exposure
+    //   - "non-ai": no AI signals
+    let archetype;
+    let archetypeReason;
+    if (hasRealLLMClientCalls && hasMcpServerExposure) {
+      archetype = "hybrid";
+      archetypeReason = `Repo both exposes MCP tools (${mcpExposedTools.length} tools) and invokes LLM clients (${llmClientCallCount} call sites across ${llmClientFiles.size} files). It is both a tool provider and an LLM consumer.`;
+    } else if (hasRealLLMClientCalls) {
+      archetype = "ai-agent";
+      archetypeReason = `Repo invokes LLM clients (${llmClientCallCount} call sites across ${llmClientFiles.size} files). It is an AI agent that consumes LLM services.`;
+    } else if (hasMcpServerExposure) {
+      archetype = "mcp-server";
+      archetypeReason = `Repo exposes ${mcpExposedTools.length} MCP tools to AI clients but does NOT invoke LLM clients itself. It is a tool provider, not an AI agent. Detected via frameworks: ${[...new Set(mcpExposedTools.map((t) => t.framework))].join(", ")}.`;
+    } else if (isAIProject) {
+      archetype = "library";
+      archetypeReason = `Repo has AI-related symbols (tools/prompts/LLM-named symbols) but no actual LLM client calls detected. Likely an AI-adjacent library or SDK.`;
+    } else {
+      archetype = "non-ai";
+      archetypeReason = "No AI signals detected (no tools, prompts, LLM call sites, or LLM Interface responsibility).";
+    }
+
     if (!isAIProject) {
       const capabilities = CAPABILITY_ONTOLOGY.map((cap) => ({
         capability: cap,
@@ -4821,6 +5311,8 @@ class CapabilityOntologyAnalyzer extends BaseAnalyzer {
         strongCapabilities: [],
         weakCapabilities: [],
         isAIProject: false,
+        archetype,
+        archetypeReason,
         reason: "No AI signals detected (no tools, prompts, LLM call sites, or LLM Interface responsibility). Capability assessment is not applicable.",
       };
       return;
@@ -4956,6 +5448,18 @@ class CapabilityOntologyAnalyzer extends BaseAnalyzer {
       totalCapabilities: CAPABILITY_ONTOLOGY.length,
       coveredCapabilities: CAPABILITY_ONTOLOGY.length - missingCapabilities.length,
       isAIProject: true,
+      archetype,
+      archetypeReason,
+      mcpExposure: {
+        exposedToolCount: mcpExposedTools.length,
+        frameworks: [...new Set(mcpExposedTools.map((t) => t.framework))],
+      },
+      llmClientCalls: {
+        count: llmClientCallCount,
+        fileCount: llmClientFiles.size,
+        sample: llmClientCallSample,
+        files: [...llmClientFiles].slice(0, 5),
+      },
       _meta: {
         source: "inference",
         strength: "moderate",
@@ -4964,26 +5468,31 @@ class CapabilityOntologyAnalyzer extends BaseAnalyzer {
           "Capability maturity = weighted(module count, symbol count, file count), capped at 0.95",
           "Capability keywords are AI-context-specific (generic terms like run/call/save/load removed)",
           "Non-AI repos get all capabilities 'n/a' (gate prevents false positives on UI/SQL/ML libraries)",
+          `Archetype detection: scans source files for real LLM client call patterns (openai.chat.completions.create, anthropic.messages.create, etc.) to distinguish AI agents from MCP tool providers`,
         ],
         limitations: [
           "Maturity score is heuristic, not benchmarked against ground truth",
           "Cannot detect capabilities implemented via composition (e.g., 'planning' via tool calls alone)",
           "Symbol keyword matching may miss capabilities implemented via indirect patterns (e.g., dependency injection)",
           "AI-context gate may under-classify repos with implicit AI usage (no explicit prompts/tools/LLM symbols)",
+          "LLM client call patterns are regex-based; may miss SDK calls wrapped in custom abstractions or DI frameworks",
+          "MCP server archetype detection relies on ToolsAnalyzer framework labels; custom MCP implementations may be missed",
         ],
         possibleFalsePositives: [
           "Repos with 'agent' in name but no actual AI logic may pass the gate (e.g., cargo-agent)",
           "Capability keyword 'tool' matches any 'tool' symbol, including non-AI tooling",
           "EvaluationsAnalyzer false positives propagate (hasEvaluation=true from metric/score in type names)",
+          "LLM client call regex may match commented-out code or string literals containing the pattern",
         ],
         checkedLocations: [
           "responsibility.responsibilities[].capabilities (cross-analyzer input)",
-          "tools.tools[] (auto-adds 'tool' capability)",
+          "tools.tools[] (auto-adds 'tool' capability; framework field identifies MCP-exposed tools)",
           "prompts.prompts[] (auto-adds 'context' capability)",
           "evaluations.evalFiles[] + hasEvaluation (auto-adds 'evaluation' capability)",
           "symbols.functions[].name (tokenized for keyword matching)",
+          "source files scanned for LLM client call patterns (openai/anthropic/vertexai/bedrock/llm.* method calls)",
         ],
-        coverage: "All 10 capabilities assessed for AI projects; n/a for non-AI projects",
+        coverage: "All 10 capabilities assessed for AI projects; n/a for non-AI projects. Archetype field distinguishes ai-agent / mcp-server / hybrid / library / non-ai.",
       },
     };
   }
@@ -5849,6 +6358,46 @@ class ConsistencyAnalyzer extends BaseAnalyzer {
           "CapabilityOntology classified this as an AI project (has prompts/tools/LLM-Interface responsibility) but InformationFlowAnalyzer found no LLM call sites via regex. Possible causes: (1) LLM calls use non-standard names not in LLM_NAME_RE, (2) LLM calls are in files not parsed by SymbolsAnalyzer, (3) AI project classification is a false positive (prompts/tools are test fixtures or docs).",
         recommendation:
           "LLM should verify by searching for actual LLM API calls (openai.chat.completions.create, anthropic.messages.create, etc.) in source code. If real LLM calls exist, note InformationFlowAnalyzer regex gap; if not, note CapabilityOntology false positive.",
+      });
+    }
+
+    // ── C8: LLM call sites exist but no flow reaches LLM ─────────────────
+    // InformationFlowAnalyzer detected LLM call sites (regex on symbol names)
+    // but none of the BFS-traversed flows reach them. This is a strong
+    // contradiction — the call sites exist in source, but the static call
+    // graph cannot connect entrypoints to them. Common root causes:
+    //   (1) SDK method-chain calls: `client.chat.completions.create()` — the
+    //       call site is a method on a dynamically-typed client object, not
+    //       a top-level function SymbolsAnalyzer indexed.
+    //   (2) Spawned subprocess: daemon calls `spawn('claude', [...])` and
+    //       parses stdout — LLM inference happens in the child process,
+    //       invisible to the parent's static call graph.
+    //   (3) Framework routing: FastAPI `@router.post(...)` registers handlers
+    //       at runtime via dependency injection; BFS on import graph cannot
+    //       traverse route → handler → service → LLM call site.
+    //   (4) Rust mod/use not resolved: LLM call site node has 0 in/out edges
+    //       in the architecture graph, so BFS never reaches it.
+    // Observed on buzz/unsloth/open-design/openworker/worldmonitor.
+    const llmCallSites = (infoFlow.llmCallSites || []).length;
+    const totalFlows = (infoFlow.flows || []).length;
+    const flowsReachingLLM = (infoFlow.flows || []).filter((f) => f.reachesLLM).length;
+    if (llmCallSites > 0 && totalFlows > 0 && flowsReachingLLM === 0) {
+      contradictions.push({
+        id: `C${contradictions.length + 1}`,
+        topic: "LLM call sites exist but no flow reaches them",
+        severity: "high",
+        sourceA: {
+          analyzer: "InformationFlowAnalyzer",
+          claim: `detected ${llmCallSites} LLM call site(s) via regex`,
+        },
+        sourceB: {
+          analyzer: "InformationFlowAnalyzer",
+          claim: `all ${totalFlows} BFS flow(s) have reachesLLM=false`,
+        },
+        interpretation:
+          "InformationFlowAnalyzer found LLM-related symbol names (regex match) but its BFS over the static import graph cannot connect any entrypoint to those call sites. This is a known limitation when LLM calls happen via: (1) SDK method chains on dynamic client objects (e.g., client.chat.completions.create), (2) spawned subprocesses where LLM inference is in the child, (3) framework runtime routing (FastAPI deps, Spring DI, Eclipse extension points), (4) Rust mod/use unresolved to full module paths. The call sites ARE real; the flow conclusion is the unreliable signal.",
+        recommendation:
+          "LLM should treat flowsReachingLLM=0 as 'unknown — analyzer cannot trace this call graph shape', NOT as 'no LLM is invoked'. Verify by grep for actual LLM SDK calls (openai.chat.completions.create, anthropic.messages.create, client.messages.create, etc.) in source. If real LLM calls exist, downgrade F-003-style 'none reach LLM' findings to 'unknown'.",
       });
     }
 
@@ -7943,6 +8492,478 @@ class VerificationLoop {
 }
 
 // ===========================================================================
+// Evidence Synthesizer — converts raw Findings into Question Resolutions
+// ===========================================================================
+
+/**
+ * EvidenceSynthesizer solves the core pipeline design problem identified in
+ * 2026-07-26 audit: the report was Finding-centric, not Question-centric.
+ *
+ * Raw Findings come from 11+ analyzers. They often conflict (e.g.,
+ * InformationFlow says "no LLM path" while Prompts/LLM-call-sites say "yes").
+ * Without synthesis, the LLM receives a pile of Finding A says X / Finding B
+ * says not-X and ends up narrating analyzer disagreements instead of
+ * repository facts.
+ *
+ * EvidenceSynthesizer produces a Question Resolution Table:
+ *
+ *   Research Question
+ *        ↓
+ *   Evidence Collection (source code + analyzer outputs)
+ *        ↓
+ *   Conflict Detection (known cross-analyzer contradictions)
+ *        ↓
+ *   Verdict (yes / no / partial / unknown)
+ *        ↓
+ *   Conclusion (repository reality + which analyzer to trust / why)
+ *
+ * The LLM prompt is then instructed to consume the Resolution Table as the
+ * primary input for report sections, and to cite Resolution IDs ([R-XXX])
+ * instead of raw Finding IDs when stating architecture conclusions.
+ *
+ * Design principles:
+ *   - Source code wins over analyzer heuristics.
+ *   - AST/graph wins over regex/keyword.
+ *   - A known-conflict pattern has a deterministic resolution rule.
+ *   - The LLM no longer has to "mediate" analyzer debates.
+ */
+class EvidenceSynthesizer {
+  /**
+   * @param {object} verifiedFindings - Output of VerificationLoop.run()
+   * @param {EvidenceStore} evidenceStore
+   */
+  constructor(verifiedFindings, evidenceStore) {
+    this.findings = (verifiedFindings && verifiedFindings.findings) || [];
+    this.findingsOutput = verifiedFindings || {};
+    this.store = evidenceStore;
+    this.s = evidenceStore && evidenceStore._store ? evidenceStore._store : {};
+    this.lang = "en";
+    this._counter = 0;
+  }
+
+  generate(options = {}) {
+    this.lang = options.lang === "zh" ? "zh" : "en";
+    const resolutions = [];
+
+    // Q1 — Entry shape
+    resolutions.push(this._resolveQ1Entry());
+    // Q2 — Orchestration / architecture pattern
+    resolutions.push(this._resolveQ2Orchestration());
+    // Q3 — Retrieval
+    resolutions.push(this._resolveQ3Retrieval());
+    // Q4 — Prompt management
+    resolutions.push(this._resolveQ4Prompts());
+    // Q5 — Tool registry
+    resolutions.push(this._resolveQ5Tools());
+    // Q6 — Is this an AI project?
+    resolutions.push(this._resolveQ6AiProject());
+    // Q7 — Correctness validation
+    resolutions.push(this._resolveQ7Correctness());
+    // Q8 — README contradictions
+    resolutions.push(this._resolveQ8Contradictions());
+    // Q9-Q11 — Decisions / Constraints / Assumptions (pass-through, but structured)
+    resolutions.push(this._resolveQ9Decisions());
+    resolutions.push(this._resolveQ10Constraints());
+    resolutions.push(this._resolveQ11Assumptions());
+
+    const valid = resolutions.filter(Boolean);
+    return {
+      schema: "synthesis-v1",
+      generatedAt: new Date().toISOString(),
+      total: valid.length,
+      evidenceHierarchy: [
+        "source_code",
+        "ast",
+        "graph",
+        "manifest",
+        "regex",
+        "keyword",
+        "inference",
+      ],
+      resolutions: valid,
+    };
+  }
+
+  // -- Helpers ---------------------------------------------------------------
+
+  _id() {
+    this._counter += 1;
+    return `R-${String(this._counter).padStart(3, "0")}`;
+  }
+
+  _byQ(qid) {
+    return this.findings.filter((f) => f.questionId === qid);
+  }
+
+  _textMatches(f, kw) {
+    if (!f || !f.finding) return false;
+    const text = f.finding.toLowerCase();
+    if (Array.isArray(kw)) return kw.some((k) => text.includes(k.toLowerCase()));
+    return text.includes(kw.toLowerCase());
+  }
+
+  _supportSources(f) {
+    if (!f || !f.support) return [];
+    return f.support.map((s) => s.source || s.ref || "unknown");
+  }
+
+  _evidenceType(f) {
+    const sources = this._supportSources(f);
+    if (sources.some((s) => s.includes("source") || s.includes("locator"))) return "source_code";
+    if (sources.some((s) => s.includes("ast"))) return "ast";
+    if (sources.some((s) => s.includes("graph"))) return "graph";
+    if (sources.some((s) => s.includes("manifest"))) return "manifest";
+    if (sources.some((s) => s.includes("regex"))) return "regex";
+    if (sources.some((s) => s.includes("keyword"))) return "keyword";
+    return "inference";
+  }
+
+  _zh(t) {
+    return this.lang === "zh";
+  }
+
+  _label(verdict) {
+    const map = {
+      yes: this._zh() ? "是 / 存在" : "Yes / Present",
+      no: this._zh() ? "否 / 不存在" : "No / Absent",
+      partial: this._zh() ? "部分存在" : "Partial",
+      unknown: this._zh() ? "未知" : "Unknown",
+    };
+    return map[verdict] || verdict;
+  }
+
+  _confidenceLabel(level) {
+    if (this._zh()) {
+      return level === "High" ? "高" : level === "Medium" ? "中" : level === "Low" ? "低" : "推测";
+    }
+    return level;
+  }
+
+  // -- Resolvers ---------------------------------------------------------------
+
+  _resolveQ1Entry() {
+    const fs = this._byQ("Q1");
+    const f = fs.find((f) => f.verified !== "rejected" && f.finding && f.finding.includes("entry points"));
+    if (!f) {
+      return this._makeResolution("Q1", "unknown", "Low", "No reliable entry point Finding was verified.");
+    }
+    return this._makeResolution(
+      "Q1",
+      "yes",
+      this._levelFromFinding(f),
+      f.finding,
+      f,
+      [],
+      []
+    );
+  }
+
+  _resolveQ2Orchestration() {
+    const fs = this._byQ("Q2");
+    const patternF = fs.find((f) => f.finding && f.finding.includes("Primary architecture pattern"));
+    const flowF = fs.find((f) => f.finding && f.finding.includes("Information flow analyzer detected"));
+
+    // Conflict: pattern says X but flow analyzer says no path.
+    const conflicts = [];
+    if (patternF && flowF) {
+      const patternName = (patternF.finding.match(/\*\*(\w+)\*\*/) || [])[1] || "";
+      const hasFlow = !flowF.finding.includes("none reach") && !flowF.finding.includes("no end-to-end");
+      if (patternName && !hasFlow && this._textMatches(flowF, ["LLM", "llm"])) {
+        conflicts.push({
+          type: "flow_false_negative",
+          description: this._zh()
+            ? `ArchitecturePattern 判断为 ${patternName}，但 InformationFlow 未检测到到达 LLM 调用点的路径。`
+            : `ArchitecturePattern says ${patternName}, but InformationFlow reports no path reaches an LLM call site.`,
+        });
+      }
+    }
+
+    const verdict = patternF && patternF.verified !== "rejected" ? "yes" : "unknown";
+    const conclusion = this._buildQ2Conclusion(patternF, flowF, conflicts);
+    return this._makeResolution("Q2", verdict, this._levelFromFinding(patternF), conclusion, patternF, conflicts, [patternF, flowF].filter(Boolean));
+  }
+
+  _resolveQ3Retrieval() {
+    return this._singleFindingResolution("Q3", "Retrieval capability");
+  }
+
+  _resolveQ4Prompts() {
+    return this._singleFindingResolution("Q4", "prompt");
+  }
+
+  _resolveQ5Tools() {
+    return this._singleFindingResolution("Q5", "tool");
+  }
+
+  _resolveQ6AiProject() {
+    const fs = this._byQ("Q6");
+    const aiF = fs.find((f) => f.finding && f.finding.includes("AI project"));
+    const toolF = this._byQ("Q5").find((f) => f.verified !== "rejected" && f.finding && /detected \d+ tool/i.test(f.finding));
+    const promptF = this._byQ("Q4").find((f) => f.verified !== "rejected" && f.finding && /detected \d+ prompt/i.test(f.finding));
+
+    // Determine whether the finding affirms or denies AI-project status.
+    // CapabilityOntology may emit "Not classified as AI project..." which
+    // contains the substring "AI project" but is a NEGATIVE verdict.
+    const isNegativeAiFinding = (f) => {
+      if (!f || !f.finding) return false;
+      const text = f.finding.toLowerCase();
+      return text.includes("not classified") ||
+        text.includes("not an ai") ||
+        text.includes("non-ai") ||
+        text.includes("insufficient ai signals") ||
+        text.includes("no ai signals") ||
+        text.includes("false negative for ai") ||
+        /\bno\b.*\bai\b.*\bsignals?\b/.test(text);
+    };
+    const aiConfirmed = aiF && aiF.verified !== "rejected" && !isNegativeAiFinding(aiF);
+
+    const conflicts = [];
+    const llmFlowF = this._byQ("Q2").find((f) => f.finding && f.finding.includes("Information flow analyzer detected") && f.finding.includes("LLM"));
+
+    if (aiConfirmed && llmFlowF && llmFlowF.finding && llmFlowF.finding.includes("none reach")) {
+      conflicts.push({
+        type: "ai_without_reachable_flow",
+        description: this._zh()
+          ? "CapabilityOntology 确认是 AI 项目，但 InformationFlow BFS 无法到达任何 LLM 调用点。这是典型 false negative：LLM 调用发生在动态 SDK 方法链、子进程或框架运行时路由中，静态 import 图不可见。"
+          : "CapabilityOntology confirms AI project, but InformationFlow BFS cannot reach any LLM call site. This is a typical false negative: LLM calls happen via dynamic SDK method chains, spawned subprocesses, or framework runtime routing invisible to static import graph.",
+        resolution: this._zh()
+          ? "以源码和 CapabilityOntology 为准；InformationFlow 的 'none reach' 在此场景下是能力限制，不是反证。"
+          : "Source code and CapabilityOntology take precedence; InformationFlow 'none reach' is a capability limit, not counter-evidence.",
+      });
+    }
+
+    if (aiConfirmed && promptF && promptF.finding && promptF.finding.toLowerCase().includes("no prompts detected")) {
+      conflicts.push({
+        type: "prompt_analyzer_false_negative",
+        description: this._zh()
+          ? "AI 项目被确认，但 PromptsAnalyzer 报告未检测到任何 prompt。常见原因是 prompt 在函数返回值中动态组装（如 build_*_prompt），而不是常量赋值。"
+          : "AI project confirmed, but PromptsAnalyzer reports no prompts detected. Common cause: prompts are dynamically assembled in function return values (e.g., build_*_prompt) rather than constant assignments.",
+        resolution: this._zh()
+          ? "将 PromptsAnalyzer 的 'No prompts' 视为潜在漏报，需人工检查 build_*_prompt / render_*_prompt 函数。"
+          : "Treat PromptsAnalyzer 'No prompts' as a potential false negative; inspect build_*_prompt / render_*_prompt functions manually.",
+      });
+    }
+
+    const verdict = aiConfirmed ? "yes" : aiF && aiF.verified !== "rejected" ? "no" : "unknown";
+    const confidenceF = aiF || toolF;
+    const conclusion = this._buildQ6Conclusion(aiF, toolF, promptF, conflicts, aiConfirmed);
+    return this._makeResolution("Q6", verdict, this._levelFromFinding(confidenceF), conclusion, aiF, conflicts, [aiF, toolF, promptF, llmFlowF].filter(Boolean));
+  }
+
+  _resolveQ7Correctness() {
+    return this._singleFindingResolution("Q7", "test");
+  }
+
+  _resolveQ8Contradictions() {
+    const cons = this.s.consistency || {};
+    const contradictions = cons.contradictions || [];
+    const warnings = cons.warnings || [];
+    const verdict = contradictions.length > 0 ? "yes" : warnings.length > 0 ? "partial" : "no";
+    const conclusion = this._zh()
+      ? (contradictions.length > 0
+          ? `检测到 ${contradictions.length} 个跨分析器矛盾，${warnings.length} 个警告。`
+          : warnings.length > 0
+            ? `无严重矛盾，但有 ${warnings.length} 个警告。`
+            : "未发现跨分析器矛盾或警告。")
+      : (contradictions.length > 0
+          ? `Detected ${contradictions.length} cross-analyzer contradiction(s) and ${warnings.length} warning(s).`
+          : warnings.length > 0
+            ? `No severe contradictions, but ${warnings.length} warning(s) found.`
+            : "No cross-analyzer contradictions or warnings detected.");
+    return this._makeResolution(
+      "Q8",
+      verdict,
+      contradictions.length > 0 ? "High" : warnings.length > 0 ? "Medium" : "Medium",
+      conclusion,
+      null,
+      contradictions.map((c) => ({
+        type: c.id || "generic",
+        description: c.interpretation || c.topic || "",
+      })),
+      []
+    );
+  }
+
+  _resolveQ9Decisions() {
+    return this._architectureKnowledgeResolution("Q9", "decisions", "decision");
+  }
+
+  _resolveQ10Constraints() {
+    return this._architectureKnowledgeResolution("Q10", "constraints", "constraint");
+  }
+
+  _resolveQ11Assumptions() {
+    return this._architectureKnowledgeResolution("Q11", "assumptions", "assumption");
+  }
+
+  // -- Generic helpers --------------------------------------------------------
+
+  _singleFindingResolution(qid, keyword) {
+    const fs = this._byQ(qid);
+    const f = fs.find((f) => f.verified !== "rejected" && f.finding && f.finding.toLowerCase().includes(keyword.toLowerCase()));
+    if (!f) {
+      const neg = fs.find((f) => f.verified === "verified" && f.checkedLocations && f.checkedLocations.length > 0);
+      const conclusion = neg
+        ? (this._zh() ? `未检测到 ${keyword}（已检查相关位置）。` : `No ${keyword} detected (relevant locations checked).`)
+        : (this._zh() ? `证据不足，无法判断 ${keyword}。` : `Insufficient evidence to determine ${keyword}.`);
+      return this._makeResolution(qid, neg ? "no" : "unknown", "Low", conclusion, neg || null, [], fs);
+    }
+    const hasCount = /\d+/.test(f.finding);
+    const verdict = hasCount
+      ? (parseInt(f.finding.match(/\d+/)[0], 10) > 0 ? "yes" : "no")
+      : (this._textMatches(f, ["strong", "mature", "detected", "present"]) ? "yes" : "partial");
+    return this._makeResolution(qid, verdict, this._levelFromFinding(f), f.finding, f, [], [f]);
+  }
+
+  _architectureKnowledgeResolution(qid, storeKey, singular) {
+    const fs = this._byQ(qid);
+    const valid = fs.filter((f) => f.verified !== "rejected");
+    const verdict = valid.length > 0 ? "yes" : "no";
+    const conclusion = this._zh()
+      ? `${valid.length} 个${singular === "decision" ? "架构决策" : singular === "constraint" ? "约束" : "假设"}被验证。`
+      : `${valid.length} ${singular}(s) verified.`;
+    return this._makeResolution(qid, verdict, valid.length > 0 ? "Medium" : "Low", conclusion, valid[0] || null, [], valid);
+  }
+
+  _makeResolution(questionId, verdict, confidence, conclusion, primaryFinding = null, conflicts = [], relatedFindings = []) {
+    const q = RESEARCH_QUESTIONS.find((q) => q.id === questionId);
+    const primaryEvidence = this._extractPrimaryEvidence(primaryFinding, relatedFindings);
+    const analyzerEvidence = this._extractAnalyzerEvidence(relatedFindings, conflicts);
+
+    return {
+      id: this._id(),
+      questionId,
+      question: q ? q.question : questionId,
+      importance: q ? q.importance : "medium",
+      verdict,
+      verdictLabel: this._label(verdict),
+      confidence,
+      confidenceLabel: this._confidenceLabel(confidence),
+      conclusion,
+      primaryEvidence,
+      analyzerEvidence,
+      conflicts,
+      supportingFindings: relatedFindings.filter(Boolean).map((f) => f.id).filter(Boolean),
+      checkedLocations: this._collectCheckedLocations(relatedFindings),
+    };
+  }
+
+  _extractPrimaryEvidence(primaryFinding, relatedFindings) {
+    const evidence = [];
+    const candidates = [primaryFinding, ...relatedFindings].filter(Boolean);
+    for (const f of candidates) {
+      for (const s of (f.support || []).slice(0, 3)) {
+        const ref = s.ref || s.source || "";
+        const detail = s.detail || "";
+        // Extract file paths from detail strings like "(path/to/file:123)"
+        const paths = detail.match(/\([a-zA-Z0-9_./~-]+:\d+\)/g) || [];
+        const location = paths.length > 0 ? paths[0].slice(1, -1) : ref;
+        if (evidence.some((e) => e.location === location)) continue;
+        evidence.push({
+          type: s.source && s.source.includes("ast") ? "ast" : s.source && s.source.includes("graph") ? "graph" : "regex",
+          location,
+          description: detail.slice(0, 200),
+        });
+        if (evidence.length >= 5) break;
+      }
+      if (evidence.length >= 5) break;
+    }
+    return evidence;
+  }
+
+  _extractAnalyzerEvidence(findings, conflicts) {
+    const evidence = [];
+    for (const f of findings.filter(Boolean)) {
+      const sources = new Set(this._supportSources(f));
+      for (const src of sources) {
+        const analyzer = src.split(".")[0] || src;
+        const status = f.verified === "rejected"
+          ? "rejected"
+          : f.verified === "downgraded"
+            ? "downgraded"
+            : conflicts.some((c) => this._conflictInvolves(c, analyzer))
+              ? "false_negative"
+              : "supporting";
+        evidence.push({
+          analyzer,
+          claim: f.finding.slice(0, 160),
+          status,
+          reason: status === "false_negative"
+            ? (this._zh() ? "静态分析无法覆盖运行时路由或动态 SDK 调用" : "Static analysis cannot cover runtime routing or dynamic SDK calls")
+            : "",
+        });
+      }
+    }
+    return evidence;
+  }
+
+  _conflictInvolves(conflict, analyzer) {
+    const text = JSON.stringify(conflict).toLowerCase();
+    return text.includes(analyzer.toLowerCase());
+  }
+
+  _collectCheckedLocations(findings) {
+    const locs = new Set();
+    for (const f of findings.filter(Boolean)) {
+      for (const loc of f.checkedLocations || []) locs.add(loc);
+    }
+    return [...locs].slice(0, 10);
+  }
+
+  _levelFromFinding(f) {
+    if (!f) return "Low";
+    if (f.confidence >= 0.5) return "High";
+    if (f.confidence >= 0.25) return "Medium";
+    return "Low";
+  }
+
+  _buildQ2Conclusion(patternF, flowF, conflicts) {
+    const zh = this._zh();
+    const parts = [];
+    if (patternF && patternF.verified !== "rejected") {
+      parts.push(zh ? `主要架构模式：${patternF.finding}。` : `Primary architecture pattern: ${patternF.finding}.`);
+    } else {
+      parts.push(zh ? "未识别出明确的架构模式。" : "No clear architecture pattern identified.");
+    }
+    if (flowF && flowF.verified !== "rejected") {
+      parts.push(zh ? `信息流分析：${flowF.finding}。` : `Information flow: ${flowF.finding}.`);
+    }
+    if (conflicts.length > 0) {
+      parts.push(zh
+        ? `冲突解决：${conflicts[0].resolution || conflicts[0].description}`
+        : `Resolution: ${conflicts[0].resolution || conflicts[0].description}`);
+    }
+    return parts.join(" ");
+  }
+
+  _buildQ6Conclusion(aiF, toolF, promptF, conflicts, aiConfirmed) {
+    const zh = this._zh();
+    if (!aiF || aiF.verified === "rejected") {
+      return zh ? "未确认 AI 项目身份。" : "AI project identity not confirmed.";
+    }
+    if (!aiConfirmed) {
+      const parts = [zh ? `不是 AI 项目：${aiF.finding}。` : `Not an AI project: ${aiF.finding}.`];
+      if (toolF && toolF.finding && toolF.finding.toLowerCase().includes("no tools detected")) {
+        parts.push(zh ? `无工具证据：${toolF.finding}。` : `No tool evidence: ${toolF.finding}.`);
+      }
+      if (promptF && promptF.finding && promptF.finding.toLowerCase().includes("no prompts detected")) {
+        parts.push(zh ? `无提示词证据：${promptF.finding}。` : `No prompt evidence: ${promptF.finding}.`);
+      }
+      return parts.join(" ");
+    }
+    const parts = [zh ? `确认是 AI 项目：${aiF.finding}。` : `Confirmed AI project: ${aiF.finding}.`];
+    if (toolF) parts.push(zh ? `工具证据：${toolF.finding}。` : `Tool evidence: ${toolF.finding}.`);
+    if (promptF) parts.push(zh ? `提示词证据：${promptF.finding}。` : `Prompt evidence: ${promptF.finding}.`);
+    if (conflicts.length > 0) {
+      parts.push(zh
+        ? `注意：${conflicts.map((c) => c.resolution || c.description).join("；")}`
+        : `Note: ${conflicts.map((c) => c.resolution || c.description).join("; ")}`);
+    }
+    return parts.join(" ");
+  }
+}
+
+// ===========================================================================
 // Report Generator — produces an Evidence Brief for LLM analysis
 // ===========================================================================
 
@@ -7962,6 +8983,7 @@ class ReportGenerator {
     this.s = evidenceStore._store;
     this.lang = options.lang === "zh" ? "zh" : "en";
     this._findingsCache = null; // lazy: FindingsGenerator + VerificationLoop output
+    this._synthesisCache = null; // lazy: EvidenceSynthesizer output
   }
 
   /**
@@ -7986,11 +9008,34 @@ class ReportGenerator {
     return this._findingsCache;
   }
 
+  /**
+   * v3 pipeline addition: run EvidenceSynthesizer after VerificationLoop.
+   * This converts raw Findings into Question Resolutions, handling known
+   * cross-analyzer conflicts deterministically so the LLM does not have to
+   * "mediate" analyzer debates.
+   */
+  _synthesis() {
+    if (this._synthesisCache) return this._synthesisCache;
+    const findings = this._findings();
+    try {
+      const synth = new EvidenceSynthesizer(findings, this.store);
+      this._synthesisCache = synth.generate({ lang: this.lang });
+    } catch (_e) {
+      this._synthesisCache = { schema: "synthesis-v1", total: 0, resolutions: [] };
+    }
+    this.s.synthesis = this._synthesisCache;
+    return this._synthesisCache;
+  }
+
   generate() {
+    // Ensure synthesis is computed (and cached) before other sections read it.
+    this._synthesis();
+
     const sections = [
       this._header(),
       this._researchPrinciples(),
       this._findingsSection(),
+      this._synthesisSection(),
       this._consistencyFindings(),
       this._executiveBrief(),
       this._architectureInsights(),
@@ -8121,8 +9166,8 @@ class ReportGenerator {
       : "> Every Finding binds to a Research Question (Q1-Q11) with auto-computed confidence / coverage / importance."
     );
     lines.push(zh
-      ? "> LLM 应优先消费本节；下方各 analyzer 章节作为支持证据。verified=downgraded/rejected 的 Finding 不应直接引用，需先核查。"
-      : "> LLM should consume this section first; analyzer sections below serve as supporting evidence. Findings with verified=downgraded/rejected must not be cited without re-verification."
+      ? "> Finding 是原始材料。LLM 应优先消费 ★★ Evidence Synthesis（Question Resolution）作为结论输入；本节仅作为支持证据。verified=downgraded/rejected 的 Finding 不应直接引用。"
+      : "> Findings are raw material. The LLM should consume ★★ Evidence Synthesis (Question Resolution) as the primary conclusion input; this section is supporting evidence only. Findings with verified=downgraded/rejected must not be cited as conclusions."
     );
     lines.push("");
 
@@ -8185,6 +9230,107 @@ class ReportGenerator {
       }
       if ((f.limitations || []).length > 0) {
         lines.push(zh ? `- **Limitations**: ${f.limitations.join("; ")}` : `- **Limitations**: ${f.limitations.join("; ")}`);
+      }
+      lines.push("");
+    }
+
+    return lines.join("\n");
+  }
+
+  /**
+   * v3 Question-centric pipeline: Evidence Synthesis section.
+   *
+   * This is the PRIMARY input for the LLM report. It replaces the old
+   * Finding-centric narrative with a Question Resolution Table:
+   *
+   *   Question → Evidence → Analyzer Claims → Conflicts → Verdict → Conclusion
+   *
+   * The LLM must cite [R-XXX] when stating architecture conclusions, and treat
+   * raw Findings ([F-XXX]) only as supporting evidence.
+   */
+  _synthesisSection() {
+    const synth = this._synthesis();
+    const resolutions = synth.resolutions || [];
+    if (resolutions.length === 0) return null;
+
+    const zh = this.lang === "zh";
+    const lines = [];
+    lines.push(zh ? "## ★★ Evidence Synthesis（Question Resolution）" : "## ★★ Evidence Synthesis (Question Resolution)");
+    lines.push("");
+    lines.push(zh
+      ? "> **本节是 LLM 撰写报告的主输入。** 它把多个 analyzer 产出的 Finding 按 Research Question 合并、解决已知冲突、给出最终裁决（Verdict）。"
+      : "> **This section is the PRIMARY input for the LLM report.** It merges analyzer Findings by Research Question, resolves known conflicts, and emits a final verdict."
+    );
+    lines.push(zh
+      ? "> 报告正文必须以本节为纲，优先引用 `[R-XXX]`；原始 `[F-XXX]` 仅作为支持证据。"
+      : "> The report body MUST be organized around this section, citing `[R-XXX]` first; raw `[F-XXX]` are supporting evidence only."
+    );
+    lines.push("");
+
+    lines.push(zh ? "### 证据层级（Evidence Hierarchy）" : "### Evidence Hierarchy");
+    lines.push("");
+    lines.push(zh
+      ? "当不同证据冲突时，按以下优先级取信（从高到低）："
+      : "When evidence conflicts, trust the higher tier:"
+    );
+    lines.push("");
+    lines.push("1. **source_code** — 源码与文件系统事实");
+    lines.push("2. **ast** — 抽象语法树分析结果");
+    lines.push("3. **graph** — 依赖图/调用图分析结果");
+    lines.push("4. **manifest** — 包管理器/CI 配置等元数据");
+    lines.push("5. **regex** — 基于正则/关键词的文本扫描");
+    lines.push("6. **keyword** — 目录名/符号名关键词匹配");
+    lines.push("7. **inference** — 启发式推理/LLM 推断");
+    lines.push("");
+
+    lines.push(zh ? "### Question Resolution 表" : "### Question Resolution Table");
+    lines.push("");
+    lines.push("| ID | Q | Question | Verdict | Confidence | Resolution |");
+    lines.push("|----|---|----------|---------|------------|------------|");
+    for (const r of resolutions) {
+      const resolutionShort = (r.conclusion || "").replace(/\|/g, "\\|").slice(0, 100);
+      lines.push(`| ${r.id} | ${r.questionId} | ${r.question.replace(/\|/g, "\\|").slice(0, 60)} | ${r.verdictLabel} | ${r.confidenceLabel} | ${resolutionShort} |`);
+    }
+    lines.push("");
+
+    lines.push(zh ? "### Resolution 详情" : "### Resolution Details");
+    lines.push("");
+    for (const r of resolutions) {
+      lines.push(`#### ${r.id} — ${r.questionId}: ${r.question}`);
+      lines.push("");
+      lines.push(`- **Verdict**: ${r.verdictLabel} (${r.verdict})`);
+      lines.push(`- **Confidence**: ${r.confidenceLabel} (${r.confidence})`);
+      lines.push(`- **Conclusion**: ${r.conclusion}`);
+
+      if ((r.primaryEvidence || []).length > 0) {
+        lines.push(zh ? "- **Primary Evidence（主要证据）**:" : "- **Primary Evidence**:");
+        for (const e of r.primaryEvidence) {
+          lines.push(`  - [${e.type}] \`${e.location}\` — ${e.description}`);
+        }
+      }
+
+      if ((r.analyzerEvidence || []).length > 0) {
+        lines.push(zh ? "- **Analyzer Evidence（分析器结果，仅供参考）**:" : "- **Analyzer Evidence (for reference only)**:");
+        for (const e of r.analyzerEvidence) {
+          const statusIcon = e.status === "false_negative" ? "⚠️ FN" : e.status === "downgraded" ? "⚠️" : e.status === "rejected" ? "❌" : "✅";
+          lines.push(`  - ${statusIcon} **${e.analyzer}**: ${e.claim}${e.reason ? ` (${e.reason})` : ""}`);
+        }
+      }
+
+      if ((r.conflicts || []).length > 0) {
+        lines.push(zh ? "- **Conflicts & Resolution（冲突与裁决）**:" : "- **Conflicts & Resolution**:");
+        for (const c of r.conflicts) {
+          lines.push(`  - **${c.type}**: ${c.description}`);
+          if (c.resolution) lines.push(`    - Resolution: ${c.resolution}`);
+        }
+      }
+
+      if ((r.supportingFindings || []).length > 0) {
+        lines.push(zh ? `- **Supporting Findings**: ${r.supportingFindings.join(", ")}` : `- **Supporting Findings**: ${r.supportingFindings.join(", ")}`);
+      }
+
+      if ((r.checkedLocations || []).length > 0) {
+        lines.push(zh ? `- **Checked Locations**: ${r.checkedLocations.join(", ")}` : `- **Checked Locations**: ${r.checkedLocations.join(", ")}`);
       }
       lines.push("");
     }
@@ -8430,7 +9576,14 @@ class ReportGenerator {
     if (!hasSecurity) {
       findings.push(zh ? "未找到 SECURITY 策略（漏洞报告流程不明）" : "No SECURITY policy found (vulnerability reporting process unclear)");
     }
-    const hasChangelog = hasFileAnywhere(["changelog"]);
+    const hasChangelog = hasFileAnywhere([
+      "changelog",
+      "changes",   // CHANGES.txt (pyod) / CHANGES.rst / CHANGES.md
+      "history",   // HISTORY.rst / HISTORY.md (common in Python ecosystem)
+      "news",      // NEWS.txt / NEWS.rst (e.g., setuptools, pip)
+      "releases",  // RELEASES.md / RELEASE_NOTES.md
+      "whatsnew",  // WHATSNEW.txt (some Python projects)
+    ]);
     if (!hasChangelog) {
       findings.push(zh ? "未找到 CHANGELOG（版本演进缺乏结构化记录）" : "No CHANGELOG found (version evolution lacks structured record)");
     }
@@ -9383,28 +10536,98 @@ class ReportGenerator {
         `你是一位经验丰富的软件架构师。基于上述证据，为 **${repoName}** 撰写一份工程研究报告。`,
         `请将报告保存为工作目录下的 \`report.md\`。`,
         "",
-        "### v2 Pipeline: 4 阶段执行（plan0726.md Part 2）",
+        "### v3 Pipeline: 5 阶段执行（Question-centric）",
         "",
-        "本简报采用 v2 pipeline，已生成规范化 Findings（见上方 ★ Findings 章节）。",
+        "本简报采用 **v3 Question-centric pipeline**。核心变化：新增 **Phase 2 — Evidence Synthesis**，",
+        "脚本层已经把原始 Finding 合并为 **Question Resolution Table（见上方 ★★ Evidence Synthesis 章节）**。",
         `共 ${fCount} 个 Finding；验证后: ${vSum.verified || 0} verified / ${fDowngraded} downgraded / ${fRejected} rejected。`,
         "",
-        "请按以下 4 阶段执行（不要跳过）：",
+        "请按以下 5 阶段执行（不要跳过）：",
         "",
         "**Phase 1 — Planning（低 reasoning_effort）**: 确认 Research Questions Q1-Q11 中哪些对本仓库最有价值。不必分析，只排序。",
         "",
-        "**Phase 2 — Finding Validation（中 reasoning_effort）**: 对 ★ Findings 章节中的每个 Finding 执行 Merge/Split/Reject/Verify：",
-        "- 若多个 Finding 描述同一现象 → Merge",
-        "- 若一个 Finding 混淆多个现象 → Split",
-        "- 若 verified=rejected 或反证强于支持证据 → Reject",
-        "- 若反证存在但仍弱于支持证据 → 保留并降级 confidence",
-        "- 检测 Findings 之间的 Conflict（脚本层 ConsistencyAnalyzer 可能漏检）",
+        "**Phase 2 — Evidence Collection（中 reasoning_effort）**: 阅读 ★ Findings 与 ★★ Evidence Synthesis，",
+        "确认每个 Question 已有哪些证据、哪些证据缺失。不要在此阶段下结论。",
         "",
-        "**Phase 3 — Architecture Reasoning（高 reasoning_effort, thinking=enabled）**: 基于验证后的 Findings，回答 Why/Impact/Tradeoff：",
-        "- Why: 为什么这样设计？（不是「是什么」）",
-        "- Impact: 这个设计选择的影响是什么？（性能/可维护性/可扩展性）",
+        "**Phase 3 — Evidence Synthesis（高 reasoning_effort, thinking=enabled）**: 这是最关键的阶段。",
+        "对 ★★ Evidence Synthesis 中的每个 Resolution，按以下结构产出单一结论：",
+        "",
+        "```",
+        "Research Question",
+        "       ↓",
+        "Evidence Collection（源码 + AST + 图 + manifest）",
+        "       ↓",
+        "Analyzer Claims（各分析器说了什么，标注可信度）",
+        "       ↓",
+        "Conflicts（哪些分析器互相矛盾）",
+        "       ↓",
+        "Final Verdict（以源码为准的单一裁决）",
+        "       ↓",
+        "Conclusion（对仓库架构的工程含义）",
+        "```",
+        "",
+        "规则：",
+        "- **源码优先**: source_code > ast > graph > manifest > regex > keyword > inference。",
+        "- **单一结论**: 每个 Question 只能有一个 Final Verdict，不能列出 A 说 X / B 说 not-X 让读者自己判断。",
+        "- **分析器不是主角**: 如果某个 analyzer 的结论与源码冲突，在 Conclusion 中说明该 analyzer 为 false negative / false positive，",
+        "  然后以源码为准继续推进。不要把 analyzer 当作辩论对手。",
+        "",
+        "**Phase 4 — Architecture Reasoning（高 reasoning_effort, thinking=enabled）**: 基于 Phase 3 的 Final Verdicts，回答 Why/Impact/Tradeoff：",
+        "- Why: 为什么这样设计？",
+        "- Impact: 这个设计选择对性能/可维护性/可扩展性/安全性的影响是什么？",
         "- Tradeoff: 牺牲了什么？换取了什么？",
         "",
-        "**Phase 4 — Executive Summary（低 reasoning_effort）**: 生成 Markdown 报告。三段式 Executive Summary：Identity / Key Discovery / Recommendation。",
+        "**Phase 5 — Executive Summary（低 reasoning_effort）**: 生成 Markdown 报告。三段式 Executive Summary：Identity / Key Discovery / Recommendation。",
+        "",
+        "### Narrative Rules（叙事规则，强制）",
+        "",
+        "- **Never center the narrative around analyzer outputs.** Analyzer results are only supporting evidence.",
+        "  报告必须描述 **仓库本身**、**它的架构**、**实现方式** 和 **工程含义**，而不是 analyzer 的行为。",
+        "",
+        "- **Never narrate analyzer disagreements as the report body.**",
+        "  如果多个 analyzer 互相矛盾，**不要**按时间顺序描述它们如何争吵。",
+        "  必须把它们合成一个单一结论：Repository Reality → Analyzer Accuracy Assessment → Final Conclusion。",
+        "",
+        "- **Report is Question-centric, not Finding-centric.**",
+        "  每个 Trace / 每个章节必须从一个 Research Question 开始，而不是从 'Finding A 说...' 开始。",
+        "  正确结构：Question → Evidence → Analyzer Claims → Conflicts → Conclusion。",
+        "",
+        "- **Source code wins.** 当 analyzer 与源码冲突时，永远以源码为准。",
+        "  在结论中可以说 'InformationFlowAnalyzer 在此为 false negative，因为 FastAPI 运行时路由超出静态 import 图范围'，",
+        "  然后继续陈述仓库事实。不要把 analyzer 的局限变成章节主体。",
+        "",
+        "- **Findings are raw material, not report body.**",
+        "  报告正文引用 `[R-XXX]`（Resolution）作为结论；`[F-XXX]`（Finding）只能作为支持证据出现在括号中。",
+        "  不允许整段都在列举 Finding 003 / Finding 007 / Finding 010。",
+        "",
+        "- **每个 Trace 必须回答一个架构问题。** 禁止写成 '关于 XX analyzer 的观察'。",
+        "  Trace 标题应该是问题或结论，例如 '为什么 Studio 需要独立的 inference 服务？'，而不是 'InformationFlow 分析结果'。",
+        "",
+        "### Citation Rules（引用规则）",
+        "",
+        "- 架构结论优先引用 Resolution: `[R-006 @ Q6, verdict=是/存在, confidence=Medium]`（具体 verdict/confidence 以 Resolution 表为准）。",
+        "- 具体证据可引用 Finding: `[F-005 @ Q4, confidence=0.45]` 或源码路径 `studio/backend/core/inference/inference.py:1427`。",
+        "- 禁止引用原始 Finding 时宣称与 Resolution 相反的结论。",
+        "- 禁止出现 'Analyzer A 认为... 但是 Analyzer B 认为...' 的连续句式。",
+        "",
+        "### Report Structure（Question-centric）",
+        "",
+        "1. **Executive Summary** — 三段式：Identity / Key Discovery / Recommendation。",
+        "2. **Research Traces** — 每个 Trace 必须按以下结构：",
+        "   - **Question**: 这个 Trace 回答什么架构问题？",
+        "   - **Evidence**: 源码/AST/图/manifest 证据（不是 analyzer 输出）。",
+        "   - **Analyzer Claims**: 各 analyzer 结论（简短，标注可信度/局限）。",
+        "   - **Conflicts & Resolution**: 如有矛盾，给出单一裁决。",
+        "   - **Conclusion**: 对仓库架构的事实陈述。",
+        "   - **Why it matters**: 不了解这一点会怎样误判系统？",
+        "3. **Negative Findings** — 明确列出未找到什么及其研究边界意义。",
+        "4. **Architecture Smells** — 潜在设计风险，使用 'Potential'。",
+        "5. **Interesting Decisions** — 决策内容 / 为什么有趣 / 替代方案 / 权衡。",
+        "6. **Repository Positioning** — 生态定位。",
+        "7. **Reusable Pattern Catalog** — 可复用模式目录。",
+        "8. **Architecture Evolution** — 架构演进。",
+        "9. **Reading Guide** — 阅读指南。",
+        "10. **Open Questions** — 待解决问题。",
         "",
         "### Constraints（Do NOT）",
         "",
@@ -9415,6 +10638,48 @@ class ReportGenerator {
         "- **Do NOT** cite verified=rejected Findings as conclusions.",
         "- **Do NOT** write Architecture Score / Radar / Heatmap / SWOT / Best Practice / Future Work sections (低价值，plan0726.md Part 7).",
         "- **Do NOT** pad the report with low-value Traces — 5 sharp Traces beat 8 mediocre ones.",
+        "",
+        "### 反伪造约束（Anti-Fabrication，最高优先级）",
+        "",
+        "审计发现 LLM 经常伪造 Finding 引用（包括 ID、置信度、验证状态、甚至 Finding 内容）。",
+        "以下规则必须严格遵守，违反任何一条都视为严重错误：",
+        "",
+        "- **ID 完整性**: 引用的 `[F-XXX]` 编号必须与简报 ★ Findings 章节中的编号一一对应。",
+        "  不得发明新编号，不得跳过编号，不得将 F-005 的内容张冠李戴到 F-010。",
+        "",
+        "- **置信度逐字引用**: `[F-001 @ Q1, confidence=0.85, verified]` 中的 confidence 数字",
+        "  必须与简报 Findings 表格中该 Finding 的 Confidence 列**逐字一致**（包括小数位）。",
+        "  不得四舍五入、不得修改、不得凭印象重写。",
+        "",
+        "- **状态不得反转**: 简报中 `✅ verified` 的 Finding 不得在报告中被称作 `rejected`",
+        "  或 `downgraded`；反之亦然。如需质疑一个 verified 的 Finding，必须先逐字引用",
+        "  简报原文，再提供源码反证 —— 但**不得修改 Verified 字段本身**。",
+        "",
+        "- **数字完整性**: 所有 tools/prompts/evals/tests 的数量必须**逐字引用**简报中的数字。",
+        "  如简报说「detected 10 tools」，报告不得写成「12 tools」或「8 tools」。",
+        "  如对数量有质疑，应在 Architecture Smell 中说明，而非篡改数字。",
+        "",
+        "- **内容不得杜撰**: 引用 Finding 内容时，必须与简报中该 Finding 的 `finding` 字段一致。",
+        "  如简报 F-006 是「Detected 10 tools」，报告不得写成「No tools detected」。",
+        "",
+        "- **Quote-then-Critique 流程**（强制）: 在 Phase 2 Finding Validation 中，",
+        "  对每个你打算 Reject / Downgrade / 重新解释的 Finding，**必须先逐字引用**",
+        "  简报中该 Finding 的完整行（ID / Q / Importance / Confidence / Coverage / Verified / Finding 文本），",
+        "  然后再给出你的判断。这一步防止「打稻草人」——批评简报没说过的东西。",
+        "",
+        "  ✅ 正确流程示例：",
+        "  > 简报 F-007（逐字引用）: `| F-007 | Q6 | critical | 0.32 | 0.75 | ⚠️ downgraded |",
+        "  > Confirmed AI project. Signals: 10 tools; 2 LLM call sites. |`",
+        "  > 我的判断: 尽管 Verified=downgraded，但源码 `pyod/utils/_llm.py:65` 的",
+        "  > `build_routing_prompt` 函数确实是 LLM 路由调用，应升级为 verified。",
+        "",
+        "  ❌ 错误流程示例（伪造）:",
+        "  > 简报说 F-007 是 rejected, confidence=0.03，PyOD 被误判为非 AI 项目。",
+        "  > （简报其实说 verified, confidence=0.32，是 AI 项目）",
+        "",
+        "- **矛盾检测的双向验证**: 当你声称简报存在「自相矛盾」或「ConsistencyAnalyzer 漏检」时，",
+        "  必须先引用简报 §A `consistency.contradictions[]` 和 `consistency.warnings[]` 的实际内容，",
+        "  再说明你认为漏检了什么。不得声称简报说「无矛盾」而简报实际列出了矛盾。",
         "",
         "### Finding 引用规范",
         "",
@@ -9571,28 +10836,94 @@ class ReportGenerator {
       `You are an experienced software architect. Based on the evidence above, write an`,
       `research report for **${repoName}**. Save it as \`report.md\` in the working folder.`,
       "",
-      "### v2 Pipeline: 4-Phase Execution (plan0726.md Part 2)",
+      "### v3 Pipeline: 5-Phase Execution (Question-centric)",
       "",
-      "This brief uses the v2 pipeline with standardized Findings (see the ★ Findings section above).",
+      "This brief uses the **v3 Question-centric pipeline**. The key change is the new **Phase 2 — Evidence Synthesis**.",
+      "The script layer has already merged raw Findings into a **Question Resolution Table** (see the ★★ Evidence Synthesis section above).",
       `Total ${fCount} Findings; after verification: ${vSum.verified || 0} verified / ${fDowngraded} downgraded / ${fRejected} rejected.`,
       "",
-      "Execute in these 4 phases (do NOT skip):",
+      "Execute in these 5 phases (do NOT skip):",
       "",
       "**Phase 1 — Planning (low reasoning_effort)**: Identify which Research Questions Q1-Q11 are most valuable for this repo. No analysis needed, just prioritize.",
       "",
-      "**Phase 2 — Finding Validation (medium reasoning_effort)**: For each Finding in the ★ Findings section, perform Merge/Split/Reject/Verify:",
-      "- If multiple Findings describe the same phenomenon → Merge",
-      "- If one Finding conflates multiple phenomena → Split",
-      "- If verified=rejected or counter evidence outweighs support → Reject",
-      "- If counter evidence exists but is weaker than support → Keep and downgrade confidence",
-      "- Detect Conflicts between Findings (the script-level ConsistencyAnalyzer may have missed some)",
+      "**Phase 2 — Evidence Collection (medium reasoning_effort)**: Read the ★ Findings and ★★ Evidence Synthesis sections. Identify what evidence exists for each Question and what is missing. Do NOT draw conclusions yet.",
       "",
-      "**Phase 3 — Architecture Reasoning (high reasoning_effort, thinking=enabled)**: Based on validated Findings, answer Why/Impact/Tradeoff:",
-      "- Why: Why was it designed this way? (not 'what is it')",
-      "- Impact: What are the consequences of this design choice? (performance/maintainability/extensibility)",
+      "**Phase 3 — Evidence Synthesis (high reasoning_effort, thinking=enabled)**: This is the most critical phase. For each Resolution in ★★ Evidence Synthesis, produce a single conclusion using this structure:",
+      "",
+      "```",
+      "Research Question",
+      "       ↓",
+      "Evidence Collection (source code + AST + graph + manifest)",
+      "       ↓",
+      "Analyzer Claims (what each analyzer said, annotated with trustworthiness)",
+      "       ↓",
+      "Conflicts (which analyzers contradict each other)",
+      "       ↓",
+      "Final Verdict (single verdict anchored to source code)",
+      "       ↓",
+      "Conclusion (engineering meaning for the repository)",
+      "```",
+      "",
+      "Rules:",
+      "- **Source code wins**: source_code > ast > graph > manifest > regex > keyword > inference.",
+      "- **Single verdict**: Each Question must have one Final Verdict. Do NOT present 'Analyzer A says X / Analyzer B says not-X' and leave it to the reader.",
+      "- **Analyzers are not the protagonist**: If an analyzer conflicts with source code, state that the analyzer is a false negative / false positive, then proceed with the source-code fact. Do not treat the analyzer as a debating opponent.",
+      "",
+      "**Phase 4 — Architecture Reasoning (high reasoning_effort, thinking=enabled)**: Based on the Final Verdicts from Phase 3, answer Why/Impact/Tradeoff:",
+      "- Why: Why was it designed this way?",
+      "- Impact: What are the consequences for performance / maintainability / extensibility / security?",
       "- Tradeoff: What was sacrificed? What was gained?",
       "",
-      "**Phase 4 — Executive Summary (low reasoning_effort)**: Generate the Markdown report. Three-part Executive Summary: Identity / Key Discovery / Recommendation.",
+      "**Phase 5 — Executive Summary (low reasoning_effort)**: Generate the Markdown report. Three-part Executive Summary: Identity / Key Discovery / Recommendation.",
+      "",
+      "### Narrative Rules (MANDATORY)",
+      "",
+      "- **Never center the narrative around analyzer outputs.** Analyzer results are only supporting evidence.",
+      "  The report MUST describe **the repository itself**, **its architecture**, **its implementation**, and **engineering implications** — NOT analyzer behavior.",
+      "",
+      "- **Never narrate analyzer disagreements as the report body.**",
+      "  If multiple analyzers contradict each other, do NOT describe the disagreement chronologically.",
+      "  You MUST synthesize them into one conclusion: Repository Reality → Analyzer Accuracy Assessment → Final Conclusion.",
+      "",
+      "- **Report is Question-centric, not Finding-centric.**",
+      "  Every Trace / section must start from a Research Question, not from 'Finding A says...'.",
+      "  Correct structure: Question → Evidence → Analyzer Claims → Conflicts → Conclusion.",
+      "",
+      "- **Source code wins.** When analyzer output conflicts with source code, source code always prevails.",
+      "  You may write 'InformationFlowAnalyzer is a false negative here because FastAPI runtime routing is outside the static import graph', then continue stating the repository fact. Do not make the analyzer's limitation the body of the section.",
+      "",
+      "- **Findings are raw material, not report body.**",
+      "  Cite `[R-XXX]` (Resolution) for architectural conclusions; `[F-XXX]` (Finding) may appear only as supporting evidence in parentheses.",
+      "  Do not write whole paragraphs listing Finding 003 / Finding 007 / Finding 010.",
+      "",
+      "- **Every Trace must answer an architectural question.** It is forbidden to write a Trace as 'observations about analyzer X'.",
+      "  Trace titles should be questions or conclusions, e.g., 'Why does Studio need a separate inference service?' — NOT 'InformationFlow analysis results'.",
+      "",
+      "### Citation Rules",
+      "",
+      "- Architectural conclusions should cite Resolutions: `[R-006 @ Q6, verdict=yes, confidence=Medium]` (use the actual verdict/confidence from the Resolution table).",
+      "- Concrete evidence may cite Findings: `[F-005 @ Q4, confidence=0.45]` or source paths like `studio/backend/core/inference/inference.py:1427`.",
+      "- Do NOT cite a raw Finding to argue a conclusion that contradicts its Resolution.",
+      "- Do NOT use consecutive sentences like 'Analyzer A believes... but Analyzer B believes...'.",
+      "",
+      "### Report Structure (Question-centric)",
+      "",
+      "1. **Executive Summary** — Three-part: Identity / Key Discovery / Recommendation.",
+      "2. **Research Traces** — Each Trace must follow:",
+      "   - **Question**: What architectural question does this Trace answer?",
+      "   - **Evidence**: Source-code / AST / graph / manifest evidence (not analyzer output).",
+      "   - **Analyzer Claims**: Analyzer conclusions (short, with trustworthiness/limitations noted).",
+      "   - **Conflicts & Resolution**: If contradictions exist, give a single verdict.",
+      "   - **Conclusion**: A factual statement about the repository architecture.",
+      "   - **Why it matters**: How would the system be misread without this insight?",
+      "3. **Negative Findings** — Explicitly list what was NOT found and its research-boundary significance.",
+      "4. **Architecture Smells** — Potential design risks, phrased as 'Potential'.",
+      "5. **Interesting Decisions** — Decision / why interesting / alternatives / tradeoffs.",
+      "6. **Repository Positioning** — Ecosystem positioning.",
+      "7. **Reusable Pattern Catalog** — Structured table of reusable patterns.",
+      "8. **Architecture Evolution** — Architectural evolution.",
+      "9. **Reading Guide** — Reading guide.",
+      "10. **Open Questions** — Open questions for follow-up research.",
       "",
       "### Constraints (Do NOT)",
       "",
@@ -9603,6 +10934,57 @@ class ReportGenerator {
       "- **Do NOT** cite verified=rejected Findings as conclusions.",
       "- **Do NOT** write Architecture Score / Radar / Heatmap / SWOT / Best Practice / Future Work sections (low value, plan0726.md Part 7).",
       "- **Do NOT** pad the report with low-value Traces — 5 sharp Traces beat 8 mediocre ones.",
+      "",
+      "### Anti-Fabrication Constraints (HIGHEST PRIORITY)",
+      "",
+      "Audits of prior reports found the LLM systematically fabricated Finding citations —",
+      "inventing IDs, altering confidence values, flipping verified status, and even",
+      "inverting Finding content. The following rules are MANDATORY; violating any one",
+      "is a critical error:",
+      "",
+      "- **ID Integrity**: Every `[F-XXX]` you cite MUST correspond to a Finding ID in the",
+      "  brief's ★ Findings section. Do NOT invent new IDs, do NOT skip IDs, and do NOT",
+      "  attribute F-005's content to F-010.",
+      "",
+      "- **Confidence Verbatim**: The `confidence=X.XX` in your citation MUST match the",
+      "  brief's Findings table Confidence column **character-for-character** (including",
+      "  decimal places). Do NOT round, alter, or rewrite from memory.",
+      "",
+      "- **No Status Inversion**: A Finding marked `✅ verified` in the brief MUST NOT be",
+      "  described as `rejected` or `downgraded` in your report, and vice versa. To",
+      "  challenge a verified Finding, first quote the brief row verbatim, then provide",
+      "  source-code counter-evidence — but **do NOT modify the Verified field itself**.",
+      "",
+      "- **Number Integrity**: All counts (tools/prompts/evals/tests) MUST be quoted",
+      "  verbatim from the brief. If the brief says 'detected 10 tools', the report",
+      "  must NOT say '12 tools' or '8 tools'. If you doubt a count, raise it in",
+      "  Architecture Smells — do NOT silently alter the number.",
+      "",
+      "- **No Content Fabrication**: When quoting a Finding's text, it MUST match the",
+      "  brief's `finding` field. If brief F-006 reads 'Detected 10 tools', the report",
+      "  must NOT say 'No tools detected'.",
+      "",
+      "- **Quote-then-Critique Workflow** (MANDATORY): In Phase 2 Finding Validation,",
+      "  for every Finding you intend to Reject / Downgrade / reinterpret, you MUST",
+      "  **first quote the brief's full row verbatim** (ID / Q / Importance / Confidence",
+      "  / Coverage / Verified / Finding text), THEN give your judgment. This prevents",
+      "  'strawman' critiques — attacking claims the brief never made.",
+      "",
+      "  ✅ Correct workflow example:",
+      "  > Brief F-007 (verbatim): `| F-007 | Q6 | critical | 0.32 | 0.75 | ⚠️ downgraded |",
+      "  > Confirmed AI project. Signals: 10 tools; 2 LLM call sites. |`",
+      "  > My judgment: Although Verified=downgraded, source code `pyod/utils/_llm.py:65`",
+      "  > `build_routing_prompt` is a real LLM routing call — should be upgraded to verified.",
+      "",
+      "  ❌ Incorrect workflow (fabrication):",
+      "  > Brief says F-007 is rejected, confidence=0.03, PyOD misclassified as non-AI.",
+      "  > (Brief actually says verified, confidence=0.32, IS an AI project)",
+      "",
+      "- **Contradiction Bidirectional Check**: When you claim the brief is 'self-",
+      "  contradictory' or 'ConsistencyAnalyzer missed a contradiction', you MUST first",
+      "  quote the actual contents of brief §A `consistency.contradictions[]` and",
+      "  `consistency.warnings[]`, then explain what you believe was missed. Do NOT",
+      "  claim the brief says 'no contradictions' when it actually lists some.",
       "",
       "### Finding Citation Format",
       "",
