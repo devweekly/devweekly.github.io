@@ -231,7 +231,7 @@ The LLM never traverses the repository directly — it queries the Evidence Stor
 
 ### Architecture Semantics Layer (Inference Engines)
 
-Added 2026-07. Seven rule-based analyzers that elevate the Evidence Store from fact extraction to architecture reasoning. Each produces structured JSON with confidence scores and evidence, surfaced in Evidence Brief §2.5 and in `analyze-output.mjs` `summarize()`.
+Seven rule-based analyzers elevate the Evidence Store from fact extraction to architecture reasoning. Each produces structured JSON with confidence scores and evidence, surfaced in Evidence Brief §2.5 and in `analyze-output.mjs` `summarize()`.
 
 | Analyzer | Input | Output | Key Value |
 |----------|-------|--------|-----------|
@@ -253,39 +253,37 @@ Added 2026-07. Seven rule-based analyzers that elevate the Evidence Store from f
 - `InformationFlowAnalyzer` LLM-call-site detection is regex-based on symbol names (`LLM_NAME_RE` covers openai/anthropic/claude/gpt/llm/gemini/mistral/deepseek/qwen/bedrock/vertex/completion/inference/generate, etc.). This is deliberately broad to maximize recall, but produces false positives on repos with generic names like `palette_generator` or `DesignSystemFlow` (open-design). Tuning precision without losing recall requires language-specific call-site analysis (e.g., resolving `openai.chat.completions.create(...)` via call graph, not name regex).
 - `reachesLLM` may be false-negative for Rust projects: `mod llm;` declarations and `use crate::llm` imports are not resolved to full module paths in the architecture graph, so the LLM call-site node has 0 in/out edges and is never reached by BFS. Verified on buzz (`crates.buzz-agent.src.llm` is a graph node with 0 edges).
 
-**Matching strategy** (added 2026-07, iterated through deep-comparison on 14 ref-only repos):
+**Matching strategy**: All three matching layers below use segment/token-prefix match (not substring) to avoid systematic false positives:
 
-The three matching layers below were all migrated from `String.includes()` substring match to segment/token-prefix match, after deep-comparison revealed systematic false positives:
+| Layer | Match strategy | Rationale |
+|-------|-----------------|-----------|
+| `ArchitecturePatternAnalyzer` dir signals | `seg === sig \|\| seg.startsWith(sig+"-") \|\| seg.startsWith(sig+"_")` | Prevents "ast" matching "contrast"; "ir" matching "first"/"directory" |
+| `ResponsibilityAnalyzer` dir keywords | Same segment match as above | Prevents "db" matching "dbeaver" (all 22 dbeaver modules falsely tagged Persistence) |
+| `ResponsibilityAnalyzer` symbol keywords | `tokenizeSymbol(s).some(t => t.startsWith(kw))` | Prevents "db" matching "couldBeEmoji" (couldBe→db) |
 
-| Layer | Old (substring) | New (segment/token) | False positive fixed |
-|-------|-----------------|---------------------|----------------------|
-| `ArchitecturePatternAnalyzer` dir signals | `d.includes(sig)` | `seg === sig \|\| seg.startsWith(sig+"-") \|\| seg.startsWith(sig+"_")` | "ast" matched "contrast"; "ir" matched "first"/"directory" → dbeaver/ng-zorro-antd/topcoat falsely tagged Compiler |
-| `ResponsibilityAnalyzer` dir keywords | `modNameLower.includes(kw)` | Same segment match as above | "db" matched "dbeaver" → all 22 dbeaver modules tagged Persistence |
-| `ResponsibilityAnalyzer` symbol keywords | `s.toLowerCase().includes(kw)` | `tokenizeSymbol(s).some(t => t.startsWith(kw))` | "db" matched "couldBeEmoji" (couldBe→db) → pi tui tagged Persistence |
+`tokenizeSymbol()` splits CamelCase / snake_case / kebab-case names into lowercase tokens: `resetCapabilitiesCache` → `["reset","capabilities","cache"]`, `couldBeEmoji` → `["could","be","emoji"]`. Token-prefix matching supports intentional prefix keywords like `retriev` (matches token `retrieve`, `retrieval`) and `persist` (matches `persistence`, `persistent`).
 
-`tokenizeSymbol()` splits CamelCase / snake_case / kebab-case names into lowercase tokens: `resetCapabilitiesCache` → `["reset","capabilities","cache"]`, `couldBeEmoji` → `["could","be","emoji"]`. Token-prefix matching still supports intentional prefix keywords like `retriev` (matches token `retrieve`, `retrieval`) and `persist` (matches `persistence`, `persistent`).
+**Minimum-score threshold**: `ResponsibilityAnalyzer` requires `bestScore ≥ 2`. One directory match (score 2) or two symbol matches (score 2) are minimum evidence. A single symbol match (score 1) is too weak — e.g., `resetCapabilitiesCache` alone should not tag the entire `tui/` module as "Persistence".
 
-**Minimum-score threshold**: `ResponsibilityAnalyzer` now requires `bestScore ≥ 2` (was `> 0`). One directory match (score 2) or two symbol matches (score 2) are minimum evidence. A single symbol match (score 1) is too weak — e.g., `resetCapabilitiesCache` alone should not tag the entire `tui/` module as "Persistence".
+**Test-file exclusion**: `ResponsibilityAnalyzer` skips test files via `isTestPath()` when building the module→files map, preventing test fixtures with database/cache setup (e.g., `tmp_db`, `test_cache`) from polluting module responsibility classification.
 
-**Test-file exclusion**: `ResponsibilityAnalyzer` now skips test files via `isTestPath()` when building the module→files map. Previously, test fixtures with database/cache setup (e.g., `tmp_db`, `test_cache`) polluted module responsibility classification — `tests/` directories were being tagged "Persistence" in dbeaver and custodian-kernel.
+**LLM Interface keyword refinement**: The LLM Interface rule uses only LLM-specific terms: `llm`, `inference`, `openai`, `anthropic`, `claude`, `gemini`, `mistral`, `deepseek`, `qwen`, `bedrock`, `vertex`, `completion`. Generic keywords (`model`, `client`, `provider`) are excluded — they match data models, HTTP clients, and any provider, causing false positives on non-AI repos (e.g., dbeaver.model is correctly classified as "Persistence" containing `DBDatabaseException`, `getStorageId`, not "LLM Interface").
 
-**LLM Interface keyword refinement**: Removed generic keywords `model`, `client`, `provider` from the LLM Interface rule (they matched data models, HTTP clients, and any provider, causing false positives on non-AI repos like dbeaver). Kept only LLM-specific terms: `llm`, `inference`, `openai`, `anthropic`, `claude`, `gemini`, `mistral`, `deepseek`, `qwen`, `bedrock`, `vertex`, `completion`. This correctly reclassified dbeaver.model from "LLM Interface" (false positive — it's a data model) to "Persistence" (correct — it contains `DBDatabaseException`, `getStorageId`).
+**Monorepo pattern**: `required` dirSignals threshold is 1 — a single `packages/` directory plus ≥3 manifests (multiManifestCheck) is sufficient evidence. A single `packages/` dir correctly classifies pi (5 manifests under `packages/`) as "Monorepo(0.60)".
 
-**Monorepo pattern**: Lowered `required` dirSignals from 2 to 1 — a single `packages/` directory plus ≥3 manifests (multiManifestCheck) is sufficient evidence. Previously, pi (5 manifests under `packages/`) was reported "Unknown" because it only had 1 of [packages, apps, libs, modules]; now correctly "Monorepo(0.60)".
-
-**Verified reclassifications** (14 ref-only repos, 2026-07-25):
+**Verified reclassifications** (14 ref-only repos):
 - dbeaver: Compiler→Plugin; dbeaver.model: LLM Interface→Persistence; tests/: excluded
 - pi: Unknown→Monorepo; tui: Persistence→Uncategorized; packages/ai: I/O&Transport→LLM Interface
 - pyod: Safety&Guardrails→Quality Assessment (guard/guardrail keywords no longer match via token-prefix)
 - custodian-kernel: custodian: LLM Interface→Safety & Guardrails; tests/: excluded
 
-### Evidence Quality Layer (added 2026-07-26)
+### Evidence Quality Layer
 
-The biggest report-quality win is no longer "more analyzers" but **more metadata per conclusion**. Two script-layer additions (no new analyzer) make the Evidence Brief self-disclose where each conclusion comes from and where analyzers disagree:
+Two script-layer additions make the Evidence Brief self-disclose where each conclusion comes from and where analyzers disagree:
 
 #### A. ConsistencyAnalyzer (post-processor, runs LAST)
 
-A new analyzer class registered at the end of `ANALYZERS`. It compares claims across the 7 inference engines and emits two lists:
+An analyzer class registered at the end of `ANALYZERS`. It compares claims across the 7 inference engines and emits two lists:
 
 | Output | Severity | Triggered when |
 |--------|----------|----------------|
@@ -306,11 +304,11 @@ Six rules are implemented (C1–C4 contradictions, C5–C6 warnings):
 
 **Brief placement**: `_consistencyFindings()` is the FIRST section in the brief (before Executive Brief, before Architecture Insights). The prompt header reads "系统自己发现自己的矛盾，是最值钱的研究线索。LLM 应优先调查矛盾，再决定信任哪个分析器。"
 
-**LLM prompt rule** (added to `_llmPrompt()`): Every high-severity contradiction MUST become a Research Trace (or be merged into one). If the contradiction resolves to an analyzer false positive, the Trace must say which analyzer misjudged and why. If unresolvable, it goes to Open Questions.
+**LLM prompt rule**: Every high-severity contradiction MUST become a Research Trace (or be merged into one). If the contradiction resolves to an analyzer false positive, the Trace must say which analyzer misjudged and why. If unresolvable, it goes to Open Questions.
 
 #### B. EvidenceMeta (analyzer self-disclosure via `_meta`)
 
-Four inference engines now ship a `_meta` block alongside their primary output. The block is surfaced in Evidence Brief §2.5 under "### 证据质量元信息（分析器自评）":
+Four inference engines ship a `_meta` block alongside their primary output. The block is surfaced in Evidence Brief §2.5 under "### 证据质量元信息（分析器自评）":
 
 ```typescript
 interface EvidenceMeta {
@@ -331,20 +329,17 @@ interface EvidenceMeta {
 | `InformationFlowAnalyzer` | regex+graph | **weak** | Recall-oriented LLM_NAME_RE; known FP on `palette_generator`, `Completions` type names; Rust `mod` resolution gap |
 | `CapabilityOntologyAnalyzer` | inference | moderate | Heuristic maturity score; gated by AI context |
 
-**LLM consumption rule** (in `_llmPrompt()`): When citing analyzer claims, LLM should reference `strength`. `weak`-analyzer claims require LLM source-code verification before trusting. This is the script-layer hook for the user's principle "不是全部一样可靠".
+**LLM consumption rule**: When citing analyzer claims, LLM should reference `strength`. `weak`-analyzer claims require LLM source-code verification before trusting.
 
 **What this enables in the report**:
 - "ArchitecturePatternAnalyzer (strength=moderate) says X, but its _meta.limitations note Y; we verified via source that..."
 - "InformationFlowAnalyzer (strength=weak) detected 3 LLM call sites — we treat this as a lead, not a conclusion, and inspected each call site manually."
-- Contrast with the old behavior where every analyzer output was implicitly equally reliable.
 
-### v2 Pipeline: Findings Store + Verification Loop (added 2026-07-26)
+### Findings Store + Verification Loop
 
-Plan reference: `plan0726.md` — Research Agent v2 upgrade.
+Between Evidence Store and LLM, a **Findings Store** data layer makes Findings the canonical unit the LLM consumes; raw analyzer output becomes supporting evidence.
 
-The biggest v2 change is **not** new analyzers but a new **data layer** between Evidence Store and LLM: the **Findings Store**. Findings are the canonical unit the LLM consumes; raw analyzer output becomes supporting evidence.
-
-#### Pipeline (v2)
+#### Pipeline
 
 ```
 Repository
@@ -353,19 +348,19 @@ Repository
 Fact Extractors (11) + Inference Engines (7) + ConsistencyAnalyzer
       │
       ▼
-Evidence Store (raw analyzer output, unchanged)
+Evidence Store (raw analyzer output)
       │
       ▼
-FindingsGenerator          ← NEW: Evidence → Question-bound Findings
+FindingsGenerator          (Evidence → Question-bound Findings)
       │
       ▼
-VerificationLoop           ← NEW: Finding → Counter Evidence → Verified
+VerificationLoop           (Finding → Counter Evidence → Verified)
       │
       ▼
 Verified Findings Store (store.findings)
       │
       ▼
-ReportGenerator._findingsSection()  ← FIRST section in Evidence Brief
+ReportGenerator._findingsSection()  (FIRST section in Evidence Brief)
       │
       ▼
 LLM (4-phase: Planning → Validation → Reasoning → Reporting)
@@ -374,7 +369,7 @@ LLM (4-phase: Planning → Validation → Reasoning → Reporting)
 report.md
 ```
 
-#### A. FindingsGenerator (script-layer, deterministic)
+#### A. FindingsGenerator
 
 **Input**: EvidenceStore (all analyzer outputs)
 **Output**: `store.findings = { schema, questions, findings[], summary }`
@@ -412,7 +407,7 @@ interface Finding {
 | Q7 | How is correctness validated (tests vs evaluation)? | medium |
 | Q8 | What contradicts the README or self-presentation? | high |
 
-**Confidence auto-calculation** (no more "High/Med/Low"):
+**Confidence auto-calculation**:
 
 | Source | Weight | Rationale |
 |--------|--------|-----------|
@@ -426,7 +421,7 @@ interface Finding {
 
 Sum of distinct source weights, capped at 0.95. Example: `ast + graph + git = 0.80`.
 
-#### B. VerificationLoop (script-layer, deterministic)
+#### B. VerificationLoop
 
 **Input**: FindingsGenerator output + EvidenceStore
 **Output**: Verified Findings (same schema, with `verified` and `verificationNote` filled)
@@ -439,13 +434,13 @@ Sum of distinct source weights, capped at 0.95. Example: `ast + graph + git = 0.
 | V2 | After V1, confidence < 0.3 | Mark rejected (too weak to publish) |
 | V3 | Negative finding (no support, has checkedLocations, no counter) | Mark verified (absence is evidence) |
 
-#### C. ReportGenerator changes
+#### C. ReportGenerator
 
-- **New `_findingsSection()`**: Placed as the **FIRST** section in Evidence Brief (before consistency, before executive brief). Displays Findings table + detailed JSON-schema-structured Findings.
-- **New `_findings()` lazy method**: Runs FindingsGenerator + VerificationLoop, caches result, persists to `store.findings`.
-- **LLM Prompt updated**: 4-phase pipeline (Planning → Validation → Reasoning → Reporting) with per-phase `reasoning_effort` guidance. 7 `Do NOT` Constraints. Finding citation format `[F-001 @ Q1, confidence=0.85, verified]`.
+- **`_findingsSection()`**: Placed as the **FIRST** section in Evidence Brief (before consistency, before executive brief). Displays Findings table + detailed JSON-schema-structured Findings.
+- **`_findings()` lazy method**: Runs FindingsGenerator + VerificationLoop, caches result, persists to `store.findings`.
+- **LLM Prompt**: 4-phase pipeline (Planning → Validation → Reasoning → Reporting) with per-phase `reasoning_effort` guidance. 7 `Do NOT` Constraints. Finding citation format `[F-001 @ Q1, confidence=0.85, verified]`.
 
-#### D. LLM 4-phase pipeline (plan0726.md Part 2)
+#### D. LLM 4-phase pipeline
 
 | Phase | Script output | LLM work | reasoning_effort |
 |-------|---------------|----------|------------------|
@@ -454,9 +449,9 @@ Sum of distinct source weights, capped at 0.95. Example: `ast + graph + git = 0.
 | 3. Architecture Reasoning | Verified Findings + Evidence Store | Why / Impact / Tradeoff | high (thinking=enabled) |
 | 4. Executive Summary | — | Generate Markdown report | low |
 
-#### E. Constraints (plan0726.md Part 3)
+#### E. Constraints
 
-7 `Do NOT` rules added to LLM prompt:
+7 `Do NOT` rules in LLM prompt:
 1. Do NOT recommend technologies not present
 2. Do NOT invent architecture not supported by evidence
 3. Do NOT speculate beyond Findings + Evidence Store
@@ -488,7 +483,7 @@ The ToolsAnalyzer uses three complementary detection strategies to cover the div
    tools like buzz's `load_skill`.
 4. **Script-tool cross-reference** — Entrypoints labeled "tool" inside `skills/`/`bundled_skills/`/`tools/`/`agents/`/`hooks/` directories (e.g., `execute.py`) are added as script-tools.
 
-   **Guards against false positives** (added 2026-07):
+   **Guards against false positives**:
    - Barrel exports (`index.ts`/`index.js`/`index.py`) are excluded — they're
      package entrypoints, not standalone tools. Without this filter, open-design
      produced 121 false tools and pi produced 52 false tools.
@@ -511,7 +506,7 @@ The ToolsAnalyzer uses three complementary detection strategies to cover the div
      Observed: `idea_spark` appeared 4x in ResearchStudio (68→10 tools after
      dedup), `sandbox_available` 2x in custodian-kernel.
 
-### Capability Ontology AI-Context Gate (added 2026-07)
+### Capability Ontology AI-Context Gate
 
 The 10 capability domains (Planning/Execution/Retrieval/Memory/Evaluation/
 Safety/Tool/Context/IO/Persistence) are **AI-agent-specific**. Applying them
@@ -525,21 +520,15 @@ all capabilities are reported as `"n/a"` with a clear reason. The
 `capabilityOntology` output includes an `isAIProject` boolean field.
 
 **Verified on 14 ref-only repos** (5 non-AI repos correctly gated):
-- dbeaver (SQL client): `isAIProject: false` — previously had strong=execution,memory,context,persistence
-- pyod (ML library): `isAIProject: false` — previously had strong=evaluation
-- ng-zorro-antd (UI library): `isAIProject: false` — previously had strong=retrieval + 8 weak
-- topcoat (styling): `isAIProject: false` — previously had strong=memory,context,io
-- litehybrid (Rust): `isAIProject: false` — previously had weak=memory,safety,persistence
+- dbeaver (SQL client): `isAIProject: false`
+- pyod (ML library): `isAIProject: false`
+- ng-zorro-antd (UI library): `isAIProject: false`
+- topcoat (styling): `isAIProject: false`
+- litehybrid (Rust): `isAIProject: false`
 
-**LLM call-site regex tightened**: `LLM_NAME_RE` was broadened in a prior
-iteration to include `generate`, `complete`, `chat`, `inference`, `vertex`,
-which caused false positives on non-AI repos (ng-zorro-antd's `color.generate`,
-dbeaver's `DeploymentId.java`). Tightened to LLM-specific provider/model names
-only: `openai|anthropic|claude|gpt|llm|chat_completion|gemini|mistral|deepseek|qwen|bedrock`.
+**LLM call-site regex**: `LLM_NAME_RE` matches LLM-specific provider/model names only: `openai|anthropic|claude|gpt|llm|chat_completion|gemini|mistral|deepseek|qwen|bedrock`. Generic terms (`generate`, `complete`, `chat`, `inference`, `vertex`) are excluded — they cause false positives on non-AI repos (ng-zorro-antd's `color.generate`, dbeaver's `DeploymentId.java`).
 
-**Capability keyword matching**: `CAP_KEYWORDS` migrated from `name.includes(kw)`
-substring match to `tokenizeSymbol()` token-prefix match (same fix as
-ResponsibilityAnalyzer). Generic keywords (`run`, `call`, `save`, `load`,
+**Capability keyword matching**: `CAP_KEYWORDS` uses `tokenizeSymbol()` token-prefix match (same strategy as ResponsibilityAnalyzer). Generic keywords (`run`, `call`, `save`, `load`,
 `http`, `request`, `response`, `server`, `route`, `buffer`, `session`,
 `cache`) were removed because they match common software functions.
 
@@ -550,9 +539,9 @@ The EntrypointsAnalyzer no longer reclassifies SDK entrypoints (`index.ts`/
 These files are barrel exports, not executable tools — preserving their `sdk`
 type prevents the ToolsAnalyzer from picking them up as script-tools.
 
-### Java / JVM Support (added 2026-07)
+### Java / JVM Support
 
-Java projects are now first-class citizens:
+Java projects are first-class citizens:
 
 - **Manifest detection**: `pom.xml` (Maven) and `build.gradle` / `build.gradle.kts`
   (Gradle) are recognized. The pom.xml parser extracts groupId/artifactId/version
@@ -570,8 +559,8 @@ Java projects are now first-class citizens:
 
 The EvaluationsAnalyzer restricts name-based detection to **source files only** — images (`.webp`, `.jpg`), blog posts (`.md`), and other non-source files with "benchmark"/"eval" in the filename are NOT classified as evaluation files.
 
-**Tightened heuristics** (2026-07):
-- **Name-based detection** now requires LLM-specific context in the file
+**Tightened heuristics**:
+- **Name-based detection** requires LLM-specific context in the file
   content (at least one of: `prompt`, `llm`, `model`, `judge`, `agent`,
   `dataset`, `benchmark`, `harness`, `system_prompt`, `chat`, `completion`,
   `embedding`, `retrieval`, `rag`). This filters out Java `DBPEvaluationContext.java`
@@ -579,7 +568,7 @@ The EvaluationsAnalyzer restricts name-based detection to **source files only** 
 - **Package/import declarations are stripped** before LLM-context testing,
   so Java package names like `org.jkiss.dbeaver.model` don't trigger a false
   `model` match.
-- **Content-based detection threshold** raised from ≥2 to ≥3 keyword matches
+- **Content-based detection threshold** is ≥3 keyword matches
   (or ≥2 matches + LLM context). This filters out generic JS libraries
   (e.g., `leaflet.js` matched "metric" + "accuracy" + "score" from CSS/map code).
 
@@ -666,7 +655,7 @@ The LLM agent reads the Evidence Brief, optionally dives deeper into specific JS
 Importance → Question → Evidence → Analysis → Counter Evidence → Fact / Interpretation → Why it matters → Confidence
 ```
 
-**Report quality principles** (added 2026-07, iterated from senior-architect review):
+**Report quality principles**:
 
 | Principle | Why it matters |
 |-----------|----------------|
