@@ -125,10 +125,10 @@ Each JSON file is produced by `research-repo.mjs`. Key schemas:
 **`discovery.json`**:
 ```json
 {
-  "repoName": "custodian-kernel",
+  "repoName": "example-project",
   "repoPath": "/abs/path",
-  "manifest": { "language": "python", "entry": "pyproject.toml", "name": "custodian-kernel", "version": "0.4.0" },
-  "topLevelDirs": ["custodian", "caduceus", "tests"],
+  "manifest": { "language": "python", "entry": "pyproject.toml", "name": "example-project", "version": "1.0.0" },
+  "topLevelDirs": ["src", "tests", "docs"],
   "fileCount": { ".py": 120, ".md": 45 },
   "testFileCount": 48
 }
@@ -141,8 +141,8 @@ Each JSON file is produced by `research-repo.mjs`. Key schemas:
   "totalEdges": 435,
   "cycles": [["module.a", "module.b"]],
   "centrality": {
-    "topByInDegree": [{ "id": "custodian.types", "inDegree": 15 }],
-    "topByPageRank": [{ "id": "custodian.types", "score": 0.082 }]
+    "topByInDegree": [{ "id": "core.types", "inDegree": 15 }],
+    "topByPageRank": [{ "id": "core.types", "score": 0.082 }]
   }
 }
 ```
@@ -178,7 +178,7 @@ Each `02-evidence/*.md` file follows this format:
 
 ### Naming Convention
 
-- Directories: `research-{repo-basename}-{YYYYMMDD}` (e.g., `research-custodian-kernel-20260721`)
+- Directories: `research-{repo-basename}-{YYYYMMDD}` (e.g., `research-my-project-20260721`)
 - Evidence Store JSON: `{analysis-name}.json` in kebab-case
 - LLM evidence: `{focus-area}.md` in kebab-case
 
@@ -249,33 +249,27 @@ Seven rule-based analyzers elevate the Evidence Store from fact extraction to ar
 **Rule-based, not LLM** — per architectural directive. All 7 analyzers use deterministic rules (directory naming, symbol patterns, graph shape, git history). The LLM interprets their output; it does not generate it.
 
 **Known limitations** (for future iteration):
-- Java Eclipse plugin paths (`plugins/org.jkiss.dbeaver.*`) confuse module-level grouping because dots in directory names collide with the dotted module-ID scheme.
-- `InformationFlowAnalyzer` LLM-call-site detection is regex-based on symbol names (`LLM_NAME_RE` covers openai/anthropic/claude/gpt/llm/gemini/mistral/deepseek/qwen/bedrock/vertex/completion/inference/generate, etc.). This is deliberately broad to maximize recall, but produces false positives on repos with generic names like `palette_generator` or `DesignSystemFlow` (open-design). Tuning precision without losing recall requires language-specific call-site analysis (e.g., resolving `openai.chat.completions.create(...)` via call graph, not name regex).
-- `reachesLLM` may be false-negative for Rust projects: `mod llm;` declarations and `use crate::llm` imports are not resolved to full module paths in the architecture graph, so the LLM call-site node has 0 in/out edges and is never reached by BFS. Verified on buzz (`crates.buzz-agent.src.llm` is a graph node with 0 edges).
+- Java Eclipse plugin paths (`plugins/org.example.*`) confuse module-level grouping because dots in directory names collide with the dotted module-ID scheme.
+- `InformationFlowAnalyzer` LLM-call-site detection is regex-based on symbol names (`LLM_NAME_RE` covers openai/anthropic/claude/gpt/llm/gemini/mistral/deepseek/qwen/bedrock/vertex/completion/inference/generate, etc.). This is deliberately broad to maximize recall, but produces false positives on repos with generic names like `palette_generator` or `DesignSystemFlow`. Tuning precision without losing recall requires language-specific call-site analysis (e.g., resolving `openai.chat.completions.create(...)` via call graph, not name regex).
+- `reachesLLM` may be false-negative for Rust projects: `mod llm;` declarations and `use crate::llm` imports are not resolved to full module paths in the architecture graph, so the LLM call-site node has 0 in/out edges and is never reached by BFS.
 
 **Matching strategy**: All three matching layers below use segment/token-prefix match (not substring) to avoid systematic false positives:
 
 | Layer | Match strategy | Rationale |
 |-------|-----------------|-----------|
 | `ArchitecturePatternAnalyzer` dir signals | `seg === sig \|\| seg.startsWith(sig+"-") \|\| seg.startsWith(sig+"_")` | Prevents "ast" matching "contrast"; "ir" matching "first"/"directory" |
-| `ResponsibilityAnalyzer` dir keywords | Same segment match as above | Prevents "db" matching "dbeaver" (all 22 dbeaver modules falsely tagged Persistence) |
+| `ResponsibilityAnalyzer` dir keywords | Same segment match as above | Prevents "db" matching "database" (all database modules falsely tagged Persistence) |
 | `ResponsibilityAnalyzer` symbol keywords | `tokenizeSymbol(s).some(t => t.startsWith(kw))` | Prevents "db" matching "couldBeEmoji" (couldBe→db) |
 
 `tokenizeSymbol()` splits CamelCase / snake_case / kebab-case names into lowercase tokens: `resetCapabilitiesCache` → `["reset","capabilities","cache"]`, `couldBeEmoji` → `["could","be","emoji"]`. Token-prefix matching supports intentional prefix keywords like `retriev` (matches token `retrieve`, `retrieval`) and `persist` (matches `persistence`, `persistent`).
 
-**Minimum-score threshold**: `ResponsibilityAnalyzer` requires `bestScore ≥ 2`. One directory match (score 2) or two symbol matches (score 2) are minimum evidence. A single symbol match (score 1) is too weak — e.g., `resetCapabilitiesCache` alone should not tag the entire `tui/` module as "Persistence".
+**Minimum-score threshold**: `ResponsibilityAnalyzer` requires `bestScore ≥ 2`. One directory match (score 2) or two symbol matches (score 2) are minimum evidence. A single symbol match (score 1) is too weak — e.g., `resetCapabilitiesCache` alone should not tag the entire module as "Persistence".
 
 **Test-file exclusion**: `ResponsibilityAnalyzer` skips test files via `isTestPath()` when building the module→files map, preventing test fixtures with database/cache setup (e.g., `tmp_db`, `test_cache`) from polluting module responsibility classification.
 
-**LLM Interface keyword refinement**: The LLM Interface rule uses only LLM-specific terms: `llm`, `inference`, `openai`, `anthropic`, `claude`, `gemini`, `mistral`, `deepseek`, `qwen`, `bedrock`, `vertex`, `completion`. Generic keywords (`model`, `client`, `provider`) are excluded — they match data models, HTTP clients, and any provider, causing false positives on non-AI repos (e.g., dbeaver.model is correctly classified as "Persistence" containing `DBDatabaseException`, `getStorageId`, not "LLM Interface").
+**LLM Interface keyword refinement**: The LLM Interface rule uses only LLM-specific terms: `llm`, `inference`, `openai`, `anthropic`, `claude`, `gemini`, `mistral`, `deepseek`, `qwen`, `bedrock`, `vertex`, `completion`. Generic keywords (`model`, `client`, `provider`) are excluded — they match data models, HTTP clients, and any provider, causing false positives on non-AI repos.
 
-**Monorepo pattern**: `required` dirSignals threshold is 1 — a single `packages/` directory plus ≥3 manifests (multiManifestCheck) is sufficient evidence. A single `packages/` dir correctly classifies pi (5 manifests under `packages/`) as "Monorepo(0.60)".
-
-**Verified reclassifications** (14 ref-only repos):
-- dbeaver: Compiler→Plugin; dbeaver.model: LLM Interface→Persistence; tests/: excluded
-- pi: Unknown→Monorepo; tui: Persistence→Uncategorized; packages/ai: I/O&Transport→LLM Interface
-- pyod: Safety&Guardrails→Quality Assessment (guard/guardrail keywords no longer match via token-prefix)
-- custodian-kernel: custodian: LLM Interface→Safety & Guardrails; tests/: excluded
+**Monorepo pattern**: `required` dirSignals threshold is 1 — a single `packages/` directory plus ≥3 manifests (multiManifestCheck) is sufficient evidence.
 
 ### Evidence Quality Layer
 
@@ -525,8 +519,8 @@ Sum of distinct source weights, capped at 0.95. Example: `ast + graph + git = 0.
 
 #### Verified behavior
 
-- **custodian-kernel**: 10 Findings, all verified (no contradictions). Confidence range 0.02-0.55.
-- **ng-zorro-antd**: 10 Findings, 9 verified + 1 rejected (F-010, confidence 0.02 < 0.3 after counter evidence from C1 contradiction).
+- **AI projects**: 10-17 Findings, most verified. Confidence range 0.02-0.55.
+- **Non-AI projects**: 10 Findings, some rejected when confidence < 0.3 after counter evidence from contradictions.
 
 ### Tool Detection Strategies
 
@@ -543,31 +537,24 @@ The ToolsAnalyzer uses three complementary detection strategies to cover the div
    ```
    Mode 2 (constant reference) resolves `name: CONSTANT.to_owned()` by scanning
    for `const CONSTANT: &str = "..."` in the same file. Catches Rust builtin
-   tools like buzz's `load_skill`.
+   tools that use string constants for tool names.
 4. **Script-tool cross-reference** — Entrypoints labeled "tool" inside `skills/`/`bundled_skills/`/`tools/`/`agents/`/`hooks/` directories (e.g., `execute.py`) are added as script-tools.
 
    **Guards against false positives**:
    - Barrel exports (`index.ts`/`index.js`/`index.py`) are excluded — they're
-     package entrypoints, not standalone tools. Without this filter, open-design
-     produced 121 false tools and pi produced 52 false tools.
-   - The `plugins/` directory is NOT treated as a tool space — Eclipse/IDE
-     plugins (dbeaver) and webpack/vite plugins (apps/daemon/src/plugins/) are
-     not agent tools.
+     package entrypoints, not standalone tools.
+   - The `plugins/` directory is NOT treated as a tool space — IDE plugins and
+     build-tool plugins are not agent tools.
    - Test files are filtered via `isTestPath()` before AST and filename-based
-     entrypoint detection, so test fixtures with `main()` (e.g.
-     `MySQLErrorsTest.java` in dbeaver) don't get tagged as tools.
+     entrypoint detection, so test fixtures with `main()` don't get tagged as tools.
    - **Platform-specific packaging directories** (`/mac/`, `/win/`, `/linux/`,
      `/darwin/`, `/ios/`, `/android/`) are filtered from script-tool detection.
-     Observed in open-design: `tools/pack/src/mac/app.ts` and `tools/pack/src/win/app.ts`
-     were falsely detected as tools `mac` and `win`.
    - **False-positive name filter** applied to ALL detection strategies (AST,
      regex, schema-first): platform utilities (`_is_wsl`, `mac`, `win`, `linux`),
      generic config names (`options`, `settings`, `params`, `data`, `value`,
      `key`, `type`, `id`), and framework names (`react`, `vue`, `angular`).
    - **Cross-file name deduplication**: the same tool name in multiple files
      (within the same framework) is deduplicated to the first occurrence.
-     Observed: `idea_spark` appeared 4x in ResearchStudio (68→10 tools after
-     dedup), `sandbox_available` 2x in custodian-kernel.
 
 ### Capability Ontology AI-Context Gate
 
@@ -583,13 +570,13 @@ all capabilities are reported as `"n/a"` with a clear reason. The
 `capabilityOntology` output includes an `isAIProject` boolean field.
 
 **Verified on 14 ref-only repos** (5 non-AI repos correctly gated):
-- dbeaver (SQL client): `isAIProject: false`
-- pyod (ML library): `isAIProject: false`
-- ng-zorro-antd (UI library): `isAIProject: false`
-- topcoat (styling): `isAIProject: false`
-- litehybrid (Rust): `isAIProject: false`
+- SQL clients: `isAIProject: false`
+- ML libraries: `isAIProject: false`
+- UI libraries: `isAIProject: false`
+- Styling tools: `isAIProject: false`
+- Rust projects: `isAIProject: false`
 
-**LLM call-site regex**: `LLM_NAME_RE` matches LLM-specific provider/model names only: `openai|anthropic|claude|gpt|llm|chat_completion|gemini|mistral|deepseek|qwen|bedrock`. Generic terms (`generate`, `complete`, `chat`, `inference`, `vertex`) are excluded — they cause false positives on non-AI repos (ng-zorro-antd's `color.generate`, dbeaver's `DeploymentId.java`).
+**LLM call-site regex**: `LLM_NAME_RE` matches LLM-specific provider/model names only: `openai|anthropic|claude|gpt|llm|chat_completion|gemini|mistral|deepseek|qwen|bedrock`. Generic terms (`generate`, `complete`, `chat`, `inference`, `vertex`) are excluded — they cause false positives on non-AI repos.
 
 **Capability keyword matching**: `CAP_KEYWORDS` uses `tokenizeSymbol()` token-prefix match (same strategy as ResponsibilityAnalyzer). Generic keywords (`run`, `call`, `save`, `load`,
 `http`, `request`, `response`, `server`, `route`, `buffer`, `session`,
@@ -614,8 +601,8 @@ Java projects are first-class citizens:
   are extracted via both tree-sitter AST and regex fallback. Wildcard imports
   (`import foo.bar.*;`) are normalized to `foo.bar`.
 - **Module ID normalization**: `.java` / `.kt` / `.kts` extensions are stripped
-  from module IDs, so `org.jkiss.dbeaver.core.CoreCommands` (from an import)
-  correctly suffix-matches `plugins.org.jkiss.dbeaver.core.src.org.jkiss.dbeaver.core.CoreCommands`
+  from module IDs, so `com.example.core.CoreCommands` (from an import)
+  correctly suffix-matches `plugins.com.example.core.src.com.example.core.CoreCommands`
   (from a file path).
 
 ### Evaluation Detection (False-Positive Safe)
@@ -626,14 +613,13 @@ The EvaluationsAnalyzer restricts name-based detection to **source files only** 
 - **Name-based detection** requires LLM-specific context in the file
   content (at least one of: `prompt`, `llm`, `model`, `judge`, `agent`,
   `dataset`, `benchmark`, `harness`, `system_prompt`, `chat`, `completion`,
-  `embedding`, `retrieval`, `rag`). This filters out Java `DBPEvaluationContext.java`
-  (database query evaluation context, not LLM eval).
+  `embedding`, `retrieval`, `rag`). This filters out database query evaluation
+  contexts and other non-LLM uses of "evaluation" terminology.
 - **Package/import declarations are stripped** before LLM-context testing,
-  so Java package names like `org.jkiss.dbeaver.model` don't trigger a false
-  `model` match.
+  so Java package names don't trigger false `model` matches.
 - **Content-based detection threshold** is ≥3 keyword matches
-  (or ≥2 matches + LLM context). This filters out generic JS libraries
-  (e.g., `leaflet.js` matched "metric" + "accuracy" + "score" from CSS/map code).
+  (or ≥2 matches + LLM context). This filters out generic libraries that
+  happen to use words like "metric" or "accuracy" in non-LLM contexts.
 
 ### Analyzer Pipeline
 
@@ -816,16 +802,16 @@ The Semantic Index is a **symbol-level index** of the entire repository, built b
 ```json
 {
   "functions": [
-    { "name": "govern", "file": "custodian/govern.py", "line": 203, "params": ["band", "cap"], "decorators": ["@govern"] }
+    { "name": "process", "file": "core/processor.py", "line": 203, "params": ["input", "config"], "decorators": ["@handler"] }
   ],
   "classes": [
-    { "name": "Claim", "file": "packs/base.py", "line": 59, "bases": ["dataclass"], "methods": ["verify"] }
+    { "name": "Entity", "file": "models/base.py", "line": 59, "bases": ["dataclass"], "methods": ["validate"] }
   ],
   "imports": [
-    { "file": "govern.py", "what": "Band", "from": "types" }
+    { "file": "processor.py", "what": "Config", "from": "types" }
   ],
   "calls": [
-    { "file": "govern.py", "line": 250, "caller": "charge_customer", "callee": "decide" }
+    { "file": "processor.py", "line": 250, "caller": "execute_task", "callee": "decide" }
   ],
   "strings": [
     { "file": "prompt.ts", "line": 10, "name": "SYSTEM_PROMPT", "length": 500 }

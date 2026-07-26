@@ -135,16 +135,15 @@ const PROJECT_DISCOVERY_RULES = [
   { category: "metadata", file: "CONTRIBUTING.md", priority: 75 },
   { category: "metadata", file: "CHANGELOG.md", priority: 70 },
   { category: "metadata", file: "SECURITY.md", priority: 70 },
-  // Extended metadata (added 2026-07: caught as false-negatives in buzz/worldmonitor)
+  // Extended metadata (added 2026-07: caught as false-negatives in Rust workspace repos)
   { category: "metadata", file: "CODE_OF_CONDUCT.md", priority: 60 },
   { category: "metadata", file: "GOVERNANCE.md", priority: 55 },
   { category: "metadata", file: "RELEASING.md", priority: 50 },
   { category: "metadata", file: "TESTING.md", priority: 50 },
   // Agent instructions (AI coding agent configs)
   // Added 2026-07: SKILL.md (Claude Code skill manifest) was missing — caused
-  // 3/8 ref-only repos (Auto-Empirical-Research-Skills, ResearchStudio,
-  // custodian-kernel) to falsely report "No AI Agent instruction files found"
-  // despite containing 100+ SKILL.md files each.
+  // repos with many SKILL.md files to falsely report "No AI Agent instruction
+  // files found" despite containing 100+ SKILL.md files each.
   { category: "agent", file: "AGENTS.md", priority: 95 },
   { category: "agent", file: "CLAUDE.md", priority: 95 },
   { category: "agent", file: "SKILL.md", priority: 90 },
@@ -258,7 +257,7 @@ const IMPORT_REGEX = {
 //     DIALOG|LLM|AGENT|SYSTEM|ASSISTANT|USER|INSTRUCTION|RENDER|BUILD) to avoid
 //     matching CSS `gridTemplateColumns`, React `gridTemplate`, UI animation
 //     constants like `SEARCH_PROMPT_Y_OFFSET`. Plain `template:` assignment is
-//     too noisy (buzz: 440 prompts, ~60% were CSS/UI template strings).
+//     too noisy (one repo had 440 prompts, ~60% were CSS/UI template strings).
 //   - `prompt` regex unchanged — `prompt:` / `prompt =` is specific enough.
 const PROMPT_MARKERS = [
   { type: "system", regex: /\b(SYSTEM_PROMPT|system_prompt|systemPrompt|System\.Message|system_message)\b/g },
@@ -879,7 +878,7 @@ async function extractImportsAST(filePath, tree = null) {
       }
     } else if (ext === ".java") {
       // tree-sitter-java: `import_declaration` with `scoped_identifier` child
-      // (e.g. `import org.jkiss.dbeaver.ModelPreferences;`) or `asterisk_identifier`
+      // (e.g. `import com.example.core.ModelPreferences;`) or `asterisk_identifier`
       // (e.g. `import java.awt.*;`). Static imports wrap the scoped_identifier
       // inside a `scoped_type_identifier` — handle both.
       if (node.type === "import_declaration") {
@@ -2364,7 +2363,7 @@ class DiscoveryAnalyzer extends BaseAnalyzer {
         if (agentFileNames.has(name) && !seen.has(rel)) {
           agentFiles.push(rel);
           seen.add(rel);
-          // Cap at 50 to avoid huge lists (custodian-kernel has 100+ SKILL.md)
+          // Cap at 50 to avoid huge lists (some repos have 100+ agent files)
           if (agentFiles.length >= 50) break;
         }
       }
@@ -2389,9 +2388,9 @@ class DiscoveryAnalyzer extends BaseAnalyzer {
 
     // Architecture signal directories — where the architecture lives.
     // Deduplicate by root directory: when multiple subdirectories of the same
-    // root match (e.g. benchmarks/harbor-buzz-orchestra/{src,scripts,personas}),
-    // keep only the shallowest one. This prevents benchmarks/ from monopolizing
-    // the 20-slot budget and hiding crates/ (observed in buzz).
+    // root match (e.g. benchmarks/repo-name/{src,scripts,personas}),
+    // keep only the shallowest one. This prevents a single root directory from
+    // monopolizing the 20-slot budget and hiding other signal directories.
     const archSignalAll = dirs
       .filter((d) => d.split(sep).some((p) => ARCHITECTURE_SIGNAL_DIRS.has(p.toLowerCase())));
     const archSignalRoots = new Map();
@@ -2413,9 +2412,8 @@ class DiscoveryAnalyzer extends BaseAnalyzer {
 
     // repoName: prefer the repository directory name (basename of repoPath).
     // The manifest `name` field is the PACKAGE name, which often differs from
-    // the repo name (openworker → "coworker" PyPI name; worldmonitor →
-    // "world-monitor" npm name; ResearchStudio → "researchstudio" lowercase).
-    // Using package name as repo name caused systematic mis-naming in 3/8 repos.
+    // the repo directory name (e.g. PyPI/npm package names differ from repo names).
+    // Using package name as repo name caused systematic mis-naming.
     // We now always use the directory name; manifest.name is preserved separately
     // in the `manifest` field for downstream consumers.
     const repoName = basename(ctx.repoPath);
@@ -2622,7 +2620,7 @@ class EntrypointsAnalyzer extends BaseAnalyzer {
     for (const e of entries) {
       const relPath = ctx.rel(e.path);
       // Skip test files entirely — e.g. MySQLErrorsTest.java with a main() method
-      // is a test fixture, not a real entrypoint. Observed in dbeaver.
+      // is a test fixture, not a real entrypoint. Observed in Java IDE plugins.
       if (isTestPath(relPath)) continue;
       const depth = relPath.split(sep).length;
       const isDeep = depth > 3;
@@ -2635,7 +2633,7 @@ class EntrypointsAnalyzer extends BaseAnalyzer {
             // SDK entrypoints (index.ts/index.js/index.py) are barrel exports,
             // NOT executable tools — preserve their type instead of reclassifying.
             // Reclassifying them as "tool" caused massive false positives in
-            // open-design (121 fake tools) and pi (52 fake tools).
+            // barrel exports in tool/plugins directories (121+ false tools in one repo).
             const reclassifyType = ep.type === "sdk" ? "sdk" : "tool";
             addEntrypoint(relPath, reclassifyType, ep.reason + " (deep/bundled)");
           } else if (isLibOrTest) {
@@ -2779,9 +2777,9 @@ class PromptsAnalyzer extends BaseAnalyzer {
     const files = ctx.files.filter((f) => PROMPT_FILE_EXTENSIONS.has(f.ext));
     const codeExts = new Set([".py", ".ts", ".tsx", ".js", ".jsx", ".mjs"]);
     // SKIP test files: test fixtures (mock prompts, `SYSTEM_PROMPT` constants in
-    // test setup) are not real prompts. Observed in pi: 9/36 prompt objects were
-    // in test files; in buzz: `gridTemplateColumns` matched the template regex
-    // inside test files. Filtering tests eliminates this noise.
+    // test setup) are not real prompts. Observed: test files contained mock
+    // prompts and CSS template strings that matched prompt regex. Filtering
+    // tests eliminates this noise.
     const codeFiles = files.filter((f) => codeExts.has(f.ext) && !isTestPath(ctx.rel(f.path)));
     const mdFiles = files.filter((f) => !codeExts.has(f.ext));
 
@@ -2878,9 +2876,9 @@ class ToolsAnalyzer extends BaseAnalyzer {
     }
 
     // SKIP test files: test fixtures (mock ToolDef objects, `name: 'lookup'`
-    // in test setup) are not real tools. Observed in pi: 13/14 tools were test
-    // fixtures; in buzz: 3/3 tools were `#[test]` block fixtures. Filtering
-    // tests is the single highest-impact fix for tool-detection accuracy.
+    // in test setup) are not real tools. Observed: most detected "tools" in
+    // some repos were test fixtures. Filtering tests is the single
+    // highest-impact fix for tool-detection accuracy.
     const files = ctx.files.filter((f) => TOOL_FILE_EXTENSIONS.has(f.ext) && !isTestPath(ctx.rel(f.path)));
     const tools = [];
     const seen = new Set();
@@ -2958,7 +2956,7 @@ class ToolsAnalyzer extends BaseAnalyzer {
     //   2. Constant reference: `name: LOAD_SKILL_TOOL.to_owned()` /
     //      `name: CONSTANT.into()` — resolves the constant to its string value
     //      by scanning for `const CONSTANT: &str = "..."` in the same file.
-    //      This catches Rust builtin tools like buzz's `load_skill` (buzz FN-1).
+    //      This catches Rust builtin tools that use string constants for tool names.
     const SCHEMA_FIRST_NAME_RE = /\bname\s*:\s*['"]([a-zA-Z_][\w-]*)['"]/g;
     const SCHEMA_FIRST_CONST_RE = /\bname\s*:\s*([A-Z_][A-Z0-9_]*)\s*\.\s*(?:to_owned|into|to_string)\s*\(\s*\)/g;
     for (const f of files) {
@@ -2982,7 +2980,7 @@ class ToolsAnalyzer extends BaseAnalyzer {
         const name = match[1];
         if (!name) continue;
         // Filter out common false positives: generic object names + single-char test fixtures
-        // + platform/env detection utilities (observed in open-design: _is_wsl, mac, win)
+        // + platform/env detection utilities (e.g. _is_wsl, mac, win)
         const lower = name.toLowerCase();
         const TOOL_FALSE_POSITIVE_NAMES = new Set([
           "react", "vue", "angular", "svelte", "default", "main", "app", "config",
@@ -3034,7 +3032,7 @@ class ToolsAnalyzer extends BaseAnalyzer {
     const entrypoints = store.entrypoints?.entrypoints || [];
     // Barrel-export filenames — `index.*` files are package entrypoints, NOT
     // executable tools. Even when they live in `plugins/` or `tools/` directories,
-    // they just re-export symbols. Observed in open-design (121 false tools) and pi.
+    // they just re-export symbols. Observed: barrel exports caused 121+ false tools.
     const BARREL_EXPORT_RE = /^index\.(ts|js|mjs|cjs|py|rs|go|java|kt)$/;
     for (const ep of entrypoints) {
       if (ep.type !== "tool") continue;
@@ -3051,20 +3049,20 @@ class ToolsAnalyzer extends BaseAnalyzer {
       if (isLibraryOrTest) continue;
 
       // Only accept tool scripts that live inside a recognized skill/tool/agent directory.
-      // Note: `plugins/` is intentionally excluded here — Eclipse/IDE plugins (dbeaver)
-      // and webpack/vite plugins (apps/daemon/src/plugins/index.ts) are NOT agent tools.
+      // Note: `plugins/` is intentionally excluded here — Eclipse/IDE plugins
+      // and webpack/vite plugins are NOT agent tools.
       // Agent-tool directories are: skills/, bundled_skills/, tools/, agents/, hooks/.
       const isInToolSpace = /(?:^|[\\/])(?:skills?|bundled_skills?|tools?|agents?|hooks?)[\\/]/.test(relPath);
       if (!isInToolSpace) continue;
 
       // Filter out platform-specific packaging/build directories. `tools/pack/src/mac/`
       // and `tools/pack/src/win/` are platform build targets, not AI tools. Observed
-      // in open-design: `mac` and `win` were falsely detected as script-tools.
+      // platform directories like `mac/` and `win/` were falsely detected as script-tools.
       const PLATFORM_DIR_RE = /(?:^|[\\/])(?:mac|win|linux|darwin|windows|ios|android|arm64|x64|x86)[\\/]/i;
       if (PLATFORM_DIR_RE.test(relPath)) continue;
 
       // Derive a readable tool name from the parent directory when possible:
-      // custodian/bundled_skills/ai/openai-chat/scripts/execute.py -> openai-chat
+      // bundled_skills/ai/openai-chat/scripts/execute.py -> openai-chat
       const GENERIC_DIR_NAMES = new Set([
         "scripts",
         "hooks",
@@ -3203,13 +3201,13 @@ class EvaluationsAnalyzer extends BaseAnalyzer {
     //
     // Additional guard (2026-07): name-based detection now requires LLM-specific
     // context in the file content. This avoids false positives like
-    // `DBPEvaluationContext.java` (dbeaver — query execution context, NOT LLM eval)
-    // and `leaflet.js` (mapping library with "metric"/"score" words).
+    // Java IDE evaluation classes (query execution context, NOT LLM eval)
+    // and mapping libraries with "metric"/"score" words.
     // LLM-specific context = at least one of: prompt, llm, model, judge, agent,
     // dataset, benchmark, harness, system_prompt.
     //
     // Package/import declarations are stripped before testing — Java package
-    // names like `org.jkiss.dbeaver.model` would otherwise trigger a false
+    // names like `com.example.model` would otherwise trigger a false
     // "model" match.
     const LLM_CONTEXT_RE = /\b(?:prompt|llm|model|judge|agent|dataset|benchmark|harness|system_prompt|chat|completion|embedding|retrieval|rag)\b/i;
     const STRIP_PKG_IMPORT_RE = /^\s*(?:package|import)\s+[^;]+;\s*$/gm;
@@ -3229,7 +3227,7 @@ class EvaluationsAnalyzer extends BaseAnalyzer {
         content = ctx.readFileAbsolute(f.path);
         if (content) {
           // Strip package/import lines so Java package names like
-          // `org.jkiss.dbeaver.model` don't trigger LLM-context false positives.
+          // Java package names like `com.example.model` don't trigger LLM-context false positives.
           codeOnly = content.replace(STRIP_PKG_IMPORT_RE, "");
         }
       }
@@ -3321,8 +3319,7 @@ class GitAnalyzer extends BaseAnalyzer {
 
     // Contributors — use `-sn` (name only) to avoid counting the same person
     // multiple times when they use different emails. `-sne` includes email,
-    // causing one person with 2 emails to be counted as 2 contributors
-    // (observed in buzz: 50 with -sne vs 40 with -sn after name dedup).
+    // causing one person with 2 emails to be counted as 2 contributors.
     const shortlog = git(repoPath, "shortlog", "-sn", "HEAD").trim();
     const contributors = shortlog
       .split(/\r?\n/)
@@ -3530,9 +3527,8 @@ class RankingAnalyzer extends BaseAnalyzer {
       const reasons = [];
 
       // Down-rank test files: they are derivatives of implementation, not
-      // architecture. Previously tests got +20 and invaded Top 10 (buzz:
-      // tauri.test.mjs ranked #7). Now tests get 0 from the test signal.
-      // Tests are still visible via the TestsAnalyzer output.
+      // architecture. Previously tests got +20 and invaded Top 10. Now tests
+      // get 0 from the test signal. Tests are still visible via TestsAnalyzer.
       const isTest = isTestPath(relPath) || testPaths.has(relPath);
 
       if (name === "readme.md" || name === "readme.rst" || name === "readme") {
@@ -3544,9 +3540,8 @@ class RankingAnalyzer extends BaseAnalyzer {
         reasons.push("important file (+40)");
       }
       // Examples: reduced from +30 to +10. Examples are auxiliary, not core
-      // architecture. Previously examples READMEs monopolized Top 3 (buzz:
-      // examples/README.md, examples/countdown-bot/README.md, examples/meadow-core/README.md
-      // all scored 110, pushing ARCHITECTURE.md and agent.rs out of Top 20).
+      // architecture. Previously examples READMEs monopolized Top 3, pushing
+      // core architecture docs out of Top 20.
       if (
         relPath
           .split(sep)
@@ -4033,7 +4028,7 @@ class ResponsibilityAnalyzer extends BaseAnalyzer {
       // Also include the module name itself for keyword matching.
       // Path-segment match: split module ID on dots/slashes and require a
       // segment to EQUAL the keyword (or start with `kw-`). This prevents
-      // false matches like "db" inside "dbeaver" or "plan" inside "explainer".
+      // false matches like "db" inside "database" or "plan" inside "explainer".
       const modSegments = mod.toLowerCase().split(/[./\\]+/);
       const segmentMatchesKw = (kw) =>
         modSegments.some(
@@ -4403,9 +4398,9 @@ class InformationFlowAnalyzer extends BaseAnalyzer {
     // Tightened to LLM-specific provider/model names only. Previously included
     // generic terms (generate, complete, chat, inference, vertex) that caused
     // false positives on non-AI repos:
-    //   - ng-zorro-antd: "generate" matched color.generate, generate-site
-    //   - dbeaver: matched a function in DeploymentId.java
-    //   - open-design: "complete" matched autocomplete components
+    //   - UI libraries: "generate" matched color.generate, generate-site
+    //   - IDE plugins: matched deployment ID functions
+    //   - Design tools: "complete" matched autocomplete components
     // Removed terms: generate, complete, completion, chat, inference, vertex,
     //   call_model, invoke_model, ai_client, model_client
     // Kept: provider names (openai/anthropic/claude/gpt/gemini/mistral/deepseek/
@@ -4517,12 +4512,12 @@ class InformationFlowAnalyzer extends BaseAnalyzer {
         ],
         limitations: [
           "LLM_NAME_RE is recall-oriented; may false-positive on non-LLM symbols (e.g., 'palette_generator', 'completions' as variable name)",
-          "Rust mod/use declarations are not resolved to full module paths → reachesLLM may be false-negative for Rust (buzz verified)",
-          "Java Eclipse extension-points (plugin.xml) are not parsed → dbeaver AI subsystem was invisible to this analyzer",
+          "Rust mod/use declarations are not resolved to full module paths → reachesLLM may be false-negative for Rust projects",
+          "Java Eclipse extension-points (plugin.xml) are not parsed → AI subsystems in IDE plugins may be invisible to this analyzer",
           "BFS is bounded by graph connectivity; isolated LLM call sites with 0 in/out edges are never reached",
         ],
         possibleFalsePositives: [
-          "Symbol names containing 'gpt'/'llm'/'completion' as substrings (e.g., 'Completions' type in ng-zorro-antd)",
+          "Symbol names containing 'gpt'/'llm'/'completion' as substrings (e.g., 'Completions' type in UI libraries)",
           "Variables named 'openai'/'anthropic' that are not actual LLM clients",
           "Test fixtures with mock LLM clients",
         ],
@@ -4732,8 +4727,8 @@ class CapabilityOntologyAnalyzer extends BaseAnalyzer {
 
     // AI-context gate: the 10 capability domains (Planning/Execution/Retrieval/
     // Memory/Evaluation/Safety/Tool/Context/IO/Persistence) are AI-agent-specific.
-    // Applying them to non-AI repos (dbeaver=SQL client, pyod=ML library,
-    // ng-zorro-antd=UI library, topcoat=styling) produces false positives:
+    // Applying them to non-AI repos (SQL clients, ML libraries, UI libraries,
+    // styling tools) produces false positives:
     // SQL executors match "execution", database buffers match "memory",
     // HTTP routes match "io", etc.
     //
@@ -6181,7 +6176,7 @@ const RELATIONSHIP_TYPES = [
 // Tightened in 2026-07 revision to avoid false positives observed across
 // ref-only repos:
 //   - `/agent/i` over-matched HTTP `user_agent`/`UserAgent` and UI agent hooks
-//     (buzz: 911 "agent" objects, ~95% UI code). Now requires word-boundary
+//     (one repo had 911 "agent" objects, ~95% UI code). Now requires word-boundary
 //     `Agent` (capital A) or explicit agent-loop/session/subagent patterns,
 //     and excludes `user_?agent` / `useragent` HTTP header references.
 //   - `/harness/i` matched test helpers like `createHarness`, `withHarness`.
@@ -6482,7 +6477,7 @@ class RelationshipBuilder {
    * Only semantic relationships (testedBy, configuredBy, documentedBy, uses,
    * etc.) are materialized, because they require cross-analyzer inference
    * that cannot be reconstructed from symbols alone. This avoids ~90% of the
-   * ontology bloat (observed: 11k+ calls duplicates in custodian-kernel).
+   * ontology bloat (observed: 11k+ duplicate call relationships in large repos).
    */
   build(objects, store) {
     const rels = [];
@@ -8560,7 +8555,7 @@ class ReportGenerator {
 
     // topLevelDirs: show up to 15 with "等 N 个" suffix when truncated.
     // Previously hardcoded .slice(0, 10) hid important dirs like `crates/`
-    // (buzz: Rust workspace root was invisible in §1).
+    // Rust workspace roots were invisible in the discovery section.
     const allTopDirs = disc.topLevelDirs || [];
     const shownDirs = allTopDirs.slice(0, 15);
     const dirsStr = shownDirs.join(", ") + (allTopDirs.length > 15 ? `, ... (+${allTopDirs.length - 15} more)` : "");
