@@ -28,6 +28,7 @@ import { runRegressionTests } from "./tests/regression/metrics-regression.test.m
 import { runPipelineE2ETests } from "./tests/e2e/pipeline-e2e.test.mjs";
 import { runAnalyzerOutputTests } from "./tests/unit/analyzer-output.test.mjs";
 import { runLifecycleTests } from "./tests/unit/lifecycle.test.mjs";
+import { runNewAnalyzersTests } from "./tests/unit/new-analyzers.test.mjs";
 
 const args = process.argv.slice(2);
 const requestedLayer = args
@@ -35,7 +36,7 @@ const requestedLayer = args
   ?.replace("--layer=", "");
 
 const LAYERS = {
-  unit: [runAnalyzerOutputTests, runLifecycleTests],
+  unit: [runAnalyzerOutputTests, runLifecycleTests, runNewAnalyzersTests],
   prompt: [
     runQuestionPlannerTests,
     runHypothesisTests,

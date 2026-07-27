@@ -55,7 +55,56 @@ description: "研究一个开源 Repository，提炼其架构、设计思想、�
 
 Skill 的核心是判断标准，不是执行步骤。以下定义什么值得研究、什么值得相信、什么值得写入报告。
 
-整个研究过程围绕一个核心对象：**Claim**（研究主张）。Research Question 触发 Claim，Evidence 支持或反对 Claim，Hypothesis 是待验证的 Claim，Decision 是已确认的 Claim，Pattern 是可迁移的 Claim。其它概念（Finding、Resolution、Trace）都是 Claim 的不同形态。
+### Research Object Model
+
+研究过程产生多种类型的 **Research Object**，不只是 Claim。每个对象有类型、生命周期状态、来源 Analyzer 和证据回溯。
+
+| Type | 含义 | 触发 |
+|------|------|------|
+| **Pattern** | 可迁移的架构或设计模式 | 多模块反复出现的一致结构 |
+| **Decision** | 工程设计决策（含 Problem/Alternatives/Tradeoff/Chosen/Evidence/Risk/Reusability） | 显式设计选择 |
+| **Constraint** | 驱动决策的约束（manifest/code/config/pattern） | 决策的驱动因素 |
+| **Tradeoff** | 决策的代价 | 每个 Decision 至少一个 |
+| **Assumption** | 隐式假设（可能没有显式证据） | 从缺失证据推断 |
+| **Hypothesis** | 待验证的研究假设 | Research Question 触发 |
+| **Evidence** | 来自代码/测试/配置/提交的事实 | Analyzer 抽取 |
+| **Finding** | 已验证的发现 | Hypothesis 经证据支持 |
+| **Issue** | 矛盾或问题 | 跨 Analyzer 冲突 |
+| **Risk** | 失败模式 | 高风险 Assumption 或 Decision |
+| **Unknown** | 主动分类的未知 | 证据不足 |
+
+**对象之间形成关系图**（不是线性流水线）：Pattern `implemented_by` Module，Evidence `supports` Finding，Decision `constrained_by` Constraint，Hypothesis `competes_with` alternative Hypothesis。
+
+### Object Lifecycle
+
+每个 Research Object 有生命周期，不是一次性判断。状态迁移反映证据积累：
+
+```
+Candidate → Hypothesis → Supported → Verified → Decision → Reusable Pattern
+    ↓          ↓            ↓           ↓          ↓
+  rejected  rejected     rejected   rejected   deprecated
+```
+
+- **Candidate**：刚发现，尚未验证
+- **Hypothesis**：可被证据支持或反对
+- **Supported**：有多源证据支持
+- **Verified**：通过对抗性验证 + 测试/代码双重验证
+- **Decision**：已确认的工程决策（含 ADR 字段）
+- **Reusable Pattern**：跨仓库可迁移的模式
+
+很多发现最后不会进入报告——中间有生命周期让 Agent 的思考稳定，而非一开始就下结论。
+
+### Evidence Provenance
+
+每条 Evidence 必须可追溯，包含：
+
+- **where**：文件路径 + 行号或符号
+- **who**：提取者（Analyzer 名 / LLM 阶段）
+- **when**：commit hash（如果是 git 仓库）
+- **source**：证据类型（AST / regex / graph / git / manifest / keyword / inference）
+- **confidence**：0-1 数值（来自证据源权重聚合）
+
+无 Provenance 的 Evidence 不可进入报告。
 
 ### 什么算高价值 Research Question
 
@@ -98,14 +147,14 @@ Skill 的核心是判断标准，不是执行步骤。以下定义什么值得�
 
 ### 什么时候停止研究
 
-- 当进一步阅读不再改变任何 Claim 的置信度时
+- 当进一步阅读不再改变任何 Object 的置信度时
 - 当剩余问题都是仓库内无法验证的时
-- 当已有 Claim 能完整回答核心 Research Questions 时
+- 当已有 Object 能完整回答核心 Research Questions 时
 
 ### 什么时候继续深挖
 
 - 当发现与已有假设矛盾的证据时
-- 当一个 Claim 只有单一证据源时
+- 当一个 Object 只有单一证据源时
 - 当对抗性验证提出了无法反驳的反例时
 - 当架构演进历史显示曾有重大设计转向时
 
@@ -161,6 +210,18 @@ Skill 的核心是判断标准，不是执行步骤。以下定义什么值得�
 - 必须区分"文档声称"与"代码验证"
 
 **Unknown 是合法的研究结果**，不是失败。承认不知道比给出错误答案更有价值。
+
+### Unknown 的主动分类
+
+Unknown 不是单一的"不知道"——必须主动分类，告诉读者下一步该怎么做：
+
+| Unknown Type | 含义 | 下一步 |
+|--------------|------|--------|
+| **Need Reading** | 仓库内有相关文件但本研究未覆盖 | 列出应读但未读的文件 |
+| **Need External Evidence** | 仓库内无法验证，需要外部资料（issue/PR/discussion/blog） | 列出应查询的外部来源 |
+| **Impossible to Verify** | 即使深入阅读也无法验证（设计意图、未发生的场景） | 明确标注为不可验证 |
+
+被动标注 Unknown 不够——必须为每个 Unknown 给出分类理由和推荐下一步。
 
 ---
 
@@ -276,12 +337,14 @@ Problem → Design → Evidence → Tradeoff → Takeaway
 
 | 原则 | 要求 |
 |------|------|
-| **Decision-centric** | 报告核心是工程决策，不是架构描述。 |
+| **Decision-centric** | 报告核心是工程决策，不是架构描述。每个 Decision 必须含 Problem / Alternatives / Tradeoff / Chosen / Evidence / Risk / Reusability 七字段（ADR 风格）。 |
+| **Object-oriented language** | 报告使用研究对象语言（"Decision X 被 Constraint Y 驱动，由 Evidence Z 支持"），而非文件驱动语言（"在 foo.py 中看到..."）。 |
 | **Fact vs Interpretation** | 读者应能辨别什么是证据、什么是推断。 |
 | **Compressed** | 如果压缩不了，说明其实没有理解。 |
 | **What NOT to Learn** | 明确区分值得学与不要抄。 |
 | **Fitness** | 评估架构是否持续满足设计目标。 |
-| **Honest Limits** | 报告必须包含 Unknown / Missing Evidence / Alternative Explanation。 |
+| **Honest Limits** | 报告必须包含 Unknown / Missing Evidence / Alternative Explanation，且 Unknown 必须主动分类（Need Reading / Need External Evidence / Impossible to Verify）。 |
+| **Pattern Reusability** | 每个可迁移 Pattern 必须含 Applicability（何时用）/ Limitation（何时不用）/ Migration Cost（迁移成本）/ Reuse Score（复用评分）。不要只写"使用 X"，要写"何时应该用、何时不要用、成本、收益"。 |
 
 ---
 

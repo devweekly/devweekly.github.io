@@ -88,6 +88,7 @@ class ReportGenerator {
       this._architectureKnowledge(),
       this._repositoryEvolution(),
       this._architectureMetrics(),
+      this._designPatterns(),
       this._aiAgentInsights(),
       this._testingAndEvaluation(),
       this._engineeringMetrics(),
@@ -587,7 +588,7 @@ class ReportGenerator {
 
     const zh = this.lang === "zh";
     const lines = [];
-    lines.push(zh ? "## 2.9. 研究对象图谱（Research Object Graph）" : "## 2.9. Research Object Graph");
+    lines.push(zh ? "## 5.6. 研究对象图谱（Research Object Graph）" : "## 5.6. Research Object Graph");
     lines.push("");
     lines.push(zh
       ? "> 二阶研究对象（Pattern/Decision/Constraint/Tradeoff/Assumption/Hypothesis/Evidence/Finding/Issue/Risk/Unknown）及其关系图。每个对象都有来源 Analyzer，可追溯。"
@@ -1120,12 +1121,50 @@ class ReportGenerator {
         : `**Primary**: ${pattern.primaryPattern} (confidence ${pattern.patterns[0].confidence})`
       );
       lines.push(isZh ? "" : "");
-      lines.push(isZh ? "| 模式 | 置信度 | 证据 |" : "| Pattern | Confidence | Evidence |");
-      lines.push("|--------|-----------|----------|");
+      lines.push(isZh ? "| 模式 | 置信度 | 证据 | 迁移成本 | 复用分 |" : "| Pattern | Confidence | Evidence | Migration Cost | Reuse Score |");
+      lines.push("|--------|-----------|----------|----------------|--------------|");
       for (const p of pattern.patterns.slice(0, 5)) {
-        lines.push(`| ${p.pattern} | ${p.confidence} | ${p.evidence.slice(0, 3).join("; ")} |`);
+        lines.push(`| ${p.pattern} | ${p.confidence} | ${(p.evidence || []).slice(0, 3).join("; ")} | ${p.migrationCost || "—"} | ${p.reuseScore || "—"}/5 |`);
       }
       lines.push("");
+
+      // Surface applicability / limitation / migration / reuse for the top
+      // pattern (P3-①). Lower-rank patterns are listed in the table only.
+      // The LLM should treat these as guidance, not prescriptions — actual
+      // applicability depends on the repo's concrete context.
+      const top = pattern.patterns[0];
+      if (top && (top.applicability?.length || top.limitation?.length)) {
+        lines.push(isZh ? "#### 主模式适用性" : "#### Primary Pattern Applicability");
+        lines.push(isZh
+          ? "> 以下为该模式的通用知识（基于架构文献），LLM 应结合仓库实际上下文判断是否真的适用。"
+          : "> Generic knowledge from architecture literature. The LLM should judge actual applicability against the repo's concrete context."
+        );
+        lines.push("");
+        if (top.applicability?.length) {
+          lines.push(isZh ? `**适用场景**:` : `**Applicability**:`);
+          for (const a of top.applicability) lines.push(`  - ${a}`);
+          lines.push("");
+        }
+        if (top.limitation?.length) {
+          lines.push(isZh ? `**局限/反模式**:` : `**Limitations**:`);
+          for (const l of top.limitation) lines.push(`  - ${l}`);
+          lines.push("");
+        }
+        if (top.migrationReason) {
+          lines.push(isZh
+            ? `**迁移成本**: ${top.migrationCost} — ${top.migrationReason}`
+            : `**Migration cost**: ${top.migrationCost} — ${top.migrationReason}`
+          );
+          lines.push("");
+        }
+        if (top.reuseNote) {
+          lines.push(isZh
+            ? `**复用评分**: ${top.reuseScore}/5 — ${top.reuseNote}`
+            : `**Reuse score**: ${top.reuseScore}/5 — ${top.reuseNote}`
+          );
+          lines.push("");
+        }
+      }
     }
 
     // --- 2. Responsibility Matrix ---
@@ -1636,6 +1675,85 @@ class ReportGenerator {
         const hCell = h ? `${h.node} (fan-in=${h.fanIn})` : "—";
         const bCell = b ? `${b.node} (fan-out=${b.fanOut})` : "—";
         lines.push(`| ${hCell} | ${bCell} |`);
+      }
+      lines.push("");
+    }
+
+    return lines.join("\n");
+  }
+
+  /**
+   * Design Patterns section (P3-②) — surfaces DesignPatternAnalyzer output.
+   *
+   * Shows code-level design patterns (Factory/Singleton/Builder/Strategy/
+   * Observer/Adapter/Decorator/Repository/DI/Plugin/Command/Chain) detected
+   * from symbol names and method signatures. Distinct from architecture
+   * patterns (Hexagonal/Layered/Pipeline/...) which come from directory
+   * structure (see §2.5 Architecture Pattern).
+   */
+  _designPatterns() {
+    const dp = this._get("designPatterns") || {};
+    if (dp.skipped) return null;
+    const patterns = dp.patterns || [];
+    if (patterns.length === 0) return null;
+
+    const zh = this.lang === "zh";
+    const lines = [];
+    lines.push(zh ? "## 2.10. Design Patterns" : "## 2.10. Design Patterns");
+    lines.push(zh
+      ? "> 代码级设计模式（来自符号名和方法签名）：Factory / Singleton / Builder / Strategy / Observer / Adapter / Decorator / Repository / DI / Plugin / Command / Chain。"
+      : "> Code-level design patterns from symbol names and method signatures: Factory / Singleton / Builder / Strategy / Observer / Adapter / Decorator / Repository / DI / Plugin / Command / Chain."
+    );
+    lines.push("");
+
+    const summary = dp.summary || {};
+    lines.push(zh
+      ? `**总览**: 检测到 ${summary.totalPatternsDetected || 0} 种模式，共 ${summary.totalInstances || 0} 处实例。`
+      : `**Summary**: ${summary.totalPatternsDetected || 0} pattern types detected, ${summary.totalInstances || 0} total instances.`
+    );
+    lines.push("");
+
+    lines.push(zh
+      ? "| 模式 | 实例数 | 置信度 | 复用评分 | 迁移成本 | 证据（前 3 个） |"
+      : "| Pattern | Instances | Confidence | Reuse Score | Migration Cost | Evidence (top 3) |"
+    );
+    lines.push("|---------|-----------|------------|-------------|----------------|------------------|");
+    for (const p of patterns) {
+      const evidence = (p.evidence || []).slice(0, 3)
+        .map((e) => `${e.symbol} (${e.signal})`)
+        .join("; ")
+        .slice(0, 120);
+      const stars = "★".repeat(p.reuseScore || 1) + "☆".repeat(Math.max(0, 5 - (p.reuseScore || 1)));
+      lines.push(`| ${p.pattern} | ${p.instances} | ${p.confidence} | ${stars} | ${p.migrationCost || "—"} | ${evidence} |`);
+    }
+    lines.push("");
+
+    // Detailed evidence + Reusability metadata for the top 3 patterns
+    const top3 = patterns.slice(0, 3);
+    for (const p of top3) {
+      const evs = p.evidence || [];
+      if (evs.length === 0) continue;
+      lines.push(zh ? `#### ${p.pattern} (${p.instances} instances)` : `#### ${p.pattern} (${p.instances} instances)`);
+      lines.push("");
+      // Reusability metadata (P2-① / user suggestion ⑦) — script provides
+      // heuristic skeleton; LLM should refine in the report.
+      lines.push(zh
+        ? `**Reusability (脚本启发式，待 LLM 精炼)**：`
+        : `**Reusability (script heuristic — LLM should refine)**:`
+      );
+      lines.push(`- **Applicability**: ${p.applicability || "—"}`);
+      lines.push(`- **Limitation**: ${p.limitation || "—"}`);
+      lines.push(`- **Migration Cost**: ${p.migrationCost || "—"}`);
+      const stars = "★".repeat(p.reuseScore || 1) + "☆".repeat(Math.max(0, 5 - (p.reuseScore || 1)));
+      lines.push(`- **Reuse Score**: ${stars} (${p.reuseScore || 1}/5)`);
+      lines.push("");
+      lines.push(zh ? "| File | Symbol | Line | Signal |" : "| File | Symbol | Line | Signal |");
+      lines.push("|------|--------|------|--------|");
+      for (const e of evs.slice(0, 6)) {
+        lines.push(`| ${e.file} | ${e.symbol} | ${e.line || "—"} | ${e.signal} |`);
+      }
+      if (evs.length > 6) {
+        lines.push(zh ? `| ... | ... | ... | (+${evs.length - 6} more) |` : `| ... | ... | ... | (+${evs.length - 6} more) |`);
       }
       lines.push("");
     }

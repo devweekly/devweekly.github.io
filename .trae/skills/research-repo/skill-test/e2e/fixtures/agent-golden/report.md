@@ -1,13 +1,13 @@
-# Research Report: synthetic-agent-Ki4iDq
+# Research Report: synthetic-agent-4FGxow
 
 ## Executive Summary
 
-synthetic-agent-Ki4iDq is analyzed with deterministic pipeline. Detected signals: hasAgent, hasTool.
+synthetic-agent-4FGxow is analyzed with deterministic pipeline. Detected signals: hasAgent, hasTool.
 Findings: 16. README contradictions: 1.
 
 ## Top Claims
 
-# Evidence Brief: synthetic-agent-Ki4iDq
+# Evidence Brief: synthetic-agent-4FGxow
 
 > Generated: 2026-07-27 by research-repo skill (deterministic analysis).
 > This brief is the **input** for LLM report generation — not the final report.
@@ -433,7 +433,7 @@ When evidence conflicts, trust the higher tier:
 
 | Dimension | Value |
 |-----------|-------|
-| Repository | synthetic-agent-Ki4iDq (package: synthetic-agent) |
+| Repository | synthetic-agent-4FGxow (package: synthetic-agent) |
 | Manifest | src/index.js (javascript) |
 | Version | 1.0.0 |
 | Source files | 6 |
@@ -581,6 +581,62 @@ Covers 0/10 capability domains.
   - Evidence: tests.testPatterns does NOT include 'poison'
 
 
+## 2.9. Architecture Metrics
+> Structural metrics from the import graph: Layer / Cycle / Fan-in / Fan-out / Stability / Coupling.
+
+**Summary**: 6 nodes / 3 edges / 0 cycles / 1 layers / density 0.1 / avg instability 0.333
+
+### Layers
+
+| Layer | Source Dirs | Nodes | Intra-Edges | Cross-Edges |
+|-------|-------------|-------|-------------|-------------|
+| tests | tests | 1 | 0 | 1 |
+
+### Fan-in / Fan-out
+
+| Metric | Avg | Max | Max Node | Distribution (0 / 1-3 / 4-9 / 10+) |
+|--------|-----|-----|----------|--------------------------------------|
+| Fan-in | 0.5 | 1 | src.agent | 3 / 3 / 0 / 0 |
+| Fan-out | 0.5 | 1 | src.agent | 3 / 3 / 0 / 0 |
+
+### Stability (node-level)
+> Robert C. Martin's I metric: I = Ce/(Ca+Ce). 0 = maximally stable (only depended-upon), 1 = maximally unstable (only depends-on).
+
+Avg instability: 0.333 | Isolated nodes (no deps): 2
+
+**Most stable** (depended-upon, I → 0):
+
+| Node | Ca (fan-in) | Ce (fan-out) | I |
+|------|-------------|--------------|---|
+| src.tool | 1 | 0 | 0.00 |
+| src.agent | 1 | 1 | 0.50 |
+| src.runner | 1 | 1 | 0.50 |
+| tests.agent.test | 0 | 1 | 1.00 |
+
+**Least stable** (depends-on, I → 1):
+
+| Node | Ca (fan-in) | Ce (fan-out) | I |
+|------|-------------|--------------|---|
+| tests.agent.test | 0 | 1 | 1.00 |
+| src.agent | 1 | 1 | 0.50 |
+| src.runner | 1 | 1 | 0.50 |
+| src.tool | 1 | 0 | 0.00 |
+
+### Coupling
+
+- Density (edges/(nodes×(nodes-1))): 0.1
+- Avg degree: 1
+- Cross-layer edges: 0 (0.0% of total)
+
+| Hub nodes (high fan-in) | Bottleneck nodes (high fan-out) |
+|--------------------------|----------------------------------|
+| src.agent (fan-in=1) | src.agent (fan-out=1) |
+| src.runner (fan-in=1) | src.runner (fan-out=1) |
+| src.tool (fan-in=1) | tests.agent.test (fan-out=1) |
+| src.index (fan-in=0) | src.index (fan-out=0) |
+| src.memory (fan-in=0) | src.memory (fan-out=0) |
+
+
 ## 3. AI / Agent Design
 
 No prompts or tools detected. This may not be an AI/Agent project,
@@ -641,7 +697,7 @@ or prompt/tool definitions use non-standard patterns.
 
 | Type | Name | File | Properties |
 |------|------|------|------------|
-| agent | Agent | src/agent.js | line=2, methods=, exported=false |
+| agent | Agent | src/agent.js | line=2, methods=constructor,run, exported=false |
 
 ### Question-Driven Query Examples
 

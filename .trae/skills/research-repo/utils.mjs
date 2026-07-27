@@ -77,6 +77,12 @@ const TS_LANG_MAP = {
 const JS_EXTS = [".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs"];
 const FUNCTION_NODE_TYPES = new Set([
   "function_definition", "function_declaration", "function_item", "method_declaration",
+  // JS/TS class methods use `method_definition` (tree-sitter grammar). Without
+  // this, methods are never extracted from JS/TS classes — class.method[]
+  // stays empty, breaking method-based design pattern detection (Singleton,
+  // Observer, Command, Chain of Responsibility, Repository CRUD, Factory
+  // create*, Builder fluent*).
+  "method_definition",
 ]);
 const CLASS_NODE_TYPES = new Set(["class_definition", "class_declaration"]);
 
@@ -699,7 +705,10 @@ async function extractSymbolsAST(filePath, repoPath, tree = null) {
         if (body) {
           for (const child of body.children) {
             if (FUNCTION_NODE_TYPES.has(child.type)) {
-              const methodId = findChild(child, "identifier");
+              // JS/TS `method_definition` stores its name in `property_identifier`;
+              // Python `function_definition` and others use `identifier`.
+              const methodId = findChild(child, "identifier")
+                || findChild(child, "property_identifier");
               if (methodId) methods.push(methodId.text);
             }
           }

@@ -264,6 +264,58 @@ export function verifyResearchDirectory(dir, expected = {}) {
     );
   }
 
+  // 9. New analyzer outputs (P1-4): verify evidence-store contains new sections.
+  // These are NOT required to be non-empty (synthetic repos may have 0 patterns),
+  // but the KEYS must exist so downstream stages can read them.
+  if (evidenceStore) {
+    check(
+      "evidence-store has designPatterns key",
+      evidenceStore.designPatterns !== undefined,
+      "Missing designPatterns in evidence-store/full.json"
+    );
+    check(
+      "evidence-store has archMetrics key",
+      evidenceStore.archMetrics !== undefined,
+      "Missing archMetrics in evidence-store/full.json"
+    );
+    check(
+      "evidence-store has temporal key",
+      evidenceStore.temporal !== undefined,
+      "Missing temporal in evidence-store/full.json"
+    );
+    check(
+      "evidence-store has researchObjects key",
+      evidenceStore.researchObjects !== undefined,
+      "Missing researchObjects in evidence-store/full.json"
+    );
+    check(
+      "evidence-store has researchObjectsSummary key",
+      evidenceStore.researchObjectsSummary !== undefined,
+      "Missing researchObjectsSummary in evidence-store/full.json"
+    );
+  }
+
+  // 10. Evidence brief surfaces new sections (informational — not hard fail
+  // because some repos legitimately have no patterns/evolution).
+  const briefPath = join(dir, "evidence-brief.md");
+  if (existsSync(briefPath)) {
+    const briefText = readFileSync(briefPath, "utf-8");
+    // Informational check: brief should mention at least one new section header
+    const hasDesignPatternsHeader = /Design Patterns/i.test(briefText);
+    const hasArchMetricsHeader = /Architecture Metrics/i.test(briefText);
+    const hasEvolutionHeader = /Repository Evolution|Architecture Evolution/i.test(briefText);
+    const hasObjectGraphHeader = /Research Object Graph/i.test(briefText);
+    const newSectionCount = [
+      hasDesignPatternsHeader, hasArchMetricsHeader,
+      hasEvolutionHeader, hasObjectGraphHeader,
+    ].filter(Boolean).length;
+    check(
+      "evidence-brief surfaces >= 1 new analyzer section",
+      newSectionCount >= 1,
+      "Evidence brief does not surface any of: Design Patterns / Architecture Metrics / Repository Evolution / Research Object Graph"
+    );
+  }
+
   return result;
 }
 

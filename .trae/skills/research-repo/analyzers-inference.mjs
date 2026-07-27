@@ -154,6 +154,256 @@ const ARCHITECTURE_PATTERNS = [
   },
 ];
 
+// --- Pattern knowledge base (P3-①) ---
+// For each detected pattern, surface applicability / limitation / migration
+// cost / reuse score so the LLM doesn't just say "uses Layered" but explains
+// when to use it, when NOT to use it, the cost of migrating to/from it, and
+// how broadly the lesson applies.
+// Knowledge is curated from architecture literature (Fowler, Evans, Martin,
+// Vernon, Newman) — kept terse to fit the brief.
+const PATTERN_KNOWLEDGE = {
+  "Hexagonal (Ports & Adapters)": {
+    applicability: [
+      "Long-lived systems needing multiple adapters (UI, DB, external APIs)",
+      "Business logic must be framework-agnostic and testable in isolation",
+      "Domains with many external integrations or test doubles",
+    ],
+    limitation: [
+      "Overhead for small/CRUD apps — too many interfaces for trivial logic",
+      "Mapping boundaries is hard; misplacement creates accidental complexity",
+      "Boilerplate scales linearly with each new port/adapter pair",
+    ],
+    migrationCost: "high",
+    migrationReason: "Requires inverting dependencies — domain must be isolated from all I/O, often a rewrite of data flow",
+    reuseScore: 4,
+    reuseNote: "Domain core is highly reusable; adapters are project-specific",
+  },
+  "Clean Architecture": {
+    applicability: [
+      "Complex enterprise apps with strict separation of concerns",
+      "Teams needing enforced dependency rule (outer → inner only)",
+      "Systems with long lifespan and many changing external layers",
+    ],
+    limitation: [
+      "Significant ceremony for moderate-complexity domains",
+      "Entity vs use-case boundary disputes are common",
+      "Can fragment logic across layers, hurting readability",
+    ],
+    migrationCost: "high",
+    migrationReason: "Layer-by-layer isolation with strict DI; existing code usually violates the dependency rule",
+    reuseScore: 4,
+    reuseNote: "Inner layers (entities/use cases) reusable; outer layers project-specific",
+  },
+  "Onion": {
+    applicability: [
+      "Domain-centric systems where the model is the heart",
+      "Long-lived enterprise apps needing concentric layering",
+      "Teams familiar with DDD wanting a clear dependency rule",
+    ],
+    limitation: [
+      "Overlapping with Hexagonal/Clean — choosing between them is subjective",
+      "Inner layers can become anemic if behavior leaks outward",
+      "Boilerplate for infrastructure concerns at outer rings",
+    ],
+    migrationCost: "high",
+    migrationReason: "Concentric dependency inversion — domain must sit at center, infra at outer rings",
+    reuseScore: 4,
+    reuseNote: "Domain services reusable; infrastructure rings project-specific",
+  },
+  "Layered": {
+    applicability: [
+      "Standard business/web apps with clear presentation-business-data split",
+      "Teams wanting a low-ceremony default architecture",
+      "CRUD-heavy or form-over-data applications",
+    ],
+    limitation: [
+      "Layering can become a sinkhole — calls pass through every layer doing nothing",
+      "Easy to leak business logic into presentation or persistence layers",
+      "Doesn't address cross-cutting concerns (logging, security) by itself",
+    ],
+    migrationCost: "medium",
+    migrationReason: "Most apps already have implicit layers; making them explicit is moderate work",
+    reuseScore: 5,
+    reuseNote: "Most broadly applicable pattern; lessons transfer to nearly every backend system",
+  },
+  "Pipeline": {
+    applicability: [
+      "Data processing / ETL / compilers with discrete transformation stages",
+      "Workflows where each stage is independently testable and composable",
+      "Systems needing parallelism or back-pressure per stage",
+    ],
+    limitation: [
+      "Not suitable for interactive / event-driven control flows",
+      "Linear stage composition fails when stages need branching or recursion",
+      "Error handling across stages is awkward (must propagate or short-circuit)",
+    ],
+    migrationCost: "medium",
+    migrationReason: "Requires decomposing monolithic logic into discrete stages with explicit contracts",
+    reuseScore: 5,
+    reuseNote: "Highly transferable — pipelines appear in compilers, CI, data, ML, build systems",
+  },
+  "Plugin": {
+    applicability: [
+      "Systems needing runtime-extensible behavior (IDEs, browsers, build tools)",
+      "Products where third-party extension is a first-class feature",
+      "Platforms wanting to isolate optional features",
+    ],
+    limitation: [
+      "Plugin API design is hard — getting it wrong locks evolution",
+      "Versioning plugin ABI is a long-term maintenance burden",
+      "Security: plugins run with host privileges unless sandboxed",
+    ],
+    migrationCost: "high",
+    migrationReason: "Requires stable extension points, manifest format, isolation, and lifecycle management",
+    reuseScore: 3,
+    reuseNote: "Lessons apply to extensible systems; less relevant for closed-domain apps",
+  },
+  "Event-Driven": {
+    applicability: [
+      "Systems with many independent producers/consumers of state changes",
+      "Workflows where loose coupling and reactive scaling matter",
+      "Domains naturally modeled as events (auditing, IoT, real-time)",
+    ],
+    limitation: [
+      "Hard to trace end-to-end flow (event chains are indirect)",
+      "Eventual consistency complicates error handling and UX",
+      "Debugging and testing are notably harder than synchronous flows",
+    ],
+    migrationCost: "high",
+    migrationReason: "Requires event bus, idempotent handlers, eventual consistency, and tracing infrastructure",
+    reuseScore: 3,
+    reuseNote: "Domain-specific; lessons apply to async/real-time systems, not request-response apps",
+  },
+  "Actor Model": {
+    applicability: [
+      "Highly concurrent systems needing isolated mutable state",
+      "Distributed systems where location transparency matters",
+      "Workloads with many independent workers and message passing",
+    ],
+    limitation: [
+      "Mental model is unfamiliar to most developers",
+      "Message ordering and delivery semantics are subtle",
+      "Performance overhead for fine-grained actors",
+    ],
+    migrationCost: "high",
+    migrationReason: "Requires actor runtime, message protocols, and supervision strategy; usually a rewrite",
+    reuseScore: 2,
+    reuseNote: "Niche — applies to concurrent/distributed systems, not general apps",
+  },
+  "Workflow Engine": {
+    applicability: [
+      "Business processes with explicit states and transitions",
+      "Long-running workflows needing durability and resumption",
+      "Compliance-heavy domains requiring audit trails",
+    ],
+    limitation: [
+      "Overkill for stateless or simple request-response flows",
+      "Workflow definitions become coupled to engine capabilities",
+      "Operational burden: engine uptime, schema migrations, observability",
+    ],
+    migrationCost: "high",
+    migrationReason: "Requires engine selection/integration, workflow schemas, and operational tooling",
+    reuseScore: 3,
+    reuseNote: "Applies to process-heavy domains; less relevant for CRUD apps",
+  },
+  "Finite State Machine": {
+    applicability: [
+      "Entities with well-defined lifecycle (orders, sessions, documents)",
+      "Protocols and parsers with strict state transitions",
+      "UI flows needing explicit valid transitions",
+    ],
+    limitation: [
+      "Doesn't compose well for orthogonal state dimensions (use HSM instead)",
+      "Proliferation of states for complex domains",
+      "Hard to retrofit into ad-hoc stateful code",
+    ],
+    migrationCost: "medium",
+    migrationReason: "Existing stateful logic must be modeled as explicit states + transitions",
+    reuseScore: 4,
+    reuseNote: "Broadly applicable to any stateful system; lessons transfer cleanly",
+  },
+  "Dataflow": {
+    applicability: [
+      "Stream processing with sources → transforms → sinks",
+      "Systems needing back-pressure and windowed computation",
+      "Reactive pipelines with high throughput",
+    ],
+    limitation: [
+      "Operational complexity (checkpointing, watermarks, late data)",
+      "Overkill for batch or low-volume processing",
+      "Debugging distributed dataflow is hard",
+    ],
+    migrationCost: "high",
+    migrationReason: "Requires dataflow runtime, partitioning strategy, and windowing semantics",
+    reuseScore: 2,
+    reuseNote: "Niche — applies to stream processing, not general apps",
+  },
+  "Compiler": {
+    applicability: [
+      "Languages, DSLs, transpilers, code generators",
+      "Static analysis tools with lex/parse/analyze/transform phases",
+      "Template engines with semantic validation",
+    ],
+    limitation: [
+      "Compiler architecture is overkill for one-off parsers",
+      "Phase coupling is subtle (symbol tables, error recovery)",
+      "Performance tuning requires IR design expertise",
+    ],
+    migrationCost: "high",
+    migrationReason: "Multi-phase IR design is a significant investment; usually greenfield",
+    reuseScore: 2,
+    reuseNote: "Applies to language tools; less relevant for application code",
+  },
+  "Blackboard": {
+    applicability: [
+      "AI / expert systems with multiple independent knowledge sources",
+      "Problems where solution emerges from incremental contributions",
+      "Systems with no deterministic algorithm (opportunistic reasoning)",
+    ],
+    limitation: [
+      "Control flow is implicit — hard to reason about determinism",
+      "Performance can degrade with many knowledge sources",
+      "Largely out of favor; modern alternatives exist (actor, event-driven)",
+    ],
+    migrationCost: "high",
+    migrationReason: "Niche pattern; usually greenfield or specialized AI systems",
+    reuseScore: 1,
+    reuseNote: "Very niche — applies to classical AI, rarely to modern apps",
+  },
+  "Microservices": {
+    applicability: [
+      "Systems needing independent deployment and scaling per service",
+      "Organizations with multiple teams owning separate services",
+      "Workloads with sharp variability in scale per feature",
+    ],
+    limitation: [
+      "Distributed-system complexity (network, consistency, tracing)",
+      "Operational overhead: service discovery, observability, CI/CD",
+      "Hard to refactor service boundaries once deployed",
+    ],
+    migrationCost: "very high",
+    migrationReason: "Requires distributed infrastructure, data partitioning, and operational maturity",
+    reuseScore: 3,
+    reuseNote: "Applies to large-scale systems; lessons don't transfer to small/medium apps",
+  },
+  "Monorepo": {
+    applicability: [
+      "Multi-package projects wanting atomic cross-package changes",
+      "Teams needing shared tooling, lint, and release coordination",
+      "Codebases where reuse and consistency outweigh repo size",
+    ],
+    limitation: [
+      "Repo size and tooling complexity grow with packages",
+      "CI scalability needs investment (selective testing, remote caching)",
+      "Ownership and access control are coarser than polyrepo",
+    ],
+    migrationCost: "medium",
+    migrationReason: "Tooling (pnpm workspaces, turborepo, nx) is mature; cultural shift is the bigger cost",
+    reuseScore: 5,
+    reuseNote: "Broadly applicable to multi-package projects; lessons transfer to any size",
+  },
+};
+
 // --- Responsibility signatures ---
 // Maps module naming patterns to a Responsibility label and Capability tags.
 // Used by ResponsibilityAnalyzer and CapabilityOntologyAnalyzer.
@@ -384,12 +634,23 @@ class ArchitecturePatternAnalyzer extends BaseAnalyzer {
         ...matchedDirs.map((d) => `dir: ${d}/`),
         ...matchedSymbols.map((s) => `symbol: ${s}`),
       ];
+      // Enrich with pattern knowledge (P3-①): applicability / limitation /
+      // migrationCost / reuseScore. The LLM can then say "uses Layered because
+      // dir:ui + dir:services — applicable when X, watch out for Y, migrating
+      // to Hexagonal costs high" instead of just naming the pattern.
+      const knowledge = PATTERN_KNOWLEDGE[pattern.name] || null;
       matches.push({
         pattern: pattern.name,
         confidence: Number(confidence.toFixed(2)),
         evidence,
         matchedDirs,
         matchedSymbols,
+        applicability: knowledge?.applicability || [],
+        limitation: knowledge?.limitation || [],
+        migrationCost: knowledge?.migrationCost || "unknown",
+        migrationReason: knowledge?.migrationReason || "",
+        reuseScore: knowledge?.reuseScore || 0,
+        reuseNote: knowledge?.reuseNote || "",
       });
     }
 
@@ -2274,6 +2535,370 @@ class AssumptionAnalyzer extends BaseAnalyzer {
  * research-valuable findings.
  */
 // ===========================================================================
+// DesignPatternAnalyzer — GoF / DI design pattern detection (P3-②)
+//
+// Detects code-level design patterns (Factory, Singleton, Builder, Strategy,
+// Observer, Adapter, Decorator, Repository, DI, Plugin, Command) from symbol
+// names and method signatures. Distinct from ArchitecturePatternAnalyzer,
+// which detects architecture-level patterns (Hexagonal/Layered/Pipeline/etc.)
+// from directory structure.
+//
+// Source: store.symbols (classes[] with name/methods/bases, functions[] with
+//         name/decorators)
+//
+// Output: store.designPatterns = { patterns, summary, _meta }
+// ===========================================================================
+
+// Pattern signature rules. Each rule: { pattern, type, match, confidence }
+// - type: "class"  → match against class entry (name, methods, bases)
+// - type: "function" → match against function entry (name, decorators)
+// - match: returns evidence string on match, null otherwise
+const DESIGN_PATTERN_RULES = [
+  // --- Factory: class name suffix OR classic create*/make*/build* methods ---
+  {
+    pattern: "Factory",
+    type: "class",
+    confidence: 0.85,
+    match: (cls) => {
+      if (/Factory(Impl|Base)?$/.test(cls.name)) return `class name suffix: ${cls.name}`;
+      // Note: `getInstance` is a Singleton signal, NOT a Factory method —
+      // exclude it here so Singletons aren't misclassified as Factories.
+      const factoryMethods = (cls.methods || []).filter((m) =>
+        /^(create|make|build|from|newInstance)\w*$/i.test(m)
+      );
+      if (factoryMethods.length > 0) return `factory methods: ${factoryMethods.slice(0, 3).join(", ")}`;
+      return null;
+    },
+  },
+  // --- Singleton: getInstance method OR static instance accessor ---
+  {
+    pattern: "Singleton",
+    type: "class",
+    confidence: 0.75,
+    match: (cls) => {
+      const hasInstance = (cls.methods || []).some((m) => /^getInstance$/i.test(m));
+      if (hasInstance) return `getInstance() method`;
+      return null;
+    },
+  },
+  // --- Builder: class name suffix OR fluent with*/set* methods ---
+  {
+    pattern: "Builder",
+    type: "class",
+    confidence: 0.85,
+    match: (cls) => {
+      if (/Builder(Impl|Base)?$/.test(cls.name)) return `class name suffix: ${cls.name}`;
+      const fluentMethods = (cls.methods || []).filter((m) =>
+        /^(with|set|add|having)\w*$/i.test(m)
+      );
+      if (fluentMethods.length >= 3) return `fluent methods: ${fluentMethods.slice(0, 3).join(", ")} (+${fluentMethods.length - 3})`;
+      return null;
+    },
+  },
+  // --- Strategy: class name suffix ---
+  {
+    pattern: "Strategy",
+    type: "class",
+    confidence: 0.8,
+    match: (cls) => {
+      if (/Strategy(Impl|Base|Context)?$/.test(cls.name)) return `class name suffix: ${cls.name}`;
+      return null;
+    },
+  },
+  // --- Observer: subscribe/unsubscribe/notify/emit/on/off methods ---
+  {
+    pattern: "Observer",
+    type: "class",
+    confidence: 0.7,
+    match: (cls) => {
+      const methods = cls.methods || [];
+      const has = (re) => methods.some((m) => re.test(m));
+      const sub = has(/^(subscribe|unsubscribe|on|off|addListener|removeListener)$/i);
+      const emit = has(/^(emit|notify|publish|dispatch|fire)$/i);
+      if (sub && emit) return `subscribe+emit methods: ${methods.filter(m => /^(subscribe|on|emit|notify|publish|off|dispatch)$/i.test(m)).slice(0,4).join(", ")}`;
+      if (/(Observer|Listener|Subscriber|Emitter)(Impl|Base)?$/.test(cls.name) && emit) {
+        return `name suffix + emit method: ${cls.name}`;
+      }
+      return null;
+    },
+  },
+  // --- Adapter: class name suffix ---
+  {
+    pattern: "Adapter",
+    type: "class",
+    confidence: 0.8,
+    match: (cls) => {
+      if (/Adapter(Impl|Base)?$/.test(cls.name)) return `class name suffix: ${cls.name}`;
+      return null;
+    },
+  },
+  // --- Decorator: class name suffix ---
+  {
+    pattern: "Decorator",
+    type: "class",
+    confidence: 0.8,
+    match: (cls) => {
+      if (/Decorator(Impl|Base)?$/.test(cls.name)) return `class name suffix: ${cls.name}`;
+      return null;
+    },
+  },
+  // --- Repository: class name suffix OR CRUD methods ---
+  {
+    pattern: "Repository",
+    type: "class",
+    confidence: 0.85,
+    match: (cls) => {
+      if (/(Repository|Repo|Dao)(Impl|Base)?$/.test(cls.name)) return `class name suffix: ${cls.name}`;
+      const crud = (cls.methods || []).filter((m) =>
+        /^(find|get|save|delete|update|insert|create|remove|persist)\w*$/i.test(m)
+      );
+      if (crud.length >= 3) return `CRUD methods: ${crud.slice(0, 4).join(", ")}`;
+      return null;
+    },
+  },
+  // --- Command: class name suffix OR execute/handle method ---
+  {
+    pattern: "Command",
+    type: "class",
+    confidence: 0.7,
+    match: (cls) => {
+      if (/(Command|Handler)(Impl|Base)?$/.test(cls.name)) {
+        const exec = (cls.methods || []).some((m) => /^(execute|handle|invoke|run|call)$/i.test(m));
+        if (exec) return `name suffix + execute method: ${cls.name}`;
+      }
+      return null;
+    },
+  },
+  // --- DI / IoC: register/provide/inject functions (DI container files) ---
+  {
+    pattern: "DI",
+    type: "function",
+    confidence: 0.65,
+    match: (fn) => {
+      if (/^(register|provide|inject|bind|resolve|container)$/i.test(fn.name)) {
+        return `DI container function: ${fn.name}()`;
+      }
+      const decs = fn.decorators || [];
+      if (decs.some((d) => /inject|autowire|provides|injectable/i.test(d))) {
+        return `DI decorator: ${decs.find((d) => /inject|autowire/i.test(d))}`;
+      }
+      return null;
+    },
+  },
+  // --- Plugin (code-level): registerPlugin/loadPlugin/createPlugin functions ---
+  {
+    pattern: "Plugin",
+    type: "function",
+    confidence: 0.75,
+    match: (fn) => {
+      if (/^(registerPlugin|loadPlugin|createPlugin|installPlugin|usePlugin)$/i.test(fn.name)) {
+        return `plugin registration function: ${fn.name}()`;
+      }
+      const decs = fn.decorators || [];
+      if (decs.some((d) => /plugin/i.test(d))) return `@Plugin decorator`;
+      return null;
+    },
+  },
+  // --- Chain of Responsibility: setNext + handle methods ---
+  {
+    pattern: "Chain of Responsibility",
+    type: "class",
+    confidence: 0.65,
+    match: (cls) => {
+      const methods = cls.methods || [];
+      const hasNext = methods.some((m) => /^(setNext|setSuccessor|next)$/i.test(m));
+      const hasHandle = methods.some((m) => /^(handle|process|pass)$/i.test(m));
+      if (hasNext && hasHandle) return `setNext + handle methods`;
+      return null;
+    },
+  },
+];
+
+class DesignPatternAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "designPatterns";
+  }
+  supports(_ctx) {
+    return true;
+  }
+  async analyze(_ctx, store, _analyzerCtx) {
+    const symbols = store.symbols || {};
+    const classes = symbols.classes || [];
+    const functions = symbols.functions || [];
+
+    if (classes.length === 0 && functions.length === 0) {
+      store[this.id] = {
+        skipped: true,
+        reason: "No symbols available.",
+        patterns: [],
+        summary: { totalInstances: 0, byPattern: {} },
+      };
+      return;
+    }
+
+    // Per-pattern deduplication: same symbol may match multiple rules; we
+    // keep the strongest evidence per (pattern, file, symbol) triple.
+    const byPattern = new Map(); // patternName → Map(key → instance)
+    for (const rule of DESIGN_PATTERN_RULES) {
+      if (!byPattern.has(rule.pattern)) byPattern.set(rule.pattern, new Map());
+      const bucket = byPattern.get(rule.pattern);
+
+      if (rule.type === "class") {
+        for (const cls of classes) {
+          // Skip test classes — they instantiate patterns but aren't definitions.
+          if (isTestPath(cls.file)) continue;
+          const signal = rule.match(cls);
+          if (!signal) continue;
+          const key = `${cls.file}:${cls.name}`;
+          if (!bucket.has(key) || bucket.get(key).confidence < rule.confidence) {
+            bucket.set(key, {
+              file: cls.file,
+              symbol: cls.name,
+              type: "class",
+              line: cls.line,
+              signal,
+              confidence: rule.confidence,
+            });
+          }
+        }
+      } else if (rule.type === "function") {
+        for (const fn of functions) {
+          if (isTestPath(fn.file)) continue;
+          const signal = rule.match(fn);
+          if (!signal) continue;
+          const key = `${fn.file}:${fn.name}`;
+          if (!bucket.has(key) || bucket.get(key).confidence < rule.confidence) {
+            bucket.set(key, {
+              file: fn.file,
+              symbol: fn.name,
+              type: "function",
+              line: fn.line,
+              signal,
+              confidence: rule.confidence,
+            });
+          }
+        }
+      }
+    }
+
+    // Build patterns array sorted by instance count desc.
+    const patterns = [];
+    const byPatternCounts = {};
+    for (const [pattern, bucket] of byPattern.entries()) {
+      const instances = [...bucket.values()];
+      if (instances.length === 0) continue;
+      // Aggregate confidence: high if many instances, capped at 0.95.
+      const instanceConfidence = Math.min(0.95, 0.5 + instances.length * 0.1);
+
+      // ── Reusability metadata (P2-①, user suggestion ⑦) ──────────────────
+      // Script provides heuristic skeletons; LLM refines them in the report.
+      // - applicability: derived from where the pattern appears (layer hints)
+      // - limitation: known weakness per pattern type (heuristic)
+      // - migrationCost: low (1 instance) / medium (2-4) / high (5+)
+      // - reuseScore: ★1-★5 = round(confidence × 5), capped at 5
+      const layerHints = this._deriveLayerHints(instances);
+      const limitation = this._knownLimitation(pattern);
+      const migrationCost = instances.length >= 5
+        ? "high"
+        : instances.length >= 2 ? "medium" : "low";
+      const reuseScore = Math.max(1, Math.min(5, Math.round(instanceConfidence * 5)));
+
+      patterns.push({
+        pattern,
+        instances: instances.length,
+        confidence: Number(instanceConfidence.toFixed(2)),
+        evidence: instances.slice(0, 8).map((i) => ({
+          file: i.file,
+          symbol: i.symbol,
+          line: i.line,
+          signal: i.signal,
+        })),
+        // Reusability skeleton — LLM should refine these in the report.
+        applicability: layerHints,
+        limitation,
+        migrationCost,
+        reuseScore,
+      });
+      byPatternCounts[pattern] = instances.length;
+    }
+    patterns.sort((a, b) => b.instances - a.instances);
+    const totalInstances = patterns.reduce((sum, p) => sum + p.instances, 0);
+
+    store[this.id] = {
+      patterns,
+      summary: {
+        totalInstances,
+        byPattern: byPatternCounts,
+        totalPatternsDetected: patterns.length,
+      },
+      _meta: {
+        source: "store.symbols.classes + store.symbols.functions",
+        strength: "moderate",
+        assumptions: [
+          "Design patterns are signaled by class/function names and method signatures",
+          "Naming conventions (Factory suffix, getInstance method) are reliable signals",
+          "Code-level patterns are distinct from architecture-level patterns (ArchitecturePatternAnalyzer)",
+        ],
+        limitations: [
+          "Cannot detect patterns implemented purely via composition without naming hints",
+          "Test files are excluded — only production definitions counted",
+          "May miss patterns in dynamically-typed code without decorator/metadata support",
+          "Strategy/Adapter/Decorator patterns share naming conventions and may overlap",
+        ],
+        possibleFalsePositives: [
+          "Classes named *Factory that don't actually implement Factory pattern",
+          "Methods named find*/save* that aren't Repository pattern (e.g., service classes)",
+          "DI container functions in non-DI contexts (e.g., event register() functions)",
+        ],
+        checkedLocations: ["store.symbols.classes[].name/methods", "store.symbols.functions[].name/decorators"],
+        coverage: "naming-and-signature-based; misses structural patterns without naming hints",
+      },
+    };
+  }
+
+  /**
+   * Derive layer hints from where pattern instances was found.
+   * Used as the `applicability` skeleton field — LLM should refine.
+   * Returns a string like "Found in: services/, patterns/" or "single module".
+   */
+  _deriveLayerHints(instances) {
+    const dirs = new Set();
+    for (const i of instances) {
+      const parts = String(i.file || "").split("/");
+      // Take first non-trivial segment (skip leading "src" / "lib" / "app").
+      const seg = parts.find((p) => p && p !== "src" && p !== "lib" && p !== "app");
+      if (seg) dirs.add(seg);
+    }
+    if (dirs.size === 0) return "single module";
+    const list = [...dirs].slice(0, 3).map((d) => `${d}/`).join(", ");
+    return `Found in: ${list}`;
+  }
+
+  /**
+   * Known limitations per pattern type — heuristic skeletons for LLM refinement.
+   * Returns a one-line limitation note. Empty string means "no generic limitation".
+   */
+  _knownLimitation(pattern) {
+    const LIMITS = {
+      Singleton: "Global state — limits testability and parallelism",
+      Factory: "Adds indirection — may obscure direct construction",
+      Builder: "Verbose for simple objects — overkill for few fields",
+      Observer: "Event ordering and lifecycle management add complexity",
+      Repository: "Abstraction leaks with complex queries (JOINs, transactions)",
+      Strategy: "Class explosion — one class per algorithm variant",
+      Adapter: "Extra layer — performance and readability cost",
+      Decorator: "Stacking order matters — debugging gets harder",
+      DI: "Configuration complexity — runtime wiring non-obvious",
+      Plugin: "Plugin API stability is critical — backward compat burden",
+      Command: "Object overhead for trivial operations",
+      Chain: "Debugging chain behavior — which handler fired?",
+    };
+    return LIMITS[pattern] || "";
+  }
+}
+
+
+// ===========================================================================
 // ArchitectureMetricsAnalyzer — Structural metrics (P2-④)
 //
 // Computes node-level and aggregate architecture metrics from the import graph
@@ -3067,6 +3692,7 @@ class ConsistencyAnalyzer extends BaseAnalyzer {
 export {
   // Pattern signatures
   ARCHITECTURE_PATTERNS,
+  PATTERN_KNOWLEDGE,
   RESPONSIBILITY_RULES,
   CAPABILITY_ONTOLOGY,
   // Tokenizer
@@ -3084,6 +3710,9 @@ export {
   ConstraintAnalyzer,
   AssumptionAnalyzer,
   ArchitectureMetricsAnalyzer,
+  DesignPatternAnalyzer,
   TemporalAnalyzer,
   ConsistencyAnalyzer,
+  // Design pattern signatures
+  DESIGN_PATTERN_RULES,
 };

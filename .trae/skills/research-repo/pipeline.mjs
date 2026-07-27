@@ -23,6 +23,7 @@ import {
   ConstraintAnalyzer,
   AssumptionAnalyzer,
   ArchitectureMetricsAnalyzer,
+  DesignPatternAnalyzer,
   TemporalAnalyzer,
   ConsistencyAnalyzer,
 } from "./analyzers-inference.mjs";
@@ -75,6 +76,8 @@ const ANALYZERS = [
   new AssumptionAnalyzer(),
   // --- Architecture Metrics Layer (P2-④): structural metrics from import graph ---
   new ArchitectureMetricsAnalyzer(),
+  // --- Design Pattern Layer (P3-②): GoF/DI patterns from symbol signatures ---
+  new DesignPatternAnalyzer(),
   // --- Temporal / Evolution Layer (P2-③): requires git history ---
   new TemporalAnalyzer(),
   // --- Post-processor: runs LAST, compares claims across analyzers ---

@@ -1,4 +1,4 @@
-# Evidence Brief: synthetic-readme-claims-Ah7Txr
+# Evidence Brief: synthetic-readme-claims-5CpE44
 
 > Generated: 2026-07-27 by research-repo skill (deterministic analysis).
 > This brief is the **input** for LLM report generation — not the final report.
@@ -464,7 +464,7 @@ When evidence conflicts, trust the higher tier:
 
 | Dimension | Value |
 |-----------|-------|
-| Repository | synthetic-readme-claims-Ah7Txr (package: readme-claims) |
+| Repository | synthetic-readme-claims-5CpE44 (package: readme-claims) |
 | Manifest | src/index.js (javascript) |
 | Version | 1.0.0 |
 | Source files | 1 |
@@ -599,6 +599,29 @@ Covers 0/10 capability domains.
 - **A-001**: Inputs are always well-formed (no poison/adversarial tests detected)
   - Broken if: Adversarial input reaches core logic; unvalidated paths crash or misbehave
   - Evidence: tests.testPatterns does NOT include 'poison'
+
+
+## 2.9. Architecture Metrics
+> Structural metrics from the import graph: Layer / Cycle / Fan-in / Fan-out / Stability / Coupling.
+
+**Summary**: 1 nodes / 0 edges / 0 cycles / 0 layers / density 0 / avg instability 0
+
+### Fan-in / Fan-out
+
+| Metric | Avg | Max | Max Node | Distribution (0 / 1-3 / 4-9 / 10+) |
+|--------|-----|-----|----------|--------------------------------------|
+| Fan-in | 0 | 0 | — | 1 / 0 / 0 / 0 |
+| Fan-out | 0 | 0 | — | 1 / 0 / 0 / 0 |
+
+### Coupling
+
+- Density (edges/(nodes×(nodes-1))): 0
+- Avg degree: 0
+- Cross-layer edges: 0 (0.0% of total)
+
+| Hub nodes (high fan-in) | Bottleneck nodes (high fan-out) |
+|--------------------------|----------------------------------|
+| src.index (fan-in=0) | src.index (fan-out=0) |
 
 
 ## 3. AI / Agent Design
