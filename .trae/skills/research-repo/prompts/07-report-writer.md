@@ -70,7 +70,7 @@ Evidence Graph: [引用 05-cross-validation.md 中的 Evidence Graph]
 4. Negative Findings
 5. Architecture Smells
 6. Architecture Fitness（Modularity/Extensibility/Testability 等评分——见下方格式）
-7. Architecture Compression（300/100/30 字摘要——见下方格式）
+7. Architecture Compression（500/200/50 字摘要——见下方格式）
 8. Repository Positioning
 9. Reusable Pattern Catalog
 10. What NOT to Learn（不值得复制的内容——见下方格式）
@@ -112,14 +112,14 @@ Palantir Research 是 Decision Report，不是 Architecture Report。每个 Deci
 ## Architecture Compression 格式（第 7 章）
 
 ```markdown
-### Architecture in 300 words
-{300 字摘要——核心架构、关键决策、主要权衡}
+### Architecture in 500 words
+{500 字摘要——核心架构、关键决策、主要权衡}
 
-### Architecture in 100 words
-{100 字摘要——压缩到本质}
+### Architecture in 200 words
+{200 字摘要——压缩到本质}
 
-### Architecture in 30 words
-{30 字摘要——一句话定义这个系统}
+### Architecture in 50 words
+{50 字摘要——一句话定义这个系统}
 ```
 
 如果压缩不了，说明其实没有理解。
