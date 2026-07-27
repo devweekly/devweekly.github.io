@@ -28,6 +28,7 @@ for (const archetype of ARCHETYPES) {
     const metrics = computeAnalyzerMetrics(store, brief);
 
     repos[archetype] = {
+      // Quantity metrics (structural)
       functionCount: { value: metrics.functionCount, tolerance: 2 },
       classCount: { value: metrics.classCount, tolerance: 1 },
       toolCount: { value: metrics.toolCount, tolerance: 0 },
@@ -37,6 +38,15 @@ for (const archetype of ARCHETYPES) {
       briefLength: { value: metrics.briefLength, tolerance: 500 },
       briefFindingCount: { value: metrics.briefFindingCount, tolerance: 3 },
       fileCount: { value: metrics.fileCount, tolerance: 1 },
+      // Quality metrics (semantic) — detect Skill quality regressions
+      evidenceDensity: { value: metrics.evidenceDensity, tolerance: 0.3 },
+      decisionQuality: { value: metrics.decisionQuality, tolerance: 0.1 },
+      decisionReusability: { value: metrics.decisionReusability, tolerance: 0.1 },
+      unknownRatio: { value: metrics.unknownRatio, tolerance: 0.1 },
+      counterEvidenceRatio: { value: metrics.counterEvidenceRatio, tolerance: 0.1 },
+      avgConfidence: { value: metrics.avgConfidence, tolerance: 0.1 },
+      readmeContradictionCount: { value: metrics.readmeContradictionCount, tolerance: 1 },
+      provenanceCoverage: { value: metrics.provenanceCoverage, tolerance: 0.1 },
     };
 
     console.error(`${archetype}: ${JSON.stringify(metrics)}`);

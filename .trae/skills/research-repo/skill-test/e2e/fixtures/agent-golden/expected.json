@@ -1,0 +1,20 @@
+{
+  "repository": {
+    "archetype": "agent"
+  },
+  "report": {
+    "claims": {
+      "min": 2
+    },
+    "unknown": {
+      "min": 0
+    },
+    "counter_evidence": {
+      "required": false
+    }
+  },
+  "signals": [
+    "hasAgent",
+    "hasTool"
+  ]
+}

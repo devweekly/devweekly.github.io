@@ -1,0 +1,2586 @@
+{
+  "discovery": {
+    "repoName": "synthetic-agent-Ki4iDq",
+    "packageName": "synthetic-agent",
+    "repoPath": "/var/folders/vj/d1vqjf9n7_1_4jzx3xsl6y2h0000gn/T/synthetic-agent-Ki4iDq",
+    "analyzedAt": "2026-07-27T23:06:58.501Z",
+    "manifest": {
+      "language": "javascript",
+      "entry": "src/index.js",
+      "name": "synthetic-agent",
+      "version": "1.0.0",
+      "scripts": [],
+      "dependencies": [],
+      "devDependencies": []
+    },
+    "hasReadme": true,
+    "hasCI": false,
+    "topLevelDirs": [
+      "src",
+      "tests"
+    ],
+    "importantDirs": [
+      "src",
+      "tests"
+    ],
+    "architectureSignalDirs": [
+      "src",
+      "src/prompts",
+      "tests"
+    ],
+    "metadataFiles": [
+      "README.md"
+    ],
+    "agentFiles": [],
+    "fileCount": {
+      ".md": 1,
+      ".json": 1,
+      ".js": 6,
+      ".txt": 1
+    },
+    "testFileCount": 1,
+    "totalSourceFiles": 6,
+    "allFiles": [
+      "README.md",
+      "package.json",
+      "src/agent.js",
+      "src/index.js",
+      "src/memory.js",
+      "src/prompts/system.txt",
+      "src/runner.js",
+      "src/tool.js",
+      "tests/agent.test.js"
+    ]
+  },
+  "symbols": {
+    "totalFunctions": 0,
+    "totalClasses": 4,
+    "totalImports": 4,
+    "totalCalls": 5,
+    "totalStrings": 0,
+    "functions": [],
+    "classes": [
+      {
+        "name": "Agent",
+        "file": "src/agent.js",
+        "line": 2,
+        "bases": [],
+        "methods": []
+      },
+      {
+        "name": "ConversationMemory",
+        "file": "src/memory.js",
+        "line": 1,
+        "bases": [],
+        "methods": []
+      },
+      {
+        "name": "Runner",
+        "file": "src/runner.js",
+        "line": 2,
+        "bases": [],
+        "methods": []
+      },
+      {
+        "name": "Tool",
+        "file": "src/tool.js",
+        "line": 1,
+        "bases": [],
+        "methods": []
+      }
+    ],
+    "imports": [
+      {
+        "file": "src/agent.js",
+        "what": "{ Runner }",
+        "from": "./runner.js"
+      },
+      {
+        "file": "src/runner.js",
+        "what": "{ Tool }",
+        "from": "./tool.js"
+      },
+      {
+        "file": "tests/agent.test.js",
+        "what": "{ test }",
+        "from": "node:test"
+      },
+      {
+        "file": "tests/agent.test.js",
+        "what": "{ Agent }",
+        "from": "../src/agent.js"
+      }
+    ],
+    "calls": [
+      {
+        "file": "src/agent.js",
+        "line": 4,
+        "caller": null,
+        "callee": "this.runner.runLoop"
+      },
+      {
+        "file": "src/memory.js",
+        "line": 3,
+        "caller": null,
+        "callee": "this.messages.push"
+      },
+      {
+        "file": "src/runner.js",
+        "line": 4,
+        "caller": null,
+        "callee": "this.tools[0]?.execute"
+      },
+      {
+        "file": "src/tool.js",
+        "line": 3,
+        "caller": null,
+        "callee": "this.fn"
+      },
+      {
+        "file": "tests/agent.test.js",
+        "line": 3,
+        "caller": null,
+        "callee": "test"
+      }
+    ],
+    "strings": []
+  },
+  "architecture": {
+    "totalNodes": 6,
+    "totalEdges": 3,
+    "nodes": [
+      {
+        "id": "src.agent",
+        "path": "src/agent.js",
+        "imports": [
+          "./runner.js"
+        ]
+      },
+      {
+        "id": "src.index",
+        "path": "src/index.js",
+        "imports": []
+      },
+      {
+        "id": "src.memory",
+        "path": "src/memory.js",
+        "imports": []
+      },
+      {
+        "id": "src.runner",
+        "path": "src/runner.js",
+        "imports": [
+          "./tool.js"
+        ]
+      },
+      {
+        "id": "src.tool",
+        "path": "src/tool.js",
+        "imports": []
+      },
+      {
+        "id": "tests.agent.test",
+        "path": "tests/agent.test.js",
+        "imports": [
+          "node:test",
+          "../src/agent.js"
+        ]
+      }
+    ],
+    "edges": [
+      {
+        "from": "src.agent",
+        "to": "src.runner"
+      },
+      {
+        "from": "src.runner",
+        "to": "src.tool"
+      },
+      {
+        "from": "tests.agent.test",
+        "to": "src.agent"
+      }
+    ],
+    "cycles": [],
+    "centrality": {
+      "topByInDegree": [
+        {
+          "id": "src.agent",
+          "value": 1
+        },
+        {
+          "id": "src.runner",
+          "value": 1
+        },
+        {
+          "id": "src.tool",
+          "value": 1
+        },
+        {
+          "id": "src.index",
+          "value": 0
+        },
+        {
+          "id": "src.memory",
+          "value": 0
+        },
+        {
+          "id": "tests.agent.test",
+          "value": 0
+        }
+      ],
+      "topByPageRank": [
+        {
+          "id": "src.tool",
+          "value": 0.3003664080618457
+        },
+        {
+          "id": "src.runner",
+          "value": 0.24247985126585755
+        },
+        {
+          "id": "src.agent",
+          "value": 0.17437819672176363
+        },
+        {
+          "id": "src.index",
+          "value": 0.0942585146501777
+        },
+        {
+          "id": "src.memory",
+          "value": 0.0942585146501777
+        },
+        {
+          "id": "tests.agent.test",
+          "value": 0.0942585146501777
+        }
+      ]
+    }
+  },
+  "entrypoints": {
+    "entrypoints": [
+      {
+        "path": "src/index.js",
+        "type": "sdk",
+        "reason": "package index entrypoint"
+      }
+    ]
+  },
+  "prompts": {
+    "totalPrompts": 0,
+    "prompts": []
+  },
+  "tools": {
+    "totalTools": 0,
+    "tools": []
+  },
+  "tests": {
+    "totalTestFiles": 1,
+    "totalTestFunctions": 1,
+    "byCategory": {
+      "unit": 1,
+      "integration": 0,
+      "e2e": 0
+    },
+    "byModule": {
+      "agent": 1
+    },
+    "patterns": [],
+    "fileDetails": [
+      {
+        "path": "tests/agent.test.js",
+        "category": "unit",
+        "module": "agent",
+        "testFunctionCount": 1
+      }
+    ]
+  },
+  "evaluations": {
+    "hasEvaluation": false,
+    "evalFiles": [],
+    "evalDirs": [],
+    "patterns": [],
+    "metrics": []
+  },
+  "git": {
+    "skipped": true,
+    "reason": "not supported for this repository"
+  },
+  "ci": {
+    "hasCI": false,
+    "provider": null,
+    "workflows": []
+  },
+  "ranking": {
+    "topFiles": [
+      {
+        "path": "src/index.js",
+        "score": 120,
+        "reasons": [
+          "high in-degree (+40)",
+          "high PageRank (+50)",
+          "entrypoint (+30)"
+        ]
+      },
+      {
+        "path": "README.md",
+        "score": 90,
+        "reasons": [
+          "README (+50)",
+          "important file (+40)"
+        ]
+      },
+      {
+        "path": "src/agent.js",
+        "score": 90,
+        "reasons": [
+          "high in-degree (+40)",
+          "high PageRank (+50)"
+        ]
+      },
+      {
+        "path": "src/memory.js",
+        "score": 90,
+        "reasons": [
+          "high in-degree (+40)",
+          "high PageRank (+50)"
+        ]
+      },
+      {
+        "path": "src/runner.js",
+        "score": 90,
+        "reasons": [
+          "high in-degree (+40)",
+          "high PageRank (+50)"
+        ]
+      },
+      {
+        "path": "src/tool.js",
+        "score": 90,
+        "reasons": [
+          "high in-degree (+40)",
+          "high PageRank (+50)"
+        ]
+      },
+      {
+        "path": "tests/agent.test.js",
+        "score": 60,
+        "reasons": [
+          "high in-degree (+40)",
+          "high PageRank (+50)",
+          "test file (-30)"
+        ]
+      }
+    ]
+  },
+  "archPattern": {
+    "primaryPattern": "Unknown",
+    "patterns": [],
+    "allPatterns": [],
+    "unknown": true,
+    "_meta": {
+      "source": "keyword+graph",
+      "strength": "moderate",
+      "assumptions": [
+        "Architecture patterns are signaled by directory names (segment match, not substring)",
+        "Specialized signals gate high-stakes patterns (e.g., Compiler requires codegen/optimizer/semantic/ir)",
+        "Graph validation (layered direction, linear chain) confirms pattern with +0.1-0.15 confidence",
+        "Multi-instance checks (≥3 service dirs, ≥3 manifests) confirm Microservices/Monorepo"
+      ],
+      "limitations": [
+        "Cannot detect patterns with no directory-name signal (e.g., pattern implemented purely in code structure)",
+        "Hexagonal/Clean/Onion patterns share dir signals (domain, adapters, infrastructure) and may be indistinguishable",
+        "Compiler specialized-signal gate may still false-positive on repos with parser/interpreter subsets (e.g., template engines)",
+        "Pattern detection is recall-oriented; precision depends on directory naming conventions"
+      ],
+      "possibleFalsePositives": [
+        "Repos with 'core/' dir may trigger Hexagonal/Clean/Onion even when no layered architecture exists",
+        "Repos with 'plugins/' dir may trigger Plugin pattern even if plugins/ contains unrelated code",
+        "Repos with 'service/' suffix dirs may trigger Microservices with <3 instances (downgraded confidence)"
+      ],
+      "checkedLocations": [
+        "discovery.topLevelDirs + 1-level deep dirs",
+        "discovery.architectureSignalDirs",
+        "symbols.classes[].name + symbols.functions[].name (regex symbol signals)",
+        "architecture.edges[] (graph validation)",
+        "manifest files count (package.json/Cargo.toml/pyproject.toml/go.mod/pom.xml)"
+      ],
+      "coverage": "Directory-driven pattern detection; misses code-only patterns"
+    }
+  },
+  "responsibility": {
+    "responsibilities": [
+      {
+        "module": "src",
+        "responsibility": "Uncategorized",
+        "capabilities": [],
+        "confidence": 0,
+        "evidence": [],
+        "fileCount": 5,
+        "dependencies": {
+          "outgoing": [],
+          "incoming": []
+        }
+      }
+    ],
+    "responsibilityMatrix": {
+      "src": "Uncategorized"
+    },
+    "totalModules": 1,
+    "mappedModules": 0,
+    "_meta": {
+      "source": "keyword",
+      "strength": "moderate",
+      "assumptions": [
+        "Module boundaries = first 1-2 path segments (packages/foo for monorepo, top dir for flat layout)",
+        "Test files are excluded (isTestPath) so test fixtures don't pollute module classification",
+        "One directory match (score 2) or two symbol matches (score 2) are minimum evidence; single symbol match (score 1) is too weak"
+      ],
+      "limitations": [
+        "Cannot detect responsibilities that span multiple modules (e.g., 'security' implemented across crypto/ + auth/)",
+        "Keyword matching is segment/token-prefix; unconventional naming (e.g., 'dataRepo' for persistence) may be missed",
+        "Modules with generic names (components/, utils/) often get Uncategorized or false-positive matches"
+      ],
+      "possibleFalsePositives": [
+        "Modules named 'search' or 'query' may be tagged Retrieval even when not RAG (e.g., DB search, file search)",
+        "Modules named 'storage' may be tagged Persistence even for in-memory caches",
+        "Symbol token-prefix 'persist' may match 'persistenceLayer' in non-DB contexts"
+      ],
+      "checkedLocations": [
+        "discovery.topLevelDirs + 1-level deep dirs",
+        "symbols.functions[].name (CamelCase tokenized)",
+        "symbols.classes[].name (CamelCase tokenized)",
+        "architecture.edges[] (for module dependency context)"
+      ],
+      "coverage": "100% of non-test source files grouped into modules"
+    }
+  },
+  "stability": {
+    "modules": [
+      {
+        "module": "src",
+        "ca": 1,
+        "ce": 0,
+        "instability": 0,
+        "abstractness": 0,
+        "totalClasses": 4,
+        "abstractClasses": 0,
+        "zone": "transitioning",
+        "nodeCount": 5
+      },
+      {
+        "module": "tests",
+        "ca": 0,
+        "ce": 1,
+        "instability": 1,
+        "abstractness": 0,
+        "totalClasses": 0,
+        "abstractClasses": 0,
+        "zone": "zone_of_pain",
+        "nodeCount": 1
+      }
+    ],
+    "zoneDistribution": {
+      "transitioning": 1,
+      "zone_of_pain": 1
+    },
+    "totalModules": 2,
+    "painModules": [
+      {
+        "module": "tests",
+        "ca": 0,
+        "ce": 1,
+        "instability": 1,
+        "abstractness": 0,
+        "totalClasses": 0,
+        "abstractClasses": 0,
+        "zone": "zone_of_pain",
+        "nodeCount": 1
+      }
+    ],
+    "uselessnessModules": []
+  },
+  "changeCoupling": {
+    "coupledPairs": [],
+    "totalCommitsAnalyzed": 0
+  },
+  "informationFlow": {
+    "flows": [],
+    "totalFlows": 0,
+    "llmCallSites": [],
+    "reachesLLM": false,
+    "_meta": {
+      "source": "regex+graph",
+      "strength": "weak",
+      "assumptions": [
+        "LLM call sites are detected via regex on symbol names (LLM_NAME_RE: openai/anthropic/claude/gpt/llm/gemini/mistral/deepseek/qwen/bedrock/chat_completion)",
+        "Entry points are CLI tools, tools, or HTTP handlers from EntrypointsAnalyzer",
+        "Flow steps are matched by module responsibility (ResponsibilityAnalyzer)",
+        "BFS from entry point reaches LLM call site → flow.reachesLLM=true"
+      ],
+      "limitations": [
+        "LLM_NAME_RE is recall-oriented; may false-positive on non-LLM symbols (e.g., 'palette_generator', 'completions' as variable name)",
+        "Rust mod/use declarations are not resolved to full module paths → reachesLLM may be false-negative for Rust projects",
+        "Java Eclipse extension-points (plugin.xml) are not parsed → AI subsystems in IDE plugins may be invisible to this analyzer",
+        "BFS is bounded by graph connectivity; isolated LLM call sites with 0 in/out edges are never reached"
+      ],
+      "possibleFalsePositives": [
+        "Symbol names containing 'gpt'/'llm'/'completion' as substrings (e.g., 'Completions' type in UI libraries)",
+        "Variables named 'openai'/'anthropic' that are not actual LLM clients",
+        "Test fixtures with mock LLM clients"
+      ],
+      "checkedLocations": [
+        "symbols.functions[].name + symbols.classes[].name (regex LLM_NAME_RE)",
+        "entrypoints.cli[] + entrypoints.tools[] + entrypoints.http[]",
+        "architecture.edges[] (BFS traversal)",
+        "responsibility.responsibilities[] (flow step labeling)"
+      ],
+      "coverage": "Symbol-name regex; misses LLM calls via DI/registry/extension-point"
+    }
+  },
+  "dependencySmell": {
+    "smells": [],
+    "totalSmells": 0,
+    "byType": {
+      "layer_violation": 0,
+      "circular_dependency": 0,
+      "hub_module": 0,
+      "unstable_dependency": 0
+    },
+    "highSeverity": 0
+  },
+  "capabilityOntology": {
+    "totalCapabilities": 10,
+    "coveredCapabilities": 0,
+    "capabilities": [
+      {
+        "capability": "planning",
+        "maturity": 0,
+        "coverage": "n/a",
+        "moduleCount": 0,
+        "symbolCount": 0,
+        "modules": [],
+        "evidence": []
+      },
+      {
+        "capability": "execution",
+        "maturity": 0,
+        "coverage": "n/a",
+        "moduleCount": 0,
+        "symbolCount": 0,
+        "modules": [],
+        "evidence": []
+      },
+      {
+        "capability": "retrieval",
+        "maturity": 0,
+        "coverage": "n/a",
+        "moduleCount": 0,
+        "symbolCount": 0,
+        "modules": [],
+        "evidence": []
+      },
+      {
+        "capability": "memory",
+        "maturity": 0,
+        "coverage": "n/a",
+        "moduleCount": 0,
+        "symbolCount": 0,
+        "modules": [],
+        "evidence": []
+      },
+      {
+        "capability": "evaluation",
+        "maturity": 0,
+        "coverage": "n/a",
+        "moduleCount": 0,
+        "symbolCount": 0,
+        "modules": [],
+        "evidence": []
+      },
+      {
+        "capability": "safety",
+        "maturity": 0,
+        "coverage": "n/a",
+        "moduleCount": 0,
+        "symbolCount": 0,
+        "modules": [],
+        "evidence": []
+      },
+      {
+        "capability": "tool",
+        "maturity": 0,
+        "coverage": "n/a",
+        "moduleCount": 0,
+        "symbolCount": 0,
+        "modules": [],
+        "evidence": []
+      },
+      {
+        "capability": "context",
+        "maturity": 0,
+        "coverage": "n/a",
+        "moduleCount": 0,
+        "symbolCount": 0,
+        "modules": [],
+        "evidence": []
+      },
+      {
+        "capability": "io",
+        "maturity": 0,
+        "coverage": "n/a",
+        "moduleCount": 0,
+        "symbolCount": 0,
+        "modules": [],
+        "evidence": []
+      },
+      {
+        "capability": "persistence",
+        "maturity": 0,
+        "coverage": "n/a",
+        "moduleCount": 0,
+        "symbolCount": 0,
+        "modules": [],
+        "evidence": []
+      }
+    ],
+    "capabilityMatrix": {
+      "planning": "n/a",
+      "execution": "n/a",
+      "retrieval": "n/a",
+      "memory": "n/a",
+      "evaluation": "n/a",
+      "safety": "n/a",
+      "tool": "n/a",
+      "context": "n/a",
+      "io": "n/a",
+      "persistence": "n/a"
+    },
+    "missingCapabilities": [],
+    "strongCapabilities": [],
+    "weakCapabilities": [],
+    "isAIProject": false,
+    "archetype": "non-ai",
+    "archetypeReason": "No AI signals detected (no tools, prompts, LLM call sites, or LLM Interface responsibility).",
+    "reason": "No AI signals detected (no tools, prompts, LLM call sites, or LLM Interface responsibility). Capability assessment is not applicable."
+  },
+  "decisions": {
+    "decisions": [],
+    "totalDecisions": 0,
+    "byCategory": {},
+    "_meta": {
+      "source": "inference",
+      "strength": "moderate",
+      "assumptions": [
+        "Decisions are inferred from analyzer outputs, not from ADR docs or commit messages",
+        "A 'decision' here means an observable design choice, not a documented rationale"
+      ],
+      "limitations": [
+        "Cannot access ADR (Architecture Decision Records) if they exist only in docs/",
+        "Negative decisions (deliberate omissions) are inferred from absence, which may be a coverage gap"
+      ],
+      "possibleFalsePositives": [
+        "A missing capability may be under-development, not deliberately omitted",
+        "Tool/prompt ratio may reflect project stage, not a deliberate design philosophy"
+      ],
+      "checkedLocations": [
+        "archPattern.primaryPattern",
+        "responsibility.responsibilities[]",
+        "tools.totalTools vs prompts.totalPrompts",
+        "informationFlow.llmCallSites[]",
+        "tests.testPatterns[]",
+        "capabilityOntology.capabilityMatrix (for negative decisions)"
+      ],
+      "coverage": "5 decision categories: structural / modular / capability / integration / quality / negative"
+    }
+  },
+  "constraints": {
+    "constraints": [],
+    "totalConstraints": 0,
+    "bySource": {},
+    "_meta": {
+      "source": "inference",
+      "strength": "moderate",
+      "assumptions": [
+        "Dependencies in manifest reflect runtime requirements (not just build-time)",
+        "Test patterns reflect quality requirements, not just test style",
+        "Entry point shape reflects deployment model"
+      ],
+      "limitations": [
+        "Cannot read README text for explicit constraint statements (e.g., 'Must support streaming')",
+        "Issue tracker and design docs are not accessible; constraints stated there are missed",
+        "Config files (.env.example) are not scanned; env-var constraints are inferred from code only"
+      ],
+      "possibleFalsePositives": [
+        "A dependency may be transitively pulled in, not directly required by the architecture",
+        "Test patterns may reflect test author preference, not a hard constraint"
+      ],
+      "checkedLocations": [
+        "discovery.manifest.dependencies",
+        "tests.testPatterns",
+        "entrypoints.entrypoints (type distribution)",
+        "archPattern.primaryPattern",
+        "ci.provider + ci.workflows"
+      ],
+      "coverage": "5 constraint sources: manifest / code / config / pattern / ci"
+    }
+  },
+  "assumptions": {
+    "assumptions": [
+      {
+        "id": "A-001",
+        "assumption": "Inputs are always well-formed (no poison/adversarial tests detected)",
+        "evidence": [
+          "tests.testPatterns does NOT include 'poison'"
+        ],
+        "confidence": 0.65,
+        "risk": "high",
+        "brokenIf": "Adversarial input reaches core logic; unvalidated paths crash or misbehave"
+      },
+      {
+        "id": "A-002",
+        "assumption": "Node.js runtime is available (specific version not validated)",
+        "evidence": [
+          "discovery.manifest.language=javascript"
+        ],
+        "confidence": 0.5,
+        "risk": "low",
+        "brokenIf": "Deployed on incompatible Node.js version (e.g., missing fetch API on old Node)"
+      },
+      {
+        "id": "A-003",
+        "assumption": "No cross-session memory required (stateless or single-session design)",
+        "evidence": [
+          "capabilityOntology.capabilityMatrix.memory=n/a"
+        ],
+        "confidence": 0.6,
+        "risk": "medium",
+        "brokenIf": "Multi-turn conversation spans sessions; user expects continuity"
+      },
+      {
+        "id": "A-004",
+        "assumption": "System behavior is deterministic (no LLM / non-deterministic AI calls detected)",
+        "evidence": [
+          "informationFlow.llmCallSites=0",
+          "capabilityOntology.isAIProject=false"
+        ],
+        "confidence": 0.75,
+        "risk": "low",
+        "brokenIf": "LLM or probabilistic component is introduced without updating tests"
+      }
+    ],
+    "totalAssumptions": 4,
+    "byRisk": {
+      "high": 1,
+      "medium": 1,
+      "low": 2
+    },
+    "highRiskCount": 1,
+    "_meta": {
+      "source": "inference",
+      "strength": "weak",
+      "assumptions": [
+        "Assumptions are inferred from absence (no retry → assumes availability), which is inherently uncertain",
+        "Only code-derivable assumptions are extracted; cultural/team assumptions are out of scope"
+      ],
+      "limitations": [
+        "Cannot read README 'Prerequisites' section for explicit assumption statements",
+        "Assumption risk levels are heuristic, not domain-calibrated",
+        "Absence of evidence is not evidence of absence — a missing retry symbol may mean retry is implemented elsewhere"
+      ],
+      "possibleFalsePositives": [
+        "No retry symbol may not mean no retry logic (could be in a dependency)",
+        "No poison tests may not mean inputs are trusted (could be validated upstream)"
+      ],
+      "checkedLocations": [
+        "informationFlow.llmCallSites (count + retry symbol search)",
+        "tests.testPatterns (poison presence)",
+        "discovery.manifest.language",
+        "responsibility.responsibilities (Persistence presence)",
+        "capabilityOntology.capabilityMatrix.memory",
+        "constraints.constraints (external LLM)"
+      ],
+      "coverage": "7 assumption categories: availability / input / runtime / storage / memory / network / determinism"
+    }
+  },
+  "consistency": {
+    "contradictions": [],
+    "warnings": [],
+    "summary": {
+      "totalContradictions": 0,
+      "totalWarnings": 0,
+      "overall": "stable",
+      "message": "No cross-analyzer contradictions detected. All analyzers agree."
+    }
+  },
+  "_archetypeHints": {
+    "signals": {
+      "hasAgent": true,
+      "hasLLM": false,
+      "hasTool": true,
+      "hasPrompt": false,
+      "hasParser": false,
+      "hasLexer": false,
+      "hasCodegen": false,
+      "hasSQL": false,
+      "hasDB": false,
+      "hasPlugin": false,
+      "hasCLI": false
+    },
+    "counts": {
+      "tools": 0,
+      "prompts": 0,
+      "entrypoints": 1,
+      "files": {
+        ".md": 1,
+        ".json": 1,
+        ".js": 6,
+        ".txt": 1
+      }
+    },
+    "manifest": {
+      "hasMain": false,
+      "hasExports": false,
+      "hasBin": false
+    },
+    "catalog": {
+      "AI Agent": {
+        "name": "AI Agent 框架",
+        "focus": [
+          "Agent lifecycle",
+          "Planning",
+          "Execution",
+          "Reflection",
+          "Context",
+          "Tools",
+          "Memory",
+          "Retry",
+          "Parallelism"
+        ],
+        "signals": [
+          "tool definitions",
+          "prompt templates",
+          "agent classes",
+          "LLM API calls",
+          "runner/loop"
+        ]
+      },
+      "Compiler": {
+        "name": "编译器/语言工具",
+        "focus": [
+          "Lexer",
+          "Parser",
+          "IR",
+          "Optimizer",
+          "Codegen",
+          "Type system",
+          "Runtime"
+        ],
+        "signals": [
+          "lexer",
+          "parser",
+          "AST",
+          "IR",
+          "codegen"
+        ]
+      },
+      "Database": {
+        "name": "数据库/数据系统",
+        "focus": [
+          "Query planner",
+          "Executor",
+          "Storage engine",
+          "Transaction",
+          "Concurrency",
+          "Vectorized execution"
+        ],
+        "signals": [
+          "query planner",
+          "storage engine",
+          "transaction",
+          "jdbc",
+          "execution engine"
+        ]
+      },
+      "Developer Tool": {
+        "name": "开发者工具",
+        "focus": [
+          "Plugin system",
+          "Extension API",
+          "Configuration model",
+          "Integration patterns"
+        ],
+        "signals": [
+          "plugin registry",
+          "extension API",
+          "CLI",
+          "bin scripts"
+        ]
+      },
+      "Library/SDK": {
+        "name": "Library/SDK",
+        "focus": [
+          "API design",
+          "Abstraction boundaries",
+          "Integration patterns"
+        ],
+        "signals": [
+          "public API",
+          "main entry",
+          "exports",
+          "abstraction layers"
+        ]
+      },
+      "Application": {
+        "name": "应用/服务",
+        "focus": [
+          "API design",
+          "Auth",
+          "Data flow",
+          "Deployment",
+          "Observability"
+        ],
+        "signals": [
+          "server",
+          "router",
+          "handler",
+          "service layer"
+        ]
+      }
+    }
+  },
+  "ontology": {
+    "objects": [
+      {
+        "id": "agent:src/agent.js:Agent",
+        "type": "agent",
+        "name": "Agent",
+        "file": "src/agent.js",
+        "properties": {
+          "line": 2,
+          "methods": [],
+          "exported": false
+        }
+      },
+      {
+        "id": "class:src/memory.js:ConversationMemory",
+        "type": "class",
+        "name": "ConversationMemory",
+        "file": "src/memory.js",
+        "properties": {
+          "line": 1,
+          "methods": [],
+          "exported": false
+        }
+      },
+      {
+        "id": "class:src/runner.js:Runner",
+        "type": "class",
+        "name": "Runner",
+        "file": "src/runner.js",
+        "properties": {
+          "line": 2,
+          "methods": [],
+          "exported": false
+        }
+      },
+      {
+        "id": "class:src/tool.js:Tool",
+        "type": "class",
+        "name": "Tool",
+        "file": "src/tool.js",
+        "properties": {
+          "line": 1,
+          "methods": [],
+          "exported": false
+        }
+      },
+      {
+        "id": "config:package.json",
+        "type": "config",
+        "name": "package.json",
+        "file": "package.json",
+        "properties": {}
+      },
+      {
+        "id": "doc:README.md",
+        "type": "document",
+        "name": "README.md",
+        "file": "README.md",
+        "properties": {}
+      },
+      {
+        "id": "doc:src/prompts/system.txt",
+        "type": "document",
+        "name": "system.txt",
+        "file": "src/prompts/system.txt",
+        "properties": {}
+      }
+    ],
+    "relationships": [],
+    "objectSummary": {
+      "agent": 1,
+      "class": 3,
+      "config": 1,
+      "document": 2
+    },
+    "relSummary": {}
+  },
+  "researchObjects": {
+    "objects": [
+      {
+        "id": "assumption:A-001",
+        "type": "assumption",
+        "ref": "A-001",
+        "summary": "Inputs are always well-formed (no poison/adversarial tests detected)",
+        "source": "AssumptionAnalyzer"
+      },
+      {
+        "id": "risk:A-001-risk",
+        "type": "risk",
+        "ref": "A-001-risk",
+        "summary": "Adversarial input reaches core logic; unvalidated paths crash or misbehave",
+        "source": "AssumptionAnalyzer"
+      },
+      {
+        "id": "assumption:A-002",
+        "type": "assumption",
+        "ref": "A-002",
+        "summary": "Node.js runtime is available (specific version not validated)",
+        "source": "AssumptionAnalyzer"
+      },
+      {
+        "id": "assumption:A-003",
+        "type": "assumption",
+        "ref": "A-003",
+        "summary": "No cross-session memory required (stateless or single-session design)",
+        "source": "AssumptionAnalyzer"
+      },
+      {
+        "id": "assumption:A-004",
+        "type": "assumption",
+        "ref": "A-004",
+        "summary": "System behavior is deterministic (no LLM / non-deterministic AI calls detected)",
+        "source": "AssumptionAnalyzer"
+      }
+    ],
+    "relationships": [
+      {
+        "from": "risk:A-001-risk",
+        "to": "assumption:A-001",
+        "type": "caused_by",
+        "detail": ""
+      }
+    ]
+  },
+  "researchObjectsSummary": {
+    "totalObjects": 5,
+    "totalRelationships": 1,
+    "byType": {
+      "assumption": 4,
+      "risk": 1
+    }
+  },
+  "plan": {
+    "goal": "understand the repository architecture, design ideas, engineering tradeoffs, and reusable patterns",
+    "hypotheses": [
+      {
+        "id": "H1-purpose",
+        "statement": "The repository purpose and target audience can be inferred from README and manifest",
+        "confidence": "high",
+        "evidence": [
+          "README.md exists",
+          "manifest: src/index.js"
+        ],
+        "gaps": []
+      },
+      {
+        "id": "H2-ai-agent",
+        "statement": "This is an AI-agent / LLM-related project with prompts and/or tools",
+        "confidence": "medium",
+        "evidence": [
+          "architecture signal dirs: src/prompts"
+        ],
+        "gaps": []
+      },
+      {
+        "id": "H3-modular",
+        "statement": "The codebase has a modular architecture with identifiable dependency layers",
+        "confidence": "medium",
+        "evidence": [
+          "6 modules",
+          "3 import edges"
+        ],
+        "gaps": []
+      },
+      {
+        "id": "H4-testing",
+        "statement": "The project relies on automated tests for correctness",
+        "confidence": "medium",
+        "evidence": [
+          "1 test files",
+          "1 test functions"
+        ],
+        "gaps": []
+      },
+      {
+        "id": "H5-entrypoints",
+        "statement": "Entry points reveal the primary interfaces (CLI, server, SDK)",
+        "confidence": "high",
+        "evidence": [
+          "1 entry points",
+          "0 CLI entry points",
+          "sdk: src/index.js"
+        ],
+        "gaps": []
+      },
+      {
+        "id": "H6-evaluation",
+        "statement": "The project measures quality through benchmarks or evaluations",
+        "confidence": "low",
+        "evidence": [],
+        "gaps": [
+          "No evaluation or benchmark artifacts detected"
+        ]
+      },
+      {
+        "id": "H7-maturity",
+        "statement": "The project is actively maintained with a non-trivial development history",
+        "confidence": "low",
+        "evidence": [
+          "0 commits",
+          "0 contributors"
+        ],
+        "gaps": [
+          "No Git history available"
+        ]
+      }
+    ],
+    "evidencePlan": [
+      {
+        "hypothesisId": "H6-evaluation",
+        "source": "evaluations",
+        "query": "search for ad-hoc validation scripts",
+        "priority": "medium"
+      },
+      {
+        "hypothesisId": "H7-maturity",
+        "source": "auto",
+        "query": "resolve gap: No Git history available",
+        "priority": "medium"
+      },
+      {
+        "hypothesisId": "H3-modular",
+        "source": "ranking",
+        "query": "read src/index.js",
+        "priority": "high"
+      },
+      {
+        "hypothesisId": "H3-modular",
+        "source": "ranking",
+        "query": "read README.md",
+        "priority": "high"
+      },
+      {
+        "hypothesisId": "H3-modular",
+        "source": "ranking",
+        "query": "read src/agent.js",
+        "priority": "high"
+      },
+      {
+        "hypothesisId": "H3-modular",
+        "source": "ranking",
+        "query": "read src/memory.js",
+        "priority": "high"
+      },
+      {
+        "hypothesisId": "H3-modular",
+        "source": "ranking",
+        "query": "read src/runner.js",
+        "priority": "high"
+      },
+      {
+        "hypothesisId": "H3-modular",
+        "source": "ranking",
+        "query": "read src/tool.js",
+        "priority": "high"
+      },
+      {
+        "hypothesisId": "H3-modular",
+        "source": "ranking",
+        "query": "read tests/agent.test.js",
+        "priority": "high"
+      },
+      {
+        "hypothesisId": "H3-modular",
+        "source": "discovery",
+        "query": "explore architecture signal directory: src",
+        "priority": "medium"
+      },
+      {
+        "hypothesisId": "H3-modular",
+        "source": "discovery",
+        "query": "explore architecture signal directory: src/prompts",
+        "priority": "medium"
+      },
+      {
+        "hypothesisId": "H3-modular",
+        "source": "discovery",
+        "query": "explore architecture signal directory: tests",
+        "priority": "medium"
+      }
+    ],
+    "readingPlan": [
+      {
+        "file": "src/index.js",
+        "reason": "high in-degree (+40); high PageRank (+50); entrypoint (+30); entrypoint (sdk)",
+        "priority": "high",
+        "estimatedEffort": "medium"
+      },
+      {
+        "file": "README.md",
+        "reason": "README (+50); important file (+40); critical documentation",
+        "priority": "high",
+        "estimatedEffort": "low"
+      },
+      {
+        "file": "src/agent.js",
+        "reason": "high in-degree (+40); high PageRank (+50)",
+        "priority": "high",
+        "estimatedEffort": "medium"
+      },
+      {
+        "file": "src/memory.js",
+        "reason": "high in-degree (+40); high PageRank (+50)",
+        "priority": "high",
+        "estimatedEffort": "medium"
+      },
+      {
+        "file": "src/runner.js",
+        "reason": "high in-degree (+40); high PageRank (+50)",
+        "priority": "high",
+        "estimatedEffort": "medium"
+      },
+      {
+        "file": "src/tool.js",
+        "reason": "high in-degree (+40); high PageRank (+50)",
+        "priority": "high",
+        "estimatedEffort": "medium"
+      },
+      {
+        "file": "tests/agent.test.js",
+        "reason": "high in-degree (+40); high PageRank (+50); test file (-30)",
+        "priority": "high",
+        "estimatedEffort": "medium"
+      }
+    ]
+  },
+  "questions": {
+    "questions": [
+      {
+        "category": "evaluation",
+        "question": "What metrics, datasets, or judges are used for evaluation?",
+        "priority": "medium",
+        "evidenceGap": "No evaluation or benchmark artifacts detected",
+        "suggestedSources": [
+          "evaluations.evalFiles",
+          "evaluations.patterns",
+          "evaluations.metrics"
+        ]
+      }
+    ]
+  },
+  "findings": {
+    "schema": "findings-v1",
+    "generatedAt": "2026-07-27T23:06:58.540Z",
+    "questions": [
+      {
+        "id": "Q1",
+        "question": "How does a request enter the system and what is the entry shape?",
+        "category": "architecture",
+        "importance": "critical"
+      },
+      {
+        "id": "Q2",
+        "question": "Where is orchestration/control-flow, and what pattern (pipeline/graph/fsm) is used?",
+        "category": "architecture",
+        "importance": "critical"
+      },
+      {
+        "id": "Q3",
+        "question": "Does Retrieval (RAG) really exist, and what is the evidence strength?",
+        "category": "capability",
+        "importance": "high"
+      },
+      {
+        "id": "Q4",
+        "question": "Where is prompt management and what is the prompt lifecycle?",
+        "category": "ai",
+        "importance": "high"
+      },
+      {
+        "id": "Q5",
+        "question": "What is the tool registry/invocation pattern, and how are tools bound to agents?",
+        "category": "ai",
+        "importance": "high"
+      },
+      {
+        "id": "Q6",
+        "question": "Is this an AI project? What concrete signals confirm or refute this?",
+        "category": "ai",
+        "importance": "critical"
+      },
+      {
+        "id": "Q7",
+        "question": "How is correctness validated (tests vs evaluation), and where are the gaps?",
+        "category": "testing",
+        "importance": "medium"
+      },
+      {
+        "id": "Q8",
+        "question": "What contradicts the README or self-presentation (false claims, hidden gaps)?",
+        "category": "meta",
+        "importance": "high"
+      },
+      {
+        "id": "Q9",
+        "question": "What architecture decisions were made, and what are their tradeoffs?",
+        "category": "decision",
+        "importance": "critical"
+      },
+      {
+        "id": "Q10",
+        "question": "What constraints drive these decisions (and which modules do they affect)?",
+        "category": "constraint",
+        "importance": "high"
+      },
+      {
+        "id": "Q11",
+        "question": "What implicit assumptions does the system depend on, and where would they break?",
+        "category": "assumption",
+        "importance": "high"
+      }
+    ],
+    "findings": [
+      {
+        "id": "F-001",
+        "questionId": "Q1",
+        "question": "How does a request enter the system and what is the entry shape?",
+        "finding": "Repository exposes 1 entry points (sdk=1). Sample: src/index.js.",
+        "confidence": 0.55,
+        "importance": "critical",
+        "coverage": 0.1,
+        "support": [
+          {
+            "source": "ast",
+            "ref": "entrypoints.entrypoints",
+            "detail": "1 entry points via AST main() / filename scan",
+            "who": "entrypoints",
+            "when": null
+          },
+          {
+            "source": "manifest",
+            "ref": "discovery.manifest",
+            "detail": "manifest=src/index.js",
+            "who": "discovery",
+            "when": null
+          }
+        ],
+        "counter": [],
+        "limitations": [
+          "Framework-specific entry hooks (e.g., Spring Boot application.properties, plugin.xml) may not be detected."
+        ],
+        "checkedLocations": [
+          "**/cli.py",
+          "**/main.py",
+          "**/index.ts",
+          "manifest scripts field",
+          "package.json bin"
+        ],
+        "verified": "verified",
+        "verificationNote": "",
+        "lifecycle": "reusable_pattern",
+        "lifecycleHistory": [
+          {
+            "from": null,
+            "to": "supported",
+            "at": "2026-07-27T23:06:58.539Z",
+            "reason": "Initial state from FindingsGenerator"
+          },
+          {
+            "from": "supported",
+            "to": "verified",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "verified=verified"
+          },
+          {
+            "from": "verified",
+            "to": "reusable_pattern",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "Promoted from verified (questionId=Q1)"
+          }
+        ],
+        "unknownType": null,
+        "unknownReason": "",
+        "provenance": {
+          "generatedBy": "FindingsGenerator",
+          "commitHash": null,
+          "commitDate": null
+        }
+      },
+      {
+        "id": "F-002",
+        "questionId": "Q2",
+        "question": "Where is orchestration/control-flow, and what pattern (pipeline/graph/fsm) is used?",
+        "finding": "No recognizable architecture pattern detected (Unknown).",
+        "confidence": 0.01,
+        "importance": "critical",
+        "coverage": 0,
+        "support": [],
+        "counter": [],
+        "limitations": [
+          "Pattern detection is directory-name driven; code-only patterns are missed."
+        ],
+        "checkedLocations": [
+          "discovery.topLevelDirs",
+          "discovery.architectureSignalDirs"
+        ],
+        "verified": "verified",
+        "verificationNote": "Negative finding (searched, found nothing) — verified by absence",
+        "lifecycle": "verified",
+        "lifecycleHistory": [
+          {
+            "from": null,
+            "to": "candidate",
+            "at": "2026-07-27T23:06:58.539Z",
+            "reason": "Initial state from FindingsGenerator"
+          },
+          {
+            "from": "candidate",
+            "to": "verified",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "verified=verified"
+          }
+        ],
+        "unknownType": "need_reading",
+        "unknownReason": "Orchestration logic is in source code; reading call chains can resolve.",
+        "provenance": {
+          "generatedBy": "FindingsGenerator",
+          "commitHash": null,
+          "commitDate": null
+        }
+      },
+      {
+        "id": "F-003",
+        "questionId": "Q3",
+        "question": "Does Retrieval (RAG) really exist, and what is the evidence strength?",
+        "finding": "No Retrieval (RAG) capability detected. CapabilityOntology reports retrieval=n/a.",
+        "confidence": 0.09,
+        "importance": "high",
+        "coverage": 0.6,
+        "support": [
+          {
+            "source": "inference",
+            "ref": "capabilityOntology.capabilityMatrix.retrieval",
+            "detail": "retrieval=n/a",
+            "who": "capabilityOntology",
+            "when": null
+          }
+        ],
+        "counter": [],
+        "limitations": [
+          "CapabilityOntology gate may under-classify repos with implicit RAG (no explicit vector store symbols)."
+        ],
+        "checkedLocations": [
+          "embedding/",
+          "vector/",
+          "faiss/",
+          "pgvector/",
+          "chroma/",
+          "symbols.functions[].name (retriev/embed/vector search)",
+          "prompts.prompts[]"
+        ],
+        "verified": "verified",
+        "verificationNote": "",
+        "lifecycle": "verified",
+        "lifecycleHistory": [
+          {
+            "from": null,
+            "to": "supported",
+            "at": "2026-07-27T23:06:58.539Z",
+            "reason": "Initial state from FindingsGenerator"
+          },
+          {
+            "from": "supported",
+            "to": "verified",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "verified=verified"
+          }
+        ],
+        "unknownType": null,
+        "unknownReason": "",
+        "provenance": {
+          "generatedBy": "FindingsGenerator",
+          "commitHash": null,
+          "commitDate": null
+        }
+      },
+      {
+        "id": "F-004",
+        "questionId": "Q4",
+        "question": "Where is prompt management and what is the prompt lifecycle?",
+        "finding": "No prompts detected by AST or regex scan.",
+        "confidence": 0.32,
+        "importance": "high",
+        "coverage": 0.5,
+        "support": [],
+        "counter": [],
+        "limitations": [
+          "PromptsAnalyzer detects SYSTEM_PROMPT/INSTRUCTION/PROMPT variable assignments; dynamic prompt assembly may be missed."
+        ],
+        "checkedLocations": [
+          "**/*.py (SYSTEM_PROMPT/INSTRUCTION/PROMPT)",
+          "**/*.ts (systemPrompt/instruction)",
+          "prompts/",
+          "**/prompt*.ts"
+        ],
+        "verified": "verified",
+        "verificationNote": "Negative finding (searched, found nothing) — verified by absence",
+        "lifecycle": "verified",
+        "lifecycleHistory": [
+          {
+            "from": null,
+            "to": "candidate",
+            "at": "2026-07-27T23:06:58.539Z",
+            "reason": "Initial state from FindingsGenerator"
+          },
+          {
+            "from": "candidate",
+            "to": "verified",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "verified=verified"
+          }
+        ],
+        "unknownType": "need_reading",
+        "unknownReason": "Prompt management is code-internal; reading source can resolve.",
+        "provenance": {
+          "generatedBy": "FindingsGenerator",
+          "commitHash": null,
+          "commitDate": null
+        }
+      },
+      {
+        "id": "F-005",
+        "questionId": "Q5",
+        "question": "What is the tool registry/invocation pattern, and how are tools bound to agents?",
+        "finding": "No tools detected by AST decorator or schema-first scan.",
+        "confidence": 0.32,
+        "importance": "high",
+        "coverage": 0.5,
+        "support": [],
+        "counter": [],
+        "limitations": [
+          "ToolsAnalyzer detects @tool decorator, Tool() class, RPC_TOOLS schema; custom frameworks may be missed."
+        ],
+        "checkedLocations": [
+          "@tool decorator",
+          "Tool()/ToolNode()",
+          "RPC_TOOLS/ToolDef[]",
+          "skills/*/execute.py",
+          "bundled_skills/*/"
+        ],
+        "verified": "verified",
+        "verificationNote": "Negative finding (searched, found nothing) — verified by absence",
+        "lifecycle": "verified",
+        "lifecycleHistory": [
+          {
+            "from": null,
+            "to": "candidate",
+            "at": "2026-07-27T23:06:58.539Z",
+            "reason": "Initial state from FindingsGenerator"
+          },
+          {
+            "from": "candidate",
+            "to": "verified",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "verified=verified"
+          }
+        ],
+        "unknownType": "need_reading",
+        "unknownReason": "Tool registry is code-internal; reading source can resolve.",
+        "provenance": {
+          "generatedBy": "FindingsGenerator",
+          "commitHash": null,
+          "commitDate": null
+        }
+      },
+      {
+        "id": "F-006",
+        "questionId": "Q6",
+        "question": "Is this an AI project? What concrete signals confirm or refute this?",
+        "finding": "Not classified as AI project. CapabilityOntology gate found insufficient AI signals.",
+        "confidence": 0.05,
+        "importance": "critical",
+        "coverage": 0,
+        "support": [
+          {
+            "source": "inference",
+            "ref": "capabilityOntology.isAIProject",
+            "detail": "isAIProject=false",
+            "who": "capabilityOntology",
+            "when": null
+          }
+        ],
+        "counter": [],
+        "limitations": [],
+        "checkedLocations": [
+          "prompts.prompts[]",
+          "tools.tools[]",
+          "informationFlow.llmCallSites[]",
+          "responsibility.responsibilities[] (LLM Interface)"
+        ],
+        "verified": "verified",
+        "verificationNote": "",
+        "lifecycle": "verified",
+        "lifecycleHistory": [
+          {
+            "from": null,
+            "to": "supported",
+            "at": "2026-07-27T23:06:58.539Z",
+            "reason": "Initial state from FindingsGenerator"
+          },
+          {
+            "from": "supported",
+            "to": "verified",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "verified=verified"
+          }
+        ],
+        "unknownType": "need_reading",
+        "unknownReason": "AI project signals are in source code; reading source can resolve.",
+        "provenance": {
+          "generatedBy": "FindingsGenerator",
+          "commitHash": null,
+          "commitDate": null
+        }
+      },
+      {
+        "id": "F-007",
+        "questionId": "Q7",
+        "question": "How is correctness validated (tests vs evaluation), and where are the gaps?",
+        "finding": "Test suite: 1 files, 1 test functions.",
+        "confidence": 0.45,
+        "importance": "medium",
+        "coverage": 0.02,
+        "support": [
+          {
+            "source": "ast",
+            "ref": "tests.totalTestFiles",
+            "detail": "1 test files, 1 functions",
+            "who": "tests",
+            "when": null
+          }
+        ],
+        "counter": [],
+        "limitations": [
+          "Test quality (assertion density, coverage) cannot be inferred from file/function count alone."
+        ],
+        "checkedLocations": [
+          "**/test_*.py",
+          "**/*_test.go",
+          "**/*.test.ts",
+          "**/*.spec.ts",
+          "**/tests/",
+          "**/__tests__/"
+        ],
+        "verified": "verified",
+        "verificationNote": "",
+        "lifecycle": "verified",
+        "lifecycleHistory": [
+          {
+            "from": null,
+            "to": "supported",
+            "at": "2026-07-27T23:06:58.539Z",
+            "reason": "Initial state from FindingsGenerator"
+          },
+          {
+            "from": "supported",
+            "to": "verified",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "verified=verified"
+          }
+        ],
+        "unknownType": null,
+        "unknownReason": "",
+        "provenance": {
+          "generatedBy": "FindingsGenerator",
+          "commitHash": null,
+          "commitDate": null
+        }
+      },
+      {
+        "id": "F-008",
+        "questionId": "Q7",
+        "question": "How is correctness validated (tests vs evaluation), and where are the gaps?",
+        "finding": "No evaluation infrastructure detected (no eval files, hasEvaluation=false).",
+        "confidence": 0.06,
+        "importance": "medium",
+        "coverage": 0.4,
+        "support": [],
+        "counter": [],
+        "limitations": [
+          "EvaluationsAnalyzer keyword-based; may miss eval logic embedded in test files."
+        ],
+        "checkedLocations": [
+          "**/eval*.py",
+          "**/benchmark*",
+          "**/leaderboard*",
+          "evaluations/",
+          "metrics/"
+        ],
+        "verified": "verified",
+        "verificationNote": "Negative finding (searched, found nothing) — verified by absence",
+        "lifecycle": "verified",
+        "lifecycleHistory": [
+          {
+            "from": null,
+            "to": "candidate",
+            "at": "2026-07-27T23:06:58.539Z",
+            "reason": "Initial state from FindingsGenerator"
+          },
+          {
+            "from": "candidate",
+            "to": "verified",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "verified=verified"
+          }
+        ],
+        "unknownType": "need_external_evidence",
+        "unknownReason": "Correctness assurance requires tests AND runtime/production evidence; repo alone is insufficient.",
+        "provenance": {
+          "generatedBy": "FindingsGenerator",
+          "commitHash": null,
+          "commitDate": null
+        }
+      },
+      {
+        "id": "F-009",
+        "questionId": "Q8",
+        "question": "What contradicts the README or self-presentation (false claims, hidden gaps)?",
+        "finding": "README claims \"LLM Integration\" but code signals do not confirm it (hasLLM=false). Treated as documentation-only claim until source evidence is found.",
+        "confidence": 0.13,
+        "importance": "high",
+        "coverage": 0.6,
+        "support": [
+          {
+            "source": "regex",
+            "ref": "README.md",
+            "detail": "README mentions \"LLM Integration\"",
+            "who": "README",
+            "when": null
+          },
+          {
+            "source": "inference",
+            "ref": "_archetypeHints.signals.hasLLM",
+            "detail": "hasLLM=false",
+            "who": "_archetypeHints",
+            "when": null
+          }
+        ],
+        "counter": [],
+        "limitations": [
+          "README claim may be aspirational, planned, or in a module the analyzer did not scan."
+        ],
+        "checkedLocations": [
+          "README.md",
+          "_archetypeHints.signals.hasLLM"
+        ],
+        "verified": "verified",
+        "verificationNote": "",
+        "lifecycle": "verified",
+        "lifecycleHistory": [
+          {
+            "from": null,
+            "to": "supported",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "Initial state from FindingsGenerator"
+          },
+          {
+            "from": "supported",
+            "to": "verified",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "verified=verified"
+          }
+        ],
+        "unknownType": null,
+        "unknownReason": "",
+        "provenance": {
+          "generatedBy": "FindingsGenerator",
+          "commitHash": null,
+          "commitDate": null
+        }
+      },
+      {
+        "id": "F-010",
+        "questionId": "Q9",
+        "question": "What architecture decisions were made, and what are their tradeoffs?",
+        "finding": "No architecture decisions extracted (DecisionAnalyzer produced 0 decisions).",
+        "confidence": 0.04,
+        "importance": "critical",
+        "coverage": 0,
+        "support": [],
+        "counter": [],
+        "limitations": [
+          "DecisionAnalyzer infers decisions from analyzer outputs; repos with implicit/unconventional patterns may yield nothing."
+        ],
+        "checkedLocations": [
+          "archPattern",
+          "responsibility",
+          "tools",
+          "informationFlow",
+          "tests",
+          "capabilityOntology"
+        ],
+        "verified": "verified",
+        "verificationNote": "Negative finding (searched, found nothing) — verified by absence",
+        "lifecycle": "decision",
+        "lifecycleHistory": [
+          {
+            "from": null,
+            "to": "candidate",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "Initial state from FindingsGenerator"
+          },
+          {
+            "from": "candidate",
+            "to": "verified",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "verified=verified"
+          },
+          {
+            "from": "verified",
+            "to": "decision",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "Promoted from verified (questionId=Q9)"
+          }
+        ],
+        "unknownType": "impossible_to_verify",
+        "unknownReason": "Architectural decisions live in ADRs / team discussions / PRs; not always recoverable from code.",
+        "provenance": {
+          "generatedBy": "FindingsGenerator",
+          "commitHash": null,
+          "commitDate": null
+        }
+      },
+      {
+        "id": "F-011",
+        "questionId": "Q10",
+        "question": "What constraints drive these decisions (and which modules do they affect)?",
+        "finding": "No constraints extracted (ConstraintAnalyzer produced 0 constraints).",
+        "confidence": 0.04,
+        "importance": "high",
+        "coverage": 0,
+        "support": [],
+        "counter": [],
+        "limitations": [
+          "ConstraintAnalyzer infers constraints from dependencies, test patterns, entry points, and CI; repos with implicit constraints may yield nothing."
+        ],
+        "checkedLocations": [
+          "discovery.manifest.dependencies",
+          "tests.testPatterns",
+          "entrypoints",
+          "archPattern",
+          "ci"
+        ],
+        "verified": "verified",
+        "verificationNote": "Negative finding (searched, found nothing) — verified by absence",
+        "lifecycle": "verified",
+        "lifecycleHistory": [
+          {
+            "from": null,
+            "to": "candidate",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "Initial state from FindingsGenerator"
+          },
+          {
+            "from": "candidate",
+            "to": "verified",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "verified=verified"
+          }
+        ],
+        "unknownType": "need_external_evidence",
+        "unknownReason": "Constraints (performance, compliance, deployment) often external to the codebase.",
+        "provenance": {
+          "generatedBy": "FindingsGenerator",
+          "commitHash": null,
+          "commitDate": null
+        }
+      },
+      {
+        "id": "F-012",
+        "questionId": "Q11",
+        "question": "What implicit assumptions does the system depend on, and where would they break?",
+        "finding": "Assumption A-001 (risk=high): Inputs are always well-formed (no poison/adversarial tests detected). Broken if: Adversarial input reaches core logic; unvalidated paths crash or misbehave.",
+        "confidence": 0.05,
+        "importance": "high",
+        "coverage": 0.5,
+        "support": [
+          {
+            "source": "inference",
+            "ref": "assumptions.A-001.evidence",
+            "detail": "tests.testPatterns does NOT include 'poison'",
+            "who": "assumptions",
+            "when": null
+          }
+        ],
+        "counter": [],
+        "limitations": [
+          "Assumption inferred from absence of evidence (e.g., no retry symbol → assumes availability)",
+          "Risk level is heuristic, not domain-calibrated"
+        ],
+        "checkedLocations": [
+          "assumptions.assumptions[] (AssumptionAnalyzer output)"
+        ],
+        "verified": "verified",
+        "verificationNote": "",
+        "lifecycle": "verified",
+        "lifecycleHistory": [
+          {
+            "from": null,
+            "to": "supported",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "Initial state from FindingsGenerator"
+          },
+          {
+            "from": "supported",
+            "to": "verified",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "verified=verified"
+          }
+        ],
+        "unknownType": null,
+        "unknownReason": "",
+        "provenance": {
+          "generatedBy": "FindingsGenerator",
+          "commitHash": null,
+          "commitDate": null
+        }
+      },
+      {
+        "id": "F-013",
+        "questionId": "Q11",
+        "question": "What implicit assumptions does the system depend on, and where would they break?",
+        "finding": "Assumption A-003 (risk=medium): No cross-session memory required (stateless or single-session design). Broken if: Multi-turn conversation spans sessions; user expects continuity.",
+        "confidence": 0.05,
+        "importance": "high",
+        "coverage": 0.5,
+        "support": [
+          {
+            "source": "inference",
+            "ref": "assumptions.A-003.evidence",
+            "detail": "capabilityOntology.capabilityMatrix.memory=n/a",
+            "who": "assumptions",
+            "when": null
+          }
+        ],
+        "counter": [],
+        "limitations": [
+          "Assumption inferred from absence of evidence (e.g., no retry symbol → assumes availability)",
+          "Risk level is heuristic, not domain-calibrated"
+        ],
+        "checkedLocations": [
+          "assumptions.assumptions[] (AssumptionAnalyzer output)"
+        ],
+        "verified": "verified",
+        "verificationNote": "",
+        "lifecycle": "verified",
+        "lifecycleHistory": [
+          {
+            "from": null,
+            "to": "supported",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "Initial state from FindingsGenerator"
+          },
+          {
+            "from": "supported",
+            "to": "verified",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "verified=verified"
+          }
+        ],
+        "unknownType": null,
+        "unknownReason": "",
+        "provenance": {
+          "generatedBy": "FindingsGenerator",
+          "commitHash": null,
+          "commitDate": null
+        }
+      },
+      {
+        "id": "F-014",
+        "questionId": "Q11",
+        "question": "What implicit assumptions does the system depend on, and where would they break?",
+        "finding": "Assumption A-002 (risk=low): Node.js runtime is available (specific version not validated). Broken if: Deployed on incompatible Node.js version (e.g., missing fetch API on old Node).",
+        "confidence": 0.04,
+        "importance": "high",
+        "coverage": 0.5,
+        "support": [
+          {
+            "source": "inference",
+            "ref": "assumptions.A-002.evidence",
+            "detail": "discovery.manifest.language=javascript",
+            "who": "assumptions",
+            "when": null
+          }
+        ],
+        "counter": [],
+        "limitations": [
+          "Assumption inferred from absence of evidence (e.g., no retry symbol → assumes availability)",
+          "Risk level is heuristic, not domain-calibrated"
+        ],
+        "checkedLocations": [
+          "assumptions.assumptions[] (AssumptionAnalyzer output)"
+        ],
+        "verified": "verified",
+        "verificationNote": "",
+        "lifecycle": "verified",
+        "lifecycleHistory": [
+          {
+            "from": null,
+            "to": "supported",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "Initial state from FindingsGenerator"
+          },
+          {
+            "from": "supported",
+            "to": "verified",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "verified=verified"
+          }
+        ],
+        "unknownType": null,
+        "unknownReason": "",
+        "provenance": {
+          "generatedBy": "FindingsGenerator",
+          "commitHash": null,
+          "commitDate": null
+        }
+      },
+      {
+        "id": "F-015",
+        "questionId": "Q11",
+        "question": "What implicit assumptions does the system depend on, and where would they break?",
+        "finding": "Assumption A-004 (risk=low): System behavior is deterministic (no LLM / non-deterministic AI calls detected). Broken if: LLM or probabilistic component is introduced without updating tests.",
+        "confidence": 0.06,
+        "importance": "high",
+        "coverage": 0.5,
+        "support": [
+          {
+            "source": "inference",
+            "ref": "assumptions.A-004.evidence",
+            "detail": "informationFlow.llmCallSites=0",
+            "who": "assumptions",
+            "when": null
+          },
+          {
+            "source": "inference",
+            "ref": "assumptions.A-004.evidence",
+            "detail": "capabilityOntology.isAIProject=false",
+            "who": "assumptions",
+            "when": null
+          }
+        ],
+        "counter": [],
+        "limitations": [
+          "Assumption inferred from absence of evidence (e.g., no retry symbol → assumes availability)",
+          "Risk level is heuristic, not domain-calibrated"
+        ],
+        "checkedLocations": [
+          "assumptions.assumptions[] (AssumptionAnalyzer output)"
+        ],
+        "verified": "verified",
+        "verificationNote": "",
+        "lifecycle": "verified",
+        "lifecycleHistory": [
+          {
+            "from": null,
+            "to": "supported",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "Initial state from FindingsGenerator"
+          },
+          {
+            "from": "supported",
+            "to": "verified",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "verified=verified"
+          }
+        ],
+        "unknownType": null,
+        "unknownReason": "",
+        "provenance": {
+          "generatedBy": "FindingsGenerator",
+          "commitHash": null,
+          "commitDate": null
+        }
+      },
+      {
+        "id": "F-016",
+        "questionId": "Q11",
+        "question": "What implicit assumptions does the system depend on, and where would they break?",
+        "finding": "1 high-risk assumption(s) detected. These are the most likely failure modes under unexpected conditions.",
+        "confidence": 0.06,
+        "importance": "high",
+        "coverage": 0.6,
+        "support": [
+          {
+            "source": "inference",
+            "ref": "assumptions.A-001",
+            "detail": "Inputs are always well-formed (no poison/adversarial tests detected)",
+            "who": "assumptions",
+            "when": null
+          }
+        ],
+        "counter": [],
+        "limitations": [
+          "High-risk classification is heuristic; domain-specific calibration needed."
+        ],
+        "checkedLocations": [
+          "assumptions.assumptions[] (risk=high)"
+        ],
+        "verified": "verified",
+        "verificationNote": "",
+        "lifecycle": "verified",
+        "lifecycleHistory": [
+          {
+            "from": null,
+            "to": "supported",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "Initial state from FindingsGenerator"
+          },
+          {
+            "from": "supported",
+            "to": "verified",
+            "at": "2026-07-27T23:06:58.540Z",
+            "reason": "verified=verified"
+          }
+        ],
+        "unknownType": null,
+        "unknownReason": "",
+        "provenance": {
+          "generatedBy": "FindingsGenerator",
+          "commitHash": null,
+          "commitDate": null
+        }
+      }
+    ],
+    "summary": {
+      "total": 16,
+      "byImportance": {
+        "critical": 4,
+        "high": 10,
+        "medium": 2,
+        "low": 0
+      },
+      "verifiedCount": 0,
+      "downgradedCount": 0,
+      "findingsWithCounterEvidence": 0,
+      "averageConfidence": 0.14
+    },
+    "verificationSummary": {
+      "total": 16,
+      "verified": 16,
+      "downgraded": 0,
+      "rejected": 0,
+      "pending": 0,
+      "counterEvidenceFound": 0,
+      "averageConfidenceAfterVerification": 0.14,
+      "lifecycle": {
+        "candidate": 0,
+        "hypothesis": 0,
+        "supported": 0,
+        "verified": 14,
+        "decision": 1,
+        "reusable_pattern": 1
+      },
+      "unknownTypes": {
+        "need_reading": 4,
+        "need_external_evidence": 2,
+        "impossible_to_verify": 1
+      }
+    }
+  },
+  "synthesis": {
+    "schema": "synthesis-v1",
+    "generatedAt": "2026-07-27T23:06:58.541Z",
+    "total": 11,
+    "evidenceHierarchy": [
+      "source_code",
+      "ast",
+      "graph",
+      "manifest",
+      "regex",
+      "keyword",
+      "inference"
+    ],
+    "resolutions": [
+      {
+        "id": "R-001",
+        "questionId": "Q1",
+        "question": "How does a request enter the system and what is the entry shape?",
+        "importance": "critical",
+        "verdict": "yes",
+        "verdictLabel": "Yes / Present",
+        "confidence": "High",
+        "confidenceLabel": "High",
+        "conclusion": "Repository exposes 1 entry points (sdk=1). Sample: src/index.js.",
+        "primaryEvidence": [
+          {
+            "type": "ast",
+            "location": "entrypoints.entrypoints",
+            "description": "1 entry points via AST main() / filename scan"
+          },
+          {
+            "type": "regex",
+            "location": "discovery.manifest",
+            "description": "manifest=src/index.js"
+          }
+        ],
+        "analyzerEvidence": [],
+        "conflicts": [],
+        "supportingFindings": [],
+        "checkedLocations": []
+      },
+      {
+        "id": "R-002",
+        "questionId": "Q2",
+        "question": "Where is orchestration/control-flow, and what pattern (pipeline/graph/fsm) is used?",
+        "importance": "critical",
+        "verdict": "unknown",
+        "verdictLabel": "Unknown",
+        "confidence": "Low",
+        "confidenceLabel": "Low",
+        "conclusion": "No clear architecture pattern identified.",
+        "primaryEvidence": [],
+        "analyzerEvidence": [],
+        "conflicts": [],
+        "supportingFindings": [],
+        "checkedLocations": []
+      },
+      {
+        "id": "R-003",
+        "questionId": "Q3",
+        "question": "Does Retrieval (RAG) really exist, and what is the evidence strength?",
+        "importance": "high",
+        "verdict": "no",
+        "verdictLabel": "No / Absent",
+        "confidence": "Low",
+        "confidenceLabel": "Low",
+        "conclusion": "No Retrieval capability detected (relevant locations checked).",
+        "primaryEvidence": [
+          {
+            "type": "regex",
+            "location": "capabilityOntology.capabilityMatrix.retrieval",
+            "description": "retrieval=n/a"
+          }
+        ],
+        "analyzerEvidence": [
+          {
+            "analyzer": "inference",
+            "claim": "No Retrieval (RAG) capability detected. CapabilityOntology reports retrieval=n/a.",
+            "status": "supporting",
+            "reason": ""
+          }
+        ],
+        "conflicts": [],
+        "supportingFindings": [
+          "F-003"
+        ],
+        "checkedLocations": [
+          "embedding/",
+          "vector/",
+          "faiss/",
+          "pgvector/",
+          "chroma/",
+          "symbols.functions[].name (retriev/embed/vector search)",
+          "prompts.prompts[]"
+        ]
+      },
+      {
+        "id": "R-004",
+        "questionId": "Q4",
+        "question": "Where is prompt management and what is the prompt lifecycle?",
+        "importance": "high",
+        "verdict": "yes",
+        "verdictLabel": "Yes / Present",
+        "confidence": "Medium",
+        "confidenceLabel": "Medium",
+        "conclusion": "No prompts detected by AST or regex scan.",
+        "primaryEvidence": [],
+        "analyzerEvidence": [],
+        "conflicts": [],
+        "supportingFindings": [
+          "F-004"
+        ],
+        "checkedLocations": [
+          "**/*.py (SYSTEM_PROMPT/INSTRUCTION/PROMPT)",
+          "**/*.ts (systemPrompt/instruction)",
+          "prompts/",
+          "**/prompt*.ts"
+        ]
+      },
+      {
+        "id": "R-005",
+        "questionId": "Q5",
+        "question": "What is the tool registry/invocation pattern, and how are tools bound to agents?",
+        "importance": "high",
+        "verdict": "yes",
+        "verdictLabel": "Yes / Present",
+        "confidence": "Medium",
+        "confidenceLabel": "Medium",
+        "conclusion": "No tools detected by AST decorator or schema-first scan.",
+        "primaryEvidence": [],
+        "analyzerEvidence": [],
+        "conflicts": [],
+        "supportingFindings": [
+          "F-005"
+        ],
+        "checkedLocations": [
+          "@tool decorator",
+          "Tool()/ToolNode()",
+          "RPC_TOOLS/ToolDef[]",
+          "skills/*/execute.py",
+          "bundled_skills/*/"
+        ]
+      },
+      {
+        "id": "R-006",
+        "questionId": "Q6",
+        "question": "Is this an AI project? What concrete signals confirm or refute this?",
+        "importance": "critical",
+        "verdict": "no",
+        "verdictLabel": "No / Absent",
+        "confidence": "Low",
+        "confidenceLabel": "Low",
+        "conclusion": "Not an AI project: Not classified as AI project. CapabilityOntology gate found insufficient AI signals..",
+        "primaryEvidence": [
+          {
+            "type": "regex",
+            "location": "capabilityOntology.isAIProject",
+            "description": "isAIProject=false"
+          }
+        ],
+        "analyzerEvidence": [
+          {
+            "analyzer": "inference",
+            "claim": "Not classified as AI project. CapabilityOntology gate found insufficient AI signals.",
+            "status": "supporting",
+            "reason": ""
+          }
+        ],
+        "conflicts": [],
+        "supportingFindings": [
+          "F-006"
+        ],
+        "checkedLocations": [
+          "prompts.prompts[]",
+          "tools.tools[]",
+          "informationFlow.llmCallSites[]",
+          "responsibility.responsibilities[] (LLM Interface)"
+        ]
+      },
+      {
+        "id": "R-007",
+        "questionId": "Q7",
+        "question": "How is correctness validated (tests vs evaluation), and where are the gaps?",
+        "importance": "medium",
+        "verdict": "yes",
+        "verdictLabel": "Yes / Present",
+        "confidence": "Medium",
+        "confidenceLabel": "Medium",
+        "conclusion": "Test suite: 1 files, 1 test functions.",
+        "primaryEvidence": [
+          {
+            "type": "ast",
+            "location": "tests.totalTestFiles",
+            "description": "1 test files, 1 functions"
+          }
+        ],
+        "analyzerEvidence": [
+          {
+            "analyzer": "ast",
+            "claim": "Test suite: 1 files, 1 test functions.",
+            "status": "supporting",
+            "reason": ""
+          }
+        ],
+        "conflicts": [],
+        "supportingFindings": [
+          "F-007"
+        ],
+        "checkedLocations": [
+          "**/test_*.py",
+          "**/*_test.go",
+          "**/*.test.ts",
+          "**/*.spec.ts",
+          "**/tests/",
+          "**/__tests__/"
+        ]
+      },
+      {
+        "id": "R-008",
+        "questionId": "Q8",
+        "question": "What contradicts the README or self-presentation (false claims, hidden gaps)?",
+        "importance": "high",
+        "verdict": "no",
+        "verdictLabel": "No / Absent",
+        "confidence": "Medium",
+        "confidenceLabel": "Medium",
+        "conclusion": "No cross-analyzer contradictions or warnings detected.",
+        "primaryEvidence": [],
+        "analyzerEvidence": [],
+        "conflicts": [],
+        "supportingFindings": [],
+        "checkedLocations": []
+      },
+      {
+        "id": "R-009",
+        "questionId": "Q9",
+        "question": "What architecture decisions were made, and what are their tradeoffs?",
+        "importance": "critical",
+        "verdict": "yes",
+        "verdictLabel": "Yes / Present",
+        "confidence": "Medium",
+        "confidenceLabel": "Medium",
+        "conclusion": "1 decision(s) verified.",
+        "primaryEvidence": [],
+        "analyzerEvidence": [],
+        "conflicts": [],
+        "supportingFindings": [
+          "F-010"
+        ],
+        "checkedLocations": [
+          "archPattern",
+          "responsibility",
+          "tools",
+          "informationFlow",
+          "tests",
+          "capabilityOntology"
+        ]
+      },
+      {
+        "id": "R-010",
+        "questionId": "Q10",
+        "question": "What constraints drive these decisions (and which modules do they affect)?",
+        "importance": "high",
+        "verdict": "yes",
+        "verdictLabel": "Yes / Present",
+        "confidence": "Medium",
+        "confidenceLabel": "Medium",
+        "conclusion": "1 constraint(s) verified.",
+        "primaryEvidence": [],
+        "analyzerEvidence": [],
+        "conflicts": [],
+        "supportingFindings": [
+          "F-011"
+        ],
+        "checkedLocations": [
+          "discovery.manifest.dependencies",
+          "tests.testPatterns",
+          "entrypoints",
+          "archPattern",
+          "ci"
+        ]
+      },
+      {
+        "id": "R-011",
+        "questionId": "Q11",
+        "question": "What implicit assumptions does the system depend on, and where would they break?",
+        "importance": "high",
+        "verdict": "yes",
+        "verdictLabel": "Yes / Present",
+        "confidence": "Medium",
+        "confidenceLabel": "Medium",
+        "conclusion": "5 assumption(s) verified.",
+        "primaryEvidence": [
+          {
+            "type": "regex",
+            "location": "assumptions.A-001.evidence",
+            "description": "tests.testPatterns does NOT include 'poison'"
+          },
+          {
+            "type": "regex",
+            "location": "assumptions.A-003.evidence",
+            "description": "capabilityOntology.capabilityMatrix.memory=n/a"
+          },
+          {
+            "type": "regex",
+            "location": "assumptions.A-002.evidence",
+            "description": "discovery.manifest.language=javascript"
+          },
+          {
+            "type": "regex",
+            "location": "assumptions.A-004.evidence",
+            "description": "informationFlow.llmCallSites=0"
+          },
+          {
+            "type": "regex",
+            "location": "assumptions.A-001",
+            "description": "Inputs are always well-formed (no poison/adversarial tests detected)"
+          }
+        ],
+        "analyzerEvidence": [
+          {
+            "analyzer": "inference",
+            "claim": "Assumption A-001 (risk=high): Inputs are always well-formed (no poison/adversarial tests detected). Broken if: Adversarial input reaches core logic; unvalidated",
+            "status": "supporting",
+            "reason": ""
+          },
+          {
+            "analyzer": "inference",
+            "claim": "Assumption A-003 (risk=medium): No cross-session memory required (stateless or single-session design). Broken if: Multi-turn conversation spans sessions; user e",
+            "status": "supporting",
+            "reason": ""
+          },
+          {
+            "analyzer": "inference",
+            "claim": "Assumption A-002 (risk=low): Node.js runtime is available (specific version not validated). Broken if: Deployed on incompatible Node.js version (e.g., missing f",
+            "status": "supporting",
+            "reason": ""
+          },
+          {
+            "analyzer": "inference",
+            "claim": "Assumption A-004 (risk=low): System behavior is deterministic (no LLM / non-deterministic AI calls detected). Broken if: LLM or probabilistic component is intro",
+            "status": "supporting",
+            "reason": ""
+          },
+          {
+            "analyzer": "inference",
+            "claim": "1 high-risk assumption(s) detected. These are the most likely failure modes under unexpected conditions.",
+            "status": "supporting",
+            "reason": ""
+          }
+        ],
+        "conflicts": [],
+        "supportingFindings": [
+          "F-012",
+          "F-013",
+          "F-014",
+          "F-015",
+          "F-016"
+        ],
+        "checkedLocations": [
+          "assumptions.assumptions[] (AssumptionAnalyzer output)",
+          "assumptions.assumptions[] (risk=high)"
+        ]
+      }
+    ]
+  },
+  "report": "# Evidence Brief: synthetic-agent-Ki4iDq\n\n> Generated: 2026-07-27 by research-repo skill (deterministic analysis).\n> This brief is the **input** for LLM report generation — not the final report.\n> The LLM should read this brief, then write `report.md` per the prompt in the last section.\n\n## 0. Research Principles\n\nThe LLM MUST follow these principles when writing the report:\n\n- **Prefer evidence over assumptions** — Every conclusion must cite specific evidence (file path, metric, brief section).\n- **Prefer multiple weak signals over one strong signal** — Cross-validate to avoid single-source bias.\n- **Distinguish facts from interpretations** — Fact: \"X exists in code\". Interpretation: \"This means Y\".\n- **State uncertainty explicitly** — Say \"Unknown\" when evidence is insufficient. Do NOT default to \"present\".\n- **Separate observations from conclusions** — Observation: \"X detected\". Conclusion: \"Therefore Y\".\n- **Do not infer architecture from naming alone** — Function names ≠ functionality. Check call chains.\n- **Treat tests as first-class evidence** — Test code reveals true intent and usage patterns.\n- **Treat examples as executable documentation** — example/ directories are as valuable as READMEs.\n- **Prefer reusable patterns over implementation details** — Extract patterns, don't get lost in details.\n- **Negative findings are equally important** — \"X not found\" is as valuable as \"Y found\".\n- **Trace density over coverage** — Every Trace must answer one architectural question whose answer would change an engineer's understanding of the system. Low-value Traces should be deleted, not kept to pad the count. 5 sharp Traces beat 8 mediocre ones.\n- **Confidence MUST follow a unified standard** — High: ≥3 independent evidence sources; Medium: 2 sources; Low: 1 source; Speculative: no direct evidence (reasoning only). All confidence labels MUST conform to this definition.\n\n## ★ Findings (v2 normalized)\n\n> Every Finding binds to a Research Question (Q1-Q11) with auto-computed confidence / coverage / importance.\n> Findings are raw material. The LLM should consume ★★ Evidence Synthesis (Question Resolution) as the primary conclusion input; this section is supporting evidence only. Findings with verified=downgraded/rejected must not be cited as conclusions.\n\n**Summary**: 16 findings (4 critical / 10 high / 2 medium / 0 low); avg confidence 0.14; after verification: 16 verified / 0 downgraded / 0 rejected\n\n**Claim Lifecycle**: Candidate: 0 / Hypothesis: 0 / Supported: 0 / Verified: 14 / Decision: 1 / Reusable Pattern: 1\n\n**Unknown Classification**: Need Reading: 4 / Need External Evidence: 2 / Impossible to Verify: 1\n\n### Research Questions\n\n- **Q1** [critical] How does a request enter the system and what is the entry shape?\n- **Q2** [critical] Where is orchestration/control-flow, and what pattern (pipeline/graph/fsm) is used?\n- **Q3** [high] Does Retrieval (RAG) really exist, and what is the evidence strength?\n- **Q4** [high] Where is prompt management and what is the prompt lifecycle?\n- **Q5** [high] What is the tool registry/invocation pattern, and how are tools bound to agents?\n- **Q6** [critical] Is this an AI project? What concrete signals confirm or refute this?\n- **Q7** [medium] How is correctness validated (tests vs evaluation), and where are the gaps?\n- **Q8** [high] What contradicts the README or self-presentation (false claims, hidden gaps)?\n- **Q9** [critical] What architecture decisions were made, and what are their tradeoffs?\n- **Q10** [high] What constraints drive these decisions (and which modules do they affect)?\n- **Q11** [high] What implicit assumptions does the system depend on, and where would they break?\n\n### Findings table\n\n| ID | Q | Importance | Confidence | Coverage | Verified | Lifecycle | Finding |\n|----|---|------------|------------|----------|----------|-----------|---------|\n| F-001 | Q1 | critical | 0.55 | 0.10 | ✅ verified | reusable_pattern | Repository exposes 1 entry points (sdk=1). Sample: src/index.js. |\n| F-002 | Q2 | critical | 0.01 | 0.00 | ✅ verified | verified | No recognizable architecture pattern detected (Unknown). |\n| F-003 | Q3 | high | 0.09 | 0.60 | ✅ verified | verified | No Retrieval (RAG) capability detected. CapabilityOntology reports retrieval=n/a. |\n| F-004 | Q4 | high | 0.32 | 0.50 | ✅ verified | verified | No prompts detected by AST or regex scan. |\n| F-005 | Q5 | high | 0.32 | 0.50 | ✅ verified | verified | No tools detected by AST decorator or schema-first scan. |\n| F-006 | Q6 | critical | 0.05 | 0.00 | ✅ verified | verified | Not classified as AI project. CapabilityOntology gate found insufficient AI signals. |\n| F-007 | Q7 | medium | 0.45 | 0.02 | ✅ verified | verified | Test suite: 1 files, 1 test functions. |\n| F-008 | Q7 | medium | 0.06 | 0.40 | ✅ verified | verified | No evaluation infrastructure detected (no eval files, hasEvaluation=false). |\n| F-009 | Q8 | high | 0.13 | 0.60 | ✅ verified | verified | README claims \"LLM Integration\" but code signals do not confirm it (hasLLM=false). Treated as docume |\n| F-010 | Q9 | critical | 0.04 | 0.00 | ✅ verified | decision | No architecture decisions extracted (DecisionAnalyzer produced 0 decisions). |\n| F-011 | Q10 | high | 0.04 | 0.00 | ✅ verified | verified | No constraints extracted (ConstraintAnalyzer produced 0 constraints). |\n| F-012 | Q11 | high | 0.05 | 0.50 | ✅ verified | verified | Assumption A-001 (risk=high): Inputs are always well-formed (no poison/adversarial tests detected).  |\n| F-013 | Q11 | high | 0.05 | 0.50 | ✅ verified | verified | Assumption A-003 (risk=medium): No cross-session memory required (stateless or single-session design |\n| F-014 | Q11 | high | 0.04 | 0.50 | ✅ verified | verified | Assumption A-002 (risk=low): Node.js runtime is available (specific version not validated). Broken i |\n| F-015 | Q11 | high | 0.06 | 0.50 | ✅ verified | verified | Assumption A-004 (risk=low): System behavior is deterministic (no LLM / non-deterministic AI calls d |\n| F-016 | Q11 | high | 0.06 | 0.60 | ✅ verified | verified | 1 high-risk assumption(s) detected. These are the most likely failure modes under unexpected conditi |\n\n### Findings detail (JSON-schema structured)\n\n#### F-001 — Q1: How does a request enter the system and what is the entry shape?\n\n- **Finding**: Repository exposes 1 entry points (sdk=1). Sample: src/index.js.\n- **Importance**: critical\n- **Confidence**: 0.55 (auto-computed: ast+manifest);\n- **Coverage**: 0.10 (scan coverage)\n- **Verified**: verified\n- **Lifecycle**: reusable_pattern (candidate→hypothesis→supported→verified→decision/reusable_pattern)\n- **Support**:\n  - [ast] entrypoints.entrypoints — 1 entry points via AST main() / filename scan by=entrypoints\n  - [manifest] discovery.manifest — manifest=src/index.js by=discovery\n- **Checked Locations**: **/cli.py, **/main.py, **/index.ts, manifest scripts field, package.json bin\n- **Limitations**: Framework-specific entry hooks (e.g., Spring Boot application.properties, plugin.xml) may not be detected.\n\n#### F-002 — Q2: Where is orchestration/control-flow, and what pattern (pipeline/graph/fsm) is used?\n\n- **Finding**: No recognizable architecture pattern detected (Unknown).\n- **Importance**: critical\n- **Confidence**: 0.01 (auto-computed: none);\n- **Coverage**: 0.00 (scan coverage)\n- **Verified**: verified — Negative finding (searched, found nothing) — verified by absence\n- **Lifecycle**: verified (candidate→hypothesis→supported→verified→decision/reusable_pattern)\n- **Unknown Type**: Need Reading — Orchestration logic is in source code; reading call chains can resolve.\n- **Checked Locations**: discovery.topLevelDirs, discovery.architectureSignalDirs\n- **Limitations**: Pattern detection is directory-name driven; code-only patterns are missed.\n\n#### F-003 — Q3: Does Retrieval (RAG) really exist, and what is the evidence strength?\n\n- **Finding**: No Retrieval (RAG) capability detected. CapabilityOntology reports retrieval=n/a.\n- **Importance**: high\n- **Confidence**: 0.09 (auto-computed: inference);\n- **Coverage**: 0.60 (scan coverage)\n- **Verified**: verified\n- **Lifecycle**: verified (candidate→hypothesis→supported→verified→decision/reusable_pattern)\n- **Support**:\n  - [inference] capabilityOntology.capabilityMatrix.retrieval — retrieval=n/a by=capabilityOntology\n- **Checked Locations**: embedding/, vector/, faiss/, pgvector/, chroma/, symbols.functions[].name (retriev/embed/vector search), prompts.prompts[]\n- **Limitations**: CapabilityOntology gate may under-classify repos with implicit RAG (no explicit vector store symbols).\n\n#### F-004 — Q4: Where is prompt management and what is the prompt lifecycle?\n\n- **Finding**: No prompts detected by AST or regex scan.\n- **Importance**: high\n- **Confidence**: 0.32 (auto-computed: none);\n- **Coverage**: 0.50 (scan coverage)\n- **Verified**: verified — Negative finding (searched, found nothing) — verified by absence\n- **Lifecycle**: verified (candidate→hypothesis→supported→verified→decision/reusable_pattern)\n- **Unknown Type**: Need Reading — Prompt management is code-internal; reading source can resolve.\n- **Checked Locations**: **/*.py (SYSTEM_PROMPT/INSTRUCTION/PROMPT), **/*.ts (systemPrompt/instruction), prompts/, **/prompt*.ts\n- **Limitations**: PromptsAnalyzer detects SYSTEM_PROMPT/INSTRUCTION/PROMPT variable assignments; dynamic prompt assembly may be missed.\n\n#### F-005 — Q5: What is the tool registry/invocation pattern, and how are tools bound to agents?\n\n- **Finding**: No tools detected by AST decorator or schema-first scan.\n- **Importance**: high\n- **Confidence**: 0.32 (auto-computed: none);\n- **Coverage**: 0.50 (scan coverage)\n- **Verified**: verified — Negative finding (searched, found nothing) — verified by absence\n- **Lifecycle**: verified (candidate→hypothesis→supported→verified→decision/reusable_pattern)\n- **Unknown Type**: Need Reading — Tool registry is code-internal; reading source can resolve.\n- **Checked Locations**: @tool decorator, Tool()/ToolNode(), RPC_TOOLS/ToolDef[], skills/*/execute.py, bundled_skills/*/\n- **Limitations**: ToolsAnalyzer detects @tool decorator, Tool() class, RPC_TOOLS schema; custom frameworks may be missed.\n\n#### F-006 — Q6: Is this an AI project? What concrete signals confirm or refute this?\n\n- **Finding**: Not classified as AI project. CapabilityOntology gate found insufficient AI signals.\n- **Importance**: critical\n- **Confidence**: 0.05 (auto-computed: inference);\n- **Coverage**: 0.00 (scan coverage)\n- **Verified**: verified\n- **Lifecycle**: verified (candidate→hypothesis→supported→verified→decision/reusable_pattern)\n- **Unknown Type**: Need Reading — AI project signals are in source code; reading source can resolve.\n- **Support**:\n  - [inference] capabilityOntology.isAIProject — isAIProject=false by=capabilityOntology\n- **Checked Locations**: prompts.prompts[], tools.tools[], informationFlow.llmCallSites[], responsibility.responsibilities[] (LLM Interface)\n\n#### F-007 — Q7: How is correctness validated (tests vs evaluation), and where are the gaps?\n\n- **Finding**: Test suite: 1 files, 1 test functions.\n- **Importance**: medium\n- **Confidence**: 0.45 (auto-computed: ast);\n- **Coverage**: 0.02 (scan coverage)\n- **Verified**: verified\n- **Lifecycle**: verified (candidate→hypothesis→supported→verified→decision/reusable_pattern)\n- **Support**:\n  - [ast] tests.totalTestFiles — 1 test files, 1 functions by=tests\n- **Checked Locations**: **/test_*.py, **/*_test.go, **/*.test.ts, **/*.spec.ts, **/tests/, **/__tests__/\n- **Limitations**: Test quality (assertion density, coverage) cannot be inferred from file/function count alone.\n\n#### F-008 — Q7: How is correctness validated (tests vs evaluation), and where are the gaps?\n\n- **Finding**: No evaluation infrastructure detected (no eval files, hasEvaluation=false).\n- **Importance**: medium\n- **Confidence**: 0.06 (auto-computed: none);\n- **Coverage**: 0.40 (scan coverage)\n- **Verified**: verified — Negative finding (searched, found nothing) — verified by absence\n- **Lifecycle**: verified (candidate→hypothesis→supported→verified→decision/reusable_pattern)\n- **Unknown Type**: Need External Evidence — Correctness assurance requires tests AND runtime/production evidence; repo alone is insufficient.\n- **Checked Locations**: **/eval*.py, **/benchmark*, **/leaderboard*, evaluations/, metrics/\n- **Limitations**: EvaluationsAnalyzer keyword-based; may miss eval logic embedded in test files.\n\n#### F-009 — Q8: What contradicts the README or self-presentation (false claims, hidden gaps)?\n\n- **Finding**: README claims \"LLM Integration\" but code signals do not confirm it (hasLLM=false). Treated as documentation-only claim until source evidence is found.\n- **Importance**: high\n- **Confidence**: 0.13 (auto-computed: regex+inference);\n- **Coverage**: 0.60 (scan coverage)\n- **Verified**: verified\n- **Lifecycle**: verified (candidate→hypothesis→supported→verified→decision/reusable_pattern)\n- **Support**:\n  - [regex] README.md — README mentions \"LLM Integration\" by=README\n  - [inference] _archetypeHints.signals.hasLLM — hasLLM=false by=_archetypeHints\n- **Checked Locations**: README.md, _archetypeHints.signals.hasLLM\n- **Limitations**: README claim may be aspirational, planned, or in a module the analyzer did not scan.\n\n#### F-010 — Q9: What architecture decisions were made, and what are their tradeoffs?\n\n- **Finding**: No architecture decisions extracted (DecisionAnalyzer produced 0 decisions).\n- **Importance**: critical\n- **Confidence**: 0.04 (auto-computed: none);\n- **Coverage**: 0.00 (scan coverage)\n- **Verified**: verified — Negative finding (searched, found nothing) — verified by absence\n- **Lifecycle**: decision (candidate→hypothesis→supported→verified→decision/reusable_pattern)\n- **Unknown Type**: Impossible to Verify — Architectural decisions live in ADRs / team discussions / PRs; not always recoverable from code.\n- **Checked Locations**: archPattern, responsibility, tools, informationFlow, tests, capabilityOntology\n- **Limitations**: DecisionAnalyzer infers decisions from analyzer outputs; repos with implicit/unconventional patterns may yield nothing.\n\n#### F-011 — Q10: What constraints drive these decisions (and which modules do they affect)?\n\n- **Finding**: No constraints extracted (ConstraintAnalyzer produced 0 constraints).\n- **Importance**: high\n- **Confidence**: 0.04 (auto-computed: none);\n- **Coverage**: 0.00 (scan coverage)\n- **Verified**: verified — Negative finding (searched, found nothing) — verified by absence\n- **Lifecycle**: verified (candidate→hypothesis→supported→verified→decision/reusable_pattern)\n- **Unknown Type**: Need External Evidence — Constraints (performance, compliance, deployment) often external to the codebase.\n- **Checked Locations**: discovery.manifest.dependencies, tests.testPatterns, entrypoints, archPattern, ci\n- **Limitations**: ConstraintAnalyzer infers constraints from dependencies, test patterns, entry points, and CI; repos with implicit constraints may yield nothing.\n\n#### F-012 — Q11: What implicit assumptions does the system depend on, and where would they break?\n\n- **Finding**: Assumption A-001 (risk=high): Inputs are always well-formed (no poison/adversarial tests detected). Broken if: Adversarial input reaches core logic; unvalidated paths crash or misbehave.\n- **Importance**: high\n- **Confidence**: 0.05 (auto-computed: inference);\n- **Coverage**: 0.50 (scan coverage)\n- **Verified**: verified\n- **Lifecycle**: verified (candidate→hypothesis→supported→verified→decision/reusable_pattern)\n- **Support**:\n  - [inference] assumptions.A-001.evidence — tests.testPatterns does NOT include 'poison' by=assumptions\n- **Checked Locations**: assumptions.assumptions[] (AssumptionAnalyzer output)\n- **Limitations**: Assumption inferred from absence of evidence (e.g., no retry symbol → assumes availability); Risk level is heuristic, not domain-calibrated\n\n#### F-013 — Q11: What implicit assumptions does the system depend on, and where would they break?\n\n- **Finding**: Assumption A-003 (risk=medium): No cross-session memory required (stateless or single-session design). Broken if: Multi-turn conversation spans sessions; user expects continuity.\n- **Importance**: high\n- **Confidence**: 0.05 (auto-computed: inference);\n- **Coverage**: 0.50 (scan coverage)\n- **Verified**: verified\n- **Lifecycle**: verified (candidate→hypothesis→supported→verified→decision/reusable_pattern)\n- **Support**:\n  - [inference] assumptions.A-003.evidence — capabilityOntology.capabilityMatrix.memory=n/a by=assumptions\n- **Checked Locations**: assumptions.assumptions[] (AssumptionAnalyzer output)\n- **Limitations**: Assumption inferred from absence of evidence (e.g., no retry symbol → assumes availability); Risk level is heuristic, not domain-calibrated\n\n#### F-014 — Q11: What implicit assumptions does the system depend on, and where would they break?\n\n- **Finding**: Assumption A-002 (risk=low): Node.js runtime is available (specific version not validated). Broken if: Deployed on incompatible Node.js version (e.g., missing fetch API on old Node).\n- **Importance**: high\n- **Confidence**: 0.04 (auto-computed: inference);\n- **Coverage**: 0.50 (scan coverage)\n- **Verified**: verified\n- **Lifecycle**: verified (candidate→hypothesis→supported→verified→decision/reusable_pattern)\n- **Support**:\n  - [inference] assumptions.A-002.evidence — discovery.manifest.language=javascript by=assumptions\n- **Checked Locations**: assumptions.assumptions[] (AssumptionAnalyzer output)\n- **Limitations**: Assumption inferred from absence of evidence (e.g., no retry symbol → assumes availability); Risk level is heuristic, not domain-calibrated\n\n#### F-015 — Q11: What implicit assumptions does the system depend on, and where would they break?\n\n- **Finding**: Assumption A-004 (risk=low): System behavior is deterministic (no LLM / non-deterministic AI calls detected). Broken if: LLM or probabilistic component is introduced without updating tests.\n- **Importance**: high\n- **Confidence**: 0.06 (auto-computed: inference);\n- **Coverage**: 0.50 (scan coverage)\n- **Verified**: verified\n- **Lifecycle**: verified (candidate→hypothesis→supported→verified→decision/reusable_pattern)\n- **Support**:\n  - [inference] assumptions.A-004.evidence — informationFlow.llmCallSites=0 by=assumptions\n  - [inference] assumptions.A-004.evidence — capabilityOntology.isAIProject=false by=assumptions\n- **Checked Locations**: assumptions.assumptions[] (AssumptionAnalyzer output)\n- **Limitations**: Assumption inferred from absence of evidence (e.g., no retry symbol → assumes availability); Risk level is heuristic, not domain-calibrated\n\n#### F-016 — Q11: What implicit assumptions does the system depend on, and where would they break?\n\n- **Finding**: 1 high-risk assumption(s) detected. These are the most likely failure modes under unexpected conditions.\n- **Importance**: high\n- **Confidence**: 0.06 (auto-computed: inference);\n- **Coverage**: 0.60 (scan coverage)\n- **Verified**: verified\n- **Lifecycle**: verified (candidate→hypothesis→supported→verified→decision/reusable_pattern)\n- **Support**:\n  - [inference] assumptions.A-001 — Inputs are always well-formed (no poison/adversarial tests detected) by=assumptions\n- **Checked Locations**: assumptions.assumptions[] (risk=high)\n- **Limitations**: High-risk classification is heuristic; domain-specific calibration needed.\n\n\n## ★★ Evidence Synthesis (Question Resolution)\n\n> **This section is the PRIMARY input for the LLM report.** It merges analyzer Findings by Research Question, resolves known conflicts, and emits a final verdict.\n> The report body MUST be organized around this section, citing `[R-XXX]` first; raw `[F-XXX]` are supporting evidence only.\n\n### Evidence Hierarchy\n\nWhen evidence conflicts, trust the higher tier:\n\n1. **source_code** — 源码与文件系统事实\n2. **ast** — 抽象语法树分析结果\n3. **graph** — 依赖图/调用图分析结果\n4. **manifest** — 包管理器/CI 配置等元数据\n5. **regex** — 基于正则/关键词的文本扫描\n6. **keyword** — 目录名/符号名关键词匹配\n7. **inference** — 启发式推理/LLM 推断\n\n### Question Resolution Table\n\n| ID | Q | Question | Verdict | Confidence | Resolution |\n|----|---|----------|---------|------------|------------|\n| R-001 | Q1 | How does a request enter the system and what is the entry sh | Yes / Present | High | Repository exposes 1 entry points (sdk=1). Sample: src/index.js. |\n| R-002 | Q2 | Where is orchestration/control-flow, and what pattern (pipel | Unknown | Low | No clear architecture pattern identified. |\n| R-003 | Q3 | Does Retrieval (RAG) really exist, and what is the evidence  | No / Absent | Low | No Retrieval capability detected (relevant locations checked). |\n| R-004 | Q4 | Where is prompt management and what is the prompt lifecycle? | Yes / Present | Medium | No prompts detected by AST or regex scan. |\n| R-005 | Q5 | What is the tool registry/invocation pattern, and how are to | Yes / Present | Medium | No tools detected by AST decorator or schema-first scan. |\n| R-006 | Q6 | Is this an AI project? What concrete signals confirm or refu | No / Absent | Low | Not an AI project: Not classified as AI project. CapabilityOntology gate found insufficient AI signa |\n| R-007 | Q7 | How is correctness validated (tests vs evaluation), and wher | Yes / Present | Medium | Test suite: 1 files, 1 test functions. |\n| R-008 | Q8 | What contradicts the README or self-presentation (false clai | No / Absent | Medium | No cross-analyzer contradictions or warnings detected. |\n| R-009 | Q9 | What architecture decisions were made, and what are their tr | Yes / Present | Medium | 1 decision(s) verified. |\n| R-010 | Q10 | What constraints drive these decisions (and which modules do | Yes / Present | Medium | 1 constraint(s) verified. |\n| R-011 | Q11 | What implicit assumptions does the system depend on, and whe | Yes / Present | Medium | 5 assumption(s) verified. |\n\n### Resolution Details\n\n#### R-001 — Q1: How does a request enter the system and what is the entry shape?\n\n- **Verdict**: Yes / Present (yes)\n- **Confidence**: High (High)\n- **Conclusion**: Repository exposes 1 entry points (sdk=1). Sample: src/index.js.\n- **Primary Evidence**:\n  - [ast] `entrypoints.entrypoints` — 1 entry points via AST main() / filename scan\n  - [regex] `discovery.manifest` — manifest=src/index.js\n\n#### R-002 — Q2: Where is orchestration/control-flow, and what pattern (pipeline/graph/fsm) is used?\n\n- **Verdict**: Unknown (unknown)\n- **Confidence**: Low (Low)\n- **Conclusion**: No clear architecture pattern identified.\n\n#### R-003 — Q3: Does Retrieval (RAG) really exist, and what is the evidence strength?\n\n- **Verdict**: No / Absent (no)\n- **Confidence**: Low (Low)\n- **Conclusion**: No Retrieval capability detected (relevant locations checked).\n- **Primary Evidence**:\n  - [regex] `capabilityOntology.capabilityMatrix.retrieval` — retrieval=n/a\n- **Analyzer Evidence (for reference only)**:\n  - ✅ **inference**: No Retrieval (RAG) capability detected. CapabilityOntology reports retrieval=n/a.\n- **Supporting Findings**: F-003\n- **Checked Locations**: embedding/, vector/, faiss/, pgvector/, chroma/, symbols.functions[].name (retriev/embed/vector search), prompts.prompts[]\n\n#### R-004 — Q4: Where is prompt management and what is the prompt lifecycle?\n\n- **Verdict**: Yes / Present (yes)\n- **Confidence**: Medium (Medium)\n- **Conclusion**: No prompts detected by AST or regex scan.\n- **Supporting Findings**: F-004\n- **Checked Locations**: **/*.py (SYSTEM_PROMPT/INSTRUCTION/PROMPT), **/*.ts (systemPrompt/instruction), prompts/, **/prompt*.ts\n\n#### R-005 — Q5: What is the tool registry/invocation pattern, and how are tools bound to agents?\n\n- **Verdict**: Yes / Present (yes)\n- **Confidence**: Medium (Medium)\n- **Conclusion**: No tools detected by AST decorator or schema-first scan.\n- **Supporting Findings**: F-005\n- **Checked Locations**: @tool decorator, Tool()/ToolNode(), RPC_TOOLS/ToolDef[], skills/*/execute.py, bundled_skills/*/\n\n#### R-006 — Q6: Is this an AI project? What concrete signals confirm or refute this?\n\n- **Verdict**: No / Absent (no)\n- **Confidence**: Low (Low)\n- **Conclusion**: Not an AI project: Not classified as AI project. CapabilityOntology gate found insufficient AI signals..\n- **Primary Evidence**:\n  - [regex] `capabilityOntology.isAIProject` — isAIProject=false\n- **Analyzer Evidence (for reference only)**:\n  - ✅ **inference**: Not classified as AI project. CapabilityOntology gate found insufficient AI signals.\n- **Supporting Findings**: F-006\n- **Checked Locations**: prompts.prompts[], tools.tools[], informationFlow.llmCallSites[], responsibility.responsibilities[] (LLM Interface)\n\n#### R-007 — Q7: How is correctness validated (tests vs evaluation), and where are the gaps?\n\n- **Verdict**: Yes / Present (yes)\n- **Confidence**: Medium (Medium)\n- **Conclusion**: Test suite: 1 files, 1 test functions.\n- **Primary Evidence**:\n  - [ast] `tests.totalTestFiles` — 1 test files, 1 functions\n- **Analyzer Evidence (for reference only)**:\n  - ✅ **ast**: Test suite: 1 files, 1 test functions.\n- **Supporting Findings**: F-007\n- **Checked Locations**: **/test_*.py, **/*_test.go, **/*.test.ts, **/*.spec.ts, **/tests/, **/__tests__/\n\n#### R-008 — Q8: What contradicts the README or self-presentation (false claims, hidden gaps)?\n\n- **Verdict**: No / Absent (no)\n- **Confidence**: Medium (Medium)\n- **Conclusion**: No cross-analyzer contradictions or warnings detected.\n\n#### R-009 — Q9: What architecture decisions were made, and what are their tradeoffs?\n\n- **Verdict**: Yes / Present (yes)\n- **Confidence**: Medium (Medium)\n- **Conclusion**: 1 decision(s) verified.\n- **Supporting Findings**: F-010\n- **Checked Locations**: archPattern, responsibility, tools, informationFlow, tests, capabilityOntology\n\n#### R-010 — Q10: What constraints drive these decisions (and which modules do they affect)?\n\n- **Verdict**: Yes / Present (yes)\n- **Confidence**: Medium (Medium)\n- **Conclusion**: 1 constraint(s) verified.\n- **Supporting Findings**: F-011\n- **Checked Locations**: discovery.manifest.dependencies, tests.testPatterns, entrypoints, archPattern, ci\n\n#### R-011 — Q11: What implicit assumptions does the system depend on, and where would they break?\n\n- **Verdict**: Yes / Present (yes)\n- **Confidence**: Medium (Medium)\n- **Conclusion**: 5 assumption(s) verified.\n- **Primary Evidence**:\n  - [regex] `assumptions.A-001.evidence` — tests.testPatterns does NOT include 'poison'\n  - [regex] `assumptions.A-003.evidence` — capabilityOntology.capabilityMatrix.memory=n/a\n  - [regex] `assumptions.A-002.evidence` — discovery.manifest.language=javascript\n  - [regex] `assumptions.A-004.evidence` — informationFlow.llmCallSites=0\n  - [regex] `assumptions.A-001` — Inputs are always well-formed (no poison/adversarial tests detected)\n- **Analyzer Evidence (for reference only)**:\n  - ✅ **inference**: Assumption A-001 (risk=high): Inputs are always well-formed (no poison/adversarial tests detected). Broken if: Adversarial input reaches core logic; unvalidated\n  - ✅ **inference**: Assumption A-003 (risk=medium): No cross-session memory required (stateless or single-session design). Broken if: Multi-turn conversation spans sessions; user e\n  - ✅ **inference**: Assumption A-002 (risk=low): Node.js runtime is available (specific version not validated). Broken if: Deployed on incompatible Node.js version (e.g., missing f\n  - ✅ **inference**: Assumption A-004 (risk=low): System behavior is deterministic (no LLM / non-deterministic AI calls detected). Broken if: LLM or probabilistic component is intro\n  - ✅ **inference**: 1 high-risk assumption(s) detected. These are the most likely failure modes under unexpected conditions.\n- **Supporting Findings**: F-012, F-013, F-014, F-015, F-016\n- **Checked Locations**: assumptions.assumptions[] (AssumptionAnalyzer output), assumptions.assumptions[] (risk=high)\n\n\n## 1. Executive Brief\n\n| Dimension | Value |\n|-----------|-------|\n| Repository | synthetic-agent-Ki4iDq (package: synthetic-agent) |\n| Manifest | src/index.js (javascript) |\n| Version | 1.0.0 |\n| Source files | 6 |\n| Top languages | .js (6), .md (1), .json (1), .txt (1) |\n| Top-level dirs | src, tests |\n| Commits | 0 |\n| Contributors | 0 |\n| CI provider | none |\n| **Project stage** | early-stage (0 commits, 0 contributors) |\n| **Ecosystem** | JavaScript/Node ecosystem |\n\n## 2. Architecture Insights\n\n| Metric | Value | Interpretation |\n|--------|-------|----------------|\n| Modules | 6 | — |\n| Import edges | 3 | edge/node ratio: 0.50 |\n| Import cycles | 0 | no cycles — clean layering |\n| Functions | 0 | N/A |\n| Classes | 4 | 0.7 classes/module |\n\n**Coupling assessment**: edge/node ratio 0.50 → low\n\n**Most depended-upon modules** (high in-degree = core/foundation):\n  - `src.agent` (in-degree: 1)\n  - `src.runner` (in-degree: 1)\n  - `src.tool` (in-degree: 1)\n  - `src.index` (in-degree: 0)\n  - `src.memory` (in-degree: 0)\n  - `tests.agent.test` (in-degree: 0)\n\n**Most influential modules** (high PageRank = architectural bottleneck):\n  - `src.tool` (PageRank: 0.3004)\n  - `src.runner` (PageRank: 0.2425)\n  - `src.agent` (PageRank: 0.1744)\n  - `src.index` (PageRank: 0.0943)\n  - `src.memory` (PageRank: 0.0943)\n  - `tests.agent.test` (PageRank: 0.0943)\n\n**Entry points**: 1 total (sdk: 1)\n  Sample entry points:\n  - [sdk] `src/index.js` — package index entrypoint\n\n## 2.5. Architecture Semantics (Inference, not Statistics)\nGenerated by 7 inference analyzers that answer architect-level questions: what pattern? what responsibilities? what capabilities? what risks?\n\n### Responsibility Matrix\nMapped 0/1 modules to responsibility categories.\n\n| Module | Responsibility | Confidence | Files | Capabilities |\n|--------|---------------|-----------|-------|--------------|\n\n### Stability & Abstractness (A/I Metrics)\nZone distribution: {\"transitioning\":1,\"zone_of_pain\":1}. Zone of Pain = concrete + heavily depended on (hard to change); Zone of Uselessness = over-abstract (rarely used).\n\n| Module | I (Instability) | A (Abstractness) | Zone | Ca | Ce |\n|--------|----------------|------------------|------|----|----|\n| src | 0 | 0 | transitioning | 1 | 0 |\n| tests | 1 | 0 | zone_of_pain | 0 | 1 |\n\n### Capability Ontology\nCovers 0/10 capability domains.\n\n| Capability | Maturity | Coverage | Modules | Symbols |\n|-----------|----------|----------|---------|---------|\n| planning | 0 | n/a | 0 | 0 |\n| execution | 0 | n/a | 0 | 0 |\n| retrieval | 0 | n/a | 0 | 0 |\n| memory | 0 | n/a | 0 | 0 |\n| evaluation | 0 | n/a | 0 | 0 |\n| safety | 0 | n/a | 0 | 0 |\n| tool | 0 | n/a | 0 | 0 |\n| context | 0 | n/a | 0 | 0 |\n| io | 0 | n/a | 0 | 0 |\n| persistence | 0 | n/a | 0 | 0 |\n\n### Evidence Quality Metadata (Analyzer Self-Disclosure)\n> Each inference analyzer ships _meta: source / strength / assumptions / limitations / possibleFalsePositives / checkedLocations.\n> When citing analyzer claims, LLM should reference strength: strong > moderate > weak. Weak-analyzer claims require LLM source-code verification before trusting.\n\n**ArchitecturePatternAnalyzer** — source: `keyword+graph`, strength: `moderate`, coverage: Directory-driven pattern detection; misses code-only patterns\n- Assumptions:\n  - Architecture patterns are signaled by directory names (segment match, not substring)\n  - Specialized signals gate high-stakes patterns (e.g., Compiler requires codegen/optimizer/semantic/ir)\n  - Graph validation (layered direction, linear chain) confirms pattern with +0.1-0.15 confidence\n  - Multi-instance checks (≥3 service dirs, ≥3 manifests) confirm Microservices/Monorepo\n- Limitations:\n  - Cannot detect patterns with no directory-name signal (e.g., pattern implemented purely in code structure)\n  - Hexagonal/Clean/Onion patterns share dir signals (domain, adapters, infrastructure) and may be indistinguishable\n  - Compiler specialized-signal gate may still false-positive on repos with parser/interpreter subsets (e.g., template engines)\n  - Pattern detection is recall-oriented; precision depends on directory naming conventions\n- Possible false positives:\n  - Repos with 'core/' dir may trigger Hexagonal/Clean/Onion even when no layered architecture exists\n  - Repos with 'plugins/' dir may trigger Plugin pattern even if plugins/ contains unrelated code\n  - Repos with 'service/' suffix dirs may trigger Microservices with <3 instances (downgraded confidence)\n\n**ResponsibilityAnalyzer** — source: `keyword`, strength: `moderate`, coverage: 100% of non-test source files grouped into modules\n- Assumptions:\n  - Module boundaries = first 1-2 path segments (packages/foo for monorepo, top dir for flat layout)\n  - Test files are excluded (isTestPath) so test fixtures don't pollute module classification\n  - One directory match (score 2) or two symbol matches (score 2) are minimum evidence; single symbol match (score 1) is too weak\n- Limitations:\n  - Cannot detect responsibilities that span multiple modules (e.g., 'security' implemented across crypto/ + auth/)\n  - Keyword matching is segment/token-prefix; unconventional naming (e.g., 'dataRepo' for persistence) may be missed\n  - Modules with generic names (components/, utils/) often get Uncategorized or false-positive matches\n- Possible false positives:\n  - Modules named 'search' or 'query' may be tagged Retrieval even when not RAG (e.g., DB search, file search)\n  - Modules named 'storage' may be tagged Persistence even for in-memory caches\n  - Symbol token-prefix 'persist' may match 'persistenceLayer' in non-DB contexts\n\n**InformationFlowAnalyzer** — source: `regex+graph`, strength: `weak`, coverage: Symbol-name regex; misses LLM calls via DI/registry/extension-point\n- Assumptions:\n  - LLM call sites are detected via regex on symbol names (LLM_NAME_RE: openai/anthropic/claude/gpt/llm/gemini/mistral/deepseek/qwen/bedrock/chat_completion)\n  - Entry points are CLI tools, tools, or HTTP handlers from EntrypointsAnalyzer\n  - Flow steps are matched by module responsibility (ResponsibilityAnalyzer)\n  - BFS from entry point reaches LLM call site → flow.reachesLLM=true\n- Limitations:\n  - LLM_NAME_RE is recall-oriented; may false-positive on non-LLM symbols (e.g., 'palette_generator', 'completions' as variable name)\n  - Rust mod/use declarations are not resolved to full module paths → reachesLLM may be false-negative for Rust projects\n  - Java Eclipse extension-points (plugin.xml) are not parsed → AI subsystems in IDE plugins may be invisible to this analyzer\n  - BFS is bounded by graph connectivity; isolated LLM call sites with 0 in/out edges are never reached\n- Possible false positives:\n  - Symbol names containing 'gpt'/'llm'/'completion' as substrings (e.g., 'Completions' type in UI libraries)\n  - Variables named 'openai'/'anthropic' that are not actual LLM clients\n  - Test fixtures with mock LLM clients\n\n\n## 2.7. Architecture Knowledge (Decisions / Constraints / Assumptions)\n\n> Promotes code facts to architecture knowledge: **why designed this way** (Decision), **what constrains it** (Constraint), **what it assumes** (Assumption).\n\n### Assumptions (4, 1 high-risk)\n\n| ID | Risk | Assumption | Broken if |\n|----|------|------------|-----------|\n| A-001 | 🔴 high | Inputs are always well-formed (no poison/adversarial tests detected) | Adversarial input reaches core logic; unvalidated paths cras |\n| A-002 | 🟢 low | Node.js runtime is available (specific version not validated) | Deployed on incompatible Node.js version (e.g., missing fetc |\n| A-003 | 🟡 medium | No cross-session memory required (stateless or single-session design) | Multi-turn conversation spans sessions; user expects continu |\n| A-004 | 🟢 low | System behavior is deterministic (no LLM / non-deterministic AI calls detected) | LLM or probabilistic component is introduced without updatin |\n\n#### High-risk assumption detail\n\n- **A-001**: Inputs are always well-formed (no poison/adversarial tests detected)\n  - Broken if: Adversarial input reaches core logic; unvalidated paths crash or misbehave\n  - Evidence: tests.testPatterns does NOT include 'poison'\n\n\n## 3. AI / Agent Design\n\nNo prompts or tools detected. This may not be an AI/Agent project,\nor prompt/tool definitions use non-standard patterns.\n\n## 4. Testing & Evaluation\n\n**Testing**: 1 test files, 1 test functions\n  Test/source ratio: 0.17 → adequate coverage\n  Tests by module (top 5):\n    - `agent`: 1 tests\n\n**Evaluation**: No evaluation/benchmark artifacts detected.\n  The LLM should investigate whether evaluation is done externally or is absent.\n\n## 5. Engineering Metrics\n\n| Metric | Value |\n|--------|-------|\n| Modules (AST nodes) | 6 |\n| Import edges | 3 |\n| Import cycles | 0 |\n| Functions indexed | 0 |\n| Call relations | 5 |\n| Test files | 1 |\n| Total commits | 0 |\n| Contributors | 0 |\n\n**Derived indicators**:\n  - Coupling density: 0.50 edges/module\n  - CI: none detected ⚠\n\n**Architecture signal directories** (high structural importance):\n  - `src`\n  - `src/prompts`\n  - `tests`\n\n## 5.5. Ontology View\n\n> Inspired by Palantir Ontology: treat the repository as a graph of engineering objects,\n> not a collection of files. Every concept is an Object with typed Relationships and linked Evidence.\n\n### Object Type Distribution\n\n| Type | Count |\n|------|-------|\n| class | 3 |\n| document | 2 |\n| agent | 1 |\n| config | 1 |\n\n### Relationship Type Distribution\n\n| Relationship | Count |\n|--------------|-------|\n\n### Semantic Objects (non-function/class)\n\n| Type | Name | File | Properties |\n|------|------|------|------------|\n| agent | Agent | src/agent.js | line=2, methods=, exported=false |\n\n### Question-Driven Query Examples\n\n> The following are research query paths through the object graph (Question → Object → Relationship → Evidence)\n\n(Insufficient object relationships to build query examples)\n\n> The LLM should use object-driven language in the report (e.g., \"The Agent object connects\n> to the Tool object via the uses relationship\") rather than file-driven language.\n\n## 2.9. Research Object Graph\n\n> Second-order research objects (Pattern/Decision/Constraint/Tradeoff/Assumption/Hypothesis/Evidence/Finding/Issue/Risk/Unknown) and their relationship graph. Each object has a source analyzer for traceability.\n\n### Object Summary\n\n| Type | Count |\n|------|-------|\n| assumption | 4 |\n| risk | 1 |\n\n- **Total objects**: 5\n- **Total relationships**: 1\n\n### Relationship Samples (top 10)\n\n| From | Relation | To |\n|------|----------|----|\n| risk:A-001-risk | caused_by | assumption:A-001 |\n\n\n## 6. Negative Findings (What Was NOT Found)\n\n> These \"not found\" findings are equally important — they prevent the LLM from defaulting to \"present\".\n\n- No evaluation/benchmark infrastructure found\n- No explicit prompt definitions detected (may use non-standard patterns or dynamic assembly)\n- No explicit tool registrations detected (may use non-decorator patterns)\n- No CI/CD configuration detected\n- No Git history (may be a new repo or non-Git project)\n- No import cycles detected — clean module layering\n- No LICENSE file found\n- No CONTRIBUTING guide found (external contribution process unclear)\n- No SECURITY policy found (vulnerability reporting process unclear)\n- No CHANGELOG found (version evolution lacks structured record)\n- No AI Agent instruction files found (AGENTS.md / CLAUDE.md / SKILL.md etc.)\n\n## 7. Reading Priority (Top Files)\n\nRanked by structural importance (PageRank, in-degree, entrypoint, README, tests):\n\n| # | File | Score | Why |\n|---|------|-------|-----|\n| 1 | `src/index.js` | 120 | high in-degree (+40); high PageRank (+50); entrypoint (+30) |\n| 2 | `README.md` | 90 | README (+50); important file (+40) |\n| 3 | `src/agent.js` | 90 | high in-degree (+40); high PageRank (+50) |\n| 4 | `src/memory.js` | 90 | high in-degree (+40); high PageRank (+50) |\n| 5 | `src/runner.js` | 90 | high in-degree (+40); high PageRank (+50) |\n| 6 | `src/tool.js` | 90 | high in-degree (+40); high PageRank (+50) |\n| 7 | `tests/agent.test.js` | 60 | high in-degree (+40); high PageRank (+50); test file (-30) |\n\n**LLM guidance**: Read files in this order. The first 5-10 files typically reveal\nthe core architecture. Prioritize README, then high-PageRank modules, then entrypoints.\n\n## 8. Reading Guide\n\n### 30-Minute Quick Look\nIf you only have 30 minutes, read these files:\n\n1. `src/index.js` — high in-degree (+40); high PageRank (+50); entrypoint (+30)\n2. `src/agent.js` — high in-degree (+40); high PageRank (+50)\n3. `src/memory.js` — high in-degree (+40); high PageRank (+50)\n4. `src/runner.js` — high in-degree (+40); high PageRank (+50)\n5. `src/tool.js` — high in-degree (+40); high PageRank (+50)\n\n### 2-Hour Deep Dive\nThen continue with:\n\n\n> The LLM should reproduce and expand this list in the report's Reading Guide section, ordered by insight density.\n\n## 9. Evidence Summary (NOT v3 research questions)\n\n> ⚠️ **Disambiguation**: This section is a **fixed-template summary** generated by\n> script-layer evidence rules. It is **NOT** the research questions or hypotheses\n> of the v3 subagent workflow.\n> - v3 research questions are **dynamically generated** by the `00-question-planner`\n>   subagent (see `subagents/00-question-planner.md`).\n> - v3 hypotheses are generated by the `01-hypothesis` subagent using **Bayesian\n>   confidence evolution** (see `subagents/01-hypothesis.md`).\n> This section is only an evidence reference to help subagents understand the repo.\n> **Do NOT** treat H1-purpose / H2-ai-agent etc. as v3 Bayesian hypotheses.\n> **Do NOT** treat the Open Questions below as v3 Research Questions.\n\n### Evidence Summary: Script-layer Hypotheses (fixed template, NOT v3)\n- **✓ H1-purpose** (high): The repository purpose and target audience can be inferred from README and manifest\n- **? H2-ai-agent** (medium): This is an AI-agent / LLM-related project with prompts and/or tools\n- **? H3-modular** (medium): The codebase has a modular architecture with identifiable dependency layers\n- **? H4-testing** (medium): The project relies on automated tests for correctness\n- **✓ H5-entrypoints** (high): Entry points reveal the primary interfaces (CLI, server, SDK)\n- **⚠ H6-evaluation** (low): The project measures quality through benchmarks or evaluations\n  - Gaps: No evaluation or benchmark artifacts detected\n- **⚠ H7-maturity** (low): The project is actively maintained with a non-trivial development history\n  - Gaps: No Git history available\n\n### Evidence Summary: Script-layer Open Questions (fixed template, NOT v3)\n- [medium] **evaluation**: What metrics, datasets, or judges are used for evaluation?",
+  "_meta": {
+    "lastCommit": null,
+    "analyzedAt": "2026-07-27T23:06:58.542Z",
+    "repoPath": "/var/folders/vj/d1vqjf9n7_1_4jzx3xsl6y2h0000gn/T/synthetic-agent-Ki4iDq",
+    "incremental": false
+  }
+}

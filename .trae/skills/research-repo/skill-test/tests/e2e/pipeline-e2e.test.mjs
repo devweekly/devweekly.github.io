@@ -7,16 +7,32 @@
 //
 // This is a real end-to-end test: it does NOT check static fixture files.
 // The System Under Test is the Analyzer pipeline itself.
+//
+// Golden fixture comparison: also compares live pipeline output against
+// the stored Golden fixture (signalCount / briefFindingCount / briefLength
+// within tolerance) to catch analyzer regressions.
 // ===========================================================================
 
 import { runSuite } from "../../lib/test-runner.mjs";
-import { createSyntheticRepo, cleanupSyntheticRepo } from "../../lib/synthetic-repos.mjs";
-import { runPipelineToDirectory, getSignals } from "../../lib/analyzer-runner.mjs";
+import { createSyntheticRepo, cleanupSyntheticRepo, ARCHETYPES } from "../../lib/synthetic-repos.mjs";
+import { runPipelineToDirectory, getSignals, computeAnalyzerMetrics } from "../../lib/analyzer-runner.mjs";
 import { validateAnalyzerStage, validateEvidenceBriefStage, validateReportStage } from "../../e2e/stage-checks.mjs";
 import { verifyResearchDirectory } from "../../e2e/verify-directory.mjs";
-import { writeFileSync, mkdtempSync, rmSync } from "node:fs";
-import { join } from "node:path";
+import { writeFileSync, mkdtempSync, rmSync, existsSync, readFileSync } from "node:fs";
+import { join, dirname } from "node:path";
 import { tmpdir } from "node:os";
+import { fileURLToPath } from "node:url";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const GOLDEN_DIR = join(__dirname, "..", "..", "e2e", "fixtures");
+
+// Tolerances for Golden comparison — catch meaningful drift, not noise.
+const TOLERANCES = {
+  signalCount: 0,        // signals should be identical (deterministic)
+  briefFindingCount: 2,  // small drift allowed (e.g., if analyzer adds a check)
+  briefLength: 1000,     // ±1000 chars allowed (formatting / wording changes)
+  fileCount: 0,          // file count must match
+};
 
 function generateDeterministicReport(outputDir, store, brief) {
   // The deterministic pipeline does not run an LLM, so we synthesize a report
@@ -142,6 +158,37 @@ export function runPipelineE2ETests() {
         });
       }),
     },
+    // ── Golden fixture comparison (regression detection) ──────────────────
+    // For each archetype with a stored Golden fixture, re-run the real
+    // pipeline and compare key metrics. Catches analyzer regressions that
+    // would otherwise silently change report content.
+    ...ARCHETYPES.flatMap((archetype) => {
+      const goldenDir = join(GOLDEN_DIR, `${archetype}-golden`);
+      if (!existsSync(join(goldenDir, "evidence-store", "full.json"))) return [];
+      return [{
+        name: `golden comparison: ${archetype} matches stored Golden fixture`,
+        test: withPipeline(archetype, (result, outputDir, store, brief) => {
+          const goldenStore = JSON.parse(
+            readFileSync(join(goldenDir, "evidence-store", "full.json"), "utf-8")
+          );
+          const goldenBrief = readFileSync(join(goldenDir, "evidence-brief.md"), "utf-8");
+          const liveMetrics = computeAnalyzerMetrics(store, brief);
+          const goldenMetrics = computeAnalyzerMetrics(goldenStore, goldenBrief);
+
+          for (const key of Object.keys(TOLERANCES)) {
+            const tol = TOLERANCES[key];
+            const live = liveMetrics[key] ?? 0;
+            const golden = goldenMetrics[key] ?? 0;
+            const delta = Math.abs(live - golden);
+            result.record(`${archetype}: ${key} within tolerance (live=${live}, golden=${golden}, Δ=${delta}, tol=${tol})`, () => {
+              if (delta > tol) {
+                throw new Error(`${key} drift ${delta} exceeds tolerance ${tol} (live=${live}, golden=${golden}). Re-run pnpm test:golden:generate to update Golden fixtures.`);
+              }
+            });
+          }
+        }),
+      }];
+    }),
   ]);
 }
 

@@ -27,7 +27,7 @@
         "tolerance": 0
       },
       "briefLength": {
-        "value": 39483,
+        "value": 42855,
         "tolerance": 500
       },
       "briefFindingCount": {
@@ -37,6 +37,38 @@
       "fileCount": {
         "value": 9,
         "tolerance": 1
+      },
+      "evidenceDensity": {
+        "value": 0.75,
+        "tolerance": 0.3
+      },
+      "decisionQuality": {
+        "value": 0,
+        "tolerance": 0.1
+      },
+      "decisionReusability": {
+        "value": 0,
+        "tolerance": 0.1
+      },
+      "unknownRatio": {
+        "value": 0.25,
+        "tolerance": 0.1
+      },
+      "counterEvidenceRatio": {
+        "value": 0,
+        "tolerance": 0.1
+      },
+      "avgConfidence": {
+        "value": 0.14,
+        "tolerance": 0.1
+      },
+      "readmeContradictionCount": {
+        "value": 0,
+        "tolerance": 1
+      },
+      "provenanceCoverage": {
+        "value": 0,
+        "tolerance": 0.1
       }
     },
     "agent": {
@@ -65,7 +97,7 @@
         "tolerance": 0
       },
       "briefLength": {
-        "value": 39031,
+        "value": 42397,
         "tolerance": 500
       },
       "briefFindingCount": {
@@ -75,6 +107,38 @@
       "fileCount": {
         "value": 9,
         "tolerance": 1
+      },
+      "evidenceDensity": {
+        "value": 0.81,
+        "tolerance": 0.3
+      },
+      "decisionQuality": {
+        "value": 0,
+        "tolerance": 0.1
+      },
+      "decisionReusability": {
+        "value": 0,
+        "tolerance": 0.1
+      },
+      "unknownRatio": {
+        "value": 0.25,
+        "tolerance": 0.1
+      },
+      "counterEvidenceRatio": {
+        "value": 0,
+        "tolerance": 0.1
+      },
+      "avgConfidence": {
+        "value": 0.14,
+        "tolerance": 0.1
+      },
+      "readmeContradictionCount": {
+        "value": 1,
+        "tolerance": 1
+      },
+      "provenanceCoverage": {
+        "value": 0,
+        "tolerance": 0.1
       }
     },
     "tool": {
@@ -103,7 +167,7 @@
         "tolerance": 0
       },
       "briefLength": {
-        "value": 38984,
+        "value": 42350,
         "tolerance": 500
       },
       "briefFindingCount": {
@@ -113,6 +177,38 @@
       "fileCount": {
         "value": 8,
         "tolerance": 1
+      },
+      "evidenceDensity": {
+        "value": 0.81,
+        "tolerance": 0.3
+      },
+      "decisionQuality": {
+        "value": 0,
+        "tolerance": 0.1
+      },
+      "decisionReusability": {
+        "value": 0,
+        "tolerance": 0.1
+      },
+      "unknownRatio": {
+        "value": 0.25,
+        "tolerance": 0.1
+      },
+      "counterEvidenceRatio": {
+        "value": 0,
+        "tolerance": 0.1
+      },
+      "avgConfidence": {
+        "value": 0.14,
+        "tolerance": 0.1
+      },
+      "readmeContradictionCount": {
+        "value": 1,
+        "tolerance": 1
+      },
+      "provenanceCoverage": {
+        "value": 0,
+        "tolerance": 0.1
       }
     },
     "readme-claims": {
@@ -141,7 +237,7 @@
         "tolerance": 0
       },
       "briefLength": {
-        "value": 40510,
+        "value": 44352,
         "tolerance": 500
       },
       "briefFindingCount": {
@@ -151,6 +247,38 @@
       "fileCount": {
         "value": 3,
         "tolerance": 1
+      },
+      "evidenceDensity": {
+        "value": 0.95,
+        "tolerance": 0.3
+      },
+      "decisionQuality": {
+        "value": 0,
+        "tolerance": 0.1
+      },
+      "decisionReusability": {
+        "value": 0,
+        "tolerance": 0.1
+      },
+      "unknownRatio": {
+        "value": 0.21,
+        "tolerance": 0.1
+      },
+      "counterEvidenceRatio": {
+        "value": 0,
+        "tolerance": 0.1
+      },
+      "avgConfidence": {
+        "value": 0.14,
+        "tolerance": 0.1
+      },
+      "readmeContradictionCount": {
+        "value": 4,
+        "tolerance": 1
+      },
+      "provenanceCoverage": {
+        "value": 0,
+        "tolerance": 0.1
       }
     }
   }

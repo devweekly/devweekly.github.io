@@ -619,6 +619,44 @@ const FINDING_SCHEMA = {
     checkedLocations: { type: "array", items: { type: "string" } },
     verified: { type: "string", enum: ["verified", "downgraded", "rejected", "pending"] },
     verificationNote: { type: "string" },
+    // ── Claim Lifecycle (P2-①) ────────────────────────────────────────────
+    // A Claim advances through: candidate → hypothesis → supported → verified
+    // → decision → reusable_pattern. Each transition requires stronger evidence.
+    //   candidate        — initial observation (no validation)
+    //   hypothesis       — deemed worth investigating (plausible, not yet supported)
+    //   supported        — has ≥1 supporting evidence item
+    //   verified         — survived adversarial check (no counter evidence, or counter resolved)
+    //   decision         — promoted from a verified Q9 finding (architectural decision)
+    //   reusable_pattern — promoted from a verified Q1 finding (reusable architecture pattern)
+    lifecycle: {
+      type: "string",
+      enum: ["candidate", "hypothesis", "supported", "verified", "decision", "reusable_pattern"],
+    },
+    lifecycleHistory: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          from: { type: "string" },
+          to: { type: "string" },
+          at: { type: "string" },
+          reason: { type: "string" },
+        },
+      },
+    },
+    // ── Unknown Classification (P2-②) ─────────────────────────────────────
+    // When a Finding reports "Unknown" / "not detected", classify WHY:
+    //   need_reading             — analyzer scanned but didn't read deeply;
+    //                              a human reading the source could resolve it.
+    //   need_external_evidence   — repo alone can't resolve; need issues/PRs/
+    //                              design docs/runtime data to verify.
+    //   impossible_to_verify     — cannot be verified from any source
+    //                              (e.g., team intentions, production behavior).
+    unknownType: {
+      type: "string",
+      enum: ["need_reading", "need_external_evidence", "impossible_to_verify"],
+    },
+    unknownReason: { type: "string" },
   },
 };
 
@@ -1192,6 +1230,25 @@ class FindingsGenerator {
 
   _finalize(f, q) {
     this.findingCounter += 1;
+    // Evidence Provenance: inject who/when into each support item.
+    // `who` = analyzer id inferred from ref prefix (e.g., "discovery.manifest" → "discovery")
+    // `when` = current HEAD commit hash (from GitAnalyzer output)
+    const gitData = this.store.get("git") || {};
+    const commitHash = gitData.lastCommit?.hash || null;
+    const commitDate = gitData.lastCommit?.date || null;
+    const support = (f.support || []).map((s) => ({
+      ...s,
+      who: s.who || (s.ref ? String(s.ref).split(".")[0] : s.source || "unknown"),
+      when: s.when || commitHash,
+    }));
+    // Claim Lifecycle (P2-①): initial state = candidate.
+    // VerificationLoop will advance through hypothesis → supported → verified
+    // → decision / reusable_pattern based on evidence and verification.
+    const hasSupport = support.length > 0;
+    const initialLifecycle = hasSupport ? "supported" : "candidate";
+    // Unknown Classification (P2-②): if this is a negative finding, classify WHY.
+    const isUnknown = this._isUnknownFinding(f, hasSupport);
+    const unknownClassification = isUnknown ? this._classifyUnknown(q, f) : null;
     return {
       id: `F-${String(this.findingCounter).padStart(3, "0")}`,
       questionId: q.id,
@@ -1200,12 +1257,76 @@ class FindingsGenerator {
       confidence: Number((f.confidence || 0).toFixed(2)),
       importance: f.importance || q.importance,
       coverage: Number((f.coverage || 0).toFixed(2)),
-      support: f.support || [],
+      support,
       counter: f.counter || [],
       limitations: f.limitations || [],
       checkedLocations: f.checkedLocations || [],
       verified: "pending",
       verificationNote: "",
+      lifecycle: initialLifecycle,
+      lifecycleHistory: [
+        { from: null, to: initialLifecycle, at: new Date().toISOString(), reason: "Initial state from FindingsGenerator" },
+      ],
+      unknownType: unknownClassification?.type || null,
+      unknownReason: unknownClassification?.reason || "",
+      // Provenance for the Finding as a whole
+      provenance: {
+        generatedBy: "FindingsGenerator",
+        commitHash,
+        commitDate,
+      },
+    };
+  }
+
+  /**
+   * Detect whether a Finding is reporting an Unknown / not-detected result.
+   * Such findings either explicitly say "Unknown" / "not detected", or have
+   * no support and list checkedLocations (negative finding).
+   */
+  _isUnknownFinding(f, hasSupport) {
+    const text = (f.finding || "").toLowerCase();
+    if (/\bunknown\b|not detected|no\s+\w+\s+detected|not classified|no recognizable/.test(text)) {
+      return true;
+    }
+    // Negative finding: searched but found nothing
+    if (!hasSupport && (f.checkedLocations || []).length > 0) return true;
+    return false;
+  }
+
+  /**
+   * Classify an Unknown Finding into one of three categories (P2-②):
+   *   need_reading             — code-internal question; a human reading source can resolve.
+   *   need_external_evidence   — repo alone insufficient; need issues/PRs/docs/runtime.
+   *   impossible_to_verify     — cannot be verified from any source (intentions, runtime behavior).
+   *
+   * Classification is driven by Research Question semantics:
+   *   Q1-Q6 (code-discoverable) → need_reading
+   *   Q7 (correctness/tests)    → need_external_evidence (tests are partial; runtime needed)
+   *   Q8 (README contradictions) → need_external_evidence (need issue tracker / docs)
+   *   Q9 (decisions)            → impossible_to_verify (intentions live in ADRs / discussions)
+   *   Q10 (constraints)         → need_external_evidence (constraints often in config / external)
+   *   Q11 (assumptions)         → impossible_to_verify (implicit beliefs, not verifiable)
+   */
+  _classifyUnknown(q, f) {
+    const id = q.id;
+    const questionCategory = q.category || "";
+    // Map by question ID
+    const BY_QUESTION = {
+      Q1: { type: "need_reading", reason: "Architecture pattern detection is heuristic; reading source code can confirm or refute." },
+      Q2: { type: "need_reading", reason: "Orchestration logic is in source code; reading call chains can resolve." },
+      Q3: { type: "need_reading", reason: "Retrieval/RAG implementation is code-internal; reading source can resolve." },
+      Q4: { type: "need_reading", reason: "Prompt management is code-internal; reading source can resolve." },
+      Q5: { type: "need_reading", reason: "Tool registry is code-internal; reading source can resolve." },
+      Q6: { type: "need_reading", reason: "AI project signals are in source code; reading source can resolve." },
+      Q7: { type: "need_external_evidence", reason: "Correctness assurance requires tests AND runtime/production evidence; repo alone is insufficient." },
+      Q8: { type: "need_external_evidence", reason: "README claims often require issue tracker / design docs / changelog to verify." },
+      Q9: { type: "impossible_to_verify", reason: "Architectural decisions live in ADRs / team discussions / PRs; not always recoverable from code." },
+      Q10: { type: "need_external_evidence", reason: "Constraints (performance, compliance, deployment) often external to the codebase." },
+      Q11: { type: "impossible_to_verify", reason: "Assumptions are implicit beliefs; cannot be verified without team interviews or design docs." },
+    };
+    return BY_QUESTION[id] || {
+      type: "need_reading",
+      reason: `Unknown finding for ${id} (${questionCategory}); defaulting to need_reading.`,
     };
   }
 
@@ -1256,12 +1377,57 @@ class VerificationLoop {
 
   run() {
     const verified = this.findings.map((f) => this._verify(f));
-    const summary = this._summary(verified);
+    const promoted = this._promoteLifecycle(verified);
+    const summary = this._summary(promoted);
     return {
       ...this.findingsOutput,
-      findings: verified,
+      findings: promoted,
       verificationSummary: summary,
     };
+  }
+
+  /**
+   * Promote verified Findings to terminal lifecycle states:
+   *   - Q9 (Decisions) verified Findings → lifecycle = "decision"
+   *   - Q1 (Entry Shape / Architecture) verified Findings that mention a
+   *     recognized pattern → lifecycle = "reusable_pattern"
+   *
+   * Monotonicity: only verified Findings advance; downgraded/rejected stay.
+   */
+  _promoteLifecycle(findings) {
+    const patternKeywords = [
+      "monorepo", "layered", "microservice", "event-driven", "plugin",
+      "pipeline", "actor", "dataflow", "registry", "plugin-based",
+      "middleware", "interpreter", "compiler", "repository",
+    ];
+    return findings.map((f) => {
+      if (f.lifecycle !== "verified") return f;
+      const questionId = f.questionId;
+      const findingText = (f.finding || "").toLowerCase();
+      const reason = `Promoted from verified (questionId=${questionId})`;
+
+      if (questionId === "Q9") {
+        return {
+          ...f,
+          lifecycle: "decision",
+          lifecycleHistory: [
+            ...f.lifecycleHistory,
+            { from: "verified", to: "decision", at: new Date().toISOString(), reason },
+          ],
+        };
+      }
+      if (questionId === "Q1" && patternKeywords.some((k) => findingText.includes(k))) {
+        return {
+          ...f,
+          lifecycle: "reusable_pattern",
+          lifecycleHistory: [
+            ...f.lifecycleHistory,
+            { from: "verified", to: "reusable_pattern", at: new Date().toISOString(), reason },
+          ],
+        };
+      }
+      return f;
+    });
   }
 
   _verify(finding) {
@@ -1312,6 +1478,43 @@ class VerificationLoop {
       note = "Negative finding (searched, found nothing) — verified by absence";
     }
 
+    // ── Claim Lifecycle advancement (P2-①) ────────────────────────────────
+    // Transition rules (monotonic — lifecycle only advances, never regresses):
+    //   candidate → supported  : when finding gains support (handled in _finalize)
+    //   candidate → hypothesis : when finding has no support but is plausible (negative finding)
+    //   supported → verified   : when verifiedStatus = "verified" (survived adversarial check)
+    //   supported → supported  : when verifiedStatus = "downgraded" (still supported but disputed)
+    //   candidate → candidate  : when verifiedStatus = "rejected" (lifecycle doesn't advance)
+    //   verified  → decision / reusable_pattern : handled in _promoteLifecycle (post-verify step)
+    const prevLifecycle = finding.lifecycle || "candidate";
+    let nextLifecycle = prevLifecycle;
+    const lifecycleReason = `verified=${verifiedStatus}`;
+
+    if (verifiedStatus === "rejected") {
+      // Lifecycle doesn't advance — claim stays at candidate
+      nextLifecycle = "candidate";
+    } else if (verifiedStatus === "verified") {
+      // Adversarial check passed → advance to verified
+      // (covers both "supported → verified" and "candidate → verified" for negative findings)
+      nextLifecycle = "verified";
+    } else if (verifiedStatus === "downgraded") {
+      // Has counter evidence but still publishable → stays at supported
+      nextLifecycle = prevLifecycle === "candidate" ? "supported" : prevLifecycle;
+    } else if (verifiedStatus === "pending") {
+      // Not yet verified — if it has support, it's "supported"; otherwise "hypothesis"
+      nextLifecycle = finding.support && finding.support.length > 0 ? "supported" : "hypothesis";
+    }
+
+    const lifecycleHistory = [...(finding.lifecycleHistory || [])];
+    if (nextLifecycle !== prevLifecycle) {
+      lifecycleHistory.push({
+        from: prevLifecycle,
+        to: nextLifecycle,
+        at: new Date().toISOString(),
+        reason: lifecycleReason,
+      });
+    }
+
     return {
       ...finding,
       counter: counters,
@@ -1320,12 +1523,35 @@ class VerificationLoop {
       confidence: downgraded
         ? Number((finding.confidence * 0.6).toFixed(2))
         : finding.confidence,
+      lifecycle: nextLifecycle,
+      lifecycleHistory,
     };
   }
 
   _summary(findings) {
     const status = { verified: 0, downgraded: 0, rejected: 0, pending: 0 };
     for (const f of findings) status[f.verified] = (status[f.verified] || 0) + 1;
+    const lifecycleCounts = {
+      candidate: 0,
+      hypothesis: 0,
+      supported: 0,
+      verified: 0,
+      decision: 0,
+      reusable_pattern: 0,
+    };
+    for (const f of findings) {
+      const lc = f.lifecycle || "candidate";
+      lifecycleCounts[lc] = (lifecycleCounts[lc] || 0) + 1;
+    }
+    // Unknown Classification counts (P2-②)
+    const unknownTypeCounts = {
+      need_reading: 0,
+      need_external_evidence: 0,
+      impossible_to_verify: 0,
+    };
+    for (const f of findings) {
+      if (f.unknownType) unknownTypeCounts[f.unknownType] = (unknownTypeCounts[f.unknownType] || 0) + 1;
+    }
     return {
       total: findings.length,
       ...status,
@@ -1333,6 +1559,8 @@ class VerificationLoop {
       averageConfidenceAfterVerification: findings.length > 0
         ? Number((findings.reduce((s, f) => s + f.confidence, 0) / findings.length).toFixed(2))
         : 0,
+      lifecycle: lifecycleCounts,
+      unknownTypes: unknownTypeCounts,
     };
   }
 }

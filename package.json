@@ -20,7 +20,10 @@
     "test:e2e": "node .trae/skills/research-repo/skill-test/e2e/run-e2e.mjs --fixtures",
     "test:e2e:live": "node .trae/skills/research-repo/skill-test/e2e/run-e2e-live.mjs",
     "test:fixtures:generate": "node .trae/skills/research-repo/skill-test/fixture-generator.mjs",
-    "test:baseline:regenerate": "node .trae/skills/research-repo/skill-test/generate-baseline.mjs"
+    "test:baseline:regenerate": "node .trae/skills/research-repo/skill-test/generate-baseline.mjs",
+    "test:golden:generate": "node .trae/skills/research-repo/skill-test/e2e/generate-golden.mjs",
+    "test:golden:diff": "node .trae/skills/research-repo/skill-test/e2e/generate-golden.mjs --diff",
+    "test:benchmark": "node .trae/skills/research-repo/skill-test/e2e/run-benchmark.mjs"
   },
   "packageManager": "pnpm@10.24.0",
   "dependencies": {

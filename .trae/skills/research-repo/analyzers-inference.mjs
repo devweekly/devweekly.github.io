@@ -1696,10 +1696,17 @@ class DecisionAnalyzer extends BaseAnalyzer {
       });
     }
 
+    // Decision Record: inject problem/risk/reusability for ADR-style structure.
+    // Each decision gets:
+    //   problem    — WHY this decision was needed (the force it resolves)
+    //   risk       — what could go wrong if this decision is followed
+    //   reusability — 0-1 score: how transferable is this decision to other repos
+    const finalizedDecisions = decisions.map((d) => this._finalizeDecision(d));
+
     store[this.id] = {
-      decisions,
-      totalDecisions: decisions.length,
-      byCategory: this._groupByCategory(decisions),
+      decisions: finalizedDecisions,
+      totalDecisions: finalizedDecisions.length,
+      byCategory: this._groupByCategory(finalizedDecisions),
       _meta: {
         source: "inference",
         strength: "moderate",
@@ -1791,6 +1798,65 @@ class DecisionAnalyzer extends BaseAnalyzer {
     const groups = {};
     for (const d of decisions) groups[d.category] = (groups[d.category] || 0) + 1;
     return groups;
+  }
+
+  // ── Decision Record finalizer ──────────────────────────────────────────
+  // Adds ADR-style fields (problem / risk / reusability) to each decision.
+  // `problem` answers WHY this decision was needed (the force it resolves).
+  // `risk` answers what could go wrong.
+  // `reusability` is a 0-1 score: how transferable to other repos.
+  _finalizeDecision(d) {
+    const problem = this._inferProblem(d);
+    const risk = this._inferRisk(d);
+    const reusability = this._inferReusability(d);
+    return { ...d, problem, risk, reusability };
+  }
+
+  _inferProblem(d) {
+    // Infer the problem from category + decision text
+    const t = (d.decision || "").toLowerCase();
+    if (d.category === "structural") return `Need to organize code at scale; without a structural pattern the codebase becomes hard to navigate and evolve`;
+    if (d.category === "modular") return `Need to separate concerns so teams can work independently and modules can evolve at different rates`;
+    if (d.category === "capability") {
+      if (t.includes("tool-heavy")) return `Need deterministic, testable capabilities vs flexible LLM reasoning`;
+      if (t.includes("prompt-heavy")) return `Need flexible reasoning over a fixed tool surface`;
+      return `Need to choose how capabilities are exposed to the LLM`;
+    }
+    if (d.category === "integration") return `Need to manage where LLM calls happen (centralized for control vs distributed for locality)`;
+    if (d.category === "quality") return `Need to ensure quality attributes (testing, eval) are in place before shipping`;
+    if (d.category === "negative") return `Observed absence of a capability — the team deliberately chose not to implement it (or has not yet)`;
+    return `Design force that this decision resolves`;
+  }
+
+  _inferRisk(d) {
+    const t = (d.decision || "").toLowerCase();
+    const risks = {
+      structural: `Pattern may not fit future requirements; migrating away is expensive`,
+      modular: `Over-splitting creates integration overhead; cross-cutting concerns leak`,
+      capability: t.includes("tool-heavy")
+        ? `Tool registry maintenance burden; tools may diverge in style`
+        : `Prompt drift; non-deterministic behavior; harder to test`,
+      integration: t.includes("centralize")
+        ? `Central point of failure; all LLM calls depend on one module`
+        : `Inconsistent error handling; harder to audit LLM usage`,
+      quality: `Tests/evals may give false confidence; maintenance lag behind features`,
+      negative: `Absence may be unintentional; future requirements may need this capability`,
+    };
+    return risks[d.category] || `Decision may have unintended consequences in edge cases`;
+  }
+
+  _inferReusability(d) {
+    // Score 0-1: how transferable is this decision to other repos?
+    // Structural/modular decisions are highly reusable; integration/quality are project-specific.
+    const scores = {
+      structural: 0.8,
+      modular: 0.7,
+      capability: 0.6,
+      integration: 0.4,
+      quality: 0.3,
+      negative: 0.5,
+    };
+    return scores[d.category] ?? 0.5;
   }
 }
 
@@ -2207,6 +2273,532 @@ class AssumptionAnalyzer extends BaseAnalyzer {
  * Architecture Insights), because self-detected conflicts are the most
  * research-valuable findings.
  */
+// ===========================================================================
+// ArchitectureMetricsAnalyzer — Structural metrics (P2-④)
+//
+// Computes node-level and aggregate architecture metrics from the import graph
+// produced by ArchitectureAnalyzer. Complements StabilityAnalyzer (which is
+// module-level Robert C. Martin A-I graph) by providing:
+//   - Layer       : layer detection from top-level dirs + src/<layer>/ patterns
+//   - Cycle       : count, max length, cycle list (sourced from arch.cycles)
+//   - Fan-in/out  : per-node, with aggregate avg / max / distribution
+//   - Stability   : per-node I = Ce/(Ca+Ce) (0=stable, 1=unstable)
+//   - Coupling    : density, avg degree, hub nodes (high fan-in),
+//                   bottleneck nodes (high fan-out)
+//
+// Source: store.architecture (ArchitectureAnalyzer output — nodes, edges, cycles)
+//
+// Output: store.archMetrics = { layers, cycles, fanIn, fanOut, stability,
+//                               coupling, summary, _meta }
+// ===========================================================================
+
+// Known layer name patterns. Matched against top-level dir names AND one-level
+// deep subdirs of src/, lib/, app/. Each entry: { layer, aliases }.
+// Aliases are matched via token-prefix (so "ui" matches "uikit" too — we use
+// exact equality on the dir basename to keep precision).
+const LAYER_PATTERNS = [
+  { layer: "presentation", aliases: ["ui", "views", "view", "frontend", "web", "client", "components", "screens", "pages", "presentation"] },
+  { layer: "business", aliases: ["services", "service", "domain", "usecases", "use_cases", "core", "business", "logic", "interactors"] },
+  { layer: "data", aliases: ["data", "models", "entities", "schemas", "db", "database", "persistence", "repositories", "store", "storage"] },
+  { layer: "infrastructure", aliases: ["infrastructure", "infra", "adapters", "adapter", "ports", "drivers", "external", "gateways"] },
+  { layer: "api", aliases: ["api", "routes", "controllers", "endpoints", "handlers"] },
+  { layer: "config", aliases: ["config", "configuration", "settings", "env"] },
+  { layer: "utils", aliases: ["utils", "util", "helpers", "common", "shared", "lib"] },
+  { layer: "tests", aliases: ["tests", "test", "spec", "specs", "__tests__"] },
+];
+
+class ArchitectureMetricsAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "archMetrics";
+  }
+  supports(_ctx) {
+    return true;
+  }
+  async analyze(ctx, store, _analyzerCtx) {
+    const arch = store.architecture || {};
+    const discovery = store.discovery || {};
+    const nodes = arch.nodes || [];
+    const edges = arch.edges || [];
+    const cycles = arch.cycles || [];
+
+    if (nodes.length === 0) {
+      store[this.id] = {
+        skipped: true,
+        reason: "No architecture graph available.",
+        summary: { totalNodes: 0, totalEdges: 0, totalCycles: 0, totalLayers: 0 },
+      };
+      return;
+    }
+
+    // --- Layer detection ----------------------------------------------------
+    const { layers, nodeIdToLayer } = this._detectLayers(nodes, edges, discovery, ctx);
+
+    // --- Fan-in / Fan-out (per-node) ----------------------------------------
+    const fanInMap = new Map(); // nodeId -> count
+    const fanOutMap = new Map(); // nodeId -> count
+    for (const n of nodes) {
+      fanInMap.set(n.id, 0);
+      fanOutMap.set(n.id, 0);
+    }
+    for (const e of edges) {
+      if (fanOutMap.has(e.from)) fanOutMap.set(e.from, fanOutMap.get(e.from) + 1);
+      if (fanInMap.has(e.to)) fanInMap.set(e.to, fanInMap.get(e.to) + 1);
+    }
+    const fanIn = this._aggregateFan(nodes, fanInMap, "fan-in");
+    const fanOut = this._aggregateFan(nodes, fanOutMap, "fan-out");
+
+    // --- Stability (per-node, Robert C. Martin I = Ce/(Ca+Ce)) --------------
+    // At node level: Ca = fan-in (dependents), Ce = fan-out (dependencies).
+    // I=0 → maximally stable (only depended-upon), I=1 → maximally unstable
+    // (only depends-on others, nothing depends on it).
+    const nodeStability = nodes.map((n) => {
+      const ca = fanInMap.get(n.id) || 0;
+      const ce = fanOutMap.get(n.id) || 0;
+      const total = ca + ce;
+      const instability = total > 0 ? ce / total : 0;
+      return { node: n.id, path: n.path, ca, ce, instability: Number(instability.toFixed(3)) };
+    });
+    const mostStable = [...nodeStability]
+      .filter((s) => s.ca + s.ce > 0)
+      .sort((a, b) => a.instability - b.instability)
+      .slice(0, 5);
+    const leastStable = [...nodeStability]
+      .filter((s) => s.ca + s.ce > 0)
+      .sort((a, b) => b.instability - a.instability)
+      .slice(0, 5);
+    const avgInstability = nodeStability.length > 0
+      ? Number((nodeStability.reduce((sum, s) => sum + s.instability, 0) / nodeStability.length).toFixed(3))
+      : 0;
+    const stability = {
+      avg: avgInstability,
+      mostStable,
+      leastStable,
+      isolatedCount: nodeStability.filter((s) => s.ca + s.ce === 0).length,
+    };
+
+    // --- Coupling (aggregate) ----------------------------------------------
+    const totalNodes = nodes.length;
+    const totalEdges = edges.length;
+    const density = totalNodes > 1
+      ? totalEdges / (totalNodes * (totalNodes - 1))
+      : 0;
+    const avgDegree = totalNodes > 0 ? (totalEdges * 2) / totalNodes : 0;
+    // Hub nodes: high fan-in (many depend on them) — they are "depended-upon" cores.
+    const hubNodes = [...nodes]
+      .map((n) => ({ node: n.id, path: n.path, fanIn: fanInMap.get(n.id) || 0 }))
+      .sort((a, b) => b.fanIn - a.fanIn)
+      .slice(0, 5);
+    // Bottleneck nodes: high fan-out (they depend on many) — change ripples out from them.
+    const bottleneckNodes = [...nodes]
+      .map((n) => ({ node: n.id, path: n.path, fanOut: fanOutMap.get(n.id) || 0 }))
+      .sort((a, b) => b.fanOut - a.fanOut)
+      .slice(0, 5);
+    // Cross-layer edges: edges that cross layer boundaries (high = layers leak).
+    let crossLayerEdges = 0;
+    for (const e of edges) {
+      const fromL = nodeIdToLayer.get(e.from);
+      const toL = nodeIdToLayer.get(e.to);
+      if (fromL && toL && fromL !== toL) crossLayerEdges++;
+    }
+    const coupling = {
+      density: Number(density.toFixed(4)),
+      avgDegree: Number(avgDegree.toFixed(3)),
+      crossLayerEdges,
+      crossLayerRatio: totalEdges > 0 ? Number((crossLayerEdges / totalEdges).toFixed(3)) : 0,
+      hubNodes,
+      bottleneckNodes,
+    };
+
+    // --- Cycle metrics -----------------------------------------------------
+    const cycleLengths = cycles.map((c) => Array.isArray(c) ? c.length : (c.nodes?.length || 0));
+    const cycleMetrics = {
+      count: cycles.length,
+      maxLength: cycleLengths.length > 0 ? Math.max(...cycleLengths) : 0,
+      avgLength: cycleLengths.length > 0
+        ? Number((cycleLengths.reduce((a, b) => a + b, 0) / cycleLengths.length).toFixed(2))
+        : 0,
+      // Surface up to 5 cycles with full node list for LLM inspection.
+      top: cycles.slice(0, 5).map((c, i) => ({
+        id: i + 1,
+        nodes: Array.isArray(c) ? c : (c.nodes || []),
+        length: Array.isArray(c) ? c.length : (c.nodes?.length || 0),
+      })),
+    };
+
+    // --- Summary -----------------------------------------------------------
+    const summary = {
+      totalNodes,
+      totalEdges,
+      totalCycles: cycles.length,
+      totalLayers: layers.length,
+      avgFanIn: fanIn.avg,
+      avgFanOut: fanOut.avg,
+      avgInstability,
+      density: coupling.density,
+    };
+
+    store[this.id] = {
+      layers,
+      cycles: cycleMetrics,
+      fanIn,
+      fanOut,
+      stability,
+      coupling,
+      summary,
+      _meta: {
+        source: "store.architecture (nodes, edges, cycles)",
+        strength: "strong",
+        assumptions: [
+          "Import graph accurately reflects runtime dependencies",
+          "Layer detection is heuristic (directory naming) — verify against actual architecture",
+          "Node-level stability follows Robert C. Martin's I metric; module-level is in StabilityAnalyzer",
+        ],
+        limitations: [
+          "Synthetic repos with no imports produce empty graph",
+          "Dynamic imports / reflection-based deps are not captured",
+          "Layer detection misses non-conventional directory layouts",
+        ],
+        possibleFalsePositives: [
+          "Test files may inflate fan-in of utility modules",
+          "Barrel index.* files create false hubs",
+        ],
+        checkedLocations: ["store.architecture.nodes", "store.architecture.edges", "store.architecture.cycles", "store.discovery.topLevelDirs"],
+        coverage: "import-graph-only",
+      },
+    };
+  }
+
+  /**
+   * Detect architectural layers from directory structure.
+   * Scans: (1) top-level dirs, (2) one-level deep subdirs of src/, lib/, app/.
+   * Each detected layer: { layer, sourceDirs, nodes, nodeCount, intraEdges, crossEdges }
+   */
+  _detectLayers(nodes, edges, discovery, _ctx) {
+    const topLevelDirs = discovery.topLevelDirs || [];
+    // Build a map of node.path → first path segment(s) for layer attribution.
+    const nodeLayer = new Map(); // nodeId → { layer, sourceDir }
+
+    // Candidate layer dirs: top-level + one-level deep under src/lib/app.
+    const candidates = new Set();
+    for (const d of topLevelDirs) candidates.add(d);
+    for (const d of topLevelDirs) {
+      if (d === "src" || d === "lib" || d === "app") {
+        // We can't access ctx.dirs here cleanly; use node paths instead.
+      }
+    }
+    // Walk node paths to find src/<sub>/ or lib/<sub>/ patterns.
+    const srcSubDirs = new Set();
+    for (const n of nodes) {
+      const parts = (n.path || "").split("/");
+      if (parts.length >= 2 && (parts[0] === "src" || parts[0] === "lib" || parts[0] === "app")) {
+        srcSubDirs.add(parts[1]);
+      }
+    }
+    for (const d of srcSubDirs) candidates.add(d);
+
+    // Match candidates against LAYER_PATTERNS.
+    const layerOfDir = new Map(); // dirName → layer
+    for (const cand of candidates) {
+      const lower = cand.toLowerCase();
+      for (const pat of LAYER_PATTERNS) {
+        if (pat.aliases.includes(lower)) {
+          layerOfDir.set(cand, pat.layer);
+          break;
+        }
+      }
+    }
+
+    // Attribute each node to a layer (by first path segment or src/<seg>).
+    for (const n of nodes) {
+      const parts = (n.path || "").split("/").filter(Boolean);
+      if (parts.length === 0) continue;
+      let dirSeg = null;
+      if ((parts[0] === "src" || parts[0] === "lib" || parts[0] === "app") && parts.length >= 2) {
+        dirSeg = parts[1];
+      } else {
+        dirSeg = parts[0];
+      }
+      const layer = layerOfDir.get(dirSeg);
+      if (layer) {
+        nodeLayer.set(n.id, { layer, sourceDir: dirSeg });
+      }
+    }
+
+    // Build layer summaries.
+    const byLayer = new Map(); // layerName → { nodes: [], sourceDirs: Set }
+    for (const [nodeId, info] of nodeLayer.entries()) {
+      if (!byLayer.has(info.layer)) {
+        byLayer.set(info.layer, { nodes: [], sourceDirs: new Set() });
+      }
+      const entry = byLayer.get(info.layer);
+      entry.nodes.push(nodeId);
+      entry.sourceDirs.add(info.sourceDir);
+    }
+
+    const layers = [];
+    for (const [layer, info] of byLayer.entries()) {
+      const nodeSet = new Set(info.nodes);
+      let intraEdges = 0;
+      let crossEdges = 0;
+      for (const e of edges) {
+        const fromIn = nodeSet.has(e.from);
+        const toIn = nodeSet.has(e.to);
+        if (fromIn && toIn) intraEdges++;
+        else if (fromIn || toIn) crossEdges++;
+      }
+      layers.push({
+        layer,
+        sourceDirs: [...info.sourceDirs],
+        nodeCount: info.nodes.length,
+        intraEdges,
+        crossEdges,
+      });
+    }
+    layers.sort((a, b) => b.nodeCount - a.nodeCount);
+    // Build nodeIdToLayer map for downstream cross-layer edge counting.
+    const nodeIdToLayer = new Map();
+    for (const [nodeId, info] of nodeLayer.entries()) {
+      nodeIdToLayer.set(nodeId, info.layer);
+    }
+    return { layers, nodeIdToLayer };
+  }
+
+  /**
+   * Aggregate fan metric (used for both fan-in and fan-out).
+   * Returns { avg, max, maxNode, distribution }
+   */
+  _aggregateFan(nodes, countMap, _label) {
+    if (nodes.length === 0) {
+      return { avg: 0, max: 0, maxNode: null, distribution: { "0": 0, "1-3": 0, "4-9": 0, "10+": 0 } };
+    }
+    const values = nodes.map((n) => countMap.get(n.id) || 0);
+    const sum = values.reduce((a, b) => a + b, 0);
+    const avg = Number((sum / values.length).toFixed(3));
+    let max = 0;
+    let maxNode = null;
+    const dist = { "0": 0, "1-3": 0, "4-9": 0, "10+": 0 };
+    for (let i = 0; i < values.length; i++) {
+      const v = values[i];
+      if (v > max) {
+        max = v;
+        maxNode = nodes[i].id;
+      }
+      if (v === 0) dist["0"]++;
+      else if (v <= 3) dist["1-3"]++;
+      else if (v <= 9) dist["4-9"]++;
+      else dist["10+"]++;
+    }
+    return { avg, max, maxNode, distribution: dist };
+  }
+}
+
+
+// ===========================================================================
+// TemporalAnalyzer — Repository Evolution (P2-③)
+//
+// Analyzes git history to detect architectural evolution events:
+//   - Major Rewrite     : single commit (or small burst) touching >30% of files
+//   - Architecture Pivot: sustained shift in top-active modules across time windows
+//   - Deprecated Pattern: modules with high early activity but no recent activity
+//   - Historical Tradeoff: commit messages mentioning rewrite/refactor/deprecate/
+//                          replace/migrate (intentional architectural changes)
+//
+// Source: store.git (GitAnalyzer output — totalCommits, largestRefactors,
+//         topActiveModules, firstCommit, lastCommit)
+//
+// Output: store.temporal = { events, deprecatedModules, pivotWindows, summary, _meta }
+// ===========================================================================
+
+class TemporalAnalyzer extends BaseAnalyzer {
+  get id() {
+    return "temporal";
+  }
+
+  supports(ctx) {
+    // Requires git history — skip for non-git repos / synthetic repos
+    return ctx.isGitRepo === true;
+  }
+
+  async analyze(ctx, store, _analyzerCtx) {
+    const gitData = store.git || {};
+    const totalCommits = gitData.totalCommits || 0;
+    const largestRefactors = gitData.largestRefactors || [];
+    const topActiveModules = gitData.topActiveModules || [];
+
+    if (totalCommits === 0) {
+      store[this.id] = {
+        skipped: true,
+        reason: "No git history available.",
+        events: [],
+        deprecatedModules: [],
+        pivotWindows: [],
+        summary: { totalEvents: 0, totalDeprecated: 0, totalPivots: 0 },
+        _meta: this._meta(),
+      };
+      return;
+    }
+
+    const events = [];
+
+    // ── Major Rewrite: commits touching a large fraction of files ────────
+    // Threshold: a single commit touching ≥30 files OR ≥10% of all touched
+    // files across history (whichever is smaller, but min 10 files).
+    const fileCountThreshold = Math.max(10, Math.floor(this._estimateTotalFiles(topActiveModules) * 0.10));
+    for (const ref of largestRefactors) {
+      if (ref.filesChanged >= fileCountThreshold && ref.filesChanged >= 30) {
+        events.push({
+          type: "major_rewrite",
+          commitHash: ref.hash,
+          date: ref.date,
+          subject: ref.subject,
+          filesChanged: ref.filesChanged,
+          interpretation: `Major rewrite: commit ${ref.hash.slice(0, 8)} touched ${ref.filesChanged} files in a single commit — likely a large-scale refactor or architectural change.`,
+          confidence: 0.7,
+        });
+      }
+    }
+
+    // ── Historical Tradeoff: commit subjects mentioning architectural shifts ──
+    const TRADEOFF_PATTERNS = [
+      { regex: /\brewrite\b|refactor\s+(?:whole|entire|major|large)/i, type: "rewrite", interpretation: "Commit message indicates a rewrite — explicit architecture tradeoff." },
+      { regex: /\bdeprecat/i, type: "deprecation", interpretation: "Commit message marks something deprecated — historical tradeoff in favor of a new approach." },
+      { regex: /\breplace\b|\bmigrate\b|\bport\s+to\b/i, type: "migration", interpretation: "Commit message indicates a migration — replacing one approach with another." },
+      { regex: /\barchitecture\b|\bpivot\b|\brestructure\b/i, type: "restructure", interpretation: "Commit message explicitly mentions architecture change." },
+    ];
+    // We don't have full commit subjects in gitData (only largestRefactors subjects),
+    // so check those.
+    for (const ref of largestRefactors) {
+      for (const pattern of TRADEOFF_PATTERNS) {
+        if (pattern.regex.test(ref.subject || "")) {
+          events.push({
+            type: "historical_tradeoff",
+            subtype: pattern.type,
+            commitHash: ref.hash,
+            date: ref.date,
+            subject: ref.subject,
+            filesChanged: ref.filesChanged,
+            interpretation: pattern.interpretation,
+            confidence: 0.6,
+          });
+          break; // one match per commit
+        }
+      }
+    }
+
+    // ── Deprecated Pattern: modules with high early activity, no recent ──
+    // Approximation: topActiveModules lists all-time activity. Without per-period
+    // breakdown from GitAnalyzer, we can only flag high-activity modules that
+    // appear stagnant based on lastCommit timing. For now, we flag any module
+    // in the top 5 with a name suggesting legacy (legacy/, old/, deprecated/,
+    // v1/, archive/) as a deprecated pattern candidate.
+    const DEPRECATED_NAME_RE = /^(legacy|old|deprecated|v1|archive|obsolete|retired)[/_-]/i;
+    const deprecatedModules = topActiveModules
+      .slice(0, 10)
+      .filter((m) => DEPRECATED_NAME_RE.test(m.module))
+      .map((m) => ({
+        module: m.module,
+        commits: m.commits,
+        reason: `Module name suggests legacy/deprecated status (${m.commits} historical commits).`,
+        confidence: 0.5,
+      }));
+
+    // ── Architecture Pivot: detect shift in dominant modules ─────────────
+    // Without per-window git data, we approximate using commit subjects in
+    // largestRefactors: if recent refactors focus on different modules than
+    // older refactors, that's a pivot. This is a heuristic; deeper analysis
+    // would require per-period file-touch counts (TODO: enhance GitAnalyzer).
+    const pivotWindows = [];
+    if (largestRefactors.length >= 4) {
+      // Split refactors into old / new halves by date
+      const sorted = [...largestRefactors].sort((a, b) => (a.date || "").localeCompare(b.date || ""));
+      const midIdx = Math.floor(sorted.length / 2);
+      const oldHalf = sorted.slice(0, midIdx);
+      const newHalf = sorted.slice(midIdx);
+      const oldTopModules = this._topModulesFromRefactors(oldHalf);
+      const newTopModules = this._topModulesFromRefactors(newHalf);
+      // Pivot = old top module no longer in new top 3
+      const oldTopNotInNew = oldTopModules.slice(0, 3).filter((m) => !newTopModules.slice(0, 3).includes(m));
+      if (oldTopNotInNew.length > 0 && newTopModules.length > 0) {
+        pivotWindows.push({
+          oldTopModules: oldTopModules.slice(0, 3),
+          newTopModules: newTopModules.slice(0, 3),
+          shiftedAway: oldTopNotInNew,
+          interpretation: `Architecture pivot detected: focus shifted from [${oldTopModules.slice(0, 3).join(", ")}] to [${newTopModules.slice(0, 3).join(", ")}].`,
+          confidence: 0.5,
+        });
+      }
+    }
+
+    // Deduplicate events by (commitHash, type)
+    const seen = new Set();
+    const dedupedEvents = events.filter((e) => {
+      const key = `${e.commitHash}:${e.type}:${e.subtype || ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+
+    store[this.id] = {
+      events: dedupedEvents,
+      deprecatedModules,
+      pivotWindows,
+      summary: {
+        totalEvents: dedupedEvents.length,
+        totalDeprecated: deprecatedModules.length,
+        totalPivots: pivotWindows.length,
+        totalCommitsAnalyzed: totalCommits,
+      },
+      _meta: this._meta(),
+    };
+  }
+
+  _estimateTotalFiles(topActiveModules) {
+    // Rough estimate: sum of commits across top modules is a lower bound on
+    // file-touch events, not file count. Use it as a proxy for "files touched".
+    return topActiveModules.reduce((s, m) => s + (m.commits || 0), 0);
+  }
+
+  _topModulesFromRefactors(refactors) {
+    const counts = {};
+    for (const r of refactors) {
+      // We don't have file lists in largestRefactors, only filesChanged count.
+      // Use subject to extract module hints as a fallback.
+      const subject = r.subject || "";
+      const moduleHint = subject.split(/[:\s/]/)[0]?.toLowerCase() || "unknown";
+      counts[moduleHint] = (counts[moduleHint] || 0) + 1;
+    }
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([m]) => m);
+  }
+
+  _meta() {
+    return {
+      source: "git.largestRefactors + git.topActiveModules",
+      strength: "weak",
+      assumptions: [
+        "Major rewrite = single commit touching ≥30 files or ≥10% of all touched files",
+        "Historical tradeoff detected from commit subject keywords (rewrite/deprecate/migrate)",
+        "Deprecated pattern requires module name to start with legacy/old/deprecated/v1/archive",
+        "Architecture pivot approximated by comparing old/new halves of largestRefactors",
+      ],
+      limitations: [
+        "Synthetic repos have no git history — this analyzer is skipped",
+        "Per-period file-touch counts not available from GitAnalyzer; pivot detection is approximate",
+        "Subject-line keyword matching can produce false positives (e.g., 'refactor' for unrelated reasons)",
+        "Deprecated module detection relies on naming convention; many deprecations are not reflected in module names",
+      ],
+      possibleFalsePositives: [
+        "Large merge commits can trigger Major Rewrite false positives",
+        "Routine refactors using 'refactor' keyword trigger Historical Tradeoff false positives",
+      ],
+      checkedLocations: ["store.git.largestRefactors", "store.git.topActiveModules", "store.git.totalCommits"],
+      coverage: "git-history-only",
+    };
+  }
+}
+
+
 class ConsistencyAnalyzer extends BaseAnalyzer {
   get id() {
     return "consistency";
@@ -2491,5 +3083,7 @@ export {
   DecisionAnalyzer,
   ConstraintAnalyzer,
   AssumptionAnalyzer,
+  ArchitectureMetricsAnalyzer,
+  TemporalAnalyzer,
   ConsistencyAnalyzer,
 };

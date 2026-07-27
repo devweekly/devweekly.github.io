@@ -114,6 +114,26 @@ function makeRegressionCase(archetype) {
         if (baseline.briefLength) {
           checkMetric(result, `${archetype.name}: briefLength`, metrics.briefLength, baseline.briefLength.value, baseline.briefLength.tolerance);
         }
+        // ── Quality metrics (semantic drift detection) ───────────────────
+        // These detect Skill quality regressions, not just structural changes.
+        if (baseline.evidenceDensity) {
+          checkMetric(result, `${archetype.name}: evidenceDensity`, metrics.evidenceDensity, baseline.evidenceDensity.value, baseline.evidenceDensity.tolerance);
+        }
+        if (baseline.decisionQuality) {
+          checkMetric(result, `${archetype.name}: decisionQuality`, metrics.decisionQuality, baseline.decisionQuality.value, baseline.decisionQuality.tolerance);
+        }
+        if (baseline.avgConfidence) {
+          checkMetric(result, `${archetype.name}: avgConfidence`, metrics.avgConfidence, baseline.avgConfidence.value, baseline.avgConfidence.tolerance);
+        }
+        if (baseline.provenanceCoverage) {
+          checkMetric(result, `${archetype.name}: provenanceCoverage`, metrics.provenanceCoverage, baseline.provenanceCoverage.value, baseline.provenanceCoverage.tolerance);
+        }
+        if (baseline.unknownRatio) {
+          checkMetric(result, `${archetype.name}: unknownRatio`, metrics.unknownRatio, baseline.unknownRatio.value, baseline.unknownRatio.tolerance);
+        }
+        if (baseline.counterEvidenceRatio) {
+          checkMetric(result, `${archetype.name}: counterEvidenceRatio`, metrics.counterEvidenceRatio, baseline.counterEvidenceRatio.value, baseline.counterEvidenceRatio.tolerance);
+        }
       }
     }),
   };

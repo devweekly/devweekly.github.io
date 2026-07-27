@@ -1,0 +1,50 @@
+{
+  "comment": "Architecture Benchmark baseline. Run `node skill-test/e2e/run-benchmark.mjs --update` to regenerate after intentional Skill changes.",
+  "generatedAt": "2026-07-27T23:07:01.659Z",
+  "repos": {
+    "synthetic:database": {
+      "findingCount": 16,
+      "evidenceCount": 12,
+      "unsupportedClaimCount": 12,
+      "hallucinationCount": 0,
+      "unknownRatio": 0.25,
+      "avgConfidence": 0.14,
+      "decisionCount": 0,
+      "patternCount": 0,
+      "readmeContradictionCount": 0
+    },
+    "synthetic:agent": {
+      "findingCount": 16,
+      "evidenceCount": 13,
+      "unsupportedClaimCount": 12,
+      "hallucinationCount": 0,
+      "unknownRatio": 0.25,
+      "avgConfidence": 0.14,
+      "decisionCount": 0,
+      "patternCount": 0,
+      "readmeContradictionCount": 1
+    },
+    "synthetic:tool": {
+      "findingCount": 16,
+      "evidenceCount": 13,
+      "unsupportedClaimCount": 12,
+      "hallucinationCount": 0,
+      "unknownRatio": 0.25,
+      "avgConfidence": 0.14,
+      "decisionCount": 0,
+      "patternCount": 0,
+      "readmeContradictionCount": 1
+    },
+    "synthetic:readme-claims": {
+      "findingCount": 19,
+      "evidenceCount": 18,
+      "unsupportedClaimCount": 15,
+      "hallucinationCount": 0,
+      "unknownRatio": 0.21,
+      "avgConfidence": 0.14,
+      "decisionCount": 0,
+      "patternCount": 0,
+      "readmeContradictionCount": 4
+    }
+  }
+}

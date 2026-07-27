@@ -22,6 +22,8 @@ import {
   DecisionAnalyzer,
   ConstraintAnalyzer,
   AssumptionAnalyzer,
+  ArchitectureMetricsAnalyzer,
+  TemporalAnalyzer,
   ConsistencyAnalyzer,
 } from "./analyzers-inference.mjs";
 import {
@@ -36,6 +38,7 @@ import {
 } from "./research-engine.mjs";
 import { ReportGenerator } from "./report-generator.mjs";
 import { enhanceStore } from "./evidence-quality.mjs";
+import { ResearchObjectRegistry } from "./evidence-store.mjs";
 
 // ===========================================================================
 // ANALYZERS — registered analyzers in execution order
@@ -70,6 +73,10 @@ const ANALYZERS = [
   new DecisionAnalyzer(),
   new ConstraintAnalyzer(),
   new AssumptionAnalyzer(),
+  // --- Architecture Metrics Layer (P2-④): structural metrics from import graph ---
+  new ArchitectureMetricsAnalyzer(),
+  // --- Temporal / Evolution Layer (P2-③): requires git history ---
+  new TemporalAnalyzer(),
   // --- Post-processor: runs LAST, compares claims across analyzers ---
   new ConsistencyAnalyzer(),
 ];
@@ -132,6 +139,11 @@ class AnalyzerPipeline {
     const relBuilder = new RelationshipBuilder();
     const { relationships, summary: relSummary } = relBuilder.build(objects, store);
     store.ontology = { objects, relationships, objectSummary, relSummary };
+    // Research Object Registry: second-order objects (Pattern/Decision/Constraint/
+    // Tradeoff/Assumption/Hypothesis/Evidence/Finding/Issue/Risk/Unknown) + graph
+    const researchRegistry = ResearchObjectRegistry.fromStore(store);
+    store.researchObjects = researchRegistry.toGraph();
+    store.researchObjectsSummary = researchRegistry.summary();
     const planner = new ResearchPlanner(DEFAULT_RESEARCH_GOAL, evidenceStore);
     store.plan = planner.plan();
     const questionGenerator = new QuestionGenerator(evidenceStore);

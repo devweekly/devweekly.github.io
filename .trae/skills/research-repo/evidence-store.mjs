@@ -773,6 +773,192 @@ class RelationshipBuilder {
   }
 }
 
+// ===========================================================================
+// Research Object Registry — second-order objects produced by inference analyzers
+//
+// Code objects (module/class/tool) are extracted from source. Research objects
+// (Pattern/Decision/Constraint/Tradeoff/Assumption/Hypothesis/Evidence/Issue/
+// Risk/Unknown) are produced by inference analyzers and the FindingsGenerator.
+//
+// This registry collects them into a unified graph so the Skill (and downstream
+// LLM) can reason about relationships like:
+//   Pattern —implemented_by→ Module
+//   Decision —driven_by→ Constraint
+//   Hypothesis —supported_by→ Evidence
+//   Pattern —conflicts_with→ Decision
+//
+// Research object types align with the user's Research Object model suggestion
+// (Palantir-style ontology) while reusing existing analyzer outputs.
+// ===========================================================================
+
+const RESEARCH_OBJECT_TYPES = [
+  "pattern",        // ArchitecturePatternAnalyzer output
+  "decision",       // DecisionAnalyzer output
+  "constraint",     // ConstraintAnalyzer output
+  "tradeoff",       // DecisionAnalyzer.tradeoff / inferred from decisions
+  "assumption",     // AssumptionAnalyzer output
+  "hypothesis",     // ResearchPlanner hypotheses
+  "evidence",       // Finding.support / analyzer evidence
+  "finding",        // FindingsGenerator output
+  "issue",          // ConsistencyAnalyzer contradictions
+  "risk",           // AssumptionAnalyzer high-risk assumptions
+  "unknown",        // Findings with Unknown status
+];
+
+// Relationships between research objects (and to code objects)
+const RESEARCH_RELATIONSHIP_TYPES = [
+  "implemented_by",    // Pattern → Module
+  "supported_by",      // Hypothesis/Decision → Evidence
+  "conflicts_with",    // Pattern ↔ Decision / Finding ↔ Finding
+  "caused_by",         // Issue → Constraint / Risk → Assumption
+  "driven_by",         // Decision → Constraint
+  "constrains",        // Constraint → Decision/Pattern
+  "produces",          // Pattern → Finding
+  "answers",           // Finding → Research Question
+  "contradicts",       // Finding ↔ README claim
+  "alternative_to",    // Decision → Decision (alternatives)
+  "observed_in",       // Pattern → Module
+  "mitigates",         // Decision → Risk
+];
+
+class ResearchObjectRegistry {
+  constructor() {
+    this.objects = [];        // {id, type, ref, summary, source}
+    this.relationships = [];  // {from, to, type, detail}
+  }
+
+  register(type, ref, summary, source = "analyzer") {
+    const id = `${type}:${ref}`;
+    // Deduplicate by id
+    if (this.objects.some((o) => o.id === id)) return id;
+    this.objects.push({ id, type, ref, summary, source });
+    return id;
+  }
+
+  relate(fromId, toId, type, detail = "") {
+    // Deduplicate
+    if (this.relationships.some((r) => r.from === fromId && r.to === toId && r.type === type)) return;
+    this.relationships.push({ from: fromId, to: toId, type, detail });
+  }
+
+  // Build registry from evidence store — collects all research objects
+  // produced by inference analyzers and FindingsGenerator.
+  static fromStore(store) {
+    const registry = new ResearchObjectRegistry();
+
+    // Patterns
+    const ap = store.archPattern || {};
+    for (const p of ap.patterns || []) {
+      const pid = registry.register("pattern", p.pattern, p.pattern, "ArchitecturePatternAnalyzer");
+      for (const ev of p.evidence || []) {
+        const eid = registry.register("evidence", `archPattern.${p.pattern}`, ev, "ArchitecturePatternAnalyzer");
+        registry.relate(pid, eid, "supported_by");
+      }
+    }
+
+    // Decisions (with tradeoff as separate object)
+    const dec = store.decisions || {};
+    for (const d of dec.decisions || []) {
+      const did = registry.register("decision", d.id, d.decision, "DecisionAnalyzer");
+      if (d.tradeoff) {
+        const tid = registry.register("tradeoff", `${d.id}-tradeoff`, d.tradeoff, "DecisionAnalyzer");
+        registry.relate(did, tid, "produces");
+      }
+      if (d.alternatives) {
+        // alternatives is a string, register as a soft reference
+        registry.relate(did, `decision:alternative:${d.id}`, "alternative_to", d.alternatives);
+      }
+    }
+
+    // Constraints
+    const con = store.constraints || {};
+    for (const c of con.constraints || []) {
+      const cid = registry.register("constraint", c.id, c.constraint, "ConstraintAnalyzer");
+      // Constraints drive decisions
+      for (const dd of c.drivesDecisions || []) {
+        registry.relate(cid, `decision:${dd}`, "driven_by");
+      }
+    }
+
+    // Assumptions (high-risk → Risk object)
+    const asm = store.assumptions || {};
+    for (const a of asm.assumptions || []) {
+      const aid = registry.register("assumption", a.id, a.assumption, "AssumptionAnalyzer");
+      if (a.risk === "high") {
+        const rid = registry.register("risk", `${a.id}-risk`, a.brokenIf || a.assumption, "AssumptionAnalyzer");
+        registry.relate(rid, aid, "caused_by");
+      }
+    }
+
+    // Findings (with Unknown classification)
+    const fin = store.findings || {};
+    for (const f of fin.findings || []) {
+      const fid = registry.register("finding", f.id, f.finding, "FindingsGenerator");
+      // Each support item → Evidence object
+      for (const s of f.support || []) {
+        const eid = registry.register("evidence", `${f.id}-${s.source}`, s.detail, s.who || "analyzer");
+        registry.relate(fid, eid, "supported_by");
+      }
+      // Unknown findings → Unknown object
+      if (/unknown|not detected|not classified/i.test(f.finding || "")) {
+        const uid = registry.register("unknown", f.id, f.finding, "FindingsGenerator");
+        registry.relate(uid, fid, "observed_in");
+      }
+      // Q8 README contradictions
+      if (f.questionId === "Q8" && /README claims/i.test(f.finding || "")) {
+        registry.relate(fid, "readme:claim", "contradicts", f.finding);
+      }
+    }
+
+    // Consistency contradictions → Issues
+    const consistency = store.consistency || {};
+    for (const c of consistency.contradictions || []) {
+      const iid = registry.register("issue", c.id, c.topic || "contradiction", "ConsistencyAnalyzer");
+      registry.relate(iid, `analyzer:${c.sourceA?.analyzer}`, "caused_by", c.sourceA?.claim);
+      registry.relate(iid, `analyzer:${c.sourceB?.analyzer}`, "caused_by", c.sourceB?.claim);
+    }
+
+    return registry;
+  }
+
+  // Export as JSON-LD-style graph (for P3-③ JSON-LD output)
+  toGraph(format = "json") {
+    if (format === "json-ld") {
+      return {
+        "@context": {
+          pattern: "https://schema.org/Thing",
+          decision: "https://schema.org/Thing",
+          // ... extend as needed
+        },
+        "@graph": this.objects.map((o) => ({
+          "@id": o.id,
+          "@type": o.type,
+          summary: o.summary,
+          source: o.source,
+        })),
+        relationships: this.relationships.map((r) => ({
+          "@id": `rel:${r.from}-${r.type}-${r.to}`,
+          subject: r.from,
+          predicate: r.type,
+          object: r.to,
+          detail: r.detail,
+        })),
+      };
+    }
+    return { objects: this.objects, relationships: this.relationships };
+  }
+
+  summary() {
+    const byType = {};
+    for (const o of this.objects) byType[o.type] = (byType[o.type] || 0) + 1;
+    return {
+      totalObjects: this.objects.length,
+      totalRelationships: this.relationships.length,
+      byType,
+    };
+  }
+}
+
 export {
   EvidenceStore,
   OBJECT_TYPES,
@@ -780,4 +966,7 @@ export {
   CLASSIFICATION_RULES,
   ObjectClassifier,
   RelationshipBuilder,
+  RESEARCH_OBJECT_TYPES,
+  RESEARCH_RELATIONSHIP_TYPES,
+  ResearchObjectRegistry,
 };

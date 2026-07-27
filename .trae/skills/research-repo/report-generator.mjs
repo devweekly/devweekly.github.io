@@ -86,10 +86,13 @@ class ReportGenerator {
       this._architectureInsights(),
       this._architectureSemantics(),
       this._architectureKnowledge(),
+      this._repositoryEvolution(),
+      this._architectureMetrics(),
       this._aiAgentInsights(),
       this._testingAndEvaluation(),
       this._engineeringMetrics(),
       this._ontologyView(),
+      this._researchObjectGraph(),
       this._negativeFindings(),
       this._readingPriority(),
       this._readingGuide(),
@@ -224,6 +227,26 @@ class ReportGenerator {
     );
     lines.push("");
 
+    // Claim Lifecycle distribution (P2-①)
+    const lc = (vSum.lifecycle) || {};
+    const lcOrder = ["candidate", "hypothesis", "supported", "verified", "decision", "reusable_pattern"];
+    const lcLabels = zh
+      ? { candidate: "候选", hypothesis: "假设", supported: "已支持", verified: "已验证", decision: "决策", reusable_pattern: "可复用模式" }
+      : { candidate: "Candidate", hypothesis: "Hypothesis", supported: "Supported", verified: "Verified", decision: "Decision", reusable_pattern: "Reusable Pattern" };
+    const lcLine = lcOrder.map((k) => `${lcLabels[k]}: ${lc[k] || 0}`).join(" / ");
+    lines.push(zh ? `**Claim 生命周期**: ${lcLine}` : `**Claim Lifecycle**: ${lcLine}`);
+    lines.push("");
+
+    // Unknown Classification distribution (P2-②)
+    const utc = (vSum.unknownTypes) || {};
+    const utcOrder = ["need_reading", "need_external_evidence", "impossible_to_verify"];
+    const utcLabels = zh
+      ? { need_reading: "需阅读源码", need_external_evidence: "需外部证据", impossible_to_verify: "无法验证" }
+      : { need_reading: "Need Reading", need_external_evidence: "Need External Evidence", impossible_to_verify: "Impossible to Verify" };
+    const utcLine = utcOrder.map((k) => `${utcLabels[k]}: ${utc[k] || 0}`).join(" / ");
+    lines.push(zh ? `**Unknown 分类**: ${utcLine}` : `**Unknown Classification**: ${utcLine}`);
+    lines.push("");
+
     // Research Questions index
     const questions = out.questions || [];
     if (questions.length > 0) {
@@ -238,15 +261,15 @@ class ReportGenerator {
     // Findings table (compact view)
     lines.push(zh ? "### Findings 表" : "### Findings table");
     lines.push("");
-    lines.push("| ID | Q | Importance | Confidence | Coverage | Verified | Finding |");
-    lines.push("|----|---|------------|------------|----------|----------|---------|");
+    lines.push("| ID | Q | Importance | Confidence | Coverage | Verified | Lifecycle | Finding |");
+    lines.push("|----|---|------------|------------|----------|----------|-----------|---------|");
     for (const f of findings) {
-      const findingShort = (f.finding || "").replace(/\|/g, "\\|").slice(0, 120);
+      const findingShort = (f.finding || "").replace(/\|/g, "\\|").slice(0, 100);
       const verifiedIcon = f.verified === "verified" ? "✅"
         : f.verified === "downgraded" ? "⚠️"
         : f.verified === "rejected" ? "❌"
         : "⏳";
-      lines.push(`| ${f.id} | ${f.questionId} | ${f.importance} | ${f.confidence.toFixed(2)} | ${f.coverage.toFixed(2)} | ${verifiedIcon} ${f.verified} | ${findingShort} |`);
+      lines.push(`| ${f.id} | ${f.questionId} | ${f.importance} | ${f.confidence.toFixed(2)} | ${f.coverage.toFixed(2)} | ${verifiedIcon} ${f.verified} | ${f.lifecycle || "candidate"} | ${findingShort} |`);
     }
     lines.push("");
 
@@ -261,9 +284,20 @@ class ReportGenerator {
       lines.push(`- **Confidence**: ${f.confidence.toFixed(2)} ${zh ? "(自动计算: " : "(auto-computed: "}${[...new Set((f.support || []).map((s) => s.source))].join("+") || "none"}${zh ? ")" : ")"};`);
       lines.push(`- **Coverage**: ${f.coverage.toFixed(2)} ${zh ? "(扫描覆盖范围)" : "(scan coverage)"}`);
       lines.push(`- **Verified**: ${f.verified}${f.verificationNote ? ` — ${f.verificationNote}` : ""}`);
+      lines.push(`- **Lifecycle**: ${f.lifecycle || "candidate"}${zh ? "（candidate→hypothesis→supported→verified→decision/reusable_pattern）" : " (candidate→hypothesis→supported→verified→decision/reusable_pattern)"}`);
+      if (f.unknownType) {
+        const utcLabel = zh
+          ? { need_reading: "需阅读源码", need_external_evidence: "需外部证据", impossible_to_verify: "无法验证" }
+          : { need_reading: "Need Reading", need_external_evidence: "Need External Evidence", impossible_to_verify: "Impossible to Verify" };
+        lines.push(`- **Unknown Type**: ${utcLabel[f.unknownType] || f.unknownType}${f.unknownReason ? ` — ${f.unknownReason}` : ""}`);
+      }
       if ((f.support || []).length > 0) {
         lines.push(zh ? "- **Support（支持证据）**:" : "- **Support**:");
-        for (const s of f.support) lines.push(`  - [${s.source}] ${s.ref} — ${s.detail}`);
+        for (const s of f.support) {
+          const who = s.who ? ` ${zh ? "提取者" : "by"}=${s.who}` : "";
+          const when = s.when ? ` @${String(s.when).slice(0, 8)}` : "";
+          lines.push(`  - [${s.source}] ${s.ref} — ${s.detail}${who}${when}`);
+        }
       }
       if ((f.counter || []).length > 0) {
         lines.push(zh ? "- **Counter（反证）**:" : "- **Counter evidence**:");
@@ -540,6 +574,63 @@ class ReportGenerator {
     }
 
     return examples.length > 0 ? examples : (zh ? ["（未找到足够的对象关系来构建查询示例）"] : ["(Insufficient object relationships to build query examples)"]);
+  }
+
+  // ── Research Object Graph ─────────────────────────────────────────────
+  // Displays the Research Object Registry: Pattern/Decision/Constraint/
+  // Tradeoff/Assumption/Hypothesis/Evidence/Finding/Issue/Risk/Unknown
+  // and their relationships (supported_by / conflicts_with / driven_by ...).
+  _researchObjectGraph() {
+    const summary = this._get("researchObjectsSummary");
+    const graph = this._get("researchObjects");
+    if (!summary || !graph) return null;
+
+    const zh = this.lang === "zh";
+    const lines = [];
+    lines.push(zh ? "## 2.9. 研究对象图谱（Research Object Graph）" : "## 2.9. Research Object Graph");
+    lines.push("");
+    lines.push(zh
+      ? "> 二阶研究对象（Pattern/Decision/Constraint/Tradeoff/Assumption/Hypothesis/Evidence/Finding/Issue/Risk/Unknown）及其关系图。每个对象都有来源 Analyzer，可追溯。"
+      : "> Second-order research objects (Pattern/Decision/Constraint/Tradeoff/Assumption/Hypothesis/Evidence/Finding/Issue/Risk/Unknown) and their relationship graph. Each object has a source analyzer for traceability."
+    );
+    lines.push("");
+
+    // Summary table
+    lines.push(zh ? "### 对象统计" : "### Object Summary");
+    lines.push("");
+    lines.push("| Type | Count |");
+    lines.push("|------|-------|");
+    for (const [type, count] of Object.entries(summary.byType || {}).sort((a, b) => b[1] - a[1])) {
+      lines.push(`| ${type} | ${count} |`);
+    }
+    lines.push("");
+    lines.push(zh
+      ? `- **Total objects**: ${summary.totalObjects}`
+      : `- **Total objects**: ${summary.totalObjects}`);
+    lines.push(zh
+      ? `- **Total relationships**: ${summary.totalRelationships}`
+      : `- **Total relationships**: ${summary.totalRelationships}`);
+    lines.push("");
+
+    // Relationship samples (top 10)
+    const rels = graph.relationships || [];
+    if (rels.length > 0) {
+      lines.push(zh ? "### 关系样本（前 10）" : "### Relationship Samples (top 10)");
+      lines.push("");
+      lines.push("| From | Relation | To |");
+      lines.push("|------|----------|----|");
+      for (const r of rels.slice(0, 10)) {
+        const fromShort = String(r.from).replace(/\|/g, "\\|").slice(0, 40);
+        const toShort = String(r.to).replace(/\|/g, "\\|").slice(0, 40);
+        lines.push(`| ${fromShort} | ${r.type} | ${toShort} |`);
+      }
+      if (rels.length > 10) {
+        lines.push(zh ? `\n*...还有 ${rels.length - 10} 条关系*` : `\n*...${rels.length - 10} more relationships*`);
+      }
+      lines.push("");
+    }
+
+    return lines.join("\n");
   }
 
   _negativeFindings() {
@@ -1249,16 +1340,20 @@ class ReportGenerator {
         lines.push(`| ${d.id} | ${d.category} | ${decisionShort} | ${benefitShort} | ${tradeoffShort} | ${(d.confidence || 0).toFixed(2)} |`);
       }
       lines.push("");
-      // Detailed decisions (top 3)
+      // Detailed decisions (top 3) — ADR style with problem/risk/reusability
       const topDecisions = [...decisions].sort((a, b) => (b.confidence || 0) - (a.confidence || 0)).slice(0, 3);
       for (const d of topDecisions) {
         lines.push(`#### ${d.id}: ${d.decision}`);
         lines.push("");
         lines.push(`- **Category**: ${d.category}`);
         lines.push(`- **Confidence**: ${(d.confidence || 0).toFixed(2)}`);
+        // ADR-style: Problem / Chosen / Alternatives / Tradeoff / Risk / Reusability
+        lines.push(zh ? `- **问题（为什么需要这个决策）**: ${d.problem || "n/a"}` : `- **Problem**: ${d.problem || "n/a"}`);
         lines.push(`- **Benefit**: ${d.benefit}`);
         lines.push(`- **Tradeoff**: ${d.tradeoff}`);
         lines.push(`- **Alternatives considered**: ${d.alternatives || "n/a"}`);
+        lines.push(zh ? `- **风险**: ${d.risk || "n/a"}` : `- **Risk**: ${d.risk || "n/a"}`);
+        lines.push(zh ? `- **可复用性**: ${(d.reusability || 0).toFixed(2)} (0=项目特定, 1=高度可复用)` : `- **Reusability**: ${(d.reusability || 0).toFixed(2)} (0=project-specific, 1=highly reusable)`);
         if ((d.evidence || []).length > 0) {
           lines.push(zh ? `- **证据**:` : `- **Evidence**:`);
           for (const e of d.evidence) lines.push(`  - ${e}`);
@@ -1307,6 +1402,242 @@ class ReportGenerator {
         }
         lines.push("");
       }
+    }
+
+    return lines.join("\n");
+  }
+
+  /**
+   * Repository Evolution section (P2-③) — surfaces TemporalAnalyzer output.
+   *
+   * Shows architecture evolution events (Major Rewrite / Architecture Pivot /
+   * Deprecated Pattern / Historical Tradeoff) detected from git history.
+   * Skipped for non-git repos (synthetic test repos).
+   */
+  _repositoryEvolution() {
+    const temporal = this._get("temporal") || {};
+    if (temporal.skipped || !temporal.events) return null;
+
+    const zh = this.lang === "zh";
+    const events = temporal.events || [];
+    const deprecated = temporal.deprecatedModules || [];
+    const pivots = temporal.pivotWindows || [];
+    const summary = temporal.summary || {};
+
+    if (events.length === 0 && deprecated.length === 0 && pivots.length === 0) {
+      // Don't render an empty section — keep the brief tight
+      return null;
+    }
+
+    const lines = [];
+    lines.push(zh ? "## 2.8. 仓库演进（Repository Evolution）" : "## 2.8. Repository Evolution");
+    lines.push("");
+    lines.push(zh
+      ? "> 从 git 历史检测架构演进事件：**重大重写**（Major Rewrite）、**架构转向**（Architecture Pivot）、**废弃模式**（Deprecated Pattern）、**历史权衡**（Historical Tradeoff）。"
+      : "> Architecture evolution events detected from git history: **Major Rewrite**, **Architecture Pivot**, **Deprecated Pattern**, **Historical Tradeoff**."
+    );
+    lines.push("");
+
+    // Events table
+    if (events.length > 0) {
+      lines.push(zh ? `### 演进事件（${events.length}）` : `### Evolution Events (${events.length})`);
+      lines.push("");
+      lines.push("| Type | Date | Commit | Files | Confidence | Interpretation |");
+      lines.push("|------|------|--------|-------|------------|----------------|");
+      for (const e of events) {
+        const date = (e.date || "").split("T")[0];
+        const commit = (e.commitHash || "").slice(0, 8);
+        const interp = (e.interpretation || "").replace(/\|/g, "\\|").slice(0, 100);
+        lines.push(`| ${e.type}${e.subtype ? `/${e.subtype}` : ""} | ${date} | ${commit} | ${e.filesChanged || ""} | ${(e.confidence || 0).toFixed(2)} | ${interp} |`);
+      }
+      lines.push("");
+    }
+
+    // Deprecated modules
+    if (deprecated.length > 0) {
+      lines.push(zh ? `### 废弃模块（${deprecated.length}）` : `### Deprecated Modules (${deprecated.length})`);
+      lines.push("");
+      lines.push("| Module | Historical Commits | Reason |");
+      lines.push("|--------|-------------------|--------|");
+      for (const m of deprecated) {
+        const reason = (m.reason || "").replace(/\|/g, "\\|").slice(0, 80);
+        lines.push(`| ${m.module} | ${m.commits} | ${reason} |`);
+      }
+      lines.push("");
+    }
+
+    // Architecture pivots
+    if (pivots.length > 0) {
+      lines.push(zh ? `### 架构转向（${pivots.length}）` : `### Architecture Pivots (${pivots.length})`);
+      lines.push("");
+      for (const p of pivots) {
+        lines.push(`- ${p.interpretation}`);
+        lines.push(`  - ${zh ? "旧焦点" : "Old focus"}: ${(p.oldTopModules || []).join(", ")}`);
+        lines.push(`  - ${zh ? "新焦点" : "New focus"}: ${(p.newTopModules || []).join(", ")}`);
+        lines.push(`  - ${zh ? "置信度" : "Confidence"}: ${(p.confidence || 0).toFixed(2)}`);
+      }
+      lines.push("");
+    }
+
+    // Summary
+    lines.push(zh
+      ? `**总览**: ${summary.totalEvents || 0} events, ${summary.totalDeprecated || 0} deprecated modules, ${summary.totalPivots || 0} pivots (analyzed ${summary.totalCommitsAnalyzed || 0} commits).`
+      : `**Summary**: ${summary.totalEvents || 0} events, ${summary.totalDeprecated || 0} deprecated modules, ${summary.totalPivots || 0} pivots (analyzed ${summary.totalCommitsAnalyzed || 0} commits).`
+    );
+    lines.push("");
+
+    return lines.join("\n");
+  }
+
+  /**
+   * Architecture Metrics section (P2-④) — surfaces ArchitectureMetricsAnalyzer
+   * output: Layer / Cycle / Fan-in / Fan-out / Stability / Coupling.
+   *
+   * Provides node-level and aggregate structural metrics computed from the
+   * import graph. The LLM should interpret these metrics in the context of
+   * the detected architecture pattern (see Architecture Insights section).
+   */
+  _architectureMetrics() {
+    const m = this._get("archMetrics") || {};
+    if (m.skipped) return null;
+    if (!m.summary || m.summary.totalNodes === 0) return null;
+
+    const zh = this.lang === "zh";
+    const lines = [];
+    lines.push(zh ? "## 2.9. Architecture Metrics" : "## 2.9. Architecture Metrics");
+    lines.push(zh
+      ? "> 结构性指标（来自 import 图）：Layer / Cycle / Fan-in / Fan-out / Stability / Coupling。"
+      : "> Structural metrics from the import graph: Layer / Cycle / Fan-in / Fan-out / Stability / Coupling."
+    );
+    lines.push("");
+
+    const s = m.summary || {};
+    lines.push(zh
+      ? `**总览**: ${s.totalNodes} 节点 / ${s.totalEdges} 边 / ${s.totalCycles} 环 / ${s.totalLayers} 层 / 密度 ${s.density} / 平均不稳态 ${s.avgInstability}`
+      : `**Summary**: ${s.totalNodes} nodes / ${s.totalEdges} edges / ${s.totalCycles} cycles / ${s.totalLayers} layers / density ${s.density} / avg instability ${s.avgInstability}`
+    );
+    lines.push("");
+
+    // Layers
+    const layers = m.layers || [];
+    if (layers.length > 0) {
+      lines.push(zh ? "### Layers" : "### Layers");
+      lines.push("");
+      lines.push("| Layer | Source Dirs | Nodes | Intra-Edges | Cross-Edges |");
+      lines.push("|-------|-------------|-------|-------------|-------------|");
+      for (const l of layers) {
+        const dirs = (l.sourceDirs || []).join(", ").slice(0, 60);
+        lines.push(`| ${l.layer} | ${dirs} | ${l.nodeCount} | ${l.intraEdges} | ${l.crossEdges} |`);
+      }
+      lines.push("");
+    }
+
+    // Cycles
+    const cyc = m.cycles || {};
+    if (cyc.count > 0) {
+      lines.push(zh ? "### Cycles" : "### Cycles");
+      lines.push("");
+      lines.push(zh
+        ? `检测到 ${cyc.count} 个环（最大长度 ${cyc.maxLength}，平均 ${cyc.avgLength}）。`
+        : `${cyc.count} cycles detected (max length ${cyc.maxLength}, avg ${cyc.avgLength}).`
+      );
+      lines.push("");
+      const top = cyc.top || [];
+      if (top.length > 0) {
+        lines.push("| # | Length | Nodes |");
+        lines.push("|---|--------|-------|");
+        for (const c of top) {
+          const nodes = (c.nodes || []).slice(0, 5).join(" → ");
+          const more = (c.nodes || []).length > 5 ? ` … (+${(c.nodes || []).length - 5})` : "";
+          lines.push(`| ${c.id} | ${c.length} | ${nodes}${more} |`);
+        }
+        lines.push("");
+      }
+    }
+
+    // Fan-in / Fan-out
+    const fanIn = m.fanIn || {};
+    const fanOut = m.fanOut || {};
+    lines.push(zh ? "### Fan-in / Fan-out" : "### Fan-in / Fan-out");
+    lines.push("");
+    lines.push("| Metric | Avg | Max | Max Node | Distribution (0 / 1-3 / 4-9 / 10+) |");
+    lines.push("|--------|-----|-----|----------|--------------------------------------|");
+    const fanInDist = fanIn.distribution || {};
+    const fanOutDist = fanOut.distribution || {};
+    lines.push(zh
+      ? `| Fan-in | ${fanIn.avg} | ${fanIn.max} | ${fanIn.maxNode || "—"} | ${fanInDist["0"] || 0} / ${fanInDist["1-3"] || 0} / ${fanInDist["4-9"] || 0} / ${fanInDist["10+"] || 0} |`
+      : `| Fan-in | ${fanIn.avg} | ${fanIn.max} | ${fanIn.maxNode || "—"} | ${fanInDist["0"] || 0} / ${fanInDist["1-3"] || 0} / ${fanInDist["4-9"] || 0} / ${fanInDist["10+"] || 0} |`
+    );
+    lines.push(zh
+      ? `| Fan-out | ${fanOut.avg} | ${fanOut.max} | ${fanOut.maxNode || "—"} | ${fanOutDist["0"] || 0} / ${fanOutDist["1-3"] || 0} / ${fanOutDist["4-9"] || 0} / ${fanOutDist["10+"] || 0} |`
+      : `| Fan-out | ${fanOut.avg} | ${fanOut.max} | ${fanOut.maxNode || "—"} | ${fanOutDist["0"] || 0} / ${fanOutDist["1-3"] || 0} / ${fanOutDist["4-9"] || 0} / ${fanOutDist["10+"] || 0} |`
+    );
+    lines.push("");
+
+    // Stability (node-level)
+    const stab = m.stability || {};
+    if (stab.mostStable && stab.mostStable.length > 0) {
+      lines.push(zh ? "### Stability (node-level)" : "### Stability (node-level)");
+      lines.push(zh
+        ? "> Robert C. Martin I 指标：I = Ce/(Ca+Ce)。0 = 最稳态（仅被依赖），1 = 最不稳态（仅依赖他人）。"
+        : "> Robert C. Martin's I metric: I = Ce/(Ca+Ce). 0 = maximally stable (only depended-upon), 1 = maximally unstable (only depends-on)."
+      );
+      lines.push("");
+      lines.push(zh
+        ? `平均不稳态: ${stab.avg} | 隔离节点（无依赖关系）: ${stab.isolatedCount}`
+        : `Avg instability: ${stab.avg} | Isolated nodes (no deps): ${stab.isolatedCount}`
+      );
+      lines.push("");
+      lines.push("**Most stable** (depended-upon, I → 0):");
+      lines.push("");
+      lines.push("| Node | Ca (fan-in) | Ce (fan-out) | I |");
+      lines.push("|------|-------------|--------------|---|");
+      for (const s of stab.mostStable) {
+        lines.push(`| ${s.node} | ${s.ca} | ${s.ce} | ${s.instability.toFixed(2)} |`);
+      }
+      lines.push("");
+      lines.push("**Least stable** (depends-on, I → 1):");
+      lines.push("");
+      lines.push("| Node | Ca (fan-in) | Ce (fan-out) | I |");
+      lines.push("|------|-------------|--------------|---|");
+      for (const s of stab.leastStable) {
+        lines.push(`| ${s.node} | ${s.ca} | ${s.ce} | ${s.instability.toFixed(2)} |`);
+      }
+      lines.push("");
+    }
+
+    // Coupling
+    const cp = m.coupling || {};
+    lines.push(zh ? "### Coupling" : "### Coupling");
+    lines.push("");
+    lines.push(zh
+      ? `- Density (边/(节点×(节点-1))): ${cp.density}`
+      : `- Density (edges/(nodes×(nodes-1))): ${cp.density}`
+    );
+    lines.push(zh
+      ? `- Avg degree: ${cp.avgDegree}`
+      : `- Avg degree: ${cp.avgDegree}`
+    );
+    lines.push(zh
+      ? `- Cross-layer edges: ${cp.crossLayerEdges} (${(cp.crossLayerRatio * 100).toFixed(1)}% of total)`
+      : `- Cross-layer edges: ${cp.crossLayerEdges} (${(cp.crossLayerRatio * 100).toFixed(1)}% of total)`
+    );
+    lines.push("");
+
+    const hubs = cp.hubNodes || [];
+    const bottlenecks = cp.bottleneckNodes || [];
+    if (hubs.length > 0 || bottlenecks.length > 0) {
+      lines.push("| Hub nodes (high fan-in) | Bottleneck nodes (high fan-out) |");
+      lines.push("|--------------------------|----------------------------------|");
+      const rows = Math.max(hubs.length, bottlenecks.length);
+      for (let i = 0; i < rows; i++) {
+        const h = hubs[i];
+        const b = bottlenecks[i];
+        const hCell = h ? `${h.node} (fan-in=${h.fanIn})` : "—";
+        const bCell = b ? `${b.node} (fan-out=${b.fanOut})` : "—";
+        lines.push(`| ${hCell} | ${bCell} |`);
+      }
+      lines.push("");
     }
 
     return lines.join("\n");

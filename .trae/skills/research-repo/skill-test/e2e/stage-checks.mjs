@@ -207,17 +207,45 @@ export function validateReportStage(dir) {
   return checks;
 }
 
-export function validateAllStages(dir) {
-  const allChecks = [
-    ...validateAnalyzerStage(dir),
-    ...validateEvidenceBriefStage(dir),
-    ...validateQuestionsStage(dir),
-    ...validateHypothesesStage(dir),
-    ...validateOntologyStage(dir),
-    ...validateOpponentStage(dir),
-    ...validateCrossValidationStage(dir),
-    ...validateReportStage(dir),
+/**
+ * Skip optional stages when their file is absent. This lets deterministic
+ * Golden fixtures (analyzer + brief + report only) pass the same E2E runner
+ * that full LLM runs go through, without weakening checks for LLM runs.
+ *
+ * @param {string} dir
+ * @param {object} [options]
+ * @param {boolean} [options.requireAll=false] — if true, treat ALL stages as required (for live LLM E2E).
+ */
+export function validateAllStages(dir, options = {}) {
+  const requireAll = options.requireAll === true;
+  const validators = [
+    { id: "analyzer", fn: validateAnalyzerStage, required: true },
+    { id: "evidence-brief", fn: validateEvidenceBriefStage, required: true },
+    { id: "questions", fn: validateQuestionsStage, required: false },
+    { id: "hypotheses", fn: validateHypothesesStage, required: false },
+    { id: "ontology", fn: validateOntologyStage, required: false },
+    { id: "opponent", fn: validateOpponentStage, required: false },
+    { id: "cross-validation", fn: validateCrossValidationStage, required: false },
+    { id: "report", fn: validateReportStage, required: true },
   ];
+
+  const allChecks = [];
+  for (const v of validators) {
+    const isRequired = requireAll || v.required;
+    const stageCfg = STAGES.find((s) => s.id === v.id) || {};
+    const filePath = stageCfg.file ? join(dir, stageCfg.file) : null;
+    // Skip optional stages when their file is missing (e.g., Golden fixtures).
+    if (!isRequired && filePath && !existsSync(filePath)) {
+      allChecks.push({
+        stage: v.id,
+        name: `${stageCfg.file} skipped (optional, absent)`,
+        ok: true,
+        skipped: true,
+      });
+      continue;
+    }
+    allChecks.push(...v.fn(dir));
+  }
 
   const failed = allChecks.filter((c) => !c.ok);
   const passed = allChecks.filter((c) => c.ok);
