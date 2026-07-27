@@ -1,6 +1,9 @@
 // EvidenceStore is imported for type reference; the actual store data is
 // passed as constructor arguments.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
 // ===========================================================================
 // ResearchPlanner — goal-driven research design
 //
@@ -935,7 +938,14 @@ class FindingsGenerator {
     const findings = [];
     const contradictions = con.contradictions || [];
     const warnings = con.warnings || [];
-    if (contradictions.length === 0 && warnings.length === 0) {
+
+    // README-vs-code contradiction detection: scan README for capability claims
+    // (SQL, Vectorized, Distributed, LLM, Agent, Plugin, etc.) and check whether
+    // the corresponding archetype signal is true. Claimed-but-missing = contradiction.
+    const readmeGaps = this._detectReadmeClaimGaps();
+    findings.push(...readmeGaps);
+
+    if (contradictions.length === 0 && warnings.length === 0 && readmeGaps.length === 0) {
       findings.push({
         finding: "No cross-analyzer contradictions or warnings detected. All analyzers agree.",
         confidence: this._conf(["inference"]),
@@ -960,6 +970,65 @@ class FindingsGenerator {
         limitations: [c.interpretation || ""],
         checkedLocations: [`${c.sourceA.analyzer} output`, `${c.sourceB.analyzer} output`],
       });
+    }
+    return findings;
+  }
+
+  // Detect README claims that are NOT supported by code signals.
+  // E.g., README says "Vectorized Execution engine" but hasSQL=false, hasAgent=false, etc.
+  _detectReadmeClaimGaps() {
+    const discovery = this.store.get("discovery") || {};
+    const hints = this.store._archetypeHints || this.store.archetypeHints || this.store.get("_archetypeHints") || this.store.get("archetypeHints") || {};
+    const signals = hints.signals || {};
+
+    // discovery.allFiles is a string[] of relative paths; discovery.files may be undefined.
+    const allFiles = discovery.allFiles || [];
+    const readmeRel = allFiles.find((f) => {
+      const name = String(f).toLowerCase();
+      return name === "readme.md" || name.startsWith("readme.");
+    });
+    if (!readmeRel) return [];
+
+    // Read README content from disk (FindingsGenerator runs after discovery, repoPath is available).
+    const repoPath = discovery.repoPath;
+    if (!repoPath) return [];
+    let readmeText = "";
+    try {
+      readmeText = readFileSync(join(repoPath, readmeRel), "utf-8");
+    } catch {
+      return [];
+    }
+    if (!readmeText) return [];
+
+    // Map README claim keywords → required signal
+    const CLAIM_TO_SIGNAL = [
+      { claim: /vectorized\s+execution/i, signal: "hasSQL", label: "Vectorized Execution" },
+      { claim: /distributed\s+query\s+planner/i, signal: "hasSQL", label: "Distributed Query Planner" },
+      { claim: /sql/i, signal: "hasSQL", label: "SQL" },
+      { claim: /\bllm\b|large\s+language\s+model/i, signal: "hasLLM", label: "LLM Integration" },
+      { claim: /\bai\s+agent\b|autonomous\s+agent/i, signal: "hasAgent", label: "AI Agent" },
+      { claim: /\bplugin\b/i, signal: "hasPlugin", label: "Plugin" },
+      { claim: /\bcompiler\b|lexer|parser/i, signal: "hasParser", label: "Compiler" },
+    ];
+
+    const findings = [];
+    for (const { claim, signal, label } of CLAIM_TO_SIGNAL) {
+      if (!claim.test(readmeText)) continue;
+      const satisfied = signals[signal] === true;
+      if (!satisfied) {
+        findings.push({
+          finding: `README claims "${label}" but code signals do not confirm it (${signal}=false). Treated as documentation-only claim until source evidence is found.`,
+          confidence: this._conf(["regex", "inference"]),
+          coverage: 0.6,
+          support: [
+            { source: "regex", ref: "README.md", detail: `README mentions "${label}"` },
+            { source: "inference", ref: `_archetypeHints.signals.${signal}`, detail: `${signal}=false` },
+          ],
+          counter: [],
+          limitations: ["README claim may be aspirational, planned, or in a module the analyzer did not scan."],
+          checkedLocations: ["README.md", `_archetypeHints.signals.${signal}`],
+        });
+      }
     }
     return findings;
   }

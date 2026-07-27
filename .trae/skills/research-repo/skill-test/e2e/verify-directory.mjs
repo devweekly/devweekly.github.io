@@ -39,8 +39,13 @@ export function loadExpectedYaml(path) {
 }
 
 export function extractReportClaims(reportText) {
-  const blocks = (reportText.match(/### Claim \d+:.+?(?=### Claim \d+:|## |\Z)/gs) || []);
-  return blocks.map((block) => {
+  // Support two formats:
+  //   1. LLM report: "### Claim N: <title>" blocks
+  //   2. Evidence brief: "#### F-NNN — QN: <title>" blocks (deterministic pipeline)
+  const claimBlocks = (reportText.match(/### Claim \d+:.+?(?=### Claim \d+:|## |\Z)/gs) || []);
+  const findingBlocks = (reportText.match(/#### F-\d{3,}[^]*?(?=#### F-\d{3,}|### |## |\Z)/gs) || []);
+
+  const fromClaims = claimBlocks.map((block) => {
     const title = block.match(/### Claim \d+:\s*(.+)/)?.[1]?.trim() || "";
     const qualityMatch = block.match(/Quality:\s*(Verified|Partially Verified|Documentation Only|Unknown)/i);
     const evidenceMatch = block.match(/Evidence:\s*`?([^`\n]+)`?/i);
@@ -54,6 +59,29 @@ export function extractReportClaims(reportText) {
       hasUnknown,
     };
   });
+
+  const fromFindings = findingBlocks.map((block) => {
+    const titleMatch = block.match(/#### F-\d{3,}\s*[—-]\s*Q\d+:?\s*(.+)/);
+    const title = titleMatch ? titleMatch[1].trim() : "";
+    const findingMatch = block.match(/\*\*Finding\*\*:\s*(.+)/)?.[1]?.trim() || "";
+    const verifiedMatch = block.match(/\*\*Verified\*\*:\s*(verified|rejected|partially verified)/i);
+    const quality = verifiedMatch
+      ? (verifiedMatch[1].toLowerCase() === "verified" ? "Verified"
+        : verifiedMatch[1].toLowerCase() === "rejected" ? "Unknown"
+        : "Partially Verified")
+      : null;
+    const hasCounter = /\*\*Counter\*\*:|counter evidence|alternative explanation/i.test(block);
+    const hasUnknown = /\bUnknown\b|not detected|no\s+\w+\s+detected/i.test(block);
+    return {
+      title,
+      quality,
+      evidence: findingMatch,
+      hasCounter,
+      hasUnknown,
+    };
+  });
+
+  return [...fromClaims, ...fromFindings];
 }
 
 export function computeQualityMetrics(reportText, evidenceStore) {
@@ -198,9 +226,19 @@ export function verifyResearchDirectory(dir, expected = {}) {
   );
 
   // 6. Documentation-only claims are flagged honestly
-  const docOnlyWithoutLabel = claims.filter(
-    (c) => c.quality !== "Documentation Only" && /README|docs?/i.test(c.evidence || "")
-  );
+  // A "README-sourced claim" is one whose EVIDENCE comes from README (i.e., the claim
+  // is based on README content as if it were verified code behavior).
+  // Q8 Findings ("README claims X but code signals do not confirm") are NOT README-sourced
+  // claims — they are FINDINGS about README contradictions, with code evidence.
+  const docOnlyWithoutLabel = claims.filter((c) => {
+    if (c.quality === "Documentation Only") return false;
+    // Skip Q8 contradiction findings — they discuss README but are not based on README.
+    if (/README claims/i.test(c.evidence || "")) return false;
+    // A real README-sourced claim: evidence comes FROM README (not just mentions it).
+    const evidence = c.evidence || "";
+    const isReadmeSourced = /^README\.md\b|evidence:\s*README|source:\s*README/i.test(evidence);
+    return isReadmeSourced;
+  });
   check(
     "README-sourced claims labeled Documentation Only",
     docOnlyWithoutLabel.length === 0,

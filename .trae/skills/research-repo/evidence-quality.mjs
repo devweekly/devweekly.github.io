@@ -235,7 +235,10 @@ export function buildArchetypeHints(store) {
   const hasLexer = /\blexer?\b/.test(nameText) || /\btokeniz(er|ation)\b/.test(nameText);
   const hasCodegen = /\bcodegen\b/.test(nameText) || /\bcode.?gen\b/.test(nameText) || /\bemit\b/.test(nameText);
   const hasSQL = /\bsql\b/.test(nameText) || /\.sql\b/.test(nameText);
-  const hasDB = /jdbc/i.test(nameText) || /drivermanager/i.test(nameText) || /datasource/i.test(nameText);
+  // hasDB: DriverManager is NOT a DB signal — it appears in Eclipse Plugin / IDE
+  // tooling (manages "drivers" as in plugin drivers, not DB drivers). Only count
+  // jdbc/datasource/database/tablespace as real DB signals.
+  const hasDB = /jdbc/i.test(nameText) || /datasource/i.test(nameText) || /\bdatabase\b/i.test(nameText) || /\btablespace\b/i.test(nameText);
   const hasPlugin = /\bplugin\b/.test(nameText) || /\bextension\b/.test(nameText);
   const hasCLI = /\bcli\b/.test(nameText) || /\bcommand.?line\b/.test(nameText);
   const manifest = store.discovery?.manifest || {};

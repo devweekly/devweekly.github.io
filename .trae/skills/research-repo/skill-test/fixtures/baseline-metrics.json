@@ -65,7 +65,7 @@
         "tolerance": 0
       },
       "briefLength": {
-        "value": 38961,
+        "value": 39031,
         "tolerance": 500
       },
       "briefFindingCount": {
@@ -99,11 +99,11 @@
         "tolerance": 1
       },
       "signalCount": {
-        "value": 2,
+        "value": 1,
         "tolerance": 0
       },
       "briefLength": {
-        "value": 38938,
+        "value": 38984,
         "tolerance": 500
       },
       "briefFindingCount": {
@@ -141,11 +141,11 @@
         "tolerance": 0
       },
       "briefLength": {
-        "value": 37767,
+        "value": 40510,
         "tolerance": 500
       },
       "briefFindingCount": {
-        "value": 44,
+        "value": 50,
         "tolerance": 3
       },
       "fileCount": {

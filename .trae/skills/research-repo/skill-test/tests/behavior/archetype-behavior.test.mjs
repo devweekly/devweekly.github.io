@@ -82,6 +82,11 @@ export function runArchetypeBehaviorTests() {
         result.record("hasAgent is false (no agent code)", () => {
           if (signals.hasAgent) throw new Error("Expected hasAgent=false");
         });
+        // CRITICAL: hasDB must be false — DriverManager in Eclipse Plugin is NOT a DB signal.
+        // Regression guard for the hasDB false-positive bug (DriverManager keyword).
+        result.record("hasDB is false (DriverManager is not a DB signal)", () => {
+          if (signals.hasDB) throw new Error("Expected hasDB=false — DriverManager in Eclipse Plugin is not a database signal");
+        });
       }),
     },
     {
@@ -136,6 +141,70 @@ export function runArchetypeBehaviorTests() {
         });
         result.record("brief mentions tool", () => {
           if (!lower.includes("tool")) throw new Error("Expected brief to mention tool");
+        });
+      }),
+    },
+    {
+      name: "Findings differ across archetypes (not template-driven)",
+      test(result) {
+        const dirs = {};
+        const findings = {};
+        try {
+          for (const arch of ["database", "agent", "tool", "readme-claims"]) {
+            dirs[arch] = createSyntheticRepo(arch);
+            const store = runAnalyzerAll(dirs[arch]);
+            findings[arch] = store.findings?.findings || [];
+          }
+
+          // CRITICAL: Findings must NOT be identical across archetypes.
+          // Compare archetype-specific Findings (Q5=tools, Q6=AI project, Q8=README contradictions).
+          // F-001 (entrypoints) is intentionally similar across repos (all have src/index.js).
+          const dbF006 = findings.database.find((f) => f.id === "F-006")?.finding || "";
+          const rcF006 = findings["readme-claims"].find((f) => f.id === "F-006")?.finding || "";
+
+          result.record("F-006 (AI project) finding can differ or match — but Q8 must differ", () => {
+            // Q8 is the key differentiator: readme-claims has README contradictions, database does not.
+            const dbQ8 = findings.database.filter((f) => f.questionId === "Q8");
+            const rcQ8 = findings["readme-claims"].filter((f) => f.questionId === "Q8");
+            if (rcQ8.length <= dbQ8.length) {
+              throw new Error(`Expected readme-claims Q8 findings (${rcQ8.length}) > database (${dbQ8.length})`);
+            }
+          });
+
+          result.record("readme-claims Q8 findings mention README claims", () => {
+            const rcQ8 = findings["readme-claims"].filter((f) => f.questionId === "Q8");
+            const q8Text = rcQ8.map((f) => f.finding).join(" ");
+            if (!/README claims/i.test(q8Text)) {
+              throw new Error(`Q8 findings should mention "README claims" but got: ${q8Text.slice(0, 200)}`);
+            }
+          });
+
+          // Different archetypes should produce different signal-based Findings.
+          // database has hasSQL=true, readme-claims has hasSQL=false → F-003 (RAG) text may differ.
+          const dbF003 = findings.database.find((f) => f.id === "F-003")?.finding || "";
+          const rcF003 = findings["readme-claims"].find((f) => f.id === "F-003")?.finding || "";
+          result.record("F-003 (RAG) finding text is non-empty for both archetypes", () => {
+            if (!dbF003 || !rcF003) {
+              throw new Error("F-003 finding text should be non-empty");
+            }
+          });
+        } finally {
+          for (const d of Object.values(dirs)) cleanupSyntheticRepo(d);
+        }
+      },
+    },
+    {
+      name: "database brief discusses SQL/parser (not generic template)",
+      test: withRepo("database", (result, dir) => {
+        const brief = runAnalyzerReport(dir);
+        const lower = brief.toLowerCase();
+
+        // Brief should contain archetype-specific evidence, not just generic templates.
+        result.record("brief discusses SQL (archetype-specific)", () => {
+          if (!lower.includes("sql")) throw new Error("Expected brief to discuss SQL for database archetype");
+        });
+        result.record("brief discusses parser (archetype-specific)", () => {
+          if (!lower.includes("parser")) throw new Error("Expected brief to discuss parser for database archetype");
         });
       }),
     },

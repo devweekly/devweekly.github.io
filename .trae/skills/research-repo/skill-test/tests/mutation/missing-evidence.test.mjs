@@ -99,6 +99,50 @@ export function runMutationTests() {
       }),
     },
     {
+      name: "evidence-brief EXPLICITLY flags README claims as unverified",
+      test: withReadmeClaimsRepo((result, dir) => {
+        // CRITICAL: Brief must not stay silent about README contradictions.
+        // The "no contradiction" answer is itself a failure — Analyzer should detect
+        // that README claims features (Vectorized Execution, LLM, AI Agent) which
+        // are absent from code. This is the core mutation-test guarantee.
+        const store = runAnalyzerAll(dir);
+        const q8Findings = (store.findings?.findings || []).filter((f) => f.questionId === "Q8");
+
+        result.record("Q8 produces README-contradiction findings (not 'no contradiction')", () => {
+          if (q8Findings.length === 0) {
+            throw new Error("Expected Q8 to produce README-contradiction findings");
+          }
+          const hasNoContradiction = q8Findings.some((f) =>
+            /no\s+contradictions?\s+(detected|found)|all\s+analyzers\s+agree/i.test(f.finding)
+          );
+          if (hasNoContradiction && q8Findings.length === 1) {
+            throw new Error("Q8 only says 'no contradictions' — failed to detect README false claims");
+          }
+        });
+
+        result.record("Q8 findings mention README claims", () => {
+          const q8Text = q8Findings.map((f) => f.finding).join(" ");
+          if (!/README claims/i.test(q8Text)) {
+            throw new Error(`Q8 should mention "README claims" but got: ${q8Text.slice(0, 200)}`);
+          }
+        });
+
+        result.record("Q8 flags Vectorized Execution as unverified", () => {
+          const q8Text = q8Findings.map((f) => f.finding).join(" ");
+          if (!/vectorized/i.test(q8Text)) {
+            throw new Error("Q8 should flag Vectorized Execution as unverified");
+          }
+        });
+
+        result.record("Q8 flags LLM Integration as unverified", () => {
+          const q8Text = q8Findings.map((f) => f.finding).join(" ");
+          if (!/LLM/i.test(q8Text)) {
+            throw new Error("Q8 should flag LLM Integration as unverified");
+          }
+        });
+      }),
+    },
+    {
       name: "readme-claims signals differ from real database repo",
       test(result) {
         const claimsDir = createSyntheticRepo("readme-claims");

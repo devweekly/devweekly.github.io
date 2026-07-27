@@ -198,8 +198,11 @@ export function validateReportStage(dir) {
   checks.push(checkStage("has Quality Gate", /(^|\n)#{1,4}\s*Quality\s+Gate/i.test(text), "Missing Quality Gate", stage));
   checks.push(checkStage("has Reading Guide", /Reading\s+Guide/i.test(text), "Missing Reading Guide", stage));
 
+  // Support both LLM report format (### Claim N:) and deterministic brief format (#### F-NNN —)
   const claimCount = ((text || "").match(/^#{1,3}\s+Claim\s+\d+/gim) || []).length;
-  checks.push(checkStage("has at least 2 claims", claimCount >= 2, `Found ${claimCount} claims`, stage));
+  const findingCount = ((text || "").match(/^#{4}\s+F-\d{3,}/gim) || []).length;
+  const totalClaimLike = claimCount + findingCount;
+  checks.push(checkStage("has at least 2 claims/findings", totalClaimLike >= 2, `Found ${claimCount} claims + ${findingCount} findings`, stage));
 
   return checks;
 }

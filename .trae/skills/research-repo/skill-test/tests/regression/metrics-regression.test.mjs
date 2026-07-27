@@ -106,6 +106,14 @@ function makeRegressionCase(archetype) {
         if (baseline.fileCount) {
           checkMetric(result, `${archetype.name}: fileCount`, metrics.fileCount, baseline.fileCount.value, baseline.fileCount.tolerance);
         }
+        // CRITICAL: briefFindingCount must be checked — previously missing allowed
+        // FindingsGenerator regressions (e.g., dropping from 44 to 0) to go undetected.
+        if (baseline.briefFindingCount) {
+          checkMetric(result, `${archetype.name}: briefFindingCount`, metrics.briefFindingCount, baseline.briefFindingCount.value, baseline.briefFindingCount.tolerance);
+        }
+        if (baseline.briefLength) {
+          checkMetric(result, `${archetype.name}: briefLength`, metrics.briefLength, baseline.briefLength.value, baseline.briefLength.tolerance);
+        }
       }
     }),
   };
