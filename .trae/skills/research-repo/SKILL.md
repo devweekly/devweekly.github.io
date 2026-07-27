@@ -24,63 +24,104 @@ description: "研究一个开源 Repository，提炼其架构、设计思想、�
 
 ## Research Principles
 
-1. **Evidence-first**：每个结论必须可追溯到具体证据（源码、测试、提交、配置）。无证据则标记 Unknown，不推测。
+1. **Evidence-first**：每个结论必须可追溯到具体证据。无证据则标记 Unknown，不推测。
 2. **Question-centric**：研究由问题驱动，不是由文件遍历驱动。先问"为什么这样设计"，再找证据。
-3. **Bayesian**：假设随证据积累而更新置信度。记录置信度演进，而非一次性判断。
-4. **Adversarial Validation**：每个 Finding 必须经受对抗性验证。只有经受住反证攻击的 Finding 才可进入报告。
+3. **Bayesian**：假设随证据积累而更新置信度，而非一次性判断。
+4. **Adversarial Validation**：每个结论必须经受对抗性验证。只有经受住反证攻击的结论才可进入报告。
 5. **Decision-centric**：报告的核心是工程决策（为什么这样做、放弃了什么、替代方案是什么），而不是架构描述。
-6. **Unknown is a valid result**：Absence of evidence is preferable to unsupported certainty. 不知道是合法的研究结果。不要为了给出答案而推测——如果证据不足，明确标注 Unknown。
-7. **Knowledge reuse**：研究应复用已有经验证的知识，而非从零开始。已有知识能回答的问题不值得重新研究。
+6. **Unknown is a valid result**：Absence of evidence is preferable to unsupported certainty. 不知道是合法的研究结果——不要为了给出答案而推测。
+7. **Knowledge reuse**：研究应复用已有经验证的知识，而非从零开始。
 
 ---
 
-## Research Rules
+## Repository Archetype
 
-1. **Research Questions**
-   Questions should maximize:
-   - Impact — changes engineer's understanding of the system
-   - Evidence richness — verifiable within the repository
-   - Transferability — applicable to other systems
+研究开始前，先判断仓库类型，再决定研究重点。不要对所有仓库套用同一套研究维度。
 
-   Questions lacking sufficient repository evidence should not be pursued.
+| Archetype | 研究重点 |
+|-----------|---------|
+| AI Agent 框架 | Agent lifecycle, planning, execution, reflection, context, tools |
+| 编译器/语言工具 | Lexer, parser, IR, optimizer, codegen, type system |
+| 数据库/数据系统 | Query planner, executor, storage, transaction, concurrency |
+| 开发者工具 | Plugin system, extension API, configuration model |
+| 应用/服务 | API design, auth, data flow, deployment, observability |
+| Library/SDK | API design, abstraction boundaries, integration patterns |
 
-2. **Hypothesis**
-   Hypotheses are Bayesian:
-   - Include prior confidence and posterior confidence
-   - Update confidence as evidence accumulates
-   - Include competing hypotheses for the same evidence
-
-3. **Findings**
-   Every finding includes:
-   - Evidence
-   - Counter Evidence
-   - Alternative Interpretation
-   - Unknowns
-   - Importance (Critical / High / Medium / Low)
-   - Confidence (High / Medium / Low)
-
-4. **Validation**
-   Every finding withstands adversarial challenge.
-   Only validated findings appear in the final report.
-
-5. **Reporting**
-   The final report is decision-centric.
-   Engineering decisions, tradeoffs and reusable patterns — not file summaries.
+研究 LLVM 时不需要讨论 Agent lifecycle；研究 DuckDB 时不需要讨论 Prompt Engineering。
 
 ---
 
-## Confidence Standard
+## Research Judgment System
 
-| Level | Meaning |
-|-------|---------|
-| **High** | ≥3 个独立证据源 |
-| **Medium** | 2 个证据源 |
-| **Low** | 1 个证据源 |
-| **Speculative** | 无直接证据 |
+Skill 的核心是判断标准，不是执行步骤。以下定义什么值得研究、什么值得相信、什么值得写入报告。
 
-**Importance 与 Confidence 独立**：
-- README 的存在是 High Confidence 但可能 Low Importance。
-- "Planner 为什么存在" 可能 Medium Confidence 但 Critical Importance。
+整个研究过程围绕一个核心对象：**Claim**（研究主张）。Research Question 触发 Claim，Evidence 支持或反对 Claim，Hypothesis 是待验证的 Claim，Decision 是已确认的 Claim，Pattern 是可迁移的 Claim。其它概念（Finding、Resolution、Trace）都是 Claim 的不同形态。
+
+### 什么算高价值 Research Question
+
+**值得研究的问题**：
+- 能改变工程师对系统理解的（Impact）
+- 仓库内有多处证据可验证的（Evidence richness）
+- 答案可迁移到其他系统的（Transferability）
+- 存在合理的设计权衡的（Controversial）
+
+**不值得研究的问题**：
+- 只有一种合理做法的问题（无争议）
+- 仓库内无法验证的问题（无证据）
+- 只适用于此项目的问题（无迁移价值）
+- 表层事实问题（"用了什么技术栈"）
+
+### 什么算可信的 Evidence
+
+可信的 Evidence 必须满足**多重性**：
+
+- **多来源**：来自不同类型的证据（代码 + 测试 + 配置 + 提交）
+- **多模块**：跨越多个模块一致地出现，而非孤立于单文件
+- **多层级**：高层级证据（测试）+ 低层级证据（文档）相互支持
+
+单一来源的证据最多 Medium Confidence。
+
+### 什么算好的 Claim
+
+一个好的 Claim 必须回答三个问题：
+
+1. **为什么成立？** — 支持证据是什么？为什么这些证据可信？
+2. **为什么可能错？** — 反证是什么？有哪些替代解释？还缺什么证据？
+3. **为什么重要？** — 如果没有这个洞察，读者会如何误读系统？
+
+**坏的 Claim 特征**：
+- 只回答"是什么"，不回答"为什么"
+- 只有利，没有弊（没有 tradeoff）
+- 只有结论，没有反证
+- 只有一个证据源
+- 适用于任何项目（缺乏特异性）
+
+### 什么时候停止研究
+
+- 当进一步阅读不再改变任何 Claim 的置信度时
+- 当剩余问题都是仓库内无法验证的时
+- 当已有 Claim 能完整回答核心 Research Questions 时
+
+### 什么时候继续深挖
+
+- 当发现与已有假设矛盾的证据时
+- 当一个 Claim 只有单一证据源时
+- 当对抗性验证提出了无法反驳的反例时
+- 当架构演进历史显示曾有重大设计转向时
+
+---
+
+## Evidence Acceptance Rules
+
+一个 Claim 被接受进入报告前，必须通过以下检查：
+
+| Rule | 要求 | 不过则 |
+|------|------|--------|
+| **Multi-source** | 至少 2 种不同类型的证据（如代码 + 测试） | 降级为 Speculative |
+| **Cross-validated** | 至少 2 个模块或文件一致支持 | 标注"孤立证据" |
+| **Higher-tier-wins** | 测试 > 代码 > 配置 > 文档 > 提交 > 推断 | 文档声称未在代码验证的，标注"未验证" |
+| **Adversarial-survived** | 对抗性验证尝试反证后仍未被推翻 | 不进入报告 |
+| **Alternative-explained** | 已考虑至少 1 个替代解释并说明为何不成立 | 标注"未考虑替代解释" |
 
 ---
 
@@ -97,43 +138,83 @@ description: "研究一个开源 Repository，提炼其架构、设计思想、�
 | **D** | Commit messages、issues、PR descriptions | 较低 |
 | **E** | Inference（heuristic、AST patterns、analyzer output） | 最低 |
 
-**冲突处理**：
-- 优先信任高层级证据
-- 记录冲突并在报告中标注
-- 不要用低层级证据否定高层级证据
-- 文档声称的功能必须在代码或测试中验证，否则标注为"文档声称但未验证"
+文档声称的功能必须在代码或测试中验证，否则标注为"文档声称但未验证"。
+
+---
+
+## Honest Limits
+
+研究必须明确边界，不掩饰不确定性。
+
+**不能做的事**：
+- 不能从 README 推断未在代码中实现的功能
+- 不能从单次提交推断长期设计意图
+- 不能从公开观点推断作者的信仰
+- 不能用低层级证据否定高层级证据
+- 不能把推测包装为结论
+
+**必须做的事**：
+- 必须在报告中标注 **Unknown**（不知道）
+- 必须在报告中标注 **Missing Evidence**（证据不足）
+- 必须在报告中标注 **Need More Reading**（需进一步阅读）
+- 必须为每个结论提供 **Alternative Explanation**（替代解释）
+- 必须区分"文档声称"与"代码验证"
+
+**Unknown 是合法的研究结果**，不是失败。承认不知道比给出错误答案更有价值。
+
+---
+
+## Distillation Rules
+
+**过滤优先于生成。** 好的报告不是包含最多内容的报告，而是经过最严格筛选的报告。
+
+研究过程是一个不断收敛的漏斗：
+
+```
+候选发现 (100)
+    ↓  Cross Validation（跨来源验证）
+存活 (40)
+    ↓  Adversarial Challenge（对抗性反证）
+存活 (18)
+    ↓  Evidence Acceptance（证据准入）
+存活 (7)
+    ↓  Importance（重要性筛选）
+报告 (5)
+```
+
+**报告理想数量**：5 条精悍 Trace，而非 40 条平庸 Claim。
+
+**淘汰标准**：
+- 单一证据源 → 淘汰或降级
+- 无法经受对抗性反证 → 淘汰
+- 不改变读者对系统的理解 → 淘汰
+- 适用于任何项目（缺乏特异性） → 淘汰
+- 只有"是什么"没有"为什么" → 淘汰
+
+**保留标准**：
+- 改变读者对系统理解的 → 保留
+- 有明确 tradeoff 的 → 保留
+- 可迁移到其他系统的 → 保留
+- 与已有假设矛盾的 → 保留（最高价值）
 
 ---
 
 ## Research Content
 
-研究维度按适用性选择，不强制全部覆盖。不同类型的仓库应该产生不同的研究内容。
+研究维度按 Archetype 动态选择，不强制全部覆盖。
 
-### 通用维度（适用于大多数仓库）
+### 通用维度
 
-- **Architecture** — Overall structure, layering, module boundaries, dependency direction, lifecycle, execution pipeline, extension points, configuration.
-- **Design Philosophy** — 作者想解决什么问题？为什么选择这个抽象？为什么不是另一种架构？做了哪些权衡？
-- **Reliability Engineering** — Testing strategy, evaluation, benchmarks, regression, determinism, reproducibility, failure analysis.
-- **Architecture Evolution** — Major refactors, breaking changes, deprecated ideas, lessons learned from history.
-- **Interesting Engineering Ideas** — Elegant abstractions, reusable patterns, novel simplifications, performance tricks, developer experience improvements.
-
-### 领域特定架构（动态选择，按仓库类型）
-
-不要强行套用不相关的维度。研究 LLVM 时不需要讨论 Agent lifecycle；研究 DuckDB 时不需要讨论 Prompt Engineering。
-
-| 仓库类型 | 适用维度 |
-|---------|---------|
-| AI Agent 框架 | Agent lifecycle, planning, execution, reflection, retry, parallelism, cancellation, context propagation, multi-agent orchestration, state management, failure recovery |
-| 编译器/语言工具 | Lexer, parser, IR, optimizer, codegen, type system, runtime |
-| 数据库/数据系统 | Query planner, executor, storage engine, transaction, concurrency, vectorized execution, replication |
-| 开发者工具 | Plugin system, extension API, configuration model, integration patterns |
-| 应用/服务 | API design, auth model, data flow, deployment, observability |
+- **Architecture** — Structure, layering, module boundaries, dependency direction, lifecycle, extension points.
+- **Design Philosophy** — 作者想解决什么问题？为什么选择这个抽象？做了哪些权衡？
+- **Reliability Engineering** — Testing, evaluation, benchmarks, regression, determinism.
+- **Architecture Evolution** — Major refactors, breaking changes, deprecated ideas.
+- **Interesting Engineering Ideas** — Elegant abstractions, reusable patterns, novel simplifications.
 
 ### Interesting Questions
 
 - Why is this abstraction necessary?
 - What would break if this module were removed?
-- What is the smallest useful architecture this could be reduced to?
 - Which modules are accidental complexity vs. essential complexity?
 - Where is the real innovation?
 - Which decisions appear over-engineered?
@@ -145,14 +226,6 @@ description: "研究一个开源 Repository，提炼其架构、设计思想、�
 
 **不要按顺序读文件。** 持续构建假设。
 
-> **假设**：该框架可能会把 planning 与 execution 分离。
->
-> **证据**：`Planner`、`Runner`、`ToolExecutor`、`Context`
->
-> **结论**：Planning 与 execution 被有意解耦。
-
-永远不要产出逐行文件摘要。永远产出：
-
 ```
 Problem → Design → Evidence → Tradeoff → Takeaway
 ```
@@ -163,38 +236,14 @@ Problem → Design → Evidence → Tradeoff → Takeaway
 
 ## Reading Strategy
 
-按以下顺序研究 Repository：
-
-1. **README 与文档** —— 目的、设计哲学、快速开始
-2. **Examples** —— 作者希望它如何被使用；设计意图在这里
-3. **Tests** —— 预期行为、边界情况、不变式
-4. **Public APIs** —— 接口契约、类型签名
-5. **Core architecture** —— 模块边界、依赖方向
-6. **Internal implementation** —— 在理解上述内容之后再读
-7. **Benchmarks and evaluation** —— 团队测量和优化什么
-8. **CI and release workflow** —— 质量门禁、发布流水线
-
----
-
-## Cross Validation
-
-只要可能，用多个来源验证结论：Architecture、Tests、Comments、Documentation、Prompts、Configuration、Examples、CI、Benchmarks。而不是依赖单一来源。
-
----
-
-## Evidence Collection
-
-每个结论都应包含 Evidence，并标注证据层级。
-
-> **结论**：该框架有意将 planning 与 execution 分离。
->
-> **证据**（Tier A）：`planner.ts`、`Runner.ts`、`ExecutionContext.ts`
->
-> **证据**（Tier S）：`planner.test.ts` 验证了二者解耦
->
-> **Confidence**：High
->
-> **原因**：多个模块一致地实现了这种分离，且有测试验证。
+1. **README 与文档** — 目的、设计哲学
+2. **Examples** — 设计意图
+3. **Tests** — 预期行为、不变式
+4. **Public APIs** — 接口契约
+5. **Core architecture** — 模块边界
+6. **Internal implementation** — 在理解上述内容之后
+7. **Benchmarks and evaluation** — 团队测量什么
+8. **CI and release workflow** — 质量门禁
 
 ---
 
@@ -202,28 +251,37 @@ Problem → Design → Evidence → Tradeoff → Takeaway
 
 ### Trace Density over Coverage
 
-每个 Trace 必须回答一个会改变工程师理解的架构问题。精悍 Trace 胜过平庸 Trace——密度优先于覆盖。
+每个 Trace 必须回答一个会改变工程师理解的架构问题。精悍 Trace 胜过平庸 Trace。
 
 每个 Trace 使用结构：**Question → Investigation → Turning Point → Resolution**
 
-- **Investigation**：记录调查过程（最初认为 → 发现相反证据 → 改变信念）
+- **Investigation**：最初认为 → 发现相反证据 → 改变信念
 - **Turning Point**：改变理解的关键证据
-- **Resolution**：最终结论 + 置信度
+- **Resolution**：最终结论 + 置信度 + 替代解释
 
-### Anti-Fabrication
+### Quality Gate
 
-引用必须真实可追溯。不得发明 ID、篡改置信度、翻转验证状态或伪造内容。
+报告完成前，自问：
+
+> 如果我是 Palantir Architect / Google Staff Engineer / Redis 作者 / DuckDB 作者 / OpenAI SDK 作者，会接受这份报告吗？
+
+如果不接受，找出原因并修改：
+- 是否有 Claim 缺乏多重证据？
+- 是否有 Claim 未考虑替代解释？
+- 是否有重要决策未被讨论？
+- 是否有 Unknown 被掩饰为结论？
+- 报告是否只是"是什么"的堆砌，而非"为什么"的洞察？
 
 ### Report Principles
 
 | 原则 | 要求 |
 |------|------|
-| **Decision-centric** | 报告核心是工程决策（Why / Tradeoff / Alternative / Learning），不是架构描述。 |
-| **Fact vs Interpretation** | 区分无争议的事实与你的判断，读者应能辨别什么是证据、什么是推断。 |
-| **Compressed** | 强制压缩以验证理解——如果压缩不了，说明其实没有理解。 |
-| **What NOT to Learn** | 明确区分值得学与不要抄。很多项目真正值得学的只有少数，其它是历史包袱。 |
-| **Fitness** | 评估架构是否持续满足设计目标，而非仅检测代码味道。 |
-| **Why it matters** | 每个 Trace 用一句话说明：如果没有这个洞察，读者会如何误读系统。 |
+| **Decision-centric** | 报告核心是工程决策，不是架构描述。 |
+| **Fact vs Interpretation** | 读者应能辨别什么是证据、什么是推断。 |
+| **Compressed** | 如果压缩不了，说明其实没有理解。 |
+| **What NOT to Learn** | 明确区分值得学与不要抄。 |
+| **Fitness** | 评估架构是否持续满足设计目标。 |
+| **Honest Limits** | 报告必须包含 Unknown / Missing Evidence / Alternative Explanation。 |
 
 ---
 

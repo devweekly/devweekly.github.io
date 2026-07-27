@@ -285,6 +285,80 @@ Brain → brain-brief.json → Stage 0 (Brain Diff → Novelty Detection → Que
 
 ---
 
+## 21. Judgment System（判断系统，非工作流）
+
+**决策**：SKILL.md 从"Workflow Driven"升级为"Judgment Driven"。Skill 的主体是判断标准，不是执行步骤。
+
+**理由**：
+- 受 nuwa-skill 启发：Skill 应该描述"思考过程"而非"执行步骤"。Nuwa 用 Triple Verification / Honest Limits / Mental Model / Decision Heuristic 等 Reasoning Policy，而非 Step1/Step2/Step3 的 Workflow。
+- Workflow 属于 `research-repo.mjs` 和 subagent prompts 的职责。Skill 只需定义"什么叫好的研究"、"什么叫可信的证据"、"什么时候该停止"。
+- 这样 Skill 可以长期稳定——无论底层工作流如何演进（Stage 数量变化、subagent 重组、Analyzer 替换），判断标准不变。
+
+### 核心对象压缩：Claim
+
+**决策**：将 Research Question、Finding、Hypothesis、Decision、Resolution、Pattern 等 10+ 对象压缩为一个核心对象 **Claim**（研究主张），其它都是 Claim 的不同形态或属性。
+
+**理由**：
+- 10+ 对象让 LLM 难以长期记住，容易混淆 Finding vs Resolution vs Trace 的边界。
+- Claim 是最小研究单元：Research Question 触发 Claim，Evidence 支持或反对 Claim，Hypothesis 是待验证的 Claim，Decision 是已确认的 Claim，Pattern 是可迁移的 Claim。
+- 这让 Skill 更简单——所有判断标准都适用于 Claim，不需要为 Finding/Hypothesis/Decision 分别定义规则。
+
+### Claim 三问替代 Finding 模板
+
+**决策**：移除"Finding 必须包含 Evidence/Counter Evidence/Alternative/Unknown/Confidence/Importance"的论文模板，改为 Claim 必须回答三个问题。
+
+**理由**：
+- 论文模板让 LLM 倾向于"填格子"而非"思考"——关注格式完整而非内容深度。
+- 三问（为什么成立？为什么可能错？为什么重要？）是判断标准，不是输出格式。LLM 自然会组织输出，不需要规定字段。
+- Confidence/Importance 等作为建议属性保留在 Evidence Acceptance Rules 和 Confidence Standard 中，但不再是 Finding 的强制字段。
+
+### Distillation Rules（过滤优先于生成）
+
+**决策**：新增 Distillation Rules 章节，明确研究是收敛漏斗：100 候选 → 40 跨源验证 → 18 对抗存活 → 7 证据准入 → 5 报告。
+
+**理由**：
+- 好的报告不是包含最多内容的报告，而是经过最严格筛选的报告。5 条精悍 Trace 胜过 40 条平庸 Finding。
+- 这借鉴了 Nuwa 的"丢弃"哲学——真正厉害的不是生成，而是过滤。
+- 明确淘汰/保留标准让 LLM 知道什么不该写，比告诉它什么该写更有价值。
+
+### Repository Archetype（仓库原型）
+
+**决策**：新增 Repository Archetype 章节，研究开始前先判断仓库类型，再决定研究维度。
+
+**理由**：
+- 受 Nuwa"没有万能"思想启发：很多仓库没有 Agent、没有 Prompt、没有 Evaluation，不应该强行研究。
+- 研究 LLVM 时不需要讨论 Agent lifecycle；研究 DuckDB 时不需要讨论 Prompt Engineering。
+- Archetype 让研究更像真正的领域专家——先判断这是什么类型的系统，再问对应的问题。
+
+### Evidence Acceptance Rules（证据准入规则）
+
+**决策**：新增 Evidence Acceptance Rules，明确 Claim 进入报告前必须通过的 5 项检查（Multi-source / Cross-validated / Higher-tier-wins / Adversarial-survived / Alternative-explained）。
+
+**理由**：
+- 受 Nuwa"为什么相信"思想启发：Evidence 不应该是单一来源，必须有多重性（多来源 + 多模块 + 多层级）。
+- 这解决了"README 写 supports X 但代码没有"的问题——文档声称未在代码验证的，标注"未验证"。
+- 5 项检查是质量门禁，不是输出格式——LLM 可以自由组织输出，但必须通过这些检查。
+
+### Honest Limits（诚实边界）
+
+**决策**：新增 Honest Limits 章节，明确研究的"不能做"和"必须做"。
+
+**理由**：
+- 100% 借鉴 Nuwa 的 Honest Limits 思想：不能从 README 推断未实现的功能，不能从单次提交推断长期意图，不能把推测包装为结论。
+- 必须在报告中标注 Unknown / Missing Evidence / Need More Reading / Alternative Explanation——这些是合法的研究结果，不是失败。
+- 这与 `Unknown is a valid result` 原则呼应，但更具体——不只是承认不知道，还要明确标注不同类型的不确定性。
+
+### Quality Gate（质量门禁）
+
+**决策**：Report Quality 章节新增 Quality Gate，报告完成前自问"Palantir Architect / Google Staff Engineer / Redis 作者 / DuckDB 作者 / OpenAI SDK 作者会接受这份报告吗？"
+
+**理由**：
+- 受 Nuwa Quality Gate 思想启发：研究不是 Research → Report 结束，而是 Research → Report → Quality Review。
+- 这个自问不是 Comparison（与其它仓库对比），而是 Quality Review（与专家标准对比）。
+- 5 个自问检查项（多重证据？替代解释？重要决策？Unknown 掩饰？洞察 vs 堆砌？）是具体的质量门禁。
+
+---
+
 # 框架架构
 
 以下章节描述 research-repo 的实现架构。SKILL.md 不包含这些内容，因为它们属于框架实现而非研究方法论。
