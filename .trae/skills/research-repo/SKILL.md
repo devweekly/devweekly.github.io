@@ -17,7 +17,6 @@ description: "研究一个开源 Repository，提炼其架构、设计思想、�
 - 它在解决哪些工程问题？
 - 哪些模式是可复用的？
 - 哪些思想可以迁移到别处？
-- AI/Agent 工程师能从中学习到什么？
 
 输出应更像架构评审或工程设计文档，而非代码文档。
 
@@ -30,24 +29,29 @@ description: "研究一个开源 Repository，提炼其架构、设计思想、�
 3. **Bayesian**：假设随证据积累而更新置信度。记录置信度演进，而非一次性判断。
 4. **Adversarial Validation**：每个 Finding 必须经受对抗性验证。只有经受住反证攻击的 Finding 才可进入报告。
 5. **Decision-centric**：报告的核心是工程决策（为什么这样做、放弃了什么、替代方案是什么），而不是架构描述。
-6. **Knowledge-Centric**：Repository 只是 Evidence，Knowledge 才是真正产品。每次研究的价值不只在于报告，更在于它为全局知识库贡献了哪些可迁移的抽象（模式、决策、权衡、反模式）。
-7. **Brain-first**：研究从已有知识开始，不从零开始。研究问题应聚焦于新颖性——这个仓库与已有知识相比，有哪些相同与不同？已有知识能回答的问题不值得重新研究。
+6. **Unknown is a valid result**：Absence of evidence is preferable to unsupported certainty. 不知道是合法的研究结果。不要为了给出答案而推测——如果证据不足，明确标注 Unknown。
+7. **Knowledge reuse**：研究应复用已有经验证的知识，而非从零开始。已有知识能回答的问题不值得重新研究。
 
 ---
 
 ## Research Rules
 
 1. **Research Questions**
-   Generate only high-impact, evidence-rich and transferable questions.
-   Discard questions lacking sufficient repository evidence.
+   Questions should maximize:
+   - Impact — changes engineer's understanding of the system
+   - Evidence richness — verifiable within the repository
+   - Transferability — applicable to other systems
+
+   Questions lacking sufficient repository evidence should not be pursued.
 
 2. **Hypothesis**
-   Maintain Bayesian hypotheses.
-   Every hypothesis must include competing hypotheses.
-   Update confidence as evidence accumulates.
+   Hypotheses are Bayesian:
+   - Include prior confidence and posterior confidence
+   - Update confidence as evidence accumulates
+   - Include competing hypotheses for the same evidence
 
 3. **Findings**
-   Every finding must include:
+   Every finding includes:
    - Evidence
    - Counter Evidence
    - Alternative Interpretation
@@ -56,22 +60,12 @@ description: "研究一个开源 Repository，提炼其架构、设计思想、�
    - Confidence (High / Medium / Low)
 
 4. **Validation**
-   Every finding must withstand adversarial challenge.
-   Only validated findings may appear in the final report.
+   Every finding withstands adversarial challenge.
+   Only validated findings appear in the final report.
 
 5. **Reporting**
    The final report is decision-centric.
-   Describe engineering decisions, tradeoffs and reusable patterns rather than file summaries.
-
-6. **Knowledge Accumulation**
-   Every research session must contribute to the global knowledge base.
-   Extract reusable abstractions: patterns, decisions, tradeoffs, anti-patterns.
-   Knowledge that cannot transfer to other projects is not worth accumulating.
-
-7. **Novelty Detection**
-   Before generating research questions, compare evidence against existing knowledge.
-   Focus on what is new, contradictory, or a unique variation of known patterns.
-   Already-answered questions should not be re-asked unless there is reason to doubt the answer.
+   Engineering decisions, tradeoffs and reusable patterns — not file summaries.
 
 ---
 
@@ -90,42 +84,53 @@ description: "研究一个开源 Repository，提炼其架构、设计思想、�
 
 ---
 
+## Evidence Hierarchy
+
+高层级证据覆盖低层级证据的声明。当文档说 X 但测试说 Y 时，测试胜出。
+
+| Tier | Source | Trust |
+|------|--------|-------|
+| **S** | Executable behavior（tests、benchmarks、reproducible runs） | 最高 |
+| **A** | Implementation（source code） | 高 |
+| **B** | Configuration（manifests、CI、build files） | 中 |
+| **C** | Documentation（README、docs、comments） | 较低 |
+| **D** | Commit messages、issues、PR descriptions | 较低 |
+| **E** | Inference（heuristic、AST patterns、analyzer output） | 最低 |
+
+**冲突处理**：
+- 优先信任高层级证据
+- 记录冲突并在报告中标注
+- 不要用低层级证据否定高层级证据
+- 文档声称的功能必须在代码或测试中验证，否则标注为"文档声称但未验证"
+
+---
+
 ## Research Content
 
-### Architecture
-Overall architecture, Layering, Responsibilities, Module boundaries, Dependency direction, Initialization flow, Lifecycle, Execution pipeline, Event flow, Data flow, Extension points, Plugin system, Configuration.
+研究维度按适用性选择，不强制全部覆盖。不同类型的仓库应该产生不同的研究内容。
 
-### Design Philosophy
-作者想解决什么问题？为什么选择这个抽象？为什么不是另一种架构？做了哪些权衡？
+### 通用维度（适用于大多数仓库）
 
-### AI Agent Harness
-Agent lifecycle, Planning, Execution, Reflection, Retry, Parallelism, Delegation, Cancellation, Checkpoint, Streaming, Context propagation, Human approval, Multi-agent orchestration, Loop prevention, State management, Failure recovery.
+- **Architecture** — Overall structure, layering, module boundaries, dependency direction, lifecycle, execution pipeline, extension points, configuration.
+- **Design Philosophy** — 作者想解决什么问题？为什么选择这个抽象？为什么不是另一种架构？做了哪些权衡？
+- **Reliability Engineering** — Testing strategy, evaluation, benchmarks, regression, determinism, reproducibility, failure analysis.
+- **Architecture Evolution** — Major refactors, breaking changes, deprecated ideas, lessons learned from history.
+- **Interesting Engineering Ideas** — Elegant abstractions, reusable patterns, novel simplifications, performance tricks, developer experience improvements.
 
-### Prompt Engineering
-System prompts, Planning prompts, Reflection prompts, Repair prompts, Tool prompts, Compression prompts, Summarization prompts, Hidden prompts, Prompt templates, Few-shot examples, Prompt composition, Dynamic prompt generation, Prompt injection defenses. Prompt evolution, versioning, assembly pipeline, template engine, tool description generation, automatic compression, testing and regression.
+### 领域特定架构（动态选择，按仓库类型）
 
-### Context Engineering
-Conversation memory, Working memory, Scratchpad, Compression, Sliding window, Retrieval, Context selection, Context prioritization, Context pruning, Conversation replay.
+不要强行套用不相关的维度。研究 LLVM 时不需要讨论 Agent lifecycle；研究 DuckDB 时不需要讨论 Prompt Engineering。
 
-### Tool Framework
-Tool registration, Schemas, Validation, Permission model, Timeout, Retry, Streaming, Error handling, Approval, Sandbox, Security.
-
-### Guardrails
-Hallucination prevention, Prompt injection, Loop detection, Budget limits, Max iterations, Tool whitelist, Permission control, Dangerous operations, Human confirmation, Rate limiting, Resource protection.
-
-### Evaluation & Reliability Engineering
-Benchmarks, Regression tests, Golden tests, Snapshots, Reference outputs, Judge LLM, Human evaluation, Rubrics, Metrics, Pass rate, Failure rate, Coverage. Determinism, Replayability, Reproducibility, Cost evaluation, Latency evaluation, Failure analysis, Flakiness mitigation.
-
-### Testing Strategy
-Unit tests, Integration tests, E2E, Simulation, Fake LLM, Mock Tool, Golden datasets, Replay, Deterministic execution, Recorded conversations, Regression suite.
-
-### Interesting Engineering Ideas
-Interesting abstractions, Elegant APIs, Reusable patterns, Small but clever implementations, Novel architecture, Unexpected simplifications, Performance optimizations, Engineering tricks, Developer experience improvements.
-
-### Architecture Evolution
-Major refactors, Breaking changes, Deprecated ideas, Evolution of prompts, Evolution of evaluation methodology, Evolution of APIs, Lessons learned from commit messages, PR descriptions, issue threads.
+| 仓库类型 | 适用维度 |
+|---------|---------|
+| AI Agent 框架 | Agent lifecycle, planning, execution, reflection, retry, parallelism, cancellation, context propagation, multi-agent orchestration, state management, failure recovery |
+| 编译器/语言工具 | Lexer, parser, IR, optimizer, codegen, type system, runtime |
+| 数据库/数据系统 | Query planner, executor, storage engine, transaction, concurrency, vectorized execution, replication |
+| 开发者工具 | Plugin system, extension API, configuration model, integration patterns |
+| 应用/服务 | API design, auth model, data flow, deployment, observability |
 
 ### Interesting Questions
+
 - Why is this abstraction necessary?
 - What would break if this module were removed?
 - What is the smallest useful architecture this could be reduced to?
@@ -133,16 +138,6 @@ Major refactors, Breaking changes, Deprecated ideas, Evolution of prompts, Evolu
 - Where is the real innovation?
 - Which decisions appear over-engineered?
 - Which ideas survived across multiple releases?
-
-### Knowledge Extraction
-After completing the report, extract reusable abstractions for the global knowledge base:
-
-- **Patterns**: Reusable architecture patterns observed (Planner-Executor, Event Bus, Plugin Registry, etc.). Must be abstractable beyond this repository.
-- **Decisions**: Why a design was chosen and under what conditions. Must include applicable context, not just the choice.
-- **Tradeoffs**: Benefits, costs, and boundaries of each design. Must be bidirectional (Pros + Cons).
-- **Anti-patterns**: Common design problems with failure cases. Must have real examples of failure, not theoretical.
-- **Vocabulary**: Unified engineering terms. Consistent terminology across all research enables cross-repo comparison.
-- **Concept Graph**: Relationships between patterns, decisions, and concepts (e.g., Planner produces Plan, Plan executed_by Runner).
 
 ---
 
@@ -189,15 +184,17 @@ Problem → Design → Evidence → Tradeoff → Takeaway
 
 ## Evidence Collection
 
-每个结论都应包含 Evidence。
+每个结论都应包含 Evidence，并标注证据层级。
 
 > **结论**：该框架有意将 planning 与 execution 分离。
 >
-> **证据**：`planner.ts`、`Runner.ts`、`ExecutionContext.ts`、`planner.test.ts`
+> **证据**（Tier A）：`planner.ts`、`Runner.ts`、`ExecutionContext.ts`
+>
+> **证据**（Tier S）：`planner.test.ts` 验证了二者解耦
 >
 > **Confidence**：High
 >
-> **原因**：多个模块一致地实现了这种分离。
+> **原因**：多个模块一致地实现了这种分离，且有测试验证。
 
 ---
 
@@ -245,13 +242,9 @@ Problem → Design → Evidence → Tradeoff → Takeaway
 - 这个 Repository 为何存在
 - 它解决了哪些工程问题
 - 哪些架构决策是重要的
-- AI Agent 是如何设计与约束的
-- Prompt 是如何组织与演化的
-- Evaluation 与 Testing 如何保障可靠性
+- 哪些权衡被做出
 - 哪些实现模式是可复用的
 - 哪些想法是独特或特别优雅的
 - 哪些文件和测试是深入研究的最高价值入口
-- 这个仓库为全局知识库贡献了哪些新的模式、决策、权衡或反例
 
 读者读完报告后，应该知道接下来两小时该读哪些源代码。
-研究完成后，全局知识库应该比研究前更丰富——这是衡量研究价值的最终标准。

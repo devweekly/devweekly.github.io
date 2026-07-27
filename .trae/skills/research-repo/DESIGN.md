@@ -256,6 +256,35 @@ Brain → brain-brief.json → Stage 0 (Brain Diff → Novelty Detection → Que
 
 ---
 
+## 20. Knowledge Architecture Principles（平台原则，非 Skill 原则）
+
+**决策**：Knowledge-Centric 和 Brain-first 是平台层原则，不属于 Repository Research Methodology（SKILL.md）。
+
+**理由**：
+- SKILL.md 描述的是"研究一个仓库"的方法论——它应该不知道全局知识库的存在。
+- Knowledge Base / Brain / Concept Graph 是**平台实现**，今天可能是 JSON 文件，明天可能是 Neo4j 或 Palantir Ontology。如果 Skill 绑定这些概念，平台演进时 Skill 必须跟着改。
+- Skill 只需说"Reuse prior validated knowledge when available"——不关心知识来自哪里、如何存储。
+- 平台原则属于 DESIGN.md，因为它们是框架设计决策，不是研究方法论。
+
+### 平台原则（仅在此处记录，不在 SKILL.md 中出现）
+
+**Knowledge-Centric**（平台原则）：
+- Repository 只是 Evidence，Knowledge 才是真正产品。
+- 每次研究的价值不只在于报告，更在于它为全局知识库贡献了哪些可迁移的抽象（模式、决策、权衡、反模式）。
+- 研究第 30 个仓库时，系统不再是"重新分析一个仓库"，而是回答：这个仓库与已有知识相比，有哪些相同与不同？它为知识库贡献了什么？
+
+**Brain-first**（平台原则）：
+- 研究从已有知识开始，不从零开始。
+- 研究问题应聚焦于新颖性——这个仓库与已有知识相比，有哪些相同与不同？
+- 已有知识能回答的问题不值得重新研究，除非有理由怀疑答案。
+- Brain Diff 三种模式：Known Patterns Present（已知，作假设基础）/ Potential Novelty（未知，高价值）/ Potential Contradictions（矛盾，最高价值）。
+
+**与 SKILL.md 的关系**：
+- SKILL.md 中的 `Knowledge reuse` 原则是这些平台原则的**方法论投影**——它只说"复用已有知识"，不说"如何存储"或"如何查询"。
+- 平台演进（如从 JSON 文件迁移到图数据库）时，SKILL.md 不需要修改。
+
+---
+
 # 框架架构
 
 以下章节描述 research-repo 的实现架构。SKILL.md 不包含这些内容，因为它们属于框架实现而非研究方法论。
