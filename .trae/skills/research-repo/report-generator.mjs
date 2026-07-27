@@ -43,8 +43,7 @@ class ReportGenerator {
     } catch (_e) {
       this._findingsCache = { findings: [], summary: { total: 0 }, verificationSummary: { total: 0 } };
     }
-    // Also persist to store so `analyze-output.mjs` and downstream consumers
-    // can access it via store.findings.
+    // Persist to store so downstream consumers can access via store.findings.
     this.s.findings = this._findingsCache;
     return this._findingsCache;
   }
