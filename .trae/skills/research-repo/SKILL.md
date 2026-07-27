@@ -341,7 +341,6 @@ research-{repo-name}-{YYYYMMDD}/
 ├── 04-opponent.md              # Stage 4 output
 ├── 05-cross-validation.md      # Stage 5 output
 ├── 06-comparative.md           # Stage 6 output
-├── subagents/                  # Generated prompt files
 └── report.md                   # Final report (Stage 7)
 ```
 
@@ -461,10 +460,6 @@ node research-repo.mjs all <repoPath> > evidence-store/full.json
 node research-repo.mjs report <repoPath> > evidence-brief.md
 node research-repo.mjs report --lang=zh <repoPath> > evidence-brief.md
 
-# Generate subagent prompt files (always Chinese)
-cd research-{repo}-{date}
-node ../research-repo.mjs subagent-prompts <repoPath>
-
 # Incremental update (git diff → re-analyze changed files → merge)
 node research-repo.mjs update <repoPath> > evidence-store/full.json
 ```
@@ -542,34 +537,30 @@ Semantic Index 是整个 Repository 的符号级索引，由 Tree-sitter 构建�
 
 ## Subagent 派发
 
-### 生成 Prompt 文件
+### Prompt 模板
 
-```bash
-cd research-{repo}-{date}
-node ../research-repo.mjs subagent-prompts <repoPath>
-```
+Prompt 模板是 skill 目录下的静态 markdown 文件（`prompts/*.md`），无需生成。主 Agent 读取模板后替换占位符即可派发。
 
-生成内容：
-
-| Prompt 文件 | 目标输出 | 说明 |
-|-------------|----------|------|
-| `subagents/00-question-planner.md` | `00-research-questions.md` | 动态生成 5 个 Research Question |
-| `subagents/01-hypothesis.md` | `01-hypotheses.md` | 贝叶斯假设（Prior → Posterior） |
-| `subagents/02-ontology.md` | `02-ontology.md` | 行为本体（静态对象 + Execution Graph） |
-| `subagents/03-research-agent-1.md` ~ `-5.md` | `RQ-001.md` ~ `RQ-005.md` | 动态 RQ Agent（并行）。每个 subagent 从 `00-research-questions.md` 读取第 N 个问题 |
-| `subagents/04-opponent.md` | `04-opponent.md` | 反证者：攻击每个 Finding |
-| `subagents/05-cross-validation.md` | `05-cross-validation.md` | 交叉验证 + Evidence Graph |
-| `subagents/06-comparative.md` | `06-comparative.md` | 与显式列出的同类项目对比 |
-| `subagents/07-report-writer.md` | `report.md` | Research Trace 格式报告 |
-| `subagents/README.md` | — | 执行顺序速查表 |
+| 模板文件 | 目标输出 | 占位符 | 说明 |
+|----------|----------|--------|------|
+| `prompts/00-question-planner.md` | `00-research-questions.md` | `{repoName}` | 动态生成 5 个 Research Question |
+| `prompts/01-hypothesis.md` | `01-hypotheses.md` | `{repoName}` | 贝叶斯假设（Prior → Posterior） |
+| `prompts/02-ontology.md` | `02-ontology.md` | `{repoName}` | 行为本体（静态对象 + Execution Graph） |
+| `prompts/03-research-agent.md` | `RQ-{rqId}.md` | `{repoName}` `{questionIndex}` `{rqId}` | 动态 RQ Agent（实例化 5 次：questionIndex=1..5, rqId=001..005） |
+| `prompts/04-opponent.md` | `04-opponent.md` | `{repoName}` | 反证者：攻击每个 Finding |
+| `prompts/05-cross-validation.md` | `05-cross-validation.md` | `{repoName}` | 交叉验证 + Evidence Graph |
+| `prompts/06-comparative.md` | `06-comparative.md` | `{repoName}` | 与显式列出的同类项目对比 |
+| `prompts/07-report-writer.md` | `report.md` | `{repoName}` | Research Trace 格式报告 |
 
 ### 派发方式
 
-每个 prompt 文件交给一个独立的 LLM subagent 执行。使用 `Task` 工具（`subagent_type=general_purpose_task`）：
+主 Agent 读取 `prompts/XX.md`，替换 `{repoName}`（及 `{questionIndex}` / `{rqId}`）为实际值，交给独立的 LLM subagent 执行。使用 `Task` 工具（`subagent_type=general_purpose_task`）：
 
-1. 告知 subagent 当前 working folder 路径
-2. 把对应 `subagents/XX.md` 的完整 prompt 贴进去
-3. 要求 subagent 读完证据后，把输出写入对应的 target 文件
+1. 读取 `prompts/XX.md` 模板
+2. 替换占位符（`{repoName}` → 仓库名，`{questionIndex}` → 1/2/3/4/5，`{rqId}` → 001/002/003/004/005）
+3. 告知 subagent 当前 working folder 路径
+4. 把替换后的 prompt 贴给 subagent
+5. 要求 subagent 读完证据后，把输出写入对应的 target 文件
 
 **执行顺序**：
 

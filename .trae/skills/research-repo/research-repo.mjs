@@ -36,7 +36,6 @@
 import { readFileSync, writeFileSync, existsSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { pathToFileURL } from "node:url";
-import { writeSubagentPrompts } from "./subagent-prompts.mjs";
 
 import { loadOptionalPackages, initTreeSitter } from "./utils.mjs";
 import { RepositoryContext } from "./context.mjs";
@@ -67,7 +66,7 @@ async function main() {
   const command = positional[0];
   const repoPath = positional[1];
   const syntheticCommands = new Set(["plan", "questions", "report", "update"]);
-  const validCommands = new Set([...ANALYZERS.map((a) => a.id), "all", ...syntheticCommands, "subagent-prompts"]);
+  const validCommands = new Set([...ANALYZERS.map((a) => a.id), "all", ...syntheticCommands]);
 
   if (!command || !repoPath) {
     console.error(
@@ -91,12 +90,6 @@ async function main() {
   const absPath = statSync(repoPath).isDirectory()
     ? repoPath
     : dirname(repoPath);
-
-  if (command === "subagent-prompts") {
-    const outDir = writeSubagentPrompts(absPath, { outDir: process.cwd() });
-    console.error(`Subagent prompts written to ${outDir}/`);
-    return;
-  }
 
   await loadOptionalPackages();
   await initTreeSitter();
