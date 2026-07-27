@@ -1,0 +1,77 @@
+{
+  "comment": "Regression baseline for skill-test expected outputs. Tolerance = max allowed deviation from baseline value. Update this file only when intentional Skill changes shift the metrics.",
+  "fixtures": {
+    "duckdb": {
+      "questionCount": { "value": 5, "tolerance": 0 },
+      "claimCount": { "value": 3, "tolerance": 1 },
+      "verifiedCount": { "value": 1, "tolerance": 1 },
+      "partiallyVerifiedCount": { "value": 2, "tolerance": 1 },
+      "documentationOnlyCount": { "value": 0, "tolerance": 0 },
+      "unknownCount": { "value": 1, "tolerance": 1 },
+      "hasQualityGate": true,
+      "hasReadingGuide": true,
+      "hasFilteredOut": true
+    },
+    "openai-agents": {
+      "questionCount": { "value": 5, "tolerance": 0 },
+      "claimCount": { "value": 3, "tolerance": 1 },
+      "verifiedCount": { "value": 2, "tolerance": 1 },
+      "partiallyVerifiedCount": { "value": 1, "tolerance": 1 },
+      "documentationOnlyCount": { "value": 0, "tolerance": 0 },
+      "unknownCount": { "value": 1, "tolerance": 1 },
+      "hasQualityGate": true,
+      "hasReadingGuide": true,
+      "hasFilteredOut": true
+    },
+    "dbeaver": {
+      "questionCount": { "value": 5, "tolerance": 0 },
+      "claimCount": { "value": 3, "tolerance": 1 },
+      "verifiedCount": { "value": 0, "tolerance": 0 },
+      "partiallyVerifiedCount": { "value": 3, "tolerance": 1 },
+      "documentationOnlyCount": { "value": 0, "tolerance": 0 },
+      "unknownCount": { "value": 1, "tolerance": 1 },
+      "hasQualityGate": true,
+      "hasReadingGuide": true,
+      "hasFilteredOut": true
+    },
+    "readme-claims-code-doesnt": {
+      "questionCount": { "value": 5, "tolerance": 0 },
+      "claimCount": { "value": 2, "tolerance": 1 },
+      "verifiedCount": { "value": 0, "tolerance": 0 },
+      "partiallyVerifiedCount": { "value": 1, "tolerance": 1 },
+      "documentationOnlyCount": { "value": 1, "tolerance": 0 },
+      "unknownCount": { "value": 2, "tolerance": 1 },
+      "hasQualityGate": true,
+      "hasReadingGuide": true,
+      "hasFilteredOut": true
+    },
+    "duckdb-mutated": {
+      "questionCount": { "value": 5, "tolerance": 0 },
+      "claimCount": { "value": 3, "tolerance": 1 },
+      "verifiedCount": { "value": 0, "tolerance": 0 },
+      "partiallyVerifiedCount": { "value": 2, "tolerance": 1 },
+      "documentationOnlyCount": { "value": 0, "tolerance": 0 },
+      "unknownCount": { "value": 3, "tolerance": 1 },
+      "hasQualityGate": true,
+      "hasReadingGuide": true,
+      "hasFilteredOut": true
+    },
+    "openai-agents-mutated": {
+      "questionCount": { "value": 5, "tolerance": 0 },
+      "claimCount": { "value": 3, "tolerance": 1 },
+      "verifiedCount": { "value": 0, "tolerance": 0 },
+      "partiallyVerifiedCount": { "value": 2, "tolerance": 1 },
+      "documentationOnlyCount": { "value": 0, "tolerance": 0 },
+      "unknownCount": { "value": 3, "tolerance": 1 },
+      "hasQualityGate": true,
+      "hasReadingGuide": true,
+      "hasFilteredOut": true
+    }
+  },
+  "qualityGates": {
+    "minQuestionCount": 5,
+    "maxClaimCount": 5,
+    "minQualityGatePresence": 1.0,
+    "maxDocumentationOnlyRatio": 0.5
+  }
+}

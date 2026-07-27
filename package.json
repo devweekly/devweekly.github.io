@@ -15,7 +15,8 @@
     "prepare": "husky install",
     "lint": "eslint .",
     "test": "node --test .trae/skills/research-repo/__tests__/*.test.mjs",
-    "test:research-repo": "node --test .trae/skills/research-repo/__tests__/*.test.mjs"
+    "test:research-repo": "node --test .trae/skills/research-repo/__tests__/*.test.mjs",
+    "test:skill": "node .trae/skills/research-repo/skill-test/skill-test.mjs"
   },
   "packageManager": "pnpm@10.24.0",
   "dependencies": {
