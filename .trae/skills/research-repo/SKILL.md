@@ -119,26 +119,26 @@ Skill 的核心是判断标准，不是执行步骤。以下定义什么值得�
 |------|------|--------|
 | **Multi-source** | 至少 2 种不同类型的证据（如代码 + 测试） | 降级为 Speculative |
 | **Cross-validated** | 至少 2 个模块或文件一致支持 | 标注"孤立证据" |
-| **Higher-tier-wins** | 测试 > 代码 > 配置 > 文档 > 提交 > 推断 | 文档声称未在代码验证的，标注"未验证" |
+| **Higher-tier-wins** | Verified > Partially Verified > Documentation Only | 文档声称未在代码验证的，标注"未验证" |
 | **Adversarial-survived** | 对抗性验证尝试反证后仍未被推翻 | 不进入报告 |
 | **Alternative-explained** | 已考虑至少 1 个替代解释并说明为何不成立 | 标注"未考虑替代解释" |
 
 ---
 
-## Evidence Hierarchy
+## Evidence Quality
 
-高层级证据覆盖低层级证据的声明。当文档说 X 但测试说 Y 时，测试胜出。
+证据标注使用三种质量等级。报告中的每个 Claim 必须标注其证据质量。
 
-| Tier | Source | Trust |
-|------|--------|-------|
-| **S** | Executable behavior（tests、benchmarks、reproducible runs） | 最高 |
-| **A** | Implementation（source code） | 高 |
-| **B** | Configuration（manifests、CI、build files） | 中 |
-| **C** | Documentation（README、docs、comments） | 较低 |
-| **D** | Commit messages、issues、PR descriptions | 较低 |
-| **E** | Inference（heuristic、AST patterns、analyzer output） | 最低 |
+| Quality | 含义 | 要求 |
+|---------|------|------|
+| **Verified** | 代码 + 测试双重验证 | 源码文件存在 + 测试覆盖 |
+| **Partially Verified** | 代码存在，但测试不足 | 源码文件存在，无对应测试 |
+| **Documentation Only** | 只在 README/docs 中声称 | 未在代码或测试中验证 |
 
-文档声称的功能必须在代码或测试中验证，否则标注为"文档声称但未验证"。
+**规则**：
+- 文档声称的功能必须在代码或测试中验证，否则标注为 **Documentation Only — 未验证**。
+- 当文档说 X 但测试说 Y 时，测试胜出。
+- 单一证据源（如只有一个文件引用）最多 Medium Confidence。
 
 ---
 

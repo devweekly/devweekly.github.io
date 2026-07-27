@@ -35,6 +35,7 @@ import {
   QuestionGenerator,
 } from "./research-engine.mjs";
 import { ReportGenerator } from "./report-generator.mjs";
+import { enhanceStore } from "./evidence-quality.mjs";
 
 // ===========================================================================
 // ANALYZERS — registered analyzers in execution order
@@ -121,6 +122,9 @@ class AnalyzerPipeline {
       }
       await analyzer.analyze(ctx, store, { command: analyzer.id });
     }
+    // Evidence Quality Layer: Sanitize analyzer output + detect Archetype
+    // (Report 不应该知道 Analyzer 出过错——Sanitizer 在 Evidence Store 阶段修正)
+    enhanceStore(store);
     const evidenceStore = new EvidenceStore(store);
     // Ontology: classify objects and build semantic relationships
     const classifier = new ObjectClassifier();

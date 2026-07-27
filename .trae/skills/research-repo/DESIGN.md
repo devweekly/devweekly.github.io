@@ -359,6 +359,70 @@ Brain → brain-brief.json → Stage 0 (Brain Diff → Novelty Detection → Que
 
 ---
 
+## 22. Evidence Quality Layer（Evidence Sanitizer + Archetype Hints）
+
+**决策**：在 AnalyzerPipeline 和 EvidenceStore 之间新增 Evidence Quality Layer，包含两个组件：
+1. **EvidenceSanitizer** — 修正 Analyzer 已知误检
+2. **Archetype Hints** — 为 LLM 提供判断 Repository Archetype 的证据信号，不硬性分类
+
+**理由**（来自用户反馈）：
+- 报告不应该知道 Analyzer 出过错。真正的问题不是"Report 不该写 Analyzer 勘误"，而是"Analyzer 的错误应该在进入 Evidence Store 之前被修正"。
+- 新增 Sanitizer 层后，Report 完全不知道 Analyzer 有过误检——它只读取已清洗的证据。
+- 纯脚本规则无法可靠判断 Repository Archetype（测试显示 dbeaver/topcoat/pyod 都被误判）。Archetype 判断是语义判断，应该交给 LLM（Question Planner）。
+- 脚本只提供证据信号（hasAgent/hasParser/hasSQL/...），让 LLM 做最终判断。这样避免脚本规则耦合到 Skill。
+
+### EvidenceSanitizer 规则
+
+| 误检类型 | 修正规则 |
+|---------|---------|
+| Prompt 计数虚高 | 排除 `examples/`、`docs/`、`README.md` 中的示例代码；排除 test fixtures |
+| Tool 误检 | 排除 `node_modules/`、`vendor/`、`dist/`、`build/`；排除 SDK 中间件；排除 barrel exports；排除 platform utilities |
+| Architecture 误判 | Event-Driven 需要 event bus / message queue / pub-sub 信号，否则降级为 Unknown |
+
+### Archetype Hints 设计
+
+`buildArchetypeHints(store)` 生成以下信号供 Question Planner 使用：
+- **signals**: hasAgent, hasLLM, hasTool, hasPrompt, hasParser, hasLexer, hasCodegen, hasSQL, hasDB, hasPlugin, hasCLI
+- **counts**: tools, prompts, entrypoints, files
+- **manifest**: hasMain, hasExports, hasBin
+- **catalog**: 各 Archetype 的定义和研究重点
+
+Question Planner 读取这些信号后判断 Archetype，再生成对应维度的问题。
+
+---
+
+## 23. Prompt 重写：从 Template 到 Judgment Policy
+
+**决策**：重写 `00-question-planner.md` 和 `07-report-writer.md`，从强制格式模板改为判断策略。
+
+**理由**：
+- 之前 07-report-writer.md 强制 13 个章节 + Decision D-XXX 7 字段模板 + Fitness 7 维评分表 + Compression 500/200/50 字，导致 LLM "填格子"而非"思考"。
+- SKILL.md 已升级为 Judgment Driven，但 prompts 仍是 Workflow + Template Driven——这是最大的 gap。LLM 执行的是 prompts，不是 SKILL.md。
+- 新版 prompt 只定义判断标准（什么值得研究、什么值得相信、报告必须回答什么），不规定输出格式细节。
+
+### 07-report-writer.md 变化
+
+**旧版**：13 章节强制模板
+**新版**：三层结构
+- Executive Summary（3 句话）
+- Top Claims（最多 5 条，每条必须回答 Why holds / Why might be wrong / Why matters）
+- Appendix（Reading Guide / Open Questions / Reusable Patterns / What NOT to Learn）
+
+新增：
+- Evidence Quality 标注（Verified / Partially Verified / Documentation Only）
+- Unknown 属于 Claim，不是独立章节
+- Quality Gate：What would invalidate this report? / What is most likely to be disagreed with?
+
+### 00-question-planner.md 变化
+
+**旧版**：固定 Q1-Q11 模板
+**新版**：
+- 第一步：判断 Repository Archetype（基于 `_archetypeHints`）
+- 第二步：按 Archetype 从通用维度生成候选问题
+- 第三步：用保留/淘汰标准筛选 Top 5
+
+---
+
 # 框架架构
 
 以下章节描述 research-repo 的实现架构。SKILL.md 不包含这些内容，因为它们属于框架实现而非研究方法论。

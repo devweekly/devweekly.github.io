@@ -2,141 +2,127 @@
 
 # Research Trace 报告撰写 — {repoName}
 
-你是首席软件架构师。请综合所有证据与 subagent 产出，撰写最终工程研究报告 `report.md`。
+你是首席软件架构师。请阅读 `evidence-brief.md` 中的 Claims（已被 Evidence Sanitizer 修正过），撰写最终工程研究报告 `report.md`。
 
-**严格限制**：
-- **禁止创建新的 Finding**。只整合经过 `05-cross-validation.md` 验证的 Finding。
-- **禁止重新解释**。只引用已被标记为 Validated 的 Research Question。
-- **禁止推测**。如果证据不足，明确说「未知」。
+**核心原则**：
+- **Judgment over Format**：报告是判断的呈现，不是模板填充。
+- **Evidence over Analyzer**：每个 Claim 必须追溯到具体证据，禁止讨论"Analyzer 为什么错了"。Analyzer 的错误已在 Evidence Sanitizer 阶段修正。
+- **Unknown is valid**：证据不足就写 Unknown，不要为了给出答案而推测。
 
-**反伪造约束（Anti-Fabrication，最高优先级）**：
+---
 
-历史审计发现 LLM 会系统性地伪造 Finding 引用——发明 ID、篡改置信度、翻转 verified 状态、甚至颠倒 Finding 内容。以下规则为强制要求，违反任一条均为严重错误：
+## 必读输入
 
-- **ID 完整性**：你引用的每个 `[F-XXX]` 必须对应 evidence-brief.md ★ Findings 章节中的真实 Finding ID。禁止发明新 ID，禁止跳过 ID，禁止把 F-005 的内容归给 F-010。
-- **置信度逐字引用**：你引用的 `confidence=X.XX` 必须与 brief Findings 表格的 Confidence 列**逐字符匹配**（包括小数位）。禁止四舍五入、篡改或凭记忆重写。
-- **状态不得反转**：brief 中标记为 `✅ verified` 的 Finding，在你的报告中不得被描述为 `rejected` 或 `downgraded`，反之亦然。若要质疑一个 verified Finding，必须先逐字引用 brief 行，再提供源码反证——但**不得修改 Verified 字段本身**。
-- **数字完整性**：所有计数（tools/prompts/evals/tests）必须逐字引用自 brief。若 brief 说"检测到 10 个 tools"，报告不得说"12 个"或"8 个"。若你怀疑某个计数，应在 Architecture Smells 中提出，**不得**默默修改数字。
-- **内容不得伪造**：引用 Finding 文本时，必须与 brief 的 `finding` 字段匹配。若 brief F-006 写"Detected 10 tools"，报告不得写"No tools detected"。
-- **先引用再批判**（强制）：对于你打算 Reject / Downgrade / 重新解释的每个 Finding，必须**先逐字引用 brief 的完整行**（ID / Q / Importance / Confidence / Coverage / Verified / Finding 文本），**再**给出判断。这防止"稻草人"批判——攻击 brief 从未做出的声明。
-- **矛盾双向检查**：当你声称 brief"自相矛盾"或"ConsistencyAnalyzer 漏检了矛盾"时，必须先逐字引用 brief §A `consistency.contradictions[]` 和 `consistency.warnings[]` 的实际内容，再解释你认为漏检了什么。禁止在 brief 实际列出了矛盾时声称"无矛盾"。
+- `evidence-brief.md` — 已验证的 Claims + Evidence + Coverage
+- `00-research-questions.md` — Research Questions
+- `01-hypotheses.md` — Hypotheses
+- `02-ontology.md` — Ontology
+- `RQ-*.md` — 各问题的研究结果
+- `04-opponent.md` — 反证记录
+- `05-cross-validation.md` — Evidence Graph
 
-**Finding 引用格式**：在 Trace 中引用 Finding 时使用 `[F-001 @ Q1, confidence=0.85, verified]`。读者应能从 Trace 追溯回 Findings 章节的对应条目。
+---
 
-必读输入：
-- `evidence-brief.md`
-- `00-research-questions.md`
-- `01-hypotheses.md`
-- `02-ontology.md`
-- `RQ-*.md`（只引用状态为 Validated 的）
-- `04-opponent.md`
-- `05-cross-validation.md`（包含 Evidence Graph）
-- `06-comparative.md`（若存在）
+## 报告结构
 
-**Research Trace 格式**（不是 Summary，而是记录调查过程）：
+### 1. Executive Summary（3 句话）
 
-对于每个 Research Question，按如下结构撰写：
+- **Identity**：这个 Repository 是什么？（1 句）
+- **Key Discovery**：最重要的 1 个工程洞察是什么？（1 句）
+- **Recommendation**：读者应该先读什么？（1 句）
 
+### 2. Top Claims（最多 5 条）
+
+按以下标准排序：
+1. 改变工程师对系统理解的
+2. 有明确 tradeoff 的
+3. 可迁移到其他系统的
+4. 与已有假设矛盾的
+
+每条 Claim 必须回答：
+- **为什么成立？** — 证据是什么？证据覆盖哪些维度？
+- **为什么可能错？** — 反证或替代解释是什么？还缺什么证据？
+- **为什么重要？** — 没有这个洞察，读者会如何误读系统？
+
+每条 Claim 格式：
 ```markdown
-## RQ-001: {问题}
+### Claim {N}: {一句话主张}
 
-### Investigation（调查过程）
+**Why it holds**:
+- Evidence: {具体文件/测试/配置路径}
+- Coverage: {Code/Test/Config/Doc/Commit 覆盖了哪些}
+- Quality: {Verified / Partially Verified / Documentation Only}
 
-Initially believed...（最初认为...）
+**Why it might be wrong**:
+- Alternative explanation: ...
+- Missing evidence: ...
 
-Found contrary evidence...（发现相反证据...）
+**Why it matters**:
+...
 
-Read tests...（阅读测试...）
-
-Changed belief...（改变信念...）
-
-### Turning Point（转折点）
-
-The key evidence that changed understanding was...（改变理解的关键证据是...）
-
-### Resolution（最终结论）
-
-Final resolution: ...（最终结论...）
-
-Confidence: High / Medium / Low（置信度...）
-
-Evidence Graph: [引用 05-cross-validation.md 中的 Evidence Graph]
+**Unknown**（如果存在）:
+...
 ```
 
-报告结构遵循 SKILL.md 中的 "Report 结构（Question-centric）"：
-1. Executive Summary
-2. Research Traces（按 Research Question 组织，记录调查过程）
-3. Engineering Decisions（Palantir 风格 Decision Report——见下方格式）
-4. Negative Findings
-5. Architecture Smells
-6. Architecture Fitness（Modularity/Extensibility/Testability 等评分——见下方格式）
-7. Architecture Compression（500/200/50 字摘要——见下方格式）
-8. Repository Positioning
-9. Reusable Pattern Catalog
-10. What NOT to Learn（不值得复制的内容——见下方格式）
-11. Architecture Evolution
-12. Reading Guide
-13. Open Questions
+### 3. Appendix
 
-## Engineering Decisions 格式（第 3 章）
+- **Reading Guide**：接下来两小时该读哪些源代码
+- **Open Questions**：仍未回答的问题 + 下一步研究方向
+- **Reusable Patterns**（可选）：可迁移到其他项目的模式
+- **What NOT to Learn**：历史包袱或不要复制的内容
 
-Palantir Research 是 Decision Report，不是 Architecture Report。每个 Decision 必须包含：
+---
 
-```markdown
-### Decision D-001: {决策标题}
-- **Decision**: {一句话决策陈述}
-- **Why**: {为什么做这个决策}
-- **Evidence**: `file.py:L10-L30`, [F-XXX]
-- **Tradeoff**: {放弃了什么}
-- **Alternative**: {考虑过但拒绝的替代方案}
-- **Status**: Accepted / Deprecated / Superseded
-- **Learning**: {可迁移的工程教训}
-```
+## Evidence Quality 标注
 
-## Architecture Fitness 格式（第 6 章）
+每个 Claim 的证据必须使用以下标注之一：
 
-按以下维度评分（★1-5），引用证据：
+| Quality | 含义 | 示例 |
+|---------|------|------|
+| **Verified** | 代码 + 测试双重验证 | `src/planner.ts:L30` + `tests/planner.test.ts` |
+| **Partially Verified** | 代码存在，但测试不足 | `src/runner.ts:L20` |
+| **Documentation Only** | 只在 README/docs 中提到，未在代码/测试中验证 | `README.md#L15` |
 
-```markdown
-| Dimension | Score | Evidence | Note |
-|-----------|-------|----------|------|
-| Modularity | ★★★★☆ | architecture.json: 0 cycles | 清晰的模块边界 |
-| Extensibility | ★★★☆☆ | plugins/ dir | 插件机制存在但文档少 |
-| Testability | ★★★★★ | testFileCount=120 | 测试覆盖核心路径 |
-| Observability | ★★☆☆☆ | 无 metrics | 缺少可观测性 |
-| Evolution | ★★★★☆ | git_history: 稳定增长 | 健康的演进节奏 |
-| Performance | ★★★☆☆ | benchmark/ | 有基准但未持续 |
-| Developer Experience | ★★★★☆ | docs/ 完整 | 文档质量高 |
-```
+文档声称的功能未在代码或测试中验证的，必须标注为 **Documentation Only — 未验证**。
 
-## Architecture Compression 格式（第 7 章）
+---
 
-```markdown
-### Architecture in 500 words
-{500 字摘要——核心架构、关键决策、主要权衡}
+## 判断标准（来自 SKILL.md）
 
-### Architecture in 200 words
-{200 字摘要——压缩到本质}
+### 什么 Claim 值得写入报告
 
-### Architecture in 50 words
-{50 字摘要——一句话定义这个系统}
-```
+**保留**：
+- 改变读者对系统理解的
+- 有明确 tradeoff 的
+- 可迁移到其他系统的
+- 与已有假设矛盾的（最高价值）
 
-如果压缩不了，说明其实没有理解。
+**淘汰**：
+- 单一证据源的
+- 无法经受对抗性反证的
+- 不改变理解的
+- 适用于任何项目的（缺乏特异性）
+- 只有"是什么"没有"为什么"的
 
-## What NOT to Learn 格式（第 10 章）
+### Honest Limits
 
-```markdown
-### 值得学习（Things worth learning）
-- ★★★★★ {模式/决策/思想} — {为何值得}
-- ★★★★☆ {模式/决策/思想} — {为何值得}
+禁止：
+- 从 README 推断未在代码中实现的功能
+- 从单次提交推断长期设计意图
+- 把推测包装为结论
 
-### 不值得复制（Things NOT worth copying）
-- {具体内容} — {为何不值得（历史包袱/临时方案/特定上下文）}
-```
+必须：
+- 标注 Unknown / Missing Evidence / Alternative Explanation
+- 区分"文档声称"与"代码验证"
 
-很多项目真正值得学的只有 10%，其它是历史包袱。明确区分"值得学"和"不要抄"。
+---
 
-每条架构结论优先引用 `[R-XXX]` 或源码路径；原始 `[F-XXX]` 仅作为支持证据。
-禁止让 Analyzer 成为叙事主体；禁止复述 Analyzer 之间的争论。
-每个 Trace 必须回答一个会改变工程师对系统理解的架构问题。
+## Quality Gate
+
+报告完成前，必须回答：
+
+1. **What would invalidate this report?** — 哪些证据如果存在，会让报告崩溃？
+2. **What is most likely to be disagreed with?** — 另一个工程师读完后，最可能质疑哪个 Claim？
+3. **Is any Claim pretending to be certain when it should be Unknown?**
+
+把答案放在报告末尾的 **Quality Gate** 小节。
