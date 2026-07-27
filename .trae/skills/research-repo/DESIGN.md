@@ -171,6 +171,91 @@
 
 ---
 
+## 16. 三层架构（Repository Memory / Global Knowledge / Research Brain）
+
+**决策**：从"仓库中心"升级为"知识中心"三层架构。
+
+```
+Layer 1: Repository Memory（局部）  — evidence + report（per-repo，已有）
+Layer 2: Global Knowledge（共享）   — patterns/decisions/tradeoffs/anti-patterns/ontology（新增）
+Layer 3: Research Brain（大脑）      — 查询 + Concept Graph（新增）
+```
+
+**理由**：
+- 原设计：Repository → Evidence → Report。Knowledge 随报告结束而结束。
+- 新设计：Repository → Evidence → Knowledge Extraction → Global Brain → Report。Report 是副产品，Knowledge 是真正产品。
+- 研究第 30 个仓库时，系统不再是"重新分析一个仓库"，而是回答：这个仓库与已有知识相比，有哪些相同与不同？它为知识库贡献了什么？
+- Brain 存储抽象（Pattern/Decision/Tradeoff），不存代码。`Planner-Executor Separation` 比 `runner.py:L203` 有价值得多。
+
+---
+
+## 17. Knowledge Unit Schema
+
+**决策**：知识以 JSON 对象（Knowledge Unit）存储，不以 Markdown 存储。
+
+```json
+{
+  "id": "pattern.planner-executor",
+  "type": "pattern",
+  "title": "Planner Executor Separation",
+  "description": "Planning and execution are isolated into separate components.",
+  "evidence": ["openai-agents", "langgraph", "autogen"],
+  "confidence": 0.96,
+  "tradeoffs": ["+ 清晰的关注点分离", "- 需要额外协调层"],
+  "counterExamples": ["aider"],
+  "observedIn": ["openai-agents", "langgraph", "autogen"],
+  "tags": ["architecture", "agent-harness"]
+}
+```
+
+**理由**：
+- JSON 可被程序查询、合并、版本化；Markdown 只能被人读。
+- Confidence 随多仓库观察自然增长（diminishing returns）：`new = old + increment * (1 - old)`。
+- 五种类型：`pattern`（架构模式）/ `decision`（工程决策）/ `tradeoff`（权衡）/ `anti-pattern`（反模式）/ `term`（术语）。
+- 每种类型独立子目录，便于按类型查询。
+
+---
+
+## 18. Brain Update Pipeline（Stage 8-9）
+
+**决策**：在 Stage 7（Report）之后新增两个 Stage。
+
+| Stage | Prompt | 输出 | 任务 |
+|-------|--------|------|------|
+| 8 | `prompts/08-knowledge-extraction.md` | `knowledge-units.json` | 从报告提取可复用知识单元 |
+| 9 | `prompts/09-brain-update.md` | `brain-update-report.md` | 审核提取结果，与 Brain 比对，产出 CREATE/MERGE/REJECT 计划 |
+
+**理由**：
+- Stage 8 是 LLM 语义工作：阅读报告，识别哪些是可迁移的抽象（不是代码细节）。
+- Stage 9 是知识库管理：保守优先，REJECT 永远比 CREATE 安全。错误的更新会污染整个知识库。
+- Concept Graph 在 Stage 8 提取，Stage 9 去重后写入 Brain。
+
+**Confidence 演进规则**：
+- CREATE：初始 0.5-0.6（单一证据源）
+- MERGE：`new_confidence = old_confidence + 0.05 * (1 - old_confidence)`（diminishing returns）
+- 不手动设置高置信度——置信度通过多仓库观察自然增长
+
+---
+
+## 19. Brain-first Question Planning
+
+**决策**：Stage 0（Question Planner）在生成问题前，先读取 Brain Brief。
+
+```
+Brain → brain-brief.json → Stage 0 (Brain Diff → Novelty Detection → Questions)
+```
+
+**理由**：
+- 如果 Brain 已知 Planner-Executor 模式（3+ repos 验证），不应该问"这个项目有 Planner 吗？"，应该问"这个项目的 Planner 与 LangGraph 的有何不同？"
+- 新颖性检测三种模式：
+  1. **Known Patterns Present** — Brain 已知，此仓库也可能使用 → 作为假设基础，不作为研究问题
+  2. **Potential Novelty** — Brain 未知的新信号 → 高价值研究问题候选
+  3. **Potential Contradictions** — 与 Brain 已知矛盾 → 最高价值研究问题
+- Novelty 维度加入 5 维打分：Novelty=1（Brain 已有完整答案）的问题直接淘汰。
+- 首次研究（Brain 为空）时跳过 Brain Diff，按常规流程生成问题。
+
+---
+
 # 框架架构
 
 以下章节描述 research-repo 的实现架构。SKILL.md 不包含这些内容，因为它们属于框架实现而非研究方法论。
@@ -179,14 +264,16 @@
 
 ## Pipeline 架构
 
-研究流程分为 8 个 Stage，每个 Stage 产出特定的 artifact。Stage 0-2 串行，Stage 3 并行，Stage 4-7 串行。
+研究流程分为 10 个 Stage（0-9）。Stage 0-2 串行，Stage 3 并行，Stage 4-7 串行，Stage 8-9 串行。Brain-first 流程在 Stage 0 之前注入 Brain Brief。
 
 ```mermaid
 flowchart TD
+  BRAIN["Global Research Brain"] --> BB["brain-brief.json"]
   A[Repository] --> DA[Analyzer Pipeline]
   DA --> ES[Evidence Store JSON]
   ES --> EB[Evidence Brief]
-  EB --> S0["Stage 0: Question Planner"]
+  BB --> S0
+  EB --> S0["Stage 0: Question Planner (Brain-first)"]
   S0 --> S1["Stage 1: Hypothesis Generator"]
   S1 --> S2["Stage 2: Ontology Mapper"]
   S2 --> S3["Stage 3: RQ Agents ×5 (parallel)"]
@@ -194,11 +281,15 @@ flowchart TD
   S4 --> S5["Stage 5: Cross Validation + Evidence Graph"]
   S5 --> S6["Stage 6: Comparative Analysis (optional)"]
   S6 --> S7["Stage 7: Report Writer"]
+  S7 --> S8["Stage 8: Knowledge Extraction"]
+  S8 --> S9["Stage 9: Brain Update"]
+  S9 -->|CREATE/MERGE| BRAIN
 ```
 
 | Stage | Prompt 模板 | 输出 | 任务 |
 |-------|------------|------|------|
-| 0 | `prompts/00-question-planner.md` | `00-research-questions.md` | 动态生成 5 个 Research Question |
+| — | `brain-brief.json`（脚本生成） | `brain-brief.json` | Brain 已有知识的摘要，供 Stage 0 读取 |
+| 0 | `prompts/00-question-planner.md` | `00-research-questions.md` | Brain-first：Brain Diff → Novelty Detection → 5 个 Research Question |
 | 1 | `prompts/01-hypothesis.md` | `01-hypotheses.md` | 贝叶斯假设（Prior → Posterior + Competing Hypothesis） |
 | 2 | `prompts/02-ontology.md` | `02-ontology.md` | 行为本体（静态对象 + Execution Graph + Decision Ontology） |
 | 3 | `prompts/03-research-agent.md` ×5 | `RQ-001.md` ~ `RQ-005.md` | 每个 Agent 从 Stage 0 读取自己的问题，验证/推翻假设 |
@@ -206,6 +297,8 @@ flowchart TD
 | 5 | `prompts/05-cross-validation.md` | `05-cross-validation.md` | 交叉验证 + Evidence Graph |
 | 6 | `prompts/06-comparative.md` | `06-comparative.md` | 与显式列出的同类项目对比（可选） |
 | 7 | `prompts/07-report-writer.md` | `report.md` | Research Trace 格式报告 |
+| 8 | `prompts/08-knowledge-extraction.md` | `knowledge-units.json` | 从报告提取可复用知识单元（Pattern/Decision/Tradeoff/Anti-pattern/Term + Concept Edges） |
+| 9 | `prompts/09-brain-update.md` | `brain-update-report.md` | 审核 CREATE/MERGE/REJECT 计划，更新全局 Brain |
 
 ### Prompt 模板占位符
 
@@ -239,8 +332,9 @@ research-{repo-name}-{YYYYMMDD}/
 │   ├── ontology.json           # 完整 Ontology
 │   ├── architecture.json       # 完整依赖图
 │   └── ...                     # 各分析器独立输出
+├── brain-brief.json            # Brain 已有知识摘要（Stage 0 前由脚本生成）
 ├── evidence-brief.md           # 压缩证据 + 派生洞察
-├── 00-research-questions.md    # Stage 0 输出
+├── 00-research-questions.md    # Stage 0 输出（Brain-first）
 ├── 01-hypotheses.md            # Stage 1 输出
 ├── 02-ontology.md              # Stage 2 输出
 ├── RQ-001.md ... RQ-005.md     # Stage 3 输出（并行）
@@ -248,7 +342,28 @@ research-{repo-name}-{YYYYMMDD}/
 ├── 04-opponent.md              # Stage 4 输出
 ├── 05-cross-validation.md      # Stage 5 输出
 ├── 06-comparative.md           # Stage 6 输出
-└── report.md                   # 最终报告（Stage 7）
+├── report.md                   # 最终报告（Stage 7）
+├── knowledge-units.json        # Stage 8 输出：提取的知识单元
+└── brain-update-report.md      # Stage 9 输出：CREATE/MERGE/REJECT 计划
+```
+
+## Brain 目录结构（全局，跨仓库共享）
+
+```
+brain/                           # 全局 Research Brain（RESEARCH_BRAIN_DIR 环境变量可覆盖）
+├── patterns/                    # 架构模式（planner-executor, event-bus, plugin-registry, ...）
+│   ├── pattern.planner-executor.json
+│   └── pattern.tool-registry.json
+├── decisions/                   # 工程决策（why runner-centric, why stateless-tool, ...）
+│   └── decision.runner-centric.json
+├── tradeoffs/                   # 权衡（single-runner, vectorized-execution, ...）
+│   └── tradeoff.single-runner.json
+├── anti-patterns/               # 反模式（prompt-spaghetti, god-context, ...）
+│   └── antipattern.prompt-spaghetti.json
+├── ontology/                    # 统一术语（planner, executor, harness, guardrail, ...）
+│   └── term.planner.json
+├── concept-graph.json           # 概念关系图（Pattern/Decision/Concept 之间的关系）
+└── index.json                   # 快速查找索引
 ```
 
 命名约定：
@@ -387,6 +502,23 @@ node research-repo.mjs report --lang=zh <repoPath> > evidence-brief.md
 
 # Incremental update (git diff → re-analyze changed files → merge)
 node research-repo.mjs update <repoPath> > evidence-store/full.json
+
+# ── Research Brain commands ──
+# Initialize global Brain (creates directory structure + empty index)
+node research-repo.mjs brain-init [brainDir]
+
+# Generate brain-brief.json for Stage 0 (Brain-first Question Planning)
+node research-repo.mjs brain-brief [brainDir] > brain-brief.json
+
+# Query Brain (list patterns/decisions/... or search by title)
+node research-repo.mjs brain-query <type> [brainDir]           # list all of type
+node research-repo.mjs brain-query <type> --title="planner" [brainDir]
+
+# Show Brain summary (counts, established patterns, concept graph stats)
+node research-repo.mjs brain-summary [brainDir]
+
+# Apply knowledge-units.json to Brain (Stage 9 — creates/merges/rejects)
+node research-repo.mjs brain-update <knowledge-units.json> [brainDir]
 ```
 
 ### Analyzer 目录

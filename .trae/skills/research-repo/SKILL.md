@@ -30,6 +30,8 @@ description: "研究一个开源 Repository，提炼其架构、设计思想、�
 3. **Bayesian**：假设随证据积累而更新置信度。记录置信度演进，而非一次性判断。
 4. **Adversarial Validation**：每个 Finding 必须经受对抗性验证。只有经受住反证攻击的 Finding 才可进入报告。
 5. **Decision-centric**：报告的核心是工程决策（为什么这样做、放弃了什么、替代方案是什么），而不是架构描述。
+6. **Knowledge-Centric**：Repository 只是 Evidence，Knowledge 才是真正产品。每次研究的价值不只在于报告，更在于它为全局知识库贡献了哪些可迁移的抽象（模式、决策、权衡、反模式）。
+7. **Brain-first**：研究从已有知识开始，不从零开始。研究问题应聚焦于新颖性——这个仓库与已有知识相比，有哪些相同与不同？已有知识能回答的问题不值得重新研究。
 
 ---
 
@@ -60,6 +62,16 @@ description: "研究一个开源 Repository，提炼其架构、设计思想、�
 5. **Reporting**
    The final report is decision-centric.
    Describe engineering decisions, tradeoffs and reusable patterns rather than file summaries.
+
+6. **Knowledge Accumulation**
+   Every research session must contribute to the global knowledge base.
+   Extract reusable abstractions: patterns, decisions, tradeoffs, anti-patterns.
+   Knowledge that cannot transfer to other projects is not worth accumulating.
+
+7. **Novelty Detection**
+   Before generating research questions, compare evidence against existing knowledge.
+   Focus on what is new, contradictory, or a unique variation of known patterns.
+   Already-answered questions should not be re-asked unless there is reason to doubt the answer.
 
 ---
 
@@ -121,6 +133,16 @@ Major refactors, Breaking changes, Deprecated ideas, Evolution of prompts, Evolu
 - Where is the real innovation?
 - Which decisions appear over-engineered?
 - Which ideas survived across multiple releases?
+
+### Knowledge Extraction
+After completing the report, extract reusable abstractions for the global knowledge base:
+
+- **Patterns**: Reusable architecture patterns observed (Planner-Executor, Event Bus, Plugin Registry, etc.). Must be abstractable beyond this repository.
+- **Decisions**: Why a design was chosen and under what conditions. Must include applicable context, not just the choice.
+- **Tradeoffs**: Benefits, costs, and boundaries of each design. Must be bidirectional (Pros + Cons).
+- **Anti-patterns**: Common design problems with failure cases. Must have real examples of failure, not theoretical.
+- **Vocabulary**: Unified engineering terms. Consistent terminology across all research enables cross-repo comparison.
+- **Concept Graph**: Relationships between patterns, decisions, and concepts (e.g., Planner produces Plan, Plan executed_by Runner).
 
 ---
 
@@ -229,5 +251,7 @@ Problem → Design → Evidence → Tradeoff → Takeaway
 - 哪些实现模式是可复用的
 - 哪些想法是独特或特别优雅的
 - 哪些文件和测试是深入研究的最高价值入口
+- 这个仓库为全局知识库贡献了哪些新的模式、决策、权衡或反例
 
 读者读完报告后，应该知道接下来两小时该读哪些源代码。
+研究完成后，全局知识库应该比研究前更丰富——这是衡量研究价值的最终标准。

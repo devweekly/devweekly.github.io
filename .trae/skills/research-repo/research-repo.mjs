@@ -17,9 +17,18 @@
  *   node research-repo.mjs all          <repoPath>  # Complete Evidence Store (includes plan + questions)
  *   node research-repo.mjs plan         <repoPath>  # Research plan: goal → hypotheses → evidence → reading plan
  *   node research-repo.mjs questions    <repoPath>  # Gap-driven questions for LLM reasoning layer
+ *   node research-repo.mjs report       <repoPath>  # Evidence Brief (Markdown)
+ *   node research-repo.mjs update       <repoPath>  # Incremental analysis (git diff → merge)
+ *
+ *   # Research Brain commands (no repoPath needed):
+ *   node research-repo.mjs brain-init   [brainDir]                    # Initialize global Brain
+ *   node research-repo.mjs brain-brief  [brainDir]                    # Generate Brain Brief JSON for Stage 0
+ *   node research-repo.mjs brain-query  <type> [brainDir] [--title=]  # Query Brain (pattern/decision/...)
+ *   node research-repo.mjs brain-summary [brainDir]                   # Show Brain stats
+ *   node research-repo.mjs brain-update <knowledge-units.json> [brainDir]  # Apply Stage 8 output to Brain
  *
  * This file is the CLI entrypoint. All analysis logic lives in modular files:
- *   config.mjs              — Configuration constants
+ *   config.mjs              — Configuration constants (including Brain config)
  *   utils.mjs               — Shared utilities (AST, file walking, parsers, graph algos)
  *   context.mjs             — RepositoryContext (shared analysis context)
  *   base-analyzer.mjs       — BaseAnalyzer abstract class
@@ -29,6 +38,8 @@
  *   research-engine.mjs     — ResearchPlanner, QuestionGenerator, FindingsGenerator
  *   report-generator.mjs    — ReportGenerator (Evidence Brief)
  *   pipeline.mjs            — ANALYZERS array, AnalyzerPipeline, merge utilities
+ *   brain.mjs               — Global Research Brain (Pattern/Decision/Tradeoff/Anti-pattern store)
+ *   knowledge-base.mjs      — Knowledge extraction + Brain update helpers
  *
  * Each command prints JSON to stdout. Errors go to stderr, exit(1) on error.
  */
@@ -47,6 +58,12 @@ import {
   QuestionGenerator,
 } from "./research-engine.mjs";
 import { ReportGenerator } from "./report-generator.mjs";
+import { Brain } from "./brain.mjs";
+import {
+  generateBrainBrief,
+  updateBrainFromFile,
+} from "./knowledge-base.mjs";
+import { BRAIN_DIR, KNOWLEDGE_TYPES } from "./config.mjs";
 
 // Swallow EPIPE errors when downstream (e.g. `head`) closes the pipe early.
 process.stdout?.on?.("error", (err) => {
@@ -62,15 +79,32 @@ async function main() {
   // Filter out --lang= flag before parsing positional args
   const langFlag = process.argv.find((a) => a.startsWith("--lang="));
   const lang = langFlag ? langFlag.split("=")[1] : "en";
-  const positional = process.argv.slice(2).filter((a) => !a.startsWith("--"));
+  // Filter out --title= flag for brain-query
+  const titleFlag = process.argv.find((a) => a.startsWith("--title="));
+  const titleFilter = titleFlag ? titleFlag.split("=")[1] : null;
+  const positional = process.argv.slice(2).filter(
+    (a) => !a.startsWith("--") && a !== langFlag && a !== titleFlag
+  );
   const command = positional[0];
   const repoPath = positional[1];
   const syntheticCommands = new Set(["plan", "questions", "report", "update"]);
-  const validCommands = new Set([...ANALYZERS.map((a) => a.id), "all", ...syntheticCommands]);
+  const brainCommands = new Set([
+    "brain-init",
+    "brain-brief",
+    "brain-query",
+    "brain-summary",
+    "brain-update",
+  ]);
+  const validCommands = new Set([
+    ...ANALYZERS.map((a) => a.id),
+    "all",
+    ...syntheticCommands,
+    ...brainCommands,
+  ]);
 
-  if (!command || !repoPath) {
+  if (!command) {
     console.error(
-      `Usage: node research-repo.mjs <${[...validCommands].join("|")}> <repoPath>`
+      `Usage: node research-repo.mjs <${[...validCommands].join("|")}> <args>`
     );
     process.exit(1);
   }
@@ -82,14 +116,114 @@ async function main() {
     process.exit(1);
   }
 
-  if (!existsSync(repoPath)) {
-    console.error(`Error: path does not exist: ${repoPath}`);
+  // ---- Brain commands (no repoPath or tree-sitter needed) ----
+  if (brainCommands.has(command)) {
+    // brain-query and brain-update take a positional arg before brainDir
+    // brain-init / brain-brief / brain-summary take brainDir as first positional
+    let brainDir;
+    if (command === "brain-query") {
+      brainDir = positional[2]; // positional[1] = type
+    } else if (command === "brain-update") {
+      brainDir = positional[2]; // positional[1] = knowledge-units.json path
+    } else {
+      brainDir = positional[1]; // brain-init / brain-brief / brain-summary
+    }
+    const brainRoot = brainDir || BRAIN_DIR;
+
+    if (command === "brain-init") {
+      const brain = new Brain(brainRoot);
+      const created = brain.init();
+      console.error(`Brain initialized at: ${created}`);
+      console.log(JSON.stringify(brain.summary(), null, 2));
+      return;
+    }
+
+    if (command === "brain-brief") {
+      const brain = new Brain(brainRoot);
+      if (!existsSync(brainRoot)) {
+        console.error(`Error: Brain not found at ${brainRoot}. Run 'brain-init' first.`);
+        process.exit(1);
+      }
+      const brief = brain.exportBrief();
+      process.stdout.write(JSON.stringify(brief, null, 2) + "\n");
+      return;
+    }
+
+    if (command === "brain-query") {
+      const type = positional[1];
+      if (!type) {
+        console.error(`Usage: brain-query <type> [brainDir] [--title="..."]`);
+        console.error(`Valid types: ${Object.keys(KNOWLEDGE_TYPES).join(", ")}, all`);
+        process.exit(1);
+      }
+      const brain = new Brain(brainRoot);
+      if (!existsSync(brainRoot)) {
+        console.error(`Error: Brain not found at ${brainRoot}. Run 'brain-init' first.`);
+        process.exit(1);
+      }
+      const filter = titleFilter ? { titleContains: titleFilter } : {};
+      const results = brain.query(type, filter);
+      process.stdout.write(JSON.stringify(results, null, 2) + "\n");
+      return;
+    }
+
+    if (command === "brain-summary") {
+      const brain = new Brain(brainRoot);
+      if (!existsSync(brainRoot)) {
+        console.error(`Error: Brain not found at ${brainRoot}. Run 'brain-init' first.`);
+        process.exit(1);
+      }
+      const summary = brain.summary();
+      process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
+      return;
+    }
+
+    if (command === "brain-update") {
+      const knowledgeUnitsPath = positional[1];
+      if (!knowledgeUnitsPath) {
+        console.error(`Usage: brain-update <knowledge-units.json> [brainDir]`);
+        process.exit(1);
+      }
+      if (!existsSync(knowledgeUnitsPath)) {
+        console.error(`Error: file not found: ${knowledgeUnitsPath}`);
+        process.exit(1);
+      }
+      const brain = new Brain(brainRoot);
+      brain.init(); // ensure directory structure exists
+      const result = updateBrainFromFile(brain, knowledgeUnitsPath);
+      console.error(
+        `[brain-update] ${result.repoName}: ${result.created.length} created, ` +
+        `${result.merged.length} merged, ${result.novel.length} novel, ` +
+        `${result.known.length} known, ${result.conceptEdges} concept edges` +
+        (result.errors.length ? `, ${result.errors.length} errors` : "")
+      );
+      for (const err of result.errors) {
+        console.error(`  ERROR: ${err}`);
+      }
+      process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+      return;
+    }
+  }
+
+  // ---- Analyzer commands (require repoPath + tree-sitter) ----
+  const repoPathFinal = positional[1];
+  if (!repoPathFinal) {
+    console.error(
+      `Usage: node research-repo.mjs <${[...validCommands]
+        .filter((c) => !brainCommands.has(c))
+        .join("|")}> <repoPath>`
+    );
     process.exit(1);
   }
 
-  const absPath = statSync(repoPath).isDirectory()
-    ? repoPath
-    : dirname(repoPath);
+  if (!existsSync(repoPathFinal)) {
+    console.error(`Error: path does not exist: ${repoPathFinal}`);
+    process.exit(1);
+  }
+
+  const absPath = statSync(repoPathFinal).isDirectory()
+    ? repoPathFinal
+    : dirname(repoPathFinal);
 
   await loadOptionalPackages();
   await initTreeSitter();
