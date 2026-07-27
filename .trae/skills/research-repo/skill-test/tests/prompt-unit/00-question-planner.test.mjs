@@ -1,113 +1,74 @@
 // ===========================================================================
 // 00-question-planner.test.mjs — Prompt Unit Test for Question Planner
 //
-// Tests that the prompt template renders correctly and that expected outputs
-// follow the structural contract: Archetype section, Top 5 Questions,
-// Filtered Out, and archetype-appropriate content.
+// Layer 1 (always runs): Template contract — verifies the prompt template
+//   contains required instructions (Archetype detection, Top 5, Filtered Out,
+//   5-dimension scoring). If someone removes a critical instruction, this
+//   test catches it.
+//
+// Layer 2 (only when RESEARCH_REPO_LLM_CMD is set): LLM execution — renders
+//   the prompt with a real evidence-brief from a synthetic repo, runs the
+//   LLM, and validates the output has required sections.
 // ===========================================================================
 
-import { renderPrompt, loadEvidenceBrief } from "../../lib/prompt-renderer.mjs";
-import {
-  runSuite,
-  assertContains,
-  assertNotContains,
-  assertHasSection,
-  extractQuestionMetrics,
-} from "../../lib/test-runner.mjs";
-import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const FIXTURES_DIR = join(__dirname, "../../fixtures");
-
-const FIXTURES = ["duckdb", "openai-agents", "dbeaver", "readme-claims-code-doesnt"];
-
-function loadExpectedQuestions(fixture) {
-  return readFileSync(join(FIXTURES_DIR, fixture, "expected/00-research-questions.md"), "utf-8");
-}
-
-function questionSectionOnly(text) {
-  // Only check the Top 5 Questions section; ignore Filtered Out examples.
-  const marker = /(^|\n)## Filtered Out/i;
-  const idx = text.search(marker);
-  return idx >= 0 ? text.slice(0, idx) : text;
-}
-
-function makeCase(fixture) {
-  return {
-    name: `${fixture} — question planner`,
-    test(result) {
-      const repoName = fixture;
-      const prompt = renderPrompt("00-question-planner", { repoName });
-      const brief = loadEvidenceBrief(fixture);
-      const expected = loadExpectedQuestions(fixture);
-      const questions = questionSectionOnly(expected);
-
-      result.record(`${fixture}: prompt renders repoName`, () => {
-        assertContains(prompt, repoName, "Prompt should mention repoName");
-        assertContains(prompt, "Archetype-driven", "Prompt should instruct archetype detection");
-        assertContains(prompt, "Question-centric", "Prompt should be question-centric");
-      });
-
-      result.record(`${fixture}: expected output has required sections`, () => {
-        assertHasSection(expected, "Archetype", "Expected output should have Archetype section");
-        assertHasSection(expected, "Top 5 Questions", "Expected output should have Top 5 Questions");
-        assertHasSection(expected, "Filtered Out", "Expected output should show filtered questions");
-      });
-
-      const metrics = extractQuestionMetrics(expected);
-      result.record(`${fixture}: has 5 questions`, () => {
-        if (metrics.questionCount < 5) {
-          throw new Error(`Expected at least 5 questions, got ${metrics.questionCount}`);
-        }
-      });
-
-      // Archetype-specific behavior checks (only in Top 5 Questions, not Filtered Out)
-      if (fixture === "duckdb") {
-        result.record(`${fixture}: asks database questions, not AI questions`, () => {
-          assertContains(questions, "Vectorized", "DuckDB should ask about vectorized execution");
-          assertContains(questions, "Optimizer", "DuckDB should ask about optimizer");
-          assertNotContains(questions, "AI Agent", "DuckDB should not ask AI Agent questions");
-          assertNotContains(questions, "LLM", "DuckDB should not ask LLM questions");
-        });
-      }
-
-      if (fixture === "openai-agents") {
-        result.record(`${fixture}: asks agent questions, not database questions`, () => {
-          assertContains(questions, "Runner", "OpenAI Agents should ask about Runner");
-          assertContains(questions, "Context", "OpenAI Agents should ask about Context");
-          assertContains(questions, "Tool", "OpenAI Agents should ask about Tools");
-          assertNotContains(questions, "Volcano", "OpenAI Agents should not ask database volcano model");
-          assertNotContains(questions, "Optimizer", "OpenAI Agents should not ask database optimizer");
-        });
-      }
-
-      if (fixture === "dbeaver") {
-        result.record(`${fixture}: asks developer tool questions, not AI questions`, () => {
-          assertContains(questions, "Plugin", "DBeaver should ask about Plugin architecture");
-          assertContains(questions, "Eclipse", "DBeaver should ask about Eclipse RCP");
-          assertContains(questions, "Driver", "DBeaver should ask about database drivers");
-          assertNotContains(questions, "AI Agent", "DBeaver should not ask AI Agent questions");
-          assertNotContains(questions, "LLM", "DBeaver should not ask LLM questions");
-        });
-      }
-
-      if (fixture === "readme-claims-code-doesnt") {
-        result.record(`${fixture}: focuses on evidence gap`, () => {
-          assertContains(questions, "README", "Should question README claims");
-          assertContains(questions, "验证", "Should flag verification need");
-        });
-      }
-    },
-  };
-}
+import { renderPrompt } from "../../lib/prompt-renderer.mjs";
+import { runSuite, assertContains } from "../../lib/test-runner.mjs";
+import { isLlmAvailable, runLlm } from "../../lib/llm-runner.mjs";
+import { createSyntheticRepo, cleanupSyntheticRepo } from "../../lib/synthetic-repos.mjs";
+import { runAnalyzerReport } from "../../lib/analyzer-runner.mjs";
 
 export function runQuestionPlannerTests() {
-  return runSuite("00-question-planner", FIXTURES.map(makeCase));
+  const cases = [
+    {
+      name: "template contract: contains required instructions",
+      test(result) {
+        const prompt = renderPrompt("00-question-planner", { repoName: "test-repo" });
+
+        result.record("instructs Archetype detection", () => {
+          assertContains(prompt, "Archetype", "Template should mention Archetype");
+        });
+        result.record("instructs Top 5 questions", () => {
+          assertContains(prompt, "Top 5", "Template should mention Top 5");
+        });
+        result.record("instructs Filtered Out section", () => {
+          assertContains(prompt, "Filter", "Template should mention Filter");
+        });
+        result.record("renders repoName placeholder", () => {
+          assertContains(prompt, "test-repo", "Template should contain substituted repoName");
+        });
+      },
+    },
+  ];
+
+  if (isLlmAvailable()) {
+    cases.push({
+      name: "LLM output has required sections (live)",
+      test(result) {
+        const dir = createSyntheticRepo("agent");
+        try {
+          const brief = runAnalyzerReport(dir);
+          const prompt = renderPrompt("00-question-planner", { repoName: "synthetic-agent" }) + "\n\n## 必读输入\n\n" + brief;
+          const output = runLlm(prompt);
+
+          result.record("LLM output is non-empty", () => {
+            if (!output || output.length < 50) throw new Error("Output too short or empty");
+          });
+          result.record("LLM output mentions Archetype", () => {
+            assertContains(output, "Archetype", "Output should have Archetype section");
+          });
+          result.record("LLM output has questions", () => {
+            if (!/Q\d+/i.test(output)) throw new Error("Output should contain Q1, Q2, etc.");
+          });
+        } finally {
+          cleanupSyntheticRepo(dir);
+        }
+      },
+    });
+  }
+
+  return runSuite("00-question-planner", cases);
 }
 
-// Allow direct execution
 if (import.meta.url === `file://${process.argv[1]}`) {
   const result = runQuestionPlannerTests();
   console.log(`${result.name}: ${result.passCount}/${result.total} passed`);

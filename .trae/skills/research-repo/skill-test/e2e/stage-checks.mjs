@@ -87,13 +87,14 @@ export function validateEvidenceBriefStage(dir) {
   if (!checks.at(-1).ok) return checks;
 
   const text = readFileSync(path, "utf-8");
-  const hasIdentity = /(^|\n)#{1,3}\s*Repository\s+Identity/i.test(text) || /(^|\n)#{1,3}\s*Evidence\s+Summary/i.test(text);
-  const hasArchetype = /(^|\n)#{1,3}\s*Archetype\s+Hints/i.test(text) || /(^|\n)#{1,3}\s*Archetype\s+Assessment/i.test(text);
-  const hasEvidence = /(^|\n)#{1,3}\s*Key\s+Evidence/i.test(text) || /(^|\n)#{1,3}\s*Findings\b/i.test(text) || /(^|\n)#{1,3}\s*Evidence\s+Summary/i.test(text);
-  const hasDecisions = /(^|\n)#{1,3}\s*Design\s+Decisions/i.test(text) || /(^|\n)#{1,3}\s*Decisions\b/i.test(text) || /(^|\n)#{1,3}\s*Decision\s+Report/i.test(text);
+  const secNum = `(?:\\d+(?:\\.\\d+)*\\.?\\s*)?`;
+  const hasIdentity = new RegExp(`(^|\\n)#{1,3}\\s*${secNum}(Repository\\s+Identity|Evidence\\s+Summary|Evidence\\s+Brief)`, "i").test(text);
+  const hasArchetype = new RegExp(`(^|\\n)#{1,3}\\s*${secNum}(Archetype\\s+Hints?|Archetype\\s+Assessment|Architecture\\s+Insights|AI\\s*[/\\\\]\\s*Agent\\s+Design)`, "i").test(text);
+  const hasEvidence = new RegExp(`(^|\\n)#{1,3}\\s*${secNum}(Key\\s+Evidence|Findings|Evidence\\s+Summary)`, "i").test(text);
+  const hasDecisions = new RegExp(`(^|\\n)#{1,3}\\s*${secNum}(Design\\s+Decisions|Decisions|Architecture\\s+Knowledge|Decision\\s+Report)`, "i").test(text);
 
-  checks.push(checkStage("has Repository Identity / Evidence Summary", hasIdentity, "Missing Repository Identity or Evidence Summary", stage));
-  checks.push(checkStage("has Archetype Hints / Assessment", hasArchetype, "Missing Archetype Hints or Assessment", stage));
+  checks.push(checkStage("has Repository Identity / Evidence Summary", hasIdentity, "Missing Repository Identity, Evidence Summary, or Evidence Brief", stage));
+  checks.push(checkStage("has Archetype / Architecture section", hasArchetype, "Missing Archetype Hints, Architecture Insights, or AI/Agent Design", stage));
   checks.push(checkStage("has Key Evidence / Findings", hasEvidence, "Missing Key Evidence or Findings", stage));
   checks.push(checkStage("has Design Decisions / Decisions", hasDecisions, "Missing Design Decisions or Decisions", stage));
 

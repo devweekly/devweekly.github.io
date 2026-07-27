@@ -107,8 +107,10 @@ function main() {
   console.log(`\nTOTAL: ${grandPassed}/${grandTotal} (${grandPct}%) ${grandOk ? "PASS" : "FAIL"}`);
 
   if (!grandOk) {
-    console.log("\nTip: This suite tests prompt structure and expected behavior.");
-    console.log("If an LLM-generated output fails, update the fixture expected/ files or the prompt.");
+    console.log("\nTip: Each layer runs the real Analyzer on synthetic repos.");
+    console.log("If a behavior/mutation/e2e/regression test fails, the Analyzer pipeline changed.");
+    console.log("If a prompt template contract fails, the prompt template lost a required instruction.");
+    console.log("To run LLM-driven prompt tests, set RESEARCH_REPO_LLM_CMD.");
   }
 
   process.exit(grandOk ? 0 : 1);

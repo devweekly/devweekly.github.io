@@ -1,61 +1,62 @@
 // ===========================================================================
 // 04-opponent.test.mjs — Prompt Unit Test for Opponent Agent
 //
-// Tests that the prompt requires adversarial attacks on findings and that
-// expected outputs contain attacks, conclusion, and evidence-based critique.
+// Layer 1 (always runs): Template contract — verifies the prompt instructs
+//   adversarial behavior (skeptic role, prove findings wrong).
+//
+// Layer 2 (only when RESEARCH_REPO_LLM_CMD is set): LLM execution.
 // ===========================================================================
 
 import { renderPrompt } from "../../lib/prompt-renderer.mjs";
-import {
-  runSuite,
-  assertContains,
-  assertHasSection,
-} from "../../lib/test-runner.mjs";
-import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const FIXTURES_DIR = join(__dirname, "../../fixtures");
-
-const FIXTURES = ["duckdb", "openai-agents", "dbeaver", "readme-claims-code-doesnt"];
-
-function loadExpectedOpponent(fixture) {
-  return readFileSync(join(FIXTURES_DIR, fixture, "expected/04-opponent.md"), "utf-8");
-}
-
-function makeCase(fixture) {
-  return {
-    name: `${fixture} — opponent agent`,
-    test(result) {
-      const prompt = renderPrompt("04-opponent", { repoName: fixture });
-      const expected = loadExpectedOpponent(fixture);
-
-      result.record(`${fixture}: prompt requires adversarial behavior`, () => {
-        assertContains(prompt, "怀疑论者", "Prompt should cast model as skeptic");
-        assertContains(prompt, "证明每个 Finding 是错的", "Prompt should require proving findings wrong");
-      });
-
-      result.record(`${fixture}: expected output contains four attacks`, () => {
-        assertContains(expected, "攻击 1", "Expected output should have attack 1");
-        assertContains(expected, "攻击 2", "Expected output should have attack 2");
-        assertContains(expected, "攻击 3", "Expected output should have attack 3");
-        assertContains(expected, "攻击 4", "Expected output should have attack 4");
-      });
-
-      result.record(`${fixture}: expected output reaches a conclusion`, () => {
-        assertContains(expected, "结论", "Expected output should have conclusion");
-      });
-
-      result.record(`${fixture}: expected output requests more evidence when needed`, () => {
-        assertContains(expected, "建议", "Expected output should have recommendation");
-      });
-    },
-  };
-}
+import { runSuite, assertContains } from "../../lib/test-runner.mjs";
+import { isLlmAvailable, runLlm } from "../../lib/llm-runner.mjs";
+import { createSyntheticRepo, cleanupSyntheticRepo } from "../../lib/synthetic-repos.mjs";
+import { runAnalyzerReport } from "../../lib/analyzer-runner.mjs";
 
 export function runOpponentTests() {
-  return runSuite("04-opponent", FIXTURES.map(makeCase));
+  const cases = [
+    {
+      name: "template contract: instructs adversarial behavior",
+      test(result) {
+        const prompt = renderPrompt("04-opponent", { repoName: "test-repo" });
+
+        result.record("casts model as skeptic", () => {
+          assertContains(prompt, "怀疑论者", "Prompt should cast model as skeptic");
+        });
+        result.record("requires proving findings wrong", () => {
+          assertContains(prompt, "证明每个 Finding 是错的", "Prompt should require proving findings wrong");
+        });
+      },
+    },
+  ];
+
+  if (isLlmAvailable()) {
+    cases.push({
+      name: "LLM output contains attacks and conclusion (live)",
+      test(result) {
+        const dir = createSyntheticRepo("agent");
+        try {
+          const brief = runAnalyzerReport(dir);
+          const prompt = renderPrompt("04-opponent", { repoName: "synthetic-agent" }) + "\n\n## 必读输入\n\n" + brief;
+          const output = runLlm(prompt);
+
+          result.record("LLM output is non-empty", () => {
+            if (!output || output.length < 50) throw new Error("Output too short or empty");
+          });
+          result.record("LLM output has attacks", () => {
+            if (!/攻击\s*\d/i.test(output)) throw new Error("Output should contain numbered attacks");
+          });
+          result.record("LLM output has conclusion", () => {
+            assertContains(output, "结论", "Output should have conclusion");
+          });
+        } finally {
+          cleanupSyntheticRepo(dir);
+        }
+      },
+    });
+  }
+
+  return runSuite("04-opponent", cases);
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

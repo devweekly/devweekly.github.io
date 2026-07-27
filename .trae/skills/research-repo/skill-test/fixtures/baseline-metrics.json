@@ -1,77 +1,157 @@
 {
-  "comment": "Regression baseline for skill-test expected outputs. Tolerance = max allowed deviation from baseline value. Update this file only when intentional Skill changes shift the metrics.",
-  "fixtures": {
-    "duckdb": {
-      "questionCount": { "value": 5, "tolerance": 0 },
-      "claimCount": { "value": 3, "tolerance": 1 },
-      "verifiedCount": { "value": 1, "tolerance": 1 },
-      "partiallyVerifiedCount": { "value": 2, "tolerance": 1 },
-      "documentationOnlyCount": { "value": 0, "tolerance": 0 },
-      "unknownCount": { "value": 1, "tolerance": 1 },
-      "hasQualityGate": true,
-      "hasReadingGuide": true,
-      "hasFilteredOut": true
+  "comment": "Regression baseline from real Analyzer runs on synthetic archetype repos. Tolerance = max allowed deviation. Run `node skill-test/generate-baseline.mjs` to regenerate after intentional Analyzer changes.",
+  "repos": {
+    "database": {
+      "functionCount": {
+        "value": 1,
+        "tolerance": 2
+      },
+      "classCount": {
+        "value": 4,
+        "tolerance": 1
+      },
+      "toolCount": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "promptCount": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "testCount": {
+        "value": 1,
+        "tolerance": 1
+      },
+      "signalCount": {
+        "value": 3,
+        "tolerance": 0
+      },
+      "briefLength": {
+        "value": 39483,
+        "tolerance": 500
+      },
+      "briefFindingCount": {
+        "value": 44,
+        "tolerance": 3
+      },
+      "fileCount": {
+        "value": 9,
+        "tolerance": 1
+      }
     },
-    "openai-agents": {
-      "questionCount": { "value": 5, "tolerance": 0 },
-      "claimCount": { "value": 3, "tolerance": 1 },
-      "verifiedCount": { "value": 2, "tolerance": 1 },
-      "partiallyVerifiedCount": { "value": 1, "tolerance": 1 },
-      "documentationOnlyCount": { "value": 0, "tolerance": 0 },
-      "unknownCount": { "value": 1, "tolerance": 1 },
-      "hasQualityGate": true,
-      "hasReadingGuide": true,
-      "hasFilteredOut": true
+    "agent": {
+      "functionCount": {
+        "value": 0,
+        "tolerance": 2
+      },
+      "classCount": {
+        "value": 4,
+        "tolerance": 1
+      },
+      "toolCount": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "promptCount": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "testCount": {
+        "value": 1,
+        "tolerance": 1
+      },
+      "signalCount": {
+        "value": 2,
+        "tolerance": 0
+      },
+      "briefLength": {
+        "value": 38961,
+        "tolerance": 500
+      },
+      "briefFindingCount": {
+        "value": 44,
+        "tolerance": 3
+      },
+      "fileCount": {
+        "value": 9,
+        "tolerance": 1
+      }
     },
-    "dbeaver": {
-      "questionCount": { "value": 5, "tolerance": 0 },
-      "claimCount": { "value": 3, "tolerance": 1 },
-      "verifiedCount": { "value": 0, "tolerance": 0 },
-      "partiallyVerifiedCount": { "value": 3, "tolerance": 1 },
-      "documentationOnlyCount": { "value": 0, "tolerance": 0 },
-      "unknownCount": { "value": 1, "tolerance": 1 },
-      "hasQualityGate": true,
-      "hasReadingGuide": true,
-      "hasFilteredOut": true
+    "tool": {
+      "functionCount": {
+        "value": 0,
+        "tolerance": 2
+      },
+      "classCount": {
+        "value": 4,
+        "tolerance": 1
+      },
+      "toolCount": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "promptCount": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "testCount": {
+        "value": 1,
+        "tolerance": 1
+      },
+      "signalCount": {
+        "value": 2,
+        "tolerance": 0
+      },
+      "briefLength": {
+        "value": 38938,
+        "tolerance": 500
+      },
+      "briefFindingCount": {
+        "value": 44,
+        "tolerance": 3
+      },
+      "fileCount": {
+        "value": 8,
+        "tolerance": 1
+      }
     },
-    "readme-claims-code-doesnt": {
-      "questionCount": { "value": 5, "tolerance": 0 },
-      "claimCount": { "value": 2, "tolerance": 1 },
-      "verifiedCount": { "value": 0, "tolerance": 0 },
-      "partiallyVerifiedCount": { "value": 1, "tolerance": 1 },
-      "documentationOnlyCount": { "value": 1, "tolerance": 0 },
-      "unknownCount": { "value": 2, "tolerance": 1 },
-      "hasQualityGate": true,
-      "hasReadingGuide": true,
-      "hasFilteredOut": true
-    },
-    "duckdb-mutated": {
-      "questionCount": { "value": 5, "tolerance": 0 },
-      "claimCount": { "value": 3, "tolerance": 1 },
-      "verifiedCount": { "value": 0, "tolerance": 0 },
-      "partiallyVerifiedCount": { "value": 2, "tolerance": 1 },
-      "documentationOnlyCount": { "value": 0, "tolerance": 0 },
-      "unknownCount": { "value": 3, "tolerance": 1 },
-      "hasQualityGate": true,
-      "hasReadingGuide": true,
-      "hasFilteredOut": true
-    },
-    "openai-agents-mutated": {
-      "questionCount": { "value": 5, "tolerance": 0 },
-      "claimCount": { "value": 3, "tolerance": 1 },
-      "verifiedCount": { "value": 0, "tolerance": 0 },
-      "partiallyVerifiedCount": { "value": 2, "tolerance": 1 },
-      "documentationOnlyCount": { "value": 0, "tolerance": 0 },
-      "unknownCount": { "value": 3, "tolerance": 1 },
-      "hasQualityGate": true,
-      "hasReadingGuide": true,
-      "hasFilteredOut": true
+    "readme-claims": {
+      "functionCount": {
+        "value": 1,
+        "tolerance": 2
+      },
+      "classCount": {
+        "value": 0,
+        "tolerance": 1
+      },
+      "toolCount": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "promptCount": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "testCount": {
+        "value": 0,
+        "tolerance": 1
+      },
+      "signalCount": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "briefLength": {
+        "value": 37767,
+        "tolerance": 500
+      },
+      "briefFindingCount": {
+        "value": 44,
+        "tolerance": 3
+      },
+      "fileCount": {
+        "value": 3,
+        "tolerance": 1
+      }
     }
-  },
-  "qualityGates": {
-    "minQuestionCount": 5,
-    "maxClaimCount": 5,
-    "minQualityGatePresence": 1.0,
-    "maxDocumentationOnlyRatio": 0.5
   }
 }

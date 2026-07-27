@@ -19,7 +19,8 @@
     "test:skill": "node .trae/skills/research-repo/skill-test/skill-test.mjs",
     "test:e2e": "node .trae/skills/research-repo/skill-test/e2e/run-e2e.mjs --fixtures",
     "test:e2e:live": "node .trae/skills/research-repo/skill-test/e2e/run-e2e-live.mjs",
-    "test:fixtures:generate": "node .trae/skills/research-repo/skill-test/fixture-generator.mjs"
+    "test:fixtures:generate": "node .trae/skills/research-repo/skill-test/fixture-generator.mjs",
+    "test:baseline:regenerate": "node .trae/skills/research-repo/skill-test/generate-baseline.mjs"
   },
   "packageManager": "pnpm@10.24.0",
   "dependencies": {

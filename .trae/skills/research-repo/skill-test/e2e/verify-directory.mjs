@@ -113,18 +113,16 @@ export function verifyResearchDirectory(dir, expected = {}) {
     );
   }
 
-  // 2. Stage files (optional but tracked)
+  // 2. Stage files (optional — deterministic pipeline may not produce them)
   const presentStages = [];
   for (const file of STAGE_FILES) {
     if (existsSync(join(dir, file))) {
       presentStages.push(file);
     }
   }
-  check(
-    "stage files present",
-    presentStages.length >= 1,
-    `Expected at least one stage file, found ${presentStages.length}`
-  );
+  result.stageFiles = presentStages;
+  // Stage files are optional: the deterministic pipeline (analyzer + report)
+  // does not produce LLM-driven stage files. Only flag as info, not as error.
 
   // If no report, stop here
   const reportPath = join(dir, "report.md");

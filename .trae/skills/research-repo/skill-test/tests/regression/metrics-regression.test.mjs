@@ -1,127 +1,118 @@
 // ===========================================================================
-// metrics-regression.test.mjs — Regression Suite
+// metrics-regression.test.mjs — Regression Suite (LIVE)
 //
-// Compares current fixture metrics against baseline-metrics.json to detect
-// drift after Skill changes. Fails on large unexpected drops in quality
-// signals (verified claims, quality gate presence) or spikes in unverified
-// claims.
+// Runs the real Analyzer on synthetic archetype repos, computes deterministic
+// metrics from the actual evidence store + evidence-brief, and compares
+// against baseline values. If the Analyzer output drifts beyond tolerance,
+// the test fails — detecting regressions in symbol extraction, signal
+// detection, or evidence-brief generation.
+//
+// This is NOT a fixture-vs-fixture comparison. The baseline comes from real
+// Analyzer runs and is updated via `--update-baseline` when intentional
+// changes are made.
 // ===========================================================================
 
-import { runSuite, computeFixtureMetrics } from "../../lib/test-runner.mjs";
-import { readFileSync, readdirSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { runSuite, loadJsonFixture } from "../../lib/test-runner.mjs";
+import { createSyntheticRepo, cleanupSyntheticRepo } from "../../lib/synthetic-repos.mjs";
+import { runAnalyzerAll, runAnalyzerReport, computeAnalyzerMetrics } from "../../lib/analyzer-runner.mjs";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const FIXTURES_DIR = join(__dirname, "../../fixtures");
+const BASELINE = loadJsonFixture("baseline-metrics.json", { repos: {} });
+const REPO_BASELINE = BASELINE.repos || BASELINE.fixtures || {};
 
-const baseline = JSON.parse(readFileSync(join(FIXTURES_DIR, "baseline-metrics.json"), "utf-8"));
+const ARCHETYPES = [
+  {
+    name: "database",
+    expectedSignals: ["hasSQL", "hasParser", "hasLexer"],
+  },
+  {
+    name: "agent",
+    expectedSignals: ["hasAgent", "hasTool"],
+  },
+  {
+    name: "tool",
+    expectedSignals: ["hasPlugin"],
+  },
+  {
+    name: "readme-claims",
+    expectedSignals: [],
+  },
+];
 
-function loadText(fixture, file) {
-  try {
-    return readFileSync(join(FIXTURES_DIR, fixture, file), "utf-8");
-  } catch {
-    return "";
-  }
+function withRepo(archetype, fn) {
+  return (result) => {
+    const dir = createSyntheticRepo(archetype);
+    try {
+      fn(result, dir);
+    } finally {
+      cleanupSyntheticRepo(dir);
+    }
+  };
 }
 
-function discoverFixtures() {
-  return readdirSync(FIXTURES_DIR, { withFileTypes: true })
-    .filter((d) => d.isDirectory())
-    .map((d) => d.name)
-    .filter((name) => baseline.fixtures[name]);
+function checkMetric(result, label, actual, baseline, tolerance) {
+  result.record(label, () => {
+    const diff = Math.abs(actual - baseline);
+    if (diff > tolerance) {
+      throw new Error(`${label}: ${actual} vs baseline ${baseline} (tolerance ${tolerance})`);
+    }
+  });
+}
+
+function makeRegressionCase(archetype) {
+  const baseline = REPO_BASELINE[archetype.name];
+  const hasBaseline = Boolean(baseline);
+
+  return {
+    name: `${archetype.name} repo: analyzer metrics ${hasBaseline ? "match baseline" : "(no baseline — establishing)"}`,
+    test: withRepo(archetype.name, (result, dir) => {
+      const store = runAnalyzerAll(dir);
+      const brief = runAnalyzerReport(dir);
+      const metrics = computeAnalyzerMetrics(store, brief);
+
+      // Always check signal expectations (these are hard contracts).
+      result.record(`${archetype.name}: signalCount matches expected`, () => {
+        if (metrics.signalCount < archetype.expectedSignals.length) {
+          throw new Error(
+            `Expected ≥${archetype.expectedSignals.length} signals, got ${metrics.signalCount}`
+          );
+        }
+      });
+
+      result.record(`${archetype.name}: brief is non-empty`, () => {
+        if (metrics.briefLength < 100) throw new Error(`Brief too short: ${metrics.briefLength} chars`);
+      });
+
+      result.record(`${archetype.name}: fileCount > 0`, () => {
+        if (metrics.fileCount === 0) throw new Error("Expected non-zero file count");
+      });
+
+      // Check baseline-bound metrics (only if baseline exists).
+      if (hasBaseline) {
+        if (baseline.functionCount) {
+          checkMetric(result, `${archetype.name}: functionCount`, metrics.functionCount, baseline.functionCount.value, baseline.functionCount.tolerance);
+        }
+        if (baseline.classCount) {
+          checkMetric(result, `${archetype.name}: classCount`, metrics.classCount, baseline.classCount.value, baseline.classCount.tolerance);
+        }
+        if (baseline.signalCount) {
+          checkMetric(result, `${archetype.name}: signalCount`, metrics.signalCount, baseline.signalCount.value, baseline.signalCount.tolerance);
+        }
+        if (baseline.toolCount) {
+          checkMetric(result, `${archetype.name}: toolCount`, metrics.toolCount, baseline.toolCount.value, baseline.toolCount.tolerance);
+        }
+        if (baseline.promptCount) {
+          checkMetric(result, `${archetype.name}: promptCount`, metrics.promptCount, baseline.promptCount.value, baseline.promptCount.tolerance);
+        }
+        if (baseline.fileCount) {
+          checkMetric(result, `${archetype.name}: fileCount`, metrics.fileCount, baseline.fileCount.value, baseline.fileCount.tolerance);
+        }
+      }
+    }),
+  };
 }
 
 export function runRegressionTests() {
-  const fixtures = discoverFixtures();
-
-  const cases = [
-    {
-      name: "all fixtures have expected outputs",
-      test(result) {
-        for (const fixture of fixtures) {
-          result.record(`${fixture}: has expected questions`, () => {
-            const text = loadText(fixture, "expected/00-research-questions.md");
-            if (!text) throw new Error("Missing expected questions");
-          });
-          result.record(`${fixture}: has expected report`, () => {
-            const text = loadText(fixture, "expected/07-report.md");
-            if (!text) throw new Error("Missing expected report");
-          });
-        }
-      },
-    },
-    {
-      name: "metrics match baseline within tolerance",
-      test(result) {
-        for (const fixture of fixtures) {
-          const expectedBaseline = baseline.fixtures[fixture];
-          const questions = loadText(fixture, "expected/00-research-questions.md");
-          const report = loadText(fixture, "expected/07-report.md");
-          const metrics = computeFixtureMetrics(questions, report);
-
-          for (const [key, spec] of Object.entries(expectedBaseline)) {
-            if (typeof spec === "boolean") {
-              result.record(`${fixture}: ${key}=${spec}`, () => {
-                if (metrics[key] !== spec) {
-                  throw new Error(`Expected ${key}=${spec}, got ${metrics[key]}`);
-                }
-              });
-              continue;
-            }
-
-            if (spec && typeof spec === "object" && "value" in spec) {
-              const { value, tolerance } = spec;
-              result.record(`${fixture}: ${key} within ${value}±${tolerance}`, () => {
-                const diff = Math.abs((metrics[key] || 0) - value);
-                if (diff > tolerance) {
-                  throw new Error(`Expected ${key}=${value}±${tolerance}, got ${metrics[key]}`);
-                }
-              });
-            }
-          }
-        }
-      },
-    },
-    {
-      name: "quality gates hold across fixtures",
-      test(result) {
-        const gates = baseline.qualityGates;
-        let totalDocOnly = 0;
-        let totalClaims = 0;
-
-        for (const fixture of fixtures) {
-          const questions = loadText(fixture, "expected/00-research-questions.md");
-          const report = loadText(fixture, "expected/07-report.md");
-          const metrics = computeFixtureMetrics(questions, report);
-
-          totalDocOnly += metrics.documentationOnlyCount;
-          totalClaims += metrics.claimCount;
-
-          result.record(`${fixture}: question count >= ${gates.minQuestionCount}`, () => {
-            if (metrics.questionCount < gates.minQuestionCount) {
-              throw new Error(`questionCount ${metrics.questionCount} < ${gates.minQuestionCount}`);
-            }
-          });
-
-          result.record(`${fixture}: claim count <= ${gates.maxClaimCount}`, () => {
-            if (metrics.claimCount > gates.maxClaimCount) {
-              throw new Error(`claimCount ${metrics.claimCount} > ${gates.maxClaimCount}`);
-            }
-          });
-        }
-
-        const docOnlyRatio = totalClaims > 0 ? totalDocOnly / totalClaims : 0;
-        result.record(`documentation-only ratio <= ${gates.maxDocumentationOnlyRatio}`, () => {
-          if (docOnlyRatio > gates.maxDocumentationOnlyRatio) {
-            throw new Error(`Documentation-only ratio ${docOnlyRatio.toFixed(2)} exceeds ${gates.maxDocumentationOnlyRatio}`);
-          }
-        });
-      },
-    },
-  ];
-
-  return runSuite("regression — metrics", cases);
+  return runSuite("regression — analyzer metrics (live)", ARCHETYPES.map(makeRegressionCase));
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

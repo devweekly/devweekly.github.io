@@ -1,124 +1,143 @@
 // ===========================================================================
-// archetype-behavior.test.mjs — Behavior Test for Repository Archetypes
+// archetype-behavior.test.mjs — Behavior Test for Repository Archetypes (LIVE)
 //
-// Tests that different repository archetypes produce distinct, archetype-
-// appropriate research questions and avoid cross-archetype contamination.
+// Runs the real Analyzer on synthetic archetype repositories and verifies
+// that archetype signals are correctly detected. This is NOT a static fixture
+// check — each test case creates a real repo, runs `research-repo.mjs all`,
+// and asserts on the actual evidence store output.
 // ===========================================================================
 
-import { runSuite, assertContains } from "../../lib/test-runner.mjs";
-import { readFileSync } from "node:fs";
-import { join, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { runSuite } from "../../lib/test-runner.mjs";
+import { createSyntheticRepo, cleanupSyntheticRepo } from "../../lib/synthetic-repos.mjs";
+import { runAnalyzerAll, runAnalyzerReport, getSignals } from "../../lib/analyzer-runner.mjs";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const FIXTURES_DIR = join(__dirname, "../../fixtures");
-
-function loadExpectedQuestions(fixture) {
-  return readFileSync(join(FIXTURES_DIR, fixture, "expected/00-research-questions.md"), "utf-8");
-}
-
-function questionSectionOnly(text) {
-  const marker = /(^|\n)## Filtered Out/i;
-  const idx = text.search(marker);
-  return idx >= 0 ? text.slice(0, idx) : text;
-}
-
-function extractQuestionBlocks(text) {
-  // Match ### QN: ... until next ### or section header
-  return (text.match(/### Q\d+:.+?(?=### Q\d+:|## |\Z)/gs) || []);
+function withRepo(archetype, fn) {
+  return (result) => {
+    const dir = createSyntheticRepo(archetype);
+    try {
+      fn(result, dir);
+    } finally {
+      cleanupSyntheticRepo(dir);
+    }
+  };
 }
 
 export function runArchetypeBehaviorTests() {
-  return runSuite("behavior — archetype", [
+  return runSuite("behavior — archetype detection (live)", [
     {
-      name: "duckdb questions are database-specific",
-      test(result) {
-        const text = questionSectionOnly(loadExpectedQuestions("duckdb"));
-        result.record("mentions vectorized", () => assertContains(text, "Vectorized"));
-        result.record("mentions optimizer", () => assertContains(text, "Optimizer"));
-        result.record("does not mention runner", () => {
-          if (/\bRunner\b/i.test(text)) throw new Error("DuckDB should not ask about Runner");
+      name: "database repo triggers SQL/parser/lexer signals",
+      test: withRepo("database", (result, dir) => {
+        const store = runAnalyzerAll(dir);
+        const signals = getSignals(store);
+
+        result.record("hasSQL is true", () => {
+          if (!signals.hasSQL) throw new Error("Expected hasSQL=true (sql/parser files present)");
         });
-        result.record("does not mention plugin", () => {
-          if (/\bPlugin\b/i.test(text)) throw new Error("DuckDB should not ask about Plugin");
+        result.record("hasParser is true", () => {
+          if (!signals.hasParser) throw new Error("Expected hasParser=true (SQLParser class)");
         });
-      },
+        result.record("hasLexer is true", () => {
+          if (!signals.hasLexer) throw new Error("Expected hasLexer=true (tokenize function)");
+        });
+        result.record("hasAgent is false (no agent code)", () => {
+          if (signals.hasAgent) throw new Error("Expected hasAgent=false");
+        });
+        result.record("hasPlugin is false (no plugin code)", () => {
+          if (signals.hasPlugin) throw new Error("Expected hasPlugin=false");
+        });
+      }),
     },
     {
-      name: "openai-agents questions are agent-specific",
-      test(result) {
-        const text = questionSectionOnly(loadExpectedQuestions("openai-agents"));
-        result.record("mentions runner", () => assertContains(text, "Runner"));
-        result.record("mentions context", () => assertContains(text, "Context"));
-        result.record("mentions tool", () => assertContains(text, "Tool"));
-        result.record("does not mention volcano", () => {
-          if (/\bVolcano\b/i.test(text)) throw new Error("Agent should not ask about Volcano");
+      name: "agent repo triggers agent/tool signals",
+      test: withRepo("agent", (result, dir) => {
+        const store = runAnalyzerAll(dir);
+        const signals = getSignals(store);
+
+        result.record("hasAgent is true", () => {
+          if (!signals.hasAgent) throw new Error("Expected hasAgent=true (Agent class)");
         });
-        result.record("does not mention eclipse", () => {
-          if (/\bEclipse\b/i.test(text)) throw new Error("Agent should not ask about Eclipse");
+        result.record("hasTool is true", () => {
+          if (!signals.hasTool) throw new Error("Expected hasTool=true (Tool class)");
         });
-      },
+        result.record("hasSQL is false (no SQL code)", () => {
+          if (signals.hasSQL) throw new Error("Expected hasSQL=false");
+        });
+        result.record("hasParser is false (no parser code)", () => {
+          if (signals.hasParser) throw new Error("Expected hasParser=false");
+        });
+      }),
     },
     {
-      name: "dbeaver questions are developer-tool-specific",
-      test(result) {
-        const text = questionSectionOnly(loadExpectedQuestions("dbeaver"));
-        result.record("mentions plugin", () => assertContains(text, "Plugin"));
-        result.record("mentions eclipse", () => assertContains(text, "Eclipse"));
-        result.record("mentions driver", () => assertContains(text, "Driver"));
-        result.record("does not mention llm", () => {
-          if (/\bLLM\b/i.test(text)) throw new Error("DBeaver should not ask about LLM");
+      name: "tool repo triggers plugin signals",
+      test: withRepo("tool", (result, dir) => {
+        const store = runAnalyzerAll(dir);
+        const signals = getSignals(store);
+
+        result.record("hasPlugin is true", () => {
+          if (!signals.hasPlugin) throw new Error("Expected hasPlugin=true (Plugin class)");
         });
-        result.record("does not mention runner", () => {
-          if (/\bRunner\b/i.test(text)) throw new Error("DBeaver should not ask about Runner");
+        result.record("hasSQL is false (no SQL code)", () => {
+          if (signals.hasSQL) throw new Error("Expected hasSQL=false");
         });
-      },
+        result.record("hasAgent is false (no agent code)", () => {
+          if (signals.hasAgent) throw new Error("Expected hasAgent=false");
+        });
+      }),
     },
     {
-      name: "question blocks contain required fields",
+      name: "different archetypes produce different signal sets",
       test(result) {
-        for (const fixture of ["duckdb", "openai-agents", "dbeaver"]) {
-          const text = loadExpectedQuestions(fixture);
-          const blocks = extractQuestionBlocks(text);
-          result.record(`${fixture}: has 5 question blocks`, () => {
-            if (blocks.length < 5) throw new Error(`Expected 5 question blocks, got ${blocks.length}`);
+        const dbDir = createSyntheticRepo("database");
+        const agentDir = createSyntheticRepo("agent");
+        const toolDir = createSyntheticRepo("tool");
+        try {
+          const dbSignals = JSON.stringify(getSignals(runAnalyzerAll(dbDir)));
+          const agentSignals = JSON.stringify(getSignals(runAnalyzerAll(agentDir)));
+          const toolSignals = JSON.stringify(getSignals(runAnalyzerAll(toolDir)));
+
+          result.record("database != agent signals", () => {
+            if (dbSignals === agentSignals) throw new Error("Database and agent signals are identical");
           });
-          for (let i = 0; i < blocks.length; i++) {
-            const block = blocks[i];
-            result.record(`${fixture} Q${i + 1}: has Why it matters`, () => {
-              assertContains(block, "Why it matters");
-            });
-            result.record(`${fixture} Q${i + 1}: has Expected Evidence`, () => {
-              assertContains(block, "Expected Evidence");
-            });
-            result.record(`${fixture} Q${i + 1}: has Hypothesis`, () => {
-              assertContains(block, "Hypothesis");
-            });
-            result.record(`${fixture} Q${i + 1}: has Alternative`, () => {
-              assertContains(block, "Alternative");
-            });
-          }
+          result.record("database != tool signals", () => {
+            if (dbSignals === toolSignals) throw new Error("Database and tool signals are identical");
+          });
+          result.record("agent != tool signals", () => {
+            if (agentSignals === toolSignals) throw new Error("Agent and tool signals are identical");
+          });
+        } finally {
+          cleanupSyntheticRepo(dbDir);
+          cleanupSyntheticRepo(agentDir);
+          cleanupSyntheticRepo(toolDir);
         }
       },
     },
     {
-      name: "archetypes are mutually distinct",
-      test(result) {
-        const duckdb = questionSectionOnly(loadExpectedQuestions("duckdb")).toLowerCase();
-        const agents = questionSectionOnly(loadExpectedQuestions("openai-agents")).toLowerCase();
-        const dbeaver = questionSectionOnly(loadExpectedQuestions("dbeaver")).toLowerCase();
+      name: "evidence-brief contains archetype-appropriate keywords",
+      test: withRepo("database", (result, dir) => {
+        const brief = runAnalyzerReport(dir);
+        const lower = brief.toLowerCase();
 
-        result.record("duckdb vs agents have no shared keyword dominance", () => {
-          if (duckdb.includes("runner") && agents.includes("runner")) {
-            throw new Error("DuckDB and Agents should not both focus on Runner");
-          }
+        result.record("brief mentions sql", () => {
+          if (!lower.includes("sql")) throw new Error("Expected brief to mention SQL");
         });
-        result.record("agents vs dbeaver have no shared keyword dominance", () => {
-          if (agents.includes("plugin") && dbeaver.includes("plugin")) {
-            throw new Error("Agents and DBeaver should not both focus on Plugin");
-          }
+        result.record("brief mentions parser", () => {
+          if (!lower.includes("parser")) throw new Error("Expected brief to mention parser");
         });
-      },
+      }),
+    },
+    {
+      name: "evidence-brief mentions agent keywords for agent repo",
+      test: withRepo("agent", (result, dir) => {
+        const brief = runAnalyzerReport(dir);
+        const lower = brief.toLowerCase();
+
+        result.record("brief mentions agent", () => {
+          if (!lower.includes("agent")) throw new Error("Expected brief to mention agent");
+        });
+        result.record("brief mentions tool", () => {
+          if (!lower.includes("tool")) throw new Error("Expected brief to mention tool");
+        });
+      }),
     },
   ]);
 }
