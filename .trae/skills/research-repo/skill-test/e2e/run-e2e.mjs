@@ -3,14 +3,16 @@
 // run-e2e.mjs — End-to-end test runner for the research-repo Skill.
 //
 // Usage:
-//   node skill-test/e2e/run-e2e.mjs <researchDir> [--expected=<yaml>]
-//   node skill-test/e2e/run-e2e.mjs --fixtures
+//   node skill-test/e2e/run-e2e.mjs <researchDir> [--expected=<yaml|json>] [--snapshot]
+//   node skill-test/e2e/run-e2e.mjs --fixtures [--snapshot]
+//   node skill-test/e2e/run-e2e.mjs --fixtures --update-snapshot
 //
 // Behavior:
 //   1. Runs stage-by-stage checks on the research output directory.
 //   2. Runs behavioral verification (expected.yaml / expected.json).
 //   3. Computes quality metrics.
-//   4. Prints a CI-style report and exits with 0 only if all checks pass.
+//   4. Compares current output against stored snapshots (with --snapshot).
+//   5. Prints a CI-style report and exits with 0 only if all checks pass.
 // ===========================================================================
 
 import { readdirSync, existsSync, readFileSync } from "node:fs";
@@ -19,6 +21,7 @@ import { fileURLToPath } from "node:url";
 
 import { validateAllStages } from "./stage-checks.mjs";
 import { verifyResearchDirectory, loadExpectedYaml } from "./verify-directory.mjs";
+import { compareSnapshot, updateSnapshot, printSnapshotDiff } from "./snapshot-manager.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURES_DIR = join(__dirname, "fixtures");
@@ -48,7 +51,7 @@ function printMetrics(metrics) {
   }
 }
 
-function runE2E(researchDir, expectedPath) {
+function runE2E(researchDir, expectedPath, { snapshot = false, updateSnapshot: update = false, fixtureName = null } = {}) {
   printBanner(`E2E: ${researchDir}`);
 
   if (!existsSync(researchDir)) {
@@ -84,18 +87,32 @@ function runE2E(researchDir, expectedPath) {
 
   printMetrics(verifyResult.metrics);
 
-  const ok = stageResult.ok && verifyResult.ok;
+  // Snapshot management
+  let snapshotResult = null;
+  const name = fixtureName || expected.repository?.name || "research-output";
+  if (update) {
+    snapshotResult = updateSnapshot(researchDir, name);
+    console.log(`\n  Snapshot updated: ${snapshotResult.fileCount} files → skill-test/e2e/snapshots/${name}`);
+  } else if (snapshot) {
+    snapshotResult = compareSnapshot(researchDir, name);
+    console.log("\n  Snapshot comparison:");
+    printSnapshotDiff(snapshotResult);
+  }
+
+  const snapshotOk = !snapshotResult || snapshotResult.ok;
+  const ok = stageResult.ok && verifyResult.ok && (update || snapshotOk);
   console.log(`\n  Result: ${ok ? "PASS" : "FAIL"}`);
 
   return {
     dir: researchDir,
     stageResult,
     verifyResult,
+    snapshotResult,
     ok,
   };
 }
 
-function runAllFixtures() {
+function runAllFixtures(options) {
   const fixtures = readdirSync(FIXTURES_DIR).filter((name) =>
     existsSync(join(FIXTURES_DIR, name, "expected.json"))
   );
@@ -104,7 +121,7 @@ function runAllFixtures() {
   for (const fixture of fixtures) {
     const researchDir = join(FIXTURES_DIR, fixture);
     const expectedPath = join(researchDir, "expected.json");
-    results.push(runE2E(researchDir, expectedPath));
+    results.push(runE2E(researchDir, expectedPath, { ...options, fixtureName: fixture }));
   }
 
   const allOk = results.every((r) => r.ok);
@@ -123,9 +140,12 @@ function runAllFixtures() {
 
 async function main() {
   const args = process.argv.slice(2);
+  const snapshot = args.includes("--snapshot");
+  const updateSnapshot = args.includes("--update-snapshot");
+  const options = { snapshot, updateSnapshot };
 
   if (args.includes("--fixtures") || args.length === 0) {
-    runAllFixtures();
+    runAllFixtures(options);
     return;
   }
 
@@ -133,7 +153,7 @@ async function main() {
   const expectedFlag = args.find((a) => a.startsWith("--expected="));
   const expectedPath = expectedFlag ? expectedFlag.split("=")[1] : null;
 
-  const result = runE2E(researchDir, expectedPath);
+  const result = runE2E(researchDir, expectedPath, options);
   process.exit(result.ok ? 0 : 1);
 }
 

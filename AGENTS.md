@@ -89,13 +89,15 @@ pnpm format           # Format all files with Prettier
 pnpm format:check     # Check formatting without modifying files
 pnpm test:skill       # Run research-repo Skill behavior tests (all layers)
 pnpm test:e2e         # Run research-repo Skill end-to-end pipeline tests
+pnpm test:e2e:live    # Run live E2E against a real repository (deterministic by default)
+pnpm test:fixtures:generate # Generate or update skill-test fixtures from real repos
 
 # Git workflow (Husky + lint-staged configured)
 git add .
 pnpm cz               # Commitizen for conventional commits
 ```
 
-> **Note**: `research-repo` skill tests use Node.js built-in test runner (`node:test`) for script unit tests, and a custom deterministic harness for behavior/e2e tests. `pnpm test` runs `.trae/skills/research-repo/__tests__/*.test.mjs`; `pnpm test:skill` runs the full 6-layer suite; `pnpm test:e2e` runs fixture-based end-to-end pipeline validation. No additional test framework is installed.
+> **Note**: `research-repo` skill tests use Node.js built-in test runner (`node:test`) for script unit tests, and a custom deterministic harness for behavior/e2e tests. `pnpm test` runs `.trae/skills/research-repo/__tests__/*.test.mjs`; `pnpm test:skill` runs the full 6-layer suite; `pnpm test:e2e` runs fixture-based end-to-end pipeline validation; `pnpm test:e2e:live` runs the deterministic pipeline against a real repository; `pnpm test:fixtures:generate` generates or updates fixtures from real repos. No additional test framework is installed.
 
 ---
 
@@ -229,6 +231,21 @@ src/
 └── content.config.ts   # Astro v6 content collection config
 ```
 
+### research-repo Skill Test Structure
+
+```
+.trae/skills/research-repo/skill-test/
+├── e2e/                    # End-to-end pipeline validation
+│   ├── run-e2e.mjs         # Fixture-based E2E runner
+│   └── run-e2e-live.mjs    # Live E2E runner against real repos
+├── lib/
+│   └── llm-runner.mjs      # Optional LLM invocation helper
+├── fixtures/               # Regression test fixtures
+└── fixture-generator.mjs   # Generate/update fixtures from real repos
+```
+
+`llm-runner.mjs` and `fixture-generator.mjs` are deterministic test tooling; LLM-in-the-loop modes require `RESEARCH_REPO_LLM_CMD`.
+
 ### Content Schema (Zod-validated)
 ```yaml
 ---
@@ -276,6 +293,7 @@ This project uses Astro v6 content collections with the following API changes:
 4. Deployed to GitHub Pages via GitHub Actions
 5. **Node.js 22** required by Astro (>= 22.12.0) - configured in `.github/workflows/astro.yml`
 6. `research-agent-check` CI job validates Enterprise Research Agent: checkout → pnpm 10.24.0 → Node.js 22 → `pnpm install` → `pnpm lint` → `node .trae/skills/enterprise-research-agent/research.mjs benchmark` → `node .trae/skills/enterprise-research-agent/research.mjs eval`
+7. `research-repo` skill tests are deterministic by default. Optional LLM-in-the-loop modes (`--llm` on `run-e2e-live.mjs` / `fixture-generator.mjs`) require the `RESEARCH_REPO_LLM_CMD` environment variable set to a shell command that reads a prompt from stdin and writes generated text to stdout.
 
 ### Pre-commit Hooks
 Husky + lint-staged automatically runs:
@@ -370,6 +388,7 @@ When updating AGENTS.md:
 
 | Date | Change | Updated By |
 |------|--------|------------|
+| 2026-07-27 | research-repo: added test:e2e:live + test:fixtures:generate scripts and LLM-in-the-loop E2E support | @agents-maintainer |
 | 2026-02-08 | Added Self-Maintenance section | @agents-maintainer |
 | 2026-02-08 | Added architecture report on subagent maintenance | @agents-maintainer |
 | 2026-02-08 | Verified dependencies, scripts, and updated TypeScript path aliases | @agents-maintainer |
