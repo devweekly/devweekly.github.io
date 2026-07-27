@@ -19,6 +19,7 @@
  *   node research-repo.mjs questions    <repoPath>  # Gap-driven questions for LLM reasoning layer
  *   node research-repo.mjs report       <repoPath>  # Evidence Brief (Markdown)
  *   node research-repo.mjs update       <repoPath>  # Incremental analysis (git diff → merge)
+ *   node research-repo.mjs verify       <researchDir> [--expected=<yaml>]  # Validate research output
  *
  *   # Research Brain commands (no repoPath needed):
  *   node research-repo.mjs brain-init   [brainDir]                    # Initialize global Brain
@@ -64,6 +65,7 @@ import {
   updateBrainFromFile,
 } from "./knowledge-base.mjs";
 import { BRAIN_DIR, KNOWLEDGE_TYPES } from "./config.mjs";
+import { verifyResearchDirectory, loadExpectedYaml } from "./skill-test/e2e/verify-directory.mjs";
 
 // Swallow EPIPE errors when downstream (e.g. `head`) closes the pipe early.
 process.stdout?.on?.("error", (err) => {
@@ -88,6 +90,7 @@ async function main() {
   const command = positional[0];
   const repoPath = positional[1];
   const syntheticCommands = new Set(["plan", "questions", "report", "update"]);
+  const verifyCommands = new Set(["verify"]);
   const brainCommands = new Set([
     "brain-init",
     "brain-brief",
@@ -99,6 +102,7 @@ async function main() {
     ...ANALYZERS.map((a) => a.id),
     "all",
     ...syntheticCommands,
+    ...verifyCommands,
     ...brainCommands,
   ]);
 
@@ -205,12 +209,33 @@ async function main() {
     }
   }
 
+  // ---- Verify command (requires research output directory) ----
+  if (verifyCommands.has(command)) {
+    const researchDir = positional[1];
+    if (!researchDir) {
+      console.error("Usage: node research-repo.mjs verify <researchDir> [--expected=<yaml>]");
+      process.exit(1);
+    }
+    if (!existsSync(researchDir)) {
+      console.error(`Error: research directory does not exist: ${researchDir}`);
+      process.exit(1);
+    }
+    const expectedFlag = process.argv.find((a) => a.startsWith("--expected="));
+    const expectedPath = expectedFlag ? expectedFlag.split("=")[1] : null;
+    const expected = expectedPath && existsSync(expectedPath)
+      ? loadExpectedYaml(expectedPath)
+      : {};
+    const result = verifyResearchDirectory(researchDir, expected);
+    process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+    process.exit(result.ok ? 0 : 1);
+  }
+
   // ---- Analyzer commands (require repoPath + tree-sitter) ----
   const repoPathFinal = positional[1];
   if (!repoPathFinal) {
     console.error(
       `Usage: node research-repo.mjs <${[...validCommands]
-        .filter((c) => !brainCommands.has(c))
+        .filter((c) => !brainCommands.has(c) && !verifyCommands.has(c))
         .join("|")}> <repoPath>`
     );
     process.exit(1);

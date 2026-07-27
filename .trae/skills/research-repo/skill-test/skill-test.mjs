@@ -2,16 +2,20 @@
 // ===========================================================================
 // skill-test.mjs — Test harness for the research-repo Skill
 //
-// Runs four layers of behavioral tests and prints a CI-style report:
-//   1. Prompt Unit Test
-//   2. Behavior Test
-//   3. Mutation / Adversarial Test
-//   4. Regression Suite
+// Runs six layers of behavioral tests and prints a CI-style report:
+//   1. Unit Test — Analyzer JSON output contracts
+//   2. Prompt Unit Test
+//   3. Behavior Test
+//   4. Mutation / Adversarial Test
+//   5. Regression Suite
+//   6. End-to-End Pipeline Test
 //
 // Usage:
 //   node skill-test/skill-test.mjs
+//   node skill-test/skill-test.mjs --layer=unit
 //   node skill-test/skill-test.mjs --layer=prompt
 //   node skill-test/skill-test.mjs --layer=behavior
+//   node skill-test/skill-test.mjs --layer=e2e
 // ===========================================================================
 
 import { runQuestionPlannerTests } from "./tests/prompt-unit/00-question-planner.test.mjs";
@@ -21,6 +25,8 @@ import { runReportWriterTests } from "./tests/prompt-unit/07-report-writer.test.
 import { runArchetypeBehaviorTests } from "./tests/behavior/archetype-behavior.test.mjs";
 import { runMutationTests } from "./tests/mutation/missing-evidence.test.mjs";
 import { runRegressionTests } from "./tests/regression/metrics-regression.test.mjs";
+import { runPipelineE2ETests } from "./tests/e2e/pipeline-e2e.test.mjs";
+import { runAnalyzerOutputTests } from "./tests/unit/analyzer-output.test.mjs";
 
 const args = process.argv.slice(2);
 const requestedLayer = args
@@ -28,6 +34,7 @@ const requestedLayer = args
   ?.replace("--layer=", "");
 
 const LAYERS = {
+  unit: [runAnalyzerOutputTests],
   prompt: [
     runQuestionPlannerTests,
     runHypothesisTests,
@@ -37,6 +44,7 @@ const LAYERS = {
   behavior: [runArchetypeBehaviorTests],
   mutation: [runMutationTests],
   regression: [runRegressionTests],
+  e2e: [runPipelineE2ETests],
 };
 
 function printBanner(text) {

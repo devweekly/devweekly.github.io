@@ -87,14 +87,15 @@ pnpm sync             # Sync Astro content collections
 pnpm lint             # Run ESLint on all files
 pnpm format           # Format all files with Prettier
 pnpm format:check     # Check formatting without modifying files
-pnpm test:skill       # Run research-repo Skill behavior tests
+pnpm test:skill       # Run research-repo Skill behavior tests (all layers)
+pnpm test:e2e         # Run research-repo Skill end-to-end pipeline tests
 
 # Git workflow (Husky + lint-staged configured)
 git add .
 pnpm cz               # Commitizen for conventional commits
 ```
 
-> **Note**: `research-repo` skill tests use Node.js built-in test runner (`node:test`). `pnpm test` runs `.trae/skills/research-repo/__tests__/*.test.mjs`. No additional test framework is installed.
+> **Note**: `research-repo` skill tests use Node.js built-in test runner (`node:test`) for script unit tests, and a custom deterministic harness for behavior/e2e tests. `pnpm test` runs `.trae/skills/research-repo/__tests__/*.test.mjs`; `pnpm test:skill` runs the full 6-layer suite; `pnpm test:e2e` runs fixture-based end-to-end pipeline validation. No additional test framework is installed.
 
 ---
 
@@ -414,6 +415,7 @@ When updating AGENTS.md:
 | 2026-07-27 | research-repo: Evidence Quality Layer + Prompt 重写（Evidence First 而非 Prompt First）— (1) 新增 evidence-quality.mjs（540 行）：EvidenceSanitizer 类 + Archetype Hints + Confidence Propagation + Evidence Coverage + Claim Ranking + Stop Condition。在 AnalyzerPipeline.runAll() 中接入 enhanceStore()，位于 analyzers 之后、EvidenceStore 之前，实现"Analyzer → Sanitizer → Evidence Store"流程。Report 不再知道 Analyzer 出过错。(2) EvidenceSanitizer 修正三类历史误检：prompt 计数虚高（排除 examples/docs/README 示例和 test fixtures）、tool 误检（排除 node_modules/vendor/dist/build、SDK 中间件、barrel exports、platform utilities）、architecture 误判（Event-Driven 缺少 event bus 信号时降级 Unknown）。(3) Archetype 检测改为 LLM 判断：脚本只生成 _archetypeHints（signals + counts + manifest + catalog），不硬性分类；Question Planner 读取 hints 后判断 Archetype。避免 dbeaver/topcoat/pyod 等被脚本规则误判。(4) Confidence Propagation：Evidence 带 confidence，Claim confidence 通过证据聚合计算（非 LLM 重新猜测）。(5) Evidence Coverage：每个 Claim 生成 Code/Test/Config/Doc/Commit 五维覆盖矩阵。(6) Claim Ranking：★1-5 评级 = f(Importance, Confidence, Coverage, Transferability)。(7) Stop Condition：Research Completeness Score ≥80 时停止（问题回答率 / Claim 覆盖度 / 未解决矛盾 / 置信度稳定性）。(8) 重写 prompts/07-report-writer.md：从 13 章节强制模板（142 行）改为 Judgment Policy（129 行），三层结构 Executive → Top 5 Claims → Appendix；新增 Evidence Quality 标注（Verified/Partially Verified/Documentation Only）；Unknown 属于 Claim 不是独立章节；Quality Gate 改为 What would invalidate this report? / What is most likely to be disagreed with?。(9) 重写 prompts/00-question-planner.md：从固定 Q1-Q11 模板改为 Archetype-driven，第一步判断 Archetype，第二步按类型生成问题，第三步筛选 Top 5。(10) SKILL.md Evidence Hierarchy S/A/B/C/D/E 改为 Evidence Quality（Verified/Partially Verified/Documentation Only）。DESIGN.md 新增 §22 Evidence Quality Layer 和 §23 Prompt 重写设计决策。验证：所有 14 个 .mjs 文件 node --check 通过 | @agents-maintainer |
 | 2026-07-27 | research-repo: 添加 41 个测试用例 + Node.js 内置 test runner — (1) 新增 __tests__/ 目录（4 个测试文件），使用 Node.js 内置 node:test/assert，无新增依赖：evidence-quality.test.mjs（17 tests 覆盖 Sanitizer/Archetype Hints/Confidence/Coverage/Ranking/StopCondition）、utils.test.mjs（7 tests 覆盖 isTestPath/pathToModuleId/countByExtension）、context.test.mjs（6 tests 覆盖 RepositoryContext 文件发现/manifest/缓存/changedFiles 过滤）、brain.test.mjs（9 tests 覆盖 Knowledge Unit 验证/创建/Brain CRUD/merge confidence/查询）、smoke.test.mjs（2 tests 覆盖 all 命令端到端 + brain-init 命令）。(2) 修复 evidence-quality.mjs hasDB 正则大小写问题（JDBCConnection 检测），由测试驱动发现。(3) package.json 新增 scripts：test 和 test:research-repo，运行 node --test .trae/skills/research-repo/__tests__/*.test.mjs。(4) pnpm test 全部通过：41 tests, 0 fail。AGENTS.md Quick Commands 和 Tech Stack 未变（无新依赖）。| @agents-maintainer |
 | 2026-07-27 | research-repo: added test:skill script and 4-layer behavior tests | @agents-maintainer |
+| 2026-07-27 | research-repo: added test:e2e script + E2E pipeline validation (stage checks + fixtures + verify command) | @agents-maintainer |
 
 ### Example Usage
 

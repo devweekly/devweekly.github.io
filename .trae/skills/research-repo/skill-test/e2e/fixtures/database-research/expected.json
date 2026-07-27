@@ -1,0 +1,20 @@
+{
+  "repository": {
+    "archetype": "database"
+  },
+  "report": {
+    "claims": {
+      "min": 2,
+      "max": 5
+    },
+    "unknown": {
+      "min": 1
+    },
+    "counter_evidence": {
+      "required": true
+    },
+    "architecture_decision": {
+      "min": 1
+    }
+  }
+}
