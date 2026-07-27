@@ -153,3 +153,502 @@ async function runOpenCodeSkill(prompt: string, sessionId?: string) {
 
 你是正在基于 LangChain / LlamaIndex 自定义这个 Skill，还是在为类似 AutoGPT / CrewAI 这样的多 Agent 系统编写执行插件？如果你愿意告诉我你所使用的 Agent 框架语言，我可以为你提供更针对性的 Skill 接入模版。
 
+---------------
+
+我认为**需要注意，而且比技术实现更重要的是架构边界**。
+
+很多团队把 Claude Code、OpenCode、Codex CLI 当成"一个更聪明的 shell"来调用，结果最后整个系统变成：
+
+```
+Skill
+↓
+
+OpenCode
+
+↓
+
+OpenCode
+
+↓
+
+OpenCode
+```
+
+最后 Prompt 套 Prompt，调试非常痛苦。
+
+如果我是做 Enterprise Research Agent，我会把 OpenCode CLI 当成**一个可推理的 Tool**，而不是 Runtime。
+
+---
+
+# 我建议的原则
+
+整个系统最好只有一个地方负责推理。例如
+
+```
+Research Runtime
+        │
+        ▼
+  Mechanical Tools
+(AST/Graph/Search)
+        │
+        ▼
+     OpenCode CLI
+        │
+        ▼
+ Structured Result
+```
+
+不要：
+
+```
+Skill A
+
+↓
+
+OpenCode
+
+↓
+
+Skill B
+
+↓
+
+OpenCode
+
+↓
+
+Skill C
+
+↓
+
+OpenCode
+```
+
+这就是 Prompt Cascading。
+
+---
+
+# Skill不要把OpenCode当Shell
+
+很多人写：
+
+```
+Run
+
+opencode run "
+
+Analyze repository
+
+..."
+```
+
+我觉得这是比较差的设计。Skill 应该认为：
+
+```
+Research Tool
+
+↓
+
+Input
+
+↓
+
+Output JSON
+```
+
+也就是说：**Skill 不知道底层是谁**。今天：OpenCode，明天：Copilot CLI，后天：
+Codex CLI，Skill 都不用改。建议定义：
+
+```
+RepositoryResearchTool
+
+analyze()
+
+summarize()
+
+review()
+
+```
+
+OpenCode 只是实现。
+
+---
+
+# 输出必须结构化
+
+这是我觉得最重要的一条。千万不要：
+
+```
+Markdown
+
+↓
+
+Markdown
+
+↓
+
+Markdown
+```
+
+应该：
+
+```
+JSON
+
+↓
+
+Validate
+
+↓
+
+Markdown
+```
+
+例如：
+
+```json
+{
+  "findings": [],
+  "evidence": [],
+  "recommendations": [],
+  "confidence": 0.91
+}
+```
+
+这样：换模型完全没问题。
+
+---
+
+# Prompt Version
+
+千万不要：
+
+```
+prompt.md
+```
+
+只有一个。建议：
+
+```
+prompt/
+
+    repository-review.md
+
+    architecture.md
+
+    security.md
+
+    performance.md
+```
+
+而且：
+
+```
+version
+
+hash
+
+```
+
+一起记录。否则：以后根本不知道为什么结果变了。
+
+---
+
+# Context不要全部塞进去
+
+这是 OpenCode 最大的问题。很多人：
+
+```
+Entire Repository
+
+↓
+
+LLM
+```
+
+我认为应该：
+
+```
+Repository
+
+↓
+
+Indexer
+
+↓
+
+Relevant Files
+
+↓
+
+Prompt
+```
+
+OpenCode 只看到：需要看的。
+
+---
+
+# Tool一定要可重放
+
+例如：
+
+```
+Skill
+
+↓
+
+OpenCode
+
+↓
+
+Result
+```
+
+最好保存：
+
+```
+Prompt
+
+Model
+
+Arguments
+
+Temperature
+
+Response
+
+```
+
+以后：Regression Test 全部能跑。
+
+---
+
+# Skill不要依赖语言风格
+
+例如：不要：
+
+```
+Find elegant design.
+```
+
+而应该：
+
+```
+Return
+
+Pattern
+
+Evidence
+
+Confidence
+
+Tradeoff
+```
+
+这样：
+
+OpenAI
+
+Claude
+
+Gemini
+
+OpenCode
+
+一致性高很多。
+
+---
+
+# Prompt最好分层
+
+例如：
+
+System
+
+```
+Research Principle
+```
+
+Developer
+
+```
+Repository Analysis
+```
+
+User
+
+```
+Current Task
+```
+
+不要全部拼一个 Prompt。
+
+---
+
+# 建议支持Capability Detection
+
+例如：
+
+Skill：
+
+```
+Capability
+
+↓
+
+OpenCode
+
+↓
+
+Copilot
+
+↓
+
+Fallback
+```
+
+启动：
+
+```
+which opencode
+
+↓
+
+which github-copilot
+
+↓
+
+which codex
+```
+
+然后：
+
+注册：
+
+```
+RepositoryResearch
+```
+
+Skill 根本不用关心。
+
+---
+
+# 不要让OpenCode做机械工作
+
+例如：不要：
+
+```
+统计：
+
+TS文件数量
+
+Class数量
+
+Import数量
+```
+
+这些：Script 100ms，OpenCode 几十秒。LLM 成本也高。
+
+---
+
+# 建议加入Artifacts
+
+例如：
+
+```
+analysis/
+
+    graph.json
+
+    metrics.json
+
+    evidence.json
+
+    findings.json
+```
+
+OpenCode：直接消费。以后：Test 也简单。
+
+---
+
+# Test不要比较Markdown
+
+建议：
+以前：
+
+```
+Report.md
+```
+
+以后：
+
+```
+findings.json
+
+evidence.json
+
+recommendation.json
+```
+
+最后：Markdown 只是 Render。
+
+---
+
+# 我建议再加一层"Research Contract"
+
+这是我觉得你目前整个项目还缺的一层，也是最值得补的。
+
+不要让 Skill 直接调用 OpenCode CLI，而是在两者之间定义一个稳定的契约，例如：
+
+```text
+ResearchRequest
+ ├── goal
+ ├── scope
+ ├── constraints
+ ├── available_artifacts
+ ├── expected_output_schema
+ └── evaluation_criteria
+
+↓
+
+OpenCode / Copilot / Codex
+
+↓
+
+ResearchResponse
+ ├── findings
+ ├── evidence
+ ├── confidence
+ ├── unknowns
+ ├── recommendations
+ └── execution_metadata
+```
+
+这样做有几个长期收益：
+
+* **Skill 与具体 CLI 解耦**：更换 OpenCode、Copilot CLI 或未来其他 Coding Agent，不需要修改 Skill。
+* **测试更容易**：Golden Test 比较 `ResearchResponse`，而不是自然语言 Markdown。
+* **可观测性更好**：可以记录 Prompt、模型、耗时、Token、退出码、重试次数等元数据。
+* **方便并行**：未来 Architecture、Security、Performance 等多个 Skill 可以输出相同的 Contract，再由 Aggregator 合并。
+
+---
+
+## 如果是我的架构，我会这样分层
+
+```
+Skill
+    │
+Research Contract
+    │
+Research Runtime
+    │
+ ├── AST / Index / Graph / Metrics
+ ├── Artifact Store
+ └── CLI Adapter
+         │
+         ├── OpenCode CLI（首选）
+         ├── Copilot CLI（自动降级）
+         └── 未来其他 Coding Agent
+```
+
+这样真正需要变化的只有 **CLI Adapter**；Skill、脚本、测试和报告都建立在稳定的 Contract 之上。这种分层能最大限度地减少未来因模型或工具变化带来的维护成本，也符合你当前项目希望保持长期可演进、避免过度设计的目标。

@@ -118,11 +118,11 @@ function parseJson(result, context) {
   }
 }
 
-export function runAnalyzerOutputTests() {
+export async function runAnalyzerOutputTests() {
   const workDir = createSyntheticRepo();
 
   try {
-    return runSuite("unit — analyzer output", [
+    return await runSuite("unit — analyzer output", [
       {
         name: "discovery command returns repository metadata",
         test(result) {

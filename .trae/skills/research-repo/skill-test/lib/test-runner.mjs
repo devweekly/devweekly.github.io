@@ -60,15 +60,16 @@ export class SkillTestResult {
 
 /**
  * Run a suite of test functions and aggregate results.
+ * Supports both sync and async test functions.
  * @param {string} suiteName
- * @param {Array<{name: string, test: (result: SkillTestResult) => void}>} cases
- * @returns {SkillTestResult}
+ * @param {Array<{name: string, test: (result: SkillTestResult) => void | Promise<void>}>} cases
+ * @returns {Promise<SkillTestResult>}
  */
-export function runSuite(suiteName, cases) {
+export async function runSuite(suiteName, cases) {
   const result = new SkillTestResult(suiteName);
   for (const c of cases) {
     try {
-      c.test(result);
+      await c.test(result);
     } catch (err) {
       result.failed.push({ case: c.name, error: err.message });
     }

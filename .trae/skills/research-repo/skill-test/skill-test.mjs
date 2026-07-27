@@ -67,9 +67,12 @@ function printSuite(result, indent = "") {
   }
 }
 
-function runLayer(name, runners) {
+async function runLayer(name, runners) {
   printBanner(name);
-  const results = runners.map((fn) => fn());
+  const results = [];
+  for (const fn of runners) {
+    results.push(await fn());
+  }
   for (const r of results) {
     printSuite(r, "  ");
   }
@@ -81,7 +84,7 @@ function runLayer(name, runners) {
   return { name, results, totalPassed, total, ok, pct };
 }
 
-function main() {
+async function main() {
   console.log("research-repo skill-test");
   console.log("Deterministic structural + behavioral test suite");
 
@@ -94,7 +97,7 @@ function main() {
       console.error(`Unknown layer: ${name}. Valid: ${Object.keys(LAYERS).join(", ")}`);
       process.exit(2);
     }
-    layers.push(runLayer(name.toUpperCase(), runners));
+    layers.push(await runLayer(name.toUpperCase(), runners));
   }
 
   const grandPassed = layers.reduce((sum, l) => sum + l.totalPassed, 0);
@@ -118,4 +121,7 @@ function main() {
   process.exit(grandOk ? 0 : 1);
 }
 
-main();
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

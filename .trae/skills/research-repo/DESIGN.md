@@ -423,6 +423,147 @@ Question Planner 读取这些信号后判断 Archetype，再生成对应维度�
 
 ---
 
+## 24. Research Object Model（多类型研究对象 + 关系图）
+
+**决策**：将 Claim 从单一核心对象升级为多类型 Research Object 模型。
+
+**理由**：
+- 实际 Repository Research 中存在多种对象类型（Pattern/Decision/Constraint/Tradeoff/Assumption/Hypothesis/Evidence/Issue/Risk/Unknown），强行压缩为单一 Claim 会丢失类型语义。
+- 多类型对象之间的关系（implemented_by / supported_by / conflicts_with / caused_by）是架构知识的核心，单层 Claim 无法表达。
+
+**实现**：
+- `ResearchObjectRegistry`（evidence-store.mjs）将现有分析器输出注册为研究对象。
+- 每个对象有 `id` / `type` / `source`（哪个 analyzer 产生）/ `confidence` / `relations[]`。
+- 关系图存储在 `store.researchObjects.relations`，报告以 "Research Object Graph" 章节展示。
+- 对象类型由 analyzer 自然产出，不新增 LLM 推理负担。
+
+---
+
+## 25. Claim Lifecycle（状态迁移）
+
+**决策**：为 Claim/Finding 增加生命周期：`candidate → hypothesis → supported → verified → decision → reusable_pattern`。
+
+**理由**：
+- 很多 Finding 最终不会进入 Report。没有生命周期时，Agent 无法区分"刚提出"和"已验证"。
+- 生命周期使状态迁移单调化（只前进不后退），Agent 思考更稳定。
+- 终态 `decision` / `reusable_pattern` 明确标识哪些 Finding 已升华为可复用知识。
+
+**实现**：
+- `lifecycle` 字段记录当前状态，`lifecycleHistory` 记录迁移轨迹（含 from/to/reason/timestamp）。
+- `VerificationLoop` 根据 verified 状态推进 lifecycle：verified→supported/verified，rejected→停留 candidate。
+- `_promoteVerifiedFindings` 将 Q9（决策）verified Finding 提升为 `decision`，将 Q1（架构模式）verified Finding 提升为 `reusable_pattern`。
+
+---
+
+## 26. Evidence Provenance（可追溯性）
+
+**决策**：为 Evidence 增加 Provenance（`who` + `when`）。
+
+**理由**：
+- Evidence First 原则要求每条证据可追溯。之前只有 `where`（文件路径）和 `confidence`，缺少"谁在哪个版本提取"。
+- Provenance 是 Repository Evolution 分析的基础——同一文件在不同 commit 的内容可能完全不同。
+
+**实现**：
+- `FindingsGenerator._finalize` 为每个 support item 注入 `who: "analyzer"` 和 `when: <commit-hash>`。
+- commit-hash 来自 `git rev-parse HEAD`（无 git 时为 `"unknown"`）。
+- 报告中 `provenanceCoverage` 指标量化追溯覆盖率。
+
+---
+
+## 27. Decision Record ADR 7 字段
+
+**决策**：为 DecisionAnalyzer 输出注入 ADR 风格的 7 字段：`problem / alternatives / tradeoff / chosen / evidence / risk / reusability`。
+
+**理由**：
+- Decision-centric Report 要求决策有标准结构，否则 LLM 输出的"决策"只是陈述句。
+- ADR（Architecture Decision Record）是业界共识格式，比 Architecture Summary 更有价值。
+- `risk` 和 `reusability` 使决策可复用——读者知道"这个决策的风险是什么"和"能否用在我的项目"。
+
+**实现**：
+- `_finalizeDecision(d)` 在 analyze 末尾为每个决策注入 3 个推断字段：
+  - `problem`：从 category 推断（structural→"organize code at scale"，modular→"separate concerns"等）
+  - `risk`：从 category + decision 文本推断
+  - `reusability`：0-1 分数（structural=0.8, modular=0.7, capability=0.6, integration=0.4, quality=0.3, negative=0.5）
+- 原有 `decision`（chosen）/ `alternatives` / `tradeoff` / `evidence` 由 D1-D6 决策生成器直接产出。
+
+---
+
+## 28. Unknown 主动分类
+
+**决策**：将 Unknown 从被动标注升级为主动分类：`need_reading / need_external_evidence / impossible_to_verify`。
+
+**理由**：
+- "Unknown" 本身也是研究结果。但之前 Unknown 是均质的——不知道就是不知道。
+- 实际上 Unknown 有不同性质：有些读源码就能解决（need_reading），有些需要 issue tracker / 设计文档（need_external_evidence），有些根本无法验证（impossible_to_verify）。
+- 主动分类帮助读者决定下一步行动，而非停留在"不知道"。
+
+**实现**：
+- `_classifyUnknown(q, f)` 根据 Research Question 类型分类：
+  - Q1-Q6（代码可发现）→ `need_reading`
+  - Q7-Q8（正确性/README 矛盾）→ `need_external_evidence`
+  - Q9/Q11（决策意图/隐式假设）→ `impossible_to_verify`
+  - Q10（约束）→ `need_external_evidence`
+- 每个 Unknown Finding 携带 `unknownType` + `unknownReason`（具体原因）。
+- 报告在 Findings 概览展示 Unknown 分类分布，在详情展示每条 Unknown 的类型和原因。
+
+---
+
+## 29. DesignPatternAnalyzer（代码级设计模式检测）
+
+**决策**：新增 DesignPatternAnalyzer，通过符号名和方法签名检测 12 种 GoF 设计模式。
+
+**理由**：
+- 设计模式是可复用架构知识的核心载体，但之前完全依赖 LLM 从代码推断。
+- 符号名（`UserFactory`）和方法签名（`create`/`build`/`from`）是强信号，脚本可以确定性提取。
+- 模式检测 + Reusability 4 字段（Applicability/Limitation/Migration Cost/Reuse Score）使输出可直接用于决策，而非"检测到 Factory"这种无上下文信息。
+
+**实现**：
+- 12 种模式：Factory / Singleton / Builder / Strategy / Observer / Adapter / Decorator / Repository / DI / Plugin / Command / Chain of Responsibility。
+- 每个模式有 `instances`（实例数）/ `confidence`（0.5 + instances*0.1，上限 0.95）/ `evidence[]`（文件+符号+行号+信号）。
+- Reusability 4 字段：
+  - `applicability`：从文件路径推导模式适用层（Persistence/Interface/Business Logic等）
+  - `limitation`：模式已知局限性（如 Singleton→"Hard to test; global state"）
+  - `migrationCost`：low（<2 实例）/ medium（2-4）/ high（≥5）
+  - `reuseScore`：1-5，由 confidence 映射
+- JS/TS 类方法提取修复：`method_definition` 节点 + `property_identifier` 查找。
+
+---
+
+## 30. ArchitectureMetricsAnalyzer（架构指标）
+
+**决策**：新增 ArchitectureMetricsAnalyzer，计算 Fan-in/Fan-out/Coupling/Stability/Layer 量化指标。
+
+**理由**：
+- 架构质量不能只靠定性判断（"Layered"/"Event-Driven"），需要量化指标支撑。
+- Fan-in/Fan-out 是经典的耦合度指标，Cycle 检测能发现架构缺陷。
+- 这些指标完全可由 import graph 计算，无需 LLM 推理。
+
+**实现**：
+- 从 `store.informationFlow.importGraph`（或 symbols imports）构建有向图。
+- 输出 `fanIn` / `fanOut`（每模块 + 全局 avg）/ `coupling`（density + hubNodes + bottleneckNodes）/ `summary`（totalNodes/totalEdges）。
+- hubNodes（高 fan-in）标识被大量依赖的核心模块；bottleneckNodes（高 fan-out）标识过度依赖的脆弱模块。
+
+---
+
+## 31. TemporalAnalyzer（仓库演进分析）
+
+**决策**：新增 TemporalAnalyzer，从 git 历史检测架构演进事件。
+
+**理由**：
+- 优秀仓库的研究价值往往在于"为什么后来改了"，而非当前快照。
+- git history 是最可靠的演进证据源（比 CHANGELOG / commit message 更客观）。
+- 四类事件（Major Rewrite / Architecture Pivot / Deprecated Pattern / Historical Tradeoff）覆盖最常见的架构演进场景。
+
+**实现**：
+- 从 `git log --numstat` 提取每个 commit 的文件变更统计。
+- `major_rewrite`：单 commit 变更文件数 > 总文件数 30%
+- `architecture_pivot`：核心目录（src/core, src/api）被删除或重命名
+- `deprecated_pattern`：文件被删除且包含已知模式符号
+- `historical_tradeoff`：commit message 包含 "refactor" / "rewrite" / "migrate"
+- 无 git 时输出 `{ skipped: true, note: "..." }`，不阻塞 pipeline。
+
+---
+
 # 框架架构
 
 以下章节描述 research-repo 的实现架构。SKILL.md 不包含这些内容，因为它们属于框架实现而非研究方法论。

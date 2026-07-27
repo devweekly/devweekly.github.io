@@ -4,6 +4,75 @@
 
 ---
 
+## 2026-07-28 — Research Object Model + 新分析器 + 测试体系 async 化
+
+### 新增功能
+
+#### Research Object Model（多类型研究对象 + 关系图）
+- 新增 `ResearchObjectRegistry`（evidence-store.mjs），将现有分析器输出注册为多类型研究对象（Pattern/Decision/Constraint/Tradeoff/Assumption/Hypothesis/Evidence/Issue/Risk/Unknown）。
+- 新增 `store.researchObjects`（含 objects[] + relations[]）和 `store.researchObjectsSummary`。
+- 报告新增 "Research Object Graph" 章节，展示对象间关系（implemented_by / supported_by / conflicts_with / caused_by）。
+
+#### Claim Lifecycle（状态迁移）
+- 为 Finding 增加 `lifecycle` 字段：`candidate → hypothesis → supported → verified → decision → reusable_pattern`。
+- 新增 `lifecycleHistory` 记录迁移轨迹（from/to/reason/timestamp）。
+- `_promoteVerifiedFindings` 将 Q9 verified Finding 提升为 `decision`，Q1 verified 提升为 `reusable_pattern`。
+- 状态迁移单调化（只前进不后退）。
+
+#### Evidence Provenance（可追溯性）
+- 为每个 evidence support item 注入 `who: "analyzer"` 和 `when: <commit-hash>`。
+- 新增 `provenanceCoverage` 质量指标，量化追溯覆盖率。
+
+#### Decision Record ADR 7 字段
+- `_finalizeDecision` 为每个决策注入 `problem` / `risk` / `reusability`。
+- 决策现在包含完整 ADR 结构：problem / alternatives / tradeoff / chosen / evidence / risk / reusability。
+- `reusability` 为 0-1 分数，按 category 量化可复用性。
+
+#### Unknown 主动分类
+- `_classifyUnknown` 将 Unknown 分为三类：`need_reading` / `need_external_evidence` / `impossible_to_verify`。
+- 每个 Unknown Finding 携带 `unknownType` + `unknownReason`。
+- 报告在 Findings 概览展示 Unknown 分类分布，在详情展示类型和原因。
+
+#### DesignPatternAnalyzer（代码级设计模式检测）
+- 新增分析器，检测 12 种 GoF 模式：Factory / Singleton / Builder / Strategy / Observer / Adapter / Decorator / Repository / DI / Plugin / Command / Chain of Responsibility。
+- 每个模式输出：instances / confidence / evidence[] + Reusability 4 字段（applicability / limitation / migrationCost / reuseScore）。
+- 修复 JS/TS 类方法提取：`method_definition` 节点 + `property_identifier` 查找。
+- 修复 Factory/Singleton 误判：从 Factory 匹配中移除 `getInstance`。
+
+#### ArchitectureMetricsAnalyzer（架构指标）
+- 新增分析器，计算 Fan-in / Fan-out / Coupling / hubNodes / bottleneckNodes。
+- 从 import graph 构建有向图，输出 `store.archMetrics`（summary + fanIn + fanOut + coupling）。
+
+#### TemporalAnalyzer（仓库演进分析）
+- 新增分析器，从 git 历史检测 4 类演进事件：major_rewrite / architecture_pivot / deprecated_pattern / historical_tradeoff。
+- 无 git 时输出 `{ skipped: true }`，不阻塞 pipeline。
+- 输出 `store.temporal`（summary + events[]）。
+
+### 测试体系改进
+
+#### 测试 Runner 升级为 async 兼容
+- `runSuite` 从 sync 改为 async，支持 async 测试函数。
+- `skill-test.mjs` 的 `runLayer` / `main` 改为 async，`runAnalyzerOutputTests` 改为 async + await。
+- 不影响现有 sync 测试（await sync 函数立即 resolve）。
+
+#### 新增单元测试（new-analyzers.test.mjs）
+- DesignPatternAnalyzer：7 个测试（Factory/Singleton/Observer/Repository 检测 + 非误判 + confidence 范围）。
+- ArchitectureMetricsAnalyzer：5 个测试（output / Fan-in/Fan-out / coupling / hub nodes / summary）。
+- TemporalAnalyzer：3 个测试（output / events / commit count，无 git 时 skip）。
+- Decision Record ADR 7 字段：通过 crafted store 直接单元测试（不依赖合成仓库触发信号）。
+- Pattern Reusability 4 字段：验证 applicability / limitation / migrationCost / reuseScore。
+- 总计 64 个 sub-tests。
+
+#### 测试结果
+- 全部 6 层 239/239 通过（100%）。
+- UNIT 93/93 / PROMPT 12/12 / BEHAVIOR 25/25 / MUTATION 18/18 / REGRESSION 68/68 / E2E 23/23。
+
+### 文档更新
+- DESIGN.md 新增 §24-§31（8 条设计决策）。
+- CHANGELOG.md 新增本条目。
+
+---
+
 ## 2026-07-27 — 文档职责分离
 
 ### Breaking Change
