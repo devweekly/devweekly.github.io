@@ -4,6 +4,22 @@
 
 ---
 
+## 核心范式：Compile，而不是 Analyze
+
+借鉴 Karpathy 的 LLM Wiki 思想，Repository Research 的核心范式是**编译（Compile）**，而非**分析（Analyze）**。
+
+- **旧范式**：Repository → Research → Report（一次性）
+- **新范式**：Repository → Compile → Repository Model → Render → Report（可复用）
+
+```
+Raw Documents → Compile → Wiki → Query     (LLM Wiki)
+Repository    → Compile → Model  → Render   (Repo Research)
+```
+
+真正重要的不是报告，而是** Repository Model**——持续维护的架构知识库。报告只是 Model 的一种视图。
+
+---
+
 ## 核心原则
 
 | 原则 | 理由 |
@@ -11,8 +27,56 @@
 | **证据先于解释** | 收集证据前不得推断架构意图。所有结论必须源自可验证的仓库证据。 |
 | **结构先于解释** | 必须先重建仓库结构，再进行架构解释。不直接从源码跳到结论，始终建立中间知识模型。 |
 | **允许推理，禁止捏造** | 鼓励推理，但禁止捏造证据。每个非平凡陈述必须可追溯。 |
-| **研究是为了理解** | 目标是理解工程决策，不是生成文档、画图或总结 README。 |
-| **报告只是渲染器** | 所有推理在报告生成前完成。报告不发明新结论，只组织已验证的发现。 |
+| **Model > Report** | Repository Model 是第一产物，长期资产。Report 只是 Model 的 View，可无限生成。 |
+| **一次编译，多次查询** | 不为每个问题重新理解仓库。编译一次，复用多次。 |
+| **增量更新** | 仓库变更时只更新受影响部分，不重新编译整个仓库。 |
+
+---
+
+## 为什么 Repository Model 是第一公民
+
+Karpathy LLM Wiki 最大的观点：**不要每次重新理解。**
+
+- Repository Model 是长期资产，不是中间步骤。
+- 仓库更新时增量更新 Model，而非重新编译。
+- 多种报告（架构/安全/性能/API）共享同一 Model。
+
+Report 是一次性的。Repository Model 是长期资产。
+
+---
+
+## 为什么 Model 是 Graph，不是 Tree
+
+知识不是目录树，是图。能力之间有交叉关系：
+
+- 调度器 owns 任务队列
+- 调度器 calls 插件管理器
+- 插件管理器 loads 扩展点
+- 扩展点 implements 公共 API
+
+Graph 结构支持：
+- 任意节点间的关系（不只是父子）
+- 多视角查询（从能力、从模块、从运行时）
+- 增量更新（只更新受影响的子图）
+
+---
+
+## 为什么 Model 是可链接的
+
+每个能力/子系统是独立的知识单元（Markdown 页面），相互链接：
+
+```
+wiki/
+├── runtime.md
+├── scheduler.md
+├── plugin-system.md
+├── configuration.md
+└── storage.md
+```
+
+- scheduler → runtime → plugin → api
+- Report 引用这些知识单元，而非重新描述。
+- 类似 LLM Wiki 的 Page → Link → Page 结构。
 
 ---
 
@@ -35,8 +99,6 @@ flowchart LR
 
 只有当新的证据不再显著改变知识模型时，研究才认为达到稳定状态。
 
-研究过程中允许推理，但所有推理都必须能够追溯到可验证证据。
-
 ---
 
 ## 研究哲学
@@ -45,6 +107,7 @@ flowchart LR
 - **已验证的结论** 优于 **有趣的推测**
 - **工程推理** 优于 **架构 buzzword**
 - **维护者意图** 优于 **模式匹配**
+- **编译一次** 优于 **反复重新理解**
 
 ---
 
@@ -65,32 +128,34 @@ flowchart TD
     E -- 否 --> F[收集更多证据]
     F --> C
     E -- 是 --> G[阶段 2：架构解释]
-    G --> H[阶段 3：叙事渲染]
+    G --> I[Repository Model]
+    I --> H[阶段 3：叙事渲染]
 ```
 
 ---
 
 ## 为什么证据优先
 
-LLM 的核心风险是幻觉（Hallucination）——在没有证据支持的情况下生成看似合理的解释。
+LLM 的核心风险是幻觉——在没有证据支持的情况下生成看似合理的解释。
 
-证据优先Evidence First原则要求：
+证据优先原则要求：
 
 - 所有结论必须追溯到仓库证据。
-- 无证据的声明标记为**未解问题**，而非推测。
+- 无证据的声明标记为未解问题，而非推测。
 - 多个独立来源相互印证时，优先于单一来源。
 
 这不是限制推理，而是限制**无依据的推理**。
 
 ---
 
-## 为什么需要仓库模型 Repository Model
+## 为什么需要仓库模型
 
 直接从源码跳到架构结论会丢失中间抽象。仓库模型是事实与解释之间的中间层：
 
 - 它组织事实（模块、能力、关系、演进）。
 - 它不解释设计原因。
 - 它为后续的架构解释提供稳定基础。
+- **它是长期资产，可被多种报告复用。**
 
 没有这层中间抽象，LLM 容易从局部代码细节直接跳到全局架构判断，产生过度泛化。
 
@@ -107,3 +172,33 @@ LLM 的核心风险是幻觉（Hallucination）——在没有证据支持的情
 - 防止 LLM 为了给出答案而推测。
 
 承认不知道比给出错误答案更有价值。
+
+---
+
+## 未来演进：Repository Knowledge Compiler
+
+当前 Skill 名为 `repo-research-v2`，但真正的方向是 **Repository Knowledge Compiler**：
+
+```
+Repository
+      ↓
+  Compile
+      ↓
+Repository Knowledge Base
+      ↓
+  Architecture Report
+      ↓
+  Design Review
+      ↓
+  API Guide
+      ↓
+  Onboarding Guide
+      ↓
+  ADR
+      ↓
+  Migration Notes
+```
+
+Research 只是其中一种产物。真正的输出是** Repository Knowledge Base**——持续演化、可复用的知识层。
+
+这与 Karpathy 的 LLM Wiki 是同一种范式：**LLM 的核心工作不是回答问题，而是把原始材料编译成一个持续演化、可复用的知识层；所有报告、分析和回答都只是这个知识层的不同视图。**

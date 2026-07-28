@@ -1,17 +1,41 @@
 ---
 name: "repo-research-v2"
-description: "对开源 Repository 进行深度架构研究，提炼其设计思想、工程约束、架构决策与可复用模式。当用户要求研究/分析某个仓库的架构、设计模式或工程实现时调用。"
+description: "把 Repository 编译成持续维护的架构知识库（Repository Model），并渲染多种视图（架构报告、设计评审等）。当用户要求研究/分析某个仓库的架构、设计模式或工程实现时调用。"
 ---
 
-# Repository 研究
+# Repository 知识编译
 
-> 相关文档：[methodology.md](./methodology.md)（研究方法论与设计理由）| [report-schema.md](./report-schema.md)（输出规范与报告 Schema）
+> 相关文档：[methodology.md](./methodology.md)（方法论与设计理由）| [report-schema.md](./report-schema.md)（输出规范与 Schema）
+
+---
+
+## 核心理念
+
+Repository Research 的目标**不是**生成报告，而是：
+
+> **把 Repository 编译成持续维护的架构知识库（Repository Model），报告只是知识库的一种视图。**
+
+```mermaid
+flowchart LR
+    R[Repository] --> C[编译]
+    C --> M[Repository Model<br/>知识图谱]
+    M --> V1[架构报告]
+    M --> V2[安全报告]
+    M --> V3[性能报告]
+    M --> V4[API 指南]
+    M --> V5[入职指南]
+```
+
+- **Repository Model 是第一公民** — 长期资产，非中间步骤。
+- **Report 是 Model 的 View** — 可从同一 Model 生成多种报告。
+- **一次编译，多次查询** — 不为每个问题重新理解仓库。
+- **增量更新** — 仓库变更时只更新受影响部分，不重新编译整个仓库。
 
 ---
 
 ## 目标
 
-研究目标**不是**总结代码，而是重建：
+编译目标**不是**总结代码，而是构建可复用的架构知识库：
 
 - 系统如何工作
 - 为什么这样设计
@@ -19,13 +43,13 @@ description: "对开源 Repository 进行深度架构研究，提炼其设计思
 - 做出了哪些架构决策
 - 哪些思想可以迁移到其他系统
 
-报告应帮助有经验的工程师达到原维护者级别的理解。
+知识库应帮助有经验的工程师达到原维护者级别的理解。
 
 ---
 
-## 研究范围
+## 编译范围
 
-**研究**：
+**编译**：
 
 - 架构与子系统边界
 - 依赖结构与能力分解
@@ -37,7 +61,7 @@ description: "对开源 Repository 进行深度架构研究，提炼其设计思
 - 部署模型与配置模型
 - 可复用的工程思想
 
-**不研究**（属于其他专项 skill）：
+**不编译**（属于其他专项 skill）：
 
 - 安全审计 / 漏洞扫描
 - 代码风格检查 / Lint / 格式化
@@ -46,7 +70,7 @@ description: "对开源 Repository 进行深度架构研究，提炼其设计思
 
 ---
 
-## 研究输入
+## 编译输入
 
 接受以下信息的任意子集：
 
@@ -61,7 +85,7 @@ description: "对开源 Repository 进行深度架构研究，提炼其设计思
 
 ---
 
-## 研究流程
+## 编译流程
 
 ```mermaid
 flowchart TD
@@ -72,7 +96,9 @@ flowchart TD
     E -- 否 --> F[收集更多证据]
     F --> C
     E -- 是 --> G[阶段 2：架构解释]
-    G --> H[阶段 3：叙事渲染]
+    G --> I[Repository Model<br/>知识图谱]
+    I --> H[阶段 3：叙事渲染]
+    H --> J[报告视图]
 ```
 
 ### 阶段 0 — 机械分析
@@ -81,9 +107,9 @@ flowchart TD
 
 **禁止**在此阶段进行架构解释。
 
-### 阶段 1 — 仓库模型构建（Repository Model Construction）
+### 阶段 1 — 仓库模型构建
 
-将机械证据转化为仓库模型。
+将机械证据转化为 Repository Graph。
 
 构建以下 5 个维度（详见 [report-schema.md](./report-schema.md#仓库模型维度)）：
 
@@ -97,7 +123,7 @@ flowchart TD
 
 **禁止**在此阶段推断架构意图。
 
-### 阶段 2 — 架构解释（Architectural Interpretation）
+### 阶段 2 — 架构解释
 
 基于仓库模型重建系统背后的工程思想。
 
@@ -116,13 +142,58 @@ flowchart TD
 
 如果存在多个合理解释，分别说明并给出各自证据与置信度。
 
-### 阶段 3 — 叙事渲染（Narrative Rendering）
+### 阶段 3 — 叙事渲染
 
-生成人类可读的研究报告。
+从 Repository Model 渲染人类可读的报告视图。
 
 **禁止**在此阶段执行推理。**禁止**发明新结论。
 
 只将已验证的发现组织成连贯叙事。
+
+---
+
+## Repository Model（第一产物）
+
+Repository Model 是编译的**第一产物**，而非中间步骤。
+
+### Model 是 Graph，不是 Tree
+
+```mermaid
+flowchart TD
+    S[调度器] --owns--> T[任务队列]
+    S --calls--> P[插件管理器]
+    P --loads--> E[扩展点]
+    E --implements--> A[公共 API]
+```
+
+Model 必须包含：
+
+| 元素 | 说明 |
+|------|------|
+| **Node** | 能力、模块、子系统、运行时组件 |
+| **Edge** | 关系（owns / calls / depends_on / implements / extends） |
+| **Evidence** | 每个 Node 和 Edge 必须附带证据引用 |
+
+### Model 是长期资产
+
+- **持久化** Model，不丢弃。
+- 仓库更新时**增量更新** Model，不重新编译。
+- Model 可被多种 Report 共享。
+
+### Model 是可链接的
+
+每个能力/子系统是独立的知识单元，相互链接：
+
+```
+repository-model/
+├── runtime.md
+├── scheduler.md
+├── plugin-system.md
+├── configuration.md
+└── storage.md
+```
+
+Report 引用这些知识单元，而非重新描述。
 
 ---
 
@@ -171,7 +242,7 @@ flowchart TD
 
 - **追溯**每个结论到证据。
 - **禁止**无证据推断。
-- **标记**无证据支持的声明为 Unknown。
+- **标记**无证据支持的声明为未解问题。
 - **优先**多个独立来源，而非单一来源。
 - 冲突时**优先**高层级证据：测试 > 源码 > 配置 > 文档 > 提交 > 推断。
 
@@ -226,7 +297,24 @@ flowchart TD
 - 单向依赖关系
 - 声明式配置模型
 
-Report them.
+**将不变量写入 Repository Model，并在报告中呈现。**
+
+---
+
+## 增量更新
+
+Repository Model 是长期资产，支持增量更新：
+
+```mermaid
+flowchart LR
+    U[仓库变更] --> D[识别受影响范围]
+    D --> U2[更新受影响的 Model 节点]
+    U2 --> R[重新渲染受影响的报告章节]
+```
+
+- **禁止**每次变更都重新编译整个仓库。
+- **只更新**受影响的 Model 节点及其关联。
+- **只重新渲染**依赖这些节点的报告章节。
 
 ---
 
@@ -243,37 +331,52 @@ Report them.
 - 维护者如何心智划分系统？
 - 哪些思想在本仓库之外仍有价值？
 
-**如果任一问题无法回答，研究尚未完成。**
+**如果任一问题无法回答，编译尚未完成。**
 
 ---
 
 ## 输出
 
-报告必须包含以下 17 个章节（详见 [report-schema.md](./report-schema.md#报告章节)）：
+### 第一产物：Repository Model
 
-1. 执行摘要 Executive Summary
-2. 仓库心智模型 Repository Mental Model
-3. 架构不变量 Architectural Invariants
-4. 工程约束 Engineering Constraints
-5. 能力地图 Capability Map
-6. 静态架构 Static Architecture
-7. 运行时架构 Runtime Architecture
-8. 架构演进 Evolution
-9. 关键决策 Key Decisions
-10. 架构作用力 Architectural Forces
-11. 设计张力 Design Tensions
-12. 架构杠杆 Architectural Leverage
-13. 可复用模式 Reusable Patterns
-14. 风险 Risks
-15. 经验教训 Lessons Learned
-16. 未解问题 Open Questions
-17. 证据质量摘要 Evidence Quality Summary
+Repository Model（知识图谱）是核心产物，包含：
+
+- 节点（能力、模块、子系统）
+- 边（关系）
+- 证据引用
+- 架构不变量
+- 工程约束
+- 设计决策
+
+### 第二产物：报告视图
+
+报告是 Repository Model 的一种视图，必须包含以下 17 个章节（详见 [report-schema.md](./report-schema.md#报告章节)）：
+
+1. 执行摘要
+2. 仓库心智模型
+3. 架构不变量
+4. 工程约束
+5. 能力地图
+6. 静态架构
+7. 运行时架构
+8. 架构演进
+9. 关键决策
+10. 架构作用力
+11. 设计张力
+12. 架构杠杆
+13. 可复用模式
+14. 风险
+15. 经验教训
+16. 未解问题
+17. 证据质量摘要
+
+**可从同一 Model 生成其他视图**：安全报告、性能报告、API 指南、入职指南等。
 
 ---
 
-## 成功标准 Success Criteria
+## 成功标准
 
-一份成功的研究报告应让有经验的工程师能够回答：
+一份成功的编译应让有经验的工程师能够回答：
 
 - 这个仓库如何工作？
 - 为什么这样设计？
@@ -281,4 +384,6 @@ Report them.
 - 哪些思想值得复用？
 - 哪些工程错误被有意避免？
 
-**如果这些问题无法回答，研究尚未完成。**
+**且 Repository Model 可被复用**：未来生成新报告时，无需重新编译仓库。
+
+**如果这些问题无法回答，或 Model 无法复用，编译尚未完成。**
