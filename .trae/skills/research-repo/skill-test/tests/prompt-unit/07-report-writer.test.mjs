@@ -17,18 +17,33 @@ import { runAnalyzerReport } from "../../lib/analyzer-runner.mjs";
 export function runReportWriterTests() {
   const cases = [
     {
-      name: "template contract: enforces judgment-driven structure",
+      name: "template contract: enforces v2 narrative structure",
       test(result) {
         const prompt = renderPrompt("07-report-writer", { repoName: "test-repo" });
 
-        result.record("emphasizes Judgment over Format", () => {
-          assertContains(prompt, "Judgment over Format", "Prompt should emphasize judgment");
+        result.record("emphasizes Story over Section", () => {
+          assertContains(prompt, "Story over Section", "Prompt should emphasize narrative");
         });
         result.record("allows Unknown as valid", () => {
           assertContains(prompt, "Unknown is valid", "Prompt should allow Unknown");
         });
-        result.record("instructs Evidence over Analyzer", () => {
-          assertContains(prompt, "Evidence over Analyzer", "Prompt should not discuss analyzer errors");
+        result.record("declares Report = Renderer", () => {
+          assertContains(prompt, "Report = Renderer", "Prompt should declare report is renderer only");
+        });
+        result.record("references Knowledge Graph input", () => {
+          assertContains(prompt, "Knowledge Graph", "Prompt should reference KG input");
+        });
+        result.record("references Semantic Findings input", () => {
+          assertContains(prompt, "Semantic Findings", "Prompt should reference Findings input");
+        });
+        result.record("references Fingerprint input", () => {
+          assertContains(prompt, "Fingerprint", "Prompt should reference Fingerprint input");
+        });
+        result.record("includes Anti-Fabrication constraints", () => {
+          assertContains(prompt, "Anti-Fabrication", "Prompt should include anti-fabrication rules");
+        });
+        result.record("includes Quality Gate", () => {
+          assertContains(prompt, "Quality Gate", "Prompt should include quality gate");
         });
       },
     },
@@ -36,7 +51,7 @@ export function runReportWriterTests() {
 
   if (isLlmAvailable()) {
     cases.push({
-      name: "LLM output has report structure (live)",
+      name: "LLM output has v2 report structure (live)",
       test(result) {
         const dir = createSyntheticRepo("database");
         try {
@@ -46,12 +61,6 @@ export function runReportWriterTests() {
 
           result.record("LLM output is non-empty", () => {
             if (!output || output.length < 100) throw new Error("Output too short or empty");
-          });
-          result.record("LLM output has Executive Summary", () => {
-            if (!/Executive\s+Summary/i.test(output)) throw new Error("Output should have Executive Summary");
-          });
-          result.record("LLM output has Claims", () => {
-            if (!/Claim\s+\d/i.test(output)) throw new Error("Output should contain numbered Claims");
           });
           result.record("LLM output has Quality Gate", () => {
             if (!/Quality\s+Gate/i.test(output)) throw new Error("Output should have Quality Gate");

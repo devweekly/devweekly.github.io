@@ -389,6 +389,7 @@ When updating AGENTS.md:
 
 | Date | Change | Updated By |
 |------|--------|------------|
+| 2026-07-29 | research-repo: Pipeline v2 — 4-stage 分层推理 (Knowledge Modeling → Interpretation → Fingerprint → Narrative)；新增 schemas.mjs (KG/Findings/Fingerprint/EvidenceRef 验证)、prompts/01-modeling.md、prompts/02-interpretation.md；重写 prompts/07-report-writer.md 为 12 章节叙事结构；新增 pipeline-v2/modeling/interpretation/fingerprint CLI 命令；修复 hybrid 命令 outputDir 参数；新增 84 个单元测试 (schemas/fingerprint/pipeline-stages)；DESIGN.md 新增 §37 | @agents-maintainer |
 | 2026-07-29 | research-repo: default LLM switched to opencode/deepseek-v4-flash-free; removed semantic analyzers/brain/engine/report-generator and regenerated fixtures | @agents-maintainer |
 | 2026-07-27 | research-repo: added test:e2e:live + test:fixtures:generate scripts and LLM-in-the-loop E2E support | @agents-maintainer |
 | 2026-02-08 | Added Self-Maintenance section | @agents-maintainer |

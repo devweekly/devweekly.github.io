@@ -4,6 +4,89 @@
 
 ---
 
+## 2026-07-29 — Pipeline v2：Knowledge Graph + Semantic Findings + Fingerprint
+
+### 核心升级：4 层分层推理 Pipeline
+
+从 `Evidence → LLM(1 call) → Report` 升级为 **3 层 LLM + 1 层规则生成** 的分层推理：
+
+```
+Mechanical Evidence (事实层)
+    ↓
+Knowledge Graph (事实层 — Entity/Relationship/Attributes)
+    ↓ Stage 1: Knowledge Modeling (LLM call 1)
+Semantic Findings (解释层 — 统一 Finding 对象)
+    ↓ Stage 2: Interpretation (LLM call 2)
+Repository Fingerprint (浓缩层 — 规则生成，无 LLM)
+    ↓ Stage 3: buildFingerprint() (规则)
+Narrative Report (展示层 — 只是 Renderer)
+    ↓ Stage 4: Narrative (LLM call 3)
+```
+
+### 四种核心数据结构
+
+1. **Knowledge Graph (KG)** — 事实层，只描述 Entity/Relationship/Attributes/Evolution，不掺杂评价。Entity 使用 capability 名（如 "LLM Integration"），不使用 package 路径。
+2. **Semantic Findings** — 解释层，统一采用 `Finding` 对象，通过 `type` 字段区分（constraint / decision / tension / omission / leverage / mental_model）。所有 Finding 必须引用 KG 实体。
+3. **Repository Fingerprint** — 浓缩层，由 `buildFingerprint(kg, findings)` 规则生成，不单独消耗 LLM。包含 7 个字段（style/architecture/evolution/domain/maturity/complexity/engineering_taste）。
+4. **EvidenceRef** — 统一证据引用格式（id / kind / path / symbol / commit / excerpt / score），替代旧的 `{source, detail}` 异构格式。
+
+### 关键设计决策
+
+- **Leverage 不在 KG 中** — Leverage 是评估，不是事实，移到 Semantic Findings 的 `type: "leverage"` Finding
+- **Evolution 降级为 KG metadata** — 不是顶级 entity，是图的元信息
+- **Intent 合并到 Decision** — 不单独 Schema，Intent 是 Decision 的字段（`intent` + `time_horizon`）
+- **Mental Model 输出 concepts 而非 layers** — `{concept, owns, responsibility, boundary}` 结构
+- **统一 Finding 对象** — 新增 Security / Performance / Reliability 只需新增一种 Finding type
+- **Finding 引用 KG** — `entity_refs` / `relationship_refs` 让 Finding 关联到 KG 实体，形成知识图谱
+- **Fingerprint 不单独 LLM** — `engineering_taste` 在 Interpretation stage 顺带生成，其余字段规则计算
+- **Schema 带 version** — 避免 future 升级时所有 prompt 一起坏掉
+
+### 新增文件
+
+- `schemas.mjs` — 4 种核心数据结构定义 + 验证函数（`validateKG` / `validateFindings` / `validateFingerprint` / `validateEvidenceRef`）
+- `prompts/01-modeling.md` — Knowledge Modeling prompt（Capability Graph 建模，禁止推断意图）
+- `prompts/02-interpretation.md` — Interpretation prompt（6 种 Finding 类型，允许推断意图，必须基于 KG）
+- `__tests__/schemas.test.mjs` — 36 个 schema 验证测试
+- `__tests__/fingerprint.test.mjs` — 22 个 buildFingerprint 规则生成测试
+- `__tests__/pipeline-stages.test.mjs` — 12 个 stage runner 测试（mock LLM）
+
+### 修改文件
+
+- `hybrid-pipeline.mjs` — 新增 `discoverDocuments()` / `runModelingStage()` / `runInterpretationStage()` / `buildFingerprint()` / `runNarrativeStage()` / `runPipelineV2()`
+- `research-repo.mjs` — 新增 `pipeline-v2` / `modeling` / `interpretation` / `fingerprint` CLI 命令；修复 `hybrid` / `hybrid-json` 命令支持 `outputDir` 参数
+- `prompts/07-report-writer.md` — 完全重写，从 13 章节固定模板改为基于 KG + Findings + Fingerprint 的 12 章节叙事结构；删除所有对已删除章节/文件的引用
+
+### Document Discovery
+
+新增 `discoverDocuments(repoPath)` 函数，按优先级搜索设计文档：
+1. `adr/` / `docs/adr/` — Architecture Decision Records（priority 1）
+2. `rfc/` / `docs/rfc/` — Request for Comments（priority 2）
+3. `architecture.md` / `docs/architecture.md` — 架构文档（priority 3）
+4. `docs/design/` — 设计文档目录（priority 4）
+5. `README.md` — 最后才看 README（priority 5）
+
+### CLI 新命令
+
+```bash
+# Pipeline v2（4-stage 全流程）
+node research-repo.mjs pipeline-v2 <repoPath> [outputDir] [--model=...] [--stage=all|modeling|interpretation|fingerprint]
+
+# 单独运行某个 stage
+node research-repo.mjs modeling <repoPath>          # Stage 1: Knowledge Graph
+node research-repo.mjs interpretation <repoPath>    # Stage 2: Semantic Findings
+node research-repo.mjs fingerprint <repoPath>       # Stage 3: Fingerprint (规则生成)
+
+# Hybrid 命令支持 outputDir
+node research-repo.mjs hybrid <repoPath> [outputDir]  # 写入 report.md + evidence-brief.json
+```
+
+### 测试
+
+- `pnpm test`：153/153 通过（原 69 + 新增 84）
+- `pnpm test:skill`：185/185 通过（6 层全通过 0 回归）
+
+---
+
 ## 2026-07-29 — DeepSeek V4 Flash Free 默认模型 + 语义代码精简
 
 ### 默认模型

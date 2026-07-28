@@ -5,7 +5,7 @@ description: "研究一个开源 Repository，提炼其架构、设计思想、�
 
 # Repository 研究
 
-> 研究一个开源 Repository，提炼其架构、设计思想、工程权衡与可复用模式，而不是仅仅解释代码。
+> 研究一个开源 Repository，提炼其架构、设计思想、工程权衡与可复用模式，而不是仅仅解释代码。生成中文报告。
 
 ---
 
@@ -19,6 +19,47 @@ description: "研究一个开源 Repository，提炼其架构、设计思想、�
 - 哪些思想可以迁移到别处？
 
 输出应更像架构评审或工程设计文档，而非代码文档。
+
+---
+
+## Pipeline 架构
+
+研究 Pipeline 采用 **4 层分层推理**（3 层 LLM + 1 层规则生成）：
+
+```
+Mechanical Evidence          (事实层 — AST/Graph/Metrics/Git)
+        │
+        ▼
+Knowledge Graph              (事实层 — Entity/Relationship/Attributes)
+        │ Stage 1: Knowledge Modeling (LLM call 1)
+        ▼
+Semantic Findings            (解释层 — 统一 Finding 对象，type 区分)
+        │ Stage 2: Interpretation (LLM call 2)
+        ▼
+Repository Fingerprint       (浓缩层 — 规则生成，不单独 LLM)
+        │ Stage 3: buildFingerprint() (规则)
+        ▼
+Narrative Report             (展示层 — 只是 Renderer)
+        │ Stage 4: Narrative (LLM call 3)
+```
+
+### 四种核心数据结构
+
+1. **Knowledge Graph (KG)** — 事实层。Entity 使用 capability 名（如 "LLM Integration"），不使用 package 路径。只描述事实和关系，不掺杂评价。
+2. **Semantic Findings** — 解释层。统一 `Finding` 对象，通过 `type` 字段区分（constraint / decision / tension / omission / leverage / mental_model）。所有 Finding 必须引用 KG 实体。
+3. **Repository Fingerprint** — 浓缩层。由规则生成（`buildFingerprint(kg, findings)`），不消耗 LLM。包含 style/architecture/evolution/domain/maturity/complexity/engineering_taste。
+4. **EvidenceRef** — 统一证据引用格式（id / kind / path / symbol / commit / excerpt / score）。
+
+### 推理分层契约
+
+| 层 | 输入 | 输出 | 允许推断意图 |
+|----|------|------|-------------|
+| Knowledge Modeling | AST / 依赖 / Git / Metrics / Documents | Entity / Relationship / Attributes / Evolution | 否 |
+| Interpretation | Knowledge Graph + Documents + Evidence Brief | 统一 Finding 对象 | 是 |
+
+Mental Model / Constraint / Intent 不直接从零散代码推断，而是建立在已验证的知识图谱之上。
+
+**主线始终是 Repository Research，不向 Palantir Ontology 演进。**
 
 ---
 

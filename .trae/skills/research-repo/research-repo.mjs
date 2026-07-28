@@ -19,9 +19,15 @@
  *   node research-repo.mjs verify       <researchDir> [--expected=<yaml>]  # Validate research output
  *
  *   # Hybrid commands (Script Mechanical Truth + LLM Semantic Truth):
- *   node research-repo.mjs hybrid       <repoPath>  # Markdown report via LLM
- *   node research-repo.mjs hybrid-json  <repoPath>  # JSON output via LLM
+ *   node research-repo.mjs hybrid       <repoPath> [outputDir]  # Markdown report via LLM
+ *   node research-repo.mjs hybrid-json  <repoPath> [outputDir]  # JSON output via LLM
  *   node research-repo.mjs hybrid-analyzers         # List Mechanical vs Semantic analyzers
+ *
+ *   # Pipeline v2 commands (4-stage: Modeling → Interpretation → Fingerprint → Narrative):
+ *   node research-repo.mjs pipeline-v2   <repoPath> [outputDir]  # Full 4-stage pipeline
+ *   node research-repo.mjs modeling      <repoPath>              # Stage 1 only: Knowledge Graph
+ *   node research-repo.mjs interpretation <repoPath>             # Stage 2 only: Semantic Findings (requires KG)
+ *   node research-repo.mjs fingerprint   <repoPath>              # Stage 3 only: Fingerprint (requires KG + Findings)
  *
  * This file is the CLI entrypoint. All analysis logic lives in modular files:
  *   config.mjs              — Configuration constants
@@ -49,6 +55,7 @@ import { AnalyzerPipeline, ANALYZERS } from "./pipeline.mjs";
 import { verifyResearchDirectory, loadExpectedYaml } from "./skill-test/e2e/verify-directory.mjs";
 import {
   runHybridPipeline,
+  runPipelineV2,
   listMechanicalAnalyzers,
   listSemanticAnalyzers,
 } from "./hybrid-pipeline.mjs";
@@ -72,12 +79,19 @@ async function main() {
   const command = positional[0];
   const repoPath = positional[1];
   const hybridCommands = new Set(["hybrid", "hybrid-json", "hybrid-analyzers"]);
+  const pipelineV2Commands = new Set([
+    "pipeline-v2",
+    "modeling",
+    "interpretation",
+    "fingerprint",
+  ]);
   const verifyCommands = new Set(["verify"]);
   const validCommands = new Set([
     ...ANALYZERS.map((a) => a.id),
     "all",
     "report",
     ...hybridCommands,
+    ...pipelineV2Commands,
     ...verifyCommands,
   ]);
 
@@ -129,8 +143,10 @@ async function main() {
     }
 
     const hybridRepoPath = positional[1];
+    // positional[2] is outputDir (optional). If provided, write artifacts there.
+    const outputDir = positional[2];
     if (!hybridRepoPath) {
-      console.error("Usage: node research-repo.mjs hybrid <repoPath> [--skill=07-report-writer.md] [--model=opencode/deepseek-v4-flash-free] [--format=markdown|json]");
+      console.error("Usage: node research-repo.mjs hybrid <repoPath> [outputDir] [--skill=07-report-writer.md] [--model=opencode/deepseek-v4-flash-free] [--format=markdown|json]");
       process.exit(1);
     }
     if (!existsSync(hybridRepoPath)) {
@@ -151,22 +167,116 @@ async function main() {
     console.error(`[hybrid] Mechanical analyzers → JSON Evidence Brief → LLM (${model}) → ${format}`);
     console.error(`[hybrid] Skill prompt: ${skill}`);
     console.error(`[hybrid] Skipping semantic analyzers: ${listSemanticAnalyzers().join(", ")}`);
+    if (outputDir) {
+      console.error(`[hybrid] Output dir: ${outputDir}`);
+    }
 
     try {
       const result = await runHybridPipeline(hybridRepoPath, {
         skillPrompt: skill,
         model,
         outputFormat: format,
-        returnEvidenceBrief: returnBrief,
+        returnEvidenceBrief: returnBrief || !!outputDir,
       });
 
-      if (returnBrief && typeof result === "object") {
+      if (outputDir) {
+        // Write artifacts to outputDir
+        const { mkdirSync } = await import("node:fs");
+        mkdirSync(outputDir, { recursive: true });
+        if (typeof result === "object" && result.evidenceBrief) {
+          writeFileSync(join(outputDir, "report.md"), String(result.report || "") + "\n");
+          writeFileSync(join(outputDir, "evidence-brief.json"), JSON.stringify(result.evidenceBrief, null, 2) + "\n");
+          console.error(`[hybrid] Wrote report.md + evidence-brief.json to ${outputDir}`);
+        } else {
+          writeFileSync(join(outputDir, "report.md"), String(result) + "\n");
+          console.error(`[hybrid] Wrote report.md to ${outputDir}`);
+        }
+      } else if (returnBrief && typeof result === "object") {
         process.stdout.write(JSON.stringify(result, null, 2) + "\n");
       } else {
         process.stdout.write(String(result) + "\n");
       }
     } catch (err) {
       console.error(`[hybrid] Error: ${err.message}`);
+      process.exit(1);
+    }
+    return;
+  }
+
+  // ---- Pipeline v2 commands (4-stage: Modeling → Interpretation → Fingerprint → Narrative) ----
+  if (pipelineV2Commands.has(command)) {
+    const v2RepoPath = positional[1];
+    const outputDir = positional[2]; // optional output directory
+    if (!v2RepoPath) {
+      console.error(`Usage: node research-repo.mjs ${command} <repoPath> [outputDir] [--model=opencode/deepseek-v4-flash-free] [--stage=all|modeling|interpretation|fingerprint]`);
+      process.exit(1);
+    }
+    if (!existsSync(v2RepoPath)) {
+      console.error(`Error: path does not exist: ${v2RepoPath}`);
+      process.exit(1);
+    }
+
+    const modelFlag = process.argv.find((a) => a.startsWith("--model="));
+    const stageFlag = process.argv.find((a) => a.startsWith("--stage="));
+    const model = modelFlag ? modelFlag.split("=")[1] : "opencode/deepseek-v4-flash-free";
+
+    // Map CLI command to stage:
+    //   pipeline-v2 → all
+    //   modeling → modeling
+    //   interpretation → interpretation
+    //   fingerprint → fingerprint
+    const stage = stageFlag
+      ? stageFlag.split("=")[1]
+      : (command === "pipeline-v2" ? "all" : command);
+
+    console.error(`[v2] Pipeline v2 (4-stage): stage=${stage}, model=${model}`);
+    if (outputDir) {
+      console.error(`[v2] Output dir: ${outputDir}`);
+    }
+
+    try {
+      const result = await runPipelineV2(v2RepoPath, {
+        model,
+        stage,
+        returnAll: !!outputDir || stage === "all",
+      });
+
+      if (outputDir) {
+        const { mkdirSync } = await import("node:fs");
+        mkdirSync(outputDir, { recursive: true });
+        if (typeof result === "object") {
+          if (result.kg) {
+            writeFileSync(join(outputDir, "knowledge-graph.json"), JSON.stringify(result.kg, null, 2) + "\n");
+          }
+          if (result.findings) {
+            writeFileSync(join(outputDir, "findings.json"), JSON.stringify(result.findings, null, 2) + "\n");
+          }
+          if (result.fingerprint) {
+            writeFileSync(join(outputDir, "fingerprint.json"), JSON.stringify(result.fingerprint, null, 2) + "\n");
+          }
+          if (result.report) {
+            writeFileSync(join(outputDir, "report.md"), String(result.report) + "\n");
+          }
+          if (result.evidenceBrief) {
+            writeFileSync(join(outputDir, "evidence-brief.json"), JSON.stringify(result.evidenceBrief, null, 2) + "\n");
+          }
+          console.error(`[v2] Wrote artifacts to ${outputDir}`);
+        } else {
+          // String result (report only)
+          writeFileSync(join(outputDir, "report.md"), String(result) + "\n");
+          console.error(`[v2] Wrote report.md to ${outputDir}`);
+        }
+      } else {
+        // No outputDir: print to stdout
+        if (typeof result === "string") {
+          process.stdout.write(result + "\n");
+        } else {
+          process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+        }
+      }
+    } catch (err) {
+      console.error(`[v2] Error: ${err.message}`);
+      if (err.stack) console.error(err.stack);
       process.exit(1);
     }
     return;

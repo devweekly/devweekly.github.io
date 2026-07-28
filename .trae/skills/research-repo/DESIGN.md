@@ -1191,6 +1191,109 @@ Semantic Index 是整个 Repository 的符号级索引，由 Tree-sitter 构建�
 
 ---
 
+## 37. Pipeline v2：Knowledge Graph + Semantic Findings + Fingerprint
+
+**决策**：从 `Evidence → LLM(1 call) → Report` 升级为 **3 层 LLM + 1 层规则生成** 的分层推理 Pipeline。
+
+**理由**（来自用户反馈）：
+> "不要分析 package，而是分析 Capability。"
+> "Constraint Discovery 是收益最高的层。"
+> "Intent 比 Decision 重要——What future evolution does this decision enable?"
+> "Mental Model Analyzer 是最大的升级。"
+> "Leverage 不在 KG 中——Leverage 是评估，不是事实。"
+> "Fingerprint 不值得再消耗一次 LLM——它是 Derived Metadata。"
+> "不要向 Palantir Ontology 演进——主线始终是 Repository Research。"
+
+### 四种核心数据结构
+
+```
+Mechanical Evidence          (事实层 — 已有)
+        │
+        ▼
+Knowledge Graph              (事实层 — Entity/Relationship/Attributes)
+        │ Stage 1: Knowledge Modeling (LLM call 1)
+        ▼
+Semantic Findings            (解释层 — 统一 Finding 对象，type 区分)
+        │ Stage 2: Interpretation (LLM call 2)
+        ▼
+Repository Fingerprint       (浓缩层 — 规则生成，不单独 LLM)
+        │ Stage 3: buildFingerprint() (规则)
+        ▼
+Narrative Report             (展示层 — 只是 Renderer)
+        │ Stage 4: Narrative (LLM call 3)
+```
+
+### 设计决策 37.1：Knowledge Graph 只描述事实和关系
+
+- KG 只保留：Entity / Relationship / Attributes / Evolution(metadata)
+- **Leverage 不在 KG 中** — Leverage 是评估，不是事实，移到 Semantic Findings 的 `type: "leverage"` Finding
+- **Evolution 降级为 metadata** — 不是顶级 entity，是图的元信息
+- Entity 使用 capability 名（如 "LLM Integration"），不使用 package 路径
+- Entity 增加 `attributes` 通用属性容器，避免不停扩展 Entity 字段
+
+### 设计决策 37.2：统一 Finding 对象
+
+- 所有解释统一为 `Finding` 结构，通过 `type` 字段区分（constraint / decision / tension / omission / leverage / mental_model）
+- **Intent 不单独 Schema** — Intent 是 Decision 的字段（`intent` + `time_horizon`）
+- **Mental Model 输出 concepts 而非 layers** — `{concept, owns, responsibility, boundary}`
+- 以后新增 Security / Performance / Reliability 只需新增一种 Finding type
+- Finding 通过 `entity_refs` / `relationship_refs` 引用 KG 实体，形成真正的知识图谱
+
+### 设计决策 37.3：EvidenceRef 统一证据引用格式
+
+- 所有 evidence 使用 `EvidenceRef` 格式（id / kind / path / symbol / commit / excerpt / score）
+- 替代旧的 `{source, detail}` 异构格式
+- 10 种 kind：code / test / config / commit / readme / adr / rfc / issue / metric / graph
+
+### 设计决策 37.4：Fingerprint 不单独 LLM
+
+- Fingerprint 是 Derived Metadata，由 `buildFingerprint(kg, findings)` 规则生成
+- `complexity` ← entity 数量 + relationship 数量
+- `maturity` ← ADR 存在性 + CI 配置 + test 数量
+- `architecture` ← entity 数量 + plugin 目录信号
+- `style` ← function vs class 比例
+- `evolution` ← git history commit 模式
+- `domain` ← README/package.json 关键词
+- `engineering_taste` ← 从 `mental_model` Finding 的 `attributes.engineering_taste` 读取（Interpretation stage 顺带生成）
+
+### 设计决策 37.5：Document Discovery 优先级
+
+- ADR > RFC > architecture.md > docs/design > README
+- 真正的架构信息在 `docs/`、`adr/`、`rfcs/` 里，README 往往只有 Install + Quick Start
+- 每个文档提取前 2000 字符，总量控制在 5000 字符以内
+
+### 设计决策 37.6：Schema 带 version
+
+- 所有 schema 带 `version` 字段（当前 "0.1"）
+- 未来升级 prompt 时可以声明 `Input schema version: 0.2`
+- 避免所有 prompt 一起坏掉
+
+### 设计决策 37.7：不要向 Palantir Ontology 演进
+
+- 主线始终是 Mechanical Evidence → KG → Findings → Report
+- 不要发展成 Ontology Object / Entity / Event / Action / Process / Observation / Workflow / Policy / Rule / Tag / Taxonomy / Classification
+- 其它都是辅助
+
+### 推理分层契约
+
+| 层 | 输入 | 输出 | 允许推断意图 |
+|----|------|------|-------------|
+| Knowledge Modeling | AST / 依赖 / Git / Metrics / Documents | Entity / Relationship / Attributes / Evolution | 否 |
+| Interpretation | Knowledge Graph + Documents + Evidence Brief | 统一 Finding 对象 | 是 |
+
+Mental Model / Constraint / Intent 不再直接从零散代码推断，而是建立在已验证的知识图谱之上。
+
+### Quality Gate
+
+| Stage | Gate |
+|-------|------|
+| Modeling | Schema Validation + Entity 命名检查（非 package path）+ Relationship 完整性 + Evidence 格式 |
+| Interpretation | Evidence Coverage（每个 Finding ≥1 EvidenceRef）+ KG 引用检查 + Contradiction Check |
+| Fingerprint | Schema Validation + 一致性检查（无 "Unknown"） |
+| Narrative | 12 sections 完整性 + Evidence Traceability + Fingerprint Consistency |
+
+---
+
 ## 核心依赖
 
 所有依赖在根目录 `package.json` 的 `devDependencies` 中。脚本使用动态 `import()` 并优雅降级——零硬依赖，但预期已安装 Tree-sitter。
