@@ -1337,3 +1337,56 @@ research-repo/
 ├── DESIGN.md                  # 本文档（框架实现 + 设计理由）
 └── CHANGELOG.md               # 演进历史
 ```
+
+---
+
+## 39. SKILL.md 反过度设计：删除"宇航员架构"
+
+**决策**：从 SKILL.md 中删除 Research Judgment System、Evidence Acceptance Rules、Evidence Quality、Distillation Rules、Object Lifecycle 等章节，从 411 行精简到 193 行。
+
+**理由**（来自用户反馈）：
+
+> "这份 Skill 文档最大的问题在于：它在口头上拒绝了复杂本体（'不向 Palantir Ontology 演进'），但在实际行动中却构建了一个更加繁琐的认识论状态机。"
+>
+> "LLM 本质上是无状态的自回归引擎。除非你的基础设施层配有强大的图数据库并在各个状态节点进行多次流转和持久化，否则单次或三次 LLM 调用根本无法完成如此复杂的认识论状态跃迁。"
+>
+> "把系统架构设计直接写进 Prompt 给模型看，对 LLM 解析任务毫无帮助，只会增加噪音。"
+
+### 删除的"死代码"
+
+以下概念在 v2 Pipeline 中**既未被脚本实现，也未被任何 prompt 引用**，是 v1 时代的遗留：
+
+| 删除内容 | 问题 | 实际状态 |
+|---------|------|---------|
+| Research Object Model（11 种实体类型） | v2 只用 1 种 Finding 对象，通过 `type` 字段区分 | schemas.mjs 只有 Finding |
+| Object Lifecycle（Candidate→Hypothesis→Verified） | LLM 无法维护状态机，v2 无状态 | v2 无此概念 |
+| Evidence Acceptance Rules（5 项检查） | 代码层的事，不是 prompt 的事 | 由 EvidenceRef schema 隐式保证 |
+| Distillation Rules（100→40→18→7→5 漏斗） | 虚构的漏斗，v2 未实现 | v2 直接让 LLM 生成 5-10 个 Finding |
+| Evidence Quality 表格 | 已在 prompts/07-report-writer.md 中 | prompt 直接定义 |
+| Unknown 主动分类表 | 已在 prompts/07-report-writer.md 中 | prompt 直接定义 |
+| Research Mindset / Reading Strategy | v1 的建议，v2 用 Document Discovery 替代 | discoverDocuments() 实现 |
+
+### 保留的核心
+
+SKILL.md 现在只包含**真正被 v2 Pipeline 使用的方法论**：
+
+1. **目标** — 为什么研究
+2. **Pipeline 架构** — 4 层分层推理 + 4 种核心数据结构 + 推理分层契约
+3. **Research Principles** — 7 条精简原则（Evidence-first / Question-centric / Decision-centric / Unknown is valid / Fact vs Interpretation / Higher-tier-wins / Knowledge reuse）
+4. **Repository Archetype** — 6 种仓库类型 + 研究重点
+5. **Research Content** — 8 个通用维度 + 7 个 Interesting Questions
+6. **Honest Limits** — 5 条"不能做" + 3 条"必须做"
+7. **Report Quality** — Trace Density + Quality Gate + 5 条 Report Principles
+8. **Output Style + Success Criteria**
+
+### 文档职责分离
+
+| 文档 | 职责 | 给谁看 |
+|------|------|--------|
+| **SKILL.md** | 方法论（What/Why/Principles） | 人类 + Agent 框架 |
+| **DESIGN.md** | 设计理由（Why we made these decisions） | 工程师 |
+| **prompts/** | 执行期 Prompt（Schema + 当前阶段任务） | LLM |
+| **CHANGELOG.md** | 演进历史 | 所有人 |
+| **schemas.mjs** | 数据结构定义 + 验证 | 代码 |
+
+**核心理念**：Skill 应该像"操作系统接口"——描述当前规范（What to do），而不是演化历史（How it evolved）或认识论理论（Why we think this way）。

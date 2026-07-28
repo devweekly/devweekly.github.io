@@ -4,6 +4,32 @@
 
 ---
 
+## 2026-07-29 — SKILL.md 反过度设计精简
+
+### 问题
+
+SKILL.md 存在"宇航员架构"（Astronaut Architecture）问题：口头上拒绝了复杂本体，实际构建了更繁琐的认识论状态机。
+
+### 删除的"死代码"
+
+以下概念在 v2 Pipeline 中既未被脚本实现，也未被任何 prompt 引用，是 v1 时代的遗留：
+
+- **Research Judgment System**（11 种实体类型：Pattern/Decision/Constraint/Tradeoff/Assumption/Hypothesis/Evidence/Finding/Issue/Risk/Unknown）→ v2 只用 1 种 Finding 对象
+- **Object Lifecycle**（Candidate→Hypothesis→Supported→Verified→Decision→ReusablePattern 状态机）→ LLM 无法维护状态，v2 无状态
+- **Evidence Acceptance Rules**（5 项检查）→ 代码层的事，由 EvidenceRef schema 隐式保证
+- **Distillation Rules**（100→40→18→7→5 漏斗）→ 虚构的漏斗，v2 未实现
+- **Evidence Quality 表格** → 已在 prompts/07-report-writer.md 中
+- **Unknown 主动分类表** → 已在 prompts/07-report-writer.md 中
+- **Research Mindset / Reading Strategy** → v1 的建议，v2 用 Document Discovery 替代
+
+### 结果
+
+SKILL.md 从 411 行精简到 193 行。只保留真正被 v2 Pipeline 使用的方法论：目标、Pipeline 架构、4 种核心数据结构、推理分层契约、7 条 Research Principles、Repository Archetype、Research Content、Honest Limits、Report Quality、Output Style、Success Criteria。
+
+详见 DESIGN.md §39。
+
+---
+
 ## 2026-07-29 — Pipeline v2：Knowledge Graph + Semantic Findings + Fingerprint
 
 ### 核心升级：4 层分层推理 Pipeline
