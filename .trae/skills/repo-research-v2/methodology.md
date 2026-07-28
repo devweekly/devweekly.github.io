@@ -16,9 +16,9 @@
 
 ---
 
-## 研究方法（Research Method）
+## 研究方法
 
-Repository Research 是一个**迭代研究过程（Iterative Research Process）**，而不是线性的代码阅读过程。
+Repository Research 是一个**迭代研究过程**，而不是线性的代码阅读过程。
 
 研究从提出架构问题开始，通过针对性收集证据不断修正仓库知识模型，直到形成稳定且可验证的架构理解。
 
@@ -48,45 +48,45 @@ flowchart LR
 
 ---
 
-## 为什么采用四阶段 Pipeline
+## 为什么采用四阶段流程
 
 Repository Research 采用渐进式研究流程，而不是一次性 LLM 调用。原因：
 
-1. **降低单次推理负担** — 每个 Stage 聚焦单一职责，避免 LLM 在一次调用中同时做事实提取和架构解释。
-2. **可验证中间产物** — 每个 Stage 产出可检查的中间结果（证据 → 模型 → 解释 → 报告），便于回溯。
+1. **降低单次推理负担** — 每个阶段聚焦单一职责，避免 LLM 在一次调用中同时做事实提取和架构解释。
+2. **可验证中间产物** — 每个阶段产出可检查的中间结果（证据 → 模型 → 解释 → 报告），便于回溯。
 3. **职责不重叠** — 事实提取不做解释，解释不发明新事实，渲染不执行推理。
 
 ```mermaid
 flowchart TD
-    A[Repository Scan] --> B[Generate Research Questions]
-    B --> C[Stage 0: Mechanical Analysis]
-    C --> D[Stage 1: Repository Model Construction]
-    D --> E{Evidence Sufficient?}
-    E -- No --> F[Collect Additional Evidence]
+    A[仓库扫描] --> B[生成研究问题]
+    B --> C[阶段 0：机械分析]
+    C --> D[阶段 1：仓库模型构建]
+    D --> E{证据充分？}
+    E -- 否 --> F[收集更多证据]
     F --> C
-    E -- Yes --> G[Stage 2: Architectural Interpretation]
-    G --> H[Stage 3: Narrative Rendering]
+    E -- 是 --> G[阶段 2：架构解释]
+    G --> H[阶段 3：叙事渲染]
 ```
 
 ---
 
-## 为什么 Evidence First
+## 为什么证据优先
 
 LLM 的核心风险是幻觉（Hallucination）——在没有证据支持的情况下生成看似合理的解释。
 
-Evidence First 原则要求：
+证据优先Evidence First原则要求：
 
 - 所有结论必须追溯到仓库证据。
-- 无证据的声明标记为 Unknown，而非推测。
+- 无证据的声明标记为**未解问题**，而非推测。
 - 多个独立来源相互印证时，优先于单一来源。
 
 这不是限制推理，而是限制**无依据的推理**。
 
 ---
 
-## 为什么 Repository Model
+## 为什么需要仓库模型 Repository Model
 
-直接从源码跳到架构结论会丢失中间抽象。Repository Model 是事实与解释之间的中间层：
+直接从源码跳到架构结论会丢失中间抽象。仓库模型是事实与解释之间的中间层：
 
 - 它组织事实（模块、能力、关系、演进）。
 - 它不解释设计原因。
@@ -96,13 +96,13 @@ Evidence First 原则要求：
 
 ---
 
-## 为什么 Unknown
+## 为什么保留未解问题
 
-仓库可能无法提供足够信息。Unknown 不是研究失败，而是研究结果的合法组成部分。
+仓库可能无法提供足够信息。未解问题不是研究失败，而是研究结果的合法组成部分。
 
-主动分类 Unknown 的价值：
+主动分类未解问题的价值：
 
-- 告诉读者下一步该做什么（Need More Code / Need Documentation / Need External Information）。
+- 告诉读者下一步该做什么（需要更多代码 / 需要文档 / 需要外部信息）。
 - 区分"仓库内可验证但未覆盖"与"即使深入阅读也无法验证"。
 - 防止 LLM 为了给出答案而推测。
 

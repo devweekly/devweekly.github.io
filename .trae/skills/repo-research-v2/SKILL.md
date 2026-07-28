@@ -9,7 +9,7 @@ description: "对开源 Repository 进行深度架构研究，提炼其设计思
 
 ---
 
-## Objective
+## 目标
 
 研究目标**不是**总结代码，而是重建：
 
@@ -23,7 +23,7 @@ description: "对开源 Repository 进行深度架构研究，提炼其设计思
 
 ---
 
-## Scope
+## 研究范围
 
 **研究**：
 
@@ -46,7 +46,7 @@ description: "对开源 Repository 进行深度架构研究，提炼其设计思
 
 ---
 
-## Inputs
+## 研究输入
 
 接受以下信息的任意子集：
 
@@ -61,76 +61,76 @@ description: "对开源 Repository 进行深度架构研究，提炼其设计思
 
 ---
 
-## Workflow
+## 研究流程
 
 ```mermaid
 flowchart TD
-    A[Repository Scan] --> B[Generate Research Questions]
-    B --> C[Stage 0: Mechanical Analysis]
-    C --> D[Stage 1: Repository Model Construction]
-    D --> E{Evidence Sufficient?}
-    E -- No --> F[Collect Additional Evidence]
+    A[仓库扫描] --> B[生成研究问题]
+    B --> C[阶段 0：机械分析]
+    C --> D[阶段 1：仓库模型构建]
+    D --> E{证据充分？}
+    E -- 否 --> F[收集更多证据]
     F --> C
-    E -- Yes --> G[Stage 2: Architectural Interpretation]
-    G --> H[Stage 3: Narrative Rendering]
+    E -- 是 --> G[阶段 2：架构解释]
+    G --> H[阶段 3：叙事渲染]
 ```
 
-### Stage 0 — 机械分析（Mechanical Analysis）
+### 阶段 0 — 机械分析
 
 收集客观仓库证据：目录结构、依赖图、import 图、package 图、符号、公共 API、Git 历史、文档、配置、指标。
 
-**Do not** perform architectural interpretation in this stage.
+**禁止**在此阶段进行架构解释。
 
-### Stage 1 — 仓库模型构建（Repository Model Construction）
+### 阶段 1 — 仓库模型构建（Repository Model Construction）
 
-将机械证据转化为 Repository Model。
+将机械证据转化为仓库模型。
 
-构建以下 5 个维度（详见 [report-schema.md](./report-schema.md#repository-model-维度)）：
+构建以下 5 个维度（详见 [report-schema.md](./report-schema.md#仓库模型维度)）：
 
 | 模型 | 描述 |
 |------|------|
-| **Structural Model** | 模块、目录、组件及其边界 |
-| **Behavioral Model** | 控制流、数据流、运行流程 |
-| **Ownership Model** | 状态、职责、生命周期归属 |
-| **Extension Model** | 插件机制、扩展点、公共 API |
-| **Evolution Model** | 架构演进与历史变化 |
+| **结构模型** | 模块、目录、组件及其边界 |
+| **行为模型** | 控制流、数据流、运行流程 |
+| **归属模型** | 状态、职责、生命周期归属 |
+| **扩展模型** | 插件机制、扩展点、公共 API |
+| **演进模型** | 架构演进与历史变化 |
 
-**Do not** infer architectural intent in this stage.
+**禁止**在此阶段推断架构意图。
 
-### Stage 2 — 架构解释（Architectural Interpretation）
+### 阶段 2 — 架构解释（Architectural Interpretation）
 
-基于 Repository Model 重建系统背后的工程思想。
+基于仓库模型重建系统背后的工程思想。
 
-产出以下类型（详见 [report-schema.md](./report-schema.md#stage-2-输出类型)）：
+产出以下类型（详见 [report-schema.md](./report-schema.md#阶段-2-输出类型)）：
 
-- Engineering Constraints
-- Architectural Forces
-- Design Decisions
-- Trade-offs
-- Deliberate Omissions
-- Architectural Tensions
-- Leverage Points
-- Maintainer Mental Model
+- 工程约束
+- 架构作用力
+- 设计决策
+- 权衡
+- 有意省略
+- 架构张力
+- 杠杆点
+- 维护者心智模型
 
-**Every interpretation must reference evidence.**
+**每个解释必须引用证据。**
 
-If multiple reasonable interpretations exist, present each with its own evidence and confidence.
+如果存在多个合理解释，分别说明并给出各自证据与置信度。
 
-### Stage 3 — 叙事渲染（Narrative Rendering）
+### 阶段 3 — 叙事渲染（Narrative Rendering）
 
 生成人类可读的研究报告。
 
-**Do not** perform reasoning in this stage. **Do not** invent new conclusions.
+**禁止**在此阶段执行推理。**禁止**发明新结论。
 
-Only organize validated findings into a coherent narrative.
+只将已验证的发现组织成连贯叙事。
 
 ---
 
-## Research Questions
+## 研究问题
 
-Before evidence collection, generate a set of architectural questions to answer.
+证据收集前，生成一组待回答的架构问题。
 
-Typical questions:
+典型问题：
 
 - 系统如何划分职责？
 - 子系统边界如何定义？
@@ -141,80 +141,80 @@ Typical questions:
 - 哪些约束塑造了当前架构？
 - 哪些复杂性被有意隐藏？
 - 哪些能力属于公共 API，哪些属于内部实现？
-- 哪些设计是刻意省略（Deliberate Omissions）？
+- 哪些设计是刻意省略？
 
-All subsequent evidence collection must serve these questions. **Do not** mechanically read the entire repository.
+后续所有证据收集必须围绕这些问题展开。**禁止**机械阅读整个仓库。
 
 ---
 
-## Reading Strategy
+## 阅读策略
 
 按以下顺序建立仓库理解，**不要**直接阅读业务代码：
 
-1. Repository Metadata
-2. Build System
-3. Entry Points
-4. Runtime Initialization
-5. Core Runtime
-6. Public APIs
-7. Extension Mechanisms
-8. Configuration
-9. Tests
-10. Git History
-11. External Discussions（如可获取）
+1. 仓库元数据
+2. 构建系统
+3. 入口点
+4. 运行时初始化
+5. 核心运行时
+6. 公共 API
+7. 扩展机制
+8. 配置
+9. 测试
+10. Git 历史
+11. 外部讨论（如可获取）
 
-可根据仓库类型调整顺序。**Always** establish overall model before diving into implementation.
+可根据仓库类型调整顺序。**始终**先建立整体模型，再深入具体实现。
 
 ---
 
-## Evidence Rules
+## 证据规则
 
-- **Trace** every conclusion to evidence.
-- **Never** infer without evidence.
-- **Mark** unsupported claims as Unknown.
-- **Prefer** multiple independent sources over single source.
-- **Prioritize** higher-tier evidence when conflict: tests > source > config > docs > commit > inference.
+- **追溯**每个结论到证据。
+- **禁止**无证据推断。
+- **标记**无证据支持的声明为 Unknown。
+- **优先**多个独立来源，而非单一来源。
+- 冲突时**优先**高层级证据：测试 > 源码 > 配置 > 文档 > 提交 > 推断。
 
-证据链格式（详见 [report-schema.md](./report-schema.md#证据链evidence-chain)）：
+证据链格式（详见 [report-schema.md](./report-schema.md#证据链)）：
 
 ```mermaid
 flowchart TD
-    A[Conclusion] --> B[Interpretation]
-    B --> C[Evidence]
-    C --> D[Repository Artifact]
-    D --> E[File / Symbol / Commit]
+    A[结论] --> B[解释]
+    B --> C[证据]
+    C --> D[仓库产物]
+    D --> E[文件 / 符号 / 提交]
 ```
 
 ---
 
-## Confidence
+## 置信度
 
 标注每个解释的置信度（详见 [report-schema.md](./report-schema.md#置信度等级)）：
 
 | 等级 | 要求 |
 |------|------|
-| **High** | 多个独立证据来源相互支持 |
-| **Medium** | 证据存在，但解释仍有不确定性 |
-| **Low** | 证据薄弱或仅间接推断 |
+| **高** | 多个独立证据来源相互支持 |
+| **中** | 证据存在，但解释仍有不确定性 |
+| **低** | 证据薄弱或仅间接推断 |
 
 ---
 
-## Open Questions
+## 未解问题
 
-Record unresolved questions. **Do not** speculate. **Do not** hide unknowns.
+记录无法验证的问题。**禁止**推测。**禁止**隐藏未知项。
 
-每项必须包含（详见 [report-schema.md](./report-schema.md#open-questions-格式)）：
+每项必须包含（详见 [report-schema.md](./report-schema.md#未解问题格式)）：
 
-- **Question** — 待回答的问题
-- **Missing Evidence** — 缺失的证据类型
-- **Confidence Impact** — 对整体置信度的影响
-- **Suggested Next Investigation** — 建议的下一步调查方向
+- **问题** — 待回答的问题
+- **缺失证据** — 缺失的证据类型
+- **置信度影响** — 对整体置信度的影响
+- **建议下一步调查** — 建议的下一步调查方向
 
 ---
 
-## Architectural Invariants
+## 架构不变量
 
-Identify architectural invariants that are assumed by most subsystems.
+识别被大多数子系统共同假设的架构不变量。
 
 这些是整个系统共同依赖的基本假设。违反这些假设通常意味着需要重新设计整个系统。
 
@@ -230,7 +230,7 @@ Report them.
 
 ---
 
-## Quality Gate
+## 质量门禁
 
 报告完成前，验证以下问题：
 
@@ -243,35 +243,35 @@ Report them.
 - 维护者如何心智划分系统？
 - 哪些思想在本仓库之外仍有价值？
 
-**If any question cannot be answered, research is incomplete.**
+**如果任一问题无法回答，研究尚未完成。**
 
 ---
 
-## Output
+## 输出
 
 报告必须包含以下 17 个章节（详见 [report-schema.md](./report-schema.md#报告章节)）：
 
-1. Executive Summary
-2. Repository Mental Model
-3. Architectural Invariants
-4. Engineering Constraints
-5. Capability Map
-6. Static Architecture
-7. Runtime Architecture
-8. Evolution
-9. Key Decisions
-10. Architectural Forces
-11. Design Tensions
-12. Architectural Leverage
-13. Reusable Patterns
-14. Risks
-15. Lessons Learned
-16. Open Questions
-17. Evidence Quality Summary
+1. 执行摘要 Executive Summary
+2. 仓库心智模型 Repository Mental Model
+3. 架构不变量 Architectural Invariants
+4. 工程约束 Engineering Constraints
+5. 能力地图 Capability Map
+6. 静态架构 Static Architecture
+7. 运行时架构 Runtime Architecture
+8. 架构演进 Evolution
+9. 关键决策 Key Decisions
+10. 架构作用力 Architectural Forces
+11. 设计张力 Design Tensions
+12. 架构杠杆 Architectural Leverage
+13. 可复用模式 Reusable Patterns
+14. 风险 Risks
+15. 经验教训 Lessons Learned
+16. 未解问题 Open Questions
+17. 证据质量摘要 Evidence Quality Summary
 
 ---
 
-## Success Criteria
+## 成功标准 Success Criteria
 
 一份成功的研究报告应让有经验的工程师能够回答：
 
@@ -281,4 +281,4 @@ Report them.
 - 哪些思想值得复用？
 - 哪些工程错误被有意避免？
 
-**If those questions cannot be answered, research is incomplete.**
+**如果这些问题无法回答，研究尚未完成。**

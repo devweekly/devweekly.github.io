@@ -4,16 +4,16 @@
 
 ---
 
-## 证据链（Evidence Chain）
+## 证据链
 
 每一个非平凡结论都必须能够追溯到证据链。
 
 ```mermaid
 flowchart TD
-    A[Conclusion] --> B[Interpretation]
-    B --> C[Evidence]
-    C --> D[Repository Artifact]
-    D --> E[File / Symbol / Commit]
+    A[结论] --> B[解释]
+    B --> C[证据]
+    C --> D[仓库产物]
+    D --> E[文件 / 符号 / 提交]
 ```
 
 证据来源：
@@ -37,22 +37,22 @@ flowchart TD
 
 | 等级 | 要求 |
 |------|------|
-| **High** | 多个独立证据来源相互支持 |
-| **Medium** | 证据存在，但解释仍有不确定性 |
-| **Low** | 证据薄弱或仅间接推断 |
+| **高** | 多个独立证据来源相互支持 |
+| **中** | 证据存在，但解释仍有不确定性 |
+| **低** | 证据薄弱或仅间接推断 |
 
 ---
 
-## Open Questions 格式
+## 未解问题格式
 
 研究结束后仍可能存在无法验证的问题。每项必须包含：
 
 | 字段 | 说明 |
 |------|------|
-| **Question** | 待回答的问题 |
-| **Missing Evidence** | 缺失的证据类型 |
-| **Confidence Impact** | 对整体置信度的影响 |
-| **Suggested Next Investigation** | 建议的下一步调查方向 |
+| **问题** | 待回答的问题 |
+| **缺失证据** | 缺失的证据类型 |
+| **置信度影响** | 对整体置信度的影响 |
+| **建议下一步调查** | 建议的下一步调查方向 |
 
 ---
 
@@ -62,51 +62,51 @@ flowchart TD
 
 | # | 章节 | 说明 |
 |---|------|------|
-| 1 | **Executive Summary** | 执行摘要 |
-| 2 | **Repository Mental Model** | 维护者心智模型 |
-| 3 | **Architectural Invariants** | 架构不变量 |
-| 4 | **Engineering Constraints** | 工程约束 |
-| 5 | **Capability Map** | 能力地图 |
-| 6 | **Static Architecture** | 静态架构 |
-| 7 | **Runtime Architecture** | 运行时架构 |
-| 8 | **Evolution** | 架构演进 |
-| 9 | **Key Decisions** | 关键决策 |
-| 10 | **Architectural Forces** | 架构作用力 |
-| 11 | **Design Tensions** | 设计张力 |
-| 12 | **Architectural Leverage** | 架构杠杆点 |
-| 13 | **Reusable Patterns** | 可复用模式 |
-| 14 | **Risks** | 风险 |
-| 15 | **Lessons Learned** | 经验教训 |
-| 16 | **Open Questions** | 未解问题 |
-| 17 | **Evidence Quality Summary** | 证据质量摘要 |
+| 1 | **执行摘要** | 执行摘要 |
+| 2 | **仓库心智模型** | 维护者心智模型 |
+| 3 | **架构不变量** | 架构不变量 |
+| 4 | **工程约束** | 工程约束 |
+| 5 | **能力地图** | 能力地图 |
+| 6 | **静态架构** | 静态架构 |
+| 7 | **运行时架构** | 运行时架构 |
+| 8 | **架构演进** | 架构演进 |
+| 9 | **关键决策** | 关键决策 |
+| 10 | **架构作用力** | 架构作用力 |
+| 11 | **设计张力** | 设计张力 |
+| 12 | **架构杠杆** | 架构杠杆点 |
+| 13 | **可复用模式** | 可复用模式 |
+| 14 | **风险** | 风险 |
+| 15 | **经验教训** | 经验教训 |
+| 16 | **未解问题** | 未解问题 |
+| 17 | **证据质量摘要** | 证据质量摘要 |
 
 ---
 
-## Repository Model 维度
+## 仓库模型维度
 
-Stage 1 产出的 Repository Model 必须描述以下 5 个维度：
+阶段 1 产出的仓库模型必须描述以下 5 个维度：
 
 | 模型 | 描述 |
 |------|------|
-| **Structural Model** | 模块、目录、组件及其边界 |
-| **Behavioral Model** | 控制流、数据流、运行流程 |
-| **Ownership Model** | 状态、职责、生命周期归属 |
-| **Extension Model** | 插件机制、扩展点、公共 API |
-| **Evolution Model** | 架构演进与历史变化 |
+| **结构模型** | 模块、目录、组件及其边界 |
+| **行为模型** | 控制流、数据流、运行流程 |
+| **归属模型** | 状态、职责、生命周期归属 |
+| **扩展模型** | 插件机制、扩展点、公共 API |
+| **演进模型** | 架构演进与历史变化 |
 
 ---
 
-## Stage 2 输出类型
+## 阶段 2 输出类型
 
-Stage 2 的 Architectural Interpretation 必须产出以下类型的内容：
+阶段 2 的架构解释必须产出以下类型的内容：
 
-- Engineering Constraints
-- Architectural Forces
-- Design Decisions
-- Trade-offs
-- Deliberate Omissions
-- Architectural Tensions
-- Leverage Points
-- Maintainer Mental Model
+- 工程约束
+- 架构作用力
+- 设计决策
+- 权衡
+- 有意省略
+- 架构张力
+- 杠杆点
+- 维护者心智模型
 
 如果存在多个合理解释，分别说明并给出各自证据与置信度。
