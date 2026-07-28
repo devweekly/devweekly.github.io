@@ -313,6 +313,15 @@ class EvidenceStore {
 // Inspired by Palantir's ontology approach: treat the repository as a graph
 // of engineering objects (not just files). Every significant concept is an
 // Object with typed Relationships and linked Evidence.
+//
+// Two layers:
+//   1. Implementation-layer types (OBJECT_TYPES) — fine-grained, used by
+//      analyzers and ObjectClassifier for accurate code-level classification.
+//   2. Core-layer types (CORE_ONTOLOGY_TYPES) — 8 unified abstractions for
+//      cross-tool rendering (Markdown / HTML / Mermaid / Graph). Existing
+//      implementation types project to core types via toCoreType().
+//      Report Generator renders the Core view; analyzers emit implementation
+//      types; consumers render via the projection.
 // ===========================================================================
 
 const OBJECT_TYPES = [
@@ -332,6 +341,149 @@ const OBJECT_TYPES = [
   "document",
   "dataset",
 ];
+
+/**
+ * Core Ontology — 8 unified abstractions (Palantir-light).
+ *
+ * Implementation types (OBJECT_TYPES + RESEARCH_OBJECT_TYPES) project to these
+ * 8 core types. This is the canonical type set for cross-format rendering
+ * (Markdown / HTML / Mermaid / Graph). Analyzers continue to emit granular
+ * implementation types — only the rendering layer projects to core types.
+ *
+ *   Entity      — Concrete code unit (function/class/file/symbol)
+ *   Module      — Coarse-grained code boundary (package/module/subsystem)
+ *   API         — Exposed interface (public API/endpoint/CLI command)
+ *   Capability  — System-level capability (AI/retrieval/storage/integration)
+ *   Concept     — Domain concept or abstraction (ontology term)
+ *   Artifact    — Non-code artifact (document/config/dataset/test)
+ *   Decision    — Engineering choice (ADR / decision record)
+ *   Pattern     — Reusable design pattern (architecture/code pattern)
+ */
+const CORE_ONTOLOGY_TYPES = [
+  "Entity",
+  "Module",
+  "API",
+  "Capability",
+  "Concept",
+  "Artifact",
+  "Decision",
+  "Pattern",
+];
+
+/**
+ * Core Relationship Verbs — 8 unified verbs.
+ * Implementation relationship types project to these for rendering.
+ *
+ *   implements   — A implements B (Module implements Pattern)
+ *   depends_on   — A depends on B (Module depends on Module)
+ *   owns         — A owns B (Module owns Entity)
+ *   creates      — A creates B (Decision creates Pattern)
+ *   uses         — A uses B (Entity uses API)
+ *   contains     — A contains B (Module contains Entity)
+ *   exposes      — A exposes B (Module exposes API)
+ *   replaces     — A replaces B (Pattern replaces Pattern)
+ */
+const CORE_RELATIONSHIP_TYPES = [
+  "implements",
+  "depends_on",
+  "owns",
+  "creates",
+  "uses",
+  "contains",
+  "exposes",
+  "replaces",
+];
+
+/**
+ * Map an implementation type (OBJECT_TYPES or RESEARCH_OBJECT_TYPES)
+ * to one of the 8 CORE_ONTOLOGY_TYPES.
+ *
+ * Design: projection is many-to-one. Original type is preserved on the
+ * object instance (obj.type) so analyzers can still distinguish e.g.
+ * "agent" from "runner" while reports render both as "Entity".
+ *
+ * @param {string} implType
+ * @returns {string} one of CORE_ONTOLOGY_TYPES
+ */
+function toCoreType(implType) {
+  const t = String(implType || "").toLowerCase();
+  // Code units → Entity
+  if (["function", "class", "agent", "planner", "runner"].includes(t)) return "Entity";
+  // Code boundaries → Module
+  if (["repository", "module"].includes(t)) return "Module";
+  // Non-code artifacts → Artifact
+  if (["test", "evaluation", "workflow", "config", "document", "dataset", "evidence"].includes(t)) return "Artifact";
+  // Exposed interfaces → API
+  if (["tool", "prompt"].includes(t)) return "API";
+  // Research-layer types
+  if (["decision", "constraint", "assumption"].includes(t)) return "Decision";
+  if (["pattern", "tradeoff", "hypothesis"].includes(t)) return "Pattern";
+  if (["finding", "issue", "risk", "unknown"].includes(t)) return "Concept";
+  // Fallback — Concept is the most generic semantic type
+  return "Concept";
+}
+
+/**
+ * Map an implementation relationship type to a core verb.
+ * Many-to-one projection; original type preserved on relationship instance.
+ *
+ * @param {string} implRel
+ * @returns {string} one of CORE_RELATIONSHIP_TYPES
+ */
+function toCoreRelationship(implRel) {
+  const r = String(implRel || "").toLowerCase();
+  // implements
+  if (["implements", "implemented_by", "executed_by"].includes(r)) return "implements";
+  // depends_on
+  if (["imports", "calls", "references", "depends_on", "driven_by", "constrains", "observed_in"].includes(r)) return "depends_on";
+  // owns
+  if (["owns", "configuredby", "documentedby", "evaluatedby", "benchmarkedby"].includes(r)) return "owns";
+  // creates
+  if (["creates", "produces", "caused_by"].includes(r)) return "creates";
+  // uses
+  if (["uses", "testedby", "supported_by", "answers"].includes(r)) return "uses";
+  // contains
+  if (["contains"].includes(r)) return "contains";
+  // exposes
+  if (["exposes"].includes(r)) return "exposes";
+  // replaces
+  if (["replaces", "alternative_to", "mitigates", "contradicts", "conflicts_with"].includes(r)) return "replaces";
+  // Fallback
+  return "depends_on";
+}
+
+/**
+ * Project a list of objects (with `type` field) to core-type distribution.
+ * Returns a map: { Entity: 12, Module: 3, ... }
+ *
+ * @param {Array<{type: string}>} objects
+ * @returns {Record<string, number>}
+ */
+function projectToCoreTypeDistribution(objects) {
+  const dist = {};
+  for (const t of CORE_ONTOLOGY_TYPES) dist[t] = 0;
+  for (const o of objects || []) {
+    const core = toCoreType(o.type);
+    dist[core] = (dist[core] || 0) + 1;
+  }
+  return dist;
+}
+
+/**
+ * Project a list of relationships (with `type` field) to core-verb distribution.
+ *
+ * @param {Array<{type: string}>} relationships
+ * @returns {Record<string, number>}
+ */
+function projectToCoreRelDistribution(relationships) {
+  const dist = {};
+  for (const r of CORE_RELATIONSHIP_TYPES) dist[r] = 0;
+  for (const rel of relationships || []) {
+    const core = toCoreRelationship(rel.type);
+    dist[core] = (dist[core] || 0) + 1;
+  }
+  return dist;
+}
 
 const RELATIONSHIP_TYPES = [
   "imports",
@@ -969,4 +1121,10 @@ export {
   RESEARCH_OBJECT_TYPES,
   RESEARCH_RELATIONSHIP_TYPES,
   ResearchObjectRegistry,
+  CORE_ONTOLOGY_TYPES,
+  CORE_RELATIONSHIP_TYPES,
+  toCoreType,
+  toCoreRelationship,
+  projectToCoreTypeDistribution,
+  projectToCoreRelDistribution,
 };

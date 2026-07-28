@@ -1,15 +1,15 @@
-# Research Report: synthetic-readme-claims-5CpE44
+# Research Report: synthetic-readme-claims-mXhS2a
 
 ## Executive Summary
 
-synthetic-readme-claims-5CpE44 is analyzed with deterministic pipeline. Detected signals: none.
+synthetic-readme-claims-mXhS2a is analyzed with deterministic pipeline. Detected signals: none.
 Findings: 19. README contradictions: 4.
 
 ## Top Claims
 
-# Evidence Brief: synthetic-readme-claims-5CpE44
+# Evidence Brief: synthetic-readme-claims-mXhS2a
 
-> Generated: 2026-07-27 by research-repo skill (deterministic analysis).
+> Generated: 2026-07-28 by research-repo skill (deterministic analysis).
 > This brief is the **input** for LLM report generation — not the final report.
 > The LLM should read this brief, then write `report.md` per the prompt in the last section.
 
@@ -469,11 +469,34 @@ When evidence conflicts, trust the higher tier:
 - **Checked Locations**: assumptions.assumptions[] (AssumptionAnalyzer output), assumptions.assumptions[] (risk=high)
 
 
+## §A.4 Research Coverage
+
+> Per-research-dimension evidence sufficiency. Low-coverage dimensions imply low-confidence conclusions in that area.
+
+### Dimension Coverage
+
+| Dimension | Coverage | Avg Confidence | Findings | Verified | Gap |
+|------|----------|--------------|----------|----------|-----|
+| Architecture | 100% | 22% (low) | 3 | 3 | Full coverage. |
+| AI/Capability | 100% | 23% (low) | 3 | 3 | Full coverage. |
+| Testing/Quality | 200% | 26% (low) | 2 | 2 | Full coverage. |
+| Documentation | 400% | 13% (low) | 4 | 4 | Full coverage. |
+| Decisions | 233% | 5% (low) | 7 | 7 | Full coverage. |
+
+### Summary
+
+- **Overall Coverage**: 207%
+- **Strongest Dimension**: Documentation
+- **Weakest Dimension**: Architecture — conclusions here should be flagged as low confidence.
+
+> ⚠ **Low-confidence areas**: Architecture, AI/Capability, Testing/Quality, Documentation, Decisions. The report must explicitly flag conclusions in these areas as evidence-sparse.
+
+
 ## 1. Executive Brief
 
 | Dimension | Value |
 |-----------|-------|
-| Repository | synthetic-readme-claims-5CpE44 (package: readme-claims) |
+| Repository | synthetic-readme-claims-mXhS2a (package: readme-claims) |
 | Manifest | src/index.js (javascript) |
 | Version | 1.0.0 |
 | Source files | 1 |
@@ -697,7 +720,44 @@ or prompt/tool definitions use non-standard patterns.
 > The LLM should use object-driven language in the report (e.g., "The Agent object connects
 > to the Tool object via the uses relationship") rather than file-driven language.
 
-## 2.9. Research Object Graph
+## 5.5b. Core Ontology View (8-type projection)
+
+> Palantir-light: 8 core types (Entity / Module / API / Capability / Concept / Artifact / Decision / Pattern) + 8 unified relationship verbs (implements / depends_on / owns / creates / uses / contains / exposes / replaces).
+> This is a rendering-layer projection — analyzers continue to emit implementation-layer types (agent/planner/runner/tool), projected here to 8 core types for future Markdown / HTML / Mermaid / Graph rendering.
+
+### Core Type Distribution
+
+| Core Type | Count | Description |
+|---------|------|------|
+| Entity | 1 | Code unit (function/class/agent/planner/runner) |
+| Module | 0 | Code boundary (repository/module) |
+| API | 0 | Exposed interface (tool/prompt) |
+| Capability | 0 | System capability (not directly detected yet) |
+| Concept | 1 | Domain concept (finding/issue/risk/unknown) |
+| Artifact | 2 | Non-code artifact (test/eval/config/doc/dataset/evidence) |
+| Decision | 4 | Engineering decision (decision/constraint/assumption) |
+| Pattern | 0 | Reusable pattern (pattern/tradeoff/hypothesis) |
+
+### Core Relationship Distribution
+
+| Verb | Count |
+|---------|------|
+| creates | 1 |
+
+### Rendering Readiness
+
+Analyzer output → Core Ontology projection → multi-format rendering:
+
+```
+Analyzer (impl type) → Knowledge Graph (core type) → Renderer
+  agent              → Entity                    → Markdown
+  tool               → API                       → HTML
+  decision           → Decision                  → Mermaid
+  pattern            → Pattern                   → Graph (Neo4j)
+```
+
+
+## 5.6. Research Object Graph
 
 > Second-order research objects (Pattern/Decision/Constraint/Tradeoff/Assumption/Hypothesis/Evidence/Finding/Issue/Risk/Unknown) and their relationship graph. Each object has a source analyzer for traceability.
 

@@ -11,7 +11,16 @@ import {
   rankClaim,
   checkStopCondition,
   enhanceStore,
+  computeResearchCoverage,
 } from "../evidence-quality.mjs";
+import {
+  CORE_ONTOLOGY_TYPES,
+  CORE_RELATIONSHIP_TYPES,
+  toCoreType,
+  toCoreRelationship,
+  projectToCoreTypeDistribution,
+  projectToCoreRelDistribution,
+} from "../evidence-store.mjs";
 
 describe("EvidenceSanitizer", () => {
   it("filters example and docs prompts", () => {
@@ -251,5 +260,209 @@ describe("enhanceStore", () => {
     assert.ok(result.archetypeHints);
     assert.ok(result.sanitized.dropped.length > 0);
     assert.strictEqual(store._archetypeHints.signals.hasAgent, true);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Research Coverage (computeResearchCoverage)
+// ---------------------------------------------------------------------------
+
+describe("computeResearchCoverage", () => {
+  it("returns empty dimensions for empty findings", () => {
+    const cov = computeResearchCoverage([]);
+    assert.ok(cov.dimensions);
+    assert.strictEqual(cov.dimensions.Architecture.coverage, 0);
+    assert.strictEqual(cov.dimensions.Architecture.findingCount, 0);
+    assert.strictEqual(cov.summary.overallCoverage, 0);
+  });
+
+  it("computes coverage per dimension from findings", () => {
+    const findings = [
+      { questionId: "Q1", verified: "verified", confidence: 0.7 },
+      { questionId: "Q2", verified: "verified", confidence: 0.6 },
+      { questionId: "Q4", verified: "downgraded", confidence: 0.4 },
+      { questionId: "Q9", verified: "verified", confidence: 0.8 },
+      { questionId: "Q9", verified: "rejected", confidence: 0.1 }, // rejected → not counted
+    ];
+    const cov = computeResearchCoverage(findings);
+    // Architecture = Q1+Q2+Q3 → 2 answered / 3 total = 0.67
+    assert.ok(cov.dimensions.Architecture.coverage > 0.6);
+    assert.strictEqual(cov.dimensions.Architecture.findingCount, 2);
+    assert.strictEqual(cov.dimensions.Architecture.verifiedCount, 2);
+    // Decisions = Q9+Q10+Q11 → 1 answered (Q9 verified, Q9 rejected not counted) / 3 = 0.33
+    assert.ok(cov.dimensions.Decisions.coverage < 0.5);
+    assert.strictEqual(cov.dimensions.Decisions.findingCount, 2);
+    assert.strictEqual(cov.dimensions.Decisions.verifiedCount, 1);
+  });
+
+  it("assigns confidence label based on avg confidence", () => {
+    const highFindings = [
+      { questionId: "Q1", verified: "verified", confidence: 0.85 },
+      { questionId: "Q2", verified: "verified", confidence: 0.75 },
+    ];
+    const cov = computeResearchCoverage(highFindings);
+    assert.strictEqual(cov.dimensions.Architecture.confidence, "high");
+
+    const lowFindings = [
+      { questionId: "Q1", verified: "verified", confidence: 0.15 },
+      { questionId: "Q2", verified: "verified", confidence: 0.2 },
+    ];
+    const covLow = computeResearchCoverage(lowFindings);
+    assert.strictEqual(covLow.dimensions.Architecture.confidence, "low");
+  });
+
+  it("identifies weakest and strongest dimensions", () => {
+    const findings = [
+      { questionId: "Q1", verified: "verified", confidence: 0.7 },
+      { questionId: "Q4", verified: "verified", confidence: 0.7 },
+      { questionId: "Q5", verified: "verified", confidence: 0.7 },
+      { questionId: "Q6", verified: "verified", confidence: 0.7 },
+    ];
+    const cov = computeResearchCoverage(findings);
+    // AI/Capability = Q4+Q5+Q6 → full coverage (3/3) → strongest
+    // Testing/Quality = Q7 only → 0/1 = 0.0 → weakest
+    // Architecture = Q1 only → 1/3 = 0.33
+    assert.strictEqual(cov.summary.strongestDimension, "AI/Capability");
+    assert.strictEqual(cov.summary.weakestDimension, "Testing/Quality");
+  });
+
+  it("generates gap message for low coverage", () => {
+    const findings = [{ questionId: "Q1", verified: "verified", confidence: 0.5 }];
+    const cov = computeResearchCoverage(findings);
+    // Architecture: 1/3 = 33% → "Only 33% of Architecture questions answered"
+    assert.match(cov.dimensions.Architecture.gap, /Only.*Architecture/);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Core Ontology (toCoreType / toCoreRelationship / projectors)
+// ---------------------------------------------------------------------------
+
+describe("Core Ontology projections", () => {
+  it("projects implementation types to 8 core types", () => {
+    assert.strictEqual(toCoreType("agent"), "Entity");
+    assert.strictEqual(toCoreType("function"), "Entity");
+    assert.strictEqual(toCoreType("runner"), "Entity");
+    assert.strictEqual(toCoreType("module"), "Module");
+    assert.strictEqual(toCoreType("repository"), "Module");
+    assert.strictEqual(toCoreType("tool"), "API");
+    assert.strictEqual(toCoreType("prompt"), "API");
+    assert.strictEqual(toCoreType("test"), "Artifact");
+    assert.strictEqual(toCoreType("config"), "Artifact");
+    assert.strictEqual(toCoreType("document"), "Artifact");
+    assert.strictEqual(toCoreType("decision"), "Decision");
+    assert.strictEqual(toCoreType("constraint"), "Decision");
+    assert.strictEqual(toCoreType("assumption"), "Decision");
+    assert.strictEqual(toCoreType("pattern"), "Pattern");
+    assert.strictEqual(toCoreType("tradeoff"), "Pattern");
+    assert.strictEqual(toCoreType("hypothesis"), "Pattern");
+    assert.strictEqual(toCoreType("finding"), "Concept");
+    assert.strictEqual(toCoreType("issue"), "Concept");
+    assert.strictEqual(toCoreType("risk"), "Concept");
+    assert.strictEqual(toCoreType("unknown"), "Concept");
+  });
+
+  it("returns Concept as fallback for unknown types", () => {
+    assert.strictEqual(toCoreType("nonexistent_type"), "Concept");
+    assert.strictEqual(toCoreType(""), "Concept");
+    assert.strictEqual(toCoreType(null), "Concept");
+  });
+
+  it("projects relationship types to 8 core verbs", () => {
+    assert.strictEqual(toCoreRelationship("implements"), "implements");
+    assert.strictEqual(toCoreRelationship("implemented_by"), "implements");
+    assert.strictEqual(toCoreRelationship("imports"), "depends_on");
+    assert.strictEqual(toCoreRelationship("calls"), "depends_on");
+    assert.strictEqual(toCoreRelationship("references"), "depends_on");
+    assert.strictEqual(toCoreRelationship("owns"), "owns");
+    assert.strictEqual(toCoreRelationship("configuredBy"), "owns");
+    assert.strictEqual(toCoreRelationship("creates"), "creates");
+    assert.strictEqual(toCoreRelationship("produces"), "creates");
+    assert.strictEqual(toCoreRelationship("uses"), "uses");
+    assert.strictEqual(toCoreRelationship("testedBy"), "uses");
+    assert.strictEqual(toCoreRelationship("supported_by"), "uses");
+    assert.strictEqual(toCoreRelationship("contains"), "contains");
+    assert.strictEqual(toCoreRelationship("exposes"), "exposes");
+    assert.strictEqual(toCoreRelationship("replaces"), "replaces");
+    assert.strictEqual(toCoreRelationship("alternative_to"), "replaces");
+    assert.strictEqual(toCoreRelationship("contradicts"), "replaces");
+    assert.strictEqual(toCoreRelationship("conflicts_with"), "replaces");
+  });
+
+  it("returns depends_on as fallback for unknown relationships", () => {
+    assert.strictEqual(toCoreRelationship("nonexistent_rel"), "depends_on");
+    assert.strictEqual(toCoreRelationship(""), "depends_on");
+  });
+
+  it("projectToCoreTypeDistribution counts objects by core type", () => {
+    const objects = [
+      { type: "agent" },        // Entity
+      { type: "function" },     // Entity
+      { type: "runner" },       // Entity
+      { type: "module" },       // Module
+      { type: "tool" },         // API
+      { type: "prompt" },       // API
+      { type: "test" },         // Artifact
+      { type: "decision" },     // Decision
+      { type: "pattern" },      // Pattern
+      { type: "finding" },      // Concept
+    ];
+    const dist = projectToCoreTypeDistribution(objects);
+    assert.strictEqual(dist.Entity, 3);
+    assert.strictEqual(dist.Module, 1);
+    assert.strictEqual(dist.API, 2);
+    assert.strictEqual(dist.Artifact, 1);
+    assert.strictEqual(dist.Decision, 1);
+    assert.strictEqual(dist.Pattern, 1);
+    assert.strictEqual(dist.Concept, 1);
+    assert.strictEqual(dist.Capability, 0); // not directly detectable yet
+    // Sum equals total
+    const total = Object.values(dist).reduce((a, b) => a + b, 0);
+    assert.strictEqual(total, 10);
+  });
+
+  it("projectToCoreRelDistribution counts relationships by core verb", () => {
+    const rels = [
+      { type: "imports" },      // depends_on
+      { type: "calls" },        // depends_on
+      { type: "implements" },   // implements
+      { type: "uses" },         // uses
+      { type: "uses" },         // uses
+      { type: "alternative_to" }, // replaces
+    ];
+    const dist = projectToCoreRelDistribution(rels);
+    assert.strictEqual(dist.depends_on, 2);
+    assert.strictEqual(dist.implements, 1);
+    assert.strictEqual(dist.uses, 2);
+    assert.strictEqual(dist.replaces, 1);
+    assert.strictEqual(dist.owns, 0);
+    assert.strictEqual(dist.creates, 0);
+    assert.strictEqual(dist.contains, 0);
+    assert.strictEqual(dist.exposes, 0);
+  });
+
+  it("CORE_ONTOLOGY_TYPES has exactly 8 types", () => {
+    assert.strictEqual(CORE_ONTOLOGY_TYPES.length, 8);
+    assert.deepStrictEqual(CORE_ONTOLOGY_TYPES, [
+      "Entity", "Module", "API", "Capability",
+      "Concept", "Artifact", "Decision", "Pattern",
+    ]);
+  });
+
+  it("CORE_RELATIONSHIP_TYPES has exactly 8 verbs", () => {
+    assert.strictEqual(CORE_RELATIONSHIP_TYPES.length, 8);
+    assert.deepStrictEqual(CORE_RELATIONSHIP_TYPES, [
+      "implements", "depends_on", "owns", "creates",
+      "uses", "contains", "exposes", "replaces",
+    ]);
+  });
+
+  it("projection is many-to-one (multiple impl types map to same core type)", () => {
+    // All of agent/function/class/planner/runner → Entity
+    const coreTypes = new Set(
+      ["agent", "function", "class", "planner", "runner"].map(toCoreType)
+    );
+    assert.strictEqual(coreTypes.size, 1);
+    assert.strictEqual([...coreTypes][0], "Entity");
   });
 });

@@ -3682,6 +3682,118 @@ class ConsistencyAnalyzer extends BaseAnalyzer {
       });
     }
 
+    // ── C9: Architecture Pattern Counter-Evidence (Negative Evidence) ────
+    // For the detected primary pattern, actively scan for anti-patterns.
+    // If counter-evidence exists, confidence should be reduced.
+    // This is the "有没有反例？" principle — every conclusion must actively
+    // look for disconfirming evidence, not just confirming evidence.
+    const depSmell = store.dependencySmell || {};
+    const archMetrics = store.archMetrics || {};
+    if (primaryPattern && primaryPattern !== "Unknown") {
+      const counterSignals = [];
+
+      // Cross-module coupling (anti-pattern for Plugin / Microservices)
+      const smells = depSmell.smells || [];
+      const layerViolations = smells.filter((s) => s.type === "layer_violation").length;
+      const circularDeps = smells.filter((s) => s.type === "circular_dependency").length;
+      const hubModules = smells.filter((s) => s.type === "hub_module").length;
+
+      if ((primaryPattern === "Plugin" || primaryPattern === "Microservices") && (circularDeps > 0 || layerViolations > 0)) {
+        counterSignals.push({
+          signal: "cross-module coupling",
+          detail: `${circularDeps} circular dependency(ies), ${layerViolations} layer violation(s)`,
+          impact: "Plugin/Microservices pattern implies loose coupling, but tight coupling detected",
+        });
+      }
+
+      // High coupling density (anti-pattern for Layered / Plugin)
+      const density = archMetrics.coupling?.density || 0;
+      if ((primaryPattern === "Layered" || primaryPattern === "Plugin") && density > 0.3) {
+        counterSignals.push({
+          signal: "high coupling density",
+          detail: `density=${density.toFixed(3)} (>0.3 threshold)`,
+          impact: `${primaryPattern} pattern expects modular boundaries, but high density suggests entangled dependencies`,
+        });
+      }
+
+      // Direct synchronous calls (anti-pattern for Event-Driven)
+      const flows = infoFlow.flows || [];
+      const totalFlows = flows.length;
+      if (primaryPattern === "Event-Driven" && totalFlows > 5) {
+        counterSignals.push({
+          signal: "synchronous call graph",
+          detail: `${totalFlows} direct call flows detected via BFS`,
+          impact: "Event-Driven pattern expects async message passing, but substantial synchronous call graph exists",
+        });
+      }
+
+      // Hub nodes (god module anti-pattern for any pattern)
+      const hubNodes = archMetrics.coupling?.hubNodes || [];
+      const maxHubFanIn = hubNodes.length > 0 ? hubNodes[0].fanIn : 0;
+      if (maxHubFanIn >= 15) {
+        counterSignals.push({
+          signal: "god module",
+          detail: `hub node "${hubNodes[0].node}" has fan-in=${maxHubFanIn}`,
+          impact: "God module with excessive dependents suggests centralized design, not the distributed design implied by " + primaryPattern,
+        });
+      }
+
+      if (counterSignals.length > 0) {
+        contradictions.push({
+          id: `C${contradictions.length + 1}`,
+          topic: `${primaryPattern} pattern counter-evidence`,
+          severity: "medium",
+          sourceA: { analyzer: "ArchitecturePatternAnalyzer", claim: `primaryPattern=${primaryPattern}` },
+          sourceB: {
+            analyzer: "DependencySmell + ArchMetrics",
+            claim: counterSignals.map((c) => c.signal).join("; "),
+          },
+          interpretation:
+            `Architecture pattern detected as "${primaryPattern}", but ${counterSignals.length} counter-signal(s) found: ${counterSignals.map((c) => c.detail).join("; ")}. ` +
+            `Confidence in "${primaryPattern}" should be reduced. The pattern may be aspirational (directory naming) rather than structural (actual dependency shape).`,
+          recommendation:
+            "LLM should present this as 'Plugin-oriented (confidence reduced)' rather than 'Plugin Architecture', and cite the counter-evidence.",
+          counterEvidence: counterSignals,
+        });
+      }
+    }
+
+    // ── C10: Architecture Pattern Conflict (Competing Interpretations) ───
+    // Multiple architecture patterns have high confidence — they represent
+    // competing interpretations of the same codebase. Instead of picking one,
+    // present both as "Competing Interpretations" with evidence for each.
+    const allPatterns = (archPattern.patterns || []).filter(
+      (p) => p.confidence >= 0.5 && p.pattern !== "Unknown"
+    );
+    if (allPatterns.length >= 2) {
+      // Define known conflicting pairs (mutually exclusive architecture styles)
+      const CONFLICTING_PAIRS = [
+        ["Monolith", "Microservices"],
+        ["Layered", "Event-Driven"],
+        ["MVC", "Event-Driven"],
+        ["Plugin", "Monolith"],
+      ];
+      for (const [a, b] of CONFLICTING_PAIRS) {
+        const pa = allPatterns.find((p) => p.pattern === a);
+        const pb = allPatterns.find((p) => p.pattern === b);
+        if (pa && pb) {
+          contradictions.push({
+            id: `C${contradictions.length + 1}`,
+            topic: `Competing architecture interpretations: ${a} vs ${b}`,
+            severity: "medium",
+            sourceA: { analyzer: "ArchitecturePatternAnalyzer", claim: `${a} (confidence=${pa.confidence.toFixed(2)})` },
+            sourceB: { analyzer: "ArchitecturePatternAnalyzer", claim: `${b} (confidence=${pb.confidence.toFixed(2)})` },
+            interpretation:
+              `Two mutually exclusive architecture patterns both have significant confidence. ${a} (evidence: ${(pa.evidence || []).slice(0, 2).join(", ")}) vs ${b} (evidence: ${(pb.evidence || []).slice(0, 2).join(", ")}). ` +
+              `This may indicate: (1) a hybrid architecture, (2) an architecture in transition, or (3) one pattern is aspirational (directory naming) while the other is structural.`,
+            recommendation:
+              `Present as "Competing Interpretations" in the report: Interpretation A (${a}) vs Interpretation B (${b}), with evidence for each. Do not assert only one — let the reader decide based on the evidence.`,
+          });
+          break; // Only report the first conflicting pair to avoid noise
+        }
+      }
+    }
+
     // ── Summary ─────────────────────────────────────────────────────────
     const totalContradictions = contradictions.length;
     const totalWarnings = warnings.length;

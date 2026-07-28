@@ -372,6 +372,80 @@ export function calculateCoverage(claim) {
 }
 
 // ---------------------------------------------------------------------------
+// 4b. ResearchCoverageCalculator — 按研究维度计算证据覆盖率
+// ---------------------------------------------------------------------------
+// Maps Research Questions (Q1-Q11) to research dimensions and computes
+// per-dimension coverage: what fraction of questions are answered with
+// sufficient confidence? Low coverage = "few evidence found" = low confidence.
+//
+// Dimension → Q mapping:
+//   Architecture    : Q1 (pattern), Q2 (flow), Q3 (responsibility)
+//   AI/Capability   : Q4 (tools), Q5 (prompts), Q6 (LLM call sites)
+//   Testing/Quality : Q7 (tests)
+//   Documentation   : Q8 (README contradictions)
+//   Decisions       : Q9 (decisions), Q10 (constraints), Q11 (assumptions)
+
+const RESEARCH_DIMENSIONS = {
+  Architecture: ["Q1", "Q2", "Q3"],
+  "AI/Capability": ["Q4", "Q5", "Q6"],
+  "Testing/Quality": ["Q7"],
+  Documentation: ["Q8"],
+  Decisions: ["Q9", "Q10", "Q11"],
+};
+
+/**
+ * Compute per-research-dimension evidence coverage from findings.
+ * @param {Array} findings — findings array (from FindingsGenerator)
+ * @returns {{ dimensions: Record<string, {coverage: number, confidence: string, findingCount: number, avgConfidence: number, gap: string}>, summary: {overallCoverage: number, weakestDimension: string, strongestDimension: string} }}
+ */
+export function computeResearchCoverage(findings) {
+  const dims = {};
+  for (const [dimName, questionIds] of Object.entries(RESEARCH_DIMENSIONS)) {
+    const dimFindings = (findings || []).filter((f) => questionIds.includes(f.questionId));
+    const verified = dimFindings.filter((f) => f.verified === "verified");
+    const total = questionIds.length;
+    const answered = dimFindings.filter((f) => f.verified !== "rejected").length;
+    const coverage = total > 0 ? answered / total : 0;
+    const avgConfidence = dimFindings.length > 0
+      ? dimFindings.reduce((s, f) => s + (f.confidence || 0), 0) / dimFindings.length
+      : 0;
+    const confidenceLabel = avgConfidence >= 0.6 ? "high" : avgConfidence >= 0.3 ? "medium" : "low";
+    const gap = coverage < 0.5
+      ? `Only ${Math.round(coverage * 100)}% of ${dimName} questions answered — conclusions in this area have low confidence.`
+      : coverage < 1.0
+        ? `${Math.round(coverage * 100)}% coverage — some questions unanswered.`
+        : "Full coverage.";
+
+    dims[dimName] = {
+      coverage: Number(coverage.toFixed(2)),
+      confidence: confidenceLabel,
+      findingCount: dimFindings.length,
+      verifiedCount: verified.length,
+      avgConfidence: Number(avgConfidence.toFixed(2)),
+      gap,
+    };
+  }
+
+  const coverages = Object.values(dims).map((d) => d.coverage);
+  const overall = coverages.length > 0 ? coverages.reduce((a, b) => a + b, 0) / coverages.length : 0;
+  let weakest = "", weakestVal = 2;
+  let strongest = "", strongestVal = -1;
+  for (const [name, d] of Object.entries(dims)) {
+    if (d.coverage < weakestVal) { weakestVal = d.coverage; weakest = name; }
+    if (d.coverage > strongestVal) { strongestVal = d.coverage; strongest = name; }
+  }
+
+  return {
+    dimensions: dims,
+    summary: {
+      overallCoverage: Number(overall.toFixed(2)),
+      weakestDimension: weakest,
+      strongestDimension: strongest,
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
 // 5. ClaimRanker — Claim ★ 评级
 // ---------------------------------------------------------------------------
 

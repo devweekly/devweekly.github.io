@@ -590,6 +590,102 @@ Question Planner 读取这些信号后判断 Archetype，再生成对应维度�
 
 ---
 
+## 33. Negative Evidence + Contradiction Detection（C9 + C10）
+
+**决策**：在 ConsistencyAnalyzer 新增两条规则，主动检测架构结论的反证和模式冲突。
+
+**C9 — Architecture Pattern Counter-Evidence**：
+- 当 ArchitecturePatternAnalyzer 检测到 Plugin/Microservices/Layered/Event-Driven 等模式时，主动搜索反证信号：
+  - Plugin/Microservices + 循环依赖或层违规 → "tight coupling" 反证
+  - Layered/Plugin + coupling density > 0.3 → "high coupling density" 反证
+  - 任意模式 + hub node fan-in ≥ 15 → "god module" 反证
+  - Event-Driven + 信息流条数 > 5 → "synchronous chains" 反证
+- 生成 C9 矛盾记录，severity=medium，含 counterEvidence 数组。
+- 报告撰写 prompt 指示 LLM 必须标注 "Confidence reduced" 并引用反证。
+
+**C10 — Architecture Pattern Conflict (Competing Interpretations)**：
+- 定义互斥架构模式对：Monolith vs Microservices / Layered vs Event-Driven / MVC vs Event-Driven / Plugin vs Monolith。
+- 当 ArchitecturePatternAnalyzer 输出多个 confidence ≥ 0.5 的模式且属于互斥对时，生成 C10 矛盾。
+- 报告撰写 prompt 指示 LLM 必须呈现 "Competing Interpretations"（两种解释 + 各自证据），不能只选一个。
+
+**理由**：
+- 当前 Pipeline 只收集支持性证据，不主动搜索反证。这导致架构结论过度自信——一个有循环依赖的 Plugin 系统不应被简单标为 "Plugin Architecture"。
+- 多分析器可能给出互斥结论（ArchitecturePattern 说 Layered，InformationFlow 说 Event-Driven），LLM 默认会"各写一段"，让读者自己综合。专业研究报告应主动呈现 "Competing Interpretations" 而非堆砌矛盾。
+- C9/C10 都生成在 ConsistencyAnalyzer 的 contradictions[] 中，由报告 prompt 强制处理，不依赖 LLM 自觉。
+
+---
+
+## 34. Core Ontology（8 核心类型 + 8 统一关系动词）
+
+**决策**：在 OBJECT_TYPES（14 实现层类型）之上叠加 CORE_ONTOLOGY_TYPES（8 核心类型），通过 `toCoreType()` 多对一投影。
+
+**8 核心类型**：
+- Entity（代码单元：function/class/agent/planner/runner）
+- Module（代码边界：repository/module）
+- API（对外接口：tool/prompt）
+- Capability（系统能力，暂未直接检测）
+- Concept（领域概念：finding/issue/risk/unknown）
+- Artifact（非代码产物：test/eval/config/doc/dataset/evidence）
+- Decision（工程决策：decision/constraint/assumption）
+- Pattern（可复用模式：pattern/tradeoff/hypothesis）
+
+**8 核心关系动词**：implements / depends_on / owns / creates / uses / contains / exposes / replaces
+
+**理由**：
+- 用户反馈："Ontology 还可以再轻一点...Analyzer 不要直接输出 Markdown，而输出 Knowledge Graph (Entity / Relationship / Evidence)。最后 Report Generator 再渲染。以后想生成 Markdown / HTML / Mermaid / Graph 都很容易。"
+- 实现层类型（agent/planner/runner）继续保留——分析器需要细粒度分类才能做精准检测。
+- Core Ontology 是渲染层投影：报告/可视化/导出时使用 8 核心类型，分析器层不感知。
+- 多对一投影确保向后兼容：现有分析器零改动，新增 `_coreOntologyView()` 报告章节展示投影结果。
+- 这是迈向 "Analyzer 输出 Knowledge Graph" 的第一步——未来可生成 Mermaid 图、HTML 交互式图谱、Neo4j 图数据库导出。
+
+---
+
+## 35. Research Coverage（按维度量化证据充分性）
+
+**决策**：新增 `computeResearchCoverage(findings)` 函数，将 Research Questions (Q1-Q11) 映射到 5 个研究维度，计算覆盖率、平均置信度和缺口。
+
+**5 研究维度**：
+- Architecture (Q1+Q2+Q3)
+- AI/Capability (Q4+Q5+Q6)
+- Testing/Quality (Q7)
+- Documentation (Q8)
+- Decisions (Q9+Q10+Q11)
+
+**每个维度输出**：coverage (0-1) / confidence (high/medium/low) / findingCount / verifiedCount / avgConfidence / gap (描述性文字)
+
+**理由**：
+- 用户反馈："Evidence 很多，但是不知道覆盖率。Security conclusions low confidence reason: Few evidence found."
+- 当前 Pipeline 输出大量 Findings，但读者无法判断"哪些领域证据充分、哪些领域结论不可靠"。
+- Research Coverage 让报告显式标注低置信领域——"Documentation 维度覆盖率 33%，结论应标注为低置信"。
+- 这是从"产出很多证据"到"量化研究质量"的关键升级。
+- 报告撰写 prompt 新增 Quality Gate 第 9 条："低覆盖率结论是否标注？"——确保 LLM 不会假装低覆盖率领域的结论是可靠的。
+
+---
+
+## 36. Report Narrative（从章节模板到叙事弧线）
+
+**决策**：重写 `prompts/07-report-writer.md`，从 5 章节固定模板（Executive Summary → Top Claims → Decisions → Patterns → Appendix）改为 9 段叙事弧线。
+
+**叙事弧线**：Repository Overview → Design Philosophy → Architecture → Major Decisions → Trade-offs → Interesting Ideas → Risks → Recommendations → Lessons Learned
+
+**理由**：
+- 用户反馈："目前 Report 偏 Section Section Section...建议改成 Story...读起来像 Martin Fowler 写的文章。而不是分析器输出。"
+- 章节模板的问题：LLM 倾向于"填格子"——每个章节独立填充，缺乏连贯叙事。读起来像分析器输出的拼接，不像人写的工程文章。
+- 叙事弧线的优势：
+  - Overview → Philosophy：从"是什么"自然过渡到"为什么这样设计"
+  - Philosophy → Architecture：从理念引出骨架
+  - Architecture → Decisions：从骨架引出关键选择
+  - Decisions → Trade-offs：从选择引出放弃
+  - Trade-offs → Ideas：从放弃引出值得借鉴的 Pattern
+  - Ideas → Risks：从借鉴引出隐患
+  - Risks → Recommendations：从隐患引出建议
+  - Recommendations → Lessons：从建议升华到普适经验
+- 每段允许跳过（如没有 Interesting Ideas 就跳过），但不能破坏叙事流。
+- 新增 Quality Gate 第 7 条："叙事流是否自然？"
+- 新增第一原则："Story over Section"——放在所有原则之前。
+
+---
+
 # 框架架构
 
 以下章节描述 research-repo 的实现架构。SKILL.md 不包含这些内容，因为它们属于框架实现而非研究方法论。

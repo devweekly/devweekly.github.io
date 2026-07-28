@@ -3,6 +3,15 @@ import {
   VerificationLoop,
   EvidenceSynthesizer,
 } from "./research-engine.mjs";
+import { computeResearchCoverage } from "./evidence-quality.mjs";
+import {
+  CORE_ONTOLOGY_TYPES,
+  CORE_RELATIONSHIP_TYPES,
+  toCoreType,
+  toCoreRelationship,
+  projectToCoreTypeDistribution,
+  projectToCoreRelDistribution,
+} from "./evidence-store.mjs";
 
 // ===========================================================================
 // Report Generator — produces an Evidence Brief for LLM analysis
@@ -82,6 +91,7 @@ class ReportGenerator {
       this._findingsSection(),
       this._synthesisSection(),
       this._consistencyFindings(),
+      this._researchCoverage(),
       this._executiveBrief(),
       this._architectureInsights(),
       this._architectureSemantics(),
@@ -93,6 +103,7 @@ class ReportGenerator {
       this._testingAndEvaluation(),
       this._engineeringMetrics(),
       this._ontologyView(),
+      this._coreOntologyView(),
       this._researchObjectGraph(),
       this._negativeFindings(),
       this._readingPriority(),
@@ -918,6 +929,201 @@ class ReportGenerator {
         }
       }
     }
+
+    return lines.join("\n");
+  }
+
+  /**
+   * Research Coverage — per-dimension evidence sufficiency.
+   * Maps Research Questions (Q1-Q11) to research dimensions
+   * (Architecture / AI-Capability / Testing-Quality / Documentation / Decisions)
+   * and computes coverage + avg confidence + gap analysis.
+   *
+   * User feedback: "Evidence 很多，但是不知道覆盖率。Security conclusions
+   * low confidence reason: Few evidence found."
+   */
+  _researchCoverage() {
+    const findings = this._findings();
+    const findingsList = findings?.findings || [];
+    if (findingsList.length === 0) return "";
+
+    const coverage = computeResearchCoverage(findingsList);
+    const zh = this.lang === "zh";
+    const lines = [];
+
+    lines.push(zh ? "## §A.4 研究覆盖率（Research Coverage）" : "## §A.4 Research Coverage");
+    lines.push("");
+    lines.push(zh
+      ? "> 按研究维度（Research Dimension）量化证据充分性。低覆盖率的维度意味着该领域结论置信度低。"
+      : "> Per-research-dimension evidence sufficiency. Low-coverage dimensions imply low-confidence conclusions in that area."
+    );
+    lines.push("");
+
+    // Dimension table
+    lines.push(zh ? "### 维度覆盖率" : "### Dimension Coverage");
+    lines.push("");
+    lines.push(zh
+      ? "| 维度 | 覆盖率 | 平均置信度 | Findings | Verified | Gap |"
+      : "| Dimension | Coverage | Avg Confidence | Findings | Verified | Gap |"
+    );
+    lines.push("|------|----------|--------------|----------|----------|-----|");
+    for (const [dim, info] of Object.entries(coverage.dimensions)) {
+      const pct = `${Math.round(info.coverage * 100)}%`;
+      const confPct = `${Math.round(info.avgConfidence * 100)}%`;
+      const gapShort = info.gap.split("—")[0].trim();
+      lines.push(`| ${dim} | ${pct} | ${confPct} (${info.confidence}) | ${info.findingCount} | ${info.verifiedCount} | ${gapShort} |`);
+    }
+    lines.push("");
+
+    // Summary
+    const s = coverage.summary;
+    lines.push(zh ? "### 摘要" : "### Summary");
+    lines.push("");
+    lines.push(zh
+      ? `- **Overall Coverage**: ${Math.round(s.overallCoverage * 100)}%`
+      : `- **Overall Coverage**: ${Math.round(s.overallCoverage * 100)}%`
+    );
+    if (s.strongestDimension) {
+      lines.push(zh
+        ? `- **Strongest Dimension**: ${s.strongestDimension}`
+        : `- **Strongest Dimension**: ${s.strongestDimension}`
+      );
+    }
+    if (s.weakestDimension) {
+      lines.push(zh
+        ? `- **Weakest Dimension**: ${s.weakestDimension} — 该领域结论应标注为低置信度。`
+        : `- **Weakest Dimension**: ${s.weakestDimension} — conclusions here should be flagged as low confidence.`
+      );
+    }
+    lines.push("");
+
+    // Explicit low-confidence warning
+    const lowDims = Object.entries(coverage.dimensions)
+      .filter(([, info]) => info.confidence === "low" || info.coverage < 0.5)
+      .map(([name]) => name);
+    if (lowDims.length > 0) {
+      lines.push(zh
+        ? `> ⚠ **Low-confidence areas**: ${lowDims.join(", ")}。报告应明确标注这些领域的结论缺乏证据支持。`
+        : `> ⚠ **Low-confidence areas**: ${lowDims.join(", ")}. The report must explicitly flag conclusions in these areas as evidence-sparse.`
+      );
+      lines.push("");
+    }
+
+    return lines.join("\n");
+  }
+
+  /**
+   * Core Ontology View — 8 unified abstractions.
+   * Projects implementation-layer objects (OBJECT_TYPES + RESEARCH_OBJECT_TYPES)
+   * to the 8 core types (Entity / Module / API / Capability / Concept /
+   * Artifact / Decision / Pattern) and 8 unified verbs.
+   *
+   * User feedback: "Ontology 还可以再轻一点...Analyzer 不要直接输出 Markdown，
+   * 而输出 Knowledge Graph (Entity / Relationship / Evidence)。最后 Report
+   * Generator 再渲染。以后想生成 Markdown / HTML / Mermaid / Graph 都很容易。"
+   *
+   * Design: This is the rendering layer projection. Analyzers continue to
+   * emit granular types (agent/planner/runner/tool/prompt). This view shows
+   * the unified abstraction for cross-format rendering readiness.
+   */
+  _coreOntologyView() {
+    const ontology = this.s.ontology;
+    const researchObjects = this.s.researchObjects;
+    const zh = this.lang === "zh";
+    if (!ontology && !researchObjects) return "";
+
+    const implObjects = (ontology?.objects || []).concat(
+      (researchObjects?.objects || []).map((o) => ({ type: o.type, name: o.id }))
+    );
+    const implRels = (ontology?.relationships || []).concat(
+      researchObjects?.relationships || []
+    );
+
+    if (implObjects.length === 0 && implRels.length === 0) return "";
+
+    const typeDist = projectToCoreTypeDistribution(implObjects);
+    const relDist = projectToCoreRelDistribution(implRels);
+
+    const lines = [];
+    lines.push(zh ? "## 5.5b. Core Ontology View（8 核心类型投影）" : "## 5.5b. Core Ontology View (8-type projection)");
+    lines.push("");
+    lines.push(zh
+      ? "> Palantir-light：8 个核心类型（Entity / Module / API / Capability / Concept / Artifact / Decision / Pattern）+ 8 个统一关系动词（implements / depends_on / owns / creates / uses / contains / exposes / replaces）。"
+      : "> Palantir-light: 8 core types (Entity / Module / API / Capability / Concept / Artifact / Decision / Pattern) + 8 unified relationship verbs (implements / depends_on / owns / creates / uses / contains / exposes / replaces)."
+    );
+    lines.push(zh
+      ? "> 这是渲染层投影——分析器继续输出实现层类型（agent/planner/runner/tool），本视图将它们投影到 8 核心类型。便于未来生成 Markdown / HTML / Mermaid / Graph。"
+      : "> This is a rendering-layer projection — analyzers continue to emit implementation-layer types (agent/planner/runner/tool), projected here to 8 core types for future Markdown / HTML / Mermaid / Graph rendering."
+    );
+    lines.push("");
+
+    // Core type distribution
+    lines.push(zh ? "### 核心类型分布" : "### Core Type Distribution");
+    lines.push("");
+    lines.push(zh ? "| 核心类型 | 数量 | 说明 |" : "| Core Type | Count | Description |");
+    lines.push("|---------|------|------|");
+    const typeDescs = {
+      Entity: zh ? "代码单元（function/class/agent/planner/runner）" : "Code unit (function/class/agent/planner/runner)",
+      Module: zh ? "代码边界（repository/module）" : "Code boundary (repository/module)",
+      API: zh ? "对外接口（tool/prompt）" : "Exposed interface (tool/prompt)",
+      Capability: zh ? "系统能力（暂未直接检测）" : "System capability (not directly detected yet)",
+      Concept: zh ? "领域概念（finding/issue/risk/unknown）" : "Domain concept (finding/issue/risk/unknown)",
+      Artifact: zh ? "非代码产物（test/eval/config/doc/dataset/evidence）" : "Non-code artifact (test/eval/config/doc/dataset/evidence)",
+      Decision: zh ? "工程决策（decision/constraint/assumption）" : "Engineering decision (decision/constraint/assumption)",
+      Pattern: zh ? "可复用模式（pattern/tradeoff/hypothesis）" : "Reusable pattern (pattern/tradeoff/hypothesis)",
+    };
+    for (const t of CORE_ONTOLOGY_TYPES) {
+      lines.push(`| ${t} | ${typeDist[t] || 0} | ${typeDescs[t]} |`);
+    }
+    lines.push("");
+
+    // Core relationship distribution
+    const totalRels = Object.values(relDist).reduce((a, b) => a + b, 0);
+    if (totalRels > 0) {
+      lines.push(zh ? "### 核心关系分布" : "### Core Relationship Distribution");
+      lines.push("");
+      lines.push(zh ? "| 关系动词 | 数量 |" : "| Verb | Count |");
+      lines.push("|---------|------|");
+      const relDescs = {
+        implements: zh ? "A 实现 B（Module → Pattern）" : "A implements B (Module → Pattern)",
+        depends_on: zh ? "A 依赖 B（imports/calls/references）" : "A depends on B (imports/calls/references)",
+        owns: zh ? "A 拥有 B（owns/configuredBy/documentedBy）" : "A owns B (owns/configuredBy/documentedBy)",
+        creates: zh ? "A 创建 B（creates/produces）" : "A creates B (creates/produces)",
+        uses: zh ? "A 使用 B（uses/testedBy/supported_by）" : "A uses B (uses/testedBy/supported_by)",
+        contains: zh ? "A 包含 B" : "A contains B",
+        exposes: zh ? "A 暴露 B" : "A exposes B",
+        replaces: zh ? "A 替代 B（alternative_to/contradicts/conflicts_with）" : "A replaces B (alternative_to/contradicts/conflicts_with)",
+      };
+      for (const r of CORE_RELATIONSHIP_TYPES) {
+        if (relDist[r] > 0) {
+          lines.push(`| ${r} | ${relDist[r]} |`);
+        }
+      }
+      lines.push("");
+    }
+
+    // Rendering readiness note
+    lines.push(zh
+      ? "### 渲染就绪说明"
+      : "### Rendering Readiness"
+    );
+    lines.push("");
+    lines.push(zh
+      ? "Analyzer 输出 → Core Ontology 投影 → 多格式渲染："
+      : "Analyzer output → Core Ontology projection → multi-format rendering:"
+    );
+    lines.push("");
+    lines.push("```");
+    lines.push(zh
+      ? "Analyzer (impl type) → Knowledge Graph (core type) → Renderer"
+      : "Analyzer (impl type) → Knowledge Graph (core type) → Renderer"
+    );
+    lines.push("  agent              → Entity                    → Markdown");
+    lines.push("  tool               → API                       → HTML");
+    lines.push("  decision           → Decision                  → Mermaid");
+    lines.push("  pattern            → Pattern                   → Graph (Neo4j)");
+    lines.push("```");
+    lines.push("");
 
     return lines.join("\n");
   }

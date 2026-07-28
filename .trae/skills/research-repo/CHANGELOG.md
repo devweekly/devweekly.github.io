@@ -4,6 +4,58 @@
 
 ---
 
+## 2026-07-28（续）— Negative Evidence + Core Ontology + Research Coverage + Report Narrative
+
+### 新增功能
+
+#### Negative Evidence (C9) + Contradiction Detection (C10)
+- ConsistencyAnalyzer 新增 C9 规则：对检测到的架构模式（Plugin/Microservices/Layered/Event-Driven）主动搜索反证信号（循环依赖、层违规、高耦合密度、God Module、同步调用链）。
+- ConsistencyAnalyzer 新增 C10 规则：检测互斥架构模式对（Monolith vs Microservices / Layered vs Event-Driven / MVC vs Event-Driven / Plugin vs Monolith），生成 "Competing Interpretations" 矛盾。
+- C9 矛盾记录包含 `counterEvidence` 数组（signal / detail / impact 三字段）。
+- 报告撰写 prompt 强制处理 C9/C10：C9 → "Confidence reduced" + 反证引用；C10 → "Competing Interpretations" + 双方案证据。
+
+#### Core Ontology（8 核心类型 + 8 统一关系动词）
+- 新增 `CORE_ONTOLOGY_TYPES`：Entity / Module / API / Capability / Concept / Artifact / Decision / Pattern。
+- 新增 `CORE_RELATIONSHIP_TYPES`：implements / depends_on / owns / creates / uses / contains / exposes / replaces。
+- 新增 `toCoreType()` / `toCoreRelationship()` 多对一投影函数，将实现层类型（agent/planner/runner/tool 等）投影到 8 核心类型。
+- 新增 `projectToCoreTypeDistribution()` / `projectToCoreRelDistribution()` 分布统计函数。
+- 报告新增 `_coreOntologyView()` 章节（§5.5b），展示核心类型分布 + 关系分布 + 渲染就绪说明。
+- 设计原则：实现层类型继续保留（分析器零改动），Core Ontology 是渲染层投影。这是迈向 "Analyzer 输出 Knowledge Graph" 的第一步——未来可生成 Mermaid 图、HTML 交互式图谱、Neo4j 图数据库导出。
+
+#### Research Coverage（按维度量化证据充分性）
+- 新增 `computeResearchCoverage(findings)` 函数，将 Research Questions (Q1-Q11) 映射到 5 个研究维度（Architecture / AI-Capability / Testing-Quality / Documentation / Decisions）。
+- 每个维度输出：coverage (0-1) / confidence (high/medium/low) / findingCount / verifiedCount / avgConfidence / gap (描述性文字)。
+- 报告新增 `_researchCoverage()` 章节（§A.4），展示维度覆盖率表 + 摘要 + 低置信度警告。
+- 报告撰写 prompt 新增 Quality Gate 第 9 条："低覆盖率结论是否标注？"
+
+#### Report Narrative（从章节模板到叙事弧线）
+- 重写 `prompts/07-report-writer.md`，从 5 章节固定模板改为 9 段叙事弧线：
+  Repository Overview → Design Philosophy → Architecture → Major Decisions → Trade-offs → Interesting Ideas → Risks → Recommendations → Lessons Learned。
+- 新增第一原则 "Story over Section"：报告是叙事，不是章节填充。读起来应像 Martin Fowler 的文章。
+- 整合 C9（Counter-Evidence）和 C10（Competing Interpretations）到 Architecture 章节。
+- 新增 3 个 Quality Gate 问题（叙事流 / C9-C10 处理 / 低覆盖率标注）。
+
+### 测试改进
+
+#### 新增单元测试（14 个）
+- `computeResearchCoverage`：5 个测试（空输入 / 按维度计算 / 置信度标签 / 最弱最强维度 / 缺口消息）。
+- Core Ontology 投影：9 个测试（toCoreType 全类型 / toCoreRelationship 全动词 / fallback 行为 / 分布统计 / 多对一性质 / 类型/动词数量不变式）。
+- 单元测试总数：41 → 55。
+
+#### 测试基线更新
+- `baseline-metrics.json` 重新生成（briefLength 增长 ~2500-2900 字符，因新增 Research Coverage + Core Ontology View 章节）。
+- 4 个 Golden fixtures 重新生成（agent / database / tool / readme-claims）。
+
+### 测试结果
+- 全部 6 层 239/239 通过（100%）。
+- UNIT 93/93 / PROMPT 12/12 / BEHAVIOR 25/25 / MUTATION 18/18 / REGRESSION 68/68 / E2E 23/23。
+
+### 文档更新
+- DESIGN.md 新增 §33-§36（4 条设计决策）。
+- CHANGELOG.md 新增本条目。
+
+---
+
 ## 2026-07-28 — Research Object Model + 新分析器 + 测试体系 async 化
 
 ### 新增功能
