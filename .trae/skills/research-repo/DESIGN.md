@@ -805,9 +805,15 @@ Report (Markdown / JSON)
 - 之前的 Hybrid 架构是"新增一层"；本次变更是"用新层替换旧层"——语义脚本彻底退出，避免两套逻辑同步更新。
 - Mechanical Analyzers 的输出仍通过 `EvidenceStore` / `ObjectClassifier` / `RelationshipBuilder` / `ResearchObjectRegistry` 组织成结构化 JSON，这是 Analyzer → Knowledge Graph 的第一步，保留价值。
 
+**额外收尾**：
+- 删除两个过时的 LLM-driven 示例 fixtures：`ai-agent-research`、`database-research`（代表已移除的 10-stage 旧流程，无法复现）。
+- 修复 `run-e2e-live.mjs`：无参数时默认创建 synthetic agent repo；deterministic report stub 至少包含 2 个 Claims；不再错误地把 archetype 期望设为 "Unknown"。
+
 **测试结果**：
 - `pnpm test`: 69/69 通过。
 - `pnpm test:skill`: 180/180 通过。
+- `pnpm test:e2e`: 112/112 stage checks 通过。
+- `pnpm test:e2e:live`: 通过（默认 synthetic agent repo）。
 - 重新生成 `baseline-metrics.json` 与 4 个 Golden fixtures。
 
 ---

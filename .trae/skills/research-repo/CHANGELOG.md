@@ -28,12 +28,18 @@
   - `verify-directory.mjs`：移除对已删除的 `designPatterns` key 的强制检查。
 - 重新生成 `baseline-metrics.json` 与 4 个 Golden fixtures。
 
+### 额外修复（测试收尾）
+- 删除过时的 LLM-driven 示例 fixtures：`ai-agent-research`、`database-research`（代表已移除的 10-stage 旧流程，无法复现）。
+- 修复 `run-e2e-live.mjs`：无参数时默认使用 synthetic agent repo；deterministic report stub 至少生成 2 个 Claims；不再把 archetype 误判为 "Unknown"。
+
 ### 证据摘要格式
 - `renderMarkdownBrief()` 输出包含 `Archetype Hints`、`Key Evidence`、`Design Decisions`、`Symbols`、`Architecture Graph`、`Structural Metrics`、`Limits` 等章节，满足 E2E stage checks 与 verify 要求。
 
 ### 测试结果
 - `pnpm test`: 69/69 通过。
 - `pnpm test:skill`: 180/180 通过（UNIT 45 / PROMPT 3 / BEHAVIOR 25 / MUTATION 16 / REGRESSION 68 / E2E 23）。
+- `pnpm test:e2e`: 112/112 stage checks 通过（4 个 golden fixtures）。
+- `pnpm test:e2e:live`: 通过（默认 synthetic agent repo）。
 
 ### 文档更新
 - `CHANGELOG.md` 新增本条目。
