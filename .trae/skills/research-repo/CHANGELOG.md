@@ -32,6 +32,12 @@
 - 删除过时的 LLM-driven 示例 fixtures：`ai-agent-research`、`database-research`（代表已移除的 10-stage 旧流程，无法复现）。
 - 修复 `run-e2e-live.mjs`：无参数时默认使用 synthetic agent repo；deterministic report stub 至少生成 2 个 Claims；不再把 archetype 误判为 "Unknown"。
 
+### ref-only 真实仓库验证与修复
+- 对 `ref-only/` 下全部 23 个真实仓库运行 mechanical analyzer。
+- 发现 `code-review-graph` 和 `open-design` 因 graphology 重复节点 ID 崩溃：`Graph.addNode: the "..." node already exist in the graph`。
+- 修复 `analyzers-inference.mjs` 的 `buildArchGraph()`：添加节点前检查 `graph.hasNode(n.id)`，对 ArchitectureAnalyzer 可能产生的重复 module id 进行去重。
+- 验证：全部 23 个 ref-only 仓库 `all` 命令通过。
+
 ### 证据摘要格式
 - `renderMarkdownBrief()` 输出包含 `Archetype Hints`、`Key Evidence`、`Design Decisions`、`Symbols`、`Architecture Graph`、`Structural Metrics`、`Limits` 等章节，满足 E2E stage checks 与 verify 要求。
 

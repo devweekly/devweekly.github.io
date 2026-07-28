@@ -809,6 +809,12 @@ Report (Markdown / JSON)
 - 删除两个过时的 LLM-driven 示例 fixtures：`ai-agent-research`、`database-research`（代表已移除的 10-stage 旧流程，无法复现）。
 - 修复 `run-e2e-live.mjs`：无参数时默认创建 synthetic agent repo；deterministic report stub 至少包含 2 个 Claims；不再错误地把 archetype 期望设为 "Unknown"。
 
+**真实仓库验证**：
+- 对 `ref-only/` 下 23 个真实仓库运行 mechanical analyzer，发现 2 个仓库（`code-review-graph`、`open-design`）因 graphology 重复节点 ID 崩溃。
+- 根因：`ArchitectureAnalyzer` 在跨文件映射时可能对测试文件生成重复的 module id，`buildArchGraph()` 直接 `addNode` 导致异常。
+- 修复：在 `buildArchGraph()` 中添加 `graph.hasNode(n.id)` 去重检查。
+- 结果：全部 23 个 ref-only 仓库 `all` 命令成功输出，无异常。
+
 **测试结果**：
 - `pnpm test`: 69/69 通过。
 - `pnpm test:skill`: 180/180 通过。

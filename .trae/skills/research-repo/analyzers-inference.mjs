@@ -12,7 +12,11 @@ import { BaseAnalyzer } from "./base-analyzer.mjs";
 function buildArchGraph(arch) {
   const graph = new DirectedGraph();
   for (const n of arch.nodes || []) {
-    graph.addNode(n.id);
+    // ArchitectureAnalyzer may emit duplicate node ids across different files
+    // (e.g., test files mapped to the same module id); de-duplicate here.
+    if (!graph.hasNode(n.id)) {
+      graph.addNode(n.id);
+    }
   }
   for (const e of arch.edges || []) {
     // addEdge throws on duplicate edges; merge silently instead.
