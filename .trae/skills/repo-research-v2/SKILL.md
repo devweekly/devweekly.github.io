@@ -3,9 +3,9 @@ name: "repo-research-v2"
 description: "对开源 Repository 进行深度架构研究，提炼其设计思想、工程约束、架构决策与可复用模式。当用户要求研究/分析某个仓库的架构、设计模式或工程实现时调用。"
 ---
 
-# Repository 研究
+# Repository Architecture Research
 
-> 对开源 Repository 进行深度架构研究，目标是理解系统的设计思想、工程约束与架构决策，而非仅仅总结代码。
+> 对开源 Repository 的**架构**与**工程设计**进行深度研究。，目标是理解系统的设计思想、工程约束与架构决策，而非仅仅总结代码。
 
 ---
 
@@ -28,10 +28,10 @@ description: "对开源 Repository 进行深度架构研究，提炼其设计思
 | 原则 | 要求 |
 |------|------|
 | **证据先于解释** | 收集证据前不得推断架构意图。所有结论必须源自可验证的仓库证据。 |
-| **结构先于解释** | 必须先重建仓库结构，再进行架构解释。不直接从源码跳到结论，始终建立中间知识模型。 |
+| **结构先于解释** | 必须先建立仓库知识模型，再进行架构解释。不直接从源码跳到结论，始终建立中间知识模型。 |
 | **允许推理，禁止捏造** | 鼓励推理，但禁止捏造证据。每个非平凡陈述必须可追溯。 |
 | **研究是为了理解** | 目标是理解工程决策，不是生成文档、画图或总结 README。 |
-| **报告只是渲染器** | 所有推理在报告生成前完成。报告不发明新结论，只组织已验证的发现。 |
+| **报告阶段仅负责组织和表达已验证的研究结果，不新增推理或结论** | 所有推理在报告生成前完成。报告不发明新结论，只组织已验证的发现。 |
 
 ---
 
@@ -100,13 +100,13 @@ Stage 3: 叙事渲染（Narrative Rendering）
 
 **目的**：将机械证据转化为仓库知识模型。
 
-**知识模型描述**：能力（capabilities）、归属（ownership）、关系（relationships）、演进（evolution）。
+**知识模型描述**：实体（Entities）、能力（Capabilities）、关系（Relationships）、演进（Evolution）。
 
 **约束**：此阶段只描述事实，不解释"为什么"。
 
 ### Stage 2 — 架构解释
 
-**目的**：用知识模型解释工程决策。
+**目的**：基于知识模型重建系统背后的工程决策与设计思想。
 
 **典型输出**：约束（constraints）、设计决策（design decisions）、架构张力（architectural tensions）、有意省略（deliberate omissions）、杠杆点（leverage points）、维护者心智模型（maintainer mental model）。
 
@@ -132,6 +132,8 @@ Stage 3: 叙事渲染（Narrative Rendering）
 | 测试 | 测试用例反映的预期行为 |
 | Git 历史 | 提交历史反映的演进意图 |
 | 仓库元数据 | package.json / Cargo.toml 等 |
+
+多个独立证据来源相互印证时，应优先于单一证据来源。
 
 **无证据支持的声明必须标记为 Unknown。**
 
@@ -159,7 +161,7 @@ Stage 3: 叙事渲染（Narrative Rendering）
 | **Need Documentation** | 需要文档支持 |
 | **Need Git History** | 需要 Git 历史分析 |
 | **Need External Information** | 需要 Issue / PR / Discussion 等外部信息 |
-| **Impossible To Verify** | 即使深入阅读也无法验证（如设计意图） |
+| **Not Verifiable** | 即使深入阅读也无法验证（如设计意图） |
 
 ---
 
@@ -168,7 +170,7 @@ Stage 3: 叙事渲染（Narrative Rendering）
 - **深度理解** 优于 **广泛覆盖**
 - **已验证的结论** 优于 **有趣的推测**
 - **工程推理** 优于 **架构 buzzword**
-- **维护者意图** 优于 **模式匹配**
+- **维护者思维方式** 优于 **模式识别**
 
 ---
 
@@ -176,7 +178,7 @@ Stage 3: 叙事渲染（Narrative Rendering）
 
 最终报告应包含以下章节：
 
-1. **Repository Overview** — 仓库概览
+1. **Executive Summary** — 仓库概览
 2. **Repository Mental Model** — 维护者心智模型
 3. **Engineering Constraints** — 工程约束
 4. **Capability Map** — 能力地图
@@ -208,6 +210,18 @@ Stage 3: 叙事渲染（Narrative Rendering）
 
 ---
 
+## 研究边界（Research Boundaries）
+
+本研究聚焦仓库能够证明的事实。
+
+- 不研究团队流程。
+- 不评价代码质量。
+- 不猜测作者能力。
+- 不比较语言优劣。
+- 不进行产品分析。
+
+---
+
 ## 成功标准
 
 一份成功的研究报告应让有经验的工程师能够回答：
@@ -215,6 +229,7 @@ Stage 3: 叙事渲染（Narrative Rendering）
 - 这个仓库如何工作？
 - 为什么这样设计？
 - 我应该从中学到什么？
+- 如果重新设计一次，我会保留哪些思想？
 - 哪些思想值得复用？
 - 哪些工程错误被有意避免？
 
