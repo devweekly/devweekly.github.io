@@ -1,5 +1,26 @@
 #!/usr/bin/env node
 
+// 使用方式如下：
+/*
+    import { research } from "./research-cli.js";
+
+    const result = await research(`
+    Review this repository.
+
+    Focus:
+
+    - Architecture
+    - Evidence
+    - Tradeoffs
+    - Risks
+
+    Return JSON only.
+    `);
+
+    console.log(result);
+*/
+
+
 import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
 import { constants } from "node:fs";
@@ -13,7 +34,7 @@ async function which(cmd) {
             const full = `${p}/${cmd}`;
             await access(full, constants.X_OK);
             return full;
-        } catch {}
+        } catch { }
     }
 
     return null;
@@ -73,15 +94,31 @@ function run(command, args, stdin) {
         child.on("close", code => {
 
             if (code !== 0) {
-
-                reject(
-                    new Error(stderr || `Exit ${code}`)
-                );
-
+                reject(new Error(stderr || `Exit ${code}`));
                 return;
             }
 
-            resolve(stdout);
+            if (command.includes("opencode")) {
+                // 过滤并拼接出模型最终输出的内容
+                const jsonLines = stdout.split("\n").filter(Boolean);
+                let finalModelOutput = "";
+
+                for (const line of jsonLines) {
+                    try {
+                        const event = JSON.parse(line);
+                        // 提取模型吐出的文本内容（包含思考和最终答案）
+                        if (event.type === "chunk" || event.type === "text") {
+                            finalModelOutput += event.content;
+                        }
+                    } catch {
+                        // 忽略非 JSON 行
+                        // todo
+                    }
+                }
+                resolve(finalModelOutput);
+            } else {
+                resolve(stdout);
+            }
         });
 
         child.stdin.write(stdin);
@@ -95,6 +132,11 @@ export async function research(prompt, options = {}) {
 
     const cli = await detectCLI();
 
+    // 👇 新增：如果传入的是对象，自动转换为 JSON 字符串
+    const normalizedPrompt = typeof prompt === "object"
+        ? JSON.stringify(prompt, null, 2)
+        : prompt;
+
     if (cli.name === "opencode") {
 
         return run(
@@ -105,7 +147,7 @@ export async function research(prompt, options = {}) {
                 options.model ?? "gpt-5",
                 "--json"
             ],
-            prompt
+            normalizedPrompt
         );
 
     }
@@ -116,7 +158,7 @@ export async function research(prompt, options = {}) {
             "chat",
             "--json"
         ],
-        prompt
+        normalizedPrompt
     );
 
 }

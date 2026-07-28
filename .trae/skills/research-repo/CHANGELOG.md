@@ -73,6 +73,43 @@
 
 ---
 
+## 2026-07-28（续）— graphology 替代手写图基础设施 + 删除 ts-morph 死依赖
+
+### 原则
+> "Script 应该写 Research Logic，不要写 Infrastructure Logic。"
+> 如果一个库已有几千个项目在用且维护活跃，就不要自己重新实现。
+
+### 变更
+
+#### graphology 激活（已安装未使用 → 启用）
+- graphology ^0.26.0 于 2026-07-22 添加为依赖，但从未被 import。
+- 新增 `buildArchGraph(arch)` 共享 helper（analyzers-inference.mjs）：从 ArchitectureAnalyzer 的 nodes/edges 构建 graphology DirectedGraph。
+- **ArchitectureMetricsAnalyzer**：`fanInMap` / `fanOutMap`（Map + 手写 counting loop）→ `graph.inDegree(id)` / `graph.outDegree(id)`。删除 8 行手写 degree counting 代码。
+- **`_aggregateFan`** 签名变更：`countMap: Map` → `degreeFn: (id) => number`，更通用。
+- **DependencySmellAnalyzer**：hub module 检测的手写 `inDegree` Map → `buildArchGraph` + `graph.inDegree()`。删除 5 行手写 in-degree counting 代码。
+
+#### ts-morph 删除（死依赖）
+- `ts-morph` ^28.0.0 从 package.json 移除。
+- 原因：已安装但从未被 import（grep 确认零引用）；且只支持 TS/JS，与 web-tree-sitter 的多语言（Python/Java/Go/Rust）支持冲突。
+
+#### 不改动的部分（研究逻辑，非基础设施）
+- **InformationFlowAnalyzer BFS**：带 depth tracking / path recording / LLM detection，是研究逻辑。
+- **RelationshipBuilder**：关系推断引擎（testedBy / configuredBy / documentedBy），是 domain logic。
+- **ArchitecturePatternAnalyzer 模块级 stability**：模块级图（非节点级），包含 abstractness / zone of pain 等研究逻辑。
+
+### 评估的其他库（不采用）
+- `ts-morph` 替代 AST：不适用（只支持 TS/JS，与多语言需求冲突）。
+- `dependency-cruiser` / `Madge`：不适用（JS/TS only）。
+- `DuckDB` / `SQLite`：不适用（重原生依赖，IDE 沙箱不支持）。
+- `json-rules-engine`：不适用（业务规则引擎，非代码分析）。
+- `p-queue` / `p-map`：不适用（Analyzer 顺序执行，无并发需求）。
+
+### 测试结果
+- 全部 6 层 239/239 通过（100%），无回归。
+- DESIGN.md 新增 §32。
+
+---
+
 ## 2026-07-27 — 文档职责分离
 
 ### Breaking Change

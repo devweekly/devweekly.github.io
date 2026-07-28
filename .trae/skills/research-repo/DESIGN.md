@@ -564,6 +564,32 @@ Question Planner 读取这些信号后判断 Archetype，再生成对应维度�
 
 ---
 
+## 32. graphology 替代手写图基础设施
+
+**决策**：用 graphology `DirectedGraph` 替代 ArchitectureMetricsAnalyzer 和 DependencySmellAnalyzer 中的手写 Map-based degree counting。
+
+**理由**：
+- "Script 应该写 Research Logic，不要写 Infrastructure Logic。"——Fan-in/Fan-out degree counting 是图基础设施，graphology 已提供 battle-tested 的 `inDegree()` / `outDegree()` / `order` / `size`。
+- graphology 早已是项目依赖（2026-07-22 添加），但从未被 import——这是"已安装未使用"的死依赖激活。
+- 同时删除 ts-morph 死依赖（已安装但从未被 import，且只支持 TS/JS，与多语言需求冲突）。
+
+**实现**：
+- 新增 `buildArchGraph(arch)` 共享 helper：从 ArchitectureAnalyzer 的 nodes/edges 构建 graphology DirectedGraph，处理重复边和未知节点。
+- ArchitectureMetricsAnalyzer：`fanInMap`/`fanOutMap` (Map + 手写 counting loop) → `graph.inDegree(id)` / `graph.outDegree(id)`。
+- `_aggregateFan(nodes, degreeFn, label)`：参数从 `countMap: Map` 改为 `degreeFn: (id) => number`，更通用。
+- DependencySmellAnalyzer：hub module 检测的手写 `inDegree` Map → `buildArchGraph` + `graph.inDegree()`。
+- ArchitecturePatternAnalyzer 的模块级 stability 不改动——它是模块级图（非节点级），抽象层级不同，且包含 abstractness/zone of pain 等研究逻辑。
+
+**不替换的部分**（研究逻辑，非基础设施）：
+- InformationFlowAnalyzer 的 BFS：带 depth tracking / path recording / LLM detection，是研究逻辑而非纯图遍历。
+- RelationshipBuilder：关系推断引擎（testedBy / configuredBy / documentedBy），是 domain logic 而非图数据结构。
+- ArchitecturePatternAnalyzer 的模块级 Ca/Ce：模块级耦合分析，非简单 degree counting。
+
+**删除的依赖**：
+- `ts-morph` ^28.0.0——已安装但从未被 import，且只支持 TS/JS（与 web-tree-sitter 的多语言支持冲突）。
+
+---
+
 # 框架架构
 
 以下章节描述 research-repo 的实现架构。SKILL.md 不包含这些内容，因为它们属于框架实现而非研究方法论。

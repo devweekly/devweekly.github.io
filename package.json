@@ -43,7 +43,6 @@
     "sanitize-html": "^2.17.0",
     "satori": "^0.29.0",
     "tailwindcss": "^4.2.2",
-    "ts-morph": "^28.0.0",
     "typescript": "^6.0.3"
   },
   "devDependencies": {

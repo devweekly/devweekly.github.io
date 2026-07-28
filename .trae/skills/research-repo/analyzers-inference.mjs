@@ -1,6 +1,30 @@
 import { sep } from "node:path";
+import { DirectedGraph } from "graphology";
 import { isTestPath, pathToModuleId, git } from "./utils.mjs";
 import { BaseAnalyzer } from "./base-analyzer.mjs";
+
+// ---------------------------------------------------------------------------
+// buildArchGraph — shared helper: build a graphology DirectedGraph from
+// ArchitectureAnalyzer output (nodes + edges). Used by ArchitectureMetrics
+// and ArchitecturePattern analyzers to avoid hand-rolled Map-based degree
+// counting. graphology provides battle-tested inDegree/outDegree/density.
+// ---------------------------------------------------------------------------
+function buildArchGraph(arch) {
+  const graph = new DirectedGraph();
+  for (const n of arch.nodes || []) {
+    graph.addNode(n.id);
+  }
+  for (const e of arch.edges || []) {
+    // addEdge throws on duplicate edges; merge silently instead.
+    if (graph.hasEdge(e.from, e.to)) continue;
+    try {
+      graph.addEdge(e.from, e.to);
+    } catch {
+      // Node not in graph (edge references unknown node) — skip.
+    }
+  }
+  return graph;
+}
 
 // ===========================================================================
 // Architecture Semantics Layer (2026-07)
@@ -1379,12 +1403,10 @@ class DependencySmellAnalyzer extends BaseAnalyzer {
       });
     }
 
-    // 3. Hub modules (god module smell) — in-degree > 20.
-    const inDegree = new Map();
-    for (const edge of arch.edges || []) {
-      inDegree.set(edge.to, (inDegree.get(edge.to) || 0) + 1);
-    }
-    for (const [node, deg] of inDegree.entries()) {
+    // 3. Hub modules (god module smell) — in-degree ≥ 20 (via graphology).
+    const smellGraph = buildArchGraph(arch);
+    for (const node of smellGraph.nodes()) {
+      const deg = smellGraph.inDegree(node);
       if (deg >= 20) {
         smells.push({
           type: "hub_module",
@@ -2958,27 +2980,22 @@ class ArchitectureMetricsAnalyzer extends BaseAnalyzer {
     // --- Layer detection ----------------------------------------------------
     const { layers, nodeIdToLayer } = this._detectLayers(nodes, edges, discovery, ctx);
 
-    // --- Fan-in / Fan-out (per-node) ----------------------------------------
-    const fanInMap = new Map(); // nodeId -> count
-    const fanOutMap = new Map(); // nodeId -> count
-    for (const n of nodes) {
-      fanInMap.set(n.id, 0);
-      fanOutMap.set(n.id, 0);
-    }
-    for (const e of edges) {
-      if (fanOutMap.has(e.from)) fanOutMap.set(e.from, fanOutMap.get(e.from) + 1);
-      if (fanInMap.has(e.to)) fanInMap.set(e.to, fanInMap.get(e.to) + 1);
-    }
-    const fanIn = this._aggregateFan(nodes, fanInMap, "fan-in");
-    const fanOut = this._aggregateFan(nodes, fanOutMap, "fan-out");
+    // --- Build graphology DirectedGraph (replaces hand-rolled Map counting) --
+    const graph = buildArchGraph(arch);
+    const inDeg = (id) => graph.inDegree(id);
+    const outDeg = (id) => graph.outDegree(id);
+
+    // --- Fan-in / Fan-out (per-node, via graphology degree) ------------------
+    const fanIn = this._aggregateFan(nodes, inDeg, "fan-in");
+    const fanOut = this._aggregateFan(nodes, outDeg, "fan-out");
 
     // --- Stability (per-node, Robert C. Martin I = Ce/(Ca+Ce)) --------------
     // At node level: Ca = fan-in (dependents), Ce = fan-out (dependencies).
     // I=0 → maximally stable (only depended-upon), I=1 → maximally unstable
     // (only depends-on others, nothing depends on it).
     const nodeStability = nodes.map((n) => {
-      const ca = fanInMap.get(n.id) || 0;
-      const ce = fanOutMap.get(n.id) || 0;
+      const ca = inDeg(n.id);
+      const ce = outDeg(n.id);
       const total = ca + ce;
       const instability = total > 0 ? ce / total : 0;
       return { node: n.id, path: n.path, ca, ce, instability: Number(instability.toFixed(3)) };
@@ -3010,12 +3027,12 @@ class ArchitectureMetricsAnalyzer extends BaseAnalyzer {
     const avgDegree = totalNodes > 0 ? (totalEdges * 2) / totalNodes : 0;
     // Hub nodes: high fan-in (many depend on them) — they are "depended-upon" cores.
     const hubNodes = [...nodes]
-      .map((n) => ({ node: n.id, path: n.path, fanIn: fanInMap.get(n.id) || 0 }))
+      .map((n) => ({ node: n.id, path: n.path, fanIn: inDeg(n.id) }))
       .sort((a, b) => b.fanIn - a.fanIn)
       .slice(0, 5);
     // Bottleneck nodes: high fan-out (they depend on many) — change ripples out from them.
     const bottleneckNodes = [...nodes]
-      .map((n) => ({ node: n.id, path: n.path, fanOut: fanOutMap.get(n.id) || 0 }))
+      .map((n) => ({ node: n.id, path: n.path, fanOut: outDeg(n.id) }))
       .sort((a, b) => b.fanOut - a.fanOut)
       .slice(0, 5);
     // Cross-layer edges: edges that cross layer boundaries (high = layers leak).
@@ -3192,11 +3209,11 @@ class ArchitectureMetricsAnalyzer extends BaseAnalyzer {
    * Aggregate fan metric (used for both fan-in and fan-out).
    * Returns { avg, max, maxNode, distribution }
    */
-  _aggregateFan(nodes, countMap, _label) {
+  _aggregateFan(nodes, degreeFn, _label) {
     if (nodes.length === 0) {
       return { avg: 0, max: 0, maxNode: null, distribution: { "0": 0, "1-3": 0, "4-9": 0, "10+": 0 } };
     }
-    const values = nodes.map((n) => countMap.get(n.id) || 0);
+    const values = nodes.map((n) => degreeFn(n.id) || 0);
     const sum = values.reduce((a, b) => a + b, 0);
     const avg = Number((sum / values.length).toFixed(3));
     let max = 0;
