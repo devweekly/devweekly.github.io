@@ -1,9 +1,9 @@
 ---
 name: "repo-research-v2"
-description: "把 Repository 编译成持续维护的架构知识库（Repository Model），并渲染多种视图（架构报告、设计评审等）。当用户要求研究/分析某个仓库的架构、设计模式或工程实现时调用。"
+description: "把 Repository 编译成架构知识库（Repository Model），并从 Model 渲染报告。当用户要求研究/分析某个仓库的架构、设计模式或工程实现时调用。"
 ---
 
-# Repository 知识编译
+# Repository 研究
 
 > 相关文档：[methodology.md](./methodology.md)（方法论与设计理由）| [report-schema.md](./report-schema.md)（输出规范与 Schema）
 
@@ -13,23 +13,14 @@ description: "把 Repository 编译成持续维护的架构知识库（Repositor
 
 Repository Research 的目标**不是**生成报告，而是：
 
-> **把 Repository 编译成持续维护的架构知识库（Repository Model），报告只是知识库的一种视图。**
+> **把 Repository 编译成 Repository Model，再从 Model 渲染报告。**
 
-```mermaid
-flowchart LR
-    R[Repository] --> C[编译]
-    C --> M[Repository Model<br/>知识图谱]
-    M --> V1[架构报告]
-    M --> V2[安全报告]
-    M --> V3[性能报告]
-    M --> V4[API 指南]
-    M --> V5[入职指南]
+```
+Repository → 编译 → Repository Model → 渲染 → 报告
 ```
 
-- **Repository Model 是第一公民** — 长期资产，非中间步骤。
-- **Report 是 Model 的 View** — 可从同一 Model 生成多种报告。
-- **一次编译，多次查询** — 不为每个问题重新理解仓库。
-- **增量更新** — 仓库变更时只更新受影响部分，不重新编译整个仓库。
+- **Repository Model 是第一产物** — 架构知识库，非中间步骤。
+- **报告是 Model 的视图** — 从 Model 生成，而非直接从源码推断。
 
 ---
 
@@ -96,9 +87,9 @@ flowchart TD
     E -- 否 --> F[收集更多证据]
     F --> C
     E -- 是 --> G[阶段 2：架构解释]
-    G --> I[Repository Model<br/>知识图谱]
+    G --> I[Repository Model]
     I --> H[阶段 3：叙事渲染]
-    H --> J[报告视图]
+    H --> J[报告]
 ```
 
 ### 阶段 0 — 机械分析
@@ -109,7 +100,7 @@ flowchart TD
 
 ### 阶段 1 — 仓库模型构建
 
-将机械证据转化为 Repository Graph。
+将机械证据转化为 Repository Model。
 
 构建以下 5 个维度（详见 [report-schema.md](./report-schema.md#仓库模型维度)）：
 
@@ -144,56 +135,11 @@ flowchart TD
 
 ### 阶段 3 — 叙事渲染
 
-从 Repository Model 渲染人类可读的报告视图。
+从 Repository Model 渲染人类可读的报告。
 
 **禁止**在此阶段执行推理。**禁止**发明新结论。
 
 只将已验证的发现组织成连贯叙事。
-
----
-
-## Repository Model（第一产物）
-
-Repository Model 是编译的**第一产物**，而非中间步骤。
-
-### Model 是 Graph，不是 Tree
-
-```mermaid
-flowchart TD
-    S[调度器] --owns--> T[任务队列]
-    S --calls--> P[插件管理器]
-    P --loads--> E[扩展点]
-    E --implements--> A[公共 API]
-```
-
-Model 必须包含：
-
-| 元素 | 说明 |
-|------|------|
-| **Node** | 能力、模块、子系统、运行时组件 |
-| **Edge** | 关系（owns / calls / depends_on / implements / extends） |
-| **Evidence** | 每个 Node 和 Edge 必须附带证据引用 |
-
-### Model 是长期资产
-
-- **持久化** Model，不丢弃。
-- 仓库更新时**增量更新** Model，不重新编译。
-- Model 可被多种 Report 共享。
-
-### Model 是可链接的
-
-每个能力/子系统是独立的知识单元，相互链接：
-
-```
-repository-model/
-├── runtime.md
-├── scheduler.md
-├── plugin-system.md
-├── configuration.md
-└── storage.md
-```
-
-Report 引用这些知识单元，而非重新描述。
 
 ---
 
@@ -301,23 +247,6 @@ flowchart TD
 
 ---
 
-## 增量更新
-
-Repository Model 是长期资产，支持增量更新：
-
-```mermaid
-flowchart LR
-    U[仓库变更] --> D[识别受影响范围]
-    D --> U2[更新受影响的 Model 节点]
-    U2 --> R[重新渲染受影响的报告章节]
-```
-
-- **禁止**每次变更都重新编译整个仓库。
-- **只更新**受影响的 Model 节点及其关联。
-- **只重新渲染**依赖这些节点的报告章节。
-
----
-
 ## 质量门禁
 
 报告完成前，验证以下问题：
@@ -339,38 +268,19 @@ flowchart LR
 
 ### 第一产物：Repository Model
 
-Repository Model（知识图谱）是核心产物，包含：
+Repository Model 是核心产物，捕获实体、关系及支撑证据（详见 [report-schema.md](./report-schema.md#repository-model)）。
 
-- 节点（能力、模块、子系统）
-- 边（关系）
-- 证据引用
-- 架构不变量
-- 工程约束
-- 设计决策
+### 第二产物：报告
 
-### 第二产物：报告视图
+报告是 Repository Model 的视图，必须覆盖以下信息维度（详见 [report-schema.md](./report-schema.md#报告信息维度)）：
 
-报告是 Repository Model 的一种视图，必须包含以下 17 个章节（详见 [report-schema.md](./report-schema.md#报告章节)）：
+- 系统如何工作
+- 为什么这样设计
+- 关键约束与决策
+- 可复用思想
+- 证据质量与未解问题
 
-1. 执行摘要
-2. 仓库心智模型
-3. 架构不变量
-4. 工程约束
-5. 能力地图
-6. 静态架构
-7. 运行时架构
-8. 架构演进
-9. 关键决策
-10. 架构作用力
-11. 设计张力
-12. 架构杠杆
-13. 可复用模式
-14. 风险
-15. 经验教训
-16. 未解问题
-17. 证据质量摘要
-
-**可从同一 Model 生成其他视图**：安全报告、性能报告、API 指南、入职指南等。
+具体章节结构由渲染器根据仓库复杂度决定，**不强制固定模板**。推荐结构见 [report-schema.md](./report-schema.md#推荐结构)。
 
 ---
 
@@ -384,6 +294,4 @@ Repository Model（知识图谱）是核心产物，包含：
 - 哪些思想值得复用？
 - 哪些工程错误被有意避免？
 
-**且 Repository Model 可被复用**：未来生成新报告时，无需重新编译仓库。
-
-**如果这些问题无法回答，或 Model 无法复用，编译尚未完成。**
+**如果这些问题无法回答，编译尚未完成。**
