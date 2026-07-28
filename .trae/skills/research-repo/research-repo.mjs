@@ -66,6 +66,11 @@ import {
 } from "./knowledge-base.mjs";
 import { BRAIN_DIR, KNOWLEDGE_TYPES } from "./config.mjs";
 import { verifyResearchDirectory, loadExpectedYaml } from "./skill-test/e2e/verify-directory.mjs";
+import {
+  runHybridPipeline,
+  listMechanicalAnalyzers,
+  listSemanticAnalyzers,
+} from "./hybrid-pipeline.mjs";
 
 // Swallow EPIPE errors when downstream (e.g. `head`) closes the pipe early.
 process.stdout?.on?.("error", (err) => {
@@ -90,6 +95,7 @@ async function main() {
   const command = positional[0];
   const repoPath = positional[1];
   const syntheticCommands = new Set(["plan", "questions", "report", "update"]);
+  const hybridCommands = new Set(["hybrid", "hybrid-json", "hybrid-analyzers"]);
   const verifyCommands = new Set(["verify"]);
   const brainCommands = new Set([
     "brain-init",
@@ -102,6 +108,7 @@ async function main() {
     ...ANALYZERS.map((a) => a.id),
     "all",
     ...syntheticCommands,
+    ...hybridCommands,
     ...verifyCommands,
     ...brainCommands,
   ]);
@@ -228,6 +235,62 @@ async function main() {
     const result = verifyResearchDirectory(researchDir, expected);
     process.stdout.write(JSON.stringify(result, null, 2) + "\n");
     process.exit(result.ok ? 0 : 1);
+  }
+
+  // ---- Hybrid commands (Script produces Mechanical Truth, LLM produces Semantic Truth) ----
+  if (hybridCommands.has(command)) {
+    if (command === "hybrid-analyzers") {
+      // Introspection: list which analyzers are Mechanical vs Semantic
+      process.stdout.write(JSON.stringify({
+        mechanical: listMechanicalAnalyzers(),
+        semantic: listSemanticAnalyzers(),
+        total: listMechanicalAnalyzers().length + listSemanticAnalyzers().length,
+      }, null, 2) + "\n");
+      return;
+    }
+
+    const hybridRepoPath = positional[1];
+    if (!hybridRepoPath) {
+      console.error("Usage: node research-repo.mjs hybrid <repoPath> [--skill=07-report-writer.md] [--model=gpt-5] [--format=markdown|json]");
+      process.exit(1);
+    }
+    if (!existsSync(hybridRepoPath)) {
+      console.error(`Error: path does not exist: ${hybridRepoPath}`);
+      process.exit(1);
+    }
+
+    const skillFlag = process.argv.find((a) => a.startsWith("--skill="));
+    const modelFlag = process.argv.find((a) => a.startsWith("--model="));
+    const formatFlag = process.argv.find((a) => a.startsWith("--format="));
+    const briefFlag = process.argv.find((a) => a.startsWith("--brief="));
+
+    const skill = skillFlag ? skillFlag.split("=")[1] : "07-report-writer.md";
+    const model = modelFlag ? modelFlag.split("=")[1] : "opencode/deepseek-v4-flash-free";
+    const format = formatFlag ? formatFlag.split("=")[1] : (command === "hybrid-json" ? "json" : "markdown");
+    const returnBrief = briefFlag ? briefFlag.split("=")[1] === "true" : false;
+
+    console.error(`[hybrid] Mechanical analyzers → JSON Evidence Brief → LLM (${model}) → ${format}`);
+    console.error(`[hybrid] Skill prompt: ${skill}`);
+    console.error(`[hybrid] Skipping semantic analyzers: ${listSemanticAnalyzers().join(", ")}`);
+
+    try {
+      const result = await runHybridPipeline(hybridRepoPath, {
+        skillPrompt: skill,
+        model,
+        outputFormat: format,
+        returnEvidenceBrief: returnBrief,
+      });
+
+      if (returnBrief && typeof result === "object") {
+        process.stdout.write(JSON.stringify(result, null, 2) + "\n");
+      } else {
+        process.stdout.write(String(result) + "\n");
+      }
+    } catch (err) {
+      console.error(`[hybrid] Error: ${err.message}`);
+      process.exit(1);
+    }
+    return;
   }
 
   // ---- Analyzer commands (require repoPath + tree-sitter) ----

@@ -1,0 +1,307 @@
+// ===========================================================================
+// llm-runner.mjs — Unified LLM invocation entry point (Hybrid Architecture)
+//
+// Based on research-cli.js design. Responsibilities:
+//   1. Detect available CLI (OpenCode → Copilot fallback)
+//   2. Provide unified `invokeLLM(prompt, options)` interface
+//   3. Support structured JSON output for pipeline integration
+//   4. Streaming-aware (aggregates OpenCode chunk events)
+//
+// Design principle (Hybrid Architecture):
+//   Script produces Mechanical Truth (AST/Graph/Metrics/Evidence).
+//   LLM produces Semantic Truth (Architecture judgment/Tradeoffs/Report).
+//   This module is the ONLY bridge between the two layers.
+//
+// Usage:
+//   import { invokeLLM, detectCLI } from "./llm-runner.mjs";
+//   const cli = await detectCLI();
+//   const result = await invokeLLM("Analyze this architecture...", { model: "gpt-5" });
+// ===========================================================================
+
+import { spawn } from "node:child_process";
+import { access } from "node:fs/promises";
+import { constants } from "node:fs";
+import { delimiter } from "node:path";
+
+// ---------------------------------------------------------------------------
+// CLI detection (OpenCode → Copilot fallback)
+// ---------------------------------------------------------------------------
+
+/**
+ * Search PATH for an executable command.
+ * @param {string} cmd
+ * @returns {Promise<string|null>} absolute path or null
+ */
+async function which(cmd) {
+  const paths = (process.env.PATH || "").split(delimiter);
+  for (const p of paths) {
+    if (!p) continue;
+    try {
+      const full = `${p}/${cmd}`;
+      await access(full, constants.X_OK);
+      return full;
+    } catch {
+      // continue searching
+    }
+  }
+  return null;
+}
+
+/**
+ * Detect available AI Coding CLI.
+ * Priority: OpenCode CLI > GitHub Copilot CLI.
+ * @returns {Promise<{name: "opencode"|"copilot", path: string}>}
+ * @throws {Error} if neither is installed
+ */
+export async function detectCLI() {
+  const opencode = await which("opencode");
+  if (opencode) {
+    return { name: "opencode", path: opencode };
+  }
+
+  const copilot = (await which("github-copilot")) || (await which("copilot"));
+  if (copilot) {
+    return { name: "copilot", path: copilot };
+  }
+
+  throw new Error(
+    "Neither OpenCode CLI nor Copilot CLI is installed. " +
+      "Install one of them, or set RESEARCH_REPO_LLM_CMD to a custom command " +
+      "(must read prompt from stdin and write text to stdout)."
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Low-level process runner
+// ---------------------------------------------------------------------------
+
+/**
+ * Spawn a child process, write stdin, collect stdout/stderr, resolve on close.
+ * @param {string} command
+ * @param {string[]} args
+ * @param {string} stdin
+ * @returns {Promise<{stdout: string, stderr: string, code: number}>}
+ */
+function run(command, args, stdin) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, args, {
+      stdio: ["pipe", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+    let stdinClosed = false;
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+
+    child.on("error", (err) => {
+      reject(new Error(`Failed to spawn ${command}: ${err.message}`));
+    });
+
+    child.on("close", (code) => {
+      resolve({ stdout, stderr, code: code ?? 0 });
+    });
+
+    function closeStdin() {
+      if (!stdinClosed) {
+        stdinClosed = true;
+        child.stdin.end();
+      }
+    }
+
+    if (!stdin || stdin.length === 0) {
+      closeStdin();
+      return;
+    }
+
+    // Handle backpressure when writing large prompts to OpenCode CLI
+    const canContinue = child.stdin.write(stdin);
+    if (canContinue) {
+      closeStdin();
+    } else {
+      child.stdin.once("drain", closeStdin);
+    }
+  });
+}
+
+/**
+ * Parse OpenCode CLI streaming JSON output and aggregate model text.
+ * OpenCode emits one JSON event per line; we extract `content` from
+ * `type: "chunk"` or `type: "text"` events.
+ *
+ * @param {string} stdout
+ * @returns {string} aggregated model output
+ */
+function aggregateOpenCodeOutput(stdout) {
+  const lines = stdout.split("\n").filter(Boolean);
+  let output = "";
+  let finalResult = "";
+  for (const line of lines) {
+    try {
+      const event = JSON.parse(line);
+      // OpenCode v1.18+ streaming events: { type: "text", part: { text: "..." } }
+      if (event.type === "chunk" || event.type === "text") {
+        const part = event.part || event;
+        if (typeof part.content === "string") {
+          output += part.content;
+        } else if (typeof part.text === "string") {
+          output += part.text;
+        } else if (typeof event.content === "string") {
+          output += event.content;
+        }
+      } else if (event.type === "result") {
+        // Final result event may contain full text
+        if (typeof event.text === "string") {
+          finalResult = event.text;
+        } else if (event.part && typeof event.part.text === "string") {
+          finalResult = event.part.text;
+        }
+      }
+    } catch {
+      // Ignore non-JSON lines (status messages, progress, etc.)
+    }
+  }
+  return output || finalResult;
+}
+
+// ---------------------------------------------------------------------------
+// Public API: invokeLLM
+// ---------------------------------------------------------------------------
+
+/**
+ * Default LLM options.
+ */
+export const DEFAULT_LLM_OPTIONS = {
+  // Default: free model via OpenCode CLI (verified working with hybrid pipeline)
+  model: "opencode/deepseek-v4-flash-free",
+  /** Optional system prompt prepended to user prompt */
+  systemPrompt: null,
+  /** If true, instructs LLM to return strictly JSON */
+  jsonMode: false,
+  /** Override CLI detection (mainly for testing) */
+  cli: null,
+  /** Timeout in ms (0 = no timeout) */
+  timeoutMs: 0,
+};
+
+/**
+ * Invoke LLM with a prompt and return the model's text response.
+ *
+ * Uses OpenCode CLI if available, falls back to Copilot CLI.
+ * If `RESEARCH_REPO_LLM_CMD` env var is set, uses that custom command instead
+ * (must read prompt from stdin, write text to stdout).
+ *
+ * @param {string} prompt — user prompt
+ * @param {Partial<typeof DEFAULT_LLM_OPTIONS>} [options]
+ * @returns {Promise<string>} model output text
+ */
+export async function invokeLLM(prompt, options = {}) {
+  const opts = { ...DEFAULT_LLM_OPTIONS, ...options };
+
+  // Inject JSON mode instruction
+  const finalPrompt = opts.jsonMode
+    ? `${prompt}\n\n---\nIMPORTANT: Respond with valid JSON only. No markdown, no prose outside JSON.`
+    : prompt;
+
+  // Prepend system prompt if provided
+  const fullPrompt = opts.systemPrompt
+    ? `[System]\n${opts.systemPrompt}\n\n[User]\n${finalPrompt}`
+    : finalPrompt;
+
+  // Custom command via env var (highest priority — used by tests)
+  if (process.env.RESEARCH_REPO_LLM_CMD) {
+    const cmd = process.env.RESEARCH_REPO_LLM_CMD;
+    const parts = cmd.split(/\s+/);
+    const { stdout, code } = await run(parts[0], parts.slice(1), fullPrompt);
+    if (code !== 0) {
+      throw new Error(`RESEARCH_REPO_LLM_CMD exited with ${code}`);
+    }
+    return stdout.trim();
+  }
+
+  // Auto-detect CLI
+  const cli = opts.cli || (await detectCLI());
+
+  if (cli.name === "opencode") {
+    // OpenCode CLI v1.18+: use --format json (not --json), -m for model
+    // Model format: provider/model (e.g., "openai/gpt-5", "anthropic/claude-sonnet-4")
+    // If user passes bare model name, try as-is first
+    const modelArg = opts.model.includes("/") ? opts.model : opts.model;
+    const args = ["run", "--model", modelArg, "--format", "json"];
+    const { stdout, stderr, code } = await run(cli.path, args, fullPrompt);
+    if (code !== 0) {
+      throw new Error(`OpenCode CLI exited ${code}: ${stderr || stdout}`);
+    }
+    return aggregateOpenCodeOutput(stdout).trim();
+  }
+
+  if (cli.name === "copilot") {
+    const args = ["chat", "--json"];
+    const { stdout, stderr, code } = await run(cli.path, args, fullPrompt);
+    if (code !== 0) {
+      throw new Error(`Copilot CLI exited ${code}: ${stderr || stdout}`);
+    }
+    // Copilot CLI may emit plain text or JSON; try JSON parse first
+    try {
+      const parsed = JSON.parse(stdout);
+      if (typeof parsed === "string") return parsed;
+      if (parsed.text) return String(parsed.text);
+      if (parsed.content) return String(parsed.content);
+      if (parsed.response) return String(parsed.response);
+    } catch {
+      // Not JSON — return raw stdout
+    }
+    return stdout.trim();
+  }
+
+  throw new Error(`Unknown CLI: ${cli.name}`);
+}
+
+/**
+ * Invoke LLM and parse response as JSON.
+ * Throws if response is not valid JSON.
+ *
+ * @param {string} prompt
+ * @param {Partial<typeof DEFAULT_LLM_OPTIONS>} [options]
+ * @returns {Promise<any>} parsed JSON object
+ */
+export async function invokeLLMJSON(prompt, options = {}) {
+  const text = await invokeLLM(prompt, { ...options, jsonMode: true });
+  // Strip markdown code fences if present
+  const cleaned = text
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/, "")
+    .trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch (err) {
+    throw new Error(
+      `LLM did not return valid JSON: ${err.message}\n--- Response preview ---\n${cleaned.slice(0, 500)}`
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Pipeline integration helper
+// ---------------------------------------------------------------------------
+
+/**
+ * Render a prompt template by substituting {placeholder} tokens.
+ * Used by hybrid-pipeline.mjs to inject evidence brief into skill prompts.
+ *
+ * @param {string} template
+ * @param {Record<string, string>} vars
+ * @returns {string}
+ */
+export function renderPrompt(template, vars) {
+  return template.replace(/\{(\w+)\}/g, (match, key) => {
+    return Object.prototype.hasOwnProperty.call(vars, key)
+      ? String(vars[key])
+      : match;
+  });
+}

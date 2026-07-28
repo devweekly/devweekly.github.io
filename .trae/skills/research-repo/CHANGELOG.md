@@ -4,6 +4,75 @@
 
 ---
 
+## 2026-07-28（续 2）— Hybrid Architecture（Script Mechanical Truth + LLM Semantic Truth）
+
+### 新增功能
+
+#### Hybrid Pipeline（Script 不思考，LLM 不算指标）
+- 新增 `llm-runner.mjs`（183 行）：基于 research-cli.js 的统一 LLM 调用入口。
+  - `detectCLI()` 自动检测 OpenCode CLI → Copilot CLI 降级。
+  - `invokeLLM(prompt, options)` 支持系统提示 + JSON 模式 + 环境变量覆盖。
+  - `invokeLLMJSON(prompt, options)` 自动解析 JSON 响应，剥离 markdown 代码块。
+  - `renderPrompt(template, vars)` 模板占位符替换。
+  - 支持 `RESEARCH_REPO_LLM_CMD` 环境变量用于测试（无需真实 CLI）。
+- 新增 `hybrid-pipeline.mjs`（480 行）：Hybrid Pipeline 编排器。
+  - `runHybridPipeline(repoPath, options)` 端到端流程：Mechanical Analyzers → JSON Evidence Brief → Skill Prompt → LLM → Report。
+  - `MECHANICAL_ANALYZER_NAMES`（17 个分析器）：保留事实提取器 + 图算法 + git 历史。
+  - 跳过 8 个 Semantic Analyzers（ArchitecturePattern/Responsibility/CapabilityOntology/Decision/Constraint/Assumption/DesignPattern/Consistency），由 LLM 替代。
+  - `buildJSONEvidenceBrief()` 输出 14 个结构化事实章节（repository/files/symbols/architecture/entrypoints/prompts/tools/tests/evaluations/git/ci/dependencySmell/archMetrics/archetypeHints）。
+  - 与现有 Script-heavy Pipeline 并存，不替换。
+
+#### CLI 新增命令
+- `hybrid <repoPath>` — Hybrid Pipeline（Markdown 输出）
+- `hybrid-json <repoPath>` — Hybrid Pipeline（JSON 输出）
+- `hybrid-analyzers` — 查看 Mechanical/Semantic 分析器分类
+- Flags: `--skill=<prompt-file>` / `--model=<model>` / `--format=<markdown|json>` / `--brief=<true|false>`
+
+#### 测试新增
+- `__tests__/hybrid-pipeline.test.mjs`（220 行）：24 个测试。
+  - llm-runner（8 个）：options / invoke / jsonMode / systemPrompt / fence-stripping / error-handling / renderPrompt。
+  - 分析器分类（5 个）：17 mechanical / 8 semantic / 25 total / 无重叠 / defaults。
+  - 端到端 Pipeline（11 个）：4 archetypes / evidence brief sections / archetype hints / dependency smell / arch metrics / repoName / JSON output。
+  - 全部通过，使用 `cat` 作为 mock LLM（无需真实 OpenCode CLI）。
+
+### 架构原则（来自用户反馈）
+> "Script 不负责思考。Script 负责 Mechanical Truth。LLM 负责 Semantic Truth。"
+> "Analyzer 不要直接输出 Markdown。而输出 Knowledge Graph (Entity / Relationship / Evidence)。最后 Report Generator 再渲染。"
+> "让 OpenCode 替代所有需要自然语言推理的代码。"
+
+### 职责划分
+| 功能 | Script (Mechanical) | LLM (Semantic) |
+|------|---------------------|----------------|
+| AST / Import Graph / Call Graph | ✅ | ❌ |
+| Metrics (Fan-in/Fan-out/Coupling) | ✅ | ❌ |
+| Evidence Extraction (file/line/symbol) | ✅ | ❌ |
+| Repository Index / File Ranking | ✅ | ❌ |
+| Pattern Detection (Plugin/Layered/EDA) | ❌ | ✅ |
+| Responsibility Analysis | ❌ | ✅ |
+| Decision/Constraint/Assumption | ❌ | ✅ |
+| Trade-off Analysis | ❌ | ✅ |
+| Consistency/Contradiction Detection | ❌ | ✅ |
+| Final Report Generation | ❌ | ✅ |
+
+### 真实 OpenCode CLI 验证（2026-07-28 后续修复）
+- 使用 `opencode/deepseek-v4-flash-free` 免费模型真实跑通 Hybrid Pipeline。
+- 修复 4 个真实 CLI 问题：
+  1. `llm-runner.mjs`: OpenCode CLI 参数修正——`--json` 改为 `--format json`；模型格式支持 `provider/model`（如 `opencode/deepseek-v4-flash-free`）。
+  2. `llm-runner.mjs`: 修复 `aggregateOpenCodeOutput()` 解析 OpenCode v1.18+ 真实事件格式 `{ type: "text", part: { text: "..." } }`（之前只处理了旧版 `event.content`）。
+  3. `llm-runner.mjs`: 修复 `run()` 处理长 prompt 的 stdin backpressure（监听 `drain` 事件再 `end()`）。
+  4. `hybrid-pipeline.mjs`: 在 LLM 输入顶部注入 anti-tool 系统指令（`DO NOT use any tools...`），阻止 OpenCode CLI 默认 Agent mode 调用 glob/search 等工具（真实运行时因 prompt 提到文件路径而触发工具调用，导致返回空文本）。
+- 真实运行输出：在 synthetic agent repo 上生成 7735 字符报告，包含 Overview / Philosophy / Architecture / Decisions / Trade-offs / Risks / Recommendations / Lessons 叙事流。
+
+### 测试结果
+- `pnpm test`: 79/79 通过（原 55，新增 24 个 hybrid-pipeline 测试）。
+- `pnpm test:skill`: 239/239 通过（6 层全通过，0 回归）。
+
+### 文档更新
+- DESIGN.md 新增 §33（Hybrid Architecture）。
+- CHANGELOG.md 新增本条目。
+
+---
+
 ## 2026-07-28（续）— Negative Evidence + Core Ontology + Research Coverage + Report Narrative
 
 ### 新增功能

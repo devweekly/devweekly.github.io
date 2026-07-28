@@ -590,7 +590,82 @@ Question Planner 读取这些信号后判断 Archetype，再生成对应维度�
 
 ---
 
-## 33. Negative Evidence + Contradiction Detection（C9 + C10）
+## 33. Hybrid Architecture（Script Mechanical Truth + LLM Semantic Truth）
+
+**决策**：新增 Hybrid Pipeline，将研究流程明确分为两层——Script 负责 Mechanical Truth（AST/Graph/Metrics/Evidence），LLM 负责 Semantic Truth（架构判断/权衡/报告）。两层通过 JSON Evidence Brief 桥接。
+
+**架构**：
+```
+Repository
+    ↓
+Mechanical Analyzers (17 个)
+  ├─ Discovery / Symbols / Architecture / Entrypoints
+  ├─ Prompts / Tools / Tests / Evaluations / Git / CI / Ranking
+  ├─ Stability / ChangeCoupling / InformationFlow / DependencySmell
+  └─ ArchitectureMetrics / TemporalAnalyzer
+    ↓
+JSON Evidence Brief (结构化事实，无解释)
+    ↓
+llm-runner.mjs → OpenCode CLI / Copilot CLI
+    ↓
+Skill Prompt (07-report-writer.md)
+    ↓
+LLM (GPT-5)
+    ↓
+Report (Markdown / JSON)
+```
+
+**跳过的 8 个 Semantic Analyzers**（在 Hybrid 模式下由 LLM 替代）：
+- ArchitecturePatternAnalyzer — LLM 从证据判断架构模式
+- ResponsibilityAnalyzer — LLM 推断模块职责
+- CapabilityOntologyAnalyzer — LLM 推断系统能力
+- DecisionAnalyzer / ConstraintAnalyzer / AssumptionAnalyzer — LLM 推断工程决策/约束/假设
+- DesignPatternAnalyzer — LLM 检测 GoF 模式
+- ConsistencyAnalyzer — LLM 检测跨分析器矛盾（有上下文优势）
+
+**保留的 17 个 Mechanical Analyzers**：
+- 所有事实提取器（AST/文件/符号/导入/调用/测试/CI/git）
+- 所有图算法分析器（cycle/Fan-in/Fan-out/BFS/stability）
+- 所有 git 历史事实提取器（commit/changes/authors/evolution events）
+
+**新增文件**：
+- `llm-runner.mjs`（183 行）：基于 research-cli.js 的统一 LLM 调用入口。detectCLI() 自动检测 OpenCode → Copilot CLI。invokeLLM() 支持系统提示 + JSON 模式 + 环境变量覆盖（RESEARCH_REPO_LLM_CMD）。
+- `hybrid-pipeline.mjs`（480 行）：Hybrid Pipeline 编排器。runHybridPipeline() 运行 Mechanical Analyzers → 生成 JSON Evidence Brief → 加载 Skill Prompt → 调用 LLM → 返回报告。buildJSONEvidenceBrief() 输出 14 个结构化事实章节。
+- `__tests__/hybrid-pipeline.test.mjs`（220 行）：24 个测试覆盖 llm-runner（8 个）+ 分析器分类（5 个）+ 端到端 Pipeline（11 个）。
+
+**CLI 新增命令**：
+- `hybrid <repoPath>` — Hybrid Pipeline（Markdown 输出）
+- `hybrid-json <repoPath>` — Hybrid Pipeline（JSON 输出）
+- `hybrid-analyzers` — 查看 Mechanical/Semantic 分析器分类
+- Flags: `--skill=` / `--model=` / `--format=` / `--brief=true`
+
+**与现有 Script-heavy Pipeline 的关系**：
+- 并存，不替换。现有 `all` / `report` 命令保持不变。
+- `hybrid` 是新选项，用户可以对比两种架构的输出质量。
+- 未来路径：逐步删除 Semantic 脚本（report-generator.mjs / research-engine.mjs 中的 FindingsGenerator/VerificationLoop），将 Semantic 完全交给 LLM。
+
+**理由**（来自用户反馈）：
+> "Script 不负责思考。Script 负责 Mechanical Truth。LLM 负责 Semantic Truth。"
+> "Report Generator 不用了。直接 Prompt: Output JSON... Generate Report。"
+> "Pattern Explanation 不用。LLM 更强。"
+> "让 OpenCode 替代所有需要自然语言推理的代码。"
+
+**设计决策**：
+1. **不立即删除 Semantic 脚本**：现有测试依赖 Semantic Analyzers（239 个测试），删除会破坏回归基线。Hybrid Pipeline 并存，让用户逐步迁移。
+2. **JSON Evidence Brief 是桥接层**：Script 输出结构化事实，LLM 消费事实并产出报告。这是"Analyzer 输出 Knowledge Graph"的第一步。
+3. **llm-runner.mjs 支持 RESEARCH_REPO_LLM_CMD**：测试无需真实 OpenCode CLI，用 `cat` 即可 mock。生产环境用 OpenCode CLI 或 Copilot CLI。
+4. **Skill Prompt 是渲染层**：hybrid-pipeline 读取 `prompts/07-report-writer.md` 模板，注入 {repoName} + JSON Evidence Brief，组合成最终 LLM 输入。
+5. **Anti-tool 指令**：OpenCode CLI 默认以 Agent mode 运行（会调用 glob/search 工具）。由于 hybrid pipeline 已将完整证据内嵌在 prompt 中，任何工具调用都是浪费且会导致空输出（模型忙于调用工具，不生成文本）。因此在 LLM 输入顶部强制注入：
+   > "DO NOT use any tools, file searches, shell commands, or external lookups. All evidence required to write this report is provided in full below."
+6. **真实 CLI 验证**：使用 `opencode/deepseek-v4-flash-free` 免费模型真实跑通。修复了 4 个生产环境问题：
+   - OpenCode CLI 参数 `--json` 实际是 `--format json`
+   - OpenCode v1.18+ 事件格式是 `{ type: "text", part: { text: "..." } }` 而非 `event.content`
+   - 长 prompt 需要处理 stdin backpressure（监听 `drain`）
+   - Agent mode 工具调用必须通过 anti-tool 指令显式禁用
+
+---
+
+## 34. Negative Evidence + Contradiction Detection（C9 + C10）
 
 **决策**：在 ConsistencyAnalyzer 新增两条规则，主动检测架构结论的反证和模式冲突。
 
