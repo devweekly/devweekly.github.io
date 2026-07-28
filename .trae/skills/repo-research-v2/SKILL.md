@@ -5,7 +5,7 @@ description: "对开源 Repository 进行深度架构研究，提炼其设计思
 
 # Repository Architecture Research
 
-> 对开源 Repository 的**架构**与**工程设计**进行深度研究。，目标是理解系统的设计思想、工程约束与架构决策，而非仅仅总结代码。
+> 对开源 Repository **架构**与**工程设计**进行深度架构研究，目标是理解系统的设计思想、工程约束与架构决策，而非仅仅总结代码。
 
 ---
 
@@ -73,22 +73,85 @@ description: "对开源 Repository 进行深度架构研究，提炼其设计思
 
 ---
 
+## 研究方法（Research Method）
+
+Repository Research 是一个**迭代研究过程（Iterative Research Process）**，而不是线性的代码阅读过程。
+
+研究从提出架构问题开始，通过针对性收集证据不断修正仓库知识模型，直到形成稳定且可验证的架构理解。
+
+整个研究遵循以下循环：
+
+```text
+提出研究问题
+        ↓
+收集证据
+        ↓
+建立知识模型
+        ↓
+验证或修正假设
+        ↓
+发现新的研究问题
+        ↺
+```
+
+只有当新的证据不再显著改变知识模型时，研究才认为达到稳定状态。
+
+研究过程中允许推理，但所有推理都必须能够追溯到可验证证据。
+
+---
+
+## Research Questions
+
+研究开始前，应主动建立一组待回答的架构问题。
+
+典型问题包括：
+
+- 系统如何划分职责？
+- 子系统边界如何定义？
+- 数据如何流动？
+- 控制流如何组织？
+- 生命周期由谁管理？
+- 可扩展能力如何实现？
+- 哪些约束塑造了当前架构？
+- 哪些复杂性被有意隐藏？
+- 哪些能力属于公共 API，哪些属于内部实现？
+- 哪些设计是刻意省略（Deliberate Omissions）？
+
+后续所有证据收集都应围绕这些问题展开，而不是机械阅读整个仓库。
+
+---
+
 ## 研究 Pipeline
 
-Pipeline 由 4 个阶段组成，每个阶段职责单一，不重叠：
+Repository Research 采用渐进式研究流程。
 
 ```
-Stage 0: 机械分析（Mechanical Analysis）
-    ↓ 收集客观仓库证据
-Stage 1: 知识建模（Knowledge Modeling）
-    ↓ 将证据转化为仓库知识模型
-Stage 2: 架构解释（Architectural Interpretation）
-    ↓ 用知识模型解释工程决策
-Stage 3: 叙事渲染（Narrative Rendering）
-    ↓ 生成人类可读的研究报告
+Repository Scan
+      ↓
+Generate Research Questions
+      ↓
+Stage 0: Mechanical Analysis
+      ↓
+Stage 1: Repository Model Construction
+      ↓
+Evidence Sufficient?
+      ↓ No
+Collect Additional Evidence
+      ↺
+      ↓ Yes
+Stage 2: Architectural Interpretation
+      ↓
+Stage 3: Narrative Rendering
 ```
 
-### Stage 0 — 机械分析
+其中：
+
+- **Repository Scan** 建立初始仓库全景。
+- **Research Questions** 决定后续调查方向。
+- 当证据不足时，应继续收集证据，而不是提前解释架构。
+- **Narrative Rendering** 不新增推理，仅组织已经验证的发现。
+
+### Stage 0 — 机械分析（Mechanical Analysis）
 
 **目的**：收集客观仓库证据。
 
@@ -96,23 +159,40 @@ Stage 3: 叙事渲染（Narrative Rendering）
 
 **约束**：此阶段不进行任何架构解释。
 
-### Stage 1 — 知识建模
+### Stage 1 — 仓库模型构建（Repository Model Construction）
 
-**目的**：将机械证据转化为仓库知识模型。
+**目的**：将机械证据转化为仓库模型。
 
-**知识模型描述**：实体（Entities）、能力（Capabilities）、关系（Relationships）、演进（Evolution）。
+知识模型至少应描述以下维度：
 
-**约束**：此阶段只描述事实，不解释"为什么"。
+| 模型 | 描述 |
+|------|------|
+| **Structural Model** | 模块、目录、组件及其边界 |
+| **Behavioral Model** | 控制流、数据流、运行流程 |
+| **Ownership Model** | 状态、职责、生命周期归属 |
+| **Extension Model** | 插件机制、扩展点、公共 API |
+| **Evolution Model** | 架构演进与历史变化 |
 
-### Stage 2 — 架构解释
+知识模型用于组织事实，而不是解释设计原因。
+
+### Stage 2 — 架构解释（Architectural Interpretation）
 
 **目的**：基于知识模型重建系统背后的工程决策与设计思想。
 
-**典型输出**：约束（constraints）、设计决策（design decisions）、架构张力（architectural tensions）、有意省略（deliberate omissions）、杠杆点（leverage points）、维护者心智模型（maintainer mental model）。
+**典型输出**：
 
-**约束**：每个解释必须引用证据。
+- Engineering Constraints
+- Architectural Forces
+- Design Decisions
+- Trade-offs
+- Deliberate Omissions
+- Architectural Tensions
+- Leverage Points
+- Maintainer Mental Model
 
-### Stage 3 — 叙事渲染
+**约束**：所有解释必须引用对应证据。如果存在多个合理解释，应分别说明并给出各自证据与置信度。
+
+### Stage 3 — 叙事渲染（Narrative Rendering）
 
 **目的**：生成人类可读的研究报告。
 
@@ -120,22 +200,56 @@ Stage 3: 叙事渲染（Narrative Rendering）
 
 ---
 
-## 证据策略
+## Repository Reading Strategy
 
-每个结论必须至少满足以下一项证据来源：
+默认建议按照以下顺序建立仓库理解，而不是直接阅读业务代码。
 
-| 证据来源 | 说明 |
-|---------|------|
-| 源代码 | 实现层面的直接证据 |
-| 文档 | README / ADR / RFC / 设计文档 |
-| 配置 | 构建配置 / CI 配置 / 部署配置 |
-| 测试 | 测试用例反映的预期行为 |
-| Git 历史 | 提交历史反映的演进意图 |
-| 仓库元数据 | package.json / Cargo.toml 等 |
+1. Repository Metadata
+2. Build System
+3. Entry Points
+4. Runtime Initialization
+5. Core Runtime
+6. Public APIs
+7. Extension Mechanisms
+8. Configuration
+9. Tests
+10. Git History
+11. External Discussions（如可获取）
 
-多个独立证据来源相互印证时，应优先于单一证据来源。
+阅读顺序可根据仓库类型调整，但应优先建立整体模型，再深入具体实现。
 
-**无证据支持的声明必须标记为 Unknown。**
+---
+
+## 证据链（Evidence Chain）
+
+每一个非平凡结论都必须能够追溯到证据链。
+
+典型证据链如下：
+
+```
+Conclusion
+    ↓
+Interpretation
+    ↓
+Evidence
+    ↓
+Repository Artifact
+    ↓
+File / Symbol / Commit
+```
+
+证据可以来自：
+
+- 源代码
+- 文档
+- 配置
+- 测试
+- Git 历史
+- 仓库元数据
+
+多个独立来源相互印证时，应优先于单一来源。
+
+无法建立证据链的结论必须标记为 Unknown。
 
 ---
 
@@ -151,17 +265,20 @@ Stage 3: 叙事渲染（Narrative Rendering）
 
 ---
 
-## Unknown 处理
+## Open Questions
 
-仓库可能无法提供足够信息。Unknown 不应被隐藏，必须主动分类：
+研究结束后仍可能存在无法验证的问题。
 
-| Unknown 类型 | 含义 |
-|-------------|------|
-| **Need More Code** | 需要更多源代码阅读 |
-| **Need Documentation** | 需要文档支持 |
-| **Need Git History** | 需要 Git 历史分析 |
-| **Need External Information** | 需要 Issue / PR / Discussion 等外部信息 |
-| **Not Verifiable** | 即使深入阅读也无法验证（如设计意图） |
+这些问题不应被隐藏，而应作为未来研究方向明确记录。
+
+每项应包含：
+
+- **Question** — 待回答的问题
+- **Missing Evidence** — 缺失的证据类型
+- **Confidence Impact** — 对整体置信度的影响
+- **Suggested Next Investigation** — 建议的下一步调查方向
+
+Unknown 是研究结果的一部分，而不是研究失败。
 
 ---
 
@@ -170,7 +287,25 @@ Stage 3: 叙事渲染（Narrative Rendering）
 - **深度理解** 优于 **广泛覆盖**
 - **已验证的结论** 优于 **有趣的推测**
 - **工程推理** 优于 **架构 buzzword**
-- **维护者思维方式** 优于 **模式识别**
+- **维护者意图** 优于 **模式匹配**
+
+---
+
+## Architectural Invariants
+
+研究应识别仓库长期保持不变的架构不变量。
+
+架构不变量是整个系统共同依赖的基本假设。违反这些假设通常意味着需要重新设计整个系统。
+
+典型示例：
+
+- 单一事件循环
+- 不可变对象模型
+- 插件隔离边界
+- 单向依赖关系
+- 声明式配置模型
+
+相比设计模式，架构不变量通常更能体现维护者真正坚持的设计原则。
 
 ---
 
@@ -178,20 +313,23 @@ Stage 3: 叙事渲染（Narrative Rendering）
 
 最终报告应包含以下章节：
 
-1. **Executive Summary** — 仓库概览
+1. **Executive Summary** — 执行摘要
 2. **Repository Mental Model** — 维护者心智模型
-3. **Engineering Constraints** — 工程约束
-4. **Capability Map** — 能力地图
-5. **Architecture** — 架构
-6. **Evolution** — 架构演进
-7. **Key Decisions** — 关键决策
-8. **Design Tensions** — 设计张力
-9. **Architectural Leverage** — 架构杠杆点
-10. **Reusable Patterns** — 可复用模式
-11. **Risks** — 风险
-12. **Lessons Learned** — 经验教训
-13. **Unknowns** — 未知项
-14. **Evidence Quality Summary** — 证据质量摘要
+3. **Architectural Invariants** — 架构不变量
+4. **Engineering Constraints** — 工程约束
+5. **Capability Map** — 能力地图
+6. **Static Architecture** — 静态架构
+7. **Runtime Architecture** — 运行时架构
+8. **Evolution** — 架构演进
+9. **Key Decisions** — 关键决策
+10. **Architectural Forces** — 架构作用力
+11. **Design Tensions** — 设计张力
+12. **Architectural Leverage** — 架构杠杆点
+13. **Reusable Patterns** — 可复用模式
+14. **Risks** — 风险
+15. **Lessons Learned** — 经验教训
+16. **Open Questions** — 未解问题
+17. **Evidence Quality Summary** — 证据质量摘要
 
 ---
 
@@ -210,18 +348,6 @@ Stage 3: 叙事渲染（Narrative Rendering）
 
 ---
 
-## 研究边界（Research Boundaries）
-
-本研究聚焦仓库能够证明的事实。
-
-- 不研究团队流程。
-- 不评价代码质量。
-- 不猜测作者能力。
-- 不比较语言优劣。
-- 不进行产品分析。
-
----
-
 ## 成功标准
 
 一份成功的研究报告应让有经验的工程师能够回答：
@@ -229,7 +355,6 @@ Stage 3: 叙事渲染（Narrative Rendering）
 - 这个仓库如何工作？
 - 为什么这样设计？
 - 我应该从中学到什么？
-- 如果重新设计一次，我会保留哪些思想？
 - 哪些思想值得复用？
 - 哪些工程错误被有意避免？
 
