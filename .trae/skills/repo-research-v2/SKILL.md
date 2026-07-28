@@ -81,17 +81,13 @@ Repository Research 是一个**迭代研究过程（Iterative Research Process�
 
 整个研究遵循以下循环：
 
-```text
-提出研究问题
-        ↓
-收集证据
-        ↓
-建立知识模型
-        ↓
-验证或修正假设
-        ↓
-发现新的研究问题
-        ↺
+```mermaid
+flowchart LR
+    Q[提出研究问题] --> E[收集证据]
+    E --> M[建立知识模型]
+    M --> V[验证或修正假设]
+    V --> N[发现新的研究问题]
+    N -.重复.-> Q
 ```
 
 只有当新的证据不再显著改变知识模型时，研究才认为达到稳定状态。
@@ -125,23 +121,16 @@ Repository Research 是一个**迭代研究过程（Iterative Research Process�
 
 Repository Research 采用渐进式研究流程。
 
-```
-Repository Scan
-      ↓
-Generate Research Questions
-      ↓
-Stage 0: Mechanical Analysis
-      ↓
-Stage 1: Repository Model Construction
-      ↓
-Evidence Sufficient?
-      ↓ No
-Collect Additional Evidence
-      ↺
-      ↓ Yes
-Stage 2: Architectural Interpretation
-      ↓
-Stage 3: Narrative Rendering
+```mermaid
+flowchart TD
+    A[Repository Scan] --> B[Generate Research Questions]
+    B --> C[Stage 0: Mechanical Analysis]
+    C --> D[Stage 1: Repository Model Construction]
+    D --> E{Evidence Sufficient?}
+    E -- No --> F[Collect Additional Evidence]
+    F --> C
+    E -- Yes --> G[Stage 2: Architectural Interpretation]
+    G --> H[Stage 3: Narrative Rendering]
 ```
 
 其中：
@@ -226,16 +215,12 @@ Stage 3: Narrative Rendering
 
 典型证据链如下：
 
-```
-Conclusion
-    ↓
-Interpretation
-    ↓
-Evidence
-    ↓
-Repository Artifact
-    ↓
-File / Symbol / Commit
+```mermaid
+flowchart TD
+    A[Conclusion] --> B[Interpretation]
+    B --> C[Evidence]
+    C --> D[Repository Artifact]
+    D --> E[File / Symbol / Commit]
 ```
 
 证据可以来自：
