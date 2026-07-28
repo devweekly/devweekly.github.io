@@ -14,33 +14,27 @@
  *   node research-repo.mjs ci           <repoPath>  # CI/CD discovery
  *   node research-repo.mjs ranking      <repoPath>  # Interesting files ranking
  *   node research-repo.mjs symbols      <repoPath>  # Semantic Index (functions, classes, imports, calls, strings)
- *   node research-repo.mjs all          <repoPath>  # Complete Evidence Store (includes plan + questions)
- *   node research-repo.mjs plan         <repoPath>  # Research plan: goal → hypotheses → evidence → reading plan
- *   node research-repo.mjs questions    <repoPath>  # Gap-driven questions for LLM reasoning layer
+ *   node research-repo.mjs all          <repoPath>  # Complete Evidence Store
  *   node research-repo.mjs report       <repoPath>  # Evidence Brief (Markdown)
- *   node research-repo.mjs update       <repoPath>  # Incremental analysis (git diff → merge)
  *   node research-repo.mjs verify       <researchDir> [--expected=<yaml>]  # Validate research output
  *
- *   # Research Brain commands (no repoPath needed):
- *   node research-repo.mjs brain-init   [brainDir]                    # Initialize global Brain
- *   node research-repo.mjs brain-brief  [brainDir]                    # Generate Brain Brief JSON for Stage 0
- *   node research-repo.mjs brain-query  <type> [brainDir] [--title=]  # Query Brain (pattern/decision/...)
- *   node research-repo.mjs brain-summary [brainDir]                   # Show Brain stats
- *   node research-repo.mjs brain-update <knowledge-units.json> [brainDir]  # Apply Stage 8 output to Brain
+ *   # Hybrid commands (Script Mechanical Truth + LLM Semantic Truth):
+ *   node research-repo.mjs hybrid       <repoPath>  # Markdown report via LLM
+ *   node research-repo.mjs hybrid-json  <repoPath>  # JSON output via LLM
+ *   node research-repo.mjs hybrid-analyzers         # List Mechanical vs Semantic analyzers
  *
  * This file is the CLI entrypoint. All analysis logic lives in modular files:
- *   config.mjs              — Configuration constants (including Brain config)
+ *   config.mjs              — Configuration constants
  *   utils.mjs               — Shared utilities (AST, file walking, parsers, graph algos)
  *   context.mjs             — RepositoryContext (shared analysis context)
  *   base-analyzer.mjs       — BaseAnalyzer abstract class
  *   analyzers-fact.mjs      — Fact extractor analyzers
- *   analyzers-inference.mjs — Inference engine analyzers
+ *   analyzers-inference.mjs — Mechanical inference engine analyzers
  *   evidence-store.mjs      — EvidenceStore, ObjectClassifier, RelationshipBuilder
- *   research-engine.mjs     — ResearchPlanner, QuestionGenerator, FindingsGenerator
- *   report-generator.mjs    — ReportGenerator (Evidence Brief)
+ *   evidence-quality.mjs    — Evidence sanitizer + archetype hints
  *   pipeline.mjs            — ANALYZERS array, AnalyzerPipeline, merge utilities
- *   brain.mjs               — Global Research Brain (Pattern/Decision/Tradeoff/Anti-pattern store)
- *   knowledge-base.mjs      — Knowledge extraction + Brain update helpers
+ *   hybrid-pipeline.mjs     — Hybrid (Mechanical + LLM) pipeline
+ *   llm-runner.mjs          — Unified LLM invocation (OpenCode / Copilot CLI)
  *
  * Each command prints JSON to stdout. Errors go to stderr, exit(1) on error.
  */
@@ -51,20 +45,7 @@ import { pathToFileURL } from "node:url";
 
 import { loadOptionalPackages, initTreeSitter } from "./utils.mjs";
 import { RepositoryContext } from "./context.mjs";
-import { AnalyzerPipeline, ANALYZERS, mergeAnalysisResults } from "./pipeline.mjs";
-import { EvidenceStore } from "./evidence-store.mjs";
-import {
-  DEFAULT_RESEARCH_GOAL,
-  ResearchPlanner,
-  QuestionGenerator,
-} from "./research-engine.mjs";
-import { ReportGenerator } from "./report-generator.mjs";
-import { Brain } from "./brain.mjs";
-import {
-  generateBrainBrief,
-  updateBrainFromFile,
-} from "./knowledge-base.mjs";
-import { BRAIN_DIR, KNOWLEDGE_TYPES } from "./config.mjs";
+import { AnalyzerPipeline, ANALYZERS } from "./pipeline.mjs";
 import { verifyResearchDirectory, loadExpectedYaml } from "./skill-test/e2e/verify-directory.mjs";
 import {
   runHybridPipeline,
@@ -85,32 +66,19 @@ process.stdout?.on?.("error", (err) => {
 async function main() {
   // Filter out --lang= flag before parsing positional args
   const langFlag = process.argv.find((a) => a.startsWith("--lang="));
-  const lang = langFlag ? langFlag.split("=")[1] : "en";
-  // Filter out --title= flag for brain-query
-  const titleFlag = process.argv.find((a) => a.startsWith("--title="));
-  const titleFilter = titleFlag ? titleFlag.split("=")[1] : null;
   const positional = process.argv.slice(2).filter(
-    (a) => !a.startsWith("--") && a !== langFlag && a !== titleFlag
+    (a) => !a.startsWith("--") && a !== langFlag
   );
   const command = positional[0];
   const repoPath = positional[1];
-  const syntheticCommands = new Set(["plan", "questions", "report", "update"]);
   const hybridCommands = new Set(["hybrid", "hybrid-json", "hybrid-analyzers"]);
   const verifyCommands = new Set(["verify"]);
-  const brainCommands = new Set([
-    "brain-init",
-    "brain-brief",
-    "brain-query",
-    "brain-summary",
-    "brain-update",
-  ]);
   const validCommands = new Set([
     ...ANALYZERS.map((a) => a.id),
     "all",
-    ...syntheticCommands,
+    "report",
     ...hybridCommands,
     ...verifyCommands,
-    ...brainCommands,
   ]);
 
   if (!command) {
@@ -125,95 +93,6 @@ async function main() {
       `Unknown command: ${command}. Valid: ${[...validCommands].join(", ")}`
     );
     process.exit(1);
-  }
-
-  // ---- Brain commands (no repoPath or tree-sitter needed) ----
-  if (brainCommands.has(command)) {
-    // brain-query and brain-update take a positional arg before brainDir
-    // brain-init / brain-brief / brain-summary take brainDir as first positional
-    let brainDir;
-    if (command === "brain-query") {
-      brainDir = positional[2]; // positional[1] = type
-    } else if (command === "brain-update") {
-      brainDir = positional[2]; // positional[1] = knowledge-units.json path
-    } else {
-      brainDir = positional[1]; // brain-init / brain-brief / brain-summary
-    }
-    const brainRoot = brainDir || BRAIN_DIR;
-
-    if (command === "brain-init") {
-      const brain = new Brain(brainRoot);
-      const created = brain.init();
-      console.error(`Brain initialized at: ${created}`);
-      console.log(JSON.stringify(brain.summary(), null, 2));
-      return;
-    }
-
-    if (command === "brain-brief") {
-      const brain = new Brain(brainRoot);
-      if (!existsSync(brainRoot)) {
-        console.error(`Error: Brain not found at ${brainRoot}. Run 'brain-init' first.`);
-        process.exit(1);
-      }
-      const brief = brain.exportBrief();
-      process.stdout.write(JSON.stringify(brief, null, 2) + "\n");
-      return;
-    }
-
-    if (command === "brain-query") {
-      const type = positional[1];
-      if (!type) {
-        console.error(`Usage: brain-query <type> [brainDir] [--title="..."]`);
-        console.error(`Valid types: ${Object.keys(KNOWLEDGE_TYPES).join(", ")}, all`);
-        process.exit(1);
-      }
-      const brain = new Brain(brainRoot);
-      if (!existsSync(brainRoot)) {
-        console.error(`Error: Brain not found at ${brainRoot}. Run 'brain-init' first.`);
-        process.exit(1);
-      }
-      const filter = titleFilter ? { titleContains: titleFilter } : {};
-      const results = brain.query(type, filter);
-      process.stdout.write(JSON.stringify(results, null, 2) + "\n");
-      return;
-    }
-
-    if (command === "brain-summary") {
-      const brain = new Brain(brainRoot);
-      if (!existsSync(brainRoot)) {
-        console.error(`Error: Brain not found at ${brainRoot}. Run 'brain-init' first.`);
-        process.exit(1);
-      }
-      const summary = brain.summary();
-      process.stdout.write(JSON.stringify(summary, null, 2) + "\n");
-      return;
-    }
-
-    if (command === "brain-update") {
-      const knowledgeUnitsPath = positional[1];
-      if (!knowledgeUnitsPath) {
-        console.error(`Usage: brain-update <knowledge-units.json> [brainDir]`);
-        process.exit(1);
-      }
-      if (!existsSync(knowledgeUnitsPath)) {
-        console.error(`Error: file not found: ${knowledgeUnitsPath}`);
-        process.exit(1);
-      }
-      const brain = new Brain(brainRoot);
-      brain.init(); // ensure directory structure exists
-      const result = updateBrainFromFile(brain, knowledgeUnitsPath);
-      console.error(
-        `[brain-update] ${result.repoName}: ${result.created.length} created, ` +
-        `${result.merged.length} merged, ${result.novel.length} novel, ` +
-        `${result.known.length} known, ${result.conceptEdges} concept edges` +
-        (result.errors.length ? `, ${result.errors.length} errors` : "")
-      );
-      for (const err of result.errors) {
-        console.error(`  ERROR: ${err}`);
-      }
-      process.stdout.write(JSON.stringify(result, null, 2) + "\n");
-      return;
-    }
   }
 
   // ---- Verify command (requires research output directory) ----
@@ -251,7 +130,7 @@ async function main() {
 
     const hybridRepoPath = positional[1];
     if (!hybridRepoPath) {
-      console.error("Usage: node research-repo.mjs hybrid <repoPath> [--skill=07-report-writer.md] [--model=gpt-5] [--format=markdown|json]");
+      console.error("Usage: node research-repo.mjs hybrid <repoPath> [--skill=07-report-writer.md] [--model=opencode/deepseek-v4-flash-free] [--format=markdown|json]");
       process.exit(1);
     }
     if (!existsSync(hybridRepoPath)) {
@@ -298,7 +177,7 @@ async function main() {
   if (!repoPathFinal) {
     console.error(
       `Usage: node research-repo.mjs <${[...validCommands]
-        .filter((c) => !brainCommands.has(c) && !verifyCommands.has(c))
+        .filter((c) => !verifyCommands.has(c))
         .join("|")}> <repoPath>`
     );
     process.exit(1);
@@ -317,167 +196,19 @@ async function main() {
   await initTreeSitter();
 
   try {
-    if (command === "update") {
-      // 1. 读取前一次分析的 full.json (+ symbols.json + ontology.json if split)
-      const evidenceStoreDir = join(process.cwd(), "evidence-store");
-      const fullJsonPath = join(evidenceStoreDir, "full.json");
-      if (!existsSync(fullJsonPath)) {
-        console.error("Error: evidence-store/full.json not found. Run 'all' first.");
-        process.exit(1);
-      }
-      const previousData = JSON.parse(readFileSync(fullJsonPath, "utf-8"));
-      // Load split files if they exist (slim full.json references them)
-      const symbolsPath = join(evidenceStoreDir, "symbols.json");
-      const ontologyPath = join(evidenceStoreDir, "ontology.json");
-      const archPath = join(evidenceStoreDir, "architecture.json");
-      if (existsSync(symbolsPath)) {
-        previousData.symbols = JSON.parse(readFileSync(symbolsPath, "utf-8"));
-      }
-      if (existsSync(ontologyPath)) {
-        previousData.ontology = JSON.parse(readFileSync(ontologyPath, "utf-8"));
-      }
-      if (existsSync(archPath)) {
-        previousData.architecture = JSON.parse(readFileSync(archPath, "utf-8"));
-      }
-      const lastCommit = previousData._meta?.lastCommit;
-      if (!lastCommit) {
-        console.error("Error: No lastCommit in previous data. Run 'all' first.");
-        process.exit(1);
-      }
+    const ctx = new RepositoryContext(absPath);
+    const pipeline = new AnalyzerPipeline();
 
-      // 2. 获取变更文件
-      const ctx = new RepositoryContext(absPath);
-      if (!ctx.isGitRepo) {
-        console.error("Error: update requires a git repository.");
-        process.exit(1);
-      }
-      const diffOutput = ctx.git("diff", "--name-only", `${lastCommit}..HEAD`);
-      const changedFiles = new Set(diffOutput.split("\n").filter(Boolean));
-
-      if (changedFiles.size === 0) {
-        console.error(`No changes since ${lastCommit.substring(0, 8)}.`);
-        process.exit(0);
-      }
-
-      console.error(
-        `[update] ${changedFiles.size} files changed since ${lastCommit.substring(0, 8)}`
-      );
-
-      // 3. 用 changedFiles 创建新 context
-      const updateCtx = new RepositoryContext(absPath, { changedFiles });
-
-      // 4. 运行分析器（仅处理变更文件）
-      const pipeline = new AnalyzerPipeline();
-      const newStore = {};
-      for (const analyzer of pipeline.analyzers) {
-        if (!analyzer.supports(updateCtx)) continue;
-        await analyzer.analyze(updateCtx, newStore, { command: analyzer.id });
-      }
-
-      // 5. 合并结果
-      const mergedStore = mergeAnalysisResults(previousData, newStore, changedFiles);
-
-      // 6. 重建架构图和排名（需要全量数据）
-      // ArchitectureAnalyzer 和 RankingAnalyzer 需要从合并后的 symbols 重建
-      // 创建一个不受 changedFiles 限制的 context 用于重建
-      const rebuildCtx = new RepositoryContext(absPath);
-      // 先把合并后的 symbols 放入 store
-      const rebuildStore = { ...mergedStore };
-      // 重新运行 architecture analyzer（它会从 store.symbols 读取）
-      const archAnalyzer = pipeline.getAnalyzer("architecture");
-      if (archAnalyzer && archAnalyzer.supports(rebuildCtx)) {
-        await archAnalyzer.analyze(rebuildCtx, rebuildStore, { command: "architecture" });
-      }
-      // 重新运行 ranking analyzer
-      const rankAnalyzer = pipeline.getAnalyzer("ranking");
-      if (rankAnalyzer && rankAnalyzer.supports(rebuildCtx)) {
-        await rankAnalyzer.analyze(rebuildCtx, rebuildStore, { command: "ranking" });
-      }
-
-      // 7. 重新生成 plan, questions, report
-      const evidenceStore = new EvidenceStore(rebuildStore);
-      rebuildStore.plan = new ResearchPlanner(DEFAULT_RESEARCH_GOAL, evidenceStore).plan();
-      rebuildStore.questions = new QuestionGenerator(evidenceStore).generate();
-      rebuildStore.report = new ReportGenerator(evidenceStore, { lang }).generate();
-      rebuildStore._meta = {
-        lastCommit: rebuildCtx.git("rev-parse", "HEAD").trim(),
-        analyzedAt: new Date().toISOString(),
-        repoPath: absPath,
-        incremental: true,
-        changedFilesCount: changedFiles.size,
-        baseCommit: lastCommit,
-      };
-
-      // File splitting (same as 'all' command): write symbols/ontology/architecture
-      const updateStoreDir = join(process.cwd(), "evidence-store");
-      if (existsSync(updateStoreDir) && statSync(updateStoreDir).isDirectory()) {
-        if (rebuildStore.symbols) {
-          writeFileSync(
-            join(updateStoreDir, "symbols.json"),
-            JSON.stringify(rebuildStore.symbols, null, 2),
-          );
-        }
-        if (rebuildStore.ontology) {
-          writeFileSync(
-            join(updateStoreDir, "ontology.json"),
-            JSON.stringify(rebuildStore.ontology, null, 2),
-          );
-        }
-        if (rebuildStore.architecture) {
-          writeFileSync(
-            join(updateStoreDir, "architecture.json"),
-            JSON.stringify(rebuildStore.architecture, null, 2),
-          );
-        }
-        if (rebuildStore.symbols) {
-          rebuildStore._symbolsRef = "evidence-store/symbols.json";
-          rebuildStore.symbols = {
-            totalFunctions: rebuildStore.symbols.totalFunctions || 0,
-            totalClasses: rebuildStore.symbols.totalClasses || 0,
-            totalImports: rebuildStore.symbols.totalImports || 0,
-            totalCalls: rebuildStore.symbols.totalCalls || 0,
-            totalStrings: rebuildStore.symbols.totalStrings || 0,
-            _ref: "evidence-store/symbols.json",
-          };
-        }
-        if (rebuildStore.ontology) {
-          rebuildStore._ontologyRef = "evidence-store/ontology.json";
-          rebuildStore.ontology = {
-            objectSummary: rebuildStore.ontology.objectSummary || {},
-            relSummary: rebuildStore.ontology.relSummary || {},
-            _ref: "evidence-store/ontology.json",
-          };
-        }
-        if (rebuildStore.architecture) {
-          rebuildStore._architectureRef = "evidence-store/architecture.json";
-          rebuildStore.architecture = {
-            totalNodes: rebuildStore.architecture.totalNodes || 0,
-            totalEdges: rebuildStore.architecture.totalEdges || 0,
-            cycles: rebuildStore.architecture.cycles || [],
-            centrality: rebuildStore.architecture.centrality || {},
-            _ref: "evidence-store/architecture.json",
-          };
-        }
-      }
-
-      process.stdout.write(JSON.stringify(rebuildStore, null, 2) + "\n");
+    if (command === "report") {
+      const evidenceStore = await pipeline.runAll(ctx);
+      const brief = renderMarkdownBrief(evidenceStore);
+      process.stdout.write(brief + "\n");
       return;
     }
 
-    const ctx = new RepositoryContext(absPath);
-    const pipeline = new AnalyzerPipeline();
     let result;
     if (command === "all") {
-      ctx.lang = lang;
       result = await pipeline.runAll(ctx);
-    } else if (command === "report") {
-      const evidenceStore = await pipeline.runAll(ctx);
-      const reportGenerator = new ReportGenerator(evidenceStore, { lang });
-      process.stdout.write(reportGenerator.generate() + "\n");
-      return;
-    } else if (syntheticCommands.has(command)) {
-      const evidenceStore = await pipeline.runAll(ctx);
-      result = command === "plan" ? evidenceStore.get("plan") : evidenceStore.get("questions");
     } else {
       result = await pipeline.run(command, ctx);
     }
@@ -549,6 +280,166 @@ async function main() {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Minimal Markdown Evidence Brief renderer
+//
+// Replaces the deleted ReportGenerator. This is intentionally thin: it
+// renders the mechanical evidence store as a readable Markdown brief. All
+// semantic interpretation (patterns, decisions, narrative) is delegated to
+// the Hybrid pipeline's LLM.
+// ---------------------------------------------------------------------------
+
+function renderMarkdownBrief(evidenceStore) {
+  const store = evidenceStore._store || {};
+  const discovery = store.discovery || {};
+  const signals = (store._archetypeHints || {}).signals || {};
+  const repoName = discovery.repoName || discovery.packageName || "repository";
+
+  const lines = [];
+  lines.push(`# Evidence Brief: ${repoName}`);
+  lines.push("");
+  lines.push("This brief contains **Mechanical Truth** only: repository metadata, " +
+    "file/symbol counts, import graph metrics, detected prompts/tools/tests, " +
+    "and git history facts. Semantic interpretation is intentionally omitted.");
+  lines.push("");
+
+  // Repository overview
+  lines.push("## Repository Overview");
+  lines.push("");
+  lines.push(`- **Path**: ${discovery.repoPath || "unknown"}`);
+  lines.push(`- **Files**: ${discovery.fileCount || 0}`);
+  lines.push(`- **Languages**: ${JSON.stringify(discovery.languages || {})}`);
+  lines.push(`- **Manifest**: ${discovery.manifest?.name || "none"}`);
+  lines.push("");
+
+  // Archetype signals
+  const activeSignals = Object.entries(signals).filter(([, v]) => v).map(([k]) => k);
+  lines.push("## Archetype Hints");
+  lines.push("");
+  if (activeSignals.length > 0) {
+    lines.push(`Detected: ${activeSignals.join(", ")}.`);
+  } else {
+    lines.push("No strong archetype signals detected.");
+  }
+  lines.push("");
+
+  // Key Evidence
+  lines.push("## Key Evidence");
+  lines.push("");
+  lines.push(`- Repository: ${discovery.fileCount || 0} files across ${Object.keys(discovery.languages || {}).length || 0} languages.`);
+  lines.push(`- Symbols: ${(store.symbols?.totalFunctions || 0) + (store.symbols?.totalClasses || 0)} total (functions + classes).`);
+  lines.push(`- Architecture: ${(store.architecture?.totalNodes || 0)} modules, ${(store.architecture?.totalEdges || 0)} import edges, ${(store.architecture?.cycles || []).length} cycles.`);
+  lines.push(`- Tests: ${store.tests?.totalTestFiles || 0} test files.`);
+  if (store.prompts?.totalPrompts > 0) {
+    lines.push(`- Prompts: ${store.prompts.totalPrompts} detected.`);
+  }
+  if (store.tools?.totalTools > 0) {
+    lines.push(`- Tools: ${store.tools.totalTools} detected.`);
+  }
+  lines.push("");
+
+  // Design Decisions
+  lines.push("## Design Decisions");
+  lines.push("");
+  lines.push("No semantic decision inference is performed by the Mechanical Analyzers.");
+  lines.push("Use the `hybrid` command to let the LLM infer architecture decisions and tradeoffs.");
+  lines.push("");
+
+  // Symbols
+  const symbols = store.symbols || {};
+  lines.push("## Symbols");
+  lines.push("");
+  lines.push(`- Functions: ${symbols.totalFunctions || 0}`);
+  lines.push(`- Classes: ${symbols.totalClasses || 0}`);
+  lines.push(`- Imports: ${symbols.totalImports || 0}`);
+  lines.push(`- Calls: ${symbols.totalCalls || 0}`);
+  lines.push("");
+
+  // Architecture
+  const arch = store.architecture || {};
+  lines.push("## Architecture Graph");
+  lines.push("");
+  lines.push(`- Nodes: ${arch.totalNodes || 0}`);
+  lines.push(`- Edges: ${arch.totalEdges || 0}`);
+  lines.push(`- Cycles: ${(arch.cycles || []).length}`);
+  lines.push("");
+
+  // Entrypoints, prompts, tools, tests
+  const entrypoints = (store.entrypoints?.entrypoints || []).slice(0, 5);
+  if (entrypoints.length > 0) {
+    lines.push("## Entrypoints");
+    lines.push("");
+    for (const ep of entrypoints) {
+      lines.push(`- \`${ep.path}\` (${ep.type})`);
+    }
+    lines.push("");
+  }
+
+  const prompts = store.prompts || {};
+  if (prompts.totalPrompts > 0) {
+    lines.push("## Prompts");
+    lines.push("");
+    lines.push(`- Total: ${prompts.totalPrompts}`);
+    lines.push("");
+  }
+
+  const tools = store.tools || {};
+  if (tools.totalTools > 0) {
+    lines.push("## Tools / Functions");
+    lines.push("");
+    lines.push(`- Total: ${tools.totalTools}`);
+    lines.push("");
+  }
+
+  const tests = store.tests || {};
+  lines.push("## Tests");
+  lines.push("");
+  lines.push(`- Test files: ${tests.totalTestFiles || 0}`);
+  lines.push(`- Frameworks: ${(tests.frameworks || []).join(", ") || "none"}`);
+  lines.push("");
+
+  // Dependency smells & metrics
+  const smells = store.dependencySmell || {};
+  const archMetrics = store.archMetrics || {};
+  lines.push("## Structural Metrics");
+  lines.push("");
+  lines.push(`- Dependency smells: ${smells.totalSmells || 0}`);
+  if (archMetrics.summary) {
+    lines.push(`- Coupling density: ${archMetrics.summary.density || 0}`);
+    lines.push(`- Avg instability: ${archMetrics.summary.avgInstability || 0}`);
+  }
+  lines.push("");
+
+  // Git
+  const git = store.git || {};
+  if (git.totalCommits > 0) {
+    lines.push("## Git History");
+    lines.push("");
+    lines.push(`- Commits: ${git.totalCommits}`);
+    lines.push(`- Authors: ${(git.authors || []).length}`);
+    lines.push("");
+  }
+
+  // CI
+  const ci = store.ci || {};
+  if ((ci.platforms || []).length > 0) {
+    lines.push("## CI/CD");
+    lines.push("");
+    lines.push(`- Platforms: ${ci.platforms.join(", ")}`);
+    lines.push("");
+  }
+
+  // Honesty note
+  lines.push("## Limits");
+  lines.push("");
+  lines.push("- This brief is produced by deterministic Mechanical Analyzers only.");
+  lines.push("- No architecture pattern, responsibility, or decision inference is performed.");
+  lines.push("- For semantic interpretation, use the `hybrid` command.");
+  lines.push("");
+
+  return lines.join("\n");
+}
+
 const isMainModule = () => {
   try {
     return process.argv[1] ? import.meta.url === pathToFileURL(process.argv[1]).href : false;
@@ -564,11 +455,10 @@ if (isMainModule()) {
   });
 }
 
-// Public API for programmatic use (e.g. tests, LLM subagents, Research Planner)
+// Public API for programmatic use (e.g. tests, LLM subagents)
 export { RepositoryContext } from "./context.mjs";
 export { BaseAnalyzer } from "./base-analyzer.mjs";
 export { AnalyzerPipeline } from "./pipeline.mjs";
 export { EvidenceStore } from "./evidence-store.mjs";
-export { ResearchPlanner, QuestionGenerator } from "./research-engine.mjs";
 export { LANGUAGE_EXTENSIONS, SOURCE_EXTENSIONS, ARCHITECTURE_SIGNAL_DIRS } from "./config.mjs";
 export { PROJECT_DISCOVERY_RULES } from "./utils.mjs";

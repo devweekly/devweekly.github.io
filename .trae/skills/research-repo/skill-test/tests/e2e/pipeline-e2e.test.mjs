@@ -35,35 +35,39 @@ const TOLERANCES = {
 };
 
 function generateDeterministicReport(outputDir, store, brief) {
-  // The deterministic pipeline does not run an LLM, so we synthesize a report
-  // from the real evidence-brief. This is NOT a stub — it reflects actual
-  // Analyzer output (signals, findings, Q8 contradictions) and lets verify
-  // catch real regressions in brief structure.
+  // The deterministic pipeline does not run an LLM. We synthesize a report
+  // from the real evidence-brief so verify-directory can validate structure.
   const repoName = store.discovery?.repoName || store.discovery?.packageName || "repository";
   const signals = getSignals(store);
   const signalList = Object.entries(signals).filter(([, v]) => v).map(([k]) => k);
-  const findings = store.findings?.findings || [];
-  const q8Findings = findings.filter((f) => f.questionId === "Q8");
+  const arch = store.architecture || {};
+  const smells = store.dependencySmell || {};
 
   let report = `# Research Report: ${repoName}\n\n`;
   report += `## Executive Summary\n\n`;
-  report += `${repoName} is analyzed with deterministic pipeline. `;
-  report += `Detected signals: ${signalList.length > 0 ? signalList.join(", ") : "none"}.\n`;
-  report += `Findings: ${findings.length}. README contradictions: ${q8Findings.length}.\n\n`;
-  report += `## Top Claims\n\n`;
-
-  // Materialize real findings as claim blocks so verify-directory's extractReportClaims
-  // can validate them (uses `#### F-NNN — QN:` format from real brief).
+  report += `${repoName} is analyzed with the deterministic mechanical pipeline. `;
+  report += `Detected signals: ${signalList.length > 0 ? signalList.join(", ") : "none"}. `;
+  report += `Architecture graph: ${arch.totalNodes || 0} nodes, ${arch.totalEdges || 0} edges, `;
+  report += `${(arch.cycles || []).length} cycles. Dependency smells: ${smells.totalSmells || 0}.\n\n`;
+  report += `## Evidence Brief\n\n`;
   report += brief;
-
-  report += `\n## Appendix\n\n`;
-  report += `- **Reading Guide**: Inspect evidence-brief.md for detailed findings.\n`;
-  report += `- **Open Questions**: See evidence-brief.md.\n`;
+  report += `\n## Top Claims\n\n`;
+  report += `### Claim 1: Mechanical evidence is available\n\n`;
+  report += `Quality: Verified\n\n`;
+  report += `Evidence: evidence-brief.md, evidence-store/full.json.\n\n`;
+  report += `Why it matters: The pipeline successfully extracted repository metadata, symbols, and import graph facts.\n\n`;
+  report += `### Claim 2: Semantic interpretation requires the hybrid command\n\n`;
+  report += `Quality: Unknown\n\n`;
+  report += `Evidence: N/A — deterministic pipeline does not run an LLM.\n\n`;
+  report += `Why it matters: Architecture patterns, responsibilities, and tradeoffs are delegated to the LLM in Hybrid mode.\n\n`;
+  report += `## Appendix\n\n`;
+  report += `- **Reading Guide**: Inspect evidence-brief.md for mechanical evidence.\n`;
+  report += `- **Semantic interpretation**: Use the \`hybrid\` command (LLM-driven).\n`;
   report += `- **What NOT to Learn**: This is a deterministic report (no LLM synthesis).\n\n`;
   report += `## Quality Gate\n\n`;
   report += `1. **What would invalidate this report?** LLM synthesis produces contradictory conclusions.\n`;
   report += `2. **What is most likely to be disagreed with?** Signal-based archetype classification.\n`;
-  report += `3. **Is any Claim pretending to be certain when it should be Unknown?** See Findings.\n`;
+  report += `3. **Is any Claim pretending to be certain when it should be Unknown?** See Claim 2.\n`;
 
   writeFileSync(join(outputDir, "report.md"), report);
 }

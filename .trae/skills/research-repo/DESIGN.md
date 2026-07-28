@@ -761,6 +761,57 @@ Report (Markdown / JSON)
 
 ---
 
+## 37. Default Model: DeepSeek V4 Flash Free
+
+**决策**：将 Hybrid Pipeline 的默认模型从 `gpt-5` 统一改为 `opencode/deepseek-v4-flash-free`。
+
+**更新位置**：
+- `llm-runner.mjs`：`DEFAULT_LLM_OPTIONS.model`
+- `hybrid-pipeline.mjs`：`DEFAULT_HYBRID_OPTIONS.model`
+- `research-repo.mjs`：`hybrid` / `hybrid-json` 命令的 `--model=` 默认值与 usage 提示
+
+**理由**：
+- 该模型通过 OpenCode CLI 可免费调用，已在真实环境中验证可以跑通 Hybrid Pipeline（生成 7K+ 字符叙事流报告）。
+- `gpt-5` 需要 OpenAI 账户且成本不可控；`opencode/deepseek-v4-flash-free` 让 Skill 在默认配置下即可运行，降低使用门槛。
+- 模型名称保持 `provider/model` 格式，便于 OpenCode CLI 直接识别；用户仍可通过 `--model=` 覆盖。
+
+---
+
+## 38. Code Simplification: Removing Semantic Scripts
+
+**决策**：删除被 Hybrid Pipeline 取代的语义脚本代码，将 Mechanical Truth 与 Semantic Truth 的边界彻底落地。
+
+**删除的文件与模块**：
+| 删除项 | 原因 |
+|--------|------|
+| `brain.mjs` / `knowledge-base.mjs` | Brain / 全局知识库平台功能由 LLM 替代，当前 Skill 聚焦单次仓库研究 |
+| `research-engine.mjs` | Research Planner / Question Generator / FindingsGenerator / VerificationLoop 等语义推理由 LLM 替代 |
+| `report-generator.mjs` | Report 渲染由 LLM 通过 `07-report-writer.md` 完成 |
+| `analyzers-inference.mjs` 中的 8 个 Semantic Analyzers | ArchitecturePattern / Responsibility / CapabilityOntology / Decision / Constraint / Assumption / DesignPattern / Consistency 全部委托给 LLM |
+| `prompts/00-question-planner.md` ~ `06-comparative.md` / `08-knowledge-extraction.md` / `09-brain-update.md` | 多阶段 subagent prompt 不再需要；仅保留 `07-report-writer.md` |
+| `config.mjs` 中的 Brain 常量 | `BRAIN_DIR` / `KNOWLEDGE_TYPES` / `CONFIDENCE_INCREMENT` 等已无消费者 |
+
+**保留的机械分析器（17 个）**：
+- 事实提取器：`DiscoveryAnalyzer`、`SymbolsAnalyzer`、`ArchitectureAnalyzer`、`EntrypointsAnalyzer`、`PromptsAnalyzer`、`ToolsAnalyzer`、`TestsAnalyzer`、`EvaluationsAnalyzer`、`GitAnalyzer`、`CIAnalyzer`、`RankingAnalyzer`
+- 图算法与 git 历史：`StabilityAnalyzer`、`ChangeCouplingAnalyzer`、`InformationFlowAnalyzer`、`DependencySmellAnalyzer`、`ArchitectureMetricsAnalyzer`、`TemporalAnalyzer`
+
+**CLI 简化**：
+- 移除 Brain 相关命令：`brain-init`、`brain-brief`、`brain-query`、`brain-summary`、`brain-update`
+- `report` 命令不再调用 `ReportGenerator`，改用轻量 `renderMarkdownBrief()` 输出机械证据摘要
+- `all` / `report` 仍保留作为 Mechanical Truth 入口；`hybrid` / `hybrid-json` 作为 Semantic Truth 入口
+
+**理由**：
+- 用户反馈："使用 opencode 后，相应也去掉一些代码。" 代码量应从净减少体现，而不是让新旧架构并存导致维护负担。
+- 之前的 Hybrid 架构是"新增一层"；本次变更是"用新层替换旧层"——语义脚本彻底退出，避免两套逻辑同步更新。
+- Mechanical Analyzers 的输出仍通过 `EvidenceStore` / `ObjectClassifier` / `RelationshipBuilder` / `ResearchObjectRegistry` 组织成结构化 JSON，这是 Analyzer → Knowledge Graph 的第一步，保留价值。
+
+**测试结果**：
+- `pnpm test`: 69/69 通过。
+- `pnpm test:skill`: 180/180 通过。
+- 重新生成 `baseline-metrics.json` 与 4 个 Golden fixtures。
+
+---
+
 # 框架架构
 
 以下章节描述 research-repo 的实现架构。SKILL.md 不包含这些内容，因为它们属于框架实现而非研究方法论。
@@ -769,65 +820,53 @@ Report (Markdown / JSON)
 
 ## Pipeline 架构
 
-研究流程分为 10 个 Stage（0-9）。Stage 0-2 串行，Stage 3 并行，Stage 4-7 串行，Stage 8-9 串行。Brain-first 流程在 Stage 0 之前注入 Brain Brief。
+研究流程已简化为两层：Script 负责 Mechanical Truth，LLM 负责 Semantic Truth。旧的多阶段 subagent 流程（Stage 0-9 + Brain）已移除。
 
 ```mermaid
 flowchart TD
-  BRAIN["Global Research Brain"] --> BB["brain-brief.json"]
   A[Repository] --> DA[Analyzer Pipeline]
   DA --> ES[Evidence Store JSON]
   ES --> EB[Evidence Brief]
-  BB --> S0
-  EB --> S0["Stage 0: Question Planner (Brain-first)"]
-  S0 --> S1["Stage 1: Hypothesis Generator"]
-  S1 --> S2["Stage 2: Ontology Mapper"]
-  S2 --> S3["Stage 3: RQ Agents ×5 (parallel)"]
-  S3 --> S4["Stage 4: Opponent Agent"]
-  S4 --> S5["Stage 5: Cross Validation + Evidence Graph"]
-  S5 --> S6["Stage 6: Comparative Analysis (optional)"]
-  S6 --> S7["Stage 7: Report Writer"]
-  S7 --> S8["Stage 8: Knowledge Extraction"]
-  S8 --> S9["Stage 9: Brain Update"]
-  S9 -->|CREATE/MERGE| BRAIN
+  EB --> HP[Hybrid Pipeline]
+  HP --> LLM[LLM via OpenCode CLI]
+  LLM --> R[report.md]
+
+  subgraph "Mechanical Truth"
+    DA
+    ES
+    EB
+  end
+
+  subgraph "Semantic Truth"
+    HP
+    LLM
+    R
+  end
 ```
 
-| Stage | Prompt 模板 | 输出 | 任务 |
-|-------|------------|------|------|
-| — | `brain-brief.json`（脚本生成） | `brain-brief.json` | Brain 已有知识的摘要，供 Stage 0 读取 |
-| 0 | `prompts/00-question-planner.md` | `00-research-questions.md` | Brain-first：Brain Diff → Novelty Detection → 5 个 Research Question |
-| 1 | `prompts/01-hypothesis.md` | `01-hypotheses.md` | 贝叶斯假设（Prior → Posterior + Competing Hypothesis） |
-| 2 | `prompts/02-ontology.md` | `02-ontology.md` | 行为本体（静态对象 + Execution Graph + Decision Ontology） |
-| 3 | `prompts/03-research-agent.md` ×5 | `RQ-001.md` ~ `RQ-005.md` | 每个 Agent 从 Stage 0 读取自己的问题，验证/推翻假设 |
-| 4 | `prompts/04-opponent.md` | `04-opponent.md` | 反证者：攻击每个 Finding |
-| 5 | `prompts/05-cross-validation.md` | `05-cross-validation.md` | 交叉验证 + Evidence Graph |
-| 6 | `prompts/06-comparative.md` | `06-comparative.md` | 与显式列出的同类项目对比（可选） |
-| 7 | `prompts/07-report-writer.md` | `report.md` | Research Trace 格式报告 |
-| 8 | `prompts/08-knowledge-extraction.md` | `knowledge-units.json` | 从报告提取可复用知识单元（Pattern/Decision/Tradeoff/Anti-pattern/Term + Concept Edges） |
-| 9 | `prompts/09-brain-update.md` | `brain-update-report.md` | 审核 CREATE/MERGE/REJECT 计划，更新全局 Brain |
+| 命令 | 输入 | 输出 | 说明 |
+|------|------|------|------|
+| `all` | Repository | `evidence-store/full.json` | Mechanical Analyzers 输出结构化证据 |
+| `report` | Repository | `evidence-brief.md` | 轻量 Markdown 证据摘要（无解释） |
+| `hybrid` | Repository + `prompts/07-report-writer.md` | `report.md` | Mechanical Truth → LLM → 叙事流报告 |
+| `hybrid-json` | Repository + `prompts/07-report-writer.md` | JSON | 结构化输出 |
+| `hybrid-analyzers` | — | Mechanical/Sematic 分类 |  introspection |
 
 ### Prompt 模板占位符
 
 | 占位符 | 含义 | 示例 |
 |--------|------|------|
 | `{repoName}` | 仓库名称 | `openai-agents-python` |
-| `{questionIndex}` | 问题编号（1-5） | `1` |
-| `{rqId}` | 零填充的 RQ ID | `001` |
 
 ### Subagent 派发
 
-主 Agent 读取 `prompts/XX.md`，替换占位符后交给独立的 LLM subagent 执行。使用 `Task` 工具（`subagent_type=general_purpose_task`）：
-
-1. 读取 `prompts/XX.md` 模板
-2. 替换占位符
-3. 告知 subagent working folder 路径
-4. 把替换后的 prompt 贴给 subagent
-5. 要求 subagent 读完证据后，把输出写入对应的 target 文件
+当前版本不再使用多阶段 subagent。`hybrid` 命令直接在主进程内调用 `llm-runner.mjs` 执行 `prompts/07-report-writer.md`，将 JSON Evidence Brief 注入 prompt 后交给 LLM 生成报告。
 
 ---
 
 ## Working Folder 结构
 
-每次研究会话创建 working folder：
+当前 working folder 仅包含 Mechanical Truth 产物和最终报告：
 
 ```
 research-{repo-name}-{YYYYMMDD}/
@@ -837,38 +876,8 @@ research-{repo-name}-{YYYYMMDD}/
 │   ├── ontology.json           # 完整 Ontology
 │   ├── architecture.json       # 完整依赖图
 │   └── ...                     # 各分析器独立输出
-├── brain-brief.json            # Brain 已有知识摘要（Stage 0 前由脚本生成）
-├── evidence-brief.md           # 压缩证据 + 派生洞察
-├── 00-research-questions.md    # Stage 0 输出（Brain-first）
-├── 01-hypotheses.md            # Stage 1 输出
-├── 02-ontology.md              # Stage 2 输出
-├── RQ-001.md ... RQ-005.md     # Stage 3 输出（并行）
-├── shared-findings.md          # 跨 RQ 共享发现
-├── 04-opponent.md              # Stage 4 输出
-├── 05-cross-validation.md      # Stage 5 输出
-├── 06-comparative.md           # Stage 6 输出
-├── report.md                   # 最终报告（Stage 7）
-├── knowledge-units.json        # Stage 8 输出：提取的知识单元
-└── brain-update-report.md      # Stage 9 输出：CREATE/MERGE/REJECT 计划
-```
-
-## Brain 目录结构（全局，跨仓库共享）
-
-```
-brain/                           # 全局 Research Brain（RESEARCH_BRAIN_DIR 环境变量可覆盖）
-├── patterns/                    # 架构模式（planner-executor, event-bus, plugin-registry, ...）
-│   ├── pattern.planner-executor.json
-│   └── pattern.tool-registry.json
-├── decisions/                   # 工程决策（why runner-centric, why stateless-tool, ...）
-│   └── decision.runner-centric.json
-├── tradeoffs/                   # 权衡（single-runner, vectorized-execution, ...）
-│   └── tradeoff.single-runner.json
-├── anti-patterns/               # 反模式（prompt-spaghetti, god-context, ...）
-│   └── antipattern.prompt-spaghetti.json
-├── ontology/                    # 统一术语（planner, executor, harness, guardrail, ...）
-│   └── term.planner.json
-├── concept-graph.json           # 概念关系图（Pattern/Decision/Concept 之间的关系）
-└── index.json                   # 快速查找索引
+├── evidence-brief.md           # 机械证据摘要（无语义解释）
+└── report.md                   # Hybrid Pipeline 生成的最终报告
 ```
 
 命名约定：

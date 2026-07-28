@@ -4,6 +4,44 @@
 
 ---
 
+## 2026-07-29 — DeepSeek V4 Flash Free 默认模型 + 语义代码精简
+
+### 默认模型
+- 将默认 LLM 从 `gpt-5` 统一切换为 `opencode/deepseek-v4-flash-free`。
+- 更新位置：`llm-runner.mjs` 的 `DEFAULT_LLM_OPTIONS.model`、`hybrid-pipeline.mjs` 的 `DEFAULT_HYBRID_OPTIONS.model`、`research-repo.mjs` 的 `hybrid` / `hybrid-json` 命令默认值。
+- `hybrid` 命令 usage 提示同步显示默认模型名称。
+
+### 代码精简
+- **删除语义分析器**：从 `analyzers-inference.mjs` 移除 `ArchitecturePatternAnalyzer`、`ResponsibilityAnalyzer`、`CapabilityOntologyAnalyzer`、`DecisionAnalyzer`、`ConstraintAnalyzer`、`AssumptionAnalyzer`、`DesignPatternAnalyzer`、`ConsistencyAnalyzer`。
+- **删除已废弃平台/引擎模块**：`brain.mjs`、`knowledge-base.mjs`、`research-engine.mjs`、`report-generator.mjs`。
+- **删除旧 subagent prompt 模板**：`00-question-planner.md`、`01-hypothesis.md`、`02-ontology.md`、`03-research-agent.md`、`04-opponent.md`、`05-cross-validation.md`、`06-comparative.md`、`08-knowledge-extraction.md`、`09-brain-update.md`；仅保留 `07-report-writer.md` 作为 Hybrid Pipeline 的 report prompt。
+- **简化 CLI 入口**：`research-repo.mjs` 移除 Brain 相关命令（`brain-init` / `brain-brief` / `brain-query` / `brain-summary` / `brain-update`）和 `ResearchPlanner` / `ReportGenerator` 导入；新增轻量 `renderMarkdownBrief()` 直接渲染机械证据摘要。
+- **精简配置**：`config.mjs` 移除 Brain 相关常量（`BRAIN_DIR`、`KNOWLEDGE_TYPES`、`CONFIDENCE_INCREMENT` 等）。
+
+### 测试修复
+- 更新 `skill-test` 测试套件，使其适配新的机械分析器输出：
+  - `new-analyzers.test.mjs`：移除 `DesignPatternAnalyzer` / `DecisionAnalyzer` 测试，新增 `StabilityAnalyzer`、`ArchitectureMetricsAnalyzer`、`TemporalAnalyzer` 机械分析器测试。
+  - `lifecycle.test.mjs`：验证机械证据存储结构，不再检查语义输出（`findings` / `decisions`）。
+  - `archetype-behavior.test.mjs`：改为验证不同 archetype 的机械信号差异。
+  - `analyzer-runner.mjs`：质量指标从语义指标（`evidenceDensity`、`decisionQuality`）切换为机械指标（`cycleCount`、`smellCount`、`couplingDensity`、`avgInstability`）。
+  - `pipeline-e2e.test.mjs` / `generate-golden.mjs`：生成的 deterministic report 补齐 `Top Claims` 与 `Quality Gate` 章节。
+  - `verify-directory.mjs`：移除对已删除的 `designPatterns` key 的强制检查。
+- 重新生成 `baseline-metrics.json` 与 4 个 Golden fixtures。
+
+### 证据摘要格式
+- `renderMarkdownBrief()` 输出包含 `Archetype Hints`、`Key Evidence`、`Design Decisions`、`Symbols`、`Architecture Graph`、`Structural Metrics`、`Limits` 等章节，满足 E2E stage checks 与 verify 要求。
+
+### 测试结果
+- `pnpm test`: 69/69 通过。
+- `pnpm test:skill`: 180/180 通过（UNIT 45 / PROMPT 3 / BEHAVIOR 25 / MUTATION 16 / REGRESSION 68 / E2E 23）。
+
+### 文档更新
+- `CHANGELOG.md` 新增本条目。
+- `DESIGN.md` 新增 §34（默认模型选择）与 §35（代码精简与职责边界）。
+- `AGENTS.md` Maintenance Log 追加本次变更。
+
+---
+
 ## 2026-07-28（续 2）— Hybrid Architecture（Script Mechanical Truth + LLM Semantic Truth）
 
 ### 新增功能

@@ -145,47 +145,36 @@ export function runArchetypeBehaviorTests() {
       }),
     },
     {
-      name: "Findings differ across archetypes (not template-driven)",
+      name: "mechanical evidence differs across archetypes",
       test(result) {
         const dirs = {};
-        const findings = {};
+        const stores = {};
         try {
           for (const arch of ["database", "agent", "tool", "readme-claims"]) {
             dirs[arch] = createSyntheticRepo(arch);
-            const store = runAnalyzerAll(dirs[arch]);
-            findings[arch] = store.findings?.findings || [];
+            stores[arch] = runAnalyzerAll(dirs[arch]);
           }
 
-          // CRITICAL: Findings must NOT be identical across archetypes.
-          // Compare archetype-specific Findings (Q5=tools, Q6=AI project, Q8=README contradictions).
-          // F-001 (entrypoints) is intentionally similar across repos (all have src/index.js).
-          const dbF006 = findings.database.find((f) => f.id === "F-006")?.finding || "";
-          const rcF006 = findings["readme-claims"].find((f) => f.id === "F-006")?.finding || "";
+          // Different archetypes should produce different signal sets.
+          const dbSignals = getSignals(stores.database);
+          const agentSignals = getSignals(stores.agent);
+          const rcSignals = getSignals(stores["readme-claims"]);
 
-          result.record("F-006 (AI project) finding can differ or match — but Q8 must differ", () => {
-            // Q8 is the key differentiator: readme-claims has README contradictions, database does not.
-            const dbQ8 = findings.database.filter((f) => f.questionId === "Q8");
-            const rcQ8 = findings["readme-claims"].filter((f) => f.questionId === "Q8");
-            if (rcQ8.length <= dbQ8.length) {
-              throw new Error(`Expected readme-claims Q8 findings (${rcQ8.length}) > database (${dbQ8.length})`);
+          result.record("database and readme-claims SQL signal differs", () => {
+            if (dbSignals.hasSQL === rcSignals.hasSQL) {
+              throw new Error("Expected SQL signal to differ between database and readme-claims");
             }
           });
 
-          result.record("readme-claims Q8 findings mention README claims", () => {
-            const rcQ8 = findings["readme-claims"].filter((f) => f.questionId === "Q8");
-            const q8Text = rcQ8.map((f) => f.finding).join(" ");
-            if (!/README claims/i.test(q8Text)) {
-              throw new Error(`Q8 findings should mention "README claims" but got: ${q8Text.slice(0, 200)}`);
+          result.record("agent and database agent signal differs", () => {
+            if (agentSignals.hasAgent === dbSignals.hasAgent) {
+              throw new Error("Expected agent signal to differ between agent and database");
             }
           });
 
-          // Different archetypes should produce different signal-based Findings.
-          // database has hasSQL=true, readme-claims has hasSQL=false → F-003 (RAG) text may differ.
-          const dbF003 = findings.database.find((f) => f.id === "F-003")?.finding || "";
-          const rcF003 = findings["readme-claims"].find((f) => f.id === "F-003")?.finding || "";
-          result.record("F-003 (RAG) finding text is non-empty for both archetypes", () => {
-            if (!dbF003 || !rcF003) {
-              throw new Error("F-003 finding text should be non-empty");
+          result.record("tool repo has plugin signal", () => {
+            if (!getSignals(stores.tool).hasPlugin) {
+              throw new Error("Expected tool repo to have hasPlugin signal");
             }
           });
         } finally {

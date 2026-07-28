@@ -12,40 +12,27 @@ import {
   RankingAnalyzer,
 } from "./analyzers-fact.mjs";
 import {
-  ArchitecturePatternAnalyzer,
-  ResponsibilityAnalyzer,
   StabilityAnalyzer,
   ChangeCouplingAnalyzer,
   InformationFlowAnalyzer,
   DependencySmellAnalyzer,
-  CapabilityOntologyAnalyzer,
-  DecisionAnalyzer,
-  ConstraintAnalyzer,
-  AssumptionAnalyzer,
   ArchitectureMetricsAnalyzer,
-  DesignPatternAnalyzer,
   TemporalAnalyzer,
-  ConsistencyAnalyzer,
 } from "./analyzers-inference.mjs";
 import {
   EvidenceStore,
   ObjectClassifier,
   RelationshipBuilder,
+  ResearchObjectRegistry,
 } from "./evidence-store.mjs";
-import {
-  DEFAULT_RESEARCH_GOAL,
-  ResearchPlanner,
-  QuestionGenerator,
-} from "./research-engine.mjs";
-import { ReportGenerator } from "./report-generator.mjs";
 import { enhanceStore } from "./evidence-quality.mjs";
-import { ResearchObjectRegistry } from "./evidence-store.mjs";
 
 // ===========================================================================
 // ANALYZERS — registered analyzers in execution order
 //
-// Dependency order MUST be preserved:
-//   Fact extractors first, then inference engines, then post-processors.
+// Fact extractors first, then mechanical inference engines.
+// Semantic interpretation (patterns, responsibilities, decisions, capabilities)
+// is intentionally omitted — it is delegated to the LLM in Hybrid mode.
 // ===========================================================================
 
 const ANALYZERS = [
@@ -60,28 +47,13 @@ const ANALYZERS = [
   new GitAnalyzer(),
   new CIAnalyzer(),
   new RankingAnalyzer(),
-  // --- Architecture Semantics Layer (inference engines) ---
-  // Order matters: Pattern → Responsibility → (Stability, ChangeCoupling,
-  // InformationFlow, DependencySmell) → CapabilityOntology.
-  new ArchitecturePatternAnalyzer(),
-  new ResponsibilityAnalyzer(),
+  // --- Mechanical inference engines ---
   new StabilityAnalyzer(),
   new ChangeCouplingAnalyzer(),
   new InformationFlowAnalyzer(),
   new DependencySmellAnalyzer(),
-  new CapabilityOntologyAnalyzer(),
-  // --- Architecture Knowledge Layer: Decision / Constraint / Assumption ---
-  new DecisionAnalyzer(),
-  new ConstraintAnalyzer(),
-  new AssumptionAnalyzer(),
-  // --- Architecture Metrics Layer (P2-④): structural metrics from import graph ---
   new ArchitectureMetricsAnalyzer(),
-  // --- Design Pattern Layer (P3-②): GoF/DI patterns from symbol signatures ---
-  new DesignPatternAnalyzer(),
-  // --- Temporal / Evolution Layer (P2-③): requires git history ---
   new TemporalAnalyzer(),
-  // --- Post-processor: runs LAST, compares claims across analyzers ---
-  new ConsistencyAnalyzer(),
 ];
 
 // ===========================================================================
@@ -119,7 +91,6 @@ class AnalyzerPipeline {
 
   /**
    * Run all analyzers and return a graph-based EvidenceStore.
-   * Also synthesizes a research plan and gap-driven questions from the evidence.
    * @param {RepositoryContext} ctx
    * @returns {Promise<EvidenceStore>}
    */
@@ -132,27 +103,19 @@ class AnalyzerPipeline {
       }
       await analyzer.analyze(ctx, store, { command: analyzer.id });
     }
-    // Evidence Quality Layer: Sanitize analyzer output + detect Archetype
-    // (Report 不应该知道 Analyzer 出过错——Sanitizer 在 Evidence Store 阶段修正)
+    // Evidence Quality Layer: Sanitize analyzer output + detect archetype hints.
     enhanceStore(store);
     const evidenceStore = new EvidenceStore(store);
-    // Ontology: classify objects and build semantic relationships
+    // Ontology: classify objects and build semantic relationships.
     const classifier = new ObjectClassifier();
     const { objects, summary: objectSummary } = classifier.classify(store);
     const relBuilder = new RelationshipBuilder();
     const { relationships, summary: relSummary } = relBuilder.build(objects, store);
     store.ontology = { objects, relationships, objectSummary, relSummary };
-    // Research Object Registry: second-order objects (Pattern/Decision/Constraint/
-    // Tradeoff/Assumption/Hypothesis/Evidence/Finding/Issue/Risk/Unknown) + graph
+    // Research Object Registry: second-order objects + graph.
     const researchRegistry = ResearchObjectRegistry.fromStore(store);
     store.researchObjects = researchRegistry.toGraph();
     store.researchObjectsSummary = researchRegistry.summary();
-    const planner = new ResearchPlanner(DEFAULT_RESEARCH_GOAL, evidenceStore);
-    store.plan = planner.plan();
-    const questionGenerator = new QuestionGenerator(evidenceStore);
-    store.questions = questionGenerator.generate();
-    const reportGenerator = new ReportGenerator(evidenceStore, { lang: ctx.lang || "en" });
-    store.report = reportGenerator.generate();
     store._meta = {
       lastCommit: ctx.isGitRepo ? ctx.git("rev-parse", "HEAD").trim() : null,
       analyzedAt: new Date().toISOString(),
@@ -167,9 +130,7 @@ class AnalyzerPipeline {
 // Incremental analysis merge utilities
 //
 // Used by the update command to merge previously-saved analysis results with
-// freshly-analyzed changed files. Per-file evidence (symbols, entrypoints,
-// prompts, tools, tests) is merged by file path; full-scan evidence
-// (discovery, git, ci) is replaced by the new run.
+// freshly-analyzed changed files.
 // ---------------------------------------------------------------------------
 
 function mergeAnalysisResults(prevStore, newStore, changedFiles) {

@@ -83,16 +83,22 @@ function generateDeterministicReport(outputDir, store, brief) {
   report += `Detected signals: ${signalList.length > 0 ? signalList.join(", ") : "none"}.\n`;
   report += `Findings: ${findings.length}. README contradictions: ${q8Findings.length}.\n\n`;
   report += `## Top Claims\n\n`;
-  // Materialize real findings as claim blocks (uses `#### F-NNN — QN:` format from real brief)
-  report += brief;
-  report += `\n## Appendix\n\n`;
+  report += `### Claim 1: Mechanical evidence is available\n\n`;
+  report += `Quality: Verified\n\n`;
+  report += `Evidence: evidence-brief.md, evidence-store/full.json.\n\n`;
+  report += `Why it matters: The pipeline successfully extracted repository metadata, symbols, and import graph facts.\n\n`;
+  report += `### Claim 2: Semantic interpretation requires the hybrid command\n\n`;
+  report += `Quality: Unknown\n\n`;
+  report += `Evidence: N/A — deterministic pipeline does not run an LLM.\n\n`;
+  report += `Why it matters: Architecture patterns, responsibilities, and tradeoffs are delegated to the LLM in Hybrid mode.\n\n`;
+  report += `## Appendix\n\n`;
   report += `- **Reading Guide**: Inspect evidence-brief.md for detailed findings.\n`;
   report += `- **Open Questions**: See evidence-brief.md.\n`;
   report += `- **What NOT to Learn**: This is a deterministic report (no LLM synthesis).\n\n`;
   report += `## Quality Gate\n\n`;
   report += `1. **What would invalidate this report?** LLM synthesis produces contradictory conclusions.\n`;
   report += `2. **What is most likely to be disagreed with?** Signal-based archetype classification.\n`;
-  report += `3. **Is any Claim pretending to be certain when it should be Unknown?** See Findings.\n`;
+  report += `3. **Is any Claim pretending to be certain when it should be Unknown?** See Claim 2.\n`;
 
   writeFileSync(join(outputDir, "report.md"), report);
 }

@@ -27,11 +27,11 @@
         "tolerance": 0
       },
       "briefLength": {
-        "value": 48259,
+        "value": 1406,
         "tolerance": 500
       },
       "briefFindingCount": {
-        "value": 44,
+        "value": 0,
         "tolerance": 3
       },
       "fileCount": {
@@ -39,35 +39,27 @@
         "tolerance": 1
       },
       "evidenceDensity": {
-        "value": 0.75,
         "tolerance": 0.3
       },
       "decisionQuality": {
-        "value": 0,
         "tolerance": 0.1
       },
       "decisionReusability": {
-        "value": 0,
         "tolerance": 0.1
       },
       "unknownRatio": {
-        "value": 0.25,
         "tolerance": 0.1
       },
       "counterEvidenceRatio": {
-        "value": 0,
         "tolerance": 0.1
       },
       "avgConfidence": {
-        "value": 0.14,
         "tolerance": 0.1
       },
       "readmeContradictionCount": {
-        "value": 0,
         "tolerance": 1
       },
       "provenanceCoverage": {
-        "value": 0,
         "tolerance": 0.1
       }
     },
@@ -97,11 +89,11 @@
         "tolerance": 0
       },
       "briefLength": {
-        "value": 46813,
+        "value": 1389,
         "tolerance": 500
       },
       "briefFindingCount": {
-        "value": 44,
+        "value": 0,
         "tolerance": 3
       },
       "fileCount": {
@@ -109,35 +101,27 @@
         "tolerance": 1
       },
       "evidenceDensity": {
-        "value": 0.81,
         "tolerance": 0.3
       },
       "decisionQuality": {
-        "value": 0,
         "tolerance": 0.1
       },
       "decisionReusability": {
-        "value": 0,
         "tolerance": 0.1
       },
       "unknownRatio": {
-        "value": 0.25,
         "tolerance": 0.1
       },
       "counterEvidenceRatio": {
-        "value": 0,
         "tolerance": 0.1
       },
       "avgConfidence": {
-        "value": 0.14,
         "tolerance": 0.1
       },
       "readmeContradictionCount": {
-        "value": 1,
         "tolerance": 1
       },
       "provenanceCoverage": {
-        "value": 0,
         "tolerance": 0.1
       }
     },
@@ -167,11 +151,11 @@
         "tolerance": 0
       },
       "briefLength": {
-        "value": 47621,
+        "value": 1381,
         "tolerance": 500
       },
       "briefFindingCount": {
-        "value": 44,
+        "value": 0,
         "tolerance": 3
       },
       "fileCount": {
@@ -179,35 +163,27 @@
         "tolerance": 1
       },
       "evidenceDensity": {
-        "value": 0.81,
         "tolerance": 0.3
       },
       "decisionQuality": {
-        "value": 0,
         "tolerance": 0.1
       },
       "decisionReusability": {
-        "value": 0,
         "tolerance": 0.1
       },
       "unknownRatio": {
-        "value": 0.25,
         "tolerance": 0.1
       },
       "counterEvidenceRatio": {
-        "value": 0,
         "tolerance": 0.1
       },
       "avgConfidence": {
-        "value": 0.14,
         "tolerance": 0.1
       },
       "readmeContradictionCount": {
-        "value": 1,
         "tolerance": 1
       },
       "provenanceCoverage": {
-        "value": 0,
         "tolerance": 0.1
       }
     },
@@ -237,11 +213,11 @@
         "tolerance": 0
       },
       "briefLength": {
-        "value": 47650,
+        "value": 1406,
         "tolerance": 500
       },
       "briefFindingCount": {
-        "value": 50,
+        "value": 0,
         "tolerance": 3
       },
       "fileCount": {
@@ -249,35 +225,27 @@
         "tolerance": 1
       },
       "evidenceDensity": {
-        "value": 0.95,
         "tolerance": 0.3
       },
       "decisionQuality": {
-        "value": 0,
         "tolerance": 0.1
       },
       "decisionReusability": {
-        "value": 0,
         "tolerance": 0.1
       },
       "unknownRatio": {
-        "value": 0.21,
         "tolerance": 0.1
       },
       "counterEvidenceRatio": {
-        "value": 0,
         "tolerance": 0.1
       },
       "avgConfidence": {
-        "value": 0.14,
         "tolerance": 0.1
       },
       "readmeContradictionCount": {
-        "value": 4,
         "tolerance": 1
       },
       "provenanceCoverage": {
-        "value": 0,
         "tolerance": 0.1
       }
     }

@@ -1,53 +1,25 @@
 // ===========================================================================
-// new-analyzers.test.mjs — Unit tests for new inference analyzers
+// new-analyzers.test.mjs — Unit tests for mechanical inference analyzers
 //
-// Covers:
-//   - DesignPatternAnalyzer (P3-②): Factory/Singleton/Builder/Observer/...
-//   - ArchitectureMetricsAnalyzer (P2-④): Fan-in/Fan-out/Cycle/Layer/Stability
-//   - TemporalAnalyzer (P2-③): Major Rewrite/Architecture Pivot/Deprecated
+// Covers the remaining Mechanical Inference Analyzers after the semantic
+// analyzers were removed and delegated to the LLM in Hybrid mode:
+//   - ArchitectureMetricsAnalyzer: Fan-in/Fan-out/Cycle/Layer/Stability
+//   - TemporalAnalyzer: Major Rewrite/Architecture Pivot/Deprecated
+//   - StabilityAnalyzer, ChangeCouplingAnalyzer, InformationFlowAnalyzer,
+//     DependencySmellAnalyzer
 //
-// Creates a synthetic repo with patterns + import graph + git history,
-// runs the full pipeline, and verifies analyzer output structure.
+// Creates a synthetic repo with import graph + git history and verifies
+// analyzer output structure.
 // ===========================================================================
 
 import { runSuite } from "../../lib/test-runner.mjs";
 import { runAnalyzerAll } from "../../lib/analyzer-runner.mjs";
-import { DecisionAnalyzer } from "../../../analyzers-inference.mjs";
-import { mkdirSync, writeFileSync, rmSync, existsSync } from "node:fs";
+import { mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { execSync } from "node:child_process";
 
-// --- Direct unit test wrapper for DecisionAnalyzer ADR injection ──────────
-// Crafts a minimal store that triggers D1 (architecture pattern decision),
-// then validates that _finalizeDecision injects all 7 ADR fields.
-function withCraftedDecisionStore(fn) {
-  return async (result) => {
-    const analyzer = new DecisionAnalyzer();
-    // Crafted store: triggers D1 (Layered pattern) and D2 (2 responsibilities)
-    const store = {
-      archPattern: {
-        primaryPattern: "Layered",
-        patterns: [{ pattern: "Layered", confidence: 0.7, evidence: ["src/core/", "src/api/"] }],
-      },
-      responsibility: {
-        responsibilities: [
-          { module: "src/core/", responsibility: "Persistence" },
-          { module: "src/api/", responsibility: "Interface" },
-        ],
-      },
-      tools: { totalTools: 0 },
-      prompts: { totalPrompts: 0 },
-      informationFlow: { llmCallSites: [] },
-      tests: { testPatterns: [] },
-      capabilityOntology: { isAIProject: false, capabilityMatrix: {} },
-    };
-    await analyzer.analyze({}, store, {});
-    fn(result, store);
-  };
-}
-
-// --- Synthetic repo with rich design patterns + import graph + git history --
+// --- Synthetic repo with import graph + git history ------------------------
 function createRichRepo() {
   const workDir = join(
     tmpdir(),
@@ -251,97 +223,7 @@ function withRichRepo(fn) {
 }
 
 export function runNewAnalyzersTests() {
-  return runSuite("unit — new analyzers (design patterns / metrics / temporal)", [
-    // ── DesignPatternAnalyzer ──────────────────────────────────────────────
-    {
-      name: "DesignPatternAnalyzer produces output",
-      test: withRichRepo((result, store) => {
-        const dp = store.designPatterns;
-        result.record("designPatterns key exists", () => {
-          if (!dp) throw new Error("Missing designPatterns in store");
-        });
-        result.record("has patterns array", () => {
-          if (!Array.isArray(dp?.patterns)) throw new Error("Missing patterns[]");
-        });
-      }),
-    },
-    {
-      name: "DesignPatternAnalyzer detects Factory pattern",
-      test: withRichRepo((result, store) => {
-        const patterns = store.designPatterns?.patterns || [];
-        const factory = patterns.find((p) => p.pattern === "Factory");
-        result.record("Factory pattern detected", () => {
-          if (!factory) throw new Error("Factory pattern not detected");
-        });
-        result.record("Factory has instances >= 1", () => {
-          if (!factory || factory.instances < 1) throw new Error("No Factory instances");
-        });
-        result.record("Factory has evidence array", () => {
-          if (!factory?.evidence || !Array.isArray(factory.evidence)) {
-            throw new Error("Factory missing evidence[]");
-          }
-        });
-      }),
-    },
-    {
-      name: "DesignPatternAnalyzer detects Singleton pattern",
-      test: withRichRepo((result, store) => {
-        const patterns = store.designPatterns?.patterns || [];
-        const singleton = patterns.find((p) => p.pattern === "Singleton");
-        result.record("Singleton detected", () => {
-          if (!singleton) throw new Error("Singleton not detected (Logger has getInstance)");
-        });
-      }),
-    },
-    {
-      name: "DesignPatternAnalyzer detects Observer pattern",
-      test: withRichRepo((result, store) => {
-        const patterns = store.designPatterns?.patterns || [];
-        const observer = patterns.find((p) => p.pattern === "Observer");
-        result.record("Observer detected", () => {
-          if (!observer) throw new Error("Observer not detected (EventBus has subscribe+publish)");
-        });
-      }),
-    },
-    {
-      name: "DesignPatternAnalyzer detects Repository pattern",
-      test: withRichRepo((result, store) => {
-        const patterns = store.designPatterns?.patterns || [];
-        const repo = patterns.find((p) => p.pattern === "Repository");
-        result.record("Repository detected", () => {
-          if (!repo) throw new Error("Repository not detected (UserRepository class)");
-        });
-      }),
-    },
-    {
-      name: "DesignPatternAnalyzer does NOT false-positive on Service class",
-      test: withRichRepo((result, store) => {
-        const patterns = store.designPatterns?.patterns || [];
-        // UserService should not be tagged as a design pattern
-        const allEvidence = patterns.flatMap((p) => p.evidence || []);
-        const userServiceHits = allEvidence.filter((e) =>
-          String(e.symbol).includes("UserService")
-        );
-        result.record("UserService not tagged as pattern", () => {
-          if (userServiceHits.length > 0) {
-            throw new Error(`UserService falsely tagged: ${JSON.stringify(userServiceHits[0])}`);
-          }
-        });
-      }),
-    },
-    {
-      name: "DesignPatternAnalyzer confidence is between 0 and 1",
-      test: withRichRepo((result, store) => {
-        const patterns = store.designPatterns?.patterns || [];
-        result.record("all confidences in [0,1]", () => {
-          const bad = patterns.filter(
-            (p) => typeof p.confidence !== "number" || p.confidence < 0 || p.confidence > 1
-          );
-          if (bad.length > 0) throw new Error(`Bad confidence: ${bad[0].pattern}=${bad[0].confidence}`);
-        });
-      }),
-    },
-
+  return runSuite("unit — mechanical inference analyzers", [
     // ── ArchitectureMetricsAnalyzer ────────────────────────────────────────
     {
       name: "ArchitectureMetricsAnalyzer produces output",
@@ -412,6 +294,23 @@ export function runNewAnalyzersTests() {
       }),
     },
 
+    // ── StabilityAnalyzer ──────────────────────────────────────────────────
+    {
+      name: "StabilityAnalyzer produces module stability metrics",
+      test: withRichRepo((result, store) => {
+        const stability = store.stability || {};
+        result.record("stability key exists", () => {
+          if (!stability.modules) throw new Error("Missing stability.modules");
+        });
+        result.record("modules have instability/abstractness/zone", () => {
+          const bad = stability.modules.filter(
+            (m) => typeof m.instability !== "number" || typeof m.abstractness !== "number" || !m.zone
+          );
+          if (bad.length > 0) throw new Error("Module missing stability fields");
+        });
+      }),
+    },
+
     // ── TemporalAnalyzer ───────────────────────────────────────────────────
     {
       name: "TemporalAnalyzer produces output (skipped if no git)",
@@ -476,127 +375,14 @@ export function runNewAnalyzersTests() {
         });
       }),
     },
-
-    // ── P2-②: Decision Record ADR 7-field validation ──────────────────────
-    // The synthetic "patterns" repo may not trigger DecisionAnalyzer (which
-    // keys off architecture patterns / AI capabilities / tools / LLM call
-    // sites). When no decisions are produced, we skip ADR validation rather
-    // than fail — the test's purpose is to validate ADR FIELDS when decisions
-    // exist, not to guarantee decisions on a patterns-only repo.
-    {
-      name: "Decision Record contains ADR 7 fields (Problem/Alternatives/Tradeoff/Chosen/Evidence/Risk/Reusability)",
-      test: withRichRepo((result, store) => {
-        const decisions = store.decisions?.decisions || [];
-        if (decisions.length === 0) {
-          result.record("skipped (no decisions detected on patterns repo)", () => {});
-          return;
-        }
-        for (const d of decisions) {
-          result.record(`${d.id} has problem`, () => {
-            if (!d.problem) throw new Error(`Missing problem in ${d.id}`);
-          });
-          result.record(`${d.id} has alternatives`, () => {
-            if (!d.alternatives) throw new Error(`Missing alternatives in ${d.id}`);
-          });
-          result.record(`${d.id} has tradeoff`, () => {
-            if (!d.tradeoff) throw new Error(`Missing tradeoff in ${d.id}`);
-          });
-          result.record(`${d.id} has chosen (decision)`, () => {
-            if (!d.decision) throw new Error(`Missing decision (chosen) in ${d.id}`);
-          });
-          result.record(`${d.id} has evidence array`, () => {
-            if (!Array.isArray(d.evidence)) throw new Error(`Missing evidence[] in ${d.id}`);
-          });
-          result.record(`${d.id} has risk`, () => {
-            if (!d.risk) throw new Error(`Missing risk in ${d.id}`);
-          });
-          result.record(`${d.id} has reusability (0-1)`, () => {
-            if (typeof d.reusability !== "number" || d.reusability < 0 || d.reusability > 1) {
-              throw new Error(`Bad reusability in ${d.id}: ${d.reusability}`);
-            }
-          });
-        }
-      }),
-    },
-    {
-      name: "Decision Record categories are known enum",
-      test: withRichRepo((result, store) => {
-        const decisions = store.decisions?.decisions || [];
-        const KNOWN = ["structural", "modular", "capability", "integration", "quality", "negative"];
-        result.record("all categories valid", () => {
-          const bad = decisions.filter((d) => !KNOWN.includes(d.category));
-          if (bad.length > 0) throw new Error(`Unknown category: ${bad[0].category}`);
-        });
-      }),
-    },
-
-    // ── P2-② (crafted store): ADR 7-field validation via direct analyzer unit test ─
-    // The synthetic repos don't produce strong enough signals to trigger DecisionAnalyzer,
-    // so we craft a minimal store that triggers D1 (Layered pattern) + D2 (responsibilities)
-    // and validate that _finalizeDecision injects all 7 ADR fields.
-    {
-      name: "DecisionAnalyzer injects ADR 7 fields (Problem/Alternatives/Tradeoff/Chosen/Evidence/Risk/Reusability)",
-      test: withCraftedDecisionStore((result, store) => {
-        const decisions = store.decisions?.decisions || [];
-        result.record("crafted store produces >=1 decision", () => {
-          if (decisions.length === 0) throw new Error("Crafted store should trigger D1+D2 decisions");
-        });
-        for (const d of decisions) {
-          result.record(`${d.id} has problem`, () => {
-            if (!d.problem) throw new Error(`Missing problem in ${d.id}`);
-          });
-          result.record(`${d.id} has alternatives`, () => {
-            if (!d.alternatives) throw new Error(`Missing alternatives in ${d.id}`);
-          });
-          result.record(`${d.id} has tradeoff`, () => {
-            if (!d.tradeoff) throw new Error(`Missing tradeoff in ${d.id}`);
-          });
-          result.record(`${d.id} has chosen (decision)`, () => {
-            if (!d.decision) throw new Error(`Missing decision (chosen) in ${d.id}`);
-          });
-          result.record(`${d.id} has evidence array`, () => {
-            if (!Array.isArray(d.evidence)) throw new Error(`Missing evidence[] in ${d.id}`);
-          });
-          result.record(`${d.id} has risk`, () => {
-            if (!d.risk) throw new Error(`Missing risk in ${d.id}`);
-          });
-          result.record(`${d.id} has reusability (0-1)`, () => {
-            if (typeof d.reusability !== "number" || d.reusability < 0 || d.reusability > 1) {
-              throw new Error(`Bad reusability in ${d.id}: ${d.reusability}`);
-            }
-          });
-        }
-      }),
-    },
-
-    // ── P2-①: Pattern Reusability 4-field validation ──────────────────────
-    {
-      name: "Pattern output contains Reusability 4 fields (Applicability/Limitation/Migration Cost/Reuse Score)",
-      test: withRichRepo((result, store) => {
-        const patterns = store.designPatterns?.patterns || [];
-        if (patterns.length === 0) {
-          result.record("skipped (no patterns)", () => {});
-          return;
-        }
-        for (const p of patterns) {
-          result.record(`${p.pattern} has applicability`, () => {
-            if (!p.applicability) throw new Error(`Missing applicability in ${p.pattern}`);
-          });
-          result.record(`${p.pattern} has limitation`, () => {
-            if (p.limitation === undefined) throw new Error(`Missing limitation in ${p.pattern}`);
-          });
-          result.record(`${p.pattern} has migrationCost`, () => {
-            if (!["low", "medium", "high"].includes(p.migrationCost)) {
-              throw new Error(`Bad migrationCost in ${p.pattern}: ${p.migrationCost}`);
-            }
-          });
-          result.record(`${p.pattern} has reuseScore (1-5)`, () => {
-            if (typeof p.reuseScore !== "number" || p.reuseScore < 1 || p.reuseScore > 5) {
-              throw new Error(`Bad reuseScore in ${p.pattern}: ${p.reuseScore}`);
-            }
-          });
-        }
-      }),
-    },
   ]);
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  const result = runNewAnalyzersTests();
+  console.log(`${result.name}: ${result.passCount}/${result.total} passed`);
+  for (const f of result.failed) {
+    console.error(`  ✗ ${f.case}: ${f.error}`);
+  }
+  process.exit(result.ok ? 0 : 1);
 }

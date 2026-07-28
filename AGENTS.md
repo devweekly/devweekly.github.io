@@ -389,6 +389,7 @@ When updating AGENTS.md:
 
 | Date | Change | Updated By |
 |------|--------|------------|
+| 2026-07-29 | research-repo: default LLM switched to opencode/deepseek-v4-flash-free; removed semantic analyzers/brain/engine/report-generator and regenerated fixtures | @agents-maintainer |
 | 2026-07-27 | research-repo: added test:e2e:live + test:fixtures:generate scripts and LLM-in-the-loop E2E support | @agents-maintainer |
 | 2026-02-08 | Added Self-Maintenance section | @agents-maintainer |
 | 2026-02-08 | Added architecture report on subagent maintenance | @agents-maintainer |

@@ -122,9 +122,10 @@ export function getSignals(store) {
  *
  * Two tiers of metrics:
  *   - Quantity metrics (functionCount, classCount, ...): detect structural drift
- *   - Quality metrics (evidenceDensity, decisionQuality, ...): detect semantic drift
+ *   - Quality metrics (smellCount, cycleCount, ...): detect mechanical drift
  *
- * Quality metrics answer "did Skill quality improve?" not just "did output change?".
+ * The semantic quality metrics (findings, decisions) were removed along with
+ * the semantic analyzers; they are now the LLM's job in Hybrid mode.
  *
  * @param {object} store
  * @param {string} brief
@@ -150,65 +151,22 @@ export function computeAnalyzerMetrics(store, brief) {
     testCount: store.tests?.totalTestFiles || store.tests?.total || (store.tests?.fileDetails || []).length || 0,
     signalCount: Object.values(getSignals(store)).filter(Boolean).length,
     briefLength: (brief || "").length,
-    briefFindingCount: (((brief || "").match(/F-\d{3,}/g) || []).length),
+    briefFindingCount: 0, // Findings are produced by LLM in Hybrid mode, not mechanical pipeline
     fileCount,
   };
 
-  // ── Quality metrics (semantic drift detection) ─────────────────────────
-  // These answer "did Skill quality improve?" — not just "did output change?".
-  const findings = store.findings?.findings || [];
-  const decisions = store.decisions?.decisions || [];
-  const totalFindings = findings.length;
-
-  // evidenceDensity: average evidence items per finding (higher = more grounded)
-  const totalEvidenceItems = findings.reduce((sum, f) => sum + (f.support || []).length, 0);
-  const evidenceDensity = totalFindings > 0 ? totalEvidenceItems / totalFindings : 0;
-
-  // decisionQuality: fraction of decisions with both tradeoff AND alternatives (ADR-completeness)
-  const decisionsWithTradeoffAndAlternatives = decisions.filter(
-    (d) => d.tradeoff && d.alternatives
-  ).length;
-  const decisionQuality = decisions.length > 0 ? decisionsWithTradeoffAndAlternatives / decisions.length : 0;
-
-  // decisionReusability: average reusability score across decisions (0-1)
-  const decisionReusability = decisions.length > 0
-    ? decisions.reduce((sum, d) => sum + (d.reusability || 0), 0) / decisions.length
-    : 0;
-
-  // unknownRatio: fraction of findings that mention Unknown (honesty signal)
-  const findingsWithUnknown = findings.filter((f) =>
-    /\bunknown\b|not detected|no\s+\w+\s+detected|not classified/i.test(f.finding || "")
-  ).length;
-  const unknownRatio = totalFindings > 0 ? findingsWithUnknown / totalFindings : 0;
-
-  // counterEvidenceRatio: fraction of findings with counter evidence (adversarial signal)
-  const findingsWithCounter = findings.filter((f) => (f.counter || []).length > 0).length;
-  const counterEvidenceRatio = totalFindings > 0 ? findingsWithCounter / totalFindings : 0;
-
-  // avgConfidence: mean confidence across findings (stability signal)
-  const avgConfidence = totalFindings > 0
-    ? findings.reduce((sum, f) => sum + (f.confidence || 0), 0) / totalFindings
-    : 0;
-
-  // readmeContradictionCount: Q8 findings that flag README claims (honesty signal)
-  const readmeContradictionCount = findings.filter(
-    (f) => f.questionId === "Q8" && /README claims/i.test(f.finding || "")
-  ).length;
-
-  // provenanceCoverage: fraction of support items with who+when (traceability)
-  const allSupportItems = findings.flatMap((f) => f.support || []);
-  const supportWithProvenance = allSupportItems.filter((s) => s.who && s.when).length;
-  const provenanceCoverage = allSupportItems.length > 0 ? supportWithProvenance / allSupportItems.length : 0;
+  // ── Mechanical quality metrics ─────────────────────────────────────────
+  const arch = store.architecture || {};
+  const smells = store.dependencySmell || {};
+  const archMetrics = store.archMetrics || {};
 
   const quality = {
-    evidenceDensity: Number(evidenceDensity.toFixed(2)),
-    decisionQuality: Number(decisionQuality.toFixed(2)),
-    decisionReusability: Number(decisionReusability.toFixed(2)),
-    unknownRatio: Number(unknownRatio.toFixed(2)),
-    counterEvidenceRatio: Number(counterEvidenceRatio.toFixed(2)),
-    avgConfidence: Number(avgConfidence.toFixed(2)),
-    readmeContradictionCount,
-    provenanceCoverage: Number(provenanceCoverage.toFixed(2)),
+    cycleCount: (arch.cycles || []).length,
+    smellCount: smells.totalSmells || 0,
+    couplingDensity: Number((archMetrics.coupling?.density || 0).toFixed(4)),
+    avgInstability: Number((archMetrics.summary?.avgInstability || 0).toFixed(3)),
+    totalNodes: arch.totalNodes || 0,
+    totalEdges: arch.totalEdges || 0,
   };
 
   return { ...quantity, ...quality };

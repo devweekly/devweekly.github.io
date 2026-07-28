@@ -35,19 +35,4 @@ describe("research-repo CLI smoke tests", () => {
     rmSync(workDir, { recursive: true, force: true });
   });
 
-  it("brain-init command initializes Brain", () => {
-    const brainDir = join(tmpdir(), `research-repo-brain-smoke-${Date.now()}`);
-    const result = spawnSync("node", [SCRIPT, "brain-init", brainDir], {
-      encoding: "utf-8",
-      timeout: 30000,
-    });
-
-    assert.strictEqual(result.status, 0, `brain-init failed: ${result.stderr}`);
-    const summary = JSON.parse(result.stdout);
-    assert.ok(summary.counts, "Brain summary should have counts");
-    assert.strictEqual(summary.counts.pattern, 0);
-    assert.strictEqual(summary.counts.decision, 0);
-
-    rmSync(brainDir, { recursive: true, force: true });
-  });
 });

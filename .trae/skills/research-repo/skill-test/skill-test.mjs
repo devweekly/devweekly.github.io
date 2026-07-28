@@ -18,9 +18,6 @@
 //   node skill-test/skill-test.mjs --layer=e2e
 // ===========================================================================
 
-import { runQuestionPlannerTests } from "./tests/prompt-unit/00-question-planner.test.mjs";
-import { runHypothesisTests } from "./tests/prompt-unit/01-hypothesis.test.mjs";
-import { runOpponentTests } from "./tests/prompt-unit/04-opponent.test.mjs";
 import { runReportWriterTests } from "./tests/prompt-unit/07-report-writer.test.mjs";
 import { runArchetypeBehaviorTests } from "./tests/behavior/archetype-behavior.test.mjs";
 import { runMutationTests } from "./tests/mutation/missing-evidence.test.mjs";
@@ -37,12 +34,7 @@ const requestedLayer = args
 
 const LAYERS = {
   unit: [runAnalyzerOutputTests, runLifecycleTests, runNewAnalyzersTests],
-  prompt: [
-    runQuestionPlannerTests,
-    runHypothesisTests,
-    runOpponentTests,
-    runReportWriterTests,
-  ],
+  prompt: [runReportWriterTests],
   behavior: [runArchetypeBehaviorTests],
   mutation: [runMutationTests],
   regression: [runRegressionTests],

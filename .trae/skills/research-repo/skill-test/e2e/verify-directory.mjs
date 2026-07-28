@@ -264,15 +264,10 @@ export function verifyResearchDirectory(dir, expected = {}) {
     );
   }
 
-  // 9. New analyzer outputs (P1-4): verify evidence-store contains new sections.
-  // These are NOT required to be non-empty (synthetic repos may have 0 patterns),
-  // but the KEYS must exist so downstream stages can read them.
+  // 9. Mechanical analyzer outputs: verify evidence-store contains expected keys.
+  // DesignPatternAnalyzer was removed (semantic inference delegated to LLM),
+  // so designPatterns is no longer required.
   if (evidenceStore) {
-    check(
-      "evidence-store has designPatterns key",
-      evidenceStore.designPatterns !== undefined,
-      "Missing designPatterns in evidence-store/full.json"
-    );
     check(
       "evidence-store has archMetrics key",
       evidenceStore.archMetrics !== undefined,
@@ -295,24 +290,24 @@ export function verifyResearchDirectory(dir, expected = {}) {
     );
   }
 
-  // 10. Evidence brief surfaces new sections (informational — not hard fail
-  // because some repos legitimately have no patterns/evolution).
+  // 10. Evidence brief surfaces mechanical sections (informational — not hard fail
+  // because some repos legitimately have no metrics/evolution).
   const briefPath = join(dir, "evidence-brief.md");
   if (existsSync(briefPath)) {
     const briefText = readFileSync(briefPath, "utf-8");
-    // Informational check: brief should mention at least one new section header
-    const hasDesignPatternsHeader = /Design Patterns/i.test(briefText);
-    const hasArchMetricsHeader = /Architecture Metrics/i.test(briefText);
-    const hasEvolutionHeader = /Repository Evolution|Architecture Evolution/i.test(briefText);
-    const hasObjectGraphHeader = /Research Object Graph/i.test(briefText);
+    // Informational check: brief should mention at least one mechanical section header
+    const hasArchMetricsHeader = /Architecture Metrics|Structural Metrics/i.test(briefText);
+    const hasEvolutionHeader = /Repository Evolution|Architecture Evolution|Git History/i.test(briefText);
+    const hasObjectGraphHeader = /Research Object Graph|Research Objects/i.test(briefText);
     const newSectionCount = [
-      hasDesignPatternsHeader, hasArchMetricsHeader,
-      hasEvolutionHeader, hasObjectGraphHeader,
+      hasArchMetricsHeader,
+      hasEvolutionHeader,
+      hasObjectGraphHeader,
     ].filter(Boolean).length;
     check(
-      "evidence-brief surfaces >= 1 new analyzer section",
+      "evidence-brief surfaces >= 1 mechanical analyzer section",
       newSectionCount >= 1,
-      "Evidence brief does not surface any of: Design Patterns / Architecture Metrics / Repository Evolution / Research Object Graph"
+      "Evidence brief does not surface any of: Architecture Metrics / Repository Evolution / Research Object Graph"
     );
   }
 

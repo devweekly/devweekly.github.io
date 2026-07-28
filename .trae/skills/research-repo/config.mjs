@@ -242,79 +242,6 @@ const CI_FILES = [
 ];
 
 // ---------------------------------------------------------------------------
-// Research Brain Configuration
-//
-// The Brain is a global, persistent knowledge base that accumulates across
-// all repository research sessions. It stores abstractions (patterns,
-// decisions, tradeoffs, anti-patterns, ontology, concept graph) — NOT code.
-//
-//   brain/
-//   ├── patterns/         — reusable architecture patterns (planner-executor, event-bus, …)
-//   ├── decisions/        — why a design was chosen + applicable conditions
-//   ├── tradeoffs/        — pros/cons/boundaries of each design
-//   ├── anti-patterns/    — common design problems + failure cases
-//   ├── ontology/         — unified engineering vocabulary
-//   ├── concept-graph.json — relationships between patterns/decisions/repos
-//   └── index.json        — fast lookup index
-// ---------------------------------------------------------------------------
-
-// Default Brain root. Resolved relative to repo research workspace, or
-// override with RESEARCH_BRAIN_DIR env var.
-const BRAIN_DIR = process.env.RESEARCH_BRAIN_DIR || "brain";
-
-// Knowledge Unit types — each type lives in its own subdirectory.
-const KNOWLEDGE_TYPES = {
-  pattern: {
-    dir: "patterns",
-    idPrefix: "pattern",
-    description: "Reusable architecture pattern observed across multiple repos",
-  },
-  decision: {
-    dir: "decisions",
-    idPrefix: "decision",
-    description: "Engineering design decision with applicable conditions",
-  },
-  tradeoff: {
-    dir: "tradeoffs",
-    idPrefix: "tradeoff",
-    description: "Benefit/cost/boundary of a design choice",
-  },
-  "anti-pattern": {
-    dir: "anti-patterns",
-    idPrefix: "antipattern",
-    description: "Common design problem with failure cases",
-  },
-  term: {
-    dir: "ontology",
-    idPrefix: "term",
-    description: "Unified engineering vocabulary term",
-  },
-};
-
-// Confidence increment when a pattern is re-observed in a new repository.
-// Each new observation strengthens the pattern but with diminishing returns.
-const CONFIDENCE_INCREMENT = 0.05;
-const CONFIDENCE_MAX = 0.99;
-const CONFIDENCE_MIN = 0.0;
-
-// Minimum observations required before a pattern is considered "established".
-const ESTABLISHED_PATTERN_THRESHOLD = 3;
-
-// Concept Graph relationship types
-const CONCEPT_RELATIONS = [
-  "produces",      // Planner produces Plan
-  "executed_by",   // Plan executed_by Runner
-  "calls",         // Runner calls Tool
-  "returns",       // Tool returns Observation
-  "updates",       // Observation updates Memory
-  "alternative_to",// Event Bus alternative_to Message Queue
-  "requires",      // Checkpoint requires State Store
-  "conflicts_with",// Sync Loop conflicts_with Async Event
-  "observed_in",   // Pattern observed_in Repository
-  "contradicts",   // Anti-pattern contradicts Pattern
-];
-
-// ---------------------------------------------------------------------------
 // findNodeModules — locate nearest node_modules directory
 // ---------------------------------------------------------------------------
 /**
@@ -360,12 +287,4 @@ export {
   EVAL_DIR_NAMES,
   CI_FILES,
   findNodeModules,
-  // Research Brain
-  BRAIN_DIR,
-  KNOWLEDGE_TYPES,
-  CONFIDENCE_INCREMENT,
-  CONFIDENCE_MAX,
-  CONFIDENCE_MIN,
-  ESTABLISHED_PATTERN_THRESHOLD,
-  CONCEPT_RELATIONS,
 };

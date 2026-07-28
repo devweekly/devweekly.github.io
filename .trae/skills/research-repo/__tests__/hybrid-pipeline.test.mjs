@@ -43,7 +43,10 @@ describe("llm-runner", () => {
   });
 
   it("DEFAULT_LLM_OPTIONS has expected fields", () => {
-    assert.strictEqual(DEFAULT_LLM_OPTIONS.model, "gpt-5");
+    assert.strictEqual(
+      DEFAULT_LLM_OPTIONS.model,
+      "opencode/deepseek-v4-flash-free"
+    );
     assert.strictEqual(DEFAULT_LLM_OPTIONS.jsonMode, false);
     assert.strictEqual(DEFAULT_LLM_OPTIONS.systemPrompt, null);
   });
@@ -164,7 +167,10 @@ describe("Hybrid pipeline analyzer classification", () => {
 
   it("DEFAULT_HYBRID_OPTIONS has expected defaults", () => {
     assert.strictEqual(DEFAULT_HYBRID_OPTIONS.skillPrompt, "07-report-writer.md");
-    assert.strictEqual(DEFAULT_HYBRID_OPTIONS.model, "gpt-5");
+    assert.strictEqual(
+      DEFAULT_HYBRID_OPTIONS.model,
+      "opencode/deepseek-v4-flash-free"
+    );
     assert.strictEqual(DEFAULT_HYBRID_OPTIONS.outputFormat, "markdown");
     assert.strictEqual(DEFAULT_HYBRID_OPTIONS.returnEvidenceBrief, false);
   });
