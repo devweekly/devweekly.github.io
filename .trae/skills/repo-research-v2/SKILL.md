@@ -1,521 +1,221 @@
-# Repository Research Skill
+---
+name: "repo-research-v2"
+description: "对开源 Repository 进行深度架构研究，提炼其设计思想、工程约束、架构决策与可复用模式。当用户要求研究/分析某个仓库的架构、设计模式或工程实现时调用。"
+---
 
-Version: 2.0
+# Repository 研究
+
+> 对开源 Repository 进行深度架构研究，目标是理解系统的设计思想、工程约束与架构决策，而非仅仅总结代码。
 
 ---
 
-# Mission
+## 目标
 
-This skill performs deep architectural research on a software repository.
+研究的最终目标**不是**总结代码，而是重建：
 
-The objective is **not** to summarize code.
+- 系统如何工作
+- 为什么这样设计
+- 哪些工程约束塑造了当前架构
+- 做出了哪些架构决策
+- 哪些思想可以迁移到其他系统
 
-The objective is to reconstruct:
-
-- how the system works,
-- why it is designed this way,
-- which engineering constraints shaped it,
-- what architectural decisions were made,
-- which ideas are reusable in other systems.
-
-The final report should help an experienced engineer understand the repository at the level of its original maintainers.
+报告应帮助有经验的工程师达到原维护者级别的理解。
 
 ---
 
-# Core Principles
+## 核心原则
 
-Every research task must follow these principles.
-
-## Principle 1
-
-Evidence precedes interpretation.
-
-Never infer architectural intent before collecting evidence.
-
-All conclusions must originate from verified repository evidence.
+| 原则 | 要求 |
+|------|------|
+| **证据先于解释** | 收集证据前不得推断架构意图。所有结论必须源自可验证的仓库证据。 |
+| **结构先于解释** | 必须先重建仓库结构，再进行架构解释。不直接从源码跳到结论，始终建立中间知识模型。 |
+| **允许推理，禁止捏造** | 鼓励推理，但禁止捏造证据。每个非平凡陈述必须可追溯。 |
+| **研究是为了理解** | 目标是理解工程决策，不是生成文档、画图或总结 README。 |
+| **报告只是渲染器** | 所有推理在报告生成前完成。报告不发明新结论，只组织已验证的发现。 |
 
 ---
 
-## Principle 2
+## 研究范围
 
-Structure precedes explanation.
+**聚焦仓库架构**，典型研究目标：
 
-Repository structure must be reconstructed before attempting architectural interpretation.
+- 架构与子系统边界
+- 依赖结构与能力分解
+- 工程哲学与设计约束
+- 架构演进与重大权衡
+- 可维护性与扩展机制
+- 运行时模型与插件系统
+- 公共 API 设计与测试策略
+- 部署模型与配置模型
+- 可复用的工程思想
 
-Do not jump directly from source code to conclusions.
+**不研究**（属于其他专项 skill 的职责）：
 
-Always establish an intermediate knowledge model.
-
----
-
-## Principle 3
-
-Inference is allowed.
-
-Fabrication is forbidden.
-
-Reasoning is encouraged.
-
-Inventing evidence is prohibited.
-
-Every non-trivial statement must be traceable.
+- 安全审计 / 漏洞扫描
+- 代码风格检查 / Lint / 格式化
+- 许可证审查 / 依赖更新
+- 性能基准测试 / Bug 修复 / 代码生成
 
 ---
 
-## Principle 4
+## 研究输入
 
-Research favors understanding.
+仓库可能包含以下信息的任意子集：
 
-The goal is understanding engineering decisions.
+- 源代码
+- 文档 / ADR / RFC / README
+- 配置 / 构建脚本
+- 测试
+- Git 历史
+- 包元数据 / 指标
 
-Not producing documentation.
-
-Not generating pretty diagrams.
-
-Not summarizing README files.
-
----
-
-## Principle 5
-
-Reports are renderers.
-
-All reasoning happens before report generation.
-
-The report should never invent new conclusions.
-
-It only organizes validated findings.
+当信息缺失时，研究必须能优雅降级。
 
 ---
 
-# Research Scope
+## 研究 Pipeline
 
-This skill focuses on repository architecture.
+Pipeline 由 4 个阶段组成，每个阶段职责单一，不重叠：
 
-Typical research targets include
+```
+Stage 0: 机械分析（Mechanical Analysis）
+    ↓ 收集客观仓库证据
+Stage 1: 知识建模（Knowledge Modeling）
+    ↓ 将证据转化为仓库知识模型
+Stage 2: 架构解释（Architectural Interpretation）
+    ↓ 用知识模型解释工程决策
+Stage 3: 叙事渲染（Narrative Rendering）
+    ↓ 生成人类可读的研究报告
+```
 
-- architecture
+### Stage 0 — 机械分析
 
-- subsystem boundaries
+**目的**：收集客观仓库证据。
 
-- dependency structure
+**典型证据**：目录结构、依赖图、import 图、package 图、符号、公共 API、Git 历史、文档、配置、指标。
 
-- capability decomposition
+**约束**：此阶段不进行任何架构解释。
 
-- engineering philosophy
+### Stage 1 — 知识建模
 
-- design constraints
+**目的**：将机械证据转化为仓库知识模型。
 
-- architectural evolution
+**知识模型描述**：能力（capabilities）、归属（ownership）、关系（relationships）、演进（evolution）。
 
-- major trade-offs
+**约束**：此阶段只描述事实，不解释"为什么"。
 
-- maintainability
+### Stage 2 — 架构解释
 
-- extension mechanisms
+**目的**：用知识模型解释工程决策。
 
-- runtime model
+**典型输出**：约束（constraints）、设计决策（design decisions）、架构张力（architectural tensions）、有意省略（deliberate omissions）、杠杆点（leverage points）、维护者心智模型（maintainer mental model）。
 
-- plugin systems
+**约束**：每个解释必须引用证据。
 
-- public API design
+### Stage 3 — 叙事渲染
 
-- testing strategy
+**目的**：生成人类可读的研究报告。
 
-- deployment model
-
-- configuration model
-
-- reusable engineering ideas
-
----
-
-# Out of Scope
-
-This skill is not intended for
-
-- security auditing
-
-- vulnerability scanning
-
-- style checking
-
-- linting
-
-- formatting
-
-- license review
-
-- dependency updates
-
-- performance benchmarking
-
-- bug fixing
-
-- code generation
-
-These tasks belong to specialized skills.
+**约束**：渲染器不执行推理，只将已验证的发现组织成连贯叙事。
 
 ---
 
-# Research Inputs
+## 证据策略
 
-The repository may contain
+每个结论必须至少满足以下一项证据来源：
 
-- source code
+| 证据来源 | 说明 |
+|---------|------|
+| 源代码 | 实现层面的直接证据 |
+| 文档 | README / ADR / RFC / 设计文档 |
+| 配置 | 构建配置 / CI 配置 / 部署配置 |
+| 测试 | 测试用例反映的预期行为 |
+| Git 历史 | 提交历史反映的演进意图 |
+| 仓库元数据 | package.json / Cargo.toml 等 |
 
-- documentation
-
-- ADRs
-
-- RFCs
-
-- README
-
-- configuration
-
-- build scripts
-
-- tests
-
-- git history
-
-- package metadata
-
-- metrics
-
-Any subset may be available.
-
-Research must gracefully degrade when information is missing.
+**无证据支持的声明必须标记为 Unknown。**
 
 ---
 
-# Research Pipeline
+## 置信度
 
-The pipeline consists of four stages.
+每个解释应包含置信度估计。置信度反映证据质量，而非模型确定性。
 
-Mechanical Analysis
-
-↓
-
-Knowledge Modeling
-
-↓
-
-Architectural Interpretation
-
-↓
-
-Narrative Rendering
-
-Each stage has a single responsibility.
-
-Stages must not overlap responsibilities.
+| 等级 | 要求 |
+|------|------|
+| **High** | 多个独立证据来源相互支持 |
+| **Medium** | 证据存在，但解释仍有不确定性 |
+| **Low** | 证据薄弱或仅间接推断 |
 
 ---
 
-# Stage 0
+## Unknown 处理
 
-Mechanical Analysis
+仓库可能无法提供足够信息。Unknown 不应被隐藏，必须主动分类：
 
-Purpose
-
-Collect objective repository evidence.
-
-Typical evidence includes
-
-- directory structure
-
-- dependency graph
-
-- import graph
-
-- package graph
-
-- symbols
-
-- public APIs
-
-- git history
-
-- documentation
-
-- configuration
-
-- metrics
-
-This stage performs no architectural interpretation.
+| Unknown 类型 | 含义 |
+|-------------|------|
+| **Need More Code** | 需要更多源代码阅读 |
+| **Need Documentation** | 需要文档支持 |
+| **Need Git History** | 需要 Git 历史分析 |
+| **Need External Information** | 需要 Issue / PR / Discussion 等外部信息 |
+| **Impossible To Verify** | 即使深入阅读也无法验证（如设计意图） |
 
 ---
 
-# Stage 1
+## 研究哲学
 
-Knowledge Modeling
-
-Purpose
-
-Convert mechanical evidence into a repository knowledge model.
-
-The knowledge model describes
-
-- capabilities
-
-- ownership
-
-- relationships
-
-- evolution
-
-This stage describes facts.
-
-It does not explain why.
+- **深度理解** 优于 **广泛覆盖**
+- **已验证的结论** 优于 **有趣的推测**
+- **工程推理** 优于 **架构 buzzword**
+- **维护者意图** 优于 **模式匹配**
 
 ---
 
-# Stage 2
+## 报告交付物
 
-Architectural Interpretation
+最终报告应包含以下章节：
 
-Purpose
-
-Explain engineering decisions using the knowledge model.
-
-Typical outputs include
-
-- constraints
-
-- design decisions
-
-- architectural tensions
-
-- deliberate omissions
-
-- leverage points
-
-- maintainer mental model
-
-Every interpretation must reference evidence.
+1. **Repository Overview** — 仓库概览
+2. **Repository Mental Model** — 维护者心智模型
+3. **Engineering Constraints** — 工程约束
+4. **Capability Map** — 能力地图
+5. **Architecture** — 架构
+6. **Evolution** — 架构演进
+7. **Key Decisions** — 关键决策
+8. **Design Tensions** — 设计张力
+9. **Architectural Leverage** — 架构杠杆点
+10. **Reusable Patterns** — 可复用模式
+11. **Risks** — 风险
+12. **Lessons Learned** — 经验教训
+13. **Unknowns** — 未知项
+14. **Evidence Quality Summary** — 证据质量摘要
 
 ---
 
-# Stage 3
+## 质量要求
 
-Narrative Rendering
+报告应能回答以下问题：
 
-Purpose
-
-Generate a human-readable research report.
-
-The renderer does not perform reasoning.
-
-It organizes existing findings into a coherent narrative.
-
----
-
-# Quality Requirements
-
-Every research report should answer the following questions.
-
-## System
-
-How does the repository work?
+- 系统如何工作？
+- 系统如何组织？
+- 为什么做出这些架构决策？
+- 哪些工程约束影响了设计？
+- 架构如何演进？
+- 有意牺牲了什么？
+- 维护者如何心智划分系统？
+- 哪些思想在本仓库之外仍有价值？
 
 ---
 
-## Architecture
+## 成功标准
 
-How is the system organized?
+一份成功的研究报告应让有经验的工程师能够回答：
 
----
+- 这个仓库如何工作？
+- 为什么这样设计？
+- 我应该从中学到什么？
+- 哪些思想值得复用？
+- 哪些工程错误被有意避免？
 
-## Decisions
-
-Why were these architectural decisions made?
-
----
-
-## Constraints
-
-Which engineering constraints influenced the design?
-
----
-
-## Evolution
-
-How has the architecture evolved?
-
----
-
-## Trade-offs
-
-What was intentionally sacrificed?
-
----
-
-## Mental Model
-
-How do the maintainers mentally divide the system?
-
----
-
-## Reusability
-
-Which ideas are valuable outside this repository?
-
----
-
-# Evidence Policy
-
-Every conclusion must satisfy at least one of the following.
-
-Derived from
-
-- source code
-
-- documentation
-
-- configuration
-
-- tests
-
-- git history
-
-- repository metadata
-
-Unsupported claims must be marked as unknown.
-
----
-
-# Unknown Handling
-
-The repository may not contain enough information.
-
-Unknowns should never be hidden.
-
-Classify unknowns as
-
-Need More Code
-
-Need Documentation
-
-Need Git History
-
-Need External Information
-
-Impossible To Verify
-
----
-
-# Confidence
-
-Every interpretation should include a confidence estimate.
-
-Confidence reflects evidence quality.
-
-Not model certainty.
-
-Typical guidance
-
-High
-
-Multiple independent evidence sources.
-
-Medium
-
-Evidence exists but interpretation remains uncertain.
-
-Low
-
-Weak evidence or indirect inference.
-
----
-
-# Research Philosophy
-
-Prefer
-
-deep understanding
-
-over
-
-broad coverage.
-
-Prefer
-
-verified conclusions
-
-over
-
-interesting speculation.
-
-Prefer
-
-engineering reasoning
-
-over
-
-architectural buzzwords.
-
-Prefer
-
-maintainer intent
-
-over
-
-pattern matching.
-
----
-
-# Deliverables
-
-The final output should include
-
-Repository Overview
-
-Repository Mental Model
-
-Engineering Constraints
-
-Capability Map
-
-Architecture
-
-Evolution
-
-Key Decisions
-
-Design Tensions
-
-Architectural Leverage
-
-Reusable Patterns
-
-Risks
-
-Lessons Learned
-
-Unknowns
-
-Evidence Quality Summary
-
----
-
-# Success Criteria
-
-A successful research report enables an experienced engineer to answer
-
-How does this repository work?
-
-Why is it designed this way?
-
-What should I learn from it?
-
-What ideas deserve reuse?
-
-What engineering mistakes were intentionally avoided?
-
-If those questions cannot be answered,
-
-the research is incomplete.
-
----
+如果这些问题无法回答，研究尚未完成。
