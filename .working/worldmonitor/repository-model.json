@@ -1,32 +1,121 @@
 {
-  "structure": [
-    "ES module modules separation (src/server/api/tests/e2e/scripts)",
-    "Boundary enforcement via lint-boundaries + sebuf-api-contract",
-    "Filesystem routing hierarchy (concrete → dynamic → catch-all)",
-    "Multi-layer lint pipeline (biome + safe-html + contract)"
-  ],
-  "behavior": [
-    "Filesystem routing precedence: concrete > nested dynamic > catch-all",
-    "A2A + NLWeb concierge routing with token-overlap scoring",
-    "RFC 9728/8414 host-derived agent metadata discovery",
-    "AI news aggregation → geopolitical monitoring pipeline"
-  ],
-  "ownership": [
-    "Private v2.10.0 AGPL-3.0 project with Discord community",
-    "Ownership rule: update ARCHITECTURE.md when topology/API/runtime changes",
-    "CI-verified capability counts from `npm run docs:check`",
-    "Real-time global intelligence dashboard domain responsibility"
-  ],
-  "extension": [
-    "A2A endpoint for agent-to-agent communication",
-    "NLWeb /ask endpoint with tool-suggest routing",
-    "OAuth protected-resource + authorization-server metadata",
-    "Anonymous tool discovery via name-overlap token scoring"
-  ],
-  "evolution": [
-    "ES modules migration (type: module)",
-    "Filesystem-based routing replacing manual route tables",
-    "Agent-readiness discovery layer added to API surface",
-    "Custom lint tooling for boundary/contract enforcement"
-  ]
+  "repository_type": "Web Service",
+  "archetype": "Multi-platform intelligence dashboard with agent-readiness as first-class invariant",
+  "structure": {
+    "top_level_directories": {
+      "api/": "Vercel Edge Functions (self-contained JS, per-domain bundling, no node: imports, no cross-dir imports)",
+      "server/": "Server-side code bundled into Edge Functions (gateway.ts, router.ts, _shared/, worldmonitor/<domain>/handlers)",
+      "src/": "Browser SPA (TypeScript) — components, services, workers, config, generated proto stubs",
+      "src-tauri/": "Tauri 2 desktop shell (Rust) + Node.js sidecar (local API server)",
+      "proto/": "Protobuf service definitions (sebuf framework, 281 protos, 35 services)",
+      "convex/": "Convex backend (entitlements, API keys, user prefs, webhooks, followed-countries locking)",
+      "scripts/": "Seed scripts (Railway), build helpers, AIS relay service",
+      "tests/": "Unit/integration (node:test), edge-function guardrails",
+      "e2e/": "Playwright E2E specs per variant",
+      "cli/": "Official worldmonitor npm CLI (zero-dep ESM, MCP-first)",
+      "sdk/": "SDK ecosystems: python/, ruby/, go/ (OIDC trusted publishing)",
+      "workers/": "Cloudflare Workers (edge CORS preflight for api.worldmonitor.app)",
+      "consumer-prices-core/": "Playwright price scrapers (per-country baskets, Railway/Docker)"
+    },
+    "boundary_enforcement": [
+      "Edge Function self-containment: tests/edge-functions.test.mjs rejects node: built-in imports, ../server/ and ../src/ cross-directory imports",
+      "Pre-push esbuild bundle check per endpoint",
+      "proto-check.yml CI enforces generated code freshness (make generate must match committed output)",
+      "lint:api-contract enforces api/api-route-exceptions.json — hand-written endpoints that cannot be proto-defined are explicitly listed",
+      "docs:check CI enforces ARCHITECTURE.md capability counts against stats.json"
+    ],
+    "module_organization": "Domain-driven: api/<domain>/v<N>/[rpc].ts mirrors proto/<domain>/ structure, server/worldmonitor/<domain>/v1/handler.ts holds handler logic. Domains include aviation, climate, conflict, cyber, economic, energy, maritime, military, natural-disasters, etc."
+  },
+  "behavior": {
+    "request_lifecycle": {
+      "entry": "Vercel Edge Function (api/<domain>/v<N>/[rpc].ts) or operational endpoint (api/<op>.ts)",
+      "pipeline": [
+        "Origin check (403 if disallowed)",
+        "CORS headers",
+        "OPTIONS preflight short-circuit",
+        "API key validation (origin-aware: desktop requires key, trusted browser exempt)",
+        "Rate limiting (endpoint-specific, then global fallback) — Upstash sliding window",
+        "Route matching (Map O(1) static → linear dynamic {param} scan)",
+        "POST-to-GET compatibility (for stale clients)",
+        "Handler execution with error boundary",
+        "ETag generation (FNV-1a hash) + 304 Not Modified",
+        "Cache header application (8 tiers: fast/medium/slow/slow-browser/static/daily/no-store/live)"
+      ],
+      "cache_path": "Bootstrap seed (Railway→Redis) → in-memory (per Vercel instance) → Redis (cross-instance, cachedFetchJson coalesces concurrent misses) → upstream API fetch (result cached back + seed-meta written)"
+    },
+    "mcp_request_lifecycle": {
+      "entry": "api/mcp.ts (Streamable HTTP)",
+      "anonymous_phase": "initialize + publicMethods (tools/list, prompts/list, resources/list, ping, logging/setLevel) — no auth required, agent-readiness discovery surface",
+      "authenticated_phase": "tools/call — requires X-WorldMonitor-Key header or OAuth; Pro/user_key contexts get INCR-first quota reservation (50/day cap, resets UTC midnight)",
+      "tool_execution": "tool._execute (RPC tools) or executeTool (cache tools reading Upstash directly); JMESPath projection; budget gate (utf8ByteLength vs _outputBudgetBytes); no-refund on error (GHSA-hcq5)"
+    },
+    "spa_init": "8 phases: Storage+i18n → ML Worker (ONNX) → Sidecar (desktop only) → Bootstrap (2-tier concurrent, fast 3s + slow 5s) → Layout → UI → Data (parallel loadAllData + viewport-conditional primeVisiblePanelData) → Refresh (variant-specific polling, exponential backoff max 4x, viewport-conditional, tab-pause)",
+    "seed_loops": "Railway AIS relay runs continuous seed loops: market data, aviation delays, positive events, GPSJAM, risk scores (CII), UCDP events. Each uses atomicPublish (Redis SET NX lock → validate → write key → write seed-meta → release lock).",
+    "desktop_runtime": "Tauri Rust shell (lifecycle, system tray, IPC) → Node.js sidecar on dynamic port → dynamically loads Edge Function handler modules from api/ → injects keyring secrets via env vars → monkey-patches globalThis.fetch to force IPv4 (government APIs have broken IPv6). Renderer fetch patch routes /api/* to sidecar with 5-min TTL Bearer token; falls back to cloud API on sidecar failure."
+  },
+  "ownership": {
+    "state_ownership": {
+      "Upstash Redis": "Cache layer (4-tier), stampede protection (cachedFetchJson coalescing), seed-meta freshness tracking, rate limiting (sliding window), internal-MCP replay nonce cache, idempotency keys",
+      "Convex": "Entitlements (Pro/Enterprise tier gating), API keys (hashed), user preferences (with syncVersion optimistic concurrency), followed-countries (sharded + TTL-locked), contact form, waitlist, webhooks (payments, Resend)",
+      "Railway": "AIS WebSocket relay, seed loop processes, consumer-prices Playwright scrapers",
+      "Browser AppContext": "Map references, panel instances, panel/layer settings, cached data (news/markets/predictions/clusters), in-flight request tracking, UI component references",
+      "localStorage": "Panel row/col spans, variant override",
+      "URL state": "Bidirectional sync with AppContext (debounced 250ms) via urlState.ts",
+      "Platform keyring": "Desktop secrets (macOS Keychain, Windows Credential Manager, Linux keyring) — never plaintext"
+    },
+    "deployment_ownership": {
+      "Vercel": "SPA hosting + Edge Functions + middleware (bot filtering, social OG)",
+      "Cloudflare": "CORS preflight worker (api.worldmonitor.app) + zone config (apex→www redirect with exemption list)",
+      "Railway": "AIS relay + seed loops + consumer prices",
+      "Convex Cloud": "Backend functions + database",
+      "Mintlify": "Documentation (proxied through Vercel at /docs)",
+      "GHCR": "Multi-arch Docker image (nginx serving built SPA, proxies API to upstream)",
+      "Tauri": "Desktop binaries (macOS ARM64/x64, Windows x64, Linux x64/ARM64)"
+    },
+    "ci_ownership": "20+ GitHub workflows. deploy-gate.yml aggregates required smoke-gate statuses onto head SHA for branch protection. mcp-live-smoke.yml (6-hourly) is the regression net for #4937/#4938. seed-freshness-monitor.yml (15-min cron) checks production seed metadata freshness."
+  },
+  "extension": {
+    "agent_readiness": {
+      "mcp_server": "https://worldmonitor.app/mcp (Streamable HTTP). Public tools/list; tools/call authenticates with X-WorldMonitor-Key or OAuth.",
+      "rfc_9728": "Protected-resource metadata (oauth-protected-resource.ts) — host-derived with spoofing guard",
+      "rfc_8414": "Authorization-server metadata (oauth-authorization-server.ts) — host-derived with spoofing guard",
+      "llms_txt": "https://worldmonitor.app/llms.txt",
+      "agent_skills_manifest": ".well-known/agent-skills/index.json",
+      "api_catalog": ".well-known/api-catalog (RFC 9727)",
+      "a2a_endpoint": "api/a2a.ts — agent-to-agent communication with token-overlap concierge routing",
+      "nlweb_endpoint": "api/ask.ts — NLWeb /ask with tool-suggest routing"
+    },
+    "sdk_ecosystem": {
+      "npm_cli": "worldmonitor package (cli/), zero-dep ESM, MCP-first, OIDC trusted publishing",
+      "python_sdk": "worldmonitor-sdk (sdk/python/), PyPI, OIDC trusted publishing with attestations",
+      "ruby_sdk": "worldmonitor gem (sdk/ruby/), RubyGems OIDC trusted publishing",
+      "go_sdk": "github.com/koala73/worldmonitor/sdk/go (sdk/go/), go-gettable, pkg.go.dev indexed"
+    },
+    "variant_system": "6 site variants (world, tech, finance, commodity, happy, energy) from single codebase. Detected by hostname or localStorage on desktop. Controls: default panels, map layers, refresh intervals, theme, UI text. Variant change resets all settings to defaults.",
+    "extension_points": [
+      "New upstream provider: seed script + Redis key + health check + (optional) proto RPC + panel",
+      "New RPC: proto definition + buf generate + handler + gateway route + edge function file",
+      "New site variant: hostname detection + variant config + CI build matrix",
+      "New MCP tool: registry entry + (optional) _execute + quota policy + describe_tool exemption check",
+      "New domain: api/<domain>/ directory + server/worldmonitor/<domain>/ handler + proto/<domain>/ definitions"
+    ]
+  },
+  "evolution": {
+    "documented_changes": [
+      "Filesystem-based routing replacing manual route tables (per ARCHITECTURE.md ownership rule + repository-model.json)",
+      "ES modules migration (type: module) — no CommonJS require()",
+      "Agent-readiness discovery layer added to API surface (MCP, RFC 9728/8414, llms.txt, agent-skills, api-catalog)",
+      "Custom lint tooling for boundary/contract enforcement (lint:api-contract, edge-functions.test.mjs guardrails)",
+      "Per-domain Edge Function bundling via esbuild (claimed ~20× cold-start reduction)",
+      "'live' cache tier (60s) added for energy-atlas live-tanker map layer — shorter than existing 'fast' (300s) tier, kept untouched to avoid impacting unrelated endpoints"
+    ],
+    "issue_driven_invariants": [
+      "#4937: MCP anonymous/authenticated method split — a 401 on a gated method hangs MCP SDK transports to 30s timeout",
+      "#4938: Cloudflare apex→www redirect breaks OAuth dynamic client registration — a redirected POST becomes GET and dies with 405",
+      "GHSA-hcq5: No-refund on tool execution error — refunding let Pro token bypass daily cap by driving calls that reliably error after costly fetch",
+      "#4497: live-api-cache-auth.yml regression net — fake auth stays no-store and never cached 200; was inert until #5379 wired the gate on",
+      "#4838: api/_agent-tool-suggest.ts kept as route-less helper (underscore prefix) so neither A2A nor /ask cold-start depends on the other's module-level guards"
+    ],
+    "missing_history": "No ADR (Architecture Decision Record) directory. Decision rationale (why token-overlap not NLU, why AGPL, why 5-platform split) lives in code comments and ARCHITECTURE.md prose, not structured decision records. Issue numbers (#4937, #4938, GHSA-hcq5) are the closest thing to decision provenance."
+  }
 }

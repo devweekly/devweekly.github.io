@@ -12,9 +12,10 @@
       "round": 2,
       "file": "round-2.json",
       "purpose": "discovery+critical",
-      "status": "active",
+      "status": "closed",
       "answered": 10,
-      "validated": 7
+      "validated": 10,
+      "closure_reason": "All 10 Round-2 questions answered with high/medium confidence. Coverage thresholds met (4+ dimensions ≥ 0.5). Model challenged on 5 key assumptions. Converged to stable."
     }
   ]
 }
