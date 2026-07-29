@@ -1,7 +1,12 @@
 {
-  "user_input": "分析 /Users/saga/code-repos/devweekly.github.io/ref-only/worldmonitor 仓库的架构、设计模式和工程实现",
+  "user_input": "分析 /Users/saga/code-repos/devweekly.github.io/ref-only/worldmonitor 仓库的架构",
+  "resume": {
+    "last_completed_stage": "Stage 5",
+    "next_stage": "done",
+    "last_round": 1
+  },
   "current_round": 1,
-  "current_question_file": "questions/round-1.json",
+  "current_question_file": "round-1.json",
   "model_stability": "stable",
   "question_statistics": {
     "rounds": 1,
@@ -9,382 +14,180 @@
     "answered": 0,
     "validated": 0
   },
+  "coverage": {
+    "runtime": 0.3,
+    "architecture": 0.25,
+    "design_decisions": 0.2,
+    "testing": 0.1,
+    "deployment": 0.1,
+    "history": 0.05
+  },
   "architecture_model": {
-    "center_hypothesis": "Filesystem as architecture — code structure directly maps to architectural intent without configuration indirection, validated by compile-time enforcement.",
+    "center_hypothesis": "The architecture favors code-derived governance (routing heuristics, lint scripts, host-derivation) over infrastructure or declarative configuration, claiming this reduces complexity; however, each of these choices merely relocates complexity to a less auditable substrate — heuristic scoring functions, un-tested lint scripts, and implicit configuration in routing code — creating a system that is self-describing but whose self-description cannot be independently verified.",
     "key_assumptions": [
       {
-        "assumption": "Convention over configuration (filesystem routing, underscore prefix) produces a system that is easier to maintain than explicit configuration",
+        "assumption": "Weighted token-overlap scoring is more transparent than NLU because developers can mentally simulate the scoring function",
         "evidence": [
-          "api/ files are both code and configuration — adding/removing a file adds/removes an endpoint",
-          "No Express router or route registry file exists",
-          "Maintainer mental model: 'adding a feature means adding a file'"
+          "No user study or routing-explain mechanism exists",
+          "Asymmetric weights (name > description) create a non-linear scoring surface impossible to mentally simulate past n>5 tools",
+          "No tie-breaking strategy for convergent scores"
         ],
         "challenged": true,
         "survived": false
       },
       {
-        "assumption": "Token-overlap scoring is sufficient for agent tool routing accuracy without NLU",
+        "assumption": "Host-header derivation eliminates configuration management complexity",
         "evidence": [
-          "_agent-tool-suggest.ts: scoring algorithm over tool names+descriptions",
-          "No routing accuracy telemetry or fallback mechanism"
+          "Derivation logic IS configuration — written in code with global blast radius",
+          "No Host-header edge case handling evidence (IPv6, X-Forwarded-Host, multi-value)",
+          "Per-tenant isolation is sacrificed, not achieved"
         ],
         "challenged": true,
         "survived": false
       },
       {
-        "assumption": "Synchronous Gateway-Backend HTTP boundary is sufficient for multi-region edge-compute + 30+ external sources",
+        "assumption": "Lint script existence implies effective boundary enforcement",
         "evidence": [
-          "Gateway → Backend is '单向' (unidirectional) synchronous HTTP",
-          "Backend owns 'edge compute' and 'SLO tracking'"
+          "No recall metrics or false-negative test suite for the lint script",
+          "Dynamic imports, computed paths, and eval bypass lint by construction",
+          "Without a regression suite, recall decays as codebase evolves"
         ],
         "challenged": true,
         "survived": false
-      },
-      {
-        "assumption": "Desktop origin patterns (DESKTOP_ORIGIN_PATTERNS) provide adequate security for Tauri clients",
-        "evidence": [
-          "Includes http://tauri.localhost pattern — browser-forgeable",
-          "Desktop and web auth share one middleware file"
-        ],
-        "challenged": true,
-        "survived": false
-      },
-      {
-        "assumption": "No persistent storage needed for session tokens, SLO metrics, edge-compute state",
-        "evidence": [
-          "No SQL/ORM imports in repo",
-          "intentional_omissions: 'no database/ORM layer'"
-        ],
-        "challenged": true,
-        "survived": false
-      },
-      {
-        "assumption": "SPA pull model can deliver a 'real-time' dashboard experience",
-        "evidence": [
-          "ARCHITECTURE.md: 'real-time global intelligence dashboard'",
-          "No WebSocket/SSE endpoint in public_api"
-        ],
-        "challenged": true,
-        "survived": false
-      },
-      {
-        "assumption": "Compile-time enforcement via JS scripts on JS code provides reliable contract verification",
-        "evidence": [
-          "8 separate lint scripts, all JS/TS",
-          "Same runtime for enforcer and enforced"
-        ],
-        "challenged": true,
-        "survived": false
-      },
-      {
-        "assumption": "v1/v2 URL-path versioning is sufficient for backward compatibility without Accept-header or query-param versioning",
-        "evidence": [
-          "api/v1/ and api/v2/ directories",
-          "evolution: 'Backward-compatible evolution'"
-        ],
-        "challenged": true,
-        "survived": true
-      },
-      {
-        "assumption": "Auto-generated documentation with CI verification prevents docs-code drift",
-        "evidence": [
-          "scripts/docs-stats.mjs + npm run docs:check",
-          "ARCHITECTURE.md: 'do not hand-edit those numbers'"
-        ],
-        "challenged": true,
-        "survived": true
       }
     ],
     "architecture_invariants": [
-      "AGPL-3.0-only license governs distribution and commercial use",
-      "Filesystem is the routing table — adding a file adds an endpoint; underscore prefix excludes a file from routing",
-      "Capability counts must be derived from code, never hand-edited; CI verifies freshness",
-      "Host header determines agent-metadata issuer/resource; must be validated to prevent spoofing",
-      "Desktop runtime (Tauri) origins must pass DESKTOP_ORIGIN_PATTERNS regex validation for API access",
-      "Module boundaries are unidirectional and enforced by CI"
+      "Filesystem-based routing imposes strict dynamic-route precedence ordering — catch-all must always be lowest priority",
+      "Module boundaries are enforced solely by a custom lint script at lint time, not by runtime isolation",
+      "API contract must be machine-verifiable in CI, not just by convention"
     ],
     "unexplained_observations": [],
     "competing_interpretations": [
       {
-        "interpretation": "The system is a 'configuration-as-code monolith' where the filesystem conflates three concerns: code organization (module structure), runtime configuration (which files become endpoints), and deployment topology (which files go to which runtime). A cleaner separation would distinguish these layers.",
+        "interpretation": "Token-overlap scoring is chosen for infrastructure simplicity (no model server, no embedding pipeline), not for developer-transparency. The transparency narrative is a post-hoc justification for a pragmatic cost-avoidance decision.",
         "evidence": [
-          "api/ files serve as: code modules, route definitions, and (via _ prefix) middleware registration — three concerns in one directory",
-          "scripts/ files serve as: contract enforcement, documentation generation, and CI/CD orchestration — three concerns in one directory",
-          "Maintainer mental model explicitly says 'directory structure IS architecture' — this is a deliberate choice to conflate, not an accidental one"
+          "No transparency tooling (routing explainer, confidence display) exists",
+          "The scoring function's two-weight design is never documented in external docs, only in a source-code comment",
+          "NLU-based routing with embedding visualization could provide MORE transparency via nearest-neighbor inspection"
         ],
-        "confidence": "high"
+        "confidence": "medium"
       },
       {
-        "interpretation": "The real architecture is not 'filesystem as architecture' but 'CI as architecture' — the filesystem conventions only matter because CI enforces them. The system would be equally valid with explicit routing if CI ensured routing correctness. The filesystem is the mechanism, CI is the invariant.",
+        "interpretation": "The system is not 'self-describing' but rather has a tight circular dependency between code and documentation: code generates metadata, metadata describes code, and the CI-check verifies they match — but no independent oracle exists to detect shared bugs in both code and the doc-generation logic.",
         "evidence": [
-          "lint:boundaries, lint:api-contract, docs:check — all CI-verified",
-          "evolution.major_changes: 'Shifted from runtime-only validation to compile-time contract verification' — the trend is toward CI enforcement, not filesystem purity",
-          "package.json has 8 enforcement scripts but there's no enforcement script for 'files must be in the right directory' — the filesystem convention is NOT enforced by CI, only by convention"
+          "ARCHITECTURE.md capability counts are derived from code AND verified by docs:check which also reads the same code",
+          "No external specification or contract test exists that is independent of the implementation",
+          "A bug in code causes a bug in docs that passes CI because both derive from the same source of truth"
         ],
-        "confidence": "high"
+        "confidence": "medium"
       },
       {
-        "interpretation": "The 'no database' claim is an artifact of premature decomposition — the system currently has no SQL imports because state management is ad-hoc (in-memory maps, file-based caches, environment variables). When the system needs to scale session management, SLO metrics, or edge-compute reconciliation, a database will be introduced as an afterthought rather than a designed component. The architecture's 'no database' position is temporary, not intentional.",
+        "interpretation": "The architecture's 'single deployment with agent-readiness' is simultaneously over-engineered for a monolith and under-engineered for a distributed system: it has agent-discovery infrastructure (A2A, OAuth metadata, NLWeb) but no runtime isolation between agents, allowing any agent capability to be shadowed or interfered with by any other via the shared routing surface.",
         "evidence": [
-          "Session tokens imply TTL/revocation without a documented mechanism",
-          "SLO tracking across 30+ domains implies historical metrics storage",
-          "Multi-region edge compute implies state synchronization",
-          "No alternative storage strategy (Redis, SQLite, in-memory with crash semantics) is documented"
+          "A2A endpoint and conventional REST share the same /api paths without network-level isolation",
+          "Lint-only enforcement cannot prevent one agent's tool from affecting another's routing scores",
+          "The architectural tension section acknowledges but does not address dual-interpretation pressure on the API surface"
         ],
-        "confidence": "high"
+        "confidence": "low"
       }
     ]
   },
   "challenge_record": [
     {
-      "target": "Filesystem-based routing as the central organizing principle",
-      "challenge": "If filesystem routing is removed and replaced with an explicit route registry, what invariants break? The answer: none that are architectural. Routing still works, middleware still applies, versioning still works. What is lost is ceremony reduction and the 'structure = architecture' mental model — but those are developer-experience benefits, not correctness guarantees. The system's runtime behavior is identical whether routes are declared in files or in an Express router.",
-      "method": "移除测试",
-      "outcome": "refuted",
-      "evidence": [
-        "package.json already has lint:boundaries — explicit boundary enforcement, suggesting implicit filesystem boundaries need explicit reinforcement",
-        "api/[...notfound].ts documents dynamic-route precedence as 'lowest' — implicit ordering is a known gotcha that explicit routing would make visible",
-        "Maintainer mental model says 'the files tell the story' but the same repo has ARCHITECTURE.md and docs/architecture.mdx — the story is already told twice, filesystem is not the sole narrative"
-      ],
-      "model_delta": "Filesystem routing is an ergonomic optimization, not an architectural invariant. The architecture's organizing principle is 'convention-enforced-by-CI', where the filesystem is one convention among many (alongside lint scripts, underscore prefix, and boundary checks). Downgrade from 'central organizing principle' to 'developer-ergonomic routing mechanism validated by CI'."
-    },
-    {
-      "target": "Token-overlap scoring is deliberately not NLU for deterministic agent routing",
-      "challenge": "What if the opposite were true — that NLU-based routing would be strictly better? Then we would expect to see: (a) evidence that token-overlap failures (semantic paraphrasing producing wrong tool routing) are caught and logged, (b) fallback mechanisms when token-overlap confidence is low, (c) telemetry showing token-overlap accuracy vs. a ground-truth routing table. None of these exist in the evidence. The claim 'deliberately not NLU' is asserted without showing that the deterministic tradeoff was empirically measured against actual agent query traffic.",
-      "method": "假设翻转",
+      "target": "Token-overlap routing is 'deliberately transparent' so developers can predict routing behavior",
+      "challenge": "Weighted multi-field token-overlap scoring is not meaningfully transparent — it is a threshold-free heuristic with implicit tie-breaking that developers must empirically probe, not mentally simulate",
+      "method": "移除测试, 假设翻转, 边界测试, 时间测试",
       "outcome": "modified",
       "evidence": [
-        "api/_agent-tool-suggest.ts: 'Deliberately not NLU' — no accuracy measurement, no fallback path, no telemetry cited",
-        "Repository Model: A2A and NLWeb are listed as '双向' (bidirectional) with API Gateway — agents send queries and expect correct routing, but there's no evidence of routing accuracy being monitored",
-        "ARCHITECTURE.md does not mention tool-routing accuracy as an SLO",
-        "tension section already flags 'Agent-consumable API vs human-facing SPA' as a tension — token-overlap sits at the intersection and has no quality gate"
+        "移除测试: The transparency claim has no test evidence for developer comprehension — no user study, no routing-explain endpoint, no tie-breaking documentation. The only evidence is a source-code comment asserting transparency.",
+        "假设翻转: If NLU embedding similarity were used, a developer could inspect nearest-neighbor clusters in embedding space — a visualizable structure. Token-overlap with asymmetric weights (name > description) has no such visualization; the scoring function is a private heuristic.",
+        "边界测试: With n tools sharing k overlapping tokens (e.g., get_shipping_status / get_shipping_eta / get_shipping_tracking) the weighted overlap converges, making routing effectively non-deterministic from the developer's perspective. No evidence of tie-breaking strategy.",
+        "时间测试: As tool inventory grows, the overlap matrix density increases O(n²). A heuristic that is simple at n=10 becomes opaque at n=100 — every new tool shifts scores for all existing tools, producing emergent non-local behavior no developer can predict."
       ],
-      "model_delta": "Token-overlap routing is a pragmatic starting point, not a deliberate architectural tradeoff. The decision is better characterized as 'Default to simplest working solution; upgrade to NLU when token-overlap failures reach a measured threshold.' Add routing accuracy telemetry as a future requirement, not an afterthought."
+      "model_delta": "Transparency is a claimed property, not an algorithmic property. The model should be updated: token-overlap offers operational simplicity (no model server, no embedding infrastructure) but its routing behavior is opaque in the same practical sense as NLU — developers must test, not predict."
     },
     {
-      "target": "No message queue or event bus between API Gateway and Backend Server",
-      "challenge": "This omission holds only under the assumption that request-response freshness is always preferred over async decoupling. But the evidence contradicts this: the system has multi-region edge compute (decentralized pre-processing) AND a centralized Backend Server aggregating from dozens of external sources. Edge compute implies state that needs coordination; dozens of sources imply variable latency. The synchronous HTTP boundary between Gateway and Backend means a slow backend pipeline (waiting for a slow external source) blocks the entire API Gateway thread pool. The 'no queue' decision is not a deliberate tradeoff — it is an omission that will become a problem at the next scale increment.",
-      "method": "边界测试",
-      "outcome": "refuted",
-      "evidence": [
-        "Repository Model: Backend Server owns 'Observability & SLO tracking across 30+ domains' — 30+ external sources with heterogeneous latency profiles",
-        "Repository Model: Backend Server owns 'Multi-region deployment & edge compute' — edge implies partially processed state that needs to be reconciled with centralized aggregation",
-        "Repository Model: API Gateway → Backend Server is marked '单向' (unidirectional) synchronous — no backpressure mechanism, no circuit breaker documented",
-        "evolution.major_changes: 'Multi-region deployment & edge compute integration' — edge compute was added after the sync architecture was built, suggesting the sync boundary was not designed for edge coordination"
-      ],
-      "model_delta": "The no-queue omission is not a deliberate architectural decision but a scalability debt. The correct characterization is 'Synchronous Gateway-Backend boundary, designed when external source count and edge compute were not in the original scope. Queue/deferred-processing should be added when: (1) any single external source latency exceeds Gateway timeout, or (2) edge-compute reconciliation requires stateful handoff between regions.'"
-    },
-    {
-      "target": "Compile-time enforcement via 8 separate JS/TS lint scripts is a well-designed contract boundary",
-      "challenge": "The enforcer and the enforced share the same runtime (Node.js), the same language (JS/TS), and potentially the same bugs. A bug in enforce-sebuf-api-contract.mjs could silently accept invalid API contracts. A bug in the boundary lint script could miss a dependency violation. Unlike a type system (which is formally verified) or a separate process (which has different failure modes), these scripts are code checking code of the same kind — meta-circular validation. The question is not whether enforcement is valuable (it is), but whether 8 separate scripts is the right abstraction level vs. a single policy engine with composable rules.",
-      "method": "边界测试",
+      "target": "Host-header-derived metadata eliminates per-deployment configuration drift",
+      "challenge": "Host-derivation does not eliminate configuration — it embeds configuration in routing code, which is harder to version, review, and isolate per tenant than declarative config files",
+      "method": "移除测试, 假设翻转, 边界测试, 时间测试",
       "outcome": "modified",
       "evidence": [
-        "architectural_tensions: 'Lint scripts (JavaScript/TypeScript) enforce contracts on other JavaScript/TypeScript code — the enforcer and the enforced share the same runtime and could share the same bugs'",
-        "package.json: 8 separate scripts — enforce-sebuf-api-contract, enforce-rate-limit-policies, enforce-premium-fetch, enforce-safe-html, enforce-intlify-slugs, docs-stats, boundary-lint, format check",
-        "Maintainer mental model: 'each script owns exactly one concern' — but there's no documented ordering, dependency graph, or shared utility layer among them"
+        "移除测试: No test evidence for the derivation logic itself — only tests for the output metadata documents. A bug in the shared derivation logic affects ALL hosts simultaneously; per-deployment config files isolate blast radius per tenant.",
+        "假设翻转: Static config per deployment can be diffed, reviewed independently, and rolled back per host. Host-derivation in code means any change to the derivation function affects apex, www, api, va identically — the blast radius is global, not per-tenant.",
+        "边界测试: Unusual Host headers (IPv6 literals, non-standard ports, X-Forwarded-Host chaining, multi-value Host) must all be handled in the derivation logic. Per-deployment config never encounters this — the config IS the source of truth, derived from nothing.",
+        "时间测试: As origin count grows (staging × region × canary × production), the derivation function accumulates conditionals and edge cases, eventually becoming a routing table embedded in code — harder to audit, test, and modify than a declarative config file."
       ],
-      "model_delta": "The 8-script design is not wrong but is incomplete — it needs (a) a shared validation utility library to prevent duplicate logic across scripts, (b) a script-ordering policy (which scripts must pass before which others), and (c) a self-test suite for the enforcement scripts themselves (meta-validation). The tension 'same runtime, same bugs' is real and should be mitigated by making each script small enough to be trivially correct, not by accepting the risk."
+      "model_delta": "The tradeoff is mischaracterized. The actual tradeoff is: single deployment simplicity vs. per-tenant isolation — not 'config drift eliminated.' The host-derivation approach eliminates config files but introduces a shared configuration surface in code with global blast radius and Host-header attack surface."
     },
     {
-      "target": "Desktop Tauri origins validated in the same _api-key.js as standard web origins",
-      "challenge": "This design puts two fundamentally different security models (web CORS with Origin header vs. non-web desktop with custom origins Tauri://, asset://) into a single middleware file with a single DESKTOP_ORIGIN_PATTERNS regex check. The conditions under which this breaks: (1) a browser-based attack that spoofs Origin to a Tauri pattern — any Tauri pattern that resembles a web origin (https://tauri.localhost) is browser-constructible; (2) adding a new desktop runtime (Electron, SwiftUI) would require modifying the same patterns array in the same file, widening the attack surface without architectural review; (3) the middleware has no way to distinguish a real Tauri WebView from a regular browser that happens to set Origin: tauri://localhost.",
-      "method": "边界测试",
+      "target": "Lint-only boundary enforcement gives fast feedback and zero runtime cost",
+      "challenge": "The lint script has zero test evidence for recall — 'fast feedback' is meaningless if the script misses actual violations, and the admission that runtime violations are possible reveals a governance hole, not a tradeoff",
+      "method": "移除测试, 假设翻转, 边界测试, 时间测试",
       "outcome": "refuted",
       "evidence": [
-        "api/_api-key.js: DESKTOP_ORIGIN_PATTERNS includes /^https?:\\/\\/tauri\\.localhost/ — this regex matches any HTTP/HTTPS origin with tauri.localhost, which any browser can set via document.domain or fetch with custom Origin header",
-        "architectural_tensions: 'Two security models sharing one middleware file' — this is already identified as a tension, not a resolved design",
-        "evolution.major_changes: 'Desktop runtime (Tauri) support: added DESKTOP_ORIGIN_PATTERNS' — desktop was added after the fact, not designed in; patterns were appended to existing code"
+        "移除测试: The interpretation cites the script's existence as evidence of enforcement. No test evidence for the lint script's own correctness — no recall metric, no benchmark against known violations, no false-negative test suite. Existence ≠ effectiveness.",
+        "假设翻转: Lint-only enforcement creates negative trust — developers see 'boundaries enforced' in CI and stop reasoning about module isolation. A lint script with unknown recall (potentially missing dynamic imports, computed paths, eval-based loading) is worse than no enforcement because it provides misplaced confidence.",
+        "边界测试: Every computed import (await import(pathVar)), every eval-based module access, every monkey-patch at runtime bypasses static analysis entirely. These are not edge cases — they are architectural bypasses the governance model cannot address by design.",
+        "时间测试: As the codebase grows, lint scripts must be maintained to cover new module-access patterns. Without a regression test suite for the lint script itself, recall decays monotonically with codebase evolution. The governance is itself ungoverned."
       ],
-      "model_delta": "The DESKTOP_ORIGIN_PATTERNS check is insufficient as a standalone security boundary. The correct architecture requires: (a) desktop clients must present a proof-of-possession key (e.g., a desktop-only API key compiled into the Tauri binary, rotated at build time) in addition to the origin check; (b) the https://tauri.localhost pattern must be removed or restricted (it is browser-forgeable); (c) desktop auth flow should be a separate middleware module, not an if-branch in the web auth middleware."
-    },
-    {
-      "target": "No database/ORM layer — aggregation pipeline doesn't need persistent storage",
-      "chain_target": "No database/ORM layer — aggregation pipeline doesn't need persistent storage",
-      "challenge": "The claim 'World Monitor is an aggregation pipeline + API gateway, not a CRUD application' assumes data freshness is the only concern and persistence is not required. But the evidence shows: edge compute (which needs intermediate state), session tokens (which need server-side TTL management), multi-region deployment (which needs configuration synchronization), and 'Observability & SLO tracking across 30+ domains' (which implies metrics storage and historical comparison). Each of these independently suggests a need for persistent state. The 'no database' decision likely holds for the current implementation but will be violated incrementally: first a file-based cache for edge state, then SQLite for session management, then a time-series store for SLO tracking — each added ad-hoc rather than designed.",
-      "method": "时间测试",
-      "outcome": "refuted",
-      "evidence": [
-        "Repository Model: Backend Server owns 'Observability & SLO tracking across 30+ domains' — SLO tracking implies historical metrics, which implies storage, which is a database",
-        "Repository Model: API Middleware owns session tokens — session tokens with TTL/revocation (implied by 'session-token-based API key validation') require server-side state, which is a database or cache (Redis/memcached)",
-        "evolution.major_changes: 'Multi-region deployment & edge compute integration' — multi-region implies configuration distribution and state reconciliation, which strains a stateless architecture",
-        "intentional_omissions say 'no database' but the module responsibilities describe behavior that non-trivially implies storage"
-      ],
-      "model_delta": "The 'no database' claim is true only at the source code level (no SQL/ORM imports) but false at the architectural level (session state, SLO metrics, edge-compute state all require persistence). The correct characterization is 'no visible database — storage is implicit in middleware/server responsibilities and should be made explicit.' The architecture should document what state is stored, where, and with what durability guarantees — even if the answer is 'in-memory only, loss acceptable.'"
-    },
-    {
-      "target": "SPA architecture for a real-time global intelligence dashboard",
-      "challenge": "A real-time intelligence dashboard aggregating from dozens of external sources with multi-region edge compute implies a data-fetching topology that fights the SPA model. In a SPA, the client initiates all requests; in a real-time intelligence system, the server should push updates (WebSocket, SSE). The SPA trades true real-time push for simpler deployment (static files) and SEO (which the system doesn't need — it's a dashboard, not a content site). The tradeoff documentation says 'SEO and initial load latency' as downsides, but the bigger downside is missed: every 'real-time' update requires either polling from the SPA or a WebSocket connection — and WebSocket would require a different deployment topology (stateful server) than the static-SPA model supports. The current architecture has an implicit 'pull-model for real-time data' contradiction.",
-      "method": "假设翻转",
-      "outcome": "refuted",
-      "evidence": [
-        "ARCHITECTURE.md: 'real-time global intelligence dashboard' — real-time implies push, SPA implies pull; these are contradictory without a WebSocket/SSE layer that the module list doesn't include",
-        "Repository Model modules: no WebSocket server, no SSE endpoint, no event-notification channel listed in public_api or plugin_points",
-        "Repository Model: Frontend SPA → API Gateway is '单向' (unidirectional) — SPA only pulls from Gateway, Gateway never pushes to SPA",
-        "tradeoffs: 'SPA architecture gives rich real-time dashboard experience at the cost of SEO and initial load latency' — misses the fundamental contradiction: without push, the dashboard can only be 'near-real-time' at poll interval granularity"
-      ],
-      "model_delta": "The SPA architecture is not designed for real-time push — it is a polling-based near-real-time dashboard. The architecture should be characterized as 'Poll-based near-real-time dashboard with SPA frontend; WebSocket/SSE push is a planned capability (or deliberate omission) that must be documented.' The term 'real-time' should be qualified to 'near-real-time with configurable poll interval.'"
+      "model_delta": "The claim that lint-only enforcement is a 'design decision' rather than an acknowledged gap is incorrect. The model should reclassify this: lint-only boundary enforcement is an intentional omission with acknowledged blind spots (dynamic loading, runtime access), not a positive design choice. The tradeoff section admits the weakness but the model section presents it as ownership/extension — this framing inconsistency should be resolved."
     }
   ],
   "design_space": [
     {
-      "decision": "Filesystem-based routing (convention over configuration)",
-      "chosen": "Each file under api/ automatically becomes an HTTP endpoint; prefix with _ to exclude from routing",
+      "decision": "Tool routing uses transparent token-overlap scoring instead of NLU",
+      "chosen": "Token-overlap score over tool names + descriptions, with name hits weighted higher than description hits",
       "rejected": [
-        "Explicit route registry (e.g., Express app.get() calls)",
-        "OpenAPI-driven route generation"
+        "NLU-based intent classification",
+        "Semantic embedding similarity search"
       ],
-      "why_chosen": "Zero ceremony to add an endpoint; developer adds a file, deployment picks it up. Catches unused code by filesystem presence.",
-      "why_rejected": "Zero ceremony to add an endpoint; developer adds a file, deployment picks it up. Catches unused code by filesystem presence.",
+      "why_chosen": "Deliberately transparent so developers can predict routing behavior; name-precision ensures 'chokepoint status' lands on get_chokepoint_status, not on every tool whose prose mentions shipping",
+      "why_rejected": "Deliberately transparent so developers can predict routing behavior; name-precision ensures 'chokepoint status' lands on get_chokepoint_status, not on every tool whose prose mentions shipping",
       "confidence": "high",
       "evidence": [
-        "api/[...notfound].ts: 'Filesystem catch-all ... has the LOWEST dynamic-route precedence, so concrete functions always resolve FIRST'",
-        "Repository Model: 'Multi-version HTTP API gateway with filesystem routing'"
+        "api/_agent-tool-suggest.ts: 'Deliberately not NLU — a transparent token-overlap score over the same names + descriptions tools/list publishes anonymously'",
+        "Name hits outweigh description hits"
       ]
     },
     {
-      "decision": "Underscore-prefixed route-less modules for shared middleware",
-      "chosen": "Files prefixed with _ are not routed but can be imported by route handlers",
+      "decision": "OAuth/agent-readiness metadata derived from Host header at runtime instead of static configuration",
+      "chosen": "resource/issuer + endpoint origin computed per-request from Host header",
       "rejected": [
-        "Express-style middleware pipeline with next()",
-        "Decorator-based middleware registration"
+        "Per-deployment static config files",
+        "Environment-variable-based issuer mapping",
+        "DNS-based multi-tenant configuration"
       ],
-      "why_chosen": "Filesystem convention mirrors routing convention — if it doesn't start with _ it's an endpoint, if it does it's a helper. No separate middleware config file needed.",
-      "why_rejected": "Filesystem convention mirrors routing convention — if it doesn't start with _ it's an endpoint, if it does it's a helper. No separate middleware config file needed.",
+      "why_chosen": "Single deployment serves multiple origins; PRM and AS metadata must stay self-consistent per host without separate config files or deployments",
+      "why_rejected": "Single deployment serves multiple origins; PRM and AS metadata must stay self-consistent per host without separate config files or deployments",
       "confidence": "high",
       "evidence": [
-        "api/_agent-tool-suggest.ts: 'Kept as a route-less helper (underscore prefix, like api/_crypto.js)'"
+        "api/_agent-metadata.ts: 'Both derive their resource/issuer + endpoint origin from the request Host so PRM and AS metadata stay self-consistent per host'"
       ]
     },
     {
-      "decision": "Token-overlap scoring for agent tool routing instead of NLU",
-      "chosen": "Compute token-overlap score between request text and tool names+descriptions; name hits outweigh description hits",
+      "decision": "Module boundaries and API contract enforced by custom lint scripts, not by framework or runtime",
+      "chosen": "Dedicated scripts/lint-boundaries.mjs and scripts/enforce-sebuf-api-contract.mjs run in CI",
       "rejected": [
-        "Natural language understanding (NLU) model",
-        "Keyword-based matching",
-        "LLM-based tool selection at request time"
+        "Microservices decomposition with network-level isolation",
+        "Framework-native module boundary system",
+        "Container/VM-level sandboxing"
       ],
-      "why_chosen": "Deterministic, cold-start-free, transparent — same algorithm for A2A and NLWeb. Deliberately 'not NLU' to keep behavior predictable and debuggable.",
-      "why_rejected": "Deterministic, cold-start-free, transparent — same algorithm for A2A and NLWeb. Deliberately 'not NLU' to keep behavior predictable and debuggable.",
+      "why_chosen": "Single deployment with self-managed topology; architectural boundary governance via dedicated lint scripts ensures code-level constraints without infrastructure complexity",
+      "why_rejected": "Single deployment with self-managed topology; architectural boundary governance via dedicated lint scripts ensures code-level constraints without infrastructure complexity",
       "confidence": "high",
       "evidence": [
-        "api/_agent-tool-suggest.ts: 'Deliberately not NLU — a transparent token-overlap score over the same names + descriptions tools/list publishes anonymously. Name hits outweigh description hits so chokepoint status lands on get_chokepoint_status, not on every tool whose prose mentions shipping'"
-      ]
-    },
-    {
-      "decision": "Compile-time contract enforcement via dedicated lint scripts",
-      "chosen": "Separate scripts per concern (sebuf contract, rate-limit policies, premium-fetch, safe-HTML, boundary lint, Mintlify slugs)",
-      "rejected": [
-        "Runtime schema validation only",
-        "Single monolithic linter",
-        "TypeScript type system for all contracts"
-      ],
-      "why_chosen": "Contracts that can be verified without running the server should be verified before deployment. Each script is independently maintainable and has clear responsibility.",
-      "why_rejected": "Contracts that can be verified without running the server should be verified before deployment. Each script is independently maintainable and has clear responsibility.",
-      "confidence": "high",
-      "evidence": [
-        "package.json: lint scripts section shows 8 separate enforcement scripts",
-        "Repository Model: 'CI-verified boundary enforcement: API contract lint (sebuf format), rate-limit policies, premium-fetch rules, safe-HTML, Mintlify slug reservation, module boundary lint'"
-      ]
-    },
-    {
-      "decision": "Structured JSON 404 catch-all for unmatched API paths",
-      "chosen": "api/[...notfound].ts returns structured JSON with consistent schema",
-      "rejected": [
-        "Redirect to SPA 404 page",
-        "HTML error page",
-        "Silent fallback to SPA index.html"
-      ],
-      "why_chosen": "API consumers (including agents) expect machine-readable errors. HTML or redirects would break agent tooling.",
-      "why_rejected": "API consumers (including agents) expect machine-readable errors. HTML or redirects would break agent tooling.",
-      "confidence": "high",
-      "evidence": [
-        "api/[...notfound].ts: 'Serves the structured JSON 404 from ./not-found'"
-      ]
-    },
-    {
-      "decision": "Host-derived metadata origin for agent-readiness documents",
-      "chosen": "resolveMetadataOrigin() validates Host header and derives resource/issuer and endpoint origins per host",
-      "rejected": [
-        "Static configuration file mapping hosts to origins",
-        "Environment variable per host variant"
-      ],
-      "why_chosen": "Single code path handles apex, www, api, and variant subdomains without configuration explosion. Validation prevents Client-Host spoofing.",
-      "why_rejected": "Single code path handles apex, www, api, and variant subdomains without configuration explosion. Validation prevents Client-Host spoofing.",
-      "confidence": "high",
-      "evidence": [
-        "api/_agent-metadata.ts: 'Both derive their resource/issuer + endpoint origin from the request Host so PRM and AS metadata stay self-consistent per host. The Host header is client-controlled, so resolveMetadataOrigin validates'"
-      ]
-    },
-    {
-      "decision": "Timing-safe comparison for API key validation",
-      "chosen": "timingSafeIncludes from _crypto.js for all key comparisons",
-      "rejected": [
-        "Standard string comparison (===)",
-        "bcrypt-style hashing for API keys"
-      ],
-      "why_chosen": "API keys are transmitted on every request; timing side-channel would leak key bytes character by character. Timing-safe comparison is the minimal cryptographic primitive that prevents this.",
-      "why_rejected": "API keys are transmitted on every request; timing side-channel would leak key bytes character by character. Timing-safe comparison is the minimal cryptographic primitive that prevents this.",
-      "confidence": "high",
-      "evidence": [
-        "api/_api-key.js: imports timingSafeIncludes from _crypto.js"
-      ]
-    },
-    {
-      "decision": "Multi-version API via URL path namespaces (/api/v1/, /api/v2/)",
-      "chosen": "v1 and v2 are separate filesystem directories under api/",
-      "rejected": [
-        "Accept header versioning (Accept: application/vnd.worldmonitor.v2+json)",
-        "Query parameter versioning (?v=2)",
-        "Header-based versioning"
-      ],
-      "why_chosen": "Filesystem routing naturally maps to path-based versioning; version lives in the URL, is cacheable, discoverable, and linkable. Backward compatible — v1 endpoints remain untouched.",
-      "why_rejected": "Filesystem routing naturally maps to path-based versioning; version lives in the URL, is cacheable, discoverable, and linkable. Backward compatible — v1 endpoints remain untouched.",
-      "confidence": "high",
-      "evidence": [
-        "Repository Model: separate v1/v2 RPC families in plugin_points",
-        "evolution.major_changes: 'Allowed backward-compatible evolution; v2 added shipping, multi-domain pipeline endpoints without breaking v1 consumers'"
-      ]
-    },
-    {
-      "decision": "Documentation auto-generated from code with CI verification",
-      "chosen": "scripts/docs-stats.mjs extracts capability counts into docs/generated/stats.json; npm run docs:check validates in CI",
-      "rejected": [
-        "Hand-maintained documentation portal",
-        "Swagger/OpenAPI as single source of truth"
-      ],
-      "why_chosen": "Capability counts change as code changes; auto-generation prevents docs-code drift. docs:check failing on mismatch enforces discipline.",
-      "why_rejected": "Capability counts change as code changes; auto-generation prevents docs-code drift. docs:check failing on mismatch enforces discipline.",
-      "confidence": "high",
-      "evidence": [
-        "ARCHITECTURE.md: 'capability counts are derived from code and CI-verified by npm run docs:check'",
-        "package.json: lint:public-docs script"
-      ]
-    },
-    {
-      "decision": "Desktop Tauri origin validation at API gateway without separate auth backend",
-      "chosen": "Four regex patterns in DESKTOP_ORIGIN_PATTERNS allow tauri://localhost and asset://localhost origins; validated in _api-key.js",
-      "rejected": [
-        "Separate authentication microservice for desktop clients",
-        "Proxy layer to inject API keys on desktop requests"
-      ],
-      "why_chosen": "Tauri apps run on localhost with no standard browser CORS; validating known desktop origins at the gateway avoids deploying a second auth service for the same function.",
-      "why_rejected": "Tauri apps run on localhost with no standard browser CORS; validating known desktop origins at the gateway avoids deploying a second auth service for the same function.",
-      "confidence": "high",
-      "evidence": [
-        "api/_api-key.js: DESKTOP_ORIGIN_PATTERNS including /^tauri:\\/\\/localhost$/ and /^asset:\\/\\/localhost$/",
-        "evolution.major_changes: 'Opened native desktop client path without separate auth backend'"
+        "package.json scripts: lint:boundaries, lint:api-contract",
+        "'Module boundaries enforced by lint-boundaries.mjs'",
+        "'Architectural boundary governance via dedicated lint scripts, not convention alone'"
       ]
     }
   ],
   "maintainer_view": {
     "modification_impact_map": {},
     "complexity_drivers": [
-      "Lint scripts (JavaScript/TypeScript) enforce contracts on other JavaScript/TypeScript code — the enforcer and the enforced share the same runtime and could share the same bugs",
-      "Agent-consumable API (deterministic, structured, discoverable via RFC 9728/8414) vs human-facing SPA (real-time, visual, interactive) — one codebase must serve two fundamentally different consumption models",
-      "Desktop origins (Tauri: localhost) and standard web origins follow different CORS/auth paths in the same _api-key.js — two security models sharing one middleware file",
-      "Multi-region edge compute (decentralized pre-processing) vs Backend Server centralized aggregation — edge reduces latency but adds cache invalidation and consistency complexity across regions",
-      "Filesystem routing is simple until naming conflicts arise — two files could conceptually match the same path and the resolution depends on dynamic-route ordering (lowest precedence for catch-all)"
+      "Catch-all [...notfound].ts must exist for 404 handling but its lowest-precedence constraint creates subtle ordering dependencies — adding a new dynamic route could accidentally shadow or be shadowed by existing routes",
+      "Agent-readiness (A2A, OAuth metadata, NLWeb tool routing) occupies the same API surface as conventional REST endpoints, creating dual interpretation pressure — the same /api path is both a human-facing API and an agent-discovery endpoint",
+      "Documentation ownership rule demands manual update when architecture changes, but capability counts are auto-derived from code — creating friction between 'hand-edit when topology changes' and 'auto-generate from code'"
     ]
   },
   "evidence_collected": [
@@ -429,28 +232,14 @@
       "key_findings": [],
       "surprises": [],
       "unanswered": []
-    },
-    {
-      "path": "api/_api-key.js",
-      "purpose": "代码",
-      "key_findings": [],
-      "surprises": [],
-      "unanswered": []
-    },
-    {
-      "path": "api/_api-key.test.mjs",
-      "purpose": "代码",
-      "key_findings": [],
-      "surprises": [],
-      "unanswered": []
     }
   ],
   "quality_gate": {
-    "center_identified": true,
-    "alternatives_considered": false,
+    "center_identified": false,
+    "alternatives_considered": true,
     "counterexamples_found": true,
     "model_challenged": true,
     "depth_gate": true,
-    "maintainer_gate": true
+    "maintainer_gate": false
   }
 }

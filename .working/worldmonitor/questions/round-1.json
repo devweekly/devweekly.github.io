@@ -1,104 +1,105 @@
 {
   "round": 1,
   "generated_from": [],
-  "trigger": "Repository type identification",
-  "purpose": "Discovery",
+  "trigger": "initial",
+  "purpose": "discovery",
+  "status": "active",
   "questions": [
     {
       "id": "R1-1",
-      "question": "The repo exposes 30+ domain-specific API modules (aviation, climate, conflict, displacement, health) under a single `api/` tree with no visible version prefix in directory naming. How does the system handle API versioning across domains with vastly different stability guarantees — are they versioned uniformly, per-domain, or not at all, and what drives that choice?",
+      "question": "为什么一个静态 Astro 博客仓库会同时托管一个完整的 AI 仓库研究分析管道（repo-research-v2）？这是有意的融合还是历史演进的结果？",
       "genesis": {
-        "trigger": "observation",
-        "observation": "30+ API subdirectories including aviation, climate, conflict, displacement, health under flat `api/` tree with no version prefixes",
+        "trigger": "observed structure",
+        "observation": "仓库既是中文技术博客（Astro SSG，150+ 篇博文），又包含复杂的 .trae/skills/repo-research-v2 研究管道（5 阶段工作流、LLM 集成、8 个提示模板、门禁检查）",
         "depth_level": 3
       },
       "type": "critical",
       "status": "open",
-      "confidence": "medium"
+      "confidence": "high"
     },
     {
-      "id": "R1-2",
-      "question": "Given the multi-domain data pipeline (aviation flight data, climate models, conflict intelligence, economic indicators, consumer prices, humanitarian displacement), what is the data ingestion architecture? Are domains served by a unified pipeline with domain-specific extractors, or are there independent per-domain ingestion stacks, and what are the reliability guarantees (backfill, retry, exactly-once semantics)?",
+      "question": "为何选择 Astro 7 SSG + React 19 islands 架构而非纯静态生成器（如 Hugo）或完全 SPA（如 Next.js）来承载周报内容？",
       "genesis": {
-        "trigger": "observation",
-        "observation": "Diverse data domains (aviation, climate, conflict, economic, displacement, consumer-prices) imply heterogeneous data sources and ingestion pipelines",
-        "depth_level": 3
+        "trigger": "framework analysis",
+        "observation": "采用 Astro 的 partial hydration（islands 架构）——既有 React 交互组件（Search.tsx、Card.tsx），又保持 SSG 的零 JS 输出。Tailwind CSS 4 和 Mermaid 图嵌入进一步增加了构建复杂度",
+        "depth_level": 2
       },
-      "type": "design_space",
+      "id": "R1-2",
+      "type": "discovery",
       "status": "open",
       "confidence": "medium"
     },
     {
       "id": "R1-3",
-      "question": "The `api/discord` and `api/internal` directories suggest both public-facing and private/internal API surfaces coexist. Is there a unified API gateway that handles auth routing (OAuth for external, MCP for privileged, SSRF protections), or are these on separate infrastructure? What is the auth middleware architecture across the 30+ domains?",
+      "question": "为什么 README.md 仅写一行 '# hELLO wORLD'，而真正的开发指南却放在 AGENTS.md（400+ 行）？这种文档分层策略的设计意图是什么？",
       "genesis": {
-        "trigger": "observation",
-        "observation": "Presence of api/discord (public), api/internal (private), and MCP/SSRF/OAuth auth mechanisms implies multiple auth surfaces",
-        "depth_level": 3
+        "trigger": "documentation audit",
+        "observation": "README 几乎为空，但 AGENTS.md 包含完整的 AI 操作系统规则、代码风格指南、项目架构和自维护协议。还有独立的 CONTRIBUTING.md、SKILL.md、methodology.md、report-schema.md",
+        "depth_level": 1
       },
-      "type": "critical",
+      "type": "discovery",
       "status": "open",
-      "confidence": "medium"
+      "confidence": "high"
     },
     {
       "id": "R1-4",
-      "question": "Several domains are inherently geospatial (climate, displacement, conflict, aviation) and temporal (forecast, economic indicators, historical consumer-prices). How does the system model geospatial+temporal data — is there a shared geometry/time-index layer (e.g., H3 + temporal partitions), or does each domain define its own schemas, and what drove that decision?",
+      "question": "GitHub Actions 中同时部署博客（withastro/action）和执行 research-agent-check（benchmark + eval）——这两个工作流是同一管道还是正交系统？research Agent 检查失败是否阻塞博客部署？",
       "genesis": {
-        "trigger": "observation",
-        "observation": "Climate, displacement, conflict, aviation, forecast, economic domains all involve geospatial and temporal dimensions",
-        "depth_level": 3
-      },
-      "type": "design_space",
-      "status": "open",
-      "confidence": "medium"
-    },
-    {
-      "id": "R1-5",
-      "question": "With 30+ API domains, there is likely an SDK/client generation strategy. Is code generation driven by an API specification (OpenAPI v3+), or are SDKs hand-written per domain? What is the client ergonomics strategy — do all domains share consistent patterns (pagination, error types, retry, streaming), or is each domain's client bespoke?",
-      "genesis": {
-        "trigger": "observation",
-        "observation": "30+ API modules strongly suggest SDK generation rather than manual clients, but no OpenAPI spec files are visible at top level",
+        "trigger": "CI/CD inspection",
+        "observation": "astro.yml 包含 build 和 research-agent-check 两个独立 job，无 needs 依赖关系。research-agent-check 执行 pnpm lint → benchmark → eval，评价企业研究 Agent 的质量",
         "depth_level": 2
       },
       "type": "critical",
       "status": "open",
-      "confidence": "medium"
+      "confidence": "high"
+    },
+    {
+      "id": "R1-5",
+      "question": "repo-research-v2 的 5 阶段工作流（Stage 0-5）为什么采用 Resume-first 设计——优先恢复已有分析状态而非每次重新扫描？这种增量模式的假设是什么？",
+      "genesis": {
+        "trigger": "workflow analysis",
+        "observation": "Stage 0 强制先加载 context.json 判断 commit 是否变化。未变化时禁止重新扫描、禁止重新识别类型、直接从 artifacts/ 读取。Stable vs Volatile artifact 分类严明",
+        "depth_level": 2
+      },
+      "type": "design_space",
+      "status": "open",
+      "confidence": "high"
     },
     {
       "id": "R1-6",
-      "question": "Operating 30+ domain APIs implies substantial observability investment. Does the system have unified SLOs, dashboards, and alerting across all domains, or are they managed independently? Are there domain-specific SLOs (e.g., aviation latency vs. climate batch throughput), and how are SLO breaches handled? What is the observability stack (metrics, traces, logs) and instrumentation strategy?",
+      "question": "博客覆盖 2023-2026 年共 150+ 篇技术文章，每周一期——这种规模的个人技术周报为什么选择 GitHub Pages 免费托管而非自建服务器或 Medium？成本和维护权衡是什么？",
       "genesis": {
-        "trigger": "observation",
-        "observation": "30+ domains with varied latency requirements (aviation real-time vs. batch climate data) implies non-trivial observability needs",
-        "depth_level": 2
+        "trigger": "deployment analysis",
+        "observation": "每日 UTC 0:00 cron 触发自动部署，使用 withastro/action v6 + actions/deploy-pages v4。Node.js 22 要求、Jampack 图片优化、无后端依赖",
+        "depth_level": 1
       },
-      "type": "challenge",
+      "type": "discovery",
       "status": "open",
       "confidence": "medium"
     },
     {
       "id": "R1-7",
-      "question": "The system is deployed across multiple regions with edge compute. What is the deployment topology — are all 30+ domains deployed to every region, or is there region-specific domain routing (e.g., climate APIs co-located with data sources, aviation near airports)? What is the data replication strategy between regions, and how does the system handle regional outages without cross-domain cascading failures?",
+      "question": "为什么 repo-research-v2 的测试策略采用 6 层分层测试（Unit → Prompt → Behavior → Mutation → Regression → E2E），且全部在合成仓库（synthetic repos）上运行真实 Analyzer 管道？这种设计比 mock/fixture 测试的优势和代价是什么？",
       "genesis": {
-        "trigger": "observation",
-        "observation": "Multi-region deployment with edge compute and 30+ domains suggests complex topology decisions",
-        "depth_level": 3
-      },
-      "type": "design_space",
-      "status": "open",
-      "confidence": "medium"
-    },
-    {
-      "id": "R1-8",
-      "question": "The presence of api/batch alongside real-time API modules suggests a hybrid processing model. Which domains use batch vs. real-time, and what drives the choice (data freshness requirements, source system constraints, cost)? Is there a unified batch orchestration framework, or is batch implemented independently per domain? How does the batch pipeline handle backpressure and scheduling across 30+ domains sharing compute resources?",
-      "genesis": {
-        "trigger": "observation",
-        "observation": "api/batch directory exists alongside real-time api modules, suggesting deliberate hybrid processing architecture",
+        "trigger": "test architecture analysis",
+        "observation": "6 层测试共 185+ 个测试，使用 skill-test/lib/synthetic-repos.mjs 生成 database/agent/tool/readme-claims 四种合成仓库。每层运行真实 AnalyzerPipeline 而非 mock",
         "depth_level": 3
       },
       "type": "critical",
       "status": "open",
-      "confidence": "medium"
+      "confidence": "high"
+    },
+    {
+      "id": "R1-8",
+      "question": "仓库包含了 enterprise-research-agent、repo-research-v2、tidy-chatgpt-text 三个独立 skill——它们共享哪些基础设施（LLM runner、artifact cache、AST 工具）？为什么没有抽取公共库？",
+      "genesis": {
+        "trigger": "multi-skill audit",
+        "observation": ".trae/skills/ 下三个 skill：repo-research-v2 有自己的 llm-runner.mjs、artifact-cache.mjs；enterprise-research-agent 有独立的 research.mjs。存在重复的 LLM 调用和缓存逻辑",
+        "depth_level": 2
+      },
+      "type": "design_space",
+      "status": "open",
+      "confidence": "high"
     }
   ]
 }

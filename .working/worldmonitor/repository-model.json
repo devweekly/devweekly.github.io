@@ -1,243 +1,32 @@
 {
-  "structure": {
-    "modules": [
-      {
-        "name": "API Gateway",
-        "path": "api/",
-        "description": "Multi-version HTTP API gateway with filesystem routing; serves v1/v2 RPC endpoints, agent-readiness metadata (RFC 9728/8414), A2A protocol endpoint, NLWeb /ask endpoint; catch-all returns structured JSON 404"
-      },
-      {
-        "name": "API Middleware",
-        "path": "api/_api-key.js, api/_session.js, api/_crypto.js, api/_agent-metadata.ts, api/_agent-tool-suggest.ts",
-        "description": "Underscore-prefixed route-less modules: API key + session-token authentication, timing-safe comparison, Host-derived metadata origin resolver, token-overlap tool routing for A2A/NLWeb"
-      },
-      {
-        "name": "Frontend SPA",
-        "path": "src/",
-        "description": "TypeScript single-page application — real-time global intelligence dashboard with AI-powered news aggregation, geopolitical monitoring, infrastructure tracking"
-      },
-      {
-        "name": "Backend Server",
-        "path": "server/",
-        "description": "Backend server code; multi-domain data pipeline aggregating from dozens of external sources; handles freshness, reliability, edge compute"
-      },
-      {
-        "name": "Lint & Enforcement Scripts",
-        "path": "scripts/",
-        "description": "CI-verified boundary enforcement: API contract lint (sebuf format), rate-limit policies, premium-fetch rules, safe-HTML, Mintlify slug reservation, module boundary lint"
-      },
-      {
-        "name": "Documentation Portal",
-        "path": "docs/",
-        "description": "Mintlify-powered developer documentation; auto-generated capability stats from code; architecture decision records (architecture.mdx)"
-      },
-      {
-        "name": "Test Suite",
-        "path": "tests/, e2e/",
-        "description": "Unit tests (tests/) and end-to-end pipeline tests (e2e/); API-key validation tests use node:test with env-var injection"
-      }
-    ],
-    "boundaries": [
-      {
-        "from": "Frontend SPA",
-        "to": "API Gateway",
-        "direction": "单向"
-      },
-      {
-        "from": "API Gateway",
-        "to": "Backend Server",
-        "direction": "单向"
-      },
-      {
-        "from": "API Gateway",
-        "to": "API Middleware",
-        "direction": "单向"
-      },
-      {
-        "from": "Backend Server",
-        "to": "External Sources",
-        "direction": "双向"
-      },
-      {
-        "from": "Lint & Enforcement Scripts",
-        "to": "API Gateway",
-        "direction": "单向"
-      },
-      {
-        "from": "Lint & Enforcement Scripts",
-        "to": "Backend Server",
-        "direction": "单向"
-      },
-      {
-        "from": "Lint & Enforcement Scripts",
-        "to": "Frontend SPA",
-        "direction": "单向"
-      },
-      {
-        "from": "Documentation Portal",
-        "to": "Lint & Enforcement Scripts",
-        "direction": "单向"
-      },
-      {
-        "from": "Agent (A2A/NLWeb)",
-        "to": "API Gateway",
-        "direction": "双向"
-      }
-    ]
-  },
-  "behavior": {
-    "control_flow": [
-      "HTTP request arrives at API Gateway → filesystem router dispatches to concrete v1/v2 RPC handler or falls through to catch-all JSON 404",
-      "Agent-to-Agent (A2A) or NLWeb /ask request → _agent-tool-suggest.ts computes token-overlap score across published tool names + descriptions → routes to best-matching tool handler",
-      "API key validation flow: request → getHeaderApiKey() → validateApiKey() with timing-safe comparison → optional session-token upgrade via isSessionTokenShape() + validateSessionToken()",
-      "Agent-readiness metadata discovery: request → OAuth protected-resource metadata (RFC 9728) or authorization-server metadata (RFC 8414) → resolveMetadataOrigin() validates Host header → returns endpoint origin-consistent documents",
-      "CI/CD pipeline: commit → lint-staged (Prettier) → npm run lint (Biome + boundary/enforcement scripts) → npm run docs:check (stats auto-verification) → build + deploy"
-    ],
-    "data_flow": [
-      "External source data → Backend Server multi-domain pipeline → aggregation + freshness tracking → API Gateway → Frontend SPA real-time dashboard rendering",
-      "Lint-time data flow: code changes → scripts/enforce-sebuf-api-contract.mjs validates API spec conformance → scripts/enforce-rate-limit-policies.mjs checks rate-limit annotations → scripts/enforce-premium-fetch.mjs validates premium data access patterns",
-      "Documentation data flow: source code → scripts/docs-stats.mjs extracts capability counts → docs/generated/stats.json → Mintlify renders capability table; num change triggers docs:check failure",
-      "Desktop runtime data flow: Tauri origin (tauri://localhost, asset://localhost) → _api-key.js DESKTOP_ORIGIN_PATTERNS validation → authorized API access without standard browser CORS"
-    ]
-  },
-  "ownership": {
-    "state": [
-      {
-        "name": "API version state (v1/v2 routing)",
-        "owner": "API Gateway"
-      },
-      {
-        "name": "Session tokens & API keys",
-        "owner": "API Middleware (_session.js, _api-key.js)"
-      },
-      {
-        "name": "Agent-readiness metadata (issuer, resource, endpoints)",
-        "owner": "API Middleware (_agent-metadata.ts)"
-      },
-      {
-        "name": "Tool routing state (token-overlap scores)",
-        "owner": "API Middleware (_agent-tool-suggest.ts)"
-      },
-      {
-        "name": "Multi-domain data pipeline state (freshness, aggregation)",
-        "owner": "Backend Server"
-      },
-      {
-        "name": "Dashboard UI state (real-time visualization)",
-        "owner": "Frontend SPA"
-      },
-      {
-        "name": "Capability statistics (docs/generated/stats.json)",
-        "owner": "Lint & Enforcement Scripts"
-      }
-    ],
-    "responsibility": [
-      {
-        "name": "HTTP routing & multi-version dispatch",
-        "owner": "API Gateway"
-      },
-      {
-        "name": "Authentication (API key + session token)",
-        "owner": "API Middleware"
-      },
-      {
-        "name": "Agent-readiness discovery (RFC 9728/8414)",
-        "owner": "API Middleware"
-      },
-      {
-        "name": "Agent-tool routing for A2A/NLWeb",
-        "owner": "API Middleware"
-      },
-      {
-        "name": "Multi-domain data aggregation & reliability",
-        "owner": "Backend Server"
-      },
-      {
-        "name": "UI rendering & real-time dashboard",
-        "owner": "Frontend SPA"
-      },
-      {
-        "name": "API contract enforcement (sebuf format)",
-        "owner": "Lint & Enforcement Scripts"
-      },
-      {
-        "name": "Rate-limit policy enforcement",
-        "owner": "Lint & Enforcement Scripts"
-      },
-      {
-        "name": "Premium data access control",
-        "owner": "Lint & Enforcement Scripts"
-      },
-      {
-        "name": "Safe HTML output validation",
-        "owner": "Lint & Enforcement Scripts"
-      },
-      {
-        "name": "Documentation generation & freshness",
-        "owner": "Lint & Enforcement Scripts"
-      },
-      {
-        "name": "Observability & SLO tracking across 30+ domains",
-        "owner": "Backend Server"
-      },
-      {
-        "name": "Multi-region deployment & edge compute",
-        "owner": "Backend Server"
-      },
-      {
-        "name": "Developer portal & API docs hosting",
-        "owner": "Documentation Portal"
-      }
-    ]
-  },
-  "extension": {
-    "plugin_points": [
-      "api/v1/[rpc].ts — per-RPC handler extension for v1 API (open registration via filesystem)",
-      "api/v2/[rpc].ts — per-RPC handler extension for v2 API",
-      "api/a2a.ts — A2A (Agent-to-Agent) protocol endpoint; tool list extensible via tool/ namespace",
-      "api/ask.ts — NLWeb natural-language endpoint; tool routing via _agent-tool-suggest.ts token-overlap",
-      "OAuth protected-resource metadata (RFC 9728) — agent-discovery-ready endpoint metadata",
-      "OAuth authorization-server metadata (RFC 8414) — OAuth-flavored discovery",
-      "MCP (Model Context Protocol) tool descriptors — published anonymously via tools/list"
-    ],
-    "public_api": [
-      "GET/POST /api/health — Health check endpoint",
-      "GET/POST /api/v1/[rpc] — Version 1 RPC family (17 analyzers / 11 semantic analyzers at runtime)",
-      "GET/POST /api/v2/[rpc] — Version 2 RPC family (shipping, multi-domain pipeline)",
-      "GET/POST /api/a2a — Agent-to-Agent protocol endpoint",
-      "GET/POST /api/ask — Natural-language web interface endpoint",
-      "GET /.well-known/oauth-protected-resource — RFC 9728 protected-resource metadata",
-      "GET /.well-known/oauth-authorization-server — RFC 8414 authorization-server metadata",
-      "GET /api/* (catch-all) — Structured JSON 404 for unmatched paths"
-    ]
-  },
-  "evolution": {
-    "major_changes": [
-      {
-        "change": "v1→v2 API versioning: /api/v1/ and /api/v2/ namespaces with separate routing",
-        "impact": "Allowed backward-compatible evolution; v2 added shipping, multi-domain pipeline endpoints without breaking v1 consumers"
-      },
-      {
-        "change": "Agent-readiness layer: added RFC 9728/8414 metadata endpoints + A2A protocol",
-        "impact": "Enabled agent-to-agent discovery and LLM integration; expanded from human-only UI to agent-consumable API"
-      },
-      {
-        "change": "Lint-time enforcement suite: boundary lint, API contract lint, rate-limit policies, premium-fetch, safe-HTML",
-        "impact": "Shifted from runtime-only validation to compile-time contract verification; prevents contract drift before deployment"
-      },
-      {
-        "change": "Desktop runtime (Tauri) support: added DESKTOP_ORIGIN_PATTERNS and session-token-based API key validation",
-        "impact": "Opened native desktop client path without separate auth backend; Tauri origins validated at API gateway"
-      },
-      {
-        "change": "Mintlify-powered documentation auto-generation from source code",
-        "impact": "Docs/code single-source-of-truth; npm run docs:check validates doc accuracy in CI; capability stats auto-derived from code"
-      },
-      {
-        "change": "Multi-region deployment & edge compute integration",
-        "impact": "Reduced latency for geographically distributed users; edge compute handles pre-processing before centralized aggregation"
-      }
-    ],
-    "current_direction": "Consolidating agent-native capabilities (A2A + MCP + NLWeb) as the primary consumption model alongside the SPA dashboard; deepening compile-time contract enforcement; expanding multi-domain data pipeline reliability and observability across 30+ domains; documentation-as-code with CI-verified freshness"
-  }
+  "structure": [
+    "Filesystem-based API routing with service-specific subdirectories (api/<service>/v1|v2)",
+    "Module boundaries (src/, server/, api/, tests/, e2e/, scripts/) enforced by lint-boundaries.mjs",
+    "API catch-all ([...notfound].ts) with explicit dynamic-route precedence",
+    "API contract enforced by sebuf API contract lint script"
+  ],
+  "behavior": [
+    "AI-powered real-time news aggregation, geopolitical monitoring, infrastructure tracking",
+    "A2A (Agent-to-Agent) protocol endpoint via api/a2a.ts for inter-agent communication",
+    "NLWeb /ask endpoint with token-overlap tool suggestion routing",
+    "Host-derived dynamic OAuth and authorization server metadata (RFC 9728, RFC 8414)"
+  ],
+  "ownership": [
+    "Single deployment with self-managed topology and API surface (ownership rule in ARCHITECTURE.md)",
+    "Agent-readiness documents derived per-request Host header for multi-origin consistency",
+    "Capability inventory (map layers, services, protos, locales) CI-verified from code",
+    "API surface contract enforced in CI via enforce-sebuf-api-contract.mjs"
+  ],
+  "extension": [
+    "A2A endpoint for external agent ecosystem integration",
+    "NLWeb /ask endpoint for natural language query to tool dispatch",
+    "OAuth authorization server metadata endpoint (RFC 8414)",
+    "Multi-version API gateways (api/<service>/v1/[rpc].ts, api/v2/shipping/[rpc].ts)"
+  ],
+  "evolution": [
+    "v2 API shipping layer coexisting alongside v1, indicating active API iteration",
+    "Agent-readiness elevated to first-class architectural concern (A2A, metadata, tool routing)",
+    "Architectural boundary governance via dedicated lint scripts, not convention alone",
+    "CI-verified documentation (docs:check, docs:stats) ensuring docs stay synchronized with code"
+  ]
 }

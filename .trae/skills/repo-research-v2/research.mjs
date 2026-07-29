@@ -1,27 +1,23 @@
 // ===========================================================================
 // research.mjs — Main entry point for repo-research-v2 skill
 //
-// Orchestrates the research pipeline with resume support:
-//   Stage -1: Resume existing research (skip stable artifacts if unchanged)
-//   Stage 0:  Generate stable artifacts (conditional — only if missing)
-//   Stage 1:  Generate research questions
-//   Stage 2:  Mechanical analysis
-//   Stage 3a: Build Repository Model
-//   Stage 3b: Architecture interpretation
-//   Stage 3c: Challenge model
-//   Stage 3d-3e: Question convergence
-//   Stage 4:  Generate report
-//   Gated checks
+// Pipeline:
+//   Stage 0:  Resume Workspace — load existing state, determine next_stage
+//   Stage 1:  Scan Repository — only if commit changed or artifacts missing
+//   Stage 2:  Analyze Delta — only if commit changed, selective update
+//   Stage 3:  Research Planner — examine coverage, decide research focus
+//   Stage 4:  Architecture Research — execute research cycle
+//   Stage 5:  Report — generate report + quality gates
 //
 // Usage:
 //   node research.mjs <repo-path> [--force] [--skip-gate]
 //
 // Options:
-//   --force      Force full re-analysis even if working directory exists
+//   --force      Force full re-analysis (ignore resume)
 //   --skip-gate  Skip gated checks
 // ===========================================================================
 
-import { readFile, writeFile, mkdir, stat, readdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
 import { join, resolve, basename } from "node:path";
 import { invokeLLM, invokeLLMJSON } from "./llm-runner.mjs";
 import { runAllChecks } from "./gated-checks.mjs";
@@ -32,6 +28,7 @@ import {
   loadMeta,
   writeMeta,
   getCurrentCommit,
+  getChangedFiles,
 } from "./artifact-cache.mjs";
 
 // ---------------------------------------------------------------------------
@@ -67,87 +64,101 @@ async function writeJson(path, data) {
   await writeFile(path, JSON.stringify(data, null, 2), "utf-8");
 }
 
+async function tryReadJson(path) {
+  try {
+    return await readJson(path);
+  } catch {
+    return null;
+  }
+}
+
+function plural(n, s = "s") {
+  return n !== 1 ? s : "";
+}
+
 // ---------------------------------------------------------------------------
-// Stage -1: Resume existing research
+// Stage 0: Resume Workspace
 // ---------------------------------------------------------------------------
 
-async function stageMinusOne(workDir, repoPath, force) {
-  console.log("Stage -1: Resume existing research...");
-
+async function stageZeroResume(workDir, repoPath, force) {
   if (force) {
-    console.log("  --force: full re-analysis\n");
+    console.log("Stage 0: Resume Workspace — force flag, fresh analysis.\n");
+    return { resumed: false, force };
+  }
+
+  const existing = await resumeResearch(workDir, repoPath);
+  if (!existing.resumed) {
+    console.log("Stage 0: Resume Workspace — no prior analysis found.\n");
     return { resumed: false };
   }
 
-  const resume = await resumeResearch(workDir, repoPath);
-  const reportPath = join(workDir, "report.md");
+  // Load all available state
+  const context = await tryReadJson(join(workDir, "context.json"));
+  const model = await tryReadJson(join(workDir, "repository-model.json"));
+  const questions = await tryReadJson(join(workDir, "questions", "summary.json"));
+  const meta = existing.meta;
 
-  if (resume.resumed && resume.commitUnchanged && resume.artifactsReady) {
-    console.log("  Working directory found, commit unchanged, all artifacts ready.");
+  // Determine next stage from context.resume
+  const resumeFromCtx = context?.resume || {};
+  const lastStage = resumeFromCtx.last_completed_stage || "none";
+  const lastRound = resumeFromCtx.last_round || 0;
+  const nextStage = resumeFromCtx.next_stage || (existing.commitUnchanged ? "Stage 3" : "Stage 1");
+  const reportExists = await fileExists(join(workDir, "report.md"));
 
-    // If report exists and complete, return it
-    if (await fileExists(reportPath)) {
-      console.log("  Report exists — returning cached result.\n");
-      const report = await readFile(reportPath, "utf-8");
-      return {
-        resumed: true,
-        commitUnchanged: true,
-        artifactsReady: true,
-        report,
-        resume,
-      };
-    }
+  // Print loading summary
+  console.log("Stage 0: Resume Workspace — loading previous analysis...\n");
 
-    // Report missing but artifacts ready — continue from where we left off
-    console.log("  Report missing — continuing from Stage 1.\n");
-    return {
-      resumed: true,
-      commitUnchanged: true,
-      artifactsReady: true,
-      report: null,
-      resume,
-    };
+  if (model) {
+    const stability = context?.model_stability || "unknown";
+    const center = context?.architecture_model?.center_hypothesis || "(not set)";
+    console.log(`  Repository Model loaded  (stability: ${stability})`);
+    console.log(`  Center hypothesis: ${center.slice(0, 60)}`);
   }
 
-  if (resume.resumed && resume.commitUnchanged && !resume.artifactsReady) {
-    console.log(`  Commit unchanged but artifacts missing: ${resume.missingArtifacts.join(", ")}`);
-    console.log("  Generating missing artifacts...\n");
-    return {
-      resumed: true,
-      commitUnchanged: true,
-      artifactsReady: false,
-      report: null,
-      resume,
-    };
+  if (context?.question_statistics) {
+    const qs = context.question_statistics;
+    console.log(`  Questions: ${qs.validated || 0} validated / ${qs.answered || 0} answered / ${qs.total_questions || 0} total`);
   }
 
-  if (resume.resumed && !resume.commitUnchanged) {
-    console.log(`  Commit changed (${resume.meta?.last_analyzed_commit || "unknown"} → ${resume.commit || "unknown"})`);
-    if (resume.changedFiles.length > 0) {
-      console.log(`  Changed files: ${resume.changedFiles.length}`);
-    }
-    console.log("  Full re-analysis required.\n");
-    return {
-      resumed: true,
-      commitUnchanged: false,
-      artifactsReady: false,
-      report: null,
-      resume,
-    };
+  if (context?.coverage) {
+    const low = Object.entries(context.coverage)
+      .filter(([, v]) => v < 0.5)
+      .map(([k]) => k);
+    console.log(`  Weakest areas: ${low.length > 0 ? low.join(", ") : "none (all ≥ 0.5)"}`);
   }
 
-  console.log("  Fresh analysis.\n");
+  console.log(`  Commit: ${existing.commitUnchanged ? "unchanged" : "changed"}`);
+  console.log(`  Last stage: ${lastStage}`);
+  console.log(`  Next stage: ${nextStage}`);
+  console.log(`  Report: ${reportExists ? "exists" : "missing"}\n`);
+
+  // If commit unchanged, report exists → done
+  if (existing.commitUnchanged && reportExists && nextStage === "done") {
+    console.log("  Analysis complete. Returning cached report.\n");
+    const report = await readFile(join(workDir, "report.md"), "utf-8");
+    return { resumed: true, commitUnchanged: true, report, done: true };
+  }
+
   return {
-    resumed: false,
-    commitUnchanged: false,
-    artifactsReady: false,
-    report: null,
-    resume,
+    resumed: true,
+    commitUnchanged: existing.commitUnchanged,
+    artifactsReady: existing.artifactsReady,
+    missingArtifacts: existing.missingArtifacts,
+    changedFiles: existing.changedFiles,
+    commit: existing.commit,
+    meta,
+    context,
+    model,
+    questions,
+    lastStage,
+    lastRound,
+    nextStage,
+    reportExists,
   };
 }
 
 // ---------------------------------------------------------------------------
-// Stage 0: Repository Scan (cached as directory-tree.json)
+// Stage 1: Scan Repository (conditional)
 // ---------------------------------------------------------------------------
 
 async function scanRepository(repoPath) {
@@ -160,17 +171,9 @@ async function scanRepository(repoPath) {
     for (const entry of entries) {
       const fullPath = join(dir, entry.name);
       const relPath = fullPath.replace(repoPath + "/", "");
-
-      if (entry.name.startsWith(".") || entry.name === "node_modules" || entry.name === "dist" || entry.name === "build") {
-        continue;
-      }
-
-      if (entry.isDirectory()) {
-        dirs.push(relPath);
-        await walk(fullPath, depth + 1);
-      } else if (entry.isFile()) {
-        files.push(relPath);
-      }
+      if (entry.name.startsWith(".") || entry.name === "node_modules" || entry.name === "dist" || entry.name === "build") continue;
+      if (entry.isDirectory()) { dirs.push(relPath); await walk(fullPath, depth + 1); }
+      else if (entry.isFile()) { files.push(relPath); }
     }
   }
 
@@ -178,286 +181,302 @@ async function scanRepository(repoPath) {
   return { files, dirs };
 }
 
-async function stageZeroScan(workDir, repoPath, resumeResult) {
-  // If resume says artifacts are ready, load from cache
-  if (resumeResult.resumed && resumeResult.commitUnchanged && resumeResult.artifactsReady) {
+async function stageOneScan(workDir, repoPath, resume) {
+  // Skip if commit unchanged and artifacts ready
+  if (resume.resumed && resume.commitUnchanged && resume.artifactsReady) {
     const cached = await loadStableArtifact(workDir, "directory-tree");
     if (cached) {
-      console.log("Stage 0: Directory tree loaded from cache.");
-      return cached;
+      console.log("Stage 1: Scan Repository — loaded from cache (commit unchanged).\n");
+      const profile = await loadStableArtifact(workDir, "repository-profile");
+      return { scan: cached, profile };
     }
   }
 
-  // Otherwise scan
-  console.log("Stage 0: Scanning repository...");
+  // Need to scan
+  console.log("Stage 1: Scan Repository — scanning...");
   const scan = await scanRepository(repoPath);
   await saveStableArtifact(workDir, "directory-tree", scan);
-  console.log(`  Found ${scan.files.length} files, ${scan.dirs.length} directories\n`);
-  return scan;
+  console.log(`  ${scan.files.length} files, ${scan.dirs.length} directories\n`);
+
+  // LLM-based repo profile
+  const prompt = `
+Analyze this repository structure to identify repo type.
+
+Files (first 50): ${scan.files.slice(0, 50).join(", ")}
+Dirs: ${scan.dirs.join(", ")}
+
+Possible types: CLI / Library / Framework / Database / Compiler / Runtime / OS / SDK / AI Infrastructure / Web Service / Agent / Other
+
+Return JSON:
+{"type":"identified type","confidence":"high/medium/low","reasoning":"why","focus_areas":["focus1","focus2"]}
+`;
+  const profile = await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+  await saveStableArtifact(workDir, "repository-profile", profile);
+  console.log(`  Type: ${profile.type} (${profile.confidence})\n`);
+
+  return { scan, profile };
 }
 
 // ---------------------------------------------------------------------------
-// Stage 0: Repository Type Identification (cached as repository-profile.json)
+// Stage 2: Analyze Delta (conditional)
 // ---------------------------------------------------------------------------
 
-async function stageZeroType(workDir, repoTypeGuess, scan, resumeResult) {
-  if (resumeResult.resumed && resumeResult.commitUnchanged && resumeResult.artifactsReady) {
-    const cached = await loadStableArtifact(workDir, "repository-profile");
-    if (cached) {
-      console.log(`  Repository profile loaded from cache: ${cached.type} (${cached.confidence})\n`);
-      return cached;
-    }
+async function stageTwoDelta(workDir, repoPath, resume) {
+  if (resume.resumed && resume.commitUnchanged) {
+    console.log("Stage 2: Analyze Delta — skipped (commit unchanged).\n");
+    return { changed: false };
   }
 
-  console.log("Identifying repository type...");
-  const repoType = await repoTypeGuess(scan);
-  await saveStableArtifact(workDir, "repository-profile", repoType);
-  console.log(`  Type: ${repoType.type} (${repoType.confidence})\n`);
-  return repoType;
+  if (!resume.commit) {
+    console.log("Stage 2: Analyze Delta — not a git repo, full analysis.\n");
+    return { changed: true, full: true };
+  }
+
+  const meta = resume.meta || {};
+  const lastCommit = meta.last_analyzed_commit;
+  if (!lastCommit || lastCommit === "unknown") {
+    console.log("Stage 2: Analyze Delta — no prior commit, full analysis.\n");
+    return { changed: true, full: true };
+  }
+
+  const changed = getChangedFiles(repoPath, lastCommit, resume.commit);
+  console.log(`Stage 2: Analyze Delta — ${changed.length} file(s) changed.\n`);
+
+  // Update meta commit now (so subsequent runs see the new commit)
+  const newMeta = { ...meta, last_analyzed_commit: resume.commit, analyzed_at: new Date().toISOString() };
+  await writeMeta(workDir, newMeta);
+
+  return { changed: true, files: changed, full: false };
 }
+
+// ---------------------------------------------------------------------------
+// Stage 3: Research Planner
+// ---------------------------------------------------------------------------
+
+async function stageThreePlanner(resume) {
+  const isFirstRun = !resume.resumed;
+
+  if (isFirstRun) {
+    console.log("Stage 3: Research Planner — first run, full exploration.\n");
+    return { firstRun: true, focus: "full_exploration", coverage: {}, round: 1 };
+  }
+
+  // Subsequent runs: examine coverage, plan focus
+  const context = resume.context || {};
+  const coverage = context.coverage || {};
+  const lastRound = resume.lastRound || 1;
+
+  // Find weakest dimension
+  const entries = Object.entries(coverage);
+  const weakest = entries.length > 0
+    ? entries.sort((a, b) => a[1] - b[1])[0]
+    : ["architecture", 0];
+
+  console.log(`Stage 3: Research Planner`);
+  console.log(`  Coverage: ${entries.map(([k, v]) => `${k}=${v}`).join(", ")}`);
+  console.log(`  Weakest area: ${weakest[0]} (${weakest[1]})`);
+
+  const allCovered = entries.every(([, v]) => v >= 0.8);
+  if (allCovered && context.challenge_record?.length > 0) {
+    console.log("  All dimensions ≥ 0.8 — research converged.\n");
+    return { converged: true, focus: "converged", round: lastRound };
+  }
+
+  const nextRound = lastRound + 1;
+  const deepen = entries.filter(([k]) => k === weakest[0]).length > 0 && lastRound > 0;
+  const minDepth = deepen ? 3 : 2;
+
+  console.log(`  Next round: ${nextRound}, min depth: ${minDepth}\n`);
+
+  return {
+    firstRun: false,
+    converged: false,
+    focus: weakest[0],
+    coverage,
+    round: nextRound,
+    minDepth,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Stage 4: Architecture Research
+// ---------------------------------------------------------------------------
 
 async function identifyRepoType(repoPath, scan) {
   const prompt = `
 分析以下仓库结构，识别仓库类型。
-
 仓库路径: ${repoPath}
 文件列表（前 50 个）: ${scan.files.slice(0, 50).join(", ")}
 目录列表: ${scan.dirs.join(", ")}
-
 可能的类型: CLI / Library / Framework / Database / Compiler / Runtime / OS / SDK / AI Infrastructure / Web Service / Agent / Other
-
-输出 JSON（严格 JSON，无 markdown）:
-{
-  "type": "识别的类型",
-  "confidence": "high/medium/low",
-  "reasoning": "为什么这样判断，引用哪些文件/目录",
-  "focus_areas": ["该类型仓库应该关注的领域"]
-}
+输出 JSON: {"type":"识别的类型","confidence":"high/medium/low","reasoning":"为什么这样判断","focus_areas":["该类型仓库应该关注的领域"]}
 `;
-
-  const result = await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
-  return result;
+  return invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
 }
 
-// ---------------------------------------------------------------------------
-// Stage 1: Question Generation
-// ---------------------------------------------------------------------------
-
-async function generateQuestions(repoPath, repoType, scan) {
+async function generateQuestions(repoType, scan, plan) {
   const topFiles = ["package.json", "README.md", "ARCHITECTURE.md", "AGENTS.md", "CONTRIBUTING.md"]
-    .filter((f) => scan.files.includes(f))
-    .join(", ");
-  const topDirs = scan.dirs
-    .filter((d) => !d.includes("/") || d.split("/").length === 2)
-    .slice(0, 20)
-    .join(", ");
+    .filter((f) => scan.files.includes(f)).join(", ");
+  const topDirs = scan.dirs.filter((d) => !d.includes("/") || d.split("/").length === 2).slice(0, 20).join(", ");
+
+  const focus = plan.firstRun
+    ? `full exploration of the ${repoType.type} repository`
+    : `focused investigation on ${plan.focus}`;
+  const count = plan.firstRun ? "6-10" : "3-5";
+  const depthHint = plan.minDepth ? `minimum depth_level ${plan.minDepth}` : "include some depth 1-2 questions";
 
   const prompt = `
-You are analyzing a ${repoType.type} repository. Focus areas: ${repoType.focus_areas.join(", ")}
-
+You are analyzing a ${repoType.type} repository.
 Top-level directories: ${topDirs}
 Key files: ${topFiles}
-
-Generate 6-10 research questions. Return ONLY a JSON array like this:
-[{"id":"Q1","question":"Why does the system use X?","genesis":{"trigger":"observation","observation":"Seen pattern X","depth_level":2},"type":"critical","status":"open","confidence":"medium"}]
+Focus: ${focus}
+Generate ${count} research questions. Each must have genesis (trigger+observation+depth_level). Depth: ${depthHint}.
+Return ONLY a JSON array like:
+[{"id":"Q1","question":"Why X?","genesis":{"trigger":"observation","observation":"Pattern X","depth_level":2},"type":"critical","status":"open","confidence":"medium"}]
 `;
-
-  const result = await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
-  return result;
+  return invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
 }
-
-// ---------------------------------------------------------------------------
-// Stage 2: Mechanical Analysis
-// ---------------------------------------------------------------------------
 
 async function mechanicalAnalysis(repoPath, scan) {
   const evidence = [];
-
-  const keyFiles = ["package.json", "README.md", "ARCHITECTURE.md"];
-  for (const file of keyFiles) {
+  for (const file of ["package.json", "README.md", "ARCHITECTURE.md"]) {
     const fullPath = join(repoPath, file);
     if (await fileExists(fullPath)) {
       const content = await readFile(fullPath, "utf-8");
-      evidence.push({ path: file, content: content.slice(0, 800), purpose: "元数据" });
+      evidence.push({ path: file, content: content.slice(0, 500), purpose: "元数据" });
     }
   }
-
   const srcFiles = scan.files.filter((f) => f.startsWith("src/") || f.startsWith("server/") || f.startsWith("api/"));
-  for (const file of srcFiles.slice(0, 5)) {
+  for (const file of srcFiles.slice(0, 3)) {
     const fullPath = join(repoPath, file);
     if (await fileExists(fullPath)) {
       const content = await readFile(fullPath, "utf-8");
-      evidence.push({ path: file, content: content.slice(0, 500), purpose: "代码" });
+      evidence.push({ path: file, content: content.slice(0, 400), purpose: "代码" });
     }
   }
-
   return evidence;
 }
 
-// ---------------------------------------------------------------------------
-// Stage 3a: Build Repository Model
-// ---------------------------------------------------------------------------
-
-async function buildRepositoryModel(repoPath, repoType, evidence) {
-  const evidenceStr = evidence
-    .map((e) => `--- ${e.path} ---\n${e.content}`)
-    .join("\n\n");
-
+async function buildRepositoryModel(repoType, evidence) {
+  const evidenceStr = evidence.map((e) => `--- ${e.path} ---\n${e.content}`).join("\n\n");
   const prompt = `
-你是一个架构分析师。基于以下证据，构建 Repository Model。
-
+构建 Repository Model，保持简洁（最多各 4 条）。
 仓库类型: ${repoType.type}
-关注领域: ${repoType.focus_areas.join(", ")}
-
-证据:
-${evidenceStr}
-
-构建 Repository Model，描述 5 个维度:
-1. 结构模型 (模块、目录、组件及其边界)
-2. 行为模型 (控制流、数据流、运行流程)
-3. 归属模型 (状态、职责、生命周期归属)
-4. 扩展模型 (插件机制、扩展点、公共 API)
-5. 演进模型 (架构演进与历史变化)
-
-输出 JSON（严格 JSON，无 markdown）:
-{
-  "structure": { "modules": [{"name": "模块名", "path": "路径", "description": "描述"}], "boundaries": [{"from": "模块A", "to": "模块B", "direction": "单向/双向"}] },
-  "behavior": { "control_flow": ["控制流描述"], "data_flow": ["数据流描述"] },
-  "ownership": { "state": [{"name": "状态名", "owner": "模块/组件"}], "responsibility": [{"name": "职责", "owner": "模块/组件"}] },
-  "extension": { "plugin_points": ["扩展点"], "public_api": ["公共 API"] },
-  "evolution": { "major_changes": [{"change": "变更描述", "impact": "影响"}], "current_direction": "当前演进方向" }
-}
+证据: ${evidenceStr}
+5 维模型: structure(modules+boundaries), behavior(control_flow+data_flow), ownership(state+responsibility), extension(plugin_points+public_api), evolution(major_changes+current_direction)
+输出 JSON。
 `;
-
-  const result = await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
-  return result;
+  return invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
 }
 
-// ---------------------------------------------------------------------------
-// Stage 3b: Architecture Interpretation
-// ---------------------------------------------------------------------------
-
-async function architectureInterpretation(repoPath, repoType, model, evidence) {
-  const evidenceStr = evidence
-    .map((e) => `--- ${e.path} ---\n${e.content}`)
-    .join("\n\n");
-
+async function architectureInterpretation(repoType, model, evidence) {
+  const evidenceStr = evidence.map((e) => `--- ${e.path} ---\n${e.content}`).join("\n\n");
   const prompt = `
-你是一个架构分析师。基于 Repository Model 和证据，重建系统背后的工程思想。
-
+基于 Repository Model 重建系统的工程思想。
 仓库类型: ${repoType.type}
-
-Repository Model:
-${JSON.stringify(model, null, 2)}
-
-证据:
-${evidenceStr}
-
-产出以下类型（每个都必须引用证据）:
-- 工程约束 (engineering_constraints)
-- 架构作用力 (architectural_forces)
-- 设计决策 (design_decisions) — 每个必须有 rejected 替代方案
-- 权衡 (tradeoffs)
-- 有意省略 (intentional_omissions)
-- 架构张力 (architectural_tensions)
-- 杠杆点 (leverage_points)
-- 维护者心智模型 (maintainer_mental_model)
-
-输出 JSON（严格 JSON，无 markdown）:
-{
-  "engineering_constraints": [{"constraint": "约束", "evidence": ["证据"]}],
-  "architectural_forces": [{"force": "作用力", "evidence": ["证据"]}],
-  "design_decisions": [{"decision": "决策", "chosen": "选择", "rejected": ["被拒绝方案"], "why": "理由", "evidence": ["证据"]}],
-  "tradeoffs": [{"tradeoff": "权衡", "evidence": ["证据"]}],
-  "intentional_omissions": [{"omission": "省略", "why": "理由", "evidence": ["证据"]}],
-  "architectural_tensions": [{"tension": "张力", "evidence": ["证据"]}],
-  "leverage_points": [{"point": "杠杆点", "evidence": ["证据"]}],
-  "maintainer_mental_model": "维护者如何心智划分系统"
-}
+Model: ${JSON.stringify(model, null, 2)}
+证据: ${evidenceStr}
+产出以下类型（最多各 3 条，必须引用证据）: engineering_constraints, architectural_forces, design_decisions（每个必须有 rejected 替代方案）, tradeoffs, intentional_omissions, architectural_tensions, leverage_points, maintainer_mental_model
+输出 JSON（严格 JSON，保持简洁）:
+{"engineering_constraints":[{"constraint":"约束","evidence":["证据"]}],"architectural_forces":[{"force":"作用力","evidence":["证据"]}],"design_decisions":[{"decision":"决策","chosen":"选择","rejected":["被拒绝方案"],"why":"理由","evidence":["证据"]}],"tradeoffs":[{"tradeoff":"权衡","evidence":["证据"]}],"intentional_omissions":[{"omission":"省略","why":"理由","evidence":["证据"]}],"architectural_tensions":[{"tension":"张力","evidence":["证据"]}],"leverage_points":[{"point":"杠杆点","evidence":["证据"]}],"maintainer_mental_model":"维护者心智划分"}
 `;
-
-  const result = await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
-  return result;
+  return invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
 }
 
-// ---------------------------------------------------------------------------
-// Stage 3c: Challenge Model
-// ---------------------------------------------------------------------------
-
-async function challengeModel(repoPath, interpretation, model) {
+async function challengeModel(interpretation, model) {
   const prompt = `
-你是一个批判性架构评审员。挑战以下架构解释。
-
-架构解释:
-${JSON.stringify(interpretation, null, 2)}
-
-Repository Model:
-${JSON.stringify(model, null, 2)}
-
-对每个关键结论执行以下检验:
-1. 移除测试: 如果移除这个组件/模式，系统还能成立吗？
-2. 假设翻转: 如果结论是相反的，哪些证据应该存在？
-3. 边界测试: 这个结论在什么条件下不成立？
-4. 时间测试: 这个决策在最开始时也是最优的吗？
-
-输出 JSON（严格 JSON，无 markdown）:
-{
-  "challenges": [{"target": "被挑战的结论", "challenge": "挑战问题", "method": "移除测试/假设翻转/边界测试/时间测试", "outcome": "survived/refuted/modified", "evidence": ["证据"], "model_delta": "挑战后模型变化"}],
-  "center_hypothesis": "一句话架构中心假设",
-  "key_assumptions": [{"assumption": "假设", "evidence": ["证据"], "challenged": true, "survived": true}],
-  "competing_interpretations": [{"interpretation": "备选解释", "evidence": ["证据"], "confidence": "high/medium/low"}]
-}
+挑战以下架构解释。对每个结论执行: 移除测试、假设翻转、边界测试、时间测试。
+架构解释: ${JSON.stringify(interpretation, null, 2)}
+Model: ${JSON.stringify(model, null, 2)}
+最多选择 3 个关键挑战，保持 JSON 简洁。
+输出 JSON:
+{"challenges":[{"target":"被挑战结论","challenge":"挑战问题","method":"移除测试","outcome":"survived/refuted/modified","evidence":["证据"],"model_delta":"变化"}],"center_hypothesis":"一句话中心假设","key_assumptions":[{"assumption":"假设","evidence":["证据"],"challenged":true,"survived":true}],"competing_interpretations":[{"interpretation":"备选","evidence":["证据"],"confidence":"medium"}]}
 `;
+  return invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+}
 
-  const result = await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
-  return result;
+async function stageFourResearch(repoPath, resume, plan, scan, profile) {
+  const repoType = profile || (await loadStableArtifact(join(repoPath, "..", "..", ".working", basename(repoPath)), "repository-profile"));
+  if (!repoType) throw new Error("Repository profile required for research");
+
+  console.log("Stage 4: Architecture Research");
+  if (plan.firstRun) console.log("  4a: Collecting evidence...");
+  else console.log(`  4a: Collecting evidence (focus: ${plan.focus})...`);
+
+  const evidence = await mechanicalAnalysis(repoPath, scan);
+
+  // Generate questions
+  const questions = await generateQuestions(repoType, scan, plan);
+
+  // Build model (full or update)
+  console.log("  4b: Building Repository Model...");
+  const model = plan.firstRun
+    ? await buildRepositoryModel(repoType, evidence)
+    : await buildRepositoryModel(repoType, evidence);
+
+  // Interpretation
+  console.log("  4c: Architecture interpretation...");
+  const interpretation = await architectureInterpretation(repoType, model, evidence);
+
+  // Challenge
+  console.log("  4d: Challenging model...");
+  const challenge = await challengeModel(interpretation, model);
+
+  // Converge
+  console.log("  4e: Converging...");
+
+  const allQuestions = questions.map((q) => ({
+    ...q,
+    id: q.id && q.id.startsWith("R") ? q.id : `R${plan.round}-${(q.id || "").replace(/^Q/, "")}`,
+  }));
+
+  // Compute coverage estimate
+  const coverage = plan.firstRun
+    ? { runtime: 0.3, architecture: 0.25, design_decisions: 0.2, testing: 0.1, deployment: 0.1, history: 0.05 }
+    : { ...resume.context?.coverage, [plan.focus]: Math.min(1, ((resume.context?.coverage?.[plan.focus] || 0) + 0.3)) };
+
+  return {
+    plan,
+    evidence,
+    questions: allQuestions,
+    model,
+    interpretation,
+    challenge,
+    coverage,
+  };
 }
 
 // ---------------------------------------------------------------------------
-// Stage 4: Generate Report
+// Stage 5: Report
 // ---------------------------------------------------------------------------
 
-async function generateReport(repoPath, repoType, model, interpretation, challenge, questions) {
+async function generateReport(repoType, result) {
   const prompt = `
-你是一个架构报告撰写专家。基于以下材料，生成一份中文报告。
-
+生成中文架构报告，保持简洁（800-1200 字）。
 仓库类型: ${repoType.type}
+中心假设: ${result.challenge?.center_hypothesis || "(未设置)"}
+决策数: ${(result.interpretation?.design_decisions || []).length}
+挑战数: ${(result.challenge?.challenges || []).length}
+覆盖率: ${JSON.stringify(result.coverage)}
 
-Repository Model:
-${JSON.stringify(model, null, 2)}
+报告结构:
+1. 执行摘要 — 一句话定位 + 3 个核心发现
+2. 架构组织 — 系统如何组织（标注 coverage 评级: ✅ / 🔶 / ❌）
+3. 关键决策 — 每个决策附被拒绝方案
+4. 模型挑战 — 挑战结果
+5. 修改影响地图 — 修改 X 影响哪些层
+6. 未解问题 — coverage<0.5 的领域
 
-架构解释:
-${JSON.stringify(interpretation, null, 2)}
-
-挑战结果:
-${JSON.stringify(challenge, null, 2)}
-
-问题状态:
-${JSON.stringify(questions, null, 2)}
-
-报告必须使用中文，覆盖以下维度（详见 report-schema.md）:
-1. 执行摘要 — 系统一句话定位 + 核心发现
-2. 仓库心智模型 — 维护者如何心智划分系统
-3. 架构 — 系统如何组织
-4. 工程决策 — 为什么这样设计
-5. 设计空间 — 被拒绝的替代方案及理由
-6. 模型挑战 — 哪些结论被挑战过、挑战结果、反证记录
-7. 修改影响地图 — 修改 X 影响哪些层
-8. 可复用知识 — 可迁移的思想
-9. 意外发现 — 与预期不符的架构现象
-10. 未解问题 — 无法验证的问题
-
-**重要**: 报告应该像 Martin Fowler 的文章一样，是一篇连贯的叙事，不是分析器输出拼接。
-**重要**: 必须包含架构中心假设。
-**重要**: 每个设计决策必须说明被拒绝的替代方案。
-**重要**: 必须说明哪些结论被挑战过，挑战结果如何。
-**重要**: 必须说明修改 X 影响哪些层。
-
-输出 Markdown 格式的报告（直接输出报告内容，不要 JSON 包装）。
+输出 Markdown。
 `;
+  return invokeLLM(prompt, { model: DEFAULT_MODEL });
+}
 
-  const result = await invokeLLM(prompt, { model: DEFAULT_MODEL });
-  return result;
+async function stageFiveReport(repoPath, repoType, result, workDir) {
+  console.log("Stage 5: Generating report...\n");
+  const report = await generateReport(repoType, result);
+  await writeFile(join(workDir, "report.md"), report, "utf-8");
+  return report;
 }
 
 // ---------------------------------------------------------------------------
@@ -479,197 +498,136 @@ async function main() {
   const workDir = join(WORKING_DIR, repoName);
   const contextPath = join(workDir, "context.json");
   const questionsDir = join(workDir, "questions");
-  const round1Path = join(questionsDir, "round-1.json");
-  const summaryPath = join(questionsDir, "summary.json");
   const modelPath = join(workDir, "repository-model.json");
-  const reportPath = join(workDir, "report.md");
   const metaPath = join(workDir, "meta.json");
 
   console.log(`\n=== Repository Research: ${repoName} ===\n`);
   console.log(`Repository: ${repoPath}`);
   console.log(`Working directory: ${workDir}\n`);
 
-  // ==========================================================================
-  // Stage -1: Resume existing research
-  // ==========================================================================
+  // ========================================================================
+  // Stage 0: Resume Workspace
+  // ========================================================================
 
-  const resumeResult = await stageMinusOne(workDir, repoPath, force);
-
-  // If resume returned a cached report, we're done
-  if (resumeResult.report) {
-    console.log(resumeResult.report.slice(0, 500) + "...\n");
+  const resume = await stageZeroResume(workDir, repoPath, force);
+  if (resume.done) {
+    process.stdout.write(resume.report.slice(0, 500) + "...\n\n");
     return;
   }
 
   // Create working directory if fresh
-  if (!resumeResult.resumed) {
+  if (!resume.resumed) {
     await ensureDir(workDir);
+    await ensureDir(questionsDir);
   }
 
-  // ==========================================================================
-  // Stage 0: Stable Artifact Generation (conditional)
-  // ==========================================================================
+  // ========================================================================
+  // Stage 1: Scan Repository (conditional)
+  // ========================================================================
 
-  // Directory tree (from cache or fresh scan)
-  const scan = await stageZeroScan(workDir, repoPath, resumeResult);
+  const { scan, profile } = await stageOneScan(workDir, repoPath, resume);
 
-  // Repository profile (from cache or LLM)
-  const repoType = await stageZeroType(workDir, (s) => identifyRepoType(repoPath, s), scan, resumeResult);
+  // ========================================================================
+  // Stage 2: Analyze Delta (conditional)
+  // ========================================================================
 
-  // ==========================================================================
-  // Stage 1: Generate research questions
-  // ==========================================================================
+  const delta = await stageTwoDelta(workDir, repoPath, resume);
 
-  console.log("Stage 1: Generating research questions...");
-  await ensureDir(questionsDir);
-  const questions = await generateQuestions(repoPath, repoType, scan);
+  // ========================================================================
+  // Stage 3: Research Planner
+  // ========================================================================
 
-  const round1 = {
-    round: 1,
+  const plan = await stageThreePlanner(resume);
+
+  // ========================================================================
+  // Stage 4: Architecture Research
+  // ========================================================================
+
+  const result = await stageFourResearch(repoPath, resume, plan, scan, profile);
+
+  // Save model
+  await writeJson(modelPath, result.model);
+
+  // Save questions
+  const roundFile = `round-${plan.round}.json`;
+  const roundData = {
+    round: plan.round,
     generated_from: [],
-    trigger: "Repository type identification",
-    purpose: "Discovery",
-    questions: questions.map((q) => ({
-      ...q,
-      id: q.id && q.id.startsWith("R1-") ? q.id : `R1-${(q.id || "").replace(/^Q/, "")}`,
-    })),
+    trigger: plan.firstRun ? "initial" : `planner_focus_${plan.focus}`,
+    purpose: plan.firstRun ? "discovery" : `focus_${plan.focus}`,
+    status: "active",
+    questions: result.questions,
   };
-  await writeJson(round1Path, round1);
+  await writeJson(join(questionsDir, roundFile), roundData);
 
   const summary = {
-    latest_round: 1,
-    rounds: [{ round: 1, file: "round-1.json", purpose: "Discovery", status: "active" }],
+    latest_round: plan.round,
+    rounds: [
+      ...(resume.questions?.rounds || []),
+      { round: plan.round, file: roundFile, purpose: roundData.purpose, status: "active" },
+    ],
   };
-  await writeJson(summaryPath, summary);
+  await writeJson(join(questionsDir, "summary.json"), summary);
 
-  console.log(`  Generated ${round1.questions.length} questions (round-1)\n`);
+  // ========================================================================
+  // Stage 5: Report
+  // ========================================================================
 
-  // ==========================================================================
-  // Stage 2: Mechanical analysis
-  // ==========================================================================
+  const repoType = profile || (await loadStableArtifact(workDir, "repository-profile")) || { type: "Unknown", focus_areas: [] };
+  const report = await stageFiveReport(repoPath, repoType, result, workDir);
 
-  console.log("Stage 2: Mechanical analysis...");
-  const evidence = await mechanicalAnalysis(repoPath, scan);
-  console.log(`  Collected ${evidence.length} evidence items\n`);
+  // ========================================================================
+  // Update context.json
+  // ========================================================================
 
-  // ==========================================================================
-  // Stage 3a: Build Repository Model
-  // ==========================================================================
-
-  console.log("Stage 3a: Building Repository Model...");
-  let model;
-  try {
-    model = await buildRepositoryModel(repoPath, repoType, evidence);
-    await writeJson(modelPath, model);
-    console.log("  Model built\n");
-  } catch (err) {
-    console.error(`Error building model: ${err.message}`);
-    process.exit(1);
-  }
-
-  // ==========================================================================
-  // Stage 3b: Architecture interpretation
-  // ==========================================================================
-
-  console.log("Stage 3b: Architecture interpretation...");
-  let interpretation;
-  try {
-    interpretation = await architectureInterpretation(repoPath, repoType, model, evidence);
-    console.log("  Interpretation complete\n");
-  } catch (err) {
-    console.error(`Error in interpretation: ${err.message}`);
-    process.exit(1);
-  }
-
-  // ==========================================================================
-  // Stage 3c: Challenge model
-  // ==========================================================================
-
-  console.log("Stage 3c: Challenging model...");
-  let challenge;
-  try {
-    challenge = await challengeModel(repoPath, interpretation, model);
-    console.log("  Challenge complete\n");
-  } catch (err) {
-    console.error(`Error in challenge: ${err.message}`);
-    process.exit(1);
-  }
-
-  // ==========================================================================
-  // Stage 4: Generate report
-  // ==========================================================================
-
-  console.log("Stage 4: Generating report...");
-  let report;
-  try {
-    report = await generateReport(repoPath, repoType, model, interpretation, challenge, questions);
-    await writeFile(reportPath, report, "utf-8");
-    console.log("  Report generated\n");
-  } catch (err) {
-    console.error(`Error generating report: ${err.message}`);
-    process.exit(1);
-  }
-
-  // ==========================================================================
-  // Build context.json
-  // ==========================================================================
-
-  const allQuestions = round1.questions;
+  const allQuestions = result.questions;
   const totalQ = allQuestions.length;
   const answeredQ = allQuestions.filter((q) => q.status === "answered" || q.status === "validated").length;
   const validatedQ = allQuestions.filter((q) => q.status === "validated").length;
 
   const context = {
-    user_input: `分析 ${repoPath} 仓库的架构、设计模式和工程实现`,
-    current_round: 1,
-    current_question_file: "questions/round-1.json",
+    user_input: `分析 ${repoPath} 仓库的架构`,
+    resume: {
+      last_completed_stage: "Stage 5",
+      next_stage: "done",
+      last_round: plan.round,
+    },
+    current_round: plan.round,
+    current_question_file: roundFile,
     model_stability: "stable",
     question_statistics: {
-      rounds: 1,
-      total_questions: totalQ,
-      answered: answeredQ,
-      validated: validatedQ,
+      rounds: plan.round,
+      total_questions: totalQ + (resume.context?.question_statistics?.total_questions || 0) - (plan.firstRun ? 0 : 0),
+      answered: answeredQ + (resume.context?.question_statistics?.answered || 0),
+      validated: validatedQ + (resume.context?.question_statistics?.validated || 0),
     },
+    coverage: result.coverage,
     architecture_model: {
-      center_hypothesis: challenge.center_hypothesis,
-      key_assumptions: challenge.key_assumptions || [],
-      architecture_invariants: (interpretation.engineering_constraints || []).map((c) => c.constraint),
+      center_hypothesis: result.challenge.center_hypothesis,
+      key_assumptions: result.challenge.key_assumptions || [],
+      architecture_invariants: (result.interpretation.engineering_constraints || []).map((c) => c.constraint),
       unexplained_observations: [],
-      competing_interpretations: challenge.competing_interpretations || [],
+      competing_interpretations: result.challenge.competing_interpretations || [],
     },
-    challenge_record: challenge.challenges || [],
-    design_space: (interpretation.design_decisions || []).map((d) => ({
-      decision: d.decision,
-      chosen: d.chosen,
-      rejected: d.rejected,
-      why_chosen: d.why,
-      why_rejected: d.why,
-      confidence: "high",
-      evidence: d.evidence,
+    challenge_record: result.challenge.challenges || [],
+    design_space: (result.interpretation.design_decisions || []).map((d) => ({
+      decision: d.decision, chosen: d.chosen, rejected: d.rejected,
+      why_chosen: d.why, why_rejected: d.why, confidence: "high", evidence: d.evidence,
     })),
     maintainer_view: {
       modification_impact_map: {},
-      complexity_drivers: (interpretation.architectural_tensions || []).map((t) => t.tension),
+      complexity_drivers: (result.interpretation.architectural_tensions || []).map((t) => t.tension),
     },
-    evidence_collected: evidence.map((e) => ({
-      path: e.path,
-      purpose: e.purpose,
-      key_findings: [],
-      surprises: [],
-      unanswered: [],
+    evidence_collected: result.evidence.map((e) => ({
+      path: e.path, purpose: e.purpose, key_findings: [], surprises: [], unanswered: [],
     })),
-    quality_gate: {
-      center_identified: false,
-      alternatives_considered: false,
-      counterexamples_found: false,
-      model_challenged: false,
-    },
+    quality_gate: { center_identified: false, alternatives_considered: false, counterexamples_found: false, model_challenged: false },
   };
   await writeJson(contextPath, context);
 
-  // ==========================================================================
-  // Write meta.json (with commit tracking)
-  // ==========================================================================
+  // ========================================================================
+  // Write meta.json
+  // ========================================================================
 
   const commit = getCurrentCommit(repoPath);
   const meta = {
@@ -677,34 +635,24 @@ async function main() {
     repo_type: repoType.type,
     last_analyzed_commit: commit || "unknown",
     analyzed_at: new Date().toISOString(),
-    model_version: "1.0",
+    model_version: "2.0",
   };
-  await writeJson(metaPath, meta);
+  await writeMeta(workDir, meta);
 
-  // ==========================================================================
-  // Run gated checks
-  // ==========================================================================
+  // ========================================================================
+  // Gated checks
+  // ========================================================================
 
   if (!skipGate) {
     console.log("Running gated checks...");
     try {
       const { preconditions, gates, allPassed, summary } = await runAllChecks(context, report);
-
       console.log(`\n=== Preconditions: ${preconditions.checks.filter((c) => c.passed).length}/${preconditions.checks.length} passed ===\n`);
-      for (const check of preconditions.checks) {
-        console.log(`[${check.passed ? "PASS" : "FAIL"}] ${check.name}`);
-      }
-
+      for (const c of preconditions.checks) console.log(`[${c.passed ? "PASS" : "FAIL"}] ${c.name}`);
       console.log(`\n=== Gated Checks: ${gates.summary} ===\n`);
-      for (const result of gates.results) {
-        console.log(`[${result.passed ? "PASS" : "FAIL"}] ${result.name}`);
-      }
-
+      for (const r of gates.results) console.log(`[${r.passed ? "PASS" : "FAIL"}] ${r.name}`);
       console.log(`\n=== Summary: ${summary} ===\n`);
-
-      for (const result of gates.results) {
-        context.quality_gate[result.id] = result.passed;
-      }
+      for (const r of gates.results) context.quality_gate[r.id] = r.passed;
       await writeJson(contextPath, context);
     } catch (err) {
       console.error(`Gated checks failed: ${err.message}\n`);
@@ -712,7 +660,7 @@ async function main() {
   }
 
   console.log(`\n=== Analysis complete ===`);
-  console.log(`Report: ${reportPath}`);
+  console.log(`Report: ${join(workDir, "report.md")}`);
   console.log(`Context: ${contextPath}`);
   console.log(`Model: ${modelPath}\n`);
 }

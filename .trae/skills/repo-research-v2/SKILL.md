@@ -17,6 +17,54 @@ Repository Model 捕获实体、关系及支撑证据。报告是 Model 的视�
 
 ---
 
+## Resume Existing Analysis
+
+**这是执行入口，优先于编译流程中的所有 Stage。**
+
+如果工作目录存在，恢复已有研究状态而非从头开始。
+
+### 恢复流程
+
+1. **加载 context.json** — 恢复研究状态（current_round, model_stability, evidence_collected）
+2. **加载 repository-model.json** — 恢复 Repository Model
+3. **加载 meta.json** — 恢复元信息（repo_path, repo_type, last_analyzed_commit）
+4. **加载 questions/summary.json** — 恢复问题进度（问题数量、已回答、已验证）
+
+### 判断 commit
+
+- `git rev-parse HEAD` 与 `meta.last_analyzed_commit` 比较
+- 非 Git 仓库 → 始终视为"已变化"
+
+| commit 状态 | 行为 |
+|------------|------|
+| 未变化 | 禁止重新扫描、禁止重新识别类型、禁止重新统计目录 |
+| 已变化 | `git diff` 识别受影响文件，仅更新受影响部分 |
+
+### 恢复 Pipeline Position
+
+读取 `context.resume` 恢复精确执行位置：
+
+```json
+{
+  "last_completed_stage": "Stage 3",
+  "next_stage": "Stage 4",
+  "last_round": 2
+}
+```
+
+- 直接跳转到 `next_stage`
+- 禁止重新执行 `last_completed_stage` 已经完成且未失效的阶段
+- 每个 Stage 完成时写入 `context.resume.last_completed_stage`
+
+### 强制规则
+
+- 如果 `context.resume.last_completed_stage` >= Stage 5（报告已生成）且 commit 未变化 → 直接返回已有报告
+- 如果 `context.resume.last_completed_stage` >= Stage 4（至少完成一轮完整 Research）→ 进入 Research Planner 决定下一轮方向，而不是重新生成问题
+- **禁止**在 commit 未变化时重新执行 Stage 1-2
+- **禁止**在 `last_completed_stage >= Stage 3` 时重新规划问题（除非 Planner 判定需要）
+
+---
+
 ## 输入
 
 接受以下信息的任意子集：
@@ -85,11 +133,16 @@ Repository Model 捕获实体、关系及支撑证据。报告是 Model 的视�
 
 ### context.json
 
-context.json 是研究者的**外部脑**。记录当前研究状态。
+context.json 是研究者的**外部脑**。记录当前研究状态和执行位置。
 
 ```json
 {
   "user_input": "用户原始输入，不转义",
+  "resume": {
+    "last_completed_stage": "Stage 4",
+    "next_stage": "Stage 5",
+    "last_round": 2
+  },
   "current_round": 2,
   "current_question_file": "questions/round-2.json",
   "model_stability": "formative",
@@ -99,63 +152,26 @@ context.json 是研究者的**外部脑**。记录当前研究状态。
     "answered": 41,
     "validated": 18
   },
+  "coverage": {
+    "runtime": 0.95,
+    "architecture": 0.82,
+    "design_decisions": 0.64,
+    "testing": 0.51,
+    "deployment": 0.31,
+    "history": 0.21
+  },
   "architecture_model": {
     "center_hypothesis": "最核心的架构假设（一句话）",
-    "key_assumptions": [
-      {
-        "assumption": "系统依赖的某个关键假设",
-        "evidence": ["server/gateway.ts:createDomainGateway"],
-        "challenged": false,
-        "survived_challenge": null
-      }
-    ],
+    "key_assumptions": [...],
     "architecture_invariants": ["不可违反的基本约束"],
     "unexplained_observations": ["当前模型无法解释的现象"],
     "competing_interpretations": []
   },
-  "challenge_record": [
-    {
-      "target": "被挑战的结论",
-      "challenge": "如果移除 X，系统还能成立吗？",
-      "method": "寻找反证 | 替代方案比较 | 假设检验",
-      "outcome": "survived | refuted | modified",
-      "evidence": ["..."],
-      "model_delta": "挑战后模型有何变化"
-    }
-  ],
-  "design_space": [
-    {
-      "decision": "做出的技术决策",
-      "chosen": "选择了什么",
-      "rejected": ["被拒绝的方案"],
-      "why_chosen": "为什么选这个",
-      "why_rejected": "为什么拒接替代方案",
-      "confidence": "high",
-      "evidence": ["..."]
-    }
-  ],
-  "maintainer_view": {
-    "modification_impact_map": {
-      "add_panel": ["src/config/panels.ts", "src/components/", "src/app/data-loader.ts"],
-      "add_data_source": ["scripts/seed-*.mjs", "server/worldmonitor/", "api/"]
-    },
-    "complexity_drivers": ["驱动复杂度的根因"]
-  },
-  "evidence_collected": [
-    {
-      "path": "文件相对路径",
-      "purpose": "读取目的",
-      "key_findings": ["关键发现"],
-      "surprises": ["意外发现"],
-      "unanswered": ["阅读后仍存疑的问题"]
-    }
-  ],
-  "quality_gate": {
-    "center_identified": false,
-    "alternatives_considered": false,
-    "counterexamples_found": false,
-    "model_challenged": false
-  }
+  "challenge_record": [...],
+  "design_space": [...],
+  "maintainer_view": {...},
+  "evidence_collected": [...],
+  "quality_gate": {...}
 }
 ```
 
@@ -176,270 +192,217 @@ context.json 是研究者的**外部脑**。记录当前研究状态。
 
 ```mermaid
 flowchart TD
-    Start[Start] --> A{Working Directory Exists?}
+    Start[Start] --> R{Working Directory?}
 
-    %% Stage -1: Resume
-    A -- 否 --> A1[创建工作目录 + 初始化 meta.json]
-    A1 --> G[全量分析]
-    A -- 是 --> B[Stage -1: 加载 meta.json + context.json]
-    B --> C{commit 变化?}
+    %% Resume
+    R -- 否 --> Fresh[初始化工作目录 + meta.json]
+    Fresh --> S0[Stage 0: Resume Workspace]
+    S0 --> S1_1
 
-    %% Commit unchanged — full resume
-    C -- 否 --> D{所有 Stable Artifact 存在?}
-    D -- 是 --> E[从 artifacts/ 加载 Stable Artifact]
-    E --> F[禁止重新生成：scan / type / directory / dependency]
-    F --> I[直接复用已有 Repository Model?]
-    I -- 是且 report 存在 --> Return[返回已有报告]
-    I -- 否 --> J[继续未完成研究]
+    R -- 是 --> Resume["Stage 0: Resume Workspace
+    — 加载 context.json
+    — 加载 repository-model.json
+    — 加载 meta.json
+    — 加载 questions/summary.json"]
+    Resume --> C{commit 变化?}
 
-    %% Commit changed — selective update
-    C -- 是 --> H{Stable Artifact 全部存在?}
-    H -- 是 --> H1[git diff 识别受影响文件]
-    H1 --> H2[仅重新生成受影响的 Stable Artifact]
-    H2 --> H3[更新 meta.last_analyzed_commit]
-    H3 --> J
-    H -- 否 --> H4[生成缺失的 Stable Artifact]
-    H4 --> H3
+    C -- 否 --> CheckStage{resume.next_stage?}
+    CheckStage --> |Stage 4+| Direct[已有研究进展]
+    Direct --> Planner[Stage 3: Research Planner]
+    CheckStage --> |Stage 3以下| Jump[恢复到 next_stage]
+    Jump --> Planner
 
-    %% 全量分析路径
-    G --> GR[Stage 0: 生成 Stable Artifact]
-    GR --> GR1[repository-profile.json]
-    GR1 --> GR2[directory-tree.json]
-    GR2 --> GR3[symbol-index.json]
-    GR3 --> GR4[git-summary.json]
-    GR4 --> GR5[evidence-index.json]
-    GR5 --> K
+    C -- 是 --> S1[Stage 1: Scan Repository<br>— directory-tree.json<br>— repository-profile.json]
+    S1 --> S2[Stage 2: Analyze Delta<br>— git diff<br>— 更新受影响 Stable Artifact]
+    S2 --> Planner
 
-    %% 恢复后的统一路径
-    J --> K{分析继续}
+    %% Planner
+    Planner --> P1{coverage 评估}
+    P1 --> P2[识别 coverage 最低维度]
+    P2 --> P3[生成下一轮研究问题]
+    P3 --> P4{至少完成一次?}
 
-    K --> L[识别仓库类型]
-    L --> M[生成研究问题 → questions/round-1.json]
+    P4 -- 否 --> FullResearch
+    P4 -- 是 --> P5[返回已有 Model + 追加研究]
 
-    M --> N[Stage 1: 机械分析]
-    N --> O[Stage 2: 仓库模型构建]
-    O --> P{evidence sufficient?}
-    P -- 否 --> Q[collect more evidence]
-    Q --> N
-    P -- 是 --> R
-
-    subgraph R[Stage 3a: 架构解释]
-        R1[Build architecture interpretation]
-        R2[For each conclusion, ask "why not alternative?"]
-        R3[Update design_space in context.json]
+    %% Research cycle
+    subgraph FullResearch[Stage 4: Architecture Research]
+        R1[收集证据]
+        R2[构建/更新 Model]
+        R3[架构解释]
+        R4[挑战 Model]
+        R5[收敛问题]
+        R1 --> R2 --> R3 --> R4 --> R5
     end
 
-    R --> S{Stage 3b: 挑战模型}
-    S --> S1[Challenge center_hypothesis]
-    S1 --> S2[Seek counterevidence for each conclusion]
-    S2 --> S3{challenge_record updated?}
-    S3 -- 每项至少一次 → T
-    S3 -- 有未被挑战的结论 → S1
+    subgraph P5[Stage 4: Incremental Research]
+        I1[仅收集缺失证据]
+        I2[更新 Model 受影响部分]
+        I3[挑战新增结论]
+        I1 --> I2 --> I3
+    end
 
-    T{Stage 3c: 第一轮收敛}
-    T -- 所有 depth=1 已回答 --> U
-    T -- 否 --> Q
-
-    U{Stage 3d: 深度追问}
-    U --> U1[生成 round-2 问题]
-    U1 --> U2{有 depth≥3 的追问空间？}
-    U2 -- 是 → U3[生成 depth≥3 问题]
-    U2 -- 否 → V
-    U3 --> V{quality_gate all passed?}
-    V -- 否 → Q
-    V -- 是 → W[Stage 4: 生成分析报告]
-    W --> X[写入工作目录 + 更新 context.json]
+    FullResearch --> G{quality_gate?}
+    P5 --> G
+    G -- 未通过 → Planner
+    G -- 通过 --> Report[Stage 5: 生成报告]
+    Report --> Done[写入工作目录 + 更新 context.resume]
 ```
 
 ---
 
-## Stage -1 — 恢复研究现场（Resume Research）
+## Stage 0 — 恢复研究现场（Resume Workspace）
 
-**这是优先执行的阶段。** 在进入任何其他阶段之前，先判断是否能恢复已有研究。
+参见 [Resume Existing Analysis](#resume-existing-analysis) 节。
 
-### 执行流程
+**执行入口**。加载已有研究状态，确定 `next_stage`，跳转到对应阶段。
 
-1. **检查工作目录是否存在**
-   - 不存在 → 初始化工作目录 + meta.json，执行全量分析（进入 Stage 0）
-   - 存在 → 继续
-
-2. **加载 meta.json + context.json**
-   - 读取 `last_analyzed_commit`、`repo_type`、`model_version`
-
-3. **判断 commit 是否变化**
-   - `git rev-parse HEAD` 与 `last_analyzed_commit` 比较
-   - 非 Git 仓库 → 始终视为"已变化"
-
-4. **分支一：commit 未变化**
-   - 检查所有 Stable Artifact 是否存在
-   - 全部存在 → 从 `artifacts/` 加载，**禁止重新扫描、重新识别类型、重新统计目录**
-   - 缺失 → 生成缺失的 Stable Artifact，然后复用
-   - 如果已有完整 report → 直接返回
-
-5. **分支二：commit 已变化**
-   - `git diff {last_analyzed_commit}..HEAD` 识别受影响文件
-   - 仅重新生成受影响的 Stable Artifact
-   - 未受影响 Artifact 必须复用
-   - 更新 `last_analyzed_commit`
-
-### 禁止行为
-- commit 未变化时重新扫描全量目录结构
-- commit 未变化时重新统计文件数量
-- commit 未变化时重新识别仓库类型
-- commit 未变化时重新生成 Stable Artifact
-- 丢失已有 Stable Artifact 数据
+**禁止**在此阶段执行扫描、分析或推理。
 
 ---
 
-## Stage 0 — Stable Artifact 生成（条件执行）
+## Stage 1 — 扫描仓库（Scan Repository）
 
-**仅当以下条件之一满足时执行：**
+**条件执行**。仅当以下条件之一满足：
 
 | 条件 | 行为 |
 |------|------|
-| Stage -1 判定需要全量分析 | 生成所有 Stable Artifact |
-| Stage -1 判定部分 Stable Artifact 缺失 | 仅生成缺失的 |
-| commit 变化且 Stable Artifact 受影响 | 仅重新生成受影响的 |
+| commit 变化（diff 非空） | 全量或增量扫描取决于变化范围 |
+| Stable Artifact 缺失 | 仅生成缺失的 Artifact |
+| 非 Git 仓库 | 每次扫描 |
 
-生成以下 Stable Artifact。**每个 Artifact 都是"生成一次，永久复用"（除非 commit 变化）。**
+生成 Stable Artifact 并保存到 `artifacts/`：
 
-| Artifact | 内容 | 生成方法 |
-|----------|------|---------|
-| `repository-profile.json` | 仓库类型、语言、文件数量、入口点、构建系统 | LLM 识别 + 文件扫描 |
-| `directory-tree.json` | 完整目录结构（扁平路径列表、文件/目录计数） | 文件系统遍历 |
-| `symbol-index.json` | 关键符号（函数、类、导出） | AST 提取 |
-| `git-summary.json` | Git 历史分析（提交频率、贡献者、重大变化边界） | git log |
-| `evidence-index.json` | 已读文件的路径 + 读取目的索引 | 文件扫描 |
+| Artifact | 内容 |
+|----------|------|
+| `directory-tree.json` | 完整目录结构（文件路径列表、目录列表） |
+| `repository-profile.json` | 仓库类型、语言分布、文件统计、入口点 |
 
-**禁止**在此阶段进行架构解释。只收集客观事实。
+### 禁止行为
 
----
-
-## Stage 1 — 问题生成
-
-基于仓库类型和 Stable Artifact 生成研究问题。写入 `questions/round-1.json`。
-
-详见 [question-framework.md](./question-framework.md)。
+- commit 未变化时重新扫描
+- 在此阶段识别仓库类型（类型应缓存，仅 commit 变化且 confidence < high 时才重新识别）
+- 在此阶段进行架构解释
 
 ---
 
-## Stage 2 — 机械分析
+## Stage 2 — 分析变化（Analyze Delta）
 
-从 Stable Artifact 中提取证据，为仓库模型构建准备材料。
+**条件执行**。仅当 commit 变化时执行。
 
-收集：目录结构、依赖图、import 图、package 图、符号、公共 API、Git 历史、文档、配置、指标。
+1. `git diff {last_analyzed_commit}..HEAD` 识别受影响文件
+2. 按文件类型分类变化（新增/修改/删除）
+3. 仅重新生成受影响的 Stable Artifact
+4. 未受影响 Artifact 禁止重新生成
 
-**禁止**在此阶段进行架构解释。
-
----
-
-## Stage 3a — 仓库模型构建
-
-将机械证据转化为 Repository Model。
-
-构建以下 5 个维度（详见 [report-schema.md](./report-schema.md#仓库模型)）：
-
-| 模型 | 描述 |
-|------|------|
-| **结构模型** | 模块、目录、组件及其边界 |
-| **行为模型** | 控制流、数据流、运行流程 |
-| **归属模型** | 状态、职责、生命周期归属 |
-| **扩展模型** | 插件机制、扩展点、公共 API |
-| **演进模型** | 架构演进与历史变化 |
-
-**禁止**在此阶段推断架构意图。
+产出：更新后的 Stable Artifact + `meta.last_analyzed_commit`。
 
 ---
 
-## Stage 3b — 架构解释
+## Stage 3 — 研究规划器（Research Planner）
 
-基于仓库模型重建系统背后的工程思想。
+**无论 commit 是否变化，只要研究未完成，每次运行都必须经过此阶段。**
 
-产出类型（详见 [report-schema.md](./report-schema.md#阶段-2-输出类型)）：
+Planner 决定**下一轮研究什么**，而不是继续生成 round-N 问题。
 
-- 工程约束
-- 架构作用力
-- 设计决策
-- 权衡
-- 有意省略
-- 架构张力
-- 杠杆点
-- 维护者心智模型
+### 评估模型覆盖度
 
-**每个解释必须引用证据。**
+读取 `context.coverage`，识别 coverage 最低的维度：
 
-如果存在多个合理解释，分别说明并给出各自证据与置信度。
+| 维度 | 包含 | 默认值 |
+|------|------|--------|
+| `runtime` | 运行时架构、启动流程、请求生命周期 | 首次 0 |
+| `architecture` | 模块组织、边界、分层、模式 | 首次 0 |
+| `design_decisions` | 关键决策、替代方案、权衡 | 首次 0 |
+| `testing` | 测试策略、覆盖率、质量保障 | 首次 0 |
+| `deployment` | 构建、部署、CI/CD | 首次 0 |
+| `history` | 演进历史、重大变化、技术债务 | 首次 0 |
 
----
+### Planner 输出
 
-## Stage 3c — 挑战模型
+回答以下问题，写入 `context.resume.next_research_focus`：
 
-**必须**对 Stage 3b 的每个结论执行以下检验：
+```
+模型哪里最弱？     → coverage 最低的维度
+哪个假设没验证？   → key_assumptions 中 challenged=false 的
+哪个解释没有反证？ → challenge_record 缺少 counter_evidence 的
+哪个模块没有覆盖？ → structure.modules 但 evidence_collected 不包含的
+下一轮应该研究什么？→ 一句话的研究目标
+```
 
-| 检验 | 具体操作 | 判断标准 |
-|------|---------|---------|
-| **移除测试** | 如果移除这个组件/模式，系统还能成立吗？ | 能找到替代方案 → 非核心；找不到 → 架构中心 |
-| **假设翻转** | 如果结论是相反的，哪些证据应该存在？实际存在吗？ | 反证存在 → 模型需修正 |
-| **边界测试** | 这个结论在什么条件下不成立？ | 有明确边界 → 结论精确；无边界 → 结论过度泛化 |
-| **时间测试** | 这个决策在最开始时也是最优的吗？ | 现在最优但初期次优 → 演进产物；一直最优 → 设计原则 |
+### Planner 规则
 
-每项检验的结果记录到 context.json 的 `challenge_record`。
-
-**强制规则**：
-
-- context.json 中 `architecture_model.key_assumptions` 的每一条**必须至少被挑战一次**
-- 如果有 assumptions 的 `challenged=false`，**禁止**进入报告生成阶段
-- 挑战时**必须寻找反证**（disconfirming evidence），而非只找支持证据
-- 如果找到反证且证据强度 ≥ 挑战目标的证据强度，**必须修正模型**
+- 首次运行：生成 8-12 个 depth≥1 的问题（全量探索）
+- 后续运行：基于 coverage 最低维度生成 ≤5 个 depth≥2 的聚焦问题
+- 如果所有维度 coverage ≥ 0.8 且所有 challenges surviving → 研究收敛，可以进入报告
+- 禁止在同一维度重复生成同类问题
+- 如果 coverage 最低维度与上一轮相同 → 要求 deeper（depth+1），避免平面重复
 
 ---
 
-## Stage 3d — 第一轮收敛
+## Stage 4 — 架构研究（Architecture Research）
 
-第一轮问题（questions.json）全部 `answered` 后，检查 depth 分布：
+执行 Planner 确定的下一轮研究目标。
 
-- 如果所有问题 depth_level 都是 1 → 研究停留在表面，**必须先追问 depth≥2 的问题**
-- 如果有 depth≥2 的问题 → 可以进入下一阶段
+### 4a: 收集证据
+- 基于研究目标选择需要读取的文件
+- 从 `directory-tree.json` 定位文件
+- 读取文件内容（仅新文件或新增证据索引）
+- 写入 `evidence_collected`
 
-同步更新 context.json 的 `research_progress` 计数。
+### 4b: 构建/更新 Repository Model
+- 首次：全量构建 5 维模型
+- 后续：仅更新受影响的维度
+
+### 4c: 架构解释
+- 基于模型重建系统背后的工程思想
+- 每个解释必须引用证据
+- 产出：工程约束、架构作用力、设计决策、权衡、省略、张力、杠杆点
+
+### 4d: 挑战模型
+- 对每个关键结论执行移除测试、假设翻转、边界测试、时间测试
+- 记录到 `challenge_record`
+- 强制：每项 key_assumptions 必须至少被挑战一次
+
+### 4e: 收敛问题
+- 检查本轮问题是否全部 `answered`
+- 更新 `question_statistics`
+- 更新 `coverage` 评分
+
+### 更新 context.resume
+
+每个子阶段完成后更新 `context.resume.last_completed_stage`：
+```
+4a → "Stage 4a"
+4b → "Stage 4b"
+4c → "Stage 4c"
+4d → "Stage 4d"
+4e → "Stage 4e"
+```
 
 ---
 
-## Stage 3e — 深度追问
-
-基于第一轮回答生成第二轮收敛问题（questions-r2.json）。
-
-**深度要求**：
-
-- 至少有 1 个问题的 depth_level ≥3（"为什么不是别的"层级）
-- 禁止问同层级同角度的问题
-- 如果第一轮回答中出现了 surprise（意外发现），必须围绕 surprise 生成挑战性问题
-
-如果仍有 depth≥3 的追问空间（即 answers 不够深入），**禁止进入报告生成阶段**。研究必须是收敛漏斗，不是扇形发散。
-
----
-
-## Stage 4 — 分析报告生成
+## Stage 5 — 报告生成（Report）
 
 从 Repository Model 生成人类可读的中文报告。
 
-**禁止**在此阶段执行推理。**禁止**发明新结论。
+**禁止**在此阶段执行推理。**禁止**发明新结论。只将已验证的发现组织成连贯叙事。
 
-只将已验证的发现组织成连贯叙事。
+### 覆盖率标注
 
-报告生成后，**必须**保存到工作目录 `.trae/working/{repo-name}/report.md`。如果已有旧报告，直接覆盖。Repository Model（`repository-model.json`）保留历史证据（标记 `deprecated`），不删除。
+报告必须在每个章节标注 coverage 评级：
 
----
+| 标注 | 含义 |
+|------|------|
+| ✅ 已验证 | coverage ≥ 0.9 |
+| 🔶 部分验证 | 0.5 ≤ coverage < 0.9 |
+| ❌ 证据不足 | coverage < 0.5 |
 
-## 增量分析
+### 输出
 
-增量分析逻辑已由 Stage -1 和 Stage 0 的 Stable Artifact 契约处理。核心原则：
-
-1. **commit 未变化** → 禁止重新生成任何 Stable Artifact。仅继续未完成的研究阶段。
-2. **commit 已变化** → 基于 `git diff` 选择性重新生成受影响的 Stable Artifact。未受影响部分直接复用。
-3. **非 Git 仓库** → 每次全量分析。
-
-**禁止**在增量分析中丢失已有证据。新增证据合并，过时证据标记为 `deprecated` 但不删除。
+1. 报告写入 `report.md`
+2. `context.resume.last_completed_stage` = "Stage 5"
+3. `context.resume.next_stage` = "done"
 
 ---
 
@@ -447,13 +410,13 @@ flowchart TD
 
 ### 前置条件
 
-进入生成分析报告前，以下条件**必须全部满足**：
+进入 Stage 5（报告生成）前，以下条件**必须全部满足**：
 
 1. `questions/summary.json` 中 `latest_round` ≥ 2（至少完成 2 轮问题）
 2. context.json 的 `model_stability` ≠ `nascent`（模型必须被挑战过）
 3. context.json 的 `architecture_model.center_hypothesis` 非空
 4. context.json 的 `quality_gate` 全部为 `true`
-5. `questions/summary.json` 中状态为 `active` 的轮次无 open 问题
+5. `context.coverage` 中至少 4 个维度 ≥ 0.5
 
 ### 自查清单
 
