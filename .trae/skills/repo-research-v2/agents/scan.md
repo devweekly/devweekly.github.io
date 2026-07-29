@@ -48,4 +48,5 @@
 - **禁止**做架构解释（那是 Reasoning Agent 的职责）
 - **禁止**收集证据或写 evidence-log（那是 Evidence Agent 的职责）
 - **禁止**直接修改 context 中的 `model_stability` / `coverage` / `quality_gate` / `challenge_record` / `design_space`——那些状态回退由 Reasoning Agent 执行
+- **禁止**修改 `repository-model.json`——那是 Model Agent 的独占职责（Scan 只负责 artifacts/*.json）
 - **禁止**写 `meta.last_analyzed_commit`（只写 `meta.analysis_target_commit`）

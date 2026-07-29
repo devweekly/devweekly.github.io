@@ -4,7 +4,7 @@
 
 ## 职责
 
-从已有研究产物生成人类可读的中文报告。**禁止新增推理**——只能组织 Stage 4 已经得到的推理链。
+从已有研究产物生成人类可读的中文报告。**禁止新增推理**——只能组织 Evidence + Model + Reasoning 已经得到的推理链。
 
 ## 输入来源（缺一不可）
 
@@ -31,7 +31,7 @@ cross 证据的失效传播：如果 cross 证据的任何组成文件的单文�
 
 ## 核心约束：禁止新增推理
 
-Interpretation/Alternative/Challenge/Conclusion 必须来自 Stage 4（Evidence + Reasoning Agent）已经得到的推理链。Report Agent 只做"组织"：
+Interpretation/Alternative/Challenge/Conclusion 必须来自 Reasoning Agent 已经得到的推理链。Report Agent 只做"组织"：
 
 - 把已有的推理链按叙事弧线排列
 - 去重
@@ -69,8 +69,8 @@ Interpretation/Alternative/Challenge/Conclusion 必须来自 Stage 4（Evidence 
 ## 输出
 
 1. **报告必须写入工作目录的 `report.md` 文件** — 禁止只在对话中输出而不落盘
-2. `context.resume.last_completed_stage` = "Stage 5"
-3. `context.resume.next_stage` = "done"
+2. `context.resume.last_completed_stage` = "report"
+3. `context.resume.next_stage` = "quality"
 4. 更新 `meta.json` 的 `analyzed_at` 时间戳
 
 ## Checkpoint 提交

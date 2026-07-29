@@ -35,8 +35,8 @@
 
 ```json
 {
-  "last_completed_stage": "Stage 4",
-  "next_stage": "Stage 5",
+  "last_completed_stage": "reasoning",
+  "next_stage": "planner",
   "last_round": 2
 }
 ```
@@ -51,7 +51,7 @@
 ```
 {
   "need_scan": true/false,        // 代码是否变了
-  "next_agent": "scan" | "planner" | "evidence" | "reasoning" | "report",
+  "next_agent": "scan" | "planner" | "evidence" | "model" | "reasoning" | "report",
   "resume_context": { ... }       // 恢复的上下文摘要
 }
 ```
@@ -72,8 +72,8 @@ Resume Agent 需要理解 context.json 的结构才能正确恢复：
 {
   "user_input": "用户原始输入，保持不变",
   "resume": {
-    "last_completed_stage": "Stage 4",
-    "next_stage": "Stage 5",
+    "last_completed_stage": "reasoning",
+    "next_stage": "planner",
     "last_round": 2
   },
   "current_round": 2,
@@ -102,7 +102,7 @@ Resume Agent 需要理解 context.json 的结构才能正确恢复：
 
 ### 代码变化时的 pending_invalidation
 
-如果 `context.pending_invalidation` 非空，说明 Stage 2 检测到了代码变化但 Stage 4 还没处理。Resume Agent 应将此信息传递给 Orchestrator，由 Orchestrator 确保 Evidence/Reasoning Agent 处理状态回退。
+如果 `context.pending_invalidation` 非空，说明 Scan Agent 检测到了代码变化但 Evidence/Model/Reasoning 还没处理。Resume Agent 应将此信息传递给 Orchestrator，由 Orchestrator 确保 Evidence → Model → Reasoning 链处理状态回退。
 
 ```json
 {

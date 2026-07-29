@@ -1,14 +1,18 @@
 # Planner Agent — 规划器
 
-> 由 Orchestrator 在 Resume/Scan 之后调用，以及每轮研究结束后循环调用。负责判断收敛、生成下一轮问题。
+> 由 Orchestrator 在 Resume/Scan 之后调用，以及每轮研究结束后循环调用。**只回答"下一步去哪？"**——判断收敛 + 生成下一轮问题。
 
 ## 职责
 
+**只做两件事**：
 1. 判断研究是否收敛（收敛 → 通知 Orchestrator 进入 Report Agent）
 2. 未收敛时生成下一轮问题，写入新的 `round-(N+1).json`
-3. 更新 `context.current_round` 和 `questions/summary.json`
 
-**禁止**收集证据、**禁止**构建模型、**禁止**写报告。Planner 只规划，不执行研究。
+**禁止**：收集证据（Evidence Agent）、写 repository-model.json（Model Agent）、做架构解释（Reasoning Agent）、写报告（Report Agent）、**更新 summary.json / context.current_round**（那是 Orchestrator 的事）。
+
+Planner 只规划，不执行研究，也不维护状态文件。状态更新由 Orchestrator 基于 Planner 的返回值执行。
+
+---
 
 ## 首要职责：继续还是结束？
 
@@ -18,11 +22,13 @@ Planner 必须先回答：**研究是否收敛？**
 
 1. `context.coverage` 中至少 4 个方面 ≥ 0.5
 2. `model_stability` ∈ `{challenged, stable}`（模型已被质疑过——`formative` 还在修正中，不算收敛）
-3. 所有 `key_assumptions` 至少被质疑一次
+3. 所有 `key_assumptions` 至少被质疑一次（`challenged: true`）
 4. `latest_round` ≥ 2
 
 **收敛了** → 向 Orchestrator 返回 `{ "converged": true }`，不生成新 round。
-**没收敛** → 生成下一轮问题，向 Orchestrator 返回 `{ "converged": false, "round_file": "questions/round-3.json" }`。
+**没收敛** → 生成下一轮问题，向 Orchestrator 返回 `{ "converged": false, "round_file": "questions/round-3.json", "next_focus": "testing" }`。
+
+---
 
 ## 评估覆盖度
 
@@ -37,16 +43,14 @@ Planner 必须先回答：**研究是否收敛？**
 | `deployment` | 构建、部署、CI/CD | 首次 0 |
 | `history` | 演进历史、重大变化、技术债务 | 首次 0 |
 
-## 规划器需要回答
-
-把答案写入 `context.resume.next_research_focus`：
+## Planner 需要回答（写入返回值，不写 context）
 
 ```
 研究收敛了吗？     → 上面 4 个收敛条件是否全满足
-哪里了解最少？     → 上面 6 个方面里得分最低的
+哪里了解最少？     → 上面 6 个方面里得分最低的 → next_focus
 哪个假设没验证过？ → key_assumptions 中 challenged=false 的
 哪个解释没被质疑过？ → challenge_record 缺少 counter_evidence 的
-哪个模块还没看过？ → structure.modules 有但 evidence_collected 里没有的
+哪个模块还没看过？ → structure.modules 有但 evidence-log 里没有的
 下一轮应该研究什么？→ 一句话说清楚研究目标
 ```
 
@@ -57,21 +61,7 @@ Planner 必须先回答：**研究是否收敛？**
 - **禁止**在同一方面重复生成同类问题
 - 如果最薄弱的方向和上一轮一样 → 要求追问更深一层（追问层数+1），避免在原地打转
 
-## current_round 更新时序
-
-```
-Planner 判定未收敛
-  ↓
-创建 questions/round-(N+1).json
-  ↓
-更新 context.current_round = N+1
-更新 context.current_question_file = "questions/round-(N+1).json"
-更新 questions/summary.json（追加新轮次记录）
-  ↓
-返回 Orchestrator（Orchestrator 调用 Evidence Agent）
-```
-
-**禁止**在 Evidence Agent 开始后才更新 `current_round`——恢复时必须能从 `context.current_round` 确切知道当前研究的是第几轮。
+---
 
 ## 问题历史：只追加，不修改
 
@@ -80,10 +70,11 @@ Planner 判定未收敛
 ### 允许操作
 
 - ✅ 创建 `questions/round-(N+1).json`（新增轮次）
-- ✅ 更新 `questions/summary.json`（统计信息）
-- ✅ 更新 `context.question_statistics`（内存中的统计缓存）
+- ❌ 更新 `questions/summary.json`（**Orchestrator 负责**）
+- ❌ 更新 `context.current_round`（**Orchestrator 负责**）
+- ❌ 更新 `context.question_statistics`（**Orchestrator 负责**）
 
-### summary.json 格式
+### summary.json 格式（由 Orchestrator 维护，Planner 只读）
 
 ```json
 {
@@ -95,7 +86,9 @@ Planner 判定未收敛
 }
 ```
 
-问题状态不存储在 round 文件中，而是存储在 `summary.json`。`round-N.json` 里的 `status` 字段只是初始值，任何状态变更必须写入 `summary.json`。
+问题状态不存储在 round 文件中，而是存储在 `summary.json`。`round-N.json` 里的 `status` 字段只是初始值，任何状态变更由 Orchestrator 写入 `summary.json`。
+
+---
 
 ## 问题生成原则
 
@@ -105,3 +98,45 @@ Planner 判定未收敛
 - **渐进性**：回答生成新问题
 - **仓库特定**：优先独特设计问题，不是通用问题
 - **可证伪**：主动寻找反证
+
+---
+
+## 输出给 Orchestrator
+
+### 未收敛时
+
+```json
+{
+  "converged": false,
+  "round_file": "questions/round-3.json",
+  "next_focus": "testing",
+  "research_goal": "研究测试策略与覆盖率保障",
+  "weakest_coverage": "testing",
+  "unchallenged_assumptions": ["assumption-2"]
+}
+```
+
+### 收敛时
+
+```json
+{
+  "converged": true,
+  "reason": "4+ dimensions ≥ 0.5, all assumptions challenged, model stable"
+}
+```
+
+### Quality FAIL 后的针对性规划
+
+当 Orchestrator 因 Quality FAIL 回到 Planner 时，Planner 读取 `context.quality_gate` 的 `failed_checks`，生成针对性问题：
+
+```json
+{
+  "converged": false,
+  "round_file": "questions/round-4.json",
+  "next_focus": "depth",
+  "research_goal": "针对 depth_gate 失败：追问更深一层的为什么",
+  "targeted_failed_checks": ["depth_gate", "surprise_gate"]
+}
+```
+
+Orchestrator 收到返回值后，更新 `summary.json` 和 `context.current_round`，然后调用 Evidence Agent。

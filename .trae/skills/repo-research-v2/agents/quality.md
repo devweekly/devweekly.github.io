@@ -80,4 +80,4 @@ node gated-checks.mjs .working/{repo-name}/context.json .working/{repo-name}/rep
 }
 ```
 
-**未通过时**，Orchestrator 会回到 Planner，Planner 根据 `failed_checks` 生成针对性的下一轮问题。
+**Quality Agent 不修改 report.md**——只返回 PASS/FAIL/reason。未通过时，Orchestrator 回到 Planner，Planner 根据 `failed_checks` 生成针对性的下一轮问题。报告是否重写由 Orchestrator 在下一轮收敛后决定（Report Agent 重新生成）。

@@ -5,108 +5,72 @@ description: "把仓库编译成架构知识库（Repository Model），并从�
 
 # Repository 研究
 
-> 相关文档：[methodology.md](./methodology.md)（研究方法论） | [question-framework.md](./question-framework.md)（问题生成与管理） | [report-schema.md](./report-schema.md)（Repository Model + 报告规范）
+> 相关文档：[methodology.md](./methodology.md)（研究方法论） | [workspace.md](./workspace.md)（工作目录 + 文件所有权 + 缓存策略） | [question-framework.md](./question-framework.md)（问题生成与管理） | [report-schema.md](./report-schema.md)（Repository Model + 报告规范）
 
 ## 目标
 
 构建可复用的架构知识库（Repository Model）。Repository Model 捕获实体、关系及支撑证据。报告是 Repository Model 的视图。
 
-## 架构：Orchestrator + Sub Agents
+## 架构：Orchestrator + 8 Sub Agents
 
-每个阶段由独立的 Sub Agent 执行，Orchestrator 只负责调度。各 Agent 只看自己的 prompt，不加载其他 Agent 的规则。
+SKILL 是 Orchestrator，**只负责调度**。每个 Agent 自己知道自己的输入/输出/规则，SKILL 不知道实现细节。
 
 ```mermaid
 flowchart TD
-    Start[Start] --> Resume[Resume Agent<br>恢复现场]
+    Start[Start] --> Resume[Resume<br>恢复现场]
     Resume --> NeedScan{需要扫描?}
-    NeedScan -- 是 --> Scan[Scan Agent<br>扫描仓库]
+    NeedScan -- 是 --> Scan[Scan<br>扫描仓库]
     Scan --> Planner
-    NeedScan -- 否 --> Planner[Planner Agent<br>规划下一轮]
+    NeedScan -- 否 --> Planner[Planner<br>下一步去哪?]
     Planner --> Converged{收敛?}
-    Converged -- 是 --> Report[Report Agent<br>写报告]
-    Converged -- 否 --> Evidence[Evidence Agent<br>收集证据+构建Model]
-    Evidence --> Reasoning[Reasoning Agent<br>解释+质疑+coverage]
+    Converged -- 是 --> Report[Report<br>写报告]
+    Converged -- 否 --> Evidence[Evidence<br>收集证据]
+    Evidence --> Model[Model<br>更新 Repository Model]
+    Model --> Reasoning[Reasoning<br>解释+质疑+coverage]
     Reasoning --> Planner
-    Report --> Quality[Quality Agent<br>质量检查]
-    Quality -- 不通过 --> Planner
-    Quality -- 通过 --> Done[Done]
+    Report --> Quality[Quality<br>PASS/FAIL]
+    Quality -- FAIL --> Planner
+    Quality -- PASS --> Done[Done]
 ```
 
 ## Orchestrator 调度步骤
 
 ```
-1. call resume-agent      → 恢复现场，判断是否需要扫描
-2. if need scan: call scan-agent
+1. call resume              → 恢复现场，判断是否需要扫描
+2. if need scan: call scan
 3. loop:
-     a. call planner-agent  → 判断收敛 or 生成下一轮问题
+     a. call planner          → 返回 {converged, next_focus}（Planner 不写状态文件）
      b. if converged: break
-     c. call evidence-agent → 读文件，写 evidence-log，更新 Repository Model
-     d. call reasoning-agent → 架构解释，质疑模型，更新 coverage
-4. call report-agent       → 从 Model + evidence 生成报告
-5. call quality-agent      → 质量检查，不通过则回到 planner
+     c. Orchestrator 更新 summary.json + context.current_round（基于 planner 返回值）
+     d. call evidence         → 读文件，写 evidence-log（append-only）
+     e. call model            → 从 evidence 合并/更新 repository-model.json（Model 是唯一写入者）
+     f. call reasoning        → 架构解释 + 质疑 + 更新 coverage/design_space/maintainer_view
+4. call report              → 从 Model + evidence 生成报告
+5. call quality             → 返回 PASS/FAIL/reason（不修改 report）
+6. if FAIL: goto 3 (Planner 根据 failed_checks 生成针对性问题)
 ```
 
-## 工作目录
+### Orchestrator 承担的状态更新（非 Planner）
 
-每次分析用同一个工作目录，放所有中间结果和最终报告。
+Planner 只返回决策，**不写状态文件**。以下由 Orchestrator 在收到 Planner 返回后执行：
 
-```
-.working/{repo-name}/
-├── artifacts/               # 可复用的产物（代码没变时禁止重新生成）
-│   ├── repository-profile.json  # 仓库类型、语言、文件统计、入口点
-│   ├── directory-tree.json      # 完整目录结构（扁平路径列表）
-│   ├── symbol-index.json        # 符号索引（函数、类、导出）
-│   ├── git-summary.json         # Git 历史分析
-│   └── evidence-log.jsonl       # 证据日志（append-only，每文件一行，含 key_findings）
-├── context.json             # 执行上下文（允许修改，增量更新）
-├── questions/               # 问题轮次（不可变历史）
-│   ├── round-1.json         # 第一轮问题
-│   ├── round-N.json         # 第 N 轮问题
-│   └── summary.json         # 轮次索引
-├── repository-model.json    # Repository Model（允许修改，增量更新）
-├── report.md                # 最新报告（易变）
-└── meta.json                # 元信息
-```
+- 收到 `{converged: false, round_file: "round-3.json"}` → Orchestrator 更新 `context.current_round` 和 `questions/summary.json`
+- 收到 `{converged: true}` → Orchestrator 进入 Report 阶段
 
-## 文件所有权矩阵
+## Agent 清单
 
-每个 Agent 只读写自己负责的文件，禁止越界。
+| Agent | 文件 | 一句话职责 |
+|-------|------|-----------|
+| Resume | [agents/resume.md](./agents/resume.md) | 恢复现场，判断代码变化，返回下一步跳转目标 |
+| Scan | [agents/scan.md](./agents/scan.md) | 扫描仓库，生成可复用的 artifacts/*.json |
+| Planner | [agents/planner.md](./agents/planner.md) | **只回答"下一步去哪？"**——判断收敛 + 生成下一轮问题 |
+| Evidence | [agents/evidence.md](./agents/evidence.md) | 读文件 + 写 evidence-log.jsonl（**不碰 Model**） |
+| Model | [agents/model.md](./agents/model.md) | **repository-model.json 唯一写入者**——从 evidence 合并/更新 Model |
+| Reasoning | [agents/reasoning.md](./agents/reasoning.md) | 架构解释 + 质疑模型 + 更新 coverage/design_space/maintainer_view |
+| Report | [agents/report.md](./agents/report.md) | 从 Model + evidence 生成报告（禁止新增推理） |
+| Quality | [agents/quality.md](./agents/quality.md) | 返回 PASS/FAIL/reason（**不修改 report**） |
 
-| 文件 | Resume | Scan | Planner | Evidence | Reasoning | Report | Quality |
-|------|--------|------|---------|----------|-----------|--------|---------|
-| `meta.json` | R | R+W | R | R | R | R+W | R |
-| `context.json` | R+W | W(pending) | R+W | R+W | R+W | R+W | R |
-| `artifacts/repository-profile.json` | R | R+W | R | R | — | — | — |
-| `artifacts/directory-tree.json` | R | R+W | R | R | — | — | — |
-| `artifacts/evidence-log.jsonl` | R | — | — | R+W | R | R | R |
-| `repository-model.json` | R | — | — | R+W | R | R | R |
-| `questions/round-N.json` | R | — | W(new only) | R | R | R | R |
-| `questions/summary.json` | R | — | R+W | — | R+W | R | R |
-| `report.md` | — | — | — | — | — | W | R |
-
-> R = 只读, W = 可写, R+W = 读写, — = 不访问, W(pending) = 只写 pending 字段, W(new only) = 只能创建新文件
-
-## 产物缓存策略
-
-| 分类 | 产物 | 更新规则 |
-|------|------|---------|
-| **可复用** | artifacts/*.json | 代码没变时禁止重新生成 |
-| **可复用+追加** | evidence-log.jsonl | append-only，禁止改写已有行 |
-| **允许修改** | context.json, repository-model.json, summary.json | 首次创建后持久化，恢复时加载继续，增量更新 |
-| **禁止修改** | round-N.json | 创建后永久冻结 |
-| **每次重新生成** | report.md | 每次分析重新生成 |
-
-## Agent 文件
-
-| Agent | 文件 | 职责 |
-|-------|------|------|
-| Resume | [agents/resume.md](./agents/resume.md) | 恢复现场，判断代码变化，确定跳转位置 |
-| Scan | [agents/scan.md](./agents/scan.md) | 扫描仓库，生成可复用产物 |
-| Planner | [agents/planner.md](./agents/planner.md) | 判断收敛，生成下一轮问题 |
-| Evidence | [agents/evidence.md](./agents/evidence.md) | 读文件收集证据，构建 Repository Model |
-| Reasoning | [agents/reasoning.md](./agents/reasoning.md) | 架构解释，质疑模型，更新 coverage |
-| Report | [agents/report.md](./agents/report.md) | 从 Model + evidence 生成报告 |
-| Quality | [agents/quality.md](./agents/quality.md) | 质量检查，决定是否通过 |
+> 工作目录结构、文件所有权矩阵、产物缓存策略详见 [workspace.md](./workspace.md)。SKILL 不重复这些实现细节。
 
 ## 成功标准
 
