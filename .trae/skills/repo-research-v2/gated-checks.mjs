@@ -391,7 +391,7 @@ export async function runGatedChecksAndUpdate(context, report, options = {}) {
 /**
  * CLI: node gated-checks.mjs <context.json path> <report.md path>
  *
- * Runs all gated checks and prints results.
+ * Runs preconditions + all gated checks and prints results.
  * Exits with code 0 if all pass, 1 if any fail.
  */
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -411,11 +411,20 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     );
 
     const context = JSON.parse(contextContent);
-    const { results, allPassed, summary } = await runGatedChecks(context, reportContent);
+    const { preconditions, gates, allPassed, summary } = await runAllChecks(context, reportContent);
 
-    console.log(`\n=== Gated Checks: ${summary} ===\n`);
+    // Print preconditions
+    console.log(`\n=== Preconditions: ${preconditions.checks.filter((c) => c.passed).length}/${preconditions.checks.length} passed ===\n`);
+    for (const check of preconditions.checks) {
+      const status = check.passed ? "PASS" : "FAIL";
+      console.log(`[${status}] ${check.name}`);
+      console.log(`  ${check.detail}`);
+      console.log();
+    }
 
-    for (const result of results) {
+    // Print gates
+    console.log(`=== Gated Checks: ${gates.summary} ===\n`);
+    for (const result of gates.results) {
       const status = result.passed ? "PASS" : "FAIL";
       const confidence = result.confidence.toUpperCase().padEnd(6);
       console.log(`[${status}] ${result.name} (${confidence})`);
@@ -426,6 +435,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       console.log();
     }
 
+    console.log(`=== Summary: ${summary} ===\n`);
     process.exit(allPassed ? 0 : 1);
   } catch (err) {
     console.error(`Error: ${err.message}`);
