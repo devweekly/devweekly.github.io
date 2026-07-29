@@ -11,51 +11,66 @@ description: "把仓库编译成架构知识库（Repository Model），并从�
 
 构建可复用的架构知识库（Repository Model）。Repository Model 捕获实体、关系及支撑证据。报告是 Repository Model 的视图。
 
-## 架构：Orchestrator + 8 Sub Agents
+## 架构：Orchestrator + 9 Sub Agents
 
-SKILL 是 Orchestrator，**只负责调度**。每个 Agent 自己知道自己的输入/输出/规则，SKILL 不知道实现细节。
+SKILL 是 Orchestrator，**只负责调度，不写任何状态文件**。每个 Agent 自己知道自己的输入/输出/规则，SKILL 不知道实现细节。状态文件的持久化全部经过 Workspace Agent。
 
 ```mermaid
 flowchart TD
-    Start[Start] --> Resume[Resume<br>恢复现场]
-    Resume --> NeedScan{需要扫描?}
-    NeedScan -- 是 --> Scan[Scan<br>扫描仓库]
-    Scan --> Planner
-    NeedScan -- 否 --> Planner[Planner<br>下一步去哪?]
-    Planner --> Converged{收敛?}
-    Converged -- 是 --> Report[Report<br>写报告]
-    Converged -- 否 --> Evidence[Evidence<br>收集证据]
+    Start[Start] --> Resume[Resume<br>返回 next]
+    Resume -->|next=scan| Scan[Scan<br>扫描仓库]
+    Resume -->|next=planner| Planner
+    Resume -->|next=report| Report
+    Resume -->|next=done| Done[Done]
+    Scan --> Planner[Planner<br>下一步去哪?]
+    Planner -->|converged| Report[Report<br>写 report-draft.md]
+    Planner -->|not converged| WS1[Workspace<br>新建轮次条目]
+    WS1 --> Evidence[Evidence<br>收集证据]
     Evidence --> Model[Model<br>更新 Repository Model]
     Model --> Reasoning[Reasoning<br>解释+质疑+coverage]
-    Reasoning --> Planner
-    Report --> Quality[Quality<br>PASS/FAIL]
-    Quality -- FAIL --> Planner
-    Quality -- PASS --> Done[Done]
+    Reasoning --> WS2[Workspace<br>写 round_stats]
+    WS2 --> Planner
+    Report --> Quality[Quality<br>检查 draft]
+    Quality -->|FAIL| Planner
+    Quality -->|PASS| WS3[Workspace<br>发布报告 + checkpoint]
+    WS3 --> Done
 ```
 
 ## Orchestrator 调度步骤
 
 ```
-1. call resume              → 恢复现场，判断是否需要扫描
-2. if need scan: call scan
+1. call resume              → 返回 {next: "scan"|"planner"|"report"|"workspace"|"done"}
+2. switch next:
+     scan     → call scan, then goto 3
+     planner  → goto 3
+     report   → goto 4
+     workspace → goto 7（崩溃恢复：Quality PASS 但 checkpoint+publish 未完成）
+     done     → end
 3. loop:
      a. call planner          → 返回 {converged, next_focus}（Planner 不写状态文件）
      b. if converged: break
-     c. Orchestrator 更新 summary.json + context.current_round（基于 planner 返回值）
+     c. call workspace        → 把 planner 返回值落到 summary.json + context.current_round（新建轮次条目）
      d. call evidence         → 读文件，写 evidence-log（append-only）
      e. call model            → 从 evidence 合并/更新 repository-model.json（Model 是唯一写入者）
-     f. call reasoning        → 架构解释 + 质疑 + 更新 coverage/design_space/maintainer_view
-4. call report              → 从 Model + evidence 生成报告
-5. call quality             → 返回 PASS/FAIL/reason（不修改 report）
-6. if FAIL: goto 3 (Planner 根据 failed_checks 生成针对性问题)
+     f. call reasoning        → 架构解释 + 质疑 + 更新 coverage/design_space/maintainer_view，返回 round_stats
+     g. call workspace        → 把 reasoning 返回的 round_stats 落到 summary.json 当前轮次条目
+     goto a
+4. call report              → 从 Model + evidence 生成 report-draft.md
+5. call quality             → 检查 report-draft.md，返回 PASS/FAIL/reason（不修改 draft）
+6. if FAIL: goto 3 (Planner 根据 failed_checks 生成针对性问题；report-draft.md 保留供下一轮覆盖)
+7. if PASS:
+     a. call workspace        → rename report-draft.md → report.md + 提交 checkpoint
+       (meta.last_analyzed_commit = meta.analysis_target_commit; 清空 analysis_target_commit 和 pending_invalidation)
+     b. end
 ```
 
-### Orchestrator 承担的状态更新（非 Planner）
+### Orchestrator 不写任何状态文件
 
-Planner 只返回决策，**不写状态文件**。以下由 Orchestrator 在收到 Planner 返回后执行：
+Planner 只返回决策，**不写状态文件**。Orchestrator 也**不直接写状态文件**——所有状态持久化由 Workspace Agent 执行：
 
-- 收到 `{converged: false, round_file: "round-3.json"}` → Orchestrator 更新 `context.current_round` 和 `questions/summary.json`
+- 收到 `{converged: false, round_file: "round-3.json"}` → Orchestrator 调用 Workspace，Workspace 更新 `context.current_round` 和 `questions/summary.json`
 - 收到 `{converged: true}` → Orchestrator 进入 Report 阶段
+- 收到 Quality `{passed: true}` → Orchestrator 调用 Workspace，Workspace 发布报告 + 提交 checkpoint
 
 ## Agent 清单
 
@@ -64,11 +79,12 @@ Planner 只返回决策，**不写状态文件**。以下由 Orchestrator 在收
 | Resume | [agents/resume.md](./agents/resume.md) | 恢复现场，判断代码变化，返回下一步跳转目标 |
 | Scan | [agents/scan.md](./agents/scan.md) | 扫描仓库，生成可复用的 artifacts/*.json |
 | Planner | [agents/planner.md](./agents/planner.md) | **只回答"下一步去哪？"**——判断收敛 + 生成下一轮问题 |
+| Workspace | [agents/workspace.md](./agents/workspace.md) | **状态持久化**——把各 Agent 决策落到磁盘，Orchestrator 不写文件 |
 | Evidence | [agents/evidence.md](./agents/evidence.md) | 读文件 + 写 evidence-log.jsonl（**不碰 Model**） |
 | Model | [agents/model.md](./agents/model.md) | **repository-model.json 唯一写入者**——从 evidence 合并/更新 Model |
 | Reasoning | [agents/reasoning.md](./agents/reasoning.md) | 架构解释 + 质疑模型 + 更新 coverage/design_space/maintainer_view |
-| Report | [agents/report.md](./agents/report.md) | 从 Model + evidence 生成报告（禁止新增推理） |
-| Quality | [agents/quality.md](./agents/quality.md) | 返回 PASS/FAIL/reason（**不修改 report**） |
+| Report | [agents/report.md](./agents/report.md) | 从 Model + evidence 生成 `report-draft.md`（禁止新增推理） |
+| Quality | [agents/quality.md](./agents/quality.md) | 检查 `report-draft.md`，返回 PASS/FAIL/reason（**不修改 draft**） |
 
 > 工作目录结构、文件所有权矩阵、产物缓存策略详见 [workspace.md](./workspace.md)。SKILL 不重复这些实现细节。
 

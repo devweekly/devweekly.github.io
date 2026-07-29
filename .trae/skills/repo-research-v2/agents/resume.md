@@ -6,6 +6,16 @@
 
 加载工作目录中的已有状态，判断代码变化，输出下一步跳转目标。**禁止**做任何扫描、分析或推理。
 
+## 接口
+
+**Inputs**: `context.json`, `meta.json`, `artifacts/evidence-log.jsonl`, `repository-model.json`, `questions/summary.json`
+
+**Outputs**: `{next: "scan"|"planner"|"report"|"workspace"|"done", need_scan: bool, resume_context: {...}}` — 直接返回下一步 Agent，Orchestrator 不做任何判断
+
+**Owns**: `context.resume`
+
+**Must Not**: 扫描/分析/推理；修改 `round-N.json`；代码没变时触发 Scan
+
 ## 执行流程
 
 ### 1. 加载已有状态
@@ -50,15 +60,19 @@
 
 ```
 {
-  "need_scan": true/false,        // 代码是否变了
-  "next_agent": "scan" | "planner" | "evidence" | "model" | "reasoning" | "report",
-  "resume_context": { ... }       // 恢复的上下文摘要
+  "next": "scan" | "planner" | "report" | "workspace" | "done",   // 直接返回下一步 Agent
+  "need_scan": true/false,                           // 代码是否变了（供 Scan 参考）
+  "resume_context": { ... }                          // 恢复的上下文摘要
 }
 ```
 
+Orchestrator 不做任何判断，直接调用 `next` 指定的 Agent。SKILL 不需要 "Need Scan?" 分支判断——Resume 已经把所有条件判断内化了。
+
+> `next: "workspace"` 仅在 Quality PASS 后崩溃恢复时出现——`context.resume.next_stage == "workspace"` 说明 checkpoint+publish 未完成，Resume 直接跳回 Workspace 完成。
+
 ## 强制规则
 
-- 如果上次已经写完了报告（`resume.next_stage == "done"`），而且代码没变 → 直接返回已有报告
+- 如果上次已经写完了报告（`resume.next_stage == "done"`），而且代码没变 → 返回 `{next: "done"}`
 - 如果上次至少完成了一轮完整研究 → 进入 Planner，由 Planner 判断收敛与否
 - **禁止**在代码没变时触发 Scan Agent
 - **禁止**修改已有的 `questions/round-N.json`

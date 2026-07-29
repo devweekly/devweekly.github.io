@@ -8,6 +8,16 @@
 
 **禁止**修改报告内容、**禁止**修改 context（除了 `quality_gate` 字段）、**禁止**生成新问题。
 
+## 接口
+
+**Inputs**: `report-draft.md`, `context.{architecture_model, challenge_record, design_space, maintainer_view, model_stability}`
+
+**Outputs**: `context.quality_gate`; `{passed, failed_checks, reason}`
+
+**Owns**: `context.quality_gate`
+
+**Must Not**: 修改 `report-draft.md`；修改 `report.md`；修改 `repository-model.json`；生成新问题；修改 context 除 `quality_gate` 外的字段；提交 checkpoint（那是 Workspace Agent 的事）
+
 ## 前置条件确认
 
 在质量检查前，先确认以下条件（Planner 已在收敛判断时检查过，此处二次确认）：
@@ -20,7 +30,7 @@
 质量检查通过 `gated-checks.mjs` 调用 LLM 来判断。每项检查对应一个 LLM 提示，评估是否符合标准。
 
 ```bash
-node gated-checks.mjs .working/{repo-name}/context.json .working/{repo-name}/report.md
+node gated-checks.mjs .working/{repo-name}/context.json .working/{repo-name}/report-draft.md
 ```
 
 ### 基础检查
@@ -80,4 +90,9 @@ node gated-checks.mjs .working/{repo-name}/context.json .working/{repo-name}/rep
 }
 ```
 
-**Quality Agent 不修改 report.md**——只返回 PASS/FAIL/reason。未通过时，Orchestrator 回到 Planner，Planner 根据 `failed_checks` 生成针对性的下一轮问题。报告是否重写由 Orchestrator 在下一轮收敛后决定（Report Agent 重新生成）。
+**Quality Agent 不修改 `report-draft.md`，也不碰 `report.md`**——只返回 PASS/FAIL/reason。
+
+- **PASS** → Orchestrator 调用 Workspace Agent：rename `report-draft.md` → `report.md`（覆盖旧版本）+ 提交 checkpoint
+- **FAIL** → Orchestrator 回到 Planner，Planner 根据 `failed_checks` 生成针对性的下一轮问题。`report-draft.md` 保留供下一轮 Report 覆盖；`report.md`（上一次通过版本）不动
+
+这样保证工作目录里的 `report.md` 始终是 Quality 通过的版本，不会残留失败版本。

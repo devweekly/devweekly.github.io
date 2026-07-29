@@ -6,6 +6,16 @@
 
 扫描仓库，生成 `artifacts/` 下的可复用产物。**禁止**做架构解释、**禁止**收集证据、**禁止**写 evidence-log。
 
+## 接口
+
+**Inputs**: `meta.json`（`last_analyzed_commit`）, 仓库文件系统
+
+**Outputs**: `artifacts/{repository-profile,directory-tree,symbol-index,git-summary}.json`; `context.pending_invalidation`（代码变化时）
+
+**Owns**: `artifacts/*.json`（可复用产物）
+
+**Must Not**: 架构解释；收集证据；修改 `repository-model.json`；写 `meta.last_analyzed_commit`（只写 `analysis_target_commit`）；修改 context 中的 `model_stability`/`coverage`/`quality_gate`/`challenge_record`/`design_space`
+
 ## 何时执行
 
 | 情况 | 怎么做 |
@@ -37,10 +47,10 @@
 1. `git diff {last_analyzed_commit}..HEAD` 找出改了什么文件
 2. 按文件类型分类变化（新增/修改/删除）
 3. 只重新生成受影响的 `artifacts/` 产物
-4. 写 `meta.analysis_target_commit = HEAD`（pending，**不写 `last_analyzed_commit`**——Report Agent 成功后才提交）
+4. 写 `meta.analysis_target_commit = HEAD`（pending，**不写 `last_analyzed_commit`**——Workspace Agent 在 Quality PASS 后才提交）
 5. 写 `context.pending_invalidation = { changed_files: [...], target_commit: "..." }`（Evidence/Reasoning Agent 读取此字段执行状态回退和 evidence 失效）
 
-> **checkpoint 语义**：`meta.last_analyzed_commit` 只在 Report Agent 成功后更新。如果 Evidence/Reasoning Agent 中途崩溃，下次恢复时 `last_analyzed_commit` 仍是旧值，Scan Agent 会重新检测到代码变化。
+> **checkpoint 语义**：`meta.last_analyzed_commit` 只在 Workspace Agent 收到 Quality PASS 信号后更新。Scan 只写 `meta.analysis_target_commit`（pending），不写 `last_analyzed_commit`。如果 Evidence/Reasoning/Report/Quality Agent 中途崩溃，下次恢复时 `last_analyzed_commit` 仍是旧值，Scan Agent 会重新检测到代码变化。
 
 ## 强制规则
 

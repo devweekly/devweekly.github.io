@@ -12,6 +12,16 @@
 
 Evidence Agent 负责"数据编译"（事实和证据），Model Agent 负责"知识结构化"（实体/关系），Reasoning Agent 负责"分析推理"（解释、假设和收敛）。三者思维模式完全不同。
 
+## 接口
+
+**Inputs**: `repository-model.json`（只读）, `artifacts/evidence-log.jsonl`（只读）, `context.{coverage, architecture_model, challenge_record, design_space, maintainer_view, pending_invalidation}`
+
+**Outputs**: `context.{architecture_model, challenge_record, coverage, design_space, maintainer_view, model_stability}` 更新; `{architecture_model_updated, challenges_performed, model_stability, ready_for_planner}`
+
+**Owns**: `context` 中的 `architecture_model` / `challenge_record` / `coverage` / `design_space` / `maintainer_view` / `model_stability`
+
+**Must Not**: 读源码；写 `repository-model.json`；生成问题；写报告；修改 `round-N.json`
+
 ---
 
 ## 架构解释
@@ -136,11 +146,11 @@ Evidence Agent 负责"数据编译"（事实和证据），Model Agent 负责"�
 }
 ```
 
-### 更新 summary.json
+### 返回轮次统计（供 Workspace 写入 summary.json）
 
-更新 `questions/summary.json` 中的统计计数（answered/validated 按轮次记录）。
+Reasoning Agent **不直接写 `summary.json`**（那是 Workspace Agent 的独占职责）。Reasoning 在返回值中带上本轮的 `answered` / `validated` 计数，Orchestrator 转交 Workspace 写入 `summary.json`。
 
-**禁止**修改 `round-N.json` 中的任何字段。
+**禁止**修改 `round-N.json` 中的任何字段。**禁止**直接写 `summary.json`。
 
 ---
 
@@ -177,8 +187,14 @@ Reasoning Agent 读取 `context.pending_invalidation` 后，执行以下状态�
   "challenges_performed": 4,
   "coverage_updated": true,
   "model_stability": "challenged",
+  "round_stats": {
+    "answered": 11,
+    "validated": 5
+  },
   "ready_for_planner": true
 }
 ```
+
+> `round_stats` 由 Orchestrator 转交 Workspace Agent 写入 `summary.json` 的当前轮次条目。
 
 Reasoning Agent 完成后，向 Orchestrator 返回控制权，Orchestrator 再次调用 Planner 判断是否收敛。

@@ -13,6 +13,16 @@
 
 **禁止**：读源码（那是 Evidence Agent 的事）、做架构解释（那是 Reasoning Agent 的事）、质疑模型（那是 Reasoning Agent 的事）、生成新问题（那是 Planner 的事）。
 
+## 接口
+
+**Inputs**: `artifacts/evidence-log.jsonl`, `repository-model.json`（已有快照）, `context.pending_invalidation`
+
+**Outputs**: `repository-model.json`（更新）; `{model_updated, entities_added, entities_updated, evidence_stale_marked, ready_for_reasoning}`
+
+**Owns**: `repository-model.json`（**唯一写入者**）
+
+**Must Not**: 读源码；做架构解释；写 `evidence-log.jsonl`；写 `context`（除 `evidence_stale` 元信息）；生成问题；写报告
+
 ---
 
 ## 唯一所有权

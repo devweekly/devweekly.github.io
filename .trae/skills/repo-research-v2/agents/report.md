@@ -6,6 +6,16 @@
 
 从已有研究产物生成人类可读的中文报告。**禁止新增推理**——只能组织 Evidence + Model + Reasoning 已经得到的推理链。
 
+## 接口
+
+**Inputs**: `repository-model.json`, `context.{architecture_model, challenge_record, design_space, maintainer_view}`, `artifacts/evidence-log.jsonl`, `questions/round-*.json` + `summary.json`
+
+**Outputs**: `report-draft.md`; `context.resume` 更新（`last_completed_stage` / `next_stage`）
+
+**Owns**: `report-draft.md`（**只写 draft，不写 `report.md`**——`report.md` 由 Workspace Agent 在 Quality PASS 后 rename 发布）
+
+**Must Not**: 新增推理；修改 `repository-model.json`；修改 `evidence-log.jsonl`；修改 `round-N.json`；写 `report.md`；提交 checkpoint（那是 Workspace Agent 的事）；修改 `meta.json`
+
 ## 输入来源（缺一不可）
 
 | 来源 | 提供什么 |
@@ -68,21 +78,10 @@ Interpretation/Alternative/Challenge/Conclusion 必须来自 Reasoning Agent 已
 
 ## 输出
 
-1. **报告必须写入工作目录的 `report.md` 文件** — 禁止只在对话中输出而不落盘
+1. **报告必须写入工作目录的 `report-draft.md` 文件** — 禁止只在对话中输出而不落盘；禁止直接写 `report.md`（那是 Workspace Agent 在 Quality PASS 后发布的）
 2. `context.resume.last_completed_stage` = "report"
 3. `context.resume.next_stage` = "quality"
-4. 更新 `meta.json` 的 `analyzed_at` 时间戳
 
-## Checkpoint 提交
+> Report Agent 不提交 checkpoint，不修改 `meta.json`。checkpoint 提交（`meta.last_analyzed_commit` 更新、`analysis_target_commit` 清空、`pending_invalidation` 清空、`report-draft.md` → `report.md`）全部由 Workspace Agent 在 Quality PASS 后执行。这样保证：Quality FAIL 时 `report.md` 仍是上一次通过版本，`meta.last_analyzed_commit` 不前移。
 
-报告生成成功后，Report Agent 执行 checkpoint 提交：
-
-```
-meta.last_analyzed_commit = meta.analysis_target_commit
-meta.analysis_target_commit = null
-context.pending_invalidation = null
-```
-
-**只有 Report Agent 成功才提交 checkpoint**——Evidence/Reasoning Agent 中途崩溃不会更新 `last_analyzed_commit`，下次恢复时 Scan Agent 会重新检测到代码变化。
-
-报告保存到工作目录的 `report.md`。增量分析时覆盖旧报告。
+报告保存到 `report-draft.md`。增量分析时覆盖旧 draft。

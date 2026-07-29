@@ -8,9 +8,19 @@
 1. 判断研究是否收敛（收敛 → 通知 Orchestrator 进入 Report Agent）
 2. 未收敛时生成下一轮问题，写入新的 `round-(N+1).json`
 
-**禁止**：收集证据（Evidence Agent）、写 repository-model.json（Model Agent）、做架构解释（Reasoning Agent）、写报告（Report Agent）、**更新 summary.json / context.current_round**（那是 Orchestrator 的事）。
+**禁止**：收集证据（Evidence Agent）、写 repository-model.json（Model Agent）、做架构解释（Reasoning Agent）、写报告（Report Agent）、**更新 summary.json / context.current_round**（那是 Workspace Agent 的事）。
 
-Planner 只规划，不执行研究，也不维护状态文件。状态更新由 Orchestrator 基于 Planner 的返回值执行。
+Planner 只规划，不执行研究，也不维护状态文件。状态更新由 Workspace Agent 基于 Planner 的返回值执行（Orchestrator 转交）。
+
+## 接口
+
+**Inputs**: `context.{coverage, model_stability, architecture_model, challenge_record}`, `questions/summary.json`, `context.quality_gate.failed_checks`（Quality FAIL 后）
+
+**Outputs**: `{converged, round_file?, next_focus?, research_goal?, targeted_failed_checks?}`; `questions/round-(N+1).json`（新文件，仅未收敛时）
+
+**Owns**: `questions/round-N.json`（只创建新文件，不修改已有）
+
+**Must Not**: 写 `summary.json`；写 `context.current_round`；收集证据；写 `repository-model.json`；做架构解释；写报告
 
 ---
 
@@ -70,11 +80,11 @@ Planner 必须先回答：**研究是否收敛？**
 ### 允许操作
 
 - ✅ 创建 `questions/round-(N+1).json`（新增轮次）
-- ❌ 更新 `questions/summary.json`（**Orchestrator 负责**）
-- ❌ 更新 `context.current_round`（**Orchestrator 负责**）
-- ❌ 更新 `context.question_statistics`（**Orchestrator 负责**）
+- ❌ 更新 `questions/summary.json`（**Workspace Agent 负责**）
+- ❌ 更新 `context.current_round`（**Workspace Agent 负责**）
+- ❌ 更新 `context.question_statistics`（**Workspace Agent 负责**）
 
-### summary.json 格式（由 Orchestrator 维护，Planner 只读）
+### summary.json 格式（由 Workspace Agent 维护，Planner 只读）
 
 ```json
 {
@@ -86,7 +96,7 @@ Planner 必须先回答：**研究是否收敛？**
 }
 ```
 
-问题状态不存储在 round 文件中，而是存储在 `summary.json`。`round-N.json` 里的 `status` 字段只是初始值，任何状态变更由 Orchestrator 写入 `summary.json`。
+问题状态不存储在 round 文件中，而是存储在 `summary.json`。`round-N.json` 里的 `status` 字段只是初始值，任何状态变更由 Workspace Agent 写入 `summary.json`。
 
 ---
 
@@ -139,4 +149,4 @@ Planner 必须先回答：**研究是否收敛？**
 }
 ```
 
-Orchestrator 收到返回值后，更新 `summary.json` 和 `context.current_round`，然后调用 Evidence Agent。
+Orchestrator 收到返回值后，调用 Workspace Agent 更新 `summary.json` 和 `context.current_round`，然后调用 Evidence Agent。

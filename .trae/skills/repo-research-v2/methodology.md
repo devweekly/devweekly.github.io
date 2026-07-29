@@ -216,7 +216,7 @@ Repository Model 是第一产物，不是中间步骤。如果每次分析的产
 
 - `repository-model.json` 保存完整的知识图谱，下次分析时可以直接加载
 - `evidence/` 保存证据快照，支持回溯验证
-- `report.md` 保存最新报告，无需重新分析即可查看
+- `report.md` 保存最新通过 Quality 检查的报告（由 Workspace Agent 从 `report-draft.md` 发布），无需重新分析即可查看
 - `meta.json` 记录分析元信息（commit hash、仓库类型、时间），支持增量判断
 
 没有工作目录，每次研究都从零开始——这违背了"编译一次，复用多次"的核心理念。

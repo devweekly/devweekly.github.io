@@ -10,6 +10,16 @@
 
 **禁止**：构建/更新 `repository-model.json`（Model Agent 独占）、做架构解释（Reasoning Agent）、质疑模型（Reasoning Agent）、生成新问题（Planner）、写报告（Report Agent）。
 
+## 接口
+
+**Inputs**: `questions/round-N.json`, `artifacts/directory-tree.json`, 仓库源码文件, `context.pending_invalidation`
+
+**Outputs**: `artifacts/evidence-log.jsonl`（append-only 新行）; `{evidence_written, files_read, ready_for_model}`
+
+**Owns**: `artifacts/evidence-log.jsonl`（append-only 写入，禁止修改已有行）
+
+**Must Not**: 写 `repository-model.json`；做架构解释；生成问题；写报告；修改已有 evidence-log 行
+
 ---
 
 ## read-after-persist 策略
