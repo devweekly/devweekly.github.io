@@ -108,7 +108,8 @@ Repository → 编译 → Repository Model → 渲染 → 报告
       "path": "文件相对路径",
       "purpose": "读取目的"
     }
-  ]
+  ],
+  "round_2_checked": "open"
 }
 ```
 
@@ -119,6 +120,7 @@ Repository → 编译 → Repository Model → 渲染 → 报告
 - `answered_questions` — 已回答的问题 ID 列表（对应 questions.json 中的 id）
 - `open_questions` — 待回答的问题 ID 列表
 - `evidence_collected` — 已收集的证据列表，每项含文件路径和读取目的
+- `round_2_checked` — 第二轮问题检查状态：`open`（未完成）/ `done`（已完成）
 
 ### questions.json
 
@@ -158,6 +160,22 @@ Repository → 编译 → Repository Model → 渲染 → 报告
 - `derived_from` — 此问题从哪些问题衍生而来（问题 ID 列表）
 
 当 Repository Model 发生变化时（新证据改变模型、已回答问题引出新问题、当前问题无法解释新证据），**必须重新评估问题集合**并更新此文件。禁止仅保留在内存中。问题状态变化时（open → answered）同步更新 context.json 的 `answered_questions` / `open_questions`。
+
+### questions-r2.json
+
+第一轮问题（questions.json）全部回答后，根据回答结果生成第二轮收敛问题。
+
+格式与 questions.json 相同，但约束更严格：
+
+- **个数 ≤ 第一轮** — 保持收敛性，不得发散
+- **必须有差异** — 每个第二轮问题必须体现以下至少一种差异：
+  - **不同点** — 从不同角度审视同一现象
+  - **差异点** — 对比预期与实际的不一致
+  - **相反点** — 主动提出与当前结论相反的假设
+  - **深入点** — 追问第一轮回答中未解释的细节
+- **禁止同义重述** — 不得是同一问题的不同问法
+
+第二轮问题全部回答且 `round_2_checked` 标记为 `done` 后，**才能进入生成分析报告阶段**。
 
 ### meta.json
 
@@ -207,8 +225,13 @@ flowchart TD
     M --> J
     L -- 是 --> N[阶段 2：架构解释 → 更新 questions.json]
     N --> O[更新 Repository Model]
-    O --> P[阶段 3：叙事渲染]
-    P --> Q[中文报告]
+    O --> P{第一轮问题全部回答？}
+    P -- 否 --> M
+    P -- 是 --> S[生成第二轮收敛问题 → questions-r2.json]
+    S --> T{第二轮全部回答 + round_2_checked=done？}
+    T -- 否 --> M
+    T -- 是 --> U[阶段 3：生成分析报告]
+    U --> Q[中文报告]
     Q --> R[写入工作目录 + 更新 context.json]
 ```
 
@@ -268,9 +291,9 @@ flowchart TD
 
 如果存在多个合理解释，分别说明并给出各自证据与置信度。
 
-### 阶段 3 — 叙事渲染
+### 阶段 3 — 分析报告生成
 
-从 Repository Model 渲染人类可读的报告。
+从 Repository Model 生成人类可读的中文报告。
 
 **禁止**在此阶段执行推理。**禁止**发明新结论。
 
@@ -467,6 +490,8 @@ flowchart TD
 - 哪些思想在本仓库之外仍有价值？
 
 **如果任一问题无法回答，编译尚未完成。**
+
+**前置条件**：进入生成分析报告前，`questions-r2.json` 中所有问题必须 `status=answered`，且 context.json 的 `round_2_checked` 必须为 `done`。
 
 ---
 
