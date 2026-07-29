@@ -98,7 +98,7 @@ flowchart TD
     K --> L{证据充分？}
     L -- 否 --> M[收集更多证据]
     M --> J
-    L -- 是 --> N[阶段 2：架构解释 → 追加 questions.json]
+    L -- 是 --> N[阶段 2：架构解释 → 更新 questions.json]
     N --> O[更新 Repository Model]
     O --> P[阶段 3：叙事渲染]
     P --> Q[中文报告]
@@ -258,7 +258,7 @@ questions.json 的价值：
 - **持久化** — 每个问题独立对象，含 id / status / confidence / related_evidence / derived_from，而非简单字符串列表
 - **可追溯** — `derived_from` 记录问题衍生关系（Q12 从 Q3 衍生），形成问题图谱
 - **可审计** — 读者可以看到每个问题的状态（open/answered）和置信度，判断研究是否充分
-- **可演化** — 架构解释阶段产生的新问题追加到数组，已有问题的状态可更新（open → answered）
+- **可演化** — 问题不是因为"到了某个阶段"而变化，而是因为"理解发生了变化"而变化。当新证据改变 Repository Model、已回答问题引出新问题、或当前问题无法解释新证据时，必须重新评估问题集合（新增/修正/拆分/合并/关闭）
 
 `related_evidence` 让每个问题与具体证据关联——读者可以验证回答是否有据可依。`derived_from` 记录问题间的衍生关系，反映研究的思考路径。
 

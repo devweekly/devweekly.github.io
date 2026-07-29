@@ -85,7 +85,8 @@ Repository → 编译 → Repository Model → 渲染 → 报告
 ```
 .working/{repo-name}/
 ├── context.json             # 执行上下文（阶段性更新）
-├── questions.json           # 研究问题集合
+├── questions.json           # 第一轮研究问题
+├── questions-r2.json        # 第二轮收敛问题
 ├── repository-model.json    # Repository Model（第一产物）
 ├── evidence/                # 证据快照
 ├── report.md                # 最新报告（中文）
@@ -156,7 +157,7 @@ Repository → 编译 → Repository Model → 渲染 → 报告
 - `related_evidence` — 相关证据引用列表（文件路径:符号）
 - `derived_from` — 此问题从哪些问题衍生而来（问题 ID 列表）
 
-架构解释阶段产生的新问题**必须追加**到此文件，禁止仅保留在内存中。问题状态变化时（open → answered）同步更新 context.json 的 `answered_questions` / `open_questions`。
+当 Repository Model 发生变化时（新证据改变模型、已回答问题引出新问题、当前问题无法解释新证据），**必须重新评估问题集合**并更新此文件。禁止仅保留在内存中。问题状态变化时（open → answered）同步更新 context.json 的 `answered_questions` / `open_questions`。
 
 ### meta.json
 
@@ -204,7 +205,7 @@ flowchart TD
     K --> L{证据充分？}
     L -- 否 --> M[收集更多证据]
     M --> J
-    L -- 是 --> N[阶段 2：架构解释 → 追加 questions.json]
+    L -- 是 --> N[阶段 2：架构解释 → 更新 questions.json]
     N --> O[更新 Repository Model]
     O --> P[阶段 3：叙事渲染]
     P --> Q[中文报告]
@@ -298,7 +299,16 @@ flowchart TD
 
 以上问题仅作为初始框架。研究者应根据仓库类型、领域与初步证据，主动生成该仓库特有的架构问题，并在研究过程中持续调整问题集合。
 
-**研究问题是动态演化的**——随新证据出现而更新，而非一次生成后固定不变。
+**研究问题不是一次性生成，而是动态维护。** 初始扫描后生成第一批问题，之后在以下情况发生时**必须重新评估问题集合**：
+
+- 新证据改变了当前 Repository Model
+- 已回答的问题引出了新的关键问题
+- 当前问题已无法解释新的证据
+- 当前模型达到阶段性稳定，需要提出验证模型的新问题
+
+重新评估时允许：新增 / 修正 / 拆分 / 合并重复 / 关闭已回答或失效的问题。
+
+questions.json 应始终反映**当前研究状态**，而不是历史生成记录。问题不是因为"到了某个阶段"而变化，而是因为"理解发生了变化"而变化。
 
 ### 问题生成原则
 
