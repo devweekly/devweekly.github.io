@@ -270,7 +270,7 @@ context.json 是研究者的**外部脑**。它不仅跟踪进度，更跟踪**�
 | `genesis.observation` | 触发问题的具体观察，格式：`观察到什么 → 所以问什么` |
 | `genesis.depth_level` | 深度层级：1=What / 2=How / 3=Why / 4=Why not |
 | `type` | 问题类型：`discovery`（发现） / `critical`（批判） / `challenge`（挑战模型） / `design_space`（设计空间） / `counterevidence`（反证） / `maintainer`（维护） / `transfer`（迁移） |
-| `status` | `open` / `answered` / `superseded` / `refuted` |
+| `status` | `open` / `researching` / `answered` / `validated` / `deprecated` / `refuted` — 见问题生命周期 |
 | `confidence` | `high` / `medium` / `low` |
 | `answer_summary` | 回答摘要（status=answered 时必填） |
 | `related_evidence` | 支持证据 |
@@ -515,7 +515,7 @@ flowchart TD
 
 ### Phase 2c — 第一轮收敛
 
-第一轮问题（questions.json）全部 answered 后，检查 depth 分布：
+第一轮问题（questions.json）全部 `answered` 后，检查 depth 分布：
 
 - 如果所有问题 depth_level 都是 1 → 研究停留在表面，**必须先追问 depth≥2 的问题**
 - 如果有 depth≥2 的问题 → 可以进入下一阶段
@@ -546,37 +546,81 @@ flowchart TD
 
 ---
 
-## 研究问题
+## 动态问题系统
 
-证据收集前，生成一组待回答的架构问题。
+研究问题不是一次性生成的清单，而是**随理解演化的推理轨迹**。questions.json 是研究者的外部思考空间——记录当前要回答什么，为什么要回答，以及回答如何影响模型。
 
-典型问题：
+### 问题生命周期
 
-- 系统如何划分职责？
-- 子系统边界如何定义？
-- 数据如何流动？
-- 控制流如何组织？
-- 生命周期由谁管理？
-- 可扩展能力如何实现？
-- 哪些约束塑造了当前架构？
-- 哪些复杂性被有意隐藏？
-- 哪些能力属于公共 API，哪些属于内部实现？
-- 哪些设计是刻意省略？
+每个问题都有明确的生命周期状态，**禁止**使用简单的 open/answered 二分。
 
-后续所有证据收集必须围绕这些问题展开。**禁止**机械阅读整个仓库。
+```
+open → researching → answered → validated → deprecated
+   ↘                                    ↗
+    → refuted (发现反证，直接关闭)
+```
 
-以上问题仅作为初始框架。研究者应根据仓库类型、领域与初步证据，主动生成该仓库特有的架构问题，并在研究过程中持续调整问题集合。
+| 状态 | 含义 | 进入条件 |
+|------|------|---------|
+| `open` | 问题已提出，尚未开始研究 | 初始生成或从其他问题派生 |
+| `researching` | 正在收集证据回答 | 开始阅读相关代码/文档 |
+| `answered` | 找到了初步答案 | 证据充分，形成初步结论 |
+| `validated` | 答案经过挑战验证 | Phase 2b 挑战通过，或被其他问题交叉印证 |
+| `deprecated` | 问题不再相关或已被更精确的问题取代 | 新证据使问题失效，或 superseded_by 指向更好问题 |
+| `refuted` | 问题本身错误或结论被反证推翻 | 找到强反证，结论不可信 |
 
-**研究问题不是一次性生成，而是动态维护。** 初始扫描后生成第一批问题，之后在以下情况发生时**必须重新评估问题集合**：
+**规则**：
+- `answered` 不是终态。必须通过 `validated` 才能算真正完成。
+- `validated` 问题才允许进入报告。`answered` 但未 `validated` 的问题视为"待验证"。
+- `deprecated` 问题**不删除**，只标记状态。历史问题链对审计至关要。
 
-- 新证据改变了当前 Repository Model
-- 已回答的问题引出了新的关键问题
-- 当前问题已无法解释新的证据
-- 当前模型达到阶段性稳定，需要提出验证模型的新问题
+### 问题演化：事件驱动，而非阶段驱动
 
-重新评估时允许：新增 / 修正 / 拆分 / 合并重复 / 关闭已回答或失效的问题。
+**问题不是因为"到了某个阶段"而变化，而是因为"发生了特定事件"而变化。**
 
-questions.json 应始终反映**当前研究状态**，而不是历史生成记录。问题不是因为"到了某个阶段"而变化，而是因为"理解发生了变化"而变化。
+以下事件都会触发 Question Evolution（问题演化）：
+
+| 事件 | 触发时机 | 允许的操作 |
+|------|---------|-----------|
+| **Repository 类型识别完成** | 扫描完成后立即 | 生成第一版问题 |
+| **Phase 0 完成** | 机械分析结束 | 根据新结构证据：删除失效 / 新增发现 / 调整优先级 |
+| **Phase 1 完成** | Repository Model 初步形成 | 补充遗漏 / 生成模型验证问题 / 生成反证问题 |
+| **Phase 2a 完成** | 架构解释形成 | 生成挑战当前解释的问题 / 生成迁移问题 |
+| **Phase 2b 完成** | 模型被挑战 | 根据挑战结果修正问题 / 关闭已证伪问题 |
+| **出现无法解释的新证据** | 随时 | 新增 discovery 型问题 / 标记相关问题为 needs_research |
+| **一个问题被回答** | 随时 | 派生新问题 / 调整其他问题优先级 |
+| **一个假设被证伪** | 随时 | 标记相关问题 deprecated / 生成替代问题 |
+| **增量分析发现变化** | commit 不同时 | 标记受影响问题 needs_research / 新增变化相关问题 |
+
+**注意**：事件之间**不要求严格顺序**。真正的研究可能今天发现 Scheduler，马上产生三个新问题；后来又发现 Scheduler 根本不是核心，于是旧问题全部 deprecated。这是正常的。
+
+### 问题演化：增量更新规则
+
+**每次重新生成问题，禁止整体替换 questions.json。**
+
+```
+重新生成问题时：
+
+保留：
+- 仍未回答的问题（open / researching）
+- 被证据支持继续存在的问题（answered，但未 validated）
+
+新增：
+- 新证据触发的问题
+- 派生自已回答问题的后续问题
+
+关闭：
+- 已回答并 validated 的问题 → 标记 validated（不删除）
+- 已被证伪的问题 → 标记 refuted（不删除）
+- 被更精确问题取代的 → 标记 deprecated，填入 superseded_by
+
+禁止：
+- 清空 questions.json 后全部重写
+- 丢弃 answered 但未 validated 的问题
+- 删除 deprecated/refuted 问题
+```
+
+**原理**：questions.json 是研究轨迹，不是当前状态快照。删除历史问题会丢失推理链。
 
 ### 问题生成原则
 
@@ -733,7 +777,7 @@ flowchart TD
 
 进入生成分析报告前，以下条件**必须全部满足**：
 
-1. `questions-r2.json` 中所有问题 `status=answered`
+1. `questions-r2.json` 中所有问题 `status=validated`（answered 不足以，必须经过挑战验证）
 2. context.json 的 `round_2_checked` = `done`
 3. context.json 的 `research_progress.model_stability` ≠ `nascent`（模型必须被挑战过）
 4. context.json 的 `architecture_model.center_hypothesis` 非空
