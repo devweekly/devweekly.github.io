@@ -76,21 +76,124 @@ Repository → 编译 → Repository Model → 渲染 → 报告
 
 ---
 
+## 工作目录
+
+每次分析使用一个持久化的工作目录，存放所有中间产物和最终报告。**禁止**将分析产物散落在仓库内部或临时目录。
+
+### 目录结构
+
+```
+.working/{repo-name}/
+├── context.json             # 执行上下文（阶段性更新）
+├── questions.json           # 研究问题集合
+├── repository-model.json    # Repository Model（第一产物）
+├── evidence/                # 证据快照
+├── report.md                # 最新报告（中文）
+└── meta.json                # 元信息
+```
+
+### context.json
+
+工作目录确定后**立即创建**，每个 pipeline 阶段完成后**更新**。
+
+```json
+{
+  "user_input": "用户原始输入，不转义",
+  "pipeline_stage": "当前执行步骤",
+  "referenced_files": [
+    {
+      "path": "文件相对路径",
+      "purpose": "读取目的"
+    }
+  ],
+  "intermediate_results": [
+    {
+      "stage": "阶段名称",
+      "output": "产物描述或文件路径"
+    }
+  ]
+}
+```
+
+字段说明：
+
+- `user_input` — **原样保存**用户输入，禁止任何转义或修改
+- `pipeline_stage` — 当前执行的 pipeline 步骤（检查工作目录 / 仓库扫描 / 识别仓库类型 / 生成研究问题 / 阶段 0-3 / 完成）
+- `referenced_files` — 已读取的文件列表，每项含路径和读取目的
+- `intermediate_results` — 各阶段产出的中间结果
+
+### questions.json
+
+生成研究问题后创建，架构解释阶段**追加**新问题。
+
+```json
+{
+  "discovery_questions": [
+    "系统如何划分职责？",
+    "数据如何流动？"
+  ],
+  "critical_questions": [
+    "如果移除这一组件，系统还能成立吗？"
+  ],
+  "transfer_questions": [
+    "什么可以泛化到其他系统？"
+  ]
+}
+```
+
+三类问题对应三类问题框架（发现 / 批判 / 迁移）。架构解释阶段产生的新问题**必须追加**到此文件，禁止仅保留在内存中。
+
+### meta.json
+
+必须记录：
+
+- `repo_path` — 仓库路径
+- `repo_type` — 识别的仓库类型
+- `last_analyzed_commit` — 上次分析的 commit hash
+- `analyzed_at` — 分析时间
+- `model_version` — Model schema 版本
+
+### 增量分析
+
+分析前，**检查工作目录是否已存在该 repo 的分析**：
+
+1. **不存在** → 执行全量分析，创建工作目录
+2. **存在且 commit 相同** → 跳过分析，返回已有报告
+3. **存在且 commit 不同** → 执行增量分析：
+   - 识别变化的文件（`git diff {last_analyzed_commit}..HEAD`）
+   - 只重新分析受影响的 Model 部分
+   - 合并到已有 Repository Model
+   - 重新渲染报告
+
+**禁止**在增量分析中丢失已有证据。新增证据合并，过时证据标记为 `deprecated` 但不删除。
+
+如果仓库非 Git 仓库或无 commit 历史，每次执行全量分析。
+
+---
+
 ## 编译流程
 
 ```mermaid
 flowchart TD
-    A[仓库扫描] --> B[识别仓库类型]
-    B --> C[生成研究问题]
-    C --> D[阶段 0：机械分析]
-    D --> E[阶段 1：仓库模型构建]
-    E --> F{证据充分？}
-    F -- 否 --> G[收集更多证据]
-    G --> D
-    F -- 是 --> H[阶段 2：架构解释]
-    H --> I[Repository Model]
-    I --> J[阶段 3：叙事渲染]
-    J --> K[报告]
+    A[检查工作目录] --> B{已有分析？}
+    B -- 否 --> C[创建工作目录 + context.json]
+    B -- 是 --> D{commit 变化？}
+    D -- 否 --> E[返回已有报告]
+    D -- 是 --> F[增量分析 + 更新 context.json]
+    C --> G[仓库扫描]
+    F --> G
+    G --> H[识别仓库类型]
+    H --> I[生成研究问题 → questions.json]
+    I --> J[阶段 0：机械分析]
+    J --> K[阶段 1：仓库模型构建]
+    K --> L{证据充分？}
+    L -- 否 --> M[收集更多证据]
+    M --> J
+    L -- 是 --> N[阶段 2：架构解释 → 追加 questions.json]
+    N --> O[更新 Repository Model]
+    O --> P[阶段 3：叙事渲染]
+    P --> Q[中文报告]
+    Q --> R[写入工作目录 + 更新 context.json]
 ```
 
 ### 仓库扫描 + 识别仓库类型
@@ -333,11 +436,11 @@ flowchart TD
 
 ### 第一产物：Repository Model
 
-Repository Model 是核心产物，捕获实体、关系及支撑证据（详见 [report-schema.md](./report-schema.md#repository-model)）。
+Repository Model 是核心产物，捕获实体、关系及支撑证据（详见 [report-schema.md](./report-schema.md#repository-model)）。持久化到工作目录的 `repository-model.json`。
 
 ### 第二产物：报告
 
-报告是 Repository Model 的视图，必须覆盖以下信息维度（详见 [report-schema.md](./report-schema.md#报告信息维度)）：
+报告是 Repository Model 的视图，**必须使用中文撰写**，覆盖以下信息维度（详见 [report-schema.md](./report-schema.md#报告信息维度)）：
 
 - 系统如何工作
 - 为什么这样设计
@@ -346,6 +449,8 @@ Repository Model 是核心产物，捕获实体、关系及支撑证据（详见
 - 证据质量与未解问题
 
 具体章节结构由渲染器根据仓库复杂度决定，**不强制固定模板**。推荐结构见 [report-schema.md](./report-schema.md#推荐结构)。
+
+报告持久化到工作目录的 `report.md`。增量分析时覆盖旧报告，但 Repository Model 保留历史证据（标记 `deprecated`）。
 
 ---
 
