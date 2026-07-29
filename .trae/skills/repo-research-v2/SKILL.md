@@ -25,11 +25,12 @@ Repository Model 捕获实体、关系及支撑证据。报告是 Model 的视�
 
 ### 恢复流程
 
-1. **加载 context.json** — 恢复研究状态（当前轮次、模型稳定程度、已收集证据）
-2. **加载 repository-model.json** — 恢复仓库模型
-3. **加载 meta.json** — 恢复元信息（仓库路径、仓库类型、上次分析的提交）
-4. **加载 questions/summary.json** — 恢复问题进度（问题数量、已回答、已验证）
-5. **按需加载已有的 round-N.json** — 作为只读历史引用，禁止修改
+1. **加载 context.json** — 恢复研究状态（当前轮次、模型稳定程度、已收集证据计数）
+2. **加载 artifacts/evidence-log.jsonl** — 恢复已收集的所有证据洞察（这是研究的"实验室笔记"，Stage 5 写报告时从这里取证据，不从对话上下文取）
+3. **加载 repository-model.json** — 恢复仓库模型
+4. **加载 meta.json** — 恢复元信息（仓库路径、仓库类型、上次分析的提交）
+5. **加载 questions/summary.json** — 恢复问题进度（问题数量、已回答、已验证）
+6. **按需加载已有的 round-N.json** — 作为只读历史引用，禁止修改
 
 ### 判断代码是否变了
 
@@ -94,17 +95,19 @@ Repository Model 捕获实体、关系及支撑证据。报告是 Model 的视�
 │   ├── directory-tree.json      # 完整目录结构（扁平路径列表）
 │   ├── symbol-index.json        # 符号索引（函数、类、导出）
 │   ├── git-summary.json         # Git 历史分析
-│   └── evidence-index.json      # 证据索引（已读文件路径 + 目的）
-├── context.json             # 执行上下文（易变）
+│   └── evidence-log.jsonl       # 证据日志（append-only，每文件一行，含 key_findings）
+├── context.json             # 执行上下文（允许修改，增量更新）
 ├── questions/               # 问题轮次（不可变历史）
 │   ├── round-1.json         # 第一轮问题
 │   ├── round-2.json         # 第二轮问题
 │   ├── round-N.json         # 第 N 轮问题
 │   └── summary.json         # 轮次索引
-├── repository-model.json    # 仓库模型（每次重新构建）
+├── repository-model.json    # 仓库模型（允许修改，增量更新）
 ├── report.md                # 最新报告（易变）
 └── meta.json                # 元信息
 ```
+
+> **evidence-log.jsonl 是研究的"实验室笔记"**。每读一个文件提取的洞察必须立即落盘到这个文件，禁止只存在对话上下文里。会话压缩或中断后，Stage 5 写报告时所有证据都从这里读取。
 
 ---
 
@@ -118,18 +121,48 @@ Repository Model 捕获实体、关系及支撑证据。报告是 Model 的视�
 | **可复用** | 目录树 | `artifacts/directory-tree.json` | 只有代码变了才重新生成 |
 | **可复用** | 符号索引 | `artifacts/symbol-index.json` | 只有代码变了才重新生成 |
 | **可复用** | Git 历史 | `artifacts/git-summary.json` | 只有代码变了才重新生成 |
-| **可复用** | 证据索引 | `artifacts/evidence-index.json` | 只有代码变了才重新生成 |
-| **每次重新生成** | 上下文 | `context.json` | 每次分析重新创建 |
-| **每次重新生成** | 仓库模型 | `repository-model.json` | 每次分析重新构建 |
+| **可复用+追加** | 证据日志 | `artifacts/evidence-log.jsonl` | 代码没变时禁止重新生成；新增读取的文件追加新行，禁止改写已有行 |
+| **允许修改** | 上下文 | `context.json` | 首次创建后增量更新；恢复时加载现有文件继续，禁止从零重建——`resume`/`coverage`/`model_stability`/`challenge_record` 都是跨会话累积的 |
+| **允许修改** | 仓库模型 | `repository-model.json` | Stage 4b 首次全量构建，后续只更新受影响部分；恢复时加载现有模型继续，禁止从零重建 |
 | **禁止修改** | 问题轮次 | `questions/round-N.json` | 创建后永久冻结，禁止修改 |
 | **允许修改** | 问题汇总 | `questions/summary.json` | 唯一可以修改的 questions 文件 |
-| **每次重新生成** | 报告 | `report.md` | 每次分析重新生成 |
+| **每次重新生成** | 报告 | `report.md` | 每次分析重新生成（从模型+证据日志生成，不继承旧报告） |
 
 **强制规则**：
 
 - 可复用的产物：**代码没变时，禁止重新生成**。必须直接从 `artifacts/` 读取。
+- 允许修改的产物：**首次创建后持久化，恢复时加载继续**。增量更新，禁止从零重建。代码变了时只更新受影响部分。
 - 每次重新生成的产物：每次分析按需重建。不缓存。
 - 判断依据是 `meta.json` 里的 `last_analyzed_commit`。不是 Git 仓库的话每次全量分析。
+
+### evidence-log.jsonl 格式规范
+
+**JSON Lines 格式**（每行一个 JSON 对象，append-only）。这是研究过程的"实验室笔记"，记录从每个文件提取的**实际洞察**，而非仅文件路径。
+
+```json
+{"id": "ev-001", "ts": "2026-07-30T14:23:01Z", "file": "server/gateway.ts", "purpose": "理解请求生命周期与认证链", "key_findings": ["1960 行单文件实现 7 层认证（origin→CORS→HMAC→API key→tier→entitlement→rate-limit）", "7 档缓存策略（fast/medium/slow/slow-browser/static/daily/no-store/live）", "ETag 用 FNV-1a 哈希", "POST→GET 兼容垫片用于 CDN 缓存"], "evidence_strength": "A", "related_questions": ["Q1", "Q3"], "coverage_delta": {"runtime": 0.3, "architecture": 0.2}}
+```
+
+**字段约束**：
+
+| 字段 | 必填 | 内容 |
+|------|------|------|
+| `id` | 是 | 递增编号 `ev-001`, `ev-002`... |
+| `ts` | 是 | ISO 8601 时间戳 |
+| `file` | 是 | 相对仓库根的路径 |
+| `purpose` | 是 | 为什么读这个文件（一句话，绑定到具体研究问题） |
+| `key_findings` | 是 | **从该文件提取的关键洞察数组（至少 3 条）**。这是核心字段——不是文件摘要，是研究结论 |
+| `evidence_strength` | 是 | S/A/B/C/D/E 分级（详见 report-schema.md Evidence Hierarchy） |
+| `related_questions` | 否 | 关联的 round-N 问题 ID |
+| `coverage_delta` | 否 | 本条证据对 6 维 coverage 的影响估算 |
+
+**禁止行为**：
+
+- ❌ `key_findings` 为空数组或只写"已读"
+- ❌ `key_findings` 写成文件内容摘要而非研究洞察（错误示例："这个文件有 1960 行"；正确示例："单文件承载 7 层认证链，违反单一职责但换取了请求处理的原子性"）
+- ❌ 批量读取多个文件后才写一条聚合日志——**每读一个文件写一行**
+- ❌ 修改或删除已有行（append-only）
+- ❌ 把证据只存在 `context.json.evidence_collected` 而不写日志文件
 
 ---
 
@@ -224,7 +257,12 @@ context.json 是研究者的**外部脑**。记录当前研究做到哪了、进
   "challenge_record": [...],
   "design_space": [...],
   "maintainer_view": {...},
-  "evidence_collected": [...],
+  "evidence_collected": {
+    "log_file": "artifacts/evidence-log.jsonl",
+    "count": 42,
+    "last_ev_id": "ev-042",
+    "note": "实际证据洞察存放在 evidence-log.jsonl，这里只存计数和指针。禁止把完整证据内容塞进 context.json——会话压缩会丢失。"
+  },
   "quality_gate": {...}
 }
 ```
@@ -399,10 +437,36 @@ flowchart TD
 执行规划器定好的下一轮研究目标。
 
 ### 4a: 收集证据
-- 基于研究目标选择需要读取的文件
-- 从 `directory-tree.json` 定位文件
-- 读取文件内容（仅新文件或新增证据索引）
-- 写入 `evidence_collected`
+
+**核心原则：每读一个文件，立即落盘证据，再读下一个。** 禁止把多个文件的洞察堆积在对话上下文里最后批量写入——会话压缩会丢失这些洞察。
+
+#### 执行流程（逐文件循环）
+
+```
+for each 研究目标文件:
+  1. 从 directory-tree.json 定位文件路径
+  2. Read 文件内容
+  3. 提取 key_findings（至少 3 条研究洞察，非摘要）
+  4. 立即追加一行到 artifacts/evidence-log.jsonl  ← 强制，禁止跳过
+  5. 更新 context.evidence_collected 计数（仅在内存）
+  ← 然后才能读下一个文件
+```
+
+#### 强制规则
+
+- **每读一个文件，立即写一行 evidence-log.jsonl**。不是读完所有文件后批量写，是逐文件写。
+- `key_findings` 必须是**研究洞察**（"7 层认证链违反单一职责但换取原子性"），不是文件摘要（"这个文件 1960 行实现了认证"）。
+- `key_findings` 至少 3 条。少于 3 条说明没读懂或选错文件，重读或换文件。
+- 已在 evidence-log.jsonl 中的文件，代码没变时禁止重读（直接复用日志里的 key_findings）。
+- 证据强度 S/A/B/C/D/E 必须标注（S=可执行行为/测试，A=源码实现，B=配置，C=文档，D=commit/issue，E=推断）。
+
+#### 恢复时的行为
+
+代码没变时恢复研究：
+1. 读取 `artifacts/evidence-log.jsonl` 全部内容
+2. 已记录的文件不再重读——直接用日志里的 key_findings
+3. 只读 evidence-log 里没有的新文件
+4. 新读的文件追加新行到日志末尾
 
 ### 4b: 构建/更新仓库模型
 - 首次：全量构建 6 个方面的模型
@@ -439,9 +503,9 @@ flowchart TD
 
 ## 阶段 5 — 写报告
 
-从仓库模型生成人类可读的中文报告。
+从仓库模型 + evidence-log.jsonl 生成人类可读的中文报告。
 
-**禁止**在此阶段做任何新的推理。**禁止**发明新结论。只把已验证的发现组织成连贯叙事。
+**禁止**在此阶段做任何新的推理。**禁止**发明新结论。**禁止**从对话上下文回忆证据——所有证据必须从 `artifacts/evidence-log.jsonl` 读取。只把已验证的发现组织成连贯叙事。
 
 ### 核心约束：六步推理
 

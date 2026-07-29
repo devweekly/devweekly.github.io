@@ -1,11 +1,20 @@
 {
-  "latest_round": 1,
+  "latest_round": 2,
   "rounds": [
     {
       "round": 1,
       "file": "round-1.json",
       "purpose": "discovery",
-      "status": "active"
+      "status": "invalidated",
+      "invalidation_reason": "Round-1 questions were generated against the wrong repository (blog project instead of worldmonitor web service). Questions are about weekly posts / Astro static blog / bilingual content — none apply to this repo. Treated as historical artifact only; no answers recorded."
+    },
+    {
+      "round": 2,
+      "file": "round-2.json",
+      "purpose": "discovery+critical",
+      "status": "active",
+      "answered": 10,
+      "validated": 7
     }
   ]
 }

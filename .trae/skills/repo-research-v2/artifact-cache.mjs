@@ -55,9 +55,10 @@ export const STABLE_ARTIFACTS = [
     required: false,
   },
   {
-    name: "evidence-index",
-    filename: "evidence-index.json",
-    description: "Index of files read during mechanical analysis (path + purpose only, not content)",
+    name: "evidence-log",
+    filename: "evidence-log.jsonl",
+    description:
+      "Append-only JSONL evidence log: one line per file read, contains key_findings (research insights, not summaries), evidence_strength, related_questions. The lab notebook of the research — Stage 5 reads from here, not from conversation context.",
     required: false,
   },
 ];

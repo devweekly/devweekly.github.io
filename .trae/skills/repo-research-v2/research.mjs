@@ -725,12 +725,35 @@ async function main() {
       modification_impact_map: {},
       complexity_drivers: (result.interpretation.architectural_tensions || []).map((t) => t.tension),
     },
-    evidence_collected: result.evidence.map((e) => ({
-      path: e.path, purpose: e.purpose, key_findings: [], surprises: [], unanswered: [],
-    })),
+    evidence_collected: {
+      log_file: "artifacts/evidence-log.jsonl",
+      count: result.evidence.length,
+      last_ev_id: `ev-${String(result.evidence.length).padStart(3, "0")}`,
+      note:
+        "Actual evidence insights are in evidence-log.jsonl (append-only). Script-layer entries have empty key_findings; LLM Stage 4a appends entries with real key_findings.",
+    },
     quality_gate: { center_identified: false, alternatives_considered: false, counterexamples_found: false, model_challenged: false },
   };
   await writeJson(contextPath, context);
+
+  // ========================================================================
+  // Write artifacts/evidence-log.jsonl (initial script-layer evidence)
+  // ========================================================================
+
+  const evidenceLogPath = join(workingDir, "artifacts", "evidence-log.jsonl");
+  const evidenceLines = result.evidence.map((e, i) =>
+    JSON.stringify({
+      id: `ev-${String(i + 1).padStart(3, "0")}`,
+      ts: new Date().toISOString(),
+      file: e.path,
+      purpose: e.purpose || "mechanical-scan",
+      key_findings: [],
+      evidence_strength: "B",
+      related_questions: [],
+      source: "script",
+    })
+  );
+  await writeFile(evidenceLogPath, evidenceLines.join("\n") + "\n", "utf8");
 
   // ========================================================================
   // Write meta.json
