@@ -1,10 +1,11 @@
 {
   "type": "Web Service",
   "confidence": "high",
-  "reasoning": "Multi-domain global monitoring SaaS platform: API gateway with 30+ versioned domain endpoints (aviation, conflict, climate, cyber, maritime, trade, etc.), SDKs in Go/Python/Ruby, protobuf definitions, Convex backend, Tauri desktop client, CLI tool, blog site, and Dockerized deployment. Architecture follows API-as-a-product pattern with multi-language SDK support.",
+  "reasoning": "WorldMonitor — a geopolitical intelligence platform serving 30+ API domains (aviation, conflict, climate, cyber, economic, maritime, military, natural disasters, etc.) with web frontend, map UI, SDKs (Go/Python/Ruby), CLI, Tauri desktop app, Convex backend, and workers. The proto/ + server/ + generated/client/ + generated/server/ mirror pattern confirms a service-oriented architecture with auto-generated API clients.",
   "focus_areas": [
-    "Global intelligence & monitoring API",
-    "Multi-language SDK delivery (Go/Python/Ruby)",
-    "Event-driven data ingestion pipeline"
+    "Global event monitoring & alerting",
+    "Geopolitical risk intelligence",
+    "Multi-domain API surface (30+ domains)",
+    "Cross-platform SDK ecosystem"
   ]
 }

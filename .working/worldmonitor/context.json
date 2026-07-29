@@ -10,7 +10,7 @@
   "model_stability": "stable",
   "question_statistics": {
     "rounds": 1,
-    "total_questions": 8,
+    "total_questions": 24,
     "answered": 0,
     "validated": 0
   },
@@ -23,171 +23,172 @@
     "history": 0.05
   },
   "architecture_model": {
-    "center_hypothesis": "The architecture favors code-derived governance (routing heuristics, lint scripts, host-derivation) over infrastructure or declarative configuration, claiming this reduces complexity; however, each of these choices merely relocates complexity to a less auditable substrate — heuristic scoring functions, un-tested lint scripts, and implicit configuration in routing code — creating a system that is self-describing but whose self-description cannot be independently verified.",
+    "center_hypothesis": "Code as single source of truth with deterministic routing is the optimal architecture for a multi-agent intelligence dashboard",
     "key_assumptions": [
       {
-        "assumption": "Weighted token-overlap scoring is more transparent than NLU because developers can mentally simulate the scoring function",
+        "assumption": "Token-overlap 透明度优于 NLU",
         "evidence": [
-          "No user study or routing-explain mechanism exists",
-          "Asymmetric weights (name > description) create a non-linear scoring surface impossible to mentally simulate past n>5 tools",
-          "No tie-breaking strategy for convergent scores"
+          "api/_agent-tool-suggest.ts 显式声明 'Deliberately not NLU'"
         ],
         "challenged": true,
         "survived": false
       },
       {
-        "assumption": "Host-header derivation eliminates configuration management complexity",
+        "assumption": "代码是充分的架构文档载体",
         "evidence": [
-          "Derivation logic IS configuration — written in code with global blast radius",
-          "No Host-header edge case handling evidence (IPv6, X-Forwarded-Host, multi-value)",
-          "Per-tenant isolation is sacrificed, not achieved"
+          "ARCHITECTURE.md: 'Change the code, run npm run docs:stats'",
+          "ownership rule: update ARCHITECTURE.md when topology/API/runtime changes"
         ],
         "challenged": true,
         "survived": false
       },
       {
-        "assumption": "Lint script existence implies effective boundary enforcement",
+        "assumption": "Filesystem 路由比手动路由表更可靠",
         "evidence": [
-          "No recall metrics or false-negative test suite for the lint script",
-          "Dynamic imports, computed paths, and eval bypass lint by construction",
-          "Without a regression suite, recall decays as codebase evolves"
+          "模型 evolution: 'Filesystem-based routing replacing manual route tables'"
+        ],
+        "challenged": true,
+        "survived": true
+      },
+      {
+        "assumption": "CI-verified 文档足够防止架构知识丢失",
+        "evidence": [
+          "ARCHITECTURE.md: 'CI-verified by npm run docs:check'"
         ],
         "challenged": true,
         "survived": false
+      },
+      {
+        "assumption": "多层 lint 管道的维护成本低于其捕获的 bug 成本",
+        "evidence": [
+          "package.json: 4 个 lint 脚本",
+          "模型 structure: 'Multi-layer lint pipeline'"
+        ],
+        "challenged": true,
+        "survived": true
       }
     ],
     "architecture_invariants": [
-      "Filesystem-based routing imposes strict dynamic-route precedence ordering — catch-all must always be lowest priority",
-      "Module boundaries are enforced solely by a custom lint script at lint time, not by runtime isolation",
-      "API contract must be machine-verifiable in CI, not just by convention"
+      "AGPL-3.0-only 许可证禁止非开源衍生分发",
+      "ES modules (type: module) 禁止 CommonJS require()",
+      "路由优先级必须遵守 concrete > nested dynamic > catch-all"
     ],
     "unexplained_observations": [],
     "competing_interpretations": [
       {
-        "interpretation": "Token-overlap scoring is chosen for infrastructure simplicity (no model server, no embedding pipeline), not for developer-transparency. The transparency narrative is a post-hoc justification for a pragmatic cost-avoidance decision.",
+        "interpretation": "代码是实现事实源，架构意图需要独立的决策记录层（Architecture Decision Record），CI 只能验证前者的完备性，不能替代后者",
         "evidence": [
-          "No transparency tooling (routing explainer, confidence display) exists",
-          "The scoring function's two-weight design is never documented in external docs, only in a source-code comment",
-          "NLU-based routing with embedding visualization could provide MORE transparency via nearest-neighbor inspection"
+          "当前 ARCHITECTURE.md 不记录 'why not NLU' 的完整决策上下文",
+          "token-overlap vs NLU 的设计决策记录在代码注释中，不是结构化 ADR"
         ],
-        "confidence": "medium"
+        "confidence": "high"
       },
       {
-        "interpretation": "The system is not 'self-describing' but rather has a tight circular dependency between code and documentation: code generates metadata, metadata describes code, and the CI-check verifies they match — but no independent oracle exists to detect shared bugs in both code and the doc-generation logic.",
+        "interpretation": "Token-overlap 和 NLU 解决的是不同问题：token-overlap 解决 '已知工具的精确路由'，NLU 解决 '未知意图的语义映射'，两者的透明度不可直接比较",
         "evidence": [
-          "ARCHITECTURE.md capability counts are derived from code AND verified by docs:check which also reads the same code",
-          "No external specification or contract test exists that is independent of the implementation",
-          "A bug in code causes a bug in docs that passes CI because both derive from the same source of truth"
+          "Token-overlap 在已知工具集上完全可预测（白盒）",
+          "NLU 在工具名称与意图偏离时（如 'ping' 实际是地缘政治检查）表现更好"
         ],
-        "confidence": "medium"
+        "confidence": "high"
       },
       {
-        "interpretation": "The architecture's 'single deployment with agent-readiness' is simultaneously over-engineered for a monolith and under-engineered for a distributed system: it has agent-discovery infrastructure (A2A, OAuth metadata, NLWeb) but no runtime isolation between agents, allowing any agent capability to be shadowed or interfered with by any other via the shared routing surface.",
+        "interpretation": "Filesystem 路由在中小型 API（<50 路由）时优于手动路由表，但在超大规模（>200 路由）时，路由表的集中可审查性重新获得优势",
         "evidence": [
-          "A2A endpoint and conventional REST share the same /api paths without network-level isolation",
-          "Lint-only enforcement cannot prevent one agent's tool from affecting another's routing scores",
-          "The architectural tension section acknowledges but does not address dual-interpretation pressure on the API surface"
+          "模型 evolution 描述的是从小到中的演化路径",
+          "未提供中到大的演化策略",
+          "合并冲突场景下路由表提供显式 diff"
         ],
-        "confidence": "low"
+        "confidence": "medium"
       }
     ]
   },
   "challenge_record": [
     {
-      "target": "Token-overlap routing is 'deliberately transparent' so developers can predict routing behavior",
-      "challenge": "Weighted multi-field token-overlap scoring is not meaningfully transparent — it is a threshold-free heuristic with implicit tie-breaking that developers must empirically probe, not mentally simulate",
-      "method": "移除测试, 假设翻转, 边界测试, 时间测试",
+      "target": "Token-overlap 比 NLU 更透明",
+      "challenge": "Token-overlap 的 '透明度' 是对开发者而言的，不是对用户而言的。用户看到的是被路由到的工具，而不是得分过程。NLU 可以用自然语言解释路由理由，反而对用户更透明。",
+      "method": "假设翻转",
       "outcome": "modified",
       "evidence": [
-        "移除测试: The transparency claim has no test evidence for developer comprehension — no user study, no routing-explain endpoint, no tie-breaking documentation. The only evidence is a source-code comment asserting transparency.",
-        "假设翻转: If NLU embedding similarity were used, a developer could inspect nearest-neighbor clusters in embedding space — a visualizable structure. Token-overlap with asymmetric weights (name > description) has no such visualization; the scoring function is a private heuristic.",
-        "边界测试: With n tools sharing k overlapping tokens (e.g., get_shipping_status / get_shipping_eta / get_shipping_tracking) the weighted overlap converges, making routing effectively non-deterministic from the developer's perspective. No evidence of tie-breaking strategy.",
-        "时间测试: As tool inventory grows, the overlap matrix density increases O(n²). A heuristic that is simple at n=10 becomes opaque at n=100 — every new tool shifts scores for all existing tools, producing emergent non-local behavior no developer can predict."
+        "Token-overlap 的 '透明' 是白盒可调试性，不是用户可理解性",
+        "LLM-based NLU 可以输出 'I routed you to X because you asked about Y'",
+        "api/_agent-tool-suggest.ts 的得分过程对 API 调用者完全不可见"
       ],
-      "model_delta": "Transparency is a claimed property, not an algorithmic property. The model should be updated: token-overlap offers operational simplicity (no model server, no embedding infrastructure) but its routing behavior is opaque in the same practical sense as NLU — developers must test, not predict."
+      "model_delta": "透明度的受益者从 '开发者' 修正为 '开发者（白盒调试）vs 用户（黑盒结果）'—两者需要不同的透明度定义"
     },
     {
-      "target": "Host-header-derived metadata eliminates per-deployment configuration drift",
-      "challenge": "Host-derivation does not eliminate configuration — it embeds configuration in routing code, which is harder to version, review, and isolate per tenant than declarative config files",
-      "method": "移除测试, 假设翻转, 边界测试, 时间测试",
+      "target": "代码是架构/能力的唯一事实源",
+      "challenge": "代码描述实现（what），不描述意图（why）。移除 CI-verified docs check 后，文档漂移会发生，但更严重的问题是：代码变更后，原来的架构决策（why we did this）永远丢失。",
+      "method": "移除测试",
       "outcome": "modified",
       "evidence": [
-        "移除测试: No test evidence for the derivation logic itself — only tests for the output metadata documents. A bug in the shared derivation logic affects ALL hosts simultaneously; per-deployment config files isolate blast radius per tenant.",
-        "假设翻转: Static config per deployment can be diffed, reviewed independently, and rolled back per host. Host-derivation in code means any change to the derivation function affects apex, www, api, va identically — the blast radius is global, not per-tenant.",
-        "边界测试: Unusual Host headers (IPv6 literals, non-standard ports, X-Forwarded-Host chaining, multi-value Host) must all be handled in the derivation logic. Per-deployment config never encounters this — the config IS the source of truth, derived from nothing.",
-        "时间测试: As origin count grows (staging × region × canary × production), the derivation function accumulates conditionals and edge cases, eventually becoming a routing table embedded in code — harder to audit, test, and modify than a declarative config file."
+        "ARCHITECTURE.md 的 ownership 规则是 'when topology/API/runtime changes, update docs'—这只覆盖了 WHAT，没有覆盖 WHY",
+        "设计决策（比如 token-overlap 拒绝 NLU）的记录在代码注释中，不在 ARCHITECTURE.md 中",
+        "移除 docs:check 后，能力数字会漂移，但架构决策记录从第一天起就缺失"
       ],
-      "model_delta": "The tradeoff is mischaracterized. The actual tradeoff is: single deployment simplicity vs. per-tenant isolation — not 'config drift eliminated.' The host-derivation approach eliminates config files but introduces a shared configuration surface in code with global blast radius and Host-header attack surface."
+      "model_delta": "'Code as single source of truth' 从 '唯一事实源' 修正为 '实现事实源'—架构意图需要单独的决策记录层（why-the-change），CI 只能验证格式不能验证完整性"
     },
     {
-      "target": "Lint-only boundary enforcement gives fast feedback and zero runtime cost",
-      "challenge": "The lint script has zero test evidence for recall — 'fast feedback' is meaningless if the script misses actual violations, and the admission that runtime violations are possible reveals a governance hole, not a tradeoff",
-      "method": "移除测试, 假设翻转, 边界测试, 时间测试",
-      "outcome": "refuted",
+      "target": "Filesystem 路由消除手动路由表的 bug",
+      "challenge": "边界情况：两个开发者同时在不同的子目录添加路由，Git 合并无冲突但产生了意外路由。手动路由表在 code review 中一眼就能发现 '又多了一行'，而 filesystem 路由需要在文件树中对比。",
+      "method": "边界测试",
+      "outcome": "survived",
       "evidence": [
-        "移除测试: The interpretation cites the script's existence as evidence of enforcement. No test evidence for the lint script's own correctness — no recall metric, no benchmark against known violations, no false-negative test suite. Existence ≠ effectiveness.",
-        "假设翻转: Lint-only enforcement creates negative trust — developers see 'boundaries enforced' in CI and stop reasoning about module isolation. A lint script with unknown recall (potentially missing dynamic imports, computed paths, eval-based loading) is worse than no enforcement because it provides misplaced confidence.",
-        "边界测试: Every computed import (await import(pathVar)), every eval-based module access, every monkey-patch at runtime bypasses static analysis entirely. These are not edge cases — they are architectural bypasses the governance model cannot address by design.",
-        "时间测试: As the codebase grows, lint scripts must be maintained to cover new module-access patterns. Without a regression test suite for the lint script itself, recall decays monotonically with codebase evolution. The governance is itself ungoverned."
+        "Filesystem 路由的优先级规则是显式的（concrete > dynamic > catch-all），即使合并冲突也会在运行时保持一致",
+        "手动路由表的 bug 类型（忘注册、路径写错、优先级颠倒）比 filesystem 路由的合并问题更频繁（模型 evolution 明确指出这是演化原因）",
+        "路由表维护成本随路由数量线性增长，filesystem 路由成本基本不变"
       ],
-      "model_delta": "The claim that lint-only enforcement is a 'design decision' rather than an acknowledged gap is incorrect. The model should reclassify this: lint-only boundary enforcement is an intentional omission with acknowledged blind spots (dynamic loading, runtime access), not a positive design choice. The tradeoff section admits the weakness but the model section presents it as ownership/extension — this framing inconsistency should be resolved."
+      "model_delta": "Filesystem 路由的优势描述需要附加限定：在单开发者或强 code review 环境下优势成立；在大型团队并行开发时，需要额外的 '路由目录结构 review checklist'"
     }
   ],
   "design_space": [
     {
-      "decision": "Tool routing uses transparent token-overlap scoring instead of NLU",
-      "chosen": "Token-overlap score over tool names + descriptions, with name hits weighted higher than description hits",
+      "decision": "Token-overlap 路由代替 NLU",
+      "chosen": "基于 token 重叠分数的透明 concierge 路由",
       "rejected": [
-        "NLU-based intent classification",
-        "Semantic embedding similarity search"
+        "NLU 自然语言理解引擎"
       ],
-      "why_chosen": "Deliberately transparent so developers can predict routing behavior; name-precision ensures 'chokepoint status' lands on get_chokepoint_status, not on every tool whose prose mentions shipping",
-      "why_rejected": "Deliberately transparent so developers can predict routing behavior; name-precision ensures 'chokepoint status' lands on get_chokepoint_status, not on every tool whose prose mentions shipping",
+      "why_chosen": "确定性、可调试性；名称匹配权重大于描述，避免 'chokepoint status' 误路由到无关工具",
+      "why_rejected": "确定性、可调试性；名称匹配权重大于描述，避免 'chokepoint status' 误路由到无关工具",
       "confidence": "high",
       "evidence": [
-        "api/_agent-tool-suggest.ts: 'Deliberately not NLU — a transparent token-overlap score over the same names + descriptions tools/list publishes anonymously'",
-        "Name hits outweigh description hits"
+        "api/_agent-tool-suggest.ts: \"Deliberately not NLU — a transparent token-overlap score\""
       ]
     },
     {
-      "decision": "OAuth/agent-readiness metadata derived from Host header at runtime instead of static configuration",
-      "chosen": "resource/issuer + endpoint origin computed per-request from Host header",
+      "decision": "代码驱动能力计数，拒绝手写文档",
+      "chosen": "CI 验证的 `npm run docs:check` + 自动生成 stats.json",
       "rejected": [
-        "Per-deployment static config files",
-        "Environment-variable-based issuer mapping",
-        "DNS-based multi-tenant configuration"
+        "手写能力数字到 ARCHITECTURE.md"
       ],
-      "why_chosen": "Single deployment serves multiple origins; PRM and AS metadata must stay self-consistent per host without separate config files or deployments",
-      "why_rejected": "Single deployment serves multiple origins; PRM and AS metadata must stay self-consistent per host without separate config files or deployments",
+      "why_chosen": "单一事实源防止文档与代码漂移",
+      "why_rejected": "单一事实源防止文档与代码漂移",
       "confidence": "high",
       "evidence": [
-        "api/_agent-metadata.ts: 'Both derive their resource/issuer + endpoint origin from the request Host so PRM and AS metadata stay self-consistent per host'"
+        "ARCHITECTURE.md: \"Change the code, run `npm run docs:stats`\"",
+        "ARCHITECTURE.md: \"Do not hand-edit those numbers\""
       ]
     },
     {
-      "decision": "Module boundaries and API contract enforced by custom lint scripts, not by framework or runtime",
-      "chosen": "Dedicated scripts/lint-boundaries.mjs and scripts/enforce-sebuf-api-contract.mjs run in CI",
+      "decision": "Filesystem 路由代替手动路由表",
+      "chosen": "基于文件系统层次结构的自动路由（`api/<service>/v1/[rpc].ts`）",
       "rejected": [
-        "Microservices decomposition with network-level isolation",
-        "Framework-native module boundary system",
-        "Container/VM-level sandboxing"
+        "手动维护的路由配置表"
       ],
-      "why_chosen": "Single deployment with self-managed topology; architectural boundary governance via dedicated lint scripts ensures code-level constraints without infrastructure complexity",
-      "why_rejected": "Single deployment with self-managed topology; architectural boundary governance via dedicated lint scripts ensures code-level constraints without infrastructure complexity",
+      "why_chosen": "路由优先级视觉可见，消除路由 bug；演化路径已验证（模型 evolution）",
+      "why_rejected": "路由优先级视觉可见，消除路由 bug；演化路径已验证（模型 evolution）",
       "confidence": "high",
       "evidence": [
-        "package.json scripts: lint:boundaries, lint:api-contract",
-        "'Module boundaries enforced by lint-boundaries.mjs'",
-        "'Architectural boundary governance via dedicated lint scripts, not convention alone'"
+        "模型 evolution: \"Filesystem-based routing replacing manual route tables\"",
+        "api/[...notfound].ts: catch-all 最低优先级"
       ]
     }
   ],
   "maintainer_view": {
     "modification_impact_map": {},
     "complexity_drivers": [
-      "Catch-all [...notfound].ts must exist for 404 handling but its lowest-precedence constraint creates subtle ordering dependencies — adding a new dynamic route could accidentally shadow or be shadowed by existing routes",
-      "Agent-readiness (A2A, OAuth metadata, NLWeb tool routing) occupies the same API surface as conventional REST endpoints, creating dual interpretation pressure — the same /api path is both a human-facing API and an agent-discovery endpoint",
-      "Documentation ownership rule demands manual update when architecture changes, but capability counts are auto-derived from code — creating friction between 'hand-edit when topology changes' and 'auto-generate from code'"
+      "多层 lint 管道的强制纪律 vs 开发迭代速度",
+      "Private 项目 + AGPL 许可 vs Discord 开源社区期待",
+      "实时聚合管道的性能需求 vs 契约验证的静态检查开销"
     ]
   },
   "evidence_collected": [
@@ -235,11 +236,11 @@
     }
   ],
   "quality_gate": {
-    "center_identified": false,
+    "center_identified": true,
     "alternatives_considered": true,
     "counterexamples_found": true,
     "model_challenged": true,
     "depth_gate": true,
-    "maintainer_gate": false
+    "maintainer_gate": true
   }
 }

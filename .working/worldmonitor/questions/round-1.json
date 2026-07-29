@@ -7,99 +7,99 @@
   "questions": [
     {
       "id": "R1-1",
-      "question": "为什么一个静态 Astro 博客仓库会同时托管一个完整的 AI 仓库研究分析管道（repo-research-v2）？这是有意的融合还是历史演进的结果？",
+      "question": "Why does a blog project host a sophisticated AI research agent platform (.trae/skills) with AST analyzers, graph algorithms, and LLM pipelines?",
       "genesis": {
-        "trigger": "observed structure",
-        "observation": "仓库既是中文技术博客（Astro SSG，150+ 篇博文），又包含复杂的 .trae/skills/repo-research-v2 研究管道（5 阶段工作流、LLM 集成、8 个提示模板、门禁检查）",
+        "trigger": "observation",
+        "observation": "The repo contains 4 AI agent skills (enterprise-research-agent, repo-research-v2, tidy-chatgpt-text) with 11-module analyzer pipeline, while the primary function is a static blog",
         "depth_level": 3
       },
       "type": "critical",
       "status": "open",
+      "confidence": "medium"
+    },
+    {
+      "id": "R1-2",
+      "question": "Why do many weekly posts contain empty link entries (markdown [text]() with no URL), and what does that reveal about the editorial workflow?",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "2026Jul27.md has 332 lines but ~80% of links are empty []() placeholders, suggesting template-first curation where URLs are filled asynchronously",
+        "depth_level": 1
+      },
+      "type": "high",
+      "status": "open",
       "confidence": "high"
     },
     {
-      "question": "为何选择 Astro 7 SSG + React 19 islands 架构而非纯静态生成器（如 Hugo）或完全 SPA（如 Next.js）来承载周报内容？",
+      "id": "R1-3",
+      "question": "What editorial process ensures weekly publishing consistency across 157 posts spanning 3 years without gaps?",
       "genesis": {
-        "trigger": "framework analysis",
-        "observation": "采用 Astro 的 partial hydration（islands 架构）——既有 React 交互组件（Search.tsx、Card.tsx），又保持 SSG 的零 JS 输出。Tailwind CSS 4 和 Mermaid 图嵌入进一步增加了构建复杂度",
+        "trigger": "observation",
+        "observation": "Posts follow strict weekly schedule from 2023Jul31 to 2026Jul27 with predictable naming YYYYMonDD.md, suggesting an automated or templated pipeline",
         "depth_level": 2
       },
-      "id": "R1-2",
-      "type": "discovery",
+      "type": "high",
       "status": "open",
       "confidence": "medium"
     },
     {
-      "id": "R1-3",
-      "question": "为什么 README.md 仅写一行 '# hELLO wORLD'，而真正的开发指南却放在 AGENTS.md（400+ 行）？这种文档分层策略的设计意图是什么？",
+      "id": "R1-4",
+      "question": "Why are blog post filenames date-based IDs (2026Jul27.md) rather than semantic slugs, and what are the trade-offs?",
       "genesis": {
-        "trigger": "documentation audit",
-        "observation": "README 几乎为空，但 AGENTS.md 包含完整的 AI 操作系统规则、代码风格指南、项目架构和自维护协议。还有独立的 CONTRIBUTING.md、SKILL.md、methodology.md、report-schema.md",
+        "trigger": "observation",
+        "observation": "Unlike typical blogs with slug-based URLs, all 157 posts use date-based filenames with no human-readable identifiers, yet titles are semantic",
         "depth_level": 1
       },
-      "type": "discovery",
-      "status": "open",
-      "confidence": "high"
-    },
-    {
-      "id": "R1-4",
-      "question": "GitHub Actions 中同时部署博客（withastro/action）和执行 research-agent-check（benchmark + eval）——这两个工作流是同一管道还是正交系统？research Agent 检查失败是否阻塞博客部署？",
-      "genesis": {
-        "trigger": "CI/CD inspection",
-        "observation": "astro.yml 包含 build 和 research-agent-check 两个独立 job，无 needs 依赖关系。research-agent-check 执行 pnpm lint → benchmark → eval，评价企业研究 Agent 的质量",
-        "depth_level": 2
-      },
-      "type": "critical",
+      "type": "medium",
       "status": "open",
       "confidence": "high"
     },
     {
       "id": "R1-5",
-      "question": "repo-research-v2 的 5 阶段工作流（Stage 0-5）为什么采用 Resume-first 设计——优先恢复已有分析状态而非每次重新扫描？这种增量模式的假设是什么？",
+      "question": "How does the content strategy balance AI/LLM coverage vs broader engineering topics across the weekly cadence?",
       "genesis": {
-        "trigger": "workflow analysis",
-        "observation": "Stage 0 强制先加载 context.json 判断 commit 是否变化。未变化时禁止重新扫描、禁止重新识别类型、直接从 artifacts/ 读取。Stable vs Volatile artifact 分类严明",
+        "trigger": "observation",
+        "observation": "Topics span Claude, DeepSeek, MCP SDK, Ollama, Angular, Node.js, C++, streaming, and academic research—not purely AI-focused despite the 'AI-first' impression",
         "depth_level": 2
       },
-      "type": "design_space",
+      "type": "high",
       "status": "open",
-      "confidence": "high"
+      "confidence": "medium"
     },
     {
       "id": "R1-6",
-      "question": "博客覆盖 2023-2026 年共 150+ 篇技术文章，每周一期——这种规模的个人技术周报为什么选择 GitHub Pages 免费托管而非自建服务器或 Medium？成本和维护权衡是什么？",
+      "question": "Why does an Astro static blog use React islands (Search.tsx, Card.tsx) instead of pure Astro components for interactivity?",
       "genesis": {
-        "trigger": "deployment analysis",
-        "observation": "每日 UTC 0:00 cron 触发自动部署，使用 withastro/action v6 + actions/deploy-pages v4。Node.js 22 要求、Jampack 图片优化、无后端依赖",
-        "depth_level": 1
+        "trigger": "observation",
+        "observation": "Search.tsx and Card.tsx are React 19 components using Fuse.js and useState, while most UI is Astro-native—creating a hybrid architecture",
+        "depth_level": 3
       },
-      "type": "discovery",
+      "type": "critical",
       "status": "open",
       "confidence": "medium"
     },
     {
       "id": "R1-7",
-      "question": "为什么 repo-research-v2 的测试策略采用 6 层分层测试（Unit → Prompt → Behavior → Mutation → Regression → E2E），且全部在合成仓库（synthetic repos）上运行真实 Analyzer 管道？这种设计比 mock/fixture 测试的优势和代价是什么？",
+      "question": "How does the bilingual content (Chinese titles with English post bodies) impact SEO, sitemap generation, and RSS feed design?",
       "genesis": {
-        "trigger": "test architecture analysis",
-        "observation": "6 层测试共 185+ 个测试，使用 skill-test/lib/synthetic-repos.mjs 生成 database/agent/tool/readme-claims 四种合成仓库。每层运行真实 AnalyzerPipeline 而非 mock",
-        "depth_level": 3
+        "trigger": "observation",
+        "observation": "config.ts sets lang='en' while many posts have Chinese titles/content; sitemap and RSS are generated through Astro integrations but lang may misrepresent content",
+        "depth_level": 2
       },
-      "type": "critical",
+      "type": "medium",
       "status": "open",
-      "confidence": "high"
+      "confidence": "medium"
     },
     {
       "id": "R1-8",
-      "question": "仓库包含了 enterprise-research-agent、repo-research-v2、tidy-chatgpt-text 三个独立 skill——它们共享哪些基础设施（LLM runner、artifact cache、AST 工具）？为什么没有抽取公共库？",
+      "question": "Why does a personal blog need a multi-stage CI pipeline with Jampack optimization and a research-agent-check CI job?",
       "genesis": {
-        "trigger": "multi-skill audit",
-        "observation": ".trae/skills/ 下三个 skill：repo-research-v2 有自己的 llm-runner.mjs、artifact-cache.mjs；enterprise-research-agent 有独立的 research.mjs。存在重复的 LLM 调用和缓存逻辑",
+        "trigger": "observation",
+        "observation": "Build pipeline runs Astro SSG → Jampack image optimization → GitHub Pages, plus a separate CI job running research.mjs benchmark and eval on every push",
         "depth_level": 2
       },
-      "type": "design_space",
+      "type": "high",
       "status": "open",
-      "confidence": "high"
+      "confidence": "medium"
     }
   ]
 }

@@ -29,6 +29,7 @@ Repository Model 捕获实体、关系及支撑证据。报告是 Model 的视�
 2. **加载 repository-model.json** — 恢复 Repository Model
 3. **加载 meta.json** — 恢复元信息（repo_path, repo_type, last_analyzed_commit）
 4. **加载 questions/summary.json** — 恢复问题进度（问题数量、已回答、已验证）
+5. **按需加载已有 round-N.json** — 作为只读历史引用，禁止修改
 
 ### 判断 commit
 
@@ -120,7 +121,8 @@ Repository Model 捕获实体、关系及支撑证据。报告是 Model 的视�
 | **Stable** | Evidence Index | `artifacts/evidence-index.json` | 仅 commit 变化时重新生成 |
 | **Volatile** | Context | `context.json` | 每次分析重新创建 |
 | **Volatile** | Repository Model | `repository-model.json` | 每次分析重新构建 |
-| **Volatile** | Questions | `questions/round-N.json` | 每次分析重新生成 |
+| **Immutable** | Questions | `questions/round-N.json` | 创建后永久冻结，禁止修改 |
+| **Mutable** | Summary | `questions/summary.json` | 唯一允许修改的 questions 产物 |
 | **Volatile** | Report | `report.md` | 每次分析重新生成 |
 
 **强制规则**：
@@ -130,6 +132,58 @@ Repository Model 捕获实体、关系及支撑证据。报告是 Model 的视�
 - `meta.json` 中的 `last_analyzed_commit` 是判断依据。非 Git 仓库每次全量分析。
 
 ---
+
+## Immutable Question History
+
+问题轮次是追加式（append-only）历史，不可修改。
+
+### 目录结构
+
+```
+questions/
+├── round-1.json      (immutable — 永久冻结)
+├── round-2.json      (immutable — 永久冻结)
+├── round-3.json      (immutable — 永久冻结)
+└── summary.json      (mutable — 唯一允许修改)
+```
+
+### 禁止操作
+
+已有 `questions/round-N.json` 文件：
+
+- ❌ 重写内容
+- ❌ 重新排序问题
+- ❌ 删除问题
+- ❌ 修改问题措辞
+- ❌ 更新问题状态（answered/validated）
+- ❌ 更新证据引用
+- ❌ 追加或删除问题
+
+### 允许操作
+
+- ✅ 创建 `questions/round-(N+1).json`（新增轮次）
+- ✅ 更新 `questions/summary.json`（统计信息）
+- ✅ 更新 `context.question_statistics`（内存中的统计缓存）
+
+### 状态存储
+
+**问题状态不存储在 round 文件中。** 答案状态存储在 `summary.json`：
+
+```json
+{
+  "latest_round": 2,
+  "rounds": [
+    { "round": 1, "file": "round-1.json", "answered": 31, "validated": 20, "status": "closed" },
+    { "round": 2, "file": "round-2.json", "answered": 11, "validated": 5, "status": "active" }
+  ]
+}
+```
+
+`round-1.json` 中的 `status` 字段（如果存在）是初始值，LLM 输出中的任何状态变更必须写入 `summary.json`，而非写入 round 文件。
+
+### 执行历史可复现
+
+每个 `round-N.json` 是执行历史的不可变快照。修改已有 round = 伪造历史。**禁止。**
 
 ### context.json
 
@@ -332,8 +386,8 @@ Planner 决定**下一轮研究什么**，而不是继续生成 round-N 问题�
 
 ### Planner 规则
 
-- 首次运行：生成 8-12 个 depth≥1 的问题（全量探索）
-- 后续运行：基于 coverage 最低维度生成 ≤5 个 depth≥2 的聚焦问题
+- 首次运行：生成 8-12 个 depth≥1 的问题，写入新创建的 `questions/round-1.json`
+- 后续运行：基于 coverage 最低维度生成 ≤5 个 depth≥2 的聚焦问题，**必须创建新的 `questions/round-(current_round+1).json`**，禁止追加到已有轮次
 - 如果所有维度 coverage ≥ 0.8 且所有 challenges surviving → 研究收敛，可以进入报告
 - 禁止在同一维度重复生成同类问题
 - 如果 coverage 最低维度与上一轮相同 → 要求 deeper（depth+1），避免平面重复
@@ -365,9 +419,10 @@ Planner 决定**下一轮研究什么**，而不是继续生成 round-N 问题�
 - 强制：每项 key_assumptions 必须至少被挑战一次
 
 ### 4e: 收敛问题
-- 检查本轮问题是否全部 `answered`
-- 更新 `question_statistics`
-- 更新 `coverage` 评分
+- 本轮问题是否需要下一轮追问（如 depth 不足、未覆盖的 surprise）
+- 更新 `summary.json` 中的统计计数（answered/validated 按轮次记录）
+- 更新 `context.coverage` 评分
+- **禁止**修改 `round-N.json` 中的任何字段
 
 ### 更新 context.resume
 
@@ -388,15 +443,34 @@ Planner 决定**下一轮研究什么**，而不是继续生成 round-N 问题�
 
 **禁止**在此阶段执行推理。**禁止**发明新结论。只将已验证的发现组织成连贯叙事。
 
+### 核心约束：Six-Step Reasoning
+
+每个非平凡结论必须展开为完整推理链，**禁止折叠为单句结论**：
+
+```
+[Observation] → [Evidence] → [Interpretation] → [Alternative] → [Challenge] → [Conclusion]
+```
+
+报告不是总结，是研究论文。详见 [report-schema.md](./report-schema.md#核心原则six-step-reasoning六步推理)。
+
+### 必需章节
+
+| # | 章节 | 约束 |
+|---|------|------|
+| 1 | 执行摘要 | 一句话定位 + 3 核心发现 |
+| 2 | Runtime | 回答 8 个运行时问题 |
+| 3 | Architecture | 回答 8 个架构问题 + Atlas |
+| 4 | Key Decisions | 每决策 9 字段，含 Design Space |
+| 5 | Model Challenge | 六步推理链 + Evidence Strength |
+| 6 | Maintainer Handbook | Extend / Debug / Migrate / Remove |
+| 7 | Repository Tour | 阅读顺序 + 理由 |
+| 8 | Unresolved Questions | coverage<0.5 领域 |
+
 ### 覆盖率标注
 
-报告必须在每个章节标注 coverage 评级：
+每个章节必须标注 Coverage 评级。每个结论必须标注 Evidence Strength。
 
-| 标注 | 含义 |
-|------|------|
-| ✅ 已验证 | coverage ≥ 0.9 |
-| 🔶 部分验证 | 0.5 ≤ coverage < 0.9 |
-| ❌ 证据不足 | coverage < 0.5 |
+详见 [report-schema.md](./report-schema.md#evidence-strength结论可信度)。
 
 ### 输出
 

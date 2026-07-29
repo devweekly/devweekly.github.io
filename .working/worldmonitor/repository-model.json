@@ -1,32 +1,32 @@
 {
   "structure": [
-    "Filesystem-based API routing with service-specific subdirectories (api/<service>/v1|v2)",
-    "Module boundaries (src/, server/, api/, tests/, e2e/, scripts/) enforced by lint-boundaries.mjs",
-    "API catch-all ([...notfound].ts) with explicit dynamic-route precedence",
-    "API contract enforced by sebuf API contract lint script"
+    "ES module modules separation (src/server/api/tests/e2e/scripts)",
+    "Boundary enforcement via lint-boundaries + sebuf-api-contract",
+    "Filesystem routing hierarchy (concrete → dynamic → catch-all)",
+    "Multi-layer lint pipeline (biome + safe-html + contract)"
   ],
   "behavior": [
-    "AI-powered real-time news aggregation, geopolitical monitoring, infrastructure tracking",
-    "A2A (Agent-to-Agent) protocol endpoint via api/a2a.ts for inter-agent communication",
-    "NLWeb /ask endpoint with token-overlap tool suggestion routing",
-    "Host-derived dynamic OAuth and authorization server metadata (RFC 9728, RFC 8414)"
+    "Filesystem routing precedence: concrete > nested dynamic > catch-all",
+    "A2A + NLWeb concierge routing with token-overlap scoring",
+    "RFC 9728/8414 host-derived agent metadata discovery",
+    "AI news aggregation → geopolitical monitoring pipeline"
   ],
   "ownership": [
-    "Single deployment with self-managed topology and API surface (ownership rule in ARCHITECTURE.md)",
-    "Agent-readiness documents derived per-request Host header for multi-origin consistency",
-    "Capability inventory (map layers, services, protos, locales) CI-verified from code",
-    "API surface contract enforced in CI via enforce-sebuf-api-contract.mjs"
+    "Private v2.10.0 AGPL-3.0 project with Discord community",
+    "Ownership rule: update ARCHITECTURE.md when topology/API/runtime changes",
+    "CI-verified capability counts from `npm run docs:check`",
+    "Real-time global intelligence dashboard domain responsibility"
   ],
   "extension": [
-    "A2A endpoint for external agent ecosystem integration",
-    "NLWeb /ask endpoint for natural language query to tool dispatch",
-    "OAuth authorization server metadata endpoint (RFC 8414)",
-    "Multi-version API gateways (api/<service>/v1/[rpc].ts, api/v2/shipping/[rpc].ts)"
+    "A2A endpoint for agent-to-agent communication",
+    "NLWeb /ask endpoint with tool-suggest routing",
+    "OAuth protected-resource + authorization-server metadata",
+    "Anonymous tool discovery via name-overlap token scoring"
   ],
   "evolution": [
-    "v2 API shipping layer coexisting alongside v1, indicating active API iteration",
-    "Agent-readiness elevated to first-class architectural concern (A2A, metadata, tool routing)",
-    "Architectural boundary governance via dedicated lint scripts, not convention alone",
-    "CI-verified documentation (docs:check, docs:stats) ensuring docs stay synchronized with code"
+    "ES modules migration (type: module)",
+    "Filesystem-based routing replacing manual route tables",
+    "Agent-readiness discovery layer added to API surface",
+    "Custom lint tooling for boundary/contract enforcement"
   ]
 }

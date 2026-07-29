@@ -82,8 +82,12 @@ function plural(n, s = "s") {
 
 async function stageZeroResume(workDir, repoPath, force) {
   if (force) {
-    console.log("Stage 0: Resume Workspace — force flag, fresh analysis.\n");
-    return { resumed: false, force };
+    console.log("Stage 0: Resume Workspace — force mode (re-run all LLM stages, reuse stable artifacts).\n");
+    // Still load existing state for artifact reuse
+    const meta = await loadMeta(workDir);
+    const commit = getCurrentCommit(repoPath);
+    const context = await tryReadJson(join(workDir, "context.json"));
+    return { resumed: false, force: true, commit, meta, context };
   }
 
   const existing = await resumeResearch(workDir, repoPath);
@@ -182,14 +186,13 @@ async function scanRepository(repoPath) {
 }
 
 async function stageOneScan(workDir, repoPath, resume) {
-  // Skip if commit unchanged and artifacts ready
-  if (resume.resumed && resume.commitUnchanged && resume.artifactsReady) {
-    const cached = await loadStableArtifact(workDir, "directory-tree");
-    if (cached) {
-      console.log("Stage 1: Scan Repository — loaded from cache (commit unchanged).\n");
-      const profile = await loadStableArtifact(workDir, "repository-profile");
-      return { scan: cached, profile };
-    }
+  // Try loading from cache first (even with --force — stable artifacts are reusable)
+  const cachedDirTree = await loadStableArtifact(workDir, "directory-tree");
+  const cachedProfile = await loadStableArtifact(workDir, "repository-profile");
+
+  if (cachedDirTree && cachedProfile) {
+    console.log(`Stage 1: Scan Repository — loaded from cache (${cachedDirTree.files.length} files, ${cachedDirTree.dirs.length} directories).\n`);
+    return { scan: cachedDirTree, profile: cachedProfile };
   }
 
   // Need to scan
@@ -222,14 +225,16 @@ Return JSON:
 // ---------------------------------------------------------------------------
 
 async function stageTwoDelta(workDir, repoPath, resume) {
+  // Check if actually a git repo
+  const commit = getCurrentCommit(repoPath);
+  if (!commit) {
+    console.log("Stage 2: Analyze Delta — skipped (not a git repo).\n");
+    return { changed: false, full: false };
+  }
+
   if (resume.resumed && resume.commitUnchanged) {
     console.log("Stage 2: Analyze Delta — skipped (commit unchanged).\n");
     return { changed: false };
-  }
-
-  if (!resume.commit) {
-    console.log("Stage 2: Analyze Delta — not a git repo, full analysis.\n");
-    return { changed: true, full: true };
   }
 
   const meta = resume.meta || {};
@@ -239,11 +244,11 @@ async function stageTwoDelta(workDir, repoPath, resume) {
     return { changed: true, full: true };
   }
 
-  const changed = getChangedFiles(repoPath, lastCommit, resume.commit);
+  const changed = getChangedFiles(repoPath, lastCommit, commit);
   console.log(`Stage 2: Analyze Delta — ${changed.length} file(s) changed.\n`);
 
   // Update meta commit now (so subsequent runs see the new commit)
-  const newMeta = { ...meta, last_analyzed_commit: resume.commit, analyzed_at: new Date().toISOString() };
+  const newMeta = { ...meta, last_analyzed_commit: commit, analyzed_at: new Date().toISOString() };
   await writeMeta(workDir, newMeta);
 
   return { changed: true, files: changed, full: false };
@@ -451,23 +456,125 @@ async function stageFourResearch(repoPath, resume, plan, scan, profile) {
 // ---------------------------------------------------------------------------
 
 async function generateReport(repoType, result) {
+  const model = result.model;
+  const interp = result.interpretation;
+  const challenge = result.challenge;
+
+  // Prepare concise data for the prompt
+  const data = {
+    repoType: repoType.type,
+    centerHypothesis: challenge?.center_hypothesis || "(not set)",
+    modules: (model?.structure?.modules || []).map((m) => ({ name: m.name, path: m.path, desc: (m.description || "").slice(0, 80) })),
+    boundaries: (model?.structure?.boundaries || []).slice(0, 5),
+    controlFlow: (model?.behavior?.control_flow || []).slice(0, 4),
+    dataFlow: (model?.behavior?.data_flow || []).slice(0, 4),
+    states: (model?.ownership?.state || []).slice(0, 4),
+    responsibilities: (model?.ownership?.responsibility || []).slice(0, 4),
+    extensionPoints: (model?.extension?.plugin_points || []).slice(0, 3),
+    evolution: (model?.evolution?.major_changes || []).slice(0, 3),
+    constraints: (interp?.engineering_constraints || []).slice(0, 4).map((c) => c.constraint),
+    forces: (interp?.architectural_forces || []).slice(0, 3).map((f) => f.force),
+    decisions: (interp?.design_decisions || []).map((d) => ({
+      decision: d.decision, chosen: d.chosen, rejected: d.rejected, why: d.why,
+    })),
+    tradeoffs: (interp?.tradeoffs || []).slice(0, 3).map((t) => t.tradeoff),
+    omissions: (interp?.intentional_omissions || []).slice(0, 3).map((o) => ({ o: o.omission, why: o.why })),
+    tensions: (interp?.architectural_tensions || []).slice(0, 3).map((t) => t.tension),
+    mentalModel: interp?.maintainer_mental_model || "",
+    challenges: (challenge?.challenges || []).map((c) => ({ target: c.target, outcome: c.outcome, method: c.method })),
+    assumptions: (challenge?.key_assumptions || []).map((a) => ({ assumption: a.assumption, survived: a.survived })),
+    alternatives: (challenge?.competing_interpretations || []).slice(0, 2).map((a) => a.interpretation),
+    coverage: result.coverage,
+  };
+
   const prompt = `
-生成中文架构报告，保持简洁（800-1200 字）。
-仓库类型: ${repoType.type}
-中心假设: ${result.challenge?.center_hypothesis || "(未设置)"}
-决策数: ${(result.interpretation?.design_decisions || []).length}
-挑战数: ${(result.challenge?.challenges || []).length}
-覆盖率: ${JSON.stringify(result.coverage)}
+你是一个架构报告撰写专家。报告必须按「研究论文」而非「总结」来写。
 
-报告结构:
-1. 执行摘要 — 一句话定位 + 3 个核心发现
-2. 架构组织 — 系统如何组织（标注 coverage 评级: ✅ / 🔶 / ❌）
-3. 关键决策 — 每个决策附被拒绝方案
-4. 模型挑战 — 挑战结果
-5. 修改影响地图 — 修改 X 影响哪些层
-6. 未解问题 — coverage<0.5 的领域
+===== CORE RULE（最高优先级） =====
+每个重要结论必须完整经历以下推理链，禁止只写结论：
 
-输出 Markdown。
+[Observation] 观察到什么现象？
+[Evidence] 具体证据（文件/符号/提交行号）
+[Interpretation] 为什么这很重要？
+[Alternative] 还有哪些可能解释？
+[Challenge] 哪个解释通过了挑战？
+[Conclusion] 最终结论（含置信度 + 证据数 + 反证数）
+
+===== DATA =====
+${JSON.stringify(data, null, 2)}
+
+===== 报告结构（必需章节，严格按此顺序） =====
+
+## 1 执行摘要
+一句话定位 + 3 个核心发现 + 架构中心假设（一句话）
+
+## 2 Runtime（运行时架构）
+必须回答：
+- 请求如何进入系统？数据如何流动？
+- 生命周期如何结束？
+- 哪些组件拥有状态？哪些只是转换器？
+- 哪些地方有缓存？哪些地方并发？
+- 如果组件宕机，如何降级？
+
+## 3 Architecture（静态架构）
+必须回答：
+- 系统划分几层？为什么这样划分？
+- 每层职责？层间依赖方向？
+- 边界如何保证？哪些违反边界？
+- 高耦合模块？低耦合模块？
+
+附 Architecture Atlas（必须标注每个模块角色）:
+- 🟢 Center（移除后系统不成立）
+- 🔵 Core（改动影响全局）
+- 🟠 High Coupling（修改需谨慎）
+- 🔴 Danger（易出错）
+- 🟢 Stable（很少改动）
+- ⚪ Peripheral（相对独立）
+
+## 4 Key Decisions（关键决策）
+每个决策必须包含 9 字段：
+
+| 字段 | 内容 |
+|------|------|
+| Chosen | 选择了什么 |
+| Rejected | 至少 1 个被拒绝方案 |
+| Why Chosen | 为什么选这个 |
+| Why Rejected | 为什么拒绝 |
+| Tradeoff | 权衡 |
+| Cost | 工程成本 |
+| Long-term | 长期后果 |
+| Benefits | 谁受益 |
+| Suffers | 谁付出代价 |
+
+必须 Cross-Reference 到其他章节，如 [→ §Runtime 影响缓存层]。
+
+## 5 Model Challenge（模型挑战）
+每个挑战必须展开六步推理链：
+[Observation] → [Evidence] → [Interpretation] → [Alternative] → [Challenge] → [Conclusion]
+每个挑战标注 Confidence + Evidence Count + Counter Evidence。
+
+## 6 Maintainer Handbook（维护者手册）
+- How to Extend：新增 X 改哪些文件？
+- How to Debug：Y 出问题如何定位？
+- How to Migrate：从 A 迁移到 B 需要什么？
+- How to Remove：删除 Z 影响什么？
+
+## 7 Repository Tour（仓库游览）
+推荐阅读顺序 + 为什么按这个顺序：
+Day 1 → Day 2 → Day 3 → Day 4
+
+## 8 Unresolved Questions
+coverage<0.5 的领域，每个说明：
+- 缺什么证据
+- 对结论的影响
+- 建议下一步调查方向
+
+===== OUTPUT REQUIREMENTS =====
+1. 每个关键结论必须走完六步推理，禁止折叠
+2. 每个结论标注 Evidence Strength（Confidence / Evidence Count / Counter Evidence / Alternative）
+3. 每节回答该节的必答问题，禁止留空
+4. 章节间必须有 Cross-Reference（如 [→ §3 Atlas]）
+5. 直接输出 Markdown，不要 JSON 包装
 `;
   return invokeLLM(prompt, { model: DEFAULT_MODEL });
 }
