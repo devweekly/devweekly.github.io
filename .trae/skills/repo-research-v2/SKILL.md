@@ -95,71 +95,218 @@ Repository → 编译 → Repository Model → 渲染 → 报告
 
 ### context.json
 
-工作目录确定后**立即创建**，研究过程中**持续更新**。
+context.json 是研究者的**外部脑**。它不仅跟踪进度，更跟踪**理解状态**——你当前的模型有多稳定、有哪些未解决的矛盾、挑战过什么结论。
+
+工作目录确定后**立即创建**，研究中**每次理解变化时更新**。
 
 ```json
 {
   "user_input": "用户原始输入，不转义",
-  "current_focus": "当前研究焦点",
-  "answered_questions": ["Q1", "Q2"],
-  "open_questions": ["Q3", "Q4"],
+
+  "research_progress": {
+    "current_focus": "当前研究焦点",
+    "answered_questions": ["Q1"],
+    "open_questions": ["Q2", "Q3"],
+    "current_depth_level": 1,
+    "max_depth_reached": 1,
+    "model_stability": "nascent",
+    "design_space_explored": false,
+    "counterevidence_seeked": false
+  },
+
+  "architecture_model": {
+    "center_hypothesis": "最核心的架构假设（一句话）",
+    "key_assumptions": [
+      {
+        "assumption": "系统依赖的某个关键假设",
+        "evidence": ["server/gateway.ts:createDomainGateway"],
+        "challenged": false,
+        "survived_challenge": null
+      }
+    ],
+    "architecture_invariants": ["不可违反的基本约束"],
+    "unexplained_observations": ["当前模型无法解释的现象"],
+    "competing_interpretations": []
+  },
+
+  "challenge_record": [
+    {
+      "target": "被挑战的结论",
+      "challenge": "如果移除 X，系统还能成立吗？",
+      "method": "寻找反证 | 替代方案比较 | 假设检验",
+      "outcome": "survived | refuted | modified",
+      "evidence": ["..."],
+      "model_delta": "挑战后模型有何变化"
+    }
+  ],
+
+  "design_space": [
+    {
+      "decision": "做出的技术决策",
+      "chosen": "选择了什么",
+      "rejected": ["被拒绝的方案"],
+      "why_chosen": "为什么选这个",
+      "why_rejected": "为什么拒绝替代方案",
+      "confidence": "high",
+      "evidence": ["..."]
+    }
+  ],
+
+  "maintainer_view": {
+    "modification_impact_map": {
+      "add_panel": ["src/config/panels.ts", "src/components/", "src/app/data-loader.ts"],
+      "add_data_source": ["scripts/seed-*.mjs", "server/worldmonitor/", "api/"]
+    },
+    "complexity_drivers": ["驱动复杂度的根因"]
+  },
+
   "evidence_collected": [
     {
       "path": "文件相对路径",
-      "purpose": "读取目的"
+      "purpose": "读取目的",
+      "key_findings": ["关键发现"],
+      "surprises": ["意外发现"],
+      "unanswered": ["阅读后仍存疑的问题"]
     }
   ],
-  "round_2_checked": "open"
+
+  "round_2_checked": "open",
+  "quality_gate": {
+    "center_identified": false,
+    "alternatives_considered": false,
+    "counterexamples_found": false,
+    "model_challenged": false
+  }
 }
 ```
 
-字段说明：
+#### model_stability 状态机
 
-- `user_input` — **原样保存**用户输入，禁止任何转义或修改
-- `current_focus` — 当前正在研究的能力或子系统（如 "Permission System"）
-- `answered_questions` — 已回答的问题 ID 列表（对应 questions.json 中的 id）
-- `open_questions` — 待回答的问题 ID 列表
-- `evidence_collected` — 已收集的证据列表，每项含文件路径和读取目的
-- `round_2_checked` — 第二轮问题检查状态：`open`（未完成）/ `done`（已完成）
+| 状态 | 含义 | 触发条件 |
+|------|------|---------|
+| `nascent` | 模型刚建立，尚未验证 | 完成 Phase 1 |
+| `formative` | 模型在修正中 | 新证据改变模型 |
+| `challenged` | 模型受到挑战，有备选解释 | Phase 2b 挑战阶段 |
+| `stable` | 挑战未推翻，模型收敛 | 所有挑战 surviving |
+
+**禁止**直接从 nascent 跳到 stable。模型必须被挑战过才能算稳定。
+
+#### 字段说明
+
+- `research_progress.current_depth_level` — 当前"为什么"链的深度（第 1 层：What → 第 2 层：How → 第 3 层：Why → 第 4 层：Why not）
+- `research_progress.model_stability` — 见状态机
+- `architecture_model.center_hypothesis` — 一句话的架构中心假设。这是研究的锚点。如果报告结束时这句话还是"待定"，研究不完整。
+- `architecture_model.competing_interpretations` — 当多个解释都能解释当前证据时，列出所有可能
+- `challenge_record` — 每次挑战的结果，避免重复挑战同一结论
+- `design_space` — 每个决策考虑过的替代方案。这是"为什么不是别的"的证据
+- `maintainer_view` — 如果我是维护者，修改 X 需要改哪些文件
+- `quality_gate` — 报告生成前的自查清单
+
+### context.json → questions.json 联动规则
+
+**理解变化 → 同步更新这两个文件**。禁止只更新一个。
+
+| 事件 | context.json | questions.json |
+|------|-------------|----------------|
+| 发现新现象 | `unexplained_observations` 追加 | 新增 discovery 型问题 |
+| 回答一个问题 | `answered_questions` 追加，`open_questions` 删除 | status → `answered` |
+| 模型被挑战 | `model_stability` → `challenged`，`challenge_record` 追加 | 新增 challenge 型问题 |
+| 考虑替代方案 | `design_space` 追加 | 新增 design_space 型问题 |
+| 找到反证 | `architecture_model.key_assumptions` 更新 | 对应问题 counterevidence 更新 |
+| 模型变化 | `architecture_model` 更新 | 派生新问题 |
 
 ### questions.json
 
-生成研究问题后创建，架构解释阶段**追加**新问题。
+研究问题是**研究者的思考路径**，不是待办事项。每个问题必须能回溯到触发它的观察。
 
 ```json
 [
   {
     "id": "Q1",
     "question": "系统如何划分职责？",
-    "type": "discovery",
-    "status": "open",
-    "confidence": "low",
-    "related_evidence": [],
-    "derived_from": []
-  },
-  {
-    "id": "Q12",
-    "question": "为什么 Scheduler 独立？",
+    "genesis": {
+      "trigger": "observation",
+      "observation": "src/ 目录有 14 个子目录，api/ 有 81 个端点",
+      "depth_level": 1
+    },
     "type": "discovery",
     "status": "answered",
     "confidence": "high",
-    "related_evidence": ["coworker/agent.py:build_engine"],
-    "derived_from": ["Q3"]
+    "answer_summary": "types → config → services → components → app → App.ts 单向依赖",
+    "related_evidence": ["AGENTS.md:Dependency Direction"],
+    "counterevidence": ["src/components/Panel.ts 直接 import services/"],
+    "alternatives_considered": ["为什么不使用 Redux/Zustand"],
+    "model_implication": "依赖方向受控是架构不变量",
+    "derived_from": []
+  },
+  {
+    "id": "Q7",
+    "question": "为什么 201 个 service 还能撑住而没有演化成 Redux？",
+    "genesis": {
+      "trigger": "surprise",
+      "observation": "163 个组件、201 个服务模块、无外部状态库",
+      "depth_level": 2
+    },
+    "type": "critical",
+    "status": "answered",
+    "confidence": "medium",
+    "answer_summary": "AppContext 中央可变对象 + 严格的依赖方向 + Panel 基类的自包含渲染",
+    "related_evidence": ["src/App.ts:924-981"],
+    "counterevidence": [],
+    "alternatives_considered": ["Redux, Zustand, MobX"],
+    "model_implication": "无外部状态库是有意选择，非偶然",
+    "derived_from": ["Q1"]
   }
 ]
 ```
 
-字段说明：
+#### 字段说明
 
-- `id` — 问题唯一标识（Q1, Q2, ...）
-- `question` — 问题文本
-- `type` — 问题类型：`discovery`（发现）/ `critical`（批判）/ `transfer`（迁移）
-- `status` — `open`（待回答）/ `answered`（已回答）
-- `confidence` — `high` / `medium` / `low`（仅 answered 时有意义）
-- `related_evidence` — 相关证据引用列表（文件路径:符号）
-- `derived_from` — 此问题从哪些问题衍生而来（问题 ID 列表）
+| 字段 | 说明 |
+|------|------|
+| `id` | 问题唯一标识（Q1, Q2, ...），按生成顺序编号 |
+| `question` | 问题文本。必须包含具体仓库上下文，不能是通用模板 |
+| `genesis.trigger` | 触发源：`observation`（观察） / `surprise`（意外） / `challenge`（挑战） / `contradiction`（矛盾） / `design_gap`（设计空白）|
+| `genesis.observation` | 触发问题的具体观察，格式：`观察到什么 → 所以问什么` |
+| `genesis.depth_level` | 深度层级：1=What / 2=How / 3=Why / 4=Why not |
+| `type` | 问题类型：`discovery`（发现） / `critical`（批判） / `challenge`（挑战模型） / `design_space`（设计空间） / `counterevidence`（反证） / `maintainer`（维护） / `transfer`（迁移） |
+| `status` | `open` / `answered` / `superseded` / `refuted` |
+| `confidence` | `high` / `medium` / `low` |
+| `answer_summary` | 回答摘要（status=answered 时必填） |
+| `related_evidence` | 支持证据 |
+| `counterevidence` | 反证（**主动寻找的 disconfirming evidence**） |
+| `alternatives_considered` | 考虑过的替代方案 |
+| `model_implication` | 答案对 Repository Model 的影响 |
+| `derived_from` | 父问题 ID 列表，形成问题衍生链 |
+| `superseded_by` | 如果问题被更精确的问题替代，指向新 ID |
 
-当 Repository Model 发生变化时（新证据改变模型、已回答问题引出新问题、当前问题无法解释新证据），**必须重新评估问题集合**并更新此文件。禁止仅保留在内存中。问题状态变化时（open → answered）同步更新 context.json 的 `answered_questions` / `open_questions`。
+#### 问题类型选型指南
+
+| 类型 | 何时用 | 问法模板 |
+|------|--------|---------|
+| `discovery` | 首次看到某个现象 | "这如何工作？" |
+| `critical` | 评估一个决策 | "为什么选这个而非默认？" |
+| `challenge` | 检验自己的模型 | "如果我的解释是对的，应该在哪里看到 X；实际上有吗？" |
+| `design_space` | 比较决策 | "为什么不是别的方案？" |
+| `counterevidence` | 主动找反证 | "如果我的结论是错的，应该在哪里找到证据？" |
+| `maintainer` | 评估维护成本 | "修改 X 需要改多少文件？" |
+| `transfer` | 抽象通用模式 | "这个思想在什么场景下有价值？" |
+
+#### 深度层级演化
+
+研究必须逐层深入。问题深度标记防止停留在表面：
+
+```
+depth=1: What         "系统如何划分职责？"
+    ↓ answered
+depth=2: How          "为什么用 AppContext 而不是 Redux？"
+    ↓ answered
+depth=3: Why          "为什么无外部状态库的架构能撑住 201 个 service？"
+    ↓ answered
+depth=4: Why not      "如果换用 Redux，哪些约束会失效？"
+```
+
+**规则**: depth=1 问题全部 answered 后，**必须**生成 depth≥2 的问题。如果所有问题 depth=1，研究不完整。
 
 ### questions-r2.json
 
@@ -168,6 +315,7 @@ Repository → 编译 → Repository Model → 渲染 → 报告
 格式与 questions.json 相同，但约束更严格：
 
 - **个数 ≤ 第一轮** — 保持收敛性，不得发散
+- **深度必须 ≥2** — 第二轮问题不得全是 depth_level=1
 - **必须有差异** — 每个第二轮问题必须体现以下至少一种差异：
   - **不同点** — 从不同角度审视同一现象
   - **差异点** — 对比预期与实际的不一致
@@ -217,22 +365,45 @@ flowchart TD
     C --> G[仓库扫描]
     F --> G
     G --> H[识别仓库类型]
-    H --> I[生成研究问题 → questions.json]
-    I --> J[阶段 0：机械分析]
-    J --> K[阶段 1：仓库模型构建]
-    K --> L{证据充分？}
-    L -- 否 --> M[收集更多证据]
+    H --> I[生成研究问题 → questions.json (depth≥1)]
+    I --> J[Phase 0：机械分析]
+
+    J --> K[Phase 1：仓库模型构建]
+    K --> L{evidence sufficient?}
+    L -- 否 --> M[collect more evidence]
     M --> J
-    L -- 是 --> N[阶段 2：架构解释 → 更新 questions.json]
-    N --> O[更新 Repository Model]
-    O --> P{第一轮问题全部回答？}
+    L -- 是 --> N
+
+    subgraph N[Phase 2a: 架构解释]
+        N1[Build architecture interpretation]
+        N2[For each conclusion, ask "why not alternative?"]
+        N3[Update design_space in context.json]
+        N4[Generate design_space type questions]
+    end
+
+    N --> O{Phase 2b: 挑战模型}
+    O --> O1[Challenge center_hypothesis]
+    O1 --> O2[Seek counterevidence for each conclusion]
+    O2 --> O3{challenge_record updated?}
+    O3 -- 每项至少一次 → P
+    O3 -- 有未被挑战的结论 → O1
+
+    P{Phase 2c: 第一轮收敛}
+    P -- 所有 depth=1 已回答 --> Q
     P -- 否 --> M
-    P -- 是 --> S[生成第二轮收敛问题 → questions-r2.json]
-    S --> T{第二轮全部回答 + round_2_checked=done？}
-    T -- 否 --> M
-    T -- 是 --> U[阶段 3：生成分析报告]
-    U --> Q[中文报告]
-    Q --> R[写入工作目录 + 更新 context.json]
+
+    Q{Phase 2d: 深度追问}
+    Q --> Q1[生成 questions-r2.json (depth≥2)]
+    Q1 --> Q2{有 depth≥3 的追问空间？}
+    Q2 -- 是 → Q3[生成 depth≥3 问题]
+    Q2 -- 否 → R
+    Q3 --> R{round_2_checked=done?}
+
+    R --> S{quality_gate all passed?}
+    S -- 否 → M
+    S -- 是 → T[Phase 3: 生成分析报告]
+    T --> U[中文报告]
+    U --> V[写入工作目录 + 更新 context.json]
 ```
 
 ### 仓库扫描 + 识别仓库类型
@@ -272,7 +443,7 @@ flowchart TD
 
 **禁止**在此阶段推断架构意图。
 
-### 阶段 2 — 架构解释
+### Phase 2a — 架构解释 + 设计空间
 
 基于仓库模型重建系统背后的工程思想。
 
@@ -291,7 +462,79 @@ flowchart TD
 
 如果存在多个合理解释，分别说明并给出各自证据与置信度。
 
-### 阶段 3 — 分析报告生成
+**新增要求：每个设计决策必须回答"为什么不是别的"**。
+
+对于每个关键决策，在 context.json 的 `design_space` 中记录：
+
+```json
+{
+  "decision": "使用 AppContext 中央可变对象",
+  "chosen": "无外部状态库",
+  "rejected": ["Redux", "Zustand", "MobX", "Valtio"],
+  "why_chosen": "避免样板代码，201 个 service 的复杂度未达到需要 Redux 的阈值",
+  "why_rejected": "Redux 增加 indirection，Panel 基类的自包含渲染不需要全局状态订阅",
+  "confidence": "high",
+  "evidence": ["src/App.ts:924-981", "src/components/Panel.ts"]
+}
+```
+
+**规则**：如果 `rejected` 为空，说明没有做过设计空间探索。**禁止**空 rejected 列表。
+
+### Phase 2b — 挑战模型
+
+这是研究深度提升最大的阶段。**必须**对 Phase 2a 的每个结论执行以下检验：
+
+| 检验 | 具体操作 | 判断标准 |
+|------|---------|---------|
+| **移除测试** | 如果移除这个组件/模式，系统还能成立吗？ | 能找到替代方案 → 非核心；找不到 → 架构中心 |
+| **假设翻转** | 如果结论是相反的，哪些证据应该存在？实际存在吗？ | 反证存在 → 模型需修正 |
+| **边界测试** | 这个结论在什么条件下不成立？ | 有明确边界 → 结论精确；无边界 → 结论过度泛化 |
+| **时间测试** | 这个决策在最开始时也是最优的吗？ | 现在最优但初期次优 → 演进产物；一直最优 → 设计原则 |
+
+每项检验的结果记录到 context.json 的 `challenge_record`。
+
+**challenge_record 示例**：
+
+```json
+{
+  "target": "Edge Function 按域拆分减少冷启动 ~20×",
+  "challenge": "如果全部 Edge Function 合并为一个 bundle，冷启动真的会恶化吗？",
+  "method": "假设翻转——寻找不拆分的好处",
+  "outcome": "survived",
+  "evidence": ["server/gateway.ts:9-10 (注释写明 ~20× 减少)"],
+  "model_delta": "按域拆分是 Vercel Edge 架构的核心决策，非偶然"
+}
+```
+
+**强制规则**：
+
+- context.json 中 `architecture_model.key_assumptions` 的每一条**必须至少被挑战一次**
+- 如果有 assumptions 的 `challenged=false`，**禁止**进入报告生成阶段
+- 挑战时**必须寻找反证**（disconfirming evidence），而非只找支持证据
+- 如果找到反证且证据强度 ≥ 挑战目标的证据强度，**必须修正模型**
+
+### Phase 2c — 第一轮收敛
+
+第一轮问题（questions.json）全部 answered 后，检查 depth 分布：
+
+- 如果所有问题 depth_level 都是 1 → 研究停留在表面，**必须先追问 depth≥2 的问题**
+- 如果有 depth≥2 的问题 → 可以进入下一阶段
+
+同步更新 context.json 的 `research_progress` 计数。
+
+### Phase 2d — 深度追问
+
+基于第一轮回答生成第二轮收敛问题（questions-r2.json）。
+
+**深度要求**：
+
+- 至少有 1 个问题的 depth_level ≥3（"为什么不是别的"层级）
+- 禁止问同层级同角度的问题
+- 如果第一轮回答中出现了 surprise（意外发现），必须围绕 surprise 生成挑战性问题
+
+如果仍有 depth≥3 的追问空间（即 answers 不够深入），**禁止进入报告生成阶段**。研究必须是收敛漏斗，不是扇形发散。
+
+### Phase 3 — 分析报告生成
 
 从 Repository Model 生成人类可读的中文报告。
 
@@ -337,7 +580,7 @@ questions.json 应始终反映**当前研究状态**，而不是历史生成记�
 
 ### 问题生成原则
 
-研究问题必须满足以下四项要求：
+研究问题必须满足以下六项要求：
 
 | 原则 | 要求 | 违反则 |
 |------|------|--------|
@@ -345,6 +588,8 @@ questions.json 应始终反映**当前研究状态**，而不是历史生成记�
 | **延展性** | 一个问题得到部分回答后，必须派生新的问题。问题随研究推进持续深化，而非固定列表 | 研究停留在表面 |
 | **创新性** | 优先提出只有该 Repository 才值得问的问题，而非通用架构问题 | 报告千篇一律 |
 | **挑战性** | 主动提出可能推翻当前理解的问题，并寻找反证验证 Repository Model | 模型未经检验 |
+| **深度性** | 问题的 depth_level 必须逐层递增（1→2→3→4）。禁止连续停留在同一 depth | 研究无法触及"为什么不是别的" |
+| **替代性** | 每个设计决策问题必须伴随"为什么不是别的"的追问 | 确认偏误未被挑战 |
 
 派生问题必须记录到 questions.json 的 `derived_from` 字段，形成问题衍生链。
 
@@ -371,18 +616,22 @@ Repository Model 初步稳定后，**主动提出挑战当前理解的问题**�
 
 ---
 
-## 三类问题框架
+## 六类问题框架
 
-完整的研究应包含三类问题：
+完整的研究应包含六类问题，按研究阶段演进：
 
-| 类型 | 目的 | 时机 |
-|------|------|------|
-| **发现问题（Discovery）** | 建立模型 | 研究初期 |
-| **批判性问题（Critical）** | 推翻错误模型 | 模型初步稳定后 |
-| **迁移问题（Transfer）** | 抽象可复用思想 | 研究后期 |
+| 类型 | 目的 | 时机 | 典型深度 |
+|------|------|------|---------|
+| **发现问题（Discovery）** | 建立模型 | 研究初期 | depth=1 |
+| **设计空间问题（Design Space）** | 探索替代方案 | 模型建立后 | depth=2 |
+| **批判性问题（Critical）** | 评估决策质量 | 模型建立后 | depth=2 |
+| **挑战性问题（Challenge）** | 推翻错误模型 | 模型初步稳定后 | depth=3 |
+| **反证问题（Counterevidence）** | 主动找反证 | 模型稳定后 | depth=3 |
+| **维护者问题（Maintainer）** | 模拟修改 | 研究后期 | depth=2-3 |
+| **迁移问题（Transfer）** | 抽象可复用思想 | 研究后期 | depth=4 |
 
 ```
-系统如何工作？  →  我的理解可能是错的吗？  →  什么可以泛化？
+观察到什么？ → 为什么是它不是别的？ → 我的理解可能错吗？ → 反证在哪里？ → 修改它影响什么？ → 什么可以泛化？
 ```
 
 ---
@@ -480,7 +729,41 @@ flowchart TD
 
 ## 质量门禁
 
-报告完成前，验证以下问题：
+### 前置条件
+
+进入生成分析报告前，以下条件**必须全部满足**：
+
+1. `questions-r2.json` 中所有问题 `status=answered`
+2. context.json 的 `round_2_checked` = `done`
+3. context.json 的 `research_progress.model_stability` ≠ `nascent`（模型必须被挑战过）
+4. context.json 的 `architecture_model.center_hypothesis` 非空
+5. context.json 的 `quality_gate` 全部为 `true`
+
+### 自查清单
+
+报告完成前，验证 context.json 中 `quality_gate` 的以下问题：
+
+| 门禁 | 检查项 | 通过条件 |
+|------|--------|---------|
+| **center_identified** | 系统的架构中心是什么？ | 能用一句话回答 + 引用证据 |
+| **alternatives_considered** | 每个关键决策都考虑了替代方案吗？ | design_space 中每项 rejected 非空 |
+| **counterexamples_found** | 主动寻找过反证吗？ | challenge_record 非空 |
+| **model_challenged** | 模型被挑战过吗？ | model_stability 曾经进入 challenged 状态 |
+
+### 深度门禁
+
+| 门禁 | 检查项 | 通过条件 |
+|------|--------|---------|
+| **depth_gate** | 研究达到了足够的"为什么"深度吗？ | 至少有一个 depth≥3 的问题 |
+| **surprise_gate** | 意外发现被深挖了吗？ | 如果有 surprise，必须有对应的后续问题 |
+| **design_space_gate** | 设计空间被探索了吗？ | design_space 非空，且每项有 rejected |
+| **maintainer_gate** | 能回答"修改 X 影响哪些层"吗？ | maintainer_view.modification_impact_map 非空 |
+
+**如果任一问题无法回答，编译尚未完成。**
+
+### 最终质量门禁
+
+报告生成后，追加验证：
 
 - 系统如何工作？
 - 系统如何组织？
@@ -490,10 +773,11 @@ flowchart TD
 - 有意牺牲了什么？
 - 维护者如何心智划分系统？
 - 哪些思想在本仓库之外仍有价值？
+- **哪些替代方案被考虑过？为什么被拒绝？**
+- **模型被挑战过几次？结果如何？**
+- **哪些反证被寻找过？是否发现了反证？**
 
-**如果任一问题无法回答，编译尚未完成。**
-
-**前置条件**：进入生成分析报告前，`questions-r2.json` 中所有问题必须 `status=answered`，且 context.json 的 `round_2_checked` 必须为 `done`。
+**如果任一问题无法回答，报告需要重写。**
 
 ---
 
@@ -525,8 +809,18 @@ Repository Model 是核心产物，捕获实体、关系及支撑证据（详见
 
 - 这个仓库如何工作？
 - 为什么这样设计？
+- 哪些替代方案被考虑过？为什么被拒绝？
+- 哪些结论被挑战过？挑战结果如何？
+- 如果修改 X，影响哪些层？
 - 我应该从中学到什么？
 - 哪些思想值得复用？
 - 哪些工程错误被有意避免？
+
+**进阶标准**（达到才是真正的 Repository Research）：
+
+- 能用一句话说出系统的**架构中心**（不是架构组件，而是中心）
+- 如果移除中心，系统是否还能成立？（不能 → 确认了中心；能 → 中心找错了）
+- 每个关键决策都能说出**至少一个被拒绝的替代方案**
+- 报告的结论不是从源码"观察"到的，而是通过**提问 → 收集证据 → 挑战 → 修正**循环产生的
 
 **如果这些问题无法回答，编译尚未完成。**

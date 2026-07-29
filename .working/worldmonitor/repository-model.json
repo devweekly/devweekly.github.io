@@ -1,0 +1,78 @@
+{
+  "model_version": "1.0",
+  "repo_path": "ref-only/worldmonitor",
+  "repo_type": "实时全球情报仪表板（Web SPA + 桌面端 + Edge API）",
+  "last_analyzed_commit": "b6c7268fb",
+  "analyzed_at": "2026-07-29",
+  "dimensions": {
+    "structure": {
+      "modules": [
+        { "name": "src/", "role": "浏览器 SPA 前端", "language": "TypeScript", "key_files": ["src/App.ts", "src/main.ts"] },
+        { "name": "api/", "role": "Vercel Edge Functions（81 个端点）", "language": "JavaScript", "key_files": ["api/bootstrap.js", "api/health.js"] },
+        { "name": "server/", "role": "服务端共享代码（打包到 Edge Function）", "language": "TypeScript", "key_files": ["server/gateway.ts", "server/worldmonitor/"] },
+        { "name": "src/components/", "role": "163 个 Panel 组件类", "language": "TypeScript", "base_class": "src/components/Panel.ts" },
+        { "name": "src/config/", "role": "变体/面板/图层/市场配置", "language": "TypeScript" },
+        { "name": "src/services/", "role": "201 个业务逻辑模块", "language": "TypeScript" },
+        { "name": "src/workers/", "role": "Web Workers（ML/分析/向量）", "language": "TypeScript" },
+        { "name": "src/utils/", "role": "跨切面工具函数", "language": "TypeScript" },
+        { "name": "src-tauri/", "role": "Tauri 桌面外壳（Rust + Node.js sidecar）", "language": "Rust/JavaScript" },
+        { "name": "proto/", "role": "Protocol Buffers 定义（281 protos, 35 服务）", "language": "Protobuf" },
+        { "name": "scripts/", "role": "种子脚本/构建辅助/中继服务", "language": "JavaScript" },
+        { "name": "tests/", "role": "单元/集成测试", "language": "TypeScript" },
+        { "name": "e2e/", "role": "Playwright E2E 测试", "language": "TypeScript" },
+        { "name": "shared/", "role": "跨平台 JSON 配置", "language": "JSON" }
+      ],
+      "dependency_direction": "types → config → services → components → app → App.ts"
+    },
+    "behavior": {
+      "initialization_phases": [
+        "Storage + i18n: IndexedDB, 语言检测, 区域加载",
+        "ML Worker: ONNX 模型准备（嵌入/情感/摘要）",
+        "Sidecar: 等待桌面 sidecar 就绪（仅桌面端）",
+        "Bootstrap: 双层并发 hydration（fast 3s + slow 5s 超时）",
+        "Layout: PanelLayoutManager 渲染地图和面板",
+        "UI: SignalModal, IntelligenceGapBadge, BreakingNewsBanner",
+        "Data: 并行 loadAllData() + 视口条件 primeVisiblePanelData()",
+        "Refresh: 变体特定轮询间隔 startSmartPollLoop()"
+      ],
+      "data_flow": "上游 65+ 数据源 → Railway 种子脚本/中继 → Redis（Upstash）→ Vercel Edge Functions → 浏览器 SPA",
+      "refresh_model": "startSmartPollLoop() 支持指数退避（最大 4x）、视口条件刷新、标签页暂停、可见性交错刷新"
+    },
+    "ownership": {
+      "state_model": "AppContext 中央可变对象（无外部状态库）",
+      "api_gateway": "server/gateway.ts: createDomainGateway() — 10 阶段流水线（Origin → CORS → OPTIONS → API Key → Rate Limit → Route → POST→GET → Handler → ETag → Cache）",
+      "rpc_contract": "sebuf Protobuf 框架：proto/ → buf generate → src/generated/{client,server}/ → docs/api/ OpenAPI"
+    },
+    "extension": {
+      "panel_system": "Panel 基类（105+ 子类），通过事件委托 + setContent(html) 渲染，支持行/列跨度持久化",
+      "variant_system": "6 个站点变体（full/tech/finance/commodity/happy/energy），通过 VITE_VARIANT 环境变量或 hostname 检测",
+      "desktop_extension": "Tauri 2.x + Node.js sidecar，动态加载 api/ 中 Edge Function 处理器",
+      "mcp_integration": "RegisterWebMcpTools() + WebMCP AbortController 管理，支持 AI Agent 工具注册"
+    },
+    "evolution": {
+      "major_events": [
+        "从单一 Web 应用演进为 6 变体架构",
+        "引入 sebuf Protobuf 合约系统替代手写 API",
+        "从纯 Web 扩展到 Tauri 桌面端 + Node.js sidecar",
+        "引入本地 AI/ML 能力（浏览器端 ONNX/Transformers.js）"
+      ]
+    }
+  },
+  "architecture_patterns": {
+    "primary": "事件驱动 + 网关代理（Event-Driven + Gateway Proxy）",
+    "key_decisions": [
+      "无外部状态库，使用 AppContext 中央可变对象",
+      "Edge Function 按域拆分（~20× 冷启动减少）",
+      "Redis 四层缓存（Bootstrap → Memory → Redis → Upstream）",
+      "种子脚本使用 atomicPublish()（Redis SET NX 锁）",
+      "桌面端 fetch 打补丁（/api/* → sidecar 代理）",
+      "Proto 优先的 API 合约设计"
+    ],
+    "key_constraints": [
+      "ai/*.js 是自包含的 Vercel Edge Function，不能 import ../src/ 或 ../server/",
+      "package.json 和 tsconfig 变更触发全量 pre-push 检查",
+      "Edge Function 不能使用 node:http, node:https, node:zlib"
+    ]
+  },
+  "evidence_summary": "已验证的数据管道、变体系统、桌面架构和安全模型。双地图引擎和组件体系通过 ARCHITECTURE.md 和源码双重验证。Protobuf 合约和 AI/ML 能力有明确证据支持。"
+}
