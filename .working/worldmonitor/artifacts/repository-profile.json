@@ -1,0 +1,15 @@
+{
+  "type": "Web Service",
+  "confidence": "high",
+  "reasoning": "30+ versioned API domains (aviation/climate/conflict/cyber/economic/health/intelligence/military/trade etc.) under api/ and server/ with protobuf definitions in proto/worldmonitor/; multiple SDKs (Go/Python/Ruby) in sdk/; Dockerfiles + Makefile + Cloudflare Workers + Convex backend + Tauri desktop app + CLI indicate a full-stack API-first SaaS platform serving global monitoring/intelligence data",
+  "focus_areas": [
+    "API design & versioning strategy",
+    "multi-domain data pipeline reliability",
+    "SDK generation & client ergonomics",
+    "geospatial & temporal data modeling",
+    "rate limiting & auth (MCP/SSRF/OAuth seen)",
+    "observability & SLOs across 30+ domains",
+    "multi-region deployment & edge compute",
+    "developer portal & API documentation"
+  ]
+}

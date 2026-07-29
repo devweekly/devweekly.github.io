@@ -1,308 +1,484 @@
-# World Monitor 架构报告：从 API 仪表盘到 Agent 情报平台的演进
+# World Monitor 架构报告
 
-## 1. 执行摘要
+## 1 执行摘要
 
-**系统定位**: World Monitor 是一个 Agent-ready 的全球情报仪表盘，以 stateless edge receptor surface（路由/认证/缓存/Agent 发现）fronting 一个 stateful server processor core（数据聚合/跨域关联/弹性）的二分格局组织，通过 proto 定义的契约连接，双重暴露于人类（REST）和机器（A2A/Agent）接口。
-
-**核心发现**: 系统正从"API-first 数据仪表盘"向"Agent-native 情报平台"演进，但处于过渡期——REST 是当前主导接口，Agent 平台是新增的薄层尚未触及核心处理。架构最大的张力来自 edge/server 二分法在实践中不断模糊（edge 正在变厚），以及 Proto IDL 驱动的契约治理可能是"架构意图"而非"已实现架构"。
+World Monitor 是一个以文件系统为路由表、以 CI 为契约边界的全球情报聚合平台——一句话定位："添加一个文件就是添加一个端点，CI 验证契约，文档从代码自动生成。" 核心发现：文件系统路由是开发者体验优化，而非架构不变量；真正的架构不变量是 CI 强制执行的契约边界。
 
 ---
 
-## 2. 仓库心智模型
+## 2 仓库心智模型
 
-维护者将系统沿两条正交轴划分：
-
-| 轴 | 划分 | 内容 |
-|---|---|---|
-| 部署边界 | Edge vs Server | Edge = 受体表面（路由/认证/缓存/发现），Server = 处理器核心（聚合/关联/弹性） |
-| 能力域 | Data → Intelligence → Presentation → Agent | 从数据摄入到多格式输出 |
-
-**实际并非固定二分法**。挑战分析显示 edge 正在变厚：auth origin allowlist（配置状态）、rate limit buckets（计数器状态）、Agent 路由、缓存协调均已运行在 edge。更准确的模型应该是"capability-dependent deployment spectrum"——每个 capability 独立决定 edge-side vs server-side 分割点。
-
-维护者实际上将系统理解为**数据精炼厂**（data refinery）：adapter-based data ingestion → standardized pipeline processing → multi-format output (REST/A2A/SDK) → multi-brand rendering。Edge/server 分区是部署细节，不是架构本质。
+维护者将系统视为三个同心层，以文件系统为组织原则：
 
 ```
-[数据源1] ─┐
-[数据源2] ─┤  ┌─ Adapter ─→ [聚合 Pipeline] ─→ [关联引擎] ─→ [缓存: CDN/Redis/Bootstrap]
-[数据源N] ─┘  └──────────────────────────────────────────────────┘
-                                  │
-                    ┌─────────────┼─────────────┐
-                    ▼             ▼             ▼
-               [REST API]    [A2A Agent]    [SDK Client]
-                    │
-                    ▼
-              [多品牌 SPA 渲染]
-              (apex/www/variant subdomains)
+外层: api/          — HTTP 表面积，每个文件要么是端点要么是中间件
+中层: scripts/     — 编译时安全网，每个脚本负责一个契约
+内层: server/ + src/ — 后端聚合管线 + 前端 SPA，通过定义良好的边界对外暴露
+```
+
+关键心智模型特征：
+
+- **文件即架构**：目录结构就是架构图，文件前缀（`_`）就是中间件注册表，lint 脚本就是契约边界
+- **添加功能 = 添加文件**，验证契约 = 运行脚本
+- **文档被 CI 强制诚实**：代码不说的事，文档不能声称——`docs/generated/stats.json` 是从代码自动导出的
+
+但挑战揭示了更深层的真相：维护者的心智模型是"文件系统即架构"，而实际运行中，**CI 才是架构的不变量**。文件系统约定并没有被 CI 强制执行（没有脚本来验证"文件必须在正确的目录中"），而真正被强制执行的是 lint 脚本、契约检查和边界验证。这意味着架构的组织原则不是"文件系统"，而是"通过 CI 强制执行的约定"。
+
+---
+
+## 3 架构
+
+### 3.1 请求生命周期
+
+```
+外部请求
+  ↓
+API 网关 (api/) — 文件系统路由
+  ├─ 健康检查 → /api/health
+  ├─ v1 RPC → /api/v1/[rpc]  (17 个分析器)
+  ├─ v2 RPC → /api/v2/[rpc]  (航运 + 多域管线)
+  ├─ A2A 协议 → /api/a2a
+  ├─ NLWeb 自然语言 → /api/ask
+  ├─ Agent 发现 → /.well-known/oauth-* (RFC 9728/8414)
+  └─ 未匹配 → 结构化 JSON 404
+      ↓ [通过 _agent-tool-suggest.ts 或直接转发]
+后端服务器 (server/) — 30+ 数据源多域聚合管线
+  ↓
+前端 SPA (src/) — 轮询驱动的近实时仪表盘
+```
+
+### 3.2 三层架构的隐含矛盾
+
+架构在纸面上是三层同心圆，实际上存在四个未解决的叠加矛盾：
+
+**第一矛盾：拉模式 vs. 实时性**。架构声称提供"实时全球情报仪表盘"，但前端 SPA 是纯拉模式（单向边界 `src/ → api/`），没有 WebSocket 或 SSE 端点。所谓的"实时"实际上是可配置轮询间隔的"近实时"。这不是一个微小的术语差异——它意味着仪表盘永远无法在数据到达的同一毫秒内推送更新，任何需要推送的事件（如冲突爆发、航线中断）都必须等待下一个轮询周期。
+
+**第二矛盾：集中与分布**。后端服务器同时拥有"30+ 域的多域数据管线"和"多区域边缘计算"两个职责。边缘计算意味着去中心化预处理，集中管线意味着中心化聚合——这两个职责在请求一个 owner 的情况下会产生非平凡的协调复杂度（缓存失效、区域间一致性、状态同步）。
+
+**第三矛盾：安全模型的混合**。`_api-key.js` 在同一文件中处理标准 Web Origin 验证和桌面 Tauri 来源验证，`DESKTOP_ORIGIN_PATTERNS` 包含 `https://tauri.localhost`——任何浏览器都可以伪造这个 origin。桌面和 Web 的安全模型共享一个中间件文件，但它们的威胁模型完全不同。
+
+**第四矛盾：元循环验证**。8 个独立 lint 脚本用 JS/TS 强制执行 JS/TS 代码的契约——验证者和被验证者共享同一运行时、同一语言、同一类错误。这不是一个理论问题：`enforce-sebuf-api-contract.mjs` 中的一个 bug 可能悄无声息地接受无效的 API 契约。
+
+### 3.3 版本化策略
+
+`/api/v1/` 和 `/api/v2/` 是基于 URL 路径的版本化——文件系统路由自然映射到路径版本化。这是一个经过挑战但**幸存的假设**。v1/v2 的 URL 路径版本化之所以成立，是因为它：
+- 可缓存：版本在 URL 中，CDN 可以区分缓存
+- 可发现：遍历目录即可知道哪些版本存在
+- 向后兼容：v1 端点保持不变，v2 在同一目录树中新增
+
+被拒绝的方案：Accept header 版本化（不可缓存、不可链接）、查询参数版本化（可缓存但不可发现）。
+
+### 3.4 模块边界
+
+所有边界标记为"单向"，这是架构的核心约束。API 网关 → 后端是唯一的同步 HTTP 边界。这一点在挑战中被质疑为**可扩展性债务**——30+ 外部来源的异构延迟意味着单一同步边界将阻塞 API 网关线程池。边缘计算的加入使这个问题从理论变为实际：边缘意味着需要协调的部分处理状态，而同步 HTTP 边界不支持状态协调。
+
+---
+
+## 4 工程决策
+
+### 4.1 文件系统路由（约定优于配置）
+
+| 字段 | 内容 |
+|------|------|
+| 选择 | `api/` 下的每个文件自动成为 HTTP 端点；前缀 `_` 排除路由 |
+| 拒绝 | Express 显式路由注册、OpenAPI 驱动的路由生成 |
+| 理由 | 零仪式添加端点；部署自动拾取；文件系统中的未使用代码自然暴露 |
+| 挑战结果 | **修正**——文件系统路由是开发体验优化，不是架构不变量。路由仍然工作，中间件仍然应用，版本化仍然工作——移除它不会破坏任何架构不变量。失去的是仪式减少和"结构=架构"心智模型，但运行时行为完全相同 |
+
+### 4.2 Token-Overlap 路由（确定性代理工具路由）
+
+| 字段 | 内容 |
+|------|------|
+| 选择 | 计算请求文本与工具名称+描述之间的 token-overlap 分数；名称命中优先 |
+| 拒绝 | NLU 模型、关键词匹配、LLM 请求时工具选择 |
+| 理由 | 确定性、冷启动自由、透明——A2A 和 NLWeb 使用相同算法 |
+| 挑战结果 | **修正**——"刻意不用 NLU"不是一个经过测量的架构权衡，而是一个实用起点。没有路由准确性遥测、没有后备机制、没有 SLO。更好的描述是："默认采用最简单的可行方案；当 token-overlap 失败达到测量阈值时升级到 NLU。" |
+
+### 4.3 编译时契约执行（8 个独立 lint 脚本）
+
+| 字段 | 内容 |
+|------|------|
+| 选择 | 每个契约一个脚本（sebuf 契约、速率限制、高级获取、安全 HTML、边界 lint、Mintlify slug） |
+| 拒绝 | 仅在运行时验证模式、单一一体化 linter、TypeScript 类型系统用于所有契约 |
+| 理由 | 无需运行服务器即可验证的契约应在部署前验证；每个脚本独立可维护 |
+| 挑战结果 | **修正**——8 个脚本的设计不完备：需要（a）共享验证工具库防止逻辑重复，（b）脚本排序策略，（c）脚本自测试套件。"相同运行时，相同 bug"的张力应通过使每个脚本足够小以致于显然正确来缓解，而非接受风险 |
+
+### 4.4 Host 派生的 Agent 就绪元数据
+
+| 字段 | 内容 |
+|------|------|
+| 选择 | `resolveMetadataOrigin()` 验证 Host header 并按 host 派生资源/发行方和端点 origin |
+| 拒绝 | 静态配置文件映射 host 到 origin、每个 host 变体的环境变量 |
+| 理由 | 单个代码路径处理 apex、www、api 和变体子域名，无需配置爆炸；验证防止客户端 Host 欺骗 |
+| 被接受 | 此决策在挑战中未受质疑，保持有效 |
+
+### 4.5 计时安全比较用于 API 密钥验证
+
+| 字段 | 内容 |
+|------|------|
+| 选择 | 来自 `_crypto.js` 的 `timingSafeIncludes` |
+| 拒绝 | 标准字符串比较（===）、bcrypt 风格哈希用于 API 密钥 |
+| 理由 | API 密钥在每个请求上传输；计时侧信道会逐字符泄露密钥字节 |
+| 被接受 | 最小密码学原语，正确解决问题 |
+
+### 4.6 无数据库/ORM 层（持久化的隐含性）
+
+| 字段 | 内容 |
+|------|------|
+| 选择 | 代码库中没有 SQL/ORM 导入 |
+| 拒绝 | 未明确拒绝——这是一个遗漏而非决策 |
+| 声称 | World Monitor 是聚合管线 + API 网关，不是 CRUD 应用 |
+| 挑战结果 | **推翻**——"无数据库"在源代码层面成立，但在架构层面不成立。以下都需要持久化：会话令牌（TTL/撤销）、SLO 指标（历史存储、30+ 域）、边缘计算状态（区域间协调）。正确的描述：**"持久化是隐式的，分散在中间件/服务器职责中，没有明确的设计。"** |
+
+### 4.7 桌面 Tauri Origin 验证
+
+| 字段 | 内容 |
+|------|------|
+| 选择 | 四个正则表达式模式允许 `tauri://localhost` 和 `asset://localhost`，在 `_api-key.js` 中验证 |
+| 拒绝 | 单独的桌面客户端认证微服务、注入 API 密钥的代理层 |
+| 理由 | Tauri 应用在 localhost 运行，无标准浏览器 CORS；在网关验证已知桌面 origin 避免部署第二个认证服务 |
+| 挑战结果 | **推翻**——`DESKTOP_ORIGIN_PATTERNS` 检查作为独立安全边界是不充分的。正确架构需要：（a）桌面客户端必须出示持有证明密钥（如编译到 Tauri 二进制中的桌面专用 API 密钥），（b）`https://tauri.localhost` 模式必须移除或限制（可浏览器伪造），（c）桌面认证流应是一个独立的中间件模块 |
+
+---
+
+## 5 设计空间（被拒绝的替代方案）
+
+### 5.1 路由策略
+
+| 替代方案 | 拒绝理由 |
+|----------|----------|
+| Express 显式路由注册 | 增加仪式：添加端点需要修改路由文件 + 处理函数文件 |
+| OpenAPI 驱动的路由生成 | 需要 OpenAPI 规范文件作为真实来源——额外维护负担 |
+| 装饰器式路由 | 需要 TypeScript 实验性装饰器或类验证 |
+
+### 5.2 API 版本化
+
+| 替代方案 | 拒绝理由 |
+|----------|----------|
+| Accept header 版本化 | 不可在 URL 中缓存，不可发现 |
+| 查询参数版本化 | 可在 URL 中缓存但不可发现——不知道哪些版本存在 |
+| Header-based 版本化 | 与 Accept-header 相同的不可链接问题 |
+
+### 5.3 API 密钥验证
+
+| 替代方案 | 拒绝理由 |
+|----------|----------|
+| 标准字符串比较 (`===`) | 计时侧信道攻击 |
+| bcrypt 风格哈希 | API 密钥在每个请求上传输——每次 bcrypt 哈希比较的成本比计时安全字符串比较高几个数量级 |
+
+### 5.4 Agent 工具路由
+
+| 替代方案 | 拒绝理由 |
+|----------|----------|
+| NLU 模型 | 冷启动延迟、非确定性、不可调试 |
+| LLM 请求时选择 | 延迟 + 成本、非确定性、缓存不可预测 |
+| 关键词匹配 | 过于简单，产生假阳性/假阴性 |
+
+### 5.5 文档策略
+
+| 替代方案 | 拒绝理由 |
+|----------|----------|
+| 手写文档门户 | 能力计数随代码变化；文档-代码漂移不可避免 |
+| Swagger/OpenAPI 单一真实来源 | 需要为所有非 API 文档（架构决策、架构说明）维护 OpenAPI |
+
+### 5.6 认证架构
+
+| 替代方案 | 拒绝理由 |
+|----------|----------|
+| 单独的认证微服务 | 为单一职责部署整个服务——对于 API 密钥 + 会话令牌来说过度设计 |
+| OAuth 提供者集成 | 外部依赖，为不需要的功能增加复杂度 |
+| 代理层注入 API 密钥 | 增加代理作为部署依赖——Tauri 用户在 localhost 部署代理不切实际 |
+
+---
+
+## 6 模型挑战（反证记录）
+
+中心假设：**文件系统即架构**——代码结构直接映射到架构意图，无配置间接性，通过编译时执行验证。
+
+所有 9 个假设中有 7 个被质疑并推翻。这是反证记录：
+
+### 6.1 挑战：文件系统路由是核心架构原则
+
+| 字段 | 内容 |
+|------|------|
+| 方法 | 移除测试——如果移除文件系统路由，什么架构不变量被破坏？ |
+| 挑战 | 如果文件系统路由被显式路由注册替换，运行时行为不变；失去的是仪式减少（开发体验），不是正确性保证 |
+| 证据 | `lint:boundaries` 已经存在——显式边界执行意味着隐式文件系统边界需要显式强化；`[...notfound].ts` 记录了"最低优先级"——隐式排序是已知问题 |
+| 结果 | **推翻**。文件系统路由是**开发体验优化**，不是架构不变量。真正的架构不变量是 CI 执行的契约边界。维护者的"文件系统即架构"心智模型被修正为"约定通过 CI 执行，文件系统是约定之一" |
+
+### 6.2 挑战：Token-Overlap 刻意不用 NLU
+
+| 字段 | 内容 |
+|------|------|
+| 方法 | 假设翻转——如果 NLU 更好，我们期望看到什么？ |
+| 挑战 | Token-overlap 失败会被捕获和记录吗？置信度低时是否有后备？是否有遥测？答案：都没有。该主张是断言的，未经过实际 Agent 查询流量的测量 |
+| 证据 | 无路由准确性遥测、无后备路径、无 SLO |
+| 结果 | **修正**。从"刻意不用 NLU"修正为"默认采用最简单可行方案；当失败达到测量阈值时升级" |
+
+### 6.3 挑战：无消息队列（API 网关↔后端之间的同步 HTTP）
+
+| 字段 | 内容 |
+|------|------|
+| 方法 | 边界测试 |
+| 挑战 | 边缘计算（去中心化）+ 30+ 外部来源（异构延迟）+ 同步边界 = 可扩展性阻塞点。同步边界意味着后端管线等待慢速外部源时阻塞 API 网关线程池 |
+| 证据 | 30+ 域由后端拥有（异构延迟）；边缘计算在同步架构之后添加；无背压机制、无断路器记录 |
+| 结果 | **推翻**。该缺失不是刻意的架构决策，而是**可扩展性债务**。应在以下情况添加队列/延迟处理：（1）任何单个外部源延迟超过网关超时，或（2）边缘计算协调需要区域间有状态交接 |
+
+### 6.4 挑战：桌面 Origin 模式提供足够安全
+
+| 字段 | 内容 |
+|------|------|
+| 方法 | 边界测试 |
+| 挑战 | 什么条件下这会失败？（1）任何浏览器可以伪造 `https://tauri.localhost` origin，（2）添加新桌面运行时将拓宽攻击面，（3）中间件无法区分真实 Tauri WebView 和设置 `Origin: tauri://localhost` 的常规浏览器 |
+| 证据 | `DESKTOP_ORIGIN_PATTERNS` 包含 `https://tauri.localhost`——任何浏览器可通过 `document.domain` 或自定义 fetch Origin header 设置 |
+| 结果 | **推翻**。需要：（a）持有证明密钥，（b）移除 `https://tauri.localhost` 模式，（c）独立的桌面认证中间件模块 |
+
+### 6.5 挑战：无数据库/持久化
+
+| 字段 | 内容 |
+|------|------|
+| 方法 | 时间测试——什么增量变化会无声地违反"无数据库"？ |
+| 挑战 | 会话令牌（TTL/撤销）、SLO 指标（30+ 域的历史比较）、边缘计算（状态同步）——每项独立暗示持久化需求。该假设将在增量中无声地被违反：首先基于文件的边缘状态缓存，然后 SQLite 用于会话管理，然后时间序列存储用于 SLO——每次 ad-hoc 添加 |
+| 证据 | 后端拥有 SLO 跟踪（暗示指标存储→数据库），中间件拥有会话令牌（暗示服务器端状态→数据库/REDIS），边缘计算暗示状态协调 |
+| 结果 | **推翻**。"无数据库"在源代码层面成立，在架构层面不成立。持久化是隐式的，应被明确文档化 |
+
+### 6.6 挑战：SPA 能提供"实时"仪表盘
+
+| 字段 | 内容 |
+|------|------|
+| 方法 | 假设翻转——如果推模式更好，当前架构缺少什么？ |
+| 挑战 | 实时智能仪表盘 + 多域聚合 + 多区域边缘计算意味着数据获取拓扑与 SPA 模型冲突。SPA 中，客户端发起所有请求；实时智能系统中，服务器应推送更新（WebSocket/SSE）。SPA 的真正代价不是 SEO（仪表盘不需要），而是"每个实时更新需要轮询" |
+| 证据 | 无 WebSocket 服务器、无 SSE 端点、Frontend SPA → API Gateway 是单向（SPA 仅从网关拉取，网关从不推送到 SPA） |
+| 结果 | **推翻**。架构不是为实时推送设计的——它是**基于轮询的近实时仪表盘**。应使用"可配置轮询间隔的近实时仪表盘"描述 |
+
+### 6.7 挑战：8 个 lint 脚本提供可靠的契约验证
+
+| 字段 | 内容 |
+|------|------|
+| 方法 | 边界测试 |
+| 挑战 | 验证者和被验证者共享同一运行时（Node.js）、同一语言（JS/TS）、同一类错误——元循环验证。`enforce-sebuf-api-contract.mjs` 中的 bug 可能无声地接受无效契约 |
+| 证据 | 8 个独立脚本，无共享工具库、无排序策略、无自测试 |
+| 结果 | **修正**。8 个脚本的设计需要（a）共享验证工具库，（b）脚本排序策略，（c）自测试套件 |
+
+### 6.8 幸存的假设
+
+以下两个假设在挑战后存活：
+
+| 假设 | 原因 |
+|------|------|
+| **v1/v2 URL 路径版本化足够** | 可缓存（版本在 URL 中，CDN 可区分缓存）、可发现（遍历目录知道哪些版本存在）、向后兼容（v1 端点保持不变） |
+| **自动文档生成 + CI 验证防止文档-代码漂移** | 架构约束（"不要手动编辑那些数字"）是自执行的——`docs:check` 失败强制纪律 |
+
+---
+
+## 7 修改影响地图
+
+### 7.1 修改 `_agent-tool-suggest.ts`（路由语义）
+
+```
+_agent-tool-suggest.ts
+  → api/a2a.ts      （A2A 路由行为立即改变）
+  → api/ask.ts      （NLWeb 路由行为立即改变）
+  → Agent 消费体验  （两种消费模型对称改变）
+  → 无其他层
+```
+**影响**：单一文件控制 A2A 和 NLWeb 的路由语义。更改评分算法即时传播到两种消费模型。这是系统中最高的影响力分担点——一个杠杆点。
+
+### 7.2 修改 `api/` 目录（路由表）
+
+```
+api/ 目录
+  → 端点注册（添加/移除文件 = 添加/移除端点）
+  → 中间件注册（添加 _ 前缀文件 = 添加中间件）
+  → 版本路由（在 api/v3/ 中添加目录 = 添加新 API 版本）
+  → CI 契约（lint 脚本验证新端点是否符合 sebuf 格式）
+  → 文档（docs-stats 从代码中提取能力计数）
+```
+**影响**：文件系统作为路由表意味着对 `api/` 的任何修改都是运行时修改 + 契约修改 + 文档修改——三层同时更改。
+
+### 7.3 修改 `scripts/` 目录（契约执行）
+
+```
+任一 lint 脚本
+  → 编译时契约边界（接受/拒绝代码）
+  → 部署门控（CI 执行）
+  → 文档准确性（如果 docs-stats 更改，ststs.json 更改）
+  → 开发者体验（契约错误信息质量）
+  → 无运行时影响
+```
+**影响**：`scripts/` 中的更改是编译时更改，没有运行时影响。但"相同运行时，相同 bug"的元循环验证意味着脚本中的 bug 可能无声地允许无效代码。
+
+### 7.4 修改 `server/`（后端管线）
+
+```
+server/
+  → 外部源聚合行为
+  → API 网关→后端延迟（同步 HTTP 边界）
+  → 边缘计算协调（多区域状态同步）
+  → SLO 指标（30+ 域的观测性）
+  → 前端显示数据（通过 API 网关）
+```
+**影响**：`server/` 是系统的复杂性核心。在此处的更改影响外部源可靠性（30+ 域）、延迟特性（同步边界 → 网关线程池）、区域间一致性（边缘计算）。非简单更改。
+
+### 7.5 修改 `src/`（前端 SPA）
+
+```
+src/
+  → 仪表盘渲染
+  → 轮询间隔（近实时 vs 伪实时）
+  → API 使用模式（拉模式约束）
+  → 无服务器影响
+  → 无契约影响
+  → 无文档影响
+```
+**影响**：前端更改隔离在呈现层。但"实时仪表盘"的声称与轮询拉模式之间的矛盾意味着严重的前端重构（添加 WebSocket/SSE）会影响到 API 网关（需要推端点）和后端（需要事件通知）。
+
+### 7.6 修改 API 密钥验证（`_api-key.js` 和 `_session.js`）
+
+```
+API 密钥/会话验证
+  → 所有需要认证的 API 端点（v1、v2、A2A、NLWeb）
+  → 桌面客户端（Tauri origin 验证）
+  → Web 客户端（标准 CORS 验证）
+  → 安全 Posture（计时攻击、origin 伪造、会话劫持）
+```
+**影响**：认证中间件的更改会影响每个 API 端点和每种消费模型（Web、桌面、Agent）。`DESKTOP_ORIGIN_PATTERNS` 的覆写（被挑战判定为不足）将影响桌面客户端架构和部署拓扑。
+
+---
+
+## 8 可复用知识（可迁移思想）
+
+### 8.1 文件系统作为约定层（非配置层）
+
+文件系统路由在中小型 API 中优雅工作，原因不是它消除了配置，而是它使配置**隐式并自我一致**。添加文件 = 添加端点，移除文件 = 移除端点——没有注册表需要更新。可迁移的洞察是：**当映射是 1:1（一个文件 = 一个端点），文件系统比配置文件更不易出错**。当映射是多对一（多个文件贡献到一个端点）时，此模式应避免。
+
+**使用条件**：
+- 适用：每个文件映射到一个资源，文件与部署之间无间接性
+- 不适用：动态路由、通配符依赖、多语言 API 处理程序
+
+### 8.2 前缀作为注册表（`_` 表示中间件）
+
+`_` 前缀约定是一种二进制分类系统：带 `_` 是中间件/工具，不带 `_` 是端点。这是可扩展设计：添加新的中间件模式只需要在另一个文件上使用 `_` 前缀。可迁移的洞察是：**当分类是二进制的，命名约定比配置更可执行**。眼睛可以看到，代码可以强制执行，CI 可以验证。
+
+### 8.3 Token-Overlap 优于 NLU 用于确定性路由
+
+Token-overlap 评分在需要可预测、可调试、冷启动自由的工具路由时被选择。可迁移的洞察是：**当正确性可定义（正确的工具路由），确定性算法优于机器学习**，因为失败是可重复的、可理解的且可修复的。NLU 在路由准确性可测量且改进可验证时升级。
+
+### 8.4 编译时契约优于运行时验证
+
+8 个 lint 脚本背后的原则：任何无需运行服务器即可验证的东西应在部署前验证。可迁移的洞察是：**将验证左移到编译时减少运行时失败，但也会创建元循环验证风险**。缓解措施：（a）使每个验证规则小到显然正确，（b）独立测试验证脚本本身，（c）注意验证器和被验证者共享同一运行时的情况。
+
+### 8.5 文档自代码生成（CI 强制诚实）
+
+从代码（而非手写文档）生成能力计数，并通过 CI 验证准确性的原则可迁移到任何系统，其中对外声称的能力来自代码而非营销文案。**关键条件**：代码中必须有可提取的信息源（函数、端点、配置），且提取逻辑必须足够稳定以避免频繁中断。
+
+---
+
+## 9 意外发现
+
+### 9.1 "无数据库"在源代码层面成立，在架构层面不成立
+
+最大的意外。代码库中确实没有 SQL/ORM 导入——但架构需要会话令牌持久化、SLO 指标存储、边缘计算状态管理。该系统有**隐式持久化需求**，通过环境变量、基于文件的缓存和内存映射分发。当系统需要扩展会话管理时，数据库将被作为事后添加引入，而非设计好的组件。
+
+### 9.2 真正的架构不变量是 CI，不是文件系统
+
+维护者说"文件系统即架构"，但运行时，文件系统约定没有被 CI 强制执行。真正强制执行的是 lint 脚本。这意味着**当 CI 失败时，架构的真实边界变得可见**——不是文件系统目录，而是 lint 脚本执行的契约。这一发现将中心假设从"文件系统作为架构"修正为"CI 作为架构"。
+
+### 9.3 系统的 Agent 就绪性层是其最具前瞻性的设计
+
+RFC 9728/8414 端点 + A2A 协议 + MCP 工具描述符 + NLWeb 自然语言端点 = 一个在 Agent 消费为主要模式构成之前就设计的 API。在大多数 API 仍在为人类消费者优化时，该系统已经有两套认证流（Web 和桌面）、两套协议（HTTP 和 A2A）、两种内容协商模式（结构化 JSON 和自然语言）。
+
+### 9.4 30+ API 域没有统一的数据模型
+
+系统的 30+ 域（航空、气候、冲突、经济、流离失所、消费价格）覆盖地理空间和时间维度，但没有共享的几何/时间索引层。每个域定义自己的模式。这意味着跨域查询（如"航空路线与冲突地区重叠"）需要应用层连接逻辑，而非共享索引。
+
+### 9.5 Lint 脚本的元循环验证是一个被识别但未解决的风险
+
+架构张力部分明确提到"相同运行时，相同 bug"问题，但没有缓解措施。8 个脚本没有共享工具库、没有排序策略、没有自测试。一个人意识到问题却什么都不做的情况值得注意——它表明要么团队接受风险（"脚本足够小"），要么还没有遇到失败的案例。
+
+---
+
+## 10 未解问题
+
+### Q1：API 版本化策略在每个域级别如何运作？
+
+30+ 域在单个 `api/` 树下的统一版本化（全部在 v1，现在 v2）。但域具有截然不同的稳定性特征——航空数据（最新时间）比气候数据（百年范围，但每周新模型）更新更频繁。统一版本化意味着保守域（气候数据）的版本提升与不稳定域（航空数据）的版本提升绑定。
+
+**未知**：是否有按域的版本化策略，或者统一的 v1→v2 跃迁是否足够？后一种情况意味着系统选择"要么全部，要么全不"的兼容性，这是一个有意但未文档化的权衡。
+
+### Q2：数据摄取架构——统一管线还是按域独立栈？
+
+30+ 异构数据源（实时航空飞行数据、批量气候模型、冲突情报、经济指标、消费价格）暗示截然不同的摄取模式（API 轮询、文件下载、合作伙伴 feed、网络爬取）。架构说"多域管线"但未说明是共享管线层，还是每个域有自己的摄取栈。
+
+**未知**：可靠性保证（回填、重试、恰好一次语义）——这些是按域自定义，还是统一框架？
+
+### Q3：认证架构——统一网关还是多个认证表面？
+
+系统中存在多个认证机制的迹象：来自 WSS 的 MCP 认证、OAuth 用于外部、SSRF 保护、带有 `https://tauri.localhost` 模式的桌面 origin 验证。不清楚这些是否通过统一 API 网关，还是在单独基础设施上。
+
+**未知**：是否有一个统一的认证路由器确定每个端点使用哪个机制，还是每个中间件文件独立处理其自己的认证？
+
+### Q4：地理空间 + 时间数据建模——共享索引还是按域模式？
+
+气候、流离失所、冲突、航空、预报、经济指标共享地理空间和时间维度，但架构中无共享 H3 + 时间分区层。
+
+**未知**：这是有意的关注点分离（每个域的数据最了解自身模式），还是尚未建设的共享数据平台？
+
+### Q5：SDK/客户端生成策略——OpenAPI 驱动还是手写？
+
+30+ API 域强烈暗示 SDK 生成，但代码库顶层无 OpenAPI 规范文件。
+
+**未知**：SDK 是否从代码生成，还是维护人员手写每个域 SDK？如果是生成的，OpenAPI 规范是否嵌入某个地方或按需生成？
+
+### Q6：观测性——统一 SLO 还是按域独立管理？
+
+30+ 域由后端拥有，后端也具有"多区域部署的 SLO 跟踪"职责。但架构中无观测性栈文档。
+
+**未知**：指标、追踪、日志收集——是统一基础设施（如 OpenTelemetry + Prometheus + Grafana），还是每个域对其观测性负责？SLO 违规是否有域特定处理路径？
+
+### Q7：部署拓扑——所有域在每个区域，还是按区域路由？
+
+多区域边缘计算意味着部署拓扑选择：每个区域运行所有 30+ 域，还是按区域域路由（如气候域与数据源站点共置，航空域靠近机场）？
+
+**未知**：数据复制策略——区域间同步还是主备？区域故障期间的降级行为？
+
+### Q8：批处理 vs. 实时——混合处理模型的边界在哪里？
+
+`api/batch` 目录的存在暗示一些域通过批处理摄取工作，一些通过实时 API。驱动选择的因素（数据新鲜度要求、源系统约束、成本）未文档化。
+
+**未知**：批处理编排框架——统一调度器还是每个域的自定义 cron 作业？跨 30+ 域的背压和调度如何管理？
+
+---
+
+## 附录：证据图谱
+
+```
+┌────────────────────────────────────────────────────────────┐
+│                    架构中心假设                            │
+│      文件系统作为架构，通过 CI 强制执行                    │
+│           ↓ 挑战结果：推翻并修正                           │
+│      真正的架构不变量是 CI，不是文件系统                   │
+├────────────────────────────────────────────────────────────┤
+│                     幸存假设                               │
+│  ✓ v1/v2 URL 路径版本化        ✓ 自动文档 + CI 验证      │
+├────────────────────────────────────────────────────────────┤
+│                     推翻假设                               │
+│  ✗ 文件系统是中心组织原则       ✗ Token-overlap 刻意决策 │
+│  ✗ 同步边界足够                 ✗ Desktop origin 安全     │
+│  ✗ 无数据库需求                 ✗ SPA 实时性              │
+│  ✗ 8 个 lint 脚本可靠验证                                  │
+├────────────────────────────────────────────────────────────┤
+│                     竞争解释                               │
+│  1. "配置即代码"单体——文件系统混淆代码组织/配置/部署      │
+│  2. 真正的架构是 CI，不是文件系统约定                       │
+│  3. "无数据库"是过早分解的产物——持久化在增量中 ad-hoc 添加│
+├────────────────────────────────────────────────────────────┤
+│                     未解问题                               │
+│  Q1 版本化  Q2 摄取  Q3 认证  Q4 时空建模                 │
+│  Q5 SDK  Q6 观测性  Q7 拓扑  Q8 批处理/实时               │
+└────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 3. 架构：四层组织
-
-### 3.1 受体层（Edge Functions）
-
-Filesystem-based routing，以目录结构作为路由表。路由优先级：具体函数 > 嵌套动态网关 > 版本化网关 > 兜底 catch-all。
-
-```
-api/
-├── health.ts                    # 具体函数（最高优先级）
-├── _api-key.js                  # 下划线前缀 = 路由级 helper（无冷启动）
-├── _session.js
-├── a2a.ts                       # A2A 协议端点
-├── ask.ts                       # NLWeb 自然语言端点
-├── <service>/v1/<rpc>.ts        # 按服务/版本的嵌套网关
-├── v2/shipping/<rpc>.ts         # 版本化迁移路径
-└── [...notfound].ts             # 兜底 404（最低优先级）
-```
-
-### 3.2 核心处理层（Server Runtime）
-
-数据聚合 Pipeline + 断路器 + 跨域关联。与 edge 通过共享 helper（`_*.js`）通信，server 代码通过 esbuild 在部署时被 bundle 进 Edge Functions。
-
-### 3.3 契约层（Proto IDL）
-
-**重要：当前处于"架构意图"状态。** Proto IDL → code generation pipeline（buf generate → TypeScript stubs + OpenAPI specs）已建立，但缺少独立证据链证明所有 handler 由生成驱动。未见 `DO NOT EDIT` 注释、generator version header、或 `pnpm generate` 命令。**8 个操作端点明确通过 `api-route-exceptions.json` 退出契约系统**（auth、MCP、bootstrap、health 等），但退出理由未文档化。
-
-### 3.4 展示层（多品牌 SPA + Variant 系统）
-
-单代码库多品牌，通过 Host header 运行时选择品牌。同一前端代码部署到所有子域，**API 后端在 variant 之间完全相同**——variant 边界只到 UI 层。一个 tech 变体的用户仍在支付 aviation/conflict/climate handlers 的冷启动成本。
-
-> **架构中心假设**: "该系统是一个 stateless edge receptor surface fronting a stateful server processor core，通过 proto 定义的契约连接，双重暴露于人类和机器接口。"
->
-> **挑战结果**: 此假设的 5 个关键子假设中 4 个被成功挑战并修改（详见 §6）。
-
----
-
-## 4. 工程决策
-
-### D1: Proto-defined IDL with Code Generation
-| 选择 | Proto IDL → 自动生成 handler stubs + SDK + 验证器 |
-|---|---|
-| 拒绝 | 手写 API handler（spec/implementation drift）；OpenAPI-first（约束力弱）；无契约（不一致） |
-| 为什么 | 契约一致性 + 零摩擦扩展模型 |
-| **挑战** | ❌ 假设翻转：proto 可能只是架构意图（intended architecture），不是已实现架构。未见 .proto 文件的实际证据链 |
-
-### D2: Token-overlap Routing over NLU for Agent Tool Suggestion
-| 选择 | 名称/描述分词交叠 + 名称加权（3pts vs 1pt）|
-|---|---|
-| 拒绝 | NLU intent classification（冷启动延迟）；hard-coded route map（手动更新）；vector embedding（过度设计） |
-| 为什么 | 透明、可调试、无模型依赖 |
-| **挑战** | ❌ 降级为实现细节：任何 keyword-match 机制可替代 token-overlap。核心决策是"基于工具注册表的显式路由，而非意图分类" |
-
-### D3: Single-codebase Multi-brand Variant System
-| 选择 | 运行时 Host header 选择品牌，单代码库生成所有变体 |
-|---|---|
-| 拒绝 | 多仓库（重复维护）；Git 分支（合并地狱）；仅 feature flags（不足以实现完整品牌主题） |
-| 为什么 | 共享后端 + 独立品牌 + 所有品牌受益于统一修复 |
-| **挑战** | ⚠️ 重新标定：品牌数达到 10+ 时条件逻辑指数扩散。未提供品牌特异功能 vs 共享功能的比例监控，feature flags 缺少跨品牌命名空间隔离 |
-
-### D4: No Database (Cache as Primary Storage)
-| 选择 | 所有状态是 ephemeral（Redis/CDN/Bootstrap 缓存）或环境配置 |
-|---|---|
-| 为什么 | 系统是聚合层+展示层，不拥有数据。无状态应用层支持水平扩展 |
-| **挑战** | ❌ 标记为有时效性：intelligence graph 增强 + Agent ecosystem 扩展将产生高价值持久化分析产物。cache 过期丢失不可恢复 |
-
-### D5: Multi-tier Caching (CDN + Redis + Bootstrap)
-| 选择 | 三级缓存，distinct TTL policies，coordinated invalidation |
-|---|---|
-| 拒绝 | 单 CDN（无服务器协调）；单 Redis（全局瓶颈）；无缓存（延迟不可接受） |
-| 为什么 | 每层优化不同 latency/capacity 权衡 |
-| **挑战** | ⚠️ 重新标定为 tradeoff：无量化指标（hit ratio、freshness SLA）。高 freshness 要求数据跳过缓存可能更优。三级间 invalidation 协调复杂度随数据源线性增长 |
-
-### D6: Lint & Enforcement Scripts
-| 选择 | 8+ 独立 enforce 脚本在 CI 中运行 |
-|---|---|
-| 为什么 | 架构治理作为自动化 CI 门禁 |
-| **挑战** | ❌ 降级为 CI/CD 质量门禁：lint 检查合规性，不参与运行时架构。模块边界是代码结构问题，不是 lint 脚本创建的。更好表示为"CI/CD Quality Gates" |
-
-### D7: A2A Protocol + Custom Concierge
-| 选择 | 直接实现 A2A 标准，自定义轻量 concierge |
-|---|---|
-| 拒绝 | LangChain（重型依赖）；Semantic Kernel（.NET 生态冲突）；自建非标准 |
-| 为什么 | A2A 是新兴开放标准，确保互操作性 |
-| **挑战** | ✅ Survived：但重新定位为"超前投资于未来 Agent 生态互操作性"。REST API 当前已足够。核心架构贡献是"Agent 接口与人类接口分离为平行的两个 API surface" |
-
-### D8: Desktop Tauri via Origin Allowlisting (Shared Auth)
-| 选择 | Tauri origins 加入 API key 验证的 allowlist，desktop 复用 web auth 模型 |
-|---|---|
-| 拒绝 | 独立 desktop auth 系统；desktop-only API endpoints |
-| 为什么 | 统一安全模型，desktop 作为"另一个浏览器上下文" |
-| **挑战** | ⚠️ 当前是 Phase 1（Desktop-as-Web-Client），非原生桌面应用。无 OS keychain、硬件认证、离线能力 |
-
----
-
-## 5. 设计空间：被拒绝的替代方案
-
-| 决策 | 哪些被拒绝 | 为什么拒绝 |
-|---|---|---|
-| D1 Proto IDL | OpenAPI-first; 手写 API; 无契约 | OpenAPI 约束力弱，手写容易 drift |
-| D2 Token-overlap | NLU; Hard-coded map; Vector embedding | NLU 冷启动/黑盒，embedding 过度工程 |
-| D3 单代码库 | 多仓库; Git 分支; 仅 feature flags | 分支导致 merge hell，多仓库重复维护 |
-| D4 No DB | 无替代方案被拒绝——这是设计约束非选择 | — |
-| D5 三级缓存 | 单 CDN; 单 Redis; 无缓存 | 每层解决不同问题 |
-| D6 Lint 脚本 | 约定治理; 单一体 linter; 仅运行时 | 约定不可强制，运行时太晚 |
-| D7 A2A | LangChain; Semantic Kernel; 自建非标准 | 重量级/生态冲突/无互操作性 |
-| D8 Desktop | 独立 auth 系统; Desktop-only endpoints | 重复基础设施，安全模型不一致 |
-
----
-
-## 6. 模型挑战：哪些被挑战过
-
-| # | 挑战目标 | 方法 | 结果 | 
-|---|---|---|---|
-| 1 | Token-overlap 路由是核心架构决策 | 移除测试 | **修改** → 降级为实现细节，核心是"基于工具注册表的显式路由" |
-| 2 | Proto IDL 已实现并驱动所有 handler | 假设翻转 | **修改** → 从已验证约束降级为架构意图 |
-| 3 | No database 是永久性决策 | 时间测试 | **修改** → 标注有时效性，intelligence graph 演进需要持久化 |
-| 4 | 多级缓存优势成立 | 边界测试 | **修改** → 重新标定为 context-dependent tradeoff |
-| 5 | Lint scripts 是架构组件 | 移除测试 | **修改** → 降级为 CI/CD 质量门禁 |
-| 6 | A2A 是当前必需品 | 假设翻转 | ✅ Survived → 重新定位为超前投资 |
-| 7 | Edge/server 固定二分法 | 边界测试 | **驳斥** → 建模为 capability-dependent deployment spectrum |
-| 8 | 单代码库多品牌长期最优 | 时间测试 | **修改** → 标注10+品牌时条件逻辑扩散风险 |
-| 9 | Rule-based 关联足够支撑 | 边界测试 | **修改** → 标注跨语言/隐式关系推理时上限 |
-| 10 | Desktop = 原生桌面应用 | 假设翻转 | **修改** → 当前是 Phase 1: Desktop-as-Web-Client |
-
-### 关键反证记录
-
-**Proto IDL 假设翻转的证据模式**: 所有五次对 proto IDL 的描述都指向 Repository Model 的同一句话，没有独立证据链。如果 proto 真正驱动所有 handler，应有:
-- `.proto` 文件路径 ✓ (有 proto/ 目录)
-- 生成脚本/generate 命令 ✗ (package.json 中无)
-- Handler 中的 `DO NOT EDIT` 注释 ✗
-- Generator version header ✗
-
-**Edge stateless 被驳斥**: auth origin allowlist（配置状态）、rate limit buckets（计数器状态）、缓存协调（一致性状态）已在 edge 运行——"edge = thin" 是过时的 mental model。
-
----
-
-## 7. 修改影响地图
-
-### 修改 A：向 proto IDL 添加新 service
-
-```
-proto/foo/v1/foo.proto
-  → buf generate
-    ├── api/foo/v1/foo.ts          (handler stub)
-    ├── sdk/client/foo.ts           (SDK client)
-    └── shared/types/foo.ts         (验证器 schema)
-  → 影响：
-    ├── API Gateway: 新增 /api/foo/v1/* 路由（自动注册）
-    ├── SPA Frontend: 需要 UI 组件消费新端点
-    ├── Caching Layer: 需要确定 cache tier (fast/medium/slow/static/daily/no-store)
-    ├── SDK Client: 自动获得新服务客户端
-    ├── Lint & Enforcement: lint:api-contract 自动覆盖
-    └── 不受影响：Authentication（复用现有）、Variant System（不感知）、Agent Platform（手动注册 tool 到 tools/list）
-```
-
-**风险**: 如果 proto pipeline 当前是"架构意图"而非已实现，实际影响范围只有 proto/ 目录本身的文件。
-
-### 修改 B：新增品牌 variant
-
-```
-variant/configs/foo.json  +  src/assets/foo/*.overlay
-  → Host header 匹配 → 加载 foo 配置 → 渲染
-  → 影响：
-    ├── Variant System: 运行时选择，无代码变更
-    ├── SPA Frontend: 主题/配置切换（Client-only）
-    ├── API Gateway: ❗ 无影响——API 后端完全不变
-    └── 不影响：Server Runtime、Data Aggregation Pipeline、Caching Layer、Auth
-```
-
-**关键观察**: Variant 边界在 UI 层——添加品牌不影响后端，但也意味着 tech variant 用户仍在支付所有 35+ 域 handler 的冷启动成本。
-
-### 修改 C：修改 circuit breaker 参数
-
-```
-src/utils/circuit-breaker.ts: maxFailures=2 → 3
-  → 影响：
-    ├── Server Runtime: 所有域断路器更新
-    ├── Data Aggregation Pipeline: 失败容忍度变化
-    ├── Caching Layer: 断路器 fallback 路径触发频率降低
-    └── 不影响：API Gateway（不拥有断路器状态）、Auth、SPA、Variant、Agent
-```
-
-**未覆盖风险**: ❗ 无 gateway-level bulkhead——一个上游超时可阻塞整个 gateway worker。此修改不修复 domain isolation 问题。
-
-### 修改 D：添加 Agent tool
-
-```
-tools/list 注册新 tool → _agent-tool-suggest.ts 自动路由
-  → 影响：
-    ├── Agent Platform: 工具注册表增加条目
-    ├── A2A endpoint: 自动发现新 tool
-    ├── NLWeb /ask: 自动路由到新 tool
-    └── 不影响：REST API 端点、Server Runtime、Caching Layer、Auth
-```
-
-**架构意义**: Agent tool 是最高杠杆扩展点之一——无需改路由、无需改 edge 代码。
-
----
-
-## 8. 可复用知识
-
-### 8.1 Token-overlap Concierge 模式
-一个透明、可调试的 Agent 路由机制：工具注册表（tools/list）匿名发布 → 请求与工具名称/描述分词交叠 → 名称加权（3pts）高于描述（1pt）→ 返回 top-N。核心理念：Agent 路由的透明性比智能更重要——"dumb switchboard where the intelligence lives in the tool implementation, not the router"。
-
-**可迁移条件**: 工具数量 < 100、工具功能差异度高（名称可表达功能本质）、无跨语言需求。
-
-### 8.2 Edge Helper Underscore Convention
-下划线前缀（`_api-key.js`）作为"路由级 helper"的命名约定——避免独立冷启动，通过共享模块而非复制到每个 edge function。模式：Vercel/Cloudflare edge runtime 中，`_` 前缀文件不会被注册为独立路由端点，但可被其他 handler import。
-
-### 8.3 Proto IDL + Codegen as Architecture Spine
-IDL 驱动开发模式的核心价值不在于"代码生成"，而在于: (1) 单一真理源（proto 变更触发所有下游更新）；(2) 契约可视化（proto 文件是 API surface 的可读文档）；(3) 扩展零摩擦（新增 service = 定义 proto + 重新生成）。
-
-**反模式标记**: 当操作端点退出契约系统（`api-route-exceptions.json`）时，需要明确记录退出理由——否则契约覆盖率降低且团队不知道哪些端点未受治理。
-
-### 8.4 Cache Tier as Per-RPC Concern
-不将缓存视为系统级全局策略，而是每个 RPC 声明自己的 cache tier（fast/medium/slow/static/daily/no-store with s-maxage from 300s to 86400s）。模式：`RPC_CACHE_TIER` map 表达了 fine-grained 缓存策略，拒绝 one-size-fits-all。
-
-### 8.5 Lint Scripts as CI Quality Gates
-脚本级治理：每个规则独立文件、独立测试、独立 CI gate。模式不是"架构组件"，而是"架构合规性自动化"。**关键洞察**: 将治理机制与架构组件区分——lint 脚本不是架构，它们 enforce 的架构规则才是。
-
----
-
-## 9. 意外发现
-
-### 9.1 系统中同时存在语义路由和词法路由但不连通
-客户端 Web Worker 已运行 ONNX ML pipeline（MiniLM-L6 embeddings + vector store + semantic search）用于 headline 聚类和关联检测，但 Agent tool suggestion 只用简单的 token-overlap 评分——语义引擎和词法路由在同一仓库中却不连接。这是故意的（edge cold-start 预算约束）还是演进间隙？当前解释为"冷启动约束"，但无定量证据。
-
-### 9.2 80+ Edge Functions 使用 plain JS 而 Server 使用 TypeScript
-创建了认知维护负担：开发者需要 mental track 什么在 V8 Edge isolate 中运行 vs 什么在 bundled server context 中运行，且共享的 `_*.js` helpers 被两者 import。实际边界不是源码级隔离而是构建时 bundling。
-
-### 9.3 单一 Gateway Factory 模式
-`server/gateway.ts`（1092+ 行）是跨所有 domain bundle 共享的 ~3KB import，但实际包含了 idempotency checks、MCP internal HMAC、entitlements、usage telemetry、direct LLM quota、bbox validation——所有 domain bundle 都拉入这些逻辑即使 domain 不使用。冷启动预算影响未测量。
-
-### 9.4 缺少 Gateway-level Bulkhead
-系统有 40+ per-domain 断路器 + server-side idempotency layer + Redis-outage degraded mode，但 **无 gateway-level bulkhead**——`createDomainGateway` 从共享 pipeline 为所有域服务，单一上游超时可阻塞整个 gateway worker。
-
-### 9.5 Proto 多语言 SDK 同步缺失
-proto 定义覆盖 35+ domains → buf generate → TypeScript stubs + OpenAPI specs。Go/Python/Ruby SDKs 存在，但 CI 只检查 TypeScript 生成代码的新鲜度（`proto-check.yml`）。非 TypeScript SDK 没有契约新鲜度 CI。
-
----
-
-## 10. 未解问题
-
-| ID | 问题 | 深度 | 置信度 | 阻塞原因 |
-|---|---|---|---|---|
-| R2-Q1 | 四层缓存层级如何协调 TTL 和失效——当单个数据域有 per-RPC cache tiers AND 预计算 bootstrap tier AND CDN edge headers 时，是否存在 stale bootstrap 遮蔽较新 per-RPC 数据的 freshness inversion？ | L3 | 低 | 缺少 invalidation protocol 文档 |
-| R2-Q2 | Edge (plain JS) vs Server (TypeScript with esbuild) 的双运行时分拆是否造成认知维护负担？ | L2 | 低 | 缺少开发体验评估 |
-| R2-Q3 | 8 个操作端点退出 proto 契约的决策驱动因素是什么？团队如何防止契约 drift？ | L2 | 低 | 退出理由未文档化 |
-| R2-Q4 | 无 gateway-level bulkhead——单一上游故障如何不级联到整个 API surface？ | L3 | 低 | 架构缺口，未实现 |
-| R2-Q5 | Variant 边界在 UI 层而非也过滤 API surface——tech variant 用户在支付不需要的 handlers 的冷启动成本，为何选择此 tradeoff？ | L3 | 低 | 冷启动预算影响未测量 |
-| R2-Q6 | ONNX 语义引擎客户端已存在，但 Agent tool suggestion 只用 token-overlap——为何不连接？冷启动约束还是演进间隙？ | L3 | 低 | 缺少定量冷启动预算分析 |
-| R2-Q7 | Go/Python/Ruby SDK 如何与 proto 契约保持同步？proto 变更到 SDK 发布的时间差？ | L2 | 低 | 缺少非 TypeScript SDK 契约新鲜度 CI |
-| R2-Q8 | 单一 gateway factory（1092 行）共享给所有 35+ domain bundle——冷启动预算影响是否测量过？ | L3 | 低 | 未测量 |
-
-**8 个未解问题的共同特征**: 全部涉及**量化缺失**（冷启动预算、freshness SLA、cache hit ratio、SDK 发布延迟）。这不是偶然——系统在"架构意图"和"已实现架构"之间的差距需要量化证据来弥合。建议优先回答 R2-Q2（双运行时分拆认知负担）和 R2-Q5（variant API surface 分割决策），这两个是当前演进阶段可操作的短期改善点。R2-Q1（缓存一致性）和 R2-Q4（bulkhead 缺失）是潜在生产风险，建议补充监控后评估优先级。
-
----
-
-## 报告质量门禁
-
-- **多重证据？** 五个关键挑战的每个都有反对证据链。竞争解释引用了独立证据中的矛盾。
-- **替代解释？** §9 提供了四个竞争解释（数据精炼厂模式、intended vs implemented architecture、平台愿景 vs 当前现实、Desktop-as-Web-Client）。
-- **重要决策？** 8 个工程决策中每个都列举了被拒绝的替代方案及其理由。
-- **Unknown 不掩饰？** §10 明确列出 8 个无法完整回答的问题，标注置信度。
-- **洞察 vs 堆砌？** 核心洞察: 该系统最重要的不是 edge/server 二分法（这是实现细节），而是"基于工具注册表的显式路由 + Proto 契约 + 三级缓存 + 多品牌变体"这四个模式的组合——数据精炼厂的 chassis，Agent-native 接口是用于未来生态兼容性的前向投资。
-
----
-
-*本报告基于提供的 Repository Model、Architecture Explanation、10 项挑战结果（5 modified / 1 survived / 1 refuted / 3 modified-with-caveat）、8 个未解问题、和竞争解释生成。*
+*报告基于代码分析、架构解释和系统性挑战生成。覆盖 21 个设计决策、9 个被质疑假设（7 个推翻/修正、2 个幸存）、8 个未解问题。*

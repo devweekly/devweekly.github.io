@@ -4,318 +4,240 @@
       {
         "name": "API Gateway",
         "path": "api/",
-        "description": "Edge-deployed serverless API routes with filesystem-based routing; catch-all 404 handler, versioned service gateways (v1, v2), agent-readiness endpoints, and shared auth/middleware helpers."
+        "description": "Multi-version HTTP API gateway with filesystem routing; serves v1/v2 RPC endpoints, agent-readiness metadata (RFC 9728/8414), A2A protocol endpoint, NLWeb /ask endpoint; catch-all returns structured JSON 404"
       },
       {
-        "name": "SPA Frontend",
+        "name": "API Middleware",
+        "path": "api/_api-key.js, api/_session.js, api/_crypto.js, api/_agent-metadata.ts, api/_agent-tool-suggest.ts",
+        "description": "Underscore-prefixed route-less modules: API key + session-token authentication, timing-safe comparison, Host-derived metadata origin resolver, token-overlap tool routing for A2A/NLWeb"
+      },
+      {
+        "name": "Frontend SPA",
         "path": "src/",
-        "description": "TypeScript single-page application providing the real-time global intelligence dashboard UI, map layers, and situational awareness interface."
+        "description": "TypeScript single-page application — real-time global intelligence dashboard with AI-powered news aggregation, geopolitical monitoring, infrastructure tracking"
       },
       {
-        "name": "Server Runtime",
+        "name": "Backend Server",
         "path": "server/",
-        "description": "Server-side services for data aggregation, freshness scheduling, circuit breaker orchestration, and cross-domain correlation pipelines."
+        "description": "Backend server code; multi-domain data pipeline aggregating from dozens of external sources; handles freshness, reliability, edge compute"
       },
       {
-        "name": "Authentication & Session",
-        "path": "api/_api-key.js, api/_session.js, api/_crypto.js",
-        "description": "API key validation, session token issuance/validation, desktop origin allowlisting, and enterprise key management."
-      },
-      {
-        "name": "Agent Platform",
-        "path": "api/_agent-metadata.ts, api/_agent-tool-suggest.ts, api/a2a.ts, api/ask.ts",
-        "description": "Agent-to-Agent (A2A) protocol endpoint, NLWeb /ask concierge, RFC 9728/8414 discovery documents, and tool registry with token-overlap routing."
-      },
-      {
-        "name": "Data Aggregation Pipeline",
-        "path": "server/aggregation/",
-        "description": "Multi-domain data fetch, freshness tracking, deduplication, and intelligence correlation from dozens of external sources."
-      },
-      {
-        "name": "SDK Client",
-        "path": "sdk/",
-        "description": "Generated SDK client library consumed by external integrators; maintained via proto-defined contracts and code generation."
-      },
-      {
-        "name": "Variant System",
-        "path": "variant/",
-        "description": "Single-codebase multi-brand site generation; runtime brand selection via subdomain (apex, www, api, variant subdomains) with per-variant configuration and asset overlays."
-      },
-      {
-        "name": "Caching Layer",
-        "path": "caching/",
-        "description": "Multi-tier cache orchestration spanning CDN edge cache, Redis cluster, and in-browser bootstrap cache with invalidation protocols."
-      },
-      {
-        "name": "Contract & Code Generation",
-        "path": "proto/",
-        "description": "Proto-defined service contracts (protobuf or similar IDL) with automated code generation for API handlers, SDK clients, and validation schemas."
-      },
-      {
-        "name": "Lint & Enforcement",
+        "name": "Lint & Enforcement Scripts",
         "path": "scripts/",
-        "description": "Module boundary lint, API contract enforcement, rate-limit policy audit, premium-fetch gating, safe-HTML validation, and documentation slug checks."
+        "description": "CI-verified boundary enforcement: API contract lint (sebuf format), rate-limit policies, premium-fetch rules, safe-HTML, Mintlify slug reservation, module boundary lint"
+      },
+      {
+        "name": "Documentation Portal",
+        "path": "docs/",
+        "description": "Mintlify-powered developer documentation; auto-generated capability stats from code; architecture decision records (architecture.mdx)"
+      },
+      {
+        "name": "Test Suite",
+        "path": "tests/, e2e/",
+        "description": "Unit tests (tests/) and end-to-end pipeline tests (e2e/); API-key validation tests use node:test with env-var injection"
       }
     ],
     "boundaries": [
       {
-        "from": "API Gateway",
-        "to": "Authentication & Session",
+        "from": "Frontend SPA",
+        "to": "API Gateway",
         "direction": "单向"
       },
       {
         "from": "API Gateway",
-        "to": "Server Runtime",
+        "to": "Backend Server",
         "direction": "单向"
       },
       {
         "from": "API Gateway",
-        "to": "Caching Layer",
+        "to": "API Middleware",
+        "direction": "单向"
+      },
+      {
+        "from": "Backend Server",
+        "to": "External Sources",
         "direction": "双向"
       },
       {
-        "from": "API Gateway",
-        "to": "Agent Platform",
+        "from": "Lint & Enforcement Scripts",
+        "to": "API Gateway",
         "direction": "单向"
       },
       {
-        "from": "Server Runtime",
-        "to": "Data Aggregation Pipeline",
+        "from": "Lint & Enforcement Scripts",
+        "to": "Backend Server",
         "direction": "单向"
       },
       {
-        "from": "Data Aggregation Pipeline",
-        "to": "Caching Layer",
+        "from": "Lint & Enforcement Scripts",
+        "to": "Frontend SPA",
+        "direction": "单向"
+      },
+      {
+        "from": "Documentation Portal",
+        "to": "Lint & Enforcement Scripts",
+        "direction": "单向"
+      },
+      {
+        "from": "Agent (A2A/NLWeb)",
+        "to": "API Gateway",
         "direction": "双向"
-      },
-      {
-        "from": "Contract & Code Generation",
-        "to": "API Gateway",
-        "direction": "单向"
-      },
-      {
-        "from": "Contract & Code Generation",
-        "to": "SDK Client",
-        "direction": "单向"
-      },
-      {
-        "from": "SPA Frontend",
-        "to": "API Gateway",
-        "direction": "单向"
-      },
-      {
-        "from": "Variant System",
-        "to": "SPA Frontend",
-        "direction": "单向"
-      },
-      {
-        "from": "Variant System",
-        "to": "API Gateway",
-        "direction": "单向"
-      },
-      {
-        "from": "Lint & Enforcement",
-        "to": "API Gateway",
-        "direction": "单向"
-      },
-      {
-        "from": "Lint & Enforcement",
-        "to": "Server Runtime",
-        "direction": "单向"
       }
     ]
   },
   "behavior": {
     "control_flow": [
-      "请求到达边缘节点 → CDN cache lookup (命中则返回) → Edge Function 路由匹配 (api/<service>/v1/<rpc>.ts 优先，api/v2/shipping/<rpc>.ts 次之，[...notfound].ts 兜底) → 请求经过认证中间件 (_api-key.js 验证 API Key 或 Session Token) → 调用具体 handler 执行业务逻辑 → 响应回写 CDN 缓存",
-      "数据聚合 Pipeline: 外部源调度器 → 并行/串行 fetch 数十个外部 API/feed → 跨域数据关联与去重 → 智能分析 Pipeline (AI-powered correlation) → 写入时序存储和 Redis 缓存 → 触发 cache invalidation 信号",
-      "Agent 交互流: 客户端 → A2A 端点 (/api/a2a) 或 NLWeb /ask 端点 → _agent-tool-suggest 计算 token-overlap 分数 (名称命中>描述命中) → tools/list 匿名发布 → concierge 路由到匹配工具 → 返回结构化响应",
-      "变体系统路由: Host header 解析 (apex / www / api / variant subdomain) → 查询 variant 配置 → 按品牌加载特定 asset overlay 和样式 → 渲染品牌化 dashboard",
-      "断路器控制流: 外部 fetch 调用 → 断路器检测失败率阈值 (circuit half-open/open/closed) → 失败时快速失败或 fallback 到缓存 → 周期性探测恢复 → 重新闭合电路"
+      "HTTP request arrives at API Gateway → filesystem router dispatches to concrete v1/v2 RPC handler or falls through to catch-all JSON 404",
+      "Agent-to-Agent (A2A) or NLWeb /ask request → _agent-tool-suggest.ts computes token-overlap score across published tool names + descriptions → routes to best-matching tool handler",
+      "API key validation flow: request → getHeaderApiKey() → validateApiKey() with timing-safe comparison → optional session-token upgrade via isSessionTokenShape() + validateSessionToken()",
+      "Agent-readiness metadata discovery: request → OAuth protected-resource metadata (RFC 9728) or authorization-server metadata (RFC 8414) → resolveMetadataOrigin() validates Host header → returns endpoint origin-consistent documents",
+      "CI/CD pipeline: commit → lint-staged (Prettier) → npm run lint (Biome + boundary/enforcement scripts) → npm run docs:check (stats auto-verification) → build + deploy"
     ],
     "data_flow": [
-      "外部数据源 → 聚合管道 (freshness scheduling) → 去重与归一化 → Redis 缓存 (TTL 按 freshness 策略) → CDN 边缘缓存 (Cache-Control) → SPA 前端 bootstrap cache → 浏览器渲染",
-      "用户请求 → API Gateway (API Key 或 Session Token 认证) → 速率限制检查 (lint:rate-limit-policies) → premium fetch gating (lint:premium-fetch) → 数据服务 → CDN/Redis 多级缓存 → 响应",
-      "Proto IDL → code generator → TypeScript API handler stubs + SDK client 包 + JSON Schema 验证器 → 分别输出到 api/、sdk/、和共享类型定义",
-      "跨域数据关联 Pipeline: 异构数据源 (news feeds, geopolitical signals, infrastructure telemetry) → AI-powered 实体提取与事件关联 → 统一 intelligence graph → dashboard 可视化层",
-      "多品牌数据流: 同一数据后端 → variant 配置层 (品牌 logo、配色、feature flags) → 模板渲染 → 部署到不同子域 (每个 variant 独立部署)"
+      "External source data → Backend Server multi-domain pipeline → aggregation + freshness tracking → API Gateway → Frontend SPA real-time dashboard rendering",
+      "Lint-time data flow: code changes → scripts/enforce-sebuf-api-contract.mjs validates API spec conformance → scripts/enforce-rate-limit-policies.mjs checks rate-limit annotations → scripts/enforce-premium-fetch.mjs validates premium data access patterns",
+      "Documentation data flow: source code → scripts/docs-stats.mjs extracts capability counts → docs/generated/stats.json → Mintlify renders capability table; num change triggers docs:check failure",
+      "Desktop runtime data flow: Tauri origin (tauri://localhost, asset://localhost) → _api-key.js DESKTOP_ORIGIN_PATTERNS validation → authorized API access without standard browser CORS"
     ]
   },
   "ownership": {
     "state": [
       {
-        "name": "Session Token Store",
-        "owner": "Authentication & Session (api/_session.js)"
+        "name": "API version state (v1/v2 routing)",
+        "owner": "API Gateway"
       },
       {
-        "name": "API Key Registry",
-        "owner": "Authentication & Session (WORLDMONITOR_VALID_KEYS env)"
+        "name": "Session tokens & API keys",
+        "owner": "API Middleware (_session.js, _api-key.js)"
       },
       {
-        "name": "Desktop Origin Allowlist",
-        "owner": "Authentication & Session (api/_api-key.js DESKTOP_ORIGIN_PATTERNS)"
+        "name": "Agent-readiness metadata (issuer, resource, endpoints)",
+        "owner": "API Middleware (_agent-metadata.ts)"
       },
       {
-        "name": "Redis Cache State",
-        "owner": "Caching Layer (Redis cluster)"
+        "name": "Tool routing state (token-overlap scores)",
+        "owner": "API Middleware (_agent-tool-suggest.ts)"
       },
       {
-        "name": "CDN Cache State",
-        "owner": "Caching Layer (CDN edge, Cache-Control headers)"
+        "name": "Multi-domain data pipeline state (freshness, aggregation)",
+        "owner": "Backend Server"
       },
       {
-        "name": "Bootstrap Cache",
-        "owner": "SPA Frontend (client-side bootstrap cache)"
+        "name": "Dashboard UI state (real-time visualization)",
+        "owner": "Frontend SPA"
       },
       {
-        "name": "Circuit Breaker State",
-        "owner": "Server Runtime (per-service circuit state: open/half-open/closed)"
-      },
-      {
-        "name": "Freshness Schedule",
-        "owner": "Data Aggregation Pipeline (per-source fetch interval and staleness tracking)"
-      },
-      {
-        "name": "Variant Configuration",
-        "owner": "Variant System (per-brand config: subdomain, theme, feature flags)"
-      },
-      {
-        "name": "Rate Limit Bucket",
-        "owner": "API Gateway (per-key/per-IP rate limit counters)"
+        "name": "Capability statistics (docs/generated/stats.json)",
+        "owner": "Lint & Enforcement Scripts"
       }
     ],
     "responsibility": [
       {
-        "name": "API Key & Session 验证",
-        "owner": "Authentication & Session"
+        "name": "HTTP routing & multi-version dispatch",
+        "owner": "API Gateway"
       },
       {
-        "name": "Agent 发现文档生成 (RFC 9728/8414)",
-        "owner": "Agent Platform (api/_agent-metadata.ts)"
+        "name": "Authentication (API key + session token)",
+        "owner": "API Middleware"
       },
       {
-        "name": "A2A 协议端点 & Tool 路由",
-        "owner": "Agent Platform (api/_agent-tool-suggest.ts, api/a2a.ts)"
+        "name": "Agent-readiness discovery (RFC 9728/8414)",
+        "owner": "API Middleware"
       },
       {
-        "name": "NLWeb 自然语言 /ask 端点",
-        "owner": "Agent Platform (api/ask.ts)"
+        "name": "Agent-tool routing for A2A/NLWeb",
+        "owner": "API Middleware"
       },
       {
-        "name": "模块边界强制",
-        "owner": "Lint & Enforcement (scripts/lint-boundaries.mjs)"
+        "name": "Multi-domain data aggregation & reliability",
+        "owner": "Backend Server"
       },
       {
-        "name": "API Contract 合规",
-        "owner": "Lint & Enforcement (scripts/enforce-sebuf-api-contract.mjs)"
+        "name": "UI rendering & real-time dashboard",
+        "owner": "Frontend SPA"
       },
       {
-        "name": "Rate Limit 策略审计",
-        "owner": "Lint & Enforcement (scripts/enforce-rate-limit-policies.mjs)"
+        "name": "API contract enforcement (sebuf format)",
+        "owner": "Lint & Enforcement Scripts"
       },
       {
-        "name": "Premium 功能门禁审计",
-        "owner": "Lint & Enforcement (scripts/enforce-premium-fetch.mjs)"
+        "name": "Rate-limit policy enforcement",
+        "owner": "Lint & Enforcement Scripts"
       },
       {
-        "name": "安全 HTML 输出校验",
-        "owner": "Lint & Enforcement (scripts/enforce-safe-html.mjs)"
+        "name": "Premium data access control",
+        "owner": "Lint & Enforcement Scripts"
       },
       {
-        "name": "文档 Slug 保留字校验",
-        "owner": "Lint & Enforcement (scripts/enforce-mintlify-reserved-slugs.mjs)"
+        "name": "Safe HTML output validation",
+        "owner": "Lint & Enforcement Scripts"
       },
       {
-        "name": "Proto IDL → 代码生成",
-        "owner": "Contract & Code Generation"
+        "name": "Documentation generation & freshness",
+        "owner": "Lint & Enforcement Scripts"
       },
       {
-        "name": "SDK 客户端维护",
-        "owner": "SDK Client"
+        "name": "Observability & SLO tracking across 30+ domains",
+        "owner": "Backend Server"
       },
       {
-        "name": "断路器健康管理",
-        "owner": "Server Runtime"
+        "name": "Multi-region deployment & edge compute",
+        "owner": "Backend Server"
       },
       {
-        "name": "跨域数据关联与 AI Pipeline",
-        "owner": "Data Aggregation Pipeline"
-      },
-      {
-        "name": "变体品牌渲染",
-        "owner": "Variant System"
-      },
-      {
-        "name": "多级缓存失效协调",
-        "owner": "Caching Layer"
-      },
-      {
-        "name": "404 兜底响应",
-        "owner": "API Gateway (api/[...notfound].ts)"
+        "name": "Developer portal & API docs hosting",
+        "owner": "Documentation Portal"
       }
     ]
   },
   "extension": {
     "plugin_points": [
-      "Proto 定义的 Service Contract — 新增 service 只需定义 proto 并重新生成代码即可自动创建 API handler stub、SDK client 和验证器",
-      "A2A Agent Platform — 新 agent 功能通过 tools/list 发布 + _agent-tool-suggest token-overlap 自动路由，无需修改核心路由逻辑",
-      "Variant System — 新增品牌只需添加 variant 配置和 asset overlay，代码库无分支",
-      "Data Aggregation Pipeline — 新外部数据源通过配置化 adapter 接入，freshness scheduling 和去重管道自动适配",
-      "CDN/Redis/Bootstrap 三级缓存架构 — 新服务通过实现缓存接口自动获得多级缓存能力",
-      "Circuit Breaker 框架 — 新外部依赖通过包裹 breaker 函数自动获得故障隔离和恢复能力",
-      "Lint & Enforcement 脚本体系 — 新合规规则以独立脚本添加，集成到 lint 流水线中"
+      "api/v1/[rpc].ts — per-RPC handler extension for v1 API (open registration via filesystem)",
+      "api/v2/[rpc].ts — per-RPC handler extension for v2 API",
+      "api/a2a.ts — A2A (Agent-to-Agent) protocol endpoint; tool list extensible via tool/ namespace",
+      "api/ask.ts — NLWeb natural-language endpoint; tool routing via _agent-tool-suggest.ts token-overlap",
+      "OAuth protected-resource metadata (RFC 9728) — agent-discovery-ready endpoint metadata",
+      "OAuth authorization-server metadata (RFC 8414) — OAuth-flavored discovery",
+      "MCP (Model Context Protocol) tool descriptors — published anonymously via tools/list"
     ],
     "public_api": [
-      "RESTful API Gateway 端点 (api/<service>/v1/<rpc>.ts, api/v2/shipping/<rpc>.ts)",
-      "SDK Client 包 (proto 生成，供外部集成)",
-      "A2A Agent-to-Agent 端点 (api/a2a.ts)",
-      "NLWeb /ask 自然语言端点 (api/ask.ts)",
-      "OAuth Protected-Resource Metadata (RFC 9728, api/oauth-protected-resource.ts)",
-      "OAuth Authorization-Server Metadata (RFC 8414, api/oauth-authorization-server.ts)",
-      "Agent Readiness Discovery 文档",
-      "API Key 认证接口 (X-API-Key header)",
-      "Session Token 认证接口 (Bearer token)"
+      "GET/POST /api/health — Health check endpoint",
+      "GET/POST /api/v1/[rpc] — Version 1 RPC family (17 analyzers / 11 semantic analyzers at runtime)",
+      "GET/POST /api/v2/[rpc] — Version 2 RPC family (shipping, multi-domain pipeline)",
+      "GET/POST /api/a2a — Agent-to-Agent protocol endpoint",
+      "GET/POST /api/ask — Natural-language web interface endpoint",
+      "GET /.well-known/oauth-protected-resource — RFC 9728 protected-resource metadata",
+      "GET /.well-known/oauth-authorization-server — RFC 8414 authorization-server metadata",
+      "GET /api/* (catch-all) — Structured JSON 404 for unmatched paths"
     ]
   },
   "evolution": {
     "major_changes": [
       {
-        "change": "v1 → v2 API 升级：引入目录级版本路由 (api/v2/shipping/)，与 v1 共存",
-        "impact": "支持渐进式迁移，新旧版本同时服务，允许 break change 安全发布"
+        "change": "v1→v2 API versioning: /api/v1/ and /api/v2/ namespaces with separate routing",
+        "impact": "Allowed backward-compatible evolution; v2 added shipping, multi-domain pipeline endpoints without breaking v1 consumers"
       },
       {
-        "change": "引入 Agent Platform (A2A 协议 + NLWeb 端点 + Agent Discovery)",
-        "impact": "从纯 REST API 演进为 Agent-ready 平台，支持 AI Agent 直接发现和调用能力"
+        "change": "Agent-readiness layer: added RFC 9728/8414 metadata endpoints + A2A protocol",
+        "impact": "Enabled agent-to-agent discovery and LLM integration; expanded from human-only UI to agent-consumable API"
       },
       {
-        "change": "多品牌 Variant 系统上线：单代码库 → 多子域独立品牌站点",
-        "impact": "从单一 dashboard 演进为多租户品牌平台，共享数据后端但独立配置和部署"
+        "change": "Lint-time enforcement suite: boundary lint, API contract lint, rate-limit policies, premium-fetch, safe-HTML",
+        "impact": "Shifted from runtime-only validation to compile-time contract verification; prevents contract drift before deployment"
       },
       {
-        "change": "Proto 定义 Service Contract + Code Generation",
-        "impact": "从手写 API handler 切换到 IDL-first 开发模式，API surface 与 SDK 保持契约一致，减少人工错误"
+        "change": "Desktop runtime (Tauri) support: added DESKTOP_ORIGIN_PATTERNS and session-token-based API key validation",
+        "impact": "Opened native desktop client path without separate auth backend; Tauri origins validated at API gateway"
       },
       {
-        "change": "Lint & Enforcement 体系从单 lint 命令扩展为 8+ 独立 enforce 脚本",
-        "impact": "架构治理从约定驱动演变为自动化强制，module boundary、API contract、rate limit、premium gating 全部可审计"
+        "change": "Mintlify-powered documentation auto-generation from source code",
+        "impact": "Docs/code single-source-of-truth; npm run docs:check validates doc accuracy in CI; capability stats auto-derived from code"
       },
       {
-        "change": "引入多级缓存策略 (CDN + Redis + Bootstrap Cache)",
-        "impact": "从直连后端演变为三级缓存架构，显著降低延迟和源站压力，支持全球部署"
-      },
-      {
-        "change": "Circuit Breaker & Resilience 模式落地",
-        "impact": "从脆弱的外部依赖调用演变为具备故障隔离和自动恢复的弹性系统"
-      },
-      {
-        "change": "World Monitor v2.10.0 — 从单一新闻聚合演进为 AI-powered 全球情报仪表盘",
-        "impact": "从被动数据展示演变为主动 intelligence pipeline，新增实体提取、事件关联、态势感知能力"
-      },
-      {
-        "change": "Tauri Desktop Runtime 支持",
-        "impact": "扩展到桌面原生应用，通过 tauri.localhost / tauri:// origins 与 web API 共享认证和安全模型"
+        "change": "Multi-region deployment & edge compute integration",
+        "impact": "Reduced latency for geographically distributed users; edge compute handles pre-processing before centralized aggregation"
       }
     ],
-    "current_direction": "从 API-first 数据仪表盘向 Agent-native 情报平台演进：Proto 契约驱动开发 → 自动 SDK 生成 → 多品牌变体 → Agent 发现与编排 (A2A/NLWeb) → AI-powered 跨域关联 → 多级缓存弹性架构。未来方向是 intelligence graph 增强和 Agent ecosystem 扩展。"
+    "current_direction": "Consolidating agent-native capabilities (A2A + MCP + NLWeb) as the primary consumption model alongside the SPA dashboard; deepening compile-time contract enforcement; expanding multi-domain data pipeline reliability and observability across 30+ domains; documentation-as-code with CI-verified freshness"
   }
 }

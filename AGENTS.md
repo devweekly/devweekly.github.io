@@ -451,6 +451,7 @@ When updating AGENTS.md:
 | 2026-07-29 | repo-research-v2: 新增 gated-checks.mjs — LLM-powered quality gate 验证模块，使用 llm-runner.mjs 调用 OpenCode CLI 执行 6 个门禁检查（center_identified / alternatives_considered / counterexamples_found / model_challenged / depth_gate / maintainer_gate）；新增 checkPreconditions() 检查前置条件（round_2_checked / model_stability / center_hypothesis / quality_gate）；新增 runAllChecks() 组合前置条件 + LLM 门禁；CLI 入口：node gated-checks.mjs <context.json> <report.md> | @agents-maintainer |
 | 2026-07-29 | repo-research-v2: 新增 research.mjs 主入口 — 编排完整研究流程（Stage 0-3 + gated checks）；修复 llm-runner.mjs parseJSONLenient() 处理 LLM 输出中的 unescaped newlines/tabs/carriage returns；验证 worldmonitor 分析：2/6 gates passed (depth_gate + maintainer_gate)，4/6 failed (center_identified + alternatives_considered + counterexamples_found + model_challenged) | @agents-maintainer |
 | 2026-07-29 | repo-research-v2: 问题系统改为轮次制——工作目录改为 questions/round-N.json（不可变历史）+ summary.json（轮次索引）；round 是一次认知迭代（hypothesis revision）不是 Stage；context.json 改用 current_round / current_question_file / question_statistics / model_stability 顶层字段；轮次触发条件（模型变化/Challenge结束/Unexpected Finding等）；老问题不移动不删除，通过 derived_from 跨文件引用；增量分析只追加新 round-N.json | @agents-maintainer |
+| 2026-07-29 | repo-research-v2: 新增 artifact-cache.mjs 研究工件缓存模块；重写 research.mjs 支持 resume 与 artifact cache 集成 | @agents-maintainer |
 
 ### Example Usage
 

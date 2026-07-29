@@ -40,17 +40,48 @@ Repository Model 捕获实体、关系及支撑证据。报告是 Model 的视�
 
 ```
 .working/{repo-name}/
-├── context.json             # 执行上下文
+├── artifacts/               # 稳定 Artifact（commit 未变化时禁止重新生成）
+│   ├── repository-profile.json  # 仓库类型、语言、文件统计、入口点
+│   ├── directory-tree.json      # 完整目录结构（扁平路径列表）
+│   ├── symbol-index.json        # 符号索引（函数、类、导出）
+│   ├── git-summary.json         # Git 历史分析
+│   └── evidence-index.json      # 证据索引（已读文件路径 + 目的）
+├── context.json             # 执行上下文（易变）
 ├── questions/               # 问题轮次（不可变历史）
 │   ├── round-1.json         # 第一轮问题
 │   ├── round-2.json         # 第二轮问题
 │   ├── round-N.json         # 第 N 轮问题
 │   └── summary.json         # 轮次索引
-├── repository-model.json    # Repository Model（第一产物）
-├── evidence/                # 证据快照
-├── report.md                # 最新报告（中文）
+├── repository-model.json    # Repository Model（易变）
+├── report.md                # 最新报告（易变）
 └── meta.json                # 元信息
 ```
+
+---
+
+## Artifact Cache（Stable vs Volatile）
+
+定义 Artifact 的稳定性契约。**这是恢复现场的基础。**
+
+| 分类 | Artifact | 保存位置 | 更新规则 |
+|------|----------|---------|---------|
+| **Stable** | Repository Profile | `artifacts/repository-profile.json` | 仅 commit 变化时重新生成 |
+| **Stable** | Directory Tree | `artifacts/directory-tree.json` | 仅 commit 变化时重新生成 |
+| **Stable** | Symbol Index | `artifacts/symbol-index.json` | 仅 commit 变化时重新生成 |
+| **Stable** | Git Summary | `artifacts/git-summary.json` | 仅 commit 变化时重新生成 |
+| **Stable** | Evidence Index | `artifacts/evidence-index.json` | 仅 commit 变化时重新生成 |
+| **Volatile** | Context | `context.json` | 每次分析重新创建 |
+| **Volatile** | Repository Model | `repository-model.json` | 每次分析重新构建 |
+| **Volatile** | Questions | `questions/round-N.json` | 每次分析重新生成 |
+| **Volatile** | Report | `report.md` | 每次分析重新生成 |
+
+**强制规则**：
+
+- Stable Artifact：**commit 未变化时，禁止重新生成**。必须直接从 `artifacts/` 读取。
+- Volatile Artifact：每次分析按需重新创建。不缓存。
+- `meta.json` 中的 `last_analyzed_commit` 是判断依据。非 Git 仓库每次全量分析。
+
+---
 
 ### context.json
 
@@ -145,66 +176,164 @@ context.json 是研究者的**外部脑**。记录当前研究状态。
 
 ```mermaid
 flowchart TD
-    A[检查工作目录] --> B{已有分析？}
-    B -- 否 --> C[创建工作目录 + context.json]
-    B -- 是 --> D{commit 变化？}
-    D -- 否 --> E[返回已有报告]
-    D -- 是 --> F[增量分析 + 更新 context.json]
-    C --> G[仓库扫描]
-    F --> G
-    G --> H[识别仓库类型]
-    H --> I[生成研究问题 → questions.json]
-    I --> J[Stage 0：机械分析]
+    Start[Start] --> A{Working Directory Exists?}
 
-    J --> K[Stage 1：仓库模型构建]
-    K --> L{evidence sufficient?}
-    L -- 否 --> M[collect more evidence]
-    M --> J
-    L -- 是 --> N
+    %% Stage -1: Resume
+    A -- 否 --> A1[创建工作目录 + 初始化 meta.json]
+    A1 --> G[全量分析]
+    A -- 是 --> B[Stage -1: 加载 meta.json + context.json]
+    B --> C{commit 变化?}
 
-    subgraph N[Stage 2a: 架构解释]
-        N1[Build architecture interpretation]
-        N2[For each conclusion, ask "why not alternative?"]
-        N3[Update design_space in context.json]
-        N4[Update questions.json per question-framework.md]
+    %% Commit unchanged — full resume
+    C -- 否 --> D{所有 Stable Artifact 存在?}
+    D -- 是 --> E[从 artifacts/ 加载 Stable Artifact]
+    E --> F[禁止重新生成：scan / type / directory / dependency]
+    F --> I[直接复用已有 Repository Model?]
+    I -- 是且 report 存在 --> Return[返回已有报告]
+    I -- 否 --> J[继续未完成研究]
+
+    %% Commit changed — selective update
+    C -- 是 --> H{Stable Artifact 全部存在?}
+    H -- 是 --> H1[git diff 识别受影响文件]
+    H1 --> H2[仅重新生成受影响的 Stable Artifact]
+    H2 --> H3[更新 meta.last_analyzed_commit]
+    H3 --> J
+    H -- 否 --> H4[生成缺失的 Stable Artifact]
+    H4 --> H3
+
+    %% 全量分析路径
+    G --> GR[Stage 0: 生成 Stable Artifact]
+    GR --> GR1[repository-profile.json]
+    GR1 --> GR2[directory-tree.json]
+    GR2 --> GR3[symbol-index.json]
+    GR3 --> GR4[git-summary.json]
+    GR4 --> GR5[evidence-index.json]
+    GR5 --> K
+
+    %% 恢复后的统一路径
+    J --> K{分析继续}
+
+    K --> L[识别仓库类型]
+    L --> M[生成研究问题 → questions/round-1.json]
+
+    M --> N[Stage 1: 机械分析]
+    N --> O[Stage 2: 仓库模型构建]
+    O --> P{evidence sufficient?}
+    P -- 否 --> Q[collect more evidence]
+    Q --> N
+    P -- 是 --> R
+
+    subgraph R[Stage 3a: 架构解释]
+        R1[Build architecture interpretation]
+        R2[For each conclusion, ask "why not alternative?"]
+        R3[Update design_space in context.json]
     end
 
-    N --> O{Stage 2b: 挑战模型}
-    O --> O1[Challenge center_hypothesis]
-    O1 --> O2[Seek counterevidence for each conclusion]
-    O2 --> O3{challenge_record updated?}
-    O3 -- 每项至少一次 → P
-    O3 -- 有未被挑战的结论 → O1
+    R --> S{Stage 3b: 挑战模型}
+    S --> S1[Challenge center_hypothesis]
+    S1 --> S2[Seek counterevidence for each conclusion]
+    S2 --> S3{challenge_record updated?}
+    S3 -- 每项至少一次 → T
+    S3 -- 有未被挑战的结论 → S1
 
-    P{Stage 2c: 第一轮收敛}
-    P -- 所有 depth=1 已回答 --> Q
-    P -- 否 --> M
+    T{Stage 3c: 第一轮收敛}
+    T -- 所有 depth=1 已回答 --> U
+    T -- 否 --> Q
 
-    Q{Stage 2d: 深度追问}
-    Q --> Q1[生成 questions-r2.json per question-framework.md]
-    Q1 --> Q2{有 depth≥3 的追问空间？}
-    Q2 -- 是 → Q3[生成 depth≥3 问题]
-    Q2 -- 否 → R
-    Q3 --> R{round_2_checked=done?}
-
-    R --> S{quality_gate all passed?}
-    S -- 否 → M
-    S -- 是 → T[Stage 3: 生成分析报告]
-    T --> U[中文报告]
-    U --> V[写入工作目录 + 更新 context.json]
+    U{Stage 3d: 深度追问}
+    U --> U1[生成 round-2 问题]
+    U1 --> U2{有 depth≥3 的追问空间？}
+    U2 -- 是 → U3[生成 depth≥3 问题]
+    U2 -- 否 → V
+    U3 --> V{quality_gate all passed?}
+    V -- 否 → Q
+    V -- 是 → W[Stage 4: 生成分析报告]
+    W --> X[写入工作目录 + 更新 context.json]
 ```
 
 ---
 
-## Stage 0 — 机械分析
+## Stage -1 — 恢复研究现场（Resume Research）
 
-收集客观仓库证据：目录结构、依赖图、import 图、package 图、符号、公共 API、Git 历史、文档、配置、指标。
+**这是优先执行的阶段。** 在进入任何其他阶段之前，先判断是否能恢复已有研究。
+
+### 执行流程
+
+1. **检查工作目录是否存在**
+   - 不存在 → 初始化工作目录 + meta.json，执行全量分析（进入 Stage 0）
+   - 存在 → 继续
+
+2. **加载 meta.json + context.json**
+   - 读取 `last_analyzed_commit`、`repo_type`、`model_version`
+
+3. **判断 commit 是否变化**
+   - `git rev-parse HEAD` 与 `last_analyzed_commit` 比较
+   - 非 Git 仓库 → 始终视为"已变化"
+
+4. **分支一：commit 未变化**
+   - 检查所有 Stable Artifact 是否存在
+   - 全部存在 → 从 `artifacts/` 加载，**禁止重新扫描、重新识别类型、重新统计目录**
+   - 缺失 → 生成缺失的 Stable Artifact，然后复用
+   - 如果已有完整 report → 直接返回
+
+5. **分支二：commit 已变化**
+   - `git diff {last_analyzed_commit}..HEAD` 识别受影响文件
+   - 仅重新生成受影响的 Stable Artifact
+   - 未受影响 Artifact 必须复用
+   - 更新 `last_analyzed_commit`
+
+### 禁止行为
+- commit 未变化时重新扫描全量目录结构
+- commit 未变化时重新统计文件数量
+- commit 未变化时重新识别仓库类型
+- commit 未变化时重新生成 Stable Artifact
+- 丢失已有 Stable Artifact 数据
+
+---
+
+## Stage 0 — Stable Artifact 生成（条件执行）
+
+**仅当以下条件之一满足时执行：**
+
+| 条件 | 行为 |
+|------|------|
+| Stage -1 判定需要全量分析 | 生成所有 Stable Artifact |
+| Stage -1 判定部分 Stable Artifact 缺失 | 仅生成缺失的 |
+| commit 变化且 Stable Artifact 受影响 | 仅重新生成受影响的 |
+
+生成以下 Stable Artifact。**每个 Artifact 都是"生成一次，永久复用"（除非 commit 变化）。**
+
+| Artifact | 内容 | 生成方法 |
+|----------|------|---------|
+| `repository-profile.json` | 仓库类型、语言、文件数量、入口点、构建系统 | LLM 识别 + 文件扫描 |
+| `directory-tree.json` | 完整目录结构（扁平路径列表、文件/目录计数） | 文件系统遍历 |
+| `symbol-index.json` | 关键符号（函数、类、导出） | AST 提取 |
+| `git-summary.json` | Git 历史分析（提交频率、贡献者、重大变化边界） | git log |
+| `evidence-index.json` | 已读文件的路径 + 读取目的索引 | 文件扫描 |
+
+**禁止**在此阶段进行架构解释。只收集客观事实。
+
+---
+
+## Stage 1 — 问题生成
+
+基于仓库类型和 Stable Artifact 生成研究问题。写入 `questions/round-1.json`。
+
+详见 [question-framework.md](./question-framework.md)。
+
+---
+
+## Stage 2 — 机械分析
+
+从 Stable Artifact 中提取证据，为仓库模型构建准备材料。
+
+收集：目录结构、依赖图、import 图、package 图、符号、公共 API、Git 历史、文档、配置、指标。
 
 **禁止**在此阶段进行架构解释。
 
 ---
 
-## Stage 1 — 仓库模型构建
+## Stage 3a — 仓库模型构建
 
 将机械证据转化为 Repository Model。
 
@@ -222,7 +351,7 @@ flowchart TD
 
 ---
 
-## Stage 2a — 架构解释
+## Stage 3b — 架构解释
 
 基于仓库模型重建系统背后的工程思想。
 
@@ -243,9 +372,9 @@ flowchart TD
 
 ---
 
-## Stage 2b — 挑战模型
+## Stage 3c — 挑战模型
 
-**必须**对 Stage 2a 的每个结论执行以下检验：
+**必须**对 Stage 3b 的每个结论执行以下检验：
 
 | 检验 | 具体操作 | 判断标准 |
 |------|---------|---------|
@@ -265,7 +394,7 @@ flowchart TD
 
 ---
 
-## Stage 2c — 第一轮收敛
+## Stage 3d — 第一轮收敛
 
 第一轮问题（questions.json）全部 `answered` 后，检查 depth 分布：
 
@@ -276,7 +405,7 @@ flowchart TD
 
 ---
 
-## Stage 2d — 深度追问
+## Stage 3e — 深度追问
 
 基于第一轮回答生成第二轮收敛问题（questions-r2.json）。
 
@@ -290,7 +419,7 @@ flowchart TD
 
 ---
 
-## Stage 3 — 分析报告生成
+## Stage 4 — 分析报告生成
 
 从 Repository Model 生成人类可读的中文报告。
 
@@ -304,19 +433,13 @@ flowchart TD
 
 ## 增量分析
 
-分析前，**检查工作目录是否已存在该 repo 的分析**：
+增量分析逻辑已由 Stage -1 和 Stage 0 的 Stable Artifact 契约处理。核心原则：
 
-1. **不存在** → 执行全量分析，创建工作目录
-2. **存在且 commit 相同** → 跳过分析，返回已有报告
-3. **存在且 commit 不同** → 执行增量分析：
-   - 识别变化的文件（`git diff {last_analyzed_commit}..HEAD`）
-   - 只重新分析受影响的 Model 部分
-   - 合并到已有 Repository Model
-   - 重新渲染报告
+1. **commit 未变化** → 禁止重新生成任何 Stable Artifact。仅继续未完成的研究阶段。
+2. **commit 已变化** → 基于 `git diff` 选择性重新生成受影响的 Stable Artifact。未受影响部分直接复用。
+3. **非 Git 仓库** → 每次全量分析。
 
 **禁止**在增量分析中丢失已有证据。新增证据合并，过时证据标记为 `deprecated` 但不删除。
-
-如果仓库非 Git 仓库或无 commit 历史，每次执行全量分析。
 
 ---
 

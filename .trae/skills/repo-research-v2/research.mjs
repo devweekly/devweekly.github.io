@@ -1,31 +1,38 @@
 // ===========================================================================
 // research.mjs — Main entry point for repo-research-v2 skill
 //
-// Orchestrates the research pipeline:
-//   1. Check working directory (incremental vs full)
-//   2. Scan repository
-//   3. Identify repository type
-//   4. Generate research questions
-//   5. Stage 0: Mechanical analysis
-//   6. Stage 1: Build Repository Model
-//   7. Stage 2a: Architecture interpretation
-//   8. Stage 2b: Challenge model
-//   9. Stage 2c-2d: Question convergence
-//   10. Stage 3: Generate report
-//   11. Run gated checks
+// Orchestrates the research pipeline with resume support:
+//   Stage -1: Resume existing research (skip stable artifacts if unchanged)
+//   Stage 0:  Generate stable artifacts (conditional — only if missing)
+//   Stage 1:  Generate research questions
+//   Stage 2:  Mechanical analysis
+//   Stage 3a: Build Repository Model
+//   Stage 3b: Architecture interpretation
+//   Stage 3c: Challenge model
+//   Stage 3d-3e: Question convergence
+//   Stage 4:  Generate report
+//   Gated checks
 //
 // Usage:
-//   node research.mjs <repo-path> [--force]
+//   node research.mjs <repo-path> [--force] [--skip-gate]
 //
 // Options:
-//   --force    Force full re-analysis even if working directory exists
+//   --force      Force full re-analysis even if working directory exists
 //   --skip-gate  Skip gated checks
 // ===========================================================================
 
-import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
+import { readFile, writeFile, mkdir, stat, readdir } from "node:fs/promises";
 import { join, resolve, basename } from "node:path";
 import { invokeLLM, invokeLLMJSON } from "./llm-runner.mjs";
 import { runAllChecks } from "./gated-checks.mjs";
+import {
+  resumeResearch,
+  loadStableArtifact,
+  saveStableArtifact,
+  loadMeta,
+  writeMeta,
+  getCurrentCommit,
+} from "./artifact-cache.mjs";
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -61,7 +68,86 @@ async function writeJson(path, data) {
 }
 
 // ---------------------------------------------------------------------------
-// Stage 0: Repository Scan
+// Stage -1: Resume existing research
+// ---------------------------------------------------------------------------
+
+async function stageMinusOne(workDir, repoPath, force) {
+  console.log("Stage -1: Resume existing research...");
+
+  if (force) {
+    console.log("  --force: full re-analysis\n");
+    return { resumed: false };
+  }
+
+  const resume = await resumeResearch(workDir, repoPath);
+  const reportPath = join(workDir, "report.md");
+
+  if (resume.resumed && resume.commitUnchanged && resume.artifactsReady) {
+    console.log("  Working directory found, commit unchanged, all artifacts ready.");
+
+    // If report exists and complete, return it
+    if (await fileExists(reportPath)) {
+      console.log("  Report exists — returning cached result.\n");
+      const report = await readFile(reportPath, "utf-8");
+      return {
+        resumed: true,
+        commitUnchanged: true,
+        artifactsReady: true,
+        report,
+        resume,
+      };
+    }
+
+    // Report missing but artifacts ready — continue from where we left off
+    console.log("  Report missing — continuing from Stage 1.\n");
+    return {
+      resumed: true,
+      commitUnchanged: true,
+      artifactsReady: true,
+      report: null,
+      resume,
+    };
+  }
+
+  if (resume.resumed && resume.commitUnchanged && !resume.artifactsReady) {
+    console.log(`  Commit unchanged but artifacts missing: ${resume.missingArtifacts.join(", ")}`);
+    console.log("  Generating missing artifacts...\n");
+    return {
+      resumed: true,
+      commitUnchanged: true,
+      artifactsReady: false,
+      report: null,
+      resume,
+    };
+  }
+
+  if (resume.resumed && !resume.commitUnchanged) {
+    console.log(`  Commit changed (${resume.meta?.last_analyzed_commit || "unknown"} → ${resume.commit || "unknown"})`);
+    if (resume.changedFiles.length > 0) {
+      console.log(`  Changed files: ${resume.changedFiles.length}`);
+    }
+    console.log("  Full re-analysis required.\n");
+    return {
+      resumed: true,
+      commitUnchanged: false,
+      artifactsReady: false,
+      report: null,
+      resume,
+    };
+  }
+
+  console.log("  Fresh analysis.\n");
+  return {
+    resumed: false,
+    commitUnchanged: false,
+    artifactsReady: false,
+    report: null,
+    resume,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Stage 0: Repository Scan (cached as directory-tree.json)
 // ---------------------------------------------------------------------------
 
 async function scanRepository(repoPath) {
@@ -75,7 +161,6 @@ async function scanRepository(repoPath) {
       const fullPath = join(dir, entry.name);
       const relPath = fullPath.replace(repoPath + "/", "");
 
-      // Skip common noise directories
       if (entry.name.startsWith(".") || entry.name === "node_modules" || entry.name === "dist" || entry.name === "build") {
         continue;
       }
@@ -93,9 +178,43 @@ async function scanRepository(repoPath) {
   return { files, dirs };
 }
 
+async function stageZeroScan(workDir, repoPath, resumeResult) {
+  // If resume says artifacts are ready, load from cache
+  if (resumeResult.resumed && resumeResult.commitUnchanged && resumeResult.artifactsReady) {
+    const cached = await loadStableArtifact(workDir, "directory-tree");
+    if (cached) {
+      console.log("Stage 0: Directory tree loaded from cache.");
+      return cached;
+    }
+  }
+
+  // Otherwise scan
+  console.log("Stage 0: Scanning repository...");
+  const scan = await scanRepository(repoPath);
+  await saveStableArtifact(workDir, "directory-tree", scan);
+  console.log(`  Found ${scan.files.length} files, ${scan.dirs.length} directories\n`);
+  return scan;
+}
+
 // ---------------------------------------------------------------------------
-// Repository Type Identification
+// Stage 0: Repository Type Identification (cached as repository-profile.json)
 // ---------------------------------------------------------------------------
+
+async function stageZeroType(workDir, repoTypeGuess, scan, resumeResult) {
+  if (resumeResult.resumed && resumeResult.commitUnchanged && resumeResult.artifactsReady) {
+    const cached = await loadStableArtifact(workDir, "repository-profile");
+    if (cached) {
+      console.log(`  Repository profile loaded from cache: ${cached.type} (${cached.confidence})\n`);
+      return cached;
+    }
+  }
+
+  console.log("Identifying repository type...");
+  const repoType = await repoTypeGuess(scan);
+  await saveStableArtifact(workDir, "repository-profile", repoType);
+  console.log(`  Type: ${repoType.type} (${repoType.confidence})\n`);
+  return repoType;
+}
 
 async function identifyRepoType(repoPath, scan) {
   const prompt = `
@@ -121,7 +240,7 @@ async function identifyRepoType(repoPath, scan) {
 }
 
 // ---------------------------------------------------------------------------
-// Question Generation
+// Stage 1: Question Generation
 // ---------------------------------------------------------------------------
 
 async function generateQuestions(repoPath, repoType, scan) {
@@ -148,7 +267,7 @@ Generate 6-10 research questions. Return ONLY a JSON array like this:
 }
 
 // ---------------------------------------------------------------------------
-// Stage 0: Mechanical Analysis
+// Stage 2: Mechanical Analysis
 // ---------------------------------------------------------------------------
 
 async function mechanicalAnalysis(repoPath, scan) {
@@ -176,7 +295,7 @@ async function mechanicalAnalysis(repoPath, scan) {
 }
 
 // ---------------------------------------------------------------------------
-// Stage 1: Build Repository Model
+// Stage 3a: Build Repository Model
 // ---------------------------------------------------------------------------
 
 async function buildRepositoryModel(repoPath, repoType, evidence) {
@@ -202,26 +321,11 @@ ${evidenceStr}
 
 输出 JSON（严格 JSON，无 markdown）:
 {
-  "structure": {
-    "modules": [{"name": "模块名", "path": "路径", "description": "描述"}],
-    "boundaries": [{"from": "模块A", "to": "模块B", "direction": "单向/双向"}]
-  },
-  "behavior": {
-    "control_flow": ["控制流描述"],
-    "data_flow": ["数据流描述"]
-  },
-  "ownership": {
-    "state": [{"name": "状态名", "owner": "模块/组件"}],
-    "responsibility": [{"name": "职责", "owner": "模块/组件"}]
-  },
-  "extension": {
-    "plugin_points": ["扩展点"],
-    "public_api": ["公共 API"]
-  },
-  "evolution": {
-    "major_changes": [{"change": "变更描述", "impact": "影响"}],
-    "current_direction": "当前演进方向"
-  }
+  "structure": { "modules": [{"name": "模块名", "path": "路径", "description": "描述"}], "boundaries": [{"from": "模块A", "to": "模块B", "direction": "单向/双向"}] },
+  "behavior": { "control_flow": ["控制流描述"], "data_flow": ["数据流描述"] },
+  "ownership": { "state": [{"name": "状态名", "owner": "模块/组件"}], "responsibility": [{"name": "职责", "owner": "模块/组件"}] },
+  "extension": { "plugin_points": ["扩展点"], "public_api": ["公共 API"] },
+  "evolution": { "major_changes": [{"change": "变更描述", "impact": "影响"}], "current_direction": "当前演进方向" }
 }
 `;
 
@@ -230,7 +334,7 @@ ${evidenceStr}
 }
 
 // ---------------------------------------------------------------------------
-// Stage 2a: Architecture Interpretation
+// Stage 3b: Architecture Interpretation
 // ---------------------------------------------------------------------------
 
 async function architectureInterpretation(repoPath, repoType, model, evidence) {
@@ -277,7 +381,7 @@ ${evidenceStr}
 }
 
 // ---------------------------------------------------------------------------
-// Stage 2b: Challenge Model
+// Stage 3c: Challenge Model
 // ---------------------------------------------------------------------------
 
 async function challengeModel(repoPath, interpretation, model) {
@@ -298,16 +402,7 @@ ${JSON.stringify(model, null, 2)}
 
 输出 JSON（严格 JSON，无 markdown）:
 {
-  "challenges": [
-    {
-      "target": "被挑战的结论",
-      "challenge": "挑战问题",
-      "method": "移除测试/假设翻转/边界测试/时间测试",
-      "outcome": "survived/refuted/modified",
-      "evidence": ["证据"],
-      "model_delta": "挑战后模型变化"
-    }
-  ],
+  "challenges": [{"target": "被挑战的结论", "challenge": "挑战问题", "method": "移除测试/假设翻转/边界测试/时间测试", "outcome": "survived/refuted/modified", "evidence": ["证据"], "model_delta": "挑战后模型变化"}],
   "center_hypothesis": "一句话架构中心假设",
   "key_assumptions": [{"assumption": "假设", "evidence": ["证据"], "challenged": true, "survived": true}],
   "competing_interpretations": [{"interpretation": "备选解释", "evidence": ["证据"], "confidence": "high/medium/low"}]
@@ -319,7 +414,7 @@ ${JSON.stringify(model, null, 2)}
 }
 
 // ---------------------------------------------------------------------------
-// Stage 3: Generate Report
+// Stage 4: Generate Report
 // ---------------------------------------------------------------------------
 
 async function generateReport(repoPath, repoType, model, interpretation, challenge, questions) {
@@ -394,33 +489,38 @@ async function main() {
   console.log(`Repository: ${repoPath}`);
   console.log(`Working directory: ${workDir}\n`);
 
-  // Check if working directory exists
-  const existingWork = await fileExists(workDir);
-  if (existingWork && !force) {
-    console.log("Working directory exists. Use --force to re-analyze.\n");
-    if (await fileExists(reportPath)) {
-      console.log("Existing report found:");
-      const report = await readFile(reportPath, "utf-8");
-      console.log(report.slice(0, 500) + "...\n");
-      return;
-    }
+  // ==========================================================================
+  // Stage -1: Resume existing research
+  // ==========================================================================
+
+  const resumeResult = await stageMinusOne(workDir, repoPath, force);
+
+  // If resume returned a cached report, we're done
+  if (resumeResult.report) {
+    console.log(resumeResult.report.slice(0, 500) + "...\n");
+    return;
   }
 
-  // Create working directory
-  await ensureDir(workDir);
+  // Create working directory if fresh
+  if (!resumeResult.resumed) {
+    await ensureDir(workDir);
+  }
 
-  // Stage 0: Scan
-  console.log("Stage 0: Scanning repository...");
-  const scan = await scanRepository(repoPath);
-  console.log(`  Found ${scan.files.length} files, ${scan.dirs.length} directories\n`);
+  // ==========================================================================
+  // Stage 0: Stable Artifact Generation (conditional)
+  // ==========================================================================
 
-  // Identify repository type
-  console.log("Identifying repository type...");
-  const repoType = await identifyRepoType(repoPath, scan);
-  console.log(`  Type: ${repoType.type} (${repoType.confidence})\n`);
+  // Directory tree (from cache or fresh scan)
+  const scan = await stageZeroScan(workDir, repoPath, resumeResult);
 
-  // Generate questions (round-1)
-  console.log("Generating research questions...");
+  // Repository profile (from cache or LLM)
+  const repoType = await stageZeroType(workDir, (s) => identifyRepoType(repoPath, s), scan, resumeResult);
+
+  // ==========================================================================
+  // Stage 1: Generate research questions
+  // ==========================================================================
+
+  console.log("Stage 1: Generating research questions...");
   await ensureDir(questionsDir);
   const questions = await generateQuestions(repoPath, repoType, scan);
 
@@ -431,153 +531,190 @@ async function main() {
     purpose: "Discovery",
     questions: questions.map((q) => ({
       ...q,
-      id: q.id.startsWith("R1-") ? q.id : `R1-${q.id.replace(/^Q/, "")}`,
+      id: q.id && q.id.startsWith("R1-") ? q.id : `R1-${(q.id || "").replace(/^Q/, "")}`,
     })),
   };
   await writeJson(round1Path, round1);
 
   const summary = {
     latest_round: 1,
-    rounds: [
-      { round: 1, file: "round-1.json", purpose: "Discovery", status: "active" },
-    ],
+    rounds: [{ round: 1, file: "round-1.json", purpose: "Discovery", status: "active" }],
   };
   await writeJson(summaryPath, summary);
 
   console.log(`  Generated ${round1.questions.length} questions (round-1)\n`);
 
-  // Mechanical analysis
-  console.log("Stage 0: Mechanical analysis...");
+  // ==========================================================================
+  // Stage 2: Mechanical analysis
+  // ==========================================================================
+
+  console.log("Stage 2: Mechanical analysis...");
   const evidence = await mechanicalAnalysis(repoPath, scan);
   console.log(`  Collected ${evidence.length} evidence items\n`);
 
-  // Stage 1: Build Repository Model
-  console.log("Stage 1: Building Repository Model...");
+  // ==========================================================================
+  // Stage 3a: Build Repository Model
+  // ==========================================================================
+
+  console.log("Stage 3a: Building Repository Model...");
+  let model;
   try {
-    const model = await buildRepositoryModel(repoPath, repoType, evidence);
+    model = await buildRepositoryModel(repoPath, repoType, evidence);
     await writeJson(modelPath, model);
     console.log("  Model built\n");
-
-    // Stage 2a: Architecture interpretation
-    console.log("Stage 2a: Architecture interpretation...");
-    const interpretation = await architectureInterpretation(repoPath, repoType, model, evidence);
-    console.log("  Interpretation complete\n");
-
-    // Stage 2b: Challenge model
-    console.log("Stage 2b: Challenging model...");
-    const challenge = await challengeModel(repoPath, interpretation, model);
-    console.log("  Challenge complete\n");
-
-    // Stage 3: Generate report
-    console.log("Stage 3: Generating report...");
-    const report = await generateReport(repoPath, repoType, model, interpretation, challenge, questions);
-    await writeFile(reportPath, report, "utf-8");
-    console.log("  Report generated\n");
-
-    // Build context.json
-    const allQuestions = round1.questions;
-    const totalQ = allQuestions.length;
-    const answeredQ = allQuestions.filter((q) => q.status === "answered" || q.status === "validated").length;
-    const validatedQ = allQuestions.filter((q) => q.status === "validated").length;
-    const curDepth = Math.max(...allQuestions.map((q) => q.genesis?.depth_level || 1));
-
-    const context = {
-      user_input: `分析 ${repoPath} 仓库的架构、设计模式和工程实现`,
-      current_round: 1,
-      current_question_file: "questions/round-1.json",
-      model_stability: "stable",
-      question_statistics: {
-        rounds: 1,
-        total_questions: totalQ,
-        answered: answeredQ,
-        validated: validatedQ,
-      },
-      architecture_model: {
-        center_hypothesis: challenge.center_hypothesis,
-        key_assumptions: challenge.key_assumptions || [],
-        architecture_invariants: interpretation.engineering_constraints.map((c) => c.constraint),
-        unexplained_observations: [],
-        competing_interpretations: challenge.competing_interpretations || [],
-      },
-      challenge_record: challenge.challenges || [],
-      design_space: interpretation.design_decisions.map((d) => ({
-        decision: d.decision,
-        chosen: d.chosen,
-        rejected: d.rejected,
-        why_chosen: d.why,
-        why_rejected: d.why,
-        confidence: "high",
-        evidence: d.evidence,
-      })),
-      maintainer_view: {
-        modification_impact_map: {},
-        complexity_drivers: interpretation.architectural_tensions.map((t) => t.tension),
-      },
-      evidence_collected: evidence.map((e) => ({
-        path: e.path,
-        purpose: e.purpose,
-        key_findings: [],
-        surprises: [],
-        unanswered: [],
-      })),
-      quality_gate: {
-        center_identified: false,
-        alternatives_considered: false,
-        counterexamples_found: false,
-        model_challenged: false,
-      },
-    };
-    await writeJson(contextPath, context);
-
-    // Meta
-    const meta = {
-      repo_path: repoPath,
-      repo_type: repoType.type,
-      last_analyzed_commit: "unknown",
-      analyzed_at: new Date().toISOString(),
-      model_version: "1.0",
-    };
-    await writeJson(metaPath, meta);
-
-    // Run gated checks
-    if (!skipGate) {
-      console.log("Running gated checks...");
-      try {
-        const { preconditions, gates, allPassed, summary } = await runAllChecks(context, report);
-
-        console.log(`\n=== Preconditions: ${preconditions.checks.filter((c) => c.passed).length}/${preconditions.checks.length} passed ===\n`);
-        for (const check of preconditions.checks) {
-          const status = check.passed ? "PASS" : "FAIL";
-          console.log(`[${status}] ${check.name}`);
-        }
-
-        console.log(`\n=== Gated Checks: ${gates.summary} ===\n`);
-        for (const result of gates.results) {
-          const status = result.passed ? "PASS" : "FAIL";
-          console.log(`[${status}] ${result.name}`);
-        }
-
-        console.log(`\n=== Summary: ${summary} ===\n`);
-
-        // Update quality_gate in context
-        for (const result of gates.results) {
-          context.quality_gate[result.id] = result.passed;
-        }
-        await writeJson(contextPath, context);
-      } catch (err) {
-        console.error(`Gated checks failed: ${err.message}\n`);
-      }
-    }
-
-    console.log(`\n=== Analysis complete ===`);
-    console.log(`Report: ${reportPath}`);
-    console.log(`Context: ${contextPath}`);
-    console.log(`Model: ${modelPath}\n`);
   } catch (err) {
-    console.error(`Error during analysis: ${err.message}`);
-    if (err.stack) console.error(err.stack);
+    console.error(`Error building model: ${err.message}`);
     process.exit(1);
   }
+
+  // ==========================================================================
+  // Stage 3b: Architecture interpretation
+  // ==========================================================================
+
+  console.log("Stage 3b: Architecture interpretation...");
+  let interpretation;
+  try {
+    interpretation = await architectureInterpretation(repoPath, repoType, model, evidence);
+    console.log("  Interpretation complete\n");
+  } catch (err) {
+    console.error(`Error in interpretation: ${err.message}`);
+    process.exit(1);
+  }
+
+  // ==========================================================================
+  // Stage 3c: Challenge model
+  // ==========================================================================
+
+  console.log("Stage 3c: Challenging model...");
+  let challenge;
+  try {
+    challenge = await challengeModel(repoPath, interpretation, model);
+    console.log("  Challenge complete\n");
+  } catch (err) {
+    console.error(`Error in challenge: ${err.message}`);
+    process.exit(1);
+  }
+
+  // ==========================================================================
+  // Stage 4: Generate report
+  // ==========================================================================
+
+  console.log("Stage 4: Generating report...");
+  let report;
+  try {
+    report = await generateReport(repoPath, repoType, model, interpretation, challenge, questions);
+    await writeFile(reportPath, report, "utf-8");
+    console.log("  Report generated\n");
+  } catch (err) {
+    console.error(`Error generating report: ${err.message}`);
+    process.exit(1);
+  }
+
+  // ==========================================================================
+  // Build context.json
+  // ==========================================================================
+
+  const allQuestions = round1.questions;
+  const totalQ = allQuestions.length;
+  const answeredQ = allQuestions.filter((q) => q.status === "answered" || q.status === "validated").length;
+  const validatedQ = allQuestions.filter((q) => q.status === "validated").length;
+
+  const context = {
+    user_input: `分析 ${repoPath} 仓库的架构、设计模式和工程实现`,
+    current_round: 1,
+    current_question_file: "questions/round-1.json",
+    model_stability: "stable",
+    question_statistics: {
+      rounds: 1,
+      total_questions: totalQ,
+      answered: answeredQ,
+      validated: validatedQ,
+    },
+    architecture_model: {
+      center_hypothesis: challenge.center_hypothesis,
+      key_assumptions: challenge.key_assumptions || [],
+      architecture_invariants: (interpretation.engineering_constraints || []).map((c) => c.constraint),
+      unexplained_observations: [],
+      competing_interpretations: challenge.competing_interpretations || [],
+    },
+    challenge_record: challenge.challenges || [],
+    design_space: (interpretation.design_decisions || []).map((d) => ({
+      decision: d.decision,
+      chosen: d.chosen,
+      rejected: d.rejected,
+      why_chosen: d.why,
+      why_rejected: d.why,
+      confidence: "high",
+      evidence: d.evidence,
+    })),
+    maintainer_view: {
+      modification_impact_map: {},
+      complexity_drivers: (interpretation.architectural_tensions || []).map((t) => t.tension),
+    },
+    evidence_collected: evidence.map((e) => ({
+      path: e.path,
+      purpose: e.purpose,
+      key_findings: [],
+      surprises: [],
+      unanswered: [],
+    })),
+    quality_gate: {
+      center_identified: false,
+      alternatives_considered: false,
+      counterexamples_found: false,
+      model_challenged: false,
+    },
+  };
+  await writeJson(contextPath, context);
+
+  // ==========================================================================
+  // Write meta.json (with commit tracking)
+  // ==========================================================================
+
+  const commit = getCurrentCommit(repoPath);
+  const meta = {
+    repo_path: repoPath,
+    repo_type: repoType.type,
+    last_analyzed_commit: commit || "unknown",
+    analyzed_at: new Date().toISOString(),
+    model_version: "1.0",
+  };
+  await writeJson(metaPath, meta);
+
+  // ==========================================================================
+  // Run gated checks
+  // ==========================================================================
+
+  if (!skipGate) {
+    console.log("Running gated checks...");
+    try {
+      const { preconditions, gates, allPassed, summary } = await runAllChecks(context, report);
+
+      console.log(`\n=== Preconditions: ${preconditions.checks.filter((c) => c.passed).length}/${preconditions.checks.length} passed ===\n`);
+      for (const check of preconditions.checks) {
+        console.log(`[${check.passed ? "PASS" : "FAIL"}] ${check.name}`);
+      }
+
+      console.log(`\n=== Gated Checks: ${gates.summary} ===\n`);
+      for (const result of gates.results) {
+        console.log(`[${result.passed ? "PASS" : "FAIL"}] ${result.name}`);
+      }
+
+      console.log(`\n=== Summary: ${summary} ===\n`);
+
+      for (const result of gates.results) {
+        context.quality_gate[result.id] = result.passed;
+      }
+      await writeJson(contextPath, context);
+    } catch (err) {
+      console.error(`Gated checks failed: ${err.message}\n`);
+    }
+  }
+
+  console.log(`\n=== Analysis complete ===`);
+  console.log(`Report: ${reportPath}`);
+  console.log(`Context: ${contextPath}`);
+  console.log(`Model: ${modelPath}\n`);
 }
 
 main().catch((err) => {

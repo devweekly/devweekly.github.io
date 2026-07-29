@@ -5,235 +5,100 @@
   "purpose": "Discovery",
   "questions": [
     {
-      "id": "R1-R2-Q1",
-      "question": "How does the 4-layer cache hierarchy (in-memory → Redis → R2 bootstrap → CDN) coordinate TTLs and invalidation when a single data domain has per-RPC cache tiers (e.g., aviation: fast/static/no-store) AND a pre-computed bootstrap tier (fast/slow with 15/60 min TTLs) AND CDN edge headers — are there freshness inversion scenarios where a stale bootstrap tier shadows newer per-RPC data?",
+      "id": "R1-1",
+      "question": "The repo exposes 30+ domain-specific API modules (aviation, climate, conflict, displacement, health) under a single `api/` tree with no visible version prefix in directory naming. How does the system handle API versioning across domains with vastly different stability guarantees — are they versioned uniformly, per-domain, or not at all, and what drives that choice?",
       "genesis": {
         "trigger": "observation",
-        "observation": "ARCHITECTURE.md defines a 4-layer cache hierarchy (in-memory → Redis → Upstream) and six cache tiers (fast/medium/slow/static/daily/no-store at 300s-86400s s-maxage) plus a separate bootstrap tier with fast(15min)/slow(60min) R2 TTLs and CDN-Cache-Control headers separate from Cache-Control — no documented invalidation protocol across these layers",
-        "depth_level": 3
-      },
-      "type": "challenge",
-      "status": "open",
-      "derived_from": [],
-      "related_evidence": [
-        "server/gateway.ts:142-165",
-        "api/_bootstrap-r2.js:5-8",
-        "ARCHITECTURE.md §4 Cache Tiers",
-        "ARCHITECTURE.md §9 Caching Architecture"
-      ],
-      "counterevidence": [],
-      "alternatives_considered": [
-        "Unified cache-coherence protocol",
-        "Single-tier Redis-only strategy"
-      ],
-      "confidence": "low",
-      "answer_summary": "",
-      "superseded_by": ""
-    },
-    {
-      "id": "R1-R2-Q2",
-      "question": "Why do 80+ Edge Functions use plain JS (no build step, self-contained per file) while server/ code is TypeScript bundled via esbuild at deploy time — does this dual-runtime split (JS entry points bundling TS server libs) create a cognitive maintenance burden where developers must mentally track what runs in the V8 Edge isolate vs the bundled server context, especially given the shared _*.js helpers that are imported by both?",
-      "genesis": {
-        "trigger": "observation",
-        "observation": "AGENTS.md states api/*.js are self-contained JS that CANNOT import from ../src/ or ../server/, but server/gateway.ts is bundled INTO Edge Functions at deploy time via esbuild — the actual boundary is not source-level isolation but build-time bundling, creating a confusing dual-runtime mental model",
-        "depth_level": 2
-      },
-      "type": "critical",
-      "status": "open",
-      "derived_from": [],
-      "related_evidence": [
-        "AGENTS.md §API Layer Constraints",
-        "ARCHITECTURE.md §4 Edge Functions",
-        "server/gateway.ts:1-10",
-        "tests/edge-functions.test.mjs"
-      ],
-      "counterevidence": [],
-      "alternatives_considered": [
-        "Single TypeScript codebase with unified build",
-        "Pure server-side API with no Edge Functions",
-        "tRPC or Hono for unified runtime"
-      ],
-      "confidence": "low",
-      "answer_summary": "",
-      "superseded_by": ""
-    },
-    {
-      "id": "R1-R2-Q3",
-      "question": "The sebuf proto→code generation pipeline (proto/ → buf generate → src/generated/{client,server}/) produces both TypeScript stubs for the browser AND per-service OpenAPI specs, but 8 operational endpoints (auth, MCP, bootstrap, health, etc.) explicitly opt out of the contract system via api-route-exceptions.json — what drives the decision to exclude these endpoints from the proto contract, and how does the team prevent contract drift between proto-defined gateways and hand-written operational endpoints given that lint:api-contract only enforces the presence of generated routes?",
-      "genesis": {
-        "trigger": "observation",
-        "observation": "ARCHITECTURE.md states domain intelligence gateways are generated from proto contracts, but operational endpoints like auth/session, MCP, bootstrap/health, notifications are 'hand-written for concerns that don't fit the contract model' — the boundary between contract-covered and contract-exempt is architectural but the rationale for each exclusion is undocumented",
-        "depth_level": 2
-      },
-      "type": "design_space",
-      "status": "open",
-      "derived_from": [
-        "R1-Q1"
-      ],
-      "related_evidence": [
-        "ARCHITECTURE.md §4 Edge Functions",
-        "ARCHITECTURE.md §5 Proto/RPC Contract System",
-        "api/api-route-exceptions.json",
-        "Makefile",
-        "package.json: lint:api-contract"
-      ],
-      "counterevidence": [],
-      "alternatives_considered": [
-        "Extend sebuf to cover all endpoints",
-        "Unified OpenAPI-first spec",
-        "gRPC-transcoding for operational endpoints"
-      ],
-      "confidence": "low",
-      "answer_summary": "",
-      "superseded_by": ""
-    },
-    {
-      "id": "R1-R2-Q4",
-      "question": "The system deploys two independent circuit breaker mechanisms — per-domain client-side CircuitBreaker in src/utils/circuit-breaker.ts (maxFailures=2, cooldown=5min, persistCache with 24h stale ceiling) AND server-side idempotency in api/_idempotency.js (SHA-256 request hash, 180s processing marker, 24h completed-response cache) plus a Redis-outage degraded mode for rate limiting — yet there is no evidence of cascading-failure isolation between domains (one broken upstream taking down all 35+ domains) or a bulkhead pattern at the gateway level. How does the system prevent a single failing upstream from degrading the entire multi-domain API surface?",
-      "genesis": {
-        "trigger": "observation",
-        "observation": "CLIENT: 40+ per-domain circuit breakers with independent state (src/services/*). SERVER: idempotency layer with processing marker TTL=180s + completed response TTL=24h (api/_idempotency.js). RATE-LIMIT: degraded mode on Redis outage (ARCHITECTURE.md §8). NO gateway-level bulkhead: createDomainGateway serves ALL domains from shared pipeline — a single upstream timeout could block the entire gateway worker",
-        "depth_level": 3
-      },
-      "type": "challenge",
-      "status": "open",
-      "derived_from": [
-        "R1-Q8"
-      ],
-      "related_evidence": [
-        "src/utils/circuit-breaker.ts:41-44",
-        "api/_idempotency.js:7-9",
-        "server/gateway.ts:682-684",
-        "ARCHITECTURE.md §8 Rate Limiting",
-        "ARCHITECTURE.md §10 Testing"
-      ],
-      "counterevidence": [],
-      "alternatives_considered": [
-        "Per-domain gateway instances",
-        "Bulkhead pattern with separate worker pools",
-        "Resilience4j-style circuit breaker + bulkhead combo"
-      ],
-      "confidence": "low",
-      "answer_summary": "",
-      "superseded_by": ""
-    },
-    {
-      "id": "R1-R2-Q5",
-      "question": "The variant system (full/tech/finance/commodity/happy/energy) uses hostname-based detection (tech.worldmonitor.app → tech) plus localStorage override and controls panel config, map layers, refresh intervals, theme, and UI text — but the 35+ domain API endpoints are identical across all variants, meaning a tech.worldmonitor.app user pays the cold-start cost for aviation/conflict/climate handlers they never consume. Why was the variant boundary drawn at the SPA level rather than also filtering the API surface (e.g., deploying variant-specific Edge Function bundles that exclude irrelevant domains)?",
-      "genesis": {
-        "trigger": "observation",
-        "observation": "Variant detection in src/config/variant.ts is purely client-side hostname routing; all 80+ Edge Functions deploy identically regardless of variant — a tech variant user's browser calls the same /api/aviation/v1 endpoints as a full variant user, just doesn't render the panel. The architectural variant boundary stopped at the UI layer",
+        "observation": "30+ API subdirectories including aviation, climate, conflict, displacement, health under flat `api/` tree with no version prefixes",
         "depth_level": 3
       },
       "type": "critical",
       "status": "open",
-      "derived_from": [],
-      "related_evidence": [
-        "src/config/variant.ts:17-41",
-        "ARCHITECTURE.md §3 Variant System",
-        "package.json: dev:tech, build:tech",
-        "vercel.json"
-      ],
-      "counterevidence": [],
-      "alternatives_considered": [
-        "Variant-specific Edge Function bundles",
-        "Per-variant API gateway with domain whitelist",
-        "Separate Vercel projects per variant"
-      ],
-      "confidence": "low",
-      "answer_summary": "",
-      "superseded_by": ""
+      "confidence": "medium"
     },
     {
-      "id": "R1-R2-Q6",
-      "question": "The cross-domain intelligence pipeline (MCP tool registry, A2A endpoint, NLWeb /ask, tool suggestion engine) uses token-overlap scoring (name=3pts, description=1pt, top-5 suggestions) — a purely lexical matching algorithm — to route queries across 35+ domains. Given that ONNX ML models (MiniLM-L6 embeddings, sentiment, NER) already run client-side in Web Workers for headline clustering and correlation detection, why isn't semantic similarity used for tool suggestion instead of token-overlap? Is the lexical approach a deliberate constraint (cold-start bound on Edge Functions, latency budget) or an evolutionary gap?",
+      "id": "R1-2",
+      "question": "Given the multi-domain data pipeline (aviation flight data, climate models, conflict intelligence, economic indicators, consumer prices, humanitarian displacement), what is the data ingestion architecture? Are domains served by a unified pipeline with domain-specific extractors, or are there independent per-domain ingestion stacks, and what are the reliability guarantees (backfill, retry, exactly-once semantics)?",
       "genesis": {
-        "trigger": "contradiction",
-        "observation": "ONNX ML pipeline already exists client-side (src/workers/ml.worker.ts: MiniLM-L6 embeddings, vector store, semantic search) but the MCP tool suggestion engine (api/_agent-tool-suggest.ts) uses simple token-overlap scoring — the same repo has both semantic and lexical routing but they are not connected",
+        "trigger": "observation",
+        "observation": "Diverse data domains (aviation, climate, conflict, economic, displacement, consumer-prices) imply heterogeneous data sources and ingestion pipelines",
         "depth_level": 3
       },
       "type": "design_space",
       "status": "open",
-      "derived_from": [
-        "R1-Q4",
-        "R1-Q10"
-      ],
-      "related_evidence": [
-        "ARCHITECTURE.md §3 Web Workers",
-        "repository-model.json: control_flow MCP/A2A tool suggestion",
-        "api/_agent-tool-suggest.ts",
-        "src/workers/ml.worker.ts"
-      ],
-      "counterevidence": [],
-      "alternatives_considered": [
-        "Unified semantic router using existing ONNX models",
-        "Hybrid lexical+semantic scoring",
-        "LLM-based tool selection bypassing scoring"
-      ],
-      "confidence": "low",
-      "answer_summary": "",
-      "superseded_by": ""
+      "confidence": "medium"
     },
     {
-      "id": "R1-R2-Q7",
-      "question": "The multi-language SDK strategy (Go/Python/Ruby/CLI via worldmonitor npm package) relies on hand-written SDKs per language plus sebuf-generated OpenAPI specs — but proto-check.yml only verifies TypeScript generated code freshness. Given that proto definitions evolve across 35+ domains, how are the Go/Python/Ruby SDKs kept in sync with the proto contract, and what is the measured gap between a proto change and SDK release across all 4 target languages?",
+      "id": "R1-3",
+      "question": "The `api/discord` and `api/internal` directories suggest both public-facing and private/internal API surfaces coexist. Is there a unified API gateway that handles auth routing (OAuth for external, MCP for privileged, SSRF protections), or are these on separate infrastructure? What is the auth middleware architecture across the 30+ domains?",
       "genesis": {
         "trigger": "observation",
-        "observation": "proto/ defines 35+ service contracts → buf generate → TypeScript stubs + OpenAPI specs. CI checks only TS freshness (proto-check.yml). 3 non-TypeScript SDKs (sdk/go/, sdk/python/, sdk/ruby/) and the npm CLI (cli/) exist but have no documented contract-freshness CI",
+        "observation": "Presence of api/discord (public), api/internal (private), and MCP/SSRF/OAuth auth mechanisms implies multiple auth surfaces",
+        "depth_level": 3
+      },
+      "type": "critical",
+      "status": "open",
+      "confidence": "medium"
+    },
+    {
+      "id": "R1-4",
+      "question": "Several domains are inherently geospatial (climate, displacement, conflict, aviation) and temporal (forecast, economic indicators, historical consumer-prices). How does the system model geospatial+temporal data — is there a shared geometry/time-index layer (e.g., H3 + temporal partitions), or does each domain define its own schemas, and what drove that decision?",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "Climate, displacement, conflict, aviation, forecast, economic domains all involve geospatial and temporal dimensions",
+        "depth_level": 3
+      },
+      "type": "design_space",
+      "status": "open",
+      "confidence": "medium"
+    },
+    {
+      "id": "R1-5",
+      "question": "With 30+ API domains, there is likely an SDK/client generation strategy. Is code generation driven by an API specification (OpenAPI v3+), or are SDKs hand-written per domain? What is the client ergonomics strategy — do all domains share consistent patterns (pagination, error types, retry, streaming), or is each domain's client bespoke?",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "30+ API modules strongly suggest SDK generation rather than manual clients, but no OpenAPI spec files are visible at top level",
         "depth_level": 2
       },
       "type": "critical",
       "status": "open",
-      "derived_from": [
-        "R1-Q1"
-      ],
-      "related_evidence": [
-        "ARCHITECTURE.md §5 Proto/RPC Contract System",
-        "package.json: proto-check.yml",
-        "sdk/go/",
-        "sdk/python/",
-        "sdk/ruby/",
-        "cli/"
-      ],
-      "counterevidence": [],
-      "alternatives_considered": [
-        "Buf-generated SDKs for all languages",
-        "OpenAPI-codegen per language",
-        "Manual SDK updates tracked by CI",
-        "Proto registry with version constraints"
-      ],
-      "confidence": "low",
-      "answer_summary": "",
-      "superseded_by": ""
+      "confidence": "medium"
     },
     {
-      "id": "R1-R2-Q8",
-      "question": "The gateway factory (server/gateway.ts) is a 10-stage pipeline (origin check → CORS → OPTIONS → API key → rate limit → route match → POST→GET compat → execute → ETag → cache headers) shared across all domain bundles as a ~3KB shared import, but the RPC_CACHE_TIER map (lines 167-383) and the idempotency/entitlement/MCP-internal-HMAC logic add hundreds of lines that every domain bundle pulls in regardless of whether the domain uses those features. Was the single-gateway-factory decision a deliberate tradeoff (single source of truth vs per-domain minimal bundle size) and was the cold-start budget impact of bundling all-domain logic into each of 35+ Edge Functions ever measured?",
+      "id": "R1-6",
+      "question": "Operating 30+ domain APIs implies substantial observability investment. Does the system have unified SLOs, dashboards, and alerting across all domains, or are they managed independently? Are there domain-specific SLOs (e.g., aviation latency vs. climate batch throughput), and how are SLO breaches handled? What is the observability stack (metrics, traces, logs) and instrumentation strategy?",
       "genesis": {
-        "trigger": "challenge",
-        "observation": "gateway.ts is 1092+ lines with the comment 'This map is shared across all domain bundles (~3KB)' but the actual gateway.ts includes idempotency checks, MCP internal HMAC, entitlements, usage telemetry, direct LLM quota, bbox validation — all of which are bundled into every domain's Edge Function even for domains that don't use those features",
-        "depth_level": 3
+        "trigger": "observation",
+        "observation": "30+ domains with varied latency requirements (aviation real-time vs. batch climate data) implies non-trivial observability needs",
+        "depth_level": 2
       },
       "type": "challenge",
       "status": "open",
-      "derived_from": [
-        "R1-Q2"
-      ],
-      "related_evidence": [
-        "server/gateway.ts:128-130",
-        "ARCHITECTURE.md §4 Gateway Factory",
-        "tests/edge-functions.test.mjs",
-        "server/gateway.ts:682-684"
-      ],
-      "counterevidence": [],
-      "alternatives_considered": [
-        "Per-domain gateways with selective feature imports",
-        "Dynamic feature loading at request time",
-        "Shared library via Vercel Lambda Layers or ESM module graph"
-      ],
-      "confidence": "low",
-      "answer_summary": "",
-      "superseded_by": ""
+      "confidence": "medium"
+    },
+    {
+      "id": "R1-7",
+      "question": "The system is deployed across multiple regions with edge compute. What is the deployment topology — are all 30+ domains deployed to every region, or is there region-specific domain routing (e.g., climate APIs co-located with data sources, aviation near airports)? What is the data replication strategy between regions, and how does the system handle regional outages without cross-domain cascading failures?",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "Multi-region deployment with edge compute and 30+ domains suggests complex topology decisions",
+        "depth_level": 3
+      },
+      "type": "design_space",
+      "status": "open",
+      "confidence": "medium"
+    },
+    {
+      "id": "R1-8",
+      "question": "The presence of api/batch alongside real-time API modules suggests a hybrid processing model. Which domains use batch vs. real-time, and what drives the choice (data freshness requirements, source system constraints, cost)? Is there a unified batch orchestration framework, or is batch implemented independently per domain? How does the batch pipeline handle backpressure and scheduling across 30+ domains sharing compute resources?",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "api/batch directory exists alongside real-time api modules, suggesting deliberate hybrid processing architecture",
+        "depth_level": 3
+      },
+      "type": "critical",
+      "status": "open",
+      "confidence": "medium"
     }
   ]
 }
