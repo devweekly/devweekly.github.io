@@ -474,9 +474,10 @@ flowchart TD
 
 ### 输出
 
-1. 报告写入 `report.md`
+1. **报告必须写入工作目录的 `report.md` 文件** — 禁止只在对话中输出而不落盘。报告生成后，必须使用文件写入工具将完整内容保存到 `.working/{repo-name}/report.md`。
 2. `context.resume.last_completed_stage` = "Stage 5"
 3. `context.resume.next_stage` = "done"
+4. 更新 `meta.json` 的 `analyzed_at` 时间戳
 
 ---
 
