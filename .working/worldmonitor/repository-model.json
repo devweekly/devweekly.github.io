@@ -1,78 +1,323 @@
 {
-  "model_version": "1.0",
-  "repo_path": "ref-only/worldmonitor",
-  "repo_type": "实时全球情报仪表板（Web SPA + 桌面端 + Edge API）",
-  "last_analyzed_commit": "b6c7268fb",
-  "analyzed_at": "2026-07-29",
-  "dimensions": {
-    "structure": {
-      "modules": [
-        { "name": "src/", "role": "浏览器 SPA 前端", "language": "TypeScript", "key_files": ["src/App.ts", "src/main.ts"] },
-        { "name": "api/", "role": "Vercel Edge Functions（81 个端点）", "language": "JavaScript", "key_files": ["api/bootstrap.js", "api/health.js"] },
-        { "name": "server/", "role": "服务端共享代码（打包到 Edge Function）", "language": "TypeScript", "key_files": ["server/gateway.ts", "server/worldmonitor/"] },
-        { "name": "src/components/", "role": "163 个 Panel 组件类", "language": "TypeScript", "base_class": "src/components/Panel.ts" },
-        { "name": "src/config/", "role": "变体/面板/图层/市场配置", "language": "TypeScript" },
-        { "name": "src/services/", "role": "201 个业务逻辑模块", "language": "TypeScript" },
-        { "name": "src/workers/", "role": "Web Workers（ML/分析/向量）", "language": "TypeScript" },
-        { "name": "src/utils/", "role": "跨切面工具函数", "language": "TypeScript" },
-        { "name": "src-tauri/", "role": "Tauri 桌面外壳（Rust + Node.js sidecar）", "language": "Rust/JavaScript" },
-        { "name": "proto/", "role": "Protocol Buffers 定义（281 protos, 35 服务）", "language": "Protobuf" },
-        { "name": "scripts/", "role": "种子脚本/构建辅助/中继服务", "language": "JavaScript" },
-        { "name": "tests/", "role": "单元/集成测试", "language": "TypeScript" },
-        { "name": "e2e/", "role": "Playwright E2E 测试", "language": "TypeScript" },
-        { "name": "shared/", "role": "跨平台 JSON 配置", "language": "JSON" }
-      ],
-      "dependency_direction": "types → config → services → components → app → App.ts"
-    },
-    "behavior": {
-      "initialization_phases": [
-        "Storage + i18n: IndexedDB, 语言检测, 区域加载",
-        "ML Worker: ONNX 模型准备（嵌入/情感/摘要）",
-        "Sidecar: 等待桌面 sidecar 就绪（仅桌面端）",
-        "Bootstrap: 双层并发 hydration（fast 3s + slow 5s 超时）",
-        "Layout: PanelLayoutManager 渲染地图和面板",
-        "UI: SignalModal, IntelligenceGapBadge, BreakingNewsBanner",
-        "Data: 并行 loadAllData() + 视口条件 primeVisiblePanelData()",
-        "Refresh: 变体特定轮询间隔 startSmartPollLoop()"
-      ],
-      "data_flow": "上游 65+ 数据源 → Railway 种子脚本/中继 → Redis（Upstash）→ Vercel Edge Functions → 浏览器 SPA",
-      "refresh_model": "startSmartPollLoop() 支持指数退避（最大 4x）、视口条件刷新、标签页暂停、可见性交错刷新"
-    },
-    "ownership": {
-      "state_model": "AppContext 中央可变对象（无外部状态库）",
-      "api_gateway": "server/gateway.ts: createDomainGateway() — 10 阶段流水线（Origin → CORS → OPTIONS → API Key → Rate Limit → Route → POST→GET → Handler → ETag → Cache）",
-      "rpc_contract": "sebuf Protobuf 框架：proto/ → buf generate → src/generated/{client,server}/ → docs/api/ OpenAPI"
-    },
-    "extension": {
-      "panel_system": "Panel 基类（105+ 子类），通过事件委托 + setContent(html) 渲染，支持行/列跨度持久化",
-      "variant_system": "6 个站点变体（full/tech/finance/commodity/happy/energy），通过 VITE_VARIANT 环境变量或 hostname 检测",
-      "desktop_extension": "Tauri 2.x + Node.js sidecar，动态加载 api/ 中 Edge Function 处理器",
-      "mcp_integration": "RegisterWebMcpTools() + WebMCP AbortController 管理，支持 AI Agent 工具注册"
-    },
-    "evolution": {
-      "major_events": [
-        "从单一 Web 应用演进为 6 变体架构",
-        "引入 sebuf Protobuf 合约系统替代手写 API",
-        "从纯 Web 扩展到 Tauri 桌面端 + Node.js sidecar",
-        "引入本地 AI/ML 能力（浏览器端 ONNX/Transformers.js）"
-      ]
-    }
-  },
-  "architecture_patterns": {
-    "primary": "事件驱动 + 网关代理（Event-Driven + Gateway Proxy）",
-    "key_decisions": [
-      "无外部状态库，使用 AppContext 中央可变对象",
-      "Edge Function 按域拆分（~20× 冷启动减少）",
-      "Redis 四层缓存（Bootstrap → Memory → Redis → Upstream）",
-      "种子脚本使用 atomicPublish()（Redis SET NX 锁）",
-      "桌面端 fetch 打补丁（/api/* → sidecar 代理）",
-      "Proto 优先的 API 合约设计"
+  "structure": {
+    "modules": [
+      {
+        "name": "Browser SPA",
+        "path": "src/",
+        "description": "Preact SPA with 163+ class-based components. Deck.gl/globe.gl maps, panel grid layout, Web Workers for ML/ONNX/vector search. App orchestration via data-loader + refresh-scheduler."
+      },
+      {
+        "name": "Vercel Edge Functions",
+        "path": "api/",
+        "description": "80+ edge endpoints. Plain JS (no build step), self-contained per domain. Shared helpers for CORS, rate-limit, API key validation, session tokens, HMAC grants, idempotency, bootstrap hydration."
+      },
+      {
+        "name": "Server Shared Libraries",
+        "path": "server/",
+        "description": "Server-side code consumed by Edge Functions. Redis client, rate-limit engine, LLM integration, response caching, gateway factory (CORS + auth + cache tiers per domain), route matching."
+      },
+      {
+        "name": "Protobuf Contracts",
+        "path": "proto/",
+        "description": "Service definitions with HTTP annotations under sebuf framework. Managed by Buf. Generated client/server stubs in src/generated/. 35+ domain APIs."
+      },
+      {
+        "name": "Cross-Platform Data",
+        "path": "shared/",
+        "description": "JSON configs shared across platforms: market symbols, RSS domain lists, bootstrap tier cache keys. Authored source for api/_bootstrap-tier-keys.js."
+      },
+      {
+        "name": "API Gateway",
+        "path": "server/gateway.ts",
+        "description": "Domain gateway factory producing per-domain handler chains: CORS origin validation → API key / session / HMAC auth → rate limit → handler → response. Replaces per-endpoint boilerplate."
+      },
+      {
+        "name": "MCP Tool Registry",
+        "path": "api/mcp/",
+        "description": "MCP server endpoints and tool registry. A2A endpoint, NLWeb /ask endpoint, tool suggestion engine (token-overlap scoring). Concierge routing for agent consumption."
+      },
+      {
+        "name": "Desktop Shell",
+        "path": "src-tauri/",
+        "description": "Tauri desktop app. WebView + Node.js sidecar process. Desktop-specific auth flows (tauri://localhost origins). Version synced via scripts."
+      },
+      {
+        "name": "Bootstrap Hydration Pipeline",
+        "path": "api/_bootstrap*.js / api/bootstrap.js",
+        "description": "Multi-tier bulk data hydration. Fast (15min TTL) and slow (60min TTL) tiers. R2-staged pre-computed payloads with S3-compatible access via aws4fetch. Cache-key registry synchronized from shared/."
+      },
+      {
+        "name": "Auth & Identity Layer",
+        "path": "api/_api-key.js, api/_session.js, api/_mcp-grant-hmac.ts, api/_crypto.js",
+        "description": "Multi-mechanism auth: HMAC-signed session tokens (wms_ prefix), enterprise API keys, HMAC grant tokens for cross-subdomain OAuth flow, PKCE S256 verification. Desktop origins recognized via allowlist."
+      },
+      {
+        "name": "Idempotency Layer",
+        "path": "api/_idempotency.js",
+        "description": "Standalone idempotency via Redis. SHA-256 request hash keyed on (pathname + scope + idempotency-key). Processing marker prevents double-execution; completed responses cached up to 24h. Replay detection for safe retry."
+      },
+      {
+        "name": "Rate Limiting",
+        "path": "server/_shared/rate-limit.ts, api/_client-ip.js",
+        "description": "Sliding-window rate limit via Upstash Redis. Cloudflare edge-proof header (x-wm-edge-proof) prevents IP spoofing. Degraded mode (X-RateLimit-Mode: degraded) on Redis outage. IETF RateLimit headers exposed cross-origin."
+      },
+      {
+        "name": "Security & Compliance Scripts",
+        "path": "scripts/",
+        "description": "Lint/audit scripts: API contract enforcement, rate-limit policy checks, premium-fetch gating, safe-HTML, unicode safety, local-secret-dump detection, Vite env secret checks, Mintlify reserved slug enforcement."
+      },
+      {
+        "name": "CI/CD & Ops",
+        "path": ".github/workflows/",
+        "description": "CI pipeline includes lint (biome + 10 custom checks), docs:check (capability counts derived from code), version:check (desktop version sync), sync:locales, sync:bootstrap-tier-keys."
+      }
     ],
-    "key_constraints": [
-      "ai/*.js 是自包含的 Vercel Edge Function，不能 import ../src/ 或 ../server/",
-      "package.json 和 tsconfig 变更触发全量 pre-push 检查",
-      "Edge Function 不能使用 node:http, node:https, node:zlib"
+    "boundaries": [
+      {
+        "from": "Browser SPA",
+        "to": "Vercel Edge Functions",
+        "direction": "双向"
+      },
+      {
+        "from": "Vercel Edge Functions",
+        "to": "Server Shared Libraries",
+        "direction": "单向"
+      },
+      {
+        "from": "Vercel Edge Functions",
+        "to": "Bootstrap Hydration Pipeline",
+        "direction": "单向"
+      },
+      {
+        "from": "Protobuf Contracts",
+        "to": "Browser SPA",
+        "direction": "单向"
+      },
+      {
+        "from": "Protobuf Contracts",
+        "to": "Vercel Edge Functions",
+        "direction": "单向"
+      },
+      {
+        "from": "Cross-Platform Data",
+        "to": "Bootstrap Hydration Pipeline",
+        "direction": "单向"
+      },
+      {
+        "from": "Auth & Identity Layer",
+        "to": "Vercel Edge Functions",
+        "direction": "单向"
+      },
+      {
+        "from": "Rate Limiting",
+        "to": "Vercel Edge Functions",
+        "direction": "单向"
+      },
+      {
+        "from": "Idempotency Layer",
+        "to": "Vercel Edge Functions",
+        "direction": "单向"
+      },
+      {
+        "from": "Desktop Shell",
+        "to": "Browser SPA",
+        "direction": "双向"
+      },
+      {
+        "from": "Desktop Shell",
+        "to": "Vercel Edge Functions",
+        "direction": "双向"
+      },
+      {
+        "from": "Browser SPA",
+        "to": "MCP Tool Registry",
+        "direction": "双向"
+      }
     ]
   },
-  "evidence_summary": "已验证的数据管道、变体系统、桌面架构和安全模型。双地图引擎和组件体系通过 ARCHITECTURE.md 和源码双重验证。Protobuf 合约和 AI/ML 能力有明确证据支持。"
+  "behavior": {
+    "control_flow": [
+      "Browser SPA bootstrap: load → variant config → bootstrap tier detection (fast/slow) → fetch /api/bootstrap?tier=X&public=1 → hydrate panels + map",
+      "API request lifecycle: Edge Function entry → getCorsHeaders → getClientIp (CF proof) → rate limit check → validateApiKey (session token / API key / HMAC grant) → domain handler → Redis cache read/write → jsonResponse",
+      "Bootstrap hydration pipeline: scheduled publisher → assemble tier payload from Redis keys (35+ domains) → R2 put (pre-computed JSON) → Edge Function /api/bootstrap → R2 get → serve with freshness headers",
+      "MCP/A2A tool suggestion: user query → tokenize (stopword filter, length≥3) → TOOL_REGISTRY overlap scoring (name=3pts, description=1pt) → top-5 ranked suggestions → LLM tool selection",
+      "Idempotent write flow: request with Idempotency-Key → Redis GET (replay? → return cached) → SET processing marker (180s TTL) → execute handler → SET completed response (24h TTL) → respond",
+      "OAuth Pro-MCP flow: U3 consent page → HMAC grant mint (userId+nonce+exp) → redirect to api subdomain → U5 verify grant + Redis one-shot → OAuth authorization code → token exchange",
+      "SSRF protection: allowed origins validation in _cors.js against strict allowlist (worldmonitor.app and variants); CF edge-proof header validates request transited Cloudflare before trusting cf-connecting-ip",
+      "Worker-based analysis: src/workers/ (ML/ONNX inference, vector DB queries) runs off-main-thread; results merged into panel state via postMessage"
+    ],
+    "data_flow": [
+      "Upstream → Edge Function → Upstash Redis → Browser SPA: 35+ source groups (Finnhub, OpenSky, ACLED, GDELT, etc.) fetched by Edge Functions, cached in Redis with per-key TTL, served to browser via REST endpoints",
+      "Redis → R2 → Edge Function → Browser: bootstrap tier flow. Publisher aggregates 35+ Redis cache keys into single pre-computed JSON, stages to R2. Browser GET /api/bootstrap fetches from R2, bypassing Redis fan-out",
+      "Bidirectional JSON-RPC via /api/a2a and /api/ask: agent sends structured query → concierge routes to MCP tools → tool response → formatted response. Uses SSE streaming via Last-Event-ID",
+      "Session token flow: client POST to /api/wm-session → server HMAC-SHA-256 signs {userId, exp} → returns wms_-prefixed token → client sets Cookie → subsequent requests carry cookie for auth",
+      "Desktop sidecar IPC: Tauri WebView ↔ Node.js sidecar (child-process shim in src/shims/). Sidecar handles CORS-localhost proxy, desktop-specific API key management, file system access",
+      "Variant config flow: VITE_VARIANT env var → src/config/variant/ loads domain-specific panel/layer configs → UI renders variant-specific map layers and panel grid",
+      "Locales pipeline: src/locales/ (i18n JSON) → scripts/sync-locale-keys.mjs enforces key completeness across locales → loaded at runtime by SPA"
+    ]
+  },
+  "ownership": {
+    "state": [
+      {
+        "name": "Client-side panel/map state",
+        "owner": "Browser SPA (src/app/, preact state)"
+      },
+      {
+        "name": "Upstream data cache",
+        "owner": "Upstash Redis (server/_shared/redis.ts)"
+      },
+      {
+        "name": "Bootstrap pre-computed payloads",
+        "owner": "Cloudflare R2 (api/_bootstrap-r2.js)"
+      },
+      {
+        "name": "Rate limit sliding windows",
+        "owner": "Upstash Redis (server/_shared/rate-limit.ts)"
+      },
+      {
+        "name": "Idempotency locks + cached responses",
+        "owner": "Upstash Redis (api/_idempotency.js)"
+      },
+      {
+        "name": "MCP grant one-shot nonces",
+        "owner": "Upstash Redis (api/_mcp-grant-hmac.ts)"
+      },
+      {
+        "name": "Web Worker analysis results",
+        "owner": "Browser SPA (src/workers/)"
+      },
+      {
+        "name": "Session tokens (stateless HMAC)",
+        "owner": "Auth & Identity Layer (api/_session.js)"
+      },
+      {
+        "name": "User preferences",
+        "owner": "Convex (api/_convex-error.js, /api/user-prefs)"
+      },
+      {
+        "name": "Desktop version + sidecar state",
+        "owner": "Desktop Shell (src-tauri/ + scripts/sync-desktop-version.mjs)"
+      }
+    ],
+    "responsibility": [
+      {
+        "name": "Static file serving + edge API",
+        "owner": "Vercel Edge Functions"
+      },
+      {
+        "name": "CORS preflight + origin validation",
+        "owner": "API Gateway (server/gateway.ts + api/_cors.js)"
+      },
+      {
+        "name": "Rate limiting + IP provenance",
+        "owner": "Rate Limiting (server/_shared/rate-limit.ts + api/_client-ip.js)"
+      },
+      {
+        "name": "Multi-mechanism auth",
+        "owner": "Auth & Identity Layer"
+      },
+      {
+        "name": "Idempotency guarantee",
+        "owner": "Idempotency Layer"
+      },
+      {
+        "name": "Bulk data hydration",
+        "owner": "Bootstrap Hydration Pipeline"
+      },
+      {
+        "name": "UI rendering + user interaction",
+        "owner": "Browser SPA"
+      },
+      {
+        "name": "Map rendering (deck.gl/globe.gl)",
+        "owner": "Browser SPA (src/components/)"
+      },
+      {
+        "name": "Heavy computation (ML/vector)",
+        "owner": "Web Workers (src/workers/)"
+      },
+      {
+        "name": "API contract enforcement",
+        "owner": "scripts/enforce-sebuf-api-contract.mjs"
+      },
+      {
+        "name": "Variant configuration management",
+        "owner": "src/config/ (per-variant panel/layer defs)"
+      },
+      {
+        "name": "Desktop-specific features",
+        "owner": "Tauri Desktop Shell"
+      },
+      {
+        "name": "Agent readiness + MCP protocol",
+        "owner": "MCP Tool Registry"
+      },
+      {
+        "name": "Security audit (secrets, HTML, unicode)",
+        "owner": "scripts/ (13 lint/security scripts)"
+      }
+    ]
+  },
+  "extension": {
+    "plugin_points": [
+      "Variant system: VITE_VARIANT env var (full/tech/finance/commodity/happy/energy) selects per-variant panel/layer/config from src/config/ — no code fork needed per deployment"
+    ],
+    "public_api": [
+      "REST API via Vercel Edge Functions: 35+ domain-specific endpoints under api/<domain>/ with protobuf-contract validation",
+      "Bootstrap hydration endpoint: GET /api/bootstrap?tier=fast|slow&public=1 — pre-computed bulk data payload from R2",
+      "MCP server at /api/mcp/ — tool listing + invocation via JSON-RPC over HTTP with SSE streaming",
+      "A2A endpoint at /api/a2a — agent-to-agent communication with tool suggestion + concierge routing",
+      "NLWeb /ask endpoint at /api/ask — natural language query interface using same tool suggestion engine",
+      "OAuth endpoints: /api/oauth/authorize-pro (Pro MCP grant), /api/oauth/protected-resource (RFC 9728 metadata), /api/oauth/authorization-server (RFC 8414 metadata)",
+      "Health check: GET /api/health — availability probe for monitoring",
+      "npm package (worldmonitor) — programmatic SDK/CLI for non-browser consumers",
+      "Embeddable widget: src/embed/ — lightweight loader for embedding panels in third-party sites",
+      "Documentation + discovery: /.well-known/agent-skills/index.json (agent skills), /.well-known/api-catalog (RFC 9727 API catalog), /docs/ (Mintlify documentation)"
+    ]
+  },
+  "evolution": {
+    "major_changes": [
+      {
+        "change": "CORS security hardening (#3541, #3554): removed trust of client-controlled headers (Origin/Referer/Sec-Fetch-Site) for auth bypass. All browser requests now require explicit session token or API key.",
+        "impact": "Breaking change for header-only trust path; eliminated IP-spoofing vector for rate-limit bypass"
+      },
+      {
+        "change": "Bootstrap pipeline: from Redis fan-out per-key fetch to pre-computed R2 staged payloads with fast/slow tier isolation",
+        "impact": "Reduced bootstrap latency from N Redis round-trips to single R2 GET; enabled freshness-tier separation (15min vs 60min)"
+      },
+      {
+        "change": "CORS preflight from Vercel afterFiles rewrite to filesystem catch-all (api/[...notfound].ts): fixed dynamic [rpc].ts gateway shadow bug (#4698, #4724)",
+        "impact": "All 35+ versioned REST gateways became reachable; eliminated silent 404 on dynamic routes"
+      },
+      {
+        "change": "MCP protocol integration: added A2A endpoint, tool registry, NLWeb ask endpoint, OAuth Pro grant flow, HMAC cross-subdomain grant tokens",
+        "impact": "Enabled AI agent consumption; added OAuth-based pro subscription gating for agent access"
+      },
+      {
+        "change": "Variant deployment system: introduced tech/finance/commodity/happy/energy variants as compile-time VITE_VARIANT selections",
+        "impact": "Single codebase deploys 6 independent branded apps with per-variant panel/layer configs; zero fork maintenance"
+      },
+      {
+        "change": "Rate limit hardening: added Cloudflare edge-proof header (x-wm-edge-proof) to verify request transited CF before trusting cf-connecting-ip",
+        "impact": "Prevented direct-to-origin IP spoofing for rate-limit bucket rotation; degraded mode on Redis outage"
+      },
+      {
+        "change": "Idempotency layer: Redis-backed standalone idempotency for write endpoints using SHA-256 request hash + processing marker",
+        "impact": "Safe retry on network errors without double-execution; 24h response caching for replay"
+      },
+      {
+        "change": "From monolithic Edge Functions to domain gateway factory pattern (server/gateway.ts)",
+        "impact": "Eliminated per-endpoint boilerplate; centralized CORS/auth/cache-tier configuration"
+      },
+      {
+        "change": "Desktop support: Tauri with Node.js sidecar, version sync scripts, desktop-specific auth origins (tauri://localhost)",
+        "impact": "Added native desktop distribution alongside web SPA; shared auth layer extended to desktop CORS patterns"
+      },
+      {
+        "change": "Protobuf-first API contracts: sebuf framework with Buf-managed proto definitions and generated stubs",
+        "impact": "Enforced API contract between server and client; auto-generated types from proto definitions"
+      }
+    ],
+    "current_direction": "Knowledge-centric intelligence platform: expanding from passive dashboard to proactive agent-accessible system. Key vectors include MCP/A2A protocol surface for AI consumption, multi-platform delivery (web/desktop/SDK/CLI/embeds), pre-computed bootstrap payloads for instant hydration, and increasingly automated security posture (custom lint scripts for API contract, rate-limit policy, premium gating, secret detection). Variant system enables domain-specialized deployments from a single codebase without fork overhead."
+  }
 }

@@ -1,0 +1,267 @@
+{
+  "round": 1,
+  "generated_from": [],
+  "trigger": "Repository type identification",
+  "purpose": "Discovery",
+  "questions": [
+    {
+      "id": "R1-1",
+      "question": "35+ domain API 目录按领域垂直分割（aviation/climate/cyber/economic 等），每个领域下独立 v1 子目录——这套命名空间的职责边界如何定义？是否存在跨领域共享的类型或逻辑？",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "api/ 下有 aviation/climate/cyber/economic 等 35+ 领域子目录，每个目录下有 protobuf contracts 和独立 v1/ 版本路径",
+        "depth_level": 1
+      },
+      "type": "discovery",
+      "status": "open",
+      "confidence": "high",
+      "answer_summary": "",
+      "related_evidence": [
+        "api/ 目录结构",
+        "ARCHITECTURE.md"
+      ],
+      "counterevidence": [],
+      "alternatives_considered": [
+        "monorepo 统一 API 网关 vs 垂直领域包"
+      ],
+      "model_implication": "领域垂直分割是核心架构决策，影响代码组织、部署单元和团队协作边界",
+      "derived_from": []
+    },
+    {
+      "id": "R1-2",
+      "question": "web SPA + Desktop Tauri + SDKs + CLI 四条交付渠道共享同一套 protobuf contracts——是代码生成统一 SDK，还是各自维护 binding？",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "仓库同时面向 Web SPA、Desktop Tauri、SDK 和 CLI 四种平台，且 api/ 目录以 protobuf contracts 为中心",
+        "depth_level": 1
+      },
+      "type": "discovery",
+      "status": "open",
+      "confidence": "high",
+      "answer_summary": "",
+      "related_evidence": [
+        "api/aviation/v1/ 等 protobuf 目录",
+        "Dockerfile",
+        "ARCHITECTURE.md"
+      ],
+      "counterevidence": [],
+      "alternatives_considered": [
+        "平台独立接口 vs 统一 proto 代码生成"
+      ],
+      "model_implication": "proto-first 策略决定跨平台一致性和发布节奏耦合度",
+      "derived_from": []
+    },
+    {
+      "id": "R1-3",
+      "question": "为什么选择 protobuf 作为 API 契约语言而非 OpenAPI/GraphQL？35+ 领域 API 的版本兼容策略是 protobuf wire-compatible 升级还是 breaking change 时另起 v2？",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "35+ 领域 API 统一使用 protobuf contracts 且目录标记 v1，暗示版本化管理",
+        "depth_level": 2
+      },
+      "type": "critical",
+      "status": "open",
+      "confidence": "medium",
+      "answer_summary": "",
+      "related_evidence": [
+        "api/*/v1/ 目录结构",
+        "Makefile",
+        "ARCHITECTURE.md"
+      ],
+      "counterevidence": [],
+      "alternatives_considered": [
+        "OpenAPI 生态更成熟",
+        "GraphQL 更适合多前端场景"
+      ],
+      "model_implication": "API 契约选择决定整个工具链（代码生成、网关、文档）和团队技能要求",
+      "derived_from": []
+    },
+    {
+      "id": "R1-4",
+      "question": "35+ 垂直领域 API 如果共用一套 edge runtime（Vercel Edge Functions），路由和认证是否在统一网关层处理？每个领域是否独立部署？",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "Vercel Edge Functions + Railway services 构成全球 edge 基础设施，api/ 下有 35+ 领域目录",
+        "depth_level": 2
+      },
+      "type": "design_space",
+      "status": "open",
+      "confidence": "medium",
+      "answer_summary": "",
+      "related_evidence": [
+        "ARCHITECTURE.md",
+        "Dockerfile",
+        "api/ 目录结构"
+      ],
+      "counterevidence": [],
+      "alternatives_considered": [
+        "独立领域 service 各自部署 vs 统一网关 + 函数分发"
+      ],
+      "model_implication": "部署拓扑直接影响延迟、独立发布能力和故障隔离边界",
+      "derived_from": [
+        "Q1"
+      ]
+    },
+    {
+      "id": "R1-5",
+      "question": "35 source groups 的数据 pipeline 如何从 bootstrap hydration 进入缓存层级？bootstrap hydration 是一次性全量加载还是按需增量拉取？",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "Dockerfile.publish-bootstrap-tiers 和 Dockerfile.seed-bundle-portwatch-port-activity 暗示复杂的多阶段数据灌入流程，涉及 seed/bundle/digest 三个阶段",
+        "depth_level": 1
+      },
+      "type": "discovery",
+      "status": "open",
+      "confidence": "high",
+      "answer_summary": "",
+      "related_evidence": [
+        "Dockerfile.publish-bootstrap-tiers",
+        "Dockerfile.seed-bundle-portwatch-port-activity",
+        "Dockerfile.seed-bundle-resilience-validation"
+      ],
+      "counterevidence": [],
+      "alternatives_considered": [
+        "实时抓取 vs 定期 bootstrap vs 事件驱动增量"
+      ],
+      "model_implication": "数据 freshness 模型决定系统核心延迟承诺和缓存失效策略",
+      "derived_from": []
+    },
+    {
+      "id": "R1-6",
+      "question": "为什么需要 bootstrap hydration 这一层而不是直接读取上游 source？bootstrap 之后，增量更新通过什么机制推送到各缓存层级（Redis、Edge Function）？",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "Dockerfile.publish-bootstrap-tiers 专门处理 bootstrap 阶段，暗示直接读取 source 不满足需求——可能是 source 不可用、延迟过高或查询模式差异",
+        "depth_level": 2
+      },
+      "type": "critical",
+      "status": "open",
+      "confidence": "medium",
+      "answer_summary": "",
+      "related_evidence": [
+        "Dockerfile.publish-bootstrap-tiers",
+        "Dockerfile.relay",
+        "ARCHITECTURE.md"
+      ],
+      "counterevidence": [],
+      "alternatives_considered": [
+        "实时直连 source 无缓存层",
+        "事件驱动 CDC 增量"
+      ],
+      "model_implication": "bootstrap 层的存在暴露了上游 source 的 SLA 约束或查询能力限制",
+      "derived_from": [
+        "Q5"
+      ]
+    },
+    {
+      "id": "R1-7",
+      "question": "6 套 variants（full/tech/finance/commodity/happy/energy）是否真的是同一个系统在不同配置下的表现，还是它们在架构上已经是不同的子系统？引入第 7 个 variant 的边际成本是多少？",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "multi-tenant variant 系统有 6 种 flavor（full/tech/finance/commodity/happy/energy），每个 variant 可能有不同的 API 组合、数据源和缓存策略",
+        "depth_level": 3
+      },
+      "type": "challenge",
+      "status": "open",
+      "confidence": "medium",
+      "answer_summary": "",
+      "related_evidence": [
+        "CONCEPTS.md",
+        "api/ 目录结构",
+        "Dockerfile 系列"
+      ],
+      "counterevidence": [],
+      "alternatives_considered": [
+        "单一 tenant 按用户过滤 vs N 个独立部署"
+      ],
+      "model_implication": "variant 架构的合理性决定系统复杂度是否线性增长 vs 子线性增长",
+      "derived_from": [
+        "Q1"
+      ]
+    },
+    {
+      "id": "R1-8",
+      "question": "如果 protobuf 版本兼容的假设不成立——某个领域 API 实际上存在 breaking change——团队如何管理多版本共存？v1 目录下是否真的只有 protobuf 前向兼容的修改？",
+      "genesis": {
+        "trigger": "challenge",
+        "observation": "所有 api/*/v1 暗示 protobuf wire-compatible 升级策略，但 35+ 领域 API 在快速增长期 Breaking change 不可避免",
+        "depth_level": 3
+      },
+      "type": "counterevidence",
+      "status": "open",
+      "confidence": "low",
+      "answer_summary": "",
+      "related_evidence": [
+        "api/*/v1/ 目录",
+        "ARCHITECTURE.md API versioning 策略"
+      ],
+      "counterevidence": [
+        "git log 中 v1 目录下的 breaking proto change commit"
+      ],
+      "alternatives_considered": [
+        "protobuf 严格 wire-compatible 只 additive",
+        "实际存在 breaking 但未开 v2"
+      ],
+      "model_implication": "版本兼容策略的实际情况决定了 API consumer 升级风险和生产事故频率",
+      "derived_from": [
+        "Q3"
+      ]
+    },
+    {
+      "id": "R1-9",
+      "question": "如果今天要求新增一个 variant（如 crypto），需要修改多少文件、涉及多少 Dockerfile 和部署配置？variant 的配置是编译时注入还是运行时动态发现？",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "存在 variant-specific Dockerfile（seed-bundle-portwatch-port-activity, seed-bundle-resilience-validation）和多个 bootstrap/relay/digest 构建流程",
+        "depth_level": 3
+      },
+      "type": "maintainer",
+      "status": "open",
+      "confidence": "low",
+      "answer_summary": "",
+      "related_evidence": [
+        "Dockerfile 系列",
+        "CONCEPTS.md",
+        "ARCHITECTURE.md"
+      ],
+      "counterevidence": [],
+      "alternatives_considered": [
+        "variant 为编译期 feature flag",
+        "variant 为运行时路由"
+      ],
+      "model_implication": "添加 variant 的开销揭示系统的可扩展性边界和配置复杂度",
+      "derived_from": [
+        "Q7"
+      ]
+    },
+    {
+      "id": "R1-10",
+      "question": "这套架构（proto-first multi-platform + bootstrap hydration + edge Redis cache + variant tenants）在什么场景下值得复用？是通用 Web Service 架构模板，还是特定于多源聚合类信息产品的特化方案？",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "架构组合独特：protobuf-contract 的多平台交付 + 多级数据 hydration + 多 variant tenant + global edge caching",
+        "depth_level": 4
+      },
+      "type": "transfer",
+      "status": "open",
+      "confidence": "low",
+      "answer_summary": "",
+      "related_evidence": [
+        "ARCHITECTURE.md",
+        "CONCEPTS.md",
+        "Dockerfile 系列"
+      ],
+      "counterevidence": [],
+      "alternatives_considered": [
+        "通用 CRUD Web Service 架构",
+        "BFF + GraphQL 模式"
+      ],
+      "model_implication": "如果架构是特化的，复用时需要剥离 variant 和 data pipeline layer",
+      "derived_from": [
+        "Q2",
+        "Q5",
+        "Q7"
+      ]
+    }
+  ]
+}

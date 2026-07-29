@@ -1,20 +1,77 @@
 {
   "user_input": "分析 ref-only/worldmonitor 仓库的架构、设计模式和工程实现",
-  "current_focus": "报告生成阶段",
-  "answered_questions": ["Q1", "Q2", "Q3", "Q4", "Q5", "Q6", "Q7", "Q8"],
-  "open_questions": [],
+  "current_round": 1,
+  "current_question_file": "questions/round-1.json",
+  "model_stability": "stable",
+  "question_statistics": {
+    "rounds": 1,
+    "total_questions": 10,
+    "answered": 0,
+    "validated": 0
+  },
+  "architecture_model": {
+    "center_hypothesis": "AppContext 中央可变对象作为 363 个模块的通信骨干",
+    "key_assumptions": [],
+    "architecture_invariants": [],
+    "unexplained_observations": [],
+    "competing_interpretations": []
+  },
+  "challenge_record": [],
+  "design_space": [],
+  "maintainer_view": {
+    "modification_impact_map": {},
+    "complexity_drivers": []
+  },
   "evidence_collected": [
-    { "path": "package.json", "purpose": "仓库元数据、依赖、脚本" },
-    { "path": "README.md", "purpose": "项目描述与功能概览" },
-    { "path": "ARCHITECTURE.md", "purpose": "架构文档" },
-    { "path": "AGENTS.md", "purpose": "Agent 入口与仓库地图" },
-    { "path": "src/App.ts", "purpose": "应用入口与 8 阶段初始化流程" },
-    { "path": "src/components/Panel.ts", "purpose": "Panel 基类系统（1393 行）" },
-    { "path": "src/config/variant.ts", "purpose": "6 变体检测系统" },
-    { "path": "src/app/data-loader.ts", "purpose": "数据加载器与 hydration 调度" },
-    { "path": "server/gateway.ts", "purpose": "API Gateway 10 阶段流水线" },
-    { "path": "src-tauri/", "purpose": "Tauri 桌面端架构" },
-    { "path": "proto/", "purpose": "Protobuf 合约系统" }
+    {
+      "path": "package.json",
+      "purpose": "仓库元数据、依赖、脚本"
+    },
+    {
+      "path": "README.md",
+      "purpose": "项目描述与功能概览"
+    },
+    {
+      "path": "ARCHITECTURE.md",
+      "purpose": "架构文档"
+    },
+    {
+      "path": "AGENTS.md",
+      "purpose": "Agent 入口与仓库地图"
+    },
+    {
+      "path": "src/App.ts",
+      "purpose": "应用入口与 8 阶段初始化流程"
+    },
+    {
+      "path": "src/components/Panel.ts",
+      "purpose": "Panel 基类系统（1393 行）"
+    },
+    {
+      "path": "src/config/variant.ts",
+      "purpose": "6 变体检测系统"
+    },
+    {
+      "path": "src/app/data-loader.ts",
+      "purpose": "数据加载器与 hydration 调度"
+    },
+    {
+      "path": "server/gateway.ts",
+      "purpose": "API Gateway 10 阶段流水线"
+    },
+    {
+      "path": "src-tauri/",
+      "purpose": "Tauri 桌面端架构"
+    },
+    {
+      "path": "proto/",
+      "purpose": "Protobuf 合约系统"
+    }
   ],
-  "round_2_checked": "done"
+  "quality_gate": {
+    "center_identified": false,
+    "alternatives_considered": false,
+    "counterexamples_found": false,
+    "model_challenged": false
+  }
 }

@@ -41,8 +41,11 @@ Repository Model 捕获实体、关系及支撑证据。报告是 Model 的视�
 ```
 .working/{repo-name}/
 ├── context.json             # 执行上下文
-├── questions.json           # 第一轮研究问题
-├── questions-r2.json        # 第二轮收敛问题
+├── questions/               # 问题轮次（不可变历史）
+│   ├── round-1.json         # 第一轮问题
+│   ├── round-2.json         # 第二轮问题
+│   ├── round-N.json         # 第 N 轮问题
+│   └── summary.json         # 轮次索引
 ├── repository-model.json    # Repository Model（第一产物）
 ├── evidence/                # 证据快照
 ├── report.md                # 最新报告（中文）
@@ -56,14 +59,14 @@ context.json 是研究者的**外部脑**。记录当前研究状态。
 ```json
 {
   "user_input": "用户原始输入，不转义",
-  "research_progress": {
-    "current_focus": "当前研究焦点",
-    "answered_questions": ["Q1"],
-    "open_questions": ["Q2", "Q3"],
-    "current_depth_level": 1,
-    "max_depth_reached": 1,
-    "model_stability": "nascent",
-    "round_2_checked": "open"
+  "current_round": 2,
+  "current_question_file": "questions/round-2.json",
+  "model_stability": "formative",
+  "question_statistics": {
+    "rounds": 2,
+    "total_questions": 57,
+    "answered": 41,
+    "validated": 18
   },
   "architecture_model": {
     "center_hypothesis": "最核心的架构假设（一句话）",
@@ -323,11 +326,11 @@ flowchart TD
 
 进入生成分析报告前，以下条件**必须全部满足**：
 
-1. `questions-r2.json` 中所有问题 `status=validated`（answered 不足以，必须经过挑战验证）
-2. context.json 的 `round_2_checked` = `done`
-3. context.json 的 `research_progress.model_stability` ≠ `nascent`（模型必须被挑战过）
-4. context.json 的 `architecture_model.center_hypothesis` 非空
-5. context.json 的 `quality_gate` 全部为 `true`
+1. `questions/summary.json` 中 `latest_round` ≥ 2（至少完成 2 轮问题）
+2. context.json 的 `model_stability` ≠ `nascent`（模型必须被挑战过）
+3. context.json 的 `architecture_model.center_hypothesis` 非空
+4. context.json 的 `quality_gate` 全部为 `true`
+5. `questions/summary.json` 中状态为 `active` 的轮次无 open 问题
 
 ### 自查清单
 

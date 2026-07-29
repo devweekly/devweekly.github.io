@@ -4,6 +4,146 @@
 
 ---
 
+## 轮次系统（Round System）
+
+问题按轮次组织，每轮一个不可变文件。**轮次是一次认知迭代（hypothesis revision），不是 Stage。**
+
+### 目录结构
+
+```
+.working/{repo}/questions/
+├── round-1.json           # 第一轮问题
+├── round-2.json           # 第二轮问题
+├── round-N.json           # 第 N 轮问题
+└── summary.json           # 轮次索引
+```
+
+### round-N.json 格式
+
+每轮只记录这一轮产生的问题。
+
+```json
+{
+  "round": 2,
+  "generated_from": ["round-1"],
+  "trigger": "Stage2 Challenge",
+  "purpose": "Challenge",
+  "questions": [
+    {
+      "id": "R2-Q1",
+      "question": "如果移除 AppContext，系统还能成立吗？",
+      "type": "challenge",
+      "status": "open",
+      "derived_from": ["R1-Q8"],
+      "related_evidence": []
+    }
+  ]
+}
+```
+
+| 字段 | 说明 |
+|------|------|
+| `round` | 轮次编号 |
+| `generated_from` | 本轮基于哪些轮次生成 |
+| `trigger` | 触发本轮的事件描述 |
+| `purpose` | 本轮目的（Discovery / Challenge / Deep Why / Gap Filling 等） |
+| `questions` | 本轮产生的问题数组 |
+
+### summary.json 格式
+
+维护一个轮次索引文件，无需扫描整个目录即可恢复研究现场。
+
+```json
+{
+  "latest_round": 4,
+  "rounds": [
+    {
+      "round": 1,
+      "file": "round-1.json",
+      "purpose": "Discovery",
+      "status": "completed"
+    },
+    {
+      "round": 2,
+      "file": "round-2.json",
+      "purpose": "Challenge",
+      "status": "completed"
+    },
+    {
+      "round": 3,
+      "file": "round-3.json",
+      "purpose": "Deep Why",
+      "status": "completed"
+    },
+    {
+      "round": 4,
+      "file": "round-4.json",
+      "purpose": "Gap Filling",
+      "status": "active"
+    }
+  ]
+}
+```
+
+### 轮次触发条件
+
+不要固定轮次。**每当认知发生重大变化时开新轮。**
+
+| 触发条件 | 说明 |
+|---------|------|
+| **Repository 类型识别完成** | 生成第一轮问题（round-1，purpose=Discovery） |
+| **模型发生重大变化** | 新证据推翻旧假设 |
+| **Challenge 结束** | 对当前模型完成一轮挑战 |
+| **出现 Unexpected Finding** | 观察到与预期不符的架构现象 |
+| **解释无法覆盖证据** | 当前模型不能解释新发现的证据 |
+| **出现新的 Architecture Center** | 发现更核心的架构中心 |
+| **发现新的 Subsystem** | 之前未识别的重要子系统 |
+
+### 轮次状态
+
+| 状态 | 含义 |
+|------|------|
+| `active` | 本轮问题尚未全部回答 |
+| `completed` | 本轮问题全部回答，可开新轮 |
+| `superseded` | 本轮因认知迭代而过时 |
+
+### context.json 联动
+
+```
+context.json                   summary.json
+──────────────                 ────────────
+current_round: 2 ───────────→  latest_round: 2
+current_question_file:         rounds: [{ round:2, status:active }]
+  questions/round-2.json
+
+question_statistics:
+  rounds: 2
+  total_questions: 57
+  answered: 41
+  validated: 18
+```
+
+### 跨轮引用
+
+老问题不用移动、删除或复制。通过 `derived_from` 跨文件引用串起推理链：
+
+```
+R1-Q15 → answered → 导致 → R2-Q3 → answered → 导致 → R3-Q11
+```
+
+```json
+// questions/round-3.json
+{
+  "id": "R3-Q11",
+  "question": "...",
+  "derived_from": ["R2-Q3"]
+}
+```
+
+增量分析时只需追加新的 `round-N.json`，**禁止**修改历史文件。
+
+---
+
 ## 问题类型
 
 完整的研究应包含以下类型的问题，按研究阶段演进：
@@ -74,7 +214,7 @@ open → researching → answered → validated → deprecated
 
 ## 问题演化：增量更新规则
 
-**每次重新生成问题，禁止整体替换 questions.json。**
+**每轮生成独立的 round-N.json 文件，禁止整体替换或追加到已有文件。**
 
 ```
 重新生成问题时：
@@ -93,12 +233,12 @@ open → researching → answered → validated → deprecated
 - 被更精确问题取代的 → 标记 deprecated，填入 superseded_by
 
 禁止：
-- 清空 questions.json 后全部重写
+- 清空整个 questions/ 目录后重写
 - 丢弃 answered 但未 validated 的问题
 - 删除 deprecated/refuted 问题
 ```
 
-**原理**：questions.json 是研究轨迹，不是当前状态快照。删除历史问题会丢失推理链。
+**原理**：round-N.json 是研究轨迹，不是当前状态快照。删除历史文件会丢失推理链。
 
 ---
 
@@ -115,7 +255,7 @@ open → researching → answered → validated → deprecated
 | **深度性** | 问题的 depth_level 必须逐层递增（1→2→3→4）。禁止连续停留在同一 depth | 研究无法触及"为什么不是别的" |
 | **替代性** | 每个设计决策问题必须伴随"为什么不是别的"的追问 | 确认偏误未被挑战 |
 
-派生问题必须记录到 questions.json 的 `derived_from` 字段，形成问题衍生链。
+派生问题必须记录到 `derived_from` 字段，形成跨轮问题衍生链。
 
 ---
 
@@ -137,29 +277,35 @@ depth=4: Why not      "如果换用 Redux，哪些约束会失效？"
 
 ---
 
-## 问题 Schema
+## 问题 Schema（round-N.json 内）
 
 ```json
-[
-  {
-    "id": "Q1",
-    "question": "系统如何划分职责？",
-    "genesis": {
-      "trigger": "observation",
-      "observation": "src/ 目录有 14 个子目录，api/ 有 81 个端点",
-      "depth_level": 1
-    },
-    "type": "discovery",
-    "status": "answered",
-    "confidence": "high",
-    "answer_summary": "types → config → services → components → app → App.ts 单向依赖",
-    "related_evidence": ["AGENTS.md:Dependency Direction"],
-    "counterevidence": ["src/components/Panel.ts 直接 import services/"],
-    "alternatives_considered": ["为什么不使用 Redux/Zustand"],
-    "model_implication": "依赖方向受控是架构不变量",
-    "derived_from": []
-  }
-]
+{
+  "round": 2,
+  "generated_from": ["round-1"],
+  "trigger": "Stage2 Challenge",
+  "purpose": "Challenge",
+  "questions": [
+    {
+      "id": "R2-Q1",
+      "question": "如果移除 AppContext，系统还能成立吗？",
+      "genesis": {
+        "trigger": "challenge",
+        "observation": "163 个组件全部通过 AppContext 通信 → 如果没有 AppContext，如何通信？",
+        "depth_level": 3
+      },
+      "type": "challenge",
+      "status": "answered",
+      "confidence": "high",
+      "answer_summary": "不能 — AppContext 是架构中心",
+      "related_evidence": ["src/App.ts:924-981"],
+      "counterevidence": [],
+      "alternatives_considered": ["Redux", "Zustand"],
+      "model_implication": "AppContext 是架构不变量",
+      "derived_from": ["R1-Q8"]
+    }
+  ]
+}
 ```
 
 ### 字段说明

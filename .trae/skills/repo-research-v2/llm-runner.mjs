@@ -263,6 +263,89 @@ export async function invokeLLM(prompt, options = {}) {
 }
 
 /**
+ * Attempt to parse JSON with common LLM output issues fixed.
+ * Handles: unescaped newlines in strings, trailing commas, single quotes.
+ */
+function parseJSONLenient(text) {
+  // First try direct parse
+  try {
+    return JSON.parse(text);
+  } catch {
+    // Continue to fix attempts
+  }
+
+  // Fix trailing commas
+  let fixed = text.replace(/,(\s*[}\]])/g, "$1");
+
+  try {
+    return JSON.parse(fixed);
+  } catch {
+    // Continue
+  }
+
+  // Try to fix unescaped newlines inside strings
+  // Walk through character by character, tracking string state
+  let result = "";
+  let inString = false;
+  let escapeNext = false;
+  let i = 0;
+
+  while (i < fixed.length) {
+    const char = fixed[i];
+
+    if (escapeNext) {
+      result += char;
+      escapeNext = false;
+      i++;
+      continue;
+    }
+
+    if (char === "\\") {
+      result += char;
+      escapeNext = true;
+      i++;
+      continue;
+    }
+
+    if (char === '"') {
+      inString = !inString;
+      result += char;
+      i++;
+      continue;
+    }
+
+    if (inString && char === "\n") {
+      result += "\\n";
+      i++;
+      continue;
+    }
+
+    if (inString && char === "\t") {
+      result += "\\t";
+      i++;
+      continue;
+    }
+
+    if (inString && char === "\r") {
+      result += "\\r";
+      i++;
+      continue;
+    }
+
+    result += char;
+    i++;
+  }
+
+  try {
+    return JSON.parse(result);
+  } catch (err) {
+    // If still failing, try to extract just the JSON array/object
+    // by finding balanced braces/brackets
+    throw err;
+  }
+}
+
+/**
  * Invoke LLM and parse response as JSON.
  * Throws if response is not valid JSON.
  *
@@ -277,8 +360,9 @@ export async function invokeLLMJSON(prompt, options = {}) {
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```\s*$/, "")
     .trim();
+
   try {
-    return JSON.parse(cleaned);
+    return parseJSONLenient(cleaned);
   } catch (err) {
     throw new Error(
       `LLM did not return valid JSON: ${err.message}\n--- Response preview ---\n${cleaned.slice(0, 500)}`

@@ -255,18 +255,18 @@ export async function runSingleGate(gateId, context, report, options = {}) {
 export function checkPreconditions(context) {
   const checks = [];
 
-  // 1. questions-r2.json all status=validated
-  // (checked externally — here we verify context has the data)
-  const r2Checked = context.research_progress?.round_2_checked === "done";
+  // 1. current_round ≥ 2 (at least 2 rounds completed)
+  const currentRound = context.current_round || 0;
+  const roundOk = currentRound >= 2;
   checks.push({
-    id: "round_2_checked",
-    name: "第二轮问题已完成",
-    passed: r2Checked,
-    detail: `round_2_checked = ${context.research_progress?.round_2_checked || "missing"}`,
+    id: "current_round",
+    name: "至少完成 2 轮问题",
+    passed: roundOk,
+    detail: `current_round = ${currentRound} (need ≥ 2)`,
   });
 
   // 2. model_stability ≠ nascent
-  const stability = context.research_progress?.model_stability;
+  const stability = context.model_stability;
   const stabilityOk = stability && stability !== "nascent";
   checks.push({
     id: "model_stability",

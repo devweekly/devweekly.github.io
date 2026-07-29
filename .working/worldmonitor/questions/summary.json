@@ -1,0 +1,11 @@
+{
+  "latest_round": 1,
+  "rounds": [
+    {
+      "round": 1,
+      "file": "round-1.json",
+      "purpose": "Discovery",
+      "status": "completed"
+    }
+  ]
+}
