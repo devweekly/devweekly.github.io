@@ -746,10 +746,13 @@ async function main() {
       id: `ev-${String(i + 1).padStart(3, "0")}`,
       ts: new Date().toISOString(),
       file: e.path,
+      scope: "file",
       purpose: e.purpose || "mechanical-scan",
       key_findings: [],
       evidence_strength: "B",
       related_questions: [],
+      status: "active",
+      supersedes: null,
       source: "script",
     })
   );

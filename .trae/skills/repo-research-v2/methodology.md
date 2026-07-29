@@ -280,6 +280,12 @@ context.json 的价值：
 - 批量写意味着洞察临时存在上下文里——这正是要避免的
 - 立即写保证：哪怕只读了 1 个文件就中断，那 1 个文件的洞察也不会丢
 
+**为什么需要 status/supersedes 失效机制**：
+- evidence-log 是 append-only，但代码会变——同一个文件旧版本和新版本的洞察不能同时有效
+- 如果 gateway.ts 从"7 层认证"变成"8 层认证"，旧条目标 `status: superseded`，新条目 `supersedes: "ev-023"` + `status: active`
+- Stage 5 只读 `status: active` 的条目，避免新旧证据并存导致报告自相矛盾
+- 这是 append-only 与增量更新之间唯一的调和方式：不改旧内容，只改旧状态
+
 ---
 
 ## 为什么需要 questions.json

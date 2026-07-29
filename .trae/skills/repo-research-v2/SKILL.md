@@ -61,9 +61,9 @@ Repository Model 捕获实体、关系及支撑证据。报告是 Model 的视�
 ### 强制规则
 
 - 如果上次已经写完了报告（Stage 5），而且代码没变 → 直接返回已有报告
-- 如果上次至少完成了一轮完整研究（Stage 4）→ 进入规划阶段决定下一轮方向，不重新生成问题
+- 如果上次至少完成了一轮完整研究（Stage 4）→ 进入 Stage 3 Planner，由 Planner 判断收敛与否（收敛→Stage 5，未收敛→生成 round-N+1 继续 Stage 4）
 - **禁止**在代码没变时重新执行阶段 1-2
-- **禁止**在已经完成阶段 3 之后重新规划问题（除非规划器认为有必要）
+- **禁止**修改已有的 `questions/round-N.json`（新研究目标只能写入 `round-(N+1).json`）
 
 ---
 
@@ -140,7 +140,7 @@ Repository Model 捕获实体、关系及支撑证据。报告是 Model 的视�
 **JSON Lines 格式**（每行一个 JSON 对象，append-only）。这是研究过程的"实验室笔记"，记录从每个文件提取的**实际洞察**，而非仅文件路径。
 
 ```json
-{"id": "ev-001", "ts": "2026-07-30T14:23:01Z", "file": "server/gateway.ts", "purpose": "理解请求生命周期与认证链", "key_findings": ["1960 行单文件实现 7 层认证（origin→CORS→HMAC→API key→tier→entitlement→rate-limit）", "7 档缓存策略（fast/medium/slow/slow-browser/static/daily/no-store/live）", "ETag 用 FNV-1a 哈希", "POST→GET 兼容垫片用于 CDN 缓存"], "evidence_strength": "A", "related_questions": ["Q1", "Q3"], "coverage_delta": {"runtime": 0.3, "architecture": 0.2}}
+{"id": "ev-001", "ts": "2026-07-30T14:23:01Z", "file": "server/gateway.ts", "purpose": "理解请求生命周期与认证链", "scope": "file", "key_findings": ["1960 行单文件实现 7 层认证（origin→CORS→HMAC→API key→tier→entitlement→rate-limit）", "7 档缓存策略（fast/medium/slow/slow-browser/static/daily/no-store/live）", "ETag 用 FNV-1a 哈希", "POST→GET 兼容垫片用于 CDN 缓存"], "evidence_strength": "A", "related_questions": ["Q1", "Q3"], "coverage_delta": {"runtime": 0.3, "architecture": 0.2}, "status": "active", "supersedes": null}
 ```
 
 **字段约束**：
@@ -149,20 +149,44 @@ Repository Model 捕获实体、关系及支撑证据。报告是 Model 的视�
 |------|------|------|
 | `id` | 是 | 递增编号 `ev-001`, `ev-002`... |
 | `ts` | 是 | ISO 8601 时间戳 |
-| `file` | 是 | 相对仓库根的路径 |
+| `file` | 是 | 相对仓库根的路径；cross-file 证据用 `cross:gateway+router+cache` 格式 |
+| `scope` | 是 | `file`（单文件证据）或 `cross`（跨文件综合证据） |
 | `purpose` | 是 | 为什么读这个文件（一句话，绑定到具体研究问题） |
-| `key_findings` | 是 | **从该文件提取的关键洞察数组（至少 3 条）**。这是核心字段——不是文件摘要，是研究结论 |
+| `key_findings` | 是 | **从该文件提取的关键洞察数组**。数量按文件类型分级（见下表）。这是核心字段——不是文件摘要，是研究结论 |
 | `evidence_strength` | 是 | S/A/B/C/D/E 分级（详见 report-schema.md Evidence Hierarchy） |
 | `related_questions` | 否 | 关联的 round-N 问题 ID |
 | `coverage_delta` | 否 | 本条证据对 6 维 coverage 的影响估算 |
+| `status` | 是 | `active`（当前有效）或 `superseded`（已被新证据取代）。默认 `active` |
+| `supersedes` | 否 | 当本条取代旧证据时，填旧证据的 `id`（如 `"ev-023"`）。被取代的旧证据 `status` 改为 `superseded` |
+
+#### key_findings 数量分级（按文件类型）
+
+| 文件类型 | 最少洞察数 | 示例 |
+|----------|-----------|------|
+| 核心源码（gateway/router/pipeline） | ≥ 3 | gateway.ts、router.ts、schema.ts |
+| 普通源码（utils/handlers） | ≥ 2 | _cors.js、_rate-limit.js |
+| 配置文件（package.json/tsconfig/Dockerfile） | ≥ 1 | package.json → "21 个 CI workflow，OIDC trusted publishing" |
+| 琐碎文件（.gitignore/LICENSE/.npmrc） | 0 — 跳过不写日志 | — |
+
+**洞察不足时的处理**：如果文件提取不出最少洞察数，说明该文件对当前研究问题价值低，跳过不写日志条目（不是硬凑洞察）。
 
 **禁止行为**：
 
-- ❌ `key_findings` 为空数组或只写"已读"
+- ❌ `key_findings` 为空数组或只写"已读"（要么有洞察，要么跳过不写）
 - ❌ `key_findings` 写成文件内容摘要而非研究洞察（错误示例："这个文件有 1960 行"；正确示例："单文件承载 7 层认证链，违反单一职责但换取了请求处理的原子性"）
-- ❌ 批量读取多个文件后才写一条聚合日志——**每读一个文件写一行**
-- ❌ 修改或删除已有行（append-only）
+- ❌ 批量读取多个文件后才写一条聚合日志——**单文件证据每读一个文件写一行**
+- ❌ 修改或删除已有行的 `key_findings`（append-only）
 - ❌ 把证据只存在 `context.json.evidence_collected` 而不写日志文件
+
+#### 证据失效机制（代码变化时）
+
+当 Stage 2 检测到文件变化时，evidence-log 中该文件的旧条目需要被标记为 `superseded`：
+
+1. 找到 `file == changed_file` 且 `status == "active"` 的所有旧条目
+2. 追加新条目（重新读取文件后的新洞察），`status: "active"`, `supersedes: "ev-旧ID"`
+3. 旧条目的 `status` 改为 `superseded`（这是唯一允许修改已有行的操作——只改 status 字段，不改 key_findings）
+
+**Stage 5 读取证据时**：只读 `status == "active"` 的条目。`superseded` 条目仅作为历史参考，不进入报告。
 
 ---
 
@@ -309,9 +333,11 @@ flowchart TD
     S2 --> Planner
 
     %% Planner
-    Planner --> P1{评估覆盖度}
+    Planner --> P0{收敛条件全满足?}
+    P0 -- 是 --> Report[阶段 5：写报告]
+    P0 -- 否 --> P1{评估覆盖度}
     P1 --> P2[找到最薄弱的地方]
-    P2 --> P3[生成下一轮问题]
+    P2 --> P3[生成 round-N+1 问题]
     P3 --> P4{至少做过一轮?}
 
     P4 -- 否 --> FullResearch
@@ -319,11 +345,11 @@ flowchart TD
 
     %% Research cycle
     subgraph FullResearch[阶段 4：完整研究]
-        R1[收集证据]
+        R1[收集证据<br>file + cross 证据]
         R2[构建/更新模型]
         R3[架构解释]
         R4[质疑模型]
-        R5[收敛问题]
+        R5[更新 coverage + summary]
         R1 --> R2 --> R3 --> R4 --> R5
     end
 
@@ -373,8 +399,11 @@ flowchart TD
 ### 禁止行为
 
 - 代码没变时重新扫描
-- 在此阶段识别仓库类型（类型应该缓存，只有代码变了而且置信度不高时才能重新识别）
 - 在此阶段做架构解释
+
+### 仓库类型识别
+
+仓库类型属于 `repository-profile.json` 的一部分。首次扫描时识别并写入 profile；代码没变时直接复用缓存。只有代码变了**且**类型置信度不高时才重新识别。
 
 ---
 
@@ -395,7 +424,21 @@ flowchart TD
 
 **只要研究没做完，每次都要经过这个阶段。**
 
-决定**下一轮研究什么**，而不是继续生成 round-N 问题。
+决定**下一轮研究目标**，而不是修改已有 round。已有 `questions/round-N.json` 永久冻结，新研究目标写入新的 `round-(N+1).json`。
+
+### Planner 的首要职责：继续还是结束？
+
+Planner 必须先回答：**研究是否收敛？**
+
+**收敛条件（全部满足才能进入 Stage 5）**：
+
+1. `context.coverage` 中至少 4 个方面 ≥ 0.5
+2. `model_stability` ≠ `nascent`（模型被质疑过）
+3. 所有 `key_assumptions` 至少被质疑一次
+4. `latest_round` ≥ 2
+
+**收敛了** → 直接进入 Stage 5，不生成新 round。
+**没收敛** → 生成下一轮问题，进入 Stage 4。
 
 ### 评估我们已经了解了多少
 
@@ -415,6 +458,7 @@ flowchart TD
 把答案写入 `context.resume.next_research_focus`：
 
 ```
+研究收敛了吗？     → 上面 4 个收敛条件是否全满足
 哪里了解最少？     → 上面 6 个方面里得分最低的
 哪个假设没验证过？ → key_assumptions 中 challenged=false 的
 哪个解释没被质疑过？ → challenge_record 缺少 counter_evidence 的
@@ -426,7 +470,6 @@ flowchart TD
 
 - 首次运行：生成 8-12 个至少追问一层为什么的问题，写入新创建的 `questions/round-1.json`
 - 后续运行：基于最薄弱的方向生成 ≤5 个至少追问两层为什么的问题，**必须创建新的 `questions/round-(current_round+1).json`**，禁止追加到已有轮次
-- 如果所有 6 个方面评分都 ≥ 0.8 而且所有质疑都挺住了 → 研究收敛，可以写报告了
 - 禁止在同一方面重复生成同类问题
 - 如果最薄弱的方向和上一轮一样 → 要求追问更深一层（追问层数+1），避免在原地打转
 
@@ -438,35 +481,58 @@ flowchart TD
 
 ### 4a: 收集证据
 
-**核心原则：每读一个文件，立即落盘证据，再读下一个。** 禁止把多个文件的洞察堆积在对话上下文里最后批量写入——会话压缩会丢失这些洞察。
+**核心原则：每读一个文件，立即落盘单文件证据，再读下一个。** 禁止把多个文件的洞察堆积在对话上下文里最后批量写入——会话压缩会丢失这些洞察。
 
-#### 执行流程（逐文件循环）
+#### 两类证据
+
+| 类型 | scope | 写入时机 | 示例 |
+|------|-------|---------|------|
+| **单文件证据** | `file` | 读完该文件**立即写** | "gateway.ts 实现 7 层认证链" |
+| **跨文件综合证据** | `cross` | 读完相关文件群**后写** | "gateway→router→cache 三层协作实现请求生命周期，gateway 负责认证/限流，router 负责分发，cache 负责幂等" |
+
+单文件证据保证"读一个保一个"，跨文件证据保证"架构级洞察不丢"。两者都写入 evidence-log.jsonl，用 `scope` 字段区分。
+
+#### 执行流程
 
 ```
+# Phase 1: 逐文件收集单文件证据
 for each 研究目标文件:
   1. 从 directory-tree.json 定位文件路径
   2. Read 文件内容
-  3. 提取 key_findings（至少 3 条研究洞察，非摘要）
-  4. 立即追加一行到 artifacts/evidence-log.jsonl  ← 强制，禁止跳过
-  5. 更新 context.evidence_collected 计数（仅在内存）
+  3. 提取 key_findings（数量按文件类型分级，见格式规范表）
+  4. 立即追加一行到 artifacts/evidence-log.jsonl（scope: "file"）  ← 强制
   ← 然后才能读下一个文件
+
+# Phase 2: 综合跨文件洞察
+for each 跨文件研究问题（如"请求生命周期"）:
+  1. 回顾 Phase 1 收集的相关单文件证据
+  2. 提炼跨文件综合洞察（至少 2 条）
+  3. 追加一行到 artifacts/evidence-log.jsonl（scope: "cross", file: "cross:gateway+router+cache"）
 ```
 
 #### 强制规则
 
-- **每读一个文件，立即写一行 evidence-log.jsonl**。不是读完所有文件后批量写，是逐文件写。
+- **单文件证据：读完一个文件立即写一行**。不是读完所有文件后批量写，是逐文件写。
 - `key_findings` 必须是**研究洞察**（"7 层认证链违反单一职责但换取原子性"），不是文件摘要（"这个文件 1960 行实现了认证"）。
-- `key_findings` 至少 3 条。少于 3 条说明没读懂或选错文件，重读或换文件。
-- 已在 evidence-log.jsonl 中的文件，代码没变时禁止重读（直接复用日志里的 key_findings）。
+- `key_findings` 数量按文件类型分级（见 [格式规范-数量分级表](#key_findings-数量分级按文件类型)）。洞察不足时跳过该文件不写日志，不要硬凑。
 - 证据强度 S/A/B/C/D/E 必须标注（S=可执行行为/测试，A=源码实现，B=配置，C=文档，D=commit/issue，E=推断）。
+- `status` 字段必填（`active` 或 `superseded`），默认 `active`。
+
+#### 重读文件的规则
+
+**同一个文件可以被多次阅读**——研究是多轮的，Round 1 可能看认证，Round 2 可能看缓存策略，同一个 gateway.ts 两次阅读的 `purpose` 不同。
+
+- 代码没变时：如果新 round 的 `purpose` 与已有 active 条目的 `purpose` 相同 → 复用旧条目，不重读
+- 代码没变时：如果新 round 的 `purpose` 不同（新研究角度）→ 重读文件，写**新条目**（新 `id`，`status: active`），不修改旧条目
+- 代码变了时：重读文件，新条目 `supersedes` 旧条目 ID，旧条目 `status` 改为 `superseded`
 
 #### 恢复时的行为
 
 代码没变时恢复研究：
 1. 读取 `artifacts/evidence-log.jsonl` 全部内容
-2. 已记录的文件不再重读——直接用日志里的 key_findings
-3. 只读 evidence-log 里没有的新文件
-4. 新读的文件追加新行到日志末尾
+2. 对于已有 `active` 条目且 `purpose` 匹配的文件 → 直接复用，不重读
+3. 对于新 round 需要新 `purpose` 的文件 → 重读并追加新条目
+4. 只读 evidence-log 里没有的新文件（新路径）
 
 ### 4b: 构建/更新仓库模型
 - 首次：全量构建 6 个方面的模型
@@ -503,9 +569,20 @@ for each 研究目标文件:
 
 ## 阶段 5 — 写报告
 
-从仓库模型 + evidence-log.jsonl 生成人类可读的中文报告。
+从 **repository-model.json + context.json + artifacts/evidence-log.jsonl** 生成人类可读的中文报告。
 
-**禁止**在此阶段做任何新的推理。**禁止**发明新结论。**禁止**从对话上下文回忆证据——所有证据必须从 `artifacts/evidence-log.jsonl` 读取。只把已验证的发现组织成连贯叙事。
+**输入来源（缺一不可）**：
+
+| 来源 | 提供什么 |
+|------|---------|
+| `repository-model.json` | 实体、关系、架构事实 |
+| `context.json` → `architecture_model` | center_hypothesis、key_assumptions、invariants、competing_interpretations |
+| `context.json` → `challenge_record` | 质疑记录、反证、挑战结果 |
+| `context.json` → `design_space` | 每个决策的被选方案、被拒绝方案及理由 |
+| `context.json` → `maintainer_view` | 修改影响图、复杂度驱动因素 |
+| `artifacts/evidence-log.jsonl` | 每个文件的关键洞察（只读 status=active 的条目） |
+
+**禁止在此阶段新增推理**——Interpretation/Alternative/Challenge/Conclusion 必须来自 Stage 4 已经得到的推理链。Stage 5 只做"组织"：把已有的推理链按叙事弧线排列、去重、补过渡。**禁止**发明新结论。**禁止**从对话上下文回忆证据——所有证据必须从上述文件读取。
 
 ### 核心约束：六步推理
 
@@ -549,13 +626,12 @@ for each 研究目标文件:
 
 ### 进入报告阶段的条件
 
-进入阶段 5（写报告）前，以下条件**必须全部满足**：
+收敛条件已在 [Stage 3](#阶段-3--决定下一步研究什么) 定义。Stage 3 Planner 判定"收敛了"后才能进入 Stage 5。此处不再重复定义收敛条件，仅补充报告生成后的质量验证。
 
-1. `questions/summary.json` 中 `latest_round` ≥ 2（至少做过两轮问题）
-2. context.json 的 `model_stability` ≠ `nascent`（模型必须被质疑过）
-3. context.json 的 `architecture_model.center_hypothesis` 非空
-4. context.json 的 `quality_gate` 全部为 `true`
-5. `context.coverage` 中至少 4 个方面 ≥ 0.5
+**前置条件**（Stage 3 已检查，Stage 5 入口处二次确认）：
+
+- `architecture_model.center_hypothesis` 非空
+- `quality_gate` 全部为 `true`
 
 ### 自查清单
 
