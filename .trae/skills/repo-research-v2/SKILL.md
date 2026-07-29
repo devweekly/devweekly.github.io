@@ -94,22 +94,18 @@ Repository → 编译 → Repository Model → 渲染 → 报告
 
 ### context.json
 
-工作目录确定后**立即创建**，每个 pipeline 阶段完成后**更新**。
+工作目录确定后**立即创建**，研究过程中**持续更新**。
 
 ```json
 {
   "user_input": "用户原始输入，不转义",
-  "pipeline_stage": "当前执行步骤",
-  "referenced_files": [
+  "current_focus": "当前研究焦点",
+  "answered_questions": ["Q1", "Q2"],
+  "open_questions": ["Q3", "Q4"],
+  "evidence_collected": [
     {
       "path": "文件相对路径",
       "purpose": "读取目的"
-    }
-  ],
-  "intermediate_results": [
-    {
-      "stage": "阶段名称",
-      "output": "产物描述或文件路径"
     }
   ]
 }
@@ -118,30 +114,49 @@ Repository → 编译 → Repository Model → 渲染 → 报告
 字段说明：
 
 - `user_input` — **原样保存**用户输入，禁止任何转义或修改
-- `pipeline_stage` — 当前执行的 pipeline 步骤（检查工作目录 / 仓库扫描 / 识别仓库类型 / 生成研究问题 / 阶段 0-3 / 完成）
-- `referenced_files` — 已读取的文件列表，每项含路径和读取目的
-- `intermediate_results` — 各阶段产出的中间结果
+- `current_focus` — 当前正在研究的能力或子系统（如 "Permission System"）
+- `answered_questions` — 已回答的问题 ID 列表（对应 questions.json 中的 id）
+- `open_questions` — 待回答的问题 ID 列表
+- `evidence_collected` — 已收集的证据列表，每项含文件路径和读取目的
 
 ### questions.json
 
 生成研究问题后创建，架构解释阶段**追加**新问题。
 
 ```json
-{
-  "discovery_questions": [
-    "系统如何划分职责？",
-    "数据如何流动？"
-  ],
-  "critical_questions": [
-    "如果移除这一组件，系统还能成立吗？"
-  ],
-  "transfer_questions": [
-    "什么可以泛化到其他系统？"
-  ]
-}
+[
+  {
+    "id": "Q1",
+    "question": "系统如何划分职责？",
+    "type": "discovery",
+    "status": "open",
+    "confidence": "low",
+    "related_evidence": [],
+    "derived_from": []
+  },
+  {
+    "id": "Q12",
+    "question": "为什么 Scheduler 独立？",
+    "type": "discovery",
+    "status": "answered",
+    "confidence": "high",
+    "related_evidence": ["coworker/agent.py:build_engine"],
+    "derived_from": ["Q3"]
+  }
+]
 ```
 
-三类问题对应三类问题框架（发现 / 批判 / 迁移）。架构解释阶段产生的新问题**必须追加**到此文件，禁止仅保留在内存中。
+字段说明：
+
+- `id` — 问题唯一标识（Q1, Q2, ...）
+- `question` — 问题文本
+- `type` — 问题类型：`discovery`（发现）/ `critical`（批判）/ `transfer`（迁移）
+- `status` — `open`（待回答）/ `answered`（已回答）
+- `confidence` — `high` / `medium` / `low`（仅 answered 时有意义）
+- `related_evidence` — 相关证据引用列表（文件路径:符号）
+- `derived_from` — 此问题从哪些问题衍生而来（问题 ID 列表）
+
+架构解释阶段产生的新问题**必须追加**到此文件，禁止仅保留在内存中。问题状态变化时（open → answered）同步更新 context.json 的 `answered_questions` / `open_questions`。
 
 ### meta.json
 
