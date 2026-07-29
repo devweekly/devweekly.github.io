@@ -1,11 +1,11 @@
 ---
 name: "repo-research-v2"
-description: "把仓库编译成架构知识库（仓库模型），并从中生成报告。当用户要求研究/分析某个仓库的架构、设计模式或工程实现时调用。"
+description: "把仓库编译成架构知识库（Repository Model），并从中生成报告。当用户要求研究/分析某个仓库的架构、设计模式或工程实现时调用。"
 ---
 
 # Repository 研究
 
-> 相关文档：[methodology.md](./methodology.md)（研究方法论） | [question-framework.md](./question-framework.md)（问题生成与管理） | [report-schema.md](./report-schema.md)（仓库模型 + 报告规范）
+> 相关文档：[methodology.md](./methodology.md)（研究方法论） | [question-framework.md](./question-framework.md)（问题生成与管理） | [report-schema.md](./report-schema.md)（Repository Model + 报告规范）
 
 ---
 
@@ -13,7 +13,7 @@ description: "把仓库编译成架构知识库（仓库模型），并从中生
 
 编译目标：构建可复用的架构知识库（Repository Model）。
 
-Repository Model 捕获实体、关系及支撑证据。报告是 Model 的视图。
+Repository Model 捕获实体、关系及支撑证据。报告是 Repository Model 的视图。
 
 ---
 
@@ -27,7 +27,7 @@ Repository Model 捕获实体、关系及支撑证据。报告是 Model 的视�
 
 1. **加载 context.json** — 恢复研究状态（当前轮次、模型稳定程度、已收集证据计数）
 2. **加载 artifacts/evidence-log.jsonl** — 恢复已收集的所有证据洞察（这是研究的"实验室笔记"，Stage 5 写报告时从这里取证据，不从对话上下文取）
-3. **加载 repository-model.json** — 恢复仓库模型
+3. **加载 repository-model.json** — 恢复Repository Model
 4. **加载 meta.json** — 恢复元信息（仓库路径、仓库类型、上次分析的提交）
 5. **加载 questions/summary.json** — 恢复问题进度（问题数量、已回答、已验证）
 6. **按需加载已有的 round-N.json** — 作为只读历史引用，禁止修改
@@ -62,7 +62,7 @@ Repository Model 捕获实体、关系及支撑证据。报告是 Model 的视�
 
 - 如果上次已经写完了报告（Stage 5），而且代码没变 → 直接返回已有报告
 - 如果上次至少完成了一轮完整研究（Stage 4）→ 进入 Stage 3 Planner，由 Planner 判断收敛与否（收敛→Stage 5，未收敛→生成 round-N+1 继续 Stage 4）
-- **禁止**在代码没变时重新执行阶段 1-2
+- **禁止**在代码没变时重新执行 Stage 1-2
 - **禁止**修改已有的 `questions/round-N.json`（新研究目标只能写入 `round-(N+1).json`）
 
 ---
@@ -102,7 +102,7 @@ Repository Model 捕获实体、关系及支撑证据。报告是 Model 的视�
 │   ├── round-2.json         # 第二轮问题
 │   ├── round-N.json         # 第 N 轮问题
 │   └── summary.json         # 轮次索引
-├── repository-model.json    # 仓库模型（允许修改，增量更新）
+├── repository-model.json    # Repository Model（允许修改，增量更新）
 ├── report.md                # 最新报告（易变）
 └── meta.json                # 元信息
 ```
@@ -123,10 +123,10 @@ Repository Model 捕获实体、关系及支撑证据。报告是 Model 的视�
 | **可复用** | Git 历史 | `artifacts/git-summary.json` | 只有代码变了才重新生成 |
 | **可复用+追加** | 证据日志 | `artifacts/evidence-log.jsonl` | 代码没变时禁止重新生成；新增读取的文件追加新行，禁止改写已有行 |
 | **允许修改** | 上下文 | `context.json` | 首次创建后增量更新；恢复时加载现有文件继续，禁止从零重建——`resume`/`coverage`/`model_stability`/`challenge_record` 都是跨会话累积的 |
-| **允许修改** | 仓库模型 | `repository-model.json` | Stage 4b 首次全量构建，后续只更新受影响部分；恢复时加载现有模型继续，禁止从零重建 |
+| **允许修改** | Repository Model | `repository-model.json` | Stage 4b 首次全量构建，后续只更新受影响部分；恢复时加载现有 Repository Model 继续，禁止从零重建 |
 | **禁止修改** | 问题轮次 | `questions/round-N.json` | 创建后永久冻结，禁止修改 |
 | **允许修改** | 问题汇总 | `questions/summary.json` | 唯一可以修改的 questions 文件 |
-| **每次重新生成** | 报告 | `report.md` | 每次分析重新生成（从模型+证据日志生成，不继承旧报告） |
+| **每次重新生成** | 报告 | `report.md` | 每次分析重新生成（从 Repository Model + 证据日志生成，不继承旧报告） |
 
 **强制规则**：
 
@@ -208,29 +208,17 @@ evidence-log.jsonl 是 **append-only**——禁止修改或删除已有行。代
 
 ## 问题历史：只追加，不修改
 
-每轮问题一旦生成就永久冻结，只能追加新轮次，不能修改已有轮次。
+`round-N.json` 创建后永久冻结，不允许任何内容修改（包括重写、排序、删除、措辞、状态、证据引用）。只能创建新轮次 `round-(N+1).json`。
 
 ### 目录结构
 
 ```
 questions/
-├── round-1.json      (immutable — 永久冻结)
-├── round-2.json      (immutable — 永久冻结)
-├── round-3.json      (immutable — 永久冻结)
-└── summary.json      (mutable — 唯一允许修改)
+├── round-1.json      (immutable)
+├── round-2.json      (immutable)
+├── round-3.json      (immutable)
+└── summary.json      (mutable)
 ```
-
-### 禁止操作
-
-已有 `questions/round-N.json` 文件：
-
-- ❌ 重写内容
-- ❌ 重新排序问题
-- ❌ 删除问题
-- ❌ 修改问题措辞
-- ❌ 更新问题状态（answered/validated）
-- ❌ 更新证据引用
-- ❌ 追加或删除问题
 
 ### 允许操作
 
@@ -266,8 +254,8 @@ context.json 是研究者的**外部脑**。记录当前研究做到哪了、进
 {
   "user_input": "用户原始输入，保持不变",
   "resume": {
-    "last_completed_stage": "阶段 4",
-    "next_stage": "阶段 5",
+    "last_completed_stage": "Stage 4",
+    "next_stage": "Stage 5",
     "last_round": 2
   },
   "current_round": 2,
@@ -320,7 +308,7 @@ context.json 是研究者的**外部脑**。记录当前研究做到哪了、进
 
 #### 代码变化时的状态回退
 
-当 Stage 2 检测到代码变化时，context 中的状态需要回退——不能假设旧状态仍然有效：
+Stage 4 读取 `context.pending_invalidation` 后，执行以下状态回退（Stage 2 只写 pending 标记，不直接改 context）：
 
 | 状态字段 | 代码变化时的处理 | 理由 |
 |---------|----------------|------|
@@ -332,10 +320,7 @@ context.json 是研究者的**外部脑**。记录当前研究做到哪了、进
 
 #### coverage 计算规则
 
-- coverage **只能增加，不能下降**——除非模型被挑战推翻（`model_stability` 回退到 `challenged`）
-- 代码变化时：受影响维度降回 0.3（不是清零，保留基线理解），未受影响维度保持不变
-- 代码没变时：每轮研究只能提升 coverage，禁止降低（新证据不应减少已有理解）
-- 例外：如果新证据**推翻**了旧结论（challenge 成功），对应维度的 coverage 可以降低
+**coverage 单调增加，除非 challenge 推翻模型或代码发生变化。** 具体而言：正常研究时只增不降；challenge 成功推翻旧结论时对应维度可降；代码变化时受影响维度降回 0.3（保留基线），不受影响维度保持。
 
 ---
 
@@ -376,12 +361,12 @@ flowchart TD
     P3 --> P4{至少做过一轮?}
 
     P4 -- 否 --> FullResearch
-    P4 -- 是 --> P5[复用已有模型 + 追加研究]
+    P4 -- 是 --> P5[复用已有 Repository Model + 追加研究]
 
     %% Research cycle
     subgraph FullResearch[阶段 4：完整研究]
         R1[收集证据<br>file + cross 证据]
-        R2[构建/更新模型]
+        R2[构建/更新 Repository Model]
         R3[架构解释]
         R4[质疑模型]
         R5[更新 coverage + summary]
@@ -390,7 +375,7 @@ flowchart TD
 
     subgraph P5[阶段 4：增量研究]
         I1[只收集缺失证据]
-        I2[更新模型受影响部分]
+        I2[更新 Repository Model 受影响部分]
         I3[质疑新增结论]
         I1 --> I2 --> I3
     end
@@ -446,15 +431,17 @@ flowchart TD
 
 **条件执行**。只有代码变了才需要执行。
 
-**职责边界**：Stage 2 只更新 `artifacts/` 下的可复用产物（directory-tree、repository-profile、symbol-index、git-summary），**不更新** repository-model、context、challenge_record、design_space——那些是 Stage 4 的职责。
+**职责边界**：Stage 2 只更新 `artifacts/` 下的可复用产物 + 写 pending 标记，**不直接修改** context 中的 model_stability / coverage / quality_gate / challenge_record / design_space——那些状态回退由 Stage 4 执行。
 
 1. `git diff {last_analyzed_commit}..HEAD` 找出改了什么文件
 2. 按文件类型分类变化（新增/修改/删除）
 3. 只重新生成受影响的 `artifacts/` 产物
-4. 标记 evidence-log 中受影响文件的条目需要失效（实际失效在 Stage 4a 重读时通过 `replaces` 完成）
-5. 更新 `meta.last_analyzed_commit`
+4. 写 `meta.analysis_target_commit = HEAD`（pending，**不写 `last_analyzed_commit`**——Stage 5 成功后才提交）
+5. 写 `context.pending_invalidation = { changed_files: [...], target_commit: "..." }`（Stage 4 读取此字段执行状态回退和 evidence 失效）
 
-产出：更新后的 artifacts + 变化文件清单（传递给 Stage 4）。
+产出：更新后的 artifacts + `context.pending_invalidation`（传递给 Stage 4）。
+
+> **checkpoint 语义**：`meta.last_analyzed_commit` 只在 Stage 5 成功后更新。如果 Stage 4 中途崩溃，下次恢复时 `last_analyzed_commit` 仍是旧值，Stage 2 会重新检测到代码变化，重新生成 pending_invalidation。
 
 ---
 
@@ -471,7 +458,7 @@ Planner 必须先回答：**研究是否收敛？**
 **收敛条件（全部满足才能进入 Stage 5）**：
 
 1. `context.coverage` 中至少 4 个方面 ≥ 0.5
-2. `model_stability` ≠ `nascent`（模型被质疑过）
+2. `model_stability` ∈ `{challenged, stable}`（模型已被质疑过——`formative` 还在修正中，不算收敛）
 3. 所有 `key_assumptions` 至少被质疑一次
 4. `latest_round` ≥ 2
 
@@ -535,16 +522,14 @@ Planner 判定未收敛
 
 ### 4a: 收集证据
 
-**核心原则：每读一个文件，立即落盘单文件证据，再读下一个。** 禁止把多个文件的洞察堆积在对话上下文里最后批量写入——会话压缩会丢失这些洞察。
+**单文件证据采用 read-after-persist 策略**：每完成一个文件分析，必须立即追加 evidence-log 条目，再继续读取下一文件。禁止把多个文件的洞察堆积在对话上下文里最后批量写入——会话压缩会丢失这些洞察。
 
 #### 两类证据
 
 | 类型 | scope | 写入时机 | 示例 |
 |------|-------|---------|------|
 | **单文件证据** | `file` | 读完该文件**立即写** | "gateway.ts 实现 7 层认证链" |
-| **跨文件综合证据** | `cross` | 读完相关文件群**后写** | "gateway→router→cache 三层协作实现请求生命周期，gateway 负责认证/限流，router 负责分发，cache 负责幂等" |
-
-单文件证据保证"读一个保一个"，跨文件证据保证"架构级洞察不丢"。两者都写入 evidence-log.jsonl，用 `scope` 字段区分。
+| **跨文件综合证据** | `cross` | 读完相关文件群**后写** | "gateway→router→cache 三层协作实现请求生命周期" |
 
 #### 执行流程
 
@@ -566,7 +551,6 @@ for each 跨文件研究问题（如"请求生命周期"）:
 
 #### 强制规则
 
-- **单文件证据：读完一个文件立即写一行**。不是读完所有文件后批量写，是逐文件写。
 - `key_findings` 必须是**研究洞察**（"7 层认证链违反单一职责但换取原子性"），不是文件摘要（"这个文件 1960 行实现了认证"）。
 - `key_findings` 数量按文件类型分级（见 [格式规范-数量分级表](#key_findings-数量分级按文件类型)）。洞察不足时跳过该文件不写日志，不要硬凑。
 - 证据强度 S/A/B/C/D/E 必须标注（S=可执行行为/测试，A=源码实现，B=配置，C=文档，D=commit/issue，E=推断）。
@@ -588,9 +572,9 @@ for each 跨文件研究问题（如"请求生命周期"）:
 4. 对于新 round 需要新 `purpose` 的文件 → 重读并追加新条目
 5. 只读 evidence-log 里没有的新文件（新路径）
 
-### 4b: 构建/更新仓库模型
+### 4b: 构建/更新 Repository Model
 
-- 首次：全量构建 6 个方面的模型
+- 首次：全量构建 6 个方面的 Repository Model
 - 后续：只更新受影响的部分
 
 #### Model ↔ Evidence 引用关系
@@ -738,64 +722,33 @@ node gated-checks.mjs .trae/working/{repo-name}/context.json .trae/working/{repo
 
 ### 最终检查
 
-报告生成后，追加验证：
+报告生成后，追加验证——以下问题必须全部能回答（否则报告需要重写）：
 
-- 系统如何工作？
-- 系统如何组织？
-- 为什么做出这些架构决策？
-- 哪些工程约束影响了设计？
-- 架构如何演进？
-- 有意牺牲了什么？
-- 维护者如何心智划分系统？
-- 哪些思想在本仓库之外仍有价值？
-- **哪些替代方案被考虑过？为什么被拒绝？**
-- **模型被挑战过几次？结果如何？**
-- **哪些反证被寻找过？是否发现了反证？**
+- 系统如何工作？如何组织？为什么做出这些架构决策？
+- 哪些工程约束影响了设计？架构如何演进？有意牺牲了什么？
+- 维护者如何心智划分系统？哪些思想在本仓库之外仍有价值？
+- **哪些替代方案被考虑过？为什么被拒绝？模型被挑战过几次？结果如何？哪些反证被寻找过？**
 
-**如果任一问题无法回答，报告需要重写。**
+### Checkpoint 提交
 
----
+报告生成成功后，Stage 5 执行 checkpoint 提交：
 
-## 产物
+```
+meta.last_analyzed_commit = meta.analysis_target_commit
+meta.analysis_target_commit = null
+context.pending_invalidation = null
+```
 
-### 第一产物：仓库模型
+**只有 Stage 5 成功才提交 checkpoint**——Stage 4 中途崩溃不会更新 `last_analyzed_commit`，下次恢复时 Stage 2 会重新检测到代码变化。
 
-仓库模型是核心产物，记录实体、关系以及支撑证据（详见 [report-schema.md](./report-schema.md#repository-model)）。保存到工作目录的 `repository-model.json`。
-
-### 第二产物：报告
-
-报告是仓库模型的可视化呈现，**必须用中文写**，覆盖以下信息（详见 [report-schema.md](./report-schema.md#报告信息维度)）：
-
-- 系统如何工作
-- 为什么这么设计
-- 为什么不是别的方案
-- 关键约束与决策
-- 模型被质疑的结果
-- 改某个东西会影响哪些层
-- 可以复用的工程思想
-- 意外发现
-- 证据质量和没解决的问题
-
-报告保存到工作目录的 `report.md`。增量分析时覆盖旧报告，但仓库模型保留历史证据（标记 `deprecated`）。
+报告保存到工作目录的 `report.md`。增量分析时覆盖旧报告。
 
 ---
 
 ## 成功标准
 
-一份成功的研究应该让有经验的工程师能回答：
+一份成功的研究应该让有经验的工程师能回答最终检查的所有问题（见上方），并且：
 
-- 这个仓库如何工作？
-- 为什么这样设计？
-- 哪些替代方案被考虑过？为什么被拒绝？
-- 哪些结论被挑战过？挑战结果如何？
-- 如果修改 X，影响哪些层？
-- 我应该从中学到什么？
-- 哪些思想值得复用？
-- 哪些工程错误被有意避免？
-
-**进阶标准**：
-
-- 能用一句话说出系统的**架构中心**
-- 如果把这个中心去掉，系统还能跑吗？
+- 能用一句话说出系统的**架构中心**，且能回答"如果把这个中心去掉，系统还能跑吗？"
 - 每个关键决策都能说出**至少一个被拒绝的替代方案**
 - 报告的结论不是从源码"看"出来的，而是通过**提问 → 收集证据 → 质疑 → 修正**循环产生的
