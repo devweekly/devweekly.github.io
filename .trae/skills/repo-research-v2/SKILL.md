@@ -299,6 +299,8 @@ flowchart TD
 
 只将已验证的发现组织成连贯叙事。
 
+报告生成后，**必须**保存到工作目录 `.working/{repo-name}/report.md`。如果已有旧报告，直接覆盖。Repository Model（`repository-model.json`）保留历史证据（标记 `deprecated`），不删除。
+
 ---
 
 ## 研究问题

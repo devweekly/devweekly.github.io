@@ -1,0 +1,74 @@
+[
+  {
+    "id": "Q1",
+    "question": "数据管道如何组织？从上游 65+ 数据源到前端面板的完整数据流（ingestion → caching → presentation）",
+    "type": "discovery",
+    "status": "open",
+    "confidence": "low",
+    "related_evidence": ["ARCHITECTURE.md §6 Data Pipeline", "scripts/seed-*.mjs", "server/_shared/redis.ts", "api/bootstrap.js"],
+    "derived_from": []
+  },
+  {
+    "id": "Q2",
+    "question": "双地图引擎（deck.gl + globe.gl）如何协同？56 种地图图层类型的组织与渲染架构",
+    "type": "discovery",
+    "status": "open",
+    "confidence": "low",
+    "related_evidence": ["src/components/DeckGLMap.ts", "src/components/GlobeMap.ts", "src/config/map-layer-definitions.ts"],
+    "derived_from": []
+  },
+  {
+    "id": "Q3",
+    "question": "Variant 系统如何实现 6 种站点变体（full/tech/finance/commodity/happy/energy）从一个代码库构建？",
+    "type": "discovery",
+    "status": "open",
+    "confidence": "low",
+    "related_evidence": ["src/config/variant.ts", "src/config/variants/", "package.json scripts (dev:tech, dev:finance 等)"],
+    "derived_from": []
+  },
+  {
+    "id": "Q4",
+    "question": "sebuf Protobuf 合约系统如何工作？从 proto 定义到 OpenAPI 规范、客户端/服务端桩代码的完整编译管道",
+    "type": "discovery",
+    "status": "open",
+    "confidence": "low",
+    "related_evidence": ["proto/", "Makefile", "src/generated/", "server/gateway.ts"],
+    "derived_from": []
+  },
+  {
+    "id": "Q5",
+    "question": "桌面端 Tauri + Node.js sidecar 架构：Rust shell 如何管理生命周期、密钥和 IPC？Sidecar 如何动态加载 Edge Function 模块？",
+    "type": "discovery",
+    "status": "open",
+    "confidence": "low",
+    "related_evidence": ["src-tauri/", "src-tauri/sidecar/local-api-server.mjs", "src/services/runtime.ts"],
+    "derived_from": []
+  },
+  {
+    "id": "Q6",
+    "question": "163 个组件如何组织？Panel 基类体系、组件间通信（AppContext）、URL 状态同步模式",
+    "type": "discovery",
+    "status": "open",
+    "confidence": "low",
+    "related_evidence": ["src/components/Panel.ts", "src/app/", "src/utils/urlState.ts", "src/App.ts"],
+    "derived_from": []
+  },
+  {
+    "id": "Q7",
+    "question": "本地 AI/ML 能力如何实现？浏览器端 ONNX/Transformers.js 推理、Worker 线程架构、向量存储",
+    "type": "discovery",
+    "status": "open",
+    "confidence": "low",
+    "related_evidence": ["src/workers/", "package.json dependencies (@xenova/transformers)", "src/services/"],
+    "derived_from": []
+  },
+  {
+    "id": "Q8",
+    "question": "安全模型：Edge Function 边界、API Key 验证、速率限制、桌面密钥存储、CSP 策略如何组合防御？",
+    "type": "critical",
+    "status": "open",
+    "confidence": "low",
+    "related_evidence": ["ARCHITECTURE.md §8 Security Model", "api/_api-key.js", "api/_rate-limit.js", "middleware.ts", "src-tauri/src/main.rs"],
+    "derived_from": ["Q5"]
+  }
+]
