@@ -331,6 +331,12 @@ flowchart TD
 
 ### 自查清单
 
+质量门禁通过 `gated-checks.mjs` 执行 LLM 验证。每个门禁是一个 LLM 提示，评估是否满足特定标准。
+
+```bash
+node gated-checks.mjs .trae/working/{repo-name}/context.json .trae/working/{repo-name}/report.md
+```
+
 | 门禁 | 检查项 | 通过条件 |
 |------|--------|---------|
 | **center_identified** | 系统的架构中心是什么？ | 能用一句话回答 + 引用证据 |
