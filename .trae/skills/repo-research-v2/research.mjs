@@ -751,8 +751,7 @@ async function main() {
       key_findings: [],
       evidence_strength: "B",
       related_questions: [],
-      status: "active",
-      supersedes: null,
+      replaces: null,
       source: "script",
     })
   );

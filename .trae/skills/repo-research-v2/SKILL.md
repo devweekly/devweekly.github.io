@@ -137,10 +137,10 @@ Repository Model 捕获实体、关系及支撑证据。报告是 Model 的视�
 
 ### evidence-log.jsonl 格式规范
 
-**JSON Lines 格式**（每行一个 JSON 对象，append-only）。这是研究过程的"实验室笔记"，记录从每个文件提取的**实际洞察**，而非仅文件路径。
+**JSON Lines 格式**（每行一个 JSON 对象，**真正的 append-only——禁止修改或删除已有行**）。这是研究过程的"实验室笔记"，记录从每个文件提取的**实际洞察**，而非仅文件路径。
 
 ```json
-{"id": "ev-001", "ts": "2026-07-30T14:23:01Z", "file": "server/gateway.ts", "purpose": "理解请求生命周期与认证链", "scope": "file", "key_findings": ["1960 行单文件实现 7 层认证（origin→CORS→HMAC→API key→tier→entitlement→rate-limit）", "7 档缓存策略（fast/medium/slow/slow-browser/static/daily/no-store/live）", "ETag 用 FNV-1a 哈希", "POST→GET 兼容垫片用于 CDN 缓存"], "evidence_strength": "A", "related_questions": ["Q1", "Q3"], "coverage_delta": {"runtime": 0.3, "architecture": 0.2}, "status": "active", "supersedes": null}
+{"id": "ev-001", "ts": "2026-07-30T14:23:01Z", "file": "server/gateway.ts", "purpose": "理解请求生命周期与认证链", "scope": "file", "key_findings": ["1960 行单文件实现 7 层认证（origin→CORS→HMAC→API key→tier→entitlement→rate-limit）", "7 档缓存策略（fast/medium/slow/slow-browser/static/daily/no-store/live）", "ETag 用 FNV-1a 哈希", "POST→GET 兼容垫片用于 CDN 缓存"], "evidence_strength": "A", "related_questions": ["Q1", "Q3"], "coverage_delta": {"runtime": 0.3, "architecture": 0.2}, "replaces": null}
 ```
 
 **字段约束**：
@@ -151,13 +151,12 @@ Repository Model 捕获实体、关系及支撑证据。报告是 Model 的视�
 | `ts` | 是 | ISO 8601 时间戳 |
 | `file` | 是 | 相对仓库根的路径；cross-file 证据用 `cross:gateway+router+cache` 格式 |
 | `scope` | 是 | `file`（单文件证据）或 `cross`（跨文件综合证据） |
-| `purpose` | 是 | 为什么读这个文件（一句话，绑定到具体研究问题） |
+| `purpose` | 是 | 为什么读这个文件（一句话，绑定到具体研究问题）。失效粒度是 `(file, purpose)`——同一个文件不同 purpose 的条目独立失效 |
 | `key_findings` | 是 | **从该文件提取的关键洞察数组**。数量按文件类型分级（见下表）。这是核心字段——不是文件摘要，是研究结论 |
 | `evidence_strength` | 是 | S/A/B/C/D/E 分级（详见 report-schema.md Evidence Hierarchy） |
 | `related_questions` | 否 | 关联的 round-N 问题 ID |
 | `coverage_delta` | 否 | 本条证据对 6 维 coverage 的影响估算 |
-| `status` | 是 | `active`（当前有效）或 `superseded`（已被新证据取代）。默认 `active` |
-| `supersedes` | 否 | 当本条取代旧证据时，填旧证据的 `id`（如 `"ev-023"`）。被取代的旧证据 `status` 改为 `superseded` |
+| `replaces` | 否 | 当本条取代旧证据时，填旧证据的 `id`（如 `"ev-023"`）。**不修改旧条目**——Stage 5 通过扫描所有 `replaces` 字段计算哪些条目已被取代 |
 
 #### key_findings 数量分级（按文件类型）
 
@@ -175,18 +174,35 @@ Repository Model 捕获实体、关系及支撑证据。报告是 Model 的视�
 - ❌ `key_findings` 为空数组或只写"已读"（要么有洞察，要么跳过不写）
 - ❌ `key_findings` 写成文件内容摘要而非研究洞察（错误示例："这个文件有 1960 行"；正确示例："单文件承载 7 层认证链，违反单一职责但换取了请求处理的原子性"）
 - ❌ 批量读取多个文件后才写一条聚合日志——**单文件证据每读一个文件写一行**
-- ❌ 修改或删除已有行的 `key_findings`（append-only）
+- ❌ 修改或删除已有行的任何字段（**真正的 append-only**——代码变化时只能追加 `replaces` 新条目，不能改旧行）
 - ❌ 把证据只存在 `context.json.evidence_collected` 而不写日志文件
 
-#### 证据失效机制（代码变化时）
+#### 证据失效机制（真正的 append-only）
 
-当 Stage 2 检测到文件变化时，evidence-log 中该文件的旧条目需要被标记为 `superseded`：
+evidence-log.jsonl 是 **append-only**——禁止修改或删除已有行。代码变化时，不修改旧条目，而是追加新条目并在新条目的 `replaces` 字段声明取代关系。
 
-1. 找到 `file == changed_file` 且 `status == "active"` 的所有旧条目
-2. 追加新条目（重新读取文件后的新洞察），`status: "active"`, `supersedes: "ev-旧ID"`
-3. 旧条目的 `status` 改为 `superseded`（这是唯一允许修改已有行的操作——只改 status 字段，不改 key_findings）
+**失效粒度**：`(file, purpose)`。同一个文件的不同 purpose 独立失效——gateway.ts 的"认证"证据失效不 影响 gateway.ts 的"缓存"证据。
 
-**Stage 5 读取证据时**：只读 `status == "active"` 的条目。`superseded` 条目仅作为历史参考，不进入报告。
+**代码变化时的失效流程**：
+
+1. Stage 2 检测到 `gateway.ts` 变化
+2. 找到所有 `file == "gateway.ts"` 的旧条目（无论 purpose）
+3. 对每个旧条目，重新读取文件并追加新条目：
+   ```json
+   {"id": "ev-058", "file": "gateway.ts", "purpose": "理解认证链", "replaces": "ev-023", ...}
+   ```
+4. **不修改 ev-023**——它原封不动留在日志里
+
+**Stage 5 计算有效证据**：
+
+```
+1. 读取 evidence-log.jsonl 全部行
+2. 收集所有 replaces 字段的值 → replaced_ids = {"ev-023", "ev-045", ...}
+3. 有效证据 = 所有条目 - replaced_ids 中的条目
+4. 对每个 (file, purpose)，取有效条目中 ts 最新的那条
+```
+
+**cross 证据的失效传播**：如果 cross 证据的任何一个组成文件的单文件证据被取代，该 cross 证据也被视为失效。Stage 5 计算 cross 证据有效性时，检查其 `file` 字段（如 `cross:gateway+router+cache`）拆分出的每个文件是否有更新的单文件证据——如果有，该 cross 证据跳过，需要 Stage 4 重新生成。
 
 ---
 
@@ -302,6 +318,25 @@ context.json 是研究者的**外部脑**。记录当前研究做到哪了、进
 
 **禁止**直接从 nascent 跳到 stable。模型必须先被质疑过，才能算稳定。
 
+#### 代码变化时的状态回退
+
+当 Stage 2 检测到代码变化时，context 中的状态需要回退——不能假设旧状态仍然有效：
+
+| 状态字段 | 代码变化时的处理 | 理由 |
+|---------|----------------|------|
+| `model_stability` | `stable`/`challenged` → `formative` | 代码变了，模型可能过时，需要重新验证 |
+| `coverage` | 受影响维度降回 0.3（保留基线），未受影响维度保持 | 不清零（避免丢失已积累的理解），但降低置信度 |
+| `challenge_record` | 保留，但每条标注 `commit`（验证时的 commit hash） | 旧挑战结论可能不再适用，但保留历史供参考 |
+| `design_space` | 保留，受影响的决策标注 `evidence_stale: true` | 决策本身可能仍有效，但支撑证据需要重新验证 |
+| `quality_gate` | 全部重置为 `false` | 必须重新通过质量检查 |
+
+#### coverage 计算规则
+
+- coverage **只能增加，不能下降**——除非模型被挑战推翻（`model_stability` 回退到 `challenged`）
+- 代码变化时：受影响维度降回 0.3（不是清零，保留基线理解），未受影响维度保持不变
+- 代码没变时：每轮研究只能提升 coverage，禁止降低（新证据不应减少已有理解）
+- 例外：如果新证据**推翻**了旧结论（challenge 成功），对应维度的 coverage 可以降低
+
 ---
 
 ## 研究流程
@@ -411,12 +446,15 @@ flowchart TD
 
 **条件执行**。只有代码变了才需要执行。
 
+**职责边界**：Stage 2 只更新 `artifacts/` 下的可复用产物（directory-tree、repository-profile、symbol-index、git-summary），**不更新** repository-model、context、challenge_record、design_space——那些是 Stage 4 的职责。
+
 1. `git diff {last_analyzed_commit}..HEAD` 找出改了什么文件
 2. 按文件类型分类变化（新增/修改/删除）
-3. 只重新生成受影响的产物
-4. 没受影响的部分，禁止重新生成
+3. 只重新生成受影响的 `artifacts/` 产物
+4. 标记 evidence-log 中受影响文件的条目需要失效（实际失效在 Stage 4a 重读时通过 `replaces` 完成）
+5. 更新 `meta.last_analyzed_commit`
 
-产出：更新后的产物 + 最新分析的提交记录。
+产出：更新后的 artifacts + 变化文件清单（传递给 Stage 4）。
 
 ---
 
@@ -473,6 +511,22 @@ Planner 必须先回答：**研究是否收敛？**
 - 禁止在同一方面重复生成同类问题
 - 如果最薄弱的方向和上一轮一样 → 要求追问更深一层（追问层数+1），避免在原地打转
 
+### current_round 更新时序
+
+```
+Planner 判定未收敛
+  ↓
+创建 questions/round-(N+1).json
+  ↓
+更新 context.current_round = N+1
+更新 context.current_question_file = "questions/round-(N+1).json"
+更新 questions/summary.json（追加新轮次记录）
+  ↓
+进入 Stage 4
+```
+
+**禁止**在 Stage 4 开始后才更新 `current_round`——恢复时必须能从 `context.current_round` 确切知道当前研究的是第几轮。
+
 ---
 
 ## 阶段 4 — 深入研究架构
@@ -516,27 +570,49 @@ for each 跨文件研究问题（如"请求生命周期"）:
 - `key_findings` 必须是**研究洞察**（"7 层认证链违反单一职责但换取原子性"），不是文件摘要（"这个文件 1960 行实现了认证"）。
 - `key_findings` 数量按文件类型分级（见 [格式规范-数量分级表](#key_findings-数量分级按文件类型)）。洞察不足时跳过该文件不写日志，不要硬凑。
 - 证据强度 S/A/B/C/D/E 必须标注（S=可执行行为/测试，A=源码实现，B=配置，C=文档，D=commit/issue，E=推断）。
-- `status` 字段必填（`active` 或 `superseded`），默认 `active`。
 
 #### 重读文件的规则
 
 **同一个文件可以被多次阅读**——研究是多轮的，Round 1 可能看认证，Round 2 可能看缓存策略，同一个 gateway.ts 两次阅读的 `purpose` 不同。
 
-- 代码没变时：如果新 round 的 `purpose` 与已有 active 条目的 `purpose` 相同 → 复用旧条目，不重读
-- 代码没变时：如果新 round 的 `purpose` 不同（新研究角度）→ 重读文件，写**新条目**（新 `id`，`status: active`），不修改旧条目
-- 代码变了时：重读文件，新条目 `supersedes` 旧条目 ID，旧条目 `status` 改为 `superseded`
+- 代码没变时：如果新 round 的 `purpose` 与已有有效条目的 `purpose` 相同 → 复用旧条目，不重读
+- 代码没变时：如果新 round 的 `purpose` 不同（新研究角度）→ 重读文件，追加**新条目**（新 `id`，`replaces: null`），不修改旧条目
+- 代码变了时：重读文件，新条目 `replaces` 旧条目 ID（旧条目不改，Stage 5 通过 `replaces` 计算有效性）
 
 #### 恢复时的行为
 
 代码没变时恢复研究：
 1. 读取 `artifacts/evidence-log.jsonl` 全部内容
-2. 对于已有 `active` 条目且 `purpose` 匹配的文件 → 直接复用，不重读
-3. 对于新 round 需要新 `purpose` 的文件 → 重读并追加新条目
-4. 只读 evidence-log 里没有的新文件（新路径）
+2. 计算有效条目：排除所有被 `replaces` 引用的旧条目
+3. 对于已有有效条目且 `purpose` 匹配的文件 → 直接复用，不重读
+4. 对于新 round 需要新 `purpose` 的文件 → 重读并追加新条目
+5. 只读 evidence-log 里没有的新文件（新路径）
 
 ### 4b: 构建/更新仓库模型
+
 - 首次：全量构建 6 个方面的模型
 - 后续：只更新受影响的部分
+
+#### Model ↔ Evidence 引用关系
+
+Repository Model 的每个实体/关系/发现**必须引用支撑它的 evidence-log 条目 ID**。这是 Model 与 Evidence 之间的数据一致性契约。
+
+```json
+// repository-model.json 中的实体示例
+{
+  "id": "entity-gateway",
+  "type": "Module",
+  "name": "server/gateway.ts",
+  "responsibility": "请求认证、限流、缓存、路由分发",
+  "evidence_ids": ["ev-001", "ev-012", "ev-045"]
+}
+```
+
+**同步规则**：
+
+- Stage 4b 构建/更新 Model 时，每个实体/关系的 `evidence_ids` 必须指向 evidence-log 中**当前有效**的条目（未被 `replaces` 取代）
+- 如果某条 evidence 被 `replaces` 取代，Stage 4b 必须更新引用该 evidence_id 的 Model 实体——要么指向新 evidence ID，要么标注 `evidence_stale: true` 等待重新验证
+- Stage 5 写报告时，如果发现 Model 实体的 `evidence_ids` 全部失效，该实体的结论标注为"待重新验证"，不进入报告正文
 
 ### 4c: 架构解释
 - 基于模型重建系统背后的工程思想
@@ -575,12 +651,13 @@ for each 跨文件研究问题（如"请求生命周期"）:
 
 | 来源 | 提供什么 |
 |------|---------|
-| `repository-model.json` | 实体、关系、架构事实 |
+| `repository-model.json` | 实体、关系、架构事实（含 `evidence_ids` 引用） |
 | `context.json` → `architecture_model` | center_hypothesis、key_assumptions、invariants、competing_interpretations |
 | `context.json` → `challenge_record` | 质疑记录、反证、挑战结果 |
 | `context.json` → `design_space` | 每个决策的被选方案、被拒绝方案及理由 |
 | `context.json` → `maintainer_view` | 修改影响图、复杂度驱动因素 |
-| `artifacts/evidence-log.jsonl` | 每个文件的关键洞察（只读 status=active 的条目） |
+| `artifacts/evidence-log.jsonl` | 每个文件的关键洞察（只读有效条目——排除被 `replaces` 取代的） |
+| `questions/round-*.json` + `summary.json` | 研究轨迹：问了什么问题、回答了什么、验证了什么。报告如需展示追问路径则从此读取 |
 
 **禁止在此阶段新增推理**——Interpretation/Alternative/Challenge/Conclusion 必须来自 Stage 4 已经得到的推理链。Stage 5 只做"组织"：把已有的推理链按叙事弧线排列、去重、补过渡。**禁止**发明新结论。**禁止**从对话上下文回忆证据——所有证据必须从上述文件读取。
 
