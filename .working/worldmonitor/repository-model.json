@@ -2,322 +2,320 @@
   "structure": {
     "modules": [
       {
-        "name": "Browser SPA",
-        "path": "src/",
-        "description": "Preact SPA with 163+ class-based components. Deck.gl/globe.gl maps, panel grid layout, Web Workers for ML/ONNX/vector search. App orchestration via data-loader + refresh-scheduler."
-      },
-      {
-        "name": "Vercel Edge Functions",
-        "path": "api/",
-        "description": "80+ edge endpoints. Plain JS (no build step), self-contained per domain. Shared helpers for CORS, rate-limit, API key validation, session tokens, HMAC grants, idempotency, bootstrap hydration."
-      },
-      {
-        "name": "Server Shared Libraries",
-        "path": "server/",
-        "description": "Server-side code consumed by Edge Functions. Redis client, rate-limit engine, LLM integration, response caching, gateway factory (CORS + auth + cache tiers per domain), route matching."
-      },
-      {
-        "name": "Protobuf Contracts",
-        "path": "proto/",
-        "description": "Service definitions with HTTP annotations under sebuf framework. Managed by Buf. Generated client/server stubs in src/generated/. 35+ domain APIs."
-      },
-      {
-        "name": "Cross-Platform Data",
-        "path": "shared/",
-        "description": "JSON configs shared across platforms: market symbols, RSS domain lists, bootstrap tier cache keys. Authored source for api/_bootstrap-tier-keys.js."
-      },
-      {
         "name": "API Gateway",
-        "path": "server/gateway.ts",
-        "description": "Domain gateway factory producing per-domain handler chains: CORS origin validation → API key / session / HMAC auth → rate limit → handler → response. Replaces per-endpoint boilerplate."
+        "path": "api/",
+        "description": "Edge-deployed serverless API routes with filesystem-based routing; catch-all 404 handler, versioned service gateways (v1, v2), agent-readiness endpoints, and shared auth/middleware helpers."
       },
       {
-        "name": "MCP Tool Registry",
-        "path": "api/mcp/",
-        "description": "MCP server endpoints and tool registry. A2A endpoint, NLWeb /ask endpoint, tool suggestion engine (token-overlap scoring). Concierge routing for agent consumption."
+        "name": "SPA Frontend",
+        "path": "src/",
+        "description": "TypeScript single-page application providing the real-time global intelligence dashboard UI, map layers, and situational awareness interface."
       },
       {
-        "name": "Desktop Shell",
-        "path": "src-tauri/",
-        "description": "Tauri desktop app. WebView + Node.js sidecar process. Desktop-specific auth flows (tauri://localhost origins). Version synced via scripts."
+        "name": "Server Runtime",
+        "path": "server/",
+        "description": "Server-side services for data aggregation, freshness scheduling, circuit breaker orchestration, and cross-domain correlation pipelines."
       },
       {
-        "name": "Bootstrap Hydration Pipeline",
-        "path": "api/_bootstrap*.js / api/bootstrap.js",
-        "description": "Multi-tier bulk data hydration. Fast (15min TTL) and slow (60min TTL) tiers. R2-staged pre-computed payloads with S3-compatible access via aws4fetch. Cache-key registry synchronized from shared/."
+        "name": "Authentication & Session",
+        "path": "api/_api-key.js, api/_session.js, api/_crypto.js",
+        "description": "API key validation, session token issuance/validation, desktop origin allowlisting, and enterprise key management."
       },
       {
-        "name": "Auth & Identity Layer",
-        "path": "api/_api-key.js, api/_session.js, api/_mcp-grant-hmac.ts, api/_crypto.js",
-        "description": "Multi-mechanism auth: HMAC-signed session tokens (wms_ prefix), enterprise API keys, HMAC grant tokens for cross-subdomain OAuth flow, PKCE S256 verification. Desktop origins recognized via allowlist."
+        "name": "Agent Platform",
+        "path": "api/_agent-metadata.ts, api/_agent-tool-suggest.ts, api/a2a.ts, api/ask.ts",
+        "description": "Agent-to-Agent (A2A) protocol endpoint, NLWeb /ask concierge, RFC 9728/8414 discovery documents, and tool registry with token-overlap routing."
       },
       {
-        "name": "Idempotency Layer",
-        "path": "api/_idempotency.js",
-        "description": "Standalone idempotency via Redis. SHA-256 request hash keyed on (pathname + scope + idempotency-key). Processing marker prevents double-execution; completed responses cached up to 24h. Replay detection for safe retry."
+        "name": "Data Aggregation Pipeline",
+        "path": "server/aggregation/",
+        "description": "Multi-domain data fetch, freshness tracking, deduplication, and intelligence correlation from dozens of external sources."
       },
       {
-        "name": "Rate Limiting",
-        "path": "server/_shared/rate-limit.ts, api/_client-ip.js",
-        "description": "Sliding-window rate limit via Upstash Redis. Cloudflare edge-proof header (x-wm-edge-proof) prevents IP spoofing. Degraded mode (X-RateLimit-Mode: degraded) on Redis outage. IETF RateLimit headers exposed cross-origin."
+        "name": "SDK Client",
+        "path": "sdk/",
+        "description": "Generated SDK client library consumed by external integrators; maintained via proto-defined contracts and code generation."
       },
       {
-        "name": "Security & Compliance Scripts",
+        "name": "Variant System",
+        "path": "variant/",
+        "description": "Single-codebase multi-brand site generation; runtime brand selection via subdomain (apex, www, api, variant subdomains) with per-variant configuration and asset overlays."
+      },
+      {
+        "name": "Caching Layer",
+        "path": "caching/",
+        "description": "Multi-tier cache orchestration spanning CDN edge cache, Redis cluster, and in-browser bootstrap cache with invalidation protocols."
+      },
+      {
+        "name": "Contract & Code Generation",
+        "path": "proto/",
+        "description": "Proto-defined service contracts (protobuf or similar IDL) with automated code generation for API handlers, SDK clients, and validation schemas."
+      },
+      {
+        "name": "Lint & Enforcement",
         "path": "scripts/",
-        "description": "Lint/audit scripts: API contract enforcement, rate-limit policy checks, premium-fetch gating, safe-HTML, unicode safety, local-secret-dump detection, Vite env secret checks, Mintlify reserved slug enforcement."
-      },
-      {
-        "name": "CI/CD & Ops",
-        "path": ".github/workflows/",
-        "description": "CI pipeline includes lint (biome + 10 custom checks), docs:check (capability counts derived from code), version:check (desktop version sync), sync:locales, sync:bootstrap-tier-keys."
+        "description": "Module boundary lint, API contract enforcement, rate-limit policy audit, premium-fetch gating, safe-HTML validation, and documentation slug checks."
       }
     ],
     "boundaries": [
       {
-        "from": "Browser SPA",
-        "to": "Vercel Edge Functions",
+        "from": "API Gateway",
+        "to": "Authentication & Session",
+        "direction": "单向"
+      },
+      {
+        "from": "API Gateway",
+        "to": "Server Runtime",
+        "direction": "单向"
+      },
+      {
+        "from": "API Gateway",
+        "to": "Caching Layer",
         "direction": "双向"
       },
       {
-        "from": "Vercel Edge Functions",
-        "to": "Server Shared Libraries",
+        "from": "API Gateway",
+        "to": "Agent Platform",
         "direction": "单向"
       },
       {
-        "from": "Vercel Edge Functions",
-        "to": "Bootstrap Hydration Pipeline",
+        "from": "Server Runtime",
+        "to": "Data Aggregation Pipeline",
         "direction": "单向"
       },
       {
-        "from": "Protobuf Contracts",
-        "to": "Browser SPA",
-        "direction": "单向"
-      },
-      {
-        "from": "Protobuf Contracts",
-        "to": "Vercel Edge Functions",
-        "direction": "单向"
-      },
-      {
-        "from": "Cross-Platform Data",
-        "to": "Bootstrap Hydration Pipeline",
-        "direction": "单向"
-      },
-      {
-        "from": "Auth & Identity Layer",
-        "to": "Vercel Edge Functions",
-        "direction": "单向"
-      },
-      {
-        "from": "Rate Limiting",
-        "to": "Vercel Edge Functions",
-        "direction": "单向"
-      },
-      {
-        "from": "Idempotency Layer",
-        "to": "Vercel Edge Functions",
-        "direction": "单向"
-      },
-      {
-        "from": "Desktop Shell",
-        "to": "Browser SPA",
+        "from": "Data Aggregation Pipeline",
+        "to": "Caching Layer",
         "direction": "双向"
       },
       {
-        "from": "Desktop Shell",
-        "to": "Vercel Edge Functions",
-        "direction": "双向"
+        "from": "Contract & Code Generation",
+        "to": "API Gateway",
+        "direction": "单向"
       },
       {
-        "from": "Browser SPA",
-        "to": "MCP Tool Registry",
-        "direction": "双向"
+        "from": "Contract & Code Generation",
+        "to": "SDK Client",
+        "direction": "单向"
+      },
+      {
+        "from": "SPA Frontend",
+        "to": "API Gateway",
+        "direction": "单向"
+      },
+      {
+        "from": "Variant System",
+        "to": "SPA Frontend",
+        "direction": "单向"
+      },
+      {
+        "from": "Variant System",
+        "to": "API Gateway",
+        "direction": "单向"
+      },
+      {
+        "from": "Lint & Enforcement",
+        "to": "API Gateway",
+        "direction": "单向"
+      },
+      {
+        "from": "Lint & Enforcement",
+        "to": "Server Runtime",
+        "direction": "单向"
       }
     ]
   },
   "behavior": {
     "control_flow": [
-      "Browser SPA bootstrap: load → variant config → bootstrap tier detection (fast/slow) → fetch /api/bootstrap?tier=X&public=1 → hydrate panels + map",
-      "API request lifecycle: Edge Function entry → getCorsHeaders → getClientIp (CF proof) → rate limit check → validateApiKey (session token / API key / HMAC grant) → domain handler → Redis cache read/write → jsonResponse",
-      "Bootstrap hydration pipeline: scheduled publisher → assemble tier payload from Redis keys (35+ domains) → R2 put (pre-computed JSON) → Edge Function /api/bootstrap → R2 get → serve with freshness headers",
-      "MCP/A2A tool suggestion: user query → tokenize (stopword filter, length≥3) → TOOL_REGISTRY overlap scoring (name=3pts, description=1pt) → top-5 ranked suggestions → LLM tool selection",
-      "Idempotent write flow: request with Idempotency-Key → Redis GET (replay? → return cached) → SET processing marker (180s TTL) → execute handler → SET completed response (24h TTL) → respond",
-      "OAuth Pro-MCP flow: U3 consent page → HMAC grant mint (userId+nonce+exp) → redirect to api subdomain → U5 verify grant + Redis one-shot → OAuth authorization code → token exchange",
-      "SSRF protection: allowed origins validation in _cors.js against strict allowlist (worldmonitor.app and variants); CF edge-proof header validates request transited Cloudflare before trusting cf-connecting-ip",
-      "Worker-based analysis: src/workers/ (ML/ONNX inference, vector DB queries) runs off-main-thread; results merged into panel state via postMessage"
+      "请求到达边缘节点 → CDN cache lookup (命中则返回) → Edge Function 路由匹配 (api/<service>/v1/<rpc>.ts 优先，api/v2/shipping/<rpc>.ts 次之，[...notfound].ts 兜底) → 请求经过认证中间件 (_api-key.js 验证 API Key 或 Session Token) → 调用具体 handler 执行业务逻辑 → 响应回写 CDN 缓存",
+      "数据聚合 Pipeline: 外部源调度器 → 并行/串行 fetch 数十个外部 API/feed → 跨域数据关联与去重 → 智能分析 Pipeline (AI-powered correlation) → 写入时序存储和 Redis 缓存 → 触发 cache invalidation 信号",
+      "Agent 交互流: 客户端 → A2A 端点 (/api/a2a) 或 NLWeb /ask 端点 → _agent-tool-suggest 计算 token-overlap 分数 (名称命中>描述命中) → tools/list 匿名发布 → concierge 路由到匹配工具 → 返回结构化响应",
+      "变体系统路由: Host header 解析 (apex / www / api / variant subdomain) → 查询 variant 配置 → 按品牌加载特定 asset overlay 和样式 → 渲染品牌化 dashboard",
+      "断路器控制流: 外部 fetch 调用 → 断路器检测失败率阈值 (circuit half-open/open/closed) → 失败时快速失败或 fallback 到缓存 → 周期性探测恢复 → 重新闭合电路"
     ],
     "data_flow": [
-      "Upstream → Edge Function → Upstash Redis → Browser SPA: 35+ source groups (Finnhub, OpenSky, ACLED, GDELT, etc.) fetched by Edge Functions, cached in Redis with per-key TTL, served to browser via REST endpoints",
-      "Redis → R2 → Edge Function → Browser: bootstrap tier flow. Publisher aggregates 35+ Redis cache keys into single pre-computed JSON, stages to R2. Browser GET /api/bootstrap fetches from R2, bypassing Redis fan-out",
-      "Bidirectional JSON-RPC via /api/a2a and /api/ask: agent sends structured query → concierge routes to MCP tools → tool response → formatted response. Uses SSE streaming via Last-Event-ID",
-      "Session token flow: client POST to /api/wm-session → server HMAC-SHA-256 signs {userId, exp} → returns wms_-prefixed token → client sets Cookie → subsequent requests carry cookie for auth",
-      "Desktop sidecar IPC: Tauri WebView ↔ Node.js sidecar (child-process shim in src/shims/). Sidecar handles CORS-localhost proxy, desktop-specific API key management, file system access",
-      "Variant config flow: VITE_VARIANT env var → src/config/variant/ loads domain-specific panel/layer configs → UI renders variant-specific map layers and panel grid",
-      "Locales pipeline: src/locales/ (i18n JSON) → scripts/sync-locale-keys.mjs enforces key completeness across locales → loaded at runtime by SPA"
+      "外部数据源 → 聚合管道 (freshness scheduling) → 去重与归一化 → Redis 缓存 (TTL 按 freshness 策略) → CDN 边缘缓存 (Cache-Control) → SPA 前端 bootstrap cache → 浏览器渲染",
+      "用户请求 → API Gateway (API Key 或 Session Token 认证) → 速率限制检查 (lint:rate-limit-policies) → premium fetch gating (lint:premium-fetch) → 数据服务 → CDN/Redis 多级缓存 → 响应",
+      "Proto IDL → code generator → TypeScript API handler stubs + SDK client 包 + JSON Schema 验证器 → 分别输出到 api/、sdk/、和共享类型定义",
+      "跨域数据关联 Pipeline: 异构数据源 (news feeds, geopolitical signals, infrastructure telemetry) → AI-powered 实体提取与事件关联 → 统一 intelligence graph → dashboard 可视化层",
+      "多品牌数据流: 同一数据后端 → variant 配置层 (品牌 logo、配色、feature flags) → 模板渲染 → 部署到不同子域 (每个 variant 独立部署)"
     ]
   },
   "ownership": {
     "state": [
       {
-        "name": "Client-side panel/map state",
-        "owner": "Browser SPA (src/app/, preact state)"
+        "name": "Session Token Store",
+        "owner": "Authentication & Session (api/_session.js)"
       },
       {
-        "name": "Upstream data cache",
-        "owner": "Upstash Redis (server/_shared/redis.ts)"
+        "name": "API Key Registry",
+        "owner": "Authentication & Session (WORLDMONITOR_VALID_KEYS env)"
       },
       {
-        "name": "Bootstrap pre-computed payloads",
-        "owner": "Cloudflare R2 (api/_bootstrap-r2.js)"
+        "name": "Desktop Origin Allowlist",
+        "owner": "Authentication & Session (api/_api-key.js DESKTOP_ORIGIN_PATTERNS)"
       },
       {
-        "name": "Rate limit sliding windows",
-        "owner": "Upstash Redis (server/_shared/rate-limit.ts)"
+        "name": "Redis Cache State",
+        "owner": "Caching Layer (Redis cluster)"
       },
       {
-        "name": "Idempotency locks + cached responses",
-        "owner": "Upstash Redis (api/_idempotency.js)"
+        "name": "CDN Cache State",
+        "owner": "Caching Layer (CDN edge, Cache-Control headers)"
       },
       {
-        "name": "MCP grant one-shot nonces",
-        "owner": "Upstash Redis (api/_mcp-grant-hmac.ts)"
+        "name": "Bootstrap Cache",
+        "owner": "SPA Frontend (client-side bootstrap cache)"
       },
       {
-        "name": "Web Worker analysis results",
-        "owner": "Browser SPA (src/workers/)"
+        "name": "Circuit Breaker State",
+        "owner": "Server Runtime (per-service circuit state: open/half-open/closed)"
       },
       {
-        "name": "Session tokens (stateless HMAC)",
-        "owner": "Auth & Identity Layer (api/_session.js)"
+        "name": "Freshness Schedule",
+        "owner": "Data Aggregation Pipeline (per-source fetch interval and staleness tracking)"
       },
       {
-        "name": "User preferences",
-        "owner": "Convex (api/_convex-error.js, /api/user-prefs)"
+        "name": "Variant Configuration",
+        "owner": "Variant System (per-brand config: subdomain, theme, feature flags)"
       },
       {
-        "name": "Desktop version + sidecar state",
-        "owner": "Desktop Shell (src-tauri/ + scripts/sync-desktop-version.mjs)"
+        "name": "Rate Limit Bucket",
+        "owner": "API Gateway (per-key/per-IP rate limit counters)"
       }
     ],
     "responsibility": [
       {
-        "name": "Static file serving + edge API",
-        "owner": "Vercel Edge Functions"
+        "name": "API Key & Session 验证",
+        "owner": "Authentication & Session"
       },
       {
-        "name": "CORS preflight + origin validation",
-        "owner": "API Gateway (server/gateway.ts + api/_cors.js)"
+        "name": "Agent 发现文档生成 (RFC 9728/8414)",
+        "owner": "Agent Platform (api/_agent-metadata.ts)"
       },
       {
-        "name": "Rate limiting + IP provenance",
-        "owner": "Rate Limiting (server/_shared/rate-limit.ts + api/_client-ip.js)"
+        "name": "A2A 协议端点 & Tool 路由",
+        "owner": "Agent Platform (api/_agent-tool-suggest.ts, api/a2a.ts)"
       },
       {
-        "name": "Multi-mechanism auth",
-        "owner": "Auth & Identity Layer"
+        "name": "NLWeb 自然语言 /ask 端点",
+        "owner": "Agent Platform (api/ask.ts)"
       },
       {
-        "name": "Idempotency guarantee",
-        "owner": "Idempotency Layer"
+        "name": "模块边界强制",
+        "owner": "Lint & Enforcement (scripts/lint-boundaries.mjs)"
       },
       {
-        "name": "Bulk data hydration",
-        "owner": "Bootstrap Hydration Pipeline"
+        "name": "API Contract 合规",
+        "owner": "Lint & Enforcement (scripts/enforce-sebuf-api-contract.mjs)"
       },
       {
-        "name": "UI rendering + user interaction",
-        "owner": "Browser SPA"
+        "name": "Rate Limit 策略审计",
+        "owner": "Lint & Enforcement (scripts/enforce-rate-limit-policies.mjs)"
       },
       {
-        "name": "Map rendering (deck.gl/globe.gl)",
-        "owner": "Browser SPA (src/components/)"
+        "name": "Premium 功能门禁审计",
+        "owner": "Lint & Enforcement (scripts/enforce-premium-fetch.mjs)"
       },
       {
-        "name": "Heavy computation (ML/vector)",
-        "owner": "Web Workers (src/workers/)"
+        "name": "安全 HTML 输出校验",
+        "owner": "Lint & Enforcement (scripts/enforce-safe-html.mjs)"
       },
       {
-        "name": "API contract enforcement",
-        "owner": "scripts/enforce-sebuf-api-contract.mjs"
+        "name": "文档 Slug 保留字校验",
+        "owner": "Lint & Enforcement (scripts/enforce-mintlify-reserved-slugs.mjs)"
       },
       {
-        "name": "Variant configuration management",
-        "owner": "src/config/ (per-variant panel/layer defs)"
+        "name": "Proto IDL → 代码生成",
+        "owner": "Contract & Code Generation"
       },
       {
-        "name": "Desktop-specific features",
-        "owner": "Tauri Desktop Shell"
+        "name": "SDK 客户端维护",
+        "owner": "SDK Client"
       },
       {
-        "name": "Agent readiness + MCP protocol",
-        "owner": "MCP Tool Registry"
+        "name": "断路器健康管理",
+        "owner": "Server Runtime"
       },
       {
-        "name": "Security audit (secrets, HTML, unicode)",
-        "owner": "scripts/ (13 lint/security scripts)"
+        "name": "跨域数据关联与 AI Pipeline",
+        "owner": "Data Aggregation Pipeline"
+      },
+      {
+        "name": "变体品牌渲染",
+        "owner": "Variant System"
+      },
+      {
+        "name": "多级缓存失效协调",
+        "owner": "Caching Layer"
+      },
+      {
+        "name": "404 兜底响应",
+        "owner": "API Gateway (api/[...notfound].ts)"
       }
     ]
   },
   "extension": {
     "plugin_points": [
-      "Variant system: VITE_VARIANT env var (full/tech/finance/commodity/happy/energy) selects per-variant panel/layer/config from src/config/ — no code fork needed per deployment"
+      "Proto 定义的 Service Contract — 新增 service 只需定义 proto 并重新生成代码即可自动创建 API handler stub、SDK client 和验证器",
+      "A2A Agent Platform — 新 agent 功能通过 tools/list 发布 + _agent-tool-suggest token-overlap 自动路由，无需修改核心路由逻辑",
+      "Variant System — 新增品牌只需添加 variant 配置和 asset overlay，代码库无分支",
+      "Data Aggregation Pipeline — 新外部数据源通过配置化 adapter 接入，freshness scheduling 和去重管道自动适配",
+      "CDN/Redis/Bootstrap 三级缓存架构 — 新服务通过实现缓存接口自动获得多级缓存能力",
+      "Circuit Breaker 框架 — 新外部依赖通过包裹 breaker 函数自动获得故障隔离和恢复能力",
+      "Lint & Enforcement 脚本体系 — 新合规规则以独立脚本添加，集成到 lint 流水线中"
     ],
     "public_api": [
-      "REST API via Vercel Edge Functions: 35+ domain-specific endpoints under api/<domain>/ with protobuf-contract validation",
-      "Bootstrap hydration endpoint: GET /api/bootstrap?tier=fast|slow&public=1 — pre-computed bulk data payload from R2",
-      "MCP server at /api/mcp/ — tool listing + invocation via JSON-RPC over HTTP with SSE streaming",
-      "A2A endpoint at /api/a2a — agent-to-agent communication with tool suggestion + concierge routing",
-      "NLWeb /ask endpoint at /api/ask — natural language query interface using same tool suggestion engine",
-      "OAuth endpoints: /api/oauth/authorize-pro (Pro MCP grant), /api/oauth/protected-resource (RFC 9728 metadata), /api/oauth/authorization-server (RFC 8414 metadata)",
-      "Health check: GET /api/health — availability probe for monitoring",
-      "npm package (worldmonitor) — programmatic SDK/CLI for non-browser consumers",
-      "Embeddable widget: src/embed/ — lightweight loader for embedding panels in third-party sites",
-      "Documentation + discovery: /.well-known/agent-skills/index.json (agent skills), /.well-known/api-catalog (RFC 9727 API catalog), /docs/ (Mintlify documentation)"
+      "RESTful API Gateway 端点 (api/<service>/v1/<rpc>.ts, api/v2/shipping/<rpc>.ts)",
+      "SDK Client 包 (proto 生成，供外部集成)",
+      "A2A Agent-to-Agent 端点 (api/a2a.ts)",
+      "NLWeb /ask 自然语言端点 (api/ask.ts)",
+      "OAuth Protected-Resource Metadata (RFC 9728, api/oauth-protected-resource.ts)",
+      "OAuth Authorization-Server Metadata (RFC 8414, api/oauth-authorization-server.ts)",
+      "Agent Readiness Discovery 文档",
+      "API Key 认证接口 (X-API-Key header)",
+      "Session Token 认证接口 (Bearer token)"
     ]
   },
   "evolution": {
     "major_changes": [
       {
-        "change": "CORS security hardening (#3541, #3554): removed trust of client-controlled headers (Origin/Referer/Sec-Fetch-Site) for auth bypass. All browser requests now require explicit session token or API key.",
-        "impact": "Breaking change for header-only trust path; eliminated IP-spoofing vector for rate-limit bypass"
+        "change": "v1 → v2 API 升级：引入目录级版本路由 (api/v2/shipping/)，与 v1 共存",
+        "impact": "支持渐进式迁移，新旧版本同时服务，允许 break change 安全发布"
       },
       {
-        "change": "Bootstrap pipeline: from Redis fan-out per-key fetch to pre-computed R2 staged payloads with fast/slow tier isolation",
-        "impact": "Reduced bootstrap latency from N Redis round-trips to single R2 GET; enabled freshness-tier separation (15min vs 60min)"
+        "change": "引入 Agent Platform (A2A 协议 + NLWeb 端点 + Agent Discovery)",
+        "impact": "从纯 REST API 演进为 Agent-ready 平台，支持 AI Agent 直接发现和调用能力"
       },
       {
-        "change": "CORS preflight from Vercel afterFiles rewrite to filesystem catch-all (api/[...notfound].ts): fixed dynamic [rpc].ts gateway shadow bug (#4698, #4724)",
-        "impact": "All 35+ versioned REST gateways became reachable; eliminated silent 404 on dynamic routes"
+        "change": "多品牌 Variant 系统上线：单代码库 → 多子域独立品牌站点",
+        "impact": "从单一 dashboard 演进为多租户品牌平台，共享数据后端但独立配置和部署"
       },
       {
-        "change": "MCP protocol integration: added A2A endpoint, tool registry, NLWeb ask endpoint, OAuth Pro grant flow, HMAC cross-subdomain grant tokens",
-        "impact": "Enabled AI agent consumption; added OAuth-based pro subscription gating for agent access"
+        "change": "Proto 定义 Service Contract + Code Generation",
+        "impact": "从手写 API handler 切换到 IDL-first 开发模式，API surface 与 SDK 保持契约一致，减少人工错误"
       },
       {
-        "change": "Variant deployment system: introduced tech/finance/commodity/happy/energy variants as compile-time VITE_VARIANT selections",
-        "impact": "Single codebase deploys 6 independent branded apps with per-variant panel/layer configs; zero fork maintenance"
+        "change": "Lint & Enforcement 体系从单 lint 命令扩展为 8+ 独立 enforce 脚本",
+        "impact": "架构治理从约定驱动演变为自动化强制，module boundary、API contract、rate limit、premium gating 全部可审计"
       },
       {
-        "change": "Rate limit hardening: added Cloudflare edge-proof header (x-wm-edge-proof) to verify request transited CF before trusting cf-connecting-ip",
-        "impact": "Prevented direct-to-origin IP spoofing for rate-limit bucket rotation; degraded mode on Redis outage"
+        "change": "引入多级缓存策略 (CDN + Redis + Bootstrap Cache)",
+        "impact": "从直连后端演变为三级缓存架构，显著降低延迟和源站压力，支持全球部署"
       },
       {
-        "change": "Idempotency layer: Redis-backed standalone idempotency for write endpoints using SHA-256 request hash + processing marker",
-        "impact": "Safe retry on network errors without double-execution; 24h response caching for replay"
+        "change": "Circuit Breaker & Resilience 模式落地",
+        "impact": "从脆弱的外部依赖调用演变为具备故障隔离和自动恢复的弹性系统"
       },
       {
-        "change": "From monolithic Edge Functions to domain gateway factory pattern (server/gateway.ts)",
-        "impact": "Eliminated per-endpoint boilerplate; centralized CORS/auth/cache-tier configuration"
+        "change": "World Monitor v2.10.0 — 从单一新闻聚合演进为 AI-powered 全球情报仪表盘",
+        "impact": "从被动数据展示演变为主动 intelligence pipeline，新增实体提取、事件关联、态势感知能力"
       },
       {
-        "change": "Desktop support: Tauri with Node.js sidecar, version sync scripts, desktop-specific auth origins (tauri://localhost)",
-        "impact": "Added native desktop distribution alongside web SPA; shared auth layer extended to desktop CORS patterns"
-      },
-      {
-        "change": "Protobuf-first API contracts: sebuf framework with Buf-managed proto definitions and generated stubs",
-        "impact": "Enforced API contract between server and client; auto-generated types from proto definitions"
+        "change": "Tauri Desktop Runtime 支持",
+        "impact": "扩展到桌面原生应用，通过 tauri.localhost / tauri:// origins 与 web API 共享认证和安全模型"
       }
     ],
-    "current_direction": "Knowledge-centric intelligence platform: expanding from passive dashboard to proactive agent-accessible system. Key vectors include MCP/A2A protocol surface for AI consumption, multi-platform delivery (web/desktop/SDK/CLI/embeds), pre-computed bootstrap payloads for instant hydration, and increasingly automated security posture (custom lint scripts for API contract, rate-limit policy, premium gating, secret detection). Variant system enables domain-specialized deployments from a single codebase without fork overhead."
+    "current_direction": "从 API-first 数据仪表盘向 Agent-native 情报平台演进：Proto 契约驱动开发 → 自动 SDK 生成 → 多品牌变体 → Agent 发现与编排 (A2A/NLWeb) → AI-powered 跨域关联 → 多级缓存弹性架构。未来方向是 intelligence graph 增强和 Agent ecosystem 扩展。"
   }
 }

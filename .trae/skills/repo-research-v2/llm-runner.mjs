@@ -205,7 +205,7 @@ export async function invokeLLM(prompt, options = {}) {
 
   // Inject JSON mode instruction
   const finalPrompt = opts.jsonMode
-    ? `${prompt}\n\n---\nIMPORTANT: Respond with valid JSON only. No markdown, no prose outside JSON.`
+    ? `${prompt}\n\nReturn ONLY valid JSON. Do not include any explanation, markdown code blocks, or additional text outside the JSON.`
     : prompt;
 
   // Prepend system prompt if provided
@@ -283,8 +283,56 @@ function parseJSONLenient(text) {
     // Continue
   }
 
+  // Extract JSON object/array from surrounding prose
+  // Find the first { or [ and match its closing bracket
+  const firstBrace = fixed.indexOf("{");
+  const firstBracket = fixed.indexOf("[");
+  let start = -1;
+  let openChar = "";
+  let closeChar = "";
+
+  if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+    start = firstBrace;
+    openChar = "{";
+    closeChar = "}";
+  } else if (firstBracket !== -1) {
+    start = firstBracket;
+    openChar = "[";
+    closeChar = "]";
+  }
+
+  if (start !== -1) {
+    // Find the matching closing bracket by tracking depth
+    let depth = 0;
+    let inStr = false;
+    let esc = false;
+    let end = -1;
+
+    for (let i = start; i < fixed.length; i++) {
+      const c = fixed[i];
+
+      if (esc) { esc = false; continue; }
+      if (c === "\\") { esc = true; continue; }
+      if (c === '"') { inStr = !inStr; continue; }
+      if (inStr) continue;
+
+      if (c === openChar) { depth++; continue; }
+      if (c === closeChar) {
+        depth--;
+        if (depth === 0) {
+          end = i + 1;
+          break;
+        }
+      }
+    }
+
+    if (end !== -1) {
+      fixed = fixed.slice(start, end);
+      try { return JSON.parse(fixed); } catch { /* continue */ }
+    }
+  }
+
   // Try to fix unescaped newlines inside strings
-  // Walk through character by character, tracking string state
   let result = "";
   let inString = false;
   let escapeNext = false;
@@ -339,9 +387,9 @@ function parseJSONLenient(text) {
   try {
     return JSON.parse(result);
   } catch (err) {
-    // If still failing, try to extract just the JSON array/object
-    // by finding balanced braces/brackets
-    throw err;
+    throw new Error(
+      `Cannot parse JSON after all fix attempts: ${err.message}\n--- Extracted ---\n${result.slice(0, 500)}`
+    );
   }
 }
 
@@ -355,11 +403,19 @@ function parseJSONLenient(text) {
  */
 export async function invokeLLMJSON(prompt, options = {}) {
   const text = await invokeLLM(prompt, { ...options, jsonMode: true });
-  // Strip markdown code fences if present
-  const cleaned = text
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```\s*$/, "")
-    .trim();
+  // Strip markdown code fences — handle prose before/after fences
+  let cleaned = text;
+  const fenceStart = cleaned.match(/```(?:json)?\s*\n/i);
+  if (fenceStart) {
+    const startIdx = fenceStart.index + fenceStart[0].length;
+    const fenceEnd = cleaned.lastIndexOf("```");
+    if (fenceEnd > startIdx) {
+      cleaned = cleaned.slice(startIdx, fenceEnd);
+    } else {
+      cleaned = cleaned.slice(startIdx);
+    }
+  }
+  cleaned = cleaned.trim();
 
   try {
     return parseJSONLenient(cleaned);

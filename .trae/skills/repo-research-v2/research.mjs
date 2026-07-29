@@ -125,24 +125,22 @@ async function identifyRepoType(repoPath, scan) {
 // ---------------------------------------------------------------------------
 
 async function generateQuestions(repoPath, repoType, scan) {
+  const topFiles = ["package.json", "README.md", "ARCHITECTURE.md", "AGENTS.md", "CONTRIBUTING.md"]
+    .filter((f) => scan.files.includes(f))
+    .join(", ");
+  const topDirs = scan.dirs
+    .filter((d) => !d.includes("/") || d.split("/").length === 2)
+    .slice(0, 20)
+    .join(", ");
+
   const prompt = `
-你正在研究一个 ${repoType.type} 仓库。根据仓库类型和初步扫描，生成第一批研究问题。
+You are analyzing a ${repoType.type} repository. Focus areas: ${repoType.focus_areas.join(", ")}
 
-仓库类型: ${repoType.type}
-关注领域: ${repoType.focus_areas.join(", ")}
+Top-level directories: ${topDirs}
+Key files: ${topFiles}
 
-仓库目录结构:
-${scan.dirs.slice(0, 30).join("\n")}
-
-仓库文件（前 20 个）:
-${scan.files.slice(0, 20).join("\n")}
-
-根据 question-framework.md，生成 8-12 个研究问题。每个问题必须:
-1. 由具体观察触发（格式: "观察到 X → 所以问 Y"）
-2. 标记 depth_level (1=What, 2=How, 3=Why, 4=Why not)
-3. 标记 type (discovery/critical/challenge/design_space/counterevidence/maintainer/transfer)
-
-**重要**: 输出严格的 JSON。不要在字符串值中使用反引号、单引号或换行。
+Generate 6-10 research questions. Return ONLY a JSON array like this:
+[{"id":"Q1","question":"Why does the system use X?","genesis":{"trigger":"observation","observation":"Seen pattern X","depth_level":2},"type":"critical","status":"open","confidence":"medium"}]
 `;
 
   const result = await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
@@ -156,31 +154,21 @@ ${scan.files.slice(0, 20).join("\n")}
 async function mechanicalAnalysis(repoPath, scan) {
   const evidence = [];
 
-  // Read key files
-  const keyFiles = ["package.json", "README.md", "AGENTS.md", "ARCHITECTURE.md"];
+  const keyFiles = ["package.json", "README.md", "ARCHITECTURE.md"];
   for (const file of keyFiles) {
     const fullPath = join(repoPath, file);
     if (await fileExists(fullPath)) {
       const content = await readFile(fullPath, "utf-8");
-      evidence.push({
-        path: file,
-        content: content.slice(0, 3000),
-        purpose: "仓库元数据/文档",
-      });
+      evidence.push({ path: file, content: content.slice(0, 800), purpose: "元数据" });
     }
   }
 
-  // Read source structure
   const srcFiles = scan.files.filter((f) => f.startsWith("src/") || f.startsWith("server/") || f.startsWith("api/"));
-  for (const file of srcFiles.slice(0, 20)) {
+  for (const file of srcFiles.slice(0, 5)) {
     const fullPath = join(repoPath, file);
     if (await fileExists(fullPath)) {
       const content = await readFile(fullPath, "utf-8");
-      evidence.push({
-        path: file,
-        content: content.slice(0, 2000),
-        purpose: "源代码片段",
-      });
+      evidence.push({ path: file, content: content.slice(0, 500), purpose: "代码" });
     }
   }
 

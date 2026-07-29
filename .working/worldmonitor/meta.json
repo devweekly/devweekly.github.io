@@ -1,7 +1,7 @@
 {
-  "repo_path": "ref-only/worldmonitor",
-  "repo_type": "实时全球情报仪表板（Web SPA + 桌面端 + Edge API）",
-  "last_analyzed_commit": "b6c7268fb",
-  "analyzed_at": "2026-07-29",
+  "repo_path": "/Users/saga/code-repos/devweekly.github.io/ref-only/worldmonitor",
+  "repo_type": "Web Service",
+  "last_analyzed_commit": "unknown",
+  "analyzed_at": "2026-07-29T11:58:31.279Z",
   "model_version": "1.0"
 }
