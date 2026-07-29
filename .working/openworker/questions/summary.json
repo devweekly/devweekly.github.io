@@ -1,0 +1,17 @@
+{
+  "latest_round": 2,
+  "rounds": [
+    {
+      "round": 1,
+      "file": "round-1.json",
+      "purpose": "Discovery",
+      "status": "completed"
+    },
+    {
+      "round": 2,
+      "file": "round-2.json",
+      "purpose": "Challenge + Gap Filling + Transfer",
+      "status": "completed"
+    }
+  ]
+}

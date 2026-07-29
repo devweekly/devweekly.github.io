@@ -1,0 +1,45 @@
+{
+  "generated_at": "2026-07-30T15:20:00Z",
+  "repo_root": "/Users/saga/code-repos/devweekly.github.io/ref-only/openworker",
+  "top_level_directories": {
+    "coworker/": "Python backend — agent engine, providers, connectors, MCP, memory, automations, personas, server",
+    "surfaces/": "Frontend surfaces — surfaces/gui is the Tauri+React desktop app",
+    "stt/": "Rust speech-to-text sidecar (Cargo project, src/lib.rs)",
+    "packaging/": "Installer builds (macOS DMG, Windows PS1), auto-update manifest, dev bootstrap",
+    "docs/": "Design specs, decision logs, config.example.toml, how-it-works.png",
+    "tests/": "Backend pytest suite (79 test files)",
+    ".github/workflows/": "ci.yml, release.yml"
+  },
+  "directory_groups": {
+    "coworker/connectors/": "28 files, ~12.7k LOC — integration adapters (Slack/GitHub/Gmail/Gcal/HubSpot/Trello/MCP), descriptors, gateway, senders, relay_client",
+    "coworker/providers/": "9 files, ~2.5k LOC — provider clients (OpenAI/Anthropic/Gemini), router, registry, capabilities, matrix, errors",
+    "coworker/tools/": "10 files, ~1.3k LOC — built-in agent tools (shell/files/git/search/todo/plan/ask/subagent/directories)",
+    "coworker/mcp/": "5 files, ~620 LOC — MCP client (stdio+streamable-http), oauth, config",
+    "coworker/agents/": "8 files, ~310 LOC — agent subclasses (chat/code/cowork/myhelper) + registry",
+    "coworker/memory/": "4 files, ~260 LOC — SQLite memory store + tools",
+    "coworker/automation/": "5 files, ~780 LOC — scheduler, store, models, tools (cron-based recurring runs)",
+    "coworker/personas/": "5 files, ~770 LOC — persona manifest (YAML frontmatter), registry, builtin/ops.md",
+    "coworker/server/": "4 files, ~5.4k LOC — FastAPI server (app.py + 3505-line manager.py)",
+    "coworker/testing/fake_slack/": "test harness for Slack adapter (drives real handler)",
+    "surfaces/gui/": "Tauri+React+Vite — src/components (50+ .tsx), src-tauri (Rust shell), e2e (Playwright, 60+ specs), e2e-live/"
+  },
+  "file_stats": {
+    "python_loc": 38006,
+    "python_files": 102,
+    "typescript_tsx_loc": 4428,
+    "rust_loc_stt": "src/lib.rs (Cargo project)",
+    "test_files": 79,
+    "total_commits": 46,
+    "date_range": "2026-07-21 to 2026-07-24"
+  },
+  "entrypoints": {
+    "cli": "coworker/cli.py (70 LOC) — main()",
+    "server": "coworker/server/run.py (156 LOC) — main()",
+    "openworker-server": "console script → coworker.server.run:main",
+    "openworker": "console script → coworker.cli:main",
+    "openworker-connectors": "console script → coworker.connectors.cli:main",
+    "desktop_shell": "surfaces/gui/src-tauri/src/main.rs (Tauri window + server supervisor)",
+    "stt_sidecar": "stt/src/lib.rs"
+  },
+  "module_organization": "Layered: cli/server (entry) → engine+agent (loop) → providers (LLM) / tools (local) / connectors (SaaS) / mcp (external) — with personas/memory/automation/permissions as cross-cutting concerns"
+}

@@ -1,0 +1,201 @@
+{
+  "user_input": "分析这个repo `/Users/saga/code-repos/devweekly.github.io/ref-only/openworker`",
+  "resume": {
+    "last_completed_stage": "workspace",
+    "next_stage": "done",
+    "last_round": 2
+  },
+  "current_round": 2,
+  "current_question_file": "questions/round-2.json",
+  "model_stability": "stable",
+  "coverage": {
+    "runtime": 0.85,
+    "architecture": 0.95,
+    "design_decisions": 0.95,
+    "testing": 0.75,
+    "deployment": 0.60,
+    "history": 0.40
+  },
+  "architecture_model": {
+    "center_hypothesis": "OpenWorker 是以 TurnEngine 为中心的 durable agent runtime。TurnEngine 是单一 agent loop（iteration-based while + provider stream + tool authorize/execute + approval interception），SessionManager 作为 orchestrator 管理跨 session 协调（装配 engine + 路由 inbound + 执行 scheduled task）。三层 durable 设计（engine.resume 重放 unanswered tool_calls + Inbox idempotent by (session_id, tool_call_id) + SessionManager.deliver_to_session 重建 engine）让 agent 'stays resumable forever, works with no live socket'。",
+    "key_assumptions": [
+      "canonical OpenAI-shape history 是多 provider 共享的契约——所有 provider per-call 转换 (AnthropicProvider.convert_messages / GeminiProvider 等)",
+      "mid-thread system messages 不可靠——context_provider 把 plan/discuss mode reminder + live directory list 注入 last user message (send-time only, never persisted)",
+      "anyio cancel scopes task-affine——MCP server 必须在 dedicated asyncio task，enter+exit on one task",
+      "approval 是 interactive 不能并发——authorize 阶段顺序执行，execute 阶段才按 _parallel_safe 分流",
+      "desktop app 关闭是常态——scheduler 必须 catch-up (run-once-catch-up) + skip-on-overlap",
+      "local-first 是 sacred——credentials never enter prompts，manual token paste always available (managed OAuth 是 extra path never replacement)",
+      "persona id 变成目录名/registry key——必须 filesystem-safe slug，无效 manifest 抛 ManifestError (third-party persona must fail loudly)",
+      "history 里永远不留 orphan tool_calls——Stop 路径必须给每个 pending tool_call 写 tool-error message (hosted chat templates reject orphaned tool_calls)"
+    ],
+    "architecture_invariants": [
+      "§25 standing rule: task-scoped {tool: {allowed targets}} seeded from ScheduledTask，external-risk only (never exec/write-local)，exact-target binding 让 connector tool auto-allow 安全",
+      "三层 allowlist 各有 owner: session_allow_tools (TurnEngine via ApprovalOutcome.ALWAYS_*) / task_rules (ScheduledTask via _seed_task_permissions) / auto_allow_tools (config)，deliberately NOT subject to connector exclusion",
+      "单实例锁 (tauri_plugin_single_instance) 是 FIRST plugin——第二次启动只 show_main 已有窗口，防止重复 sidecar 是 startup ordering 硬约束",
+      "COWORKER_EXIT_WITH_PARENT=1 + COWORKER_PARENT_PID 让 sidecar self-exit when parent dies（因 PyInstaller onefile bootloader 让 getppid() 不可靠）",
+      "MCP-backed connector 的 tool surface 是 PINNED subset in tool_defs (names mcp__<name>__<tool>)，never vendor full catalog——drift can only shrink capability, not grow it",
+      "roots 是 shared mutable list——Kept by reference and re-read on every check，runtime add/remove folder takes effect without rebuilding engine",
+      "connector READS never gate (§36)——tool registry read/write kind overrides call-site flag for registered tools",
+      "extended thinking blocks 必须 verbatim replay (含 signature) 在同 turn tool_use 之前——持久化在 _anthropic sidecar"
+    ],
+    "unexplained_observations": [
+      "SessionManager 3505 LOC 为何未拆——证据支持 deliberate trade-off (单文件可读性 vs 多对象协议复杂度)，但仍是 onboarding 负担",
+      "testing 维度无证据——是否有 integration test 验证 durable resume 跨 restart 行为？测试代码占比多少？",
+      "OpenWorker Cloud 侧代码不在本仓库——RelayHub 依赖的 cloud 侧是单独仓库还是本仓库一部分？",
+      "history 维度仅 0.30——演进事件主要来自代码注释提及 (per-agent-name → traits, 手写 factory → catalog, Slack-only → RelayHub, fire-and-forget → durable thread)，无 git 历史时间线验证"
+    ],
+    "competing_interpretations": [
+      {
+        "topic": "SessionManager 是 orchestrator 还是 god-class 技术债？",
+        "interpretation_a": "deliberate trade-off——所有 cross-cutting state 需 shared access，拆分需引入 13+ 协作对象 + shared state 同步机制，god-class 单文件可读性更优",
+        "interpretation_b": "技术债——3505 LOC 单文件是 onboarding 负担，方法虽围绕 session 生命周期但 13 类职责已超出单一抽象范畴",
+        "evidence_lean": "A (ev-030 注释明确说是 deliberate trade-off)",
+        "confidence": "中"
+      },
+      {
+        "topic": "aisuite 在 OpenWorker 中的角色",
+        "interpretation_a": "aisuite 是 provider 抽象基座——OpenWorker 在其上加 native provider",
+        "interpretation_b": "aisuite 是 OpenAI-compatible plug-in——OpenWorker 自建 ProviderClient ABC，aisuite 被视为 P12 slot-in，主要用作 ToolMetadata 容器",
+        "evidence_lean": "B (ev-018 注释明确 'aisuite is OpenAI-API-shaped' + ev-029 用 ToolMetadata)",
+        "confidence": "高"
+      }
+    ]
+  },
+  "challenge_record": [
+    {
+      "id": "CH-001",
+      "claim": "TurnEngine 是架构中心",
+      "challenge": "SessionManager 构造并持有 engine，engine 不能独立存在——中心是否应该是 SessionManager？",
+      "counter_evidence": "去掉 TurnEngine 系统不能跑：manager 装配它、inbox 挂起它、scheduler 重建它、所有 inbound/outbound 都经它。SessionManager 是 orchestrator 但不是中心——它构造并持有 engine，真正执行 agent 行为的是 engine",
+      "outcome": "claim 维持 (高置信度)",
+      "evidence_ids": ["ev-031"]
+    },
+    {
+      "id": "CH-002",
+      "claim": "三层 durable 设计形成端到端 resumable agent",
+      "challenge": "三层是否过度设计？是否可以合并？",
+      "counter_evidence": "每层解决不同维度的 resumability：(1) engine.resume 跨 restart 重放 tool_calls; (2) Inbox 跨 surface idempotent; (3) SessionManager 跨 session 生命周期重建 engine + apply grants。三层缺一不可——去掉 engine.resume 则 tool_calls 丢失；去掉 Inbox 则多 surface 双跑；去掉 SessionManager 重建则 grants 不应用",
+      "outcome": "claim 维持 (高置信度)",
+      "evidence_ids": ["ev-016", "ev-025", "ev-030", "ev-031"]
+    },
+    {
+      "id": "CH-003",
+      "claim": "自建 native Anthropic provider 因 API drift 适配需要",
+      "challenge": "是否可以通过 aisuite 的 provider 抽象 + 配置实现？自建是否是 NIH 综合征？",
+      "counter_evidence": "Anthropic Messages API 与 chat.completions 差异大到必须有专门 converter (system top-level / tool_use blocks / tool_result 折叠)。Extended thinking verbatim replay + API drift 适配 (pre-4.6/4.6+/Claude 5 thinking config + Fable/Mythos 5 safety classifier refusal fallback + DEFAULT_THINKING_BUDGET hidden override) 是 aisuite 不可能提供的 model-family-specific 处理",
+      "outcome": "claim 维持 (高置信度)",
+      "evidence_ids": ["ev-020"]
+    },
+    {
+      "id": "CH-004",
+      "claim": "god-class SessionManager 是 deliberate trade-off",
+      "challenge": "3505 LOC 单文件是可维护性风险，是否应该拆分？",
+      "counter_evidence": "按职责拆需引入 13+ 协作对象 + shared state 同步机制。所有 cross-cutting state (engines/stores/permissions seeding/routing) 都需 shared access。方法虽多但都围绕 'session 生命周期 + cross-session coordination' 这一中心",
+      "outcome": "claim 维持但标注风险 (中置信度)——3505 LOC 仍是 onboarding 负担，未来扩展可能迫使拆分",
+      "evidence_ids": ["ev-030"]
+    },
+    {
+      "id": "CH-005",
+      "claim": "Inbox 是 cross-session human-attention queue",
+      "challenge": "为何需要 5 种 kind (approval/question/notification/directory/plan)？是否可以简化？",
+      "counter_evidence": "5 种 kind 对应 5 种不同的 human-attention 场景：approval (permission)、question (agent 主动问)、notification (inform)、directory (folder grant)、plan (propose_plan 工作流)。每种 kind 的 resolution 语义不同——简化会丢失 type safety",
+      "outcome": "claim 维持 (中置信度)——5 种 kind 的必要性需更多场景验证",
+      "evidence_ids": ["ev-025"]
+    }
+  ],
+  "design_space": [
+    {
+      "dimension": "durable agent runtime",
+      "options": [
+        "always-on (agent 持续运行，无 suspend)",
+        "suspend/resume (agent sleep，runtime 在 wake due 时 re-invoke) ← OpenWorker 选择",
+        "fire-and-forget (每次任务独立，无 continuation)"
+      ],
+      "tradeoff": "always-on 资源消耗高；fire-and-forget 无 continuation；suspend/resume 平衡但需 wake trigger 机制 (timer/completion/event)",
+      "openworker_choice": "suspend/resume via Self-wake + WakeStore + Scheduler extra_tick 集成"
+    },
+    {
+      "dimension": "permission allowlist 层级",
+      "options": [
+        "单层 global allowlist",
+        "双层 (session + config)",
+        "三层 (session + task + config) ← OpenWorker 选择"
+      ],
+      "tradeoff": "单层无法区分 session/task 级权限；双层无法支持 automation 的 task-scoped standing rule；三层各有 owner (TurnEngine/ScheduledTask/config) 但复杂度高",
+      "openworker_choice": "三层 allowlist + §25 standing rule (external-risk only, exact-target binding)"
+    },
+    {
+      "dimension": "connector 架构",
+      "options": [
+        "单一 adapter (contract + tool surface + data 混合)",
+        "三层分离 (adapter + tool surface + descriptor) ← OpenWorker 选择"
+      ],
+      "tradeoff": "单一 adapter 耦合高；三层分离需协调但支持 data-driven 扩展 (Adding a connector is mostly data, not UI code)",
+      "openworker_choice": "BasePlatformAdapter (契约) + integration_tools (tool surface) + ConnectorDescriptor (数据)"
+    },
+    {
+      "dimension": "provider 抽象",
+      "options": [
+        "aisuite 统一抽象",
+        "自建 ProviderClient ABC + native 实现 + OpenAI-compat vendor 路由 ← OpenWorker 选择"
+      ],
+      "tradeoff": "aisuite 统一但无法适配 API drift (Anthropic Messages API / extended thinking / Claude 5 safety classifier)；自建复杂度高但 model-family-specific 适配能力强",
+      "openworker_choice": "自建 ProviderClient ABC + AnthropicProvider/GeminiProvider native + _openai_compat vendor 路由"
+    },
+    {
+      "dimension": "MCP client",
+      "options": [
+        "直接用官方 mcp SDK",
+        "自建 async-native 包装层 ← OpenWorker 选择"
+      ],
+      "tradeoff": "官方 SDK 同步阻塞需 nest_asyncio 或第二 event loop；自建 async-native 但需处理 anyio cancel scopes task-affine 约束",
+      "openworker_choice": "MCPManager thin async wrapper，each server in dedicated asyncio task"
+    },
+    {
+      "dimension": "scheduled task 执行模型",
+      "options": [
+        "fire-and-forget (每次独立执行)",
+        "durable conversation thread (可续) ← OpenWorker 选择"
+      ],
+      "tradeoff": "fire-and-forget 简单但无法续；durable thread 复杂但支持 parked approval + task-scoped standing rule",
+      "openworker_choice": "durable conversation thread via _run_scheduled_task (No scheduling tools inside 防止 re-schedule)"
+    }
+  ],
+  "maintainer_view": {
+    "mental_model": "TurnEngine 是心脏（执行 agent 行为），SessionManager 是大脑（协调跨 session），Inbox 是神经系统（cross-session human-attention），Scheduler 是心跳（cron + selfwake tick）。Tauri shell 是骨架（supervisor + 单实例 + keep-awake）。Persona/Skill/Connector 是可替换的器官（data-driven extension）。",
+    "core_tension": "durable resumability vs 协调复杂度。三层 durable 设计让 agent 'stays resumable forever'，但代价是 SessionManager god-class + 18+ stores + 多层 permission allowlist + 多 surface Inbox 同步。",
+    "design_philosophy": [
+      "local-first (credentials never enter prompts, manual token paste always available, managed OAuth 是 extra path never replacement)",
+      "always-on agent via suspend/resume (而非 kill/restart)——selfwake + scheduler + inbox 让 agent 跨 restart/surface/session 生命周期持续",
+      "data-driven extension (connector/persona/provider 都是 data 驱动注册，Adding a connector is mostly data, not UI code)",
+      "fail loudly (无效 persona manifest 抛 ManifestError，missing vendor key fail fast，orphaned tool_calls 必须写 tool-error)",
+      "exact-target binding (§25 standing rule 的 external-risk only + exact target arg 让 connector auto-allow 安全)"
+    ],
+    "likely_pain_points": [
+      "SessionManager 3505 LOC onboarding 负担",
+      "多 provider API drift 维护成本 (Anthropic pre-4.6/4.6+/Claude 5)",
+      "18+ stores 的 shared state 同步",
+      "testing 维度覆盖不足 (coverage 0.15)——durable resume 跨 restart 是否有 integration test 验证？"
+    ]
+  },
+  "quality_gate": {
+    "verdict": "PASS",
+    "checked_at": "2026-07-30T21:00:00Z",
+    "checks": {
+      "dimensions_covered": {"system_how_works": true, "why_designed": true, "key_constraints_decisions": true, "reusable_ideas": true, "unexpected_findings": true, "evidence_quality_unresolved": true},
+      "evidence_chain_traceable": true,
+      "information_density_respected": true,
+      "confidence_levels_marked": true,
+      "unresolved_questions_format_valid": true,
+      "quality_gate_self_check": {
+        "multi_source_evidence": true,
+        "alternative_explanation_presented": true,
+        "important_decisions_documented": true,
+        "unknown_not_hidden": true,
+        "insight_over_padding": true
+      }
+    },
+    "notes": "9 sections covering all 6 information dimensions. 27 A-level evidence entries. 3 unresolved questions properly formatted. Confidence levels marked throughout."
+  },
+  "pending_invalidation": null
+}
