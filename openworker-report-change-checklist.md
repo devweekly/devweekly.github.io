@@ -4,6 +4,74 @@
 > 反馈评分：9.1/10 → P0+P1+P2 完成后预估：9.7+/10 → 目标：9.7+/10
 >
 > **进度：P0+P1+P2 全部完成（report + Skill）**——所有反馈已编码为 Skill 规则，所有未来报告受益
+>
+> **新增：Bugfix 轮（来自 ISSUES_LOG.md）全部完成**——修复 3 个 P0 + 5 个 P1 + 1 个 P2
+
+---
+
+## Bugfix 轮（来自截图中的 ISSUES_LOG.md）✅ ALL DONE
+
+> 用户反馈："分析截图，解决图中提到的问题，按照图里提出的方案"
+> 图中展示了 `ISSUES_LOG.md` 中的 9 个 bug（3 P0 + 5 P1 + 1 P2），已按方案修复。
+
+### P0 Bugfixes
+
+- [x] **RR2-P0-001: 未定义变量导致运行时崩溃**
+  - 文件：`research.mjs`
+  - 修复：写 evidence 日志路径时 `workingDir` → `workDir`；写入前 `ensureDir(join(workDir, "artifacts"))`
+  - 额外：evidence 条目写入非空 `key_findings` 并标注强度（代码 = A，元数据 = B）
+  - 参考行：`.trae/skills/repo-research-v2/research.mjs:743`
+
+- [x] **RR2-P0-002: 质量通过前提前推进 checkpoint commit**
+  - 文件：`research.mjs`
+  - 修复：`last_analyzed_commit` 不再在 delta 阶段更新；改为写入 `analysis_target_commit` 作为 pending target
+  - 新增 `publishReportAndCheckpoint()` 函数：gate 通过后从 `analysis_target_commit` 写入 `last_analyzed_commit`
+  - 参考行：`.trae/skills/repo-research-v2/research.mjs:250`, `:590`
+
+- [x] **RR2-P0-003: Orchestrator 控制流偏离多阶段契约**
+  - 文件：`SKILL.md`, `research.mjs`
+  - 修复：gate 失败时直接 `process.exit(2/3/4)`，保留 `report-draft.md`，不发布 checkpoint
+  - 参考行：`.trae/skills/repo-research-v2/research.mjs:816`
+
+### P1 Bugfixes
+
+- [x] **RR2-P1-001: 绕过 report-draft/report 发布所有权链**
+  - 文件：`research.mjs`
+  - 修复：`stageFiveReport()` 写入 `report-draft.md`；gate 通过后 `publishReportAndCheckpoint()` rename 为 `report.md`
+  - 参考行：`.trae/skills/repo-research-v2/research.mjs:583`, `:590`
+
+- [x] **RR2-P1-002: 质量门禁集合与规范不一致**
+  - 文件：`gated-checks.mjs`, `agents/quality.md`
+  - 修复：补充 `surprise_gate`、`design_space_gate`、`final_check` 三个 gate
+  - 参考行：`.trae/skills/repo-research-v2/gated-checks.mjs:516`
+
+- [x] **RR2-P1-003: Gate 结果未驱动流程决策**
+  - 文件：`research.mjs`
+  - 修复：gate 失败时 `process.exit(2/3/4)`；成功时调用 `publishReportAndCheckpoint()`
+  - 参考行：`.trae/skills/repo-research-v2/research.mjs:816`
+
+- [x] **RR2-P1-004: quality_gate 前置检查自引用**
+  - 文件：`gated-checks.mjs`
+  - 修复：前置条件从 `quality_gate` 全 true 改为 `design_space` 非空（结构性前置条件，避免自举矛盾）
+  - `checkPreconditions()` 返回对象增加 `allPassed` 字段以兼容调用方
+  - 参考行：`.trae/skills/repo-research-v2/gated-checks.mjs:597`
+
+- [x] **RR2-P1-005: Evidence 日志条目为空或信息不足**
+  - 文件：`research.mjs`
+  - 修复：`key_findings` 不再为空；写入 "purpose: file — 内容前 N 字符"；`evidence_strength` 按类型标注（A/B）
+  - 参考行：`.trae/skills/repo-research-v2/research.mjs:745`
+
+### P2 Bugfixes
+
+- [x] **RR2-P2-001: CLI 参数检查时序错误**
+  - 文件：`research.mjs`
+  - 修复：先校验 `repoArg` 是否存在，再执行 `resolve(repoArg)`
+  - 参考行：`.trae/skills/repo-research-v2/research.mjs:629`
+
+### 产物
+
+- [x] 新增 `ISSUES_LOG.md` 记录所有 bug 与修复（`.trae/skills/repo-research-v2/ISSUES_LOG.md`）
+- [x] `node --check` 通过 `gated-checks.mjs` 和 `research.mjs`
 
 ---
 

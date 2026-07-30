@@ -63,12 +63,13 @@ node gated-checks.mjs .working/{repo-name}/context.json .working/{repo-name}/rep
 
 | 检查项 | 检查什么 | 通过条件 |
 |------|--------|---------|
-| **blast_radius_gate** | 报告有 Architecture Risk Analysis 章节吗？ | 包含 Blast Radius 表（修改点 → 影响范围 → 风险等级），至少覆盖 Critical 和 High 组件 |
+ | **blast_radius_gate** | 报告有 Architecture Risk Analysis 章节吗？ | 包含 Blast Radius 表（修改点 → 影响范围 → 风险等级），至少覆盖 Critical 和 High 组件 |
 | **change_difficulty_gate** | 报告有 Change Difficulty 章节吗？ | 包含修改难度表（修改 / 难度 / 理由），至少 5 项 |
 | **evidence_inference_gate** | 核心结论分离了 Evidence/Inference/Confidence 吗？ | 核心结论（架构中心、关键决策）采用三段式格式 |
 | **coverage_calculable_gate** | Coverage 分数可计算吗？ | 格式为 X/Y = Z%，非主观分数 0.85 |
 | **evolution_timeline_gate** | 报告有架构演进章节吗？ | 有演进时间线（bulk-import 情况下从代码注释推断 + 标注限制） |
 | **tradeoff_expansion_gate** | 核心决策对比了成熟替代方案吗？ | 每个核心决策至少 2 个成熟方案对比（Event Sourcing/Temporal/Actor 等），基于代码证据 |
+| **final_check** | 最终综合检查 | 报告整体达到从"描述系统"到"预测系统"的目标 |
 
 **任何一个问题答不上来，研究就没做完。**
 

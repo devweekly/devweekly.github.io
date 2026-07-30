@@ -247,8 +247,9 @@ async function stageTwoDelta(workDir, repoPath, resume) {
   const changed = getChangedFiles(repoPath, lastCommit, commit);
   console.log(`Stage 2: Analyze Delta — ${changed.length} file(s) changed.\n`);
 
-  // Update meta commit now (so subsequent runs see the new commit)
-  const newMeta = { ...meta, last_analyzed_commit: commit, analyzed_at: new Date().toISOString() };
+  // Delay last_analyzed_commit update until quality gate passes and report is published.
+  // Record analysis_target_commit as pending target.
+  const newMeta = { ...meta, analysis_target_commit: commit, analyzed_at: new Date().toISOString() };
   await writeMeta(workDir, newMeta);
 
   return { changed: true, files: changed, full: false };
@@ -580,10 +581,45 @@ coverage<0.5 的领域，每个说明：
 }
 
 async function stageFiveReport(repoPath, repoType, result, workDir) {
-  console.log("Stage 5: Generating report...\n");
+  console.log("Stage 5: Generating report draft...\n");
   const report = await generateReport(repoType, result);
-  await writeFile(join(workDir, "report.md"), report, "utf-8");
+  await writeFile(join(workDir, "report-draft.md"), report, "utf-8");
   return report;
+}
+
+async function publishReportAndCheckpoint(workDir, repoPath, context, contextPath) {
+  // Rename report-draft.md → report.md
+  const draftPath = join(workDir, "report-draft.md");
+  const finalPath = join(workDir, "report.md");
+  const draft = await readFile(draftPath, "utf-8");
+  await writeFile(finalPath, draft, "utf-8");
+  try {
+    await import("node:fs/promises").then((fs) => fs.unlink(draftPath));
+  } catch {
+    // ignore
+  }
+
+  // Update last_analyzed_commit from pending target commit
+  const meta = await loadMeta(workDir) || {};
+  const targetCommit = meta.analysis_target_commit || meta.last_analyzed_commit;
+  const newMeta = {
+    ...meta,
+    last_analyzed_commit: targetCommit,
+    analysis_target_commit: null,
+    analyzed_at: new Date().toISOString(),
+  };
+  await writeMeta(workDir, newMeta);
+
+  // Update context resume to done
+  context.resume = {
+    last_completed_stage: "Stage 5",
+    next_stage: "done",
+    last_round: context.current_round || 1,
+  };
+  await writeJson(contextPath, context);
+
+  console.log(`\n=== Published: ${finalPath} ===`);
+  console.log(`Checkpoint: last_analyzed_commit = ${targetCommit || "unknown"}\n`);
 }
 
 // ---------------------------------------------------------------------------
@@ -592,14 +628,16 @@ async function stageFiveReport(repoPath, repoType, result, workDir) {
 
 async function main() {
   const args = process.argv.slice(2);
-  const repoPath = resolve(args[0]);
-  const force = args.includes("--force");
-  const skipGate = args.includes("--skip-gate");
+  const repoArg = args[0];
 
-  if (!repoPath) {
+  if (!repoArg) {
     console.error("Usage: node research.mjs <repo-path> [--force] [--skip-gate]");
     process.exit(1);
   }
+
+  const repoPath = resolve(repoArg);
+  const force = args.includes("--force");
+  const skipGate = args.includes("--skip-gate");
 
   const repoName = basename(repoPath);
   const workDir = join(WORKING_DIR, repoName);
@@ -740,7 +778,8 @@ async function main() {
   // Write artifacts/evidence-log.jsonl (initial script-layer evidence)
   // ========================================================================
 
-  const evidenceLogPath = join(workingDir, "artifacts", "evidence-log.jsonl");
+  const evidenceLogPath = join(workDir, "artifacts", "evidence-log.jsonl");
+  await ensureDir(join(workDir, "artifacts"));
   const evidenceLines = result.evidence.map((e, i) =>
     JSON.stringify({
       id: `ev-${String(i + 1).padStart(3, "0")}`,
@@ -748,9 +787,10 @@ async function main() {
       file: e.path,
       scope: "file",
       purpose: e.purpose || "mechanical-scan",
-      key_findings: [],
-      evidence_strength: "B",
+      key_findings: [`${e.purpose || "mechanical-scan"}: ${e.path} — 内容前 ${e.content?.length || 0} 字符`],
+      evidence_strength: e.purpose === "代码" ? "A" : "B",
       related_questions: [],
+      coverage_delta: {},
       replaces: null,
       source: "script",
     })
@@ -777,8 +817,10 @@ async function main() {
 
   if (!skipGate) {
     console.log("Running gated checks...");
+    let allPassed = false;
     try {
-      const { preconditions, gates, allPassed, summary } = await runAllChecks(context, report);
+      const { preconditions, gates, allPassed: passed, summary } = await runAllChecks(context, report);
+      allPassed = passed;
       console.log(`\n=== Preconditions: ${preconditions.checks.filter((c) => c.passed).length}/${preconditions.checks.length} passed ===\n`);
       for (const c of preconditions.checks) console.log(`[${c.passed ? "PASS" : "FAIL"}] ${c.name}`);
       console.log(`\n=== Gated Checks: ${gates.summary} ===\n`);
@@ -786,13 +828,30 @@ async function main() {
       console.log(`\n=== Summary: ${summary} ===\n`);
       for (const r of gates.results) context.quality_gate[r.id] = r.passed;
       await writeJson(contextPath, context);
+
+      if (!preconditions.allPassed) {
+        console.error("Preconditions failed. Report remains in report-draft.md; no checkpoint published.\n");
+        process.exit(2);
+      }
+      if (!allPassed) {
+        console.error("Gated checks failed. Report remains in report-draft.md; no checkpoint published.\n");
+        process.exit(3);
+      }
     } catch (err) {
       console.error(`Gated checks failed: ${err.message}\n`);
+      console.error("Report remains in report-draft.md; no checkpoint published.\n");
+      process.exit(4);
     }
+
+    // Gate passed: publish report and checkpoint
+    await publishReportAndCheckpoint(workDir, repoPath, context, contextPath);
+  } else {
+    console.log("Skipping gated checks. Report remains in report-draft.md (no checkpoint published).\n");
   }
 
   console.log(`\n=== Analysis complete ===`);
   console.log(`Report: ${join(workDir, "report.md")}`);
+  console.log(`Draft:  ${join(workDir, "report-draft.md")}`);
   console.log(`Context: ${contextPath}`);
   console.log(`Model: ${modelPath}\n`);
 }

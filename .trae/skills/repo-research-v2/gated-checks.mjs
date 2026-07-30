@@ -512,6 +512,112 @@ Confidence:  <高/中/低>（<理由>）
 }
 `,
   },
+
+  surprise_gate: {
+    name: "意外发现深挖",
+    description: "意外发现被深挖了吗？如果有意外发现，必须有对应的后续问题",
+    prompt: `
+你是一个资深架构评审员。请评估以下 Repository Research 是否对意外发现进行了深入挖掘。
+
+**意外发现**指与预期不符的架构现象（如：整个仓库没有 Interface、刻意省略常见模式、一个组件做了不该做的事）。
+
+**必需内容**：
+- 如果报告提到意外发现，必须说明其对架构理解的 implications
+- 意外发现必须有对应的证据支撑
+- 如果意外发现未解决，必须作为未解问题提出
+
+报告 (report.md):
+\`\`\`markdown
+{report}
+\`\`\`
+
+上下文 (context.json):
+\`\`\`json
+{context}
+\`\`\`
+
+请判断：研究是否对意外发现进行了足够深挖？
+
+输出 JSON 格式（严格 JSON，无 markdown）：
+{
+  "passed": true/false,
+  "confidence": "high/medium/low",
+  "justification": "引用报告中的意外发现（如有），或说明为何通过",
+  "missing": "如果不通过，缺少什么（仅在 passed=false 时填写）"
+}
+`,
+  },
+
+  design_space_gate: {
+    name: "设计空间完整",
+    description: "关键决策的设计空间被完整记录了吗？每项有 rejected 替代方案",
+    prompt: `
+你是一个资深架构评审员。请评估以下 Repository Research 是否完整记录了关键决策的设计空间。
+
+**必需内容**：
+- context.design_space 非空
+- 每个决策包含 chosen / rejected / why_chosen / why_rejected / tradeoff
+- 如果 design_space 为空，报告必须解释为什么（例如仓库太小没有关键决策）
+
+上下文 (context.json):
+\`\`\`json
+{context}
+\`\`\`
+
+报告 (report.md):
+\`\`\`markdown
+{report}
+\`\`\`
+
+请判断：设计空间是否被完整记录？
+
+输出 JSON 格式（严格 JSON，无 markdown）：
+{
+  "passed": true/false,
+  "confidence": "high/medium/low",
+  "justification": "引用 context.design_space 或报告中的设计空间分析",
+  "missing": "如果不通过，缺少什么（仅在 passed=false 时填写）"
+}
+`,
+  },
+
+  final_check: {
+    name: "最终综合检查",
+    description: "报告整体是否达到从 '描述系统' 到 '预测系统' 的目标？",
+    prompt: `
+你是一个资深架构评审员。请对以下 Repository Research 报告做最终综合检查。
+
+**检查维度**：
+1. 能否用一句话说出架构中心？
+2. 每个关键决策是否有替代方案？
+3. 是否能回答"改 X 会炸哪里"？
+4. 是否能回答"哪些改动容易、哪些危险"？
+5. 是否有证据支撑的核心结论？
+6. 是否有过度推断或绝对化结论？
+
+**整体标准**：报告应该让有经验的工程师能快速掌握系统，并做出修改决策。
+
+报告 (report.md):
+\`\`\`markdown
+{report}
+\`\`\`
+
+上下文 (context.json):
+\`\`\`json
+{context}
+\`\`\`
+
+请判断：报告整体是否达到研究目标？
+
+输出 JSON 格式（严格 JSON，无 markdown）：
+{
+  "passed": true/false,
+  "confidence": "high/medium/low",
+  "justification": "综合评估报告的优缺点",
+  "missing": "如果不通过，最需要补充的内容（仅在 passed=false 时填写）"
+}
+`,
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -594,20 +700,19 @@ export function checkPreconditions(context) {
     detail: `center_hypothesis = ${center ? "present" : "empty/missing"}`,
   });
 
-  // 4. quality_gate 全部为 true
-  const qg = context.quality_gate || {};
-  const qgKeys = Object.keys(qg);
-  const qgAllTrue = qgKeys.length > 0 && qgKeys.every((k) => qg[k] === true);
+  // 4. design_space 非空（结构性前置条件；quality_gate 本身由 gate 产出，不能作为 gate 的前置条件，否则形成自举矛盾）
+  const ds = context.design_space || [];
+  const designSpaceOk = ds.length > 0;
   checks.push({
-    id: "quality_gate",
-    name: "质量门禁全部通过",
-    passed: qgAllTrue,
-    detail: `quality_gate = ${JSON.stringify(qg)} (${qgKeys.filter((k) => qg[k] !== true).length} not true)`,
+    id: "design_space",
+    name: "设计空间已记录",
+    passed: designSpaceOk,
+    detail: `design_space = ${ds.length} entries (need > 0)`,
   });
 
   const allPassed = checks.every((c) => c.passed);
 
-  return { passed: allPassed, checks };
+  return { passed: allPassed, allPassed, checks };
 }
 
 /**
