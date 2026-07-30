@@ -219,6 +219,39 @@ git log --all --oneline --format="%ad %h %s" --date=short | tail -5
 
 ---
 
+## 成熟替代方案对比（Tradeoff Expansion）
+
+**每个核心架构决策必须对比成熟替代方案**——不仅说"为什么选这个"，还要说"为什么不用 Event Sourcing / Temporal / Actor / LangGraph / Workflow Engine 等成熟方案"。
+
+### 必须对比的决策类型
+
+| 决策类型 | 应对比的成熟方案 |
+|---------|----------------|
+| Durable execution / resumability | Event Sourcing / Temporal / Actor Model / Durable Execution / LangGraph / Workflow Engine |
+| Provider 抽象 | aisuite / LiteLLM / LangChain Provider / 自建 |
+| Session 管理 | Session Store Pattern / Actor Model / Event-Driven |
+| Permission 系统 | RBAC / ABAC / Capability-based |
+| 缓存策略 | LRU / LFU / Write-through / Write-back |
+| 并发模型 | Thread-per-request / Async / Actor / CSP |
+
+### 对比格式
+
+```markdown
+| 替代方案 | 为何不选 | 证据 |
+|---------|---------|------|
+| Event Sourcing | 当前实现依赖 X 特性，而 Event Sourcing 要求 Y，代码中没有 Y 的迹象 | ev-016, ev-030 |
+| Temporal | 需要外部依赖，而仓库是 desktop application，无 server-side orchestrator | ev-012 |
+```
+
+### 规则
+
+- **每个核心决策至少对比 2 个成熟替代方案**
+- **禁止空想对比**——每个 "why not" 必须基于代码证据
+- 如果证据不足以对比，标注 `evidence_insufficient: true`，不强行编造理由
+- **禁止**说"未来版本不可能覆盖"——只能说"当前版本无法覆盖"
+
+---
+
 ## 置信度等级
 
 每个解释必须标注置信度。置信度反映证据质量，而非模型确定性。

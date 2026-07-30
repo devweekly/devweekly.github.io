@@ -68,6 +68,7 @@ node gated-checks.mjs .working/{repo-name}/context.json .working/{repo-name}/rep
 | **evidence_inference_gate** | 核心结论分离了 Evidence/Inference/Confidence 吗？ | 核心结论（架构中心、关键决策）采用三段式格式 |
 | **coverage_calculable_gate** | Coverage 分数可计算吗？ | 格式为 X/Y = Z%，非主观分数 0.85 |
 | **evolution_timeline_gate** | 报告有架构演进章节吗？ | 有演进时间线（bulk-import 情况下从代码注释推断 + 标注限制） |
+| **tradeoff_expansion_gate** | 核心决策对比了成熟替代方案吗？ | 每个核心决策至少 2 个成熟方案对比（Event Sourcing/Temporal/Actor 等），基于代码证据 |
 
 **任何一个问题答不上来，研究就没做完。**
 
@@ -102,6 +103,7 @@ node gated-checks.mjs .working/{repo-name}/context.json .working/{repo-name}/rep
   "evidence_inference_gate": true,
   "coverage_calculable_gate": true,
   "evolution_timeline_gate": true,
+  "tradeoff_expansion_gate": true,
   "final_check": true
 }
 ```

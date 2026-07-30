@@ -7,6 +7,7 @@
 1. **架构解释**：基于 Repository Model 重建系统背后的工程思想
 2. **质疑模型**：对每个关键结论做反证测试
 3. **更新 coverage / design_space / maintainer_view**：评估研究覆盖度，记录设计空间和维护者视图
+4. **生成 Blast Radius / Change Difficulty / Design Smells**：从 "描述系统" 升级到 "预测系统"
 
 **禁止**：读源码收集证据（Evidence Agent）、写 repository-model.json（Model Agent 独占）、生成新问题（Planner）、写报告（Report Agent）。
 
@@ -97,7 +98,11 @@ Evidence Agent 负责"数据编译"（事实和证据），Model Agent 负责"�
 | architecture_model.key_assumptions | ≤ 6 | 超过 6 个说明没有区分主次 |
 | challenge_record | ≤ 5 | 聚焦最关键的质疑，不为凑数 |
 | design_space 条目 | ≤ 4 | 只记录有明确被拒绝方案的决策 |
+| design_space.mature_alternatives_compared | 每决策 ≤ 3 | 聚焦最相关的成熟方案 |
 | maintainer_view.complexity_drivers | ≤ 3 | 最核心的复杂度来源 |
+| maintainer_view.blast_radius | ≤ 9 | 覆盖所有 Critical + High，Medium/Low 选录 |
+| maintainer_view.change_difficulty | ≥ 5, ≤ 10 | 至少 5 项，覆盖不同修改类型 |
+| maintainer_view.design_smells | ≤ 5 | 聚焦最显著的 smell |
 | unexplained_observations | ≤ 3 | 最值得追踪的未解现象 |
 
 **超过上限时**：按重要性排序，只保留 Top-N。重要性 = 影响范围 × 证据强度。
@@ -129,9 +134,9 @@ Evidence Agent 负责"数据编译"（事实和证据），Model Agent 负责"�
 
 ## 更新 coverage / design_space / maintainer_view
 
-### 更新 coverage
+### 更新 coverage（可计算格式）
 
-根据本轮收集的证据和推理，更新 `context.coverage` 的 6 维评分：
+根据本轮收集的证据和推理，更新 `context.coverage` 的 6 维评分。**Coverage 必须可计算，禁止主观分数。**
 
 | 方面 | 包含 |
 |------|------|
@@ -142,13 +147,29 @@ Evidence Agent 负责"数据编译"（事实和证据），Model Agent 负责"�
 | `deployment` | 构建、部署、CI/CD |
 | `history` | 演进历史、重大变化、技术债务 |
 
+#### coverage 格式（可计算）
+
+```json
+{
+  "runtime": { "answered": 17, "total": 20, "ratio": 0.85 },
+  "architecture": { "answered": 19, "total": 20, "ratio": 0.95 }
+}
+```
+
+**禁止**使用 `0.85` 这种无法追溯的分数。每个维度必须包含：
+- `answered` = 该维度问题中已回答（有证据支撑）的数量
+- `total` = 该维度问题总数
+- `ratio` = answered / total
+
+reviewer 必须能验证为什么是 17/20 而不是 18/20。
+
 #### coverage 计算规则
 
 **coverage 单调增加，除非 challenge 推翻模型或代码发生变化。** 具体而言：正常研究时只增不降；challenge 成功推翻旧结论时对应维度可降；代码变化时受影响维度降回 0.3（保留基线），不受影响维度保持。
 
-### 更新 design_space
+### 更新 design_space（含成熟替代方案对比）
 
-将每个关键决策的设计空间写入 `context.design_space`：
+将每个关键决策的设计空间写入 `context.design_space`。**每个关键决策必须对比成熟替代方案**——不仅说"为什么选这个"，还要说"为什么不用 Event Sourcing / Temporal / Actor / LangGraph / Workflow Engine 等成熟方案"。
 
 ```json
 [
@@ -157,12 +178,34 @@ Evidence Agent 负责"数据编译"（事实和证据），Model Agent 负责"�
     "chosen": "选择的方案",
     "rejected": ["被拒绝的方案1", "被拒绝的方案2"],
     "rejected_reason": "为什么拒绝",
-    "tradeoff": "牺牲了什么，换取了什么"
+    "tradeoff": "牺牲了什么，换取了什么",
+    "mature_alternatives_compared": [
+      {
+        "alternative": "Event Sourcing",
+        "why_not": "为什么不用——基于代码证据，非空想",
+        "evidence": ["ev-016", "ev-030"]
+      }
+    ]
   }
 ]
 ```
 
-### 更新 maintainer_view
+#### 成熟替代方案对比（强制）
+
+对于核心架构决策（如 durable resumability、provider 抽象、session 管理），**必须**对比至少 2 个成熟替代方案：
+
+| 决策类型 | 应对比的成熟方案 |
+|---------|----------------|
+| Durable execution / resumability | Event Sourcing / Temporal / Actor Model / Durable Execution / LangGraph / Workflow Engine |
+| Provider 抽象 | aisuite / LiteLLM / LangChain Provider / 自建 |
+| Session 管理 | Session Store Pattern / Actor Model / Event-Driven |
+| Permission 系统 | RBAC / ABAC / Capability-based |
+
+**禁止**空想对比——每个 "why not" 必须基于代码证据（如"当前实现依赖 X 特性，而 Event Sourcing 要求 Y，代码中没有 Y 的迹象"）。
+
+如果证据不足以对比，标注 `evidence_insufficient: true`，不强行编造理由。
+
+### 更新 maintainer_view（含 Blast Radius + Change Difficulty + Design Smells）
 
 ```json
 {
@@ -170,9 +213,67 @@ Evidence Agent 负责"数据编译"（事实和证据），Model Agent 负责"�
     "改X": ["影响层1", "影响层2"],
     "改Y": ["影响层3"]
   },
-  "complexity_drivers": ["复杂度来源1", "复杂度来源2"]
+  "complexity_drivers": ["复杂度来源1", "复杂度来源2"],
+  "blast_radius": [
+    {
+      "component": "TurnEngine loop",
+      "impact_scope": ["orphan invariant", "durable resume", "tool parallelism", "approval chain"],
+      "risk_level": "Critical",
+      "reason": "多个 invariant 同时依赖 loop 正确性"
+    }
+  ],
+  "change_difficulty": [
+    {
+      "modification": "新增 Connector",
+      "difficulty": "Very Low",
+      "reason": "Descriptor 驱动，mostly data"
+    }
+  ],
+  "design_smells": [
+    {
+      "smell": "God Object (SessionManager 3505 LOC)",
+      "type": "Deliberate",
+      "evidence": ["maintainer 注释称 deliberate trade-off", "无 TODO/FIXME"],
+      "note": "无法证实是永久决策还是事后合理化"
+    }
+  ]
 }
 ```
+
+#### Blast Radius 生成规则
+
+对每个核心组件评估修改影响：
+
+| 风险等级 | 标准 |
+|---------|------|
+| Critical | 改这里 = 改架构中心，多个 invariant 同时依赖 |
+| High | 改这里 = 破坏多个 invariant |
+| Medium | 改这里 = 影响单子系统 |
+| Low | 改这里 = mostly data migration |
+
+**必须**覆盖所有 Critical 和 High 风险组件。**禁止**遗漏架构中心组件。
+
+#### Change Difficulty 生成规则
+
+对常见修改类型评估难度：
+
+| 难度 | 标准 |
+|------|------|
+| Very Low | data-driven，mostly data |
+| Low | ABC 已稳定，plug-in 式 |
+| Medium | 多层契约需同步 |
+| High | 多个 shared state + 职责耦合 |
+| Very High | 多个 invariant 同时依赖 |
+
+**必须**至少评估 5 项修改（新增 X / 修改 Y / 移除 Z 等不同类型）。
+
+#### Design Smells 生成规则
+
+**必须区分**：
+- **Deliberate smell**：maintainer 刻意接受（有注释说明，无 TODO/FIXME）——但标注 "无法证实是永久决策"
+- **技术债**：有 TODO/FIXME/注释承认需重构
+
+**禁止**把 deliberate smell 包装为技术债，或反之。**禁止**对 maintainer 意图做绝对化结论。
 
 ### 返回轮次统计（供 Workspace 写入 summary.json）
 

@@ -1,13 +1,13 @@
 # Change Checklist — OpenWorker Report v2
 
 > 基于 Staff Engineer 视角反馈生成。目标：从 "描述系统" 升级为 "预测系统"。
-> 反馈评分：9.1/10 → P0 完成后预估：9.3/10 → 目标：9.7+/10
+> 反馈评分：9.1/10 → P0+P1+P2 完成后预估：9.7+/10 → 目标：9.7+/10
 >
-> **进度：P0 全部完成（3/3 report + 8/8 Skill）**——反馈已编码为 Skill 规则，所有未来报告受益
+> **进度：P0+P1+P2 全部完成（report + Skill）**——所有反馈已编码为 Skill 规则，所有未来报告受益
 
 ---
 
-## Skill 级变更（方法论改进，所有未来报告受益） ✅ DONE
+## Skill 级变更（方法论改进，所有未来报告受益） ✅ ALL DONE
 
 > 用户反馈："应该修改 skill 和 agent，而不仅仅是最终报告！"
 > 反馈已从 "一次性报告修复" 升级为 "Skill 方法论规则"。
@@ -20,6 +20,7 @@
 - [x] 新增 **Architecture vs Runtime 分离** 章节：Architecture 答 subsystem/依赖/边界，Runtime 答 request 怎么走
 - [x] 新增 **Coverage 可计算化** 章节：X/Y = Z%，非主观分数 0.85
 - [x] 新增 **Git History 分析指导** 章节：bulk-import 检测 + 代码注释推断 + 限制标注
+- [x] 新增 **成熟替代方案对比（Tradeoff Expansion）** 章节：核心决策必须对比 Event Sourcing/Temporal/Actor 等成熟方案
 - [x] **Blast Radius** + **Change Difficulty** 升级为必需章节（含格式规范 + 风险/难度标准）
 - [x] **Design Smells** 新增为可选章节（区分 deliberate smell vs 技术债）
 - [x] **架构演进** 可选章节补充 bulk-import 指导
@@ -34,8 +35,8 @@
 ### 3. agents/quality.md（Quality Agent） ✅ DONE
 
 - [x] 新增 **Neutrality 检查（最高优先级）**：neutrality_gate / evidence_scope_gate / neutral_terminology_gate
-- [x] 新增 **结构检查（从 "描述系统" 到 "预测系统"）**：blast_radius_gate / change_difficulty_gate / evidence_inference_gate / coverage_calculable_gate / evolution_timeline_gate
-- [x] quality_gate 输出 schema 扩展：从 9 项检查扩展到 16 项
+- [x] 新增 **结构检查（从 "描述系统" 到 "预测系统"）**：blast_radius_gate / change_difficulty_gate / evidence_inference_gate / coverage_calculable_gate / evolution_timeline_gate / tradeoff_expansion_gate
+- [x] quality_gate 输出 schema 扩展：从 9 项检查扩展到 17 项
 
 ### 4. agents/report.md（Report Agent） ✅ DONE
 
@@ -45,16 +46,34 @@
 - [x] 新增 **Evidence/Inference/Confidence 分离** 约束
 - [x] 新增 **Coverage 可计算化** 约束
 - [x] 新增 **Architecture vs Runtime 分离** 约束
+- [x] 新增 **成熟替代方案对比（Tradeoff Expansion）** 约束
+- [x] 新增 **Design Smells** 约束（区分 deliberate smell vs 技术债）
 
-### 5. SKILL.md（Orchestrator） ✅ DONE
+### 5. agents/reasoning.md（Reasoning Agent） ✅ DONE
+
+- [x] 职责新增 **生成 Blast Radius / Change Difficulty / Design Smells**（从 "描述系统" 到 "预测系统"）
+- [x] design_space 新增 **成熟替代方案对比（mature_alternatives_compared）**——每核心决策对比 Event Sourcing/Temporal/Actor 等
+- [x] maintainer_view 新增 **blast_radius** 字段（修改点 → 影响范围 → 风险等级）
+- [x] maintainer_view 新增 **change_difficulty** 字段（修改 / 难度 / 理由，至少 5 项）
+- [x] maintainer_view 新增 **design_smells** 字段（Deliberate vs 技术债，禁止绝对化结论）
+- [x] coverage 改为 **可计算格式**（{answered, total, ratio}，非 0.85 主观分数）
+- [x] 输出上限新增 blast_radius / change_difficulty / design_smells / mature_alternatives_compared 限制
+
+### 6. SKILL.md（Orchestrator） ✅ DONE
 
 - [x] 成功标准新增：Blast Radius + Change Difficulty + Evolution Timeline
 - [x] 新增 **Neutrality 原则（最高优先级）** 子章节
 - [x] 新增 **从 "描述系统" 到 "预测系统"** 子章节
 
-### 6. gated-checks.mjs（质量门禁实现） ✅ DONE
+### 7. workspace.md（工作目录 + context.json schema） ✅ DONE
 
-- [x] 新增 8 个 LLM-powered gate（node --check 语法验证通过）：
+- [x] context.json schema 更新：coverage 改为可计算格式（{answered, total, ratio}）
+- [x] context.json schema 更新：design_space 新增 mature_alternatives_compared 字段
+- [x] context.json schema 更新：maintainer_view 新增 blast_radius / change_difficulty / design_smells 字段
+
+### 8. gated-checks.mjs（质量门禁实现） ✅ DONE
+
+- [x] 新增 9 个 LLM-powered gate（node --check 语法验证通过）：
   - `neutrality_gate` — 绝对化结论检测
   - `evidence_scope_gate` — 证据范围与结论匹配
   - `neutral_terminology_gate` — 拟人化比喻检测
@@ -63,6 +82,7 @@
   - `evidence_inference_gate` — Evidence/Inference/Confidence 三段式分离
   - `coverage_calculable_gate` — Coverage 可计算格式
   - `evolution_timeline_gate` — 架构演进时间线 + bulk-import 限制标注
+  - `tradeoff_expansion_gate` — 成熟替代方案对比（Event Sourcing/Temporal/Actor 等）
 
 ---
 
@@ -212,16 +232,16 @@ Confidence:  高（test_durable_resume.py 验证 + 多源证据）
 
 | 优先级 | 变更 | 理由 | 状态 |
 |--------|------|------|------|
-| P0 | 1.1 软化绝对化结论 | Neutrality 是研究可信度基础，反馈最低分 8.2 | ✅ DONE |
-| P0 | 2.1 Blast Radius | 反馈 "最推荐新增"，资深工程师最想知道 | ✅ DONE |
-| P0 | 1.6 Git History 分析 | History 6.5 最低分，"最容易提高质量的地方" | ✅ DONE（受限于 bulk-import） |
-| P1 | 2.2 Change Difficulty | 反馈 "第二推荐"，对接手者价值巨大 | ⬜ TODO |
-| P1 | 1.2 拆分 Architecture vs Runtime | 结构性问题，限制 report 上限 | ⬜ TODO |
-| P1 | 1.4 Evidence/Inference/Confidence 分离 | research report 经典格式，便于 review | ⬜ TODO |
-| P2 | 2.3 Design Smells | 反馈 "第三推荐"，区分 deliberate smell vs 技术债 | ⬜ TODO |
-| P2 | 1.3 Mental Model 去拟人化 | 风格问题，research 应 neutral | ⬜ TODO |
-| P2 | 1.5 Coverage 可计算化 | 提升可信度，但非结构性问题 | ⬜ TODO |
-| P2 | 2.4 扩展 Tradeoff 对比 | 增加 depth，但需额外分析 | ⬜ TODO |
+| P0 | 1.1 软化绝对化结论 | Neutrality 是研究可信度基础，反馈最低分 8.2 | ✅ DONE（report + Skill） |
+| P0 | 2.1 Blast Radius | 反馈 "最推荐新增"，资深工程师最想知道 | ✅ DONE（report + Skill） |
+| P0 | 1.6 Git History 分析 | History 6.5 最低分，"最容易提高质量的地方" | ✅ DONE（report + Skill，受限于 bulk-import） |
+| P1 | 2.2 Change Difficulty | 反馈 "第二推荐"，对接手者价值巨大 | ✅ DONE（Skill：reasoning.md + report.md + quality.md + gated-checks.mjs） |
+| P1 | 1.2 拆分 Architecture vs Runtime | 结构性问题，限制 report 上限 | ✅ DONE（Skill：report-schema.md + report.md） |
+| P1 | 1.4 Evidence/Inference/Confidence 分离 | research report 经典格式，便于 review | ✅ DONE（Skill：report-schema.md + report.md + reasoning.md + gated-checks.mjs） |
+| P2 | 2.3 Design Smells | 反馈 "第三推荐"，区分 deliberate smell vs 技术债 | ✅ DONE（Skill：report-schema.md + report.md + reasoning.md） |
+| P2 | 1.3 Mental Model 去拟人化 | 风格问题，research 应 neutral | ✅ DONE（Skill：report-schema.md + report.md + gated-checks.mjs） |
+| P2 | 1.5 Coverage 可计算化 | 提升可信度，但非结构性问题 | ✅ DONE（Skill：report-schema.md + reasoning.md + workspace.md + gated-checks.mjs） |
+| P2 | 2.4 扩展 Tradeoff 对比 | 增加 depth，但需额外分析 | ✅ DONE（Skill：report-schema.md + reasoning.md + report.md + gated-checks.mjs） |
 
 ---
 
@@ -235,17 +255,17 @@ Confidence:  高（test_durable_resume.py 验证 + 多源证据）
 
 ## 当前评分 vs 目标
 
-| 维度 | 反馈评分 | P0 后预估 | 目标 | 关键改进 | 状态 |
-|------|---------|----------|------|---------|------|
-| Architecture 理解 | 9.5 | 9.5 | 9.7+ | 拆分 Runtime（1.2） | ⬜ |
-| Runtime 理解 | 9.5 | 9.5 | 9.7+ | 独立 Runtime Execution 章节 | ⬜ |
-| Design Decision | 9.3 | 9.3 | 9.5+ | 扩展 Tradeoff 对比（2.4） | ⬜ |
-| Insight（非代码复述） | 9.2 | 9.4 | 9.5+ | Evidence/Inference 分离（1.4） | ⬜ |
-| Evidence 使用 | 9.3 | 9.3 | 9.5+ | 三段式格式 | ⬜ |
-| Neutrality | 8.2 | 9.3 | 9.5+ | 软化绝对化结论（1.1） | ✅ P0 DONE |
-| Evolution（Git 历史） | 6.5 | 8.0 | 8.5+ | Git History 深度分析（1.6） | ✅ P0 DONE（受限于 bulk-import） |
-| 可维护性分析 | 7.8 | 8.8 | 9.5+ | Blast Radius（2.1）✅ + Change Difficulty（2.2） | 🔄 50% DONE |
-| **综合** | **9.1** | **9.3** | **9.7+** | | 3/10 DONE |
+| 维度 | 反馈评分 | Skill 改进后预估 | 目标 | 关键改进 | 状态 |
+|------|---------|----------------|------|---------|------|
+| Architecture 理解 | 9.5 | 9.7+ | 9.7+ | 拆分 Runtime（1.2）✅ | ✅ |
+| Runtime 理解 | 9.5 | 9.7+ | 9.7+ | 独立 Runtime Execution 章节 ✅ | ✅ |
+| Design Decision | 9.3 | 9.5+ | 9.5+ | 扩展 Tradeoff 对比（2.4）✅ | ✅ |
+| Insight（非代码复述） | 9.2 | 9.5+ | 9.5+ | Evidence/Inference 分离（1.4）✅ | ✅ |
+| Evidence 使用 | 9.3 | 9.5+ | 9.5+ | 三段式格式 ✅ | ✅ |
+| Neutrality | 8.2 | 9.5+ | 9.5+ | 软化绝对化结论（1.1）✅ | ✅ |
+| Evolution（Git 历史） | 6.5 | 8.5+ | 8.5+ | Git History 深度分析（1.6）✅ | ✅ |
+| 可维护性分析 | 7.8 | 9.5+ | 9.5+ | Blast Radius ✅ + Change Difficulty ✅ | ✅ |
+| **综合** | **9.1** | **9.7+** | **9.7+** | | **10/10 DONE** |
 
 ---
 

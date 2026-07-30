@@ -473,6 +473,45 @@ Confidence:  <高/中/低>（<理由>）
 }
 `,
   },
+
+  tradeoff_expansion_gate: {
+    name: "成熟替代方案对比",
+    description: "每个核心架构决策对比了成熟替代方案吗？至少 2 个，基于代码证据",
+    prompt: `
+你是一个资深架构评审员。请评估以下 Repository Research 报告是否对核心架构决策对比了成熟替代方案。
+
+**必需内容**：
+- 每个核心架构决策至少对比 2 个成熟替代方案
+- 对比必须基于代码证据（非空想）
+- 如果证据不足以对比，标注 evidence_insufficient，不强行编造
+
+**应对比的成熟方案示例**：
+- Durable execution: Event Sourcing / Temporal / Actor Model / LangGraph / Workflow Engine
+- Provider 抽象: aisuite / LiteLLM / LangChain Provider
+- Session 管理: Session Store Pattern / Actor Model / Event-Driven
+- Permission: RBAC / ABAC / Capability-based
+
+**禁止**：
+- 只说"为什么选这个"而不说"为什么不用成熟方案 X"
+- 空想对比（无代码证据支撑的 "why not"）
+- 说"未来版本不可能覆盖"
+
+报告 (report.md):
+\`\`\`markdown
+{report}
+\`\`\`
+
+请判断：报告是否对核心决策对比了成熟替代方案？
+
+输出 JSON 格式（严格 JSON，无 markdown）：
+{
+  "passed": true/false,
+  "confidence": "high/medium/low",
+  "justification": "引用报告中的成熟方案对比（如有），或说明缺失内容",
+  "missing": "如果不通过，哪些决策需要补充成熟方案对比（仅在 passed=false 时填写）"
+}
+`,
+  },
 };
 
 // ---------------------------------------------------------------------------

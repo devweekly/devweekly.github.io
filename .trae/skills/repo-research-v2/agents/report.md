@@ -190,6 +190,23 @@ architecture: 19/20 questions answered = 95%
 
 **禁止**把 Runtime execution 流程放在 Architecture 章节。
 
+### 成熟替代方案对比（Tradeoff Expansion）
+
+**每个核心架构决策必须对比成熟替代方案**——不仅说"为什么选这个"，还要说"为什么不用 Event Sourcing / Temporal / Actor / LangGraph / Workflow Engine 等成熟方案"。
+
+- 每个核心决策至少 2 个成熟方案对比
+- 对比基于代码证据（非空想）
+- 证据不足时标注 `evidence_insufficient`，不强行编造
+- **禁止**说"未来版本不可能覆盖"
+
+### Design Smells（可选章节）
+
+如果仓库有 deliberate smell（maintainer 刻意接受的 God Object / Shared Mutable State / Implicit Contracts 等），必须区分：
+- **Deliberate smell**：maintainer 刻意接受（有注释说明，无 TODO/FIXME）——但标注 "无法证实是永久决策"
+- **技术债**：有 TODO/FIXME/注释承认需重构
+
+**禁止**把 deliberate smell 包装为技术债，或反之。
+
 ### Key Decisions 格式（4 字段，不是 9 字段）
 
 每个决策只写 4 个字段：

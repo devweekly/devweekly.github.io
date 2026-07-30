@@ -79,10 +79,13 @@ context.json 是一个 JSON 文件，但逻辑上按 Owner 分块。每个 Agent
   "current_round": 2,                     // Owner: Workspace（基于 Planner 返回值更新）
   "current_question_file": "...",         // Owner: Workspace
 
-  "coverage": {                           // Owner: Reasoning
-    "runtime": 0.75, "architecture": 0.80,
-    "design_decisions": 0.70, "testing": 0.55,
-    "deployment": 0.75, "history": 0.30
+  "coverage": {                           // Owner: Reasoning（可计算格式）
+    "runtime": { "answered": 17, "total": 20, "ratio": 0.85 },
+    "architecture": { "answered": 19, "total": 20, "ratio": 0.95 },
+    "design_decisions": { "answered": 14, "total": 20, "ratio": 0.70 },
+    "testing": { "answered": 11, "total": 20, "ratio": 0.55 },
+    "deployment": { "answered": 15, "total": 20, "ratio": 0.75 },
+    "history": { "answered": 6, "total": 20, "ratio": 0.30 }
   },
 
   "model_stability": "challenged",        // Owner: Reasoning
@@ -96,8 +99,33 @@ context.json 是一个 JSON 文件，但逻辑上按 Owner 分块。每个 Agent
   },
 
   "challenge_record": [...],              // Owner: Reasoning
-  "design_space": [...],                  // Owner: Reasoning
-  "maintainer_view": {...},               // Owner: Reasoning
+
+  "design_space": [                       // Owner: Reasoning（含成熟替代方案对比）
+    {
+      "decision": "...",
+      "chosen": "...",
+      "rejected": [...],
+      "rejected_reason": "...",
+      "tradeoff": "...",
+      "mature_alternatives_compared": [
+        { "alternative": "Event Sourcing", "why_not": "...", "evidence": [...] }
+      ]
+    }
+  ],
+
+  "maintainer_view": {                    // Owner: Reasoning（含 Blast Radius + Change Difficulty + Design Smells）
+    "modification_impact_map": {...},
+    "complexity_drivers": [...],
+    "blast_radius": [
+      { "component": "...", "impact_scope": [...], "risk_level": "Critical", "reason": "..." }
+    ],
+    "change_difficulty": [
+      { "modification": "...", "difficulty": "Very Low", "reason": "..." }
+    ],
+    "design_smells": [
+      { "smell": "...", "type": "Deliberate", "evidence": [...], "note": "无法证实是永久决策" }
+    ]
+  },
 
   "quality_gate": {...},                  // Owner: Quality（只写 quality_gate 字段，不改其他）
 
