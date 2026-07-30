@@ -11,7 +11,7 @@ OpenWorker 是一个 **durable agent runtime**——以 `TurnEngine` 为架构�
 三个最关键的发现：
 
 1. **三层 durable 设计**正交地解决了三个维度的 resumability——`TurnEngine.resume()` 跨 restart 重放 unanswered tool_calls；`InboxStore` 跨 surface idempotent (session_id, tool_call_id)；`SessionManager.deliver_to_session` 跨 session 生命周期重建 engine 并应用 permission grants。三层缺一不可。
-2. **aisuite 不是 provider 抽象基座**，而是 toolkits/tracing 层 + OpenAI-compat plug-in (P12)。OpenWorker 自建 `ProviderClient` ABC，因 Anthropic Messages API 与 chat.completions 差异大到必须有专门 converter，且 extended thinking verbatim replay + API drift 适配 (pre-4.6/4.6+/Claude 5) 是 aisuite 不可能提供的 model-family-specific 处理。
+2. **aisuite 不是 provider 抽象基座**，而是 toolkits/tracing 层 + OpenAI-compat plug-in (P12)。OpenWorker 自建 `ProviderClient` ABC，因 Anthropic Messages API 与 chat.completions 差异大到必须有专门 converter，且 extended thinking verbatim replay + API drift 适配 (pre-4.6/4.6+/Claude 5) 是当前 aisuite 抽象层无法覆盖的 model-family-specific 处理——OpenWorker 作者认为 aisuite 不适合承担这一职责。
 3. **三种部署模式**共存于同一 Python 代码库：Tauri desktop sidecar（supervised）、standalone `openworker-server`（headless）、`openworker` TUI（terminal-only）。Desktop 只是 one deployment mode，不是架构约束。
 
 置信度：**高**（27 条 A 级证据，12 个 R1 问题 + 6 个 R2 问题全部 answered + validated，5 个 challenge 全部维持）。
@@ -31,7 +31,7 @@ OpenWorker 是一个 **durable agent runtime**——以 `TurnEngine` 为架构�
 | **骨架** | `Tauri Shell` (surfaces/gui/src-tauri) | desktop supervisor——单实例锁 + close-to-tray + keep-awake + sidecar spawn |
 | **可替换器官** | `Persona` / `Skill` / `Connector` / `Provider` | data-driven extension——Adding a connector is mostly data, not UI code |
 
-**核心张力**：durable resumability vs 协调复杂度。三层 durable 设计让 agent 永远可续，但代价是 `SessionManager` god-class + 18+ stores + 多层 permission allowlist + 多 surface Inbox 同步。
+**核心张力**：durable resumability vs 协调复杂度。三层 durable 设计让 agent 可跨 restart/surface/session 续完，但代价是 `SessionManager` god-class + 18+ stores + 多层 permission allowlist + 多 surface Inbox 同步。
 
 ---
 
@@ -177,7 +177,7 @@ ALWAYS_* → allow_tool_for_session / allow_command_for_session
 
 | 决策 | 选择 | 替代方案 | 理由 |
 |------|------|---------|------|
-| Provider 抽象 | 自建 `ProviderClient` ABC + native 实现 | aisuite 统一抽象 | Anthropic Messages API 与 chat.completions 差异大到必须有专门 converter；extended thinking verbatim replay + API drift 适配是 aisuite 不可能提供的 |
+| Provider 抽象 | 自建 `ProviderClient` ABC + native 实现 | aisuite 统一抽象 | Anthropic Messages API 与 chat.completions 差异大到必须有专门 converter；extended thinking verbatim replay + API drift 适配是当前 aisuite 抽象层无法覆盖的 |
 | MCP client | 自建 async-native 包装层 | 直接用官方 mcp SDK | 官方 SDK 同步阻塞需 nest_asyncio 或第二 event loop；anyio cancel scopes task-affine 要求 dedicated task |
 | Scheduled task 执行模型 | durable conversation thread (可续) | fire-and-forget | 支持 parked approval + task-scoped standing rule；scheduled agent is no longer fire-and-forget |
 | SessionManager 组织 | god-class (3505 LOC) | 按 13 类职责拆分 | 所有 cross-cutting state 需 shared access；拆分需引入 13+ 协作对象 + shared state 同步机制 |
@@ -186,9 +186,9 @@ ALWAYS_* → allow_tool_for_session / allow_command_for_session
 
 ### 4.4 权衡
 
-- **durable resumability vs 协调复杂度**：三层 durable 设计让 agent 永远可续，但代价是 SessionManager god-class + 18+ stores + 多层 allowlist。**置信度：高**。
+- **durable resumability vs 协调复杂度**：三层 durable 设计让 agent 可跨 restart/surface/session 续完，但代价是 SessionManager god-class + 18+ stores + 多层 allowlist。**置信度：高**。
 - **native provider 维护成本 vs API drift 适配能力**：自建 AnthropicProvider 需跟踪 pre-4.6/4.6+/Claude 5 thinking config + Fable/Mythos 5 safety classifier，但获得 model-family-specific 适配能力。**置信度：高**。
-- **god-class 可读性 vs 多对象协议复杂度**：3505 LOC 单文件是 onboarding 负担，但拆分需 13+ 协作对象 + shared state 同步。代码中无 TODO/FIXME 拆分标记，支持 deliberate trade-off 解释。**置信度：中**。
+- **god-class 可读性 vs 多对象协议复杂度**：3505 LOC 单文件是 onboarding 负担，但拆分需 13+ 协作对象 + shared state 同步。代码中无 TODO/FIXME 拆分标记，maintainer 注释称之为 deliberate trade-off，但无法证实是永久决策——目前无拆分计划。**置信度：中**。
 
 ---
 
@@ -206,7 +206,7 @@ ALWAYS_* → allow_tool_for_session / allow_command_for_session
 
 **预期**：3505 LOC god-class 应该有 TODO/FIXME 拆分标记或 refactor commit。
 
-**实际**：`manager.py` grep `TODO|FIXME|HACK|XXX|refactor|split|break-up` 零匹配。代码注释明确说 "god-class 是协调复杂度的 deliberate trade-off"。这是真实设计意图，不是技术债待拆。**置信度：中**（仍可能是事后合理化，但无反证）。
+**实际**：`manager.py` grep `TODO|FIXME|HACK|XXX|refactor|split|break-up` 零匹配。代码注释说 "god-class 是协调复杂度的 deliberate trade-off"。证据只能推出 "目前没有拆分计划"，不能推出 "maintainer 有意识决定永远不拆"——无法证实是永久决策还是事后合理化。**置信度：中**（无反证，但也无正向证据）。
 
 ### 5.3 测试覆盖远超预期
 
@@ -216,7 +216,7 @@ ALWAYS_* → allow_tool_for_session / allow_command_for_session
 
 ### 5.4 三种部署模式共存
 
-**预期**：Tauri shell 是唯一入口。
+**预期**：Tauri shell 是主要入口。
 
 **实际**：`pyproject.toml` 有三个 entry points——`openworker-server` (standalone uvicorn，可 headless)、`openworker` (textual TUI，terminal-only)、`openworker-connectors`。同一 Python 代码库支持 desktop sidecar + standalone server + TUI 三种部署。`_exit_when_orphaned()` 只在 `COWORKER_EXIT_WITH_PARENT=1` 时激活，standalone runs are unaffected。**置信度：高**。
 
@@ -260,24 +260,119 @@ ALWAYS_* → allow_tool_for_session / allow_command_for_session
 
 | 风险 | 严重度 | 证据 |
 |------|--------|------|
-| SessionManager 3505 LOC onboarding 负担 | 中 | ev-030——虽是 deliberate trade-off，但新开发者需理解 13 类职责 |
+| SessionManager 3505 LOC onboarding 负担 | 中 | ev-030——maintainer 注释称 deliberate trade-off，但新开发者需理解 13 类职责 |
 | 多 provider API drift 维护成本 | 中 | ev-020——Anthropic pre-4.6/4.6+/Claude 5 thinking config + Fable/Mythos 5 safety classifier 需持续跟踪 |
 | 18+ stores 的 shared state 同步 | 中 | ev-030——所有 cross-cutting state 需 shared access，未来扩展可能迫使拆分 |
 | aisuite pinned to commit | 低 | ev-034——pyproject.toml 注释 "swap for a PyPI pin once next aisuite release ships"，目前是供应链风险 |
 
 ---
 
-## 8. 未解问题
+## 8. Architecture Risk Analysis（Blast Radius）
+
+> 如果我要改这里，会炸哪里——修改核心组件的影响范围与风险等级。
+
+| 修改点 | 影响范围 | 风险等级 | 理由 |
+|--------|---------|---------|------|
+| **TurnEngine loop** | orphan invariant / durable resume / tool parallelism / approval chain / provider stream bridging | **Critical** | 多个 invariant 同时依赖 loop 正确性——改 loop 逻辑会同时影响 orphan 防护、durable resume 重放、tool 并行/串行分流、approval interception、stream cancel 竞速 |
+| **SessionManager** | permission seeding / scheduler / inbox / resume / routing / 18+ stores | **Critical** | 所有 cross-cutting state 集中于此——改 SessionManager 影响 engine 装配、task rules seeding、inbound 路由、scheduled task 执行、cross-session coordination |
+| **canonical OpenAI-shape history** | provider replay / thinking block / tool_call conversion / mid-session model switch | **High** | 所有 provider per-call 依赖此格式——改 history 结构需同步改所有 provider converter + durable resume 重放逻辑 + thinking block verbatim replay |
+| **Inbox 状态机** | durable resume / multi-surface resolution / approval chain | **High** | `(session_id, tool_call_id)` idempotent 契约 + first-responder-wins——改 Inbox 状态机会影响 durable resume 的 for_tool_call() 复用 + 多 surface 同一 item 解析 |
+| **§25 standing rule** | automation safety / permission chain / task-scoped auto-allow | **High** | external-risk only + exact-target binding 是 automation-safe 的基础——改 standing rule 语义会影响 scheduled task 的 auto-allow 安全性 |
+| **PermissionEngine 5 mode** | approval flow / session_allow / task_rules / auto_allow | **Medium** | 4 层 allowlist 依赖 mode 判定——改 mode 语义影响整个 permission chain |
+| **MCPManager** | MCP server lifecycle / tool registration / OAuth | **Medium** | dedicated asyncio task + anyio cancel scope——改 lifecycle 管理 affecting MCP server 连接稳定性 |
+| **ConnectorDescriptor** | connector registration / wizard UI / tool surface | **Low** | data-driven——改 descriptor 结构 mostly data migration，adapter 层不受影响 |
+| **Persona manifest** | agent materialization / skill loading / recommends | **Low** | YAML frontmatter——改 manifest schema 需 to_agent() 同步，但影响面局限于 persona loading |
+
+### 改动危险等级速查
+
+```
+Critical  ─── TurnEngine loop, SessionManager
+    │         （改这里 = 改架构中心）
+    ▼
+High      ─── canonical history, Inbox 状态机, §25 standing rule
+    │         （改这里 = 破坏多个 invariant）
+    ▼
+Medium    ─── PermissionEngine modes, MCPManager
+    │         （改这里 = 影响单子系统）
+    ▼
+Low       ─── ConnectorDescriptor, Persona manifest
+              （改这里 = mostly data migration）
+```
+
+---
+
+## 9. 架构演进（Evolution Timeline）
+
+> 系统为何演变成今天这样——从 git 历史与代码注释推断。
+
+### 9.1 关键发现：仓库于 2026-07-21 批量导入
+
+```
+git log --all --oneline --format="%ad %h %s" | head -5
+
+2026-07-24 4766e59 Keep ripgrep searches out of generated directories (#10)
+2026-07-23 4ffc73f README: Minor updates.
+2026-07-23 f7c70a2 README: add how-it-works diagram from the website
+...
+2026-07-21 2b45018 OpenWorker: initial import          ← 整个架构在此 commit 一次性导入
+```
+
+**git 历史仅 4 天**（2026-07-21 ~ 2026-07-24），首个 commit `2b45018 OpenWorker: initial import` 包含完整架构。这意味着：
+
+- 架构演进（per-agent-name → traits、Slack-only → RelayHub、fire-and-forget → durable thread、aisuite → native provider）发生在 **import 之前的私有仓库**
+- git history 无法用于验证演进时间线——history 维度 coverage 受限于仓库本身
+- 代码注释是唯一的演进证据来源
+
+### 9.2 从代码注释推断的演进事件
+
+| 事件 | 证据 | 推断的动机 |
+|------|------|-----------|
+| per-agent-name branching → traits-based branching | ev-017, ev-011 注释 "replace the old per-agent-name branching" | Agent 抽象从硬编码 if-else 转为 traits 驱动的 declarative 装配 |
+| 手写 tool factory → catalog.expand | ev-012 注释 "was a hand-written factory" | Tool 装配从 imperative factory 转为 data-driven catalog expand |
+| Slack-only relay → RelayHub 抽象 | ev-023 注释 "when GitHub became the second relay provider we abstracted RelayHub out" | Relay 从 Slack 专属转为 multi-provider shared transport |
+| aisuite as provider → aisuite as OpenAI-compat plug-in + native provider | ev-018 注释 "AISuiteProvider slots in later (P12)" + ev-020 完整 native AnthropicProvider | API drift 适配需要 model-family-specific 处理 |
+| fire-and-forget scheduled task → durable conversation thread | ev-030 注释 "scheduled agent is no longer fire-and-forget" | 支持 parked approval + task-scoped standing rule |
+| Anthropic API drift 适配 | ev-020 pre-4.6 vs 4.6+/Claude 5 thinking config + Fable/Mythos 5 safety classifier | Provider 必须跟踪 vendor API drift |
+
+### 9.3 import 后的 4 天迭代（2026-07-21 ~ 2026-07-24）
+
+| 日期 | 关键 commit | 内容 |
+|------|------------|------|
+| 07-21 | `2b45018` | OpenWorker: initial import——完整架构一次性导入 |
+| 07-21 | `cffec6b` | rename artifact names to openworker (从 ocw 改名) |
+| 07-21 | `7f6f17c` | standalone-repo fixes——venv at repo root, aisuite as pip dep, keyless builds |
+| 07-21 | `2451486` | port aisuite#380: slack installer pre-add, mcp oauth quarantine, automation toast |
+| 07-21 | `61bd287` | port aisuite#381: Obsidian connector |
+| 07-22 | `878b858` | Persist error/interrupt markers in history; add Retry on failed turns |
+| 07-22 | `f1eb652` | Allow mid-session model switching with persisted transcript marker |
+| 07-22 | `55ff8b7` | Anthropic extended thinking, opt-in via provider thinking_budget field |
+| 07-22 | `1032e3a` | Persist Always-allow grants with the session |
+| 07-23 | `eae5fbd` | Fix Anthropic extended thinking for current model families |
+| 07-23 | `ba99978` | Enable Claude extended thinking by default, drop the settings field |
+| 07-24 | `4766e59` | Keep ripgrep searches out of generated directories |
+
+**观察**：import 后的迭代集中在 (1) extended thinking 适配（Anthropic API drift）、(2) 持久化增强（Retry / Always-allow grants / interrupt markers）、(3) 改名与打包。核心架构未变——证实架构在 import 前已稳定。
+
+### 9.4 局限性
+
+- **无法验证演进顺序**：代码注释只提及 "old" 与 "new"，无时间戳
+- **无法验证演进动机**：注释给出 reason，但无 RFC/ADR/issue 链接佐证
+- **无法发现未记录的演进**：可能存在未在注释中提及的架构变更
+- **history coverage 维持 0.40**：受限于仓库 bulk-import 特性，非分析不足
+
+---
+
+## 10. 未解问题
 
 | 问题 | 优先级 | 缺失证据 | 置信度影响 | 建议下一步 |
 |------|--------|---------|-----------|-----------|
-| Git 历史是否反映架构演进关键节点（RelayHub 抽出、native provider 引入）？ | Medium | 未深入分析 git log 时间线 | history 维度仅 0.40，演进事件主要来自代码注释 | `git log --all --oneline` + 关键文件 history |
+| 仓库 bulk-import 前的私有演进历史（per-agent-name→traits、Slack-only→RelayHub 等发生在哪个私有仓库）？ | Medium | git history 仅 4 天（2026-07-21 bulk-import），演进事件只能从代码注释推断 | history 维度 0.40 受限于仓库特性，非分析不足 | 寻找私有仓库或 design doc |
 | OpenWorker Cloud 侧代码在哪？ | Low | 未找到 cloud 侧代码 | 低，不影响 desktop 侧架构理解 | 确认 cloud 是否单独仓库 |
 | Inbox 5 种 kind (approval/question/notification/directory/plan) 在实际使用中是否都有场景？ | Low | 未统计使用频率 | 低，不影响架构理解 | 生产使用数据统计 |
 
 ---
 
-## 9. 证据质量摘要
+## 11. 证据质量摘要
 
 ### 证据覆盖度
 
@@ -288,21 +383,21 @@ ALWAYS_* → allow_tool_for_session / allow_command_for_session
 | design_decisions | 0.95 | ev-013 (persona), ev-020 (native provider), ev-021 (permission), ev-028 (descriptor), ev-031 (综合) |
 | testing | 0.75 | ev-033 (65+ test files + test_durable_resume + E2E) |
 | deployment | 0.60 | ev-015 (Tauri), ev-032 (三种部署入口) |
-| history | 0.40 | 代码注释提及 (per-agent-name→traits, 手写 factory→catalog, Slack-only→RelayHub, fire-and-forget→durable thread) |
+| history | 0.40 | git log 仅 4 天（2026-07-21 bulk-import）+ 代码注释推断 (per-agent-name→traits, Slack-only→RelayHub, fire-and-forget→durable thread)——history coverage 受限于仓库 bulk-import 特性 |
 
 ### 置信度分布
 
 - **高置信度**：TurnEngine 是架构中心、三层 durable 设计、aisuite 真实角色、三种部署模式、测试覆盖度、§25 standing rule、canonical OpenAI-shape history
-- **中置信度**：SessionManager god-class 是 deliberate trade-off（无 TODO/FIXME 支持但仍可能是事后合理化）、Inbox 5 kind 必要性
-- **低置信度**：Git 历史演进时间线、OpenWorker Cloud 侧实现
+- **中置信度**：SessionManager god-class 是 deliberate trade-off（maintainer 注释称 deliberate trade-off，无 TODO/FIXME 标记，但无法证实是永久决策还是事后合理化）、Inbox 5 kind 必要性
+- **低置信度**：bulk-import 前的私有演进历史、OpenWorker Cloud 侧实现
 
 ### 证据来源分布
 
 - **源代码**（A 级）：27 条 evidence 全部基于源代码阅读，21 条 Round 1 + 6 条 Round 2
-- **文档**：代码注释/docstring 提供设计意图
+- **文档**：代码注释/docstring 提供设计意图与演进线索
 - **配置**：pyproject.toml 揭示 entry points + dependencies + aisuite 角色
 - **测试**：tests/ 目录 + test_durable_resume.py 验证核心 invariant
-- **Git 历史**：未深入分析（history 维度 0.40 的主因）
+- **Git 历史**：已分析——仓库于 2026-07-21 bulk-import，仅 4 天 history，演进时间线只能从代码注释推断（history 维度 0.40 受限于仓库特性）
 
 ---
 
@@ -311,7 +406,8 @@ ALWAYS_* → allow_tool_for_session / allow_command_for_session
 报告完成前自问：
 
 1. **多重证据？** 是——TurnEngine 中心有 ev-016/ev-030/ev-031 三重证据；三层 durable 有 ev-016/ev-025/ev-030/ev-031 + test_durable_resume 验证
-2. **替代解释？** 是——SessionManager god-class 提出 deliberate trade-off vs 技术债两种解释，证据支持前者但标注风险
-3. **重要决策？** 是——6 个关键决策 + 6 个架构不变量 + 7 个可复用模式
-4. **Unknown 掩饰？** 否——3 个未解问题明确标注，history 维度 0.40 如实反映
-5. **洞察 vs 堆砌？** 洞察——三层 durable 正交性、aisuite 真实角色、§25 exact-target binding 是非显然发现
+2. **替代解释？** 是——SessionManager god-class 提出 deliberate trade-off vs 技术债两种解释，证据无法证实是永久决策还是事后合理化，已如实标注
+3. **重要决策？** 是——6 个关键决策 + 7 个架构不变量 + 7 个可复用模式 + 9 个 Blast Radius 风险评估
+4. **Unknown 掩饰？** 否——3 个未解问题明确标注；history 维度 0.40 如实反映（仓库 bulk-import，仅 4 天 git history，非分析不足）
+5. **洞察 vs 堆砌？** 洞察——三层 durable 正交性、aisuite 真实角色、§25 exact-target binding、bulk-import 演进约束是非显然发现
+6. **Neutrality？** 是——绝对化结论已软化（"不可能" → "当前抽象层无法覆盖"；"deliberate trade-off" → "maintainer 注释称，但无法证实是永久决策"）

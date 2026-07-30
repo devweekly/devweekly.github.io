@@ -42,6 +42,14 @@ node gated-checks.mjs .working/{repo-name}/context.json .working/{repo-name}/rep
 | **counterexamples_found** | 主动找过反证吗？ | challenge_record 非空 |
 | **model_challenged** | 模型被质疑过吗？ | model_stability 曾经进入 challenged 状态 |
 
+### Neutrality 检查（最高优先级）
+
+| 检查项 | 检查什么 | 通过条件 |
+|------|--------|---------|
+| **neutrality_gate** | 报告有绝对化结论吗？ | grep "不可能\|永远\|必须"（用于结论，非 invariant）+ "deliberate trade-off"（作为结论而非引用）→ 零匹配 |
+| **evidence_scope_gate** | 证据范围与结论匹配吗？ | 无 TODO/FIXME → "永久决策" 这种过度推断 |
+| **neutral_terminology_gate** | 有拟人化比喻吗？ | grep "心脏\|大脑\|神经\|骨架\|心跳" → 零匹配 |
+
 ### 深入检查
 
 | 检查项 | 检查什么 | 通过条件 |
@@ -50,6 +58,16 @@ node gated-checks.mjs .working/{repo-name}/context.json .working/{repo-name}/rep
 | **surprise_gate** | 意外发现被深挖了吗？ | 如果有意外发现，必须有对应的后续问题 |
 | **design_space_gate** | 设计空间被探索了吗？ | design_space 非空，且每项有被拒绝的方案 |
 | **maintainer_gate** | 能回答"改 X 会影响哪些层"吗？ | maintainer_view.modification_impact_map 非空 |
+
+### 结构检查（从 "描述系统" 到 "预测系统"）
+
+| 检查项 | 检查什么 | 通过条件 |
+|------|--------|---------|
+| **blast_radius_gate** | 报告有 Architecture Risk Analysis 章节吗？ | 包含 Blast Radius 表（修改点 → 影响范围 → 风险等级），至少覆盖 Critical 和 High 组件 |
+| **change_difficulty_gate** | 报告有 Change Difficulty 章节吗？ | 包含修改难度表（修改 / 难度 / 理由），至少 5 项 |
+| **evidence_inference_gate** | 核心结论分离了 Evidence/Inference/Confidence 吗？ | 核心结论（架构中心、关键决策）采用三段式格式 |
+| **coverage_calculable_gate** | Coverage 分数可计算吗？ | 格式为 X/Y = Z%，非主观分数 0.85 |
+| **evolution_timeline_gate** | 报告有架构演进章节吗？ | 有演进时间线（bulk-import 情况下从代码注释推断 + 标注限制） |
 
 **任何一个问题答不上来，研究就没做完。**
 
@@ -72,10 +90,18 @@ node gated-checks.mjs .working/{repo-name}/context.json .working/{repo-name}/rep
   "alternatives_considered": true,
   "counterexamples_found": true,
   "model_challenged": true,
+  "neutrality_gate": true,
+  "evidence_scope_gate": true,
+  "neutral_terminology_gate": true,
   "depth_gate": true,
   "surprise_gate": true,
   "design_space_gate": true,
   "maintainer_gate": true,
+  "blast_radius_gate": true,
+  "change_difficulty_gate": true,
+  "evidence_inference_gate": true,
+  "coverage_calculable_gate": true,
+  "evolution_timeline_gate": true,
   "final_check": true
 }
 ```

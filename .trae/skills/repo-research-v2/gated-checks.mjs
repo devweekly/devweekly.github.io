@@ -203,6 +203,276 @@ const GATES = {
 }
 `,
   },
+
+  // -- Neutrality 检查（最高优先级） -----------------------------------------
+  neutrality_gate: {
+    name: "Neutrality 中立性",
+    description: "报告有绝对化结论吗？禁止 '不可能/永远(用于结论)/deliberate trade-off(作为结论)'",
+    prompt: `
+你是一个资深架构评审员。请评估以下 Repository Research 报告是否保持 evidence-based 中立性。
+
+**禁止的绝对化措辞**（用于结论时）：
+- "不可能" / "永远"（用于 maintainer 意图结论，非 invariant 描述）
+- "deliberate trade-off"（作为结论，而非引用 maintainer 注释）
+- "必须"（用于 maintainer 意图，非 invariant 描述）
+- "唯一入口"（除非有穷举证据）
+
+**保留的措辞**：
+- invariant 描述中的 "必须/永远"（如 "history 里永远不留 orphan tool_calls"）是硬约束，保留
+
+报告 (report.md):
+\`\`\`markdown
+{report}
+\`\`\`
+
+请判断：报告中是否有用于结论的绝对化措辞？（invariant 描述中的 "必须/永远" 不算违规）
+
+输出 JSON 格式（严格 JSON，无 markdown）：
+{
+  "passed": true/false,
+  "confidence": "high/medium/low",
+  "justification": "引用报告中违规的具体句子（如有），或说明为何通过",
+  "missing": "如果不通过，需要软化的具体句子（仅在 passed=false 时填写）"
+}
+`,
+  },
+
+  evidence_scope_gate: {
+    name: "证据范围匹配",
+    description: "证据范围与结论匹配吗？无 TODO/FIXME 不能推出 '永久决策'",
+    prompt: `
+你是一个资深架构评审员。请评估以下 Repository Research 报告中证据范围与结论是否匹配。
+
+**过度推断示例**（禁止）：
+- 证据 "无 TODO/FIXME" → 结论 "maintainer 有意识决定永远不拆"（过度推断）
+- 证据 "代码注释说 deliberate" → 结论 "是永久决策"（过度推断，可能是事后合理化）
+- 证据 "某抽象层不存在某功能" → 结论 "未来版本不可能覆盖"（过度推断）
+
+**正确推断示例**：
+- 证据 "无 TODO/FIXME" → 结论 "目前没有拆分计划"（范围匹配）
+- 证据 "代码注释说 deliberate" → 结论 "maintainer 称之为 deliberate，但无法证实是永久决策"（范围匹配）
+
+报告 (report.md):
+\`\`\`markdown
+{report}
+\`\`\`
+
+请判断：报告中是否有过度推断（证据范围超出结论支持范围）？
+
+输出 JSON 格式（严格 JSON，无 markdown）：
+{
+  "passed": true/false,
+  "confidence": "high/medium/low",
+  "justification": "引用报告中过度推断的具体句子（如有），或说明为何通过",
+  "missing": "如果不通过，需要修正的具体结论（仅在 passed=false 时填写）"
+}
+`,
+  },
+
+  neutral_terminology_gate: {
+    name: "术语 Neutral 化",
+    description: "有拟人化比喻吗？禁止 心脏/大脑/神经/骨架/心跳",
+    prompt: `
+你是一个资深架构评审员。请评估以下 Repository Research 报告是否使用 neutral 术语。
+
+**禁止的拟人化比喻**：
+- 心脏 / 大脑 / 神经系统 / 神经 / 骨架 / 心跳 / 中枢神经 / 器官
+
+**应使用的 neutral 术语**：
+- Core Runtime / Coordinator / Human Interaction Layer / Desktop Shell / Scheduling Layer
+
+**理由**：拟人化比喻是研究者创造的，不是 maintainer 的 terminology。blog 可以用，research 不行。
+
+报告 (report.md):
+\`\`\`markdown
+{report}
+\`\`\`
+
+请判断：报告中是否有拟人化比喻？
+
+输出 JSON 格式（严格 JSON，无 markdown）：
+{
+  "passed": true/false,
+  "confidence": "high/medium/low",
+  "justification": "引用报告中违规的具体词汇（如有），或说明为何通过",
+  "missing": "如果不通过，需要替换的具体词汇（仅在 passed=false 时填写）"
+}
+`,
+  },
+
+  // -- 结构检查（从 "描述系统" 到 "预测系统"） --------------------------------
+  blast_radius_gate: {
+    name: "Blast Radius 影响范围",
+    description: "报告有 Architecture Risk Analysis 章节吗？至少覆盖 Critical + High 组件",
+    prompt: `
+你是一个资深架构评审员。请评估以下 Repository Research 报告是否包含 Architecture Risk Analysis（Blast Radius）章节。
+
+**必需内容**：
+- 修改点 → 影响范围 → 风险等级（Critical/High/Medium/Low）的表格
+- 至少覆盖 Critical 和 High 风险等级的组件
+- 每个组件说明为何危险（哪些 invariant 会受影响）
+
+**风险等级标准**：
+- Critical：改这里 = 改架构中心，多个 invariant 同时依赖
+- High：改这里 = 破坏多个 invariant
+- Medium：改这里 = 影响单子系统
+- Low：改这里 = mostly data migration
+
+报告 (report.md):
+\`\`\`markdown
+{report}
+\`\`\`
+
+请判断：报告是否包含合格的 Blast Radius 章节？
+
+输出 JSON 格式（严格 JSON，无 markdown）：
+{
+  "passed": true/false,
+  "confidence": "high/medium/low",
+  "justification": "引用报告中的 Blast Radius 表格（如有），或说明缺失内容",
+  "missing": "如果不通过，缺少什么（仅在 passed=false 时填写）"
+}
+`,
+  },
+
+  change_difficulty_gate: {
+    name: "Change Difficulty 修改难度",
+    description: "报告有 Change Difficulty 章节吗？至少 5 项修改难度评估",
+    prompt: `
+你是一个资深架构评审员。请评估以下 Repository Research 报告是否包含 Change Difficulty 章节。
+
+**必需内容**：
+- 修改 / 难度（Very Low/Low/Medium/High/Very High）/ 理由 的表格
+- 至少 5 项修改评估
+- 难度理由需具体（如 "data-driven"、"多个 invariant 依赖"、"shared state 耦合"）
+
+**难度标准**：
+- Very Low：data-driven，mostly data
+- Low：ABC 已稳定，plug-in 式
+- Medium：多层契约需同步
+- High：多个 shared state + 职责耦合
+- Very High：多个 invariant 同时依赖
+
+报告 (report.md):
+\`\`\`markdown
+{report}
+\`\`\`
+
+请判断：报告是否包含合格的 Change Difficulty 章节？
+
+输出 JSON 格式（严格 JSON，无 markdown）：
+{
+  "passed": true/false,
+  "confidence": "high/medium/low",
+  "justification": "引用报告中的 Change Difficulty 表格（如有），或说明缺失内容",
+  "missing": "如果不通过，缺少什么（仅在 passed=false 时填写）"
+}
+`,
+  },
+
+  evidence_inference_gate: {
+    name: "Evidence/Inference/Confidence 分离",
+    description: "核心结论分离了 Evidence/Inference/Confidence 吗？",
+    prompt: `
+你是一个资深架构评审员。请评估以下 Repository Research 报告的核心结论是否显式分离了 Evidence / Inference / Confidence。
+
+**核心结论**（架构中心、关键决策、durable 设计等）必须采用三段式格式：
+
+\`\`\`
+Evidence:    <代码事实 + evidence id>
+Inference:   <研究推断>
+Confidence:  <高/中/低>（<理由>）
+\`\`\`
+
+**禁止**：
+- 把 Inference 包装为 Evidence（把研究推断当代码事实陈述）
+- 把 maintainer 注释的 "deliberate" 当作 Evidence 证明永久决策
+
+报告 (report.md):
+\`\`\`markdown
+{report}
+\`\`\`
+
+请判断：报告的核心结论是否显式分离了 Evidence / Inference / Confidence？
+
+输出 JSON 格式（严格 JSON，无 markdown）：
+{
+  "passed": true/false,
+  "confidence": "high/medium/low",
+  "justification": "引用报告中的三段式格式示例（如有），或说明哪些核心结论未分离",
+  "missing": "如果不通过，哪些核心结论需要重构（仅在 passed=false 时填写）"
+}
+`,
+  },
+
+  coverage_calculable_gate: {
+    name: "Coverage 可计算化",
+    description: "Coverage 分数可计算吗？格式为 X/Y = Z%，非主观分数 0.85",
+    prompt: `
+你是一个资深架构评审员。请评估以下 Repository Research 报告的 Coverage 分数是否可计算。
+
+**禁止格式**（主观分数）：
+- runtime: 0.85
+- architecture: 0.95
+
+**正确格式**（可计算）：
+- runtime: 17/20 questions answered = 85%
+- architecture: 19/20 questions answered = 95%
+
+**规则**：
+- answered = 该维度问题中已回答（有证据支撑）的数量
+- total = 该维度问题总数
+- reviewer 必须能验证为什么是 17/20 而不是 18/20
+
+报告 (report.md):
+\`\`\`markdown
+{report}
+\`\`\`
+
+请判断：报告的 Coverage 是否使用可计算格式（X/Y = Z%）？
+
+输出 JSON 格式（严格 JSON，无 markdown）：
+{
+  "passed": true/false,
+  "confidence": "high/medium/low",
+  "justification": "引用报告中的 Coverage 格式（如有），或说明为何不合规",
+  "missing": "如果不通过，需要改成什么格式（仅在 passed=false 时填写）"
+}
+`,
+  },
+
+  evolution_timeline_gate: {
+    name: "架构演进时间线",
+    description: "报告有架构演进章节吗？bulk-import 情况下从代码注释推断 + 标注限制",
+    prompt: `
+你是一个资深架构评审员。请评估以下 Repository Research 报告是否包含架构演进时间线。
+
+**必需内容**：
+- 架构演进章节（重大重构或设计转向）
+- 演进时间线（关键事件 + 时间点或推断来源）
+- 如果是 bulk-import 仓库：从代码注释推断演进 + 明确标注 git history 限制
+
+**bulk-import 情况**：
+- git history 无法用于验证演进时间线——明确标注此限制
+- 从代码注释推断演进事件（搜索 "replace the old"、"was a hand-written"、"when X became the second"、"no longer"）
+- history coverage 受限于仓库特性，非分析不足——如实标注
+
+报告 (report.md):
+\`\`\`markdown
+{report}
+\`\`\`
+
+请判断：报告是否包含合格的架构演进章节？
+
+输出 JSON 格式（严格 JSON，无 markdown）：
+{
+  "passed": true/false,
+  "confidence": "high/medium/low",
+  "justification": "引用报告中的演进时间线（如有），或说明缺失内容",
+  "missing": "如果不通过，缺少什么（仅在 passed=false 时填写）"
+}
+`,
+  },
 };
 
 // ---------------------------------------------------------------------------

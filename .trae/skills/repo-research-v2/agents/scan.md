@@ -32,7 +32,42 @@
 | `artifacts/directory-tree.json` | 完整目录结构（扁平文件路径列表、目录列表） |
 | `artifacts/repository-profile.json` | 仓库类型、语言分布、文件统计、入口点 |
 | `artifacts/symbol-index.json` | 符号索引（函数、类、导出） |
-| `artifacts/git-summary.json` | Git 历史分析（提交频率、最近变化、贡献者） |
+| `artifacts/git-summary.json` | Git 历史分析（提交频率、最近变化、贡献者、**演进时间线**） |
+
+### git-summary.json 必须包含演进分析
+
+**禁止**只输出 commit 频率统计。git-summary.json 必须包含：
+
+```json
+{
+  "stats": { "commit_count": ..., "contributors": [...], "date_range": [...] },
+  "import_type": "bulk_import" | "normal" | "shallow",
+  "first_commit": { "hash": "...", "date": "...", "message": "...", "is_initial_import": true/false },
+  "evolution_timeline": [
+    { "date": "...", "hash": "...", "message": "...", "significance": "..." }
+  ],
+  "bulk_import_detected": true/false,
+  "history_coverage_constraint": "git history 仅 N 天，演进发生在 import 前" | null
+}
+```
+
+### bulk-import 检测（强制）
+
+```
+git log --all --oneline --format="%ad %h %s" --date=short | tail -5
+```
+
+如果首个 commit 是 "initial import" / "initial commit" 且包含完整架构：
+- `import_type` = "bulk_import"
+- `bulk_import_detected` = true
+- `history_coverage_constraint` = "git history 仅 N 天，演进发生在 import 前"
+- 演进时间线只能从代码注释推断（Evidence Agent 负责）
+
+### 正常 git history 情况
+
+- 分析关键文件首次引入时间
+- 用 commit message 解释架构演进
+- `evolution_timeline` 包含关键演进节点
 
 ### 仓库类型识别
 

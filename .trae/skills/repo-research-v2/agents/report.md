@@ -116,13 +116,79 @@ Gateway 采用固定 10 步流水线（CORS → API key → rate-limit → ...�
 | # | 章节 | 约束 | 输出上限 |
 |---|------|------|---------|
 | 1 | 执行摘要 | 一句话定位 + 3 核心发现 | ≤ 200 字 |
-| 2 | Runtime | 回答运行时问题 | ≤ 5 个关键发现 |
-| 3 | Architecture | 架构组织 + Atlas | ≤ 5 个关键发现 |
+| 2 | Runtime | 回答运行时问题（一次 request 怎么走） | ≤ 5 个关键发现 |
+| 3 | Architecture | 架构组织 + Atlas（subsystem / 依赖 / 边界） | ≤ 5 个关键发现 |
 | 4 | Key Decisions | 每决策 4 字段（见下） | ≤ 4 个关键决策 |
 | 5 | 模型质疑 | 综合质疑结论（非六步链） | ≤ 5 个被质疑的结论 |
 | 6 | 维护者手册 | 扩展 / 调试 / 迁移 / 移除 | 每项 ≤ 3 条 |
-| 7 | 阅读路线 | 按什么顺序读代码 + 理由 | ≤ 5 个文件 |
-| 8 | 未解问题 | 按优先级排序 | ≤ 5 个问题 |
+| 7 | Architecture Risk Analysis（Blast Radius） | 修改点 → 影响范围 → 风险等级 | 至少覆盖 Critical + High |
+| 8 | Change Difficulty | 修改难度表（修改 / 难度 / 理由） | 至少 5 项 |
+| 9 | 阅读路线 | 按什么顺序读代码 + 理由 | ≤ 5 个文件 |
+| 10 | 未解问题 | 按优先级排序 | ≤ 5 个问题 |
+
+### 可选章节（有内容才出现）
+
+| 章节 | 何时出现 |
+|------|---------|
+| 架构演进 | 有 git history 或代码注释可推断演进（bulk-import 情况下从注释推断 + 标注限制） |
+| Design Smells | 仓库有 deliberate smell（maintainer 刻意接受的 God Object / Shared Mutable State 等） |
+| 意外发现 | 有与预期不符的架构现象 |
+| 风险 | 有潜在失败模式 |
+| 证据质量摘要 | 报告结尾 |
+
+## Neutrality 约束（最高优先级）
+
+**报告是 evidence-based，禁止替 maintainer 做价值判断。**
+
+### 禁止的绝对化措辞
+
+| 禁止 | 改为 |
+|------|------|
+| "不可能提供" | "当前抽象层无法覆盖" / "作者认为不适合承担" |
+| "永远"（用于结论） | "可跨 X/Y/Z 续完"（具体维度） |
+| "deliberate trade-off"（作为结论） | "maintainer 注释称 deliberate trade-off，但无法证实是永久决策" |
+| "唯一入口" | "主要入口" |
+
+**保留** invariant 中的 "必须/永远"——这些是描述硬约束，不是 maintainer 意图结论。
+
+### 证据范围约束
+
+| 证据 | 能推出 | 不能推出 |
+|------|--------|---------|
+| 无 TODO/FIXME | 目前没有拆分计划 | maintainer 有意识决定永远不拆 |
+| 代码注释说 "deliberate" | maintainer 称之为 deliberate | 是永久决策（可能是事后合理化） |
+
+### 术语 Neutral 化
+
+**禁止拟人化比喻**（心脏/大脑/神经/骨架/心跳）——使用 neutral 术语（Core Runtime / Coordinator / Human Interaction Layer）。
+
+### Evidence / Inference / Confidence 分离
+
+**核心结论**（架构中心、关键决策、三层 durable 等）必须采用三段式格式：
+
+```
+Evidence:    <代码事实 + evidence id>
+Inference:   <研究推断>
+Confidence:  <高/中/低>（<理由>）
+```
+
+**禁止**把 Inference 包装为 Evidence。
+
+### Coverage 可计算化
+
+**禁止**使用 0.85 这种主观分数。Coverage 必须可计算：
+
+```
+runtime: 17/20 questions answered = 85%
+architecture: 19/20 questions answered = 95%
+```
+
+### Architecture vs Runtime 分离
+
+- **Architecture 章节**：subsystem / 依赖 / 边界
+- **Runtime 章节**：一次 request 怎么走（Permission Chain 流程、Durable Resume 流程）
+
+**禁止**把 Runtime execution 流程放在 Architecture 章节。
 
 ### Key Decisions 格式（4 字段，不是 9 字段）
 

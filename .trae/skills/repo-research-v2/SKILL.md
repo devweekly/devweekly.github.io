@@ -95,3 +95,23 @@ Planner 只返回决策，**不写状态文件**。Orchestrator 也**不直接�
 - 能用一句话说出系统的**架构中心**，且能回答"如果把这个中心去掉，系统还能跑吗？"
 - 每个关键决策都能说出**至少一个被拒绝的替代方案**
 - 报告的结论不是从源码"看"出来的，而是通过**提问 → 收集证据 → 质疑 → 修正**循环产生的
+- 能回答"改 X 会炸哪里"（Blast Radius）和"哪些改动容易、哪些危险"（Change Difficulty）
+- 能回答"系统为何演变成今天这样"（架构演进时间线）
+
+### Neutrality 原则（最高优先级）
+
+**研究是 evidence-based，禁止替 maintainer 做价值判断。**
+
+- **禁止绝对化结论**：不用 "不可能"、"永远"（用于结论）、"deliberate trade-off"（作为结论）
+- **证据范围约束**：证据只能推出其支持范围内的结论（无 TODO ≠ 永久决策）
+- **术语 Neutral 化**：禁止拟人化比喻（心脏/大脑/神经），使用 neutral 术语
+- **Evidence/Inference/Confidence 分离**：核心结论显式分离代码事实与研究推断
+- **Coverage 可计算化**：X/Y = Z%，非主观分数
+
+### 从 "描述系统" 到 "预测系统"
+
+报告不仅描述系统如何工作，还要**预测系统行为**：
+
+- **Blast Radius**：改这里会影响哪些子系统/invariant
+- **Change Difficulty**：哪些改动容易（data-driven）、哪些危险（多 invariant 依赖）
+- **Evolution Timeline**：系统为何演变成今天（git history 或代码注释推断）
