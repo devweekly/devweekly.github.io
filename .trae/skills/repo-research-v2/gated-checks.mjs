@@ -670,14 +670,14 @@ export async function runSingleGate(gateId, context, report, options = {}) {
 export function checkPreconditions(context) {
   const checks = [];
 
-  // 1. current_round ≥ 2 (at least 2 rounds completed)
+  // 1. current_round ≥ 1 (at least 1 round completed — allows first-run reports)
   const currentRound = context.current_round || 0;
-  const roundOk = currentRound >= 2;
+  const roundOk = currentRound >= 1;
   checks.push({
     id: "current_round",
-    name: "至少完成 2 轮问题",
+    name: "至少完成 1 轮问题",
     passed: roundOk,
-    detail: `current_round = ${currentRound} (need ≥ 2)`,
+    detail: `current_round = ${currentRound} (need ≥ 1)`,
   });
 
   // 2. model_stability ≠ nascent

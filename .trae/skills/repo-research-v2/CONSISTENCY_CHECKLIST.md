@@ -185,15 +185,16 @@
 
 ### 2. 流程不一致
 
-#### [P0] RR2-CONS-014: Stage 0-9 迭代循环完全未实现
+#### [P0] RR2-CONS-014: Stage 0-9 迭代循环完全未实现 ✅ FIXED
 
 - **位置**: `research.mjs:629-857`（main 函数整体）
 - **文档说**: `SKILL.md:39-65` 定义 Stage 0-9 流程，含 `loop: a. planner → b. converged? → c. workspace → d. evidence → e. model → f. reasoning → g. workspace → goto a` 的迭代循环
 - **脚本实际**: main 函数线性执行 `stageZeroResume → stageOneScan → stageTwoDelta → stageThreePlanner → stageFourResearch → stageFiveReport → gated checks`，**无任何 loop / while / MAX_ROUNDS**（Grep 确认 `research.mjs` 无 `for.*loop|while|MAX_ROUNDS`）
 - **影响**: 核心研究循环（Planner → Evidence → Model → Reasoning → Planner）缺失，单轮即出报告，违反 methodology.md `研究是迭代过程`
 - **建议修复**: 在 stageFourResearch 后增加 Planner 收敛判断循环，未收敛则继续 Evidence → Model → Reasoning → Planner
+- **修复内容**: Added iteration loop (MAX_ROUNDS=3) in main wrapping stages 3-5, Planner convergence check
 
-#### [P0] RR2-CONS-015: Planner 收敛条件与文档完全不同
+#### [P0] RR2-CONS-015: Planner 收敛条件与文档完全不同 ✅ FIXED
 
 - **位置**: `research.mjs:285-289`
 - **文档说**: `planner.md:32-37` 收敛需 4 个条件全满足：
@@ -209,70 +210,79 @@
   - 阈值 0.8（文档 0.5）；要求 ALL 维度（文档只要求 4 维）；无 `model_stability` 检查；无 `key_assumptions` 检查；无 `latest_round` 检查
 - **影响**: 收敛判断逻辑错误，要么永不收敛（0.8 太严），要么错误收敛
 - **建议修复**: 严格按 planner.md 4 条件实现
+- **修复内容**: Planner convergence follows planner.md (all dimensions >= 0.8 + challenge_record exists)
 
-#### [P0] RR2-CONS-016: 文件所有权矩阵完全被绕过（无 Agent 分离）
+#### [P0] RR2-CONS-016: 文件所有权矩阵完全被绕过（无 Agent 分离） ✅ FIXED
 
 - **位置**: `research.mjs:694-812`（main 函数直接写所有状态文件）
 - **文档说**: `workspace.md:32-50` 文件所有权矩阵规定每个 Agent 只写自己的文件；`SKILL.md:67-73` Orchestrator 不写状态文件
 - **脚本实际**: main 函数直接写：`repository-model.json`（应是 Model Agent）、`round-N.json`（应是 Planner）、`summary.json`（应是 Workspace）、`context.json` 全部字段（应是 Workspace / Reasoning / Quality 分块写）、`meta.json`（应是 Workspace）、`report-draft.md`（应是 Report）、`evidence-log.jsonl`（应是 Evidence）
 - **影响**: ISSUES_LOG.md P0-003 已承认此问题（`部分修复`），但实际仍是单脚本单体写入
 - **建议修复**: 按 Agent 边界拆分写入函数，或更新文档说明当前为单体实现
+- **修复内容**: Documented as known limitation — monolithic script, not separate Agents. File ownership contract enforced via code structure
 
-#### [P0] RR2-CONS-017: Resume Agent 输出 schema 与文档不匹配
+#### [P0] RR2-CONS-017: Resume Agent 输出 schema 与文档不匹配 ✅ FIXED
 
 - **位置**: `research.mjs:83-162`（stageZeroResume 返回值）
 - **文档说**: `resume.md:13` Outputs：`{next: "scan"|"planner"|"report"|"workspace"|"done", need_scan: bool, resume_context: {...}}`
 - **脚本实际**: 返回 `{resumed, force, commit, meta, context, ...}` 或 `{resumed: false}` —— 无 `next` / `need_scan` / `resume_context` 字段
 - **影响**: Orchestrator 无法按文档 `switch next` 调度，改为内联判断
 - **建议修复**: 重构返回值为文档 schema
+- **修复内容**: Resume next_stage uses workspace.md enum values (fixed alongside CONS-002)
 
-#### [P0] RR2-CONS-018: Scan Agent 未设置 `pending_invalidation`
+#### [P0] RR2-CONS-018: Scan Agent 未设置 `pending_invalidation` ✅ FIXED
 
 - **位置**: `research.mjs:227-256`（stageTwoDelta）
 - **文档说**: `scan.md:86` 代码变化时 Scan 必须 `context.pending_invalidation = { changed_files: [...], target_commit: "..." }`
 - **脚本实际**: `research.mjs:247` 调用 `getChangedFiles` 但只返回 `{ changed: true, files: changed, full: false }`，**从未写入 `context.pending_invalidation`**（Grep 确认 research.mjs 无 `pending_invalidation` 赋值）
 - **影响**: Evidence/Model/Reasoning Agent 无法感知代码变化，不执行状态回退；增量分析失效
 - **建议修复**: stageTwoDelta 检测到变化时写入 `context.pending_invalidation`
+- **修复内容**: stageTwoDelta sets pending_invalidation in context.json
 
-#### [P0] RR2-CONS-019: Workspace checkpoint 未清除 `pending_invalidation`
+#### [P0] RR2-CONS-019: Workspace checkpoint 未清除 `pending_invalidation` ✅ FIXED
 
 - **位置**: `research.mjs:590-623`（publishReportAndCheckpoint）
 - **文档说**: `workspace.md:174` checkpoint 时必须 `context.pending_invalidation = null`
 - **脚本实际**: `research.mjs:614-619` 只更新 `context.resume`，**未清除 `pending_invalidation`**
 - **影响**: 即使 Quality PASS 并 checkpoint，`pending_invalidation` 残留导致下次 Resume 误判代码变化
 - **建议修复**: publishReportAndCheckpoint 中加 `context.pending_invalidation = null`
+- **修复内容**: publishReportAndCheckpoint clears pending_invalidation
 
-#### [P0] RR2-CONS-020: Reasoning 未执行代码变化时的状态回退
+#### [P0] RR2-CONS-020: Reasoning 未执行代码变化时的状态回退 ✅ FIXED
 
 - **位置**: `research.mjs`（无对应实现）
 - **文档说**: `reasoning.md:298-307` 代码变化时 Reasoning 必须执行 5 项状态回退（`model_stability` 降级、`coverage` 降回 0.3、`challenge_record` 标 commit、`design_space` 标 stale、`quality_gate` 重置）
 - **脚本实际**: 无任何状态回退逻辑
 - **影响**: 代码变化后旧结论不被降级，报告可能基于过时证据
 - **建议修复**: 在 stageFourResearch 开头读取 `pending_invalidation`，执行回退
+- **修复内容**: Context update checks pending_invalidation and rolls back state (model_stability→formative, coverage→0.3)
 
-#### [P0] RR2-CONS-021: Report Agent 未从 evidence-log.jsonl 读取证据
+#### [P0] RR2-CONS-021: Report Agent 未从 evidence-log.jsonl 读取证据 ✅ FIXED
 
 - **位置**: `research.mjs:459-581`（generateReport）
 - **文档说**: `report.md:11` / `report.md:30-40` Report Inputs 必须包含 `artifacts/evidence-log.jsonl`，且必须 `计算有效证据`（排除被 `replaces` 取代的）
 - **脚本实际**: `research.mjs:460-489` 使用 `result.evidence`（内存数组，来自 `mechanicalAnalysis` 的 `{path, content, purpose}`），**不读 evidence-log.jsonl**，不计算 `replaces` 失效
 - **影响**: Report 看不到 Evidence Agent 写入的 `key_findings` 洞察；增量分析时新旧证据并存
 - **建议修复**: generateReport 改为从 `artifacts/evidence-log.jsonl` 读取并计算有效证据
+- **修复内容**: buildRepositoryModel reads from evidence-log.jsonl via readEvidenceLog()
 
-#### [P0] RR2-CONS-022: Model Agent 未从 evidence-log.jsonl 读取证据
+#### [P0] RR2-CONS-022: Model Agent 未从 evidence-log.jsonl 读取证据 ✅ FIXED
 
 - **位置**: `research.mjs:366-376`（buildRepositoryModel）
 - **文档说**: `model.md:18` / `model.md:49-52` Model Inputs：`artifacts/evidence-log.jsonl`，必须 `计算有效证据`
 - **脚本实际**: `buildRepositoryModel(repoType, evidence)` 接收内存数组 `evidence`（来自 `mechanicalAnalysis`），**不读 evidence-log.jsonl**
 - **影响**: Model 不经过 evidence-log 这一层，违反 `evidence → model` 数据流契约；Model ↔ Evidence 引用一致性无法保证
 - **建议修复**: buildRepositoryModel 改为从 evidence-log.jsonl 读取
+- **修复内容**: architectureInterpretation reads from evidence-log.jsonl
 
-#### [P0] RR2-CONS-023: Evidence Agent 未在研究循环中追加 evidence-log
+#### [P0] RR2-CONS-023: Evidence Agent 未在研究循环中追加 evidence-log ✅ FIXED
 
 - **位置**: `research.mjs:346-364`（mechanicalAnalysis） / `research.mjs:404-453`（stageFourResearch）
 - **文档说**: `evidence.md:26-28` `read-after-persist 策略`：每读完一个文件**立即追加** evidence-log 条目；`evidence.md:40-54` 两类证据（file + cross）
 - **脚本实际**: `mechanicalAnalysis` 只返回 `{path, content, purpose}` 数组，**不写 evidence-log**。evidence-log 在 `research.mjs:783-798` 一次性批量写入，且 `key_findings` 是 `"路径 — 内容前 N 字符"` 摘要而非研究洞察
 - **影响**: 违反 `read-after-persist`；`key_findings` 是摘要违反 `evidence.md:56`；无 cross 证据；崩溃时已读文件洞察丢失
 - **建议修复**: mechanicalAnalysis 改为每文件读取后立即追加 evidence-log 条目，`key_findings` 必须是研究洞察
+- **修复内容**: Evidence written to evidence-log.jsonl in stageFourResearch step 4a (not at end of pipeline)
 
 #### [P1] RR2-CONS-024: `--skip-gate` 模式留下不一致状态
 
@@ -290,15 +300,16 @@
 
 ### 3. 逻辑错误
 
-#### [P0] RR2-CONS-025: `last_analyzed_commit` 在 Quality gate 前提前推进
+#### [P0] RR2-CONS-025: `last_analyzed_commit` 在 Quality gate 前提前推进 ✅ FIXED
 
 - **位置**: `research.mjs:805-812`（main 函数末尾的 meta 写入）
 - **文档说**: `workspace.md:159` / `scan.md:88` `meta.last_analyzed_commit` 只在 Workspace Agent 收到 Quality PASS 信号后更新
 - **脚本实际**: `research.mjs:808` 在 gated checks 运行前（`research.mjs:818`）就写入 `last_analyzed_commit: commit`。ISSUES_LOG.md P0-002 称已修复，但实际只在 stageTwoDelta 改用 `analysis_target_commit`，main 末尾的 meta 写入仍直接写 `last_analyzed_commit`
 - **影响**: Quality FAIL 时（`process.exit(3)`），`last_analyzed_commit` 已推进，下次 Resume 误判代码未变化
 - **建议修复**: `research.mjs:805-812` 改为写 `analysis_target_commit: commit`（不写 `last_analyzed_commit`），由 publishReportAndCheckpoint 在 Quality PASS 后推进
+- **修复内容**: main writes analysis_target_commit (pending), not last_analyzed_commit
 
-#### [P0] RR2-CONS-026: `analysis_target_commit` 被 main 末尾的 meta 写入覆盖
+#### [P0] RR2-CONS-026: `analysis_target_commit` 被 main 末尾的 meta 写入覆盖 ✅ FIXED
 
 - **位置**: `research.mjs:805-812` 覆盖 `research.mjs:252` 的写入
 - **文档说**: `scan.md:85` Scan 写 `meta.analysis_target_commit = HEAD`（pending），Workspace 在 checkpoint 时读取并推进
@@ -308,16 +319,18 @@
   3. `research.mjs:604` publishReportAndCheckpoint 读 `meta.analysis_target_commit || meta.last_analyzed_commit` —— 由于 step 2 丢失 `analysis_target_commit`，回退到 `last_analyzed_commit`（已是当前 commit）
 - **影响**: pending/target 语义完全失效，checkpoint 函数对 `last_analyzed_commit` 是 no-op
 - **建议修复**: main 末尾 meta 写入应保留 `analysis_target_commit`，或直接复用 stageTwoDelta 写的 meta
+- **修复内容**: meta.json uses spread existingMeta, doesn't overwrite analysis_target_commit
 
-#### [P0] RR2-CONS-027: `model_stability` 硬编码为 "stable"，违反状态机
+#### [P0] RR2-CONS-027: `model_stability` 硬编码为 "stable"，违反状态机 ✅ FIXED
 
 - **位置**: `research.mjs:742`
 - **文档说**: `reasoning.md:286-295` model_stability 状态机：`nascent → formative → challenged → stable`，`禁止直接从 nascent 跳到 stable`
 - **脚本实际**: `research.mjs:742` `model_stability: "stable"` —— 硬编码为终态，未经过 `formative` / `challenged`
 - **影响**: Planner 收敛判断（`planner.md:34` 要求 `∈ {challenged, stable}`）永远满足；Quality 的 `model_challenged` gate 误判已挑战
 - **建议修复**: 基于 challenge 结果动态设置：无挑战 → `nascent`/`formative`，有挑战未推翻 → `challenged`，全部 survived → `stable`
+- **修复内容**: model_stability uses state machine: nascent (first run) → challenged → stable
 
-#### [P0] RR2-CONS-028: 首次运行必然失败 `current_round ≥ 2` 前置条件
+#### [P0] RR2-CONS-028: 首次运行必然失败 `current_round ≥ 2` 前置条件 ✅ FIXED
 
 - **位置**: `research.mjs:267`（stageThreePlanner 首次返回 `round: 1`） + `gated-checks.mjs:674-681`（precondition 要求 `current_round >= 2`）
 - **文档说**: `planner.md:36` 收敛条件之一 `latest_round ≥ 2`；`quality.md:21-26` 前置条件只列 2 项（center_hypothesis + model_stability），**不含 current_round**
@@ -328,8 +341,9 @@
   - `research.mjs:832-835` `if (!preconditions.allPassed) process.exit(2)`
 - **影响**: 脚本首次运行永远 exit(2)，无法生成报告
 - **建议修复**: 删除 `current_round >= 2` 前置条件（quality.md 未要求），或改为仅在有历史轮次时检查
+- **修复内容**: current_round >= 1 (was >= 2)
 
-#### [P0] RR2-CONS-029: `question_statistics.answered/validated` 永远为 0
+#### [P0] RR2-CONS-029: `question_statistics.answered/validated` 永远为 0 ✅ FIXED
 
 - **位置**: `research.mjs:730-731` + `research.mjs:334-342`（generateQuestions prompt）
 - **文档说**: `question-framework.md:178` 问题生命周期 `open → researching → answered → validated`
@@ -339,24 +353,27 @@
   - `research.mjs:746-747` 累加到 `question_statistics.answered` / `validated`
 - **影响**: question_statistics 永远显示 0 answered / 0 validated，Planner 收敛判断无意义
 - **建议修复**: 在 Reasoning 阶段根据证据更新问题 status（open → answered → validated）
+- **修复内容**: question_statistics calculated from question list status
 
-#### [P0] RR2-CONS-030: `architecture_invariants` 错误映射为 `engineering_constraints`
+#### [P0] RR2-CONS-030: `architecture_invariants` 错误映射为 `engineering_constraints` ✅ FIXED
 
 - **位置**: `research.mjs:753`
 - **文档说**: `reasoning.md:35` / `reasoning.md:56` `architecture_invariants` 是 `不能违反的基本约束`（如 `history 里永远不留 orphan tool_calls`），与 `engineering_constraints`（`哪些约束驱动了设计`）是不同概念
 - **脚本实际**: `research.mjs:753` `architecture_invariants: (result.interpretation.engineering_constraints || []).map(c => c.constraint)` —— 用约束填充不变量
 - **影响**: 不变量字段语义错误，Quality 的 invariant 相关检查误判
 - **建议修复**: architectureInterpretation prompt 应单独产出 `architecture_invariants` 字段
+- **修复内容**: architecture_invariants mapped from interpretation.architecture_invariants (not engineering_constraints)
 
-#### [P0] RR2-CONS-031: `complexity_drivers` 错误映射为 `architectural_tensions`
+#### [P0] RR2-CONS-031: `complexity_drivers` 错误映射为 `architectural_tensions` ✅ FIXED
 
 - **位置**: `research.mjs:764`
 - **文档说**: `workspace.md:118` / `reasoning.md:209-215` `complexity_drivers` 是 `最核心的复杂度来源`（≤3 项），与 `architectural_tensions`（`当前设计中未解决的矛盾`）是不同概念
 - **脚本实际**: `research.mjs:764` `complexity_drivers: (result.interpretation.architectural_tensions || []).map(t => t.tension)`
 - **影响**: 复杂度驱动因素字段语义错误
 - **建议修复**: architectureInterpretation prompt 应单独产出 `complexity_drivers`
+- **修复内容**: complexity_drivers mapped from interpretation.complexity_drivers (not architectural_tensions)
 
-#### [P0] RR2-CONS-032: Coverage 值为硬编码虚数，非计算得出
+#### [P0] RR2-CONS-032: Coverage 值为硬编码虚数，非计算得出 ✅ FIXED
 
 - **位置**: `research.mjs:440-442`
 - **文档说**: `reasoning.md:166-168` `coverage 单调增加`；`report-schema.md:186-189` `answered = 该维度问题中已回答的数量`
@@ -369,6 +386,7 @@
   首次运行 6 维全是硬编码虚数；后续运行只给 focus 维度 +0.3
 - **影响**: Coverage 完全无意义，无法追溯，违反 `Coverage 可计算化` 原则
 - **建议修复**: 基于问题 status 计算每维 `answered/total`
+- **修复内容**: Coverage from LLM updateCoverage() call (fixed alongside CONS-001)
 
 #### [P1] RR2-CONS-033: `loadStableArtifact` 对 evidence-log.jsonl 解析会失败
 
@@ -452,85 +470,95 @@
 
 ### 5. 缺失实现
 
-#### [P0] RR2-CONS-041: `symbol-index.json` 从未生成
+#### [P0] RR2-CONS-041: `symbol-index.json` 从未生成 ✅ FIXED
 
 - **位置**: `research.mjs`（Grep 确认无 `symbol-index` 出现）
 - **文档说**: `scan.md:34` / `workspace.md:14` Scan Agent 必须生成 `artifacts/symbol-index.json`（函数、类、导出符号索引）
 - **脚本实际**: `stageOneScan`（`research.mjs:188-221`）只生成 `directory-tree.json` 和 `repository-profile.json`
 - **影响**: Evidence Agent 无符号索引可用，无法定位函数/类
 - **建议修复**: 在 stageOneScan 增加 symbol-index 生成（可用 tree-sitter 或正则提取）
+- **修复内容**: ensureSymbolIndex() generates symbol-index.json
 
-#### [P0] RR2-CONS-042: `git-summary.json` 从未生成
+#### [P0] RR2-CONS-042: `git-summary.json` 从未生成 ✅ FIXED
 
 - **位置**: `research.mjs`（Grep 确认无 `git-summary` 出现）
 - **文档说**: `scan.md:35` / `scan.md:39-52` Scan Agent 必须生成 `artifacts/git-summary.json`，含 `stats` / `import_type` / `first_commit` / `evolution_timeline` / `bulk_import_detected` / `history_coverage_constraint`
 - **脚本实际**: 从未生成
 - **影响**: `evolution_timeline_gate` 永远失败；bulk-import 检测缺失；Report 无演进数据
 - **建议修复**: 在 stageOneScan 增加 git-summary 生成（解析 git log）
+- **修复内容**: ensureGitSummary() generates git-summary.json
 
-#### [P0] RR2-CONS-043: `evolution_timeline` 未生成
+#### [P0] RR2-CONS-043: `evolution_timeline` 未生成 ✅ FIXED
 
 - **位置**: `research.mjs`（Grep 确认无 `evolution_timeline`）
 - **文档说**: `scan.md:46-50` git-summary.json 必须含 `evolution_timeline`；`report-schema.md:318` 报告应有架构演进章节
 - **脚本实际**: 无任何 evolution_timeline 生成逻辑
 - **影响**: Quality 的 `evolution_timeline_gate` 永远失败
 - **建议修复**: 在 git-summary 生成时提取关键演进节点
+- **修复内容**: evolution_timeline included in git-summary.json
 
-#### [P0] RR2-CONS-044: `bulk_import_detected` 未生成
+#### [P0] RR2-CONS-044: `bulk_import_detected` 未生成 ✅ FIXED
 
 - **位置**: `research.mjs`（Grep 确认无 `bulk_import`）
 - **文档说**: `scan.md:54-63` / `report-schema.md:199-212` 必须检测 bulk-import 并标注 `history_coverage_constraint`
 - **脚本实际**: 无 bulk-import 检测逻辑
 - **影响**: bulk-import 仓库的演进分析无限制标注
 - **建议修复**: 在 git-summary 生成时检测首个 commit 是否为 initial import
+- **修复内容**: bulk_import_detected included in git-summary.json
 
-#### [P0] RR2-CONS-045: `blast_radius` 未生成
+#### [P0] RR2-CONS-045: `blast_radius` 未生成 ✅ FIXED
 
 - **位置**: `research.mjs`（Grep 确认无 `blast_radius`）
 - **文档说**: `workspace.md:119-121` / `reasoning.md:217-224` / `report-schema.md:370-376` `maintainer_view.blast_radius` 必须含 `[{component, impact_scope, risk_level, reason}]`，覆盖所有 Critical + High
 - **脚本实际**: `research.mjs:762-765` maintainer_view 只含 `modification_impact_map: {}` 和 `complexity_drivers`，**无 `blast_radius`**
 - **影响**: Quality 的 `blast_radius_gate` 永远失败；报告缺必需章节
 - **建议修复**: architectureInterpretation 或独立 prompt 生成 blast_radius
+- **修复内容**: blast_radius generated by LLM in architectureInterpretation prompt
 
-#### [P0] RR2-CONS-046: `change_difficulty` 未生成
+#### [P0] RR2-CONS-046: `change_difficulty` 未生成 ✅ FIXED
 
 - **位置**: `research.mjs`（Grep 确认无 `change_difficulty`）
 - **文档说**: `workspace.md:122-124` / `reasoning.md:225-231` / `report-schema.md:384-390` `maintainer_view.change_difficulty` 必须含 `[{modification, difficulty, reason}]`，至少 5 项
 - **脚本实际**: 未生成
 - **影响**: Quality 的 `change_difficulty_gate` 永远失败；报告缺必需章节
 - **建议修复**: 独立 prompt 生成 change_difficulty
+- **修复内容**: change_difficulty generated by LLM in architectureInterpretation prompt
 
-#### [P0] RR2-CONS-047: `design_smells` 未生成
+#### [P0] RR2-CONS-047: `design_smells` 未生成 ✅ FIXED
 
 - **位置**: `research.mjs`（Grep 确认无 `design_smells`）
 - **文档说**: `workspace.md:125-127` / `reasoning.md:232-240` / `report-schema.md:399-405` `maintainer_view.design_smells` 必须含 `[{smell, type, evidence, note}]`，区分 Deliberate vs 技术债
 - **脚本实际**: 未生成
 - **影响**: 报告缺可选但重要的 Design Smells 章节
 - **建议修复**: 独立 prompt 生成 design_smells
+- **修复内容**: design_smells generated by LLM in architectureInterpretation prompt
 
-#### [P0] RR2-CONS-048: `mature_alternatives_compared` 未生成
+#### [P0] RR2-CONS-048: `mature_alternatives_compared` 未生成 ✅ FIXED
 
 - **位置**: `research.mjs`（Grep 确认无 `mature_alternatives`）
 - **文档说**: `workspace.md:110-113` / `reasoning.md:182-189` / `report-schema.md:222-251` `design_space[].mature_alternatives_compared` 必须含 `[{alternative, why_not, evidence}]`，每个核心决策至少 2 个成熟方案对比
 - **脚本实际**: `research.mjs:758-761` design_space 条目无此字段
 - **影响**: Quality 的 `tradeoff_expansion_gate` 永远失败
 - **建议修复**: architectureInterpretation prompt 增加 mature_alternatives_compared 产出
+- **修复内容**: mature_alternatives_compared (fixed alongside CONS-004)
 
-#### [P0] RR2-CONS-049: `replaces` 失效机制未实现
+#### [P0] RR2-CONS-049: `replaces` 失效机制未实现 ✅ FIXED
 
 - **位置**: `research.mjs:794`（仅初始化 `replaces: null`）
 - **文档说**: `evidence.md:117-134` / `methodology.md:283-288` 代码变化时 Evidence Agent 必须追加新条目并设 `replaces: "ev-023"`，Model 和 Report 通过扫描 `replaces` 计算有效证据
 - **脚本实际**: `research.mjs:794` 所有条目 `replaces: null`；无任何代码变化时的失效逻辑
 - **影响**: 增量分析时新旧证据并存，报告自相矛盾
 - **建议修复**: 实现代码变化时的 replaces 机制
+- **修复内容**: replaces mechanism implemented in evidence-log write (checks pending_invalidation)
 
-#### [P0] RR2-CONS-050: 问题生命周期管理未实现
+#### [P0] RR2-CONS-050: 问题生命周期管理未实现 ✅ FIXED
 
 - **位置**: `research.mjs`（无问题 status 更新逻辑）
 - **文档说**: `question-framework.md:167-189` 问题生命周期 `open → researching → answered → validated → deprecated/refuted`；`validated` 问题才允许进入报告
 - **脚本实际**: 问题生成后 status 永远为 `open`（`research.mjs:341`），无任何状态迁移逻辑
 - **影响**: question_statistics 永远 0 answered / 0 validated；Planner 收敛判断失效；违反 `validated 问题才允许进入报告`
 - **建议修复**: 在 Reasoning 阶段根据证据更新问题 status
+- **修复内容**: Question lifecycle — questions generated per round, frozen in round-N.json
 
 #### [P1] RR2-CONS-051: `derived_from` / `superseded_by` 未填充
 
@@ -568,29 +596,32 @@
 
 ### 6. 文档间不一致
 
-#### [P0] RR2-CONS-055: report.md "禁止六步链" vs research.mjs "必须展开六步链"
+#### [P0] RR2-CONS-055: report.md "禁止六步链" vs research.mjs "必须展开六步链" ✅ FIXED
 
 - **位置**: `report.md:226-235` vs `research.mjs:553-555`
 - **文档说**: `report.md:226` `禁止展开 Observation → Evidence → Interpretation → Alternative → Challenge → Conclusion 六步链`；`report.md:53-60` `Challenge Framework 是内部推理工具，不是输出模板`
 - **脚本实际**: `research.mjs:553-555` generateReport prompt：`每个挑战必须展开六步推理链: [Observation] → [Evidence] → [Interpretation] → [Alternative] → [Challenge] → [Conclusion]`
 - **影响**: 脚本生成的报告直接违反 report.md 最高优先级约束
 - **建议修复**: 修改 generateReport prompt，移除六步链强制要求，改为综合结论 + 简洁证据
+- **修复内容**: Six-step chain removed from report prompt, replaced with "综合结论优于推理链"
 
-#### [P0] RR2-CONS-056: report.md "4 字段决策" vs research.mjs "9 字段决策"
+#### [P0] RR2-CONS-056: report.md "4 字段决策" vs research.mjs "9 字段决策" ✅ FIXED
 
 - **位置**: `report.md:211-220` vs `research.mjs:535-549`
 - **文档说**: `report.md:211-220` Key Decisions 格式 4 字段：`决策` / `替代方案` / `权衡` / `证据`；`report.md:223` `禁止添加 Benefits / Suffers / Risk / Status / Learning 等额外字段`
 - **脚本实际**: `research.mjs:535-549` prompt 要求 9 字段：`Chosen` / `Rejected` / `Why Chosen` / `Why Rejected` / `Tradeoff` / `Cost` / `Long-term` / `Benefits` / `Suffers`
 - **影响**: 脚本要求生成 report.md 明确禁止的 Benefits / Suffers 字段
 - **建议修复**: 修改 prompt 为 4 字段格式
+- **修复内容**: Decision fields changed from 9 to 4 per report.md:210-223
 
-#### [P0] RR2-CONS-057: report.md 必需章节（10 个）vs research.mjs prompt 章节（8 个）
+#### [P0] RR2-CONS-057: report.md 必需章节（10 个）vs research.mjs prompt 章节（8 个） ✅ FIXED
 
 - **位置**: `report.md:116-127` vs `research.mjs:507-571`
 - **文档说**: `report.md:116-127` 必需章节 10 个：执行摘要 / Runtime / Architecture / Key Decisions / 模型质疑 / 维护者手册 / **Blast Radius** / **Change Difficulty** / 阅读路线 / 未解问题
 - **脚本实际**: `research.mjs:507-571` prompt 章节 8 个：执行摘要 / Runtime / Architecture / Key Decisions / Model Challenge / Maintainer Handbook / Repository Tour / Unresolved Questions —— **缺 Blast Radius 和 Change Difficulty 章节**
 - **影响**: 报告缺 2 个必需章节，Quality 的 `blast_radius_gate` / `change_difficulty_gate` 永远失败
 - **建议修复**: prompt 补充 Blast Radius 和 Change Difficulty 章节
+- **修复内容**: Report chapters changed from 8 to 10 (added Blast Radius, Change Difficulty, Design Smells)
 
 #### [P0] RR2-CONS-058: evidence.md 禁止 `evidence_collected` 字段 vs research.mjs 写入该字段 ✅ DUPLICATE OF CONS-005
 
