@@ -106,7 +106,7 @@ async function stageZeroResume(workDir, repoPath, force) {
   const resumeFromCtx = context?.resume || {};
   const lastStage = resumeFromCtx.last_completed_stage || "none";
   const lastRound = resumeFromCtx.last_round || 0;
-  const nextStage = resumeFromCtx.next_stage || (existing.commitUnchanged ? "Stage 3" : "Stage 1");
+  const nextStage = resumeFromCtx.next_stage || (existing.commitUnchanged ? "planner" : "scan");
   const reportExists = await fileExists(join(workDir, "report.md"));
 
   // Print loading summary
@@ -126,7 +126,7 @@ async function stageZeroResume(workDir, repoPath, force) {
 
   if (context?.coverage) {
     const low = Object.entries(context.coverage)
-      .filter(([, v]) => v < 0.5)
+      .filter(([, v]) => (typeof v === "number" ? v : v?.ratio ?? 0) < 0.5)
       .map(([k]) => k);
     console.log(`  Weakest areas: ${low.length > 0 ? low.join(", ") : "none (all ≥ 0.5)"}`);
   }
@@ -272,15 +272,16 @@ async function stageThreePlanner(resume) {
   const coverage = context.coverage || {};
   const lastRound = resume.lastRound || 1;
 
-  // Find weakest dimension
-  const entries = Object.entries(coverage);
+  // Find weakest dimension (support both legacy number and new {answered,total,ratio} formats)
+  const ratioOf = (v) => (typeof v === "number" ? v : v?.ratio ?? 0);
+  const entries = Object.entries(coverage).map(([k, v]) => [k, ratioOf(v)]);
   const weakest = entries.length > 0
     ? entries.sort((a, b) => a[1] - b[1])[0]
     : ["architecture", 0];
 
   console.log(`Stage 3: Research Planner`);
-  console.log(`  Coverage: ${entries.map(([k, v]) => `${k}=${v}`).join(", ")}`);
-  console.log(`  Weakest area: ${weakest[0]} (${weakest[1]})`);
+  console.log(`  Coverage: ${entries.map(([k, v]) => `${k}=${(v * 100).toFixed(0)}%`).join(", ")}`);
+  console.log(`  Weakest area: ${weakest[0]} (${(weakest[1] * 100).toFixed(0)}%)`);
 
   const allCovered = entries.every(([, v]) => v >= 0.8);
   if (allCovered && context.challenge_record?.length > 0) {
@@ -382,9 +383,25 @@ async function architectureInterpretation(repoType, model, evidence) {
 仓库类型: ${repoType.type}
 Model: ${JSON.stringify(model, null, 2)}
 证据: ${evidenceStr}
-产出以下类型（最多各 3 条，必须引用证据）: engineering_constraints, architectural_forces, design_decisions（每个必须有 rejected 替代方案）, tradeoffs, intentional_omissions, architectural_tensions, leverage_points, maintainer_mental_model
+
+产出以下类型（必须引用证据）:
+- engineering_constraints（≤3）: 工程约束
+- architectural_forces（≤3）: 架构作用力
+- design_decisions（≤4）: 关键决策——**每个决策必须含 6 字段**（reasoning.md schema）:
+  - decision: 决策描述
+  - chosen: 选择的方案
+  - rejected: [被拒绝的方案列表]
+  - rejected_reason: 为什么拒绝
+  - tradeoff: 牺牲了什么，换取了什么
+  - mature_alternatives_compared: [{alternative, why_not, evidence}]（≤3，对比 Event Sourcing/Temporal/Actor/LangGraph 等成熟方案，基于代码证据）
+- tradeoffs（≤3）: 权衡
+- intentional_omissions（≤3）: 有意省略
+- architectural_tensions（≤3）: 架构张力
+- leverage_points（≤3）: 杠杆点
+- maintainer_mental_model: 维护者心智划分
+
 输出 JSON（严格 JSON，保持简洁）:
-{"engineering_constraints":[{"constraint":"约束","evidence":["证据"]}],"architectural_forces":[{"force":"作用力","evidence":["证据"]}],"design_decisions":[{"decision":"决策","chosen":"选择","rejected":["被拒绝方案"],"why":"理由","evidence":["证据"]}],"tradeoffs":[{"tradeoff":"权衡","evidence":["证据"]}],"intentional_omissions":[{"omission":"省略","why":"理由","evidence":["证据"]}],"architectural_tensions":[{"tension":"张力","evidence":["证据"]}],"leverage_points":[{"point":"杠杆点","evidence":["证据"]}],"maintainer_mental_model":"维护者心智划分"}
+{"engineering_constraints":[{"constraint":"约束","evidence":["证据"]}],"architectural_forces":[{"force":"作用力","evidence":["证据"]}],"design_decisions":[{"decision":"决策","chosen":"选择","rejected":["被拒绝方案"],"rejected_reason":"为什么拒绝","tradeoff":"牺牲了什么换取了什么","mature_alternatives_compared":[{"alternative":"Event Sourcing","why_not":"为什么不用","evidence":["ev-001"]}]}],"tradeoffs":[{"tradeoff":"权衡","evidence":["证据"]}],"intentional_omissions":[{"omission":"省略","why":"理由","evidence":["证据"]}],"architectural_tensions":[{"tension":"张力","evidence":["证据"]}],"leverage_points":[{"point":"杠杆点","evidence":["证据"]}],"maintainer_mental_model":"维护者心智划分"}
 `;
   return invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
 }
@@ -394,11 +411,86 @@ async function challengeModel(interpretation, model) {
 挑战以下架构解释。对每个结论执行: 移除测试、假设翻转、边界测试、时间测试。
 架构解释: ${JSON.stringify(interpretation, null, 2)}
 Model: ${JSON.stringify(model, null, 2)}
-最多选择 3 个关键挑战，保持 JSON 简洁。
+最多选择 5 个关键挑战（reasoning.md 上限），保持 JSON 简洁。
+
+**challenge_record 每条必须含 5 字段**（reasoning.md schema）：
+- target: 被质疑的实现决策
+- method: 质疑方法（移除测试/假设翻转/边界测试/时间测试）
+- counter_evidence: 找到的反证（如果有，基于代码；无则填 null）
+- result: "survived" | "weakened" | "overturned"
+- notes: 补充说明（如 model_delta、影响范围等）
+
 输出 JSON:
-{"challenges":[{"target":"被挑战结论","challenge":"挑战问题","method":"移除测试","outcome":"survived/refuted/modified","evidence":["证据"],"model_delta":"变化"}],"center_hypothesis":"一句话中心假设","key_assumptions":[{"assumption":"假设","evidence":["证据"],"challenged":true,"survived":true}],"competing_interpretations":[{"interpretation":"备选","evidence":["证据"],"confidence":"medium"}]}
+{"challenges":[{"target":"被质疑的决策","method":"移除测试","counter_evidence":"反证或null","result":"survived","notes":"补充说明"}],"center_hypothesis":"一句话中心假设","key_assumptions":[{"assumption":"假设","evidence":["证据"],"challenged":true,"survived":true}],"competing_interpretations":[{"interpretation":"备选","evidence":["证据"],"confidence":"medium"}]}
 `;
   return invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+}
+
+// Reasoning Agent: update coverage based on evidence + questions + interpretation
+// Per reasoning.md: coverage must be calculable {answered, total, ratio} across 6 dimensions,
+// updated by LLM judgment (not mechanical computation). Coverage is monotonically increasing
+// unless challenge refutes a conclusion or code changes.
+async function updateCoverage(questions, evidence, interpretation, challenge, prevCoverage) {
+  const DIMENSIONS = ["runtime", "architecture", "design_decisions", "testing", "deployment", "history"];
+  const prevStr = prevCoverage ? JSON.stringify(prevCoverage, null, 2) : "{}";
+  const prompt = `
+你是 Reasoning Agent。根据本轮收集的证据和推理，更新研究覆盖度。
+
+**6 个维度定义**（reasoning.md）：
+- runtime: 运行时架构、启动流程、请求生命周期
+- architecture: 模块组织、边界、分层、模式
+- design_decisions: 关键决策、替代方案、权衡
+- testing: 测试策略、覆盖率、质量保障
+- deployment: 构建、部署、CI/CD
+- history: 演进历史、重大变化、技术债务
+
+**计算规则**：
+- answered = 该维度问题中已回答的数量（status ∈ {{answered, validated}}）
+- total = 该维度问题总数
+- ratio = answered / total
+- **coverage 单调增加**：正常研究时只增不降；challenge 成功推翻旧结论时对应维度可降；代码变化时受影响维度降回 0.3
+
+**当前问题列表**：
+${JSON.stringify(questions.map((q) => ({ id: q.id, question: q.question, type: q.type, status: q.status })), null, 2)}
+
+**证据列表**（${evidence.length} 条）：
+${evidence.map((e) => `- ${e.path}: ${e.purpose || ""}`).join("\n")}
+
+**架构解释摘要**：
+${JSON.stringify({ decisions: interpretation?.design_decisions?.length || 0, tensions: interpretation?.architectural_tensions?.length || 0, constraints: interpretation?.engineering_constraints?.length || 0 }, null, 2)}
+
+**质疑结果摘要**：
+${JSON.stringify({ challenges: challenge?.challenges?.length || 0, survived: challenge?.key_assumptions?.filter((a) => a.survived)?.length || 0 }, null, 2)}
+
+**前一轮 coverage**（单调增加基准）：
+${prevStr}
+
+请判断每个问题属于哪个维度，以及是否已被本轮证据回答。然后输出 6 维 coverage。
+
+输出 JSON（严格 JSON，6 个维度必须齐全）：
+{"runtime":{{"answered":N,"total":M,"ratio":N/M}},"architecture":{{"answered":N,"total":M,"ratio":N/M}},"design_decisions":{{"answered":N,"total":M,"ratio":N/M}},"testing":{{"answered":N,"total":M,"ratio":N/M}},"deployment":{{"answered":N,"total":M,"ratio":N/M}},"history":{{"answered":N,"total":M,"ratio":N/M}}}}
+`;
+  const result = await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+  // Ensure all 6 dimensions present and ratio computed
+  const coverage = {};
+  for (const dim of DIMENSIONS) {
+    const entry = result?.[dim] || { answered: 0, total: 0, ratio: 0 };
+    const answered = Number(entry.answered) || 0;
+    const total = Number(entry.total) || 0;
+    // Monotonic increase: never lower than previous round
+    const prev = prevCoverage?.[dim];
+    const prevAnswered = typeof prev === "object" ? (prev?.answered || 0) : 0;
+    const prevTotal = typeof prev === "object" ? (prev?.total || 0) : 0;
+    coverage[dim] = {
+      answered: Math.max(prevAnswered, answered),
+      total: Math.max(prevTotal, total),
+      ratio: 0, // computed below
+    };
+    coverage[dim].ratio = coverage[dim].total > 0
+      ? Number((coverage[dim].answered / coverage[dim].total).toFixed(2))
+      : 0;
+  }
+  return coverage;
 }
 
 async function stageFourResearch(repoPath, resume, plan, scan, profile) {
@@ -431,15 +523,22 @@ async function stageFourResearch(repoPath, resume, plan, scan, profile) {
   // Converge
   console.log("  4e: Converging...");
 
+  // Normalize question IDs
   const allQuestions = questions.map((q) => ({
     ...q,
     id: q.id && q.id.startsWith("R") ? q.id : `R${plan.round}-${(q.id || "").replace(/^Q/, "")}`,
   }));
 
-  // Compute coverage estimate
-  const coverage = plan.firstRun
-    ? { runtime: 0.3, architecture: 0.25, design_decisions: 0.2, testing: 0.1, deployment: 0.1, history: 0.05 }
-    : { ...resume.context?.coverage, [plan.focus]: Math.min(1, ((resume.context?.coverage?.[plan.focus] || 0) + 0.3)) };
+  // Reasoning Agent updates coverage (per reasoning.md: LLM judgment, not mechanical)
+  // Coverage is calculable {answered, total, ratio} across 6 dimensions, monotonically increasing
+  console.log("  4f: Updating coverage (Reasoning)...");
+  const coverage = await updateCoverage(
+    allQuestions,
+    evidence,
+    interpretation,
+    challenge,
+    plan.firstRun ? {} : resume.context?.coverage
+  );
 
   return {
     plan,
@@ -610,9 +709,9 @@ async function publishReportAndCheckpoint(workDir, repoPath, context, contextPat
   };
   await writeMeta(workDir, newMeta);
 
-  // Update context resume to done
+  // Update context resume: Workspace Agent completed checkpoint+publish (per workspace.md Stage table)
   context.resume = {
-    last_completed_stage: "Stage 5",
+    last_completed_stage: "workspace",
     next_stage: "done",
     last_round: context.current_round || 1,
   };
@@ -733,8 +832,8 @@ async function main() {
   const context = {
     user_input: `分析 ${repoPath} 仓库的架构`,
     resume: {
-      last_completed_stage: "Stage 5",
-      next_stage: "done",
+      last_completed_stage: "report",
+      next_stage: "quality",
       last_round: plan.round,
     },
     current_round: plan.round,
@@ -755,21 +854,24 @@ async function main() {
       competing_interpretations: result.challenge.competing_interpretations || [],
     },
     challenge_record: result.challenge.challenges || [],
+    // design_space: use LLM-returned schema directly (per reasoning.md:174-191)
+    // Fields: decision / chosen / rejected / rejected_reason / tradeoff / mature_alternatives_compared
     design_space: (result.interpretation.design_decisions || []).map((d) => ({
-      decision: d.decision, chosen: d.chosen, rejected: d.rejected,
-      why_chosen: d.why, why_rejected: d.why, confidence: "high", evidence: d.evidence,
+      decision: d.decision,
+      chosen: d.chosen,
+      rejected: d.rejected || [],
+      rejected_reason: d.rejected_reason || "",
+      tradeoff: d.tradeoff || "",
+      mature_alternatives_compared: d.mature_alternatives_compared || [],
     })),
     maintainer_view: {
       modification_impact_map: {},
       complexity_drivers: (result.interpretation.architectural_tensions || []).map((t) => t.tension),
     },
-    evidence_collected: {
-      log_file: "artifacts/evidence-log.jsonl",
-      count: result.evidence.length,
-      last_ev_id: `ev-${String(result.evidence.length).padStart(3, "0")}`,
-      note:
-        "Actual evidence insights are in evidence-log.jsonl (append-only). Script-layer entries have empty key_findings; LLM Stage 4a appends entries with real key_findings.",
-    },
+    // NOTE: evidence_collected field intentionally omitted — per evidence.md:144,
+    // evidence must ONLY exist in artifacts/evidence-log.jsonl (append-only).
+    // Evidence Agent returns {evidence_written, files_read, ready_for_model} to Orchestrator,
+    // not written to context.json.
     quality_gate: { center_identified: false, alternatives_considered: false, counterexamples_found: false, model_challenged: false },
   };
   await writeJson(contextPath, context);
