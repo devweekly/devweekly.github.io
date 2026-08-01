@@ -1,11 +1,12 @@
 {
-  "type": "AI Infrastructure",
+  "type": "Library",
   "confidence": "high",
-  "reasoning": "This is the unsloth repository, a Python library (pyproject.toml, unsloth/ package) purpose-built for ultra-fast LLM fine-tuning, shipping custom Triton/CUDA kernels (unsloth/kernels/moe/grouped_gemm), a CLI (unsloth_cli/ with subcommands, cli.py, install.sh/install.ps1/build.sh), and a bundled Studio application (studio/backend Python services + studio/frontend + studio/src-tauri desktop shell). It is training/runtime infrastructure on top of transformers/PEFT rather than a generic library, a compiler, or a web service alone.",
+  "reasoning": "Core is `unsloth/` (Python package with models/optimizers/registry and custom CUDA kernels including MoE grouped_gemm and LoRA), distributed via pyproject.toml with install.sh/install.ps1 and a `cli.py`/`unsloth_cli` CLI. It is primarily an AI fine-tuning library/framework (PEFT/TRL-based, hardware-aware), augmented by a full application layer: `studio/` (FastAPI-style backend + React frontend) and a Tauri desktop app (src-tauri), plus tests/notebooks/qlora/saving coverage. The 'unsloth', 'peft x trl', 'ollama', Colab/Kaggle imagery confirms the unsloth LLM training toolchain. The dominant, value-bearing artifact is a reusable training library rather than a standalone service, though it ships CLI + Web/Desktop Studio components.",
   "focus_areas": [
-    "Efficient LLM fine-tuning (LoRA/QLoRA) with custom kernels (MoE grouped GEMM, flash attention)",
-    "Python library API (FastLanguageModel, training/export/merging utilities)",
-    "CLI tooling and multi-platform install scripts (build.sh, install.ps1, install.sh, cli.py)",
-    "Studio app: Python backend (training/inference/RAG/hub/security routes) + React frontend + Tauri desktop shell"
+    "LLM fine-tuning (PEFT/TRL, LoRA, QLoRA)",
+    "Efficient training kernels (MoE grouped GEMM, custom optimizers)",
+    "Model saving/loading/export & inference integration",
+    "Studio application (web backend + frontend + Tauri desktop)",
+    "GPU hardware detection & install tooling"
   ]
 }

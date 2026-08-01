@@ -1,5 +1,5 @@
 {
-  "latest_round": 2,
+  "latest_round": 3,
   "rounds": [
     {
       "round": 1,
@@ -10,19 +10,13 @@
     {
       "round": 2,
       "file": "round-2.json",
-      "purpose": "focus_testing",
+      "purpose": "focus_runtime",
       "status": "active"
     },
     {
       "round": 3,
       "file": "round-3.json",
-      "purpose": "focus_testing",
-      "status": "active"
-    },
-    {
-      "round": 2,
-      "file": "round-2.json",
-      "purpose": "focus_testing",
+      "purpose": "focus_history",
       "status": "active"
     }
   ]

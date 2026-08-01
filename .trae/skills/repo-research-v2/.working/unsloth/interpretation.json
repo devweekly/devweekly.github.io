@@ -1,208 +1,121 @@
 {
   "engineering_constraints": [
     {
-      "constraint": "必须同时支持 Windows 官方与 AMD ROCm 双平台，且第三方依赖（torchao RCCL、transformers.quantizers）在边缘平台不可用时不能阻塞发布",
+      "constraint": "供应链安全不可妥协：安装前必须静态审查所有依赖",
       "evidence": [
-        "以 stub 方式解决 torchao 在 Windows+ROCm 上因缺失 RCCL 后端（torch._C._distributed_c10d）导致的无条件 import 崩溃",
-        "对 transformers.quantizers 传递依赖做主动打桩",
-        "平台目标是'Windows 官方支持 + AMD ROCm 兼容'双线并行"
+        "下载 PyPI 归档而不安装即审查内容，是对供应链投毒（恶意包）的防御性安全设计",
+        "将同一供应链扫描能力镜像到 npm 侧并读取 studio/frontend/package-lock，证明安全审查覆盖全依赖树"
       ]
     },
     {
-      "constraint": "requires-python 必须保持 3.9 广泛下界同时预适配新版本（上界 <3.15 含 3.14）",
+      "constraint": "本地流量必须与开发者环境代理隔离",
       "evidence": [
-        "requires-python 上界为 <3.15（含 3.14 兼容），体现对新 Python 版本的主动预适配策略",
-        "下界 3.9 保证广泛兼容，属典型的快速迭代 AI 库约束选择"
+        "测试用 AST 静态分析锁定'RAG 包内所有 httpx 调用必须 trust_env=False'这一不变式",
+        "RAG 循环所有请求都指向本地 127.0.0.1 llama-server，防止 HTTP_PROXY 劫持或旁路本地模型服务流量"
       ]
     },
     {
-      "constraint": "供应链安全审计必须在'不安装即扫描'前提下跨 Python 与 JS 双生态统一执行",
+      "constraint": "跨平台兼容是硬需求，含小众平台",
       "evidence": [
-        "脚本在不安装的前提下下载并解压检查依赖归档，体现对依赖投毒/恶意代码的主动防御策略",
-        "供应链安全扫描同时覆盖 Python 与 JS 两个生态"
+        "存在为 Windows-ROCm 平台的专用 shim：桩掉 torchao 以规避其无条件导入 distributed_c10d 导致的崩溃"
       ]
     }
   ],
   "architectural_forces": [
     {
-      "force": "开源采纳度（Apache-2.0 核心库）与商业价值保护（AGPL studio 组件）之间的拉锯",
+      "force": "可复现构建与发布自动化",
       "evidence": [
-        "pyproject 声明 Apache-2.0，但源码文件普遍使用 AGPL-3.0-only 头",
-        "studio 目录下组件受 AGPL 保护，需作为商业/专有代码对待"
+        "构建依赖精确锁定（setuptools==80.9.0/setuptools-scm==9.2.0）并动态从 git 推导版本"
       ]
     },
     {
-      "force": "子进程启动必须零 ML 依赖（快速启动 + 版本激活时序）与功能上依赖 unsloth/transformers/torch 之间的矛盾",
+      "force": "启动性能与进程隔离",
       "evidence": [
-        "training 子进程导入时不得拉起 unsloth/transformers/torch",
-        "版本激活逻辑必须先于模型库初始化运行，子进程启动时序由模块划分强制"
+        "核心模块通过 __getattr__ 强制延迟导入，使训练子进程在版本激活前不加载 torch/transformers 等重依赖"
       ]
     },
     {
-      "force": "快速迭代发布（tag-driven 自动版本、预适配新 Python）与对下游用户 3.9 广泛兼容的稳定性承诺之间的张力",
+      "force": "商业化开源 + 强品牌路线",
       "evidence": [
-        "version 字段为 dynamic 且依赖 setuptools-scm，版本号由 SCM/git 标签驱动",
-        "requires-python 上界为 <3.15……下界 3.9 保证广泛兼容"
+        "README 以品牌视觉（深/浅色响应式 Logo）而非快速上手为开篇，README 同时承担营销与文档职责"
       ]
     }
   ],
   "architecture_invariants": [
     {
-      "invariant": "版本激活逻辑必须先于任何模型库初始化运行（子进程加载时绝不拉起重型 ML 依赖）",
+      "invariant": "RAG 包内所有 HTTP 调用必须 trust_env=False",
       "evidence": [
-        "版本激活逻辑必须先于模型库初始化运行，子进程启动时序由模块划分强制",
-        "training 子进程导入 core.training.worker 时不得拉起 unsloth/transformers/torch 等重型 ML 依赖",
-        "core/__init__.py 通过 __getattr__ 实现全模块惰性导入"
+        "测试用 AST 静态分析锁定该不变式，任何新加入的 httpx 调用未设置 trust_env 就立刻失败"
       ]
     },
     {
-      "invariant": "数据配方一律经 JobManager 单例以异步后台任务执行，DataDesigner 仅作为可插拔内部服务暴露",
+      "invariant": "两条工具循环（GGUF 与 safetensors）必须共享同一状态契约",
       "evidence": [
-        "数据配方以异步后台任务执行（JobManager 单例 + job-runner 架构）",
-        "通过 get_job_manager() 单例暴露 JobManager",
-        "对外只暴露 JobManager 门面，保持模块间最小耦合"
+        "tool_loop_controller 被刻意设计为依赖极轻的模块，只持有 per-response ledger 状态，两条循环共享同一状态模型",
+        "header 注释把'依赖轻量'作为设计原则显式声明"
       ]
     },
     {
-      "invariant": "数据集落盘路径统一由 recipe_datasets_root + resolve_dataset_path 管理，产物内嵌 Data Designer 品牌水印",
+      "invariant": "模型上下文长度由单一入口决定 fallback 逻辑",
       "evidence": [
-        "huggingface.py 通过 recipe_datasets_root 与 resolve_dataset_path 统一管理数据集落盘路径",
-        "生成内容的 footer 内嵌 'Made with ❤️ using 🎨 Data Designer' 品牌水印链接"
+        "inference 后端对 runtime context length 采用统一辅助函数封装，避免各 backend 重复实现导致的不一致"
       ]
     }
   ],
   "design_decisions": [
     {
-      "decision": "以惰性导入（__getattr__）作为架构约束，按进程启动时序划分模块，强制版本激活先于重型 ML 依赖加载",
-      "chosen": "core/__init__.py 全模块惰性导入 + version-activation 机制，模块边界围绕子进程启动时序设计",
+      "decision": "CLI 入口保持极薄委托",
+      "chosen": "CLI 仅调用独立包 unsloth_cli 的 app 对象",
       "rejected": [
-        "全量 eager 导入",
-        "版本激活与库初始化解耦但无强制执行机制"
+        "将 CLI 命令逻辑内联进主库入口",
+        "直接复用库 API 暴露全部命令"
       ],
-      "rejected_reason": "eager 导入会在子进程中先拉起 torch 再执行版本激活，破坏启动时序；仅有软约定而无模块划分强制则约束随时可能被绕过",
-      "tradeoff": "牺牲了导入路径的直观性与堆栈可调试性，换取子进程启动隔离与版本激活时序的硬保证",
+      "rejected_reason": "CLI 与核心耦合会阻碍独立分发与替换，且扩大公共 API 表面积",
+      "tradeoff": "多一层间接调用，换取 CLI 生命周期与核心的完全解耦",
       "mature_alternatives_compared": [
         {
-          "alternative": "LangGraph",
-          "why_not": "面向 agent 编排流程，与本问题（进程内 import 时序）无关",
+          "alternative": "直接在库内实现 argparse/typer 命令",
+          "why_not": "CLI 与核心生命周期耦合，无法单独分发或替换",
           "evidence": [
-            "惰性导入作为架构约束表明存在版本激活（version-activation）机制"
-          ]
-        },
-        {
-          "alternative": "Actor",
-          "why_not": "解决并发消息传递，不解决模块加载顺序约束",
-          "evidence": [
-            "模块划分是围绕进程启动时序设计的"
-          ]
-        },
-        {
-          "alternative": "Event Sourcing",
-          "why_not": "面向状态重放，本决策无状态变更日志需求",
-          "evidence": [
-            "training 子进程导入 core.training.worker 时不得拉起 unsloth/transformers/torch"
+            "CLI 入口是极薄委托层，仅调用独立包 unsloth_cli 的 app 对象"
           ]
         }
       ]
     },
     {
-      "decision": "数据配方（data_recipe）采用 JobManager 门面 + job-runner 架构，以异步后台任务执行",
-      "chosen": "core 子模块 data_recipe = DataDesigner 包装器 + 任务运行器，经 get_job_manager() 单例暴露，异步后台执行",
+      "decision": "预安装安全扫描：下载归档而非安装后审查",
+      "chosen": "下载 PyPI/npm 归档并静态审查内容",
       "rejected": [
-        "同步阻塞执行",
-        "引入完整工作流编排框架"
+        "在隔离沙箱中安装后运行测试",
+        "仅依赖官方包签名/哈希校验"
       ],
-      "rejected_reason": "同步执行会阻塞 UI 交互并拖慢一键微调流程；完整编排框架对外部基础设施（server/worker）依赖过重，违背'可插拔内部服务、最小耦合'定位",
-      "tradeoff": "增加任务基础设施复杂度，换取 DataDesigner 可插拔性与前端不阻塞的交互体验",
+      "rejected_reason": "安装即执行已暴露投毒风险，签名校验不覆盖包内容",
+      "tradeoff": "下载与扫描的开销换取对供应链投毒的执行前防御",
       "mature_alternatives_compared": [
         {
-          "alternative": "Temporal",
-          "why_not": "需要独立 server/worker 基础设施，对仅对外暴露 JobManager 门面的内部服务过重",
+          "alternative": "沙箱安装后黑盒测试",
+          "why_not": "仍保留执行路径风险且基础设施更重",
           "evidence": [
-            "data_recipe 是'DataDesigner 包装器 + 任务运行器'",
-            "对外只暴露 JobManager 门面，保持模块间最小耦合"
-          ]
-        },
-        {
-          "alternative": "Event Sourcing",
-          "why_not": "后台任务无状态重放需求，不需事件日志",
-          "evidence": [
-            "数据配方以异步后台任务执行（JobManager 单例 + job-runner 架构）"
-          ]
-        },
-        {
-          "alternative": "Actor",
-          "why_not": "无需 actor 消息协议，单例任务队列即可满足",
-          "evidence": [
-            "通过 get_job_manager() 单例暴露 JobManager"
+            "下载 PyPI 归档而不安装即审查内容"
           ]
         }
       ]
     },
     {
-      "decision": "双许可：核心库 Apache-2.0 开源 + studio 商业组件 AGPL-3.0-only 保护",
-      "chosen": "pyproject 声明 Apache-2.0，源码文件普遍 AGPL-3.0-only 头，studio 目录组件按专有/商业代码对待",
+      "decision": "核心模块强制延迟导入",
+      "chosen": "通过 __getattr__ 按需加载重依赖",
       "rejected": [
-        "全部 Apache-2.0 开源",
-        "整体商业闭源"
+        "模块顶层直接 import torch/transformers",
+        "运行时动态 sys.path 注入"
       ],
-      "rejected_reason": "全部开源丧失 studio 商业闭环价值；整体闭源丧失社区采纳、贡献与流量入口",
-      "tradeoff": "牺牲 studio 组件的社区透明性与外部贡献，换取商业级产品闭环（web UI + 导出后端）的独占保护",
+      "rejected_reason": "顶层导入拖慢启动并污染训练子进程隔离边界",
+      "tradeoff": "导入路径晦涩、可读性下降，换取启动性能与进程隔离",
       "mature_alternatives_compared": [
         {
-          "alternative": "Open Core（单许可 + 附加付费功能）",
-          "why_not": "AGPL 相比单独商业许可证更易因传染性吓退企业集成者，团队选择分目录隔离而非功能分层",
+          "alternative": "依赖注入 / 插件注册机制",
+          "why_not": "对库级 API 而言过度设计，成本高于收益",
           "evidence": [
-            "pyproject 声明 Apache-2.0，但源码文件普遍使用 AGPL-3.0-only 头",
-            "studio 目录：AGPL-3.0 保护的前端与后端导出/任务组件"
-          ]
-        },
-        {
-          "alternative": "Source-available 单许可（BSL 等）",
-          "why_not": "BSL 变更条款比静态 AGPL 头更复杂，与现有源码头机制不兼容",
-          "evidence": [
-            "源码头为 AGPL-3.0-only 而 pyproject 为 Apache-2.0，坐实双许可分裂"
-          ]
-        },
-        {
-          "alternative": "Event Sourcing",
-          "why_not": "许可策略与事件溯源无技术关联，不适用",
-          "evidence": [
-            "核心库 Apache-2.0 开源 + studio 商业组件 AGPL-3.0 保护"
-          ]
-        }
-      ]
-    },
-    {
-      "decision": "对第三方边缘平台不兼容（torchao RCCL 缺失、transformers.quantizers）注入 stub 而非等待上游修复",
-      "chosen": "以 stub 注入绕过无条件 import 崩溃，双平台立即可用",
-      "rejected": [
-        "等待上游修复",
-        "运行时平台条件导入（platform guard）",
-        "vendor/fork 第三方包"
-      ],
-      "rejected_reason": "等待上游会阻塞 Windows+ROCm 发布节奏；运行时 guard 无法阻止 import 阶段的崩溃（崩溃发生在 guard 判断之前）；fork 需长期合并上游且维护成本高",
-      "tradeoff": "换取双平台即时可用，付出上游 API 变动时 stub 需持续同步的维护债务",
-      "mature_alternatives_compared": [
-        {
-          "alternative": "条件编译/运行时平台检测",
-          "why_not": "不解决无条件 import 崩溃，崩溃发生在 platform guard 生效前的 import 阶段",
-          "evidence": [
-            "以 stub 方式解决 torchao 在 Windows+ROCm 上因缺失 RCCL 后端导致的无条件 import 崩溃"
-          ]
-        },
-        {
-          "alternative": "Vendor/分叉依赖",
-          "why_not": "需持续合并上游变更，跨版本维护成本不可控",
-          "evidence": [
-            "团队选择注入 stub 而非要求上游修复"
-          ]
-        },
-        {
-          "alternative": "Event Sourcing",
-          "why_not": "与依赖治理无状态重放关联，不适用",
-          "evidence": [
-            "对 transformers.quantizers 传递依赖做主动打桩"
+            "核心模块通过 __getattr__ 强制延迟导入"
           ]
         }
       ]
@@ -210,301 +123,173 @@
   ],
   "tradeoffs": [
     {
-      "tradeoff": "快速迭代（tag-driven 自动版本 + 预适配 Python 3.15）与 3.9 广泛下界兼容并存，维护双端兼容面",
+      "tradeoff": "本地流量安全隔离换取合法代理场景的可用性",
       "evidence": [
-        "版本号由 SCM/git 标签驱动",
-        "requires-python 上界为 <3.15……下界 3.9 保证广泛兼容"
+        "trust_env=False 是刻意的安全设计：防止代理环境变量劫持或旁路本地模型服务流量"
       ]
     },
     {
-      "tradeoff": "以'不安装即扫描'的静态供应链审计替代运行期动态防护，覆盖面广但无法捕获安装期行为",
+      "tradeoff": "品牌优先 README 换取开发者快速上手效率",
       "evidence": [
-        "脚本在不安装的前提下下载并解压检查依赖归档",
-        "供应链安全扫描同时覆盖 Python 与 JS 两个生态"
+        "README 以品牌视觉而非快速上手为开篇，同时承担营销与文档职责"
       ]
     },
     {
-      "tradeoff": "docs-first 策略下 README 退化为品牌流量入口，仓库内信息可发现性让位于 unsloth.ai/docs 集中承载",
+      "tradeoff": "本地 SQLite 持久化换取跨进程/服务端多租户能力",
       "evidence": [
-        "README 仅承载品牌 logo……内容主体外移到 unsloth.ai/docs，README 作为流量入口而非信息载体"
+        "聊天记录持久化到本地 SQLite 而非会话内存，依赖 studio.db（SQLite）",
+        "history 路由与 auth 强绑定，暗示多租户/权限隔离需求"
       ]
     }
   ],
   "intentional_omissions": [
     {
-      "omission": "不在仓库内维护完整文档主体，仅保留品牌 README",
-      "why": "docs-first 营销策略：内容外移 unsloth.ai/docs，README 专注品牌呈现与开发者 DX（dark/light 变体）",
+      "omission": "不内置模型托管服务器，工具循环依赖外部 llama-server",
+      "why": "使工具循环核心逻辑可完全离线单元测试，输入输出契约与真实服务器解耦",
       "evidence": [
-        "README 仅承载品牌 logo（含 prefers-color-scheme 明暗主题切换），内容主体外移到 unsloth.ai/docs"
+        "测试通过 fake llama-server SSE 流驱动，声明不需要模型/子进程/GPU/网络"
       ]
     },
     {
-      "omission": "不为边缘平台第三方缺陷长期根治（无上游 PR 绑定、无 fork 维护），仅以 stub 短期绕过",
-      "why": "务实外部依赖治理：等待上游或 fork 的长期成本高于 stub 的同步成本，且阻塞双平台发布",
+      "omission": "tool_loop_controller 不含 Route/SSE 转换、工具执行、模型调用",
+      "why": "职责分离约束，防止该模块被无关依赖腐蚀",
       "evidence": [
-        "团队选择注入 stub 而非要求上游修复，体现务实的外部依赖治理策略"
+        "把 Route/SSE 转换、工具执行、模型调用隔离在其他层，header 注释显式声明依赖轻量"
       ]
     },
     {
-      "omission": "无安装后运行期供应链防护，仅做发布前静态扫描",
-      "why": "静态'不安装即扫描'足以覆盖 CI 审计目标，无需引入安装沙箱/运行期 hook 的额外复杂度",
+      "omission": "运行时上下文长度允许未知/检测失败",
+      "why": "对 GGUF/safetensors 不同来源的上下文感知能力不确定，需要防御性降级",
       "evidence": [
-        "建立了'不安装即扫描'的 PyPI 依赖供应链安全审计流水线"
+        "fallback 参数的存在说明运行时允许上下文长度未知/检测失败"
       ]
     }
   ],
   "architectural_tensions": [
     {
-      "tension": "惰性导入强制版本激活先于 ML 依赖，但用户'import unsloth 即可用'的心智期望要求全功能可达——约束以牺牲直观性为代价",
+      "tension": "共享状态契约 vs 两条工具循环编排逻辑差异",
       "evidence": [
-        "惰性导入作为架构约束……保证版本激活逻辑先于模型库初始化运行",
-        "核心约束是 training 子进程导入 core.training.worker 时不得拉起 unsloth/transformers/torch"
+        "两条循环的编排逻辑不同但状态契约必须保持一致，状态模型一旦不兼容某条循环会波及两条"
       ]
     },
     {
-      "tension": "Apache-2.0 开放核心建立的社区信任与 AGPL studio 的封闭保护并存——开放度与商业独占性的持续拉锯",
+      "tension": "本地优先安全（trust_env=False） vs 企业代理环境",
       "evidence": [
-        "pyproject 声明 Apache-2.0，但源码文件普遍使用 AGPL-3.0-only 头",
-        "studio 组件按专有代码对待"
+        "防止代理环境变量劫持或旁路本地模型服务流量，但企业代理用户需手动绕过"
       ]
     },
     {
-      "tension": "tag-driven 自动版本 + 主动预适配新 Python 的激进迭代，与 3.9 下界服务广泛下游的保守承诺之间的张力",
+      "tension": "前后端统一供应链审查 vs 双生态（PyPI/npm）维护成本",
       "evidence": [
-        "version 字段为 dynamic 且依赖 setuptools-scm",
-        "对新 Python 版本的主动预适配策略；下界 3.9 保证广泛兼容"
+        "同一扫描能力镜像到 npm 侧，安全审查覆盖全依赖树但需维护双实现"
       ]
     }
   ],
   "complexity_drivers": [
     {
-      "driver": "多平台/多后端兼容：Windows + ROCm 双线并行下第三方依赖生态差异（RCCL 缺失、transformers.quantizers 不兼容）需逐项打桩治理",
+      "driver": "多平台差异适配（Windows-ROCm 等小众组合）",
       "evidence": [
-        "以 stub 方式解决 torchao 在 Windows+ROCm 上因缺失 RCCL 后端导致的无条件 import 崩溃",
-        "平台目标是'Windows 官方支持 + AMD ROCm 兼容'双线并行"
+        "存在为 Windows-ROCm 平台的专用 shim：桩掉 torchao 规避崩溃"
       ]
     },
     {
-      "driver": "进程启动时序约束：子进程零 ML 依赖要求迫使惰性导入 + 按启动时序划分模块，将运行时顺序问题前置为代码结构问题",
+      "driver": "多格式导出是一等特性",
       "evidence": [
-        "惰性导入作为架构约束……子进程启动时序由模块划分强制",
-        "training 子进程导入时不得拉起 unsloth/transformers/torch"
+        "导出被建模为独立核心子系统（core/export），采用 tempfile+glob 处理多格式导出"
       ]
     },
     {
-      "driver": "跨双生态统一供应链安全审计：在不安装前提下同时解析 pip 与 npm 依赖树，安全治理横跨 Python/JS 两套生态",
+      "driver": "前后端混合 monorepo 的全依赖树安全审查",
       "evidence": [
-        "供应链安全扫描同时覆盖 Python 与 JS 两个生态",
-        "npm 端扫描器读取 studio/frontend/package-lock.json"
+        "扫描器读取 studio/frontend/package-lock，覆盖前后端全依赖树"
       ]
     }
   ],
   "leverage_points": [
     {
-      "point": "unsoloth 自家模型生态闭环：默认模型 'unsloth/llama-3-8b' 与 unsloth/ 前缀量化模型绑定，'自家模型 + 自家加速框架'形成独占技术护城河",
+      "point": "统一路径策略（utils.paths）",
       "evidence": [
-        "与 unsloth/ 前缀自托管模型生态深度绑定，形成'自家模型+自家加速框架'的闭环",
-        "示例默认模型为 'unsloth/llama-3-8b'"
+        "路径解析集中在 utils.paths，Hugging Face 数据集集成经由统一路径策略管理，利于目录约束一致化"
       ]
     },
     {
-      "point": "品牌水印反向传播：数据集卡片/README footer 内嵌 Data Designer 品牌链接，让用户生成的产物成为持续获客渠道",
+      "point": "统一 context length 辅助函数",
       "evidence": [
-        "生成内容的 footer 内嵌 'Made with ❤️ using 🎨 Data Designer' 品牌水印链接，产物被设计为反向传播 Data Designer 品牌的营销载体"
+        "inference 后端统一封装 runtime context length，由单一入口决定 fallback 逻辑"
       ]
     },
     {
-      "point": "docs-first + 品牌化 README（dark/light 双变体）作为流量漏斗，将下载/star 流量集中导向 unsloth.ai/docs 转化",
+      "point": "CLI 与核心解耦",
       "evidence": [
-        "README 作为流量入口而非信息载体",
-        "logo 同时维护 dark/light 两套变体，反映团队对品牌呈现与开发者 DX 细节的重视"
+        "CLI 仅调用独立包 unsloth_cli 的 app 对象，便于单独分发/替换"
       ]
     }
   ],
-  "maintainer_mental_model": "维护者将系统按三层心智切分：(1) 技术层——unsloth 核心库是'惰性导入 + 版本激活'的技术护城河，模块边界按'进程启动时序'而非功能分层切割，子进程是独立的零依赖运行时；微调工作流脚手架（model loading / PEFT / training / save-push）是面向一键使用的产品面。(2) 商业层——studio（web UI + export.py 导出后端）是 AGPL 保护的专有产品闭环，通过 JobManager 门面对外提供 DataDesigner 服务，export.py 是多格式导出的产品化出口。(3) 治理层——许可（Apache 核心/AGPL studio）、平台（Windows+ROCm 靠 stub 治理）、安全（pip+npm 双生态不安装扫描）三条治理线统一横切。CLI 只是薄壳，全部逻辑在独立 unsoloth_cli 发行包中，入口与实现解耦。整体心智是：用开源核心换取生态流量，用 studio 封闭层兑现商业价值，用 docs-first 品牌化承载营销，'自有模型 + 自有加速框架 + 自有导出闭环'构成纵向一体化。",
+  "maintainer_mental_model": "一个以本地优先训练/推理为核心的商业开源 monorepo：训练/推理/工具循环/导出/历史各自作为被显式边界隔离的可插拔子系统，外部依赖一律隔离，安全与平台兼容是不可妥协的边界条件",
   "blast_radius": [
     {
-      "component": "core/__init__.py 惰性导入 + 版本激活机制",
+      "component": "tool_loop_controller",
       "impact_scope": [
-        "全模块 __getattr__ 惰性导入链的任何改动都会影响子进程启动时序",
-        "版本激活必须先于 torch/transformers 加载的硬约束被打破则所有子进程导入崩溃",
-        "training 子进程 zero-ML-dependency 启动承诺失效，波及微调脚手架全流程",
-        "导入路径可调试性与堆栈可读性本身即为此牺牲的直观性"
-      ],
-      "risk_level": "Critical"
-    },
-    {
-      "component": "JobManager 单例 + job-runner 异步任务架构",
-      "impact_scope": [
-        "DataDesigner 可插拔服务的调用约定与异步后台执行契约",
-        "前端 UI 交互的阻塞行为（同步化回归会卡死一键微调流程）",
-        "get_job_manager() 单例生命周期与模块间最小耦合边界",
-        "任务状态/进度对导出与训练闭环的可观测性"
-      ],
-      "risk_level": "Critical"
-    },
-    {
-      "component": "模块边界（按进程启动时序划分）",
-      "impact_scope": [
-        "模块重组会改变子进程 import 图，重定义'哪些依赖被拉起'",
-        "training.worker 与 core 包的依赖方向一旦反转即触发重型 ML 依赖加载",
-        "数据结构与数据流按进程时序耦合，重构需重验证全部启动路径"
-      ],
-      "risk_level": "Critical"
-    },
-    {
-      "component": "双许可边界（Apache-2.0 核心 vs AGPL-3.0-only studio）",
-      "impact_scope": [
-        "studio 目录内外新增/迁移文件的许可头归属",
-        "pyproject 声明与源码头分裂若被误改即产生法律风险",
-        "商业闭环（web UI + export.py）的独占性保护",
-        "开源社区采纳度与贡献者信任"
+        "GGUF 与 safetensors 两条工具循环",
+        "工具调用调度与 SSE 流解析"
       ],
       "risk_level": "High"
     },
     {
-      "component": "第三方 stub 层（torchao RCCL、transformers.quantizers）",
+      "component": "utils.paths",
       "impact_scope": [
-        "Windows + ROCm 双平台的立即可用性",
-        "stub 与上游 API 变动的同步负担",
-        "无条件 import 崩溃发生在 platform guard 生效之前的时序",
-        "新平台（如 mac/MPS）引入时需重演打桩治理"
-      ],
-      "risk_level": "High"
-    },
-    {
-      "component": "unsloth_cli 独立发行包 + CLI 入口薄壳",
-      "impact_scope": [
-        "CLI 逻辑与入口解耦后的独立测试/分发路径",
-        "subcommand 行为变更仅影响命令行面，不波及库 API",
-        "版本打包与 setuptools-scm tag-driven 版本号的联动"
+        "数据集解析",
+        "HF 集成",
+        "recipe 目录约束"
       ],
       "risk_level": "Medium"
     },
     {
-      "component": "供应链安全审计流水线（pip+npm 双生态不安装扫描）",
+      "component": "core/export",
       "impact_scope": [
-        "CI 审计对依赖树的解析正确性（版本与传递依赖）",
-        "Python 与 JS 双生态统一执行的覆盖一致性",
-        "新依赖引入时未纳入扫描即形成审计盲区"
+        "多格式导出",
+        "跨进程预览传输"
       ],
       "risk_level": "Medium"
-    },
-    {
-      "component": "recipe_datasets_root + resolve_dataset_path 落盘路径管理",
-      "impact_scope": [
-        "数据集落盘路径约定变更影响 HF 生态对接",
-        "Data Designer 品牌水印 footer 的产物反向传播",
-        "huggingface.py 数据落盘与 jsonable 图像序列化的联动"
-      ],
-      "risk_level": "Medium"
-    },
-    {
-      "component": "README 品牌化流量入口（docs-first 策略）",
-      "impact_scope": [
-        "README dark/light 品牌变体与感知设计",
-        "信息可发现性外移 unsloth.ai/docs 后的文档迁移",
-        "仅影响开发者 DX 与营销面，不影响运行时行为"
-      ],
-      "risk_level": "Low"
     }
   ],
   "change_difficulty": [
     {
-      "change": "修改版本激活逻辑或惰性导入机制",
+      "change": "新增第三条工具循环 backend",
       "difficulty": "High",
-      "reason": "版本激活必须先于模型库初始化运行，且子进程零 ML 依赖由模块划分强制；改动需重验证所有子进程启动时序，违反者直接崩溃，且缺乏 eager 导入的直观调试能力"
+      "reason": "必须满足共享状态契约 + SSE 协议边界 + 离线可测性三重约束"
     },
     {
-      "change": "重构模块边界（拆/并 core 包模块）",
-      "difficulty": "High",
-      "reason": "模块划分围绕进程启动时序设计，重组 import 图即重新定义依赖拉起顺序；需逐一验证 training/worker 及各子进程不拉起 unsloth/transformers/torch"
-    },
-    {
-      "change": "新增平台支持（如扩展 Windows+ROCm 之外的后端）",
-      "difficulty": "High",
-      "reason": "需重新评估第三方依赖在各平台的无条件 import 崩溃，逐项打桩治理；platform guard 无法解决 import 阶段崩溃，只能走 stub 或 fork 路线"
-    },
-    {
-      "change": "变更 requires-python 范围（上下界）",
+      "change": "修改 studio.db schema",
       "difficulty": "Medium",
-      "reason": "下界 3.9 广泛兼容承诺与上界 <3.15 预适配并存，任何一端调整都需重跑双端兼容矩阵并评估对下游采纳面的影响"
+      "reason": "SQLite/线程/并发正确性有测试锁定，需同步迁移并维护 _reset_studio_db 夹具"
     },
     {
-      "change": "调整 JobManager 任务架构（同步化或引入外部编排）",
-      "difficulty": "Medium",
-      "reason": "同步化会回归阻塞 UI，外部编排框架（如 Temporal）违背最小耦合定位；改动需保持 get_job_manager() 单例契约与异步后台契约不变"
-    },
-    {
-      "change": "维护/升级第三方 stub 层",
-      "difficulty": "Medium",
-      "reason": "stub 是短期绕过而非长期根治，上游 API 每次变动都要求 stub 持续同步；改动需覆盖 Windows 与 ROCm 双平台回归验证"
-    },
-    {
-      "change": "新增/移除 studio 组件或调整许可归属",
-      "difficulty": "Medium",
-      "reason": "涉及 pyproject 声明与源码头的一致性核对与法律合规流程，误改会破坏 Apache/AGPL 双许可边界的商业保护"
-    },
-    {
-      "change": "扩展供应链安全审计覆盖面",
-      "difficulty": "Medium",
-      "reason": "需在不安装前提下同步解析 pip 与 npm 两套依赖树，新增依赖引入时须保持 Python/JS 双生态扫描的统一性与准确性"
-    },
-    {
-      "change": "修改数据集落盘路径或品牌水印规则",
+      "change": "调整导出格式集合",
       "difficulty": "Low",
-      "reason": "改动局限于 huggingface.py 的 recipe_datasets_root/resolve_dataset_path 与 footer 注入，影响面封闭在 data_recipe 子模块内"
-    },
-    {
-      "change": "修改 CLI 命令或参数",
-      "difficulty": "Low",
-      "reason": "CLI 全部逻辑封装于独立 unsloth_cli 包，入口与实现解耦，改动不触及核心库 API 与子进程时序，可独立测试分发"
+      "reason": "core/export 是独立子系统，tempfile+glob 隔离性好，不触及其他模块"
     }
   ],
   "design_smells": [
     {
-      "smell": "以 stub 长期绕过第三方缺陷而非根治",
-      "type": "tech_debt",
-      "evidence": [
-        "以 stub 方式解决 torchao 在 Windows+ROCm 上因缺失 RCCL 后端导致的无条件 import 崩溃",
-        "对 transformers.quantizers 传递依赖做主动打桩",
-        "上游 API 变动时 stub 需持续同步的维护债务"
-      ]
-    },
-    {
-      "smell": "双许可分裂：pyproject Apache-2.0 与源码 AGPL-3.0-only 并存",
+      "smell": "跨生态重复实现的供应链扫描器（PyPI + npm 双份）",
       "type": "deliberate",
       "evidence": [
-        "pyproject 声明 Apache-2.0，但源码文件普遍使用 AGPL-3.0-only 头",
-        "studio 组件按专有代码对待，换取商业级产品闭环的独占保护",
-        "用开源核心换取生态流量、用 AGPL 封闭层兑现商业价值的刻意分层"
+        "将同一供应链扫描能力镜像到 npm 侧并读取 package-lock"
       ]
     },
     {
-      "smell": "惰性导入牺牲导入路径直观性与堆栈可调试性",
+      "smell": "__getattr__ 魔术方法实现延迟导入",
       "type": "deliberate",
       "evidence": [
-        "core/__init__.py 通过 __getattr__ 实现全模块惰性导入",
-        "牺牲导入路径的直观性与堆栈可调试性，换取子进程启动隔离与版本激活时序的硬保证",
-        "全量 eager 导入被明确拒绝"
+        "核心模块通过 __getattr__ 强制延迟导入，使训练子进程在版本激活前不加载重依赖"
       ]
     },
     {
-      "smell": "静态'不安装即扫描'无法捕获安装期/运行期供应链行为",
-      "type": "tech_debt",
-      "evidence": [
-        "以'不安装即扫描'的静态供应链审计替代运行期动态防护，覆盖面广但无法捕获安装期行为",
-        "无安装后运行期供应链防护，仅做发布前静态扫描",
-        "脚本在不安装的前提下下载并解压检查依赖归档"
-      ]
-    },
-    {
-      "smell": "README 信息空洞化，可发现性让位于营销",
+      "smell": "为单一小众平台引入专用 shim",
       "type": "deliberate",
       "evidence": [
-        "README 退化为品牌流量入口，内容主体外移 unsloth.ai/docs",
-        "docs-first 策略下 README 仅承载品牌 logo 与 dark/light 变体",
-        "产物内嵌品牌水印 footer 反向传播品牌的营销设计"
+        "存在为 Windows-ROCm 平台的专用 shim：桩掉 torchao 规避崩溃"
       ]
     }
   ]

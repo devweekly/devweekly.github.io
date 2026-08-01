@@ -298,6 +298,12 @@ export async function invokeLLM(prompt, options = {}) {
  * Handles: unescaped newlines in strings, trailing commas, single quotes.
  */
 function parseJSONLenient(text) {
+  // Normalize Chinese quotes to escaped ASCII quotes before parsing.
+  // LLMs frequently output Chinese double/single quotes inside JSON string values,
+  // which break standard JSON parsers.
+  text = text.replace(/[“”]/g, '\\"');
+  text = text.replace(/[‘’]/g, "'");
+
   // First try direct parse
   try {
     return JSON.parse(text);
@@ -314,63 +320,41 @@ function parseJSONLenient(text) {
     // Continue
   }
 
+  // Escape literal newlines/tabs/carriage returns inside JSON strings.
+  // LLMs often emit raw line breaks inside string values, which JSON does not allow.
+  // Run this BEFORE extracting a JSON substring so that unterminated strings do not
+  // confuse the bracket-matching extractor.
+  fixed = escapeWhitespaceInJSONStrings(fixed);
+
+  try {
+    return JSON.parse(fixed);
+  } catch {
+    // Continue
+  }
+
   // Extract JSON object/array from surrounding prose
-  // Find the first { or [ and match its closing bracket
-  const firstBrace = fixed.indexOf("{");
-  const firstBracket = fixed.indexOf("[");
-  let start = -1;
-  let openChar = "";
-  let closeChar = "";
-
-  if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
-    start = firstBrace;
-    openChar = "{";
-    closeChar = "}";
-  } else if (firstBracket !== -1) {
-    start = firstBracket;
-    openChar = "[";
-    closeChar = "]";
-  }
-
-  if (start !== -1) {
-    // Find the matching closing bracket by tracking depth
-    let depth = 0;
-    let inStr = false;
-    let esc = false;
-    let end = -1;
-
-    for (let i = start; i < fixed.length; i++) {
-      const c = fixed[i];
-
-      if (esc) { esc = false; continue; }
-      if (c === "\\") { esc = true; continue; }
-      if (c === '"') { inStr = !inStr; continue; }
-      if (inStr) continue;
-
-      if (c === openChar) { depth++; continue; }
-      if (c === closeChar) {
-        depth--;
-        if (depth === 0) {
-          end = i + 1;
-          break;
-        }
-      }
-    }
-
-    if (end !== -1) {
-      fixed = fixed.slice(start, end);
-      try { return JSON.parse(fixed); } catch { /* continue */ }
+  const extracted = extractJSON(fixed);
+  if (extracted !== null) {
+    try {
+      return JSON.parse(extracted);
+    } catch {
+      // Continue
     }
   }
 
-  // Try to fix unescaped newlines inside strings
+  throw new Error(
+    `Cannot parse JSON after all fix attempts\n--- Extracted ---\n${fixed.slice(0, 500)}`
+  );
+}
+
+function escapeWhitespaceInJSONStrings(text) {
   let result = "";
   let inString = false;
   let escapeNext = false;
   let i = 0;
 
-  while (i < fixed.length) {
-    const char = fixed[i];
+  while (i < text.length) {
+    const char = text[i];
 
     if (escapeNext) {
       result += char;
@@ -415,13 +399,55 @@ function parseJSONLenient(text) {
     i++;
   }
 
-  try {
-    return JSON.parse(result);
-  } catch (err) {
-    throw new Error(
-      `Cannot parse JSON after all fix attempts: ${err.message}\n--- Extracted ---\n${result.slice(0, 500)}`
-    );
+  return result;
+}
+
+function extractJSON(text) {
+  const firstBrace = text.indexOf("{");
+  const firstBracket = text.indexOf("[");
+  let start = -1;
+  let openChar = "";
+  let closeChar = "";
+
+  if (firstBrace !== -1 && (firstBracket === -1 || firstBrace < firstBracket)) {
+    start = firstBrace;
+    openChar = "{";
+    closeChar = "}";
+  } else if (firstBracket !== -1) {
+    start = firstBracket;
+    openChar = "[";
+    closeChar = "]";
   }
+
+  if (start === -1) return null;
+
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  let end = -1;
+
+  for (let i = start; i < text.length; i++) {
+    const c = text[i];
+
+    if (esc) { esc = false; continue; }
+    if (c === "\\") { esc = true; continue; }
+    if (c === '"') { inStr = !inStr; continue; }
+    if (inStr) continue;
+
+    if (c === openChar) { depth++; continue; }
+    if (c === closeChar) {
+      depth--;
+      if (depth === 0) {
+        end = i + 1;
+        break;
+      }
+    }
+  }
+
+  if (end !== -1) {
+    return text.slice(start, end);
+  }
+  return null;
 }
 
 /**

@@ -83,10 +83,21 @@ function plural(n, s = "s") {
 async function stageZeroResume(workDir, repoPath, force) {
   if (force) {
     console.log("Stage 0: Resume Workspace — force mode (re-run all LLM stages, reuse stable artifacts).\n");
-    // Still load existing state for artifact reuse
+    // Still load existing state for artifact reuse, but reset round/coverage state
     const meta = await loadMeta(workDir);
     const commit = getCurrentCommit(repoPath);
-    const context = await tryReadJson(join(workDir, "context.json"));
+    const existingContext = await tryReadJson(join(workDir, "context.json"));
+    const context = {
+      ...(existingContext || {}),
+      current_round: null,
+      current_question_file: null,
+      coverage: {},
+      next_focus: null,
+      converged: false,
+      questions: [],
+      reasoning: null,
+      question_statistics: { rounds: 0, total_questions: 0, answered: 0, validated: 0 },
+    };
     return { resumed: false, force: true, commit, meta, context };
   }
 
@@ -496,9 +507,11 @@ Return JSON array only.
   }
 }
 
-async function mechanicalAnalysis(repoPath, scan, focus = "architecture", isFirstRun = true, existingPaths = new Set()) {
+async function mechanicalAnalysis(repoPath, scan, focus = "architecture", isFirstRun = true, existingPaths = new Set(), round = 1) {
   const evidence = [];
-  const seen = (path, purpose) => existingPaths.has(`${path}|${purpose}`);
+  // Purpose includes round so that subsequent rounds can re-collect the same focus
+  // with a different analytical lens, avoiding cross-round deduplication starvation.
+  const seen = (path, purpose) => existingPaths.has(`${path}|${purpose}:round:${round}`);
 
   const codeExts = [".py", ".js", ".ts", ".mjs", ".rs", ".go", ".java"];
   const isCode = (f) => codeExts.some((ext) => f.endsWith(ext));
@@ -511,7 +524,7 @@ async function mechanicalAnalysis(repoPath, scan, focus = "architecture", isFirs
       const fullPath = join(repoPath, file);
       if (await fileExists(fullPath)) {
         const content = await readFile(fullPath, "utf-8");
-        evidence.push({ path: file, content: content.slice(0, 800), purpose: "元数据" });
+        evidence.push({ path: file, content: content.slice(0, 800), purpose: `元数据:round:${round}` });
       }
     }
 
@@ -522,7 +535,7 @@ async function mechanicalAnalysis(repoPath, scan, focus = "architecture", isFirs
       const fullPath = join(repoPath, file);
       if (await fileExists(fullPath)) {
         const content = await readFile(fullPath, "utf-8");
-        evidence.push({ path: file, content: content.slice(0, 600), purpose: "入口文件" });
+        evidence.push({ path: file, content: content.slice(0, 600), purpose: `入口文件:round:${round}` });
       }
     }
 
@@ -539,7 +552,7 @@ async function mechanicalAnalysis(repoPath, scan, focus = "architecture", isFirs
     for (const { file } of largestFiles.slice(0, 3)) {
       if (seen(file, "大型文件")) continue;
       const content = await readFile(join(repoPath, file), "utf-8");
-      evidence.push({ path: file, content: content.slice(0, 500), purpose: "大型文件" });
+      evidence.push({ path: file, content: content.slice(0, 500), purpose: `大型文件:round:${round}` });
     }
   }
 
@@ -561,7 +574,7 @@ async function mechanicalAnalysis(repoPath, scan, focus = "architecture", isFirs
     const fullPath = join(repoPath, file);
     if (await fileExists(fullPath)) {
       const content = await readFile(fullPath, "utf-8");
-      evidence.push({ path: file, content: content.slice(0, 600), purpose: `focus:${focus}` });
+      evidence.push({ path: file, content: content.slice(0, 600), purpose: `focus:${focus}:round:${round}` });
     }
   }
 
@@ -640,45 +653,74 @@ async function buildRepositoryModel(repoType, evidence) {
   }
 }
 
-async function architectureInterpretation(repoType, model, evidence) {
+// Unified Architecture Interpretation + Risk + Challenge.
+// Replaces three separate LLM calls (interpretation, risk, challenge) with one structured call.
+async function interpretAnalyzeAndChallenge(repoType, model, evidence) {
   const evidenceStr = evidenceToInsightStr(evidence);
   const modelSummary = condenseModelForInterpretation(model);
   const prompt = `
-基于 Repository Model 重建系统的工程思想。严格控制输出长度，每个列表最多 2 项。
+你是 Architecture Research Agent。基于 Repository Model 和证据，一次性完成三项任务：
+1. 解释系统的工程思想（interpretation）
+2. 评估修改风险（risk）
+3. 挑战中心假设并生成质疑记录（challenge）
+
+严格控制输出长度，每个列表最多 3 项。
+
 仓库类型: ${repoType.type}
 Model: ${JSON.stringify(modelSummary, null, 2)}
-证据: ${evidenceStr}
+证据洞察: ${evidenceStr}
 
-产出（每个 ≤2，保持简洁）:
-- engineering_constraints: 工程约束
-- architectural_forces: 架构作用力
-- architecture_invariants: 架构不变量
-- design_decisions: 关键决策（6 字段：decision/chosen/rejected/rejected_reason/tradeoff/mature_alternatives_compared）
-- tradeoffs: 权衡
-- intentional_omissions: 有意省略
-- architectural_tensions: 架构张力
-- complexity_drivers: 复杂度来源
-- leverage_points: 杠杆点
-- maintainer_mental_model: 维护者心智划分（一句话）
-
-输出 JSON（严格 JSON，保持简洁）:
-{"engineering_constraints":[{"constraint":"约束","evidence":["证据"]}],"architectural_forces":[{"force":"作用力","evidence":["证据"]}],"architecture_invariants":[{"invariant":"不变量","evidence":["证据"]}],"design_decisions":[{"decision":"决策","chosen":"选择","rejected":["被拒绝方案"],"rejected_reason":"为什么拒绝","tradeoff":"牺牲了什么换取了什么","mature_alternatives_compared":[{"alternative":"Event Sourcing","why_not":"为什么不用","evidence":["ev-001"]}]}],"tradeoffs":[{"tradeoff":"权衡","evidence":["证据"]}],"intentional_omissions":[{"omission":"省略","why":"理由","evidence":["证据"]}],"architectural_tensions":[{"tension":"张力","evidence":["证据"]}],"complexity_drivers":[{"driver":"复杂度来源","evidence":["证据"]}],"leverage_points":[{"point":"杠杆点","evidence":["证据"]}],"maintainer_mental_model":"维护者心智划分"}
+输出 JSON（严格 JSON，不要 markdown 代码块）:
+{
+  "interpretation": {
+    "engineering_constraints": [{"constraint":"约束","evidence":["证据"]}],
+    "architectural_forces": [{"force":"作用力","evidence":["证据"]}],
+    "architecture_invariants": [{"invariant":"不变量","evidence":["证据"]}],
+    "design_decisions": [{"decision":"决策","chosen":"选择","rejected":["被拒绝方案"],"rejected_reason":"为什么拒绝","tradeoff":"牺牲了什么换取了什么","mature_alternatives_compared":[{"alternative":"方案","why_not":"为什么不用","evidence":["证据"]}]}],
+    "tradeoffs": [{"tradeoff":"权衡","evidence":["证据"]}],
+    "intentional_omissions": [{"omission":"省略","why":"理由","evidence":["证据"]}],
+    "architectural_tensions": [{"tension":"张力","evidence":["证据"]}],
+    "complexity_drivers": [{"driver":"复杂度来源","evidence":["证据"]}],
+    "leverage_points": [{"point":"杠杆点","evidence":["证据"]}],
+    "maintainer_mental_model": "维护者心智划分（一句话）",
+    "blast_radius": [{"component":"组件","impact_scope":["影响1","影响2"],"risk_level":"Critical|High|Medium|Low"}],
+    "change_difficulty": [{"change":"修改","difficulty":"Low|Medium|High","reason":"理由"}],
+    "design_smells": [{"smell":"smell名称","type":"deliberate","evidence":["证据"]}]
+  },
+  "challenge": {
+    "center_hypothesis": "一句话中心假设",
+    "key_assumptions": [{"assumption":"假设","evidence":["证据"],"challenged":true,"survived":true}],
+    "competing_interpretations": [{"interpretation":"备选解释","evidence":["证据"],"confidence":"medium"}],
+    "challenges": [{"target":"被质疑的决策/假设","method":"假设翻转|边界测试|移除测试|时间测试","counter_evidence":"反证或 null","result":"survived|weakened|overturned","notes":"补充说明"}]
+  }
+}
 `;
   try {
-    return await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+    return await invokeLLMJSON(prompt, { model: DEFAULT_MODEL, timeoutMs: 180000 });
   } catch (err) {
-    console.warn("  Architecture interpretation failed:", err.message);
+    console.warn("  Interpret+Risk+Challenge failed:", err.message);
     return {
-      engineering_constraints: [],
-      architectural_forces: [],
-      architecture_invariants: [],
-      design_decisions: [],
-      tradeoffs: [],
-      intentional_omissions: [],
-      architectural_tensions: [],
-      complexity_drivers: [],
-      leverage_points: [],
-      maintainer_mental_model: "",
+      interpretation: {
+        engineering_constraints: [],
+        architectural_forces: [],
+        architecture_invariants: [],
+        design_decisions: [],
+        tradeoffs: [],
+        intentional_omissions: [],
+        architectural_tensions: [],
+        complexity_drivers: [],
+        leverage_points: [],
+        maintainer_mental_model: "",
+        blast_radius: [],
+        change_difficulty: [],
+        design_smells: [],
+      },
+      challenge: {
+        center_hypothesis: "",
+        key_assumptions: [],
+        competing_interpretations: [],
+        challenges: [],
+      },
     };
   }
 }
@@ -708,76 +750,6 @@ function condenseModelForInterpretation(model) {
       current_direction: take(model?.evolution?.current_direction, 3),
     },
   };
-}
-
-// Risk analysis is split out from architectureInterpretation to keep each LLM call small and fast.
-async function riskAnalysis(repoType, model, interpretation) {
-  const modelSummary = condenseModelForInterpretation(model);
-  const prompt = `
-基于 Repository Model 和核心解释，评估修改风险与难度。每个列表最多 3 项。
-仓库类型: ${repoType.type}
-Model: ${JSON.stringify(modelSummary, null, 2)}
-解释: ${JSON.stringify(interpretation, null, 2)}
-
-产出:
-- blast_radius（≤3）: 修改影响范围 {component, impact_scope[], risk_level}
-- change_difficulty（≤5）: 修改难度评估 {change, difficulty, reason}
-- design_smells（≤3）: Maintainer 刻意接受的 smell {smell, type, evidence}
-
-输出 JSON:
-{"blast_radius":[{"component":"组件","impact_scope":["影响1","影响2"],"risk_level":"Critical"}],"change_difficulty":[{"change":"修改","difficulty":"Low","reason":"理由"}],"design_smells":[{"smell":"smell名称","type":"deliberate","evidence":["证据"]}]}
-`;
-  try {
-    return await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
-  } catch (err) {
-    console.warn("  Risk analysis failed:", err.message);
-    return { blast_radius: [], change_difficulty: [], design_smells: [] };
-  }
-}
-
-// Ultra-compact challenge input to avoid timeouts on the free-tier model.
-function compactChallengeSummary(interpretation, model) {
-  const extract = (arr, key, n) =>
-    (arr || [])
-      .slice(0, n)
-      .map((x) => (key ? x[key] : x))
-      .filter(Boolean);
-  return {
-    modules: extract(model?.structure?.modules, null, 4),
-    decisions: extract(interpretation?.design_decisions, "decision", 3),
-    invariants: extract(interpretation?.architecture_invariants, "invariant", 3),
-    tensions: extract(interpretation?.architectural_tensions, "tension", 3),
-    complexities: extract(interpretation?.complexity_drivers, "driver", 3),
-  };
-}
-
-async function challengeModel(interpretation, model) {
-  const summary = compactChallengeSummary(interpretation, model);
-  const prompt = `
-根据下面的架构摘要，生成对该架构的中心假设、关键假设和 2 条质疑记录。
-摘要: ${JSON.stringify(summary, null, 2)}
-
-质疑记录（每条 5 字段）：
-- target: 被质疑的决策/假设
-- method: 质疑方法（移除测试/假设翻转/边界测试/时间测试）
-- counter_evidence: 反证或 null
-- result: "survived" | "weakened" | "overturned"
-- notes: 补充说明
-
-输出 JSON:
-{"center_hypothesis":"一句话中心假设","key_assumptions":[{"assumption":"假设","evidence":["证据"],"challenged":true,"survived":true}],"competing_interpretations":[{"interpretation":"备选","evidence":["证据"],"confidence":"medium"}],"challenges":[{"target":"被质疑的决策","method":"假设翻转","counter_evidence":null,"result":"survived","notes":"补充说明"}]}
-`;
-  try {
-    return await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
-  } catch (err) {
-    console.warn("  Challenge model failed:", err.message);
-    return {
-      center_hypothesis: "",
-      key_assumptions: [],
-      competing_interpretations: [],
-      challenges: [],
-    };
-  }
 }
 
 function computeCoverageFallback(questions, prevCoverage) {
@@ -999,7 +971,8 @@ async function stageFourResearch(repoPath, resume, plan, scan, profile, workDir)
     scan,
     plan.focus || "architecture",
     plan.firstRun !== false,
-    existingPaths
+    existingPaths,
+    plan.round
   );
 
   // Enrich with research insights (evidence.md:56 — key_findings must be insights, not summaries)
@@ -1045,18 +1018,9 @@ async function stageFourResearch(repoPath, resume, plan, scan, profile, workDir)
   console.log("  4b: Building Repository Model...");
   const model = await buildRepositoryModel(repoType, evidenceFromLog);
 
-  // Interpretation — reads from evidence-log.jsonl
-  console.log("  4c: Architecture interpretation...");
-  const coreInterpretation = await architectureInterpretation(repoType, model, evidenceFromLog);
-
-  // Risk analysis (split out to keep each LLM call small)
-  console.log("  4c.1: Risk analysis...");
-  const risk = await riskAnalysis(repoType, model, coreInterpretation);
-  const interpretation = { ...coreInterpretation, ...risk };
-
-  // Challenge
-  console.log("  4d: Challenging model...");
-  const challenge = await challengeModel(interpretation, model);
+  // Interpretation + Risk + Challenge — unified into one LLM call
+  console.log("  4c: Architecture interpretation + risk + challenge (unified)...");
+  const { interpretation, challenge } = await interpretAnalyzeAndChallenge(repoType, model, evidenceFromLog);
 
   // Persist intermediate reasoning artifacts so the report stage can be resumed independently.
   await writeJson(join(workDir, "interpretation.json"), interpretation);
@@ -1244,7 +1208,17 @@ function renderReport(repoType, result) {
 
 async function stageFiveReport(repoPath, repoType, result, workDir) {
   console.log("Stage 5: Rendering report from precomputed artifacts...\n");
-  const report = renderReport(repoType, result);
+  // If the last research round failed to produce interpretation/challenge,
+  // fall back to the previously persisted artifacts so the report is never empty.
+  const interpretation =
+    result.interpretation && Object.keys(result.interpretation).length > 0
+      ? result.interpretation
+      : (await tryReadJson(join(workDir, "interpretation.json"))) || {};
+  const challenge =
+    result.challenge && Object.keys(result.challenge).length > 0
+      ? result.challenge
+      : (await tryReadJson(join(workDir, "challenge.json"))) || {};
+  const report = renderReport(repoType, { ...result, interpretation, challenge });
   await writeFile(join(workDir, "report-draft.md"), report, "utf-8");
   return report;
 }

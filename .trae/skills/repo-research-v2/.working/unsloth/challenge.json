@@ -1,42 +1,26 @@
 {
-  "center_hypothesis": "unsloth 以惰性导入（__getattr__）+ 版本激活机制将进程启动时序约束前置为代码结构约束，在保证子进程与 CLI 零重型 ML 依赖的同时，支撑 Apache-2.0 开放核心与 AGPL studio 商业组件的双许可产品闭环。",
+  "center_hypothesis": "该系统是围绕本地优先 AI 训练/推理工作流构建的商业开源 monorepo：核心库被刻意拆分为相互隔离的子系统（训练/推理/工具循环/导出/历史），所有外部依赖（HF 数据集、DataDesigner、llama-server、前后端依赖树）均通过显式边界与安全策略隔离。",
   "key_assumptions": [
     {
-      "assumption": "惰性导入（__getattr__）能保证版本激活先于任何重型 ML 依赖初始化运行",
+      "assumption": "所有本地模型流量必须与开发者环境代理隔离",
       "evidence": [
-        "unsloth 核心库采用 __getattr__ 惰性导入，按进程启动时序划分模块",
-        "invariant：版本激活逻辑必须先于任何模型库初始化运行",
-        "invariant：子进程加载时绝不拉起重型 ML 依赖"
+        "测试用 AST 静态分析锁定 trust_env=False 不变式，防止代理劫持本地流量"
       ],
       "challenged": true,
       "survived": true
     },
     {
-      "assumption": "数据配方一律经 JobManager 单例以异步后台任务执行，DataDesigner 仅作为可插拔内部服务暴露",
+      "assumption": "预安装扫描用于防御供应链投毒",
       "evidence": [
-        "数据配方采用 JobManager 门面 + job-runner 架构，以异步后台任务执行",
-        "invariant：数据配方一律经 JobManager 单例异步执行",
-        "invariant：数据集落盘路径统一由 recipe_datasets_root + resolve_dataset_path 管理"
+        "下载 PyPI 归档而不安装即审查内容"
       ],
       "challenged": true,
       "survived": true
     },
     {
-      "assumption": "Apache-2.0 开放核心建立的社区信任能与 AGPL-3.0 studio 商业保护长期共存",
+      "assumption": "延迟导入主要为了启动性能",
       "evidence": [
-        "决策：双许可——核心库 Apache-2.0 开源 + studio 组件 AGPL-3.0-only 保护",
-        "tension：开放度与商业独占性的持续拉锯",
-        "studio 目录为 AGPL-3.0 保护的 web UI 与导出/任务组件，构成商业级产品闭环"
-      ],
-      "challenged": true,
-      "survived": false
-    },
-    {
-      "assumption": "tag-driven 自动版本 + 激进预适配新 Python 与承诺 3.9 下界服务广泛下游可以并存",
-      "evidence": [
-        "tension：tag-driven 自动版本 + 主动预适配新 Python 的激进迭代",
-        "tension：3.9 下界服务广泛下游的保守承诺",
-        "complexity：Windows + ROCm 双线并行下第三方依赖生态差异需逐项打桩治理"
+        "核心模块通过 __getattr__ 强制延迟导入，使训练子进程在版本激活前不加载重依赖"
       ],
       "challenged": true,
       "survived": false
@@ -44,38 +28,48 @@
   ],
   "competing_interpretations": [
     {
-      "interpretation": "惰性导入的真正动机是优化进程启动（子进程/CLI/studio 后台任务的轻量加载），而不仅是版本激活时序——用户直观性只是该约束的副产物而非目标",
+      "interpretation": "统一 context length helper 只是代码复用便利，而非'共享运行时契约'的有意设计",
       "evidence": [
-        "unsloth_cli 独立发行包，cli.py 仅为薄代理便于单独测试与分发",
-        "invariant：子进程加载时绝不拉起重型 ML 依赖",
-        "complexity：进程启动时序约束将运行时顺序问题前置为代码结构问题"
+        "采用统一辅助函数封装，避免各 backend 重复实现导致的不一致"
       ],
       "confidence": "medium"
     },
     {
-      "interpretation": "JobManager 门面 + 异步后台任务的首要目的是将数据配方执行与 Web UI 请求生命周期解耦（可观测、可取消、可重入），而非纯粹的性能并发优化",
+      "interpretation": "CLI 薄委托只是普遍模块化惯例，而非有意的独立分发/替换策略",
       "evidence": [
-        "data_recipe 采用 JobManager 门面 + job-runner 架构",
-        "invariant：数据配方一律经 JobManager 单例异步执行",
-        "studio 目录同时承载 web UI 与后端导出/任务组件"
+        "CLI 入口仅调用独立包 unsloth_cli 的 app 对象"
       ],
       "confidence": "medium"
+    },
+    {
+      "interpretation": "Data Recipe 包装外部 DataDesigner 是未来替换的迁移中继，而非永久隔离边界",
+      "evidence": [
+        "抽象包装外部 DataDesigner 并自建 JobManager 作业运行器，外部工具被隔离在边界之后"
+      ],
+      "confidence": "low"
     }
   ],
   "challenges": [
     {
-      "target": "惰性导入（__getattr__）强制版本激活先于重型 ML 依赖加载的架构约束",
-      "method": "假设翻转",
-      "counter_evidence": "翻转假设（改为显式版本激活）下，子进程与 CLI 入口将被迫加载重型 ML 依赖，直接违背『子进程加载时绝不拉起重型 ML 依赖』不变量，且 cli.py 薄代理设计与独立分发价值将失去意义",
+      "target": "RAG 流量 trust_env=False 的安全动机",
+      "method": "移除测试",
+      "counter_evidence": "移除 AST 测试后新增 httpx 调用不会触发失败；但 bootstrap 密码暴露测试证明历史确有真实泄露风险",
       "result": "survived",
-      "notes": "移除/翻转该约束会同时破坏子进程零 ML 依赖与『import unsloth 即可用』的直观性两条线，约束以牺牲直观性为代价但被不变量与模块划分证据支撑"
+      "notes": "安全动机有独立历史测试佐证；代价是阻断合法企业代理，属有意取舍"
     },
     {
-      "target": "Apache-2.0 开放核心 + AGPL-3.0 studio 商业保护的双许可边界",
+      "target": "预安装扫描 = 防供应链投毒",
+      "method": "假设翻转",
+      "counter_evidence": "无许可证/合规审查证据；下载归档而非安装即审查、且 npm 侧同构镜像，投毒防御解释更一致",
+      "result": "survived",
+      "notes": "翻转假设（合规审计）得不到证据支持"
+    },
+    {
+      "target": "延迟导入仅为启动性能",
       "method": "时间测试",
-      "counter_evidence": "开放度与商业独占性的拉锯已作为持续 tension 被记录；AGPL 对第三方集成与分发的限制可能随时间侵蚀开放核心建立的社区信任，且跨 pip/npm 双生态统一供应链审计在 AGPL 组件上难以透明开展",
+      "counter_evidence": "证据同时声明'训练子进程在版本激活前不加载'，说明还有进程隔离/依赖容错动机，性能单一解释不完整",
       "result": "weakened",
-      "notes": "短期无法判定长期后果；双许可的存续取决于社区采纳与分叉风险的实际走向，当前证据仅能证明边界存在而非边界稳固"
+      "notes": "双重动机（性能 + 子进程隔离），'仅性能'假设被削弱但决策本身成立"
     }
   ]
 }

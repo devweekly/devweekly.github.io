@@ -3,48 +3,48 @@
   "generated_from": [
     2
   ],
-  "trigger": "planner_focus_testing",
-  "purpose": "focus_testing",
+  "trigger": "planner_focus_history",
+  "purpose": "focus_history",
   "status": "active",
   "questions": [
     {
-      "id": "R3-Q1",
-      "question": "供应链扫描器的测试套件（tests/security/）用 session 级 autouse socket 阻断（network_blocker）强制整个套件完全离线运行，同时把真实恶意构件（malicious_wheel.whl、malicious_sdist.tar.gz、malicious_lockfile.json）作为 fixture 提交进仓库，且 skip 环境变量必须携带 ticket 理由才能生效——这套'把自己锁在离线世界'的测试策略如何验证扫描器对真实 PyPI/npm 下载路径的检出能力？把恶意二进制提交进被保护仓库本身是否引入新的供应链风险？为什么不生成测试期构件而选择静态提交？",
+      "id": "R3-1",
+      "question": "How does history shape the architecture design?",
       "genesis": {
-        "trigger": "contradiction",
-        "observation": "tests/security/conftest.py 的 network_blocker 拒绝任何非 loopback 的 socket.connect()，注释明确 'the scanner suite must run fully offline'；tests/security/fixtures/ 静态提交了恶意 wheel/sdist/lockfile 真实构件（_build.py 仅为 IOC 字面量变化时重新生成）；UNSLOTH_LOCKFILE_AUDIT_SKIP 必须填真实 ticket（'1'/'true'/'yes' 均被拒绝）→ 防御供应链攻击的测试套件既不接触真实网络又携带真实恶意样本，两件事同时为真，那么扫描器的 live 下载检出路径靠什么保证？",
+        "trigger": "observation",
+        "observation": "Round focus: history",
         "depth_level": 3
       },
       "type": "challenge",
       "status": "open",
       "confidence": "medium",
-      "dimension": "testing"
+      "dimension": "architecture"
     },
     {
-      "id": "R3-Q2",
-      "question": "核心数值正确性测试——tests/qlora 的 train-and-merge、tests/saving/language_models 的 perplexity 基准、gpt-oss-merge 端到端、vision_models OCR 与 text_to_speech——在所有 workflow 中都被 --ignore（'GPU-bound directories need real weights'），consolidated-tests-ci.yml 只把其中 16 个 CPU 可跑的 Bucket-A 测试挑出来，run_all.sh 也只跑 sh 套件与少量 python——这些编码了 'merge 保留行为' 与 '微调精度' 产品核心主张的测试，真实执行入口在哪里？如果它们只在开发者本地 GPU 上人工跑，'合并后模型行为不变' 的回归由什么机制捕获？",
+      "id": "R3-2",
+      "question": "How does history shape the runtime design?",
       "genesis": {
-        "trigger": "design_gap",
-        "observation": "studio-backend-ci.yml:197 --ignore=tests/qlora（'GPU-bound directories'），grep 全部 27 个 workflow 均无 qlora/perplexity/gpt-oss/OCR/TTS 测试的运行引用，tests/qlora/README.md 只给出手动运行命令 → 一个完整类别（GPU 数值正确性）的测试没有任何自动执行路径，与 R2-Q3 讨论的 shell 套件蒸发是两类不同缺口",
-        "depth_level": 4
+        "trigger": "observation",
+        "observation": "Round focus: history",
+        "depth_level": 3
       },
-      "type": "counterevidence",
+      "type": "challenge",
       "status": "open",
       "confidence": "medium",
-      "dimension": "testing"
+      "dimension": "runtime"
     },
     {
-      "id": "R3-Q3",
-      "question": "仓库存在一批'源代码形状不变量'测试：test_save_shell_injection.py 用 ast.parse 解析 unsloth/save.py 并断言 Popen 永不带 shell=True、test_import_fixes_drift.py 逐个验证 fix_*/patch_* 'fails never skips'、test_public_api_surface.py 按 notebooks 调用计数断言公开符号面——为什么用 AST/正则断言源码结构而非执行行为来守护安全与 API 不变量？这类测试相对行为测试漏检什么（语义等价但结构不同），又因何脆弱（无害重构导致误报）？",
+      "id": "R3-3",
+      "question": "How does history shape the design_decisions design?",
       "genesis": {
-        "trigger": "surprise",
-        "observation": "test_save_shell_injection.py 不 import save.py 而是 ast.parse 其源码找 subprocess.Popen 调用的 shell 关键字；test_import_fixes_drift.py 的 docstring 声明 'each fails (never skips) when the pathology is active'；test_public_api_surface.py 以 unslothai/notebooks 的 506/370/304 次调用计数为锚 → 测试断言的是'代码长什么样'而非'代码做什么'，这是一种与主流行为测试正交的守卫策略",
-        "depth_level": 2
+        "trigger": "observation",
+        "observation": "Round focus: history",
+        "depth_level": 3
       },
-      "type": "discovery",
+      "type": "challenge",
       "status": "open",
       "confidence": "medium",
-      "dimension": "testing"
+      "dimension": "design_decisions"
     }
   ]
 }
