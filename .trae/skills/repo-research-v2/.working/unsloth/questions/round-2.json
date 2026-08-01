@@ -1,0 +1,50 @@
+{
+  "round": 2,
+  "generated_from": [
+    3
+  ],
+  "trigger": "planner_focus_testing",
+  "purpose": "focus_testing",
+  "status": "active",
+  "questions": [
+    {
+      "id": "R4-Q1",
+      "question": "仓库唯一一类'性能核心正确性'测试——unsloth/kernels/moe/tests/ 的 test_grouped_gemm.py / test_qwen3_moe.py / test_llama4_moe.py（配 run_qwen3_moe_tests.sh）以及 benchmark/benchmark_fused_moe.py——不是放进顶层 tests/ 统一测试树，而是嵌进会被 wheel 打包发布的 unsloth/ 产品包内部。为什么 kernel 级正确性测试要跟随源码走发布路径而非进入统一测试树？它们是否和 tests/qlora 一样没有 CI 执行入口（R3-Q2 已确认的 GPU 测试蒸发模式）——如果是，'2-5X faster' 的产品核心主张靠什么机制防性能回归？",
+      "genesis": {
+        "trigger": "design_gap",
+        "observation": "unsloth/kernels/moe/tests/ 存在完整 GPU kernel 测试族（grouped GEMM / Qwen3 MoE / Llama4 MoE + shell 运行脚本）与 benchmark/ 目录，而仓库其余全部测试集中在顶层 tests/；该测试树物理上位于会被 wheel 发布的 unsloth/ 包内部，与其他测试树隔离；R3-Q2 已证明 tests/qlora 等 GPU 测试无任何 CI 运行引用，但未覆盖这棵库内测试树——kernel 是产品加速主张的核心，其回归防护路径仍是空白",
+        "depth_level": 3
+      },
+      "type": "challenge",
+      "status": "open",
+      "confidence": "medium",
+      "dimension": "testing"
+    },
+    {
+      "id": "R4-Q2",
+      "question": "Studio 前端（studio/frontend/ React 应用）没有任何 JS 侧单元测试框架（只有 biome.json / eslint.config.js / tsconfig / vite.config.ts，无 vitest/jest），其正确性由三套'从 Python 侧'的手段守护：tests/studio/ 的十余个 test_*_contract.py 结构契约测试（如 test_chat_response_details_ui_contract.py、test_export_output_path_contract.py、test_generation_length_ui_contract.py、test_usage_examples_agent_detection_contract.py）、i18n/check-parity.ts 平行性校验、以及 Playwright 脚本（playwright_chat_ui.py 等）。为什么一个 React 前端选择用 Python 测试去断言前端行为与结构而非原生组件测试？这套跨语言'契约守卫'相对真实组件测试漏检什么（交互时序、状态管理、渲染输出），又因何被刻意选择？",
+      "genesis": {
+        "trigger": "surprise",
+        "observation": "tests/studio/ 下存在十余个 *_contract.py 测试（chat_response_details_ui_contract / export_output_path_contract / generation_length_ui_contract / locale_root_direction_contract / hf_token_validation_tick_contract / desktop_reliability_frontend_contract / settings_compact_overflow_contract 等）与 _playwright_robust.py + playwright_*.py，而 studio/frontend/ 仅有 biome.json/eslint.config.js/tsconfig 三个配置、src/i18n/ 含 check-parity.ts → 前端验证完全走 Python 测试层 + 结构断言，与主流 JS 组件测试范式正交",
+        "depth_level": 2
+      },
+      "type": "discovery",
+      "status": "open",
+      "confidence": "medium",
+      "dimension": "testing"
+    },
+    {
+      "id": "R4-Q3",
+      "question": "unsloth_cli/tests/ 用 Python 测试一个 TypeScript 文件（test_pi_subagent.py 驱动 unsloth_cli/pi_subagent.ts），并与 test_claude_subagent_mcp.py / test_codex_subagent_mcp.py 一起构成 CLI 的 subagent/MCP 集成测试族——一个 Python CLI 为何要内嵌 TS/JS subagent 并跨语言测试？这些测试验证的是真实 agent 行为还是仅接线（wiring）层面？它们与 tests/sh 套件在 CI 中的调度关系如何，是否也落入 R2-Q3 指出的'测试从未在 PR 上跑过'的蒸发风险？",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "unsloth_cli/ 下并存 claude_subagent_mcp.py / codex_subagent_mcp.py 与 pi_subagent.ts 三类 subagent 实现，对应 unsloth_cli/tests/ 的 test_pi_subagent.py / test_claude_subagent_mcp.py / test_codex_subagent_mcp.py——Python 测试进程直接驱动 TS 文件，构成跨语言测试面；R2-Q3 的元测试只守护 tests/sh 与 run_all.sh 一处，未覆盖 CLI 测试树的 CI 执行证据",
+        "depth_level": 2
+      },
+      "type": "discovery",
+      "status": "open",
+      "confidence": "medium",
+      "dimension": "testing"
+    }
+  ]
+}

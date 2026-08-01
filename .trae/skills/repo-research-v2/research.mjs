@@ -373,12 +373,29 @@ async function stageThreePlanner(resume) {
     return { firstRun: true, focus: "full_exploration", coverage: {}, round: 1 };
   }
 
-  // Subsequent runs: examine coverage, plan focus
   const context = resume.context || {};
   const coverage = context.coverage || {};
   const lastRound = resume.lastRound || 1;
 
-  // Find weakest dimension (support both legacy number and new {answered,total,ratio} formats)
+  // Prefer the focus produced by the unified Planner+Reasoning Agent (planAndReason)
+  if (context.next_focus && context.next_focus !== "converged") {
+    console.log(`Stage 3: Research Planner — using focus from reasoning: ${context.next_focus}\n`);
+    return {
+      firstRun: false,
+      converged: false,
+      focus: context.next_focus,
+      coverage,
+      round: lastRound + 1,
+      minDepth: 2,
+    };
+  }
+
+  if (context.converged) {
+    console.log("Stage 3: Research Planner — reasoning determined convergence.\n");
+    return { converged: true, focus: "converged", round: lastRound };
+  }
+
+  // Fallback local rule: pick the dimension with lowest coverage ratio
   const ratioOf = (v) => (typeof v === "number" ? v : v?.ratio ?? 0);
   const entries = Object.entries(coverage).map(([k, v]) => [k, ratioOf(v)]);
   const weakest = entries.length > 0
@@ -427,11 +444,11 @@ async function identifyRepoType(repoPath, scan) {
   return invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
 }
 
-function fallbackQuestions(repoType, plan) {
+function generateFallbackQuestions(repoType, plan, count) {
   const dims = ["architecture", "runtime", "design_decisions", "testing", "deployment", "history"];
-  const count = plan.firstRun ? 6 : 3;
+  const targetCount = count || (plan.firstRun ? 6 : 3);
   const questions = [];
-  for (let i = 0; i < count; i++) {
+  for (let i = 0; i < targetCount; i++) {
     const dim = dims[i % dims.length];
     questions.push({
       id: `Q${i + 1}`,
@@ -461,7 +478,6 @@ async function generateQuestions(repoType, scan, plan) {
     ? `full exploration of the ${repoType.type} repository`
     : `focused investigation on ${plan.focus}`;
   const count = plan.firstRun ? "5" : "3";
-  const depthHint = plan.minDepth ? `minimum depth_level ${plan.minDepth}` : "depth 1-2";
 
   const prompt = `
 Analyze a ${repoType.type} repository.
@@ -476,7 +492,7 @@ Return JSON array only.
     return await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
   } catch (err) {
     console.warn("  Question generation failed/timed out, using fallback questions:", err.message);
-    return fallbackQuestions(repoType, plan);
+    return generateFallbackQuestions(repoType, plan, Number(count));
   }
 }
 
@@ -610,40 +626,61 @@ async function buildRepositoryModel(repoType, evidence) {
 5 维模型: structure(modules+boundaries), behavior(control_flow+data_flow), ownership(state+responsibility), extension(plugin_points+public_api), evolution(major_changes+current_direction)
 输出 JSON。
 `;
-  return invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+  try {
+    return await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+  } catch (err) {
+    console.warn("  Repository model build failed:", err.message);
+    return {
+      structure: { modules: [], boundaries: [] },
+      behavior: { control_flow: [], data_flow: [] },
+      ownership: { state: [], responsibility: [] },
+      extension: { plugin_points: [], public_api: [] },
+      evolution: { major_changes: [], current_direction: "" },
+    };
+  }
 }
 
 async function architectureInterpretation(repoType, model, evidence) {
   const evidenceStr = evidenceToInsightStr(evidence);
   const modelSummary = condenseModelForInterpretation(model);
   const prompt = `
-基于 Repository Model 重建系统的工程思想。
+基于 Repository Model 重建系统的工程思想。严格控制输出长度，每个列表最多 2 项。
 仓库类型: ${repoType.type}
 Model: ${JSON.stringify(modelSummary, null, 2)}
 证据: ${evidenceStr}
 
-产出以下类型（必须引用证据）:
-- engineering_constraints（≤3）: 工程约束（如"必须运行在 macOS"）
-- architectural_forces（≤3）: 架构作用力（两个方向的力量冲突）
-- architecture_invariants（≤3）: 架构不变量——系统共同依赖的基本假设，不能违反的约束（如"history 永远不能留下 orphan tool_calls"）。**区别于 engineering_constraints**: invariants 是架构层面的不变性，constraints 是环境/技术约束
-- design_decisions（≤4）: 关键决策——**每个决策必须含 6 字段**（reasoning.md schema）:
-  - decision: 决策描述
-  - chosen: 选择的方案
-  - rejected: [被拒绝的方案列表]
-  - rejected_reason: 为什么拒绝
-  - tradeoff: 牺牲了什么，换取了什么
-  - mature_alternatives_compared: [{alternative, why_not, evidence}]（≤3，对比 Event Sourcing/Temporal/Actor/LangGraph 等成熟方案，基于代码证据）
-- tradeoffs（≤3）: 权衡
-- intentional_omissions（≤3）: 有意省略
-- architectural_tensions（≤3）: 架构张力
-- complexity_drivers（≤3）: 最核心的复杂度来源（如"多 provider 兼容"、"跨 surface 状态同步"）。**区别于 architectural_tensions**: tensions 是两个作用力的冲突，complexity_drivers 是复杂度的根本来源
-- leverage_points（≤3）: 杠杆点
-- maintainer_mental_model: 维护者心智划分
+产出（每个 ≤2，保持简洁）:
+- engineering_constraints: 工程约束
+- architectural_forces: 架构作用力
+- architecture_invariants: 架构不变量
+- design_decisions: 关键决策（6 字段：decision/chosen/rejected/rejected_reason/tradeoff/mature_alternatives_compared）
+- tradeoffs: 权衡
+- intentional_omissions: 有意省略
+- architectural_tensions: 架构张力
+- complexity_drivers: 复杂度来源
+- leverage_points: 杠杆点
+- maintainer_mental_model: 维护者心智划分（一句话）
 
 输出 JSON（严格 JSON，保持简洁）:
 {"engineering_constraints":[{"constraint":"约束","evidence":["证据"]}],"architectural_forces":[{"force":"作用力","evidence":["证据"]}],"architecture_invariants":[{"invariant":"不变量","evidence":["证据"]}],"design_decisions":[{"decision":"决策","chosen":"选择","rejected":["被拒绝方案"],"rejected_reason":"为什么拒绝","tradeoff":"牺牲了什么换取了什么","mature_alternatives_compared":[{"alternative":"Event Sourcing","why_not":"为什么不用","evidence":["ev-001"]}]}],"tradeoffs":[{"tradeoff":"权衡","evidence":["证据"]}],"intentional_omissions":[{"omission":"省略","why":"理由","evidence":["证据"]}],"architectural_tensions":[{"tension":"张力","evidence":["证据"]}],"complexity_drivers":[{"driver":"复杂度来源","evidence":["证据"]}],"leverage_points":[{"point":"杠杆点","evidence":["证据"]}],"maintainer_mental_model":"维护者心智划分"}
 `;
-  return invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+  try {
+    return await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+  } catch (err) {
+    console.warn("  Architecture interpretation failed:", err.message);
+    return {
+      engineering_constraints: [],
+      architectural_forces: [],
+      architecture_invariants: [],
+      design_decisions: [],
+      tradeoffs: [],
+      intentional_omissions: [],
+      architectural_tensions: [],
+      complexity_drivers: [],
+      leverage_points: [],
+      maintainer_mental_model: "",
+    };
+  }
 }
 
 // Keep only the most informative parts of the model for interpretation/risk calls.
@@ -677,20 +714,25 @@ function condenseModelForInterpretation(model) {
 async function riskAnalysis(repoType, model, interpretation) {
   const modelSummary = condenseModelForInterpretation(model);
   const prompt = `
-基于 Repository Model 和核心解释，评估修改风险与难度。
+基于 Repository Model 和核心解释，评估修改风险与难度。每个列表最多 3 项。
 仓库类型: ${repoType.type}
 Model: ${JSON.stringify(modelSummary, null, 2)}
 解释: ${JSON.stringify(interpretation, null, 2)}
 
 产出:
-- blast_radius（≤9）: 修改影响范围——覆盖所有 Critical + High，Medium/Low 选录。每个含 {component, impact_scope[], risk_level}
-- change_difficulty（≥5, ≤10）: 修改难度评估，覆盖不同修改类型。每个含 {change, difficulty, reason}
-- design_smells（≤5）: Maintainer 刻意接受的 smell，每个含 {smell, type: "deliberate"|"tech_debt", evidence}
+- blast_radius（≤3）: 修改影响范围 {component, impact_scope[], risk_level}
+- change_difficulty（≤5）: 修改难度评估 {change, difficulty, reason}
+- design_smells（≤3）: Maintainer 刻意接受的 smell {smell, type, evidence}
 
 输出 JSON:
 {"blast_radius":[{"component":"组件","impact_scope":["影响1","影响2"],"risk_level":"Critical"}],"change_difficulty":[{"change":"修改","difficulty":"Low","reason":"理由"}],"design_smells":[{"smell":"smell名称","type":"deliberate","evidence":["证据"]}]}
 `;
-  return invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+  try {
+    return await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+  } catch (err) {
+    console.warn("  Risk analysis failed:", err.message);
+    return { blast_radius: [], change_difficulty: [], design_smells: [] };
+  }
 }
 
 // Ultra-compact challenge input to avoid timeouts on the free-tier model.
@@ -725,7 +767,138 @@ async function challengeModel(interpretation, model) {
 输出 JSON:
 {"center_hypothesis":"一句话中心假设","key_assumptions":[{"assumption":"假设","evidence":["证据"],"challenged":true,"survived":true}],"competing_interpretations":[{"interpretation":"备选","evidence":["证据"],"confidence":"medium"}],"challenges":[{"target":"被质疑的决策","method":"假设翻转","counter_evidence":null,"result":"survived","notes":"补充说明"}]}
 `;
-  return invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+  try {
+    return await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+  } catch (err) {
+    console.warn("  Challenge model failed:", err.message);
+    return {
+      center_hypothesis: "",
+      key_assumptions: [],
+      competing_interpretations: [],
+      challenges: [],
+    };
+  }
+}
+
+function computeCoverageFallback(questions, prevCoverage) {
+  const DIMENSIONS = ["runtime", "architecture", "design_decisions", "testing", "deployment", "history"];
+  const coverage = {};
+  for (const dim of DIMENSIONS) {
+    const total = questions.filter((q) => (q.dimension || "architecture") === dim).length;
+    const answered = questions.filter(
+      (q) => (q.dimension || "architecture") === dim && ["answered", "validated"].includes(q.status)
+    ).length;
+    const ratio = total > 0 ? Number((answered / total).toFixed(2)) : 0;
+    const prev = prevCoverage?.[dim];
+    const prevAnswered = prev && typeof prev === "object" ? Number(prev.answered) || 0 : 0;
+    const prevTotal = prev && typeof prev === "object" ? Number(prev.total) || 0 : 0;
+    coverage[dim] = {
+      answered: Math.max(answered, prevAnswered),
+      total: Math.max(total, prevTotal),
+      ratio: total > 0 ? Number((Math.max(answered, prevAnswered) / Math.max(total, prevTotal)).toFixed(2)) : 0,
+    };
+  }
+  return coverage;
+}
+
+// Unified Planner + Reasoning Agent.
+// One LLM call decides: question status, coverage, next focus, convergence.
+async function planAndReason(repoType, scan, evidence, previousQuestions, previousCoverage, interpretation, challenge, plan) {
+  const DIMENSIONS = ["runtime", "architecture", "design_decisions", "testing", "deployment", "history"];
+  const count = plan.firstRun ? 6 : 3;
+  const evidenceSummary = evidence
+    .slice(-15)
+    .map((e) => `- ${e.path}: ${(e.key_findings || []).join("; ")}`)
+    .join("\n");
+
+  const interpretationSummary = {
+    constraints: (interpretation?.engineering_constraints || []).slice(0, 2).map((c) => c.constraint),
+    invariants: (interpretation?.architecture_invariants || []).slice(0, 2).map((i) => i.invariant || i),
+    decisions: (interpretation?.design_decisions || []).slice(0, 3).map((d) => d.decision),
+    tradeoffs: (interpretation?.tradeoffs || []).slice(0, 2).map((t) => t.tradeoff),
+    tensions: (interpretation?.architectural_tensions || []).slice(0, 2).map((t) => t.tension),
+    mental_model: interpretation?.maintainer_mental_model || "",
+  };
+
+  const challengeSummary = {
+    center_hypothesis: challenge?.center_hypothesis || "",
+    challenge_results: (challenge?.challenges || []).slice(0, 3).map((c) => ({ target: c.target, result: c.result })),
+  };
+
+  const prompt = `
+You are the Research Planner. In ONE call, evaluate current evidence and plan the next research step.
+
+Repository type: ${repoType.type}
+Round: ${plan.round}
+First run: ${plan.firstRun ? "yes" : "no"}
+Current focus: ${plan.focus || "none"}
+
+Evidence insights (last ${Math.min(evidence.length, 15)} of ${evidence.length}):
+${evidenceSummary || "(none)"}
+
+Interpretation summary:
+${JSON.stringify(interpretationSummary, null, 2)}
+
+Challenge summary:
+${JSON.stringify(challengeSummary, null, 2)}
+
+Previous coverage:
+${JSON.stringify(previousCoverage || {}, null, 2)}
+
+Previous questions:
+${JSON.stringify(
+    (previousQuestions || []).map((q) => ({
+      id: q.id,
+      question: q.question,
+      dimension: q.dimension || "architecture",
+      status: q.status,
+    })),
+    null,
+    2
+  )}
+
+Instructions:
+1. For previous questions, set status to "answered" if evidence/interpretation directly answers them, "refuted" if challenge overturns them, otherwise keep "open".
+2. Generate exactly ${count} ${plan.firstRun ? "discovery" : "focused on the weakest dimension"} questions. Dimension must be one of: ${DIMENSIONS.join(", ")}.
+3. Compute coverage per dimension as {answered, total, ratio}.
+4. Pick next_focus as the dimension with lowest ratio (or "converged" if all ≥ 0.8).
+5. converged = true if all dimensions ratio ≥ 0.8 AND no critical open questions remain.
+
+Return JSON:
+{
+  "questions": [{"id":"Q1","question":"...","dimension":"architecture","status":"open","confidence":"medium","genesis":{"trigger":"observation","observation":"...","depth_level":2},"type":"discovery"}],
+  "coverage": {"runtime":{"answered":0,"total":1,"ratio":0},...},
+  "next_focus": "architecture",
+  "converged": false,
+  "reasoning": "one sentence"
+}
+`;
+
+  try {
+    const result = await invokeLLMJSON(prompt, { model: DEFAULT_MODEL, timeoutMs: 180000 });
+    const coverage = result?.coverage || computeCoverageFallback(result?.questions || previousQuestions || [], previousCoverage);
+    const ratios = Object.entries(coverage).map(([, v]) => (typeof v === "number" ? v : v?.ratio ?? 0));
+    const allCovered = ratios.length > 0 && ratios.every((r) => r >= 0.8);
+    return {
+      questions: Array.isArray(result?.questions) ? result.questions : generateFallbackQuestions(repoType, plan, count),
+      coverage,
+      next_focus: result?.next_focus || (allCovered ? "converged" : Object.entries(coverage).sort((a, b) => (typeof a[1] === "number" ? a[1] : a[1]?.ratio ?? 0) - (typeof b[1] === "number" ? b[1] : b[1]?.ratio ?? 0))[0]?.[0] || "architecture"),
+      converged: Boolean(result?.converged) || allCovered,
+      reasoning: result?.reasoning || "",
+    };
+  } catch (err) {
+    console.warn("  Planner+Reasoning failed:", err.message);
+    const fallbackQuestions = generateFallbackQuestions(repoType, plan, count);
+    const fallbackCoverage = computeCoverageFallback(fallbackQuestions, previousCoverage);
+    const nextFocus = Object.entries(fallbackCoverage).sort((a, b) => (a[1].ratio ?? a[1]) - (b[1].ratio ?? b[1]))[0]?.[0] || "architecture";
+    return {
+      questions: fallbackQuestions,
+      coverage: fallbackCoverage,
+      next_focus: nextFocus,
+      converged: false,
+      reasoning: "fallback due to LLM failure",
+    };
+  }
 }
 
 // Reasoning Agent: decide which questions are answered by this round's evidence,
@@ -869,12 +1042,7 @@ async function stageFourResearch(repoPath, resume, plan, scan, profile, workDir)
   // Model Agent reads evidence from evidence-log.jsonl (per evidence.md — not from memory)
   const evidenceFromLog = await readEvidenceLog(workDir);
 
-  // Generate questions and build model are independent, but OpenCode CLI cannot handle
-  // concurrent invocations ("database is locked"), so we run them sequentially.
-  console.log("  4b: Generating questions...");
-  const questions = await generateQuestions(repoType, scan, plan);
-
-  console.log("  4b.1: Building Repository Model...");
+  console.log("  4b: Building Repository Model...");
   const model = await buildRepositoryModel(repoType, evidenceFromLog);
 
   // Interpretation — reads from evidence-log.jsonl
@@ -890,33 +1058,42 @@ async function stageFourResearch(repoPath, resume, plan, scan, profile, workDir)
   console.log("  4d: Challenging model...");
   const challenge = await challengeModel(interpretation, model);
 
-  // Converge
-  console.log("  4e: Converging...");
+  // Persist intermediate reasoning artifacts so the report stage can be resumed independently.
+  await writeJson(join(workDir, "interpretation.json"), interpretation);
+  await writeJson(join(workDir, "challenge.json"), challenge);
+
+  // Unified Planner + Reasoning: one LLM call updates question status, coverage, next focus, convergence.
+  console.log("  4e: Planning + reasoning (unified)...");
+  const previousQuestions = plan.firstRun ? [] : (resume.context?.questions || []);
+  const previousCoverage = plan.firstRun ? {} : (resume.context?.coverage || {});
+  const planResult = await planAndReason(
+    repoType,
+    scan,
+    evidenceFromLog,
+    previousQuestions,
+    previousCoverage,
+    interpretation,
+    challenge,
+    plan
+  );
 
   // Normalize question IDs
-  const allQuestions = questions.map((q) => ({
+  const allQuestions = planResult.questions.map((q) => ({
     ...q,
     id: q.id && q.id.startsWith("R") ? q.id : `R${plan.round}-${(q.id || "").replace(/^Q/, "")}`,
   }));
 
-  // Reasoning Agent updates coverage (per reasoning.md: LLM judgment, not mechanical)
-  console.log("  4f: Updating coverage (Reasoning)...");
-  const { questions: updatedQuestions, coverage } = await updateCoverage(
-    allQuestions,
-    evidenceFromLog,
-    interpretation,
-    challenge,
-    plan.firstRun ? {} : resume.context?.coverage
-  );
-
   return {
     plan,
     evidence: evidenceFromLog, // Return evidence from log, not memory
-    questions: updatedQuestions,
+    questions: allQuestions,
     model,
     interpretation,
     challenge,
-    coverage,
+    coverage: planResult.coverage,
+    next_focus: planResult.next_focus,
+    converged: planResult.converged,
+    reasoning: planResult.reasoning,
   };
 }
 
@@ -924,112 +1101,150 @@ async function stageFourResearch(repoPath, resume, plan, scan, profile, workDir)
 // Stage 5: Report
 // ---------------------------------------------------------------------------
 
-async function generateReport(repoType, result) {
-  const model = result.model;
-  const interp = result.interpretation;
-  const challenge = result.challenge;
+function renderReport(repoType, result) {
+  const model = result.model || {};
+  const interp = result.interpretation || {};
+  const challenge = result.challenge || {};
+  const coverage = result.coverage || {};
 
-  // Prepare concise data for the prompt
-  const data = {
-    repoType: repoType.type,
-    centerHypothesis: challenge?.center_hypothesis || "(not set)",
-    modules: (model?.structure?.modules || []).map((m) => ({ name: m.name, path: m.path, desc: (m.description || "").slice(0, 80) })),
-    boundaries: (model?.structure?.boundaries || []).slice(0, 5),
-    controlFlow: (model?.behavior?.control_flow || []).slice(0, 4),
-    dataFlow: (model?.behavior?.data_flow || []).slice(0, 4),
-    states: (model?.ownership?.state || []).slice(0, 4),
-    responsibilities: (model?.ownership?.responsibility || []).slice(0, 4),
-    extensionPoints: (model?.extension?.plugin_points || []).slice(0, 3),
-    evolution: (model?.evolution?.major_changes || []).slice(0, 3),
-    constraints: (interp?.engineering_constraints || []).slice(0, 4).map((c) => c.constraint),
-    invariants: (interp?.architecture_invariants || []).slice(0, 3).map((i) => i.invariant || i),
-    forces: (interp?.architectural_forces || []).slice(0, 3).map((f) => f.force),
-    decisions: (interp?.design_decisions || []).map((d) => ({
-      decision: d.decision, chosen: d.chosen, rejected: d.rejected, rejected_reason: d.rejected_reason, tradeoff: d.tradeoff,
-    })),
-    tradeoffs: (interp?.tradeoffs || []).slice(0, 3).map((t) => t.tradeoff),
-    omissions: (interp?.intentional_omissions || []).slice(0, 3).map((o) => ({ o: o.omission, why: o.why })),
-    tensions: (interp?.architectural_tensions || []).slice(0, 3).map((t) => t.tension),
-    complexityDrivers: (interp?.complexity_drivers || []).slice(0, 3).map((d) => d.driver || d),
-    mentalModel: interp?.maintainer_mental_model || "",
-    // challenge_record per reasoning.md schema (5 fields: target/method/counter_evidence/result/notes)
-    challenges: (challenge?.challenges || []).map((c) => ({ target: c.target, result: c.result, method: c.method, counter_evidence: c.counter_evidence, notes: c.notes })),
-    assumptions: (challenge?.key_assumptions || []).map((a) => ({ assumption: a.assumption, survived: a.survived })),
-    alternatives: (challenge?.competing_interpretations || []).slice(0, 2).map((a) => a.interpretation),
-    coverage: result.coverage,
-    // Blast Radius + Change Difficulty + Design Smells (per report.md required chapters)
-    blast_radius: interp?.blast_radius || [],
-    change_difficulty: interp?.change_difficulty || [],
-    design_smells: interp?.design_smells || [],
-  };
+  const sections = [];
 
-  const prompt = `
-你是一个架构报告撰写专家。报告必须按「研究论文」而非「总结」来写。
+  // 1. 执行摘要
+  sections.push(`## 1 执行摘要`);
+  const coveredDims = Object.entries(coverage)
+    .filter(([, v]) => (typeof v === "number" ? v : v?.ratio ?? 0) >= 0.8)
+    .map(([k]) => k);
+  sections.push(`**仓库类型**：${repoType.type || "Unknown"}。`);
+  sections.push(`**中心假设**：${challenge.center_hypothesis || "(未设置)"}。`);
+  sections.push(`**覆盖维度**：${coveredDims.length > 0 ? coveredDims.join(", ") : "暂无"}。`);
+  const topDecisions = (interp.design_decisions || []).slice(0, 3).map((d) => d.decision);
+  sections.push(`**关键决策**：${topDecisions.length > 0 ? topDecisions.join(" / ") : "待进一步分析"}。`);
+  sections.push(`\n`);
 
-===== CORE RULES（最高优先级） =====
+  // 2. Runtime
+  sections.push(`## 2 Runtime`);
+  const controlFlow = (model.behavior?.control_flow || []).slice(0, 5);
+  if (controlFlow.length > 0) {
+    sections.push(controlFlow.map((cf) => `- ${cf.name || cf.description || JSON.stringify(cf)}`).join("\n"));
+  } else {
+    sections.push(`- 当前证据不足以完整描述运行时。建议补充入口文件和主循环分析。`);
+  }
+  sections.push(`\n`);
 
-1. **Neutrality 约束**（report.md:139）: 报告是 evidence-based，禁止替 maintainer 做价值判断。禁止绝对化结论（"不可能"/"永远"/"必须"）。用"当前抽象层无法覆盖"代替"不可能"。
-2. **综合结论优于推理链**（report-schema.md:43-44）: 证据链是内部推理工具，不是输出模板。**禁止**展开 Observation → Evidence → Interpretation → Alternative → Challenge → Conclusion 六步链。呈现结论 + 简洁证据。
-3. **Key Decisions 4 字段**（report.md:210-223）: 每个决策只写 4 字段——决策标题 / 选择 + 拒绝 / 理由 / 证据。**禁止** 9 字段（禁止 Benefits/Suffers/Risk/Status/Learning/Cost/Long-term）。
-4. **模型质疑综合格式**（report.md:225-236）: 综合质疑结论，标注被质疑结论 / 结果 / 证据。**禁止**六步链。
+  // 3. Architecture
+  sections.push(`## 3 Architecture`);
+  const modules = (model.structure?.modules || []).slice(0, 5);
+  if (modules.length > 0) {
+    sections.push(modules.map((m) => `- **${m.name || "(未命名)"}**：${(m.description || "").slice(0, 120)}`).join("\n"));
+  }
+  const boundaries = (model.structure?.boundaries || []).slice(0, 5);
+  if (boundaries.length > 0) {
+    sections.push(`\n**边界**：`);
+    sections.push(boundaries.map((b) => `- ${b.name || b.description || JSON.stringify(b)}`).join("\n"));
+  }
+  sections.push(`\n`);
 
-===== DATA =====
-${JSON.stringify(data, null, 2)}
+  // 4. Key Decisions
+  sections.push(`## 4 Key Decisions`);
+  const decisions = (interp.design_decisions || []).slice(0, 4);
+  if (decisions.length > 0) {
+    for (let i = 0; i < decisions.length; i++) {
+      const d = decisions[i];
+      sections.push(`### D${i + 1}: ${d.decision || "(未命名决策)"}`);
+      sections.push(`**选择**：${d.chosen || "—"} | **拒绝**：${(d.rejected || []).join(", ") || "—"}`);
+      sections.push(`**理由**：${d.rejected_reason || d.tradeoff || "—"}`);
+      sections.push(`**证据**：${(d.evidence || []).slice(0, 3).join(", ") || "待补充"}\n`);
+    }
+  } else {
+    sections.push(`- 当前证据不足以提取明确的关键决策。`);
+  }
+  sections.push(`\n`);
 
-===== 报告结构（10 个必需章节，严格按此顺序） =====
+  // 5. 模型质疑
+  sections.push(`## 5 模型质疑`);
+  const challenges = (challenge.challenges || []).slice(0, 5);
+  if (challenges.length > 0) {
+    for (const c of challenges) {
+      sections.push(`### ${c.target || "(未命名)"}`);
+      sections.push(`**结果**：${c.result || "survived"} | **方法**：${c.method || "—"}`);
+      sections.push(`**证据**：${c.counter_evidence || "无反证"}`);
+      sections.push(`**备注**：${c.notes || "—"}\n`);
+    }
+  } else {
+    sections.push(`- 本轮未生成质疑记录。`);
+  }
+  sections.push(`\n`);
 
-## 1 执行摘要（≤200字）
-一句话定位 + 3 核心发现 + 架构中心假设
+  // 6. 维护者手册
+  sections.push(`## 6 维护者手册`);
+  const leverage = (interp.leverage_points || []).slice(0, 3).map((l) => l.point || l);
+  sections.push(`- **How to Extend**：${leverage.length > 0 ? leverage.join("；") : "参考 extension points 和 public API"}`);
+  const debugTargets = (model.structure?.modules || []).slice(0, 2).map((m) => m.name);
+  sections.push(`- **How to Debug**：从 ${debugTargets.length > 0 ? debugTargets.join(", ") : "核心模块"} 的边界日志入手。`);
+  const migrationTargets = (interp.complexity_drivers || []).slice(0, 2).map((d) => d.driver || d);
+  sections.push(`- **How to Migrate**：关注 ${migrationTargets.length > 0 ? migrationTargets.join(", ") : "历史演进"}。`);
+  const removalAssumptions = (challenge.key_assumptions || []).slice(0, 2).map((a) => a.assumption);
+  sections.push(`- **How to Remove**：检查 ${removalAssumptions.length > 0 ? removalAssumptions.join(", ") : "关键假设"} 的耦合范围。\n`);
 
-## 2 Runtime（≤5 关键发现）
-回答运行时问题（一次 request 怎么走）：请求如何进入/数据如何流动/生命周期如何结束/状态归属/缓存与并发/降级
+  // 7. Architecture Risk Analysis
+  sections.push(`## 7 Architecture Risk Analysis（Blast Radius）`);
+  const blastRadius = (interp.blast_radius || []).slice(0, 5);
+  if (blastRadius.length > 0) {
+    sections.push(`| 修改点 | 影响范围 | 风险等级 |`);
+    sections.push(`| --- | --- | --- |`);
+    for (const br of blastRadius) {
+      sections.push(`| ${br.component || "—"} | ${(br.impact_scope || []).join(", ") || "—"} | ${br.risk_level || "—"} |`);
+    }
+  } else {
+    sections.push(`- 当前证据不足以评估 blast radius。`);
+  }
+  sections.push(`\n`);
 
-## 3 Architecture（≤5 关键发现）
-架构组织 + Atlas（subsystem / 依赖 / 边界）：分层与职责/依赖方向/边界保证/耦合分析
+  // 8. Change Difficulty
+  sections.push(`## 8 Change Difficulty`);
+  const changeDifficulty = (interp.change_difficulty || []).slice(0, 6);
+  if (changeDifficulty.length > 0) {
+    sections.push(`| 修改 | 难度 | 理由 |`);
+    sections.push(`| --- | --- | --- |`);
+    for (const cd of changeDifficulty) {
+      sections.push(`| ${cd.change || "—"} | ${cd.difficulty || "—"} | ${cd.reason || "—"} |`);
+    }
+  } else {
+    sections.push(`- 当前证据不足以评估修改难度。`);
+  }
+  sections.push(`\n`);
 
-## 4 Key Decisions（≤4 决策，每决策 4 字段）
-格式:
-### D1: 决策标题
-**选择**：选择了什么 | **拒绝**：至少 1 个被拒绝方案
-**理由**：为什么选这个 / 为什么拒绝
-**证据**：evidence id 或文件路径
-禁止添加 Benefits/Suffers/Risk/Status/Learning 等额外字段。
+  // 9. Design Smells
+  sections.push(`## 9 Design Smells`);
+  const designSmells = (interp.design_smells || []).slice(0, 5);
+  if (designSmells.length > 0) {
+    for (const s of designSmells) {
+      sections.push(`- **${s.smell || "—"}**（${s.type || "deliberate"}）：${(s.evidence || []).join(", ") || "—"}`);
+    }
+  } else {
+    sections.push(`- 未发现明显的 deliberate smell 或 tech debt。`);
+  }
+  sections.push(`\n`);
 
-## 5 模型质疑（≤5 结论，综合格式）
-格式:
-### 被质疑的结论
-**结果**：survived/weakened/overturned
-**证据**：evidence id
-禁止展开六步链。
+  // 10. Unresolved Questions
+  sections.push(`## 10 Unresolved Questions`);
+  const unresolvedDims = Object.entries(coverage).filter(([, v]) => (typeof v === "number" ? v : v?.ratio ?? 0) < 0.5);
+  if (unresolvedDims.length > 0) {
+    for (const [dim, v] of unresolvedDims) {
+      const ratio = typeof v === "number" ? v : v?.ratio ?? 0;
+      sections.push(`- **${dim}**（覆盖率 ${(ratio * 100).toFixed(0)}%）：证据不足，建议补充 ${dim} 相关源码或测试。`);
+    }
+  } else {
+    sections.push(`- 所有维度覆盖率均 ≥ 50%。`);
+  }
+  sections.push(`\n`);
 
-## 6 维护者手册
-- How to Extend / Debug / Migrate / Remove（每项 ≤3 条）
-
-## 7 Architecture Risk Analysis（Blast Radius）
-修改点 → 影响范围 → 风险等级（Critical/High/Medium/Low）。至少覆盖所有 Critical + High。
-
-## 8 Change Difficulty
-| 修改 | 难度 | 理由 |
-覆盖不同修改类型（≥5 项）。
-
-## 9 Design Smells
-Maintainer 刻意接受的 smell（≤5），区分 deliberate smell vs tech_debt。
-
-## 10 Unresolved Questions
-coverage<0.5 的领域，每个说明：缺什么证据/对结论的影响/建议下一步调查方向。
-
-===== OUTPUT REQUIREMENTS =====
-1. 禁止六步推理链——呈现综合结论 + 简洁证据
-2. 每个结论标注 Evidence Strength（Confidence / Evidence Count）
-3. 章节间有 Cross-Reference（如 [→ §3 Atlas]）
-4. 直接输出 Markdown，不要 JSON 包装
-`;
-  return invokeLLM(prompt, { model: DEFAULT_MODEL });
+  return sections.join("\n");
 }
 
 async function stageFiveReport(repoPath, repoType, result, workDir) {
-  console.log("Stage 5: Generating report draft...\n");
-  const report = await generateReport(repoType, result);
+  console.log("Stage 5: Rendering report from precomputed artifacts...\n");
+  const report = renderReport(repoType, result);
   await writeFile(join(workDir, "report-draft.md"), report, "utf-8");
   return report;
 }
@@ -1142,6 +1357,7 @@ async function main() {
   let currentPlan = plan;
   let currentResult = null;
   let currentResume = resume;
+  let roundFile = `round-${plan.round}.json`;
 
   for (let round = 0; round < MAX_ROUNDS; round++) {
     // Stage 4: Architecture Research (pass workDir for evidence-log.jsonl access)
@@ -1151,7 +1367,7 @@ async function main() {
     await writeJson(modelPath, currentResult.model);
 
     // Save questions (per workspace.md: questions/round-N.json is frozen after creation)
-    const roundFile = `round-${currentPlan.round}.json`;
+    roundFile = `round-${currentPlan.round}.json`;
     const roundData = {
       round: currentPlan.round,
       generated_from: currentPlan.firstRun ? [] : [currentResume.questions?.latest_round || 1],
@@ -1183,6 +1399,10 @@ async function main() {
       current_round: currentPlan.round,
       current_question_file: roundFile,
       coverage: currentResult.coverage,
+      next_focus: currentResult.next_focus,
+      converged: currentResult.converged,
+      questions: currentResult.questions,
+      reasoning: currentResult.reasoning,
       question_statistics: {
         rounds: currentPlan.round,
         total_questions: prevStats.total_questions + roundTotal,
@@ -1191,8 +1411,8 @@ async function main() {
       },
     });
 
-    // Check convergence (per planner.md: Planner returns {converged, next_focus})
-    if (currentPlan.converged) {
+    // Check convergence based on the unified Planner+Reasoning output
+    if (currentResult.converged) {
       console.log(`\n=== Research converged after round ${currentPlan.round} ===\n`);
       break;
     }

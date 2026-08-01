@@ -27,6 +27,15 @@ import { delimiter } from "node:path";
 // CLI detection (OpenCode → Copilot fallback)
 // ---------------------------------------------------------------------------
 
+let cachedCLI = null;
+
+/**
+ * Clear the cached CLI path. Mainly useful for tests that switch CLI mocks.
+ */
+export function clearCLICache() {
+  cachedCLI = null;
+}
+
 /**
  * Search PATH for an executable command.
  * @param {string} cmd
@@ -54,14 +63,18 @@ async function which(cmd) {
  * @throws {Error} if neither is installed
  */
 export async function detectCLI() {
+  if (cachedCLI) return cachedCLI;
+
   const opencode = await which("opencode");
   if (opencode) {
-    return { name: "opencode", path: opencode };
+    cachedCLI = { name: "opencode", path: opencode };
+    return cachedCLI;
   }
 
   const copilot = (await which("github-copilot")) || (await which("copilot"));
   if (copilot) {
-    return { name: "copilot", path: copilot };
+    cachedCLI = { name: "copilot", path: copilot };
+    return cachedCLI;
   }
 
   throw new Error(

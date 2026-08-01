@@ -1,0 +1,42 @@
+{
+  "current_round": 2,
+  "current_question_file": "round-2.json",
+  "coverage": {
+    "runtime": {
+      "answered": 1,
+      "total": 1,
+      "ratio": 1
+    },
+    "architecture": {
+      "answered": 1,
+      "total": 1,
+      "ratio": 1
+    },
+    "design_decisions": {
+      "answered": 1,
+      "total": 1,
+      "ratio": 1
+    },
+    "testing": {
+      "answered": 0,
+      "total": 3,
+      "ratio": 0
+    },
+    "deployment": {
+      "answered": 1,
+      "total": 1,
+      "ratio": 1
+    },
+    "history": {
+      "answered": 0,
+      "total": 0,
+      "ratio": 0
+    }
+  },
+  "question_statistics": {
+    "rounds": 2,
+    "total_questions": 14,
+    "answered": 4,
+    "validated": 0
+  }
+}

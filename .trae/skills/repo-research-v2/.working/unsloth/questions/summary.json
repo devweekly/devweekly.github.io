@@ -1,0 +1,29 @@
+{
+  "latest_round": 2,
+  "rounds": [
+    {
+      "round": 1,
+      "file": "round-1.json",
+      "purpose": "discovery",
+      "status": "active"
+    },
+    {
+      "round": 2,
+      "file": "round-2.json",
+      "purpose": "focus_testing",
+      "status": "active"
+    },
+    {
+      "round": 3,
+      "file": "round-3.json",
+      "purpose": "focus_testing",
+      "status": "active"
+    },
+    {
+      "round": 2,
+      "file": "round-2.json",
+      "purpose": "focus_testing",
+      "status": "active"
+    }
+  ]
+}

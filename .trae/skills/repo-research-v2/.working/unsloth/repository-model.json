@@ -1,0 +1,61 @@
+{
+  "repository": {
+    "name": "unsloth",
+    "type": "AI Infrastructure",
+    "summary": "双许可（核心库 Apache-2.0 + studio 商业组件 AGPL-3.0）的高性能微调/RLHF 加速框架，docs-first 营销策略，供应链安全审计与惰性导入架构约束并重。"
+  },
+  "structure": {
+    "modules": [
+      "unsloth 核心库：惰性导入（__getattr__）+ version-activation 机制，保证版本激活先于重型 ML 依赖加载",
+      "unsloth_cli 独立发行包：CLI 与入口解耦（cli.py 仅为薄代理），便于单独测试与分发",
+      "studio 目录：AGPL-3.0 保护的前端（web UI）与后端导出/任务组件，商业级产品闭环",
+      "core 子模块：data_recipe（DataDesigner 包装器 + JobManager 门面）、huggingface 数据落盘、jsonable 图像序列化"
+    ],
+    "boundaries": [
+      "双许可边界：pyproject Apache-2.0 与源码 AGPL-3.0-only 头并存，studio 组件按专有代码对待",
+      "依赖隔离：training 子进程导入时不得拉起 unsloth/transformers/torch，模块划分围绕进程启动时序设计",
+      "第三方打桩：torchao Windows+ROCm 缺失 RCCL 与 transformers.quantizers 以 stub 注入，不依赖上游修复"
+    ]
+  },
+  "behavior": {
+    "control_flow": [
+      "惰性导入即架构约束：版本激活逻辑必须先于模型库初始化运行，子进程启动时序由模块划分强制",
+      "数据配方以异步后台任务执行（JobManager 单例 + job-runner 架构），DataDesigner 作为可插拔内部服务",
+      "原子性导出流程：先写临时目录再搬运（tempfile/shutil），配 structlog 结构化日志"
+    ],
+    "data_flow": [
+      "一键式微调工作流脚手架：model loading / PEFT / training / save/push 全流程可配置",
+      "图像预览经 jsonable 转 JPEG(base64) 标准化后经 API 传输到前端，统一色彩空间与体积"
+    ]
+  },
+  "ownership": {
+    "state": [
+      "recipe_datasets_root + resolve_dataset_path 统一管理数据集落盘路径，与 HF 生态对接",
+      "生成内容内嵌 Data Designer 品牌水印 footer，产物反向传播品牌"
+    ],
+    "responsibility": [
+      "供应链安全审计跨 Python 与 JS 双生态统一执行（不安装即扫描 pip/npm 依赖）",
+      "studio 前后端均为一等公民：web UI 依赖树纳入同一安全审计 CI"
+    ]
+  },
+  "extension": {
+    "plugin_points": [
+      "DataDesigner 被抽象为可插拔内部服务，仅对外暴露 JobManager 门面",
+      "export.py 作为多格式导出后端，构成训练闭环的产品化出口"
+    ],
+    "public_api": [
+      "CLI 全部逻辑封装于 unsloth_cli 包，入口与实现解耦",
+      "与 unsloth/ 前缀自托管模型生态深度绑定，形成自家模型+自家加速框架闭环"
+    ]
+  },
+  "evolution": {
+    "major_changes": [
+      "发布流程 tag-driven：version 由 setuptools-scm/git 标签驱动",
+      "docs-first 策略迁移：内容主体外移 unsloth.ai/docs，README 退化为流量入口（含 dark/light 品牌变体）"
+    ],
+    "current_direction": [
+      "主动预适配新 Python（上界 <3.15）与 Windows+ROCm 双平台支持",
+      "定位聚焦性能加速 + RLHF + 微调三块核心卖点（2-5X faster）"
+    ]
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "round": 1,
+  "generated_from": [],
+  "trigger": "initial",
+  "purpose": "discovery",
+  "status": "active",
+  "questions": [
+    {
+      "id": "R1-Q1",
+      "question": "unsloth 核心库（unsloth/）、unsloth_cli、scripts 和 studio（FastAPI 后端 + React 前端 + Tauri 壳）四个面各自拥有独立的打包与生命周期，仓库的实际职责边界在哪里，哪个才是对外的首要接口（library API vs CLI vs 桌面应用）？",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "顶层存在四个职责各异的子系统：cli.py 是只委托 unsloth_cli 的极薄入口，unsloth/ 是 PyPI 核心加速库，studio 是一整套独立应用（含自身 requirements、前端、Rust 壳），scripts 是安装/安全/发布工具 → 所以这个仓库到底是'一个库'还是'多个产品共仓'？",
+        "depth_level": 1
+      },
+      "type": "discovery",
+      "status": "answered",
+      "confidence": "medium",
+      "dimension": "architecture"
+    },
+    {
+      "id": "R1-Q2",
+      "question": "Studio 训练子进程为什么必须用'惰性导入 + 进程内先版本激活再加载模型库'（core/__init__.py 的 __getattr__ 强制约束）而非独立 venv/环境隔离？把'版本激活先于库初始化'做成进程启动时序约束意味着什么权衡？",
+      "genesis": {
+        "trigger": "challenge",
+        "observation": "core/__init__.py 通过 __getattr__ 强制全模块惰性导入，核心约束是训练子进程导入 core.training.worker 时不得拉起 unsloth/transformers/torch；同时存在 _activate_transformers_version 符号 → 所以为什么不靠环境隔离，而要在同一进程内做版本激活时序编排？",
+        "depth_level": 3
+      },
+      "type": "challenge",
+      "status": "answered",
+      "confidence": "high",
+      "dimension": "runtime"
+    },
+    {
+      "id": "R1-Q3",
+      "question": "同一仓库内 pyproject.toml 声明 Apache-2.0，而大量源码文件头为 AGPL-3.0-only（studio 目录尤甚），双许可证分裂是刻意的商业策略吗？为什么选择'单仓库双许可'而不是拆分为两个仓库/两个独立发行包？",
+      "genesis": {
+        "trigger": "contradiction",
+        "observation": "pyproject 声明 Apache-2.0（核心库开源）但源码普遍使用 AGPL-3.0-only 头，cli.py 与 studio 组件被明确标注为受 AGPL 保护的商业/专有代码 → 两种许可证在同一 repo 内并存，这是意外漂移还是有意分层？",
+        "depth_level": 3
+      },
+      "type": "critical",
+      "status": "answered",
+      "confidence": "high",
+      "dimension": "design_decisions"
+    },
+    {
+      "id": "R1-Q4",
+      "question": "tests/version_compat 用'钉住 transformers/peft/trl/bitsandbytes 的符号 + CPU 假跑（test_trl_grpo_fake_run、test_trl_fake_train_cpu）'来防上游漂移，这套策略如何同时达成'跟最新上游'与'稳定回归'？为什么选符号钉住而非直接锁死版本？",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "tests/version_compat/ 下存在 test_*_pinned_symbols 系列与 fake run 测试，配合 tests/utils 里的能力门控（test_xformers_capability_gate 等），且 utils/transformers_version.py 主动做版本激活 → 面对高频迭代的 ML 上游依赖，测试层如何平衡前向兼容与稳定性？",
+        "depth_level": 2
+      },
+      "type": "discovery",
+      "status": "open",
+      "confidence": "medium",
+      "dimension": "testing"
+    },
+    {
+      "id": "R1-Q5",
+      "question": "为什么 llama.cpp / node / whisper / STT-ggml 等侧车以'安装脚本运行时下载 + checksum 钉住 + freshness 检查'方式分发（install_llama_prebuilt.py、install.sh/ps1、node_prebuilt_pins.json），而不是打进 wheel 或交给 OS 包管理器？同时 CI 的'不安装即扫描'供应链审计（scripts/scan_packages.py + scan_npm_packages.py）想防御什么？",
+      "genesis": {
+        "trigger": "design_gap",
+        "observation": "仓库同时存在三套分发策略：wheel 内建的 Python 库、安装时下载的预编译侧车（含校验和与 freshness 机制）、以及只扫描不安装的 PyPI/npm 依赖审计（scripts/scan_packages.py 依赖 security-audit.yml）→ 侧车为何不走打包路径，供应链审计为何刻意不在安装后做？",
+        "depth_level": 3
+      },
+      "type": "design_space",
+      "status": "answered",
+      "confidence": "medium",
+      "dimension": "deployment"
+    }
+  ]
+}
