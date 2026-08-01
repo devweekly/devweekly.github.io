@@ -1,0 +1,25 @@
+{
+  "repository_type": "Library",
+  "archetype": "暂无证据，无法定位",
+  "structure": {
+    "top_level_directories": {},
+    "boundary_enforcement": [],
+    "module_organization": ""
+  },
+  "behavior": {
+    "control_flow": [],
+    "data_flow": []
+  },
+  "ownership": {
+    "state_ownership": {},
+    "responsibility": []
+  },
+  "extension": {
+    "plugin_points": [],
+    "public_api": []
+  },
+  "evolution": {
+    "major_changes": [],
+    "current_direction": ""
+  }
+}

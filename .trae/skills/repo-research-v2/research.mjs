@@ -266,7 +266,7 @@ async function ensureGitSummary(workDir, repoPath) {
   const { execSync } = await import("node:child_process");
   let gitSummary;
   try {
-    const log = execSync("git log --all --oneline --format=%H|%aI|%s", { cwd: repoPath, encoding: "utf-8", timeout: 10000 }).trim();
+    const log = execSync('git log --all --oneline --format="%H|%aI|%s"', { cwd: repoPath, encoding: "utf-8", timeout: 10000 }).trim();
     const commits = log.split("\n").map((line) => {
       const [hash, date, ...msgParts] = line.split("|");
       return { hash, date, message: msgParts.join("|") };
@@ -449,24 +449,119 @@ Return ONLY a JSON array like:
   return invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
 }
 
-async function mechanicalAnalysis(repoPath, scan) {
+async function mechanicalAnalysis(repoPath, scan, focus = "architecture", isFirstRun = true, existingPaths = new Set()) {
   const evidence = [];
-  for (const file of ["package.json", "README.md", "ARCHITECTURE.md"]) {
+  const seen = (path, purpose) => existingPaths.has(`${path}|${purpose}`);
+
+  const codeExts = [".py", ".js", ".ts", ".mjs", ".rs", ".go", ".java"];
+  const isCode = (f) => codeExts.some((ext) => f.endsWith(ext));
+
+  // Full exploration only on the first round; subsequent rounds drill into the weakest dimension.
+  if (isFirstRun) {
+    // 1. Metadata files
+    for (const file of ["package.json", "README.md", "ARCHITECTURE.md", "pyproject.toml", "setup.py", "Cargo.toml"]) {
+      if (seen(file, "元数据")) continue;
+      const fullPath = join(repoPath, file);
+      if (await fileExists(fullPath)) {
+        const content = await readFile(fullPath, "utf-8");
+        evidence.push({ path: file, content: content.slice(0, 800), purpose: "元数据" });
+      }
+    }
+
+    // 2. Entry points and top-level modules
+    const rootFiles = scan.files.filter((f) => !f.includes("/") && isCode(f)).slice(0, 5);
+    for (const file of rootFiles) {
+      if (seen(file, "入口文件")) continue;
+      const fullPath = join(repoPath, file);
+      if (await fileExists(fullPath)) {
+        const content = await readFile(fullPath, "utf-8");
+        evidence.push({ path: file, content: content.slice(0, 600), purpose: "入口文件" });
+      }
+    }
+
+    // 3. Largest source files (proxy for complexity centers)
+    const codeFiles = scan.files.filter(isCode);
+    const largestFiles = [];
+    for (const file of codeFiles.slice(0, 50)) {
+      try {
+        const s = await stat(join(repoPath, file));
+        largestFiles.push({ file, size: s.size });
+      } catch {}
+    }
+    largestFiles.sort((a, b) => b.size - a.size);
+    for (const { file } of largestFiles.slice(0, 3)) {
+      if (seen(file, "大型文件")) continue;
+      const content = await readFile(join(repoPath, file), "utf-8");
+      evidence.push({ path: file, content: content.slice(0, 500), purpose: "大型文件" });
+    }
+  }
+
+  // 4. Focus-area files (heuristic: directory names matching focus)
+  const focusDirs = {
+    runtime: ["runtime", "engine", "loop", "async", "executor"],
+    architecture: ["core", "model", "models", "architecture", "layers", "modules"],
+    design_decisions: ["config", "policy", "decision", "tradeoff"],
+    testing: ["tests", "test", "testing", "pytest"],
+    deployment: ["deploy", "docker", "k8s", "ci", "github"],
+    history: ["changelog", "history", "migrations", "docs"],
+  };
+  const focusKeywords = focusDirs[focus] || focusDirs.architecture;
+  const focusFiles = scan.files
+    .filter((f) => isCode(f) && focusKeywords.some((kw) => f.toLowerCase().includes(kw)))
+    .slice(0, 5);
+  for (const file of focusFiles) {
+    if (seen(file, `focus:${focus}`)) continue;
     const fullPath = join(repoPath, file);
     if (await fileExists(fullPath)) {
       const content = await readFile(fullPath, "utf-8");
-      evidence.push({ path: file, content: content.slice(0, 500), purpose: "元数据" });
+      evidence.push({ path: file, content: content.slice(0, 600), purpose: `focus:${focus}` });
     }
   }
-  const srcFiles = scan.files.filter((f) => f.startsWith("src/") || f.startsWith("server/") || f.startsWith("api/"));
-  for (const file of srcFiles.slice(0, 3)) {
-    const fullPath = join(repoPath, file);
-    if (await fileExists(fullPath)) {
-      const content = await readFile(fullPath, "utf-8");
-      evidence.push({ path: file, content: content.slice(0, 400), purpose: "代码" });
-    }
-  }
+
   return evidence;
+}
+
+// Enrich mechanical evidence with research insights (evidence.md:56 — key_findings must be insights, not summaries)
+async function enrichEvidenceWithFindings(evidence) {
+  if (evidence.length === 0) return evidence;
+  const prompt = `
+你是 Evidence Agent。为每个文件片段提炼 1-3 条研究洞察（key_findings）。
+洞察应该回答："这个文件揭示了什么设计意图/约束/模式/风险？"，而不是复述文件内容。
+
+文件片段：
+${evidence.map((e, i) => `[${i}] ${e.path} (purpose: ${e.purpose})\n${(e.content || "").slice(0, 400)}`).join("\n\n---\n\n")}
+
+输出 JSON：
+{"findings":[{"index":0,"key_findings":["洞察1","洞察2"],"evidence_strength":"A","related_questions":["R1-Q1"]}]}
+
+要求：
+- 每个文件 1-3 条 key_findings
+- evidence_strength: A=源码实现直接证明, B=配置/文档, C=推断
+- related_questions 可空
+`;
+  try {
+    const result = await invokeLLMJSON(prompt, { model: DEFAULT_MODEL, timeoutMs: 120000 });
+    const findings = (result?.findings || []);
+    return evidence.map((e, i) => {
+      const f = findings.find((x) => x.index === i) || {};
+      return {
+        ...e,
+        key_findings: Array.isArray(f.key_findings) && f.key_findings.length > 0
+          ? f.key_findings
+          : ["原始内容片段，待进一步解读"],
+        evidence_strength: f.evidence_strength || "B",
+        related_questions: Array.isArray(f.related_questions) ? f.related_questions : [],
+      };
+    });
+  } catch (err) {
+    console.warn("  Evidence enrichment failed:", err.message);
+    return evidence.map((e) => ({
+      ...e,
+      key_findings: ["原始内容片段，待进一步解读"],
+      evidence_strength: "B",
+      related_questions: [],
+    }));
+  }
 }
 
 async function buildRepositoryModel(repoType, evidence) {
@@ -612,7 +707,21 @@ async function stageFourResearch(repoPath, resume, plan, scan, profile, workDir)
   else console.log(`  4a: Collecting evidence (focus: ${plan.focus})...`);
 
   // Evidence Agent: collect evidence and write to evidence-log.jsonl immediately (per evidence.md)
-  const evidence = await mechanicalAnalysis(repoPath, scan);
+  // Load existing log once to avoid duplicate (file, purpose) entries across rounds.
+  const existingEvidenceLog = await readEvidenceLog(workDir);
+  const existingPaths = new Set(existingEvidenceLog.map((e) => `${e.file}|${e.purpose}`));
+
+  let evidence = await mechanicalAnalysis(
+    repoPath,
+    scan,
+    plan.focus || "architecture",
+    plan.firstRun !== false,
+    existingPaths
+  );
+
+  // Enrich with research insights (evidence.md:56 — key_findings must be insights, not summaries)
+  console.log(`  4a.1: Enriching ${evidence.length} evidence items with findings...`);
+  evidence = await enrichEvidenceWithFindings(evidence);
 
   // Write evidence to artifacts/evidence-log.jsonl (append-only, per evidence.md:9)
   const evidenceLogPath = join(workDir, "artifacts", "evidence-log.jsonl");
@@ -620,25 +729,25 @@ async function stageFourResearch(repoPath, resume, plan, scan, profile, workDir)
 
   // Check for pending_invalidation to set replaces field (per evidence.md:117-119)
   const pendingInvalidation = resume.context?.pending_invalidation;
-  const oldEvidenceLog = pendingInvalidation ? await readEvidenceLog(workDir) : [];
+  const oldEvidenceLog = pendingInvalidation ? existingEvidenceLog : [];
 
+  const nowTs = Date.now();
   const evidenceLines = evidence.map((e, i) => {
     // Find old entry for same file to set replaces (per evidence.md:121 — granularity is (file, purpose))
     const replaces = pendingInvalidation
       ? oldEvidenceLog.find((old) => old.file === e.path && old.purpose === (e.purpose || "mechanical-scan"))?.id || null
       : null;
     return JSON.stringify({
-      id: `ev-${String(Date.now() % 100000).slice(0, 3)}${String(i + 1).padStart(3, "0")}`,
+      id: `ev-${nowTs.toString(36)}${String(i + 1).padStart(3, "0")}`,
       ts: new Date().toISOString(),
       file: e.path,
       scope: "file",
       purpose: e.purpose || "mechanical-scan",
-      key_findings: [`${e.purpose || "mechanical-scan"}: ${e.path} — 内容前 ${e.content?.length || 0} 字符`],
-      evidence_strength: e.purpose === "代码" ? "A" : "B",
-      related_questions: [],
+      key_findings: e.key_findings,
+      evidence_strength: e.evidence_strength,
+      related_questions: e.related_questions,
       coverage_delta: {},
       replaces: replaces,
-      source: "script",
     });
   });
 
@@ -650,12 +759,12 @@ async function stageFourResearch(repoPath, resume, plan, scan, profile, workDir)
   // Model Agent reads evidence from evidence-log.jsonl (per evidence.md — not from memory)
   const evidenceFromLog = await readEvidenceLog(workDir);
 
-  // Generate questions
-  const questions = await generateQuestions(repoType, scan, plan);
-
-  // Build model — reads from evidence-log.jsonl (per evidence.md: Model Agent reads evidence-log)
-  console.log("  4b: Building Repository Model...");
-  const model = await buildRepositoryModel(repoType, evidenceFromLog);
+  // Generate questions and build model are independent (both read evidence) — run in parallel.
+  console.log("  4b: Generating questions + Building Repository Model (parallel)...");
+  const [questions, model] = await Promise.all([
+    generateQuestions(repoType, scan, plan),
+    buildRepositoryModel(repoType, evidenceFromLog),
+  ]);
 
   // Interpretation — reads from evidence-log.jsonl
   console.log("  4c: Architecture interpretation...");

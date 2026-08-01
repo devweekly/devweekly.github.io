@@ -1,0 +1,12 @@
+{
+  "type": "Library",
+  "confidence": "high",
+  "reasoning": "This is Unsloth, an LLM fine-tuning library. The core is the `unsloth/` Python package (models, dataprep, optimizers, registry, custom Triton/CUDA kernels incl. MoE grouped_gemm) plus `unsloth_cli/` commands — a classic importable SDK. It ships auxiliary surfaces: a `studio/` full-stack app (Python backend with routes/hub/auth/core plus a Svelte/SvelteKit frontend and a Tauri desktop shell) and shell/PS installers. Tests focus on qlora saving, vision/TTS models, gpt-oss merge, and vllm compatibility, confirming a training/export library rather than a database, compiler, or OS.",
+  "focus_areas": [
+    "LLM fine-tuning and optimization",
+    "Custom Triton/CUDA kernels (MoE, grouped_gemm)",
+    "Model saving/export compatibility (qlora, gguf, vllm)",
+    "Data preparation and recipes",
+    "Desktop/web Studio app (Tauri + Svelte + FastAPI-style backend)"
+  ]
+}

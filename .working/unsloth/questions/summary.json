@@ -1,0 +1,11 @@
+{
+  "latest_round": 2,
+  "rounds": [
+    {
+      "round": 2,
+      "file": "round-2.json",
+      "purpose": "focus_architecture",
+      "status": "active"
+    }
+  ]
+}

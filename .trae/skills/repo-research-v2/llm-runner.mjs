@@ -80,9 +80,10 @@ export async function detectCLI() {
  * @param {string} command
  * @param {string[]} args
  * @param {string} stdin
+ * @param {number} [timeoutMs] — default 0 means no timeout
  * @returns {Promise<{stdout: string, stderr: string, code: number}>}
  */
-function run(command, args, stdin) {
+function run(command, args, stdin, timeoutMs = 0) {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, {
       stdio: ["pipe", "pipe", "pipe"],
@@ -91,6 +92,17 @@ function run(command, args, stdin) {
     let stdout = "";
     let stderr = "";
     let stdinClosed = false;
+    let killedByTimeout = false;
+    let timeoutId = null;
+
+    if (timeoutMs > 0) {
+      timeoutId = setTimeout(() => {
+        killedByTimeout = true;
+        child.kill("SIGTERM");
+        // Force kill after grace period if still alive
+        setTimeout(() => child.kill("SIGKILL"), 5000);
+      }, timeoutMs);
+    }
 
     child.stdout.on("data", (chunk) => {
       stdout += chunk.toString();
@@ -100,10 +112,16 @@ function run(command, args, stdin) {
     });
 
     child.on("error", (err) => {
+      if (timeoutId) clearTimeout(timeoutId);
       reject(new Error(`Failed to spawn ${command}: ${err.message}`));
     });
 
     child.on("close", (code) => {
+      if (timeoutId) clearTimeout(timeoutId);
+      if (killedByTimeout) {
+        reject(new Error(`LLM invocation timed out after ${timeoutMs}ms`));
+        return;
+      }
       resolve({ stdout, stderr, code: code ?? 0 });
     });
 
@@ -186,7 +204,7 @@ export const DEFAULT_LLM_OPTIONS = {
   /** Override CLI detection (mainly for testing) */
   cli: null,
   /** Timeout in ms (0 = no timeout) */
-  timeoutMs: 0,
+  timeoutMs: 300000,
 };
 
 /**
@@ -217,7 +235,7 @@ export async function invokeLLM(prompt, options = {}) {
   if (process.env.RESEARCH_REPO_LLM_CMD) {
     const cmd = process.env.RESEARCH_REPO_LLM_CMD;
     const parts = cmd.split(/\s+/);
-    const { stdout, code } = await run(parts[0], parts.slice(1), fullPrompt);
+    const { stdout, code } = await run(parts[0], parts.slice(1), fullPrompt, opts.timeoutMs);
     if (code !== 0) {
       throw new Error(`RESEARCH_REPO_LLM_CMD exited with ${code}`);
     }
@@ -233,7 +251,7 @@ export async function invokeLLM(prompt, options = {}) {
     // If user passes bare model name, try as-is first
     const modelArg = opts.model.includes("/") ? opts.model : opts.model;
     const args = ["run", "--model", modelArg, "--format", "json"];
-    const { stdout, stderr, code } = await run(cli.path, args, fullPrompt);
+    const { stdout, stderr, code } = await run(cli.path, args, fullPrompt, opts.timeoutMs);
     if (code !== 0) {
       throw new Error(`OpenCode CLI exited ${code}: ${stderr || stdout}`);
     }
@@ -242,7 +260,7 @@ export async function invokeLLM(prompt, options = {}) {
 
   if (cli.name === "copilot") {
     const args = ["chat", "--json"];
-    const { stdout, stderr, code } = await run(cli.path, args, fullPrompt);
+    const { stdout, stderr, code } = await run(cli.path, args, fullPrompt, opts.timeoutMs);
     if (code !== 0) {
       throw new Error(`Copilot CLI exited ${code}: ${stderr || stdout}`);
     }

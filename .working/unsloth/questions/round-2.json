@@ -1,0 +1,71 @@
+{
+  "round": 2,
+  "generated_from": [
+    1
+  ],
+  "trigger": "planner_focus_architecture",
+  "purpose": "focus_architecture",
+  "status": "active",
+  "questions": [
+    {
+      "id": "R2-1",
+      "question": "Why does Unsloth maintain a hand-curated model-name mapping table (mapper.py) alongside family-based dispatch, instead of deriving upstream fallbacks algorithmically from the config/hub metadata?",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "unsloth/models/mapper.py is a large hardcoded dict (INT_TO_FLOAT_MAPPER, MAP_TO_UNSLOTH_16bit) mapping 'unsloth/xxx-bnb-4bit' checkpoint names to upstream HF repos, and tests/test_bad_mappings_redirect.py + test_gemma_2b_mapper_key.py exist solely to guard against mapping drift and bad redirects — evidence this curated table is a recurring bug source that family-based dispatch (models/llama.py, qwen3.py, etc.) could eliminate.",
+        "depth_level": 3
+      },
+      "type": "critical",
+      "status": "open",
+      "confidence": "high"
+    },
+    {
+      "id": "R2-2",
+      "question": "Why does Unsloth intercept and monkeypatch transformers/peft/trl/vllm at import time through a monolithic 3195-line import_fixes.py (including a MetaPathFinder stub loader for vllm LoRA tokenizers), rather than hooking via transformers' registered extension points or vendored subclass registration?",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "unsloth/_gpu_init.py runs a cascade of compatibility patches before any HF import, and unsloth/import_fixes.py defines _VllmLoraTokenizerStubFinder(importlib.abc.MetaPathFinder) plus patches to AutoModelForCausalLM and PeftModel._LoraModel._create_and_replace; dedicated drift tests (test_import_fixes_drift.py, test_callback_signature_drift.py, test_loader_glob_skip.py) reveal the patch layer is the most fragile surface of the codebase.",
+        "depth_level": 3
+      },
+      "type": "critical",
+      "status": "open",
+      "confidence": "medium"
+    },
+    {
+      "id": "R2-3",
+      "question": "Why does the export subsystem isolate quantization tools in subprocesses and install llama.cpp/llm-compressor at runtime, and what correctness guarantees does that isolation actually provide?",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "unsloth/_compressed_quantize.py's docstring states it is launched as a subprocess 'so the Unsloth package, which patches transformers attention, is not imported here; llm-compressor needs an unpatched forward for calibration (e.g. NVFP4)', while save.py runs install_llama_cpp_clone_non_blocking/install_llama_cpp_make_non_blocking background installs for GGUF conversion — a deliberate fork-in-subprocess design that trades install latency and supply-chain risk for unpatched-model correctness.",
+        "depth_level": 3
+      },
+      "type": "high",
+      "status": "open",
+      "confidence": "high"
+    },
+    {
+      "id": "R2-4",
+      "question": "Why does the Studio backend implement a 2778-line per-vendor tool-call parser (self-healing tool calling) instead of relying on standardized function-calling schemas, and how does it scale as new model families ship?",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "studio/backend/core/inference/tool_call_parser.py contains vendor-specific strip/repair logic (_strip_mistral_calls, _strip_gemma_wrapperless_calls, _strip_glm_calls, _strip_function_xml_calls, _balanced_bracket_end) to recover malformed tool markup across ~10 model families, paired with README's 'self-healing tool calling' claim — a defensive parser design that grows linearly with model-vendor dialect surface and is hard to test exhaustively.",
+        "depth_level": 2
+      },
+      "type": "high",
+      "status": "open",
+      "confidence": "medium"
+    },
+    {
+      "id": "R2-5",
+      "question": "How does Unsloth centralize cross-hardware (CUDA/ROCm/Apple) environment adaptation in _gpu_init.py + device_type.py, and why is this adaptation implemented as import-time environment mutation (env vars, cache redirect, ASIC ID table paths) rather than a runtime abstraction layer?",
+      "genesis": {
+        "trigger": "observation",
+        "observation": "unsloth/_gpu_init.py redirects the HF cache via an early stdlib-only loader before huggingface_hub initializes, configures AMD GPU ID table paths, and fixes bitsandbytes ROCm arch detection; test fixtures like tests/_zoo_rocm_spoof.py and tests/_zoo_aggressive_cuda_spoof.py plus scripts/install_rocm_wsl_strixhalo.sh show hardware adaptation is encoded as import-time environment monkeypatching, making behavior dependent on import ordering.",
+        "depth_level": 2
+      },
+      "type": "medium",
+      "status": "open",
+      "confidence": "medium"
+    }
+  ]
+}
