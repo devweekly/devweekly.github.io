@@ -725,7 +725,7 @@ export function checkPreconditions(context) {
  */
 export async function runAllChecks(context, report, options = {}) {
   const preconditions = checkPreconditions(context);
-  const gates = await runGatedChecks(context, report, options);
+  const gates = await runGatedChecksUnified(context, report, options);
 
   const allPassed = preconditions.passed && gates.allPassed;
   const summary = `${preconditions.checks.filter((c) => c.passed).length}/${preconditions.checks.length} preconditions + ${gates.summary}`;
@@ -773,6 +773,98 @@ export async function runGatedChecks(context, report, options = {}) {
     allPassed,
     summary,
   };
+}
+
+/**
+ * Run all gated checks in a single LLM call.
+ *
+ * Replaces 17 sequential gate LLM calls with one structured evaluation call,
+ * drastically reducing end-to-end pipeline latency.
+ *
+ * @param {object} context — context.json object
+ * @param {string} report — report.md content
+ * @param {object} [options] — LLM options
+ * @returns {Promise<{results: Array, allPassed: boolean, summary: string}>}
+ */
+export async function runGatedChecksUnified(context, report, options = {}) {
+  const gateIds = Object.keys(GATES);
+  const criteria = gateIds
+    .map((id, idx) => {
+      const g = GATES[id];
+      return `${idx + 1}. ${id}: ${g.description}`;
+    })
+    .join("\n");
+
+  // Truncate report to bound prompt size (full report can be 10k+ chars → timeout).
+  // Keep head + tail: head covers overview/architecture, tail covers conclusion/gaps.
+  const REPORT_LIMIT = 6000;
+  const reportExcerpt = report.length > REPORT_LIMIT
+    ? report.slice(0, Math.floor(REPORT_LIMIT * 0.6)) +
+      "\n\n...(中段省略 " + (report.length - REPORT_LIMIT) + " 字)...\n\n" +
+      report.slice(-Math.floor(REPORT_LIMIT * 0.4))
+    : report;
+
+  const prompt = `
+你是资深架构评审员。请对以下 Repository Research 报告做一次综合质量门评审，同时评估下面列出的所有检查项。
+
+对每个检查项，输出：
+- passed: true/false
+- confidence: high/medium/low
+- justification: 为什么通过或不通过，引用报告中的具体内容
+- missing: 如果不通过，缺少什么（可空字符串）
+
+检查项与标准：
+${criteria}
+
+上下文 (context.json):
+\`\`\`json
+${JSON.stringify(context, null, 2)}
+\`\`\`
+
+报告 (report.md${report.length > REPORT_LIMIT ? "，已截断" : ""}):
+\`\`\`markdown
+${reportExcerpt}
+\`\`\`
+
+输出 JSON 格式（严格 JSON，不要 markdown 代码块）：
+{
+${gateIds.map((id) => `  "${id}": {"passed": true, "confidence": "high", "justification": "...", "missing": ""}`).join(",\n")}
+}
+`;
+
+  let result;
+  try {
+    result = await invokeLLMJSON(prompt, {
+      model: "opencode/deepseek-v4-flash-free",
+      ...options,
+      timeoutMs: options.timeoutMs || 300000,
+    });
+  } catch (err) {
+    // Fallback to sequential evaluation if unified call fails
+    console.warn(`  Unified gated checks failed: ${err.message}. Falling back to sequential gates.`);
+    return runGatedChecks(context, report, options);
+  }
+
+  const results = [];
+  for (const gateId of gateIds) {
+    const r = result?.[gateId] || {};
+    results.push({
+      id: gateId,
+      name: GATES[gateId].name,
+      description: GATES[gateId].description,
+      passed: Boolean(r.passed),
+      confidence: r.confidence || "medium",
+      justification: r.justification || "",
+      missing: r.missing || null,
+    });
+  }
+
+  const allPassed = results.every((r) => r.passed);
+  const passedCount = results.filter((r) => r.passed).length;
+  const failedCount = results.length - passedCount;
+  const summary = `${passedCount}/${results.length} gates passed (${failedCount} failed)`;
+
+  return { results, allPassed, summary };
 }
 
 /**

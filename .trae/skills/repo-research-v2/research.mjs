@@ -21,6 +21,7 @@ import { readFile, writeFile, mkdir, readdir, stat } from "node:fs/promises";
 import { join, resolve, basename } from "node:path";
 import { invokeLLM, invokeLLMJSON } from "./llm-runner.mjs";
 import { runAllChecks } from "./gated-checks.mjs";
+import { PipelineLogger } from "./pipeline-logger.mjs";
 import {
   resumeResearch,
   loadStableArtifact,
@@ -196,6 +197,27 @@ async function scanRepository(repoPath) {
   return { files, dirs };
 }
 
+// Mechanical repo type detection — fallback when LLM times out
+function detectRepoTypeMechanically(scan) {
+  const files = scan.files;
+  const hasFile = (name) => files.includes(name);
+  const hasGlob = (pat) => files.some((f) => pat.test(f));
+
+  if (hasFile("pyproject.toml") || hasFile("setup.py")) {
+    if (hasGlob(/train|model|torch|llm/i)) return { type: "AI Infrastructure", confidence: "medium", reasoning: "Python package with ML-related files", focus_areas: ["runtime", "architecture"] };
+    return { type: "Library", confidence: "medium", reasoning: "Python package with setup.py/pyproject.toml", focus_areas: ["architecture", "runtime"] };
+  }
+  if (hasFile("package.json")) {
+    const rootFiles = files.filter((f) => !f.includes("/"));
+    if (hasGlob(/cli|bin|command/i)) return { type: "CLI", confidence: "medium", reasoning: "Node project with CLI-related files", focus_areas: ["runtime", "architecture"] };
+    if (hasGlob(/component|page|layout/i)) return { type: "Web Service", confidence: "medium", reasoning: "Node project with web component files", focus_areas: ["architecture", "deployment"] };
+    return { type: "Library", confidence: "medium", reasoning: "Node project with package.json", focus_areas: ["architecture", "runtime"] };
+  }
+  if (hasFile("Cargo.toml")) return { type: "Library", confidence: "medium", reasoning: "Rust project with Cargo.toml", focus_areas: ["architecture", "runtime"] };
+  if (hasFile("go.mod")) return { type: "Library", confidence: "medium", reasoning: "Go project with go.mod", focus_areas: ["architecture", "runtime"] };
+  return { type: "Library", confidence: "low", reasoning: "Could not determine type mechanically", focus_areas: ["architecture", "runtime"] };
+}
+
 async function stageOneScan(workDir, repoPath, resume) {
   // Try loading from cache first (even with --force — stable artifacts are reusable)
   const cachedDirTree = await loadStableArtifact(workDir, "directory-tree");
@@ -215,19 +237,28 @@ async function stageOneScan(workDir, repoPath, resume) {
   await saveStableArtifact(workDir, "directory-tree", scan);
   console.log(`  ${scan.files.length} files, ${scan.dirs.length} directories\n`);
 
-  // LLM-based repo profile
+  // LLM-based repo profile (keep prompt small to avoid free-tier timeouts)
+  const topFiles = scan.files.slice(0, 20).join(", ");
+  const topDirs = scan.dirs.filter((d) => !d.includes("/")).slice(0, 20).join(", ");
   const prompt = `
 Analyze this repository structure to identify repo type.
 
-Files (first 50): ${scan.files.slice(0, 50).join(", ")}
-Dirs: ${scan.dirs.join(", ")}
+Files (first 20): ${topFiles}
+Top-level dirs: ${topDirs}
 
 Possible types: CLI / Library / Framework / Database / Compiler / Runtime / OS / SDK / AI Infrastructure / Web Service / Agent / Other
 
 Return JSON:
 {"type":"identified type","confidence":"high/medium/low","reasoning":"why","focus_areas":["focus1","focus2"]}
 `;
-  const profile = await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+  let profile;
+  try {
+    // Short timeout (120s) + 0 retries for Stage 1 — fallback to mechanical if LLM is slow
+    profile = await invokeLLMJSON(prompt, { model: DEFAULT_MODEL, _label: "stage1-repo-profile", timeoutMs: 120000, retryCount: 0 });
+  } catch (err) {
+    console.warn(`  LLM repo profile failed (${err.message}), using mechanical detection.`);
+    profile = detectRepoTypeMechanically(scan);
+  }
   await saveStableArtifact(workDir, "repository-profile", profile);
   console.log(`  Type: ${profile.type} (${profile.confidence})\n`);
 
@@ -452,7 +483,7 @@ async function identifyRepoType(repoPath, scan) {
 可能的类型: CLI / Library / Framework / Database / Compiler / Runtime / OS / SDK / AI Infrastructure / Web Service / Agent / Other
 输出 JSON: {"type":"识别的类型","confidence":"high/medium/low","reasoning":"为什么这样判断","focus_areas":["该类型仓库应该关注的领域"]}
 `;
-  return invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+  return invokeLLMJSON(prompt, { model: DEFAULT_MODEL, _label: "identifyRepoType" });
 }
 
 function generateFallbackQuestions(repoType, plan, count) {
@@ -500,7 +531,7 @@ Dimension: runtime|architecture|design_decisions|testing|deployment|history.
 Return JSON array only.
 `;
   try {
-    return await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+    return await invokeLLMJSON(prompt, { model: DEFAULT_MODEL, _label: "generateQuestions" });
   } catch (err) {
     console.warn("  Question generation failed/timed out, using fallback questions:", err.message);
     return generateFallbackQuestions(repoType, plan, Number(count));
@@ -582,46 +613,49 @@ async function mechanicalAnalysis(repoPath, scan, focus = "architecture", isFirs
 }
 
 // Enrich mechanical evidence with research insights (evidence.md:56 — key_findings must be insights, not summaries)
+// Batched: 5 files per LLM call to bound prompt size (was unbounded → timeout on large repos).
 async function enrichEvidenceWithFindings(evidence) {
   if (evidence.length === 0) return evidence;
-  const prompt = `
+  const BATCH = 5;
+  const enriched = [];
+  for (let start = 0; start < evidence.length; start += BATCH) {
+    const batch = evidence.slice(start, start + BATCH);
+    const baseIndex = start;
+    const prompt = `
 你是 Evidence Agent。为每个文件片段提炼 1-3 条研究洞察（key_findings）。
 洞察应该回答："这个文件揭示了什么设计意图/约束/模式/风险？"，而不是复述文件内容。
 
 文件片段：
-${evidence.map((e, i) => `[${i}] ${e.path} (purpose: ${e.purpose})\n${(e.content || "").slice(0, 400)}`).join("\n\n---\n\n")}
+${batch.map((e, i) => `[${baseIndex + i}] ${e.path} (purpose: ${e.purpose})\n${(e.content || "").slice(0, 400)}`).join("\n\n---\n\n")}
 
 输出 JSON：
-{"findings":[{"index":0,"key_findings":["洞察1","洞察2"],"evidence_strength":"A","related_questions":["R1-Q1"]}]}
+{"findings":[{"index":${baseIndex},"key_findings":["洞察1","洞察2"],"evidence_strength":"A","related_questions":["R1-Q1"]}]}
 
 要求：
 - 每个文件 1-3 条 key_findings
 - evidence_strength: A=源码实现直接证明, B=配置/文档, C=推断
 - related_questions 可空
 `;
-  try {
-    const result = await invokeLLMJSON(prompt, { model: DEFAULT_MODEL, timeoutMs: 120000 });
-    const findings = (result?.findings || []);
-    return evidence.map((e, i) => {
-      const f = findings.find((x) => x.index === i) || {};
-      return {
-        ...e,
+    let batchFindings = [];
+    try {
+      const result = await invokeLLMJSON(prompt, { model: DEFAULT_MODEL, _label: `enrichEvidence#${start}` });
+      batchFindings = result?.findings || [];
+    } catch (err) {
+      console.warn(`  Evidence enrichment batch ${start} failed:`, err.message);
+    }
+    for (let i = 0; i < batch.length; i++) {
+      const f = batchFindings.find((x) => x.index === baseIndex + i) || {};
+      enriched.push({
+        ...batch[i],
         key_findings: Array.isArray(f.key_findings) && f.key_findings.length > 0
           ? f.key_findings
           : ["原始内容片段，待进一步解读"],
         evidence_strength: f.evidence_strength || "B",
         related_questions: Array.isArray(f.related_questions) ? f.related_questions : [],
-      };
-    });
-  } catch (err) {
-    console.warn("  Evidence enrichment failed:", err.message);
-    return evidence.map((e) => ({
-      ...e,
-      key_findings: ["原始内容片段，待进一步解读"],
-      evidence_strength: "B",
-      related_questions: [],
-    }));
+      });
+    }
   }
+  return enriched;
 }
 
 function evidenceToInsightStr(evidence) {
@@ -640,7 +674,7 @@ async function buildRepositoryModel(repoType, evidence) {
 输出 JSON。
 `;
   try {
-    return await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+    return await invokeLLMJSON(prompt, { model: DEFAULT_MODEL, _label: "buildRepositoryModel" });
   } catch (err) {
     console.warn("  Repository model build failed:", err.message);
     return {
@@ -654,16 +688,51 @@ async function buildRepositoryModel(repoType, evidence) {
 }
 
 // Unified Architecture Interpretation + Risk + Challenge.
-// Replaces three separate LLM calls (interpretation, risk, challenge) with one structured call.
+// Split into two parallel calls to bound per-call output size and runtime:
+//   - interpretCore: 6 core interpretation items (constraints/forces/invariants/decisions/tradeoffs/mental_model)
+//   - riskAndChallenge: 7 risk/extra items + full challenge
+// Each call's JSON schema is half the original → faster, more stable on large repos.
 async function interpretAnalyzeAndChallenge(repoType, model, evidence) {
   const evidenceStr = evidenceToInsightStr(evidence);
   const modelSummary = condenseModelForInterpretation(model);
-  const prompt = `
-你是 Architecture Research Agent。基于 Repository Model 和证据，一次性完成三项任务：
-1. 解释系统的工程思想（interpretation）
-2. 评估修改风险（risk）
-3. 挑战中心假设并生成质疑记录（challenge）
 
+  const [coreRes, riskRes] = await Promise.allSettled([
+    interpretCore(repoType, modelSummary, evidenceStr),
+    riskAndChallenge(repoType, modelSummary, evidenceStr),
+  ]);
+
+  const core = coreRes.status === "fulfilled" ? coreRes.value : {};
+  const risk = riskRes.status === "fulfilled" ? riskRes.value : {};
+
+  return {
+    interpretation: {
+      engineering_constraints: core.engineering_constraints || [],
+      architectural_forces: core.architectural_forces || [],
+      architecture_invariants: core.architecture_invariants || [],
+      design_decisions: core.design_decisions || [],
+      tradeoffs: core.tradeoffs || [],
+      maintainer_mental_model: core.maintainer_mental_model || "",
+      intentional_omissions: risk.intentional_omissions || [],
+      architectural_tensions: risk.architectural_tensions || [],
+      complexity_drivers: risk.complexity_drivers || [],
+      leverage_points: risk.leverage_points || [],
+      blast_radius: risk.blast_radius || [],
+      change_difficulty: risk.change_difficulty || [],
+      design_smells: risk.design_smells || [],
+    },
+    challenge: risk.challenge || {
+      center_hypothesis: "",
+      key_assumptions: [],
+      competing_interpretations: [],
+      challenges: [],
+    },
+  };
+}
+
+// Call A: core interpretation (6 items) — smaller schema, faster.
+async function interpretCore(repoType, modelSummary, evidenceStr) {
+  const prompt = `
+你是 Architecture Research Agent。基于 Repository Model 和证据，解释系统的工程思想。
 严格控制输出长度，每个列表最多 3 项。
 
 仓库类型: ${repoType.type}
@@ -672,21 +741,41 @@ Model: ${JSON.stringify(modelSummary, null, 2)}
 
 输出 JSON（严格 JSON，不要 markdown 代码块）:
 {
-  "interpretation": {
-    "engineering_constraints": [{"constraint":"约束","evidence":["证据"]}],
-    "architectural_forces": [{"force":"作用力","evidence":["证据"]}],
-    "architecture_invariants": [{"invariant":"不变量","evidence":["证据"]}],
-    "design_decisions": [{"decision":"决策","chosen":"选择","rejected":["被拒绝方案"],"rejected_reason":"为什么拒绝","tradeoff":"牺牲了什么换取了什么","mature_alternatives_compared":[{"alternative":"方案","why_not":"为什么不用","evidence":["证据"]}]}],
-    "tradeoffs": [{"tradeoff":"权衡","evidence":["证据"]}],
-    "intentional_omissions": [{"omission":"省略","why":"理由","evidence":["证据"]}],
-    "architectural_tensions": [{"tension":"张力","evidence":["证据"]}],
-    "complexity_drivers": [{"driver":"复杂度来源","evidence":["证据"]}],
-    "leverage_points": [{"point":"杠杆点","evidence":["证据"]}],
-    "maintainer_mental_model": "维护者心智划分（一句话）",
-    "blast_radius": [{"component":"组件","impact_scope":["影响1","影响2"],"risk_level":"Critical|High|Medium|Low"}],
-    "change_difficulty": [{"change":"修改","difficulty":"Low|Medium|High","reason":"理由"}],
-    "design_smells": [{"smell":"smell名称","type":"deliberate","evidence":["证据"]}]
-  },
+  "engineering_constraints": [{"constraint":"约束","evidence":["证据"]}],
+  "architectural_forces": [{"force":"作用力","evidence":["证据"]}],
+  "architecture_invariants": [{"invariant":"不变量","evidence":["证据"]}],
+  "design_decisions": [{"decision":"决策","chosen":"选择","rejected":["被拒绝方案"],"rejected_reason":"为什么拒绝","tradeoff":"牺牲了什么换取了什么","mature_alternatives_compared":[{"alternative":"方案","why_not":"为什么不用","evidence":["证据"]}]}],
+  "tradeoffs": [{"tradeoff":"权衡","evidence":["证据"]}],
+  "maintainer_mental_model": "维护者心智划分（一句话）"
+}
+`;
+  try {
+    return await invokeLLMJSON(prompt, { model: DEFAULT_MODEL, _label: "interpretCore" });
+  } catch (err) {
+    console.warn("  interpretCore failed:", err.message);
+    return {};
+  }
+}
+
+// Call B: risk + challenge (7 risk items + challenge) — runs in parallel with interpretCore.
+async function riskAndChallenge(repoType, modelSummary, evidenceStr) {
+  const prompt = `
+你是 Architecture Research Agent。基于 Repository Model 和证据，评估修改风险并挑战中心假设。
+严格控制输出长度，每个列表最多 3 项。
+
+仓库类型: ${repoType.type}
+Model: ${JSON.stringify(modelSummary, null, 2)}
+证据洞察: ${evidenceStr}
+
+输出 JSON（严格 JSON，不要 markdown 代码块）:
+{
+  "intentional_omissions": [{"omission":"省略","why":"理由","evidence":["证据"]}],
+  "architectural_tensions": [{"tension":"张力","evidence":["证据"]}],
+  "complexity_drivers": [{"driver":"复杂度来源","evidence":["证据"]}],
+  "leverage_points": [{"point":"杠杆点","evidence":["证据"]}],
+  "blast_radius": [{"component":"组件","impact_scope":["影响1","影响2"],"risk_level":"Critical|High|Medium|Low"}],
+  "change_difficulty": [{"change":"修改","difficulty":"Low|Medium|High","reason":"理由"}],
+  "design_smells": [{"smell":"smell名称","type":"deliberate","evidence":["证据"]}],
   "challenge": {
     "center_hypothesis": "一句话中心假设",
     "key_assumptions": [{"assumption":"假设","evidence":["证据"],"challenged":true,"survived":true}],
@@ -696,32 +785,10 @@ Model: ${JSON.stringify(modelSummary, null, 2)}
 }
 `;
   try {
-    return await invokeLLMJSON(prompt, { model: DEFAULT_MODEL, timeoutMs: 180000 });
+    return await invokeLLMJSON(prompt, { model: DEFAULT_MODEL, _label: "riskAndChallenge" });
   } catch (err) {
-    console.warn("  Interpret+Risk+Challenge failed:", err.message);
-    return {
-      interpretation: {
-        engineering_constraints: [],
-        architectural_forces: [],
-        architecture_invariants: [],
-        design_decisions: [],
-        tradeoffs: [],
-        intentional_omissions: [],
-        architectural_tensions: [],
-        complexity_drivers: [],
-        leverage_points: [],
-        maintainer_mental_model: "",
-        blast_radius: [],
-        change_difficulty: [],
-        design_smells: [],
-      },
-      challenge: {
-        center_hypothesis: "",
-        key_assumptions: [],
-        competing_interpretations: [],
-        challenges: [],
-      },
-    };
+    console.warn("  riskAndChallenge failed:", err.message);
+    return {};
   }
 }
 
@@ -832,14 +899,12 @@ ${JSON.stringify(
 Instructions:
 1. For previous questions, set status to "answered" if evidence/interpretation directly answers them, "refuted" if challenge overturns them, otherwise keep "open".
 2. Generate exactly ${count} ${plan.firstRun ? "discovery" : "focused on the weakest dimension"} questions. Dimension must be one of: ${DIMENSIONS.join(", ")}.
-3. Compute coverage per dimension as {answered, total, ratio}.
-4. Pick next_focus as the dimension with lowest ratio (or "converged" if all ≥ 0.8).
-5. converged = true if all dimensions ratio ≥ 0.8 AND no critical open questions remain.
+3. Pick next_focus as the dimension with lowest coverage (or "converged" if all ≥ 0.8).
+4. converged = true if all dimensions ratio ≥ 0.8 AND no critical open questions remain.
 
-Return JSON:
+Return JSON (do NOT output coverage — it is computed mechanically from question statuses):
 {
   "questions": [{"id":"Q1","question":"...","dimension":"architecture","status":"open","confidence":"medium","genesis":{"trigger":"observation","observation":"...","depth_level":2},"type":"discovery"}],
-  "coverage": {"runtime":{"answered":0,"total":1,"ratio":0},...},
   "next_focus": "architecture",
   "converged": false,
   "reasoning": "one sentence"
@@ -847,7 +912,7 @@ Return JSON:
 `;
 
   try {
-    const result = await invokeLLMJSON(prompt, { model: DEFAULT_MODEL, timeoutMs: 180000 });
+    const result = await invokeLLMJSON(prompt, { model: DEFAULT_MODEL, timeoutMs: 180000, _label: "planAndReason" });
     const coverage = result?.coverage || computeCoverageFallback(result?.questions || previousQuestions || [], previousCoverage);
     const ratios = Object.entries(coverage).map(([, v]) => (typeof v === "number" ? v : v?.ratio ?? 0));
     const allCovered = ratios.length > 0 && ratios.every((r) => r >= 0.8);
@@ -922,7 +987,7 @@ ${JSON.stringify(
 输出 JSON：
 {"updated_questions":[{"id":"Q1","status":"answered"}]}
 `;
-  const result = await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+  const result = await invokeLLMJSON(prompt, { model: DEFAULT_MODEL, _label: "updateCoverage" });
   const statusMap = new Map((result?.updated_questions || []).map((u) => [u.id, u.status]));
 
   const updatedQuestions = questions.map((q) => ({
@@ -1304,23 +1369,34 @@ async function main() {
     await ensureDir(questionsDir);
   }
 
+  // Initialize pipeline logger (global, accessible from llm-runner.mjs)
+  const logger = new PipelineLogger(workDir);
+  globalThis.__pipelineLogger = logger;
+  logger.mark("Pipeline started", { repo: repoName });
+
   // ========================================================================
   // Stage 1: Scan Repository (conditional)
   // ========================================================================
 
+  logger.start("Stage 1: Scan Repository");
   const { scan, profile } = await stageOneScan(workDir, repoPath, resume);
+  logger.end("Stage 1: Scan Repository");
 
   // ========================================================================
   // Stage 2: Analyze Delta (conditional)
   // ========================================================================
 
+  logger.start("Stage 2: Analyze Delta");
   const delta = await stageTwoDelta(workDir, repoPath, resume);
+  logger.end("Stage 2: Analyze Delta");
 
   // ========================================================================
   // Stage 3: Research Planner
   // ========================================================================
 
+  logger.start("Stage 3: Research Planner");
   const plan = await stageThreePlanner(resume);
+  logger.end("Stage 3: Research Planner");
 
   // ========================================================================
   // Stage 3-5: Iterative Research Loop (per SKILL.md Stage 0-9, planner.md convergence)

@@ -20,8 +20,8 @@
 
 import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
-import { constants } from "node:fs";
-import { delimiter } from "node:path";
+import { constants, appendFileSync } from "node:fs";
+import { delimiter, join } from "node:path";
 
 // ---------------------------------------------------------------------------
 // CLI detection (OpenCode → Copilot fallback)
@@ -201,6 +201,25 @@ function aggregateOpenCodeOutput(stdout) {
 }
 
 // ---------------------------------------------------------------------------
+// LLM call logging (llm-calls.jsonl — per-call detail for post-run debugging)
+// ---------------------------------------------------------------------------
+
+/**
+ * Append a structured LLM call record to <workDir>/llm-calls.jsonl.
+ * Records: ts, label, prompt size + preview, response size, duration, status, error.
+ * Best-effort: silently skips if no pipeline logger / workDir is bound.
+ */
+function logLLMCall(entry) {
+  const logger = globalThis.__pipelineLogger;
+  if (!logger || !logger.workDir) return;
+  try {
+    appendFileSync(join(logger.workDir, "llm-calls.jsonl"), JSON.stringify(entry) + "\n", "utf-8");
+  } catch {
+    // logging must never break the pipeline
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Public API: invokeLLM
 // ---------------------------------------------------------------------------
 
@@ -216,8 +235,12 @@ export const DEFAULT_LLM_OPTIONS = {
   jsonMode: false,
   /** Override CLI detection (mainly for testing) */
   cli: null,
-  /** Timeout in ms (0 = no timeout) */
+  /** Timeout in ms (0 = no timeout). Default 5 min to bound total runtime. */
   timeoutMs: 300000,
+  /** Label for pipeline logging (used by research.mjs to identify calls) */
+  _label: "unnamed",
+  /** Number of retries on timeout (default: 0 — fail fast, let caller fallback) */
+  retryCount: 0,
 };
 
 /**
@@ -244,53 +267,124 @@ export async function invokeLLM(prompt, options = {}) {
     ? `[System]\n${opts.systemPrompt}\n\n[User]\n${finalPrompt}`
     : finalPrompt;
 
-  // Custom command via env var (highest priority — used by tests)
-  if (process.env.RESEARCH_REPO_LLM_CMD) {
-    const cmd = process.env.RESEARCH_REPO_LLM_CMD;
-    const parts = cmd.split(/\s+/);
-    const { stdout, code } = await run(parts[0], parts.slice(1), fullPrompt, opts.timeoutMs);
-    if (code !== 0) {
-      throw new Error(`RESEARCH_REPO_LLM_CMD exited with ${code}`);
-    }
-    return stdout.trim();
-  }
+  const callLabel = opts._label || "unnamed";
+  const promptChars = fullPrompt.length;
+  const startTs = Date.now();
 
-  // Auto-detect CLI
-  const cli = opts.cli || (await detectCLI());
+  // Retry once on timeout if retryCount > 0
+  const maxRetries = opts.retryCount !== undefined ? opts.retryCount : 1;
+  let lastError = null;
 
-  if (cli.name === "opencode") {
-    // OpenCode CLI v1.18+: use --format json (not --json), -m for model
-    // Model format: provider/model (e.g., "openai/gpt-5", "anthropic/claude-sonnet-4")
-    // If user passes bare model name, try as-is first
-    const modelArg = opts.model.includes("/") ? opts.model : opts.model;
-    const args = ["run", "--model", modelArg, "--format", "json"];
-    const { stdout, stderr, code } = await run(cli.path, args, fullPrompt, opts.timeoutMs);
-    if (code !== 0) {
-      throw new Error(`OpenCode CLI exited ${code}: ${stderr || stdout}`);
-    }
-    return aggregateOpenCodeOutput(stdout).trim();
-  }
-
-  if (cli.name === "copilot") {
-    const args = ["chat", "--json"];
-    const { stdout, stderr, code } = await run(cli.path, args, fullPrompt, opts.timeoutMs);
-    if (code !== 0) {
-      throw new Error(`Copilot CLI exited ${code}: ${stderr || stdout}`);
-    }
-    // Copilot CLI may emit plain text or JSON; try JSON parse first
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      const parsed = JSON.parse(stdout);
-      if (typeof parsed === "string") return parsed;
-      if (parsed.text) return String(parsed.text);
-      if (parsed.content) return String(parsed.content);
-      if (parsed.response) return String(parsed.response);
-    } catch {
-      // Not JSON — return raw stdout
+      let result;
+      // Custom command via env var (highest priority — used by tests)
+      if (process.env.RESEARCH_REPO_LLM_CMD) {
+        const cmd = process.env.RESEARCH_REPO_LLM_CMD;
+        const parts = cmd.split(/\s+/);
+        const { stdout, code } = await run(parts[0], parts.slice(1), fullPrompt, opts.timeoutMs);
+        if (code !== 0) {
+          throw new Error(`RESEARCH_REPO_LLM_CMD exited with ${code}`);
+        }
+        result = stdout.trim();
+      } else {
+        // Auto-detect CLI
+        const cli = opts.cli || (await detectCLI());
+
+        if (cli.name === "opencode") {
+          const modelArg = opts.model.includes("/") ? opts.model : opts.model;
+          const args = ["run", "--model", modelArg, "--format", "json"];
+          const { stdout, stderr, code } = await run(cli.path, args, fullPrompt, opts.timeoutMs);
+          if (code !== 0) {
+            throw new Error(`OpenCode CLI exited ${code}: ${stderr || stdout}`);
+          }
+          result = aggregateOpenCodeOutput(stdout).trim();
+        } else if (cli.name === "copilot") {
+          const args = ["chat", "--json"];
+          const { stdout, stderr, code } = await run(cli.path, args, fullPrompt, opts.timeoutMs);
+          if (code !== 0) {
+            throw new Error(`Copilot CLI exited ${code}: ${stderr || stdout}`);
+          }
+          try {
+            const parsed = JSON.parse(stdout);
+            if (typeof parsed === "string") result = parsed;
+            else if (parsed.text) result = String(parsed.text);
+            else if (parsed.content) result = String(parsed.content);
+            else if (parsed.response) result = String(parsed.response);
+            else result = stdout.trim();
+          } catch {
+            result = stdout.trim();
+          }
+        } else {
+          throw new Error(`Unknown CLI: ${cli.name}`);
+        }
+      }
+
+      const duration_ms = Date.now() - startTs;
+      // Log success via global logger if available
+      if (globalThis.__pipelineLogger) {
+        globalThis.__pipelineLogger.llmCall(callLabel, {
+          promptChars,
+          status: "success",
+          duration_ms,
+          model: opts.model,
+        });
+      }
+      logLLMCall({
+        ts: new Date().toISOString(),
+        label: callLabel,
+        model: opts.model,
+        promptChars,
+        promptPreview: fullPrompt.slice(0, 200),
+        responseChars: result.length,
+        duration_ms,
+        status: "success",
+      });
+      return result;
+    } catch (err) {
+      lastError = err;
+      const duration_ms = Date.now() - startTs;
+      const isTimeout = err.message && err.message.includes("timed out");
+
+      if (attempt < maxRetries && isTimeout) {
+        if (globalThis.__pipelineLogger) {
+          globalThis.__pipelineLogger.llmCall(callLabel, {
+            promptChars,
+            status: "timeout",
+            duration_ms,
+            model: opts.model,
+            error: `attempt ${attempt + 1}, retrying`,
+          });
+        }
+        console.warn(`  LLM "${callLabel}" timed out (${(duration_ms / 1000).toFixed(0)}s), retrying (${attempt + 1}/${maxRetries})...`);
+        continue;
+      }
+
+      if (globalThis.__pipelineLogger) {
+        globalThis.__pipelineLogger.llmCall(callLabel, {
+          promptChars,
+          status: isTimeout ? "timeout" : "error",
+          duration_ms,
+          model: opts.model,
+          error: err.message,
+        });
+      }
+      logLLMCall({
+        ts: new Date().toISOString(),
+        label: callLabel,
+        model: opts.model,
+        promptChars,
+        promptPreview: fullPrompt.slice(0, 200),
+        responseChars: 0,
+        duration_ms,
+        status: isTimeout ? "timeout" : "error",
+        error: err.message,
+      });
+      throw err;
     }
-    return stdout.trim();
   }
 
-  throw new Error(`Unknown CLI: ${cli.name}`);
+  throw lastError;
 }
 
 /**
