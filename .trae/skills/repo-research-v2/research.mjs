@@ -365,7 +365,8 @@ async function readEvidenceLog(workDir) {
 // ---------------------------------------------------------------------------
 
 async function stageThreePlanner(resume) {
-  const isFirstRun = !resume.resumed;
+  // A round has been executed once context.current_round is set (by the checkpoint write).
+  const isFirstRun = !resume.context || !resume.context.current_round;
 
   if (isFirstRun) {
     console.log("Stage 3: Research Planner — first run, full exploration.\n");
@@ -426,27 +427,57 @@ async function identifyRepoType(repoPath, scan) {
   return invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
 }
 
+function fallbackQuestions(repoType, plan) {
+  const dims = ["architecture", "runtime", "design_decisions", "testing", "deployment", "history"];
+  const count = plan.firstRun ? 6 : 3;
+  const questions = [];
+  for (let i = 0; i < count; i++) {
+    const dim = dims[i % dims.length];
+    questions.push({
+      id: `Q${i + 1}`,
+      question: plan.firstRun
+        ? `What defines the ${dim} of this ${repoType.type} repository?`
+        : `How does ${plan.focus} shape the ${dim} design?`,
+      genesis: {
+        trigger: "observation",
+        observation: plan.firstRun ? `Initial scan suggests ${dim} needs clarification` : `Round focus: ${plan.focus}`,
+        depth_level: plan.firstRun ? 2 : 3,
+      },
+      type: plan.firstRun ? "discovery" : "challenge",
+      status: "open",
+      confidence: "medium",
+      dimension: dim,
+    });
+  }
+  return questions;
+}
+
 async function generateQuestions(repoType, scan, plan) {
-  const topFiles = ["package.json", "README.md", "ARCHITECTURE.md", "AGENTS.md", "CONTRIBUTING.md"]
+  const topFiles = ["package.json", "README.md", "ARCHITECTURE.md"]
     .filter((f) => scan.files.includes(f)).join(", ");
-  const topDirs = scan.dirs.filter((d) => !d.includes("/") || d.split("/").length === 2).slice(0, 20).join(", ");
+  const topDirs = scan.dirs.filter((d) => !d.includes("/")).slice(0, 10).join(", ");
 
   const focus = plan.firstRun
     ? `full exploration of the ${repoType.type} repository`
     : `focused investigation on ${plan.focus}`;
-  const count = plan.firstRun ? "6-10" : "3-5";
-  const depthHint = plan.minDepth ? `minimum depth_level ${plan.minDepth}` : "include some depth 1-2 questions";
+  const count = plan.firstRun ? "5" : "3";
+  const depthHint = plan.minDepth ? `minimum depth_level ${plan.minDepth}` : "depth 1-2";
 
   const prompt = `
-You are analyzing a ${repoType.type} repository.
-Top-level directories: ${topDirs}
+Analyze a ${repoType.type} repository.
+Top dirs: ${topDirs}
 Key files: ${topFiles}
 Focus: ${focus}
-Generate ${count} research questions. Each must have genesis (trigger+observation+depth_level). Depth: ${depthHint}.
-Return ONLY a JSON array like:
-[{"id":"Q1","question":"Why X?","genesis":{"trigger":"observation","observation":"Pattern X","depth_level":2},"type":"critical","status":"open","confidence":"medium"}]
+Generate exactly ${count} research questions. Each: id, question, genesis(trigger,observation,depth_level), type, status=open, confidence, dimension.
+Dimension: runtime|architecture|design_decisions|testing|deployment|history.
+Return JSON array only.
 `;
-  return invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+  try {
+    return await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+  } catch (err) {
+    console.warn("  Question generation failed/timed out, using fallback questions:", err.message);
+    return fallbackQuestions(repoType, plan);
+  }
 }
 
 async function mechanicalAnalysis(repoPath, scan, focus = "architecture", isFirstRun = true, existingPaths = new Set()) {
@@ -564,12 +595,18 @@ ${evidence.map((e, i) => `[${i}] ${e.path} (purpose: ${e.purpose})\n${(e.content
   }
 }
 
+function evidenceToInsightStr(evidence) {
+  return evidence
+    .map((e) => `--- ${e.path} (${e.purpose || "mechanical-scan"}) ---\n${(e.key_findings || []).join("; ")}`)
+    .join("\n\n");
+}
+
 async function buildRepositoryModel(repoType, evidence) {
-  const evidenceStr = evidence.map((e) => `--- ${e.path} ---\n${e.content}`).join("\n\n");
+  const evidenceStr = evidenceToInsightStr(evidence);
   const prompt = `
 构建 Repository Model，保持简洁（最多各 4 条）。
 仓库类型: ${repoType.type}
-证据: ${evidenceStr}
+证据洞察: ${evidenceStr}
 5 维模型: structure(modules+boundaries), behavior(control_flow+data_flow), ownership(state+responsibility), extension(plugin_points+public_api), evolution(major_changes+current_direction)
 输出 JSON。
 `;
@@ -577,11 +614,12 @@ async function buildRepositoryModel(repoType, evidence) {
 }
 
 async function architectureInterpretation(repoType, model, evidence) {
-  const evidenceStr = evidence.map((e) => `--- ${e.path} ---\n${e.content}`).join("\n\n");
+  const evidenceStr = evidenceToInsightStr(evidence);
+  const modelSummary = condenseModelForInterpretation(model);
   const prompt = `
 基于 Repository Model 重建系统的工程思想。
 仓库类型: ${repoType.type}
-Model: ${JSON.stringify(model, null, 2)}
+Model: ${JSON.stringify(modelSummary, null, 2)}
 证据: ${evidenceStr}
 
 产出以下类型（必须引用证据）:
@@ -601,47 +639,104 @@ Model: ${JSON.stringify(model, null, 2)}
 - complexity_drivers（≤3）: 最核心的复杂度来源（如"多 provider 兼容"、"跨 surface 状态同步"）。**区别于 architectural_tensions**: tensions 是两个作用力的冲突，complexity_drivers 是复杂度的根本来源
 - leverage_points（≤3）: 杠杆点
 - maintainer_mental_model: 维护者心智划分
+
+输出 JSON（严格 JSON，保持简洁）:
+{"engineering_constraints":[{"constraint":"约束","evidence":["证据"]}],"architectural_forces":[{"force":"作用力","evidence":["证据"]}],"architecture_invariants":[{"invariant":"不变量","evidence":["证据"]}],"design_decisions":[{"decision":"决策","chosen":"选择","rejected":["被拒绝方案"],"rejected_reason":"为什么拒绝","tradeoff":"牺牲了什么换取了什么","mature_alternatives_compared":[{"alternative":"Event Sourcing","why_not":"为什么不用","evidence":["ev-001"]}]}],"tradeoffs":[{"tradeoff":"权衡","evidence":["证据"]}],"intentional_omissions":[{"omission":"省略","why":"理由","evidence":["证据"]}],"architectural_tensions":[{"tension":"张力","evidence":["证据"]}],"complexity_drivers":[{"driver":"复杂度来源","evidence":["证据"]}],"leverage_points":[{"point":"杠杆点","evidence":["证据"]}],"maintainer_mental_model":"维护者心智划分"}
+`;
+  return invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+}
+
+// Keep only the most informative parts of the model for interpretation/risk calls.
+function condenseModelForInterpretation(model) {
+  const take = (arr, n) => (Array.isArray(arr) ? arr.slice(0, n) : arr);
+  return {
+    structure: {
+      modules: take(model?.structure?.modules, 4),
+      boundaries: take(model?.structure?.boundaries, 4),
+    },
+    behavior: {
+      control_flow: take(model?.behavior?.control_flow, 3),
+      data_flow: take(model?.behavior?.data_flow, 3),
+    },
+    ownership: {
+      state: take(model?.ownership?.state, 3),
+      responsibility: take(model?.ownership?.responsibility, 3),
+    },
+    extension: {
+      plugin_points: take(model?.extension?.plugin_points, 3),
+      public_api: take(model?.extension?.public_api, 3),
+    },
+    evolution: {
+      major_changes: take(model?.evolution?.major_changes, 3),
+      current_direction: take(model?.evolution?.current_direction, 3),
+    },
+  };
+}
+
+// Risk analysis is split out from architectureInterpretation to keep each LLM call small and fast.
+async function riskAnalysis(repoType, model, interpretation) {
+  const modelSummary = condenseModelForInterpretation(model);
+  const prompt = `
+基于 Repository Model 和核心解释，评估修改风险与难度。
+仓库类型: ${repoType.type}
+Model: ${JSON.stringify(modelSummary, null, 2)}
+解释: ${JSON.stringify(interpretation, null, 2)}
+
+产出:
 - blast_radius（≤9）: 修改影响范围——覆盖所有 Critical + High，Medium/Low 选录。每个含 {component, impact_scope[], risk_level}
 - change_difficulty（≥5, ≤10）: 修改难度评估，覆盖不同修改类型。每个含 {change, difficulty, reason}
 - design_smells（≤5）: Maintainer 刻意接受的 smell，每个含 {smell, type: "deliberate"|"tech_debt", evidence}
 
-输出 JSON（严格 JSON，保持简洁）:
-{"engineering_constraints":[{"constraint":"约束","evidence":["证据"]}],"architectural_forces":[{"force":"作用力","evidence":["证据"]}],"architecture_invariants":[{"invariant":"不变量","evidence":["证据"]}],"design_decisions":[{"decision":"决策","chosen":"选择","rejected":["被拒绝方案"],"rejected_reason":"为什么拒绝","tradeoff":"牺牲了什么换取了什么","mature_alternatives_compared":[{"alternative":"Event Sourcing","why_not":"为什么不用","evidence":["ev-001"]}]}],"tradeoffs":[{"tradeoff":"权衡","evidence":["证据"]}],"intentional_omissions":[{"omission":"省略","why":"理由","evidence":["证据"]}],"architectural_tensions":[{"tension":"张力","evidence":["证据"]}],"complexity_drivers":[{"driver":"复杂度来源","evidence":["证据"]}],"leverage_points":[{"point":"杠杆点","evidence":["证据"]}],"maintainer_mental_model":"维护者心智划分","blast_radius":[{"component":"组件","impact_scope":["影响1","影响2"],"risk_level":"Critical"}],"change_difficulty":[{"change":"修改","difficulty":"Low","reason":"理由"}],"design_smells":[{"smell":"smell名称","type":"deliberate","evidence":["证据"]}]}
+输出 JSON:
+{"blast_radius":[{"component":"组件","impact_scope":["影响1","影响2"],"risk_level":"Critical"}],"change_difficulty":[{"change":"修改","difficulty":"Low","reason":"理由"}],"design_smells":[{"smell":"smell名称","type":"deliberate","evidence":["证据"]}]}
 `;
   return invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
+}
+
+// Ultra-compact challenge input to avoid timeouts on the free-tier model.
+function compactChallengeSummary(interpretation, model) {
+  const extract = (arr, key, n) =>
+    (arr || [])
+      .slice(0, n)
+      .map((x) => (key ? x[key] : x))
+      .filter(Boolean);
+  return {
+    modules: extract(model?.structure?.modules, null, 4),
+    decisions: extract(interpretation?.design_decisions, "decision", 3),
+    invariants: extract(interpretation?.architecture_invariants, "invariant", 3),
+    tensions: extract(interpretation?.architectural_tensions, "tension", 3),
+    complexities: extract(interpretation?.complexity_drivers, "driver", 3),
+  };
 }
 
 async function challengeModel(interpretation, model) {
+  const summary = compactChallengeSummary(interpretation, model);
   const prompt = `
-挑战以下架构解释。对每个结论执行: 移除测试、假设翻转、边界测试、时间测试。
-架构解释: ${JSON.stringify(interpretation, null, 2)}
-Model: ${JSON.stringify(model, null, 2)}
-最多选择 5 个关键挑战（reasoning.md 上限），保持 JSON 简洁。
+根据下面的架构摘要，生成对该架构的中心假设、关键假设和 2 条质疑记录。
+摘要: ${JSON.stringify(summary, null, 2)}
 
-**challenge_record 每条必须含 5 字段**（reasoning.md schema）：
-- target: 被质疑的实现决策
+质疑记录（每条 5 字段）：
+- target: 被质疑的决策/假设
 - method: 质疑方法（移除测试/假设翻转/边界测试/时间测试）
-- counter_evidence: 找到的反证（如果有，基于代码；无则填 null）
+- counter_evidence: 反证或 null
 - result: "survived" | "weakened" | "overturned"
-- notes: 补充说明（如 model_delta、影响范围等）
+- notes: 补充说明
 
 输出 JSON:
-{"challenges":[{"target":"被质疑的决策","method":"移除测试","counter_evidence":"反证或null","result":"survived","notes":"补充说明"}],"center_hypothesis":"一句话中心假设","key_assumptions":[{"assumption":"假设","evidence":["证据"],"challenged":true,"survived":true}],"competing_interpretations":[{"interpretation":"备选","evidence":["证据"],"confidence":"medium"}]}
+{"center_hypothesis":"一句话中心假设","key_assumptions":[{"assumption":"假设","evidence":["证据"],"challenged":true,"survived":true}],"competing_interpretations":[{"interpretation":"备选","evidence":["证据"],"confidence":"medium"}],"challenges":[{"target":"被质疑的决策","method":"假设翻转","counter_evidence":null,"result":"survived","notes":"补充说明"}]}
 `;
   return invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
 }
 
-// Reasoning Agent: update coverage based on evidence + questions + interpretation
-// Per reasoning.md: coverage must be calculable {answered, total, ratio} across 6 dimensions,
-// updated by LLM judgment (not mechanical computation). Coverage is monotonically increasing
-// unless challenge refutes a conclusion or code changes.
+// Reasoning Agent: decide which questions are answered by this round's evidence,
+// then compute coverage mechanically per dimension.
 async function updateCoverage(questions, evidence, interpretation, challenge, prevCoverage) {
   const DIMENSIONS = ["runtime", "architecture", "design_decisions", "testing", "deployment", "history"];
-  const prevStr = prevCoverage ? JSON.stringify(prevCoverage, null, 2) : "{}";
-  const prompt = `
-你是 Reasoning Agent。根据本轮收集的证据和推理，更新研究覆盖度。
 
-**6 个维度定义**（reasoning.md）：
+  const prompt = `
+你是 Reasoning Agent。本轮收集了一批证据和质疑结果，请判断哪些问题已经被充分回答。
+
+**维度定义**：
 - runtime: 运行时架构、启动流程、请求生命周期
 - architecture: 模块组织、边界、分层、模式
 - design_decisions: 关键决策、替代方案、权衡
@@ -649,53 +744,68 @@ async function updateCoverage(questions, evidence, interpretation, challenge, pr
 - deployment: 构建、部署、CI/CD
 - history: 演进历史、重大变化、技术债务
 
-**计算规则**：
-- answered = 该维度问题中已回答的数量（status ∈ {{answered, validated}}）
-- total = 该维度问题总数
-- ratio = answered / total
-- **coverage 单调增加**：正常研究时只增不降；challenge 成功推翻旧结论时对应维度可降；代码变化时受影响维度降回 0.3
+**判断规则**：
+- 如果证据直接支持答案，status 改为 answered
+- 如果被 challenge 强反证推翻，status 改为 refuted
+- 证据不足则保持 open
 
-**当前问题列表**：
-${JSON.stringify(questions.map((q) => ({ id: q.id, question: q.question, type: q.type, status: q.status })), null, 2)}
+**问题列表**：
+${JSON.stringify(
+    questions.map((q) => ({
+      id: q.id,
+      question: q.question,
+      dimension: q.dimension || "architecture",
+      status: q.status,
+    })),
+    null,
+    2
+  )}
 
-**证据列表**（${evidence.length} 条）：
-${evidence.map((e) => `- ${e.path}: ${e.purpose || ""}`).join("\n")}
+**证据洞察**（${evidence.length} 条）：
+${evidenceToInsightStr(evidence)}
 
-**架构解释摘要**：
-${JSON.stringify({ decisions: interpretation?.design_decisions?.length || 0, tensions: interpretation?.architectural_tensions?.length || 0, constraints: interpretation?.engineering_constraints?.length || 0 }, null, 2)}
+**质疑摘要**：
+${JSON.stringify(
+    {
+      center_hypothesis: challenge?.center_hypothesis,
+      challenges: (challenge?.challenges || []).map((c) => ({ target: c.target, result: c.result })),
+    },
+    null,
+    2
+  )}
 
-**质疑结果摘要**：
-${JSON.stringify({ challenges: challenge?.challenges?.length || 0, survived: challenge?.key_assumptions?.filter((a) => a.survived)?.length || 0 }, null, 2)}
-
-**前一轮 coverage**（单调增加基准）：
-${prevStr}
-
-请判断每个问题属于哪个维度，以及是否已被本轮证据回答。然后输出 6 维 coverage。
-
-输出 JSON（严格 JSON，6 个维度必须齐全）：
-{"runtime":{{"answered":N,"total":M,"ratio":N/M}},"architecture":{{"answered":N,"total":M,"ratio":N/M}},"design_decisions":{{"answered":N,"total":M,"ratio":N/M}},"testing":{{"answered":N,"total":M,"ratio":N/M}},"deployment":{{"answered":N,"total":M,"ratio":N/M}},"history":{{"answered":N,"total":M,"ratio":N/M}}}}
+输出 JSON：
+{"updated_questions":[{"id":"Q1","status":"answered"}]}
 `;
   const result = await invokeLLMJSON(prompt, { model: DEFAULT_MODEL });
-  // Ensure all 6 dimensions present and ratio computed
+  const statusMap = new Map((result?.updated_questions || []).map((u) => [u.id, u.status]));
+
+  const updatedQuestions = questions.map((q) => ({
+    ...q,
+    status: statusMap.has(q.id) ? statusMap.get(q.id) : q.status,
+  }));
+
   const coverage = {};
   for (const dim of DIMENSIONS) {
-    const entry = result?.[dim] || { answered: 0, total: 0, ratio: 0 };
-    const answered = Number(entry.answered) || 0;
-    const total = Number(entry.total) || 0;
+    const total = updatedQuestions.filter((q) => (q.dimension || "architecture") === dim).length;
+    const answered = updatedQuestions.filter(
+      (q) => (q.dimension || "architecture") === dim && ["answered", "validated"].includes(q.status)
+    ).length;
+    coverage[dim] = { answered, total, ratio: total > 0 ? Number((answered / total).toFixed(2)) : 0 };
+
     // Monotonic increase: never lower than previous round
     const prev = prevCoverage?.[dim];
-    const prevAnswered = typeof prev === "object" ? (prev?.answered || 0) : 0;
-    const prevTotal = typeof prev === "object" ? (prev?.total || 0) : 0;
-    coverage[dim] = {
-      answered: Math.max(prevAnswered, answered),
-      total: Math.max(prevTotal, total),
-      ratio: 0, // computed below
-    };
-    coverage[dim].ratio = coverage[dim].total > 0
-      ? Number((coverage[dim].answered / coverage[dim].total).toFixed(2))
-      : 0;
+    if (prev && typeof prev === "object") {
+      coverage[dim].answered = Math.max(coverage[dim].answered, Number(prev.answered) || 0);
+      coverage[dim].total = Math.max(coverage[dim].total, Number(prev.total) || 0);
+      coverage[dim].ratio =
+        coverage[dim].total > 0
+          ? Number((coverage[dim].answered / coverage[dim].total).toFixed(2))
+          : 0;
+    }
   }
-  return coverage;
+
+  return { questions: updatedQuestions, coverage };
 }
 
 async function stageFourResearch(repoPath, resume, plan, scan, profile, workDir) {
@@ -759,16 +869,22 @@ async function stageFourResearch(repoPath, resume, plan, scan, profile, workDir)
   // Model Agent reads evidence from evidence-log.jsonl (per evidence.md — not from memory)
   const evidenceFromLog = await readEvidenceLog(workDir);
 
-  // Generate questions and build model are independent (both read evidence) — run in parallel.
-  console.log("  4b: Generating questions + Building Repository Model (parallel)...");
-  const [questions, model] = await Promise.all([
-    generateQuestions(repoType, scan, plan),
-    buildRepositoryModel(repoType, evidenceFromLog),
-  ]);
+  // Generate questions and build model are independent, but OpenCode CLI cannot handle
+  // concurrent invocations ("database is locked"), so we run them sequentially.
+  console.log("  4b: Generating questions...");
+  const questions = await generateQuestions(repoType, scan, plan);
+
+  console.log("  4b.1: Building Repository Model...");
+  const model = await buildRepositoryModel(repoType, evidenceFromLog);
 
   // Interpretation — reads from evidence-log.jsonl
   console.log("  4c: Architecture interpretation...");
-  const interpretation = await architectureInterpretation(repoType, model, evidenceFromLog);
+  const coreInterpretation = await architectureInterpretation(repoType, model, evidenceFromLog);
+
+  // Risk analysis (split out to keep each LLM call small)
+  console.log("  4c.1: Risk analysis...");
+  const risk = await riskAnalysis(repoType, model, coreInterpretation);
+  const interpretation = { ...coreInterpretation, ...risk };
 
   // Challenge
   console.log("  4d: Challenging model...");
@@ -785,7 +901,7 @@ async function stageFourResearch(repoPath, resume, plan, scan, profile, workDir)
 
   // Reasoning Agent updates coverage (per reasoning.md: LLM judgment, not mechanical)
   console.log("  4f: Updating coverage (Reasoning)...");
-  const coverage = await updateCoverage(
+  const { questions: updatedQuestions, coverage } = await updateCoverage(
     allQuestions,
     evidenceFromLog,
     interpretation,
@@ -796,7 +912,7 @@ async function stageFourResearch(repoPath, resume, plan, scan, profile, workDir)
   return {
     plan,
     evidence: evidenceFromLog, // Return evidence from log, not memory
-    questions: allQuestions,
+    questions: updatedQuestions,
     model,
     interpretation,
     challenge,
@@ -1056,6 +1172,25 @@ async function main() {
     };
     await writeJson(join(questionsDir, "summary.json"), summary);
 
+    // Checkpoint context so the next Planner reads updated coverage/stats (fixes coverage=0% across rounds)
+    const existingContext = await tryReadJson(contextPath) || {};
+    const roundTotal = currentResult.questions.length;
+    const roundAnswered = currentResult.questions.filter((q) => q.status === "answered" || q.status === "validated").length;
+    const roundValidated = currentResult.questions.filter((q) => q.status === "validated").length;
+    const prevStats = existingContext.question_statistics || { rounds: 0, total_questions: 0, answered: 0, validated: 0 };
+    await writeJson(contextPath, {
+      ...existingContext,
+      current_round: currentPlan.round,
+      current_question_file: roundFile,
+      coverage: currentResult.coverage,
+      question_statistics: {
+        rounds: currentPlan.round,
+        total_questions: prevStats.total_questions + roundTotal,
+        answered: prevStats.answered + roundAnswered,
+        validated: prevStats.validated + roundValidated,
+      },
+    });
+
     // Check convergence (per planner.md: Planner returns {converged, next_focus})
     if (currentPlan.converged) {
       console.log(`\n=== Research converged after round ${currentPlan.round} ===\n`);
@@ -1117,6 +1252,15 @@ async function main() {
   // complexity_drivers: NOT architectural_tensions — complexity sources, not force conflicts
   const complexityDrivers = (result.interpretation.complexity_drivers || []).map((d) => d.driver || d);
 
+  // Load cumulative stats already checkpointed during the research loop.
+  const latestContext = await tryReadJson(contextPath) || {};
+  const questionStatistics = latestContext.question_statistics || {
+    rounds: currentPlan.round,
+    total_questions: totalQ,
+    answered: answeredQ,
+    validated: validatedQ,
+  };
+
   const context = {
     user_input: `分析 ${repoPath} 仓库的架构`,
     resume: {
@@ -1127,12 +1271,7 @@ async function main() {
     current_round: currentPlan.round,
     current_question_file: roundFile,
     model_stability: modelStability,
-    question_statistics: {
-      rounds: currentPlan.round,
-      total_questions: totalQ + (resume.context?.question_statistics?.total_questions || 0),
-      answered: answeredQ + (resume.context?.question_statistics?.answered || 0),
-      validated: validatedQ + (resume.context?.question_statistics?.validated || 0),
-    },
+    question_statistics: questionStatistics,
     coverage: result.coverage,
     architecture_model: {
       center_hypothesis: result.challenge.center_hypothesis,

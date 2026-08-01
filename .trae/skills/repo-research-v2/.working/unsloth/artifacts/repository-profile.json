@@ -1,0 +1,11 @@
+{
+  "type": "AI Infrastructure",
+  "confidence": "high",
+  "reasoning": "This is the unsloth repository, a Python library (pyproject.toml, unsloth/ package) purpose-built for ultra-fast LLM fine-tuning, shipping custom Triton/CUDA kernels (unsloth/kernels/moe/grouped_gemm), a CLI (unsloth_cli/ with subcommands, cli.py, install.sh/install.ps1/build.sh), and a bundled Studio application (studio/backend Python services + studio/frontend + studio/src-tauri desktop shell). It is training/runtime infrastructure on top of transformers/PEFT rather than a generic library, a compiler, or a web service alone.",
+  "focus_areas": [
+    "Efficient LLM fine-tuning (LoRA/QLoRA) with custom kernels (MoE grouped GEMM, flash attention)",
+    "Python library API (FastLanguageModel, training/export/merging utilities)",
+    "CLI tooling and multi-platform install scripts (build.sh, install.ps1, install.sh, cli.py)",
+    "Studio app: Python backend (training/inference/RAG/hub/security routes) + React frontend + Tauri desktop shell"
+  ]
+}

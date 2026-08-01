@@ -1,0 +1,7010 @@
+{
+  "total_symbols": 1401,
+  "symbols": [
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "class",
+      "name": "Hit"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "class",
+      "name": "Hit"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "run"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "read_pkg_at"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "read_pkg_file"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "all_decl_names"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "_resolve_install_path"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "_deps_of"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "reachable_from_head"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "classify"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "lockfile_root_sync"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "types_orphan_warnings"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "package_json_extra_refs"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "build_bin_to_pkg"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "_next_real_bin"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "scripts_bin_refs"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "tsconfig_compiler_types_refs"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "enumerate_dep_usage"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "find_imports_without_decl"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "grep_repo"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "_read_file"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "find_usage"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "_candidate_bin_names"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "find_command_usage"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "types_target_name"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "find_types_runtime_usage"
+    },
+    {
+      "file": "scripts/check_frontend_dep_removal.py",
+      "type": "function",
+      "name": "main"
+    },
+    {
+      "file": "scripts/check_new_install_scripts.py",
+      "type": "class",
+      "name": "Finding"
+    },
+    {
+      "file": "scripts/check_new_install_scripts.py",
+      "type": "class",
+      "name": "Finding"
+    },
+    {
+      "file": "scripts/check_new_install_scripts.py",
+      "type": "function",
+      "name": "_strip_nm_prefix"
+    },
+    {
+      "file": "scripts/check_new_install_scripts.py",
+      "type": "function",
+      "name": "_collect_install_script_entries"
+    },
+    {
+      "file": "scripts/check_new_install_scripts.py",
+      "type": "function",
+      "name": "_load_lockfile"
+    },
+    {
+      "file": "scripts/check_new_install_scripts.py",
+      "type": "function",
+      "name": "_fetch_registry_scripts"
+    },
+    {
+      "file": "scripts/check_new_install_scripts.py",
+      "type": "function",
+      "name": "diff_new_install_scripts"
+    },
+    {
+      "file": "scripts/check_new_install_scripts.py",
+      "type": "function",
+      "name": "main"
+    },
+    {
+      "file": "scripts/enforce_kwargs_spacing.py",
+      "type": "function",
+      "name": "_atomic_write_text"
+    },
+    {
+      "file": "scripts/enforce_kwargs_spacing.py",
+      "type": "function",
+      "name": "enforce_spacing"
+    },
+    {
+      "file": "scripts/enforce_kwargs_spacing.py",
+      "type": "function",
+      "name": "remove_redundant_passes"
+    },
+    {
+      "file": "scripts/enforce_kwargs_spacing.py",
+      "type": "function",
+      "name": "remove_blank_after_short_import"
+    },
+    {
+      "file": "scripts/enforce_kwargs_spacing.py",
+      "type": "function",
+      "name": "_def_specs_by_line"
+    },
+    {
+      "file": "scripts/enforce_kwargs_spacing.py",
+      "type": "function",
+      "name": "normalize_def_trailing_comma"
+    },
+    {
+      "file": "scripts/enforce_kwargs_spacing.py",
+      "type": "function",
+      "name": "_split_string_token"
+    },
+    {
+      "file": "scripts/enforce_kwargs_spacing.py",
+      "type": "function",
+      "name": "_string_pieces"
+    },
+    {
+      "file": "scripts/enforce_kwargs_spacing.py",
+      "type": "function",
+      "name": "_merge_string_run"
+    },
+    {
+      "file": "scripts/enforce_kwargs_spacing.py",
+      "type": "function",
+      "name": "_enclosing_stmt"
+    },
+    {
+      "file": "scripts/enforce_kwargs_spacing.py",
+      "type": "function",
+      "name": "_fold_collapses"
+    },
+    {
+      "file": "scripts/enforce_kwargs_spacing.py",
+      "type": "function",
+      "name": "merge_adjacent_string_literals"
+    },
+    {
+      "file": "scripts/enforce_kwargs_spacing.py",
+      "type": "function",
+      "name": "collapse_short_asserts"
+    },
+    {
+      "file": "scripts/enforce_kwargs_spacing.py",
+      "type": "function",
+      "name": "process_file"
+    },
+    {
+      "file": "scripts/enforce_kwargs_spacing.py",
+      "type": "function",
+      "name": "main"
+    },
+    {
+      "file": "scripts/lint_workflow_triggers.py",
+      "type": "function",
+      "name": "_normalise_on"
+    },
+    {
+      "file": "scripts/lint_workflow_triggers.py",
+      "type": "function",
+      "name": "_load_workflow"
+    },
+    {
+      "file": "scripts/lint_workflow_triggers.py",
+      "type": "function",
+      "name": "_extract_cache_keys"
+    },
+    {
+      "file": "scripts/lint_workflow_triggers.py",
+      "type": "function",
+      "name": "_trigger_set"
+    },
+    {
+      "file": "scripts/lint_workflow_triggers.py",
+      "type": "function",
+      "name": "main"
+    },
+    {
+      "file": "scripts/lockfile_supply_chain_audit.py",
+      "type": "class",
+      "name": "Finding"
+    },
+    {
+      "file": "scripts/lockfile_supply_chain_audit.py",
+      "type": "class",
+      "name": "Finding"
+    },
+    {
+      "file": "scripts/lockfile_supply_chain_audit.py",
+      "type": "function",
+      "name": "_gha_escape"
+    },
+    {
+      "file": "scripts/lockfile_supply_chain_audit.py",
+      "type": "function",
+      "name": "audit_npm_lockfile"
+    },
+    {
+      "file": "scripts/lockfile_supply_chain_audit.py",
+      "type": "function",
+      "name": "_first_line_containing"
+    },
+    {
+      "file": "scripts/lockfile_supply_chain_audit.py",
+      "type": "function",
+      "name": "audit_cargo_lockfile"
+    },
+    {
+      "file": "scripts/lockfile_supply_chain_audit.py",
+      "type": "function",
+      "name": "main"
+    },
+    {
+      "file": "scripts/notebook_to_python.py",
+      "type": "function",
+      "name": "needs_fstring"
+    },
+    {
+      "file": "scripts/notebook_to_python.py",
+      "type": "function",
+      "name": "github_blob_to_raw"
+    },
+    {
+      "file": "scripts/notebook_to_python.py",
+      "type": "function",
+      "name": "download_notebook"
+    },
+    {
+      "file": "scripts/notebook_to_python.py",
+      "type": "function",
+      "name": "is_url"
+    },
+    {
+      "file": "scripts/notebook_to_python.py",
+      "type": "function",
+      "name": "replace_colab_paths"
+    },
+    {
+      "file": "scripts/notebook_to_python.py",
+      "type": "function",
+      "name": "_emit_shell_command"
+    },
+    {
+      "file": "scripts/notebook_to_python.py",
+      "type": "function",
+      "name": "convert_cell_to_python"
+    },
+    {
+      "file": "scripts/notebook_to_python.py",
+      "type": "function",
+      "name": "convert_notebook"
+    },
+    {
+      "file": "scripts/notebook_to_python.py",
+      "type": "function",
+      "name": "convert_notebook_to_script"
+    },
+    {
+      "file": "scripts/notebook_to_python.py",
+      "type": "function",
+      "name": "main"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "class",
+      "name": "Finding"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "class",
+      "name": "PipInvocation"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "class",
+      "name": "SpecParts"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "class",
+      "name": "_APIScanner"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "class",
+      "name": "Finding"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "class",
+      "name": "PipInvocation"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "class",
+      "name": "SpecParts"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "class",
+      "name": "_APIScanner"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "_atomic_write_bytes"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "iter_notebooks"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "load_notebook"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "cell_source"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "code_cells"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "install_cells"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "target_environment"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "parse_pip_freeze"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "normalise_version"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "version_minor"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "cmp_versions"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "parse_pip_line"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "_glue_line_continuations"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "iter_pip_invocations"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "parse_spec"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "explicit_pin"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "pypi_metadata"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "transitive_constraint"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "constraint_satisfied"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "resolved_set"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "rule_inst_001_git_plus"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "rule_inst_002_no_deps_transitive"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "_install_cell_lower_bound"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "rule_inst_003_peft_torchao"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "rule_inst_004_torchcodec_torch"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "rule_inst_005_transformers_tokenizers"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "rule_inst_006_double_bang"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "scan_user_cells"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "extract_policy_clauses"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "rule_l12_exceptions_coverage"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "_extract_dont_update_exceptions"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "cmd_drift"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "cmd_convert"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "cmd_lint"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "cmd_exceptions"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "cmd_api"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "cmd_all"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "cmd_refresh_colab"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "_parse_pip_lines"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "_parse_apt_lines"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "_parse_os_lines"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "_diff_oracle"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "cmd_colab_diff"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "_emit"
+    },
+    {
+      "file": "scripts/notebook_validator.py",
+      "type": "function",
+      "name": "main"
+    },
+    {
+      "file": "scripts/run_ruff_format.py",
+      "type": "function",
+      "name": "main"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "class",
+      "name": "Finding"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "class",
+      "name": "PackageEntry"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "class",
+      "name": "Finding"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "class",
+      "name": "PackageEntry"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_looks_binary"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "parse_lockfile"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_decode_integrity"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "download_tarball"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_is_within"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "safe_extract"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_bracket_lr"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_find_unescaped"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_blank_js_strings"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_index_text"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_scan_group"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_canon_preserve_strings"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_logical_line_text"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_format_match"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_stream_overflow_digest"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_fold_overflow_match"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_evidence"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_ioc_evidence"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_slash_is_regex"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_strip_js_noncode"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "scan_package_json"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_host_in_outbound_context"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_outbound_host_evidence"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "scan_text_blob"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "scan_extracted_tree"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "scan_one"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_norm_pkg_name"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_relpath_in_package"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_evidence_hash"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_finding_key"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_load_baseline"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_write_baseline"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "_partition_baseline"
+    },
+    {
+      "file": "scripts/scan_npm_packages.py",
+      "type": "function",
+      "name": "main"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "class",
+      "name": "Finding"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "class",
+      "name": "Finding"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "check_pth_file"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_is_fstring"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_strip_noncode"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_hidden_payload_findings"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "check_py_file"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_cap_line"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_ends_with_odd_backslash"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_blank_code_strings"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_bracket_lr"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_scan_line_end"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_logical_line_end"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_extract_evidence"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_embedded_key_evidence"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_blob_digest"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "check_js_file"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "check_shell_file"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "check_workflow_file"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_refuse_unsafe_member_name"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "iter_archive_files"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "scan_archive"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_check_blocked_pypi_versions"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_pip_download_env"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_spec_pin_version"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_pypi_json"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_release_files"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_release_has_wheel"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_is_trusted_pypi_url"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_marker_holds_by_default"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_requires_dist_names"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_requires_dist_for"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_download_sdist_direct"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_pip_download_with_deps"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_collect_flat_dir"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_resolve_per_spec_with_deps"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "download_packages"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_extract_pkg_name"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "parse_requirements"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "get_downloaded_version"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "severity_color"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "print_findings"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "version_sort_key"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "fetch_pypi_versions"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "find_safe_version"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "update_req_line"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "update_req_file"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_run_fix"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_find_requirements_files"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_norm_pkg"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_relpath_in_package"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_canon_evidence"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_evidence_hash"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_finding_key"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_load_baseline"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_write_baseline"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "_partition_baseline"
+    },
+    {
+      "file": "scripts/scan_packages.py",
+      "type": "function",
+      "name": "main"
+    },
+    {
+      "file": "scripts/stamp_studio_release.py",
+      "type": "function",
+      "name": "_atomic_write_text"
+    },
+    {
+      "file": "scripts/stamp_studio_release.py",
+      "type": "function",
+      "name": "is_valid_version"
+    },
+    {
+      "file": "scripts/stamp_studio_release.py",
+      "type": "function",
+      "name": "_exact_git_tag"
+    },
+    {
+      "file": "scripts/stamp_studio_release.py",
+      "type": "function",
+      "name": "_git_worktree_is_dirty"
+    },
+    {
+      "file": "scripts/stamp_studio_release.py",
+      "type": "function",
+      "name": "_github_tag"
+    },
+    {
+      "file": "scripts/stamp_studio_release.py",
+      "type": "function",
+      "name": "resolve_version"
+    },
+    {
+      "file": "scripts/stamp_studio_release.py",
+      "type": "function",
+      "name": "build_info_source"
+    },
+    {
+      "file": "scripts/stamp_studio_release.py",
+      "type": "function",
+      "name": "_env_version_conflicts"
+    },
+    {
+      "file": "scripts/stamp_studio_release.py",
+      "type": "function",
+      "name": "stamp"
+    },
+    {
+      "file": "scripts/stamp_studio_release.py",
+      "type": "function",
+      "name": "_read_wheel_member"
+    },
+    {
+      "file": "scripts/stamp_studio_release.py",
+      "type": "function",
+      "name": "_read_sdist_member"
+    },
+    {
+      "file": "scripts/stamp_studio_release.py",
+      "type": "function",
+      "name": "verify_dist"
+    },
+    {
+      "file": "scripts/stamp_studio_release.py",
+      "type": "function",
+      "name": "main"
+    },
+    {
+      "file": "scripts/sync_allow_scripts_pins.py",
+      "type": "function",
+      "name": "split_spec"
+    },
+    {
+      "file": "scripts/sync_allow_scripts_pins.py",
+      "type": "function",
+      "name": "is_exact_disjunction"
+    },
+    {
+      "file": "scripts/sync_allow_scripts_pins.py",
+      "type": "function",
+      "name": "version_sort_key"
+    },
+    {
+      "file": "scripts/sync_allow_scripts_pins.py",
+      "type": "function",
+      "name": "script_versions_from_lock"
+    },
+    {
+      "file": "scripts/sync_allow_scripts_pins.py",
+      "type": "function",
+      "name": "desired_key"
+    },
+    {
+      "file": "scripts/sync_allow_scripts_pins.py",
+      "type": "function",
+      "name": "compute_renames"
+    },
+    {
+      "file": "scripts/sync_allow_scripts_pins.py",
+      "type": "function",
+      "name": "main"
+    },
+    {
+      "file": "scripts/verify_comment_only_diff.py",
+      "type": "function",
+      "name": "_git_show"
+    },
+    {
+      "file": "scripts/verify_comment_only_diff.py",
+      "type": "function",
+      "name": "_strip_docstrings"
+    },
+    {
+      "file": "scripts/verify_comment_only_diff.py",
+      "type": "function",
+      "name": "_normalize_py"
+    },
+    {
+      "file": "scripts/verify_comment_only_diff.py",
+      "type": "function",
+      "name": "_strip_shell_comments"
+    },
+    {
+      "file": "scripts/verify_comment_only_diff.py",
+      "type": "function",
+      "name": "_normalize_yaml_run_strings"
+    },
+    {
+      "file": "scripts/verify_comment_only_diff.py",
+      "type": "function",
+      "name": "_walk_yaml_diff"
+    },
+    {
+      "file": "scripts/verify_comment_only_diff.py",
+      "type": "function",
+      "name": "_verify_python"
+    },
+    {
+      "file": "scripts/verify_comment_only_diff.py",
+      "type": "function",
+      "name": "_verify_yaml"
+    },
+    {
+      "file": "scripts/verify_comment_only_diff.py",
+      "type": "function",
+      "name": "main"
+    },
+    {
+      "file": "scripts/verify_import_hoist.py",
+      "type": "class",
+      "name": "Binding"
+    },
+    {
+      "file": "scripts/verify_import_hoist.py",
+      "type": "class",
+      "name": "Scope"
+    },
+    {
+      "file": "scripts/verify_import_hoist.py",
+      "type": "class",
+      "name": "_Builder"
+    },
+    {
+      "file": "scripts/verify_import_hoist.py",
+      "type": "class",
+      "name": "Binding"
+    },
+    {
+      "file": "scripts/verify_import_hoist.py",
+      "type": "class",
+      "name": "Scope"
+    },
+    {
+      "file": "scripts/verify_import_hoist.py",
+      "type": "class",
+      "name": "_Builder"
+    },
+    {
+      "file": "scripts/verify_import_hoist.py",
+      "type": "function",
+      "name": "_import_target"
+    },
+    {
+      "file": "scripts/verify_import_hoist.py",
+      "type": "function",
+      "name": "_any_star"
+    },
+    {
+      "file": "scripts/verify_import_hoist.py",
+      "type": "function",
+      "name": "_resolve"
+    },
+    {
+      "file": "scripts/verify_import_hoist.py",
+      "type": "function",
+      "name": "_module_of"
+    },
+    {
+      "file": "scripts/verify_import_hoist.py",
+      "type": "function",
+      "name": "_enclosing_functions"
+    },
+    {
+      "file": "scripts/verify_import_hoist.py",
+      "type": "function",
+      "name": "_legb_chain"
+    },
+    {
+      "file": "scripts/verify_import_hoist.py",
+      "type": "function",
+      "name": "_analyze"
+    },
+    {
+      "file": "scripts/verify_import_hoist.py",
+      "type": "function",
+      "name": "_git_show"
+    },
+    {
+      "file": "scripts/verify_import_hoist.py",
+      "type": "function",
+      "name": "compare"
+    },
+    {
+      "file": "scripts/verify_import_hoist.py",
+      "type": "function",
+      "name": "_self_test"
+    },
+    {
+      "file": "scripts/verify_import_hoist.py",
+      "type": "function",
+      "name": "_pyflakes_undefined"
+    },
+    {
+      "file": "scripts/verify_import_hoist.py",
+      "type": "function",
+      "name": "audit_files"
+    },
+    {
+      "file": "scripts/verify_import_hoist.py",
+      "type": "function",
+      "name": "main"
+    },
+    {
+      "file": "studio/backend/_platform_compat.py",
+      "type": "function",
+      "name": "_seed_sys_version_cache"
+    },
+    {
+      "file": "studio/backend/auth/authentication.py",
+      "type": "function",
+      "name": "_get_secret_for_subject"
+    },
+    {
+      "file": "studio/backend/auth/authentication.py",
+      "type": "function",
+      "name": "_decode_subject_without_verification"
+    },
+    {
+      "file": "studio/backend/auth/authentication.py",
+      "type": "function",
+      "name": "create_access_token"
+    },
+    {
+      "file": "studio/backend/auth/authentication.py",
+      "type": "function",
+      "name": "is_desktop_access_token"
+    },
+    {
+      "file": "studio/backend/auth/authentication.py",
+      "type": "function",
+      "name": "create_refresh_token"
+    },
+    {
+      "file": "studio/backend/auth/authentication.py",
+      "type": "function",
+      "name": "refresh_access_token"
+    },
+    {
+      "file": "studio/backend/auth/authentication.py",
+      "type": "function",
+      "name": "reload_secret"
+    },
+    {
+      "file": "studio/backend/auth/authentication.py",
+      "type": "function",
+      "name": "get_current_subject"
+    },
+    {
+      "file": "studio/backend/auth/authentication.py",
+      "type": "function",
+      "name": "authenticated_via_api_key"
+    },
+    {
+      "file": "studio/backend/auth/authentication.py",
+      "type": "function",
+      "name": "get_current_subject_allow_password_change"
+    },
+    {
+      "file": "studio/backend/auth/authentication.py",
+      "type": "function",
+      "name": "_get_current_subject"
+    },
+    {
+      "file": "studio/backend/auth/bootstrap_timeout.py",
+      "type": "function",
+      "name": "bootstrap_timeout_seconds"
+    },
+    {
+      "file": "studio/backend/auth/bootstrap_timeout.py",
+      "type": "function",
+      "name": "_is_exposed_bind"
+    },
+    {
+      "file": "studio/backend/auth/bootstrap_timeout.py",
+      "type": "function",
+      "name": "should_arm_bootstrap_timeout"
+    },
+    {
+      "file": "studio/backend/auth/bootstrap_timeout.py",
+      "type": "function",
+      "name": "_format_duration"
+    },
+    {
+      "file": "studio/backend/auth/bootstrap_timeout.py",
+      "type": "function",
+      "name": "enforce_bootstrap_password_deadline"
+    },
+    {
+      "file": "studio/backend/auth/bootstrap_timeout.py",
+      "type": "function",
+      "name": "arm_bootstrap_timeout"
+    },
+    {
+      "file": "studio/backend/auth/hashing.py",
+      "type": "function",
+      "name": "hash_password"
+    },
+    {
+      "file": "studio/backend/auth/hashing.py",
+      "type": "function",
+      "name": "verify_password"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "generate_bootstrap_password"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "get_bootstrap_password"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "_load_bootstrap_password"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "clear_bootstrap_password"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "_hash_token"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "get_connection"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "_get_or_create_api_key_pbkdf2_salt"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "get_or_create_identity_secret"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "compute_identity_proof"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "get_or_create_preview_link_secret"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "rotate_preview_link_secret"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "_pbkdf2_api_key"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "_pbkdf2_desktop_secret"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "_api_key_cache_id"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "_reset_api_key_hash_cache"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "is_initialized"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "create_initial_user"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "delete_user"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "get_user_and_secret"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "get_jwt_secret"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "requires_password_change"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "load_jwt_secret"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "ensure_default_admin"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "update_password"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "save_refresh_token"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "consume_refresh_token"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "verify_refresh_token"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "revoke_user_refresh_tokens"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "create_desktop_secret"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "validate_desktop_secret"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "clear_desktop_secret"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "create_api_key"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "list_api_keys"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "revoke_api_key"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "revoke_internal_api_key"
+    },
+    {
+      "file": "studio/backend/auth/storage.py",
+      "type": "function",
+      "name": "validate_api_key"
+    },
+    {
+      "file": "studio/backend/auth/terminal_prompt.py",
+      "type": "class",
+      "name": "_RestoreTtyOnSignals"
+    },
+    {
+      "file": "studio/backend/auth/terminal_prompt.py",
+      "type": "class",
+      "name": "_prompt_raw_mode"
+    },
+    {
+      "file": "studio/backend/auth/terminal_prompt.py",
+      "type": "class",
+      "name": "_RestoreTtyOnSignals"
+    },
+    {
+      "file": "studio/backend/auth/terminal_prompt.py",
+      "type": "class",
+      "name": "_prompt_raw_mode"
+    },
+    {
+      "file": "studio/backend/auth/terminal_prompt.py",
+      "type": "function",
+      "name": "_getch_windows"
+    },
+    {
+      "file": "studio/backend/auth/terminal_prompt.py",
+      "type": "function",
+      "name": "_getch_posix"
+    },
+    {
+      "file": "studio/backend/auth/terminal_prompt.py",
+      "type": "function",
+      "name": "_read_password"
+    },
+    {
+      "file": "studio/backend/auth/terminal_prompt.py",
+      "type": "function",
+      "name": "should_prompt_password_change"
+    },
+    {
+      "file": "studio/backend/auth/terminal_prompt.py",
+      "type": "function",
+      "name": "prompt_for_password_change"
+    },
+    {
+      "file": "studio/backend/auth/terminal_prompt.py",
+      "type": "function",
+      "name": "resolve_supplied_password"
+    },
+    {
+      "file": "studio/backend/cloudflare_tunnel.py",
+      "type": "class",
+      "name": "CloudflareTunnel"
+    },
+    {
+      "file": "studio/backend/cloudflare_tunnel.py",
+      "type": "class",
+      "name": "CloudflareTunnel"
+    },
+    {
+      "file": "studio/backend/cloudflare_tunnel.py",
+      "type": "function",
+      "name": "_windows_hidden_kwargs"
+    },
+    {
+      "file": "studio/backend/cloudflare_tunnel.py",
+      "type": "function",
+      "name": "_lifetime_kwargs"
+    },
+    {
+      "file": "studio/backend/cloudflare_tunnel.py",
+      "type": "function",
+      "name": "_asset_name"
+    },
+    {
+      "file": "studio/backend/cloudflare_tunnel.py",
+      "type": "function",
+      "name": "_cache_path"
+    },
+    {
+      "file": "studio/backend/cloudflare_tunnel.py",
+      "type": "function",
+      "name": "find_cloudflared"
+    },
+    {
+      "file": "studio/backend/cloudflare_tunnel.py",
+      "type": "function",
+      "name": "_download"
+    },
+    {
+      "file": "studio/backend/cloudflare_tunnel.py",
+      "type": "function",
+      "name": "_extract_tgz_member"
+    },
+    {
+      "file": "studio/backend/cloudflare_tunnel.py",
+      "type": "function",
+      "name": "ensure_cloudflared"
+    },
+    {
+      "file": "studio/backend/cloudflare_tunnel.py",
+      "type": "function",
+      "name": "_wait_for_dns"
+    },
+    {
+      "file": "studio/backend/cloudflare_tunnel.py",
+      "type": "function",
+      "name": "verify_public_url"
+    },
+    {
+      "file": "studio/backend/cloudflare_tunnel.py",
+      "type": "function",
+      "name": "start_studio_tunnel"
+    },
+    {
+      "file": "studio/backend/cloudflare_tunnel.py",
+      "type": "function",
+      "name": "stop_studio_tunnel"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "get_colab_url"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_short_colab_url"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_is_colab_proxy_url"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_is_colab_runtime"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_colab_login_credentials_path"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_store_colab_login_credentials"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_load_colab_login_credentials"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_clear_colab_login_credentials"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_colab_credentials_still_valid"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_colab_wants_cloudflare"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_finalize_colab_admin_password"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_colab_login_html"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_show_colab_login_credentials"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_ready_card_html"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "show_link"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_warn_colab_cloudflare_missing"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_bootstrap_password_pending"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "start_cloudflare_tunnel"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_publish_cloudflare_url"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_stop_cloudflare_tunnel"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_is_studio_healthy"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_shareable_link_html"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_embed_kernel_port_iframe"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_embed_html_iframe"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "_show_and_embed"
+    },
+    {
+      "file": "studio/backend/colab.py",
+      "type": "function",
+      "name": "start"
+    },
+    {
+      "file": "studio/backend/core/__init__.py",
+      "type": "function",
+      "name": "__getattr__"
+    },
+    {
+      "file": "studio/backend/core/_torchao_stub.py",
+      "type": "class",
+      "name": "_StubTypeMeta"
+    },
+    {
+      "file": "studio/backend/core/_torchao_stub.py",
+      "type": "class",
+      "name": "_StubSubpackageLoader"
+    },
+    {
+      "file": "studio/backend/core/_torchao_stub.py",
+      "type": "class",
+      "name": "_StubSubpackageFinder"
+    },
+    {
+      "file": "studio/backend/core/_torchao_stub.py",
+      "type": "class",
+      "name": "_StubTypeMeta"
+    },
+    {
+      "file": "studio/backend/core/_torchao_stub.py",
+      "type": "class",
+      "name": "_StubSubpackageLoader"
+    },
+    {
+      "file": "studio/backend/core/_torchao_stub.py",
+      "type": "class",
+      "name": "_StubSubpackageFinder"
+    },
+    {
+      "file": "studio/backend/core/_torchao_stub.py",
+      "type": "function",
+      "name": "_make_stub_type"
+    },
+    {
+      "file": "studio/backend/core/_torchao_stub.py",
+      "type": "function",
+      "name": "_make_mod_stub"
+    },
+    {
+      "file": "studio/backend/core/_torchao_stub.py",
+      "type": "function",
+      "name": "install_torchao_windows_rocm_stub"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/huggingface.py",
+      "type": "class",
+      "name": "RecipeDatasetPublishError"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/huggingface.py",
+      "type": "class",
+      "name": "RecipeDatasetPublishError"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/huggingface.py",
+      "type": "function",
+      "name": "_resolve_recipe_artifact_path"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/huggingface.py",
+      "type": "function",
+      "name": "publish_recipe_dataset"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/jsonable.py",
+      "type": "function",
+      "name": "_pil_to_preview_payload"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/jsonable.py",
+      "type": "function",
+      "name": "_open_pil_image_from_bytes"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/jsonable.py",
+      "type": "function",
+      "name": "_to_pil_from_hf_image_dict"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/jsonable.py",
+      "type": "function",
+      "name": "to_jsonable"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/jsonable.py",
+      "type": "function",
+      "name": "_to_preview_image_payload"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/jsonable.py",
+      "type": "function",
+      "name": "to_preview_jsonable"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/local_callable_validators.py",
+      "type": "class",
+      "name": "OxcLocalCallableValidatorSpec"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/local_callable_validators.py",
+      "type": "class",
+      "name": "OxcLocalCallableValidatorSpec"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/local_callable_validators.py",
+      "type": "function",
+      "name": "split_oxc_local_callable_validators"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/local_callable_validators.py",
+      "type": "function",
+      "name": "register_oxc_local_callable_validators"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/local_callable_validators.py",
+      "type": "function",
+      "name": "_parse_oxc_spec"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/local_callable_validators.py",
+      "type": "function",
+      "name": "_parse_batch_size"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/local_callable_validators.py",
+      "type": "function",
+      "name": "_parse_oxc_validation_marker"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/local_callable_validators.py",
+      "type": "function",
+      "name": "_build_oxc_validation_function"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/local_callable_validators.py",
+      "type": "function",
+      "name": "_run_oxc_batch"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/local_callable_validators.py",
+      "type": "function",
+      "name": "_fallback_results"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/service.py",
+      "type": "function",
+      "name": "_encode_bytes_to_base64"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/service.py",
+      "type": "function",
+      "name": "_load_image_file_to_base64"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/service.py",
+      "type": "function",
+      "name": "_pil_image_to_base64"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/service.py",
+      "type": "function",
+      "name": "_normalize_image_context_value"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/service.py",
+      "type": "function",
+      "name": "_apply_data_designer_image_context_patch"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/service.py",
+      "type": "function",
+      "name": "build_model_providers"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/service.py",
+      "type": "function",
+      "name": "_recipe_has_llm_columns"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/service.py",
+      "type": "function",
+      "name": "_validate_recipe_runtime_support"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/service.py",
+      "type": "function",
+      "name": "build_mcp_providers"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/service.py",
+      "type": "function",
+      "name": "_strip_frontend_model_config_metadata"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/service.py",
+      "type": "function",
+      "name": "build_config_builder"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/service.py",
+      "type": "function",
+      "name": "create_data_designer"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/service.py",
+      "type": "function",
+      "name": "validate_recipe"
+    },
+    {
+      "file": "studio/backend/core/data_recipe/service.py",
+      "type": "function",
+      "name": "preview_recipe"
+    },
+    {
+      "file": "studio/backend/core/export/export.py",
+      "type": "class",
+      "name": "ExportBackend"
+    },
+    {
+      "file": "studio/backend/core/export/export.py",
+      "type": "class",
+      "name": "ExportBackend"
+    },
+    {
+      "file": "studio/backend/core/export/export.py",
+      "type": "function",
+      "name": "_export_runtime_available"
+    },
+    {
+      "file": "studio/backend/core/export/export.py",
+      "type": "function",
+      "name": "_export_runtime_message"
+    },
+    {
+      "file": "studio/backend/core/export/export.py",
+      "type": "function",
+      "name": "_supports_kwarg"
+    },
+    {
+      "file": "studio/backend/core/export/export.py",
+      "type": "function",
+      "name": "_compressed_export_supported"
+    },
+    {
+      "file": "studio/backend/core/export/export.py",
+      "type": "function",
+      "name": "_torchao_export_supported"
+    },
+    {
+      "file": "studio/backend/core/export/export.py",
+      "type": "function",
+      "name": "_has_nvidia_gpu"
+    },
+    {
+      "file": "studio/backend/core/export/export.py",
+      "type": "function",
+      "name": "_hf_offline"
+    },
+    {
+      "file": "studio/backend/core/export/export.py",
+      "type": "function",
+      "name": "_offline_window_if"
+    },
+    {
+      "file": "studio/backend/core/export/export.py",
+      "type": "function",
+      "name": "_is_wsl"
+    },
+    {
+      "file": "studio/backend/core/export/export.py",
+      "type": "function",
+      "name": "_apply_wsl_sudo_patch"
+    },
+    {
+      "file": "studio/backend/core/export/export.py",
+      "type": "function",
+      "name": "get_export_backend"
+    },
+    {
+      "file": "studio/backend/core/export/orchestrator.py",
+      "type": "class",
+      "name": "ExportOrchestrator"
+    },
+    {
+      "file": "studio/backend/core/export/orchestrator.py",
+      "type": "class",
+      "name": "ExportOrchestrator"
+    },
+    {
+      "file": "studio/backend/core/export/orchestrator.py",
+      "type": "function",
+      "name": "get_export_backend"
+    },
+    {
+      "file": "studio/backend/core/export/worker.py",
+      "type": "function",
+      "name": "_setup_log_capture"
+    },
+    {
+      "file": "studio/backend/core/export/worker.py",
+      "type": "function",
+      "name": "_activate_transformers_version"
+    },
+    {
+      "file": "studio/backend/core/export/worker.py",
+      "type": "function",
+      "name": "_offline_window_if_unreachable"
+    },
+    {
+      "file": "studio/backend/core/export/worker.py",
+      "type": "function",
+      "name": "_send_response"
+    },
+    {
+      "file": "studio/backend/core/export/worker.py",
+      "type": "function",
+      "name": "_handle_load"
+    },
+    {
+      "file": "studio/backend/core/export/worker.py",
+      "type": "function",
+      "name": "_handle_export"
+    },
+    {
+      "file": "studio/backend/core/export/worker.py",
+      "type": "function",
+      "name": "_handle_cleanup"
+    },
+    {
+      "file": "studio/backend/core/export/worker.py",
+      "type": "function",
+      "name": "run_export_process"
+    },
+    {
+      "file": "studio/backend/core/import_guards.py",
+      "type": "function",
+      "name": "ensure_real_packages"
+    },
+    {
+      "file": "studio/backend/core/inference/__init__.py",
+      "type": "function",
+      "name": "__getattr__"
+    },
+    {
+      "file": "studio/backend/core/inference/__init__.py",
+      "type": "function",
+      "name": "__dir__"
+    },
+    {
+      "file": "studio/backend/core/inference/_html_to_md.py",
+      "type": "class",
+      "name": "_MarkdownRenderer"
+    },
+    {
+      "file": "studio/backend/core/inference/_html_to_md.py",
+      "type": "class",
+      "name": "_MarkdownRenderer"
+    },
+    {
+      "file": "studio/backend/core/inference/_html_to_md.py",
+      "type": "function",
+      "name": "_style_hides_element"
+    },
+    {
+      "file": "studio/backend/core/inference/_html_to_md.py",
+      "type": "function",
+      "name": "_is_hidden_element"
+    },
+    {
+      "file": "studio/backend/core/inference/_html_to_md.py",
+      "type": "function",
+      "name": "_cleanup"
+    },
+    {
+      "file": "studio/backend/core/inference/_html_to_md.py",
+      "type": "function",
+      "name": "_line_is_boilerplate"
+    },
+    {
+      "file": "studio/backend/core/inference/_html_to_md.py",
+      "type": "function",
+      "name": "_strip_boilerplate_lines"
+    },
+    {
+      "file": "studio/backend/core/inference/_html_to_md.py",
+      "type": "function",
+      "name": "_render"
+    },
+    {
+      "file": "studio/backend/core/inference/_html_to_md.py",
+      "type": "function",
+      "name": "_select_main_scope_render"
+    },
+    {
+      "file": "studio/backend/core/inference/_html_to_md.py",
+      "type": "function",
+      "name": "html_to_markdown"
+    },
+    {
+      "file": "studio/backend/core/inference/_vulkan_probe.py",
+      "type": "function",
+      "name": "_igpu_flags"
+    },
+    {
+      "file": "studio/backend/core/inference/_vulkan_probe.py",
+      "type": "function",
+      "name": "main"
+    },
+    {
+      "file": "studio/backend/core/inference/anthropic_compat.py",
+      "type": "class",
+      "name": "AnthropicStreamEmitter"
+    },
+    {
+      "file": "studio/backend/core/inference/anthropic_compat.py",
+      "type": "class",
+      "name": "AnthropicPassthroughEmitter"
+    },
+    {
+      "file": "studio/backend/core/inference/anthropic_compat.py",
+      "type": "class",
+      "name": "AnthropicStreamEmitter"
+    },
+    {
+      "file": "studio/backend/core/inference/anthropic_compat.py",
+      "type": "class",
+      "name": "AnthropicPassthroughEmitter"
+    },
+    {
+      "file": "studio/backend/core/inference/anthropic_compat.py",
+      "type": "function",
+      "name": "openai_finish_to_anthropic_stop"
+    },
+    {
+      "file": "studio/backend/core/inference/anthropic_compat.py",
+      "type": "function",
+      "name": "anthropic_tool_use_id"
+    },
+    {
+      "file": "studio/backend/core/inference/anthropic_compat.py",
+      "type": "function",
+      "name": "_anthropic_image_block_to_openai_part"
+    },
+    {
+      "file": "studio/backend/core/inference/anthropic_compat.py",
+      "type": "function",
+      "name": "anthropic_messages_to_openai"
+    },
+    {
+      "file": "studio/backend/core/inference/anthropic_compat.py",
+      "type": "function",
+      "name": "anthropic_tools_to_openai"
+    },
+    {
+      "file": "studio/backend/core/inference/anthropic_compat.py",
+      "type": "function",
+      "name": "anthropic_tool_choice_to_openai"
+    },
+    {
+      "file": "studio/backend/core/inference/anthropic_compat.py",
+      "type": "function",
+      "name": "build_anthropic_sse_event"
+    },
+    {
+      "file": "studio/backend/core/inference/anthropic_compat.py",
+      "type": "function",
+      "name": "_message_delta_usage"
+    },
+    {
+      "file": "studio/backend/core/inference/api_monitor.py",
+      "type": "class",
+      "name": "ApiMonitorEntry"
+    },
+    {
+      "file": "studio/backend/core/inference/api_monitor.py",
+      "type": "class",
+      "name": "ApiMonitor"
+    },
+    {
+      "file": "studio/backend/core/inference/api_monitor.py",
+      "type": "class",
+      "name": "ApiMonitorEntry"
+    },
+    {
+      "file": "studio/backend/core/inference/api_monitor.py",
+      "type": "class",
+      "name": "ApiMonitor"
+    },
+    {
+      "file": "studio/backend/core/inference/api_monitor.py",
+      "type": "function",
+      "name": "_trim"
+    },
+    {
+      "file": "studio/backend/core/inference/audio_codecs.py",
+      "type": "class",
+      "name": "AudioCodecManager"
+    },
+    {
+      "file": "studio/backend/core/inference/audio_codecs.py",
+      "type": "class",
+      "name": "AudioCodecManager"
+    },
+    {
+      "file": "studio/backend/core/inference/audio_codecs.py",
+      "type": "function",
+      "name": "_numpy_to_wav_bytes"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_eos.py",
+      "type": "function",
+      "name": "_eos_id_set"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_eos.py",
+      "type": "function",
+      "name": "_collect_template_text"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_eos.py",
+      "type": "function",
+      "name": "resolve_chat_turn_end_eos_ids_using"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_eos.py",
+      "type": "function",
+      "name": "resolve_chat_turn_end_eos_ids"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_eos.py",
+      "type": "function",
+      "name": "chat_eos_repair"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_template_helpers.py",
+      "type": "class",
+      "name": "ChatTemplateRenderResult"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_template_helpers.py",
+      "type": "class",
+      "name": "ReasoningChannelNormalizer"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_template_helpers.py",
+      "type": "class",
+      "name": "ChatTemplateRenderResult"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_template_helpers.py",
+      "type": "class",
+      "name": "ReasoningChannelNormalizer"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_template_helpers.py",
+      "type": "function",
+      "name": "_tokenizer_objects"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_template_helpers.py",
+      "type": "function",
+      "name": "_selected_template_strings_from_value"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_template_helpers.py",
+      "type": "function",
+      "name": "_selected_chat_template_strings"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_template_helpers.py",
+      "type": "function",
+      "name": "_detect_reasoning_channel_markers_from_templates"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_template_helpers.py",
+      "type": "function",
+      "name": "detect_reasoning_channel_markers"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_template_helpers.py",
+      "type": "function",
+      "name": "detect_reasoning_channel_markers_from_template"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_template_helpers.py",
+      "type": "function",
+      "name": "detect_reasoning_channel_markers_from_model_info"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_template_helpers.py",
+      "type": "function",
+      "name": "_split_partial_marker"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_template_helpers.py",
+      "type": "function",
+      "name": "normalize_reasoning_snapshots"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_template_helpers.py",
+      "type": "function",
+      "name": "detect_think_prefill"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_template_helpers.py",
+      "type": "function",
+      "name": "_normalize_tool_call_arguments"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_template_helpers.py",
+      "type": "function",
+      "name": "apply_chat_template_for_generation"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_template_helpers.py",
+      "type": "function",
+      "name": "render_native_template"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_template_helpers.py",
+      "type": "function",
+      "name": "render_with_native_template_fallback"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_templates.py",
+      "type": "function",
+      "name": "_canonical_repo_id"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_templates.py",
+      "type": "function",
+      "name": "is_unsloth_gemma4_gguf"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_templates.py",
+      "type": "function",
+      "name": "is_unsloth_gemma4_edge_gguf"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_templates.py",
+      "type": "function",
+      "name": "_gemma4_template_file"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_templates.py",
+      "type": "function",
+      "name": "load_bundled_chat_template"
+    },
+    {
+      "file": "studio/backend/core/inference/chat_templates.py",
+      "type": "function",
+      "name": "resolve_effective_chat_template_override"
+    },
+    {
+      "file": "studio/backend/core/inference/defaults.py",
+      "type": "function",
+      "name": "get_default_models"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "class",
+      "name": "_AnthropicThinkingSpec"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "class",
+      "name": "_MistralThinkingSpec"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "class",
+      "name": "ExternalProviderClient"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "class",
+      "name": "_AnthropicThinkingSpec"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "class",
+      "name": "_MistralThinkingSpec"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "class",
+      "name": "ExternalProviderClient"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_is_openai_family_cloud"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_openai_image_replay_requires_reasoning"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_sanitize_openai_reasoning_replay_item"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_build_citation_lookup"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_replace_openai_citation_markers"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_rewrite_citation_markers_partial"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_split_pending_citation_tail"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_anthropic_thinking_spec"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_anthropic_web_search_version"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_anthropic_web_fetch_version"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_anthropic_code_execution_version"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_anthropic_supports_compaction"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_anthropic_supports_fast_mode"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_anthropic_citation_key"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_mistral_thinking_spec"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_apply_mistral_reasoning_controls"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_create_shared_http_client"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_safe_fetch_image_for_gemini_sync"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_safe_fetch_image_for_gemini"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_stamp_server_tool_marker"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_build_kimi_tool_end"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_provider_display_name"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_friendly_provider_error_text"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_error_sse_line"
+    },
+    {
+      "file": "studio/backend/core/inference/external_provider.py",
+      "type": "function",
+      "name": "_build_usage_chunk"
+    },
+    {
+      "file": "studio/backend/core/inference/inference.py",
+      "type": "class",
+      "name": "HarmonyTextStreamer"
+    },
+    {
+      "file": "studio/backend/core/inference/inference.py",
+      "type": "class",
+      "name": "ReasoningTextIteratorStreamer"
+    },
+    {
+      "file": "studio/backend/core/inference/inference.py",
+      "type": "class",
+      "name": "_GenerationThreadError"
+    },
+    {
+      "file": "studio/backend/core/inference/inference.py",
+      "type": "class",
+      "name": "InferenceBackend"
+    },
+    {
+      "file": "studio/backend/core/inference/inference.py",
+      "type": "class",
+      "name": "HarmonyTextStreamer"
+    },
+    {
+      "file": "studio/backend/core/inference/inference.py",
+      "type": "class",
+      "name": "ReasoningTextIteratorStreamer"
+    },
+    {
+      "file": "studio/backend/core/inference/inference.py",
+      "type": "class",
+      "name": "_GenerationThreadError"
+    },
+    {
+      "file": "studio/backend/core/inference/inference.py",
+      "type": "class",
+      "name": "InferenceBackend"
+    },
+    {
+      "file": "studio/backend/core/inference/inference.py",
+      "type": "function",
+      "name": "get_inference_backend"
+    },
+    {
+      "file": "studio/backend/core/inference/key_exchange.py",
+      "type": "function",
+      "name": "_compute_fingerprint"
+    },
+    {
+      "file": "studio/backend/core/inference/key_exchange.py",
+      "type": "function",
+      "name": "init_key_pair"
+    },
+    {
+      "file": "studio/backend/core/inference/key_exchange.py",
+      "type": "function",
+      "name": "get_public_key_fingerprint"
+    },
+    {
+      "file": "studio/backend/core/inference/key_exchange.py",
+      "type": "function",
+      "name": "get_public_key_pem"
+    },
+    {
+      "file": "studio/backend/core/inference/key_exchange.py",
+      "type": "function",
+      "name": "decrypt_api_key"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "class",
+      "name": "LlamaAdmissionConfig"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "class",
+      "name": "LlamaAdmissionSnapshot"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "class",
+      "name": "LlamaAdmissionError"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "class",
+      "name": "LlamaAdmissionQueueFull"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "class",
+      "name": "LlamaAdmissionTimeout"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "class",
+      "name": "LlamaAdmissionCancelled"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "class",
+      "name": "_Waiter"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "class",
+      "name": "LlamaAdmissionLease"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "class",
+      "name": "LlamaAdmissionReservation"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "class",
+      "name": "LlamaAdmissionQueue"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "class",
+      "name": "LlamaAdmissionConfig"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "class",
+      "name": "LlamaAdmissionSnapshot"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "class",
+      "name": "LlamaAdmissionError"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "class",
+      "name": "LlamaAdmissionQueueFull"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "class",
+      "name": "LlamaAdmissionTimeout"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "class",
+      "name": "LlamaAdmissionCancelled"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "class",
+      "name": "_Waiter"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "class",
+      "name": "LlamaAdmissionLease"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "class",
+      "name": "LlamaAdmissionReservation"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "class",
+      "name": "LlamaAdmissionQueue"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "function",
+      "name": "_bool_env"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "function",
+      "name": "_optional_positive_float_env"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "function",
+      "name": "_positive_float_env"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "function",
+      "name": "_optional_positive_int_env"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "function",
+      "name": "llama_admission_config_from_env"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "function",
+      "name": "get_llama_admission_queue"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_admission.py",
+      "type": "function",
+      "name": "reset_llama_admission_queues"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "class",
+      "name": "LlamaServerNotFoundError"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "class",
+      "name": "_LlamaStreamCancelled"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "class",
+      "name": "LlamaCppBackend"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "class",
+      "name": "LlamaServerNotFoundError"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "class",
+      "name": "_LlamaStreamCancelled"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "class",
+      "name": "LlamaCppBackend"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "classify_gpu_offload_lines"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_wsl_system_rocm_lib_dirs"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_bundled_hip_present"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_native_linux_system_rocm_lib_dirs"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_finalize_reasoning_only_cumulative"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_gguf_active_tool_names"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_gguf_rehearsal_signal_pos"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_gguf_has_genuine_tool_signal"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_sniff_text_tool_name"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_is_rehearsal_prefix"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_held_rehearsal_tail_len"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_should_suppress_forced_no_tool_output"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_probe_dns_dead"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_hf_env_offline"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_hf_offline_if_dns_dead"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_swa_cache_path"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_load_swa_cache"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_save_swa_cache"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_period_from_layer_types"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_swa_entry_from_layer_types"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_fetch_swa_entry_from_hf"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_arch_aliases"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_swa_entry_from_config_obj"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_resolve_swa_entry_from_transformers"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_resolve_swa_pattern"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_hf_repo_from_url"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_extract_model_size_b"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_extract_reasoning_effort_levels"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "detect_reasoning_flags"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_is_gemma_mtp_family"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_is_gemma_mtp_name"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_is_mtp_model_name"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_is_companion_gguf_path"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_is_big_endian_gguf_path"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_gguf_snapshot_files"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_cached_hf_snapshot_file"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_snapshot_has_all_shards"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_resolve_repo_id_casing"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_cached_colocated_split_main"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_cached_variant_resolution"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_cached_variant_candidates"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_cached_candidate_matches_revision_size"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_cached_complete_candidate"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "cached_gguf_for_load"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_snapshot_dir_of"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_hub_cache_dir_for_snapshot_path"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_companion_snapshot_sibling"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_pick_mmproj"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_hub_download_in_flight"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_hub_download_blocks_gguf_load"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "gguf_load_in_flight"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "hf_gguf_load_in_flight"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_with_gguf_load_marker"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_gguf_extra_shards"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_gguf_files_for_variant"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_kv_bytes_per_elem"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_env_main_cache_type_for_budget"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_extra_args_main_cache_type_for_budget"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_auto_mode_drops_mtp"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_mla_mtp_auto_enabled"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_extra_args_set_spec_type"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_extra_arg_flag_name"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_extra_args_set_any_flag"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_effective_spec_type"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_extra_args_requests_mtp"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_extra_args_requests_separate_draft"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_extra_args_spec_draft_n_max"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_extra_args_mtp_draft_path"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_extra_args_draft_cache_types"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_extra_args_draft_offloaded_to_cpu"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_extra_args_n_ubatch"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_build_ngram_mod_flags"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_canonicalize_spec_mode"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_backfill_usage_from_timings"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_vulkan_lib_filename"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_apply_igpu_host_reserve_mib"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_llama_lib_dir"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_is_external_link"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_cpp.py",
+      "type": "function",
+      "name": "_coerce_reasoning_effort"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_http.py",
+      "type": "function",
+      "name": "_new_client"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_http.py",
+      "type": "function",
+      "name": "nonstreaming_client"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_http.py",
+      "type": "function",
+      "name": "aclose"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "class",
+      "name": "LlamaKeepWarmMiddleware"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "class",
+      "name": "LlamaKeepWarmMiddleware"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "_unload_gate"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "_is_inference_path"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "_note_pending"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "_note_unpending"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "_note_start"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "_note_end"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "_note_untracked_end"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "_is_idle"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "_note_activity"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "other_inference_request_count"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "untrack_current_request"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "inference_lifecycle_gate"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "note_model_loaded"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "note_model_unloaded"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "get_last_unloaded_model"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "_set_last_unloaded"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "_delete_resume_files"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "_set_kv_resume"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "take_kv_resume"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "purge_kv_resume"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "restore_kv_resume"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "sweep_slot_save_dir"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "_loaded_identity"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_keepwarm.py",
+      "type": "function",
+      "name": "idle_unload_loop"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_server_args.py",
+      "type": "function",
+      "name": "_flag_name"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_server_args.py",
+      "type": "function",
+      "name": "validate_extra_args"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_server_args.py",
+      "type": "function",
+      "name": "is_managed_flag"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_server_args.py",
+      "type": "function",
+      "name": "parse_ctx_override"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_server_args.py",
+      "type": "function",
+      "name": "resolve_requested_ctx"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_server_args.py",
+      "type": "function",
+      "name": "_last_flag_value"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_server_args.py",
+      "type": "function",
+      "name": "parse_cache_override"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_server_args.py",
+      "type": "function",
+      "name": "parse_cache_override_per_axis"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_server_args.py",
+      "type": "function",
+      "name": "resolve_cache_type_kv"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_server_args.py",
+      "type": "function",
+      "name": "parse_split_mode_override"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_server_args.py",
+      "type": "function",
+      "name": "resolve_tensor_parallel"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_server_args.py",
+      "type": "function",
+      "name": "_env_split_mode_is_tensor"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_server_args.py",
+      "type": "function",
+      "name": "_effective_tensor_parallel"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_server_args.py",
+      "type": "function",
+      "name": "_tensor_parallel_matches_loaded"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_server_args.py",
+      "type": "function",
+      "name": "extra_args_disable_mmproj"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_server_args.py",
+      "type": "function",
+      "name": "strip_shadowing_flags"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_server_args.py",
+      "type": "function",
+      "name": "strip_split_mode_only"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_stats.py",
+      "type": "class",
+      "name": "LlamaServerStatsLogger"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_stats.py",
+      "type": "class",
+      "name": "LlamaServerStatsLogger"
+    },
+    {
+      "file": "studio/backend/core/inference/llama_stats.py",
+      "type": "function",
+      "name": "maybe_start_stats_logger"
+    },
+    {
+      "file": "studio/backend/core/inference/local_model_resolver.py",
+      "type": "class",
+      "name": "_LocalGgufEntry"
+    },
+    {
+      "file": "studio/backend/core/inference/local_model_resolver.py",
+      "type": "class",
+      "name": "_LocalGgufEntry"
+    },
+    {
+      "file": "studio/backend/core/inference/local_model_resolver.py",
+      "type": "function",
+      "name": "_is_abs_path_id"
+    },
+    {
+      "file": "studio/backend/core/inference/local_model_resolver.py",
+      "type": "function",
+      "name": "_advertised_loader_id"
+    },
+    {
+      "file": "studio/backend/core/inference/local_model_resolver.py",
+      "type": "function",
+      "name": "_resolve_load_dir"
+    },
+    {
+      "file": "studio/backend/core/inference/local_model_resolver.py",
+      "type": "function",
+      "name": "_local_gguf_entry"
+    },
+    {
+      "file": "studio/backend/core/inference/local_model_resolver.py",
+      "type": "function",
+      "name": "info_has_local_gguf"
+    },
+    {
+      "file": "studio/backend/core/inference/local_model_resolver.py",
+      "type": "function",
+      "name": "_build_index"
+    },
+    {
+      "file": "studio/backend/core/inference/local_model_resolver.py",
+      "type": "function",
+      "name": "_index"
+    },
+    {
+      "file": "studio/backend/core/inference/local_model_resolver.py",
+      "type": "function",
+      "name": "resolve_local_gguf"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "class",
+      "name": "_SessionWedged"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "class",
+      "name": "_SessionClosed"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "class",
+      "name": "_StdioSession"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "class",
+      "name": "_StdioKeyLock"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "class",
+      "name": "_MCPCancelled"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "class",
+      "name": "_SessionWedged"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "class",
+      "name": "_SessionClosed"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "class",
+      "name": "_StdioSession"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "class",
+      "name": "_StdioKeyLock"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "class",
+      "name": "_MCPCancelled"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "is_stdio"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_split_windows_command_line"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "parse_stdio_command"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "join_stdio_command"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_stdio_log_id"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "stdio_mcp_enabled"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "probe_timeout"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "parse_server_headers"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_oauth_store"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "clear_oauth_tokens_async"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_client"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_is_tool_error"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_transport_dead"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_abort_future"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_headers_key"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_url_close_key"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_cfg_close_key"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_stdio_close_generation"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_session_key"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_checkout_stdio_session"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_borrow_stdio_key_lock"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_discard_stdio_key_lock"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_return_stdio_key_lock"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_get_stdio_session"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_release_stdio_session"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_retire_stdio_session"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_drop_stdio_session"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_evict_stdio_lru_locked"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "close_stdio_sessions"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_reap_idle_stdio_sessions"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_stdio_session_reaper"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "list_tools_async"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "get_cached_tools"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "cache_tools"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "record_probe_failure"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "in_failure_cooloff"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "invalidate_tool_cache"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_flatten_result"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_race_tool_call"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "_call_stdio_tool"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_client.py",
+      "type": "function",
+      "name": "call_tool_sync"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_config_import.py",
+      "type": "class",
+      "name": "ParsedMcpEntry"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_config_import.py",
+      "type": "class",
+      "name": "ParsedMcpEntry"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_config_import.py",
+      "type": "function",
+      "name": "_coerce_str_dict"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_config_import.py",
+      "type": "function",
+      "name": "_has_variable_reference"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_config_import.py",
+      "type": "function",
+      "name": "_has_null_value"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_config_import.py",
+      "type": "function",
+      "name": "_enabled_from_spec"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_config_import.py",
+      "type": "function",
+      "name": "_parse_entry"
+    },
+    {
+      "file": "studio/backend/core/inference/mcp_config_import.py",
+      "type": "function",
+      "name": "parse_mcp_config"
+    },
+    {
+      "file": "studio/backend/core/inference/message_content.py",
+      "type": "function",
+      "name": "content_to_text"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "class",
+      "name": "_MLXPromptCacheHistory"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "class",
+      "name": "MLXInferenceBackend"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "class",
+      "name": "_MLXPromptCacheHistory"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "class",
+      "name": "MLXInferenceBackend"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "function",
+      "name": "_mlx_adapter_modules"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "function",
+      "name": "_temporary_mlx_adapter_state"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "function",
+      "name": "_mlx_vlm_model_config"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "function",
+      "name": "_render_registered_vlm_prompt"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "function",
+      "name": "_count_vlm_images"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "function",
+      "name": "_vlm_media_reprs"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "function",
+      "name": "_prompt_serializes_vlm_media"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "function",
+      "name": "_vlm_prompt_issue"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "function",
+      "name": "_vlm_messages_have_tool_history"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "function",
+      "name": "_build_generation_stats"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "function",
+      "name": "_mlx_prompt_cache_api"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "function",
+      "name": "_prompt_cache_max_bytes"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "function",
+      "name": "_flatten_kv_entries"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "function",
+      "name": "_kv_prefix_coverage"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "function",
+      "name": "_mlx_distributed_rank_size"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "function",
+      "name": "_mlx_distributed_backend_from_env"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "function",
+      "name": "_init_mlx_distributed"
+    },
+    {
+      "file": "studio/backend/core/inference/mlx_inference.py",
+      "type": "function",
+      "name": "_make_mlx_presence_penalty_processor"
+    },
+    {
+      "file": "studio/backend/core/inference/model_ids.py",
+      "type": "function",
+      "name": "_looks_like_path"
+    },
+    {
+      "file": "studio/backend/core/inference/model_ids.py",
+      "type": "function",
+      "name": "public_model_id"
+    },
+    {
+      "file": "studio/backend/core/inference/model_ids.py",
+      "type": "function",
+      "name": "model_id_matches"
+    },
+    {
+      "file": "studio/backend/core/inference/orchestrator.py",
+      "type": "class",
+      "name": "GenStreamError"
+    },
+    {
+      "file": "studio/backend/core/inference/orchestrator.py",
+      "type": "class",
+      "name": "GenStreamErrorRaised"
+    },
+    {
+      "file": "studio/backend/core/inference/orchestrator.py",
+      "type": "class",
+      "name": "InferenceOrchestrator"
+    },
+    {
+      "file": "studio/backend/core/inference/orchestrator.py",
+      "type": "class",
+      "name": "GenStreamError"
+    },
+    {
+      "file": "studio/backend/core/inference/orchestrator.py",
+      "type": "class",
+      "name": "GenStreamErrorRaised"
+    },
+    {
+      "file": "studio/backend/core/inference/orchestrator.py",
+      "type": "class",
+      "name": "InferenceOrchestrator"
+    },
+    {
+      "file": "studio/backend/core/inference/orchestrator.py",
+      "type": "function",
+      "name": "get_inference_backend"
+    },
+    {
+      "file": "studio/backend/core/inference/passthrough_healing.py",
+      "type": "class",
+      "name": "StreamToolCallHealer"
+    },
+    {
+      "file": "studio/backend/core/inference/passthrough_healing.py",
+      "type": "class",
+      "name": "StreamToolCallHealer"
+    },
+    {
+      "file": "studio/backend/core/inference/passthrough_healing.py",
+      "type": "function",
+      "name": "_has_heal_signal"
+    },
+    {
+      "file": "studio/backend/core/inference/passthrough_healing.py",
+      "type": "function",
+      "name": "nudge_enabled"
+    },
+    {
+      "file": "studio/backend/core/inference/passthrough_healing.py",
+      "type": "function",
+      "name": "heal_gate"
+    },
+    {
+      "file": "studio/backend/core/inference/passthrough_healing.py",
+      "type": "function",
+      "name": "_tool_schemas_by_name"
+    },
+    {
+      "file": "studio/backend/core/inference/passthrough_healing.py",
+      "type": "function",
+      "name": "_string_arg_key_from_schema"
+    },
+    {
+      "file": "studio/backend/core/inference/passthrough_healing.py",
+      "type": "function",
+      "name": "_coerce_promoted_arguments"
+    },
+    {
+      "file": "studio/backend/core/inference/passthrough_healing.py",
+      "type": "function",
+      "name": "_promote"
+    },
+    {
+      "file": "studio/backend/core/inference/passthrough_healing.py",
+      "type": "function",
+      "name": "_remove_spans"
+    },
+    {
+      "file": "studio/backend/core/inference/passthrough_healing.py",
+      "type": "function",
+      "name": "heal_openai_message_events"
+    },
+    {
+      "file": "studio/backend/core/inference/passthrough_healing.py",
+      "type": "function",
+      "name": "heal_openai_message"
+    },
+    {
+      "file": "studio/backend/core/inference/passthrough_healing.py",
+      "type": "function",
+      "name": "_earliest_signal"
+    },
+    {
+      "file": "studio/backend/core/inference/passthrough_healing.py",
+      "type": "function",
+      "name": "_closed_signal_span"
+    },
+    {
+      "file": "studio/backend/core/inference/passthrough_healing.py",
+      "type": "function",
+      "name": "_partial_signal_suffix"
+    },
+    {
+      "file": "studio/backend/core/inference/passthrough_healing.py",
+      "type": "function",
+      "name": "_first_choice_message"
+    },
+    {
+      "file": "studio/backend/core/inference/passthrough_healing.py",
+      "type": "function",
+      "name": "_last_assistant_text"
+    },
+    {
+      "file": "studio/backend/core/inference/passthrough_healing.py",
+      "type": "function",
+      "name": "_heal_would_promote"
+    },
+    {
+      "file": "studio/backend/core/inference/passthrough_healing.py",
+      "type": "function",
+      "name": "response_has_promotable_calls"
+    },
+    {
+      "file": "studio/backend/core/inference/passthrough_healing.py",
+      "type": "function",
+      "name": "nudge_should_retry"
+    },
+    {
+      "file": "studio/backend/core/inference/passthrough_healing.py",
+      "type": "function",
+      "name": "nudge_messages"
+    },
+    {
+      "file": "studio/backend/core/inference/presence_penalty.py",
+      "type": "function",
+      "name": "apply_presence_penalty"
+    },
+    {
+      "file": "studio/backend/core/inference/presence_penalty.py",
+      "type": "function",
+      "name": "_make_presence_penalty_processor"
+    },
+    {
+      "file": "studio/backend/core/inference/pricing.py",
+      "type": "function",
+      "name": "_lookup"
+    },
+    {
+      "file": "studio/backend/core/inference/pricing.py",
+      "type": "function",
+      "name": "calculate_cost"
+    },
+    {
+      "file": "studio/backend/core/inference/pricing.py",
+      "type": "function",
+      "name": "pricing_snapshot"
+    },
+    {
+      "file": "studio/backend/core/inference/providers.py",
+      "type": "function",
+      "name": "get_provider_info"
+    },
+    {
+      "file": "studio/backend/core/inference/providers.py",
+      "type": "function",
+      "name": "get_base_url"
+    },
+    {
+      "file": "studio/backend/core/inference/providers.py",
+      "type": "function",
+      "name": "list_available_providers"
+    },
+    {
+      "file": "studio/backend/core/inference/runtime_context.py",
+      "type": "function",
+      "name": "runtime_context_length"
+    },
+    {
+      "file": "studio/backend/core/inference/safetensors_agentic.py",
+      "type": "function",
+      "name": "_active_tool_names"
+    },
+    {
+      "file": "studio/backend/core/inference/safetensors_agentic.py",
+      "type": "function",
+      "name": "_active_tool_names"
+    },
+    {
+      "file": "studio/backend/core/inference/safetensors_agentic.py",
+      "type": "function",
+      "name": "_is_rehearsal_prefix"
+    },
+    {
+      "file": "studio/backend/core/inference/safetensors_agentic.py",
+      "type": "function",
+      "name": "_held_rehearsal_tail_len"
+    },
+    {
+      "file": "studio/backend/core/inference/safetensors_agentic.py",
+      "type": "function",
+      "name": "_rehearsal_name_start"
+    },
+    {
+      "file": "studio/backend/core/inference/safetensors_agentic.py",
+      "type": "function",
+      "name": "_earliest_tool_signal"
+    },
+    {
+      "file": "studio/backend/core/inference/safetensors_agentic.py",
+      "type": "function",
+      "name": "_has_genuine_tool_signal"
+    },
+    {
+      "file": "studio/backend/core/inference/safetensors_agentic.py",
+      "type": "function",
+      "name": "strip_tool_markup_streaming"
+    },
+    {
+      "file": "studio/backend/core/inference/safetensors_agentic.py",
+      "type": "function",
+      "name": "_strip_tool_markup_final"
+    },
+    {
+      "file": "studio/backend/core/inference/safetensors_agentic.py",
+      "type": "function",
+      "name": "_status_for_tool"
+    },
+    {
+      "file": "studio/backend/core/inference/safetensors_agentic.py",
+      "type": "function",
+      "name": "_reprompt_intent_text"
+    },
+    {
+      "file": "studio/backend/core/inference/safetensors_agentic.py",
+      "type": "function",
+      "name": "_looks_like_enabled_bare_json"
+    },
+    {
+      "file": "studio/backend/core/inference/safetensors_agentic.py",
+      "type": "function",
+      "name": "_detect_render_html_tool_start"
+    },
+    {
+      "file": "studio/backend/core/inference/safetensors_agentic.py",
+      "type": "function",
+      "name": "_coerce_arguments_with_provenance"
+    },
+    {
+      "file": "studio/backend/core/inference/safetensors_agentic.py",
+      "type": "function",
+      "name": "_coerce_arguments"
+    },
+    {
+      "file": "studio/backend/core/inference/safetensors_agentic.py",
+      "type": "function",
+      "name": "_tool_event_provenance"
+    },
+    {
+      "file": "studio/backend/core/inference/safetensors_agentic.py",
+      "type": "function",
+      "name": "_accepts_output_callback"
+    },
+    {
+      "file": "studio/backend/core/inference/safetensors_agentic.py",
+      "type": "function",
+      "name": "_call_single_turn"
+    },
+    {
+      "file": "studio/backend/core/inference/safetensors_agentic.py",
+      "type": "function",
+      "name": "run_safetensors_tool_loop"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_ggml_sidecar.py",
+      "type": "class",
+      "name": "SttEngineUnavailableError"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_ggml_sidecar.py",
+      "type": "class",
+      "name": "_GgmlDownloadState"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_ggml_sidecar.py",
+      "type": "class",
+      "name": "GgmlSttSidecar"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_ggml_sidecar.py",
+      "type": "class",
+      "name": "SttEngineUnavailableError"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_ggml_sidecar.py",
+      "type": "class",
+      "name": "_GgmlDownloadState"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_ggml_sidecar.py",
+      "type": "class",
+      "name": "GgmlSttSidecar"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_ggml_sidecar.py",
+      "type": "function",
+      "name": "resolve_ggml_model_id"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_ggml_sidecar.py",
+      "type": "function",
+      "name": "_managed_whisper_cpp_dir"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_ggml_sidecar.py",
+      "type": "function",
+      "name": "find_whisper_server_binary"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_ggml_sidecar.py",
+      "type": "function",
+      "name": "_is_runnable"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_ggml_sidecar.py",
+      "type": "function",
+      "name": "_whisper_install_marker"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_ggml_sidecar.py",
+      "type": "function",
+      "name": "slim_runtime_intact"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_ggml_sidecar.py",
+      "type": "function",
+      "name": "is_available"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_ggml_sidecar.py",
+      "type": "function",
+      "name": "ensure_engine_available"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_ggml_sidecar.py",
+      "type": "function",
+      "name": "_whisper_server_child_env"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_ggml_sidecar.py",
+      "type": "function",
+      "name": "_cached_model_path"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_ggml_sidecar.py",
+      "type": "function",
+      "name": "start_model_download"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_ggml_sidecar.py",
+      "type": "function",
+      "name": "download_status"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_ggml_sidecar.py",
+      "type": "function",
+      "name": "_pcm_to_wav_bytes"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_ggml_sidecar.py",
+      "type": "function",
+      "name": "get_ggml_stt_sidecar"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "_SelectedHubFile"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "_CachedSttSnapshot"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "SttUnavailableError"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "SttLoadCancelledError"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "SttModelNotDownloadedError"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "SttModelIdError"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "SttModelCompatibilityError"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "SttAudioDecodeError"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "SttAudioTooLongError"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "SttLanguageError"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "_SnapshotDownloadState"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "WhisperSttSidecar"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "_SelectedHubFile"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "_CachedSttSnapshot"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "SttUnavailableError"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "SttLoadCancelledError"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "SttModelNotDownloadedError"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "SttModelIdError"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "SttModelCompatibilityError"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "SttAudioDecodeError"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "SttAudioTooLongError"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "SttLanguageError"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "_SnapshotDownloadState"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "class",
+      "name": "WhisperSttSidecar"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "normalize_whisper_language"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "_known_whisper_languages"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "ensure_stt_available"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "is_available"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "resolve_model_id"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "resolve_model_repo"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "_is_whisper_config"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "_read_json_object"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "_active_hf_hub_cache"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "_repo_cache_dir"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "_revision_record_path"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "_write_revision_record"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "_read_revision_record"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "_safe_snapshot_for_revision"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "_snapshot_usable"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "_find_complete_cached_snapshot"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "_selected_file_from_sibling"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "_select_snapshot_files"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "validate_remote_model"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "_is_missing_local_model_error"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "_snapshot_is_complete"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "is_model_downloaded"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "start_model_download"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "download_status"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "_training_active"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "_clear_device_cache"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "_pick_device"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "_decode_audio_bounded"
+    },
+    {
+      "file": "studio/backend/core/inference/stt_sidecar.py",
+      "type": "function",
+      "name": "get_stt_sidecar"
+    },
+    {
+      "file": "studio/backend/core/inference/tensor_fallback.py",
+      "type": "function",
+      "name": "load_with_tensor_fallback"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "is_short_intent_without_action"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "reprompt_to_act_message"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_balanced_bracket_end"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_skip_mistral_call_id"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_strip_mistral_reasoning"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_strip_mistral_closed_calls"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_strip_gemma_wrapperless_calls"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_strip_function_xml_calls"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_glm_value_close"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_strip_glm_calls"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "strip_tool_markup"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "has_tool_signal"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_marker_inside_leading_envelope"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_mistral_region_end"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_xml_signal_inside_leading_mistral"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_parse_bare_rehearsals"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_first_foreign_tool_signal"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_xml_signal_inside_leading_bare_json"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_signal_inside_leading_wrapperless_gemma"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_disabled_gemma_call_end_containing_signal"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "parse_tool_calls_from_text"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_parse_tool_call_json"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_trim_param_value"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_inside_open_parameter"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_parse_function_xml"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_llama3_kv_value"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_parse_llama3_kv_args"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_parse_llama3_python_tag"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "strip_llama3_leading_sentinels"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_parse_llama3_bare_json"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_parse_mistral_tool_calls"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_parse_mistral_array"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_consume_mistral_call"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_whole_content_is_json_value"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_leading_json_value_end"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_parse_gemma_tool_calls"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_balanced_brace_end"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_gemma_body_brace_end"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_top_level_bare_json_name"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "strip_leading_bare_json_call"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_bare_json_call_shaped"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_gemma_balanced_brace_end"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_gemma_parse_value"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_gemma_parse_array"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_gemma_coerce_scalar"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_gemma_strip_quoted_leaves"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_gemma_parse_stripped_body"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_gemma_parse_mapping"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_find_outside_json_strings"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_parse_deepseek_tool_calls"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_parse_glm_tool_calls"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_parse_kimi_tool_calls"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_call_parser.py",
+      "type": "function",
+      "name": "_parse_kimi_section_body"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_loop_controller.py",
+      "type": "class",
+      "name": "CoercedArguments"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_loop_controller.py",
+      "type": "class",
+      "name": "ToolCallDecision"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_loop_controller.py",
+      "type": "class",
+      "name": "ToolCallCompletion"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_loop_controller.py",
+      "type": "class",
+      "name": "_ToolCallRecord"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_loop_controller.py",
+      "type": "class",
+      "name": "ToolLoopController"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_loop_controller.py",
+      "type": "class",
+      "name": "CoercedArguments"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_loop_controller.py",
+      "type": "class",
+      "name": "ToolCallDecision"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_loop_controller.py",
+      "type": "class",
+      "name": "ToolCallCompletion"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_loop_controller.py",
+      "type": "class",
+      "name": "_ToolCallRecord"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_loop_controller.py",
+      "type": "class",
+      "name": "ToolLoopController"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_loop_controller.py",
+      "type": "function",
+      "name": "_json_default"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_loop_controller.py",
+      "type": "function",
+      "name": "canonical_tool_call_key"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_loop_controller.py",
+      "type": "function",
+      "name": "coerce_tool_arguments"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_loop_controller.py",
+      "type": "function",
+      "name": "tool_event_provenance"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_loop_controller.py",
+      "type": "function",
+      "name": "status_for_tool"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_loop_controller.py",
+      "type": "function",
+      "name": "is_tool_error"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_loop_controller.py",
+      "type": "function",
+      "name": "_strip_mcp_image_suffix"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_loop_controller.py",
+      "type": "function",
+      "name": "strip_result_for_model"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_loop_controller.py",
+      "type": "function",
+      "name": "append_deferred_nudges"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_loop_controller.py",
+      "type": "function",
+      "name": "_tool_name_from_schema"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_loop_controller.py",
+      "type": "function",
+      "name": "_noop_result"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_stream_exec.py",
+      "type": "function",
+      "name": "accepts_output_callback"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_stream_exec.py",
+      "type": "function",
+      "name": "_drain_queue"
+    },
+    {
+      "file": "studio/backend/core/inference/tool_stream_exec.py",
+      "type": "function",
+      "name": "stream_tool_execution"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "class",
+      "name": "_NoRedirect"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "class",
+      "name": "_PinnedHTTPSConnection"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "class",
+      "name": "_SNIHTTPSHandler"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "class",
+      "name": "_NoRedirect"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "class",
+      "name": "_PinnedHTTPSConnection"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "class",
+      "name": "_SNIHTTPSHandler"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_env_int"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_env_assignment_is_unsafe"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_find_blocked_commands"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_references_sensitive_path"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_pattern_matches_dir"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_glob_token_sensitive"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_glob_hits_sensitive"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_expand_shell_assignments"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_expand_param_defaults"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_decode_ansi_c"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_brace_range"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_brace_options"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_expand_braces"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_mode_arg_writes"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_has_kwarg_splat"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_builtin_open_writes"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_attr_open_writes"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_folded_path"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_dynamic_name_hits_sensitive"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_folded_is_sensitive"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_terminal_is_potentially_unsafe"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_python_is_potentially_unsafe"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_mcp_arguments_reference_sensitive"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_mcp_arguments_mutate"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_render_html_reaches_network"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "is_always_safe_tool"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "is_potentially_unsafe_tool_call"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_canon_win_path"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_augment_native_program_roots"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_windows_program_roots"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_resolve_trusted_windows_git"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_is_trusted_windows_program_dir"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_build_safe_env"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_is_secret_env_name"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_is_cred_location_env_name"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_is_secret_env_value"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_build_bypass_env"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_sandbox_preexec"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_bypass_preexec"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_harden_parent_against_proc_env_leak"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_get_shell_cmd"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_get_project_workdir"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_get_workdir"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "get_sandbox_workdir"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_mcp_specs_for_server"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "get_enabled_mcp_tools"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_render_html_result"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "execute_tool"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_opt_int"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_scope_retrieval_kwargs"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_search_knowledge_base"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_autoinject_enabled"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_autoinject_floor"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_autoinject_top_k"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_thread_whole_doc_enabled"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_message_token_estimate"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_whole_doc_budget"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_last_user_text"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "build_rag_autoinject"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_looks_binary"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_magic_head"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_has_pdf_magic"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_has_binary_magic"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_has_single_byte_text_evidence"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_extract_pdf_text"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_validate_and_resolve_host"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_is_text_candidate_content_type"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_github_repo_readme_api_url"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_fetch_budget_exceeded"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_fetch_hop_timeout"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_resolve_with_budget"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_read_capped_body"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_fetch_url_raw"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_looks_like_html"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_looks_like_html_document"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_truncate_page_text"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_fetch_page_text"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_web_search"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_check_signal_escape_patterns"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_check_code_safety"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_capture_process_group"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_kill_process_tree"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_killpg_captured"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_cancel_watcher"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_truncate"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_missing_error_lines"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_extract_missing_abs_path"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_is_outside_workdir"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_missing_path_hint"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_drain_process_output"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_python_exec"
+    },
+    {
+      "file": "studio/backend/core/inference/tools.py",
+      "type": "function",
+      "name": "_bash_exec"
+    },
+    {
+      "file": "studio/backend/core/inference/worker.py",
+      "type": "function",
+      "name": "_ensure_backend_on_path"
+    },
+    {
+      "file": "studio/backend/core/inference/worker.py",
+      "type": "function",
+      "name": "_activate_transformers_version"
+    },
+    {
+      "file": "studio/backend/core/inference/worker.py",
+      "type": "function",
+      "name": "_decode_image"
+    },
+    {
+      "file": "studio/backend/core/inference/worker.py",
+      "type": "function",
+      "name": "_resize_image"
+    },
+    {
+      "file": "studio/backend/core/inference/worker.py",
+      "type": "function",
+      "name": "_send_response"
+    },
+    {
+      "file": "studio/backend/core/inference/worker.py",
+      "type": "function",
+      "name": "_encode_share_object"
+    },
+    {
+      "file": "studio/backend/core/inference/worker.py",
+      "type": "function",
+      "name": "_decode_share_object"
+    },
+    {
+      "file": "studio/backend/core/inference/worker.py",
+      "type": "function",
+      "name": "_clean_token"
+    },
+    {
+      "file": "studio/backend/core/inference/worker.py",
+      "type": "function",
+      "name": "_build_model_config"
+    },
+    {
+      "file": "studio/backend/core/inference/worker.py",
+      "type": "function",
+      "name": "_needs_nemotron_trust"
+    },
+    {
+      "file": "studio/backend/core/inference/worker.py",
+      "type": "function",
+      "name": "_resolve_lora_4bit"
+    },
+    {
+      "file": "studio/backend/core/inference/worker.py",
+      "type": "function",
+      "name": "_ensure_ssm_kernels"
+    },
+    {
+      "file": "studio/backend/core/inference/worker.py",
+      "type": "function",
+      "name": "_run_security_gates"
+    },
+    {
+      "file": "studio/backend/core/inference/worker.py",
+      "type": "function",
+      "name": "_handle_load"
+    },
+    {
+      "file": "studio/backend/core/inference/worker.py",
+      "type": "function",
+      "name": "_drain_skip_generate"
+    },
+    {
+      "file": "studio/backend/core/inference/worker.py",
+      "type": "function",
+      "name": "_handle_generate"
+    },
+    {
+      "file": "studio/backend/core/inference/worker.py",
+      "type": "function",
+      "name": "_handle_share_object"
+    },
+    {
+      "file": "studio/backend/core/inference/worker.py",
+      "type": "function",
+      "name": "_handle_generate_audio"
+    },
+    {
+      "file": "studio/backend/core/inference/worker.py",
+      "type": "function",
+      "name": "_handle_generate_audio_input"
+    },
+    {
+      "file": "studio/backend/core/inference/worker.py",
+      "type": "function",
+      "name": "_handle_unload"
+    },
+    {
+      "file": "studio/backend/core/inference/worker.py",
+      "type": "function",
+      "name": "run_inference_process"
+    },
+    {
+      "file": "studio/backend/core/rag/captioner.py",
+      "type": "function",
+      "name": "_collapse_runaway"
+    },
+    {
+      "file": "studio/backend/core/rag/captioner.py",
+      "type": "function",
+      "name": "vision_endpoint"
+    },
+    {
+      "file": "studio/backend/core/rag/captioner.py",
+      "type": "function",
+      "name": "_vision_auth_headers"
+    },
+    {
+      "file": "studio/backend/core/rag/captioner.py",
+      "type": "function",
+      "name": "_vision_complete"
+    },
+    {
+      "file": "studio/backend/core/rag/captioner.py",
+      "type": "function",
+      "name": "_caption_one"
+    },
+    {
+      "file": "studio/backend/core/rag/captioner.py",
+      "type": "function",
+      "name": "_ocr_one"
+    },
+    {
+      "file": "studio/backend/core/rag/captioner.py",
+      "type": "function",
+      "name": "caption_images"
+    },
+    {
+      "file": "studio/backend/core/rag/captioner.py",
+      "type": "function",
+      "name": "ocr_pages"
+    },
+    {
+      "file": "studio/backend/core/rag/captioner.py",
+      "type": "function",
+      "name": "merge_page_captions"
+    },
+    {
+      "file": "studio/backend/core/rag/captioner.py",
+      "type": "function",
+      "name": "splice_captions"
+    },
+    {
+      "file": "studio/backend/core/rag/chunking.py",
+      "type": "class",
+      "name": "Chunk"
+    },
+    {
+      "file": "studio/backend/core/rag/chunking.py",
+      "type": "class",
+      "name": "Chunk"
+    },
+    {
+      "file": "studio/backend/core/rag/chunking.py",
+      "type": "function",
+      "name": "_split"
+    },
+    {
+      "file": "studio/backend/core/rag/chunking.py",
+      "type": "function",
+      "name": "_merge"
+    },
+    {
+      "file": "studio/backend/core/rag/chunking.py",
+      "type": "function",
+      "name": "chunk_pages"
+    },
+    {
+      "file": "studio/backend/core/rag/config.py",
+      "type": "function",
+      "name": "effective_embedding_model"
+    },
+    {
+      "file": "studio/backend/core/rag/config.py",
+      "type": "function",
+      "name": "_names_gguf"
+    },
+    {
+      "file": "studio/backend/core/rag/config.py",
+      "type": "function",
+      "name": "gguf_repo_for_embedding_model"
+    },
+    {
+      "file": "studio/backend/core/rag/config.py",
+      "type": "function",
+      "name": "default_gguf_repo"
+    },
+    {
+      "file": "studio/backend/core/rag/config.py",
+      "type": "function",
+      "name": "effective_gguf_repo"
+    },
+    {
+      "file": "studio/backend/core/rag/embed_llama_server.py",
+      "type": "class",
+      "name": "LlamaServerBackend"
+    },
+    {
+      "file": "studio/backend/core/rag/embed_llama_server.py",
+      "type": "class",
+      "name": "LlamaServerBackend"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "class",
+      "name": "UnsafeEmbeddingModelError"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "class",
+      "name": "_SentenceTransformersBackend"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "class",
+      "name": "UnsafeEmbeddingModelError"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "class",
+      "name": "_SentenceTransformersBackend"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "_device"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "_install_torchao_stub_once"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "_ambient_hf_token"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "_st_module_subdirs"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "_guard_model_security"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "_st_accepts_local_files_only"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "_get"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "_inference_ctx_factory"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "_inference_ctx"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "_st_encode"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "_st_dim"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "_st_token_counter"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "_resolve_auto"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "_try_make_llama_backend"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "_build_st_backend_or_fallback"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "_switch_to_llama_fallback"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "_get_backend"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "_reset_backend"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "active_backend_is_llama"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "warm"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "encode"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "dim"
+    },
+    {
+      "file": "studio/backend/core/rag/embeddings.py",
+      "type": "function",
+      "name": "token_counter"
+    },
+    {
+      "file": "studio/backend/core/rag/ingestion.py",
+      "type": "function",
+      "name": "_sha256_file"
+    },
+    {
+      "file": "studio/backend/core/rag/ingestion.py",
+      "type": "function",
+      "name": "_remove_upload"
+    },
+    {
+      "file": "studio/backend/core/rag/ingestion.py",
+      "type": "function",
+      "name": "_emit"
+    },
+    {
+      "file": "studio/backend/core/rag/ingestion.py",
+      "type": "function",
+      "name": "_set_job"
+    },
+    {
+      "file": "studio/backend/core/rag/ingestion.py",
+      "type": "function",
+      "name": "_progress"
+    },
+    {
+      "file": "studio/backend/core/rag/ingestion.py",
+      "type": "function",
+      "name": "_embed_all"
+    },
+    {
+      "file": "studio/backend/core/rag/ingestion.py",
+      "type": "function",
+      "name": "_ocr_scanned_pages"
+    },
+    {
+      "file": "studio/backend/core/rag/ingestion.py",
+      "type": "function",
+      "name": "_replace_old_document"
+    },
+    {
+      "file": "studio/backend/core/rag/ingestion.py",
+      "type": "function",
+      "name": "_run"
+    },
+    {
+      "file": "studio/backend/core/rag/ingestion.py",
+      "type": "function",
+      "name": "start_ingestion"
+    },
+    {
+      "file": "studio/backend/core/rag/ingestion.py",
+      "type": "function",
+      "name": "_new_job"
+    },
+    {
+      "file": "studio/backend/core/rag/ingestion.py",
+      "type": "function",
+      "name": "_reap_finished_jobs"
+    },
+    {
+      "file": "studio/backend/core/rag/ingestion.py",
+      "type": "function",
+      "name": "job_events"
+    },
+    {
+      "file": "studio/backend/core/rag/ingestion.py",
+      "type": "function",
+      "name": "get_job_status"
+    },
+    {
+      "file": "studio/backend/core/rag/locators.py",
+      "type": "class",
+      "name": "LocatorMatch"
+    },
+    {
+      "file": "studio/backend/core/rag/locators.py",
+      "type": "class",
+      "name": "LocatorMatch"
+    },
+    {
+      "file": "studio/backend/core/rag/locators.py",
+      "type": "function",
+      "name": "_norm_token"
+    },
+    {
+      "file": "studio/backend/core/rag/locators.py",
+      "type": "function",
+      "name": "_anchor_tokens"
+    },
+    {
+      "file": "studio/backend/core/rag/locators.py",
+      "type": "function",
+      "name": "_find_subsequences"
+    },
+    {
+      "file": "studio/backend/core/rag/locators.py",
+      "type": "function",
+      "name": "_locate"
+    },
+    {
+      "file": "studio/backend/core/rag/locators.py",
+      "type": "function",
+      "name": "_rects_from_words"
+    },
+    {
+      "file": "studio/backend/core/rag/locators.py",
+      "type": "function",
+      "name": "_regions_for_match"
+    },
+    {
+      "file": "studio/backend/core/rag/locators.py",
+      "type": "function",
+      "name": "pdf_regions_for_chunks"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "class",
+      "name": "Page"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "class",
+      "name": "ParsedImage"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "class",
+      "name": "_Stripper"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "class",
+      "name": "Page"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "class",
+      "name": "ParsedImage"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "class",
+      "name": "_Stripper"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "function",
+      "name": "_page"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "function",
+      "name": "_html"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "function",
+      "name": "_markdown_corrupted"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "function",
+      "name": "_markdown_incomplete"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "function",
+      "name": "_pdf_markdown"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "function",
+      "name": "_pdf"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "function",
+      "name": "parse_pdf_bytes"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "function",
+      "name": "_merge_rects"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "function",
+      "name": "_figure_boxes"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "function",
+      "name": "pages_with_figures"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "function",
+      "name": "render_pdf_figure_tiles"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "function",
+      "name": "render_pdf_pages"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "function",
+      "name": "_docx_table_rows"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "function",
+      "name": "_docx"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "function",
+      "name": "parse"
+    },
+    {
+      "file": "studio/backend/core/rag/parsers.py",
+      "type": "function",
+      "name": "parse_text"
+    },
+    {
+      "file": "studio/backend/core/rag/retrieval.py",
+      "type": "class",
+      "name": "Hit"
+    },
+    {
+      "file": "studio/backend/core/rag/retrieval.py",
+      "type": "class",
+      "name": "Hit"
+    },
+    {
+      "file": "studio/backend/core/rag/retrieval.py",
+      "type": "function",
+      "name": "retrieve_lexical"
+    },
+    {
+      "file": "studio/backend/core/rag/retrieval.py",
+      "type": "function",
+      "name": "retrieve_dense"
+    },
+    {
+      "file": "studio/backend/core/rag/retrieval.py",
+      "type": "function",
+      "name": "_rrf"
+    },
+    {
+      "file": "studio/backend/core/rag/retrieval.py",
+      "type": "function",
+      "name": "retrieve_hybrid"
+    },
+    {
+      "file": "studio/backend/core/rag/retrieval.py",
+      "type": "function",
+      "name": "filter_min_score"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "kb_scope"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "thread_scope"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "project_scope"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "_scopes"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "_f32"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "_now"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "_match_query"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "create_kb"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "list_kbs"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "get_kb"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "delete_kb"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "create_document"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "set_document_status"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "list_documents"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "list_all_documents"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "get_document"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "document_by_hash"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "failed_documents_by_hash"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "add_chunks"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "delete_document"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "search_lexical"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "search_dense"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "chunks_by_id"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "all_chunks_for_scope"
+    },
+    {
+      "file": "studio/backend/core/rag/store.py",
+      "type": "function",
+      "name": "scope_token_estimate"
+    },
+    {
+      "file": "studio/backend/core/rag/tool.py",
+      "type": "function",
+      "name": "_resolve_scope"
+    },
+    {
+      "file": "studio/backend/core/rag/tool.py",
+      "type": "function",
+      "name": "_format"
+    },
+    {
+      "file": "studio/backend/core/rag/tool.py",
+      "type": "function",
+      "name": "render_sources"
+    },
+    {
+      "file": "studio/backend/core/rag/tool.py",
+      "type": "function",
+      "name": "_row_token_count"
+    },
+    {
+      "file": "studio/backend/core/rag/tool.py",
+      "type": "function",
+      "name": "search_knowledge_base_with_sources"
+    },
+    {
+      "file": "studio/backend/core/rag/tool.py",
+      "type": "function",
+      "name": "store_rows"
+    },
+    {
+      "file": "studio/backend/core/rag/tool.py",
+      "type": "function",
+      "name": "search_for_autoinject"
+    },
+    {
+      "file": "studio/backend/core/rag/tool.py",
+      "type": "function",
+      "name": "whole_document_context"
+    },
+    {
+      "file": "studio/backend/core/rag/tool.py",
+      "type": "function",
+      "name": "search_knowledge_base"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "strip_tool_patterns"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "apply_tool_strip_patterns"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_balanced_json_span"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_balanced_brace_end"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_balanced_bracket_end"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_decode_array_items"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_iter_bracket_spans"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_split_top_level_commas"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_quote_gemma_array_elements"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_normalise_gemma_quoted_strings"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_quote_gemma_object_keys"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_gemma_arguments_to_json"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_inside_open_parameter"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_func_close_index"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_trim_param_value"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_marker_coverage"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_build_markers"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "marker_coverage"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "parse_tool_calls_from_text"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_strip_bracket_tag_calls"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_tool_call_markup_spans"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_think_spans_outside_tool_markup"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "strip_outside_think"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_strip_gemma_native_spans"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_gemma_span_ranges"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_strip_closed_blocks_outside_gemma"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "_strip_markup_segment"
+    },
+    {
+      "file": "studio/backend/core/tool_healing.py",
+      "type": "function",
+      "name": "strip_tool_call_markup"
+    },
+    {
+      "file": "studio/backend/core/training/resume.py",
+      "type": "function",
+      "name": "_is_under_outputs"
+    },
+    {
+      "file": "studio/backend/core/training/resume.py",
+      "type": "function",
+      "name": "has_resume_state"
+    },
+    {
+      "file": "studio/backend/core/training/resume.py",
+      "type": "function",
+      "name": "_checkpoint_step"
+    },
+    {
+      "file": "studio/backend/core/training/resume.py",
+      "type": "function",
+      "name": "_valid_state_file"
+    },
+    {
+      "file": "studio/backend/core/training/resume.py",
+      "type": "function",
+      "name": "_checkpoint_state"
+    },
+    {
+      "file": "studio/backend/core/training/resume.py",
+      "type": "function",
+      "name": "_valid_indexed_shard"
+    },
+    {
+      "file": "studio/backend/core/training/resume.py",
+      "type": "function",
+      "name": "_has_model_state"
+    },
+    {
+      "file": "studio/backend/core/training/resume.py",
+      "type": "function",
+      "name": "is_resume_checkpoint_valid"
+    },
+    {
+      "file": "studio/backend/core/training/resume.py",
+      "type": "function",
+      "name": "get_resume_checkpoint_path"
+    },
+    {
+      "file": "studio/backend/core/training/resume.py",
+      "type": "function",
+      "name": "normalize_resume_output_dir"
+    },
+    {
+      "file": "studio/backend/core/training/resume.py",
+      "type": "function",
+      "name": "_run_config"
+    },
+    {
+      "file": "studio/backend/core/training/resume.py",
+      "type": "function",
+      "name": "_uses_s3_dataset"
+    },
+    {
+      "file": "studio/backend/core/training/resume.py",
+      "type": "function",
+      "name": "can_resume_run"
+    },
+    {
+      "file": "studio/backend/core/training/s3_dataset.py",
+      "type": "class",
+      "name": "S3DownloadCancelled"
+    },
+    {
+      "file": "studio/backend/core/training/s3_dataset.py",
+      "type": "class",
+      "name": "S3DatasetDownload"
+    },
+    {
+      "file": "studio/backend/core/training/s3_dataset.py",
+      "type": "class",
+      "name": "S3DownloadCancelled"
+    },
+    {
+      "file": "studio/backend/core/training/s3_dataset.py",
+      "type": "class",
+      "name": "S3DatasetDownload"
+    },
+    {
+      "file": "studio/backend/core/training/s3_dataset.py",
+      "type": "function",
+      "name": "boto3_available"
+    },
+    {
+      "file": "studio/backend/core/training/s3_dataset.py",
+      "type": "function",
+      "name": "_build_s3_client"
+    },
+    {
+      "file": "studio/backend/core/training/s3_dataset.py",
+      "type": "function",
+      "name": "_list_dataset_keys"
+    },
+    {
+      "file": "studio/backend/core/training/s3_dataset.py",
+      "type": "function",
+      "name": "_extension_family"
+    },
+    {
+      "file": "studio/backend/core/training/s3_dataset.py",
+      "type": "function",
+      "name": "_validate_single_extension_family"
+    },
+    {
+      "file": "studio/backend/core/training/s3_dataset.py",
+      "type": "function",
+      "name": "_unique_local_path"
+    },
+    {
+      "file": "studio/backend/core/training/s3_dataset.py",
+      "type": "function",
+      "name": "_raise_if_cancelled"
+    },
+    {
+      "file": "studio/backend/core/training/s3_dataset.py",
+      "type": "function",
+      "name": "prepare_s3_dataset_download"
+    },
+    {
+      "file": "studio/backend/core/training/s3_dataset.py",
+      "type": "function",
+      "name": "download_s3_dataset"
+    },
+    {
+      "file": "studio/backend/core/training/trainer.py",
+      "type": "class",
+      "name": "UnslothTrainer"
+    },
+    {
+      "file": "studio/backend/core/training/trainer.py",
+      "type": "class",
+      "name": "UnslothTrainer"
+    },
+    {
+      "file": "studio/backend/core/training/trainer.py",
+      "type": "function",
+      "name": "_build_report_targets"
+    },
+    {
+      "file": "studio/backend/core/training/trainer.py",
+      "type": "function",
+      "name": "_ensure_deepseek_ocr_installed"
+    },
+    {
+      "file": "studio/backend/core/training/trainer.py",
+      "type": "function",
+      "name": "get_trainer"
+    },
+    {
+      "file": "studio/backend/core/training/training.py",
+      "type": "class",
+      "name": "TrainingProgress"
+    },
+    {
+      "file": "studio/backend/core/training/training.py",
+      "type": "class",
+      "name": "_MLXTrainerAdapter"
+    },
+    {
+      "file": "studio/backend/core/training/training.py",
+      "type": "class",
+      "name": "TrainingBackend"
+    },
+    {
+      "file": "studio/backend/core/training/training.py",
+      "type": "class",
+      "name": "TrainingProgress"
+    },
+    {
+      "file": "studio/backend/core/training/training.py",
+      "type": "class",
+      "name": "_MLXTrainerAdapter"
+    },
+    {
+      "file": "studio/backend/core/training/training.py",
+      "type": "class",
+      "name": "TrainingBackend"
+    },
+    {
+      "file": "studio/backend/core/training/training.py",
+      "type": "function",
+      "name": "_env_int"
+    },
+    {
+      "file": "studio/backend/core/training/training.py",
+      "type": "function",
+      "name": "_load_pyplot"
+    },
+    {
+      "file": "studio/backend/core/training/training.py",
+      "type": "function",
+      "name": "_coerce_seed"
+    },
+    {
+      "file": "studio/backend/core/training/training.py",
+      "type": "function",
+      "name": "_coerce_optional_bool"
+    },
+    {
+      "file": "studio/backend/core/training/training.py",
+      "type": "function",
+      "name": "_coerce_optional_nonneg_float"
+    },
+    {
+      "file": "studio/backend/core/training/training.py",
+      "type": "function",
+      "name": "is_apple_silicon_training_platform"
+    },
+    {
+      "file": "studio/backend/core/training/training.py",
+      "type": "function",
+      "name": "is_mlx_training_device"
+    },
+    {
+      "file": "studio/backend/core/training/training.py",
+      "type": "function",
+      "name": "should_use_mlx_training_backend"
+    },
+    {
+      "file": "studio/backend/core/training/training.py",
+      "type": "function",
+      "name": "_build_training_worker_config"
+    },
+    {
+      "file": "studio/backend/core/training/training.py",
+      "type": "function",
+      "name": "_sanitize_db_config"
+    },
+    {
+      "file": "studio/backend/core/training/training.py",
+      "type": "function",
+      "name": "_s3_dataset_name"
+    },
+    {
+      "file": "studio/backend/core/training/training.py",
+      "type": "function",
+      "name": "_cleanup_cancelled_checkpoints"
+    },
+    {
+      "file": "studio/backend/core/training/training.py",
+      "type": "function",
+      "name": "create_mlx_trainer_adapter"
+    },
+    {
+      "file": "studio/backend/core/training/training.py",
+      "type": "function",
+      "name": "get_training_backend"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_output_dir_from_resume_checkpoint"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_install_grouped_mm_cpu_fallback"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_model_wants_causal_conv1d"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_hipcc_gcc_install_dir"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_install_package_wheel_first"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_ensure_causal_conv1d_fast_path"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_installed_torch_version_tuple"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_flash_linear_attention_importable"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_flash_linear_attention_current"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_ensure_flash_linear_attention_unconditional"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_ensure_flash_linear_attention"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_ensure_mamba_ssm"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_discover_fla_model_types"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_model_wants_tilelang"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_installed_tvm_ffi_version"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_tilelang_importable"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_torch_has_hip"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_rocm_classify_unified_memory"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_tilelang_platform_supported"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_pip_install_cmd"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_run_pip"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_ensure_tilelang_backend_unconditional"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_ensure_tilelang_backend"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_rebind_in_already_imported_modules"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_install_fast_path_hooks"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_should_try_runtime_flash_attn_install"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_ensure_flash_attn_for_long_context"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_activate_transformers_version"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_activate_transformers_version_or_warn"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_mlx_vlm_max_resized_size"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_mlx_vlm_resized_image_layout"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_copy_mlx_vlm_image_processor"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_probe_mlx_vlm_numpy_image_layout"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_resize_mlx_vlm_image"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_resize_mlx_vlm_images"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_adapt_for_mlx_vlm"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_normalize_mlx_studio_optimizer"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_normalize_mlx_studio_scheduler"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_resolve_mlx_local_dataset_files"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_mlx_local_dataset_loader_for_files"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_start_mlx_stop_poller"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_resolve_mlx_output_dir"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_run_mlx_training"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_is_current_process_apple_silicon"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "run_mlx_training_process"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "run_training_process"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_send_status"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_emit_output_dir"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_mlx_has_checkpoint_at_step"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_write_mlx_stop_checkpoint"
+    },
+    {
+      "file": "studio/backend/core/training/worker.py",
+      "type": "function",
+      "name": "_run_embedding_training"
+    }
+  ]
+}
