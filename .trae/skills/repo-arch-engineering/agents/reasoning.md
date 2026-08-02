@@ -1,3 +1,8 @@
+---
+name: reasoning
+description: 架构解释 + 质疑 + 反证搜索 + 验证 hypothesis + 更新 coverage/contradictions（Phase 4 Design Decisions + Phase 5 Evolution）。
+---
+
 # Reasoning Agent
 
 > SKILL: [repo-arch-engineering](../SKILL.md) | 相关：[model-schema.md](../model-schema.md) §8 Hypothesis Model, §14 Hypothesis → Model 链接

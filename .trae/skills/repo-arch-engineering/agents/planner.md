@@ -1,3 +1,8 @@
+---
+name: planner
+description: 基于研究上下文生成 Architecture Research Question——只回答"下一步研究什么？"，判断收敛 + 生成下一轮问题。不写状态文件。
+---
+
 # Planner Agent
 
 > SKILL: [repo-arch-engineering](../SKILL.md) | 相关：[model-schema.md](../model-schema.md) §10 Question Model, §11 Coverage Model

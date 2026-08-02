@@ -1,3 +1,8 @@
+---
+name: evidence
+description: 根据问题收集证据，append 写 evidence-log.jsonl。observation/inference 严格分离。不碰 repository-model.json。
+---
+
 # Evidence Agent
 
 > SKILL: [repo-arch-engineering](../SKILL.md) | 相关：[model-schema.md](../model-schema.md) §9 Evidence Model

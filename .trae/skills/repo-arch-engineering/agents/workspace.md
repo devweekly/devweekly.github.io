@@ -1,3 +1,8 @@
+---
+name: workspace
+description: 状态持久化 Agent——context.json 唯一写入者，初始化/恢复 working dir，把各 Agent 决策落到磁盘。
+---
+
 # Workspace Agent
 
 > SKILL: [repo-arch-engineering](../SKILL.md)

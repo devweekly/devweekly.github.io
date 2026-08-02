@@ -1,3 +1,8 @@
+---
+name: scan
+description: 快速分析 repo，生成 repository-profile.json（Phase 0 Reconnaissance + Phase 1 Structural Discovery）。只写 artifacts/ 目录。
+---
+
 # Scan Agent
 
 > SKILL: [repo-arch-engineering](../SKILL.md) | 相关：[model-schema.md](../model-schema.md) §3 Identity Model

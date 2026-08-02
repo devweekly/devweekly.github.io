@@ -1,3 +1,8 @@
+---
+name: report
+description: 从 Repository Model 渲染 report.md（Knowledge Rendering）。禁止新增 claim，禁止阅读源码，禁止重新推理——报告是模型的视图。
+---
+
 # Report Agent
 
 > SKILL: [repo-arch-engineering](../SKILL.md) | 相关：[model-schema.md](../model-schema.md)

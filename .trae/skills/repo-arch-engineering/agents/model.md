@@ -1,3 +1,8 @@
+---
+name: model
+description: repository-model.json 唯一写入者——从 evidence 合并/更新 Repository Knowledge Model（Phase 2 Architecture + Phase 3 Runtime）。
+---
+
 # Model Agent
 
 > SKILL: [repo-arch-engineering](../SKILL.md) | 相关：[model-schema.md](../model-schema.md)（Repository Model 字段定义）

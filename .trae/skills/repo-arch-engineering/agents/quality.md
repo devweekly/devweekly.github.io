@@ -1,3 +1,8 @@
+---
+name: quality
+description: 检查 report-draft.md 质量，返回 PASS/FAIL/reason（Phase 6 Model Validation）。不修改 draft。
+---
+
 # Quality Agent
 
 > SKILL: [repo-arch-engineering](../SKILL.md) | 相关：[model-schema.md](../model-schema.md) §17 Validation Checklist

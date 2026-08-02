@@ -1,3 +1,8 @@
+---
+name: resume
+description: 恢复现场，判断代码变化，返回下一步跳转目标。不写任何状态文件。
+---
+
 # Resume Agent
 
 > SKILL: [repo-arch-engineering](../SKILL.md) | 相关：[workspace.md](../workspace.md)

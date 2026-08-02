@@ -329,40 +329,114 @@ Evidence 节点内部强制分离：
 
 # §10 Question Model（问题模型）
 
-问题是知识缺口，随研究进展动态演化。
+问题是 Architecture Knowledge Gap，随研究进展动态演化。
+
+> **核心约束：问题的目标是减少 Architecture Knowledge Gap，而不是覆盖更多代码。**
+> 问题必须驱动架构模型产生变化，而不是驱动 Agent 阅读更多代码。
+
+## 10.1 Question Schema
 
 ```json
 {
   "questions": [{
     "id": "q-001 (必填)",
+    "type": "enum (必填): boundary | decision | runtime | evolution | risk | pattern",
     "question": "string (必填，问题陈述)",
-    "reason": "string (必填，什么证据触发了这个问题)",
-    "expected_evidence": ["string (必填，找到什么证据才算回答)"],
-    "priority": "enum (必填): critical | high | medium | low",
-    "status": "enum (必填): open | investigating | answered | invalidated",
-    "linked_hypothesis": "hyp-xxx (可选)",
-    "linked_model_fields": ["model-path (可选)"],
+    "why_it_matters": "string (必填，为什么这个问题对架构理解重要？回答后会改变什么理解？)",
+    "expected_model_change": ["model-path (必填，回答后会修改/确认 repository-model.json 的哪些字段)"],
+    "hypothesis": "string (必填，初始假设，基于当前证据的推测，待验证或推翻)",
+    "evidence_needed": ["string (必填，验证假设需要哪些类型的证据)"],
+    "priority_score": "float (必填, 0.0-1.0): Impact × Uncertainty × Evidence Availability",
+    "impact": "enum (必填): high | medium | low",
+    "uncertainty": "enum (必填): high | medium | low",
+    "status": "enum (必填): open | investigating | validated | rejected | blocked | model_updated",
+    "validation_result": "enum (可选): supported | refuted | uncertain",
+    "confidence": "float (可选, 0.0-1.0, 验证后的置信度)",
+    "is_invariant": "boolean (可选, 高置信度 validated 的假设标记为 architecture invariant)",
+    "counter_evidence": ["ev-xxx (可选, 反证列表)"],
     "asked_at": "string (必填, ISO 8601)",
-    "answered_at": "string (可选, ISO 8601)",
-    "answer_summary": "string (可选，回答摘要)"
+    "validated_at": "string (可选, ISO 8601)",
+    "model_updated_at": "string (可选, ISO 8601)"
   }]
 }
 ```
 
-## 10.1 好问题 vs 坏问题
+## 10.2 Question Quality Gate
 
-**好问题**（知识缺口）：
+每个 Question 必须满足：
+
+1. **回答后会修改或确认 repository-model.json 中至少一个字段**
+2. **需要多个证据来源才能回答**（单证据不足以回答）
+3. **涉及架构边界、设计约束、运行机制、演进原因或工程权衡**
+4. **如果只是了解某个类/文件职责，则认为低价值问题，不生成**
+
+## 10.3 禁止生成的问题类型
+
+- 单文件职责问题（"这个类做什么？"）
+- 单类功能解释问题（"这个方法怎么工作？"）
+- 目录结构描述问题（"这个目录有什么？"）
+- 已知答案的问题
+- 不需要多证据来源就能回答的问题
+
+## 10.4 Question 状态机
+
 ```
-q-001: "插件在运行时如何被发现？"
-  reason: "看到 PluginManager 类，但不知道发现机制"
-  expected_evidence: ["ServiceLoader 调用点", "extension point 注册逻辑"]
+open
+  ↓ (开始收集证据)
+investigating
+  ↓ (证据充分，验证假设)
+validated (假设被支持) / rejected (假设被推翻) / blocked (证据不足)
+  ↓ (更新模型完成)
+model_updated
 ```
 
-**坏问题**（任务描述）：
+- `open` — 问题已生成，未开始研究
+- `investigating` — 正在收集证据
+- `validated` — 假设被证据支持，待更新模型
+- `rejected` — 假设被证据推翻，待更新模型反映新理解
+- `blocked` — 当前证据不足，记录缺失信息（终态，比无限循环好）
+- `model_updated` — 模型已更新，问题闭环（终态）
+
+**终态：** `model_updated`（validated/rejected 后更新模型完成）和 `blocked`（证据不足，记录缺失）。
+
+## 10.5 Priority 计算
+
 ```
-q-002: "分析插件模块。"
-  ← 没有 reason，没有 expected_evidence，无法判断何时算回答
+Priority = Architecture Impact × Current Uncertainty × Evidence Availability
 ```
+
+| 问题 | Impact | Uncertainty | Priority |
+|------|--------|-------------|----------|
+| 插件边界划分 | 高 | 高 | 0.9 |
+| 某工具类作用 | 低 | 低 | 0.1 |
+
+## 10.6 好问题 vs 坏问题
+
+**好问题**（Architecture Knowledge Gap）：
+```json
+{
+  "id": "q-001",
+  "type": "boundary",
+  "question": "为什么 model 插件不能依赖 UI？这个约束如何保证 CloudBeaver 复用？",
+  "why_it_matters": "验证 extension-point 是否是系统可扩展性的核心架构约束",
+  "expected_model_change": ["architecture.boundaries", "architecture.invariants"],
+  "hypothesis": "model 层被设计为 headless database platform API，以支持 CloudBeaver 复用",
+  "evidence_needed": ["MANIFEST.MF 依赖声明", "CloudBeaver import path", "historical commits"],
+  "priority_score": 0.9,
+  "impact": "high",
+  "uncertainty": "high"
+}
+```
+
+**坏问题**（代码探索任务）：
+```json
+{
+  "id": "q-002",
+  "question": "分析插件模块。",
+  "reason": "看到 PluginManager 类"
+}
+```
+← 没有 hypothesis，没有 expected_model_change，不驱动模型变化
 
 ---
 
