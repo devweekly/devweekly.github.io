@@ -1,0 +1,179 @@
+{
+  "round": 1,
+  "created_at": "2026-08-02T10:05:00+08:00",
+  "focus": "architecture + design_decisions",
+  "planner_reasoning": "第一轮聚焦 buzz-relay 作为单点真相的核心架构决策及其衍生约束：子系统隔离机制、多租户隔离实现、单进程多 surface 资源治理、Nostr 协议作为统一事件模型的扩展性、branches-as-channels 核心特性实现度、Buzz Mesh 创新功能的架构风险。每个问题对应 repository-model 的至少一个字段变化，且需要多源证据（代码 + Cargo.toml + 文档 + git history）。",
+  "questions": [
+    {
+      "id": "q-001",
+      "type": "decision",
+      "question": "为什么 Buzz 选择单 relay 作为 single source of truth 而不是 Nostr 原生的多 relay P2P 模型？这个决策如何同时满足多租户隔离、访问控制、audit 完整性三个目标？",
+      "why_it_matters": "验证 single-relay 是否是系统可扩展性和强一致性的核心架构约束——如果这个决策错误，整个 multi-tenant 隔离模型和 audit 链都将崩塌。同时回答架构师核心疑问：放弃 Nostr P2P 特性换来了什么。",
+      "expected_model_change": [
+        "architecture.invariants",
+        "architecture.boundaries",
+        "design_decisions",
+        "architecture.thesis"
+      ],
+      "hypothesis": "单 relay 是 deliberate trade-off：用放弃 P2P 的去中心化特性换取 (a) 多租户隔离的中央权威边界、(b) channel-membership-based 访问控制的统一执行点、(c) hash-chain audit log 的单一可信写入路径。Nostr 协议被保留是因为它提供了统一的签名事件模型和客户端兼容性，而非其 P2P 特性。",
+      "evidence_needed": [
+        "buzz-relay/src/router.rs 或 lib.rs 中是否显式拒绝多 relay 路由",
+        "buzz-relay-mesh crate 的实际职责——是 relay-to-relay 复制还是别的（如果存在复制，假设部分错误）",
+        "ARCHITECTURE.md 中 'no peer-to-peer event exchange, no gossip, no replication' 的声明 vs 代码实现",
+        "audit hash-chain 是否依赖单写入点（hash.rs / entry.rs）",
+        "git history 中是否有从 multi-relay 收敛到 single-relay 的 commit"
+      ],
+      "priority_score": 0.9,
+      "impact": "high",
+      "uncertainty": "high",
+      "status": "open"
+    },
+    {
+      "id": "q-002",
+      "type": "boundary",
+      "question": "Multi-tenant isolation 在共享 Postgres/Redis/S3 基础设施上如何被强制实现？TLA+/Tamarin 形式化验证的 isolation 在代码层面映射为什么机制——是 query-level community_id 过滤、connection-level 隔离、还是 schema-level 分区？哪一层是真正的安全边界？",
+      "why_it_matters": "多租户隔离是 buzz 的 production-readiness 关键。文档声称 'Communities sharing infrastructure cannot see each other' 但这必须在代码中验证——任何一处 SQL 漏掉 community_id WHERE 子句就是跨租户数据泄露。同时回答形式化方法（TLA+/Tamarin）在工程实践中如何落地。",
+      "expected_model_change": [
+        "architecture.boundaries",
+        "architecture.invariants",
+        "design_decisions",
+        "risks"
+      ],
+      "hypothesis": "TenantContext 在 buzz-relay 入口解析后注入到所有 service crate 的 query 路径，每条 SQL 都携带 community_id WHERE 子句——这是主边界。Redis 通过 key namespace 前缀（包含 community_id）隔离。S3 通过 Blossom path 隔离。但实际安全边界是 SQL WHERE 子句的覆盖率，TLA+/Tamarin 验证的是协议层而非 SQL 层，存在 gap。",
+      "evidence_needed": [
+        "buzz-relay/src/tenant.rs 的 TenantContext 结构和注入路径",
+        "buzz-db 中至少 5 个 query 是否都带 community_id（user.rs/event.rs/channel.rs/dm.rs/feed.rs）",
+        "是否有 lint / macro 强制每条 SQL 携带 community_id（buzz-conformance crate 的职责？）",
+        "Redis key 命名约定（pubsub/topic.rs, presence.rs）",
+        "错误信息是否包含 community 上下文（防 error string 泄露）"
+      ],
+      "priority_score": 0.88,
+      "impact": "high",
+      "uncertainty": "high",
+      "status": "open"
+    },
+    {
+      "id": "q-003",
+      "type": "boundary",
+      "question": "子系统隔离（buzz-workflow 不调 buzz-pubsub，buzz-search 不调 buzz-db）是靠 Cargo 依赖图强制、还是仅靠开发者约定？这个 invariant 是否有编译期保证？是否存在绕过路径？",
+      "why_it_matters": "这是 buzz 架构的核心 invariant——如果只是约定，未来 contributor 可能破坏它导致循环依赖和耦合。如果有编译期保证，那么这是一个值得学习的 architecture enforcement 实践。同时回答 architecture-decision-as-code 的工程问题。",
+      "expected_model_change": [
+        "architecture.invariants",
+        "architecture.boundaries",
+        "design_decisions",
+        "patterns"
+      ],
+      "hypothesis": "强制机制是 Cargo 依赖图：subsystem crates（buzz-db, buzz-auth, buzz-pubsub, buzz-search, buzz-audit, buzz-workflow）的 Cargo.toml 互不依赖，只有 buzz-relay 依赖所有。buzz-core 作为共享零 I/O 层。但 buzz-sdk 可能被多个 subsystem 使用形成共享层，需要验证是否存在隐性依赖（例如通过 trait object 或 generic type 间接耦合）。",
+      "evidence_needed": [
+        "每个 subsystem crate 的 Cargo.toml dependencies 列表",
+        "buzz-core 的 Cargo.toml（验证零 I/O 声明）",
+        "是否存在 deny.toml 中的 ban 规则禁止跨 subsystem 依赖",
+        "源码中是否有 `use buzz_db::` 出现在 buzz-search 或 buzz-workflow 中（grep 验证）",
+        "buzz-relay 的依赖图是否完整覆盖所有子系统"
+      ],
+      "priority_score": 0.85,
+      "impact": "high",
+      "uncertainty": "medium",
+      "status": "open"
+    },
+    {
+      "id": "q-004",
+      "type": "runtime",
+      "question": "buzz-relay 单进程同时承载 WebSocket relay + HTTP bridge + git hosting + voice relay (Opus) + mesh node——这些异质工作负载如何在 tokio runtime 中隔离资源、避免故障传播、保证 tail latency？是否存在 voice frame 阻塞 event pipeline 的风险？",
+      "why_it_matters": "这是 monolith 架构的关键运行时风险。VOICE 是低延迟高吞吐 workload，EVENT pipeline 是高吞吐持久化 workload，GIT 是大文件 transfer——三者共享 tokio thread pool 容易相互影响。回答这个问题等于回答 production readiness 和 SLO 可达性。",
+      "expected_model_change": [
+        "runtime.threading_model",
+        "runtime.backpressure",
+        "runtime.failure_isolation",
+        "design_decisions",
+        "risks"
+      ],
+      "hypothesis": "buzz-relay 使用 Axum 单 tokio runtime，所有 workload 通过 spawn_blocking 隔离阻塞 I/O。Voice relay 通过独立 WebSocket task + bounded channel 隔离，但与 event pipeline 共享 tokio worker threads——存在 head-of-line blocking 风险。Git hosting 通过 tower-http 的 timeout/limit 中间件保护，但大 clone 仍可能耗尽 connection。Mesh node 可能跑在独立 task 但共享 runtime。这是 production 的主要 risk。",
+      "evidence_needed": [
+        "buzz-relay/src/main.rs 或 lib.rs 的 server bootstrap——是单 tokio runtime 还是多个？",
+        "buzz-relay/src/audio/mod.rs 的 voice frame 处理路径——是否独立 task pool？",
+        "buzz-relay/src/api/git/mod.rs 的 git smart HTTP 处理——是否有 backpressure 机制？",
+        "spawn_blocking 的使用范围（grep 全 crate）",
+        "是否存在 tower::ServiceBuilder 配置 per-route concurrency limit",
+        "SLOW_CLIENT_GRACE_LIMIT 机制是否覆盖 voice 路径"
+      ],
+      "priority_score": 0.8,
+      "impact": "high",
+      "uncertainty": "high",
+      "status": "open"
+    },
+    {
+      "id": "q-005",
+      "type": "runtime",
+      "question": "'Branches are channels'——git push 如何触发 channel 创建？NIP-34 git events 在 buzz-relay 中是真实实现还是 VISION 声明？这条 feature 路径完整覆盖 PR/review/merge 决策是否在当前代码中存在？",
+      "why_it_matters": "VISION 声称这是 buzz 的核心差异化 feature（'branch as room'），但 README 标注 git events 在 '✅ Works today' 列。这个 gap 必须验证——如果只是事件存储而无 channel 自动创建逻辑，则 VISION 与实现脱节，影响产品定位判断。同时回答 Nostr 协议如何承载非 chat 语义。",
+      "expected_model_change": [
+        "runtime.data_flow",
+        "architecture.extension_points",
+        "design_decisions",
+        "evolution.timeline"
+      ],
+      "hypothesis": "buzz-relay 实现了 NIP-34 kind 的接收和存储（buzz-core/src/kind.rs 中定义），但 'branch creates channel' 是 workflow trigger 的工作——可能存在一个内置 workflow 监听 NIP-34 事件并调用 db::create_channel。但 VISION 描述的 'CI results, review comments, merge decision all live there' 可能是部分实现——merge decision 涉及 NIP-34 patch acceptance 逻辑，这部分可能未完整。",
+      "evidence_needed": [
+        "buzz-core/src/kind.rs 中 KIND_* git-related 常量定义",
+        "buzz-db/src/git_repo.rs 的实际功能——是存储 repo 元数据还是实现 PR 流程",
+        "buzz-relay/src/api/git/mod.rs 的 smart HTTP 实现和 push hook",
+        "是否存在监听 git events 的内置 workflow（buzz-workflow/src/executor.rs）",
+        "git history 中 channel auto-creation 的 commit 时间线"
+      ],
+      "priority_score": 0.8,
+      "impact": "high",
+      "uncertainty": "high",
+      "status": "open"
+    },
+    {
+      "id": "q-006",
+      "type": "risk",
+      "question": "Buzz Mesh（iroh-based shared AI compute, models split across machines）如何解决信任、安全、和性能三重风险？这个 feature 是 production-ready 还是实验性？operator 信任 mesh member 提供的 compute endpoint 的安全模型是什么？",
+      "why_it_matters": "VISION_MESH 描述了一个雄心勃勃的 P2P compute commons——成员贡献 GPU，agents 通过本地 OpenAI-compatible endpoint 消费。这涉及：模型权重分发（IP？）、推理结果完整性验证、恶意 member 攻击、跨网络延迟。这是 buzz 最具创新但也最高风险的 feature，需要判断它是 shipping 还是 aspirational。",
+      "expected_model_change": [
+        "architecture.thesis",
+        "risks",
+        "design_decisions",
+        "evolution.timeline"
+      ],
+      "hypothesis": "Buzz Mesh 是实验性 feature：iroh 提供加密 P2P 连接，mesh-llm 在 relay 之上做 member discovery + compute routing，但模型分片（split across machines）可能未实现——更可能是 model replication + round-robin。信任模型基于 relay membership（同一 community 内 trusted），缺少 inference result verification（无法防止恶意 member 返回错误输出）。这构成主要 production risk。",
+      "evidence_needed": [
+        "buzz-relay/src/mesh_boot.rs 的实际功能",
+        "buzz-relay-mesh crate 的代码量和成熟度（gossip.rs / peer.rs / wire.rs）",
+        "是否存在 model sharding 逻辑（grep 'shard' / 'split' / 'partition' in mesh context）",
+        "iroh 在 buzz 中的具体使用方式（是否仅作 transport）",
+        "是否有 inference result 验证机制（hash/signature/challenge）",
+        "README 标注的 'Buzz Mesh ✅' vs 实际代码成熟度对比"
+      ],
+      "priority_score": 0.75,
+      "impact": "high",
+      "uncertainty": "high",
+      "status": "open"
+    },
+    {
+      "id": "q-007",
+      "type": "pattern",
+      "question": "Nostr kind 整数作为唯一分发开关——新 kind 的扩展机制如何避免 collision、保证向后兼容、并在 81 个已定义 kind 中保持语义一致性？kind registry 是否有 governance 机制（PR review、命名约定、range 分配规则）？",
+      "why_it_matters": "这是 protocol evolution 的核心问题。buzz 在 Nostr 标准 kind 之外使用 40000-49999 自定义 range（81 个 kind），如果缺乏治理机制，kind 会无序增长导致语义冲突和客户端兼容性破坏。同时回答 Nostr 作为 enterprise 协议的扩展性边界——kind integer 是有限资源。",
+      "expected_model_change": [
+        "architecture.extension_points",
+        "architecture.invariants",
+        "design_decisions",
+        "patterns"
+      ],
+      "hypothesis": "buzz-core/src/kind.rs 集中定义所有 kind 常量，ALL_KINDS 数组作为 registry。扩展机制是 'add new const + update ALL_KINDS'，无 runtime registry / plugin 机制。40000-49999 range 内部可能有子划分（40000-40999 messages, 41000-41999 channels, 45000-45999 forum, 46000-46999 workflow），但缺乏 governance 文档。向后兼容通过 Nostr 客户端 'unknown kind 忽略' 语义保证。",
+      "evidence_needed": [
+        "buzz-core/src/kind.rs 的完整 kind 列表和命名约定",
+        "ALL_KINDS 数组是否包含注释说明 range 分配规则",
+        "CONTRIBUTING.md 或 ARCHITECTURE.md 是否有 kind 治理章节",
+        "git history 中 kind 新增的 commit 模式（是否随意添加）",
+        "buzz-sdk 的 event builder 如何防止用户构造非法 kind"
+      ],
+      "priority_score": 0.65,
+      "impact": "medium",
+      "uncertainty": "medium",
+      "status": "open"
+    }
+  ]
+}

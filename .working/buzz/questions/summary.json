@@ -1,0 +1,28 @@
+{
+  "total_questions": 7,
+  "by_status": {
+    "validated": 5,
+    "validated_with_correction": 2,
+    "rejected": 0,
+    "blocked": 0
+  },
+  "by_round": {
+    "1": 7
+  },
+  "by_type": {
+    "decision": 2,
+    "boundary": 2,
+    "runtime": 2,
+    "risk": 1,
+    "pattern": 1
+  },
+  "last_updated": "2026-08-02T11:10:00+08:00",
+  "converged": true,
+  "average_confidence": 0.838,
+  "coverage": {
+    "architecture": 1.0,
+    "runtime": 1.0,
+    "design_decisions": 1.0,
+    "evolution": 1.0
+  }
+}

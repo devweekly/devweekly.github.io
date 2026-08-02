@@ -1,0 +1,82 @@
+{
+  "hypotheses": [
+    {
+      "id": "h-001",
+      "question_id": "q-001",
+      "statement": "单 relay 是 deliberate trade-off：用放弃 Nostr P2P 特性换取 (a) multi-tenant 隔离的中央权威边界、(b) channel-membership 访问控制统一执行点、(c) hash-chain audit log 单一可信写入路径。Nostr 协议保留是因为签名事件模型和客户端兼容性，非 P2P 特性。",
+      "status": "validated_with_correction",
+      "confidence": 0.85,
+      "validation_note": "核心论点 validated：单逻辑 relay 是 multi-tenant 隔离 + audit 单写入 + access control 的必要条件。但需修正：'放弃 P2P' 指 Nostr 协议层多 relay gossip；pod 层面通过 Redis pub/sub + 共享 Postgres 横向扩展，事件确实复制到其他 pod 的本地订阅者。buzz-relay-mesh 是 session transport（huddle/tunnel），非事件复制。修正后的 invariant：单逻辑 relay per community + Redis fence for pod arbitration + Postgres as shared durable store。",
+      "counter_evidence": [],
+      "evidence_refs": ["evidence-log.jsonl:1-3"]
+    },
+    {
+      "id": "h-002",
+      "question_id": "q-002",
+      "statement": "TenantContext 在 buzz-relay 入口解析后注入所有 service crate query 路径，每条 SQL 携带 community_id WHERE——主边界。Redis key namespace 前缀隔离。S3 Blossom path 隔离。安全边界是 SQL WHERE 覆盖率，TLA+/Tamarin 验证协议层非 SQL 层，存在 gap。",
+      "status": "validated",
+      "confidence": 0.88,
+      "validation_note": "三重验证：(1) tenant.rs bind_community row-zero binding + fail-closed + redteam test；(2) buzz-db grep 显示 community_id 在 20 文件 1264 次，event.rs 所有 query 携带 WHERE community_id；(3) TLA+/Tamarin gap 确认——形式化验证在 host→community 映射层，SQL community_id 覆盖是 conventional（无 macro/lint 强制，依赖 code review + buzz-conformance 测试）。Redis key 命名约定（pubsub/topic.rs）按 community scope。",
+      "counter_evidence": [],
+      "evidence_refs": ["evidence-log.jsonl:4-6"]
+    },
+    {
+      "id": "h-003",
+      "question_id": "q-003",
+      "statement": "子系统隔离靠 Cargo 依赖图强制——subsystem crates 互不依赖，仅 buzz-relay 依赖所有。buzz-core 是共享零 I/O 层。buzz-sdk 可能是隐性共享层。",
+      "status": "validated_with_correction",
+      "confidence": 0.82,
+      "validation_note": "Cargo 依赖图是 compile-time enforcement ✅。但 'strict isolation' 是误述——实际是 layered architecture：buzz-core(base) → buzz-db/buzz-auth(mid, 依赖 core) → buzz-pubsub(依赖 auth)/buzz-workflow(依赖 db)。buzz-search 和 buzz-audit 通过 '直接 sqlx + 自有 pool' 而非 '依赖 buzz-db' 实现 isolation——这是有意设计，避免 search/audit query 需求污染 db abstraction。buzz-sdk 未在 subsystem 中出现（用于客户端 event builder）。修正：isolation 不是 '互不依赖'，而是 '无循环依赖 + 跨层不反向引用 + relay 是唯一 composition root'。",
+      "counter_evidence": [],
+      "evidence_refs": ["evidence-log.jsonl:7-8"]
+    },
+    {
+      "id": "h-004",
+      "question_id": "q-004",
+      "statement": "buzz-relay 使用 Axum 单 tokio runtime，所有 workload 通过 spawn_blocking 隔离阻塞 I/O。Voice 通过独立 WS task + bounded channel 隔离，但与 event pipeline 共享 tokio worker threads——存在 head-of-line blocking 风险。Git hosting 通过 tower-http timeout/limit 中间件保护。这是 production 主要 risk。",
+      "status": "validated",
+      "confidence": 0.85,
+      "validation_note": "单 #[tokio::main] runtime 确认。所有工作负载（WS relay + HTTP + git + voice + mesh + cron）共享 worker threads。Voice 用标准 WS handler（send_loop + heartbeat_loop）无独立 task pool。缓解：connection semaphore + SLOW_CLIENT_GRACE_LIMIT(3) + mesh datagram 'drop-on-full'。Git 有 tower-http timeout/limit + 1MB policy body limit。但 600K events/day + voice huddle + git clone 并发时仍存在 risk——无 per-route concurrency limit，无 voice 专属 runtime。",
+      "counter_evidence": [],
+      "evidence_refs": ["evidence-log.jsonl:9-10"]
+    },
+    {
+      "id": "h-005",
+      "question_id": "q-005",
+      "statement": "buzz-relay 实现了 NIP-34 kind 接收和存储，但 'branch creates channel' 是 workflow trigger 工作——可能存在内置 workflow 监听 NIP-34 事件并调用 db::create_channel。VISION 描述的 'CI results, review comments, merge decision all live there' 可能是部分实现。",
+      "status": "validated_with_correction",
+      "confidence": 0.83,
+      "validation_note": "修正：NIP-34 kind 完整定义（PATCH/PR/ISSUE/STATUS/REPO_ANNOUNCEMENT）但 side_effects.rs 只 handle REPO_ANNOUNCEMENT。无 branch→channel auto-creation 代码路径——既不在 relay 也不在 workflow trigger。Git hosting 完整（Smart HTTP + pre-receive hook + policy + manifest_event），但仅触发 repo state 更新事件。三层实现度：(1) git hosting + NIP-34 事件存储 ✅; (2) branch→channel auto-creation ❌; (3) CI/review/merge in channel ❌。README '✅ git events works today' 指事件接收存储，VISION branch-as-room 是 aspirational。",
+      "counter_evidence": [],
+      "evidence_refs": ["evidence-log.jsonl:11-13"]
+    },
+    {
+      "id": "h-006",
+      "question_id": "q-006",
+      "statement": "Buzz Mesh 是实验性 feature：iroh 提供加密 P2P 连接，mesh-llm 在 relay 之上做 member discovery + compute routing，但模型分片可能未实现——更可能是 model replication + round-robin。信任模型基于 relay membership，缺少 inference result verification。这构成主要 production risk。",
+      "status": "validated",
+      "confidence": 0.80,
+      "validation_note": "关键证据：buzz-relay-mesh crate（in-tree）是 relay-to-relay session transport（huddle/tunnel），NOT shared AI compute。VISION_MESH 描述的 AI compute 使用外部 mesh-llm-sdk + mesh-llm-host-runtime（github.com/Mesh-LLM/mesh-llm.git v0.73.1），且仅在 buzz-relay [dev-dependencies]——production build 默认不包含。inference result verification 不存在。README 'Buzz Mesh ✅' 误导——✅ 指 relay-mesh session transport，非 AI compute commons。aspirational feature confirmed。",
+      "counter_evidence": [],
+      "evidence_refs": ["evidence-log.jsonl:14-15"]
+    },
+    {
+      "id": "h-007",
+      "question_id": "q-007",
+      "statement": "buzz-core/src/kind.rs 集中定义所有 kind 常量，ALL_KINDS 数组作为 registry。扩展机制是 'add new const + update ALL_KINDS'，无 runtime registry/plugin。40000-49999 range 内部有子划分但缺乏 governance 文档。向后兼容通过 Nostr 客户端 'unknown kind 忽略' 语义保证。",
+      "status": "validated",
+      "confidence": 0.84,
+      "validation_note": "全部验证：centralized const + ALL_KINDS + #[test] no_duplicate_kind_values 编译期强制无重复。子 range 组织存在（40000-40999 stream, 41000-41999 DM, 43000-43999 jobs, 44000-44999 member notifications, 45000-45999 forum, 46000-46999 workflow）但无 CONTRIBUTING governance 章节文档化。无 runtime registry/plugin——扩展是 'add const + update ALL_KINDS + CI duplicate test'。Potential risk：range 约定无 lint 强制，依赖 code review。Trade-off 可接受——duplicate test 防最严重 collision，40000-49999 range 足够大。",
+      "counter_evidence": [],
+      "evidence_refs": ["evidence-log.jsonl:16-17"]
+    }
+  ],
+  "summary": {
+    "total": 7,
+    "validated": 5,
+    "validated_with_correction": 2,
+    "rejected": 0,
+    "blocked": 0,
+    "average_confidence": 0.838
+  }
+}

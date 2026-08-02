@@ -1,0 +1,154 @@
+{
+  "repo_name": "buzz",
+  "analysis_target_commit": "1e6e743a3570",
+  "analyzed_at": "2026-08-02T10:00:00+08:00",
+  "repo_type": "Application Platform / Self-hostable Team Workspace",
+  "primary_language": "Rust",
+  "secondary_languages": ["TypeScript", "React", "Dart", "Shell"],
+  "build_system": {
+    "primary": "Cargo workspace (Rust, edition 2021, rust 1.88+)",
+    "secondary": ["pnpm 10+ (desktop + admin-web)", "Just (task runner)", "Hermit (pinned toolchain)", "Docker / Docker Compose", "Helm (k8s)"],
+    "lockfile": "Cargo.lock + pnpm-lock.yaml"
+  },
+  "license": "Apache-2.0",
+  "repository_origin": "block/buzz (originally block/sprout)",
+  "scale_targets": {
+    "users": "10K humans + 50K agents",
+    "throughput": "~600K events/day (~7/sec avg)",
+    "p99_fanout": "<50ms"
+  },
+  "top_level_layout": {
+    "crates/": "Rust workspace — 27 crates",
+    "desktop/": "Tauri 2 + React 19 desktop client (separate Cargo.toml, excluded from workspace)",
+    "admin-web/": "Vite + React admin panel",
+    "deploy/": "Helm chart + docker-compose + local build script",
+    "bin/": "Hermit toolchain activation scripts",
+    ".github/workflows/": "ci.yml, docker.yml, helm-chart.yml, release.yml, sprig.yml"
+  },
+  "rust_workspace_members": [
+    "buzz-core (zero I/O — types, verification, filter matching, kind registry)",
+    "buzz-db (Postgres: events, channels, tokens, workflows, audit)",
+    "buzz-auth (NIP-42, NIP-98, API tokens, scopes, rate limiting)",
+    "buzz-pubsub (Redis pub/sub, presence, typing indicators)",
+    "buzz-search (Postgres FTS: query, delete)",
+    "buzz-audit (hash-chain tamper-evident log)",
+    "buzz-workflow (YAML-as-code automation engine)",
+    "buzz-relay (ties everything together — the server, Axum)",
+    "buzz-acp (agent harness — ACP/JSON-RPC bridge)",
+    "buzz-agent (standalone agent runner)",
+    "buzz-sdk (typed Nostr event builders)",
+    "buzz-cli (agent-first CLI)",
+    "buzz-admin (operator CLI: relay membership + key generation)",
+    "buzz-media (Blossom/S3 media storage)",
+    "buzz-persona (persona + team manifests)",
+    "buzz-test-client (integration test harness)",
+    "buzz-ws-client (WebSocket Nostr client lib)",
+    "buzz-conformance (relay conformance test helpers)",
+    "buzz-push-gateway (APNs push notification gateway)",
+    "buzz-pairing-cli / buzz-pair-relay (device pairing)",
+    "buzz-relay-mesh (iroh-based inter-relay mesh transport)",
+    "buzz-dev-mcp (developer MCP server: read_file, rg, shell, todo, tree)",
+    "git-credential-nostr / git-sign-nostr (npub-signed git ops)",
+    "sprig (?? — referenced in workflow as sprig.yml)"
+  ],
+  "key_entry_points": {
+    "relay_server": "crates/buzz-relay/src/main.rs",
+    "relay_lib": "crates/buzz-relay/src/lib.rs",
+    "desktop_app": "desktop/src-tauri/src/main.rs",
+    "agent_cli": "crates/buzz-cli/src/main.rs",
+    "agent_harness": "crates/buzz-acp/src/main.rs",
+    "admin_cli": "crates/buzz-admin/src/main.rs"
+  },
+  "external_dependencies": {
+    "Postgres 17": "primary store — events (partitioned monthly), channels, tokens, workflows, audit, FTS search via generated column + GIN index",
+    "Redis": "pub/sub (multi-node fan-out), presence (SET EX), typing indicators (ZADD), local-echo dedup",
+    "S3/MinIO (Blossom BUD-01/BUD-02)": "media storage",
+    "iroh": "inter-relay mesh transport (buzz-relay-mesh), also used for Buzz Mesh shared AI compute",
+    "nostr 0.44 (nips nip44, nip98)": "Nostr protocol library",
+    "OpenTelemetry / Prometheus": "observability"
+  },
+  "wire_protocol": "Nostr NIP-01 — every action is a cryptographically signed event (id/pubkey/kind/tags/content/sig); kind integer is the only dispatch switch",
+  "kind_ranges": {
+    "0-9999": "Standard Nostr kinds",
+    "10000-19999": "Replaceable events (NIP-16)",
+    "20000-29999": "Ephemeral events (not stored, not audited)",
+    "30000-39999": "Parameterized replaceable events",
+    "40000-49999": "Buzz custom kinds (81 kinds defined in buzz-core/src/kind.rs)"
+  },
+  "auth_model": {
+    "websocket": "NIP-42 (signed challenge, pubkey verified)",
+    "http": "NIP-98 (Schnorr-signed kind:27235 event)",
+    "agents": "NIP-98 with bot role on channel membership",
+    "humans_and_agents": "Same identity model — secp256k1 keypair, NIP-05 handle, channel membership gates content visibility"
+  },
+  "tenancy_model": {
+    "type": "multi-tenant (community-based)",
+    "boundary": "URL/host is authoritative — req.community = resolve_host(connection.host) before AUTH",
+    "isolation": "Communities sharing infrastructure cannot see each other (events, profiles, DMs, search, audit, error strings)",
+    "unknown_host": "rejects generically, never falls through to default tenant",
+    "spec": "docs/multi-tenant-relay.md — mechanized in TLA+ (isolation) and Tamarin (authorization), mutation-tested"
+  },
+  "architectural_principle": {
+    "single_source_of_truth": "buzz-relay is the single source of truth; all reads/writes flow through it",
+    "no_p2p": "no peer-to-peer event exchange, no gossip, no replication — just clients → relay",
+    "subsystem_isolation": "buzz-workflow never calls buzz-pubsub; buzz-search never calls buzz-db — cross-subsystem coordination happens only through the relay",
+    "tenant_propagation": "service crates receive community-scoped inputs rather than independently deriving tenancy"
+  },
+  "connection_lifecycle": [
+    "Step 0: Community Binding (TenantContext from host before any handler)",
+    "Step 1: Semaphore Acquire (capacity guard)",
+    "Step 2: NIP-42 Challenge (random nonce sent)",
+    "Step 3: Authentication (Pending → Authenticated(AuthContext))",
+    "Step 4: Active Loops (recv_loop + send_loop + heartbeat_loop with CancellationToken)",
+    "Step 5: Cleanup (cancel → remove subscriptions → deregister → drop permit)"
+  ],
+  "event_pipeline": [
+    "1. AUTH CHECK (AuthState + MessagesWrite scope)",
+    "2. PUBKEY MATCH (event.pubkey == auth_context.pubkey)",
+    "3. KIND_AUTH REJECT (kind 22242 never stored)",
+    "4. EPHEMERAL ROUTE (kind 20000-29999 → ephemeral sub-pipeline)",
+    "5. VERIFY (spawn_blocking(verify_event) — Schnorr sig + ID hash)",
+    "6. MEMBERSHIP (channel_id in tags → check_channel_membership)",
+    "7. DB INSERT (ON CONFLICT DO NOTHING — idempotent)",
+    "8. REDIS PUBLISH (if channel-scoped)",
+    "9. FAN-OUT (sub_registry.fan_out → conn_manager.send_to; excludes global subscriptions for channel-scoped events)",
+    "10. SEARCH INDEX (bounded worker queue capacity 1000, non-blocking)",
+    "11. AUDIT LOG (spawned async, non-blocking)",
+    "12. WORKFLOW TRIGGER (spawned async; excludes kinds 46001-46012, relay-signed buzz:workflow messages, KIND_GIFT_WRAP)"
+  ],
+  "ephemeral_subpipeline": {
+    "presence_kind_20001": "VERIFY → REDIS PRESENCE → LOCAL FAN-OUT (no Redis PUBLISH; multi-node presence is future work)",
+    "other_ephemeral": "VERIFY → MEMBERSHIP → LOCAL FAN-OUT (skips DB storage, audit, search)"
+  },
+  "feature_surface": {
+    "stream": "Slack-like real-time chat — mandatory topics, sub-replies, zero-notification default",
+    "forum": "Discourse-like async long-form — post → flat replies, zero-notification default",
+    "dms": "1:1 and group (up to 9), URGENT-only notifications",
+    "agents": "directory + job board, MCP-managed",
+    "workflows": "YAML-as-code automation, message/reaction/schedule/webhook triggers, traces, approval gates (infrastructure exists, executor doesn't persist/resume — WF-08)",
+    "huddles": "WebSocket Opus voice relay built into buzz-relay (no external SFU), NIP-42 auth, lifecycle as Nostr events",
+    "canvases": "shared document per channel (read/write via desktop or MCP)",
+    "media": "Blossom S3/MinIO uploads, thumbnails generated server-side",
+    "code": "relay hosts git repos — smart HTTP, npub-signed pushes, branches are channels",
+    "search": "Cmd+K, full-text, permission-aware, fan-out-on-read"
+  },
+  "buzz_mesh": "Relay communities pool opted-in member hardware into shared AI compute — mesh-llm over iroh, agents see it as local OpenAI-compatible endpoint, models split across machines",
+  "notable_engineering_signals": [
+    "Formal verification: TLA+ for isolation, Tamarin for authorization, mutation-tested",
+    "Hash-chain tamper-evident audit log",
+    "Postgres partitioning by month for events",
+    "Bounded worker queue for search indexing (capacity 1000)",
+    "SLOW_CLIENT_GRACE_LIMIT (3) for backpressure",
+    "Local-echo dedup via AppState.local_event_ids",
+    "Workflow loop prevention (excludes own execution kinds)",
+    "Security boundary: global subscriptions excluded from channel-scoped events"
+  ],
+  "status_gaps_from_docs": [
+    "Workflow approval gates: schema/REST/MCP/UI exist; executor doesn't persist approval token or suspend — WF-08",
+    "Mobile client (Flutter): in active development",
+    "Push notifications, culture features, developer portal: planned",
+    "End-to-end encryption (NIP-44) for DMs: future consideration",
+    "Multi-node presence fan-out: future work (currently local-only)"
+  ],
+  "fast_summary": "Buzz 是一个 self-hostable Nostr-based team workspace。架构中心是 buzz-relay（单点真相），所有 read/write 流经它。子系统（db/auth/pubsub/search/audit/workflow）相互隔离，只能通过 relay 协调。Wire 协议是 Nostr NIP-01——所有 action（消息、reaction、workflow step、git event、voice event）都是签名事件，kind 整数是唯一分发开关，新功能=新 kind=零破坏。Multi-tenant 通过 URL host 绑定 community。Formal verification (TLA+/Tamarin) 保证 isolation。"
+}

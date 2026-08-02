@@ -1,0 +1,30 @@
+{
+  "repo_path": "/Users/saga/code-repos/devweekly.github.io/ref-only/buzz",
+  "repo_name": "buzz",
+  "created_at": "2026-08-02T10:00:00+08:00",
+  "current_round": 1,
+  "analysis_target_commit": "1e6e743a3570",
+  "last_analyzed_commit": "1e6e743a3570",
+  "pending_invalidation": false,
+  "converged": true,
+  "converged_at": "2026-08-02T11:05:00+08:00",
+  "convergence_reason": "所有 7 个问题进入终态（5 validated + 2 validated_with_correction），无 unresolved contradictions，核心模型节点 confidence 0.78-0.88 ≥ threshold 0.75，coverage.ratio=1.0 ≥ 0.8 且 coverage.confidence ≥ 0.75，第一轮 delta N/A。5 个 need_reading unknowns 记录为附录，非 critical 架构决策。",
+  "next_focus": null,
+  "coverage": {
+    "architecture": { "answered": 4, "total": 4, "ratio": 1.0, "confidence": 0.85, "validated_claims": 4 },
+    "runtime": { "answered": 2, "total": 2, "ratio": 1.0, "confidence": 0.83, "validated_claims": 2 },
+    "design_decisions": { "answered": 10, "total": 10, "ratio": 1.0, "confidence": 0.80, "validated_claims": 10 },
+    "evolution": { "answered": 1, "total": 1, "ratio": 1.0, "confidence": 0.78, "validated_claims": 1 }
+  },
+  "phases_completed": ["reconnaissance", "questioning", "investigation", "convergence"],
+  "questions": [
+    {"id": "q-001", "status": "validated_with_correction", "round": 1},
+    {"id": "q-002", "status": "validated", "round": 1},
+    {"id": "q-003", "status": "validated_with_correction", "round": 1},
+    {"id": "q-004", "status": "validated", "round": 1},
+    {"id": "q-005", "status": "validated", "round": 1},
+    {"id": "q-006", "status": "validated", "round": 1},
+    {"id": "q-007", "status": "validated", "round": 1}
+  ],
+  "reasoning": "Step 1-5 完成。收敛条件全部满足：7 问题终态 / 无 contradictions / confidence 达标 / coverage 1.0 / delta N/A（首轮）。5 个 need_reading unknowns 是实现细节非架构决策，记录在 repository-model.json unknowns 字段供后续深挖。进入 Step 6 渲染 report.md。"
+}
