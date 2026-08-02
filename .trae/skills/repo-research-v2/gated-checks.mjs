@@ -581,6 +581,79 @@ Confidence:  <高/中/低>（<理由>）
 `,
   },
 
+  // -- p6.md §1 P0: Evidence Completeness Gate (HARD GATE — highest priority) --
+  evidence_completeness_gate: {
+    name: "证据完整性硬门",
+    description: "所有 claim（决策/风险/架构模式）必须有 evidence 引用，否则 fail。禁止 '待补充' 证据。",
+    prompt: `
+你是一个资深架构评审员。请评估以下 Repository Research 报告的**证据完整性**。
+
+**硬规则（p6.md §1）**：任何 claim 必须有 evidence 引用，否则报告 fail。
+具体检查：
+
+1. **Key Decisions**：每个决策必须有具体证据（文件名/ev-ID/代码引用），不能是 "待补充"、"无"、"—"。
+2. **Blast Radius**：每个风险项必须引用影响的组件/invariant，不能只有组件名无证据。
+3. **Architecture Patterns**：每个架构模式必须有支撑文件或模块引用。
+4. **Design Smells**：每个 smell 必须有代码位置引用。
+
+**fail 条件**（任一满足即 fail）：
+- 任何决策的"证据"字段为 "待补充"、"无"、"—" 或空
+- 任何 claim 无文件引用
+- 报告中出现 "待补充" 作为证据
+
+**pass 条件**：
+- 所有 claim 都有具体证据引用（文件路径/模块名/ev-ID）
+
+报告 (report.md):
+\`\`\`markdown
+{report}
+\`\`\`
+
+请判断：报告中所有 claim 是否都有具体证据引用？
+
+输出 JSON 格式（严格 JSON，无 markdown）：
+{
+  "passed": true/false,
+  "confidence": "high/medium/low",
+  "justification": "引用报告中的证据情况，列出无证据的 claim（如有）",
+  "missing": "如果不通过，列出所有无证据的 claim（仅在 passed=false 时填写）"
+}
+`,
+  },
+
+  // -- p6.md §3 P3: Coverage Gate (mechanical, not subjective) --
+  coverage_calculable_hard_gate: {
+    name: "覆盖率硬门",
+    description: "所有维度覆盖率必须 ≥ 50%（可计算格式 X/Y=Z%），禁止全 0% 发布",
+    prompt: `
+你是一个资深架构评审员。请评估以下 Repository Research 报告的覆盖率。
+
+**硬规则（p6.md §3-§4）**：
+- 所有维度覆盖率不能全为 0%
+- 至少 3 个维度覆盖率 ≥ 50%
+- 覆盖率必须使用可计算格式（X/Y=Z% 或 X%）
+
+**fail 条件**：
+- 所有维度覆盖率都是 0% 或 "暂无"
+- 少于 3 个维度达到 50%
+
+报告 (report.md):
+\`\`\`markdown
+{report}
+\`\`\`
+
+请判断：报告的覆盖率是否满足硬门要求？
+
+输出 JSON 格式（严格 JSON，无 markdown）：
+{
+  "passed": true/false,
+  "confidence": "high/medium/low",
+  "justification": "引用报告中的覆盖率数据",
+  "missing": "如果不通过，哪些维度覆盖率不足（仅在 passed=false 时填写）"
+}
+`,
+  },
+
   final_check: {
     name: "最终综合检查",
     description: "报告整体是否达到从 '描述系统' 到 '预测系统' 的目标？",

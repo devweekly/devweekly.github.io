@@ -11,9 +11,11 @@ description: "把仓库编译成架构知识库（Repository Model），并从�
 
 构建可复用的架构知识库（Repository Model）。Repository Model 捕获实体、关系及支撑证据。报告是 Repository Model 的视图。
 
-## 架构：Orchestrator + 9 Sub Agents
+## 架构：Orchestrator + 9 Sub Agents + Architecture Mining
 
 SKILL 是 Orchestrator，**只负责调度，不写任何状态文件**。每个 Agent 自己知道自己的输入/输出/规则，SKILL 不知道实现细节。状态文件的持久化全部经过 Workspace Agent。
+
+**Architecture Mining** 是 Graph 和 LLM 之间的关键中间层：它将图谱拓扑（代码事实）转化为架构洞察（引力中心、张力、违规），LLM 消费这些架构事实而非原始 metrics。
 
 ```mermaid
 flowchart TD
@@ -26,7 +28,9 @@ flowchart TD
     Planner -->|converged| Report[Report<br>写 report-draft.md]
     Planner -->|not converged| WS1[Workspace<br>新建轮次条目]
     WS1 --> Evidence[Evidence<br>收集证据]
-    Evidence --> Model[Model<br>更新 Repository Model]
+    Evidence --> Graph[Knowledge Graph<br>合并多源事实]
+    Graph --> Mining[Architecture Mining<br>PageRank+引力中心+张力+违规]
+    Mining --> Model[Model<br>更新 Repository Model]
     Model --> Reasoning[Reasoning<br>解释+质疑+coverage]
     Reasoning --> WS2[Workspace<br>写 round_stats]
     WS2 --> Planner
@@ -35,6 +39,62 @@ flowchart TD
     Quality -->|PASS| WS3[Workspace<br>发布报告 + checkpoint]
     WS3 --> Done
 ```
+
+### Architecture Mining Stage
+
+**核心问题**：LLM 直接看代码事实会产生"代码扫描报告"，回答"仓库里有什么"而非"系统为什么长成这样"。
+
+**解决方案**：在 Graph 和 LLM 之间插入 Architecture Mining 层，将"90 inbound dependencies"（代码事实）转化为"model module acts as architectural gravity center"（架构事实）。
+
+**输入**：Knowledge Graph（graphology）+ Evidence Log
+
+**输出**（`artifacts/architecture-facts.json`）：
+
+```json
+{
+  "gravityCenters": [{
+    "node": "org.jkiss.dbeaver.model",
+    "name": "model",
+    "pageRank": 0.92,
+    "inDegree": 90,
+    "reason": "PageRank 0.92 (top tier); 90 inbound dependencies; name indicates architectural role"
+  }],
+  "tensions": [{
+    "axis": "generic-abstraction vs vendor-specific-capability",
+    "description": "model serves as generic abstraction but is extended by vendor-specific modules",
+    "evidence": ["Gravity center: model (90 dependents)", "Vendor extensions: wmi, ext.oracle"],
+    "resolution": "extension points allow vendor escape hatches while maintaining common abstraction"
+  }],
+  "violations": [{
+    "type": "platform-independence-violation",
+    "description": "Class uses native code (JNI/WMI) inside OSGi bundle, breaking platform independence",
+    "evidence": ["Class: JNIMetaData", "File: plugins/.../JNIMetaData.cpp"],
+    "severity": "high"
+  }],
+  "boundaries": [{
+    "name": "model→core",
+    "edgeCount": 12,
+    "direction": "model→core",
+    "examples": ["org.jkiss.dbeaver.model → org.jkiss.dbeaver.core"]
+  }],
+  "extensionPoints": [{
+    "name": "org.jkiss.dbeaver.runtime",
+    "contributorCount": 28,
+    "sampleContributors": ["wmi", "oracle", "mysql"]
+  }]
+}
+```
+
+**算法**：
+- **PageRank**：迭代计算（30 轮，damping=0.85），识别被重要节点引用的节点
+- **引力中心**：PageRank（40%）+ in-degree（30%）+ 语义相关性（30%，名称匹配 model/core/api/runtime 等）
+- **张力检测**：4 种启发式——generic vs vendor、centralization vs decentralization、platform-independence vs native、stability vs extensibility
+- **违规检测**：4 种启发式——layering-violation、cross-ui-coupling、platform-independence-violation、god-class（方法数≥100）
+
+**LLM 消费方式**：架构事实通过 `formatArchitectureFactsForPrompt()` 格式化为 LLM prompt 的一部分，替代原始 metrics。LLM 被要求：
+- `buildRepositoryModel`：围绕引力中心组织 modules，不是列举目录
+- `interpretCore`：引用张力作为 architectural_forces，引用违规作为 engineering_constraints
+- `riskAndChallenge`：center_hypothesis 描述真正架构主题（如"如何管理供应商扩展"），不是套话（如"采用OSGi"）
 
 ## Orchestrator 调度步骤
 

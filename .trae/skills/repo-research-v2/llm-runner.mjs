@@ -20,8 +20,61 @@
 
 import { spawn } from "node:child_process";
 import { access } from "node:fs/promises";
-import { constants, appendFileSync } from "node:fs";
+import { constants, appendFileSync, existsSync, readFileSync } from "node:fs";
 import { delimiter, join } from "node:path";
+
+// ---------------------------------------------------------------------------
+// .env loader (project root) — reads OPENROUTER_API_KEY etc.
+// ---------------------------------------------------------------------------
+
+let _envCache = null;
+
+/**
+ * Load .env file from project root (cwd or ancestors). Returns a flat object.
+ * Cached after first call. Does NOT override process.env — callers should
+ * check process.env first, then fall back to this.
+ */
+function loadEnvFile() {
+  if (_envCache !== null) return _envCache;
+  const candidates = [
+    join(process.cwd(), ".env"),
+    join(process.cwd(), "..", ".env"),
+    join(process.cwd(), "..", "..", ".env"),
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) {
+      try {
+        const content = readFileSync(p, "utf-8");
+        const env = {};
+        for (const line of content.split("\n")) {
+          const m = line.match(/^\s*([A-Z_][A-Z0-9_]*)\s*=\s*(.*)\s*$/);
+          if (!m) continue;
+          let v = m[2].trim();
+          if ((v.startsWith('"') && v.endsWith('"')) ||
+              (v.startsWith("'") && v.endsWith("'"))) {
+            v = v.slice(1, -1);
+          }
+          env[m[1]] = v;
+        }
+        _envCache = env;
+        return env;
+      } catch {
+        // continue to next candidate
+      }
+    }
+  }
+  _envCache = {};
+  return _envCache;
+}
+
+/**
+ * Resolve OPENROUTER_API_KEY from process.env or .env file.
+ * @returns {string|null}
+ */
+function getOpenRouterKey() {
+  if (process.env.OPENROUTER_API_KEY) return process.env.OPENROUTER_API_KEY;
+  return loadEnvFile().OPENROUTER_API_KEY || null;
+}
 
 // ---------------------------------------------------------------------------
 // CLI detection (OpenCode → Copilot fallback)
@@ -160,6 +213,142 @@ function run(command, args, stdin, timeoutMs = 0) {
   });
 }
 
+// ---------------------------------------------------------------------------
+// OpenRouter provider (curl-based, equivalent to OpenCode CLI)
+// ---------------------------------------------------------------------------
+
+/**
+ * Invoke OpenRouter Chat Completions API via curl.
+ *
+ * Model routing: opts.model "openrouter/<model>" → uses "<model>".
+ * If <model> is empty or "free", defaults to "openrouter/free".
+ *
+ * API key resolution: process.env.OPENROUTER_API_KEY → .env file in project root.
+ *
+ * Uses curl with --data @- (stdin) to avoid shell-escaping issues on long prompts.
+ * curl --max-time bounds the total wall-clock time (slightly less than timeoutMs
+ * to let Node's own timeout win the race).
+ *
+ * @param {string} prompt — full prompt (system+user already combined)
+ * @param {object} opts — merged options (model, jsonMode, timeoutMs, reasoning, etc.)
+ * @returns {Promise<string>} model output text
+ */
+/**
+ * Detect safety-filter responses from free-tier models.
+ * openrouter/free randomly routes to different models; some (e.g.
+ * nvidia/nemotron-nano-9b-v2:free) return "User Safety: safe" instead of
+ * actual content. Retrying usually routes to a different, usable model.
+ */
+const SAFETY_FILTER_PATTERNS = [
+  /^User Safety:\s*safe$/i,
+  /^I cannot help/i,
+  /^I'm unable to/i,
+  /^I'm sorry, but I can/i,
+  /^This request has been blocked/i,
+  /^Content policy/i,
+  /^Safe$/i,
+];
+
+function isSafetyFilterResponse(text) {
+  const trimmed = text.trim();
+  if (trimmed.length > 120) return false; // safety messages are short
+  if (trimmed.includes("{") || trimmed.includes("[")) return false; // has JSON structure
+  return SAFETY_FILTER_PATTERNS.some((p) => p.test(trimmed));
+}
+
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
+async function invokeOpenRouter(prompt, opts) {
+  const apiKey = getOpenRouterKey();
+  if (!apiKey) {
+    throw new Error(
+      "OPENROUTER_API_KEY not found. Set it in project-root .env or process.env. " +
+      "(Model was specified as \"openrouter/...\" but no API key is available.)"
+    );
+  }
+
+  const rawModel = opts.model.replace(/^openrouter\//, "");
+  const model = rawModel || "openrouter/free";
+
+  const body = {
+    model,
+    messages: [{ role: "user", content: prompt }],
+  };
+  // NOTE: Do NOT set body.response_format = { type: "json_object" }.
+  // The openrouter/free aggregator routes to models (e.g. nvidia/nemotron-nano-9b-v2:free)
+  // that don't support JSON mode and return empty content when it's set.
+  // Instead, jsonMode is handled via prompt instruction in invokeLLM() (already
+  // appended "Return ONLY valid JSON..."), and parseJSONLenient() tolerates
+  // markdown fences / prose wrappers in the response.
+  if (opts.reasoning) {
+    body.reasoning = { enabled: true };
+  }
+
+  const payload = JSON.stringify(body);
+  const curlMaxTime = Math.max(10, Math.floor((opts.timeoutMs || 300000) / 1000) - 5);
+
+  const curlArgs = [
+    "-s", "-S",
+    "--max-time", String(curlMaxTime),
+    "https://openrouter.ai/api/v1/chat/completions",
+    "-H", "Content-Type: application/json",
+    "-H", `Authorization: Bearer ${apiKey}`,
+    "-d", "@-",
+  ];
+
+  // Retry loop: openrouter/free randomly routes to different models; some
+  // return safety-filter stubs ("User Safety: safe") instead of content.
+  // Retrying usually routes to a usable model. Safety responses return fast
+  // (4-10s), so retries don't significantly increase total runtime.
+  const MAX_SAFETY_RETRIES = 3;
+  let lastError = null;
+
+  for (let attempt = 0; attempt <= MAX_SAFETY_RETRIES; attempt++) {
+    const { stdout, stderr, code } = await run("curl", curlArgs, payload, opts.timeoutMs || 300000);
+    if (code !== 0) {
+      throw new Error(`OpenRouter curl exited ${code}: ${stderr || stdout.slice(0, 300)}`);
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(stdout);
+    } catch (err) {
+      throw new Error(
+        `OpenRouter response is not valid JSON: ${err.message}\n--- stdout (first 500) ---\n${stdout.slice(0, 500)}`
+      );
+    }
+
+    if (parsed.error) {
+      const msg = parsed.error.message || JSON.stringify(parsed.error);
+      throw new Error(`OpenRouter API error: ${msg}`);
+    }
+
+    const content = parsed.choices?.[0]?.message?.content || "";
+    if (!content) {
+      throw new Error(
+        `OpenRouter returned empty content. Full response:\n${JSON.stringify(parsed).slice(0, 500)}`
+      );
+    }
+
+    const trimmed = content.trim();
+
+    // Check for safety-filter response — retry if detected
+    if (isSafetyFilterResponse(trimmed) && attempt < MAX_SAFETY_RETRIES) {
+      console.warn(`  [openrouter] Safety-filter response "${trimmed.slice(0, 40)}" — retry ${attempt + 1}/${MAX_SAFETY_RETRIES}`);
+      // Brief delay before retry (allows OpenRouter router to pick a different model)
+      await sleep(500 * (attempt + 1));
+      continue;
+    }
+
+    return trimmed;
+  }
+
+  // Exhausted retries — return last error or throw
+  throw lastError || new Error("OpenRouter: exhausted safety-filter retries");
+}
+
 /**
  * Parse OpenCode CLI streaming JSON output and aggregate model text.
  * OpenCode emits one JSON event per line; we extract `content` from
@@ -227,8 +416,16 @@ function logLLMCall(entry) {
  * Default LLM options.
  */
 export const DEFAULT_LLM_OPTIONS = {
-  // Default: free model via OpenCode CLI (verified working with hybrid pipeline)
-  model: "opencode/deepseek-v4-flash-free",
+  /**
+   * Default model. Routing by prefix:
+   *   "openrouter/<model>" → OpenRouter API (curl, needs OPENROUTER_API_KEY)
+   *   "opencode/<model>"   → OpenCode CLI
+   *   other                → OpenCode CLI (legacy)
+   * OpenRouter is preferred when available — OpenCode free tier is unstable
+   * (frequent 120s+ timeouts). Override per-call via options.model or globally
+   * via RESEARCH_REPO_MODEL env var.
+   */
+  model: process.env.RESEARCH_REPO_MODEL || "openrouter/openrouter/free",
   /** Optional system prompt prepended to user prompt */
   systemPrompt: null,
   /** If true, instructs LLM to return strictly JSON */
@@ -241,6 +438,8 @@ export const DEFAULT_LLM_OPTIONS = {
   _label: "unnamed",
   /** Number of retries on timeout (default: 0 — fail fast, let caller fallback) */
   retryCount: 0,
+  /** Enable OpenRouter reasoning (model-dependent, adds latency). Default false. */
+  reasoning: false,
 };
 
 /**
@@ -278,8 +477,12 @@ export async function invokeLLM(prompt, options = {}) {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
       let result;
+      // Route by model prefix: "openrouter/..." → OpenRouter API (curl)
+      if (opts.model && opts.model.startsWith("openrouter/")) {
+        result = await invokeOpenRouter(fullPrompt, opts);
+      }
       // Custom command via env var (highest priority — used by tests)
-      if (process.env.RESEARCH_REPO_LLM_CMD) {
+      else if (process.env.RESEARCH_REPO_LLM_CMD) {
         const cmd = process.env.RESEARCH_REPO_LLM_CMD;
         const parts = cmd.split(/\s+/);
         const { stdout, code } = await run(parts[0], parts.slice(1), fullPrompt, opts.timeoutMs);
