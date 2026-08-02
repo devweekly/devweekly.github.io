@@ -16,7 +16,7 @@
     "design_decisions": { "answered": 10, "total": 10, "ratio": 1.0, "confidence": 0.80, "validated_claims": 10 },
     "evolution": { "answered": 1, "total": 1, "ratio": 1.0, "confidence": 0.78, "validated_claims": 1 }
   },
-  "phases_completed": ["reconnaissance", "questioning", "investigation", "convergence"],
+  "phases_completed": ["reconnaissance", "questioning", "investigation", "convergence", "narrative", "report_rendered"],
   "questions": [
     {"id": "q-001", "status": "validated_with_correction", "round": 1},
     {"id": "q-002", "status": "validated", "round": 1},

@@ -1,0 +1,193 @@
+{
+  "schema_version": "1.0",
+  "repo_name": "buzz",
+  "generated_at": "2026-08-02T12:00:00+08:00",
+  "thesis": {
+    "central_idea": "Buzz 用 Nostr 协议的签名事件模型统一所有 surface（chat/forum/DM/workflow/git/voice），但放弃 Nostr 的 P2P gossip 特性，让 buzz-relay 成为单逻辑真相源——用'放弃去中心化'换取 multi-tenant 隔离的中央权威边界、hash-chain audit 的单写入点、channel-membership 访问控制的统一执行。",
+    "if_removed": "如果去掉'单 relay 作为真相源'，系统的三个核心属性同时崩塌：(1) multi-tenant 隔离失去中央权威边界——row-zero host binding 无法强制执行，因为客户端可绕过单 relay 路由；(2) hash-chain audit log 失去单写入点保证——多 relay 并发写入无法串联链；(3) channel-membership 访问控制失去统一执行点——任何 relay 都可能泄露 channel-scoped event 给未授权订阅者。系统退化为标准 Nostr P2P，失去 enterprise 可用性。"
+  },
+  "driving_constraints": [
+    {
+      "id": "c-1",
+      "constraint": "Multi-tenant isolation must be proven, not asserted——多租户隔离是 production-critical security，不能依赖 code review 主观判断",
+      "forces": "迫使系统：(a) 在任何 handler 观察数据前完成 row-zero host→community 绑定（fail-closed，无 default）；(b) 用 TLA+/Tamarin 形式化验证协议层 + redteam test 验证 fence；(c) SQL 层 community_id 覆盖全部数据访问路径（20 文件 1264 次）。'proven, not asserted' 是硬约束，不是 feature。",
+      "evidence_ref": "evidence-log.jsonl:4-6"
+    },
+    {
+      "id": "c-2",
+      "constraint": "Hash-chain audit log tamper-evidence——audit 必须可证明未被篡改，合规要求",
+      "forces": "迫使系统：(a) 单写入点（buzz-relay）保证链完整性——audit 不能分布式写入；(b) audit 作为独立 subsystem 直接 sqlx + 自有 pool，不依赖 buzz-db——避免 db 故障影响 audit；(c) event 写入与 audit append 在同一 pipeline 强制串联（step 11），fire-and-forget 但不可跳过。",
+      "evidence_ref": "evidence-log.jsonl:18, artifacts/repository-profile.json:event_pipeline"
+    },
+    {
+      "id": "c-3",
+      "constraint": "Nostr NIP-01 wire compatibility——客户端生态兼容性，不能破坏现有 Nostr 客户端",
+      "forces": "迫使系统：(a) kind 整数作为唯一分发开关——新功能 = 新 kind = 零破坏；(b) standard NIP kind range (0-9999) 不修改；(c) 自定义 kind 集中在 40000-49999 + ALL_KINDS 数组 + CI duplicate test 强制无 collision。扩展机制受 Nostr 协议约束，不能用 runtime plugin 或破坏性 schema 变更。",
+      "evidence_ref": "evidence-log.jsonl:16-17"
+    },
+    {
+      "id": "c-4",
+      "constraint": "Single-binary self-hostable + multi-pod scalable——同一份代码必须支持 N=1 自托管和 N>1 横向扩展，且 N=1 不引入额外复杂度",
+      "forces": "迫使系统：(a) 单 tokio runtime 承载所有 workload——多 runtime 会增加 N=1 部署复杂度；(b) Redis pub/sub 作为多 pod 协调层，BUZZ_MESH=off 时单实例 byte-identical；(c) buzz-relay-mesh (iroh QUIC) 作为 opt-in session transport，不强制 N=1 部署启用。这是 deployment-driven 硬约束。",
+      "evidence_ref": "evidence-log.jsonl:1-3, 9-10"
+    },
+    {
+      "id": "c-5",
+      "constraint": "Humans and agents as first-class equals——agents 不是 bots，是 channel 成员，同 keypair + 同 audit trail + 同 surface area",
+      "forces": "迫使系统：(a) 统一 identity model（secp256k1 keypair + NIP-05 handle + NIP-42/NIP-98 auth）；(b) channel membership 是唯一 access gate，binary authenticated-or-not + role-based；(c) agents 通过 MCP/buzz-cli 访问 relay 全部 feature surface，无降级 surface。product-driven 约束塑造 auth model。",
+      "evidence_ref": "artifacts/repository-profile.json:auth_model + feature_surface"
+    }
+  ],
+  "key_design_decisions": [
+    {
+      "id": "d-1",
+      "decision": "选择单逻辑 relay per community 作为 single source of truth 而非 Nostr 多 relay P2P gossip",
+      "implements_constraint": "c-1 + c-2 + c-3",
+      "rejected_alternative": "标准 Nostr 多 relay P2P gossip——客户端聚合多 relay 结果",
+      "tradeoff": "用放弃 P2P 去中心化特性换取 multi-tenant 隔离中央权威边界 + hash-chain audit 单写入点 + channel-membership 统一执行。Nostr 协议被保留是因为签名事件模型和客户端兼容性（c-3），而非 P2P 特性。多 pod 横向扩展通过 Redis pub/sub + 共享 Postgres 实现，buzz-relay-mesh (iroh QUIC) 承载 session traffic（huddle/tunnel）非事件复制。",
+      "evidence_level": "A (Code+Test)",
+      "confidence": 0.85,
+      "evidence_ref": "evidence-log.jsonl:1-3"
+    },
+    {
+      "id": "d-2",
+      "decision": "Multi-tenant 隔离通过 URL host binding + SQL community_id WHERE 实现，而非 schema-per-community 或 DB-per-community",
+      "implements_constraint": "c-1",
+      "rejected_alternative": "schema-level 隔离（每 community 独立 schema）或 Postgres Row-Level Security (RLS)",
+      "tradeoff": "用 SQL 漏写 community_id 的潜在风险换取：(+) 共享池资源利用率高；(+) 新 community 仅 DB write + DNS route；(+) 已有 TLA+/Tamarin 形式化验证协议层。Gap：SQL community_id 覆盖是 conventional（无 macro/lint 强制），依赖 code review + buzz-conformance 测试。这是 protocol-level formal verification 与 SQL-level conventional coverage 之间的 known gap。",
+      "evidence_level": "S (Code+Test+Formal)",
+      "confidence": 0.88,
+      "evidence_ref": "evidence-log.jsonl:4-6"
+    },
+    {
+      "id": "d-3",
+      "decision": "子系统通过 Cargo 依赖图 + layered architecture 组织，buzz-search/buzz-audit 直接 sqlx 而非依赖 buzz-db",
+      "implements_constraint": "c-2 + 可维护性",
+      "rejected_alternative": "严格 hexagonal architecture（端口适配器）或 microservice 拆分",
+      "tradeoff": "用部分子系统耦合（buzz-pubsub→buzz-auth, buzz-workflow→buzz-db）换取：(+) Cargo 编译期强制无循环依赖；(+) buzz-search/buzz-audit 直接 sqlx 避免 query 需求污染 db abstraction；(+) buzz-relay 唯一 composition root 测试清晰。ARCHITECTURE.md 声称 'subsystems are isolated' 是过度简化，实际是 layered architecture——但这个简化是可接受的，因为无循环依赖 + 无跨层反向引用。",
+      "evidence_level": "A (Code+Test)",
+      "confidence": 0.82,
+      "evidence_ref": "evidence-log.jsonl:7-8"
+    },
+    {
+      "id": "d-4",
+      "decision": "单 tokio runtime 承载所有 workload（WS relay + HTTP + git + voice + mesh + cron）",
+      "implements_constraint": "c-4",
+      "rejected_alternative": "多 runtime（voice 独立 pool）或多进程 microservice",
+      "tradeoff": "用 voice frame 与 event pipeline 共享 worker threads 的 head-of-line blocking 风险换取：(+) 共享 AppState 简单；(+) 单 binary 部署；(+) 无 IPC 开销。这是 c-4（single-binary self-hostable）的直接后果——多 runtime 会增加 N=1 部署复杂度。Mitigation: connection semaphore + SLOW_CLIENT_GRACE_LIMIT(3) + mesh datagram drop-on-full。但这是 production SLO 的主要 risk，特别是 600K events/day + voice huddle + git clone 并发时。",
+      "evidence_level": "B (Code only)",
+      "confidence": 0.85,
+      "evidence_ref": "evidence-log.jsonl:9-10"
+    },
+    {
+      "id": "d-5",
+      "decision": "Kind registry 通过 centralized const + ALL_KINDS 数组 + CI no_duplicate_kind_values test 强制",
+      "implements_constraint": "c-3",
+      "rejected_alternative": "runtime registry（动态注册）或 plugin 机制或 range 分配文档化 governance",
+      "tradeoff": "用无 runtime 扩展（需 recompile）换取：(+) 编译期强制无重复；(+) const 编译期内联性能；(+) 简单。子 range 划分（40000-40999 stream, 41000-41999 DM, 45000-45999 forum, 46000-46999 workflow）无 lint 强制，依赖 code review。Trade-off 可接受——40000-49999 range 足够大，duplicate test 防最严重 collision。这是 Nostr 协议约束下的合理工程选择。",
+      "evidence_level": "A (Code+Test)",
+      "confidence": 0.84,
+      "evidence_ref": "evidence-log.jsonl:16-17"
+    }
+  ],
+  "architecture_realization": {
+    "boundaries": [
+      {
+        "id": "b-1",
+        "name": "Tenant Boundary",
+        "why_exists": "存在因为 c-1（multi-tenant isolation must be proven）。URL host 是 authoritative——req.community = resolve_host(connection.host) 在任何 handler 观察数据前完成，fail-closed，无 default/fallback。这个边界不是 filter，是 hard gate——unknown host 拒绝，empty host 拒绝，lookup error 拒绝。redteam_attack2 测试验证 empty host 即使 DB 有空 host 行也 fail closed。Boundaries 内：community_id WHERE 子句覆盖全部 SQL（1264 次/20 文件）。",
+        "binds_decision": "d-2",
+        "evidence_level": "S (Code+Test+Formal)"
+      },
+      {
+        "id": "b-2",
+        "name": "Subsystem Boundary",
+        "why_exists": "存在因为 c-2（audit integrity）+ 可维护性。buzz-search/buzz-audit 不依赖 buzz-db——避免 search/audit 的 query 需求污染 db abstraction，同时保证 audit 故障隔离（c-2）。buzz-pubsub 依赖 buzz-auth（for AuthContext types），buzz-workflow 依赖 buzz-db（for reading events）——这是 layered dependency 非 strict isolation。Cargo 依赖图 compile-time 强制无循环。",
+        "binds_decision": "d-3",
+        "evidence_level": "A (Code+Test)"
+      },
+      {
+        "id": "b-3",
+        "name": "Protocol Boundary",
+        "why_exists": "存在因为 c-3（Nostr wire compatibility）。kind integer 是唯一分发开关——standard NIP kinds (0-9999) + replaceable (10000-19999) + ephemeral (20000-29999, 不存储不审计) + parameterized replaceable (30000-39999) + Buzz custom (40000-49999)。ephemeral boundary 是 protocol-level 性能优化——presence/typing bypass DB/audit/search 避免 600K events/day 压垮持久层。",
+        "binds_decision": "d-5",
+        "evidence_level": "A (Code+Test)"
+      },
+      {
+        "id": "b-4",
+        "name": "Security Boundary (Global Sub Exclusion)",
+        "why_exists": "存在因为 c-1 + c-5。Global subscriptions（无 channel_id 约束）被 excluded from channel-scoped events——这是 deliberate security boundary，只有 scoped to accessible channel_id 的 subscription 接收 channel-scoped events。防止 private channel event 通过 global subscription 泄露。这是 INV-7。",
+        "binds_decision": "d-1 + d-2",
+        "evidence_level": "B (Code only)"
+      },
+      {
+        "id": "b-5",
+        "name": "Internal API Boundary",
+        "why_exists": "存在因为 defense in depth。/internal/git/policy localhost-only + HMAC auth + 1MB body limit——pre-receive hook 通过 localhost HMAC 调用 policy callback，防止外部直接访问。这是 git hosting 的安全边界，确保 push policy 不可绕过。",
+        "binds_decision": "(supports c-1)",
+        "evidence_level": "B (Code only)"
+      }
+    ],
+    "extension_mechanism": "扩展哲学是 'protocol-first, code-second'——新功能通过新增 Nostr kind 实现，而非新增 endpoint 或 schema。buzz-core/src/kind.rs 是 protocol 的代码化身，ALL_KINDS 是 registry，no_duplicate_kind_values test 是 collision guard。客户端通过 'unknown kind 忽略' 语义保证向后兼容。这种扩展机制的核心优势：relay 不需要升级就能 forward 新 kind event，只有需要 active 处理的客户端/agent 需要升级。Workflow engine 在此之上提供 trigger-based 扩展（监听 kind → 执行 YAML），但 workflow execution kinds (46001-46012) 被 excluded 防止循环。Agent surface 通过 MCP/buzz-cli 暴露全部 feature——agents 不是二等公民，是 first-class channel 成员。"
+  },
+  "runtime_story": {
+    "one_request": "用户在 channel 发送一条消息——这个请求穿越所有架构约束：\n\n1. **WebSocket 接入 + Tenant Binding (c-1)**：客户端连接 ws://myproject.com，relay 在任何 handler 前调用 bind_community('myproject.com') 解析 TenantContext。unknown host 直接拒绝——这是 row-zero gate。\n\n2. **NIP-42 Auth (c-5)**：客户端必须先回应 AUTH challenge 用 Schnorr 签名证明持有 secp256k1 keypair。AuthState: Pending → Authenticated。未认证的 EVENT 被拒绝 with 'auth-required'。\n\n3. **Event Submission + Pubkey Match**：客户端发送 ['EVENT', <signed event>]。Pipeline step 2 验证 event.pubkey == auth_context.pubkey——防止 impersonation。\n\n4. **Kind Dispatch (c-3)**：kind 9 (KIND_STREAM_MESSAGE) 进入存储路径。若 kind 是 22242 (AUTH) 拒绝存储；若 20000-29999 (ephemeral) 走 ephemeral sub-pipeline bypass DB。\n\n5. **Verify (CPU-bound isolation)**：spawn_blocking(verify_event) 验证 Schnorr sig + ID hash——CPU-bound 操作不阻塞 tokio worker。\n\n6. **Membership Check (c-1 + c-5)**：event tags 中的 channel_id 查 check_channel_membership——用户必须是该 channel 成员。这是 access gate。\n\n7. **DB Insert (idempotent)**：db.insert_event ON CONFLICT DO NOTHING——重复提交幂等。\n\n8. **Redis Publish (multi-pod fan-out, c-4)**：若 event channel-scoped，pubsub.publish_event 发到 Redis，其他 pod 的 subscriber 接收并 fan-out 到本地 WS subscribers。\n\n9. **Fan-out (Security Boundary b-4)**：sub_registry.fan_out → conn_manager.send_to。Global subscriptions 被 excluded——只有 scoped to accessible channel_id 的 subscription 接收。\n\n10. **Search Index (async, fire-and-forget)**：bounded worker queue (capacity 1000) 非阻塞 send。满则 drop（可接受，搜索非关键路径）。\n\n11. **Audit Log (c-2, async, fire-and-forget)**：spawned async task append 到 hash-chain。单写入点保证链完整性。\n\n12. **Workflow Trigger (async, fire-and-forget)**：spawned async task 评估 workflow YAML。排除 kind 46001-46012 防止循环。\n\n客户端收到 ['OK', <id>, true, '']——pipeline 完成。整个流程穿越 5 个 driving constraint：c-1 (tenant+membership)、c-2 (audit)、c-3 (kind dispatch)、c-4 (multi-pod fan-out)、c-5 (auth+membership)。",
+    "backpressure": "过载时系统分级 degrade：(1) 连接层——connection semaphore 满时新连接直接拒绝（fast fail）；(2) 慢客户端——try_send full buffer 3 次 (SLOW_CLIENT_GRACE_LIMIT) 后 cancel connection，防止一个慢客户端拖累 fan-out；(3) 搜索——search_index_tx bounded queue (capacity 1000) 满则 drop event（搜索非关键路径，可接受 eventual consistency）；(4) voice mesh datagram 'drop-on-full, never blocks on old audio'——voice 实时性优先于完整性，丢旧 frame 不阻塞新 frame；(5) audit/workflow——fire-and-forget spawned task，失败不影响 event submission。Gap：无 per-route concurrency limit——voice + event + git 共享 tokio worker pool，head-of-line blocking 是已知 risk (R-1)。K8s graceful drain (SIGTERM → 5s grace → drain_all 1012 close frame → 30s hard timeout) 是外部 mitigation。"
+  },
+  "top_risks": [
+    {
+      "id": "r-1",
+      "risk": "单 tokio runtime head-of-line blocking——voice frame + event pipeline + git clone 共享 worker threads",
+      "what_breaks": "当 voice huddle（低延迟高吞吐 Opus frame）+ 600K events/day event pipeline + git large clone（subprocess + ReaderStream）同时发生时，tokio worker pool 饱和，voice frame 延迟超过 Opus buffer 容忍度 → voice 卡顿；event pipeline tail latency 超过 <50ms p99 SLO；git clone 超时。无 per-route concurrency limit 是直接原因。一个 panic 的 task 可能影响整个 process（无 supervisor 隔离）。",
+      "severity": "high",
+      "evidence_level": "B (Code only)",
+      "confidence": 0.85,
+      "evidence_ref": "evidence-log.jsonl:9-10"
+    },
+    {
+      "id": "r-2",
+      "risk": "SQL community_id 漏写导致跨租户数据泄露——形式化验证在协议层，SQL 层 conventional",
+      "what_breaks": "若 contributor 添加新 query 忘记 WHERE community_id，跨租户用户可读到其他 community 的 events/channels/DMs。TLA+/Tamarin 不覆盖 SQL 层（gap），只能靠 code review + buzz-conformance 测试发现。这是 multi-tenant SaaS 最严重的安全风险——一次漏写 = 全平台数据泄露。",
+      "severity": "high",
+      "evidence_level": "S (Code+Test+Formal) 但有 known gap",
+      "confidence": 0.80,
+      "evidence_ref": "evidence-log.jsonl:4-6"
+    },
+    {
+      "id": "r-3",
+      "risk": "VISION/README 与实现 gap 误导用户——'Buzz Mesh ✅' 指 session transport 非 AI compute；'git events ✅' 指存储非 branch-as-room",
+      "what_breaks": "用户基于 README 'Buzz Mesh ✅' 部署 Buzz Mesh AI compute，发现 mesh-llm 是 dev-dependency production 不包含 → 信任崩塌。用户基于 'git events ✅' 期望 branch-as-room 体验，发现 NIP-34 仅存储事件无 auto-creation → 产品定位误解。这不是技术风险，是产品沟通风险，但影响 adoption。",
+      "severity": "medium",
+      "evidence_level": "C (Doc+Code 交叉验证)",
+      "confidence": 0.83,
+      "evidence_ref": "evidence-log.jsonl:11-15"
+    },
+    {
+      "id": "r-4",
+      "risk": "Buzz Mesh AI compute 信任模型——无 inference result verification，恶意 member 可返回错误输出",
+      "what_breaks": "若 mesh-llm 启用（当前 dev-dependency，未来可能 production），恶意 community member 贡献 compute endpoint 返回错误 inference 结果，agents 消费错误输出 → 决策错误。信任模型基于 relay membership（同 community trusted），但 inference result 无 hash/signature/challenge 验证。这是 experimental feature 的潜在 future risk。",
+      "severity": "medium",
+      "evidence_level": "E (Inference)",
+      "confidence": 0.75,
+      "evidence_ref": "evidence-log.jsonl:14-15"
+    },
+    {
+      "id": "r-5",
+      "risk": "单 tokio process panic 影响整个 relay——无 supervisor 重启策略",
+      "what_breaks": "单 task panic（如 verify_event 解析 malformed event）可能影响整个 tokio runtime，导致所有 WS 连接断开 + 所有 cron 任务停止。K8s restartPolicy + readiness/liveness probe + graceful drain(30s) 是外部 mitigation，但单 task panic 不隔离——recovery 时间 = pod 重启时间 + WS 重连时间。对 600K events/day SLO，这是可用性 risk。",
+      "severity": "medium",
+      "evidence_level": "B (Code only)",
+      "confidence": 0.70,
+      "evidence_ref": "evidence-log.jsonl:9-10"
+    }
+  ],
+  "narrative_quality_gate": {
+    "thesis_one_sentence": "✅ '用 Nostr 签名事件模型统一所有 surface + 放弃 P2P gossip 换取 multi-tenant 隔离中央权威'",
+    "if_removed_answered": "✅ 三个核心属性同时崩塌（multi-tenant isolation / hash-chain audit / channel-membership access control）",
+    "driving_constraints_are_hard_forces": "✅ 5 个都是被迫硬约束（proven isolation / audit compliance / Nostr compat / single-binary / agents equals），非 feature list",
+    "key_decisions_le_5": "✅ 5 个，每个绑定 constraint + rejected alternative + tradeoff",
+    "boundaries_explain_why": "✅ 5 个 boundaries 每个 'why_exists' 解释存在原因，非 crate 命名",
+    "one_request_is_narrative": "✅ 用户发消息穿越 12 步，每步绑定架构约束（c-1/c-2/c-3/c-4/c-5），非 pipeline trace",
+    "top_risks_le_5": "✅ 5 个，每个标注 what_breaks"
+  }
+}

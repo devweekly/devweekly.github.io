@@ -28,8 +28,9 @@ flowchart TD
     S3b --> S4[Step 4<br/>根据问题深入分析]
     S4 --> S5{Step 5<br/>知识稳定?}
     S5 -->|No| S3a
-    S5 -->|Yes| S6[Step 6<br/>渲染 report.md]
-    S6 --> Done([Done])
+    S5 -->|Yes| S6a[Step 6.2<br/>构建 Architecture Narrative]
+    S6a --> S6b[Step 6.4<br/>渲染 report.md]
+    S6b --> Done([Done])
 ```
 
 ### Step 1 — 初始化 Working Dir
@@ -180,48 +181,164 @@ open → investigating → validated/rejected/blocked → model_updated
 
 ### Step 6 — 渲染 report.md
 
-当 repository-model 达到稳定状态后，渲染 `report.md`。
+当 repository-model 达到稳定状态后，**先构建 Architecture Narrative，再渲染 report.md**。
 
 > Report 理论详见 [Methodology.md](./Methodology.md) §Report Theory。
+> **核心原则：Architecture 是 Decision 的结果，不是先看结构再解释为什么。** Report 必须以 Thesis 为骨架，每章节回答"这个如何实现 Thesis"。
 
-#### Report Source
-
-```
-Primary:    repository-model.json（最终知识）
-Supporting: evidence-log.jsonl references（证据引用，不重新推理）
-Metadata:   hypotheses.json（中间状态，用于标注 unknowns）
-```
-
-#### Report Generation Gate
+#### 6.1 Report Generation Gate
 
 生成前必须检查：
 
 - [ ] 无 critical unresolved hypothesis
 - [ ] 所有 major claims 有 evidence 支撑
-- [ ] 所有 claims 有 confidence 标注
+- [ ] 所有 claims 有 confidence + evidence_level 标注
 - [ ] contradictions 已记录
 - [ ] speculative claims 已分离标注
 
 **Gate 未通过 →** 返回 Step 3 继续研究
 
-#### 报告结构
+#### 6.2 Architecture Narrative（中间产物，必经阶段）
+
+**不是从 repository-model 直接渲染 report。** 先压缩为 Architecture Narrative——把 Knowledge Model 转化为架构师能快速形成系统心智模型的叙事骨架。
+
+**Pipeline：**
 
 ```
-1. Executive Summary
-2. Architecture Thesis（系统论断 + 主要约束 + invariants）
-3. System Identity（语言、框架、构建系统、仓库类型）
-4. Architecture Model（Components / Boundaries / Dependency Rules / Extension Mechanisms）
-5. Runtime Model（Startup Flow / Request/Data Flow / Lifecycle）
-6. Design Decisions（每个 Decision: Context / Alternatives / Trade-offs / Evidence / Confidence）
-7. Evolution Model（Timeline / Motivation / Architectural changes）
-8. Quality Attributes（Extensibility / Maintainability / Performance / Testability）
-9. Risks and Debt（仅 evidence-backed risks）
-10. Unknowns（剩余 hypotheses + blocked questions + 缺失信息）
+repository-model.json
+        ↓
+Architecture Narrative（压缩层）
+        ↓
+report.md（叙事渲染）
 ```
 
-每条 claim 标注：`claim_type` / `evidence` / `confidence` / `reasoning`
+**创建：** `.working/{repo-name}/architecture-narrative.json`
 
-**输出：** `.working/{repo-name}/report.md`
+Narrative 必须回答 5 个问题，每个回答 ≤ 200 字：
+
+```json
+{
+  "schema_version": "1.0",
+  "repo_name": "buzz",
+  "thesis": {
+    "central_idea": "一句话——系统的架构中心是什么？",
+    "if_removed": "如果把这个中心去掉，系统还能跑吗？为什么？"
+  },
+  "driving_constraints": [
+    {
+      "id": "c-1",
+      "constraint": "塑造架构的硬约束（不是 feature，是被迫做出的约束）",
+      "forces": "这个约束迫使系统做出什么决策？",
+      "evidence_ref": "evidence-log.jsonl:N"
+    }
+  ],
+  "key_design_decisions": [
+    {
+      "id": "d-1",
+      "decision": "最关键的 5 个决策之一（从 repository-model.design_decisions 选 top 5）",
+      "implements_constraint": "c-1",
+      "rejected_alternative": "至少一个被拒绝的替代方案",
+      "tradeoff": "用 X 换 Y"
+    }
+  ],
+  "architecture_realization": {
+    "boundaries": "3-5 个关键边界，每个解释为什么存在（不是 crate 列表）",
+    "extension_mechanism": "系统如何扩展（不是 kind 列表，是扩展哲学）"
+  },
+  "runtime_story": {
+    "one_request": "一个典型请求/事件从入口到完成的完整路径，作为叙事（不是 pipeline trace）。说明每一步对应哪个架构约束。",
+    "backpressure": "系统如何在过载时 degrade"
+  },
+  "top_risks": [
+    {
+      "id": "r-1",
+      "risk": "最大 trade-off / 风险",
+      "what_breaks": "这个 risk 触发时什么会崩",
+      "evidence_ref": "evidence-log.jsonl:N"
+    }
+  ]
+}
+```
+
+**Narrative 质量门：**
+
+- ✅ Thesis 是一句话，且能回答 "if_removed" 问题
+- ✅ Driving Constraints 是"被迫的硬约束"（不是 feature list）
+- ✅ Key Design Decisions ≤ 5 个（强制压缩，防止平铺）
+- ✅ 每个 Decision 绑定一个 Constraint（implements_constraint）
+- ✅ Boundaries 解释"为什么存在"（不是 crate 命名）
+- ✅ One Request Story 是叙事，不是 step trace
+
+**Narrative 未通过 →** 重写 Narrative（不返回 Step 3，因为 model 已稳定）
+
+#### 6.3 Report Source
+
+```
+Primary:    architecture-narrative.json（叙事骨架）
+Supporting: repository-model.json（详细 claims）
+Evidence:   evidence-log.jsonl references（不重新推理，仅引用）
+Metadata:   hypotheses.json（标注 unknowns）
+```
+
+#### 6.4 报告结构（叙事驱动，非传统模板）
+
+```
+1. Executive Summary（≤300 字，包含 Thesis 一句话 + 最大 trade-off）
+
+2. Architecture Thesis
+   2.1 Central Idea（一句话 + if_removed 回答）
+   2.2 Driving Constraints（3-5 个塑造架构的硬约束）
+
+3. Key Design Decisions（⭐ 提前——先看决策，再看结构）
+   每个 Decision:
+   - Context（为什么必须做决策）
+   - Alternatives（至少一个被拒绝的方案）
+   - Trade-off（用 X 换 Y）
+   - Implements Constraint（绑定 §2.2）
+   - Evidence Level（见下表）
+
+4. Resulting Architecture（架构作为决策的结果，非 crate 列表）
+   4.1 Boundaries——按"为什么存在"组织，每个绑定 Decision
+   4.2 Extension Mechanism——扩展哲学，非枚举
+
+5. Runtime Realization
+   5.1 One Request Story（一个典型请求的叙事，每步绑定架构约束）
+   5.2 Backpressure & Failure Isolation（过载时如何 degrade）
+
+6. Quality Attributes（Extensibility / Maintainability / Performance / Testability / Observability / Security）
+
+7. Risks and Debt（仅 evidence-backed，每个标注 "what breaks"）
+
+8. Unknowns（剩余 need_reading + blocked）
+
+Appendix A: Research Provenance（Questions / Evidence Summary / Source Files）
+Appendix B: Evidence Level Legend
+```
+
+#### 6.5 Evidence Level（替代纯 confidence 数值）
+
+每条 claim 标注 `confidence` + `evidence_level`，让读者理解可信度 basis：
+
+| Evidence Level | Basis | 示例 |
+|------|------|------|
+| **S** | Code + Test + Formal Verification | Tenant isolation（TLA+/Tamarin + redteam test + SQL coverage） |
+| **A** | Code + Test | Kind registry duplicate test |
+| **B** | Code only（无 test 验证） | Single tokio runtime risk |
+| **C** | Documentation + Code 交叉验证 | Workflow WF-08 gap |
+| **D** | Documentation only | Evolution motivation |
+| **E** | Inference（基于代码模式推断） | Buzz Mesh trust model risk |
+
+claim 标注格式：`*confidence: 0.85 · evidence_level: S (Code+Test+Formal)· evidence: evidence-log.jsonl:N*`
+
+#### 6.6 Report 禁止项
+
+- ❌ Components 章节列 crate 名而不解释"为什么存在"
+- ❌ Runtime 章节给 pipeline trace 而不说明"顺序为何重要"
+- ❌ Design Decisions 放在 Architecture Model 之后
+- ❌ 用 confidence 数值而不给 evidence_level basis
+- ❌ Appendix 内容混入正文（research log 感）
+
+**输出：** `.working/{repo-name}/architecture-narrative.json` + `.working/{repo-name}/report.md`
 
 ---
 
@@ -235,6 +352,7 @@ Metadata:   hypotheses.json（中间状态，用于标注 unknowns）
 ├── evidence-log.jsonl        # 证据日志（append-only，Step 4 写）
 ├── repository-model.json     # Repository Knowledge Model（Step 4 更新）
 ├── hypotheses.json           # 假设系统（Step 4 维护）
+├── architecture-narrative.json # Step 6.2 中间产物——Knowledge Model → 叙事骨架
 ├── questions/                # 问题引擎
 │   ├── summary.json          #   问题列表汇总 + 状态
 │   ├── round-1.json          #   第 1 轮问题
@@ -242,7 +360,7 @@ Metadata:   hypotheses.json（中间状态，用于标注 unknowns）
 │   └── round-N.json          #   第 N 轮问题
 ├── rounds/                   # 研究轮次记录
 │   └── round-1.json
-└── report.md                 # 最终报告（Step 6 输出）
+└── report.md                 # 最终报告（Step 6.4 输出，基于 narrative 渲染）
 ```
 
 ### context.json
@@ -283,8 +401,8 @@ Metadata:   hypotheses.json（中间状态，用于标注 unknowns）
 | Evidence | [agents/evidence.md](./agents/evidence.md) | Step 4 | 收集证据，写 evidence-log.jsonl |
 | Model | [agents/model.md](./agents/model.md) | Step 4 | 从 evidence 合并/更新 repository-model.json |
 | Reasoning | [agents/reasoning.md](./agents/reasoning.md) | Step 4 | 架构解释 + 质疑 + 验证 hypothesis |
-| Report | [agents/report.md](./agents/report.md) | Step 6 | 从 Model 渲染 report.md |
-| Quality | [agents/quality.md](./agents/quality.md) | Step 6 | 检查 report.md 质量 |
+| Report | [agents/report.md](./agents/report.md) | Step 6 | 构建 Architecture Narrative + 渲染 report.md |
+| Quality | [agents/quality.md](./agents/quality.md) | Step 6 | 检查 narrative 质量门 + report.md 质量 |
 
 **内部顺序：**
 - Step 3：Planner → Question Critic（生成问题 → 审查质量）

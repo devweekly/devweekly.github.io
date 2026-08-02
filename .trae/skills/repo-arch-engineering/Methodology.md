@@ -286,14 +286,26 @@ coverage.ratio >= 0.8 AND coverage.confidence >= 0.75
 报告从模型渲染，不是重新推理证据。
 
 ```
-Research Agent → Knowledge Model → Knowledge Renderer（Report）
+Research Agent → Knowledge Model → Architecture Narrative → Knowledge Renderer（Report）
 ```
+
+**Architecture Narrative 是必经的压缩层。** Knowledge Model 是事实集合，Narrative 是架构师能快速形成心智模型的叙事骨架，Report 是叙事的渲染产物。跳过 Narrative 会产生"信息密度超过认知结构"的报告——信息齐全但读者抓不住主线。
 
 ### Report Source
 
-- **Primary**：Repository Knowledge Model（最终知识）
-- **Supporting**：evidence references（证据引用，不重新推理）
+- **Primary**：Architecture Narrative（叙事骨架——Thesis + Driving Constraints + Key Decisions + Boundaries + One Request Story + Top Risks）
+- **Supporting**：Repository Knowledge Model（详细 claims，供渲染展开）
+- **Evidence**：evidence references（不重新推理，仅引用）
 - **Metadata**：hypotheses（中间状态，用于标注 unknowns）
+
+### 叙事骨架原则
+
+1. **Thesis 是骨架，不是章节**——每章节回答"这个如何实现 Thesis"
+2. **Architecture 是 Decision 的结果**——先看决策（为什么长这样），再看结构（长成什么样）
+3. **强制压缩**——Key Design Decisions ≤ 5 个，Driving Constraints ≤ 5 个，Top Risks ≤ 5 个。防止平铺，强迫选择最重要
+4. **Decision 绑定 Constraint**——每个 Decision 必须说明 implements 哪个 Constraint
+5. **Boundaries 解释"为什么存在"**——不是 crate 命名清单
+6. **One Request Story 是叙事**——不是 pipeline trace，每步绑定架构约束
 
 ### Claim 分类
 
@@ -308,6 +320,21 @@ Research Agent → Knowledge Model → Knowledge Renderer（Report）
 | `hypothesis` | 标注为 speculative，显示 evidence_needed |
 | `risk` | 基于已验证事实的推理，标注推理链 |
 
+### Evidence Level
+
+每条 claim 标注 confidence + evidence_level，让读者理解可信度 basis（而非仅看数值）：
+
+| Level | Basis |
+|-------|-------|
+| **S** | Code + Test + Formal Verification |
+| **A** | Code + Test |
+| **B** | Code only（无 test 验证） |
+| **C** | Documentation + Code 交叉验证 |
+| **D** | Documentation only |
+| **E** | Inference（基于代码模式推断） |
+
+读者判断：S/A 级 claim 可信度高，B/C 需要关注 limitation，D/E 是推测性 claim 需进一步验证。
+
 ### Architecture Thesis
 
 报告应包含一个 Architecture Thesis 章节，回答：
@@ -316,6 +343,7 @@ Research Agent → Knowledge Model → Knowledge Renderer（Report）
 
 内容：
 - 系统的核心架构论断（一句话：这个系统本质上是什么）
+- **if_removed 回答**：如果把这个中心去掉，系统还能跑吗？为什么？
 - 主要约束（驱动架构设计的关键约束）
 - architectural invariants（已验证的高置信度假设）
 
