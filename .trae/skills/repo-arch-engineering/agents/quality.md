@@ -75,11 +75,37 @@ description: 检查 report-draft.md 质量，返回 PASS/FAIL/reason（Phase 6 M
 - [ ] 没有拟人化比喻（心脏/大脑/神经）
 - [ ] Evidence/Inference/Confidence 已分离
 
-### 7. 报告完整性
+### 7. §2 必答检查（⭐ 最高优先级——FAIL 直接拒绝报告）
 
-- [ ] 10 个章节都已渲染（即使某些章节标注"证据不足"）
-- [ ] Executive Summary 包含系统身份 + 核心架构 + 关键风险
-- [ ] Open Questions 列出未回答的问题
+- [ ] §2.1 What is this repo? 存在且回答了 repo 类型、定位、价值主张、规模、目标用户
+- [ ] §2.2 Business Context 存在且用**业务语言**（不是技术语言）描述满足的业务需求、业务范围、use cases、市场差异化
+- [ ] §2.3 High-Level Architecture 存在且是 **high-level overview**（一句话架构 + 组件关系 + 技术栈理由 + 部署模型）
+- [ ] §2.3 **没有深入技术细节**（如具体协议字段、kind 整数、SQL schema、配置参数）——技术细节应在 §5/§6
+- [ ] 报告没有跳过 §2 直接讲技术细节（如"Nostr 协议 + kind 整数"出现在 §2 中 → FAIL）
+
+### 8. Architecture Narrative 质量门检查
+
+- [ ] `architecture-narrative.json` 已生成（不是从 repository-model 直接渲染 report）
+- [ ] Narrative 的 `system_identity` 字段已填充（非空、非模板占位符）
+- [ ] Narrative 的 `business_context` 字段已填充（用业务语言，含 use cases）
+- [ ] Narrative 的 `high_level_architecture` 字段已填充（一句话 + 组件 + 技术栈 + 部署）
+- [ ] Narrative 的 `thesis.central_idea` 是一句话，且 `if_removed` 已回答
+- [ ] Narrative 的 `key_design_decisions` ≤ 5 个
+- [ ] 每个 Decision 的 `implements_constraint` 绑定了有效的 Constraint ID
+
+### 9. Evidence Level 检查
+
+- [ ] 报告中每条重要 claim 标注了 `evidence_level`（S/A/B/C/D/E）
+- [ ] 没有 `confidence > 0.8` 但 `evidence_level: D/E` 的矛盾（高置信度但仅文档/推断支撑）
+- [ ] `evidence_level: E`（Inference）的 claim 已标注为 speculative
+
+### 10. 报告完整性
+
+- [ ] 报告结构匹配 SKILL §6.4（§1-§9 + Appendix A/B）
+- [ ] Executive Summary ≤ 300 字，包含 Thesis 一句话 + 最大 trade-off
+- [ ] Key Design Decisions 在 Resulting Architecture **之前**（先决策后结构）
+- [ ] Appendix 内容未混入正文（research log 感）
+- [ ] Unknowns 列出剩余 need_reading + blocked
 
 ## 决策逻辑
 
@@ -118,3 +144,9 @@ else:
 - `low-coverage` → "收集 {dimension} 维度的证据"
 - `unconfirmed-hypothesis` → "将 {hyp-id} 标注为 speculative 或继续验证"
 - `contradiction` → "解决 {pattern1} vs {pattern2} 的矛盾"
+- `§2-missing` → "补充 §2.{subsection}——回答 {question}（用业务语言，不深入技术细节）"
+- `§2-too-technical` → "§2.3 过于技术化，将 {技术细节} 移到 §5/§6，§2 只保留 high-level overview"
+- `narrative-missing` → "先生成 architecture-narrative.json，再渲染 report（不能从 model 直接渲染）"
+- `narrative-incomplete` → "Narrative 的 {field} 未填充或为模板占位符，需要从 model + repository-profile.business_signals 填充"
+- `evidence-level-missing` → "为 claim {claim_id} 标注 evidence_level（S/A/B/C/D/E）"
+- `evidence-level-contradiction` → "claim {claim_id} confidence={value} 但 evidence_level={level}，需降低 confidence 或升级 evidence"

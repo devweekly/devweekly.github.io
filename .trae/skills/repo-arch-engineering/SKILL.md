@@ -214,12 +214,30 @@ report.md（叙事渲染）
 
 **创建：** `.working/{repo-name}/architecture-narrative.json`
 
-Narrative 必须回答 5 个问题，每个回答 ≤ 200 字：
+Narrative 必须回答 8 个问题，每个回答 ≤ 200 字：
 
 ```json
 {
   "schema_version": "1.0",
   "repo_name": "buzz",
+  "system_identity": {
+    "what_is": "这个 repo 是什么？一句话——类型、定位、一句话价值主张",
+    "repo_type": "CLI / Library / Framework / Database / IDE / Application / Platform / Monorepo",
+    "scale": "规模信号——代码量、模块数、目标用户量、目标吞吐量（如适用）",
+    "target_users": "目标用户是谁？谁部署？谁使用？"
+  },
+  "business_context": {
+    "needs_satisfied": "满足什么业务需求？解决什么问题？（用业务语言，不是技术语言）",
+    "business_scope": "涉及什么业务范围？覆盖哪些功能域？不覆盖什么？（边界很重要）",
+    "use_cases": ["3-5 个典型使用场景，每个 ≤50 字"],
+    "alternatives_in_market": "市场上同类方案是什么？这个 repo 的差异化在哪？"
+  },
+  "high_level_architecture": {
+    "one_sentence": "一句话整体架构——'X 是一个 Y，通过 Z 实现 W'（不深入技术细节）",
+    "components_overview": "主要组件及其关系（≤150 字，high-level，不列全部 crate）",
+    "tech_stack": "核心技术栈选择（语言/框架/存储/消息/部署），每个一句话说为什么选",
+    "deployment_model": "如何部署？单机/集群/cloud/self-hosted？"
+  },
   "thesis": {
     "central_idea": "一句话——系统的架构中心是什么？",
     "if_removed": "如果把这个中心去掉，系统还能跑吗？为什么？"
@@ -262,6 +280,9 @@ Narrative 必须回答 5 个问题，每个回答 ≤ 200 字：
 
 **Narrative 质量门：**
 
+- ✅ System Identity 回答"是什么"——读者读完知道 repo 类型、定位、规模
+- ✅ Business Context 回答"解决什么业务问题"——用业务语言（不是技术语言），含 use cases 和市场差异化
+- ✅ High-Level Architecture 回答"整体架构什么样"——一句话 + 组件关系 + 技术栈选择理由 + 部署模型，**不深入技术细节（如 Nostr 协议）**
 - ✅ Thesis 是一句话，且能回答 "if_removed" 问题
 - ✅ Driving Constraints 是"被迫的硬约束"（不是 feature list）
 - ✅ Key Design Decisions ≤ 5 个（强制压缩，防止平铺）
@@ -285,35 +306,44 @@ Metadata:   hypotheses.json（标注 unknowns）
 ```
 1. Executive Summary（≤300 字，包含 Thesis 一句话 + 最大 trade-off）
 
-2. Architecture Thesis
-   2.1 Central Idea（一句话 + if_removed 回答）
-   2.2 Driving Constraints（3-5 个塑造架构的硬约束）
+2. System Identity & Business Context（⭐ 必答——读者先理解"是什么、解决什么、整体架构"再进入技术细节）
+   2.1 What is this repo?（类型、定位、一句话价值主张、规模、目标用户）
+   2.2 Business Context（满足什么业务需求、涉及什么业务范围、3-5 个 use cases、市场差异化）
+   2.3 High-Level Architecture（一句话整体架构 + 主要组件关系图 + 技术栈选择理由 + 部署模型）
+       ⚠️ 本章是 high-level overview，不深入技术细节（如具体协议、kind 整数、SQL schema）
+       ⚠️ 技术细节留给 §4 Resulting Architecture 和 §5 Runtime Realization
 
-3. Key Design Decisions（⭐ 提前——先看决策，再看结构）
+3. Architecture Thesis
+   3.1 Central Idea（一句话 + if_removed 回答）
+   3.2 Driving Constraints（3-5 个塑造架构的硬约束）
+
+4. Key Design Decisions（⭐ 提前——先看决策，再看结构）
    每个 Decision:
    - Context（为什么必须做决策）
    - Alternatives（至少一个被拒绝的方案）
    - Trade-off（用 X 换 Y）
-   - Implements Constraint（绑定 §2.2）
+   - Implements Constraint（绑定 §3.2）
    - Evidence Level（见下表）
 
-4. Resulting Architecture（架构作为决策的结果，非 crate 列表）
-   4.1 Boundaries——按"为什么存在"组织，每个绑定 Decision
-   4.2 Extension Mechanism——扩展哲学，非枚举
+5. Resulting Architecture（架构作为决策的结果，非 crate 列表）
+   5.1 Boundaries——按"为什么存在"组织，每个绑定 Decision
+   5.2 Extension Mechanism——扩展哲学，非枚举
 
-5. Runtime Realization
-   5.1 One Request Story（一个典型请求的叙事，每步绑定架构约束）
-   5.2 Backpressure & Failure Isolation（过载时如何 degrade）
+6. Runtime Realization
+   6.1 One Request Story（一个典型请求的叙事，每步绑定架构约束）
+   6.2 Backpressure & Failure Isolation（过载时如何 degrade）
 
-6. Quality Attributes（Extensibility / Maintainability / Performance / Testability / Observability / Security）
+7. Quality Attributes（Extensibility / Maintainability / Performance / Testability / Observability / Security）
 
-7. Risks and Debt（仅 evidence-backed，每个标注 "what breaks"）
+8. Risks and Debt（仅 evidence-backed，每个标注 "what breaks"）
 
-8. Unknowns（剩余 need_reading + blocked）
+9. Unknowns（剩余 need_reading + blocked）
 
 Appendix A: Research Provenance（Questions / Evidence Summary / Source Files）
 Appendix B: Evidence Level Legend
 ```
+
+> **§2 是必答章节。** 跳过 §2 直接讲技术细节（如"Nostr 协议 + kind 整数"）是常见错误——读者不知道 repo 是什么、解决什么业务问题，就被拉入技术决策，会丢失主线。§2 用业务语言和 high-level 架构建立心智模型，§3+ 才进入技术深度。
 
 #### 6.5 Evidence Level（替代纯 confidence 数值）
 
