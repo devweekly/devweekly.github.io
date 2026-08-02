@@ -93,21 +93,6 @@ Evidence:
 - Falsification criteria: 如果假设错，我们会看到 plugin 直接编译时绑定
 ```
 
-## Neutrality 原则
-
-- **禁止绝对化结论**：不用"不可能"、"永远"、"deliberate trade-off"（作为结论）
-- **证据范围约束**：证据只能推出其支持范围内的结论
-- **术语 Neutral 化**：禁止拟人化比喻（心脏/大脑/神经）
-- **Evidence/Inference/Confidence 分离**：核心结论显式分离代码事实与研究推断
-
-## 从"描述系统"到"预测系统"
-
-报告不仅描述系统如何工作，还要**预测系统行为**：
-
-- **Blast Radius**：改这里会影响哪些子系统/invariant
-- **Change Difficulty**：哪些改动容易（data-driven）、哪些危险（多 invariant 依赖）
-- **Evolution Timeline**：系统为何演变成今天
-
 ## 规则
 
 - **禁止新增推理**——报告是 Model 的视图

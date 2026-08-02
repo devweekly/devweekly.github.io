@@ -9,8 +9,6 @@ description: 审查 Planner 生成的问题质量——拒绝低价值问题（�
 
 审查 Planner 生成的问题质量。拒绝低价值问题，批准高价值 Architecture Research Question。
 
-> **垃圾问题 → 垃圾研究。** Question Critic 是研究质量的第一道门。
-
 ## 输入
 
 - `questions/round-{N}.json`（Planner 生成的问题列表）
