@@ -45,27 +45,44 @@ Evidence 节点内部强制分离：
 
 ---
 
-# §2 顶层结构
+# §2 顶层结构与持久化布局
+
+`repository-model.json` 的顶层结构（只存稳定知识）：
 
 ```json
 {
-  "$schema": "repo-engineering-research/v1",
+  "$schema": "repo-arch-engineering/v1",
   "model_version": "1.0.0",
   "generated_at": "2026-08-02T10:00:00Z",
   "last_analyzed_commit": "abc1234",
   "identity": { /* §3 */ },
   "architecture": { /* §4 */ },
   "runtime": { /* §5 */ },
-  "design_decisions": { /* §6 */ },
+  "design_decisions": [ /* §6 */ ],
   "evolution": { /* §7 */ },
-  "hypotheses": { /* §8 */ },
-  "evidence": { /* §9 */ },
-  "questions": { /* §10 */ },
+  "quality_attributes": [ /* §18 */ ],
+  "risks": [ /* §18 */ ],
+  "unknowns": [ /* §18 */ ],
   "coverage": { /* §11 */ }
 }
 ```
 
-`questions` 和 `coverage` 在 SKILL.md 的顶层结构里未列出，但它们是 Research Engine 的驱动状态，必须持久化。
+## 2.1 持久化布局（单一事实源原则）
+
+研究过程状态（hypotheses / evidence / questions）**独立存储**，不内嵌进 model。Model 只通过 `ev-xxx` / `hyp-xxx` / `q-xxx` ID 引用这些文件，不复制其内容：
+
+| 文件 | 内容 | 写入者 |
+|-|-|-|
+| `repository-model.json` | §3-§7、§11、§18 稳定知识 | Model Agent（identity/architecture/runtime）+ Reasoning Agent（design_decisions/evolution/quality_attributes/risks/unknowns/coverage），**按字段分区写入** |
+| `hypotheses.json` | §8 假设系统 | Reasoning Agent |
+| `evidence-log.jsonl` | §9 证据（append-only，唯一事实源） | Evidence Agent（只 append） |
+| `questions/round-N.json` | §10 单轮问题 | Workspace Agent（Planner 生成后代写） |
+| `questions/round-N.reviewed.json` | §10 审查结果 | Question Critic Agent |
+| `questions/summary.json` | §10 问题汇总索引 | Workspace Agent |
+| `context.json` | 工作状态（含 coverage 工作态） | Workspace Agent（唯一写入者） |
+| `rounds/round-N.json` | 轮次统计记录 | Workspace Agent |
+| `architecture-narrative.json` | 叙事骨架（Model → Report 压缩层） | Report Agent |
+| `report-draft.md` → `report.md` | 报告草稿 → 发布 | Report Agent 写草稿；Quality PASS 后 Workspace rename 发布 |
 
 ---
 
@@ -249,6 +266,8 @@ Evidence 节点内部强制分离：
 
 假设是 Evidence 与 Validated Knowledge 之间的桥梁。每条假设可被 Evidence 支持/反对，并影响某个模型字段。
 
+> **存储位置：** 独立文件 `hypotheses.json`（Reasoning Agent 维护），不内嵌进 repository-model.json。Model 中被假设影响的字段只记录 `hyp-xxx` 引用。
+
 ```json
 {
   "hypotheses": [{
@@ -280,6 +299,8 @@ Evidence 节点内部强制分离：
 # §9 Evidence Model（证据模型）
 
 证据是 append-only 的，永远不删除、不覆盖。
+
+> **存储位置：** 独立文件 `evidence-log.jsonl`（每行一条 evidence，Evidence Agent 只 append）。这是证据的**唯一事实源**——repository-model.json 不复制 evidence 内容，claim 只通过 `ev-xxx` ID 引用。
 
 ```json
 {
@@ -317,6 +338,17 @@ Evidence 节点内部强制分离：
 
 **冲突处理规则**：高层级证据覆盖低层级证据。文档声称必须在代码或测试中验证，否则标注"文档声称但未验证"。
 
+> **⚠️ Evidence Tier ≠ Evidence Level。** 两者都使用 S/A/B/C/D/E 字母，但含义和用途不同，不要混用：
+>
+> | | Evidence Tier（本节，采集侧） | Evidence Level（报告侧） |
+> |-|-|-|
+> | 标注对象 | 单条 evidence 的来源性质 | 一条 claim 的支撑组合 |
+> | 标注时机 | Evidence Agent 收集时 | Report Agent 渲染时 |
+> | 定义处 | 本节（§9.1） | SKILL.md §6.5 / Methodology.md §Report Theory |
+> | 用途 | §15 置信度加权计算 | 读者判断 claim 可信度 basis |
+>
+> 映射关系：claim 由 test+code 支撑 → Level S/A；仅 code → B；doc+code 交叉验证 → C；仅 doc/commit → D；仅 inference → E。
+
 ## 9.2 Observation vs Inference
 
 ```
@@ -333,6 +365,8 @@ Evidence 节点内部强制分离：
 
 > **核心约束：问题的目标是减少 Architecture Knowledge Gap，而不是覆盖更多代码。**
 > 问题必须驱动架构模型产生变化，而不是驱动 Agent 阅读更多代码。
+>
+> **存储位置：** `questions/` 目录（`round-N.json` 单轮问题 + `round-N.reviewed.json` 审查结果 + `summary.json` 汇总索引），不内嵌进 repository-model.json。
 
 ## 10.1 Question Schema
 
@@ -442,25 +476,34 @@ Priority = Architecture Impact × Current Uncertainty × Evidence Availability
 
 # §11 Coverage Model（覆盖率模型）
 
-Research Engine 的停止条件之一。每个维度的覆盖率 = answered / total。
+Research Engine 的停止条件输入之一。每个维度的覆盖率基于终态问题计算（计算规则见 CHANGE_LOG.md Step 4）。
 
 ```json
 {
   "coverage": {
-    "runtime": { "answered": 0, "total": 0, "ratio": 0.0 },
-    "architecture": { "answered": 0, "total": 0, "ratio": 0.0 },
-    "design_decisions": { "answered": 0, "total": 0, "ratio": 0.0 },
-    "testing": { "answered": 0, "total": 0, "ratio": 0.0 },
-    "deployment": { "answered": 0, "total": 0, "ratio": 0.0 },
-    "history": { "answered": 0, "total": 0, "ratio": 0.0 }
+    "runtime":           { "answered": 0, "total": 0, "ratio": 0.0, "confidence": 0.0, "validated_claims": 0 },
+    "architecture":      { "answered": 0, "total": 0, "ratio": 0.0, "confidence": 0.0, "validated_claims": 0 },
+    "design_decisions":  { "answered": 0, "total": 0, "ratio": 0.0, "confidence": 0.0, "validated_claims": 0 },
+    "testing":           { "answered": 0, "total": 0, "ratio": 0.0, "confidence": 0.0, "validated_claims": 0 },
+    "deployment":        { "answered": 0, "total": 0, "ratio": 0.0, "confidence": 0.0, "validated_claims": 0 },
+    "history":           { "answered": 0, "total": 0, "ratio": 0.0, "confidence": 0.0, "validated_claims": 0 }
   }
 }
 ```
 
-**停止条件**：
-- 所有维度 `ratio >= 0.8`，或
-- 连续 2 轮没有新问题产生，或
-- 所有 critical/high 问题都已 answered
+- `answered`：该维度进入终态（`model_updated` / `blocked`）的问题数
+- `confidence`：该维度已验证问题（validated/rejected）的平均置信度
+- `validated_claims`：该维度 `model_updated` 状态的问题数
+
+**收敛条件（与 SKILL.md Step 5 一致，必须同时满足）：**
+
+- 所有问题进入终态（`model_updated` / `blocked`）
+- 无 unresolved contradictions
+- 所有核心模型节点 `confidence >= 0.75`
+- 所有维度 `coverage.ratio >= 0.8 AND coverage.confidence >= 0.75`
+- 最近两轮 repository-model delta 接近 0（knowledge delta：无新增/修改节点、confidence 无提升、contradictions 无减少）
+
+> ⚠️ 判据是 **knowledge delta**，**不是**"连续两轮没有新问题产生"——新问题减少只说明提问收敛，不说明知识稳定（见 Methodology.md §Knowledge Stability Theory）。
 
 ---
 
@@ -480,6 +523,9 @@ Research Engine 的停止条件之一。每个维度的覆盖率 = answered / to
 | `ep-` | Extension Point | `ep-001` |
 | `af-` | Async Flow | `af-001` |
 | `dec-` | Design Decision | `dec-001` |
+| `qa-` | Quality Attribute | `qa-001` |
+| `risk-` | Risk | `risk-001` |
+| `unk-` | Unknown | `unk-001` |
 
 ID 在单个模型内全局唯一，使用 3 位数字 zero-padded。
 
@@ -707,7 +753,9 @@ Model 构建完成时，必须通过以下验证：
 - [ ] 每个 `architecture.patterns[]` 至少有 1 条 `evidence`
 - [ ] 每个 `design_decisions[]` 至少有 1 条 `evidence`
 - [ ] 每个 `runtime.startup_flow[]` 步骤至少有 1 条 `evidence`
-- [ ] 每个 `hypotheses[]` 有 `falsification_criteria` 和 `linked_model_fields`
+- [ ] 每个 `risks[]` 至少有 1 条 `evidence`，且有 `what_breaks`
+- [ ] 每个 `quality_attributes[]` 评估有 `evidence` 支撑，或标注 `speculative`
+- [ ] 每个 `hypotheses[]` 有 `falsification_criteria` 和 `linked_model_fields`（存储于 hypotheses.json）
 - [ ] 每个 `evidence[]` 的 `observation` 不为空
 - [ ] 没有 inference 被写入 `observation` 字段
 - [ ] 所有 `evidence_id` 引用都指向存在的 Evidence 节点
@@ -716,3 +764,40 @@ Model 构建完成时，必须通过以下验证：
 - [ ] 没有 `confidence > 0.95` 的 claim（保留不确定性）
 
 验证失败时，Agent 必须修复或标注为 `speculative`，不能 silently 进入报告生成。
+
+---
+
+# §18 Quality Attributes / Risks / Unknowns Model
+
+报告 §7（Quality Attributes）、§8（Risks and Debt）、§9（Unknowns）的模型来源。这三类节点由 Reasoning Agent 在 Step 4 写入，Report Agent 渲染时直接使用，不允许在报告阶段新增。
+
+```json
+{
+  "quality_attributes": [{
+    "id": "qa-001 (必填)",
+    "attribute": "enum (必填): extensibility | maintainability | performance | testability | observability | security",
+    "assessment": "string (必填，评估结论——好/差及原因)",
+    "evidence": ["ev-xxx (必填，至少 1 条；无证据则整个节点标注 speculative)"],
+    "confidence": "number (必填, 0-1)"
+  }],
+  "risks": [{
+    "id": "risk-001 (必填)",
+    "risk": "string (必填，风险描述——最大 trade-off / 债务)",
+    "what_breaks": "string (必填，风险触发时什么会崩)",
+    "evidence": ["ev-xxx (必填，至少 1 条——报告 §8 仅允许 evidence-backed 风险)"],
+    "confidence": "number (必填, 0-1)"
+  }],
+  "unknowns": [{
+    "id": "unk-001 (必填)",
+    "description": "string (必填，剩余未知)",
+    "kind": "enum (必填): need_reading | blocked",
+    "linked_question": "q-xxx (可选，来源问题)"
+  }]
+}
+```
+
+**关键约束**：
+
+- `risks[].what_breaks` 必填——说不清"什么会崩"的风险是泛泛而谈，不入模型
+- `risks[]` 必须 evidence-backed——纯推测的风险放入 `unknowns[]`
+- `unknowns[]` 是研究的诚实边界——报告 §9 原样渲染，不允许为了"完整性"删除

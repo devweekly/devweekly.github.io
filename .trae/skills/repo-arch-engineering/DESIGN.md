@@ -18,13 +18,13 @@
 
 ---
 
-## §1 为什么 Report First，Model 作为支撑
+## §1 为什么 Model First，Report as View
 
 ### 设计定位
 
-用户要的是 **Solution Architect 视角的完整分析报告**，不是 Repository Model。因此：
+用户要的是 **Solution Architect 视角的完整分析报告**，但直接生成报告不可行（见下）。因此：
 
-**报告是首要产物，Repository Knowledge Model 是支撑手段。**
+**Repository Knowledge Model 是首要工程产物，报告是 Model 的视图（Report as View）。**
 
 ```
 Solution Architect 视角阅读代码
@@ -32,40 +32,39 @@ Solution Architect 视角阅读代码
   v
 Research Engine（循环研究）
   |
-  +-- 中间产物: Repository Knowledge Model（持久化、可追溯）
-  |     - 保证每条 claim 有 evidence 链
-  |     - 保证可增量更新（commit 变化时只更新受影响部分）
-  |     - 保证可验证（claim → evidence → source 可追溯）
+  v
+Repository Knowledge Model（首要产物：持久化、可追溯、可增量更新）
   |
   v
-最终产物: report.md（保存到 working dir）
+Architecture Narrative（压缩层：Model → 叙事骨架）
+  |
+  v
+report.md（视图渲染，保存到 working dir）
 ```
 
-### 为什么需要 Model 作为支撑
-
-直接生成报告的问题：
+### 为什么直接生成报告不可行
 
 1. **证据收集为了填报告章节** — Agent 倾向于收集"能写进报告的证据"，而非"能理解系统的证据"
 2. **无追溯性** — 报告里的 claim 无法追溯到源码
 3. **无增量更新** — commit 变化时必须重新生成整个报告
 4. **无质量保证** — 无法检查 coverage / confidence / contradictions
 
-Model 作为支撑解决这些问题：
+Model First 解决这些问题：
 
 - **可增量更新** — commit 变化时只更新受影响部分，不重新生成整个报告
 - **可查询** — "这个系统的扩展点有哪些？"可以直接查 Model
 - **可验证** — 每个 claim 都有 evidence 链，可以追溯
 - **质量门控** — Quality Agent 基于 Model 检查 coverage/confidence/contradictions
 
-### 与纯 Model First 的区别
+### 为什么不是"只产 Model"
 
-纯 Model First 设计（Model 是首要产物，报告是派生视图）的问题：
+Model First 不等于 Model Only。Model 是事实集合，不是交付物：
 
-- 用户要的是报告，不是 Model
-- Model 的价值通过报告体现，而非独立存在
-- 过度强调 Model 会让 Agent 忽视报告的可读性
+- 用户读的是报告，不是 JSON——Model 的价值通过报告体现
+- 因此报告侧有**两道强制处理**：Architecture Narrative 压缩层（防止信息密度超过认知结构）+ 叙事驱动的报告结构（Thesis 为骨架，见 Methodology.md §Report Theory）
+- 报告的每个 claim 只能引用 Model，不允许新增推理（Report MUST NOT introduce new architectural claims）
 
-本 Skill 的平衡：**报告是首要产物，Model 是保证报告质量的支撑手段**。
+本 Skill 的平衡：**Model 是首要工程产物（保证质量），Narrative + Report 是 Model 的视图（保证可读性）**。
 
 ---
 
@@ -124,10 +123,12 @@ Validated Knowledge (验证后的知识: 假设 + 置信度 + 反证搜索结果
 ```
 Question (知识缺口)
   |
-  +-- Reason: 为什么问这个？（什么证据触发了这个问题）
-  +-- Expected Evidence: 期望找到什么证据来回答？
-  +-- Priority: 这个缺口有多重要？
-  +-- Status: open → investigating → answered → invalidated
+  +-- Why it matters: 为什么问这个？（回答后会改变什么架构理解）
+  +-- Expected Model Change: 回答后会修改/确认模型的哪些字段
+  +-- Hypothesis: 待验证/推翻的初始假设
+  +-- Evidence Needed: 期望找到什么证据来回答？
+  +-- Priority: 这个缺口有多重要？（Impact × Uncertainty × Evidence Availability）
+  +-- Status: open → investigating → validated/rejected/blocked → model_updated
   +-- Linked Hypothesis: 回答这个问题验证/推翻了哪个假设？
 ```
 
@@ -183,7 +184,23 @@ Research Engine --->+---> Phase 3: Runtime Reconstruction
                     +---> (loop back if knowledge gaps remain)
 ```
 
-引擎根据知识缺口决定下一步执行哪个 Phase，可以回溯、并行、增量更新。
+引擎根据知识缺口决定下一步执行哪个 Phase，可以回溯、增量更新（当前 Orchestrator 串行调度，见 agents/orchestrator.md）。
+
+### Phase ↔ Step ↔ Agent 映射
+
+SKILL.md 的 6 个 Step 是执行流程视角，Phase 0-6 是研究内容视角，两者对应关系：
+
+| Phase | 名称 | SKILL.md Step | 负责 Agent | `phases_completed` 值 |
+|-|-|-|-|-|
+| 0 | Reconnaissance | Step 2 | Scan | `reconnaissance` |
+| 1 | Structural Discovery | Step 2 | Scan | `structural_discovery` |
+| 2 | Architecture Reconstruction | Step 4 | Model | `architecture_reconstruction` |
+| 3 | Runtime Reconstruction | Step 4 | Model | `runtime_reconstruction` |
+| 4 | Design Decision Mining | Step 4 | Reasoning | `design_decision_mining` |
+| 5 | Evolution Analysis | Step 4 | Reasoning | `evolution_analysis` |
+| 6 | Model Validation | Step 6 | Quality | `model_validation` |
+
+研究循环（Step 3-5）每轮按 Evidence → Model → Reasoning 顺序推进 Phase 2-5 的增量；Phase 6 在收敛后、报告发布前执行。
 
 ---
 
@@ -223,74 +240,39 @@ Claim
 
 ---
 
-## §6 Repository Knowledge Model Schema
+## §6 Repository Knowledge Model（权威定义见 model-schema.md）
 
 Repository Model 是整个 Skill 的核心。没有模型定义，Agent 行为容易退化成"高级代码总结器"。
 
-### 顶层结构
+> **字段级定义、Evidence→Model 映射规则、置信度计算、增量更新冲突解决，均以 [model-schema.md](./model-schema.md) 为唯一权威来源。** 本节只记录核心设计决策，不复制 schema（避免双源不一致）。
 
-```json
-{
-  "identity": {
-    "name": "string",
-    "type": "CLI | Library | Framework | Database | Compiler | ...",
-    "languages": ["string"],
-    "frameworks": ["string"],
-    "build_system": "string",
-    "entry_points": ["string"],
-    "deployment_files": ["string"]
-  },
-  "architecture": {
-    "pattern": "layered | hexagonal | plugin | event-driven | monolith | microservices",
-    "pattern_evidence": ["evidence_id"],
-    "layers": [{"name": "string", "modules": ["module_id"]}],
-    "boundaries": [{"name": "string", "direction": "string", "evidence": ["evidence_id"]}],
-    "modules": [{"id": "string", "name": "string", "responsibility": "string"}],
-    "dependencies": [{"from": "module_id", "to": "module_id", "type": "string"}]
-  },
-  "runtime": {
-    "startup_flow": [{"step": "string", "component": "module_id", "evidence": ["evidence_id"]}],
-    "request_lifecycle": [{"step": "string", "component": "module_id", "evidence": ["evidence_id"]}],
-    "async_flows": [{"name": "string", "components": ["module_id"], "evidence": ["evidence_id"]}]
-  },
-  "design_decisions": [{
-    "decision": "string",
-    "context": "string",
-    "alternative": "string",
-    "tradeoff": "string",
-    "evidence": ["evidence_id"],
-    "confidence": "number"
-  }],
-  "evolution": {
-    "timeline": [{"version": "string", "change": "string", "evidence": ["evidence_id"]}],
-    "current_direction": "string",
-    "deprecated_patterns": ["string"]
-  },
-  "hypotheses": [{
-    "id": "string",
-    "hypothesis": "string",
-    "status": "confirmed | rejected | uncertain",
-    "confidence": "number",
-    "supporting_evidence": ["evidence_id"],
-    "counter_evidence": ["evidence_id"],
-    "linked_questions": ["question_id"]
-  }],
-  "evidence": [{
-    "id": "evidence_id",
-    "source": "file_path",
-    "observation": ["string"],
-    "inference": ["string"],
-    "confidence": "number"
-  }]
-}
+### 顶层结构（概览）
+
+```
+repository-model.json
+  ├── identity            # 仓库身份（§3）
+  ├── architecture        # patterns / layers / boundaries / modules / extension_points（§4）
+  ├── runtime             # startup_flow / request_lifecycle / async_flows（§5）
+  ├── design_decisions    # Decision + Context + Alternatives + Trade-off（§6）
+  ├── evolution           # timeline / current_direction / deprecated_patterns（§7）
+  ├── quality_attributes  # 可扩展性/可维护性/性能等评估（§18）
+  ├── risks               # evidence-backed 风险 + what_breaks（§18）
+  ├── unknowns            # 剩余未知（need_reading / blocked）（§18）
+  └── coverage            # 各维度覆盖率快照（§11）
+
+工作文件（独立存储，model 只通过 ID 引用，不复制内容）：
+  hypotheses.json         # 假设系统（§8，Reasoning 维护）
+  evidence-log.jsonl      # 证据日志（§9，append-only 唯一事实源）
+  questions/              # 问题引擎（§10，round-N.json + reviewed.json + summary.json）
 ```
 
 ### 关键设计
 
 1. **所有 claim 通过 evidence_id 链接** — 不允许无证据的 claim
 2. **observation 和 inference 分离** — 结构上不允许混淆
-3. **hypotheses 有状态** — confirmed/rejected/uncertain，不是二元判断
+3. **hypotheses 有状态** — candidate/investigating/confirmed/rejected/uncertain，不是二元判断
 4. **模型是持久化的 JSON** — 可增量更新，可查询，可验证
+5. **模型与工作文件分离** — Model 存稳定知识；hypotheses/evidence/questions 是研究过程状态，独立存储
 
 ---
 
@@ -366,7 +348,7 @@ Repository Model 是整个 Skill 的核心。没有模型定义，Agent 行为�
 
 ## §8 与 repo-research-v2 的关系
 
-`repo-engineering-research` 不是 `repo-research-v2` 的增量改进，而是**重新设计**。
+`repo-arch-engineering` 不是 `repo-research-v2`（已归档为 `Aug02-Old-repo-research-v2`）的增量改进，而是**重新设计**。
 
 ### 保留的核心思想
 
@@ -387,21 +369,27 @@ Repository Model 是整个 Skill 的核心。没有模型定义，Agent 行为�
 
 ### 迁移策略
 
-`repo-engineering-research` 作为新 Skill 独立开发，不修改 `repo-research-v2`。当新 Skill 验证稳定后，旧 Skill 可以废弃。
+`repo-arch-engineering` 作为新 Skill 独立开发，不修改 `repo-research-v2`。当新 Skill 验证稳定后，旧 Skill 可以废弃。
 
 ---
 
-## §9 下一步：model-schema.md
+## §9 文档地图
 
-p1.md 建议下一步设计 `model-schema.md`，因为 Repository Model 是整个 Skill 的核心。
+本 Skill 的文档分工（单一权威来源原则，避免双源不一致）：
 
-没有模型定义的后果：
-- Agent 行为容易退化成"高级代码总结器"
-- Evidence 没有 target 字段，不知道更新模型的哪个部分
-- Hypothesis 没有 linked_model_field，无法追踪假设影响哪个模型节点
+| 文档 | 职责 | 状态 |
+|-|-|-|
+| [SKILL.md](./SKILL.md) | 执行规范——Workflow / Artifacts / Agent 调度 | 当前 |
+| [Methodology.md](./Methodology.md) | 研究方法论——稳定的研究理论，与执行细节无关 | 当前 |
+| [DESIGN.md](./DESIGN.md) | 设计决策理由（本文档） | 当前 |
+| [model-schema.md](./model-schema.md) | Repository Model 字段定义、映射规则、置信度计算、增量更新策略 | 当前 |
+| [CHANGE_LOG.md](./CHANGE_LOG.md) | context.json 状态变更规则 | 当前 |
+| [agents/](./agents/) | Sub Agent 定义（11 个） | 当前 |
+| [p1.md](./p1.md) | 初始设计提案（历史存档，已被上述文档取代） | 存档 |
 
-`model-schema.md` 需要定义：
-1. 每个模型字段的类型约束
-2. Evidence 到 Model 的映射规则
-3. Hypothesis 到 Model 的链接方式
-4. 模型增量更新的冲突解决策略
+p1.md 曾建议"下一步设计 model-schema.md"——已完成。model-schema.md 落地了：
+
+1. 每个模型字段的类型约束（§3-§11、§18）
+2. Evidence 到 Model 的映射规则（§13）
+3. Hypothesis 到 Model 的链接方式（§14）
+4. 模型增量更新的冲突解决策略（§16）

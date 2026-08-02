@@ -204,17 +204,19 @@ Falsification: 如果在 model 层发现 SWT/JFace 依赖，假设被推翻
 
 ### 假设验证的结果
 
-- **validated** — evidence 支持 hypothesis
+- **confirmed** — evidence 支持 hypothesis
 - **rejected** — hypothesis 被反证，但产生知识更新（知道"不是这样"也是知识）
-- **blocked** — 当前证据不足，记录缺失信息（比无限循环好）
+- **uncertain** — 当前证据不足，记录缺失信息（比无限循环好）
+
+> 假设的完整状态机为 `candidate | investigating | confirmed | rejected | uncertain`（见 model-schema.md §8）。注意与 **Question** 的状态机区分：Question 的验证结论是 `validated / rejected / blocked`，闭环终态是 `model_updated / blocked`（见 model-schema.md §10.4）——两套状态机作用于不同实体，不要混用。
 
 ### 假设与模型的关系
 
 每个假设必须链接到模型字段。验证假设后必须更新模型：
 
-- validated → 模型字段 confidence 提升
+- confirmed → 模型字段 confidence 提升
 - rejected → 模型字段反映新理解
-- 高置信度 validated → 标记为 architecture invariant
+- 高置信度 confirmed → 标记为 architecture invariant
 
 ---
 
@@ -246,11 +248,12 @@ Status: answered
 
 ### 终态要求
 
-问题必须进入以下终态：
+问题验证后得到结论（`validated` / `rejected` / `blocked`），随后必须完成模型更新才能闭环。问题的终态只有两种：
 
-- `validated` — evidence 支持 hypothesis，并已更新 model
-- `rejected` — hypothesis 被反证，记录原因，同时更新 model
-- `blocked` — 当前证据不足，记录缺失信息
+- `model_updated` — 验证结论（validated/rejected）已落入模型，问题闭环
+- `blocked` — 当前证据不足，记录缺失信息（终态，比无限循环好）
+
+`validated` / `rejected` 是中间结论，不是终态——结论未落入模型的研究不算完成。
 
 ### Knowledge Delta vs Question Delta
 
@@ -426,3 +429,5 @@ Research Agent → Knowledge Model → Architecture Narrative → Knowledge Rend
 - [SKILL.md](./SKILL.md) — 执行规范（Workflow / Artifacts / Agent Invocation）
 - [DESIGN.md](./DESIGN.md) — 设计决策理由
 - [model-schema.md](./model-schema.md) — Repository Model 字段定义
+- [CHANGE_LOG.md](./CHANGE_LOG.md) — context.json 状态变更规则
+- [agents/](./agents/) — Sub Agent 定义（11 个）

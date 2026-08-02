@@ -35,7 +35,7 @@ flowchart TD
 
 ### Step 1 — 初始化 Working Dir
 
-检查 `.working/{repo-name}/` 是否已存在：
+由 Resume Agent 检查 `.working/{repo-name}/` 是否已存在并判断现场状态，Workspace Agent 执行初始化/恢复：
 
 **首次分析：**
 
@@ -55,13 +55,23 @@ write .working/{repo-name}/questions/summary.json (empty)
 
 ### Step 2 — 快速分析 Repo
 
-对 repo 做简要快速判断，**不深入代码**：
+对 repo 做简要快速判断，**不深入代码**（Phase 0 Reconnaissance）：
 
 - 识别语言、框架、构建系统
 - 定位入口点、部署文件
 - 判断仓库类型（CLI / Library / Framework / Database / IDE / Application / Monorepo）
+- 提取 business_signals（README 首段 / description / target users / use cases / non-goals，供 Step 6 报告 §2 使用）
 
-**输出：** `artifacts/repository-profile.json`
+随后做结构发现（Phase 1 Structural Discovery）：
+
+- 识别架构单元（applications / libraries / services / infrastructure / tests），**不描述每个文件**
+- 建立模块清单（模块职责留空，由 Model Agent 在 Step 4 填充）
+
+**输出：**
+
+- `artifacts/repository-profile.json`（Phase 0：身份事实 + business_signals）
+- `artifacts/directory-model.json`（Phase 1：架构单元）
+- `artifacts/module-model.json`（Phase 1：模块清单）
 
 ### Step 3 — 生成 round-N.json 提问
 
@@ -69,7 +79,7 @@ write .working/{repo-name}/questions/summary.json (empty)
 
 > 问题质量标准详见 [Methodology.md](./Methodology.md) §Question Theory。
 
-**创建：** `questions/round-{N}.json`
+**创建：** `questions/round-{N}.json`（Planner 只生成问题、不写文件，由 Workspace Agent 落盘）
 
 ```json
 {
@@ -119,7 +129,7 @@ Planner 生成问题 → Question Critic 审查 → approved 问题进入 Step 4
                                         → rejected 问题反馈给 Planner
 ```
 
-**输出：** `questions/round-{N}.reviewed.json`（只含 approved 问题）
+**输出：** `questions/round-{N}.reviewed.json`（由 Question Critic 直接写入，含全部问题的审查结果——approved + rejected 及理由；仅 approved 问题进入 Step 4，rejected 反馈给 Planner）
 
 ### Step 4 — 根据 round-N.json 深入分析
 
@@ -170,11 +180,13 @@ open → investigating → validated/rejected/blocked → model_updated
 
 #### 收敛条件（必须同时满足）
 
-- [ ] 所有问题进入终态（validated / rejected / blocked）
+- [ ] 所有问题进入终态（`model_updated` / `blocked`，见 Step 4 Question 状态机）
 - [ ] 无 unresolved contradictions
-- [ ] 所有核心模型节点 confidence >= threshold
-- [ ] `coverage.ratio >= 0.8 AND coverage.confidence >= 0.75`
-- [ ] 最近两轮 repository-model delta 接近 0（knowledge delta）
+- [ ] 所有核心模型节点 confidence >= 0.75
+- [ ] 所有维度 `coverage.ratio >= 0.8 AND coverage.confidence >= 0.75`
+- [ ] 最近两轮 repository-model delta 接近 0（knowledge delta：无新增/修改节点、confidence 无提升、contradictions 无减少）
+
+> 判据是 **knowledge delta**，不是"连续两轮没有新问题"——见 [Methodology.md](./Methodology.md) §Knowledge Stability Theory。
 
 **满足 →** 进入 Step 6
 **不满足 →** 返回 Step 3 创建下一轮问题
@@ -360,6 +372,17 @@ Appendix B: Evidence Level Legend
 
 claim 标注格式：`*confidence: 0.85 · evidence_level: S (Code+Test+Formal)· evidence: evidence-log.jsonl:N*`
 
+> **Evidence Level ≠ Evidence Tier。** 两者都使用 S/A/B/C/D/E 字母，但含义不同、用途不同，不要混用：
+>
+> | | Evidence Tier（采集侧） | Evidence Level（报告侧） |
+> |-|-|-|
+> | 定义处 | [model-schema.md](./model-schema.md) §9.1 | 本节（§6.5） |
+> | 标注对象 | 单条 evidence 的来源性质 | 一条 claim 的支撑组合 |
+> | 标注时机 | Evidence Agent 收集时 | Report Agent 渲染时 |
+> | 用途 | §15 置信度加权计算 | 读者判断 claim 可信度 basis |
+>
+> 映射关系：claim 由 test+code 支撑 → Level S/A；仅 code → B；doc+code 交叉验证 → C；仅 doc/commit → D；仅 inference → E。
+
 #### 6.6 Report 禁止项
 
 - ❌ Components 章节列 crate 名而不解释"为什么存在"
@@ -376,22 +399,27 @@ claim 标注格式：`*confidence: 0.85 · evidence_level: S (Code+Test+Formal)�
 
 ```
 .working/{repo-name}/
-├── context.json              # 工作记录
-├── artifacts/                # 可复用的机械产物
-│   └── repository-profile.json   # Step 2 输出
-├── evidence-log.jsonl        # 证据日志（append-only，Step 4 写）
-├── repository-model.json     # Repository Knowledge Model（Step 4 更新）
-├── hypotheses.json           # 假设系统（Step 4 维护）
-├── architecture-narrative.json # Step 6.2 中间产物——Knowledge Model → 叙事骨架
+├── context.json              # 工作状态记录（Workspace Agent 唯一写入者）
+├── artifacts/                # 可复用的机械产物（Scan Agent 写，Step 2）
+│   ├── repository-profile.json   # Phase 0 输出：身份事实 + business_signals
+│   ├── directory-model.json      # Phase 1 输出：架构单元
+│   └── module-model.json         # Phase 1 输出：模块清单
+├── evidence-log.jsonl        # 证据日志（append-only 唯一事实源，Evidence Agent 写，Step 4）
+├── repository-model.json     # Repository Knowledge Model（Step 4 更新；Model/Reasoning 按字段分区写入）
+├── hypotheses.json           # 假设系统（Reasoning Agent 维护，Step 4）
+├── architecture-narrative.json # Step 6.2 中间产物——Knowledge Model → 叙事骨架（Report Agent 写）
 ├── questions/                # 问题引擎
-│   ├── summary.json          #   问题列表汇总 + 状态
-│   ├── round-1.json          #   第 1 轮问题
-│   ├── round-1.reviewed.json #   第 1 轮审查结果
+│   ├── summary.json          #   问题列表汇总 + 状态（Workspace Agent 写）
+│   ├── round-1.json          #   第 1 轮问题（Planner 生成，Workspace 落盘）
+│   ├── round-1.reviewed.json #   第 1 轮审查结果（Question Critic 写）
 │   └── round-N.json          #   第 N 轮问题
-├── rounds/                   # 研究轮次记录
+├── rounds/                   # 研究轮次记录（Workspace Agent 写）
 │   └── round-1.json
-└── report.md                 # 最终报告（Step 6.4 输出，基于 narrative 渲染）
+├── report-draft.md           # 报告草稿（Report Agent 写，Step 6.4）
+└── report.md                 # 最终报告（Quality PASS 后由 Workspace rename 发布）
 ```
+
+> **存储原则：** Model 存稳定知识；hypotheses / evidence / questions 是研究过程状态，独立存储。Model 只通过 `ev-xxx` / `hyp-xxx` / `q-xxx` ID 引用这些文件，不复制其内容。详见 [model-schema.md](./model-schema.md) §2 持久化布局。
 
 ### context.json
 
@@ -409,7 +437,7 @@ claim 标注格式：`*confidence: 0.85 · evidence_level: S (Code+Test+Formal)�
   "coverage": {
     "architecture": { "answered": 1, "total": 1, "ratio": 1.0, "confidence": 0.85, "validated_claims": 1 }
   },
-  "phases_completed": ["reconnaissance"]
+  "phases_completed": ["reconnaissance", "structural_discovery"]
 }
 ```
 
@@ -424,19 +452,22 @@ claim 标注格式：`*confidence: 0.85 · evidence_level: S (Code+Test+Formal)�
 | Agent | 文件 | 执行步骤 | 职责 |
 |-------|------|---------|------|
 | Orchestrator | [agents/orchestrator.md](./agents/orchestrator.md) | 全程 | 调度控制器——读取 context，决定调哪个 Agent |
+| Resume | [agents/resume.md](./agents/resume.md) | Step 1 | 恢复现场，判断 commit 变化，返回下一步跳转目标 |
 | Workspace | [agents/workspace.md](./agents/workspace.md) | Step 1 | 初始化/恢复 working dir，维护 context.json |
-| Scan | [agents/scan.md](./agents/scan.md) | Step 2 | 快速分析 repo，生成 repository-profile.json |
-| Planner | [agents/planner.md](./agents/planner.md) | Step 3 | 基于上下文生成 round-N.json 问题 |
+| Scan | [agents/scan.md](./agents/scan.md) | Step 2 | 快速分析 repo，生成 artifacts/（profile + directory + module） |
+| Planner | [agents/planner.md](./agents/planner.md) | Step 3 | 基于上下文生成 round-N 问题（不写文件） |
 | Question Critic | [agents/question-critic.md](./agents/question-critic.md) | Step 3 | 审查问题质量，拒绝低价值问题 |
 | Evidence | [agents/evidence.md](./agents/evidence.md) | Step 4 | 收集证据，写 evidence-log.jsonl |
-| Model | [agents/model.md](./agents/model.md) | Step 4 | 从 evidence 合并/更新 repository-model.json |
-| Reasoning | [agents/reasoning.md](./agents/reasoning.md) | Step 4 | 架构解释 + 质疑 + 验证 hypothesis |
-| Report | [agents/report.md](./agents/report.md) | Step 6 | 构建 Architecture Narrative + 渲染 report.md |
-| Quality | [agents/quality.md](./agents/quality.md) | Step 6 | 检查 narrative 质量门 + report.md 质量 |
+| Model | [agents/model.md](./agents/model.md) | Step 4 | 从 evidence 合并/更新 repository-model.json（identity/architecture/runtime 字段） |
+| Reasoning | [agents/reasoning.md](./agents/reasoning.md) | Step 4 | 架构解释 + 质疑 + 验证 hypothesis（写推理字段 + hypotheses.json） |
+| Report | [agents/report.md](./agents/report.md) | Step 6 | 构建 Architecture Narrative + 渲染 report-draft.md |
+| Quality | [agents/quality.md](./agents/quality.md) | Step 6 | 检查 narrative 质量门 + report-draft.md 质量 |
 
 **内部顺序：**
+- Step 1：Resume（判断现场）→ Workspace（初始化/恢复/标记 invalidation）
 - Step 3：Planner → Question Critic（生成问题 → 审查质量）
 - Step 4：Evidence → Model → Reasoning（收集证据 → 更新模型 → 回答问题）
+- Step 6：Report → Quality（渲染草稿 → 质量检查；PASS 后 Workspace 发布）
 
 ---
 
