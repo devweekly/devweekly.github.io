@@ -1,5 +1,5 @@
 ---
-name: "repo-research-v2"
+name: "Aug02-Old-repo-research-v2"
 description: "把仓库编译成架构知识库（Repository Model），并从中生成报告。当用户要求研究/分析某个仓库的架构、设计模式或工程实现时调用。"
 ---
 
@@ -96,6 +96,36 @@ flowchart TD
 - `interpretCore`：引用张力作为 architectural_forces，引用违规作为 engineering_constraints
 - `riskAndChallenge`：center_hypothesis 描述真正架构主题（如"如何管理供应商扩展"），不是套话（如"采用OSGi"）
 
+### 架构考古约束（p6.md §2-§7, §10）
+
+所有 LLM prompt 共享以下约束，防止生成"代码清单报告"而非"架构研究报告"：
+
+**禁止机械总结**：
+- 禁止列举目录/文件/模块名作为架构概念
+- 模块/文件/类不是架构概念，除非满足：承担架构职责、具有依赖影响力、参与运行时流程、代表设计边界
+
+**Mechanism vs Intent 分离**（§6）：
+- 每个架构机制必须分离"机制"（什么技术实现）和"意图"（解决什么架构问题）
+- 禁止只报告机制而不解释意图
+
+**Key Decision 规则**（§4）：
+- Decision != implementation detail
+- 错误："Created DBUtils class"
+- 正确："Centralized database semantic operations behind the model layer to prevent vendor-specific behavior leaking into UI"
+- Evidence 必须证明：constraint、alternative、consequence
+
+**Confidence discipline**（§7）：
+- 每个架构主张必须包含：evidence、inference level（direct/indirect/speculative）、alternative explanation
+- 如果证据只显示实现，不要声称设计意图
+
+**张力优先规则**（§3）：
+- 在生成 design_decision 之前，必须先识别至少 3 个架构张力
+- 没有张力的决策不是架构决策，只是实现选择
+
+**Report Writer 不直接接 Evidence**（§9）：
+- Report 从 Repository Model + Architecture Mining 输出 + Interpretation 生成
+- 禁止 Report 直接从 evidence-log 推导架构结论
+
 ## Orchestrator 调度步骤
 
 ```
@@ -115,7 +145,7 @@ flowchart TD
      f. call reasoning        → 架构解释 + 质疑 + 更新 coverage/design_space/maintainer_view，返回 round_stats
      g. call workspace        → 把 reasoning 返回的 round_stats 落到 summary.json 当前轮次条目
      goto a
-4. call report              → 从 Model + evidence 生成 report-draft.md
+4. call report              → 从 Model + Architecture Mining + Interpretation 生成 report-draft.md（p6.md §9: 禁止直接从 evidence 推导架构结论）
 5. call quality             → 检查 report-draft.md，返回 PASS/FAIL/reason（不修改 draft）
 6. if FAIL: goto 3 (Planner 根据 failed_checks 生成针对性问题；report-draft.md 保留供下一轮覆盖)
 7. if PASS:

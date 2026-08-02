@@ -896,6 +896,110 @@ const TENSION_FIRST_RULE = `
 - 没有张力的决策不是架构决策，只是实现选择
 `;
 
+// ---------------------------------------------------------------------------
+// p6-feedback §1-2,§9: Report Language Contract + 禁止机械化输出
+// ---------------------------------------------------------------------------
+
+const REPORT_LANGUAGE_CONTRACT = `
+=== 报告语言契约（Report Language Contract）===
+
+报告默认使用中文。
+
+以下术语保留英文（不翻译）：
+API, Runtime, JVM, OSGi, MCP, LSP, Git, CI/CD, Plugin, Bundle, Eclipse, Maven, Gradle, PageRank, JNI, JNA, JSON, XML, HTTP, SQL, IDE, UI, RCP, SDK, REPL
+
+其它架构描述必须中文化。
+
+禁止中英混杂：
+- 禁止："采用 OSGi bundle modularity"
+- 正确："采用 OSGi 模块化架构"
+- 禁止："xxx layer providing xxx"
+- 正确："xxx 层负责 xxx"
+
+禁止机械化输出：
+- 禁止逐目录介绍
+- 禁止罗列文件名作为架构概念
+- 禁止将类数量作为主要洞察（"DBUtils 156 方法"是现象，不是洞察）
+- 禁止将依赖数量直接等同风险（"90 依赖=高风险"是机械推理）
+- 禁止将任何违反理想设计的地方直接称为缺陷（可能是刻意妥协）
+
+必须：
+- 从机制解释架构（为什么用 OSGi，不是"用了 OSGi"）
+- 从约束解释设计（什么约束导致了这个边界）
+- 从演化解释复杂度（为什么这里变复杂了）
+=== 契约结束 ===
+`;
+
+// ---------------------------------------------------------------------------
+// p6-feedback §1-2,§9: Architecture Narrative Stage
+// 产生 architecture-story.json，report 只负责翻译这个 story 为 Markdown
+// ---------------------------------------------------------------------------
+
+async function buildArchitectureNarrative(repoType, model, evidence, archFactsStr) {
+  const evidenceStr = evidenceToInsightStr(evidence);
+  const modelSummary = condenseModelForInterpretation(model);
+  const prompt = `
+你是资深架构师，刚读完整个仓库源码。现在要写出你对这个系统的理解。
+
+${ARCH_ARCHAEOLOGY_CONSTRAINTS}
+
+${REPORT_LANGUAGE_CONTRACT}
+
+仓库类型: ${repoType.type}
+Repository Model: ${JSON.stringify(modelSummary, null, 2)}
+
+架构事实（Architecture Mining 结果）:
+${archFactsStr || "(无架构事实)"}
+
+证据洞察:
+${evidenceStr}
+
+你的任务不是列举组件，而是讲一个架构故事。必须回答：
+1. 系统为什么这样组织？（不是"用了什么"，而是"为什么用"）
+2. 哪些约束导致了这些边界？
+3. 哪些组件是真正的架构中心，哪些只是历史沉积？
+4. 如果未来扩展，压力会出现在哪里？
+
+输出 JSON（严格 JSON，不要 markdown 代码块）:
+{
+  "system_thesis": "一句话系统论断——这个系统本质上是什么（不是用了什么技术，而是它是什么）",
+  "core_tension": "系统核心矛盾——两个对立力量（如'数据库厂商差异 vs 统一用户体验'）",
+  "tension_resolution": "架构如何解决这个矛盾（不是'用了OSGi'，而是'通过 model 层抽象 + extension point 注入'）",
+  "architectural_mechanisms": [
+    {
+      "mechanism": "机制名（中文，如'OSGi 扩展模型'）",
+      "purpose": "解决什么架构问题",
+      "how_it_works": "如何工作（一段话，不是列表）",
+      "cost": "代价是什么",
+      "evidence": ["具体文件路径或类名"]
+    }
+  ],
+  "tradeoffs": [
+    {
+      "gain": "获得了什么",
+      "cost": "牺牲了什么",
+      "evidence": ["证据"]
+    }
+  ],
+  "evolution_pressure": "未来扩展时压力会出现在哪里（一段话）",
+  "historical_sediment": "哪些组件是历史沉积而非刻意设计（如果有）",
+  "maintainer_mental_model": "维护者如何理解这个系统（一句话，如'系统不是围绕数据库组织的，而是围绕数据库无关的语义模型组织的'）"
+}
+`;
+  try {
+    const result = await invokeLLMJSON(prompt, {
+      model: DEFAULT_MODEL,
+      _label: "4b.5-architecture-narrative",
+      timeoutMs: 180000,
+      retryCount: 0,
+    });
+    return result;
+  } catch (err) {
+    console.warn(`  4b.5 Architecture Narrative failed: ${err.message}`);
+    return null;
+  }
+}
+
 async function buildRepositoryModel(repoType, evidence, graphContext, archFactsStr) {
   const evidenceStr = evidenceToInsightStr(evidence);
   const graphStr = condenseGraphForPrompt(graphContext);
@@ -1029,6 +1133,8 @@ async function interpretCore(repoType, modelSummary, evidenceStr, graphStr, arch
 
 ${ARCH_ARCHAEOLOGY_CONSTRAINTS}
 
+${REPORT_LANGUAGE_CONTRACT}
+
 ${TENSION_FIRST_RULE}
 
 仓库类型: ${repoType.type}
@@ -1079,6 +1185,8 @@ async function riskAndChallenge(repoType, modelSummary, evidenceStr, graphStr, a
 
 ${ARCH_ARCHAEOLOGY_CONSTRAINTS}
 
+${REPORT_LANGUAGE_CONTRACT}
+
 仓库类型: ${repoType.type}
 Model: ${JSON.stringify(modelSummary, null, 2)}
 
@@ -1095,8 +1203,9 @@ ${evidenceStr}
 - center_hypothesis 必须描述系统真正的架构主题（如"如何管理供应商扩展"），不是套话（如"采用OSGi插件化架构"）
 - architectural_tensions 必须引用架构事实中的张力轴
 - blast_radius 的 component 必须引用架构事实中的"引力中心"节点名
-- design_smells 必须引用架构事实中的"违规"作为证据
+- design_smells 必须引用架构事实中的"违规"作为证据，但不要将任何违反理想设计的地方直接称为缺陷（可能是刻意妥协）
 - leverage_points 必须引用架构事实中的"扩展点"作为杠杆
+- challenge 结果不要二元化（一个 God Class ≠ 架构失败），使用 nuanced 结果
 - evidence 字段必须引用具体文件路径或类名
 - 输出严格 JSON，不要 markdown 代码块，不要在 JSON 外添加任何文字
 
@@ -1114,7 +1223,7 @@ ${evidenceStr}
     "center_hypothesis": "一句话中心假设，必须描述系统真正的架构主题而非套话",
     "key_assumptions": [{"assumption":"假设","evidence":["证据"],"inference_level":"direct|indirect|speculative","alternative_explanation":"替代解释","challenged":true,"survived":true}],
     "competing_interpretations": [{"interpretation":"备选解释","evidence":["证据"],"confidence":"medium"}],
-    "challenges": [{"target":"被质疑的决策/假设","method":"边界测试","counter_evidence":"反证或null","result":"survived|weakened|overturned","notes":"补充"}]
+    "challenges": [{"target":"被质疑的决策/假设","method":"边界测试","counter_evidence":"反证或null","result":"survived|partially_weakened|weakened|overturned|strengthened","notes":"补充（说明 nuance，不要简单二元判断）"}]
   }
 }
 `;
@@ -1684,6 +1793,22 @@ async function stageFourResearch(repoPath, resume, plan, scan, profile, workDir)
   console.log("  4c: Architecture interpretation + risk + challenge (unified)...");
   const { interpretation: newInterp, challenge: newChallenge } = await interpretAnalyzeAndChallenge(repoType, model, evidenceForPrompt, graphContext, archFactsStr);
 
+  // 4b.5: Architecture Narrative — the missing "story" layer between model and report.
+  // Produces architecture-story.json: system_thesis, core_tension, mechanisms, tradeoffs.
+  // Report translates this story into narrative Markdown, NOT form-filling.
+  console.log("  4b.5: Architecture Narrative (story layer)...");
+  let narrative = await buildArchitectureNarrative(repoType, model, evidenceForPrompt, archFactsStr);
+  if (!narrative) {
+    const prevNarrative = await tryReadJson(join(workDir, "architecture-story.json"));
+    if (prevNarrative && prevNarrative.system_thesis) {
+      narrative = prevNarrative;
+      console.log("  4b.5: Reusing previous successful narrative (current round failed).");
+    }
+  }
+  if (narrative) {
+    await writeJson(join(workDir, "architecture-story.json"), narrative);
+  }
+
   // If LLM calls failed (timeout/parse error), results will be empty objects.
   // Keep previous successful artifacts instead of overwriting with empties.
   // This prevents round-N failure from destroying round-(N-1) interpretation.
@@ -1751,6 +1876,7 @@ async function stageFourResearch(repoPath, resume, plan, scan, profile, workDir)
     model,
     interpretation,
     challenge,
+    narrative,
     coverage: planResult.coverage,
     next_focus: planResult.next_focus,
     converged: planResult.converged,
@@ -1767,24 +1893,17 @@ function renderReport(repoType, result, evidenceLog = []) {
   const interp = result.interpretation || {};
   const challenge = result.challenge || {};
   const coverage = result.coverage || {};
+  const narrative = result.narrative || {};
+  const af = result.archFacts || {};
 
   const sections = [];
 
   // p6.md §1 P0: auto-match evidence for decisions when LLM omitted the evidence field.
-  // Strategy: extract keywords from decision text, then search evidenceLog + related
-  // interpretation fields (tensions, complexity_drivers, leverage_points, invariants)
-  // for observations/file paths mentioning those keywords. This ensures every decision
-  // has traceable evidence, satisfying the P0 hard gate.
   function matchEvidenceForDecision(decision) {
-    // Gather keywords from decision fields
     const textParts = [
-      decision.decision || "",
-      decision.chosen || "",
-      ...(decision.rejected || []),
-      decision.tradeoff || "",
-      decision.rejected_reason || "",
+      decision.decision || "", decision.chosen || "",
+      ...(decision.rejected || []), decision.tradeoff || "", decision.rejected_reason || "",
     ].join(" ");
-    // Extract significant tokens: identifiers like DBUtils, OSGi, MANIFEST.MF, acronyms, CamelCase
     const keywords = new Set();
     const tokenRe = /\b[A-Z][A-Za-z0-9_]*(?:\.[A-Z][A-Za-z0-9_]*)+\b|\b[A-Z]{2,}[A-Za-z]*\b|\b[A-Z][a-z]+[A-Z]\w*\b/g;
     let m;
@@ -1796,17 +1915,13 @@ function renderReport(repoType, result, evidenceLog = []) {
     }
     if (keywords.size === 0) return [];
     const kwList = [...keywords];
-
     const matches = [];
-
-    // Source 1: evidence-log entries whose file path or observations contain keywords
     for (const ev of evidenceLog) {
       const file = ev.file || ev.path || "";
       const observations = ev.observations || ev.key_findings || [];
       const obsText = observations.join(" ");
       const hitKw = kwList.find((kw) => file.includes(kw) || obsText.includes(kw));
       if (hitKw) {
-        // Prefer file paths (more specific), fall back to observation text
         if (file && file !== "(unknown)" && file !== "(directory-structure)" && !file.startsWith("(")) {
           matches.push(file);
         } else if (observations.length > 0) {
@@ -1814,125 +1929,98 @@ function renderReport(repoType, result, evidenceLog = []) {
         }
       }
     }
-
-    // Source 2: related interpretation fields with evidence mentioning same components
     const relatedFields = [
-      ...(interp.architectural_tensions || []),
-      ...(interp.complexity_drivers || []),
-      ...(interp.leverage_points || []),
-      ...(interp.architecture_invariants || []),
-      ...(interp.engineering_constraints || []),
-      ...(interp.architectural_forces || []),
+      ...(interp.architectural_tensions || []), ...(interp.complexity_drivers || []),
+      ...(interp.leverage_points || []), ...(interp.architecture_invariants || []),
+      ...(interp.engineering_constraints || []), ...(interp.architectural_forces || []),
     ];
     for (const item of relatedFields) {
       const itemText = [item.tension, item.driver, item.point, item.invariant, item.constraint, item.force].filter(Boolean).join(" ");
       const itemEv = item.evidence || [];
       const hitKw = kwList.find((kw) => itemText.includes(kw) || itemEv.some((e) => e.includes(kw)));
       if (hitKw && itemEv.length > 0) {
-        // Extract file paths from evidence strings (they often start with a path)
         for (const e of itemEv) {
-          const pathMatch = e.match(/^([^\s(]+\.java|[^\s(]+\.xml|[^\s(]+\.MF|[^\s(]+\.MF|[^\s(]+\.ts|[^\s(]+\.py|[^\s(]+\.go|[^\s(]+\.rs)\b/);
-          if (pathMatch && !matches.includes(pathMatch[1])) {
-            matches.push(pathMatch[1]);
-          }
+          const pathMatch = e.match(/^([^\s(]+\.java|[^\s(]+\.xml|[^\s(]+\.MF|[^\s(]+\.ts|[^\s(]+\.py|[^\s(]+\.go|[^\s(]+\.rs)\b/);
+          if (pathMatch && !matches.includes(pathMatch[1])) matches.push(pathMatch[1]);
         }
       }
     }
-
-    // Deduplicate and cap at 3
     return [...new Set(matches)].slice(0, 3);
   }
 
-  // 1. 执行摘要
-  sections.push(`## 1 执行摘要`);
-  const coveredDims = Object.entries(coverage)
-    .filter(([, v]) => (typeof v === "number" ? v : v?.ratio ?? 0) >= 0.8)
-    .map(([k]) => k);
-  sections.push(`**仓库类型**：${repoType.type || "Unknown"}。`);
-  sections.push(`**中心假设**：${challenge.center_hypothesis || "(未设置)"}。`);
-  sections.push(`**覆盖维度**：${coveredDims.length > 0 ? coveredDims.join(", ") : "暂无"}。`);
-  const topDecisions = (interp.design_decisions || []).slice(0, 3).map((d) => d.decision);
-  sections.push(`**关键决策**：${topDecisions.length > 0 ? topDecisions.join(" / ") : "待进一步分析"}。`);
-  sections.push(`\n`);
-
-  // 2. Runtime
-  sections.push(`## 2 Runtime`);
-  const controlFlow = (model.behavior?.control_flow || []).slice(0, 5);
-  if (controlFlow.length > 0) {
-    sections.push(controlFlow.map((cf) => `- ${cf.name || cf.description || JSON.stringify(cf)}`).join("\n"));
+  // 1. 架构概览 — narrative-driven, not form-fill
+  sections.push(`## 1 架构概览`);
+  if (narrative.system_thesis) {
+    sections.push(narrative.system_thesis);
+    sections.push(`\n`);
+    if (narrative.core_tension) {
+      sections.push(`**核心矛盾**：${narrative.core_tension}`);
+    }
+    if (narrative.tension_resolution) {
+      sections.push(`\n**矛盾解决方式**：${narrative.tension_resolution}`);
+    }
   } else {
-    sections.push(`- 当前证据不足以完整描述运行时。建议补充入口文件和主循环分析。`);
+    sections.push(`**仓库类型**：${repoType.type || "Unknown"}。`);
+    sections.push(`**中心假设**：${challenge.center_hypothesis || "(未设置)"}。`);
   }
   sections.push(`\n`);
 
-  // 3. Architecture
-  sections.push(`## 3 Architecture`);
-  const modules = (model.structure?.modules || []).slice(0, 5);
-  if (modules.length > 0) {
-    sections.push(modules.map((m) => `- **${m.name || "(未命名)"}**：${(m.description || "").slice(0, 120)}`).join("\n"));
-  }
-  const boundaries = (model.structure?.boundaries || []).slice(0, 5);
-  if (boundaries.length > 0) {
-    sections.push(`\n**边界**：`);
-    sections.push(boundaries.map((b) => `- ${b.name || b.description || JSON.stringify(b)}`).join("\n"));
-  }
-  sections.push(`\n`);
-
-  // 3.5 Architecture Insights (from Architecture Mining)
-  const af = result.archFacts;
-  if (af && (af.gravityCenters?.length > 0 || af.tensions?.length > 0 || af.violations?.length > 0)) {
-    sections.push(`## 3.5 架构洞察（Architecture Mining）`);
-
-    if (af.gravityCenters?.length > 0) {
-      sections.push(`### 引力中心（Gravity Centers）`);
-      sections.push(`系统的核心力量所在，修改这些节点会影响大量依赖：`);
-      for (const c of af.gravityCenters.slice(0, 5)) {
-        sections.push(`- **${c.name}** (${c.type}): PageRank ${c.pageRank?.toFixed(2) || "N/A"}, ${c.inDegree} 依赖。${c.reason}`);
-      }
-      sections.push(`\n`);
-    }
-
-    if (af.tensions?.length > 0) {
-      sections.push(`### 架构张力（Tensions）`);
-      sections.push(`系统中的对立力量，架构师必须在它们之间做出权衡：`);
-      for (const t of af.tensions) {
-        sections.push(`- **[${t.axis}]** ${t.description}`);
-        sections.push(`  - 证据: ${t.evidence.join("; ")}`);
-        sections.push(`  - 解决方式: ${t.resolution}`);
-      }
-      sections.push(`\n`);
-    }
-
-    if (af.violations?.length > 0) {
-      sections.push(`### 架构违规（Violations）`);
-      sections.push(`违反架构模式的地方，通常是技术债或刻意妥协：`);
-      for (const v of af.violations) {
-        sections.push(`- **[${v.type}]** ${v.description} (严重度: ${v.severity})`);
-        sections.push(`  - 证据: ${v.evidence.join("; ")}`);
-      }
-      sections.push(`\n`);
-    }
-
-    if (af.extensionPoints?.length > 0) {
-      sections.push(`### 扩展点（Extension Points）`);
-      for (const ep of af.extensionPoints.slice(0, 5)) {
-        sections.push(`- **${ep.name}**: ${ep.contributorCount} 个贡献者`);
+  // 2. 架构机制 — from narrative, each mechanism is a story not a table row
+  const mechanisms = narrative.architectural_mechanisms || [];
+  if (mechanisms.length > 0) {
+    sections.push(`## 2 架构机制`);
+    sections.push(`系统通过以下机制解决架构问题：\n`);
+    for (let i = 0; i < mechanisms.length; i++) {
+      const mech = mechanisms[i];
+      sections.push(`### 机制 ${i + 1}：${mech.mechanism || "(未命名)"}`);
+      sections.push(`**解决的问题**：${mech.purpose || "—"}`);
+      sections.push(`**如何工作**：${mech.how_it_works || "—"}`);
+      sections.push(`**代价**：${mech.cost || "—"}`);
+      if (mech.evidence?.length > 0) {
+        sections.push(`**证据**：${mech.evidence.join(", ")}`);
       }
       sections.push(`\n`);
     }
   }
 
-  // 4. Key Decisions
-  sections.push(`## 4 Key Decisions`);
+  // 3. 架构引力中心 — from mining, with PageRank
+  if (af.gravityCenters?.length > 0) {
+    sections.push(`## 3 架构引力中心`);
+    sections.push(`系统的核心力量所在。这些节点被大量模块依赖，修改它们会产生广泛影响：\n`);
+    for (const c of af.gravityCenters.slice(0, 5)) {
+      sections.push(`- **${c.name}**（PageRank ${c.pageRank?.toFixed(2) || "N/A"}, ${c.inDegree} 依赖）：${c.reason}`);
+    }
+    sections.push(`\n`);
+  }
+
+  // 4. 关键权衡 — from narrative, gain vs cost as narrative
+  const tradeoffs = narrative.tradeoffs || interp.tradeoffs || [];
+  if (tradeoffs.length > 0) {
+    sections.push(`## 4 关键权衡`);
+    sections.push(`架构是在对立力量之间做选择。以下权衡塑造了当前系统：\n`);
+    for (const t of tradeoffs.slice(0, 5)) {
+      const gain = t.gain || t.tradeoff || "—";
+      const cost = t.cost || "—";
+      const ev = (t.evidence || []).join(", ");
+      sections.push(`- **获得**：${gain} | **牺牲**：${cost}`);
+      if (ev) sections.push(`  - 证据：${ev}`);
+    }
+    sections.push(`\n`);
+  }
+
+  // 5. 设计决策 — with mechanism/intent separation
   const decisions = (interp.design_decisions || []).slice(0, 4);
   if (decisions.length > 0) {
+    sections.push(`## 5 设计决策`);
     for (let i = 0; i < decisions.length; i++) {
       const d = decisions[i];
-      sections.push(`### D${i + 1}: ${d.decision || "(未命名决策)"}`);
+      sections.push(`### D${i + 1}：${d.decision || "(未命名决策)"}`);
+      if (d.mechanism || d.intent) {
+        sections.push(`**机制**：${d.mechanism || "—"}`);
+        sections.push(`**意图**：${d.intent || "—"}`);
+      }
       sections.push(`**选择**：${d.chosen || "—"} | **拒绝**：${(d.rejected || []).join(", ") || "—"}`);
       sections.push(`**理由**：${d.rejected_reason || d.tradeoff || "—"}`);
-      // p6.md §1 P0: decisions must have evidence. If LLM omitted evidence field,
-      // auto-match from evidenceLog + related interpretation fields.
       let evList = (d.evidence || []).slice(0, 3);
       const hasRealEvidence = evList.length > 0 && evList.some((e) => e && e !== "待补充" && e !== "—" && e !== "无");
       if (!hasRealEvidence) {
@@ -1940,89 +2028,140 @@ function renderReport(repoType, result, evidenceLog = []) {
         if (matched.length > 0) evList = matched;
       }
       const hasEv = evList.length > 0 && evList.some((e) => e && e !== "待补充" && e !== "—" && e !== "无");
-      sections.push(`**证据**：${hasEv ? evList.join(", ") : "⚠ 待补充（无 evidence 引用，不满足 P0 硬门）"}\n`);
+      sections.push(`**证据**：${hasEv ? evList.join(", ") : "⚠ 待补充"}\n`);
+    }
+    sections.push(`\n`);
+  }
+
+  // 6. 维护者心智模型 — the most important section per p6-feedback §8
+  const mentalModel = narrative.maintainer_mental_model || interp.maintainer_mental_model;
+  sections.push(`## 6 维护者心智模型`);
+  if (mentalModel && mentalModel.length > 5) {
+    sections.push(`> ${mentalModel}\n`);
+    const assumptions = (challenge.key_assumptions || []).slice(0, 3);
+    if (assumptions.length > 0) {
+      sections.push(`**支撑假设**：`);
+      for (const a of assumptions) {
+        const level = a.inference_level || "indirect";
+        const alt = a.alternative_explanation || "—";
+        sections.push(`- ${a.assumption}（推断级别：${level}，替代解释：${alt}）`);
+      }
+      sections.push(`\n`);
     }
   } else {
-    sections.push(`- 当前证据不足以提取明确的关键决策。`);
+    sections.push(`- 待进一步分析维护者心智模型。\n`);
   }
-  sections.push(`\n`);
 
-  // 5. 模型质疑
-  sections.push(`## 5 模型质疑`);
+  // 7. 架构张力 — mining + LLM reasoning combined
+  const miningTensions = af.tensions || [];
+  const llmTensions = (interp.architectural_tensions || []).slice(0, 5);
+  if (miningTensions.length > 0 || llmTensions.length > 0) {
+    sections.push(`## 7 架构张力`);
+    sections.push(`系统中的对立力量，架构师必须在它们之间做出权衡：\n`);
+    if (miningTensions.length > 0) {
+      sections.push(`**图谱检测到的张力**：`);
+      for (const t of miningTensions.slice(0, 5)) {
+        sections.push(`- **[${t.axis}]** ${t.description}`);
+        sections.push(`  - 证据：${(t.evidence || []).join("; ")}`);
+        sections.push(`  - 解决方式：${t.resolution}`);
+      }
+      sections.push(`\n`);
+    }
+    if (llmTensions.length > 0) {
+      sections.push(`**LLM 推理的张力**：`);
+      for (const t of llmTensions) {
+        sections.push(`- **[${t.axis || "未分类"}]** ${t.tension}`);
+        sections.push(`  - 证据：${(t.evidence || []).join("; ")}`);
+        if (t.resolution) sections.push(`  - 解决方式：${t.resolution}`);
+      }
+      sections.push(`\n`);
+    }
+  }
+
+  // 8. 模型质疑 — nuanced results, not binary
   const challenges = (challenge.challenges || []).slice(0, 5);
   if (challenges.length > 0) {
+    sections.push(`## 8 模型质疑`);
+    sections.push(`对中心假设的挑战结果（非二元判断，可能是 partially weakened 或 strengthened）：\n`);
     for (const c of challenges) {
       sections.push(`### ${c.target || "(未命名)"}`);
       sections.push(`**结果**：${c.result || "survived"} | **方法**：${c.method || "—"}`);
-      sections.push(`**证据**：${c.counter_evidence || "无反证"}`);
+      sections.push(`**反证**：${c.counter_evidence || "无反证"}`);
       sections.push(`**备注**：${c.notes || "—"}\n`);
     }
-  } else {
-    sections.push(`- 本轮未生成质疑记录。`);
+    sections.push(`\n`);
   }
-  sections.push(`\n`);
 
-  // 6. 维护者手册
-  sections.push(`## 6 维护者手册`);
-  const leverage = (interp.leverage_points || []).slice(0, 3).map((l) => l.point || l);
-  sections.push(`- **How to Extend**：${leverage.length > 0 ? leverage.join("；") : "参考 extension points 和 public API"}`);
-  const debugTargets = (model.structure?.modules || []).slice(0, 2).map((m) => m.name);
-  sections.push(`- **How to Debug**：从 ${debugTargets.length > 0 ? debugTargets.join(", ") : "核心模块"} 的边界日志入手。`);
-  const migrationTargets = (interp.complexity_drivers || []).slice(0, 2).map((d) => d.driver || d);
-  sections.push(`- **How to Migrate**：关注 ${migrationTargets.length > 0 ? migrationTargets.join(", ") : "历史演进"}。`);
-  const removalAssumptions = (challenge.key_assumptions || []).slice(0, 2).map((a) => a.assumption);
-  sections.push(`- **How to Remove**：检查 ${removalAssumptions.length > 0 ? removalAssumptions.join(", ") : "关键假设"} 的耦合范围。\n`);
+  // 9. 演化压力与历史沉积 — from narrative
+  if (narrative.evolution_pressure || narrative.historical_sediment) {
+    sections.push(`## 9 演化压力与历史沉积`);
+    if (narrative.evolution_pressure) {
+      sections.push(`**未来扩展压力**：${narrative.evolution_pressure}\n`);
+    }
+    if (narrative.historical_sediment) {
+      sections.push(`**历史沉积**：${narrative.historical_sediment}\n`);
+    }
+  }
 
-  // 7. Architecture Risk Analysis
-  sections.push(`## 7 Architecture Risk Analysis（Blast Radius）`);
+  // 10. 偶然复杂度
+  const accidentalComplexity = (interp.accidental_complexity || []).slice(0, 3);
+  if (accidentalComplexity.length > 0) {
+    sections.push(`## 10 偶然复杂度`);
+    for (const ac of accidentalComplexity) {
+      sections.push(`- **${ac.area}**：${ac.description}`);
+      sections.push(`  - 证据：${(ac.evidence || []).join("; ")}`);
+      sections.push(`  - 可简化：${ac.could_simplify || "—"}`);
+    }
+    sections.push(`\n`);
+  }
+
+  // 11. 风险与修改难度 — tables are appropriate here
   const blastRadius = (interp.blast_radius || []).slice(0, 5);
-  if (blastRadius.length > 0) {
-    sections.push(`| 修改点 | 影响范围 | 风险等级 |`);
-    sections.push(`| --- | --- | --- |`);
-    for (const br of blastRadius) {
-      sections.push(`| ${br.component || "—"} | ${(br.impact_scope || []).join(", ") || "—"} | ${br.risk_level || "—"} |`);
-    }
-  } else {
-    sections.push(`- 当前证据不足以评估 blast radius。`);
-  }
-  sections.push(`\n`);
-
-  // 8. Change Difficulty
-  sections.push(`## 8 Change Difficulty`);
   const changeDifficulty = (interp.change_difficulty || []).slice(0, 6);
-  if (changeDifficulty.length > 0) {
-    sections.push(`| 修改 | 难度 | 理由 |`);
-    sections.push(`| --- | --- | --- |`);
-    for (const cd of changeDifficulty) {
-      sections.push(`| ${cd.change || "—"} | ${cd.difficulty || "—"} | ${cd.reason || "—"} |`);
+  if (blastRadius.length > 0 || changeDifficulty.length > 0) {
+    sections.push(`## 11 风险与修改难度`);
+    if (blastRadius.length > 0) {
+      sections.push(`**Blast Radius**：\n`);
+      sections.push(`| 修改点 | 影响范围 | 风险等级 |`);
+      sections.push(`| --- | --- | --- |`);
+      for (const br of blastRadius) {
+        sections.push(`| ${br.component || "—"} | ${(br.impact_scope || []).join(", ") || "—"} | ${br.risk_level || "—"} |`);
+      }
+      sections.push(`\n`);
     }
-  } else {
-    sections.push(`- 当前证据不足以评估修改难度。`);
-  }
-  sections.push(`\n`);
-
-  // 9. Design Smells
-  sections.push(`## 9 Design Smells`);
-  const designSmells = (interp.design_smells || []).slice(0, 5);
-  if (designSmells.length > 0) {
-    for (const s of designSmells) {
-      sections.push(`- **${s.smell || "—"}**（${s.type || "deliberate"}）：${(s.evidence || []).join(", ") || "—"}`);
+    if (changeDifficulty.length > 0) {
+      sections.push(`**修改难度**：\n`);
+      sections.push(`| 修改 | 难度 | 理由 |`);
+      sections.push(`| --- | --- | --- |`);
+      for (const cd of changeDifficulty) {
+        sections.push(`| ${cd.change || "—"} | ${cd.difficulty || "—"} | ${cd.reason || "—"} |`);
+      }
+      sections.push(`\n`);
     }
-  } else {
-    sections.push(`- 未发现明显的 deliberate smell 或 tech debt。`);
   }
-  sections.push(`\n`);
 
-  // 10. Unresolved Questions
-  sections.push(`## 10 Unresolved Questions`);
+  // 12. 架构违规 — from mining
+  if (af.violations?.length > 0) {
+    sections.push(`## 12 架构违规`);
+    sections.push(`违反架构模式的地方，可能是技术债或刻意妥协：\n`);
+    for (const v of af.violations.slice(0, 5)) {
+      sections.push(`- **[${v.type}]** ${v.description}（严重度：${v.severity}）`);
+      sections.push(`  - 证据：${(v.evidence || []).join("; ")}`);
+    }
+    sections.push(`\n`);
+  }
+
+  // 13. 覆盖率
+  const coveredDims = Object.entries(coverage).filter(([, v]) => (typeof v === "number" ? v : v?.ratio ?? 0) >= 0.8).map(([k]) => k);
   const unresolvedDims = Object.entries(coverage).filter(([, v]) => (typeof v === "number" ? v : v?.ratio ?? 0) < 0.5);
+  sections.push(`## 13 覆盖率`);
+  sections.push(`**已覆盖维度**：${coveredDims.length > 0 ? coveredDims.join(", ") : "暂无"}。`);
   if (unresolvedDims.length > 0) {
+    sections.push(`**证据不足的维度**：`);
     for (const [dim, v] of unresolvedDims) {
       const ratio = typeof v === "number" ? v : v?.ratio ?? 0;
-      sections.push(`- **${dim}**（覆盖率 ${(ratio * 100).toFixed(0)}%）：证据不足，建议补充 ${dim} 相关源码或测试。`);
+      sections.push(`- **${dim}**（覆盖率 ${(ratio * 100).toFixed(0)}%）：建议补充 ${dim} 相关源码或测试。`);
     }
-  } else {
-    sections.push(`- 所有维度覆盖率均 ≥ 50%。`);
   }
   sections.push(`\n`);
 
@@ -2047,7 +2186,9 @@ async function stageFiveReport(repoPath, repoType, result, workDir) {
   // Load architecture facts (from Architecture Mining stage) so the report
   // can display gravity centers, tensions, and violations — not just code metrics.
   const archFacts = await tryReadJson(join(workDir, "artifacts", "architecture-facts.json"));
-  const report = renderReport(repoType, { ...result, interpretation, challenge, archFacts }, evidenceLog);
+  // Load architecture story (from Narrative stage) — the primary source for report narrative.
+  const narrative = result.narrative || await tryReadJson(join(workDir, "architecture-story.json"));
+  const report = renderReport(repoType, { ...result, interpretation, challenge, archFacts, narrative }, evidenceLog);
   await writeFile(join(workDir, "report-draft.md"), report, "utf-8");
   return report;
 }

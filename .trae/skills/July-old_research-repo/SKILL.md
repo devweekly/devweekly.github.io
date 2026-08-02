@@ -1,5 +1,5 @@
 ---
-name: "research-repo"
+name: "July-Old-research-repo"
 description: "研究一个开源 Repository，提炼其架构、设计思想、工程权衡与可复用模式。当用户要求研究/分析某个仓库的架构、设计模式或 AI Agent 实现时调用。"
 ---
 
