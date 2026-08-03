@@ -1,0 +1,22 @@
+{
+  "round": 1,
+  "reviewed_at": "2026-08-03T07:12:00Z",
+  "reviewer": "question-critic",
+  "rules_applied": [
+    "R1 必须驱动 architecture model 变化（expected_model_change 非空）",
+    "R2 必须有初始 hypothesis（待证/待推翻）",
+    "R3 必须聚焦架构知识缺口，而非代码覆盖",
+    "R4 非重复、非过于宽泛",
+    "R5 priority_score 与 impact/uncertainty 一致"
+  ],
+  "questions": [
+    {"id": "q-001", "review": "approved", "reason": "明确边界分叉点，expected_model_change 含 boundaries/invariants，hypothesis 可证。"},
+    {"id": "q-002", "review": "approved", "reason": "核心决策，含被拒绝替代方案，impact=high 与 priority 一致。"},
+    {"id": "q-003", "review": "approved", "reason": "命中系统价值主张的技术内核，pattern 类型合理。"},
+    {"id": "q-004", "review": "approved", "reason": "运行时装配路径，支撑 §6 one-request story。"},
+    {"id": "q-005", "review": "approved", "reason": "系统级边界决策，含版本错配风险假设。"},
+    {"id": "q-006", "review": "approved", "reason": "许可/技术栈风险，blocked 风险低，证据可得。"}
+  ],
+  "approved_ids": ["q-001", "q-002", "q-003", "q-004", "q-005", "q-006"],
+  "rejected_ids": []
+}

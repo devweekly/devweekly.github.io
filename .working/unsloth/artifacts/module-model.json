@@ -1,0 +1,17 @@
+{
+  "repo_name": "unsloth",
+  "modules": [
+    {"id": "mod-init", "name": "unsloth/__init__.py", "responsibility": "Import-time backend gate (_IS_MLX): routes to MLX branch or _gpu_init; MLX shims torch.cuda API to no-ops.", "group": "core"},
+    {"id": "mod-gpuinit", "name": "unsloth/_gpu_init.py", "responsibility": "GPU path: patches trl/transformers/peft at import, applies import_fixes, redirects HF cache.", "group": "core"},
+    {"id": "mod-loader", "name": "unsloth/models/loader.py", "responsibility": "FastModel/FastLanguageModel/FastVisionModel public API; from_pretrained dispatch, quantization selection, get_peft_model.", "group": "models"},
+    {"id": "mod-models", "name": "unsloth/models/*.py (llama, mistral, qwen2/3, gemma, ...)", "responsibility": "Per-family 'Fast' model classes with pre_patch/post_patch swapping HF modules for manual kernels.", "group": "models"},
+    {"id": "mod-kernels", "name": "unsloth/kernels/*.py", "responsibility": "Manual Triton/CUDA kernels + patch_* functions: RMSNorm, RoPE, SwiGLU, GeGLU, cross-entropy, fast LoRA, FP8, flex-attention.", "group": "kernels"},
+    {"id": "mod-optim", "name": "unsloth/optimizers/*.py", "responsibility": "GaLore (gradient low-rank projection) AdamW for memory-efficient training.", "group": "optimizers"},
+    {"id": "mod-registry", "name": "unsloth/registry/*.py", "responsibility": "MODEL_REGISTRY / ModelInfo / QuantType; per-family registrars; search_models() catalog for Studio.", "group": "registry"},
+    {"id": "mod-utils", "name": "unsloth/utils/*.py", "responsibility": "attention_dispatch, packing/prefix_grouper, hf_hub helpers.", "group": "utils"},
+    {"id": "mod-dataprep", "name": "unsloth/dataprep/*.py", "responsibility": "Raw-text & synthetic dataset loaders/preprocessors (torch-free on MLX).", "group": "dataprep"},
+    {"id": "mod-cli", "name": "unsloth_cli/", "responsibility": "Typer app + commands (start/train/chat/inference/export/studio) + subagent MCP (claude/codex) + tool policy.", "group": "cli"},
+    {"id": "mod-studio", "name": "studio/", "responsibility": "Tauri desktop: Rust backend + TS frontend + Python backend; model run/train, data recipes, MCP server, AGPL-3.0.", "group": "studio"}
+  ],
+  "evidence": ["unsloth/__init__.py:195-219,1430-1433", "unsloth/models/__init__.py:21-36", "unsloth/kernels/__init__.py:15-43", "unsloth/registry/__init__.py:1-58", "pyproject.toml:11,42"]
+}

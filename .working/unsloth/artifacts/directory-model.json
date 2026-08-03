@@ -1,0 +1,36 @@
+{
+  "repo_name": "unsloth",
+  "architecture_units": [
+    {
+      "name": "unsloth (core library)",
+      "kind": "library",
+      "resp": "Public API (FastLanguageModel/FastModel), import-time backend selection, model patchers, manual kernels, optimizers, registry.",
+      "dirs": ["unsloth/", "unsloth/models/", "unsloth/kernels/", "unsloth/optimizers/", "unsloth/registry/", "unsloth/utils/", "unsloth/dataprep/"]
+    },
+    {
+      "name": "unsloth_cli (CLI)",
+      "kind": "application",
+      "resp": "Typer console app exposing start/train/chat/inference/export/studio; subagent (Claude/Codex) MCP integration.",
+      "dirs": ["unsloth_cli/", "unsloth-cli.py"]
+    },
+    {
+      "name": "studio (desktop app)",
+      "kind": "application",
+      "resp": "Tauri desktop app: Rust backend (src-tauri) + TS frontend + Python backend; model run/train UI, data recipes, MCP server.",
+      "dirs": ["studio/", "studio/src-tauri/", "studio/frontend/", "studio/backend/"]
+    },
+    {
+      "name": "unsloth_zoo (external dependency, NOT in this repo)",
+      "kind": "infrastructure",
+      "resp": "Shared heavy machinery: training_utils, vision_utils, tiled_mlp, model_lists, dtype utils, MLX modules, vendored flash-linear-attention.",
+      "dirs": ["(installed package: unsloth_zoo)"]
+    },
+    {
+      "name": "tests / scripts",
+      "kind": "infrastructure",
+      "resp": "pytest suites (python/sh/qlora/saving/security/studio), CI supply-chain audit, lint, notebook validation.",
+      "dirs": ["tests/", "scripts/"]
+    }
+  ],
+  "evidence": ["unsloth/__init__.py:430-433", "unsloth_cli/commands/*.py", "studio/src-tauri/Cargo.toml", "pyproject.toml:42-49,70-131"]
+}

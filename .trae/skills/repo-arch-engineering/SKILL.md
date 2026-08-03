@@ -391,6 +391,42 @@ claim 标注格式：`*confidence: 0.85 · evidence_level: S (Code+Test+Formal)�
 - ❌ 用 confidence 数值而不给 evidence_level basis
 - ❌ Appendix 内容混入正文（research log 感）
 
+#### 6.7 报告字符数硬性门槛（Hard Gate）
+
+最终 `report.md` 的**纯内容字符数（去除所有空白字符：空格 / 制表符 / 换行 / 回车）必须 ≥ 15000**。这是**硬性指标，不可绕过**。
+
+- **字符数 < 15000 → 判定为「内容 / 深度不足」**，报告禁止发布：
+  - 要么返回 Step 3 继续研究、补证据拓宽覆盖；
+  - 要么在现有结论上**扩展每个章节的深度**（更多子论点、反面证据、文件 / 函数级引用、权衡展开、失败案例分析）。
+- **不鼓励水字数**：禁止用重复、空泛过渡句、无意义列表填充凑数。长度 PASS 的同时仍须满足 §6.6 禁止项与 Quality Agent §10 完整性检查——凑出来的长度不会让质量门通过。
+- 阈值可由环境变量 `MIN_REPORT_CHARS` 覆盖（默认 15000）。
+
+**检查方式（JS 脚本判定）：** Quality Agent 在**发布前**（此时只有草稿）调用本 skill 自带脚本检查 `report-draft.md`，退出码 `0 = PASS` / `1 = FAIL(不足)` / `2 = 用法错误`：
+
+```bash
+node .trae/skills/repo-arch-engineering/scripts/check-report-chars.mjs .working/{repo-name}/report-draft.md
+```
+
+脚本输出 JSON：`{ file, pure_content_chars, min_required, passed, reason }`。FAIL 时 Quality 返回 `gated-fail`，报告**不发布**，并按下述快速判断路由到对应 Step 继续。
+
+##### 6.7.1 Gate 未通过时的快速判断与回路
+
+`gated-fail` 只说明「内容 / 深度不足」，**不知道根因**。Quality Agent 必须做一次**快速根因判断**，在 Step 3 / Step 4 / Step 5 中选一个继续（不要默认回 Step 3 盲目再提问）。判断依据 `repository-model.json` + `context.coverage` + `hypotheses.json` + `evidence-log.jsonl`（行数）。
+
+按优先级从上到下命中即路由：
+
+| 顺序 | 根因信号（命中任一） | 路由 | 继续做什么 |
+|------|----------------------|------|-----------|
+| **① 覆盖缺口** | 某维度 `coverage.ratio < 0.8`；或存在 `total = 0` 的遗漏维度；或 unresolved contradictions > 0；或有 critical/high 级 Unknowns 未答 | **Step 3** | 模型知识**本来就不够**。Planner 针对缺口维度/矛盾/Unknowns 生成新问题 → Critic → 进入 Step 4 常规研究循环 |
+| **② 深度缺口** | 覆盖已齐（各维度 `ratio ≥ 0.8`）但**深度不足**：`evidence-log` 行数 < 30；或关键 decision 平均 evidence < 2；或 report 缺少文件/函数级 `path:line` 引用；或 model 字段单薄（boundaries < 3 / decisions < 5 且无展开） | **Step 4** | 已覆盖但**没挖深**。回到 Step 4 做 **depth pass**：对已有 approved 问题做更细粒度证据收集 + 推理（不产生新问题），更新 model/evidence 后重渲染 |
+| **③ 知识已稳、渲染没写足** | 覆盖齐、evidence 密（≥30）、hypotheses 全部终态、knowledge delta ≈ 0，但 report 仍短 | **Step 5** | 问题在**渲染而非研究**。回 Step 5 确认收敛后，**Step 6.4 基于现有 model 扩展渲染**（更多子论点、反面证据、权衡展开、失败案例），不新增研究 |
+
+**回路规则：**
+
+- Quality 在 `gated-fail` 输出里必须带 `gate_failed_route: "step3" | "step4" | "step5"` + `gate_failed_reason`（命中的根因信号），Orchestrator 据此跳转。
+- 路由后必须**重新渲染** `report-draft.md` 并**再次跑 §6.7 脚本**——直到 PASS 或明确 blocked。
+- **防空转**：同一路由连续 2 次回炉后 `pure_content_chars` 无明显增长（< 10%）且无新增 evidence → 判定收敛但报告写不长，标记 `blocked`，升级由用户决定是否接受短报告或降低 `MIN_REPORT_CHARS`，禁止无限循环。
+
 **输出：** `.working/{repo-name}/architecture-narrative.json` + `.working/{repo-name}/report.md`
 
 ---
@@ -418,6 +454,8 @@ claim 标注格式：`*confidence: 0.85 · evidence_level: S (Code+Test+Formal)�
 ├── report-draft.md           # 报告草稿（Report Agent 写，Step 6.4）
 └── report.md                 # 最终报告（Quality PASS 后由 Workspace rename 发布）
 ```
+
+> **Skill 自带脚本**（不在 `.working/`，位于 skill 根）：`scripts/check-report-chars.mjs` — §6.7 报告字符数硬性门槛判定（Quality Agent 在发布前调用）。
 
 > **存储原则：** Model 存稳定知识；hypotheses / evidence / questions 是研究过程状态，独立存储。Model 只通过 `ev-xxx` / `hyp-xxx` / `q-xxx` ID 引用这些文件，不复制其内容。详见 [model-schema.md](./model-schema.md) §2 持久化布局。
 

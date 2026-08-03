@@ -15,9 +15,9 @@ description: 状态持久化 Agent——context.json 唯一写入者，初始化
 
 来自其他 Agent 的决策（通过 Orchestrator 传入）：
 
-- Planner 返回的 `{converged, next_focus, new_questions, round_file}`
+- Planner 返回的 `{converged, next_focus, new_questions, round}`
 - Reasoning 返回的 `round_stats`
-- Quality 返回的 `{passed, reason}`
+- Quality 返回的 `{passed, reason}`（`gated-fail` 时另含 `gate_failed_route` / `gate_failed_reason`，供 Orchestrator 路由，**此时不发布报告**）
 - Resume 返回的 `{next, pending_invalidation}`
 
 ## 输出
@@ -37,9 +37,11 @@ description: 状态持久化 Agent——context.json 唯一写入者，初始化
   "next_focus": "design_decisions",
   "coverage": { /* §11 Coverage Model */ },
   "questions_summary": "questions/summary.json",
-  "phases_completed": ["phase-0", "phase-1"]
+  "phases_completed": ["reconnaissance", "structural_discovery"]
 }
 ```
+
+> `phases_completed` 使用命名相位（`reconnaissance` / `structural_discovery` / `architecture_reconstruction` / `runtime_reconstruction` / `design_decision_mining` / `evolution_analysis` / `model_validation`），不用 `phase-0` 式编号。
 
 ### questions/summary.json
 
@@ -48,19 +50,23 @@ description: 状态持久化 Agent——context.json 唯一写入者，初始化
   "questions": [
     {
       "id": "q-001",
+      "type": "boundary | decision | runtime | evolution | risk | pattern",
       "question": "...",
-      "status": "open | investigating | answered | invalidated",
-      "priority": "critical | high | medium | low",
-      "linked_hypothesis": "hyp-003",
+      "status": "open | investigating | validated | rejected | blocked | model_updated",
+      "priority_score": 0.9,
+      "impact": "high",
+      "uncertainty": "high",
+      "hypothesis_ref": "hyp-003",
       "asked_at": "...",
-      "answered_at": null
+      "closed_at": null
     }
   ],
   "total": 6,
-  "answered": 2,
-  "open": 4
+  "by_status": { "model_updated": 2, "blocked": 0, "open": 4 }
 }
 ```
+
+> 状态机见 [SKILL.md](../SKILL.md) Step 4：`open → investigating → validated/rejected/blocked → model_updated`。终态为 `model_updated` / `blocked`。聚合用 `by_status`，不用 `answered` 计数。
 
 ### rounds/round-{N}.json
 
@@ -94,6 +100,7 @@ write .working/{repo-name}/questions/summary.json (empty)
 
 ```
 update context.json: current_round += 1, next_focus, converged
+write questions/round-{N}.json (Planner 生成的问题，由 Workspace 代写落盘)
 write rounds/round-{N}.json (initial, focus + questions_asked)
 update questions/summary.json (add new_questions, update status)
 ```
@@ -103,10 +110,12 @@ update questions/summary.json (add new_questions, update status)
 ```
 update rounds/round-{N}.json (evidence_collected, model_updated_fields, hypotheses_formed, coverage_before/after)
 update context.json (coverage, phases_completed)
-update questions/summary.json (mark answered questions)
+update questions/summary.json (把进入终态的问题标为 model_updated / blocked，填 closed_at)
 ```
 
 ### 4. 发布报告（Quality PASS 后）
+
+**前置条件：Quality 返回 `passed: true`，且已包含 §6.7 Hard Gate PASS（`report-draft.md` 纯内容字符 ≥ 15000）。若 Quality 返回 `gated-fail`：不发布，保留 `report-draft.md` 供回炉覆盖，`gate_failed_route` 交 Orchestrator 路由。**
 
 ```
 rename report-draft.md → report.md

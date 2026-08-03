@@ -61,8 +61,15 @@ flowchart TD
     RSN --> C7
     RPT --> QL[call Quality<br/>检查报告]
     QL -->|PASS| DONE
-    QL -->|FAIL| PLN
+    QL -->|FAIL| QR{gated-fail?<br/>§6.7 Hard Gate}
+    QR -->|否<br/>质量门 FAIL| PLN
+    QR -->|是<br/>读 gate_failed_route| GRR{route?}
+    GRR -->|step3 覆盖缺口| PLN
+    GRR -->|step4 深度缺口| EVI
+    GRR -->|step5 渲染没写足| C9
 ```
+
+> **`gated-fail` 路由（§6.7.1）：** Quality 在 Hard Gate FAIL 时输出 `gate_failed_route` ∈ `step3 | step4 | step5`。Orchestrator **不要**一律回 Planner——按 route 跳转：`step3`（覆盖缺口）→ Planner 补问题；`step4`（深度缺口）→ Evidence 做 depth pass（不新增问题）；`step5`（知识已稳、渲染没写足）→ 走收敛检查后 Report 基于现有 model 扩展渲染。同一路由连续 2 次回炉后 `pure_content_chars` 增长 < 10% → `blocked` 升级用户。
 
 ## 调度策略
 
@@ -85,6 +92,17 @@ Planner → Question Critic → Evidence → Model → Reasoning → (收敛检�
     ↑                                                                    |
     +--------------------------------------------------------------------+
 ```
+
+### 报告深度回炉（§6.7 gated-fail）
+
+```
+Quality gated-fail → 读 gate_failed_route:
+  step3(覆盖缺口) → Planner → Question Critic → Evidence → Model → Reasoning → 收敛 → Report → Quality
+  step4(深度缺口) → Evidence(depth pass, 不新增问题) → Model → Reasoning → 收敛 → Report → Quality
+  step5(渲染没写足) → 收敛确认 → Report(基于现有 model 扩展渲染) → Quality
+```
+
+每次回炉后必须重渲染 `report-draft.md` 并**重跑 §6.7 脚本**，直到 PASS 或 blocked。
 
 ### 崩溃恢复
 

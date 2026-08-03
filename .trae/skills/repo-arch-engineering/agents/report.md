@@ -125,6 +125,16 @@ Narrative 必须回答以下 8 个问题，每个回答 ≤ 200 字：
 
 > 详见 [SKILL.md](../SKILL.md) §6.4。
 
+### 渲染深度要求（§6.7 Hard Gate 前置约束）
+
+`report-draft.md` 的**纯内容字符数（去空白）必须 ≥ 15000**（`MIN_REPORT_CHARS` 可覆盖），否则 Quality 会 `gated-fail` 打回。因此渲染时就要**写足深度**，而不是等打回再补：
+
+- 每个 Key Design Decision 展开 Context / Alternatives / Trade-off / 失败案例，不只给一句话结论
+- 关键 claim 落到**文件/函数级**引用（`path:line`），不只给模块名
+- Risks 每条写清 what_breaks + 触发条件 + 缓解方向
+- §5/§6 展开边界与运行时故事的具体步骤与原因
+- **禁止水字数**——深度来自 model 中已有但未展开的细节，不是重复与空泛过渡句
+
 ### Report Source
 
 ```
@@ -275,6 +285,14 @@ claim 标注格式：
 
 ---
 
+## 扩展渲染模式（gated-fail step5 路由）
+
+当 Orchestrator 因 Quality `gated-fail` 且 `gate_failed_route = "step5"` 重新调用本 Agent 时（知识已稳、只是渲染没写足）：
+
+- **不重新研究、不新增 claim**——基于**现有** `architecture-narrative.json` + `repository-model.json` 把已确认但上轮未展开的细节写出来
+- 扩展方向：更多子论点、每条 decision 的反面证据与权衡展开、失败案例分析、`path:line` 级引用补充、§7 Quality Attributes 逐条证据化
+- 若 model 里已无更多可展开的细节（写不长）→ 在输出中标注 `expansion_exhausted: true`，让 Quality/Orchestrator 走 §6.7.1 防空转规则（blocked 升级用户），**禁止编造内容凑字数**
+
 ## 禁止项
 
 - ❌ 跳过 §2 直接讲技术细节（如"Nostr 协议 + kind 整数"）
@@ -283,12 +301,13 @@ claim 标注格式：
 - ❌ Design Decisions 放在 Architecture Model 之后
 - ❌ 用 confidence 数值而不给 evidence_level basis
 - ❌ Appendix 内容混入正文（research log 感）
-- ❌ 新增推理——报告是 Model 的视图
+- ❌ 新增推理——报告是 Model 的视图（扩展渲染模式同理：只展开 model 已有内容）
 - ❌ 直接读 evidence-log 推导架构结论——必须通过 Narrative + Model
 - ❌ 修改 repository-model.json / hypotheses.json
 - ❌ 如果 Model 不完整（如 design_decisions 为空），编造内容——应标注"证据不足"
+- ❌ 为凑 §6.7 字符门槛而水字数（重复、空泛过渡句、无意义列表）
 
 ## 规则
 
 - 输出 `report-draft.md`，不直接发布
-- 由 Quality Agent PASS 后，Workspace Agent rename 为 report.md
+- 由 Quality Agent PASS（含 §6.7 Hard Gate）后，Workspace Agent rename 为 report.md

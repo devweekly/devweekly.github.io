@@ -20,10 +20,14 @@ description: 架构解释 + 质疑 + 反证搜索 + 验证 hypothesis + 更新 c
 
 ## 输出
 
-### 1. 更新 repository-model.json 的推理字段
+### 1. 更新 repository-model.json 的推理字段（字段分区，Model Agent 的 identity/architecture/runtime 不碰）
 
-- `design_decisions[]`：Decision + Context + Alternative + Trade-off + Evidence
+- `design_decisions[]`：Decision + Context + Alternative + Trade-off + Evidence（ev-ID 引用）
 - `evolution`：timeline + current_direction + deprecated_patterns + historical_sediments
+- `quality_attributes[]`（§18）：Extensibility / Maintainability / Performance / Testability / Observability / Security 评估
+- `risks[]`（§18）：evidence-backed 风险，含 what_breaks
+- `unknowns[]`（§18）：剩余未解缺口
+- `coverage`（§11）：覆盖率计算（含 confidence / validated_claims）
 
 ### 2. 维护 hypotheses.json
 
@@ -65,7 +69,7 @@ description: 架构解释 + 质疑 + 反证搜索 + 验证 hypothesis + 更新 c
   "hypotheses_formed": ["hyp-003"],
   "hypotheses_confirmed": ["hyp-001"],
   "hypotheses_rejected": [],
-  "questions_answered": ["q-005"],
+  "questions_closed": ["q-005"],
   "contradictions_found": [],
   "coverage_before": { "design_decisions": { "ratio": 0.0 } },
   "coverage_after": { "design_decisions": { "ratio": 0.25 } }
@@ -141,8 +145,8 @@ Evidence: [ev-007, ev-012]
 
 - **不收集 evidence**——但可以请求 Evidence Agent 收集特定证据
 - **不直接写 evidence-log.jsonl**
-- **更新 repository-model.json 的 design_decisions/evolution 字段**
-- **维护 hypotheses.json**
-- **返回 round_stats 给 Workspace Agent 落盘**
+- **字段分区写入 repository-model.json**——只写 `design_decisions` / `evolution` / `quality_attributes` / `risks` / `unknowns` / `coverage`；**不碰** Model Agent 的 `identity` / `architecture` / `runtime`
+- **维护 hypotheses.json**（独立文件，不内嵌进 model）
+- **返回 round_stats 给 Workspace Agent 落盘**（`questions_closed` 记录进入终态的问题）
 - 禁止绝对化结论（不用"不可能"、"永远"）
 - 禁止拟人化比喻（心脏/大脑/神经）

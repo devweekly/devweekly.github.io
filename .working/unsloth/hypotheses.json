@@ -1,0 +1,65 @@
+{
+  "repo_name": "unsloth",
+  "hypotheses": [
+    {
+      "id": "hyp-001",
+      "linked_question": "q-001",
+      "hypothesis": "后端选择在 __init__.py 顶部完成，仅由 (Darwin+arm64+mlx) 或环境变量决定；选错后端会 ImportError 或 CUDA 兼容层静默失效。",
+      "status": "confirmed",
+      "confidence": 0.95,
+      "supporting_evidence": ["ev-001", "ev-002", "ev-003", "ev-004"],
+      "counter_evidence": [],
+      "linked_model_fields": ["architecture.boundaries", "architecture.invariants", "runtime.startup_flow"]
+    },
+    {
+      "id": "hyp-002",
+      "linked_question": "q-002",
+      "hypothesis": "选择 import-time 全局 patch 而非子类，代价是与上游强耦合、必须先导入；被拒绝方案是显式子类化。",
+      "status": "confirmed",
+      "confidence": 0.95,
+      "supporting_evidence": ["ev-005", "ev-006"],
+      "counter_evidence": [],
+      "linked_model_fields": ["design_decisions", "architecture.boundaries", "risks"]
+    },
+    {
+      "id": "hyp-003",
+      "linked_question": "q-003",
+      "hypothesis": "Fast 模型在 post_patch 把 HF 模块前向替换为 kernels 的 fast_*；融合+内存复用带来提速省显存。",
+      "status": "confirmed",
+      "confidence": 0.96,
+      "supporting_evidence": ["ev-007", "ev-008", "ev-009", "ev-016"],
+      "counter_evidence": [],
+      "linked_model_fields": ["architecture.pattern", "runtime.request_lifecycle", "design_decisions"]
+    },
+    {
+      "id": "hyp-004",
+      "linked_question": "q-004",
+      "hypothesis": "from_pretrained 按量化参数决定量化，再按模型 config 映射到对应 Fast*Model，执行 pre_patch→加载→post_patch。",
+      "status": "confirmed",
+      "confidence": 0.85,
+      "supporting_evidence": ["ev-007", "ev-011"],
+      "counter_evidence": [],
+      "linked_model_fields": ["runtime.startup_flow", "architecture.modules", "runtime.request_lifecycle"]
+    },
+    {
+      "id": "hyp-005",
+      "linked_question": "q-005",
+      "hypothesis": "unsloth 是薄补丁层，重机械下沉到 unsloth_zoo；代价是版本错配。",
+      "status": "confirmed",
+      "confidence": 0.9,
+      "supporting_evidence": ["ev-010", "ev-011"],
+      "counter_evidence": [],
+      "linked_model_fields": ["architecture.boundaries", "architecture.dependencies", "risks"]
+    },
+    {
+      "id": "hyp-006",
+      "linked_question": "q-006",
+      "hypothesis": "核心 Apache-2.0 可商业嵌入；Studio AGPL-3.0 有传染义务；Tauri 引入原生后端，与 Python 主路径经进程/API 通信。",
+      "status": "confirmed",
+      "confidence": 0.9,
+      "supporting_evidence": ["ev-013", "ev-014"],
+      "counter_evidence": [],
+      "linked_model_fields": ["risks", "architecture.boundaries", "architecture.deployment"]
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+{
+  "round": 1,
+  "created_at": "2026-08-03T07:10:00Z",
+  "focus": "architecture",
+  "questions": [
+    {
+      "id": "q-001",
+      "type": "boundary",
+      "question": "Unsloth 在 import 时通过 _IS_MLX 在 MLX(Apple Silicon) 与 GPU(CUDA/ROCm/XPU) 两条后端间二选一。这个分叉点在哪里、由哪些环境变量/平台信号决定，选错后端时系统的故障表现是什么？",
+      "why_it_matters": "验证'单一 import 双后端'是系统最核心的架构边界，决定后续所有代码路径。理解分叉点才能评估改动 blast radius。",
+      "expected_model_change": ["architecture.boundaries", "architecture.invariants", "runtime.startup_flow"],
+      "hypothesis": "后端选择在 unsloth/__init__.py 顶部完成，仅由 (Darwin+arm64+mlx 可用) 或 UNSL_MLX/UNSLOTH_FORCE_GPU_PATH 环境变量决定；选错后端会触发 ImportError 或 CUDA 兼容层静默失效。",
+      "evidence_needed": [
+        "unsloth/__init__.py:_is_mlx_available / _IS_MLX",
+        "UNSLOTH_FORCE_GPU_PATH 等环境变量的处理",
+        "_gpu_init 与 MLX 分支的代码体积对比"
+      ],
+      "priority_score": 0.95,
+      "impact": "high",
+      "uncertainty": "medium",
+      "status": "open"
+    },
+    {
+      "id": "q-002",
+      "type": "decision",
+      "question": "为什么 Unsloth 选择在 import 时 monkey-patch transformers/peft/trl（而非子类或包装），被拒绝的替代方案是什么，换来了什么？",
+      "why_it_matters": "这是 Unsloth '现有 notebook 零改动即可加速' 的基石决策，也是其最大耦合风险来源。",
+      "expected_model_change": ["design_decisions", "architecture.boundaries", "risks"],
+      "hypothesis": "选择 import-time 全局 patch 是为了让用户的 transformers 调用路径自动走 Unsloth 内核；被拒绝的替代是显式子类化（需改用户代码）。代价是与上游版本强耦合、必须先于上游 import。",
+      "evidence_needed": [
+        "unsloth/_gpu_init.py: critical_modules / already_imported 警告",
+        "import_fixes 模块的存在与数量",
+        "models/llama.py: pre_patch/post_patch 调用点"
+      ],
+      "priority_score": 0.92,
+      "impact": "high",
+      "uncertainty": "low",
+      "status": "open"
+    },
+    {
+      "id": "q-003",
+      "type": "pattern",
+      "question": "手动 Triton/CUDA/MLX 内核（RMSNorm/RoPE/SwiGLU/GeGLU/cross-entropy/fast-LoRA/FP8）如何替换 HF 原生算子？'2x 更快 / 70% 更少 VRAM' 的工程机制是什么？",
+      "why_it_matters": "这是 Unsloth 价值主张的技术内核，决定报告 §4/§5 的核心论据。",
+      "expected_model_change": ["architecture.pattern", "runtime.request_lifecycle", "design_decisions"],
+      "hypothesis": "每个 Fast 模型在 post_patch 时把 HF 模块的前向替换为 kernels 中的 fast_* 实现；通过融合算子 + 内存复用降低激活显存，从而提速并省显存。",
+      "evidence_needed": [
+        "unsloth/kernels/__init__.py: patch_* 导出",
+        "unsloth/models/llama.py: fast_rms_layernorm / fast_rope_embedding / fast_swiglu_inference / fast_cross_entropy_loss 调用点",
+        "kernels/utils.py: fast_linear_forward / fast_dequantize 注释"
+      ],
+      "priority_score": 0.9,
+      "impact": "high",
+      "uncertainty": "low",
+      "status": "open"
+    },
+    {
+      "id": "q-004",
+      "type": "runtime",
+      "question": "FastModel.from_pretrained 的运行时路径如何确定量化方式（4bit/16bit/FP8）并把权重分派到对应模型族（Llama/Qwen/Gemma…）的 Fast 类？",
+      "why_it_matters": "理解入口到内核的运行时装配，是 §6 Runtime Realization 的 one-request story。",
+      "expected_model_change": ["runtime.startup_flow", "architecture.modules", "runtime.request_lifecycle"],
+      "hypothesis": "from_pretrained 读取 dtype/load_in_4bit 等参数决定量化，再按模型 config 映射到对应 Fast*Model，由 model_patcher 执行 pre_patch→加载→post_patch。",
+      "evidence_needed": [
+        "unsloth/models/loader.py: FastModel.from_pretrained 流程",
+        "get_quant_type 的调用 (unsloth_zoo.utils)",
+        "models/llama.py: from_pretrained 中 model_patcher 选择"
+      ],
+      "priority_score": 0.85,
+      "impact": "high",
+      "uncertainty": "medium",
+      "status": "open"
+    },
+    {
+      "id": "q-005",
+      "type": "boundary",
+      "question": "为什么把重逻辑拆到外部包 unsloth_zoo（training_utils/vision_utils/tiled_mlp/model_lists/MLX 模块），而不是放在 unsloth 内？两者耦合与版本错配风险如何？",
+      "why_it_matters": "这是系统级边界决策，影响可维护性与发布耦合。",
+      "expected_model_change": ["architecture.boundaries", "architecture.dependencies", "risks"],
+      "hypothesis": "unsloth 定位为'薄补丁层 + CLI + Studio'，把 kernel/training 重活下沉到 zoo 以复用与被多前端共享；代价是版本错配（代码中大量对旧 zoo 的兼容分支）。",
+      "evidence_needed": [
+        "pyproject.toml dependencies（是否直接依赖 unsloth_zoo）",
+        "loader.py / __init__.py 中对 unsloth_zoo 的引用与兼容分支",
+        "registry 与 zoo.model_lists 的关系"
+      ],
+      "priority_score": 0.8,
+      "impact": "medium",
+      "uncertainty": "low",
+      "status": "open"
+    },
+    {
+      "id": "q-006",
+      "type": "risk",
+      "question": "Studio 用 Tauri（Rust+TS）桌面应用且采用 AGPL-3.0，而核心库是 Apache-2.0。这个双许可/双技术栈边界带来什么风险与约束？",
+      "why_it_matters": "涉及产品边界、许可传染性与贡献者约束，是 §8 Risks 的关键项。",
+      "expected_model_change": ["risks", "architecture.boundaries", "architecture.deployment"],
+      "hypothesis": "核心库 Apache-2.0 允许商业嵌入；Studio AGPL-3.0 强制网络/分发场景开源。Tauri 引入原生后端，与 Python 训练主路径通过子进程/API 通信。",
+      "evidence_needed": [
+        "pyproject.toml:11 license=Apache-2.0",
+        "studio/LICENSE.AGPL-3.0 头部",
+        "studio/src-tauri/Cargo.toml 与 backend/ 结构"
+      ],
+      "priority_score": 0.7,
+      "impact": "medium",
+      "uncertainty": "low",
+      "status": "open"
+    }
+  ]
+}

@@ -36,6 +36,22 @@ description: 检查 report-draft.md 质量，返回 PASS/FAIL/reason（Phase 6 M
 }
 ```
 
+当 **§11 Hard Gate FAIL**（`gated-fail`）时，必须额外携带路由字段：
+
+```json
+{
+  "passed": false,
+  "reason": "gated-fail: report content depth insufficient (6626 < 15000)",
+  "failed_checks": ["gated-fail: pure_content_chars 6626 < 15000"],
+  "gate_failed_route": "step4",
+  "gate_failed_reason": "覆盖已齐（各维度 ratio≥0.8）但 evidence-log 仅 16 行 < 30、decision 平均 evidence<2、缺 path:line 引用 → 深度缺口，回 Step 4 做 depth pass",
+  "suggestions": [
+    "对已有 approved 问题做更细粒度证据收集（文件/函数级），不新增问题",
+    "更新 model 后重渲染 report-draft.md，并再次跑 §6.7 脚本"
+  ]
+}
+```
+
 ## 检查清单
 
 ### 1. Evidence 完整性
@@ -107,6 +123,25 @@ description: 检查 report-draft.md 质量，返回 PASS/FAIL/reason（Phase 6 M
 - [ ] Appendix 内容未混入正文（research log 感）
 - [ ] Unknowns 列出剩余 need_reading + blocked
 
+### 11. 报告字符数硬性门槛（Hard Gate，⭐ 优先级最高——FAIL 直接拒绝发布）
+
+- [ ] 运行 `node .trae/skills/repo-arch-engineering/scripts/check-report-chars.mjs .working/{repo-name}/report-draft.md` 退出码为 `0`（发布前检查草稿，此时 report.md 尚不存在）
+- [ ] `pure_content_chars >= 15000`（纯内容字符 = 去除所有空白；阈值可经 `MIN_REPORT_CHARS` 覆盖）
+- [ ] 若 `< 15000`：返回 `gated-fail: report content depth insufficient (N < 15000)`——判定为内容 / 深度不足，报告**禁止发布**，**禁止水字数凑数**
+- [ ] **`gated-fail` 时必须做快速根因判断**，按 [SKILL §6.7.1](../SKILL.md) 在 Step 3 / Step 4 / Step 5 中选一个继续，并在输出里填 `gate_failed_route` + `gate_failed_reason`（见下方「Gate 未通过路由」）
+
+> 这是硬性指标，优先级高于 §1-§10 的软检查。长度 PASS 不等于质量 PASS——仍需满足 §6.6 禁止项与 §1-§10 完整性检查。
+
+#### Gate 未通过路由（命中任一即路由，按优先级从上到下）
+
+| 顺序 | 根因信号 | `gate_failed_route` | 后续 |
+|------|----------|---------------------|------|
+| ① 覆盖缺口 | 某维度 `coverage.ratio < 0.8`；或 `total = 0` 遗漏维度；或 unresolved contradictions > 0；或 critical/high Unknowns 未答 | `step3` | Planner 针对缺口生成新问题 → 常规循环 |
+| ② 深度缺口 | 覆盖齐（各维度 `ratio ≥ 0.8`）但 `evidence-log` < 30 行 / decision 平均 evidence < 2 / 缺 `path:line` 引用 / model 字段单薄 | `step4` | 对已有问题做 depth pass（不新增问题）→ 更新 model 后重渲染 |
+| ③ 知识已稳、渲染没写足 | 覆盖齐、evidence 密（≥30）、hypotheses 全终态、knowledge delta ≈ 0，但 report 仍短 | `step5` | 确认收敛 → Step 6.4 基于现有 model 扩展渲染 |
+
+> 防空转：同一路由连续 2 次回炉后 `pure_content_chars` 增长 < 10% 且无新增 evidence → 标记 `blocked` 升级用户，禁止无限循环。
+
 ## 决策逻辑
 
 ```
@@ -150,3 +185,4 @@ else:
 - `narrative-incomplete` → "Narrative 的 {field} 未填充或为模板占位符，需要从 model + repository-profile.business_signals 填充"
 - `evidence-level-missing` → "为 claim {claim_id} 标注 evidence_level（S/A/B/C/D/E）"
 - `evidence-level-contradiction` → "claim {claim_id} confidence={value} 但 evidence_level={level}，需降低 confidence 或升级 evidence"
+- `gated-fail` → "report content depth insufficient — 返回 Step 3 继续研究补证据，或在现有结论上扩展各章节深度（更多子论点 / 反面证据 / 文件函数级引用 / 权衡展开 / 失败案例分析）；禁止用重复或空泛过渡句水字数凑数"

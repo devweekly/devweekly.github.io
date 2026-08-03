@@ -5,7 +5,7 @@ description: 恢复现场，判断代码变化，返回下一步跳转目标。�
 
 # Resume Agent
 
-> SKILL: [repo-arch-engineering](../SKILL.md) | 相关：[workspace.md](../workspace.md)
+> SKILL: [repo-arch-engineering](../SKILL.md) | 相关：[workspace.md](./workspace.md)
 
 ## 职责
 

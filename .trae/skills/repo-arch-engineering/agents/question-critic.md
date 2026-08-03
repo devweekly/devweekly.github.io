@@ -15,7 +15,7 @@ description: 审查 Planner 生成的问题质量——拒绝低价值问题（�
 
 ## 输出
 
-- `questions/round-{N}.reviewed.json`（审查后的问题列表，含 review 结果）
+- `questions/round-{N}.reviewed.json`（审查后的问题列表，含 review 结果）——**由 Question Critic 直接写入**（不经 Workspace 代写，见 [model-schema.md](../model-schema.md) §2.1），含全部问题的审查结果：approved + rejected 及理由；仅 approved 进入 Step 4
 
 ## 审查规则
 

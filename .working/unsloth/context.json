@@ -1,0 +1,20 @@
+{
+  "repo_path": "/Users/saga/code-repos/devweekly.github.io/ref-only/unsloth",
+  "repo_name": "unsloth",
+  "created_at": "2026-08-03T06:53:00Z",
+  "current_round": 1,
+  "analysis_target_commit": "8dffde9611f6",
+  "last_analyzed_commit": "8dffde9611f6",
+  "pending_invalidation": false,
+  "converged": true,
+  "next_focus": null,
+  "coverage": {
+    "architecture": {"answered": 6, "total": 6, "ratio": 1.0, "confidence": 0.9, "validated_claims": 6},
+    "runtime": {"answered": 1, "total": 1, "ratio": 1.0, "confidence": 0.85, "validated_claims": 1},
+    "design_decisions": {"answered": 2, "total": 2, "ratio": 1.0, "confidence": 0.9, "validated_claims": 2},
+    "testing": {"answered": 0, "total": 0, "ratio": 0.0, "confidence": 0.0, "validated_claims": 0},
+    "deployment": {"answered": 1, "total": 1, "ratio": 1.0, "confidence": 0.8, "validated_claims": 1},
+    "history": {"answered": 0, "total": 0, "ratio": 0.0, "confidence": 0.0, "validated_claims": 0}
+  },
+  "phases_completed": ["reconnaissance", "structural_discovery", "question_generation"]
+}

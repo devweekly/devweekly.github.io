@@ -1,0 +1,49 @@
+{
+  "repo_name": "unsloth",
+  "identity": {
+    "name": "unsloth",
+    "type": "Library + Application (dual: finetuning library + desktop Studio)",
+    "languages": ["Python", "Rust (Studio Tauri backend)", "TypeScript (Studio frontend)"],
+    "frameworks": ["PyTorch", "Triton", "Hugging Face transformers/peft/trl", "Typer (CLI)", "Tauri (Studio)"],
+    "build_system": "setuptools + setuptools-scm (pyproject.toml)",
+    "entry_points": [
+      "unsloth = unsloth_cli:app (console_script)",
+      "unsloth-cli.py (extended argparse example / legacy)",
+      "studio/src-tauri (Tauri desktop app)"
+    ],
+    "deployment_files": [
+      "install.sh / install.ps1 (curl|irm bootstrap installer)",
+      "pyproject.toml",
+      "build.sh",
+      "studio (Tauri app bundle)",
+      ".github (CI)"
+    ]
+  },
+  "business_signals": {
+    "one_liner": "Unsloth makes LLM finetuning 2x faster with 70% less VRAM and ships a local Studio to run/train 500+ models (text/audio/embedding/vision).",
+    "target_users": [
+      "ML practitioners fine-tuning LLMs on consumer/single GPUs",
+      "Local-model enthusiasts running GGUF/safetensors/LoRA via OpenAI/Anthropic-compatible APIs",
+      "Teams needing local RL (GRPO/DPO) and long-context training"
+    ],
+    "use_cases": [
+      "QLoRA/LoRA/full finetuning & pretraining of 500+ models",
+      "Local inference server exposing /v1/chat/completions, /v1/responses, /v1/messages",
+      "RL (GRPO/FP8/vision) with reduced VRAM",
+      "Long-context (500K+) packing-based training",
+      "Studio: visual data recipes, model arena, tool-calling, MCP control endpoint"
+    ],
+    "non_goals": [
+      "Not a model host/SaaS (local-first; cloud only via user-run endpoints)",
+      "Multi-GPU training described as beta/limited",
+      "FastSentenceTransformer & several TRL trainers unsupported on MLX backend"
+    ],
+    "differentiators": [
+      "Hand-written Triton/CUDA/MLX kernels replace HF native ops (RMSNorm, RoPE, SwiGLU, cross-entropy, LoRA, FP8)",
+      "2x speed / 70% less VRAM / MoE up to 12x",
+      "Import-time monkey-patching of transformers/peft/trl so existing notebooks run unchanged",
+      "Dual MLX (Apple Silicon) + CUDA/ROCm/XPU backend from one import"
+    ]
+  },
+  "evidence": ["README.md:1-90", "pyproject.toml:1-69", "cli.py:1-8", "unsloth/__init__.py:1-22,80-82,1430-1433"]
+}

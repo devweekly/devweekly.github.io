@@ -102,8 +102,18 @@ Append 到 `evidence-log.jsonl`（每行一条 evidence）：
 - 文档（C-tier）：README、ADR、CHANGELOG
 - Git（D-tier）：commit history、issue tracker
 
+## Depth Pass 模式（gated-fail step4 路由）
+
+当 Orchestrator 因 Quality `gated-fail` 且 `gate_failed_route = "step4"`（覆盖已齐、深度不足）调用本 Agent 时：
+
+- **不依赖新问题**——`questions/summary.json` 里 approved / model_updated 的问题就是收集目标
+- 对已有结论做**更细粒度**的证据收集：从模块级下钻到**文件/函数级**，observation 必须带 `path:line`
+- 重点补齐：关键 decision 的第二条及以上 evidence（每条 decision ≥ 2 条）、boundaries 的具体依赖声明、runtime 每步的调用点
+- 目标：把 `evidence-log.jsonl` 密度提升到 ≥ 30 行，并让 Model/Report 能展开到文件级深度
+- 其余规则不变（observation/inference 分离、append-only、tier 标注）
+
 ### 禁止
 
-- **不碰 repository-model.json**——Model Agent 是唯一写入者
+- **不碰 repository-model.json**——由 Model / Reasoning Agent 按字段分区写入（schema §2.1）
 - **不形成假设**——Reasoning Agent 负责
 - **不生成报告**——Report Agent 负责
