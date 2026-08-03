@@ -381,7 +381,7 @@ repository-model.json
 | [DESIGN.md](./DESIGN.md) | 设计决策理由（本文档） | 当前 |
 | [model-schema.md](./model-schema.md) | Repository Model 字段定义、映射规则、置信度计算、增量更新策略 | 当前 |
 | [CHANGE_LOG.md](./CHANGE_LOG.md) | context.json 状态变更规则 | 当前 |
-| [agents/](./agents/) | Sub Agent 定义（11 个） | 当前 |
+| [agents/](./agents/) | Sub Agent 定义（12 个） | 当前 |
 | [p1.md](./p1.md) | 初始设计提案（历史存档，已被上述文档取代） | 存档 |
 
 p1.md 曾建议"下一步设计 model-schema.md"——已完成。model-schema.md 落地了：

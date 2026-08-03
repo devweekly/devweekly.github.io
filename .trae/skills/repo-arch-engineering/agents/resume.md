@@ -40,7 +40,7 @@ description: 恢复现场，判断代码变化，返回下一步跳转目标。�
       - 如果只是局部变化 → next: "planner"（增量更新）
       - 设置 pending_invalidation = true
    c. 如果 commit 未变化：
-      - 检查是否有未完成的工作（report-draft.md 存在但未发布）
+      - 检查是否有未完成的工作（report-edited.md 存在但未发布）
       - 如果有 → next: "workspace"（崩溃恢复）
       - 如果 converged=true 且 report.md 存在 → next: "done"
       - 否则 → next: "planner"

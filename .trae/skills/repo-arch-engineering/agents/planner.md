@@ -18,7 +18,7 @@ description: 基于研究上下文生成 Architecture Research Question——只
 - `repository-model.json`（当前 Model 状态）
 - `hypotheses.json`（假设状态）
 - `failed_checks`（可选，来自 Quality Agent 的 FAIL 原因）
-- `gate_failed_route` + `gate_failed_reason`（可选，Quality `gated-fail` 且路由为 `step3` 时由 Orchestrator 传入——覆盖缺口根因，见 [SKILL §6.7.1](../SKILL.md)）
+- `gate_failed_route` + `gate_failed_reason`（可选，Quality `gated-fail` 且路由为 `step3` 时由 Orchestrator 传入——覆盖缺口根因，见 [SKILL §6.8.1](../SKILL.md)）
 
 ## 输出
 
@@ -52,7 +52,7 @@ description: 基于研究上下文生成 Architecture Research Question——只
 ## 决策逻辑
 
 ```
-1. 如果有 gate_failed_route == "step3"（§6.7 gated-fail，覆盖缺口）：
+1. 如果有 gate_failed_route == "step3"（§6.8 gated-fail，覆盖缺口）：
    - 按 gate_failed_reason 命中的根因生成针对性问题：
      覆盖缺口维度 / unresolved contradictions
    - next_focus = 缺口所在维度

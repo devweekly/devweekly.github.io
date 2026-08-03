@@ -56,7 +56,7 @@ converged = true  → 进入 Step 6
 converged = false → context.json.current_round += 1，回 Step 3 生成下一轮问题
 ```
 
-## Step 6 — 报告发布完成后（Quality PASS 含 §6.7 Hard Gate）
+## Step 6 — 报告发布完成后（Quality PASS 含 §6.8 Hard Gate）
 
 ```
 context.json.phases_completed += "model_validation"  # Quality Agent PASS 后
@@ -66,7 +66,7 @@ context.json.analysis_target_commit = null
 context.json.pending_invalidation = false
 ```
 
-> 只有 Quality PASS（含 §6.7 字符门槛）后 Workspace 才 rename `report-draft.md → report.md` 并做上述变更。`gated-fail` / 质量门 FAIL → **不发布、不改 context**，按 `gate_failed_route`（step3/step4/step5）回炉，见 SKILL §6.7.1。
+> 只有 Quality PASS（含 §6.8 字符门槛）后 Workspace 才 rename `report-edited.md → report.md` 并做上述变更。`gated-fail` / 质量门 FAIL → **不发布、不改 context**，按 `gate_failed_route`（step3/step4/step5）回炉，见 SKILL §6.8.1。
 
 ## 非首次分析（Step 1 检测到 commit 变化）
 

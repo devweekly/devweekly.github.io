@@ -1,6 +1,6 @@
 ---
 name: quality
-description: 检查 report-draft.md 质量，返回 PASS/FAIL/reason（Phase 6 Model Validation）。不修改 draft。
+description: 检查 report-edited.md 质量，返回 PASS/FAIL/reason（Phase 6 Model Validation）。不修改报告。
 ---
 
 # Quality Agent
@@ -9,11 +9,12 @@ description: 检查 report-draft.md 质量，返回 PASS/FAIL/reason（Phase 6 M
 
 ## 职责
 
-检查 `report-draft.md`，返回 PASS/FAIL/reason。**不修改 draft**。完成 **Phase 6（Model Validation）**。
+检查 `report-edited.md`（Editor Agent 编辑稿），返回 PASS/FAIL/reason。**不修改报告**。完成 **Phase 6（Model Validation）**。
 
 ## 输入
 
-- `report-draft.md`（Report Agent 的产出）
+- `report-edited.md`（Editor Agent 的产出）
+- `report-draft.md`（Report Agent 初稿，用于对照编辑是否破坏准确性）
 - `repository-model.json`（用于交叉验证）
 - `context.coverage`（覆盖率）
 - `hypotheses.json`（假设状态）
@@ -47,7 +48,7 @@ description: 检查 report-draft.md 质量，返回 PASS/FAIL/reason（Phase 6 M
   "gate_failed_reason": "覆盖已齐（各维度 ratio≥0.8）但 evidence-log 仅 16 行 < 30、decision 平均 evidence<2、缺 path:line 引用 → 深度缺口，回 Step 4 做 depth pass",
   "suggestions": [
     "对已有 approved 问题做更细粒度证据收集（文件/函数级），不新增问题",
-    "更新 model 后重渲染 report-draft.md，并再次跑 §6.7 脚本"
+    "更新 model 后重渲染 report-draft.md、重编辑 report-edited.md，并再次跑 §6.8 脚本"
   ]
 }
 ```
@@ -146,12 +147,24 @@ description: 检查 report-draft.md 质量，返回 PASS/FAIL/reason（Phase 6 M
 
 ### 11. 报告字符数硬性门槛（Hard Gate，⭐ 优先级最高——FAIL 直接拒绝发布）
 
-- [ ] 运行 `node .trae/skills/repo-arch-engineering/scripts/check-report-chars.mjs .working/{repo-name}/report-draft.md` 退出码为 `0`（发布前检查草稿，此时 report.md 尚不存在）
+- [ ] 运行 `node .trae/skills/repo-arch-engineering/scripts/check-report-chars.mjs .working/{repo-name}/report-edited.md` 退出码为 `0`（发布前检查编辑稿，此时 report.md 尚不存在）
 - [ ] `pure_content_chars >= 12000`（纯内容字符 = 去除所有空白；阈值可经 `MIN_REPORT_CHARS` 覆盖）
 - [ ] 若 `< 12000`：返回 `gated-fail: report content depth insufficient (N < 12000)`——判定为内容 / 深度不足，报告**禁止发布**，**禁止水字数凑数**
-- [ ] **`gated-fail` 时必须做快速根因判断**，按 [SKILL §6.7.1](../SKILL.md) 在 Step 3 / Step 4 / Step 5 中选一个继续，并在输出里填 `gate_failed_route` + `gate_failed_reason`（见下方「Gate 未通过路由」）
+- [ ] **`gated-fail` 时必须做快速根因判断**，按 [SKILL §6.8.1](../SKILL.md) 在 Step 3 / Step 4 / Step 5 中选一个继续，并在输出里填 `gate_failed_route` + `gate_failed_reason`（见下方「Gate 未通过路由」）
 
 > 这是硬性指标，优先级高于 §1-§10 的软检查。长度 PASS 不等于质量 PASS——仍需满足 §6.6 禁止项与 §1-§10 完整性检查。
+
+### 12. Editor 编辑质量检查（对照 report-draft.md 校验编辑是否破坏准确性）
+
+- [ ] 编辑稿已生成（`report-edited.md` 存在，且是 `report-draft.md` 的编辑版本而非重写）
+- [ ] **Before-reading 一句话总纲**存在（报告开头「如果只记住一件事」）
+- [ ] 主要章节有「本章回答」intro + 核心结论
+- [ ] 重复概念有收敛（Concept Index 或引用替代，无大段重复）
+- [ ] 无新增 claim——对照 `repository-model.json` 无新事实（编辑只能重组）
+- [ ] 无删除 high-confidence 结论（draft 中 confidence ≥ 0.75 的结论仍存在）
+- [ ] trade-off 均保留（收益与代价成对，未被改成单边收益）
+- [ ] 风险/caveat 未弱化（对照 draft 的风险与限制描述）
+- [ ] `ev-xxx` 引用与 confidence/evidence_level 数值未被篡改
 
 #### Gate 未通过路由（命中任一即路由，按优先级从上到下）
 
@@ -184,13 +197,13 @@ else:
 
 ## 规则
 
-- **不修改 report-draft.md**——只检查
+- **不修改 report-draft.md / report-edited.md**——只检查
 - **不修改 repository-model.json**
 - **不修改 hypotheses.json**
 - **不收集新证据**——只基于现有产出检查
 - 如果 PASS，由 Workspace Agent 负责 rename + publish
 - 如果 FAIL，failed_checks 传给 Planner Agent 生成针对性问题
-- report-draft.md 保留，供下一轮覆盖
+- report-edited.md 保留，供下一轮覆盖
 
 ## Suggestion 生成
 
@@ -213,4 +226,11 @@ else:
 - `term-explanation-missing` → "术语 {term} 首次出现未解释——给'简单来说'人话层"
 - `engineering-meaning-missing` → "章节 {section} 结尾缺 Engineering Meaning——回答'所以意味着什么'"
 - `checklist-style` → "章节 {section} 是 checklist 罗列——先给观点段（判断+理由）再展开证据"
+- `editor-before-reading-missing` → "编辑稿缺 'Before reading' 一句话总纲（如果只记住一件事）——在报告开头补充"
+- `editor-chapter-intro-missing` → "编辑稿章节 {section} 缺 '本章回答' intro + 核心结论"
+- `editor-concept-repeat` → "概念 {concept} 在多章节重复展开——用 Concept Index（primary_location + references）收敛"
+- `editor-new-claim` → "编辑稿新增了无 evidence 的 claim——编辑只能重组，不能发明；对照 repository-model 删除"
+- `editor-tradeoff-lost` → "编辑稿 {decision} 的 trade-off 被改成单边收益——恢复'得到什么/失去什么'成对表述"
+- `editor-risk-weakened` → "编辑稿弱化了风险/caveat——恢复 draft 中的风险描述（不得删 caveat）"
+- `editor-evidence-tampered` → "编辑稿的 ev-xxx 引用或 confidence/evidence_level 数值被篡改——恢复原始值"
 - `gated-fail` → "report content depth insufficient — 返回 Step 3 继续研究补证据，或在现有结论上扩展各章节深度（更多子论点 / 反面证据 / 文件函数级引用 / 权衡展开 / 失败案例分析 / 补全每节 Engineering Meaning 与 Evidence Box）；禁止用重复或空泛过渡句水字数凑数"

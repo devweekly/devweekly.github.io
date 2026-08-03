@@ -115,10 +115,10 @@ update questions/summary.json (把进入终态的问题标为 model_updated / bl
 
 ### 4. 发布报告（Quality PASS 后）
 
-**前置条件：Quality 返回 `passed: true`，且已包含 §6.7 Hard Gate PASS（`report-draft.md` 纯内容字符 ≥ 12000）。若 Quality 返回 `gated-fail`：不发布，保留 `report-draft.md` 供回炉覆盖，`gate_failed_route` 交 Orchestrator 路由。**
+**前置条件：Quality 返回 `passed: true`，且已包含 §6.8 Hard Gate PASS（`report-edited.md` 纯内容字符 ≥ 12000）。若 Quality 返回 `gated-fail`：不发布，保留 `report-edited.md` 供回炉覆盖，`gate_failed_route` 交 Orchestrator 路由。**
 
 ```
-rename report-draft.md → report.md
+rename report-edited.md → report.md
 update context.json:
   last_analyzed_commit = analysis_target_commit
   analysis_target_commit = null
@@ -129,7 +129,7 @@ update context.json:
 ### 5. 崩溃恢复（Resume 返回 next=workspace）
 
 ```
-检查 report-draft.md 是否存在且 Quality 已 PASS
+检查 report-edited.md 是否存在且 Quality 已 PASS
 如果是 → 执行操作 4（发布报告）
 ```
 

@@ -333,6 +333,26 @@ Research Agent → Knowledge Model → Architecture Insight → Knowledge Render
 
 > ⚠️ **Neutrality 与叙事不冲突**：叙事是表达层（讲故事、加过渡、加总结），不是价值判断层。叙事禁止夹带绝对化结论（"不可能/永远/deliberate trade-off"）——见 Neutrality 原则。
 
+### Editorial Review（编辑理论）
+
+> **Research 优化「信息完整性」，Editor 优化「人类认知负荷」。** 这是两种不同的能力：前者回答"如何像专家一样分析代码"，后者回答"如何像专家一样写给另一个专家看"。
+
+**为什么需要独立的编辑阶段：**
+
+1. **信息完整 ≠ 认知可读**——Research Agent 自动生成的报告天然偏「事实 + 证据 + 推理 + 结论」堆叠，像"资深工程师把几天分析笔记全部塞进文档"：信息正确、覆盖全面、证据充分，但主线不明显、重点不突出、阅读疲劳。
+2. **优化目标冲突**——完整性要求"都写上"，可读性要求"精选+串联"。同一 Agent 同时优化两个目标会互相妥协；拆成两个阶段，各自目标纯粹。
+3. **成本与稳定性**——Editor 不读代码、不做研究，只处理 `report-draft + repository-model + evidence-log`，token 成本低、行为可预测，适合作为流水线固定环节。
+
+**编辑 ≠ 改写：** 改写重新分析、可能发明新结论；编辑只做六件事——信息裁剪（按认知分组）、主线提炼（从 insight 提升叙事）、密度控制（正文/细节分层）、阅读导航（Before-reading + 每章 intro）、概念索引（首现详解、后续引用）、章节比例调整（Story/Mechanism/Decision/Evidence）。
+
+**编辑的准确性约束（Editor 的 Technical Guard 理论基础）：**
+
+- 编辑可以移动 evidence、压缩重复、增加解释，但**不得**新增无 evidence 的 claim、删除 high-confidence 结论、篡改 confidence/evidence_level 数值、弱化 trade-off 或风险
+- 编辑的产出必须能被 Quality 对照 `report-draft.md` + `repository-model.json` 复核（防止"润色过程中丢失关键 caveat / 夸大结论 / 合并错误因果"）
+- 概念重复的处理范式 = Concept Index：`primary_location` 首次详解，其余章节只引用（`见 §X 首次定义`），不重复展开
+
+**执行细则（Editor 的 6 动作、3 Pass、约束清单）见 SKILL.md §6.7 与 [agents/editor.md](../agents/editor.md)。**
+
 ### Claim 分类
 
 不同 claim 有不同可信要求：
@@ -444,4 +464,4 @@ Research Agent → Knowledge Model → Architecture Insight → Knowledge Render
 - [DESIGN.md](./DESIGN.md) — 设计决策理由
 - [model-schema.md](./model-schema.md) — Repository Model 字段定义
 - [CHANGE_LOG.md](./CHANGE_LOG.md) — context.json 状态变更规则
-- [agents/](./agents/) — Sub Agent 定义（11 个）
+- [agents/](./agents/) — Sub Agent 定义（12 个）

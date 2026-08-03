@@ -1,6 +1,6 @@
 ---
 name: report
-description: 构建 Architecture Insight（Knowledge Model → 洞察骨架），再按叙事规则渲染 report.md。禁止新增 claim，禁止阅读源码，禁止重新推理——报告是模型的视图。渲染目标：像架构师写给工程师的分析文档，不是带引用元数据的审计数据库导出。
+description: 构建 Architecture Insight（Knowledge Model → 洞察骨架），再按叙事规则渲染 report-draft.md 初稿。禁止新增 claim，禁止阅读源码，禁止重新推理——报告是模型的视图。初稿追求完整性与技术密度，可读性编辑由 Editor Agent 负责。
 ---
 
 # Report Agent
@@ -12,7 +12,7 @@ description: 构建 Architecture Insight（Knowledge Model → 洞察骨架）�
 两阶段工作：
 
 1. **构建 Architecture Insight**（必经中间产物）——把 `repository-model.json` 压缩为架构师能快速形成心智模型的**洞察骨架**（每个决策/边界/运行时环节回答「为什么 → 怎么做 → 代价 → 意味着什么」）
-2. **渲染 report.md**——基于 Insight + Model 渲染最终报告，遵循 SKILL §6.4.1 叙事规则
+2. **渲染 report-draft.md 初稿**——基于 Insight + Model 渲染完整初稿，遵循 SKILL §6.4.1 叙事规则；**初稿优先完整性与技术密度，可读性编辑（导航/裁剪/密度/索引）由 Editor Agent 负责**
 
 **禁止新增推理**——Insight 和 Report 都是 Model 的视图，不是新的研究。
 
@@ -27,7 +27,7 @@ description: 构建 Architecture Insight（Knowledge Model → 洞察骨架）�
 ## 输出
 
 - `.working/{repo-name}/architecture-insight.json`（洞察骨架，必经中间产物）
-- `.working/{repo-name}/report-draft.md`（报告草稿，由 Quality Agent PASS 后 rename 为 report.md）
+- `.working/{repo-name}/report-draft.md`（报告初稿；由 Editor Agent 编辑为 report-edited.md，Quality PASS 后 rename 为 report.md）
 
 ---
 
@@ -151,13 +151,13 @@ Insight 必须回答以下问题，每个回答 ≤ 200 字：
 
 ---
 
-## Phase 2 — 渲染 report.md
+## Phase 2 — 渲染 report-draft.md
 
 > 详见 [SKILL.md](../SKILL.md) §6.4。
 
-### 渲染深度要求（§6.7 Hard Gate 前置约束）
+### 渲染深度要求（§6.8 Hard Gate 前置约束——初稿写足，编辑才有素材）
 
-`report-draft.md` 的**纯内容字符数（去空白）必须 ≥ 12000**（`MIN_REPORT_CHARS` 可覆盖），否则 Quality 会 `gated-fail` 打回。因此渲染时就要**写足深度**，而不是等打回再补：
+`report-draft.md` 是初稿，追求**完整性与技术密度**；最终 `report-edited.md` 的**纯内容字符数（去空白）必须 ≥ 12000**（`MIN_REPORT_CHARS` 可覆盖），否则 Quality 会 `gated-fail` 打回。因此渲染初稿时就要**写足深度**，而不是等打回再补：
 
 - 每个 Key Design Decision 按六要素展开（intent / mechanism / constraint / tradeoff / evidence / engineering_meaning），不只给一句话结论
 - 关键 claim 落到**文件/函数级**引用（`path:line`），不只给模块名
@@ -365,7 +365,7 @@ Metadata:   hypotheses.json
 
 - **不重新研究、不新增 claim**——基于**现有** `architecture-insight.json` + `repository-model.json` 把已确认但上轮未展开的细节写出来
 - 扩展方向：更多子论点、每条 decision 的六要素展开（intent/mechanism/constraint/tradeoff/engineering_meaning）、反面证据与权衡展开、失败案例分析、`path:line` 级引用补充、§10 Change Difficulty & Blast Radius 逐条耦合展开、补全每节的 Engineering Meaning 与 Evidence Box
-- 若 model 里已无更多可展开的细节（写不长）→ 在输出中标注 `expansion_exhausted: true`，让 Quality/Orchestrator 走 §6.7.1 防空转规则（blocked 升级用户），**禁止编造内容凑字数**
+- 若 model 里已无更多可展开的细节（写不长）→ 在输出中标注 `expansion_exhausted: true`，让 Quality/Orchestrator 走 §6.8.1 防空转规则（blocked 升级用户），**禁止编造内容凑字数**
 
 ## 禁止项
 
@@ -385,9 +385,9 @@ Metadata:   hypotheses.json
 - ❌ 直接读 evidence-log 推导架构结论——必须通过 Insight + Model
 - ❌ 修改 repository-model.json / hypotheses.json
 - ❌ 如果 Model 不完整（如 design_decisions 为空），编造内容——应标注"证据不足"
-- ❌ 为凑 §6.7 字符门槛而水字数（重复、空泛过渡句、无意义列表）
+- ❌ 为凑 §6.8 字符门槛而水字数（重复、空泛过渡句、无意义列表）
 
 ## 规则
 
 - 输出 `report-draft.md`，不直接发布
-- 由 Quality Agent PASS（含 §6.7 Hard Gate）后，Workspace Agent rename 为 report.md
+- 由 Editor Agent 编辑为 `report-edited.md`，Quality Agent PASS（含 §6.8 Hard Gate）后，Workspace Agent rename 为 report.md

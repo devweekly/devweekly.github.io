@@ -29,8 +29,10 @@ flowchart TD
     S4 --> S5{Step 5<br/>知识稳定?}
     S5 -->|No| S3a
     S5 -->|Yes| S6a[Step 6.2<br/>构建 Architecture Insight]
-    S6a --> S6b[Step 6.4<br/>渲染 report.md]
-    S6b --> Done([Done])
+    S6a --> S6b[Step 6.4<br/>渲染 report-draft.md]
+    S6b --> S6c[Step 6.7<br/>Editor 编辑 report-edited.md]
+    S6c --> S6d[Step 6.6<br/>Quality 检查]
+    S6d --> Done([Done])
 ```
 
 ### Step 1 — 初始化 Working Dir
@@ -193,7 +195,7 @@ open → investigating → validated/rejected/blocked → model_updated
 
 ### Step 6 — 渲染 report.md
 
-当 repository-model 达到稳定状态后，**先构建 Architecture Insight，再渲染 report.md**。
+当 repository-model 达到稳定状态后，**先构建 Architecture Insight，再渲染 report-draft.md，再由 Editor 编辑为 report-edited.md，Quality 检查通过后发布 report.md**。
 
 > Report 理论（Thesis 为骨架、Architecture 是 Decision 的结果等叙事骨架原则）详见 [Methodology.md](./Methodology.md) §Report Theory。
 
@@ -513,9 +515,48 @@ Evidence（代码在哪里证明——证据引用）
 - ❌ 章节结尾缺 Engineering Meaning（"所以意味着什么"缺失，§6.4.1 ⑦）
 - ❌ 用叙事夹带绝对化结论（"不可能/永远/deliberate trade-off"）——Neutrality 原则与叙事不冲突
 
-#### 6.7 报告字符数硬性门槛（Hard Gate）
+#### 6.7 Architecture Editorial Review（编辑阶段，必经）
 
-最终 `report.md` 的**纯内容字符数（去除所有空白字符：空格 / 制表符 / 换行 / 回车）必须 ≥ 12000**。这是**硬性指标，不可绕过**。
+**Research 优化「信息完整性」，Editor 优化「人类认知负荷」。** Report Agent 渲染出的 `report-draft.md` 技术密度高、接近知识库；Editor Agent（[agents/editor.md](./agents/editor.md)）把它编辑成`report-edited.md`——**编辑不是改写**：不重新分析代码、不新增 claim，只降低读者认知成本。
+
+**Pipeline：**
+
+```
+report-draft.md（Report Agent 完整初稿：事实+证据+推理+结论）
+        ↓
+Editor Agent（编辑：裁剪/提炼/分层/导航/索引/比例）
+        ↓
+report-edited.md（Quality 检查对象）
+        ↓
+report.md（Quality PASS 后发布）
+```
+
+**Editor 的 6 个编辑动作：**
+
+1. **信息裁剪（Information Selection）**——按认知分组（技术栈 → HF Compatibility Layer / Kernel Acceleration Layer / Product Layer），信息不丢、认知成本降低
+2. **主线提炼（Narrative Extraction）**——把定义句提升为矛盾/主线（"Unsloth 的核心矛盾是：如何获得新性能又不迫使用户迁移 HF 工作流"），主线来自 insight 的 thesis / why_this_center
+3. **控制信息密度**——正文给结论，细节进 Implementation Detail（`load_in_4bit=True` / `load_in_fp8` block mode 等参数下沉）
+4. **阅读导航（Reading Navigation）**——报告开头「如果只记住一件事」一句话总纲；每章开头「本章回答 + 核心结论」
+5. **降低重复（Concept Index）**——同一概念多处出现时建索引：`primary_location` 首次详解，其余章节只引用，不重复展开
+6. **调整章节比例**——目标：Story 35% / Mechanism 25% / Decision 20% / Evidence 10% / 导航辅助 10%
+
+**Editor 三 Pass：** Pass 1 Structural Editing（删重复/调章节/提炼故事）→ Pass 2 Reader Optimization（导航/密度/术语）→ Pass 3 Technical Guard（claim 仍有 evidence、trade-off 保留、风险未弱化、数值未篡改）。
+
+**准确性约束（不可违反）：**
+
+- 不允许新增没有 evidence 的 claim
+- 不允许删除 high confidence（≥0.75）architectural conclusions
+- 可以移动 evidence（收进 Box），但 `ev-xxx` 引用必须保留
+- 可以压缩重复描述（用 Concept Index 引用替代）
+- 可以增加解释性文字，但不得改变事实
+- 必须保持 trade-off（收益与代价成对出现）
+- 不得弱化风险/caveat、不得篡改 confidence / evidence_level 数值
+
+> 若 draft 本身信息不足、编辑空间耗尽 → 输出 `edit_space_exhausted: true`，交 Quality/Orchestrator 走 §6.8.1 路由，禁止编造内容。
+
+#### 6.8 报告字符数硬性门槛（Hard Gate）
+
+最终 `report-edited.md` 的**纯内容字符数（去除所有空白字符：空格 / 制表符 / 换行 / 回车）必须 ≥ 12000**。这是**硬性指标，不可绕过**。
 
 - **字符数 < 12000 → 判定为「内容 / 深度不足」**，报告禁止发布：
   - 要么返回 Step 3 继续研究、补证据拓宽覆盖；
@@ -523,15 +564,15 @@ Evidence（代码在哪里证明——证据引用）
 - **不鼓励水字数**：禁止用重复、空泛过渡句、无意义列表填充凑数。长度 PASS 的同时仍须满足 §6.6 禁止项与 Quality Agent §10 完整性检查——凑出来的长度不会让质量门通过。
 - 阈值可由环境变量 `MIN_REPORT_CHARS` 覆盖（默认 12000）。
 
-**检查方式（JS 脚本判定）：** Quality Agent 在**发布前**（此时只有草稿）调用本 skill 自带脚本检查 `report-draft.md`，退出码 `0 = PASS` / `1 = FAIL(不足)` / `2 = 用法错误`：
+**检查方式（JS 脚本判定）：** Quality Agent 在**发布前**（此时只有编辑稿）调用本 skill 自带脚本检查 `report-edited.md`，退出码 `0 = PASS` / `1 = FAIL(不足)` / `2 = 用法错误`：
 
 ```bash
-node .trae/skills/repo-arch-engineering/scripts/check-report-chars.mjs .working/{repo-name}/report-draft.md
+node .trae/skills/repo-arch-engineering/scripts/check-report-chars.mjs .working/{repo-name}/report-edited.md
 ```
 
 脚本输出 JSON：`{ file, pure_content_chars, min_required, passed, reason }`。FAIL 时 Quality 返回 `gated-fail`，报告**不发布**，并按下述快速判断路由到对应 Step 继续。
 
-##### 6.7.1 Gate 未通过时的快速判断与回路
+##### 6.8.1 Gate 未通过时的快速判断与回路
 
 `gated-fail` 只说明「内容 / 深度不足」，**不知道根因**。Quality Agent 必须做一次**快速根因判断**，在 Step 3 / Step 4 / Step 5 中选一个继续（不要默认回 Step 3 盲目再提问）。判断依据 `repository-model.json` + `context.coverage` + `hypotheses.json` + `evidence-log.jsonl`（行数）。
 
@@ -546,10 +587,10 @@ node .trae/skills/repo-arch-engineering/scripts/check-report-chars.mjs .working/
 **回路规则：**
 
 - Quality 在 `gated-fail` 输出里必须带 `gate_failed_route: "step3" | "step4" | "step5"` + `gate_failed_reason`（命中的根因信号），Orchestrator 据此跳转。
-- 路由后必须**重新渲染** `report-draft.md` 并**再次跑 §6.7 脚本**——直到 PASS 或明确 blocked。
+- 路由后必须**重新渲染** `report-draft.md` → **重新编辑** `report-edited.md` 并**再次跑 §6.8 脚本**——直到 PASS 或明确 blocked。
 - **防空转**：同一路由连续 2 次回炉后 `pure_content_chars` 无明显增长（< 10%）且无新增 evidence → 判定收敛但报告写不长，标记 `blocked`，升级由用户决定是否接受短报告或降低 `MIN_REPORT_CHARS`，禁止无限循环。
 
-**输出：** `.working/{repo-name}/architecture-insight.json` + `.working/{repo-name}/report.md`
+**输出：** `.working/{repo-name}/architecture-insight.json` + `.working/{repo-name}/report-edited.md` → `report.md`
 
 ---
 
@@ -573,11 +614,12 @@ node .trae/skills/repo-arch-engineering/scripts/check-report-chars.mjs .working/
 │   └── round-N.json          #   第 N 轮问题
 ├── rounds/                   # 研究轮次记录（Workspace Agent 写）
 │   └── round-1.json
-├── report-draft.md           # 报告草稿（Report Agent 写，Step 6.4）
+├── report-draft.md           # 报告初稿（Report Agent 写，Step 6.4）
+├── report-edited.md          # 编辑稿（Editor Agent 写，Step 6.7；Quality 检查对象）
 └── report.md                 # 最终报告（Quality PASS 后由 Workspace rename 发布）
 ```
 
-> **Skill 自带脚本**（不在 `.working/`，位于 skill 根）：`scripts/check-report-chars.mjs` — §6.7 报告字符数硬性门槛判定（Quality Agent 在发布前调用）。
+> **Skill 自带脚本**（不在 `.working/`，位于 skill 根）：`scripts/check-report-chars.mjs` — §6.8 报告字符数硬性门槛判定（Quality Agent 对 `report-edited.md` 在发布前调用）。
 
 > **存储原则：** Model 存稳定知识；hypotheses / evidence / questions 是研究过程状态，独立存储。Model 只通过 `ev-xxx` / `hyp-xxx` / `q-xxx` ID 引用这些文件，不复制其内容。详见 [model-schema.md](./model-schema.md) §2 持久化布局。
 
@@ -621,13 +663,14 @@ node .trae/skills/repo-arch-engineering/scripts/check-report-chars.mjs .working/
 | Model | [agents/model.md](./agents/model.md) | Step 4 | 从 evidence 合并/更新 repository-model.json（identity/architecture/runtime 字段） |
 | Reasoning | [agents/reasoning.md](./agents/reasoning.md) | Step 4 | 架构解释 + 质疑 + 验证 hypothesis（写推理字段 + hypotheses.json） |
 | Report | [agents/report.md](./agents/report.md) | Step 6 | 构建 Architecture Insight + 渲染 report-draft.md |
-| Quality | [agents/quality.md](./agents/quality.md) | Step 6 | 检查 Insight 质量门 + report-draft.md 质量 |
+| Editor | [agents/editor.md](./agents/editor.md) | Step 6 | 编辑 report-draft.md → report-edited.md（信息裁剪/主线提炼/密度控制/导航/概念索引/比例；不新增 claim） |
+| Quality | [agents/quality.md](./agents/quality.md) | Step 6 | 检查 Insight 质量门 + report-edited.md 质量 |
 
 **内部顺序：**
 - Step 1：Resume（判断现场）→ Workspace（初始化/恢复/标记 invalidation）
 - Step 3：Planner → Question Critic（生成问题 → 审查质量）
 - Step 4：Evidence → Model → Reasoning（收集证据 → 更新模型 → 回答问题）
-- Step 6：Report → Quality（渲染草稿 → 质量检查；PASS 后 Workspace 发布）
+- Step 6：Report → Editor → Quality（渲染初稿 → 编辑 → 质量检查；PASS 后 Workspace 发布）
 
 ---
 
@@ -639,3 +682,4 @@ node .trae/skills/repo-arch-engineering/scripts/check-report-chars.mjs .working/
 - 能回答"改 X 会炸哪里"（Blast Radius）和"哪些改动容易、哪些危险"（Change Difficulty）
 - 能回答"系统为何演变成今天这样"（架构演进时间线）
 - 报告读起来像**架构师写给工程师的分析文档**，不是带引用元数据的审计数据库导出：有因果链叙事、Evidence 在 Box 里不混正文、章节有过渡、观点段先于清单、术语有人话解释、每节有 Engineering Meaning（§6.4.1 全部规则）
+- 报告经过 **Editor 编辑**（§6.7）：有 Before-reading 一句话总纲、每章「本章回答」intro、重复概念用 Concept Index 收敛、正文/细节分层、章节比例符合 Story/Mechanism/Decision/Evidence 目标——且编辑未破坏准确性（trade-off 保留、风险未弱化、evidence 引用完整）
