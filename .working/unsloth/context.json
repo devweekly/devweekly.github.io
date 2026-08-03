@@ -3,7 +3,7 @@
   "repo_name": "unsloth",
   "created_at": "2026-08-03T06:53:00Z",
   "current_round": 2,
-  "analysis_target_commit": "8dffde9611f6",
+  "analysis_target_commit": null,
   "last_analyzed_commit": "8dffde9611f6",
   "pending_invalidation": false,
   "converged": true,

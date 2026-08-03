@@ -1,0 +1,286 @@
+{
+  "schema_version": "2.0",
+  "repo_name": "unsloth",
+  "system_identity": {
+    "what_is": "Unsloth 是一个 LLM 微调（finetuning）加速库 + 桌面 Studio 产品：通过 import-time monkey-patch Hugging Face 生态 + 手写融合内核，让现有 notebook 不改一行获得约 2x 提速与 70% 省显存。",
+    "repo_type": "Library + Application (finetuning library + Tauri desktop Studio)",
+    "scale": "988 Python 文件 + 439 TS / 372 TSX 前端 + 25 Rust；292 测试文件；月度发布节奏；支持 CUDA/ROCm/Intel XPU + Apple Silicon(MLX)。",
+    "target_users": "ML 研究者 / 独立开发者 / 企业微调团队（库）；想零配置微调的非专家（Studio 桌面 / Colab 用户）。"
+  },
+  "business_context": {
+    "needs_satisfied": "降低 LLM 微调的显存与算力门槛，使消费级 GPU / Apple Silicon 也能跑 QLoRA / 全参微调。",
+    "business_scope": "覆盖模型加载（量化）、前向/反向内核加速、训练循环、模型族注册、Studio 桌面 GUI、CLI 工具；不覆盖模型训练理论本身、不覆盖推理服务规模化部署（仅 Studio 本地）。",
+    "use_cases": [
+      "笔记本上 4bit QLoRA 微调 Llama/Qwen",
+      "Apple Silicon 上跑 SFT",
+      "Studio 可视化数据准备 + 训练监控",
+      "CLI 用 claude/codex 子代理辅助微调"
+    ],
+    "alternatives_in_market": "原生 Hugging Face PEFT/TRL（无加速）、LLM.int8()/bitsandbytes（仅量化无内核）、Axolotl（高层编排）、GPTQ/AWQ（仅推理量化）。Unsloth 差异点：patch 零改动 + 内核融合 + 双后端统一 API。"
+  },
+  "high_level_architecture": {
+    "one_sentence": "Unsloth 是一个围绕 Hugging Face 生态的 monkey-patch 加速层，通过手写融合内核 + 量化 + 双后端（GPU/MLX）统一 API，把微调成本压到消费级硬件可承受。",
+    "components_overview": "薄 patch 层（unsloth 包）调用重型机械（unsloth_zoo 外部包）；FastModel 公开 API 串起 loader→models→kernels；可选 Studio（Tauri+Python 后端）与 CLI（Typer+MCP 子代理）作为产品面。",
+    "tech_stack": "PyTorch+Triton（内核）、HF transformers/peft/trl（patch 目标）、Typer（CLI）、Tauri+Rust+TS（桌面）、FastAPI/uvicorn（Studio 后端）。选 Triton/CUDA 因内核融合收益最大；选 Tauri 因桌面原生 + 小体积。",
+    "deployment_model": "双分发：pip Apache-2.0 库（自托管/Colab）+ Tauri AGPL-3.0 桌面（本地 GUI）；后端为 localhost uvicorn 服务。"
+  },
+  "thesis": {
+    "central_idea": "架构中心 = import-time monkey-patch Hugging Face（transformers/peft/trl）+ 手写 Triton/CUDA/MLX 融合内核。",
+    "if_removed": "去掉这层补丁，系统退化成普通 transformers/trl——零加速、无 70% 省显存、用户必须改写 notebook。所有价值都建立在这层「透明加速」之上。",
+    "why_this_center": "微调生态已被 HF 主导且用户绝不肯为加速改写代码（c-1），所以「拦截现有代码路径」是唯一能零改动获客的途径；若另起训练框架，用户迁移成本会直接杀死 adoption。因此 patch 层不是风格偏好，而是约束 c-1 下唯一可行的中心——它使内核替换（d-2）、双后端（d-3）都能在用户无感下生效。"
+  },
+  "driving_constraints": [
+    {
+      "id": "c-1",
+      "constraint": "必须零改动兼容现有 HF notebook（用户不肯改代码）",
+      "forces": "被迫用 import-time 全局 patch 而非子类化",
+      "evidence_ref": "evidence-log.jsonl:ev-005"
+    },
+    {
+      "id": "c-2",
+      "constraint": "消费级硬件显存有限（≤24GB）",
+      "forces": "被迫用手写融合内核 + 4bit 量化 + GaLore 三杠杆",
+      "evidence_ref": "evidence-log.jsonl:ev-007"
+    },
+    {
+      "id": "c-3",
+      "constraint": "需同时支持 Apple Silicon 与 CUDA/ROCm/XPU",
+      "forces": "被迫单一 import 双后端 + CUDA no-op shim",
+      "evidence_ref": "evidence-log.jsonl:ev-001"
+    },
+    {
+      "id": "c-4",
+      "constraint": "核心库需商业友好，桌面产品需原生体验",
+      "forces": "被迫双许可（Apache-2.0 核心 / AGPL-3.0 Studio）+ 双技术栈",
+      "evidence_ref": "evidence-log.jsonl:ev-013"
+    },
+    {
+      "id": "c-5",
+      "constraint": "上游 API 高频漂移是最常见破坏源",
+      "forces": "被迫把测试重心放在 patch 接口面回归守卫而非内核数值 unit test",
+      "evidence_ref": "evidence-log.jsonl:ev-017"
+    }
+  ],
+  "key_design_decisions": [
+    {
+      "id": "d-1",
+      "decision": "import-time 全局 monkey-patch transformers/peft/trl",
+      "implements_constraint": "c-1",
+      "intent": "让用户现有 HF notebook 不改一行即获得加速——adoption 的瓶颈是改写成本而非能力",
+      "mechanism": [
+        "unsloth/__init__.py 调用 _gpu_init 执行 import_fixes（上游版本适配分支）",
+        "model_patcher 全局替换 transformers/peft/trl 的模块与函数，发生在用户首个 from transformers import 之前"
+      ],
+      "constraint": ["c-1 零改动 adoption", "必须先于上游导入，否则优化不生效", "与上游 API 强耦合，漂移即失效"],
+      "tradeoff": {
+        "gain": "零改动兼容 + 零迁移成本，adoption 阻力降为零",
+        "cost": "与 transformers/peft/trl 版本强耦合 + 必须先于上游导入的脆弱约束"
+      },
+      "evidence": ["ev-005", "ev-006", "ev-001"],
+      "engineering_meaning": "任何把 patch 改成显式调用的「优化」都会推翻零改动价值——这是它与上游强耦合被接受为设计必然、而非技术债的深层原因；改 __init__ 后端分支是全局最危险改动。"
+    },
+    {
+      "id": "d-2",
+      "decision": "手写 Triton/CUDA/MLX 融合内核替换 HF 原生算子",
+      "implements_constraint": "c-2",
+      "intent": "HF 原生实现未融合、显存占用高，是微调瓶颈根源；需在消费级硬件上跑大模型",
+      "mechanism": [
+        "Fast* 类 post_patch 把 HF 前向替换为 fast_rms_layernorm / fast_rope / fast_swiglu / fast_cross_entropy / fast_dequantize",
+        "MoE 可达 12x；所有加速收益来自手动内核替换而非新模型结构（invariant）"
+      ],
+      "constraint": ["c-2 消费级硬件显存有限", "每新架构需写 Fast* 类 + 对应内核"],
+      "tradeoff": {
+        "gain": "2x 提速 / 70% 省显存（MoE 12x）",
+        "cost": "每新架构写 Fast* 类 + 内核的维护成本；内核正确性无 unit test"
+      },
+      "evidence": ["ev-007", "ev-008", "ev-009"],
+      "engineering_meaning": "内核数值正确性仅靠端到端 training sanity 覆盖——数值回归可能长期潜伏、产出静默错误结果而非崩溃；这是维护者最该警惕的盲区。"
+    },
+    {
+      "id": "d-3",
+      "decision": "单一 import 双后端（MLX + GPU）",
+      "implements_constraint": "c-3",
+      "intent": "同时支持 Apple Silicon 与 CUDA/ROCm/Intel XPU，且对外只暴露一个 FastModel API",
+      "mechanism": [
+        "__init__.py 顶部 _IS_MLX import-time fork 决定 MLX 还是 GPU 路径",
+        "MLX 分支把 CUDA API no-op 化（_patch_mlx_batch_encoding_to_cuda, __init__.py:143-179）以兼容上游 .to('cuda') 调用",
+        "__init__.py 长达 1467 行，约 1400 行是内联 MLX/CUDA 兼容层"
+      ],
+      "constraint": ["c-3 双硬件统一 API", "CUDA 兼容 shim 维护成本高"],
+      "tradeoff": {
+        "gain": "统一 FastModel API，用户无需按硬件选包",
+        "cost": "import-time 分支复杂度 + 约 1400 行兼容层 + MLX 被迫成为 CUDA 能力子集"
+      },
+      "evidence": ["ev-001", "ev-002", "ev-003", "ev-022", "ev-023"],
+      "engineering_meaning": "MLX 被迫成为 CUDA 能力子集——Apple Silicon 上 GRPO/DPO/ORPO/FastSentenceTransformer 抛 NotImplementedError；能力边界由 no-op 伪装维持而非真实移植。"
+    },
+    {
+      "id": "d-4",
+      "decision": "Studio 用 Tauri(Rust+TS, AGPL-3.0) / 核心库 Apache-2.0，双栈双许可",
+      "implements_constraint": "c-4",
+      "intent": "桌面产品需原生后端体验；核心库需商业友好许可以被 SaaS/企业嵌入",
+      "mechanism": [
+        "核心 pip 库 Apache-2.0；Studio 用 Tauri+Rust+TS 提供原生桌面 GUI（AGPL-3.0）",
+        "Rust 层 desktop_backend_owner 经 localhost uvicorn 与 Python 后端 HTTP 通信，非直接 FS/进程调用"
+      ],
+      "constraint": ["c-4 许可与体验分治", "双栈维护 + 许可边界管理"],
+      "tradeoff": {
+        "gain": "Studio 原生体验 + 核心库商业可用",
+        "cost": "双技术栈维护成本 + AGPL-3.0 传染风险（SaaS/分发误用触发 copyleft 义务）"
+      },
+      "evidence": ["ev-013", "ev-021"],
+      "engineering_meaning": "许可边界恰好等于产品边界（库 vs 桌面）——分发/SaaS 场景误用 Studio 会触发开源义务，需在产品文档与合规上显式区隔。"
+    },
+    {
+      "id": "d-5",
+      "decision": "量化默认 4bit QLoRA + fp8 为辅，作为显存主杠杆",
+      "implements_constraint": "c-2",
+      "intent": "finetuning 显存瓶颈在权重 + 优化器状态两端，单杠杆不足以在消费级硬件跑大模型",
+      "mechanism": [
+        "loader.from_pretrained 默认 load_in_4bit=True（NF4 4bit QLoRA）",
+        "load_in_fp8 接受 True/False/'block'；尊重用户 BitsAndBytesConfig",
+        "AMD 4bit 显式禁用（currently not stable with bitsandbytes）"
+      ],
+      "constraint": ["c-2 显存有限", "bitsandbytes 4bit 依赖 + AMD 不稳定"],
+      "tradeoff": {
+        "gain": "70% 省显存 + 与 q_galore GaLore 形成双显存杠杆",
+        "cost": "bitsandbytes 4bit 依赖 + AMD 不稳定（已显式禁用）"
+      },
+      "evidence": ["ev-025", "ev-030"],
+      "engineering_meaning": "量化是模型身份的一等维度（QuantType 枚举）——同一模型因 QuantType 产生不同 Fast* 加载路径，扩展模型族必须同步扩展 registry 与 quant 分派。"
+    }
+  ],
+  "architecture_realization": {
+    "boundaries": [
+      {
+        "name": "backend gate（_IS_MLX）",
+        "why_exists": "最上游 import-time fork，决定 MLX 还是 GPU 代码路径；错配会导致全路径失效",
+        "mechanism": "_IS_MLX 必须委托 _is_mlx_available()（被单元测试锁定 test_is_mlx_dispatch_gate.py）",
+        "tradeoff": "统一入口的代价是单点闸门——内联判定会直接单测失败",
+        "engineering_meaning": "改这里最危险；它决定后续所有代码路径的生死",
+        "evidence_ref": "evidence-log.jsonl:ev-022"
+      },
+      {
+        "name": "HF patch boundary",
+        "why_exists": "unsloth 必须抢在 transformers/peft/trl 之前替换上游算子才能生效",
+        "mechanism": "import-time 全局替换上游模块/函数",
+        "tradeoff": "零改动兼容的代价是 import 顺序敏感 + 上游强耦合",
+        "engineering_meaning": "升级上游大版本是最高频用户侧破碎源",
+        "evidence_ref": "evidence-log.jsonl:ev-005"
+      },
+      {
+        "name": "core ↔ unsloth_zoo",
+        "why_exists": "重机械（训练 util/MLX 模块）需被多前端复用，又不让核心包膨胀",
+        "mechanism": "薄补丁层依赖外部 unsloth_zoo 包",
+        "tradeoff": "轻量复用的代价是跨包版本错配风险（薄依赖未强约束）",
+        "engineering_meaning": "zoo 错配直接导致 ImportError——是隐藏的脆弱点",
+        "evidence_ref": "evidence-log.jsonl:ev-010"
+      },
+      {
+        "name": "core(APL) ↔ studio(AGPL)",
+        "why_exists": "核心库需商业友好、Studio 需 copyleft 桌面产品形态",
+        "mechanism": "双许可 + 双技术栈的产品/许可边界",
+        "tradeoff": "商业可用与原生体验的代价是许可边界管理",
+        "engineering_meaning": "许可边界 = 产品边界；SaaS/分发误用 Studio 触发 copyleft",
+        "evidence_ref": "evidence-log.jsonl:ev-013"
+      },
+      {
+        "name": "MLX capability-subset",
+        "why_exists": "Apple Silicon 无完整 CUDA 能力，需把 CUDA API 收敛为安全子集",
+        "mechanism": "CUDA API 被 no-op 化；GRPO/DPO/ORPO/FastSentenceTransformer 抛 NotImplementedError",
+        "tradeoff": "兼容上游调用的代价是 MLX 仅能跑 SFT",
+        "engineering_meaning": "能力边界由 no-op 伪装维持——不是真实移植",
+        "evidence_ref": "evidence-log.jsonl:ev-024"
+      },
+      {
+        "name": "Studio native boundary",
+        "why_exists": "Python 训练循环需原生桌面壳，又要隔离宿主文件系统",
+        "mechanism": "Rust desktop_backend_owner 拥有后端进程生命周期 + lease_secret/path-grant 中介，经 localhost uvicorn HTTP 通信",
+        "tradeoff": "原生体验 + 故障隔离的代价是跨进程通信复杂度",
+        "engineering_meaning": "后端崩溃由 Rust 重启而非拖垮 GUI；子进程仅能访问授予范围",
+        "evidence_ref": "evidence-log.jsonl:ev-027"
+      }
+    ],
+    "extension_mechanism": {
+      "philosophy": "每新模型族写一个 Fast* 类（pre_patch/post_patch）+ 对应内核，注册进 MODEL_REGISTRY；QuantType 枚举使量化成为模型身份一等维度，新能力 = 数据条目而非代码分叉",
+      "engineering_meaning": "扩展模式固定但门槛高——扩展者须同时写 Fast* 模型类与三后端之一的内核并保证数值一致，故「可预测」却不「轻量」"
+    }
+  },
+  "runtime_story": {
+    "one_request": {
+      "story": "import unsloth → 选后端(_IS_MLX) → GPU 路径 _gpu_init 做 import_fixes+patch → FastModel.from_pretrained(默认 4bit) → pre_patch 卸载 HF 模块 → 加载权重+post_patch 替换内核（fast_* 融合）→ UnslothTrainer 训练（q_galore 削减 Adam 状态）。每一步都绑定一个架构约束（先导入保证 patch 生效、量化降显存、内核替换提速），而非孤立步骤。",
+      "engineering_meaning": "优化发生在训练开始之前（import/patch/quantize 阶段），而非训练之中——这是「透明加速」的关键事实：用户代码路径不变，收益在介入点一次性注入。"
+    },
+    "backpressure": "Studio 后端启动需修复 CUDA LD_LIBRARY_PATH（re-exec 一次）；MLX 上 CUDA 设备调用被 no-op 化防止误用；AMD 4bit 显式禁用以防不稳定。"
+  },
+  "architecture_strengths": [
+    {
+      "id": "s-1",
+      "strength": "透明零改动加速——装饰器式 patch 让用户 notebook 不改一行即获加速，是 adoption 核心驱动力",
+      "evidence_ref": "evidence-log.jsonl:ev-005",
+      "engineering_meaning": "把 adoption 瓶颈（改写成本）降为零，是它对抗原生 HF/PEFT 的根本优势"
+    },
+    {
+      "id": "s-2",
+      "strength": "内核融合是真收益——加速来自手写 fast_* 融合内核，非框架魔法；MoE 可达 12x",
+      "evidence_ref": "evidence-log.jsonl:ev-007",
+      "engineering_meaning": "收益可解释、可验证，不依赖黑盒——但正确性仅由端到端 sanity 覆盖"
+    },
+    {
+      "id": "s-3",
+      "strength": "双后端统一 API——单一 FastModel 掩盖 CUDA/MLX 差异，MLX 用 no-op 伪装 CUDA API 兼容上游",
+      "evidence_ref": "evidence-log.jsonl:ev-001",
+      "engineering_meaning": "用户无需按硬件选包，但 MLX 能力子集是隐含限制"
+    },
+    {
+      "id": "s-4",
+      "strength": "核心轻量、重机械复用——核心依赖极薄，训练 util/MLX 下沉 unsloth_zoo 被多前端复用",
+      "evidence_ref": "evidence-log.jsonl:ev-010",
+      "engineering_meaning": "轻量复用降低核心包体积，但 zoo 版本错配是隐藏脆弱点"
+    },
+    {
+      "id": "s-5",
+      "strength": "上游漂移回归守卫——测试重心放在 monkey-patch 接口面，精准防护最高频破坏源",
+      "evidence_ref": "evidence-log.jsonl:ev-017",
+      "engineering_meaning": "把稀缺测试资源压在易变边界，接受内核数学仅端到端覆盖的权衡"
+    }
+  ],
+  "top_risks": [
+    {
+      "id": "r-1",
+      "risk": "与 transformers/peft/trl 版本强耦合",
+      "what_breaks": "上游大版本漂移 → patch 失败或静默走原生慢路径（性能退化无报错）或 ImportError",
+      "evidence_ref": "evidence-log.jsonl:ev-005"
+    },
+    {
+      "id": "r-2",
+      "risk": "内核数值正确性盲区（无 unit test）",
+      "what_breaks": "手写内核数值回归长期不被发现，直到用户端到端训练异常——静默错误结果",
+      "evidence_ref": "evidence-log.jsonl:ev-018"
+    },
+    {
+      "id": "r-3",
+      "risk": "unsloth_zoo 版本错配（薄依赖未强约束）",
+      "what_breaks": "训练 util/MLX 模块缺失 → ImportError 或功能降级",
+      "evidence_ref": "evidence-log.jsonl:ev-010"
+    },
+    {
+      "id": "r-4",
+      "risk": "MLX 仅 SFT-only 子集",
+      "what_breaks": "Apple Silicon 跑 GRPO/DPO/ORPO → NotImplementedError",
+      "evidence_ref": "evidence-log.jsonl:ev-024"
+    },
+    {
+      "id": "r-5",
+      "risk": "Studio AGPL-3.0 许可传染 vs 核心 Apache-2.0",
+      "what_breaks": "SaaS/分发场景误用 Studio 触发开源义务",
+      "evidence_ref": "evidence-log.jsonl:ev-013"
+    },
+    {
+      "id": "r-6",
+      "risk": "CLI/Studio 工具默认开启 + 本地 MCP 子代理委派",
+      "what_breaks": "被诱导时可能执行非预期本地操作（claude/codex 子代理）",
+      "evidence_ref": "evidence-log.jsonl:ev-029"
+    }
+  ]
+}

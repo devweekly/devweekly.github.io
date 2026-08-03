@@ -119,6 +119,7 @@ update questions/summary.json (把进入终态的问题标为 model_updated / bl
 
 ```
 rename report-edited.md → report.md
+  （⚠️ 是文件系统 rename/mv，源文件被消费——发布后 report-edited.md 不再存在，仅保留 report.md；禁止用 cp 复制，否则会残留重复文件）
 update context.json:
   last_analyzed_commit = analysis_target_commit
   analysis_target_commit = null

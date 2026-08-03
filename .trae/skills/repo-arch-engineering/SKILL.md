@@ -615,8 +615,7 @@ node .trae/skills/repo-arch-engineering/scripts/check-report-chars.mjs .working/
 ├── rounds/                   # 研究轮次记录（Workspace Agent 写）
 │   └── round-1.json
 ├── report-draft.md           # 报告初稿（Report Agent 写，Step 6.4）
-├── report-edited.md          # 编辑稿（Editor Agent 写，Step 6.7；Quality 检查对象）
-└── report.md                 # 最终报告（Quality PASS 后由 Workspace rename 发布）
+└── report.md                 # 最终报告（Editor 生成 report-edited.md 经 Quality 检查通过后，由 Workspace rename 发布；发布后 report-edited.md 被消费，仅保留此文件）
 ```
 
 > **Skill 自带脚本**（不在 `.working/`，位于 skill 根）：`scripts/check-report-chars.mjs` — §6.8 报告字符数硬性门槛判定（Quality Agent 对 `report-edited.md` 在发布前调用）。
