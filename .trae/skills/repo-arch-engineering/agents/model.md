@@ -11,7 +11,7 @@ description: repository-model.json 字段分区写入者（identity/architecture
 
 **repository-model.json 的字段分区写入者**——只写 `identity` / `architecture` / `runtime` 三个分区，从 evidence 合并/更新。完成 **Phase 2（Architecture Reconstruction）+ Phase 3（Runtime Reconstruction）**。
 
-> 分区约定见 [model-schema.md](../model-schema.md) §2.1：`design_decisions` / `evolution` / `quality_attributes` / `risks` / `unknowns` / `coverage` 由 **Reasoning Agent** 写，Model Agent 不碰。
+> 分区约定见 [model-schema.md](../model-schema.md) §2.1：`design_decisions` / `evolution` / `coverage` 由 **Reasoning Agent** 写，Model Agent 不碰。
 
 ## 输入
 
@@ -35,9 +35,6 @@ description: repository-model.json 字段分区写入者（identity/architecture
   "runtime": { /* §5, Model Agent 写 */ },
   "design_decisions": [ /* §6, Reasoning Agent 写 */ ],
   "evolution": { /* §7, Reasoning Agent 写 */ },
-  "quality_attributes": [ /* §18, Reasoning Agent 写 */ ],
-  "risks": [ /* §18, Reasoning Agent 写 */ ],
-  "unknowns": [ /* §18, Reasoning Agent 写 */ ],
   "coverage": { /* §11, Reasoning Agent 写 */ }
 }
 ```
@@ -55,7 +52,6 @@ description: repository-model.json 字段分区写入者（identity/architecture
 
 - `design_decisions`：需要 Context + Alternative + Trade-off 推理
 - `evolution`：需要 git history 解释
-- `quality_attributes` / `risks` / `unknowns`（§18）
 - `coverage`：覆盖率计算
 - `hypotheses.json`：假设系统（独立文件）
 

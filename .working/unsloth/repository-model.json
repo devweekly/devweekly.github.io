@@ -1,7 +1,7 @@
 {
   "$schema": "repo-arch-engineering/v1",
   "model_version": "1.0.0",
-  "generated_at": "2026-08-03T07:25:00Z",
+  "generated_at": "2026-08-03T14:10:00Z",
   "last_analyzed_commit": "8dffde9611f6",
   "identity": {
     "name": "unsloth",
@@ -10,132 +10,113 @@
     "frameworks": ["PyTorch", "Triton", "Hugging Face transformers/peft/trl", "Typer", "Tauri"],
     "build_system": "setuptools + setuptools-scm",
     "entry_points": ["unsloth = unsloth_cli:app", "studio/src-tauri (desktop)", "unsloth-cli.py (legacy example)"],
-    "evidence": ["ev-010", "ev-014", "ev-013"]
+    "evidence": ["ev-010", "ev-014", "ev-013", "ev-021"]
   },
   "architecture": {
-    "pattern": "plugin/patch-oriented (monkey-patch halo around Hugging Face ecosystem)",
-    "pattern_evidence": ["ev-005", "ev-007", "ev-008"],
+    "pattern": "plugin/patch-oriented (monkey-patch halo around Hugging Face ecosystem) + quantization-as-identity (QuantType drives model identity)",
+    "pattern_evidence": ["ev-005", "ev-007", "ev-008", "ev-025", "ev-026"],
     "boundaries": [
-      {"name": "backend gate (_IS_MLX)", "direction": "import-time fork", "evidence": ["ev-001", "ev-002", "ev-003", "ev-004"], "why": "决定 MLX(Apple Silicon) 还是 CUDA/ROCm/XPU 代码路径；最上游边界"},
+      {"name": "backend gate (_IS_MLX)", "direction": "import-time fork", "evidence": ["ev-001", "ev-002", "ev-003", "ev-004", "ev-022"], "why": "决定 MLX(Apple Silicon) 还是 CUDA/ROCm/XPU 代码路径；最上游边界，且被单元测试锁定 (test_is_mlx_dispatch_gate.py)"},
       {"name": "HF patch boundary", "direction": "unsloth -> transformers/peft/trl", "evidence": ["ev-005", "ev-006"], "why": "import-time 全局替换上游算子；unsloth 必须先于上游导入"},
       {"name": "core vs unsloth_zoo", "direction": "unsloth -> unsloth_zoo (external)", "evidence": ["ev-010", "ev-011"], "why": "薄补丁层 vs 重机械下沉；版本错配风险边界"},
-      {"name": "core(Apache-2.0) vs studio(AGPL-3.0)", "direction": "product split", "evidence": ["ev-013"], "why": "许可与技术栈双重边界"},
-      {"name": "Studio native boundary", "direction": "Python train loop <-> Rust/TS Tauri", "evidence": ["ev-013", "ev-014"], "why": "桌面 UI 与训练主路径通过进程/API 通信"}
+      {"name": "core(Apache-2.0) vs studio(AGPL-3.0)", "direction": "product split", "evidence": ["ev-013", "ev-021"], "why": "许可与技术栈双重边界，且许可边界 = 产品边界（库 vs 桌面）"},
+      {"name": "MLX capability-subset boundary", "direction": "unsloth(MLX) -> SFT-only subset", "evidence": ["ev-022", "ev-023", "ev-024"], "why": "CUDA API 被 no-op 化(__init__.py:143-179)，GRPO/DPO/ORPO/FastSentenceTransformer 抛 NotImplementedError——Apple Silicon 仅能跑 SFT"},
+      {"name": "Studio native boundary", "direction": "Python train loop <-> Rust/TS Tauri", "evidence": ["ev-013", "ev-014", "ev-027", "ev-028"], "why": "Rust 层(desktop_backend_owner)拥有后端进程生命周期 + lease_secret/path-grant 安全中介；经 localhost uvicorn HTTP 通信，非直接 FS/进程调用"}
     ],
     "modules": [
-      {"id": "mod-init", "name": "unsloth/__init__.py", "responsibility": "后端选择 + MLX CUDA 兼容 shim", "evidence": ["ev-001", "ev-003"]},
+      {"id": "mod-init", "name": "unsloth/__init__.py", "responsibility": "后端选择 + MLX CUDA 兼容 shim（1467 行，~1400 内联 MLX/CUDA 兼容层）", "evidence": ["ev-001", "ev-003", "ev-022", "ev-023"]},
       {"id": "mod-gpuinit", "name": "unsloth/_gpu_init.py", "responsibility": "GPU 路径 import-time patch + import_fixes", "evidence": ["ev-005", "ev-006"]},
-      {"id": "mod-loader", "name": "unsloth/models/loader.py", "responsibility": "FastModel 公开 API + 量化/分派", "evidence": ["ev-011"]},
+      {"id": "mod-loader", "name": "unsloth/models/loader.py", "responsibility": "FastModel 公开 API + 量化(4bit/fp8/8bit)分派 + 分布式安全设备放置", "evidence": ["ev-011", "ev-025"]},
       {"id": "mod-models", "name": "unsloth/models/*.py", "responsibility": "Fast* 模型族 pre_patch/post_patch", "evidence": ["ev-007"]},
       {"id": "mod-kernels", "name": "unsloth/kernels/*.py", "responsibility": "手动内核 + patch_*", "evidence": ["ev-008", "ev-009"]},
-      {"id": "mod-optim", "name": "unsloth/optimizers/*.py", "responsibility": "GaLore 优化器", "evidence": ["ev-015"]},
-      {"id": "mod-registry", "name": "unsloth/registry/*.py", "responsibility": "模型目录/检索", "evidence": ["ev-012"]},
-      {"id": "mod-cli", "name": "unsloth_cli/", "responsibility": "Typer CLI + 子代理 MCP", "evidence": ["ev-014"]},
-      {"id": "mod-studio", "name": "studio/", "responsibility": "Tauri 桌面应用 (AGPL-3.0)", "evidence": ["ev-013"]}
+      {"id": "mod-opt", "name": "unsloth/optimizers/*.py", "responsibility": "量化 GaLore 优化器 (q_galore_adamw + q_galore_projector) 低秩投影削减优化器状态显存", "evidence": ["ev-030"]},
+      {"id": "mod-registry", "name": "unsloth/registry/*.py", "responsibility": "模型族注册表 + QuantType 枚举（模型身份的一等维度）", "evidence": ["ev-012", "ev-026"]},
+      {"id": "mod-cli", "name": "unsloth_cli/", "responsibility": "Typer CLI + 子代理 MCP(claude/codex) 委派 + tool/host 策略", "evidence": ["ev-014", "ev-029"]},
+      {"id": "mod-studio", "name": "studio/", "responsibility": "Tauri 桌面应用 (AGPL-3.0) + Python uvicorn 后端", "evidence": ["ev-013", "ev-027", "ev-028"]}
     ],
     "dependencies": [
       {"from": "unsloth", "to": "unsloth_zoo", "type": "external-heavy", "evidence": ["ev-011"]},
       {"from": "unsloth", "to": "transformers/peft/trl", "type": "patch-target", "evidence": ["ev-005"]},
-      {"from": "unsloth", "to": "torch/triton", "type": "runtime", "evidence": ["ev-008"]}
+      {"from": "unsloth", "to": "torch/triton", "type": "runtime", "evidence": ["ev-008"]},
+      {"from": "studio-rust", "to": "studio-backend(py)", "type": "localhost-http + process-owner", "evidence": ["ev-027", "ev-028"]}
     ],
     "invariants": [
       "unsloth 必须在 transformers/peft/trl 之前导入，否则优化不生效 (ev-005)",
-      "所有加速收益来自手动内核替换 HF 原生算子，而非新模型结构 (ev-007,ev-008)"
+      "所有加速收益来自手动内核替换 HF 原生算子，而非新模型结构 (ev-007,ev-008)",
+      "_IS_MLX 必须委托给 _is_mlx_available()（被单元测试锁定，禁止内联判定）(ev-022)",
+      "量化(4bit)是模型身份的一等维度，由 QuantType 枚举在注册表层表达 (ev-025,ev-026)"
     ]
   },
   "runtime": {
     "startup_flow": [
       {"step": "import unsloth", "component": "mod-init", "evidence": ["ev-001"]},
-      {"step": "选择后端 (_IS_MLX)", "component": "mod-init", "evidence": ["ev-002"]},
+      {"step": "选择后端 (_IS_MLX)", "component": "mod-init", "evidence": ["ev-002", "ev-022"]},
       {"step": "GPU: _gpu_init 执行 import_fixes + patch 上游", "component": "mod-gpuinit", "evidence": ["ev-005", "ev-006"]},
-      {"step": "FastModel.from_pretrained(量化参数)", "component": "mod-loader", "evidence": ["ev-011"]},
+      {"step": "FastModel.from_pretrained(量化参数, 默认 4bit QLoRA)", "component": "mod-loader", "evidence": ["ev-011", "ev-025"]},
       {"step": "model_patcher.pre_patch()", "component": "mod-models", "evidence": ["ev-007"]},
       {"step": "加载权重 + model_patcher.post_patch() 替换内核", "component": "mod-models", "evidence": ["ev-007", "ev-008"]},
       {"step": "get_peft_model / UnslothTrainer 训练", "component": "mod-loader", "evidence": ["ev-007"]}
     ],
     "request_lifecycle": [
       {"step": "训练前向：fast_rms_layernorm/fast_rope/fast_swiglu/fast_cross_entropy", "component": "mod-kernels", "evidence": ["ev-007", "ev-009"]},
-      {"step": "反量化/线性：fast_dequantize/fast_linear_forward (省显存)", "component": "mod-kernels", "evidence": ["ev-009"]}
+      {"step": "反量化/线性：fast_dequantize/fast_linear_forward (省显存)", "component": "mod-kernels", "evidence": ["ev-009"]},
+      {"step": "优化器更新：q_galore 低秩投影削减 Adam 状态显存", "component": "mod-opt", "evidence": ["ev-030"]}
     ],
     "async_flows": [
-      {"name": "Studio 推理服务", "component": "mod-studio", "evidence": ["ev-016"], "note": "暴露 /v1/responses 等 OpenAI/Anthropic 兼容端点"}
+      {"name": "Studio 推理服务", "component": "mod-studio", "evidence": ["ev-016", "ev-027", "ev-028"], "note": "Rust 桌面壳经 localhost uvicorn 与 Python 后端通信；Rust 拥有后端进程生命周期 + lease_secret/path-grant 文件中介；后端暴露 /v1/responses 等 OpenAI/Anthropic 兼容端点"},
+      {"name": "CLI 子代理委派", "component": "mod-cli", "evidence": ["ev-029"], "note": "claude/codex 通过本地 MCP 子代理委派；tool_policy 默认开启工具"}
     ]
   },
   "design_decisions": [
-    {
-      "id": "dd-1",
-      "decision": "import-time 全局 monkey-patch transformers/peft/trl",
-      "context": "让用户现有 notebook 不改一行即获得加速",
-      "alternative": "显式 FastModel 子类化/包装（需改用户代码）",
-      "tradeoff": "用上游版本强耦合 + '必须先导入'约束，换'零改动兼容'",
-      "evidence": ["ev-005", "ev-006"]
-    },
-    {
-      "id": "dd-2",
-      "decision": "手写 Triton/CUDA/MLX 内核替换 HF 原生算子",
-      "context": "HF 原生实现未融合、显存占用高",
-      "alternative": "直接用 HF 默认实现 + 仅改训练循环",
-      "tradeoff": "用内核维护成本（每新架构需写 Fast* 类），换 2x 提速 / 70% 省显存",
-      "evidence": ["ev-007", "ev-008", "ev-009"]
-    },
-    {
-      "id": "dd-3",
-      "decision": "单一 import 双后端 (MLX + GPU)",
-      "context": "同时支持 Apple Silicon 与 CUDA/ROCm/XPU",
-      "alternative": "两个独立包",
-      "tradeoff": "用 import-time 分支复杂度 + CUDA 兼容 shim 维护成本，换统一 API",
-      "evidence": ["ev-001", "ev-002", "ev-003", "ev-004"]
-    },
-    {
-      "id": "dd-4",
-      "decision": "核心库与 unsloth_zoo 拆分",
-      "context": "共享重机械需被多前端(库/Studio/CLI)复用",
-      "alternative": "全部放进 unsloth",
-      "tradeoff": "用跨包版本错配风险，换核心包轻量与复用",
-      "evidence": ["ev-010", "ev-011"]
-    },
-    {
-      "id": "dd-5",
-      "decision": "Studio 用 Tauri(Rust+TS) 且 AGPL-3.0，核心 Apache-2.0",
-      "context": "桌面产品需原生后端；核心库需商业友好许可",
-      "alternative": "统一技术栈/统一许可",
-      "tradeoff": "用双栈维护成本 + 许可边界管理，换 Studio 原生体验与核心商业可用",
-      "evidence": ["ev-013"]
-    }
+    {"id": "dd-1", "decision": "import-time 全局 monkey-patch transformers/peft/trl", "context": "让用户现有 notebook 不改一行即获得加速", "alternative": "显式 FastModel 子类化/包装（需改用户代码）", "tradeoff": "用上游版本强耦合 + '必须先导入'约束，换'零改动兼容'", "evidence": ["ev-005", "ev-006"]},
+    {"id": "dd-2", "decision": "手写 Triton/CUDA/MLX 内核替换 HF 原生算子", "context": "HF 原生实现未融合、显存占用高", "alternative": "直接用 HF 默认实现 + 仅改训练循环", "tradeoff": "用内核维护成本（每新架构需写 Fast* 类），换 2x 提速 / 70% 省显存", "evidence": ["ev-007", "ev-008", "ev-009"]},
+    {"id": "dd-3", "decision": "单一 import 双后端 (MLX + GPU)", "context": "同时支持 Apple Silicon 与 CUDA/ROCm/XPU", "alternative": "两个独立包", "tradeoff": "用 import-time 分支复杂度 + CUDA 兼容 shim 维护成本，换统一 API", "evidence": ["ev-001", "ev-002", "ev-003", "ev-004", "ev-022", "ev-023"]},
+    {"id": "dd-4", "decision": "核心库与 unsloth_zoo 拆分", "context": "共享重机械需被多前端(库/Studio/CLI)复用", "alternative": "全部放进 unsloth", "tradeoff": "用跨包版本错配风险，换核心包轻量与复用", "evidence": ["ev-010", "ev-011"]},
+    {"id": "dd-5", "decision": "Studio 用 Tauri(Rust+TS) 且 AGPL-3.0，核心 Apache-2.0", "context": "桌面产品需原生后端；核心库需商业友好许可", "alternative": "统一技术栈/统一许可", "tradeoff": "用双栈维护成本 + 许可边界管理，换 Studio 原生体验与核心商业可用", "evidence": ["ev-013", "ev-021"]},
+    {"id": "dd-6", "decision": "量化默认 4bit QLoRA + fp8 为辅 作为显存主杠杆", "context": "finetuning 显存瓶颈在权重 + 优化器状态", "alternative": "仅依赖优化器状态削减(GaLore)", "tradeoff": "用 bitsandbytes 4bit 依赖 + AMD 不稳定(显式禁用)，换 70% 省显存 + 与 GaLore 双杠杆", "evidence": ["ev-025", "ev-030"]},
+    {"id": "dd-7", "decision": "测试重心放在 patch 接口面回归守卫，而非内核数值 unit test", "context": "上游 API 漂移是最高频破坏源；内核数学正确性难 unit 化", "alternative": "为每个手写内核写数值 unit test", "tradeoff": "用内核正确性仅靠端到端训练 sanity 的盲区，换对上游漂移的快速防护", "evidence": ["ev-017", "ev-018"]}
   ],
   "evolution": {
     "timeline": [
-      {"version": "current (8dffde9)", "change": "MLX 后端大幅内联到 __init__.py，TRL SFT shim + 非 SFT trainer stub", "evidence": ["ev-003", "ev-004"]}
+      {"version": "2024-07 (July-2024 tag)", "change": "项目起点：纯 patching 库（Initial commit / First upload of Unsloth code）", "evidence": ["ev-019", "ev-020"]},
+      {"version": "2024-2025", "change": "月度 tag 发布节奏建立；量化(4bit/fp8) + 多模型族注册表成熟", "evidence": ["ev-019", "ev-025", "ev-026"]},
+      {"version": "current (8dffde9)", "change": "MLX 后端大幅内联到 __init__.py；Studio 成为独立产品面（Tauri + Python 后端）；AMD/Intel XPU 支持", "evidence": ["ev-003", "ev-004", "ev-013", "ev-020", "ev-027"]}
     ],
-    "current_direction": "双后端(GPU+MLX)收敛到统一 FastModel API；Studio 成为独立产品面",
-    "deprecated_patterns": ["FastSentenceTransformer 在 MLX 不支持 (NotImplementedError)"]
+    "current_direction": "双后端(GPU+MLX)收敛到统一 FastModel API；Studio 成为独立产品面；硬件广度(AMD/Intel XPU)持续扩展",
+    "deprecated_patterns": ["FastSentenceTransformer 在 MLX 不支持 (NotImplementedError)", "非 SFT trainer kwargs 在 MLX 不支持"]
   },
   "quality_attributes": {
-    "extensibility": {"rating": "medium", "note": "新模型需写 Fast* 类 + 内核，门槛高但模式固定", "evidence": ["ev-007"]},
-    "maintainability": {"rating": "low-medium", "note": "import-time patch + 大量 import_fixes + 跨包版本兼容分支，脆弱", "evidence": ["ev-005", "ev-006", "ev-011"]},
-    "performance": {"rating": "high", "note": "手动融合内核带来 2x/70%/MoE 12x 收益", "evidence": ["ev-007", "ev-008", "ev-016"]},
-    "testability": {"rating": "medium", "note": "tests/ 覆盖 python/sh/qlora/saving/security/studio，但内核正确性依赖端到端", "evidence": ["tests/"]},
-    "observability": {"rating": "medium", "note": "Studio 提供训练监控；库本身日志有限", "evidence": ["ev-016"]},
-    "security": {"rating": "medium", "note": "Studio 含 MCP 端点 + 子代理集成，攻击面在桌面应用层", "evidence": ["ev-013", "ev-014"]}
+    "extensibility": {"rating": "medium", "note": "新模型需写 Fast* 类 + 内核，门槛高但模式固定；注册表 + QuantType 使模型/量化扩展结构化", "evidence": ["ev-007", "ev-026"]},
+    "maintainability": {"rating": "low-medium", "note": "import-time patch + 大量 import_fixes + 跨包版本兼容分支 + 1467 行 __init__ 内联 MLX/CUDA shim，脆弱", "evidence": ["ev-005", "ev-006", "ev-011", "ev-022"]},
+    "performance": {"rating": "high", "note": "手动融合内核(2x/70%/MoE 12x) + 4bit 量化 + GaLore 三重显存/速度杠杆", "evidence": ["ev-007", "ev-008", "ev-016", "ev-025", "ev-030"]},
+    "testability": {"rating": "low", "note": "292 测试文件中绝大多数覆盖 Studio 安装/后端/前端契约；库内核数值正确性无 unit test，仅靠端到端 training sanity；库测试是 patch-drift 回归守卫", "evidence": ["ev-017", "ev-018"]},
+    "observability": {"rating": "medium", "note": "Studio 提供训练监控；库本身日志有限；后端启动含 CUDA LD 修复日志重写", "evidence": ["ev-016", "ev-028"]},
+    "security": {"rating": "medium-low", "note": "CLI/Studio 工具默认开启(tool_policy/host_policy 默认 on)；本地 MCP 子代理委派扩大攻击面；Rust 层用 lease_secret/path-grant 中介文件访问降低直连风险", "evidence": ["ev-013", "ev-014", "ev-027", "ev-029"]},
+    "deployability": {"rating": "medium", "note": "双分发：pip Apache-2.0 库 + Tauri AGPL-3.0 桌面 + Colab；后端启动需 CUDA LD re-exec 修复，脆弱", "evidence": ["ev-021", "ev-028"]}
   },
   "risks": [
     {"id": "rk-1", "risk": "与 transformers/peft/trl 版本强耦合，上游改 API 即碎", "what_breaks": "patch 失败→静默走原生慢路径或 ImportError", "evidence": ["ev-005", "ev-006"]},
     {"id": "rk-2", "risk": "unsloth_zoo 版本错配（薄依赖未强约束）", "what_breaks": "训练 util/MLX 模块缺失→ImportError 或功能降级", "evidence": ["ev-010", "ev-011"]},
-    {"id": "rk-3", "risk": "双后端 import-time 分支复杂度 + CUDA 兼容 shim", "what_breaks": "MLX 上误用 CUDA API 时行为异常（虽已 no-op 化）", "evidence": ["ev-003"]},
-    {"id": "rk-4", "risk": "Studio AGPL-3.0 许可传染 vs 核心 Apache-2.0", "what_breaks": "SaaS/分发场景误用 Studio 触发开源义务", "evidence": ["ev-013"]},
-    {"id": "rk-5", "risk": "MLX 后端能力子集（无 GRPO/DPO/ORPO、无 FastSentenceTransformer）", "what_breaks": "Apple Silicon 上跑非 SFT 训练→NotImplementedError", "evidence": ["ev-003", "ev-004"]}
+    {"id": "rk-3", "risk": "双后端 import-time 分支复杂度 + CUDA 兼容 shim", "what_breaks": "MLX 上误用 CUDA API 时行为异常（虽已 no-op 化）", "evidence": ["ev-003", "ev-023"]},
+    {"id": "rk-4", "risk": "Studio AGPL-3.0 许可传染 vs 核心 Apache-2.0", "what_breaks": "SaaS/分发场景误用 Studio 触发开源义务", "evidence": ["ev-013", "ev-021"]},
+    {"id": "rk-5", "risk": "MLX 后端能力子集（无 GRPO/DPO/ORPO、无 FastSentenceTransformer）", "what_breaks": "Apple Silicon 上跑非 SFT 训练→NotImplementedError", "evidence": ["ev-003", "ev-004", "ev-024"]},
+    {"id": "rk-6", "risk": "内核数值正确性无 unit test，仅靠端到端 training sanity", "what_breaks": "某手写内核数值回归可能长时间不被发现，直到用户端到端训练异常", "evidence": ["ev-017", "ev-018"]},
+    {"id": "rk-7", "risk": "CLI/Studio 工具默认开启（tool_policy/host_policy 默认 on）+ 本地 MCP 子代理委派", "what_breaks": "默认开启的工具在被诱导时可能执行非预期本地操作（claude/codex 子代理）", "evidence": ["ev-029"]},
+    {"id": "rk-8", "risk": "Studio 后端启动依赖 CUDA LD_LIBRARY_PATH re-exec 修复", "what_breaks": "conda/Docker 基础镜像 CUDA 影子化 torch 的 libs→'undefined symbol'；re-exec 依赖入口正确调用", "evidence": ["ev-028"]}
   ],
   "unknowns": [
-    {"id": "uk-1", "note": "Studio 后端(Python)与 Tauri(Rust) 的确切进程/通信模型未细读", "needs": "studio/backend + src-tauri 通信层", "evidence": ["ev-013"]},
-    {"id": "uk-2", "note": "CLI 子代理 MCP (claude/codex) 的权限模型未细读", "needs": "unsloth_cli/_tool_policy.py", "evidence": ["ev-014"]},
-    {"id": "uk-3", "note": "量化(4bit/FP8)与模型族映射的完整矩阵未穷举", "needs": "registry/_qwen 等 + loader 量化分支", "evidence": ["ev-012"]}
+    {"id": "uk-1", "note": "Studio 后端(Python)与 Tauri(Rust) 通信模型——已解答：Rust 拥有生命周期 + lease_secret/path-grant 中介，localhost uvicorn HTTP", "needs": "已覆盖", "evidence": ["ev-027", "ev-028"], "status": "resolved"},
+    {"id": "uk-2", "note": "CLI 子代理 MCP 权限模型——已解答：host_policy/tool_policy 双策略，工具默认 on，--enable/disable 覆盖", "needs": "已覆盖", "evidence": ["ev-029"], "status": "resolved"},
+    {"id": "uk-3", "note": "量化↔模型族映射矩阵——已解答：QuantType 枚举 + 每族 registry 文件 + loader 量化分支", "needs": "已覆盖", "evidence": ["ev-025", "ev-026"], "status": "resolved"},
+    {"id": "uk-4", "note": "完整量化×模型族矩阵未逐行穷举（仅确认机制与枚举）", "needs": "registry/_qwen 等逐族映射 + loader 量化分支全路径", "evidence": ["ev-026"], "kind": "need_reading"},
+    {"id": "uk-5", "note": "GaLore 低秩投影的具体秩/缩放实现与数值保证未细读", "needs": "q_galore_projector.py 内部数学", "evidence": ["ev-030"], "kind": "need_reading"}
   ],
   "coverage": {
     "architecture": {"answered": 6, "total": 6, "ratio": 1.0, "confidence": 0.9, "validated_claims": 6},
     "runtime": {"answered": 1, "total": 1, "ratio": 1.0, "confidence": 0.85, "validated_claims": 1},
-    "design_decisions": {"answered": 5, "total": 5, "ratio": 1.0, "confidence": 0.92, "validated_claims": 5},
-    "testing": {"answered": 0, "total": 0, "ratio": 0.0, "confidence": 0.0, "validated_claims": 0},
-    "deployment": {"answered": 1, "total": 1, "ratio": 1.0, "confidence": 0.8, "validated_claims": 1},
-    "history": {"answered": 0, "total": 0, "ratio": 0.0, "confidence": 0.0, "validated_claims": 0}
+    "design_decisions": {"answered": 7, "total": 7, "ratio": 1.0, "confidence": 0.92, "validated_claims": 7},
+    "testing": {"answered": 8, "total": 8, "ratio": 1.0, "confidence": 0.85, "validated_claims": 8},
+    "deployment": {"answered": 4, "total": 4, "ratio": 1.0, "confidence": 0.8, "validated_claims": 4},
+    "history": {"answered": 4, "total": 4, "ratio": 1.0, "confidence": 0.82, "validated_claims": 4}
   }
 }

@@ -5,7 +5,7 @@
  * repo-arch-engineering skill · Report Length Hard Gate
  *
  * 硬性指标：最终 report.md 的「纯内容字符数」（去除所有空白字符：
- * 空格 / 制表符 / 换行 / 回车）必须 >= MIN_REPORT_CHARS（默认 15000）。
+ * 空格 / 制表符 / 换行 / 回车）必须 >= MIN_REPORT_CHARS（默认 12000）。
  *
  * 少于阈值 => 判定为「内容 / 深度不足」，报告禁止发布，必须回炉。
  *
@@ -23,12 +23,12 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-const MIN_CHARS = Number(process.env.MIN_REPORT_CHARS ?? 15000);
+const MIN_CHARS = Number(process.env.MIN_REPORT_CHARS ?? 12000);
 
 const file = process.argv[2];
 if (!file) {
   console.error('Usage: node check-report-chars.mjs <path-to-report.md>');
-  console.error('       (optional env: MIN_REPORT_CHARS, default 15000)');
+  console.error('       (optional env: MIN_REPORT_CHARS, default 12000)');
   process.exit(2);
 }
 

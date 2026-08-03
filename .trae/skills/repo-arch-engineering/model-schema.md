@@ -60,9 +60,6 @@ Evidence 节点内部强制分离：
   "runtime": { /* §5 */ },
   "design_decisions": [ /* §6 */ ],
   "evolution": { /* §7 */ },
-  "quality_attributes": [ /* §18 */ ],
-  "risks": [ /* §18 */ ],
-  "unknowns": [ /* §18 */ ],
   "coverage": { /* §11 */ }
 }
 ```
@@ -73,7 +70,7 @@ Evidence 节点内部强制分离：
 
 | 文件 | 内容 | 写入者 |
 |-|-|-|
-| `repository-model.json` | §3-§7、§11、§18 稳定知识 | Model Agent（identity/architecture/runtime）+ Reasoning Agent（design_decisions/evolution/quality_attributes/risks/unknowns/coverage），**按字段分区写入** |
+| `repository-model.json` | §3-§7、§11 稳定知识 | Model Agent（identity/architecture/runtime）+ Reasoning Agent（design_decisions/evolution/coverage），**按字段分区写入** |
 | `hypotheses.json` | §8 假设系统 | Reasoning Agent |
 | `evidence-log.jsonl` | §9 证据（append-only，唯一事实源） | Evidence Agent（只 append） |
 | `questions/round-N.json` | §10 单轮问题 | Workspace Agent（Planner 生成后代写） |
@@ -523,9 +520,6 @@ Research Engine 的停止条件输入之一。每个维度的覆盖率基于终�
 | `ep-` | Extension Point | `ep-001` |
 | `af-` | Async Flow | `af-001` |
 | `dec-` | Design Decision | `dec-001` |
-| `qa-` | Quality Attribute | `qa-001` |
-| `risk-` | Risk | `risk-001` |
-| `unk-` | Unknown | `unk-001` |
 
 ID 在单个模型内全局唯一，使用 3 位数字 zero-padded。
 
@@ -753,8 +747,6 @@ Model 构建完成时，必须通过以下验证：
 - [ ] 每个 `architecture.patterns[]` 至少有 1 条 `evidence`
 - [ ] 每个 `design_decisions[]` 至少有 1 条 `evidence`
 - [ ] 每个 `runtime.startup_flow[]` 步骤至少有 1 条 `evidence`
-- [ ] 每个 `risks[]` 至少有 1 条 `evidence`，且有 `what_breaks`
-- [ ] 每个 `quality_attributes[]` 评估有 `evidence` 支撑，或标注 `speculative`
 - [ ] 每个 `hypotheses[]` 有 `falsification_criteria` 和 `linked_model_fields`（存储于 hypotheses.json）
 - [ ] 每个 `evidence[]` 的 `observation` 不为空
 - [ ] 没有 inference 被写入 `observation` 字段
@@ -767,37 +759,6 @@ Model 构建完成时，必须通过以下验证：
 
 ---
 
-# §18 Quality Attributes / Risks / Unknowns Model
+# §18 （已废弃）
 
-报告 §7（Quality Attributes）、§8（Risks and Debt）、§9（Unknowns）的模型来源。这三类节点由 Reasoning Agent 在 Step 4 写入，Report Agent 渲染时直接使用，不允许在报告阶段新增。
-
-```json
-{
-  "quality_attributes": [{
-    "id": "qa-001 (必填)",
-    "attribute": "enum (必填): extensibility | maintainability | performance | testability | observability | security",
-    "assessment": "string (必填，评估结论——好/差及原因)",
-    "evidence": ["ev-xxx (必填，至少 1 条；无证据则整个节点标注 speculative)"],
-    "confidence": "number (必填, 0-1)"
-  }],
-  "risks": [{
-    "id": "risk-001 (必填)",
-    "risk": "string (必填，风险描述——最大 trade-off / 债务)",
-    "what_breaks": "string (必填，风险触发时什么会崩)",
-    "evidence": ["ev-xxx (必填，至少 1 条——报告 §8 仅允许 evidence-backed 风险)"],
-    "confidence": "number (必填, 0-1)"
-  }],
-  "unknowns": [{
-    "id": "unk-001 (必填)",
-    "description": "string (必填，剩余未知)",
-    "kind": "enum (必填): need_reading | blocked",
-    "linked_question": "q-xxx (可选，来源问题)"
-  }]
-}
-```
-
-**关键约束**：
-
-- `risks[].what_breaks` 必填——说不清"什么会崩"的风险是泛泛而谈，不入模型
-- `risks[]` 必须 evidence-backed——纯推测的风险放入 `unknowns[]`
-- `unknowns[]` 是研究的诚实边界——报告 §9 原样渲染，不允许为了"完整性"删除
+> 原 Quality Attributes / Risks / Unknowns Model 已废弃：综合版字段（`quality_attributes` / `risks` / `unknowns`）不再写入 `repository-model.json`。报告 §8 Strengths / §9 Risks（聚焦 Top 2-3）/ §11 Engineering Insights 现由 Report Agent 基于证据直接叙事渲染，不从模型字段生成。Risk 若需可追溯性，可并入 `design_decisions[].trade_off` 或 `hypotheses.json` 的未解假设。

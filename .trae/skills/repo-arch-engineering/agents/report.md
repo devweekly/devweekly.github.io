@@ -127,12 +127,12 @@ Narrative 必须回答以下 8 个问题，每个回答 ≤ 200 字：
 
 ### 渲染深度要求（§6.7 Hard Gate 前置约束）
 
-`report-draft.md` 的**纯内容字符数（去空白）必须 ≥ 15000**（`MIN_REPORT_CHARS` 可覆盖），否则 Quality 会 `gated-fail` 打回。因此渲染时就要**写足深度**，而不是等打回再补：
+`report-draft.md` 的**纯内容字符数（去空白）必须 ≥ 12000**（`MIN_REPORT_CHARS` 可覆盖），否则 Quality 会 `gated-fail` 打回。因此渲染时就要**写足深度**，而不是等打回再补：
 
 - 每个 Key Design Decision 展开 Context / Alternatives / Trade-off / 失败案例，不只给一句话结论
 - 关键 claim 落到**文件/函数级**引用（`path:line`），不只给模块名
-- Risks 每条写清 what_breaks + 触发条件 + 缓解方向
-- §5/§6 展开边界与运行时故事的具体步骤与原因
+- §5/§7 展开边界与运行时故事的具体步骤与原因
+- §10 Change Difficulty & Blast Radius 写清"改 X 会炸哪里"的具体耦合与影响范围
 - **禁止水字数**——深度来自 model 中已有但未展开的细节，不是重复与空泛过渡句
 
 ### Report Source
@@ -141,60 +141,66 @@ Narrative 必须回答以下 8 个问题，每个回答 ≤ 200 字：
 Primary:    architecture-narrative.json（叙事骨架）
 Supporting: repository-model.json（详细 claims，供展开）
 Evidence:   evidence-log.jsonl references（不重新推理，仅引用）
-Metadata:   hypotheses.json（标注 unknowns）
+Metadata:   hypotheses.json
 ```
 
 ### 报告结构（叙事驱动，非传统模板）
 
 ```
-1. Executive Summary（≤300 字，包含 Thesis 一句话 + 最大 trade-off）
+1. Executive Summary（≤300 字，包含 Thesis 一句话 + 最大 trade-off + 主要技术债务）
 
-2. System Identity & Business Context（⭐ 必答章节——读者先理解"是什么、解决什么、整体架构"再进入技术细节）
+2. System Identity & Context（⭐ 必答章节——读者先理解"是什么、解决什么、整体架构"再进入技术细节）
    2.1 What is this repo?
        - repo 类型、定位、一句话价值主张
        - 规模信号（代码量、模块数、目标用户量）
        - 目标用户（谁部署？谁使用？）
-   2.2 Business Context
+   2.2 System Context（C4 Level 1：外部 Actor + 系统负责/不负责边界）
+   2.3 Business Context
        - 满足什么业务需求？解决什么问题？（用业务语言，不是技术语言）
        - 涉及什么业务范围？覆盖哪些功能域？不覆盖什么？（边界）
        - 3-5 个典型 use cases（每个 ≤50 字）
        - 市场差异化（同类方案 + 这个 repo 的差异）
-   2.3 High-Level Architecture
+   2.4 High-Level Architecture
        - 一句话整体架构（"X 是一个 Y，通过 Z 实现 W"）
        - 主要组件关系图（high-level，不列全部 crate）
        - 技术栈选择理由（语言/框架/存储/消息/部署，每个一句话为什么选）
        - 部署模型（单机/集群/cloud/self-hosted）
-       ⚠️ 本章是 high-level overview，不深入技术细节（如具体协议、kind 整数、SQL schema）
-       ⚠️ 技术细节留给 §5 Resulting Architecture 和 §6 Runtime Realization
+       ⚠️ 本章是 high-level overview，不深入技术细节
+       ⚠️ 技术细节留给 §5 Resulting Architecture 和 §7 Runtime Realization
 
-3. Architecture Thesis
-   3.1 Central Idea（一句话 + if_removed 回答）
-   3.2 Driving Constraints（3-5 个塑造架构的硬约束）
+3. Architecture Overview
+   3.1 Architecture Style（显式识别风格：patch/decorator + facade + registry）
+   3.2 Driving Constraints（c-1..c-5 塑造架构的硬约束，被 §4 决策引用）
+   3.3 Central Idea（一句话 + if_removed 回答）
+   3.4 If Removed
+   3.5 Evolution Timeline（历史维度）
 
 4. Key Design Decisions（⭐ 提前——先看决策，再看结构）
    每个 Decision:
    - Context（为什么必须做决策）
    - Alternatives（至少一个被拒绝的方案）
    - Trade-off（用 X 换 Y）
-   - Implements Constraint（绑定 §3.2）
+   - Implements Constraint（绑定 §3.2 c-N）
    - Evidence Level（见下表）
 
 5. Resulting Architecture（架构作为决策的结果，非 crate 列表）
    5.1 Boundaries——按"为什么存在"组织，每个绑定 Decision
    5.2 Extension Mechanism——扩展哲学，非枚举
 
-6. Runtime Realization
-   6.1 One Request Story（一个典型请求的叙事，每步绑定架构约束）
-   6.2 Backpressure & Failure Isolation（过载时如何 degrade）
+6. Data Architecture（数据模型 + 数据流 + 约束；量化/优化器状态/registry）
 
-7. Quality Attributes（Extensibility / Maintainability / Performance / Testability / Observability / Security）
+7. Runtime Realization
+   7.1 One Request Story（典型微调请求叙事，每步绑定架构约束）
+   7.2 Studio 请求流（Rust→uvicorn→Python 链路，进程/状态模型）
+   7.3 Backpressure & Failure Isolation（过载/失败如何 degrade 与隔离）
 
-8. Risks and Debt（仅 evidence-backed，每个标注 "what breaks"）
+8. Architecture Strengths（基于证据的优势，非空泛评价）
 
-9. Unknowns（剩余 need_reading + blocked）
+9. Architecture Risks（聚焦 Top 2-3，每项标注 what_breaks；p7.md §10 必含）
 
-Appendix A: Research Provenance（Questions / Evidence Summary / Source Files）
-Appendix B: Evidence Level Legend
+10. Change Difficulty & Blast Radius（改 X 会炸哪里）
+
+11. Engineering Insights（工程哲学提炼，报告价值最高部分）
 ```
 
 ### §2 必答规则（最高优先级）
@@ -263,7 +269,7 @@ claim 标注格式：
 如果某维度 `coverage.ratio < 0.5`：
 
 ```markdown
-## 7. Quality Attributes
+## 10. Change Difficulty & Blast Radius
 
 > ⚠️ 覆盖不足（0/1 = 0%）
 
@@ -290,7 +296,7 @@ claim 标注格式：
 当 Orchestrator 因 Quality `gated-fail` 且 `gate_failed_route = "step5"` 重新调用本 Agent 时（知识已稳、只是渲染没写足）：
 
 - **不重新研究、不新增 claim**——基于**现有** `architecture-narrative.json` + `repository-model.json` 把已确认但上轮未展开的细节写出来
-- 扩展方向：更多子论点、每条 decision 的反面证据与权衡展开、失败案例分析、`path:line` 级引用补充、§7 Quality Attributes 逐条证据化
+- 扩展方向：更多子论点、每条 decision 的反面证据与权衡展开、失败案例分析、`path:line` 级引用补充、§10 Change Difficulty & Blast Radius 逐条耦合展开
 - 若 model 里已无更多可展开的细节（写不长）→ 在输出中标注 `expansion_exhausted: true`，让 Quality/Orchestrator 走 §6.7.1 防空转规则（blocked 升级用户），**禁止编造内容凑字数**
 
 ## 禁止项

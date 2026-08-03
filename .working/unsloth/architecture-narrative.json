@@ -2,58 +2,54 @@
   "schema_version": "1.0",
   "repo_name": "unsloth",
   "system_identity": {
-    "what_is": "Unsloth 是一个 LLM 微调库 + 本地 Studio 桌面应用：通过手写 Triton/CUDA/MLX 内核替换 Hugging Face 原生算子，实现 2x 提速、70% 省显存，并支持在 Apple Silicon 与 GPU 上运行。",
-    "repo_type": "Library / Application",
-    "scale": "约 2265 文件；核心 Python 库 + Rust(Tauri) Studio；支持 500+ 模型；面向单卡/消费级 GPU 用户。",
-    "target_users": "微调 LLM 的 ML 从业者、本地模型运行者（GGUF/safetensors/LoRA）、需要本地 RL 与长上下文的团队。"
+    "what_is": "Unsloth 是一个 LLM 微调（finetuning）加速库 + 桌面 Studio 产品：通过 import-time monkey-patch Hugging Face 生态 + 手写融合内核，让现有 notebook 不改一行获得约 2x 提速与 70% 省显存。",
+    "repo_type": "Library + Application (finetuning library + Tauri desktop Studio)",
+    "scale": "988 Python 文件 + 439 TS/372 TSX 前端 + 25 Rust；292 测试文件；月度发布节奏；支持 CUDA/ROCm/Intel XPU + Apple Silicon(MLX)。",
+    "target_users": "ML 研究者 / 独立开发者 / 企业微调团队（库）；想零配置微调的非专家（Studio 桌面 / Colab 用户）。"
   },
   "business_context": {
-    "needs_satisfied": "让普通硬件也能高效微调大模型，并把'跑模型/训练'做成可本地部署的产品。",
-    "business_scope": "覆盖文本/音频/嵌入/视觉的微调与推理；不提供托管 SaaS，本地优先。",
-    "use_cases": [
-      "QLoRA/LoRA/全参微调与预训练 500+ 模型",
-      "本地推理服务（/v1/responses 等 OpenAI/Anthropic 兼容端点）",
-      "GRPO/FP8/视觉 RL，降低 VRAM",
-      "500K+ 长上下文 packing 训练",
-      "Studio 可视化数据配方、模型竞技场、工具调用、MCP"
-    ],
-    "alternatives_in_market": "对比原生 transformers/trl（慢、费显存）、Axolotl（配置驱动）、llama.cpp（推理为主）。Unsloth 差异化：import 即加速、双后端、手动融合内核。"
+    "needs_satisfied": "降低 LLM 微调的显存与算力门槛，使消费级 GPU / Apple Silicon 也能跑 QLoRA / 全参微调。",
+    "business_scope": "覆盖模型加载（量化）、前向/反向内核加速、训练循环、模型族注册、Studio 桌面 GUI、CLI 工具；不覆盖模型训练理论本身、不覆盖推理服务规模化部署（仅 Studio 本地）。",
+    "use_cases": ["笔记本上 4bit QLoRA 微调 Llama/Qwen", "Apple Silicon 上跑 SFT", "Studio 可视化数据准备 + 训练监控", "CLI 用 claude/codex 子代理辅助微调"],
+    "alternatives_in_market": "原生 Hugging Face PEFT/TRL（无加速）、LLM.int8()/bitsandbytes（仅量化无内核）、Axolotl（高层编排）、GPTQ/AWQ（仅推理量化）。Unsloth 差异点：patch 零改动 + 内核融合 + 双后端统一 API。"
   },
   "high_level_architecture": {
-    "one_sentence": "Unsloth 是一个围绕 Hugging Face 生态的'补丁光环'：在 import 时把上游算子换成自写内核，并以统一 FastModel API 暴露双后端。",
-    "components_overview": "核心库 unsloth（后端门+模型补丁+内核+优化器+注册表+CLI）依赖外部 unsloth_zoo 承载重机械；Studio 是独立 Tauri 桌面应用。",
-    "tech_stack": "Python+PyTorch+Triton（内核）；Typer（CLI）；Tauri+Rust+TS（Studio）；pyproject 仅 5 个直接依赖，刻意保持薄。",
-    "deployment_model": "库通过 pip/install.sh 安装；Studio 为桌面应用；也可作为本地 API 服务（/v1/responses 等）。"
+    "one_sentence": "Unsloth 是一个围绕 Hugging Face 生态的 monkey-patch 加速层，通过手写融合内核 + 量化 + 双后端（GPU/MLX）统一 API，把微调成本压到消费级硬件可承受。",
+    "components_overview": "薄 patch 层（unsloth 包）调用重型机械（unsloth_zoo 外部包）；FastModel 公开 API 串起 loader→models→kernels；可选 Studio（Tauri+Python 后端）与 CLI（Typer+MCP 子代理）作为产品面。",
+    "tech_stack": "PyTorch+Triton（内核）、HF transformers/peft/trl（patch 目标）、Typer（CLI）、Tauri+Rust+TS（桌面）、FastAPI/uvicorn（Studio 后端）。选 Triton/CUDA 因内核融合收益最大；选 Tauri 因桌面原生 + 小体积。",
+    "deployment_model": "双分发：pip Apache-2.0 库（自托管/Colab）+ Tauri AGPL-3.0 桌面（本地 GUI）；后端为 localhost uvicorn 服务。"
   },
   "thesis": {
-    "central_idea": "架构中心是'import-time monkey-patch + 手动融合内核'，让既有 HF 代码路径无感地走加速实现。",
-    "if_removed": "若去掉补丁层，系统退化为普通 transformers/trl，失去所有提速与省显存——它正是产品的全部价值来源。"
+    "central_idea": "架构中心 = import-time monkey-patch Hugging Face（transformers/peft/trl）+ 手写 Triton/CUDA/MLX 融合内核。",
+    "if_removed": "去掉这层补丁，系统退化成普通 transformers/trl——零加速、无 70% 省显存、用户必须改写 notebook。所有价值都建立在这层「透明加速」之上。"
   },
   "driving_constraints": [
-    {"id": "c-1", "constraint": "必须兼容用户现有 notebook（不改正代码）", "forces": "选择 import-time 全局 patch 而非子类", "evidence_ref": "evidence-log.jsonl:ev-005"},
-    {"id": "c-2", "constraint": "消费级/单卡显存有限", "forces": "手写融合内核 + 反量化/低秩优化器省显存", "evidence_ref": "evidence-log.jsonl:ev-009"},
-    {"id": "c-3", "constraint": "需同时支持 Apple Silicon 与 CUDA/ROCm", "forces": "单一 import 双后端 + MLX CUDA 兼容 shim", "evidence_ref": "evidence-log.jsonl:ev-001"},
-    {"id": "c-4", "constraint": "重机械需被多前端复用", "forces": "拆出 unsloth_zoo 外部包", "evidence_ref": "evidence-log.jsonl:ev-011"}
+    {"id": "c-1", "constraint": "必须零改动兼容现有 HF notebook（用户不肯改代码）", "forces": "被迫用 import-time 全局 patch 而非子类化", "evidence_ref": "evidence-log.jsonl:ev-005"},
+    {"id": "c-2", "constraint": "消费级硬件显存有限（≤24GB）", "forces": "被迫用手写融合内核 + 4bit 量化 + GaLore 三杠杆", "evidence_ref": "evidence-log.jsonl:ev-007"},
+    {"id": "c-3", "constraint": "需同时支持 Apple Silicon 与 CUDA/ROCm/XPU", "forces": "被迫单一 import 双后端 + CUDA no-op shim", "evidence_ref": "evidence-log.jsonl:ev-001"},
+    {"id": "c-4", "constraint": "核心库需商业友好，桌面产品需原生体验", "forces": "被迫双许可（Apache-2.0 核心 / AGPL-3.0 Studio）+ 双技术栈", "evidence_ref": "evidence-log.jsonl:ev-013"},
+    {"id": "c-5", "constraint": "上游 API 高频漂移是最常见破坏源", "forces": "被迫把测试重心放在 patch 接口面回归守卫而非内核数值 unit test", "evidence_ref": "evidence-log.jsonl:ev-017"}
   ],
   "key_design_decisions": [
-    {"id": "d-1", "decision": "import-time 全局 patch 上游库", "implements_constraint": "c-1", "rejected_alternative": "显式 FastModel 子类化（需改用户代码）", "tradeoff": "用上游强耦合换零改动兼容"},
-    {"id": "d-2", "decision": "手写内核替换 HF 原生算子", "implements_constraint": "c-2", "rejected_alternative": "仅改训练循环用原生算子", "tradeoff": "用内核维护成本换 2x/70%"},
-    {"id": "d-3", "decision": "单一 import 双后端", "implements_constraint": "c-3", "rejected_alternative": "两个独立包", "tradeoff": "用分支复杂度换统一 API"},
-    {"id": "d-4", "decision": "核心与 unsloth_zoo 拆分", "implements_constraint": "c-4", "rejected_alternative": "全放 unsloth", "tradeoff": "用版本错配风险换轻量复用"},
-    {"id": "d-5", "decision": "Studio Tauri+AGPL / 核心 Apache", "implements_constraint": "c-4", "rejected_alternative": "统一栈/统一许可", "tradeoff": "用双栈+许可管理换原生体验与商业可用"}
+    {"id": "d-1", "decision": "import-time 全局 monkey-patch HF", "implements_constraint": "c-1", "rejected_alternative": "显式 FastModel 子类化", "tradeoff": "用上游强耦合换零改动兼容"},
+    {"id": "d-2", "decision": "手写融合内核替换 HF 算子", "implements_constraint": "c-2", "rejected_alternative": "仅改训练循环 + HF 默认算子", "tradeoff": "用每架构写 Fast* 类的成本换 2x/70%"},
+    {"id": "d-3", "decision": "单一 import 双后端", "implements_constraint": "c-3", "rejected_alternative": "两个独立包", "tradeoff": "用 import-time 分支复杂度换统一 API"},
+    {"id": "d-4", "decision": "核心库与 unsloth_zoo 拆分", "implements_constraint": "c-2", "rejected_alternative": "全部放进 unsloth", "tradeoff": "用跨包版本错配风险换轻量复用"},
+    {"id": "d-5", "decision": "Studio 用 Tauri(AGPL-3.0) / 核心 Apache-2.0", "implements_constraint": "c-4", "rejected_alternative": "统一技术栈/许可", "tradeoff": "用双栈维护成本换原生体验 + 商业可用"}
   ],
   "architecture_realization": {
-    "boundaries": "后端门(_IS_MLX)决定代码路径；HF patch 边界要求先导入 unsloth；core/zoo 边界隔离重机械；core(APACHE)/studio(AGPL) 许可边界；Studio 原生边界经进程/API 通信。",
-    "extension_mechanism": "扩展哲学是'为新模型族写 Fast* 类 + 对应内核'，模式固定但需手写；注册表让 Studio 能发现/下载新模型。"
+    "boundaries": "① backend gate(_IS_MLX)——最上游 import-time fork；② HF patch boundary——必须先于上游导入；③ core↔unsloth_zoo——重机械下沉外部包；④ core(APL)↔studio(AGPL)——许可+产品边界；⑤ MLX capability-subset——CUDA API no-op 化，SFT-only；⑥ Studio native——Rust 拥有 Python 后端生命周期 + path/secret grant。",
+    "extension_mechanism": "扩展哲学 = 每新模型族写一个 Fast* 类（pre_patch/post_patch）+ 对应内核，注册进 MODEL_REGISTRY（QuantType 枚举使量化成为模型身份一等维度）。模式固定但门槛高。"
   },
   "runtime_story": {
-    "one_request": "import unsloth → 选后端(_IS_MLX) → GPU 路径 _gpu_init patch 上游 → FastModel.from_pretrained 按量化参数分派到 Fast*Model → pre_patch 再 post_patch 把 HF 前向换成 fast_* 内核 → 训练时 fast_rms_layernorm/rope/swiglu/cross_entropy 融合执行，fast_dequantize 省显存。每步都对应'无感加速'这一中心约束。",
-    "backpressure": "Studio 层提供训练监控与 GPU 用量图；库本身降级策略依赖上游（梯度检查点、量化），未见独立背压机制。"
+    "one_request": "import unsloth → 选后端(_IS_MLX) → GPU 路径 _gpu_init 做 import_fixes+patch → FastModel.from_pretrained(默认 4bit) → pre_patch → 加载权重+post_patch 替换内核 → UnslothTrainer 训练。每步都绑定约束：先导入保证 patch 生效；量化降显存；内核替换提速。",
+    "backpressure": "Studio 后端启动需修复 CUDA LD_LIBRARY_PATH（re-exec 一次）；MLX 上 CUDA 设备调用被 no-op 化防止误用；AMD 4bit 显式禁用以防不稳定。"
   },
   "top_risks": [
-    {"id": "r-1", "risk": "与 transformers/peft/trl 版本强耦合", "what_breaks": "上游改 API→patch 失败→慢路径或 ImportError", "evidence_ref": "evidence-log.jsonl:ev-005"},
-    {"id": "r-2", "risk": "unsloth_zoo 版本错配", "what_breaks": "训练/MLX 模块缺失→ImportError 或降级", "evidence_ref": "evidence-log.jsonl:ev-011"},
-    {"id": "r-3", "risk": "MLX 后端能力子集", "what_breaks": "Apple Silicon 跑非 SFT→NotImplementedError", "evidence_ref": "evidence-log.jsonl:ev-003"},
-    {"id": "r-4", "risk": "Studio AGPL 传染", "what_breaks": "SaaS/分发误用触发开源义务", "evidence_ref": "evidence-log.jsonl:ev-013"}
+    {"id": "r-1", "risk": "与 transformers/peft/trl 版本强耦合", "what_breaks": "上游改 API → patch 失败或静默走慢路径", "evidence_ref": "evidence-log.jsonl:ev-005"},
+    {"id": "r-5", "risk": "MLX 仅 SFT-only 子集", "what_breaks": "Apple Silicon 跑 GRPO/DPO/ORPO → NotImplementedError", "evidence_ref": "evidence-log.jsonl:ev-024"},
+    {"id": "r-6", "risk": "内核数值正确性无 unit test", "what_breaks": "内核数值回归长期不被发现，直到端到端训练异常", "evidence_ref": "evidence-log.jsonl:ev-018"},
+    {"id": "r-7", "risk": "tools 默认开启 + 本地 MCP 子代理", "what_breaks": "被诱导时可能执行非预期本地操作", "evidence_ref": "evidence-log.jsonl:ev-029"},
+    {"id": "r-8", "risk": "Studio 后端依赖 CUDA LD re-exec", "what_breaks": "conda/Docker CUDA 影子化 torch libs → undefined symbol", "evidence_ref": "evidence-log.jsonl:ev-028"}
   ]
 }

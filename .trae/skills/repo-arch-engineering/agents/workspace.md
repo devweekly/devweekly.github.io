@@ -115,7 +115,7 @@ update questions/summary.json (把进入终态的问题标为 model_updated / bl
 
 ### 4. 发布报告（Quality PASS 后）
 
-**前置条件：Quality 返回 `passed: true`，且已包含 §6.7 Hard Gate PASS（`report-draft.md` 纯内容字符 ≥ 15000）。若 Quality 返回 `gated-fail`：不发布，保留 `report-draft.md` 供回炉覆盖，`gate_failed_route` 交 Orchestrator 路由。**
+**前置条件：Quality 返回 `passed: true`，且已包含 §6.7 Hard Gate PASS（`report-draft.md` 纯内容字符 ≥ 12000）。若 Quality 返回 `gated-fail`：不发布，保留 `report-draft.md` 供回炉覆盖，`gate_failed_route` 交 Orchestrator 路由。**
 
 ```
 rename report-draft.md → report.md

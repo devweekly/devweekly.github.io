@@ -6,7 +6,16 @@
     {"id": "q-003", "type": "pattern", "status": "model_updated", "round": 1, "hypothesis": "hyp-003"},
     {"id": "q-004", "type": "runtime", "status": "model_updated", "round": 1, "hypothesis": "hyp-004"},
     {"id": "q-005", "type": "boundary", "status": "model_updated", "round": 1, "hypothesis": "hyp-005"},
-    {"id": "q-006", "type": "risk", "status": "model_updated", "round": 1, "hypothesis": "hyp-006"}
+    {"id": "q-006", "type": "risk", "status": "model_updated", "round": 1, "hypothesis": "hyp-006"},
+    {"id": "q-007", "type": "testing", "status": "model_updated", "round": 2, "hypothesis": "hyp-007"},
+    {"id": "q-008", "type": "evolution", "status": "model_updated", "round": 2, "hypothesis": "hyp-008"},
+    {"id": "q-009", "type": "deployment", "status": "model_updated", "round": 2, "hypothesis": "hyp-009"},
+    {"id": "q-010", "type": "boundary", "status": "model_updated", "round": 2, "hypothesis": "hyp-010"},
+    {"id": "q-011", "type": "pattern", "status": "model_updated", "round": 2, "hypothesis": "hyp-011"},
+    {"id": "q-012", "type": "runtime", "status": "model_updated", "round": 2, "hypothesis": "hyp-012"},
+    {"id": "q-013", "type": "risk", "status": "model_updated", "round": 2, "hypothesis": "hyp-013"},
+    {"id": "q-014", "type": "pattern", "status": "model_updated", "round": 2, "hypothesis": "hyp-014"}
   ],
-  "by_status": {"model_updated": 6}
+  "by_status": {"model_updated": 14},
+  "by_type": {"boundary": 3, "decision": 1, "pattern": 3, "runtime": 2, "risk": 2, "testing": 1, "evolution": 1, "deployment": 1}
 }

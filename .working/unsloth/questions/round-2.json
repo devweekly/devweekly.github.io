@@ -1,0 +1,113 @@
+{
+  "round": 2,
+  "created_at": "2026-08-03T13:55:00Z",
+  "focus": "testing",
+  "gate_driven": true,
+  "gate_failed_route": "step3",
+  "questions": [
+    {
+      "id": "q-007",
+      "type": "testing",
+      "question": "Unsloth 的测试策略如何在「monkey-patch 接口面」与「内核数值正确性」之间分配覆盖？是否存在系统性盲区？",
+      "why_it_matters": "决定用户能信赖何种可靠性保证：patch 漂移回归 vs 内核数学正确性",
+      "expected_model_change": ["quality_attributes.testability", "testing", "risks"],
+      "hypothesis": "测试重心是 import-fixes / kwargs 漂移回归守卫，而非内核数值正确性；内核正确性依赖端到端训练 sanity",
+      "evidence_needed": ["tests/*.py 主题分布", "tests/studio 占比", "是否存在内核数值 unit test"],
+      "priority_score": 0.9,
+      "impact": "high",
+      "uncertainty": "high",
+      "status": "open"
+    },
+    {
+      "id": "q-008",
+      "type": "evolution",
+      "question": "Unsloth 的架构如何随版本演进（月度 tag、Studio 产品化、MLX 后端引入）？",
+      "why_it_matters": "理解「为何演变成今天这样」——核心 thesis 是 patch 库，但已扩张为双后端 + Studio 产品",
+      "expected_model_change": ["evolution", "history"],
+      "hypothesis": "从纯 patching 库演进为 dual-backend + Studio 桌面产品；MLX 是后期内联引入",
+      "evidence_needed": ["git tag 列表", "git log 主题", "首个 commit", "MLX 内联时间点"],
+      "priority_score": 0.85,
+      "impact": "high",
+      "uncertainty": "medium",
+      "status": "open"
+    },
+    {
+      "id": "q-009",
+      "type": "deployment",
+      "question": "Unsloth 如何分发与部署（pip 库 / Tauri 桌面 / Colab）？双许可如何映射到分发路径？",
+      "why_it_matters": "deployment 维度此前仅覆盖 Studio；需补全 pip 库、Colab、双许可分发边界",
+      "expected_model_change": ["deployment", "architecture.boundaries"],
+      "hypothesis": "双分发：pip Apache-2.0 库 + Tauri AGPL-3.0 桌面 + Colab 集成；许可边界即产品边界",
+      "evidence_needed": ["pyproject.toml", "studio/setup.*", "README 安装段", "core/studio 许可"],
+      "priority_score": 0.8,
+      "impact": "medium",
+      "uncertainty": "medium",
+      "status": "open"
+    },
+    {
+      "id": "q-010",
+      "type": "boundary",
+      "question": "MLX 后端的 CUDA 兼容 shim 与能力子集究竟是什么？为何是「SFT-only」？",
+      "why_it_matters": "核心边界（_IS_MLX gate）的能力缺口直接决定 Apple Silicon 上能跑什么",
+      "expected_model_change": ["architecture.boundaries", "risks"],
+      "hypothesis": "MLX 是 SFT-only 子集：CUDA API 被 no-op 化（batch_encoding_to_cuda），GRPO/DPO/ORPO 不支持，FastSentenceTransformer 抛 NotImplementedError",
+      "evidence_needed": ["unsloth/__init__.py:81-244", "unsloth/__init__.py:1130", "test_is_mlx_dispatch_gate.py"],
+      "priority_score": 0.9,
+      "impact": "high",
+      "uncertainty": "medium",
+      "status": "open"
+    },
+    {
+      "id": "q-011",
+      "type": "pattern",
+      "question": "量化（4bit/fp8/8bit）如何映射到模型族与 loader？注册表扮演什么角色？",
+      "why_it_matters": "量化是 Unsloth 70% 省显存的核心机制，需明确其映射矩阵与注册表职责",
+      "expected_model_change": ["architecture.pattern", "architecture.modules"],
+      "hypothesis": "QuantType 枚举（NONE/UNSLOTH/BNB_4BIT/FP8）+ 每族 registry 文件驱动量化；loader 尊重用户 BitsAndBytesConfig 并做分布式安全设备放置",
+      "evidence_needed": ["unsloth/models/loader.py:338-479", "unsloth/registry/registry.py", "unsloth/registry/_qwen.py"],
+      "priority_score": 0.85,
+      "impact": "high",
+      "uncertainty": "medium",
+      "status": "open"
+    },
+    {
+      "id": "q-012",
+      "type": "runtime",
+      "question": "Tauri 前端与 Python 后端如何通信？Rust 层在中间扮演什么角色？",
+      "why_it_matters": "Studio 的 native boundary（Python train loop <-> Rust/TS Tauri）此前是 unknown",
+      "expected_model_change": ["runtime.async_flows", "architecture.boundaries"],
+      "hypothesis": "Rust 通过 desktop_backend_owner 拥有后端进程生命周期 + path/secret grants，经 localhost uvicorn HTTP 与 Python 后端通信",
+      "evidence_needed": ["studio/src-tauri/src/native_intents.rs", "studio/src-tauri/src/desktop_backend_owner.rs", "studio/backend/run.py"],
+      "priority_score": 0.85,
+      "impact": "high",
+      "uncertainty": "medium",
+      "status": "open"
+    },
+    {
+      "id": "q-013",
+      "type": "risk",
+      "question": "CLI 子代理（claude/codex）委派的工具与权限策略是什么？攻击面如何？",
+      "why_it_matters": "security 风险维度此前仅泛述；需明确 MCP 子代理的 host_policy/tool_policy 默认行为",
+      "expected_model_change": ["risks", "architecture.modules"],
+      "hypothesis": "双策略模型：host_policy（服务端）+ tool_policy（--enable/disable-tools 默认 on），镜像于 cli 与 studio backend；claude/codex 通过本地 MCP 子代理委派",
+      "evidence_needed": ["unsloth_cli/_tool_policy.py", "unsloth_cli/claude_subagent_mcp.py", "studio/backend/utils/host_policy.py"],
+      "priority_score": 0.75,
+      "impact": "medium",
+      "uncertainty": "medium",
+      "status": "open"
+    },
+    {
+      "id": "q-014",
+      "type": "pattern",
+      "question": "Unsloth 提供哪些内存高效优化器（GaLore）？其机制与位置？",
+      "why_it_matters": "优化器是 finetuning 内存占用的另一支柱，此前架构未覆盖",
+      "expected_model_change": ["architecture.modules", "quality_attributes.performance"],
+      "hypothesis": "提供 quantized GaLore（q_galore_adamw + q_galore_projector），通过低秩投影削减优化器状态显存",
+      "evidence_needed": ["unsloth/optimizers/q_galore_adamw.py", "unsloth/optimizers/q_galore_projector.py"],
+      "priority_score": 0.7,
+      "impact": "medium",
+      "uncertainty": "medium",
+      "status": "open"
+    }
+  ]
+}

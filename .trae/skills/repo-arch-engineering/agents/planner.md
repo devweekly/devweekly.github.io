@@ -54,7 +54,7 @@ description: 基于研究上下文生成 Architecture Research Question——只
 ```
 1. 如果有 gate_failed_route == "step3"（§6.7 gated-fail，覆盖缺口）：
    - 按 gate_failed_reason 命中的根因生成针对性问题：
-     覆盖缺口维度 / unresolved contradictions / critical-high Unknowns
+     覆盖缺口维度 / unresolved contradictions
    - next_focus = 缺口所在维度
    - converged = false
 
@@ -74,7 +74,7 @@ description: 基于研究上下文生成 Architecture Research Question——只
       新问题减少只说明提问收敛，不说明知识稳定（Methodology §Knowledge Stability Theory）
 
 4. 如果未收敛：
-   - 选择 coverage 最低 / 矛盾未解 / Unknowns 最多的维度作为 next_focus
+   - 选择 coverage 最低 / 矛盾未解 的维度作为 next_focus
    - 基于该维度生成新问题（参考"问题生成规则"）
    - converged = false
 

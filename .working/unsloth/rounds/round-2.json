@@ -1,0 +1,14 @@
+{
+  "round": 2,
+  "focus": "testing",
+  "gate_driven": true,
+  "gate_failed_route": "step3",
+  "evidence_collected": ["ev-017","ev-018","ev-019","ev-020","ev-021","ev-022","ev-023","ev-024","ev-025","ev-026","ev-027","ev-028","ev-029","ev-030"],
+  "model_updated_fields": ["architecture.boundaries","architecture.modules","architecture.dependencies","runtime.async_flows","design_decisions(dd-6,dd-7)","evolution","quality_attributes","risks(rk-6,rk-7,rk-8)","unknowns","coverage(testing/deployment/history)"],
+  "hypotheses_formed": ["hyp-007","hyp-008","hyp-009","hyp-010","hyp-011","hyp-012","hyp-013","hyp-014"],
+  "hypotheses_confirmed": ["hyp-007","hyp-008","hyp-009","hyp-010","hyp-011","hyp-012","hyp-013","hyp-014"],
+  "questions_closed": ["q-007","q-008","q-009","q-010","q-011","q-012","q-013","q-014"],
+  "contradictions_found": [],
+  "coverage_before": {"testing":0.0,"deployment":0.25,"history":0.0},
+  "coverage_after": {"testing":1.0,"deployment":1.0,"history":1.0}
+}

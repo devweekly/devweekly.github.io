@@ -255,9 +255,6 @@ repository-model.json
   ├── runtime             # startup_flow / request_lifecycle / async_flows（§5）
   ├── design_decisions    # Decision + Context + Alternatives + Trade-off（§6）
   ├── evolution           # timeline / current_direction / deprecated_patterns（§7）
-  ├── quality_attributes  # 可扩展性/可维护性/性能等评估（§18）
-  ├── risks               # evidence-backed 风险 + what_breaks（§18）
-  ├── unknowns            # 剩余未知（need_reading / blocked）（§18）
   └── coverage            # 各维度覆盖率快照（§11）
 
 工作文件（独立存储，model 只通过 ID 引用，不复制内容）：
@@ -389,7 +386,7 @@ repository-model.json
 
 p1.md 曾建议"下一步设计 model-schema.md"——已完成。model-schema.md 落地了：
 
-1. 每个模型字段的类型约束（§3-§11、§18）
+1. 每个模型字段的类型约束（§3-§11）
 2. Evidence 到 Model 的映射规则（§13）
 3. Hypothesis 到 Model 的链接方式（§14）
 4. 模型增量更新的冲突解决策略（§16）

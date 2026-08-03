@@ -296,16 +296,16 @@ Research Agent → Knowledge Model → Architecture Narrative → Knowledge Rend
 
 ### Report Source
 
-- **Primary**：Architecture Narrative（叙事骨架——Thesis + Driving Constraints + Key Decisions + Boundaries + One Request Story + Top Risks）
+- **Primary**：Architecture Narrative（叙事骨架——Thesis + Driving Constraints + Key Decisions + Boundaries + One Request Story）
 - **Supporting**：Repository Knowledge Model（详细 claims，供渲染展开）
 - **Evidence**：evidence references（不重新推理，仅引用）
-- **Metadata**：hypotheses（中间状态，用于标注 unknowns）
+- **Metadata**：hypotheses（中间状态，记录未解假设）
 
 ### 叙事骨架原则
 
 1. **Thesis 是骨架，不是章节**——每章节回答"这个如何实现 Thesis"
 2. **Architecture 是 Decision 的结果**——先看决策（为什么长这样），再看结构（长成什么样）
-3. **强制压缩**——Key Design Decisions ≤ 5 个，Driving Constraints ≤ 5 个，Top Risks ≤ 5 个。防止平铺，强迫选择最重要
+3. **强制压缩**——Key Design Decisions ≤ 5 个，Driving Constraints ≤ 5 个。防止平铺，强迫选择最重要
 4. **Decision 绑定 Constraint**——每个 Decision 必须说明 implements 哪个 Constraint
 5. **Boundaries 解释"为什么存在"**——不是 crate 命名清单
 6. **One Request Story 是叙事**——不是 pipeline trace，每步绑定架构约束

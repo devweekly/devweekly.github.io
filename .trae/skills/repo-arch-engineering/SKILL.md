@@ -310,49 +310,55 @@ Narrative 必须回答 8 个问题，每个回答 ≤ 200 字：
 Primary:    architecture-narrative.json（叙事骨架）
 Supporting: repository-model.json（详细 claims）
 Evidence:   evidence-log.jsonl references（不重新推理，仅引用）
-Metadata:   hypotheses.json（标注 unknowns）
+Metadata:   hypotheses.json
 ```
 
 #### 6.4 报告结构（叙事驱动，非传统模板）
 
 ```
-1. Executive Summary（≤300 字，包含 Thesis 一句话 + 最大 trade-off）
+1. Executive Summary（≤300 字，含 Thesis 一句话 + 最大 trade-off + 主要技术债务）
 
-2. System Identity & Business Context（⭐ 必答——读者先理解"是什么、解决什么、整体架构"再进入技术细节）
+2. System Identity & Context（⭐ 必答——读者先理解"是什么、解决什么、整体架构"再进入技术细节）
    2.1 What is this repo?（类型、定位、一句话价值主张、规模、目标用户）
-   2.2 Business Context（满足什么业务需求、涉及什么业务范围、3-5 个 use cases、市场差异化）
-   2.3 High-Level Architecture（一句话整体架构 + 主要组件关系图 + 技术栈选择理由 + 部署模型）
-       ⚠️ 本章是 high-level overview，不深入技术细节（如具体协议、kind 整数、SQL schema）
-       ⚠️ 技术细节留给 §4 Resulting Architecture 和 §5 Runtime Realization
+   2.2 System Context（C4 Level 1：外部 Actor + 系统负责/不负责边界）
+   2.3 Business Context（满足什么业务需求、业务范围、3-5 个 use cases、市场差异化）
+   2.4 High-Level Architecture（一句话整体架构 + 主要组件关系图 + 技术栈选择理由 + 部署模型）
+       ⚠️ 本章是 high-level overview，不深入技术细节
+       ⚠️ 技术细节留给 §5 Resulting Architecture 和 §7 Runtime Realization
 
-3. Architecture Thesis
-   3.1 Central Idea（一句话 + if_removed 回答）
-   3.2 Driving Constraints（3-5 个塑造架构的硬约束）
+3. Architecture Overview
+   3.1 Architecture Style（显式识别风格：patch/decorator + facade + registry）
+   3.2 Driving Constraints（c-1..c-5 塑造架构的硬约束，被 §4 决策引用）
+   3.3 Central Idea（一句话 + if_removed 回答）
+   3.4 If Removed
+   3.5 Evolution Timeline（历史维度）
 
 4. Key Design Decisions（⭐ 提前——先看决策，再看结构）
    每个 Decision:
    - Context（为什么必须做决策）
    - Alternatives（至少一个被拒绝的方案）
    - Trade-off（用 X 换 Y）
-   - Implements Constraint（绑定 §3.2）
+   - Implements Constraint（绑定 §3.2 c-N）
    - Evidence Level（见下表）
 
 5. Resulting Architecture（架构作为决策的结果，非 crate 列表）
    5.1 Boundaries——按"为什么存在"组织，每个绑定 Decision
    5.2 Extension Mechanism——扩展哲学，非枚举
 
-6. Runtime Realization
-   6.1 One Request Story（一个典型请求的叙事，每步绑定架构约束）
-   6.2 Backpressure & Failure Isolation（过载时如何 degrade）
+6. Data Architecture（数据模型 + 数据流 + 约束；量化/优化器状态/registry）
 
-7. Quality Attributes（Extensibility / Maintainability / Performance / Testability / Observability / Security）
+7. Runtime Realization
+   7.1 One Request Story（典型微调请求叙事，每步绑定架构约束）
+   7.2 Studio 请求流（Rust→uvicorn→Python 链路，进程/状态模型）
+   7.3 Backpressure & Failure Isolation（过载/失败如何 degrade 与隔离）
 
-8. Risks and Debt（仅 evidence-backed，每个标注 "what breaks"）
+8. Architecture Strengths（基于证据的优势，非空泛评价）
 
-9. Unknowns（剩余 need_reading + blocked）
+9. Architecture Risks（聚焦 Top 2-3，每项标注 what_breaks；p7.md §10 必含）
 
-Appendix A: Research Provenance（Questions / Evidence Summary / Source Files）
-Appendix B: Evidence Level Legend
+10. Change Difficulty & Blast Radius（改 X 会炸哪里）
+
+11. Engineering Insights（工程哲学提炼，报告价值最高部分）
 ```
 
 > **§2 是必答章节。** 跳过 §2 直接讲技术细节（如"Nostr 协议 + kind 整数"）是常见错误——读者不知道 repo 是什么、解决什么业务问题，就被拉入技术决策，会丢失主线。§2 用业务语言和 high-level 架构建立心智模型，§3+ 才进入技术深度。
@@ -393,13 +399,13 @@ claim 标注格式：`*confidence: 0.85 · evidence_level: S (Code+Test+Formal)�
 
 #### 6.7 报告字符数硬性门槛（Hard Gate）
 
-最终 `report.md` 的**纯内容字符数（去除所有空白字符：空格 / 制表符 / 换行 / 回车）必须 ≥ 15000**。这是**硬性指标，不可绕过**。
+最终 `report.md` 的**纯内容字符数（去除所有空白字符：空格 / 制表符 / 换行 / 回车）必须 ≥ 12000**。这是**硬性指标，不可绕过**。
 
-- **字符数 < 15000 → 判定为「内容 / 深度不足」**，报告禁止发布：
+- **字符数 < 12000 → 判定为「内容 / 深度不足」**，报告禁止发布：
   - 要么返回 Step 3 继续研究、补证据拓宽覆盖；
   - 要么在现有结论上**扩展每个章节的深度**（更多子论点、反面证据、文件 / 函数级引用、权衡展开、失败案例分析）。
 - **不鼓励水字数**：禁止用重复、空泛过渡句、无意义列表填充凑数。长度 PASS 的同时仍须满足 §6.6 禁止项与 Quality Agent §10 完整性检查——凑出来的长度不会让质量门通过。
-- 阈值可由环境变量 `MIN_REPORT_CHARS` 覆盖（默认 15000）。
+- 阈值可由环境变量 `MIN_REPORT_CHARS` 覆盖（默认 12000）。
 
 **检查方式（JS 脚本判定）：** Quality Agent 在**发布前**（此时只有草稿）调用本 skill 自带脚本检查 `report-draft.md`，退出码 `0 = PASS` / `1 = FAIL(不足)` / `2 = 用法错误`：
 
@@ -417,7 +423,7 @@ node .trae/skills/repo-arch-engineering/scripts/check-report-chars.mjs .working/
 
 | 顺序 | 根因信号（命中任一） | 路由 | 继续做什么 |
 |------|----------------------|------|-----------|
-| **① 覆盖缺口** | 某维度 `coverage.ratio < 0.8`；或存在 `total = 0` 的遗漏维度；或 unresolved contradictions > 0；或有 critical/high 级 Unknowns 未答 | **Step 3** | 模型知识**本来就不够**。Planner 针对缺口维度/矛盾/Unknowns 生成新问题 → Critic → 进入 Step 4 常规研究循环 |
+| **① 覆盖缺口** | 某维度 `coverage.ratio < 0.8`；或存在 `total = 0` 的遗漏维度；或 unresolved contradictions > 0 | **Step 3** | 模型知识**本来就不够**。Planner 针对缺口维度/矛盾生成新问题 → Critic → 进入 Step 4 常规研究循环 |
 | **② 深度缺口** | 覆盖已齐（各维度 `ratio ≥ 0.8`）但**深度不足**：`evidence-log` 行数 < 30；或关键 decision 平均 evidence < 2；或 report 缺少文件/函数级 `path:line` 引用；或 model 字段单薄（boundaries < 3 / decisions < 5 且无展开） | **Step 4** | 已覆盖但**没挖深**。回到 Step 4 做 **depth pass**：对已有 approved 问题做更细粒度证据收集 + 推理（不产生新问题），更新 model/evidence 后重渲染 |
 | **③ 知识已稳、渲染没写足** | 覆盖齐、evidence 密（≥30）、hypotheses 全部终态、knowledge delta ≈ 0，但 report 仍短 | **Step 5** | 问题在**渲染而非研究**。回 Step 5 确认收敛后，**Step 6.4 基于现有 model 扩展渲染**（更多子论点、反面证据、权衡展开、失败案例），不新增研究 |
 
