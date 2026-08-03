@@ -289,14 +289,14 @@ coverage.ratio >= 0.8 AND coverage.confidence >= 0.75
 报告从模型渲染，不是重新推理证据。
 
 ```
-Research Agent → Knowledge Model → Architecture Narrative → Knowledge Renderer（Report）
+Research Agent → Knowledge Model → Architecture Insight → Knowledge Renderer（Report）
 ```
 
-**Architecture Narrative 是必经的压缩层。** Knowledge Model 是事实集合，Narrative 是架构师能快速形成心智模型的叙事骨架，Report 是叙事的渲染产物。跳过 Narrative 会产生"信息密度超过认知结构"的报告——信息齐全但读者抓不住主线。
+**Architecture Insight 是必经的压缩层。** Knowledge Model 是事实集合，Insight 是架构师能快速形成心智模型的洞察骨架（每个决策/边界/运行时环节回答「为什么 → 怎么做 → 代价 → 意味着什么」），Report 是洞察的渲染产物。跳过 Insight 会产生"信息密度超过认知结构"的报告——信息齐全但读者抓不住主线。
 
 ### Report Source
 
-- **Primary**：Architecture Narrative（叙事骨架——Thesis + Driving Constraints + Key Decisions + Boundaries + One Request Story）
+- **Primary**：Architecture Insight（洞察骨架——Thesis + Driving Constraints + Key Decisions + Boundaries + One Request Story）
 - **Supporting**：Repository Knowledge Model（详细 claims，供渲染展开）
 - **Evidence**：evidence references（不重新推理，仅引用）
 - **Metadata**：hypotheses（中间状态，记录未解假设）
@@ -309,6 +309,29 @@ Research Agent → Knowledge Model → Architecture Narrative → Knowledge Rend
 4. **Decision 绑定 Constraint**——每个 Decision 必须说明 implements 哪个 Constraint
 5. **Boundaries 解释"为什么存在"**——不是 crate 命名清单
 6. **One Request Story 是叙事**——不是 pipeline trace，每步绑定架构约束
+
+### 叙事表达原则（Report as Story）
+
+> 报告是给工程师读的分析文档，不是审计数据库导出。技术深度重要，表达层必须把工程推理串成故事。**这是理论层（为什么），执行细则（怎么做）见 SKILL.md §6.4.1。**
+
+**为什么叙事（理论）：**
+
+1. **因果链先于定义句**——读者的第一反应永远是"为什么要这么做"。先给"为了……因此……"的因果链，再给"是什么"的定义，读者才能先理解动机、再接受结构。
+2. **Evidence 分离展示**——`（confidence: 0.95 · evidence_level: A · evidence: ev-005）` 是机器标注，不是人话。证据是支撑层，混入正文会打断阅读；移入章节结尾的 Evidence Box 后，机器可验证性与人可读性互不干扰。
+3. **观点段先于清单**——checklist 罗列只陈述"有什么"，观点段给出"判断+理由"，后者才是架构师的输出。
+4. **术语人话层**——技术名词首现给"简单来说"，让非该领域工程师也能跟上。
+5. **章节过渡**——章节独立正确不等于读者跟得上；一句承上启下告诉读者"为什么下一章出现"。
+6. **Engineering Meaning 收尾**——每节结尾回答"所以意味着什么"，是从"描述"升格为"洞察"的关键。
+
+> ⚠️ **Neutrality 与叙事不冲突**：叙事是表达层（讲故事、加过渡、加总结），不是价值判断层。叙事禁止夹带绝对化结论（"不可能/永远/deliberate trade-off"）——见 Neutrality 原则。
+
+### 三层结构（Story / Detail / Evidence）
+
+**理论（为什么三层）：** 读者理解一个系统需要依次回答三个递进问题——为什么这样设计（Story）、具体怎么实现（Detail）、代码在哪里证明（Evidence）。三层缺一不可：只有 Story 是空谈，只有 Detail 是流水账，只有 Evidence 是审计日志。三层结构把"意图 → 机制 → 依据"组织成读者可自然跟进的节奏。
+
+**执行细则（每个技术章节如何按三层组织）见 SKILL.md §6.4.1 ①。**
+
+> ⚠️ **Neutrality 与叙事不冲突**：叙事是表达层（讲故事、加过渡、加总结），不是价值判断层。叙事禁止夹带绝对化结论（"不可能/永远/deliberate trade-off"）——见 Neutrality 原则。
 
 ### Claim 分类
 
@@ -325,18 +348,9 @@ Research Agent → Knowledge Model → Architecture Narrative → Knowledge Rend
 
 ### Evidence Level
 
-每条 claim 标注 confidence + evidence_level，让读者理解可信度 basis（而非仅看数值）：
+**理论（为什么分级）：** 每条 claim 标注 confidence + evidence_level，让读者理解可信度 basis（而非仅看数值）。读者判断：S/A 级 claim 可信度高，B/C 需要关注 limitation，D/E 是推测性 claim 需进一步验证。
 
-| Level | Basis |
-|-------|-------|
-| **S** | Code + Test + Formal Verification |
-| **A** | Code + Test |
-| **B** | Code only（无 test 验证） |
-| **C** | Documentation + Code 交叉验证 |
-| **D** | Documentation only |
-| **E** | Inference（基于代码模式推断） |
-
-读者判断：S/A 级 claim 可信度高，B/C 需要关注 limitation，D/E 是推测性 claim 需进一步验证。
+**定义与展示（权威）：** Level 定义表（S/A/B/C/D/E + Basis）与 Evidence Box 展示方式见 **SKILL.md §6.5**（报告侧权威定义处）；采集侧 Evidence Tier 见 model-schema.md §9.1（两者字母相同、含义不同，勿混用）。
 
 ### Architecture Thesis
 

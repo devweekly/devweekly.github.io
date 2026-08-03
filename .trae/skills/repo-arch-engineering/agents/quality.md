@@ -71,7 +71,7 @@ description: 检查 report-draft.md 质量，返回 PASS/FAIL/reason（Phase 6 M
 
 - [ ] 没有 `confidence > 0.95` 的 claim（保留不确定性）
 - [ ] `confidence < 0.3` 的 claim 已标注 `speculative`
-- [ ] 报告中标注了每条重要 claim 的 confidence
+- [ ] 每条重要 claim 的 confidence 在**节末 Evidence Box** 中标注（正文不需要重复数值）
 
 ### 4. 假设状态检查
 
@@ -99,21 +99,38 @@ description: 检查 report-draft.md 质量，返回 PASS/FAIL/reason（Phase 6 M
 - [ ] §2.3 **没有深入技术细节**（如具体协议字段、kind 整数、SQL schema、配置参数）——技术细节应在 §5/§6
 - [ ] 报告没有跳过 §2 直接讲技术细节（如"Nostr 协议 + kind 整数"出现在 §2 中 → FAIL）
 
-### 8. Architecture Narrative 质量门检查
+### 8. Architecture Insight 质量门检查
 
-- [ ] `architecture-narrative.json` 已生成（不是从 repository-model 直接渲染 report）
-- [ ] Narrative 的 `system_identity` 字段已填充（非空、非模板占位符）
-- [ ] Narrative 的 `business_context` 字段已填充（用业务语言，含 use cases）
-- [ ] Narrative 的 `high_level_architecture` 字段已填充（一句话 + 组件 + 技术栈 + 部署）
-- [ ] Narrative 的 `thesis.central_idea` 是一句话，且 `if_removed` 已回答
-- [ ] Narrative 的 `key_design_decisions` ≤ 5 个
-- [ ] 每个 Decision 的 `implements_constraint` 绑定了有效的 Constraint ID
+- [ ] `architecture-insight.json` 已生成（不是从 repository-model 直接渲染 report）
+- [ ] Insight 的 `system_identity` 字段已填充（非空、非模板占位符）
+- [ ] Insight 的 `business_context` 字段已填充（用业务语言，含 use cases）
+- [ ] Insight 的 `high_level_architecture` 字段已填充（一句话 + 组件 + 技术栈 + 部署）
+- [ ] Insight 的 `thesis.central_idea` 是一句话，且 `if_removed` 已回答
+- [ ] `thesis.why_this_center` 是**因果链**（为什么这个中心成立），不是定义句复述
+- [ ] Insight 的 `key_design_decisions` ≤ 5 个
+- [ ] 每个 Decision 完整包含六要素：`intent` / `mechanism` / `constraint` / `tradeoff{gain,cost}` / `evidence` / `engineering_meaning`
+- [ ] 每个 `engineering_meaning` 回答"对维护/演进意味着什么"（不是结论复述）
+- [ ] `architecture_realization.boundaries[]` 含 `why_exists` + `tradeoff` + `engineering_meaning`
+- [ ] `runtime_story.one_request` 含 `engineering_meaning`（这个流程揭示了什么）
+- [ ] `architecture_strengths[]` 是基于证据的优势，每项含 `engineering_meaning`
 
-### 9. Evidence Level 检查
+### 9. Evidence Level 检查（Evidence Box）
 
-- [ ] 报告中每条重要 claim 标注了 `evidence_level`（S/A/B/C/D/E）
+- [ ] 报告中每条重要 claim 的 evidence 收进**章节结尾的 Evidence Box**（不是正文内嵌 `（confidence: X · evidence_level: Y · evidence: ev-xxx）`）
+- [ ] 正文中**没有**内嵌式 evidence 标注（`confidence: X · evidence_level: Y · evidence: ev-xxx` 出现在正文句子中 → FAIL）
+- [ ] Evidence Box 中 `ev-xxx` 引用与 `confidence` 数值完整保留（机器可消费性不丢失）
 - [ ] 没有 `confidence > 0.8` 但 `evidence_level: D/E` 的矛盾（高置信度但仅文档/推断支撑）
 - [ ] `evidence_level: E`（Inference）的 claim 已标注为 speculative
+
+### 9.1 叙事规则检查（p8.md：报告是给工程师读的文章）
+
+- [ ] §4-§7 每个技术子节遵循三层结构：Story（为什么）→ Detail（怎么做）→ Evidence（Box）
+- [ ] 关键定义句前有**因果链**（"为了……因此……"），不以定义句直接开篇
+- [ ] 章节之间有**过渡句**（承上启下），不突兀跳跃
+- [ ] 重要技术名词首次出现有**人话解释**（"简单来说"）
+- [ ] 主要章节/子节结尾有 **Engineering Meaning**（"所以意味着什么"），不是证据复述
+- [ ] 观点段先于清单（不是 checklist 式罗列）
+- [ ] 叙事未夹带绝对化结论（"不可能/永远/deliberate trade-off"——Neutrality 原则）
 
 ### 10. 报告完整性
 
@@ -124,6 +141,8 @@ description: 检查 report-draft.md 质量，返回 PASS/FAIL/reason（Phase 6 M
 - [ ] §6 Data Architecture 描述量化/优化器状态/registry 的数据流与约束
 - [ ] §3.1 显式识别 Architecture Style（非空泛形容词）
 - [ ] 证据来源（evidence log）未混入正文（research log 感）
+- [ ] §9 Risks 聚焦 Top 2-3 且每项标注 what_breaks（不是冗长罗列）
+- [ ] §11 Engineering Insights 是工程哲学提炼（不是结论复述）
 
 ### 11. 报告字符数硬性门槛（Hard Gate，⭐ 优先级最高——FAIL 直接拒绝发布）
 
@@ -183,8 +202,15 @@ else:
 - `contradiction` → "解决 {pattern1} vs {pattern2} 的矛盾"
 - `§2-missing` → "补充 §2.{subsection}——回答 {question}（用业务语言，不深入技术细节）"
 - `§2-too-technical` → "§2.3 过于技术化，将 {技术细节} 移到 §5/§6，§2 只保留 high-level overview"
-- `narrative-missing` → "先生成 architecture-narrative.json，再渲染 report（不能从 model 直接渲染）"
-- `narrative-incomplete` → "Narrative 的 {field} 未填充或为模板占位符，需要从 model + repository-profile.business_signals 填充"
-- `evidence-level-missing` → "为 claim {claim_id} 标注 evidence_level（S/A/B/C/D/E）"
-- `evidence-level-contradiction` → "claim {claim_id} confidence={value} 但 evidence_level={level}，需降低 confidence 或升级 evidence"
-- `gated-fail` → "report content depth insufficient — 返回 Step 3 继续研究补证据，或在现有结论上扩展各章节深度（更多子论点 / 反面证据 / 文件函数级引用 / 权衡展开 / 失败案例分析）；禁止用重复或空泛过渡句水字数凑数"
+- `insight-missing` → "先生成 architecture-insight.json，再渲染 report（不能从 model 直接渲染）"
+- `insight-incomplete` → "Insight 的 {field} 未填充或为模板占位符，需要从 model + repository-profile.business_signals 填充"
+- `insight-six-elements-missing` → "Decision {d-id} 缺少六要素之一：{intent/mechanism/constraint/tradeoff/evidence/engineering_meaning}"
+- `insight-why-missing` → "thesis.why_this_center 缺失或只是定义句复述——必须给因果链（为什么这个中心成立）"
+- `evidence-inline` → "正文内嵌了 `（confidence: X · evidence_level: Y · evidence: ev-xxx）`——把证据收进章节结尾的 Evidence Box"
+- `evidence-box-missing` → "章节 {section} 缺 Evidence Box——该节 claim 的证据必须汇总到节末引用块"
+- `story-causal-chain-missing` → "章节 {section} 以定义句开篇——先给因果链（为了……因此……）"
+- `transition-missing` → "章节 {section} 与下一章缺过渡句——加一句承上启下"
+- `term-explanation-missing` → "术语 {term} 首次出现未解释——给'简单来说'人话层"
+- `engineering-meaning-missing` → "章节 {section} 结尾缺 Engineering Meaning——回答'所以意味着什么'"
+- `checklist-style` → "章节 {section} 是 checklist 罗列——先给观点段（判断+理由）再展开证据"
+- `gated-fail` → "report content depth insufficient — 返回 Step 3 继续研究补证据，或在现有结论上扩展各章节深度（更多子论点 / 反面证据 / 文件函数级引用 / 权衡展开 / 失败案例分析 / 补全每节 Engineering Meaning 与 Evidence Box）；禁止用重复或空泛过渡句水字数凑数"

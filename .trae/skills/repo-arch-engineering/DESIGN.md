@@ -36,7 +36,7 @@ Research Engine（循环研究）
 Repository Knowledge Model（首要产物：持久化、可追溯、可增量更新）
   |
   v
-Architecture Narrative（压缩层：Model → 叙事骨架）
+Architecture Insight（压缩层：Model → 洞察骨架——Intent/Mechanism/Constraint/Trade-off/Evidence/Engineering Meaning）
   |
   v
 report.md（视图渲染，保存到 working dir）
@@ -61,10 +61,10 @@ Model First 解决这些问题：
 Model First 不等于 Model Only。Model 是事实集合，不是交付物：
 
 - 用户读的是报告，不是 JSON——Model 的价值通过报告体现
-- 因此报告侧有**两道强制处理**：Architecture Narrative 压缩层（防止信息密度超过认知结构）+ 叙事驱动的报告结构（Thesis 为骨架，见 Methodology.md §Report Theory）
+- 因此报告侧有**两道强制处理**：Architecture Insight 压缩层（防止信息密度超过认知结构，每个决策回答「为什么→怎么做→代价→意味着什么」）+ 叙事驱动的报告结构（Thesis 为骨架，见 Methodology.md §Report Theory）
 - 报告的每个 claim 只能引用 Model，不允许新增推理（Report MUST NOT introduce new architectural claims）
 
-本 Skill 的平衡：**Model 是首要工程产物（保证质量），Narrative + Report 是 Model 的视图（保证可读性）**。
+本 Skill 的平衡：**Model 是首要工程产物（保证质量），Insight + Report 是 Model 的视图（保证可读性）**。
 
 ---
 

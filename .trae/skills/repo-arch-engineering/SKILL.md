@@ -28,7 +28,7 @@ flowchart TD
     S3b --> S4[Step 4<br/>根据问题深入分析]
     S4 --> S5{Step 5<br/>知识稳定?}
     S5 -->|No| S3a
-    S5 -->|Yes| S6a[Step 6.2<br/>构建 Architecture Narrative]
+    S5 -->|Yes| S6a[Step 6.2<br/>构建 Architecture Insight]
     S6a --> S6b[Step 6.4<br/>渲染 report.md]
     S6b --> Done([Done])
 ```
@@ -193,10 +193,9 @@ open → investigating → validated/rejected/blocked → model_updated
 
 ### Step 6 — 渲染 report.md
 
-当 repository-model 达到稳定状态后，**先构建 Architecture Narrative，再渲染 report.md**。
+当 repository-model 达到稳定状态后，**先构建 Architecture Insight，再渲染 report.md**。
 
-> Report 理论详见 [Methodology.md](./Methodology.md) §Report Theory。
-> **核心原则：Architecture 是 Decision 的结果，不是先看结构再解释为什么。** Report 必须以 Thesis 为骨架，每章节回答"这个如何实现 Thesis"。
+> Report 理论（Thesis 为骨架、Architecture 是 Decision 的结果等叙事骨架原则）详见 [Methodology.md](./Methodology.md) §Report Theory。
 
 #### 6.1 Report Generation Gate
 
@@ -210,27 +209,29 @@ open → investigating → validated/rejected/blocked → model_updated
 
 **Gate 未通过 →** 返回 Step 3 继续研究
 
-#### 6.2 Architecture Narrative（中间产物，必经阶段）
+#### 6.2 Architecture Insight（中间产物，必经阶段）
 
-**不是从 repository-model 直接渲染 report。** 先压缩为 Architecture Narrative——把 Knowledge Model 转化为架构师能快速形成系统心智模型的叙事骨架。
+**不是从 repository-model 直接渲染 report。** 先压缩为 Architecture Insight——把 Knowledge Model 转化为架构师能快速形成系统心智模型的**洞察骨架**（每个决策/边界/运行时环节回答「为什么 → 怎么做 → 代价 → 意味着什么」）。
 
 **Pipeline：**
 
 ```
 repository-model.json
         ↓
-Architecture Narrative（压缩层）
+architecture-insight.json（洞察层：Intent / Mechanism / Constraint / Trade-off / Evidence / Engineering Meaning）
         ↓
 report.md（叙事渲染）
 ```
 
-**创建：** `.working/{repo-name}/architecture-narrative.json`
+**创建：** `.working/{repo-name}/architecture-insight.json`
 
-Narrative 必须回答 8 个问题，每个回答 ≤ 200 字：
+> ⚠️ **不要让 Agent 直接写报告。** 报告必须从 Insight 生成，Insight 从 Model 生成——三层流水线保证「事实 → 洞察 → 文章」逐层升格，任何一层都不该跳过。
+
+Insight 必须回答以下问题，每个回答 ≤ 200 字：
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "repo_name": "buzz",
   "system_identity": {
     "what_is": "这个 repo 是什么？一句话——类型、定位、一句话价值主张",
@@ -252,7 +253,8 @@ Narrative 必须回答 8 个问题，每个回答 ≤ 200 字：
   },
   "thesis": {
     "central_idea": "一句话——系统的架构中心是什么？",
-    "if_removed": "如果把这个中心去掉，系统还能跑吗？为什么？"
+    "if_removed": "如果把这个中心去掉，系统还能跑吗？为什么？",
+    "why_this_center": "为什么这个中心成立？（不是定义句，是因果链：什么目标迫使它成为中心）"
   },
   "driving_constraints": [
     {
@@ -266,19 +268,45 @@ Narrative 必须回答 8 个问题，每个回答 ≤ 200 字：
     {
       "id": "d-1",
       "decision": "最关键的 5 个决策之一（从 repository-model.design_decisions 选 top 5）",
-      "implements_constraint": "c-1",
-      "rejected_alternative": "至少一个被拒绝的替代方案",
-      "tradeoff": "用 X 换 Y"
+      "intent": "为什么做这个决策（Intent：要达成什么）",
+      "mechanism": ["如何实现（Mechanism：具体机制/代码路径）"],
+      "constraint": ["被什么限制（Constraint）"],
+      "tradeoff": { "gain": "得到什么", "cost": "失去什么" },
+      "evidence": ["ev-xxx（Evidence：哪里证明）"],
+      "engineering_meaning": "对维护/演进意味着什么（Engineering Meaning）"
     }
   ],
   "architecture_realization": {
-    "boundaries": "3-5 个关键边界，每个解释为什么存在（不是 crate 列表）",
-    "extension_mechanism": "系统如何扩展（不是 kind 列表，是扩展哲学）"
+    "boundaries": [
+      {
+        "name": "边界名",
+        "why_exists": "为什么存在（Intent）",
+        "mechanism": "如何划界（Mechanism）",
+        "tradeoff": "这个边界付出的代价",
+        "engineering_meaning": "对维护意味着什么",
+        "evidence_ref": "evidence-log.jsonl:N"
+      }
+    ],
+    "extension_mechanism": {
+      "philosophy": "系统如何扩展（扩展哲学，非枚举）",
+      "engineering_meaning": "这套扩展机制对维护/新功能意味着什么"
+    }
   },
   "runtime_story": {
-    "one_request": "一个典型请求/事件从入口到完成的完整路径，作为叙事（不是 pipeline trace）。说明每一步对应哪个架构约束。",
+    "one_request": {
+      "story": "一个典型请求/事件从入口到完成的完整路径，作为叙事（不是 pipeline trace）。说明每一步对应哪个架构约束。",
+      "engineering_meaning": "这个流程揭示了什么重要事实（如：优化发生在训练开始之前，而非训练之中）"
+    },
     "backpressure": "系统如何在过载时 degrade"
   },
+  "architecture_strengths": [
+    {
+      "id": "s-1",
+      "strength": "基于证据的优势（非空泛评价）",
+      "evidence_ref": "evidence-log.jsonl:N",
+      "engineering_meaning": "这个优势对用户/维护者意味着什么"
+    }
+  ],
   "top_risks": [
     {
       "id": "r-1",
@@ -290,24 +318,27 @@ Narrative 必须回答 8 个问题，每个回答 ≤ 200 字：
 }
 ```
 
-**Narrative 质量门：**
+**Insight 质量门：**
 
 - ✅ System Identity 回答"是什么"——读者读完知道 repo 类型、定位、规模
 - ✅ Business Context 回答"解决什么业务问题"——用业务语言（不是技术语言），含 use cases 和市场差异化
 - ✅ High-Level Architecture 回答"整体架构什么样"——一句话 + 组件关系 + 技术栈选择理由 + 部署模型，**不深入技术细节（如 Nostr 协议）**
 - ✅ Thesis 是一句话，且能回答 "if_removed" 问题
+- ✅ `thesis.why_this_center` 是**因果链**（为什么这个中心成立），不是定义句复述
 - ✅ Driving Constraints 是"被迫的硬约束"（不是 feature list）
 - ✅ Key Design Decisions ≤ 5 个（强制压缩，防止平铺）
-- ✅ 每个 Decision 绑定一个 Constraint（implements_constraint）
-- ✅ Boundaries 解释"为什么存在"（不是 crate 命名）
-- ✅ One Request Story 是叙事，不是 step trace
+- ✅ 每个 Decision 完整包含六要素：`intent` / `mechanism` / `constraint` / `tradeoff{gain,cost}` / `evidence` / `engineering_meaning`（缺失任一要素 → 视为未完成）
+- ✅ `engineering_meaning` 回答"对维护/演进意味着什么"（不是结论复述）
+- ✅ Boundaries 解释"为什么存在"（不是 crate 命名），且含 `why_exists` + `tradeoff` + `engineering_meaning`
+- ✅ One Request Story 是叙事，不是 step trace，且含 `engineering_meaning`（这个流程揭示了什么）
+- ✅ `architecture_strengths` 是**基于证据**的优势（非空泛评价），每项含 `engineering_meaning`
 
-**Narrative 未通过 →** 重写 Narrative（不返回 Step 3，因为 model 已稳定）
+**Insight 未通过 →** 重写 Insight（不返回 Step 3，因为 model 已稳定）
 
 #### 6.3 Report Source
 
 ```
-Primary:    architecture-narrative.json（叙事骨架）
+Primary:    architecture-insight.json（洞察骨架）
 Supporting: repository-model.json（详细 claims）
 Evidence:   evidence-log.jsonl references（不重新推理，仅引用）
 Metadata:   hypotheses.json
@@ -334,12 +365,13 @@ Metadata:   hypotheses.json
    3.5 Evolution Timeline（历史维度）
 
 4. Key Design Decisions（⭐ 提前——先看决策，再看结构）
-   每个 Decision:
-   - Context（为什么必须做决策）
-   - Alternatives（至少一个被拒绝的方案）
-   - Trade-off（用 X 换 Y）
-   - Implements Constraint（绑定 §3.2 c-N）
-   - Evidence Level（见下表）
+   每个 Decision 按六要素展开（对应 architecture-insight.json）:
+   - Intent（为什么做这个决策）
+   - Mechanism（如何实现——机制/代码路径）
+   - Constraint（被什么限制，绑定 §3.2 c-N）
+   - Trade-off（得到什么，失去什么）
+   - Evidence（收进节末 Evidence Box）
+   - Engineering Meaning（对维护/演进意味着什么）
 
 5. Resulting Architecture（架构作为决策的结果，非 crate 列表）
    5.1 Boundaries——按"为什么存在"组织，每个绑定 Decision
@@ -363,6 +395,72 @@ Metadata:   hypotheses.json
 
 > **§2 是必答章节。** 跳过 §2 直接讲技术细节（如"Nostr 协议 + kind 整数"）是常见错误——读者不知道 repo 是什么、解决什么业务问题，就被拉入技术决策，会丢失主线。§2 用业务语言和 high-level 架构建立心智模型，§3+ 才进入技术深度。
 
+#### 6.4.1 叙事渲染规则（执行细则）
+
+> **理论依据（为什么叙事）** 见 [Methodology.md](./Methodology.md) §Report Theory「叙事表达原则 / 三层结构 / Evidence Box」——本文档只给**执行细则**，理论不在此复述。
+
+> 报告技术深度重要，但**表达层必须把工程推理串成故事**。目标是「资深架构师写给另一个工程师的分析文档」，不是「带引用元数据的 AI 生成答案」。以下规则全部强制：
+
+**① 三层结构（每个技术章节内部）**
+
+每个 §4-§7 的子节按「Story → Detail → Evidence」组织：
+
+```
+Architecture Story（为什么这样设计——意图/因果链）
+        ↓
+Technical Detail（具体怎么实现——机制/代码路径）
+        ↓
+Evidence（代码在哪里证明——证据引用）
+```
+
+- **Story**：以"为什么"开头（`为了……因此……`），先讲意图再讲实现
+- **Detail**：机制、`path:line` 引用、步骤
+- **Evidence**：收进 Evidence Box（见规则 ②），不散在正文
+
+**② Evidence Box（evidence 移出正文，禁止内嵌）**
+
+正文**保持流畅**，每章/节**结尾**用独立引用块汇总证据：
+
+```markdown
+> **Evidence**
+> - Confidence: 0.95 · Level: A（Code + Test）
+> - Sources: ev-005, ev-007, ev-008
+```
+
+❌ 禁止：`Unsloth 的架构中心是 xxx。（confidence: 0.95 · evidence_level: A · evidence: ev-005）`——机器可读但对人像 AI 水印。Evidence 是支撑层，不是正文标点。
+
+**③ 因果链叙事（先"为什么"后"是什么"）**
+
+禁止以定义句开篇（`架构中心 = import-time monkey-patch`）。必须先给因果：
+
+> Unsloth 的核心目标不是重新设计训练框架，而是不破坏 HF 生态兼容的前提下替换慢路径。因此它没有创建新 Model API，而选择在 import 阶段介入 transformers/peft/trl……
+
+**④ 章节过渡句（每章末尾/开头一行）**
+
+每章结束加一句"承上启下"：
+
+> 上述架构回答了"系统由什么组成"。下一节分析：这些结构不是偶然形成的，而是由几个核心工程约束推动的。
+
+**⑤ 观点段优先于清单（先观点后证据）**
+
+禁止 checklist 式罗列。先给一个**观点段**（判断+理由），再展开证据：
+
+> **Unsloth 最大的工程价值不是新 API，而是降低迁移成本。** 对已有 HF 用户，传统方式需要改代码+换加载+调流程；Unsloth 只需 `import unsloth`——把 adoption barrier 从"工程迁移问题"降级为"安装依赖问题"。
+
+**⑥ 术语人话解释层（首次出现必解释）**
+
+技术名词第一次出现时给"简单来说"：
+
+> Registry-driven Capability Extension（注册式能力扩展）——简单来说：系统不为每个模型写 `if llama / elif qwen` 分支，而是把模型信息登记进 `MODEL_REGISTRY`，由 Loader 自动选择实现。新增模型 = 加一条数据，不是改流程代码。
+
+**⑦ 每节结尾 Engineering Meaning（架构师视角总结）**
+
+每节结尾回答"所以意味着什么"——这是报告从"描述"升格为"洞察"的关键：
+
+> 这个流程揭示了一个重要事实：Unsloth 的优化不发生在训练阶段，而发生在训练开始之前。它不是优化 training loop，而是改变 training loop 看到的模型实现。因此：**patch 生命周期管理比 kernel 本身更关键。**
+
+> ⚠️ **Neutrality 与叙事不冲突**：叙事是表达层（讲故事、加过渡、加总结），不是价值判断层。禁止用叙事夹带"不可能/永远/deliberate trade-off"等绝对化结论（见 Methodology Neutrality 原则）。
+
 #### 6.5 Evidence Level（替代纯 confidence 数值）
 
 每条 claim 标注 `confidence` + `evidence_level`，让读者理解可信度 basis：
@@ -376,7 +474,18 @@ Metadata:   hypotheses.json
 | **D** | Documentation only | Evolution motivation |
 | **E** | Inference（基于代码模式推断） | Buzz Mesh trust model risk |
 
-claim 标注格式：`*confidence: 0.85 · evidence_level: S (Code+Test+Formal)· evidence: evidence-log.jsonl:N*`
+**展示方式 = Evidence Box（p8.md：不混在句子里）。** 正文保持流畅，每章/节结尾用引用块汇总该节全部证据：
+
+```markdown
+> **Evidence**
+> - Confidence: 0.85 · Level: S（Code + Test + Formal）
+> - Sources: evidence-log.jsonl:42, evidence-log.jsonl:57
+```
+
+- 正文**禁止**内嵌 `（confidence: X · evidence_level: Y · evidence: ev-xxx）` 式标注——机器可验证性由 Evidence Box 提供，正文只承担可读性
+- Evidence Box 可合并（一节一个 Box 汇总本节所有 claim），可分级（`A-level: ev-005, ev-007` + `Confidence: High`）
+- 组合标注（如 A/D 表示由 A 级和 D 级证据共同支撑）在 Box 内注明
+- **机器可消费性不丢失**：Evidence Box 中的 `ev-xxx` 引用与 `confidence` 数值完整保留，Model 仍可从中验证每节 claim 的支撑
 
 > **Evidence Level ≠ Evidence Tier。** 两者都使用 S/A/B/C/D/E 字母，但含义不同、用途不同，不要混用：
 >
@@ -396,6 +505,13 @@ claim 标注格式：`*confidence: 0.85 · evidence_level: S (Code+Test+Formal)�
 - ❌ Design Decisions 放在 Architecture Model 之后
 - ❌ 用 confidence 数值而不给 evidence_level basis
 - ❌ Appendix 内容混入正文（research log 感）
+- ❌ 正文内嵌 `（confidence: X · evidence_level: Y · evidence: ev-xxx）` 标注——Evidence 必须收进章节结尾的 Evidence Box（§6.4.1 ② / §6.5）
+- ❌ 以定义句开篇而不给因果链（"架构中心 = xxx" 必须先回答"为什么这个中心成立"）
+- ❌ 章节间无过渡、突兀跳跃（每章必须有一句承上启下）
+- ❌ checklist 式罗列替代观点段（先观点后证据，§6.4.1 ⑤）
+- ❌ 技术术语首现不解释（"简单来说"人话层缺失，§6.4.1 ⑥）
+- ❌ 章节结尾缺 Engineering Meaning（"所以意味着什么"缺失，§6.4.1 ⑦）
+- ❌ 用叙事夹带绝对化结论（"不可能/永远/deliberate trade-off"）——Neutrality 原则与叙事不冲突
 
 #### 6.7 报告字符数硬性门槛（Hard Gate）
 
@@ -425,7 +541,7 @@ node .trae/skills/repo-arch-engineering/scripts/check-report-chars.mjs .working/
 |------|----------------------|------|-----------|
 | **① 覆盖缺口** | 某维度 `coverage.ratio < 0.8`；或存在 `total = 0` 的遗漏维度；或 unresolved contradictions > 0 | **Step 3** | 模型知识**本来就不够**。Planner 针对缺口维度/矛盾生成新问题 → Critic → 进入 Step 4 常规研究循环 |
 | **② 深度缺口** | 覆盖已齐（各维度 `ratio ≥ 0.8`）但**深度不足**：`evidence-log` 行数 < 30；或关键 decision 平均 evidence < 2；或 report 缺少文件/函数级 `path:line` 引用；或 model 字段单薄（boundaries < 3 / decisions < 5 且无展开） | **Step 4** | 已覆盖但**没挖深**。回到 Step 4 做 **depth pass**：对已有 approved 问题做更细粒度证据收集 + 推理（不产生新问题），更新 model/evidence 后重渲染 |
-| **③ 知识已稳、渲染没写足** | 覆盖齐、evidence 密（≥30）、hypotheses 全部终态、knowledge delta ≈ 0，但 report 仍短 | **Step 5** | 问题在**渲染而非研究**。回 Step 5 确认收敛后，**Step 6.4 基于现有 model 扩展渲染**（更多子论点、反面证据、权衡展开、失败案例），不新增研究 |
+| **③ 知识已稳、渲染没写足** | 覆盖齐、evidence 密（≥30）、hypotheses 全部终态、knowledge delta ≈ 0，但 report 仍短 | **Step 5** | 问题在**渲染而非研究**。回 Step 5 确认收敛后，**Step 6.4 基于现有 model 扩展渲染**（更多子论点、反面证据、权衡展开、失败案例、补全每节六要素展开与 Evidence Box、Engineering Meaning），不新增研究 |
 
 **回路规则：**
 
@@ -433,7 +549,7 @@ node .trae/skills/repo-arch-engineering/scripts/check-report-chars.mjs .working/
 - 路由后必须**重新渲染** `report-draft.md` 并**再次跑 §6.7 脚本**——直到 PASS 或明确 blocked。
 - **防空转**：同一路由连续 2 次回炉后 `pure_content_chars` 无明显增长（< 10%）且无新增 evidence → 判定收敛但报告写不长，标记 `blocked`，升级由用户决定是否接受短报告或降低 `MIN_REPORT_CHARS`，禁止无限循环。
 
-**输出：** `.working/{repo-name}/architecture-narrative.json` + `.working/{repo-name}/report.md`
+**输出：** `.working/{repo-name}/architecture-insight.json` + `.working/{repo-name}/report.md`
 
 ---
 
@@ -449,7 +565,7 @@ node .trae/skills/repo-arch-engineering/scripts/check-report-chars.mjs .working/
 ├── evidence-log.jsonl        # 证据日志（append-only 唯一事实源，Evidence Agent 写，Step 4）
 ├── repository-model.json     # Repository Knowledge Model（Step 4 更新；Model/Reasoning 按字段分区写入）
 ├── hypotheses.json           # 假设系统（Reasoning Agent 维护，Step 4）
-├── architecture-narrative.json # Step 6.2 中间产物——Knowledge Model → 叙事骨架（Report Agent 写）
+├── architecture-insight.json # Step 6.2 中间产物——Knowledge Model → 洞察骨架（Report Agent 写）
 ├── questions/                # 问题引擎
 │   ├── summary.json          #   问题列表汇总 + 状态（Workspace Agent 写）
 │   ├── round-1.json          #   第 1 轮问题（Planner 生成，Workspace 落盘）
@@ -504,8 +620,8 @@ node .trae/skills/repo-arch-engineering/scripts/check-report-chars.mjs .working/
 | Evidence | [agents/evidence.md](./agents/evidence.md) | Step 4 | 收集证据，写 evidence-log.jsonl |
 | Model | [agents/model.md](./agents/model.md) | Step 4 | 从 evidence 合并/更新 repository-model.json（identity/architecture/runtime 字段） |
 | Reasoning | [agents/reasoning.md](./agents/reasoning.md) | Step 4 | 架构解释 + 质疑 + 验证 hypothesis（写推理字段 + hypotheses.json） |
-| Report | [agents/report.md](./agents/report.md) | Step 6 | 构建 Architecture Narrative + 渲染 report-draft.md |
-| Quality | [agents/quality.md](./agents/quality.md) | Step 6 | 检查 narrative 质量门 + report-draft.md 质量 |
+| Report | [agents/report.md](./agents/report.md) | Step 6 | 构建 Architecture Insight + 渲染 report-draft.md |
+| Quality | [agents/quality.md](./agents/quality.md) | Step 6 | 检查 Insight 质量门 + report-draft.md 质量 |
 
 **内部顺序：**
 - Step 1：Resume（判断现场）→ Workspace（初始化/恢复/标记 invalidation）
@@ -522,3 +638,4 @@ node .trae/skills/repo-arch-engineering/scripts/check-report-chars.mjs .working/
 - 报告的结论通过**提问 → 收集证据 → 质疑 → 修正**循环产生
 - 能回答"改 X 会炸哪里"（Blast Radius）和"哪些改动容易、哪些危险"（Change Difficulty）
 - 能回答"系统为何演变成今天这样"（架构演进时间线）
+- 报告读起来像**架构师写给工程师的分析文档**，不是带引用元数据的审计数据库导出：有因果链叙事、Evidence 在 Box 里不混正文、章节有过渡、观点段先于清单、术语有人话解释、每节有 Engineering Meaning（§6.4.1 全部规则）

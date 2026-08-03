@@ -78,7 +78,7 @@ Evidence 节点内部强制分离：
 | `questions/summary.json` | §10 问题汇总索引 | Workspace Agent |
 | `context.json` | 工作状态（含 coverage 工作态） | Workspace Agent（唯一写入者） |
 | `rounds/round-N.json` | 轮次统计记录 | Workspace Agent |
-| `architecture-narrative.json` | 叙事骨架（Model → Report 压缩层） | Report Agent |
+| `architecture-insight.json` | 洞察骨架（Model → Report 压缩层） | Report Agent |
 | `report-draft.md` → `report.md` | 报告草稿 → 发布 | Report Agent 写草稿；Quality PASS 后 Workspace rename 发布 |
 
 ---
