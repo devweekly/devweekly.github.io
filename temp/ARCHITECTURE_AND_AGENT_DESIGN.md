@@ -627,7 +627,102 @@ Agent 的"自我"不是写死在 system_prompt 里的一坨，而是分层演化
 
 ---
 
-## 15. 总结：设计哲学
+## 15. 记忆系统设计（Memory System）
+
+Cumora 把"记忆"当成一等公民来设计，因为它要支撑的是**长期自治、无中央调度的 Agent**——Agent 必须跨成千上万个回合积累经验、记住偏好、避免重复踩坑。记忆系统不是把历史塞进上下文，而是一个**持久化 + 语义检索 + 优雅降级 + 身份隔离**的完整子系统。
+
+### 15.1 设计定位：记忆是"知识分层"的一层
+
+呼应 §14.5 的渐进式披露，Agent 的"知道什么"被切成四层，记忆是其中专门承载**长程、跨回合、可检索**知识的一层：
+
+| 层 | 载体 | 性质 |
+|---|---|---|
+| 稳定身份 | `IDENTITY.md` / `SOUL.md` | 不轻易变，每回合拼接 |
+| 易变事实 | 运行时注入（团队名册、时钟） | 不写进静态人设 |
+| **长程记忆** | **`agent_workspace` 的 `memory/` 命名空间** | **语义检索、按需取用** |
+| 专用能力 | `skills/` | 渐进式加载 |
+
+记忆的价值：让 Agent 在"下次醒来"时带着上下文，而不是每次都从零开始。
+
+### 15.2 存储模型：记忆 = 虚拟文件系统上的原子笔记
+
+关键设计决定：**不设独立 memory 表，而是复用 `agent_workspace`（path-keyed 虚拟 FS）**，记忆路径约定为 `memory/<kind>/<id>.md`：
+
+```
+agent_workspace (每行 = 一个文件)
+├─ agent_id      // 归属，JWT 解析，DB 侧强制
+├─ path          // 'memory/observation/mem-<uuid>.md'
+├─ body          // 笔记正文（Markdown）
+├─ meta JSONB    // { type, kind, about, pinned, source, createdAt }
+├─ embedding vector(1536)  // pgvector 稠密向量
+├─ company_id    // 租户隔离
+└─ updated_at
+```
+
+- **为何复用 workspace 表**：记忆与"工作区文件（`cumora workspace write`）"共用同一抽象与同一套 FS 端点（`cumora-fuse` Go 二进制把 `agent_workspace` 挂成引擎里的真实目录）。于是记忆既可被 `cumora memory` 命令操作，也能被引擎当普通文件直接读写——**统一介质，降低概念数**。
+- `fs-namespace.ts` / `fs-endpoints.ts` 对 `memory/` 前缀特殊处理：标 `type:'memory'`、默认 `pinned:false`、写后异步重算 embedding。
+- **原子笔记而非大块追加**：每条记忆是独立文件，便于单独检索、pin、删除、重嵌入。
+
+### 15.3 写入路径：`memory note` + 双写 + 异步嵌入
+
+`cumora memory note <body> --about <subject> --kind <kind>` 的写入链路（`cli.ts:3629-3668`）：
+
+1. 组装 `meta = { type:'memory', kind, about, pinned:false, source:null, createdAt }`。
+2. INSERT **前**先算 embedding（`embedText(body)`），让行落库即带向量。
+3. 双写：
+   - **`agent_workspace` 行**（带 embedding）—— 记忆本体。
+   - **`agent_log` 行**（`kind='note'`, `ref={memoryId, path}`）—— append-only 工作日志，与 embedding 成功与否**解耦**（见 §15.5 降级）。
+4. **身份隔离在 DB 侧强制**：写入用 `me`（`resolveAs` 解析自 JWT），SQL 永远是 `agent_id = $1`。即使 CLI 试图伪造 `--as` 也只写自己的空间——防跨写（集成测试 `agent-memory.test.ts` 的 identity guard 直证）。
+
+### 15.4 语义检索：混合召回（Hybrid Retrieval）
+
+`loadMemory(agentId, queryText, limits)`（`inproc-client.ts:224-296`）是记忆的"取"路径。唤醒时把**最近收件箱上下文**作为 `queryText` 嵌入，做三路召回再合并去重：
+
+```
+                 ┌─ ① pinned     : 全部置顶记忆（agent 的"核心身份"），永远注入   rank 0
+queryText ──嵌入─┤─ ② relevant   : pgvector 余弦距离 embedding <=> $query，Top-N(默认20)   rank 1
+                 └─ ③ recent     : Top-M(默认10) 最新，兜底 embedding 未算好的新记忆        rank 2
+
+三路 UNION ALL → ROW_NUMBER() PARTITION BY path ORDER BY source_rank 去重(保留最高优先级源)
+→ 最终 ORDER BY source_rank ASC, updated_at DESC
+```
+
+- **① pinned**：`meta.pinned=true` 的记忆每次唤醒必注入，相当于"我是谁 / 我铁定记得的事"。
+- **② relevant**：`ORDER BY embedding <=> $2::vector ASC`（余弦距离），只取未置顶且 embedding 非空的 Top-N。
+- **③ recent**：纯粹按 `updated_at DESC` 取最新——保证"刚记下的新上下文即使向量还没算好也绝不丢失"。
+- **排序语义**：身份定义类在前 → 当前相关 → 最近，让注入 prompt 的阅读顺序自然。
+- **性能**：partial HNSW 索引 `idx_workspace_embed_hnsw`，上万条记忆下 Top-K 仍快。
+
+> 可迁移经验：**不要只用向量召回**。单一路召回会丢两类东西——"相关但不重要"（该用 pinned 保底）和"新但还没向量"（该用 recent 兜底）。pinned + 语义 + 最近的三层优先级，比纯 RAG 更稳。
+
+### 15.5 优雅降级：外部依赖抖动不丢记忆
+
+整条链路对 OpenAI embeddings 是 **best-effort**：
+
+- `embedText`（`embeddings.ts:42-59`）：空串/超 8K 字符/API 异常 → 返回 `null`，调用方回落到 recency-only。
+- `hasPgVector()`：启动探测一次并缓存；pgvector 没装就根本不走语义路。
+- `backfillMemoryEmbeddings`：server boot 时 fire-and-forget，批 50、间隔 80ms 节流，补填所有 `embedding IS NULL` 的记忆——大 Agent（数千条）也不爆 OpenAI 限流。
+- **集成测试直证**（`agent-memory.test.ts`）：当 `embedText` 返回 `null` 时，`memory note` 仍落库、`body` 完整、`embedding=NULL`，后续由 backfill 补齐。即"嵌入失败 = 记忆照存，只是暂时不可语义召回"。
+
+### 15.6 生命周期操作
+
+- `memory list [--about <subject>] [--kind <kind>] [--limit N]`：most-recent-first，`pinned` 浮顶（`ORDER BY pinned DESC, updated_at DESC`）。
+- `memory pin <id>`：toggle `meta.pinned`（`jsonb ||` 合并），置顶即进入"核心身份"集合。
+- `memory delete <id>`：按 id 删行。
+- 维度过滤：`--about` 可按"关于谁/什么"检索，`--kind` 分类。
+
+### 15.7 值得借鉴的工程要点
+
+1. **记忆 = 虚拟 FS 上的原子笔记**，复用 workspace 抽象，记忆与文件统一介质、引擎可直接读写。
+2. **混合召回**：pinned（身份）+ 语义（相关）+ 最近（兜底），分层优先级而非单向量召回——避免"相关但不重要"或"新但无向量"两类丢失。
+3. **嵌入与写入解耦 + 优雅降级 + 后台回填**：外部依赖（OpenAI）抖动不丢数据、不阻断唤醒。
+4. **身份隔离在 DB 侧强制**（`agent_id=$1` + JWT 解析 `me`），非 CLI 层信任——防伪造跨写。
+5. **双写**（workspace + append-only log）：记忆本体与可审计工作日志分离。
+6. **path 命名空间 + 结构化 meta**：类型/对象/置顶进 JSONB，检索与过滤灵活；partial HNSW 索引保性能。
+
+---
+
+## 16. 总结：设计哲学
 
 1. **I/O 与大脑彻底解耦**：`cumora` CLI 薄壳 + 部署无关的传输，使"换引擎/换宿主"几乎零成本，云与 BYOA 共用同一套协调能力。
 2. **代码闸门优先于提示词**：凡竞态能用服务端事务/行锁/Redis 游标抓住的，绝不用 prompt 去补；提示词只承载 shape 级原则（且极简）。

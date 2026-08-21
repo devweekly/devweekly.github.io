@@ -369,6 +369,12 @@ H --> I
 
 [网易公开课](https://open.163.com/)
 
+[CS 8803 LLM - Large Language Models (Georgia Tech)](https://cocoxu.github.io/CS8803-LLM-spring2026/)
+
+[]()
+
+[]()
+
 []()
 
 []()
