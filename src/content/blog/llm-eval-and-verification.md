@@ -110,7 +110,7 @@ OpenAI 的论文 [《Why Language Models Hallucinate》][1]（[PDF][13]）里有
 这是全文最重要的骨架【归纳】。后面所有章节（判定、题目、环境、评分器、指标、生产）都是这个链条上的一个环节：
 
 ```text
-Claim → Task → Environment → Observation → Grader → Metric → Decision → Feedback
+Claim → Task → Elicitation/Harness → Environment → Observation → Grader → Metric → Decision → Feedback
 ```
 
 展开成一个具体例子——"这个 Agent 能可靠地处理退款请求"：
@@ -123,6 +123,9 @@ Claim:
 
 Task:
 用户要求取消一笔符合条件的订单
+
+↓ Elicitation / Harness（诱发与脚手架，见 §5）:
+prompt、工具集、context 管理、retry、budget——决定能力是否被诱发出来
 
 ↓ Environment（环境）:
 账户、订单、退款 API、权限、policy
@@ -153,17 +156,18 @@ pass@1 / pass^k / 错误类型 / 成本 / 延迟
 
 > **Eval 不是"给模型出题"，而是构造一个能够支持 / 反驳某个产品或模型 Claim 的实验。**
 
-于是"AI 系统为什么不能靠一个准确率证明自己可靠"，就有了答案：因为链条上有 **7 个不同的断裂点**，准确率只覆盖了其中一段：
+于是"AI 系统为什么不能靠一个准确率证明自己可靠"，就有了答案：因为链条上有 **6 个不同层次的问题**，准确率只覆盖了其中一段【归纳】：
 
 ```text
-1. 你到底想测什么？（Claim 是否清晰）
-2. 这个东西能不能被判定？（§3）
-3. 题目/任务本身是否有效？（§4）
-4. 你的执行环境有没有改变结果？（§5）
-5. 你的评分器是否真的在测你想测的东西？（§6）
-6. 测出来的数字能不能推广到生产？（§7、§9）
-7. 生产中的新失败能不能反过来修正 Eval？（§9）
+A. Construct / Claim——你到底想证明什么？（§2）
+B. Task Validity——题目是不是一个有效代理？（§3、§4）
+C. Execution / Elicitation——harness / environment / budget 是否改变了能力表现？（§5）
+D. Measurement——observation / grader / metric 是否测到了你想测的东西？（§6、§7）
+E. Generalization——结果能不能推广到目标生产分布？（§7、§9）
+F. Operationalization——结果能不能进入发布、监控、回归和事故反馈？（§9）
 ```
+
+前四层是测量与效度问题，后两层是外部效度与生命周期问题——不要把它们放在同一层比较。
 
 **后文导读：** §3–§7 按这个顺序逐关展开；§8 把"模型"换成"系统"；§9 闭环到生产；§10 只保留大厂证据；§11 给最小可跑方案。
 
@@ -171,9 +175,9 @@ pass@1 / pass^k / 错误类型 / 成本 / 延迟
 
 ## 3. 第一关：这个东西能不能被判定？
 
-第一判断仍然是：**哪些输出能判对错，哪些不能**【推论】。但"可判定 / 不可判定"二分太粗，拆成三级才够用【归纳】：
+第一判断仍然是：**哪些输出能判对错，哪些不能**【推论】。但"可判定 / 不可判定"二分太粗，拆成三种判定强度才够用【归纳】。注意：**不是三类任务，而是三种判定强度**——同一个任务里往往同时存在三部分（见 §10.3 的 Data Agent 案例）。
 
-### 3.1 Outcome 可判定（最好）
+### 3.1 Deterministic / Observable（确定性判定，最好）
 
 ```text
 数据库里是否新增了一条记录？
@@ -190,13 +194,15 @@ pass@1 / pass^k / 错误类型 / 成本 / 延迟
 
 **工程含义：先把 outcome 的可观测性建起来（能查库、能查状态、能查副作用），再谈 grader。** 很多团队反过来做，grader 只能判文本，天然测不准。
 
-判据用一句人话即可：
+判据用一句人话即可【推论】：
 
-> **"两个不同的人看了这个输出，会不会得出同一个结论？"**
+> **"是否可以把成功标准定义成一个可重复执行、与具体实现无关的判定规则？"**
 
-会 → 可判定，能进准确率指标。不会 → 进入下一级。
+例如文件存在、金额 = 100、数据库状态 = refunded、测试通过、权限未越权——这才是 deterministic。
 
-### 3.2 Semantic 可判定（需要组合拳）
+注意："两个不同的人看了都觉得不错"只是 inter-rater agreement，不等于 deterministic grading——两个人可能只是共享偏见，并不代表存在稳定、可自动执行的判定规则。
+
+### 3.2 Semantic / Model-assisted（语义判定，需要组合拳）
 
 ```text
 SQL 是否实现了相同语义？
@@ -215,7 +221,7 @@ deterministic checks + LLM grader + human calibration
 
 只比 SQL 字符串 → 漏判语义等价；只比结果集 → 放过"碰巧结果一样但逻辑错了"的查询。两个信号一起给 grader，是比"跑个 diff"高一档的做法。
 
-### 3.3 Preference / Value 可判定（没有 ground truth）
+### 3.3 Subjective / Human-calibrated（主观判定，以人为准）
 
 ```text
 哪个方案更好？
@@ -223,11 +229,13 @@ deterministic checks + LLM grader + human calibration
 这个 UI 是否更自然？
 ```
 
-这类根本不存在绝对答案，只能进：
+这类通常不存在唯一、完全客观的 ground truth，只能进：
 
 ```text
 rubric + pairwise comparison + expert review + calibration + agreement measurement
 ```
+
+但"主观"不等于"全不可判定"：很多主观任务内部仍有大量可判定部分——如代码 review 是否遗漏安全漏洞、是否违反规范、是否包含必需检查项；Anthropic 对 research agent 也是用 groundedness、coverage、source quality 等 grader 组合，而不是简单归为"完全没有 ground truth"【原文】。
 
 Warp 的做法 [《How Warp builds self-improving agents on Claude》][5] 是个参照【原文】：领域可验证 → 先建 verification harness；领域不可验证 → 依赖 golden outputs 的确定性 eval，人类反馈**只限领域专家**（"don't open the floodgates"）。
 
@@ -300,7 +308,7 @@ owner: data-agent-team
 status: active
 ```
 
-自建 eval 的硬规则（Anthropic 与 OpenAI 两边其实在说同一件事）：**写不出参考解，就是坏题信号。** Anthropic 要求每个任务配可通过的参考解【原文】，OpenAI 发现大量坏题是规格不足【原文】。
+自建 eval 的硬规则要分情况说【归纳】：**对于可验证任务，应尽可能提供一个能通过全部 grader 的 reference solution，用来证明任务可解并验证 grader；对于开放式任务，则至少需要可操作的 success criteria / rubric。** Anthropic 建议每个 task 有 reference solution【原文】，但 conversational / research 类任务允许多个合理解法，不适合要求唯一 reference output。你的 Data Agent 例子属于前一种，所以保留 golden SQL 完全成立。
 
 τ²-bench 的 v1.0.1 一次做了 75+ 项任务质量修复（移除错误预期动作、修掉不可能满足的约束），甚至触发榜单重评分——这就是"活资产"的常态。
 
@@ -316,16 +324,20 @@ status: active
 
 一个保留状态、对失败自动重试的 harness，可能让同一个模型完成多步任务；而在简单 harness 里永远完不成。**所以"模型 + harness"才是实际被测系统**（Anthropic [2] 同样明确说了这点）。
 
-### 5.1 【归纳】把 Harness 理解成"实验条件"
+### 5.1 【归纳】把 Harness 理解成"实验条件"，把 Elicitation 单独拎出来
 
 ```text
 Model = treatment（处理）
 Task = stimulus（刺激）
-Harness = experimental setup（实验装置）
+Elicitation/Harness = 诱发手段 + 实验装置
 Environment = context（上下文）
 Grader = measurement instrument（测量仪器）
 Metric = statistic（统计量）
 ```
+
+Harness 是"实验条件"，但 OpenAI [7] 的核心词其实更进一步，叫 **elicitation（诱发）**【原文】：**你有没有真正把系统的能力"诱发出来"？** 同一个模型，配不同的 context 管理、tool access、retry、budget，测出来的能力完全不同。OpenAI 甚至把 **strongest credible elicitation** 作为 capability claim 的组成部分。
+
+所以链条里写成 Elicitation/Harness：harness 偏 infrastructure（容器、工具、隔离），elicitation 回答"如何让 agent 发挥它本来具备的能力"。只谈前者，实验条件就不完整。
 
 这能解释：为什么不同 benchmark 分数不能直接比？为什么 prompt 变了但模型没变分数会变？为什么 tool availability 会改变排名？——因为**实验条件变了**。
 
@@ -359,7 +371,7 @@ Anthropic 引入 trial（同一 task 跑多次）的原因很朴素：**一次�
 
 - 不要只报 `pass@1 = 72%`，要报 `72% ± 不确定性`（置信区间）。
 - `A = 72%, B = 75%` 不能直接说 B 更好——要问样本量、trial 方差、是否配对比较。**Task 本身才是主要实验单位，而不是单次生成。**
-- 每次 trial 必须隔离（全新容器、不保留状态、默认无网络）。Harbor 把这做成了默认值（见 §11），而 Anthropic 是靠一次真实事故才学到这点（§10.3）。
+- 每次 trial 必须隔离（全新容器、不保留状态、默认无网络）。Harbor 把这做成了默认值（见 §11）；Anthropic §10.1 的事故则是反面教材——提示词说无网络，容器实际有出口。
 
 ### 5.4 一个统计陷阱：pass^k 的独立性假设
 
@@ -431,6 +443,17 @@ Stable ──────────┼────────── 不稳定
 
 一句话：**一个评测可以非常稳定地测错东西。** OpenAI 的 benchmark 审计、Anthropic 的 broken eval、harness 变量，全部是这句话的证据。
 
+### 6.4 Eval quality 三件套：Validity / Reliability / Sensitivity
+
+Reliability + Validity 还缺一块：**Sensitivity / Resolution（分辨率）**【归纳】——这个 Eval 对系统改进还有没有分辨率？§9 的 eval saturation 说的正是这个：
+
+```text
+System A = 98%, System B = 99%   # 只看总分，提升 1%
+核心困难任务：A 20%, B 60%        # 大量简单题把差异淹没了
+```
+
+最终定义：**测得对不对（Validity）、测得稳不稳（Reliability）、能不能看出真正的改进（Sensitivity）。** 这也把 capability / regression / saturation 统一起来：capability eval 要保 sensitivity（专挑能拉开差距的题），regression eval 要保 reliability（稳定的题才配当门禁）。
+
 ---
 
 ## 7. 第五关：一个数字不够描述可靠性
@@ -477,12 +500,14 @@ Escalate human / Retry with another model / Use deterministic tool
 
 ### 7.3 pass@k vs pass^k：选错指标等于选错产品
 
-| 指标   | 含义                | 适用                                 |
-| ------ | ------------------- | ------------------------------------ |
-| pass@k | k 次里至少成功 1 次 | 辅助工具（多试几次成一次就行）       |
-| pass^k | k 次全部成功        | 客服、交易、数据管道（每次都必须对） |
+| 指标   | 含义                               | 适用                                 |
+| ------ | ---------------------------------- | ------------------------------------ |
+| pass@k | k 次里至少成功 1 次                | 辅助工具（多试几次成一次就行）       |
+| pass^k | k 次全部成功（观测到的全成功比例） | 客服、交易、数据管道（每次都必须对） |
 
-`pass@1=90%` 看着不错，但 `pass^10 = 0.9^10 ≈ 35%`。**同一个系统，"成功率 90%"和"连续 10 次都对 35%"是同一件事的两种说法。** 实践折中：pass@1 做快速迭代，pass^k（k 取业务能容忍的连续失败代价）做发布门禁。评分规则同样是产品决策：弃权通道 + 兜底路径 + 业务定阈值。
+`pass@1=90%` 看着不错。但注意：`0.9^10 ≈ 35%` 不是 pass^k 的定义，而是**如果每次 trial 独立且单次成功概率稳定为 90%，理论上的 all-success 概率**【推论】。**同一个系统，"单次成功率 90%"和"独立假设下连续 10 次都对 35%"是同一件事的两种说法。**
+
+还要补一句：pass^k 和真实生产连续成功率并不完全等价——真实生产任务的难度分布不是固定 p。看分布要分三层：per-task pass rate vs aggregate pass rate vs tail-task reliability（最难的那批任务决定下限）。实践折中：pass@1 做快速迭代，pass^k（k 取业务能容忍的连续失败代价）做发布门禁。评分规则同样是产品决策：弃权通道 + 兜底路径 + 业务定阈值。
 
 ---
 
@@ -496,22 +521,23 @@ Anthropic 把评估分成三档【原文】：单轮（看文本）→ 多轮（
 
 ### 8.2 Failure Taxonomy：Eval 的产物不是分数，是可行动的失败信息
 
-`failed / broken / wrong` 指导不了工程。至少定义【推论】：
+`failed / broken / wrong` 指导不了工程。用二维结构代替互斥长清单【推论】：
+
+**维度一 Cause（谁的错）：** Model / Agent policy / Tool / Environment / Harness / Grader / Task
+
+**维度二 Failure mode（错在哪）：** Knowledge / Reasoning / Instruction / Tool use / Safety / Abstention / Recovery
 
 ```text
-F1  Knowledge failure（缺知识）
-F2  Reasoning failure（推理错）
-F3  Instruction following failure（没听指令）
-F4  Tool selection failure（选错工具）
-F5  Tool argument failure（参数错）
-F6  Environment / infra failure（环境坏）
-F7  Harness failure（脚手架坏）
-F8  Grader failure（评委错）
-F9  Task specification failure（题目坏）
-F10 Safety / policy failure（越权违规）
-F11 Abstention failure（该弃权没弃 / 不该弃权弃了）
-F12 Recovery failure（错了但没恢复）
+Cause = Tool,        Mode = Argument error      # 参数错
+Cause = Task,        Mode = Ambiguous spec      # 题目歧义
+Cause = Grader,      Mode = False positive      # 评委误判
+Cause = Model,       Mode = Reasoning error     # 推理错
+Cause = Harness,     Mode = State pollution     # 状态串扰
+Cause = Environment, Mode = Infra failure       # 环境坏
+Cause = Agent policy, Mode = Abstention error   # 该弃权没弃
 ```
+
+一维长清单（F1–F12）的问题是 F6/F7、F2/F3 互相覆盖，F10/F11 一个是 domain 一个是 behavior。二维结构直接回答归因最需要的两个问题：**哪里坏的 × 怎么坏的**。
 
 `Accuracy = 80%` 没法指导下一步；但"工具参数错 8%、题目歧义 5%、策略理解错 4%、grader 误判 2%"马上能指导。
 
@@ -530,7 +556,7 @@ Pass / Fail + Why + Where + Who/What caused it + Can it regress?
 ```text
 FAIL — 退款未创建
 Root cause: tool-call #4 的 order_id 参数错误
-Category: F5 tool argument failure
+Cause = Tool, Mode = Argument error
 Stage: tool-call #4
 Regression: yes（加入回归套件）
 Suggested fix: tool schema / prompt / retry policy
@@ -631,9 +657,11 @@ Anthropic 的 transcript、OpenAI 的 benchmark 审计、Data Agent 的 producti
 
 值得单拎：**咨询性控制 vs 确定性控制**【归纳】。CLAUDE.md、Skills 是咨询性的（模型可不听）；Hooks、分支保护、受管设置是确定性的（不依赖自觉）。**只有后者能当门禁。**
 
-### 10.3 OpenAI 产品侧：Data Agent 纵向案例（贯穿全文）
+### 10.3 OpenAI Data Agent：一个基于公开做法的合成 Eval Case
 
-[《Inside our in-house data agent》][8] 是"自家产品怎么保证对"的实操文。本节把它拆到底，作为 §2–§9 的完整纵贯案例【原文为前半，诊断过程为推论示例】：
+[《Inside our in-house data agent》][8] 是"自家产品怎么保证对"的实操文。本节把它拆到底，作为 §2–§9 的完整纵贯案例。
+
+> 事实边界：**公开事实** = golden SQL、同时比对 SQL 与结果集、grader 出分 + 解释、权限透传、工具收敛（Less is More）、Meaning Lives in Code；\*\*以下 refund_top5_001、错误 transcript、归因均为本文为说明方法而构造的合成案例，不是 OpenAI 公开过的真实事件。
 
 ```yaml
 task:
@@ -668,7 +696,7 @@ failure_labels:
 一次失败 transcript（示意）：agent 把"退款率"算成 `refund_amount / gmv`，查了 `orders` 却漏了 `refunds` 表的权限过滤，输出了 top5。
 
 - Grader 判失败：result_correctness（结果集与 golden SQL 不一致）+ permission_check（一票否决）。
-- 人工复核发现 grader 误判了一半：SQL 语义其实接近正确，错的是口径定义——属于 F9 任务规格失败（prompt 没写清退款率口径），不是 F2 推理失败。
+- 人工复核发现 grader 误判了一半：SQL 语义其实接近正确，错的是口径定义——归因按二维结构记为 Cause = Task（prompt 没写清退款率口径）+ Mode = Ambiguous spec，而不是模型推理错。
 - 修正：prompt 显式声明口径 + grader 增加口径容忍说明 + 该 case 以 `refund_top5_001 v3` 进入 Regression Suite。
 
 三条踩坑教训【原文】：Less is More（工具收敛合并，功能重叠对 agent 是困惑）；Guide the Goal, Not the Path（刚性指令把 agent 推向错误路径，和 τ²-bench 案例同一枚硬币）；Meaning Lives in Code（语义活在生产 pipeline 代码里，用 Codex 爬代码理解数据集构造）。另有权限透传 + 暴露推理证据链：系统侧不可越权，用户侧可自己核查。
@@ -677,7 +705,7 @@ failure_labels:
 
 ### 10.4 前沿模型评估已转向（压缩）
 
-一句话案例【归纳自 [10][11]】：**前沿模型评估已从"答对多少题"转向"在真实工具和高风险环境中会做什么"**——重心是 capability / safety / monitorability / controllability（如 54,000 内部 Codex 任务部署模拟、Critical 网络能力定级、错位监控、红队、CoT 可控性）。注意：安全概述里没有常规准确率数字，这本身就是表态。
+一句话案例【归纳自 [10][11]】：**前沿模型评估已从"答对多少题"转向"在真实工具和高风险环境中会做什么"**——重心是 capability / safety / monitorability / controllability（如 54,000 内部 Codex 任务部署模拟、Critical 网络能力定级、错位监控、红队、CoT 可控性）。注意：安全概述里没有常规准确率数字——这也反映出这类安全评估关注的问题与传统 accuracy benchmark 已经明显不同（此处是推论，不是 OpenAI 的原话表态）。
 
 ### 10.5 两家的侧重差异
 
@@ -714,18 +742,82 @@ eval/
 
 已经足够。Terminal-Bench 2.0 的 outcome-driven 设计就是证明："测试验证指令结果是否在容器最终状态达成，不测命令或控制台输出"【原文】。
 
-### 11.2 平台引入阈值
+### 11.2 开源与业界工具地图
 
-规模上去之后再谈平台，按需引入【推论】：
+先定阈值，再选工具【推论】：
 
 ```text
 规模增加 → tracing → dataset management → concurrency →
 experiment tracking → annotation
 ```
 
-- 执行与隔离：[Harbor][18]（Terminal-Bench 团队开源，Apache 2.0）——评测任意 agent、大规模并发（本地 Docker / 云端 Daytona、Modal、E2B 等）、默认隔离（全新容器、任务无状态、默认禁用网络）。**Anthropic 靠事故学到的，现在是它的默认值。**
-- 打分与追踪：按"离线迭代还是生产可观测"选——Braintrust（离线+线上打通）、LangSmith（LangChain 生态）、Langfuse（自托管/合规）、Arize Phoenix（开源起步）、EvalScope（[文档][20]，中文生态）。很多团队是组合+自建小脚本，完全没问题（Anthropic [2] 附录原话）。
-- 公开题集：SWE-bench Verified（有根本性设计与污染问题，慎用）、Terminal-Bench 2.0（89 任务，三位人工评审，前沿模型 <65%）、τ²-bench（政策+工具+任务+用户模拟器，榜单 [taubench.com][15]，仓库 [14]）。
+下面的分类直接对应正文模型：Task → Harness → Observation → Grader → Metric → Production。注意 Inspect AI、Harbor、DeepEval、Promptfoo、Ragas、Phoenix、Opik 各自解决的不是同一个问题——把它们统称"Eval Framework"会产生错误认知。
+
+#### A. Benchmark / Foundation Model（测模型能力，不是测完整 Agent 系统）
+
+- **lm-evaluation-harness**（OSS，EleutherAI）：few-shot / zero-shot 标准 benchmark、多 backend（HF、vLLM、MPS）、task config——foundation model 能力的经典路线，正好强化"Benchmark ≠ Production Eval" [21]。
+- **OpenAI Evals / simple-evals**（OSS）：前者是 framework + benchmark registry，值得读其 eval schema 与 benchmark 实现；后者官方已标注 2025 年 7 月后不再为新模型/benchmark 持续更新，仅保留 HealthBench、BrowseComp、SimpleQA 等 reference implementation——两者状态要分开看 [22][23]。
+- **Inspect AI**（OSS，UK AI Security Institute + Meridian Labs）：面向 coding / agentic / reasoning / knowledge / behavior / multimodal，强调 datasets、agents、tools、scorers 可组合原语，200+ 预构建 eval——从单轮评测进入 frontier / agent / safety eval 的入口 [24]。
+
+#### B. Application / LLM Eval（偏测试框架路线）
+
+- **DeepEval**（OSS，Apache-2.0）："Pytest for LLM apps"——测试用例、metric、CI gate 是一级对象，覆盖 LLM / RAG / conversation / agent；适合做 L3 Grader + Regression 开发框架，而非完整生产 observability 平台，直接对应 Failure → Eval → Fix → Regression [25]。
+- **Promptfoo**（OSS）：**Prompt / Model Regression + Red Team 工具**，不是"另一个通用框架"——Prompt/Model/Attack 矩阵比较 + `redteam init → run → report` 工作流、插件与攻击策略、CI run context，对应 Regression + Adversarial + Harness [26]。
+- **Ragas**（OSS）：不要只当"RAG 工具"——当前已覆盖 RAG / Agent / Text-to-SQL / Workflow / Prompt evaluation / Judge alignment / Benchmarking；选型问题不是"哪个框架最好"，而是"哪个覆盖我的 failure surface" [27]。
+- **UpTrain**（OSS/平台）：开源 Evaluator 做记录与评估——轻量备选，不给 DeepEval / Promptfoo / Ragas 同等篇幅 [28]。
+
+#### C. Grader / Evaluation Library（只解决评分层）
+
+- **AutoEvals**（OSS，Braintrust）：LLM-as-a-Judge + heuristic + statistical + factuality + safety，Python / TypeScript——只想快速获得一组可复用 grader 时用它；它是 grader library ≠ 完整 eval platform [29]。
+- **TruLens**（OSS）：核心是 feedback functions——metric 可绑定到 trace 具体组件（question / context / retrieval / response），支持 online evaluation、sampling、throttling；Grader 不只是"给最终回答打分" [30]。
+
+#### D. Agent Evaluation / Harness（执行与沙箱层）
+
+- **Harbor**（OSS，Terminal-Bench 团队，Apache-2.0）= **Execution / Sandbox / Rollout Harness**，≠ Grader / Metric / Benchmark——评测任意 agent、大规模并发（本地 Docker / 云端 Daytona、Modal、E2B 等）、默认隔离（全新容器、任务无状态、默认禁用网络）；Harbor Hub 已扩展到 datasets / tasks / leaderboards / trajectories / rollouts。这些默认值恰好覆盖了 Anthropic 事故暴露出的典型风险：状态污染、意外网络访问和环境串扰 [18][19][31]。
+- 对应关系：**Inspect = Evaluation logic，Harbor = Execution / sandbox infrastructure**——正好落回 L2/L3 分层。
+- **Microsoft Prompt Flow**（OSS/平台）：flow 编排、调试、tracing、evaluation、CI/CD、部署、监控，大数据集 evaluation——workflow-oriented Eval，与 DeepEval（test-oriented）形成对比 [32]。
+
+#### E. Observability + Evaluation（追踪与实验层，不排名）
+
+- **Arize Phoenix**（OSS）：tracing、datasets、experiments、eval，偏 OpenTelemetry / OpenInference。
+- **Opik**（OSS，自托管）：tracing、evaluation、datasets、experiments、LLM-as-a-judge、production monitoring、pytest 集成，偏 tracing + eval + optimization [33]。
+- **Langfuse**（OSS，自托管）：open-source observability / eval，有数据驻留/合规要求时优先。
+- **W&B Weave**（OSS/平台）：tracing、evaluation、experiment organization、production workflow，evaluation 代码主要在 `weave/flow` [34]。
+- 另有 LangSmith（LangChain 生态集成最顺）、EvalScope（[文档][20]，中文生态）按栈选择。很多团队是组合+自建小脚本，完全没问题（Anthropic [2] 附录原话）。
+
+#### F. Red Team / Security（对抗评估单独一类）
+
+- **Promptfoo**：adversarial testing / red teaming（见 B）。
+- **Giskard**（OSS，v3 已转向）：agent eval、多轮测试、red teaming、test generation、RAG evaluation、vulnerability scanning [35]。
+- **Inspect AI**：safety / frontier evaluations（见 A）。
+
+#### G. Cloud / Enterprise（云厂商原生 Eval）
+
+云厂商 Eval 已从"模型 benchmark"进入"应用/Agent evaluation"：
+
+- **Microsoft Foundry**（商业）：Model / Agent / Dataset / Trace evaluation，offline + production，full conversation / individual turn，code rules + LLM-as-a-judge + human review + pairwise comparison——几乎逐项对应 Task / Dataset / Agent / Trace / Grader / Production [36]。
+- **AWS Bedrock Evaluations**（商业）：foundation model（含 custom/imported）、RAG（retrieval 或 retrieve+generate 全链路）、LLM-as-a-Judge、programmatic evaluation [37]。
+- 另有 Google Vertex AI Evaluation、Braintrust（离线+线上打通）、Galileo（offline eval → production guardrail：production data → groundtruth → annotation → custom eval → guardrail，并把 expensive judge 压缩为低成本 Luna models，最贴合 Eval Flywheel）、Confident AI（DeepEval 的生产侧）按需选型。
+- 反例提醒：Humanloop 已于 2025-09-08 sunset，不在推荐表——Eval 产品不只是技术问题，平台生命周期本身也是选型风险。
+
+#### H. 工具 → 五层模型映射（覆盖面示意，不是排名）
+
+| 工具        | Task | Harness | Grader | Observability | Production |
+| ----------- | ---: | ------: | -----: | ------------: | ---------: |
+| DeepEval    |  ★★★ |       ★ |    ★★★ |            ★★ |         ★★ |
+| Promptfoo   |  ★★★ |      ★★ |    ★★★ |             ★ |         ★★ |
+| Ragas       |  ★★★ |       ★ |    ★★★ |            ★★ |         ★★ |
+| Inspect AI  |  ★★★ |     ★★★ |    ★★★ |            ★★ |          ★ |
+| Harbor      |   ★★ |     ★★★ |      ★ |           ★★★ |          ★ |
+| Phoenix     |   ★★ |       ★ |    ★★★ |           ★★★ |        ★★★ |
+| Opik        |   ★★ |       ★ |    ★★★ |           ★★★ |        ★★★ |
+| Langfuse    |   ★★ |       ★ |     ★★ |           ★★★ |        ★★★ |
+| TruLens     |   ★★ |       ★ |    ★★★ |           ★★★ |        ★★★ |
+| Prompt Flow |   ★★ |     ★★★ |     ★★ |           ★★★ |        ★★★ |
+| Foundry     |  ★★★ |     ★★★ |    ★★★ |           ★★★ |        ★★★ |
+| Bedrock     |  ★★★ |      ★★ |    ★★★ |           ★★★ |        ★★★ |
+
+公开题集：SWE-bench Verified（有根本性设计与污染问题，慎用）、Terminal-Bench 2.0（89 任务，三位人工评审，前沿模型 <65%）、τ²-bench（政策+工具+任务+用户模拟器，榜单 [taubench.com][15]，仓库 [14]）。
 
 按团队规模：小团队先指定每周读 transcript 的人；中型把通过率做成合并门禁；大型把 eval 结果带进发布评审。**买不到的部分**：前沿靶场、红队、第三方审计、生产规模流量、sandbagging 研究、公开缺陷的意愿——这些是资源与文化，不是工具。
 
@@ -750,6 +842,17 @@ experiment tracking → annotation
 ```
 
 所以可靠性不是**一个模型属性**，而是**系统属性 + 测量体系属性 + 组织属性**。
+
+反向验证一张表（没做到哪环，就会付出对应代价）【归纳】：
+
+| 没做到   | 后果                           |
+| -------- | ------------------------------ |
+| 不可观察 | 根本不知道发生了什么           |
+| 不可判定 | 知道结果，但不知道对不对       |
+| 不可归因 | 知道错了，但不知道为什么       |
+| 不可回归 | 修完不知道以后会不会再坏       |
+| 不可比较 | 不知道新版本到底有没有改善     |
+| 不可治理 | 知道有问题，但无法决定是否上线 |
 
 最后一句 operational 的：**能不能判定，是需求设计问题；能不能一直判定下去，是人和纪律的问题。** 前者看 §3，后者看"每周谁读 transcript、每次事故是否新增 eval、发布评审是否看回归 diff"。
 
@@ -780,3 +883,20 @@ experiment tracking → annotation
 [18]: https://github.com/harbor-framework/harbor "Harbor — Terminal-Bench 团队做的 agent 评测与优化框架"
 [19]: https://doi.org/10.5281/zenodo.20953922 "Harbor Framework（Zenodo DOI）"
 [20]: https://evalscope.readthedocs.io/ "EvalScope — 阿里开源的大模型评测框架"
+[21]: https://github.com/EleutherAI/lm-evaluation-harness "lm-evaluation-harness — EleutherAI，few-shot / zero-shot 标准 benchmark 框架"
+[22]: https://github.com/openai/evals "openai/evals — framework + benchmark registry"
+[23]: https://github.com/openai/simple-evals "openai/simple-evals — HealthBench / BrowseComp / SimpleQA 等 reference implementation，2025-07 后不再持续更新"
+[24]: https://inspect.aisi.org.uk/ "Inspect AI — UK AI Security Institute / Meridian Labs，frontier / agent / safety eval 框架"
+[25]: https://github.com/confident-ai/deepeval "DeepEval — Pytest 风格 LLM / RAG / conversation / agent evaluation（Apache-2.0）"
+[26]: https://github.com/promptfoo/promptfoo/blob/main/site/docs/red-team/configuration.md "Promptfoo red-team 配置文档"
+[27]: https://docs.ragas.io/en/latest/howtos/cli/ "Ragas CLI — RAG / Agent / Text-to-SQL / Workflow / Prompt evaluation"
+[28]: https://docs.uptrain.ai/tutorials/open-source-evaluator "UpTrain Open Source Evaluator"
+[29]: https://github.com/braintrustdata/autoevals "AutoEvals — Braintrust 开源 grader library（LLM-as-a-Judge / heuristic / statistical）"
+[30]: https://www.trulens.org/component_guides/evaluation/running_feedback_functions/with_app/ "TruLens — feedback functions 与生产 online evaluation"
+[31]: https://hub.harborframework.com/ "Harbor Hub — datasets / tasks / leaderboards / trajectories / rollouts"
+[32]: https://github.com/microsoft/promptflow "Microsoft Prompt Flow — flow 编排、testing、evaluation、CI/CD"
+[33]: https://github.com/comet-ml/opik/blob/main/README.md "Opik — tracing、evaluation、datasets、experiments、production monitoring"
+[34]: https://github.com/wandb/weave "W&B Weave — GenAI tracing / evaluation / experiment 工具"
+[35]: https://github.com/Giskard-AI/giskard-oss "Giskard — agent eval / red teaming / test generation / vulnerability scanning"
+[36]: https://learn.microsoft.com/en-us/azure/foundry/how-to/evaluate-generative-ai-app "Microsoft Foundry — Model / Agent / Dataset / Trace evaluation"
+[37]: https://aws.amazon.com/bedrock/evaluations/ "AWS Bedrock Evaluations — foundation model / RAG evaluation"
