@@ -5,7 +5,10 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
+    "accelerate>=1.14.0",
     "docling>=2.112.0",
     "httpx[socks]>=0.28.0",
-    "networkx"
+    "networkx",
+    "torch>=2.13.0",
+    "transformers>=5.8.1",
 ]
