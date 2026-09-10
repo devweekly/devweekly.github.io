@@ -1,533 +1,217 @@
-# Skill: Experience API vs Domain API Decision
-
-## Purpose
-
-Determine whether a capability, integration, orchestration, transformation, or business logic belongs in:
-
-* **Experience API** — Node.js / BFF layer
-* **Domain API** — Java / business capability layer
-
-The primary architectural principle is:
-
-> Experience API owns consumer experience. Domain API owns business meaning and business decisions.
-
-Do not classify based on programming language, data source technology, database type, or whether the source is internal/external.
-
+---
+name: experience-vs-domain-api
+version: 1.0.0
+description: Decide whether a capability, orchestration, transformation, validation, or external-data integration belongs in the Experience API (BFF) or Domain API. Use when designing APIs, services, integrations, or reviewing architecture boundaries.
 ---
 
-## Architecture Context
+# Experience API vs Domain API
 
-Assume the default architecture is:
+## Goal
 
-```text
-Angular / Other Consumer
-        │
-        ▼
-Experience API
-Node.js / BFF
-        │
-        ▼
-Domain API
-Java
-        │
-        ├── PostgreSQL / DB
-        ├── Snowflake
-        └── External Business Data Sources
-```
+Keep the boundary between the consumer-facing Experience API and the business-facing Domain API explicit.
 
-The exact technologies may differ, but the responsibility boundary remains the same.
+Use this rule first:
 
----
+> **Experience API owns consumer-specific delivery. Domain API owns business capability and business meaning.**
 
-# Core Decision Rule
+Do not decide from technology choice, database choice, or whether a source is internal/external.
 
-For every proposed capability, ask:
-
-> **Does this capability exist because of a particular consumer experience, or because the business domain needs the capability?**
-
-### Experience API
-
-Use Experience API when the capability primarily exists to serve a specific consumer experience.
-
-Typical responsibilities:
-
-* BFF
-* API composition
-* Consumer-specific aggregation
-* Consumer-specific DTO shaping
-* UI-oriented formatting
-* Pagination / filtering required specifically by the UI
-* Combining several Domain APIs for one screen
-* Consumer-specific orchestration
-* Mapping domain responses into screen/view models
-* Hiding backend API complexity from a consumer
-
-### Domain API
-
-Use Domain API when the capability represents business meaning or business behavior.
-
-Typical responsibilities:
-
-* Business rules
-* Business calculations
-* Domain decisions
-* Business validation
-* Investment rules
-* Business workflows
-* Business-level orchestration
-* Business entities and aggregates
-* Business data retrieval
-* Integration with data sources required by business capabilities
-* Normalizing external business data into domain concepts
-* Combining multiple data sources to produce business information
-
----
-
-# Primary Decision Tree
-
-For each proposed implementation:
+## Default architecture
 
 ```text
-                         New capability
-                              │
-                              ▼
-               Is it business-domain behavior?
-                       /              \
-                     Yes               No
-                      │                 │
-                      ▼                 ▼
-                 Domain API       Is it consumer-specific?
-                                      /        \
-                                    Yes         No
-                                     │           │
-                                     ▼           ▼
-                              Experience API   Re-evaluate
+Angular / other consumer
+        |
+        v
+Experience API (Node.js / BFF)
+        |
+        v
+Domain API (Java)
+        |
+        +--> PostgreSQL / other DB
+        +--> Snowflake
+        +--> external business systems
 ```
 
-A capability is considered business-domain behavior if it affects:
+The technologies are examples, not part of the rule.
 
-* business rules
-* business decisions
-* business calculations
-* business state
-* business workflows
-* business entities
-* business-level validation
-* business interpretation of external data
+## When to use this skill
 
----
+Apply this skill when a request involves any of the following:
 
-# Strong Signals for Domain API
+- Where an endpoint/service/use case should live.
+- Whether logic belongs in Node.js or Java.
+- Whether an external API should be called by Experience API or Domain API.
+- Whether an API composition is UI composition or business orchestration.
+- Whether business logic is leaking into a BFF.
+- Whether the Domain API has become a generic UI gateway.
 
-Put the capability in Domain API when one or more of these are true:
+## Decision procedure
 
-1. It implements a business rule.
+For each capability, perform these checks in order.
 
-2. It performs a business calculation.
+### 1. Identify the responsibility
 
-3. It makes a business decision.
-
-4. It changes business state.
-
-5. It validates business invariants.
-
-6. It interprets external data according to business meaning.
-
-7. It combines data sources to create a business concept.
-
-8. Another consumer could reasonably need the same capability.
-
-9. The capability would still exist if Angular were replaced.
-
-10. The capability could be reused by:
-
-* another frontend
-* mobile application
-* batch process
-* scheduled job
-* AI agent
-* another internal service
-
-11. Removing the frontend would not remove the business requirement.
-
-12. The logic needs domain-level automated tests.
-
----
-
-# Strong Signals for Experience API
-
-Put the capability in Experience API when one or more of these are true:
-
-1. It exists only for a particular consumer.
-
-2. It combines several Domain APIs to build a screen/view.
-
-3. It transforms domain data into a UI-specific DTO.
-
-4. It performs presentation-oriented formatting.
-
-5. It handles UI-specific pagination or filtering.
-
-6. It creates a view model.
-
-7. Different consumers would reasonably need different representations.
-
-8. Removing the consumer would make the capability unnecessary.
-
-9. The logic has no independent business meaning.
-
----
-
-# External Data Source Decision
-
-Do NOT use this rule:
-
-```text
-External API → Experience API
-Database → Domain API
-Snowflake → Domain API
-```
-
-This is incorrect.
-
-Instead ask:
-
-> **Why does the application need this external data?**
-
-## Case 1 — External data is part of business capability
-
-Example:
-
-```text
-Investment Idea
-      │
-      ├── Market Data
-      ├── ESG Data
-      └── Research Data
-             │
-             ▼
-       Investment Score
-```
-
-If external data participates in:
-
-* investment calculations
-* investment scoring
-* risk analysis
-* valuation
-* investment rules
-* investment thesis
-* business decisions
-
-then the integration belongs in:
-
-```text
-Domain API
-```
-
-The Domain API should expose a business-oriented abstraction rather than leaking the external provider directly.
-
-Example:
-
-```java
-interface MarketDataProvider {
-    MarketData getMarketData(SecurityId securityId);
-}
-```
-
-The implementation may use:
-
-```text
-ExternalMarketDataProvider
-SnowflakeMarketDataProvider
-CachedMarketDataProvider
-```
-
-The domain should depend on the business concept, not the provider's API.
-
----
-
-# External Data Case 2 — UI-only enrichment
-
-Example:
-
-```text
-Investment Idea
-      │
-      ├── Idea data
-      ├── Author
-      └── Company Logo
-```
-
-If the external data is only required to improve a particular UI:
-
-```text
-Domain API → Investment Idea
-                    │
-Experience API ─────┼──→ Logo API
-                    │
-                    ▼
-              Angular View
-```
-
-then it may belong in:
-
-```text
-Experience API
-```
-
-because the external integration has no independent business meaning.
-
----
-
-# External Data Case 3 — Pure passthrough
-
-If the application simply exposes an external capability without adding domain behavior:
-
-```text
-Angular
-   │
-   ▼
-Experience API
-   │
-   ▼
-External API
-```
-
-Experience API may own the integration.
-
-Example:
-
-```text
-GET /market-data/search
-```
-
-if it is simply a consumer-facing search endpoint and does not participate in Investment Idea business logic.
-
-However, if the same market data becomes part of:
-
-```text
-calculateInvestmentScore()
-```
-
-the integration should move behind Domain API.
-
----
-
-# The "Second Consumer" Test
-
-Ask:
-
-> If a second consumer appears tomorrow, should it be able to reuse this capability?
+Describe the capability in one sentence without mentioning the implementation technology.
 
 Examples:
 
-```text
-Angular
-Mobile
-AI Agent
-Batch Job
-Internal Portal
-```
+- `calculateInvestmentRisk`
+- `determineInvestmentRating`
+- `buildInvestmentIdeaPage`
+- `combineIdeaAndRecentActivities`
 
-If yes:
+If the responsibility cannot be stated clearly, split the capability before deciding.
 
-```text
-Domain API
-```
+### 2. Ask whether it has business meaning
 
-If no, and the capability is tightly coupled to one consumer:
+Choose **Domain API** when the capability does any of these:
 
-```text
-Experience API
-```
+- applies a business rule;
+- performs a business calculation;
+- makes a business decision;
+- changes or validates business state;
+- interprets source data into a business concept;
+- coordinates a business workflow;
+- combines sources to produce a business-level result;
+- represents a reusable business capability.
 
-This is one of the strongest practical tests.
-
----
-
-# The "Remove Angular" Test
-
-Ask:
-
-> If Angular disappeared tomorrow, would this logic still be required by the business?
-
-### Yes
-
-Likely:
-
-```text
-Domain API
-```
-
-### No
-
-Likely:
-
-```text
-Experience API
-```
-
-Example:
+Examples:
 
 ```text
 calculateInvestmentRisk()
-```
-
-Angular-independent:
-
-```text
-Domain API
-```
-
-Example:
-
-```text
-combineIdeaHeaderAndRecentActivitiesForIdeaPage()
-```
-
-Angular-specific:
-
-```text
-Experience API
-```
-
----
-
-# The "Business Vocabulary" Test
-
-If the operation naturally uses business vocabulary, it is probably Domain API.
-
-Examples:
-
-```text
-evaluateInvestmentIdea()
-calculateRiskScore()
+determineInvestmentRating()
 validateInvestmentThesis()
 calculatePortfolioExposure()
-determineInvestmentRating()
-approveInvestmentIdea()
 ```
 
-These belong in Domain API.
+### 3. Ask whether it is consumer-specific
 
-If the operation naturally uses presentation vocabulary, it is probably Experience API.
+Choose **Experience API** when the capability exists primarily to serve a particular consumer experience:
+
+- compose several backend responses for a screen;
+- create a consumer-specific DTO/view model;
+- adapt API shape for Angular/mobile/web;
+- apply presentation-specific formatting;
+- apply consumer-specific pagination/filtering;
+- hide backend call structure from a consumer.
 
 Examples:
 
 ```text
-buildIdeaPage()
-formatIdeaResponse()
-combineDashboardWidgets()
-buildMobileView()
+buildInvestmentIdeaPage()
+combineIdeaAndRecentActivities()
+mapIdeaToAngularViewModel()
 ```
 
-These belong in Experience API.
-
----
-
-# The "Business Meaning" Test for Data
-
-Do not ask:
-
-> Where is the data stored?
+### 4. Apply the removal test
 
 Ask:
 
-> Who gives the data its business meaning?
+> If Angular and its page disappeared, would the capability still be required by the business?
 
-For example:
+- **Yes** -> Domain API is the default.
+- **No** -> Experience API is the default.
+
+This is a heuristic, not an absolute rule.
+
+### 5. Apply the second-consumer test
+
+Ask:
+
+> Would another consumer reasonably need the same business capability?
+
+Examples of another consumer:
+
+- mobile app;
+- another frontend;
+- batch process;
+- scheduled job;
+- AI agent;
+- another internal service.
+
+If yes, that is evidence for Domain API **only when the capability has business meaning**. Reuse by itself does not make something Domain API.
+
+### 6. Decide where external integrations belong
+
+Never use:
 
 ```text
-Snowflake
-    ↓
-Revenue
-    ↓
-Domain interpretation
-    ↓
-RevenueGrowth
-    ↓
-InvestmentIdea
+External API -> Experience API
+Database -> Domain API
+Snowflake -> Domain API
 ```
 
-The raw data may live in Snowflake, but its business interpretation belongs to Domain API.
+Instead ask what role the external data plays.
 
-Therefore:
+#### A. Business dependency -> Domain API
+
+If source data is needed to perform or support a business capability:
 
 ```text
-Snowflake
-    ↓
-Domain API
-    ↓
-Business Concept
+Investment Idea
+    |
+    +--> Market Data
+    +--> ESG Data
+    +--> Research Data
+    |
+    v
+Investment decision / calculation
 ```
 
-is appropriate.
+The business-facing integration belongs behind the Domain API boundary.
 
----
+Prefer a business-oriented port/abstraction such as:
 
-# API Composition Rule
+```java
+interface MarketDataProvider {
+    MarketData getMarketData(SecurityId id);
+}
+```
 
-Experience API is allowed to compose multiple Domain APIs.
+The concrete adapter may call Snowflake, REST, vendor SDKs, or another system.
+
+The important rule is:
+
+> **The business capability depends on a business abstraction, not on a vendor-specific API contract.**
+
+#### B. Consumer-only enrichment -> Experience API
+
+If data is only needed to construct a particular consumer response and has no independent business meaning, Experience API may own the integration.
 
 Example:
 
 ```text
-GET /investment-idea/123/page
+Domain API -> Investment Idea
+Experience API -> company logo service
+Experience API -> Angular view
 ```
 
-Experience API:
+#### C. Pure consumer-facing pass-through -> Experience API may own it
+
+If the Experience API simply exposes an external capability for a consumer and adds no business rule or domain interpretation, keeping the integration in Experience API can be appropriate.
+
+Example:
 
 ```text
-Idea API
-   +
-Research API
-   +
-Activity API
-   +
-User API
-        │
-        ▼
-InvestmentIdeaPageDTO
+Angular -> Experience API -> external search API
 ```
 
-This is valid because the composition is consumer-oriented.
+Do not move such a capability to Domain API merely because the external system is technically reusable.
 
-However, this is NOT valid:
+## Orchestration rule
 
-```text
-Experience API
-    │
-    ├── calculate valuation
-    ├── calculate risk
-    ├── apply investment rules
-    ├── determine rating
-    └── call ESG provider
-```
+The number of downstream calls does not determine the layer.
 
-This means business logic has leaked into Experience API.
-
-Move those capabilities into Domain API.
-
----
-
-# Business Orchestration vs UI Orchestration
-
-This distinction is critical.
-
-## UI orchestration
+### UI orchestration -> Experience API
 
 ```text
 Get idea
 Get author
 Get activities
-Get comments
-Combine response
+Combine into page response
 ```
 
-→ Experience API
-
-## Business orchestration
+### Business orchestration -> Domain API
 
 ```text
 Get investment idea
@@ -535,228 +219,139 @@ Get market data
 Calculate valuation
 Evaluate risk
 Apply investment rules
-Generate investment score
 Persist result
 ```
 
-→ Domain API
+Use the purpose of the orchestration, not its implementation shape.
 
-The number of downstream calls does not determine the layer.
+## Layering rule for implementation
 
-The **purpose of the orchestration** determines the layer.
+A Domain API may contain infrastructure adapters for databases and external systems, but the business/application code should not be tightly coupled to provider-specific protocols.
 
----
-
-# Anti-Patterns
-
-## Anti-pattern 1: Smart BFF
-
-Avoid:
+Conceptually:
 
 ```text
-Experience API
-    ├── business rules
-    ├── investment calculations
-    ├── external integrations
-    ├── domain validation
-    └── DB queries
+Domain/Application use case
+        |
+        v
+Business port / abstraction
+        |
+        v
+Adapter
+        |
+        +--> Snowflake
+        +--> PostgreSQL
+        +--> External REST API
+        +--> Vendor SDK
 ```
 
-This turns the BFF into a second business layer.
+Do not interpret “Domain API owns the integration” as “the domain model directly knows HTTP/JDBC/vendor SDK details.”
 
----
+## Anti-patterns
 
-## Anti-pattern 2: Fat Domain API as Generic Gateway
+### Smart BFF
 
-Avoid blindly putting everything into Domain API:
+Do not put the following in Experience API when they are business capabilities:
 
 ```text
-Domain API
-    ├── UI formatting
-    ├── screen-specific composition
-    ├── Angular DTOs
-    └── presentation logic
+business rules
+investment calculations
+business validation
+investment scoring
+business decisions
+business workflows
 ```
 
-Domain API should not become a generic backend-for-frontend.
+A BFF should not become a second business layer.
 
----
+### Generic gateway disguised as Domain API
 
-## Anti-pattern 3: Data-source-driven architecture
-
-Do not classify based on:
+Do not put these into Domain API merely because it is the lower layer:
 
 ```text
-REST → Experience
-JDBC → Domain
-Snowflake → Domain
-GraphQL → Experience
+Angular-specific DTOs
+screen composition
+presentation formatting
+page-specific view models
 ```
 
-The same data source may legitimately be consumed by either layer.
+### Data-source-driven placement
 
-Classification must be based on **business responsibility**.
-
----
-
-# Investment Idea Reference Model
-
-For an Investment Idea system:
+Do not classify using:
 
 ```text
-Angular
-      │
-      ▼
-Experience API
-      │
-      ├── Build Investment Idea page
-      ├── Compose dashboard
-      ├── UI DTO
-      └── Consumer-specific filtering
-      │
-      ▼
-Domain API
-      │
-      ├── Investment Idea
-      ├── Investment Thesis
-      ├── Valuation
-      ├── Risk
-      ├── ESG interpretation
-      ├── Market data interpretation
-      ├── Investment rules
-      └── Investment scoring
-      │
-      ├──────────────┬───────────────┐
-      ▼              ▼               ▼
- PostgreSQL       Snowflake      External APIs
+REST -> Experience
+JDBC -> Domain
+Snowflake -> Domain
+GraphQL -> Experience
 ```
 
-The external API location is determined by whether the data is:
+The same source can be valid in either layer depending on responsibility.
+
+## Decision matrix
+
+| Question | Experience API | Domain API |
+|---|---|---|
+| Business rule? | No | Yes |
+| Business calculation? | No | Yes |
+| Business decision? | No | Yes |
+| Business state/invariant? | No | Yes |
+| Business interpretation of source data? | No | Yes |
+| Business workflow/orchestration? | No | Yes |
+| Screen/page composition? | Yes | No |
+| Consumer-specific DTO? | Yes | No |
+| UI formatting? | Yes | No |
+| Consumer-specific pagination/filtering? | Yes | No |
+| External source needed for business capability? | Usually no | Yes |
+| External source used only for UI enrichment? | Yes | Usually no |
+| Pure external pass-through for one consumer? | Often | Not required |
+
+## Important nuance
+
+“Domain API” is a service boundary, not automatically the same thing as the innermost domain model.
+
+A practical Domain API service can contain:
 
 ```text
-business capability
-        ↓
-Domain API
+API adapter
+Application/use-case orchestration
+Domain model and business rules
+Outbound ports
+Infrastructure adapters
 ```
 
-or:
+The business rule is still separated from the technical integration mechanism.
 
-```text
-consumer-specific enrichment
-        ↓
-Experience API
-```
+## Required review output
 
----
-
-# Required Decision Output
-
-When reviewing a proposed capability, produce this format:
+When this skill is used for a design or code review, return only the significant boundary decisions using:
 
 ```text
 Decision: Experience API | Domain API
-
 Confidence: High | Medium | Low
 
 Reason:
 <one concise explanation>
 
 Business responsibility:
-<what business responsibility exists, if any>
+<business responsibility, or None>
 
 Consumer dependency:
-<whether it is consumer-specific>
+<consumer-specific or consumer-independent>
 
 External integration:
-<where the integration should live, if applicable>
+<where it should live and why, if applicable>
 
 Boundary:
-<what should remain in the other layer>
+<what must remain in the other layer>
 ```
 
-Example:
+For multiple capabilities, repeat the block once per capability.
 
-```text
-Decision: Domain API
+## Final rule
 
-Confidence: High
+> **Experience API answers: “How should this consumer receive the capability?”**
+>
+> **Domain API answers: “What does the business need to know or do?”**
 
-Reason:
-Market data is used to calculate the investment idea's valuation
-and investment score, so the integration is part of the business
-capability rather than UI composition.
-
-Business responsibility:
-Valuation and investment scoring.
-
-Consumer dependency:
-None. The capability remains necessary if Angular is replaced.
-
-External integration:
-Domain API through a MarketDataProvider abstraction.
-
-Boundary:
-Experience API may compose the resulting investment score into
-a screen-specific response, but must not perform the calculation.
-```
-
----
-
-# Tie-Breaker Rules
-
-When the decision is ambiguous, apply these rules in order:
-
-1. **Business rule beats UI requirement.**
-   → Domain API
-
-2. **Business calculation beats presentation transformation.**
-   → Domain API
-
-3. **Business data interpretation beats raw data retrieval.**
-   → Domain API
-
-4. **Reusable business capability beats consumer-specific implementation.**
-   → Domain API
-
-5. **Consumer-specific composition beats generic aggregation.**
-   → Experience API
-
-6. **UI formatting beats domain transformation.**
-   → Experience API
-
-7. **Do not move logic to Experience API merely because the data comes from an external system.**
-
-8. **Do not move everything to Domain API merely because it is technically reusable.**
-   Reusability alone is insufficient; the capability must have domain meaning.
-
----
-
-# Final Principle
-
-Use this sentence as the architectural rule:
-
-> **Experience API answers "How should this consumer receive the information?" Domain API answers "What does the business need to know or do?"**
-
-Therefore:
-
-```text
-Consumer-specific
-        ↓
-Experience API
-
-Business-specific
-        ↓
-Domain API
-```
-
-And for integrations:
-
-```text
-External data needed to perform business capability
-        ↓
-Domain API
-
-External data needed only to construct a consumer experience
-        ↓
-Experience API
-```
+When uncertain, prefer the smallest clear boundary. Do not invent a new layer unless the architecture actually requires one.
