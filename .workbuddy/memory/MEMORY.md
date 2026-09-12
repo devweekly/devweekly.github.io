@@ -84,17 +84,55 @@ Astro 是静态站，`pubDatetime` 仅是元数据，不做定时发布。真正
 
 ## 工作区其他长期产物
 
-### `temp/agent研究.md` — Enterprise Agent Platform Architecture Review
+### `temp/agent研究.md` — Enterprise Agent Platform Risk Architecture Review
 
-一份企业 Agent 平台的架构评审报告（不是博客 post，独立于周报体系）。当前版本（2026-09-13 重构后）：
+一份企业 Agent 平台的架构评审报告（不是博客 post，独立于周报体系）。当前版本（2026-09-13 第三轮 review 后，4402 行）：
 
-- 结构：1 个 H1 + 15 个 `##` 章（英文标题，正文中文）+ 64 个 `###`；引用 [1]–[21]
+- 结构：1 个 H1 + 20 个 `##` 章（英文标题，正文中文）+ 100 个 `###`；引用 [1]–[28]，定义数 = 使用数
 - **核心结论**：技术底座已基本完整（AgentCore + LangSmith + PostgreSQL/pgvector + LiteLLM），
-  主要风险是**平台之间的职责边界 / 运行模型 / 治理模型**，不是能力缺失
-- 主框架：Control Plane / Runtime Plane / Data & Capability Plane 三平面
+  主要风险是**把模型风险 / ICT 风险 / 数据治理 / 访问控制 / 第三方风险 / 审计要求映射到 Agent 生命周期**
+- 平面模型：**Governance / Policy Plane 横切** + Control Plane / Runtime Plane / Data & Capability Plane
+  （出口有 **Retrieval PEP / Tool PEP**）+ **独立于 LangSmith 的 Evidence / Audit Plane**
+- 安全主轴：**Prevent / Detect / Control / Evidence**；Use Case Risk Classification L0–L4
 - 已明确撤回的旧判断：不要把 Retrieval 拆成独立 Service（PG + pgvector 当前够用）；
   MCP 不建重型 Registry（走架构 Pattern 治理，只补执行元数据）；
   Observability / Evaluation 不是缺口（LangSmith 已承担）
-- 主线之一：Snowflake Cortex Agents 是**潜在的第二 Agent Runtime**，不是数据源或 LLM Provider；
+- Snowflake Cortex Agents 是**潜在的第二 Agent Runtime**，不是数据源或 LLM Provider；
   需要 Runtime abstraction + 「平台权限 + 数据平台原生权限」双层授权
+- 已落地：八条 Architecture Invariants、P0 八控制点（Policy Enforcement / Identity+Entitlement /
+  Retrieval Authorization / Tool Action Authorization / Deployment Admission / Audit Evidence /
+  Kill Switch / Skill Supply Chain）、只增加五个能力、三阶段落地顺序、Agent Evidence Chain
 - 报告为该单位的内部评审文档，语气保留顾问式「你们」；**博客 post 才要求去掉人称**
+
+### `temp/agent研究checklist.md` — Well-Architected Review Checklist
+
+配套 checklist（2026-09-13 框架级重构 + 结构收敛后，1716 行 / 主表 542 项 + Invariants 15 + 附录 A 181 项）：
+
+- **交付形态：正文只放清单，方法说明全部后置为附录**。骨架 = 导语（依据/规模/指向附录）
+  → `# 一、Checklist 主表（P01–P14，542 项）`（P01 降 H2、P01.1 降 H3）
+  → `# 二、Architecture Invariants（15 条）`
+  → `# 附录 A — 上一版保留项（A01..A181，不计入主表）`
+  → `# 附录 B — 评审框架与说明`（B.1 三层结构 / B.2 记录字段 / B.3 评分方式 / B.4 总览 /
+  B.5 P0 十项红线 / B.6 6 个关键证明问题 / B.7 评分板 / B.8 与 AWS WAF 关系 / B.9 版本差异）
+  → `# 参考`
+- 已删除的对话与起草过程语（9 处）：开篇「可以。基于你们现在的实际架构…」、
+  P01.2 / P01.6 / P02.1 / P02.7 / P08.7 / P13 的「上一版…」比较句、P01.4 的
+  「你们已经决定 MCP…」及其架构决策 blockquote、P01.5 的「你们已经有 LangSmith…」；
+  混血句改写为中性事实句（6 处），交叉引用回改 2 处（「一、评审框架」→「附录 B.1」、
+  「三、P0 十项红线」→「附录 B.5」）
+- 该「对话稿转成稿」的可复用流程见 skill `skills/article-de-ai` 第 27 节
+- 最高层**不再自建分类**，直接用 AWS Well-Architected 六支柱 + 两类 overlay：
+  `P01 Operational Excellence` / `P02 Security` / `P03 Reliability` / `P04 Performance Efficiency` /
+  `P05 Cost Optimization` / `P06 Sustainability`（Agentic AI Lens 的 AGENTOPS / AGENTSEC / AGENTREL 作 focus area 注入）
+  → `P07–P09 Financial Services Overlay`（FSISEC01–16 / FSIOPS / FSIREL / backup）
+  → `P10–P14 Enterprise Agent Platform Overlay`（Knowledge·Retrieval / Skill 供应链 /
+  Deployment·Evidence / Multi-tenancy / Multi-runtime）
+  → `P15 15 条 Architecture Invariants`（Fail 即阻断）
+- 对齐版本：Agentic AI Lens **2026-06-10**、FSI Industry Lens **2026-01-27 修订**
+- 主表编号 `1..542` **连续且唯一**；上一版未被覆盖的旧条目进「附录 A」，编号 `A01..A181`，不计入主表
+- 评分：0–5 分 + `E = Evidence available`（`3 + E` 才算可信 Pass）
+- 10 项 P0 红线：Agent Identity / Retrieval Entitlement / Tool Authorization / Prompt·Config Versioning /
+  Memory Isolation / Input-Output DLP / Non-repudiation / Human Approval·Rogue Agent /
+  Provider·Runtime Resilience / Skill Supply Chain
+- 上一版的「14 Pillars + 389 问题 + 12 Invariants + 50 核心问题清单」已作废（50 项清单编号无法映射，改用 P0 红线）
+
