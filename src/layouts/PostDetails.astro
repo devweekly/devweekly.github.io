@@ -189,7 +189,7 @@ const layoutProps = {
    * allowing users to copy code easily. */
   function attachCopyButtons() {
     let copyButtonLabel = "Copy";
-    let codeBlocks = Array.from(document.querySelectorAll("pre"));
+    let codeBlocks = Array.from(document.querySelectorAll("pre:not(.mermaid)"));
 
     for (let codeBlock of codeBlocks) {
       let wrapper = document.createElement("div");
@@ -197,7 +197,7 @@ const layoutProps = {
 
       let copyButton = document.createElement("button");
       copyButton.className =
-        "copy-code absolute right-3 -top-3 rounded bg-skin-card px-2 py-1 text-xs leading-4 text-skin-base font-medium";
+        "copy-code absolute right-3 top-3 rounded bg-skin-card px-2 py-1 text-xs leading-4 text-skin-base font-medium";
       copyButton.innerHTML = copyButtonLabel;
       codeBlock.setAttribute("tabindex", "0");
       codeBlock.appendChild(copyButton);

@@ -120,11 +120,47 @@
   .prose code {
     border-radius: 0.25rem;
     background-color: rgb(var(--color-card));
-    padding: 0.25rem;
+    padding: 0.125rem 0.25rem;
+    font-size: 0.875em;
   }
   .prose code::before,
   .prose code::after {
     content: none;
+  }
+  .prose pre:not(.mermaid) {
+    margin-bottom: 1rem;
+    overflow-x: auto;
+    border-radius: 0.5rem;
+    border: 1px solid rgb(var(--color-border));
+    padding: 1rem;
+    background-color: rgb(var(--color-card)) !important;
+    color: rgb(var(--color-text-base)) !important;
+  }
+  .prose pre:not(.mermaid) > code {
+    display: block;
+    background-color: transparent !important;
+    padding: 0;
+    border-radius: 0;
+    font-size: inherit;
+    color: inherit;
+  }
+  .prose pre:not(.mermaid) code span {
+    background-color: transparent !important;
+  }
+  .prose pre.mermaid {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 1rem;
+    overflow-x: auto;
+    border-radius: 0.5rem;
+    border: 1px solid rgb(var(--color-border));
+    background-color: rgb(var(--color-card));
+    padding: 1.5rem 1rem;
+  }
+  .prose .mermaid svg {
+    width: 100%;
+    max-width: 640px;
+    height: auto;
   }
   .prose ol {
     color: rgb(var(--color-text-base));
@@ -151,8 +187,12 @@
     border: 1px solid rgb(var(--color-border));
   }
   .prose img {
-    margin: 0.5rem auto;
+    display: block;
+    margin: 1rem auto;
+    max-width: 100%;
+    height: auto;
     border: 2px solid rgb(var(--color-border));
+    border-radius: 0.5rem;
   }
   .prose hr {
     border-color: rgb(var(--color-border));

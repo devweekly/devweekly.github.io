@@ -67,6 +67,16 @@ Astro (AstroPaper) 技术博客，域名语义为「Dev Weekly」。
 - 前向引用（「第 34 节会说明」）在重排后必须逐条 grep 核对。
 - 具体的重排/收敛操作流程见 skill `longform-md-restructure`。
 
+**该文当前定稿形态**（`workflow and agent and bpmn.md`，2026-09-12 第二次 review 后）：
+
+- 9 部分 / 52 节（`## 1.`–`## 52.` 连续），mermaid 35 块，引用 [1]–[42] 定义数 = 使用数
+- 主线：`Business Process → Agent Task Contract → Agent Runtime → Controlled Result → Business State`
+- 术语已收紧：四条路线 → **四个架构领域**；BPMN = **可执行约束合同**（不含全部业务语义，
+  DMN 管规则、IAM 管资格、Agent Policy 管能力边界、Human Approval 管责任归属，**不可合并**）
+- 三个状态必须分开：Business Workflow State / Agent Task State / Agent Working Plan
+- 已删除：「80/20 deterministic+agentic」「二阶段提交 / 2PC」；补充：Business Data Contract、
+  Task Context、Governed Action Pipeline、OpenAI Agents API（2026-09-10，引 [42]）
+
 ## 发布机制注意
 
 Astro 是静态站，`pubDatetime` 仅是元数据，不做定时发布。真正上线由构建/部署流水线控制；
