@@ -1,0 +1,79 @@
+[     251ms] [LOG] [astro-mermaid] Mermaid diagrams detected on initial load @ http://localhost:4321/@id/astro:scripts/page.js:1
+[     251ms] [LOG] [astro-mermaid] Initializing mermaid diagrams... @ http://localhost:4321/@id/astro:scripts/page.js:1
+[     251ms] [LOG] [astro-mermaid] Found 35 mermaid diagrams @ http://localhost:4321/@id/astro:scripts/page.js:1
+[     251ms] [LOG] [astro-mermaid] Loading mermaid.js... @ http://localhost:4321/@id/astro:scripts/page.js:1
+[     523ms] [LOG] [astro-mermaid] Registering 2 icon packs @ http://localhost:4321/@id/astro:scripts/page.js:1
+[     523ms] [LOG] [astro-mermaid] Using theme: forest from body @ http://localhost:4321/@id/astro:scripts/page.js:1
+[     526ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-uodb5do00 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    1011ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-uodb5do00 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    1011ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-rw2onpie9 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    1161ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-rw2onpie9 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    1161ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-y1lsrd3w4 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    1300ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-y1lsrd3w4 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    1300ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-a8h2liho0 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    1451ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-a8h2liho0 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    1452ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-41wgq38lk @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    1590ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-41wgq38lk @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    1591ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-mzgpozma3 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    1756ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-mzgpozma3 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    1756ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-qwcdze609 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    1864ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-qwcdze609 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    1864ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-scm0fypi8 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    1932ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://giscus.app/api/discussions?repo=devweekly%2Fdevweekly.github.io&term=AI%E6%97%B6%E4%BB%A3%E7%9A%84%E4%B8%9A%E5%8A%A1%E6%B5%81%E7%A8%8Bworkflow%E8%AF%A5%E6%80%8E%E4%B9%88%E5%81%9A%EF%BC%9Fbpmn%E8%BF%98%E6%98%AFagent+%7C+%E5%BC%80%E5%8F%91%E8%80%85%E5%91%A8%E6%8A%A5+Builder+Weekly&category=Announcements&number=0&strict=false&first=15:0
+[    1947ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-scm0fypi8 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    1947ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-erd2zwu4b @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    1982ms] [ERROR] Failed to load resource: the server responded with a status of 404 () @ https://giscus.app/api/discussions?repo=devweekly%2Fdevweekly.github.io&term=AI%E6%97%B6%E4%BB%A3%E7%9A%84%E4%B8%9A%E5%8A%A1%E6%B5%81%E7%A8%8Bworkflow%E8%AF%A5%E6%80%8E%E4%B9%88%E5%81%9A%EF%BC%9Fbpmn%E8%BF%98%E6%98%AFagent+%7C+%E5%BC%80%E5%8F%91%E8%80%85%E5%91%A8%E6%8A%A5+Builder+Weekly&category=Announcements&number=0&strict=false&last=15:0
+[    2056ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-erd2zwu4b @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    2056ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-0cc8rjj8o @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    2072ms] [WARNING] [giscus] Discussion not found. A new discussion will be created if a comment/reaction is submitted. @ https://giscus.app/client.js:6
+[    2163ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-0cc8rjj8o @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    2164ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-akyl7bu24 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    2271ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-akyl7bu24 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    2272ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-lv6mwa15a @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    2368ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-lv6mwa15a @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    2368ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-33jtj3twf @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    2490ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-33jtj3twf @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    2490ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-t20bqmbbc @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    2621ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-t20bqmbbc @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    2621ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-qd2hj1hr1 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    2687ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-qd2hj1hr1 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    2687ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-mx1tn7l6j @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    2734ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-mx1tn7l6j @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    2734ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-5542o6xa9 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    2778ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-5542o6xa9 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    2778ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-psgxhw00m @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    2936ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-psgxhw00m @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    2936ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-4x8huqlha @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    3340ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-4x8huqlha @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    3341ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-i4nef3p5h @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    3682ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-i4nef3p5h @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    3682ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-d9szllyc8 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    3806ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-d9szllyc8 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    3806ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-txgjo2nu6 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    4963ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-txgjo2nu6 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    4964ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-dz8lf8f8z @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5066ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-dz8lf8f8z @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5066ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-72n5pl93v @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5106ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-72n5pl93v @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5106ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-xk27yu69p @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5186ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-xk27yu69p @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5186ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-6ydvgqf4y @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5332ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-6ydvgqf4y @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5332ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-popgj9985 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5400ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-popgj9985 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5400ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-8moxmw8a7 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5515ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-8moxmw8a7 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5515ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-6vdp6j2gf @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5579ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-6vdp6j2gf @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5579ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-by00r16jl @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5776ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-by00r16jl @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5776ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-2a10ypagm @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5872ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-2a10ypagm @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5872ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-p48u2z4ww @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5926ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-p48u2z4ww @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5926ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-6qjdtrrf0 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5995ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-6qjdtrrf0 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    5995ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-drne79o12 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    6044ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-drne79o12 @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    6044ms] [LOG] [astro-mermaid] Rendering diagram: mermaid-p9g9hwkff @ http://localhost:4321/@id/astro:scripts/page.js:1
+[    6182ms] [LOG] [astro-mermaid] Successfully rendered diagram: mermaid-p9g9hwkff @ http://localhost:4321/@id/astro:scripts/page.js:1
