@@ -1,42 +1,81 @@
-# Enterprise Agent Platform Architecture Review
+# Enterprise Agent Platform Risk Architecture Review
 
-本文基于当前实际技术栈（LiteLLM / FastAPI / LangChain Deep Agents / LangGraph / AWS Bedrock AgentCore / LangSmith / PostgreSQL + pgvector）做出判断，并针对未来接入 Snowflake Cortex Agents 的路径给出边界设计。
+本文面向金融服务场景，基于当前实际技术栈（LiteLLM / FastAPI / LangChain Deep Agents / LangGraph / AWS Bedrock AgentCore / LangSmith / PostgreSQL + pgvector）做出判断，并针对未来接入 Snowflake Cortex Agents 的路径给出边界设计与风险控制设计。
+
+与上一版相比，本版的定位从「技术架构评审」升级为「金融级 Enterprise Agent Platform 风险架构评审」：平台的技术边界已经基本清楚，真正需要补齐的是**金融监管视角下的风险治理、控制与举证能力**。
 
 ## 1. Executive Summary
 
 ### Current maturity
 
-上一版报告的结论是「目前还缺少很多 Agent Platform 基础能力」。这个判断已经不成立。
+上一版报告的结论是「技术底座已经基本完整，主要架构风险是多个平台之间的职责边界、运行模型与治理模型」。这个判断在技术层面成立，但对金融机构来说还不够。
 
-补充以下事实之后，结论需要改成：
+补上金融风险与监管视角之后，结论需要再往前走一步：
 
-> **当前 Agent Platform 的技术底座已经基本完整，下一阶段的主要架构风险不是能力缺失，而是多个平台之间的职责边界、运行模型与治理模型。**
+> **当前 Agent Platform 的技术底座已经基本完整。下一阶段架构风险的核心不是缺少某个 Agent Framework，而是如何把金融机构既有的模型风险管理、ICT 风险管理、数据治理、访问控制、第三方风险管理与审计要求，映射到 Agent 的完整生命周期。**
 
-- LangSmith 已经集成 → Observability / Evaluation **不再是缺失能力**。
-- PostgreSQL + pgvector 已经是当前 Hybrid Search 的基础设施 → 不需要急着把 Retrieval 拆成独立平台服务，当前更准确的定位是 Agent Platform 内的 **Knowledge / Retrieval Capability**。
-- MCP 主要通过流程、架构 Pattern 治理 → **不要求再造一个重型 MCP Gateway / Tool Registry Platform**，重点应审查治理模式是否足够强，而不是技术组件数量。
-- 未来可能接入 Snowflake / Cortex Agents → 需要设计 **「自建 Agent Runtime 与 Data-Native Agent Runtime 并存」**，而不是把 Snowflake 当成另一个 LLM Provider。
-- AgentCore + LangSmith + PostgreSQL + LiteLLM 已经构成比较成熟的技术底座 → 审核重点从「缺什么组件」转向 **「边界是否清楚、职责是否重叠、企业治理是否闭环」**。
+支撑这个结论的事实没有变，只是含义变了：
 
-按这个口径重新打分：
+- LangSmith 已经集成 → Observability / Evaluation **不再是缺失能力**，但它的定位需要与 Audit Evidence 分开。
+- PostgreSQL + pgvector 已经是当前 Hybrid Search 的基础设施 → 当前更准确的定位是 Agent Platform 内的 **Knowledge / Retrieval Capability**。
+- MCP 主要通过流程与架构 Pattern 治理 → **不需要再造重型 MCP Gateway / Tool Registry Platform**。
+- Snowflake / Cortex Agents 可能接入 → 需要设计 **「自建 Agent Runtime 与 Data-Native Agent Runtime 并存」**。
+- AgentCore + LangSmith + PostgreSQL + LiteLLM 构成的技术底座已经比较成熟 → 审核重点从「缺什么组件」转向 **「边界、控制与举证是否闭环」**。
 
-| 能力 | 现状 | 判断 | 风险 |
-| --- | --- | --- | --- |
-| LiteLLM 作为统一 Model Gateway | 已有 | 定位正确 | 低 |
-| Deep Agents 作为 Agent Harness | 已有 | 定位正确 | 低 |
-| AgentCore 作为 Agent Runtime | 已有 | 定位正确，不应自建 microVM / session | 低 |
-| FastAPI 作为 Platform API | 已有 | 定位正确，但**不应承载 Runtime** | 低 |
-| **LangSmith 承担 Observability / Evaluation** | 已集成 | 能力已具备，**不再是缺口** | 低 |
-| **PostgreSQL + pgvector 作为 Knowledge 基础设施** | 已建成 | 当前阶段合理，无需拆分 | 低 |
-| ZIP 上传 Skill | 已有 | 必须改变安全 / 版本模型 | **高** |
-| Job 执行 | 已有 | 不能只是 FastAPI BackgroundTask | **高** |
-| **Control Plane / Runtime Plane / Data Plane 边界** | 未定义 | **当前最大风险** | **高** |
-| **Runtime abstraction** | 未定义 | 接入 Snowflake 之前必须定义 | **高** |
-| Agent / Skill / Deployment immutable version | 部分 | 需要补齐 artifact 与 rollback | **高** |
-| Identity / Authorization | 部分 | 需要「平台权限 + 数据平台原生权限」双层 | **高** |
-| 与 LangSmith Deployment 的重复度 | 未评估 | 需要明确分工，避免重复造 | **中高** |
-| PostgreSQL / LangSmith / Snowflake 数据职责 | 未定义 | 接入 Snowflake 前必须明确 | **中高** |
-| MCP 治理 | 走架构 Pattern | 模式合理，需补最小执行元数据 | **中** |
+判断口径因此经历了三个阶段：
+
+| 阶段 | 核心问题 | 报告定位 |
+| --- | --- | --- |
+| 技术选型 | 我们还缺哪些 Agent 能力？ | Agent Framework 选型 |
+| 平台边界 | 这些能力分别由谁负责？ | 平台架构评审 |
+| **风险与治理** | **发生风险时，机构能不能证明它知道自己在做什么、能限制它、能追溯它、能解释它、能及时停止它？** | **金融风险架构评审** |
+
+### 金融 Agent Platform 的核心安全目标
+
+整个安全与治理部分围绕四件事展开：
+
+```mermaid
+flowchart TB
+    P[Prevent<br/>未授权 / 高风险行为]
+    D[Detect<br/>发现风险]
+    C[Control<br/>限制 / 阻断]
+    E[Evidence<br/>可重演 / 可解释 / 可举证]
+
+    P --> D
+    P --> C
+    D --> E
+    C --> E
+```
+
+**Prevent / Detect / Control / Evidence** 是本报告安全部分的主轴。任何一项安全或治理设计，都要能回答它落在四件事中的哪一件上；回答不了的，通常只是「看起来像控制」，而不是控制。
+
+### 按风险口径重新打分
+
+在上一版成熟度表的基础上，补上金融风险维度：
+
+| 能力 | 现状 | 判断 | 金融风险类别 | 风险 |
+| --- | --- | --- | --- | --- |
+| LiteLLM 作为统一 Model Gateway | 已有 | 定位正确 | Third-party | 低 |
+| Deep Agents 作为 Agent Harness | 已有 | 定位正确 | — | 低 |
+| AgentCore 作为 Agent Runtime | 已有 | 定位正确，不应自建 microVM / session | Cyber | 低 |
+| FastAPI 作为 Platform API | 已有 | 定位正确，但**不应承载 Runtime** | Operational | 低 |
+| **LangSmith 承担 Observability / Evaluation** | 已集成 | 能力已具备，**不再是缺口** | Model / AI | 低 |
+| **PostgreSQL + pgvector 作为 Knowledge 基础设施** | 已建成 | 当前阶段合理，无需拆分 | Data | 低 |
+| ZIP 上传 Skill | 已有 | 必须改变安全 / 版本模型 | Cyber（供应链） | **高** |
+| Job 执行 | 已有 | 不能只是 FastAPI BackgroundTask | Operational Resilience | **高** |
+| **Control Plane / Runtime Plane / Data Plane 边界** | 未定义 | **当前最大风险** | Operational | **高** |
+| **Runtime abstraction** | 未定义 | 接入 Snowflake 之前必须定义 | Operational | **高** |
+| Agent / Skill / Deployment immutable version | 部分 | 需要补齐 artifact 与 rollback | Audit / Regulatory | **高** |
+| Identity / Authorization | 部分 | 需要「平台权限 + 数据平台原生权限」双层 | Data / Privacy | **高** |
+| 与 LangSmith Deployment 的重复度 | 未评估 | 需要明确分工，避免重复造 | Operational | 中高 |
+| PostgreSQL / LangSmith / Snowflake 数据职责 | 未定义 | 接入 Snowflake 前必须明确 | Data | 中高 |
+| MCP 治理 | 走架构 Pattern | 模式合理，需补最小执行元数据 | Cyber / Operational | 中 |
+| **AI Use Case Risk Classification** | 未定义 | **所有安全策略的第一道闸门** | Regulatory / AI | **高** |
+| **Policy Enforcement Plane** | 未定义 | 技术控制的核心落点 | Cyber / Conduct | **高** |
+| **Model Registry / Approved Model** | 部分（LiteLLM 只解决连通性） | 需要 Model Governance | Model Risk | **高** |
+| **Audit / Evidence Architecture** | 未定义 | Trace ≠ Audit Evidence | Audit / Regulatory | **高** |
+| **Kill Switch** | 未定义 | 必须是 deterministic 基础设施控制 | Operational | **高** |
+| **Third-party AI Provider Governance** | 未定义 | OpenAI / Anthropic / AWS / Snowflake 全在供应链内 | Third-party | **高** |
 
 ### Main architectural risks
 
@@ -66,16 +105,32 @@ LangSmith Agent Server 已经提供 Postgres、Task Queue、Runs、Threads、Ass
 
 治理靠流程、模板和 Reference Architecture 已经成立时，再建一套 MCP Governance Platform 会形成两个权威源。
 
+**风险五：Agent 的自主性没有被纳入模型风险与操作风险管理框架。**
+
+传统 Model Risk Management 只覆盖「输入 → 模型 → 输出」。Agent 的执行链是「Agent → LLM → Tool → LLM → Retrieval → LLM → Tool → Action」，风险构成不再只是 Model Risk，而是 Model Risk + Tool Risk + Data Risk + Workflow Risk + Autonomy Risk（第 9.2 节）。如果治理框架仍按传统模型审批来写，Agent 的行为边界实际上是无人负责的。
+
+**风险六：缺少「用例风险分级」这道闸门。**
+
+平台目前没有统一的 Use Case 风险分级，导致所有安全策略只能在「按最高标准一刀切」和「按最低标准放行」之间摆动。这是金融服务场景下最先必须补上的一层（第 9.1 节）。
+
 ### Key recommendations
 
-按优先级收敛为四件事：
+按优先级收敛为八件事，与第 18 章的 P0 一一对应：
 
-1. **先定边界，再谈能力。** 明确 Control Plane / Runtime Plane / Data & Capability Plane 各自拥有什么（第 3 章），并把职责矩阵落成文档。
-2. **定义 Runtime abstraction。** 让 AgentCore 与未来 Cortex Agents 成为同一抽象下的两个 Runtime Provider（第 5 章）。
-3. **定义数据与权限的双层模型。** PG / LangSmith / Snowflake 三处数据职责（第 12 章）；平台权限与数据平台原生权限分离（第 9 章）。
-4. **把 MCP 治理从「技术治理」改为「架构治理」**，只补最小执行元数据（第 8 章）。
+| # | 建议 | 章节 |
+| --- | --- | --- |
+| 1 | 建立 AI Use Case Risk Classification（L0–L4），作为所有安全策略的第一道闸门 | 第 9.1 节 |
+| 2 | 建立 Policy Enforcement Plane，把 Model / Tool / Data / Action / Network 纳入 deterministic policy 执行 | 第 3.4 节 |
+| 3 | 定义 Identity 与 Entitlement 模型（User / Agent / Runtime / Tool / Data） | 第 10.1 节 |
+| 4 | 定义 Agent / Skill / Model / Tool 的 immutable version | 第 4 章 |
+| 5 | 定义 Audit / Evidence 架构，明确 Trace、Audit、Evidence 三者关系 | 第 12.4 节 |
+| 6 | 把 Model Risk Management 从模型扩展到 Agent | 第 6 章、第 9.2 节 |
+| 7 | 建立第三方 AI Provider 治理（OpenAI / Anthropic / Gemini / AWS / Snowflake / LangSmith） | 第 14 章 |
+| 8 | 建立 Data Leakage 与 Egress 防护（Prompt / Context / Tool Arguments / Output / Trace） | 第 7.5、10.4、10.7 节 |
 
-完整的 P0 / P1 / P2 见第 14 章。
+同时保留上一版在工程侧的三条收敛判断：先定边界再谈能力（第 3 章）、定义 Runtime abstraction（第 5.4 节）、把 MCP 治理保持为架构治理（第 8 章）。
+
+完整的 P0 / P1 / P2 见第 18 章。
 
 ## 2. Current Platform Landscape
 
@@ -208,7 +263,7 @@ Agent Server
 └── Cron Jobs
 ```
 
-因此本报告不再把 Observability / Evaluation 列为 P0/P1 缺口，改为在**第 11 章**审查「LangSmith 与 AgentCore、Enterprise Platform 如何分工」。
+因此本报告不再把 Observability / Evaluation 列为 P0/P1 缺口，改为在**第 12 章**审查「LangSmith 与 AgentCore、Enterprise Platform 如何分工」。
 
 ### 2.4 AgentCore
 
@@ -364,9 +419,11 @@ flowchart TB
 | Retrieval | 独立的 `Retrieval Service` | Agent Platform 内的 `Knowledge / Retrieval` Capability，底层是 PostgreSQL + pgvector |
 | Snowflake | 未出现，或被视为数据源 | `Potential Snowflake Agent Runtime`，与自建 Runtime 并列 |
 
-## 3. Architectural Boundary
+## 3. Target Architecture
 
-这一章是本报告的主框架。当前最推荐用来做 Architecture Review 的，是三个平面：
+（平台分层：三个纵向平面 + 一个横向 Policy Enforcement Plane）
+
+这一章是本报告的主框架。当前最推荐用来做 Architecture Review 的，是三个平面，并叠加一个横向的 Policy Enforcement Plane：
 
 ```mermaid
 flowchart TB
@@ -454,13 +511,64 @@ What can the agent access?
 
 这一层包含 Knowledge / Retrieval、MCP / Enterprise APIs、LiteLLM 与 Enterprise Data。它的输出是**受治理的访问能力**，不是数据副本。
 
-### 3.4 三平面与既有认知的对应关系
+### 3.4 Policy Enforcement Plane
+
+三个平面之外，还需要一条**横向**的 Policy Enforcement Plane。
+
+它不是第四个独立系统，而是贯穿三层的一组确定性控制点：Control Plane 的决策、Runtime 的每一次模型调用 / 工具调用 / 数据访问，都必须经过它。
+
+```mermaid
+flowchart TB
+
+    CP[Control Plane]
+    RT[Runtime Plane]
+    DATA[Data / Capability Plane]
+
+    POL["Policy Enforcement Plane"]
+
+    CP --> POL
+    POL --> RT
+    RT --> POL
+    POL --> DATA
+
+    POL --> IAM[Identity]
+    POL --> DLP[DLP / Data Classification]
+    POL --> TOOL[Tool Policy]
+    POL --> MODEL[Model Policy]
+    POL --> APPROVAL[Approval Policy]
+    POL --> NETWORK[Network / Egress Policy]
+    POL --> AUDIT[Audit Evidence]
+```
+
+金融环境不能依赖：
+
+```text
+Agent prompt：
+"请不要做危险的事。"
+```
+
+而必须是：
+
+```text
+Agent wants action
+       ↓
+Policy enforcement
+       ↓
+ALLOW / DENY / APPROVE
+```
+
+> **Prompt 是行为指导，Policy 才是控制。**
+
+这条区分是本报告后面所有安全章节的前提：凡是希望「Agent 不要做某件事」的要求，最终都要落成一个可执行、可拒绝、可审计的 policy 判断，而不是一句提示词。
+
+### 3.5 平面模型与既有认知的对应关系
 
 | 平面 | 回答的问题 | 当前实现 | 需要新增的判断 |
 | --- | --- | --- | --- |
 | Control Plane | 有什么 Agent、谁能跑 | 自建 FastAPI | Agent / Skill / Deployment / Run / Job 生命周期与版本模型 |
 | Runtime Plane | Agent 怎么执行 | DeepAgents + LangGraph + AgentCore | Runtime abstraction，容纳 Cortex Agents 与未来 Runtime |
 | Data / Capability Plane | Agent 能访问什么 | PostgreSQL + pgvector、MCP、LiteLLM | Retrieval abstraction 与双层授权 |
+| Policy Enforcement Plane | 这次动作能不能做 | 未统一定义（分散在模型、工具、网络各侧） | 统一 Model / Tool / Data / Action / Network / Approval 判定与留证 |
 
 ## 4. Agent Lifecycle
 
@@ -766,7 +874,7 @@ Trace
 
 这个架构成熟度会比现在高一个层级，也是「Runtime-neutral」这个定位能成立的技术前提。
 
-## 6. Model Architecture
+## 6. Model Platform & Model Risk
 
 ### 6.1 AI Platform 与 Agent Platform 的分工
 
@@ -784,7 +892,7 @@ Provider governance
 
 Agent Platform 只消费统一的模型入口，不直接持有 provider 凭据，也不自行实现路由与配额判断。
 
-### 6.2 Provider abstraction
+**Provider abstraction**
 
 ```text
 Enterprise Agent Platform
@@ -800,7 +908,50 @@ Enterprise Agent Platform
 
 需要留意的边界：Cortex Agents **不是** LLM Provider，它是 Runtime。把 Snowflake 放进 LiteLLM 的 provider 列表，会在 Runtime、权限与 observability 三处同时出错。
 
-### 6.3 Model governance
+### 6.2 Model Registry
+
+把模型当作一个可路由的 endpoint 是不够的。金融架构师会问的第一个问题是：
+
+> **这个模型到底有没有被金融机构批准用于这个 Use Case？**
+
+因此 AI Platform 需要一份 Model Registry，至少包含：
+
+```text
+Model Registry
+     │
+     ├── Provider
+     ├── Model
+     ├── Version
+     ├── Region
+     ├── Data Policy
+     ├── Approved Use Cases
+     ├── Risk Classification
+     ├── Validation Status
+     └── Retirement Date
+```
+
+### 6.3 Approved Models
+
+Agent Deployment 不能只指定：
+
+```yaml
+model: claude-sonnet
+```
+
+而应该声明策略约束，由平台在部署时校验：
+
+```yaml
+model_policy:
+  provider: approved
+  model: claude-sonnet-x
+  approved_for:
+    - internal-research
+    - document-analysis
+  data_classification:
+    max: confidential
+```
+
+平台在部署校验时需要回答四个问题：
 
 ```text
 Which model is allowed?
@@ -809,9 +960,33 @@ At what cost ceiling?
 With what data classification?
 ```
 
+这里必须区分两件事：
+
+> **LiteLLM 解决的是 Model Connectivity；AI Platform 还必须解决 Model Governance。**
+
+连通性回答「能不能调通」，治理回答「允许谁、在哪个用例、处理什么级别的数据」。两者混在一起时，最典型的结果是：模型换了一个 region 或一个版本，平台侧完全没有记录。
+
+### 6.4 Model Validation
+
+美国监管的 SR 11-7 虽然并非生成式 AI 专门法规，但它强调模型开发、实施、使用、验证与持续治理，以及独立 challenge 的要求，这套思想适合作为金融 AI Platform 的 Model Risk 控制基础。([Federal Reserve][24])
+
+落到本平台，Model Validation 至少需要覆盖：
+
+```text
+Validation
+  ├── 开发验证（design / data / 假设）
+  ├── 实施验证（部署配置、参数、版本）
+  ├── 使用验证（用例与批准范围一致）
+  ├── 独立 challenge
+  ├── 持续监控（性能、漂移、滥用）
+  └── 退出（retirement / pension）
+```
+
+但只有 Model Validation 是不够的 —— Agent 的风险构成比模型宽得多，这部分在第 9.2 节展开。
+
 Model policy 归 AI Platform；Agent 侧只声明需求（能力、上下文长度、成本档位），不写死具体模型版本，否则模型升级会变成一次平台发布。
 
-## 7. Knowledge & Retrieval
+## 7. Knowledge & Data Governance
 
 ### 7.1 PostgreSQL + pgvector 是当前阶段的正确选择
 
@@ -833,7 +1008,7 @@ Hybrid Search
 
 > **Knowledge / Retrieval 是 Agent Platform 内部的能力（Capability），不是独立平台服务。**
 
-### 7.2 Hybrid Search
+Hybrid Search 本身也是正确的：
 
 ```text
 keyword
@@ -841,56 +1016,11 @@ keyword
 embedding
 ```
 
-这是正确的。业界的 Hybrid Retrieval 本身也是 sparse + dense，然后 merge / rerank。Haystack 也直接把这作为标准 Retrieval pattern。([Haystack][5])
+业界的 Hybrid Retrieval 本身就是 sparse + dense，然后 merge / rerank。Haystack 也直接把这作为标准 Retrieval pattern。([Haystack][5])
 
-所以真正需要研究的不是「BM25 还是 Vector」，而是**这两个检索源未来如何在同一个抽象下并存**。
+所以真正需要研究的不是「BM25 还是 Vector」，也不是「要不要拆检索服务」，而是**多个检索源（pgvector 与 Cortex Search）未来如何在同一个抽象下并存**。
 
-### 7.3 ACL-aware Retrieval
-
-金融企业环境里，Hybrid Search 真正需要审核的是授权：
-
-```text
-User
- ├── Department = Equity
- ├── Region = Japan
- └── Classification = Internal
-```
-
-那么：
-
-```text
-Search("company X")
-```
-
-不能是「先向量召回再过滤」：
-
-```text
-vector search top 50
-    ↓
-LLM filter
-```
-
-而应该：
-
-```text
-Authorization Filter
-        ↓
-Candidate Retrieval
-        ↓
-Hybrid Ranking
-        ↓
-Rerank
-        ↓
-Citation
-```
-
-也就是：
-
-> **权限过滤应该发生在 Retrieval pipeline 内，而不是生成以后。**
-
-否则这是非常严重的数据泄露风险：一旦无权限的 chunk 进入了候选集，它在 trace、日志、缓存与最终回答里都可能留下痕迹，事后无法收回。
-
-### 7.4 Retrieval abstraction
+### 7.2 Retrieval abstraction：让 pgvector 与 Cortex Search 并存
 
 真正应该设计的，不是「要不要拆 Retrieval Service」，而是：
 
@@ -962,9 +1092,9 @@ Agent D
  → Snowflake Cortex Agent
 ```
 
-这比现在直接把 Hybrid Search 做成 Agent 的内部实现更有长期价值：它把「检索源」从 Agent 代码里挪到了配置与策略里。
+这比直接把 Hybrid Search 做成 Agent 的内部实现更有长期价值：它把「检索源」从 Agent 代码里挪到了配置与策略里。
 
-### 7.5 Snowflake Cortex Search
+**Snowflake Cortex Search 的位置**
 
 Snowflake Cortex Search 本身已经提供 hybrid retrieval：vector + keyword + semantic reranking，并且可以作为 Cortex Agents 的 tool。Snowflake 官方现在明确把 Cortex Search 定位成企业非结构化数据的 hybrid search / RAG 能力。([Snowflake Documentation][16])
 
@@ -974,7 +1104,112 @@ Snowflake Cortex Search 本身已经提供 hybrid retrieval：vector + keyword +
 
 注意它不是「数据源」：Cortex Search 自己就带检索语义与排序，把它当成一个只读表来 access，会丢掉它最有价值的部分。
 
-### 7.6 Document metadata 与数据血缘
+### 7.3 Data Entitlement：从「谁能访问」到「为什么访问」
+
+金融企业环境里，Hybrid Search 真正需要审核的是授权。传统问题只问：
+
+```text
+who can access
+```
+
+但金融场景还必须问：
+
+```text
+why
+```
+
+也就是 **Purpose-based access**：
+
+```text
+User:
+Research Analyst
+
+Purpose:
+Equity Research
+
+Agent:
+ResearchAgent
+
+Allowed:
+Research documents
+Market data
+
+Not allowed:
+HR records
+Customer PII
+Retail account balances
+```
+
+因此 Knowledge Search 的输入最终应该是：
+
+```text
+User Identity
++
+Agent Identity
++
+Purpose
++
+Data Classification
++
+Entitlement
+        ↓
+Retrieval
+```
+
+而不是：
+
+```text
+query
+ ↓
+vector search
+```
+
+**ACL-aware Retrieval 的硬要求**
+
+```text
+User
+ ├── Department = Equity
+ ├── Region = Japan
+ └── Classification = Internal
+```
+
+那么：
+
+```text
+Search("company X")
+```
+
+不能是「先向量召回再过滤」：
+
+```text
+vector search top 50
+    ↓
+LLM filter
+```
+
+而应该：
+
+```text
+Authorization Filter
+        ↓
+Candidate Retrieval
+        ↓
+Hybrid Ranking
+        ↓
+Rerank
+        ↓
+Citation
+```
+
+也就是：
+
+> **权限过滤应该发生在 Retrieval pipeline 内，而不是生成以后。**
+
+否则这是非常严重的数据泄露风险：一旦无权限的 chunk 进入了候选集，它在 trace、日志、缓存与最终回答里都可能留下痕迹，事后无法收回。
+
+DORA 对金融机构 ICT 风险框架明确强调数据的 availability、authenticity、integrity、confidentiality，以及 ICT 资产、依赖关系与风险的识别，这正说明 Agent Retrieval 不应该脱离企业数据治理。([EUR-Lex][23])
+
+### 7.4 Data Classification 与数据血缘
 
 内部 + Vendor 数据的场景下，每个 chunk 至少保留：
 
@@ -1016,9 +1251,86 @@ Answer + random citations
 
 对金融环境尤其重要：缺少 `version` 与 `effective_date` 时，事后无法回答「当时它依据的是哪一版」。
 
+### 7.5 Data Leakage Boundary
+
+对于 Agent 平台，传统的：
+
+```text
+Data at Rest
+Data in Transit
+```
+
+已经不够。至少需要增加：
+
+```text
+Data at Rest
+Data in Transit
+Data in Use
+Data in Prompt
+Data in Context
+Data in Tool Arguments
+Data in Model Output
+Data in Trace
+```
+
+**LangSmith Trace 本身就是敏感数据资产。** 一条 trace 里通常同时包含：
+
+```text
+User prompt
++
+retrieved documents
++
+tool arguments
++
+LLM response
+```
+
+如果其中包含 PII、投资信息、客户信息、内部研究或机密文档，那么：
+
+> **Trace system 本身也进入数据治理范围。**
+
+因此 LangSmith 侧需要明确：
+
+```text
+LangSmith
+    │
+    ├── retention
+    ├── masking
+    ├── access control
+    ├── region
+    ├── encryption
+    └── sensitive-data policy
+```
+
+这是金融安全审查非常容易问到的一项，也是平台侧最容易漏掉的一项：通常只审「Agent 有没有把数据发出去」，很少审「Agent 的运行记录本身有没有把数据留存下来」。
+
+### 7.6 数据职责矩阵
+
+这一张表比单纯列组件更有价值：它回答的是「同一份事实归谁所有」，而不是「有哪些组件」。
+
+| 数据 | Owner | 推荐存储 |
+| --- | --- | --- |
+| Agent metadata | Agent Platform | PostgreSQL |
+| Skill metadata | Agent Platform | PostgreSQL |
+| Job metadata | Agent Platform | PostgreSQL |
+| Runtime state | Agent Runtime / LangGraph | PostgreSQL / AgentCore |
+| Vector index | Knowledge layer | pgvector / Cortex Search |
+| Document metadata | Knowledge layer | PostgreSQL |
+| Raw enterprise data | Enterprise Data Platform | Snowflake / source system |
+| Agent traces | LangSmith | LangSmith |
+| Evaluation dataset | LangSmith | LangSmith |
+| Model configuration | AI Platform | AI Platform |
+| Audit record | Enterprise Governance | Enterprise audit system |
+
+三条使用约束：
+
+1. **同一份事实只有一个 owner。** 例如向量索引归 Knowledge layer，那么 Agent Runtime 就不应该缓存一份自己的索引结果作为事实来源。
+2. **PostgreSQL 不是默认落点。** 新增一类数据时先问 owner 是谁，如果 owner 是 LangSmith 或 Snowflake，就不应该因为「PostgreSQL 已经在了」而落进 PostgreSQL。
+3. **运行记录与审计证据分开定义。** Trace 归 LangSmith，Audit record 归企业审计系统，两者不自动等价（第 12.4 节）。
+
 ## 8. Tool / MCP Governance
 
-### 8.1 治理模式：架构 Pattern，而不是重型 Registry
+### 8.1 Architecture Pattern：治理不靠技术 Registry
 
 上一版报告说「Tool / MCP Governance 很可能是目前最大的缺口」，这个判断需要降级。
 
@@ -1053,7 +1365,7 @@ audit
 
 > **MCP 不一定需要一个重型技术 Registry / Gateway；如果企业已经通过 Architecture Pattern、审批流程、标准模板和 Reference Architecture 进行治理，那么平台重点应是确保 Agent Platform 能执行这些标准，而不是重新实现一套 MCP 治理体系。**
 
-### 8.2 Registration 与 Approval
+### 8.2 Registration 与 Runtime metadata：技术最小护栏
 
 既然治理靠 pattern，平台侧的 registration 就应该轻：
 
@@ -1068,8 +1380,6 @@ MCP Server Registration
 ```
 
 关键点是**引用**已有的审批结论，而不是在平台里重做一遍审批流程。
-
-### 8.3 Runtime metadata：技术最小护栏
 
 治理采用 Architecture Pattern，不代表平台可以不记录执行事实。至少需要能串起：
 
@@ -1107,62 +1417,54 @@ authorization context
 
 前者是「事后能回答谁在什么时候调了哪个版本的工具」，后者是「再造一套权威源」。这两件事的工程量差一个数量级。
 
-### 8.4 Approval：按 Tool Risk 分级
+### 8.3 Tool Risk Classification
 
-企业尤其金融环境，Human-in-the-loop 不应该被理解成「弹一个 Approval Dialog」：
+Registry 可以轻，但 **Tool Risk Policy 不能轻**。金融服务领域里，工具的风险等级直接决定它能不能被自动调用：
 
 ```text
+MCP / Tool
+     ↓
+Risk Classification
+     ↓
+Action Policy
+```
+
+| Tool | Risk | 默认行为 |
+| --- | --- | --- |
+| Search internal docs | Low | Allow |
+| Search client data | Medium | Conditional |
+| Query portfolio | Medium | Conditional |
+| Send email | High | Approval |
+| Update CRM | High | Approval |
+| Submit transaction | Critical | Block / dual approval |
+
+### 8.4 Action Policy
+
+风险等级最终要落成一个确定性的判定结果，而不是一句提示词：
+
+```text
+Agent wants action
+       ↓
 Tool Risk
-
-LOW
-  → automatic
-
-MEDIUM
-  → policy based
-
-HIGH
-  → human approval
-
-CRITICAL
-  → dual approval
+       ↓
+Policy Evaluation
+       ↓
+ALLOW  /  DENY  /  APPROVE
 ```
 
-例如：
+判定依据至少包括：
 
 ```text
-Search research
-     ↓
-LOW
-
-Generate recommendation
-     ↓
-MEDIUM
-
-Send external email
-     ↓
-HIGH
-
-Execute trade
-     ↓
-CRITICAL
+tool identity + version
+risk classification
+caller identity（user / agent / runtime）
+data classification
+environment
+existing approval
+rate / quota
 ```
 
-Deep Agents 自己已经支持 human-in-the-loop。([GitHub][10]) 但 Platform 层面还需要：
-
-```text
-Approval Policy
-Approval Request
-Approver
-Timeout
-Escalation
-Audit
-```
-
-即：
-
-> **Framework HITL ≠ Enterprise Approval Workflow**
-
-前者的产物是一次运行中的中断与恢复；后者的产物是一条可审计的责任链，包括谁批的、依据什么、超时怎么升级。
+这是第 3.4 节 Policy Enforcement Plane 在 Tool 维度的体现：**能否执行高风险动作，由 Policy 决定，不由 Agent 的自我判断决定。**
 
 ### 8.5 Execution audit
 
@@ -1179,9 +1481,250 @@ resulting in what
 
 这些信息分散在 Agent Platform（agent / deployment / job）、AgentCore（runtime / session）、LangSmith（trace）与数据平台（数据访问）之间，靠 `trace_id` 串起来。
 
-## 9. Identity & Security
+（人工审批在金融场景下的分级与流程见第 11 章。）
 
-### 9.1 四类身份必须分开建模
+## 9. AI Risk & Compliance
+
+这一章是金融服务场景下最需要补齐的部分。它不应该写成「Security」，因为金融行业的风险不只是网络安全：
+
+| 风险 | 需要回答的问题 |
+| --- | --- |
+| Model Risk | 模型怎么被批准、验证、变更、退出？ |
+| AI Risk | Agent 的自主行为如何控制？ |
+| Data Risk | Agent 能看到什么数据？ |
+| Cyber Risk | Prompt injection / tool abuse / exfiltration 怎么防？ |
+| Operational Risk | Agent 出故障怎么办？ |
+| Third-party Risk | OpenAI / Anthropic / AWS / Snowflake 怎么管？ |
+| Privacy | PII / confidential data 怎么处理？ |
+| Regulatory Risk | 某个 Use Case 是否进入监管范围？ |
+| Conduct Risk | Agent 是否影响客户 / 投资 / 交易决策？ |
+| Audit Risk | 能否还原当时到底发生了什么？ |
+
+这张清单比单纯套用 OWASP Top 10 for LLM 更适合金融平台。
+
+### 9.1 Use Case Classification
+
+金融机构真正应该建立在 Agent Platform 之上的「第一道闸门」是用例风险分级。流程不应该是：
+
+```text
+User uploads agent
+        ↓
+security scan
+        ↓
+run
+```
+
+而应该是：
+
+```text
+Agent / Use Case
+        ↓
+Risk Classification
+        ↓
+Policy
+        ↓
+Approval
+        ↓
+Deployment
+```
+
+建议的分级：
+
+```text
+L0 — Productivity
+    summarization
+    translation
+    internal Q&A
+
+L1 — Analytical
+    research
+    document analysis
+    knowledge retrieval
+
+L2 — Decision Support
+    investment research
+    risk analysis
+    compliance recommendation
+
+L3 — Business Action
+    send notification
+    create ticket
+    update record
+    submit workflow
+
+L4 — Material / Regulated Decision
+    credit decision
+    customer eligibility
+    trading instruction
+    client communication with legal impact
+```
+
+对应的控制强度逐级提高：
+
+```text
+L0
+automatic
+
+L1
+approved tools + logging
+
+L2
+model validation + evaluation + human oversight
+
+L3
+policy approval + explicit authorization
+
+L4
+formal risk owner
+independent validation
+mandatory human decision
+strong audit
+```
+
+> **金融 Agent 不能只有「Agent Level Security」，而应该有「Use Case Risk Classification」。**
+
+EU AI Act 也采用基于用途 / 风险的分类思路；例如涉及自然人信用评分 / creditworthiness 的 AI 属于高风险类别，Annex III 用例是否属于高风险也需要记录与判断。([EUR-Lex][25])
+
+需要说明的是：这不是说平台上所有 Agent 都自动属于 EU AI Act high-risk，而是说明**平台应该具备用例分类与证据留存的能力** —— 能够回答「这个用例被判定为哪一档、依据是什么、谁批的」。
+
+### 9.2 Model Risk
+
+传统模型风险的链路是：
+
+```text
+Model
+  ↓
+Input
+  ↓
+Output
+```
+
+Agent 的链路是：
+
+```text
+User
+ ↓
+Agent
+ ↓
+LLM
+ ↓
+Tool
+ ↓
+LLM
+ ↓
+Search
+ ↓
+LLM
+ ↓
+Tool
+ ↓
+Action
+```
+
+所以 Agent 的风险实际上是：
+
+```text
+Model Risk
++
+Tool Risk
++
+Data Risk
++
+Workflow Risk
++
+Autonomy Risk
+```
+
+建议在平台治理文档中明确：
+
+> **Agent Risk = Model Risk + Execution Risk + Data Access Risk + Action Risk**
+
+于是传统的 Model Validation 不再足够，需要额外覆盖 Agent 层面的评估：
+
+```text
+Agent Evaluation
+
+Reasoning quality
+Tool selection
+Tool arguments
+Retrieval quality
+Policy compliance
+Boundary adherence
+Action safety
+Failure recovery
+Human escalation
+```
+
+这正是「Agent Model Risk ≠ LLM Model Risk」这句话的落点：模型通过了审批，不代表这个 Agent 的行为边界被验证过。（Model Registry 与 Validation 流程见第 6 章。）
+
+### 9.3 Operational Risk
+
+Operational Risk 在本平台上的落点：
+
+```text
+Agent 故障 / 幻觉导致的业务错误
+工具误调用
+Job 丢失或重复执行
+Runtime / Provider 不可用
+发布与回滚失败
+变更管理缺失
+```
+
+对应控制：immutable version 与 rollback（第 4.2 节）、Job 状态机与幂等（第 13 章）、DR / Failover 与 Provider Outage（第 13.4、13.5 节）、Kill Switch（第 10.8 节）。
+
+### 9.4 Conduct Risk
+
+Conduct Risk 是金融行业特有、而一般 AI 平台文档几乎不写的一类风险。核心问题是：
+
+> **Agent 是否影响客户、投资、交易决策？**
+
+典型场景：
+
+```text
+investment recommendation
+client communication
+credit decision
+customer eligibility
+pricing / eligibility 判断
+```
+
+控制要求：
+
+- 明确 Agent 是「提出建议」还是「作出决定」；
+- 面向客户或影响客户权益的输出必须有人的决策点（第 11 章）；
+- 输出需要保留可解释依据（citation、数据版本、模型版本）。
+
+### 9.5 Privacy
+
+```text
+PII
+confidential data
+client information
+```
+
+的处理要求叠加在数据治理之上：分类（第 7.4 节）、用途限制（第 7.3 节）、泄露边界（第 7.5 节）、Trace 侧的留存与脱敏（第 7.5、12.4 节）。
+
+### 9.6 Regulatory Applicability
+
+平台不负责判断某个用例是否「满足某法规」，但必须能够支撑合规判断：
+
+```text
+这个用例属于哪一档风险？
+依据是什么？
+谁批准的？
+运行了哪个版本？
+访问了哪些数据？
+做了什么动作？
+能不能还原当时过程？
+```
+
+这七问是 Regulatory Applicability 的最小集合，也是第 16 章控制映射表的输入。风险类型与平台控制的完整映射见第 16 章。
+
+## 10. Security Architecture
+
+### 10.1 Identity
+
+**四类身份必须分开建模**
 
 ```text
 User Identity
@@ -1204,7 +1747,7 @@ which tool
 which data
 ```
 
-### 9.2 User delegated identity vs Agent workload identity
+**User delegated identity vs Agent workload identity**
 
 企业 Agent 经常会遇到：
 
@@ -1218,9 +1761,8 @@ Research API
 
 究竟 Research API 看到的是 `User A` 还是 `Agent X`？这是两个完全不同的 security model。
 
-**User delegated identity**
-
 ```text
+User delegated identity
 User
  ↓
 Agent
@@ -1230,9 +1772,8 @@ API
 on behalf of User
 ```
 
-**Agent workload identity**
-
 ```text
+Agent workload identity
 Agent
  ↓
 API
@@ -1240,7 +1781,7 @@ API
 
 AWS AgentCore Identity 已经明确把 Agent 当成 workload identity 来管理，并支持 OAuth / API keys / corporate identity provider。([AWS Documentation][8]) 成熟架构要能同时支持这两种，并且由 Policy 决定某个 Tool 走哪一种。
 
-### 9.3 Runtime identity
+**Runtime identity**
 
 引入第二个 Runtime 之后，必须显式建模 Runtime 自己的身份：
 
@@ -1253,11 +1794,9 @@ Agent Platform
 
 平台不应该假设「Runtime 可以拿平台的身份去执行任何事」。Runtime identity 是权限收敛的锚点：当平台需要撤销一条路径时，撤的是 Runtime 的身份，而不是逐个 Agent 改配置。
 
-### 9.4 Data authorization：平台权限 + 数据平台原生权限
+**Data authorization：平台权限 + 数据平台原生权限**
 
-这是接入 Snowflake 之后新增的一类问题，比单纯「加一个 Search Provider」严重得多。
-
-未来的调用链会同时经过两个权限体系：
+这是接入 Snowflake 之后新增的一类问题，比单纯「加一个 Search Provider」严重得多。未来的调用链会同时经过两个权限体系：
 
 ```text
 Agent Platform
@@ -1299,33 +1838,59 @@ Provider-native Authorization
 
 这应该作为一条架构原则写进设计规范：平台不试图复制一份数据平台的权限模型，而是保证「平台授权通过」是「数据平台授权被执行」的必要条件，而不是替代。
 
-### 9.5 Skill 的安全边界
+### 10.2 Secrets
 
-Skill 最大的安全问题其实不是 Prompt Injection，而是：
-
-**Supply chain**
+Agent 不能直接获得 Secret。正确路径是：
 
 ```text
-skill.zip
-  ↓
-requirements.txt
-  ↓
-pip install
-  ↓
-malicious dependency
+Agent
+ ↓
+Identity
+ ↓
+Policy
+ ↓
+Secret Broker
+ ↓
+Short-lived credential
 ```
 
-**Arbitrary code execution**
+而不是：
 
 ```text
-import os
-subprocess.run(...)
-requests.post(...)
+os.environ["API_KEY"]
 ```
 
-这意味着 Skill 实际上是「用户上传代码 → 企业内部代码执行平台」，安全等级完全不同。
+平台侧的要求：
 
-**Network egress**
+```text
+Skill
+  ↓
+Secret reference（不是 secret value）
+  ↓
+Platform Secret Store
+  ↓
+短时凭据 / 按需下发
+```
+
+Skill 只能声明它需要「哪一类」凭据，凭据值由平台按 identity + policy 在运行时下发，并带过期时间。
+
+### 10.3 Runtime Isolation
+
+Runtime 隔离以 AgentCore 的 session isolation 与 workload identity 为底座（第 5.2 节），平台侧只需要明确：
+
+```text
+哪些 Agent 可以共享 Runtime
+哪些必须独占 session / 环境
+哪些 Skill 需要更强的隔离等级
+```
+
+一条原则：
+
+> **隔离等级由 Use Case 风险分级（第 9.1 节）决定，而不是由开发便利性决定。**
+
+### 10.4 Network Egress
+
+典型风险路径：
 
 ```text
 Agent
@@ -1337,7 +1902,135 @@ Internal API
 Third-party endpoint
 ```
 
-因此必须定义：
+网络侧至少需要三条规则：
+
+1. **默认拒绝出网。**
+2. 允许的 egress target 必须在 Skill Manifest 里声明并经过审批。
+3. 内部 API 的访问必须经过统一 gateway，而不是从执行环境直连。
+
+即：
+
+```text
+Agent Runtime
+    │
+    ├── Approved APIs
+    ├── Approved MCP
+    └── Approved Model Provider
+
+Everything else
+       ↓
+      DENY
+```
+
+AgentCore 的 runtime isolation 与 identity 可以成为底层实现，但 Enterprise Policy 仍然应该在平台层定义 —— 平台必须能回答「这个 Agent 允许访问哪些外部目标」，而不是把它留给运行时环境。
+
+### 10.5 Prompt Injection
+
+Prompt Injection 与 Indirect Prompt Injection 属于 AI-specific Cyber Security，应该作为一个专项控制，而不是整个安全架构的核心方案。
+
+风险链路：
+
+```text
+External Document
+       ↓
+Prompt Injection
+       ↓
+Agent Context
+       ↓
+Tool Invocation
+       ↓
+Data Exfiltration
+```
+
+例如：
+
+```text
+Vendor document
+   ↓
+"Ignore previous instructions"
+   ↓
+Agent
+   ↓
+search internal customer data
+   ↓
+send to external API
+```
+
+真正的防线必须是叠加的：
+
+```text
+Prompt Defense
++
+Tool Authorization
++
+Data Entitlement
++
+Network Egress Control
++
+DLP
++
+Human Approval
+```
+
+而不是：
+
+> 「我们有一个 prompt injection detector。」
+
+这一点很关键：注入检测可以被绕过，但 Tool Authorization、Data Entitlement 与 Egress Control 不可以 —— 前者是概率性防线，后者是确定性边界。
+
+### 10.6 Supply Chain
+
+Skill 上传的实际语义是「用户上传代码 → 企业内部代码执行平台」，安全等级与普通文件上传完全不同。上一版报告的「ZIP 上传 Skill 的安全边界」在金融场景下应该升级为 **Software Supply Chain Security**。
+
+```text
+Skill Supply Chain
+
+Upload
+  ↓
+Hash
+  ↓
+Malware Scan
+  ↓
+SBOM
+  ↓
+Dependency Scan
+  ↓
+Static Analysis
+  ↓
+Policy Scan
+  ↓
+Sandbox Build
+  ↓
+Security Approval
+  ↓
+Immutable Artifact
+  ↓
+Signed Version
+  ↓
+Deployment
+```
+
+运行时引用必须是不可变且可校验的：
+
+```text
+Agent
+  ↓
+Skill@1.2.3
+  ↓
+Artifact SHA256
+```
+
+而不是：
+
+```text
+Agent
+  ↓
+latest.zip
+```
+
+这对审计、回滚与事故调查是关键：没有 `Skill@version + SHA256`，事后无法证明「当时运行的是哪一份代码」。
+
+Skill 的能力声明至少需要覆盖：
 
 ```text
 Skill Permission
@@ -1351,25 +2044,357 @@ Skill Permission
 └── human approval
 ```
 
-### 9.6 Secret management 与 network isolation
+### 10.7 DLP
 
-Secret 应该由平台统一注入，而不是让 Skill 从环境变量里自取：
+DLP 在本平台上需要覆盖的出口比传统场景多：
 
 ```text
-Skill
-  ↓
-Secret reference（不是 secret value）
-  ↓
-Platform Secret Store
-  ↓
-短时凭据 / 按需下发
+Data in Prompt
+Data in Context
+Data in Tool Arguments
+Data in Model Output
+Data in Trace
 ```
 
-网络侧至少需要三条规则：默认拒绝出网；允许的 egress target 需要在 Skill Manifest 里声明并审批；内部 API 的访问必须经过统一的 gateway，而不是从执行环境直连。
+三个必须能拦截的点：
 
-## 10. Execution & Job Architecture
+```text
+1. Agent → 外部模型 / 外部 API 的出站内容
+2. Agent → Trace 系统的留存内容
+3. Agent → 用户输出的内容（尤其对外沟通）
+```
 
-### 10.1 三种执行模型
+DLP 规则应该以数据分类（第 7.4 节）与用例分级（第 9.1 节）为输入，而不是按关键字硬编码。
+
+### 10.8 Kill Switch
+
+普通 Agent Architecture 文档很少写这一项，但金融场景必须写。平台应该支持按粒度停止：
+
+```text
+Disable Agent
+Disable Version
+Disable Skill
+Disable Tool
+Disable Model
+Disable Data Source
+Disable Tenant
+```
+
+例如：
+
+```text
+Agent
+ ↓
+Tool abuse detected
+ ↓
+Circuit Breaker
+ ↓
+STOP
+```
+
+需要分级提供：
+
+```text
+global kill switch
+agent kill switch
+deployment kill switch
+tool kill switch
+provider kill switch
+```
+
+一条硬约束：
+
+> **Kill Switch 不应该依赖 LLM。必须是 deterministic infrastructure control。**
+
+任何需要「让模型判断要不要停」的方案都不算 Kill Switch —— 需要停的时候，恰恰是最不能相信模型判断的时候。
+
+## 11. Human Oversight & Approval
+
+### 11.1 按风险分级的人的参与程度
+
+金融场景不应该写成：
+
+> Human-in-the-loop is supported.
+
+这太弱。Human-in-the-loop 也不应该被理解成「弹一个 Approval Dialog」——那只是交互形态，不是控制。应该定义「风险 → 人的参与等级」：
+
+```text
+Low
+  no approval
+
+Medium
+  sampling / post-review
+
+High
+  human approval
+
+Critical
+  mandatory human decision
+  + possibly dual control
+```
+
+与第 8.3 节的 Tool Risk 分级对齐后，例如：
+
+```text
+Search research
+     ↓
+LOW
+
+Generate recommendation
+     ↓
+MEDIUM
+
+Send external email
+     ↓
+HIGH
+
+Execute trade
+     ↓
+CRITICAL
+```
+
+### 11.2 Agent proposes / Human decides
+
+对以下场景，平台应该能够明确规定人的位置：
+
+```text
+financial transaction
+customer-facing decision
+regulatory filing
+investment recommendation
+credit decision
+client communication
+```
+
+要求是：
+
+```text
+Agent proposes
+Human decides
+```
+
+而不是：
+
+```text
+Agent decides
+Human observes
+```
+
+这个区别决定了审批在架构中的位置：前者审批是**流程内的必要节点**，后者只是事后通知，不构成控制。对应到用例分级，L3 以上不应允许「Agent decides」的路径存在。
+
+### 11.3 Enterprise Approval Workflow
+
+Deep Agents 自己已经支持 human-in-the-loop。([GitHub][10]) 但 Platform 层面还需要：
+
+```text
+Approval Policy
+Approval Request
+Approver
+Timeout
+Escalation
+Audit
+```
+
+也就是：
+
+> **Framework HITL ≠ Enterprise Approval Workflow**
+
+前者的产物是一次运行中的中断与恢复；后者的产物是一条可审计的责任链，包括谁批的、依据什么、超时怎么升级。金融场景需要的是后者：审批记录必须能作为 Audit Evidence 使用（第 12.4 节）。
+
+## 12. Observability / Evaluation
+
+### 12.1 LangSmith 的分工
+
+这里容易产生一个误区：
+
+> AgentCore 有 tracing，LangChain 有 tracing，LangSmith 有 tracing，那就结束了。
+
+不是。真正要审的是分工，而不是有没有。
+
+**LangSmith 负责：**
+
+```text
+Agent trace
+LLM trace
+Tool trace
+Evaluation
+Experiment
+Dataset
+Feedback
+Debugging
+Quality
+```
+
+**Agent Platform 负责：**
+
+```text
+Agent lifecycle
+Agent metadata
+Deployment
+Enterprise authorization
+Job policy
+Business workflow
+Agent version
+Enterprise audit
+```
+
+LangSmith 本身已经覆盖 tracing、evaluation、online / offline evaluation、datasets、feedback、monitoring 与 Agent deployment。([Docs by LangChain][19]) 因此平台不需要再建一套 tracing 或 eval 存储，只需要保证**自己的企业语义能挂到它的 trace 上**。
+
+### 12.2 AgentCore telemetry 与 Trace correlation
+
+企业需要的是贯穿全链路的一条 trace：
+
+```text
+User Request
+ ↓
+Agent
+ ↓
+LLM Gateway
+ ↓
+Model
+ ↓
+Tool
+ ↓
+Retrieval
+ ↓
+Document
+ ↓
+External API
+```
+
+统一 correlation ID：
+
+```text
+trace_id
+  ├── request
+  ├── agent_run
+  ├── llm_call
+  ├── tool_call
+  ├── retrieval
+  ├── document
+  └── external_call
+```
+
+AgentCore 本身已经提供 Agent-specific tracing，可记录 agent steps、tool invocation 与 model interaction。([AWS Documentation][1]) OpenAI Agents SDK 也已经把 trace 模型扩展到了 generation、tool call、handoff、guardrail 等事件。([OpenAI GitHub][9])
+
+把这些作为**平台事件**而不是绑定某一个 framework，是接入第二个 Runtime 之后唯一能保持链路完整的方式：Cortex Agents 的 trace 也必须能被同一条 correlation ID 关联。
+
+### 12.3 Offline / Online evaluation 与 Promotion gate
+
+```text
+Observability
+= "发生了什么？"
+
+Evaluation
+= "做得好不好？"
+```
+
+例如：
+
+```text
+Run #123
+
+Latency       19.2 sec
+Cost          $0.18
+Tool calls    7
+Retrieval     13 docs
+
+Quality:
+Answer correctness      0.92
+Citation correctness    0.88
+Policy compliance       1.00
+Tool success            0.96
+```
+
+既然已经有 LangSmith，就应该进一步把 evaluation 定义成发布门禁：
+
+```text
+Agent Version
+   ↓
+Evaluation Dataset
+   ↓
+Regression
+   ↓
+PASS / FAIL
+   ↓
+Deploy
+```
+
+LangSmith 现在已经支持 offline evaluation、online evaluation、regression 与 CI/CD quality gates。([Docs by LangChain][19]) 平台侧要做的是把「哪个版本的 Agent 必须跑哪个数据集、达到什么阈值才允许发布」写成策略，而不是每次人工判断。
+
+### 12.4 Audit Evidence：Trace ≠ Audit Evidence
+
+这是本版新增的一条架构边界，也是最容易被忽略的一条。
+
+LangSmith trace 回答的是「工程上发生了什么」，而监管审计要回答的是：
+
+> **2026-09-13 03:27，这个 Agent 为什么访问了这份客户数据？**
+
+因此必须能保存：
+
+```text
+actor
+user
+agent
+agent version
+skill version
+runtime
+model
+model version
+prompt version
+tool
+tool version
+data source
+document
+policy decision
+approval
+timestamp
+trace id
+result
+```
+
+最终能够重建事件链：
+
+```mermaid
+flowchart LR
+    U[User] --> A[Agent]
+    A --> M[Model]
+    A --> R[Retrieval]
+    A --> T[Tool]
+    T --> D[Enterprise Data]
+
+    U -.-> P[Policy Decision]
+    A -.-> P
+    T -.-> P
+    D -.-> P
+
+    A --> E[Audit Evidence]
+    M --> E
+    R --> E
+    T --> E
+    P --> E
+```
+
+与 LangSmith trace 的区别：
+
+| 维度 | LangSmith Trace | Audit Evidence |
+| --- | --- | --- |
+| 目的 | 工程排障、质量评估 | 责任还原、监管举证 |
+| 完整性 | 覆盖 Agent 运行内部 | 必须覆盖 policy / approval / identity |
+| 可变性 | 可能被采样、被清理 | 不可变、受保留策略约束 |
+| 访问控制 | 工程团队 | 受控角色 + 审计 / 法务 |
+| 保留期 | 按工程需要 | 按监管与内部政策 |
+| 存储 | LangSmith | 企业审计系统 |
+
+结论：
+
+> **Trace 是 Audit Evidence 的重要输入，但不是 Audit Evidence 本身。**
+
+平台需要单独定义 Audit Evidence 的 schema、不可变性、保留期与访问控制，并明确哪些字段从 LangSmith、哪些从 Agent Platform、哪些从数据平台采集。
+
+## 13. Operational Resilience
+
+### 13.1 Job：三种执行模型
 
 ```text
 Interactive Run
@@ -1419,7 +2444,7 @@ async def job():
 
 这在企业生产环境很容易出问题：进程重启即任务丢失，且没有并发、配额与重试的落点。
 
-### 10.2 Job 状态机与能力
+### 13.2 Job 状态机与能力
 
 ```text
 Job
@@ -1448,7 +2473,7 @@ quota
 priority
 ```
 
-### 10.3 不要重复造 LangSmith Deployment
+### 13.3 不要重复造 LangSmith Deployment
 
 这一条值得单独审核。
 
@@ -1469,155 +2494,262 @@ LangSmith Agent Server 已经把 Agent execution 明确建模为 `assistants + t
 | 企业身份体系、AWS 资源边界、数据访问路径、审批流程集成 | 应该自建 |
 | 只是任务队列、run 记录、thread 持久化、cron 调度 | 优先复用 |
 
-## 11. Observability & Evaluation
+### 13.4 DR 与 Failover
 
-### 11.1 分工原则
-
-这里容易产生一个误区：
-
-> AgentCore 有 tracing，LangChain 有 tracing，LangSmith 有 tracing，那就结束了。
-
-不是。真正要审的是分工，而不是有没有。
-
-**LangSmith 负责：**
+金融场景需要能回答：
 
 ```text
-Agent trace
-LLM trace
-Tool trace
-Evaluation
-Experiment
-Dataset
-Feedback
-Debugging
-Quality
+Regional failure
+     ↓
+Agent Platform ?
+Runtime ?
+Data ?
+Trace ?
+Job ?
 ```
 
-**Agent Platform 负责：**
+平台侧的边界：
 
 ```text
-Agent lifecycle
-Agent metadata
-Deployment
-Enterprise authorization
-Job policy
-Business workflow
-Agent version
-Enterprise audit
+Agent Platform / Control Plane
+      ↓
+跨 region 可用性由平台自建部分决定
+
+Agent Runtime
+      ↓
+以 AgentCore 与未来 Runtime Provider 的可用性为前提
+
+Data
+      ↓
+PostgreSQL / Snowflake 各自的 DR 能力
+
+Trace
+      ↓
+LangSmith 可用性
 ```
 
-LangSmith 本身已经覆盖 tracing、evaluation、online / offline evaluation、datasets、feedback、monitoring 与 Agent deployment。([Docs by LangChain][19]) 因此平台不需要再建一套 tracing 或 eval 存储，只需要保证**自己的企业语义能挂到它的 trace 上**。
+需要注意一条：**DR 目标必须按用例分级设定。** 把 L0 翻译类 Agent 和 L4 交易相关 Agent 放在同一个 RTO / RPO 要求下，要么成本失控，要么关键用例不达标。
 
-### 11.2 Trace correlation
+### 13.5 Provider Outage
 
-企业需要的是贯穿全链路的一条 trace：
+Provider 不可用时的行为必须在架构层定义，而不是留给 runtime 随机降级：
 
 ```text
-User Request
- ↓
 Agent
  ↓
-LLM Gateway
+LiteLLM
  ↓
-Model
+Claude（不可用）
  ↓
-Tool
- ↓
-Retrieval
- ↓
-Document
- ↓
-External API
+fallback ?
 ```
 
-统一 correlation ID：
+需要明确的策略：
 
 ```text
-trace_id
-  ├── request
-  ├── agent_run
-  ├── llm_call
-  ├── tool_call
-  ├── retrieval
-  ├── document
-  └── external_call
+retry
+fallback provider
+degraded mode
+fail closed
 ```
 
-AgentCore 本身已经提供 Agent-specific tracing，可记录 agent steps、tool invocation 与 model interaction。([AWS Documentation][1]) OpenAI Agents SDK 也已经把 trace 模型扩展到了 generation、tool call、handoff、guardrail 等事件。([OpenAI GitHub][9])
+其中最关键的一条判断：
 
-把这些作为**平台事件**而不是绑定某一个 framework，是接入第二个 Runtime 之后唯一能保持链路完整的方式：Cortex Agents 的 trace 也必须能被同一条 correlation ID 关联。
+> **降级路径也必须是 approved 的。**
 
-### 11.3 Offline / Online evaluation
+如果 fallback 会切到一个未被批准的 provider 或 region，那么「可用性方案」本身就变成了合规与数据驻留问题（第 14 章）。金融场景下，宁可 fail closed，也不要自动切到未批准的路径。
+
+## 14. Third-Party AI Risk
+
+当前架构已经形成一个相当复杂的供应链：
 
 ```text
-Observability
-= "发生了什么？"
-
-Evaluation
-= "做得好不好？"
+OpenAI
+Anthropic
+Google
+AWS
+Snowflake
+LangChain
+LangSmith
 ```
 
-例如：
+FSB 特别提到金融机构 AI 使用中的 third-party dependency / concentration risk。([Financial Stability Board][22])
+
+因此 AI 第三方风险需要单独管理，而不是归入一般采购流程。
+
+### 14.1 每个 Provider 必须能回答的问题
 
 ```text
-Run #123
-
-Latency       19.2 sec
-Cost          $0.18
-Tool calls    7
-Retrieval     13 docs
-
-Quality:
-Answer correctness      0.92
-Citation correctness    0.88
-Policy compliance       1.00
-Tool success            0.96
+Provider
+Service
+Data sent
+Data classification
+Region
+Retention
+Subprocessors
+SLA
+Incident handling
+Exit strategy
+Concentration risk
 ```
 
-### 11.4 Promotion gate
+### 14.2 运行时的第三方依赖
 
-既然已经有 LangSmith，就应该进一步把 evaluation 定义成发布门禁：
+以模型调用为例：
 
 ```text
-Agent Version
-   ↓
-Evaluation Dataset
-   ↓
-Regression
-   ↓
-PASS / FAIL
-   ↓
-Deploy
+Agent
+ ↓
+LiteLLM
+ ↓
+Claude
 ```
 
-LangSmith 现在已经支持 offline evaluation、online evaluation、regression 与 CI/CD quality gates。([Docs by LangChain][19]) 平台侧要做的是把「哪个版本的 Agent 必须跑哪个数据集、达到什么阈值才允许发布」写成策略，而不是每次人工判断。
+架构师应该能回答：
 
-## 12. Data Ownership
+> Claude 不可用怎么办？
 
-这一张表比上一版报告的 Tool Registry 更有价值：它回答的是「同一份事实归谁所有」，而不是「有哪些组件」。
+以及：
 
-| 数据 | Owner | 推荐存储 |
+> Claude 的服务条款 / 政策发生变化怎么办？
+
+因此 AI Platform 侧至少需要：
+
+```text
+Provider abstraction
++
+fallback
++
+approved provider list
++
+regional routing
++
+exit strategy
+```
+
+### 14.3 与平台能力的对应
+
+| 第三方风险控制 | 平台落点 |
+| --- | --- |
+| Approved provider list | AI Platform（LiteLLM policy） |
+| Data sent / classification | Model policy（第 6.3 节）+ DLP（第 10.7 节） |
+| Region / retention | Model policy + Trace 策略（第 7.5 节） |
+| Exit strategy | Provider abstraction + Runtime abstraction（第 5.4 节） |
+| Concentration risk | Runtime / Provider 多元化设计 |
+| Outage 行为 | Fallback / fail closed 策略（第 13.5 节） |
+
+其中一条判断值得单独强调：
+
+> **第三方风险不只来自模型 provider。** Runtime（AWS AgentCore）、Evaluation（LangSmith）、数据平台（Snowflake）同样属于关键依赖，而且比模型 provider 更难替换 —— 因为它们承载的是状态、证据与数据，而不是一次调用。
+
+## 15. Governance & Three Lines of Defence
+
+### 15.1 Three Lines of Defence
+
+DORA 明确要求金融实体建立 ICT 风险治理，并涉及控制职能与内部审计独立性；传统 Model Risk Management 也强调管理层责任、独立验证与有效 challenge。([EUR-Lex][23])([Federal Reserve][24])
+
+Agent Platform 应该映射到三道防线：
+
+```text
+1st Line
+Business / Agent Owner
+        ↓
+负责：
+Use Case
+Agent
+Risk acceptance
+Operational control
+
+2nd Line
+Risk / Compliance / Security
+        ↓
+负责：
+Policy
+Risk classification
+Model governance
+Security review
+Compliance
+
+3rd Line
+Internal Audit
+        ↓
+负责：
+Independent assurance
+Evidence
+Control effectiveness
+Audit
+```
+
+### 15.2 平台如何支撑三道防线
+
+| 防线 | 平台需要提供 |
+| --- | --- |
+| 1st Line | Use Case / Agent 登记、owner 字段、风险接受记录、运行指标 |
+| 2nd Line | 风险分级（第 9.1 节）、Policy 配置（第 3.4 节）、审批（第 11 章）、评估门禁（第 12.3 节） |
+| 3rd Line | Audit Evidence（第 12.4 节）、版本不可变（第 4.2 节）、控制有效性证据 |
+
+这比单纯写「RBAC / IAM」更能回答金融审核的问题：**谁负责、凭什么负责、证据在哪。**
+
+### 15.3 平台不能替代的东西
+
+需要明确一条边界：
+
+> **平台提供控制与证据，但不代替风险接受。**
+
+风险接受是业务与风险管理职能的决定。平台的责任是让这个决定有明确的对象（哪个 Use Case、哪个 Agent、哪个版本）、明确的时间和明确的记录。平台不应该把「配置了一个 policy」当成「风险已被接受」。
+
+## 16. Regulatory / Control Mapping
+
+这一章的写法需要先说明一句：
+
+> **本章是 Regulatory / Control Mapping，不是法律意见，也不写成「满足某某法规」。**
+
+原因是平台可能同时面对日本、欧盟、美国等多个监管环境。正确的做法是把法规、监管原则与内部 policy 映射到具体架构控制，并明确哪些是强制要求、哪些是内部标准、哪些是推荐控制。
+
+### 16.1 控制框架映射表
+
+| Enterprise Control | Agent Platform 实现 | 金融风险 |
 | --- | --- | --- |
-| Agent metadata | Agent Platform | PostgreSQL |
-| Skill metadata | Agent Platform | PostgreSQL |
-| Job metadata | Agent Platform | PostgreSQL |
-| Runtime state | Agent Runtime / LangGraph | PostgreSQL / AgentCore |
-| Vector index | Knowledge layer | pgvector / Cortex Search |
-| Document metadata | Knowledge layer | PostgreSQL |
-| Raw enterprise data | Enterprise Data Platform | Snowflake / source system |
-| Agent traces | LangSmith | LangSmith |
-| Evaluation dataset | LangSmith | LangSmith |
-| Model configuration | AI Platform | AI Platform |
-| Audit record | Enterprise Governance | Enterprise audit system |
+| AI Use Case Classification | Agent Registry（第 9.1 节） | AI / Regulatory |
+| Model Approval | AI Platform / LiteLLM Policy（第 6.3 节） | Model Risk |
+| Agent Approval | Control Plane（第 3.1 节） | Operational |
+| Skill Security Scan | Artifact Pipeline（第 10.6 节） | Cyber |
+| Tool Approval | Architecture Pattern（第 8.1 节） | Cyber / Operational |
+| Data Entitlement | Retrieval Policy（第 7.3 节） | Data / Privacy |
+| Human Approval | Action Policy（第 11 章） | Conduct |
+| Audit Trace | Enterprise Audit（第 12.4 节） | Regulatory |
+| Evaluation | LangSmith（第 12.3 节） | Model / AI Risk |
+| Runtime Isolation | AgentCore（第 10.3 节） | Cyber |
+| Egress Control | Network Policy（第 10.4 节） | Cyber |
+| Provider Governance | AI Platform（第 14 章） | Third-party |
+| Kill Switch | Control Plane（第 10.8 节） | Operational |
+| DR / Recovery | Runtime + Job（第 13.4 节） | Operational Resilience |
 
-两条使用约束：
+### 16.2 主要外部框架的对应关系
 
-1. **同一份事实只有一个 owner。** 例如向量索引归 Knowledge layer，那么 Agent Runtime 就不应该缓存一份自己的索引结果作为事实来源。
-2. **PostgreSQL 不是默认落点。** 新增一类数据时先问 owner 是谁，如果 owner 是 LangSmith 或 Snowflake，就不应该因为「PostgreSQL 已经在了」而落进 PostgreSQL。
+| 框架 | 关注点 | 本报告中的落点 |
+| --- | --- | --- |
+| Japan FSA AI Discussion Paper | 金融机构 AI 利用的风险管理与治理 | 第 9 章、第 15 章 |
+| DORA（EU 2022/2554） | ICT 风险治理、数据保护、依赖识别、第三方 ICT 风险、韧性 | 第 7.3 节、第 13 章、第 14 章、第 15 章 |
+| EU AI Act（EU 2024/1689） | 基于用途 / 风险的分级与证据留存 ([EUR-Lex][25]) | 第 9.1 节 |
+| SR 11-7（Model Risk Management） | 模型开发 / 实施 / 使用 / 验证 / 治理与独立 challenge | 第 6.4 节、第 9.2 节 |
+| NIST AI RMF | Govern / Map / Measure / Manage | 第 9 章、第 15 章 |
 
-## 13. Industry Benchmark
+日本金融厅 2026 年的 AI Discussion Paper 1.1 仍把金融机构 AI 风险管理与治理作为重点议题；DORA 对金融实体的 ICT 风险治理、数据保护、依赖识别、第三方风险与韧性提供了明确的控制方向。([Financial Services Agency][26])([EUR-Lex][23])
 
-### 13.1 按平台能力分层比较
+### 16.3 三类要求必须区分
+
+| 类别 | 含义 | 平台处置 |
+| --- | --- | --- |
+| 强制要求 | 外部法规 / 监管要求 | 硬约束，进入设计基线 |
+| 内部标准 | 企业架构 / 安全 / 风险政策 | 由 2nd Line 定义，平台执行 |
+| 推荐控制 | 行业最佳实践 | 按用例分级选择性采用 |
+
+把这三类混在一起，是架构文档最常见的失分点：既会把推荐控制写成强制要求造成过度设计，也会把强制要求写成「建议」而失去约束力。
+
+## 17. Industry Benchmark
+
+### 17.1 按平台能力分层比较
 
 上一版报告直接列「AWS / LangSmith / Dify / Langflow」，粒度不一致。改用平台能力分层比较：
 
@@ -1642,7 +2774,7 @@ LangSmith 现在已经支持 offline evaluation、online evaluation、regression
 >
 > **真正要做的是：把企业内部不同 Agent Runtime、不同模型、不同企业数据能力统一组织起来。**
 
-### 13.2 AWS AgentCore
+### 17.2 AWS AgentCore
 
 AgentCore 现在已经明显从「runtime」发展成一套 Agent infrastructure：
 
@@ -1678,7 +2810,7 @@ Enterprise Governance
 Enterprise Data Access
 ```
 
-### 13.3 LangSmith / LangGraph
+### 17.3 LangSmith / LangGraph
 
 这一套跟你们当前技术栈最接近。
 
@@ -1718,9 +2850,9 @@ cron jobs
 >
 > **Enterprise Agent Platform ≈ LangSmith Deployment 再叠加 enterprise governance + AWS runtime + enterprise data**
 
-这个定位非常清楚，同时也正是第 10.3 节那条「不要重复造」判断的来源：越是接近，越要在设计时明确哪一层由谁负责。
+这个定位非常清楚，同时也正是第 13.3 节那条「不要重复造」判断的来源：越是接近，越要在设计时明确哪一层由谁负责。
 
-### 13.4 Snowflake Cortex Agents
+### 17.4 Snowflake Cortex Agents
 
 Cortex Agents 已经是完整 managed agent platform，覆盖 Cortex Search、Cortex Analyst / semantic views、SQL、tools、threads 与 Snowflake governed execution。([Snowflake Documentation][17]) Cortex Search 本身也已经是 hybrid retrieval 能力。([Snowflake Documentation][16])
 
@@ -1731,7 +2863,7 @@ Cortex Agents 已经是完整 managed agent platform，覆盖 Cortex Search、Co
 - 它要求 trace 相关模型跨 Runtime 成立；
 - 它让「平台不绑定单一 Runtime」这个定位从抽象原则变成具体约束。
 
-### 13.5 Microsoft Foundry 与 Google Agent Engine
+### 17.5 Microsoft Foundry 与 Google Agent Engine
 
 **Microsoft Foundry Agent Service** 和你们目标非常接近，目前已经明确有：
 
@@ -1764,7 +2896,7 @@ Agent Engine
 
 支持 Sessions、Memory Bank、Cloud Trace、Cloud Monitoring、Cloud Logging，并强调企业安全和数据驻留能力。([Google Cloud Documentation][11]) 它值得学习的是 **State / Memory / Session 的平台化建模**。
 
-### 13.6 Dify 与 Letta
+### 17.6 Dify 与 Letta
 
 **Dify** 已经把 Workflow、RAG、Agent、Model Management、Observability、API 统一起来，并支持 self-hosting。([GitHub][13]) 但它更偏 AI application development platform，你们更偏 Enterprise Agent Infrastructure Platform，不能照搬 UI / workflow。值得参考的是 Knowledge lifecycle、RAG pipeline、Application → Agent → Workflow 的层次、Model abstraction 与 plugin/tool model。
 
@@ -1774,7 +2906,7 @@ Agent Engine
 
 它甚至明确区分 Memory 与 Skill：Skill 应该是可复用的行为 / 流程，长期事实才是 Memory。([GitHub][15]) 这个概念适合用在 Skill Registry 的设计上。
 
-### 13.7 趋势：从 Agent Framework 进入 Agent Runtime Platform
+### 17.7 趋势：从 Agent Framework 进入 Agent Runtime Platform
 
 ```text
 LangChain
@@ -1838,77 +2970,73 @@ Observability
 
 这个趋势对本报告的意义是：你们缺的不是其中某一项（多数已经有），而是**它们之间的归属关系**。
 
-## 14. Gap Analysis
+## 18. Gap Analysis
 
 ### P0 — 必须解决
 
-**1. 明确 Control Plane / Runtime Plane / Data Plane 边界**
+**P0-1：AI Use Case Risk Classification**
 
-这是最高优先级。没有这张边界，后面所有设计都会变成逐组件打补丁。
+没有这个，后面的 security policy 都很难正确落地。所有控制强度、审批等级、评估要求都以用例分级为输入。（第 9.1 节）
 
-**2. 定义 Runtime abstraction**
+**P0-2：Policy Enforcement Plane**
 
-至少能够容纳：
+把 Model / Tool / Data / Action / Network 统一纳入 deterministic policy enforcement。（第 3.4 节）
 
-```text
-AgentCore
-Cortex Agents
-Future runtimes
-```
+**P0-3：Identity + Entitlement**
 
-**3. 定义 Agent / Skill / Deployment / Run / Job 生命周期**
+明确 User / Agent / Runtime / Tool / Data 之间的身份关系，并明确「平台权限 ≠ 数据平台原生权限」。（第 10.1 节）
 
-**4. 定义统一 Identity / Authorization 模型**
+**P0-4：Agent / Skill / Model / Tool immutable version**
 
-尤其：
+确保任何结果都能回答「当时到底运行的是哪个东西」。（第 4.2 节、第 10.6 节）
 
-```text
-User
-Agent
-Runtime
-Data Source
-Tool
-```
+**P0-5：Audit / Evidence Architecture**
 
-并且明确「平台权限 ≠ 数据平台原生权限」。
+明确 Trace、Audit、Evidence 三者关系。（第 12.4 节）
 
-**5. 定义 PostgreSQL / LangSmith / Snowflake 数据职责**
+**P0-6：Model / Agent Risk Management**
+
+把传统 Model Risk Management 扩展到 Agent。（第 6.4 节、第 9.2 节）
+
+**P0-7：Third-party AI Provider Governance**
+
+OpenAI / Anthropic / Gemini / AWS / Snowflake / LangSmith 全部纳入供应链管理。（第 14 章）
+
+**P0-8：Data Leakage / Egress Prevention**
+
+尤其 Prompt / Context / Tool Arguments / Output / Trace 五个出口的数据泄露控制。（第 7.5、10.4、10.7 节）
+
+同时在工程侧保留上一版已经确定的三项：
+
+- Control Plane / Runtime Plane / Data Plane 边界（第 3 章）
+- Runtime abstraction（第 5.4 节）
+- PostgreSQL / LangSmith / Snowflake 数据职责（第 7.6 节）
 
 ### P1 — 很重要
 
-**6. Retrieval abstraction**
+**P1-1：Retrieval abstraction**
 
-支持：
+支持 pgvector / Cortex Search / future providers。（第 7.2 节）
 
-```text
-pgvector
-Cortex Search
-future providers
-```
+**P1-2：MCP execution metadata + 架构治理**
 
-**7. MCP execution metadata + 架构治理**
+记录执行事实并确保平台能执行既有标准，**不是**建设新的 MCP Governance Platform。（第 8.2 节）
 
-注意：是记录执行事实并确保平台能执行既有标准，**不是**建设新的 MCP Governance Platform。
+**P1-3：Job / async execution**
 
-**8. Job / async execution**
+LangSmith Agent Server 本身已经采用 task queue + PostgreSQL + Redis 的 durable execution 模型，可以作为 Job architecture 的参考。([Docs by LangChain][4])（第 13 章）
 
-这一项仍然重要。LangSmith Agent Server 本身已经采用 task queue + PostgreSQL + Redis 的 durable execution 模型，可以作为 Job architecture 的参考。([Docs by LangChain][4])
+**P1-4：Evaluation gate**
 
-**9. Evaluation gate**
+Agent Version → Evaluation Dataset → Regression → Promotion。（第 12.3 节）
 
-既然已经有 LangSmith，就应该进一步定义：
+**P1-5：Kill Switch**
 
-```text
-Agent Version
-   ↓
-Evaluation Dataset
-   ↓
-Regression
-   ↓
-Promotion
-```
+按粒度提供 deterministic 停止能力，且不依赖 LLM。（第 10.8 节）
 
-LangSmith 官方现在已经支持 offline evaluation、online evaluation、regression 与 CI/CD quality gates。([Docs by LangChain][19])
+**P1-6：DR / Failover / Provider Outage 策略**
+
+按用例分级设定 RTO / RPO，并明确 fallback 的批准约束。（第 13.4、13.5 节）
 
 ### P2 — 后续增强
 
@@ -1922,22 +3050,120 @@ agent-to-agent discovery
 
 这些现在都不是核心矛盾。
 
-### 与上一版 P0/P1 的差异
+### 与上一版的差异
 
 | 上一版 | 本版处置 | 原因 |
 | --- | --- | --- |
-| Agent Observability 必须平台统一 | **移出 P0/P1** | LangSmith 已集成，能力已具备；改为审查分工 |
+| Agent Observability 必须平台统一 | **移出 P0/P1** | LangSmith 已集成，改为审查分工 |
 | Evaluation / Regression 必须补齐 | 降为 P1，且内容是定义 publication gate | LangSmith 已提供 evaluation 能力 |
-| Tool / MCP Governance 是最大缺口 | 降为 P1，且改为「补执行元数据」 | 已用架构 Pattern 治理，不需要重技术平台 |
-| Retrieval authorization / ACL trimming | 保留在 P0 的授权模型内 | 仍是金融场景的硬要求 |
-| Hybrid Search 应拆成 Retrieval Service | **撤回** | 当前 PG + pgvector 合理；改为设计 retrieval abstraction |
-| — | **新增 P0：三平面边界** | 当前最大风险 |
-| — | **新增 P0：Runtime abstraction** | 接入 Snowflake 的前置条件 |
-| — | **新增 P0：数据职责** | 避免跨平台重复存储 |
+| Tool / MCP Governance 是最大缺口 | 降为 P1，且改为「补执行元数据」 | 已用架构 Pattern 治理 |
+| Retrieval authorization / ACL trimming | 保留，并入 Data Entitlement | 金融场景的硬要求 |
+| Hybrid Search 应拆成 Retrieval Service | **撤回** | 当前 PG + pgvector 合理 |
+| 三平面边界 / Runtime abstraction / 数据职责 | 保留，作为工程侧基线 | 仍是接入 Snowflake 的前置条件 |
+| — | **新增 P0-1：Use Case Risk Classification** | 所有安全策略的第一道闸门 |
+| — | **新增 P0-2：Policy Enforcement Plane** | 控制的核心落点 |
+| — | **新增 P0-5：Audit / Evidence Architecture** | Trace ≠ Audit Evidence |
+| — | **新增 P0-6：Model / Agent Risk Management** | Agent 风险不等于模型风险 |
+| — | **新增 P0-7：Third-party AI Provider Governance** | 供应链已经形成 |
+| — | **新增 P0-8：Data Leakage / Egress Prevention** | 出口多于传统场景 |
+| — | **新增 P1-5：Kill Switch** | 金融场景需要确定性停止能力 |
 
-## 15. Target Architecture
+## 19. Target Architecture
 
-### 15.1 长期定位
+（目标形态：完成风险治理之后的最终结构，与第 3 章的平台分层互为补充）
+
+### 19.1 金融级 Agent Architecture
+
+把风险治理与控制也画进目标形态之后，最终结构是：
+
+```mermaid
+flowchart TB
+
+    USER[User / Application]
+
+    subgraph GOV["Financial AI Governance"]
+        RISK[Use Case Risk Classification]
+        POL[Policy Enforcement]
+        IAM[Identity / Entitlement]
+        APPROVAL[Human Approval]
+        AUDIT[Audit / Evidence]
+    end
+
+    subgraph CP["Agent Control Plane"]
+        AGENT[Agent Registry]
+        SKILL[Skill / Artifact]
+        MODEL[Approved Model]
+        DEPLOY[Deployment]
+        JOB[Job]
+    end
+
+    subgraph RT["Agent Runtime Plane"]
+        DA[Deep Agents]
+        AC[AgentCore]
+        CA[Future Cortex Agents]
+    end
+
+    subgraph DATA["Data / Capability Plane"]
+        RET[Knowledge / Retrieval]
+        MCP[MCP / Enterprise APIs]
+        LLM[LiteLLM]
+        ENT[Enterprise Data]
+    end
+
+    subgraph SEC["Security Controls"]
+        DLP[DLP]
+        EGRESS[Egress Control]
+        SECRETS[Secret Management]
+        SCAN[Skill Supply Chain Security]
+        KILL[Kill Switch]
+    end
+
+    subgraph OBS["Observability / Evaluation"]
+        LS[LangSmith]
+        EVAL[Evaluation]
+    end
+
+    USER --> RISK
+    RISK --> AGENT
+
+    AGENT --> POL
+    POL --> IAM
+    POL --> APPROVAL
+
+    AGENT --> DEPLOY
+    DEPLOY --> RT
+
+    RT --> RET
+    RT --> MCP
+    RT --> LLM
+
+    RET --> ENT
+    MCP --> ENT
+
+    RT --> POL
+    POL --> DLP
+    POL --> EGRESS
+    POL --> SECRETS
+
+    SKILL --> SCAN
+    SCAN --> DEPLOY
+
+    RT --> LS
+    LS --> EVAL
+
+    RT --> AUDIT
+    POL --> AUDIT
+    IAM --> AUDIT
+    APPROVAL --> AUDIT
+
+    KILL --> RT
+```
+
+这张图表达的是金融领域最重要的一条理念：
+
+> **Agent 本身不是可信边界。Policy、Identity、Data Entitlement、Runtime Isolation 与 Audit 才是可信边界。**
+
+### 19.2 长期定位
 
 不建议把这个平台定义为：
 
@@ -1991,7 +3217,7 @@ flowchart TB
 
 这个结构非常符合 Enterprise Architecture，而不是某一个框架项目。它与「我们的 Agent 平台就是 DeepAgents + AgentCore」的区别非常大：前者可以容纳第二个 Runtime，后者不能。
 
-### 15.2 三个核心
+### 19.3 三个核心
 
 **1. Agent Runtime**
 
@@ -2034,7 +3260,7 @@ Citation
 
 负责「能访问什么」。
 
-### 15.3 现在最值得做的一件架构调整
+### 19.4 现在最值得做的一件架构调整
 
 **不要继续横向增加 Agent Framework 能力。**
 
@@ -2088,6 +3314,60 @@ custom tracing / eval store
 
 这比把所有能力继续堆进一个 FastAPI + LangChain 服务要成熟得多，也比继续补 Agent Framework 功能更贴近当前的真正瓶颈。
 
+### 19.5 六条架构原则
+
+最后把这套架构浓缩成六句话，作为设计评审时的判据：
+
+> **1. Agent 可以自主推理，但不能自主突破权限。**
+>
+> **2. LLM 可以生成建议，但不能定义企业安全边界。**
+>
+> **3. Retrieval 可以返回数据，但不能绕过 Data Entitlement。**
+>
+> **4. Tool 可以执行动作，但高风险动作必须由 Policy 决定是否允许。**
+>
+> **5. LangSmith 可以记录运行过程，但 Regulatory Audit Evidence 要单独定义。**
+>
+> **6. 每一个生产 Agent 都必须能够回答：谁批准、运行了什么、访问了什么、做了什么、为什么允许、出了问题如何停止。**
+
+这六条比列出具体安全产品更接近金融服务领域架构师真正会用来审核这套平台的标准。
+
+## 20. Architecture Decision Record
+
+把本报告的关键判断固化成 ADR，便于后续变更时能追溯当时的取舍：
+
+| ID | 决策 | 状态 | 依据 |
+| --- | --- | --- | --- |
+| ADR-01 | AgentCore 作为 Agent Runtime 底座，不自建 microVM / session | Accepted | 5.2 |
+| ADR-02 | Control Plane / Runtime Plane / Data & Capability Plane 三层划分，叠加 Policy Enforcement Plane | Accepted | 3 |
+| ADR-03 | Runtime abstraction 采用 `AgentRuntime` 六方法接口 | Accepted | 5.4 |
+| ADR-04 | Snowflake Cortex Agents 定位为潜在第二 Runtime，而非 LLM Provider | Accepted | 2.6、5.3 |
+| ADR-05 | Retrieval 保留为 Agent Platform 内的 Capability，不拆独立服务 | Accepted | 7.1 |
+| ADR-06 | 引入 Retrieval abstraction，使 pgvector 与 Cortex Search 并存 | Accepted | 7.2 |
+| ADR-07 | 授权采用「平台权限 + 数据平台原生权限」双层模型 | Accepted | 10.1 |
+| ADR-08 | MCP 治理走 Architecture Pattern，平台只补 execution metadata | Accepted | 8.1、8.2 |
+| ADR-09 | Skill 上传按 Software Supply Chain 处理，运行引用不可变 artifact | Accepted | 10.6 |
+| ADR-10 | LangSmith 定位为 engineering observability，不自动作为 Audit Evidence | Accepted | 12.4 |
+| ADR-11 | 平台定义 Data Ownership，PostgreSQL 不是默认落点 | Accepted | 7.6 |
+| ADR-12 | 引入 Use Case Risk Classification（L0–L4）作为第一道闸门 | Proposed | 9.1 |
+| ADR-13 | 引入 Policy Enforcement Plane，高风险动作由 Policy 判定 | Proposed | 3.4 |
+| ADR-14 | Kill Switch 必须 deterministic，不依赖 LLM | Proposed | 10.8 |
+| ADR-15 | 第三方 AI Provider 纳入独立治理，含 exit strategy | Proposed | 14 |
+
+状态说明：
+
+```text
+Accepted  — 已经在当前架构中成立，报告仅做确认
+Proposed  — 本报告建议采纳，尚未落地
+```
+
+后续每次架构评审应至少回答两个问题：
+
+```text
+1. 哪些 Proposed 已经变成 Accepted？
+2. 有没有新的决策需要写入 ADR？
+```
+
 [1]: https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/agents-tools-runtime.html "Host agent or tools with Amazon Bedrock AgentCore Runtime - Amazon Bedrock AgentCore"
 [2]: https://docs.langchain.com/oss/python/deepagents/overview "Deep Agents overview - Docs by LangChain"
 [3]: https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/runtime-how-it-works.html "microVMs - Amazon Bedrock AgentCore"
@@ -2109,4 +3389,8 @@ custom tracing / eval store
 [19]: https://docs.langchain.com/langsmith/evaluation "LangSmith Evaluation - Docs by LangChain"
 [20]: https://docs.langchain.com/langsmith/agent-server "Agent Server - Docs by LangChain"
 [21]: https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/gateway-core-concepts.html "Core concepts for Amazon Bedrock AgentCore Gateway - Amazon Bedrock AgentCore"
-
+[22]: https://www.fsb.org/2024/11/the-financial-stability-implications-of-artificial-intelligence/ "The Financial Stability Implications of Artificial Intelligence - Financial Stability Board"
+[23]: https://eur-lex.europa.eu/legal-content/EN/TXT/?uri=uriserv%3AOJ.L_.2022.333.01.0001.01.ENG "Regulation - 2022/2554 - EN - DORA - EUR-Lex"
+[24]: https://www.federalreserve.gov/bankinforeg/srletters/sr1107a1.pdf "SR 11-7 attachment: Supervisory Guidance on Model Risk Management"
+[25]: https://eur-lex.europa.eu/legal-content/EN/ALL/?uri=CELEX%3A32024R1689 "Regulation - EU - 2024/1689 - EUR-Lex"
+[26]: https://www.fsa.go.jp/en/news/2026/20260303/aidp.html "Publication of AI Discussion Paper (Version 1.1) : FSA"
