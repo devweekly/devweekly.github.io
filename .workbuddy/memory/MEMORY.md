@@ -81,3 +81,20 @@ Astro (AstroPaper) 技术博客，域名语义为「Dev Weekly」。
 
 Astro 是静态站，`pubDatetime` 仅是元数据，不做定时发布。真正上线由构建/部署流水线控制；
 若 CI 按 push 触发，推上去即发布。需要「周几才出现」必须在部署侧加发布窗口控制。
+
+## 工作区其他长期产物
+
+### `temp/agent研究.md` — Enterprise Agent Platform Architecture Review
+
+一份企业 Agent 平台的架构评审报告（不是博客 post，独立于周报体系）。当前版本（2026-09-13 重构后）：
+
+- 结构：1 个 H1 + 15 个 `##` 章（英文标题，正文中文）+ 64 个 `###`；引用 [1]–[21]
+- **核心结论**：技术底座已基本完整（AgentCore + LangSmith + PostgreSQL/pgvector + LiteLLM），
+  主要风险是**平台之间的职责边界 / 运行模型 / 治理模型**，不是能力缺失
+- 主框架：Control Plane / Runtime Plane / Data & Capability Plane 三平面
+- 已明确撤回的旧判断：不要把 Retrieval 拆成独立 Service（PG + pgvector 当前够用）；
+  MCP 不建重型 Registry（走架构 Pattern 治理，只补执行元数据）；
+  Observability / Evaluation 不是缺口（LangSmith 已承担）
+- 主线之一：Snowflake Cortex Agents 是**潜在的第二 Agent Runtime**，不是数据源或 LLM Provider；
+  需要 Runtime abstraction + 「平台权限 + 数据平台原生权限」双层授权
+- 报告为该单位的内部评审文档，语气保留顾问式「你们」；**博客 post 才要求去掉人称**
