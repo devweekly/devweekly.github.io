@@ -5,6 +5,8 @@ dist/
 # dependencies
 node_modules/
 
+.playwright-mcp/
+
 .env
 
 ref-only/

@@ -38,80 +38,42 @@ tags:
 
 ## 1. 两个极端
 
-Agent 进入业务流程的早期，工程团队通常会落到两个极端之一。第一个极端是“BPMN → Agent”：在既有的流程引擎里加一个 Agent 节点，把原来需要智能判断的那一步换成一次 LLM 调用：
+Agent 进入业务流程的早期，工程团队通常会落到两个极端之一。第一个极端是“BPMN → Agent”：在既有的流程引擎里加一个 Agent 节点，把原来需要智能判断的那一步换成一次 LLM 调用；第二个极端是“Agent → Everything”：把整个业务流程交给 Agent：
 
 ```mermaid
 flowchart TD
-    A["Service Task"] --> B["LLM Node"]
-    B --> C["Service Task"]
+    B["Service Task"] --> L["LLM Node"]
+    L --> S["Service Task"]
+    A["User Intent"] --> AG["Agent"]
+    AG --> T["Tools"]
+    T --> O["Business Outcome"]
 ```
 
-流程图画得很完整，看起来很可控。
-
-第二个极端是“Agent → Everything”：把整个业务流程交给 Agent：
-
-```mermaid
-flowchart TD
-    A["User Intent"] --> B["Agent"]
-    B --> C["Tool / Tool / Tool"]
-    C --> D["Business Outcome"]
-```
-
-看起来很先进，演示效果通常也很好。
+前者流程图画得很完整，看起来很可控；后者看起来很先进，演示效果通常也很好。
 
 两个极端的问题不一样，但根子是同一个：它们都把“业务流程”和“认知任务”当成了同一种东西。业务流程要回答的是“做什么、谁做、什么时候做、结果去哪、出问题谁负责”；认知任务要回答的是“这一步具体怎么想清楚”。前者需要确定性，后者本身不确定。把它们混成一层，无论混在 BPMN 里还是混在 Agent 里，都会出问题。接下来三节分别说明：传统 Workflow 的边界在哪里，以及两种混法各自错在哪，错得有多贵。
 
 ## 2. 传统 Workflow 的假设，以及它的真实边界
 
-传统 Camunda / Fluxnova / Flowable / ServiceNow Workflow 的核心模型大概是：
+传统 Camunda / Fluxnova / Flowable / ServiceNow Workflow 的核心模型大概是：Process Definition → Step A → Step B → Decision（分叉到 Step C / Step D）→ Step E。
 
-```mermaid
-flowchart TD
-    P[Process Definition] --> A[Step A]
-    A --> B[Step B]
-    B --> D{Decision}
-    D --> C[Step C]
-    D --> DD[Step D]
-    C --> E[Step E]
-    DD --> E
-```
-
-流程在设计期基本确定。例如：
-
-```mermaid
-flowchart TD
-    A["收到贷款申请"] --> B["身份验证"]
-    B --> C["信用检查"]
-    C --> D["风险评分"]
-    D --> E["人工审批"]
-    E --> F["放款"]
-```
-
-这是很适用的模型，因为路径比较确定，状态比较确定，责任边界、审计要求和 SLA 都明确。所以 BPMN 仍然有价值。但换成 Agent，任务描述会变成：
-
-```mermaid
-flowchart TD
-    A["“调查这个投资机会，并给出一份结论。”"]
-```
-
-而没人能预先确定 Agent 会走哪条路：
-
-```mermaid
-flowchart TD
-    A["search web"] --> B["search Bloomberg"]
-    B --> C["query internal database"]
-    C --> D["read 17 documents"]
-    D --> E["ask another agent"]
-    E --> F["calculate valuation"]
-    F --> G["discover missing information"]
-    G --> H["search again"]
-    H --> I["challenge its own conclusion"]
-    I --> J["ask human"]
-    J --> K["continue"]
-    K --> L["produce report"]
-```
-
+流程在设计期基本确定。例如：收到贷款申请 → 身份验证 → 信用检查 → 风险评分 → 人工审批 → 放款。
+这是很适用的模型，因为路径比较确定，状态比较确定，责任边界、审计要求和 SLA 都明确。所以 BPMN 仍然有价值。但换成 Agent，任务描述会变成：“调查这个投资机会，并给出一份结论。”
+而没人能预先确定 Agent 会走哪条路：search web → search Bloomberg → query internal database → read 17 documents → ask another agent → calculate valuation → discover missing information → search again → challenge its own conclusion → ask human → continue → produce report。
 这条路径不可能被提前画出来。所以传统 Workflow 是 Design-Time Control Flow，Agent Workflow 是 Runtime Decision + Execution Boundary，这是根本区别。
+
+两种模型的对照：
+
+|            | Business Workflow    | Agentic Execution               |
+| ---------- | -------------------- | ------------------------------- |
+| 起点       | Business Process     | Goal / Intent                   |
+| 谁定义路径 | Business Architect   | Agent                           |
+| 路径       | Mostly deterministic | Dynamic                         |
+| 状态       | Process Instance     | Agent Task State                |
+| 权限       | IAM / Roles          | Capability / Policy             |
+| 责任       | Human / Organization | Agent executes within authority |
+| 审计       | Process Audit        | Trace + Evidence + Audit        |
+| 最终状态   | Workflow Runtime     | Workflow Runtime                |
 
 ### 一个容易被忽略的技术细节：BPMN 不是状态机
 
@@ -119,142 +81,63 @@ flowchart TD
 
 ## 3. 第一个极端：给 BPMN 加一个 LLM Node
 
-传统 Low-code：
+传统 Low-code 是拖一个 HTTP Node → 拖一个 Condition → 拖一个 LLM Node → 拖一个 Approval Node，看起来非常容易。但真正复杂之后，会冒出一串运行时问题：
 
-```mermaid
-flowchart TD
-    A["拖一个 HTTP Node"] --> B["拖一个 Condition"]
-    B --> C["拖一个 LLM Node"]
-    C --> D["拖一个 Approval Node"]
-```
-
-看起来非常容易。但真正复杂之后，会冒出一串运行时问题：
-
-```mermaid
-flowchart TD
-    A["LLM 为什么选择这个？"]
-    B["为什么重新搜索？"]
-    C["为什么调用这个 tool？"]
-    D["为什么跳过那个 task？"]
-    E["为什么 context 变了？"]
-    F["为什么 agent 重新规划？"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-    E ~~~ F
-```
+- LLM 为什么选择这个？
+- 为什么重新搜索？
+- 为什么调用这个 tool？
+- 为什么跳过那个 task？
+- 为什么 context 变了？
+- 为什么 agent 重新规划？
 
 最终暴露出来的问题是连节点只是表面工作，运行时行为才构成主要复杂度。于是最后会出现一个非常荒谬的东西：
 
-```mermaid
-flowchart TB
-    A["Low-code workflow"]
-    B["Agent Node"]
-    C["Prompt"]
-    D["Memory Node"]
-    E["Agent Router"]
-    F["Tool Node"]
-    G["Agent Router"]
-    H["Condition"]
-    I["Agent Router"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-    E ~~~ F
-    F ~~~ G
-    G ~~~ H
-    H ~~~ I
-```
+- Low-code workflow
+- Agent Node
+- Prompt
+- Memory Node
+- Agent Router
+- Tool Node
+- Agent Router
+- Condition
+- Agent Router
 
 这实际上只是用 BPMN GUI 给 Agent 套了一层壳，不是长久方向。同样的道理，也不要把 Agent 的内部逻辑画进 BPMN。例如不要：
 
-```mermaid
-flowchart TD
-    A["BPMN"] --> B["Agent Call"]
-    A --> C["Agent Decision"]
-    A --> D["Agent Decision"]
-    A --> E["Agent Loop"]
-    A --> F["Agent Retry"]
-    A --> G["Agent Memory"]
-    A --> H["Agent Tool"]
-    A --> I["Agent Tool"]
-    A --> J["Agent Subprocess"]
+**BPMN**：
 
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-    E ~~~ F
-    F ~~~ G
-    G ~~~ H
-    H ~~~ I
-    I ~~~ J
-```
+- Agent Call
+- Agent Decision
+- Agent Decision
+- Agent Loop
+- Agent Retry
+- Agent Memory
+- Agent Tool
+- Agent Tool
+- Agent Subprocess
 
-最终 BPMN 又变成另一种 spaghetti。正确方式是：
-
-```mermaid
-flowchart TD
-    A["BPMN"] --> B["Agent Activity"]
-    B --> C["Agent Runtime"]
-```
-
-Agent Runtime 内部再拥有自己的执行模型。
+最终 BPMN 又变成另一种 spaghetti。正确方式是 BPMN 之下只放 Agent Activity，Agent Runtime 内部再拥有自己的执行模型。
 
 ## 4. 第二个极端：让 Agent 决定整个业务流程
 
-这同样危险。最差的 AI Workflow：
+这同样危险。最差的 AI Workflow，就是让模型自己决定整个业务流程，金融领域尤其不能这么做。例如：
+
+**Agent**：
+
+- approve loan
+- move money
+- submit trade
+- change risk limit
+
+这里不应该是 Agent 自由决定，而应该经过 Policy Gate 与 Verification 再回到 Agent。Agent 有 autonomy，但没有 unrestricted authority。这一点比 Workflow 这个词本身更值得先弄清楚。两个极端各自错在哪，到这里可以说得很具体了。它们错的不是“用了 BPMN”或“用了 Agent”，而是把基本单元搞错了。本文主张的基本单元不是“LLM Node”，而是 Agent Task：
 
 ```mermaid
 flowchart TD
-    A["Agent"] --> B["Agent"]
-    B --> C["Agent"]
-    C --> D["Agent"]
-    D --> E["Agent"]
-```
-
-然后让模型自己决定整个业务流程，金融领域尤其不能这么做。例如：
-
-```mermaid
-flowchart LR
-    A["Agent"] --> B["approve loan"]
-    A --> C["move money"]
-    A --> D["submit trade"]
-    A --> E["change risk limit"]
-```
-
-这里不应该是 Agent 自由决定，更合理的是：
-
-```mermaid
-flowchart TD
-    A[Agent]
-    A -->|proposal| G[Policy Gate]
-
-    G -->|safe| T[Tool Execution]
-    G -->|needs approval| H[Human Approval]
-    G -->|forbidden| X[Reject]
-
-    H -->|approved| T
-
-    T --> V[Verification]
-
-    V -->|success| A
-    V -->|failure| A
-```
-
-Agent 有 autonomy，但没有 unrestricted authority。这一点比 Workflow 这个词本身更值得先弄清楚。两个极端各自错在哪，到这里可以说得很具体了。它们错的不是“用了 BPMN”或“用了 Agent”，而是把基本单元搞错了。本文主张的基本单元不是“LLM Node”，而是 Agent Task：
-
-```mermaid
-flowchart TD
-    A["Business Process"] --> B["Agent Task"]
-    %% 基本单元
-    B --> C["Agent Runtime"]
-    C --> D["Structured Result"]
-    D --> E["Validation / Policy / Authorization"]
-    E --> F["Business Process"]
+    BP["Business Process"] --> AT["Agent Task"]
+    AT --> AR["Agent Runtime"]
+    AR --> SR["Structured Result"]
+    SR --> VG["Validation / Authorization"]
+    VG --> BP
 ```
 
 第一个极端把 Agent Task 降级成了一个 LLM Node，于是流程图画满了 Agent 的内部细节，却丢掉了智能本身；第二个极端把 Agent Task 升级成了整个业务流程，于是流程资产、责任边界与审批关系一起消失。第四、第五部分会把这条链路展开成完整架构与契约。
@@ -272,18 +155,7 @@ flowchart TD
 | 领域三 · Durable Execution          | Agent 如何可靠地长期运行    | Temporal / Durable Task                             |
 | 领域四 · Enterprise Semantic & Data | Agent 在什么世界里工作      | Palantir / Snowflake                                |
 
-```mermaid
-flowchart TD
-    R1["领域一<br/>确定性业务编排"]
-    R2["领域二<br/>Agent Runtime 与 Harness"]
-    R3["领域三<br/>Durable Execution"]
-    R4["领域四<br/>Enterprise Semantic & Data"]
-
-    R1 --> CB["组合点：Agent Task Contract"]
-    R2 --> CB
-    R3 --> CB
-    R4 --> CB
-```
+四个领域共同指向同一个组合点：Agent Task Contract。
 
 这个分组方式本身就是一个判断：这四件事不在同一个维度上，不能用“谁替代谁”来讨论。其中有一处需要额外说明：领域三（Durable Execution）严格来说不与另外三者处在同一层，而是一层基础能力。它不解决“Agent 怎么决策”，也不解决“流程怎么定义”，它解决的是“执行到一半进程崩了怎么办”。把它当成一个可选方向去和 BPMN 比较，是选型时最常见的误判之一；把它当成所有长任务路径都必须具备的底座，才是它的真实位置。把领域二三混成一句“Agent Workflow 取代了 BPMN”，是这一轮技术讨论里最普遍的一次偷换。后面的第 42 节会把这个问题拆到产品层面。
 
@@ -291,19 +163,11 @@ flowchart TD
 
 为什么用 BPMN 引擎承载 Agent Workflow 会让人本能地抵触？Fluxnova 仍然是 BPMN 引擎：
 
-```mermaid
-flowchart TB
-    A["BPMN"]
-    B["DMN"]
-    C["Human Task"]
-    D["Process State"]
-    E["Audit"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-```
+- BPMN
+- DMN
+- Human Task
+- Process State
+- Audit
 
 它现在已经开始加入：
 
@@ -321,22 +185,13 @@ flowchart TB
 
 分工是清楚的：
 
-```mermaid
-flowchart TD
-    A["LLM"] --> B["决定调用什么工具、以什么顺序、什么时候停止"]
-    C["Camunda"] --> D["执行 BPMN elements"]
-    C --> E["保存 process state"]
-    C --> F["retry / incident"]
-    C --> G["human task"]
-    C --> H["确定性逻辑"]
-    C --> I["process boundary"]
-
-    D ~~~ E
-    E ~~~ F
-    F ~~~ G
-    G ~~~ H
-    H ~~~ I
-```
+- LLM → 决定调用什么工具、以什么顺序、什么时候停止
+- Camunda → 执行 BPMN elements
+- Camunda → 保存 process state
+- Camunda → retry / incident
+- Camunda → human task
+- Camunda → 确定性逻辑
+- Camunda → process boundary
 
 所以更准确的表述是：Camunda 正在把 BPMN 从“纯确定性流程”扩展成“确定性流程 + 受治理的 Agentic Subprocess”。具体的设计与架构建议，见 Camunda 的《Design and architecture》文档。([Camunda 8 Docs][6])这个方向与本文后面的主线架构是一致的，落点不同而已：Camunda 把它落在 BPMN 边界内，本文要讨论的是这个边界应该由什么契约来定义。这对金融、保险、银行很合理。但如果目标是一个 AI-native Agent Platform，BPMN 不适合作为核心抽象。
 
@@ -344,46 +199,7 @@ flowchart TD
 
 ## 7. 领域二（上）· 执行模型
 
-这个领域的主张最激进，投入也最大。它并不否认 Workflow 的存在，而是主张 Workflow 的实现方式应该被重写。在评价它之前，先把它自己的主张摆出来。而比较合理的模型其实是：
-
-```mermaid
-flowchart TD
-    U[User / Business Event] --> I[Intent]
-
-    I --> A[Agent Runtime]
-
-    A --> P[Policy / Authority]
-    A --> C[Context / Memory]
-    A --> T[Tools / APIs / MCP]
-    A --> S[Dynamic Plan]
-
-    S --> E[Execution Runtime]
-
-    E --> W1[Deterministic Code]
-    E --> W2[Agent Task]
-    E --> W3[Human Task]
-    E --> W4[External Event]
-
-    W1 --> R[Result]
-    W2 --> R
-    W3 --> R
-    W4 --> R
-
-    R --> V[Verification / Policy Check]
-    V --> A
-
-    E --> O[Durable State + Event Log]
-    A --> O
-
-    P ~~~ C
-    C ~~~ T
-    T ~~~ S
-    S ~~~ O
-    W1 ~~~ W2
-    W2 ~~~ W3
-    W3 ~~~ W4
-    W4 ~~~ O
-```
+这个领域的主张最激进，投入也最大。它并不否认 Workflow 的存在，而是主张 Workflow 的实现方式应该被重写。在评价它之前，先把它自己的主张摆出来。而比较合理的模型其实是：User / Business Event → Intent → Agent Runtime（含 Policy / Authority、Context / Memory、Tools / APIs / MCP、Dynamic Plan）→ Execution Runtime（Deterministic Code / Agent Task / Human Task / External Event 分支汇总成 Result，再经 Verification / Policy Check 回流 Agent），另有一条 Durable State + Event Log 做底座。
 
 这里先说两件事：在 Agent-first 架构中，Agent 可以动态决定下一步的任务或工具调用；但在金融业务流程中，这种自由度被限制在 BPMN 定义的 Agent Task 边界内。Runtime 决定“这个下一步能不能做、怎么执行、出了问题怎么办”。第一点是这个领域与过去 Workflow 最大的区别，也是它后来必须被限制的地方；第二点则不受领域之争影响——无论目标是什么，执行边界都必须存在。
 
@@ -395,19 +211,11 @@ Google 在 2026 年把 ADK 从原来的 hierarchical agent executor 明确转向
 
 Microsoft Agent Framework 现在把 Workflow 定义成：
 
-```mermaid
-flowchart TB
-    A["Executors"]
-    B["Edges"]
-    C["State"]
-    D["Events"]
-    E["Runtime"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-```
+- Executors
+- Edges
+- State
+- Events
+- Runtime
 
 而 Executor 可以是：
 
@@ -429,27 +237,16 @@ flowchart TB
 
 ### LangGraph
 
-LangGraph 把自己定位成 low-level orchestration framework for stateful agents。它的核心价值不是“画流程”，而是：
-
-```mermaid
-flowchart LR
-    A["State"] --> B["Node"]
-    B --> C["Decision"]
-    C --> D["Tool"]
-    D --> E["Checkpoint"]
-    E --> F["Resume"]
-```
-
+LangGraph 把自己定位成 low-level orchestration framework for stateful agents。它的核心价值不是“画流程”，而是：State → Node → Decision → Tool → Checkpoint → Resume。
 它特别强调 durable execution、stateful agents、long-running execution 与 failure recovery。也就是说，Graph 在这里不是给业务人员看的流程图，而是 Agent 的执行 runtime。([GitHub][3])所以不要再想 `Workflow = DAG / BPMN`，而应该定义：
 
-```mermaid
-flowchart LR
-    A["Agentic Execution"] --- B["Intent"]
-    A --- C["Policy"]
-    A --- D["Execution State"]
-    A --- E["Dynamic Plan"]
-    A --- F["Durable Runtime"]
-```
+**Agentic Execution**：
+
+- Intent
+- Policy
+- Execution State
+- Dynamic Plan
+- Durable Runtime
 
 这里用 Execution 而不用 Workflow 是有意的：Intent 是输入，Policy 是控制，Dynamic Plan 是决策，Execution State 是状态，Durable Runtime 是基础设施——五件事不在同一层，“Agentic Workflow”这个名字会把它们压成一个词。
 
@@ -501,98 +298,31 @@ Agent 根据目标动态产生工作计划：搜索公司、取财务数据、�
 
 这是传统 Workflow Engine 最值得保留的东西。真实的长任务经常是“跑 25 分钟 → 等待人工 → 6 小时后继续”，状态至少要能区分：
 
-```mermaid
-flowchart TD
-    A["RUNNING / WAITING_TOOL / WAITING_HUMAN / WAITING_EVENT"]
-    B["FAILED / RETRYING / COMPLETED / CANCELLED"]
-
-    A ~~~ B
-```
+- RUNNING / WAITING_TOOL / WAITING_HUMAN / WAITING_EVENT
+- FAILED / RETRYING / COMPLETED / CANCELLED
 
 需要的是 durability、checkpoint、resume、timeout、retry、compensation 与 idempotency，而不是漂亮的流程图。这一点比 BPMN 图本身更实在。
 
 ### ⑤ Execution Runtime
 
-真正的核心应该变成：
+真正的核心应该是 Agent Brain 与 Agent Execution Runtime 的分工：Agent 只负责提议，Runtime 负责授权、验证、执行与审计，中间经过 Policy Engine、Authority、Sandbox、Durable State 与 Event Log 这些统一边界。
 
-```mermaid
-flowchart LR
-    Agent[Agent Brain]
-    Runtime[Agent Execution Runtime]
-
-    Agent -->|propose action| Runtime
-
-    Runtime --> Policy[Policy Engine]
-    Runtime --> Auth[Authority / Identity]
-    Runtime --> Sandbox[Execution Sandbox]
-    Runtime --> Durable[Durable State]
-    Runtime --> Events[Event Log]
-
-    Policy --> Tools[Tools / MCP / APIs]
-    Auth --> Tools
-    Sandbox --> Tools
-
-    Tools --> Result[Tool Result]
-    Result --> Runtime
-    Runtime --> Agent
-
-    Policy ~~~ Auth
-    Auth ~~~ Sandbox
-    Sandbox ~~~ Durable
-    Durable ~~~ Events
-    Events ~~~ Agent
-```
-
-Agent 不应该绕过统一的身份、权限、工具和审计边界，直接拿到未治理的生产系统权限。这句话不等于“Agent 不能访问生产系统”。它可以访问，但访问必须走完整链路：
-
-```mermaid
-flowchart TD
-    A["Agent"] --> B["Task Context（业务上下文 + 流程实例 + 数据版本）"]
-    B --> C["Tool / Capability"]
-    C --> D["Identity / Authorization"]
-    D --> E["Target System"]
-```
-
-而不是：
-
-```mermaid
-flowchart TD
-    A["Agent"] --> B["万能 production credential"]
-```
-
+Agent 不应该绕过统一的身份、权限、工具和审计边界，直接拿到未治理的生产系统权限。这句话不等于“Agent 不能访问生产系统”。它可以访问，但访问必须走完整链路：Agent → Task Context（业务上下文 + 流程实例 + 数据版本） → Tool / Capability → Identity / Authorization → Target System。
+而不是：Agent → 万能 production credential。
 这里有一个金融场景特有的细节：Authorization 判断的不只是 Agent 的身份。同一个 Agent，对 Investment A 与 Investment B 的权限可能相同，但业务上下文、交易上下文、数据版本与流程实例不同，允许的动作就可能不同。所以完整的授权输入应该是：
 
-```mermaid
-flowchart TD
-    A["Agent"]
-    B["User"]
-    C["Workflow Instance"]
-    D["Business Object"]
-    E["Action"]
-    F["Context"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-    E ~~~ F
-```
+- Agent
+- User
+- Workflow Instance
+- Business Object
+- Action
+- Context
 
 只写“Agent Identity / Authority”，在评审时会被简化成“这个 Agent 有没有权限”，而金融机构真正要回答的是“在这个 case、这个版本的业务事实上，这一步动作是否被允许”。Agent 只负责 propose、reason、choose 与 delegate；Runtime 负责 authorize、validate、execute、retry、pause、resume 与 audit。这其实就是未来 Agent Platform 最核心的一层。内部 AI Platform 也可以按同一个方向设计：把 Planning、Context 与 Tool Gateway 收进 Agent Runtime，把 Durable State、Event Log 与 Human Task 放在执行侧，再把 Evaluation / Trace 接在末端。这与第 46 节那张平台分层图是同一个判断的两种画法，这里不再重复贴图。需要补一句：BPMN / Camunda / Fluxnova 是一个“外部能力”，不是整个 Agent Platform 的核心。这和今天很多企业的架构思路会完全不同。需要补充一句：这不是本文对金融场景的结论。在金融场景里，BPMN 恰恰是核心控制面，而不是外围能力。两句话并不矛盾，差别只在目标是通用 Agent 平台还是企业业务流程。
 
 ### Microsoft 的第二条线：Durable Runtime
 
-微软实际上同时押了两个方向——`Agent + Workflow + Durable Runtime`，而不是二选一。除了上一小节那个 graph workflow 模型之外，它还提供了 checkpoint、human-in-the-loop、fan-out / fan-in、sub-workflow、typed routing、graph execution 与 durable execution。更重要的是，微软直接提供 Durable Extension，把 Agent Framework 的 graph workflow 跑在 Durable Task 基础设施上：
-
-```mermaid
-flowchart LR
-    A["Agent Framework"] --> B["Graph Workflow"]
-    B --> C["Durable Task"]
-    C --> D["Checkpoint"]
-    D --> E["Resume"]
-    E --> F["Distributed Workers"]
-```
-
+微软实际上同时押了两个方向——`Agent + Workflow + Durable Runtime`，而不是二选一。除了上一小节那个 graph workflow 模型之外，它还提供了 checkpoint、human-in-the-loop、fan-out / fan-in、sub-workflow、typed routing、graph execution 与 durable execution。更重要的是，微软直接提供 Durable Extension，把 Agent Framework 的 graph workflow 跑在 Durable Task 基础设施上：Agent Framework → Graph Workflow → Durable Task → Checkpoint → Resume → Distributed Workers。
 并支持 agent 运行数天甚至数周。([Microsoft Learn][12])这里已经非常接近这样的三段式模型：Agent 是 intelligence，Workflow 是 execution topology，Durable Task 是 runtime。这是一个很好的概念分层，但要补一句：概念分层不意味着产品分离——“同一套 workflow 定义，换个 host 就获得 durability”，一个产品同时承担其中两层甚至三层是常态。([Microsoft for Developers][46])
 
 ## 8. 领域二（下）· Harness 被产品化
@@ -603,20 +333,6 @@ flowchart LR
 
 Anthropic 的做法和微软略有不同。它最经典的生产案例是 Claude Research：一个主 Agent 制定研究计划，再启动多个并行 Agent 搜索，最后汇合。
 
-```mermaid
-flowchart TD
-    M[Main Research Agent] --> P[create research plan]
-    P --> R1[Research Agent]
-    P --> R2[Research Agent]
-    P --> R3[Research Agent]
-    R1 --> S1[search]
-    R2 --> S2[search]
-    R3 --> S3[search]
-    S1 --> SY[synthesis]
-    S2 --> SY
-    S3 --> SY
-```
-
 Anthropic 明确指出，系统设计最大的难点已经变成 coordination、evaluation、reliability 与 tool design，而不是传统 workflow 的节点设计。([Anthropic][13]) 这与传统 BPMN 的思路差别很大。
 
 ### Anthropic 的第二条线：Harness
@@ -625,35 +341,18 @@ Anthropic 对 Agent 的工程实践越来越集中到 Harness，而不是 Workfl
 
 ### OpenAI：从 Agents SDK 到 harness + sandbox
 
-OpenAI 2025 年最初的方案是 `Responses API + Agents SDK + Tools + Handoffs + Guardrails + Tracing`，已经明显不是传统 workflow。2026 年更进一步，新的 Agents SDK 强调 model-native harness + sandbox + long-horizon task：
-
-```mermaid
-flowchart TD
-    A["Agent"] --> B["Harness"]
-    B --> C["Sandbox"]
-    C --> D["Tools / Files / Commands"]
-    D --> E["Long-running execution"]
-```
-
+OpenAI 2025 年最初的方案是 `Responses API + Agents SDK + Tools + Handoffs + Guardrails + Tracing`，已经明显不是传统 workflow。2026 年更进一步，新的 Agents SDK 强调 model-native harness + sandbox + long-horizon task：Agent → Harness → Sandbox → Tools / Files / Commands → Long-running execution。
 并且把 harness 与 compute 分离，强调 security、durability 与 scale。([OpenAI][15])（[OpenAI][16]）这里还有一层意思：Agent Workflow 最终可能不是 DAG，而是一个“可持续运行的 Agent Process”。
 
 ### 2026-09-10：OpenAI 把 Harness 单独产品化
 
 这条更新对本文的论证尤其重要，因为它是一个非常直接的证据。OpenAI 在 2026-09-10 发布 Agents API，把驱动 Codex 的同一套 harness 与基础设施开放出来，并且明确由 OpenAI 托管和维护。([OpenAI][42])它提供的能力清单很能说明问题：
 
-```mermaid
-flowchart TD
-    A["managed harness"]
-    B["long-running sessions（模型可以连续工作数小时）"]
-    C["context management（接近上下文上限时自动压缩早期上下文）"]
-    D["sandbox（OpenAI 托管沙箱，或自带基础设施 / 第三方沙箱）"]
-    E["subagents（把任务拆给并行子智能体）"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-```
+- managed harness
+- long-running sessions（模型可以连续工作数小时）
+- context management（接近上下文上限时自动压缩早期上下文）
+- sandbox（OpenAI 托管沙箱，或自带基础设施 / 第三方沙箱）
+- subagents（把任务拆给并行子智能体）
 
 而开发者只需要定义四样东西：task、model、tools、environment。其余运行时基础设施——会话、上下文压缩、沙箱、并发子智能体调度——由平台负责。([OpenAI][42])这里有两层含义，方向相反，必须一起看。第一，它支持“Agent Runtime / Harness 正在成为独立基础设施”这个判断。当一个 harness 可以被单独产品化、单独版本化时，它就不再是框架的内部细节，而是一层需要被认领的架构。第二，它同时反证了 Agent Runtime 不等于 Business Workflow Runtime。Agents API 提供的“orchestration”指的是单个 Agent 会话内部的任务编排：决定先查什么、再调什么工具、什么时候停止。它不持有企业流程状态，不负责跨部门审批，也不会为一个投资 Idea 的合规责任签字。这两件事都被称为“编排”，但归属完全不同。这是后面反复要用的一个区分。
 
@@ -663,19 +362,7 @@ OpenAI 在公开材料里把内部 Codex 的工作单位定义成 delegated long
 
 ### OpenAI Presence：企业 Agent Operating Model
 
-2026 年推出的 Presence 尤其值得注意，它的切入点不是 Workflow Designer，而是一个具体岗位：
-
-```mermaid
-flowchart LR
-    A["specific job"] --> B["knowledge"]
-    B --> C["system access"]
-    C --> D["permissions"]
-    D --> E["policies"]
-    E --> F["agent"]
-    F --> G["escalation"]
-    G --> H["human"]
-```
-
+2026 年推出的 Presence 尤其值得注意，它的切入点不是 Workflow Designer，而是一个具体岗位：specific job → knowledge → system access → permissions → policies → agent → escalation → human。
 每个 Agent 都有明确的权限、工作范围、approval 与 escalation，典型场景是 billing、insurance claims 与 IT service request。([OpenAI][18])这已经非常接近金融机构需要的模型。
 
 ### Google：Agent Platform + Enterprise Governance
@@ -686,19 +373,7 @@ Google 2026 年提出的 Agentic Enterprise blueprint 是 `Agent + Agent Platfor
 
 Snowflake 的 Cortex Agents 架构已经非常清楚：
 
-```mermaid
-flowchart TD
-    CA[Cortex Agent] --> AN[Cortex Analyst]
-    CA --> CS[Cortex Search]
-    CA --> CD[Code]
-    AN --> SD[Structured Data]
-    CS --> UD[Unstructured Data]
-    CD --> CP[Compute]
-    SD --> RS[Reasoning]
-    UD --> RS
-    CP --> RS
-    RS --> AC[Action]
-```
+具体是 Cortex Agent 之下分 Cortex Analyst / Cortex Search / Code 三路，分别接结构化数据、非结构化数据与算力，再汇入 Reasoning 做 Action。
 
 官方明确说 Cortex Agents 自己负责 reasoning、plan work、call tools、execute code、maintain threads 与 multi-step orchestration，客户不需要自建 orchestration loop / runtime / sandbox。([Snowflake Documentation][21]) 2026-08-28，Snowflake 进一步建议从 Cortex Analyst 迁移到 Cortex Agents，原因就是后者把 structured data、unstructured data、tool calling、thread context 与 multi-step orchestration 放进了同一个 Agent runtime。([Snowflake Documentation][22])针对 Financial Services，它的主张不是“做一个金融 Agent”，而是把 `first-party data + third-party data + semantic layer + search + agent + action` 组合起来，通过 Cortex Analyst、Cortex Search、Shared Semantic Views、Knowledge Extensions 与 Cortex Agents，让 Agent 在数据所在的位置执行 workflow。([Snowflake][23])这对银行、资产管理、保险特别重要。
 
@@ -708,33 +383,16 @@ Snowflake 的 Cortex Agents 确实提供 reasoning、planning、tool calling 与
 
 ## 9. 领域三 · Durable Execution（Temporal / Durable Task）
 
-Temporal 的思路甚至更激进：
-
-```mermaid
-flowchart TD
-    W[Workflow] --> A1[Activity → LLM]
-    W --> A2[Activity → Tool]
-    W --> A3[Activity → Database]
-    W --> A4[Activity → API]
-```
+Temporal 的思路甚至更激进：Workflow 之下挂四个 Activity——Activity → LLM、Activity → Tool、Activity → Database、Activity → API。
 
 Workflow 本身负责：
 
-```mermaid
-flowchart TD
-    A["state"]
-    B["ordering"]
-    C["waiting"]
-    D["retry"]
-    E["timeout"]
-    F["resume"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-    E ~~~ F
-```
+- state
+- ordering
+- waiting
+- retry
+- timeout
+- resume
 
 所有 nondeterministic I/O 都放在 Activity。Temporal 最近专门发布了 AI Agent Reference Architecture，把 Agent 的 loop 放进 durable Workflow 中。([Temporal][4])所以它实际上把两份责任分开了：Workflow 只做确定性编排，所有非确定性 I/O（LLM、Tool、API、DB）全部封装进 Activity。注意这里的“分开”指的是责任——Temporal 自己的做法恰恰是让 Agent Loop 运行在 durable Workflow 之内。
 
@@ -742,13 +400,8 @@ flowchart TD
 
 Microsoft 的 Durable Extension 也属于这一层：Agent Framework 的 graph workflow 跑在 Durable Task 基础设施上，支持 checkpoint、resume，以及数天到数周的运行周期。([Microsoft Learn][12])把 Durable Execution 与 Agent Workflow 分开的理由，是它们的失败模式不同：
 
-```mermaid
-flowchart TD
-    A["Agent Workflow 失败：Agent 选了错误的工具，或推理方向错了"]
-    B["Durable Execution 失败：进程崩了、网络断了，执行无法恢复到崩溃前的状态"]
-
-    A ~~~ B
-```
+- Agent Workflow 失败：Agent 选了错误的工具，或推理方向错了
+- Durable Execution 失败：进程崩了、网络断了，执行无法恢复到崩溃前的状态
 
 前者是决策质量问题，后者是执行可靠性问题。但这是责任要分开的理由，不是产品要分开的理由：同一个 Runtime 完全可以同时承担两种责任。Microsoft 的实践就是直接证据——同一套 workflow 定义，跑 in-process runner 是本地执行，换 Durable Task host 就获得 checkpoint、恢复与分布式执行，executor 代码一行不用改，每个 executor 在 dashboard 里就是一个 durable activity。([Microsoft for Developers][46])
 
@@ -758,101 +411,23 @@ flowchart TD
 
 ### Agent 到底应该连接什么
 
-因为 Palantir 其实回答了一个很关键的问题：Agent 到底应该连接什么？Palantir 的答案不是：
+因为 Palantir 其实回答了一个很关键的问题：Agent 到底应该连接什么？Palantir 的答案不是让 Agent 直连上千个 API / Table / PDF，而是先经过一层 Enterprise Ontology——官方把它概括成 Data + Logic + Action + Security。([Palantir][25])
 
 ```mermaid
-flowchart TD
-    A["Agent"] --> B["1000 API"]
+flowchart LR
+    subgraph OLD["传统方式"]
+        Q1["Agent"] --> API["大量 API / Tables / Documents"]
+    end
+    subgraph NEW["Ontology"]
+        Q2["Agent"] --> ON["Enterprise Ontology"]
+        ON --> OBJ["Objects"]
+        ON --> ACT["Actions"]
+        ON --> RULE["Logic"]
+        ON --> SEC["Permissions"]
+    end
 ```
 
-而是：
-
-```mermaid
-flowchart TD
-    A["Enterprise Ontology"]
-```
-
-Ontology 把企业世界建模成：
-
-```mermaid
-flowchart TD
-    A["Objects"]
-    B["Properties"]
-    C["Links"]
-    D["Actions"]
-    E["Logic"]
-    F["Security"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-    E ~~~ F
-```
-
-官方把它概括成 Data + Logic + Action + Security。([Palantir][25])更形象一点：
-
-```mermaid
-flowchart TD
-    ON[Ontology] --> CO[Company]
-    CO --> IN[Investor]
-    CO --> SE[Security]
-    IN --> TR[Transaction]
-    SE --> TR
-    TR --> AC[Actions]
-```
-
-所以 Agent 看到的不是：
-
-```mermaid
-flowchart TD
-    A["table"]
-    B["table"]
-    C["API"]
-    D["API"]
-    E["PDF"]
-    F["database"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-    E ~~~ F
-```
-
-而是：
-
-```mermaid
-flowchart TD
-    A["Company"]
-    B["Portfolio"]
-    C["Position"]
-    D["Transaction"]
-    E["Risk"]
-    F["Counterparty"]
-    G["ResearchReport"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-    E ~~~ F
-    F ~~~ G
-```
-
-并且这些对象自带：
-
-```mermaid
-flowchart TD
-    A["actions"]
-    B["logic"]
-    C["permissions"]
-    D["relationships"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-```
+更形象一点：Ontology 之下是 Company → Investor / Security → Transaction → Actions 这样的业务对象网，而不是 table 和 database。所以 Agent 看到的不是 table / API / PDF / database，而是 Company / Portfolio / Position / Transaction / Risk / Counterparty / ResearchReport，并且这些对象自带 actions、logic、permissions 与 relationships。
 
 ### Action 模型：nouns 与 verbs
 
@@ -860,47 +435,26 @@ Palantir 有一个很值得重视的思想：数据只是“nouns”，Action �
 
 ### Ontology 与 RAG 的差别：world model + action model
 
-传统：
+传统 RAG 是 question 到 top-k documents 再到 LLM；Ontology 则把 Data、Logic、Action 先收进 Security，再交给 Agent 做 Real Action——从架构角度看，它更接近 Agent 的 enterprise world model + action model，而不是一个 Vector DB。（这是本文的架构解读，不是 Palantir 的官方定义。）Ontology 在整个 Agent 架构里的位置是：
 
 ```mermaid
-flowchart TD
-    A["RAG"] --> B["document"]
-    B --> C["answer"]
+flowchart LR
+    AR["Agent Runtime"] --> ON["Enterprise Ontology"]
+    ON --> DT["Business Data"]
+    ON --> AC["Business Actions"]
+    AC --> PO["Authorization"]
+    PO --> EX["Controlled Execution"]
 ```
-
-Ontology：
-
-```mermaid
-flowchart TD
-    ON[Ontology] --> DA[Data]
-    ON --> LO[Logic]
-    ON --> AC[Action]
-    DA --> SE[Security]
-    LO --> SE
-    AC --> SE
-    SE --> AG[Agent]
-    AG --> RA[Real Action]
-```
-
-从架构角度看，它更接近 Agent 的 enterprise world model + action model，而不是一个 Vector DB。（这是本文的架构解读，不是 Palantir 的官方定义。）
 
 ### Ontology MCP：把语义层变成 Agent 的 substrate
 
 这一步尤其重要。2026-06 Palantir 已经正式 GA Ontology MCP。意味着：
 
-```mermaid
-flowchart TD
-    A["Claude"]
-    B["OpenAI"]
-    C["Gemini"]
-    D["Microsoft Agent Framework"]
-    E["Google ADK"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-```
+- Claude
+- OpenAI
+- Gemini
+- Microsoft Agent Framework
+- Google ADK
 
 这些产品本身都支持 MCP，因此任何兼容 MCP 的 Agent / Agent Framework 都可以通过 MCP 做 read Ontology、write Ontology 和 execute Ontology actions，而且调用继续使用 Foundry 权限模型。([Palantir][27])换句话说，Ontology 不需要成为 Agent Framework，它变成 Agent 的 enterprise semantic/action substrate，这比“Palantir 自己做 Agent Framework”更重要。
 
@@ -910,18 +464,7 @@ AIP Logic 仍然是 no-code。它可以做 Ontology Object 到 LLM 再到 Condit
 
 ### Snowflake 的另一条变化：RAG 走向“分析型检索”
 
-2026 年 Snowflake 推出了 Analytical Search。传统 RAG 是 question 到 top-k documents 再到 LLM，对于“10000 份财报中，有多少家公司……”这类问题其实不行。Snowflake 的新方向是 Agent 调度 multiple Search queries、metadata filters、AISQL、AI_FILTER、AI_AGG，最后 aggregate entire corpus：
-
-```mermaid
-flowchart TD
-    A["Agent"] --> B["multiple Search queries"]
-    B --> C["metadata filters"]
-    C --> D["AISQL"]
-    D --> E["AI_FILTER"]
-    E --> F["AI_AGG"]
-    F --> G["aggregate entire corpus"]
-```
-
+2026 年 Snowflake 推出了 Analytical Search。传统 RAG 是 question 到 top-k documents 再到 LLM，对于“10000 份财报中，有多少家公司……”这类问题其实不行。Snowflake 的新方向是 Agent 调度 multiple Search queries、metadata filters、AISQL、AI_FILTER、AI_AGG，最后 aggregate entire corpus：Agent → multiple Search queries → metadata filters → AISQL → AI_FILTER → AI_AGG → aggregate entire corpus。
 也就是说，Agent 不只是“找资料”，而是能够调度一套数据处理 workflow。([Snowflake Documentation][24])这个对金融 research、compliance、credit、ESG 很实用。
 
 ## 11. 学术界：Agent Workflow 已经成为一等研究对象
@@ -934,62 +477,25 @@ flowchart TD
 
 ### 2. 《Architectural Implications of Agentic AI Workflows》
 
-2026 年 8 月的研究直接分析 Agentic Workflow 对底层基础设施的影响，核心发现很有意思：
-
-```mermaid
-flowchart TD
-    RQ[Agent Request] --> L1[LLM inference]
-    L1 --> T1[Tool call]
-    T1 --> CPU[CPU execution]
-    CPU --> L2[LLM inference]
-    L2 --> T2[Tool call]
-    T2 -->|repeat| L1
-```
+2026 年 8 月的研究直接分析 Agentic Workflow 对底层基础设施的影响，核心发现是 Agent 的执行路径：Agent Request → LLM 推理 → Tool 调用 → CPU 执行 → LLM 推理 → Tool 调用 → 不断重复。
 
 Agent 不是传统 ML 那种 input → GPU → output，而是 CPU、GPU、network、external systems、orchestration 不断交替：
 
-```mermaid
-flowchart TD
-    A["CPU"]
-    B["GPU"]
-    C["network"]
-    D["external systems"]
-    E["orchestration"]
-    F["CPU"]
-    G["GPU"]
-    H["..."]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-    E ~~~ F
-    F ~~~ G
-    G ~~~ H
-```
+- CPU
+- GPU
+- network
+- external systems
+- orchestration
+- CPU
+- GPU
+- ...
 
 不断交替。结果就是 CPU/GPU 利用率不均衡，execution bursty，tool invocation 造成 CPU critical path，multi-agent 增加调度复杂度，heterogeneous workloads 使传统 server provisioning 变得低效。论文甚至做了专门的 Agentic Server 原型 Agora。([arXiv][10])这其实说明 Agent Runtime 最终可能会成为一种全新的计算运行时，而不只是 Python framework。
 
 ### Workflow 定义本身也在 AI 化
 
-以前是 Developer 设计 Workflow 再部署：
-
-```mermaid
-flowchart TD
-    A["Developer"] --> B["设计 Workflow"]
-    B --> C["部署"]
-```
-
-以后可能是 Business Intent 经由 Agent / Compiler，结合 Execution Policy 生成 Generated Plan 再交由 Runtime 执行：
-
-```mermaid
-flowchart TD
-    A["Business Intent"] --> B["Agent / Compiler"]
-    B --> C["Execution Policy"]
-    C --> D["Generated Plan"]
-    D --> E["Runtime"]
-```
-
+以前是 Developer 设计 Workflow 再部署：Developer → 设计 Workflow → 部署。
+以后可能是 Business Intent 经由 Agent / Compiler，结合 Execution Policy 生成 Generated Plan 再交由 Runtime 执行：Business Intent → Agent / Compiler → Execution Policy → Generated Plan → Runtime。
 也就是说，Workflow 从“静态 artifact”变成“动态 execution artifact”。最近研究也开始直接研究 Agentic Workflow Generation，也就是从功能描述自动生成可执行 workflow，而研究结果同时指出：单纯让 LLM 生成流程很容易产生缺失/幻觉数据，因此真正可靠的方向是生成 + 约束 + runtime validation，而不是“让 LLM 随便画流程”。([Springer Nature Link][7])
 
 ### 甚至“Workflow”这个词都可能被弱化
@@ -1014,70 +520,28 @@ flowchart TD
 
 这个可以继续使用：
 
-```mermaid
-flowchart TB
-    A["BPMN"]
-    B["Camunda"]
-    C["Fluxnova"]
-    D["SAP workflow"]
-    E["ServiceNow"]
+- BPMN
+- Camunda
+- Fluxnova
+- SAP workflow
+- ServiceNow
 
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-```
-
-解决合规、审批、SLA、责任、审计和跨部门流程。例如：
-
-```mermaid
-flowchart TD
-    A["开户"] --> B["KYC"]
-    B --> C["Risk"]
-    C --> D["Approval"]
-    D --> E["Account Creation"]
-```
+解决合规、审批、SLA、责任、审计和跨部门流程。例如：开户 → KYC → Risk → Approval → Account Creation。
 
 ### Layer 2：Agentic Workflow
 
 这完全不同。例如：
 
-```mermaid
-flowchart TD
-    G["Goal: determine whether this company is investable"] --> A[Research Agent]
-    A --> S1[Search]
-    A --> S2[Read]
-    A --> S3[Compare]
-    A --> S4[Calculate]
-    A --> S5[Ask specialist]
-    A --> S6[Re-plan]
-    A --> S7[Verify]
-
-    S1 ~~~ S2
-    S2 ~~~ S3
-    S3 ~~~ S4
-    S4 ~~~ S5
-    S5 ~~~ S6
-    S6 ~~~ S7
-```
+具体是 Goal 先到 Research Agent，再扇出 Search / Read / Compare / Calculate / Ask specialist / Re-plan / Verify 七路。
 
 这套能力由 Agent Framework、Execution Runtime、Policy、Memory、Tool Runtime 和 Durable State 实现：
 
-```mermaid
-flowchart TB
-    A["Agent Framework"]
-    B["Execution Runtime"]
-    C["Policy"]
-    D["Memory"]
-    E["Tool Runtime"]
-    F["Durable State"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-    E ~~~ F
-```
+- Agent Framework
+- Execution Runtime
+- Policy
+- Memory
+- Tool Runtime
+- Durable State
 
 ### 分开看：对 Agent Platform，与对企业业务流程
 
@@ -1115,34 +579,17 @@ BPMN 这些东西仍然很有价值，因为法律责任、合规、审批、SLA
 
 第一步不该是建 Workflow Designer，而应该先建这 7 样东西：
 
-```mermaid
-flowchart TB
-    A["1. Agent Runtime"]
-    B["2. Durable Execution Runtime"]
-    C["3. Tool / MCP Gateway"]
-    D["4. Policy & Authority Engine"]
-    E["5. Context / Memory Runtime"]
-    F["6. Human Task Runtime"]
-    G["7. Trace / Evaluation / Audit"]
-```
+- 1. Agent Runtime
+- 2. Durable Execution Runtime
+- 3. Tool / MCP Gateway
+- 4. Policy & Authority Engine
+- 5. Context / Memory Runtime
+- 6. Human Task Runtime
+- 7. Trace / Evaluation / Audit
 
 然后再决定哪些地方需要 BPMN，哪些地方需要 Graph，哪些地方完全由 Agent 动态决定。先选 Camunda 再想办法把 Agent 塞进去，顺序就反了，这才是真正的 AI-native workflow architecture。另外，Google、Microsoft、LangGraph、Temporal 当前都在把 workflow 做成 code/runtime-first 的 graph + state + durable execution，而不是继续强化传统“业务人员拖节点”的范式；这已经不是单个厂商的偶然选择。([GitHub][2])把这个结论落到 “内部 LangChain DeepAgents + AWS AgentCore + LangSmith 的 AI 能力平台” 上，下一步最值得做的是设计一套 Agent Runtime / Execution Runtime / Business Process 三层架构，并把 Temporal、AgentCore、LangGraph、Microsoft Agent Framework、Camunda/Fluxnova 放进去逐项对比。这样才能比较清楚地判断一家平台到底应该自己做什么、买什么、哪些东西根本不该引入。把范围从厂商文档扩大到四类证据——学术研究、模型厂商实践、企业 AI 平台、金融机构与监管机构的实践——结论会更完整：2026 年真正成熟的方向，不是“把 BPMN 换成 Agent”，而是把 Workflow 拆成“Agentic Decisioning + Durable Execution + Policy/Authority + Enterprise Ontology/Data + Evaluation”。对通用 Agent 平台而言，传统 Workflow 仍然存在，但它越来越像受约束的外围控制面，而不是平台的核心抽象。
 
-下面这张地图，覆盖的是这五块各自最值得追的线索。其中真正有前景的企业平台，大概率会把它们组合：
-
-```mermaid
-flowchart TD
-    HA[Agent Harness] --> AO[Agent Orchestration]
-    AO --> DR[Durable Runtime]
-    DR --> ON[Ontology]
-    DR --> DA[Data]
-    DR --> TO[Tools]
-    ON --> PI[Policy / Identity]
-    DA --> PI
-    TO --> PI
-    PI --> HC[Human Control]
-    HC --> AE[Audit / Evaluation]
-```
+这五块各自最值得追的线索，按调用顺序是：Agent Harness → Agent Orchestration → Durable Runtime → Ontology / Data / Tools → Policy / Identity → Human Control → Audit / Evaluation，有前景的企业平台大概率会把它们组合。
 
 ### 趋势阶段的金融分层
 
@@ -1154,48 +601,16 @@ flowchart TD
 
 ### 错误方向
 
-BPMN 到 LLM Node 再到 Agent 的串法：
-
-```mermaid
-flowchart TD
-    A["BPMN"] --> B["LLM Node"]
-    B --> C["Agent"]
-```
+错误方向是 BPMN → LLM Node → Agent 的串法。
 
 这确实不是最有前景的 Agent Platform 架构。
 
 ### 同样错误
 
-User 到 Autonomous Agent 再到无限 Tool 直达 Enterprise 的做法：
-
-```mermaid
-flowchart TD
-    A["User"] --> B["Autonomous Agent"]
-    B --> C["无限 Tool"]
-    C --> D["Enterprise"]
-```
-
+User 到 Autonomous Agent 再到无限 Tool 直达 Enterprise 的做法：User → Autonomous Agent → 无限 Tool → Enterprise。
 金融领域尤其不可接受。
 
 ### 更合理的 2026+ 模型
-
-```mermaid
-flowchart TD
-    GI[Goal / Intent] --> HA[Agent Harness]
-    HA --> DP[Dynamic Planning]
-    DP --> DR[Durable Agent Runtime]
-    DR --> ON[Ontology]
-    DR --> DA[Data]
-    DR --> TO[Tools]
-    ON --> PA[Policy / Authority]
-    DA --> PA
-    TO --> PA
-    PA --> HAP[Human Approval]
-    PA --> AU[Auto Execution]
-    HAP --> EV[Evidence / Trace]
-    AU --> EV
-    EV --> EA[Evaluation / Audit]
-```
 
 对通用 Agent 平台而言，一句话概括：未来的 Workflow 不是“下一步去哪”，而是“Agent 为了完成 Goal，可以在什么边界内，以什么权限，持续做什么，并且如何被暂停、恢复、验证和追责”。而 Palantir Ontology 解决的是“世界是什么、能对世界做什么”；Anthropic/OpenAI Harness 解决的是“Agent 如何工作”；Microsoft/Temporal/AWS 解决的是“Agent 如何可靠地长期运行”；Snowflake/Google 解决的是“Agent 如何在企业数据与语义边界内工作”；Policy/Governance 则解决“Agent 到底有没有资格做这件事”。这五块拼起来，才比较接近 AI-native enterprise workflow。而金融服务真正应该研究的核心不是“哪个 Workflow Engine 最好”，而是：
 
@@ -1210,15 +625,22 @@ flowchart TD
 合流的是运行时能力，不是业务语义。准确的说法是 Workflow、Agent Runtime、Durable Execution 是三种不同的架构责任，而未来的产品会越来越把它们组合在一起：
 
 ```mermaid
-flowchart TD
-    A["Business Workflow"] --> B["Workflow Runtime"]
-    B --> C["System Task"]
-    B --> D["Agent Task"]
-    D --> E["Agent Runtime"]
-    E --> F["Dynamic Plan"]
-    F --> G["Tools / Subagents"]
-    B --> H["Durable Execution"]
-    E --> H
+flowchart TB
+    BP["Business Process"]
+    AW["Agentic Workflow"]
+    DE["Durable Execution"]
+    GOV["Policy / Authority"]
+    DATA["Enterprise Data / Ontology"]
+    ACT["Controlled Action"]
+
+    BP --> AW
+    AW --> DE
+    BP --> DE
+    AW --> DATA
+    AW --> GOV
+    BP --> GOV
+    GOV --> ACT
+    BP --> ACT
 ```
 
 对金融企业而言，这意味着选型问题要换一种问法：不再问“买 BPMN 引擎还是买 Agent 平台”，而是问这三种责任在哪里合并、在哪里隔离——业务编排必须留在确定性的 Business Workflow 里，Agent 的执行可以交给合并后的 Runtime，但状态归属、审批与举证不能跟着一起合掉。后面的第四、五部分就是这道划分题的答案。
@@ -1229,14 +651,7 @@ flowchart TD
 
 ## 13. 金融真正担心的问题：Verifiability Gap
 
-通用企业场景里，最常被讨论的问题是“Agent 够不够聪明”，金融业担心的则是 Agent 到底代表谁行动，这个问题在金融业特别严重。最新一篇关于 Agentic AI governance in FinTech 的研究提出了 **Verifiability Gap**，也就是说：
-
-```mermaid
-flowchart TD
-    A["Agent Authority"] --> B["实际执行"]
-    B --> C["能否证明：为什么当时允许它这么做？"]
-```
-
+通用企业场景里，最常被讨论的问题是“Agent 够不够聪明”，金融业担心的则是 Agent 到底代表谁行动，这个问题在金融业特别严重。最新一篇关于 Agentic AI governance in FinTech 的研究提出了 **Verifiability Gap**，也就是说：Agent Authority → 实际执行 → 能否证明：为什么当时允许它这么做？
 这项研究把 orchestration 本身看作 policy layer，并指出以下几点：
 
 - orchestration 本身是 policy layer
@@ -1245,24 +660,8 @@ flowchart TD
 - model/version变化会改变结果
 - deterministic replay 并不等于 historical decision replay ([arXiv][32])
 
-传统 Workflow：
-
-```mermaid
-flowchart LR
-    A["same input"] --> B["same BPMN"]
-    B --> C["same path"]
-```
-
-Agent：
-
-```mermaid
-flowchart LR
-    A["same input"] --> B["different reasoning"]
-    B --> C["different tools"]
-    C --> D["different context"]
-    D --> E["different outcome"]
-```
-
+传统 Workflow：same input → same BPMN → same path。
+Agent：same input → different reasoning → different tools → different context → different outcome。
 所以：
 
 > Agent Workflow 的审计对象不能只是“流程图”，而必须是 Execution Trace + Context + Authority + Evidence。
@@ -1277,54 +676,22 @@ flowchart LR
 
 Financial Stability Board 2026 年 AI governance consultation 提出了 12 类 sound practices，覆盖 AI governance、lifecycle management、risk identification、operational resilience、third-party dependence，以及 GenAI / agentic AI risks ([Financial Stability Board][34])。这说明金融监管未来看 Agent，除了 model risk，还要看：
 
-```mermaid
-flowchart TB
-    A["Model"]
-    B["Agent"]
-    C["Tool"]
-    D["Data"]
-    E["Permission"]
-    F["Runtime"]
-    G["Vendor"]
-    H["Human Oversight"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-    E ~~~ F
-    F ~~~ G
-    G ~~~ H
-```
+- Model
+- Agent
+- Tool
+- Data
+- Permission
+- Runtime
+- Vendor
+- Human Oversight
 
 ## 15. 已经跑在生产上的样本：Stripe 与 AWS
 
 ### Stripe
 
-AWS 与 Stripe 2026 年公开的案例很有参考价值，场景如下：
-
-```mermaid
-flowchart LR
-    A["金融合规 review"]
-```
-
-Stripe 面临：
-
-```mermaid
-flowchart LR
-    A["thousands of transactions / day"]
-```
-
-它搭建 production agent system：
-
-```mermaid
-flowchart TD
-    A["Agent"] --> B["AWS Bedrock"]
-    B --> C["enterprise data"]
-    C --> D["compliance reasoning"]
-    D --> E["human review"]
-```
-
+AWS 与 Stripe 2026 年公开的案例很有参考价值，场景如下：金融合规 review
+Stripe 面临：thousands of transactions / day
+它搭建 production agent system：Agent → AWS Bedrock → enterprise data → compliance reasoning → human review。
 公开结果如下：
 
 - review handling time ↓ 26%
@@ -1333,13 +700,8 @@ flowchart TD
 
 Stripe 并没有让 Agent 直接取代 Compliance Officer，它真正做的是：
 
-```mermaid
-flowchart TB
-    A["Agent = investigation / preparation"]
-    B["Human = decision authority"]
-
-    A ~~~ B
-```
+- Agent = investigation / preparation
+- Human = decision authority
 
 这是当前金融服务中较容易同时满足治理、审计与责任要求的一种落地模式。把它写成“未来几年的主流架构”属于过度推断——监管材料描述的是当前的风险与实践，不足以证明未来的主流形态。
 
@@ -1347,53 +709,23 @@ flowchart TB
 
 AWS 2026 年的 Financial Services AgentCore 架构如下：
 
-```mermaid
-flowchart TD
-    A[Agent] --> MA[Market Agent]
-    A --> RA[Risk Agent]
-    A --> RE[Research Agent]
-    MA --> OR[Orchestrator]
-    RA --> OR
-    RE --> OR
-    OR --> RT[AgentCore Runtime]
-    RT --> ID[Identity]
-    RT --> TR[Tracing]
-    RT --> SB[Sandbox]
-    ID --> PO[Policy]
-```
+具体是 Agent 扇出 Market / Risk / Research 三个 Specialist，经 Orchestrator 进 AgentCore Runtime（Identity / Tracing / Sandbox），Identity 之下再挂 Policy。
 
 例如 portfolio advisory 包括 portfolio valuation、risk stress test、market research 和 advisor synthesis，由多个 specialist agents 协同完成。([Amazon Web Services, Inc.][36])
 
 而信用分析案例则是：
 
-```mermaid
-flowchart TB
-    A["Policy PDF"]
-    B["Snowflake account history"]
-    C["transaction patterns"]
-    D["Agent reasoning"]
-    E["recommendation"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-```
+- Policy PDF
+- Snowflake account history
+- transaction patterns
+- Agent reasoning
+- recommendation
 
 这非常接近企业真正的 Agent Workflow。([Amazon Web Services, Inc.][37])
 
 ### AWS 的新方向：Step Functions 直接调用 AgentCore
 
 2026 年 6 月 AWS 把上面这件事又往前推了一步：Step Functions 可以直接调用 Bedrock AgentCore Harness，把 Agent 当成 Workflow 中的一等步骤。Step Functions 管 workflow execution，AgentCore 管 agent loop；多个 Agent 可以并行或串行出现在同一个流程的不同决策点，关键动作前可插入 human approval；workflow execution history 里直接能看到每次调用的 agent input、output、token 用量与 duration，session ID 让 Agent context 可以跨 workflow execution 保留。([Amazon Web Services, Inc.][43])
-
-```mermaid
-flowchart TD
-    A["Step Functions"] --> B["AgentCore Harness"]
-    B --> C["Agent Loop"]
-    C --> D["Tools"]
-    D --> E["Result"]
-    E --> A
-```
 
 这里已经不是“Workflow 和 Agent 二选一”，而是 Workflow Engine 调用 Agent Runtime——与本文第四、五部分的主线结论是同一件事。
 
@@ -1409,64 +741,38 @@ flowchart TD
 
 ### AI Agents in Financial Markets
 
-它把金融 Agent 拆成以下结构：
-
-```mermaid
-flowchart TD
-    A["Data Perception"] --> B["Reasoning"]
-    B --> C["Strategy Generation"]
-    C --> D["Execution + Control"]
-```
-
+它把金融 Agent 拆成以下结构：Data Perception → Reasoning → Strategy Generation → Execution + Control。
 它的结论是短期最可能的形态不是 fully autonomous finance，而是 bounded autonomy，即：
 
-```mermaid
-flowchart TB
-    A["AI"]
-    B["human supervision"]
-    C["constrained execution"]
-
-    A ~~~ B
-    B ~~~ C
-```
+- AI
+- human supervision
+- constrained execution
 
 这对企业架构有直接影响。([arXiv][30])
 
 另一项研究做了以下组合：
 
-```mermaid
-flowchart TB
-    A["Modeling Crew"]
-    B["Model Risk Management Crew"]
-
-    A ~~~ B
-```
+- Modeling Crew
+- Model Risk Management Crew
 
 例如：
 
-```mermaid
-flowchart TD
-    M[Manager Agent] --> E1[EDA Agent]
-    M --> E2[Feature Agent]
-    M --> E3[Model Selection Agent]
-    M --> E4[Training Agent]
-    M --> E5[Documentation Agent]
+**Manager Agent] --> E1[EDA Agent**：
 
-    E1 ~~~ E2
-    E2 ~~~ E3
-    E3 ~~~ E4
-    E4 ~~~ E5
-```
+- E1
+- E2
+- E3
+- E4
+- E5
 
 另一组：
 
-```mermaid
-flowchart TD
-    M[MRM Manager] --> A1[Compliance Agent]
-    M --> A2[Replication Agent]
-    M --> A3[Conceptual Soundness Agent]
-    M --> A4[Outcome Analysis Agent]
-```
+**MRM Manager] --> A1[Compliance Agent**：
+
+- A1
+- A2
+- A3
+- A4
 
 该研究在 fraud detection、credit approval 和 credit risk 中做了实验 ([arXiv][31])，这比“客服 Agent”更接近企业真正的问题。
 
@@ -1485,13 +791,8 @@ flowchart TD
 
 这六条之外，还有一条从 Verifiability Gap 直接推出来、但容易被低估的要求：可复现性（reproducibility）。传统的可复现假设是“同样输入 + 同一个流程版本 = 同样结果”，Agent 打破了这个假设：同样的输入，可能因为不同的检索结果、不同的上下文、不同的模型版本，得到不同的推理路径和结论。所以在金融场景下必须退一步，先明确自己能承诺哪一种复现：
 
-```mermaid
-flowchart TB
-    A1["Level A：完全可重放：同输入 + 同模型 + 同工具 + 同上下文快照"] --> A2["同结果"]
-    %% 成本高，通常只用于高风险决策
-    B1["Level B：可复核：同业务事实快照 + 记录在案的规则版本 + 记录在案的 Agent 轨迹"] --> B2["人可以独立得出同一结论"]
-    C["Level C：可解释：能说明结论的理由与证据来源，但不承诺独立复核能得出同一结论"]
-```
+- Level A：完全可重放：同输入 + 同模型 + 同工具 + 同上下文快照 → 同结果
+- Level B：可复核：同业务事实快照 + 记录在案的规则版本 + 记录在案的 Agent 轨迹 → 人可以独立得出同一结论
 
 大多数业务应该按 **Level B** 设计，把 Level A 留给真正需要法律级举证的动作。这个决定必须在架构设计阶段做，事后基本补不上——因为它决定的是要不要保留业务事实快照、规则版本和完整 Agent 轨迹。等审计来问的时候再补，通常已经晚了。这六条约束加上可复现等级，就是后面架构设计的全部输入。
 
@@ -1499,33 +800,7 @@ flowchart TB
 
 金融领域可以借鉴的形态，同样不是把 Agent 放在整个流程之上，而是：
 
-```mermaid
-flowchart TB
-
-    User[Relationship Manager / Analyst]
-
-    User --> Agent[Domain Agent]
-
-    Agent --> Context[Financial Context Layer]
-
-    Context --> Ontology[Business Ontology]
-    Context --> Docs[Policies / Research / Documents]
-    Context --> Data[Structured Data]
-
-    Agent --> Planner[Dynamic Planning]
-
-    Planner --> Runtime[Durable Agent Runtime]
-
-    Runtime --> Policy[Policy / Authority]
-    Runtime --> Tool[Tool Gateway]
-    Runtime --> Human[Human Approval]
-
-    Tool --> Core[Core Banking / Trading / CRM / Risk]
-    Tool --> External[External Data Providers]
-
-    Runtime --> Evidence[Evidence + Trace]
-    Evidence --> Audit[Audit / MRM / Compliance]
-```
+即 Domain Agent 经 Financial Context Layer（Ontology / Policies 与 Research 文档 / Structured Data）与 Dynamic Planning，进 Durable Agent Runtime（Policy / Authority、Tool Gateway、Human Approval），Tool 接 Core Banking / Trading / CRM / Risk 与外部数据，产出 Evidence + Trace 进 Audit。
 
 # 第四部分：主线架构
 
@@ -1541,17 +816,10 @@ flowchart TB
 
 也就是：
 
-```mermaid
-flowchart TB
-    A["业务流程确定性"]
-    B["Agent 局部智能化"]
-    C["统一 Policy / Authority"]
-    D["统一 Audit / Evidence"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-```
+- 业务流程确定性
+- Agent 局部智能化
+- 统一 Policy / Authority
+- 统一 Audit / Evidence
 
 这实际上比“纯 Agent Workflow”更适合银行、保险、资管、证券。
 
@@ -1569,49 +837,18 @@ flowchart TB
 
 ### 问题 A：业务应该怎么走？
 
-由以下结构确定：
-
-```mermaid
-flowchart TD
-    A["Business Architect"] --> B["BPMN / DMN"]
-    B --> C["Workflow Definition"]
-```
-
+由以下结构确定：Business Architect → BPMN / DMN → Workflow Definition。
 包括状态、顺序、并行、条件、审批、角色、SLA、回退、异常、补偿和业务事件，这些尽量确定。
 
 ### 问题 B：某一步里面具体怎么完成？
 
-这里允许 Agent，例如：
-
-```mermaid
-flowchart TD
-    A["Compliance Review"] --> B["Agent：找政策<br/>找历史案例<br/>找相关文件<br/>检查证据<br/>总结风险<br/>提出建议"]
-    B --> C["Human"]
-    C --> D["Approve / Reject"]
-```
-
+这里允许 Agent，例如：Compliance Review → Agent：找政策 / 找历史案例 / 找相关文件 / 检查证据 / 总结风险 / 提出建议 → Human → Approve / Reject。
 因此，BPMN 决定“做什么、谁做、何时做、结果去哪”，Agent 决定“这一项任务怎么做得更好”，这是整个设计的边界所在。
 
 ### Workflow 管的是状态转移与业务责任
 
-在前面那套分层里，有一个界定需要修正。原来是 Workflow 管 State + Action，在这个前提下，应该修正为 Workflow 管 State Transition + Business Responsibility，也就是：
-
-```mermaid
-flowchart TD
-    A["BPMN"] --> B["State"]
-    B --> C["Task"]
-    C --> D["Business Rule"]
-    D --> E["Next State"]
-```
-
-而 Agent 是：
-
-```mermaid
-flowchart TD
-    A["Task"] --> B["Agent Execution"]
-    B --> C["Structured Result"]
-```
-
+在前面那套分层里，有一个界定需要修正。原来是 Workflow 管 State + Action，在这个前提下，应该修正为 Workflow 管 State Transition + Business Responsibility，也就是：BPMN → State → Task → Business Rule → Next State。
+而 Agent 是：Task → Agent Execution → Structured Result。
 Agent 不拥有 Workflow。
 
 ## 20. 五层架构
@@ -1620,92 +857,49 @@ Agent 不拥有 Workflow。
 
 ```mermaid
 flowchart TB
-
     BA[Business Architect]
 
-    subgraph BP["1. BUSINESS PROCESS PLANE"]
-        BPMN[BPMN Process]
-        DMN[DMN / Business Rules]
-        SLA[SLA / Escalation]
+    subgraph BP["Business Process"]
+        BPMN[BPMN / DMN]
+        SLA[Roles / SLA / Approval]
     end
 
-    subgraph WR["2. WORKFLOW RUNTIME"]
-        Runtime[Process Runtime]
-        State[Process Instance State]
-        Task[Human / System / Agent Task]
-        Event[Timer / Message / Event]
+    subgraph WR["Workflow Runtime"]
+        State[Process State]
+        Tasks[Human / System / Agent Task]
+        Events[Timer / Event]
     end
 
-    subgraph AG["3. AGENT EXECUTION PLANE"]
+    subgraph AR["Agent Runtime"]
         Contract[Agent Task Contract]
-        Harness[Agent Harness]
-        Planning[Agent Planning]
-        Context[Context / Knowledge]
+        Harness[Harness / Planning]
         Tools[Tools / MCP]
         AgentState[Agent Task State]
     end
 
-    subgraph DATA["4. DATA & SEMANTIC PLANE"]
-        BusinessData[Business Data]
-        Semantic[Semantic Layer]
-        Ontology[Business Ontology]
-        Docs[Documents / Knowledge]
+    subgraph DS["Data & Semantic"]
+        Data[Business Data]
+        Ontology[Ontology / Knowledge]
     end
 
-    subgraph CTRL["5. CONTROL PLANE"]
-        IAM[Identity / Authorization]
-        Policy[Agent Policy / Guardrails]
-        Audit[Audit Trail]
-        Evidence[Evidence]
-        Eval[Evaluation]
+    subgraph GOV["Control"]
+        IAM[IAM / Authorization]
+        Policy[Policy / Guardrails]
+        Evidence[Evidence / Trace]
     end
 
-    BA --> BPMN
-    BA --> DMN
-
-    BPMN --> Runtime
-    DMN --> Runtime
-    SLA --> Runtime
-
-    Runtime --> State
-    Runtime --> Task
-    Runtime --> Event
-
-    Task --> Contract
+    BA --> BP
+    BPMN --> WR
+    WR --> Tasks
+    Tasks --> Contract
     Contract --> Harness
-    Contract --> Policy
-
-    Harness --> Planning
-    Harness --> Context
     Harness --> Tools
-    Harness --> AgentState
-
-    Context --> BusinessData
-    Context --> Semantic
-    Context --> Ontology
-    Context --> Docs
-
+    Tools --> DS
+    Harness --> Policy
     Tools --> IAM
-    Tools --> Policy
-
     Harness --> Result[Structured Result]
-    Result --> Valid[Validation]
-    Valid --> AuthZ[Authorization]
-    AuthZ --> Human[Human Approval]
-    AuthZ --> Exec[Controlled Execution]
-    Human --> Exec
-    Exec --> Runtime
-
-    Harness --> Evidence
-    Harness --> Eval
-    Runtime --> Audit
-
-    Planning ~~~ Context
-    Context ~~~ Tools
-    Tools ~~~ AgentState
-    AgentState ~~~ Result
-    Result ~~~ Evidence
-    Evidence ~~~ Eval
+    Result --> Validate[Validation]
+    Validate --> WR
 ```
 
 这张图里关键的关系是 Workflow Runtime 创建并控制 Agent Task，Agent Runtime 负责完成这个 Task，也就是第 29 节说的 Agent-in-Process。同样关键的是右下角那条回路：Agent 的输出必须先过 Validation 与 Authorization，再经过必要的人工批准，最后由 Workflow Runtime 落成状态转移。Agent 在这个回路里始终是提议方，不是决定方。
@@ -1732,84 +926,6 @@ flowchart TB
 两者放在一起，会导致“数据权限”和“数据语义”被混为一谈：访问控制做到位了，但 Agent 依然不知道 `Position` 和 `Portfolio` 是什么关系，前者是安全问题，后者是能不能正确工作的问题。第二，Evidence 也不是控制。Evidence 是某一次具体执行产生的产物，它天然属于执行侧，只是在最后被 Audit 引用，把 Evidence 放进 Control Plane，会让它看起来像一个统一存储，而不是每一次 Task 都必须产出的东西。它应该在另一个三层关系里被定位：Audit 记录主体，Evidence 记录依据，Trace 记录过程——也就是第 27 节要展开的内容。所以最终是五层：Process / Runtime / Agent Execution / Data & Semantic / Control。
 
 ## 21. 展开图：数据与治理怎么接进来
-
-```mermaid
-flowchart TB
-
-    BA[Business Architect]
-
-    BA --> BPMN[BPMN Process Definition]
-    BA --> DMN[DMN / Business Rules]
-
-    subgraph CONTROL["Business Control Plane"]
-        BPMN
-        DMN
-        Roles[Roles / Responsibility]
-        SLA[SLA / Escalation]
-        Policy[Policy / Authority]
-    end
-
-    BPMN --> WR[Workflow Runtime]
-    DMN --> WR
-    Roles --> WR
-    SLA --> WR
-    Policy --> WR
-
-    subgraph EXECUTION["Execution Plane"]
-
-        WR --> HT[Human Task]
-        WR --> ST[System Task]
-        WR --> AT[Agent Task]
-        WR --> WF[Sub Workflow]
-        WR --> EVT[Wait / Event]
-
-        AT --> AR[Agent Runtime]
-
-        AR --> Context[Context / Knowledge]
-        AR --> Tools[Tools / MCP / APIs]
-        AR --> Reasoning[Reasoning / Planning]
-
-        Reasoning --> Proposal[Structured Proposal]
-
-        Proposal --> Gate[Policy / Validation Gate]
-        Gate --> HT
-        Gate --> ST
-    end
-
-    subgraph DATA["Enterprise Data"]
-        DB[(Business Data)]
-        DWH[(Snowflake / Data Platform)]
-        DOC[Documents / Knowledge]
-    end
-
-    Context --> DB
-    Context --> DWH
-    Context --> DOC
-
-    subgraph GOVERNANCE["Governance"]
-        Audit[Audit Trail]
-        Evidence[Evidence]
-        Eval[Evaluation]
-        Trace[Agent Trace]
-    end
-
-    WR --> Audit
-    AR --> Trace
-    AR --> Evidence
-    Gate --> Audit
-    AR --> Eval
-
-    HT ~~~ ST
-    ST ~~~ AT
-    AT ~~~ WF
-    WF ~~~ EVT
-    EVT ~~~ Audit
-    Context ~~~ Tools
-    Tools ~~~ Reasoning
-    Reasoning ~~~ Trace
-    Trace ~~~ Evidence
-    Evidence ~~~ Eval
-```
 
 这是第 20 节那张主线架构在数据与治理侧的展开。
 
@@ -1862,81 +978,47 @@ flowchart TB
 
 ### BPMN：流程怎么走
 
-```mermaid
-flowchart TB
-    A["哪里需要审批"]
-    B["什么条件下回到上一步"]
-    C["哪一步可以并行"]
-    D["什么时候结束"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-```
+- 哪里需要审批
+- 什么条件下回到上一步
+- 哪一步可以并行
+- 什么时候结束
 
 它回答的是**状态转移**。
 
 ### DMN / Business Rules：业务条件怎么判断
 
-```mermaid
-flowchart LR
-    A["investmentAmount大于100M"] --> B["seniorApprovalRequired"]
-```
+investmentAmount大于100M → seniorApprovalRequired
 
 它回答的是**条件是否成立**，而且这个判断是可枚举、可回归测试的。
 
 ### Authorization / IAM：谁有权执行
 
-```mermaid
-flowchart TB
-    A["PM_ROLE"]
-    B["Investment_Approval"]
-    C["Portfolio_X"]
-
-    A ~~~ B
-    B ~~~ C
-```
+- PM_ROLE
+- Investment_Approval
+- Portfolio_X
 
 它回答的是**主体资格**。同一条流程，不同角色能按的按钮不一样，这是权限问题，不是规则问题。
 
 ### Agent Policy / Guardrails：Agent 可以调用什么
 
-```mermaid
-flowchart TB
-    A["canRead: market_data, research_db"]
-    B["canWrite: draft_report"]
-    C["forbidden: customer_pii_export"]
-    D["maxBudget: { tokens: 100000, toolCalls: 50 }"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-```
+- canRead: market_data, research_db
+- canWrite: draft_report
+- forbidden: customer_pii_export
+- maxBudget: { tokens: 100000, toolCalls: 50 }
 
 它回答的是**这个 Agent 的能力边界**，与“这个人有没有资格批准”是两件事。
 
 ### Human Approval：什么风险必须由人承担
 
-```mermaid
-flowchart LR
-    A1["riskLevel GE HIGH"] --> B1["humanApprovalRequired"]
-    A2["agentConfidence LT threshold"] --> B2["humanApprovalRequired"]
-    A3["amount GT limit"] --> B3["humanApprovalRequired"]
-```
+- riskLevel GE HIGH → humanApprovalRequired
+- agentConfidence LT threshold → humanApprovalRequired
+- amount GT limit → humanApprovalRequired
 
 它回答的是**责任归属**，前四类都是机制性的判断，只有这一类是把责任落到具体的人身上。金融机构做 Agent 立项时，真正需要业务方逐条签字确认的往往就是这张表，而不是流程图本身。
 
 五者关系：
 
-```mermaid
-flowchart TD
-    BPMN["BPMN<br/>流程怎么走"] --> GATE["执行前的判定"]
-    DMNL["DMN<br/>条件是否成立"] --> GATE
-    AUTH["Authorization / IAM<br/>谁有权执行"] --> GATE
-    APOL["Agent Policy<br/>Agent 能用什么"] --> GATE
-    HAPL["Human Approval<br/>什么风险由人承担"] --> GATE
-    GATE --> EXEC["执行 / 拒绝 / 转人工"]
-```
+五条线汇入同一个执行前的判定（BPMN 讲流程怎么走、DMN 讲条件是否成立、Authorization 讲谁有权、Agent Policy 讲 Agent 能用什么、Human Approval 讲什么风险由人承担），再到执行 / 拒绝 / 转人工。
 
 金融场景里这五条不能合并，原因是审计时它们的举证对象不同：
 
@@ -1954,58 +1036,32 @@ flowchart TD
 
 ### 适合 BPMN/DMN
 
-```mermaid
-flowchart LR
-    A["Investment amount > 100M"] --> B["Senior PM approval"]
-    C["High-risk country"] --> D["Compliance mandatory"]
-    E["Product type = Derivative"] --> F["Risk review mandatory"]
-```
+- Investment amount > 100M → Senior PM approval
+- High-risk country → Compliance mandatory
+- Product type = Derivative → Risk review mandatory
 
 这些全部是确定性的。
 
 ### 适合 Agent
 
-```mermaid
-flowchart TB
-    A["这个公司披露的信息有没有前后矛盾？"]
-    B["这份研究报告是否遗漏了重要风险？"]
-    C["这个交易是否存在异常模式？"]
-    D["这份申请材料是否足以支持该结论？"]
-    E["相关政策中是否存在需要特别注意的条款？"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-```
+- 这个公司披露的信息有没有前后矛盾？
+- 这份研究报告是否遗漏了重要风险？
+- 这个交易是否存在异常模式？
+- 这份申请材料是否足以支持该结论？
+- 相关政策中是否存在需要特别注意的条款？
 
 这些很难纯规则化。
 
 因此可以这样划分：
 
-```mermaid
-flowchart LR
-    A["Deterministic"] --> B["BPMN / DMN"]
-    C["Semantic / Investigative"] --> D["Agent"]
-```
+- Deterministic → BPMN / DMN
+- Semantic / Investigative → Agent
 
 这是比较实用的边界。
 
 ### 三层决策架构
 
-```mermaid
-flowchart TB
-
-    L1["Layer 1<br/>Deterministic Business Flow"]
-    L2["Layer 2<br/>Deterministic Business Rules"]
-    L3["Layer 3<br/>Probabilistic Agent Reasoning"]
-
-    L1 --> L2
-    L2 --> L3
-
-    L3 --> G["Validation / Policy Gate"]
-    G --> L1
-```
+三层形成闭环：Layer 1（Deterministic Business Flow）→ Layer 2（Deterministic Business Rules）→ Layer 3（Probabilistic Agent Reasoning）→ Validation / Policy Gate → 回到 Layer 1。
 
 ### Layer 1：BPMN
 
@@ -2019,189 +1075,43 @@ flowchart TB
 
 回答如何分析这个复杂问题。
 
-再回到：
-
-```mermaid
-flowchart LR
-    A["Policy / BPMN"]
-```
-
+再回到：Policy / BPMN
 形成闭环。
 
 ### BPMN 反而会变得更简单
 
-传统 BPMN 经常被迫表达大量业务逻辑。Agent 出现以后，反而可以把：
-
-```mermaid
-flowchart LR
-    A["“需要智能判断”"]
-```
-
-封装成：
-
-```mermaid
-flowchart LR
-    A["Agent Task"]
-```
-
-比如：
-
-```mermaid
-flowchart TD
-    %% Before:
-    A["Compliance"] --> B["13个 Gateway"] --> C["37个条件"] --> D["8个子流程"]
-```
-
-现在：
-
-```mermaid
-flowchart TD
-    A["Compliance"] --> B["Agent Review"] --> C["Human Decision"]
-```
-
+传统 BPMN 经常被迫表达大量业务逻辑。Agent 出现以后，反而可以把：“需要智能判断”
+封装成：Agent Task
+比如：Compliance → 13个 Gateway → 37个条件 → 8个子流程。
+现在：Compliance → Agent Review → Human Decision。
 但不能把所有东西扔给 Agent，DMN 继续负责明确业务规则。因此更合理的分工如下：
 
-```mermaid
-flowchart TD
-    subgraph B["BPMN"]
-        B1[Flow]
-        B2[Role]
-        B3[State]
-        B4[Approval]
-        B5[Task]
-    end
-    subgraph D["DMN"]
-        D1[Eligibility]
-        D2[Threshold]
-        D3[Risk classification]
-        D4[Approval matrix]
-    end
-    subgraph AG["Agent"]
-        A1[Investigation]
-        A2[Interpretation]
-        A3[Evidence discovery]
-        A4[Recommendation]
-    end
-
-    B1 ~~~ B2
-    B2 ~~~ B3
-    B3 ~~~ B4
-    B4 ~~~ B5
-    B5 ~~~ D1
-    D1 ~~~ D2
-    D2 ~~~ D3
-    D3 ~~~ D4
-    D4 ~~~ A1
-    A1 ~~~ A2
-    A2 ~~~ A3
-    A3 ~~~ A4
-```
+- **BPMN**：Flow、Role、State、Approval、Task
+- **DMN**：Eligibility、Threshold、Risk classification、Approval matrix
+- **Agent**：Investigation、Interpretation、Evidence discovery、Recommendation
 
 三者职责很清楚。
 
 ## 25. Workflow 形态的正交分类
 
-前面有一版分类把 Workflow 分成四种：Deterministic、Agentic、Policy、Human，这个分类不建议保留，原因不是它错，而是这四项不在同一个分类维度上：Deterministic / Agentic 描述的是执行方式，Policy 描述的是控制方式，Human 描述的是参与者。它们并不互斥，同一条流程里同时出现 Agent Task、Policy Gate 和 Human Approval 是常态：
+前面有一版分类把 Workflow 分成四种：Deterministic、Agentic、Policy、Human，这个分类不建议保留，原因不是它错，而是这四项不在同一个分类维度上：Deterministic / Agentic 描述的是执行方式，Policy 描述的是控制方式，Human 描述的是参与者。它们并不互斥，同一条流程里同时出现 Agent Task、Policy Gate 和 Human Approval 是常态：BPMN Workflow → Agent Task → Policy Gate → Human Approval。
+于是同一条流程按旧分类会同时属于四类，分类就失去了判别力，更严谨的做法是拆成三个正交维度：
 
-```mermaid
-flowchart TD
-    A["BPMN Workflow"] --> B["Agent Task"] --> C["Policy Gate"] --> D["Human Approval"]
-```
+| Dimension | Values                                            |
+| --------- | ------------------------------------------------- |
+| Execution | Deterministic / Bounded Agentic / Dynamic Agentic |
+| Task      | Human / System / Agent / Hybrid                   |
+| Control   | Rule / Policy / Human Approval                    |
 
-于是同一条流程按旧分类会同时属于四类，分类就失去了判别力，更严谨的做法是拆成三个正交维度。
-
-### 维度一：Workflow execution model
-
-```mermaid
-flowchart TB
-    A["Deterministic"]
-    B["Bounded Agentic"]
-    C["Dynamic Agentic"]
-
-    A ~~~ B
-    B ~~~ C
-```
-
-**Deterministic** —— 路径由模型明确给出：
-
-```mermaid
-flowchart TB
-    A["Settlement"]
-    B["Payment"]
-    C["KYC"]
-    D["Regulatory reporting"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-```
-
-**Bounded Agentic** —— Agent 在明确的 Task Contract 内完成一段认知工作，边界由外部定义：
-
-```mermaid
-flowchart TD
-    A["Compliance Review"] --> B["Agent 在 allowedTools / dataAccess / budget 内完成调查"] --> C["输出结构化结论"]
-```
-
-**Dynamic Agentic** —— 连“下一步做什么”都由 Agent 决定：
-
-```mermaid
-flowchart TD
-    A["“调查这家公司是否值得投资”"] --> B["Agent 自己决定搜索、验证、追问、重写的顺序"]
-```
-
-### 维度二：Task execution mode
-
-```mermaid
-flowchart TB
-    A["Human"]
-    B["System"]
-    C["Agent"]
-    D["Hybrid"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-```
-
-Hybrid 是金融场景最常见的一类：
-
-```mermaid
-flowchart TD
-    A["Agent"] --> B["Prepare decision package"] --> C["Human review"] --> D["Approve / Reject / Modify"] --> E["Agent continues"]
-```
-
-### 维度三：Control
-
-```mermaid
-flowchart TB
-    A["Rule"]
-    B["Policy"]
-    C["Human approval"]
-
-    A ~~~ B
-    B ~~~ C
-```
-
-对应的是这条链路：
-
-```mermaid
-flowchart TD
-    A["Agent wants to act"] --> B["Authorization"] --> C["Risk classification"] --> D{"Approval?"} --> E["Execute / Reject"]
-```
-
-### 怎么用这三个维度描述一条流程
+其中 Execution 指谁决定下一步（Deterministic 由 Process Definition 定，如 Settlement；Bounded Agentic 由 Agent 在预先定义的边界内定，如 Compliance Review；Dynamic Agentic 连下一步都由 Agent 定，如“调查这家公司是否值得投资”）；Task 指谁执行（金融场景最常见的是 Hybrid：Agent 准备决策包，Human 批准）；Control 指凭什么放行（Rule / Policy / Human Approval，对应 Agent wants to act → Authorization → Risk classification → Approval → Execute / Reject）。
 
 以本文后面那个投资 Idea 流程为例：
 
-```mermaid
-flowchart TB
-    A["execution model : Deterministic（主流程）+ Bounded Agentic（各 Review Task）"]
-    B["task mode       : Hybrid"]
-    C["control         : Rule + Policy + Human approval"]
-
-    A ~~~ B
-    B ~~~ C
+```text
+Investment Idea Review
+= Deterministic（主流程）+ Bounded Agentic（各 Review Task）
++ Hybrid
++ Rule + Policy + Human approval
 ```
 
 这个描述可以直接进设计文档，而“四种形态”不能——因为它无法回答“这条流程属于哪一类”。
@@ -2210,35 +1120,14 @@ flowchart TB
 
 金融 Agent 落地时，最大的问题往往不是 Agent Runtime 的能力，而是 Agent 到底看到的是哪一个版本的业务事实。考虑一个很普通的时间线：
 
-```mermaid
-flowchart TB
-    A["10:01  BPMN:   Risk = 0.82"]
-    B["10:05  Agent:  查 Snowflake，得到 Risk = 0.77"]
-    C["10:10  Human:  界面上看到的是 0.79"]
-
-    A ~~~ B
-    B ~~~ C
-```
+- 10:01 BPMN: Risk = 0.82
+- 10:05 Agent: 查 Snowflake，得到 Risk = 0.77
+- 10:10 Human: 界面上看到的是 0.79
 
 三个数字都“正确”，因为它们来自三个时间点的不同来源，但在审计场景里，这直接导致结论无法复现。
 
-所以架构上不能只有：
-
-```mermaid
-flowchart LR
-    A["Agent"] --> B["Snowflake"]
-```
-
-而要有：
-
-```mermaid
-flowchart TD
-    PI[BPMN Process Instance] --> BC[Business Context]
-    BC --> SNAP["Approved Data Snapshot<br/>Authoritative Source"]
-    SNAP --> AT[Agent Task]
-    AT --> RES[Structured Result]
-    RES --> PI
-```
+所以架构上不能只有：Agent → Snowflake。
+而要有 BPMN Process Instance → Business Context → Approved Data Snapshot（Authoritative Source）→ Agent Task → Structured Result → 回到 Process Instance 的闭环。
 
 具体要确定的是四件事：
 
@@ -2256,110 +1145,38 @@ flowchart TD
 
 把上面的四件事合起来，一个金融 Agent 的 Task 要在事后被完整解释，需要同时记住六个版本标识：
 
-```mermaid
-flowchart TB
-    A["workflowVersion = investment-idea-review v17"]
-    B["policyVersion   = compliance-policy v8"]
-    C["dataSnapshot    = ctx-20260912-1030"]
-    D["modelVersion    = model@version"]
-    E["promptVersion   = compliance-review v12"]
-    F["evidenceRef     = doc-123#p17"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-    E ~~~ F
-```
+- workflowVersion = investment-idea-review v17
+- policyVersion = compliance-policy v8
+- dataSnapshot = ctx-20260912-1030
+- modelVersion = model@version
+- promptVersion = compliance-review v12
+- evidenceRef = doc-123#p17
 
 有了这六项，才能回答“为什么当时这个 Agent 会得到这个结论”。缺任何一项，复盘都会退化：只记 workflow 版本，说明不了 Agent 为什么这样判断；只记 model 版本，说明不了它当时看到的是哪一版业务事实。反过来也要说清边界：版本标识解决的是“可复现”，不是“可信任”。记录齐全只保证结论可以被重新推导，不保证结论正确。正确性由业务规则、验证与必要的人工审批负责。这两件事经常被混为一谈，结果是团队花大力气把日志做完整，却依然回答不了监管最关心的那个问题。这也是 Data / Semantic 层不应该被塞进 Control Plane 的原因：它回答的是“世界是什么样”，Control Plane 回答的是“谁被允许做什么”。
 
 ## 27. Audit、Evidence、Agent Trace 是三件不同的事
 
-这三个词在讨论里经常被并列甚至混用，但它们回答的是三个不同的问题，取证方式和保留策略也不同。
-
-### Audit：谁在什么时候做了什么
+这三个词在讨论里经常被并列甚至混用，但它们回答的是三个不同的问题，取证方式和保留策略也不同：
 
 ```mermaid
-flowchart TB
-    A["user      = alice"]
-    B["action    = approve"]
-    C["task      = risk-review"]
-    D["timestamp = 2026-09-12T10:12:03Z"]
-    E["workflow  = investment-idea-review v17"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
+flowchart LR
+    Task["Agent Task"]
+    Task --> Audit["Audit：谁 / 何时 / 做了什么"]
+    Task --> Evidence["Evidence：依据了什么"]
+    Task --> Trace["Agent Trace：怎么完成的"]
 ```
 
-特征是主体是人和流程，与模型无关，保留期由监管要求决定。
-
-### Evidence：这项判断依据了什么
-
-```mermaid
-flowchart TB
-    A["document      = filing-2026Q2"]
-    B["page          = 17"]
-    C["dataSnapshot  = ctx-20260912-1001"]
-    D["policyVersion = compliance-policy v4.2"]
-    E["retrievalRef  = kbase:1234"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-```
-
-特征是主体是业务事实来源。它决定的是结论能不能被复核，而不是能不能被信任。
-
-### Agent Trace：Agent 是怎么完成这个 Task 的
-
-```mermaid
-flowchart TB
-    A["toolCall = policy.search('restricted securities')"]
-    B["model    = model@version"]
-    C["prompt   = compliance-review v3"]
-    D["steps    = [search, retrieve, compare, draft]"]
-    E["tokens   = 42,180"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-```
-
-特征是主体是执行过程，用于评估、调试和成本归因。保留期通常比 Audit 短，但事故发生时它往往是唯一的排查依据。
-
-三者的关系：
-
-```mermaid
-flowchart TD
-    WR[Workflow Runtime] --> AU["Audit<br/>谁 · 何时 · 做了什么"]
-    AT[Agent Task] --> EV["Evidence<br/>依据了什么"]
-    AT --> TR["Agent Trace<br/>怎么做的"]
-    AU --> Q1["合规 / 监管 / 责任"]
-    EV --> Q2["结论可复核"]
-    TR --> Q3["评估 / 调试 / 成本"]
-```
+| 类型     | 回答什么问题       | 特征                                       |
+| -------- | ------------------ | ------------------------------------------ |
+| Audit    | 谁、何时、做了什么 | 主体是人和流程，与模型无关，保留期由监管定 |
+| Evidence | 依据了什么         | 主体是业务事实来源，决定结论能否被复核     |
+| Trace    | Agent 怎么完成     | 主体是执行过程，用于评估调试，保留期较短   |
 
 一个实际后果是只保留 Audit，复盘会变成“流程没错，但结论不对”；只保留 Trace，则无法回答“当时是谁批准的”。两者都要，并且必须通过同一个 Task ID 串起来，这也是 Task Contract 里 `audit.traceLevel` 这个字段存在的意义。
 
 ## 28. Agent Runtime 是嵌入式能力，不是 Workflow Engine
 
-架构如下：
-
-```mermaid
-flowchart TD
-    BE[BPMN Engine] --> HT[Human Task]
-    BE --> ST[System Task]
-    BE --> AT[Agent Task]
-    AT --> AR[Agent Runtime]
-    AR --> TO[Tools]
-    AR --> CT[Context]
-    AR --> ME[Memory]
-```
+架构是：BPMN Engine 之下挂 Human Task、System Task 与 Agent Task，Agent Task 之后进 Agent Runtime（Tools / Context / Memory）。
 
 ### BPMN Engine
 
@@ -2373,67 +1190,27 @@ flowchart TD
 
 ## 29. “Agent-in-Process”而非“Process-in-Agent”
 
-这两个名字很形象，不推荐的做法如下：
-
-```mermaid
-flowchart TD
-    A["Agent"] --> B["决定整个 Business Process"]
-```
-
-这是 Process-in-Agent，风险很大。推荐的做法如下：
-
-```mermaid
-flowchart TD
-    A["Business Process"] --> B["Agent Task"] --> C["Agent"]
-```
-
-这是 Agent-in-Process，符合金融机构对 predictable、controllable、explainable 和 auditable 的要求。
+这两个名字很形象。不推荐 Process-in-Agent，即让 Agent 决定整个 Business Process，风险很大。推荐 Agent-in-Process，即 Business Process 之下是 Agent Task，Agent Task 之后才是 Agent，符合金融机构对 predictable、controllable、explainable 和 auditable 的要求。
 
 ### 不推荐
 
-```mermaid
-flowchart TD
-    A["Agent"] --> B["决定整个 Business Process"]
-```
-
-这是 Process-in-Agent，风险很大。
+Process-in-Agent，风险很大。
 
 ### 推荐
 
-```mermaid
-flowchart TD
-    A["Business Process"] --> B["Agent Task"] --> C["Agent"]
-```
-
-这是 Agent-in-Process，符合金融机构对 predictable、controllable、explainable 和 auditable 的要求。
+Agent-in-Process，符合金融机构对 predictable、controllable、explainable 和 auditable 的要求。
 
 ### 双向调用：Agent 也可以调用受治理的 Workflow
 
 上面讲的是 Workflow 调用 Agent——这是金融主流程的方向。但 2026 年的产品已经出现了反方向：Agent 调用受治理的 Workflow。Camunda 8.10 的 Processes MCP Server 会把已部署的流程自动注册成 MCP tool，Agent 可以直接发现并调用（传参进去，新起一个 process instance，拿回 instance key），不需要在 Agent 框架与流程引擎之间另写集成层。([Camunda 8 Docs][45])
 
-```mermaid
-flowchart TD
-    A["Business Workflow"] --> B["Agent Task"]
-    B --> C["Agent Runtime"]
-    C --> D["受治理的 Sub-workflow"]
-    D --> E["Workflow Runtime"]
-```
+Business Workflow → Agent Task → Agent Runtime → 受治理的 Sub-workflow → Workflow Runtime
 
 所以未来更准确的模型不是单向嵌套，而是双向调用：Workflow 把 Agent 当一等步骤（如 AWS Step Functions + AgentCore ([Amazon Web Services, Inc.][43])），Agent 把受治理的 Sub-workflow 当 Tool。但对金融主流程而言，方向仍以 Workflow 调用 Agent 为主——反方向只允许发生在有明确契约与审批的受治理子流程上。
 
 ## 30. 这套架构的名字，以及它为什么更容易治理
 
-这套架构可以叫 Deterministic Core, Agentic Edge，在企业内部更贴切的说法是 Deterministic Business Process + Bounded Agent Execution。核心原则如下：
-
-```mermaid
-flowchart TD
-    CORE["Deterministic Core<br/>BPMN · DMN · State · Roles<br/>Approval · SLA · Policy · Audit"]
-    EDGE["Agentic Edge<br/>Reasoning · Search · Analysis<br/>Tool use · Planning<br/>Evidence discovery · Recommendation"]
-    VAL["Deterministic Validation<br/>Schema · Rule · Policy<br/>Authority · Human Approval"]
-
-    CORE -->|Agent Task| EDGE
-    EDGE -->|Structured Result| VAL
-```
+这套架构可以叫 Deterministic Core, Agentic Edge，在企业内部更贴切的说法是 Deterministic Business Process + Bounded Agent Execution。核心原则是 Deterministic Core 经 Agent Task 到 Agentic Edge，再经 Structured Result 到 Deterministic Validation。
 
 这是比较适合金融服务的“新时代 Workflow”。
 
@@ -2471,55 +1248,13 @@ flowchart TD
 
 ## 31. BPMN 不应该描述 Agent 的内部过程
 
-例如：
-
-```mermaid
-flowchart LR
-    A["Compliance Review"]
-```
-
-不要继续画成：
-
-```mermaid
-flowchart TD
-    A["Compliance"] --> B["Search Policy"] --> C["Search Documents"] --> D["Search Historical Cases"] --> E["LLM Review"] --> F["LLM Critic"] --> G["Search Again"] --> H["Summarize"]
-```
-
-这就走偏了，BPMN 只写：
-
-```mermaid
-flowchart TD
-    A["Compliance Review"] --> B["Agent-assisted Review"] --> C["Human Decision"]
-```
-
-Agent 内部：
-
-```mermaid
-flowchart LR
-    A["search"] --> B["retrieve"] --> C["reason"] --> D["compare"] --> E["identify gap"] --> F["retrieve again"] --> G["produce evidence"] --> H["draft recommendation"]
-```
-
-这些属于 Agent Runtime，这是 **Workflow** 和 **Agent** 最重要的边界。
+例如 Compliance Review，不要继续画成 Search Policy → Search Documents → Search Historical Cases → LLM Review → LLM Critic → Search Again → Summarize——这就走偏了。BPMN 只写 Compliance Review → Agent-assisted Review → Human Decision，Agent 内部 search → retrieve → reason → compare → identify gap → retrieve again → produce evidence → draft recommendation，这些属于 Agent Runtime，这是 **Workflow** 和 **Agent** 最重要的边界。
 
 ## 32. Agent Task Contract
 
 **Agent Task Contract** 是本文的核心抽象。前面所有关于边界的讨论——流程归谁、状态归谁、权限归谁——最终都收敛到这个契约上。它很少直接给人看，主要作用是作为 BPMN 侧与 Agent 侧之间唯一需要对齐的接口。
 
-两者的对应关系如下：
-
-```mermaid
-flowchart LR
-    A["Agent = Workflow"]
-```
-
-上式不成立，实际应为：
-
-```mermaid
-flowchart TD
-    A["BPMN Activity"] --> B["Agent Activity"]
-```
-
-例如：
+两者的对应关系不是 Agent = Workflow，而是 BPMN Activity 落成 Agent Activity（完整链路见本节末 Validation Contract）。例如：
 
 ```yaml
 activity:
@@ -2624,13 +1359,8 @@ agentTask:
 
 它把两个以前混在一起的问题分开了：
 
-```mermaid
-flowchart TB
-    A["BPMN 侧看到的是：  一个 Task，有 ID、有输入、有输出、有 SLA、有审批"]
-    B["Agent 侧看到的是： 一份边界声明，允许它在这个范围内自由决定怎么做"]
-
-    A ~~~ B
-```
+- BPMN 侧看到的是： 一个 Task，有 ID、有输入、有输出、有 SLA、有审批
+- Agent 侧看到的是： 一份边界声明，允许它在这个范围内自由决定怎么做
 
 于是两边可以独立演进：流程改了，只要契约不变，Agent 不用动；Agent 换了模型或框架，只要契约不变，流程不用动。这就是“受约束的智能”的实际含义：自由度留在合约内部，责任留在合约外部。未来 Workflow Engine 和 Agent Runtime 真正连接的不是 LLM API，而是这份 Task Contract。
 
@@ -2653,13 +1383,7 @@ Task Contract 管住 Agent 的自由度，Validation Contract 管住状态变化
 
 这是金融领域必须坚持的一条，具体做法如下。
 
-输出不采用以下形式：
-
-```mermaid
-flowchart LR
-    A["Agent"] --> B["一段自然语言"]
-```
-
+输出不采用以下形式：Agent → 一段自然语言。
 输出采用以下结构：
 
 ```json
@@ -2683,27 +1407,9 @@ flowchart LR
 
 这里需要先说明一个细节：`confidence` 是模型自报的数值，不应被当作业务可信度或风险评分使用。一个自报 0.91 的结论可能建立在残缺的证据上，一个自报 0.60 的结论也可能恰好正确——两者之间没有校准关系。如果架构上确实需要“置信度”，它应当由独立的验证或评估机制产生（例如多次 trial 的一致性、证据充分性检查、历史准确率），或者至少明确标注为“模型自评”，不允许直接进入流程判断。
 
-Workflow Runtime 只接受：
-
-```mermaid
-flowchart LR
-    A["validated structured output"]
-```
-
-然后 BPMN 决定：
-
-```mermaid
-flowchart TD
-    A["REQUEST_CHANGES"] --> B["Research"]
-```
-
-或者：
-
-```mermaid
-flowchart TD
-    A["APPROVE"] --> B["Next Step"]
-```
-
+Workflow Runtime 只接受：validated structured output
+然后 BPMN 决定：REQUEST_CHANGES → Research。
+或者：APPROVE → Next Step。
 因此，Agent 提议业务状态变化，Workflow Runtime 决定它是否真的发生。更精确的表述见第 34 节：Agent 输出的是业务建议或动作提议，共同决定它的是 Workflow Runtime、Business Rule、Authorization 和必要的 Human Task。
 
 ## 34. Analysis Task 与 Action Task
@@ -2759,101 +1465,47 @@ Agent 产出的是**判断材料**，其作用不含流程指令：
 
 ## 35. Governed Action Pipeline
 
-在金融 Agent workflow 里，任何 Agent 行为都可以统一看成：
-
-```mermaid
-flowchart TD
-    A["Agent"] --> B["Proposal"] --> C["Validation"] --> D["Authorization"] --> E["Execution"]
-```
-
-例如：
+在金融 Agent workflow 里，任何 Agent 行为都可以统一看成一条 Controlled Action Pipeline——与 Agent 直调 API 的做法相比：
 
 ```mermaid
 flowchart LR
-    A[Agent] --> P[Proposal]
-
-    P --> V[Schema / Business Validation]
-
-    V --> Q[Policy Check]
-
-    Q --> H{Human Approval?}
-
-    H -->|Yes| HA[Human]
-    H -->|No| E[Execute]
-
-    HA -->|Approve| E
-    HA -->|Reject| R[Reject]
-
-    E --> S[State Transition]
-```
-
-与以下做法相比：
-
-```mermaid
-flowchart LR
-    A["Agent"] --> B["API"]
+    Agent["Agent"] --> Proposal["Proposal"]
+    Proposal --> Validation["Schema / Business Validation"]
+    Validation --> Auth["Authorization / Policy"]
+    Auth --> Decision{"Human Approval?"}
+    Decision -->|Yes| Human["Human Approval"]
+    Human -->|Approved| Execute["Controlled Execution"]
+    Decision -->|No| Execute
+    Execute --> State["Workflow State Transition"]
 ```
 
 这种方式安全和可审计得多。换句话说，即使 Agent 返回了 `{"approved": true}`，业务状态也不会因此自动改变——它只是一个提议，能否生效取决于后面的 Validation、Authorization 与 Workflow Transition。
 
 ### 为什么叫“管道”，而不是“事务”
 
-这条链路的完整形态是：
-
-```mermaid
-flowchart TD
-    A["Agent Proposal"] --> B["Schema / Semantic Validation"]
-    B --> C["Business Rule"]
-    C --> D["Authorization"]
-    D --> E["Human Approval (when required)"]
-    E --> F["Execution"]
-    F --> G["Business State Transition"]
-```
-
-它的语义是**动作治理与授权**：关心的是“这个动作有没有资格发生”。它不是分布式事务协议，也不涉及多个参与者能否原子提交的问题——把它套进事务语义去讨论，会让评审直接跑偏到错误的抽象层次上，去追问一个并不存在的协调者。
+这条链路上面那张图就是完整形态。它的语义是**动作治理与授权**：关心的是“这个动作有没有资格发生”。它不是分布式事务协议，也不涉及多个参与者能否原子提交的问题——把它套进事务语义去讨论，会让评审直接跑偏到错误的抽象层次上，去追问一个并不存在的协调者。
 
 还有一点要写清楚：这条管道只负责把一个提议送达到“执行或拒绝”这个结论，它本身不产生业务状态转移。最终的状态转移仍然由 Workflow Runtime 依据 BPMN 完成，这也是整套架构里职责划分最干净的一条边界。
 
 ## 36. “审批”怎么处理
 
-例如 PM Approval：
-
-```mermaid
-flowchart TD
-    A["BPMN:"] --> B["PM Approval"]
-```
-
+例如 PM Approval：BPMN: → PM Approval。
 内部可以：
 
-```mermaid
-flowchart TD
-    A["Agent prepares recommendation"] --> B["Agent highlights:"]
-    B --> C["expected return"]
-    B --> D["downside"]
-    B --> E["risk"]
-    B --> F["missing evidence"]
-    B --> G["policy violations"]
-    B --> H["PM"]
-    H --> I["Approve / Reject / Request Changes"]
-
-    C ~~~ D
-    D ~~~ E
-    E ~~~ F
-    F ~~~ G
-    G ~~~ H
-```
+- Agent prepares recommendation → Agent highlights:
+- Agent highlights: → expected return
+- Agent highlights: → downside
+- Agent highlights: → risk
+- Agent highlights: → missing evidence
+- Agent highlights: → policy violations
+- Agent highlights: → PM
+- PM → Approve / Reject / Request Changes
 
 PM 的按钮仍然是：
 
-```mermaid
-flowchart TB
-    A["Approve"]
-    B["Reject"]
-    C["Request Changes"]
-
-    A ~~~ B
-    B ~~~ C
-```
+- Approve
+- Reject
+- Request Changes
 
 Agent 不能替 PM 点击，这正是 AI assistance ≠ AI authority 所表达的意思。
 
@@ -2861,37 +1513,18 @@ Agent 不能替 PM 点击，这正是 AI assistance ≠ AI authority 所表达�
 
 例如：
 
-```mermaid
-flowchart LR
-    RR[Risk Review] -->|Approve| CP[Compliance]
-    RR -->|Reject| EN[End]
-    RR -->|Request Changes| RS[Research]
-```
+Risk Review 按 Approve 进 Compliance、Reject 结束、Request Changes 回 Research。
 
 这在 BPMN 中完全合理。
 
-然后：
-
-```mermaid
-flowchart TD
-    A["Research"] --> B["修改材料"]
-    B --> C["Submit"]
-    C --> D["Risk Review"]
-```
-
+然后：Research → 修改材料 → Submit → Risk Review。
 这里 BPMN 描述的是确定性的状态转移规则；至于某个具体的 process instance 此刻处于什么状态，由 Workflow Runtime 持有。
 
 不需要由 Agent 来决定“我觉得应该回到 Research”。
 
 ## 38. 什么时候允许 Agent 自己完成一个 Task
 
-不用改 Workflow，只需要改变以下配置：
-
-```mermaid
-flowchart TD
-    A["Agent Authority Policy"]
-```
-
+不用改 Workflow，只需要改变以下配置：Agent Authority Policy
 比如：
 
 ```yaml
@@ -2917,28 +1550,19 @@ agentAuthority:
 
 ### Level 0 — Human only
 
-```mermaid
-flowchart LR
-    A["Agent"] --> B["assist"]
-    C["Human"] --> D["decision"]
-```
+- Agent → assist
+- Human → decision
 
 ### Level 1 — Agent recommendation
 
-```mermaid
-flowchart LR
-    A["Agent"] --> B["prepare recommendation"]
-    C["Human"] --> D["approve"]
-```
+- Agent → prepare recommendation
+- Human → approve
 
 ### Level 2 — Bounded automation
 
-```mermaid
-flowchart LR
-    A["Agent"] --> B["execute"]
-    C["Policy"] --> D["validates"]
-    E["System"] --> F["commits"]
-```
+- Agent → execute
+- Policy → validates
+- System → commits
 
 金融机构前期绝大多数应该是 Level 1，部分低风险、重复性的任务可以做到 Level 2，Level 0 则用于真正高风险决策。
 
@@ -2946,36 +1570,7 @@ flowchart LR
 
 ## 39. Investment Idea Review 全流程
 
-比如一个投资 Idea 流程：
-
-```mermaid
-flowchart TD
-    A["Draft"] --> B["Research"]
-    B --> C["Risk Review"]
-    C --> D["Compliance Review"]
-    D --> E["PM Review"]
-    E --> F["Approved"]
-```
-
-这个流程业务分析师完全可以用 BPMN 表达。
-
-```mermaid
-flowchart LR
-
-    A[Draft] --> B[Research]
-    B --> C[Risk Review]
-    C --> D[Compliance Review]
-    D --> E[PM Review]
-    E --> F[Approved]
-
-    C --> X1[Reject]
-    D --> X1
-    E --> X1
-
-    C --> B
-    D --> B
-    E --> B
-```
+比如一个投资 Idea 流程（Draft → Research → Risk Review → Compliance Review → PM Review → Approved），业务分析师完全可以用 BPMN 表达。各 Review 环节按 Approve 进入下一步、Reject 结束、Request Changes 打回 Research，细节见下节三段式。
 
 这里不需要消灭 **BPMN**，因为这个东西本身就是业务知识资产。
 
@@ -3016,148 +1611,76 @@ flowchart TD
 
 Agent：
 
-```mermaid
-flowchart TB
-    A["Search market data"]
-    B["Search company filings"]
-    C["Search internal research"]
-    D["Generate summary"]
-    E["Identify missing evidence"]
-    F["Draft thesis"]
+- Search market data
+- Search company filings
+- Search internal research
+- Generate summary
+- Identify missing evidence
+- Draft thesis
 
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-    E ~~~ F
-```
-
-输出：
-
-```mermaid
-flowchart TD
-    A["Research Package"]
-```
-
+输出：Research Package
 Human：
 
-```mermaid
-flowchart TB
-    A["Submit"]
-    B["Request Changes"]
-
-    A ~~~ B
-```
+- Submit
+- Request Changes
 
 ### Risk Task
 
 Agent：
 
-```mermaid
-flowchart TB
-    A["Analyze financials"]
-    B["Calculate risk metrics"]
-    C["Compare peers"]
-    D["Identify anomalies"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-```
+- Analyze financials
+- Calculate risk metrics
+- Compare peers
+- Identify anomalies
 
 输出：
 
-```mermaid
-flowchart TB
-    A["Risk Findings"]
-    B["Risk Recommendation"]
-    C["Evidence"]
-
-    A ~~~ B
-    B ~~~ C
-```
+- Risk Findings
+- Risk Recommendation
+- Evidence
 
 Human：
 
-```mermaid
-flowchart TB
-    A["Approve"]
-    B["Reject"]
-    C["Request Changes"]
-
-    A ~~~ B
-    B ~~~ C
-```
+- Approve
+- Reject
+- Request Changes
 
 ### Compliance Task
 
 Agent：
 
-```mermaid
-flowchart TB
-    A["Retrieve policy"]
-    B["Retrieve similar cases"]
-    C["Check restrictions"]
-    D["Identify missing documentation"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-```
+- Retrieve policy
+- Retrieve similar cases
+- Check restrictions
+- Identify missing documentation
 
 Human：
 
-```mermaid
-flowchart TB
-    A["Approve"]
-    B["Reject"]
-    C["Request Changes"]
-
-    A ~~~ B
-    B ~~~ C
-```
+- Approve
+- Reject
+- Request Changes
 
 ### PM Task
 
 Agent：
 
-```mermaid
-flowchart TB
-    A["Summarize entire case"]
-    B["Challenge thesis"]
-    C["Highlight risk"]
-    D["Compare alternatives"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-```
+- Summarize entire case
+- Challenge thesis
+- Highlight risk
+- Compare alternatives
 
 PM：
 
-```mermaid
-flowchart TB
-    A["Approve"]
-    B["Reject"]
-    C["Request Changes"]
-
-    A ~~~ B
-    B ~~~ C
-```
+- Approve
+- Reject
+- Request Changes
 
 这里 Agent 能力很强，但它从头到尾都没有以下行为：
 
-```mermaid
-flowchart TB
-    A["改变 BPMN"]
-    B["跳过审批"]
-    C["修改状态"]
-    D["自己批准"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-```
+- 改变 BPMN
+- 跳过审批
+- 修改状态
+- 自己批准
 
 除非明确授权。
 
@@ -3167,72 +1690,23 @@ flowchart TB
 
 ### 投资研究
 
-第一次：
-
-```mermaid
-flowchart LR
-    A["Agent"] --> B["search"]
-    B --> C["SEC"]
-    C --> D["research"]
-    D --> E["valuation"]
-    E --> F["competitor"]
-    F --> G["analyst review"]
-```
-
-此时 Agent 很自由，跑了 5000 次以后发现：
-
-```mermaid
-flowchart LR
-    A["Company Financials"] --> B["Peer Analysis"]
-    B --> C["DCF"]
-    C --> D["Risk Check"]
-    D --> E["Report"]
-```
-
-这套路径已经高度稳定，那么这部分就可以固化为以下流程：
-
-```mermaid
-flowchart TD
-    A["compile"] --> B["deterministic research workflow"]
-```
-
+第一次：Agent → search → SEC → research → valuation → competitor → analyst review。
+此时 Agent 很自由，跑了 5000 次以后发现：Company Financials → Peer Analysis → DCF → Risk Check → Report。
+这套路径已经高度稳定，那么这部分就可以固化为以下流程：compile → deterministic research workflow。
 而异常情况仍交给 Agent：
 
-```mermaid
-flowchart TB
-    A["new company"]
-    B["unusual accounting"]
-    C["missing data"]
-    D["conflicting filings"]
+- new company
+- unusual accounting
+- missing data
+- conflicting filings
 
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-```
-
-需要强调的是，这里的“固化”并不意味着把 Agent 换成写死的代码，它的含义是把一个**已经被反复验证过的子过程**提升为确定性步骤：
-
-```mermaid
-flowchart LR
-    A["Company Financials"] --> B["Peer Analysis"]
-    B --> C["DCF"]
-    C --> D["Risk Check"]
-    D --> E["Report"]
-```
-
+需要强调的是，这里的“固化”并不意味着把 Agent 换成写死的代码，它的含义是把一个**已经被反复验证过的子过程**提升为确定性步骤：Company Financials → Peer Analysis → DCF → Risk Check → Report。
 而异常情况仍然交给 Agent：
 
-```mermaid
-flowchart TB
-    A["new company"]
-    B["unusual accounting"]
-    C["missing data"]
-    D["conflicting filings"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-```
+- new company
+- unusual accounting
+- missing data
+- conflicting filings
 
 这里的分工标准是任务性质：
 
@@ -3244,35 +1718,16 @@ flowchart TB
 
 ## 41. Workflow Engine 的裂解
 
-过去，一个系统全部负责：
-
-```mermaid
-flowchart TD
-    A["Workflow Engine"]
-```
-
+过去，一个系统全部负责：Workflow Engine
 未来更像：
 
-```mermaid
-flowchart TD
-    AP[Agent Platform] --> AL[Agent Loop]
-    AP --> DR[Durable Runtime]
-    AP --> PE[Policy Engine]
-    AL --> TL[Tool Layer]
-    DR --> TL
-    PE --> TL
-    TL --> AP1[API]
-    TL --> MC[MCP]
-    TL --> HM[Human]
-```
+- **Agent Platform**：Agent Loop、Durable Runtime、Policy Engine
+- 三者都进 Tool Layer，再到 API / MCP / Human。
 
 而这些能力以前往往被归到同一个“BPM / Workflow”标签下：
 
-```mermaid
-flowchart LR
-    A["Camunda / Fluxnova / ServiceNow"] --> B["business process orchestration"]
-    C["Temporal / Durable Task"] --> D["durable execution"]
-```
+- Camunda / Fluxnova / ServiceNow → business process orchestration
+- Temporal / Durable Task → durable execution
 
 把它们归成同一类，是选型时最常见的起点错误。
 
@@ -3302,14 +1757,11 @@ LangGraph 的 graph 与 Temporal 的 workflow 都在讲“编排”，但前者�
 
 这五层不是五个可选项，而是五个必须回答的问题。任何一层缺失，都会在落地时以事故的形式出现：
 
-```mermaid
-flowchart TD
-    A["缺 Workflow Runtime"] --> B["审批与状态没有权威源"]
-    C["缺 Agent Runtime"] --> D["无法接入模型能力"]
-    E["缺 Durable Execution"] --> F["长任务在失败后无法恢复"]
-    G["缺 Managed Runtime"] --> H["每个团队自己造 harness 与沙箱"]
-    I["缺 Data / Semantic"] --> J["Agent 看到的事实无法确定版本"]
-```
+- 缺 Workflow Runtime → 审批与状态没有权威源
+- 缺 Agent Runtime → 无法接入模型能力
+- 缺 Durable Execution → 长任务在失败后无法恢复
+- 缺 Managed Runtime → 每个团队自己造 harness 与沙箱
+- 缺 Data / Semantic → Agent 看到的事实无法确定版本
 
 反过来看选型问题会简单很多：不要问“谁替代谁”，要问“这一层谁来负责，以及层与层之间的契约是什么”。
 
@@ -3347,103 +1799,45 @@ flowchart TD
 
 然后把 Agent Runtime 接进来。
 
-也就是说，选型不做二选一的对比：
-
-```mermaid
-flowchart TD
-    A["Camunda vs Agent"]
-```
-
+也就是说，选型不做二选一的对比：Camunda vs Agent
 实际是两者相加：
 
-```mermaid
-flowchart TB
-    A["Camunda"]
-    B["Agent Runtime"]
-
-    A ~~~ B
-```
+- Camunda
+- Agent Runtime
 
 ## 45. Palantir Ontology 的定位
 
 在业务流程确定的前提下，Ontology 不应该取代 BPMN，它更适合做以下事情：
 
-```mermaid
-flowchart TB
-    A["Business Objects"]
-    B["Relationships"]
-    C["Actions"]
-    D["Semantic Context"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-```
+- Business Objects
+- Relationships
+- Actions
+- Semantic Context
 
 例如：
 
-```mermaid
-flowchart TB
-    A["Investment"]
-    B["Portfolio"]
-    C["Security"]
-    D["Issuer"]
-    E["Risk"]
-    F["ComplianceRule"]
-    G["ResearchReport"]
+- Investment
+- Portfolio
+- Security
+- Issuer
+- Risk
+- ComplianceRule
+- ResearchReport
 
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-    E ~~~ F
-    F ~~~ G
-```
-
-然后 BPMN：
-
-```mermaid
-flowchart TD
-    A["什么时间做什么"]
-```
-
-Ontology：
-
-```mermaid
-flowchart TD
-    A["处理的业务对象是什么"]
-```
-
-Agent：
-
-```mermaid
-flowchart TD
-    A["如何理解和分析这些对象"]
-```
-
+然后 BPMN：什么时间做什么
+Ontology：处理的业务对象是什么
+Agent：如何理解和分析这些对象
 所以三者形成：
 
-```mermaid
-flowchart TD
-    A["BPMN"] --> B["Process"]
-    C["Ontology"] --> D["Business World"]
-    E["Agent"] --> F["Intelligence"]
-```
+- BPMN → Process
+- Ontology → Business World
+- Agent → Intelligence
 
 这是一个很漂亮的组合。
 
 ## 46. 一个 AI 平台该怎么分层
 
-更合理的做法是把架构重新分层，具体如下。以下做法不采用：
-
-```mermaid
-flowchart TD
-    A["Angular"] --> B["Experience API"]
-    B --> C["LangChain / DeepAgents"]
-    C --> D["Camunda"]
-    D --> E["Agent"]
-```
-
+更合理的做法是把架构重新分层，具体如下。以下做法不采用：Angular → Experience API → LangChain / DeepAgents → Camunda → Agent。
 采用以下分层：
 
 ```mermaid
@@ -3489,36 +1883,15 @@ flowchart TD
 
 相比“又一个 Workflow Engine”，企业更缺的是以下几块：
 
-```mermaid
-flowchart TB
-    A["Agent Task Runtime"]
-    B["Agent Governance"]
-    C["Evidence"]
-    D["Tool Gateway"]
-    E["Agent Evaluation"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-```
+- Agent Task Runtime
+- Agent Governance
+- Evidence
+- Tool Gateway
+- Agent Evaluation
 
 比如现有 Camunda：
 
-```mermaid
-flowchart TD
-    CA[Camunda] --> HT[Human Task]
-    CA --> ST[System Task]
-    CA --> GW[Gateway]
-    CA --> TI[Timer]
-    CA --> AT[Agent Task]
-    AT --> AP[Agent Platform]
-
-    HT ~~~ ST
-    ST ~~~ GW
-    GW ~~~ TI
-    TI ~~~ AT
-```
+- **Camunda**：Human Task、System Task、Gateway、Timer、Agent Task；其中 Agent Task 进 Agent Platform。
 
 这就已经足够现代。
 
@@ -3526,19 +1899,11 @@ flowchart TD
 
 ### Phase 1：先把确定性 Workflow 做好
 
-```mermaid
-flowchart TB
-    A["BPMN"]
-    B["DMN"]
-    C["Human Task"]
-    D["State"]
-    E["Audit"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-```
+- BPMN
+- DMN
+- Human Task
+- State
+- Audit
 
 先解决业务流程正确性问题。
 
@@ -3546,46 +1911,23 @@ flowchart TB
 
 先给以下领域逐个增加 Agent Assistant：
 
-```mermaid
-flowchart TB
-    A["Research"]
-    B["Risk"]
-    C["Compliance"]
-    D["Operations"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-```
+- Research
+- Risk
+- Compliance
+- Operations
 
 这类助手重点放在以下几类能力上：
 
-```mermaid
-flowchart TB
-    A["summarize"]
-    B["search"]
-    C["retrieve"]
-    D["analyze"]
-    E["draft"]
-    F["recommend"]
-
-    A ~~~ B
-    B ~~~ C
-    C ~~~ D
-    D ~~~ E
-    E ~~~ F
-```
+- summarize
+- search
+- retrieve
+- analyze
+- draft
+- recommend
 
 ### Phase 3：Bounded Agent Automation
 
-对低风险 Task，走以下路径自动执行：
-
-```mermaid
-flowchart TD
-    A["Agent"] --> B["Policy"]
-    B --> C["Auto Execute"]
-```
-
+对低风险 Task，走以下路径自动执行：Agent → Policy → Auto Execute。
 例如以下几类：
 
 - 文档分类
@@ -3595,22 +1937,8 @@ flowchart TD
 
 ### Phase 4：动态 Agent Sub-process
 
-只有在真正发现业务分析师根本没法把这一段流程事先定义清楚时，才引入以下形态：
-
-```mermaid
-flowchart TD
-    A["Agent-driven sub-workflow"]
-```
-
-而且这个动态部分仍然被一个明确的 BPMN Activity 包起来，执行路径如下：
-
-```mermaid
-flowchart TD
-    A["BPMN"] --> B["Dynamic Agent Subprocess"]
-    B --> C["Validated Result"]
-    C --> D["BPMN"]
-```
-
+只有在真正发现业务分析师根本没法把这一段流程事先定义清楚时，才引入以下形态：Agent-driven sub-workflow
+而且这个动态部分仍然被一个明确的 BPMN Activity 包起来，执行路径如下：BPMN → Dynamic Agent Subprocess → Validated Result → BPMN。
 这样既不会阻碍 AI，也不会破坏金融业务的确定性。
 
 # 第九部分：长期演进
@@ -3623,25 +1951,8 @@ flowchart TD
 
 ### Optimizing Agentic Workflows using Meta-tools
 
-它发现很多 Agent Workflow 会反复走以下路径：
-
-```mermaid
-flowchart LR
-    A["LLM"] --> B["tool"]
-    B --> C["LLM"]
-    C --> D["tool"]
-    D --> E["LLM"]
-    E --> F["tool"]
-```
-
-但这些 tool-call pattern 实际上稳定重复，因此可以做如下收敛：
-
-```mermaid
-flowchart TD
-    A["Agent Trace"] --> B["发现高频 tool sequence"]
-    B --> C["自动封装成 Meta-tool"]
-    C --> D["Agent 一次调用"]
-```
+它发现很多 Agent Workflow 会反复走以下路径：LLM → tool → LLM → tool → LLM → tool。
+但这些 tool-call pattern 实际上稳定重复，因此可以做如下收敛：Agent Trace → 发现高频 tool sequence → 自动封装成 Meta-tool → Agent 一次调用。
 
 这样 LLM calls 下降，latency 下降，failure 下降，success rate 上升：
 
@@ -3656,33 +1967,10 @@ flowchart TD
 
 ### 从 trace 到确定性流程
 
-过去是：
+过去是：Human designs workflow
+未来可能是：Agent runs → Execution traces → Pattern mining → Stable subgraph → Compile into deterministic tool/workflow。
 
-```mermaid
-flowchart TD
-    A["Human designs workflow"]
-```
-
-未来可能是：
-
-```mermaid
-flowchart TD
-    A["Agent runs"] --> B["Execution traces"]
-    B --> C["Pattern mining"]
-    C --> D["Stable subgraph"]
-    D --> E["Compile into deterministic tool/workflow"]
-```
-
-收敛路径如下：
-
-```mermaid
-flowchart TD
-    A["Agent"] --> B["exploration"]
-    B --> C["discovery"]
-    C --> D["stable pattern"]
-    D --> E["deterministic execution"]
-```
-
+收敛路径如下：Agent → exploration → discovery → stable pattern → deterministic execution。
 最终系统变成：
 
 > Agent负责探索，Workflow负责固化。
@@ -3714,39 +2002,15 @@ Agent-first 领域里有一条主张需要在这里澄清边界：Dynamic Plan �
 
 ## 51. 不会被模型迭代绑死
 
-比如未来可能经历以下模型更替：
-
-```mermaid
-flowchart TD
-    A["Claude"] --> B["GPT"]
-    B --> C["Gemini"]
-    C --> D["DeepSeek"]
-    D --> E["Qwen"]
-```
-
-BPMN 完全不用变。Agent Runtime 可以通过一层 model abstraction 来变化：
-
-```mermaid
-flowchart TD
-    A["Agent Runtime"] --> B["model abstraction"]
-```
-
+比如未来可能经历以下模型更替：Claude → GPT → Gemini → DeepSeek → Qwen。
+BPMN 完全不用变。Agent Runtime 可以通过一层 model abstraction 来变化：Agent Runtime → model abstraction。
 甚至 Runtime 选型本身也会换代：
 
-```mermaid
-flowchart TD
-    A["2026:"] --> B["LangGraph"]
-    C["2027:"] --> D["Microsoft Agent Framework"]
-    E["2028:"] --> F["internal runtime"]
-```
+- 2026: → LangGraph
+- 2027: → Microsoft Agent Framework
+- 2028: → internal runtime
 
-业务流程仍然停留在：
-
-```mermaid
-flowchart TD
-    A["BPMN v7"]
-```
-
+业务流程仍然停留在：BPMN v7
 金融企业在选型时通常会看重这一点。
 
 ## 52. 最终定义
@@ -3759,28 +2023,7 @@ flowchart TD
 
 换句话说，Workflow Engine 的长期价值不是流程图，而是对执行状态、等待、权限边界、事务副作用和恢复能力拥有执行权。流程图只是执行权的静态投影，Runtime 才是执行权本身。对金融而言，结论可以再收敛一句：金融不是拒绝 Dynamic Workflow，而是把 Dynamic Workflow 限制在 Deterministic Business Process 的边界之内。
 
-这张图就是第 20 节那条主线架构收束成执行路径后的形态：
-
-```mermaid
-flowchart TD
-    BA[Business Architect] --> BD[BPMN / DMN]
-    BD --> WR[Workflow Runtime]
-    WR --> HT[Human Task]
-    WR --> ST[System Task]
-    WR --> AT[Agent Task]
-    AT --> AR[Agent Runtime]
-    AR --> CT[Context]
-    AR --> TO[Tools]
-    AR --> RE[Reasoning]
-    CT --> SR[Structured Result]
-    TO --> SR
-    RE --> SR
-    SR --> PV[Policy / Validation]
-    PV --> HA[Human Approval]
-    PV --> AE[Auto Execute]
-    HA --> BS[BPMN State]
-    AE --> BS
-```
+执行路径形态即第 20 节主图的收束：Business Architect → BPMN / DMN → Workflow Runtime → Human / System / Agent Task → Agent Runtime → Structured Result → Policy / Validation → Human Approval / Auto Execute → BPMN State。
 
 这套架构比彻底 Agent 化 Workflow 更适合金融，也比给 BPMN 加一个 LLM Node 更实用。它的处理方式不是推翻传统 Workflow，而是把边界划清楚：业务流程仍然确定，复杂任务开始智能化，业务状态仍然由确定性 Runtime 控制。这也是真正落地时应该坚持的主线。
 
