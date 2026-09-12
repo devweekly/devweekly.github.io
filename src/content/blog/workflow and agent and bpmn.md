@@ -51,16 +51,17 @@ flowchart TD
 
 前者流程图画得很完整，看起来很可控；后者看起来很先进，演示效果通常也很好。
 
-两个极端的问题不一样，但根子是同一个：它们都把“业务流程”和“认知任务”当成了同一种东西。业务流程要回答的是“做什么、谁做、什么时候做、结果去哪、出问题谁负责”；认知任务要回答的是“这一步具体怎么想清楚”。前者需要确定性，后者本身不确定。把它们混成一层，无论混在 BPMN 里还是混在 Agent 里，都会出问题。接下来三节分别说明：传统 Workflow 的边界在哪里，以及两种混法各自错在哪，错得有多贵。
+两个极端的问题不一样，但根子是同一个：它们都把“业务流程”和“认知任务”当成了同一种东西。注意 BPMN 和 LangGraph 都叫 Workflow 不是巧合——它们是两种不同的编排模型，第 5 节的四个问题是区分它们的标尺。业务流程要回答的是“做什么、谁做、什么时候做、结果去哪、出问题谁负责”；认知任务要回答的是“这一步具体怎么想清楚”。前者需要确定性，后者本身不确定。把它们混成一层，无论混在 BPMN 里还是混在 Agent 里，都会出问题。接下来三节分别说明：传统 Workflow 的边界在哪里，以及两种混法各自错在哪，错得有多贵。
 
-## 2. 传统 Workflow 的假设，以及它的真实边界
+## 2. Business Workflow 与 Agent Workflow 不是同一个东西
 
-传统 Camunda / Fluxnova / Flowable / ServiceNow Workflow 的核心模型大概是：Process Definition → Step A → Step B → Decision（分叉到 Step C / Step D）→ Step E。
+BPMN 和 LangGraph 都叫 Workflow，但它们解决的不是同一个问题。先把定义分开，后面所有选型都从这里推导。
 
-流程在设计期基本确定。例如：收到贷款申请 → 身份验证 → 信用检查 → 风险评分 → 人工审批 → 放款。
-这是很适用的模型，因为路径比较确定，状态比较确定，责任边界、审计要求和 SLA 都明确。所以 BPMN 仍然有价值。但换成 Agent，任务描述会变成：“调查这个投资机会，并给出一份结论。”
-而没人能预先确定 Agent 会走哪条路：search web → search Bloomberg → query internal database → read 17 documents → ask another agent → calculate valuation → discover missing information → search again → challenge its own conclusion → ask human → continue → produce report。
-这条路径不可能被提前画出来。所以传统 Workflow 是 Design-Time Control Flow，Agent Workflow 是 Runtime Decision + Execution Boundary，这是根本区别。
+**Business Workflow** 是由企业预先定义业务状态、责任、事件、审批和状态转移规则，并由 Runtime 持续执行的业务流程。例如：收到贷款申请 → 身份验证 → 信用检查 → 风险评分 → 人工审批 → 放款。核心不是“它是不是确定的”，而是：有 Business Process Definition，有 Process Instance，有业务状态，有角色与责任，有 SLA，有审批，有事件与定时器，有可治理的流程版本。
+
+**Agent Workflow** 是以 Goal 为起点，由 Agent 或 Agent orchestration runtime 在运行过程中动态决定下一步执行内容的任务执行模型。例如：“调查这个投资机会，并给出一份结论” → search web → search Bloomberg → query internal database → read 17 documents → ask another agent → calculate valuation → discover missing information → search again → challenge its own conclusion → ask human → continue → produce report。重点不是“用了 LLM”，而是下一步执行什么在运行时才决定——这正是 LangGraph、Microsoft Agent Framework 这类系统与 BPMN 的核心差别。LangGraph 官方至今仍然区分 predetermined code paths 与 dynamic process / tool usage；Microsoft Agent Framework 则把 workflow 定义成 graph + executors + edges + events + state，并提供 sequential、concurrent、handoff、group chat、Magentic 等 agent orchestration 模式。([Microsoft Learn][48])([Microsoft Learn][49])
+
+所以：传统 Workflow 的核心是 Business-defined Process Orchestration，Agent Workflow 的核心是 Runtime-driven Orchestration——区别不在 static vs dynamic，而在 orchestration authority 归谁。这是根本区别。
 
 两种模型的对照：
 
@@ -142,9 +143,85 @@ flowchart TD
 
 第一个极端把 Agent Task 降级成了一个 LLM Node，于是流程图画满了 Agent 的内部细节，却丢掉了智能本身；第二个极端把 Agent Task 升级成了整个业务流程，于是流程资产、责任边界与审批关系一起消失。第四、第五部分会把这条链路展开成完整架构与契约。
 
+## 5. 选型四问：谁拥有 orchestration authority
+
+BPMN 还是 Agent Workflow，真正要问的是四个问题。答案决定编排权归谁。
+
+### Q1：谁决定下一步？
+
+Business Process Definition 决定的 → Business Workflow；Runtime Agent Decision 决定的 → Agent Workflow。这是最重要的一问。
+
+### Q2：谁拥有 Business State？
+
+比如 KYC = APPROVED、RiskReview = WAITING、PMApproval = REJECTED，这是 Business State，应由 Business Workflow Runtime 拥有。而 search_done、peer_analysis_done、valuation_running 是 Agent Working State，可以由 LangGraph / Agent Framework 自己拥有。
+
+### Q3：谁是 Process Definition 的 Source of Truth？
+
+问业务分析师“这个业务流程现在到底是什么”：如果答案是 BPMN Process Definition，BPMN 就是 authoritative workflow model；如果答案是 Agent code / graph / orchestration logic，Agent Workflow 就可以成为 authoritative orchestration model；如果答案是 BPMN 定义外层、Agent Graph 定义内部任务，那就是 Nested。
+
+### Q4：谁承担 Business Accountability？
+
+为什么这个 loan 进入人工审批？为什么这个 case 被 reject？谁可以 override？SLA 到期之后走什么流程？这些问题如果要交给 Business Owner、Compliance、Operations、Auditor、Regulator 解释，那么这部分不能只存在 Agent working plan 里。
+
+## 6. 什么时候应该只使用 Business Workflow
+
+满足以下大部分条件，优先使用 BPMN / Workflow Engine：Business State 明确，State Transition 明确，Roles 明确，Approval 明确，SLA 明确，需要跨系统协调，需要长期运行，流程版本受治理，审计需要看到流程路径。例如 Account Opening、KYC、Trade Settlement、Payment、Loan Approval、Regulatory Reporting、Claims Processing——这些流程不应该为了 Agent 热潮改成 LangGraph。
+
+## 7. 什么时候可以直接使用 Agent Workflow
+
+反过来，满足以下条件时，纯 Agent Workflow 完全合理：Goal 明确但执行路径未知，需要探索、工具选择、动态规划、多 Agent 协作，没有正式业务状态机，没有监管流程定义要求。典型如 Investment Research、Market Intelligence、Internal Knowledge Investigation、Research Memo Generation、Complex Document Analysis、Incident Investigation。
+
+比如“判断某家公司是否值得进入我们的投资候选池，并准备研究报告”——如果强行 BPMN 化（Search Company → Retrieve Filing → Peer Analysis → DCF → Missing Info? → Search Again → Ask Specialist → Critic → Recalculate），会非常难维护。这种情况下 LangGraph、Microsoft Agent Framework、DeepAgents 或自研 Agent Runtime 完全可以成为主要 orchestration 层。
+
+## 8. 金融最常见的最终形态：Nested Orchestration
+
+当前面两节同时成立——外层有正式业务流程、内层任务需要动态探索——答案就是 Nested：Business Workflow 定义外层，Agent Workflow 定义内部任务，BPMN 是 Business Process Source of Truth，Agent Graph 是 Agent Task Source of Truth。例如 Investment Idea Review 之下，Research、Risk Review、Compliance Review 各自内部跑一条 Agentic Workflow（搜索、估值、证据核查、重新规划），最后回到 BPMN 做 PM Approval。
+
+Agent Task 从哪里读业务事实，是 Nested 落地时的第一个实际问题：答案是第 9 节的 Business Data Contract（authoritative source、snapshot、context version、consistency window）。完整的五层分层见第 25 节。
+
+## 9. Business Data Contract：Agent 看到的是哪一个版本的业务事实
+
+金融 Agent 落地时，最大的问题往往不是 Agent Runtime 的能力，而是 Agent 到底看到的是哪一个版本的业务事实。考虑一个很普通的时间线：
+
+- 10:01 BPMN: Risk = 0.82
+- 10:05 Agent: 查 Snowflake，得到 Risk = 0.77
+- 10:10 Human: 界面上看到的是 0.79
+
+三个数字都“正确”，因为它们来自三个时间点的不同来源，但在审计场景里，这直接导致结论无法复现。
+
+所以架构上不能只有：Agent → Snowflake。
+而要有 BPMN Process Instance → Business Context → Approved Data Snapshot（Authoritative Source）→ Agent Task → Structured Result → 回到 Process Instance 的闭环。
+
+具体要确定的是四件事：
+
+**权威源（authoritative source）** —— 某个业务事实以哪个系统为准。Portfolio value 是来自交易系统、估值系统还是数仓，必须指定唯一答案。允许两个系统都“能查到”，就等于允许两个结论。
+
+**快照语义（snapshot semantics）** —— Agent Task 开始时的业务上下文是否被冻结。如果冻结，整个 Task 内的所有查询都基于同一版本；如果不冻结，就必须显式记录每一次读取的时间戳，并接受结论建立在“混合版本”之上。
+
+**版本标识（context version）** —— 这个 context 需要一个可写入 Evidence 的标识，让事后能回答“当时它看到的是哪一版”。这是第 22 节里 Level B 可复现的前置条件。
+
+**跨系统一致性窗口** —— Position、Market price、Risk score、Compliance status 来自不同系统，同步延迟不同。要么给出一个显式的一致性窗口，要么承认“不保证一致”并把风险写进设计文档。最怕的是既没有窗口、也没有声明，等到争议出现时才发现无法解释。
+
+这一层决定了 Agent 的输出能否被复核。模型可以换，harness 可以换，Agent Runtime 的框架可以换，但只要 Data Contract 是清楚的，历史决策至少可以在“同样的业务事实 + 记录在案的规则版本 + 记录在案的 Agent 轨迹”这三个条件下被复核。反过来，如果 Data Contract 不清楚，任何 audit trail 都建立不牢——因为审计看到的是一堆记录，而不是一条能走通的证据链。
+
+### 一个可复现的版本栈
+
+把上面的四件事合起来，一个金融 Agent 的 Task 要在事后被完整解释，需要同时记住六个版本标识：
+
+- workflowVersion = investment-idea-review v17
+- policyVersion = compliance-policy v8
+- dataSnapshot = ctx-20260912-1030
+- modelVersion = model@version
+- promptVersion = compliance-review v12
+- evidenceRef = doc-123#p17
+
+有了这六项，才能回答“为什么当时这个 Agent 会得到这个结论”。缺任何一项，复盘都会退化：只记 workflow 版本，说明不了 Agent 为什么这样判断；只记 model 版本，说明不了它当时看到的是哪一版业务事实。反过来也要说清边界：版本标识解决的是“可复现”，不是“可信任”。记录齐全只保证结论可以被重新推导，不保证结论正确。正确性由业务规则、验证与必要的人工审批负责。这两件事经常被混为一谈，结果是团队花大力气把日志做完整，却依然回答不了监管最关心的那个问题。这也是 Data / Semantic 层不应该被塞进 Control Plane 的原因：它回答的是“世界是什么样”，Control Plane 回答的是“谁被允许做什么”。
+
 # 第二部分：业界趋势
 
-## 5. 四个架构领域总览
+下面不按厂商罗列，而是按第 5～8 节的决策框架，看三种模式在 2026 年产品里的真实样子：Camunda、Fluxnova 是 Business Workflow；LangGraph、Microsoft Agent Framework 是 Agentic Orchestration；Temporal、Durable Task 是正交的 Durable Execution。厂商名只是实现，决策维度才是选型的依据。
+
+## 10. 四个架构领域总览
 
 2026 年的行业实践，可以按“各自解决什么问题”归成四个架构领域。它们不是互相替代的关系，而是分别占住了架构的不同层。
 
@@ -157,9 +234,9 @@ flowchart TD
 
 四个领域共同指向同一个组合点：Agent Task Contract。
 
-这个分组方式本身就是一个判断：这四件事不在同一个维度上，不能用“谁替代谁”来讨论。其中有一处需要额外说明：领域三（Durable Execution）严格来说不与另外三者处在同一层，而是一层基础能力。它不解决“Agent 怎么决策”，也不解决“流程怎么定义”，它解决的是“执行到一半进程崩了怎么办”。把它当成一个可选方向去和 BPMN 比较，是选型时最常见的误判之一；把它当成所有长任务路径都必须具备的底座，才是它的真实位置。把领域二三混成一句“Agent Workflow 取代了 BPMN”，是这一轮技术讨论里最普遍的一次偷换。后面的第 42 节会把这个问题拆到产品层面。
+这个分组方式本身就是一个判断：这四件事不在同一个维度上，不能用“谁替代谁”来讨论。其中有一处需要额外说明：领域三（Durable Execution）严格来说不与另外三者处在同一层，而是一层基础能力。它不解决“Agent 怎么决策”，也不解决“流程怎么定义”，它解决的是“执行到一半进程崩了怎么办”。把它当成一个可选方向去和 BPMN 比较，是选型时最常见的误判之一；把它当成所有长任务路径都必须具备的底座，才是它的真实位置。把领域二三混成一句“Agent Workflow 取代了 BPMN”，是这一轮技术讨论里最普遍的一次偷换。后面的第 46 节会把这个问题拆到产品层面。
 
-## 6. 领域一 · 确定性业务编排（Camunda / Fluxnova）
+## 11. 领域一 · 确定性业务编排（Camunda / Fluxnova）
 
 为什么用 BPMN 引擎承载 Agent Workflow 会让人本能地抵触？Fluxnova 仍然是 BPMN 引擎：
 
@@ -193,11 +270,11 @@ flowchart TD
 - Camunda → 确定性逻辑
 - Camunda → process boundary
 
-所以更准确的表述是：Camunda 正在把 BPMN 从“纯确定性流程”扩展成“确定性流程 + 受治理的 Agentic Subprocess”。具体的设计与架构建议，见 Camunda 的《Design and architecture》文档。([Camunda 8 Docs][6])这个方向与本文后面的主线架构是一致的，落点不同而已：Camunda 把它落在 BPMN 边界内，本文要讨论的是这个边界应该由什么契约来定义。这对金融、保险、银行很合理。但如果目标是一个 AI-native Agent Platform，BPMN 不适合作为核心抽象。
+所以更准确的表述是：Camunda 选择的是在 Business Workflow 内原生支持 Agentic Orchestration——AI agents 执行 non-deterministic parts，BPMN 保持 end-to-end process 的可预测性和合规性。这不再是“Camunda 更先进”，而是 Camunda 选择了 Nested / Integrated 模式，并且把两种 orchestration 都收进一个平台。具体的设计与架构建议，见 Camunda 的《Design and architecture》文档。([Camunda 8 Docs][6])本文要讨论的是这个边界应该由什么契约来定义。这对金融、保险、银行很合理。但如果目标是一个 AI-native Agent Platform，BPMN 不适合作为核心抽象。
 
 补一条 2026 年中的新进展：Camunda 8.10 把 Agent 建模成了一等执行对象，明确区分 Agent Definition 与 Agent Instance——定义描述部署的 Agent，实例代表某一次具体运行；BPMN 元素实例与 Agent 实例也不是同一个生命周期对象，同一个 Agent 实例可以在同一次流程实例里被多个元素实例复用（比如人工回复后流程回到 Agent 节点，对话记忆不断）。Operate 里可以直接看到 Agent 的执行状态、用量与完整推理链，LangGraph 这类外部框架经由 Agent Instance API 上报后同样可见。([Camunda 8 Docs][44])这正是“Agent 正在成为 Workflow Runtime 中的一等执行对象，但仍然不是 Business Process 本身”。
 
-## 7. 领域二（上）· 执行模型
+## 12. 领域二（上）· 执行模型
 
 这个领域的主张最激进，投入也最大。它并不否认 Workflow 的存在，而是主张 Workflow 的实现方式应该被重写。在评价它之前，先把它自己的主张摆出来。而比较合理的模型其实是：User / Business Event → Intent → Agent Runtime（含 Policy / Authority、Context / Memory、Tools / APIs / MCP、Dynamic Plan）→ Execution Runtime（Deterministic Code / Agent Task / Human Task / External Event 分支汇总成 Result，再经 Verification / Policy Check 回流 Agent），另有一条 Durable State + Event Log 做底座。
 
@@ -238,7 +315,7 @@ Microsoft Agent Framework 现在把 Workflow 定义成：
 ### LangGraph
 
 LangGraph 把自己定位成 low-level orchestration framework for stateful agents。它的核心价值不是“画流程”，而是：State → Node → Decision → Tool → Checkpoint → Resume。
-它特别强调 durable execution、stateful agents、long-running execution 与 failure recovery。也就是说，Graph 在这里不是给业务人员看的流程图，而是 Agent 的执行 runtime。([GitHub][3])所以不要再想 `Workflow = DAG / BPMN`，而应该定义：
+它特别强调 durable execution、stateful agents、long-running execution 与 failure recovery。也就是说，Graph 在这里不是给业务人员看的流程图，而是 Agent 的执行 runtime。([GitHub][3])换句话说：LangGraph 是 Agentic Orchestration Runtime，不是 Business Process Management 的直接替代品。但要加一句限定——如果企业的业务流程本身就是 Agentic Task，它当然可以成为整个业务流的 orchestration runtime。问题从来不是“LangGraph 能不能做业务流程”，而是“不要默认它就是 Business Process Engine”。所以不要再想 `Workflow = DAG / BPMN`，而应该定义：所以不要再想 `Workflow = DAG / BPMN`，而应该定义：
 
 **Agentic Execution**：
 
@@ -271,7 +348,7 @@ policy:
 
 ### ③ Dynamic Plan
 
-Agent 根据目标动态产生工作计划：搜索公司、取财务数据、分析竞争对手、发现信息缺口、再搜索、建模估值、复核假设、产出报告——顺序与内容都由 Agent 自己决定，而不是预先画在流程图上。这个 Plan 对长跑 Agent 而言确实需要持久化，而不是只存在 LLM context 里。但要区分清楚：持久化的是 Agent Task 的执行状态，不是企业业务流程的状态——这一点在第 50 节展开。例如：
+Agent 根据目标动态产生工作计划：搜索公司、取财务数据、分析竞争对手、发现信息缺口、再搜索、建模估值、复核假设、产出报告——顺序与内容都由 Agent 自己决定，而不是预先画在流程图上。这个 Plan 对长跑 Agent 而言确实需要持久化，而不是只存在 LLM context 里。但要区分清楚：持久化的是 Agent Task 的执行状态，不是企业业务流程的状态——这一点在第 54 节展开。例如：
 
 ```json
 {
@@ -292,7 +369,7 @@ Agent 根据目标动态产生工作计划：搜索公司、取财务数据、�
 }
 ```
 
-在这个领域的语境里，“Workflow”的含义已经发生位移：在 Agent-first 系统中，Agent Task 的内部执行计划可以由 Agent 动态生成；它不等于企业 Business Workflow Definition。这是 Agent Platform 视角下的结论。一旦把目标切到企业业务流程，这个区分就变成架构上的硬边界——第 19 节会把两种“计划”明确分开。
+在这个领域的语境里，“Workflow”的含义已经发生位移：在 Agent-first 系统中，Agent Task 的内部执行计划可以由 Agent 动态生成；它不等于企业 Business Workflow Definition。这是 Agent Platform 视角下的结论。一旦把目标切到企业业务流程，这个区分就变成架构上的硬边界——第 24 节会把两种“计划”明确分开。
 
 ### ④ Execution State
 
@@ -318,14 +395,14 @@ Agent 不应该绕过统一的身份、权限、工具和审计边界，直接�
 - Action
 - Context
 
-只写“Agent Identity / Authority”，在评审时会被简化成“这个 Agent 有没有权限”，而金融机构真正要回答的是“在这个 case、这个版本的业务事实上，这一步动作是否被允许”。Agent 只负责 propose、reason、choose 与 delegate；Runtime 负责 authorize、validate、execute、retry、pause、resume 与 audit。这其实就是未来 Agent Platform 最核心的一层。内部 AI Platform 也可以按同一个方向设计：把 Planning、Context 与 Tool Gateway 收进 Agent Runtime，把 Durable State、Event Log 与 Human Task 放在执行侧，再把 Evaluation / Trace 接在末端。这与第 46 节那张平台分层图是同一个判断的两种画法，这里不再重复贴图。需要补一句：BPMN / Camunda / Fluxnova 是一个“外部能力”，不是整个 Agent Platform 的核心。这和今天很多企业的架构思路会完全不同。需要补充一句：这不是本文对金融场景的结论。在金融场景里，BPMN 恰恰是核心控制面，而不是外围能力。两句话并不矛盾，差别只在目标是通用 Agent 平台还是企业业务流程。
+只写“Agent Identity / Authority”，在评审时会被简化成“这个 Agent 有没有权限”，而金融机构真正要回答的是“在这个 case、这个版本的业务事实上，这一步动作是否被允许”。Agent 只负责 propose、reason、choose 与 delegate；Runtime 负责 authorize、validate、execute、retry、pause、resume 与 audit。这其实就是未来 Agent Platform 最核心的一层。内部 AI Platform 也可以按同一个方向设计：把 Planning、Context 与 Tool Gateway 收进 Agent Runtime，把 Durable State、Event Log 与 Human Task 放在执行侧，再把 Evaluation / Trace 接在末端。这与第 50 节那张平台分层图是同一个判断的两种画法，这里不再重复贴图。需要补一句：BPMN / Camunda / Fluxnova 是一个“外部能力”，不是整个 Agent Platform 的核心。这和今天很多企业的架构思路会完全不同。需要补充一句：这不是本文对金融场景的结论。在金融场景里，BPMN 恰恰是核心控制面，而不是外围能力。两句话并不矛盾，差别只在目标是通用 Agent 平台还是企业业务流程。
 
 ### Microsoft 的第二条线：Durable Runtime
 
 微软实际上同时押了两个方向——`Agent + Workflow + Durable Runtime`，而不是二选一。除了上一小节那个 graph workflow 模型之外，它还提供了 checkpoint、human-in-the-loop、fan-out / fan-in、sub-workflow、typed routing、graph execution 与 durable execution。更重要的是，微软直接提供 Durable Extension，把 Agent Framework 的 graph workflow 跑在 Durable Task 基础设施上：Agent Framework → Graph Workflow → Durable Task → Checkpoint → Resume → Distributed Workers。
-并支持 agent 运行数天甚至数周。([Microsoft Learn][12])这里已经非常接近这样的三段式模型：Agent 是 intelligence，Workflow 是 execution topology，Durable Task 是 runtime。这是一个很好的概念分层，但要补一句：概念分层不意味着产品分离——“同一套 workflow 定义，换个 host 就获得 durability”，一个产品同时承担其中两层甚至三层是常态。([Microsoft for Developers][46])
+并支持 agent 运行数天甚至数周。([Microsoft Learn][12])这里已经非常接近这样的三段式模型：Agent 是 intelligence，Workflow 是 execution topology，Durable Task 是 runtime。这是一个很好的概念分层，但要补一句：概念分层不意味着产品分离——“同一套 workflow 定义，换个 host 就获得 durability”，一个产品同时承担其中两层甚至三层是常态。([Microsoft for Developers][46])Microsoft 的框架恰好是证明“Agent Workflow 和 Business Workflow 可以共享同一种 runtime abstraction，但不拥有相同业务语义”的边界案例：Workflow 由 executors + edges 组成 directed graph 并管理执行（[Microsoft Learn][48]），之上是 sequential、concurrent、handoff、group chat、Magentic 等 agent orchestration 模式（[Microsoft Learn][49]），Workflow 可以 as_agent 暴露、Agent 也可以作为 executor 进入 Workflow（[Microsoft Learn][50])——但语义归属不变，Business 语义仍由持有业务状态与责任的一方定义。
 
-## 8. 领域二（下）· Harness 被产品化
+## 13. 领域二（下）· Harness 被产品化
 
 上一节讲的是“Agent 的执行模型长什么样”，这一节讲的是“厂商正在把什么产品化”。这里有一个值得单独拿出来看的趋势：Agent Harness 本身正在成为独立的基础设施，而不是某个框架的内部实现细节。一旦它可以被单独产品化、单独版本化、单独定价，它在架构上的地位就变了——它从框架的内部细节，变成一层需要被认领的架构。
 
@@ -381,7 +458,7 @@ Snowflake 的 Cortex Agents 架构已经非常清楚：
 
 Snowflake 的 Cortex Agents 确实提供 reasoning、planning、tool calling 与 multi-step orchestration。([Snowflake Documentation][21])但这里必须写清楚一句话，否则很容易被误读：Cortex Agents 的“workflow / orchestration”是 Agent 内部的任务编排，不等同于金融企业的 BPMN Business Process orchestration。它不替代 Camunda 这类流程引擎，也不承担流程状态、跨部门审批与责任归属。两者是上下游关系：流程引擎决定“这一步该做合规审查”，Cortex Agents 负责“在这次合规审查里把数据查清楚”。
 
-## 9. 领域三 · Durable Execution（Temporal / Durable Task）
+## 14. 领域三 · Durable Execution（Temporal / Durable Task）
 
 Temporal 的思路甚至更激进：Workflow 之下挂四个 Activity——Activity → LLM、Activity → Tool、Activity → Database、Activity → API。
 
@@ -394,7 +471,17 @@ Workflow 本身负责：
 - timeout
 - resume
 
-所有 nondeterministic I/O 都放在 Activity。Temporal 最近专门发布了 AI Agent Reference Architecture，把 Agent 的 loop 放进 durable Workflow 中。([Temporal][4])所以它实际上把两份责任分开了：Workflow 只做确定性编排，所有非确定性 I/O（LLM、Tool、API、DB）全部封装进 Activity。注意这里的“分开”指的是责任——Temporal 自己的做法恰恰是让 Agent Loop 运行在 durable Workflow 之内。
+所有 nondeterministic I/O 都放在 Activity。Temporal 最近专门发布了 AI Agent Reference Architecture，把 Agent 的 loop 放进 durable Workflow 中。([Temporal][4])所以它实际上把两份责任分开了：Workflow 只做确定性编排，所有非确定性 I/O（LLM、Tool、API、DB）全部封装进 Activity。注意这里的“分开”指的是责任——Temporal 自己的做法恰恰是让 Agent Loop 运行在 durable Workflow 之内。不要比较 Camunda vs LangGraph vs Temporal，这个比较本身就不对：
+
+```mermaid
+flowchart TD
+    A["Orchestration Model"] --> B["Business Workflow"]
+    A --> C["Agent Workflow"]
+    B --> D["Durable Execution"]
+    C --> D
+```
+
+Temporal 是 Execution Model / Durable Runtime，而不是另一种 Business Process Definition。上面的案例正好说明：Agent Workflow 可以拥有 Durable Execution，而不等于它因此变成 Business BPM。
 
 ### 为什么这一层必须单独存在
 
@@ -405,7 +492,7 @@ Microsoft 的 Durable Extension 也属于这一层：Agent Framework 的 graph w
 
 前者是决策质量问题，后者是执行可靠性问题。但这是责任要分开的理由，不是产品要分开的理由：同一个 Runtime 完全可以同时承担两种责任。Microsoft 的实践就是直接证据——同一套 workflow 定义，跑 in-process runner 是本地执行，换 Durable Task host 就获得 checkpoint、恢复与分布式执行，executor 代码一行不用改，每个 executor 在 dashboard 里就是一个 durable activity。([Microsoft for Developers][46])
 
-## 10. 领域四 · Enterprise Semantic & Data Layer
+## 15. 领域四 · Enterprise Semantic & Data Layer
 
 前三个领域都在回答“Agent 怎么工作”，这一个回答的是另一个问题：Agent 面对的世界，是用什么语言描述的？
 
@@ -467,7 +554,7 @@ AIP Logic 仍然是 no-code。它可以做 Ontology Object 到 LLM 再到 Condit
 2026 年 Snowflake 推出了 Analytical Search。传统 RAG 是 question 到 top-k documents 再到 LLM，对于“10000 份财报中，有多少家公司……”这类问题其实不行。Snowflake 的新方向是 Agent 调度 multiple Search queries、metadata filters、AISQL、AI_FILTER、AI_AGG，最后 aggregate entire corpus：Agent → multiple Search queries → metadata filters → AISQL → AI_FILTER → AI_AGG → aggregate entire corpus。
 也就是说，Agent 不只是“找资料”，而是能够调度一套数据处理 workflow。([Snowflake Documentation][24])这个对金融 research、compliance、credit、ESG 很实用。
 
-## 11. 学术界：Agent Workflow 已经成为一等研究对象
+## 16. 学术界：Agent Workflow 已经成为一等研究对象
 
 厂商文档之外，还有一个更值得看的信号：研究界已经不再把 Agent 看成“一个 LLM 加几个工具”，而是把 Agent Workflow 本身当成研究对象。这条线上有几篇值得当作入口的论文。
 
@@ -502,7 +589,7 @@ Agent 不是传统 ML 那种 input → GPU → output，而是 CPU、GPU、netwo
 
 未来更准确的词可能是 Agent Runtime、Agent Execution 或 Task Orchestration，而不是 Workflow Engine。在这个基础上，把 Agent 平台抽象成“Agent Operating System”是一个值得关注的研究方向——需要说明的是，它目前仍然只是研究提案，不是已经被行业标准化的架构。一个 2026 年的代表性工作提出 Agent Operating System (AOS)，把系统分成 Control & Governance Plane 与 Runtime & Coordination Plane：前者负责 intent、policy、authority、trust、audit 与 human oversight，后者负责 agent lifecycle、workflow coordination、model/tool routing、memory、scheduling 与 runtime assurance。([arXiv][8])值得关注的原因不是这个词，而是它把“控制面”与“运行面”分开的方式，与本文后面的分层判断一致。
 
-## 12. 阶段结论：四个领域怎么组合
+## 17. 阶段结论：四个领域怎么组合
 
 到这里可以看到一个比较清楚的分工：
 
@@ -593,7 +680,7 @@ BPMN 这些东西仍然很有价值，因为法律责任、合规、审批、SLA
 
 ### 趋势阶段的金融分层
 
-趋势阶段常见的一种画法，是把 Experience、Agent、Control、Runtime、Semantic、Tools 六块并列展开。那张图不能算错，但它还没有回答本文真正关心的问题——业务状态归谁、Agent Task 的边界由谁定义。本文最终的主线架构（第 20 节）会把这两件事补上，因此这里不再重复贴图。只需要先记住其中一个判断：Ontology / Semantic Layer 和 Agent Runtime 是两个不同东西。Palantir 最强的是前者，AWS / Microsoft / OpenAI / Anthropic 最强的是后者，而 Snowflake 正在试图把 `Data + Semantic + Agent Runtime` 放在一起。
+趋势阶段常见的一种画法，是把 Experience、Agent、Control、Runtime、Semantic、Tools 六块并列展开。那张图不能算错，但它还没有回答本文真正关心的问题——业务状态归谁、Agent Task 的边界由谁定义。本文最终的主线架构（第 25 节）会把这两件事补上，因此这里不再重复贴图。只需要先记住其中一个判断：Ontology / Semantic Layer 和 Agent Runtime 是两个不同东西。Palantir 最强的是前者，AWS / Microsoft / OpenAI / Anthropic 最强的是后者，而 Snowflake 正在试图把 `Data + Semantic + Agent Runtime` 放在一起。
 
 ### 趋势阶段的结论
 
@@ -649,7 +736,7 @@ flowchart TB
 
 第二部分介绍的四个领域，都是通用企业场景下的正确答案。金融场景多出来的主要不是技术难度，而是**举证责任**。这一部分说明的是：金融到底额外要求了什么，以及这些要求如何反过来决定架构。
 
-## 13. 金融真正担心的问题：Verifiability Gap
+## 18. 金融真正担心的问题：Verifiability Gap
 
 通用企业场景里，最常被讨论的问题是“Agent 够不够聪明”，金融业担心的则是 Agent 到底代表谁行动，这个问题在金融业特别严重。最新一篇关于 Agentic AI governance in FinTech 的研究提出了 **Verifiability Gap**，也就是说：Agent Authority → 实际执行 → 能否证明：为什么当时允许它这么做？
 这项研究把 orchestration 本身看作 policy layer，并指出以下几点：
@@ -666,7 +753,7 @@ Agent：same input → different reasoning → different tools → different con
 
 > Agent Workflow 的审计对象不能只是“流程图”，而必须是 Execution Trace + Context + Authority + Evidence。
 
-## 14. 监管机构在看什么
+## 19. 监管机构在看什么
 
 ### Bank of England
 
@@ -685,7 +772,7 @@ Financial Stability Board 2026 年 AI governance consultation 提出了 12 类 s
 - Vendor
 - Human Oversight
 
-## 15. 已经跑在生产上的样本：Stripe 与 AWS
+## 20. 已经跑在生产上的样本：Stripe 与 AWS
 
 ### Stripe
 
@@ -729,7 +816,7 @@ AWS 2026 年的 Financial Services AgentCore 架构如下：
 
 这里已经不是“Workflow 和 Agent 二选一”，而是 Workflow Engine 调用 Agent Runtime——与本文第四、五部分的主线结论是同一件事。
 
-## 16. 金融 Model Risk Management 里的 Agentic Workflow
+## 21. 金融 Model Risk Management 里的 Agentic Workflow
 
 这一节看金融领域的实证研究。它们没有停在“客服 Agent”这类演示场景上，而是直接落在信贷、反欺诈和模型风险管理上——比通用的 Agent 案例更接近企业真正的问题。2026 年有一篇比较完整的 survey 覆盖了以下方面：
 
@@ -776,7 +863,7 @@ AWS 2026 年的 Financial Services AgentCore 架构如下：
 
 该研究在 fraud detection、credit approval 和 credit risk 中做了实验 ([arXiv][31])，这比“客服 Agent”更接近企业真正的问题。
 
-## 17. 金融服务真正需要确定下来的六件事
+## 22. 金融服务真正需要确定下来的六件事
 
 把前三部分的材料压成六条，就得到金融服务对架构的硬约束。它们不是设计偏好，而是监管、责任和事故成本直接推导出来的结果。
 
@@ -794,7 +881,7 @@ AWS 2026 年的 Financial Services AgentCore 架构如下：
 - Level A：完全可重放：同输入 + 同模型 + 同工具 + 同上下文快照 → 同结果
 - Level B：可复核：同业务事实快照 + 记录在案的规则版本 + 记录在案的 Agent 轨迹 → 人可以独立得出同一结论
 
-大多数业务应该按 **Level B** 设计，把 Level A 留给真正需要法律级举证的动作。这个决定必须在架构设计阶段做，事后基本补不上——因为它决定的是要不要保留业务事实快照、规则版本和完整 Agent 轨迹。等审计来问的时候再补，通常已经晚了。这六条约束加上可复现等级，就是后面架构设计的全部输入。
+大多数业务应该按 **Level B** 设计，把 Level A 留给真正需要法律级举证的动作。这个决定必须在架构设计阶段做，事后基本补不上——因为它决定的是要不要保留业务事实快照、规则版本和完整 Agent 轨迹。等审计来问的时候再补，通常已经晚了。这六条约束加上可复现等级，就是后面架构设计的全部输入。但注意这些约束只决定 Business State 与 Process Authority 必须有人拥有，不意味着所有认知工作都必须 BPMN 化——第 7 节那种纯 Agent 任务同样要过这六条，只是由不同的 Runtime 来承担。
 
 ### 金融领域可以借鉴的形态
 
@@ -802,9 +889,9 @@ AWS 2026 年的 Financial Services AgentCore 架构如下：
 
 即 Domain Agent 经 Financial Context Layer（Ontology / Policies 与 Research 文档 / Structured Data）与 Dynamic Planning，进 Durable Agent Runtime（Policy / Authority、Tool Gateway、Human Approval），Tool 接 Core Banking / Trading / CRM / Risk 与外部数据，产出 Evidence + Trace 进 Audit。
 
-# 第四部分：主线架构
+# 第四部分：架构决策——谁拥有 Orchestration Authority
 
-## 18. 全文原则
+## 23. 全文原则
 
 前面十二节都是趋势观察。趋势观察的结论会随着“目标是什么”而改变：目标是通用 Agent 平台，还是金融企业的业务流程，答案可以完全相反。
 
@@ -829,9 +916,9 @@ AWS 2026 年的 Financial Services AgentCore 架构如下：
 
 > 任何 Agent 驱动的业务动作，在产生业务状态变化或外部副作用之前，都必须经过确定性的 schema / business validation 与 authorization；是否需要 Human Approval，由 BPMN 与 Policy 按风险等级决定。
 
-这句话里有三个从句，各自解决一个问题。“必须经过确定性验证”保证进入流程的不是一段自然语言，而是一个可校验的结构，这是后面 Task Contract 里 output schema 存在的理由。“必须经过 authorization”保证“Agent 有能力做”和“Agent 被允许做”永远是两件事，前者是模型能力问题，后者是治理问题。“是否人工批准由风险等级决定”避免两个极端：既不要求所有输出都过人工（那等于退回 Level 0，自动化失去意义），也不允许高风险动作走自动通道。后面第 34 节会说明，为什么这条原则必须同时覆盖“建议型输出”和“动作型输出”这两种 Task——只写一半，就会在评审时被抓出漏洞。
+这句话里有三个从句，各自解决一个问题。“必须经过确定性验证”保证进入流程的不是一段自然语言，而是一个可校验的结构，这是后面 Task Contract 里 output schema 存在的理由。“必须经过 authorization”保证“Agent 有能力做”和“Agent 被允许做”永远是两件事，前者是模型能力问题，后者是治理问题。“是否人工批准由风险等级决定”避免两个极端：既不要求所有输出都过人工（那等于退回 Level 0，自动化失去意义），也不允许高风险动作走自动通道。后面第 38 节会说明，为什么这条原则必须同时覆盖“建议型输出”和“动作型输出”这两种 Task——只写一半，就会在评审时被抓出漏洞。
 
-## 19. 两类问题：业务怎么走，和某一步怎么完成
+## 24. 两类问题：业务怎么走，和某一步怎么完成
 
 在这个场景下，整个系统可以拆成两个完全不同的问题：
 
@@ -851,7 +938,7 @@ AWS 2026 年的 Financial Services AgentCore 架构如下：
 而 Agent 是：Task → Agent Execution → Structured Result。
 Agent 不拥有 Workflow。
 
-## 20. 五层架构
+## 25. 五层架构
 
 把前面的分层和这里的约束合起来，得到本文的主线架构，也是全文唯一一张完整架构图。后面所有图都是它的局部展开。
 
@@ -902,7 +989,7 @@ flowchart TB
     Validate --> WR
 ```
 
-这张图里关键的关系是 Workflow Runtime 创建并控制 Agent Task，Agent Runtime 负责完成这个 Task，也就是第 29 节说的 Agent-in-Process。同样关键的是右下角那条回路：Agent 的输出必须先过 Validation 与 Authorization，再经过必要的人工批准，最后由 Workflow Runtime 落成状态转移。Agent 在这个回路里始终是提议方，不是决定方。
+这张图里关键的关系是 Workflow Runtime 创建并控制 Agent Task，Agent Runtime 负责完成这个 Task，也就是第 33 节说的 Agent-in-Process。同样关键的是右下角那条回路：Agent 的输出必须先过 Validation 与 Authorization，再经过必要的人工批准，最后由 Workflow Runtime 落成状态转移。Agent 在这个回路里始终是提议方，不是决定方。
 
 ### 五层各自回答什么
 
@@ -923,13 +1010,13 @@ flowchart TB
 | Data / Semantic Plane | 回答：世界是什么样   |
 | Control Plane         | 回答：谁被允许做什么 |
 
-两者放在一起，会导致“数据权限”和“数据语义”被混为一谈：访问控制做到位了，但 Agent 依然不知道 `Position` 和 `Portfolio` 是什么关系，前者是安全问题，后者是能不能正确工作的问题。第二，Evidence 也不是控制。Evidence 是某一次具体执行产生的产物，它天然属于执行侧，只是在最后被 Audit 引用，把 Evidence 放进 Control Plane，会让它看起来像一个统一存储，而不是每一次 Task 都必须产出的东西。它应该在另一个三层关系里被定位：Audit 记录主体，Evidence 记录依据，Trace 记录过程——也就是第 27 节要展开的内容。所以最终是五层：Process / Runtime / Agent Execution / Data & Semantic / Control。
+两者放在一起，会导致“数据权限”和“数据语义”被混为一谈：访问控制做到位了，但 Agent 依然不知道 `Position` 和 `Portfolio` 是什么关系，前者是安全问题，后者是能不能正确工作的问题。第二，Evidence 也不是控制。Evidence 是某一次具体执行产生的产物，它天然属于执行侧，只是在最后被 Audit 引用，把 Evidence 放进 Control Plane，会让它看起来像一个统一存储，而不是每一次 Task 都必须产出的东西。它应该在另一个三层关系里被定位：Audit 记录主体，Evidence 记录依据，Trace 记录过程——也就是第 31 节要展开的内容。所以最终是五层：Process / Runtime / Agent Execution / Data & Semantic / Control。
 
-## 21. 展开图：数据与治理怎么接进来
+## 26. 展开图：数据与治理怎么接进来
 
-这是第 20 节那张主线架构在数据与治理侧的展开。
+这是第 25 节那张主线架构在数据与治理侧的展开。
 
-## 22. 每一层解决的问题与最适合的技术
+## 27. 每一层解决的问题与最适合的技术
 
 | 层               | 解决的问题       | 最适合技术                           |
 | ---------------- | ---------------- | ------------------------------------ |
@@ -944,9 +1031,9 @@ flowchart TB
 
 这样也不会再问“是不是 Agent 出现以后，BPMN 就过时了”，BPMN 并没有过时，变化的是职责划分。
 
-## 23. 责任矩阵
+## 28. 责任矩阵
 
-第 20 节回答了“分几层”，第 22 节回答了“每层适合什么技术”，这一节回答最后一个问题：每一件事由谁负责。落到具体条目上，会得到一张可以直接进评审会的表：
+第 25 节回答了“分几层”，第 27 节回答了“每层适合什么技术”，这一节回答最后一个问题：每一件事由谁负责。落到具体条目上，会得到一张可以直接进评审会的表：
 
 | 问题                   | 谁负责                   |
 | ---------------------- | ------------------------ |
@@ -970,7 +1057,7 @@ flowchart TB
 
 这张表把“Agent 到底能不能自主”这类争论，拆成了十几个可以逐条达成一致的问句，例如讨论“要不要让 Agent 自动审批”，真正需要确认的只是其中第 4、10、11 行，而不是重新设计一遍流程。
 
-## 24. 五件容易混在一起的事
+## 29. 五件容易混在一起的事
 
 “确定性”不等于“只有一张流程图”。在金融场景里，有五类判断，各自必须落在不同机制上。把它们合并成一句“业务规则和权限合同”，是架构评审里最常见的返工来源。
 
@@ -1092,7 +1179,7 @@ investmentAmount大于100M → seniorApprovalRequired
 
 三者职责很清楚。
 
-## 25. Workflow 形态的正交分类
+## 30. Workflow 形态的正交分类
 
 前面有一版分类把 Workflow 分成四种：Deterministic、Agentic、Policy、Human，这个分类不建议保留，原因不是它错，而是这四项不在同一个分类维度上：Deterministic / Agentic 描述的是执行方式，Policy 描述的是控制方式，Human 描述的是参与者。它们并不互斥，同一条流程里同时出现 Agent Task、Policy Gate 和 Human Approval 是常态：BPMN Workflow → Agent Task → Policy Gate → Human Approval。
 于是同一条流程按旧分类会同时属于四类，分类就失去了判别力，更严谨的做法是拆成三个正交维度：
@@ -1116,45 +1203,7 @@ Investment Idea Review
 
 这个描述可以直接进设计文档，而“四种形态”不能——因为它无法回答“这条流程属于哪一类”。
 
-## 26. Business Data Contract：Agent 看到的是哪一个版本的业务事实
-
-金融 Agent 落地时，最大的问题往往不是 Agent Runtime 的能力，而是 Agent 到底看到的是哪一个版本的业务事实。考虑一个很普通的时间线：
-
-- 10:01 BPMN: Risk = 0.82
-- 10:05 Agent: 查 Snowflake，得到 Risk = 0.77
-- 10:10 Human: 界面上看到的是 0.79
-
-三个数字都“正确”，因为它们来自三个时间点的不同来源，但在审计场景里，这直接导致结论无法复现。
-
-所以架构上不能只有：Agent → Snowflake。
-而要有 BPMN Process Instance → Business Context → Approved Data Snapshot（Authoritative Source）→ Agent Task → Structured Result → 回到 Process Instance 的闭环。
-
-具体要确定的是四件事：
-
-**权威源（authoritative source）** —— 某个业务事实以哪个系统为准。Portfolio value 是来自交易系统、估值系统还是数仓，必须指定唯一答案。允许两个系统都“能查到”，就等于允许两个结论。
-
-**快照语义（snapshot semantics）** —— Agent Task 开始时的业务上下文是否被冻结。如果冻结，整个 Task 内的所有查询都基于同一版本；如果不冻结，就必须显式记录每一次读取的时间戳，并接受结论建立在“混合版本”之上。
-
-**版本标识（context version）** —— 这个 context 需要一个可写入 Evidence 的标识，让事后能回答“当时它看到的是哪一版”。这是第 17 节里 Level B 可复现的前置条件。
-
-**跨系统一致性窗口** —— Position、Market price、Risk score、Compliance status 来自不同系统，同步延迟不同。要么给出一个显式的一致性窗口，要么承认“不保证一致”并把风险写进设计文档。最怕的是既没有窗口、也没有声明，等到争议出现时才发现无法解释。
-
-这一层决定了 Agent 的输出能否被复核。模型可以换，harness 可以换，Agent Runtime 的框架可以换，但只要 Data Contract 是清楚的，历史决策至少可以在“同样的业务事实 + 记录在案的规则版本 + 记录在案的 Agent 轨迹”这三个条件下被复核。反过来，如果 Data Contract 不清楚，任何 audit trail 都建立不牢——因为审计看到的是一堆记录，而不是一条能走通的证据链。
-
-### 一个可复现的版本栈
-
-把上面的四件事合起来，一个金融 Agent 的 Task 要在事后被完整解释，需要同时记住六个版本标识：
-
-- workflowVersion = investment-idea-review v17
-- policyVersion = compliance-policy v8
-- dataSnapshot = ctx-20260912-1030
-- modelVersion = model@version
-- promptVersion = compliance-review v12
-- evidenceRef = doc-123#p17
-
-有了这六项，才能回答“为什么当时这个 Agent 会得到这个结论”。缺任何一项，复盘都会退化：只记 workflow 版本，说明不了 Agent 为什么这样判断；只记 model 版本，说明不了它当时看到的是哪一版业务事实。反过来也要说清边界：版本标识解决的是“可复现”，不是“可信任”。记录齐全只保证结论可以被重新推导，不保证结论正确。正确性由业务规则、验证与必要的人工审批负责。这两件事经常被混为一谈，结果是团队花大力气把日志做完整，却依然回答不了监管最关心的那个问题。这也是 Data / Semantic 层不应该被塞进 Control Plane 的原因：它回答的是“世界是什么样”，Control Plane 回答的是“谁被允许做什么”。
-
-## 27. Audit、Evidence、Agent Trace 是三件不同的事
+## 31. Audit、Evidence、Agent Trace 是三件不同的事
 
 这三个词在讨论里经常被并列甚至混用，但它们回答的是三个不同的问题，取证方式和保留策略也不同：
 
@@ -1174,9 +1223,9 @@ flowchart LR
 
 一个实际后果是只保留 Audit，复盘会变成“流程没错，但结论不对”；只保留 Trace，则无法回答“当时是谁批准的”。两者都要，并且必须通过同一个 Task ID 串起来，这也是 Task Contract 里 `audit.traceLevel` 这个字段存在的意义。
 
-## 28. Agent Runtime 是嵌入式能力，不是 Workflow Engine
+## 32. Agent Runtime 与 Business Workflow Runtime 是不同的 Orchestration 层
 
-架构是：BPMN Engine 之下挂 Human Task、System Task 与 Agent Task，Agent Task 之后进 Agent Runtime（Tools / Context / Memory）。
+“Agent Runtime 不是 Workflow Engine”这个说法需要修正：Microsoft Agent Framework 本身就具有 Workflow Runtime，LangGraph 也有 durable execution、checkpoint / resume 等能力。更准确的是：Agent Runtime 可以实现 Agent Workflow，但不等于 Business Workflow Runtime。架构是：BPMN Engine 之下挂 Human Task、System Task 与 Agent Task，Agent Task 之后进 Agent Runtime（Tools / Context / Memory）。
 
 ### BPMN Engine
 
@@ -1188,7 +1237,30 @@ flowchart LR
 
 两者边界很干净。
 
-## 29. “Agent-in-Process”而非“Process-in-Agent”
+### 三种编排模式
+
+- Model A（纯 Business Workflow）：BPMN → Workflow Runtime → Tasks。
+- Model B（纯 Agent Workflow）：Agent Goal → Agent Workflow → Tools / Human / Subagents。
+- Model C（Nested）：BPMN → Agent Task → Agent Workflow → Structured Result → BPMN。
+
+金融不是默认选择 C，而是根据业务责任判断 A / B / C：金融主流程默认从 A 开始，复杂认知任务可以使用 B，当 A 和 B 同时存在时使用 C。
+
+| 判断问题            | Business Workflow  | Agent Workflow       | Nested              |
+| ------------------- | ------------------ | -------------------- | ------------------- |
+| 谁定义下一步        | Process Definition | Agent                | 外层 + 内层分别定义 |
+| Business State      | 核心               | 非核心               | 外层                |
+| Agent Working State | 非核心             | 核心                 | 内层                |
+| 业务角色 / SLA      | 核心               | 通常外置             | 外层                |
+| 动态规划            | 弱                 | 核心                 | 内层                |
+| Multi-Agent         | 辅助               | 核心                 | 内层                |
+| 流程版本治理        | 核心               | Code / Graph version | 两层分别版本        |
+| 合规责任            | 强                 | 需要额外构建         | 外层                |
+| 业务人员可读性      | 强                 | 弱                   | 外层强              |
+| 模型更换对流程影响  | 小                 | 大                   | 外层隔离            |
+| 适合金融主流程      | 高                 | 通常不作为主流程     | **最高**            |
+| 适合复杂认知任务    | 中                 | 高                   | **最高**            |
+
+## 33. “Agent-in-Process”而非“Process-in-Agent”
 
 这两个名字很形象。不推荐 Process-in-Agent，即让 Agent 决定整个 Business Process，风险很大。推荐 Agent-in-Process，即 Business Process 之下是 Agent Task，Agent Task 之后才是 Agent，符合金融机构对 predictable、controllable、explainable 和 auditable 的要求。
 
@@ -1208,7 +1280,7 @@ Business Workflow → Agent Task → Agent Runtime → 受治理的 Sub-workflow
 
 所以未来更准确的模型不是单向嵌套，而是双向调用：Workflow 把 Agent 当一等步骤（如 AWS Step Functions + AgentCore ([Amazon Web Services, Inc.][43])），Agent 把受治理的 Sub-workflow 当 Tool。但对金融主流程而言，方向仍以 Workflow 调用 Agent 为主——反方向只允许发生在有明确契约与审批的受治理子流程上。
 
-## 30. 这套架构的名字，以及它为什么更容易治理
+## 34. 这套架构的名字，以及它为什么更容易治理
 
 这套架构可以叫 Deterministic Core, Agentic Edge，在企业内部更贴切的说法是 Deterministic Business Process + Bounded Agent Execution。核心原则是 Deterministic Core 经 Agent Task 到 Agentic Edge，再经 Structured Result 到 Deterministic Validation。
 
@@ -1246,11 +1318,11 @@ Business Workflow → Agent Task → Agent Runtime → 受治理的 Sub-workflow
 
 # 第五部分：Agent Task Contract
 
-## 31. BPMN 不应该描述 Agent 的内部过程
+## 35. BPMN 不应该描述 Agent 的内部过程
 
 例如 Compliance Review，不要继续画成 Search Policy → Search Documents → Search Historical Cases → LLM Review → LLM Critic → Search Again → Summarize——这就走偏了。BPMN 只写 Compliance Review → Agent-assisted Review → Human Decision，Agent 内部 search → retrieve → reason → compare → identify gap → retrieve again → produce evidence → draft recommendation，这些属于 Agent Runtime，这是 **Workflow** 和 **Agent** 最重要的边界。
 
-## 32. Agent Task Contract
+## 36. Agent Task Contract
 
 **Agent Task Contract** 是本文的核心抽象。前面所有关于边界的讨论——流程归谁、状态归谁、权限归谁——最终都收敛到这个契约上。它很少直接给人看，主要作用是作为 BPMN 侧与 Agent 侧之间唯一需要对齐的接口。
 
@@ -1366,7 +1438,7 @@ agentTask:
 
 ### Validation Contract：提议如何变成状态变化
 
-一份契约其实不够。Agent Task Contract 约束的是“怎么做”——输入输出、可用能力、数据范围、执行上限、审批模式、证据要求；而从提议到真正的业务状态变化，还需要第二份契约：Validation Contract。它只回答“能不能生效”：schema 校验、业务规则（DMN）、授权（IAM / Policy）、必要的人工批准。两份契约的分工，正好对应第 35 节那条管道的前后两半：
+一份契约其实不够。Agent Task Contract 约束的是“怎么做”——输入输出、可用能力、数据范围、执行上限、审批模式、证据要求；而从提议到真正的业务状态变化，还需要第二份契约：Validation Contract。它只回答“能不能生效”：schema 校验、业务规则（DMN）、授权（IAM / Policy）、必要的人工批准。两份契约的分工，正好对应第 39 节那条管道的前后两半：
 
 ```mermaid
 flowchart TD
@@ -1379,7 +1451,7 @@ flowchart TD
 
 Task Contract 管住 Agent 的自由度，Validation Contract 管住状态变化的生效条件，Workflow Runtime 管住最终落子。三份责任分开，事故复盘时才能逐段归因：结论错了查 Task 与证据，规则错了查 DMN 版本，放行错了查审批记录。
 
-## 33. Agent 的输出必须结构化
+## 37. Agent 的输出必须结构化
 
 这是金融领域必须坚持的一条，具体做法如下。
 
@@ -1410,9 +1482,9 @@ Task Contract 管住 Agent 的自由度，Validation Contract 管住状态变化
 Workflow Runtime 只接受：validated structured output
 然后 BPMN 决定：REQUEST_CHANGES → Research。
 或者：APPROVE → Next Step。
-因此，Agent 提议业务状态变化，Workflow Runtime 决定它是否真的发生。更精确的表述见第 34 节：Agent 输出的是业务建议或动作提议，共同决定它的是 Workflow Runtime、Business Rule、Authorization 和必要的 Human Task。
+因此，Agent 提议业务状态变化，Workflow Runtime 决定它是否真的发生。更精确的表述见第 38 节：Agent 输出的是业务建议或动作提议，共同决定它的是 Workflow Runtime、Business Rule、Authorization 和必要的 Human Task。
 
-## 34. Analysis Task 与 Action Task
+## 38. Analysis Task 与 Action Task
 
 有一个容易含糊的地方需要区分清楚：Agent 的“输出”到底指什么。在本文的模型里，Agent Task 分两类，它们的输出性质完全不同。
 
@@ -1463,7 +1535,7 @@ Agent 产出的是**判断材料**，其作用不含流程指令：
 
 这个表述多出来的部分（Business Rule、Authorization、Human Task），正是金融场景里最需要被明确归属的三个环节。少写一个，评审时就会被追问“那这里谁负责”。
 
-## 35. Governed Action Pipeline
+## 39. Governed Action Pipeline
 
 在金融 Agent workflow 里，任何 Agent 行为都可以统一看成一条 Controlled Action Pipeline——与 Agent 直调 API 的做法相比：
 
@@ -1487,7 +1559,7 @@ flowchart LR
 
 还有一点要写清楚：这条管道只负责把一个提议送达到“执行或拒绝”这个结论，它本身不产生业务状态转移。最终的状态转移仍然由 Workflow Runtime 依据 BPMN 完成，这也是整套架构里职责划分最干净的一条边界。
 
-## 36. “审批”怎么处理
+## 40. “审批”怎么处理
 
 例如 PM Approval：BPMN: → PM Approval。
 内部可以：
@@ -1509,7 +1581,7 @@ PM 的按钮仍然是：
 
 Agent 不能替 PM 点击，这正是 AI assistance ≠ AI authority 所表达的意思。
 
-## 37. “修改”也由 BPMN 明确控制
+## 41. “修改”也由 BPMN 明确控制
 
 例如：
 
@@ -1522,7 +1594,7 @@ Risk Review 按 Approve 进 Compliance、Reject 结束、Request Changes 回 Res
 
 不需要由 Agent 来决定“我觉得应该回到 Research”。
 
-## 38. 什么时候允许 Agent 自己完成一个 Task
+## 42. 什么时候允许 Agent 自己完成一个 Task
 
 不用改 Workflow，只需要改变以下配置：Agent Authority Policy
 比如：
@@ -1568,7 +1640,7 @@ agentAuthority:
 
 # 第六部分：一个完整的金融案例
 
-## 39. Investment Idea Review 全流程
+## 43. Investment Idea Review 全流程
 
 比如一个投资 Idea 流程（Draft → Research → Risk Review → Compliance Review → PM Review → Approved），业务分析师完全可以用 BPMN 表达。各 Review 环节按 Approve 进入下一步、Reject 结束、Request Changes 打回 Research，细节见下节三段式。
 
@@ -1684,7 +1756,7 @@ PM：
 
 除非明确授权。
 
-## 40. 投资研究：哪一段应该固化，哪一段必须留给 Agent
+## 44. 投资研究：哪一段应该固化，哪一段必须留给 Agent
 
 例如：
 
@@ -1716,7 +1788,7 @@ PM：
 
 # 第七部分：每一层放谁
 
-## 41. Workflow Engine 的裂解
+## 45. Workflow Engine 的裂解
 
 过去，一个系统全部负责：Workflow Engine
 未来更像：
@@ -1731,7 +1803,7 @@ PM：
 
 把它们归成同一类，是选型时最常见的起点错误。
 
-## 42. 能力 → 代表产品
+## 46. 能力 → 代表产品
 
 前一版材料把行业归纳为“5 派”，那个分法把不同层次的东西并列了。按能力维度重新列一遍，选型时更不容易搞错：
 
@@ -1767,7 +1839,7 @@ LangGraph 的 graph 与 Temporal 的 workflow 都在讲“编排”，但前者�
 
 再补一句：这张表是概念分层，不是产品分离。一个产品可以同时承担其中两层甚至三层——Microsoft 的 graph workflow 跑在 Durable Task 上，Temporal 的 durable Workflow 直接承载 Agent Loop，AWS 的 Step Functions 直接调用 AgentCore Harness。选型时真正要问的不是“买哪个产品替代另一个”，而是“这几份责任分别由谁承担”。
 
-## 43. 换个选型维度：Control / Execution / Orchestration / Authority
+## 47. 换个选型维度：Control / Execution / Orchestration / Authority
 
 不要再用“BPMN vs Agent”作为技术选型的第一维度。2026 年的产品已经证明，同一个厂商内部都同时提供确定性与动态两套东西，拿产品名当选型维度只会越比越乱。更实在的是四个决策维度：
 
@@ -1780,9 +1852,9 @@ LangGraph 的 graph 与 Temporal 的 workflow 都在讲“编排”，但前者�
 
 按这个框架，前面几节的厂商各归其位：Camunda 是 Deterministic + Durable + Static/Dynamic + Human/Rule/Agent；Temporal 是 Code-defined + Durable + Static/Dynamic + Application-defined Authority；Microsoft Agent Framework 是 Graph + Durable Task + Agentic orchestration；AWS 是 Deterministic outer workflow + Agentic inner execution + Durable outer execution；OpenAI Agents API 是 Goal-directed + Long-running + Dynamic + Harness-controlled authority。
 
-注意这与第 25 节的三个维度不重复：第 25 节是描述一条流程的三个正交维度（执行模型 / 任务模式 / 控制），这里是选型时的四个决策维度。两个表加第 42 节的能力表一起用：先用四个维度定方向，再用能力表定每一层谁来负责。
+注意这与第 30 节的三个维度不重复：第 30 节是描述一条流程的三个正交维度（执行模型 / 任务模式 / 控制），这里是选型时的四个决策维度。两个表加第 46 节的能力表一起用：先用四个维度定方向，再用能力表定每一层谁来负责。
 
-## 44. Camunda / Fluxnova 的合理位置
+## 48. Camunda / Fluxnova 的合理位置
 
 这一点与前面的结论有明显不同。如果企业的业务架构师已经大量使用 BPMN，并且企业已经具备：
 
@@ -1805,7 +1877,7 @@ LangGraph 的 graph 与 Temporal 的 workflow 都在讲“编排”，但前者�
 - Camunda
 - Agent Runtime
 
-## 45. Palantir Ontology 的定位
+## 49. Palantir Ontology 的定位
 
 在业务流程确定的前提下，Ontology 不应该取代 BPMN，它更适合做以下事情：
 
@@ -1835,7 +1907,7 @@ Agent：如何理解和分析这些对象
 
 这是一个很漂亮的组合。
 
-## 46. 一个 AI 平台该怎么分层
+## 50. 一个 AI 平台该怎么分层
 
 更合理的做法是把架构重新分层，具体如下。以下做法不采用：Angular → Experience API → LangChain / DeepAgents → Camunda → Agent。
 采用以下分层：
@@ -1871,7 +1943,7 @@ flowchart TD
 
 # 第八部分：怎么落地
 
-## 47. 不要重新造 Workflow Engine
+## 51. 不要重新造 Workflow Engine
 
 如果企业已经有以下平台，优先复用：
 
@@ -1895,7 +1967,7 @@ flowchart TD
 
 这就已经足够现代。
 
-## 48. 分阶段落地
+## 52. 分阶段落地
 
 ### Phase 1：先把确定性 Workflow 做好
 
@@ -1943,7 +2015,7 @@ flowchart TD
 
 # 第九部分：长期演进
 
-## 49. Agent 负责探索，Workflow 负责固化
+## 53. Agent 负责探索，Workflow 负责固化
 
 前面讨论的都是当前应该怎么设计，这一部分讨论的是长期演进，需要先把它的性质说清楚：这一节的结论是架构推论，不是论文结论。区分这一点很必要，因为它决定了这部分内容应该放在核心架构还是演进方向，答案是后者。
 
@@ -1977,7 +2049,7 @@ flowchart TD
 
 论文证明的是 **tool sequence** 可以被打包成 **meta-tool**，业务流程可以被自动固化则是本文的架构推论，强度低于前者。
 
-## 50. 三种“状态”必须分开
+## 54. 三种“状态”必须分开
 
 Agent-first 领域里有一条主张需要在这里澄清边界：Dynamic Plan 必须持久化。这句话对长时间运行的 Agent 是成立的，一个跑几小时的 Research Task，确实需要一个可检查、可恢复的工作计划。但金融架构必须把三种完全不同的状态分开，它们的所有者、变更权限和生命周期都不一样，混成一个就会直接导致 Agent 接管流程。
 
@@ -2000,7 +2072,7 @@ Agent-first 领域里有一条主张需要在这里澄清边界：Dynamic Plan �
 
 因此，不要把 Agent 的 Working Plan 提升为企业业务流程的 source of truth。反过来，如果一个平台需要回答整体业务卡在哪一步，它应该去查 Workflow Runtime，而不是解析某个 Agent 的 plan。这两件事被混起来，是 Agent 接管流程这类方案在落地时最常见的失控方式。
 
-## 51. 不会被模型迭代绑死
+## 55. 不会被模型迭代绑死
 
 比如未来可能经历以下模型更替：Claude → GPT → Gemini → DeepSeek → Qwen。
 BPMN 完全不用变。Agent Runtime 可以通过一层 model abstraction 来变化：Agent Runtime → model abstraction。
@@ -2013,7 +2085,7 @@ BPMN 完全不用变。Agent Runtime 可以通过一层 model abstraction 来变
 业务流程仍然停留在：BPMN v7
 金融企业在选型时通常会看重这一点。
 
-## 52. 最终定义
+## 56. 最终定义
 
 > **BPMN 是企业业务流程的“可执行约束合同”——它约束流程怎么走，但不包含全部业务语义；DMN 是业务规则合同；Authorization / IAM 决定主体资格；Agent Policy 决定 Agent 的能力边界；Workflow Runtime 负责状态与生命周期；Agent 是完成复杂任务的智能执行者。**
 >
@@ -2023,7 +2095,7 @@ BPMN 完全不用变。Agent Runtime 可以通过一层 model abstraction 来变
 
 换句话说，Workflow Engine 的长期价值不是流程图，而是对执行状态、等待、权限边界、事务副作用和恢复能力拥有执行权。流程图只是执行权的静态投影，Runtime 才是执行权本身。对金融而言，结论可以再收敛一句：金融不是拒绝 Dynamic Workflow，而是把 Dynamic Workflow 限制在 Deterministic Business Process 的边界之内。
 
-执行路径形态即第 20 节主图的收束：Business Architect → BPMN / DMN → Workflow Runtime → Human / System / Agent Task → Agent Runtime → Structured Result → Policy / Validation → Human Approval / Auto Execute → BPMN State。
+执行路径形态即第 25 节主图的收束：Business Architect → BPMN / DMN → Workflow Runtime → Human / System / Agent Task → Agent Runtime → Structured Result → Policy / Validation → Human Approval / Auto Execute → BPMN State。
 
 这套架构比彻底 Agent 化 Workflow 更适合金融，也比给 BPMN 加一个 LLM Node 更实用。它的处理方式不是推翻传统 Workflow，而是把边界划清楚：业务流程仍然确定，复杂任务开始智能化，业务状态仍然由确定性 Runtime 控制。这也是真正落地时应该坚持的主线。
 
@@ -2047,7 +2119,7 @@ BPMN 完全不用变。Agent Runtime 可以通过一层 model abstraction 来变
 
 它比“彻底 Agent 化 Workflow”更适合金融，也比“给 BPMN 加一个 LLM Node”更实用。
 
-## 53. 延伸阅读
+## 57. 延伸阅读
 
 学术和架构方面，可以参考：
 
