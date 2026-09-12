@@ -86,9 +86,12 @@ Astro 是静态站，`pubDatetime` 仅是元数据，不做定时发布。真正
 
 ### `temp/agent研究.md` — Enterprise Agent Platform Risk Architecture Review
 
-一份企业 Agent 平台的架构评审报告（不是博客 post，独立于周报体系）。当前版本（2026-09-13 第四轮 review 后，5489 行）：
+一份企业 Agent 平台的架构评审报告（不是博客 post，独立于周报体系）。当前版本（2026-09-13 第五轮后，5452 行）：
 
 - 结构：1 个 H1 + 20 个 `##` 章 + 113 个 `###`；引用 [1]–[35]，定义数 = 使用数
+- **文风要求（用户明确）**：正文只陈述架构事实，**不写版本自指**（「本版 / 这一版 / 上一版」一律清掉，
+  加粗变更小标题如「**这一版收紧的两处**」直接删）。撤回/降级的判断可以留，但主语必须是判断本身，
+  不能是「上一版报告说…」。详见 skill `skills/article-de-ai` §27.7
 - **最高层原则**：Agent 是不可信的决策参与者，而不是安全边界（Security boundary 由 Identity / Policy / PEP /
   Entitlement / Runtime Isolation / Evidence 建立）；AWS Lens 原话「Agent 本身不是 trust boundary」
 - **核心结论**：技术底座已基本完整（AgentCore + LangSmith + PostgreSQL/pgvector + LiteLLM），

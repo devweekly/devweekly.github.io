@@ -2,17 +2,17 @@
 
 本文面向金融服务场景，基于当前实际技术栈（LiteLLM / FastAPI / LangChain Deep Agents / LangGraph / AWS Bedrock AgentCore / LangSmith / PostgreSQL + pgvector）做出判断，并针对未来接入 Snowflake Cortex Agents 的路径给出边界设计与风险控制设计。
 
-与上一版相比，本版在三处收紧：把「Policy Plane」改名为 **Governance & Enforcement Layer** 并拆开判定归属；把平台定位从 Runtime-neutral 修正为 **Runtime-aware, Runtime-independent**；把 Architecture Invariants 从八条补到**十二条**，并新增 Memory Integrity 与 Fail-Closed 两个 P0。全文的最高层原则是一句话 —— **Agent 是不可信的决策参与者，而不是安全边界**。
+平面模型按 **Governance & Enforcement Layer** 划分判定归属；平台定位是 **Runtime-aware, Runtime-independent**；Architecture Invariants 共**十二条**，P0 中加入 Memory Integrity 与 Fail-Closed。全文的最高层原则是一句话 —— **Agent 是不可信的决策参与者，而不是安全边界**。
 
 ## 1. Executive Summary
 
 ### Current maturity
 
-上一版报告的结论是「技术底座已经基本完整，主要架构风险是多个平台之间的职责边界、运行模型与治理模型」。这个判断在技术层面成立，但对金融机构来说还不够。
+「技术底座已经基本完整，主要架构风险是多个平台之间的职责边界、运行模型与治理模型」——这个判断在技术层面成立，但对金融机构来说还不够。
 
 补上金融风险与监管视角之后，结论需要再往前走一步。先明确一件容易被误解的事：
 
-> **这一版不建议再增加一堆独立安全产品。真正需要补强的是「控制点」——把原则落实成几个确定性的 Enforcement Point，并让这些控制点产生可审计的证据。**
+> **不建议再增加一堆独立安全产品。真正需要补强的是「控制点」——把原则落实成几个确定性的 Enforcement Point，并让这些控制点产生可审计的证据。**
 
 在此之上，核心判断是：
 
@@ -120,7 +120,7 @@ flowchart TB
 
 ### 按风险口径重新打分
 
-在上一版成熟度表的基础上，补上金融风险维度：
+成熟度评分补上金融风险维度：
 
 | 能力 | 现状 | 判断 | 金融风险类别 | 风险 |
 | --- | --- | --- | --- | --- |
@@ -181,7 +181,7 @@ LangSmith Agent Server 已经提供 Postgres、Task Queue、Runs、Threads、Ass
 
 **风险六：缺少「用例风险分级」这道闸门。**
 
-平台目前没有统一的 Use Case 风险分级，导致所有安全策略只能在「按最高标准一刀切」和「按最低标准放行」之间摆动。这是金融服务场景下最先必须补上的一层（第 9.1 节）。在本版中它被收进部署准入链，作为 P0-5 Deployment Admission 的第一步判定输入（第 4.7 节）。
+平台目前没有统一的 Use Case 风险分级，导致所有安全策略只能在「按最高标准一刀切」和「按最低标准放行」之间摆动。这是金融服务场景下最先必须补上的一层（第 9.1 节）。它被收进部署准入链，作为 P0-5 Deployment Admission 的第一步判定输入（第 4.7 节）。
 
 **风险七：原则停留在理念层，没有对应的 Enforcement Point。**
 
@@ -204,15 +204,11 @@ LangSmith Agent Server 已经提供 Postgres、Task Queue、Runs、Threads、Ass
 | 9 | **Memory Isolation / Integrity** —— 长期 Memory 必须分区、可校验、可检测污染 | 第 10.9 节 |
 | 10 | **Fail-Closed Semantics** —— 关键控制依赖不可用时，高风险动作必须拒绝 | 第 3.5、11.3 节 |
 
-其中第 9、10 两项为本版新增：前者是最明显的一处 AWS Agentic AI Lens 漏项，后者回答「Policy 系统挂了怎么办」这个金融系统必须回答的问题。
+其中第 9、10 两项是补上的缺口：前者是最明显的一处 AWS Agentic AI Lens 漏项，后者回答「Policy 系统挂了怎么办」这个金融系统必须回答的问题。
 
-同时保留上一版在工程侧的三条收敛判断：先定边界再谈能力（第 3 章）、定义 Runtime abstraction（第 5.4 节）、把 MCP 治理保持为架构治理（第 8 章）。
+工程侧的三条收敛判断保持不变：先定边界再谈能力（第 3 章）、定义 Runtime abstraction（第 5.4 节）、把 MCP 治理保持为架构治理（第 8 章）。
 
 完整的 P0 / P1 / P2 见第 18 章；各域成熟度评分见第 18 章开头的对照表。
-
-同时保留上一版在工程侧的三条收敛判断：先定边界再谈能力（第 3 章）、定义 Runtime abstraction（第 5.4 节）、把 MCP 治理保持为架构治理（第 8 章）。
-
-完整的 P0 / P1 / P2 见第 18 章。
 
 ## 2. Current Platform Landscape
 
@@ -309,11 +305,7 @@ LangSmith
 PostgreSQL + pgvector
 ```
 
-这个定位比上一版报告的：
-
-> Agent Control Plane + Runtime + Tool/Data + RAG/Search + Job
-
-更准确。差别在三点：
+这个定位比把平台说成「Agent Control Plane + Runtime + Tool/Data + RAG/Search + Job」更准确。差别在三点：
 
 - **LangSmith 已经是组成部分**，不是「需要补齐的外部能力」。它承担 trace、evaluation、dataset、feedback 与部署侧运行模型。
 - **PostgreSQL / pgvector 已经是平台正式的数据与检索基础设施**，不是「未来待拆的实验模块」。它同时承载 agent metadata、state、job metadata 与 knowledge metadata。
@@ -421,7 +413,7 @@ Snowflake 的定位需要提前写清楚，因为它直接决定 Runtime、Agent
 
 ### 2.7 平台边界图
 
-当前最推荐用这张图，而不是上一版报告里那张把 Retrieval、MCP Gateway、Observability 全部并列成独立平台服务的图：
+当前推荐这张图，而不是把 Retrieval、MCP Gateway、Observability 全部并列成独立平台服务的那种画法：
 
 ```mermaid
 flowchart TB
@@ -493,19 +485,19 @@ flowchart TB
     AP -. future integration .-> CA
 ```
 
-这张图相对上一版有三处关键变化：
+读这张图需要先明确三处：
 
-| 变化 | 上一版 | 本版 |
-| --- | --- | --- |
-| Observability / Evaluation | Agent Platform 内待建的一个模块 | 独立的 `AI Observability & Evaluation` 层，由 LangSmith 承担 |
-| Retrieval | 独立的 `Retrieval Service` | Agent Platform 内的 `Knowledge / Retrieval` Capability，底层是 PostgreSQL + pgvector |
-| Snowflake | 未出现，或被视为数据源 | `Potential Snowflake Agent Runtime`，与自建 Runtime 并列 |
+| 主题 | 当前定位 |
+| --- | --- |
+| Observability / Evaluation | 独立的 `AI Observability & Evaluation` 层，由 LangSmith 承担 |
+| Retrieval | Agent Platform 内的 `Knowledge / Retrieval` Capability，底层是 PostgreSQL + pgvector |
+| Snowflake | `Potential Snowflake Agent Runtime`，与自建 Runtime 并列 |
 
 ## 3. Target Architecture
 
 （平台分层：四个纵向平面 + 横切 Governance & Enforcement Layer + 独立 Evidence / Audit Plane）
 
-这一章是本报告的主框架。这一版的平面模型在上一版基础上做了两处收紧：
+这一章是本报告的主框架。
 
 ```text
 Governance & Enforcement Layer   横切（判定 + 执行）
@@ -531,12 +523,12 @@ Governance & Enforcement     这一次动作能不能做、在哪里被拦
 Evidence Plane               事后能不能证明
 ```
 
-**这一版收紧的两处**
+平面模型在两处做了收紧：
 
-1. **「Policy Plane」改名为「Governance & Enforcement Layer」。** 原因见第 3.1 节：Policy 是逻辑概念，一旦叫成「Plane」，就会被读成一个新的、拥有全部判定权的系统，从而与 AI Platform 的 Model Governance、IAM / Data Platform 的 Enterprise Entitlement 打架。
-2. **执行点补齐第三个：Egress PEP。** 上一版只写了 Retrieval PEP 与 Tool PEP，但内容离开企业边界同样是一个必须判定的位置（第 10.4、10.7 节）。
+1. **这一层叫「Governance & Enforcement Layer」，不叫「Policy Plane」。** 原因见第 3.1 节：Policy 是逻辑概念，一旦叫成「Plane」，就会被读成一个新的、拥有全部判定权的系统，从而与 AI Platform 的 Model Governance、IAM / Data Platform 的 Enterprise Entitlement 打架。
+2. **执行点是三个，不是两个：Retrieval PEP、Tool PEP、Egress PEP。** 内容离开企业边界同样是一个必须判定的位置（第 10.4、10.7 节）。
 
-平面的名字变了，但「判定 / 执行 / 举证」三件事的分工没有变：
+「判定 / 执行 / 举证」三件事的分工是固定的：
 
 ```text
 判定在哪   Governance & Enforcement Layer
@@ -628,7 +620,7 @@ flowchart TB
 Is this action permitted, for this subject, under this purpose, right now?
 ```
 
-但它**不是一个新系统，更不应该形成一个新的「万能 Policy Owner」**。上一版把 Model Policy 列在这一层，同时又在第 6 章写「Model policy 归 AI Platform」，两处读起来是冲突的。根因是三种不同性质的 policy 被混在了一个词里：
+但它**不是一个新系统，更不应该形成一个新的「万能 Policy Owner」**。把 Model Policy 列成这一层的判定项、同时又在第 6 章写「Model policy 归 AI Platform」，这两种说法是冲突的。根因是三种不同性质的 policy 被混在了一个词里：
 
 ```text
 Model approval policy        → 模型能不能用于这个用例
@@ -636,7 +628,7 @@ Agent authorization policy   → 这个 Agent / 这个用户可以做什么
 Runtime action policy        → 这一次动作此刻允不允许
 ```
 
-本版把它们彻底拆开，并明确四个归属：
+这里把它们彻底拆开，并明确四个归属：
 
 | 判定 | 归属 | 内容 |
 | --- | --- | --- |
@@ -739,7 +731,7 @@ Which runtime?
 
 Control Plane 是平台自己必须拥有的部分，也是当前最值得投入工程资源的部分。
 
-本版在这一层新增一个判定环节：**Deployment Admission**（第 4.7 节）——生产部署不再是一次 API 调用，而是一次准入决定。
+这一层需要一个判定环节：**Deployment Admission**（第 4.7 节）——生产部署不再是一次 API 调用，而是一次准入决定。
 
 ### 3.3 Runtime Plane
 
@@ -767,7 +759,7 @@ What can the agent access?
 
 ### 3.5 Policy Enforcement Points（PEP）
 
-Governance & Enforcement Layer 解决的是「判定从哪里来」，PEP 解决的是「判定在哪里被执行」。后者是这一版最需要落到工程上的部分。
+Governance & Enforcement Layer 解决的是「判定从哪里来」，PEP 解决的是「判定在哪里被执行」。后者是最需要落到工程上的部分。
 
 **统一判定入口**
 
@@ -872,7 +864,7 @@ ALLOW / DENY / APPROVE
 
 > **Policy Engine 挂了，Agent 还能不能继续跑？**
 
-上一版只写了 ALLOW / DENY / APPROVAL，没有回答这一条。本版明确按风险分档：
+按风险分档回答：
 
 ```text
 Policy dependency unavailable
@@ -918,7 +910,7 @@ Agent continues
 
 ### 3.6 Evidence / Audit Plane
 
-这一层与 LangSmith 不是同一个东西，这是本版需要明确写死的一条边界：
+这一层与 LangSmith 不是同一个东西，这条边界必须写死：
 
 ```text
 LangSmith
@@ -1350,7 +1342,7 @@ Agent Execution Contract
 
 **接口不能只有「执行 CRUD」**
 
-上一版给出的最小集合是：
+把 Runtime 接口写成执行 CRUD 时，得到的是一份这样的集合：
 
 ```text
 AgentRuntime（不够）
@@ -1565,9 +1557,9 @@ Provider governance
 
 Agent Platform 只消费统一的模型入口，不直接持有 provider 凭据，也不自行实现路由与配额判断。
 
-**一处需要修正的表述：Model Policy 的归属**
+**Model Policy 的归属**
 
-上一版在第 3.1 节把 Model Policy 列为 Policy Plane 的判定项，同时在第 6 章写「Model policy 归 AI Platform」，两处读起来是冲突的。准确的分工是：
+把 Model Policy 列成 Governance & Enforcement Layer 的判定项、同时又说「Model policy 归 AI Platform」，这两种说法是冲突的。准确的分工是：
 
 ```text
 AI Platform              拥有 Model Governance（产出 Model Policy 判定）
@@ -1576,22 +1568,6 @@ Agent Platform           在部署与运行时校验「当前模型是否落在�
 ```
 
 也就是说，Model Policy 之所以出现在 Governance & Enforcement Layer 的判定项里，是因为**每一次动作判定都要引用它**，而不是因为这一层拥有它。三类 policy 的归属划分见第 3.1 节。
-
-**Provider abstraction**
-
-```text
-Enterprise Agent Platform
-        │
-        ▼
-     LiteLLM
-        │
-        ├── OpenAI
-        ├── Claude
-        ├── Gemini
-        └── Other LLM providers
-```
-
-需要留意的边界：Cortex Agents **不是** LLM Provider，它是 Runtime。把 Snowflake 放进 LiteLLM 的 provider 列表，会在 Runtime、权限与 observability 三处同时出错。
 
 **Provider abstraction**
 
@@ -1693,7 +1669,7 @@ Model policy 归 AI Platform；Agent 侧只声明需求（能力、上下文长�
 
 ### 7.1 PostgreSQL + pgvector 是当前阶段的正确选择
 
-上一版报告建议「长期应该拆成 Retrieval Service」。这个强建议现在撤回。
+「长期拆成独立 Retrieval Service」这个强建议撤回。
 
 当前已经有：
 
@@ -2147,7 +2123,7 @@ LangSmith
 
 ### 8.1 Architecture Pattern：治理不靠技术 Registry
 
-上一版报告说「Tool / MCP Governance 很可能是目前最大的缺口」，这个判断需要降级。
+「Tool / MCP Governance 很可能是目前最大的缺口」这个判断需要降级。
 
 如果 MCP 的注册与管控更多使用流程和架构 pattern 进行规范治理，这在 Enterprise 环境里其实是合理的：
 
@@ -2897,7 +2873,7 @@ Human Approval
 
 ### 10.6 Supply Chain
 
-Skill 上传的实际语义是「用户上传代码 → 企业内部代码执行平台」，安全等级与普通文件上传完全不同。上一版报告的「ZIP 上传 Skill 的安全边界」在金融场景下应该升级为 **Software Supply Chain Security**。
+Skill 上传的实际语义是「用户上传代码 → 企业内部代码执行平台」，安全等级与普通文件上传完全不同。「ZIP 上传 Skill 的安全边界」这种提法在金融场景下不够，应该升级为 **Software Supply Chain Security**。
 
 ```text
 Skill Supply Chain
@@ -3103,7 +3079,7 @@ All dependent agents stop using it
 
 ### 10.9 Memory Security & Integrity
 
-这是本版补上的最明显的一处 AWS Agentic AI Lens 漏项。AWS 已经把 **Secure agent memory and state** 单独定义为一个 capability，并明确要求 memory partitioning、tamper detection、validation on every write path、hallucination propagation detection，以及监控与事件响应。([AWS Documentation][29])
+这是最容易被漏掉的一处 AWS Agentic AI Lens 能力。AWS 已经把 **Secure agent memory and state** 单独定义为一个 capability，并明确要求 memory partitioning、tamper detection、validation on every write path、hallucination propagation detection，以及监控与事件响应。([AWS Documentation][29])
 
 第 4.4 节已经把 Memory、Conversation State、Run State、Job State、Artifacts 分开建模，这是对的；但「分开」不等于「受控」。长期 Memory 需要单独审：
 
@@ -3185,7 +3161,7 @@ namespace + 写入校验 + 完整性校验 + 污染检测与回滚
 
 ### 10.10 Goal Alignment / Rogue Agent Containment
 
-AWS Agentic AI Lens 已经把 **agent goal alignment and manipulation prevention** 作为独立能力。([AWS Documentation][30]) 本报告上一版只有 Prompt Injection、Tool Authorization、Data Entitlement 与 Kill Switch，缺少「Goal 本身是否稳定」这一层。
+AWS Agentic AI Lens 已经把 **agent goal alignment and manipulation prevention** 作为独立能力。([AWS Documentation][30]) 在补上这一层之前，报告只覆盖了 Prompt Injection、Tool Authorization、Data Entitlement 与 Kill Switch，缺少「Goal 本身是否稳定」这一层。
 
 先明确要回答的问题：
 
@@ -3288,7 +3264,7 @@ SoD               职责分离：定义政策的人 ≠ 审批的人 ≠ 改生�
 
 ### 10.12 SDLC Isolation 与 AI Artifact 环境分离
 
-上一版讲了 Dev / Test / Prod 的环境划分，但没有把 AI 特有的 artifact 全部纳入。在 Agent 平台上，一次「环境串用」可能同时污染六个对象：
+Dev / Test / Prod 的环境划分已经存在，但 AI 特有的 artifact 还没有全部纳入。在 Agent 平台上，一次「环境串用」可能同时污染六个对象：
 
 ```text
 Model
@@ -3499,8 +3475,6 @@ Human observes
 
 这个区别决定了审批在架构中的位置：前者审批是**流程内的必要节点**，后者只是事后通知，不构成控制。对应到用例分级，L3 以上不应允许「Agent decides」的路径存在。
 
-这个区别决定了审批在架构中的位置：前者审批是**流程内的必要节点**，后者只是事后通知，不构成控制。对应到用例分级，L3 以上不应允许「Agent decides」的路径存在。
-
 **Approval fatigue：审批量本身就是控制风险**
 
 如果审批量超过人的有效处理能力：
@@ -3597,8 +3571,6 @@ policy
 requested_action
 expires_at
 ```
-
-只有带着这几个字段，审批才能进入 Evidence Chain（第 12.5 节），回答「谁在什么时候、依据哪条政策、批准了什么动作」。放在 Agent 对话界面里的确认框做不到这一点：它既不受策略控制，也不产生可举证的记录。
 
 只有带着这几个字段，审批才能进入 Evidence Chain（第 12.5 节），回答「谁在什么时候、依据哪条政策、批准了什么动作」。放在 Agent 对话界面里的确认框做不到这一点：它既不受策略控制，也不产生可举证的记录。
 
@@ -3739,7 +3711,7 @@ LangSmith 现在已经支持 offline evaluation、online evaluation、regression
 
 ### 12.4 Audit Evidence：Trace ≠ Audit Evidence
 
-这是本版新增的一条架构边界，也是最容易被忽略的一条。
+这是一条容易被忽略的架构边界。
 
 LangSmith trace 回答的是「工程上发生了什么」，而监管审计要回答的是：
 
@@ -3755,7 +3727,7 @@ policy decision / policy reason / authorization source
 approval / timestamp / trace id / result
 ```
 
-在这份基础字段之上，本版补一层「可举证字段」。只记 `"decision": "ALLOW"` 是不够的，还要能回答「**为什么当时返回 ALLOW**」：
+在这份基础字段之上还需要一层「可举证字段」。只记 `"decision": "ALLOW"` 是不够的，还要能回答「**为什么当时返回 ALLOW**」：
 
 ```text
 policy inputs                 判定输入的摘要（哈希，而不是原始数据）
@@ -3821,8 +3793,6 @@ flowchart LR
 | 存储 | LangSmith | 企业审计系统 |
 
 结论：
-
-> **Trace 是 Audit Evidence 的重要输入，但不是 Audit Evidence 本身。**
 
 > **Trace 是 Audit Evidence 的重要输入，但不是 Audit Evidence 本身。**
 
@@ -3927,11 +3897,9 @@ Evidence Collector 自身必须是 fail closed 的依赖
 
 DORA 的 RTS 对 logging 明确要求定义需要记录的事件、保留期与日志保护，并覆盖身份 / 访问、变更、ICT 操作与网络活动等类别。([EUR-Lex][28])
 
-DORA 的 RTS 对 logging 明确要求定义需要记录的事件、保留期与日志保护，并覆盖身份 / 访问、变更、ICT 操作与网络活动等类别。([EUR-Lex][28])
-
 ### 12.5 Agent Evidence Chain
 
-这是本版新增的最重要的抽象：每个 Production Run 最终应该形成一条可审计的因果链。
+这里给出最重要的一个抽象：每个 Production Run 最终都应该形成一条可审计的因果链。
 
 ```text
 User
@@ -3990,9 +3958,8 @@ Evidence Graph
 
 这条链对应第 19.6 节的 Invariant 6，也是那句「每一个生产 Agent 都必须能够回答：谁批准、运行了什么、访问了什么、做了什么、为什么允许、出了问题如何停止」在数据结构上的落地形式。
 
-这条链对应第 19.6 节的 Invariant 6，也是那句「每一个生产 Agent 都必须能够回答：谁批准、运行了什么、访问了什么、做了什么、为什么允许、出了问题如何停止」在数据结构上的落地形式。
-
 第 12.4 节补充的可举证字段（policy inputs / reason code / authorization source / resource version / tool arguments / 各类 hash / approval context）统一进入上表「Evidence 记录」一列，由 Evidence Collector 采集；它们与这条链是「同一条因果链的字段级展开」。
+
 ## 13. Operational Resilience
 
 ### 13.1 Job：三种执行模型
@@ -4427,7 +4394,7 @@ Audit
 
 把这三类混在一起，是架构文档最常见的失分点：既会把推荐控制写成强制要求造成过度设计，也会把强制要求写成「建议」而失去约束力。
 
-**本版新增一条写作规则：每一条控制点都必须标注它属于三类中的哪一类。**
+因此每一条控制点都必须标注它属于三类中的哪一类。
 
 这条规则直接作用于用例分级。第 9.1 节的 L4 控制强度（formal risk owner、independent validation、mandatory human decision、strong audit）应被理解为：
 
@@ -4453,12 +4420,12 @@ AWS Agentic AI Lens 当前的正式 Security capability 集合是：secure memor
 | Human oversight | ✅ 已覆盖 | 第 11 章 |
 | Input / output security | ✅ 已覆盖 | 第 10.5、10.7 节 |
 | Skill / artifact supply chain | ✅ 已覆盖（Lens 之外，平台特有） | 第 10.6 节 |
-| Secure memory / state | △ 本版补齐 | 第 10.9 节 |
-| Goal alignment | △ 本版补齐 | 第 10.10 节 |
-| Rogue-agent containment | △ 本版补齐 | 第 10.10、10.8 节 |
+| Secure memory / state | △ 已补齐 | 第 10.9 节 |
+| Goal alignment | △ 已补齐 | 第 10.10 节 |
+| Rogue-agent containment | △ 已补齐 | 第 10.10、10.8 节 |
 | Multi-agent orchestration | △ 显式登记 N/A + 触发条件 | 第 10.14 节 |
-| Human-review manipulation | △ 本版补齐 | 第 11.2 节 |
-| Vulnerability scan / pentest（连续红队） | △ 本版补齐 | 第 10.13 节 |
+| Human-review manipulation | △ 已补齐 | 第 11.2 节 |
+| Vulnerability scan / pentest（连续红队） | △ 已补齐 | 第 10.13 节 |
 
 Lens 的设计原则中有一条应当直接进入本报告的架构基线：
 
@@ -4470,7 +4437,7 @@ Lens 的设计原则中有一条应当直接进入本报告的架构基线：
 
 ### 17.1 按平台能力分层比较
 
-上一版报告直接列「AWS / LangSmith / Dify / Langflow」，粒度不一致。改用平台能力分层比较：
+比较的粒度不一致会让结论失真：直接列「AWS / LangSmith / Dify / Langflow」，是把不同层的东西放在一起。改用平台能力分层比较：
 
 | 能力 | 你们 | AWS AgentCore | LangSmith | Snowflake Cortex Agents | Microsoft Foundry |
 | --- | --- | --- | --- | --- | --- |
@@ -4721,7 +4688,7 @@ Observability
 6. Financial Resilience / Backup / Privileged Access
 ```
 
-其中前三条（Memory、Runtime Governance Boundary、Fail-Closed）在本版已经升到 P0。
+其中前三条（Memory、Runtime Governance Boundary、Fail-Closed）已经升到 P0。
 
 ### P0 — 必须解决
 
@@ -4782,7 +4749,7 @@ Policy Engine、Approval 服务、Evidence Collector 与 Identity / Entitlement 
 
 **P0 = architectural prerequisite，不等于「同一阶段交付」**
 
-这是本版必须纠正的一处顺序矛盾。如果某项是 P0，那么在生产系统还没有它的时候，问题不是「排到第二阶段做」，而是：
+这里有一处顺序矛盾必须纠正。如果某项是 P0，那么在生产系统还没有它的时候，问题不是「排到第二阶段做」，而是：
 
 > **Production Gate 尚未满足。**
 
@@ -4823,7 +4790,7 @@ Fail-Closed Semantics
 
 这个区别对 Architecture Board 很重要：它把「技术债」变成了「有主体的风险承担」。
 
-同时在工程侧保留上一版已经确定的三项基线：
+同时在工程侧保留三项已经确定的基线：
 
 - Control Plane / Runtime Plane / Data Plane 边界（第 3 章）
 - Runtime abstraction（第 5.4 节）
@@ -4886,7 +4853,7 @@ agent-to-agent discovery
 
 **A2A 与 multi-agent 不能只用一句「P2」带过。**
 
-AWS Agentic AI Lens 已经把 multi-agent security / coordination 放进正式能力，([AWS Documentation][32]) 一旦 DeepAgents subagents 或多个 AgentCore runtime 开始互相调用，它立刻从「增强项」变成 Security boundary。因此本版按显式 N/A 登记，而不是放在 P2 里等：
+因此这里按显式 N/A 登记，而不是放在 P2 里等：
 
 ```text
 Status   : N/A
@@ -4900,9 +4867,9 @@ Review   : 每次新增多 Agent 拓扑时重新评估
 
 其余增强项现在都不是核心矛盾。
 
-### 与上一版的差异
+### 判断调整记录
 
-| 上一版 | 本版处置 | 原因 |
+| 原判断 | 现在的处置 | 原因 |
 | --- | --- | --- |
 | Agent Observability 必须平台统一 | **移出 P0/P1** | LangSmith 已集成，改为审查分工 |
 | Evaluation / Regression 必须补齐 | 降为 P1，且内容是定义 publication gate | LangSmith 已提供 evaluation 能力 |
@@ -4918,7 +4885,7 @@ Review   : 每次新增多 Agent 拓扑时重新评估
 | Third-party AI Provider Governance | **降为 P1-6** | 同上 |
 | Data Leakage / Egress Prevention | **降为 P1-7** | 由 Governance & Enforcement Layer + Egress PEP 承接 |
 | Kill Switch | 从 P1 升为 **P0-7** | 金融场景要求可立即停止 |
-| — | **新增 P0-4：Tool Action Authorization** | Tool 是越权执行的主要出口 || — | **新增 P0-4：Tool Action Authorization** | Tool 是越权执行的主要出口 |
+| — | **新增 P0-4：Tool Action Authorization** | Tool 是越权执行的主要出口 |
 | — | **新增 P0-9：Memory Isolation / Integrity** | 长期记忆是最容易跨运行传播污染的载体 |
 | — | **新增 P0-10：Fail-Closed Semantics** | 关键控制不可用时的语义必须写死，否则等于没有控制 |
 | — | **P0 性质澄清：P0 = architectural prerequisite** | 避免「P0 排到第二阶段」被读成「可以先上生产」 |
@@ -4955,7 +4922,7 @@ Multi-runtime Policy
 Multi-tenancy / 跨平台 Evidence
 ```
 
-与上一版相比有两处调整：
+落地顺序有两处调整：
 
 1. **Memory 与 Fail-Closed 进入第二阶段的前半段，且必须早于 Deployment Admission。** 否则准入链会把「控制点尚不可用」的 Agent 放进生产，准入本身也就失去意义。
 2. **阶段划分不改变 P0 的性质。** 在第二阶段完成之前，生产使用必须走 exception process 与显式 risk acceptance（见上文）。
@@ -5069,7 +5036,7 @@ flowchart TB
 
 > **Enterprise Agent Platform = Runtime-aware, Runtime-independent Agent Governance Platform**
 
-**为什么不用「Runtime-neutral」。** 上一版写的是 Runtime-neutral，这个说法过头了：如果真的 neutral，就意味着 AgentCore、Cortex Agents 与未来任何 Runtime 都拥有相同的 control surface —— 而第 5.6 节已经说明，Managed Runtime 上平台只能做边界控制，不可能全控制。
+**为什么不用「Runtime-neutral」。** Runtime-neutral 这个说法过头了：如果真的 neutral，就意味着 AgentCore、Cortex Agents 与未来任何 Runtime 都拥有相同的 control surface —— 而第 5.6 节已经说明，Managed Runtime 上平台只能做边界控制，不可能全控制。
 
 严谨的表述是：
 
@@ -5233,7 +5200,7 @@ custom tracing / eval store
 
 ### 19.5 只增加五个能力
 
-这一版最容易失控的地方是「为了金融场景再造十几个微服务」。不建议这样做。
+这里最容易失控的地方是「为了金融场景再造十几个微服务」。不建议这样做。
 
 如果尽量不增加系统，实际需要补的只是五个能力：
 
@@ -5297,11 +5264,7 @@ disable model
 
 这五个能力就已经能把第 19.6 节的 Invariant 大部分落地。其余能力（MCP Registry、Marketplace、A2A、多 Agent 优化、自定义 memory / runtime）在这个阶段都不值得投入。
 
-这五个能力就已经能把第 19.6 节的 Invariant 大部分落地。其余能力（MCP Registry、Marketplace、A2A、多 Agent 优化、自定义 memory / runtime）在这个阶段都不值得投入。
-
-**本版新增的两个 P0 不增加系统数量**
-
-（第 18 章 P0-9、P0-10）
+P0-9 与 P0-10 不增加系统数量（第 18 章）：
 
 ```text
 Memory Isolation / Integrity → 落在既有 memory 存储上的 namespace + 写入校验 + 完整性校验 + 回滚
@@ -5310,9 +5273,9 @@ Fail-Closed Semantics        → 落在既有 PEP 与 Approval 上的失败分�
 
 也就是说，「不新增系统」这个原则没有被破坏，但**控制逻辑的复杂度增加了一档**：控制点从「有或没有」变成「有、且依赖失效时行为确定」。
 
-### 19.6 从「八条原则」升级为「十二条 Architecture Invariants」
+### 19.6 Architecture Invariants（十二条）
 
-上一版把这套架构浓缩成八句话。这一版补到十二条 —— 仍然是架构不可违反的约束：不是理念，而是评审时的否决条件。
+这套架构浓缩成十二条 —— 仍然是架构不可违反的约束：不是理念，而是评审时的否决条件。
 
 **最高层原则（比 Invariant 更上层，先立这一条）**
 
@@ -5385,11 +5348,11 @@ Fail-Closed Semantics        → 落在既有 PEP 与 Approval 上的失败分�
 | 11 | Managed Runtime 内部高风险动作无法被外部强制、也无等价 provider-native 控制时，不得视为已受治理 | Runtime Governance Boundary（第 5.6 节） |
 | 12 | 生产 Agent 的健康度必须包含语义 / 行为健康，而不只是基础设施可用性 | Semantic Health（第 13.6 节） |
 
-这十二条与前八条不是替代关系，而是把「原则」升级为「Guardrail」后的自然扩容：Invariant 9–12 分别补上记忆完整性、失败语义、跨 Runtime 治理边界与语义健康——它们恰好对应本版新增的四个架构缺口。
+这十二条不是彼此并列的补充条款：Invariant 9–12 分别补上记忆完整性、失败语义、跨 Runtime 治理边界与语义健康，对应四个最容易被漏掉的架构缺口。
 
 其中 **Invariant 11 尤其重要**：它直接约束未来 Cortex Agents 的接入方式。没有它，「多 Runtime 并存」会变成「多套不可比的治理强度并存」。
 
-前六条的中文简洁表述仍然可以作为沟通口径保留：
+其中六条可以直接作为沟通口径：
 
 > 1. Agent 可以自主推理，但不能自主突破权限。
 > 2. LLM 可以生成建议，但不能定义企业安全边界。
