@@ -86,23 +86,36 @@ Astro 是静态站，`pubDatetime` 仅是元数据，不做定时发布。真正
 
 ### `temp/agent研究.md` — Enterprise Agent Platform Risk Architecture Review
 
-一份企业 Agent 平台的架构评审报告（不是博客 post，独立于周报体系）。当前版本（2026-09-13 第三轮 review 后，4402 行）：
+一份企业 Agent 平台的架构评审报告（不是博客 post，独立于周报体系）。当前版本（2026-09-13 第四轮 review 后，5489 行）：
 
-- 结构：1 个 H1 + 20 个 `##` 章（英文标题，正文中文）+ 100 个 `###`；引用 [1]–[28]，定义数 = 使用数
+- 结构：1 个 H1 + 20 个 `##` 章 + 113 个 `###`；引用 [1]–[35]，定义数 = 使用数
+- **最高层原则**：Agent 是不可信的决策参与者，而不是安全边界（Security boundary 由 Identity / Policy / PEP /
+  Entitlement / Runtime Isolation / Evidence 建立）；AWS Lens 原话「Agent 本身不是 trust boundary」
 - **核心结论**：技术底座已基本完整（AgentCore + LangSmith + PostgreSQL/pgvector + LiteLLM），
-  主要风险是**把模型风险 / ICT 风险 / 数据治理 / 访问控制 / 第三方风险 / 审计要求映射到 Agent 生命周期**
-- 平面模型：**Governance / Policy Plane 横切** + Control Plane / Runtime Plane / Data & Capability Plane
-  （出口有 **Retrieval PEP / Tool PEP**）+ **独立于 LangSmith 的 Evidence / Audit Plane**
-- 安全主轴：**Prevent / Detect / Control / Evidence**；Use Case Risk Classification L0–L4
+  主要风险是把模型风险 / ICT 风险 / 数据治理 / 访问控制 / 第三方风险 / 审计要求映射到 Agent 生命周期
+- 平面模型：**Governance & Enforcement Layer 横切**（旧名 Policy Plane 已废弃）+
+  Control / Runtime / Data & Capability Plane + 出口有 **Retrieval PEP / Tool PEP / Egress PEP** +
+  **独立于 LangSmith 的 Evidence / Audit Plane**
+- **Policy 归属拆分**：AI Platform = Model Governance；Agent Platform = Agent / Action Governance；
+  IAM / Data Platform = Enterprise Entitlement；Runtime / PEP = Enforcement
+- 定位：**Runtime-aware, Runtime-independent**（Control Plane 不绑定 Runtime，Enforcement Plane 按 Runtime
+  能力分别落地）；Managed Runtime（Cortex Agents）只能做**边界控制**
+- 安全主轴：Prevent / Detect / Control / Evidence；Use Case Risk Classification L0–L4（L4 控制属**内部标准**，非监管要求）；
+  **Fail-Closed 语义**（依赖不可用时 HIGH/CRITICAL 一律 DENY）
+- **十二条 Architecture Invariants**（8 → 12）：Inv9 Memory 完整性、Inv10 Fail-Closed、Inv11 Managed Runtime
+  治理边界、Inv12 语义健康；**P0 十项**（8 → 10：+Memory Isolation/Integrity、+Fail-Closed Semantics），
+  且 **P0 = architectural prerequisite**（未落地则 Production Gate 未满足 → exception process + risk acceptance）
+- 新增章节：§5.6 Runtime Governance Boundary、§10.9 Memory Security、§10.10 Goal Alignment / Rogue Agent、
+  §10.11 Privileged Access & SoD、§10.12 SDLC Isolation、§10.13 持续红队、§10.14 Multi-agent（显式 N/A）、
+  §10.15 Multi-tenancy、§13.6 Semantic Health（Agent Health ≠ Infra Health → DEGRADED/BLOCKED）、
+  §13.7 Backup / Retention / Anti-ransomware、§16.4 AWS Agentic AI Lens 能力对齐
 - 已明确撤回的旧判断：不要把 Retrieval 拆成独立 Service（PG + pgvector 当前够用）；
   MCP 不建重型 Registry（走架构 Pattern 治理，只补执行元数据）；
-  Observability / Evaluation 不是缺口（LangSmith 已承担）
+  Observability / Evaluation 不是缺口（LangSmith 已承担）；不用 Runtime-neutral 这个说法
 - Snowflake Cortex Agents 是**潜在的第二 Agent Runtime**，不是数据源或 LLM Provider；
   需要 Runtime abstraction + 「平台权限 + 数据平台原生权限」双层授权
-- 已落地：八条 Architecture Invariants、P0 八控制点（Policy Enforcement / Identity+Entitlement /
-  Retrieval Authorization / Tool Action Authorization / Deployment Admission / Audit Evidence /
-  Kill Switch / Skill Supply Chain）、只增加五个能力、三阶段落地顺序、Agent Evidence Chain
 - 报告为该单位的内部评审文档，语气保留顾问式「你们」；**博客 post 才要求去掉人称**
+- **未完成项**：review 建议的「整体 30% 压缩」只做了对 8 个点名概念的局部去重，需单独一轮
 
 ### `temp/agent研究checklist.md` — Well-Architected Review Checklist
 
