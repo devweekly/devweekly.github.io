@@ -122,14 +122,15 @@ Astro 是静态站，`pubDatetime` 仅是元数据，不做定时发布。真正
 
 ### `temp/agent研究checklist.md` — Well-Architected Review Checklist
 
-配套 checklist（2026-09-13 第三轮**结构修正** + 第五轮**逐条去中性化**后：2606 行 / 主表 **594** 项 +
-**18** Invariants + **4** Decision Gates + 附录 A 181 项。两轮均不增删条目）：
+配套 checklist（2026-09-13 共改四轮：结构修正 → 逐条去中性化 → 分层语义修正；现 2773 行 / 主表 **595** 项 +
+**18** Invariants + **4** Decision Gates + 附录 A 181 项。只有第三轮 +1 条 P00-21，其余各轮不增删条目）：
 
 - **编号约定（重要）**：P01–P14 的条目**本版已重排为 `1`–`512`**（`1`–`336` 与上一版一致；`337` 起因 FSI Overlay
   去重而重排；P10–P14 整体平移 −30）。旧版 `1`–`542` 的逐段对照见 **附录 B.12 编号变更对照**。
   成组 ID（`P00` / `AD` / `BO` / `TM` / `EV` / `RT`）不并入连续编号。
   **主表只数有 ID 的条目**，P00.6 Gate / P00.7 Artifact 这类纯正文小节不计入。
-  合计 512 + 23(P00) + 14(AD) + 10(BO) + 8(TM) + 10(EV) + 17(RT) = **594**；B.4 给出「编号总账」表供逐条核对
+  合计 512 + 24(P00) + 14(AD) + 10(BO) + 8(TM) + 10(EV) + 17(RT) = **595**；B.4 给出「编号总账」表供逐条核对，
+  且 B.4 是**唯一权威数字来源**（统计数字定位为 informational metadata，其他位置允许滞后一轮，见下）
 
 - **条目必带「应为 / 达标线」（第五轮定型，改条目时必须遵守）**：用户明确要求「不能中性提问，要能判断
   yes / no 倾向性与做到什么程度」。因此**每条问题末尾**必须有 `｜应为：… ｜达标线：…`（附录 A 也要，共 775 条）：
@@ -140,22 +141,31 @@ Astro 是静态站，`pubDatetime` 仅是元数据，不做定时发布。真正
 - **批量补注的装配方式**：不要子代理直接改正文 —— 让它只产出 `ANN = {"<id>": "…"}` 字典（本目录第六轮日志记了完整
   流程与坑），主代理用脚本插入，可保证「原问题文字零漂移 + 覆盖性可机器判定」。
   （上一版「顶部 621 与 B.4 的 P01=100 对不上」其实是 P01 = 90 连续 + EV01–10，只是统计表没写「构成」）。
-- **三层结构（本版新增，写进文档结构而非只在文字里提醒）**：L1 Architecture Review **91** 条（P00 全部 47 +
-  P02.0 8 + P07.1 12 + P13 12 + P14.1 12，Architecture Board 逐条开会）/ L2 Control Checklist **462** 条 /
-  L3 Implementation & Evidence **41** 条（P02.9 16 + P11 19 + P12 的 manifest·evidence 6）+ 附录 A 181 条。
-  每节标题下标注层归属，定义与归属表见 **附录 B.11**。
+- **三个 Review Depth + L1 的两个 Stage（第三轮定型，别再改回「互斥分类」）**：
+  L1 / L2 / L3 **不是三个互斥的问题类别，而是同一个 control 的三个 review depth** ——
+  `L1 Decision`（为什么需要它 / 风险接受什么 / 边界划在哪）→ `L2 Design`（怎么设计 / 谁负责 / 失效怎么办）→
+  `L3 Evidence`（是否真的实现 / 用什么证明）。所以「Tool Authorization 属于哪一层」的正确答案是**三层都有**，
+  只能标注「主要落在哪一层」。规模：L1 **92** 条（P00 全部 48 + P02.0 8 + P07.1 12 + P13 12 + P14.1 12）/
+  L2 **462** 条 / L3 **41** 条（P02.9 16 + P11 19 + P12 的 manifest·evidence 6）+ 附录 A 181 条（A.1 / A.4 属 L1）。
+  L1 再按 **Stage** 切：`INIT` 48（P00 全部）/ `DESIGN` 20（P02.0 + P14.1）/ `PRE-PROD` 24（P07.1 + P13），
+  与 P00.6 的两个 Gate 对齐（INIT ↔ Discovery、PRE-PROD ↔ Production）。定义与归属表见 **附录 B.11**，
+  每节标题下标注「主要 depth」，L1 章节另标 Stage。
 - **P00 — Architecture Foundation（框架中立层，放在六支柱之前）**：
   `P00.1 Business Problem & Outcome（P00-01…05）`、`P00.2 Context & Constraints（06…11）`、
-  `P00.3 Architecture Approach（12…16）`、`P00.4 Decision & Trade-offs（17…20）`、
-  `P00.5 Input / Output Contract（21…23，本轮新增）`＋`P00.6 Architecture Decision Gate`、`P00.7 Review Artifact`。
-  **23 条全部框架中立**（不含 Agent / LLM / MCP / autonomy 专有判断）；Agent / AI 判断全部下沉到 `P00.A`
-  （上一版宣称中立但 P00-12 / P00-13 / P00.5 三处含 Agent 判断，本轮改正）。
+  `P00.3 Architecture Approach（12…16）`、`P00.4 Decision & Trade-offs（17…21）`、
+  `P00.5 Input / Output Contract（22…24）`＋`P00.6 Architecture Decision Gate`、`P00.7 Review Artifact`。
+  `P00-21`（第三轮新增，P0 + R）= **Decision / Decision Owner / Decision Authority / Decision Date / Decision Record**，
+  并写明 **Decision Owner ≠ Stakeholder**（前者有权拍板、后者被结果影响）；「最容易被跳过的问题」因此从四个变五个。
+  **24 条全部框架中立**（不含 Agent / LLM / MCP / autonomy 专有判断）；Agent / AI 判断全部下沉到 `P00.A`。
+  `P00-13` 措辞已从「确定性 vs 非确定性」改为「哪些步骤要求确定性、可验证、可重复，哪些允许概率性、开放式、自适应」
+  （因为 Search / ML classification / Optimization / LLM generation 都不是 deterministic，但都不需要 Agent）。
   **Buy / Reuse / Extend / Build 是并列 alternatives，不是「四级台阶」**，配 decision matrix 与 Do Nothing 一列。
   **Gate 分两级**：Discovery Gate（P0 全 answered，或归入 Accepted assumption / Validation required → 可进
   详细设计 + PoC + P01–P14）与 Production Gate（P0 全 answered 且验证项已关闭 → 才可上生产）。
 - **`P00.A Agent / AI Architecture Decision`**：Agent / AI 判断的唯一落点，含
   `P00.A.1 Architecture Decision Chain（AD01–AD14）` 与 `P00.A.2 Business / User Outcome（BO01–BO10）`。
-  决策链**不再二元**：现有方案能否解决 → 是否需要 AI → 最低 AI 档位（ML / LLM / RAG / Agent）→ 是否需要 autonomy；
+  决策链是**七级显式终止式**（现有方案能否解决 → 是否真的需要 AI → 哪一类 AI → 是否需要生成式 / 开放式能力 →
+  是否必须 autonomy → 单 Agent 是否足够 → multi-agent 是否成立），**每一步都写明「停：…」，可以随时终止**；
   **Agent 是最后一档而不是 AI 场景的默认答案**。判据参考 AWS Responsible AI Lens 的 use case 顺序（只借顺序，不加检查项）。
 
 - 另有 `P02.0 Threat Modeling / Abuse Case（TM01–TM08）`（先写攻击者能做什么；TM05 = 被完全控制时最大影响）、
@@ -169,22 +179,27 @@ Astro 是静态站，`pubDatetime` 仅是元数据，不做定时发布。真正
   `2.2 Architecture Decision Gates（ADG01–ADG04，即原 INV19–22）`（Fail = 准入不通过）。
   INV08 / INV12 / INV14 标 `[RA]` 并改条件措辞（「超出已接受风险等级的动作」「按风险等级所需的深度可重建」），
   避免把「最强控制」写成所有 workload 的绝对要求；P01.2 的 system prompt、P02.4 的 system objective 同步去绝对化。
-- **条目元数据**：`[R]` Required / `[RA]` Required when applicable / `[Rec]` Recommended；默认 P0 → R，P1 / P2 → Rec；
+- **条目元数据**：`[R]` Required / `[RA]` Required when applicable / `[Rec]` Recommended；默认 P0 → R，P1 / P2 → Rec。
   多列表里单列「级别」列，逐条编号里用行内 `[RA]`。
+  **`Priority` 与 `Requirement Level` 是两个维度、不能互推**（第三轮明确）：`P0+P1` × `R/RA/Rec` 五种组合全部合法，
+  `P1 + R` 合法；默认映射只作「未标注时的推定规则」，不要把 P0 读成「必须有」、P1/P2 读成「推荐」。
 - **评分方式改为多维度**（原「`3 + E` 才算可信的 Pass」作废）：`Maturity 0–5` + `Evidence Present/Partial/Missing` +
   `Risk` + `Applicability` → `Result Pass/Partial/Gap/N/A`，并给出 5 条判定规则
   （`Risk = Critical` 不得只凭 Maturity 判 Pass）。
 - **框架与 Checklist 解耦**：`附录 B.10 跨框架映射` —— Microsoft Agent Architecture（→P00.A）、
   OWASP GenAI（→P02.0）、CNCF（→P14.2–14.4）、ATAM / ADR / AWS Prescriptive Guidance（→P00）并入；
   **NIST AI RMF 与 AWS Responsible AI Lens 只做交叉引用 / 借判断顺序，不新增章节**。参考补到 `[1]–[33]`。
-- **交付形态：正文只放清单，方法说明全部后置为附录**。骨架 = 导语（三层结构 + 依据 + 规模）
-  → `# 一、Checklist 主表（P00 + P01–P14，594 项）`（P01 降 H2、P01.1 降 H3）
+- **交付形态：正文只放清单，方法说明全部后置为附录**。骨架 = 导语（三个 review depth + 两个 Stage + 依据 + 规模）
+  → `# 一、Checklist 主表（P00 + P01–P14，595 项）`（P01 降 H2、P01.1 降 H3）
   → `# 二、Architecture Invariants 与 Decision Gates`
   → `# 附录 A — 上一版保留项（A01..A181，不计入主表）`
-  → `# 附录 B — 评审框架与说明`（B.1 分层结构 / B.2 记录字段+Level·Requirement / B.3 评分方式 /
-  B.4 总览 + 编号总账 / B.5 P0 十项红线 + 准入前置 / B.6 6 个关键证明问题 / B.7 评分板 /
-  B.8 与 AWS WAF 关系 / B.9 版本差异（含「本轮结构修正」10 条）/ B.10 跨框架映射 /
-  B.11 三层结构 / B.12 编号变更对照）→ `# 参考`
+  → `# 附录 B — 评审框架与说明`（B.1 分层结构：Review Depth 与 Stage / B.2 记录字段+Depth·Stage·Requirement /
+  B.3 评分方式 / B.4 总览 + 编号总账（**唯一权威数字来源**）/ B.5 P0 十项红线 + 准入前置 /
+  B.6 6 个关键证明问题 / B.7 评分板 / B.8 与 AWS WAF 关系 /
+  B.9 版本演进记录（389 → 594 → 595，含两轮「本轮修正」表）/ B.10 跨框架映射 /
+  B.11 三个 Review Depth 与 L1 的两个 Stage / B.12 编号变更对照）→ `# 参考`
+- **统计数字是 informational metadata，不是文档结构**：增删条目只更新 B.4 的编号总账表，其他位置的数字允许滞后。
+  文档的核心是 **ID · Section · Depth · Stage · Requirement · Risk** 六件事，不要为了同步「现在是 595 条」而全库改数。
 - 已删除的对话与起草过程语（9 处）：开篇「可以。基于你们现在的实际架构…」、
   P01.2 / P01.6 / P02.1 / P02.7 / P08.7 / P13 的「上一版…」比较句、P01.4 的
   「你们已经决定 MCP…」及其架构决策 blockquote、P01.5 的「你们已经有 LangSmith…」；

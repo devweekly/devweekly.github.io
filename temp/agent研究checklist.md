@@ -9,27 +9,60 @@
 | Financial Services Industry Lens | 2026-01-27 修订 |
 | Responsible AI Lens | 仅借用其 use case 判断顺序，见 [30]–[33] |
 
-## 三层结构：同一份文档，三种用法
+## 三个 Review Depth：同一份文档，三种读法
 
-条目总量已经很大，因此本版**在文档结构上**把三种性质不同的问题分开，而不是只在文字里提醒「不要拿全部条目开会」：
+条目总量已经很大，因此本版**在文档结构上**把三种读法分开，而不是只在文字里提醒「不要拿全部条目开会」。
 
-| 层 | 名称 | 回答什么 | 规模 | 谁用 / 什么时候用 |
+**L1 / L2 / L3 不是三个互斥的问题类别，而是同一个 control 的三个 review depth。**
+一个控制天生跨三层，只是每一层问的问题不同：
+
+```text
+[L1] Decision    为什么需要它 / 是否需要它 / 风险接受什么 / 边界划在哪
+        ↓
+[L2] Design      怎么设计 / 控制放在哪一层 / 谁负责 / 失效时怎么办
+        ↓
+[L3] Evidence    是不是真的实现了 / 用什么证明 / 能不能被第三方复核
+```
+
+所以「Tool Authorization 属于哪一层」的正确答案是**三层都有**，只是问法不同：
+
+| Depth | Tool Authorization 在这一层问什么 |
+| --- | --- |
+| L1 Decision | 为什么要独立的 tool 授权、风险接受边界在哪、谁有权批 |
+| L2 Design | 授权判定放在哪一层、与 Agent identity / entitlement 怎么衔接、fail-open 还是 fail-closed |
+| L3 Evidence | 运行时配置是否真的阻断、有没有拒绝样本、日志能不能复现 |
+
+| Depth | 名称 | 回答什么 | 当前规模 | 谁用 / 什么时候用 |
 | --- | --- | --- | ---: | --- |
-| **L1** | Architecture Review | 做什么、边界在哪、最坏情况多大、是否继续 | 91 条 | Architecture Board 会议：进入设计前、上生产前各一次 |
-| **L2** | Architecture Control Checklist | 设计里有没有这个控制、是否落在正确的位置 | 462 条 | 架构 / 安全 / 可靠性 / 数据 owner 在设计阶段按 Pillar 分工逐条走 |
-| **L3** | Implementation / Evidence Checks | 实现是否正确、证据是否可得 | 主表 41 条（另附录 A 181 条） | 实现方与审计方在代码、配置、artifact 层面核对 |
+| **L1** | Architecture Decision Review | 做什么、边界在哪、最坏情况多大、是否继续 | 92 条 | Architecture Board，按 Stage 分次 |
+| **L2** | Architecture Control Design | 设计里有没有这个控制、是否落在正确位置 | 462 条 | 架构 / 安全 / 可靠性 / 数据 owner，按 Pillar 分工在会前走完 |
+| **L3** | Implementation Evidence | 实现是否正确、证据是否可得 | 主表 41 条（另附录 A 181 条） | 实现方与审计方，在代码 / 配置 / artifact 层面 |
 
-分层判据只有一条 —— **这条问题需要「决策」还是只需要「核对」**：需要决策的进 L1，需要在设计上对照的进 L2，需要看代码 / 配置 / 产物的进 L3。
+> 各节标题下标注的层，指的是**该节问题主要落在哪一层**，不是「它只属于这一层」。
+> 节内例外（如 P02.9、P12 的 evidence 类条目）在节内单独标注。
 
-L1 的构成：P00 全部（47）＋ P02.0 威胁模型（8）＋ P13 多租户模型（12）＋ P07.1 风险与监管治理（12）＋ P14.1 平台边界与多 Runtime（12）＝ 91 条。
-每节标题下标注该节的默认层，节内例外（如 P02.9、P12 的 evidence 类条目）在节内单独标注。
+**规模数字是说明性元数据（informational metadata），不是文档结构。** 唯一权威来源是 **B.4 的编号总账表**；
+正文其他位置出现的计数若与 B.4 不一致，以 B.4 为准；新增或删除几条不应引发全文数字同步。
 
-| 部分 | 内容 | 规模 |
+### L1 的两个 Stage
+
+L1 的 92 条不在同一次会议上读 —— 「进入设计前」与「上生产前」要问的不是同一批问题：
+
+| Stage | 名称 | 读什么 | 通过后允许 |
+| --- | --- | --- | --- |
+| **INIT** | Architecture Initiation | Problem / Outcome / Context / Constraints / Alternatives / Buy-Build-Reuse / 架构边界 / 主要风险（P00 全部 48 条） | 进入详细架构设计、PoC / Spike / Pilot |
+| **DESIGN** | Design Convergence | 威胁模型、Runtime 边界（P02.0 8 条 + P14.1 12 条） | 设计定稿，实现按各 Pillar owner 推进 |
+| **PRE-PROD** | Production Approval | 治理与监管、多租户、生产就绪（P07.1 12 条 + P13 12 条） | 上生产 |
+
+> 一次评审可以只走一个 Stage。INIT 未通过不应进入 DESIGN；PRE-PROD 未通过不应上生产（与 P00.6 的两个 Gate 对应）。
+> L2 / L3 不设 Stage —— 它们分别在设计期与实现期持续进行，按 owner 分工而不是按会议节奏。
+
+| 部分 | 内容 | 规模（口径见 B.4） |
 | --- | --- | ---: |
-| 一、Checklist 主表 | P00 Architecture Foundation + P01–P14 | 594 项 |
+| 一、Checklist 主表 | P00 Architecture Foundation + P01–P14 | 595 项 |
 | 二、Architecture Invariants / Decision Gates | Non-Negotiable，Fail 即阻断 | 18 + 4 条 |
 | 附录 A | 上一版实现层与细项保留，不计入主表 | 181 项 |
-| 附录 B | 评审框架与分层、记录字段、评分方式、P0 优先项、评分板、与 AWS WAF 的关系、跨框架映射、三层结构、编号变更 | — |
+| 附录 B | 评审框架与分层、记录字段、评分方式、P0 优先项、评分板、与 AWS WAF 的关系、跨框架映射、review depth 与 Stage、编号变更 | — |
 
 记录字段与评分方式见 附录 B；每条问题的阅读方式（`应为` / `达标线`）见「编号约定」；引用编号 `[n]` 对应文末「参考」。
 
@@ -61,7 +94,7 @@ L1 的构成：P00 全部（47）＋ P02.0 威胁模型（8）＋ P13 多租户�
 
 ---
 
-# 一、Checklist 主表（P00 + P01–P14，594 项）
+# 一、Checklist 主表（P00 + P01–P14，595 项）
 
 ## 编号约定
 
@@ -84,6 +117,21 @@ L1 的构成：P00 全部（47）＋ P02.0 威胁模型（8）＋ P13 多租户�
 | `[Rec]` | Recommended | 推荐；不作为 Pass 阻断条件 |
 
 未标记者默认按 Priority 处理：P0 视为 `[R]`，P1 / P2 视为 `[Rec]`。
+
+> **Priority 与 Requirement Level 是两个维度，不能互相推导。**
+> `Priority` 回答的是「为什么现在必须处理」（时间与排期），`Requirement` 回答的是「是否必须具备」（存在与否）。
+> 下面这些组合全部合法，需要时应当直接这样写：
+
+| 组合 | 含义 | 例子 |
+| --- | --- | --- |
+| `P0 + R` | 关键，且必须具备 | Tool authorization、retrieval entitlement |
+| `P0 + RA` | 关键，但只在特定架构形态或监管条件下适用 | 存在监管保留义务时的不可变日志 |
+| `P1 + R` | 非本期最关键，但一旦适用即必须具备 | 非关键业务的 SoD 互斥 |
+| `P1 + RA` | 非关键，且条件适用时才需要 | 跨境部署下的数据驻留控制 |
+| `P1 + Rec` / `P2 + Rec` | 改进项，不阻断 Pass | 观测面板优化、成本归因细化 |
+
+> 因此 **`P1 + R` 是合法状态**。不要把 `P0` 读成「必须有」、把 `P1` / `P2` 读成「推荐」——
+> 默认映射只是一条**未标注时的推定规则**，不是两个维度的换算公式。
 
 写法：多列表里级别写进独立的「级别」列（`R` / `RA` / `Rec`）；逐条编号（P01–P14）里级别以 `[RA]` 直接跟在条目末尾，
 其余条目按上面的默认规则推定。
@@ -110,19 +158,22 @@ P00 Architecture Foundation（框架中立）
 ├── 2. Context & Constraints         → P00.2（P00-06…P00-11）
 ├── 3. Current State                 → P00.1 / P00.3（P00-04、P00-12、P00-14）
 ├── 4. Architecture Approach         → P00.3（P00-12…P00-14）
-├── 5. Input / Output Contract       → P00.5（P00-21…P00-23）
-├── 6. Alternatives & Trade-offs     → P00.3 / P00.4（P00-14、P00-15、P00-17、P00-18）
-├── 7. Buy / Build / Reuse           → P00.3（P00-15）
-├── 8. Risk / Assumptions            → P00.2 / P00.4（P00-11、P00-19）
-└── 9. Evolution / Exit              → P00.4（P00-20）
+├── 5. Decision Ownership            → P00.4（P00-21）
+├── 6. Input / Output Contract       → P00.5（P00-22…P00-24）
+├── 7. Alternatives & Trade-offs     → P00.3 / P00.4（P00-14、P00-15、P00-17、P00-18）
+├── 8. Buy / Build / Reuse           → P00.3（P00-15）
+├── 9. Risk / Assumptions            → P00.2 / P00.4（P00-11、P00-19）
+└── 10. Evolution / Exit             → P00.4（P00-20）
 
         ▼
 P00.A Agent / AI Architecture Decision（Agent / AI 场景展开：AD / BO）
 ```
 
-**这一层的框架中立性**：P00.1–P00.7 的 23 条问题里**没有一条**包含 Agent / LLM / MCP / autonomy 的专有判断，
+**这一层的框架中立性**：P00.1–P00.5 的 24 条问题里**没有一条**包含 Agent / LLM / MCP / autonomy 的专有判断，
 因此同一套问题可以直接用于数据平台、API 平台、投资业务系统或普通企业应用评审。
 所有 Agent / AI 相关的判断**全部下沉到 P00.A**，评审非 Agent 平台时整节跳过。
+
+> **层**：L1（Stage: INIT）—— 本节全部问题属 Architecture Decision Review，在进入详细设计前一次读完。
 
 > 上一版把这条界线划在「20 条里只有 P00-13 涉及 Agentic / AI」，但原 P00-12（问「是否需要新的系统 / 平台 / Agent」）
 > 与原 P00.5（Gate 里的「什么可以交给 Agent / AI」）实际都在做 Agent 判断。
@@ -167,10 +218,16 @@ manual reconciliation ↓
 | ID | Architecture Review Question | Priority | 级别 | 应为 / 达标线 |
 | --- | --- | --- | --- | --- |
 | P00-12 | 这个问题是否**真的需要新的系统 / 平台**？是否可以通过现有系统、流程、配置或组织流程解决？ | **P0** | R | 应为：应有，先证明现有手段不足 ｜达标线：逐一说明现有系统、流程、配置为何不可行；跳过现状直接选型不算达标 |
-| P00-13 | 哪些部分必须是**确定性（deterministic）**的，哪些部分才允许非确定性行为？（Agent 场景见 P00.A） | **P0** | R | 应为：应有，明确划分确定性与非确定性部分 ｜达标线：逐步骤标注确定性 / 非确定性及边界依据；只写原则不给步骤清单不算达标 |
+| P00-13 | 哪些步骤要求**确定性、可验证、可重复**的行为？哪些步骤允许**概率性、开放式或自适应**行为？（Agent 场景见 P00.A） | **P0** | R | 应为：应有，逐步骤判定所需行为的性质 ｜达标线：按规则执行 / 预测 / 搜索 / 生成 / 开放式推理逐类标注；只写二分不算达标 |
 | P00-14 | 是否评估过至少一个**不采用当前架构**的可行替代方案，包括「什么都不做 / 改造现有系统 / 购买现成能力」？ | **P0** | R | 应为：应有，至少评估一个非当前方案 ｜达标线：把什么都不做与改造现有系统一并比较；只列当前方案优点不算达标 |
 | P00-15 | 是否在 **Buy / Reuse / Extend / Build** 之间做过比较，并说明**为什么在多项 alternatives 中选择当前方案**？（答案完全可能是 Buy 或 Reuse，而不是 Build） | **P0** | R | 应为：应有，四类选项与现状同表比较 ｜达标线：表内含成本、时间、控制力与 lock-in 维度；只比较 Buy 与 Build 不算 |
 | P00-16 | 当前方案是否已经复杂到超过业务问题本身？是否存在明显的过度设计（over-engineering）？ | P1 | Rec | 应为：可选，但明显过度需在评审中阻断 ｜达标线：复杂度高于业务问题即记录并给出简化路径；只写复杂度合理不算达标 |
+
+> **「确定性 vs 非确定性」这个说法本身也容易误导。** 真正要判断的不是「能不能写成规则」，而是
+> **需要什么性质的决策**：规则执行 / 预测 / 分类 / 搜索 / 生成 / 开放式推理 / 规划 / 自主执行。
+> Search、ML classification、Optimization、LLM generation 都不是 deterministic，但它们都不需要 Agent。
+> 因此本组问的是「哪些步骤要求确定性、可验证、可重复，哪些允许概率性、开放式、自适应」，
+> 具体能力档位的判断见 P00.A。
 
 **Buy / Reuse / Extend / Build 是四类 alternatives，不是一条四级台阶。**
 
@@ -208,13 +265,38 @@ Business Need ──────┼── Extend（扩展已有平台）
 | P00-18 | 当前方案与主要替代方案相比，核心 **trade-offs** 是什么？牺牲了什么，又换来了什么？ | **P0** | R | 应为：应有，写清牺牲了什么换来了什么 ｜达标线：与主要替代方案逐项对照并标注代价；只列优点清单不算达标 |
 | P00-19 | 哪些架构决策是**难以逆转 / 高切换成本**的？是否应该先做 PoC / Spike / Pilot 来降低不确定性？ | P1 | R | 应为：应有，标出难逆决策并安排 PoC ｜达标线：每个高切换成本项对应 Spike 或 Pilot 与期限；只写后续验证不算达标 |
 | P00-20 | 如果未来业务、监管、Vendor、模型、成本或规模发生变化，架构如何演进？是否存在迁移路径、退出策略或可逆方案？ | **P0** | R | 应为：应有，给出迁移路径与退出策略 ｜达标线：针对 Vendor、模型、监管变化分别给可逆方案；只写架构可扩展不算达标 |
+| P00-21 | 本次架构需要做出的**关键决策**有哪些？每项决策的 Decision Owner、批准权限、决策时间与决策记录分别是什么？ | **P0** | R | 应为：应有，逐决策指名 owner 与批准权限 ｜达标线：决策清单标 owner、权限、日期与 ADR 落点；只列 stakeholder 不算达标 |
 
-四个最容易被跳过的问题，共同点是：**不写进评审材料时决策看起来仍然完整，但事后无法复核**。
+五个最容易被跳过的问题，共同点是：**不写进评审材料时决策看起来仍然完整，但事后无法复核**。
 
 - **Current State** —— 现有系统为什么不够。方案讨论常常直接从目标架构开始，跳过了「为什么变」。[27]
 - **Alternatives** —— 为什么不是 B / C / D，包括「什么都不做」。[25]
 - **Buy / Build / Reuse** —— 为什么选当前那一项，而不是购买、复用或扩展现有能力。
+- **Decision Ownership** —— 这轮评审具体要定哪些决策、谁有权定、定了记在哪（P00-21）。
 - **Exit / Reversibility** —— 判断错了怎么退出。对第三方 Critical Service，退出策略本身可能就是架构要求。[29]
+
+**Decision Owner 不等于 Stakeholder。** Stakeholder 是会被结果影响的人，Decision Owner 是有权拍板的人，
+两者经常不是同一个人。一个企业 Agent 项目可能同时存在 Business Owner、Technology Owner、Security、
+Risk、Data Owner、Architecture Board、Procurement、Legal —— 但下面这些问题各有各的答案：
+
+```text
+能不能使用某个外部模型 Provider        → 谁批？
+能不能让 Agent 直接写 CRM / 核心系统     → 谁批？
+这个残余风险能不能接受                  → 谁签字？
+```
+
+决策建议记录成五要素，缺任何一项都不算「决策已做出」：
+
+```text
+Decision              要定什么
+Decision Owner        谁负责推动、谁提交材料
+Decision Authority    谁有权批准（可能是委员会，不是个人）
+Decision Date         什么时候必须定（与 P00-10 的 timeline 对齐）
+Decision Record       记在哪（ADR / 评审纪要 / Registry），后续如何被引用
+```
+
+> 这一条与 P00-02（Stakeholder）互补，也解释了为什么不少架构评审「材料齐全但仍然推不动」——
+> 问题不是缺分析，而是**没有一个具名的、有权限的人在某个日期之前必须签字**。
 
 ### P00.5 Input / Output Contract
 
@@ -224,11 +306,11 @@ Business Need ──────┼── Extend（扩展已有平台）
 
 | ID | Architecture Review Question | Priority | 级别 | 应为 / 达标线 |
 | --- | --- | --- | --- | --- |
-| P00-21 | 系统的**主要 Business Inputs 和 Business Outputs** 是什么？（用业务语言描述，不是 schema） | **P0** | R | 应为：应有，用业务语言描述输入输出 ｜达标线：输入输出各列语义、来源与使用者；只贴 schema 或接口定义不算达标 |
-| P00-22 | 这些 Inputs 在现实环境中会发生哪些**变化、异常或缺失**？（不完整、过期、格式不一致、来源不可信、量级突变、合规受限） | **P0** | R | 应为：应有，覆盖缺失、过期、量级突变等形态 ｜达标线：per 输入源列异常形态与降级行为；只写数据质量可能有问题不算达标 |
-| P00-23 | Outputs 将被**谁使用**？会触发什么后续行为、决策或 side effect？ | **P0** | R | 应为：应有，追到下游决策与 side effect ｜达标线：输出映射到人 / 系统动作 / 交易 / 对外沟通；只停在供参考不算达标 |
+| P00-22 | 系统的**主要 Business Inputs 和 Business Outputs** 是什么？（用业务语言描述，不是 schema） | **P0** | R | 应为：应有，用业务语言描述输入输出 ｜达标线：输入输出各列语义、来源与使用者；只贴 schema 或接口定义不算达标 |
+| P00-23 | 这些 Inputs 在现实环境中会发生哪些**变化、异常或缺失**？（不完整、过期、格式不一致、来源不可信、量级突变、合规受限） | **P0** | R | 应为：应有，覆盖缺失、过期、量级突变等形态 ｜达标线：per 输入源列异常形态与降级行为；只写数据质量可能有问题不算达标 |
+| P00-24 | Outputs 将被**谁使用**？会触发什么后续行为、决策或 side effect？ | **P0** | R | 应为：应有，追到下游决策与 side effect ｜达标线：输出映射到人 / 系统动作 / 交易 / 对外沟通；只停在供参考不算达标 |
 
-P00-23 是连接后面 Agent autonomy / action risk 的关键问题，必须追到下游：
+P00-24 是连接后面 Agent autonomy / action risk 的关键问题，必须追到下游：
 
 ```text
 Output
@@ -312,6 +394,8 @@ Migration / Exit / Evolution
 P00.1–P00.7 保持框架中立；本节是所有 Agent / AI 专有判断的**唯一落点**，
 只要评审对象含 Agent / AI 就必须启用，评审非 Agent 平台时整节跳过。
 
+> **层**：L1（Stage: INIT）
+
 顺序上参考 AWS Responsible AI Lens 的 use case 序列：先明确 specific problem、stakeholders、inputs / outputs，
 再判断**是否真的需要 AI、需要哪一类 AI**，最后才谈架构与 human oversight。[30][31][32]
 其起点是「先验证传统软件甚至人工流程是否已经足够」。[31]
@@ -335,22 +419,40 @@ Can this be deterministic?
 ```text
 Business problem
       ↓
-1. 现有流程 / 现有系统 / 配置 能否解决？
-        Yes → existing solution（到此结束）
+1. 现有流程 / 现有系统 / 配置能否解决？
+        Yes → 停：existing solution
         No  → 继续
       ↓
 2. 是否真的需要 AI？
-        No  → non-AI engineering（rules / search / optimisation / statistics）
+        No  → 停：non-AI engineering（rules / search / optimisation / statistics）
         Yes → 继续
       ↓
-3. 能满足要求的最低 AI 能力档位是什么？
-        traditional ML → LLM → RAG → Agent
+3. 需要哪一类 AI：traditional ML / generative AI / agentic AI？
+        traditional ML 够用 → 停：predictive / classification model
         （取最低档；选更高档必须写出否决更低档的理由）
       ↓
-4. 是否必须 autonomy？
-        No  → AI-assisted workflow：AI 只是 deterministic workflow 里的一个节点
-        Yes → Agent / Hybrid
+4. 是否需要生成式 / 开放式能力？
+        No  → 停：LLM 只做受控转换，不做开放式生成
+        Yes → 继续
+      ↓
+5. 是否必须 autonomy？
+        No  → 停：AI-assisted workflow，AI 是 deterministic workflow 里的一个节点
+        Yes → 继续
+      ↓
+6. 单 Agent 是否足够？
+        Yes → 停：single agent + 明确的 tool / action 边界
+        No  → 继续
+      ↓
+7. Multi-agent 是否有不可替代的理由？
+        No  → 停：回到 single agent
+        Yes → multi-agent，且必须写出 ADR 与失败模式（P02.6 / P03.3）
 ```
+
+**每一步都可以终止，不需要走到底。** 这条链的形状不是「Agent 还能加多少能力」，而是
+「在能解决问题的最低一档停下来」—— 停在第 1 步和停在第 7 步的都是合格答案，区别只在于是否被证明过。
+AD01–AD14 对应该链的判断点：AD01–AD02 对应第 1–2 步，AD03–AD04 对应第 3 步，
+AD05–AD06 对应第 4 步，AD07–AD08 对应第 5 步，AD09–AD13 是 autonomy 的 action 边界，
+AD14 是「为用而用」的否决条件（对应第 6–7 步）。
 
 金融场景的两个对照：
 
@@ -359,7 +461,7 @@ Business problem
         第 1 步即终止：确定性流程即可完成，引入 Agent 只会增加不可解释性
 
 分析客户资料 → 检索研究 → 比较多个来源 → 形成观点 → 提出待查问题
-        第 2、3 步成立，第 4 步需单独论证 autonomy 是否必要：
+        第 2–4 步成立，第 5 步需单独论证 autonomy 是否必要：
         开放式检索、跨来源比较、生成待验证假设 —— Agent 的价值在这里
 ```
 
@@ -623,7 +725,7 @@ AGENTSEC09  Vulnerability / pentest
 
 ### P02.0 Threat Modeling / Abuse Case（TM01–TM08）
 
-> **层**：L1
+> **层**：L1（Stage: DESIGN）
 
 上面九组是「已经列出来的控制项」。这一组在它们之前：**先把攻击者能做什么写下来，再谈控制。**
 
@@ -1097,7 +1199,7 @@ risk acceptance authority、独立复核与三道防线、监管义务。
 
 ### P07.1 Risk & Regulatory Governance Delta
 
-> **层**：L1
+> **层**：L1（Stage: PRE-PROD）
 > **Base**：P01.1（问责与角色）
 > **Delta**：FSI 口径的风险治理角色、风险接受权、独立复核与三道防线
 
@@ -1466,7 +1568,7 @@ Knowledge Snapshot v12
 
 ## P13 — Multi-tenancy
 
-> **评审层**：L1（租户模型属架构决策）
+> **评审层**：L1（Stage: PRE-PROD；租户模型属架构决策）
 
 AWS Agentic AI Lens 已经把 multitenant performance isolation 单独列出来，本版据此将其提升为独立检查项。[9]
 
@@ -1487,7 +1589,7 @@ AWS Agentic AI Lens 已经把 multitenant performance isolation 单独列出来�
 
 ## P14 — Runtime / Snowflake / Multi-runtime
 
-> **评审层**：L2（其中 P14.1 属 L1）
+> **评审层**：L2（其中 P14.1 属 L1，Stage: DESIGN）
 
 这是你们自己的架构特有项，AWS Lens 不会替你们回答。分四组：runtime 抽象、运行时隔离、执行预算、生命周期与可移植性。
 
@@ -1619,11 +1721,11 @@ Architecture Board 应要求以下 **18 条全部 Pass**：
 | --- | --- | --- | --- | --- | --- |
 | ADG01 | A new system or platform shall not be introduced unless existing systems, processes and configuration have been evaluated and rejected with a documented reason. | 新建系统 / 平台之前，必须先评估并否决既有系统、流程与配置 | [R] | P00.3（P00-12） | 判据：有既有系统评估与否决理由，写在决策记录里可查 ｜典型 Fail：未评估既有系统即新建平台 |
 | ADG02 | Buying, reusing or extending existing capability shall be evaluated before building, and the reason for choosing the current option shall be recorded. | 自建之前必须完成 Buy / Reuse / Extend / Build 比较，并记录选择当前方案的理由 | [R] | P00.3（P00-15） | 判据：有 Buy / Reuse / Extend / Build 比较与选择理由留档 ｜典型 Fail：直接自建，无方案比较与理由 |
-| ADG03 | Every material architecture decision shall record its rationale, the alternatives considered and the accepted trade-offs. | 每个重大架构决策必须记录 rationale、替代方案与明确接受的 trade-offs | [R] | P00.4（P00-17 / P00-18） | 判据：重大决策有 rationale、替代方案与已接受 trade-offs 记录 ｜典型 Fail：只有结论，无替代方案与 trade-offs |
+| ADG03 | Every material architecture decision shall record its rationale, the alternatives considered and the accepted trade-offs. | 每个重大架构决策必须记录 rationale、替代方案与明确接受的 trade-offs | [R] | P00.4（P00-17 / P00-18 / P00-21） | 判据：重大决策有 rationale、替代方案与已接受 trade-offs 记录 ｜典型 Fail：只有结论，无替代方案与 trade-offs |
 | ADG04 | A production architecture shall have a documented evolution, migration and exit path. | 生产架构必须有明确的演进 / 迁移 / 退出路径 | [R] | P00.4（P00-20） | 判据：有演进、迁移与退出路径文档，含触发条件与责任人 ｜典型 Fail：只写愿景，无退出条件与迁移步骤 |
 
-ADG01–ADG04 与 P00 的六个问题（P00-12 / P00-13 / P00-15 / P00-17 / P00-18 / P00-20）互为表里：
-这六个问题同时是 **P0 检查项**与 **Gate 条件**。「为什么需要这个架构」「为什么不能用更简单的方案」
+ADG01–ADG04 与 P00 的七个问题（P00-12 / P00-13 / P00-15 / P00-17 / P00-18 / P00-20 / P00-21）互为表里：
+它们同时是 **P0 检查项**与 **Gate 条件**。「为什么需要这个架构」「为什么不能用更简单的方案」
 「为什么选 Build 而不是 Buy / Reuse」往往比后面任何一条技术检查更早决定架构是否值得继续，
 因此它们既进 P00 的问题清单，也进这条 Non-Negotiable 清单。
 
@@ -1634,7 +1736,7 @@ ADG01–ADG04 与 P00 的六个问题（P00-12 / P00-13 / P00-15 / P00-17 / P00-
 
 # 附录 A — 上一版保留项（181 项，不计入主表）
 
-不计入主表 594 项（层归属见 B.11：A.1 与 A.4 属 L1，其余属 L3）
+不计入主表（depth 归属见 B.11：A.1 与 A.4 属 L1，其余属 L3）
 
 分组如下：A.1 平台边界与 Runtime Abstraction、A.2 模型风险与模型注册、A.3 其他补充控制项、A.4 Use Case 治理与风险分级、A.5 身份与 Entitlement 细项、A.6 Tool 元数据与 MCP 治理模式、A.7 网络安全基线、A.8 容量与发布策略、A.9 第三方与供应链细项、A.10 其他零散保留项。
 
@@ -1642,7 +1744,7 @@ ADG01–ADG04 与 P00 的六个问题（P00-12 / P00-13 / P00-15 / P00-17 / P00-
 
 ## A.1 平台边界与 Runtime Abstraction
 
-> **层**：L1
+> **层**：L1（Stage: DESIGN）
 
 上一版把这一组列为「你们当前最重要的一组」。它不属于 AWS 任何一个 Lens，但直接决定 P14 能否成立。
 
@@ -1810,7 +1912,7 @@ A104. Skill 是否能执行任意 Python（若能，是否按 P0 处理并强制
 
 ## A.4 Use Case 治理与风险分级
 
-> **层**：L1
+> **层**：L1（Stage: INIT）
 
 本版 P07.1 只问到「是否定义 Agent risk classification」这一层，旧版更细的分级定义、触发条件与问责链条没有对应位置。
 
@@ -1936,7 +2038,7 @@ A181. 是否记录 Knowledge Source 的来源系统（source system）？ ｜应
 
 # 附录 B — 评审框架与说明
 
-## B.1 分层结构
+## B.1 分层结构：Review Depth 与 Stage
 
 最高层是「一个前置层 + 六支柱 + 两类 overlay + 一组不变量与准入 Gate」：
 
@@ -1975,7 +2077,8 @@ AWS 自己要求 Agentic AI Lens 与 Well-Architected Framework **配合**使用
 也不绑定具体领域：它回答的是「为什么做、在什么约束下做、为什么选择这个架构」，这是所有 Lens 之前的问题，
 方法上沿用 ATAM 的 business driver → quality attribute → trade-off 顺序，[25] 并借用 Responsible AI Lens 的 use case 顺序。[30]
 
-> 每一节标题下标注该节的默认评审层（L1 / L2 / L3），定义、归属表与使用方式见 **B.11**。
+> 每一节标题下标注该节**主要落在的 review depth**（L1 Decision / L2 Design / L3 Evidence）；L1 的章节另标 **Stage**。
+> 定义、归属表与使用方式见 **B.11**。
 
 ## B.2 每个问题的记录字段
 
@@ -1983,8 +2086,9 @@ AWS 自己要求 Agentic AI Lens 与 Well-Architected Framework **配合**使用
 
 | 字段 | 含义 |
 | --- | --- |
-| **Level** | L1 Architecture Review / L2 Control Checklist / L3 Implementation & Evidence（见 B.11） |
-| **Requirement** | R / RA / Rec（见「一、Checklist 主表」的条目元数据约定；默认 P0 → R，P1 / P2 → Rec） |
+| **Depth** | L1 Decision / L2 Design / L3 Evidence —— 同一 control 的三个 review depth（见 B.11）；标注的是「主要落在哪一层」，一条控制通常多层都有 |
+| **Stage** | INIT / DESIGN / PRE-PROD；只对 L1 有意义，L2 / L3 留空（见 B.11） |
+| **Requirement** | R / RA / Rec；与 Priority 是两个维度、不可互推（见「一、Checklist 主表」的条目元数据约定） |
 | **Applicability** | Applicable / N/A；判 N/A 必须写明理由，`[RA]` 条目还需 Architecture Board 确认 |
 | **Expectation** | 该问题末尾的「应为 / 达标线」口径；判定 Result 时的下限（见「条目阅读方式」） |
 | Status | ✅ Pass / 🟡 Partial / 🔴 Gap / ⚪ N/A |
@@ -2074,9 +2178,13 @@ Maturity
 
 ## B.4 总览：P00 + P01–P14 + Invariants / Gates
 
+**本表是全文唯一权威的编号总账。** 文中出现的条目计数属于**说明性元数据（informational metadata）**，不是文档结构：
+增删条目时只更新本表，头部 / B.11 等处的数字允许滞后一轮。文档的核心是
+**ID · Section · Depth · Stage · Requirement · Risk** 这六件事，而不是「现在是几百条」。
+
 | Pillar / 组 | 内容 | AWS Lens 对应 | 构成 | 检查项 |
 | --- | --- | --- | --- | ---: |
-| **P00** | Architecture Foundation（通用前置层） | 不属于任何 Lens（ATAM / ADR / AWS Prescriptive Guidance / Microsoft，见 B.10） | P00-01…23（23）+ AD（14）+ BO（10） | 47 |
+| **P00** | Architecture Foundation（通用前置层） | 不属于任何 Lens（ATAM / ADR / AWS Prescriptive Guidance / Microsoft，见 B.10） | P00-01…24（24）+ AD（14）+ BO（10） | 48 |
 | **P01** | Operational Excellence | Agentic AI Lens：AGENTOPS01–07 | `1`–`90`（90）+ P01.6 Evaluation Model EV01–EV10（10） | 100 |
 | **P02** | Security | Agentic AI Lens：AGENTSEC01–09 | `91`–`224`（134）+ P02.0 Threat Modeling TM01–TM08（8） | 142 |
 | **P03** | Reliability | Agentic AI Lens：AGENTREL02–06 | `225`–`289` | 65 |
@@ -2097,7 +2205,7 @@ Maturity
 
 | 段 | 编号 | 条数 |
 | --- | --- | ---: |
-| P00 框架中立问题 | P00-01…P00-23 | 23 |
+| P00 框架中立问题 | P00-01…P00-24 | 24 |
 | P00.A Agent / AI 场景展开 | AD01–AD14 | 14 |
 | P00.A Agent / AI 场景展开 | BO01–BO10 | 10 |
 | P01–P06 逐条 | `1`–`336` | 336 |
@@ -2105,7 +2213,7 @@ Maturity
 | P01.6 评估模型 | EV01–EV10 | 10 |
 | P07–P14 逐条 | `337`–`512` | 176 |
 | P14.2–P14.4 运行时 | RT01–RT17 | 17 |
-| **合计** | | **594** |
+| **合计** | | **595** |
 
 > 上一版顶部写主表 621 项，B.4 写 P01 为 100 项，而正文 P01 的连续编号是 `1`–`90`。
 > 两者其实一致 —— P01 的 100 = 90 条连续编号 + P01.6 Evaluation Model（EV01–EV10）10 条，
@@ -2164,10 +2272,10 @@ Enterprise Agent Platform Overlay（P10–P14）
 
 这十项里，P0-01 至 P0-04 建议先做，因为它们一旦建立，后面无论换成 AgentCore、Snowflake Cortex Agents 还是别的 LangChain，都不会改变核心安全架构。
 
-另有 **P00 Architecture Foundation（P00-01…P00-23 与 P00.A 的 AD / BO）和 P02.0（TM）属于用例准入前置**，不列入上表：它们不是控制点，而是「是否允许进入评审」。
-P00 中未回答的 P0 问题即 **Discovery Gate 未通过**（其中 P00-12 / 13 / 15 / 17 / 18 / 20 同时是 ADG01–ADG04 与 INV16），此时不应开始 P01–P14 的逐条评审；P02.0 未完成时，P02 的控制项无法判断覆盖是否充分。
+另有 **P00 Architecture Foundation（P00-01…P00-24 与 P00.A 的 AD / BO）和 P02.0（TM）属于用例准入前置**，不列入上表：它们不是控制点，而是「是否允许进入评审」。
+P00 中未回答的 P0 问题即 **Discovery Gate 未通过**（其中 P00-12 / 13 / 15 / 17 / 18 / 20 / 21 同时是 ADG01–ADG04 与 INV16），此时不应开始 P01–P14 的逐条评审；P02.0 未完成时，P02 的控制项无法判断覆盖是否充分。
 
-上表这 10 项构成本 Checklist 中 **L1 Architecture Review** 的控制主干；L1 的完整构成（91 条）见 B.11。
+上表这 10 项构成本 Checklist 中 **L1 Architecture Decision** 的控制主干；L1 的完整构成（92 条）与 Stage 划分见 B.11。
 
 ## B.6 6 个关键证明问题
 
@@ -2351,7 +2459,7 @@ Low
 
 ## B.8 评审执行结构：与 AWS Well-Architected 的关系
 
-不要把 594 道独立问题直接拿去开会。本版把层次做进了文档结构（B.11），会议只走 L1 的 91 条：
+不要把全部条目直接拿去开会。本版把 review depth 与 Stage 做进了文档结构（B.11），会议只走 L1，并按 Stage 再切一次：
 
 ```text
                Enterprise Agent Platform Review
@@ -2366,7 +2474,7 @@ Low
                              │
                    Internal Architecture
                              │
-                    594 detailed checks
+                    595 detailed checks
                              │
                 ┌────────────┴────────────┐
                 │                         │
@@ -2399,7 +2507,8 @@ P00 Architecture Foundation（准入前置，通用）
 二、Architecture Invariants（18）+ Decision Gates（4）
 ```
 
-会议只逐条读 L1；L2 由各 owner 在会前按 Pillar 提交结论与证据；L3 用抽查与抽样取证，不进会议议程。
+会议只逐条读 L1，且**一次只读一个 Stage**（INIT / DESIGN / PRE-PROD）；L2 由各 owner 在会前按 Pillar 提交结论与证据；
+L3 用抽查与抽样取证，不进会议议程。
 
 AWS 本身也明确建议用 Lens 来持续、系统地根据问题和最佳实践评估架构，而不是只做一次性设计审核。[19]
 
@@ -2409,7 +2518,7 @@ AWS 本身也明确建议用 Lens 来持续、系统地根据问题和最佳实�
 
 而不是一份一次性的 Architecture Review Document。这样以后新增 **Snowflake Cortex Agents、OpenAI Agents、其他 MCP 平台、其他模型 Provider**，仍然可以用同一套问题重新审核，而不需要重新设计评审方法。
 
-## B.9 本版相对上一版的变化
+## B.9 版本演进记录（389 → 594 → 595）
 
 上一版的 389 问题虽然很全面，但分类方式不够贴近 AWS 最新 Agentic AI Lens，而且漏掉了一些 Agent 特有的关键控制点。本版做了八处结构性调整：
 
@@ -2426,7 +2535,7 @@ AWS 本身也明确建议用 Lens 来持续、系统地根据问题和最佳实�
 
 规模变化：
 
-| 项 | 上一版 | 本版 |
+| 项 | 上一版（389） | 中间版（594） |
 | --- | ---: | ---: |
 | 最高层分类 | 14 个自定义 Pillars | P00 架构基础前置层 + AWS WAF 六支柱 + 两类 overlay（P01–P14）+ Invariants |
 | 检查项（主表，含 P00 / AD / BO / TM / EV / RT 组） | 389 | 594 |
@@ -2476,6 +2585,25 @@ AWS 本身也明确建议用 Lens 来持续、系统地根据问题和最佳实�
 
 编号逐段对照见 **B.12**。
 
+---
+
+### 本轮修正（594 → 595）：从「分类」转向「Review Depth」
+
+上一轮把条目分成 L1 / L2 / L3 三类，但一个控制天生跨三层，无法唯一归类。本轮不再扩充内容
+（仅 P00 +1 条），而是修正分层语义与评审节奏：
+
+| # | 修正 | 解决什么 | 落点 |
+| --- | --- | --- | --- |
+| 1 | **L1 / L2 / L3 改为同一 control 的三个 review depth**（Decision → Design → Evidence），不再当作互斥分类 | 原判据「需要决策的进 L1、需要核对的进 L3」无法回答「Tool Authorization 属于哪一层」—— 正确答案是三层都有，只是问法不同 | 头部 / B.11 / B.2 |
+| 2 | **L1 增加 `Stage`：INIT / DESIGN / PRE-PROD**，并切成 48 / 20 / 24 条 | 原 L1 混合了「进入设计前」与「上生产前」两个阶段，91 条要在同一次会议读完不现实 | 头部 / B.11 |
+| 3 | **P00 新增 `P00-21` Decision / Decision Owner / Decision Authority** | 原 P00 有 stakeholder，但没有「这轮要定哪些决策、谁有权定、定在哪、什么时候定」—— 架构评审最常见的落地断点 | P00.4 / P00-21 |
+| 4 | **明确 `Priority ≠ Requirement Level`**，列出 `P0 / P1` × `R / RA / Rec` 的全部合法组合 | 原「未标记时 P0 → R、P1 / P2 → Rec」容易被读成「P0 就是必须有、P1 就是推荐」，`P1 + R` 反而像非法状态 | 编号约定 / B.2 |
+| 5 | **P00-13 去掉「确定性 vs 非确定性」二分**，改为「哪些步骤要求确定性、可验证、可重复，哪些允许概率性、开放式、自适应」 | Search / ML classification / Optimization / LLM generation 都不是 deterministic，但都不需要 Agent；二分法仍会误导选型 | P00.3（P00-13） |
+| 6 | **P00.A 决策链改为显式终止式（7 级）**，写明每一步都可终止 | 原链只有四档且未写明「可以停在哪一步」，容易被读成「逐级加码直到 Agent」 | P00.A.1 |
+| 7 | **统计数字定位为 informational metadata**，唯一权威来源为 B.4 编号总账 | 每次增删条目都要同步顶部 / Layer / Pillar / 附录六处数字，维护成本高于收益 | B.4 / B.11 |
+
+规模变化：主表 594 → 595（P00 23 → 24）；L1 91 → 92，并按 Stage 切成 INIT 48 / DESIGN 20 / PRE-PROD 24。
+
 ## B.10 跨框架映射：一份 Checklist，多套 Framework
 
 框架数量增加不等于覆盖增加。**本 Checklist 只保留一份检查项，其他框架以映射方式接入**：
@@ -2505,7 +2633,7 @@ NIST AI RMF Core 的映射：[23]
 > 判断标准只有一条 —— **纳入新框架时先问「能不能落到已有 Pillar」：能落就不新增章节，落不进去才说明发现了真实缺口。**
 > 平台团队职责与平台能力的定义参考 CNCF 的平台白皮书。[24]
 >
-> P00 是本 Checklist 中唯一与领域无关的一层：P00-01…P00-23 **全部框架中立**，
+> P00 是本 Checklist 中唯一与领域无关的一层：P00-01…P00-24 **全部框架中立**，
 > 不含 Agent / LLM / MCP / autonomy 的专有判断；Agent / AI 相关的判断全部集中在 P00.A。
 > 因此 P00.1–P00.7 可以先于具体领域独立使用，直接套在数据平台、API 平台或核心业务系统评审上。
 >
@@ -2515,30 +2643,56 @@ NIST AI RMF Core 的映射：[23]
 
 ---
 
-## B.11 三层结构：Architecture Review / Control Checklist / Implementation & Evidence
+## B.11 三个 Review Depth 与 L1 的两个 Stage
 
 条目达到几百条之后，真正的问题不再是覆盖不足，而是**同一份文档被三种人用三种方式读**。
-本版把层写进文档结构（每节标题下标注），而不是只在文字里提醒。
+本版把 depth 与 Stage 写进文档结构（每节标题下标注），而不是只在文字里提醒。
 
-| 层 | 名称 | 回答什么 | 主表规模 | 使用者与时机 | 通过标准 |
+**L1 / L2 / L3 不是三个互斥的问题类别，而是同一个 control 的三个 review depth。**
+「Tool Authorization」在三层分别问「为什么需要它」「怎么设计它」「是否真的生效」，
+所以任何条目只能标注它**主要**落在哪一层，不能断言它只属于那一层。
+一个 control 的完整评审路径是：
+
+```text
+Architecture decision  →  Control design  →  Implementation evidence
+        (L1)                   (L2)                    (L3)
+```
+
+| Depth | 名称 | 回答什么 | 主表规模 | 使用者与时机 | 通过标准 |
 | --- | --- | --- | ---: | --- | --- |
-| **L1** | Architecture Review | 做什么、边界在哪、最坏情况多大、是否继续 | 91 条 | Architecture Board；进入设计前 + 上生产前各一次 | 逐条讨论并给结论，不做百分比 |
-| **L2** | Architecture Control Checklist | 设计里有没有这个控制、是否落在正确位置 | 462 条 | 架构 / 安全 / 可靠性 / 数据 owner，按 Pillar 分工在会前走完 | 按 B.3 的 Result 判定 |
-| **L3** | Implementation / Evidence Checks | 实现是否正确、证据是否可得 | 41 条（另附录 A 181 条） | 实现方 + 审计方，在代码 / 配置 / artifact 层面 | 抽查 + 抽样取证，不进会议议程 |
+| **L1** | Architecture Decision | 为什么需要 / 是否需要 / 风险接受什么 / 边界划在哪 | 92 条 | Architecture Board，按 Stage 分次 | 逐条讨论并给结论，不做百分比 |
+| **L2** | Architecture Control Design | 怎么设计 / 控制放在哪一层 / 谁负责 / 失效怎么办 | 462 条 | 架构 / 安全 / 可靠性 / 数据 owner，按 Pillar 分工在会前走完 | 按 B.3 的 Result 判定 |
+| **L3** | Implementation Evidence | 是否真的实现 / 用什么证明 / 能否被第三方复核 | 41 条（另附录 A 181 条） | 实现方 + 审计方，在代码 / 配置 / artifact 层面 | 抽查 + 抽样取证，不进会议议程 |
 
-归属表：
+归属表（标注的是「主要落在哪一层」，不是「只属于这一层」）：
 
-| 层 | 主干章节 | 判据 |
+| Depth | 主干章节 | 为什么主要在这一层 |
 | --- | --- | --- |
-| L1 | P00 全部（P00-01…23 / AD / BO，47 条）、P02.0 威胁模型（8）、P07.1 风险与监管治理（12）、P13 多租户模型（12）、P14.1 平台边界与多 Runtime（12） | 需要「决策」：定边界、定最坏情况、定是否继续 |
+| L1 | P00 全部（P00-01…24 / AD / BO，48 条）、P02.0 威胁模型（8）、P07.1 风险与监管治理（12）、P13 多租户模型（12）、P14.1 平台边界与多 Runtime（12） | 需要「决策」：定边界、定最坏情况、定是否继续 |
 | L2 | P01、P02.1–P02.8、P03–P06、P07.2、P08 全部、P09 全部、P10、P12（除下列）、P14.2–P14.4 | 需要在设计上对照：控制是否存在、位置是否正确 |
 | L3 | P02.9 Security Testing（`209`–`224`，16 条）、P11 供应链（`457`–`475`，19 条）、P12 的 `483`–`488`（manifest / evidence，6 条）、附录 A（A.1 与 A.4 除外） | 需要看代码、配置、扫描结果或产物才能判断 |
 
-> **为什么 L2 仍然有 462 条**：它们是设计期控制项，本来就应当由不同 owner 分工走完，不需要 Architecture Board 逐条开会。
-> 真正需要一起读的是 L1 的 91 条，L3 是抽查与取证。
-> 如果后续还要继续扩条目，优先扩 L3（实现层），不要把新条目继续加在 L1 上 —— L1 一旦超过 100 条，会议就会退化成逐条念清单。
+### L1 的两个 Stage
 
-## B.12 编号变更对照（上一版 → 本版）
+同一批 L1 条目不应该在同一次会议上读 ——「进入设计前」与「上生产前」问的不是同一件事：
+
+| Stage | 名称 | 覆盖 | 通过后允许 | 不通过则不允许 |
+| --- | --- | --- | --- | --- |
+| **INIT** | Architecture Initiation | P00 全部（含 P00.A 的 AD / BO），48 条 | 进入详细架构设计、PoC / Spike / Pilot | 在「问题本身还没定义清楚」时开始选型与实现 |
+| **DESIGN** | Design Convergence | P02.0 威胁模型（8）、P14.1 平台边界与多 Runtime（12），共 20 条 | 设计定稿，实现按各 Pillar owner 推进 | 在威胁模型与 runtime 边界未收敛时冻结设计 |
+| **PRE-PROD** | Production Approval | P07.1 风险与监管治理（12）、P13 多租户模型（12），共 24 条 | 上生产 | 治理、监管或多租户隔离无结论时上生产 |
+
+> Stage 与 P00.6 的两个 Gate 对齐：`INIT` 对应 Discovery Gate，`PRE-PROD` 对应 Production Gate。
+> `DESIGN` 是两者之间的收敛点 —— 它既不是准入也不是放行，而是「设计冻结前的最后一轮决策」。
+> L2 / L3 不设 Stage：它们分别在设计期与实现期持续进行，按 owner 分工而不是按会议节奏。
+
+> **为什么 L2 仍然有 462 条**：它们是设计期控制项，本来就应当由不同 owner 分工走完，不需要 Architecture Board 逐条开会。
+> 真正需要一起读的是 L1 的 92 条，而且还要按 Stage 再切一次 —— **单次会议的阅读量是 20–48 条，不是 92 条**。
+> 如果后续还要继续扩条目，优先扩 L3（实现层），不要把新条目继续加在 L1 上。
+
+> **本节的规模数字同样是说明性元数据**，权威来源是 B.4 的编号总账表。增删条目后只更新 B.4。
+
+## B.12 编号变更对照
 
 `1`–`336` 不变；`337` 起因 FSI Overlay 去重（P07–P09 由 130 条收敛为 100 条）而重排，`P10`–`P14` 整体平移 −30，内容未变。
 
@@ -2563,6 +2717,19 @@ NIST AI RMF Core 的映射：[23]
 | P00.5 Gate / P00.6 Artifact / P00.7 AD / P00.8 BO | P00.6 / P00.7 / P00.A.1 / P00.A.2 | 因新增 P00.5 而顺延；AD / BO 下沉为 P00.A 的两个子节 |
 
 规模变化：主表 621 → 594（P07–P09 去重 −30，P00 新增 +3）；连续编号 542 → 512。
+
+### 594 → 595（本轮）
+
+本轮只有一处编号变化，其余全部不动：
+
+| 594 版 | 595 版 | 变化 |
+| --- | --- | --- |
+| — | `P00-21` | 新增：Decision / Decision Owner / Decision Authority（P00.4） |
+| `P00-21`…`P00-23`（Input / Output Contract） | `P00-22`…`P00-24` | 因插入 P00-21 而整体顺延 +1，内容未变 |
+| P00 合计 47 | P00 合计 48 | +1（P00 框架中立问题 23 → 24） |
+| 主表 594 | 主表 595 | +1 |
+
+未变化：连续编号 `1`–`512`、AD / BO / TM / EV / RT 各组、Invariants 18 + Decision Gates 4、附录 A 181。
 
 ---
 
