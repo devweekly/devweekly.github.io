@@ -1,6 +1,6 @@
 # Enterprise Financial Agent Platform — Well-Architected Review Checklist
 
-本 Checklist 以 AWS Well-Architected 六大支柱为最高层，叠加 AWS Agentic AI Lens 与 Financial Services Industry Lens，并以 **P00 架构决策前置层**收口「该不该用 Agent」这个上游问题；平台特有的多 Runtime / 多租户 / 供应链条目另列。其他框架（Microsoft Agent Architecture / OWASP GenAI / NIST AI RMF / CNCF）只做映射，不另起章节（见附录 B.10）。
+本 Checklist 以 AWS Well-Architected 六大支柱为最高层，叠加 AWS Agentic AI Lens 与 Financial Services Industry Lens，并在所有支柱之前设 **P00 Architecture Foundation** 作为架构评审前置层——先确认「是否在解决正确的问题、在什么约束下解决、为什么是这个架构」，再进入具体支柱；平台特有的多 Runtime / 多租户 / 供应链条目另列。其他框架（Microsoft Agent Architecture / OWASP GenAI / NIST AI RMF / CNCF）只做映射，不另起章节（见附录 B.10）。
 
 | Lens | 版本 |
 | --- | --- |
@@ -10,25 +10,179 @@
 
 | 部分 | 内容 | 规模 |
 | --- | --- | ---: |
-| 一、Checklist 主表 | P00 架构决策前置层 + Operational Excellence 至 Runtime / Snowflake | 601 项 |
-| 二、Architecture Invariants | Non-Negotiable，Fail 即阻断 | 18 条 |
+| 一、Checklist 主表 | P00 Architecture Foundation + Operational Excellence 至 Runtime / Snowflake | 621 项 |
+| 二、Architecture Invariants | Non-Negotiable，Fail 即阻断 | 22 条 |
 | 附录 A | 上一版保留项，不计入主表 | 181 项 |
-| 附录 B | 评审框架、记录字段、评分方式、P0 优先项、评分板、与 AWS WAF 的关系、跨框架映射 | — |
+| 附录 B | 评审框架与分层、记录字段、评分方式、P0 优先项、评分板、与 AWS WAF 的关系、跨框架映射 | — |
 
 记录字段与评分方式见 附录 B；引用编号 `[n]` 对应文末「参考」。
 
 ---
 
-# 一、Checklist 主表（P00 + P01–P14，601 项）
+# 一、Checklist 主表（P00 + P01–P14，621 项）
 
 编号约定：P01–P14 的条目沿用既有连续编号 `1`–`542`（便于与前版逐条对照）；P00 与新增组使用带前缀的 ID
-（`AD` / `BO` / `TM` / `EV` / `RT`），因为它们回答的是**不同于检查项的问题** —— 架构决策、业务结果、威胁模型、
-评估模型、执行预算 —— 不并入连续编号，也便于与外部框架做映射（见 B.10）。
+（`P00` / `AD` / `BO` / `TM` / `EV` / `RT`），因为它们回答的是**不同于检查项的问题** —— 架构基础、架构决策、
+业务结果、威胁模型、评估模型、执行预算 —— 不并入连续编号，也便于与外部框架做映射（见 B.10）。
 
-## P00 — Architecture Decision（用例准入前置层）
+## P00 — Architecture Foundation（架构评审前置层）
 
-这一层检查的是「**这个问题该不该用 Agent**」，而不是「Agent 做得好不好」。它排在 P01 之前，因为如果这里不通过，
-后面 601 项检查是在评估一个本不该存在的组件。
+这一层排在 P01–P14 之前，回答的不是「技术做得好不好」，而是三个更靠前的问题：
+
+> **我们在解决什么业务问题？在什么现实约束下解决？为什么选择这个架构，而不是别的方案？**
+
+P01–P14 评价的是「架构做得对不对」，P00 决定的是「这个架构是否值得继续评审」。这与经典 ATAM 的思路一致：
+先明确 business drivers，再识别 quality attributes、候选架构、风险与 trade-off，而不是直接检查技术实现。[25]
+重大决策的结论应写成 ADR，记录 problem / context → alternatives → decision → trade-offs。[26]
+
+**这一层保持框架中立**：P00.1–P00.4 的 20 条问题里只有 P00-13 涉及 Agentic / AI，其余与领域无关，因此同一套问题
+可以直接用于数据平台、API 平台、投资业务系统或普通企业应用评审；Agent 场景的展开判据见 P00.7 / P00.8。
+
+> **P00 Gate：存在未回答的 P0 问题，不进入详细架构设计与 P01–P14 逐条评审。**
+
+P00.1–P00.4 覆盖八个评审面：
+
+```text
+P00 Architecture Foundation
+├── 1. Business Problem & Outcome    → P00.1（P00-01…P00-05）
+├── 2. Context & Constraints         → P00.2（P00-06…P00-11）
+├── 3. Current State                 → P00.1 / P00.3（P00-04、P00-12、P00-14）
+├── 4. Architecture Approach         → P00.3（P00-12…P00-14）
+├── 5. Buy / Build / Reuse           → P00.3（P00-15）
+├── 6. Alternatives & Trade-offs     → P00.4（P00-14、P00-17、P00-18）
+├── 7. Risk / Assumptions            → P00.2 / P00.4（P00-11、P00-19）
+└── 8. Evolution / Exit              → P00.4（P00-20）
+```
+
+### P00.1 Business Problem & Outcome
+
+| ID | Architecture Review Question | Priority |
+| --- | --- | --- |
+| P00-01 | 当前架构需要解决的**业务问题是什么**？是否能够用一句话清楚描述？ | **P0** |
+| P00-02 | 谁是目标用户 / 业务角色 / 受影响的利益相关者？他们当前遇到的具体痛点是什么？ | P0 |
+| P00-03 | 期望达到的**业务结果**是什么？是否定义了可验证的 KPI / outcome，而不仅是技术指标？ | **P0** |
+| P00-04 | 如果不建设该系统 / 不进行本次架构变更，会发生什么？当前方案最大的业务损失、风险或机会成本是什么？ | P1 |
+| P00-05 | 当前范围（In Scope）和明确不解决的范围（Out of Scope）是什么？是否存在隐含需求？ | **P0** |
+
+> **业务 KPI ≠ 平台指标。** 平台指标（TTFT、tool latency、token cost、iteration count）在 P04 / P05 已经覆盖，
+> 本组要的是业务口径：
+
+```text
+research time         ↓ 40%
+analyst review time   ↓ 30%
+false escalation      ↓
+manual reconciliation ↓
+```
+
+> 判据：如果平台指标全部改善、但业务流程的产出没有变化，那只是把成本换了个地方。
+
+### P00.2 Context & Constraints
+
+| ID | Architecture Review Question | Priority |
+| --- | --- | --- |
+| P00-06 | 当前架构所处的 **Context / Constraints** 是什么？包括组织、人力、技能、预算、时间、现有系统、采购政策、供应商合同等。 | **P0** |
+| P00-07 | 是否存在已经确定、无法或很难改变的约束？例如既定 Cloud / Vendor / Database / Framework / Platform / Contract / Enterprise Standard。 | **P0** |
+| P00-08 | 是否存在**地区、国家/地区政治、数据主权、数据驻留、监管、跨境传输、制裁、出口管制**等外部约束？ | **P0** |
+| P00-09 | 是否存在明确的安全、隐私、合规、审计、风险等级或业务连续性要求？哪些属于硬约束，哪些只是目标？ | **P0** |
+| P00-10 | Timeline / Deadline 是什么？哪些日期是真正不可延期的 business constraint，哪些只是期望日期？ | P1 |
+| P00-11 | 当前有哪些关键假设（Assumptions）？哪些假设尚未验证？如果假设错误，架构是否仍然成立？ | P1 |
+
+### P00.3 Architecture Approach
+
+| ID | Architecture Review Question | Priority |
+| --- | --- | --- |
+| P00-12 | 这个问题是否**真的需要新的系统 / 平台 / Agent**？是否可以通过现有系统、流程、配置或组织流程解决？ | **P0** |
+| P00-13 | 对于 Agentic / AI 场景：哪些部分必须是 deterministic workflow / code / rules，哪些部分才需要 probabilistic / agentic behavior？ | **P0** |
+| P00-14 | 是否评估过至少一个**不采用当前架构**的可行替代方案，包括「什么都不做 / 改造现有系统 / 购买现成能力」？ | **P0** |
+| P00-15 | 是否执行过 **Buy vs Build vs Reuse / Extend** 分析？为什么应该自己建设，而不是购买、复用内部平台或扩展已有能力？ | **P0** |
+| P00-16 | 当前方案是否已经复杂到超过业务问题本身？是否存在明显的过度设计（over-engineering）？ | P1 |
+
+Buy / Build 在企业里通常是四级台阶，而不是二选一：
+
+```text
+Buy（采购现成产品）
+  ↓
+Reuse existing enterprise capability（复用已有企业能力：Cloud / Data / IAM / Workflow /
+                                       Integration / Observability / AI Platform）
+  ↓
+Extend existing platform（扩展已有平台）
+  ↓
+Build（自建）
+```
+
+> 是否采用供应商能力的判断依据是业务价值、替代成本与可迁移性，而不是把「避免 lock-in」本身当成目标。[28]
+> 在已有大量平台能力的机构里，Reuse / Extend 往往比纯粹的 Buy vs Build 更关键。
+
+### P00.4 Decision & Trade-offs
+
+| ID | Architecture Review Question | Priority |
+| --- | --- | --- |
+| P00-17 | 当前方案的**主要架构决策**是什么？每个重要决策是否有明确的 rationale，而不是「大家都这样做」？ | **P0** |
+| P00-18 | 当前方案与主要替代方案相比，核心 **trade-offs** 是什么？牺牲了什么，又换来了什么？ | **P0** |
+| P00-19 | 哪些架构决策是**难以逆转 / 高切换成本**的？是否应该先做 PoC / Spike / Pilot 来降低不确定性？ | P1 |
+| P00-20 | 如果未来业务、监管、Vendor、模型、成本或规模发生变化，架构如何演进？是否存在迁移路径、退出策略或可逆方案？ | **P0** |
+
+四个最容易被跳过的问题，共同点是：**不写进评审材料时决策看起来仍然完整，但事后无法复核**。
+
+- **Current State** —— 现有系统为什么不够。方案讨论常常直接从目标架构开始，跳过了「为什么变」。[27]
+- **Alternatives** —— 为什么不是 B / C / D，包括「什么都不做」。[25]
+- **Buy / Build / Reuse** —— 为什么自己建，而不是购买、复用或扩展现有能力。
+- **Exit / Reversibility** —— 判断错了怎么退出。对第三方 Critical Service，退出策略本身可能就是架构要求。[29]
+
+### P00.5 Architecture Decision Gate
+
+进入 P01–P14 之前，应能够明确回答：
+
+* **Problem** — 我们到底在解决什么问题？
+* **Outcome** — 成功是什么？
+* **Context** — 我们在什么现实条件下解决？
+* **Constraints** — 哪些东西不能改变？
+* **Current State** — 现有系统为什么不够？
+* **Alternatives** — 还有什么选择？
+* **Buy / Build / Reuse** — 为什么选择自己做？
+* **Architecture Boundary** — 什么必须由系统确定性控制，什么可以交给 Agent / AI？
+* **Trade-offs** — 我们明确牺牲了什么？
+* **Risk** — 哪些关键假设和风险尚未验证？
+* **Evolution / Exit** — 如果未来判断错误，怎么退出或演进？
+
+> **P00 Gate：Fail P0 → 不进入详细架构评审。**
+> 只有 P00 的核心问题已有明确答案，才进入 `P01 Operational Excellence → P02 Security → … → P14`。
+
+### P00.6 Review Artifact（建议产出物）
+
+不要求几十页方案，建议最少产生一页：
+
+```text
+Architecture Context
+        ↓
+Business Problem
+        ↓
+Business Outcome / KPI
+        ↓
+Constraints
+        ↓
+Current State
+        ↓
+Alternatives
+ ┌──────┼──────┬──────┐
+Build  Buy   Reuse  Do Nothing
+ └──────┼──────┴──────┘
+        ↓
+Architecture Decision
+        ↓
+Trade-offs
+        ↓
+Key Risks / Assumptions
+        ↓
+Migration / Exit / Evolution
+```
+
+每个重大 Architecture Decision 再通过 ADR 记录详细 rationale、被否决的 alternatives、trade-offs 与 consequences。[26]
+
+### P00.7 Agent 场景展开：Agent vs Workflow（AD01–AD14）
+
+P00.1–P00.6 保持框架中立；以下两组是 P00-12 / P00-13 / P00-15 落到 Agent 场景时的展开判据，
+**不新开一层**，只在本平台评审 Agent 类用例时启用，评审非 Agent 平台时可以跳过。
 
 ```text
 Business Requirement
@@ -56,8 +210,6 @@ Workflow    Agent
         Agent 的价值在这里：开放式检索、跨来源比较、生成待验证假设
 ```
 
-### P00.1 Agent vs Workflow Architecture Decision（AD01–AD14）
-
 AD01. 该业务目标是否可以用 deterministic workflow 完成？
 AD02. 如果可以，为什么需要 Agent？
 AD03. Agent 相比 workflow 带来的价值是否可量化？
@@ -79,7 +231,10 @@ AD14. 是否存在因为「用了 Agent」而引入的不必要复杂度？
 >
 > 这一组的结论应当写进 ADR，而不是停留在讨论记录里：**「为什么不是 workflow」和「为什么是 Agent」都要能被第三方复核。**
 
-### P00.2 Business / User Outcome（BO01–BO10）
+### P00.8 Agent 场景展开：Business / User Outcome（BO01–BO10）
+
+P00-01…P00-05 已经用通用口径问过业务问题、目标用户与可验证结果；本组是它们在 Agent 场景下的细化，
+只补 Agent 特有的部分：不可接受的结果、human responsibility、Agent 失败对业务流程的影响与 fallback。
 
 BO01. 是否定义业务问题，而不是只定义 Agent 功能？
 BO02. 是否定义 target user？
@@ -91,18 +246,6 @@ BO07. 是否定义 human responsibility？
 BO08. 是否定义 Agent failure 对业务流程的影响？
 BO09. 是否定义用户在 Agent 不可靠时的 fallback？
 BO10. 是否验证 Agent 实际改善了原业务流程？
-
-> **业务 KPI ≠ 平台指标。** 平台指标（TTFT、tool latency、token cost、iteration count）在 P04 / P05 已经覆盖，
-> 本组要的是业务口径：
-
-```text
-research time         ↓ 40%
-analyst review time   ↓ 30%
-false escalation      ↓
-manual reconciliation ↓
-```
-
-> 判据：如果一个 Agent 的平台指标全部改善、但业务流程的产出没有变化，那它只是把成本换了个地方。
 
 ---
 
@@ -1155,9 +1298,9 @@ RT17. 更换 Runtime 是否不改变控制语义（policy / evidence / identity 
 
 ---
 
-# 二、Architecture Invariants（18 条 Non-Negotiable，Fail 即阻断）
+# 二、Architecture Invariants（22 条 Non-Negotiable，Fail 即阻断）
 
-Architecture Board 应要求以下 **18 条必须全部 Pass**：
+Architecture Board 应要求以下 **22 条必须全部 Pass**：
 
 | ID | Invariant | 中文 | 主要落点 |
 | --- | --- | --- | --- |
@@ -1176,17 +1319,25 @@ Architecture Board 应要求以下 **18 条必须全部 Pass**：
 | INV13 | Every production Agent shall have an independent operational stop mechanism. | 每个 Production Agent 必须有 independent kill switch | P01.7 / P08.6 |
 | INV14 | External provider failure shall have a defined degradation strategy. | 外部 Provider failure 必须有明确 degradation strategy | P09.2 / P03.6 |
 | INV15 | High-risk Agents shall have a documented business / risk / regulatory owner. | 高风险 Agent 必须有 documented business / risk / regulatory owner | P01.1 / P07.1 |
-| INV16 | An Agent shall be introduced only after deterministic automation has been evaluated and rejected with a documented reason. | 引入 Agent 前必须先证明 deterministic 方案不可行，并留下结论 | P00.1 |
+| INV16 | An Agent shall be introduced only after deterministic automation has been evaluated and rejected with a documented reason. | 引入 Agent 前必须先证明 deterministic 方案不可行，并留下结论 | P00.3 / P00.7 |
 | INV17 | A production Agent shall have a defined and accepted maximum impact under full compromise. | 生产 Agent 必须定义并接受「被完全控制时的最大影响」 | P02.0 |
 | INV18 | An Agent Run shall stop or degrade when its execution budget is exhausted. | 执行预算耗尽时必须停止或降级，不得继续 | P14.3 |
+| INV19 | A new system or platform shall not be introduced unless existing systems, processes and configuration have been evaluated and rejected with a documented reason. | 新建系统 / 平台之前，必须先评估并否决既有系统、流程与配置 | P00.3（P00-12） |
+| INV20 | Buying, reusing or extending existing capability shall be evaluated before building, and the reason for building shall be recorded. | 自建之前必须完成 Buy / Reuse / Extend / Build 分析并记录自建理由 | P00.3（P00-15） |
+| INV21 | Every material architecture decision shall record its rationale, the alternatives considered and the accepted trade-offs. | 每个重大架构决策必须记录 rationale、替代方案与明确接受的 trade-offs | P00.4（P00-17 / P00-18） |
+| INV22 | A production architecture shall have a documented evolution, migration and exit path. | 生产架构必须有明确的演进 / 迁移 / 退出路径 | P00.4（P00-20） |
 
 其中 INV01、02、03、04、08、09、10 基本直接对应 AWS Agentic AI Lens 的核心方向；INV05–07、11–15 是结合金融机构治理和你们实际架构做的 Enterprise overlay；INV16–18 来自 P00 / P02.0 / P14.3 三组新增控制。[9]
+
+INV19–22 来自 P00 架构基础层。P00-12 / P00-13 / P00-15 / P00-17 / P00-18 / P00-20 这六个问题同时是 **P0 检查项**与 **Invariant**：
+「为什么需要这个架构」「为什么不能用更简单的方案」「为什么 Build 而不是 Buy / Reuse」往往比后面任何一条技术检查更早决定架构是否值得继续，
+因此它们既进 P00 的问题清单，也进这条 Non-Negotiable 清单。
 
 ---
 
 # 附录 A — 上一版保留项（181 项，不计入主表）
 
-不计入主表 601 项
+不计入主表 621 项
 
 分组如下：A.1 平台边界与 Runtime Abstraction、A.2 模型风险与模型注册、A.3 其他补充控制项、A.4 Use Case 治理与风险分级、A.5 身份与 Entitlement 细项、A.6 Tool 元数据与 MCP 治理模式、A.7 网络安全基线、A.8 容量与发布策略、A.9 第三方与供应链细项、A.10 其他零散保留项。
 
@@ -1473,7 +1624,11 @@ A181. 是否记录 Knowledge Source 的来源系统（source system）？
 最高层是「一个前置层 + 六支柱 + 两类 overlay + 一组不变量」：
 
 ```text
-P00 Architecture Decision（用例准入前置层：AD / BO）
+P00 Architecture Foundation（架构评审前置层，通用）
+    Business Problem & Outcome · Context & Constraints · Current State ·
+    Architecture Approach · Buy / Build / Reuse · Alternatives & Trade-offs ·
+    Risk / Assumptions · Evolution / Exit
+    （Agent 场景展开：AD / BO，见 P00.7 / P00.8）
 
         ▼
 P01 Operational Excellence
@@ -1490,15 +1645,16 @@ Financial Services Overlay（P07–P09）
 Enterprise Agent Platform Overlay（P10–P14）
 
         ▼
-P15 Architecture Invariants（18 条，Fail 即阻断）
+P15 Architecture Invariants（22 条，Fail 即阻断）
 ```
 
 对应关系：
 
 > **AWS Well-Architected × Agentic AI Lens × Financial Services Industry Lens × Enterprise Internal Controls**
 
-AWS 自己要求 Agentic AI Lens 与 Well-Architected Framework **配合**使用，而不是取代它。P00 不属于任何 Lens：
-它回答的是「本用例是否应该以 Agent 形式存在」，这是所有 Lens 之前的问题。
+AWS 自己要求 Agentic AI Lens 与 Well-Architected Framework **配合**使用，而不是取代它。P00 不属于任何 Lens，
+也不绑定具体领域：它回答的是「为什么做、在什么约束下做、为什么选择这个架构」，这是所有 Lens 之前的问题，
+方法上沿用 ATAM 的 business driver → quality attribute → trade-off 顺序。[25]
 
 ## B.2 每个问题的记录字段
 
@@ -1584,7 +1740,7 @@ E = Evidence available
 
 | Pillar | 内容 | AWS Lens 对应 | 检查项 |
 | --- | --- | --- | ---: |
-| **P00** | Architecture Decision（前置层） | 不属于任何 Lens（Microsoft / 内部方法论，见 B.10） | 24 |
+| **P00** | Architecture Foundation（通用前置层） | 不属于任何 Lens（ATAM / ADR / AWS Prescriptive Guidance / Microsoft，见 B.10） | 44 |
 | **P01** | Operational Excellence | Agentic AI Lens：AGENTOPS01–07 | 100 |
 | **P02** | Security | Agentic AI Lens：AGENTSEC01–09 | 142 |
 | **P03** | Reliability | Agentic AI Lens：AGENTREL02–06 | 65 |
@@ -1599,13 +1755,14 @@ E = Evidence available
 | **P12** | Deployment / Change / Evidence | Agentic Lens 生命周期 + 平台特有 | 13 |
 | **P13** | Multi-tenancy | Agentic Lens：multitenancy | 12 |
 | **P14** | Runtime / Snowflake / Multi-runtime | 平台特有 + CNCF 平台工程 | 29 |
-| **P15** | Architecture Invariants | — | 18 条 Non-Negotiable |
+| **P15** | Architecture Invariants | — | 22 条 Non-Negotiable |
 
 映射结构：
 
 ```text
-P00 Architecture Decision（AD / BO）
-        │   该不该用 Agent、解决的是不是正确的问题
+P00 Architecture Foundation（通用前置层）
+        │   为什么做、在什么约束下做、为什么是这个架构
+        │   · 该不该用 Agent（Agent 场景展开：AD / BO）
         ▼
 AWS Well-Architected（P01–P06）
         │
@@ -1624,10 +1781,10 @@ Enterprise Agent Platform Overlay（P10–P14）
         │   Knowledge & Retrieval · Skill Supply Chain · Deployment & Evidence ·
         │   Multi-tenancy · Runtime / Execution Budget · Multi-runtime
         ▼
-P15 Architecture Invariants（18 条 Non-Negotiable）
+P15 Architecture Invariants（22 条 Non-Negotiable）
 ```
 
-> 以 AWS Agentic AI Lens 的正式 best practice / focus area 作为 **base layer**，不以我们自己的分类替代它；FSI Industry Lens 作为金融领域 overlay；P10–P14 是你们平台特有、AWS Lens 不会替你们回答的部分；P00 则在所有 Lens 之前，判断用例本身是否成立。
+> 以 AWS Agentic AI Lens 的正式 best practice / focus area 作为 **base layer**，不以我们自己的分类替代它；FSI Industry Lens 作为金融领域 overlay；P10–P14 是你们平台特有、AWS Lens 不会替你们回答的部分；P00 则在所有 Lens 之前，判断「问题本身是否成立、架构选择是否成立」，不含 Agent 专有名词，可复用于非 Agent 平台。
 
 ## B.5 P0 十项红线（下一轮实际 Architecture Review 重点打红）
 
@@ -1648,7 +1805,8 @@ P15 Architecture Invariants（18 条 Non-Negotiable）
 
 这十项里，P0-01 至 P0-04 建议先做，因为它们一旦建立，后面无论换成 AgentCore、Snowflake Cortex Agents 还是别的 LangChain，都不会改变核心安全架构。
 
-另有 **P00（AD / BO）与 P02.0（TM）属于用例准入前置**，不列入上表：它们不是控制点，而是「是否允许进入评审」。P00.1 未通过时，不应开始 P01–P14 的逐条评审；P02.0 未完成时，P02 的控制项无法判断覆盖是否充分。
+另有 **P00 Architecture Foundation（P00-01…P00-20 与 AD / BO）和 P02.0（TM）属于用例准入前置**，不列入上表：它们不是控制点，而是「是否允许进入评审」。
+P00 中未回答的 P0 问题即 **P00 Gate 未通过**（其中 P00-12 / 13 / 15 / 17 / 18 / 20 同时是 INV19–INV22 与 INV16），此时不应开始 P01–P14 的逐条评审；P02.0 未完成时，P02 的控制项无法判断覆盖是否充分。
 
 ## B.6 6 个关键证明问题
 
@@ -1784,7 +1942,7 @@ Incident handling
 Financial Agent Platform — Well-Architected Review
 ──────────────────────────────────────────────────
 
-P00 Architecture Decision         通过 / 不通过（准入前置，不做百分比）
+P00 Architecture Foundation       通过 / 不通过（准入前置，不做百分比）
 ──────────────────────────────────────────────────
 P01 Operational Excellence        74%
 P02 Security                      66%  🔴
@@ -1802,7 +1960,7 @@ P12 Deployment / Evidence         75%
 P13 Multi-tenancy                 68%
 P14 Runtime / Multi-runtime       54%  🔴
 ────────────────────────────────  Enterprise overlay
-P15 Architecture Invariants       0 / 18 Pass
+P15 Architecture Invariants       0 / 22 Pass
 ```
 
 然后规定 finding 的处置规则：
@@ -1821,11 +1979,11 @@ Low
 → Backlog
 ```
 
-> P15 单独计分：Invariant 不做百分比，只做 Pass / Fail，且 **Fail 即阻断**。
+> P15 单独计分：Invariant 不做百分比，只做 Pass / Fail，且 **Fail 即阻断**。其中 INV16 与 INV19–INV22 属于 P00 准入 Gate。
 
 ## B.8 评审执行结构：与 AWS Well-Architected 的关系
 
-不要把 601 道独立问题直接拿去开会，而是用这个结构：
+不要把 621 道独立问题直接拿去开会，而是用这个结构：
 
 ```text
                Enterprise Agent Platform Review
@@ -1840,18 +1998,18 @@ Low
                              │
                    Internal Architecture
                              │
-                    601 detailed checks
+                    621 detailed checks
                              │
                 ┌────────────┴────────────┐
                 │                         │
-          18 Mandatory             P0/P1/P2
+          22 Mandatory             P0/P1/P2
           Invariants               Findings
 ```
 
 完整映射：
 
 ```text
-P00 Architecture Decision（准入前置）
+P00 Architecture Foundation（准入前置，通用）
                 │
                 ▼
        AWS Well-Architected（P01–P06）
@@ -1870,7 +2028,7 @@ P00 Architecture Decision（准入前置）
        Enterprise Agent Platform Overlay（P10–P14）
                 │
                 ▼
-       P15 Architecture Invariants（18 条）
+       P15 Architecture Invariants（22 条）
 ```
 
 AWS 本身也明确建议用 Lens 来持续、系统地根据问题和最佳实践评估架构，而不是只做一次性设计审核。[19]
@@ -1883,7 +2041,7 @@ AWS 本身也明确建议用 Lens 来持续、系统地根据问题和最佳实�
 
 ## B.9 本版相对上一版的变化
 
-上一版的 389 问题虽然很全面，但分类方式不够贴近 AWS 最新 Agentic AI Lens，而且漏掉了一些 Agent 特有的关键控制点。本版做了七处结构性调整：
+上一版的 389 问题虽然很全面，但分类方式不够贴近 AWS 最新 Agentic AI Lens，而且漏掉了一些 Agent 特有的关键控制点。本版做了八处结构性调整：
 
 | # | 变化 | 落点 |
 | --- | --- | --- |
@@ -1893,17 +2051,18 @@ AWS 本身也明确建议用 Lens 来持续、系统地根据问题和最佳实�
 | 4 | **增加 Human Oversight Security**：不是「有没有 HITL」，而是「Human 是否可能被 Agent 操纵」（cognitive load、confidence indicator、multiple reviewers、rogue-agent containment） | P02.7 |
 | 5 | **增加 Gray Failure**：金融 Agent 最大的问题之一不是系统挂，而是系统正常返回但业务结果已经不可靠 | P09.3 |
 | 6 | **增加 FSI-specific Governance 与 External Provider Resilience**：risk management roles、operational risk assessment、privileged access、SoD、incident reporting、DLP、ransomware、AI model governance；以及 LiteLLM → OpenAI / Gemini / Claude、AgentCore、LangSmith、Snowflake 之间的韧性与集中度风险 | P07 / P08 / P09.2 |
-| 7 | **增加 P00 前置层与跨框架检查组**：Agent vs Workflow、Business / User Outcome、Threat Modeling、Evaluation Model、Runtime Isolation & Execution Budget | P00 / P02.0 / P01.6 / P14.2–14.4 |
+| 7 | **增加前置层与跨框架检查组**：Agent vs Workflow、Business / User Outcome、Threat Modeling、Evaluation Model、Runtime Isolation & Execution Budget | P00.7 / P00.8 / P02.0 / P01.6 / P14.2–14.4 |
+| 8 | **P00 从「Agent 准入判据」升格为通用的 Architecture Foundation**：20 条框架中立问题（Business Problem / Constraints / Architecture Approach / Decision & Trade-offs）+ Decision Gate + 一页纸产出物；AD / BO 降为其下的 Agent 场景展开 | P00.1–P00.8 |
 
 规模变化：
 
 | 项 | 上一版 | 本版 |
 | --- | ---: | ---: |
-| 最高层分类 | 14 个自定义 Pillars | P00 前置层 + AWS WAF 六支柱 + 两类 overlay（P01–P14）+ Invariants |
-| 检查项（主表，含 AD / BO / TM / EV / RT 组） | 389 | 601 |
-| Architecture Invariants | 12 | 18（Non-Negotiable，Fail 即阻断） |
+| 最高层分类 | 14 个自定义 Pillars | P00 架构基础前置层 + AWS WAF 六支柱 + 两类 overlay（P01–P14）+ Invariants |
+| 检查项（主表，含 P00 / AD / BO / TM / EV / RT 组） | 389 | 621 |
+| Architecture Invariants | 12 | 22（Non-Negotiable，Fail 即阻断） |
 | 新增受控章节 | — | P01.2 Prompt 生命周期、P02.1 Memory 安全、P02.7 Human Oversight、P09.3 Gray Failure、P13 Multi-tenancy、P14 Runtime / Multi-runtime |
-| 新增前置层与跨框架组 | — | P00 Architecture Decision（AD / BO）、P02.0 Threat Modeling（TM）、P01.6 Evaluation Model（EV）、P14.2–14.4 Runtime Isolation & Execution Budget（RT） |
+| 新增前置层与跨框架组 | — | P00 Architecture Foundation（P00-01…20，通用）+ AD / BO（Agent 场景展开）、P02.0 Threat Modeling（TM）、P01.6 Evaluation Model（EV）、P14.2–14.4 Runtime Isolation & Execution Budget（RT） |
 | 保留项 | — | 附录 A（181 项，本版结构未覆盖） |
 | AWS 依据 | Generative AI Lens | **Agentic AI Lens（2026-06-10）+ FSI Industry Lens（2026-01-27 修订）** |
 
@@ -1924,7 +2083,9 @@ AWS 本身也明确建议用 Lens 来持续、系统地根据问题和最佳实�
 | --- | --- | --- |
 | AWS Agentic AI Lens | P01–P06 主体（AGENTOPS01–07 / AGENTSEC01–09 / AGENTREL02–06 / Performance / Cost） | base layer，逐条对齐 |
 | AWS FSI Industry Lens | P07–P09（FSISEC01–16 / FSIOPS / FSIREL / backup） | 金融 overlay，逐条对齐 |
-| Microsoft Agent Architecture（CAF + Azure 架构中心） | P00.1 Agent vs Workflow、P00.2 Business / User Outcome | 已并入，不单独成章 |
+| ATAM（SEI）/ ADR | P00 的方法论来源（business driver → quality attribute → trade-off；决策记录形态） | 已并入，不单独成章 |
+| AWS Prescriptive Guidance（应用组合评估 / 多云 FSI） | P00.2 Constraints（P00-08 / P00-09）、P00.3（P00-15）、P00.4（P00-20） | 已并入，不单独成章 |
+| Microsoft Agent Architecture（CAF + Azure 架构中心） | P00.7 Agent vs Workflow、P00.8 Business / User Outcome | 已并入，不单独成章 |
 | OWASP GenAI / LLM Top 10 | P02.0 Threat Modeling + P02.1 / P02.2 / P02.7 / P02.8 | 已并入，不单独成章 |
 | NIST AI RMF | 见下方 Core 映射，**不新增检查项** | cross-reference |
 | CNCF 平台工程 | P14.2–P14.4、P12 | 已并入，不单独成章 |
@@ -1934,19 +2095,24 @@ NIST AI RMF Core 的映射：[23]
 | AI RMF 功能 | 本 Checklist 落点 |
 | --- | --- |
 | Govern | P07、P01.1、附录 B.5 |
-| Map | P00、P02.0 |
+| Map | P00（P00.1–P00.4）、P02.0 |
 | Measure | P01.5 / P01.6、P02.9、P09.3 |
 | Manage | P01.7、P02.7、P08.6、P12 |
 
 > **为什么 NIST 与 CNCF 只做映射：** 为每个框架各起一章，同一个控制点就会在四五套编号下重复出现，评审时反而不知道以哪一套为准。
 > 判断标准只有一条 —— **纳入新框架时先问「能不能落到已有 Pillar」：能落就不新增章节，落不进去才说明发现了真实缺口。**
 > 平台团队职责与平台能力的定义参考 CNCF 的平台白皮书。[24]
+>
+> P00 是本 Checklist 中唯一与领域无关的一层（20 条问题里只有 P00-13 涉及 Agentic / AI）：把这一条替换掉，
+> 它可以直接用于数据平台、API 平台或核心业务系统评审，
+> 因此它可以先于具体领域审阅独立使用。
 
 ---
 
 # 参考
 
-AWS 部分全部依据 AWS 官方文档，不含第三方转述；P00、P02.0、P01.6 与 P14.2–P14.4 另引用 Microsoft、OWASP、NIST、CNCF 官方文档。
+AWS 部分全部依据 AWS 官方文档，不含第三方转述；P00、P02.0、P01.6 与 P14.2–P14.4 另引用 SEI、Martin Fowler、
+Microsoft、OWASP、NIST、CNCF 官方文档。
 
 [1]: https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/appendix-a.html "Appendix A: Best practice reference - Agentic AI Lens"
 [2]: https://docs.aws.amazon.com/wellarchitected/latest/financial-services-industry-lens/opex-key-aws-services.html "Key AWS services - Financial Services Industry Lens"
@@ -1972,3 +2138,8 @@ AWS 部分全部依据 AWS 官方文档，不含第三方转述；P00、P02.0、
 [22]: https://genai.owasp.org/llm-top-10/ "OWASP Top 10 for LLM Applications - OWASP GenAI Security Project"
 [23]: https://www.nist.gov/itl/ai-risk-management-framework "Artificial Intelligence Risk Management Framework (AI RMF 1.0) - NIST"
 [24]: https://tag-app-delivery.cncf.io/whitepapers/platforms/ "CNCF Platforms White Paper - CNCF TAG App Delivery"
+[25]: https://www.sei.cmu.edu/library/architecture-tradeoff-analysis-method-collection/ "Architecture Tradeoff Analysis Method (ATAM) - CMU Software Engineering Institute"
+[26]: https://martinfowler.com/bliki/ArchitectureDecisionRecord.html "Architecture Decision Record - Martin Fowler"
+[27]: https://docs.aws.amazon.com/prescriptive-guidance/latest/application-portfolio-assessment-guide/aws-application-design-and-migration-strategy.html "AWS application design and migration strategy - AWS Prescriptive Guidance"
+[28]: https://docs.aws.amazon.com/prescriptive-guidance/latest/strategy-multicloud-fsi/vendor-lockin.html "Consider the advantages and disadvantages of vendor lock-in - AWS Prescriptive Guidance"
+[29]: https://docs.aws.amazon.com/prescriptive-guidance/latest/strategy-multicloud-fsi/exit-strategy.html "Evaluate exit strategy requirements - AWS Prescriptive Guidance"
