@@ -77,6 +77,25 @@ Astro (AstroPaper) 技术博客，域名语义为「Dev Weekly」。
 - 已删除：「80/20 deterministic+agentic」「二阶段提交 / 2PC」；补充：Business Data Contract、
   Task Context、Governed Action Pipeline、OpenAI Agents API（2026-09-10，引 [42]）
 
+## `skills/` — 自建 Agent 评审 Skill 套件
+
+2026-09-13 起，仓库 `skills/` 下除 article-de-ai / text-to-mermaid / domain-experience-api 外，
+新增 7 个互锁的 Agent 架构评审 skill：
+
+```text
+enterprise-agent-architecture-review   架构是否成立、边界划在哪（12 步 + 三层 Gate）
+  ├─ agent-security-threat-review      trust chain 七问 + 六列威胁矩阵
+  ├─ agent-governance-and-control-design  Risk→Policy→AuthZ→Approval→Execution→Evidence
+  ├─ agent-runtime-boundary-review     14 个能力维度 × 四档结论
+  ├─ agent-tool-and-mcp-governance     Tool 十项元数据 + 六类动作 + 四级风险
+  ├─ agent-reliability-review          八个必答问题 + 五类语义失败
+  └─ agent-well-architected-assessment Scope→取证→五条判定→P0/P1/P2→Remediation
+```
+
+约定：`skills/<name>/SKILL.md`，frontmatter 只要 `name` / `version` / `description`（不加 `agent_created`）。
+**skill 只写流程与判据，不复制 checklist 内容** —— 规范内容一律用文末「数据来源与锚点」表指向
+`temp/agent研究checklist.md`（Q 编号 / 附录 C 节号 / Invariant）与 `temp/agent研究.md`（§N），保持单一真相源。
+
 ## 发布机制注意
 
 Astro 是静态站，`pubDatetime` 仅是元数据，不做定时发布。真正上线由构建/部署流水线控制；
