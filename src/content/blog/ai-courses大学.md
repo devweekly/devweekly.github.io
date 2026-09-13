@@ -3,7 +3,7 @@ author: W
 featured: false
 draft: false
 description: 著名公开的 AI/ML 课程资源汇总
-pubDatetime: 2026-07-04T02:02:03Z
+pubDatetime: 2026-09-014T02:02:03Z
 title: AI时代的大学课程
 tags:
   - ai
@@ -319,7 +319,11 @@ H --> I
 
 [CS 329S: Machine Learning Systems Design](https://stanford-cs329s.github.io/) Stanford, Winter 2022
 
-[]()
+[CS 312: Deep Learning Alchemy ](https://deep-learning-alchemy.github.io/) 2026
+
+[CS 329Z: Engineering AI Agents](https://cs329z.stanford.edu/)
+
+[Stanford CS153 Frontier Systems](https://www.youtube.com/playlist?list=PLoROMvodv4rN447WKQ5oz_YdYbS74M5IA)
 
 ### MIT
 
@@ -396,3 +400,7 @@ Safety
 Observability
 
 这些才是 AI 软件工程的新基础设施。
+
+---
+
+https://github.com/Developer-Y/cs-video-courses
