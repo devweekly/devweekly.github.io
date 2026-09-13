@@ -122,59 +122,77 @@ Astro 是静态站，`pubDatetime` 仅是元数据，不做定时发布。真正
 
 ### `temp/agent研究checklist.md` — Well-Architected Review Checklist
 
-配套 checklist（2026-09-13 把 P00 升格为 Architecture Foundation 后，2145 行 / 主表 621 项 + Invariants 22 + 附录 A 181 项）：
+配套 checklist（2026-09-13 第三轮**结构修正**后：2574 行 / 主表 **594** 项 + **18** Invariants + **4** Decision Gates + 附录 A 181 项。本轮不增条目，只改结构、边界与措辞）：
 
-- **编号约定（重要）**：P01–P14 的条目仍是连续编号 `1`–`542`（逐条对照的历史锚点，**不要重编**）；
-  新增的 P00 与四组跨框架检查用带前缀的 ID（`P00` / `AD` / `BO` / `TM` / `EV` / `RT`），
-  合计 542 + 20 + 14 + 10 + 8 + 10 + 17 = **621**。**主表只数有 ID 的条目**，
-  P00.5 Gate / P00.6 Artifact 这类纯正文小节不计入。
-- **P00 — Architecture Foundation（通用架构评审前置层，放在六支柱之前）**：
+- **编号约定（重要）**：P01–P14 的条目**本版已重排为 `1`–`512`**（`1`–`336` 与上一版一致；`337` 起因 FSI Overlay
+  去重而重排；P10–P14 整体平移 −30）。旧版 `1`–`542` 的逐段对照见 **附录 B.12 编号变更对照**。
+  成组 ID（`P00` / `AD` / `BO` / `TM` / `EV` / `RT`）不并入连续编号。
+  **主表只数有 ID 的条目**，P00.6 Gate / P00.7 Artifact 这类纯正文小节不计入。
+  合计 512 + 23(P00) + 14(AD) + 10(BO) + 8(TM) + 10(EV) + 17(RT) = **594**；B.4 给出「编号总账」表供逐条核对
+  （上一版「顶部 621 与 B.4 的 P01=100 对不上」其实是 P01 = 90 连续 + EV01–10，只是统计表没写「构成」）。
+- **三层结构（本版新增，写进文档结构而非只在文字里提醒）**：L1 Architecture Review **91** 条（P00 全部 47 +
+  P02.0 8 + P07.1 12 + P13 12 + P14.1 12，Architecture Board 逐条开会）/ L2 Control Checklist **462** 条 /
+  L3 Implementation & Evidence **41** 条（P02.9 16 + P11 19 + P12 的 manifest·evidence 6）+ 附录 A 181 条。
+  每节标题下标注层归属，定义与归属表见 **附录 B.11**。
+- **P00 — Architecture Foundation（框架中立层，放在六支柱之前）**：
   `P00.1 Business Problem & Outcome（P00-01…05）`、`P00.2 Context & Constraints（06…11）`、
-  `P00.3 Architecture Approach（12…16，含 Buy → Reuse → Extend → Build 四级台阶）`、
-  `P00.4 Decision & Trade-offs（17…20）`，每项带 Priority（15 个 P0 / 5 个 P1）；
-  + `P00.5 Decision Gate`（`Fail P0 → 不进入详细架构评审`）、`P00.6 Review Artifact`（一页纸）。
-  **这一层要求保持领域无关**（20 条里只有 P00-13 涉及 Agentic / AI），可复用于非 Agent 平台。
-  **四个最容易被跳过的问题**：Current State / Alternatives（含 Do Nothing）/ Buy-Build-Reuse / Exit-Reversibility。
-  方法论来源：ATAM（business driver → quality attribute → trade-off）与 ADR。
-- **AD01–AD14 与 BO01–BO10 降为 `P00.7 / P00.8 Agent 场景展开`**（写明「不新开一层，评审非 Agent 平台可跳过」）：
-  判据仍是**先证明 deterministic workflow 不可行，才允许用 Agent**；业务 KPI ≠ 平台指标（TTFT / token cost）。
+  `P00.3 Architecture Approach（12…16）`、`P00.4 Decision & Trade-offs（17…20）`、
+  `P00.5 Input / Output Contract（21…23，本轮新增）`＋`P00.6 Architecture Decision Gate`、`P00.7 Review Artifact`。
+  **23 条全部框架中立**（不含 Agent / LLM / MCP / autonomy 专有判断）；Agent / AI 判断全部下沉到 `P00.A`
+  （上一版宣称中立但 P00-12 / P00-13 / P00.5 三处含 Agent 判断，本轮改正）。
+  **Buy / Reuse / Extend / Build 是并列 alternatives，不是「四级台阶」**，配 decision matrix 与 Do Nothing 一列。
+  **Gate 分两级**：Discovery Gate（P0 全 answered，或归入 Accepted assumption / Validation required → 可进
+  详细设计 + PoC + P01–P14）与 Production Gate（P0 全 answered 且验证项已关闭 → 才可上生产）。
+- **`P00.A Agent / AI Architecture Decision`**：Agent / AI 判断的唯一落点，含
+  `P00.A.1 Architecture Decision Chain（AD01–AD14）` 与 `P00.A.2 Business / User Outcome（BO01–BO10）`。
+  决策链**不再二元**：现有方案能否解决 → 是否需要 AI → 最低 AI 档位（ML / LLM / RAG / Agent）→ 是否需要 autonomy；
+  **Agent 是最后一档而不是 AI 场景的默认答案**。判据参考 AWS Responsible AI Lens 的 use case 顺序（只借顺序，不加检查项）。
+
 - 另有 `P02.0 Threat Modeling / Abuse Case（TM01–TM08）`（先写攻击者能做什么；TM05 = 被完全控制时最大影响）、
   `P01.6 Evaluation Model / Trajectory Evaluation（EV01–EV10）`（评 trajectory 而不只是 output；区分
   deterministic assertion 与 LLM-as-judge）、`P14.2–14.4 Runtime Isolation & Agent Execution Budget
   / Lifecycle & Portability（RT01–RT17）`（原 P14 改名 Runtime / Snowflake / Multi-runtime；原 P01.6 Recovery 顺延为 P01.7）。
-- **Invariants 18 → 22**：INV16 引入 Agent 前必须证明 deterministic 不可行、INV17 必须定义并接受
-  full compromise 下的最大影响、INV18 执行预算耗尽必须停止或降级；
-  **INV19–22 来自 P00**（新建系统前先否决既有系统/流程/配置 → P00-12；自建前完成 Buy/Reuse/Extend/Build 分析 → P00-15；
-  重大决策记录 rationale + 替代方案 + accepted trade-offs → P00-17/18；有演进/迁移/退出路径 → P00-20），
-  这六个问题**同时是 P0 检查项与 Invariant**。
-- **框架与 Checklist 解耦**：`附录 B.10 跨框架映射` —— 只保留一份检查项，Microsoft Agent Architecture（→P00.7/P00.8）、
-  OWASP GenAI（→P02.0）、CNCF（→P14.2–14.4）、ATAM / ADR / AWS Prescriptive Guidance（→P00）并入，
-  **NIST AI RMF 只做 Govern/Map/Measure/Manage 的交叉引用，不新增章节**。
-  参考补到 `[1]–[29]`（新增 SEI ATAM / Fowler ADR / AWS Prescriptive Guidance ×3）。
-- **交付形态：正文只放清单，方法说明全部后置为附录**。骨架 = 导语（依据/规模/指向附录）
-  → `# 一、Checklist 主表（P00 + P01–P14，621 项）`（P01 降 H2、P01.1 降 H3）
-  → `# 二、Architecture Invariants（22 条）`
+- **P07–P09 改写为 FSI Delta**（不再当「第二套 Pillar」）：只审金融行业额外要求；**同一 control 只在 base 章节计分一次**
+  （Overlay 百分比 = delta 完备度），解决「DLP 在 P02.8 与 P08.4 各评一次、到底 Pass 还是 Partial」的歧义。
+  P07–P09 由 130 条收敛为 100 条（删 30 条纯重复项，逐条去向见 B.12）。P08.1 Governance 整节并入 P07.1。
+- **Non-Negotiable 拆成两块**：`2.1 Runtime / Security Invariants（INV01–INV18）`（Fail = 系统不合格）与
+  `2.2 Architecture Decision Gates（ADG01–ADG04，即原 INV19–22）`（Fail = 准入不通过）。
+  INV08 / INV12 / INV14 标 `[RA]` 并改条件措辞（「超出已接受风险等级的动作」「按风险等级所需的深度可重建」），
+  避免把「最强控制」写成所有 workload 的绝对要求；P01.2 的 system prompt、P02.4 的 system objective 同步去绝对化。
+- **条目元数据**：`[R]` Required / `[RA]` Required when applicable / `[Rec]` Recommended；默认 P0 → R，P1 / P2 → Rec；
+  多列表里单列「级别」列，逐条编号里用行内 `[RA]`。
+- **评分方式改为多维度**（原「`3 + E` 才算可信的 Pass」作废）：`Maturity 0–5` + `Evidence Present/Partial/Missing` +
+  `Risk` + `Applicability` → `Result Pass/Partial/Gap/N/A`，并给出 5 条判定规则
+  （`Risk = Critical` 不得只凭 Maturity 判 Pass）。
+- **框架与 Checklist 解耦**：`附录 B.10 跨框架映射` —— Microsoft Agent Architecture（→P00.A）、
+  OWASP GenAI（→P02.0）、CNCF（→P14.2–14.4）、ATAM / ADR / AWS Prescriptive Guidance（→P00）并入；
+  **NIST AI RMF 与 AWS Responsible AI Lens 只做交叉引用 / 借判断顺序，不新增章节**。参考补到 `[1]–[33]`。
+- **交付形态：正文只放清单，方法说明全部后置为附录**。骨架 = 导语（三层结构 + 依据 + 规模）
+  → `# 一、Checklist 主表（P00 + P01–P14，594 项）`（P01 降 H2、P01.1 降 H3）
+  → `# 二、Architecture Invariants 与 Decision Gates`
   → `# 附录 A — 上一版保留项（A01..A181，不计入主表）`
-  → `# 附录 B — 评审框架与说明`（B.1 分层结构 / B.2 记录字段 / B.3 评分方式 / B.4 总览 /
-  B.5 P0 十项红线 + 准入前置 / B.6 6 个关键证明问题 / B.7 评分板 / B.8 与 AWS WAF 关系 /
-  B.9 版本差异 / B.10 跨框架映射）→ `# 参考`
+  → `# 附录 B — 评审框架与说明`（B.1 分层结构 / B.2 记录字段+Level·Requirement / B.3 评分方式 /
+  B.4 总览 + 编号总账 / B.5 P0 十项红线 + 准入前置 / B.6 6 个关键证明问题 / B.7 评分板 /
+  B.8 与 AWS WAF 关系 / B.9 版本差异（含「本轮结构修正」10 条）/ B.10 跨框架映射 /
+  B.11 三层结构 / B.12 编号变更对照）→ `# 参考`
 - 已删除的对话与起草过程语（9 处）：开篇「可以。基于你们现在的实际架构…」、
   P01.2 / P01.6 / P02.1 / P02.7 / P08.7 / P13 的「上一版…」比较句、P01.4 的
   「你们已经决定 MCP…」及其架构决策 blockquote、P01.5 的「你们已经有 LangSmith…」；
   混血句改写为中性事实句（6 处），交叉引用回改 2 处（「一、评审框架」→「附录 B.1」、
   「三、P0 十项红线」→「附录 B.5」）
 - 该「对话稿转成稿」的可复用流程见 skill `skills/article-de-ai` 第 27 节
-- 最高层**不再自建分类**，用 P00 通用前置层 + AWS Well-Architected 六支柱 + 两类 overlay：
-  `P00 Architecture Foundation`（与领域无关，可复用于非 Agent 平台）
+- 最高层**不再自建分类**，用 P00 框架中立前置层 + AWS Well-Architected 六支柱 + FSI delta overlay + 平台 overlay：
+  `P00 Architecture Foundation` → `P00.A Agent / AI Architecture Decision`
   → `P01 Operational Excellence` / `P02 Security` / `P03 Reliability` / `P04 Performance Efficiency` /
   `P05 Cost Optimization` / `P06 Sustainability`（Agentic AI Lens 的 AGENTOPS / AGENTSEC / AGENTREL 作 focus area 注入）
-  → `P07–P09 Financial Services Overlay`（FSISEC01–16 / FSIOPS / FSIREL / backup）
-  → `P10–P14 Enterprise Agent Platform Overlay`（Knowledge·Retrieval / Skill 供应链 /
-  Deployment·Evidence / Multi-tenancy / Multi-runtime）
-  → `P15 22 条 Architecture Invariants`（Fail 即阻断）
+  → `P07–P09 FSI Delta`（只审 delta：风险治理·监管义务 / 权限·SoD·AI 威胁检测·AI 资产隔离·AI 数据保护·事故上报 /
+  resilience tier·外部依赖集中度·gray failure·备份与监管保留）
+  → `P10–P14 Enterprise Agent Platform Overlay`
+  → `二、18 Invariants + 4 Decision Gates`（Fail 即阻断）
 - 对齐版本：Agentic AI Lens **2026-06-10**、FSI Industry Lens **2026-01-27 修订**
-- 主表编号 `1..542` **连续且唯一**；上一版未被覆盖的旧条目进「附录 A」，编号 `A01..A181`，不计入主表
-- 评分：0–5 分 + `E = Evidence available`（`3 + E` 才算可信 Pass）
+- 主表编号 `1..512` **连续且唯一**；附录 A 编号 `A01..A181`，不计入主表
+- 装配工艺见 skill `longform-md-restructure`（片段文件 + build.py 区间 op + 多层断言 + 词元归零法 + 行级差异归因）
+
 - 10 项 P0 红线：Agent Identity / Retrieval Entitlement / Tool Authorization / Prompt·Config Versioning /
   Memory Isolation / Input-Output DLP / Non-repudiation / Human Approval·Rogue Agent /
   Provider·Runtime Resilience / Skill Supply Chain

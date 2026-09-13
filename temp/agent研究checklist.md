@@ -1,29 +1,72 @@
 # Enterprise Financial Agent Platform — Well-Architected Review Checklist
 
-本 Checklist 以 AWS Well-Architected 六大支柱为最高层，叠加 AWS Agentic AI Lens 与 Financial Services Industry Lens，并在所有支柱之前设 **P00 Architecture Foundation** 作为架构评审前置层——先确认「是否在解决正确的问题、在什么约束下解决、为什么是这个架构」，再进入具体支柱；平台特有的多 Runtime / 多租户 / 供应链条目另列。其他框架（Microsoft Agent Architecture / OWASP GenAI / NIST AI RMF / CNCF）只做映射，不另起章节（见附录 B.10）。
+本 Checklist 以 AWS Well-Architected 六大支柱为最高层，叠加 AWS Agentic AI Lens 与 Financial Services Industry Lens，并在所有支柱之前设 **P00 Architecture Foundation** 作为架构评审前置层——先确认「是否在解决正确的问题、在什么约束下解决、为什么是这个架构」，再进入具体支柱；平台特有的多 Runtime / 多租户 / 供应链条目另列。其他框架（Microsoft Agent Architecture / OWASP GenAI / NIST AI RMF / CNCF / AWS Responsible AI Lens）只做映射或借用判断顺序，不另起章节（见附录 B.10）。
 
 | Lens | 版本 |
 | --- | --- |
 | AWS Well-Architected Framework | 六支柱（Operational Excellence / Security / Reliability / Performance Efficiency / Cost Optimization / Sustainability） |
 | Agentic AI Lens | 2026-06-10 |
 | Financial Services Industry Lens | 2026-01-27 修订 |
+| Responsible AI Lens | 仅借用其 use case 判断顺序，见 [30]–[33] |
+
+## 三层结构：同一份文档，三种用法
+
+条目总量已经很大，因此本版**在文档结构上**把三种性质不同的问题分开，而不是只在文字里提醒「不要拿全部条目开会」：
+
+| 层 | 名称 | 回答什么 | 规模 | 谁用 / 什么时候用 |
+| --- | --- | --- | ---: | --- |
+| **L1** | Architecture Review | 做什么、边界在哪、最坏情况多大、是否继续 | 91 条 | Architecture Board 会议：进入设计前、上生产前各一次 |
+| **L2** | Architecture Control Checklist | 设计里有没有这个控制、是否落在正确的位置 | 462 条 | 架构 / 安全 / 可靠性 / 数据 owner 在设计阶段按 Pillar 分工逐条走 |
+| **L3** | Implementation / Evidence Checks | 实现是否正确、证据是否可得 | 主表 41 条（另附录 A 181 条） | 实现方与审计方在代码、配置、artifact 层面核对 |
+
+分层判据只有一条 —— **这条问题需要「决策」还是只需要「核对」**：需要决策的进 L1，需要在设计上对照的进 L2，需要看代码 / 配置 / 产物的进 L3。
+
+L1 的构成：P00 全部（47）＋ P02.0 威胁模型（8）＋ P13 多租户模型（12）＋ P07.1 风险与监管治理（12）＋ P14.1 平台边界与多 Runtime（12）＝ 91 条。
+每节标题下标注该节的默认层，节内例外（如 P02.9、P12 的 evidence 类条目）在节内单独标注。
 
 | 部分 | 内容 | 规模 |
 | --- | --- | ---: |
-| 一、Checklist 主表 | P00 Architecture Foundation + Operational Excellence 至 Runtime / Snowflake | 621 项 |
-| 二、Architecture Invariants | Non-Negotiable，Fail 即阻断 | 22 条 |
-| 附录 A | 上一版保留项，不计入主表 | 181 项 |
-| 附录 B | 评审框架与分层、记录字段、评分方式、P0 优先项、评分板、与 AWS WAF 的关系、跨框架映射 | — |
+| 一、Checklist 主表 | P00 Architecture Foundation + P01–P14 | 594 项 |
+| 二、Architecture Invariants / Decision Gates | Non-Negotiable，Fail 即阻断 | 18 + 4 条 |
+| 附录 A | 上一版实现层与细项保留，不计入主表 | 181 项 |
+| 附录 B | 评审框架与分层、记录字段、评分方式、P0 优先项、评分板、与 AWS WAF 的关系、跨框架映射、三层结构、编号变更 | — |
 
 记录字段与评分方式见 附录 B；引用编号 `[n]` 对应文末「参考」。
 
 ---
 
-# 一、Checklist 主表（P00 + P01–P14，621 项）
+# 一、Checklist 主表（P00 + P01–P14，594 项）
 
-编号约定：P01–P14 的条目沿用既有连续编号 `1`–`542`（便于与前版逐条对照）；P00 与新增组使用带前缀的 ID
-（`P00` / `AD` / `BO` / `TM` / `EV` / `RT`），因为它们回答的是**不同于检查项的问题** —— 架构基础、架构决策、
-业务结果、威胁模型、评估模型、执行预算 —— 不并入连续编号，也便于与外部框架做映射（见 B.10）。
+## 编号约定
+
+主表使用三类 ID，互不混用：
+
+| ID 形态 | 用在哪里 | 说明 |
+| --- | --- | --- |
+| `1`–`512` | P01–P14 的逐条问题 | 连续编号；`1`–`336` 与上一版一致，`337` 起因 FSI Overlay 去重而重排（对照见 B.12） |
+| `P00-nn` | P00 Architecture Foundation | 框架中立，不并入连续编号 |
+| `AD` / `BO` / `TM` / `EV` / `RT` | 各自成组的检查 | 组内独立编号，便于与外部框架映射（见 B.10） |
+
+成组 ID 不并入连续编号，因为它们回答的是**不同于逐条检查的问题** —— 架构决策、业务结果、威胁模型、评估模型、执行预算。
+
+**条目元数据约定**：每条问题除 Priority 外，还可携带级别与适用性标记。
+
+| 标记 | 含义 | 用法 |
+| --- | --- | --- |
+| `[R]` | Required | 必须具备；缺失即 Gap |
+| `[RA]` | Required when applicable | 适用时必需；判 N/A 必须写出不适用理由 |
+| `[Rec]` | Recommended | 推荐；不作为 Pass 阻断条件 |
+
+未标记者默认按 Priority 处理：P0 视为 `[R]`，P1 / P2 视为 `[Rec]`。
+
+写法：多列表里级别写进独立的「级别」列（`R` / `RA` / `Rec`）；逐条编号（P01–P14）里级别以 `[RA]` 直接跟在条目末尾，
+其余条目按上面的默认规则推定。
+
+> **最强控制不等于对所有 workload 都成立的要求。** 如果一条控制只在特定架构形态或特定监管条件下才成立，
+> 它应当被写成 `[RA]` 并写明条件，而不是写成对所有 workload 绝对成立的要求。AWS 自己也没有把 Responsible AI Lens
+> 的 best practice 定义成所有 workload 的必选项，而是要求 builders 判断其是否适用于本 workload。[33]
+
+---
 
 ## P00 — Architecture Foundation（架构评审前置层）
 
@@ -35,34 +78,40 @@ P01–P14 评价的是「架构做得对不对」，P00 决定的是「这个架
 先明确 business drivers，再识别 quality attributes、候选架构、风险与 trade-off，而不是直接检查技术实现。[25]
 重大决策的结论应写成 ADR，记录 problem / context → alternatives → decision → trade-offs。[26]
 
-**这一层保持框架中立**：P00.1–P00.4 的 20 条问题里只有 P00-13 涉及 Agentic / AI，其余与领域无关，因此同一套问题
-可以直接用于数据平台、API 平台、投资业务系统或普通企业应用评审；Agent 场景的展开判据见 P00.7 / P00.8。
-
-> **P00 Gate：存在未回答的 P0 问题，不进入详细架构设计与 P01–P14 逐条评审。**
-
-P00.1–P00.4 覆盖八个评审面：
-
 ```text
-P00 Architecture Foundation
+P00 Architecture Foundation（框架中立）
 ├── 1. Business Problem & Outcome    → P00.1（P00-01…P00-05）
 ├── 2. Context & Constraints         → P00.2（P00-06…P00-11）
 ├── 3. Current State                 → P00.1 / P00.3（P00-04、P00-12、P00-14）
 ├── 4. Architecture Approach         → P00.3（P00-12…P00-14）
-├── 5. Buy / Build / Reuse           → P00.3（P00-15）
-├── 6. Alternatives & Trade-offs     → P00.4（P00-14、P00-17、P00-18）
-├── 7. Risk / Assumptions            → P00.2 / P00.4（P00-11、P00-19）
-└── 8. Evolution / Exit              → P00.4（P00-20）
+├── 5. Input / Output Contract       → P00.5（P00-21…P00-23）
+├── 6. Alternatives & Trade-offs     → P00.3 / P00.4（P00-14、P00-15、P00-17、P00-18）
+├── 7. Buy / Build / Reuse           → P00.3（P00-15）
+├── 8. Risk / Assumptions            → P00.2 / P00.4（P00-11、P00-19）
+└── 9. Evolution / Exit              → P00.4（P00-20）
+
+        ▼
+P00.A Agent / AI Architecture Decision（Agent / AI 场景展开：AD / BO）
 ```
+
+**这一层的框架中立性**：P00.1–P00.7 的 23 条问题里**没有一条**包含 Agent / LLM / MCP / autonomy 的专有判断，
+因此同一套问题可以直接用于数据平台、API 平台、投资业务系统或普通企业应用评审。
+所有 Agent / AI 相关的判断**全部下沉到 P00.A**，评审非 Agent 平台时整节跳过。
+
+> 上一版把这条界线划在「20 条里只有 P00-13 涉及 Agentic / AI」，但原 P00-12（问「是否需要新的系统 / 平台 / Agent」）
+> 与原 P00.5（Gate 里的「什么可以交给 Agent / AI」）实际都在做 Agent 判断。
+> 本版把这三处一并改掉：P00-12 只问「是否需要新的系统 / 平台」，P00-13 改写为框架中立的「确定性 vs 非确定性边界」，
+> Agent / AI 的边界判断整体移入 P00.A。
 
 ### P00.1 Business Problem & Outcome
 
-| ID | Architecture Review Question | Priority |
-| --- | --- | --- |
-| P00-01 | 当前架构需要解决的**业务问题是什么**？是否能够用一句话清楚描述？ | **P0** |
-| P00-02 | 谁是目标用户 / 业务角色 / 受影响的利益相关者？他们当前遇到的具体痛点是什么？ | P0 |
-| P00-03 | 期望达到的**业务结果**是什么？是否定义了可验证的 KPI / outcome，而不仅是技术指标？ | **P0** |
-| P00-04 | 如果不建设该系统 / 不进行本次架构变更，会发生什么？当前方案最大的业务损失、风险或机会成本是什么？ | P1 |
-| P00-05 | 当前范围（In Scope）和明确不解决的范围（Out of Scope）是什么？是否存在隐含需求？ | **P0** |
+| ID | Architecture Review Question | Priority | 级别 |
+| --- | --- | --- | --- |
+| P00-01 | 当前架构需要解决的**业务问题是什么**？是否能够用一句话清楚描述？ | **P0** | R |
+| P00-02 | 谁是目标用户 / 业务角色 / 受影响的利益相关者？他们当前遇到的具体痛点是什么？ | P0 | R |
+| P00-03 | 期望达到的**业务结果**是什么？是否定义了可验证的 KPI / outcome，而不仅是技术指标？ | **P0** | R |
+| P00-04 | 如果不建设该系统 / 不进行本次架构变更，会发生什么？当前方案最大的业务损失、风险或机会成本是什么？ | P1 | RA |
+| P00-05 | 当前范围（In Scope）和明确不解决的范围（Out of Scope）是什么？是否存在隐含需求？ | **P0** | R |
 
 > **业务 KPI ≠ 平台指标。** 平台指标（TTFT、tool latency、token cost、iteration count）在 P04 / P05 已经覆盖，
 > 本组要的是业务口径：
@@ -78,77 +127,122 @@ manual reconciliation ↓
 
 ### P00.2 Context & Constraints
 
-| ID | Architecture Review Question | Priority |
-| --- | --- | --- |
-| P00-06 | 当前架构所处的 **Context / Constraints** 是什么？包括组织、人力、技能、预算、时间、现有系统、采购政策、供应商合同等。 | **P0** |
-| P00-07 | 是否存在已经确定、无法或很难改变的约束？例如既定 Cloud / Vendor / Database / Framework / Platform / Contract / Enterprise Standard。 | **P0** |
-| P00-08 | 是否存在**地区、国家/地区政治、数据主权、数据驻留、监管、跨境传输、制裁、出口管制**等外部约束？ | **P0** |
-| P00-09 | 是否存在明确的安全、隐私、合规、审计、风险等级或业务连续性要求？哪些属于硬约束，哪些只是目标？ | **P0** |
-| P00-10 | Timeline / Deadline 是什么？哪些日期是真正不可延期的 business constraint，哪些只是期望日期？ | P1 |
-| P00-11 | 当前有哪些关键假设（Assumptions）？哪些假设尚未验证？如果假设错误，架构是否仍然成立？ | P1 |
+| ID | Architecture Review Question | Priority | 级别 |
+| --- | --- | --- | --- |
+| P00-06 | 当前架构所处的 **Context / Constraints** 是什么？包括组织、人力、技能、预算、时间、现有系统、采购政策、供应商合同等。 | **P0** | R |
+| P00-07 | 是否存在已经确定、无法或很难改变的约束？例如既定 Cloud / Vendor / Database / Framework / Platform / Contract / Enterprise Standard。 | **P0** | R |
+| P00-08 | 是否存在**地区、国家/地区政治、数据主权、数据驻留、监管、跨境传输、制裁、出口管制**等外部约束？ | **P0** | R |
+| P00-09 | 是否存在明确的安全、隐私、合规、审计、风险等级或业务连续性要求？哪些属于硬约束，哪些只是目标？ | **P0** | R |
+| P00-10 | Timeline / Deadline 是什么？哪些日期是真正不可延期的 business constraint，哪些只是期望日期？ | P1 | RA |
+| P00-11 | 当前有哪些关键假设（Assumptions）？哪些假设尚未验证？如果假设错误，架构是否仍然成立？ | P1 | R |
 
 ### P00.3 Architecture Approach
 
-| ID | Architecture Review Question | Priority |
-| --- | --- | --- |
-| P00-12 | 这个问题是否**真的需要新的系统 / 平台 / Agent**？是否可以通过现有系统、流程、配置或组织流程解决？ | **P0** |
-| P00-13 | 对于 Agentic / AI 场景：哪些部分必须是 deterministic workflow / code / rules，哪些部分才需要 probabilistic / agentic behavior？ | **P0** |
-| P00-14 | 是否评估过至少一个**不采用当前架构**的可行替代方案，包括「什么都不做 / 改造现有系统 / 购买现成能力」？ | **P0** |
-| P00-15 | 是否执行过 **Buy vs Build vs Reuse / Extend** 分析？为什么应该自己建设，而不是购买、复用内部平台或扩展已有能力？ | **P0** |
-| P00-16 | 当前方案是否已经复杂到超过业务问题本身？是否存在明显的过度设计（over-engineering）？ | P1 |
+| ID | Architecture Review Question | Priority | 级别 |
+| --- | --- | --- | --- |
+| P00-12 | 这个问题是否**真的需要新的系统 / 平台**？是否可以通过现有系统、流程、配置或组织流程解决？ | **P0** | R |
+| P00-13 | 哪些部分必须是**确定性（deterministic）**的，哪些部分才允许非确定性行为？（Agent 场景见 P00.A） | **P0** | R |
+| P00-14 | 是否评估过至少一个**不采用当前架构**的可行替代方案，包括「什么都不做 / 改造现有系统 / 购买现成能力」？ | **P0** | R |
+| P00-15 | 是否在 **Buy / Reuse / Extend / Build** 之间做过比较，并说明**为什么在多项 alternatives 中选择当前方案**？（答案完全可能是 Buy 或 Reuse，而不是 Build） | **P0** | R |
+| P00-16 | 当前方案是否已经复杂到超过业务问题本身？是否存在明显的过度设计（over-engineering）？ | P1 | Rec |
 
-Buy / Build 在企业里通常是四级台阶，而不是二选一：
+**Buy / Reuse / Extend / Build 是四类 alternatives，不是一条四级台阶。**
+
+上一版把它们画成「Buy → Reuse → Extend → Build」的连续台阶，容易被读成「一路往上做到自建」。
+实际上它们是并列选项，且必须与「什么都不做 / 改善现状」一起比较：
 
 ```text
-Buy（采购现成产品）
-  ↓
-Reuse existing enterprise capability（复用已有企业能力：Cloud / Data / IAM / Workflow /
-                                       Integration / Observability / AI Platform）
-  ↓
-Extend existing platform（扩展已有平台）
-  ↓
-Build（自建）
+                    ┌── Buy（采购现成产品）
+                    ├── Reuse（复用已有企业能力：Cloud / Data / IAM / Workflow /
+                    │          Integration / Observability / AI Platform）
+Business Need ──────┼── Extend（扩展已有平台）
+                    ├── Build（自建）
+                    └── Do Nothing / Improve Current State（什么都不做 / 改善现状）
 ```
+
+架构决策记录里应当能填出这样一张表（示例结构，实际填入评估结论）：
+
+| Option | Business Fit | Time | Cost | Control | Risk | Lock-in |
+| --- | --- | --- | --- | --- | --- | --- |
+| Current State（Do Nothing） | | | | | | |
+| Buy | | | | | | |
+| Reuse | | | | | | |
+| Extend | | | | | | |
+| Build | | | | | | |
 
 > 是否采用供应商能力的判断依据是业务价值、替代成本与可迁移性，而不是把「避免 lock-in」本身当成目标。[28]
 > 在已有大量平台能力的机构里，Reuse / Extend 往往比纯粹的 Buy vs Build 更关键。
+> 「什么都不做」必须是显式的一列 —— 它常常是成本最低、也最容易被跳过的那个选项。[25]
 
 ### P00.4 Decision & Trade-offs
 
-| ID | Architecture Review Question | Priority |
-| --- | --- | --- |
-| P00-17 | 当前方案的**主要架构决策**是什么？每个重要决策是否有明确的 rationale，而不是「大家都这样做」？ | **P0** |
-| P00-18 | 当前方案与主要替代方案相比，核心 **trade-offs** 是什么？牺牲了什么，又换来了什么？ | **P0** |
-| P00-19 | 哪些架构决策是**难以逆转 / 高切换成本**的？是否应该先做 PoC / Spike / Pilot 来降低不确定性？ | P1 |
-| P00-20 | 如果未来业务、监管、Vendor、模型、成本或规模发生变化，架构如何演进？是否存在迁移路径、退出策略或可逆方案？ | **P0** |
+| ID | Architecture Review Question | Priority | 级别 |
+| --- | --- | --- | --- |
+| P00-17 | 当前方案的**主要架构决策**是什么？每个重要决策是否有明确的 rationale，而不是「大家都这样做」？ | **P0** | R |
+| P00-18 | 当前方案与主要替代方案相比，核心 **trade-offs** 是什么？牺牲了什么，又换来了什么？ | **P0** | R |
+| P00-19 | 哪些架构决策是**难以逆转 / 高切换成本**的？是否应该先做 PoC / Spike / Pilot 来降低不确定性？ | P1 | R |
+| P00-20 | 如果未来业务、监管、Vendor、模型、成本或规模发生变化，架构如何演进？是否存在迁移路径、退出策略或可逆方案？ | **P0** | R |
 
 四个最容易被跳过的问题，共同点是：**不写进评审材料时决策看起来仍然完整，但事后无法复核**。
 
 - **Current State** —— 现有系统为什么不够。方案讨论常常直接从目标架构开始，跳过了「为什么变」。[27]
 - **Alternatives** —— 为什么不是 B / C / D，包括「什么都不做」。[25]
-- **Buy / Build / Reuse** —— 为什么自己建，而不是购买、复用或扩展现有能力。
+- **Buy / Build / Reuse** —— 为什么选当前那一项，而不是购买、复用或扩展现有能力。
 - **Exit / Reversibility** —— 判断错了怎么退出。对第三方 Critical Service，退出策略本身可能就是架构要求。[29]
 
-### P00.5 Architecture Decision Gate
+### P00.5 Input / Output Contract
 
-进入 P01–P14 之前，应能够明确回答：
+架构判断里最容易缺的一层：**这个系统到底接收什么、产生什么。**
+不是技术格式，而是业务语义上的 input / output。做法是先把系统当成 black box，描述输入与输出，
+再分析「现实条件下输入会怎么变化」—— 这一层在技术设计之前完成。[32]
 
-* **Problem** — 我们到底在解决什么问题？
-* **Outcome** — 成功是什么？
-* **Context** — 我们在什么现实条件下解决？
-* **Constraints** — 哪些东西不能改变？
-* **Current State** — 现有系统为什么不够？
-* **Alternatives** — 还有什么选择？
-* **Buy / Build / Reuse** — 为什么选择自己做？
-* **Architecture Boundary** — 什么必须由系统确定性控制，什么可以交给 Agent / AI？
-* **Trade-offs** — 我们明确牺牲了什么？
-* **Risk** — 哪些关键假设和风险尚未验证？
-* **Evolution / Exit** — 如果未来判断错误，怎么退出或演进？
+| ID | Architecture Review Question | Priority | 级别 |
+| --- | --- | --- | --- |
+| P00-21 | 系统的**主要 Business Inputs 和 Business Outputs** 是什么？（用业务语言描述，不是 schema） | **P0** | R |
+| P00-22 | 这些 Inputs 在现实环境中会发生哪些**变化、异常或缺失**？（不完整、过期、格式不一致、来源不可信、量级突变、合规受限） | **P0** | R |
+| P00-23 | Outputs 将被**谁使用**？会触发什么后续行为、决策或 side effect？ | **P0** | R |
 
-> **P00 Gate：Fail P0 → 不进入详细架构评审。**
-> 只有 P00 的核心问题已有明确答案，才进入 `P01 Operational Excellence → P02 Security → … → P14`。
+P00-23 是连接后面 Agent autonomy / action risk 的关键问题，必须追到下游：
 
-### P00.6 Review Artifact（建议产出物）
+```text
+Output
+  ↓
+Human decision?
+  ↓
+Business decision?
+  ↓
+System action?
+  ↓
+Financial transaction?
+  ↓
+External communication?
+```
+
+只要下游出现「写操作 / 交易 / 对外沟通」，这个 output 就不再是信息呈现，而是**动作**，
+对应 P02.7 的 human oversight 与 P00.A 的 autonomy boundary。
+
+### P00.6 Architecture Decision Gate（与 Production Gate 分开）
+
+**P00 Gate 回答的是「能否继续推进架构工作」，不是「能否上生产」。** 两者混在一起，会把这份 Checklist 变成一份
+production approval 清单，而不是架构评审框架 —— 而架构评审经常正是为了发现「这个问题现在还不知道」。
+
+每个 P0 问题必须落在三类状态之一，并记录 owner 与验证方式：
+
+```text
+Answered              → 有结论、有证据
+Accepted assumption   → 暂以假设推进；写明假设内容、影响范围、失效判据
+Validation required   → 指定 PoC / Spike / Pilot 与完成时间（兑现 P00-19）
+```
+
+| Gate | 通过条件 | 通过后允许 | 不通过则不允许 |
+| --- | --- | --- | --- |
+| **Discovery Gate** | P0 问题**全部已回答，或已归入 Accepted assumption / Validation required** | 进入详细架构设计、PoC / Spike / Pilot、进入 P01–P14 逐条评审 | 在「问题本身还没定义清楚」的情况下开始选型与实现 |
+| **Production Gate** | P0 问题**已有结论（Answered）**，且 Validation required 项已关闭 | 上生产 | 任何 P0 仍为 unresolved、仅停留在假设状态 |
+
+> 未回答的 P0 问题**不阻断 Discovery，只阻断 Production Approval**。
+> 判据不是「有没有空白」，而是「空白是否有 owner、有验证计划、有截止时间」。
+
+### P00.7 Review Artifact（建议产出物）
 
 不要求几十页方案，建议最少产生一页：
 
@@ -159,68 +253,101 @@ Business Problem
         ↓
 Business Outcome / KPI
         ↓
+Stakeholders
+        ↓
 Constraints
         ↓
 Current State
         ↓
+Inputs / Outputs / Downstream Impact
+        ↓
 Alternatives
- ┌──────┼──────┬──────┐
-Build  Buy   Reuse  Do Nothing
- └──────┼──────┴──────┘
+        ├── Do Nothing / Improve Current State
+        ├── Buy
+        ├── Reuse
+        ├── Extend
+        └── Build
         ↓
 Architecture Decision
         ↓
 Trade-offs
         ↓
-Key Risks / Assumptions
+Key Risks / Assumptions（含 Validation required 项）
         ↓
 Migration / Exit / Evolution
 ```
 
 每个重大 Architecture Decision 再通过 ADR 记录详细 rationale、被否决的 alternatives、trade-offs 与 consequences。[26]
 
-### P00.7 Agent 场景展开：Agent vs Workflow（AD01–AD14）
+---
 
-P00.1–P00.6 保持框架中立；以下两组是 P00-12 / P00-13 / P00-15 落到 Agent 场景时的展开判据，
-**不新开一层**，只在本平台评审 Agent 类用例时启用，评审非 Agent 平台时可以跳过。
+## P00.A Agent / AI Architecture Decision（Agent / AI 场景展开）
+
+P00.1–P00.7 保持框架中立；本节是所有 Agent / AI 专有判断的**唯一落点**，
+只要评审对象含 Agent / AI 就必须启用，评审非 Agent 平台时整节跳过。
+
+顺序上参考 AWS Responsible AI Lens 的 use case 序列：先明确 specific problem、stakeholders、inputs / outputs，
+再判断**是否真的需要 AI、需要哪一类 AI**，最后才谈架构与 human oversight。[30][31][32]
+其起点是「先验证传统软件甚至人工流程是否已经足够」。[31]
+
+### P00.A.1 Architecture Decision Chain（AD01–AD14）
+
+上一版的核心判断是二元的：
 
 ```text
-Business Requirement
-        │
 Can this be deterministic?
-        │
-   ┌────┴────┐
-   │         │
-  Yes       No
-   │         │
-Workflow    Agent
-   │         │
-   └────┬────┘
-        ↓
-     Hybrid?
+   Yes → Workflow
+   No  → Agent
+```
+
+**「不是 deterministic」不等于「需要 Agent」。** 在「规则」和「Agent」之间还有好几档能力，
+而 Responsible AI Lens 自己就把 traditional AI / generative AI / agentic AI 分成三个不同的 use-case 判断，
+而不是 workflow vs agent 二选一。[30]
+
+本版改成逐级收敛的决策链 —— **Agent 是这条链上的最后一档，而不是 AI 场景的默认答案**：
+
+```text
+Business problem
+      ↓
+1. 现有流程 / 现有系统 / 配置 能否解决？
+        Yes → existing solution（到此结束）
+        No  → 继续
+      ↓
+2. 是否真的需要 AI？
+        No  → non-AI engineering（rules / search / optimisation / statistics）
+        Yes → 继续
+      ↓
+3. 能满足要求的最低 AI 能力档位是什么？
+        traditional ML → LLM → RAG → Agent
+        （取最低档；选更高档必须写出否决更低档的理由）
+      ↓
+4. 是否必须 autonomy？
+        No  → AI-assisted workflow：AI 只是 deterministic workflow 里的一个节点
+        Yes → Agent / Hybrid
 ```
 
 金融场景的两个对照：
 
 ```text
 客户资料检查 → 规则判断 → 风险等级 → 审批
-        确定性流程即可完成，引入 Agent 只会增加不可解释性
+        第 1 步即终止：确定性流程即可完成，引入 Agent 只会增加不可解释性
 
 分析客户资料 → 检索研究 → 比较多个来源 → 形成观点 → 提出待查问题
-        Agent 的价值在这里：开放式检索、跨来源比较、生成待验证假设
+        第 2、3 步成立，第 4 步需单独论证 autonomy 是否必要：
+        开放式检索、跨来源比较、生成待验证假设 —— Agent 的价值在这里
 ```
 
-AD01. 该业务目标是否可以用 deterministic workflow 完成？
-AD02. 如果可以，为什么需要 Agent？
-AD03. Agent 相比 workflow 带来的价值是否可量化？
-AD04. 是否明确哪些步骤必须 deterministic？
-AD05. 是否明确哪些步骤允许 probabilistic behavior？
-AD06. 是否定义 Agent autonomy 的必要性？
-AD07. 是否定义 Agent 可以自行决定的事项？
-AD08. 是否定义 Agent 不得自行决定的事项？
-AD09. 是否存在 Hybrid Workflow + Agent 架构？
-AD10. 是否定义 workflow → agent 的边界？
-AD11. 是否定义 agent → workflow 的边界？
+AD01. 现有流程 / 现有系统 / 配置是否已经能够解决？不能解决的具体差距是什么？
+AD02. 如果不能，是否确认**需要 AI**？（差距是数据规模、非结构化输入、开放式检索，还是仅仅希望「更智能」？）
+AD03. 能满足要求的最低 AI 能力档位是什么（traditional ML / LLM / RAG / Agent）？
+AD04. 为什么所选档位不能更低？更低档位被否决的理由是否记录在 ADR？
+AD05. 是否明确哪些步骤必须 deterministic，可由 code / rules / 配置完成？
+AD06. 是否明确哪些步骤允许 probabilistic behavior？
+AD07. 为什么需要 **autonomy**，而不是把 AI 放在 deterministic workflow 的一个节点里？
+AD08. 如果不需要 autonomy，本方案是否已经改写为 AI-assisted workflow？
+AD09. 是否定义 Agent 可以自行决定的事项？
+AD10. 是否定义 Agent 不得自行决定的事项？
+AD11. 是否存在 Hybrid（deterministic workflow + agent）架构？`workflow → agent` 与 `agent → workflow` 的边界是否定义？
 AD12. 是否可以在不使用 LLM 的情况下完成关键业务控制？
 AD13. Agent failure 时是否可以回退到 deterministic process？
 AD14. 是否存在因为「用了 Agent」而引入的不必要复杂度？
@@ -230,8 +357,9 @@ AD14. 是否存在因为「用了 Agent」而引入的不必要复杂度？
 > 使用 deterministic workflow**，并用 agent charter 写清 prohibited actions。[21]
 >
 > 这一组的结论应当写进 ADR，而不是停留在讨论记录里：**「为什么不是 workflow」和「为什么是 Agent」都要能被第三方复核。**
+> 对金融场景尤其如此 —— **Agent 应当是最后的 architecture choice，而不是 AI 场景的默认答案。**
 
-### P00.8 Agent 场景展开：Business / User Outcome（BO01–BO10）
+### P00.A.2 Business / User Outcome（BO01–BO10）
 
 P00-01…P00-05 已经用通用口径问过业务问题、目标用户与可验证结果；本组是它们在 Agent 场景下的细化，
 只补 Agent 特有的部分：不可接受的结果、human responsibility、Agent 失败对业务流程的影响与 fallback。
@@ -250,6 +378,8 @@ BO10. 是否验证 Agent 实际改善了原业务流程？
 ---
 
 ## P01 — Operational Excellence
+
+> **评审层**：L2（设计期控制）
 
 AWS Agentic AI Lens 在 Operational Excellence 下有 7 个 focus areas，本 Pillar 直接按这 7 个 area 组织（AGENTOPS05 与 06 合并为一个小节）；另加一个 P01.6 Evaluation Model，它不属于 AGENTOPS focus area，来自跨框架映射（见 B.10）。
 
@@ -288,7 +418,7 @@ AGENTOPS07  Recovery / consumption / change management
 ### P01.2 Prompt / Configuration Lifecycle（AGENTOPS02）
 
 18. Prompt 是否 versioned？
-19. System prompt 是否 immutable？
+19. System prompt / system instruction 的版本与变更控制是否定义（谁能改、如何审批、如何回滚）？
 20. Tool definitions 是否 versioned？
 21. Model selection 是否 versioned？
 22. Agent policy 是否 versioned？
@@ -449,6 +579,8 @@ EV10. 是否存在 adversarial evaluation？
 
 ## P02 — Security
 
+> **评审层**：L2（其中 P02.0 属 L1，P02.9 属 L3）
+
 这是金融场景最核心的 Pillar。AWS Agentic AI Lens 的 Security 现在已经明确划分成 Memory、Tool、Identity、Goal alignment、Observability / non-repudiation、Multi-agent、Human oversight、Input/output、Vulnerability / pentest 九组。[1]
 
 ```text
@@ -464,6 +596,8 @@ AGENTSEC09  Vulnerability / pentest
 ```
 
 ### P02.0 Threat Modeling / Abuse Case（TM01–TM08）
+
+> **层**：L1
 
 上面九组是「已经列出来的控制项」。这一组在它们之前：**先把攻击者能做什么写下来，再谈控制。**
 
@@ -578,7 +712,7 @@ AWS FSI Lens 又额外要求 elevated credentials monitoring、privilege escalat
 
 142. Agent 是否有明确 goal contract？
 143. Goal 是否独立于 user prompt？
-144. 是否有 immutable system objective？
+144. system objective / goal 的归属与变更控制是否定义（谁能改、Agent 自身是否可能改写）？
 145. Prompt injection 能否改变 goal？
 146. Tool output 能否改变 goal？
 147. Retrieved document 能否改变 goal？
@@ -683,6 +817,8 @@ Agent version
 
 ### P02.9 Security Testing（AGENTSEC09）
 
+> **层**：L3
+
 209. 是否做 SAST？
 210. Dependency scanning？
 211. Container scanning？
@@ -705,6 +841,8 @@ Agent version
 ---
 
 ## P03 — Reliability
+
+> **评审层**：L2（设计期控制）
 
 Agent 的「可靠性」不等于基础设施 uptime，因此这里需要大幅吸收 Agentic AI Lens 的内容。
 
@@ -817,6 +955,8 @@ AWS 直接将 idempotent task execution 列为 High Risk。[1]
 
 ## P04 — Performance Efficiency
 
+> **评审层**：L2（设计期控制）
+
 这里需要按 AWS 新的 Agentic AI Lens 调整，不再只问 TPS / latency。AWS 目前把 Agent performance 分成七组：
 
 ```text
@@ -856,6 +996,8 @@ Multi-tenancy
 
 ## P05 — Cost Optimization
 
+> **评审层**：L2（设计期控制）
+
 AWS Agentic AI Lens 对 Cost 的覆盖比一般 checklist 更细：
 
 ```text
@@ -894,6 +1036,8 @@ Governance
 
 ## P06 — Sustainability
 
+> **评审层**：L2（设计期控制）
+
 金融平台不是第一优先级，但可以直接继承 AWS。AWS WAF 仍把 Sustainability 作为六大核心 pillar 之一，Agentic AI Lens 还特别提出 specification-driven tasks / long-running workflows，以及 reusable workflow patterns。[1]
 
 329. 是否有 resource utilization monitoring？
@@ -907,30 +1051,56 @@ Governance
 
 ---
 
-## P07 — Financial Services Governance Overlay
+## P07 — Financial Services Governance & Regulatory Delta
 
-这一层不是替换 AWS 六大 Pillars，而是**横切所有 Pillars**。AWS FSI Lens 明确要求 workload 进行 operational risk assessment、regulatory needs assessment，并定义 cloud risk-management roles。[2]
+**Base**：P01.1（Agent 角色与问责）已经问过「有没有 owner、有没有 escalation path」；
+本节不重复这些，只审 **FSI 额外要求的那一部分**：风险治理角色、operational risk / regulatory applicability assessment、
+risk acceptance authority、独立复核与三道防线、监管义务。
 
-### P07.1 Risk Governance
+**FSI 依据**：AWS FSI Lens 要求 workload 完成 operational risk assessment 与 regulatory needs assessment，
+并定义 cloud risk-management roles。[2][10]
 
-337. 是否定义 Cloud / AI Risk roles？
-338. 是否定义 Operational Risk Owner？
-339. 是否完成 operational risk assessment？
+> **本章及 P08 / P09 的计分规则（FSI Overlay 全局适用）**
+>
+> 1. 一个 control **只在它的 base 章节评一次**。Overlay 只评 delta，不重复计分。
+> 2. 同一个 control 在两处出现时，以 base 章节的结果为准；Overlay 只记录「金融行业的额外要求是否满足」。
+> 3. 因此 P07–P09 的百分比反映的是 **delta 的完备度**，不是这三个支柱的第二套分数。
+>
+> 这一条是为了解决一个具体问题：如果 `DLP` 同时是 P02.8 与 P08.4 的检查项，评分板就会出现
+> 「P02 = 4、P08 = 2，这个 control 到底 Pass 还是 Partial」的歧义。本版的答案是：**只算一次，且算在 base 上。**
+
+### P07.1 Risk & Regulatory Governance Delta
+
+> **层**：L1
+> **Base**：P01.1（问责与角色）
+> **Delta**：FSI 口径的风险治理角色、风险接受权、独立复核与三道防线
+
+337. Cloud / AI Risk roles 是否定义？
+338. Operational Risk Owner 是否定义？
+339. 是否完成 workload 的 operational risk assessment？
 340. 是否完成 regulatory applicability assessment？
-341. 是否定义 Agent risk classification？
-342. 是否定义 risk acceptance authority？
-343. 是否有 independent review？
-344. 是否有 Three Lines of Defence？
+341. 是否定义 Agent risk classification（按 FSI 业务 / 监管口径，而不是按模型能力）？
+342. 是否定义 risk acceptance authority（谁有权接受剩余风险）？
+343. 是否有独立于建设单位的 review？
+344. 是否落实 Three Lines of Defence？
 345. 是否有持续 review cadence？
+346. 是否存在覆盖 AI 的 governance body（FSISEC01）？[RA]
+347. AI guardrail / prompt / model resource 是否上升为**机构级 standard**，而不是各团队自行约定（FSISEC01）？[RA]
+348. 是否定期独立验证 compliance effectiveness（而不是自评）？
 
-### P07.2 Regulatory / Compliance
+### P07.2 Regulatory Obligation Delta
 
-346. 是否明确 Agent 受哪些法规 / 内部 policy 约束？
-347. 是否定义 data residency？
-348. 是否定义 retention？
-349. 是否定义 incident reporting obligation？
-350. 是否能提供 regulator evidence？
-351. 是否能回答 regulator：
+> **层**：L2
+> **Base**：P02.5（retention / legal hold 的工程实现）
+> **Delta**：监管义务本身（受哪部法规约束、如何举证、如何上报）
+
+349. Agent 受哪些法规 / 内部 policy 约束是否明确？
+350. data residency 是否定义？
+351. retention 是否定义？
+352. incident reporting obligation 是否定义？
+353. 是否能提供 regulator evidence？
+354. 是否持续监控 regulatory changes？
+355. 是否能回答 regulator：
 
 ```text
 Who?
@@ -943,251 +1113,308 @@ Which policy?
 Which approval?
 ```
 
-> FSI Lens 的核心思想不是“做一个合规 checkbox”，而是把 workload 对 regulatory requirements 的评估作为**正式的 operational practice**。[10]
+> FSI Lens 的核心思想不是「做一个合规 checkbox」，而是把 workload 对 regulatory requirements 的评估作为**正式的 operational practice**。[10]
 
 ---
 
-## P08 — FSI Security Overlay
+## P08 — FSI Security Delta
 
-这一部分把 AWS FSI Lens 的 Security questions 直接映射进来，覆盖 FSISEC01–16。
+**Base**：P02（Security 九组：Memory / Tool / Identity / Goal alignment / Non-repudiation / Multi-agent /
+Human oversight / Input-output / Security testing）、P10、P11、P12。
 
-### P08.1 Governance（FSISEC01 / 02）
+上一版的 P08 实际上是**第二套 Security Pillar** —— P02 Security 与 P08 FSI Security 之间大量重叠
+（identity、DLP、audit、incident、privilege 在两边各出现一次），后果不是「审得更细」，而是**同一个控制被评两次分**。
+本版按上面的计分规则把它改成 **delta**：只审金融行业额外要求的那一部分。
 
-352. 是否有 AI governance body？
-353. 是否有 AI / model lifecycle approval？
-354. 是否有 data governance？
-355. 是否有 model monitoring？
-356. 是否有 regulatory compliance tracking？
-357. 是否有 risk assessment framework？
-358. 是否有 AI guardrail standard？
-359. 是否有 prompt / model resource standard？
-360. 是否持续监控 regulatory changes？
-361. 是否定期验证 compliance effectiveness？
+```text
+P02 Security（base：Agent 安全的九个方向）
+        │
+        └── FSI delta：
+              ├── elevation / SoD 的监管级监控
+              ├── 面向 AI 资产的威胁检测强度
+              ├── model artifact / prompt catalog / AI endpoint 的环境隔离
+              ├── AI 特有 surface 的 DLP 与监管级不可变存储
+              ├── security incident 的监管上报
+              └── AI 资产治理（FSISEC13–16）
+```
 
-> FSISEC01 明确要求金融机构在治理体系中纳入 AI model lifecycle、data governance、performance / drift、regulatory compliance、risk assessment、guardrails 和 prompt / model resource management。[11]
+因此本节条目比上一版少，但**每一条都没有 base 副本**。
 
-### P08.2 Privileged Access / SoD（FSISEC03 / 04）
+### P08.1 Privileged Access / SoD Delta（FSISEC03 / 04）
 
-362. 是否 monitoring elevated credentials？
-363. 是否定期 review IAM policy？
-364. 是否检测 privilege escalation？
-365. 是否有 permission boundary？
-366. 是否有 JIT access？
-367. 是否有 admin activity monitoring？
-368. 是否有 agent / admin separation？
-369. 是否有 separation of duties？
-370. Developer 能否自行批准生产 Agent？
-371. Agent Owner 能否自行批准其 Data Entitlement？
-372. Security Reviewer 能否同时成为部署者？
-373. 是否有 independent approval？
+> **层**：L2
+> **Base**：P02.3（Agent identity）、附录 A.5（身份细项）、附录 A.7（网络与权限基线）
+> **Delta**：elevated credential 监控、职责分离与「谁能批准谁」的约束
+> **已移出**：IAM policy 定期 review、permission boundary、JIT access 属通用基线，改由 base 章节评审
+
+356. 是否监控 elevated credentials 的使用？
+357. 是否检测 privilege escalation？
+358. 是否有 admin activity monitoring？
+359. Agent 权限与 admin 权限是否分离？
+360. 是否定义 separation of duties？
+361. Developer 能否自行批准生产 Agent？
+362. Agent Owner 能否自行批准其 Data Entitlement？
+363. Security Reviewer 能否同时成为部署者？
+364. 是否有 independent approval？
 
 > FSI Lens 对 elevated credentials 和 separation of duties 都单独设问。[6]
+> P08.1 全部 9 条都带「谁不能批准谁」的性质，这是它们与 base 章节（问「控制是否存在」）的区别。
 
-### P08.3 Threat Detection（FSISEC05 / 06 / 07）
+### P08.2 AI Threat Detection Delta（FSISEC05 / 06 / 07）
 
-374. 是否监控 Agent-based threats？
-375. 是否监控异常 Tool activity？
-376. 是否监控异常 outbound traffic？
-377. 是否能够检测 unauthorized network traffic？
-378. 是否有 runtime threat detection？
-379. 是否有 emerging-threat process？
-380. 是否有 security intelligence update？
-381. 是否监控 model abuse？
-382. 是否监控 prompt injection attacks？
-383. 是否监控 data exfiltration？
+> **层**：L2
+> **Base**：P02.9（runtime threat detection、continuous security validation、automatic quarantine）
+> **Delta**：面向 Agent / AI 行为的检测对象与情报更新节奏
 
-### P08.4 SDLC Isolation（FSISEC08）
+365. 是否监控 Agent-based threats？
+366. 是否监控异常 Tool activity？
+367. 是否监控异常 outbound traffic？
+368. 是否能够检测 unauthorized network traffic？
+369. 是否有 emerging-threat process？
+370. 是否有 security intelligence update？
+371. 是否监控 model abuse？
+372. 是否监控 prompt injection attacks？
+373. 是否监控 data exfiltration？
 
-384. Dev / Test / Prod 是否完全隔离？
-385. Model endpoint 是否隔离？
-386. Prompt catalog 是否隔离？
-387. Agent artifact 是否隔离？
-388. Knowledge data 是否隔离？
-389. Runtime identity 是否隔离？
-390. Production data 能否被开发 Agent 访问？
-391. Production Skill 是否可从开发环境直接覆盖？
-392. 是否有 network isolation？
+> 这一组问的是**监控对象清单**，而 runtime threat detection 的机制本身归 P02.9。
+
+### P08.3 AI Asset Isolation Delta（FSISEC08）
+
+> **层**：L2
+> **Base**：P12（Deployment / Change）、附录 A.7（网络基线）
+> **Delta**：隔离对象扩展到 model artifact / prompt catalog / AI endpoint / training data
+> **已移出**：Dev / Test / Prod 环境隔离、network isolation 属通用基线
+
+374. Model endpoint 是否隔离？
+375. Prompt catalog 是否隔离？
+376. Agent artifact 是否隔离？
+377. Knowledge data 是否隔离？
+378. Runtime identity 是否隔离？
+379. Production data 能否被开发环境中的 Agent 访问？
+380. Production Skill 是否可从开发环境直接覆盖？
 
 > FSI Lens 明确把生成式 AI 的环境隔离扩展到 model artifacts、prompt catalogs、AI endpoints、training / inference data。[12]
 
-### P08.5 Data Protection（FSISEC09 / 10 / 11）
+### P08.4 Data Protection Delta（FSISEC09 / 10 / 11）
 
-393. Encryption Key 是否集中管理？
-394. Key rotation？
-395. Key access review？
-396. Key deletion control？
-397. 是否有 DLP？
-398. Prompt 是否经过 DLP？
-399. Retrieval result 是否经过 DLP？
-400. Tool output 是否经过 DLP？
-401. Model output 是否经过 DLP？
-402. LangSmith trace 是否经过 sensitive-data protection？
-403. Audit log 是否 immutable？
-404. 是否使用 WORM / immutable storage（若监管要求适用）？
-405. 是否有 ransomware protection？
-406. 是否有 immutable backup？
-407. 是否定期测试 restore？
+> **层**：L2
+> **Base**：P02.8（DLP 的四个既有边界：user input / tool output / memory write / audit log）、
+> P02.5（日志不可篡改的证据要求）、附录 A.3（trace masking 与 PII 面）
+> **Delta**：AI 特有 surface 的 DLP、DLP 命中后的处置、监管要求的不可变存储与勒索软件防护
+> **补位**：key management（本 Checklist 其他章节无落点，暂留本节）
 
-> FSISEC10 明确把 AI prompt / model responses / data interactions 的 DLP、audit trail 与不可修改日志结合起来；FSI Lens 还单独提出 ransomware protection。[13]
+381. Prompt 是否经过 DLP？
+382. Retrieval result 是否经过 DLP？
+383. Model output 是否经过 DLP？
+384. DLP 命中的处置是否定义（阻断 / 脱敏 / 记录 / 上报），而不是仅告警？
+385. 是否使用 WORM / immutable storage（若监管要求适用）？[RA]
+386. 是否有 ransomware protection？
+387. Encryption Key 是否集中管理？
+388. Key rotation 是否有定义？
+389. Key access 是否定期 review？
+390. Key deletion 是否有控制？
 
-### P08.6 Incident Response（FSISEC12）
+> FSISEC10 明确把 AI prompt / model responses / data interactions 的 DLP、audit trail 与不可修改日志结合起来；
+> FSI Lens 还单独提出 ransomware protection。[13]
+> **immutable backup 与 restore test 归 P09.4**，不在本节重复。
 
-408. 是否定义 Agent security incident？
-409. 是否定义 AI incident severity？
-410. 是否有 incident response runbook？
-411. 是否能够停止 Agent？
-412. 是否能够停止 Tool？
-413. 是否能够停止 Model？
-414. 是否能够停止 Data Source？
-415. 是否能够保全证据？
-416. 是否明确 regulator notification criteria？
-417. 是否有 incident reporting owner？
-418. 是否定期演练？
+### P08.5 Incident Response Delta（FSISEC12）
 
-### P08.7 Generative AI Security（FSISEC13–16）
+> **层**：L2
+> **Base**：P01.7（operational runbook、break-glass、provider outage 切换）
+> **Delta**：AI / Agent 事故的定义、分级、容器级停止能力与**监管上报**
 
-419. 如何保护 AI / ML model artifact？
-420. 如何保护 prompt catalog？
-421. 如何保护 training / inference data？
-422. 如何保护 model endpoint？
-423. 如何监控 AI output security？
-424. 如何检测 sensitive disclosure？
-425. 如何治理 model access？
-426. 如何控制 model availability？
-427. 如何检测 AI-assisted attack？
-428. 是否利用 AI 做 threat detection？
-429. 如果 AI security tool 自己失效怎么办？
+391. 是否定义 Agent security incident？
+392. 是否定义 AI incident severity？
+393. 是否有 security incident response runbook？
+394. 是否能够停止 Agent？
+395. 是否能够停止 Tool？
+396. 是否能够停止 Model？
+397. 是否能够停止 Data Source？
+398. 是否能够保全证据？
+399. 是否明确 regulator notification criteria？
+400. 是否有 incident reporting owner？
+401. 是否定期演练？
+
+### P08.6 Generative AI Security Delta（FSISEC13–16）
+
+> **层**：L2
+> **Base**：P08.3（AI 资产隔离）、P10（知识 / 检索治理）
+> **Delta**：AI 资产的运行期治理（access、availability、AI 被用作攻击面）
+> **已移出**：model artifact / prompt catalog / endpoint 的「保护方式」已在 P08.3 问过，不在本节重复
+
+402. 如何监控 AI output security？
+403. 如何检测 sensitive disclosure？
+404. 如何治理 model access？
+405. 如何控制 model availability？
+406. 如何检测 AI-assisted attack？
+407. 是否利用 AI 做 threat detection？
+408. 如果 AI security tool 自己失效怎么办？
 
 > FSI Lens 已经专门增加 FSISEC13–16 四个生成式 AI 安全 / 治理问题。[14]
+> 其中「AI security tool 自己失效」是唯一无法用 AI 自证的一条：它必须由确定性流程兜底。
 
 ---
 
-## P09 — Financial Services Resilience Overlay
+## P09 — FSI Resilience Delta
 
-这里直接采用 FSI Lens 的 resilience model，而不仅仅是传统 RTO / RPO。
+**Base**：P03（Reliability：P03.4 cognition / retrieval、P03.6 recovery / graceful degradation）、
+P01.7（provider outage 切换）、P04（degradation 的性能口径）。
 
-### P09.1 Business / Regulatory Resilience
+本版不再把 P09 写成第二套 Reliability Pillar，只保留 FSI 额外要求的四类：
+**resilience tier 与业务 / 监管驱动**、**外部依赖的集中度**、**gray failure**、**备份与监管保留**。
 
-430. Agent 的 business criticality 是什么？
-431. 是否定义 resilience tier？
-432. 是否由 business requirement 驱动？
-433. 是否由 regulatory requirement 驱动？
-434. 是否定义 RTO？
-435. 是否定义 RPO？
-436. 是否定义 Maximum Tolerable Downtime？
-437. Agent outage 对业务的影响是什么？
+### P09.1 Resilience Tier & Regulatory Obligation Delta
+
+> **层**：L2
+> **Base**：P03.6（降级与恢复机制）
+> **Delta**：resilience tier 必须由业务与监管要求驱动，而不是由技术能力驱动
+
+409. Agent 的 business criticality 是否定义？
+410. 是否定义 resilience tier？
+411. resilience tier 是否由 business requirement 驱动？
+412. 是否由 regulatory requirement 驱动？
+413. 是否定义 RTO？
+414. 是否定义 RPO？
+415. 是否定义 Maximum Tolerable Downtime？
+416. Agent outage 对业务的影响是否定义？
 
 > FSI Lens 明确要求 resilience architecture 与 business requirements 和 resilience tier 对齐。[15]
 
-### P09.2 External Dependency Resilience
+### P09.2 External Dependency Delta（FSIREL05）
 
-438. OpenAI outage 怎么办？
-439. Anthropic outage 怎么办？
-440. Gemini outage 怎么办？
-441. AgentCore outage 怎么办？
-442. Snowflake outage 怎么办？
-443. LangSmith outage 怎么办？
-444. Vendor Search outage 怎么办？
-445. MCP Server outage 怎么办？
-446. 外部 API degradation 怎么办？
-447. 是否存在 correlated failure？
-448. 是否存在 vendor concentration risk？
+> **层**：L2
+> **Base**：P01.7（provider outage 切换、tool error fallback）
+> **Delta**：跨 AWS 与 external entity 的韧性、集中度风险
 
-> FSI Lens 特别增加了 AWS 与 external entity 之间的 resilience 问题，这对你们 LiteLLM + OpenAI / Claude / Gemini + AgentCore + Snowflake 的架构尤其重要。[16]
+417. 每个外部依赖是否逐一完成 FSI 口径的 resilience 评估？
 
-### P09.3 Gray Failure
+```text
+LiteLLM → OpenAI / Anthropic / Gemini
+AgentCore
+Snowflake / Cortex Agents
+LangSmith
+Vendor Search
+MCP Servers
+```
 
-449. 是否能够检测「系统看起来正常但结果已经错误」？
-450. Model quality degradation 是否能检测？
-451. Retrieval stale data 是否能检测？
-452. Tool 返回错误数据是否能检测？
-453. Agent latency degradation 是否能检测？
-454. Provider 部分失败是否能检测？
-455. 是否存在 semantic health check？
+418. 是否存在 correlated failure（多个依赖同时失效）？
+419. vendor concentration risk 是否评估？
 
-这点特别值得加入：金融 Agent 最大的问题之一不是系统挂，而是**系统正常返回、业务结果已经不可靠**。FSI Lens 明确提出 gray failure detection / recovery。[17]
+> 上一版把 9 条「某家 outage 怎么办」逐家列出，与 P01.7 的 provider outage 切换重叠。
+> 本版收敛为一条 inventory 条目：**逐家列出依赖的价值在清单里，重复提问的价值不大。**
+> FSI Lens 特别增加了 AWS 与 external entity 之间的 resilience 问题，这对 LiteLLM + OpenAI / Claude / Gemini + AgentCore + Snowflake 的架构尤其重要。[16]
 
-### P09.4 Backup / Retention
+### P09.3 Gray Failure Delta
 
-456. PostgreSQL backup？
-457. pgvector backup？
-458. Agent State backup？
-459. Skill artifacts backup？
-460. Policy backup？
-461. Audit evidence backup？
-462. LangSmith data 是否需要 backup？
-463. Snowflake data 的责任边界？
-464. backup retention policy？
-465. secondary region 是否需要？
-466. restore test 是否定期执行？
+> **层**：L2
+> **Base**：P10（stale data 检测）、P04（延迟与性能退化）、P01.5（observability / evaluation）
+> **Delta**：「系统看起来正常但业务结果已经错误」这一整类，以及 semantic health
+
+420. 是否能够检测「系统看起来正常但结果已经错误」？
+421. Model quality degradation 是否能检测？
+422. Tool 返回错误数据是否能检测？
+423. Provider 部分失败是否能检测？
+424. 是否存在 semantic health check？
+
+> 金融 Agent 最大的问题之一不是系统挂，而是**系统正常返回、业务结果已经不可靠**。FSI Lens 明确提出 gray failure detection / recovery。[17]
+> 这一组是本 Pillar 里最不容易被 base 章节替代的部分：base 问的是「组件是否健康」，这里问的是「结论是否可信」。
+
+### P09.4 Backup / Retention Delta
+
+> **层**：L2
+> **Base**：P03（可靠性机制）
+> **Delta**：监管保留年限、不可变备份与恢复演练
+> **吸收**：原 P08.5 的 immutable backup 移入本组，避免同一要求在两处出现
+
+425. PostgreSQL backup 是否定义？
+426. 向量库（pgvector）backup 是否定义？
+427. Agent State backup 是否定义？
+428. Skill artifacts backup 是否定义？
+429. Policy backup 是否定义？
+430. Audit evidence backup 是否定义？
+431. 备份是否 immutable（监管要求适用时）？[RA]
+432. LangSmith 数据是否需要 backup？
+433. Snowflake 侧数据备份的责任边界是否明确？
+434. backup retention policy 是否定义？
+435. secondary region 是否需要？
+436. restore test 是否定期执行？
 
 > AWS FSI Lens 将 backup 与 retention 单独列为 reliability 问题。[18]
+> 其中 431 / 434 / 436 是 FSI delta（不可变备份、监管保留年限、恢复演练）；其余为补位项 ——
+> 本 Checklist 的其他章节没有数据库级的备份条目，因此这组同时承担「可靠性基线」的职责。
 
 ---
 
 ## P10 — Knowledge / Retrieval Architecture
 
+> **评审层**：L2（设计期控制）
+
 这是 AWS Agentic AI Lens 与 FSI Industry Lens 结合后，你们特别应该增加的部分：Agentic Lens 的核心是「正确的数据在正确的时间到达 Agent」，FSI Lens 又把数据治理、保护、合规作为金融 workload 的基础。[1] 因此这里应当成为平台 P0 / P1 检查项。
 
-467. Knowledge Source 是否有 business owner？
-468. Source 是否 authoritative？
-469. Document 是否有 classification？
-470. Data entitlement 是否在 retrieval 前执行？
-471. 是否有 document-level ACL？
-472. 是否有 row-level ACL？
-473. 是否有 tenant-level ACL？
-474. 是否支持 purpose-based access？
-475. Retrieval 是否记录 source？
-476. 是否记录 document version？
-477. 是否记录 effective date？
-478. 是否检测 stale data？
-479. 是否检测 duplicate data？
-480. 是否有 retrieval quality evaluation？
-481. 是否有 citation verification？
-482. 是否有 answer grounding test？
-483. 是否禁止 LLM bypass retrieval authorization？
-484. PG 与 Snowflake authorization 是否能统一？
-485. Snowflake Cortex Search 是否保留其 native authorization？
-486. Agent 是否能够直接访问数据库绕过 Knowledge API？
+437. Knowledge Source 是否有 business owner？
+438. Source 是否 authoritative？
+439. Document 是否有 classification？
+440. Data entitlement 是否在 retrieval 前执行？
+441. 是否有 document-level ACL？
+442. 是否有 row-level ACL？
+443. 是否有 tenant-level ACL？
+444. 是否支持 purpose-based access？
+445. Retrieval 是否记录 source？
+446. 是否记录 document version？
+447. 是否记录 effective date？
+448. 是否检测 stale data？
+449. 是否检测 duplicate data？
+450. 是否有 retrieval quality evaluation？
+451. 是否有 citation verification？
+452. 是否有 answer grounding test？
+453. 是否禁止 LLM bypass retrieval authorization？
+454. PG 与 Snowflake authorization 是否能统一？
+455. Snowflake Cortex Search 是否保留其 native authorization？
+456. Agent 是否能够直接访问数据库绕过 Knowledge API？
 
 ---
 
 ## P11 — Skill / Software Supply Chain
 
-487. ZIP upload 是否限制大小？
-488. 是否防 Zip Slip？
-489. 是否 malware scanning？
-490. 是否 dependency scanning？
-491. 是否生成 SBOM？
-492. 是否 license scanning？
-493. 是否 static analysis？
-494. 是否 sandbox build？
-495. 是否 network egress restriction？
-496. 是否 secret access restriction？
-497. 是否 filesystem restriction？
-498. 是否 shell restriction？
-499. Production artifact 是否 immutable？
-500. Artifact 是否有 hash？
-501. 是否签名？
-502. 是否支持 provenance？
-503. Skill change 是否重新审批？
-504. Skill 是否绑定 Agent Version？
-505. Skill 是否进入 audit evidence？
+> **评审层**：L3（实现与取证）
+
+457. ZIP upload 是否限制大小？
+458. 是否防 Zip Slip？
+459. 是否 malware scanning？
+460. 是否 dependency scanning？
+461. 是否生成 SBOM？
+462. 是否 license scanning？
+463. 是否 static analysis？
+464. 是否 sandbox build？
+465. 是否 network egress restriction？
+466. 是否 secret access restriction？
+467. 是否 filesystem restriction？
+468. 是否 shell restriction？
+469. Production artifact 是否 immutable？
+470. Artifact 是否有 hash？
+471. 是否签名？
+472. 是否支持 provenance？
+473. Skill change 是否重新审批？
+474. Skill 是否绑定 Agent Version？
+475. Skill 是否进入 audit evidence？
 
 ---
 
 ## P12 — Deployment / Change / Evidence
 
-506. Agent Version 是否 immutable？
-507. Skill Version 是否 immutable？
-508. Model Version 是否 immutable？
-509. Prompt Version 是否可追溯？
-510. Tool Version 是否可追溯？
-511. Policy Version 是否可追溯？
-512. Retrieval configuration Version 是否可追溯？
-513. 是否有完整 deployment manifest？
-514. 能否重建历史 Run 的 execution environment？
-515. 是否可以回答下面这个问题：
+> **评审层**：L2（其中 483–488 manifest / evidence 属 L3）
+
+476. Agent Version 是否 immutable？
+477. Skill Version 是否 immutable？
+478. Model Version 是否 immutable？
+479. Prompt Version 是否可追溯？
+480. Tool Version 是否可追溯？
+481. Policy Version 是否可追溯？
+482. Retrieval configuration Version 是否可追溯？
+483. 是否有完整 deployment manifest？
+484. 能否重建历史 Run 的 execution environment？
+485. 是否可以回答下面这个问题：
 
 ```text
 2026-09-01 Run #123
@@ -1205,32 +1432,36 @@ Tool v4
 Knowledge Snapshot v12
 ```
 
-516. Deployment approval 是否进入 evidence？
-517. Rollback 是否进入 evidence？
-518. Break-glass 是否进入 evidence？
+486. Deployment approval 是否进入 evidence？
+487. Rollback 是否进入 evidence？
+488. Break-glass 是否进入 evidence？
 
 ---
 
 ## P13 — Multi-tenancy
 
+> **评审层**：L1（租户模型属架构决策）
+
 AWS Agentic AI Lens 已经把 multitenant performance isolation 单独列出来，本版据此将其提升为独立检查项。[9]
 
-519. Tenant isolation 是否存在？
-520. Agent metadata isolation？
-521. Memory isolation？
-522. Knowledge isolation？
-523. Tool entitlement isolation？
-524. Runtime isolation？
-525. Cost isolation？
-526. 是否有 rate limit？
-527. 是否有 noisy-neighbor protection？
-528. 是否有 tenant-specific policy？
-529. 是否有 tenant-specific data residency？
-530. 是否有 tenant-specific model restrictions？
+489. Tenant isolation 是否存在？
+490. Agent metadata isolation？
+491. Memory isolation？
+492. Knowledge isolation？
+493. Tool entitlement isolation？
+494. Runtime isolation？
+495. Cost isolation？
+496. 是否有 rate limit？
+497. 是否有 noisy-neighbor protection？
+498. 是否有 tenant-specific policy？
+499. 是否有 tenant-specific data residency？
+500. 是否有 tenant-specific model restrictions？
 
 ---
 
 ## P14 — Runtime / Snowflake / Multi-runtime
+
+> **评审层**：L2（其中 P14.1 属 L1）
 
 这是你们自己的架构特有项，AWS Lens 不会替你们回答。分四组：runtime 抽象、运行时隔离、执行预算、生命周期与可移植性。
 
@@ -1238,18 +1469,18 @@ AWS Agentic AI Lens 已经把 multitenant performance isolation 单独列出来�
 
 本组对齐 AWS Lens 之外的平台工程要求，见 B.10 的跨框架映射。
 
-531. AgentCore Runtime 和 Cortex Agents 是否统一抽象？
-532. Run semantics 是否一致？
-533. Identity semantics 是否一致？
-534. Policy semantics 是否一致？
-535. Audit schema 是否一致？
-536. Evaluation 是否一致？
-537. Retrieval abstraction 是否一致？
-538. Snowflake native entitlement 是否保留？
-539. Cortex Agent 是否能够被 Enterprise Agent Platform governance？
-540. 如果 Cortex Agent 不支持某个 control，平台如何补偿？
-541. 哪一层是 ultimate authorization authority？
-542. 如何避免两个 runtime 产生两个不同的安全模型？
+501. AgentCore Runtime 和 Cortex Agents 是否统一抽象？
+502. Run semantics 是否一致？
+503. Identity semantics 是否一致？
+504. Policy semantics 是否一致？
+505. Audit schema 是否一致？
+506. Evaluation 是否一致？
+507. Retrieval abstraction 是否一致？
+508. Snowflake native entitlement 是否保留？
+509. Cortex Agent 是否能够被 Enterprise Agent Platform governance？
+510. 如果 Cortex Agent 不支持某个 control，平台如何补偿？
+511. 哪一层是 ultimate authorization authority？
+512. 如何避免两个 runtime 产生两个不同的安全模型？
 
 ### P14.2 Runtime Isolation（RT01–RT06）
 
@@ -1298,52 +1529,94 @@ RT17. 更换 Runtime 是否不改变控制语义（policy / evidence / identity 
 
 ---
 
-# 二、Architecture Invariants（22 条 Non-Negotiable，Fail 即阻断）
+# 二、Architecture Invariants 与 Decision Gates（Fail 即阻断）
 
-Architecture Board 应要求以下 **22 条必须全部 Pass**：
+这一节把两类**性质不同**的 Non-Negotiable 分开。上一版把它们放在同一张表里，导致「Non-Negotiable Architecture Invariant」
+同时指 runtime security property 与 architecture governance process requirement：
 
-| ID | Invariant | 中文 | 主要落点 |
-| --- | --- | --- | --- |
-| INV01 | Agent reasoning shall not grant or expand authorization. | Agent reasoning 不得扩大权限 | P02.2 / P02.4 |
-| INV02 | LLM output shall not be treated as a security decision. | LLM 不得成为最终 security decision | P02.2 / P02.4 |
-| INV03 | Retrieval shall enforce data entitlement before content is exposed to the Agent context. | Retrieval authorization 必须发生在数据进入 Agent Context 之前 | P10 / P03.4 |
-| INV04 | Every externally observable or state-changing Tool action shall pass deterministic policy enforcement. | Tool side-effect 必须经过 deterministic policy | P02.2 / P01.4 |
-| INV05 | Every production Run shall be attributable to an approved Agent Version. | Production Agent 必须绑定 immutable Version | P01.2 / P12 |
-| INV06 | Production Model shall be an approved version. | Production Model 必须是 approved version | P01.2 / P08.1 |
-| INV07 | Production Skill shall be an immutable / trusted artifact. | Production Skill 必须是 immutable / trusted artifact | P11 |
-| INV08 | Critical Action shall require human oversight. | Critical Action 必须有 human oversight | P02.7 |
-| INV09 | Agent and human identity shall be clearly distinguishable. | Agent / Human identity 必须可明确区分 | P02.3 |
-| INV10 | User delegated context shall not be implemented through shared user credentials. | User delegated context 不得通过共享用户凭证实现 | P02.3 |
-| INV11 | Engineering telemetry shall not be assumed to be regulatory evidence. | LangSmith Trace 不等于 Regulatory Evidence | P02.5 |
-| INV12 | Every production Run shall be reconstructable. | 每个 Production Run 必须可重建 | P12 |
-| INV13 | Every production Agent shall have an independent operational stop mechanism. | 每个 Production Agent 必须有 independent kill switch | P01.7 / P08.6 |
-| INV14 | External provider failure shall have a defined degradation strategy. | 外部 Provider failure 必须有明确 degradation strategy | P09.2 / P03.6 |
-| INV15 | High-risk Agents shall have a documented business / risk / regulatory owner. | 高风险 Agent 必须有 documented business / risk / regulatory owner | P01.1 / P07.1 |
-| INV16 | An Agent shall be introduced only after deterministic automation has been evaluated and rejected with a documented reason. | 引入 Agent 前必须先证明 deterministic 方案不可行，并留下结论 | P00.3 / P00.7 |
-| INV17 | A production Agent shall have a defined and accepted maximum impact under full compromise. | 生产 Agent 必须定义并接受「被完全控制时的最大影响」 | P02.0 |
-| INV18 | An Agent Run shall stop or degrade when its execution budget is exhausted. | 执行预算耗尽时必须停止或降级，不得继续 | P14.3 |
-| INV19 | A new system or platform shall not be introduced unless existing systems, processes and configuration have been evaluated and rejected with a documented reason. | 新建系统 / 平台之前，必须先评估并否决既有系统、流程与配置 | P00.3（P00-12） |
-| INV20 | Buying, reusing or extending existing capability shall be evaluated before building, and the reason for building shall be recorded. | 自建之前必须完成 Buy / Reuse / Extend / Build 分析并记录自建理由 | P00.3（P00-15） |
-| INV21 | Every material architecture decision shall record its rationale, the alternatives considered and the accepted trade-offs. | 每个重大架构决策必须记录 rationale、替代方案与明确接受的 trade-offs | P00.4（P00-17 / P00-18） |
-| INV22 | A production architecture shall have a documented evolution, migration and exit path. | 生产架构必须有明确的演进 / 迁移 / 退出路径 | P00.4（P00-20） |
+```text
+INV01 Agent reasoning shall not grant authorization      → 系统在运行时必须具备的性质
+INV21 Every material architecture decision shall record…  → 决策过程必须完整
+```
 
-其中 INV01、02、03、04、08、09、10 基本直接对应 AWS Agentic AI Lens 的核心方向；INV05–07、11–15 是结合金融机构治理和你们实际架构做的 Enterprise overlay；INV16–18 来自 P00 / P02.0 / P14.3 三组新增控制。[9]
+两者的 Fail 含义完全不同：前者是**系统不合格**，后者是**决策材料不完整、准入不通过**。混在一起时这个术语的定义会越来越宽。
 
-INV19–22 来自 P00 架构基础层。P00-12 / P00-13 / P00-15 / P00-17 / P00-18 / P00-20 这六个问题同时是 **P0 检查项**与 **Invariant**：
-「为什么需要这个架构」「为什么不能用更简单的方案」「为什么 Build 而不是 Buy / Reuse」往往比后面任何一条技术检查更早决定架构是否值得继续，
+```text
+Architecture Invariants
+├── 2.1 Runtime / Security Invariants（INV01–INV18）  → Fail = 系统不合格
+└── 2.2 Architecture Decision Gates（ADG01–ADG04）    → Fail = 准入不通过
+```
+
+**级别约定**：每条标注 `[R]` 或 `[RA]`。标 `[RA]` 的不变量在不适用的架构形态里可以豁免，但豁免理由必须写进 ADR。
+本节**不设** `[Rec]` —— 能被写进这一节的要求都不应当是「推荐」。
+
+## 2.1 Runtime / Security Invariants（INV01–INV18）
+
+Architecture Board 应要求以下 **18 条全部 Pass**：
+
+| ID | Invariant | 中文 | 级别 | 主要落点 |
+| --- | --- | --- | --- | --- |
+| INV01 | Agent reasoning shall not grant or expand authorization. | Agent reasoning 不得扩大权限 | [R] | P02.2 / P02.4 |
+| INV02 | LLM output shall not be treated as a security decision. | LLM 不得成为最终 security decision | [R] | P02.2 / P02.4 |
+| INV03 | Retrieval shall enforce data entitlement before content is exposed to the Agent context. | Retrieval authorization 必须发生在数据进入 Agent Context 之前 | [R] | P10 / P03.4 |
+| INV04 | Every externally observable or state-changing Tool action shall pass deterministic policy enforcement. | Tool side-effect 必须经过 deterministic policy | [R] | P02.2 / P01.4 |
+| INV05 | Every production Run shall be attributable to an approved Agent Version. | Production Agent 必须绑定 immutable Version | [R] | P01.2 / P12 |
+| INV06 | Production Model shall be an approved version. | Production Model 必须是 approved version | [R] | P01.2 / P07.1 |
+| INV07 | Production Skill shall be an immutable / trusted artifact. | Production Skill 必须是 immutable / trusted artifact | [R] | P11 |
+| INV08 | Actions above the accepted risk tier shall require human oversight. | 超出已接受风险等级的动作必须有 human oversight | [RA] | P02.7 / P07.1 |
+| INV09 | Agent and human identity shall be clearly distinguishable. | Agent / Human identity 必须可明确区分 | [R] | P02.3 |
+| INV10 | User delegated context shall not be implemented through shared user credentials. | User delegated context 不得通过共享用户凭证实现 | [R] | P02.3 |
+| INV11 | Engineering telemetry shall not be assumed to be regulatory evidence. | LangSmith Trace 不等于 Regulatory Evidence | [R] | P02.5 |
+| INV12 | Production Runs shall be reconstructable to the depth required by the Agent's risk tier. | Production Run 必须按风险等级所需的深度可重建 | [RA] | P12 |
+| INV13 | Every production Agent shall have an independent operational stop mechanism. | 每个 Production Agent 必须有 independent kill switch | [R] | P01.7 / P08.5 |
+| INV14 | External provider failure shall have a defined degradation strategy. | 外部 Provider failure 必须有明确 degradation strategy | [RA] | P09.2 / P03.6 |
+| INV15 | High-risk Agents shall have a documented business / risk / regulatory owner. | 高风险 Agent 必须有 documented business / risk / regulatory owner | [R] | P01.1 / P07.1 |
+| INV16 | An Agent shall be introduced only after deterministic automation has been evaluated and rejected with a documented reason. | 引入 Agent 前必须先证明 deterministic 方案不可行，并留下结论 | [R] | P00.A.1 |
+| INV17 | A production Agent shall have a defined and accepted maximum impact under full compromise. | 生产 Agent 必须定义并接受「被完全控制时的最大影响」 | [R] | P02.0 |
+| INV18 | An Agent Run shall stop or degrade when its execution budget is exhausted. | 执行预算耗尽时必须停止或降级，不得继续 | [R] | P14.3 |
+
+其中 INV01、02、03、04、08、09、10 基本直接对应 AWS Agentic AI Lens 的核心方向；INV05–07、11–15 是结合金融机构治理和你们实际架构做的 Enterprise overlay；INV16–18 来自 P00.A / P02.0 / P14.3 三组新增控制。[9]
+
+**三条 `[RA]` 的措辞说明**。上一版把「最强控制」写成了「所有 workload 的绝对要求」：
+
+| 上一版措辞 | 本版措辞 | 为什么改 |
+| --- | --- | --- |
+| Critical Action shall require human oversight | Actions **above the accepted risk tier** shall require human oversight | human oversight 的触发条件应当来自已接受的风险等级，而不是一刀切 |
+| Every production Run shall be reconstructable | Production Runs shall be reconstructable **to the depth required by the Agent's risk tier** | 「可重建」的深度（完整 environment 快照 vs 版本清单）在不同风险等级下不同 |
+| External provider failure shall have a defined degradation strategy | 同左，级别标为 `[RA]` | 单一 provider 的部署里「provider failure」与「自身故障」是同一件事，拆不出独立策略 |
+
+## 2.2 Architecture Decision Gates（ADG01–ADG04）
+
+以下 **4 条**约束的是**决策过程**，不是系统行为。Fail 表示评审材料不完整，Architecture Board 不应通过准入。
+
+| ID | Gate | 中文 | 级别 | 主要落点 |
+| --- | --- | --- | --- | --- |
+| ADG01 | A new system or platform shall not be introduced unless existing systems, processes and configuration have been evaluated and rejected with a documented reason. | 新建系统 / 平台之前，必须先评估并否决既有系统、流程与配置 | [R] | P00.3（P00-12） |
+| ADG02 | Buying, reusing or extending existing capability shall be evaluated before building, and the reason for choosing the current option shall be recorded. | 自建之前必须完成 Buy / Reuse / Extend / Build 比较，并记录选择当前方案的理由 | [R] | P00.3（P00-15） |
+| ADG03 | Every material architecture decision shall record its rationale, the alternatives considered and the accepted trade-offs. | 每个重大架构决策必须记录 rationale、替代方案与明确接受的 trade-offs | [R] | P00.4（P00-17 / P00-18） |
+| ADG04 | A production architecture shall have a documented evolution, migration and exit path. | 生产架构必须有明确的演进 / 迁移 / 退出路径 | [R] | P00.4（P00-20） |
+
+ADG01–ADG04 与 P00 的六个问题（P00-12 / P00-13 / P00-15 / P00-17 / P00-18 / P00-20）互为表里：
+这六个问题同时是 **P0 检查项**与 **Gate 条件**。「为什么需要这个架构」「为什么不能用更简单的方案」
+「为什么选 Build 而不是 Buy / Reuse」往往比后面任何一条技术检查更早决定架构是否值得继续，
 因此它们既进 P00 的问题清单，也进这条 Non-Negotiable 清单。
+
+> **Gate 与 P00.6 的分工**：P00.6 定义「Discovery Gate / Production Gate 何时通过」；
+> ADG01–ADG04 定义「为了让 Gate 通过，必须留下什么证据」。两者的关系是条件与判据，而不是重复要求。
 
 ---
 
 # 附录 A — 上一版保留项（181 项，不计入主表）
 
-不计入主表 621 项
+不计入主表 594 项（层归属见 B.11：A.1 与 A.4 属 L1，其余属 L3）
 
 分组如下：A.1 平台边界与 Runtime Abstraction、A.2 模型风险与模型注册、A.3 其他补充控制项、A.4 Use Case 治理与风险分级、A.5 身份与 Entitlement 细项、A.6 Tool 元数据与 MCP 治理模式、A.7 网络安全基线、A.8 容量与发布策略、A.9 第三方与供应链细项、A.10 其他零散保留项。
 
 前 3 组是上一版整块内容（原 P02 / P03 / P06·P07·P08 的细项），后 7 组是散落在旧 P01 / P05 / P07 / P08 / P09 / P12 / P13 / P14 中、未被新版等价问题吸收的条目。
 
 ## A.1 平台边界与 Runtime Abstraction
+
+> **层**：L1
 
 上一版把这一组列为「你们当前最重要的一组」。它不属于 AWS 任何一个 Lens，但直接决定 P14 能否成立。
 
@@ -1376,7 +1649,9 @@ A26. Runtime-specific capability 是否明确标记？
 
 ## A.2 模型风险与模型注册
 
-本版在 P08.1 只做到「AI model governance」这一层粒度，下面这些是实现层必须回答的。传统金融 Model Risk Management（如 SR 11-7 的模型开发、使用、验证与持续治理思路）应作为这一层的参考体系，而不是把 LLM 当成普通 API。
+> **层**：L3
+
+本版在 P07.1 只做到「机构级 standard（guardrail / prompt / model resource）」这一层粒度，下面这些是实现层必须回答的。传统金融 Model Risk Management（如 SR 11-7 的模型开发、使用、验证与持续治理思路）应作为这一层的参考体系，而不是把 LLM 当成普通 API。
 
 **Model Registry**
 
@@ -1417,6 +1692,8 @@ A54. 是否有 model override / fallback？
 A55. 是否有 model retirement process？
 
 ## A.3 其他补充控制项
+
+> **层**：L3
 
 **数据治理细项**
 
@@ -1507,6 +1784,8 @@ A104. Skill 是否能执行任意 Python（若能，是否按 P0 处理并强制
 
 ## A.4 Use Case 治理与风险分级
 
+> **层**：L1
+
 本版 P07.1 只问到「是否定义 Agent risk classification」这一层，旧版更细的分级定义、触发条件与问责链条没有对应位置。
 
 A105. 是否能够描述 Agent 的 intended use？
@@ -1530,6 +1809,8 @@ A122. Business、Technology、Risk、Security 是否职责清楚？
 
 ## A.5 身份与 Entitlement 细项
 
+> **层**：L3
+
 本版 P02.3 集中在 **Agent 身份**，P10 集中在 **Retrieval 侧 entitlement**；中间这段「User / Runtime / Tool / Data Provider 四层身份的关系，以及 entitlement 的判断维度」没有对应位置。
 
 A123. User 是否有唯一 identity？
@@ -1548,6 +1829,8 @@ A135. Tool Owner 是否可以自行批准 Tool？
 
 ## A.6 Tool 元数据与 MCP 治理模式
 
+> **层**：L3
+
 本版 P01.4 覆盖了 tool catalogue / owner / version / onboarding，但 tool 的 schema 级元数据与 MCP 的 pattern 类别没有逐一列出。
 
 A136. Tool 是否有 description？
@@ -1565,7 +1848,9 @@ A147. 是否有 exception process？
 
 ## A.7 网络安全基线
 
-本版 P08.4 只问到「是否有 network isolation」，下面的网络基线没有对应位置。
+> **层**：L3
+
+本版 P08.3 只问到「model endpoint / prompt catalog / artifact / knowledge data 是否隔离」，下面的网络基线没有对应位置。
 
 A148. Agent Platform 是否运行于受控 network？
 A149. Control Plane 是否与 Runtime 隔离？
@@ -1576,6 +1861,8 @@ A153. 是否默认 deny outbound？
 A154. 是否做 network segmentation？
 
 ## A.8 容量与发布策略
+
+> **层**：L3
 
 本版 P04 / P12 覆盖了 SLA、tenant throttling、deployment manifest，但容量上限与 canary / blue-green 等发布策略没有对应位置。
 
@@ -1594,6 +1881,8 @@ A166. Tool 是否有独立生命周期？
 
 ## A.9 第三方与供应链细项
 
+> **层**：L3
+
 本版 P09.2 覆盖了外部依赖的 outage 与集中度风险，但没有逐家 provider 的第三方风险评估，也没有 artifact 级的 manifest / checksum 细项。
 
 A167. OpenAI 是否完成 Third-party Risk Assessment？
@@ -1610,6 +1899,8 @@ A177. Skill 是否有 dependency manifest？
 
 ## A.10 其他零散保留项
 
+> **层**：L3
+
 A178. 是否定义 maximum data volume？
 A179. 是否定义 maximum external calls？
 A180. Prompt 是否被错误地当作 Security Control？
@@ -1621,14 +1912,16 @@ A181. 是否记录 Knowledge Source 的来源系统（source system）？
 
 ## B.1 分层结构
 
-最高层是「一个前置层 + 六支柱 + 两类 overlay + 一组不变量」：
+最高层是「一个前置层 + 六支柱 + 两类 overlay + 一组不变量与准入 Gate」：
 
 ```text
-P00 Architecture Foundation（架构评审前置层，通用）
+P00 Architecture Foundation（架构评审前置层，框架中立）
     Business Problem & Outcome · Context & Constraints · Current State ·
-    Architecture Approach · Buy / Build / Reuse · Alternatives & Trade-offs ·
-    Risk / Assumptions · Evolution / Exit
-    （Agent 场景展开：AD / BO，见 P00.7 / P00.8）
+    Input / Output Contract · Architecture Approach · Buy / Build / Reuse ·
+    Alternatives & Trade-offs · Risk / Assumptions · Evolution / Exit
+
+        ▼
+P00.A Agent / AI Architecture Decision（Agent / AI 场景展开：AD / BO）
 
         ▼
 P01 Operational Excellence
@@ -1639,13 +1932,13 @@ P05 Cost Optimization
 P06 Sustainability
 
         ▼
-Financial Services Overlay（P07–P09）
+Financial Services Delta（P07–P09：只审 FSI 额外要求，不与 base 重复计分）
 
         ▼
 Enterprise Agent Platform Overlay（P10–P14）
 
         ▼
-P15 Architecture Invariants（22 条，Fail 即阻断）
+二、Architecture Invariants（INV01–INV18）+ Decision Gates（ADG01–ADG04）
 ```
 
 对应关系：
@@ -1654,7 +1947,9 @@ P15 Architecture Invariants（22 条，Fail 即阻断）
 
 AWS 自己要求 Agentic AI Lens 与 Well-Architected Framework **配合**使用，而不是取代它。P00 不属于任何 Lens，
 也不绑定具体领域：它回答的是「为什么做、在什么约束下做、为什么选择这个架构」，这是所有 Lens 之前的问题，
-方法上沿用 ATAM 的 business driver → quality attribute → trade-off 顺序。[25]
+方法上沿用 ATAM 的 business driver → quality attribute → trade-off 顺序，[25] 并借用 Responsible AI Lens 的 use case 顺序。[30]
+
+> 每一节标题下标注该节的默认评审层（L1 / L2 / L3），定义、归属表与使用方式见 **B.11**。
 
 ## B.2 每个问题的记录字段
 
@@ -1662,8 +1957,12 @@ AWS 自己要求 Agentic AI Lens 与 Well-Architected Framework **配合**使用
 
 | 字段 | 含义 |
 | --- | --- |
+| **Level** | L1 Architecture Review / L2 Control Checklist / L3 Implementation & Evidence（见 B.11） |
+| **Requirement** | R / RA / Rec（见「一、Checklist 主表」的条目元数据约定；默认 P0 → R，P1 / P2 → Rec） |
+| **Applicability** | Applicable / N/A；判 N/A 必须写明理由，`[RA]` 条目还需 Architecture Board 确认 |
 | Status | ✅ Pass / 🟡 Partial / 🔴 Gap / ⚪ N/A |
-| Evidence | 能证明已经做到什么 |
+| Maturity | 0–5（见 B.3） |
+| Evidence | 能证明已经做到什么；Present / Partial / Missing |
 | Owner | 谁负责 |
 | Risk | Low / Medium / High / Critical |
 | Finding | 当前问题 |
@@ -1697,72 +1996,96 @@ audit sample
 
 ## B.3 评分方式
 
-不要简单用 Yes / No，借鉴 AWS Well-Architected 的 Improvement Plan 思路：
+一条控制的状态由**三个互相独立的维度**决定，不能压缩成一个数字：
+
+| 维度 | 取值 | 说明 |
+| --- | --- | --- |
+| **Maturity** | 0–5 | 这条控制做到什么程度 |
+| **Evidence** | Present / Partial / Missing | 证据是否可得 |
+| **Risk** | Low / Medium / High / Critical | 这条控制失效的业务 / 监管影响 |
+| **Applicability** | Applicable / N/A | 判 N/A 必须写理由 |
+| **Result** | Pass / Partial / Gap / N/A | 结论，由前四项共同判定 |
 
 ```text
+Maturity
 0 = No control
-
 1 = Documented only
-
 2 = Partially implemented
-
 3 = Implemented
-
 4 = Implemented + tested
-
 5 = Implemented + continuously monitored
 ```
 
-对于金融平台，再增加一项：
+**Result 不是 Maturity 的函数。** 同一组 Maturity / Evidence，在不同 Risk 下结论不同：
 
-```text
-E = Evidence available
-```
+| 控制 | Maturity | Evidence | Risk | Result |
+| --- | ---: | --- | --- | --- |
+| Tool authorization | 4 | Present | Low | **Pass** |
+| Retrieval entitlement | 2 | Partial（design only） | High | **Gap** |
+| Kill switch | 3 | Present | Critical | **Partial**（需 remediation plan，不得单独视为 Pass） |
+| Agent audit | 3 | Present | Medium | **Pass** |
+| System prompt 变更控制 | 3 | Present | Low | **Pass** |
 
-所以：
+判定规则：
 
-```text
-3 + E
-```
+1. `Maturity ≤ 2` → **Gap**；
+2. `Maturity ≥ 3` 且 `Evidence = Missing` → **不得 Pass**，最多 Partial；
+3. `Maturity ≥ 3` 且 `Evidence = Present`：
+   - `Risk ∈ {Low, Medium}` → **Pass**
+   - `Risk ∈ {High, Critical}` → **Partial**，必须给出 remediation plan、owner 与 target date
+4. `Risk = Critical` 的控制不允许只凭 Maturity 判 Pass —— 需要 **test result 或持续监控证据**（Maturity 4 / 5）；
+5. 标 `[RA]` 的条目若判 N/A，必须写明不适用理由并由 Architecture Board 确认。
 
-才是真正比较可信的 Pass。
+> 上一版把 `3 + Evidence` 写成「真正比较可信的 Pass」，方向对，但把两个维度压成了一个通过条件：
+> `Maturity = 3 且 Evidence = Present` 究竟是否 Pass，还取决于这条控制的 Question Risk、适用的监管要求与是否要求测试证据。
+> 因此本版不再用它作为通过条件，只把它当作「已实现且有证据」的下限（规则 2 与规则 3 的入口）。
 
-例如：
+## B.4 总览：P00 + P01–P14 + Invariants / Gates
 
-| Question | Score | Evidence | Risk |
-| --- | ---: | --- | --- |
-| Tool authorization | 4 | policy + integration test | Low |
-| Retrieval entitlement | 2 | design only | High |
-| Kill switch | 1 | documented only | Critical |
-| Agent audit | 3 | sample trace | Medium |
+| Pillar / 组 | 内容 | AWS Lens 对应 | 构成 | 检查项 |
+| --- | --- | --- | --- | ---: |
+| **P00** | Architecture Foundation（通用前置层） | 不属于任何 Lens（ATAM / ADR / AWS Prescriptive Guidance / Microsoft，见 B.10） | P00-01…23（23）+ AD（14）+ BO（10） | 47 |
+| **P01** | Operational Excellence | Agentic AI Lens：AGENTOPS01–07 | `1`–`90`（90）+ P01.6 Evaluation Model EV01–EV10（10） | 100 |
+| **P02** | Security | Agentic AI Lens：AGENTSEC01–09 | `91`–`224`（134）+ P02.0 Threat Modeling TM01–TM08（8） | 142 |
+| **P03** | Reliability | Agentic AI Lens：AGENTREL02–06 | `225`–`289` | 65 |
+| **P04** | Performance Efficiency | Agentic AI Lens：Performance | `290`–`309` | 20 |
+| **P05** | Cost Optimization | Agentic AI Lens：Cost | `310`–`328` | 19 |
+| **P06** | Sustainability | Agentic AI Lens + WAF | `329`–`336` | 8 |
+| **P07** | Financial Services Governance & Regulatory Delta | FSI Lens：FSIOPS / risk governance（**只审 delta**） | `337`–`355` | 19 |
+| **P08** | FSI Security Delta | FSI Lens：FSISEC01–16（**只审 delta**） | `356`–`408` | 53 |
+| **P09** | FSI Resilience Delta | FSI Lens：resilience / FSIREL / backup（**只审 delta**） | `409`–`436` | 28 |
+| **P10** | Knowledge / Retrieval Architecture | Agentic Lens 认知层 + FSI 数据治理 | `437`–`456` | 20 |
+| **P11** | Skill / Software Supply Chain | 平台特有 | `457`–`475` | 19 |
+| **P12** | Deployment / Change / Evidence | Agentic Lens 生命周期 + 平台特有 | `476`–`488` | 13 |
+| **P13** | Multi-tenancy | Agentic Lens：multitenancy | `489`–`500` | 12 |
+| **P14** | Runtime / Snowflake / Multi-runtime | 平台特有 + CNCF 平台工程 | `501`–`512`（12）+ RT01–RT17（17） | 29 |
+| **二** | Architecture Invariants / Decision Gates | — | INV01–INV18 + ADG01–ADG04 | 18 + 4 |
 
-## B.4 总览：P00 + P01–P14 + Invariants
+**编号总账（用于逐条核对，避免出现「统计表与正文对不上」）**：
 
-| Pillar | 内容 | AWS Lens 对应 | 检查项 |
-| --- | --- | --- | ---: |
-| **P00** | Architecture Foundation（通用前置层） | 不属于任何 Lens（ATAM / ADR / AWS Prescriptive Guidance / Microsoft，见 B.10） | 44 |
-| **P01** | Operational Excellence | Agentic AI Lens：AGENTOPS01–07 | 100 |
-| **P02** | Security | Agentic AI Lens：AGENTSEC01–09 | 142 |
-| **P03** | Reliability | Agentic AI Lens：AGENTREL02–06 | 65 |
-| **P04** | Performance Efficiency | Agentic AI Lens：Performance | 20 |
-| **P05** | Cost Optimization | Agentic AI Lens：Cost | 19 |
-| **P06** | Sustainability | Agentic AI Lens + WAF | 8 |
-| **P07** | Financial Services Governance Overlay | FSI Lens：FSIOPS / risk governance | 15 |
-| **P08** | FSI Security Overlay | FSI Lens：FSISEC01–16 | 78 |
-| **P09** | Financial Services Resilience Overlay | FSI Lens：resilience / FSIREL / backup | 37 |
-| **P10** | Knowledge / Retrieval Architecture | Agentic Lens 认知层 + FSI 数据治理 | 20 |
-| **P11** | Skill / Software Supply Chain | 平台特有 | 19 |
-| **P12** | Deployment / Change / Evidence | Agentic Lens 生命周期 + 平台特有 | 13 |
-| **P13** | Multi-tenancy | Agentic Lens：multitenancy | 12 |
-| **P14** | Runtime / Snowflake / Multi-runtime | 平台特有 + CNCF 平台工程 | 29 |
-| **P15** | Architecture Invariants | — | 22 条 Non-Negotiable |
+| 段 | 编号 | 条数 |
+| --- | --- | ---: |
+| P00 框架中立问题 | P00-01…P00-23 | 23 |
+| P00.A Agent / AI 场景展开 | AD01–AD14 | 14 |
+| P00.A Agent / AI 场景展开 | BO01–BO10 | 10 |
+| P01–P06 逐条 | `1`–`336` | 336 |
+| P02.0 威胁模型 | TM01–TM08 | 8 |
+| P01.6 评估模型 | EV01–EV10 | 10 |
+| P07–P14 逐条 | `337`–`512` | 176 |
+| P14.2–P14.4 运行时 | RT01–RT17 | 17 |
+| **合计** | | **594** |
+
+> 上一版顶部写主表 621 项，B.4 写 P01 为 100 项，而正文 P01 的连续编号是 `1`–`90`。
+> 两者其实一致 —— P01 的 100 = 90 条连续编号 + P01.6 Evaluation Model（EV01–EV10）10 条，
+> 但统计表没有写出「构成」，因此无法核对。本版在表内增设「构成」列并给出编号总账，
+> 使每一个数字都能加出来。
 
 映射结构：
 
 ```text
 P00 Architecture Foundation（通用前置层）
         │   为什么做、在什么约束下做、为什么是这个架构
-        │   · 该不该用 Agent（Agent 场景展开：AD / BO）
+        │   · 该不该用 AI / Agent（P00.A：AD / BO）
         ▼
 AWS Well-Architected（P01–P06）
         │
@@ -1774,17 +2097,21 @@ AWS Well-Architected（P01–P06）
         └── Sustainability
                 │
                 ▼
-Financial Services Overlay（P07–P09）
-        │   FSISEC01–16 / FSIOPS / FSIREL / Backup & Retention
+Financial Services Delta（P07–P09）
+        │   只审 FSI 额外要求：风险治理 · 监管义务 · 权限与 SoD · AI 威胁检测 ·
+        │   AI 资产隔离 · AI 数据保护 · 事故上报 · resilience tier · 外部依赖集中度 ·
+        │   gray failure · 备份与监管保留
         ▼
 Enterprise Agent Platform Overlay（P10–P14）
         │   Knowledge & Retrieval · Skill Supply Chain · Deployment & Evidence ·
         │   Multi-tenancy · Runtime / Execution Budget · Multi-runtime
         ▼
-P15 Architecture Invariants（22 条 Non-Negotiable）
+二、Architecture Invariants（INV01–INV18）+ Decision Gates（ADG01–ADG04）
 ```
 
-> 以 AWS Agentic AI Lens 的正式 best practice / focus area 作为 **base layer**，不以我们自己的分类替代它；FSI Industry Lens 作为金融领域 overlay；P10–P14 是你们平台特有、AWS Lens 不会替你们回答的部分；P00 则在所有 Lens 之前，判断「问题本身是否成立、架构选择是否成立」，不含 Agent 专有名词，可复用于非 Agent 平台。
+> 以 AWS Agentic AI Lens 的正式 best practice / focus area 作为 **base layer**，不以我们自己的分类替代它；
+> FSI Industry Lens 作为金融领域 **delta overlay**（同一控制只在 base 计分一次）；
+> P10–P14 是你们平台特有、AWS Lens 不会替你们回答的部分；P00 在所有 Lens 之前，判断「问题本身是否成立、架构选择是否成立」。
 
 ## B.5 P0 十项红线（下一轮实际 Architecture Review 重点打红）
 
@@ -1792,21 +2119,23 @@ P15 Architecture Invariants（22 条 Non-Negotiable）
 
 | P0 | 要补什么 | 对应章节 | 关联 Invariant |
 | --- | --- | --- | --- |
-| P0-01 | Agent Identity / Delegated Identity | P02.3、P08.2 | INV09 / INV10 |
+| P0-01 | Agent Identity / Delegated Identity | P02.3、P08.1 | INV09 / INV10 |
 | P0-02 | Retrieval Entitlement | P10、P03.4 | INV03 |
 | P0-03 | Tool Authorization | P02.2、P01.4 | INV04 |
 | P0-04 | Prompt / Configuration Versioning | P01.2、P12 | INV05 |
 | P0-05 | Memory Isolation / Integrity | P02.1、P03.2 | INV01 / INV12 |
-| P0-06 | Agent Input / Output DLP + Injection Defense | P02.8、P08.5 | INV02 |
+| P0-06 | Agent Input / Output DLP + Injection Defense | P02.8、P08.4 | INV02 |
 | P0-07 | Non-repudiation / Audit Evidence | P02.5、P12 | INV11 / INV12 |
-| P0-08 | Human Approval / Rogue Agent Containment | P02.7、P08.6 | INV08 / INV13 |
+| P0-08 | Human Approval / Rogue Agent Containment | P02.7、P08.5 | INV08 / INV13 |
 | P0-09 | External Provider / Runtime Resilience | P09.2、P03.6、P14 | INV14 |
 | P0-10 | Skill / Artifact Supply Chain | P11 | INV07 |
 
 这十项里，P0-01 至 P0-04 建议先做，因为它们一旦建立，后面无论换成 AgentCore、Snowflake Cortex Agents 还是别的 LangChain，都不会改变核心安全架构。
 
-另有 **P00 Architecture Foundation（P00-01…P00-20 与 AD / BO）和 P02.0（TM）属于用例准入前置**，不列入上表：它们不是控制点，而是「是否允许进入评审」。
-P00 中未回答的 P0 问题即 **P00 Gate 未通过**（其中 P00-12 / 13 / 15 / 17 / 18 / 20 同时是 INV19–INV22 与 INV16），此时不应开始 P01–P14 的逐条评审；P02.0 未完成时，P02 的控制项无法判断覆盖是否充分。
+另有 **P00 Architecture Foundation（P00-01…P00-23 与 P00.A 的 AD / BO）和 P02.0（TM）属于用例准入前置**，不列入上表：它们不是控制点，而是「是否允许进入评审」。
+P00 中未回答的 P0 问题即 **Discovery Gate 未通过**（其中 P00-12 / 13 / 15 / 17 / 18 / 20 同时是 ADG01–ADG04 与 INV16），此时不应开始 P01–P14 的逐条评审；P02.0 未完成时，P02 的控制项无法判断覆盖是否充分。
+
+上表这 10 项构成本 Checklist 中 **L1 Architecture Review** 的控制主干；L1 的完整构成（91 条）见 B.11。
 
 ## B.6 6 个关键证明问题
 
@@ -1942,7 +2271,9 @@ Incident handling
 Financial Agent Platform — Well-Architected Review
 ──────────────────────────────────────────────────
 
-P00 Architecture Foundation       通过 / 不通过（准入前置，不做百分比）
+P00 Architecture Foundation       Discovery Gate: 通过 / 不通过
+                                  Production Gate: 通过 / 不通过
+                                  （准入前置，不做百分比）
 ──────────────────────────────────────────────────
 P01 Operational Excellence        74%
 P02 Security                      66%  🔴
@@ -1951,16 +2282,18 @@ P04 Performance Efficiency        88%
 P05 Cost Optimization             85%
 P06 Sustainability                70%
 ────────────────────────────────  AWS WAF 六支柱
-P07 FS Governance Overlay         63%  🔴
-P08 FSI Security Overlay          58%  🔴
-P09 FS Resilience Overlay         61%  🔴
+P07 FS Governance & Reg Delta     63%  🔴
+P08 FSI Security Delta            58%  🔴
+P09 FSI Resilience Delta          61%  🔴
+────────────────────────────────  FSI delta（不与 base 叠加）
 P10 Knowledge / Retrieval         73%
 P11 Skill Supply Chain            58%  🔴
 P12 Deployment / Evidence         75%
 P13 Multi-tenancy                 68%
 P14 Runtime / Multi-runtime       54%  🔴
 ────────────────────────────────  Enterprise overlay
-P15 Architecture Invariants       0 / 22 Pass
+Invariants (INV01–18)             0 / 18 Pass
+Decision Gates (ADG01–04)         0 / 4 Pass
 ```
 
 然后规定 finding 的处置规则：
@@ -1979,11 +2312,14 @@ Low
 → Backlog
 ```
 
-> P15 单独计分：Invariant 不做百分比，只做 Pass / Fail，且 **Fail 即阻断**。其中 INV16 与 INV19–INV22 属于 P00 准入 Gate。
+> Invariants 与 Decision Gates 单独计分：不做百分比，只做 Pass / Fail，且 **Fail 即阻断**。其中 INV16 与 ADG01–ADG04 属于 P00 准入 Gate。
+>
+> **P07–P09 的百分比是 FSI delta 的完备度**，不是第二套 Security / Reliability 分数。
+> 与 base 章节重复的 control 只在 base 上计分一次（规则见 P07 章首），因此这三行不能与 P02 / P03 的分数相加或比较。
 
 ## B.8 评审执行结构：与 AWS Well-Architected 的关系
 
-不要把 621 道独立问题直接拿去开会，而是用这个结构：
+不要把 594 道独立问题直接拿去开会。本版把层次做进了文档结构（B.11），会议只走 L1 的 91 条：
 
 ```text
                Enterprise Agent Platform Review
@@ -1998,12 +2334,12 @@ Low
                              │
                    Internal Architecture
                              │
-                    621 detailed checks
+                    594 detailed checks
                              │
                 ┌────────────┴────────────┐
                 │                         │
-          22 Mandatory             P0/P1/P2
-          Invariants               Findings
+          18 Invariants             P0/P1/P2
+          + 4 Gates                Findings
 ```
 
 完整映射：
@@ -2028,8 +2364,10 @@ P00 Architecture Foundation（准入前置，通用）
        Enterprise Agent Platform Overlay（P10–P14）
                 │
                 ▼
-       P15 Architecture Invariants（22 条）
+二、Architecture Invariants（18）+ Decision Gates（4）
 ```
+
+会议只逐条读 L1；L2 由各 owner 在会前按 Pillar 提交结论与证据；L3 用抽查与抽样取证，不进会议议程。
 
 AWS 本身也明确建议用 Lens 来持续、系统地根据问题和最佳实践评估架构，而不是只做一次性设计审核。[19]
 
@@ -2051,29 +2389,60 @@ AWS 本身也明确建议用 Lens 来持续、系统地根据问题和最佳实�
 | 4 | **增加 Human Oversight Security**：不是「有没有 HITL」，而是「Human 是否可能被 Agent 操纵」（cognitive load、confidence indicator、multiple reviewers、rogue-agent containment） | P02.7 |
 | 5 | **增加 Gray Failure**：金融 Agent 最大的问题之一不是系统挂，而是系统正常返回但业务结果已经不可靠 | P09.3 |
 | 6 | **增加 FSI-specific Governance 与 External Provider Resilience**：risk management roles、operational risk assessment、privileged access、SoD、incident reporting、DLP、ransomware、AI model governance；以及 LiteLLM → OpenAI / Gemini / Claude、AgentCore、LangSmith、Snowflake 之间的韧性与集中度风险 | P07 / P08 / P09.2 |
-| 7 | **增加前置层与跨框架检查组**：Agent vs Workflow、Business / User Outcome、Threat Modeling、Evaluation Model、Runtime Isolation & Execution Budget | P00.7 / P00.8 / P02.0 / P01.6 / P14.2–14.4 |
-| 8 | **P00 从「Agent 准入判据」升格为通用的 Architecture Foundation**：20 条框架中立问题（Business Problem / Constraints / Architecture Approach / Decision & Trade-offs）+ Decision Gate + 一页纸产出物；AD / BO 降为其下的 Agent 场景展开 | P00.1–P00.8 |
+| 7 | **增加前置层与跨框架检查组**：AI / Agent 决策链、Business / User Outcome、Threat Modeling、Evaluation Model、Runtime Isolation & Execution Budget | P00.A / P02.0 / P01.6 / P14.2–14.4 |
+| 8 | **P00 从「Agent 准入判据」升格为通用的 Architecture Foundation**：23 条框架中立问题（Business Problem / Constraints / Input-Output Contract / Architecture Approach / Decision & Trade-offs）+ 分级 Decision Gate + 一页纸产出物；AD / BO 下沉到独立的 P00.A Agent / AI Architecture Decision | P00.1–P00.7 / P00.A |
 
 规模变化：
 
 | 项 | 上一版 | 本版 |
 | --- | ---: | ---: |
 | 最高层分类 | 14 个自定义 Pillars | P00 架构基础前置层 + AWS WAF 六支柱 + 两类 overlay（P01–P14）+ Invariants |
-| 检查项（主表，含 P00 / AD / BO / TM / EV / RT 组） | 389 | 621 |
-| Architecture Invariants | 12 | 22（Non-Negotiable，Fail 即阻断） |
+| 检查项（主表，含 P00 / AD / BO / TM / EV / RT 组） | 389 | 594 |
+| Architecture Invariants / Decision Gates | 12 | 18 + 4（Non-Negotiable，Fail 即阻断） |
 | 新增受控章节 | — | P01.2 Prompt 生命周期、P02.1 Memory 安全、P02.7 Human Oversight、P09.3 Gray Failure、P13 Multi-tenancy、P14 Runtime / Multi-runtime |
-| 新增前置层与跨框架组 | — | P00 Architecture Foundation（P00-01…20，通用）+ AD / BO（Agent 场景展开）、P02.0 Threat Modeling（TM）、P01.6 Evaluation Model（EV）、P14.2–14.4 Runtime Isolation & Execution Budget（RT） |
+| 新增前置层与跨框架组 | — | P00 Architecture Foundation（P00-01…23，通用）+ P00.A Agent / AI Architecture Decision（AD / BO）、P02.0 Threat Modeling（TM）、P01.6 Evaluation Model（EV）、P14.2–14.4 Runtime Isolation & Execution Budget（RT） |
 | 保留项 | — | 附录 A（181 项，本版结构未覆盖） |
 | AWS 依据 | Generative AI Lens | **Agentic AI Lens（2026-06-10）+ FSI Industry Lens（2026-01-27 修订）** |
 
 四处与上一轮草稿的差异，说明如下：
 
-- **问题编号重编为连续编号**。上一轮草稿在 P03.6 与 P04 交界处重复使用了「289」，导致后续编号整体偏移、正文所称「540 detailed checks」与实际逐条数不符。本版按实际条目重编为 `1`–`542`，不再有重复号。
+- **问题编号重编为连续编号**。上一轮草稿在 P03.6 与 P04 交界处重复使用了「289」，导致后续编号整体偏移、正文所称「540 detailed checks」与实际逐条数不符。上一版按实际条目重编为 `1`–`542`；本版因 FSI Overlay 去重，`337` 起再次重排为 `337`–`512`（`1`–`336` 不变）。
 - **参考条目去重**。上一轮草稿的 `[5]` 与 `[6]` 指向同一个 AWS 页面（`agentsec03`），本版合并为一条，引用编号已重新映射，正文所有 `[n]` 与文末定义一一对应。
 - **上一版未被本版结构覆盖的条目移入附录 A**，独立编号、不计入主表，避免内容丢失。
 - **上一版的「50 个核心问题」优先清单作废**。它的编号基于旧结构，无法映射到本版；本版改用「附录 B.5 P0 十项红线」作为下一轮实际评审的优先清单，并给出对应的章节与 Invariant。
 
 ---
+
+### 本轮结构修正（621 → 594）
+
+上面八条是相对 **389 项版**的调整。本轮针对 **621 项版**的修改全部属于同一性质：
+**从 Coverage 转向 Structure** —— 不再增加条目，而是修正结构、边界与措辞。
+
+| # | 修正 | 解决什么 | 落点 |
+| --- | --- | --- | --- |
+| 1 | **P00 真正做成框架中立层**：P00-12 去掉 Agent 措辞、P00-13 改写为「确定性 vs 非确定性边界」、P00.5 Gate 里的 Agent / AI 判断整体下沉 | 上一版宣称 P00 框架中立，但 P00-12、P00-13、P00.5 三处含 Agent / AI 判断，自我定义与内容矛盾 | P00.1 / P00.3 / P00.6 |
+| 2 | **Agent / AI 判断集中到 P00.A**：新增 `P00.A Agent / AI Architecture Decision`，AD / BO 降为它的两个子节 | Agent 专有判断此前散在 P00 与 AD 两组里，边界不清 | P00.A.1 / P00.A.2 |
+| 3 | **决策链取代二元判断**：`deterministic? → Workflow / Agent` 改为 `现有方案能否解决 → 是否需要 AI → 最低 AI 档位 → 是否需要 autonomy` | 原判断把「不是 deterministic」直接等同于「需要 Agent」，跳过 ML / LLM / RAG 三档；对金融场景会默认导向 Agent | P00.A.1（AD01–AD14） |
+| 4 | **Buy / Reuse / Extend / Build 从「四级台阶」改为并列 alternatives**，并补 decision matrix 与 Do Nothing 一列 | 台阶式表达会被读成「一路往上做到自建」，与架构决策逻辑不符；「为什么应该自己建设」措辞有倾向性 | P00.3（P00-15） |
+| 5 | **新增 P00.5 Input / Output Contract**（P00-21…23，含 downstream impact 追问） | AWS Responsible AI Lens 要求在技术设计之前先把系统当 black box 描述输入输出，并分析现实条件下输入如何变化；原 P00 缺这一层 | P00.5 |
+| 6 | **P00 Gate 拆成 Discovery Gate 与 Production Gate**，P0 问题分 Answered / Accepted assumption / Validation required 三类状态 | 原规则「存在未回答的 P0 → 不进入详细架构设计与 P01–P14」与 P00-19（PoC / Spike）自相矛盾，且把架构评审变成 production approval | P00.6 / B.5 |
+| 7 | **P07–P09 从「第二套 Pillar」改为 FSI Delta**，并规定「同一 control 只在 base 计分一次」 | P02 Security / P08 FSI Security 等两侧大量重叠，导致同一控制被评两次分，评分板出现「Pass 还是 Partial」的歧义 | P07–P09 / B.7 |
+| 8 | **Invariants 拆成 Runtime / Security Invariants（18）与 Architecture Decision Gates（4）**，并为条件性不变量加 `[RA]` 与条件措辞 | 原 22 条里既有 runtime security property 也有 governance process requirement，术语定义越来越宽；且部分条目把「最强控制」写成所有 workload 的绝对要求 | 二、2.1 / 2.2 |
+| 9 | **评分方式改为多维度**：Maturity 0–5 / Evidence / Risk / Applicability → Result，并给出 5 条判定规则 | 原「`3 + E` 才是可信的 Pass」把两个维度压成一个通过条件，Critical / High 风险控制可由数字直接判 Pass | B.3 |
+| 10 | **三层结构正式写进文档**：L1 Architecture Review（91）/ L2 Control Checklist（462）/ L3 Implementation & Evidence（41 + 附录 A 181），每节标注层归属 | 594 条里包含架构评审、控制清单、实现审计三种不同性质的问题，只有文字提醒不够 | 头部 / B.11 |
+
+规模与编号变化：
+
+| 项 | 上一版（621） | 本版（594） |
+| --- | ---: | ---: |
+| 主表条目 | 621 | 594 |
+| 连续编号 | `1`–`542` | `1`–`512`（`1`–`336` 不变） |
+| P00 框架中立问题 | 20 | 23 |
+| Non-Negotiable | 22 Invariants | 18 Invariants + 4 Decision Gates |
+| FSI Overlay（P07–P09） | 130 | 100（去重 −30，无 base 副本） |
+| 层结构 | 仅文字提醒 | L1 91 / L2 462 / L3 41 + 附录 A 181 |
+
+编号逐段对照见 **B.12**。
 
 ## B.10 跨框架映射：一份 Checklist，多套 Framework
 
@@ -2083,9 +2452,10 @@ AWS 本身也明确建议用 Lens 来持续、系统地根据问题和最佳实�
 | --- | --- | --- |
 | AWS Agentic AI Lens | P01–P06 主体（AGENTOPS01–07 / AGENTSEC01–09 / AGENTREL02–06 / Performance / Cost） | base layer，逐条对齐 |
 | AWS FSI Industry Lens | P07–P09（FSISEC01–16 / FSIOPS / FSIREL / backup） | 金融 overlay，逐条对齐 |
-| ATAM（SEI）/ ADR | P00 的方法论来源（business driver → quality attribute → trade-off；决策记录形态） | 已并入，不单独成章 |
+| ATAM（SEI）/ ADR | P00 的方法论来源（business driver → quality attribute → trade-off；决策记录形态与人页产出物） | 已并入，不单独成章 |
+| AWS Responsible AI Lens | P00.5（Input / Output Contract）、P00.A.1（是否需要 AI、哪一类 AI、是否需要 autonomy）、条目的适用性判断 | **借用其判断顺序**，不新增检查项 |
 | AWS Prescriptive Guidance（应用组合评估 / 多云 FSI） | P00.2 Constraints（P00-08 / P00-09）、P00.3（P00-15）、P00.4（P00-20） | 已并入，不单独成章 |
-| Microsoft Agent Architecture（CAF + Azure 架构中心） | P00.7 Agent vs Workflow、P00.8 Business / User Outcome | 已并入，不单独成章 |
+| Microsoft Agent Architecture（CAF + Azure 架构中心） | P00.A.1 决策链、P00.A.2 Business / User Outcome | 已并入，不单独成章 |
 | OWASP GenAI / LLM Top 10 | P02.0 Threat Modeling + P02.1 / P02.2 / P02.7 / P02.8 | 已并入，不单独成章 |
 | NIST AI RMF | 见下方 Core 映射，**不新增检查项** | cross-reference |
 | CNCF 平台工程 | P14.2–P14.4、P12 | 已并入，不单独成章 |
@@ -2095,24 +2465,79 @@ NIST AI RMF Core 的映射：[23]
 | AI RMF 功能 | 本 Checklist 落点 |
 | --- | --- |
 | Govern | P07、P01.1、附录 B.5 |
-| Map | P00（P00.1–P00.4）、P02.0 |
+| Map | P00（P00.1–P00.5）、P00.A、P02.0 |
 | Measure | P01.5 / P01.6、P02.9、P09.3 |
-| Manage | P01.7、P02.7、P08.6、P12 |
+| Manage | P01.7、P02.7、P08.5、P12 |
 
 > **为什么 NIST 与 CNCF 只做映射：** 为每个框架各起一章，同一个控制点就会在四五套编号下重复出现，评审时反而不知道以哪一套为准。
 > 判断标准只有一条 —— **纳入新框架时先问「能不能落到已有 Pillar」：能落就不新增章节，落不进去才说明发现了真实缺口。**
 > 平台团队职责与平台能力的定义参考 CNCF 的平台白皮书。[24]
 >
-> P00 是本 Checklist 中唯一与领域无关的一层（20 条问题里只有 P00-13 涉及 Agentic / AI）：把这一条替换掉，
-> 它可以直接用于数据平台、API 平台或核心业务系统评审，
-> 因此它可以先于具体领域审阅独立使用。
+> P00 是本 Checklist 中唯一与领域无关的一层：P00-01…P00-23 **全部框架中立**，
+> 不含 Agent / LLM / MCP / autonomy 的专有判断；Agent / AI 相关的判断全部集中在 P00.A。
+> 因此 P00.1–P00.7 可以先于具体领域独立使用，直接套在数据平台、API 平台或核心业务系统评审上。
+>
+> 借鉴 Responsible AI Lens 的方式与借鉴 NIST / CNCF 的方式相同 —— **只借判断顺序，不新增检查项**：
+> 「problem → stakeholder → input / output → impact → AI choice → oversight → approval」这条顺序
+> 体现在 P00.1 → P00.5 → P00.A 的排列里，而不是多出一章。
+
+---
+
+## B.11 三层结构：Architecture Review / Control Checklist / Implementation & Evidence
+
+条目达到几百条之后，真正的问题不再是覆盖不足，而是**同一份文档被三种人用三种方式读**。
+本版把层写进文档结构（每节标题下标注），而不是只在文字里提醒。
+
+| 层 | 名称 | 回答什么 | 主表规模 | 使用者与时机 | 通过标准 |
+| --- | --- | --- | ---: | --- | --- |
+| **L1** | Architecture Review | 做什么、边界在哪、最坏情况多大、是否继续 | 91 条 | Architecture Board；进入设计前 + 上生产前各一次 | 逐条讨论并给结论，不做百分比 |
+| **L2** | Architecture Control Checklist | 设计里有没有这个控制、是否落在正确位置 | 462 条 | 架构 / 安全 / 可靠性 / 数据 owner，按 Pillar 分工在会前走完 | 按 B.3 的 Result 判定 |
+| **L3** | Implementation / Evidence Checks | 实现是否正确、证据是否可得 | 41 条（另附录 A 181 条） | 实现方 + 审计方，在代码 / 配置 / artifact 层面 | 抽查 + 抽样取证，不进会议议程 |
+
+归属表：
+
+| 层 | 主干章节 | 判据 |
+| --- | --- | --- |
+| L1 | P00 全部（P00-01…23 / AD / BO，47 条）、P02.0 威胁模型（8）、P07.1 风险与监管治理（12）、P13 多租户模型（12）、P14.1 平台边界与多 Runtime（12） | 需要「决策」：定边界、定最坏情况、定是否继续 |
+| L2 | P01、P02.1–P02.8、P03–P06、P07.2、P08 全部、P09 全部、P10、P12（除下列）、P14.2–P14.4 | 需要在设计上对照：控制是否存在、位置是否正确 |
+| L3 | P02.9 Security Testing（`209`–`224`，16 条）、P11 供应链（`457`–`475`，19 条）、P12 的 `483`–`488`（manifest / evidence，6 条）、附录 A（A.1 与 A.4 除外） | 需要看代码、配置、扫描结果或产物才能判断 |
+
+> **为什么 L2 仍然有 462 条**：它们是设计期控制项，本来就应当由不同 owner 分工走完，不需要 Architecture Board 逐条开会。
+> 真正需要一起读的是 L1 的 91 条，L3 是抽查与取证。
+> 如果后续还要继续扩条目，优先扩 L3（实现层），不要把新条目继续加在 L1 上 —— L1 一旦超过 100 条，会议就会退化成逐条念清单。
+
+## B.12 编号变更对照（上一版 → 本版）
+
+`1`–`336` 不变；`337` 起因 FSI Overlay 去重（P07–P09 由 130 条收敛为 100 条）而重排，`P10`–`P14` 整体平移 −30，内容未变。
+
+| 上一版 | 本版 | 变化 |
+| --- | --- | --- |
+| P07.1 `337`–`345`（9） | P07.1 `337`–`348`（12） | +3：原 P08.1 的 governance body / standard（合并为 `347`）、独立验证 effectiveness（`348`）、原 `360` 的持续监控 regulation changes 归入 P07.2 |
+| P07.2 `346`–`351`（6） | P07.2 `349`–`355`（7） | +1：持续监控 regulatory changes（原 `360`） |
+| P08.1 `352`–`361`（10） | 并入 P07.1 / P07.2 | 5 条移入（其中两条合并为一条），5 条删除（与 P10 / P01.2 / P01.3 / P01.5 / P07.1 / P07.2 重复） |
+| P08.2 `362`–`373`（12） | P08.1 `356`–`364`（9） | −3：`363` IAM policy review、`365` permission boundary、`366` JIT access → base |
+| P08.3 `374`–`383`（10） | P08.2 `365`–`373`（9） | −1：`378` runtime threat detection → P02.9 |
+| P08.4 `384`–`392`（9） | P08.3 `374`–`380`（7） | −2：`384` 环境隔离 → P12；`392` network isolation → 附录 A.7 |
+| P08.5 `393`–`407`（15） | P08.4 `381`–`390`（10） | −5：`397` / `400` / `402` / `403` → P02.8 / 附录 A.3 / P02.5；`406` immutable backup → P09.4 |
+| P08.6 `408`–`418`（11） | P08.5 `391`–`401`（11） | 内容未变 |
+| P08.7 `419`–`429`（11） | P08.6 `402`–`408`（7） | −4：`419`–`422` 与新 P08.3 重复 |
+| P09.1 `430`–`437`（8） | P09.1 `409`–`416`（8） | 内容未变 |
+| P09.2 `438`–`448`（11） | P09.2 `417`–`419`（3） | −8：逐家 provider outage 收敛为一条 inventory；机制本身归 P01.7 |
+| P09.3 `449`–`455`（7） | P09.3 `420`–`424`（5） | −2：`451` → P10；`453` → P04 |
+| P09.4 `456`–`466`（11） | P09.4 `425`–`436`（12） | +1：immutable backup（原 `406`）移入 |
+| P10–P14 `467`–`542`（76） | `437`–`512`（76） | 整体 −30，无内容变化 |
+| INV19–INV22 | ADG01–ADG04 | 从 Invariants 拆出为 Decision Gates |
+| P00-01…P00-20（20） | P00-01…P00-23（23） | +3：P00.5 Input / Output Contract（`P00-21`…`P00-23`） |
+| P00.5 Gate / P00.6 Artifact / P00.7 AD / P00.8 BO | P00.6 / P00.7 / P00.A.1 / P00.A.2 | 因新增 P00.5 而顺延；AD / BO 下沉为 P00.A 的两个子节 |
+
+规模变化：主表 621 → 594（P07–P09 去重 −30，P00 新增 +3）；连续编号 542 → 512。
 
 ---
 
 # 参考
 
-AWS 部分全部依据 AWS 官方文档，不含第三方转述；P00、P02.0、P01.6 与 P14.2–P14.4 另引用 SEI、Martin Fowler、
-Microsoft、OWASP、NIST、CNCF 官方文档。
+AWS 部分全部依据 AWS 官方文档，不含第三方转述；P00、P00.A、P02.0、P01.6 与 P14.2–P14.4 另引用 SEI、Martin Fowler、
+Microsoft、OWASP、NIST、CNCF 与 AWS Responsible AI Lens 官方文档。
 
 [1]: https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/appendix-a.html "Appendix A: Best practice reference - Agentic AI Lens"
 [2]: https://docs.aws.amazon.com/wellarchitected/latest/financial-services-industry-lens/opex-key-aws-services.html "Key AWS services - Financial Services Industry Lens"
@@ -2143,3 +2568,7 @@ Microsoft、OWASP、NIST、CNCF 官方文档。
 [27]: https://docs.aws.amazon.com/prescriptive-guidance/latest/application-portfolio-assessment-guide/aws-application-design-and-migration-strategy.html "AWS application design and migration strategy - AWS Prescriptive Guidance"
 [28]: https://docs.aws.amazon.com/prescriptive-guidance/latest/strategy-multicloud-fsi/vendor-lockin.html "Consider the advantages and disadvantages of vendor lock-in - AWS Prescriptive Guidance"
 [29]: https://docs.aws.amazon.com/prescriptive-guidance/latest/strategy-multicloud-fsi/exit-strategy.html "Evaluate exit strategy requirements - AWS Prescriptive Guidance"
+[30]: https://docs.aws.amazon.com/wellarchitected/latest/responsible-ai-lens/use-case.html "Use case - Responsible AI Lens"
+[31]: https://docs.aws.amazon.com/wellarchitected/latest/responsible-ai-lens/raiuc01-bp01.html "RAIUC01-BP01 Clarify the business problem - Responsible AI Lens"
+[32]: https://docs.aws.amazon.com/wellarchitected/latest/responsible-ai-lens/raiuc03-bp01.html "RAIUC03-BP01 Identify the expected input and outputs for the AI system - Responsible AI Lens"
+[33]: https://docs.aws.amazon.com/wellarchitected/latest/responsible-ai-lens/responsible-ai-lens.html "Responsible AI Lens - AWS Well-Architected Framework"
