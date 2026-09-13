@@ -122,15 +122,29 @@ Astro 是静态站，`pubDatetime` 仅是元数据，不做定时发布。真正
 
 ### `temp/agent研究checklist.md` — Well-Architected Review Checklist
 
-配套 checklist（2026-09-13 框架级重构 + 结构收敛后，1716 行 / 主表 542 项 + Invariants 15 + 附录 A 181 项）：
+配套 checklist（2026-09-13 补结构性缺口后，1974 行 / 主表 601 项 + Invariants 18 + 附录 A 181 项）：
 
+- **编号约定（重要）**：P01–P14 的条目仍是连续编号 `1`–`542`（逐条对照的历史锚点，**不要重编**）；
+  新增的 P00 与三组跨框架检查用带前缀的 ID（`AD` / `BO` / `TM` / `EV` / `RT`），共 59 项，合计 601。
+- **P00 — Architecture Decision（用例准入前置层，放在 P01 之前）**：
+  `P00.1 Agent vs Workflow（AD01–AD14）`、`P00.2 Business / User Outcome（BO01–BO10）`。
+  判据：**先证明 deterministic workflow 不可行，才允许用 Agent**；业务 KPI ≠ 平台指标（TTFT / token cost）。
+- 另有 `P02.0 Threat Modeling / Abuse Case（TM01–TM08）`（先写攻击者能做什么；TM05 = 被完全控制时最大影响）、
+  `P01.6 Evaluation Model / Trajectory Evaluation（EV01–EV10）`（评 trajectory 而不只是 output；区分
+  deterministic assertion 与 LLM-as-judge）、`P14.2–14.4 Runtime Isolation & Agent Execution Budget
+  / Lifecycle & Portability（RT01–RT17）`（原 P14 改名 Runtime / Snowflake / Multi-runtime；原 P01.6 Recovery 顺延为 P01.7）。
+- **Invariants 15 → 18**：Inv16 引入 Agent 前必须证明 deterministic 不可行、Inv17 必须定义并接受
+  full compromise 下的最大影响、Inv18 执行预算耗尽必须停止或降级。
+- **框架与 Checklist 解耦**：新增 `附录 B.10 跨框架映射` —— 只保留一份检查项，Microsoft Agent Architecture（→P00）、
+  OWASP GenAI（→P02.0）、CNCF（→P14.2–14.4）并入，**NIST AI RMF 只做 Govern/Map/Measure/Manage 的交叉引用，不新增章节**。
+  参考补到 `[1]–[24]`（新增 Microsoft 2 篇 / OWASP / NIST / CNCF）。
 - **交付形态：正文只放清单，方法说明全部后置为附录**。骨架 = 导语（依据/规模/指向附录）
-  → `# 一、Checklist 主表（P01–P14，542 项）`（P01 降 H2、P01.1 降 H3）
-  → `# 二、Architecture Invariants（15 条）`
+  → `# 一、Checklist 主表（P00 + P01–P14，601 项）`（P01 降 H2、P01.1 降 H3）
+  → `# 二、Architecture Invariants（18 条）`
   → `# 附录 A — 上一版保留项（A01..A181，不计入主表）`
-  → `# 附录 B — 评审框架与说明`（B.1 三层结构 / B.2 记录字段 / B.3 评分方式 / B.4 总览 /
-  B.5 P0 十项红线 / B.6 6 个关键证明问题 / B.7 评分板 / B.8 与 AWS WAF 关系 / B.9 版本差异）
-  → `# 参考`
+  → `# 附录 B — 评审框架与说明`（B.1 分层结构 / B.2 记录字段 / B.3 评分方式 / B.4 总览 /
+  B.5 P0 十项红线 + 准入前置 / B.6 6 个关键证明问题 / B.7 评分板 / B.8 与 AWS WAF 关系 /
+  B.9 版本差异 / B.10 跨框架映射）→ `# 参考`
 - 已删除的对话与起草过程语（9 处）：开篇「可以。基于你们现在的实际架构…」、
   P01.2 / P01.6 / P02.1 / P02.7 / P08.7 / P13 的「上一版…」比较句、P01.4 的
   「你们已经决定 MCP…」及其架构决策 blockquote、P01.5 的「你们已经有 LangSmith…」；

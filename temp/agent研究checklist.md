@@ -1,6 +1,6 @@
 # Enterprise Financial Agent Platform — Well-Architected Review Checklist
 
-本 Checklist 以 AWS Well-Architected 六大支柱为最高层，叠加 AWS Agentic AI Lens 与 Financial Services Industry Lens，并补上平台特有的多 Runtime / 多租户 / 供应链条目。
+本 Checklist 以 AWS Well-Architected 六大支柱为最高层，叠加 AWS Agentic AI Lens 与 Financial Services Industry Lens，并以 **P00 架构决策前置层**收口「该不该用 Agent」这个上游问题；平台特有的多 Runtime / 多租户 / 供应链条目另列。其他框架（Microsoft Agent Architecture / OWASP GenAI / NIST AI RMF / CNCF）只做映射，不另起章节（见附录 B.10）。
 
 | Lens | 版本 |
 | --- | --- |
@@ -10,20 +10,105 @@
 
 | 部分 | 内容 | 规模 |
 | --- | --- | ---: |
-| 一、Checklist 主表 | Operational Excellence 至 Snowflake / Multi-runtime | 542 项 |
-| 二、Architecture Invariants | Non-Negotiable，Fail 即阻断 | 15 条 |
+| 一、Checklist 主表 | P00 架构决策前置层 + Operational Excellence 至 Runtime / Snowflake | 601 项 |
+| 二、Architecture Invariants | Non-Negotiable，Fail 即阻断 | 18 条 |
 | 附录 A | 上一版保留项，不计入主表 | 181 项 |
-| 附录 B | 评审框架、记录字段、评分方式、P0 优先项、评分板、与 AWS WAF 的关系 | — |
+| 附录 B | 评审框架、记录字段、评分方式、P0 优先项、评分板、与 AWS WAF 的关系、跨框架映射 | — |
 
 记录字段与评分方式见 附录 B；引用编号 `[n]` 对应文末「参考」。
 
 ---
 
-# 一、Checklist 主表（P01–P14，542 项）
+# 一、Checklist 主表（P00 + P01–P14，601 项）
+
+编号约定：P01–P14 的条目沿用既有连续编号 `1`–`542`（便于与前版逐条对照）；P00 与新增组使用带前缀的 ID
+（`AD` / `BO` / `TM` / `EV` / `RT`），因为它们回答的是**不同于检查项的问题** —— 架构决策、业务结果、威胁模型、
+评估模型、执行预算 —— 不并入连续编号，也便于与外部框架做映射（见 B.10）。
+
+## P00 — Architecture Decision（用例准入前置层）
+
+这一层检查的是「**这个问题该不该用 Agent**」，而不是「Agent 做得好不好」。它排在 P01 之前，因为如果这里不通过，
+后面 601 项检查是在评估一个本不该存在的组件。
+
+```text
+Business Requirement
+        │
+Can this be deterministic?
+        │
+   ┌────┴────┐
+   │         │
+  Yes       No
+   │         │
+Workflow    Agent
+   │         │
+   └────┬────┘
+        ↓
+     Hybrid?
+```
+
+金融场景的两个对照：
+
+```text
+客户资料检查 → 规则判断 → 风险等级 → 审批
+        确定性流程即可完成，引入 Agent 只会增加不可解释性
+
+分析客户资料 → 检索研究 → 比较多个来源 → 形成观点 → 提出待查问题
+        Agent 的价值在这里：开放式检索、跨来源比较、生成待验证假设
+```
+
+### P00.1 Agent vs Workflow Architecture Decision（AD01–AD14）
+
+AD01. 该业务目标是否可以用 deterministic workflow 完成？
+AD02. 如果可以，为什么需要 Agent？
+AD03. Agent 相比 workflow 带来的价值是否可量化？
+AD04. 是否明确哪些步骤必须 deterministic？
+AD05. 是否明确哪些步骤允许 probabilistic behavior？
+AD06. 是否定义 Agent autonomy 的必要性？
+AD07. 是否定义 Agent 可以自行决定的事项？
+AD08. 是否定义 Agent 不得自行决定的事项？
+AD09. 是否存在 Hybrid Workflow + Agent 架构？
+AD10. 是否定义 workflow → agent 的边界？
+AD11. 是否定义 agent → workflow 的边界？
+AD12. 是否可以在不使用 LLM 的情况下完成关键业务控制？
+AD13. Agent failure 时是否可以回退到 deterministic process？
+AD14. 是否存在因为「用了 Agent」而引入的不必要复杂度？
+
+> Microsoft 的 agent 架构指南把「先用最低复杂度解决问题」作为第一步：如果 prompt engineering 就能解决，就不需要
+> Agent；Azure 架构中心的编排模式同样要求先评估单 Agent 是否够用。[20] 其 agent 建设流程则明确要求**关键业务逻辑
+> 使用 deterministic workflow**，并用 agent charter 写清 prohibited actions。[21]
+>
+> 这一组的结论应当写进 ADR，而不是停留在讨论记录里：**「为什么不是 workflow」和「为什么是 Agent」都要能被第三方复核。**
+
+### P00.2 Business / User Outcome（BO01–BO10）
+
+BO01. 是否定义业务问题，而不是只定义 Agent 功能？
+BO02. 是否定义 target user？
+BO03. 是否定义 user journey？
+BO04. 是否定义 business outcome？
+BO05. 是否定义 measurable KPI？
+BO06. 是否定义 unacceptable outcome？
+BO07. 是否定义 human responsibility？
+BO08. 是否定义 Agent failure 对业务流程的影响？
+BO09. 是否定义用户在 Agent 不可靠时的 fallback？
+BO10. 是否验证 Agent 实际改善了原业务流程？
+
+> **业务 KPI ≠ 平台指标。** 平台指标（TTFT、tool latency、token cost、iteration count）在 P04 / P05 已经覆盖，
+> 本组要的是业务口径：
+
+```text
+research time         ↓ 40%
+analyst review time   ↓ 30%
+false escalation      ↓
+manual reconciliation ↓
+```
+
+> 判据：如果一个 Agent 的平台指标全部改善、但业务流程的产出没有变化，那它只是把成本换了个地方。
+
+---
 
 ## P01 — Operational Excellence
 
-AWS Agentic AI Lens 在 Operational Excellence 下有 7 个 focus areas，本 Pillar 直接按这 7 个 area 组织（AGENTOPS05 与 06 合并为一个小节）：
+AWS Agentic AI Lens 在 Operational Excellence 下有 7 个 focus areas，本 Pillar 直接按这 7 个 area 组织（AGENTOPS05 与 06 合并为一个小节）；另加一个 P01.6 Evaluation Model，它不属于 AGENTOPS focus area，来自跨框架映射（见 B.10）。
 
 ```text
 AGENTOPS01  Operational practices
@@ -167,7 +252,41 @@ User
 
 > AWS 明确要求 tracing、behavior anomaly、structured audit、KPIs、workflow dashboards，以及 multi-layer evaluation 和 SME-driven approval。[1]
 
-### P01.6 Recovery / Break-glass（AGENTOPS07）
+### P01.6 Evaluation Model / Trajectory Evaluation（EV01–EV10）
+
+P01.5 检查的是「有没有 evaluation」；这一组检查「**评估什么**」。只做 `input → agent → output → LLM judge` 是评不住 Agent 的。
+
+```text
+             Agent Run
+                │
+       ┌────────┼─────────┐
+       ↓        ↓         ↓
+    Output   Trajectory   Actions
+       │        │         │
+       ↓        ↓         ↓
+ correctness  policy    tool-use
+             compliance
+       │        │         │
+       └────────┼─────────┘
+                ↓
+          Business Outcome
+```
+
+EV01. 是否定义 task-level correctness？
+EV02. 是否定义 tool-use correctness？
+EV03. 是否定义 grounding / citation correctness？
+EV04. 是否定义 policy compliance？
+EV05. 是否定义 safety？
+EV06. 是否定义 business outcome？
+EV07. 是否定义 unacceptable behavior？
+EV08. 是否区分 deterministic assertion 与 LLM-as-judge？
+EV09. 是否评估完整 trajectory，而不仅是最终 output？
+EV10. 是否存在 adversarial evaluation？
+
+> EV08 与 EV09 是成熟度的分水岭：能由 deterministic assertion 覆盖的部分（政策、权限、引用是否存在、tool 调用是否合法）
+> 不应该交给 LLM 判分；而只评最终 output，会漏掉「结论对、过程越权」这一类问题。
+
+### P01.7 Recovery / Break-glass（AGENTOPS07）
 
 80. 是否存在 automated remediation？
 81. Agent runaway 是否自动停止？
@@ -200,6 +319,40 @@ AGENTSEC07  Human oversight
 AGENTSEC08  Input / output
 AGENTSEC09  Vulnerability / pentest
 ```
+
+### P02.0 Threat Modeling / Abuse Case（TM01–TM08）
+
+上面九组是「已经列出来的控制项」。这一组在它们之前：**先把攻击者能做什么写下来，再谈控制。**
+
+```text
+Asset → Threat Actor → Attack Surface → Attack Path → Impact → Control → Test
+```
+
+TM01. 是否完成 Agent-specific threat model？
+TM02. 是否识别所有 trust boundary？
+TM03. 是否识别所有 untrusted input？
+TM04. 是否定义主要 abuse cases？
+TM05. 是否定义 Agent 被 compromise 后的最大影响？
+TM06. 是否进行 attack-path analysis？
+TM07. 每个高风险 threat 是否对应 mitigation？
+TM08. 每个关键 mitigation 是否对应 security test？
+
+TM05 应按这个格式回答，而不是只说「做了 least privilege」：
+
+```text
+如果 Agent 被完全控制，攻击者最多能够：
+    读取什么？
+    修改什么？
+    执行什么？
+    创建什么？
+    调用什么？
+    以谁的身份？
+    影响多少租户 / 客户？
+```
+
+> 这比逐条问「Tool 是否 least privilege」高一层：least privilege 回答「权限有多小」，TM05 回答「最坏情况有多大」。
+> OWASP 已把 Prompt Injection、Excessive Agency、Vector & Embedding Weaknesses、Unbounded Consumption 列为 LLM 应用的
+> 前列风险，[22] 这些风险只有在先有 threat model 的前提下才能对应到具体控制项。
 
 ### P02.1 Memory / State Security（AGENTSEC01）
 
@@ -934,9 +1087,13 @@ AWS Agentic AI Lens 已经把 multitenant performance isolation 单独列出来�
 
 ---
 
-## P14 — Snowflake / Multi-runtime
+## P14 — Runtime / Snowflake / Multi-runtime
 
-这是你们自己的架构特有项，AWS Lens 不会替你们回答。
+这是你们自己的架构特有项，AWS Lens 不会替你们回答。分四组：runtime 抽象、运行时隔离、执行预算、生命周期与可移植性。
+
+### P14.1 Runtime Abstraction / Multi-runtime
+
+本组对齐 AWS Lens 之外的平台工程要求，见 B.10 的跨框架映射。
 
 531. AgentCore Runtime 和 Cortex Agents 是否统一抽象？
 532. Run semantics 是否一致？
@@ -951,11 +1108,56 @@ AWS Agentic AI Lens 已经把 multitenant performance isolation 单独列出来�
 541. 哪一层是 ultimate authorization authority？
 542. 如何避免两个 runtime 产生两个不同的安全模型？
 
+### P14.2 Runtime Isolation（RT01–RT06）
+
+P13 问的是「租户之间是否隔离」；这一组问的是**运行时边界**，两者不重复。
+
+RT01. Run 之间是否隔离（独立 session / 独立工作目录）？
+RT02. Agent 是否有独立的 filesystem 边界？
+RT03. Agent 的 network egress 是否 default-deny？
+RT04. Tool / credential 是否按 Agent 隔离，而不是共享 service account？
+RT05. Memory / state 是否按 Agent 与租户分区？
+RT06. 可执行任意代码的 Skill 是否有 sandbox？
+
+### P14.3 Agent Execution Budget / Runtime Resource Policy（RT07–RT14）
+
+分散在 P04（latency、context）、P05（token、cost）与 P03（iteration）里的限制，应收敛成一条**执行预算**，而不是每处各管一段。
+
+```text
+Agent Execution Budget
+├── CPU / memory limit
+├── token / context budget
+├── wall-clock time limit
+├── iteration limit
+├── tool-call limit
+├── concurrency limit
+├── network egress limit
+└── cost ceiling
+```
+
+RT07. 是否定义 CPU / memory 资源上限？
+RT08. 是否定义 token / context 预算？
+RT09. 是否定义 wall-clock time limit 与 iteration limit？
+RT10. 是否定义 tool-call 与 concurrency 上限？
+RT11. 是否定义网络 egress 上限（带宽 / 目标域）？
+RT12. 是否定义 per-Run / per-Agent cost ceiling 并自动 cutoff？
+RT13. 预算耗尽时的行为是否明确（停止 / 降级 / 交人），而不是静默继续？
+RT14. Secret 注入方式是否受控（不落盘、不进入 prompt 与 trace）？
+
+### P14.4 Runtime Lifecycle & Portability（RT15–RT17）
+
+RT15. Runtime 版本升级 / 退役是否有受控流程？
+RT16. Runtime artifact（镜像、session 模板、依赖）是否有受管目录与校验？
+RT17. 更换 Runtime 是否不改变控制语义（policy / evidence / identity 接口保持一致）？
+
+> 这三组刻意保持精简。P08–P14 里 isolation 类条目已经不少，重复加项只会稀释评审重点：
+> **Runtime 侧真正缺的是执行预算与生命周期，而不是第二十条隔离检查。** 平台职责的定义参考 CNCF 的平台白皮书。[24]
+
 ---
 
-# 二、Architecture Invariants（15 条 Non-Negotiable，Fail 即阻断）
+# 二、Architecture Invariants（18 条 Non-Negotiable，Fail 即阻断）
 
-Architecture Board 应要求以下 **15 条必须全部 Pass**：
+Architecture Board 应要求以下 **18 条必须全部 Pass**：
 
 | ID | Invariant | 中文 | 主要落点 |
 | --- | --- | --- | --- |
@@ -971,17 +1173,20 @@ Architecture Board 应要求以下 **15 条必须全部 Pass**：
 | INV10 | User delegated context shall not be implemented through shared user credentials. | User delegated context 不得通过共享用户凭证实现 | P02.3 |
 | INV11 | Engineering telemetry shall not be assumed to be regulatory evidence. | LangSmith Trace 不等于 Regulatory Evidence | P02.5 |
 | INV12 | Every production Run shall be reconstructable. | 每个 Production Run 必须可重建 | P12 |
-| INV13 | Every production Agent shall have an independent operational stop mechanism. | 每个 Production Agent 必须有 independent kill switch | P01.6 / P08.6 |
+| INV13 | Every production Agent shall have an independent operational stop mechanism. | 每个 Production Agent 必须有 independent kill switch | P01.7 / P08.6 |
 | INV14 | External provider failure shall have a defined degradation strategy. | 外部 Provider failure 必须有明确 degradation strategy | P09.2 / P03.6 |
 | INV15 | High-risk Agents shall have a documented business / risk / regulatory owner. | 高风险 Agent 必须有 documented business / risk / regulatory owner | P01.1 / P07.1 |
+| INV16 | An Agent shall be introduced only after deterministic automation has been evaluated and rejected with a documented reason. | 引入 Agent 前必须先证明 deterministic 方案不可行，并留下结论 | P00.1 |
+| INV17 | A production Agent shall have a defined and accepted maximum impact under full compromise. | 生产 Agent 必须定义并接受「被完全控制时的最大影响」 | P02.0 |
+| INV18 | An Agent Run shall stop or degrade when its execution budget is exhausted. | 执行预算耗尽时必须停止或降级，不得继续 | P14.3 |
 
-其中 INV01、02、03、04、08、09、10 基本直接对应 AWS Agentic AI Lens 的核心方向；INV05–07、11–15 则是结合金融机构治理和你们实际架构做的 Enterprise overlay。[9]
+其中 INV01、02、03、04、08、09、10 基本直接对应 AWS Agentic AI Lens 的核心方向；INV05–07、11–15 是结合金融机构治理和你们实际架构做的 Enterprise overlay；INV16–18 来自 P00 / P02.0 / P14.3 三组新增控制。[9]
 
 ---
 
 # 附录 A — 上一版保留项（181 项，不计入主表）
 
-下面这些条目在本版 P01–P14 中没有对应位置（AWS Lens 不覆盖，或本版用更粗的粒度处理），但确属你们平台的真实控制点，因此原样保留并独立编号，**不计入主表 542 项**。
+不计入主表 601 项
 
 分组如下：A.1 平台边界与 Runtime Abstraction、A.2 模型风险与模型注册、A.3 其他补充控制项、A.4 Use Case 治理与风险分级、A.5 身份与 Entitlement 细项、A.6 Tool 元数据与 MCP 治理模式、A.7 网络安全基线、A.8 容量与发布策略、A.9 第三方与供应链细项、A.10 其他零散保留项。
 
@@ -1263,11 +1468,14 @@ A181. 是否记录 Knowledge Source 的来源系统（source system）？
 
 # 附录 B — 评审框架与说明
 
-## B.1 三层结构
+## B.1 分层结构
 
-最高层不再使用自定义的 14 个 Pillars，而是：
+最高层是「一个前置层 + 六支柱 + 两类 overlay + 一组不变量」：
 
 ```text
+P00 Architecture Decision（用例准入前置层：AD / BO）
+
+        ▼
 P01 Operational Excellence
 P02 Security
 P03 Reliability
@@ -1275,18 +1483,22 @@ P04 Performance Efficiency
 P05 Cost Optimization
 P06 Sustainability
 
-+
-Financial Services Overlay
+        ▼
+Financial Services Overlay（P07–P09）
 
-+
-Agent Governance Overlay
+        ▼
+Enterprise Agent Platform Overlay（P10–P14）
+
+        ▼
+P15 Architecture Invariants（18 条，Fail 即阻断）
 ```
 
 对应关系：
 
 > **AWS Well-Architected × Agentic AI Lens × Financial Services Industry Lens × Enterprise Internal Controls**
 
-AWS 自己要求 Agentic AI Lens 与 Well-Architected Framework **配合**使用，而不是取代它。
+AWS 自己要求 Agentic AI Lens 与 Well-Architected Framework **配合**使用，而不是取代它。P00 不属于任何 Lens：
+它回答的是「本用例是否应该以 Agent 形式存在」，这是所有 Lens 之前的问题。
 
 ## B.2 每个问题的记录字段
 
@@ -1368,12 +1580,13 @@ E = Evidence available
 | Kill switch | 1 | documented only | Critical |
 | Agent audit | 3 | sample trace | Medium |
 
-## B.4 总览：15 个 Pillars
+## B.4 总览：P00 + P01–P14 + Invariants
 
 | Pillar | 内容 | AWS Lens 对应 | 检查项 |
 | --- | --- | --- | ---: |
-| **P01** | Operational Excellence | Agentic AI Lens：AGENTOPS01–07 | 90 |
-| **P02** | Security | Agentic AI Lens：AGENTSEC01–09 | 134 |
+| **P00** | Architecture Decision（前置层） | 不属于任何 Lens（Microsoft / 内部方法论，见 B.10） | 24 |
+| **P01** | Operational Excellence | Agentic AI Lens：AGENTOPS01–07 | 100 |
+| **P02** | Security | Agentic AI Lens：AGENTSEC01–09 | 142 |
 | **P03** | Reliability | Agentic AI Lens：AGENTREL02–06 | 65 |
 | **P04** | Performance Efficiency | Agentic AI Lens：Performance | 20 |
 | **P05** | Cost Optimization | Agentic AI Lens：Cost | 19 |
@@ -1385,12 +1598,15 @@ E = Evidence available
 | **P11** | Skill / Software Supply Chain | 平台特有 | 19 |
 | **P12** | Deployment / Change / Evidence | Agentic Lens 生命周期 + 平台特有 | 13 |
 | **P13** | Multi-tenancy | Agentic Lens：multitenancy | 12 |
-| **P14** | Snowflake / Multi-runtime | 平台特有 | 12 |
-| **P15** | Architecture Invariants | — | 15 条 Non-Negotiable |
+| **P14** | Runtime / Snowflake / Multi-runtime | 平台特有 + CNCF 平台工程 | 29 |
+| **P15** | Architecture Invariants | — | 18 条 Non-Negotiable |
 
-三层映射：
+映射结构：
 
 ```text
+P00 Architecture Decision（AD / BO）
+        │   该不该用 Agent、解决的是不是正确的问题
+        ▼
 AWS Well-Architected（P01–P06）
         │
         ├── Operational Excellence  ← Agentic AI Lens AGENTOPS01–07
@@ -1405,13 +1621,13 @@ Financial Services Overlay（P07–P09）
         │   FSISEC01–16 / FSIOPS / FSIREL / Backup & Retention
         ▼
 Enterprise Agent Platform Overlay（P10–P14）
-        │   Knowledge & Retrieval · Skill Supply Chain ·
-        │   Deployment & Evidence · Multi-tenancy · Multi-runtime
+        │   Knowledge & Retrieval · Skill Supply Chain · Deployment & Evidence ·
+        │   Multi-tenancy · Runtime / Execution Budget · Multi-runtime
         ▼
-P15 Architecture Invariants（15 条 Non-Negotiable）
+P15 Architecture Invariants（18 条 Non-Negotiable）
 ```
 
-> 本版以 AWS Agentic AI Lens 的正式 best practice / focus area 作为 **base layer**，不以我们自己的分类替代它；FSI Industry Lens 作为金融领域 overlay；P10–P14 是你们平台特有、AWS Lens 不会替你们回答的部分。
+> 以 AWS Agentic AI Lens 的正式 best practice / focus area 作为 **base layer**，不以我们自己的分类替代它；FSI Industry Lens 作为金融领域 overlay；P10–P14 是你们平台特有、AWS Lens 不会替你们回答的部分；P00 则在所有 Lens 之前，判断用例本身是否成立。
 
 ## B.5 P0 十项红线（下一轮实际 Architecture Review 重点打红）
 
@@ -1431,6 +1647,8 @@ P15 Architecture Invariants（15 条 Non-Negotiable）
 | P0-10 | Skill / Artifact Supply Chain | P11 | INV07 |
 
 这十项里，P0-01 至 P0-04 建议先做，因为它们一旦建立，后面无论换成 AgentCore、Snowflake Cortex Agents 还是别的 LangChain，都不会改变核心安全架构。
+
+另有 **P00（AD / BO）与 P02.0（TM）属于用例准入前置**，不列入上表：它们不是控制点，而是「是否允许进入评审」。P00.1 未通过时，不应开始 P01–P14 的逐条评审；P02.0 未完成时，P02 的控制项无法判断覆盖是否充分。
 
 ## B.6 6 个关键证明问题
 
@@ -1566,6 +1784,8 @@ Incident handling
 Financial Agent Platform — Well-Architected Review
 ──────────────────────────────────────────────────
 
+P00 Architecture Decision         通过 / 不通过（准入前置，不做百分比）
+──────────────────────────────────────────────────
 P01 Operational Excellence        74%
 P02 Security                      66%  🔴
 P03 Reliability                   79%
@@ -1580,9 +1800,9 @@ P10 Knowledge / Retrieval         73%
 P11 Skill Supply Chain            58%  🔴
 P12 Deployment / Evidence         75%
 P13 Multi-tenancy                 68%
-P14 Multi-runtime                 54%  🔴
+P14 Runtime / Multi-runtime       54%  🔴
 ────────────────────────────────  Enterprise overlay
-P15 Architecture Invariants       0 / 15 Pass
+P15 Architecture Invariants       0 / 18 Pass
 ```
 
 然后规定 finding 的处置规则：
@@ -1605,12 +1825,12 @@ Low
 
 ## B.8 评审执行结构：与 AWS Well-Architected 的关系
 
-不要把 542 道独立问题直接拿去开会，而是用这个结构：
+不要把 601 道独立问题直接拿去开会，而是用这个结构：
 
 ```text
                Enterprise Agent Platform Review
 
-                         15 Pillars
+                 P00 + P01–P14 Pillars
                              │
               ┌──────────────┴──────────────┐
               │                             │
@@ -1620,19 +1840,22 @@ Low
                              │
                    Internal Architecture
                              │
-                    542 detailed checks
+                    601 detailed checks
                              │
                 ┌────────────┴────────────┐
                 │                         │
-          15 Mandatory             P0/P1/P2
+          18 Mandatory             P0/P1/P2
           Invariants               Findings
 ```
 
 完整映射：
 
 ```text
-AWS Well-Architected
-        │
+P00 Architecture Decision（准入前置）
+                │
+                ▼
+       AWS Well-Architected（P01–P06）
+                │
         ├── Operational Excellence  ← Agentic AI Lens AGENTOPS01–07
         ├── Security                ← Agentic AI Lens AGENTSEC01–09
         ├── Reliability             ← Agentic AI Lens AGENTREL02–06
@@ -1647,7 +1870,7 @@ AWS Well-Architected
        Enterprise Agent Platform Overlay（P10–P14）
                 │
                 ▼
-       P15 Architecture Invariants
+       P15 Architecture Invariants（18 条）
 ```
 
 AWS 本身也明确建议用 Lens 来持续、系统地根据问题和最佳实践评估架构，而不是只做一次性设计审核。[19]
@@ -1660,7 +1883,7 @@ AWS 本身也明确建议用 Lens 来持续、系统地根据问题和最佳实�
 
 ## B.9 本版相对上一版的变化
 
-上一版的 389 问题虽然很全面，但分类方式不够贴近 AWS 最新 Agentic AI Lens，而且漏掉了一些 Agent 特有的关键控制点。本版做了六处结构性调整：
+上一版的 389 问题虽然很全面，但分类方式不够贴近 AWS 最新 Agentic AI Lens，而且漏掉了一些 Agent 特有的关键控制点。本版做了七处结构性调整：
 
 | # | 变化 | 落点 |
 | --- | --- | --- |
@@ -1670,15 +1893,17 @@ AWS 本身也明确建议用 Lens 来持续、系统地根据问题和最佳实�
 | 4 | **增加 Human Oversight Security**：不是「有没有 HITL」，而是「Human 是否可能被 Agent 操纵」（cognitive load、confidence indicator、multiple reviewers、rogue-agent containment） | P02.7 |
 | 5 | **增加 Gray Failure**：金融 Agent 最大的问题之一不是系统挂，而是系统正常返回但业务结果已经不可靠 | P09.3 |
 | 6 | **增加 FSI-specific Governance 与 External Provider Resilience**：risk management roles、operational risk assessment、privileged access、SoD、incident reporting、DLP、ransomware、AI model governance；以及 LiteLLM → OpenAI / Gemini / Claude、AgentCore、LangSmith、Snowflake 之间的韧性与集中度风险 | P07 / P08 / P09.2 |
+| 7 | **增加 P00 前置层与跨框架检查组**：Agent vs Workflow、Business / User Outcome、Threat Modeling、Evaluation Model、Runtime Isolation & Execution Budget | P00 / P02.0 / P01.6 / P14.2–14.4 |
 
 规模变化：
 
 | 项 | 上一版 | 本版 |
 | --- | ---: | ---: |
-| 最高层分类 | 14 个自定义 Pillars | AWS WAF 六支柱 + 两类 overlay（P01–P14） |
-| 检查项（主表 P01–P14） | 389 | 542 |
-| Architecture Invariants | 12 | 15（Non-Negotiable，Fail 即阻断） |
-| 新增受控章节 | — | P01.2 Prompt 生命周期、P02.1 Memory 安全、P02.7 Human Oversight、P09.3 Gray Failure、P13 Multi-tenancy、P14 Multi-runtime |
+| 最高层分类 | 14 个自定义 Pillars | P00 前置层 + AWS WAF 六支柱 + 两类 overlay（P01–P14）+ Invariants |
+| 检查项（主表，含 AD / BO / TM / EV / RT 组） | 389 | 601 |
+| Architecture Invariants | 12 | 18（Non-Negotiable，Fail 即阻断） |
+| 新增受控章节 | — | P01.2 Prompt 生命周期、P02.1 Memory 安全、P02.7 Human Oversight、P09.3 Gray Failure、P13 Multi-tenancy、P14 Runtime / Multi-runtime |
+| 新增前置层与跨框架组 | — | P00 Architecture Decision（AD / BO）、P02.0 Threat Modeling（TM）、P01.6 Evaluation Model（EV）、P14.2–14.4 Runtime Isolation & Execution Budget（RT） |
 | 保留项 | — | 附录 A（181 项，本版结构未覆盖） |
 | AWS 依据 | Generative AI Lens | **Agentic AI Lens（2026-06-10）+ FSI Industry Lens（2026-01-27 修订）** |
 
@@ -1691,9 +1916,37 @@ AWS 本身也明确建议用 Lens 来持续、系统地根据问题和最佳实�
 
 ---
 
+## B.10 跨框架映射：一份 Checklist，多套 Framework
+
+框架数量增加不等于覆盖增加。**本 Checklist 只保留一份检查项，其他框架以映射方式接入**：
+
+| 框架 | 在本 Checklist 中的位置 | 处理方式 |
+| --- | --- | --- |
+| AWS Agentic AI Lens | P01–P06 主体（AGENTOPS01–07 / AGENTSEC01–09 / AGENTREL02–06 / Performance / Cost） | base layer，逐条对齐 |
+| AWS FSI Industry Lens | P07–P09（FSISEC01–16 / FSIOPS / FSIREL / backup） | 金融 overlay，逐条对齐 |
+| Microsoft Agent Architecture（CAF + Azure 架构中心） | P00.1 Agent vs Workflow、P00.2 Business / User Outcome | 已并入，不单独成章 |
+| OWASP GenAI / LLM Top 10 | P02.0 Threat Modeling + P02.1 / P02.2 / P02.7 / P02.8 | 已并入，不单独成章 |
+| NIST AI RMF | 见下方 Core 映射，**不新增检查项** | cross-reference |
+| CNCF 平台工程 | P14.2–P14.4、P12 | 已并入，不单独成章 |
+
+NIST AI RMF Core 的映射：[23]
+
+| AI RMF 功能 | 本 Checklist 落点 |
+| --- | --- |
+| Govern | P07、P01.1、附录 B.5 |
+| Map | P00、P02.0 |
+| Measure | P01.5 / P01.6、P02.9、P09.3 |
+| Manage | P01.7、P02.7、P08.6、P12 |
+
+> **为什么 NIST 与 CNCF 只做映射：** 为每个框架各起一章，同一个控制点就会在四五套编号下重复出现，评审时反而不知道以哪一套为准。
+> 判断标准只有一条 —— **纳入新框架时先问「能不能落到已有 Pillar」：能落就不新增章节，落不进去才说明发现了真实缺口。**
+> 平台团队职责与平台能力的定义参考 CNCF 的平台白皮书。[24]
+
+---
+
 # 参考
 
-本版全部依据均为 AWS 官方文档，不含第三方转述。
+AWS 部分全部依据 AWS 官方文档，不含第三方转述；P00、P02.0、P01.6 与 P14.2–P14.4 另引用 Microsoft、OWASP、NIST、CNCF 官方文档。
 
 [1]: https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/appendix-a.html "Appendix A: Best practice reference - Agentic AI Lens"
 [2]: https://docs.aws.amazon.com/wellarchitected/latest/financial-services-industry-lens/opex-key-aws-services.html "Key AWS services - Financial Services Industry Lens"
@@ -1714,3 +1967,8 @@ AWS 本身也明确建议用 Lens 来持续、系统地根据问题和最佳实�
 [17]: https://docs.aws.amazon.com/wellarchitected/latest/financial-services-industry-lens/scenarios.html "Scenarios - Financial Services Industry Lens"
 [18]: https://docs.aws.amazon.com/wellarchitected/latest/financial-services-industry-lens/backup-and-retention.html "Backup and retention - Financial Services Industry Lens"
 [19]: https://docs.aws.amazon.com/wellarchitected/latest/agentic-ai-lens/design-principles.html "Design principles - Agentic AI Lens"
+[20]: https://learn.microsoft.com/en-us/azure/architecture/ai-ml/guide/ai-agent-design-patterns "AI agent orchestration patterns - Azure Architecture Center"
+[21]: https://learn.microsoft.com/en-us/azure/cloud-adoption-framework/ai-agents/build-secure-process "Process to build agents across your organization - Microsoft Cloud Adoption Framework"
+[22]: https://genai.owasp.org/llm-top-10/ "OWASP Top 10 for LLM Applications - OWASP GenAI Security Project"
+[23]: https://www.nist.gov/itl/ai-risk-management-framework "Artificial Intelligence Risk Management Framework (AI RMF 1.0) - NIST"
+[24]: https://tag-app-delivery.cncf.io/whitepapers/platforms/ "CNCF Platforms White Paper - CNCF TAG App Delivery"
