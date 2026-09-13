@@ -224,7 +224,13 @@ Astro 是静态站，`pubDatetime` 仅是元数据，不做定时发布。真正
   → `P10–P14 Enterprise Agent Platform Overlay`
   → `二、18 Invariants + 4 Decision Gates`（Fail 即阻断）
 - 对齐版本：Agentic AI Lens **2026-06-10**、FSI Industry Lens **2026-01-27 修订**
-- 主表编号 `1..512` **连续且唯一**；附录 A 编号 `A01..A181`，不计入主表
+- 主表编号 `1..512` 是**稳定标识，不是流水号**：条目被合并进上游 control 后编号**留空、不重排、不重用**
+  （2026-09-13 第九轮空前 164 个），去向逐组写在 **B.12 合并对照表**；附录 A 编号 `A01..A181`，不计入主表
+- 第九轮做过一次**控制项聚类**：主表 595 → **431**。判据只有一条 ——
+  「删掉这条会不会漏掉一个无法被其他问题覆盖的 architecture decision」；答「只是 implementation detail」
+  就降为该 control 的 **evidence check**（写进达标线），答「同一 control 的另一个例子」就合并。
+  砍得多的：P02 −40 / P01 −22 / P08 −14 / P11 −12（version·owner·lifecycle、trust-boundary、DLP、供应链）；
+  L1 架构决策几乎不动。**不按比例平均砍**
 - 装配工艺见 skill `longform-md-restructure`（片段文件 + build.py 区间 op + 多层断言 + 词元归零法 + 行级差异归因）
 
 - 10 项 P0 红线：Agent Identity / Retrieval Entitlement / Tool Authorization / Prompt·Config Versioning /

@@ -3,8 +3,11 @@
 > 正文只放检查项：**第一章**为 Checklist 主表，**第二章**为 Architecture Invariants 与 Decision Gates。
 > 编号与元数据约定、条目读法、记录字段、评分方式、跨框架映射、版本记录见 **附录 B**；
 > 各章的定位、依据与说明见 **附录 C**。引用编号 `[n]` 对应文末「参考」。
+>
+> 编号是**稳定标识**：把细项合并进上游控制项后，被合并的编号留空、不重排，去向见 **B.12 合并对照**；
+> 被合并的检查点不会消失 —— 它们变成该控制项的 **evidence checks**，写在该行的达标线里（见 B.14）。
 
-# 一、Checklist 主表（P00 + P01–P14）
+# 一、Checklist 主表（P00 + P01–P14，431 项）
 
 ## P00 — Architecture Foundation（架构评审前置层）
 
@@ -12,8 +15,7 @@
 
 | ID | Architecture Review Question | Priority | 级别 | 必须 / 禁止 / 条件 / 可选 ｜达标线 |
 | --- | --- | --- | --- | --- |
-| P00-01 | 当前架构需要解决的**业务问题是什么**？是否能够用一句话清楚描述？ | **P0** | R | 必须：一句话可复述、不夹带方案 ｜达标线：写进架构前置页并指明受影响业务角色；只有技术目标或功能清单，不算达标 |
-| P00-02 | 谁是目标用户 / 业务角色 / 受影响的利益相关者？他们当前遇到的具体痛点是什么？ | P0 | R | 必须：指名到角色并给出当前具体痛点 ｜达标线：per 业务角色列痛点与现行绕行做法；只写用户画像、无痛点证据不算达标 |
+| P00-01 | 当前架构要解决的**业务问题**是什么，能否用一句话说清？**目标用户 / 业务角色 / 受影响的利益相关者**是谁，他们当前的具体痛点是什么？ | **P0** | R | 必须：一句话可复述、不夹带方案，并指名到角色与痛点 ｜达标线：写进架构前置页并指明受影响业务角色，per 业务角色列当前痛点与现行绕行做法；只有技术目标或功能清单、或只写用户画像而无痛点证据，不算达标 |
 | P00-03 | 期望达到的**业务结果**是什么？是否定义了可验证的 KPI / outcome，而不仅是技术指标？ | **P0** | R | 必须：可验证业务 KPI 而非技术指标 ｜达标线：per 业务结果写基线值、目标值与观测口径；只列平台指标不算达标 |
 | P00-04 | 如果不建设该系统 / 不进行本次架构变更，会发生什么？当前方案最大的业务损失、风险或机会成本是什么？ | P1 | RA | 必须：写明不做的业务损失或机会成本 ｜达标线：在 ADR 中量化现状损失或风险敞口；只写方向性说法不算达标 |
 | P00-05 | 当前范围（In Scope）和明确不解决的范围（Out of Scope）是什么？是否存在隐含需求？ | **P0** | R | 必须：In / Out of Scope 同时写明 ｜达标线：显式列出被排除项与隐含需求裁决人；只写范围标题、排除项为空不算达标 |
@@ -33,9 +35,8 @@
 
 | ID | Architecture Review Question | Priority | 级别 | 必须 / 禁止 / 条件 / 可选 ｜达标线 |
 | --- | --- | --- | --- | --- |
-| P00-12 | 这个问题是否**真的需要新的系统 / 平台**？是否可以通过现有系统、流程、配置或组织流程解决？ | **P0** | R | 必须：先证明现有手段不足 ｜达标线：逐一说明现有系统、流程、配置为何不可行；跳过现状直接选型不算达标 |
+| P00-12 | 这个问题是否**真的需要新的系统 / 平台**？现有系统、流程、配置能否解决？是否评估过至少一个**不采用当前架构**的替代方案（什么都不做 / 改造现有系统 / 购买现成能力）？ | **P0** | R | 必须：先证明现有手段不足，且至少比较一个非当前方案 ｜达标线：逐一说明现有系统、流程、配置为何不可行，并把「什么都不做」与「改造现有系统」一并比较；跳过现状直接选型、或只列当前方案优点，不算达标 |
 | P00-13 | 哪些步骤要求**确定性、可验证、可重复**的行为？哪些步骤允许**概率性、开放式或自适应**行为？（Agent 场景见 P00.A） | **P0** | R | 必须：逐步骤判定所需行为的性质 ｜达标线：按规则执行 / 预测 / 搜索 / 生成 / 开放式推理逐类标注；只写二分不算达标 |
-| P00-14 | 是否评估过至少一个**不采用当前架构**的可行替代方案，包括「什么都不做 / 改造现有系统 / 购买现成能力」？ | **P0** | R | 必须：至少评估一个非当前方案 ｜达标线：把什么都不做与改造现有系统一并比较；只列当前方案优点不算达标 |
 | P00-15 | 是否在 **Buy / Reuse / Extend / Build** 之间做过比较，并说明**为什么在多项 alternatives 中选择当前方案**？（答案完全可能是 Buy 或 Reuse，而不是 Build） | **P0** | R | 必须：四类选项与现状同表比较 ｜达标线：表内含成本、时间、控制力与 lock-in 维度；只比较 Buy 与 Build 不算 |
 | P00-16 | 当前方案是否已经复杂到超过业务问题本身？是否存在明显的过度设计（over-engineering）？ | P1 | Rec | 可选：但明显过度需在评审中阻断 ｜达标线：复杂度高于业务问题即记录并给出简化路径；只写复杂度合理不算达标 |
 
@@ -43,8 +44,7 @@
 
 | ID | Architecture Review Question | Priority | 级别 | 必须 / 禁止 / 条件 / 可选 ｜达标线 |
 | --- | --- | --- | --- | --- |
-| P00-17 | 当前方案的**主要架构决策**是什么？每个重要决策是否有明确的 rationale，而不是「大家都这样做」？ | **P0** | R | 必须：每个决策有 rationale 而非随大流 ｜达标线：重大决策逐个落 ADR 并记录问题与背景；只写业界惯例不算达标 |
-| P00-18 | 当前方案与主要替代方案相比，核心 **trade-offs** 是什么？牺牲了什么，又换来了什么？ | **P0** | R | 必须：写清牺牲了什么换来了什么 ｜达标线：与主要替代方案逐项对照并标注代价；只列优点清单不算达标 |
+| P00-17 | 当前方案的**主要架构决策**及其 rationale 是什么（而不是「大家都这样做」）？与主要替代方案相比核心 **trade-offs** 是什么——牺牲了什么、换来了什么？ | **P0** | R | 必须：每个重大决策有 rationale，并写清牺牲了什么换来了什么 ｜达标线：重大决策逐个落 ADR（问题、背景、取舍）并与主要替代方案逐项对照标注代价；只写业界惯例或只列优点清单，不算达标 |
 | P00-19 | 哪些架构决策是**难以逆转 / 高切换成本**的？是否应该先做 PoC / Spike / Pilot 来降低不确定性？ | P1 | R | 必须：标出难逆决策并安排 PoC ｜达标线：每个高切换成本项对应 Spike 或 Pilot 与期限；只写后续验证不算达标 |
 | P00-20 | 如果未来业务、监管、Vendor、模型、成本或规模发生变化，架构如何演进？是否存在迁移路径、退出策略或可逆方案？ | **P0** | R | 必须：给出迁移路径与退出策略 ｜达标线：针对 Vendor、模型、监管变化分别给可逆方案；只写架构可扩展不算达标 |
 | P00-21 | 本次架构需要做出的**关键决策**有哪些？每项决策的 Decision Owner、批准权限、决策时间与决策记录分别是什么？ | **P0** | R | 必须：逐决策指名 owner 与批准权限 ｜达标线：决策清单标 owner、权限、日期与 ADR 落点；只列 stakeholder 不算达标 |
@@ -53,72 +53,50 @@
 
 | ID | Architecture Review Question | Priority | 级别 | 必须 / 禁止 / 条件 / 可选 ｜达标线 |
 | --- | --- | --- | --- | --- |
-| P00-22 | 系统的**主要 Business Inputs 和 Business Outputs** 是什么？（用业务语言描述，不是 schema） | **P0** | R | 必须：用业务语言描述输入输出 ｜达标线：输入输出各列语义、来源与使用者；只贴 schema 或接口定义不算达标 |
+| P00-22 | 系统的**主要 Business Inputs / Outputs** 是什么（用业务语言，不是 schema）？Outputs 将被**谁使用**，会触发什么后续行为、决策或 side effect？ | **P0** | R | 必须：用业务语言描述输入输出，并追到下游使用者与副作用 ｜达标线：输入输出各列语义、来源与使用者，且映射到人 / 系统动作 / 交易 / 对外沟通；只贴 schema、接口定义或停在「供参考」，不算达标 |
 | P00-23 | 这些 Inputs 在现实环境中会发生哪些**变化、异常或缺失**？（不完整、过期、格式不一致、来源不可信、量级突变、合规受限） | **P0** | R | 必须：覆盖缺失、过期、量级突变等形态 ｜达标线：per 输入源列异常形态与降级行为；只写数据质量可能有问题不算达标 |
-| P00-24 | Outputs 将被**谁使用**？会触发什么后续行为、决策或 side effect？ | **P0** | R | 必须：追到下游决策与 side effect ｜达标线：输出映射到人 / 系统动作 / 交易 / 对外沟通；只停在供参考不算达标 |
 
 ## P00.A Agent / AI Architecture Decision（Agent / AI 场景展开）
 
-### P00.A.1 Architecture Decision Chain（AD01–AD14）
+### P00.A.1 Architecture Decision Chain（AD01–AD14，现存 9 条）
 AD01. 现有流程 / 现有系统 / 配置是否已经能够解决？不能解决的具体差距是什么？ ｜必须：先穷尽现有手段再判差距 ｜达标线：写出被尝试的现有方案与失败点；只写现有系统不支持不算达标
 AD02. 如果不能，是否确认**需要 AI**？（差距是数据规模、非结构化输入、开放式检索，还是仅仅希望「更智能」？） ｜必须：说明差距类型而非想更智能 ｜达标线：差距归入数据规模、非结构化输入或开放式检索；只写更智能不算达标
-AD03. 能满足要求的最低 AI 能力档位是什么（traditional ML / LLM / RAG / Agent）？ ｜必须：取满足要求的最低档位 ｜达标线：在 ML、LLM、RAG、Agent 中择低并写明依据；直接选 Agent 不算达标
-AD04. 为什么所选档位不能更低？更低档位被否决的理由是否记录在 ADR？ ｜必须：写下否决更低档位的理由 ｜达标线：ADR 中逐档写明否决原因；只写能力更强不算达标
-AD05. 是否明确哪些步骤必须 deterministic，可由 code / rules / 配置完成？ ｜必须：列步骤清单并标 deterministic ｜达标线：per 步骤标明由 code / rules 执行；只写关键部分确定性不算达标
-AD06. 是否明确哪些步骤允许 probabilistic behavior？ ｜必须：明确允许 probabilistic 的范围 ｜达标线：逐步骤写容错范围与人工兜底；只写允许 LLM 输出不算达标
-AD07. 为什么需要 **autonomy**，而不是把 AI 放在 deterministic workflow 的一个节点里？ ｜必须：单独论证 autonomy 必要性 ｜达标线：给出非 autonomy 方案不可行的具体场景；只写更灵活不算达标
-AD08. 如果不需要 autonomy，本方案是否已经改写为 AI-assisted workflow？ ｜条件：不需 autonomy 时必须改写 ｜达标线：AI 作为 workflow 一个节点且保留 gate；留自由 Agent 不算达标
-AD09. 是否定义 Agent 可以自行决定的事项？ ｜必须：列出 allow 清单而非原则 ｜达标线：per action 列可自主动作与额度；只写低风险事项不算达标
-AD10. 是否定义 Agent 不得自行决定的事项？ ｜必须：prohibited actions 显式列出 ｜达标线：写成 charter 并可由运行时强制阻断；只写高风险需谨慎不算达标
+AD03. 能满足要求的最低 AI 能力档位是什么（traditional ML / LLM / RAG / Agent）？为什么所选档位不能更低，更低档位被否决的理由是否记录在 ADR？ ｜必须：取满足要求的最低档位并写下否决更低档位的理由 ｜达标线：在 ML、LLM、RAG、Agent 中择低并写明依据，ADR 中逐档写明否决原因；直接选 Agent 或只写能力更强，不算达标
+AD05. 是否明确哪些步骤必须 deterministic（可由 code / rules / 配置完成），哪些步骤允许 probabilistic behavior？ ｜必须：逐步骤划定确定性 / 概率性边界 ｜达标线：per 步骤标明由 code / rules 执行（或允许容错），并写容错范围与人工兜底；只写「关键部分确定性」或只写「允许 LLM 输出」，不算达标
+AD07. 为什么需要 **autonomy**，而不是把 AI 放在 deterministic workflow 的一个节点里？若不需要 autonomy，本方案是否已经改写为 AI-assisted workflow？ ｜必须：单独论证 autonomy 必要性，否则必须改写为 AI-assisted workflow ｜达标线：给出非 autonomy 方案不可行的具体场景，或写成 AI 作为 workflow 一个节点且保留 gate；只写更灵活、或留自由 Agent，不算达标
+AD09. 是否定义 Agent 可以自行决定、以及**不得自行决定**的事项？ ｜必须：allow 与 prohibited 两张清单都落成可执行条目 ｜达标线：per action 列可自主动作与额度，禁止项写成 charter 并可由运行时强制阻断；只写「低风险事项」或「高风险需谨慎」，不算达标
 AD11. 是否存在 Hybrid（deterministic workflow + agent）架构？`workflow → agent` 与 `agent → workflow` 的边界是否定义？ ｜条件：存在 hybrid 时必须定义双向边界 ｜达标线：画出 workflow 与 agent 的进入、返回与超时规则；只画单向箭头不算达标
-AD12. 是否可以在不使用 LLM 的情况下完成关键业务控制？ ｜必须：关键控制不依赖 LLM ｜达标线：授权、权限、side-effect 由确定性策略执行；靠 LLM 判定不算达标
-AD13. Agent failure 时是否可以回退到 deterministic process？ ｜必须：失败可回退到确定性流程 ｜达标线：写明触发条件与降级后人工接管路径；只写可重试不算达标
+AD12. 关键业务控制是否可以在不使用 LLM 的情况下完成？Agent failure 时是否可以回退到 deterministic process？ ｜必须：关键控制不依赖 LLM，且失败可回退到确定性流程 ｜达标线：授权、权限、side-effect 由确定性策略执行，并写明回退触发条件与降级后人工接管路径；靠 LLM 判定、或只写「可重试」，不算达标
 AD14. 是否存在因为「用了 Agent」而引入的不必要复杂度？ ｜禁止：为用 Agent 而增加复杂度 ｜达标线：能指出该复杂度对应哪个不可替代能力；只答必要不算达标
 
-### P00.A.2 Business / User Outcome（BO01–BO10）
-BO01. 是否定义业务问题，而不是只定义 Agent 功能？ ｜必须：写业务问题不写 Agent 功能 ｜达标线：问题陈述里不出现模型或 Agent 名词；只列功能清单不算达标
-BO02. 是否定义 target user？ ｜必须：指名到角色与决策权 ｜达标线：per 角色写使用频率与权责边界；只写分析师统称不算达标
+### P00.A.2 Business / User Outcome（BO01–BO10，现存 6 条）
+BO01. 是否定义**业务问题**（而不是只定义 Agent 功能）与 **target user**？ ｜必须：写业务问题不写 Agent 功能，且指名到角色与决策权 ｜达标线：问题陈述里不出现模型或 Agent 名词，per 角色写使用频率与权责边界；只列功能清单或只写「分析师」统称，不算达标
 BO03. 是否定义 user journey？ ｜必须：覆盖端到端 journey 与异常分支 ｜达标线：journey 标出 Agent 介入点与人工接管点；只画主流程不算达标
-BO04. 是否定义 business outcome？ ｜必须：给出业务侧可观测结果 ｜达标线：结果能映射到流程指标变化；只写提升体验不算达标
-BO05. 是否定义 measurable KPI？ ｜必须：KPI 含基线、目标与口径 ｜达标线：per KPI 指明采集源与责任人；只给目标数字无基线不算达标
+BO04. 是否定义 business outcome 与 **measurable KPI**，并在上线后验证 Agent 确实改善了原业务流程？ ｜必须：给出业务侧可观测结果、含基线 / 目标 / 口径的 KPI，并用前后对照证明改善 ｜达标线：结果能映射到流程指标变化，per KPI 指明采集源与责任人，对比上线前后业务指标并给出归因；只写「提升体验」、只给目标数字无基线、或只展示使用量增长，不算达标
 BO06. 是否定义 unacceptable outcome？ ｜必须：列出不可接受结果并设阻断 ｜达标线：每条不可接受结果对应硬性 gate 或人工复核；只列风险不算达标
 BO07. 是否定义 human responsibility？ ｜必须：指名到人对结果负责 ｜达标线：写进 Registry 并在组织变更时更新；只挂团队名不算达标
-BO08. 是否定义 Agent failure 对业务流程的影响？ ｜必须：量化失败对流程的冲击 ｜达标线：per 失败模式写影响面与可容忍时长；只写影响有限不算达标
-BO09. 是否定义用户在 Agent 不可靠时的 fallback？ ｜必须：Agent 不可靠时有人工回退 ｜达标线：写明触发条件与回退后的流程衔接；只写可人工处理不算达标
-BO10. 是否验证 Agent 实际改善了原业务流程？ ｜必须：用前后对照证明流程改善 ｜达标线：对比上线前后业务指标并给出归因；只展示使用量增长不算达标
+BO08. Agent failure 对业务流程的影响是否量化？Agent 不可靠时用户的 **fallback** 是否定义？ ｜必须：量化失败冲击并给出人工回退路径 ｜达标线：per 失败模式写影响面与可容忍时长，并写明回退触发条件与回退后的流程衔接；只写「影响有限」或「可人工处理」，不算达标
 
 ## P01 — Operational Excellence
 
 ### P01.1 Agent Role / Accountability（AGENTOPS01）
 1. 每个 Agent 是否具有明确的 Business Purpose？ ｜必须：一句话说明 Agent 的业务目的 ｜达标线：写进 Agent Registry 并与业务问题对应；只写功能描述不算达标
-2. 是否有 Business Owner？ ｜必须：业务侧单一 owner 指名到人 ｜达标线：写进 Registry 且组织变更后更新；只挂团队名不算达标
-3. 是否有 Technical Owner？ ｜必须：技术侧单一 owner 指名到人 ｜达标线：覆盖 model、prompt、tool 与配置；只挂平台组不算达标
-4. 是否有 Risk Owner？ ｜必须：风险侧 owner 独立于交付方 ｜达标线：与业务、技术 owner 分离并有权叫停；同一人兼任不算达标
-5. 是否有 SME？ ｜必须：指定领域 SME 并写明覆盖范围 ｜达标线：SME 参与验收与评估集标注；只挂名不参与不算达标
+2. 是否为每个 Agent 定义明确的负责人，并覆盖 **Business / Technical / Risk / SME** 四类职责？ ｜必须：四类责任人分别指名到人 ｜达标线：四类都写进 Registry 并在组织变更后更新，Risk owner 独立于交付方并有权叫停、SME 参与验收与评估集标注；只挂团队名、同一人兼任业务与技术、或 SME 挂名不参与，不算达标
 6. 是否定义 measurable success criteria？ ｜必须：success criteria 可测量可复核 ｜达标线：写阈值、观测窗口与采集源；只写回答准确不算达标
-7. 是否定义 scope boundary？ ｜必须：In / Out scope 显式成文 ｜达标线：out-of-scope 请求有拦截与回复话术；只写 in-scope 不算达标
+7. 是否定义 scope boundary 与 out-of-scope requests？ ｜必须：In / Out scope 显式成文，并给出拒答与转人工规则 ｜达标线：列举典型越界请求及处理路径，out-of-scope 请求有拦截与回复话术；只写 in-scope 或只写「不予回答」，不算达标
 8. 是否定义 autonomy boundary？ ｜必须：autonomy 边界按 action 列明 ｜达标线：可自主与须审批动作逐条对照；只写低自主不算达标
-9. 是否定义 out-of-scope requests？ ｜必须：定义拒答与转人工规则 ｜达标线：列举典型越界请求及处理路径；只写不予回答不算达标
-10. 是否定义 escalation path？ ｜必须：逐场景给出升级路径 ｜达标线：含触发条件、接收人与响应时限；只写上报主管不算达标
+10. 是否定义 human escalation conditions 与 escalation path？ ｜必须：列明必须交人的条件，并逐场景给出升级路径 ｜达标线：条件写成可判定的策略而非描述，含触发条件、接收人与响应时限；只写「不确定时」或只写上报主管，不算达标
 11. 是否定义 handoff protocol？ ｜必须：handoff 结构化成文 ｜达标线：定义必填字段、责任移交与确认；靠自然语言转述不算达标
 12. 如果多个 Agent 协作，context 是否以结构化 contract 传递？ ｜必须：跨 Agent context 走结构化契约 ｜达标线：契约字段版本化并有 schema 校验；自由文本拼接不算达标
-13. 是否定义 human escalation conditions？ ｜必须：列明必须交人的条件 ｜达标线：条件写成可判定的策略而非描述；只写不确定时不算达标
 14. handoff 是否有超时 / 失败策略？ ｜必须：handoff 超时与失败有策略 ｜达标线：定义超时时长与失败后的兜底接管；只写可重试不算达标
 15. 是否对 handoff success rate 进行监控？ ｜必须：监控 handoff 成功率 ｜达标线：per 路径设定阈值并告警到 owner；只看总览曲线不算达标
 16. Agent failure scenario 是否进入测试集？ ｜必须：失败场景必须进测试集 ｜达标线：每个已知失败模式有对应用例；只有 happy path 不算达标
 17. failure test 是否在每次 prompt / model / tool 变化后重新执行？ ｜必须：prompt、model、tool 变更后重跑 ｜达标线：作为变更门禁阻断未通过版本发布；只靠人工记得重跑不算达标
 
 ### P01.2 Prompt / Configuration Lifecycle（AGENTOPS02）
-18. Prompt 是否 versioned？ ｜必须：prompt 全部纳入版本控制 ｜达标线：每次发布有唯一版本号与变更差异；本地覆盖线上不算达标
+18. 所有影响 Agent 行为的 artifact 是否具备**统一的 version / ownership / lifecycle 管理**——Prompt、Tool definitions、Model selection、Agent policy、Retrieval configuration、Memory policy、Agent configuration？ ｜必须：七类 artifact 全部纳入版本控制与制品生命周期 ｜达标线：逐类有唯一版本号、变更差异与生效时间，与代码同源（Git / artifact lifecycle）、可追溯可重建；本地覆盖线上、只保留最新版、或只存平台控制台，不算达标
 19. System prompt / system instruction 的版本与变更控制是否定义（谁能改、如何审批、如何回滚）？ ｜必须：谁能改、如何审批、如何回滚 ｜达标线：改动走审批并留可回滚版本；直接改生产 prompt 不算达标
-20. Tool definitions 是否 versioned？ ｜必须：tool 定义纳入版本管理 ｜达标线：schema 变更留差异记录与生效时间；只保留最新版不算达标
-21. Model selection 是否 versioned？ ｜必须：模型选择按版本锁定 ｜达标线：记录模型标识与参数并禁止静默升级；只写厂商名不算达标
-22. Agent policy 是否 versioned？ ｜必须：策略版本化并关联审批 ｜达标线：每版策略有生效范围与审批人；策略散落在代码里不算达标
-23. Retrieval configuration 是否 versioned？ ｜必须：检索配置纳入版本控制 ｜达标线：索引、top-k、过滤条件变更可追溯；只记录索引名不算达标
-24. Memory policy 是否 versioned？ ｜必须：记忆策略版本化 ｜达标线：写清读写范围、保留期与清除机制；只写有记忆不算达标
-25. Agent configuration 是否进入 Git / artifact lifecycle？ ｜必须：Agent 配置纳入制品生命周期 ｜达标线：配置与代码同源可追溯、可重建；只存平台控制台不算达标
-26. 是否检测 configuration drift？ ｜必须：持续检测运行时与定义漂移 ｜达标线：定期比对并告警差异到 owner；只在上线时比对一次不算达标
-27. Production runtime 是否可能与 Registry 定义不一致？ ｜禁止：运行时偏离 Registry 定义 ｜达标线：不一致即告警或拒绝执行；仅记录差异不处置不算达标
+26. 是否持续检测 configuration drift——Production runtime 是否可能与 Registry 定义不一致？ ｜禁止：运行时偏离 Registry 定义 ｜达标线：持续比对并告警差异到 owner，不一致即告警或拒绝执行；只在上线时比对一次、或仅记录差异不处置，不算达标
 28. 是否能对比两个 Agent Version 的行为？ ｜必须：支持两个版本行为对比 ｜达标线：同一测试集跑双版本并给出差异报告；只靠人工回忆不算达标
 29. 是否支持 rollback？ ｜必须：可回滚到上一稳定版本 ｜达标线：规定回滚时限并定期演练；只写支持回滚不算达标
 30. Prompt 修改是否自动触发 evaluation？ ｜必须：prompt 改动自动触发评估 ｜达标线：评估未过即阻断合并或发布；只提示不阻断不算达标
@@ -131,12 +109,7 @@ BO10. 是否验证 Agent 实际改善了原业务流程？ ｜必须：用前后
 35. 是否定义完整生命周期： ｜必须：定义完整生命周期状态机 ｜达标线：每状态有准入准出与责任人；只画到 Deployed 不算达标
 36. 是否存在 CI/CD？ ｜必须：Agent 发布走 CI/CD ｜达标线：构建、测试、审批、发布均自动化留痕；手工发布不算达标
 37. Agent 是否只能通过 pipeline 发布？ ｜禁止：绕开 pipeline 直接发布 ｜达标线：生产权限只授予流水线身份；人工账号可直发不算达标
-38. 是否有 pre-production environment？ ｜必须：具备与生产同构的预发环境 ｜达标线：预发含真实工具与权限的最小集；只做本地 Mock 不算达标
-39. 是否有 production admission gate？ ｜必须：生产准入设有明确 gate ｜达标线：门禁条件可自动判定并留证据；靠口头确认不算达标
-40. 是否有 SME approval？ ｜必须：关键 Agent 需 SME 签核 ｜达标线：签核绑定具体版本与评估结果；泛泛点头不算达标
-41. 是否有 Security approval？ ｜必须：发布前经安全评审 ｜达标线：覆盖 tool、身份、数据边界并留结论；只做基线扫描不算达标
-42. 是否有 Risk approval？ ｜必须：高风险 Agent 需风险签核 ｜达标线：按风险等级分档决定签核层级；一刀切免签不算达标
-43. 是否有 regression gate？ ｜必须：回归未过即阻断发布 ｜达标线：门禁绑定评估集版本与阈值；可人工覆盖不算达标
+38. 生产准入是否具备完整 gate 与签核：pre-production environment、production admission gate、SME approval、Security approval、Risk approval、regression gate？ ｜必须：六项齐备且门禁条件可自动判定 ｜达标线：预发环境含真实工具与权限最小集，准入条件可自动判定并留证据，SME / Security / Risk 签核按风险等级分档且绑定具体版本与评估结果，回归未过即阻断发布；只做本地 Mock、靠口头确认、或门禁可人工覆盖，不算达标
 44. 是否有 artifact promotion？ ｜必须：制品按环境逐级晋级 ｜达标线：同一制品不可重打包、晋级留记录；各环境重构建不算达标
 45. 是否可以 rollback？ ｜必须：发布可快速回滚 ｜达标线：定义回滚时限与数据补偿方案；只写支持回滚不算达标
 46. 是否有 agent-specific scaling policy？ ｜必须：按 Agent 负载定扩容策略 ｜达标线：区分交互式与批处理并设上限；只沿用通用策略不算达标
@@ -146,11 +119,8 @@ BO10. 是否验证 Agent 实际改善了原业务流程？ ｜必须：用前后
 50. 是否有生命周期清理机制？ ｜必须：退役与清理流程成文 ｜达标线：定义停用、数据清除与权限回收；只写可下线不算达标
 
 ### P01.4 Tool / MCP（AGENTOPS04）
-51. 是否有 approved tool catalogue？ ｜必须：建立已批准工具目录 ｜达标线：未登记工具不得被 Agent 调用并在运行时阻断；只维护文档不算达标
-52. 每个 Tool 是否有 owner？ ｜必须：per Tool 指定 owner ｜达标线：owner 负责 schema 与故障响应；只写团队名不算达标
-53. Tool 是否有 security assessment？ ｜必须：工具上线前做安全评估 ｜达标线：覆盖权限、数据暴露与供应链风险；只填问卷不算达标
-54. Tool 是否有 version？ ｜必须：工具版本可识别可追溯 ｜达标线：调用日志记录实际版本；只写最新版不算达标
-55. Tool schema 是否标准化？ ｜必须：工具 schema 遵守统一规范 ｜达标线：命名、类型、错误码统一并有校验；各家自定义不算达标
+51. 是否有 approved tool catalogue，并为每个 Tool 指定 owner 与 security assessment？ ｜必须：工具目录、owner、安全评估三者齐备 ｜达标线：未登记工具不得被 Agent 调用并在运行时阻断，owner 具名负责 schema 与故障响应，安全评估覆盖权限、数据暴露与供应链风险；只维护文档、只写团队名、或只填问卷，不算达标
+54. Tool 是否有可追溯的 version，schema 是否标准化？ ｜必须：版本可识别可追溯，且 schema 遵守统一规范 ｜达标线：调用日志记录实际版本，命名、类型与错误码统一并有校验；只写「最新版」或各家自定义，不算达标
 56. MCP 是否有统一 onboarding pattern？ ｜必须：MCP 接入走统一流程 ｜达标线：登记、鉴权、评审、监控一套模板；各自接入不算达标
 57. A2A 是否有统一 communication pattern？ ｜必须：A2A 通信遵循统一模式 ｜达标线：消息格式、超时与错误处理统一定义；点对点私约不算达标
 58. Tool failure 是否有 fallback？ ｜必须：工具失败有降级路径 ｜达标线：per 关键工具定义降级或人工接管；只抛异常不算达标
@@ -161,14 +131,12 @@ BO10. 是否验证 Agent 实际改善了原业务流程？ ｜必须：用前后
 63. Tool version change 是否触发 review？ ｜必须：工具版本变更触发复核 ｜达标线：复核影响面并重新签核授权；静默升级不算达标
 
 ### P01.5 Observability / Evaluation（AGENTOPS05 / 06）
-64. 是否有 end-to-end trace？ ｜必须：具备端到端 trace ｜达标线：跨 Runtime 与 Agent 边界不断链；只覆盖单服务不算达标
-65. 是否能够关联： ｜必须：trace 可关联全链路要素 ｜达标线：User、Tool、Other Agent 均可用同一标识串联；缺段不算达标
+64. 是否有端到端 trace，并能把 User、Tool、Other Agent 用**同一标识**关联起来？ ｜必须：跨边界的端到端 trace，且全链路要素可关联 ｜达标线：跨 Runtime 与 Agent 边界不断链，User / Tool / Other Agent 均可用同一标识串联；只覆盖单服务或中间缺段，不算达标
 66. 是否监控 agent-specific behavior？ ｜必须：监控 Agent 特有行为指标 ｜达标线：含轨迹长度、工具选择与拒答率；只看通用服务指标不算达标
 67. 是否检测异常 tool-call pattern？ ｜必须：检测异常工具调用模式 ｜达标线：对越权、突增与循环调用告警；只做阈值总数监控不算达标
 68. 是否检测异常 iteration count？ ｜必须：检测迭代次数异常 ｜达标线：设定 per Agent 上限并自动熔断；只记录次数不算达标
 69. 是否监控 output distribution drift？ ｜必须：监控输出分布漂移 ｜达标线：相对基线定期比对并触发复核；只看抽样个案不算达标
-70. 是否有 workflow-specific dashboards？ ｜必须：按业务流程建看板 ｜达标线：看板对齐业务 KPI 而非仅技术指标；只堆技术图表不算达标
-71. 是否定义 Agent KPIs？ ｜必须：定义 Agent 层 KPI ｜达标线：每个 KPI 有阈值与责任人；只写指标名称不算达标
+70. 是否有 **workflow-specific dashboards** 与 Agent KPIs？ ｜必须：KPI 有阈值与责任人，看板对齐业务 KPI ｜达标线：每个 KPI 指明阈值与责任人，看板按业务流程组织而非仅堆技术图表；只写指标名称或只堆技术图表，不算达标
 72. 是否有 offline evaluation？ ｜必须：具备离线评估 ｜达标线：固定数据集可重跑并版本化；只跑一次不算达标
 73. 是否有 online evaluation？ ｜必须：具备线上评估 ｜达标线：用真实流量做抽样评分与告警；只统计成功失败不算达标
 74. 是否有 multi-layer testing？ ｜必须：评估覆盖多层 ｜达标线：单元、集成、轨迹与端到端均有用例；只有单层不算达标
@@ -218,48 +186,33 @@ TM08. 每个关键 mitigation 是否对应 security test？ ｜必须：测试�
 ### P02.1 Memory / State Security（AGENTSEC01）
 91. Agent Memory 是否有明确 classification？ ｜必须：按敏感级分档 ｜达标线：每条 memory 有分级标签并可强制校验；整库共用一个等级不算达标
 92. 是否区分 short-term memory / long-term memory？ ｜必须：两类分别定策略 ｜达标线：写入路径、retention 与校验规则分别成文；只靠一个字段区分不算达标
-93. Memory 是否 tenant-isolated？ ｜必须：物理或逻辑强隔离 ｜达标线：读写均带 tenant 强制过滤且不可绕过；靠应用层记得加条件不算达标
-94. Memory 是否 agent-isolated？ ｜必须：默认不互相可读 ｜达标线：跨 Agent 读需显式授权并留证；默认全局共享不算达标
-95. Memory 是否 user-isolated？ ｜必须：按用户维度隔离 ｜达标线：召回时强制注入 user 范围；只在写入打标签、读取不过滤不算达标
+93. Memory 是否按 **tenant / agent / user 三个维度**隔离（tenant-isolated / agent-isolated / user-isolated）？ ｜必须：三个维度的强隔离都由存储或策略层强制 ｜达标线：读写均带 tenant 强制过滤且不可绕过，跨 Agent 读需显式授权并留证，召回时强制注入 user 范围；靠应用层记得加条件、默认全局共享、或只在写入打标签而读取不过滤，不算达标
 96. Memory 是否可篡改？ ｜禁止：假定不可篡改，须按可篡改防护 ｜达标线：写入留来源与版本，可检出污染并回滚；仅靠写权限控制不算达标
 97. 谁能写 Memory？ ｜必须：写入者白名单化 ｜达标线：按主体逐个列出可写范围并强制执行；只写角色名、不落策略不算达标
 98. 谁能读 Memory？ ｜必须：读取按需最小化 ｜达标线：读写权限 per Agent per user 明确到范围；全平台可读不算达标
 99. Memory input 是否 validation？ ｜必须：写入前校验 ｜达标线：schema 与内容双校验，异常拒绝入库；只校验格式不校验内容不算达标
 100. Memory 是否允许 Agent 自己修改？ ｜禁止：无约束自改 ｜达标线：自改须限定范围并留痕，敏感层禁止自写；Agent 任意覆写不算达标
-101. Memory poisoning 如何处理？ ｜必须：检测加隔离加清除 ｜达标线：定义注入特征、隔离流程与回滚时限；只说会人工处理不算达标
-102. 如何删除被污染的 memory？ ｜必须：可定点清除并追影响 ｜达标线：能按来源删除并重算受影响结果；只能整库清空不算达标
+101. Memory poisoning（记忆污染）如何检测与清除？ ｜必须：检测、隔离、定点清除并追影响 ｜达标线：定义注入特征、隔离流程与回滚时限，能按来源删除并重算受影响结果；只说「会人工处理」或只能整库清空，不算达标
 103. Memory 是否有 retention policy？ ｜必须：按类型设期限 ｜达标线：每类 memory 有到期删除或归档规则并自动执行；只写永久保留不算达标
 104. Memory 是否进入 audit？ ｜必须：读写都留审计 ｜达标线：记录主体、时间、来源与变更内容；只记写入不记读取不算达标
-105. Memory 是否可能传播 hallucination？ ｜禁止：放任未核实内容进长期记忆 ｜达标线：区分已验证与未验证内容并隔离；把模型输出直接固化不算达标
-106. 是否检测 hallucinated memory propagation？ ｜必须：检测跨 Agent 扩散 ｜达标线：能标记污染源并追踪下游消费方；只靠事后人工发现不算达标
+105. 是否阻止未核实内容进入长期记忆，并检测 hallucination 在 Memory 与跨 Agent 之间的传播？ ｜禁止：放任未核实内容进长期记忆 ｜达标线：区分已验证与未验证内容并隔离，能标记污染源并追踪下游消费方；把模型输出直接固化、或只靠事后人工发现，不算达标
 
 ### P02.2 Tool Security（AGENTSEC02）
-107. 每个 Tool 是否经过 authorization？ ｜必须：调用前强制鉴权 ｜达标线：每个 Tool 有授权判定且不可绕过；只靠调用方自觉不算达标
-108. Tool authorization 是否 deterministic？ ｜必须：策略引擎确定性判定 ｜达标线：同一输入同一结果且可回归测试；由 LLM 判定是否放行不算达标
-109. LLM 是否可能直接决定 allow / deny？ ｜禁止：由 LLM 决定放行 ｜达标线：授权由确定性策略执行，LLM 只能建议不能终裁；LLM 决定放行不算达标
-110. Tool input 是否做 schema validation？ ｜必须：入参先过 schema ｜达标线：每个 Tool 声明 schema 并拒绝非法入参；只在文档写要求不算达标
-111. Tool argument 是否做 semantic validation？ ｜必须：校验参数的业务含义 ｜达标线：范围、越权目标与数量上限都要校验；只校验类型不算达标
-112. Tool output 是否做 validation？ ｜必须：回传结果也要校验 ｜达标线：结构、敏感字段与异常都要拦；无条件相信 Tool 返回值不算达标
-113. Tool response 是否可能包含 prompt injection？ ｜禁止：直接信任 Tool 返回内容 ｜达标线：Tool 输出按不可信输入处理并做注入检测；直接拼进上下文不算达标
-114. Tool 是否拥有最小权限？ ｜必须：按功能给最小权限 ｜达标线：权限清单 per Tool 且定期复核；给通配权限不算达标
-115. Tool 是否能限制 data scope？ ｜必须：限制可触达数据范围 ｜达标线：查询强制带租户与范围条件；靠拼 SQL 时再过滤不算达标
-116. Tool 是否有 side-effect classification？ ｜必须：标明读写与外发 ｜达标线：每个 Tool 标注副作用类型并据此控制；只分只读可写不算达标
-117. Tool 是否有 security owner？ ｜必须：指定到具体人 ｜达标线：owner 写进 Registry 并对安全评估负责；只挂团队名不算达标
-118. Tool 是否有 security assessment？ ｜必须：上线前做安全评估 ｜达标线：评估覆盖权限、注入与数据面并留证；只做功能测试不算达标
+107. 每个 Tool 调用前是否经过 authorization，且判定是 **deterministic** 的（LLM 不得直接决定 allow / deny）？ ｜禁止：由 LLM 决定放行 ｜达标线：每个 Tool 有不可绕过的授权判定，同一输入同一结果且可回归测试，LLM 只能建议不能终裁；只靠调用方自觉、或由 LLM 判定放行，不算达标
+110. Tool 入参（argument）是否同时做 **schema validation 与 semantic validation**？ ｜必须：结构性校验与业务语义校验都要做 ｜达标线：每个 Tool 声明 schema 并拒绝非法入参，范围、越权目标与数量上限都要校验；只在文档写要求、或只校验类型，不算达标
+112. Tool response（返回值）是否校验，并检测其中可能包含的 **prompt injection**？ ｜禁止：直接信任 Tool 返回内容 ｜达标线：回传结果按不可信输入处理，校验结构、敏感字段与异常并做注入检测；无条件相信 Tool 返回值或直接拼进上下文，不算达标
+114. Tool 的**最小权限 / data scope / side-effect classification** 是否定义并受控？ ｜必须：权限最小化、数据范围受限、副作用分类三者齐备 ｜达标线：权限清单 per Tool 且定期复核，查询强制带租户与范围条件，每个 Tool 标注副作用类型并据此控制；给通配权限、靠拼 SQL 时再过滤、或只分「只读 / 可写」，不算达标
+117. 每个 Tool 是否有具名的 **security owner** 与上线前的 security assessment？ ｜必须：owner 具名并对安全评估负责，评估覆盖权限、注入与数据面 ｜达标线：owner 写进 Registry，评估结论留证并可复核；只挂团队名或只做功能测试，不算达标
 
 ### P02.3 Agent Identity（AGENTSEC03）
-119. Agent 是否拥有独立 identity？ ｜必须：独立于人类身份 ｜达标线：每个 Agent 有唯一身份并可被审计；共用一个服务账号不算达标
-120. Agent 与 human identity 是否明确分离？ ｜必须：二者不可混用 ｜达标线：调用链能区分发起人与执行主体；身份透传合并成一个不算达标
-121. Agent-to-agent communication 是否 authentication？ ｜必须：双向认证后通信 ｜达标线：每次调用校验对端身份；只靠网络隔离不算达标
-122. Agent-to-service 是否 authentication？ ｜必须：服务侧强认证 ｜达标线：凭证短时效且绑定身份与用途；长期共享密钥不算达标
-123. 是否禁止 static shared API keys？ ｜禁止：使用静态共享密钥 ｜达标线：全部改为短时凭证或 workload identity；存在长期密钥即不达标
-124. 是否使用 short-lived credentials？ ｜必须：按需签发短时凭证 ｜达标线：有效期与任务时长匹配并自动轮换；靠手工续期不算达标
-125. 是否支持 workload identity？ ｜必须：以工作负载身份取凭证 ｜达标线：凭证绑定运行实体而非配置文件；靠注入环境变量不算达标
+119. Agent 是否拥有独立于人类身份的 identity，且二者不可混用？ ｜必须：Agent 有唯一身份并与 human identity 明确分离 ｜达标线：每个 Agent 有唯一身份并可被审计，调用链能区分发起人与执行主体；共用一个服务账号、或身份透传合并成一个，不算达标
+121. Agent-to-agent 与 Agent-to-service 调用是否 authentication？ ｜必须：对端身份校验与服务侧强认证都要有 ｜达标线：每次调用校验对端身份，凭证短时效且绑定身份与用途；只靠网络隔离、或使用长期共享密钥，不算达标
+123. 是否禁用 static shared API keys，改用 **short-lived credentials 与 workload identity**？ ｜禁止：使用静态共享密钥 ｜达标线：全部改为按需签发、有效期与任务时长匹配并自动轮换的凭证，且凭证绑定运行实体而非配置文件；存在长期密钥、靠手工续期、或靠注入环境变量，不算达标
 126. User context 是否可以通过 signed claims 传递？ ｜必须：以签名声明下传身份 ｜达标线：claim 可验签且带受众与时效；明文透传用户信息不算达标
 127. Agent 是否能够直接取得 User credentials？ ｜禁止：让 Agent 直接持有用户凭证 ｜达标线：只接受签名委托声明，用户密钥不入 Agent；能读用户 token 即不达标
 128. 是否存在 privilege boundary？ ｜必须：按域划分权限边界 ｜达标线：跨界调用需显式授权并留痕；一个身份走遍全平台不算达标
 129. 是否存在 dynamic permission boundary？ ｜必须：权限随上下文收放 ｜达标线：按任务、风险与时段动态收敛权限；静态长期授权即不达标
-130. 是否定期 access review？ ｜必须：周期性复核 ｜达标线：至少每季度复核并对例外闭环处置；一次审批永久有效不算达标
+130. 是否定期进行 access / permission review？ ｜必须：周期性复核权限并真正回收 ｜达标线：至少每季度复核、对例外闭环处置，复核既有记录也有回收动作；一次审批永久有效、或只开会不回收，不算达标
 131. 是否检测 unused privileges？ ｜必须：识别闲置权限 ｜达标线：按使用记录回收长期未用的权限；只出报表不回收不算达标
 132. 是否检测 privilege creep？ ｜必须：发现权限持续膨胀 ｜达标线：对比基线并告警非授权增权；只记录变更不比对不算达标
 133. 是否检测 privilege escalation？ ｜必须：实时拦截提权行为 ｜达标线：异常提权当场阻断并告警；只做事后审计不算达标
@@ -269,12 +222,10 @@ TM08. 每个关键 mitigation 是否对应 security test？ ｜必须：测试�
 137. 高权限 Agent 是否使用 JIT？ ｜必须：按任务临时提权 ｜达标线：默认低权限，用时获批并限时；常驻高权限不算达标
 138. 是否禁止 Agent 自身提升权限？ ｜禁止：Agent 自行提权 ｜达标线：提权须经独立于 Agent 的控制器；Agent 能扩权即不达标
 139. 高权限操作是否需要独立审批？ ｜必须：高风险操作双人审批 ｜达标线：审批人独立于发起链且不可由 Agent 扮演；Agent 代批不算达标
-140. 是否定期进行 permission review？ ｜必须：定期复核权限有效性 ｜达标线：复核有记录也有回收动作；只开会不回收不算达标
 141. 是否有 source identity / attribution？ ｜必须：操作可归因到具体主体 ｜达标线：日志含发起人与执行 Agent 双身份；只记服务账号不算达标
 
 ### P02.4 Goal Alignment / Manipulation（AGENTSEC04）
-142. Agent 是否有明确 goal contract？ ｜必须：目标写成可核对契约 ｜达标线：goal 与判定规则一致且可测试；只写在提示词里不算达标
-143. Goal 是否独立于 user prompt？ ｜必须：goal 由平台侧定义 ｜达标线：用户输入无法改写 goal 本身；goal 随对话漂移不算达标
+142. 是否有明确的 goal contract，且 goal 独立于 user prompt？ ｜必须：目标写成可核对契约，并由平台侧定义 ｜达标线：goal 与判定规则一致且可测试，用户输入无法改写 goal 本身；只写在提示词里、或 goal 随对话漂移，不算达标
 144. system objective / goal 的归属与变更控制是否定义（谁能改、Agent 自身是否可能改写）？ ｜必须：明确归属与变更审批 ｜达标线：变更需评审留痕，Agent 无改写权；改由谁定都说不清不算达标
 145. Prompt injection 能否改变 goal？ ｜禁止：注入内容改写 goal ｜达标线：注入内容只作数据不参与目标决策；注入后目标偏移不算达标
 146. Tool output 能否改变 goal？ ｜禁止：Tool 输出改写 goal ｜达标线：Tool 返回只作数据并隔离于目标层；直接沿用其指令不算达标
@@ -282,29 +233,19 @@ TM08. 每个关键 mitigation 是否对应 security test？ ｜必须：测试�
 148. Agent 是否能修改自身 system instruction？ ｜禁止：自改系统指令 ｜达标线：指令版本由平台管控、改动需审批；运行时可自写不算达标
 149. Agent 是否能修改自己的 policy？ ｜禁止：自改策略 ｜达标线：策略只由平台侧 deterministic 通道变更；Agent 可写策略不算达标
 150. Agent 是否能修改自己的 Tool list？ ｜禁止：自扩工具集 ｜达标线：Tool 授权由平台下发且变更留痕；运行时自绑 Tool 不算达标
-151. 是否有 guardrail？ ｜必须：覆盖输入与输出 ｜达标线：命中即按 Fail-Closed 阻断或交人；只记日志不阻断不算达标
-152. 是否有 policy-level containment？ ｜必须：越界即被策略收敛 ｜达标线：containment 由确定性策略执行而非提示词；只靠 prompt 约束不算达标
+151. 是否有 guardrail 与 **policy-level containment**？ ｜必须：输入输出全覆盖，越界由确定性策略收敛 ｜达标线：命中即按 Fail-Closed 阻断或交人，containment 由确定性策略执行而非提示词；只记日志不阻断、或只靠 prompt 约束，不算达标
 153. Critical decisions 是否 human approval？ ｜必须：关键决策须人工放行 ｜达标线：按风险分级定义 critical 清单并强制审批；LLM 自评放行不算达标
 
 ### P02.5 Non-repudiation（AGENTSEC05）
-154. 是否记录 decision artifacts？ ｜必须：决策可重建 ｜达标线：记录依据、版本与结果并不可变存储；只有工程 trace 不算达标
-155. 是否记录 Policy Decision？ ｜必须：记录判定输入与结果 ｜达标线：含命中规则、allow 或 deny 与理由；只记最终动作不算达标
+154. 是否记录 decision artifacts、Policy Decision 与 final action，使决策可重建？ ｜必须：依据 / 版本 / 判定结果 / 实际动作四级留痕且不可变 ｜达标线：记录依据与版本、命中规则与 allow 或 deny 理由、实际执行动作与参数返回，写入不可变存储；只有工程 trace、只记最终动作、或只记计划动作，不算达标
 156. 是否记录 Identity？ ｜必须：记录发起与执行双身份 ｜达标线：人工身份与 Agent 身份分别落盘；只记账号 ID 不算达标
-157. 是否记录 Agent Version？ ｜必须：版本可回溯 ｜达标线：每次 Run 绑定不可变版本号；只记 Agent 名不算达标
-158. 是否记录 Skill Version？ ｜必须：技能版本随调用记录 ｜达标线：记录 Skill 名与版本且与制品对应；无版本号不算达标
-159. 是否记录 Model Version？ ｜必须：固化模型版本快照 ｜达标线：记录模型标识与参数配置；只写模型家族不算达标
-160. 是否记录 Tool Version？ ｜必须：记录 Tool 版本 ｜达标线：调用记录含 Tool 标识与版本；名称可复用却无版本不算达标
-161. 是否记录 Retrieval Source？ ｜必须：召回来源可追溯 ｜达标线：记录文档 ID、版本与命中片段；只记召回条数不算达标
+157. 每次 Run 是否记录全部 artifact 版本：**Agent / Skill / Model / Tool / Retrieval Source**？ ｜必须：五类版本随 Run 固化且可回溯 ｜达标线：每次 Run 绑定不可变的 Agent 版本号、Skill 名与版本、模型标识与参数、Tool 标识与版本、召回文档 ID / 版本 / 命中片段；只记 Agent 名、只写模型家族、或只记召回条数，不算达标
 162. 是否记录 Approval？ ｜必须：审批人时间与范围可查 ｜达标线：记录审批主体、动作范围与版本；只记通过与否不算达标
-163. 是否记录 final action？ ｜必须：最终动作与结果留痕 ｜达标线：记录实际执行动作、参数与返回；只记计划动作不算达标
 164. 是否能证明日志没有被篡改？ ｜必须：具备防篡改证据 ｜达标线：不可变存储或链式校验可验证；普通数据库可改不算达标
-165. 是否定义 retention？ ｜必须：按监管要求设期限 ｜达标线：分类定义保留期并到期合规处置；统统一律永久保留不算达标
-166. 是否定义 legal hold？ ｜必须：支持诉讼冻结 ｜达标线：可对指定对象冻结删除并留证；无冻结机制不算达标
+165. 是否定义 retention 与 legal hold？ ｜必须：分类保留期与诉讼冻结都要有 ｜达标线：按监管要求分类定义保留期并到期合规处置，可对指定对象冻结删除并留证；一律永久保留、或无冻结机制，不算达标
 
 ### P02.6 Multi-agent Security（AGENTSEC06）
-167. Agent-to-agent communication 是否 authenticated？ ｜必须：跨 Agent 双向认证 ｜达标线：每次消息校验对端身份与授权；信任内网不算达标
-168. message 是否 signed？ ｜必须：消息签名可验 ｜达标线：签名覆盖内容与发送者且接收方验签；明文消息不算达标
-169. communication 是否 encrypted？ ｜必须：传输加密 ｜达标线：全程加密且凭证不落明文日志；内网明文不算达标
+167. Agent-to-agent communication 是否同时做到 **authenticated / signed / encrypted**？ ｜必须：双向认证、消息签名可验、传输加密三者齐备 ｜达标线：每次 message 校验对端身份与授权，签名覆盖内容与发送者且接收方验签，全程加密且凭证不落明文日志；信任内网、明文消息、或内网明文传输，不算达标
 170. Agent trust boundary 是否明确？ ｜必须：边界与信任级明确 ｜达标线：每个 Agent 标出可交互对象与信任级；全互通不算达标
 171. 一个 Agent 是否能够调用任何其他 Agent？ ｜禁止：Agent 之间任意互调 ｜达标线：调用关系白名单化并逐次鉴权；任意可达不算达标
 172. Agent capability taxonomy 是否存在？ ｜必须：能力分类可枚举 ｜达标线：能力域与权限映射成文并据此授权；只按名字区分不算达标
@@ -315,45 +256,32 @@ TM08. 每个关键 mitigation 是否对应 security test？ ｜必须：测试�
 177. 是否防止 agent impersonation？ ｜必须：防身份冒用 ｜达标线：身份与凭证绑定且不可伪造；只靠命名约定不算达标
 
 ### P02.7 Human Oversight Security（AGENTSEC07）
-178. Human approval 是否容易被 Agent manipulation？ ｜禁止：让 Agent 影响审批判断 ｜达标线：界面只呈现事实证据与风险，拒绝诱导性话术；由 Agent 生成推荐语不算达标
-179. Approval screen 是否显示： ｜必须：七要素齐备 ｜达标线：逐项展示目标、数据、风险、理由与 Agent 版本；只显示动作名不算达标
+178. Human approval screen 是否只呈现**事实证据**（目标 / 数据 / 风险 / 理由 / Agent 版本）而不受 Agent 诱导？ ｜禁止：让 Agent 影响审批判断 ｜达标线：审批屏逐项展示目标、数据、风险、理由与 Agent 版本，只呈现事实证据与风险、拒绝诱导性话术；只显示动作名、或由 Agent 生成推荐语，不算达标
 180. 是否提供 confidence indicator？ ｜必须：标注置信度 ｜达标线：给出校准后的置信度并说明来源；只给一个数字不说明校准不算达标
 181. 是否提供 risk warning？ ｜必须：显式提示风险 ｜达标线：按风险等级给出可读后果说明；只标红不算达标
 182. 是否避免「approve all」？ ｜禁止：提供批量全批准 ｜达标线：逐条审批或按策略分档授权；一键全通过不算达标
 183. Critical Action 是否需要 multiple reviewers？ ｜必须：关键动作多人复核 ｜达标线：按风险定义复核人数且相互独立；同一人重复确认不算达标
 184. 是否支持 dual control？ ｜必须：敏感操作双人控制 ｜达标线：发起与批准分属不同主体且留痕；单人可闭环不算达标
-185. Human reviewer 是否可能被 Agent flood？ ｜禁止：放任审批请求淹没人工 ｜达标线：设限流、聚合与优先级，超阈自动降级；无限堆积不算达标
-186. 是否有 cognitive load control？ ｜必须：控制单次审批负荷 ｜达标线：限制待审量与信息密度并留休息间隔；连续轰炸不算达标
+185. 是否有 approval flood control 与 cognitive load control？ ｜禁止：放任审批请求淹没人工 ｜达标线：设限流、聚合与优先级，限制待审量与信息密度并留休息间隔，超阈自动降级；无限堆积或连续轰炸，不算达标
 187. 是否检测 rogue Agent behavior？ ｜必须：识别失控 Agent 行为 ｜达标线：对越权、目标偏移与异常频率告警；只做事后复盘不算达标
 188. Rogue Agent 是否能自动 quarantine？ ｜必须：可自动隔离 ｜达标线：检测命中即冻结权限与凭证并留证；只能人工拔线不算达标
 189. 是否定期 red-team human oversight？ ｜必须：定期演练人工监督 ｜达标线：以诱导性输出测试审批人并按期复测；只做技术渗透不算达标
 
 ### P02.8 Input / Output Security（AGENTSEC08）
-190. User Input 是否 validation？ ｜必须：用户输入先校验 ｜达标线：长度、类型与注入特征都拦；直接透传给模型不算达标
-191. Tool Output 是否 validation？ ｜必须：回传按不可信处理 ｜达标线：校验结构并检测注入与敏感数据；直接入上下文不算达标
-192. Retrieved Document 是否 validation？ ｜必须：检索内容先净化 ｜达标线：剥离指令性内容并标注不可信来源；直接拼接不算达标
-193. Web content 是否 validation？ ｜必须：网页内容视为不可信 ｜达标线：抓取后净化并检测注入；原样喂给模型不算达标
-194. Inter-agent message 是否 validation？ ｜必须：消息内容校验 ｜达标线：检查格式、来源与注入特征；默认信任对端不算达标
-195. Memory read 是否 validation？ ｜必须：读取内容也要校验 ｜达标线：检查污染标记与来源可信度；直接注入上下文不算达标
+190. 是否对所有进入 Agent context 的 untrusted input surface 建立**统一的 validation / trust-boundary policy**？ ｜必须：逐输入面登记并按不可信处理，不因来源不同而放宽 ｜达标线：User Input、Tool Output、Retrieved Document、Web Content、Inter-agent Message、Memory Read 六类逐项有校验规则与拒绝样本（长度 / 类型 / 注入特征 / 污染标记 / 来源可信度）；只在入口校验用户输入、其余默认信任对端，不算达标
 196. 是否防 direct prompt injection？ ｜必须：直接注入须阻断 ｜达标线：命中攻击特征即按 Fail-Closed 处理；只过滤关键词不算达标
 197. 是否防 indirect prompt injection？ ｜必须：间接注入同样拦截 ｜达标线：外部内容与工具链路上的注入都拦；只管用户输入不算达标
 198. 是否防 document-based prompt injection？ ｜必须：文档内指令须失效 ｜达标线：文档只作数据、指令不得提升为控制；命中即改行为不算达标
 199. 是否防 tool-output injection？ ｜必须：Tool 返回注入须拦 ｜达标线：Tool 输出经净化并隔离于控制层；直接沿用其指令不算达标
-200. Output 是否检测 PII？ ｜必须：出站扫描 PII ｜达标线：按字段级规则检测并阻断或脱敏；只抽查不算达标
-201. Output 是否检测 credential？ ｜必须：出站拦密钥与令牌 ｜达标线：覆盖常见凭证形态并强制阻断；只告警不阻断不算达标
-202. Output 是否检测 confidential information？ ｜必须：敏感信息不得外泄 ｜达标线：按分级标签校验输出范围；靠模型自觉不算达标
+200. 出站内容（output）是否统一检测 **PII / credential / confidential information**？ ｜必须：敏感数据出站前扫描并阻断或脱敏 ｜达标线：按字段级规则检测 PII、覆盖常见凭证形态并强制阻断、按分级标签校验输出范围；只抽查、只告警不阻断、或靠模型自觉，不算达标
 203. 是否对 User Response 做 DLP？ ｜必须：对用户应答做 DLP ｜达标线：在出站边界强制检查并留证；只在入口检查不算达标
 204. 是否对 Tool Response 做 DLP？ ｜必须：工具回传做 DLP ｜达标线：检查外发与回传双向数据；只查入站不算达标
 205. 是否对 Memory Write 做 DLP？ ｜必须：写记忆前做 DLP ｜达标线：禁止敏感原文入库并留审计；事后清理不算达标
 206. 是否对 Audit Log 做 DLP？ ｜必须：审计日志本身防泄露 ｜达标线：日志脱敏且访问受限可审计；明文堆日志不算达标
-207. Guardrail decision 是否记录？ ｜必须：判定过程可复盘 ｜达标线：记录命中规则、输入摘要与处置动作；只记结果不算达标
-208. False positive / false negative 是否监控？ ｜必须：持续跟踪误判率 ｜达标线：有指标、阈值与复核归因闭环；只看拦截量不算达标
+207. guardrail 判定是否留痕，并持续监控 **false positive / false negative**？ ｜必须：判定过程可复盘，误判率有闭环 ｜达标线：记录命中规则、输入摘要与处置动作，并有误判率指标、阈值与复核归因闭环；只记结果或只看拦截量，不算达标
 
 ### P02.9 Security Testing（AGENTSEC09）
-209. 是否做 SAST？ ｜必须：代码静态扫描 ｜达标线：纳入流水线且高危未清不可发布；只出报告不阻断不算达标
-210. Dependency scanning？ ｜必须：依赖漏洞扫描 ｜达标线：每次构建扫描并按级修复；只季度跑一次不算达标
-211. Container scanning？ ｜必须：镜像扫描 ｜达标线：构建时扫镜像并阻断高危；只扫基础镜像不算达标
-212. Skill artifact scanning？ ｜必须：Skill 制品扫描 ｜达标线：上线前扫描制品与声明权限；只查代码仓库不算达标
+209. 是否对**代码、依赖、镜像与 Skill 制品**做统一安全扫描，并对高危阻断发布？ ｜必须：四类扫描都纳入流水线，高危未清不可发布 ｜达标线：SAST、dependency scanning、container scanning、Skill artifact scanning 每次构建执行并按级修复或阻断，Skill 制品同时扫描其声明权限；只出报告不阻断、季度跑一次、或只扫基础镜像，不算达标
 213. Prompt injection testing？ ｜必须：注入用例常态化 ｜达标线：用例库覆盖直接与间接注入并回归；只手工试一次不算达标
 214. Tool poisoning testing？ ｜必须：Tool 投毒测试 ｜达标线：覆盖恶意描述、参数与返回值；只测功能不算达标
 215. MCP attack testing？ ｜必须：MCP 供应链攻击测试 ｜达标线：覆盖服务端伪造、工具替换与能力越权；只测客户端不算达标
@@ -375,11 +303,7 @@ TM08. 每个关键 mitigation 是否对应 security test？ ｜必须：测试�
 227. Input 是否 structured？ ｜必须：入口 schema 校验通过才执行 ｜达标线：非结构化输入先归一化并拒收；校验失败即拒执行，仅在 prompt 里写要求不算
 228. Output 是否 structured schema？ ｜必须：输出 schema 可被程序校验 ｜达标线：下游按 schema 解析，非法输出按失败处理并可重试；自由文本直传下游不算达标
 229. Agent 是否有明确 capability boundary？ ｜必须：白名单式能力边界，默认拒绝 ｜达标线：边界写进 Registry 与鉴权同源，由 policy 强制执行
-230. 是否限制 iteration count？ ｜必须：每个 Run 设迭代上限并触发中断 ｜达标线：超限即 Fail-Closed 交人，不是继续跑；只在文档里写建议值不算达标
-231. 是否限制 tool-call count？ ｜必须：per Run 的 tool 调用数须封顶 ｜达标线：上限可配置且超限即阻断；靠 Agent 自觉停止、无计数拦截，不算达标
-232. 是否限制 execution time？ ｜必须：单次执行时间上限与超时中断 ｜达标线：per Run 可配 timeout，超时进降级或交人；只监控不中断，不算达标
-233. 是否限制 context size？ ｜必须：显式 context 预算并超限截断 ｜达标线：按 token 计上限且可观测，超限有确定策略；只说注意上下文不算达标
-234. 是否限制 spend？ ｜必须：per Run 成本上限且自动阻断 ｜达标线：超预算即阻断或降级到廉价模型；只有月度账单告警、无单次拦截，不算达标
+230. 每个 Run 的**执行预算**是否定义：iteration count、tool-call count、execution time、context size、spend？ ｜必须：五类预算都有显式上限，超限触发中断或降级 ｜达标线：per Run 可配 iteration / tool-call / timeout / token / 成本上限，超限即 Fail-Closed 交人或降级而不是继续跑；只在文档写建议值、只监控不中断、或只有月度账单告警，不算达标
 235. 是否定义 human oversight tier？ ｜必须：按风险等级分档的人在环 ｜达标线：高风险动作强制人工签核，低风险可自动；全自动或全人工一刀切都不算达标
 236. 是否存在 behavioral baseline？ ｜必须：定义可量化的行为基线 ｜达标线：基线含成功率、工具选择分布、成本等指标并随 Agent Version 归档
 237. 是否检测 drift？ ｜必须：检测行为漂移并告警 ｜达标线：偏离基线阈值即告警并可归因到 Agent 版本；无阈值靠人工看板不算达标
@@ -393,28 +317,24 @@ TM08. 每个关键 mitigation 是否对应 security test？ ｜必须：测试�
 243. Run 中断后能否 resume？ ｜必须：Run 中断后可安全 resume ｜达标线：resume 不重复 side effect；无法续跑只能重头跑不算达标
 244. Memory unavailable 时如何 graceful degradation？ ｜必须：Memory 不可用时降级而非静默继续 ｜达标线：降级路径明确并打标，宁可拒绝或交人；降级后仍假装有记忆继续回答不达标
 245. State corruption 是否能够检测？ ｜必须：能检测 state 损坏并显式失败 ｜达标线：用校验和或版本约束识别，检测到即拒绝使用；静默用坏数据继续算不达标
-246. State version 是否可追踪？ ｜必须：state 带版本号可追溯 ｜达标线：每次写入递增并可查到来源；只有 schema 版本、无法定位具体 Run 不达标
-247. 不同 Agent Version 能否安全读取旧 state？ ｜必须：state 向前兼容或有迁移 ｜达标线：新版本读旧 state 需迁移或拒绝，不允许静默误读；无兼容测试即不达标
+246. state 是否有可追踪的 version，且不同 Agent Version 能安全读取旧 state？ ｜必须：state 带版本，并保证向前兼容或显式迁移 ｜达标线：每次写入递增并可查到来源与具体 Run，新版本读旧 state 需迁移或拒绝、不允许静默误读；只有 schema 版本而无法定位 Run、或无兼容测试，不算达标
 
 ### P03.3 Multi-agent Reliability（AGENTREL04）
-248. 是否存在明确 orchestration pattern？ ｜必须：显式声明编排模式与拓扑 ｜达标线：模式写入 Registry 并可画调用图；说不清是否 supervisor 不达标
-249. 是否需要 supervisor / arbiter？ ｜条件：多 Agent 收敛冲突时才必须 ｜达标线：负责方明确且能强制终止子 Agent；靠 Agent 互相商量收敛不算达标
+248. 是否有明确的 **orchestration pattern 与 supervisor / arbiter** 机制？ ｜条件：存在多 Agent 收敛冲突时才必须有 supervisor ｜达标线：编排模式写入 Registry 并可画调用图，负责方明确且能强制终止子 Agent；说不清是否 supervisor、或靠 Agent 互相商量收敛，不算达标
 250. Agent capability taxonomy 是否存在？ ｜必须：统一 Agent 能力分类表 ｜达标线：能力按域分级并可被编排器读取；只在 PPT 里画分类、代码无对应不算达标
 251. 是否防止 agent 互相无限调用？ ｜禁止：跨 Agent 无上限递归调用 ｜达标线：链式调用有深度与总轮次上限，超限即中断；只设置单 Agent 轮次不达标
 252. 是否有 fallback？ ｜必须：定义明确的降级与人工兜底 ｜达标线：每条失败路径都有确定动作与责任人；只说支持重试不算达标
 253. Agent failure 是否局部隔离？ ｜必须：单个 Agent 失败不扩散 ｜达标线：故障域按 Agent 与 Run 隔离，可摘除单实例；一处失败拖垮全平台不达标
 254. Orchestrator failure 是否可恢复？ ｜必须：编排器故障后可恢复或重建 ｜达标线：编排状态外部化，重启后能接管未完成 Run；编排状态只在内存不达标
 255. Control Plane 是否具备 HA？ ｜条件：高风险 Run 才要求控制面高可用 ｜达标线：控制面多副本并有故障切换演练；单点但未做影响评估不算达标
-256. Handoff 是否有 timeout？ ｜必须：Agent 间 handoff 设超时 ｜达标线：超时后走确定分支，不无限等待；无超时、靠对端响应，不算达标
-257. Handoff 是否有 retry？ ｜必须：handoff 失败可重试且有限 ｜达标线：重试次数与退避明确，超限交人；无上限重试或静默丢弃都不达标
+256. Agent 间 handoff 是否有 **timeout 与 retry** 策略？ ｜必须：超时与重试都要有上限，超限走确定分支 ｜达标线：超时后走确定分支不无限等待，重试次数与退避明确、超限交人；无超时靠对端响应、无上限重试、或静默丢弃，不算达标
 
 ### P03.4 Cognition / Retrieval Reliability（AGENTREL05）
 258. Agent 获取的数据是否来自 trusted source？ ｜必须：数据仅取信白名单来源 ｜达标线：来源清单写进 Registry 并检索时校验；未标注来源的文档不得进上下文
 259. 是否记录 data freshness？ ｜必须：记录数据时效并可被读取 ｜达标线：每条检索结果带时间戳，超期数据触发降级或拒答；只有采集时间不达标
 260. 是否有 retrieval quality threshold？ ｜必须：设检索质量阈值与不达标的拒绝 ｜达标线：阈值按场景可配，低于阈值即拒答或交人；无阈值靠相似度排序直接喂模型不达标
 261. Retrieval failure 时是否禁止 hallucinated fallback？ ｜禁止：在检索失败时靠模型编造兜底 ｜达标线：检索为空即拒答或升级人工；用基于常识回答兜底属高危不达标
-262. Agent 是否知道 source confidence？ ｜必须：Agent 可知来源置信度 ｜达标线：置信度随检索结果传入并在决策中可见；所有来源一律等价、无置信度即不达标
-263. 是否区分 authoritative source / secondary source？ ｜必须：区分权威源与二手源 ｜达标线：权威源清单明确并优先采信，冲突时以权威源为准；混用不加区分不达标
+262. Agent 是否知道 **source confidence**，并区分 authoritative / secondary source？ ｜必须：置信度随结果传入，权威源与二手源分层采信 ｜达标线：置信度在决策中可见，权威源清单明确并优先采信、冲突时以权威源为准；所有来源一律等价、或混用不加区分，不算达标
 264. 是否有 grounding requirement？ ｜必须：输出必须 grounded 到证据 ｜达标线：每个结论可追到具体 source 片段；无法引用出处即应拒答，泛泛而谈不达标
 265. 是否能检测 unsupported answer？ ｜必须：能识别无依据的回答 ｜达标线：答案与检索证据做一致性校验，不一致即拦下；靠模型自评不达标
 266. 是否有 citation validation？ ｜必须：引用需被程序校验 ｜达标线：引用必须指向真实存在的文档片段，伪造引用即拦截；只让模型自附链接不达标
@@ -425,35 +345,23 @@ TM08. 每个关键 mitigation 是否对应 security test？ ｜必须：测试�
 269. Duplicate action 如何防止？ ｜必须：重复动作被确定性拦截 ｜达标线：按 idempotency key 在入口拦截，不靠 LLM；靠模型自查不达标
 270. Legacy system down 时 Agent 怎么办？ ｜必须：下游不可用时停在安全态 ｜达标线：明确返回失败或转人工，不猜测结果；静默跳过写入、事后对不上账不达标
 271. 是否有 fallback？ ｜必须：每条依赖有替代或降级路径 ｜达标线：降级后的能力损失被显式声明；降级后行为与正常态无差别、无人知晓不达标
-272. 是否可以 disable capability？ ｜必须：能力可被运维一键禁用 ｜达标线：禁用接口有权限控制且立即生效；需要改代码发版才能停用不达标
-273. 是否支持 dynamic capability toggling？ ｜必须：支持运行时动态开关能力 ｜达标线：开关变更走审批并留审计记录；改配置需重启、无审计，不算达标
+272. 能力是否可被运维 **disable**，并支持运行时 dynamic capability toggling？ ｜必须：能力开关一键生效，变更走审批留痕 ｜达标线：禁用接口有权限控制且立即生效，开关变更走审批并留审计记录；需要改代码发版才能停用、或改配置需重启且无审计，不算达标
 274. 是否测试 degraded mode？ ｜必须：定期演练降级模式 ｜达标线：降级路径有测试用例并定期跑；只写在设计文档、从未验证不达标
 
 ### P03.6 Recovery / Graceful Degradation
-275. Agent Runtime failure 怎么恢复？ ｜必须：Runtime 故障可自动或人工恢复 ｜达标线：明确失败判定与恢复动作，Run 不静默丢失；靠重启碰运气不达标
-276. Model failure 怎么恢复？ ｜必须：模型失败可切换或降级 ｜达标线：有备用模型或明确拒答路径，切换有记录；无兜底、直接抛错给用户不达标
-277. Retrieval failure 怎么恢复？ ｜必须：检索失败降级或拒答 ｜达标线：明确不复用缓存冒充新鲜结果；静默用旧索引回答且不标注不达标
-278. Tool failure 怎么恢复？ ｜必须：Tool 失败可重试或改道 ｜达标线：重试有上限与退避，最终失败明确上报；无限重试或吞掉异常不达标
+275. Agent Runtime failure 与 Model failure 如何恢复？ ｜必须：失败判定明确，Run 不静默丢失 ｜达标线：明确失败判定与恢复动作，模型失败有备用模型或明确拒答路径且切换有记录；靠重启碰运气、或直接抛错给用户，不算达标
+277. Retrieval failure 与 Tool failure 如何恢复？ ｜必须：降级或拒答路径明确，重试有上限 ｜达标线：检索失败即拒答或升级人工、不复用缓存冒充新鲜结果，工具失败重试有上限与退避并明确上报；静默用旧索引回答、无限重试、或吞掉异常，不算达标
 279. State failure 怎么恢复？ ｜必须：state 不可用时不带病运行 ｜达标线：明确拒绝新 Run 或转只读；丢失状态仍继续写导致脏数据不达标
-280. Policy engine unavailable 怎么办？ ｜禁止：放行，必须 Fail-Closed ｜达标线：策略不可判时拒绝或降级为只读；不可用时默认放行属严重不达标
-281. Approval service unavailable 怎么办？ ｜禁止：跳过审批自动放行 ｜达标线：审批不可达即拒绝或排队等待；超时后自动通过属严重不达标
-282. LangSmith unavailable 是否影响 runtime？ ｜禁止：让可观测组件阻断主链路 ｜达标线：LangSmith 故障不阻断运行，trace 缺失即拒执行不达标
-283. LiteLLM unavailable 怎么办？ ｜必须：网关故障有备用通道或快速失败 ｜达标线：明确超时与切换策略；无备用又不快速失败、长时间挂起不达标
-284. Snowflake unavailable 怎么办？ ｜必须：数仓不可用时降级拒答 ｜达标线：明确返回数据不可用，不用陈旧快照冒充；静默用缓存数据回答不达标
-285. 是否支持 staged recovery？ ｜必须：按阶段恢复能力而非一次全开 ｜达标线：恢复顺序有定义并可逐级放量；一键全量恢复、无验证步骤不达标
-286. 是否支持 automatic recovery？ ｜必须：可自动恢复且有人工兜底 ｜达标线：自动恢复有次数上限与熔断，超限转人工；自动无限重启不达标
+280. Policy engine 或 Approval service 不可用时怎么办？ ｜禁止：放行，必须 Fail-Closed ｜达标线：策略不可判时拒绝或降级为只读，审批不可达即拒绝或排队等待；不可用时默认放行、或超时后自动通过，属严重不达标
+282. LangSmith / LiteLLM / Snowflake 不可用时的行为是否定义？ ｜禁止：让可观测组件阻断主链路 ｜达标线：LangSmith 故障不阻断运行、trace 缺失不导致拒绝执行，LiteLLM 有备用通道或明确快速失败，数仓不可用即返回数据不可用、不用陈旧快照冒充；长时间挂起或静默用缓存回答，不算达标
+285. 是否支持 **staged recovery 与 automatic recovery**？ ｜必须：分阶段恢复，自动恢复有熔断与人工兜底 ｜达标线：恢复顺序有定义并可逐级放量，自动恢复有次数上限与熔断、超限转人工；一键全量恢复、无验证步骤、或自动无限重启，不算达标
 287. 是否有 distributed tracing 支持 recovery？ ｜必须：trace 足以重建故障 Run ｜达标线：trace 含输入、工具调用与失败点，可按 Run ID 回放；只有耗时埋点不达标
-288. 是否有 resource isolation？ ｜必须：按 Agent 与 Tenant 隔离 ｜达标线：CPU、内存与连接池有配额，超限被限制；共享无配额、互相争抢不达标
-289. 是否有 contention mitigation？ ｜必须：限制并发与排队避免争抢 ｜达标线：有并发上限与公平队列，按 Tenant 限流；无限并发靠重试硬扛不达标
+288. 是否有 **resource isolation 与 contention mitigation**？ ｜必须：按 Agent 与 Tenant 隔离资源，并限制并发争抢 ｜达标线：CPU、内存与连接池有配额、超限被限制，有并发上限与公平队列并按 Tenant 限流；共享无配额、互相争抢、或靠重试硬扛，不算达标
 
 ## P04 — Performance Efficiency
 290. 是否有 Agent-level SLA？ ｜必须：每个 Agent 有可用性与延迟 SLA ｜达标线：SLA 按 Agent Version 定义并进发布门禁；只算平台 SLA 不达标
-291. 是否有 end-to-end latency？ ｜必须：端到端延迟可测量并归因 ｜达标线：按 Run 记录 P95 并拆到模型与工具；只报均值不算达标
-292. 是否监控 TTFT（首 token 延迟）？ ｜必须：监控首 token 延迟 ｜达标线：按 Run 与模型记录 TTFT 分位值；只记总耗时不达标
-293. 是否监控 time-to-completion？ ｜必须：监控任务完成总时长 ｜达标线：按 Run 类型设预期区间并告警长尾；只统计成功数不看耗时不达标
-294. 是否监控 tool latency？ ｜必须：per Tool 延迟可观测 ｜达标线：按 Tool 记录 P95 并设超时阈值；不记到 Tool 粒度不算达标
-295. 是否监控 retrieval latency？ ｜必须：检索延迟单独可观测 ｜达标线：按数据源与查询类型记录分位值；混在总耗时里、无法归因不达标
-296. 是否监控 model latency？ ｜必须：模型调用延迟可归因 ｜达标线：按模型与 Agent Version 分别统计；只有网关整体耗时不算达标
+291. 是否监控端到端延迟（**end-to-end latency / TTFT / time-to-completion**）并能归因？ ｜必须：三个口径都可测量、可按 Run 归因 ｜达标线：按 Run 记录 P95 并拆到模型与工具，TTFT（首 token 延迟）与完成时长按 Run 与模型记分位值，长尾有告警；只报均值、或只记总耗时，不算达标
+294. **tool / retrieval / model** 三类 latency 是否分别可观测并归因？ ｜必须：三类分开计量且可按粒度归因 ｜达标线：按 Tool 记 P95 并设超时阈值、按数据源与查询类型记检索分位值、按模型与 Agent Version 分别统计；混在总耗时里、或只有网关整体耗时，不算达标
 297. 是否 profile cognitive pipeline？ ｜必须：能定位认知链路各段耗时 ｜达标线：规划、检索、推理、工具各段可分别计量；只有一个总时长不达标
 298. 是否优化 reasoning loop？ ｜必须：抑制无效循环并设收敛条件 ｜达标线：以步数与重复度判定收敛，超标即停；无判定、任由反复思考不达标
 299. 是否根据 task 选择 model？ ｜必须：按任务难度路由模型档位 ｜达标线：路由规则确定且可审计，高风险任务不降档；全靠最贵模型不达标
@@ -464,23 +372,16 @@ TM08. 每个关键 mitigation 是否对应 security test？ ｜必须：测试�
 304. 是否优化 tool invocation？ ｜必须：减少无效与重复工具调用 ｜达标线：相同入参结果可复用，调用数按 Run 统计；不做去重不达标
 305. 是否优化 delegation / handoff？ ｜必须：减少不必要的 Agent 交接 ｜达标线：交接次数与开销可观测并有上限；为拆而拆、层层转手不达标
 306. 是否控制 multi-agent overhead？ ｜必须：量化并约束多 Agent 开销 ｜达标线：编排开销占总耗时与成本比例有阈值；只测单 Agent 不达标
-307. 是否有 tenant performance isolation？ ｜必须：租户间性能互不干扰 ｜达标线：按 Tenant 分配配额并单独观测；共用池无配额不达标
-308. 是否有 tenant throttling？ ｜必须：按 Tenant 限流 ｜达标线：限流阈值可配且超限明确拒绝；无差别全局限流、打挂所有租户不达标
-309. 是否有 noisy-neighbor protection？ ｜必须：防止单租户拖垮整体 ｜达标线：有突发检测与隔离降级，按 Tenant 熔断；只靠事后告警不达标
+307. 是否有租户级性能隔离、限流与 **noisy-neighbor 防护**？ ｜必须：配额隔离、按租户限流与突发隔离三者齐备 ｜达标线：按 Tenant 分配配额并单独观测，限流阈值可配且超限明确拒绝，有突发检测与按租户熔断；共用池无配额、无差别全局限流、或只靠事后告警，不算达标
 
 ## P05 — Cost Optimization
-310. 是否统计 Agent-level cost？ ｜必须：每 Agent 成本可统计 ｜达标线：按 Agent Version 归因到 Run 与租户；只看总账单不达标
-311. 是否统计 Run-level cost？ ｜必须：每 Run 成本可归因 ｜达标线：每次 Run 有独立成本记录并可对账到模型与 Tool 用量；只有日汇总不达标
+310. **Agent-level 与 Run-level cost** 是否可统计并归因？ ｜必须：每 Run 有独立成本记录，并对账到模型与工具用量 ｜达标线：按 Agent Version 归因到 Run 与租户，每次 Run 可对账到模型与 Tool 用量；只看总账单、或只有日汇总，不算达标
 312. 是否统计 Model-level cost？ ｜必须：每模型成本可统计 ｜达标线：按模型与调用方归因，token 与单价可算；只看采购合同价不达标
 313. 是否统计 Tool-level cost？ ｜必须：每 Tool 成本可统计 ｜达标线：外部调用按次计费需归因到 Run；把工具成本算进模型费不达标
 314. 是否统计 Retrieval cost？ ｜必须：检索成本单独计量 ｜达标线：按查询与数据源统计存储与算力开销；混入总成本不达标
 315. 是否统计 Tenant-level cost？ ｜必须：每 Tenant 成本可归因 ｜达标线：成本可按租户拆分并支持争议复核；共享池平摊到人头不达标
-316. 是否设置 max cost per Run？ ｜必须：per Run 硬预算与自动中止 ｜达标线：超预算即 cutoff 或降级，不是只看月度账单；只在日报里预警不达标
-317. 是否设置 token budget？ ｜必须：设 token 预算并按 Run 分配 ｜达标线：预算可配且超限截断或终止；无上限、靠模型输出自然结束不达标
-318. 是否设置 reasoning budget？ ｜必须：限制推理步数与思考开销 ｜达标线：推理轮次与 token 有上限且可观测；任由模型长时间思考不达标
-319. 是否检测 runaway cost？ ｜必须：能识别成本失控并阻断 ｜达标线：对单位时间成本增速设阈值并自动熔断；只看绝对值、无增速判定不达标
-320. 是否自动 cutoff？ ｜必须：超预算自动中止并可恢复 ｜达标线：cutoff 后保留已完成步骤与审计；截断后静默丢弃结果不达标
-321. 是否有 cost anomaly detection？ ｜必须：成本异常可检测并告警 ｜达标线：按 Agent 与 Tenant 建基线，偏离即告警；无基线、事后才发现不达标
+316. 是否设置 per-Run 硬预算：**max cost / token budget / reasoning budget**？ ｜必须：三者都有硬上限，超限即 cutoff 或降级 ｜达标线：预算可配并在超限时截断或终止，推理轮次与 token 有上限且可观测；无上限靠模型输出自然结束、或只在日报里预警，不算达标
+319. 是否检测 **runaway cost**、自动 cutoff，并有 cost anomaly detection？ ｜必须：增速熔断、到顶切断与基线告警三者齐备 ｜达标线：对单位时间成本增速设阈值并自动熔断，cutoff 后保留已完成步骤与审计，按 Agent 与 Tenant 建基线并可归因；只看绝对值、截断后静默丢弃结果、或无基线事后才发现，不算达标
 322. 是否支持 model tiering？ ｜必须：按任务与风险选模型档位 ｜达标线：高风险任务不降档，降档需留策略依据；一律用最贵模型不达标
 323. 是否有 caching？ ｜必须：缓存降低重复推理成本 ｜达标线：缓存键含 tenant 与版本，命中率可观测；跨租户复用不达标
 324. 是否压缩 context？ ｜必须：压缩上下文并保留关键证据 ｜达标线：压缩后有证据保全校验，不能丢结论依据；只做截断不达标
@@ -491,10 +392,8 @@ TM08. 每个关键 mitigation 是否对应 security test？ ｜必须：测试�
 
 ## P06 — Sustainability
 329. 是否有 resource utilization monitoring？ ｜必须：监控算力与模型资源利用率 ｜达标线：按 Agent 与 Tenant 采集利用率并设低效告警；只看实例CPU不达标
-330. 是否能降低模型调用量？ ｜必须：减少不必要的模型调用 ｜达标线：缓存与规则前置可量化降低调用数；无度量、只说优化不达标
-331. 是否合理选择模型？ ｜必须：按任务复杂度选合适模型 ｜达标线：选择依据可审计，高风险不降档；一律用最大模型不达标
+330. 是否通过**模型档位选择与 inference 去重**，避免不必要的模型调用？ ｜必须：选择依据可审计，重复推理可复用 ｜达标线：缓存与规则前置可量化降低调用数，按任务复杂度合理选择模型且高风险不降档，结果缓存带 tenant 与版本隔离；无度量只说优化、一律用最大模型、或无缓存直接重算，不算达标
 332. 是否可复用 agent workflow？ ｜必须：沉淀可复用工作流模式 ｜达标线：通用流程抽成模板并版本化；每次重写、无复用记录不达标
-333. 是否避免重复 inference？ ｜必须：相同请求避免重复推理 ｜达标线：结果缓存带 tenant 与版本隔离；无缓存直接重算不达标
 334. 是否能共享 infrastructure？ ｜条件：共享需先保证租户隔离 ｜达标线：共享资源的隔离与配额已验证；为省钱牺牲隔离不达标
 335. 是否根据 workload scale cognitive processing？ ｜必须：认知处理随负载弹性伸缩 ｜达标线：扩容阈值与冷却期明确，可按 Tenant 伸缩；固定容量硬扛不达标
 336. 是否对 long-running agent 定义资源边界？ ｜必须：长任务有资源与时长上限 ｜达标线：按 Run 设内存、时长与预算边界，超限中止；无限期运行不达标
@@ -502,55 +401,42 @@ TM08. 每个关键 mitigation 是否对应 security test？ ｜必须：测试�
 ## P07 — Financial Services Governance & Regulatory Delta
 
 ### P07.1 Risk & Regulatory Governance Delta
-337. Cloud / AI Risk roles 是否定义？ ｜必须：风险角色具名到人并设备岗 ｜达标线：云风险与 AI 风险角色各写进风险登记册，含姓名与代理；只列角色名称不算
-338. Operational Risk Owner 是否定义？ ｜必须：FSI 口径的风险责任人 ｜达标线：每类 Agent 风险指定到人并在组织变更时更新；只挂部门名不算
+337. 是否定义 **Cloud / AI Risk roles 与 Operational Risk Owner**？ ｜必须：风险角色具名到人并设备岗 ｜达标线：云风险、AI 风险与操作风险责任人各写进风险登记册，含姓名与代理并在组织变更时更新；只列角色名称、或只挂部门名，不算达标
 339. 是否完成 workload 的 operational risk assessment？ ｜必须：覆盖全部在册 Agent 与数据流 ｜达标线：重大变更后重评、结论经签核入档；一次性表格不算
 340. 是否完成 regulatory applicability assessment？ ｜必须：逐条判定适用与不适用的法规 ｜达标线：判定结论与依据可被监管复核；只勾选适用清单不算
-341. 是否定义 Agent risk classification（按 FSI 业务 / 监管口径，而不是按模型能力）？ ｜必须：按业务影响与监管口径分级 ｜达标线：分级决定后续 oversight 强度并写进 Registry；按模型能力分级不算
-342. 是否定义 risk acceptance authority（谁有权接受剩余风险）？ ｜必须：明确到可具名的岗位与额度 ｜达标线：超限风险必须由该岗位书面接受并入档；口头同意或无人接受不算
-343. 是否有独立于建设单位的 review？ ｜必须：评审方不得是建设或运维方 ｜达标线：上线前由独立单位出具签署意见；同团队自审不算
-344. 是否落实 Three Lines of Defence？ ｜必须：一线业务二线风险三线审计分设 ｜达标线：三线均能独立取证并留存结论；只画组织图不算
+341. 是否定义 **Agent risk classification 与 risk acceptance authority**？ ｜必须：按业务与监管口径分级，并明确谁有权接受剩余风险 ｜达标线：分级决定后续 oversight 强度并写进 Registry，超限风险必须由具名岗位书面接受并入档；按模型能力分级、口头同意、或无人接受，不算达标
+343. 是否有独立于建设单位的 review，并落实 **Three Lines of Defence**？ ｜必须：评审方与建设运维方分离，三线分设且能独立取证 ｜达标线：上线前由独立单位出具签署意见，一线业务、二线风险、三线审计均能独立取证并留存结论；同团队自审、或只画组织图，不算达标
 345. 是否有持续 review cadence？ ｜必须：固定周期与触发条件并存 ｜达标线：至少年度一次加重大变更触发的临时复核；仅事件驱动不算
 346. 是否存在覆盖 AI 的 governance body（FSISEC01）？[RA] ｜条件：机构级 AI 治理委员会存在时才必须有 ｜达标线：有章程、议事记录与决策留痕；仅挂名无会议记录不算
 347. AI guardrail / prompt / model resource 是否上升为**机构级 standard**，而不是各团队自行约定（FSISEC01）？[RA] ｜条件：同类资源被多个团队复用时才必须统一 ｜达标线：以机构级标准发布并强制引用；各团队自建约定不算
 348. 是否定期独立验证 compliance effectiveness（而不是自评）？ ｜必须：验证方独立于自评方 ｜达标线：每年至少一次独立测试并出报告；自评问卷不算
 
 ### P07.2 Regulatory Obligation Delta
-349. Agent 受哪些法规 / 内部 policy 约束是否明确？ ｜必须：逐条列出适用法规与内部 policy ｜达标线：法规条目映射到具体控制并可追溯；只写合规不算
-350. data residency 是否定义？ ｜必须：按数据集声明允许存储地域 ｜达标线：跨境流转前校验并留证；只在架构图标注不算
-351. retention 是否定义？ ｜必须：按数据类型与监管要求定保留年限 ｜达标线：到期自动处置并可举证；仅设全局默认值不算
+349. Agent 受哪些**法规 / 内部 policy** 约束是否明确，并持续监控 regulatory changes？ ｜必须：逐条映射到控制，并指定责任人跟踪变化 ｜达标线：法规条目映射到具体控制且可追溯，变更进入 backlog 并评估影响；只写「合规」、或只订阅法规邮件，不算达标
+350. **data residency 与 retention** 是否按数据集与监管要求定义？ ｜必须：存储地域与保留年限逐数据集声明并可举证 ｜达标线：跨境流转前校验并留证，到期自动处置并可举证保留年限；只在架构图标注、或仅设全局默认值，不算达标
 352. incident reporting obligation 是否定义？ ｜必须：明确上报对象与监管时限 ｜达标线：每类事件的报送时限与责任人可查；只写内部通报不算
 353. 是否能提供 regulator evidence？ ｜必须：可在监管时限内提取完整证据 ｜达标线：证据不可变且可归因到人与模型；只有 dashboard 截图不算
-354. 是否持续监控 regulatory changes？ ｜必须：指定责任人跟踪变化 ｜达标线：变更进入 backlog 并评估影响；只订阅法规邮件不算
 355. 是否能回答 regulator： ｜必须：八问均可从证据链回答 ｜达标线：任一历史 Run 能还原人、模型、数据、策略与审批；事后补录不算
 
 ## P08 — FSI Security Delta
 
 ### P08.1 Privileged Access / SoD Delta（FSISEC03 / 04）
-356. 是否监控 elevated credentials 的使用？ ｜必须：监控到具体凭据与使用人 ｜达标线：每次提权使用留存申请、审批与用途；只统计次数不算
-357. 是否检测 privilege escalation？ ｜必须：检测并阻断越权提权 ｜达标线：规则命中后可自动冻结会话并留证；仅事后周报不算
-358. 是否有 admin activity monitoring？ ｜必须：admin 操作全程留痕且不可篡改 ｜达标线：可回放到具体命令与目标资源；只记录登录不算
-359. Agent 权限与 admin 权限是否分离？ ｜禁止：Agent 持有 admin 权限 ｜达标线：Agent 身份与运维身份分属不同凭据体系；共用角色不算
-360. 是否定义 separation of duties？ ｜必须：明确互斥角色对清单 ｜达标线：互斥关系由系统强制校验而非制度文本；只写制度不算
-361. Developer 能否自行批准生产 Agent？ ｜禁止：开发者批准自己的上线 ｜达标线：审批人与提交人不同且系统强制留证；同团队代签不算
-362. Agent Owner 能否自行批准其 Data Entitlement？ ｜禁止：owner 自批数据权限 ｜达标线：数据授权由数据 owner 独立审批；同人双角色不算
-363. Security Reviewer 能否同时成为部署者？ ｜禁止：安全评审者兼任部署 ｜达标线：角色互斥由权限策略强制；人工承诺不算
-364. 是否有 independent approval？ ｜必须：审批独立于建设与运维 ｜达标线：高风险变更需外部独立签署；上游同团队审阅不算
+356. 是否监控 elevated credentials 的使用、检测 privilege escalation，并保留不可篡改的 admin activity 记录？ ｜必须：提权使用、越权提权、admin 操作三线可查 ｜达标线：每次提权使用留存申请、审批与用途，规则命中后可自动冻结会话并留证，admin 操作可回放到具体命令与目标资源；只统计次数、或只记录登录，不算达标
+359. Agent 权限与 admin 权限是否分离，并定义 **separation of duties**？ ｜禁止：Agent 持有 admin 权限 ｜达标线：Agent 身份与运维身份分属不同凭据体系，互斥角色对清单由系统强制校验并覆盖 owner、developer、security reviewer 等角色对；共用角色、或只写制度文本，不算达标
+361. **Developer 或 Agent Owner 能否自行批准**自己的生产上线 / Data Entitlement（数据授权）？ ｜禁止：开发者或 owner 自批 ｜达标线：审批人与提交人不同且系统强制留证，数据授权由数据 owner 独立审批；同团队代签、或同人双角色，不算达标
+363. Security Reviewer 能否兼任部署者？高风险变更是否有 **independent approval**？ ｜禁止：安全评审者兼任部署 ｜达标线：角色互斥由权限策略强制，高风险变更需独立于建设与运维方签署；人工承诺、或上游同团队审阅，不算达标
 
 ### P08.2 AI Threat Detection Delta（FSISEC05 / 06 / 07）
-365. 是否监控 Agent-based threats？ ｜必须：覆盖 Agent 自主行为链 ｜达标线：能关联到具体 Agent 与 Run 并可阻断；只告警主机威胁不算
-366. 是否监控异常 Tool activity？ ｜必须：以 Tool 调用基线判定异常 ｜达标线：偏离基线的调用可定位到 Tenant 与身份；无基线只统计量不算
+365. 是否监控 **Agent-based threats（Agent 自主行为链）与异常 Tool activity**？ ｜必须：以调用基线判定异常，并可定位阻断 ｜达标线：能关联到具体 Agent 与 Run 并可阻断，偏离基线的调用可定位到 Tenant 与身份；只告警主机威胁、或无基线只统计量，不算达标
 367. 是否监控异常 outbound traffic？ ｜必须：按目的地与数据量设阈值 ｜达标线：异常外联可自动阻断并取证；仅记录流量不算
 368. 是否能够检测 unauthorized network traffic？ ｜必须：默认拒绝并告警非白名单流量 ｜达标线：每次放行有批准记录；仅依赖边界防火墙不算
-369. 是否有 emerging-threat process？ ｜必须：明确情报来源与响应时限 ｜达标线：新威胁在限定时间内转化为检测规则；只订阅情报不算
-370. 是否有 security intelligence update？ ｜必须：更新可追溯版本与生效时间 ｜达标线：规则更新有变更记录与回归验证；静默推送不算
+369. 是否有 **emerging-threat process 与可追溯的 security intelligence update**？ ｜必须：明确情报来源与响应时限，更新有版本与回归 ｜达标线：新威胁在限定时间内转化为检测规则，规则更新有变更记录与回归验证；只订阅情报、或静默推送，不算达标
 371. 是否监控 model abuse？ ｜必须：覆盖滥用与越狱尝试 ｜达标线：按 Tenant 与模型维度识别滥用模式；仅看调用量不算
 372. 是否监控 prompt injection attacks？ ｜必须：输入输出双向检测 ｜达标线：命中可定位到具体 prompt 与来源并阻断；只记日志不算
 373. 是否监控 data exfiltration？ ｜必须：覆盖出向数据与知识外带 ｜达标线：可按数据集追踪外流路径并阻断；只统计下载量不算
 
 ### P08.3 AI Asset Isolation Delta（FSISEC08）
-374. Model endpoint 是否隔离？ ｜必须：模型端点按环境与租户隔离 ｜达标线：跨环境访问需显式授权并有网络证据；共享端点不算
-375. Prompt catalog 是否隔离？ ｜必须：prompt 库按环境与团队隔离 ｜达标线：生产 prompt 只可读引用、变更走发布流程；共享仓库不算
+374. **Model endpoint 与 Prompt catalog** 是否按环境与租户隔离？ ｜必须：端点与 prompt 库都按环境隔离 ｜达标线：跨环境访问需显式授权并有网络证据，生产 prompt 只可读引用、变更走发布流程；共享端点、或共享仓库，不算达标
 376. Agent artifact 是否隔离？ ｜必须：artifact 版本与存储按环境隔离 ｜达标线：生产 artifact 不可被开发直接覆盖；同仓同名不算
 377. Knowledge data 是否隔离？ ｜必须：知识数据按租户与密级隔离 ｜达标线：检索层强制过滤而非应用层自觉；共享索引不算
 378. Runtime identity 是否隔离？ ｜必须：每个 Runtime 独立身份与凭据 ｜达标线：身份不可跨 Runtime 复用且可吊销；共享角色不算
@@ -558,25 +444,20 @@ TM08. 每个关键 mitigation 是否对应 security test？ ｜必须：测试�
 380. Production Skill 是否可从开发环境直接覆盖？ ｜禁止：开发环境直接覆盖生产 Skill ｜达标线：生产发布须经签名与审批；直连覆盖路径不存在才算
 
 ### P08.4 Data Protection Delta（FSISEC09 / 10 / 11）
-381. Prompt 是否经过 DLP？ ｜必须：入站 prompt 全量过 DLP ｜达标线：命中按密级处置并可追溯；仅抽样检测不算
-382. Retrieval result 是否经过 DLP？ ｜必须：检索结果出库前过滤 ｜达标线：按文档密级与用户权限双重校验；只查元数据不算
-383. Model output 是否经过 DLP？ ｜必须：出站响应统一过 DLP ｜达标线：命中可阻断或脱敏并留证；仅记录不算
+381. **Prompt / Retrieval result / Model output** 是否统一经过 DLP？ ｜必须：入站与出站三个面都全量过滤 ｜达标线：prompt 全量过 DLP 并可按密级处置，检索结果出库前按文档密级与用户权限双重校验，出站响应命中可阻断或脱敏并留证；仅抽样检测、或只查元数据，不算达标
 384. DLP 命中的处置是否定义（阻断 / 脱敏 / 记录 / 上报），而不是仅告警？ ｜必须：明确阻断脱敏记录上报四类动作 ｜达标线：按密级与风险自动选择动作且可举证；只告警不算
 385. 是否使用 WORM / immutable storage（若监管要求适用）？[RA] ｜条件：监管要求长期保留的日志与证据才必须不可变 ｜达标线：写入后不可改删且可举证保留年限；普通对象存储不算
 386. 是否有 ransomware protection？ ｜必须：备份与管理面双重防护 ｜达标线：可离线恢复且恢复点满足监管要求；仅装杀毒不算
 387. Encryption Key 是否集中管理？ ｜必须：密钥由集中密钥管理服务托管 ｜达标线：业务系统无明文密钥且取用可审计；配置文件内嵌不算
-388. Key rotation 是否有定义？ ｜必须：明确轮换周期与触发条件 ｜达标线：轮换可自动化并留证；一次性轮换不算
-389. Key access 是否定期 review？ ｜必须：按周期复核取用权限 ｜达标线：复核结论留痕并撤销冗余权限；只导出清单不算
+388. **Key rotation 与 key access review** 是否定义？ ｜必须：轮换周期与取用复核都明确并留证 ｜达标线：轮换可自动化并留证，按周期复核取用权限并撤销冗余权限；一次性轮换、或只导出清单，不算达标
 390. Key deletion 是否有控制？ ｜必须：销毁需双人授权与留证 ｜达标线：删除不可逆且可举证；单人直接删不算
 
 ### P08.5 Incident Response Delta（FSISEC12）
 391. 是否定义 Agent security incident？ ｜必须：给出可判定的 AI 事件定义 ｜达标线：定义覆盖 Agent 特有失败模式并入库；照搬传统定义不算
 392. 是否定义 AI incident severity？ ｜必须：分级对应响应与上报动作 ｜达标线：每级绑定处置时限与通知对象；只分高中低不算
 393. 是否有 security incident response runbook？ ｜必须：含 AI 场景的可执行手册 ｜达标线：含判断隔离上报步骤并演练过；泛化文档不算
-394. 是否能够停止 Agent？ ｜必须：可在容器级立即停止 ｜达标线：停止动作经演练验证且不影响其他租户；仅停用入口不算
-395. 是否能够停止 Tool？ ｜必须：可单独禁用一个 Tool ｜达标线：禁用即时生效且留证；改配置重启不算
-396. 是否能够停止 Model？ ｜必须：可切断指定模型调用 ｜达标线：可降到确定性兜底而不中断业务；整站停服不算
-397. 是否能够停止 Data Source？ ｜必须：可隔离单个数据源 ｜达标线：隔离后 Agent 走降级路径且留证；只断开连接不算
+394. 是否能在容器级立即停止 Agent，并单独禁用一个 Tool？ ｜必须：两者都可即时生效且不影响其他租户 ｜达标线：停止动作经演练验证，Tool 禁用即时生效且留证；仅停用入口、或改配置重启，不算达标
+396. 是否能切断指定 Model 调用，并隔离单个 Data Source？ ｜必须：两者都可单独停止且走降级路径 ｜达标线：可降到确定性兜底而不中断业务，数据源隔离后 Agent 走降级路径且留证；整站停服、或只断开连接，不算达标
 398. 是否能够保全证据？ ｜必须：事故现场证据不可变留存 ｜达标线：可还原提示、模型、数据与审批链；截屏不算
 399. 是否明确 regulator notification criteria？ ｜必须：明确触发上报的条件与时限 ｜达标线：条件可判定、时限可举证；只写及时上报不算
 400. 是否有 incident reporting owner？ ｜必须：指定到人并设备岗 ｜达标线：owner 与备岗均在册且演练过；只写团队名不算
@@ -588,19 +469,14 @@ TM08. 每个关键 mitigation 是否对应 security test？ ｜必须：测试�
 404. 如何治理 model access？ ｜必须：模型访问按用途授权 ｜达标线：授权到 Tenant 与用途并可回收；全量开放不算
 405. 如何控制 model availability？ ｜必须：可限流与按优先级降级 ｜达标线：关键业务在模型不可用时走兜底；抢占式限流不算
 406. 如何检测 AI-assisted attack？ ｜必须：识别攻击者用 AI 放大的行为 ｜达标线：可关联自动化与批量特征并阻断；只防人工攻击不算
-407. 是否利用 AI 做 threat detection？ ｜必须：AI 检测须有确定性规则兜底 ｜达标线：AI 判定需可解释且不单独决定阻断；纯模型决策不算
-408. 如果 AI security tool 自己失效怎么办？ ｜必须：确定性流程兜底不依赖 AI 自证 ｜达标线：AI 检测失效时回落固定规则并告警；静默失效不算
+407. 若利用 AI 做 threat detection，是否有**确定性规则兜底**，且 AI security tool 自身失效时能回落？ ｜必须：AI 判定不单独决定阻断，失效时回落固定规则 ｜达标线：AI 判定可解释且需确定性规则兜底，检测失效时回落固定规则并告警；纯模型决策、或静默失效，不算达标
 
 ## P09 — FSI Resilience Delta
 
 ### P09.1 Resilience Tier & Regulatory Obligation Delta
-409. Agent 的 business criticality 是否定义？ ｜必须：按业务影响给 Agent 定级 ｜达标线：定级决定 resilience 与 oversight 强度；按技术复杂度定级不算
-410. 是否定义 resilience tier？ ｜必须：tier 可映射到具体架构要求 ｜达标线：每级明确恢复目标与恢复手段；只标 tier 名不算
-411. resilience tier 是否由 business requirement 驱动？ ｜必须：tier 由业务方签署确认 ｜达标线：业务需求与 tier 的对应关系可追溯；技术单方决定不算
-412. 是否由 regulatory requirement 驱动？ ｜必须：监管要求可提升 tier 下限 ｜达标线：受监管环节的 tier 不低于监管下限并留证；只看业务量不算
-413. 是否定义 RTO？ ｜必须：按 tier 与业务线分别定义 ｜达标线：恢复时限经演练验证可达成；拍脑袋数字不算
-414. 是否定义 RPO？ ｜必须：按数据类敏感度分别定义 ｜达标线：有备份与复制机制支撑且可举证；只写数值不算
-415. 是否定义 Maximum Tolerable Downtime？ ｜必须：覆盖端到端业务流程 ｜达标线：最大可容忍停机大于恢复时限且经业务确认；只算系统停机不算
+409. Agent 的 **business criticality 与 resilience tier** 是否定义，且 tier 能映射到具体架构要求？ ｜必须：按业务影响定级，tier 可映射到恢复目标与手段 ｜达标线：定级决定 resilience 与 oversight 强度并写进 Registry，每级明确恢复目标与恢复手段；按技术复杂度定级、或只标 tier 名，不算达标
+411. resilience tier 是否由 **business requirement 与 regulatory requirement** 共同驱动？ ｜必须：业务方签署确认，监管要求可提升 tier 下限 ｜达标线：业务需求与 tier 的对应关系可追溯，受监管环节的 tier 不低于监管下限并留证；技术单方决定、或只看业务量，不算达标
+413. 是否分别定义 **RTO、RPO 与 Maximum Tolerable Downtime**？ ｜必须：三个口径都按 tier 与业务线定义，且经业务确认 ｜达标线：恢复时限经演练验证可达成，RPO 有备份与复制机制支撑且可举证，MTD 覆盖端到端业务流程并大于恢复时限；拍脑袋数字、只写数值、或只算系统停机，不算达标
 416. Agent outage 对业务的影响是否定义？ ｜必须：量化停机对业务与监管的影响 ｜达标线：影响分析驱动 tier 与降级设计；只写影响重大不算
 
 ### P09.2 External Dependency Delta（FSIREL05）
@@ -609,11 +485,9 @@ TM08. 每个关键 mitigation 是否对应 security test？ ｜必须：测试�
 419. vendor concentration risk 是否评估？ ｜必须：量化单一 vendor 占比与退出成本 ｜达标线：高集中度有替代或缓冲方案；只写风险提示不算
 
 ### P09.3 Gray Failure Delta
-420. 是否能够检测「系统看起来正常但结果已经错误」？ ｜必须：以业务结果正确性而非存活做检测 ｜达标线：能定义结果正确性基线并告警；仅看健康探针不算
-421. Model quality degradation 是否能检测？ ｜必须：按质量指标持续比对基线 ｜达标线：退化可定位到模型或提示变更；只看错误率不算
+420. 是否能够检测「**系统看起来正常但结果已经错误**」，并有按业务语义定义的 semantic health check？ ｜必须：以业务结果正确性而非存活做检测 ｜达标线：定义结果正确性基线并告警，语义异常可量化告警并进入复盘；仅看健康探针、或只做技术探针，不算达标
+421. **Model quality degradation 与 Provider 部分失败**是否能被检测？ ｜必须：按质量指标比对基线，并识别部分失败 ｜达标线：退化可定位到模型或提示变更，部分失败触发降级并留证；只看错误率、或只看可用性指标，不算达标
 422. Tool 返回错误数据是否能检测？ ｜必须：校验返回数据的语义与范围 ｜达标线：异常数据可拦截并阻断下游；仅校验状态码不算
-423. Provider 部分失败是否能检测？ ｜必须：识别部分失败而非全量不可用 ｜达标线：部分失败可触发降级并留证；只看可用性指标不算
-424. 是否存在 semantic health check？ ｜必须：按业务语义定义健康判据 ｜达标线：语义异常可量化告警并进入复盘；只做技术探针不算
 
 ### P09.4 Backup / Retention Delta
 425. PostgreSQL backup 是否定义？ ｜必须：含全量与增量且定期验证 ｜达标线：恢复点满足恢复目标且演练可还原；只配置定时任务不算
@@ -623,24 +497,18 @@ TM08. 每个关键 mitigation 是否对应 security test？ ｜必须：测试�
 429. Policy backup 是否定义？ ｜必须：策略版本可追溯与回滚 ｜达标线：恢复后判定结果与备份时一致；只存文本不算
 430. Audit evidence backup 是否定义？ ｜必须：证据备份满足不可变与年限 ｜达标线：可举证完整保留期且不可删改；普通备份不算
 431. 备份是否 immutable（监管要求适用时）？[RA] ｜条件：存在监管保留义务的数据才必须不可变 ｜达标线：备份写入后不可改删且可举证年限；普通快照不算
-432. LangSmith 数据是否需要 backup？ ｜必须：评估后纳入或书面明确排除 ｜达标线：结论有依据并写明取舍理由；默认不备不算
-433. Snowflake 侧数据备份的责任边界是否明确？ ｜必须：与 vendor 的责任分工书面明确 ｜达标线：谁备、备什么、多久恢复可查；只模糊提及不算
+432. **LangSmith 数据是否需要 backup**、以及 Snowflake 侧备份的**责任边界**是否明确？ ｜必须：平台侧结论有依据，与 vendor 的责任分工书面明确 ｜达标线：结论写明取舍理由（纳入或书面排除），且谁备、备什么、多久恢复可查；默认不备、或只模糊提及，不算达标
 434. backup retention policy 是否定义？ ｜必须：保留年限由监管要求决定 ｜达标线：到期处置规则明确且可举证；全局统一值不算
 435. secondary region 是否需要？ ｜条件：tier 或监管要求跨区恢复时才必须 ｜达标线：切换演练验证恢复时限可达成；只建空环境不算
 436. restore test 是否定期执行？ ｜必须：按周期真实恢复而非抽查文件 ｜达标线：每次演练有记录与恢复耗时实测值；只验证备份存在不算
 
 ## P10 — Knowledge / Retrieval Architecture
-437. Knowledge Source 是否有 business owner？ ｜必须：业务侧单一 owner ｜达标线：能指名到人并写进 Registry；只挂团队名、owner 离职后无人接手，不算达标
-438. Source 是否 authoritative？ ｜必须：authoritative 判定须书面留痕 ｜达标线：每个 Source 标注权威来源与生效期，写进 Registry；仅口头认定不算达标
+437. Knowledge Source 是否有 **business owner**，且 source 是否 **authoritative**？ ｜必须：业务侧单一 owner 指名到人，权威性判定书面留痕 ｜达标线：owner 与权威来源、生效期都写进 Registry；只挂团队名、owner 离职无人接手、或仅口头认定，不算达标
 439. Document 是否有 classification？ ｜必须：至少分公开/内部/机密/受限 ｜达标线：每个 document 入库时带分类标签并参与检索过滤；无标签文档不得进入 Context
 440. Data entitlement 是否在 retrieval 前执行？ ｜必须：在内容进入 Context 前强制 ｜达标线：entitlement 判定在 retrieval 层拦截；先取回再过滤，不算达标
-441. 是否有 document-level ACL？ ｜条件：存在文档级权限差异时才必须 ｜达标线：每份文档有 ACL 且检索时逐份校验；只做目录级粗粒度控制不算达标
-442. 是否有 row-level ACL？ ｜条件：同一文档内存在行级差异时必须 ｜达标线：行级谓词下推到查询执行层；把行过滤放在应用层，不算达标
-443. 是否有 tenant-level ACL？ ｜必须：租户边界是所有检索的硬约束 ｜达标线：每次 retrieval 带 tenant 上下文且由存储层强制；仅应用层拼条件不算达标
-444. 是否支持 purpose-based access？ ｜条件：数据有用途限制时才必须 ｜达标线：每次 retrieval 声明 purpose 并参与判定；仅打标不拦截，不算达标
+441. Data entitlement 的判定维度是否覆盖 **document / row / tenant / purpose-based access**？ ｜必须：四类维度都在 retrieval 层强制生效 ｜达标线：document-level ACL 逐份校验、row-level 谓词下推到查询执行层、每次 retrieval 带 tenant-level 上下文并由存储层强制、purpose-based 判定参与；只做目录级控制、应用层过滤、或仅打标不拦截，不算达标
 445. Retrieval 是否记录 source？ ｜必须：每个 retrieved chunk 可溯源 ｜达标线：trace 逐 chunk 记 source 标识；只记整篇文档名不算达标
-446. 是否记录 document version？ ｜必须：回答须绑定检索到的版本 ｜达标线：每次 retrieval 记文档版本号；只记文档路径、版本变更后无法复现，不算达标
-447. 是否记录 effective date？ ｜必须：涉及时效内容时必须绑定 ｜达标线：每条记录标生效与失效日，检索时按日期过滤；只在文档首页写日期不算达标
+446. 是否记录 **document version 与 effective date**，并按日期过滤？ ｜必须：回答绑定检索到的版本，并受生效期约束 ｜达标线：每次 retrieval 记文档版本号与生效 / 失效日，检索时按日期过滤；只记路径、版本变更后无法复现、或只在文档首页写日期，不算达标
 448. 是否检测 stale data？ ｜必须：stale 判定要能触发降级或告警 ｜达标线：按数据源定义新鲜度阈值并定期扫描；只靠人工发现过期，不算达标
 449. 是否检测 duplicate data？ ｜必须：重复数据要能识别到同一实体 ｜达标线：去重按实体主键而非全文比较，覆盖每个入库通道；只查完全一致文本，不算达标
 450. 是否有 retrieval quality evaluation？ ｜必须：评测集须与生产检索同源 ｜达标线：定期用生产同源查询集算命中与召回；只跑样例查询不算达标
@@ -654,49 +522,27 @@ TM08. 每个关键 mitigation 是否对应 security test？ ｜必须：测试�
 ## P11 — Skill / Software Supply Chain
 457. ZIP upload 是否限制大小？ ｜必须：上传大小上限须可配置 ｜达标线：解压前后都限总量，超限直接拒收；只在网关限流量不算达标
 458. 是否防 Zip Slip？ ｜必须：路径穿越必须在解压层阻断 ｜达标线：解压后逐条校验落地路径落在目标目录内；只校验文件名不算达标
-459. 是否 malware scanning？ ｜必须：扫描须在上线前阻断 ｜达标线：每个 artifact 入库前扫，命中即拒并留证；只对上传时扫、上线不再扫，不算达标
-460. 是否 dependency scanning？ ｜必须：依赖漏洞要能阻断发布 ｜达标线：每次构建扫依赖并设严重度阈值；只出报告不阻断，不算达标
-461. 是否生成 SBOM？ ｜必须：SBOM 随 artifact 一起留档 ｜达标线：per artifact 生成并绑定版本，可追溯到组件；事后补生成不算达标
-462. 是否 license scanning？ ｜必须：license 冲突要能阻断分发 ｜达标线：构建时比对许可清单，命中禁用许可即拒；只收集不打判定，不算达标
-463. 是否 static analysis？ ｜必须：静态检查结果要进入门禁 ｜达标线：构建期扫描并在基线之上零新增高危；只跑不设阈值不算达标
-464. 是否 sandbox build？ ｜必须：构建须与生产环境隔离 ｜达标线：构建在受限沙箱内跑，无宿主与生产凭据；共享构建机不算达标
-465. 是否 network egress restriction？ ｜必须：默认拒绝、按需放行 ｜达标线：构建与运行都走白名单 egress；只做告警不拦截，不算达标
-466. 是否 secret access restriction？ ｜必须：Skill 不得读他方 secret ｜达标线：凭据按 Skill 与 Agent 边界授权，最小范围；共享一个密钥池不算达标
-467. 是否 filesystem restriction？ ｜必须：文件访问限于运行所需目录 ｜达标线：只挂载必要路径且默认只读；给整个宿主文件系统不算达标
-468. 是否 shell restriction？ ｜必须：shell 能力默认关闭或受限 ｜达标线：禁止交互式 shell 与管道串联，仅放行白名单命令；留后门不算达标
-469. Production artifact 是否 immutable？ ｜必须：发布后不可原地覆盖 ｜达标线：artifact 按 digest 寻址，变更即新版本；就地替换同名文件不算达标
-470. Artifact 是否有 hash？ ｜必须：hash 覆盖全部产物 ｜达标线：每个 artifact 带可复算 digest 并入库；只记文件大小不算达标
-471. 是否签名？ ｜必须：发布物须有可信签名 ｜达标线：签名在部署时校验，验签失败即拒；只签不校验，不算达标
-472. 是否支持 provenance？ ｜必须：能追溯到构建来源 ｜达标线：记录源码提交与构建环境，per artifact；只写构建时间不算达标
-473. Skill change 是否重新审批？ ｜必须：任何变更都重走审批 ｜达标线：per change 触发再审并留签核记录；只对首次上线审批不算达标
-474. Skill 是否绑定 Agent Version？ ｜必须：绑定关系显式可查 ｜达标线：每个 Agent 版本声明允许的 Skill 版本区间；不绑版本、取最新，不算达标
+459. 依赖与制品安全是否统一管控：**malware scanning / dependency scanning / SBOM / license scanning / static analysis**？ ｜必须：四项都进入构建门禁 ｜达标线：每个 artifact 入库前先扫 malware、命中即拒并留证，每次构建扫依赖并设严重度阈值，per artifact 生成 SBOM 并绑定版本，license 冲突阻断分发，静态检查在基线之上零新增高危；只出报告不阻断、事后补生成 SBOM、或只收集不打判定，不算达标
+464. Skill 的构建与运行沙箱是否受限：**sandbox build / network egress / secret access / filesystem / shell restriction**？ ｜必须：五项限制都要有且默认拒绝 ｜达标线：构建在受限沙箱内跑且无宿主与生产凭据，构建与运行都走白名单 egress，凭据按 Skill 与 Agent 边界授权，只挂载必要路径且默认只读，shell 默认关闭或仅白名单命令；共享构建机、只告警不拦截、共享密钥池、给整个宿主文件系统、或留后门，不算达标
+469. Production artifact 是否 **immutable**，并有 **hash / signature / provenance**？ ｜必须：四者齐备且部署时校验 ｜达标线：artifact 按 digest 寻址、变更即新版本，带可复算 digest，签名在部署时校验、验签失败即拒，记录源码提交与构建环境；就地替换同名文件、只记文件大小、只签不校验、或只写构建时间，不算达标
+473. Skill 变更是否重新审批，且 **Skill 与 Agent Version 的绑定关系**是否显式？ ｜必须：任何变更重走审批，绑定关系可查询 ｜达标线：per change 触发再审并留签核记录，每个 Agent 版本声明允许的 Skill 版本区间；只对首次上线审批、或不绑版本取最新，不算达标
 475. Skill 是否进入 audit evidence？ ｜必须：Skill 版本属于取证范围 ｜达标线：每次 Run 的 Evidence 里记 Skill 版本与签名；只登记不入证不算达标
 
 ## P12 — Deployment / Change / Evidence
-476. Agent Version 是否 immutable？ ｜必须：版本发布后不可变 ｜达标线：每次修改产生新版本号，历史版本可查；覆盖旧版本不算达标
-477. Skill Version 是否 immutable？ ｜必须：同版本内容恒定 ｜达标线：版本号与 artifact digest 绑定；同号内容被替换，不算达标
-478. Model Version 是否 immutable？ ｜必须：模型版本须钉死 ｜达标线：Run 记录所用模型版本，供应商更新不自动生效；跟随 latest 不算达标
-479. Prompt Version 是否可追溯？ ｜必须：prompt 变更须版本化 ｜达标线：每个 Run 记录 prompt 版本与内容摘要；直接改生产 prompt 不算达标
-480. Tool Version 是否可追溯？ ｜必须：Tool 定义变更须可查 ｜达标线：Run 记录 Tool 版本与 schema 摘要；就地改 Tool 定义不算达标
-481. Policy Version 是否可追溯？ ｜必须：策略变更须留版本 ｜达标线：Run 绑定当时的 policy 版本号；只记策略名不算达标
-482. Retrieval configuration Version 是否可追溯？ ｜必须：检索配置须随 Run 留存 ｜达标线：记录索引、过滤与权重配置版本；只记默认配置不算达标
+476. **Agent / Skill / Model / Prompt / Tool / Policy / Retrieval configuration** 的 version 是否 immutable 且可追溯？ ｜必须：七类 artifact 版本发布后不可变，且每次 Run 可回溯 ｜达标线：每次修改产生新版本号、历史版本可查，版本号与 artifact digest 绑定，Run 记录所用模型 / prompt / tool / policy / 检索配置版本与内容摘要；覆盖旧版本、同号内容被替换、跟随 latest、或只记名称与默认配置，不算达标
 483. 是否有完整 deployment manifest？ ｜必须：manifest 覆盖全部运行依赖 ｜达标线：一次 Run 所需组件版本都在同一份 manifest；分散在多个系统不算达标
-484. 能否重建历史 Run 的 execution environment？ ｜必须：重建深度按风险等级定 ｜达标线：高风险 Run 可还原环境快照，低风险到版本清单；只存日志不算达标
-485. 是否可以回答下面这个问题： ｜必须：须能一键还原某次 Run 的组件组合 ｜达标线：给 Run ID 即返回全部版本清单，可核对；需人工跨系统拼凑，不算达标
+484. 能否**重建历史 Run 的 execution environment**，并一键还原该 Run 的组件组合？ ｜必须：按风险等级定重建深度，给 Run ID 即返回全部版本清单 ｜达标线：高风险 Run 可还原环境快照、低风险到版本清单，给 Run ID 即返回全部版本清单可核对；只存日志、或需人工跨系统拼凑，不算达标
 486. Deployment approval 是否进入 evidence？ ｜必须：审批记录须与发布版本绑定 ｜达标线：每次发布留签核人、时间与版本号；只留工单编号不算达标
 487. Rollback 是否进入 evidence？ ｜必须：回滚动作可归因 ｜达标线：记录回滚触发条件、执行人与目标版本；只记状态变化不算达标
 488. Break-glass 是否进入 evidence？ ｜必须：破窗必须留痕并事后复核 ｜达标线：每次破窗记授权人、理由与时长，事后强制复审；事后不追认不算达标
 
 ## P13 — Multi-tenancy
-489. Tenant isolation 是否存在？ ｜必须：隔离由平台强制而非约定 ｜达标线：身份、数据、运行时三层都带 tenant 边界；只在应用层过滤不算达标
-490. Agent metadata isolation？ ｜必须：元数据不得跨租户可见 ｜达标线：Agent 注册与配置按 tenant 分区，查询强制带租户；共享全局命名空间不算达标
+489. **Tenant isolation 与 Agent metadata isolation** 是否由平台强制？ ｜必须：身份、数据、运行时与元数据都带 tenant 边界 ｜达标线：身份 / 数据 / 运行时三层都带 tenant 边界，Agent 注册与配置按 tenant 分区、查询强制带租户；只在应用层过滤、或共享全局命名空间，不算达标
 491. Memory isolation？ ｜必须：记忆按租户与 Agent 分区 ｜达标线：读写都带 tenant 与 Agent 键；靠命名约定隔离不算达标
 492. Knowledge isolation？ ｜必须：检索范围不得跨租户 ｜达标线：索引或过滤条件强制带 tenant，每次检索生效；共享索引不设过滤，不算达标
 493. Tool entitlement isolation？ ｜必须：工具授权按租户独立 ｜达标线：每个租户单独维护可用工具清单；全局共享授权不算达标
-494. Runtime isolation？ ｜必须：运行时不共享可写资源 ｜达标线：session、工作目录、临时盘按租户或 Run 隔离；共用宿主目录不算达标
-495. Cost isolation？ ｜必须：成本可归到租户与 Run ｜达标线：用量按租户与 Agent 记账并可出账；只记总量不算达标
-496. 是否有 rate limit？ ｜必须：限流按租户与接口分档 ｜达标线：per tenant 与 per Tool 设配额，超限即拒；全局限流不算达标
-497. 是否有 noisy-neighbor protection？ ｜必须：单租户不得拖垮他人 ｜达标线：按租户配额与并发隔离，超限降级本方；只看总容量不算达标
+494. **Runtime isolation 与 Cost isolation** 是否成立？ ｜必须：运行时不共享可写资源，成本可按租户与 Run 归集 ｜达标线：session、工作目录、临时盘按租户或 Run 隔离，用量按租户与 Agent 记账并可出账；共用宿主目录、或只记总量，不算达标
+496. 是否有租户级 **rate limit 与 noisy-neighbor protection**？ ｜必须：按租户与接口分档限流，单租户不得拖垮他人 ｜达标线：per tenant 与 per Tool 设配额、超限即拒，按租户配额与并发隔离、超限降级本方；全局限流、或只看总容量，不算达标
 498. 是否有 tenant-specific policy？ ｜条件：租户合规要求不同时必须 ｜达标线：策略按租户覆盖并可查生效版本；硬编码分支不算达标
 499. 是否有 tenant-specific data residency？ ｜条件：租户有驻地要求时必须 ｜达标线：数据与处理位置按租户声明并可核；只在合同承诺不算达标
 500. 是否有 tenant-specific model restrictions？ ｜条件：租户限制模型范围时必须 ｜达标线：模型白名单按租户配置并在调用前校验；只写文档不算达标
@@ -704,18 +550,11 @@ TM08. 每个关键 mitigation 是否对应 security test？ ｜必须：测试�
 ## P14 — Runtime / Snowflake / Multi-runtime
 
 ### P14.1 Runtime Abstraction / Multi-runtime
-501. AgentCore Runtime 和 Cortex Agents 是否统一抽象？ ｜必须：差异必须收敛到统一接口 ｜达标线：上层只依赖抽象接口，差异在适配层吸收；上层出现 runtime 分支不算达标
-502. Run semantics 是否一致？ ｜必须：Run 生命周期定义须统一 ｜达标线：两端对同一 Run 语义等价，Evidence 可互解；两套定义并存不算达标
-503. Identity semantics 是否一致？ ｜必须：身份模型须跨 runtime 统一 ｜达标线：同一主体在两端映射到同一身份，可审计；两套身份表不打通不算达标
-504. Policy semantics 是否一致？ ｜必须：策略判定结果须一致 ｜达标线：同一输入在两端得出同判定，逐条回归；各自实现各自解释不算达标
-505. Audit schema 是否一致？ ｜必须：审计字段与语义须统一 ｜达标线：两端 Event 字段可映射到同一 schema，可联合查询；字段名相近语义不同不算达标
-506. Evaluation 是否一致？ ｜必须：评测口径跨 runtime 对齐 ｜达标线：同一评测集在两端可比较，指标定义一致；各跑各的分数不算达标
-507. Retrieval abstraction 是否一致？ ｜必须：检索接口须统一抽象 ｜达标线：调用方不感知后端差异，权限语义一致；上层按后端分叉不算达标
-508. Snowflake native entitlement 是否保留？ ｜禁止：用平台侧权限覆盖 native 授权 ｜达标线：native 授权在取数前生效，平台在其上叠加；用平台权限替代 native，不算达标
-509. Cortex Agent 是否能够被 Enterprise Agent Platform governance？ ｜必须：外部 runtime 必须纳入治理 ｜达标线：版本、策略、证据都在平台侧登记可查；仅部署接入、治理在外，不算达标
-510. 如果 Cortex Agent 不支持某个 control，平台如何补偿？ ｜必须：缺口须有明确补偿控制 ｜达标线：逐条列出不支持项与替代措施，写入 ADR；只写由平台负责不算达标
-511. 哪一层是 ultimate authorization authority？ ｜必须：授权权威须唯一且明确 ｜达标线：争议时以该层判定为准并写进架构决策；两层都可授权不算达标
-512. 如何避免两个 runtime 产生两个不同的安全模型？ ｜必须：安全模型须单点定义 ｜达标线：授权与身份由统一策略层下发，两端只执行；各自演进不算达标
+501. AgentCore Runtime 与 Cortex Agents 是否**统一抽象**，**Run semantics** 是否一致？ ｜必须：差异收敛到统一接口，Run 生命周期定义统一 ｜达标线：上层只依赖抽象接口、差异在适配层吸收，两端对同一 Run 语义等价且 Evidence 可互解；上层出现 runtime 分支、或两套定义并存，不算达标
+503. **Identity / Policy / Audit schema** 的 semantics 是否跨 runtime 一致？ ｜必须：身份、策略与审计字段三套语义都对齐 ｜达标线：同一主体在两端映射到同一身份、同一输入在两端得出同判定（逐条回归）、两端 Event 字段可映射到同一 schema 且可联合查询；两套身份表不打通、各自解释、或字段名相近语义不同，不算达标
+506. **Evaluation 口径与 Retrieval abstraction** 是否跨 runtime 一致？ ｜必须：评测口径对齐，检索接口统一抽象 ｜达标线：同一评测集在两端可比较、指标定义一致，调用方不感知后端差异且权限语义一致；各跑各的分数、或上层按后端分叉，不算达标
+508. Snowflake **native entitlement 是否保留**，且 Cortex Agent 是否被纳入 **Enterprise Agent Platform governance**？ ｜禁止：用平台侧权限覆盖 native 授权 ｜达标线：native 授权在取数前生效、平台在其上叠加，外部 runtime 的版本、策略与证据都在平台侧登记可查；用平台权限替代 native、或治理留在平台外，不算达标
+510. 若某个 runtime 不支持某项 control，**补偿控制**是什么？哪一层是 **ultimate authorization authority**？如何避免两个 runtime 产生两套不同的安全模型？ ｜必须：授权权威唯一，缺口有明确补偿控制 ｜达标线：逐条列出不支持项与替代措施并写入 ADR，争议时以唯一授权层判定为准，授权与身份由统一策略层下发、两端只执行；只写「由平台负责」、两层都可授权、或各自演进，不算达标
 
 ### P14.2 Runtime Isolation（RT01–RT06）
 RT01. Run 之间是否隔离（独立 session / 独立工作目录）？ ｜必须：每个 Run 独立 session ｜达标线：session 与工作目录 per Run 创建并销毁；复用可写目录不算达标
@@ -771,7 +610,7 @@ RT17. 更换 Runtime 是否不改变控制语义（policy / evidence / identity 
 | --- | --- | --- | --- | --- | --- |
 | ADG01 | A new system or platform shall not be introduced unless existing systems, processes and configuration have been evaluated and rejected with a documented reason. | 新建系统 / 平台之前，必须先评估并否决既有系统、流程与配置 | [R] | P00.3（P00-12） | 判据：有既有系统评估与否决理由，写在决策记录里可查 ｜典型 Fail：未评估既有系统即新建平台 |
 | ADG02 | Buying, reusing or extending existing capability shall be evaluated before building, and the reason for choosing the current option shall be recorded. | 自建之前必须完成 Buy / Reuse / Extend / Build 比较，并记录选择当前方案的理由 | [R] | P00.3（P00-15） | 判据：有 Buy / Reuse / Extend / Build 比较与选择理由留档 ｜典型 Fail：直接自建，无方案比较与理由 |
-| ADG03 | Every material architecture decision shall record its rationale, the alternatives considered and the accepted trade-offs. | 每个重大架构决策必须记录 rationale、替代方案与明确接受的 trade-offs | [R] | P00.4（P00-17 / P00-18 / P00-21） | 判据：重大决策有 rationale、替代方案与已接受 trade-offs 记录 ｜典型 Fail：只有结论，无替代方案与 trade-offs |
+| ADG03 | Every material architecture decision shall record its rationale, the alternatives considered and the accepted trade-offs. | 每个重大架构决策必须记录 rationale、替代方案与明确接受的 trade-offs | [R] | P00.4（P00-17 / P00-21） | 判据：重大决策有 rationale、替代方案与已接受 trade-offs 记录 ｜典型 Fail：只有结论，无替代方案与 trade-offs |
 | ADG04 | A production architecture shall have a documented evolution, migration and exit path. | 生产架构必须有明确的演进 / 迁移 / 退出路径 | [R] | P00.4（P00-20） | 判据：有演进、迁移与退出路径文档，含触发条件与责任人 ｜典型 Fail：只写愿景，无退出条件与迁移步骤 |
 
 ---
@@ -1236,43 +1075,49 @@ Maturity
 增删条目时只更新本表，头部 / B.11 等处的数字允许滞后一轮。文档的核心是
 **ID · Section · Depth · Stage · Requirement · Risk** 这六件事，而不是「现在是几百条」。
 
+> 本版做过一次**控制项聚类（control clustering）**：把低于「独立架构决策」粒度的 question 合并进上游控制项，
+> 被合并的细项转为该控制项的 **evidence checks**，写进该行末尾的达标线（逐组明细见 **B.12 合并对照**）。
+> 因此编号出现空缺 —— 编号是**稳定标识**，合并后不重排（规则见 B.14）。
+
 | Pillar / 组 | 内容 | AWS Lens 对应 | 构成 | 检查项 |
 | --- | --- | --- | --- | ---: |
-| **P00** | Architecture Foundation（通用前置层） | 不属于任何 Lens（ATAM / ADR / AWS Prescriptive Guidance / Microsoft，见 B.10） | P00-01…24（24）+ AD（14）+ BO（10） | 48 |
-| **P01** | Operational Excellence | Agentic AI Lens：AGENTOPS01–07 | `1`–`90`（90）+ P01.6 Evaluation Model EV01–EV10（10） | 100 |
-| **P02** | Security | Agentic AI Lens：AGENTSEC01–09 | `91`–`224`（134）+ P02.0 Threat Modeling TM01–TM08（8） | 142 |
-| **P03** | Reliability | Agentic AI Lens：AGENTREL02–06 | `225`–`289` | 65 |
-| **P04** | Performance Efficiency | Agentic AI Lens：Performance | `290`–`309` | 20 |
-| **P05** | Cost Optimization | Agentic AI Lens：Cost | `310`–`328` | 19 |
-| **P06** | Sustainability | Agentic AI Lens + WAF | `329`–`336` | 8 |
-| **P07** | Financial Services Governance & Regulatory Delta | FSI Lens：FSIOPS / risk governance（**只审 delta**） | `337`–`355` | 19 |
-| **P08** | FSI Security Delta | FSI Lens：FSISEC01–16（**只审 delta**） | `356`–`408` | 53 |
-| **P09** | FSI Resilience Delta | FSI Lens：resilience / FSIREL / backup（**只审 delta**） | `409`–`436` | 28 |
-| **P10** | Knowledge / Retrieval Architecture | Agentic Lens 认知层 + FSI 数据治理 | `437`–`456` | 20 |
-| **P11** | Skill / Software Supply Chain | 平台特有 | `457`–`475` | 19 |
-| **P12** | Deployment / Change / Evidence | Agentic Lens 生命周期 + 平台特有 | `476`–`488` | 13 |
-| **P13** | Multi-tenancy | Agentic Lens：multitenancy | `489`–`500` | 12 |
-| **P14** | Runtime / Snowflake / Multi-runtime | 平台特有 + CNCF 平台工程 | `501`–`512`（12）+ RT01–RT17（17） | 29 |
+| **P00** | Architecture Foundation（通用前置层） | 不属于任何 Lens（ATAM / ADR / AWS Prescriptive Guidance / Microsoft，见 B.10） | P00-01…24（现存 20）+ AD（现存 9）+ BO（现存 6） | 35 |
+| **P01** | Operational Excellence | Agentic AI Lens：AGENTOPS01–07 | `1`–`90`（现存 68）+ P01.6 Evaluation Model EV01–EV10（10） | 78 |
+| **P02** | Security | Agentic AI Lens：AGENTSEC01–09 | `91`–`224`（现存 94）+ P02.0 Threat Modeling TM01–TM08（8） | 102 |
+| **P03** | Reliability | Agentic AI Lens：AGENTREL02–06 | `225`–`289`（现存 49） | 49 |
+| **P04** | Performance Efficiency | Agentic AI Lens：Performance | `290`–`309`（现存 14） | 14 |
+| **P05** | Cost Optimization | Agentic AI Lens：Cost | `310`–`328`（现存 14） | 14 |
+| **P06** | Sustainability | Agentic AI Lens + WAF | `329`–`336`（现存 6） | 6 |
+| **P07** | Financial Services Governance & Regulatory Delta | FSI Lens：FSIOPS / risk governance（**只审 delta**） | `337`–`355`（现存 14） | 14 |
+| **P08** | FSI Security Delta | FSI Lens：FSISEC01–16（**只审 delta**） | `356`–`408`（现存 39） | 39 |
+| **P09** | FSI Resilience Delta | FSI Lens：resilience / FSIREL / backup（**只审 delta**） | `409`–`436`（现存 21） | 21 |
+| **P10** | Knowledge / Retrieval Architecture | Agentic Lens 认知层 + FSI 数据治理 | `437`–`456`（现存 15） | 15 |
+| **P11** | Skill / Software Supply Chain | 平台特有 | `457`–`475`（现存 7） | 7 |
+| **P12** | Deployment / Change / Evidence | Agentic Lens 生命周期 + 平台特有 | `476`–`488`（现存 6） | 6 |
+| **P13** | Multi-tenancy | Agentic Lens：multitenancy | `489`–`500`（现存 9） | 9 |
+| **P14** | Runtime / Snowflake / Multi-runtime | 平台特有 + CNCF 平台工程 | `501`–`512`（现存 5）+ RT01–RT17（17） | 22 |
 | **二** | Architecture Invariants / Decision Gates | — | INV01–INV18 + ADG01–ADG04 | 18 + 4 |
 
 **编号总账（用于逐条核对，避免出现「统计表与正文对不上」）**：
 
-| 段 | 编号 | 条数 |
+| 段 | 编号 | 现存条数 |
 | --- | --- | ---: |
-| P00 框架中立问题 | P00-01…P00-24 | 24 |
-| P00.A Agent / AI 场景展开 | AD01–AD14 | 14 |
-| P00.A Agent / AI 场景展开 | BO01–BO10 | 10 |
-| P01–P06 逐条 | `1`–`336` | 336 |
+| P00 框架中立问题 | P00-01…P00-24 | 20 |
+| P00.A Agent / AI 场景展开 | AD01–AD14 | 9 |
+| P00.A Agent / AI 场景展开 | BO01–BO10 | 6 |
+| P01–P14 逐条 | `1`–`512` | 361 |
 | P02.0 威胁模型 | TM01–TM08 | 8 |
 | P01.6 评估模型 | EV01–EV10 | 10 |
-| P07–P14 逐条 | `337`–`512` | 176 |
 | P14.2–P14.4 运行时 | RT01–RT17 | 17 |
-| **合计** | | **595** |
+| **合计** | | **431** |
 
-> 上一版顶部写主表 621 项，B.4 写 P01 为 100 项，而正文 P01 的连续编号是 `1`–`90`。
-> 两者其实一致 —— P01 的 100 = 90 条连续编号 + P01.6 Evaluation Model（EV01–EV10）10 条，
-> 但统计表没有写出「构成」，因此无法核对。本版在表内增设「构成」列并给出编号总账，
-> 使每一个数字都能加出来。
+编号空缺合计 164 个（前一版 595 − 本版 431），其中 `1`–`512` 段 151 个、P00 / AD / BO 段 13 个；
+每一个空缺的去向都能在 **B.12 合并对照**里查到 —— 编号不重用、不重排，因此历史引用仍然有效。
+
+> 上两版顶部写主表 621 项、595 项，B.4 曾写 P01 为 100 项，而正文 P01 的连续编号是 `1`–`90`。
+> 当时两者一致 —— P01 的 100 = 90 条连续编号 + P01.6 Evaluation Model（EV01–EV10）10 条，
+> 但统计表没有写出「构成」，因此无法核对。B.4 因此增设「构成」列并给出编号总账，
+> 使每一个数字都能加出来；本版只是把「条数」一列换成了「现存条数」。
 
 映射结构：
 
@@ -1327,9 +1172,9 @@ Enterprise Agent Platform Overlay（P10–P14）
 这十项里，P0-01 至 P0-04 建议先做，因为它们一旦建立，后面无论换成 AgentCore、Snowflake Cortex Agents 还是别的 LangChain，都不会改变核心安全架构。
 
 另有 **P00 Architecture Foundation（P00-01…P00-24 与 P00.A 的 AD / BO）和 P02.0（TM）属于用例准入前置**，不列入上表：它们不是控制点，而是「是否允许进入评审」。
-P00 中未回答的 P0 问题即 **Discovery Gate 未通过**（其中 P00-12 / 13 / 15 / 17 / 18 / 20 / 21 同时是 ADG01–ADG04 与 INV16），此时不应开始 P01–P14 的逐条评审；P02.0 未完成时，P02 的控制项无法判断覆盖是否充分。
+P00 中未回答的 P0 问题即 **Discovery Gate 未通过**（其中 P00-12 / 13 / 15 / 17 / 20 / 21 同时是 ADG01–ADG04 与 INV16），此时不应开始 P01–P14 的逐条评审；P02.0 未完成时，P02 的控制项无法判断覆盖是否充分。
 
-上表这 10 项构成本 Checklist 中 **L1 Architecture Decision** 的控制主干；L1 的完整构成（92 条）与 Stage 划分见 B.11。
+上表这 10 项构成本 Checklist 中 **L1 Architecture Decision** 的控制主干；L1 的完整构成（66 条）与 Stage 划分见 B.11。
 
 ## B.6 6 个关键证明问题
 
@@ -1528,7 +1373,7 @@ Low
                              │
                    Internal Architecture
                              │
-                    595 detailed checks
+                    431 detailed checks
                              │
                 ┌────────────┴────────────┐
                 │                         │
@@ -1658,6 +1503,55 @@ AWS 本身也明确建议用 Lens 来持续、系统地根据问题和最佳实�
 
 规模变化：主表 594 → 595（P00 23 → 24）；L1 91 → 92，并按 Stage 切成 INIT 48 / DESIGN 20 / PRE-PROD 24。
 
+---
+
+### 本轮修正（595 → 431）：从 Question Count 转向 Control Count
+
+上一轮解决的是「同一份文档被三种人用三种方式读」；本轮解决的是另一个已经出现的问题：
+
+> **把一套架构框架做成了过于细的控制目录。** 条目数在增长，architecture knowledge 并没有同步增长 ——
+> 因为很多 question 已经低于「独立架构决策」的粒度，只是某个 control 的另一个 implementation detail。
+
+本轮**不新增任何检查项**，只做一次控制项聚类（control clustering）：
+
+```text
+多个 implementation questions
+          ▼
+一个 architecture control            ← 保留为主表条目（问「为什么 / 是否需要 / 在哪一层」）
+          ▼
+几个 evidence checks（写进达标线）    ← 原细项转为可核对的检查点，不单独占编号
+```
+
+| # | 修正 | 解决什么 | 落点 |
+| --- | --- | --- | --- |
+| 1 | **执行预算收敛为一个 control**：iteration / tool-call / time / context / spend 合成一条，P04 只问性能目标、P05 只问成本目标、P14.3 只问 Runtime 是否 enforce | 同一个 Agent Execution Budget 曾在 P03 / P04 / P05 / P14 被拆成四五套重复问题 | P03.1（`230`）/ P04 / P05 / P14.3 |
+| 2 | **Version / Owner / Lifecycle 收敛为 control family**：七类 artifact（Prompt、Tool、Model、Policy、Retrieval、Memory、Agent config）合成一条统一版本控制；Business / Technical / Risk / SME 四类 owner 合成一条 | 七类 artifact 不是七个独立架构决策，四类 owner 也不是四个 | P01.2（`18`）/ P01.1（`2`）|
+| 3 | **untrusted input surface 收敛为统一 trust-boundary policy**：User / Tool / Retrieval / Web / A2A / Memory 六个输入面合成一条 | 六个输入面属于同一个 control family，逐个问会把 control 稀释成清单 | P02.8（`190`）|
+| 4 | **sensitive-data protection 收敛**：PII / credential / confidential 合成一条；prompt / retrieval / model output 的 DLP 合成一条 | 同上 | P02.8（`200`）/ P08.4（`381`）|
+| 5 | **FSI delta 按 control 归类**：Privileged access 监控 / SoD / Independent approval 三条代替九条；Resilience 按 criticality / tier / RTO·RPO·MTD / 驱动因素收敛为四条 | FSI delta 内部同样存在「一个 delta 拆成多个很细的问题」 | P08.1 / P09.1 |
+| 6 | **Skill 供应链按 control 归类**：intake / build sandbox / dependency & artifact scanning / signing & provenance / change approval / evidence 六条代替十九条 | 原 19 条是一份很好的 Supply Chain Control Catalog，但不应全部作为 architecture question | P11（`459` / `464` / `469` / `473`）|
+| 7 | **Deployment artifact 版本收敛为一条**：Agent / Skill / Model / Prompt / Tool / Policy / Retrieval config 七个 version 合成「Runtime Artifact Versioning」 | 与 P01.2 同属 version family，七个分列会与 P01.2 重复计分 | P12（`476`）|
+| 8 | **编号改为稳定标识**：合并后保留组内最小原编号，空缺不重用、不重排 | 重排会让 B.5 / B.11 / 附录 C 的历史引用全部失效 | B.14 / B.12 |
+
+规模变化：
+
+| 项 | 上一版（595） | 本版（431） |
+| --- | ---: | ---: |
+| 主表条目 | 595 | **431** |
+| `1`–`512` 连续段现存 | 512 | 361 |
+| P00 框架中立问题 | 24 | 20 |
+| AD / BO | 14 / 10 | 9 / 6 |
+| 编号空缺（去重合并） | — | 164 |
+| L1 / L2 / L3 | 92 / 462 / 41 | **66 / 340 / 25** |
+| Invariants / Gates | 18 + 4 | 18 + 4（未变） |
+| 附录 A | 181 | 181（未变） |
+
+> 删减幅度不平均：重复最严重的地方多砍（P02 −40、P01 −22、P11 −12、P08 −14），
+> 价值密度高的架构决策少砍或不动（P00 的 Business Problem / Context / Alternatives / Buy-Reuse-Build /
+> Trade-offs / Evolution、P02.0 威胁模型、P01.6 评估模型、P14.2–P14.4 Runtime、P09.2 外部依赖集中度、
+> P00.A 的「是否需要 AI / 最低档位 / 是否需要 autonomy」）。
+> 逐组去向见 **B.12 合并对照**。
+
 ## B.10 跨框架映射：一份 Checklist，多套 Framework
 
 框架数量增加不等于覆盖增加。**本 Checklist 只保留一份检查项，其他框架以映射方式接入**：
@@ -1687,7 +1581,7 @@ NIST AI RMF Core 的映射：[23]
 > 判断标准只有一条 —— **纳入新框架时先问「能不能落到已有 Pillar」：能落就不新增章节，落不进去才说明发现了真实缺口。**
 > 平台团队职责与平台能力的定义参考 CNCF 的平台白皮书。[24]
 >
-> P00 是本 Checklist 中唯一与领域无关的一层：P00-01…P00-24 **全部框架中立**，
+> P00 是本 Checklist 中唯一与领域无关的一层：P00-01…P00-24（现存 20 条）**全部框架中立**，
 > 不含 Agent / LLM / MCP / autonomy 的专有判断；Agent / AI 相关的判断全部集中在 P00.A。
 > 因此 P00.1–P00.7 可以先于具体领域独立使用，直接套在数据平台、API 平台或核心业务系统评审上。
 >
@@ -1721,17 +1615,17 @@ Architecture decision  →  Control design  →  Implementation evidence
 
 | Depth | 名称 | 回答什么 | 主表规模 | 使用者与时机 | 通过标准 |
 | --- | --- | --- | ---: | --- | --- |
-| **L1** | Architecture Decision | 为什么需要 / 是否需要 / 风险接受什么 / 边界划在哪 | 92 条 | Architecture Board，按 Stage 分次 | 逐条讨论并给结论，不做百分比 |
-| **L2** | Architecture Control Design | 怎么设计 / 控制放在哪一层 / 谁负责 / 失效怎么办 | 462 条 | 架构 / 安全 / 可靠性 / 数据 owner，按 Pillar 分工在会前走完 | 按 B.3 的 Result 判定 |
-| **L3** | Implementation Evidence | 是否真的实现 / 用什么证明 / 能否被第三方复核 | 41 条（另附录 A 181 条） | 实现方 + 审计方，在代码 / 配置 / artifact 层面 | 抽查 + 抽样取证，不进会议议程 |
+| **L1** | Architecture Decision | 为什么需要 / 是否需要 / 风险接受什么 / 边界划在哪 | 66 条 | Architecture Board，按 Stage 分次 | 逐条讨论并给结论，不做百分比 |
+| **L2** | Architecture Control Design | 怎么设计 / 控制放在哪一层 / 谁负责 / 失效怎么办 | 340 条 | 架构 / 安全 / 可靠性 / 数据 owner，按 Pillar 分工在会前走完 | 按 B.3 的 Result 判定 |
+| **L3** | Implementation Evidence | 是否真的实现 / 用什么证明 / 能否被第三方复核 | 25 条（另附录 A 181 条） | 实现方 + 审计方，在代码 / 配置 / artifact 层面 | 抽查 + 抽样取证，不进会议议程 |
 
 归属表（标注的是「主要落在哪一层」，不是「只属于这一层」）：
 
 | Depth | 主干章节 | 为什么主要在这一层 |
 | --- | --- | --- |
-| L1 | P00 全部（P00-01…24 / AD / BO，48 条）、P02.0 威胁模型（8）、P07.1 风险与监管治理（12）、P13 多租户模型（12）、P14.1 平台边界与多 Runtime（12） | 需要「决策」：定边界、定最坏情况、定是否继续 |
+| L1 | P00 全部（P00-01…24 / AD / BO，35 条）、P02.0 威胁模型（8）、P07.1 风险与监管治理（9）、P13 多租户模型（9）、P14.1 平台边界与多 Runtime（5） | 需要「决策」：定边界、定最坏情况、定是否继续 |
 | L2 | P01、P02.1–P02.8、P03–P06、P07.2、P08 全部、P09 全部、P10、P12（除下列）、P14.2–P14.4 | 需要在设计上对照：控制是否存在、位置是否正确 |
-| L3 | P02.9 Security Testing（`209`–`224`，16 条）、P11 供应链（`457`–`475`，19 条）、P12 的 `483`–`488`（manifest / evidence，6 条）、附录 A（A.1 与 A.4 除外） | 需要看代码、配置、扫描结果或产物才能判断 |
+| L3 | P02.9 Security Testing（`209`–`224`，13 条）、P11 供应链（`457`–`475`，7 条）、P12 的 `483`–`488`（manifest / evidence，5 条）、附录 A（A.1 与 A.4 除外） | 需要看代码、配置、扫描结果或产物才能判断 |
 
 ### L1 的两个 Stage
 
@@ -1739,17 +1633,18 @@ Architecture decision  →  Control design  →  Implementation evidence
 
 | Stage | 名称 | 覆盖 | 通过后允许 | 不通过则不允许 |
 | --- | --- | --- | --- | --- |
-| **INIT** | Architecture Initiation | P00 全部（Problem / Outcome / Context / Constraints / Alternatives / Buy-Build-Reuse / Input-Output / 架构边界 / 主要风险，含 P00.A 的 AD / BO），48 条 | 进入详细架构设计、PoC / Spike / Pilot | 在「问题本身还没定义清楚」时开始选型与实现 |
-| **DESIGN** | Design Convergence | P02.0 威胁模型（8）、P14.1 平台边界与多 Runtime（12），共 20 条 | 设计定稿，实现按各 Pillar owner 推进 | 在威胁模型与 runtime 边界未收敛时冻结设计 |
-| **PRE-PROD** | Production Approval | P07.1 风险与监管治理（12）、P13 多租户模型（12），共 24 条 | 上生产 | 治理、监管或多租户隔离无结论时上生产 |
+| **INIT** | Architecture Initiation | P00 全部（Problem / Outcome / Context / Constraints / Alternatives / Buy-Build-Reuse / Input-Output / 架构边界 / 主要风险，含 P00.A 的 AD / BO），35 条 | 进入详细架构设计、PoC / Spike / Pilot | 在「问题本身还没定义清楚」时开始选型与实现 |
+| **DESIGN** | Design Convergence | P02.0 威胁模型（8）、P14.1 平台边界与多 Runtime（5），共 13 条 | 设计定稿，实现按各 Pillar owner 推进 | 在威胁模型与 runtime 边界未收敛时冻结设计 |
+| **PRE-PROD** | Production Approval | P07.1 风险与监管治理（9）、P13 多租户模型（9），共 18 条 | 上生产 | 治理、监管或多租户隔离无结论时上生产 |
 
 > Stage 与 P00.6 的两个 Gate 对齐：`INIT` 对应 Discovery Gate，`PRE-PROD` 对应 Production Gate。
 > `DESIGN` 是两者之间的收敛点 —— 它既不是准入也不是放行，而是「设计冻结前的最后一轮决策」。
 > L2 / L3 不设 Stage：它们分别在设计期与实现期持续进行，按 owner 分工而不是按会议节奏。
 
-> **为什么 L2 仍然有 462 条**：它们是设计期控制项，本来就应当由不同 owner 分工走完，不需要 Architecture Board 逐条开会。
-> 真正需要一起读的是 L1 的 92 条，而且还要按 Stage 再切一次 —— **单次会议的阅读量是 20–48 条，不是 92 条**。
-> 如果后续还要继续扩条目，优先扩 L3（实现层），不要把新条目继续加在 L1 上。
+> **为什么 L2 仍然有 340 条**：它们是设计期控制项，本来就应当由不同 owner 分工走完，不需要 Architecture Board 逐条开会。
+> 真正需要一起读的是 L1 的 66 条，而且还要按 Stage 再切一次 —— **单次会议的阅读量是 13–35 条，不是 66 条**。
+> 如果后续还要继续扩条目，优先扩 L3（实现层），不要把新条目继续加在 L1 上；
+> 更推荐的办法是做**控制项聚类**而不是加条目：先问「这条 question 的答案会不会产生另一个 architecture decision」，不会就把它写成上游 control 的 evidence check。
 
 > **本节的规模数字同样是说明性元数据**，权威来源是 B.4 的编号总账表。增删条目后只更新 B.4。
 
@@ -1779,7 +1674,7 @@ Architecture decision  →  Control design  →  Implementation evidence
 
 规模变化：主表 621 → 594（P07–P09 去重 −30，P00 新增 +3）；连续编号 542 → 512。
 
-### 594 → 595（本轮）
+### 594 → 595
 
 本轮只有一处编号变化，其余全部不动：
 
@@ -1791,6 +1686,133 @@ Architecture decision  →  Control design  →  Implementation evidence
 | 主表 594 | 主表 595 | +1 |
 
 未变化：连续编号 `1`–`512`、AD / BO / TM / EV / RT 各组、Invariants 18 + Decision Gates 4、附录 A 181。
+
+### 595 → 431（本轮）：控制项聚类
+
+本轮**不新增条目**，只把低于「独立架构决策」粒度的 question 合并进上游 control：
+保留组内最小原编号，被并入的编号转为该 control 的 **evidence checks**（写进该行末尾的达标线）。
+下表即 **Control → Questions 对照**：`保留编号` 是现在的控制项，`并入` 是它吸收掉的细项。
+
+**编号不重排、不重用**，因此 B.5、B.11 与附录 C 中的历史引用仍然有效。
+
+| 保留编号 | 并入（原编号） | 合并后的控制项 |
+| --- | --- | --- |
+| `P00-01` | `P00-02` | 当前架构要解决的**业务问题**是什么，能否用一句话说清？**目标用户 / 业务角色 / 受影响的利益相关者**是谁，他们当前的具体痛点是什么？ |
+| `P00-12` | `P00-14` | 这个问题是否**真的需要新的系统 / 平台**？现有系统、流程、配置能否解决？是否评估过至少一个**不采用当前架构**的替代方案（什么都不做 / 改造现有系统 / 购买现成能力）？ |
+| `P00-17` | `P00-18` | 当前方案的**主要架构决策**及其 rationale 是什么（而不是「大家都这样做」）？与主要替代方案相比核心 **trade-offs** 是什么——牺牲了什么、换来了什么？ |
+| `P00-22` | `P00-24` | 系统的**主要 Business Inputs / Outputs** 是什么（用业务语言，不是 schema）？Outputs 将被**谁使用**，会触发什么后续行为、决策或 side effect？ |
+| `AD03` | `AD04` | 能满足要求的最低 AI 能力档位是什么（traditional ML / LLM / RAG / Agent）？为什么所选档位不能更低，更低档位被否决的理由是否记录在 ADR？ |
+| `AD05` | `AD06` | 是否明确哪些步骤必须 deterministic（可由 code / rules / 配置完成），哪些步骤允许 probabilistic behavior？ |
+| `AD07` | `AD08` | 为什么需要 **autonomy**，而不是把 AI 放在 deterministic workflow 的一个节点里？若不需要 autonomy，本方案是否已经改写为 AI-assisted workflow？ |
+| `AD09` | `AD10` | 是否定义 Agent 可以自行决定、以及**不得自行决定**的事项？ |
+| `AD12` | `AD13` | 关键业务控制是否可以在不使用 LLM 的情况下完成？Agent failure 时是否可以回退到 deterministic process？ |
+| `BO01` | `BO02` | 是否定义**业务问题**（而不是只定义 Agent 功能）与 **target user**？ |
+| `BO04` | `BO05`、`BO10` | 是否定义 business outcome 与 **measurable KPI**，并在上线后验证 Agent 确实改善了原业务流程？ |
+| `BO08` | `BO09` | Agent failure 对业务流程的影响是否量化？Agent 不可靠时用户的 **fallback** 是否定义？ |
+| `2` | `3`、`4`、`5` | 是否为每个 Agent 定义明确的负责人，并覆盖 **Business / Technical / Risk / SME** 四类职责？ |
+| `7` | `9` | 是否定义 scope boundary 与 out-of-scope requests？ |
+| `10` | `13` | 是否定义 human escalation conditions 与 escalation path？ |
+| `18` | `20`、`21`、`22`、`23`、`24`、`25` | 所有影响 Agent 行为的 artifact 是否具备**统一的 version / ownership / lifecycle 管理**——Prompt、Tool definitions、Model selection、Agent policy、Retrieval configuration、Memory policy、Agent configuration？ |
+| `26` | `27` | 是否持续检测 configuration drift——Production runtime 是否可能与 Registry 定义不一致？ |
+| `38` | `39`、`40`、`41`、`42`、`43` | 生产准入是否具备完整 gate 与签核：pre-production environment、production admission gate、SME approval、Security approval、Risk approval、regression gate？ |
+| `51` | `52`、`53` | 是否有 approved tool catalogue，并为每个 Tool 指定 owner 与 security assessment？ |
+| `54` | `55` | Tool 是否有可追溯的 version，schema 是否标准化？ |
+| `64` | `65` | 是否有端到端 trace，并能把 User、Tool、Other Agent 用**同一标识**关联起来？ |
+| `70` | `71` | 是否有 **workflow-specific dashboards** 与 Agent KPIs？ |
+| `93` | `94`、`95` | Memory 是否按 **tenant / agent / user 三个维度**隔离（tenant-isolated / agent-isolated / user-isolated）？ |
+| `101` | `102` | Memory poisoning（记忆污染）如何检测与清除？ |
+| `105` | `106` | 是否阻止未核实内容进入长期记忆，并检测 hallucination 在 Memory 与跨 Agent 之间的传播？ |
+| `107` | `108`、`109` | 每个 Tool 调用前是否经过 authorization，且判定是 **deterministic** 的（LLM 不得直接决定 allow / deny）？ |
+| `110` | `111` | Tool 入参（argument）是否同时做 **schema validation 与 semantic validation**？ |
+| `112` | `113` | Tool response（返回值）是否校验，并检测其中可能包含的 **prompt injection**？ |
+| `114` | `115`、`116` | Tool 的**最小权限 / data scope / side-effect classification** 是否定义并受控？ |
+| `117` | `118` | 每个 Tool 是否有具名的 **security owner** 与上线前的 security assessment？ |
+| `119` | `120` | Agent 是否拥有独立于人类身份的 identity，且二者不可混用？ |
+| `121` | `122` | Agent-to-agent 与 Agent-to-service 调用是否 authentication？ |
+| `123` | `124`、`125` | 是否禁用 static shared API keys，改用 **short-lived credentials 与 workload identity**？ |
+| `130` | `140` | 是否定期进行 access / permission review？ |
+| `142` | `143` | 是否有明确的 goal contract，且 goal 独立于 user prompt？ |
+| `151` | `152` | 是否有 guardrail 与 **policy-level containment**？ |
+| `154` | `155`、`163` | 是否记录 decision artifacts、Policy Decision 与 final action，使决策可重建？ |
+| `157` | `158`、`159`、`160`、`161` | 每次 Run 是否记录全部 artifact 版本：**Agent / Skill / Model / Tool / Retrieval Source**？ |
+| `165` | `166` | 是否定义 retention 与 legal hold？ |
+| `167` | `168`、`169` | Agent-to-agent communication 是否同时做到 **authenticated / signed / encrypted**？ |
+| `178` | `179` | Human approval screen 是否只呈现**事实证据**（目标 / 数据 / 风险 / 理由 / Agent 版本）而不受 Agent 诱导？ |
+| `185` | `186` | 是否有 approval flood control 与 cognitive load control？ |
+| `190` | `191`、`192`、`193`、`194`、`195` | 是否对所有进入 Agent context 的 untrusted input surface 建立**统一的 validation / trust-boundary policy**？ |
+| `200` | `201`、`202` | 出站内容（output）是否统一检测 **PII / credential / confidential information**？ |
+| `207` | `208` | guardrail 判定是否留痕，并持续监控 **false positive / false negative**？ |
+| `209` | `210`、`211`、`212` | 是否对**代码、依赖、镜像与 Skill 制品**做统一安全扫描，并对高危阻断发布？ |
+| `230` | `231`、`232`、`233`、`234` | 每个 Run 的**执行预算**是否定义：iteration count、tool-call count、execution time、context size、spend？ |
+| `246` | `247` | state 是否有可追踪的 version，且不同 Agent Version 能安全读取旧 state？ |
+| `248` | `249` | 是否有明确的 **orchestration pattern 与 supervisor / arbiter** 机制？ |
+| `256` | `257` | Agent 间 handoff 是否有 **timeout 与 retry** 策略？ |
+| `262` | `263` | Agent 是否知道 **source confidence**，并区分 authoritative / secondary source？ |
+| `272` | `273` | 能力是否可被运维 **disable**，并支持运行时 dynamic capability toggling？ |
+| `275` | `276` | Agent Runtime failure 与 Model failure 如何恢复？ |
+| `277` | `278` | Retrieval failure 与 Tool failure 如何恢复？ |
+| `280` | `281` | Policy engine 或 Approval service 不可用时怎么办？ |
+| `282` | `283`、`284` | LangSmith / LiteLLM / Snowflake 不可用时的行为是否定义？ |
+| `285` | `286` | 是否支持 **staged recovery 与 automatic recovery**？ |
+| `288` | `289` | 是否有 **resource isolation 与 contention mitigation**？ |
+| `291` | `292`、`293` | 是否监控端到端延迟（**end-to-end latency / TTFT / time-to-completion**）并能归因？ |
+| `294` | `295`、`296` | **tool / retrieval / model** 三类 latency 是否分别可观测并归因？ |
+| `307` | `308`、`309` | 是否有租户级性能隔离、限流与 **noisy-neighbor 防护**？ |
+| `310` | `311` | **Agent-level 与 Run-level cost** 是否可统计并归因？ |
+| `316` | `317`、`318` | 是否设置 per-Run 硬预算：**max cost / token budget / reasoning budget**？ |
+| `319` | `320`、`321` | 是否检测 **runaway cost**、自动 cutoff，并有 cost anomaly detection？ |
+| `330` | `331`、`333` | 是否通过**模型档位选择与 inference 去重**，避免不必要的模型调用？ |
+| `337` | `338` | 是否定义 **Cloud / AI Risk roles 与 Operational Risk Owner**？ |
+| `341` | `342` | 是否定义 **Agent risk classification 与 risk acceptance authority**？ |
+| `343` | `344` | 是否有独立于建设单位的 review，并落实 **Three Lines of Defence**？ |
+| `349` | `354` | Agent 受哪些**法规 / 内部 policy** 约束是否明确，并持续监控 regulatory changes？ |
+| `350` | `351` | **data residency 与 retention** 是否按数据集与监管要求定义？ |
+| `356` | `357`、`358` | 是否监控 elevated credentials 的使用、检测 privilege escalation，并保留不可篡改的 admin activity 记录？ |
+| `359` | `360` | Agent 权限与 admin 权限是否分离，并定义 **separation of duties**？ |
+| `361` | `362` | **Developer 或 Agent Owner 能否自行批准**自己的生产上线 / Data Entitlement（数据授权）？ |
+| `363` | `364` | Security Reviewer 能否兼任部署者？高风险变更是否有 **independent approval**？ |
+| `365` | `366` | 是否监控 **Agent-based threats（Agent 自主行为链）与异常 Tool activity**？ |
+| `369` | `370` | 是否有 **emerging-threat process 与可追溯的 security intelligence update**？ |
+| `374` | `375` | **Model endpoint 与 Prompt catalog** 是否按环境与租户隔离？ |
+| `381` | `382`、`383` | **Prompt / Retrieval result / Model output** 是否统一经过 DLP？ |
+| `388` | `389` | **Key rotation 与 key access review** 是否定义？ |
+| `394` | `395` | 是否能在容器级立即停止 Agent，并单独禁用一个 Tool？ |
+| `396` | `397` | 是否能切断指定 Model 调用，并隔离单个 Data Source？ |
+| `407` | `408` | 若利用 AI 做 threat detection，是否有**确定性规则兜底**，且 AI security tool 自身失效时能回落？ |
+| `409` | `410` | Agent 的 **business criticality 与 resilience tier** 是否定义，且 tier 能映射到具体架构要求？ |
+| `411` | `412` | resilience tier 是否由 **business requirement 与 regulatory requirement** 共同驱动？ |
+| `413` | `414`、`415` | 是否分别定义 **RTO、RPO 与 Maximum Tolerable Downtime**？ |
+| `420` | `424` | 是否能够检测「**系统看起来正常但结果已经错误**」，并有按业务语义定义的 semantic health check？ |
+| `421` | `423` | **Model quality degradation 与 Provider 部分失败**是否能被检测？ |
+| `432` | `433` | **LangSmith 数据是否需要 backup**、以及 Snowflake 侧备份的**责任边界**是否明确？ |
+| `437` | `438` | Knowledge Source 是否有 **business owner**，且 source 是否 **authoritative**？ |
+| `441` | `442`、`443`、`444` | Data entitlement 的判定维度是否覆盖 **document / row / tenant / purpose-based access**？ |
+| `446` | `447` | 是否记录 **document version 与 effective date**，并按日期过滤？ |
+| `459` | `460`、`461`、`462`、`463` | 依赖与制品安全是否统一管控：**malware scanning / dependency scanning / SBOM / license scanning / static analysis**？ |
+| `464` | `465`、`466`、`467`、`468` | Skill 的构建与运行沙箱是否受限：**sandbox build / network egress / secret access / filesystem / shell restriction**？ |
+| `469` | `470`、`471`、`472` | Production artifact 是否 **immutable**，并有 **hash / signature / provenance**？ |
+| `473` | `474` | Skill 变更是否重新审批，且 **Skill 与 Agent Version 的绑定关系**是否显式？ |
+| `476` | `477`、`478`、`479`、`480`、`481`、`482` | **Agent / Skill / Model / Prompt / Tool / Policy / Retrieval configuration** 的 version 是否 immutable 且可追溯？ |
+| `484` | `485` | 能否**重建历史 Run 的 execution environment**，并一键还原该 Run 的组件组合？ |
+| `489` | `490` | **Tenant isolation 与 Agent metadata isolation** 是否由平台强制？ |
+| `494` | `495` | **Runtime isolation 与 Cost isolation** 是否成立？ |
+| `496` | `497` | 是否有租户级 **rate limit 与 noisy-neighbor protection**？ |
+| `501` | `502` | AgentCore Runtime 与 Cortex Agents 是否**统一抽象**，**Run semantics** 是否一致？ |
+| `503` | `504`、`505` | **Identity / Policy / Audit schema** 的 semantics 是否跨 runtime 一致？ |
+| `506` | `507` | **Evaluation 口径与 Retrieval abstraction** 是否跨 runtime 一致？ |
+| `508` | `509` | Snowflake **native entitlement 是否保留**，且 Cortex Agent 是否被纳入 **Enterprise Agent Platform governance**？ |
+| `510` | `511`、`512` | 若某个 runtime 不支持某项 control，**补偿控制**是什么？哪一层是 **ultimate authorization authority**？如何避免两个 runtime 产生两套不同的安全模型？ |
+
+去重合并共 **105 组、164 个编号**（`1`–`512` 段 151 个，P00 / AD / BO 段 13 个）。
+
+| 项 | 595 版 | 431 版 |
+| --- | ---: | ---: |
+| `1`–`512` 段现存 | 512 | 361 |
+| P00-01…24 | 24 | 20 |
+| AD01–AD14 / BO01–BO10 | 14 / 10 | 9 / 6 |
+| 主表合计 | 595 | **431** |
+
+未变化：TM01–TM08、EV01–EV10、RT01–RT17、Invariants 18 + Decision Gates 4、附录 A 181。
 
 ---
 
@@ -1827,11 +1849,19 @@ document）、**覆盖范围**、**频率**、**举证位置**（写在哪个 ar
 
 | ID 形态 | 用在哪里 | 说明 |
 | --- | --- | --- |
-| `1`–`512` | P01–P14 的逐条问题 | 连续编号；`337` 起因 FSI Overlay 去重而重排，对照见 B.12 |
+| `1`–`512` | P01–P14 的逐条问题 | **稳定编号**；本版去重合并后留有 151 个空缺，编号不重用、不重排，对照见 B.12 |
 | `P00-nn` | P00 Architecture Foundation | 框架中立，不并入连续编号 |
 | `AD` / `BO` / `TM` / `EV` / `RT` | 各自成组的检查 | 组内独立编号，便于与外部框架映射（见 B.10） |
 
 成组 ID 不并入连续编号，因为它们回答的是**不同于逐条检查的问题** —— 架构决策、业务结果、威胁模型、评估模型、执行预算。
+
+> **编号是稳定标识，不是流水号。** 当一个 question 被判定为上游 control 的 implementation detail 时，
+> 它会被合并进上游行，其编号就此空缺（本版共 164 个空缺），**不重排、不重用**：
+>
+> - 保留规则：合并组保留**组内最小**原编号，例如 `{107, 108, 109}` 合成一条后仍是 `107`；
+> - 去向可查：每个空缺都能在 **B.12 合并对照**里找到它被并入了哪一条；
+> - 为什么这么做：编号一旦重排，B.5 / B.11 / 附录 C 与所有历史评审记录里的引用会全部失效，
+>   而「这条控制上次评的是哪一条」恰恰是跨轮评审最需要的东西。
 
 **条目元数据约定**：每条问题除 Priority 外，还可携带级别与适用性标记。
 
@@ -1884,13 +1914,13 @@ P01–P14 评价的是「架构做得对不对」，P00 决定的是「这个架
 
 ```text
 P00 Architecture Foundation（框架中立）
-├── 1. Business Problem & Outcome    → P00.1（P00-01…P00-05）
+├── 1. Business Problem & Outcome    → P00.1（P00-01…P00-05，现存 P00-01 / 03 / 04 / 05）
 ├── 2. Context & Constraints         → P00.2（P00-06…P00-11）
-├── 3. Current State                 → P00.1 / P00.3（P00-04、P00-12、P00-14）
-├── 4. Architecture Approach         → P00.3（P00-12…P00-14）
+├── 3. Current State                 → P00.1 / P00.3（P00-04、P00-12）
+├── 4. Architecture Approach         → P00.3（P00-12、P00-13、P00-15、P00-16）
 ├── 5. Decision Ownership            → P00.4（P00-21）
-├── 6. Input / Output Contract       → P00.5（P00-22…P00-24）
-├── 7. Alternatives & Trade-offs     → P00.3 / P00.4（P00-14、P00-15、P00-17、P00-18）
+├── 6. Input / Output Contract       → P00.5（P00-22、P00-23）
+├── 7. Alternatives & Trade-offs     → P00.3 / P00.4（P00-12、P00-15、P00-17）
 ├── 8. Buy / Build / Reuse           → P00.3（P00-15）
 ├── 9. Risk / Assumptions            → P00.2 / P00.4（P00-11、P00-19）
 └── 10. Evolution / Exit             → P00.4（P00-20）
@@ -1988,7 +2018,7 @@ Decision Date         什么时候必须定（与 P00-10 的 timeline 对齐）
 Decision Record       记在哪（ADR / 评审纪要 / Registry），后续如何被引用
 ```
 
-> 这一条与 P00-02（Stakeholder）互补，也解释了为什么不少架构评审「材料齐全但仍然推不动」——
+> 这一条与 P00-01（Business Problem / Stakeholder）互补，也解释了为什么不少架构评审「材料齐全但仍然推不动」——
 > 问题不是缺分析，而是**没有一个具名的、有权限的人在某个日期之前必须签字**。
 
 ## C.5 P00.5 Input / Output Contract
@@ -1997,7 +2027,7 @@ Decision Record       记在哪（ADR / 评审纪要 / Registry），后续如�
 不是技术格式，而是业务语义上的 input / output。做法是先把系统当成 black box，描述输入与输出，
 再分析「现实条件下输入会怎么变化」—— 这一层在技术设计之前完成。[32]
 
-P00-24 是连接后面 Agent autonomy / action risk 的关键问题，必须追到下游：
+P00-22 是连接后面 Agent autonomy / action risk 的关键问题，必须追到下游：
 
 ```text
 Output
@@ -2085,7 +2115,7 @@ P00.1–P00.7 保持框架中立；本节是所有 Agent / AI 专有判断的**�
 再判断**是否真的需要 AI、需要哪一类 AI**，最后才谈架构与 human oversight。[30][31][32]
 其起点是「先验证传统软件甚至人工流程是否已经足够」。[31]
 
-## C.9 P00.A.1 Architecture Decision Chain（AD01–AD14）
+## C.9 P00.A.1 Architecture Decision Chain（AD01–AD14，现存 9 条）
 
 **「不是 deterministic」不等于「需要 Agent」。** 在「规则」和「Agent」之间还有好几档能力，
 而 Responsible AI Lens 自己就把 traditional AI / generative AI / agentic AI 分成三个不同的 use-case 判断，
@@ -2127,8 +2157,8 @@ Business problem
 
 **每一步都可以终止，不需要走到底。** 这条链的形状不是「Agent 还能加多少能力」，而是
 「在能解决问题的最低一档停下来」—— 停在第 1 步和停在第 7 步的都是合格答案，区别只在于是否被证明过。
-AD01–AD14 对应该链的判断点：AD01–AD02 对应第 1–2 步，AD03–AD04 对应第 3 步，
-AD05–AD06 对应第 4 步，AD07–AD08 对应第 5 步，AD09–AD13 是 autonomy 的 action 边界，
+现存的 9 条 AD 对应该链的判断点：AD01 / AD02 对应第 1–2 步，AD03 对应第 3 步（含「为什么不能更低」），
+AD05 对应第 4 步，AD07 对应第 5 步，AD09–AD11 是 autonomy 的 action 边界，AD12 是失败回退，
 AD14 是「为用而用」的否决条件（对应第 6–7 步）。
 
 金融场景的两个对照：
@@ -2149,9 +2179,9 @@ AD14 是「为用而用」的否决条件（对应第 6–7 步）。
 > 这一组的结论应当写进 ADR，而不是停留在讨论记录里：**「为什么不是 workflow」和「为什么是 Agent」都要能被第三方复核。**
 > 对金融场景尤其如此 —— **Agent 应当是最后的 architecture choice，而不是 AI 场景的默认答案。**
 
-## C.10 P00.A.2 Business / User Outcome（BO01–BO10）
+## C.10 P00.A.2 Business / User Outcome（BO01–BO10，现存 6 条）
 
-P00-01…P00-05 已经用通用口径问过业务问题、目标用户与可验证结果；本组是它们在 Agent 场景下的细化，
+P00.1 / P00.5 已经用通用口径问过业务问题、目标用户、可验证结果与输入输出；本组是它们在 Agent 场景下的细化，
 只补 Agent 特有的部分：不可接受的结果、human responsibility、Agent 失败对业务流程的影响与 fallback。
 
 ## C.11 P01 — Operational Excellence
@@ -2708,7 +2738,7 @@ Architecture Board 应要求以下 **18 条全部 Pass**：
 
 以下 **4 条**约束的是**决策过程**，不是系统行为。Fail 表示评审材料不完整，Architecture Board 不应通过准入。
 
-ADG01–ADG04 与 P00 的七个问题（P00-12 / P00-13 / P00-15 / P00-17 / P00-18 / P00-20 / P00-21）互为表里：
+ADG01–ADG04 与 P00 的六个问题（P00-12 / P00-13 / P00-15 / P00-17 / P00-20 / P00-21）互为表里：
 它们同时是 **P0 检查项**与 **Gate 条件**。「为什么需要这个架构」「为什么不能用更简单的方案」
 「为什么选 Build 而不是 Buy / Reuse」往往比后面任何一条技术检查更早决定架构是否值得继续，
 因此它们既进 P00 的问题清单，也进这条 Non-Negotiable 清单。
