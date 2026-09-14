@@ -183,7 +183,7 @@ flowchart TD
 
 ## 四、Cortex Agent Runtime 的边界：已经是通用 Managed Runtime，但仍是 Managed
 
-Cortex 当前已经支持 Python sandbox、bash、文件读写编辑、grep、glob、SQL、web search、skills、coding agent、agent toolsets 和 MCP，并逐渐收进统一 Agent tool model [12]。它已经从 Data Agent 扩展为带强 Data Plane 的通用 Managed Runtime，不宜再写成“复杂 Agent 操作只能用 DeepAgents”。
+Cortex 当前已经支持 Python sandbox、bash、文件读写编辑、grep、glob、SQL、web search、skills、coding agent、agent toolsets 和 MCP，并逐渐收进统一 Agent tool model [12]。它已经从单一数据问答形态扩展为带强 Data Plane 的通用 Managed Runtime，不宜再写成“复杂 Agent 操作只能用 DeepAgents”。
 
 区别应该改写为：Cortex Agent 是 Managed General-Purpose Agent with strong Data Plane；DeepAgents / LangGraph 是 Full-Control General-Purpose Agent Runtime。复杂跨系统、多工具、强状态、多步骤 workflow，不默认路由到 Managed Runtime。
 
@@ -212,7 +212,71 @@ on behalf of this user, under this workflow, at this risk level?
 
 一个金融企业必须注意的具体行为：Cortex Agent 权限判断依赖 querying user 的 default role，而不是 session 中激活的 role；default role 或 default warehouse 配置不正确，Agent call 可以直接失败 [9]。做 identity propagation 时必须显式处理 User Identity → Snowflake Authentication → Default Role → Agent Tool Authorization 这条链，不能假设平台侧授权一次即代表全部授权。
 
-## 五、Evaluation：强数据型 Evaluation Plane，尚未等价 LangSmith 工作流
+## 五、可插拔性与灵活性：差别在 control surface，不在功能数量
+
+“Snowflake Agent 不如内部平台灵活”这个反馈合理，但准确说法不是功能少，而是它把控制权收敛到了 Managed Runtime 内部。Cortex Agent 是 Managed Runtime：企业不需要自建 orchestration loop、thread state、sandbox，Analyst、Search、Code Execution、Custom Tools、Skills、MCP Connectors、Agent Toolsets 已统一到一个 Runtime [1]。内部平台的优势则是 Runtime、Model、Tool、Memory、Policy、Workflow、Evaluation 全部可替换。因此“是否灵活”应该比较哪些层可替换、哪些层只能配置影响，而不是数工具数量。
+
+Feature-rich 不等于 Pluggable。Cortex 的工具覆盖已远超早期“Search + LLM”，但核心 orchestration 仍由 Snowflake Managed Runtime 执行：LLM-driven plan → tool use → reflect 的 managed loop [9]。企业可通过 orchestration model、planning instructions、response instructions、工具配置与预算影响行为，不能像 LangGraph / DeepAgents 那样换掉整个 decision loop。内部平台是可替换 Runtime，Cortex 是可配置 Managed Runtime，两种架构哲学。
+
+```mermaid
+flowchart TD
+    subgraph ML["Managed loop"]
+        A["LLM plan"]
+        B["Tool selection"]
+        C["Tool execution"]
+        D["Reflect and next action"]
+        A --> B
+        B --> C
+        C --> D
+        D --> A
+    end
+    subgraph DL["Platform-controlled pipeline"]
+        P["Deterministic policy check"]
+        R["Intent router"]
+        W["Workflow and state machine"]
+        G["Agent node with approval"]
+        E["Execution and evidence"]
+        P --> R
+        R --> W
+        W --> G
+        G --> E
+    end
+```
+
+Snowflake 允许通过 planning instructions 指导 tool selection，例如规定某类问题必须用 Search 而不能用 Analyst [9]。内部平台则可以让有限状态机决定允许进入哪些阶段，LLM 只负责阶段内部推理。对金融、交易、审批、合规和高风险操作，这个差异直接决定方案是否可接受。
+
+Model 上 multi-model 不等于 provider-agnostic。Cortex orchestration model 可从 Snowflake 目录选择（含 Anthropic、OpenAI、部分 Google 模型，支持 auto）[1]，覆盖多数场景；但不同于 LiteLLM / Model Gateway 的 OpenAI-compatible 任意 endpoint 抽象，Cortex REST API 虽支持更多目录模型，Agent orchestration 仍限定目录内模型 [3]。已有 Model Gateway 的企业需要注意这个差异。
+
+Tool 上“只能访问 Snowflake 数据”已不准确 [1]，但仍受 Managed 约束：单 MCP server 最多 50 tools、response 250 KB 上限、过多 tools 降低 selection accuracy [13]；External MCP Connector 主要支持 tool capability，resources、prompts、roots、sampling 未完整支持 [19]。MCP Supported 不等于 Full MCP Runtime：discovery、routing、caching、authorization、retry、timeout、transaction、compensation、approval 的决定权仍在 Managed 侧。
+
+Multi-Agent 存在抽象差异。Agent Toolsets 让一个 Agent 继承另一 Agent 的 tools [20]，本质是 tool composition / delegated capability composition，不同于 Supervisor 统管 research、analysis、risk、compliance、report 并决定状态传递、memory 归属、重试与停止条件。Skills 同理：Snowflake 把 instructions、scripts、supporting files 打包复用 [21]，但 SKILL.md 须在 root、脚本须在指定目录、Git tag 更新需显式 FETCH、生命周期挂 Agent object；内部平台可把 Skill 做成独立企业资产（Registry → Version → Compatibility Contract），跨 Runtime 复用。
+
+生产侧有两个反馈值得记录。其一，数据访问越开放 Agent 灵活性越高但稳定性下降，有团队收敛到小而受控的 data package 后更稳定，代价是答不出范围外问题 [22]。灵活不是目标，可控的灵活性才是；区分 Capability Breadth 与 Operational Predictability。其二，生产试点常以 5 分钟时间上限、token / time budget 起步，防止长链路 reasoning 或循环 [23]；Snowflake 提供 orchestration budget、resource budget、per-user quota [1]，内部平台可进一步提升为平台级 deterministic policy（max steps / tools / cost / runtime、required approval、allowed domains）。另有用户报告同一 Agent 在 Notebook 与 Streamlit 返回不同（底层 SQL 相同）[24]：抽象越高，调试越受平台行为影响；Managed 省运维，Full-Control 强 debug。
+
+对照如下：
+
+| 维度 | Cortex Agent | Internal Agent Platform |
+| --- | --- | --- |
+| Runtime 控制 | 中 | 高 |
+| Orchestration 控制 | 中 | 高 |
+| Model Provider 可替换性 | 中 | 高 |
+| Tool 扩展 | 强 | 强 |
+| MCP | 强但受 Managed Runtime 约束 | 可完全控制 |
+| Structured Data | 非常强 | 取决于实现 |
+| Unstructured Data | 非常强 | 取决于实现 |
+| Snowflake Governance | 非常强 | 需要集成 |
+| Cross-system Workflow | 中 | 强 |
+| Deterministic Workflow | 中 | 强 |
+| High-risk Action Control | 需要外围 Control Plane | 可以原生设计 |
+| Infrastructure Burden | 低 | 高 |
+| Platform Lock-in | 较高 | 低 |
+| Debug / Runtime Transparency | 中 | 高 |
+| Time-to-Production | 快 | 慢 |
+| Long-term Architectural Freedom | 中 | 高 |
+
+因此企业不应该要求 Cortex 复制内部平台的全部灵活性，也不应该要求内部平台重实现数据原生能力。合理设计是通过统一 Control Plane + Tool / MCP Contract，让两种 Runtime 成为可替换执行后端：Cortex 负责 data-native reasoning 与 Snowflake-native 工具，内部 Runtime 负责复杂编排、确定性 workflow、自定义模型路由与高风险动作，Control Plane 负责 registry、version、policy、identity、audit、cost、evaluation 与 deployment（见第九章终版架构）。上层 Agent Contract、Tool Contract、Policy Contract、Evidence Contract、Evaluation Contract 定义清楚后，底层跑 Cortex、DeepAgents 还是 LangGraph，不应成为业务系统的硬编码依赖。
+
+## 六、Evaluation：强数据型 Evaluation Plane，尚未等价 LangSmith 工作流
 
 Cortex Agent Evaluations 已在 2026-03-13 GA [4]，思路是 Goal-Plan-Action：Goal → Plan → Action（Search、Analyst、Tool 等）→ Result，每个阶段可评，evaluation trace 包含 planning、response generation 和每个 tool invocation 的 span。能力覆盖 ground-truth evaluation、reference-free evaluation、answer correctness、logical consistency、custom metrics、trace-level evaluation、tool selection 与 execution evaluation [5]。
 
@@ -265,23 +329,23 @@ LangSmith 更强的是完整工程工作流：Dataset → Experiment → Evaluat
 
 Snowflake 更像 Evaluation Data Plane：Evaluation → Trace → Business Data → SQL → Governance → Data Warehouse 全在同一数据平台内关联。LangSmith 更像 Evaluation Engineering Platform。金融场景的 metric 仍应超出 correctness：tool selection、tool execution、plan quality、data entitlement compliance、policy compliance、citation correctness、sensitive data exposure、hallucination、business outcome 都应进入 custom evaluator；判定产物必须留证；Trace 不等于审计证据，工程 telemetry 与监管审计证据分开存放（平台评审 3.6、12.4–12.5 节）。
 
-## 六、真实生产反馈：三类共识
+## 七、真实生产反馈：三类共识
 
 官方 Demo 之外，实际使用者反馈呈现三类稳定共识，值得在选型前读完。
 
-第一类，Data-native 是明显优势。数据已经在 Snowflake 的团队里，Search、Analyst、SQL、Governance、Audit 组合自然，有用户反馈 Cortex Search 的 hybrid search 表现好，Snowflake RBAC 对 compliance team 有吸引力 [11]。小规模数据上 Cortex Search 很容易建起来，但对生产可信度仍有保留 [3]。
+第一类，Data-native 是明显优势。数据已经在 Snowflake 的团队里，Search、Analyst、SQL、Governance、Audit 组合自然，有用户反馈 Cortex Search 的 hybrid search 表现好，Snowflake RBAC 对 compliance team 有吸引力 [11]。小规模数据上 Cortex Search 很容易建起来，但对生产可信度仍有保留 [22]。
 
 第二类，Semantic Layer 是长期难题。Text-to-SQL 已不是最难的部分，definition ownership、semantic drift、versioning、verified queries、CI/CD、evaluation、RBAC 才是生产麻烦所在 [2]。这与本文第二章的方向一致：Semantic Contract 是资产，需要 lifecycle 管理。
 
 第三类，Cost 与 Trust 是现实问题。生产试点反馈集中在两点：Cortex Agent 成本偏高，需要限制使用人群；Demo 很好，但开放给普通业务用户后，broad、open-ended 问题很快暴露可靠性，问题质量与提问精确程度高度相关 [15]。Snowflake 官方也明确 Agent 成本是 additive 的 [16]，下文单列成本。
 
-## 七、成本：additive 成本必须按 Agent Run 归因
+## 八、成本：additive 成本必须按 Agent Run 归因
 
 Cortex Agent 的真实成本不是单项 token 账单，而是多项叠加：Agent orchestration tokens、Cortex Analyst、Cortex Search serving、search embedding、AI Parse、warehouse、code execution、custom tools、MCP、Evaluation [16]。能力整合的另一面是成本归因必须跟上，否则优化无从下手。
 
-建议口径：Snowflake 的优势是能力整合，但能力整合意味着 Cost Attribution 必须按 Agent Run / Tool / User 维度做。Snowflake 恰好提供 per-user quota、Cortex Agent usage history 等能力 [17]，可以作为金融平台成本治理的起点。Evaluation 成本同样计入（见第五章），Search serving 的持续成本同样计入（见第二章）。
+建议口径：Snowflake 的优势是能力整合，但能力整合意味着 Cost Attribution 必须按 Agent Run / Tool / User 维度做。Snowflake 恰好提供 per-user quota、Cortex Agent usage history 等能力 [17]，可以作为金融平台成本治理的起点。Evaluation 成本同样计入（见第六章），Search serving 的持续成本同样计入（见第二章）。
 
-## 八、企业架构：Control Plane 不交给 Snowflake
+## 九、企业架构：Control Plane 不交给 Snowflake
 
 Snowflake 横跨 Data Plane、Managed Runtime、Evaluation / Observability Plane，但 Control Plane 不应该交给 Snowflake。终版架构按评审意见调整为：
 
@@ -312,13 +376,13 @@ flowchart TD
 
 对应平台评审的三处落地：Retrieval 抽象让 PostgreSQL + pgvector 与 Cortex Search 并存（平台评审 7.2 节）；权限过滤进检索查询而不是生成后过滤（7.3 节）；Tool PEP 在执行前判定高风险动作（8.3、8.4 节）。PostgreSQL 留给事务与运营状态，Snowflake 承担分析型数据仓库与 Data-native Runtime，LangSmith 只在复杂实验、人审队列、pairwise、prompt 调优出现真实缺口时补充。是否引入 LangSmith 的判断标准是能力缺口，不是习惯。
 
-## 九、最终判断：三个问题
+## 十、最终判断：三个问题
 
 不问“Snowflake 能不能替代 LangSmith”或“能不能替代 AgentCore”，按三件事分别回答。
 
 其一，Snowflake 能不能替代 Data / RAG infrastructure。对于已经以 Snowflake 为核心数据平台的企业，相当程度可以，尤其 structured、unstructured、Semantic Layer、SQL、Search 这一组，这是 Snowflake 最强的地方。跨数据平台与强定制 retrieval 除外。
 
-其二，Snowflake 能不能替代 Agent Runtime。简单到中等复杂 Data-native Agent 可以；复杂跨系统、多工具、强状态、多步骤 workflow 不默认替代 Full-Control Runtime。Cortex Agent 已是带强 Data Plane 的通用 Managed Runtime，但仍是 Managed。
+其二，Snowflake 能不能替代 Agent Runtime。简单到中等复杂 Data-native Agent 可以；复杂跨系统、多工具、强状态、多步骤 workflow 不默认替代 Full-Control Runtime。Cortex Agent 已是带强 Data Plane 的通用 Managed Runtime，但仍是 Managed，可替换与可配置的差异见第五章。
 
 其三，Snowflake 能不能替代 LangSmith。可以替代一部分 Observability / Evaluation，但不能等价替代整个 Evaluation Engineering 工作流。Snowflake 是 Evaluation Data Plane，LangSmith 是 Evaluation Engineering Platform。MCP evaluation 缺口、session-aware authorization gap、code execution 无 side effect、human eval 与 pairwise 短板，在进入生产闭环前必须逐项确认。
 
@@ -342,6 +406,12 @@ flowchart TD
 - Snowflake Documentation, Snowflake AI pricing [16]
 - Snowflake Documentation, Per-user quotas [17]
 - Snowflake Documentation, Evaluate applications with TruLens [18]
+- Snowflake Documentation, MCP Connectors [19]
+- Snowflake Documentation, Agent toolsets [20]
+- Snowflake Documentation, Agent skills [21]
+- Reddit, Snowflake cortex agent MCP server [22]
+- Reddit, Best practice for Cortex Agent token and time budget [23]
+- Reddit, Cortex Agent returns different results in Streamlit vs Notebook [24]
 - 平台评审上文：第 2.6、3.5、3.6、5.3–5.6、6.1、7.2–7.3、8.3–8.4、12.4–12.5、18–19 章
 
 [1]: https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents?utm_source=chatgpt.com "Cortex Agents | Snowflake Documentation"
@@ -362,3 +432,9 @@ flowchart TD
 [16]: https://docs.snowflake.com/en/user-guide/snowflake-cortex/pricing?utm_source=chatgpt.com "Snowflake AI pricing | Snowflake Documentation"
 [17]: https://docs.snowflake.com/en/user-guide/budgets/per-user-quotas?utm_source=chatgpt.com "Per-user quotas | Snowflake Documentation"
 [18]: https://docs.snowflake.com/en/user-guide/snowflake-cortex/ai-observability/evaluate-applications-trulens?utm_source=chatgpt.com "Evaluate applications with TruLens | Snowflake Documentation"
+[19]: https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-mcp-connectors?utm_source=chatgpt.com "MCP Connectors | Snowflake Documentation"
+[20]: https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-toolsets?utm_source=chatgpt.com "Agent toolsets | Snowflake Documentation"
+[21]: https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-skills?utm_source=chatgpt.com "Agent skills | Snowflake Documentation"
+[22]: https://www.reddit.com/r/dataengineering/comments/1p6u7ir/snowflake_cortex_agent_mcp_server/?utm_source=chatgpt.com "Snowflake cortex agent MCP server"
+[23]: https://www.reddit.com/r/snowflake/comments/1v3hlyw/best_practice_for_cortex_agent_token_and_time/?utm_source=chatgpt.com "Best practice for Cortex Agent token and time budget?"
+[24]: https://www.reddit.com/r/snowflake/comments/1qt7jva/snowflake_cortex_agent_returns_different_results/?utm_source=chatgpt.com "Snowflake Cortex Agent returns different results in Streamlit vs Notebook"
