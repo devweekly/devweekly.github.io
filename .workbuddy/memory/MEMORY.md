@@ -1,46 +1,38 @@
 # 项目长期记忆 — devweekly.github.io
 
-Astro (AstroPaper) 技术博客，域名语义「Dev Weekly」。作者笔名 `W`。
-逐轮细节与脚本工艺见同目录 `YYYY-MM-DD.md` 日志；本文件只留跨会话仍需遵守的约定与当前状态。
+Astro (AstroPaper) 技术博客，域名语义「Dev Weekly」，作者笔名 `W`。
+逐轮细节与脚本工艺见同目录 `YYYY-MM-DD.md`；本文件只留跨会话仍需遵守的约定与当前状态。
 
 ## 1. 博客 post 约定
 
 - 位置 `src/content/blog/`；schema `src/content.config.ts`（`pubDatetime` / `title` / `description` 必填，`tags` 默认 `["others"]`）
 - 命名：周报 `YYYYMMMD.md`（如 `2026Aug31.md`）；主题长文用 slug（如 `ai-courses.md`）
 - frontmatter：`author: W` / `featured: false` / `draft: false`
-
-| 类型 | 结构 |
-|---|---|
-| 周报 | `### AI and Programming` + `### Others`；正文条目 `[标题](url)` + 简短中文说明；每区块留约 20 行 `[]()` 占位 |
-| 主题长文 | 自由长文，`## N. 主题` 分节，夹叙夹议 + 真实链接；tag 用主题词（`ai`/`agent`/`interview`）而非 `weekly` |
-
-**周报只建空白骨架，不填充内容**（用户原话「去掉填充的假内容！我自己会填！」）：不搜网络、不编造条目。
-主题长文才允许用网络搜索填充真实内容。
-
-**发布机制**：Astro 是静态站，`pubDatetime` 只是元数据，不做定时发布；上线由构建/部署流水线控制，
-CI 按 push 触发即推即发。要「周几才出现」必须在部署侧加发布窗口。
+- 周报结构：`### AI and Programming` + `### Others`，条目 `[标题](url)` + 简短中文说明，每区块留约 20 行 `[]()` 占位
+- **周报只建空白骨架，不填充内容**（用户原话「去掉填充的假内容！我自己会填！」）；主题长文才允许搜网络填真实内容
+- 主题长文 tag 用主题词（`ai` / `agent` / `interview`），不用 `weekly`
+- 发布：Astro 静态站，`pubDatetime` 只是元数据；CI 按 push 触发即推即发 —— 要「周几才出现」必须在部署侧加发布窗口
 
 ## 2. 主题长文写作规范（用户明确要求）
 
-**语气**：不要第一/第二人称对话腔。删「我查了 / 我认为 / 我推荐 / 给你的最终判断 / 你们平台 /
-在你补充这个前提之后」，改成无人称陈述（「值得注意」「更推荐」「可以定义为」）。章节标题不写口语祈使句或自述句。
-例外：引用模型或他人原话的引号内第一人称保留。
+**语气**：无人称陈述，不用第一/第二人称对话腔（删「我查了 / 我认为 / 我推荐 / 给你的最终判断 / 你们平台」）；
+章节标题不写口语祈使句或自述句。引用他人原话的引号内第一人称保留。
 
-**结构**：全文章节编号连续 `## 1.`–`## N.`，不混用中文序号；引用编号全文唯一（各段都从 `[1]` 起会互相覆盖）；
-`([X][n])` 紧跟句末，定义全部集中文末；不用 `---` 分隔线；**不带 `utm_source` 等跟踪参数**。
-真拓扑（分支/汇合/循环/树/分层）用 **mermaid**，线性 `A ↓ B ↓ C` 保留 `text` 块；写完逐个 `mermaid.parse` 校验
+**结构**：章节编号连续 `## 1.`–`## N.`，不混用中文序号；引用编号全文唯一（各段都从 `[1]` 起会互相覆盖）；
+`([X][n])` 紧跟句末，定义集中文末；不用 `---` 分隔线；不带 `utm_source` 等跟踪参数。
+真拓扑（分支/汇合/循环/树/分层）用 **mermaid**，线性 `A ↓ B ↓ C` 留 `text` 块；写完逐个 `mermaid.parse` 校验
 （build 不报错，页面才会炸）。
 
-**「实操」章节**：用户原话「实操不等同一定要有代码，而是工程实践的可行性」。讲流程卡点、角色与 owner、
-指标与 SLA、取舍与成本、反模式、可行性自检；不讲具体工具/代码/配置。判据用人话（「两个人看了会不会得出同一结论」），
+**「实操」章节**（用户：「实操不等同一定要有代码，而是工程实践的可行性」）：讲流程卡点、角色与 owner、指标与 SLA、
+取舍与成本、反模式、可行性自检；不讲具体工具/代码/配置。判据用人话（「两个人看了会不会得出同一结论」），
 落地难点优先归因到人、纪律、预算、预期对齐。
 
-**超长文（>2000 行）**：三层 `#` 第 X 部分 → `## N.` 全文连续编号 → `###`。**一篇文章只能有一套主线模型** ——
-先写的「趋势观察」与后写的「自己的结论」容易互相冲突，处理方式是**显式降级**（引子声明前者不是本文结论，
-趋势段末尾用对照表 pivot），不是删掉。前向引用在重排后必须逐条 grep 核对。工艺见 skill `longform-md-restructure`。
+**超长文（>2000 行）**：三层 `#` 第 X 部分 → `## N.` 连续编号 → `###`。**一篇文章只能有一套主线模型** ——
+先写的「趋势观察」与后写的「自己的结论」冲突时用**显式降级**（引子声明前者不是本文结论 + 趋势段末对照表 pivot），
+不是删掉。前向引用重排后逐条 grep 核对。工艺见 skill `longform-md-restructure`。
 
 **交付稿不带版本自指**：正文与元数据都不出现「本版 / 上一版 / 终轮」这类 changelog；撤回的判断可以留，
-但主语必须是判断本身。起草过程语与「你们已经决定…」这类对话残留一律不进交付稿。
+但主语必须是判断本身。
 
 ## 3. `skills/` — 自建 Agent 评审 Skill 套件
 
@@ -52,89 +44,43 @@ CI 按 push 触发即推即发。要「周几才出现」必须在部署侧加�
 enterprise-agent-architecture-review      架构是否成立、边界划在哪（12 步 + Discovery/Design/Production 三层 Gate）
   子件：agent-security-threat-review / agent-governance-and-control-design / agent-runtime-boundary-review /
         agent-tool-and-mcp-governance / agent-reliability-review / agent-well-architected-assessment
-evidence-and-claim-review                 横切件：审「说法成不成立」（v2.0.0）
+evidence-and-claim-review                 横切件：审「说法成不成立」
 ```
 
-`evidence-and-claim-review` 审说法可信度，`agent-well-architected-assessment` 审控制是否落地，两者互补。
+前者审架构，`agent-well-architected-assessment` 审控制是否落地，`evidence-and-claim-review` 审说法可信度，三者互补。
 
 **`evidence-and-claim-review` = v2.1.1**（2026-09-15 三轮：17 条 review → v2.0.0；模型正交化 → v2.1.0；
-认识论底座补齐 → v2.1.1；已冻结，~1680 行 / 75KB）。**定义以 SKILL.md 为准**，memory 只记「勿回退」的七条：
+认识论底座补齐 → v2.1.1；~1680 行 / 75KB）。定义以 SKILL.md 为准，memory 只记「勿回退」的六条：
 
-- 四层 `1 Claim Model` / `2 Evidence Model` / `3 Reality Model` / `4 Review Workflow` + 附录 A / B。
-- **旧 `S0–S5` 已废**（来源类型/权威性/独立性混在一根轴）。拆为 Source Type `T0–T5`（只是分类）
-  ＋ 独立评分的 **Authority** 与 **Independence `IND0–IND5`**；旧 `S0` 按「主体自己的事实 / 对主体的评价」拆成 T0 或 T1。
-- **六条不可违反原则（epistemic constitution，顺序即推理主线，勿重排）**：
-  ① 结论强度不得超过证据强度（配「证据档位 → 结论上限」表）② 引用不是证据，只是入口
-  ③ 证据到结论的推理链须单独审查（inferential chain 四段式）④ capability ≠ maturity ⑤ feasibility ≠ generality
-  ⑥ 缺席不自动构成反证 —— **条件化**：仅当 detection probability 高且 Search Coverage 已覆盖时，缺席才具负证据价值。
-  三者覆盖三个失效模式：Evidence Quality（②）/ Inference Validity（①③）/ Applicability（④⑤）。
-- **Authority 是「对这个问题」而言**：`Expertise × Proximity × Claim-Fit`（按利益冲突扣减）。
-  厂商文档对 capability 评 5，对 comparison/maturity 降为 1。
+- 四层 `1 Claim Model` / `2 Evidence Model` / `3 Reality Model` / `4 Review Workflow` + 附录 A / B
+- **旧 `S0–S5` 已废**：拆为 Source Type `T0–T5`（只是分类）＋ 独立评分的 **Authority** 与 `IND0–IND5`
+- **Authority 是「对这个问题」而言**：`Expertise × Proximity × Claim-Fit`（按利益冲突扣减）；
+  厂商文档对 capability 评 5，对 comparison/maturity 降为 1
 - **Confidence ≠ Independence**：`FACT/CAPABILITY/LIMITATION` 可 `HIGH + LOW`；
-  `PERFORMANCE/MATURITY/COMPARISON/PREDICTION` 不得只凭厂商来源给 High。
-- **正交化（勿回退）**：`Claim Type`（问哪类问题）与 `Epistemic Status`（FACT / INFERENCE / PREDICTION / OPINION）
-  是两个字段，不再三选一互斥。**三个正交结论** Status × Confidence × **Sufficiency**；
-  **「无反证」已从 SUPPORTED 的积极条件改为独立轴 `counter_evidence.strength`**。
-- 其余维度（细节见 SKILL）：Scope ＋ **Applicability Conditions**（含未满足 required 则最高
-  CONDITIONALLY_SUPPORTED）、Claim Context、Silent Evidence、**Search Coverage** ＋ `absence_assessment`
-  （detection probability）、Benchmark Validity、Use Case Status、**Outcome Verification**
-  （`Successful` 须说明是谁在背书）、Production Level L0–L6、**Counter Evidence Severity**
-  （Cosmetic → Safety-Security，**严重度不可平均**）；**LIMITATION 专门规则**（只凭「文档没写」最高
-  INSUFFICIENT_EVIDENCE）；**§4.1 按 Claim Type 分三级**；输出模板含 **Principle Check** 一节。
-- 冻结约定见 **附录 B.8**：后续只改进判据清晰度，不再新增维度或来源类型。
+  `PERFORMANCE/MATURITY/COMPARISON/PREDICTION` 不得只凭厂商来源给 High
+- **六条不可违反原则**（顺序即推理主线，勿重排）：① 结论强度不得超过证据强度 ② 引用不是证据只是入口
+  ③ 证据到结论的推理链须单独审查 ④ capability ≠ maturity ⑤ feasibility ≠ generality
+  ⑥ 缺席不自动构成反证 —— **条件化**（须 detection probability 高且 Search Coverage 已覆盖）
+- **正交化**：`Claim Type` × `Epistemic Status`（FACT / INFERENCE / PREDICTION / OPINION）是两个字段；
+  **三个正交结论** Status × Confidence × **Sufficiency**；「无反证」改为独立轴 `counter_evidence.strength`
+- 主要维度：Scope ＋ **Applicability Conditions**、Search Coverage ＋ `absence_assessment`、
+  **Outcome Verification**（`Successful` 须说明谁在背书）、**Counter Evidence Severity**（严重度不可平均）、
+  LIMITATION 专门规则（只凭「文档没写」最高 INSUFFICIENT_EVIDENCE）、§4.1 按 Type 分三级、输出含 Principle Check
+- 冻结约定见附录 B.8
 
-## 4. `temp/` 长期产物
+## 4. `temp/` 长期产物（**细节以文件本身为准**，这里只记定位用的一句话）
 
-### `temp/agent研究.md` — Enterprise Agent Platform Risk Architecture Review
-
-单位内部评审文档（保留顾问式「你们」）。5452 行 / 1 H1 + 20 章 + 113 `###`，引用 [1]–[35] 定义数 = 使用数。
-细节以文件本身为准，须记住的顶层判断：
-
-- 最高层原则：**Agent 是不可信的决策参与者，不是安全边界**；边界由 Identity / Policy / PEP / Entitlement /
-  Runtime Isolation / Evidence 建立（AWS Lens 原话：Agent 本身不是 trust boundary）
-- 平面模型：**Governance & Enforcement Layer 横切** + Control / Runtime / Data & Capability Plane；出口有
-  Retrieval PEP / Tool PEP / Egress PEP；Evidence / Audit Plane 独立于 LangSmith。Policy 归属：AI Platform =
-  Model Governance；Agent Platform = Agent/Action Governance；IAM/Data Platform = Enterprise Entitlement；Runtime/PEP = Enforcement
-- 定位 **Runtime-aware, Runtime-independent**；Managed Runtime（Cortex Agents）只能做**边界控制**；
-  Snowflake Cortex Agents 是**潜在的第二 Agent Runtime**（非数据源/LLM Provider），需 Runtime abstraction
-  + 「平台权限 + 数据平台原生权限」双层授权
-- **12 条 Architecture Invariants** + **P0 十项**，P0 = architectural prerequisite（未落地 → Production Gate 未满足）
-- 核心结论：技术底座基本完整（AgentCore + LangSmith + PostgreSQL/pgvector + LiteLLM），风险主要是把
-  模型/ICT/数据治理/访问控制/第三方/审计要求映射到 Agent 生命周期
-- **未完成**：review 建议的「整体 30% 压缩」只做了 8 个概念的局部去重
-
-### `temp/agent研究checklist.md` — Well-Architected Review Checklist
-
-**正文 = A–L 十二节 120 个问题（`Q001`–`Q120`）**；原 431 项控制条目降为 **附录 D — Evidence Checks**
-（旧编号 `1`–`512` / `P00-nn` / `AD`·`BO`·`TM`·`EV`·`RT` 继续有效）。
-
-- **正文零说明**：第一章只允许 标题 / 表格行 / 条目行 / 空行；散文、`>` 引用、层标注、ASCII 图全搬附录 C。
-  depth / Stage 写在**节标题**（`## A. … ｜L1 Decision · INIT`）。加条目时不要往正文补说明段落。
-- **条目必带方向标签 + 达标线**：`｜必须：… ｜达标线：…`；标签只能取 **必须 / 禁止 / 条件 / 可选** 四选一
-  （条件必须写明，没写清不能判 N/A）；达标线给可核对尺度（per Run·Agent·tenant·dataset + 覆盖 + 频率 + 举证位置）
-  并补「什么不算达标」。**不要**用「应为 / 应有」（用户：「AI 味道刺鼻难闻」）。
-- **三个 Review Depth 不是互斥分类**，是同一 control 的三个深度 `L1 Decision` → `L2 Design` → `L3 Evidence`；
-  L1 再按 Stage 切 `INIT` / `DESIGN` / `PRE-PROD`，与两个 Gate 对齐。
-- **`Priority` 与 `Requirement Level` 两维度不能互推**（`P0+P1` × `R/RA/Rec` 五种组合都合法）。
-- **主表编号是稳定标识不是流水号**：合并后编号留空、不重排、不重用，去向写附录 B.12；
-  **统计数字是 informational metadata**，增删条目只更新 B.4 编号总账（唯一权威数字来源）。
-- **批量补注**：子代理只产出 `ANN = {"<id>": "…"}` 字典，主代理用脚本插入 —— 保证原问题文字零漂移 + 覆盖性可机器判定。
-
-### `temp/Snowflake Agent体系-成稿.md` — Cortex Agent 体系分析
-
-博客主题长文（v2.1，14 节 + 47 条引用）。核心判断：Cortex Agent 是 **Data-Native Managed General Agent Runtime**，
-非 LLM Provider 也非数据源插件；推荐自建平台为 Control Plane + Cortex 为辅助 Runtime。
-
-**2026-09-15 用 `evidence-and-claim-review` 审过两轮，产出同目录 `.review.md`（现为 v2.0 口径，已覆盖 v1 版）。
-注意：该文件仍是 v2.0 术语 —— 尚无 Epistemic / Sufficiency / Severity / Applicability /
-Outcome Verification / absence_assessment 字段；要按 v2.1.1 补齐需再跑一轮。**
-遗留结论要点（细节以 `.review.md` 为准）：
-
-- 硬错：Cortex Search 单服务行数上限写 **400M**，官方为 **<100M**
-- 授权归属写反：Cortex Search 按官方设计以 **owner's rights** 运行，属设计行为 + 需架构缓解，
-  不是「取决于建模对齐」（该句应判 REFUTED）
-- 整体可信度分层：Fact/Capability 高；Maturity 低–中；Comparison 低；Prediction/Strategy 低–中
-- 结构性薄弱：47 条引用全为厂商文档 + Reddit，**零独立 benchmark / 分析师 / cross-vendor 研究**；
-  落地证据 Use Case Status 最高 Adopted（约 L4），**L4 ≠ Successful ≠ Enterprise-grade**
-- 战略性排他论点（前沿厂商「无法提供 Identity/Entitlement/Policy」）为 **CONTESTED**：
-  Snowflake Summit 26 自定位为 control plane + Horizon Context + Agent Identity 早于该文
+- **`agent研究.md`** — 单位内部架构评审（顾问式「你们」，5452 行）。核心：**Agent 是不可信的决策参与者，
+  不是安全边界**；**Governance & Enforcement Layer 横切** + 三个 Plane + 三类 PEP + 独立 Evidence Plane；
+  **Runtime-aware, Runtime-independent**；12 条 Invariants + P0 十项（= architectural prerequisite）。
+  **未完成**：review 建议的「整体 30% 压缩」只做了局部去重。
+- **`agent研究checklist.md`** — 正文 = A–L 十二节 120 题 + Invariants / Gates，原 431 项控制条目降为附录 D。
+  **正文零说明**（只允许标题 / 表格 / 条目 / 空行，说明进附录 C）；条目必带
+  `｜必须/禁止/条件/可选：… ｜达标线：…`（**不要**用「应为 / 应有」）；**主表编号是稳定标识**，
+  合并后留空不重排不重用；统计数字只更新附录 B.4；批量补注走「子代理产字典 + 主代理脚本插入」。
+- **`Snowflake Agent体系-成稿.md`** — 博客主题长文（14 节 + 47 引用），核心判断：Cortex Agent 是
+  **Data-Native Managed General Agent Runtime**，推荐自建 Control Plane + Cortex 为辅助 Runtime。
+  已用 `evidence-and-claim-review` 审过三轮，产出 `.review.md`（v2.1.1 口径）：硬错 3 处
+  （Search 上限 400M → **<100M**；Search 授权归因写反 → REFUTED + REVERSE；§6 Google 模型不存在）；
+  Maturity **Low–Medium** / Comparison **Low**；Gartner MQ Snowflake = **Visionary**；Reality 可达
+  Successful 但 **Outcome 全部 SELF_REPORTED**、Production 最高 L5；战略排他论点 **CONTESTED**。
