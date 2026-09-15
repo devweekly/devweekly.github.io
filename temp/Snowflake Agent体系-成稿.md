@@ -1,6 +1,6 @@
 # Snowflake Agent 体系分析：Data-Native Managed Runtime 的能力、边界与生产现实
 
-本文讨论 Snowflake Cortex Agent 在企业 Agent Platform 里的位置。范围限定在四件事：Cortex Agent 当前的真实能力边界、structured 与 unstructured 数据如何统一进入 Agent、用户上传文件应该走哪条链路、Snowflake 的 Evaluation 与 LangSmith 如何分工。
+本文讨论 Snowflake Cortex Agent 在企业 Agent Platform 里的位置。范围限定在四件事：Cortex Agent 当前的真实能力边界、structured 与 unstructured 数据如何统一进入 Agent、用户上传文件应该走哪条链路、Snowflake 的 Evaluation 与 LangSmith 如何分工。第十三节把视角再抬一层：在 OpenAI 与 Anthropic 把 Runtime 商品化的背景下，企业平台的价值应上移到 Enterprise Agent Operating Layer。
 
 分析对象是 Cortex Agent、Cortex Search、Cortex Analyst（含 Semantic Views）、Stage、`AI_PARSE_DOCUMENT`、code execution、Snowflake-managed MCP Server。企业平台侧的参照系来自《Enterprise Agent Platform Risk Architecture Review》（下称平台评审）：Control / Runtime / Data / Evidence 四个平面、Governance & Enforcement 横切、Platform-native 与 Data-native 两类 Runtime、Full-control 与 Managed Runtime 的治理边界。
 
@@ -601,6 +601,135 @@ Managed Runtime 的最大架构问题不是功能，而是这条边界：Cortex 
 
 其三，Snowflake 能不能替代 LangSmith。可以替代一部分 Observability / Evaluation，但不能等价替代整个 Evaluation Engineering 工作流。Snowflake 是 Evaluation Data Plane，LangSmith 是 Evaluation Engineering Platform。MCP evaluation 缺口、session-aware authorization gap、code execution 无 side effect、human eval 与 pairwise 短板，在进入生产闭环前必须逐项确认。
 
+## 十三、未来 Vision：从 Agent Platform 到 Enterprise Agent Operating Layer
+
+前十二节回答的是 Cortex Agent 如何进入企业平台。截至 2026-09，需要再往上一层：OpenAI 与 Anthropic 正在把 Agent Runtime 本身产品化，企业平台的价值必须同步上移，否则会把核心投入继续押在终将商品化的那一层。
+
+OpenAI 2026-09-10 发布的 Agents API 把 Codex 背后的 harness、长会话、context compaction、工具使用、subagents、sandbox、recovery 做成 managed runtime，并允许选择 OpenAI sandbox、自有基础设施或合作方 sandbox [30]。更早的 Agents SDK 已把文件操作、命令执行、代码修改、long-horizon tasks、memory、sandbox-aware orchestration 做成标准能力；OpenAI 自己明确指出 model-agnostic framework、provider SDK、managed agent API 的差别不在“能不能做 Agent”，而在谁控制 harness、运行环境与模型原生能力之间的边界 [32]。Anthropic 方向类似：Claude Agent SDK 复用 Claude Code 的核心 tools、context management、permission framework，支持 subagents、hooks、checkpointing，“自己实现成熟 Agent Loop”越来越接近重复建设 [31]。
+
+战略转折是 Runtime 正在商品化。过去平台价值是自建 agent loop、state、retry、长执行、sandbox、文件处理、tool routing、context 管理、subagent 编排；未来 OpenAI、Anthropic、Google、AWS、Snowflake、Microsoft、开源 Runtime 并存，差异集中在 model-native capabilities、harness 质量、sandbox、context 管理、tool orchestration、subagents、长执行，而不是“有没有 Framework”。继续投入重写 Agent Loop 会走偏。
+
+企业真正稀缺的不是 Runtime，而是 Enterprise Context。Frontier vendors 给得出 Model、Harness、Sandbox、Tool Calling、Subagents、长执行，给不出“谁属于哪个法人实体、能访问哪只基金、为了什么业务目的、在哪条政策下、经谁批准、用哪些数据、执行什么动作”。平台战略应该从 Agent Runtime Platform 转向 Enterprise Agent Operating Layer，长期拥有 Identity、Governance、Enterprise Context、Policy、Workflow、Evidence、Economics，把 Harness、Sandbox、Subagent Runtime、Context Compaction 尽量 Buy / Integrate。
+
+Operating Layer 管八个 Plane：
+
+| Plane | 内容 |
+| --- | --- |
+| Identity & Control | Identity / RBAC / Purpose / Tenant / Region |
+| Agent Governance | Registry / Version / Ownership / Approval / Policy |
+| Runtime Orchestration | OpenAI / Anthropic / DeepAgents / Cortex / 其他 |
+| Tool & Capability | MCP / APIs / SQL / Skills / Enterprise Systems |
+| Enterprise Context | Data / Knowledge / Memory / Entitlement / State |
+| Workflow & Action | Approval / Workflow / Transactions / Human-in-loop |
+| Assurance | Evaluation / Security / Policy / Evidence / Audit |
+| Economics | Cost / Quota / Budget / Capacity / ROI |
+
+Runtime 变成可替换的基础设施，不再是平台的身份：
+
+```mermaid
+flowchart TD
+    OL["Enterprise Agent Operating Layer<br/>Control, Identity, Policy, Workflow, Evidence, Cost"]
+    RC["Runtime Contract"]
+    OA["OpenAI Agents"]
+    AA["Anthropic Agent"]
+    CX2["Cortex Agent"]
+    IN2["Internal Runtime"]
+    TL["Common Tool Layer<br/>MCP, Enterprise APIs, Data"]
+
+    OL --> RC
+    RC --> OA
+    RC --> AA
+    RC --> CX2
+    RC --> IN2
+    OA --> TL
+    AA --> TL
+    CX2 --> TL
+    IN2 --> TL
+```
+
+平台拥有的是 Agent Definition、Policy、Identity、Data Entitlement、Tool / Evidence / Evaluation Contract；未来 DeepAgents 切 OpenAI Agents API、切 Claude Agent SDK，或 Cortex 切其他 Runtime，业务系统都不重写。
+
+市场变化对照：
+
+| 层 | 以前 | 现在 |
+| --- | --- | --- |
+| Model | OpenAI / Anthropic | commodity-ish platform foundation |
+| Tool calling | 自己实现 | Native |
+| Agent loop | 自己实现 | Model-provider runtime |
+| Sandbox | 自己做 | Managed / pluggable |
+| Context management | 自己做 | Runtime capability |
+| Subagents | 自己编排 | Native capability |
+| Long-running tasks | 自己做 jobs | Native capability |
+| Skills / plugins | 自己做 | Native ecosystem |
+| MCP | 自己接 | 行业标准 |
+| Evaluation | 自己做 | Model / vendor + platform |
+| Enterprise authorization | 企业自己控制 | 仍然需要企业控制 |
+| Data entitlement | 企业自己控制 | 仍然需要企业控制 |
+| Business workflow | 企业自己控制 | 仍然需要企业控制 |
+| Regulatory evidence | 企业自己控制 | 仍然需要企业控制 |
+| Cross-enterprise governance | 企业自己控制 | 仍然需要企业控制 |
+
+下半张表没有变化，正是下一阶段的战略边界。
+
+Anthropic 尤其值得金融机构关注。它已不止提供 Claude API，而是形成 Code、Agent SDK、Cowork、Skills、MCP、Managed Agents、Financial Services Agents、企业连接器的组合，并面向金融发布十类现成模板（pitchbook、KYC 文件筛查、month-end close 等），直插 Excel、PowerPoint、Word、Outlook、MCP 工具链 [33]。未来企业内同时存在内部平台、Claude Code、C Cowork、OpenAI Agents、Cortex、Microsoft Agent 是常态，“只有我方平台能跑 Agent”的封闭策略不成立；任何 Frontier Runtime 都应可纳入 Enterprise Control Plane。
+
+Agent 的演进方向也支持这个判断：从“回答问题”转向“持续执行工作”。Anthropic 研究显示 Claude Code 长运行 session 快速增长，最长 session 三个月内从不足 25 分钟增至超过 45 分钟 [34]；Economic Index 显示 Code / Cowork 承担的任务更长、autonomy 高于普通 chat [35]。设计目标从 Question → Answer 转向 Goal → Plan → Execute → Observe → Recover → Verify → Produce Artifact → Request Approval → Complete：平台最终不是 Chat Platform，而是 Work Execution Platform。
+
+金融企业应把基本对象从 Agent 提升为 Work。以 Investment Review 为例，Collect Market Data、Retrieve Annual Report、Analyze Financials、Check ESG、Run Risk Policy、Generate Memo、Human Review、Archive Evidence 各节点跑在不同位置：
+
+| Work 节点 | 运行位置 |
+| --- | --- |
+| Collect Data | MCP / API |
+| Annual Report | Cortex Search |
+| Financial Analysis | Cortex Analyst |
+| Reasoning | OpenAI / Anthropic / DeepAgents |
+| Risk Policy | Deterministic Policy Engine |
+| Approval | Workflow Runtime |
+| Evidence | Enterprise Audit Store |
+
+平台不再是“一个 Agent 调十几个 Tools”，而是多个 Runtime、确定性服务、人工批准节点共同完成的 Work Graph。
+
+随自主性上升，LLM 的最终决定权反而要收窄：LLM 负责理解、规划、推理、分类、建议、生成；Authorization、Policy、Calculation、Transaction、Approval、Accounting、Evidence 归 Deterministic System。Agent 决定“应该怎么做”，企业决定“是否允许这样做”，这与平台评审原则一致。
+
+Security 重点随之从 API Security 转向 Agentic Security。Anthropic 已把 prompt injection、意图误读、非预期高成本操作列为核心治理问题 [36]，平台需建设 Agent / Tool / Data / Action 四种 Identity，以及 prompt injection（含间接注入）、tool poisoning、数据外渗防护、动作确认、Agent / Network / Sandbox 边界。MCP 成为基础设施后，Agent → MCP → Tool → External System 就是新的企业安全边界，MCP Registry、Tool Trust、Provenance、Permission、Lifecycle 应成为 Control Plane 一等能力。
+
+长期看平台核心资产从 Code 转向 Contracts。Runtime 商品化后，企业积累的应该是 Agent、Tool、Data、Policy、Identity、Evidence、Evaluation、Workflow Contract，而不是 Agent Loop Code：
+
+```yaml
+agent:
+  id: investment-review
+  version: 17
+identity:
+  allowed_roles:
+    - investment-analyst
+data:
+  allowed_domains:
+    - public-equity
+    - esg
+tools:
+  allowed:
+    - market-data
+    - snowflake-search
+    - snowflake-analyst
+policy:
+  approval_required:
+    - trade
+    - external-communication
+evidence:
+  required:
+    - data-access
+    - policy-decision
+    - tool-execution
+```
+
+这份 Contract 属于企业平台，不属于任何厂商，才是真正的 Vendor Independence。
+
+Snowflake 在未来架构中的位置随之提升为 Enterprise Agent Infrastructure Provider，同时承担 Data、Knowledge、Search、Semantic Analytics、Managed Runtime、Evaluation、Observability Plane；Control Plane、企业 Policy、跨系统授权、高风险 workflow、监管证据仍归内部平台。
+
+路线分三段：2026–2027 做 Consolidation（Registry + Runtime Adapter + Policy + Tool / MCP Registry + Evaluation + Evidence，重点是统一 Contract 而非堆功能）；2027–2028 升级到 Work Execution Platform（Work 含 Tasks、Agents、Tools、Approvals、Data、Evidence，引入 workflow、人环、长任务、补偿、checkpoint、recovery，Agent 成为 Work Graph 节点）；2028+ 形成 Enterprise Agent Operating System，让任意可信 Agent 在统一身份、数据、权限、工作流、证据体系下执行企业工作。
+
+> Let frontier runtimes execute; let the enterprise platform decide what they are allowed to execute, where they can execute, whose data they can use, what actions they can take, and what evidence must remain afterward.
+
 ## 参考
 
 - Snowflake Documentation, Cortex Agents [1]
@@ -632,6 +761,13 @@ Managed Runtime 的最大架构问题不是功能，而是这条边界：Cortex 
 - Reddit, How are you deploying Cortex Agents [27]
 - Reddit, How well is Cortex working in real use cases [28]
 - Reddit, Snowflake Semantic View Autopilot [29]
+- OpenAI, Introducing the Agents API [30]
+- Anthropic, Enabling Claude Code to work more autonomously [31]
+- OpenAI, The next evolution of the Agents SDK [32]
+- Anthropic, Agents for financial services [33]
+- Anthropic, Measuring AI agent autonomy in practice [34]
+- Anthropic, Economic Index report Cadences [35]
+- Anthropic, Trustworthy agents in practice [36]
 - 平台评审上文：第 2.6、3.5、3.6、5.3–5.6、6.1、7.2–7.3、8.3–8.4、12.4–12.5、18–19 章
 
 [1]: https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents?utm_source=chatgpt.com "Cortex Agents | Snowflake Documentation"
@@ -663,3 +799,10 @@ Managed Runtime 的最大架构问题不是功能，而是这条边界：Cortex 
 [27]: https://www.reddit.com/r/snowflake/comments/1u8d52y/how_are_you_deploying_cortex_agents/?utm_source=chatgpt.com "How are you deploying Cortex Agents?"
 [28]: https://www.reddit.com/r/snowflake/comments/1sckg3v/how_well_is_cortex_working_in_real_use_cases/?utm_source=chatgpt.com "How well is Cortex working in real use cases"
 [29]: https://www.reddit.com/r/snowflake/comments/1r7l8di/snowflake_semantic_view_autopilot/?utm_source=chatgpt.com "Snowflake Semantic View Autopilot"
+[30]: https://openai.com/index/introducing-the-agents-api/?utm_source=chatgpt.com "Introducing the Agents API | OpenAI"
+[31]: https://www.anthropic.com/news/enabling-claude-code-to-work-more-autonomously?_bhlid=f8286af6f2d81d9e8f6b7940f12db529349c90c0&utm_source=chatgpt.com "Enabling Claude Code to work more autonomously | Anthropic"
+[32]: https://openai.com/index/the-next-evolution-of-the-agents-sdk/?utm_source=chatgpt.com "The next evolution of the Agents SDK | OpenAI"
+[33]: https://www.anthropic.com/news/finance-agents?utm_source=chatgpt.com "Agents for financial services | Anthropic"
+[34]: https://www.anthropic.com/research/measuring-agent-autonomy?trk=lss-blog-leading-team-with-metrics&utm_source=chatgpt.com "Measuring AI agent autonomy in practice | Anthropic"
+[35]: https://www.anthropic.com/research/economic-index-june-2026-report?utm_source=chatgpt.com "Anthropic Economic Index report: Cadences | Anthropic"
+[36]: https://www.anthropic.com/research/trustworthy-agents?-what-the-heck-is-rust%2F=undefined&hubs_content-cta=-the-hustle&hubs_post-cta=homepage&utm_source=chatgpt.com "Trustworthy agents in practice | Anthropic"
