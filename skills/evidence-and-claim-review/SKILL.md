@@ -1,7 +1,7 @@
 ---
 name: evidence-and-claim-review
-version: 2.1.0
-description: 审核技术文章、架构报告、产品与行业分析中的观点、论据和结论是否站得住。先把文章拆成最小可验证的 Claim 并判定两个正交字段 —— Claim Type（FACT / CAPABILITY / LIMITATION / PERFORMANCE / MATURITY / PRACTICE / EXPERIENCE / COMPARISON / CAUSAL / RECOMMENDATION / PREDICTION / STRATEGIC / OPINION）与 Epistemic Status（FACT / INFERENCE / PREDICTION / OPINION），再记录 Claim Context（产品 / 版本 / 区域 / 可用状态 / API 面 / 核对日期）、Scope 与 Applicability Conditions（什么条件下才成立），把证据拆成五个独立维度评估（Directness / Authority / Independence / Freshness / Completeness），主动搜索反例、给反证定严重度并记录沉默证据与搜索覆盖偏差，验证真实用例的「存在 / 采用 / 成功 / 规模化 / 结果已证」与结果验证方式，判定理论与实践的鸿沟，最后给出 Status、Confidence、Evidence Sufficiency 三个正交结论及改写建议。用于事实核查、引用核查、行业报告审视、AI 与云产品能力与成熟度评估、厂商宣传与 benchmark 可信度判断、文章发布前审稿、架构评审与厂商评估。触发词：事实核查、claim review、evidence review、可信度评估、来源审查、引用核查、是否过时、找反例、落地案例、成熟度、生产可用、benchmark 可信吗、厂商宣传、一家之言、独立验证、scope 适用性、适用条件、证据够不够。
+version: 2.1.1
+description: 审核技术文章、架构报告、产品与行业分析中的观点、论据和结论是否站得住。先把文章拆成最小可验证的 Claim 并判定两个正交字段 —— Claim Type（FACT / CAPABILITY / LIMITATION / PERFORMANCE / MATURITY / PRACTICE / EXPERIENCE / COMPARISON / CAUSAL / RECOMMENDATION / PREDICTION / STRATEGIC / OPINION）与 Epistemic Status（FACT / INFERENCE / PREDICTION / OPINION），再记录 Claim Context（产品 / 版本 / 区域 / 可用状态 / API 面 / 核对日期）、Scope 与 Applicability Conditions（什么条件下才成立），把证据拆成五个独立维度评估（Directness / Authority / Independence / Freshness / Completeness），主动搜索反例、给反证定严重度并记录沉默证据与搜索覆盖偏差，验证真实用例的「存在 / 采用 / 成功 / 规模化 / 结果已证」与结果验证方式，判定理论与实践的鸿沟，最后给出 Status、Confidence、Evidence Sufficiency 三个正交结论及改写建议。全程受六条不可违反原则约束：结论强度不得超过证据强度、引用不等于证据、证据到结论的推理链须单独审查、capability 不等于 maturity、feasibility 不等于 generality、缺席的证据不自动构成反证。用于事实核查、引用核查、行业报告审视、AI 与云产品能力与成熟度评估、厂商宣传与 benchmark 可信度判断、文章发布前审稿、架构评审与厂商评估。触发词：事实核查、claim review、evidence review、可信度评估、来源审查、引用核查、是否过时、找反例、落地案例、成熟度、生产可用、过度推断、结论过强、证据够不够、benchmark 可信吗、厂商宣传、一家之言、独立验证、scope 适用性、适用条件、证据够不够。
 ---
 
 # Evidence & Claim Review
@@ -17,11 +17,13 @@ description: 审核技术文章、架构报告、产品与行业分析中的观�
 > Directness → Authority → Independence → Freshness → Completeness →
 > Counter-evidence（+ Severity）→ Silent Evidence → Search Coverage →
 > Use Case → Outcome Verification → Reality Gap →
-> Status → Confidence → Sufficiency → Rewrite**
+> Status → Confidence → Sufficiency → Principle Check → Rewrite**
 
 这是一个可复用于架构评审、厂商评估、技术雷达、产品比较、研究报告审稿的 Evidence Review Engine。
 
 ## Core Principle
+
+这六条原则是整套方法的认识论底座，后面所有维度都是它们的操作化。**先读原则，再用维度。**
 
 ### 不要默认
 
@@ -33,21 +35,152 @@ description: 审核技术文章、架构报告、产品与行业分析中的观�
 论文结果        = 生产效果
 benchmark 领先  = 生产更优
 多数来源        = 多个独立证据
+能部署          = 已成熟
+没搜到反证      = 不存在反证
 ```
 
-### 五条不可违反的原则
+### 六条不可违反的原则（epistemic constitution）
+
+这六条不是六个并列的注意事项，而是一条从「我到底想证明什么」到「我最终能说什么」的推理主线。
+顺序本身是内容的一部分，不要重排。
 
 ```text
-引用不是证据，引用只是证据的入口。
-官方文档证明 capability，不自动证明 maturity。
-客户案例证明 feasibility，不自动证明 generality。
-缺席的反证 ≠ 反证不存在。（Absence of counter-evidence ≠ Evidence of absence）
-证据缺席只降低证据可信度，不自动推出产品负面结论。
-（Evidence absence lowers Evidence Confidence; it does not automatically
- produce a Negative Product Assessment.）
+1. 结论强度不得超过证据强度。
+   The strength, specificity, and scope of a claim must not exceed
+   what the available evidence can justify.
+
+2. 引用不是证据，引用只是证据的入口。
+   A citation is not evidence; it is an entry point to the evidence.
+   必须检查引用实际支持了什么，而不是只检查「有没有引用」。
+
+3. 证据到结论之间的推理链必须被单独审查。
+   Evidence does not automatically become a conclusion.
+   必须检查证据与结论之间的推理跳跃、隐含前提、替代解释与因果跳跃。
+
+4. 官方文档证明 capability，不自动证明 maturity。
+   Official documentation can establish documented capability, but does not
+   by itself establish maturity, reliability, production success, or
+   operational excellence.
+
+5. 客户案例证明 feasibility，不自动证明 generality。
+   A customer case can establish that something has been done or is feasible
+   in a particular context, but does not by itself establish generalizability,
+   scalability, or broad production success.
+
+6. 缺席的证据不自动构成反证。
+   Absence of evidence is not automatically evidence of absence.
+   只有当「某假设成立时，该证据本应以较高概率被观察到」且「搜索、检测与
+   信息获取过程足够有效」时，「没有发现」才可以作为负证据。
+   因此：Evidence absence ≠ Negative Product Assessment.
+   必须先判断 Search Coverage、detection probability、source completeness
+   与替代解释。
 ```
 
-第四条尤其重要。没有搜到负面信息，通常只是因为你没搜到，而不是因为没有。结构性原因有四条：
+**这六条覆盖三个不同的失效模式**，不要以为它们都在说同一件事：
+
+```text
+Evidence Quality   证据本身可靠吗？      由 2 保证
+Inference Validity 从证据到结论的推理成立吗？由 1、3 保证
+Applicability      结论能推广到哪里？     由 4、5 保证
+```
+
+### 原则 1 的操作化：证据强度 → 结论强度上限
+
+原则 1 是这六条里最容易被违反、也最少被明文写出的一条。它约束的是**强度升级**，不是**方向**：
+
+```text
+证据（官方文档）: "The system supports MCP."
+  ✅ SUPPORTED:  The system supports MCP.
+  ❌ MATURITY:   The system has a mature MCP ecosystem.
+  ❌ STRATEGIC:  This is a production-proven enterprise-grade MCP platform.
+```
+
+后两句并不是「错的」，而是**发生了 inferential leap** —— 中间缺少了支持成熟度的那类证据。
+判定时按证据的实际支撑范围反查结论：
+
+| 手上有什么证据 | 最高能支持到什么强度 |
+| --- | --- |
+| 官方能力文档（单一 T0） | CAPABILITY 级事实陈述；**不得**升级为 MATURITY / COMPARISON / STRATEGIC |
+| 官方限制文档（单一 T0） | LIMITATION 级事实陈述（见 §1.2 三条件） |
+| 单个客户案例 | 该案例条件下的 feasibility；**不得**升级为 generality |
+| 厂商自述的性能数字 | 方向性参考（directional-only）；**不得**作为 COMPARISON 结论 |
+| 独立 benchmark（未复现） | 方向性参考；`not usable` 时不得支撑任何比较结论 |
+| 独立复现的 benchmark | 可支撑 COMPARISON |
+| 多个 IND ≥ 4 的来源 + 生产证据 | 可支撑 MATURITY |
+
+**规则**：写下结论前反过来问一次 —— **「我手上的证据，最多能支持到哪一档？」**
+如果结论所在那一档不在上表里对应证据的那一行，就必须降级（DOWNGRADE）或补证据，不能保留。
+
+### 原则 3 的操作化：inferential chain 审查
+
+原则 3 要求把「证据 → 结论」这一步当作独立对象审查，因为前一步成立不保证后一步成立：
+
+```text
+Evidence:                Customer X 部署了该产品
+  ↓ 这一步直接确立了：     该产品可以被部署（feasibility）
+  ↓ 这一步隐含了前提：     该客户的环境与目标环境可比
+Conclusion:              该产品 production-ready
+  ↑ 这一步还缺：           治理、SLA、成本、失败率、规模化证据
+```
+
+审查动作是**把链条画出来，逐段问「这一段是不是直接得到的」**：
+
+```text
+Evidence
+  ↓  直接确立了什麼？（directly established）
+  ↓  间接支持了什么？（indirectly supported）
+  ↓  需要哪些额外假设？（additional assumptions）
+  ↓  有没有替代解释能同样解释这些证据？（alternative explanations）
+Conclusion
+```
+
+四类 Claim 必须走完这条链，缺一不得下结论：
+
+```text
+CAUSAL          必须排除替代解释（相关性 ≠ 因果）
+STRATEGIC       必须说明隐含前提与它依赖的当前信号
+PREDICTION      必须给出可被证伪的信号
+RECOMMENDATION  必须写清前提与适用条件
+```
+
+与 §3.6 的 Gap 类型配合使用：链条断在哪一环，缺失的就是哪一类 Gap。
+
+### 原则 6 的操作化：缺席何时成为反证
+
+**「缺席的反证 ≠ 反证不存在」不是一个可以无条件使用的绝对命题。**
+现代证据论（Bayesian confirmation）的结论是条件性的：
+
+```text
+「没有找到」要成为负证据，需要同时满足：
+  a. 若该假设成立，该证据本应以较高概率被观察到（detection probability 高）
+  b. 搜索、检测与信息获取过程足够有效（Search Coverage 已覆盖该渠道）
+两者缺一，「没有找到」只能记为「未观察到」，不能记为「不存在」。
+```
+
+因此原则 6 的判定分两步：
+
+```text
+第一步  这个证据，在假设成立时有多容易被观察到？
+        ├ 高（官方会公布 / 有合规披露要求 / 有公开 benchmark）→ 缺席有负证据价值，可上调 severity
+        └ 低（内部事故 / 失败 POC / 未公开的客户反馈）→ 缺席几乎没有负证据价值
+
+第二步  我们的搜索是否覆盖了它可能出现的渠道？（见 §2.7 Search Coverage）
+        ├ 已覆盖 → 「没有证据」是结论
+        └ 未覆盖 → 「我们没搜到」，不得作为结论，只能写进 Missing Evidence
+```
+
+只有两步都过关，「缺席」才具备负证据价值。常见的高/低检测概率对照：
+
+| 证据类型 | 检测概率 | 缺席的含义 |
+| --- | --- | --- |
+| 官方 release note / 定价 / 限额 | 高 | 缺席往往意味着确实没有 → 可上调 severity |
+| 已受监管行业的合规披露 | 高 | 同上 |
+| 独立 benchmark / 学术复现 | 中 | 缺席只表示「尚无人做」，不表示「效果差」 |
+| 企业内部事故 / 失败 POC | 低 | **几乎无负证据价值** |
+| 客户满意度 / 流失率 | 低 | 同上 |
+| 社区负面反馈 | 中（且有 selection bias） | 缺席不构成正证据，出现也不构成普遍性证据 |
+
+结构性原因有四条，它们都属于「检测概率低」这一类：
 
 ```text
 企业内部事故不会公开
@@ -60,7 +193,7 @@ benchmark 领先  = 生产更优
 「我搜过什么、搜到没有、为什么可能搜不到」。搜不到要写成 `silent_evidence: searched X, no public findings`，
 不能默默当成「无问题」。
 
-第五条的用法：`independent_sources: 0` 是一个**关于证据结构的结论**，不是一个**关于产品的结论**。
+原则 6 的用法：`independent_sources: 0` 是一个**关于证据结构的结论**，不是一个**关于产品的结论**。
 它应当降低 Independence 得分、削弱成熟度类 Claim 的强度，但不得被读成「所以这个产品不行」。
 在新产品上这条尤其容易出错 —— GA 时间短、事故不公开、第三方 benchmark 尚少，都会自然产生 `independent_sources = 0`。
 正确写法是把两者分开陈述：
@@ -86,11 +219,6 @@ benchmark 领先  = 生产更优
 
 一个 Claim 可以证据都真、都很确定，但证据量不足以支撑它。
 例：「是金融级成熟平台」只有厂商文档 → Sufficiency: INSUFFICIENT（问题问的是成熟度，给的是能力证据）
-```
-
-```text
-一个事实可以高度确定，同时缺少独立来源。
-例：Cortex Agent 支持 MCP → Status: SUPPORTED / Confidence: HIGH / Independence: LOW
 ```
 
 反过来也一样：大量互不独立的来源不能把 Confidence 推高，只能把「厂商确实这么说过」这件事推高。
@@ -590,6 +718,31 @@ search_coverage:
 
 第二种情况不能写进结论，只能写进 `Missing Evidence`，并说明下一步该搜什么。
 
+### 与原则 6 的连接：detection probability
+
+Search Coverage 只回答「我们搜了没有」；要判断「缺席能否算负证据」，还要回答
+**「如果假设成立，这条证据本来有多容易被观察到」**（见 Core Principle 原则 6 的两步判定）。
+
+```yaml
+absence_assessment:
+  searched_channels: [official_docs, release_notes, github, reddit, practitioner_blogs]
+  coverage_complete: partial          # complete | partial | narrow
+  detection_probability: low          # high | medium | low
+  # high   → 若假设成立，该证据大概率会出现（官方披露、强制合规、公开 benchmark）
+  # low    → 该证据本来就不太会公开（内部事故、失败 POC、客户流失）
+  conclusion: >
+    未观察到负面证据。但该品类证据的 detection probability 为 low，
+    因此「缺席」不构成负证据，也不构成对产品成熟度的否定判断。
+```
+
+**三种组合的读法**：
+
+```text
+coverage_complete = yes  +  detection_probability = high   → 缺席有负证据价值，可上调 severity
+coverage_complete = yes  +  detection_probability = low    → 缺席无负证据价值，只记 silent_evidence
+coverage_complete = no   +  任意                            → 不能作任何结论，只记 Missing Evidence
+```
+
 ## 2.8 Benchmark Validity
 
 Benchmark 是 AI / Agent 领域最危险的一类证据。**benchmark 差值不构成生产优越性。**
@@ -661,7 +814,9 @@ Status = INSUFFICIENT_EVIDENCE + Sufficiency = INSUFFICIENT → 不得作为论�
 Status = CONDITIONALLY_SUPPORTED + Sufficiency = INSUFFICIENT → 只能作为假设，不能作为结论
 ```
 
-注意 `INSUFFICIENT` 是**关于证据的结论**，不是**关于产品的结论**（见 Core Principle 第五条）。
+注意 `INSUFFICIENT` 是**关于证据的结论**，不是**关于产品的结论**（见 Core Principle 原则 6）。
+另外 Sufficiency 判定要同时服从**原则 1**：证据够不够，是按「结论想落在哪一档」反查的，
+而不是按「搜到了几条」正查的。
 
 ## 2.10 厂商类 Claim 的四条硬规则
 
@@ -905,11 +1060,16 @@ LIMITATION 在 Level 1 额外强制走 §1.2 的 negative claim 三条件。
 ### 收尾（所有级别）
 
 ```text
-19. 打分 F / S / I / R / T（五维，不平均）
-20. 定 Status / Confidence / Sufficiency（三个正交结论）
-21. 给改写建议（KEEP / QUALIFY / DOWNGRADE / REVERSE / REMOVE）
-22. 输出 Claim Matrix + 结构化 Claim Record
+19. 过一遍六条原则：结论强度是否超过证据强度（原则 1）？推理链是否完整（原则 3）？
+    缺席是否被当成反证（原则 6）？
+20. 打分 F / S / I / R / T（五维，不平均）
+21. 定 Status / Confidence / Sufficiency（三个正交结论）
+22. 给改写建议（KEEP / QUALIFY / DOWNGRADE / REVERSE / REMOVE）
+23. 输出 Claim Matrix + 结构化 Claim Record
 ```
+
+第 19 步不是形式检查：先把每条结论的类型标出来，再对着原则 1 的上限表看一遍，
+凡是落在「证据支撑不到的那一档」的结论，一律回到第 22 步降级或补证据。
 
 **分级的意义**：Level 3 的 Claim（战略预测）在一个文档里通常只占少数，
 但它们消耗的时间应与其余全部条目相当；而 Level 1 的条目应当批量快速处理完。
@@ -968,6 +1128,9 @@ Claim Type ∈ {FACT, CAPABILITY, LIMITATION}
 | 有 L4 案例但无治理 / SLA / 成本证据 | 不得推导「企业级成熟」 |
 | Claim 的 Applicability Conditions 含未满足的 `required` 项 | 最高 `CONDITIONALLY_SUPPORTED` |
 | Counter Evidence 含已确认的 Governance / Security 级反证 | 必须进 P0，并重新评估是否 REVERSE |
+| **结论档位超过证据能支持的档位（原则 1）** | **降到证据支持的最高档**，或补证据后再升回 |
+| **CAUSAL 未排除替代解释（原则 3）** | 不得下因果结论，降为相关性陈述 |
+| **把「未观察到」写成「不存在」（原则 6）** | 撤回该负证据，改为 `silent_evidence` 记录 |
 
 ### 必须标 REFUTED
 
@@ -1168,6 +1331,12 @@ Sufficiency  手头的证据，够不够回答这类问题
 ## Scope Warnings
 （哪些结论被错误泛化，应限定到哪里）
 
+## Principle Check
+（六条原则的违规清单；没有违规就写 none）
+结论强度超过证据强度:  （逐条列出，写明原结论 → 证据能支持的最高档）
+推理链断裂:            （CAUSAL / STRATEGIC / PREDICTION / RECOMMENDATION 中未排除替代解释的）
+缺席被当作反证:        （被误用的负证据，及其 detection probability）
+
 ## Claims That Should Be Rewritten
 Original: …
 Recommended: …
@@ -1187,6 +1356,7 @@ Timeliness:
 Status 分布: 
 Overall confidence（分层）: 
 Sufficiency 分布: 
+Principle 违规数: 
 ````
 
 ## 4.7 结构化 Claim Record
@@ -1273,6 +1443,18 @@ search_coverage:
   community: { reddit: yes, github: yes }
   vendor_side: { competitor_docs: no }
   language: { english: yes, chinese: partial }
+
+absence_assessment:                # 原则 6：缺席能否算负证据
+  coverage_complete: partial       # complete | partial | narrow
+  detection_probability: low       # high | medium | low
+  verdict: no_negative_evidence    # negative_evidence | no_negative_evidence | inconclusive
+
+inference_chain:                   # 原则 1 与 3：仅 CAUSAL / STRATEGIC / PREDICTION / RECOMMENDATION 必填
+  directly_established: "该产品可被部署（可行性）"
+  indirectly_supported: "在可比环境下具备生产条件"
+  additional_assumptions: ["客户环境与目标环境可比", "部署模式相同"]
+  alternative_explanations: ["一次性深度定制，不可复制"]
+  claim_leap_detected: true        # 结论档位是否超过证据档位
 
 real_world:
   existence: proven
@@ -1434,9 +1616,25 @@ counter_evidence.severity   Cosmetic / Operational / Economic / Reliability /
 outcome.type                NONE / SELF_REPORTED / REPRODUCIBLY_REPORTED / INDEPENDENTLY_VERIFIED
 outcome.verification        none / method-disclosed / independent
 applicability.conditions.level   required / required_for_write / recommended
+absence_assessment.coverage_complete   complete / partial / narrow
+absence_assessment.detection_probability   high / medium / low
+absence_assessment.verdict  negative_evidence / no_negative_evidence / inconclusive
 ```
 
-## B.6 使用场景
+## B.6 六条原则与维度的对应关系
+
+原则层不重复维度的定义，它规定**每个维度在什么条件下失效**。查维度的落点用这张表：
+
+| 原则 | 主要落点 | 失效时怎么处理 |
+| --- | --- | --- |
+| 1 结论强度 ≤ 证据强度 | Core Principle 的上限表；§4.1 第 19 步；§4.2 降级表 | 降到证据支持的最高档，或补证据 |
+| 2 引用 ≠ 证据 | §2.4 Source Correctness（逐字核对） | 打开原文；数值必回一手页面 |
+| 3 推理链须单独审查 | `inference_chain` 字段；§4.1 Level 3；§3.6 Gap | 画出链条，逐段问「直接确立了什么」 |
+| 4 capability ≠ maturity | §1.2 MATURITY 取证要求；§2.10 规则 1 | 补独立 + 生产 + 限制证据 |
+| 5 feasibility ≠ generality | §2.10 规则 2；§3.4 案例证明了什么 | 限定到该案例的 Scope |
+| 6 缺席不自动构成反证 | §2.7 detection probability；`absence_assessment` | 撤回负证据，改记 silent_evidence |
+
+## B.7 使用场景
 
 同一套模型可直接用于：
 
@@ -1449,23 +1647,33 @@ Research Review            审论文与研究报告的传播版本
 AI Capability Assessment   审「模型/平台能不能做 X」
 ```
 
-## B.7 v2.1 相对 v2.0 的变更（本次为最后一轮结构改动，其后冻结）
+## B.8 v2.1 变更总账（本次为最后一轮结构改动，其后冻结）
 
-v2.0 的方法论已成立，本版**不新增检查项**，只做**内部模型的正交化**：
+v2.0 的方法论已成立，v2.1 **不新增检查项**，只做**内部模型的正交化**与**认识论底座的补齐**：
 
 ```text
-正交化      Claim Type × Epistemic Status 拆成两个字段（原为三选一的互斥分类）
-新增        Evidence Sufficiency（§2.9）—— 与 Status、Confidence 并列的第三个结论
-新增        Applicability Conditions（§1.5）—— Scope 回答「到哪里为止」，它回答「拿什么换」
-新增        Outcome Verification（§3.2）—— Successful 必须说明是谁在背书
-新增        Counter Evidence Severity（§2.6）—— 严重度不可平均
-新增        Search Coverage（§2.7）—— 区分「没有证据」与「我们没搜到」
-新增        Negative Claim 取证规则（§1.2）—— 文档沉默不能证明不支持
-解耦        「无反证」从 SUPPORTED 的积极条件改为独立轴 counter_evidence.strength
-概念化      Authority = Expertise × Proximity × Claim-Fit（减 conflict of interest）
-分级        §4.1 工作流按 Claim Type 分三级，不再对每条 Claim 跑完整流程
-澄清        证据缺席降低 Evidence Confidence，不自动推出产品负面结论
+── 原则层（v2.1.1）──
+新增原则 1   结论强度不得超过证据强度（配「证据档位 → 结论上限」表）
+新增原则 3   证据到结论的推理链必须单独审查（配 inferential chain 四段式）
+修正原则 6   缺席的证据不自动构成反证 —— 改为条件化表述：
+             仅当 detection probability 高且 Search Coverage 已覆盖时，缺席才具负证据价值
+重排        原五条 → 六条，顺序即推理主线（Claim → Citation → Inference → Capability/Maturity
+             → Feasibility/Generality → Absence）
+
+── 模型层（v2.1.0）──
+正交化        Claim Type × Epistemic Status 拆成两个字段（原为三选一的互斥分类）
+新增          Evidence Sufficiency（§2.9）—— 与 Status、Confidence 并列的第三个结论
+新增          Applicability Conditions（§1.5）—— Scope 回答「到哪里为止」，它回答「拿什么换」
+新增          Outcome Verification（§3.2）—— Successful 必须说明是谁在背书
+新增          Counter Evidence Severity（§2.6）—— 严重度不可平均
+新增          Search Coverage（§2.7）—— 区分「没有证据」与「我们没搜到」；v2.1.1 补 detection probability
+新增          Negative Claim 取证规则（§1.2）—— 文档沉默不能证明不支持
+解耦          「无反证」从 SUPPORTED 的积极条件改为独立轴 counter_evidence.strength
+概念化        Authority = Expertise × Proximity × Claim-Fit（减 conflict of interest）
+分级          §4.1 工作流按 Claim Type 分三级，不再对每条 Claim 跑完整流程
+澄清          证据缺席降低 Evidence Confidence，不自动推出产品负面结论
 ```
 
 **冻结后的维护约定**：后续若发现新问题，优先改进 **判据的清晰度**（一个字段的边界、一个规则的例外），
 而不是增加**新的维度或新的来源类型**。维度已经足够多；再加维度只会让 Agent 执行时更容易漏项。
+本轮之后，原则层与维度层都视为已收敛。

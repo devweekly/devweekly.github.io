@@ -57,28 +57,31 @@ evidence-and-claim-review                 横切件：审「说法成不成立�
 
 `evidence-and-claim-review` 审说法可信度，`agent-well-architected-assessment` 审控制是否落地，两者互补。
 
-**`evidence-and-claim-review` = v2.1.0**（2026-09-15 两轮：17 条 review → v2.0.0；第二轮 review 做**模型正交化** →
-v2.1.0；已冻结，~1470 行 / 62KB）。**定义以 SKILL.md 为准**，memory 只记「勿回退」的六条：
+**`evidence-and-claim-review` = v2.1.1**（2026-09-15 三轮：17 条 review → v2.0.0；模型正交化 → v2.1.0；
+认识论底座补齐 → v2.1.1；已冻结，~1680 行 / 75KB）。**定义以 SKILL.md 为准**，memory 只记「勿回退」的七条：
 
 - 四层 `1 Claim Model` / `2 Evidence Model` / `3 Reality Model` / `4 Review Workflow` + 附录 A / B。
 - **旧 `S0–S5` 已废**（来源类型/权威性/独立性混在一根轴）。拆为 Source Type `T0–T5`（只是分类）
   ＋ 独立评分的 **Authority** 与 **Independence `IND0–IND5`**；旧 `S0` 按「主体自己的事实 / 对主体的评价」拆成 T0 或 T1。
+- **六条不可违反原则（epistemic constitution，顺序即推理主线，勿重排）**：
+  ① 结论强度不得超过证据强度（配「证据档位 → 结论上限」表）② 引用不是证据，只是入口
+  ③ 证据到结论的推理链须单独审查（inferential chain 四段式）④ capability ≠ maturity ⑤ feasibility ≠ generality
+  ⑥ 缺席不自动构成反证 —— **条件化**：仅当 detection probability 高且 Search Coverage 已覆盖时，缺席才具负证据价值。
+  三者覆盖三个失效模式：Evidence Quality（②）/ Inference Validity（①③）/ Applicability（④⑤）。
 - **Authority 是「对这个问题」而言**：`Expertise × Proximity × Claim-Fit`（按利益冲突扣减）。
   厂商文档对 capability 评 5，对 comparison/maturity 降为 1。
 - **Confidence ≠ Independence**：`FACT/CAPABILITY/LIMITATION` 可 `HIGH + LOW`；
   `PERFORMANCE/MATURITY/COMPARISON/PREDICTION` 不得只凭厂商来源给 High。
-- **v2.1 正交化（核心，勿回退）**：`Claim Type`（问哪类问题）与 `Epistemic Status`（FACT / INFERENCE /
-  PREDICTION / OPINION）是**两个字段**，不再三选一互斥。**三个正交结论** Status × Confidence × **Sufficiency**；
-  **「无反证」已从 SUPPORTED 的积极条件改为独立轴 `counter_evidence.strength`** —— 否则与
-  「缺席的反证 ≠ 反证不存在」自相矛盾。
+- **正交化（勿回退）**：`Claim Type`（问哪类问题）与 `Epistemic Status`（FACT / INFERENCE / PREDICTION / OPINION）
+  是两个字段，不再三选一互斥。**三个正交结论** Status × Confidence × **Sufficiency**；
+  **「无反证」已从 SUPPORTED 的积极条件改为独立轴 `counter_evidence.strength`**。
 - 其余维度（细节见 SKILL）：Scope ＋ **Applicability Conditions**（含未满足 required 则最高
-  CONDITIONALLY_SUPPORTED）、Claim Context、Silent Evidence、**Search Coverage**、Benchmark Validity、
-  Use Case Status、**Outcome Verification**（`Successful` 须说明是谁在背书）、Production Level L0–L6、
-  **Counter Evidence Severity**（Cosmetic → Safety-Security，**严重度不可平均**）；
-  **LIMITATION 专门规则**（只凭「文档没写」最高 INSUFFICIENT_EVIDENCE）；
-  **§4.1 按 Claim Type 分三级**（不再逐条跑完整流程）；**五条不可违反原则**第 5 条 =
-  证据缺席只降低 Evidence Confidence，**不自动推出产品负面结论**。
-- 冻结约定见 **附录 B.7**：后续只改进判据清晰度，不再新增维度或来源类型。
+  CONDITIONALLY_SUPPORTED）、Claim Context、Silent Evidence、**Search Coverage** ＋ `absence_assessment`
+  （detection probability）、Benchmark Validity、Use Case Status、**Outcome Verification**
+  （`Successful` 须说明是谁在背书）、Production Level L0–L6、**Counter Evidence Severity**
+  （Cosmetic → Safety-Security，**严重度不可平均**）；**LIMITATION 专门规则**（只凭「文档没写」最高
+  INSUFFICIENT_EVIDENCE）；**§4.1 按 Claim Type 分三级**；输出模板含 **Principle Check** 一节。
+- 冻结约定见 **附录 B.8**：后续只改进判据清晰度，不再新增维度或来源类型。
 
 ## 4. `temp/` 长期产物
 
@@ -123,11 +126,13 @@ v2.1.0；已冻结，~1470 行 / 62KB）。**定义以 SKILL.md 为准**，memor
 非 LLM Provider 也非数据源插件；推荐自建平台为 Control Plane + Cortex 为辅助 Runtime。
 
 **2026-09-15 用 `evidence-and-claim-review` 审过两轮，产出同目录 `.review.md`（现为 v2.0 口径，已覆盖 v1 版）。
-注意：该文件用的是 v2.0 术语 —— 尚无 Epistemic / Sufficiency / Severity / Applicability / Outcome Verification 字段；
-若要按 v2.1 补齐需再跑一轮。**遗留结论要点（细节以 `.review.md` 为准）：
+注意：该文件仍是 v2.0 术语 —— 尚无 Epistemic / Sufficiency / Severity / Applicability /
+Outcome Verification / absence_assessment 字段；要按 v2.1.1 补齐需再跑一轮。**
+遗留结论要点（细节以 `.review.md` 为准）：
 
 - 硬错：Cortex Search 单服务行数上限写 **400M**，官方为 **<100M**
-- 授权归属写反：Cortex Search 按官方设计以 **owner's rights** 运行，属设计行为 + 需架构缓解，不是「取决于建模对齐」
+- 授权归属写反：Cortex Search 按官方设计以 **owner's rights** 运行，属设计行为 + 需架构缓解，
+  不是「取决于建模对齐」（该句应判 REFUTED）
 - 整体可信度分层：Fact/Capability 高；Maturity 低–中；Comparison 低；Prediction/Strategy 低–中
 - 结构性薄弱：47 条引用全为厂商文档 + Reddit，**零独立 benchmark / 分析师 / cross-vendor 研究**；
   落地证据 Use Case Status 最高 Adopted（约 L4），**L4 ≠ Successful ≠ Enterprise-grade**
