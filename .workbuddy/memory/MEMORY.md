@@ -92,6 +92,11 @@ enterprise-agent-architecture-review   架构是否成立、边界划在哪（12
   └─ agent-well-architected-assessment Scope→取证→五条判定→P0/P1/P2→Remediation
 ```
 
+另有一条**横切** skill（2026-09-15 加）：`evidence-and-claim-review`
+（32 节方法论：Claim 抽取与分类 → S0–S5 来源分级 → 来源与 Claim 对齐 → 时效 → 权威与独立性 →
+反例搜索 → U0–U4 用例分级与 Level 0–5 落地程度 → 七类 theory-practice gap → F/S/R/T 四维 → 保留/限定/降级/删除）。
+它审的是「说法成不成立」，与 `agent-well-architected-assessment`（审「控制有没有做到」）互补，不重叠。
+
 约定：`skills/<name>/SKILL.md`，frontmatter 只要 `name` / `version` / `description`（不加 `agent_created`）。
 **skill 只写流程与判据，不复制 checklist 内容** —— 规范内容一律用文末「数据来源与锚点」表指向
 `temp/agent研究checklist.md`（Q 编号 / 附录 C 节号 / Invariant）与 `temp/agent研究.md`（§N），保持单一真相源。
