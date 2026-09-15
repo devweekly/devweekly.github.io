@@ -57,58 +57,64 @@ evidence-and-claim-review                 横切件：审「说法成不成立�
 
 `evidence-and-claim-review` 审说法可信度，`agent-well-architected-assessment` 审控制是否落地，两者互补。
 
-**`evidence-and-claim-review` = v2.0.0**（2026-09-15 按用户 17 条 review 重写，~960 行 / 38KB）。改动要点：
+**`evidence-and-claim-review` = v2.1.0**（2026-09-15 两轮：17 条 review → v2.0.0；第二轮 review 做**模型正交化** →
+v2.1.0；已冻结，~1470 行 / 62KB）。**定义以 SKILL.md 为准**，memory 只记「勿回退」的六条：
 
-- 四层结构 `1 Claim Model` / `2 Evidence Model` / `3 Reality Model` / `4 Review Workflow` + 附录 A（检索词）/ B（术语与编号）。
-- **旧 `S0–S5` 单一等级已废**（把来源类型/权威性/独立性混在一根轴）。拆为 Source Type `T0–T5`（只是分类）
-  ＋ 独立评分的 **Authority** 与 **Independence `IND0–IND5`**；旧 `S0` 按「主体自己的事实 / 对主体的评价」拆成 T0 或 T1。对照表见附录 B.3。
-- **Authority 是「对这个问题」而言**：厂商文档对 capability 评 5，对 comparison/maturity 降为 1。
-- **Confidence ≠ Independence**（最关键修正）：`FACT/CAPABILITY/LIMITATION` 可 `HIGH + LOW`（厂商即唯一权威源）；
+- 四层 `1 Claim Model` / `2 Evidence Model` / `3 Reality Model` / `4 Review Workflow` + 附录 A / B。
+- **旧 `S0–S5` 已废**（来源类型/权威性/独立性混在一根轴）。拆为 Source Type `T0–T5`（只是分类）
+  ＋ 独立评分的 **Authority** 与 **Independence `IND0–IND5`**；旧 `S0` 按「主体自己的事实 / 对主体的评价」拆成 T0 或 T1。
+- **Authority 是「对这个问题」而言**：`Expertise × Proximity × Claim-Fit`（按利益冲突扣减）。
+  厂商文档对 capability 评 5，对 comparison/maturity 降为 1。
+- **Confidence ≠ Independence**：`FACT/CAPABILITY/LIMITATION` 可 `HIGH + LOW`；
   `PERFORMANCE/MATURITY/COMPARISON/PREDICTION` 不得只凭厂商来源给 High。
-- 打分 `F / S / I / R / T` 五维（v1 无 `I`）；两组正交结论 `Status`（SUPPORTED / CONDITIONALLY_SUPPORTED /
-  CONTESTED / OUTDATED / INSUFFICIENT_EVIDENCE / REFUTED）× `Confidence`（High/Medium/Low/Unknown）。
-- 新增维度：`Scope / Applicability`（证据 scope 是否 ⊇ claim scope）、`Claim Context`（产品/版本/区域/
-  availability GA·Preview·Limited Access/API 面/date_verified）、`Silent Evidence`（写清搜了什么、为何可能搜不到）、
-  `Benchmark Validity`（12 项检查）、`Use Case Status`（Exists→Adopted→Successful→Scaled→Outcome-verified）、
-  `Production Level L0–L6`、Claim Type 增 **LIMITATION**（「不支持什么」是独立类型，不能从「文档没写」反推）。
-- 可执行化：`§4.1 Required Actions`（17 步）+ `§4.2 Stop/Continue Conditions`（何时必须继续搜 / 可收工 / 必须降级）。
-  `§4.7 Claim Record`（YAML）是产物的机器可读形态，后续复用于架构评审 / 技术雷达 / 产品比较。
+- **v2.1 正交化（核心，勿回退）**：`Claim Type`（问哪类问题）与 `Epistemic Status`（FACT / INFERENCE /
+  PREDICTION / OPINION）是**两个字段**，不再三选一互斥。**三个正交结论** Status × Confidence × **Sufficiency**；
+  **「无反证」已从 SUPPORTED 的积极条件改为独立轴 `counter_evidence.strength`** —— 否则与
+  「缺席的反证 ≠ 反证不存在」自相矛盾。
+- 其余维度（细节见 SKILL）：Scope ＋ **Applicability Conditions**（含未满足 required 则最高
+  CONDITIONALLY_SUPPORTED）、Claim Context、Silent Evidence、**Search Coverage**、Benchmark Validity、
+  Use Case Status、**Outcome Verification**（`Successful` 须说明是谁在背书）、Production Level L0–L6、
+  **Counter Evidence Severity**（Cosmetic → Safety-Security，**严重度不可平均**）；
+  **LIMITATION 专门规则**（只凭「文档没写」最高 INSUFFICIENT_EVIDENCE）；
+  **§4.1 按 Claim Type 分三级**（不再逐条跑完整流程）；**五条不可违反原则**第 5 条 =
+  证据缺席只降低 Evidence Confidence，**不自动推出产品负面结论**。
+- 冻结约定见 **附录 B.7**：后续只改进判据清晰度，不再新增维度或来源类型。
 
 ## 4. `temp/` 长期产物
 
 ### `temp/agent研究.md` — Enterprise Agent Platform Risk Architecture Review
 
 单位内部评审文档（保留顾问式「你们」）。5452 行 / 1 H1 + 20 章 + 113 `###`，引用 [1]–[35] 定义数 = 使用数。
+细节以文件本身为准，须记住的顶层判断：
 
 - 最高层原则：**Agent 是不可信的决策参与者，不是安全边界**；边界由 Identity / Policy / PEP / Entitlement /
   Runtime Isolation / Evidence 建立（AWS Lens 原话：Agent 本身不是 trust boundary）
 - 平面模型：**Governance & Enforcement Layer 横切** + Control / Runtime / Data & Capability Plane；出口有
   Retrieval PEP / Tool PEP / Egress PEP；Evidence / Audit Plane 独立于 LangSmith。Policy 归属：AI Platform =
   Model Governance；Agent Platform = Agent/Action Governance；IAM/Data Platform = Enterprise Entitlement；Runtime/PEP = Enforcement
-- 定位 **Runtime-aware, Runtime-independent**；Managed Runtime（Cortex Agents）只能做**边界控制**
+- 定位 **Runtime-aware, Runtime-independent**；Managed Runtime（Cortex Agents）只能做**边界控制**；
+  Snowflake Cortex Agents 是**潜在的第二 Agent Runtime**（非数据源/LLM Provider），需 Runtime abstraction
+  + 「平台权限 + 数据平台原生权限」双层授权
 - **12 条 Architecture Invariants** + **P0 十项**，P0 = architectural prerequisite（未落地 → Production Gate 未满足）
 - 核心结论：技术底座基本完整（AgentCore + LangSmith + PostgreSQL/pgvector + LiteLLM），风险主要是把
   模型/ICT/数据治理/访问控制/第三方/审计要求映射到 Agent 生命周期
-- Snowflake Cortex Agents 是**潜在的第二 Agent Runtime**（非数据源/LLM Provider），需 Runtime abstraction
-  + 「平台权限 + 数据平台原生权限」双层授权。**未完成**：review 建议的「整体 30% 压缩」只做了 8 个概念的局部去重
+- **未完成**：review 建议的「整体 30% 压缩」只做了 8 个概念的局部去重
 
 ### `temp/agent研究checklist.md` — Well-Architected Review Checklist
 
 **正文 = A–L 十二节 120 个问题（`Q001`–`Q120`）**；原 431 项控制条目降为 **附录 D — Evidence Checks**
-（旧编号 `1`–`512` / `P00-nn` / `AD`·`BO`·`TM`·`EV`·`RT` 继续有效）。骨架：H1 + 4 行导航 →
-`# 一、Architecture Review Checklist` → `# 二、Invariants 与 Decision Gates` → 附录 A 补充控制项 →
-B 框架·读法·评分·版本 → C 62 节章节说明 → D Evidence Checks → `# 参考`。
+（旧编号 `1`–`512` / `P00-nn` / `AD`·`BO`·`TM`·`EV`·`RT` 继续有效）。
 
 - **正文零说明**：第一章只允许 标题 / 表格行 / 条目行 / 空行；散文、`>` 引用、层标注、ASCII 图全搬附录 C。
   depth / Stage 写在**节标题**（`## A. … ｜L1 Decision · INIT`）。加条目时不要往正文补说明段落。
-- **条目必带方向标签 + 达标线**：`｜必须：… ｜达标线：…`；方向标签只能取 **必须 / 禁止 / 条件 / 可选** 四选一
+- **条目必带方向标签 + 达标线**：`｜必须：… ｜达标线：…`；标签只能取 **必须 / 禁止 / 条件 / 可选** 四选一
   （条件必须写明，没写清不能判 N/A）；达标线给可核对尺度（per Run·Agent·tenant·dataset + 覆盖 + 频率 + 举证位置）
   并补「什么不算达标」。**不要**用「应为 / 应有」（用户：「AI 味道刺鼻难闻」）。
 - **三个 Review Depth 不是互斥分类**，是同一 control 的三个深度 `L1 Decision` → `L2 Design` → `L3 Evidence`；
   L1 再按 Stage 切 `INIT` / `DESIGN` / `PRE-PROD`，与两个 Gate 对齐。
-- **`Priority` 与 `Requirement Level` 两维度不能互推**（`P0+P1` × `R/RA/Rec` 五种组合都合法），元数据 `[R]`/`[RA]`/`[Rec]`。
-- **主表编号是稳定标识不是流水号**：条目被合并后编号留空、不重排、不重用；去向写在附录 B.12 对照表。
-- **统计数字是 informational metadata**：增删条目只更新 B.4 编号总账（唯一权威数字来源），不为同步数字全库改数。
+- **`Priority` 与 `Requirement Level` 两维度不能互推**（`P0+P1` × `R/RA/Rec` 五种组合都合法）。
+- **主表编号是稳定标识不是流水号**：合并后编号留空、不重排、不重用，去向写附录 B.12；
+  **统计数字是 informational metadata**，增删条目只更新 B.4 编号总账（唯一权威数字来源）。
 - **批量补注**：子代理只产出 `ANN = {"<id>": "…"}` 字典，主代理用脚本插入 —— 保证原问题文字零漂移 + 覆盖性可机器判定。
 
 ### `temp/Snowflake Agent体系-成稿.md` — Cortex Agent 体系分析
@@ -116,8 +122,9 @@ B 框架·读法·评分·版本 → C 62 节章节说明 → D Evidence Checks 
 博客主题长文（v2.1，14 节 + 47 条引用）。核心判断：Cortex Agent 是 **Data-Native Managed General Agent Runtime**，
 非 LLM Provider 也非数据源插件；推荐自建平台为 Control Plane + Cortex 为辅助 Runtime。
 
-**2026-09-15 用 `evidence-and-claim-review` 审过一轮，产出同目录 `.review.md`（现为 v2 口径，已覆盖早期 v1 版）。**
-遗留结论要点（细节以 `.review.md` 为准）：
+**2026-09-15 用 `evidence-and-claim-review` 审过两轮，产出同目录 `.review.md`（现为 v2.0 口径，已覆盖 v1 版）。
+注意：该文件用的是 v2.0 术语 —— 尚无 Epistemic / Sufficiency / Severity / Applicability / Outcome Verification 字段；
+若要按 v2.1 补齐需再跑一轮。**遗留结论要点（细节以 `.review.md` 为准）：
 
 - 硬错：Cortex Search 单服务行数上限写 **400M**，官方为 **<100M**
 - 授权归属写反：Cortex Search 按官方设计以 **owner's rights** 运行，属设计行为 + 需架构缓解，不是「取决于建模对齐」
