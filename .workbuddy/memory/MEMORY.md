@@ -9,6 +9,9 @@ Astro (AstroPaper) 技术博客，域名语义「Dev Weekly」，作者笔名 `W
 - 命名：周报 `YYYYMMMD.md`（如 `2026Aug31.md`）；主题长文用 slug（如 `ai-courses.md`）
 - frontmatter：`author: W` / `featured: false` / `draft: false`
 - 周报结构：`### AI and Programming` + `### Others`，条目 `[标题](url)` + 简短中文说明，每区块留约 20 行 `[]()` 占位
+- **frontmatter 是 build 硬门**：`pubDatetime` 必须是合法 ISO 时间戳。写成 `2026-09-014`（三位数日期）
+  会被 YAML 当字符串，`z.date()` 校验失败 → `InvalidContentEntryDataError`，**整站 build 退出 1 且 CI 全红**。
+  排查入口：`gh run view <id> --log-failed | grep -iE "error|exit code"`。
 - **周报只建空白骨架，不填充内容**（用户原话「去掉填充的假内容！我自己会填！」）；主题长文才允许搜网络填真实内容
 - 主题长文 tag 用主题词（`ai` / `agent` / `interview`），不用 `weekly`
 - 发布：Astro 静态站，`pubDatetime` 只是元数据；CI 按 push 触发即推即发 —— 要「周几才出现」必须在部署侧加发布窗口
@@ -48,6 +51,13 @@ evidence-and-claim-review                 横切件：审「说法成不成立�
 ```
 
 前者审架构，`agent-well-architected-assessment` 审控制是否落地，`evidence-and-claim-review` 审说法可信度，三者互补。
+
+**第三方 skill**：`skills/typesafe-ai`（TypeSafe AI，MIT，来自 `typesafe-ai/skills`）。
+`.workbuddy/skills/typesafe-ai` 是指向 `skills/typesafe-ai` 的**软链** —— WorkBuddy 只加载 `.workbuddy/skills/`，
+用软链避免两份副本漂移。装第三方 skill 用 `npx -y skills add <repo> -s <skill> -y --copy`；
+**该 CLI 会往项目写十来个 agent 目录**（`.agents` / `.claude/skills` / `.codebuddy` / `.kiro` / `.trae/skills` …
+外加 `skills-lock.json`），装完必须清理。**坑：清理前先看 `git status`** —— 这些目录里可能有已跟踪文件
+（本项目 `.commandcode/taste/taste.md` 被这类清理误删过，靠 `git checkout --` 恢复）。
 
 **`evidence-and-claim-review` = v2.1.1**（2026-09-15 三轮：17 条 review → v2.0.0；模型正交化 → v2.1.0；
 认识论底座补齐 → v2.1.1；~1680 行 / 75KB）。定义以 SKILL.md 为准，memory 只记「勿回退」的六条：
