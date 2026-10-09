@@ -1440,6 +1440,162 @@ Oracle 中的表数据可能比较容易导出，但 Oracle 上已有的逻辑�
 
 ---
 
+## 二十二、Vendor 文件放在公司 AWS 账号的 S3，让 Snowflake 直接查询：架构、要求与限制
+
+本章讨论一个很实用的方案：Vendor 通过文件交付数据，企业将文件安全接收到自己控制的 AWS 账号和 S3 Bucket，再让 Snowflake 通过 External Table 或 Iceberg 查询。这个方案可以减少数据复制，但前提是网络、权限、文件格式、元数据刷新与数据质量都设计正确。
+
+### 22.1 先回答核心问题：是否可行？
+
+**可行。S3 Bucket 可以属于公司自己的 AWS 账号，也可以与 Snowflake 所在的账号不同。Bucket 不需要设成公共可读。** Snowflake 可以通过 Storage Integration 获得经授权的 S3 访问能力，再创建 External Stage 和 External Table 查询文件；Iceberg 则需要额外具备 Iceberg 表格式与目录元数据。
+
+这里有三个容易混淆的边界：
+
+1. **S3 属于公司账号，不等于 Snowflake 在公司防火墙内运行。** Snowflake 是独立的托管服务。Snowflake 访问 S3 的网络路径需要单独设计，不能假设流量自动经过公司的本地防火墙或公司 VPC 中的某个 Endpoint。
+2. **Private Bucket 不等于必须使用 PrivateLink。** 即使 Bucket 没有公共读权限，也可以通过 HTTPS、IAM 和 Storage Integration 安全访问 S3。PrivateLink 是进一步限制网络路径的选项，并有 Snowflake Edition、区域和额外费用要求。
+3. **External Table 不等于数据已加载进 Snowflake 原生表。** External Table 让 SQL 可以查询 S3 中的文件，但不把文件内容复制到 Snowflake 原生存储；查询性能与可用的查询优化能力可能不同于原生表。
+
+官方参考：[配置 Snowflake 安全访问私有 S3](https://docs.snowflake.com/en/user-guide/data-load-s3-config)、[S3 External Tables](https://docs.snowflake.com/en/user-guide/tables-external-intro)、[Iceberg 外部存储](https://docs.snowflake.com/en/user-guide/tables-iceberg-managing-external-volumes)。
+
+### 22.2 推荐架构：从 Vendor 到 S3，再到 Snowflake
+
+~~~mermaid
+flowchart LR
+    V[Vendor 文件源] -->|SFTP / FTPS，或受控拉取| L[接入端点 / 文件接收任务]
+    L --> I[S3 landing prefix]
+    I --> Q[完整性校验、恶意文件检查、格式/schema/批次校验]
+    Q -->|通过后发布| R[S3 ready prefix]
+    Q -->|失败| E[隔离区 / quarantine]
+    R --> ST[Snowflake Storage Integration]
+    ST --> IAM[AWS IAM 权限与信任关系]
+    IAM --> S3[(公司账号的私有 S3)]
+    S3 --> ET[External Stage + External Table]
+    S3 --> IC[Iceberg Table + Catalog / External Volume]
+    ET --> SQL[Snowflake SQL / JOIN / 报表]
+    IC --> SQL
+    SQL --> G[业务模型、质量校验、Serving Dataset]
+~~~
+
+建议把 S3 的 landing 与 ready 分开。文件刚开始上传时先写入落地区；通过完整性校验后，再发布到查询目录。这样可以减少 Snowflake 刚好查询到半个文件、错误文件或未完成批次的风险。
+
+如果供应商主动把文件推送到公司，可以评估 **AWS Transfer Family + S3**。Transfer Family 支持 SFTP、FTPS 和 FTP，并可将接收的数据写入 S3。如果公司需要主动去 Vendor 的 FTP/SFTP 服务器拉取，则用受控的定时传输任务或现有托管传输工具执行拉取，再写入 S3；这与建立一个供供应商上传的 Transfer Family Endpoint 是不同的部署方向。
+
+**不建议使用未加密的普通 FTP 传输敏感 Vendor 数据。** 应优先使用 SFTP 或 FTPS，核对服务器身份，使用密钥或强认证，并控制可访问路径。AWS 文档说明，中断的 Transfer Family 上传可能留下部分对象，所以接收端不能仅凭“文件名出现了”就认定批次完整。
+
+参考：[AWS Transfer Family：SFTP、FTPS、FTP 端点](https://docs.aws.amazon.com/transfer/latest/userguide/sftp-for-transfer-family.html)、[Transfer Family 文件传输行为](https://docs.aws.amazon.com/transfer/latest/userguide/transfer-file.html)。
+
+### 22.3 Snowflake 怎样访问公司账号里的私有 S3？
+
+主流做法是 **Storage Integration + AWS IAM 权限**，而不是把长期 AWS Access Key / Secret Key 写进 SQL、连接串或应用配置。官方推荐 Storage Integration，可以避免由每个使用者维护云访问密钥。
+
+概念流程如下：
+
+1. **在 AWS 里为 Snowflake 建立范围受限的访问身份与策略。** 通常为 Snowflake 使用的 S3 访问创建 IAM Role，并仅授予它读取特定 Bucket / Prefix 的权限。
+2. **在 Snowflake 创建 Storage Integration。** 配置关联的 IAM Role ARN，以及允许访问的 S3 路径范围。
+3. **获取 Snowflake 生成的身份信息。** 查看 Integration 的描述信息，取得 Snowflake 的 IAM User ARN 与 External ID 等信息。
+4. **配置 AWS Role 的 Trust Relationship。** 允许指定 Snowflake 身份在指定 External ID 条件下 assume role；避免宽泛地允许任意外部主体或整个 Snowflake 账户访问。
+5. **在 Snowflake 创建 External Stage。** Stage 指向 S3 Bucket 路径，并引用 Storage Integration 与明确的文件格式。
+6. **创建 External Table 并验证。** 先通过 Snowflake 的验证函数/对象描述与小文件查询检查访问权限，然后进行数据行数、字段类型、日期、金额及文件错误测试。
+
+读取 S3 常见的最小权限包括 s3:GetBucketLocation、s3:ListBucket、s3:GetObject 和 s3:GetObjectVersion。只读查询不应该因为图方便就授权 PutObject 或 DeleteObject。如果使用 SSE-KMS 客户管理密钥，还要为相应访问身份配置 KMS 解密权限和 Key Policy。
+
+建议按数据域隔离前缀，例如：
+
+- s3://company-vendor-data/vendor_a/reference/
+- s3://company-vendor-data/vendor_a/ratings/
+- s3://company-vendor-data/vendor_b/prices/
+
+再通过 STORAGE_ALLOWED_LOCATIONS、AWS IAM Policy、Bucket Policy 和 Snowflake 的对象权限将范围缩小到真正需要的路径。最好使用专门的只读访问身份，避免给读取评级数据的 Snowflake Role 同时授予读取整个企业数据湖的权限。
+
+官方参考：[Snowflake Storage Integration 配置步骤](https://docs.snowflake.com/en/user-guide/data-load-s3-config-storage-integration)、[创建 S3 External Stage](https://docs.snowflake.com/en/user-guide/data-load-s3-create-stage)、[S3 外部存储与 SSE-KMS 权限](https://docs.snowflake.com/en/user-guide/tables-iceberg-configure-external-volume-s3)。
+
+### 22.4 公司要求“数据传输不能经过公网”怎么办？
+
+需要把“Bucket 私有”和“网络路径走私网”分开讨论。
+
+| 安全要求 | 可评估的路径 | 关键说明 |
+| --- | --- | --- |
+| Bucket 不能匿名公开，但允许通过 AWS S3 的 HTTPS 服务端点进行身份验证 | **私有 S3 + Storage Integration** | 可继续启用 S3 Block Public Access，利用 IAM 和 Bucket Policy 控制访问。流量并不因此自动经过企业自建 VPC Endpoint |
+| 安全标准要求 Snowflake 到 S3 的连接也不走公共网络路径 | **Snowflake outbound PrivateLink to S3** | Snowflake 为访问外部 Stage 建立私有连接。当前官方文档注明此能力需要 Business Critical 或更高版本；AWS S3 的跨区域 PrivateLink 不受支持，需要核对 Snowflake 账户与 S3 的区域 |
+| Vendor 文件先进入企业本地网络/DMZ，之后才允许进入云环境 | **受控文件接入与跨边界流程** | 先由获批的文件传输/安全扫描流程把文件写入指定 S3，再由 Snowflake 访问已授权的 S3。Snowflake 不会自动穿过本地防火墙读取本地目录 |
+
+需要强调：**你在自己 VPC 内建立一个普通 S3 VPC Endpoint，不代表 Snowflake 托管服务会自动经由那个 Endpoint 访问 Bucket。** 如需 PrivateLink，需要按 Snowflake 的 outbound private connectivity 指南为 External Stage 进行专门配置，并与 AWS 网络/安全团队一起审核 Bucket Policy。PrivateLink 还会产生 Endpoint 和数据处理相关费用。
+
+Iceberg 使用 External Volume 时也有对应的 S3 私网访问配置；同样要验证账户版本、区域和 Endpoint 状态。
+
+官方参考：
+
+- [Snowflake：AWS External Stage 的 PrivateLink](https://docs.snowflake.com/en/user-guide/data-load-aws-private)
+- [Snowflake：AWS S3 External Volume 的 PrivateLink](https://docs.snowflake.com/en/user-guide/tables-iceberg-configure-external-volume-s3-private)
+- [Snowflake：Private Endpoint 的区域限制](https://docs.snowflake.com/en/user-guide/private-manage-endpoints-aws)
+
+### 22.5 External Table、Iceberg 和 COPY INTO：该选哪个？
+
+| 方式 | 文件是否复制到 Snowflake 原生存储 | 可以与 Snowflake 表 JOIN 吗？ | 最适合的用途 | 重要限制 |
+| --- | --- | --- | --- | --- |
+| **External Table** | 不需要 | 可以 | Vendor 交付普通 CSV、JSON、Parquet 等文件，希望先低成本试用、查询数据 | 只读；查询可能扫描外部文件，性能可能比原生表差；要管理文件元数据刷新和数据质量 |
+| **Externally managed Iceberg Table** | 不要求复制到 Snowflake 原生存储 | 可以 | 数据已符合 Iceberg 格式，且有可访问的 Iceberg Catalog / REST Catalog | 必须能读取当前 Iceberg Metadata、Manifest 与数据文件；Snowflake 对外部管理的 Iceberg 表提供的写入/平台能力受限，通常应视作读取外部表 |
+| **Snowflake-managed Iceberg Table + External Volume** | 数据/元数据保存在企业自己的云存储中，但表的 Catalog 与生命周期由 Snowflake 管理 | 可以 | 企业希望数据留在自己的 S3，同时用 Snowflake 管理 Iceberg 表 | 仍需创建真正的 Iceberg 表并让 Snowflake 管理其表元数据；不是任意文件丢进 S3 就自动成为 Iceberg |
+| **COPY INTO Snowflake 原生表** | 是 | 可以 | 高频报表、复杂 JOIN、严格性能要求、需要稳定的治理和数据质量流程 | 需要导入与更新流程；数据在目标侧形成另一份持久化副本，增加计算与存储成本 |
+
+**最重要的差异：Iceberg 不是“另一种 Parquet 文件格式”。** Iceberg 是有表元数据、Manifest、Snapshot 和 Catalog 约定的开放表格式。供应商只给你几个 CSV 或 Parquet 文件，并不足以直接创建一张可查询的 Iceberg 表。要走 Iceberg 路线，供应商必须已提供符合规范的 Iceberg 表和可访问的 Catalog，或者企业用 Spark/Glue/其他支持 Iceberg 的写入引擎，或 Snowflake-managed Iceberg 的写入流程，把数据发布成真正的 Iceberg 表。
+
+如果 Vendor 文件是普通 CSV/Parquet，建议先比较 External Table 与 COPY INTO 原生表，不要为了使用 Iceberg 而把简单的文件交付改造成复杂的 Lakehouse 管道。
+
+官方参考：[External Tables 概览](https://docs.snowflake.com/en/user-guide/tables-external-intro)、[Iceberg 存储选项](https://docs.snowflake.com/en/user-guide/tables-iceberg-storage)、[Iceberg Tables](https://docs.snowflake.com/en/user-guide/tables-iceberg)。
+
+### 22.6 External Table 的刷新与一致性：文件到了，不代表表马上就完整可用
+
+External Table 需要让 Snowflake 知道外部文件的元数据。S3 的新文件通常可以通过 Event Notification + SQS（也可结合已有 SNS 事件分发）触发自动刷新；也可以按批次由作业手动执行 ALTER EXTERNAL TABLE ... REFRESH。这是**外部表文件引用/元数据的刷新**，不是把全部文件装载为 Snowflake 原生表。
+
+建议将刷新和 Vendor 文件的“完整批次发布”关联起来：
+
+1. Vendor 文件上传到 landing 前缀。
+2. 传输完成后生成 manifest 或 _SUCCESS / .done 标记；记录文件名、字节数、行数、校验和、业务日期和 schema 版本。
+3. 校验任务确认文件完整、字段格式符合约定、批次行数和关键汇总合理。
+4. 只有完整批次才发布到 ready 前缀，之后通知或刷新 External Table。
+5. 查询和报表显式使用业务日期/批次版本。不能因为文件较新就直接假设其与同一业务批次的其他文件完全一致。
+6. 为坏文件、重复批次、迟到文件和重发文件设计隔离及重跑流程；保留可用于追溯的 manifest 和原始文件版本。
+
+External Table 直接扫描文件时也要特别小心数据质量：Snowflake 文档指出，如果扫描外部文件遇到错误，某些情形下会跳过文件或返回部分扫描得到的数据；非法 UTF-8 字符也可能造成记录没有被返回。对于金融、监管或需要严格完整性的报表，不要把“SQL 成功返回”当作整批数据完整的证明，必须有文件完整性检查与业务对账。
+
+对于 Parquet 文件，合理的文件大小、row group、按日期等分区的目录组织，以及在过滤中使用分区列，都影响外部表查询效率。不要为每条记录生成一个独立小文件；文件过多会增加元数据管理与调度负担。若某份 Vendor 数据被频繁查询，且外部表的查询性能无法满足 SLA，就把需要的字段/范围复制或预计算进 Snowflake 原生数据集，或者考虑真正符合条件的 Iceberg 表。
+
+参考：[S3 External Table 自动刷新](https://docs.snowflake.com/en/user-guide/tables-external-s3)、[自动刷新概览](https://docs.snowflake.com/en/user-guide/tables-external-auto)、[External Table 的查询行为与文件限制](https://docs.snowflake.com/en/user-guide/tables-external-intro)。
+
+### 22.7 文件接入常见安全与运维检查
+
+上线前至少检查以下内容：
+
+- **传输：** 使用 SFTP/FTPS 或受控安全通道；避免把 FTP 密码放在脚本、命令行日志或文件名中。
+- **落地区隔离：** Vendor 写入区与 Snowflake 可查询的 Ready 区分开；不要让未校验的半成品文件直接进入报表查询路径。
+- **文件真实性与完整性：** 校验供应方、批次标识、文件大小、校验和、行数、格式、schema 版本和业务时间范围。
+- **S3 权限：** 开启 Block Public Access；Snowflake 只读身份限制到所需 Bucket/Prefix；保留 CloudTrail / S3 数据访问审计，并审核 Bucket Policy。
+- **静态加密：** 采用企业要求的 SSE-S3 或 SSE-KMS。使用客户管理的 KMS Key 时，确认 Snowflake 所用 IAM 身份有正确的解密权限，且 Key Policy 允许该访问。
+- **区域与费用：** 优先评估让 S3 与 Snowflake 账户处于同一 AWS 区域，特别是需要 PrivateLink 时；跨区域可能带来云服务数据传输费用与额外时延。
+- **文件生命周期：** 约定原始文件、Ready 数据、历史快照和失败文件的保留策略；不要在审计或回放需要之前自动删除文件。
+- **授权合同：** 确认 Vendor 合同允许将文件放入企业 S3，允许 Snowflake 访问、缓存/持久化、历史保留，以及允许哪些内部用户与服务消费。
+- **质量与恢复：** 可重复处理同一批次；重复投递不产生重复计数；文件被撤回、重发、迟到或格式升级时有明确处理方式。
+
+### 22.8 推荐分阶段实施
+
+**阶段一：External Table 小规模 PoC**
+
+选一个数据量适中、非最高敏感、可获得明确数据字典的 Vendor 数据集。使用私有 S3 前缀、只读 Storage Integration 和 External Stage，定义 External Table。验证 Snowflake 能读取文件、能与内部表 JOIN、文件追加和刷新是否生效，并与 Vendor 提供的行数和汇总做对账。
+
+**阶段二：引入完整批次发布与权限流程**
+
+加上 landing/ready 隔离、manifest、校验和、文件质量测试、事件刷新和故障告警。对外部表只授予需要的消费角色，敏感原始路径不直接授予报表用户。
+
+**阶段三：按真实查询性能决定是否物化**
+
+用真实 SQL 测量扫描量、查询时间、并发和费用。如果低频查询已满足 SLA，保留 External Table；若大量报表频繁 JOIN 同一份 Vendor 数据，考虑仅将常用字段/范围通过 COPY INTO 加载至 Snowflake 原生表，或在有多引擎数据共享需求时引入 Iceberg。不要单凭“数据不大”或“文件格式是 Parquet”就决定用哪一个。
+
+**阶段四：需要跨引擎共享时再上 Iceberg**
+
+只有在明确存在 Athena、Spark、DuckDB 等多个计算引擎要访问同一份可治理数据，或 Vendor 本身已经提供 Iceberg 数据集时，才为 Iceberg 增加 Catalog、快照管理、文件维护与兼容性验证。对于单一 Snowflake 消费者、定时交付的普通 Parquet 文件，External Table 或原生表往往更容易运营。
+
+---
+
 ## 总结
 
 对有 PostgreSQL 和 SQL 基础的团队，推荐的学习和落地顺序不是先研究全部 Snowflake 功能，而是：
@@ -1452,6 +1608,7 @@ Oracle 中的表数据可能比较容易导出，但 Oracle 上已有的逻辑�
 6. **形成权限、数据质量、成本和故障恢复机制后扩展到更多表。**
 7. **Vendor 数据先选共享、外部文件、按需 API 或持久化同步的方式，不默认复制全部数据；先核对合同和历史可重现要求。**
 8. **Oracle 数据按表和 SLA 规划全量与增量，不必整库搬迁；重点验证快照/CDC 衔接、XStream 许可、DELETE/TRUNCATE 和 SQL/PLSQL 逻辑重写。**
+9. **Vendor 文件落在公司私有 S3 后可以由 Snowflake 直接查询，但需配置 Storage Integration、IAM 最小权限、External Table 元数据刷新和批次完整性校验；普通 Parquet/CSV 不会自动成为 Iceberg。**
 
 最值得避免的三种错误是：把 CDC 事件当成已经还原好的业务表；为了追求“实时”而接受没有业务价值的成本；以及在没有业务对账、历史语义和恢复流程的情况下，直接让 BI 切换到新库。
 
