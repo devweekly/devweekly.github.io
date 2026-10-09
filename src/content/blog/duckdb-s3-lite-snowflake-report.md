@@ -3,15 +3,14 @@ author: W
 featured: false
 draft: false
 description: 用 DuckDB + S3 搭一个轻量版 Snowflake
-pubDatetime: 2026-10-09T02:02:03Z
+pubDatetime: 2026-10-08T02:02:03Z
 title: 用 DuckDB + S3 搭一个轻量版 Snowflake
 tags:
   - tech
 ---
 
-# 用 DuckDB + S3 搭一个轻量版 Snowflake：架构、开源项目与落地路线
+架构、开源项目与落地路线
 
-> **研究日期：2026-10-09**  
 > **结论先说：能做出“轻量云数仓”，但不是把 DuckDB 指向 S3 就等于 Snowflake。** 真正需要补齐的是表元数据和事务、统一 SQL 服务入口、权限治理、查询调度与隔离、缓存/文件整理、监控和运维。若主要是中小规模分析、批处理和 Agent/BI 查询，这条路线很有价值；若要求大查询跨多台机器并行、极高并发、开箱即用的企业治理和 SLA，就得考虑 Trino 等分布式引擎，或直接用托管数仓。
 
 ---
@@ -956,7 +955,734 @@ Netflix 工程团队公开介绍了基于 Maestro 和 Apache Iceberg 的增量�
 
 
 
-## 18. 参考资料（官方文档和项目主页优先）
+
+---
+
+## 18. 在 AWS 上如何落地：RDS for PostgreSQL + DuckDB + S3（不用 Aurora）
+
+本章给出一套以 AWS 原生服务为主、但**数据库只使用标准 Amazon RDS for PostgreSQL，不使用 Aurora** 的实现方案。目标不是把所有计算塞进 RDS，而是让 RDS 专心管理表元数据和事务，让独立的 DuckDB 计算进程读取 S3 上的 Parquet 数据。
+
+先说推荐结论：
+
+> **第一版推荐：RDS for PostgreSQL（DuckLake Catalog）+ S3 + ECS Fargate 上的 DuckDB Worker + SQS 查询队列 + ECS 上的 HTTPS API + CloudWatch / IAM / KMS。批处理和文件维护可逐步加入 AWS Batch 与 Step Functions。**
+
+这条路线主要依赖 DuckDB 的 DuckLake、Postgres 和 AWS 扩展，不需要在 RDS 里安装 DuckDB。DuckLake 官方把 PostgreSQL 作为多用户/远程客户端场景的 Catalog 候选；DuckDB 进程通过 postgres 扩展访问 Catalog，通过 AWS / S3 能力访问对象存储。[DuckLake：选择 Catalog 数据库](https://ducklake.select/docs/stable/duckdb/usage/choosing_a_catalog_database)
+
+### 18.1 先选清楚：RDS 在这套架构里究竟做什么
+
+这里的 RDS 是普通 PostgreSQL 托管数据库，主要存放：
+
+- DuckLake 的表元数据、快照、Schema、数据文件清单和其他事务管理信息；
+- 必要的服务管理数据，例如查询任务状态、幂等键和任务租约。建议放在独立数据库或独立 Schema，并使用单独的数据库角色；
+- 少量治理配置，例如数据集注册、表的业务说明和授权映射（如果不使用单独的治理服务）。
+
+**RDS 不负责读取每条查询需要的全部 Parquet 文件，也不负责运行 DuckDB 分析引擎。** 数据文件在 S3，DuckDB Worker 在 ECS 容器中执行 SQL。查询计划需要表状态时，Worker 访问 RDS；需要真正的数据列时，Worker 直接从 S3 读取。
+
+这种职责划分很关键，因为它避免把高吞吐的分析扫描压到 PostgreSQL 上，也避免把 DuckDB 当成一个必须放进 RDS 主机内部的扩展。
+
+#### 为什么不能简单地在 RDS 里“装上 DuckDB”？
+
+Amazon RDS 是托管服务，不提供数据库主机的直接操作系统访问，并且 PostgreSQL 扩展必须在 AWS 对相应 RDS PostgreSQL 版本支持的范围内。[RDS for PostgreSQL 文档](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_PostgreSQL.html) · [RDS 支持的扩展](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL.Concepts.General.FeatureSupport.Extensions.html)
+
+像 pg_ducklake、pg_lake 这类方案会涉及服务器端 PostgreSQL 扩展、原生代码或 shared_preload_libraries 等安装条件。**不要假定它们能直接安装在任意标准 RDS PostgreSQL 实例上**；上线前必须逐项核对目标 PostgreSQL 版本的 AWS 扩展支持清单，以及项目对后台进程和参数的要求。
+
+如果明确要使用这些 PostgreSQL 服务器端扩展，但 AWS RDS 不支持对应组件，就不是“调几个参数”能解决的问题。那可能需要换成项目明确支持的托管数据库，或者自己管理 PostgreSQL 主机——但后一种就不符合本章“只用 RDS”的约束。
+
+本章的主路线绕过了这个限制：**RDS 只提供标准 PostgreSQL Catalog；DuckLake、DuckDB、S3 访问扩展全部安装在你控制的 DuckDB Worker 容器中。** 这并不代表所有功能都自动兼容，仍然要固定版本并测试 DuckDB 扩展到 RDS 的连接、事务、TLS 与故障恢复。
+
+### 18.2 推荐的 AWS 架构图
+
+下面按“内部团队、BI、Agent 或数据应用通过 HTTPS 提交查询”的方式画第一版。为避免把长期查询绑在一次 HTTP 请求上，API 负责提交任务和查看状态；真正的查询由异步 Worker 执行。
+
+~~~mermaid
+flowchart TB
+    C[内部用户 / BI / Agent / Notebook] --> IDP[公司 IdP / OIDC]
+    C --> ALB[Internal ALB / HTTPS]
+    ALB --> API[ECS Fargate<br/>Query API / Gateway]
+    API --> AUTH[身份校验、SQL 策略、数据集权限、配额]
+    AUTH --> Q[SQS Query Queue<br/>任务状态与重试]
+    AUTH --> CTRL[(RDS PostgreSQL<br/>服务控制表 / 查询状态)]
+    
+    Q --> W1[ECS Fargate<br/>DuckDB Worker A]
+    Q --> W2[ECS Fargate<br/>DuckDB Worker B]
+    Q --> WN[ECS Worker Pool<br/>按队列扩缩容]
+    
+    W1 --> CAT[(RDS PostgreSQL<br/>DuckLake Catalog)]
+    W2 --> CAT
+    WN --> CAT
+    
+    W1 --> S3[(Amazon S3<br/>Parquet / DuckLake 数据)]
+    W2 --> S3
+    WN --> S3
+    
+    W1 --> TMP[容器临时盘<br/>DuckDB Spill / Cache]
+    W2 --> TMP
+    API --> RESULT[S3 查询结果区]
+    W1 --> RESULT
+    W2 --> RESULT
+    WN --> RESULT
+    API --> URL[短时有效的下载 URL / 分页结果]
+    RESULT --> URL
+    
+    S3 --- VPCE[S3 Gateway VPC Endpoint]
+    W1 --- VPCE
+    W2 --- VPCE
+    WN --- VPCE
+    
+    MAINT[EventBridge Schedule / Step Functions] --> BATCH[AWS Batch<br/>导入、Compaction、快照与文件维护]
+    BATCH --> CAT
+    BATCH --> S3
+    
+    API --> OBS[CloudWatch Logs / Metrics / Alarms]
+    W1 --> OBS
+    W2 --> OBS
+    WN --> OBS
+    API --> SEC[Secrets Manager / KMS / CloudTrail]
+    W1 --> SEC
+    W2 --> SEC
+    WN --> SEC
+~~~
+
+这张图有几个重要约束：
+
+1. **RDS 和 ECS Worker 都放在私有子网。** 不要把数据库公开到互联网。RDS 安全组只允许指定的 API/Worker 安全组访问 PostgreSQL 端口。
+2. **DuckDB Worker 自己通过 IAM 身份读写 S3。** 不需要将 S3 长期密钥存放在 RDS Catalog 中，也不要将密钥传给用户或 Agent。
+3. **SQS 只负责任务排队，不是事务数据库。** 每条查询仍需有稳定的 Query ID、幂等处理、执行租约、状态变更和失败后的重试规则。
+4. **结果文件放在独立的 S3 前缀或 Bucket。** 结果下载需检查用户是否仍有权限，再生成有过期时间的预签名 URL；不能把内部数据的永久公开链接返回给客户端。
+5. **控制面与湖仓元数据逻辑分开。** 初期可在同一 RDS 实例使用不同数据库/Schema 和数据库角色，但这只是逻辑隔离；它们仍共享同一实例的 CPU、内存、连接额度和故障域。
+
+### 18.3 AWS 服务应该如何选
+
+| 层次 | 第一版建议 | 为什么选它 | 什么时候考虑替代 |
+|---|---|---|---|
+| PostgreSQL Catalog | **Amazon RDS for PostgreSQL，生产建议 Multi-AZ DB instance** | AWS 管理备份、软件维护和故障切换；DuckLake 能使用 PostgreSQL 作为 Catalog | 当 Catalog CPU、内存、I/O 或事务吞吐成为瓶颈时，先扩实例或优化元数据访问；需要读扩展时再评估 Read Replica，但不能把异步副本盲目用于需要最新状态的 Catalog 操作 |
+| 数据文件 | **Amazon S3** | 持久、弹性对象存储，适合 Parquet 等数据文件和查询结果 | 如果需本地开发，可用 MinIO；生产与开发端点、凭证、桶策略要分别配置 |
+| API / Gateway | **ECS Fargate 上的 FastAPI/Node.js 服务 + Internal ALB** | 容易部署 HTTP 查询 API、身份校验、队列、结果轮询和审计 | 若已有标准 API 平台，可以使用 API Gateway；但长查询不要依赖单个请求一直等到完成 |
+| DuckDB 计算 | **ECS Fargate Worker 池** | 无需管理 EC2 主机，适合中小规模、资源边界清楚的独立查询 | 大查询 Spill 很多、需更大临时盘或专用 CPU/本地盘时，转向 ECS on EC2；如果公司已经标准化 Kubernetes，再使用 EKS |
+| 排队 | **Amazon SQS** | 把突发请求和实际计算容量解耦，支持重试、死信队列和队列长度监控 | 不要一开始就自建复杂调度平台；如果必须复杂依赖、优先级或严格公平调度，再考虑扩展控制面 |
+| 批处理与维护 | **AWS Batch + EventBridge；复杂依赖可用 Step Functions** | 适合批量导入、重算、Compaction、过期快照、定期质量检查 | 若已经有 Airflow、Dagster 等工具，避免重复部署两套编排系统 |
+| 凭证 | **ECS Task Role + IAM；RDS 凭证可评估 IAM DB Authentication；必要时 Secrets Manager** | 以临时凭证和最小权限替代硬编码密钥 | 如果连接池或扩展不能正确处理 IAM token 刷新，先修好身份/连接流程，再使用受控的 Secrets Manager 密码作为过渡 |
+| 加密 | **S3 SSE-KMS、RDS 加密、TLS** | 数据文件、元数据和传输链路都需要保护 | 按组织的密钥管理与审计要求决定是否使用独立 KMS Key、跨账户策略和密钥轮换 |
+| 网络 | **VPC 私有子网 + Security Group + S3 Gateway Endpoint** | Worker 访问 S3 不必绕公网或 NAT；安全组可以限制 RDS 入口 | 从其他 VPC/本地网络访问 S3 的场景，可能需要 Interface Endpoint 或其他网络设计 |
+| 可观测性 | **CloudWatch Logs、Metrics、Alarms；必要时接 OpenTelemetry** | 统一查看队列、查询、资源、错误、数据库和 Worker 日志 | 不要只看容器 CPU；必须一起观察 S3 读取、Catalog 延迟、队列等待和临时盘 |
+| 镜像与部署 | **ECR + IaC（Terraform / CDK / CloudFormation）** | 固定镜像和配置，重复创建环境，支持回滚 | 不要把只在开发机验证过的容器直接当成生产部署工件 |
+
+关于 RDS 的高可用要有准确预期：**Multi-AZ DB instance 的备用实例用于故障切换，不是可供你平时分担只读查询的副本。** 如果要读扩展，需要另行评估 Read Replica；而 DuckLake Catalog 读取表状态的路径还必须考虑一致性，因此不要把 Catalog 查询随意路由到可能存在复制延迟的只读副本。[AWS：RDS Multi-AZ DB instance](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZSingleStandby.html)
+
+### 18.4 网络与安全组：建议在第一天就做对
+
+可以用以下规则作为初始安全基线：
+
+| 资源 | 网络位置 | 允许的入站 | 不应该允许的事情 |
+|---|---|---|---|
+| Internal ALB | 私有子网或按企业入口方案部署 | 来自 VPN、企业网络、受控应用入口 | 无需公开给整个互联网 |
+| Query API | 私有子网 ECS Service | 仅来自 ALB 的应用流量 | 不开放任意管理端口 |
+| DuckDB Worker | 私有子网 ECS Service/Task | 通常不接收用户直接入站连接；从 SQS 拉取任务 | 不向外部客户端暴露随意执行 SQL 的端口 |
+| RDS PostgreSQL | 私有数据库子网 | 仅允许指定 API/Worker 安全组到 5432 | 不设置 0.0.0.0/0；不要给所有 VPC 内工作负载无限制访问 |
+| S3 | S3 Gateway Endpoint + Bucket Policy | Worker 的 IAM Task Role 在授权路径内读写 | 不让所有 Worker 都拥有整个账户所有 Bucket 的访问权 |
+| Secrets Manager / ECR / CloudWatch | 私有网络中的 AWS 服务端点或按需 NAT | 仅允许所需服务调用 | 不为省事而向 Worker 放开任意出站访问 |
+
+AWS 官方建议用安全组引用控制应用服务器到 RDS 的访问；RDS 私有实例只能通过配置好的 VPC 网络路径访问。[AWS：VPC 中访问 RDS 的场景](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_VPC.Scenarios.html)
+
+同区域的 S3 Gateway VPC Endpoint 可以让 VPC 中的流量经路由表访问 S3，而不需要 Internet Gateway 或 NAT Device，并且 Gateway Endpoint 本身没有额外费用。但它是区域性的，也不能覆盖所有跨区域、跨 VPC 或本地网络访问场景。[AWS：S3 Gateway Endpoint](https://docs.aws.amazon.com/vpc/latest/privatelink/vpc-endpoints-s3.html)
+
+还要注意，私有子网并不代表容器不需要访问任何 AWS 服务。Worker 可能需要从 ECR 拉镜像、向 CloudWatch 写日志、从 Secrets Manager 取凭证、访问 STS 等。应按实际依赖选择 Interface Endpoint 或受控 NAT，不要在测试成功后才发现生产环境因无法访问扩展仓库或 AWS API 而启动失败。
+
+### 18.5 DuckDB Worker 怎么访问 S3 和 RDS
+
+Worker 容器中需要锁定 DuckDB 版本和所需扩展版本。基本运行时一般包括：
+
+- **ducklake**：管理 DuckLake 表及事务元数据；
+- **postgres**：访问 RDS PostgreSQL Catalog；
+- **aws** 与相关 S3 能力（例如 **httpfs**）：通过 AWS 凭证链访问 S3；
+- 需要的观测、查询 Profile 和业务 SQL 组件。
+
+DuckDB 的 AWS credential_chain 机制可通过 AWS SDK 支持的身份来源获取凭证，包括环境凭证、实例身份、假定角色和 Web Identity 等；AWS ECS Task Role 会为容器提供任务对应的临时凭证。**推荐让 DuckDB 从 Task Role 获取 S3 权限，不要在镜像、SQL 文件、环境配置或提示词中固化 AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY。** 部署后应通过真实 ECS Task Role 做一次 S3 读、写、拒绝未授权路径的集成测试。[DuckDB AWS 扩展](https://duckdb.org/docs/current/core_extensions/aws) · [AWS ECS Task IAM Role](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html)
+
+一个用于说明组件关系的 SQL 配置示意如下。实际环境要把占位符替换成正式的 RDS Endpoint、数据库名和 S3 Prefix，并按固定版本验证语法与认证流程：
+
+~~~sql
+INSTALL ducklake;
+INSTALL postgres;
+INSTALL aws;
+LOAD ducklake;
+LOAD postgres;
+LOAD aws;
+
+-- 让 S3 凭证来自运行时 AWS 身份，不在 SQL 里放长期密钥。
+CREATE OR REPLACE SECRET lake_s3 (
+    TYPE s3,
+    PROVIDER credential_chain,
+    REGION 'ap-northeast-1'
+);
+
+-- 示例用数据库密码说明 Catalog 连接。生产环境需从受控秘密管理中注入，
+-- 不应将真实密码提交到代码仓库或镜像。
+CREATE OR REPLACE SECRET lake_catalog_pg (
+    TYPE postgres,
+    HOST 'my-rds.xxxxxx.ap-northeast-1.rds.amazonaws.com',
+    PORT 5432,
+    DATABASE 'ducklake_catalog',
+    USER 'ducklake_worker',
+    PASSWORD '<由 Secrets Manager 安全注入>',
+    SSLMODE require
+);
+
+CREATE OR REPLACE SECRET lake_catalog (
+    TYPE ducklake,
+    METADATA_PATH '',
+    DATA_PATH 's3://company-analytics-prod/warehouse/',
+    METADATA_PARAMETERS MAP {
+        'TYPE': 'postgres',
+        'SECRET': 'lake_catalog_pg'
+    }
+);
+
+ATTACH 'ducklake:lake_catalog' AS warehouse;
+USE warehouse;
+
+-- 此后可用 DuckDB SQL 创建/查询受授权的湖仓表。
+-- CREATE TABLE ... / SELECT ...;
+~~~
+
+这里的 CREATE SECRET 只是展示连接结构，**不能把占位符直接复制到生产环境，也不要把静态密码当作唯一认证选项**。DuckDB 官方还记录了通过 aws 与 postgres 扩展使用 RDS IAM Authentication 的方式：由 AWS 凭证链生成短期 IAM 登录 Token，并通过 PostgreSQL Secret 使用和刷新。[DuckDB：RDS IAM Authentication](https://duckdb.org/docs/current/guides/database_integration/rds_iam)
+
+生产上可以优先评估 RDS IAM 数据库认证。如果所使用的 DuckLake Catalog 连接方式、连接池或扩展版本不能可靠刷新 Token，需先解决这个集成问题，再采用 Secrets Manager 维护的数据库密码方案。无论哪种方式，均应建立独立的最小权限数据库角色；不要让所有查询都以数据库管理员身份执行。
+
+另外，S3 的 IAM 权限和 Catalog 的 SQL 权限是两层不同的控制。PostgreSQL 角色限制谁可以读写 Catalog；S3 Task Role 决定 Worker 事实上能对哪些对象执行读写。若所有 Worker 都持有整个 Bucket 的读写权限，即使 Catalog 中设置了表级读取角色，Worker 代码出错仍可能绕过预期边界。需要严格租户隔离时，应采用按环境/租户隔离的 Bucket 或 Prefix、受限 Task Role/短期凭证、独立 Worker 任务，必要时再配合应用层行列权限。
+
+### 18.6 RDS Catalog 的设计和容量边界
+
+不要因为 Catalog 里没有大规模业务明细，就认为它可以随便选一个最小 RDS 实例。Catalog 承担表定义、快照变化、写入提交和部分查询规划信息；并发写入、频繁 Schema 变更或大量小批次写入，都会增加元数据事务压力。
+
+建议做到以下几点：
+
+1. **设置独立的数据库角色。** 至少区分 Catalog 初始化/迁移角色、正常写入角色、只读角色和平台运维角色。不要在每个 Worker 中使用 master user。
+2. **用独立数据库或 Schema 分开控制面与 Catalog。** 查询队列状态、历史日志和 API 审计记录可能增长得很快；不要让它们和湖仓元数据共用一个没有容量规划的业务表空间。相同 RDS 实例可先做到逻辑分离，规模扩大后再评估拆成两台 RDS。
+3. **控制连接数。** DuckDB Worker 数量乘以每个进程创建的 PostgreSQL 连接，可能快速耗尽 RDS 的可用连接。要复用连接、限制连接池，估算高峰连接数，并测试连接重建和故障切换；不要让每个短查询无控制地新建很多 Catalog 连接。
+4. **谨慎使用 RDS Proxy。** 它可以帮助某些连接池场景，但不能替代连接总量和事务行为的设计。事务、会话状态和连接固定行为会影响复用效率，是否加入应基于真实 DuckLake 查询和提交模式测试，而不是默认“接上 Proxy 就解决”。
+5. **不要把异步只读副本随意用作 Catalog 真相来源。** 对刚提交的快照，若读取路径出现复制延迟，可能影响数据可见性或客户端观察到的状态。先保持权威 Catalog 访问指向主实例；只有确认具体操作、隔离语义和复制延迟可以接受后，才考虑特殊只读路径。
+6. **做容量监控。** 至少跟踪数据库连接数、CPU、内存压力、存储延迟、连接等待、锁/事务冲突和故障切换。RDS 规格应以并发元数据操作和真实查询规划行为决定，而不只看数据文件大小。
+7. **把主版本/扩展版本升级当作受控变更。** 固定 DuckDB 与 DuckLake 版本；先在独立 Catalog 和测试数据上升级、读写和恢复验证，再推广到生产。
+
+如果主要查询是复杂分析，而 RDS CPU 却长期很高，第一步应检查是否误把明细数据加载进 PostgreSQL、是否有大量重复的元数据查询、是否创建了过多细碎文件、是否存在过多并发写入；不要只靠不断升级 RDS 实例掩盖架构问题。
+
+### 18.7 ECS Fargate、ECS on EC2 和 EKS 怎么选
+
+DuckDB 的分析执行会占用内存，也可能把中间数据溢写到本地临时盘（spill）。因此容器选型不能只看每个 vCPU 多少钱。
+
+| 选择 | 适合情况 | 优势 | 主要限制与工程注意点 |
+|---|---|---|---|
+| **ECS Fargate** | 第一版、团队不想管理主机、中小型查询、可明确限制单任务资源 | 不必自行管理 EC2 主机；每个 Task 有独立的任务角色和资源配置 | Linux Fargate Task 默认有 20 GiB 临时存储，可配置到 200 GiB；镜像本身也占用空间。大查询的 Spill 可能用完临时盘，需监控和设置限制 |
+| **ECS on EC2** | 查询需要大量临时盘、特定 CPU/内存/本地盘规格、较稳定的持续负载 | 可选实例类型、EBS 或适合的本地临时盘；长期利用率高时可以更好地控制成本 | 要负责容量、补丁、IMDS 和同机容器隔离；不能只给每个任务更大 IAM 权限就认为安全隔离已解决 |
+| **EKS** | 企业已有 Kubernetes 平台和相应运维能力，需要统一编排复杂服务 | 可复用集群策略、Pod 资源、网络和发布机制 | 仅为几个 DuckDB Worker 新建 Kubernetes 平台通常不划算；需要维护节点、存储、调度和升级 |
+| **AWS Batch** | 大量离线 ETL、补数、批量计算、Compaction 和定期维护任务 | 有 Job Queue、计算环境和按需容量；适合可以独立运行、完成后退出的任务 | 不应无脑用来承担所有交互式短查询；作业启动时间、排队、失败重试和重复执行仍需设计 |
+
+Fargate 的临时存储在 Linux 平台版本 1.4.0 及以后默认至少 20 GiB、最高可配置到 200 GiB；容器镜像会占用这部分空间。[AWS：Fargate 临时存储](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/fargate-task-storage.html)。AWS Batch 官方也区分了 Fargate 的基础设施抽象和 ECS/EC2 在实例类型、较大规模工作负载上的灵活性。[AWS Batch：何时使用 Fargate](https://docs.aws.amazon.com/batch/latest/userguide/when-to-use-fargate.html)
+
+**我的建议是从 ECS Fargate 开始，但不要假设它适合任意大小的查询。** 给每个 Worker 设置 DuckDB memory_limit、threads、temp_directory 和最大临时目录占用；这些限额必须与 Fargate/容器实际分配的内存、临时存储和并发数匹配。若现实工作负载需要 200 GiB 以上的临时空间，或希望长期缓存大量热数据，应进行 ECS on EC2 对照测试。
+
+不要让多个容器共享同一个本地 DuckDB 原生数据库文件作为集群数据目录。Worker 本地磁盘应只放缓存和中间结果；已提交的共享表数据及权威 Catalog 状态仍在 S3 + PostgreSQL。
+
+### 18.8 查询 API、排队和执行：不要让 HTTP 请求一直等到 SQL 完成
+
+建议把对外接口设计为异步任务：
+
+1. 客户端调用 POST /queries，提交 SQL、业务目的、期望数据集和必要参数。
+2. Gateway 验证登录身份、表权限、SQL 结构、查询配额和输出限制，为请求分配 query_id。
+3. Gateway 把任务状态写入控制表，并把任务消息投递到 SQS。
+4. Worker 获取任务后登记租约，把 SQL 送到 DuckDB，执行并收集查询 Profile、扫描字节和资源使用。
+5. 小结果按页返回；大结果写入 S3 的结果前缀，客户端通过查询状态 API 获取下载方式。
+6. 任务成功、失败、取消、超时和重试都要写入可查询的状态，不能只依赖容器日志。
+7. 用户再次提交相同任务时，应通过幂等键避免意外重复执行或重复写入。
+
+建议的 API 轮廓：
+
+~~~text
+POST /queries
+  -> { "query_id": "...", "status": "QUEUED" }
+
+GET /queries/{query_id}
+  -> { "status": "RUNNING", "submitted_at": "...", "elapsed_ms": 1200 }
+
+GET /queries/{query_id}/result
+  -> 小结果：分页数据
+  -> 大结果：带过期时间的下载 URL 或结果文件信息
+
+POST /queries/{query_id}/cancel
+  -> 申请取消任务
+~~~
+
+SQS 通常意味着消息至少一次投递，而不是你的查询逻辑只执行一次。要处理重复消息、Worker 退出、可见性超时、重试、死信队列（DLQ）、任务租约过期和任务取消。对于会写入数据的任务，必须把幂等设计落实到写入协议中，不能只依赖 Query ID。
+
+不要允许 Agent 直接提交任意文件路径或完全不受限制的 SQL。应将业务允许访问的表名/视图注册在服务端；解析 SQL 并检查访问对象、危险语句、外部路径、扩展安装、ATTACH、文件写入范围、最大运行时长、输出行数和资源配额。**SQL Gateway 是执行边界，不是简单转发器。** 表格式支持事务也不能代替服务层的权限和租户隔离。
+
+如果必须使用现成 BI 工具通过 PostgreSQL Wire Protocol 连接，还需要额外验证 SQL 方言、系统目录元数据、预编译语句、取消查询、事务和认证兼容。PostgreSQL 协议兼容不等于完整 PostgreSQL 语义。第一版使用 HTTPS 查询 API 往往更容易限制权限和审计；确需 pgwire 时，再独立设计协议入口和身份映射，不要直接把 RDS 暴露给所有分析客户端。
+
+### 18.9 写入、文件布局、Compaction 与 S3 生命周期
+
+S3 上保存文件并不意味着可以完全忽略文件整理。DuckDB 查询成本不仅取决于数据量，还会受到对象数量、文件大小、列布局、分区策略、重复扫描、缓存命中率和远端请求时延的影响。
+
+建议初期落实以下规则：
+
+- **采用 DuckLake 管理正式表。** 不要将生产表仅定义为某个 S3 前缀下的通配符 Parquet 文件。
+- **按查询条件确定分区与排序。** 日期、业务实体等字段是否适合作为分区键，要根据过滤模式、写入模式和基数验证；分区过细也会制造大量小文件。
+- **把小文件合并作为日常维护。** 可以先将约 128–512 MiB 作为压缩后数据文件的实验起始区间，再用自己的数据和并发模式测试，而不是写死为所有表的标准。
+- **为历史快照设置业务保留策略。** 历史版本保留期应覆盖回滚、调查与重跑的需要，同时考虑存储开销。
+- **将 S3 生命周期策略和表格式文件清理分开设计。** 不要对正式表数据前缀盲目设置“超过 30 天全部删除”一类规则；对象仍可能被当前或保留快照引用。
+- **清理流程必须可观测。** 记录合并了哪些文件、删除了哪些文件、执行前后数据量和结果；清理任务失败后应可安全重跑。
+- **区分业务原始数据和可重建的中间结果。** 原始层可以采用更严格的保留和不可变策略；临时结果区则应有明确的过期与清理策略。
+
+### 18.10 备份、故障切换与恢复：RDS 备份不是整套湖仓备份
+
+RDS 自动备份和时间点恢复保护的是 PostgreSQL 实例里的数据。Lakehouse 的数据文件在另一个系统——S3。因此，**只备份 RDS 但不保护 S3 文件，不能保证湖仓可恢复；只保留 S3 文件而没有可恢复的 Catalog，也可能无法准确重建已提交的表状态。**
+
+RDS 支持自动备份、数据库快照和配置的保留期内时间点恢复。[AWS：RDS 自动备份](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithAutomatedBackups.html)。但还需要为 S3 设计单独的保护方案。
+
+建议定义至少三类恢复场景：
+
+| 故障场景 | 必须有的应对方案 |
+|---|---|
+| DuckDB Worker 被终止 | Worker 本地临时文件可丢弃；记录查询状态，按幂等规则重试或标记失败 |
+| RDS 故障切换或 Catalog 误操作 | 应用重新连接 RDS Endpoint；确认连接重试、事务失败后的处理；必要时执行 Catalog 时间点恢复并验证表状态 |
+| S3 文件意外删除、损坏或清理错误 | 使用适合风险要求的 S3 版本控制、复制、备份或保护策略；按表快照/文件引用关系验证恢复结果 |
+
+还要处理一个容易遗漏的交叉故障：如果将 RDS Catalog 恢复到过去的时间点，而 S3 已经按生命周期删除了该时间点需要的文件，就可能恢复出一个引用缺失对象的表。因此，Catalog 恢复策略和 S3 数据保留必须协调制定；不要让对象清理策略短于需要支持的历史恢复窗口。
+
+上线前至少做一次真实演练：恢复 RDS 到备用环境、恢复/验证对应 S3 文件、使用 DuckDB 打开表、比较关键行数和校验结果、执行典型查询。只看控制台显示“备份成功”不等于业务数据已经恢复成功。
+
+### 18.11 监控、审计和故障诊断
+
+应建立统一 query_id，贯穿 Gateway、SQS、Worker、RDS 访问和结果文件。最小日志字段可包括：
+
+- 请求主体/服务账号、租户和授权策略结果；
+- 逻辑数据集、表名与查询使用的快照标识；
+- SQL 哈希或按合规要求保护的 SQL 文本；
+- 排队时间、开始/结束时间、执行状态、取消原因和错误分类；
+- DuckDB Profile、扫描行/字节、输出行数、CPU、峰值内存和临时盘占用；
+- S3 读写结果前缀、请求失败、重试和耗时；
+- RDS 连接失败、等待/超时、事务提交冲突与故障切换；
+- 执行镜像版本、DuckDB/DuckLake 版本以及策略版本。
+
+CloudWatch 监控至少覆盖 SQS 队列深度和最老消息时间、Worker CPU/内存/临时盘、执行时长分布、查询失败率、S3 访问失败和 RDS 连接/CPU/存储指标。对高敏数据，可按合规要求启用与留存适当的 CloudTrail S3 数据事件，并限制谁可以修改或删除审计记录。
+
+**不能把“SQL 已经写进日志”当作完整审计。** 对金融业务还应能解释：谁提交查询、为什么获准、查询时访问了哪些表/快照、实际执行了什么、是否写入数据、结果保存在哪里、谁获取了结果，以及怎样取消或阻断后续执行。
+
+### 18.12 成本与性能：哪些地方最容易意外花钱
+
+AWS 方案的成本至少来自：RDS 实例和存储、Multi-AZ、S3 数据与请求、数据传输、Worker 计算、临时盘或 EBS、日志与指标、SQS、Secrets Manager/KMS、接口端点以及工程运维。
+
+几个有实际影响的选择：
+
+- **Fargate 按需执行与长驻 Worker 池。** 对低频任务，按需容易省掉闲置机器，但启动延迟占比可能很高；对高频短查询，保持一定数量的 Worker 更稳定。需要用负载曲线比较，而不是直接设定“每个请求启动一个 Worker”。
+- **ECS on EC2 的实例利用率。** 持续高负载和需要大量本地临时盘时，EC2 可能更划算；但要计入空闲容量、补丁和节点故障运维。
+- **RDS 规格由元数据事务决定，不是由 S3 数据总量直接决定。** 100 TB 的 Parquet 不代表 Catalog 必须是超大实例；但频繁提交和大量并发 Worker 也可能让小 RDS 成为瓶颈。
+- **S3 请求和扫描字节要一起看。** 读取很多很小的文件、重复做全表扫描或跨区域读取，可能拖慢查询并增加成本。
+- **临时盘与内存限制会影响尾延迟。** 当 DuckDB 大量 Spill 时，Worker 的临时存储和网络读取会成为瓶颈；不能只提高 SQL 并发。
+- **日志不要无限留存。** 明确哪些审计信息必须留存、哪些 Debug/Profile 日志可短期保留，避免将大量逐行日志当成治理方案。
+- **人力是真实成本。** 如果为了省一部分计算费用，最后要维护身份、SQL Gateway、调度器、数据恢复、文件维护和升级，必须把这部分纳入方案比较。
+
+应当用每 1,000 条成功查询的总成本、p95 查询延迟、排队时间、查询失败率、扫描字节和每个业务团队成本进行比较。
+
+### 18.13 实际实施顺序：从最小可用到生产
+
+建议按以下次序交付，避免一次引入太多组件：
+
+**第一步：先跑通 DuckLake + RDS Catalog + S3。** 在一个隔离的测试环境创建 RDS PostgreSQL、S3 测试 Bucket 和 DuckDB Worker。验证 Worker 能通过私有网络连接 RDS、利用 Task Role 读写 S3，并创建/查询一张 DuckLake 表。
+
+**第二步：加入 API 和查询状态。** 使用 ECS 部署 API 服务，先支持身份校验、受限查询和同步短查询；为 Query ID、取消、资源上限和结果大小建立基本规范。
+
+**第三步：再加入 SQS 与 Worker 池。** 把较长查询改为异步执行，完善可见性超时、幂等、失败重试、DLQ、查询取消以及 worker 扩缩容策略。
+
+**第四步：实施文件与数据维护。** 建立导入、Schema 校验、Compaction、快照过期和安全清理流程；用 EventBridge、AWS Batch 或现有的编排工具运行这些作业。
+
+**第五步：补齐生产安全与恢复。** 配置私有子网和 Endpoint、最小权限、TLS、KMS、日志留存、告警、RDS 备份、S3 数据保护和恢复演练。
+
+**第六步：根据实际瓶颈扩展。** 若主要问题是独立查询太多，优化 Worker 池和资源配额；若单条 SQL 需要跨机器执行，再将同一组 SQL 对照测试到 Trino + Iceberg 或 StarRocks/Doris，而不是无限增加 DuckDB Worker。
+
+### 18.14 上线验收清单
+
+| 类别 | 必须验证的事项 |
+|---|---|
+| RDS | 使用标准 RDS PostgreSQL；没有依赖未获支持的原生扩展；有私有网络、TLS、Multi-AZ 或明确的可用性方案 |
+| Catalog | 表和快照元数据能够被多个 Worker 正确读取；提交冲突和失败重试经过验证 |
+| S3 | Worker 使用 Task Role；桶策略和 Prefix 范围最小化；结果区与正式表区隔离；错误删除有恢复办法 |
+| 查询执行 | 内存、线程、临时盘、最大运行时间、输出行数、取消和排队都有上限 |
+| 并发与幂等 | 重复 SQS 消息、Worker 被杀、超时和重试不会导致意外重复提交 |
+| 安全 | Agent 无法通过任意路径或 SQL 越权访问其他数据；数据库角色不使用管理员权限；短期凭证可续期 |
+| 兼容性 | 锁定 DuckDB、DuckLake、PostgreSQL 驱动和容器版本；扩展不依赖运行时临时联网下载 |
+| 运维 | CloudWatch 指标、告警、任务 DLQ、慢查询诊断和版本回滚流程完整 |
+| 恢复 | 演练 RDS 恢复与 S3 文件恢复组合；检查快照、行数和关键业务查询 |
+| 成本 | 分开统计 RDS、Worker、S3 请求/存储/流量、临时盘、日志和运维成本 |
+
+### 18.15 什么时候该换路线？
+
+- **少量用户、低到中等数据量、以聚合和 Join 为主：** RDS Catalog + DuckLake + DuckDB Worker 是一个合理起点。
+- **需要更短的交互延迟和稳定并发：** 先调整长驻 Worker、队列和热数据策略，再评估是否需要更强的查询引擎。
+- **大量小批次写入、CDC 或频繁更新：** 深入测试 pg_ducklake 这类写入路径，但确认能否在你的 RDS 约束内部署；若必须安装 RDS 不支持的服务器端扩展，则这条部署路线不成立。
+- **多引擎读写成为硬需求：** 评估 Iceberg + 支持的 Catalog（比如 REST Catalog 服务或 AWS Glue），不要默认 PostgreSQL 数据库本身就提供了 Iceberg Catalog API。
+- **单条复杂 SQL 需要多机并行：** DuckDB Worker 池不是分布式查询引擎；应评估 Trino + Iceberg、StarRocks 或 Doris。
+- **不希望构建查询服务层：** 应把托管 DuckDB 服务的成本和自建 Gateway、排队、授权、审计及恢复的维护成本一起比较。
+
+**总结：不用 Aurora 并不妨碍搭建一套实用的 AWS 轻量湖仓。** 把标准 RDS PostgreSQL 用作 DuckLake Catalog，把 Parquet 放在 S3，把 DuckDB 放在 ECS 上执行，再用 SQS 与服务层管理查询，完全可以形成清楚的存储、元数据与计算边界。真正决定它能否生产运行的，是私有网络、最小权限、Catalog 连接与事务、Worker 资源限制、S3 文件维护、故障恢复和可观测性，而不是单纯把几个 AWS 服务连起来。
+
+
+
+
+### 18.16 DuckDB 读大量 S3 数据很慢：先找出慢在哪里，再决定加什么 AWS 服务
+
+这里先纠正一个常见误解：**把 DuckDB 从 ECS 移到 EKS，不会自动让同一条 SQL 查询更快；给 EKS 增加 Pod，也不会让一条普通 DuckDB 查询自动分布式执行。** EKS 擅长管理一批隔离的计算任务，让多条查询并行运行、根据队列扩缩容，并为不同任务选择不同的 CPU、内存和本地盘。它不是查询优化器，也不是分布式 SQL 引擎。
+
+对“DuckDB 从 S3 读大量数据”的耗时，通常要先区分五种情况：
+
+| 现象 | 可能的真正瓶颈 | 优先措施 |
+|---|---|---|
+| 查询一开始停很久，数据还没大量传输 | S3 文件列举、很多小文件、表元数据或 Catalog 访问 | 使用 DuckLake / Iceberg 管理表，减少文件数和分区数，观察 Catalog 与元数据访问耗时 |
+| 从 S3 读了很多 GB/TB，网络传输占主要时间 | 扫描了不需要的数据，或者有效吞吐不足 | 列裁剪、过滤下推、分区裁剪、文件排序；确认同 Region、S3 Endpoint、请求并发和重试 |
+| 传输量不大，但 CPU 很高 | Parquet 解压、类型转换、聚合、Join 或排序占主导 | 优化 SQL 和 Join 顺序；为 Worker 配合适的 CPU 与线程；减少中间结果 |
+| 内存上涨、临时目录持续增长，p95 特别差 | Join / Sort / 聚合产生大中间结果，DuckDB Spill 到磁盘 | 增加可用内存或临时盘，优化 Join/聚合和数据分组，减少单 Pod 同时跑的查询 |
+| 单条查询还好，多个用户同时查询就很慢 | Worker 并发过高、共享节点竞争、RDS Catalog 连接拥塞、S3 重试 | 限流、排队、隔离交互与批处理任务，按队列等待和资源使用量扩容 |
+
+优化有一个很重要的优先级：
+
+> **先少读数据，再提高读取效率；先让一条查询在单个 Worker 内合理执行，再扩展多条查询的并发；只有单条 SQL 确实需要跨机器执行时，才引入分布式查询引擎。**
+
+如果一条 SQL 本来就要扫描 2 TB 数据，光是把 Worker 数量从 5 个增加到 50 个，最多能让更多不同查询同时工作，不会自动把这条 SQL 的 2 TB 扫描分给 50 个 DuckDB 实例。
+
+### 18.17 第一优先级：减少真正需要从 S3 读取的数据量
+
+这是通常收益最大、也最不依赖复杂基础设施的优化。不要先忙着买更快的磁盘或者部署更大的 EKS 集群。
+
+#### 18.17.1 查询必须只拿需要的列
+
+Parquet 是列式格式。假设一张表有 100 列，而报表只使用 4 列，如果 SQL 执行计划能只读取那 4 列，就不需要为另外 96 列付出同样的读取成本。
+
+不要习惯性写：
+
+~~~sql
+SELECT *
+FROM read_parquet('s3://company-data/trades/**/*.parquet')
+WHERE trade_date >= DATE '2026-01-01';
+~~~
+
+如果业务只需要日期、证券代码和成交金额，就明确写出：
+
+~~~sql
+SELECT trade_date, security_id, notional
+FROM read_parquet('s3://company-data/trades/**/*.parquet')
+WHERE trade_date >= DATE '2026-01-01';
+~~~
+
+DuckDB 能对 Parquet 做列裁剪和过滤下推；但过滤要能被引擎推送到扫描阶段，才能真正减少读取。复杂表达式、隐式类型转换或在 SQL 中先把大量数据转成其他形式，可能削弱优化空间。实际应该用 EXPLAIN ANALYZE 检查结果，而不是只看 SQL 表面写法。[DuckDB：Querying Parquet Files](https://duckdb.org/docs/current/guides/file_formats/query_parquet)
+
+#### 18.17.2 用正确的分区键，但不要把分区切得太碎
+
+对于经常按交易日、业务日期或数据租户过滤的表，可以考虑按日期或其他高价值过滤列分区。这样查询 2026 年某一天的数据时，有机会直接排除其他日期的文件。
+
+但分区不是越细越好。如果每个日期、每个证券、每个地区组合都生成一个分区，结果可能变成几十万甚至更多个小文件。查询必须遍历更多元数据，文件数量也会增加，最终反而更慢。
+
+建议：
+- 先从真实查询中统计最常见的过滤条件；
+- 只按能显著缩小扫描范围的字段分区；
+- 高基数列通常不适合直接拿来无限细分文件目录；
+- 对经常过滤但不适合分区的列，可以尝试排序后写 Parquet，让 Row Group 的 min/max 统计更容易排除无关数据；
+- 每一次更改都对比分区数量、文件数、实际扫描字节和总耗时。
+
+#### 18.17.3 文件大小与 Row Group 要一起设计
+
+一个常见坏例子是 ETL 每分钟写出一个很小的 Parquet 文件，几天后同一张表便散落在数十万文件中。查询即使只读取少量业务数据，也可能花很多时间处理文件清单、读取 Footer 和发出大量远端请求。
+
+反过来，单个超大文件如果 Row Group 数量少，可能无法充分利用 DuckDB 的线程并行，也会降低基于统计信息裁剪读取范围的机会。
+
+可以将压缩后的 Parquet 文件约 128–512 MiB 作为初始实验区间，而不是强制所有表都采用同一大小。还应调整 Row Group，使其数量和大小适合常见线程数、过滤选择性、压缩率和内存预算。DuckDB 官方建议评估每个文件中的 Row Group 数量与查询线程数的关系，同时指出 Row Group 太多也会增加元数据开销。[DuckDB：Parquet Tips](https://duckdb.org/docs/current/data/parquet/tips)
+
+最重要的是：**写入端的文件布局决定了以后所有查询的读取成本。** 不要只优化 SELECT，而不管数据如何落盘。
+
+#### 18.17.4 尽量把 CSV / JSON 转为 Parquet 再做重复分析
+
+直接读取 CSV/JSON 很适合一次性检查数据，但不一定适合长期重复执行的大型分析。尤其是 CSV，通常难以像 Parquet 那样高效地利用列式读取、数据块统计和远端 Range 请求。
+
+如果数据会被多次分析，建议将原始数据保留在 Raw 区，把清洗和类型校验后的数据整理成 Parquet / DuckLake / Iceberg 的 Curated 区。只有一次性调查或数据量很小的任务，才考虑跳过转换步骤。
+
+#### 18.17.5 开放表格式帮助管理文件，但不会自动替你压缩小文件
+
+DuckLake 或 Iceberg 可以避免将“目录里碰巧存在的所有文件”直接当成当前表状态，减少依赖递归列举的情况，并提供表快照和提交语义。但它们不会让小文件的物理开销自动消失。
+
+应为正式表建立固定维护流程：统计文件尺寸分布、合并小文件、按访问模式重排数据、清理可安全删除的孤儿文件并过期不再需要的快照。必须先确认文件不再被有效快照引用，再清理；不能对活跃表的 S3 Prefix 随意执行生命周期删除。
+
+### 18.18 第二优先级：让 DuckDB 从 S3 读数据时减少等待
+
+#### 18.18.1 让计算和 S3 位于同一个 AWS Region
+
+尽量让 EKS 节点、S3 Bucket 和 RDS Catalog 在同一个 Region。这样可以避免不必要的跨 Region 网络延迟和数据传输成本。若使用 S3 Gateway VPC Endpoint，就让相关 Pod 所在子网的路由表正确指向它；Endpoint 本身不收费，但 Bucket Policy、Endpoint Policy、Security Group 与 DNS 配置必须匹配实际访问路径。[AWS：S3 Performance Guidelines](https://docs.aws.amazon.com/AmazonS3/latest/userguide/optimizing-performance-guidelines.html)
+
+还应确认 DuckDB 使用了正确的 S3 Region 和 Endpoint，尤其是跨账户 Bucket、私有网络和自定义代理环境。遇到 HEAD、GET 或授权错误时，不要用不断增加重试次数来掩盖错误的 Endpoint 或权限配置。
+
+#### 18.18.2 善用 Range 请求和并发连接，不要整文件搬回本地
+
+DuckDB 的 httpfs 支持通过 S3 API 读取 Parquet，并利用 Range 请求只读所需的数据块。AWS 也建议在高吞吐场景中使用并发请求、Byte-Range Fetch、适当重试，并从同 Region 的计算资源访问 S3。[DuckDB：S3 API Support](https://duckdb.org/docs/current/core_extensions/httpfs/s3api) · [AWS：S3 Performance Guidelines](https://docs.aws.amazon.com/AmazonS3/latest/userguide/optimizing-performance-guidelines.html)
+
+这也是为何不能简单把所有 S3 数据先下载到 Worker，再开始查询：如果 SQL 最终只需要几个列或少数 Row Group，整文件复制反而增加读写开销和启动时间。
+
+但不要误以为 Range 请求能减少所有成本。查询仍然需要读取足够的数据才能计算结果；如果 SQL 本来就需要所有列和所有行，重点应转为持续吞吐、合适并发、文件尺寸、CPU 解码和临时盘能力。
+
+#### 18.18.3 调整 DuckDB 线程数要结合网络与 CPU，不要只按 vCPU 数设置
+
+DuckDB 官方工作负载调优文档指出，读取远端文件时使用同步 I/O，每个 DuckDB 线程一次至多处理一个 HTTP 请求；对于许多细小远端请求的工作负载，把 threads 调到 CPU 核心数以上（文档举例约为 CPU 核心数的 2–5 倍）有时能提升并行度。[DuckDB：Tuning Workloads](https://duckdb.org/docs/current/guides/performance/how_to_tune_workloads)
+
+这不是所有查询的默认最佳值：
+- 当瓶颈是等待远端小请求时，更多线程可能提高有效并发；
+- 当瓶颈是 Parquet 解压或聚合 CPU 时，线程超过 CPU 能承受的范围可能只会增加竞争；
+- 当同时有多个 DuckDB 查询 Pod 时，每个 Pod 都开很高的 threads，可能造成节点 CPU 过度订阅；
+- 线程开得更多也可能让内存峰值和中间结果变大。
+
+建议在相同数据、相同 SQL 下测试 1 倍、2 倍，并在需要时测试更高的线程数。每次只更改一个变量，对比耗时、实际请求数、数据传输量、CPU、峰值内存、临时盘和失败率。
+
+#### 18.18.4 先测 DuckDB 自带缓存，再决定是否引入共享缓存
+
+对于重复查询相同远端文件的工作负载，可测试以下 DuckDB 设置：
+
+~~~sql
+-- 外部文件缓存：缓存外部文件的内容；需确认版本和内存预算。
+SET enable_external_file_cache = true;
+
+-- Parquet 元数据缓存：适合反复读取相同文件的场景。
+SET parquet_metadata_cache = true;
+
+-- HTTP 元数据缓存：可减少重复的远端 HTTP 元数据请求。
+SET enable_http_metadata_cache = true;
+~~~
+
+这些选项的命中效果受 DuckDB 版本、文件读取路径、查询复用方式和进程生命周期影响；它们不是一个跨 Worker、跨 Pod 永久共享的磁盘缓存。短命 Query Pod 可能在下一条查询运行前已经销毁，缓存收益自然有限。[DuckDB：Configuration](https://duckdb.org/docs/current/configuration/overview)
+
+如果每条查询都扫描不同数据、数据只读一次，缓存未必值得投入；如果每分钟重复跑相同报表、反复访问最新几天的数据，那么热文件、元数据和 Row Group 的重复读取更值得优化。
+
+在 EKS 中尤其应区分三种缓存：
+- **DuckDB 进程内缓存**：设置最简单，但 Pod 退出通常就消失；
+- **节点本地缓存 / NVMe**：跨 Pod 重启可能保留到节点生命周期结束，但节点缩容或故障会丢失；
+- **共享高性能文件系统缓存**：多个 Pod 可读取同一批已准备的数据，适合重复读取的热点工作集，但有额外费用、容量规划与数据一致性管理。
+
+不要把历史上某个 object cache 开关当成万能的永久缓存。应以当前 DuckDB 版本的正式文档和实际 Profile 为准。
+
+### 18.19 如果使用 EKS，建议采用“共享数据 + 查询 Pod + 本地高速临时盘”的架构
+
+EKS 能带来的最大价值，是把不同的查询任务放到相互隔离、资源可控的容器中，再针对不同数据访问模式分配合适的节点和缓存。它并不直接改变 DuckDB 执行单条 SQL 的方式。
+
+推荐架构如下：
+
+~~~mermaid
+flowchart TB
+    C[BI / Agent / 内部用户] --> GW[Query API / Gateway]
+    GW --> Q[SQS / 任务队列]
+    Q --> SCHED[查询调度与配额]
+    
+    SCHED --> P1[EKS DuckDB Pod A]
+    SCHED --> P2[EKS DuckDB Pod B]
+    SCHED --> P3[EKS 批处理 Pod]
+    
+    P1 --> CAT[(RDS PostgreSQL<br/>DuckLake Catalog)]
+    P2 --> CAT
+    P3 --> CAT
+    
+    P1 --> S3[(S3 原始/湖仓数据)]
+    P2 --> S3
+    P3 --> S3
+    
+    S3 --> FSX[FSx for Lustre<br/>可选热点数据层]
+    FSX --> P1
+    FSX --> P2
+    
+    P1 --> NVME[节点本地 NVMe<br/>Spill / 临时文件]
+    P2 --> NVME
+    P3 --> NVME
+    
+    K[ Karpenter / Node Pools ] --> P1
+    K --> P2
+    K --> P3
+    
+    GW --> OBS[CloudWatch / Prometheus<br/>查询 Profile 与资源指标]
+    P1 --> OBS
+    P2 --> OBS
+    P3 --> OBS
+~~~
+
+架构中的三层存储各有不同用途：
+
+- **S3 是持久数据层**：保留正式数据与已提交表数据，不应依赖 Worker 本地磁盘保存唯一数据副本。
+- **FSx for Lustre 是可选的共享高速文件层**：用于被多个任务重复读取、值得预热的热点工作集；它不是所有查询都必须经过的一层。
+- **节点本地 NVMe / 临时盘用于 Spill**：处理 DuckDB 在聚合、Join、排序时需要写出的临时数据，以及短期缓存。该盘可以丢失，不能作为业务事实的唯一存储。
+
+#### 18.19.1 先把交互式查询与大批量分析分开
+
+建议至少把 Worker 分成两个资源池：
+
+| 资源池 | 主要工作 | 策略 |
+|---|---|---|
+| 交互式查询池 | Agent 提问、仪表盘、用户临时分析 | 保留一部分预热 Pod，限制单查询运行时间和并发；优先控制 p95 延迟，不让超大批处理占满资源 |
+| 批处理池 | 全表扫描、数据回补、重算、Compaction、离线 ETL | 可排队、可重试、可使用 Spot；根据 CPU、内存和本地盘需求使用不同节点类型 |
+
+不要只用一个通用 HPA 根据 CPU 触发所有扩缩容。远端 I/O 密集型查询可能 CPU 不高，却积压大量请求；CPU 很高也可能意味着单条 SQL 不适合继续并行增加同样类型的 Pod。
+
+建议综合观察 SQS 队列长度、最老消息等待时间、运行中查询数量、每个 Pod CPU/内存/临时盘、查询延迟和失败率，决定是否扩容。新节点的启动和镜像拉取也需要时间，所以对于极短查询，完全依赖即时扩容可能反而增加总延迟。预热小规模交互式 Worker 池、批处理池按需扩展，通常更值得先测。
+
+#### 18.19.2 用 Karpenter 配置不同的节点类型
+
+可以创建不同的 NodePool / NodeClass，按工作负载选择：
+- 普通 CPU 型节点：轻量过滤、聚合和中等规模查询；
+- 内存型节点：大型 Hash Join、聚合或需要更多工作内存的查询；
+- 带本地 NVMe 的节点：有大量 Spill、临时排序或大中间结果的查询；
+- 可抢占 Spot 的批处理节点：可重试、可以中断的离线工作。
+
+Karpenter 能根据 Pod 的资源需求和调度约束创建匹配节点；EKS 官方也介绍了用本地 NVMe 提升节点本身以及 kubelet/containerd 等目录的 I/O 性能。[EKS：扩展数据平面](https://docs.aws.amazon.com/eks/latest/best-practices/scale-data-plane.html) · [EKS：存储成本与优化](https://docs.aws.amazon.com/eks/latest/best-practices/cost-opt-storage.html)
+
+工程上要使用明确的 requests、limits、taints/tolerations、node affinity 和容量上限，避免 Karpenter 为大量突发查询无限启动昂贵的节点。Spot 适合能够安全重试的批处理，交互式查询池应按延迟目标评估中断风险。
+
+#### 18.19.3 DuckDB 内存、线程与临时盘必须作为一组配置
+
+对每个 DuckDB Pod，都需要限制数据库内部的资源预算。以下只是配置示意，数值要按 Pod 的资源配置和真实数据量调整：
+
+~~~sql
+-- 示例：如果容器有 32 GiB 内存，并为运行时、结果转换和其他组件预留空间，
+-- DuckDB 自身的 memory_limit 不应设置成容器的全部内存。
+SET memory_limit = '22GB';
+
+-- 线程数需要结合分配给容器的 vCPU 和 S3 读取特征压测。
+SET threads = 8;
+
+-- 将临时数据写到预先挂载并验证容量的本地临时盘。
+SET temp_directory = '/scratch/duckdb';
+
+-- 设定 Spill 上限，避免单条查询将节点临时盘吃满。
+SET max_temp_directory_size = '100GB';
+~~~
+
+不要把这组示例数字直接照抄进生产。容器内还有 Python、Arrow、查询结果转换、扩展和运行时开销；数据库的 memory_limit 应低于容器内存上限。临时盘上限也必须小于 Pod 和节点真正可用的空间，并考虑多个 Pod 共用节点盘的情况。
+
+建议为 Pod 配置适当的 CPU / memory requests 和 limits、ephemeral-storage requests 和 limits，并监控 Kubernetes 的 OOMKilled、Evicted、CPU throttling、磁盘压力事件。如果进程因内存不足被系统杀掉，或者因临时盘被驱逐，简单增大查询重试次数只会重复失败。
+
+#### 18.19.4 Spill 很重时优先关注节点本地 NVMe
+
+DuckDB 在某些 Join、Sort、聚合中可能需要把中间数据写到临时目录。如果这个目录落在容量很小或性能不足的容器根盘上，读 S3 的优化就可能被临时盘拖累。
+
+对使用 EC2 节点的 EKS，可以考虑：
+- 在支持的实例上使用本地 NVMe Instance Store；
+- 通过节点配置正确格式化、挂载和管理临时磁盘；
+- 将 DuckDB 的 temp_directory 指向相应挂载路径；
+- 为使用该磁盘的 Pod 添加节点选择规则和临时盘资源请求；
+- 让容器镜像、系统日志和临时 Spill 不至于把同一块盘挤爆；
+- 接受节点终止时临时数据丢失，并确保查询可以失败后重跑。
+
+本地 Instance Store 是临时盘，实例销毁后内容会丢失。它适合可重建的 Spill 和缓存，不适合放 Catalog、唯一数据副本或必须保留的查询结果。[EKS：存储成本与优化](https://docs.aws.amazon.com/eks/latest/best-practices/cost-opt-storage.html)
+
+EBS gp3 可以作为一种较容易管理的块存储方案，但不要在未经测试的情况下假设它与本地 NVMe 具有相同的吞吐或时延。对持续大量 Spill 的负载，要在相同查询、相同并发下测出写入吞吐、读取吞吐、延迟和每小时成本。
+
+#### 18.19.5 什么时候值得加入 FSx for Lustre？
+
+当很多查询反复读取相同的数据集、同一组 Parquet 文件或同一个可复用的工作集时，可以测试 Amazon FSx for Lustre 作为高速文件层。FSx for Lustre 可与 S3 数据仓库关联；应用第一次访问某些尚未加载到文件系统中的文件时，FSx 可从关联的 S3 数据仓库加载文件，后续读取则由文件系统提供。EKS 可以通过 FSx for Lustre CSI Driver 挂载它。[AWS：从关联数据仓库导入文件](https://docs.aws.amazon.com/fsx/latest/LustreGuide/importing-files-dra.html) · [EKS：FSx for Lustre CSI](https://docs.aws.amazon.com/eks/latest/userguide/fsx-csi.html)
+
+它适合这些情形：
+- 很多用户反复分析最近几天、最近几周或固定的热门数据集；
+- 同一批批处理任务要重复扫描同一份数据；
+- S3 远端读取和请求延迟明显影响查询 p95；
+- 预热数据的成本可以通过节省的执行时间和重复读取费用抵消。
+
+但它不是免费缓存，也不应该默认缓存全湖。FSx 有文件系统容量、吞吐和生命周期成本；初次读取未缓存文件仍需从 S3 导入；S3 与文件系统之间的元数据和文件内容同步也需要设计。**第一版优先用 FSx 处理只读或不可变的热点 Parquet 工作集。** 如果要让 DuckLake 活跃表直接以 FSx 路径作为数据位置，并同时同步回 S3，必须对快照提交、并发读写、导出时机和故障恢复做完整测试，不能简单地把 FSx 挂载到容器就认为它是完全透明的缓存。
+
+避免把 FSx、NVMe 和 S3 混成一个模糊的“缓存层”：FSx 更偏向共享数据访问与热点文件复用；本地 NVMe 更适合每个查询自己的临时 Spill；S3 仍是持久数据层。
+
+#### 18.19.6 S3 Express One Zone 是特定场景的选项，不是第一步
+
+对特别看重低时延、工作集集中且可以控制可用区的场景，还可以评估 S3 Express One Zone。它使用 Directory Bucket，可提供较低访问延迟和较高请求能力；AWS 建议在可能时让计算位于与该 Bucket 相同的 Availability Zone。[AWS：S3 Express One Zone 性能优化](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-optimizing-performance-design-patterns.html)
+
+DuckDB 当前文档介绍了通过 httpfs 访问 S3 Express One Zone，并提示需要使用对应的可用区 Endpoint。[DuckDB：S3 Express One](https://duckdb.org/docs/current/guides/network_cloud_storage/s3_express_one)
+
+但是要把它当作针对热点工作集的性能选项，而不是通用替代：
+- 先确认 DuckDB 当前版本、目录 Bucket Endpoint、Task Role / 认证方式和应用所需 S3 API 都能配合；
+- 让 Pod 调度、节点和 Bucket 的 AZ 布局保持一致，避免跨 AZ 访问削弱收益；
+- 把单 AZ 的可用性和耐久性取舍、复制/恢复方案和实际成本列入评估；
+- 与标准 S3、FSx for Lustre、节点本地缓存比较 p95 查询延迟和单位查询成本。
+
+如果真正瓶颈是读取多余的数据或 SQL 需要大量 CPU，换用 S3 Express 不会消除这些问题。
+
+### 18.20 一次查询的耗时应该如何测量：不要只记录总秒数
+
+每条测试 SQL 至少记录以下指标：
+
+| 指标 | 要回答的问题 | 可用的观测方式 |
+|---|---|---|
+| 查询规划 / 元数据耗时 | 慢在 Catalog、文件发现还是 SQL 计划？ | DuckDB Query Profile；Catalog 连接与查询日志；RDS 指标 |
+| 远端请求数 | 是否因为文件碎、Footer 多而发出大量请求？ | DuckDB EXPLAIN ANALYZE / Profile，S3 请求指标 |
+| 远端传输字节 | 100 GB 表是否只扫描需要的几 GB，还是不必要地扫了大部分？ | DuckDB 远程文件 Profile；必要时配合 S3 请求与访问日志 |
+| CPU 利用率与节流 | Worker 是否在计算，还是在等待？是否因 CPU limit 被 throttling？ | Pod / Node 指标、CloudWatch Container Insights、Prometheus |
+| 峰值内存、临时盘与 Spill | 是不是因为内存或临时磁盘导致尾延迟？ | DuckDB Profile、容器指标、节点 DiskPressure / Evicted 事件 |
+| S3 503 / 5xx 与重试 | 高并发是否遇到慢请求或服务端节流？ | S3 CloudWatch Request Metrics、S3 Storage Lens 或 Server Access Logging |
+| 队列等待和启动时间 | 延迟花在排队、启动 Pod 还是 SQL 执行？ | SQS 队列指标、Worker 生命周期和 Query ID 时间线 |
+| p50 / p95 / p99 与单位成本 | 优化是否真的改善用户体验和总体成本？ | 统一 Query ID，关联 API、Worker、S3、RDS 的指标 |
+
+DuckDB 官方指出，EXPLAIN ANALYZE 可以帮助查看远端文件查询的请求数与传输量；AWS 则建议观察 S3 5xx/503 指标和访问日志，判断是否有慢请求或请求限流。[DuckDB：Tuning Workloads](https://duckdb.org/docs/current/guides/performance/how_to_tune_workloads) · [AWS：S3 Performance Guidelines](https://docs.aws.amazon.com/AmazonS3/latest/userguide/optimizing-performance-guidelines.html)
+
+诊断时应对每条查询分别跑冷缓存和热缓存，并且把文件系统缓存、DuckDB 内存缓存和操作系统 Page Cache 区分开来。一次查询突然快了，不一定说明 SQL 变好了，也可能只是刚好命中热缓存。
+
+### 18.21 推荐的实际调优顺序
+
+建议严格按以下顺序来。每一步都使用同一批 SQL、同一份数据、同样的并发，并记录基线。
+
+1. **先拿基线。** 用 DuckDB Profile / EXPLAIN ANALYZE 记录耗时、请求数、读取字节、CPU、内存、Spill 和结果正确性。先判断当前主要是 I/O、CPU、元数据、并发还是排队问题。
+2. **修数据布局。** 把重复分析的 CSV / JSON 转 Parquet；选择合适分区；只读必要列；过滤下推；对常用过滤列排序；将小文件合并；检查 Row Group 和文件数量。
+3. **减少不必要的远程请求。** 让 RDS、EKS 和 S3 同 Region；正确配置 S3 Gateway Endpoint；确认没有递归扫描无关 Prefix；检查并发 HTTP 请求、超时和重试。
+4. **调 DuckDB 的 threads 和内存。** 不要以 vCPU 数为唯一依据；分别测试网络等待型和 CPU 计算型查询，给 memory_limit、temp_directory 和最大 Spill 量设上限。
+5. **增加 Pod 前先限制并发。** 为每个 Pod 设置 CPU / memory / ephemeral-storage requests 和 limits；通过队列和配额防止一批大 SQL 抢光节点资源。
+6. **再测缓存。** 打开适用的 DuckDB 文件/元数据缓存；如果 Pod 重启后缓存消失而重复扫描成本很高，再比较 NVMe、持久化块存储或 FSx for Lustre。
+7. **用 Karpenter 调整节点类型与弹性。** CPU 密集查询、内存密集查询和 Spill 密集查询不一定应该调度到同一种实例上。设置 NodePool 上限，并将可以安全重试的离线任务与交互式任务分开。
+8. **只在有证据时增加昂贵层。** 高复用热点数据才测 FSx for Lustre；有明确低时延需求才测 S3 Express One Zone；不要为“看起来更云原生”而增加一层存储。
+9. **重新评估单条查询的分布式执行需求。** 如果一条 SQL 在足够资源的单个 DuckDB Pod 内仍然受单节点 CPU、内存或计算能力限制，就把同一 SQL 对照测试到 Trino + Iceberg、StarRocks 或 Doris。EKS 可以运行这些组件，但 Kubernetes 本身不会把 DuckDB 查询自动拆成集群任务。
+
+### 18.22 一个公平的优化实验矩阵
+
+以相同的数据版本、SQL 和结果校验做对照测试：
+
+| 组别 | 数据与存储路径 | 目的 |
+|---|---|---|
+| A | DuckDB 直接读标准 S3，默认合理配置 | 作为远程读取基线 |
+| B | 标准 S3 + 列裁剪 / 过滤下推 / 分区与排序优化 | 判断可否通过少读数据解决问题 |
+| C | B + DuckDB threads / 内存 / Row Group 调整 | 判断是否受请求并发、CPU 或内存影响 |
+| D | EKS 固定容量、无缓存优化 | 测 Pod 隔离和资源限制的基础成本 |
+| E | EKS + 节点 NVMe 用于 Spill | 判断临时磁盘是否是热点 |
+| F | EKS + DuckDB 缓存设置或节点热点缓存 | 判断重复查询能否受益 |
+| G | EKS + FSx for Lustre 读取同一热点工作集 | 判断共享高速文件层是否值得成本 |
+| H | 对低时延、高复用工作集评估 S3 Express One Zone | 判断专门的低时延对象存储是否有经济价值 |
+| I | 同数据和 SQL 的 Trino + Iceberg / 其他分布式引擎 | 确认瓶颈是否已经超出单节点查询架构的合理范围 |
+
+每组至少做冷缓存、热缓存和多个并发级别测试。对比 p50 / p95，扫描字节，S3 请求数，节点 CPU 和内存，临时盘峰值，队列等待，失败率及每 1,000 次成功查询的全成本。如果一个优化让单次查询快 20%，却让共享存储或计算成本增加数倍，就不能只根据耗时做结论。
+
+### 18.23 AWS 上的实际参考案例：Liquid Analytics 使用 EKS + DuckDB + FSx for Lustre
+
+AWS 发布的 Liquid Analytics 案例介绍了以 EKS、DuckDB 和 FSx for Lustre 运行大型分析工作负载的实践。案例称，该团队通过 EKS 与 FSx for Lustre 的组合，能快速启动大量 Pod，并让重复访问的数据通过高性能文件系统提供给计算任务，从而减少复制数据文件的开销。[AWS：Liquid Analytics Case Study](https://aws.amazon.com/solutions/case-studies/liquid-analytics-case-study/)
+
+这个案例最值得借鉴的不是单个性能数字，而是两条架构原则：
+
+1. **把计算任务容器化且尽量隔离。** 任务可以按需启动新的计算环境，在可接受的重试模型下扩展独立工作负载，而不是让所有任务争抢同一个长期运行的分析进程。
+2. **把持久湖仓与可复用的高速工作集分开。** 当相同数据反复被查询时，让任务直接读高性能共享文件层，可以减少重复复制和冷读开销。
+
+但需要说明边界：该 AWS 案例的事务和元数据部分使用了 Aurora PostgreSQL，因此它**不能直接证明本章的 RDS-only 架构已得到同样的生产验证**。本章可以借鉴的是 EKS + DuckDB + FSx for Lustre 的计算和数据访问模式；Catalog 使用标准 RDS PostgreSQL 时，还应独立测量连接、事务和元数据负载。
+
+### 18.24 最终建议：先优化数据路径，再决定要不要上 EKS 与 FSx
+
+如果你的查询慢在扫描太多数据、文件太碎或没有分区/排序，那么最划算的优化通常在数据组织和 SQL 层，未必需要额外 AWS 服务。
+
+如果查询本身不大，但多个用户一起访问会排队，可以通过 EKS Worker 池、SQS、配额与 Karpenter 改善并发和隔离。
+
+如果相同的大型 Parquet 工作集反复被大量任务读取，且测量显示 S3 冷读明显影响 p95，可以测试 FSx for Lustre 作为共享热点文件层。
+
+如果 DuckDB 频繁 Spill 到磁盘，优先为 EKS 节点配置合适的本地 NVMe、Pod 临时盘和资源限额，而不是盲目提高 S3 吞吐。
+
+如果单条 SQL 需要跨多台机器同时计算，EKS 只是运行环境，仍要引入具备分布式执行能力的 Trino 等引擎，或考虑专门的分布式分析数据库。
+
+**推荐落地次序：先测 Profile 和数据读取量 → 优化 Parquet 文件与查询 → 调 DuckDB 并发和资源 → 用 EKS 控制多查询并发 → 对热点工作集评估 NVMe / FSx → 最后才考虑 S3 Express 或分布式 SQL 引擎。**
+
+
+
+## 19. 参考资料（官方文档和项目主页优先）
 
 ### DuckDB / DuckLake
 
@@ -1029,6 +1755,38 @@ Netflix 工程团队公开介绍了基于 Maestro 和 Apache Iceberg 的增量�
 46. [The Deconstructed Warehouse: An Ephemeral Query Engine Design for Apache Iceberg](https://www.vldb.org/2025/Workshops/VLDB-Workshops-2025/CDMS/CDMS25_12.pdf), VLDB Workshop 2025 — 临时计算与开放表格式组成轻量数仓的设计探索。
 47. [Interoperable ACID Transactions for Open Table Formats](https://dl.acm.org/doi/10.14778/3836663.3836684), PVLDB 2026 — LakeVilla 原型研究开放表格式中的多表事务与跨引擎原子发布。
 
+
+
+### 新增：AWS RDS + DuckDB 部署参考
+
+48. [Amazon RDS for PostgreSQL](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_PostgreSQL.html) — RDS PostgreSQL 的可用功能、托管边界、备份和连接方式。
+49. [Supported PostgreSQL extensions on RDS](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL.Concepts.General.FeatureSupport.Extensions.html) — 核对目标 RDS 版本支持哪些 PostgreSQL 扩展，不要假设任意原生扩展都能安装。
+50. [Choosing a Catalog Database — DuckLake](https://ducklake.select/docs/stable/duckdb/usage/choosing_a_catalog_database) — DuckLake 对单用户与多用户 Catalog 选型的建议，以及 PostgreSQL Catalog 示例。
+51. [Access Control — DuckLake](https://ducklake.select/docs/stable/duckdb/guides/access_control) — PostgreSQL 角色与 S3 权限分层控制的示例。
+52. [DuckDB AWS Extension](https://duckdb.org/docs/current/core_extensions/aws) — AWS 凭证链、AssumeRole、Web Identity 等配置。
+53. [DuckDB: Amazon RDS IAM Authentication](https://duckdb.org/docs/current/guides/database_integration/rds_iam) — 用 DuckDB 的 AWS 与 PostgreSQL 扩展连接支持 IAM 认证的 RDS/Aurora 数据库。
+54. [AWS ECS Task IAM Role](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html) — 为 ECS 容器提供独立任务角色；文档也说明 ECS on EC2 与 Fargate 的隔离差别。
+55. [Fargate Task Ephemeral Storage](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/fargate-task-storage.html) — Linux Fargate 默认临时盘与最大配置范围，对 DuckDB Spill 规划很重要。
+56. [RDS Multi-AZ DB Instance Deployment](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZSingleStandby.html) — Multi-AZ 单备用实例用于高可用故障切换，不负责日常只读扩容。
+57. [RDS Automated Backups](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithAutomatedBackups.html) — RDS 自动备份、保留期和时间点恢复。
+58. [S3 Gateway VPC Endpoints](https://docs.aws.amazon.com/vpc/latest/privatelink/vpc-endpoints-s3.html) — 私有网络访问同区域 S3 的 Endpoint 机制与限制。
+59. [AWS Batch: When to Use Fargate](https://docs.aws.amazon.com/batch/latest/userguide/when-to-use-fargate.html) — Fargate 与 EC2 计算环境的作业类型和容量选择。
+60. [VPC access scenarios for RDS](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_VPC.Scenarios.html) — 使用安全组限制应用服务访问私有 RDS 的基本模式。
+
+
+
+61. [DuckDB：Tuning Workloads](https://duckdb.org/docs/current/guides/performance/how_to_tune_workloads) — 远端文件读取、线程并行、EXPLAIN ANALYZE 与性能诊断。
+62. [DuckDB：Parquet Tips](https://duckdb.org/docs/current/data/parquet/tips) — Row Group、文件大小、统计裁剪和排序数据的建议。
+63. [DuckDB：Querying Parquet Files](https://duckdb.org/docs/current/guides/file_formats/query_parquet) — 列裁剪、过滤下推和 Parquet 并行扫描。
+64. [DuckDB：S3 API Support](https://duckdb.org/docs/current/core_extensions/httpfs/s3api) — HTTP Range 请求、对象存储读取方式和相关配置。
+65. [AWS：S3 Performance Guidelines](https://docs.aws.amazon.com/AmazonS3/latest/userguide/optimizing-performance-guidelines.html) — Range Fetch、并发请求、同 Region 访问、重试与 503 监控。
+66. [EKS：Storage Cost Optimization](https://docs.aws.amazon.com/eks/latest/best-practices/cost-opt-storage.html) — EKS 临时存储、本地 Instance Store 与缓存/临时盘边界。
+67. [EKS：Scaling the Data Plane](https://docs.aws.amazon.com/eks/latest/best-practices/scale-data-plane.html) — Karpenter 与基于工作负载的节点弹性。
+68. [EKS：FSx for Lustre CSI Driver](https://docs.aws.amazon.com/eks/latest/userguide/fsx-csi.html) — 在 EKS Pod 中挂载 FSx for Lustre。
+69. [FSx for Lustre：Importing Files from a Data Repository](https://docs.aws.amazon.com/fsx/latest/LustreGuide/importing-files-dra.html) — 从 S3 关联数据仓库加载文件，以及首次访问与后续读取的行为。
+70. [AWS：S3 Express One Zone Performance](https://docs.aws.amazon.com/AmazonS3/latest/userguide/s3-express-optimizing-performance-design-patterns.html) — Directory Bucket、低时延、并发请求与可用区布局。
+71. [DuckDB：S3 Express One](https://duckdb.org/docs/current/guides/network_cloud_storage/s3_express_one) — DuckDB 对 S3 Express One Zone 的访问要求与 Endpoint 配置。
+72. [Liquid Analytics on AWS](https://aws.amazon.com/solutions/case-studies/liquid-analytics-case-study/) — EKS + DuckDB + FSx for Lustre 的实际应用案例；案例中的事务/元数据使用 Aurora，应与 RDS-only 方案区分。
 
 ## 结论
 
