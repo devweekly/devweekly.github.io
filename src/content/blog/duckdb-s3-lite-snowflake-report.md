@@ -3,15 +3,14 @@ author: W
 featured: false
 draft: false
 description: 用 DuckDB + S3 搭一个轻量版 Snowflake
-pubDatetime: 2026-10-09T02:02:03Z
+pubDatetime: 2026-10-08T02:02:03Z
 title: 用 DuckDB + S3 搭一个轻量版 Snowflake
 tags:
   - tech
 ---
 
-# 用 DuckDB + S3 搭一个轻量版 Snowflake：架构、开源项目与落地路线
+架构、开源项目与落地路线
 
-> **研究日期：2026-10-09**  
 > **结论先说：能做出“轻量云数仓”，但不是把 DuckDB 指向 S3 就等于 Snowflake。** 真正需要补齐的是表元数据和事务、统一 SQL 服务入口、权限治理、查询调度与隔离、缓存/文件整理、监控和运维。若主要是中小规模分析、批处理和 Agent/BI 查询，这条路线很有价值；若要求大查询跨多台机器并行、极高并发、开箱即用的企业治理和 SLA，就得考虑 Trino 等分布式引擎，或直接用托管数仓。
 
 ---
