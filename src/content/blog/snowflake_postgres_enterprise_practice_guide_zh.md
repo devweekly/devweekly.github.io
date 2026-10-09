@@ -794,6 +794,117 @@ EXPLAIN ANALYZE 会真实执行查询，且测量过程本身可能有开销；�
 
 ---
 
+## 十六、股票 ticker 搜索直接查询 Snowflake，是否合理？要不要 Redis？
+
+需要区分两个“数据量”：整张表的总数据量，以及一个 ticker 请求最终返回多少行。即使单个 ticker 只返回几十行，Snowflake 仍需根据 SQL、微分区、缓存状态与仓库状态执行查询。反过来，即使表中有数十万行，只要查询按 ticker 定位且 PostgreSQL 有合适索引，也通常没有必要仅因总行数选择 Snowflake。
+
+### 16.1 先确认股票数据的权威来源
+
+| 当前架构 | 默认建议 |
+| --- | --- |
+| 股票基础信息仍在 PostgreSQL，ticker 查询是在线页面的核心功能 | 优先在 PostgreSQL 使用主键/唯一索引查询；需要读写隔离时评估只读副本 |
+| 股票历史价格或分析数据只存在 Snowflake，业务接受其数据新鲜度与响应延迟 | 可以直接查询 Snowflake，先测端到端延迟与成本 |
+| 数据在 Snowflake，但页面要求稳定低延迟且请求重复率高 | 评估 Python service 层 Redis，或者将常用查询预计算到 serving table |
+| 每个请求都做复杂历史聚合，但数据每天收盘后才更新 | 可考虑定时批量预计算，再由页面查询已算好的结果 |
+| 页面既需实时交易/业务状态，也需历史分析 | 按职责拆分实时数据源与历史分析源，并明确数据截止时间 |
+
+如果 ticker 数据总共只有几万到十几万行，先做简单性能测试，不要预先堆 Redis、Dynamic Table 和 Task。几万行本身不是 Snowflake 的性能问题，也不自动构成选择 Snowflake 的理由。
+
+### 16.2 Snowflake 已有缓存，但它不能完全替代 Redis
+
+| 缓存类型 | 缓存什么 | 关键行为 | 适合解决的问题 |
+| --- | --- | --- | --- |
+| **Persisted Query Results（持久化查询结果缓存）** | 之前 SQL 的结果集 | 通常要求查询文本相同、依赖数据未变化、权限和相关设置符合条件；缓存 24 小时后过期，重复使用可延长保留期，但最长不超过首次执行后 31 天 | 重复执行相同 SQL，且源数据较稳定 |
+| **Warehouse Data Cache（仓库数据缓存）** | 活动仓库读取过的表数据 | 同一运行中的 warehouse 可复用缓存；仓库挂起后该缓存会清除，恢复后逐渐重建 | 减少同一活动仓库后续查询的数据读取 |
+| **应用层缓存，例如 Redis** | 服务端决定缓存的 API 响应或业务对象 | TTL、失效、缓存键、隔离与降级由应用控制；不要求请求再次访问 Snowflake | 高频 ticker 查询、可控服务延迟、保护下游、缓存拼装后的 API 响应 |
+
+官方文档：[持久化查询结果](https://docs.snowflake.com/en/user-guide/querying-persisted-results)、[优化 Warehouse 缓存](https://docs.snowflake.com/en/user-guide/performance-query-warehouse-cache)。
+
+**不要把 Snowflake result cache 当作可控的 API cache。** 它是查询优化机制，而不是业务 SLA。股票代码不同会导致结果不同；底层数据、SQL 文本、权限或相关设置变化、缓存过期，都可能令查询重新执行。SQL 文本中某些语法差异也可能阻止完全复用结果。即使命中结果缓存，应用仍需连接、鉴权、发起请求、读取结果并序列化响应；Redis 可以避免这次数据库交互。
+
+默认情况下查询结果复用是开启的，但可通过账户、用户或会话级的 USE_CACHED_RESULT 参数覆盖。不要为了“每次都重新执行”而全局关闭它，也不要把它当成正确性或新鲜度控制机制。
+
+### 16.3 Python service：先直查、测量，再决定是否缓存
+
+第一步先不加 Redis，写好 SQL 并测量。使用 Snowflake Python Connector 绑定 ticker 参数；只取页面需要的列和行，不要在服务里取出整段历史再过滤。
+
+~~~python
+import snowflake.connector
+
+def get_ticker_summary(conn, ticker: str) -> dict | None:
+    # ticker 是值参数，不要拼接到 SQL 字符串中。
+    sql = """
+        SELECT ticker, company_name, exchange, last_trade_date, close_price
+        FROM ANALYTICS_DB.MART.STOCK_SUMMARY
+        WHERE ticker = %s
+        LIMIT 1
+    """
+    with conn.cursor(snowflake.connector.DictCursor) as cur:
+        cur.execute(sql, (ticker.strip().upper(),))
+        return cur.fetchone()
+~~~
+
+此示例假设 ticker 唯一，并且已有合适的 serving table；表名需替换为实际对象。Snowflake 不按 PostgreSQL 普通 B-tree 索引的思路优化分析表扫描，必须结合 Query Profile 检查扫描量与微分区裁剪。
+
+实际应用还应做到：
+
+- 通过受控配置管理连接生命周期，不要每个请求都重复初始化凭据和连接配置。
+- 配置连接超时、statement timeout、异常分类与重试；不要无限重试权限错误或无效 SQL。
+- 设置 query tag 或可关联的请求标识，以便把 API 延迟与 Query History 对上。
+- 监控连接建立、仓库启动、查询执行、结果传输和 JSON 序列化的分别耗时。
+- 限定查询返回规模；历史时间序列要求明确日期范围，避免网页请求下载数十万行。
+- 请求并发上升时，检查连接管理、仓库排队和限流；增加 Python worker 不会使 Snowflake 查询自动更快。
+
+### 16.4 什么时候才加 Redis？
+
+若测量表明有大量重复 ticker 请求、API P95 不达标，或者不希望页面搜索流量直接触发 Snowflake 查询，再增加 Redis 是合理的。不要为了“架构看起来完整”提前增加它。
+
+~~~text
+Web / API
+   |
+Python service
+   |-- Redis 命中 --> 返回缓存响应
+   |
+   |-- Redis 未命中 --> 查询 Snowflake --> 写入 Redis --> 返回
+   |
+   +-- 记录命中率、回源耗时、数据版本和错误
+~~~
+
+缓存键要包含影响结果的全部维度，例如：
+
+~~~text
+stock-summary:v2:{normalized_ticker}:{market}:{currency}:{data_version}
+~~~
+
+如果响应还依赖用户权限、租户、订阅级别或个性化字段，这些条件也必须进入缓存隔离设计。只以 ticker 为 key 可能把不同权限下的数据互相返回。
+
+TTL 应跟随数据更新规律，而不是使用一个固定的“最佳实践值”：
+
+- **每日收盘后数据：** 可在收盘数据批处理完成后刷新数据版本；缓存按交易日或版本换代。
+- **每分钟更新的数据：** 使用较短 TTL，或由更新事件主动失效；同时确认数据来源本身支持该刷新频率。
+- **静态证券基础信息：** TTL 可以较长；公司名称、上市状态或代码变化时要主动失效或更新版本。
+- **允许陈旧数据的查询：** Snowflake 短时不可用时可返回符合产品定义的旧结果，但需显示数据截止时间。
+- **不允许陈旧的状态或权限结果：** 不要只靠 TTL，应采用更强的失效机制或从权威系统实时读取。
+
+多实例 Python 服务通常需要共享缓存，所以 Redis 往往比进程内字典合适。但 Redis 也增加网络调用、运维、序列化、失效和缓存击穿等复杂度。先测 Snowflake 直查延迟和费用，再决定缓存是否有正收益。
+
+### 16.5 用数据判断缓存有没有用
+
+| 指标 | 作用 |
+| --- | --- |
+| API P50/P95/P99 | 是否满足真实页面响应目标 |
+| Snowflake 查询执行时间 | SQL 或仓库本身是否慢 |
+| 仓库 resume / 排队耗时 | 冷启动或并发问题是否主导延迟 |
+| Result cache 使用情况 | Snowflake 内部结果缓存是否有效 |
+| Redis hit ratio | 应用缓存是否真的减少回源 |
+| 缓存陈旧时长 | 快速响应是否以牺牲新鲜度为代价 |
+| 每千次请求费用与连接量 | 缓存是否产生实际经济收益 |
+| 错误和回源超时 | 缓存失效后是否会压垮 Snowflake |
+
+如果查询执行只有几十毫秒，但仓库启动和连接耗时占大多数，单纯优化 SQL 解决不了全部问题。如果每次查询都扫描大量数据，先修 SQL 或数据模型；应用缓存只能掩盖部分问题，不能替代根本优化。
+
+---
+
 ## 总结
 
 对有 PostgreSQL 和 SQL 基础的团队，推荐的学习和落地顺序不是先研究全部 Snowflake 功能，而是：
