@@ -1252,7 +1252,9 @@ Materialized View 会自动维护结果，但增加存储和后台计算成本�
 官方参考：
 
 - [Snowflake Secure Data Sharing 概览](https://docs.snowflake.com/en/user-guide/data-sharing-intro)
-- [Snowflake Marketplace 介绍](https://docs.snowflake.com/en/user-guide/collaboration)
+- [Snowflake Marketplace：访问和安装 Listing](https://docs.snowflake.com/en/collaboration/consumer-listings-access)
+- [Snowflake：消费共享数据并查询 imported database](https://docs.snowflake.com/en/user-guide/data-share-consumers)
+- [Snowflake Marketplace 介绍](https://docs.snowflake.com/en/collaboration/consumer-listings-access)
 - [Snowflake External Tables](https://docs.snowflake.com/en/user-guide/tables-external-intro)
 - [Snowflake Iceberg Tables](https://docs.snowflake.com/en/user-guide/tables-iceberg)
 - [External Functions 简介](https://docs.snowflake.com/en/sql-reference/external-functions-introduction)
