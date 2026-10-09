@@ -985,6 +985,186 @@ LIMIT 100;
 
 ---
 
+## 十八、Batch 运行 Query、预计算并缓存结果：如何实现？
+
+“Batch query 然后 cache 结果”可能指三种不同的事情：
+
+1. **批量提交很多 SQL。** 这是作业编排，不等于结果自动持久化供 API 查询。
+2. **定时批量预计算。** 将昂贵查询提前写入表或 Dynamic Table，在线服务读取预计算结果。这往往是报表和高频读 API 的可靠选择。
+3. **提前执行查询以预热 Result Cache。** 后续请求只有符合结果复用条件才可能受益。缓存可能因为数据、查询文本或保留期变化而失效，不能把“预热缓存”当成唯一 serving 架构。
+
+### 18.1 如何选择 Task、Dynamic Table、Materialized View 还是 Redis？
+
+| 需要的能力 | 首选评估对象 | 说明 |
+| --- | --- | --- |
+| 每天/每小时/每 15 分钟按计划执行 SQL | **Snowflake Task** | 定时执行 SQL，也可调用存储过程；适合编排、MERGE、清理和批处理 |
+| 用 SELECT 定义多表 JOIN/聚合结果，希望 Snowflake 管理刷新依赖 | **Dynamic Table** | 声明式建模，通过 TARGET_LAG 控制目标新鲜度；最小目标延迟为 1 分钟，实际刷新时间不是硬实时 SLA |
+| 加速单表上重复的查询模式，接受额外的自动维护成本 | **Materialized View** | 自动维护预计算结果，优化器可在合适情况下透明复用；需确认支持范围、Edition 与成本 |
+| API 要求可控响应延迟、相同请求重复率高 | **Redis/应用层缓存** | TTL、失效和缓存键由应用控制，适合避免每个请求都访问 Snowflake |
+| 重复提交完全相同、数据未变化的 SQL | **Snowflake Persisted Query Results** | 内建结果缓存，先观察实际命中，不要把它当成手动可控的永久缓存 |
+
+官方决策指南：[Dynamic Tables、Streams & Tasks、Materialized Views 选择指南](https://docs.snowflake.com/en/user-guide/dynamic-tables/decision-guide)。简化理解：SELECT 表达的多步骤数据转换可评估 Dynamic Tables；需要过程控制、MERGE、重试或明确任务编排时考虑 Streams & Tasks；要加速某些单表重复查询时再评估 Materialized Views。
+
+### 18.2 方案 A：用 Task 定时刷新 Serving Table
+
+如果 ticker 搜索需要的是稳定、可快速查询的一小份结果，可以建立服务专用表，例如每个 ticker 一行的当前摘要。后台 Task 按固定频率或业务数据更新后刷新它。
+
+以下是结构示例，需根据业务补全字段和最新行情规则。
+
+~~~sql
+CREATE TABLE IF NOT EXISTS ANALYTICS_DB.MART.STOCK_SUMMARY_SERVING (
+    ticker              VARCHAR NOT NULL,
+    company_name        VARCHAR,
+    last_trade_date     DATE,
+    close_price         NUMBER(18, 6),
+    source_data_version VARCHAR,
+    refreshed_at        TIMESTAMP_LTZ
+);
+~~~
+
+增量刷新可使用 Task 执行 MERGE。下面示例用于说明任务如何编排；并非可以不经修改直接上线的股票摘要 SQL。
+
+~~~sql
+CREATE TASK IF NOT EXISTS ANALYTICS_DB.MART.REFRESH_STOCK_SUMMARY_TASK
+  WAREHOUSE = TRANSFORM_WH
+  SCHEDULE = 'USING CRON 0,15,30,45 * * * * UTC'
+AS
+MERGE INTO ANALYTICS_DB.MART.STOCK_SUMMARY_SERVING AS target
+USING (
+    SELECT
+        ticker,
+        MAX(trade_date) AS last_trade_date
+    FROM ANALYTICS_DB.MART.FCT_STOCK_DAILY
+    WHERE trade_date >= DATEADD(day, -7, CURRENT_DATE())
+    GROUP BY ticker
+) AS source
+ON target.ticker = source.ticker
+WHEN MATCHED THEN UPDATE SET
+    target.last_trade_date = source.last_trade_date,
+    target.refreshed_at = CURRENT_TIMESTAMP()
+WHEN NOT MATCHED THEN INSERT (
+    ticker, last_trade_date, refreshed_at
+) VALUES (
+    source.ticker, source.last_trade_date, CURRENT_TIMESTAMP()
+);
+~~~
+
+此示例只更新最后交易日期，没有演示怎样从同一天记录取得公司名和收盘价。真实实现应通过 QUALIFY + ROW_NUMBER 或其他明确逻辑，按 ticker 选择最后一条有效行情，避免用 MAX(close_price) 错当成“最新收盘价”。还需处理停牌、缺失交易日、复权口径和数据供应商修正。
+
+创建 Task 后通常处于 suspended 状态，需要按部署流程显式启用：
+
+~~~sql
+ALTER TASK ANALYTICS_DB.MART.REFRESH_STOCK_SUMMARY_TASK RESUME;
+~~~
+
+运行前确认 Task owner role、仓库和表权限、时区、失败告警、运行历史、重跑与新鲜度 SLA。定时 CRON 说明的是计划触发时间，不保证作业一定在该时刻完成。多任务依赖可用 task graph 表达；要避免上次作业仍在运行时又产生无控制的并发重算。
+
+如果目标只是从基础表声明一个持续刷新的 SELECT 结果，也可以考虑 Dynamic Table：
+
+~~~sql
+CREATE OR REPLACE DYNAMIC TABLE ANALYTICS_DB.MART.STOCK_SUMMARY_DYNAMIC
+    TARGET_LAG = '15 minutes'
+    WAREHOUSE = TRANSFORM_WH
+AS
+SELECT
+    ticker,
+    MAX(trade_date) AS latest_trade_date,
+    COUNT(*) AS available_daily_rows
+FROM ANALYTICS_DB.MART.FCT_STOCK_DAILY
+GROUP BY ticker;
+~~~
+
+此处是演示其声明方式；实际 SQL 支持、刷新模式和源表变化行为需在目标账户和真实查询上验证。TARGET_LAG 是目标新鲜度，不是保证每次恰好 15 分钟完成。不要为了 ticker 查询默认建立很多 Dynamic Table；对于只有几十万行、查询本身很快的表，直接查询或普通 serving table 可能更简单、成本更低。
+
+参考：[Introduction to Tasks](https://docs.snowflake.com/en/user-guide/tasks-intro)、[Dynamic Tables Overview](https://docs.snowflake.com/en/user-guide/dynamic-tables/overview)。
+
+### 18.3 方案 B：Python Connector 提交批处理
+
+Python 调度程序可以按计划触发 SQL，也可以由云端编排平台运行作业。若任务主要是操作 Snowflake 对象，Task 通常更容易由 Snowflake 内部观察；若还需要调用外部系统、校验文件、发通知或执行跨云步骤，可使用 Airflow、Dagster、云调度器或企业已有作业平台。
+
+Python Connector 有三个经常被混淆的接口：
+
+- **execute(sql, params)：** 执行一条 SQL。
+- **executemany(sql, seq_of_params)：** 对同一条参数化 SQL 传入多组参数；不是把任意多个不同 SQL 打包成一次执行。
+- **execute_async(sql)：** 提交一条异步查询，可取得 query ID，再查询状态并读取结果。它不会自动节省计算，也不等于缓存。
+
+官方 API 明确说明，普通 execute 不支持把多条以分号隔开的 SQL 当成一次普通执行；execute_string 可执行多条语句，但如果用字符串拼接用户输入，会带来 SQL injection 风险。
+
+参考：[Python Connector API](https://docs.snowflake.com/en/developer-guide/python-connector/python-connector-api)、[Python Connector examples](https://docs.snowflake.com/en/developer-guide/python-connector/python-connector-example)。
+
+异步查询基本形式：
+
+~~~python
+import time
+import snowflake.connector
+
+def submit_and_wait(conn, sql: str, poll_seconds: float = 2.0):
+    cur = conn.cursor()
+    try:
+        cur.execute_async(sql)
+        query_id = cur.sfqid
+
+        while True:
+            status = conn.get_query_status(query_id)
+            if conn.is_still_running(status):
+                time.sleep(poll_seconds)
+                continue
+            if conn.is_an_error(status):
+                raise RuntimeError(
+                    f"Snowflake query failed: {query_id}, status={status}"
+                )
+            break
+
+        # 异步结果可通过 query ID 重新取得；大结果集应分批读取。
+        cur.get_results_from_sfqid(query_id)
+        return query_id, cur.fetchall()
+    finally:
+        cur.close()
+~~~
+
+这是演示代码，省略了状态持久化、超时、取消、结果分页、日志和通知。真正的后台批处理不应仅靠一个 HTTP 请求线程等待；应将任务状态、query ID、开始/结束时间、批次、行数、错误与重试次数写入作业记录，才能在应用重启后观察和恢复。长时间异步查询应使用独立连接，并谨慎配置断开后的查询行为，避免客户端离开后查询仍继续计费。
+
+### 18.4 多个 ticker 应该一条 SQL 批量查询，而不是 N 次回源
+
+如果一个页面一次需要 AAPL、MSFT、NVDA 等多个 ticker，不要循环调用一次 SQL 查一个 ticker。尽量把 ticker 列表传入同一查询，或者由服务端查询 serving dataset 后筛选，具体方式取决于输入列表长度与权限要求。
+
+~~~sql
+SELECT ticker, company_name, last_trade_date, close_price
+FROM ANALYTICS_DB.MART.STOCK_SUMMARY_SERVING
+WHERE ticker IN ('AAPL', 'MSFT', 'NVDA');
+~~~
+
+此处为便于阅读用了字面量。生产服务必须使用参数绑定，或以安全方式构造固定数量的占位符；不可将未经验证的用户输入拼接为 SQL。ticker 列表很长时，可评估将输入整理成临时表/值表后 JOIN，而不是生成极长 SQL。只搜索一个 ticker 的页面，则没必要为了“batch”而每次读取全市场数据。
+
+### 18.5 “批量运行后把结果放入 Snowflake 缓存”是不是最佳做法？
+
+如果希望一次批处理服务多次 API 请求，**优先把结果物化到明确的数据对象，而不是依赖预热 Query Result Cache**：
+
+- 需要直接向服务提供当前结果：Serving Table；
+- 希望通过 SELECT 定义并由 Snowflake 管理刷新：Dynamic Table；
+- 希望自动优化某些重复单表查询：评估 Materialized View；
+- 希望服务层控制 TTL、失效、降级和命中：Redis；
+- SQL 本身简单、完全相同的查询会重复执行且数据不变：先使用 Snowflake 内建结果缓存即可。
+
+Materialized View 会自动维护结果，但增加存储和后台计算成本；Snowflake 官方建议对基础表的 DML 进行批量操作，以减少过多小批次更新引起的维护开销。不是任何 SELECT 都值得建立物化视图。
+
+对股票 ticker 页面，可以采用混合方案：Task 定时将复杂历史行情聚合写入 serving table；Python API 用短 SQL 读取；Redis 缓存高频 ticker 响应；新批次校验通过后更新数据版本或清理对应缓存。这样刷新、数据库结果和 API 缓存的边界都可解释、可监控。
+
+### 18.6 进一步阅读
+
+- [Using Persisted Query Results](https://docs.snowflake.com/en/user-guide/querying-persisted-results)
+- [Optimizing the Warehouse Cache](https://docs.snowflake.com/en/user-guide/performance-query-warehouse-cache)
+- [Warehouse Considerations](https://docs.snowflake.com/en/user-guide/warehouses-considerations)
+- [Dynamic Tables Decision Guide](https://docs.snowflake.com/en/user-guide/dynamic-tables/decision-guide)
+- [Dynamic Tables Overview](https://docs.snowflake.com/en/user-guide/dynamic-tables/overview)
+- [Working with Materialized Views](https://docs.snowflake.com/en/user-guide/views-materialized)
+- [Python Connector API](https://docs.snowflake.com/en/developer-guide/python-connector/python-connector-api)
+- [Using the Python Connector](https://docs.snowflake.com/en/developer-guide/python-connector/python-connector-example)
+- [Exploring Query Execution Times](https://docs.snowflake.com/en/user-guide/performance-query-exploring)
+- [PostgreSQL EXPLAIN](https://www.postgresql.org/docs/current/using-explain.html)
+
+---
+
 ## 总结
 
 对有 PostgreSQL 和 SQL 基础的团队，推荐的学习和落地顺序不是先研究全部 Snowflake 功能，而是：
