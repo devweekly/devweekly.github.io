@@ -905,6 +905,86 @@ TTL 应跟随数据更新规律，而不是使用一个固定的“最佳实践�
 
 ---
 
+## 十七、Snowflake 初始配置与 SQL 写法：常见避坑清单
+
+### 17.1 初始配置先把边界立好
+
+1. **环境隔离：** Dev/Test/Prod 的数据库、schema、任务和计算资源应清晰隔离，避免开发任务误用生产仓库。
+2. **角色最小化：** 摄取、模型转换、API 查询、BI 读取和平台管理采用不同角色；日常应用不要使用 ACCOUNTADMIN。
+3. **默认上下文明确：** 服务连接明确指定 role、warehouse、database、schema，避免依赖个人账号默认设置。
+4. **专用查询仓库：** 根据实际负载评估是否将 API/BI 与后台转换分仓，避免历史回填拖慢在线查询。仓库负责执行 SQL，不存放表数据。
+5. **自动挂起与恢复：** 对间歇负载启用 AUTO_SUSPEND / AUTO_RESUME，但要结合请求间隔测试。短时间反复唤醒可能增加最低计费周期的消耗，同时频繁丢失仓库数据缓存。如果服务有严格低延迟目标，应一起评估暖仓成本、Redis 和替代数据源。
+6. **成本监控：** 按 warehouse、服务账号及业务域追踪计算用量、排队、异常耗时和长时间运行的任务，配置预算或 Resource Monitor 告警。
+7. **连接与安全：** 使用组织支持的密钥对、OAuth 或受控身份集成，避免把密码写进代码库、镜像和日志；结合 Secret Manager、网络策略和轮换流程。
+8. **时区与数值类型：** 明确源端和目标端时间语义与时区；金融数值用合适的 NUMBER 精度与小数位，不要无意转换成浮点数。
+9. **请求可追踪：** 设置 query tag，包含服务名、功能名和环境等安全信息，不要把敏感用户输入直接写进 tag。
+10. **超时与最大结果：** 为语句设定合理的 statement timeout，在 SQL 层限制结果集，避免无边界查询或意外下载大表。
+
+仓库配置应由实际测量驱动。X-Small 不一定适合所有生产查询，但 X-Large 也不会让简单 ticker 点查按比例更快。官方建议用与真实负载相似的查询测试不同仓库规格，并观察排队、执行时间与扫描量。
+
+参考：[Warehouse considerations](https://docs.snowflake.com/en/user-guide/warehouses-considerations)。
+
+### 17.2 SQL 写法的常见陷阱
+
+**只查询需要的列，不要默认 SELECT 星号。** 这能减少扫描、网络传输和 Python 端解析成本，也避免源表加列后 API 响应悄悄变化。
+
+**让过滤条件尽量有利于微分区裁剪。** 时间范围通常可以用明确的半开区间：
+
+~~~sql
+SELECT ticker, trade_date, close_price
+FROM ANALYTICS_DB.MART.FCT_STOCK_DAILY
+WHERE ticker = %s
+  AND trade_date >= %s
+  AND trade_date < %s
+ORDER BY trade_date DESC
+LIMIT 250;
+~~~
+
+绑定参数顺序示意为 ticker、start_date、end_date。半开区间能避免相邻日期区间边界重复计算。是否真的减少扫描，仍要用 Query Profile 验证；Snowflake 的物理存储和优化方法与 PostgreSQL 索引不同。
+
+**避免无意义的全表排序和大范围 OFFSET 分页。** 若页面只展示近期 100 条，应在 SQL 里筛选日期、明确 ORDER BY 并 LIMIT。深分页可考虑使用上次返回的日期/主键进行 keyset pagination。
+
+**不要在过滤列上反复包转换函数。** 例如对日期列先 CAST/TO_DATE 再过滤，可能增加计算或降低过滤优化机会。尽量把参数转换为列的类型，而不是每行反复转换列。
+
+**JOIN 前先确认表粒度。** 订单头关联订单明细后，订单头字段会按照明细条数重复。聚合前需要明确主键、一对多关系，以及是否应先聚合子表。
+
+**统一数据类型。** ticker、日期、时间戳、金额精度应在模型层规范化，避免每条查询临时做大量 cast。注意 NULL、大小写、空白和交易市场代码。
+
+**绑定参数，不拼接用户输入。** Python service 应使用 Connector 的参数绑定，而不是把 ticker、日期或过滤器插进 SQL 文本。动态表名和列名属于标识符，参数绑定不能代替白名单校验。
+
+**不要把普通 View 当成缓存。** View 一般保存查询定义，而非持久化计算结果。若要预计算，应明确选择 Dynamic Table、Materialized View、目标表 + Task 或应用缓存，并测算维护成本。
+
+**先看 Query Profile 再优化。** 关注扫描的微分区与字节、过滤后的行数、JOIN/聚合操作、spill、排队时间和执行耗时。不要一开始就创建聚类键、Search Optimization 或一堆物化视图；它们有适用场景，也产生维护或存储费用。
+
+查询诊断参考：[Exploring execution times](https://docs.snowflake.com/en/user-guide/performance-query-exploring)。
+
+### 17.3 用 Query History 找出值得优化的查询
+
+以下是概念示例，用于查最近 7 天执行时间较长的查询。生产上应按账号权限和可见性调整。ACCOUNT_USAGE 数据有采集延迟；刚完成的查询可先在 Snowsight Query History 或 Information Schema 中检查。
+
+~~~sql
+SELECT
+    query_id,
+    start_time,
+    warehouse_name,
+    total_elapsed_time / 1000 AS elapsed_seconds,
+    execution_time / 1000 AS execution_seconds,
+    queued_overload_time / 1000 AS queued_overload_seconds,
+    bytes_scanned,
+    rows_produced,
+    query_text
+FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+WHERE start_time >= DATEADD(day, -7, CURRENT_TIMESTAMP())
+  AND execution_status = 'SUCCESS'
+  AND query_type = 'SELECT'
+ORDER BY total_elapsed_time DESC
+LIMIT 100;
+~~~
+
+不要只按总耗时排序，也要分析频繁运行的相似查询。一个每次 50 ms、每天执行 100 万次的查询，可能比偶尔运行数分钟的研究型查询更值得优先处理。使用 query tag 可按服务、功能和环境归集。
+
+---
+
 ## 总结
 
 对有 PostgreSQL 和 SQL 基础的团队，推荐的学习和落地顺序不是先研究全部 Snowflake 功能，而是：
