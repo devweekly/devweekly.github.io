@@ -1172,6 +1172,272 @@ Materialized View 会自动维护结果，但增加存储和后台计算成本�
 
 ---
 
+## 十九、补充阅读：更多真实工程实践及其适用边界
+
+前文已讨论 RevenueCat 与 Fresha 的 CDC 实践。继续调查后，又找到几篇有价值的企业工程文章。它们并不都在证明“把数据全部放进 Snowflake 就是最佳答案”；更有价值的是比较它们为什么选择某种架构、遇到了什么问题，以及在什么规模下付出了哪些代价。
+
+### 19.1 工程实践对照表
+
+| 案例与来源 | 场景和做法 | 值得借鉴的结论 | 阅读时的边界 |
+| --- | --- | --- | --- |
+| **Branch：从 12 小时到 10 分钟的 CDC 重构**（2026） | AWS RDS PostgreSQL 有数百张表和数十 TB 数据；旧的定时增量提取引发源库 I/O 压力，并因时间戳水位、长事务和硬删除而漏数据。团队评估托管服务、AWS DMS、Snowflake Openflow 和自建管线，最终选择由托管 Kafka/Connect 承担部分运维的折中方案。 | 更新时间戳轮询不等于可靠 CDC；高频查询源表还可能伤害在线业务。CDC 的选择不仅要看延迟，还要看数据驻留、运维能力、成本及未来是否需要把事件给 Snowflake 以外的消费者。 | 这是 Branch 自己的工程复盘，比较具体；其对某些产品的评价与当时部署条件相关，不应自动外推到所有账户和版本。 |
+| **Flock：让数据比技术栈更持久**（2026） | 从 Snowflake 为中心的架构转向 S3 + Apache Iceberg + Glue Catalog。用 dlt 和 ECS Fargate 接入 PostgreSQL、HubSpot API 与合作方文件，由 Airflow 编排 dbt、数据质量与其他计算任务。 | 如果多个计算引擎都要读同一份数据，开放存储格式能减少平台耦合；将新数据源接入流程配置化，可以减少每增加一个源就写一套管道的成本。 | 需要团队承担对象存储、Iceberg、数据目录、权限与计算集群的工程工作。小团队或来源很少时，直接使用 Snowflake 托管能力可能更划算。 |
+| **New Relic：从 Snowflake 迁往 Iceberg**（2026） | 迁移 1,000 多个数据集，包括批处理与流数据，改用 S3、Iceberg、Glue、Kafka 和运行在 Kubernetes 上的 Spark；通过双跑、逐行一致性校验和分批切换迁移。 | 平台成本要关注长期成本曲线；开放格式、逐数据集对账和渐进切换可以降低长期锁定及一次性迁移风险。 | New Relic 在其工程文章中报告年数据平台支出降低约 35%–52%。这是该团队特定负载和基础设施下的自述结果，不是任何团队迁出 Snowflake 都会得到的节省比例。 |
+| **Altisource：Oracle Exadata 数据仓库迁移**（由 Persistent 发布） | 将规模庞大的 Oracle Exadata 仓库迁入 Snowflake，案例涉及 25,000 多个客户租户、1,500 多张表、700 个存储过程和 800 个 UDF。迁移不仅搬数据，还建立新的分层和批量加载方式。 | 旧 SQL、PL/SQL、游标逐行处理、ETL 与命名规则都需要盘点；不能把“表导进 Snowflake”当成完成仓库迁移。 | 这是交付合作方发布的客户案例，没有公开独立审计。其规模说明复杂迁移需要架构重整，但不代表类似工具、数量或工期适合每个企业。 |
+| **phData：Exadata/Qubole 到 Snowflake**（2023） | 将多个来源、Informatica 数据流及 Oracle 存储过程迁移到 Snowflake，采用高吞吐复制、转换工具和 dbt；案例称最后建立了 3,000 多个 dbt 模型。 | SQL 自动转换只是起点。模型转换后仍要人工审查、业务对账和自动化验证；先建立统一信息架构和模型分层，再批量迁移，才容易规模化。 | 这是实施合作伙伴发布的匿名客户案例。数字用于说明迁移复杂度，不是对项目规模的建议。 |
+| **Parameta Solutions：金融数据的统一与安全分享** | 金融信息服务商将分散数据集中管理，并使用 Snowflake Secure Data Sharing 向客户提供直接数据访问。 | 如果数据厂商和消费者都使用 Snowflake，安全共享可能比每个客户重复构建文件/API/ETL 流程更简单；“数据如何交付”可以成为数据产品设计的一部分。 | 这是 Snowflake 客户案例。具体的授权、商业模式、跨区域交付和数据保留取决于合同及部署方式。 |
+| **RavenPack：金融情报数据产品交付** | 将数据平台用于内部分析、金融情报产品与面向客户的数据分享，减少传统 FTP/ETL 交付的摩擦。 | 对卖数据的 vendor，治理后的数据共享接口本身就是产品能力；当客户有相同平台时，可以降低双方集成成本。 | 这是供应商发布的客户案例，宣传的成本/性能收益应作为该客户的报告结果理解。 |
+
+原文链接：
+
+- [Branch 工程博客：From 12 Hours to 10 Minutes: Rebuilding Data Platform with CDC](https://crafted.branch.co/2026/08/25/rebuilding-data-platform-with-cdc/)
+- [Flock Engineering：Your data should outlast your stack](https://engineering.flockcover.com/blog/your-data-should-outlast-your-stack)
+- [New Relic：Snowflake to Iceberg Migration](https://newrelic.com/blog/observability/snowflake-to-iceberg-migration)
+- [Persistent：Accelerated migration of a highly complex legacy data warehouse](https://www.persistent.com/client-success/accelerated-migration-of-a-highly-complex-legacy-data-warehouse-environment-to-snowflake/)
+- [phData：Exadata and Qubole migration case](https://www.phdata.io/case-studies/renowned-global-developer-of-automation-testing-measurement-systems-migrates-to-snowflake-from-exadata-and-qubole/)
+- [Parameta Solutions 客户案例](https://www.snowflake.com/en/customers/all-customers/case-study/parameta-solutions/)
+- [RavenPack 客户案例](https://www.snowflake.com/en/customers/all-customers/case-study/ravenpack/)
+
+### 19.2 从这些案例归纳出来的工程原则
+
+**第一，先判断问题是“分析引擎不合适”，还是“数据管道不可靠”。** Branch 的旧系统主要问题之一是轮询源库的方式导致数据库负载与漏数风险。仅仅把同一个低可靠性抽取脚本改为将数据写进 Snowflake，未必解决根因。
+
+**第二，不能只比较连接器的许可证价格。** 真正的总成本应把源端负载、管道服务费、存储、Snowflake 摄取/合并计算、故障值班、历史回填、监控以及多个下游消费者的复用成本算进去。
+
+**第三，CDC 不等于自动获得一张正确的当前状态表。** 要处理主键、事务边界、删除事件、重放、事件顺序、DDL 和历史回填。Branch 的文章也说明，应用层维护的 created_at/updated_at 时间戳不一定适合作为严格可靠的增量水位。
+
+**第四，规模上升后，配置和数据契约很重要。** Flock 将不同源的摄取统一成可配置管道；RevenueCat 也为大量表生成、管理相似的 Snowflake 对象。表越多，人工手写相似 SQL 的维护风险越高。
+
+**第五，Snowflake 不是所有工作负载的终点。** New Relic 和 Flock 的文章表明，开放表格式、多引擎访问和长期成本同样可能是合理目标。它们不是说 Snowflake 不好，而是提醒架构要匹配数据消费方式与组织成本模型。
+
+**第六，迁移需要并行对账，而不只是切换连接字符串。** 对关键数据集做双跑、逐行或按业务键验证、监控新鲜度、分批迁移消费者并保留回滚路径，是这几类大型迁移的共同做法。
+
+---
+
+## 二十、Vendor 数据一定要存到 Snowflake 吗？不一定，但要区分“数据可访问”与“数据复制进来”
+
+假设一个业务查询需要把内部客户/交易数据与外部 vendor 数据关联，例如：
+
+- 内部投资组合 + vendor 的证券参考数据；
+- 内部交易 + vendor 的行业分类、评级、公司关系或市场价格；
+- 内部订单 + 供应商 API 返回的状态；
+- 内部实体 + vendor 的公司主数据、地址校验、风险或制裁名单。
+
+关键问题不只是“数据量多大”，而是：**查询要在哪里执行、vendor 允许怎样使用数据、数据必须有多新、查询是否要可重现，以及这份外部数据被多少次重复使用。**
+
+### 20.1 先给结论
+
+- **如果复杂 SQL 要在 Snowflake 内部 JOIN vendor 数据**，Snowflake 查询执行时必须能把这份数据作为它支持的关系对象访问到，例如共享数据库、外部表、Iceberg 表或已经加载的 Snowflake 表。并不代表必须把所有数据复制到 Snowflake 自己管理的存储中。
+- **如果只是一个页面的单次查询**，例如一个 ticker 对应一个 vendor API 查询，可以由 Python service 调 vendor API，再在服务层组合结果。此时 vendor 数据不必进入 Snowflake，但这个 API 返回值也不能直接被 Snowflake 的普通 SQL 当作一张远程关系表来 JOIN。
+- **如果 vendor 数据会被大量报表、研究查询和模型反复 JOIN**，应优先评估官方共享、增量同步或可查询的开放文件格式。逐请求调用 API 往往让延迟、费用、限流和结果可重现性变复杂。
+- **如果合约不允许将数据持久化或向某些用户暴露**，不能因为技术上可缓存就存入 Snowflake 或 Redis。需要先确认持久化、缓存、衍生数据、用户范围、地区和历史保留等合同权利。
+
+### 20.2 Vendor 数据接入方式比较
+
+| 方式 | 数据是否复制到本账户的 Snowflake 原生存储 | 能否直接在 Snowflake SQL 中 JOIN | 适合场景 | 主要代价/限制 |
+| --- | --- | --- | --- | --- |
+| **Snowflake Secure Data Sharing / Marketplace** | 通常不需要复制到消费方存储 | 可以。共享对象以只读数据库对象的形式导入和查询 | Vendor 本身在 Snowflake 提供数据，且授权与区域条件符合 | Vendor 必须提供相应 share/listing；消费方查询仍需计算资源；需核对订阅费、使用权与区域限制 |
+| **Vendor 提供 S3/云存储文件，采用 External Table** | 文件保留在外部云存储，Snowflake 管理必要元数据 | 可以，外部表可参与 SELECT、JOIN 与视图 | Vendor 按批次交付 CSV/Parquet 等文件；希望先不复制为 Snowflake 原生表 | 文件路径和权限需可访问；元数据刷新、分区、坏文件与文件生命周期需管理；查询通常可能比原生表慢 |
+| **Vendor 提供 Iceberg 数据** | 数据文件可留在共享/外部对象存储，具体由表与目录的管理方式决定 | 可以，通过 Snowflake 支持的 Iceberg/catalog integration 访问 | 双方需要开放格式或多引擎访问，并希望减少重复拷贝 | Catalog、权限、凭证、快照/元数据刷新与文件兼容性是额外工作 |
+| **加载到 Snowflake 原生表** | 是 | 可以，常用于高频分析与重复 JOIN | 数据经常使用、查询性能重要、需要统一建模或长期快照 | 要维护摄取、更新、删除、重放和存储；合同必须允许保存与使用 |
+| **Python service 运行时调用 Vendor API** | 不一定，结果可仅在服务内短暂存在或按合同缓存 | 不能直接把普通 API 返回值当作 Snowflake 原生表 JOIN；可在应用层组合结果 | 少量 key-based lookups、低频请求、数据随请求实时变化 | API 延迟、限流、费用、超时、可用性和结果一致性；若每次报表要查大量行，会很脆弱 |
+| **Snowflake External Function 调用远端服务** | 不要求完整数据集入库，但输入/结果会通过服务调用 | 可以从 SQL 调用函数，但不等于通用联邦查询 | 对少量行做外部计算或受控的按行/批次 enrichment | 网络时延、服务限流、超时、重试和潜在重复调用；查询优化器无法像本地表一样完整优化远端逻辑 |
+| **数据虚拟化/联邦查询层** | 取决于产品与部署，可避免部分拷贝 | 由虚拟化引擎负责跨系统查询；不代表 Snowflake 原生 SQL 能直接访问任意数据库 | 多数据源需要保留在原处、存在成熟的数据虚拟化平台 | 增加中间查询引擎；网络、源库负载、下推能力和跨系统 JOIN 性能需要压测；治理与排障更复杂 |
+
+**官方行为需要记住两点：**
+
+1. Snowflake Secure Data Sharing 不复制或传输数据到消费者账户；共享对象对消费者是只读的，供应方可以更新或撤销访问。消费者主要承担查询所用仓库的计算费用，数据供应方继续承担其数据存储费用。跨区域/跨云场景应检查 Listing 和自动履约等配置，而不是假设普通 direct share 可以跨任意区域。
+2. Snowflake External Table 指向外部 stage 中的文件，不是“连上 vendor 的任意数据库后直接执行 SQL”。外部表支持查询和 JOIN，但 Snowflake 官方指出，对外部表的查询可能比本地 Snowflake 表慢；需要高性能重复查询时，可考虑物化结果、Iceberg 或加载到原生表。
+
+官方参考：
+
+- [Snowflake Secure Data Sharing 概览](https://docs.snowflake.com/en/user-guide/data-sharing-intro)
+- [Snowflake Marketplace 介绍](https://docs.snowflake.com/en/user-guide/collaboration)
+- [Snowflake External Tables](https://docs.snowflake.com/en/user-guide/tables-external-intro)
+- [Snowflake Iceberg Tables](https://docs.snowflake.com/en/user-guide/tables-iceberg)
+- [External Functions 简介](https://docs.snowflake.com/en/sql-reference/external-functions-introduction)
+- [External Functions 最佳实践](https://docs.snowflake.com/en/sql-reference/external-functions-best-practices)
+
+### 20.3 不要混淆四种“没有复制”的说法
+
+**Secure Data Sharing：** 数据是 Snowflake 中的共享对象，消费方可以在自己的 Snowflake 查询里像读取数据库表一样查询。这是最接近“vendor 不把数据复制给我，但我可以在 Snowflake SQL 中 JOIN”的情况。前提是 vendor 已提供 share/listing，并且许可、区域、账户和访问权限都满足要求。
+
+**External Table / Iceberg：** 数据通常是开放格式文件存放在外部对象存储，Snowflake 通过元数据及文件读取来查询。它可以避免复制成 Snowflake 原生表，但仍然要消耗查询计算，且数据文件、元数据刷新、区域网络、权限和文件布局都有影响。
+
+**API 实时调用：** Python service 访问 vendor API 与 Snowflake SQL 查询是两条不同的执行路径。你可以在服务端把两者结果组合，但 Snowflake 的 SQL 引擎并不会因为你有 API URL，就自动把它当成可以参与任意 JOIN 的表。
+
+**External Function：** 它让 SQL 能调用远程服务，但它是函数调用集成，不是给 Snowflake 增加一个完整的 Oracle、REST 或 JDBC 联邦查询优化器。Snowflake 会按批次传递请求，批次数量和顺序不应被业务代码假定；发生网络问题时远端服务可能看到重复请求。不要用它对 vendor API 做大规模逐行查询，除非已验证对方 API 的批量能力、超时、重试、速率限制、幂等性和数据合同。
+
+### 20.4 一个实用的判断流程
+
+~~~mermaid
+flowchart TD
+  A[查询需要 Vendor 数据] --> B{Vendor 是否提供 Snowflake Share / Marketplace?}
+  B -->|是| C[核对合同与区域后优先评估 Secure Data Sharing]
+  B -->|否| D{Vendor 是否交付可访问的云存储文件或 Iceberg?}
+  D -->|是| E{查询频率与性能要求?}
+  E -->|低频/原型| F[External Table / 支持的 Iceberg 接入]
+  E -->|高频/重要 SLA| G[评估原生表或可维护的预计算层]
+  D -->|否| H{是否为少量按 key 的在线查询?}
+  H -->|是| I[Python service 调 API，按合同决定是否缓存]
+  H -->|否| J[评估批量导入/CDC/托管连接器或数据虚拟化]
+~~~
+
+### 20.5 什么时候应该把 Vendor 数据持久化到 Snowflake？
+
+典型信号包括：
+
+- 一个 vendor 表需要被多张业务事实表反复关联；
+- 报表或研究查询需要对大批内部记录匹配外部参考数据；
+- 需要按历史某个时点重现当时使用的评级、分类、证券主数据或供应商状态；
+- Vendor API 限流或单位调用费用较高，在线调用会造成不稳定；
+- 希望将 vendor 字段纳入受控的数据质量、业务语义和权限模型；
+- 某些报表具有严格时限，不能把在线 API 的可用性变成报表的单点依赖。
+
+这里的“持久化”不一定等于把全部 Vendor 数据复制过来。可以选择必要字段、必要业务范围、增量版本以及符合许可的保留窗口。例如只导入业务确实要用到的证券标识符、行业分类和有效日期，而非整个 vendor 产品目录。
+
+### 20.6 金融数据特别需要检查的合同与历史语义
+
+如果 Vendor 提供市场数据、证券参考数据、信用评级、实体关系或研究内容，技术可读不等于法律上可以任意使用。上线前应由数据采购、法务、业务和平台所有者共同确认：
+
+- 是否允许复制到 Snowflake，是否允许存到 S3 或 Redis；
+- 是否允许给不同员工、下游服务、关联公司或客户访问；
+- 能否把 Vendor 数据用于衍生指标、模型训练、AI 摘要或向客户输出结果；
+- 能否长期保留历史快照，以支持回测、审计和争议复现；
+- 能否跨地区或跨云传输，是否有数据驻留限制；
+- Vendor 更新或终止合同后，历史数据、缓存和衍生数据应怎样处理；
+- 数据供应商的授权、来源和有效期怎样随模型传递，如何识别旧数据。
+
+对投资研究和组合管理尤其要区分“最新参考值”和“当时已知值”。如果今天查询到的行业分类或评级被用来回算五年前的投资组合，可能会产生前视偏差。若业务需要严谨回测，应确认供应方确实提供 point-in-time 历史数据，或在合同允许时保存有版本和有效日期的快照。
+
+---
+
+## 二十一、Oracle 中的数据如何被 Snowflake Query 使用？必须先导入吗？
+
+### 21.1 直接回答
+
+**不必把 Oracle 整个数据库都导进 Snowflake，但如果想在 Snowflake 自己的普通 SQL 中，把 Oracle 数据和 Snowflake 表一起做 JOIN，Oracle 数据必须通过某种受支持的方式暴露给 Snowflake 查询引擎。**
+
+常见方式是：
+
+1. 把 Oracle 数据加载到 Snowflake 原生表；
+2. 通过支持的 Oracle Connector/CDC 持续复制到 Snowflake 表；
+3. 如果数据已在 Snowflake 支持访问的文件/开放表格式中，使用 External Table 或 Iceberg 等机制；
+4. 使用受支持的数据共享机制；
+5. 如果企业已有数据虚拟化平台，由那个查询层承担跨数据源的联邦查询。此时执行联邦查询的可能是虚拟化引擎，不一定是 Snowflake 本身。
+
+Snowflake 的 Snowpark Python JDBC 能使用 JDBC 驱动从外部数据库读取数据，并通过 Snowflake 侧的 UDTF 将数据摄取到临时表再处理。这是一个值得评估的专项能力，但不要把它理解为任意 Snowflake SQL 都能透明地引用一个实时 Oracle 表、自动下推所有过滤与 JOIN 的通用联邦查询功能。
+
+官方说明：[Using the Snowpark Python JDBC](https://docs.snowflake.com/en/developer-guide/snowpark/python/snowpark-jdbc)。
+
+### 21.2 Oracle 数据接入路线如何选择？
+
+| 业务需求 | 推荐优先评估的方式 | 为什么 |
+| --- | --- | --- |
+| 一次性搬历史数据，迁移窗口明确 | Oracle Data Pump、SQL*Plus/ETL 批量导出到 CSV/Parquet，再通过云存储 Stage 与 COPY INTO 批量装载 | 最易理解、易重跑，也便于保留迁移批次和对账证据 |
+| 每天或每小时刷新就够了，表有可靠的更新时间与删除记录 | 定时增量提取到文件/Stage，再 MERGE 或重建目标分区 | 组件较少，足以满足低频分析；必须验证更新时间和删除逻辑不会漏数据 |
+| 需要较低延迟，并且必须捕获 UPDATE/DELETE 和事务变更 | Log-based CDC，如 Snowflake Openflow Connector for Oracle、Oracle GoldenGate、支持 Oracle 的 CDC 产品或团队已有日志复制平台 | 不需要反复扫描整张表，能以日志顺序捕获数据变化；需要更严格的源端配置、许可和恢复管理 |
+| 来源很多，包括 Oracle、PostgreSQL、SaaS 和多种 Vendor | 评估统一的托管 ELT 平台或标准化自建连接器平台 | 统一监控、配置、权限和数据质量；避免每个源独自实现一套不一致的同步脚本 |
+| Oracle 中只有少量数据需要临时分析，而且有现成虚拟化层 | 评估现有联邦查询或 Snowpark JDBC 能力 | 可能避免新建长期复制管道，但必须验证数据量、查询计划、源端影响和网络时延 |
+
+### 21.3 Snowflake 原生 Oracle Connector 的关键注意事项
+
+截至本报告检索日期，Snowflake 的 Openflow Connector for Oracle 文档将该 Connector 标记为 **GA（Generally Available）**，可按近实时或计划周期复制选定 Oracle 表，并记录数据变更。它值得进入 PoC 候选名单，但不是没有代价的免费直连。
+
+需要在做架构决定前核实以下事项：
+
+- **Oracle XStream 许可：** 该 Connector 需要 Oracle XStream 服务的付费许可。Snowflake 文档提供由 Snowflake 提供的嵌入式许可选项以及 BYOL（自带许可）选项；其中部分选项有 12 个月或 36 个月的承诺期。当前文档还说明，嵌入式许可有 60 天试用，但进入承诺期的商业条款必须在启用前仔细确认，不要因为“先点一下试用”就忽视后续承诺和维护费用。
+- **数据库版本与部署形态：** 当前 Overview 文档列出 Oracle 11g 及以上版本，但 2026 年 2 月发布 GA 时的发布说明列出 Oracle 12cR2 及以上。对旧版 Oracle、特定 RDS 形态或多租户 CDB/PDB 环境，应以当前连接器支持矩阵、部署版本和厂商确认为准，不要只凭一条通用说明采购。
+- **平台限制：** 当前限制包括不支持 Oracle Autonomous Database（ATP/ADW）、Oracle Fusion Cloud Applications/NetSuite 等 Oracle SaaS，以及 AWS Standard Multi-tenant RDS for Oracle。具体 RDS、CDB/PDB 与备用库架构需要逐项核验。
+- **复制键：** 每张表需有主键、符合条件的唯一约束/索引，或明确的逻辑键，作为行身份与 MERGE 的匹配基础。没有稳定键的表不能理所当然地做完整增量同步。
+- **DELETE/TRUNCATE：** DELETE 在目标侧通常通过软删除标记表达；Connector 文档说明源端 TRUNCATE 不会自动转成目标端删除。数据还原和当前状态模型必须处理这些语义。
+- **大字段与特殊写法：** 某些以 DBMS_LOB 部分写入方式修改的大型 LOB 值可能无法完整重建；DDL、主键改动及类型映射也需要在 PoC 测试。
+- **源端开销与恢复：** 日志捕获涉及 Oracle redo/archive log 与相应权限、保留、资源和网络；需要监控日志滞后、归档空间和断线恢复能力。
+
+权威资料：
+
+- [Openflow Connector for Oracle：概览、许可及限制](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/oracle/about)
+- [Openflow Connector for Oracle 于 2026-02-27 发布 GA](https://docs.snowflake.com/en/release-notes/2026/other/2026-02-27-openflow-oracle-ga)
+- [Oracle Connector 安装与配置](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/oracle/setup-connector)
+- [Oracle Connector 故障排查](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/oracle/troubleshoot)
+
+如果现有 Oracle 授权不允许 XStream、源数据库形态不在支持范围内，或许可成本不合理，应评估 GoldenGate、已有企业 CDC 工具、托管连接器或批量文件同步，而不是把一个特定 Connector 当成 Oracle→Snowflake 的唯一方法。
+
+### 21.4 Oracle 初始装载与增量同步建议怎么设计？
+
+建议分成“存量快照”和“后续变化”两个阶段，并事先定义二者衔接的一致性边界。
+
+**第一步：做源端盘点，不要先复制全库。**
+
+先列出实际要供给 Snowflake 的表、字段、数据量、业务用途、主键、更新频率和敏感等级。检查 Oracle 上哪些报表/存储过程实际被调用、哪些表已过时或重复。迁移没有人使用的表，只会增加长期存储、数据质量和权限治理成本。
+
+**第二步：对历史存量做批量导出。**
+
+适合大批量数据的常见路径是：从 Oracle 使用 Data Pump、受控 SQL 导出或既有 ETL 工具导出为文件，文件落到获准的云对象存储，再用 Snowflake Stage 和 COPY INTO 并行装载。大表可按日期分区、主键范围或业务分片分块导出；每个批次记录行数、源端抽取时间/SCN、文件数与校验摘要。
+
+不要从 Python 逐行读取后逐行 INSERT 上亿行数据。批量文件的吞吐、重跑能力和可观测性通常更好。文件格式、分片粒度与仓库大小应通过真实数据测试，而不是依赖单条命令的默认配置。
+
+**第三步：决定是否需要 CDC。**
+
+如果历史装载完成后数据每日才更新，且源端提供可靠的更新时间、删除记录或可比较的快照，也许定时增量已经够用；但需要验证是否可能漏掉硬删除、同一时间戳内的多次变更、回填以及长事务。
+
+如果需要准确捕获所有更新和删除、延迟要求较低，或者数据用于风险、财务、审计和监管报表，则应更认真评估日志型 CDC。Oracle redo/SCN 机制可用于确定变化顺序；重点不仅是把数据搬过来，还要保证快照与变更日志之间没有缺口。
+
+**第四步：把全量和 CDC 的起点衔接好。**
+
+典型的可靠方式是记录一致的源端起点（例如 SCN/工具等价检查点），执行历史快照并保留所需归档日志，再从该起点捕获后续变更，通过主键和日志顺序处理快照期间发生的更新。具体实现依赖所选工具，但设计必须回答：
+
+- 快照抽取过程中提交的新增/修改会不会漏掉？
+- 同一事件被重试时，目标端是否幂等？
+- DELETE 和 TRUNCATE 在目标端怎样表示？
+- 中断数小时或数天后，源端是否仍保留足够的日志？
+- 某张表失败后，可以单表恢复还是必须全量重载？
+- 怎么证明 Oracle 和 Snowflake 在业务截止时间上等价？
+
+**第五步：完成业务对账后再切换报表。**
+
+按业务键比较样本和缺失集合，核对行数、日期范围、金额合计、状态分布、NULL 和数值精度。旧 Oracle 报表和 Snowflake 新报表应在同一业务截止时间和规则下双跑，并对差异进行解释，不要仅比较总行数。
+
+### 21.5 Oracle SQL/PLSQL 的迁移不是数据装载的附属任务
+
+Oracle 中的表数据可能比较容易导出，但 Oracle 上已有的逻辑未必能原样在 Snowflake 执行。尤其是原有数据仓库依赖大量 PL/SQL 包、存储过程、触发器、游标逐行处理或 Oracle 特有函数的情况，应将逻辑单独盘点：
+
+- **SQL 方言：** 日期/字符串函数、NULL 和空字符串、序列、标识符大小写、外连接、特殊类型转换等需要验证。
+- **日期类型：** Oracle 的 DATE 具有时间部分；不能假设它等价于只含年月日的 DATE。应明确时区、精度、业务日期与事件时间的定义。
+- **数值精度：** Oracle NUMBER 与 Snowflake NUMBER 的精度/范围应逐字段评估。金融数值不能为了方便变成 DOUBLE/FLOAT 再计算。
+- **大型/特殊类型：** CLOB、BLOB、XML、对象类型等可能需要转换、拆分或保留在原系统；不能仅以数据类型名称相似判断兼容。
+- **过程逻辑：** Snowflake 不会因为把 Oracle 表导入就自动继承 Oracle 包、触发器、事务副作用与性能假设。批量处理往往需要重写成集合式 SQL、MERGE、dbt 模型、Snowflake Tasks 或外部编排任务。
+- **命名与模型层：** 利用迁移机会清理不一致命名，清楚区分 RAW、标准化层、数据集市和报表数据集。
+
+这一点也与 Altisource、phData 等 Oracle 仓库迁移案例一致：迁移工作量经常主要花在盘点旧逻辑、重写转换、批量化处理和验证结果，而不只是导表。
+
+### 21.6 推荐的 Oracle → Snowflake 最小实施计划
+
+1. **盘点：** 选出真正需要分析的 Oracle 数据域与表，记录 owner、主键、数据量、更新/删除方式、刷新 SLA、敏感级别及下游报表。
+2. **PoC：** 选 3–5 张有代表性的表：一张大表、一张经常更新的表、一张有删除的表，再加一张含日期/高精度 NUMBER 或 LOB 的表。
+3. **评估接入：** 比较 Openflow Connector for Oracle（包括 XStream 商业许可）、现有 GoldenGate/CDC/ELT 工具，以及批量文件导入；将源端影响和许可成本纳入同一张决策表。
+4. **历史装载：** 用并行批量导出/装载，记录检查点与每批校验信息。
+5. **衔接增量：** 如果采用 CDC，证明快照起点、日志保留、重复处理和删除语义正确；如果用批量水位，证明边界并发、迟到更新和硬删除不会漏数。
+6. **业务建模：** 将 Oracle 原始数据放到 RAW 层，在 STG 统一字段、时间与精度，在 MART 形成业务数据集；不要让报表直接依赖未治理的复制表。
+7. **双跑验收：** 对照 Oracle 与 Snowflake 的总量、业务金额、日期和状态口径，按报表逐个切换。
+8. **运维化：** 建立 CDC/批次延迟、归档日志空间、失败表、行数差异、任务重试、Snowflake 计算费用和恢复流程的监控。
+
+如果企业同时有 PostgreSQL、Oracle 和 Vendor 数据，建议统一制定“数据接入契约”：每个来源都必须声明权威来源、同步方式、刷新 SLA、主键/变更语义、历史保留、访问许可、质量规则、责任人与故障处理方式。底层连接器可以不同，但平台消费层不应对每个来源各自发明一套未文档化的规则。
+
+### 21.7 Oracle 与 Vendor 资料清单
+
+- [Snowflake：Openflow Connector for Oracle](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/oracle/about)
+- [Snowflake：Oracle Connector GA 发布说明](https://docs.snowflake.com/en/release-notes/2026/other/2026-02-27-openflow-oracle-ga)
+- [Snowflake：Snowpark Python JDBC](https://docs.snowflake.com/en/developer-guide/snowpark/python/snowpark-jdbc)
+- [Snowflake：Oracle 到 Snowflake 迁移指南](https://docs.snowflake.com/en/migrations/guides/oracle)
+- [Estuary：Oracle to Snowflake CDC - LogMiner, XStream, Setup, Fixes](https://estuary.dev/blog/oracle-to-snowflake/)（技术供应商文章，适合做方案比较；许可与产品能力需回到官方资料核验）
+- [Flock Engineering：开放格式与合作方数据文件接入](https://engineering.flockcover.com/blog/your-data-should-outlast-your-stack)
+- [Snowflake Secure Data Sharing](https://docs.snowflake.com/en/user-guide/data-sharing-intro)
+- [Snowflake External Tables](https://docs.snowflake.com/en/user-guide/tables-external-intro)
+
+
+---
+
 ## 总结
 
 对有 PostgreSQL 和 SQL 基础的团队，推荐的学习和落地顺序不是先研究全部 Snowflake 功能，而是：
@@ -1182,6 +1448,8 @@ Materialized View 会自动维护结果，但增加存储和后台计算成本�
 4. **对关键报表做双跑、对账和用户验收；**
 5. **再依据真实负载分仓、调整仓库大小、增量模型和合并频率；**
 6. **形成权限、数据质量、成本和故障恢复机制后扩展到更多表。**
+7. **Vendor 数据先选共享、外部文件、按需 API 或持久化同步的方式，不默认复制全部数据；先核对合同和历史可重现要求。**
+8. **Oracle 数据按表和 SLA 规划全量与增量，不必整库搬迁；重点验证快照/CDC 衔接、XStream 许可、DELETE/TRUNCATE 和 SQL/PLSQL 逻辑重写。**
 
 最值得避免的三种错误是：把 CDC 事件当成已经还原好的业务表；为了追求“实时”而接受没有业务价值的成本；以及在没有业务对账、历史语义和恢复流程的情况下，直接让 BI 切换到新库。
 
