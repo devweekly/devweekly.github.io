@@ -1013,12 +1013,11 @@ LIMIT 100;
 
 ~~~sql
 CREATE TABLE IF NOT EXISTS ANALYTICS_DB.MART.STOCK_SUMMARY_SERVING (
-    ticker              VARCHAR NOT NULL,
-    company_name        VARCHAR,
-    last_trade_date     DATE,
-    close_price         NUMBER(18, 6),
-    source_data_version VARCHAR,
-    refreshed_at        TIMESTAMP_LTZ
+    ticker          VARCHAR NOT NULL,
+    company_name    VARCHAR,
+    last_trade_date DATE,
+    close_price     NUMBER(18, 6),
+    refreshed_at    TIMESTAMP_LTZ
 );
 ~~~
 
@@ -1033,23 +1032,31 @@ MERGE INTO ANALYTICS_DB.MART.STOCK_SUMMARY_SERVING AS target
 USING (
     SELECT
         ticker,
-        MAX(trade_date) AS last_trade_date
+        company_name,
+        trade_date AS last_trade_date,
+        close_price
     FROM ANALYTICS_DB.MART.FCT_STOCK_DAILY
     WHERE trade_date >= DATEADD(day, -7, CURRENT_DATE())
-    GROUP BY ticker
+    QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY ticker
+        ORDER BY trade_date DESC, source_updated_at DESC
+    ) = 1
 ) AS source
 ON target.ticker = source.ticker
 WHEN MATCHED THEN UPDATE SET
+    target.company_name = source.company_name,
     target.last_trade_date = source.last_trade_date,
+    target.close_price = source.close_price,
     target.refreshed_at = CURRENT_TIMESTAMP()
 WHEN NOT MATCHED THEN INSERT (
-    ticker, last_trade_date, refreshed_at
+    ticker, company_name, last_trade_date, close_price, refreshed_at
 ) VALUES (
-    source.ticker, source.last_trade_date, CURRENT_TIMESTAMP()
+    source.ticker, source.company_name, source.last_trade_date,
+    source.close_price, CURRENT_TIMESTAMP()
 );
 ~~~
 
-此示例只更新最后交易日期，没有演示怎样从同一天记录取得公司名和收盘价。真实实现应通过 QUALIFY + ROW_NUMBER 或其他明确逻辑，按 ticker 选择最后一条有效行情，避免用 MAX(close_price) 错当成“最新收盘价”。还需处理停牌、缺失交易日、复权口径和数据供应商修正。
+上例假设事实表包含 company_name、close_price 与 source_updated_at，并用 source_updated_at 在同一交易日有多条记录时作稳定的次级排序；如果你的源表字段不同，应调整排序与字段映射。还需处理停牌、缺失交易日、复权口径和数据供应商修正。最近 7 天的过滤窗口也只是演示，必须确保它能覆盖需要重算的 ticker，并为更久未更新或已退市证券设计补全逻辑。
 
 创建 Task 后通常处于 suspended 状态，需要按部署流程显式启用：
 
