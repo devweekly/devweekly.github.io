@@ -956,7 +956,380 @@ Netflix 工程团队公开介绍了基于 Maestro 和 Apache Iceberg 的增量�
 
 
 
-## 18. 参考资料（官方文档和项目主页优先）
+
+---
+
+## 18. 在 AWS 上如何落地：RDS for PostgreSQL + DuckDB + S3（不用 Aurora）
+
+本章给出一套以 AWS 原生服务为主、但**数据库只使用标准 Amazon RDS for PostgreSQL，不使用 Aurora** 的实现方案。目标不是把所有计算塞进 RDS，而是让 RDS 专心管理表元数据和事务，让独立的 DuckDB 计算进程读取 S3 上的 Parquet 数据。
+
+先说推荐结论：
+
+> **第一版推荐：RDS for PostgreSQL（DuckLake Catalog）+ S3 + ECS Fargate 上的 DuckDB Worker + SQS 查询队列 + ECS 上的 HTTPS API + CloudWatch / IAM / KMS。批处理和文件维护可逐步加入 AWS Batch 与 Step Functions。**
+
+这条路线主要依赖 DuckDB 的 DuckLake、Postgres 和 AWS 扩展，不需要在 RDS 里安装 DuckDB。DuckLake 官方把 PostgreSQL 作为多用户/远程客户端场景的 Catalog 候选；DuckDB 进程通过 postgres 扩展访问 Catalog，通过 AWS / S3 能力访问对象存储。[DuckLake：选择 Catalog 数据库](https://ducklake.select/docs/stable/duckdb/usage/choosing_a_catalog_database)
+
+### 18.1 先选清楚：RDS 在这套架构里究竟做什么
+
+这里的 RDS 是普通 PostgreSQL 托管数据库，主要存放：
+
+- DuckLake 的表元数据、快照、Schema、数据文件清单和其他事务管理信息；
+- 必要的服务管理数据，例如查询任务状态、幂等键和任务租约。建议放在独立数据库或独立 Schema，并使用单独的数据库角色；
+- 少量治理配置，例如数据集注册、表的业务说明和授权映射（如果不使用单独的治理服务）。
+
+**RDS 不负责读取每条查询需要的全部 Parquet 文件，也不负责运行 DuckDB 分析引擎。** 数据文件在 S3，DuckDB Worker 在 ECS 容器中执行 SQL。查询计划需要表状态时，Worker 访问 RDS；需要真正的数据列时，Worker 直接从 S3 读取。
+
+这种职责划分很关键，因为它避免把高吞吐的分析扫描压到 PostgreSQL 上，也避免把 DuckDB 当成一个必须放进 RDS 主机内部的扩展。
+
+#### 为什么不能简单地在 RDS 里“装上 DuckDB”？
+
+Amazon RDS 是托管服务，不提供数据库主机的直接操作系统访问，并且 PostgreSQL 扩展必须在 AWS 对相应 RDS PostgreSQL 版本支持的范围内。[RDS for PostgreSQL 文档](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_PostgreSQL.html) · [RDS 支持的扩展](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL.Concepts.General.FeatureSupport.Extensions.html)
+
+像 pg_ducklake、pg_lake 这类方案会涉及服务器端 PostgreSQL 扩展、原生代码或 shared_preload_libraries 等安装条件。**不要假定它们能直接安装在任意标准 RDS PostgreSQL 实例上**；上线前必须逐项核对目标 PostgreSQL 版本的 AWS 扩展支持清单，以及项目对后台进程和参数的要求。
+
+如果明确要使用这些 PostgreSQL 服务器端扩展，但 AWS RDS 不支持对应组件，就不是“调几个参数”能解决的问题。那可能需要换成项目明确支持的托管数据库，或者自己管理 PostgreSQL 主机——但后一种就不符合本章“只用 RDS”的约束。
+
+本章的主路线绕过了这个限制：**RDS 只提供标准 PostgreSQL Catalog；DuckLake、DuckDB、S3 访问扩展全部安装在你控制的 DuckDB Worker 容器中。** 这并不代表所有功能都自动兼容，仍然要固定版本并测试 DuckDB 扩展到 RDS 的连接、事务、TLS 与故障恢复。
+
+### 18.2 推荐的 AWS 架构图
+
+下面按“内部团队、BI、Agent 或数据应用通过 HTTPS 提交查询”的方式画第一版。为避免把长期查询绑在一次 HTTP 请求上，API 负责提交任务和查看状态；真正的查询由异步 Worker 执行。
+
+~~~mermaid
+flowchart TB
+    C[内部用户 / BI / Agent / Notebook] --> IDP[公司 IdP / OIDC]
+    C --> ALB[Internal ALB / HTTPS]
+    ALB --> API[ECS Fargate<br/>Query API / Gateway]
+    API --> AUTH[身份校验、SQL 策略、数据集权限、配额]
+    AUTH --> Q[SQS Query Queue<br/>任务状态与重试]
+    AUTH --> CTRL[(RDS PostgreSQL<br/>服务控制表 / 查询状态)]
+    
+    Q --> W1[ECS Fargate<br/>DuckDB Worker A]
+    Q --> W2[ECS Fargate<br/>DuckDB Worker B]
+    Q --> WN[ECS Worker Pool<br/>按队列扩缩容]
+    
+    W1 --> CAT[(RDS PostgreSQL<br/>DuckLake Catalog)]
+    W2 --> CAT
+    WN --> CAT
+    
+    W1 --> S3[(Amazon S3<br/>Parquet / DuckLake 数据)]
+    W2 --> S3
+    WN --> S3
+    
+    W1 --> TMP[容器临时盘<br/>DuckDB Spill / Cache]
+    W2 --> TMP
+    API --> RESULT[S3 查询结果区]
+    W1 --> RESULT
+    W2 --> RESULT
+    WN --> RESULT
+    API --> URL[短时有效的下载 URL / 分页结果]
+    RESULT --> URL
+    
+    S3 --- VPCE[S3 Gateway VPC Endpoint]
+    W1 --- VPCE
+    W2 --- VPCE
+    WN --- VPCE
+    
+    MAINT[EventBridge Schedule / Step Functions] --> BATCH[AWS Batch<br/>导入、Compaction、快照与文件维护]
+    BATCH --> CAT
+    BATCH --> S3
+    
+    API --> OBS[CloudWatch Logs / Metrics / Alarms]
+    W1 --> OBS
+    W2 --> OBS
+    WN --> OBS
+    API --> SEC[Secrets Manager / KMS / CloudTrail]
+    W1 --> SEC
+    W2 --> SEC
+    WN --> SEC
+~~~
+
+这张图有几个重要约束：
+
+1. **RDS 和 ECS Worker 都放在私有子网。** 不要把数据库公开到互联网。RDS 安全组只允许指定的 API/Worker 安全组访问 PostgreSQL 端口。
+2. **DuckDB Worker 自己通过 IAM 身份读写 S3。** 不需要将 S3 长期密钥存放在 RDS Catalog 中，也不要将密钥传给用户或 Agent。
+3. **SQS 只负责任务排队，不是事务数据库。** 每条查询仍需有稳定的 Query ID、幂等处理、执行租约、状态变更和失败后的重试规则。
+4. **结果文件放在独立的 S3 前缀或 Bucket。** 结果下载需检查用户是否仍有权限，再生成有过期时间的预签名 URL；不能把内部数据的永久公开链接返回给客户端。
+5. **控制面与湖仓元数据逻辑分开。** 初期可在同一 RDS 实例使用不同数据库/Schema 和数据库角色，但这只是逻辑隔离；它们仍共享同一实例的 CPU、内存、连接额度和故障域。
+
+### 18.3 AWS 服务应该如何选
+
+| 层次 | 第一版建议 | 为什么选它 | 什么时候考虑替代 |
+|---|---|---|---|
+| PostgreSQL Catalog | **Amazon RDS for PostgreSQL，生产建议 Multi-AZ DB instance** | AWS 管理备份、软件维护和故障切换；DuckLake 能使用 PostgreSQL 作为 Catalog | 当 Catalog CPU、内存、I/O 或事务吞吐成为瓶颈时，先扩实例或优化元数据访问；需要读扩展时再评估 Read Replica，但不能把异步副本盲目用于需要最新状态的 Catalog 操作 |
+| 数据文件 | **Amazon S3** | 持久、弹性对象存储，适合 Parquet 等数据文件和查询结果 | 如果需本地开发，可用 MinIO；生产与开发端点、凭证、桶策略要分别配置 |
+| API / Gateway | **ECS Fargate 上的 FastAPI/Node.js 服务 + Internal ALB** | 容易部署 HTTP 查询 API、身份校验、队列、结果轮询和审计 | 若已有标准 API 平台，可以使用 API Gateway；但长查询不要依赖单个请求一直等到完成 |
+| DuckDB 计算 | **ECS Fargate Worker 池** | 无需管理 EC2 主机，适合中小规模、资源边界清楚的独立查询 | 大查询 Spill 很多、需更大临时盘或专用 CPU/本地盘时，转向 ECS on EC2；如果公司已经标准化 Kubernetes，再使用 EKS |
+| 排队 | **Amazon SQS** | 把突发请求和实际计算容量解耦，支持重试、死信队列和队列长度监控 | 不要一开始就自建复杂调度平台；如果必须复杂依赖、优先级或严格公平调度，再考虑扩展控制面 |
+| 批处理与维护 | **AWS Batch + EventBridge；复杂依赖可用 Step Functions** | 适合批量导入、重算、Compaction、过期快照、定期质量检查 | 若已经有 Airflow、Dagster 等工具，避免重复部署两套编排系统 |
+| 凭证 | **ECS Task Role + IAM；RDS 凭证可评估 IAM DB Authentication；必要时 Secrets Manager** | 以临时凭证和最小权限替代硬编码密钥 | 如果连接池或扩展不能正确处理 IAM token 刷新，先修好身份/连接流程，再使用受控的 Secrets Manager 密码作为过渡 |
+| 加密 | **S3 SSE-KMS、RDS 加密、TLS** | 数据文件、元数据和传输链路都需要保护 | 按组织的密钥管理与审计要求决定是否使用独立 KMS Key、跨账户策略和密钥轮换 |
+| 网络 | **VPC 私有子网 + Security Group + S3 Gateway Endpoint** | Worker 访问 S3 不必绕公网或 NAT；安全组可以限制 RDS 入口 | 从其他 VPC/本地网络访问 S3 的场景，可能需要 Interface Endpoint 或其他网络设计 |
+| 可观测性 | **CloudWatch Logs、Metrics、Alarms；必要时接 OpenTelemetry** | 统一查看队列、查询、资源、错误、数据库和 Worker 日志 | 不要只看容器 CPU；必须一起观察 S3 读取、Catalog 延迟、队列等待和临时盘 |
+| 镜像与部署 | **ECR + IaC（Terraform / CDK / CloudFormation）** | 固定镜像和配置，重复创建环境，支持回滚 | 不要把只在开发机验证过的容器直接当成生产部署工件 |
+
+关于 RDS 的高可用要有准确预期：**Multi-AZ DB instance 的备用实例用于故障切换，不是可供你平时分担只读查询的副本。** 如果要读扩展，需要另行评估 Read Replica；而 DuckLake Catalog 读取表状态的路径还必须考虑一致性，因此不要把 Catalog 查询随意路由到可能存在复制延迟的只读副本。[AWS：RDS Multi-AZ DB instance](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZSingleStandby.html)
+
+### 18.4 网络与安全组：建议在第一天就做对
+
+可以用以下规则作为初始安全基线：
+
+| 资源 | 网络位置 | 允许的入站 | 不应该允许的事情 |
+|---|---|---|---|
+| Internal ALB | 私有子网或按企业入口方案部署 | 来自 VPN、企业网络、受控应用入口 | 无需公开给整个互联网 |
+| Query API | 私有子网 ECS Service | 仅来自 ALB 的应用流量 | 不开放任意管理端口 |
+| DuckDB Worker | 私有子网 ECS Service/Task | 通常不接收用户直接入站连接；从 SQS 拉取任务 | 不向外部客户端暴露随意执行 SQL 的端口 |
+| RDS PostgreSQL | 私有数据库子网 | 仅允许指定 API/Worker 安全组到 5432 | 不设置 0.0.0.0/0；不要给所有 VPC 内工作负载无限制访问 |
+| S3 | S3 Gateway Endpoint + Bucket Policy | Worker 的 IAM Task Role 在授权路径内读写 | 不让所有 Worker 都拥有整个账户所有 Bucket 的访问权 |
+| Secrets Manager / ECR / CloudWatch | 私有网络中的 AWS 服务端点或按需 NAT | 仅允许所需服务调用 | 不为省事而向 Worker 放开任意出站访问 |
+
+AWS 官方建议用安全组引用控制应用服务器到 RDS 的访问；RDS 私有实例只能通过配置好的 VPC 网络路径访问。[AWS：VPC 中访问 RDS 的场景](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_VPC.Scenarios.html)
+
+同区域的 S3 Gateway VPC Endpoint 可以让 VPC 中的流量经路由表访问 S3，而不需要 Internet Gateway 或 NAT Device，并且 Gateway Endpoint 本身没有额外费用。但它是区域性的，也不能覆盖所有跨区域、跨 VPC 或本地网络访问场景。[AWS：S3 Gateway Endpoint](https://docs.aws.amazon.com/vpc/latest/privatelink/vpc-endpoints-s3.html)
+
+还要注意，私有子网并不代表容器不需要访问任何 AWS 服务。Worker 可能需要从 ECR 拉镜像、向 CloudWatch 写日志、从 Secrets Manager 取凭证、访问 STS 等。应按实际依赖选择 Interface Endpoint 或受控 NAT，不要在测试成功后才发现生产环境因无法访问扩展仓库或 AWS API 而启动失败。
+
+### 18.5 DuckDB Worker 怎么访问 S3 和 RDS
+
+Worker 容器中需要锁定 DuckDB 版本和所需扩展版本。基本运行时一般包括：
+
+- **ducklake**：管理 DuckLake 表及事务元数据；
+- **postgres**：访问 RDS PostgreSQL Catalog；
+- **aws** 与相关 S3 能力（例如 **httpfs**）：通过 AWS 凭证链访问 S3；
+- 需要的观测、查询 Profile 和业务 SQL 组件。
+
+DuckDB 的 AWS credential_chain 机制可通过 AWS SDK 支持的身份来源获取凭证，包括环境凭证、实例身份、假定角色和 Web Identity 等；AWS ECS Task Role 会为容器提供任务对应的临时凭证。**推荐让 DuckDB 从 Task Role 获取 S3 权限，不要在镜像、SQL 文件、环境配置或提示词中固化 AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY。** 部署后应通过真实 ECS Task Role 做一次 S3 读、写、拒绝未授权路径的集成测试。[DuckDB AWS 扩展](https://duckdb.org/docs/current/core_extensions/aws) · [AWS ECS Task IAM Role](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html)
+
+一个用于说明组件关系的 SQL 配置示意如下。实际环境要把占位符替换成正式的 RDS Endpoint、数据库名和 S3 Prefix，并按固定版本验证语法与认证流程：
+
+~~~sql
+INSTALL ducklake;
+INSTALL postgres;
+INSTALL aws;
+LOAD ducklake;
+LOAD postgres;
+LOAD aws;
+
+-- 让 S3 凭证来自运行时 AWS 身份，不在 SQL 里放长期密钥。
+CREATE OR REPLACE SECRET lake_s3 (
+    TYPE s3,
+    PROVIDER credential_chain,
+    REGION 'ap-northeast-1'
+);
+
+-- 示例用数据库密码说明 Catalog 连接。生产环境需从受控秘密管理中注入，
+-- 不应将真实密码提交到代码仓库或镜像。
+CREATE OR REPLACE SECRET lake_catalog_pg (
+    TYPE postgres,
+    HOST 'my-rds.xxxxxx.ap-northeast-1.rds.amazonaws.com',
+    PORT 5432,
+    DATABASE 'ducklake_catalog',
+    USER 'ducklake_worker',
+    PASSWORD '<由 Secrets Manager 安全注入>',
+    SSLMODE require
+);
+
+CREATE OR REPLACE SECRET lake_catalog (
+    TYPE ducklake,
+    METADATA_PATH '',
+    DATA_PATH 's3://company-analytics-prod/warehouse/',
+    METADATA_PARAMETERS MAP {
+        'TYPE': 'postgres',
+        'SECRET': 'lake_catalog_pg'
+    }
+);
+
+ATTACH 'ducklake:lake_catalog' AS warehouse;
+USE warehouse;
+
+-- 此后可用 DuckDB SQL 创建/查询受授权的湖仓表。
+-- CREATE TABLE ... / SELECT ...;
+~~~
+
+这里的 CREATE SECRET 只是展示连接结构，**不能把占位符直接复制到生产环境，也不要把静态密码当作唯一认证选项**。DuckDB 官方还记录了通过 aws 与 postgres 扩展使用 RDS IAM Authentication 的方式：由 AWS 凭证链生成短期 IAM 登录 Token，并通过 PostgreSQL Secret 使用和刷新。[DuckDB：RDS IAM Authentication](https://duckdb.org/docs/current/guides/database_integration/rds_iam)
+
+生产上可以优先评估 RDS IAM 数据库认证。如果所使用的 DuckLake Catalog 连接方式、连接池或扩展版本不能可靠刷新 Token，需先解决这个集成问题，再采用 Secrets Manager 维护的数据库密码方案。无论哪种方式，均应建立独立的最小权限数据库角色；不要让所有查询都以数据库管理员身份执行。
+
+另外，S3 的 IAM 权限和 Catalog 的 SQL 权限是两层不同的控制。PostgreSQL 角色限制谁可以读写 Catalog；S3 Task Role 决定 Worker 事实上能对哪些对象执行读写。若所有 Worker 都持有整个 Bucket 的读写权限，即使 Catalog 中设置了表级读取角色，Worker 代码出错仍可能绕过预期边界。需要严格租户隔离时，应采用按环境/租户隔离的 Bucket 或 Prefix、受限 Task Role/短期凭证、独立 Worker 任务，必要时再配合应用层行列权限。
+
+### 18.6 RDS Catalog 的设计和容量边界
+
+不要因为 Catalog 里没有大规模业务明细，就认为它可以随便选一个最小 RDS 实例。Catalog 承担表定义、快照变化、写入提交和部分查询规划信息；并发写入、频繁 Schema 变更或大量小批次写入，都会增加元数据事务压力。
+
+建议做到以下几点：
+
+1. **设置独立的数据库角色。** 至少区分 Catalog 初始化/迁移角色、正常写入角色、只读角色和平台运维角色。不要在每个 Worker 中使用 master user。
+2. **用独立数据库或 Schema 分开控制面与 Catalog。** 查询队列状态、历史日志和 API 审计记录可能增长得很快；不要让它们和湖仓元数据共用一个没有容量规划的业务表空间。相同 RDS 实例可先做到逻辑分离，规模扩大后再评估拆成两台 RDS。
+3. **控制连接数。** DuckDB Worker 数量乘以每个进程创建的 PostgreSQL 连接，可能快速耗尽 RDS 的可用连接。要复用连接、限制连接池，估算高峰连接数，并测试连接重建和故障切换；不要让每个短查询无控制地新建很多 Catalog 连接。
+4. **谨慎使用 RDS Proxy。** 它可以帮助某些连接池场景，但不能替代连接总量和事务行为的设计。事务、会话状态和连接固定行为会影响复用效率，是否加入应基于真实 DuckLake 查询和提交模式测试，而不是默认“接上 Proxy 就解决”。
+5. **不要把异步只读副本随意用作 Catalog 真相来源。** 对刚提交的快照，若读取路径出现复制延迟，可能影响数据可见性或客户端观察到的状态。先保持权威 Catalog 访问指向主实例；只有确认具体操作、隔离语义和复制延迟可以接受后，才考虑特殊只读路径。
+6. **做容量监控。** 至少跟踪数据库连接数、CPU、内存压力、存储延迟、连接等待、锁/事务冲突和故障切换。RDS 规格应以并发元数据操作和真实查询规划行为决定，而不只看数据文件大小。
+7. **把主版本/扩展版本升级当作受控变更。** 固定 DuckDB 与 DuckLake 版本；先在独立 Catalog 和测试数据上升级、读写和恢复验证，再推广到生产。
+
+如果主要查询是复杂分析，而 RDS CPU 却长期很高，第一步应检查是否误把明细数据加载进 PostgreSQL、是否有大量重复的元数据查询、是否创建了过多细碎文件、是否存在过多并发写入；不要只靠不断升级 RDS 实例掩盖架构问题。
+
+### 18.7 ECS Fargate、ECS on EC2 和 EKS 怎么选
+
+DuckDB 的分析执行会占用内存，也可能把中间数据溢写到本地临时盘（spill）。因此容器选型不能只看每个 vCPU 多少钱。
+
+| 选择 | 适合情况 | 优势 | 主要限制与工程注意点 |
+|---|---|---|---|
+| **ECS Fargate** | 第一版、团队不想管理主机、中小型查询、可明确限制单任务资源 | 不必自行管理 EC2 主机；每个 Task 有独立的任务角色和资源配置 | Linux Fargate Task 默认有 20 GiB 临时存储，可配置到 200 GiB；镜像本身也占用空间。大查询的 Spill 可能用完临时盘，需监控和设置限制 |
+| **ECS on EC2** | 查询需要大量临时盘、特定 CPU/内存/本地盘规格、较稳定的持续负载 | 可选实例类型、EBS 或适合的本地临时盘；长期利用率高时可以更好地控制成本 | 要负责容量、补丁、IMDS 和同机容器隔离；不能只给每个任务更大 IAM 权限就认为安全隔离已解决 |
+| **EKS** | 企业已有 Kubernetes 平台和相应运维能力，需要统一编排复杂服务 | 可复用集群策略、Pod 资源、网络和发布机制 | 仅为几个 DuckDB Worker 新建 Kubernetes 平台通常不划算；需要维护节点、存储、调度和升级 |
+| **AWS Batch** | 大量离线 ETL、补数、批量计算、Compaction 和定期维护任务 | 有 Job Queue、计算环境和按需容量；适合可以独立运行、完成后退出的任务 | 不应无脑用来承担所有交互式短查询；作业启动时间、排队、失败重试和重复执行仍需设计 |
+
+Fargate 的临时存储在 Linux 平台版本 1.4.0 及以后默认至少 20 GiB、最高可配置到 200 GiB；容器镜像会占用这部分空间。[AWS：Fargate 临时存储](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/fargate-task-storage.html)。AWS Batch 官方也区分了 Fargate 的基础设施抽象和 ECS/EC2 在实例类型、较大规模工作负载上的灵活性。[AWS Batch：何时使用 Fargate](https://docs.aws.amazon.com/batch/latest/userguide/when-to-use-fargate.html)
+
+**我的建议是从 ECS Fargate 开始，但不要假设它适合任意大小的查询。** 给每个 Worker 设置 DuckDB memory_limit、threads、temp_directory 和最大临时目录占用；这些限额必须与 Fargate/容器实际分配的内存、临时存储和并发数匹配。若现实工作负载需要 200 GiB 以上的临时空间，或希望长期缓存大量热数据，应进行 ECS on EC2 对照测试。
+
+不要让多个容器共享同一个本地 DuckDB 原生数据库文件作为集群数据目录。Worker 本地磁盘应只放缓存和中间结果；已提交的共享表数据及权威 Catalog 状态仍在 S3 + PostgreSQL。
+
+### 18.8 查询 API、排队和执行：不要让 HTTP 请求一直等到 SQL 完成
+
+建议把对外接口设计为异步任务：
+
+1. 客户端调用 POST /queries，提交 SQL、业务目的、期望数据集和必要参数。
+2. Gateway 验证登录身份、表权限、SQL 结构、查询配额和输出限制，为请求分配 query_id。
+3. Gateway 把任务状态写入控制表，并把任务消息投递到 SQS。
+4. Worker 获取任务后登记租约，把 SQL 送到 DuckDB，执行并收集查询 Profile、扫描字节和资源使用。
+5. 小结果按页返回；大结果写入 S3 的结果前缀，客户端通过查询状态 API 获取下载方式。
+6. 任务成功、失败、取消、超时和重试都要写入可查询的状态，不能只依赖容器日志。
+7. 用户再次提交相同任务时，应通过幂等键避免意外重复执行或重复写入。
+
+建议的 API 轮廓：
+
+~~~text
+POST /queries
+  -> { "query_id": "...", "status": "QUEUED" }
+
+GET /queries/{query_id}
+  -> { "status": "RUNNING", "submitted_at": "...", "elapsed_ms": 1200 }
+
+GET /queries/{query_id}/result
+  -> 小结果：分页数据
+  -> 大结果：带过期时间的下载 URL 或结果文件信息
+
+POST /queries/{query_id}/cancel
+  -> 申请取消任务
+~~~
+
+SQS 通常意味着消息至少一次投递，而不是你的查询逻辑只执行一次。要处理重复消息、Worker 退出、可见性超时、重试、死信队列（DLQ）、任务租约过期和任务取消。对于会写入数据的任务，必须把幂等设计落实到写入协议中，不能只依赖 Query ID。
+
+不要允许 Agent 直接提交任意文件路径或完全不受限制的 SQL。应将业务允许访问的表名/视图注册在服务端；解析 SQL 并检查访问对象、危险语句、外部路径、扩展安装、ATTACH、文件写入范围、最大运行时长、输出行数和资源配额。**SQL Gateway 是执行边界，不是简单转发器。** 表格式支持事务也不能代替服务层的权限和租户隔离。
+
+如果必须使用现成 BI 工具通过 PostgreSQL Wire Protocol 连接，还需要额外验证 SQL 方言、系统目录元数据、预编译语句、取消查询、事务和认证兼容。PostgreSQL 协议兼容不等于完整 PostgreSQL 语义。第一版使用 HTTPS 查询 API 往往更容易限制权限和审计；确需 pgwire 时，再独立设计协议入口和身份映射，不要直接把 RDS 暴露给所有分析客户端。
+
+### 18.9 写入、文件布局、Compaction 与 S3 生命周期
+
+S3 上保存文件并不意味着可以完全忽略文件整理。DuckDB 查询成本不仅取决于数据量，还会受到对象数量、文件大小、列布局、分区策略、重复扫描、缓存命中率和远端请求时延的影响。
+
+建议初期落实以下规则：
+
+- **采用 DuckLake 管理正式表。** 不要将生产表仅定义为某个 S3 前缀下的通配符 Parquet 文件。
+- **按查询条件确定分区与排序。** 日期、业务实体等字段是否适合作为分区键，要根据过滤模式、写入模式和基数验证；分区过细也会制造大量小文件。
+- **把小文件合并作为日常维护。** 可以先将约 128–512 MiB 作为压缩后数据文件的实验起始区间，再用自己的数据和并发模式测试，而不是写死为所有表的标准。
+- **为历史快照设置业务保留策略。** 历史版本保留期应覆盖回滚、调查与重跑的需要，同时考虑存储开销。
+- **将 S3 生命周期策略和表格式文件清理分开设计。** 不要对正式表数据前缀盲目设置“超过 30 天全部删除”一类规则；对象仍可能被当前或保留快照引用。
+- **清理流程必须可观测。** 记录合并了哪些文件、删除了哪些文件、执行前后数据量和结果；清理任务失败后应可安全重跑。
+- **区分业务原始数据和可重建的中间结果。** 原始层可以采用更严格的保留和不可变策略；临时结果区则应有明确的过期与清理策略。
+
+### 18.10 备份、故障切换与恢复：RDS 备份不是整套湖仓备份
+
+RDS 自动备份和时间点恢复保护的是 PostgreSQL 实例里的数据。Lakehouse 的数据文件在另一个系统——S3。因此，**只备份 RDS 但不保护 S3 文件，不能保证湖仓可恢复；只保留 S3 文件而没有可恢复的 Catalog，也可能无法准确重建已提交的表状态。**
+
+RDS 支持自动备份、数据库快照和配置的保留期内时间点恢复。[AWS：RDS 自动备份](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithAutomatedBackups.html)。但还需要为 S3 设计单独的保护方案。
+
+建议定义至少三类恢复场景：
+
+| 故障场景 | 必须有的应对方案 |
+|---|---|
+| DuckDB Worker 被终止 | Worker 本地临时文件可丢弃；记录查询状态，按幂等规则重试或标记失败 |
+| RDS 故障切换或 Catalog 误操作 | 应用重新连接 RDS Endpoint；确认连接重试、事务失败后的处理；必要时执行 Catalog 时间点恢复并验证表状态 |
+| S3 文件意外删除、损坏或清理错误 | 使用适合风险要求的 S3 版本控制、复制、备份或保护策略；按表快照/文件引用关系验证恢复结果 |
+
+还要处理一个容易遗漏的交叉故障：如果将 RDS Catalog 恢复到过去的时间点，而 S3 已经按生命周期删除了该时间点需要的文件，就可能恢复出一个引用缺失对象的表。因此，Catalog 恢复策略和 S3 数据保留必须协调制定；不要让对象清理策略短于需要支持的历史恢复窗口。
+
+上线前至少做一次真实演练：恢复 RDS 到备用环境、恢复/验证对应 S3 文件、使用 DuckDB 打开表、比较关键行数和校验结果、执行典型查询。只看控制台显示“备份成功”不等于业务数据已经恢复成功。
+
+### 18.11 监控、审计和故障诊断
+
+应建立统一 query_id，贯穿 Gateway、SQS、Worker、RDS 访问和结果文件。最小日志字段可包括：
+
+- 请求主体/服务账号、租户和授权策略结果；
+- 逻辑数据集、表名与查询使用的快照标识；
+- SQL 哈希或按合规要求保护的 SQL 文本；
+- 排队时间、开始/结束时间、执行状态、取消原因和错误分类；
+- DuckDB Profile、扫描行/字节、输出行数、CPU、峰值内存和临时盘占用；
+- S3 读写结果前缀、请求失败、重试和耗时；
+- RDS 连接失败、等待/超时、事务提交冲突与故障切换；
+- 执行镜像版本、DuckDB/DuckLake 版本以及策略版本。
+
+CloudWatch 监控至少覆盖 SQS 队列深度和最老消息时间、Worker CPU/内存/临时盘、执行时长分布、查询失败率、S3 访问失败和 RDS 连接/CPU/存储指标。对高敏数据，可按合规要求启用与留存适当的 CloudTrail S3 数据事件，并限制谁可以修改或删除审计记录。
+
+**不能把“SQL 已经写进日志”当作完整审计。** 对金融业务还应能解释：谁提交查询、为什么获准、查询时访问了哪些表/快照、实际执行了什么、是否写入数据、结果保存在哪里、谁获取了结果，以及怎样取消或阻断后续执行。
+
+### 18.12 成本与性能：哪些地方最容易意外花钱
+
+AWS 方案的成本至少来自：RDS 实例和存储、Multi-AZ、S3 数据与请求、数据传输、Worker 计算、临时盘或 EBS、日志与指标、SQS、Secrets Manager/KMS、接口端点以及工程运维。
+
+几个有实际影响的选择：
+
+- **Fargate 按需执行与长驻 Worker 池。** 对低频任务，按需容易省掉闲置机器，但启动延迟占比可能很高；对高频短查询，保持一定数量的 Worker 更稳定。需要用负载曲线比较，而不是直接设定“每个请求启动一个 Worker”。
+- **ECS on EC2 的实例利用率。** 持续高负载和需要大量本地临时盘时，EC2 可能更划算；但要计入空闲容量、补丁和节点故障运维。
+- **RDS 规格由元数据事务决定，不是由 S3 数据总量直接决定。** 100 TB 的 Parquet 不代表 Catalog 必须是超大实例；但频繁提交和大量并发 Worker 也可能让小 RDS 成为瓶颈。
+- **S3 请求和扫描字节要一起看。** 读取很多很小的文件、重复做全表扫描或跨区域读取，可能拖慢查询并增加成本。
+- **临时盘与内存限制会影响尾延迟。** 当 DuckDB 大量 Spill 时，Worker 的临时存储和网络读取会成为瓶颈；不能只提高 SQL 并发。
+- **日志不要无限留存。** 明确哪些审计信息必须留存、哪些 Debug/Profile 日志可短期保留，避免将大量逐行日志当成治理方案。
+- **人力是真实成本。** 如果为了省一部分计算费用，最后要维护身份、SQL Gateway、调度器、数据恢复、文件维护和升级，必须把这部分纳入方案比较。
+
+应当用每 1,000 条成功查询的总成本、p95 查询延迟、排队时间、查询失败率、扫描字节和每个业务团队成本进行比较。
+
+### 18.13 实际实施顺序：从最小可用到生产
+
+建议按以下次序交付，避免一次引入太多组件：
+
+**第一步：先跑通 DuckLake + RDS Catalog + S3。** 在一个隔离的测试环境创建 RDS PostgreSQL、S3 测试 Bucket 和 DuckDB Worker。验证 Worker 能通过私有网络连接 RDS、利用 Task Role 读写 S3，并创建/查询一张 DuckLake 表。
+
+**第二步：加入 API 和查询状态。** 使用 ECS 部署 API 服务，先支持身份校验、受限查询和同步短查询；为 Query ID、取消、资源上限和结果大小建立基本规范。
+
+**第三步：再加入 SQS 与 Worker 池。** 把较长查询改为异步执行，完善可见性超时、幂等、失败重试、DLQ、查询取消以及 worker 扩缩容策略。
+
+**第四步：实施文件与数据维护。** 建立导入、Schema 校验、Compaction、快照过期和安全清理流程；用 EventBridge、AWS Batch 或现有的编排工具运行这些作业。
+
+**第五步：补齐生产安全与恢复。** 配置私有子网和 Endpoint、最小权限、TLS、KMS、日志留存、告警、RDS 备份、S3 数据保护和恢复演练。
+
+**第六步：根据实际瓶颈扩展。** 若主要问题是独立查询太多，优化 Worker 池和资源配额；若单条 SQL 需要跨机器执行，再将同一组 SQL 对照测试到 Trino + Iceberg 或 StarRocks/Doris，而不是无限增加 DuckDB Worker。
+
+### 18.14 上线验收清单
+
+| 类别 | 必须验证的事项 |
+|---|---|
+| RDS | 使用标准 RDS PostgreSQL；没有依赖未获支持的原生扩展；有私有网络、TLS、Multi-AZ 或明确的可用性方案 |
+| Catalog | 表和快照元数据能够被多个 Worker 正确读取；提交冲突和失败重试经过验证 |
+| S3 | Worker 使用 Task Role；桶策略和 Prefix 范围最小化；结果区与正式表区隔离；错误删除有恢复办法 |
+| 查询执行 | 内存、线程、临时盘、最大运行时间、输出行数、取消和排队都有上限 |
+| 并发与幂等 | 重复 SQS 消息、Worker 被杀、超时和重试不会导致意外重复提交 |
+| 安全 | Agent 无法通过任意路径或 SQL 越权访问其他数据；数据库角色不使用管理员权限；短期凭证可续期 |
+| 兼容性 | 锁定 DuckDB、DuckLake、PostgreSQL 驱动和容器版本；扩展不依赖运行时临时联网下载 |
+| 运维 | CloudWatch 指标、告警、任务 DLQ、慢查询诊断和版本回滚流程完整 |
+| 恢复 | 演练 RDS 恢复与 S3 文件恢复组合；检查快照、行数和关键业务查询 |
+| 成本 | 分开统计 RDS、Worker、S3 请求/存储/流量、临时盘、日志和运维成本 |
+
+### 18.15 什么时候该换路线？
+
+- **少量用户、低到中等数据量、以聚合和 Join 为主：** RDS Catalog + DuckLake + DuckDB Worker 是一个合理起点。
+- **需要更短的交互延迟和稳定并发：** 先调整长驻 Worker、队列和热数据策略，再评估是否需要更强的查询引擎。
+- **大量小批次写入、CDC 或频繁更新：** 深入测试 pg_ducklake 这类写入路径，但确认能否在你的 RDS 约束内部署；若必须安装 RDS 不支持的服务器端扩展，则这条部署路线不成立。
+- **多引擎读写成为硬需求：** 评估 Iceberg + 支持的 Catalog（比如 REST Catalog 服务或 AWS Glue），不要默认 PostgreSQL 数据库本身就提供了 Iceberg Catalog API。
+- **单条复杂 SQL 需要多机并行：** DuckDB Worker 池不是分布式查询引擎；应评估 Trino + Iceberg、StarRocks 或 Doris。
+- **不希望构建查询服务层：** 应把托管 DuckDB 服务的成本和自建 Gateway、排队、授权、审计及恢复的维护成本一起比较。
+
+**总结：不用 Aurora 并不妨碍搭建一套实用的 AWS 轻量湖仓。** 把标准 RDS PostgreSQL 用作 DuckLake Catalog，把 Parquet 放在 S3，把 DuckDB 放在 ECS 上执行，再用 SQS 与服务层管理查询，完全可以形成清楚的存储、元数据与计算边界。真正决定它能否生产运行的，是私有网络、最小权限、Catalog 连接与事务、Worker 资源限制、S3 文件维护、故障恢复和可观测性，而不是单纯把几个 AWS 服务连起来。
+
+
+
+## 19. 参考资料（官方文档和项目主页优先）
 
 ### DuckDB / DuckLake
 
@@ -1028,6 +1401,24 @@ Netflix 工程团队公开介绍了基于 Maestro 和 Apache Iceberg 的增量�
 45. [LST-Bench: Benchmarking Log-Structured Tables in the Cloud](https://dl.acm.org/doi/10.1145/3639314), ACM 2024 — 面向云上可变分析表的基准研究。
 46. [The Deconstructed Warehouse: An Ephemeral Query Engine Design for Apache Iceberg](https://www.vldb.org/2025/Workshops/VLDB-Workshops-2025/CDMS/CDMS25_12.pdf), VLDB Workshop 2025 — 临时计算与开放表格式组成轻量数仓的设计探索。
 47. [Interoperable ACID Transactions for Open Table Formats](https://dl.acm.org/doi/10.14778/3836663.3836684), PVLDB 2026 — LakeVilla 原型研究开放表格式中的多表事务与跨引擎原子发布。
+
+
+
+### 新增：AWS RDS + DuckDB 部署参考
+
+48. [Amazon RDS for PostgreSQL](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/CHAP_PostgreSQL.html) — RDS PostgreSQL 的可用功能、托管边界、备份和连接方式。
+49. [Supported PostgreSQL extensions on RDS](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/PostgreSQL.Concepts.General.FeatureSupport.Extensions.html) — 核对目标 RDS 版本支持哪些 PostgreSQL 扩展，不要假设任意原生扩展都能安装。
+50. [Choosing a Catalog Database — DuckLake](https://ducklake.select/docs/stable/duckdb/usage/choosing_a_catalog_database) — DuckLake 对单用户与多用户 Catalog 选型的建议，以及 PostgreSQL Catalog 示例。
+51. [Access Control — DuckLake](https://ducklake.select/docs/stable/duckdb/guides/access_control) — PostgreSQL 角色与 S3 权限分层控制的示例。
+52. [DuckDB AWS Extension](https://duckdb.org/docs/current/core_extensions/aws) — AWS 凭证链、AssumeRole、Web Identity 等配置。
+53. [DuckDB: Amazon RDS IAM Authentication](https://duckdb.org/docs/current/guides/database_integration/rds_iam) — 用 DuckDB 的 AWS 与 PostgreSQL 扩展连接支持 IAM 认证的 RDS/Aurora 数据库。
+54. [AWS ECS Task IAM Role](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/task-iam-roles.html) — 为 ECS 容器提供独立任务角色；文档也说明 ECS on EC2 与 Fargate 的隔离差别。
+55. [Fargate Task Ephemeral Storage](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/fargate-task-storage.html) — Linux Fargate 默认临时盘与最大配置范围，对 DuckDB Spill 规划很重要。
+56. [RDS Multi-AZ DB Instance Deployment](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/Concepts.MultiAZSingleStandby.html) — Multi-AZ 单备用实例用于高可用故障切换，不负责日常只读扩容。
+57. [RDS Automated Backups](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_WorkingWithAutomatedBackups.html) — RDS 自动备份、保留期和时间点恢复。
+58. [S3 Gateway VPC Endpoints](https://docs.aws.amazon.com/vpc/latest/privatelink/vpc-endpoints-s3.html) — 私有网络访问同区域 S3 的 Endpoint 机制与限制。
+59. [AWS Batch: When to Use Fargate](https://docs.aws.amazon.com/batch/latest/userguide/when-to-use-fargate.html) — Fargate 与 EC2 计算环境的作业类型和容量选择。
+60. [VPC access scenarios for RDS](https://docs.aws.amazon.com/AmazonRDS/latest/UserGuide/USER_VPC.Scenarios.html) — 使用安全组限制应用服务访问私有 RDS 的基本模式。
 
 
 ## 结论
