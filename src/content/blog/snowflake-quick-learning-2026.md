@@ -252,6 +252,55 @@ Snowflake 与 PostgreSQL/Oracle 都使用 SQL，但物理存储和约束语义�
 
 参考：[Table Design Considerations](https://docs.snowflake.com/en/user-guide/table-considerations) · [Snowflake 数据类型](https://docs.snowflake.com/en/sql-reference-data-types) · [Hybrid Tables](https://docs.snowflake.com/en/user-guide/tables-hybrid) · [Views、Materialized Views 与 Dynamic Tables](https://docs.snowflake.com/en/user-guide/overview-view-mview-dts)
 
+
+### Schema Design 深入：先确定粒度，再决定星型模型、历史和物理布局
+
+Schema design 不是先决定字段类型，而是先回答：**一行数据代表什么事实？这些事实在业务上如何被识别、关联、汇总和追溯？** 在投资组合场景里，最容易出错的不是 SQL 语法，而是把不同粒度的数据放到一张表、重复连接多对多关系，或把每日余额当成可跨日相加的流水。
+
+#### 1. 从业务问题推导事实表粒度
+
+假设目标是回答“每个组合在每个估值日持有哪些证券、数量多少、市值多少、以什么币种计量”。一个可解释的起点是：
+
+| 对象 | 建议粒度 | 关键字段示例 | 设计注意点 |
+|---|---|---|---|
+| `FCT_POSITION_DAILY` | 估值日 × 组合 × 账户 × 证券 × 本位/计价币种 | `valuation_date`, `portfolio_id`, `account_id`, `security_id`, `currency_code`, `quantity`, `market_value` | 一行代表一个明确口径的日终持仓；要声明价格来源、估值币种和修订版本 |
+| `FCT_CASH_FLOW` | 一笔业务流水/事件 | `trade_id`, `event_sequence`, `trade_ts`, `cash_flow_amount` | 流水一般可以按业务规则求和，但要区分冲正、撤销和更正事件 |
+| `FCT_FX_RATE` | 日期 × 源币种 × 目标币种 × 汇率类型 | `rate_date`, `from_currency`, `to_currency`, `rate_type`, `rate` | “收盘汇率”“交易汇率”“月末汇率”不能只靠一个 `rate` 字段混在一起 |
+| `DIM_SECURITY` | 证券业务键的一条当前/历史描述记录 | `security_id`, `issuer_id`, `asset_class`, `valid_from`, `valid_to` | 证券分类会变；需要当前视图还是历史时点视图，应由业务问题决定 |
+
+粒度定义后，明确三类字段：
+- **可加（additive）**：在业务约束允许的维度上可以相加，例如某类交易流水金额。
+- **半可加（semi-additive）**：通常可以按组合、证券等维度求和，但不能把不同日期的快照余额再相加。日终持仓市值就是典型例子。
+- **不可直接相加（non-additive）**：百分比、收益率、平均成本或某些比率，应从分子/分母重新计算，而不是对比率做 `SUM` 或简单平均。
+
+如果报表需要总资产，应先在同一个估值日、统一计价币种、统一估值规则下汇总头寸，再处理现金、负债和汇率；不能因为 SQL 能返回一个数，就认定该数具有业务意义。
+
+#### 2. 用星型模型表达稳定的分析路径
+
+在维度模型中，事实表存可度量的事件或快照，维度表提供分析上下文，例如组合、证券、客户、日期和组织。星型模型的价值不是“越规范化越好”，而是让常见的分析问题有稳定的连接路径和可解释的粒度。
+
+很多对多关系要特别谨慎。例如证券与投资主题可能是多对多。直接将持仓事实表连接到多条主题映射，再按组合汇总，会把持仓金额复制多次。解决方式取决于业务语义：为分析分配权重、保留多标签但禁止重复加总，或提供单独的桥接/关联事实；不要把连接造成的重复当作性能问题处理。
+
+#### 3. 历史属性：用业务有效时间解释“当时知道什么”
+
+维度属性经常会变化：证券分类、发行人归属、客户风险等级、组合负责人等。若报告需要解释历史日的口径，应考虑 Slowly Changing Dimension Type 2（SCD Type 2），保存业务有效起止时间与版本键，而不只是覆盖当前值。至少区分：
+- **业务有效时间**：该属性从什么时候起在业务上生效。
+- **数据到达/记录时间**：平台什么时候收到这条信息。
+- **报告/估值时间**：下游计算采用哪个截止时点。
+
+这三种时间不总是相同。若供应商在周五更正了周二的价格，系统既要能重算最新视图，也要能解释“周三发布的报告当时使用了什么数据”。这通常需要保留源版本、到达时间、批次 ID 和计算版本，而非仅覆盖当前记录。
+
+#### 4. 物理设计要由访问模式和实测证据驱动
+
+Snowflake 会自动把表组织为微分区，并维护用于裁剪的元数据。不要从传统数据库经验出发，为每一张表都设计聚簇键或大量索引。先观察代表性查询的扫描量、分区裁剪、过滤条件和数据规模，再比较默认布局与候选布局的收益及维护成本。
+
+- 高频按日期范围扫描、且表非常大时，日期或与常见过滤组合相关的聚簇策略可能值得测试。
+- 如果常见过滤字段选择性很高但布局无法有效裁剪，应先检查查询谓词、数据分布和微分区重叠情况。
+- 维度表小不代表一定要强行复制；也不要假设 Snowflake 的优化器一定会消除错误的连接基数。
+- 用真实代表性查询做 A/B 比较，并记录查询 ID、扫描字节数、执行时间、缓存状态和 Credits；避免只比较一次冷缓存与一次热缓存。
+
+**业界案例边界：** BlackRock 公开案例说明 Snowflake 支持其 Aladdin 生态中的大规模数据处理与分析，但公开材料不等于披露了其内部事实表粒度、SCD 策略或具体聚簇键。本文中的持仓模型是可供架构评审讨论的设计示例，不应描述为 BlackRock 的内部实现。参见 [BlackRock 客户案例](https://www.snowflake.com/en/customers/all-customers/case-study/blackrock/)。
+
 ### 半结构化数据：JSON 不一定要先全部拆平
 
 金融服务的数据经常来自 REST API、事件总线、监管文件和 Vendor 数据。JSON 字段可能随版本变化，部分字段很少被用到。
@@ -264,6 +313,75 @@ Snowflake 支持如 VARIANT 这样的半结构化数据类型，适合先保留�
 2. 标准化层抽取常用字段并明确类型、时区、币种与空值含义；
 3. 面向分析的模型对主键、业务时间、历史版本和关联规则做显式建模；
 4. 对未识别字段的新增与格式变化建立监控，避免静默丢失数据。
+
+
+### 高级 SQL：窗口函数、QUALIFY、ASOF JOIN 与半结构化展开
+
+高级 SQL 的重点不是堆叠复杂语法，而是把**排序规则、时间语义和数据粒度**写清楚，让其他人能审计和复现结果。
+
+#### 示例 A：计算账户现金流累计值
+
+```sql
+SELECT
+    account_id,
+    trade_ts,
+    trade_id,
+    cash_flow,
+    SUM(cash_flow) OVER (
+        PARTITION BY account_id
+        ORDER BY trade_ts, trade_id
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS running_cash_flow
+FROM curated.trade_cash_flows
+WHERE trade_ts < '2026-10-01'::TIMESTAMP_NTZ;
+```
+
+这里的 `trade_id` 是排序稳定性的补充键；如果同一时间存在多笔流水，只有按时间排序可能无法稳定重现结果。显式写出 `ROWS` 窗口框架，可避免读者误把默认窗口语义当成业务规则。此例只能用于满足业务定义的流水累计；不能把它直接套在每日持仓市值上。
+
+#### 示例 B：用 QUALIFY 取 CDC 每个业务键的最新事件
+
+```sql
+SELECT *
+FROM raw.position_cdc
+QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY source_system, position_business_key
+    ORDER BY source_commit_position DESC, source_event_sequence DESC
+) = 1;
+```
+
+`QUALIFY` 可以直接按窗口函数结果过滤，避免再包一层子查询。关键在于排序字段必须反映源系统的真实提交/事件顺序。不要仅按可能重复的 `updated_at` 排序；也不能把最新的 DELETE tombstone 丢掉，否则被源端删除的记录可能在当前状态表中“复活”。如果需要构建当前状态表，应先定义 INSERT/UPDATE/DELETE 的处理规则，再把去重结果交给合并逻辑。
+
+#### 示例 C：ASOF JOIN 对齐“某时点可用的最近价格”
+
+```sql
+SELECT
+    t.trade_id,
+    t.security_id,
+    t.trade_ts,
+    p.price_ts,
+    p.close_price
+FROM curated.trades AS t
+ASOF JOIN curated.security_prices AS p
+    MATCH_CONDITION (t.trade_ts >= p.price_ts)
+    ON t.security_id = p.security_id;
+```
+
+这类连接适用于交易时点匹配该证券在此前最近一条可用价格等场景，但语义必须由业务确认：交易时间要采用哪个时区、价格是否已发布、周末/假日如何处理，以及是否允许使用当时尚未到达的数据。回测或历史风险计算尤其要防止 look-ahead bias（使用未来才知道的信息）。若同一证券同一时间有多个价格版本，还需先定义可采用的版本规则。
+
+#### 示例 D：把 Vendor JSON 中的持仓数组拆成可查询行
+
+```sql
+SELECT
+    e.event_id,
+    f.index AS item_index,
+    f.value:security_id::STRING AS security_id,
+    f.value:quantity::NUMBER(18,6) AS quantity,
+    f.value:market_value::NUMBER(20,2) AS market_value
+FROM raw.position_events AS e,
+LATERAL FLATTEN(INPUT => e.payload:positions) AS f;
+```
+
+保留原始 `payload`，再把稳定、重复使用的字段转换到标准层；不要在每次报表查询中重复写一整套 JSON 路径解析。对数值字段要验证缺失值、精度、币种和单位，不能把非法值静默转成 NULL 后就视为通过。关于窗口函数、QUALIFY、ASOF JOIN 和 FLATTEN 的行为，以相应 [官方参考文档](https://docs.snowflake.com/en/sql-reference/functions-window-syntax) 为准。
 
 ## 6. 如何读取、预计算和持续转换数据：View、物化视图与 Dynamic Tables
 
@@ -349,6 +467,71 @@ Dynamic Tables 是“减少自己维护转换调度代码”的工具，并不�
 ---
 
 **第三部分｜接入、加工和发布可靠的数据**
+
+
+### Data Transformation 深入：把转换做成可重放、可验证的数据产品
+
+数据转换不是“从 Raw 写一条 SQL 到 Curated”。一个可靠的转换至少应规定输入契约、业务键、粒度、时间字段、转换规则、质量门槛、增量策略、失败重试和结果版本。尤其在投资、估值和风险场景，迟到或修订的数据可能改变过去某一天的结果；只处理新到的记录而不处理受影响的历史分区，会生成表面成功但业务错误的数据。
+
+#### 1. 推荐采用可解释的分层边界
+
+- **Raw / Landing**：保留供应商原始文件或 CDC 事件，记录文件名、对象版本、接收时间、批次 ID、源系统和校验值。原则上不在这一层覆盖证据。
+- **Standardized**：统一类型、时区、标识符、币种和代码值；显式记录解析失败与数据质量状态。
+- **Curated / Business**：按明确业务粒度生成持仓、价格、现金流或参考数据集，处理更正、删除、有效时间和重复事件。
+- **Serving / Semantic**：为报表、数据共享、分析和 Agent 提供稳定的消费接口与业务定义，避免每个消费者各自复制口径。
+
+分层名字本身不是质量保证。每层都应能回答输入来自哪里、转换由哪个版本完成、失败如何重放，以及谁负责修复。
+
+#### 2. 在 MERGE 之前解决事件顺序、重复和删除
+
+下面展示“先按源顺序选出每个业务键最新事件，再写入目标”的核心形态。实际工程还必须明确 DELETE tombstone、源日志保留期和目标表唯一性；不同源系统的提交序列字段不可互换。
+
+```sql
+MERGE INTO curated.position_current AS tgt
+USING (
+    SELECT *
+    FROM standardized.position_cdc
+    WHERE batch_id = :batch_id
+    QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY source_system, position_business_key
+        ORDER BY source_commit_position DESC, source_event_sequence DESC
+    ) = 1
+) AS src
+ON  tgt.source_system = src.source_system
+AND tgt.position_business_key = src.position_business_key
+WHEN MATCHED AND src.operation = 'DELETE' THEN DELETE
+WHEN MATCHED THEN UPDATE SET
+    quantity = src.quantity,
+    market_value = src.market_value,
+    source_commit_position = src.source_commit_position,
+    last_batch_id = src.batch_id
+WHEN NOT MATCHED AND src.operation <> 'DELETE' THEN INSERT (
+    source_system, position_business_key, quantity, market_value,
+    source_commit_position, last_batch_id
+) VALUES (
+    src.source_system, src.position_business_key, src.quantity, src.market_value,
+    src.source_commit_position, src.batch_id
+);
+```
+
+这是说明模式，不是可直接复制到任意源系统的通用 CDC 程序。应先用目标表的业务键保证匹配逻辑唯一，并验证同一批次重复执行时不会重复加总。对于每日快照，很多场景比“逐条累加变更”更适合重新构建受影响日期的分区；对于连续流水，则需要事件唯一性和冲正规则。
+
+#### 3. 选择 Dynamic Tables、Streams/Tasks 或 dbt
+
+| 方式 | 适合的情况 | 主要工程责任 |
+|---|---|---|
+| View | 转换轻、希望始终按当前底层数据计算 | SQL 逻辑版本、消费者性能和访问权限 |
+| Dynamic Tables | 声明期望结果，让平台按目标新鲜度管理依赖刷新 | 延迟目标、刷新成本、变更传播、上游依赖和失败告警 |
+| Streams + Tasks | 需要明确控制变化消费、执行顺序、存储过程或事务边界 | Stream 消费状态、Task 图、重试、幂等性和调度治理 |
+| dbt | 希望把 SQL 模型、测试、文档、依赖与版本控制放入开发工作流 | 模型分层、测试覆盖、部署流程、环境隔离与回滚 |
+
+不能仅凭“实时”“增量”几个词做技术选型。要测试上游更正/删除如何传播、刷新延迟在高峰期如何变化、重跑是否幂等，以及回填大历史数据时是否会与线上工作负载竞争。具体决策可参考 [Dynamic Tables 选型指南](https://docs.snowflake.com/en/user-guide/dynamic-tables/decision-guide) 与 [dbt 项目最佳实践](https://docs.snowflake.com/en/user-guide/data-engineering/dbt-projects-on-snowflake-best-practices)。
+
+#### 4. 将质量门槛放在发布边界
+
+至少验证：主键/业务键唯一性、非空关键字段、允许值范围、记录数与金额控制总计、跨表引用有效性、数据新鲜度，以及与上游批次的对账差异。对于日终估值数据，可以规定“输入批次已完整到达、价格覆盖率满足阈值、总资产差异在允许范围内，才发布该估值日”。失败时将批次标记为未发布，不要让下游误把上一个估值日或半成品当作今天的数据。
+
+**业界实践：** State Street 的公开案例介绍了其以 Snowflake 改善数据运营的成果，说明金融数据平台不仅需要计算能力，也需要可重复的数据流程与可运营性。公开案例没有披露其内部 SQL 模型和任务编排的逐项实现，因此本节给出的 CDC/转换模板是工程建议，不应冒称为客户原样架构。参见 [State Street 客户案例](https://www.snowflake.com/en/customers/all-customers/case-study/state-street/)。
 
 ## 7. 数据接入方式：按新鲜度、数据源和恢复要求选型
 
@@ -492,6 +675,48 @@ Snowflake 官方 Guides 还把数据质量监控、对象标签/分类、对象�
 
 **第四部分｜让平台安全、可观察、成本可控**
 
+
+### Monitoring 深入：同时监控查询、平台负载、管道和业务结果
+
+生产监控不应只有“Task 成功/失败”一个绿灯。调度成功只说明某个动作完成，并不保证数据完整、口径正确或下游报告准时。建议把监控分为四层，每层都设置责任人、阈值、告警路由和处置手册。
+
+1. **查询层**：耗时分位数、扫描字节数、分区裁剪、远程溢写、失败率，以及同一业务报表的性能回归。
+2. **Warehouse / 成本层**：排队与执行耗时、并发、仓库利用率、Credits、异常增长和成本归属。
+3. **管道层**：最后成功批次、文件到达时间、CDC 延迟、Stream 积压/消费状态、Task 失败、Dynamic Table 刷新延迟。
+4. **数据与业务层**：记录数量和控制总计、主键重复、空值率、参考数据覆盖、估值日期是否完整、关键报告是否在 SLA 前发布。
+
+#### 一个可作为起点的查询趋势汇总
+
+```sql
+SELECT
+    warehouse_name,
+    COUNT(*) AS query_count,
+    APPROX_PERCENTILE(total_elapsed_time / 1000.0, 0.95) AS p95_elapsed_seconds,
+    SUM(bytes_scanned) AS total_bytes_scanned,
+    SUM(bytes_spilled_to_remote_storage) AS remote_spill_bytes
+FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+WHERE start_time >= DATEADD(day, -7, CURRENT_TIMESTAMP())
+  AND execution_status = 'SUCCESS'
+  AND warehouse_name IS NOT NULL
+GROUP BY warehouse_name
+ORDER BY p95_elapsed_seconds DESC;
+```
+
+这份查询适合做趋势调查，不应不加调整地充当实时告警：Query History 中的 elapsed time 可能包含排队时间，`ACCOUNT_USAGE` 视图存在数据可见延迟；生产告警要确认延迟、权限和指标语义，并结合仓库负载、查询剖析、Task/Dynamic Table 历史及业务 SLA。平均值可能掩盖少数极慢的关键查询，因此应同时看 P50/P95/P99、失败率和业务重要性。
+
+#### 以业务 SLA 做监控，而不只是用平台指标做监控
+
+例如日终估值流程可以定义：
+- 输入：所有必需 Vendor 文件在约定时间前到达，文件数量与校验和符合预期。
+- 转换：原始记录解析错误率低于门槛，业务键重复和关键字段缺失受控。
+- 对账：持仓数量、现金和资产总额与控制来源的差异在阈值内。
+- 发布：只有所有前置条件通过后，才将某估值日标记为可供消费者使用。
+- 恢复：记录 Batch ID、源文件版本、代码/模型版本、Query ID、数据质量结果及审批/发布状态。
+
+这样，即使仓库指标“正常”，缺少一个 Vendor 文件仍能触发正确的业务告警；反过来，某个可重试的查询失败也不必自动判定整份报告不可用。
+
+**业界实践：** DataHub 的公开案例报道了其通过数据平台与运营流程改进缩短事件处置时间、降低基础设施成本的经历。它说明数据可观测性要连接告警、所有权和故障处理，而不止是画图；其公开成果涉及整体实践，不能全部归因于 Snowflake 某个内置监控功能。参见 [DataHub 客户案例](https://www.snowflake.com/en/customers/all-customers/case-study/datahub/)。
+
 ## 10. 性能与成本：从查询证据到计算资源治理
 
 性能与费用是同一个问题的两面。先判断查询到底慢在哪里，再决定要不要调整仓库、数据模型或专门优化服务；每种优化都需要与增加的计算、维护和存储成本一起评估。
@@ -522,6 +747,39 @@ Snowflake 有不同层面的缓存行为。实用上至少区分两类：
 不要假设所有查询都能命中缓存。查询结果、底层数据、权限、函数和参数等变化都可能影响复用；暂停仓库会影响该仓库的数据缓存。因此，某条 SQL 第二次执行只用了很短时间，不一定说明新增计算资源能达到相同提升。
 
 对月末批处理，应更关注持续扫描量、刷新频率和总运行时间；对长期开放的 BI，缓存热度与交互响应也值得纳入仓库策略。参考：[Optimizing the Warehouse Cache](https://docs.snowflake.com/en/user-guide/performance-query-warehouse-cache)
+
+
+### Query Optimization 深入：先诊断执行路径，再决定改 SQL 还是加资源
+
+遇到慢查询，第一件事不是立即扩大 Warehouse，而是分清耗时发生在哪里：排队、扫描、连接、聚合、排序、数据溢写，还是下游等待。不同根因对应不同修复；盲目增加计算资源可能提高费用，却保留错误的连接逻辑或无效扫描。
+
+#### 1. 按这个次序检查 Query Profile
+
+1. **确认查询身份与可比性**：记录 Query ID、SQL、Warehouse、运行时间、是否命中缓存、输入日期范围和结果是否一致。不要把热缓存查询与冷缓存查询直接比较。
+2. **先看排队**：如果主要时间花在 queued provisioning / queued overload，问题可能是仓库启动、并发或容量，不一定是 SQL 本身。
+3. **再看扫描和分区裁剪**：检查扫描分区与总分区、扫描字节数、过滤谓词是否可下推。只选实际需要的字段，尽早过滤，并避免在过滤列上施加导致优化器难以有效裁剪的复杂表达式。
+4. **检查 JOIN 输出基数**：输入各有 100 万行，JOIN 后却有数十亿行，通常要先检查键是否唯一、是否漏掉了复合键的一部分，或是否误连多对多桥接表。修正语义后再调资源。
+5. **检查重复/无效工作**：重复计算相同表达式、反复解析相同半结构化路径、无必要的全量排序/去重、过宽的 SELECT、无用的多层视图，都可能增加工作量。
+6. **检查内存与 spill**：远程溢写可能是大排序、大聚合或 JOIN 的征兆；先减少无效行和中间结果，再评估合适的 Warehouse 大小。
+7. **最后评估平台配置**：对比 Warehouse 规格、自动挂起、并发、Multi-cluster、缓存、Clustering、Search Optimization、Materialized View 或 Query Acceleration Service 的适用性和费用。
+
+#### 2. JOIN 变大不一定是平台性能问题
+
+例如，持仓事实表每个组合/证券/估值日只有一行，但主题映射表对同一证券包含多个主题。将事实表连接主题表之后，如果仍按组合汇总市值，一条持仓可能被计算多次。首先要决定金额如何分配到主题，或将多标签关系作为非加总维度展示，而不是通过更大仓库解决。
+
+#### 3. 微分区、聚簇与搜索优化不是通用开关
+
+- 先检查过滤条件是否真的能减少扫描；若查询每次都读取大比例数据，单纯增加聚簇通常不会带来预期收益。
+- Clustering Key 更可能适用于大型表及稳定、高频、具有明显局部性收益的访问模式；同时要测量维护 Credits 和数据写入/更新带来的成本。
+- Search Optimization 针对某些选择性查找场景，不是所有宽范围分析查询的替代方案；确认数据类型、查询模式、版本/许可和成本后再试。
+- Materialized View 对受支持且重复执行的查询可能有益，但它不意味着每条业务转换都应该物化。
+- Query Acceleration Service 等服务需要按实际工作负载、支持条件和增量成本验证，不应仅依据“能加速”就默认打开。
+
+#### 4. 用可复现的实验决定是否优化成功
+
+选择代表性查询和固定数据范围，记录基线与改动后的 Query ID、结果正确性、P50/P95、扫描字节数、溢写、Credits 和缓存条件。每次尽量只改变一个主要因素，保留回滚方案。优化成功的标准不只是最快的一次运行，还要看总体成本、波动、并发下的 SLA 以及业务结果是否相同。
+
+**业界案例：** FIS 的公开 Snowflake 客户案例报告其 Compliance Suite 查询速度约提升至原来的 2.5 倍，并减少了计算资源使用。这个结果能说明平台与工作负载调整可以同时改善性能和成本，但公开材料并没有证明结果来自某一个具体 SQL 重写或某个特定仓库参数；不能把客户总体成果简化为“把 Warehouse 调大”或某个万能技巧。参见 [FIS 客户案例](https://www.snowflake.com/en/customers/all-customers/case-study/fis/)。
 
 ### 先理解计算费用来自哪里
 
@@ -568,6 +826,39 @@ Snowflake 的仓库自动挂起按秒级使用计费，但仓库每次恢复时�
 | 数据质量与对账差异 | 衡量结果是否可信 | CDC 丢失/重复、源端变更、转换错误与业务口径 |
 | 作业失败与重试次数 | 识别脆弱管道与隐性费用 | 失败类型、重试策略、幂等与外部依赖 |
 | 每个认证数据产品的成本 | 把费用连接到业务价值 | 低效模型、无消费者的数据、重复计算及刷新策略 |
+
+
+### Troubleshooting：将生产症状映射到证据和修复动作
+
+排障的目标是缩短从“发现异常”到“定位根因并安全恢复”的时间。先保留证据，再做修改；在金融数据链路里，不能为了让状态变绿而跳过数据质量检查或重复发布不完整结果。
+
+| 症状 | 优先查看什么 | 常见原因 / 下一步 |
+|---|---|---|
+| 查询突然变慢 | Query ID、Query Profile、历史对比、Warehouse Load | 输入数据量变化、裁剪变差、连接基数膨胀、并发排队或溢写；先识别耗时节点 |
+| SQL 很快但总耗时很高 | queued 时间、仓库启动/负载与并发 | 资源排队或仓库启动，不一定是 SQL 执行慢；测试调度、并发与 Warehouse 配置 |
+| 总额突然翻倍 | 每层数据行数、JOIN 前后行数、业务键唯一性 | 多对多连接、重复 CDC、维度版本不唯一；用基数与控制总计定位，不要先做 DISTINCT 掩盖问题 |
+| 数据少一截 | 文件清单、摄取历史、CDC offset/position、过滤时间边界 | 文件未到齐、源端删除/迟到、更改时区、过滤条件边界错误、解析失败被丢弃 |
+| Task 未运行或持续失败 | Task 状态/历史、错误详情、依赖图、执行角色权限 | Task 可能尚未启用、依赖失败、执行上下文或权限变化；确认状态、恢复后验证是否补齐遗漏窗口 |
+| Dynamic Table 刷新落后 | 目标新鲜度、刷新历史、上游变化量和依赖 | 计算量超出预期、上游刷新受阻或数据变化模式改变；先确定哪些下游 SLA 真正受到影响 |
+| S3 文件未加载 | 外部阶段配置、对象路径、文件格式、Integration/Role 授权、Load History | 路径/格式错误、权限或加密配置不匹配、文件重复策略不明确 |
+| Credits 突然上升 | 按 Warehouse、用户、查询标签和时间窗口拆分的消耗 | 仓库未及时挂起、重试风暴、回填任务与生产争用或查询计划退化；建立异常前后时间线 |
+| 角色突然无权访问 | 当前角色与继承关系、对象授权、策略、数据库/Schema 所有权 | 授权变更、角色上下文变化或策略约束；不要用扩大到 ACCOUNTADMIN 的方式绕过调查 |
+
+#### 推荐的七步查询排障流程
+
+1. 从用户报错、报表或监控告警取得确切的 Query ID、业务日期和期望结果。
+2. 读取 Query History：状态、耗时、Warehouse、错误码、扫描字节数、溢写等。
+3. 打开 Query Profile，找出成本最大的节点及输入/输出行数；先看数据流，不要只看 SQL 文本长度。
+4. 把可疑 JOIN、过滤、聚合拆成局部查询，验证行数、唯一性和业务键。
+5. 对照近期数据量、Schema、代码、权限、Warehouse 配置和上游文件变更。
+6. 选择最小、可回滚的修复；重跑前确认幂等性、时间边界和重复发布风险。
+7. 验证业务控制总计、质量规则和下游 SLA，附上 Query ID、批次/运行 ID、修复版本和结论。
+
+#### 重试前必须回答：这段处理是幂等的吗？
+
+重试并不总是安全。若任务是“把每个新事件插入流水”，重复执行可能重复记账；若任务是“重建某估值日的整份快照”，可通过明确替换该日期分区并做发布控制实现幂等。应使用 Batch ID / Run ID 追踪每次运行，区分“任务执行失败”“数据处理部分完成”和“已发布业务结果”，避免把三种状态压成一个成功/失败标记。
+
+在排障记录里至少保留：发生时间、受影响业务日期/数据集、Query ID、源批次/文件版本、最近代码变更、发现的根因、修复动作、重跑范围、质量验证结果、发布状态及后续预防措施。查询历史和监控是诊断证据的一部分，但金融业务还需要保留业务规则、输入版本和结果核对证据。
 
 ## 11. 安全与隐私：谁可以看到哪些数据，谁可以执行哪些操作
 
@@ -906,6 +1197,64 @@ Time Travel 对查错、临时恢复和短期回看有用，但不能单独证�
 
 **第七部分｜学习、实施与方案评审**
 
+
+### Geospatial Analytics 深入：把位置数据转换成可验证的业务判断
+
+地理空间分析常见于保险风险、网点服务半径、物流停靠、资产分布和区域暴露分析。设计时先区分坐标系统、空间对象类型、距离单位与业务判断边界；函数可以回答空间关系，但不能自行定义承保规则、监管区域或业务政策。
+
+#### 1. GEOGRAPHY 与 GEOMETRY 怎么选？
+
+- **GEOGRAPHY** 适合以地球表面为基础的经纬度位置和地理对象，空间计算遵循地球曲面语义。
+- **GEOMETRY** 适合已知投影坐标系中的平面几何计算；坐标单位和投影必须明确，不能把米、英尺与经纬度数字混着算。
+
+常见错误是把 `latitude, longitude` 的顺序传反。对 `ST_MAKEPOINT` 这类函数，要确认输入顺序为经度、纬度；还要确认距离单位、坐标来源、精度和无效几何的处理方式。
+
+#### 2. 示例：查找东京站附近 5 公里内的服务点
+
+```sql
+WITH origin AS (
+    SELECT ST_MAKEPOINT(139.7671, 35.6812)::GEOGRAPHY AS location
+)
+SELECT
+    b.branch_id,
+    b.branch_name,
+    ST_DISTANCE(b.location::GEOGRAPHY, o.location) AS distance_meters
+FROM curated.branch_locations AS b
+CROSS JOIN origin AS o
+WHERE ST_DWITHIN(b.location::GEOGRAPHY, o.location, 5000)
+ORDER BY distance_meters;
+```
+
+经纬度坐标是演示值。生产数据应在摄入时校验坐标顺序、有效范围、缺失值和坐标来源，并明确“5 公里”是直线距离还是道路行驶距离；空间直线距离并不等于开车时间或步行时间。
+
+#### 3. 示例：把保险标的与洪水风险区域做空间相交分析
+
+```sql
+SELECT
+    p.policy_id,
+    z.zone_id,
+    z.risk_level
+FROM curated.policy_locations AS p
+JOIN curated.flood_zones AS z
+  ON ST_INTERSECTS(
+       p.location::GEOGRAPHY,
+       z.zone_geometry::GEOGRAPHY
+     )
+WHERE p.policy_status = 'ACTIVE';
+```
+
+空间相交结果可以作为后续风险审查的候选证据，但它不能自动等价于“保单位于承保禁区”。业务仍需确认几何边界版本、生效日期、缓冲区规则、行政区域例外、数据来源可靠性及误差容忍度。若区域边界会更新，应同时保存边界版本和有效时间，才能解释历史决策。
+
+#### 4. 大数据量空间分析的优化顺序
+
+1. 先用时间、业务状态和地区等非空间条件缩小候选记录。
+2. 检查空间对象是否已经规范化并按稳定类型保存，避免在每条查询中反复解析原始 WKT/GeoJSON。
+3. 用空间函数精确确认候选关系；若使用 H3、geohash 或规则网格，可先用它们减少候选集，再进行精确的距离/相交计算。网格编码本身不是最终法律或风险边界。
+4. 通过 Query Profile 测量候选行数、连接基数与扫描量；再评估聚簇或空间搜索优化是否适用、是否受 Edition/数据类型限制及其维护费用。
+5. 明确空间数据的许可、供应商使用限制、地理精度和隐私要求，限制精细位置的访问范围。
+
+**业界案例：** Zurich 的公开案例介绍了将 LiDAR 等外部数据用于风险分析、定价或承保相关场景；Werner 的公开材料介绍了车队/车辆位置数据和地理空间能力的业务用途。这些案例说明空间数据可以成为保险和物流决策的输入，但客户公开资料没有给出可直接复刻的完整 SQL、空间索引或内部数据模型。参见 [Zurich 客户案例](https://www.snowflake.com/en/customers/all-customers/case-study/zurich/) 与 [Werner 地理空间实践](https://www.snowflake.com/en/blog/werner-gains-advanced-geospatial-capabilities/)。
+
 ## 17. 设计中常见的错误：按问题归类复盘
 
 ### 错误一：把 Snowflake 当成“云端的大 PostgreSQL”
@@ -1141,6 +1490,19 @@ Time Travel 有明确的保留期限，Fail-safe 也不是面向用户的长期�
 24. [账号复制与故障转移](https://docs.snowflake.com/en/user-guide/account-replication-intro) — 跨账号灾备的主要概念。
 25. [Hybrid Tables 限制](https://docs.snowflake.com/en/user-guide/tables-hybrid-limitations) — 在评估事务型负载时必须阅读。
 26. [Semantic Views](https://docs.snowflake.com/en/user-guide/views-semantic/overview) — 将指标、实体与关系作为可治理的语义对象。
+
+
+### 七个专题的官方文档与业界案例
+
+- 高级 SQL： [Window Functions](https://docs.snowflake.com/en/user-guide/functions-window-using)、[Window Frame Syntax](https://docs.snowflake.com/en/sql-reference/functions-window-syntax)、[QUALIFY](https://docs.snowflake.com/en/sql-reference/constructs/qualify)、[ASOF JOIN](https://docs.snowflake.com/en/sql-reference/constructs/asof-join)、[FLATTEN](https://docs.snowflake.com/en/sql-reference/functions/flatten)。
+- Schema 与物理设计： [Table Considerations](https://docs.snowflake.com/en/user-guide/table-considerations)、[Clustering Keys](https://docs.snowflake.com/en/user-guide/tables-clustering-keys)。
+- 数据转换： [Dynamic Tables Decision Guide](https://docs.snowflake.com/en/user-guide/dynamic-tables/decision-guide)、[dbt Best Practices](https://docs.snowflake.com/en/user-guide/data-engineering/dbt-projects-on-snowflake-best-practices)。
+- 查询性能和排障： [Query Insights](https://docs.snowflake.com/en/user-guide/query-insights)、[Query Activity / Profile](https://docs.snowflake.com/en/user-guide/ui-snowsight-activity)、[Warehouse Memory and Spill](https://docs.snowflake.com/en/user-guide/performance-query-warehouse-memory)。
+- 空间分析： [Geospatial Functions](https://docs.snowflake.com/en/sql-reference/functions-geospatial)、[Search Optimization for Geospatial Queries](https://docs.snowflake.com/en/user-guide/search-optimization/geospatial-queries)。
+- 监控： [Warehouse Load Monitoring](https://docs.snowflake.com/en/user-guide/warehouses-load-monitoring)、[Task Monitoring](https://docs.snowflake.com/en/user-guide/tasks-monitor)、[Task Troubleshooting](https://docs.snowflake.com/en/user-guide/tasks-ts)。
+- 案例： [FIS](https://www.snowflake.com/en/customers/all-customers/case-study/fis/)、[BlackRock](https://www.snowflake.com/en/customers/all-customers/case-study/blackrock/)、[State Street](https://www.snowflake.com/en/customers/all-customers/case-study/state-street/)、[Zurich](https://www.snowflake.com/en/customers/all-customers/case-study/zurich/)、[Werner](https://www.snowflake.com/en/blog/werner-gains-advanced-geospatial-capabilities/)、[DataHub](https://www.snowflake.com/en/customers/all-customers/case-study/datahub/)。
+
+业界案例只用于佐证业务问题与平台实践价值；除非客户公开材料明确说明，不把案例成果归因于某段 SQL、某个 Schema 或某个 Snowflake 参数。
 
 ### 本仓库相关工程实践
 
