@@ -119,7 +119,7 @@ Snowflake 负责管理存储格式、微分区、底层基础设施和不少查�
 
 Snowflake 官方将平台架构概括为数据存储层、计算层和云服务层。用这三层理解新功能，比记住产品名更有效。
 
-\`\`\`mermaid
+```mermaid
 flowchart TB
     U[用户与客户端<br/>BI / SQL / API / Notebook / Agent] --> C[云服务层<br/>认证、授权、元数据、查询解析与协调]
     C --> W1[Virtual Warehouse A<br/>ETL / 转换]
@@ -132,7 +132,7 @@ flowchart TB
     G -.-> W1
     G -.-> W2
     G -.-> W3
-\`\`\`
+```
 
 ### 3.1 数据存储层：不必自己维护普通表的底层文件
 
@@ -255,7 +255,7 @@ Snowflake 支持如 VARIANT 这样的半结构化数据类型，适合先保留�
 
 假设账户或订单系统运行在 Amazon RDS for PostgreSQL，运营报表却需要跨多年数据做客户、产品和渠道分析。一个常见目标架构如下：
 
-\`\`\`mermaid
+```mermaid
 flowchart LR
     APP[在线应用] --> PG[(RDS PostgreSQL<br/>事务与操作型查询)]
     PG --> CDC[初始快照 + CDC<br/>或批量增量]
@@ -267,7 +267,7 @@ flowchart LR
     CDC -. 延迟与失败监控 .-> OPS[运营、对账、恢复]
     STG -. 差异检查 .-> OPS
     MART -. 数据质量与口径测试 .-> OPS
-\`\`\`
+```
 
 架构师应该回答的不只是“CDC 能不能跑”，而是下面这些问题。
 
@@ -285,7 +285,7 @@ flowchart LR
 
 不一定。这是一个常见的设计错误：因为所有分析最终发生在 Snowflake，就把所有来源数据无差别地复制、转换和长期存储。更好的做法是按使用方式做选择。
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     V[Vendor 文件或交付数据] --> S3[(企业 AWS S3<br/>受控 Bucket / Prefix)]
     S3 --> Q{数据访问模式？}
@@ -297,7 +297,7 @@ flowchart TD
     COPY --> VAL
     ICE --> VAL
     SHARE --> VAL
-\`\`\`
+```
 
 **External Table：** 数据文件留在 S3，Snowflake 读取外部文件并通过元数据了解表的文件与列信息。适合不常访问、数据较大且希望避免不必要复制的参考数据。要验证查询性能、文件格式、分区路径、刷新机制及跨区域流量成本；它也不等同于普通 Snowflake 原生表的全部能力。
 
@@ -445,7 +445,7 @@ Semantic View 能减少重复定义，但不能代替数据质量、业务审批
 
 一个示意数据流：
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     SRC[交易、持仓、现金、价格、FX、公司行动] --> RAW[原始层<br/>保留来源与批次]
     RAW --> NORM[标准化<br/>证券标识、币种、时区、业务日期]
@@ -455,7 +455,7 @@ flowchart TD
     SNAP --> MART[组合绩效、风险暴露、资产分配]
     MART --> SEM[认证指标与语义定义]
     SEM --> OUT[投资研究 / BI / 经授权的 Agent]
-\`\`\`
+```
 
 **为什么 Snowflake 适合：** 大范围时间序列分析、组合聚合、跨来源数据整合和多个分析团队共享模型，属于数仓的典型工作。但如果交易执行或核心账务必须在一个强一致的事务中完成，仍应由相应交易系统承担。
 
@@ -850,8 +850,8 @@ Time Travel 有明确的保留期限，Fail-safe 也不是面向用户的长期�
 
 如果需要从学习地图进一步进入工程实施，可继续阅读本仓库中的：
 
-- [PostgreSQL + Snowflake 企业落地实践报告](./snowflake_postgres_enterprise_practice_guide_zh.md) — 以在线数据库和分析平台分工为主线，讨论 CDC、数据建模、S3/Vendor 文件、质量控制和落地步骤。
-- [用 DuckDB + S3 搭一个轻量版 Snowflake](./duckdb-s3-lite-snowflake-report.md) — 从开放数据文件、计算引擎、元数据、查询服务与运营治理角度，理解托管数仓做了哪些事，以及自建方案需要补齐什么。
+- [PostgreSQL + Snowflake 企业落地实践报告](https://github.com/devweekly/devweekly.github.io/blob/main/src/content/blog/snowflake_postgres_enterprise_practice_guide_zh.md) — 以在线数据库和分析平台分工为主线，讨论 CDC、数据建模、S3/Vendor 文件、质量控制和落地步骤。
+- [用 DuckDB + S3 搭一个轻量版 Snowflake](https://github.com/devweekly/devweekly.github.io/blob/main/src/content/blog/duckdb-s3-lite-snowflake-report.md) — 从开放数据文件、计算引擎、元数据、查询服务与运营治理角度，理解托管数仓做了哪些事，以及自建方案需要补齐什么。
 
 ---
 
