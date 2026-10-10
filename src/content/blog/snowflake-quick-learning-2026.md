@@ -249,7 +249,7 @@ Snowflake 支持如 VARIANT 这样的半结构化数据类型，适合先保留�
 
 这些方式不是同一层面的互斥选项。例如，CDC 连接器可以把 PostgreSQL 变化写入 Snowflake 表，Dynamic Tables 再构建分析模型；Vendor 则可能每天把 Parquet 放进 S3，再由 COPY INTO 装载；另一家 Snowflake 账户提供的数据可能根本不需要再复制一份。
 
-官方入口：[数据加载概览](https://docs.snowflake.com/en/user-guide/data-load-overview) · [Snowpipe](https://docs.snowflake.com/en/user-guide/data-load-snowpipe-intro) · [Snowpipe Streaming](https://docs.snowflake.com/en/user-guide/snowpipe-streaming/overview)
+官方入口：[数据加载概览](https://docs.snowflake.com/en/user-guide/data-load-overview) · [Snowpipe](https://docs.snowflake.com/en/user-guide/data-load-snowpipe-intro) · [Snowpipe Streaming](https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview)
 
 ### 5.2 场景 A：保留 PostgreSQL 作为在线业务库，Snowflake 承担分析
 
@@ -341,7 +341,7 @@ Dynamic Tables 允许用一个查询表达目标数据集，再通过 TARGET_LAG
 
 生产环境应明确选择刷新模式并监控实际状态。对于增量刷新，不是所有 SQL 形态和转换都同样合适；先验证实际查询是否支持增量、刷新成本多少，再决定是否使用。
 
-参考：[Dynamic Tables 概览](https://docs.snowflake.com/en/user-guide/dynamic-tables/about) · [TARGET_LAG 的真实含义](https://docs.snowflake.com/en/user-guide/dynamic-tables/target-lag) · [Dynamic Tables 生产最佳实践](https://docs.snowflake.com/en/user-guide/dynamic-tables/best-practices)
+参考：[Dynamic Tables 概览](https://docs.snowflake.com/en/user-guide/dynamic-tables/overview) · [TARGET_LAG 的真实含义](https://docs.snowflake.com/en/user-guide/dynamic-tables/target-lag) · [Dynamic Tables 生产最佳实践](https://docs.snowflake.com/en/user-guide/dynamic-tables/best-practices)
 
 ### 6.2 Streams + Tasks：需要明确控制变化消费和执行顺序时使用
 
