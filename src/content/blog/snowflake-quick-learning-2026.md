@@ -115,7 +115,7 @@ Snowflake 负责管理存储格式、微分区、底层基础设施和不少查�
 
 这些才是架构项目中更容易出错的部分。托管平台降低的是基础设施管理负担，不是业务语义、数据质量与治理的责任。
 
-## 2.3 表设计和 PostgreSQL / Oracle 有什么不同？
+### 2.3 表设计和 PostgreSQL / Oracle 有什么不同？
 
 学习 Snowflake 时，最容易犯的错误是把关系数据库的设计习惯原封不动搬过来。SQL 语法相似，但物理组织、约束、索引与典型工作负载并不相同。
 
@@ -130,7 +130,7 @@ Snowflake 负责管理存储格式、微分区、底层基础设施和不少查�
 | 临时与环境隔离 | 临时表、分区表、物化视图、只读副本等各有用途 | 可按生命周期选择 permanent、transient、temporary 表，使用零拷贝克隆建立隔离测试；必须确认数据保留与恢复要求后再选择对象类型 |
 | 查询复用 | 普通 View、Materialized View、索引与物化结果各有用途 | 普通 View 复用逻辑定义；Materialized View 为受限查询维护预计算结果；Dynamic Table 更适合描述持续刷新的转换数据集 |
 
-### 设计 Snowflake 表时，优先确定这六件事
+#### 设计 Snowflake 表时，优先确定这六件事
 
 1. **先确定粒度，再谈列和主键。** 例如一行是一笔成交、一只证券在一个账户的日终持仓，还是一份 Vendor 文件中的一条记录？粒度没写清楚，后续聚合极容易重复计数。
 2. **主键约束不执行，就必须把数据质量测试补上。** 业务主键依然重要，但不要以为声明 PRIMARY KEY 后 Snowflake 一定会阻止重复。对交易 ID、账户/证券/估值日组合键等设置唯一性检查，并在发布前处理失败。
@@ -483,7 +483,7 @@ BI 仪表板、下游 SQL 和 Agent 应优先使用认证的数据产品，而�
 
 ### 7.2 Snowflake Semantic Views：给 AI 一份明确的“业务词典 + 关系图 + 指标定义”
 
-Semantic View 不是一张重新存放所有数据的表，也不是给 LLM 看的普通说明文档。它是 Snowflake Schema 级别的语义对象，把物理表包装成业务可理解的模型，定义逻辑表、实体关系、事实、维度与指标；可以被有权限的 SQL 客户端查询，也可以提供给 Cortex Analyst / Cortex Agents 等自然语言分析能力使用。与传统 BI 语义层相比，它更接近数据库中的受治理对象，可以利用 Snowflake 的权限与共享机制。
+Semantic View 不是一张重新存放所有数据的表，也不是给 LLM 看的普通说明文档。它是 Snowflake Schema 级别的语义对象，把物理表包装成业务可理解的模型，定义逻辑表、实体关系、事实、维度与指标；可以被有权限的 SQL 客户端查询，也可以提供给 Cortex Agents 等自然语言分析能力使用。与传统 BI 语义层相比，它更接近数据库中的受治理对象，可以利用 Snowflake 的权限与共享机制。Snowflake 当前将原生 Semantic Views 作为推荐的语义定义方式；已有的 stage-based legacy semantic model YAML 仍可用于兼容旧实现，但新项目宜优先评估原生 Semantic View，并把定义纳入版本控制和发布流程。
 
 先区分几个概念：
 
@@ -545,7 +545,7 @@ Snowflake 官方 AI/ML 指南不只包含自然语言转 SQL。实用上可以�
 | 训练、管理并部署预测模型 | Snowflake ML、Feature Store、Model Registry、ML Jobs / Observability | 在受管的数据环境中做特征工程、训练、模型版本管理、推理和监控 | 仍要负责训练/验证切分、漂移监测、模型风险、特征时间正确性与生产发布 |
 | 帮助开发者查询平台、理解数据或写代码 | Cortex Code / 相关开发者工具 | 提升平台交互和工程开发效率 | 代码建议仍需 review、测试、权限控制与变更审批 |
 
-这张表是一张架构选择地图，不是每个功能的完整使用手册。Snowflake AI 产品迭代很快；部署前应检查目标区域、版本、模型可用性、网络访问、数据驻留与计费方式，并区分 GA、Preview 和不同服务边界。
+这张表是一张架构选择地图，不是每个功能的完整使用手册。Snowflake AI 产品迭代很快；部署前应检查目标区域、版本、模型可用性、网络访问、数据驻留与计费方式，并区分 GA、Preview 和不同服务边界。当前官方文档对新建自然语言数据分析体验建议优先评估 Cortex Agents；Cortex Analyst 的语义建模、SQL 生成和评估文档仍然有用，但不应据此假设所有新系统都应独立部署 Analyst API。应结合 Agent 工具组合、已有调用方式、可用性与迁移计划做决策。
 
 #### 结构化数据与非结构化知识通常是两条不同的路径
 
@@ -985,7 +985,7 @@ Time Travel 有明确的保留期限，Fail-safe 也不是面向用户的长期�
 | Organizations、Accounts、环境与账户标识 | 第 9、10 章：环境隔离、多账户、复制与故障转移相关考虑 | 部分覆盖；组织管理、账户创建与区域迁移的操作手册略过 |
 | Business Continuity & Data Recovery | 第 4、10 章：Time Travel、Fail-safe、克隆、复制、Failover Group、RPO/RTO | 重点覆盖概念和设计验证，不等于完整灾备操作手册 |
 | Performance、Cost & Billing | 第 3、4、11 章：Query Profile、仓库、裁剪、成本归属、Budgets/Resource Monitors 的基本用途 | 重点覆盖；不展开所有账单查询、Usage View 和发票操作 |
-| Alerts、Notifications、连接器与开发工具 | 第 5、9、30 天路线：说明架构位置及运营意义 | 部分覆盖；Snowsight、CLI、驱动、SDK、邮件通知和每种工具的配置步骤略过 |
+| Alerts、Notifications、连接器与开发工具 | 第 5、9 章和 30 天学习路线：说明架构位置及运营意义 | 部分覆盖；Snowsight、CLI、驱动、SDK、邮件通知和每种工具的配置步骤略过 |
 
 ### 为什么没有把每个目录都写成一节？
 
