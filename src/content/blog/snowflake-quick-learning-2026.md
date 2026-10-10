@@ -751,6 +751,59 @@ WHEN NOT MATCHED AND src.operation <> 'DELETE' THEN INSERT (
 
 **业界实践：** State Street 的公开案例介绍了其以 Snowflake 改善数据运营的成果，说明金融数据平台不仅需要计算能力，也需要可重复的数据流程与可运营性。公开案例没有披露其内部 SQL 模型和任务编排的逐项实现，因此本节给出的 CDC/转换模板是工程建议，不应冒称为客户原样架构。参见 [State Street 客户案例](https://www.snowflake.com/en/customers/all-customers/case-study/state-street/)。
 
+### 转换引擎的边界：刷新、消费位点、调度与业务发布不是一回事
+
+选转换技术时，要把四个容易混淆的概念分开：
+
+- **数据变化被发现**：来源发生了 INSERT、UPDATE、DELETE，或新文件到达。
+- **转换被触发**：平台或编排器决定运行一次计算。
+- **结果计算完成**：SQL/代码执行结束，目标对象已更新。
+- **业务结果被发布**：数据质量、对账、时间窗口和授权检查通过，下游才可以把它当作已认证结果。
+
+Dynamic Tables 把前面几步中的依赖和刷新调度托管给平台；Streams/Tasks 给出更明确的变化消费与执行编排控制；外部工作流引擎可以负责 Snowflake 之外的系统协调。它们都不能自动替代最后一步的业务发布判断。
+
+#### Dynamic Tables：把“我想要什么表”表达成声明
+
+Dynamic Table 的核心是声明式：定义目标查询、刷新模式、目标新鲜度和执行 Warehouse，让平台根据依赖关系安排刷新。适合转换逻辑主要能用受支持 SQL 表达、依赖关系比较清晰、团队希望减少自建编排代码的管道。
+
+生产创建时应显式检查实际选择的 `REFRESH_MODE`，并检查调度状态；仅仅执行成功的 CREATE 语句，不证明平台选择了期望的增量模式，也不证明首次初始化完成。增量刷新一般只处理变化部分，但支持的 SQL 构造、连接方式和变更传播边界都需要根据实际定义验证。若选择 FULL，每次完整重算可能更简单，却可能让大数据集的计算成本远高于预期。
+
+```sql
+CREATE OR REPLACE DYNAMIC TABLE curated.position_daily
+  TARGET_LAG = '30 minutes'
+  WAREHOUSE = transform_wh
+  REFRESH_MODE = INCREMENTAL
+AS
+SELECT
+    valuation_date,
+    portfolio_id,
+    security_id,
+    currency_code,
+    SUM(quantity) AS quantity,
+    SUM(market_value) AS market_value
+FROM standardized.position_events
+WHERE record_status = 'VALID'
+GROUP BY
+    valuation_date, portfolio_id, security_id, currency_code;
+
+-- 建表后单独验证解析出的刷新模式与调度状态
+SHOW DYNAMIC TABLES LIKE 'POSITION_DAILY' IN SCHEMA CURATED;
+```
+
+上例仅用于说明参数位置，不应不加判断地把交易事件直接 SUM 成持仓。真实模型要确认是否存在重复事件、冲正、DELETE、同一估值日重估，以及同一证券在多账户/多币种下的粒度。TARGET_LAG 表示相对源头数据的新鲜度目标，平台会尽力满足而非保证上限；需监控实际 lag 和刷新持续时间。参考：[Target lag 的准确语义](https://docs.snowflake.com/en/user-guide/dynamic-tables/target-lag)、[创建 Dynamic Table](https://docs.snowflake.com/en/user-guide/dynamic-tables/create)。
+
+#### Streams + Tasks：在需要过程控制时显式定义状态迁移
+
+Stream 用来记录某个表自上次消费边界之后的变更信息；Task 定义由调度或依赖关系触发的 SQL/过程执行。它们适合需要在步骤间明确控制时机和副作用的场景，例如读取增量变更、检查批次完整性、写审计表、执行 MERGE、更新控制表，再触发下游。Stream 不是消息系统意义上无限期保存的通用队列；它的可用性与底层对象版本、消费进度和保留行为相关，必须监控是否因长期未消费而失去所需变更。
+
+Task 也不天然等于工作流平台。需要补齐失败后的重试策略、依赖失败传播、运行角色、启停状态、补跑窗口和幂等边界。若一个任务完成了一半，然后在写目标表后、更新控制表前失败，重跑时必须知道哪些副作用已经发生。否则，重试就是重复执行，而不是恢复。
+
+#### 外部编排器：当流程横跨多个系统时不要强行塞进 SQL
+
+一个金融数据流程可能先从 Vendor SFTP/HTTPS 下载文件，再校验 PGP 签名和 checksum，把文件放入 AWS S3，然后在 Snowflake 中加载、转换、对账，最后调用数据目录登记发布，并发送通知。Snowflake 内部 Task 可以承担部分步骤，但跨多个系统时，外部编排器往往更适合管理系统间依赖、凭证、重试、超时和人工审批。
+
+设计时应指定一个可追踪的 `run_id` 或 `batch_id` 贯穿各系统，并为每个阶段留下状态：`RECEIVED`、`VALIDATED`、`LOADED`、`TRANSFORMED`、`RECONCILED`、`PUBLISHED` 或明确的失败状态。状态名应按本企业流程定义。不要只记录“工作流 green”；要能定位失败是外部下载、文件验证、加载、转换、业务对账还是发布环节。
+
 ## 7. 数据接入方式：按新鲜度、数据源和恢复要求选型
 
 不要先问“应该用 Snowpipe 还是 Kafka”，先明确：数据多久必须可用、数据源是什么、是否需要保留源文件、重复投递如何处理、源端更新和删除如何传递、失败后能否重放。
@@ -770,6 +823,23 @@ WHEN NOT MATCHED AND src.operation <> 'DELETE' THEN INSERT (
 这些方式不是同一层面的互斥选项。例如，CDC 连接器可以把 PostgreSQL 变化写入 Snowflake 表，Dynamic Tables 再构建分析模型；Vendor 则可能每天把 Parquet 放进 S3，再由 COPY INTO 装载；另一家 Snowflake 账户提供的数据可能根本不需要再复制一份。
 
 官方入口：[数据加载概览](https://docs.snowflake.com/en/user-guide/data-load-overview) · [Snowpipe](https://docs.snowflake.com/en/user-guide/data-load-snowpipe-intro) · [Snowpipe Streaming](https://docs.snowflake.com/en/user-guide/snowpipe-streaming/data-load-snowpipe-streaming-overview)
+
+### 接入方式的决策矩阵：用时间语义、数据所有权和恢复成本选方案
+
+| 维度 | 需要回答的具体问题 | 可能改变技术选择的条件 |
+|---|---|---|
+| 新鲜度 | 消费者能接受多旧的数据？是几秒、几分钟、每小时还是 T+1？ | 秒级事件流与每日报表可能需要完全不同的接入方式 |
+| 写入语义 | 数据是不可变事件、当前状态的变更，还是可被修订的快照？ | 事件可追加、状态需合并、快照需按业务日期替换 |
+| 数据量与变化率 | 每批行数、每日文件数、单文件大小、峰值到达率如何？ | 小文件风暴、长尾批次、突发流量会改变加载和编排设计 |
+| 乱序/重放 | 供应商是否重发旧文件？CDC 是否可能重复投递？源端是否允许回溯更正？ | 需要源端位点、文件指纹、批次账本、去重和可重建策略 |
+| 数据是否需共享 | 是否只有 Snowflake 会消费，还是 Spark/Trino/其他云平台也要读取？ | 原生表、External Table 和 Iceberg 的选择不同 |
+| 数据控制权 | 谁拥有原始文件、Catalog、加密密钥和生命周期规则？ | 决定存储层位置、Storage Integration、目录权威和跨账户关系 |
+| 查询形态 | 高频点查、定时全表扫描、复杂 JOIN，还是大部分数据只偶尔查一次？ | 查询频率和过滤选择性影响是否复制为原生表 |
+| 合规与许可 | 是否允许把 Vendor 数据复制到新平台、保留多少年、可向谁共享？ | 技术可行不代表合同授权与监管要求允许 |
+| 恢复要求 | 某批次失败后，是重放原文件、从 CDC offset 继续，还是重建整个业务日期？ | 决定原始证据保留、控制表、快照版本和补跑窗口 |
+| 运营责任 | 谁处理延迟、文件缺失、格式变更、超预算和对账失败？ | 决定监控、SLO、告警路由和操作手册 |
+
+不要用单一吞吐量指标选工具。两个方案即使都能每天装载 500 GB，一个保留可审计的文件清单、可重放批次与失败隔离，另一个只能在成功/失败日志里看到结果，运营风险并不相同。接入模式的长期成本往往来自异常处理，而不仅是正常路径执行时间。
 
 ## 8. 两条典型数据管道：PostgreSQL CDC 与 Vendor S3 文件
 
@@ -855,6 +925,56 @@ flowchart TD
 - 文件生命周期策略是否会破坏回放、调查或审计需要。
 
 这套设计即使第一版只接一份日更 CSV，也值得做。否则，等同一 Vendor 的数据进入数十个模型后，再补充批次追踪和重放能力会更困难。
+
+### Vendor 数据在 S3：External Table、原生表与 Iceberg 的工程差别
+
+如果供应商数据已被授权放在公司特定 AWS 账号的 S3 中，下一步不是先问“怎么让 Snowflake 读”，而是决定谁拥有数据文件、谁维护表的元数据、查询频率如何，以及是否需要文件外的转换结果。
+
+#### 模式 A：把文件装入 Snowflake 原生表
+
+`COPY INTO` 或 Snowpipe 将选定文件装载进 Snowflake 表。优势是查询可使用 Snowflake 对数据的内部组织、微分区和列式压缩；对需要大量 JOIN、反复过滤、持续转换或作为认证数据产品的来源通常较方便。代价是出现一份平台管理的数据副本，需要明确加载费用、存储费用、更新/重装策略和复制许可。
+
+选择原生表时，不能把“当前目录里有哪些文件”当作唯一事实。应维护批次账本，记录文件路径、对象版本或校验指纹、源端业务日期、加载状态、目标表、重跑状态和对账结果。失败后仅重跑失败的明确范围，避免一个新到文件触发整个月历史重复加载。
+
+#### 模式 B：通过 External Table 查询仍留在 S3 的数据
+
+External Table 保留的是外部文件的表化元数据入口；底层记录仍在外部存储，并不等于数据已经按普通 Snowflake 原生表方式重写成内部列式存储。它适合低频、探索性或不希望复制全部数据的场景，但要把文件布局、外部元数据刷新、文件解析、权限以及查询延迟纳入评估。
+
+如果外部文件是每天多个供应商分别产生的小 CSV，直接查询会受文件数量、格式和元数据管理影响；如果是合理组织的 Parquet 文件，列式格式可能更适合分析，但依然要对实际扫描量与查询计划做基线。External Table 并不自动让原始文件获得数据库表的事务更新语义。供应商覆盖一个文件、删除对象或更改目录时，历史查询会看到怎样的结果，应通过具体外部表与分区配置验证。
+
+#### 模式 C：Iceberg 用开放表格式定义数据所有权与多引擎协作
+
+Iceberg 不是“更高级的 External Table”这种简单层级。它通过开放表格式的元数据与快照来定义表的数据文件集合及提交状态，使符合相应实现的引擎可以遵循同一表元数据协议。架构评审要确定 Catalog 谁是权威、谁有权限提交快照、哪些引擎能写、并发写如何协调、文件整理和快照过期由谁负责、Snowflake 当前使用模式有哪些限制。
+
+若数据平台计划让 Snowflake 与其他引擎共同访问一个数据产品，需要在方案中写清：
+- Catalog 是 Snowflake-managed、外部 Catalog，还是企业指定的目录服务；
+- Snowflake 是读者还是写入者，另一引擎是否可能同时写入；
+- 元数据刷新与提交可见性如何保证；
+- Parquet 文件的排序/分区如何服务主要查询；
+- 文件压缩、manifest/snapshot 清理、孤儿文件清理由哪个系统和角色负责；
+- 故障后谁恢复 Catalog、谁确认最后一个完整快照；
+- 数据保留和 Vendor 使用许可是否允许跨引擎读取或产生新副本。
+
+选择 Iceberg 的理由应是开放表格式、数据所有权和多引擎协作的真实需求，而不是因为“开放格式总是更好”。如果只有 Snowflake 查询且数据经常被重用，原生表可能更简单；如果只是偶尔查看外部文件，External Table 可能足够。
+
+#### AWS 访问控制：用授权角色连接，不在 SQL 中保存云密钥
+
+典型做法是创建 AWS IAM Role，配置只对指定 S3 bucket/prefix 的最小权限，再通过 Snowflake Storage Integration 建立受控的云身份信任。随后在 Snowflake 内使用 external stage 指向准确路径，并按职责授予使用 Stage 的权限。访问范围应该由 IAM Policy、信任策略、Storage Integration 和 Snowflake 角色共同限定；不要把长效 AWS Access Key/Secret Key 粘贴到 SQL 或应用环境里作为长期方案。
+
+以下只是结构示意，账户 ID、外部 ID、区域、Bucket、角色名和权限必须替换为企业值，并按当前官方配置流程验证：
+
+```sql
+-- 使用已经按官方流程绑定 AWS IAM Role 的 Integration
+CREATE STAGE vendor_stage
+  URL = 's3://company-vendor-data/vendor_a/'
+  STORAGE_INTEGRATION = vendor_s3_integration
+  FILE_FORMAT = (TYPE = PARQUET);
+
+-- 检查该 Stage 可见的文件范围；大规模目录不应只依赖人工 LIST
+LIST @vendor_stage;
+```
+
+`LIST` 只能证明特定时刻按当前权限可列出文件，不能证明文件完整、正确、未被重复消费或已经满足业务对账。生产装载还要验证文件清单、文件大小/校验、对象版本与业务日期、重复加载行为、权限变更告警和恢复步骤。参考：[Snowflake Storage Integration 与 S3 加载](https://docs.snowflake.com/en/user-guide/data-load-s3-config-storage-integration)。
 
 ## 9. 从原始数据到可消费数据：分层、质量、血缘和运营告警
 
@@ -999,6 +1119,37 @@ Snowflake 有不同层面的缓存行为。实用上至少区分两类：
 
 **业界案例：** FIS 的公开 Snowflake 客户案例报告其 Compliance Suite 查询速度约提升至原来的 2.5 倍，并减少了计算资源使用。这个结果能说明平台与工作负载调整可以同时改善性能和成本，但公开材料并没有证明结果来自某一个具体 SQL 重写或某个特定仓库参数；不能把客户总体成果简化为“把 Warehouse 调大”或某个万能技巧。参见 [FIS 客户案例](https://www.snowflake.com/en/customers/all-customers/case-study/fis/)。
 
+### 用可度量的成本模型看 Warehouse，而不是只看 XS / M / L 标签
+
+仓库的规格名称不能直接回答查询是否划算。应把成本和交付的工作关联：执行一个批次用了多少 Credits、完成多少行有效转换、是否在 SLA 内、是否因为失败重跑、有没有把同一数据反复扫描。
+
+对固定大小的仓库，运行时长通常会影响总用量；增大仓库可能缩短运行时长，但每单位时间的消耗也更高。只有在大仓库缩短时间的比例足够大、资源竞争或执行瓶颈被缓解时，整体成本/时延的组合才可能改善。不同工作负载和计费参数有差异，应该用账户的实际计费视图核对，而不是把规格之间的差异机械换算成固定结论。
+
+#### 一个可操作的 A/B 测试
+
+选择一个代表性查询：
+1. 固定输入表、日期范围、会话上下文和结果；
+2. 记录 Warehouse 规格、启动/排队情况、缓存条件、Query ID；
+3. 在候选规格下执行相同查询；
+4. 比较执行时间、P95（若负载可重复）、扫描量、spill、结果校验与 Credits；
+5. 分析“单次更快”是否换来更高的总成本，及该结论在并发负载下是否仍成立。
+
+如果查询的大部分时间在队列里，扩大 Warehouse 规格未必解决队列；如果耗时集中在编译、客户端取数或外部系统等待，计算扩容同样可能没有帮助。要测量问题发生的阶段，再调整相应资源。
+
+#### 将成本归属到团队、数据产品与运行类型
+
+只按 Warehouse 统计成本还不够。一个共享 ETL Warehouse 可能同时运行日常增量、历史回填、数据质量扫描与临时调试。通过稳定的 Query Tag、运行 ID、任务名、服务账号和批次信息，可以把用量归到具体管道和工作负载。Query Tag 必须在运行入口可靠设置，且不要包含敏感个人信息或不可控的任意文本。
+
+治理时可以把成本拆成：
+- 正常每日增量的预算；
+- 每月/季度回填与重算；
+- 交互式探索和 ad hoc 查询；
+- 失败重试与异常峰值；
+- 表维护、聚类、物化及其他辅助计算；
+- 无主对象、长时间不挂起的 Warehouse 或已失去消费者的数据集。
+
+这样比只看当月账户总 Credits 更有可执行性：可以确定哪个作业需要优化、哪个团队需要控制查询、哪个数据产品在消耗资源却没有明确消费者。
+
 ### 先理解计算费用来自哪里
 
 主要要观察：
@@ -1077,6 +1228,66 @@ Snowflake 的仓库自动挂起按秒级使用计费，但仓库每次恢复时�
 重试并不总是安全。若任务是“把每个新事件插入流水”，重复执行可能重复记账；若任务是“重建某估值日的整份快照”，可通过明确替换该日期分区并做发布控制实现幂等。应使用 Batch ID / Run ID 追踪每次运行，区分“任务执行失败”“数据处理部分完成”和“已发布业务结果”，避免把三种状态压成一个成功/失败标记。
 
 在排障记录里至少保留：发生时间、受影响业务日期/数据集、Query ID、源批次/文件版本、最近代码变更、发现的根因、修复动作、重跑范围、质量验证结果、发布状态及后续预防措施。查询历史和监控是诊断证据的一部分，但金融业务还需要保留业务规则、输入版本和结果核对证据。
+
+### 生产监控要覆盖运行状态、数据正确性和业务发布状态
+
+建议为每个关键数据产品定义一份轻量的运营契约，至少列出：
+- Owner 与值班/升级路径；
+- 可接受的最大数据陈旧度；
+- 输入截止时间和输入完整性规则；
+- 数据质量检查及其阻止发布的阈值；
+- 运行依赖与恢复路径；
+- Query Tag、Batch ID 和日志/事件保留要求；
+- 失败重试次数、隔离逻辑和需要人工审批的情况。
+
+SLA 与 SLO 要写成可测量的句子。例如“每日估值报表在本地时间 07:00 前发布，并且每个必须的 Vendor 输入都完成；当关键价格覆盖率低于阈值时禁止发布”。不要只写“ETL 应稳定”“Dynamic Table 应实时”这种不可验证要求。
+
+#### 示例：为每次批处理保留统一运行账本
+
+```sql
+CREATE TABLE IF NOT EXISTS ops.pipeline_run (
+    run_id              STRING,
+    pipeline_name       STRING,
+    batch_id            STRING,
+    business_date       DATE,
+    source_version      STRING,
+    started_at          TIMESTAMP_TZ,
+    completed_at        TIMESTAMP_TZ,
+    run_status          STRING,
+    rows_read           NUMBER(38,0),
+    rows_written        NUMBER(38,0),
+    rejected_rows       NUMBER(38,0),
+    control_total       NUMBER(38,6),
+    quality_status      STRING,
+    published_at        TIMESTAMP_TZ,
+    query_id            STRING,
+    code_version        STRING,
+    failure_reason      STRING
+);
+```
+
+这是概念级 Schema：实际可拆为运行表、逐源文件表、质量结果表和发布事件表，以避免同一 run 对多个文件时混淆粒度。关键在于账本能让支持人员回答这次处理用什么输入、产生多少有效输出、是否通过校验、是否发布，以及它对应哪个 Query ID 和代码版本。
+
+#### 示例：从查询历史发现 Warehouse 的运行趋势
+
+```sql
+SELECT
+    warehouse_name,
+    COUNT(*) AS successful_queries,
+    APPROX_PERCENTILE(total_elapsed_time / 1000.0, 0.95) AS p95_elapsed_seconds,
+    SUM(bytes_scanned) AS bytes_scanned,
+    SUM(bytes_spilled_to_remote_storage) AS remote_spill_bytes
+FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+WHERE start_time >= DATEADD(day, -7, CURRENT_TIMESTAMP())
+  AND execution_status = 'SUCCESS'
+  AND warehouse_name IS NOT NULL
+GROUP BY warehouse_name
+ORDER BY p95_elapsed_seconds DESC;
+```
+
+这个汇总用来探索过去一段时间的工作负载，不是可以直接部署的 SLA 告警规则。P95 可能被不同 SQL 类型、查询量和排队时间共同影响；成功查询筛选也排除了失败率。生产监控应至少分别看失败查询、排队/执行时间、业务关键查询、数据延迟和成本，并考虑 `ACCOUNT_USAGE` 数据的可见延迟。
+
+**业界案例的正确用法：** DataHub 的公开案例展示了通过数据平台、数据质量和运营流程协同缩短事件处理时间的价值。它不能证明单独打开某个 Snowflake 监控选项就会取得相同结果。实际设计应把采集、告警、Owner、Runbook 和复核流程一起作为系统的一部分。[DataHub 案例](https://www.snowflake.com/en/customers/all-customers/case-study/datahub/)。
 
 ## 11. 安全与隐私：谁可以看到哪些数据，谁可以执行哪些操作
 
