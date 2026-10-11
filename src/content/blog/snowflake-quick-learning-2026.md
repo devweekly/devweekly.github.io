@@ -3899,6 +3899,109 @@ flowchart LR
 
 对于金融服务架构方案，更有价值的问题通常是：这个案例说明的工作负载与我们的规模/延迟/合规要求是否相似？公开材料支持了哪些事实？我们还缺少哪些数据来证明方案适用？接下来应如何设计 PoC 来检验剩余假设？
 
+## 45. Snowpipe Streaming 深入：Channel 不是 Kafka Topic，也不自动保证全链路无重复
+
+Snowpipe Streaming 适合应用持续将行级事件写入 Snowflake，不必先把数据滚动成文件再走常规批量加载。选型时最容易误解的是“Streaming”这个名称：它描述的是一种接入路径，并不自动说明端到端的顺序、唯一性或数据可见性保证。当前高性能架构提供 Named Channels 和 Elastic Channels，两者面向的投递语义不同。[官方 Channel 类型选择](https://docs.snowflake.com/en/user-guide/snowpipe-streaming/snowpipe-streaming-choosing-channel-type)
+
+### 45.1 先选择投递语义，再选择 SDK/API
+
+| 语义 | Named Channels | Elastic Channels |
+|---|---|---|
+| 同一 Channel 内的顺序 | 保留 Channel 内事件顺序 | 不保证 |
+| 重复投递 | 通过 offset token 和客户端恢复协议支持 exactly-once ingestion | At-least-once；模糊失败后重试可能重复 |
+| 多生产者并发 | 通常按独立源分区映射 Channel，需遵循源端顺序 | 支持并发写入，顺序不保证 |
+| 进度跟踪 | 应持久化源位点/offset token，恢复时从已提交位置继续 | 应跟踪每次 append 的持久确认；应用需自行维护安全检查点 |
+| 适合场景 | CDC、账单、库存和需要稳定顺序/去重语义的数据 | 遥测、日志和允许重复或可在下游治理的数据 |
+
+这里的 exactly-once 有明确边界：Named Channel 的顺序与去重恢复语义针对通过该 Channel 接入 Snowflake 的行和对应 offset token。它不意味着源端事务、跨多个 Channel 的全局排序、下游 Dynamic Table、外部 API 副作用或业务报表自动获得端到端 exactly-once。源端记录仍需要在确认提交前保留，以便恢复时重放。
+
+### 45.2 以 Kafka/CDC 分区映射 Named Channel 为例
+
+对于分区式事件源，可以考虑将每个 source partition 映射到一个稳定的 Named Channel，并保存：
+- Topic/表/源分区身份；
+- 源端 offset/LSN；
+- 该 Channel 最近已提交的 offset token；
+- append 请求与响应；
+- 重启时从什么位置恢复；
+- 哪些输入还在等待确认、必须继续保留；
+- 每个源分区到目标表的映射版本。
+
+不要在每次进程重启时随意生成一个新 Channel 名称，否则可能失去稳定的恢复边界。也不要让同一源分区由两个无法协调进度的生产者同时推进 checkpoint。正确性取决于应用是否将源位点和 Snowflake 返回的已提交进度以一致方式持久化。
+
+Named Channel 的顺序保证是 Channel 内的，不是所有写入同一张表的 Channel 之间的全序。如果两个源分区会更新同一目标业务键，目标表还要定义跨分区的冲突解决策略；不能依靠最终到达顺序判断哪个业务版本更新。
+
+### 45.3 Elastic Channel 的重试必须显式处理重复和乱序
+
+Elastic Channel 更适合可以容忍重复、顺序不重要或由下游去重的工作负载。但若用于资产、交易、账单或库存变化，必须证明重复处理不会改变最终业务结果。常见做法包括：
+- 给每条事件提供稳定的 `event_id` 和源端版本/位点；
+- 在 RAW 层保存输入事件，避免在摄取阶段丢失诊断证据；
+- 在标准化层去重并检验冲突；
+- 当前状态层按来源定义的顺序规则应用变更；
+- 对 DELETE、撤销和迟到旧消息制定明确策略；
+- 对账源端提交位置与目标实际处理进度。
+
+不要使用到达时间作为业务事件顺序的唯一判断，因为重试可能导致旧事件晚到。也不要用 `SELECT DISTINCT` 作为所有重复的统一修复方法：如果重复行内容略有差异，DISTINCT 可能保留两行；如果两行内容相同但属于不同事件，它又可能误删合法记录。
+
+### 45.4 “已接收”与“可查询”要分开监控
+
+持续写入系统通常有多个可观察状态：客户端生成了事件、调用已提交、服务端确认、事件被处理、记录在目标表可见、标准化完成、业务质量通过、下游结果发布。具体可见性语义依接入方式和管道而异，因此消费者 SLA 应从业务上需要的阶段定义，而不是将接口返回成功直接当作报表完成。
+
+监控至少覆盖：
+- 源端积压量与最早未确认位点；
+- 发送/接收错误和重试率；
+- 端到端事件延迟；
+- 重复和乱序检测数量；
+- RAW 到标准化的处理延迟；
+- 质量门槛失败与当前业务数据时间；
+- 运行预算与请求频率；
+- 恢复时重放的范围及结果校验。
+
+### 45.5 与批量文件接入的取舍
+
+Streaming 并不总是比文件加载更优。若来源每晚只生成一次稳定文件，COPY INTO 与文件批次账本可能更容易实现完整性检查、重放和供应商对账。若事件持续高频产生，并且业务明确需要更低接入延迟，Snowpipe Streaming 才可能有更直接的价值。选择应基于数据可见延迟、重复/顺序语义、源端协议、操作复杂度、成本与故障恢复，而不是因为系统“看起来需要实时”就默认选流式接口。
+
+官方资料：[Snowpipe Streaming Channel 类型](https://docs.snowflake.com/en/user-guide/snowpipe-streaming/snowpipe-streaming-choosing-channel-type) · [Named Channels 与 exactly-once](https://docs.snowflake.com/en/user-guide/snowpipe-streaming/snowpipe-streaming-channels) · [高性能 REST API](https://docs.snowflake.com/en/user-guide/snowpipe-streaming/snowpipe-streaming-high-performance-rest-api)。
+
+## 46. Warehouse 并发与排队诊断：先判断要扩容、隔离还是优化 SQL
+
+Warehouse 调优的一个常见误区，是把所有慢查询都归结为“计算不够”。实际上，慢查询可能来自仓库启动、并发排队、执行计划、数据扫描、数据交换、客户端取数等不同阶段。扩容方向必须匹配证据。
+
+### 46.1 排队至少要区分两种常见原因
+
+Snowflake 的 Warehouse Load 图表区分了 Queued (Provisioning) 与 Queued (Overload) 等状态。前者通常发生在仓库刚恢复、计算资源正在配置时；后者表示当前可用资源不足以立即执行更多查询。这两个队列的解决方式可能不同。[Warehouse Load Monitoring](https://docs.snowflake.com/en/user-guide/warehouses-load-monitoring)
+
+| 现象 | 优先调查方向 | 可能的行动 |
+|---|---|---|
+| 首批查询在 Warehouse 恢复时等待 | AUTO_SUSPEND、请求到达间隔、冷启动 | 调整挂起策略，或将有明确 SLA 的工作负载与稀疏的临时查询分开 |
+| 查询执行快，但高峰时等待队列增加 | 并发容量、长查询占用、任务集中触发 | 工作负载隔离、调度错峰、多集群或对并发做限制 |
+| Warehouse 负载不高，单条查询仍慢 | SQL 计划、扫描量、Join、聚合、spill | 优化 SQL/数据模型，完成基线后再测试更大规格 |
+| 运行负载低、空闲消耗长 | 仓库尺寸、挂起策略、最小集群数 | 降低规格或缩短空闲周期，并衡量启动体验与收益 |
+| 仓库整体排队高但某个长作业占用资源 | 长任务和交互式请求的竞争 | 将批处理与交互式查询拆分，设置运行窗口或独立 Warehouse |
+
+队列不是单一数字。要进一步看查询数量、耗时分布、出现时段、来源、使用者与仓库策略。有时将一个特别重的作业移到独立 Warehouse，比给整个 Warehouse 提高规格更稳健。
+
+### 46.2 Multi-cluster Warehouse 是并发扩展，而不是单条 SQL 的多仓库执行
+
+Multi-cluster Warehouse 可在并发升高时增加集群，从而扩大同一 Warehouse 可承载的查询执行容量。它需要核对 Edition、配置模式和预算；在 Auto-scale 模式下，Standard 与 Economy scaling policy 在延迟和成本之间做出不同取舍。Standard 更偏向减少排队，Economy 会更保守地增加集群，可能以排队时间换取更少的资源消耗。[Multi-cluster Warehouse](https://docs.snowflake.com/en/user-guide/warehouses-multicluster)
+
+关键是区分两种目标：
+- **Throughput/并发目标**：一分钟内需要服务多少条查询、多少个用户或作业；多集群可能有效。
+- **单查询延迟目标**：某条查询本身需要多久完成；优先诊断物理计划和数据规模，必要时测试单仓库规格。
+
+多集群并不意味着一条 SQL 会被拆到所有集群协同执行。查询分配到某个集群后，在该集群中按执行计划进行分布式计算。也不能假设加集群后每条查询延迟必然下降；若瓶颈是扫描低效、外部等待或错误 JOIN，增加并发能力不会修复这些问题。
+
+### 46.3 用负载图观察“忙”与“贵”是否匹配
+
+Warehouse Load Monitoring 的负载指标是一定时间间隔内正在运行或排队的查询所贡献的平均查询负载，不是 CPU 百分比。它可用来判断资源使用与队列情况，但要结合 Query History 解释具体查询。运行负载长期低于 1、却有较多持续运行时长和 Credits 消耗，可能表示仓库规格/空闲策略与实际工作负载不匹配；具体行动依然要看查询类型和 SLA。
+
+对每日批处理，可以以批次完成时间、扫描量和 Credits 衡量；对 BI 仓库，观察峰值并发、P95 和队列；对于 Agent/应用查询，观察单请求的 Query 数量、总耗时和成本上限。把它们汇总成一个平均运行时间，容易掩盖不同业务的真正问题。
+
+### 46.4 调整策略要有回滚条件
+
+对仓库大小、多集群上下限、Scaling Policy 和自动挂起的变更，先定义目标、实验时间窗和回滚阈值。至少记录变更前后的队列、P50/P95、失败率、完成批次数、Credits、冷启动体验和下游 SLA。不要在高峰事故中随意同时更改仓库规格、SQL 和任务调度；否则即使表现改善，也无法确定哪个变化真正解决了问题。
+
+当费用上升且排队下降时，判断是否可接受需要业务 SLO 与预算共同决策。没有性能目标和单位业务成本指标，仅凭仓库图表很难对“更快但更贵”做出合理选择。
+
 ## 对照 Snowflake 官方 Guides 目录：覆盖范围与有意略过的内容
 
 我把 [Snowflake User Guides 总目录](https://docs.snowflake.com/en/guides) 和主要子目录作为覆盖基线。官方目录会持续更新，因此这里说明的是本文学习范围，不承诺逐页、逐功能完整复述所有官方文档。目标是帮助 Solution Architect 建立选择能力，并在具体实施时知道该打开哪个官方专题。
