@@ -601,6 +601,109 @@ LATERAL FLATTEN(INPUT => e.payload:positions) AS f;
 
 保留原始 `payload`，再把稳定、重复使用的字段转换到标准层；不要在每次报表查询中重复写一整套 JSON 路径解析。对数值字段要验证缺失值、精度、币种和单位，不能把非法值静默转成 NULL 后就视为通过。关于窗口函数、QUALIFY、ASOF JOIN 和 FLATTEN 的行为，以相应 [官方参考文档](https://docs.snowflake.com/en/sql-reference/functions-window-syntax) 为准。
 
+### 高级 SQL 补充：让查询语义在修订、迟到与历史版本下仍然成立
+
+上面的示例覆盖窗口函数、QUALIFY、ASOF JOIN 与 FLATTEN。生产代码还常遇到三类更棘手的问题：同一业务键的历史版本、需要证明“当前值”与“当时值”的区别，以及跨表对账时如何找出丢失或多出来的记录。
+
+#### 示例 E：构建有效时间维度时，先对齐版本再连接事实
+
+假设证券的风险分类有历史版本，维度表包含 `valid_from` 和 `valid_to`。事实行应该匹配当时有效的分类，而不是简单连接当前分类。
+
+```sql
+SELECT
+    p.valuation_date,
+    p.portfolio_id,
+    p.security_id,
+    p.market_value,
+    d.risk_class
+FROM curated.position_daily AS p
+JOIN curated.security_classification_history AS d
+  ON d.security_id = p.security_id
+ AND p.valuation_date >= d.valid_from
+ AND p.valuation_date < COALESCE(d.valid_to, '9999-12-31'::DATE);
+```
+
+这个连接依赖维度历史的有效时间区间不重叠。若同一证券在同一天匹配到两条有效分类记录，事实金额会重复。维度表的重叠检测应该成为质量测试，而不是等到聚合金额异常才调查。
+
+```sql
+-- 找出同一实体的有效期间是否重叠：使用 LEAD 检查后一版本
+WITH versions AS (
+  SELECT
+      security_id,
+      valid_from,
+      valid_to,
+      LEAD(valid_from) OVER (
+          PARTITION BY security_id
+          ORDER BY valid_from
+      ) AS next_valid_from
+  FROM curated.security_classification_history
+)
+SELECT *
+FROM versions
+WHERE next_valid_from IS NOT NULL
+  AND COALESCE(valid_to, '9999-12-31'::DATE) > next_valid_from;
+```
+
+这里假设有效区间采用左闭右开 `[valid_from, valid_to)`，同一天切换版本时不会重叠。企业必须统一并文档化区间约定；如果不同源使用包含结束日期的语义，转换时要明确处理。
+
+#### 示例 F：用集合差异做批次对账，而不是只比较行数
+
+两边行数相同不代表数据相同：一边可能少一条、多一条，最后数量刚好一致。对有业务键的集合，可分别检查缺失和多余记录。
+
+```sql
+-- 本应存在于源批次，却未在目标层出现的业务键
+SELECT source_system, business_key
+FROM standardized.source_batch
+WHERE batch_id = :batch_id
+MINUS
+SELECT source_system, business_key
+FROM curated.target_batch
+WHERE batch_id = :batch_id;
+
+-- 目标层出现、但源批次不包含的业务键
+SELECT source_system, business_key
+FROM curated.target_batch
+WHERE batch_id = :batch_id
+MINUS
+SELECT source_system, business_key
+FROM standardized.source_batch
+WHERE batch_id = :batch_id;
+```
+
+`MINUS`/集合运算比较的是投影列集合；如需比较数值变动、金额精度和版本，需要把业务键与标准化后的重要列一起比较，或在业务键连接后逐列计算差异。源端与目标端必须采用相同的时间截止和业务过滤条件，否则差异可能来自比较口径不一致。
+
+#### 示例 G：用显式条件构造收益率，不要平均每日收益率
+
+假设数据集已存储每日净值，日收益率可按业务定义计算为当日净值/前一日净值减一：
+
+```sql
+WITH daily AS (
+  SELECT
+      portfolio_id,
+      valuation_date,
+      nav,
+      LAG(nav) OVER (
+          PARTITION BY portfolio_id
+          ORDER BY valuation_date
+      ) AS prior_nav
+  FROM curated.portfolio_nav_daily
+)
+SELECT
+    portfolio_id,
+    valuation_date,
+    CASE
+      WHEN prior_nav > 0 THEN nav / prior_nav - 1
+      ELSE NULL
+    END AS daily_return
+FROM daily;
+```
+
+这是简化的净值变化例子，不代表适用于所有投资收益口径。真实绩效可能需要处理外部现金流、分红、费用、公司行动、缺失估值日和不同的 Time-Weighted Return / Money-Weighted Return 规则。SQL 能计算比例，不会自动确定金融业务使用哪套绩效方法。
+
+#### 高级 SQL 的通用审查准则
+
+每个复杂查询都应该在 SQL 之外保留四样信息：目标粒度、时间规则、关键关系基数、结果校验。窗口函数排序是否稳定、ASOF JOIN 是否有 look-ahead、FLATTEN 是否改变行粒度、QUALIFY 是否忽略 DELETE 事件，都应通过小型反例测试。把边界条件写进测试，比增加更多注释更能防止后续修改破坏语义。
+
 ## 6. 如何读取、预计算和持续转换数据：View、物化视图与 Dynamic Tables
 
 数据到达 Snowflake 后，还要决定如何把源数据转成可消费的业务数据。不要把所有转换需求都塞进同一种工具。
@@ -976,6 +1079,54 @@ LIST @vendor_stage;
 
 `LIST` 只能证明特定时刻按当前权限可列出文件，不能证明文件完整、正确、未被重复消费或已经满足业务对账。生产装载还要验证文件清单、文件大小/校验、对象版本与业务日期、重复加载行为、权限变更告警和恢复步骤。参考：[Snowflake Storage Integration 与 S3 加载](https://docs.snowflake.com/en/user-guide/data-load-s3-config-storage-integration)。
 
+### 将转换逻辑从一次性 SQL 变成可部署、可回滚的代码
+
+SQL 转换在小规模探索时可以直接执行，但进入生产后，应像应用代码一样版本管理。最基本的工程实践包括：
+- SQL 模型与配置进入 Git，明确谁能修改生产模型；
+- 开发、测试和生产环境有可重复部署方式；
+- 变更前运行静态检查、单元测试和数据质量测试；
+- 对会改变指标口径的改动运行回归查询；
+- 部署后验证模型依赖、刷新模式、调度状态和结果质量；
+- 变更失败时知道回滚模型、重放数据还是恢复历史快照；
+- 将模型版本关联到 Batch ID、Query ID 和发布记录。
+
+dbt 或类似工具可以管理模型依赖、测试、文档与部署；它不会自动保证 SQL 的业务逻辑正确，也不会替代 Snowflake 中的数据访问策略。Dynamic Tables/Tasks 管理数据刷新或执行时，仍需建立独立的变更发布流程。
+
+#### 采用“影子计算”验证重要转换
+
+对风险高的模型变更，不应直接覆盖唯一的生产结果后再检查。可以先在隔离 Schema/临时目标中使用相同输入版本生成候选结果，再与生产结果比较：
+- 关键业务键的缺失和新增；
+- 金额/数量/比率的差异分布；
+- 关键总计的绝对误差与相对误差；
+- 日期覆盖、维度分布和异常值；
+- 运行耗时、扫描量和成本变化；
+- 访问策略和可见字段是否变化。
+
+只有差异在批准范围内，才将新模型切为消费版本。若是指标定义变更，不能简单要求所有结果与旧版本完全相同；要记录差异原因、业务批准与生效日期，并保留历史版本可解释性。
+
+#### 回填要与日常增量分离
+
+很多转换成本和故障都来自同一流程兼顾两种不同工作：
+- 日常增量处理新的事件或小范围修订；
+- 历史回填处理很长时间范围、源数据修复或算法变更。
+
+二者的输入范围、Warehouse、截止时间、优先级和发布方式不必相同。可以为回填任务设置独立 Warehouse 与 Query Tag，让它在不影响前台查询的条件下运行；也可以按日期/业务域分片回填，逐块对账后再发布。回填前应估算扫描规模和可能的历史影响，避免一个宽泛的任务在生产环境里无限扩展。
+
+#### 数据契约应该包含“变化如何解释”
+
+合同不只是字段名称和类型。对关键数据源，最少还应包含：
+- 数据粒度和业务键；
+- 事件时间、有效时间、到达时间及其时区；
+- 单位、币种、精度、允许值、NULL 语义；
+- 更新、删除、撤销、纠错、迟到事件的表示；
+- 供应商 Schema 变更的兼容策略；
+- 交付频率、完整性检查和失败通知；
+- 重复文件或重复事件的识别方式；
+- 保留期、修订窗口、许可范围和数据使用限制；
+- 所有者、升级路径及下一次对账责任。
+
+如果这些规则未写入数据契约，转换逻辑会逐渐演变为散落在多个脚本里的临时约定，后来接手的团队很难知道哪个行为是有意设计，哪个是偶然结果。
+
 ## 9. 从原始数据到可消费数据：分层、质量、血缘和运营告警
 
 数据加载成功不是管道完成。下一步要确定哪些数据仍然只是原始输入，哪些已经标准化，哪些通过质量和业务规则验证后可以让报表、研究人员和应用消费。
@@ -1288,6 +1439,82 @@ ORDER BY p95_elapsed_seconds DESC;
 这个汇总用来探索过去一段时间的工作负载，不是可以直接部署的 SLA 告警规则。P95 可能被不同 SQL 类型、查询量和排队时间共同影响；成功查询筛选也排除了失败率。生产监控应至少分别看失败查询、排队/执行时间、业务关键查询、数据延迟和成本，并考虑 `ACCOUNT_USAGE` 数据的可见延迟。
 
 **业界案例的正确用法：** DataHub 的公开案例展示了通过数据平台、数据质量和运营流程协同缩短事件处理时间的价值。它不能证明单独打开某个 Snowflake 监控选项就会取得相同结果。实际设计应把采集、告警、Owner、Runbook 和复核流程一起作为系统的一部分。[DataHub 案例](https://www.snowflake.com/en/customers/all-customers/case-study/datahub/)。
+
+### 数据接入运行手册：从文件到已发布数据的每个状态都要有定义
+
+针对每日 Vendor 文件，建议将状态分成“对象到达、文件验证、入库、转换、对账、发布”。它们不应被压缩为一个布尔值 `loaded = TRUE`。一种常见的文件账本如下：
+
+| 状态 | 入口检查 | 成功标准 | 失败处理 |
+|---|---|---|---|
+| RECEIVED | 清单里发现预期文件、对象路径与命名符合约定 | 文件名/业务日期/源版本可识别 | 生成 Missing File 告警并保留上游通知 |
+| VALIDATED | 文件类型、大小、校验值、签名及字段结构符合合同 | 校验通过且记录文件指纹 | 移入隔离区，保留拒收理由，禁止自动进入标准层 |
+| LOADED | COPY/Snowpipe 完成读取，载入记录可追踪 | 源文件与 Load History/批次账本关联 | 只补跑未成功范围，不把整批重复加载当作无害操作 |
+| TRANSFORMED | 类型、标识符、时间和业务键规范化 | 转换运行 ID、输入版本及输出行数已记录 | 保留坏记录与错误分类，修复规则后重放 |
+| RECONCILED | 行数、主键、金额总计、覆盖率等对账通过 | 差异处于业务批准门槛内 | 阻止发布或进入明确的人工审批路径 |
+| PUBLISHED | 消费层版本更新，访问策略与质量状态有效 | 下游可通过认证接口查询到正确版本 | 回滚消费指针/版本，通知消费者并记录影响范围 |
+
+#### 不要把同名文件当作唯一的幂等键
+
+供应商可能重新发送同名文件，但内容已修订；也可能为同一内容更换文件名；还可能把一个逻辑批次拆成多个文件。可组合使用业务日期、Vendor、文件名、对象版本、校验和、源端批次 ID 等信息来确定文件身份。业务上需要保留更正版本时，应将“文件被重复投递”和“同一文件被新版本取代”区分开来。
+
+加载工具可跟踪其所处理的文件，但企业自己的业务批次账本仍应记录预期文件清单、缺失文件、修订关系和对账结果。不能仅凭一次 COPY 返回的加载行数判定这个业务日期已经完整。
+
+#### 文件格式漂移和坏数据的处理
+
+CSV 字段顺序改变、字符串中出现转义字符、金额出现新的单位、JSON 数组改为对象、Parquet Schema 增加或变更类型，这些都可能造成解析错误或静默的业务含义改变。推荐先把新结构作为输入契约变更处理：隔离未知版本、分析差异、更新标准化逻辑与测试，经过验证后再放入常规流程。
+
+对于不能自动解析的记录，保留来源文件、行号或记录标识、解析错误、接收时间和处理版本；若只把非法值转成 NULL 并继续，问题可能直到下游总额不符才被发现。生产管道必须定义坏记录比例的阈值、允许发布的条件和责任人。
+
+### 生产查询的取证顺序：先固定 Query ID，再解释性能数字
+
+当用户反馈报表慢、结果不一致或查询失败时，先收集以下信息：Query ID、业务日期、调用人/服务角色、Warehouse、输入数据版本、错误消息、应用超时记录和用户期望结果。若没有 Query ID，也应从 Query History 按时间、用户、仓库和查询标签缩小范围；不要直接用“今天慢了”这种模糊描述开始调优。
+
+#### 示例：按仓库观察查询延迟和扫描量
+
+```sql
+SELECT
+    warehouse_name,
+    COUNT(*) AS query_count,
+    APPROX_PERCENTILE(total_elapsed_time / 1000.0, 0.50) AS p50_elapsed_seconds,
+    APPROX_PERCENTILE(total_elapsed_time / 1000.0, 0.95) AS p95_elapsed_seconds,
+    SUM(bytes_scanned) AS bytes_scanned,
+    SUM(bytes_spilled_to_local_storage) AS local_spill_bytes,
+    SUM(bytes_spilled_to_remote_storage) AS remote_spill_bytes
+FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+WHERE start_time >= DATEADD(day, -7, CURRENT_TIMESTAMP())
+  AND warehouse_name IS NOT NULL
+GROUP BY warehouse_name
+ORDER BY p95_elapsed_seconds DESC;
+```
+
+实际使用时应先确认目标视图中对应字段与权限，并根据当前 Snowflake 文档调整。P95 用所有 SQL 类型混合计算可能没有解释力；生产分析应按业务标签、查询类型或规范化 SQL 指纹分组。查询总耗时也不一定等于执行耗时，其中可能包含等待时间；必要时应单独查看排队和执行字段。
+
+#### 示例：检查最近失败的语句
+
+```sql
+SELECT
+    start_time,
+    user_name,
+    role_name,
+    warehouse_name,
+    query_id,
+    error_code,
+    error_message,
+    query_text
+FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+WHERE start_time >= DATEADD(hour, -24, CURRENT_TIMESTAMP())
+  AND execution_status = 'FAIL'
+ORDER BY start_time DESC
+LIMIT 100;
+```
+
+生产系统应限制谁能读取完整 SQL 文本，因为查询文本可能包含业务值、标识符甚至不应进入一般日志的内容。对外提供运营面板时，可以只展示 Query ID、分类错误码、归属和脱敏后的摘要；调查人员通过受控角色再查看原始文本。
+
+#### 用标签将 SQL 对应到业务工作负载
+
+如果公司有统一运行时或编排器，可在调用入口为作业设置 Query Tag，包括 pipeline、environment、run ID 和工作负载类型。标签字段应有统一格式，避免团队随意输入导致聚合失效。不要把客户姓名、账户号码或其他敏感数据直接放入 Query Tag；标签通常会被多个运维和成本视图读取。
+
+诊断时还应考虑 Account Usage 的时间可见延迟。它适合历史分析与趋势诊断；要做秒级告警时，应选择适当的事件/任务监控方式，并在 Runbook 中记录数据延迟与告警本身的盲区。
 
 ## 11. 安全与隐私：谁可以看到哪些数据，谁可以执行哪些操作
 
