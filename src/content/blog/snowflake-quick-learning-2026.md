@@ -5420,6 +5420,32 @@ Schema 变化不只是字段增加/删除。Vendor 可能改列名、改类型�
 
 业界案例只用于佐证业务问题与平台实践价值；除非客户公开材料明确说明，不把案例成果归因于某段 SQL、某个 Schema 或某个 Snowflake 参数。
 
+### 工程附录中使用的补充官方资料
+
+**架构、表类型与恢复**
+- [核心架构](https://docs.snowflake.com/en/user-guide/intro-key-concepts) — 存储、计算与 Cloud Services 的职责边界。
+- [Temporary / Transient Tables](https://docs.snowflake.com/en/user-guide/tables-temp-transient) — 生命周期、Time Travel 与 Fail-safe 的差异。
+- [标准表约束](https://docs.snowflake.com/en/sql-reference/constraints) · [Hybrid Table 概览](https://docs.snowflake.com/en/user-guide/tables-hybrid) · [Hybrid Table 限制](https://docs.snowflake.com/en/user-guide/tables-hybrid-limitations)。
+- [Zero-copy Cloning](https://docs.snowflake.com/en/user-guide/object-clone) · [Time Travel](https://docs.snowflake.com/en/user-guide/data-time-travel) · [Optimized Refresh 与 RPO Assurance](https://docs.snowflake.com/en/user-guide/account-replication-optimized-refresh)。
+
+**SQL、性能与运行监控**
+- [GET_QUERY_OPERATOR_STATS](https://docs.snowflake.com/en/sql-reference/functions/get_query_operator_stats) — 分析算子级输入/输出行数、JOIN 与执行统计。
+- [DYNAMIC_TABLE_REFRESH_HISTORY](https://docs.snowflake.com/en/sql-reference/functions/dynamic_table_refresh_history) · [TASK_HISTORY](https://docs.snowflake.com/en/sql-reference/functions/task_history) — 刷新与任务的状态、错误和 Query ID。
+- [Warehouse Metering History](https://docs.snowflake.com/en/sql-reference/functions/warehouse_metering_history) · [Resource Monitors](https://docs.snowflake.com/en/user-guide/resource-monitors) · [成本控制](https://docs.snowflake.com/en/user-guide/cost-controlling)。
+- [整体成本构成](https://docs.snowflake.com/user-guide/cost-understanding-overall) · [Cloud Services 成本优化](https://docs.snowflake.com/en/user-guide/cost-optimize-cloud-services)。
+
+**数据接入、开放表格式和执行扩展**
+- [S3 Storage Integration](https://docs.snowflake.com/en/user-guide/data-load-s3-config-storage-integration) · [Snowpipe Streaming Channel 选择](https://docs.snowflake.com/en/user-guide/snowpipe-streaming/snowpipe-streaming-choosing-channel-type) · [Snowpipe Streaming Channels](https://docs.snowflake.com/en/user-guide/snowpipe-streaming/snowpipe-streaming-channels)。
+- [Iceberg Table 创建](https://docs.snowflake.com/en/user-guide/tables-iceberg-create) · [Iceberg 管理](https://docs.snowflake.com/en/user-guide/tables-iceberg-manage)。
+- [Snowpark Python UDF](https://docs.snowflake.com/en/developer-guide/snowpark/python/creating-udfs) · [External Functions](https://docs.snowflake.com/en/sql-reference/external-functions-introduction)。
+
+**语义、AI 与访问审计**
+- [Semantic Views 创建](https://docs.snowflake.com/en/user-guide/views-semantic/creating) · [Semantic Views 准确性改进](https://docs.snowflake.com/en/user-guide/views-semantic/improving-accuracy) · [Cortex Analyst Evaluations](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-analyst-evaluations)。
+- [Cortex Search 概览](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-search/cortex-search-overview) · [Cortex AI Functions 区域和模型可用性](https://docs.snowflake.com/en/user-guide/snowflake-cortex/aisql-regional-availability)。
+- [Access History](https://docs.snowflake.com/en/user-guide/access-history) — 与 Query History 和业务运行账本配合使用。
+
+上述链接指向官方文档，但不代表文中列出的每项功能都在所有 Region、Cloud、Edition 或账户配置下可用。正式部署前应核对目标环境支持范围、权限要求、当前限制和实际账单口径。
+
 ### 本仓库相关工程实践
 
 如果需要从学习地图进一步进入工程实施，可继续阅读本仓库中的：
