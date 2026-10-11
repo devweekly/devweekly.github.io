@@ -4873,6 +4873,67 @@ Snowflake 的空间函数可以计算几何对象之间的空间关系，但“�
 
 保险或合规场景下，空间计算结果可以作为业务判断的证据之一，但不自动等价于最终承保或法律判断。决策政策还需结合业务规则、日期、法规例外及人工复核。
 
+## 59. Standard Table 与 Hybrid Table：什么时候需要真正的事务约束
+
+Snowflake 的普通表（standard table）针对分析型访问优化：数据按列组织并采用微分区管理；它适合扫描、过滤、聚合、连接和分析型 SQL。Hybrid Table 面向某些操作型工作负载，采用行向主布局并支持索引与受约束的点查/更新模式。二者不是“新旧表类型”，也不能仅凭某项功能是否存在就决定选择。
+
+### 59.1 约束是否强制执行，会直接影响数据模型正确性
+
+Snowflake 的标准表可以声明 PRIMARY KEY、UNIQUE 和 FOREIGN KEY 等约束，但其中许多约束主要作为模型/兼容性元数据，并不在写入时强制执行；标准表上的 NOT NULL 和 CHECK 约束会执行。Hybrid Table 则要求主键，并支持执行主键、唯一键、外键和 CHECK 等约束，但它的其他能力与限制也不同。[标准表约束](https://docs.snowflake.com/en/sql-reference/constraints) · [Hybrid Tables](https://docs.snowflake.com/en/user-guide/tables-hybrid)
+
+这一差异会改变应用架构。如果某个标准表被定义为 `PRIMARY KEY (trade_id)`，却有两条相同的 trade_id 进入表，数据库未必会拒绝写入。下游查询如果假设 trade_id 唯一，就可能出现重复 JOIN、结果膨胀或 MERGE 逻辑不确定。因此，标准表的关键约束必须通过装载前检查、数据质量测试与持续对账真正维护。
+
+### 59.2 不要为了“Enforced Constraints”就把事实表迁移为 Hybrid Table
+
+Hybrid Table 有其操作型用途和明确限制，包括区域/云可用性、数据规模/吞吐限制以及与部分功能（例如部分数据加载、共享、复制、Dynamic Tables、Streams、Search Optimization、Time Travel/Clone 等）的支持差异。功能支持会变化，选型前需要核对当前限制页面，而不是只看“主键强制执行”这一项。[Hybrid Table 限制](https://docs.snowflake.com/en/user-guide/tables-hybrid-limitations)
+
+对大型持仓、行情、交易历史和风险事实表，标准表的列式存储、微分区和分析执行通常更适合大范围聚合。若需要真正的点查/频繁行更新和强约束，可以评估 Hybrid Table 用作特定操作状态或小型参考数据；分析事实仍放在标准表中，按明确的数据管道同步到分析模型。两类表共存时，要定义哪个是业务写入权威、复制/同步延迟和冲突处理。
+
+### 59.3 将关系完整性检查做成生产门禁
+
+即使所有表都在标准表中，仍可以对关键数据产品建立约束测试。例如：
+
+```sql
+-- 目标唯一键检查
+SELECT trade_id, COUNT(*) AS n
+FROM curated.trade
+GROUP BY trade_id
+HAVING COUNT(*) > 1;
+
+-- 事实表对证券维度的孤儿引用
+SELECT f.security_id, COUNT(*) AS row_count
+FROM curated.position_daily f
+LEFT JOIN curated.dim_security d
+  ON f.security_id = d.security_id
+WHERE d.security_id IS NULL
+GROUP BY f.security_id;
+
+-- Child 表对 Parent 表的引用完整性
+SELECT t.account_id, COUNT(*) AS row_count
+FROM curated.trade t
+LEFT JOIN curated.dim_account a
+  ON t.account_id = a.account_id
+WHERE a.account_id IS NULL
+GROUP BY t.account_id;
+```
+
+这些检查应按业务规则处理，而不一定每一个差异都直接终止所有流水。新证券可以有短时间未映射，但必须处于可见的异常/未发布状态；客户授权缺失可能是安全阻断条件；交易流水引用不存在账户通常应隔离或拒绝。不要把“约束测试失败”统一翻译成同一个告警等级。
+
+### 59.4 约束元数据可能影响消费者工具
+
+一些 BI 或 SQL 工具会使用声明的主键/外键信息做 Join 优化或语义推断。即使标准表上的某些约束不在写入时强制执行，错误的约束声明也可能让下游工具作出错误假设。因此：
+- 只在有可靠数据质量机制维护时声明关键唯一键；
+- 约束字段和实际粒度必须一致；
+- 每次更改业务键、复合键或关系基数都要重跑唯一性与引用检查；
+- 把约束视为对消费者的契约，而不只是 DDL 装饰；
+- 检查下游是否依据这些元数据做了 Join elimination 或模型关系推断。
+
+### 59.5 如果选择 Hybrid Table，要先按它的限制设计用例
+
+Hybrid Table 不应被当成全功能 OLTP 数据库的无条件替代品。需要测真实写入吞吐、点查延迟、热点键、并发冲突、事务行为、约束成本和维护操作；并核对目标云/区域、最大数据量与当前支持列表。它的行向布局与索引机制可能适合低延迟操作型查询，但对于扫描大范围历史记录和复杂分析，普通标准表通常是不同的优化方向。
+
+评审时把每一类工作负载列清楚：写入频率、单次数据范围、需要的事务/隔离特征、查询形态、备份/Time Travel/复制需求，以及与 Dynamic Table/Streams/共享能力的依赖。选择表类型是工作负载设计的一部分，不能等到性能调优时才决定。
+
 ## 对照 Snowflake 官方 Guides 目录：覆盖范围与有意略过的内容
 
 我把 [Snowflake User Guides 总目录](https://docs.snowflake.com/en/guides) 和主要子目录作为覆盖基线。官方目录会持续更新，因此这里说明的是本文学习范围，不承诺逐页、逐功能完整复述所有官方文档。目标是帮助 Solution Architect 建立选择能力，并在具体实施时知道该打开哪个官方专题。
