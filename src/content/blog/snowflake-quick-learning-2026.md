@@ -1229,7 +1229,7 @@ ORDER BY p95_elapsed_seconds DESC;
 
 这样，即使仓库指标“正常”，缺少一个 Vendor 文件仍能触发正确的业务告警；反过来，某个可重试的查询失败也不必自动判定整份报告不可用。
 
-**业界实践：** DataHub 的公开案例报道了其通过数据平台与运营流程改进缩短事件处置时间、降低基础设施成本的经历。它说明数据可观测性要连接告警、所有权和故障处理，而不止是画图；其公开成果涉及整体实践，不能全部归因于 Snowflake 某个内置监控功能。参见 [DataHub 客户案例](https://www.snowflake.com/en/customers/all-customers/case-study/datahub/)。
+**业界实践：** Snowflake 的 DataHub 案例称，DataHub 将四套可观测性系统整合到 Observe by Snowflake 后，年度 AWS 成本减少了 10 万美元以上，事件中位处理时长从约 85 小时降到约 16 小时。案例同时提到流程改进和内部 AI 工具等因素，因此不能把全部收益归因于某个 Snowflake 监控功能。这个案例值得借鉴的不是一个百分比，而是把遥测、告警、责任人和实际处置流程接起来。参见 [DataHub 客户案例](https://www.snowflake.com/en/customers/all-customers/case-study/datahub/)。
 
 ## 10. 性能与成本：从查询证据到计算资源治理
 
@@ -1293,7 +1293,7 @@ Snowflake 有不同层面的缓存行为。实用上至少区分两类：
 
 选择代表性查询和固定数据范围，记录基线与改动后的 Query ID、结果正确性、P50/P95、扫描字节数、溢写、Credits 和缓存条件。每次尽量只改变一个主要因素，保留回滚方案。优化成功的标准不只是最快的一次运行，还要看总体成本、波动、并发下的 SLA 以及业务结果是否相同。
 
-**业界案例：** FIS 的公开 Snowflake 客户案例报告其 Compliance Suite 查询速度约提升至原来的 2.5 倍，并减少了计算资源使用。这个结果能说明平台与工作负载调整可以同时改善性能和成本，但公开材料并没有证明结果来自某一个具体 SQL 重写或某个特定仓库参数；不能把客户总体成果简化为“把 Warehouse 调大”或某个万能技巧。参见 [FIS 客户案例](https://www.snowflake.com/en/customers/all-customers/case-study/fis/)。
+**业界案例：** Snowflake 公布的 FIS 案例报告，FIS Compliance Suite 的执行速度提升到约 2.5 倍，同时使用的计算资源减少 20%；案例还提到许可证、维护和管理开销合计节省 33%。后一个数字不是单指 Snowflake Credits。它能说明性能与成本可以一起改善，但公开材料没有证明收益来自某一条 SQL、某个聚簇键或一个 Warehouse 参数。参见 [FIS 客户案例](https://www.snowflake.com/en/customers/all-customers/case-study/fis/)。
 
 ### 用可度量的成本模型看 Warehouse，而不是只看 XS / M / L 标签
 
