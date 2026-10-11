@@ -672,23 +672,25 @@ WHERE next_valid_from IS NOT NULL
 两边行数相同不代表数据相同：一边可能少一条、多一条，最后数量刚好一致。对有业务键的集合，可分别检查缺失和多余记录。
 
 ```sql
+SET batch_id = 'BATCH-EXAMPLE-001';
+
 -- 本应存在于源批次，却未在目标层出现的业务键
 SELECT source_system, business_key
 FROM standardized.source_batch
-WHERE batch_id = :batch_id
+WHERE batch_id = $batch_id
 MINUS
 SELECT source_system, business_key
 FROM curated.target_batch
-WHERE batch_id = :batch_id;
+WHERE batch_id = $batch_id;
 
 -- 目标层出现、但源批次不包含的业务键
 SELECT source_system, business_key
 FROM curated.target_batch
-WHERE batch_id = :batch_id
+WHERE batch_id = $batch_id
 MINUS
 SELECT source_system, business_key
 FROM standardized.source_batch
-WHERE batch_id = :batch_id;
+WHERE batch_id = $batch_id;
 ```
 
 `MINUS`/集合运算比较的是投影列集合；如需比较数值变动、金额精度和版本，需要把业务键与标准化后的重要列一起比较，或在业务键连接后逐列计算差异。源端与目标端必须采用相同的时间截止和业务过滤条件，否则差异可能来自比较口径不一致。
@@ -829,11 +831,13 @@ Dynamic Tables 是“减少自己维护转换调度代码”的工具，并不�
 下面展示“先按源顺序选出每个业务键最新事件，再写入目标”的核心形态。实际工程还必须明确 DELETE tombstone、源日志保留期和目标表唯一性；不同源系统的提交序列字段不可互换。
 
 ```sql
+SET batch_id = 'BATCH-EXAMPLE-001';
+
 MERGE INTO curated.position_current AS tgt
 USING (
     SELECT *
     FROM standardized.position_cdc
-    WHERE batch_id = :batch_id
+    WHERE batch_id = $batch_id
     QUALIFY ROW_NUMBER() OVER (
         PARTITION BY source_system, position_business_key
         ORDER BY source_commit_position DESC, source_event_sequence DESC
@@ -2535,9 +2539,11 @@ HAVING COUNT(*) > 1;
 假设每个业务位置的事件有稳定的源端顺序，可先提取当前批次每个业务键的最后一个事件：
 
 ```sql
+SET batch_id = 'BATCH-EXAMPLE-001';
+
 SELECT *
 FROM standardized.vendor_position_event
-WHERE batch_id = :batch_id
+WHERE batch_id = $batch_id
 QUALIFY ROW_NUMBER() OVER (
     PARTITION BY source_system, position_business_key
     ORDER BY source_sequence DESC, ingested_at DESC, source_record_id DESC
@@ -4843,13 +4849,15 @@ HAVING COUNT(*) > 1;
 #### 58.2 控制总计要按可比口径分组
 
 ```sql
+SET business_date = '2026-10-10'::DATE;
+
 SELECT
     valuation_date,
     currency_code,
     SUM(market_value) AS total_market_value,
     COUNT(*) AS row_count
 FROM curated.position_daily
-WHERE valuation_date = :business_date
+WHERE valuation_date = $business_date
 GROUP BY valuation_date, currency_code
 ORDER BY currency_code;
 ```
