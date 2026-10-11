@@ -395,7 +395,7 @@ Snowflake 的对象名看起来像普通数据库，但对象本身可能承载�
 
 可以把 Snowflake 对象与 SQL 作为代码管理，但要把数据迁移、权限变更、任务启停和业务发布视为不同类别的变更。一个 SQL 文件能执行成功，不代表整个部署已经具备一致性或可恢复性。
 
-## 5. 表设计与数据类型：从关系数据库思维转向分析建模
+## 5. Schema Design、数据类型与分析 SQL：从关系数据库思维到分析建模
 
 Snowflake 与 PostgreSQL/Oracle 都使用 SQL，但物理存储和约束语义有差别。先理解这些差异，再决定怎么设计事实表、维度表、快照和外部数据对象。不要把 OLTP 的索引、分区和约束假设直接套到 Snowflake 标准表上。
 
@@ -540,21 +540,8 @@ GROUP BY batch_id, currency_code;
 
 测试的重点不是查询数量多，而是能阻止什么业务风险。持仓报表应验证估值日、币种和组合粒度；交易流水应验证唯一事件与冲正；参考数据应验证有效时间与版本；对外发布的数据集应验证其 SLA 和授权边界。
 
-### 半结构化数据：JSON 不一定要先全部拆平
 
-金融服务的数据经常来自 REST API、事件总线、监管文件和 Vendor 数据。JSON 字段可能随版本变化，部分字段很少被用到。
-
-Snowflake 支持如 VARIANT 这样的半结构化数据类型，适合先保留原始结构，再按业务需要投影出稳定字段。它能减少早期接入时因结构变化而频繁改表的负担，但不代表最终模型应该永远只存一个巨大的 JSON 列。
-
-比较稳妥的做法：
-
-1. 原始层保留来源、获取时间、批次 ID、原始 payload 以及校验信息；
-2. 标准化层抽取常用字段并明确类型、时区、币种与空值含义；
-3. 面向分析的模型对主键、业务时间、历史版本和关联规则做显式建模；
-4. 对未识别字段的新增与格式变化建立监控，避免静默丢失数据。
-
-
-### 半结构化数据的建模边界：VARIANT 不是免 Schema 的借口
+### 半结构化数据：保留原始结构，但让消费模型有明确 Schema
 
 `VARIANT` 让 Snowflake 可以先保留 JSON 等半结构化载荷，再按查询需要读取路径；这可以降低供应商格式频繁变化时的接入摩擦。但它不意味着业务模型可以无限期停留在嵌套 JSON 中。
 
@@ -1671,13 +1658,13 @@ ACCOUNTADMIN（少数受控的账户管理职责）
 
 ```sql
 CREATE OR REPLACE ROW ACCESS POLICY governance.portfolio_row_policy
-AS (portfolio_id STRING) RETURNS BOOLEAN ->
+AS (row_portfolio_id STRING) RETURNS BOOLEAN ->
     IS_ROLE_IN_SESSION('PORTFOLIO_ANALYST')
     AND EXISTS (
         SELECT 1
         FROM governance.role_portfolio_entitlement e
         WHERE e.role_name = CURRENT_ROLE()
-          AND e.portfolio_id = portfolio_id
+          AND e.portfolio_id = row_portfolio_id
           AND e.is_active = TRUE
     );
 ```
@@ -3062,9 +3049,11 @@ CSV 要明确分隔符、引号、转义、标题行、空字段、编码和列�
 
 #### 29.3 诊断加载结果时区分“文件已发现”和“记录已进入目标表”
 
-不同加载方式暴露的历史与事件机制不同。按文件查询加载历史时，应核对状态字段、可用时间范围、角色权限和更新延迟。下面是一个用于查看当前 Schema 近期 COPY 加载情况的示例，实际列和视图范围应按当前官方文档验证：
+不同加载方式暴露的历史与事件机制不同。按文件查询加载历史时，应核对状态字段、可用时间范围、角色权限和更新延迟。下面是一个用于查看当前数据库近期 COPY 加载情况的示例。先切换到要调查的数据库，再查询其 Information Schema；实际可见范围和保留时间应按当前官方文档验证：
 
 ```sql
+USE DATABASE ANALYTICS;
+
 SELECT *
 FROM INFORMATION_SCHEMA.LOAD_HISTORY
 WHERE LAST_LOAD_TIME >= DATEADD(day, -3, CURRENT_TIMESTAMP())
@@ -3675,13 +3664,13 @@ SELECT
     statistics:executionTimeMs::NUMBER AS execution_ms,
     query_id
 FROM TABLE(
-    SNOWFLAKE.INFORMATION_SCHEMA.DYNAMIC_TABLE_REFRESH_HISTORY(
+    ANALYTICS.INFORMATION_SCHEMA.DYNAMIC_TABLE_REFRESH_HISTORY(
         DATA_TIMESTAMP_START => DATEADD(day, -2, CURRENT_TIMESTAMP()),
+        NAME_PREFIX => 'POSITION',
         RESULT_LIMIT => 1000,
         ERROR_ONLY => FALSE
     )
 )
-WHERE name ILIKE '%POSITION%'
 ORDER BY refresh_start_time DESC;
 ```
 
@@ -3707,7 +3696,7 @@ SELECT
     attempt_number,
     scheduled_from
 FROM TABLE(
-    SNOWFLAKE.INFORMATION_SCHEMA.TASK_HISTORY(
+    ANALYTICS.INFORMATION_SCHEMA.TASK_HISTORY(
         SCHEDULED_TIME_RANGE_START => DATEADD(hour, -24, CURRENT_TIMESTAMP()),
         SCHEDULED_TIME_RANGE_END   => CURRENT_TIMESTAMP(),
         DATABASE_NAME => 'ANALYTICS',
@@ -4426,7 +4415,7 @@ Semantic View 不是给表加几句描述的装饰层。它把一组逻辑表、
 以下示例展示语法骨架。表名、主键和指标只是演示；生产使用前必须先验证事实表粒度和键唯一性。示例中的 `PRIMARY KEY` 是语义模型对逻辑键的声明，不替代底层标准表的数据质量测试。
 
 ```sql
-CREATE OR REPLACE SEMANTIC VIEW analytics.portfolio_exposure_sv
+CREATE OR REPLACE SEMANTIC VIEW analytics.semantic.portfolio_exposure_sv
 
 TABLES (
   positions AS analytics.curated.fct_position_daily
@@ -4479,7 +4468,7 @@ DIMENSIONS (
 )
 
 METRICS (
-  positions.total_position_market_value AS SUM(market_value)
+  positions.total_position_market_value AS SUM(positions.market_value)
     COMMENT = 'Sum of position market value within a compatible valuation date and currency scope'
 )
 
