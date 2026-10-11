@@ -4572,6 +4572,83 @@ PoC 若只测成功路径，往往是在测开发人员最熟悉的部分，而�
 
 “证据不足”不是技术失败，但必须被记录为未决风险，而不是用乐观推断填补。架构师的责任是让组织知道哪些决定已经被验证、哪些只是暂时假设。
 
+## 55. 金融机构 Vendor 文件入湖的参考实现：企业 S3 到 Snowflake 的信任边界
+
+如果供应商通过 FTP/SFTP/HTTPS 交付文件，企业希望先把文件接收到自有 AWS 账号的 S3，再让 Snowflake 读取，这条路径是可行的架构模式，但需要把文件交付、企业内部存储、跨云服务访问、数据加载和业务发布分成独立阶段。不要把“文件已经进入 S3”当作数据管道完成。
+
+### 55.1 参考数据流
+
+```mermaid
+flowchart LR
+  V[Vendor SFTP / HTTPS] --> X[受控接收服务]
+  X --> AV[签名 / checksum / 文件名与版本校验]
+  AV --> Q[(S3 quarantine prefix)]
+  AV --> L[(S3 landing prefix)]
+  L --> T[Snowflake Storage Integration]
+  T --> ST[External Stage + File Format]
+  ST --> COPY[COPY INTO / Snowpipe]
+  COPY --> RAW[(Snowflake RAW)]
+  RAW --> STD[标准化、去重、类型校验]
+  STD --> REC[业务对账与质量门槛]
+  REC --> PUB[已发布消费数据产品]
+  Q -.坏文件/未知 Schema.-> OPS[调查与隔离]
+  COPY -.加载状态.-> OPS
+  REC -.差异与阻止发布.-> OPS
+```
+
+接收服务可以运行在企业 AWS 账号的专用网络和安全边界内。要先明确供应商连接到哪里、谁持有源端凭证、下载完成前是否使用临时文件、如何校验传输完整性、如何将文件从 quarantine 提升到 landing，以及如何记录文件版本。S3 的 landing prefix 不应直接兼任临时上传区、坏文件隔离区和已发布数据目录。
+
+### 55.2 AWS 侧最小权限设计
+
+对于只需要读取文件的 Snowflake 集成，AWS 策略应限制到实际需要的 Bucket/Prefix，避免授予整个账户的广泛权限。配置过程中需确认：
+- Bucket Policy 与 IAM Role/Integration 信任关系是否符合当前 Snowflake 的配置方法；
+- 若对象使用 SSE-KMS 加密，读取路径是否具有必要的 KMS 权限；
+- Snowflake 能否列出指定路径和读取对象/版本；
+- 是否允许 Put/Delete（通常读取型接入不应自动获得）；
+- 跨账户 Bucket Policy 是否只信任批准的 Snowflake 身份；
+- S3 生命周期规则是否会在数据仍可能被重放或核对前删除对象；
+- 文件加密、传输加密、日志与密钥轮换是否满足组织基线。
+
+Snowflake 官方推荐通过 Storage Integration 访问 S3，避免把长期 AWS Key/Secret 写进 Stage 或装载 SQL。Integration 支持限制允许访问的 Bucket 和路径；创建者还需要相应的 Integration、Schema 与 Stage 权限。[S3 Storage Integration](https://docs.snowflake.com/en/user-guide/data-load-s3-config-storage-integration)
+
+生产中还要考虑访问撤销的实际生效时间。官方文档提到 Snowflake 会缓存临时云凭证一段时间；撤销云侧权限后，短时间内可能仍存在缓存影响。因此，不要把修改 Bucket Policy 后的瞬间作为严格即时撤权的唯一控制，尤其是敏感数据或安全事件中。
+
+### 55.3 Network Policy、PrivateLink 与“公司防火墙内”的具体含义
+
+“文件在公司 AWS 账号的 S3”不能直接推导出“Snowflake 查询就是从公司内网私密连接 S3”。数据服务之间的实际访问路径取决于 Snowflake 账户所在云/Region、所采用的 External Stage/Integration、区域支持、网络配置和组织安全要求。需要分别确认：
+- 企业的 Vendor 接收网络与 S3 Endpoint 如何访问；
+- Snowflake 服务访问 S3 的路径与身份如何配置；
+- Snowflake 客户端访问 Snowflake 是否必须通过 PrivateLink/私有连接；
+- AWS 区域、Snowflake Region 和 Bucket Region 是否兼容；
+- 是否有数据驻留或跨区域复制/传输限制；
+- 外部访问审计与企业 SIEM 的数据如何关联。
+
+PrivateLink 主要解决特定网络端点的私有连通问题，不能替代 IAM 权限和数据访问策略。反过来，Storage Integration 解决的是云对象存储授权，也不自动保证客户端到 Snowflake 的网络路径满足私有访问要求。必须按数据路径逐段审查，避免把几个不同的安全控制当成同一个功能。
+
+### 55.4 Landing、Quarantine 和 Archive 的生命周期
+
+推荐至少区分：
+- **Landing**：通过格式与完整性检查，等待 Snowflake 加载的不可变源文件；
+- **Quarantine**：签名错误、格式未知、文件冲突、解析失败或安全扫描未通过的文件；
+- **Archive**：按合同/合规规则保留的历史源证据，原则上不可被日常处理流程直接覆盖；
+- **Derived/Export**：转换后或交给下游消费者的派生文件，使用另一套授权和保留策略。
+
+这不要求一定用四个独立 Bucket，也可采用不同 Prefix、访问角色和生命周期；但必须做到权限与清理规则可区分。不要让加载任务的清理操作有权删除还需要留存的 Archive。源文件保留期限也应考虑 Vendor 使用许可：合规要求保留与合同禁止长期留存之间需要明确规则和审批，不能由技术团队自行假定。
+
+### 55.5 文件完整性检查必须独立于 SQL 加载状态
+
+文件进入 S3 后建议执行：
+1. 验证供应商约定的名称、版本、业务日期和清单；
+2. 在适用情况下验证签名、校验和、压缩完整性；
+3. 记录字节大小、对象版本和接收时间；
+4. 与应收文件清单比较，识别缺失、重复与额外文件；
+5. 在批准后将对象从 quarantine 提升到 landing；
+6. 检查 Snowflake Load History，记录实际装载记录数与错误数；
+7. 与源端行数/金额控制总计对账；
+8. 只有在数据质量与业务规则通过后发布下游数据集。
+
+COPY INTO/Snowpipe 解决装载机制，不会自动证明 Vendor 交付的文件集合完整或业务正确。对每次加载保留批次 ID、文件版本、Query ID/Load History、模型版本和发布状态，才能在日后出现修订或争议时复现处理过程。
+
 ## 对照 Snowflake 官方 Guides 目录：覆盖范围与有意略过的内容
 
 我把 [Snowflake User Guides 总目录](https://docs.snowflake.com/en/guides) 和主要子目录作为覆盖基线。官方目录会持续更新，因此这里说明的是本文学习范围，不承诺逐页、逐功能完整复述所有官方文档。目标是帮助 Solution Architect 建立选择能力，并在具体实施时知道该打开哪个官方专题。
