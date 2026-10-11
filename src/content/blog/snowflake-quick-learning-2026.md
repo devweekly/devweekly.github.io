@@ -3505,6 +3505,232 @@ ORDER BY usage_day DESC, total_credits DESC;
 
 这份记录不仅用于复盘，还能积累已知故障知识，让下次问题更快定位。若故障描述只有“Snowflake 很慢”或“ETL 失败”，就无法可靠区分数据、SQL、计算、权限和上游问题。
 
+## 39. 金融分析数据模型：把持仓、交易、价格、汇率和公司行动放在正确的粒度上
+
+金融分析的结果往往由多个时间维度和来源共同构成。Schema 设计的关键不是选择“最少的表”，而是让每一张表的粒度、时间语义和度量含义足够明确，避免汇总与历史重放出现歧义。
+
+### 39.1 常见事实表不是同一种数据
+
+| 数据集 | 常见粒度 | 常见度量 | 主要风险 |
+|---|---|---|---|
+| 日终持仓 | 估值日 × 组合 × 账户 × 证券 × 币种 | 数量、市值、应计利息、成本 | 不同日期的余额不可直接相加；修订后需要版本/重算 |
+| 交易流水 | 业务交易/事件 × 事件版本 | 数量变化、现金流、费用 | 冲正、取消、部分成交、迟到事件和重复事件 |
+| 市场价格 | 证券 × 市场/价格类型 × 时间/来源版本 | 价格、成交量、报价状态 | 不同交易所、估值时点、币种和供应商版本 |
+| FX 汇率 | 日期/时间 × 源币种 × 目标币种 × 汇率类型 | 汇率 | 交易汇率、月末汇率、收盘价和换算方向不可混用 |
+| 公司行动 | 证券 × 公司行动事件 × 生效/记录时间 | 拆股比率、分红、权利/现金金额 | 宣布日、登记日、除权日和支付日代表不同语义 |
+| 风险暴露 | 估值日 × 组合 × 风险因子/资产分组 | 暴露、敏感度、VaR/其他风险值 | 模型版本、行情版本、关联关系和汇总层级 |
+| 参考数据维度 | 实体 × 有效版本 | 分类、发行人、市场、状态 | 多源标识映射、历史有效区间重叠、当前值与历史值混淆 |
+
+对每个事实表，先确定它属于事件、快照、周期汇总还是计算结果，再决定是否覆盖、追加或按业务日期重建。交易流水与日终持仓即使都有证券 ID 和数量，也不能因为字段相似就直接合并为一张“资产表”。
+
+### 39.2 不同度量有不同的可加性
+
+市值通常可以在同一个估值日、统一币种和一致估值规则内跨证券与账户求和，但不能将连续 30 天的日终市值相加再称为月度资产。收益率不能简单对日收益率做平均，比例、每单位价格、平均成本和风险系数也通常需要按业务公式重新计算。
+
+建模时应为每个度量记录：
+- 单位与精度；
+- 可在哪些维度上求和；
+- 哪些维度是半可加/不可加；
+- 跨币种处理规则；
+- 缺失与估算值的语义；
+- 使用哪个业务时间和版本；
+- 对账方法和容许误差。
+
+这些信息也应进入 Semantic View 或指标目录，避免用户在任意 GROUP BY 组合下得到一个算得出来、却不能解释的结果。
+
+### 39.3 多源证券标识需要有有效时间和匹配证据
+
+一个证券可能有内部 ID、ISIN、CUSIP、SEDOL、Ticker、Vendor 专有 ID、交易所代码等多种标识，且不同标识并不总是一对一。Ticker 可能随市场/时间复用；同一发行人可能有多种证券；一个供应商记录还可能在修订后被重新映射。
+
+建议把标识映射本身建成受管理的数据集，至少含来源、原始值、规范实体 ID、市场/国家、匹配依据、生效时间、失效时间、来源版本和人工纠错信息。下游报表不应自行用 `LIKE` 或证券名称相似度临时匹配后就假定是同一资产。
+
+### 39.4 外币价值应显式表达报价方向与汇率政策
+
+例如将 EUR 资产换为 USD，使用的 FX 可能是 USD per EUR，也可能是 EUR per USD。两者在数值上互为倒数，但如果字段名没有单位含义，SQL 仍会正常运行并产生错误总额。需要明确：
+- 汇率字段的 base/quote currency；
+- 日期与时间点；
+- rate type（收盘、交易、估值或其他）；
+- 供应商优先级与回退规则；
+- 缺失汇率/节假日回退；
+- 汇率修订是否引发历史重算；
+- 计算结果保留多少精度，在哪一步舍入。
+
+将结果转换到组合本位币时，应该把 FX 选择规则作为模型/政策版本的一部分保存。不能仅在报表中写 `market_value * rate` 并把列名改成 `base_ccy_value`，就认为完成了跨币种建模。
+
+## 40. 数据质量与业务对账 SQL：从“记录数一样”走向可解释差异
+
+数据质量规则要针对模型粒度和风险来设计。相同行数不证明内容相同；相同总金额也不证明证券映射、账户归属或日期正确。应该让多个独立检查互相补充。
+
+### 40.1 检查行数、唯一性和关键字段
+
+```sql
+-- 按业务日期与币种观察输出规模
+SELECT
+    valuation_date,
+    currency_code,
+    COUNT(*) AS row_count,
+    COUNT(DISTINCT portfolio_id) AS portfolio_count,
+    COUNT(DISTINCT security_id) AS security_count,
+    SUM(IFF(security_id IS NULL, 1, 0)) AS missing_security_rows
+FROM curated.position_daily
+GROUP BY valuation_date, currency_code
+ORDER BY valuation_date DESC, currency_code;
+
+-- 按目标粒度检查重复键
+SELECT
+    valuation_date,
+    portfolio_id,
+    account_id,
+    security_id,
+    currency_code,
+    COUNT(*) AS row_count
+FROM curated.position_daily
+GROUP BY
+    valuation_date, portfolio_id, account_id, security_id, currency_code
+HAVING COUNT(*) > 1;
+```
+
+重复检查中如果实际业务键还包括 custody account、lot、position type 或 source version，就必须把它们纳入粒度，或先在上游统一归并规则。否则，测试会误报合法多行，也可能漏掉真正的重复。
+
+### 40.2 控制总计要按可比口径分组
+
+```sql
+SELECT
+    valuation_date,
+    currency_code,
+    SUM(market_value) AS total_market_value,
+    COUNT(*) AS row_count
+FROM curated.position_daily
+WHERE valuation_date = :business_date
+GROUP BY valuation_date, currency_code
+ORDER BY currency_code;
+```
+
+这只是目标端的统计。对账时还要从来源系统或认证的控制数据集中取得相同截止、相同实体范围与相同币种语义的数据。如果源端和目标端一边是“持仓币种市值”，另一边是“换算为组合本位币市值”，比较它们的总额毫无意义。对账结果应包含输入版本、取数时间、差异绝对值/相对值与是否超过批准阈值。
+
+### 40.3 检查维度孤儿键与映射覆盖率
+
+```sql
+SELECT
+    p.security_id,
+    COUNT(*) AS position_rows
+FROM curated.position_daily p
+LEFT JOIN curated.dim_security s
+  ON p.security_id = s.security_id
+WHERE s.security_id IS NULL
+GROUP BY p.security_id
+ORDER BY position_rows DESC;
+```
+
+孤儿键不一定都应被自动丢弃。例如新发行证券可能先到持仓文件，几小时后才进入参考数据；但它必须在质量状态中明确出现，并按业务截止策略处理。重要的报表可以选择阻止发布、隔离未映射部分或发布带有受控的“不完整”状态。不能让 LEFT JOIN 后的 NULL 消失在报表过滤里。
+
+### 40.4 差异处理要区分告警、隔离与阻止发布
+
+不是所有质量问题都应该用同一个失败策略：
+- 格式错误导致金额无法解析：通常应隔离或拒绝记录；
+- 非关键描述字段暂缺：可能允许带警告发布；
+- 证券标识未映射：依据金额占比和风险定级；
+- 关键 Vendor 文件缺失：通常阻止依赖它的报告发布；
+- 金额控制总计超限：阻止发布并触发调查；
+- 数据延迟超过 SLA：即使查询成功也应将产品标记为过期；
+- 历史修订尚未处理：需要明确发布旧版本、阻止发布还是显示修订状态。
+
+每个策略都应有 Owner、阈值、通知对象和关闭条件，并保留人工放行的理由。若所有错误都被设置成 warning，质量门槛就失去控制意义；若任何非关键缺失都阻止整个数据域，运行也会变得脆弱。
+
+## 41. 平台架构图：将账户、数据路径、计算、治理与消费一起设计
+
+下图是一个常见金融服务数据平台的逻辑参考架构，不代表任何具体客户的既有部署。它强调数据路径、权限与运营证据应贯穿整个系统。
+
+```mermaid
+flowchart LR
+  subgraph Sources[数据来源]
+    PG[(PostgreSQL / RDS)]
+    VEN[Vendor SFTP / HTTPS]
+    S3[(企业 AWS S3)]
+    SHARE[供应商 Snowflake Share]
+    DOC[内部文档与参考资料]
+  end
+
+  subgraph Ingest[接入与原始证据]
+    CDC[CDC Connector / Openflow]
+    FILE[文件验证 / Batch Ledger]
+    EXT[External Stage / External Table / Iceberg]
+    RAW[(RAW / Landing)]
+  end
+
+  subgraph DataPlatform[Snowflake 数据平台]
+    STG[Standardized]
+    MART[(Curated Facts & Dimensions)]
+    DYNAMIC[Dynamic Tables]
+    TASK[Streams / Tasks / SQL Orchestration]
+    SEM[Semantic Views / Secure Views]
+    WH1[Transform Warehouse]
+    WH2[BI / Analyst Warehouse]
+    WH3[Agent Read Warehouse]
+  end
+
+  subgraph Controls[横向控制与运营]
+    IAM[Identity / RBAC / Row & Masking Policies]
+    DQ[Data Contracts / Quality / Reconciliation]
+    OBS[Query History / Profile / Task & Refresh History]
+    COST[Cost Attribution / Budgets / Warehouse Controls]
+    AUDIT[Batch / Model / Query / Publish Evidence]
+  end
+
+  subgraph Consumers[消费]
+    BI[BI / Reports]
+    ANALYST[Research / Ad hoc SQL]
+    AGENT[AI Agent / Applications]
+    EXTCON[Approved Data Sharing / Export]
+  end
+
+  PG --> CDC --> RAW
+  VEN --> FILE --> S3
+  S3 --> EXT
+  FILE --> RAW
+  EXT --> STG
+  SHARE --> STG
+  RAW --> STG
+  STG --> DYNAMIC
+  STG --> TASK
+  DYNAMIC --> MART
+  TASK --> MART
+  MART --> SEM
+  SEM --> BI
+  SEM --> ANALYST
+  SEM --> AGENT
+  SEM --> EXTCON
+  WH1 -. execution .- DYNAMIC
+  WH1 -. execution .- TASK
+  WH2 -. query .- BI
+  WH2 -. query .- ANALYST
+  WH3 -. controlled query .- AGENT
+  IAM -. enforces .- DataPlatform
+  DQ -. gates .- MART
+  OBS -. evidence .- DataPlatform
+  COST -. governs .- WH1
+  COST -. governs .- WH2
+  COST -. governs .- WH3
+  AUDIT -. traceability .- Ingest
+  AUDIT -. traceability .- DataPlatform
+  AUDIT -. traceability .- Consumers
+```
+
+### 41.1 这张图最容易被误读的地方
+
+- External Stage/External Table/Iceberg 并不是相同技术层级；图中放在接入附近只是表示它们涉及外部数据访问与表元数据，不代表只能在此处使用。
+- Dynamic Tables 与 Streams/Tasks 可以按工作负载选型，也可以在不同链路组合使用；不要把图理解为每条管道都必须同时启用。
+- Warehouse 是执行计算的资源，和表、Schema、数据域之间不存在“一表绑定一个仓库”的要求。图中分不同 Warehouse 是为了表达负载隔离。
+- Security、Quality、Observability、Cost 和 Audit 是贯穿式控制，不是管道最后再附加的一组产品。
+- Semantic View 或 Secure View 是消费接口的一部分，但访问仍需正确角色/策略执行；语义描述不是安全授权。
+- Agent 是一种消费者/调用路径，不应获得比同类业务角色更宽的默认权限；其 SQL 与结果还需要独立的验证与审计。
+
+### 41.2 逻辑架构要落到运行与故障边界
+
+为每个边界回答：输入是什么、输出是什么、失败后哪一侧负责重放、状态如何被记录、权限由谁授予、监控由谁负责、哪些字段可用于下游、上线/回滚如何执行。
+
+例如，文件从 S3 到 RAW 成功但质量校验失败时，应保留原始文件和 Load History，隔离标准化结果并阻止消费层发布；不是回头删除文件或把任务改成成功。Agent 的 SQL 查询已成功但返回了未经允许的持仓时，问题不只是模型回答错误，而是权限边界失效，必须按安全事件处理。架构图只有和这些失败路径结合，才足以支撑生产设计。
+
 ## 对照 Snowflake 官方 Guides 目录：覆盖范围与有意略过的内容
 
 我把 [Snowflake User Guides 总目录](https://docs.snowflake.com/en/guides) 和主要子目录作为覆盖基线。官方目录会持续更新，因此这里说明的是本文学习范围，不承诺逐页、逐功能完整复述所有官方文档。目标是帮助 Solution Architect 建立选择能力，并在具体实施时知道该打开哪个官方专题。
