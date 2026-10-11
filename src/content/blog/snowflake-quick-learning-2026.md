@@ -3178,6 +3178,195 @@ Secure Data Sharing 的核心是在提供方控制的对象上建立共享关系
 
 部署结束后应核对实际对象 Owner、Grants、策略绑定、Warehouse、调度状态和 Query Tag，而不是仅依据部署工具报告“成功”。在生产数据平台里，发布完成还必须用目标角色进行一次真实访问测试，并验证质量与数据新鲜度。
 
+## 35. Semantic View 实作：把逻辑表、关系、维度、事实与指标显式定义出来
+
+Semantic View 不是给表加几句描述的装饰层。它把一组逻辑表、关系、事实、维度和指标组织成可查询的业务模型，供查询工具或 AI 辅助生成 SQL。它可以用 SQL DDL、YAML 或 Snowsight 等方式建立并维护；对企业工程来说，版本管理、审查和部署方式与语义内容本身同样重要。[创建 Semantic Views](https://docs.snowflake.com/en/user-guide/views-semantic/creating)
+
+### 35.1 从真实数据模型构造 Semantic View
+
+以下示例展示语法骨架。表名、主键和指标只是演示；生产使用前必须先验证事实表粒度和键唯一性。示例中的 `PRIMARY KEY` 是语义模型对逻辑键的声明，不替代底层标准表的数据质量测试。
+
+```sql
+CREATE OR REPLACE SEMANTIC VIEW analytics.portfolio_exposure_sv
+
+TABLES (
+  positions AS analytics.curated.fct_position_daily
+    PRIMARY KEY (
+      valuation_date,
+      portfolio_id,
+      account_id,
+      security_id,
+      currency_code
+    )
+    COMMENT = 'One row per portfolio, account, security, valuation date and currency',
+
+  portfolios AS analytics.curated.dim_portfolio
+    PRIMARY KEY (portfolio_id)
+    COMMENT = 'Portfolio definitions and business ownership',
+
+  securities AS analytics.curated.dim_security
+    PRIMARY KEY (security_id)
+    COMMENT = 'Security reference data'
+)
+
+RELATIONSHIPS (
+  positions_to_portfolios AS
+    positions (portfolio_id) REFERENCES portfolios,
+
+  positions_to_securities AS
+    positions (security_id) REFERENCES securities
+)
+
+FACTS (
+  positions.position_quantity AS quantity
+    COMMENT = 'Position quantity at the valuation date',
+
+  positions.position_market_value AS market_value
+    COMMENT = 'Market value in the row currency'
+)
+
+DIMENSIONS (
+  positions.valuation_date AS valuation_date
+    COMMENT = 'Business valuation date, not ingestion date',
+
+  positions.currency_code AS currency_code
+    COMMENT = 'Currency in which this row is expressed',
+
+  portfolios.portfolio_name AS portfolio_name
+    COMMENT = 'Business-facing portfolio name',
+
+  securities.security_name AS security_name
+    COMMENT = 'Business-facing security name'
+)
+
+METRICS (
+  positions.total_position_market_value AS SUM(market_value)
+    COMMENT = 'Sum of position market value within a compatible valuation date and currency scope'
+)
+
+COMMENT = 'Governed semantic interface for daily portfolio exposure';
+```
+
+该模型仍有一个重要限制：`SUM(market_value)` 不会自动阻止用户跨不同估值日期或币种相加。把指标定义成 SUM 只说明 SQL 聚合表达式，不等于这个指标在所有筛选组合下都具有业务意义。实际模型应通过指标设计、非加总维度、字段可用性控制、查询指导和黄金测试，限定哪些聚合组合有效；若业务要求统一基准货币，必须显式规定 FX 选择规则并提供可验证的转换结果。
+
+### 35.2 主键和关系是语义声明，不是清洗工具
+
+如果 `DIM_SECURITY` 当前表实际存在重复 `security_id`，语义模型中把它声明为唯一键不会自动消除重复记录。关系图若把实际的一对多误标为多对一，生成的 SQL 可能形式正确但结果被放大。因此：
+- 先在物理模型中建立并持续测试唯一性；
+- 检查所有历史版本表的有效期间是否重叠；
+- 对多对多关系明确是否允许参与金额聚合；
+- 需要按有效时间关联时，明确采用 ASOF 语义或有效时间区间；
+- 关系变化需运行黄金问题和指标回归，而不仅是验证 DDL 可以创建。
+
+### 35.3 把自然语言的模糊处当成建模问题，不是只当作 Prompt 问题
+
+用户询问“这个月组合表现如何”时，缺少的约束可能有：
+- 当前月到今天，还是上一个完整月？
+- 净资产变化、收益率还是相对基准的超额收益？
+- TWR 还是 MWR？
+- 毛收益还是扣费后收益？
+- 哪个估值时区和数据截止点？
+- 缺失估值的组合应排除、估算还是显示为不完整？
+
+如果业务模型无法表达这些区别，增加同义词不会解决问题。语义设计要么建立明确的默认值并告知用户，要么要求问题补齐条件。对关键金融指标，不应让模型在不同问题中自行选择不同口径。
+
+### 35.4 使用黄金问题、验证查询与生产反馈改进语义模型
+
+为每个重要指标准备：
+- 一个典型问题和相应认证 SQL；
+- 至少一个边界问题，例如跨日期、币种或历史修订；
+- 一个错误关系/错误粒度的反例；
+- 一个权限负例，证明越权问题不会返回受限数据；
+- 预期结果、可接受误差、使用的数据版本和 Owner；
+- 语义/模型变更后是否需要重新审批。
+
+Snowflake 文档明确支持将经过验证的查询作为提高 AI 查询准确性的一种机制，也可以通过自然语言指导约束查询生成。但验证查询必须代表企业批准的业务定义，而不能只是“模型之前答对过一次”。参见 [Semantic Views 的 AI 准确性实践](https://docs.snowflake.com/en/user-guide/views-semantic/improving-accuracy)。
+
+## 36. 多账户数据共享的生产细节：权限、版本、区域和消费者行为
+
+Secure Data Sharing 的实质是让消费者在受控边界内读取提供方的数据对象，而不是自动创建一份独立、可自行修改的数据副本。共享对象在消费者侧是只读的；提供方对已共享对象的更新可能对消费者可见。具体可共享的对象类型和权限限制应以当前版本文档为准。[Secure Data Sharing 概览](https://docs.snowflake.com/en/user-guide/data-sharing-intro)
+
+### 36.1 共享接口要稳定，不能裸露内部暂存表
+
+适合共享的通常是经过认证的表、Secure View 或语义模型，而非直接共享不断改字段、清洗规则尚未稳定的 RAW 表。稳定的数据产品应有：
+- 明确的字段含义、单位与主键/粒度；
+- 业务日期和数据版本；
+- 对缺失/修订数据的状态标识；
+- 兼容性承诺和变更通知；
+- 消费者可查询的质量/新鲜度元数据；
+- 对敏感字段的允许范围与用途说明；
+- 版本弃用与回滚方式。
+
+如果直接共享底层表，消费者可能与实现细节强耦合；如果只提供 Secure View，则提供方需要验证过滤/投影逻辑、性能和数据权限，不应只依靠 View 名称判断安全性。
+
+### 36.2 不要假定所有共享对象的授权语义都一样
+
+Secure Data Sharing 支持多种对象类型，但不同类型的对象有各自的限制。需要筛选行/列或保护实现细节时，要检查 Secure View、策略、函数和语义对象在提供方与消费者账户中的支持条件。依赖消费者账户内的 CURRENT_ROLE/CURRENT_USER 等上下文也可能不符合预期，因为提供方不能直接控制消费者账户的角色。跨区域或跨云共享还涉及复制/自动提供、区域支持和数据驻留要求。
+
+上线前至少运行一个消费者模拟/测试流程，使用实际消费者角色验证：
+- 消费者只读到了预期对象；
+- 行列范围与批准的分享范围一致；
+- 新增或重建对象没有意外脱离共享配置；
+- 已撤销的授权不能继续通过其他对象访问；
+- 共享内容版本改变后下游没有静默依赖破坏；
+- 消费者有能力看到适当的新鲜度或质量状态。
+
+### 36.3 共享、复制和导出是三种不同的数据流
+
+- **共享**提供受控查询入口，消费者仍然运行查询并承担相应计算成本。
+- **复制**在另一个账户/区域建立独立数据状态，适合灾备、独立运营或特定区域要求，但需要同步与容量管理。
+- **导出**把结果文件交给某个系统或外部主体，意味着文件生命周期、访问、再分发和删除责任发生变化。
+
+一旦用户导出 CSV 或者通过下游管道把共享数据复制到另一个存储系统，撤销 Share 并不自动删除已导出的副本。若数据涉及 Vendor 许可、客户敏感信息或数据驻留要求，要对数据路径做端到端追踪，而不是认为 Snowflake 内的授权就约束了所有后续使用。
+
+## 37. 生产架构的责任矩阵与数据产品契约
+
+Snowflake 项目容易在职责上出现空隙：平台团队配置了 Warehouse，数据工程写了 SQL，业务团队要求报表，但没有人明确负责源数据修订、指标口径、质量失败和消费者通知。数据产品契约应把技术责任和业务责任写在一起。
+
+### 37.1 最低责任矩阵
+
+| 责任 | Data Owner / Steward | Data Engineering | Platform Engineering | Security / Risk | Consumer Team |
+|---|---|---|---|---|---|
+| 业务指标定义 | 负责批准 | 提供实现影响分析 | 提供平台限制信息 | 评估风险控制 | 确认消费语义 |
+| 源数据合同与修订规则 | 协商并批准 | 实现解析和重放 | 配置访问和连接 | 评估使用许可与保护 | 报告消费异常 |
+| 表模型和转换代码 | 验收口径 | 负责实现与测试 | 提供部署平台 | 审核策略影响 | 参与结果回归 |
+| 质量阈值与发布门槛 | 决定业务可接受差异 | 实现测试与对账 | 提供监控能力 | 定义高风险阻断要求 | 说明实际影响 |
+| 角色和策略 | 决定业务 entitlement | 验证数据依赖 | 维护账户/角色机制 | 审批控制规则与例外 | 按授权范围使用 |
+| 性能与成本 | 定义业务 SLA | 优化模型与查询 | 管理资源、预算与隔离 | 关注高风险滥用 | 提供工作负载需求 |
+| 灾备与恢复 | 定义业务恢复优先级 | 证明数据可重建 | 负责平台恢复与演练 | 验证控制保持有效 | 验证消费端恢复 |
+| 版本与弃用 | 批准语义变化 | 发布兼容模型 | 管理部署工具 | 审核安全变化 | 按通知迁移 |
+
+矩阵不要求每家公司使用相同的职位名称，而是确保每个决定都有明确负责人。一个职能可以由多人承担，但不能无人负责。
+
+### 37.2 数据产品契约样例字段
+
+每个认证数据产品至少记录：
+- 名称、业务描述、Owner、技术维护人；
+- 粒度与主键/复合键定义；
+- 业务时间、数据到达时间、时间区间约定；
+- 度量单位、币种、精度与 NULL/零的区别；
+- 关键关系与多对多处理方式；
+- 来源系统、源版本、批次和转换版本；
+- 质量测试、阈值、最近一次状态和差异处置；
+- 新鲜度目标、实际延迟、发布日期；
+- 可用角色、敏感字段和使用/分享限制；
+- 变更兼容性、通知方式、弃用日期；
+- 重放、重算、回滚和历史复现流程。
+
+### 37.3 把契约变成测试，而不只是文档
+
+对契约中的规则，应尽可能自动验证。例如：
+- 键唯一性可以通过重复键查询测试；
+- 必需字段可用非空检查验证；
+- 关系完整性可以通过孤儿外键查询验证；
+- 新鲜度可以由最新业务时间与当前时间差计算；
+- 金额总计可以与源控制总数比较；
+- 版本兼容性可以比较 Schema 和语义模型定义；
+- 授权范围可通过正向/反向角色测试验证；
+- 发布条件可通过集成测试确认。
+
+文档负责解释规则、Owner 和例外；自动化检查负责证明数据是否满足规则。两者缺一不可。
+
 ## 对照 Snowflake 官方 Guides 目录：覆盖范围与有意略过的内容
 
 我把 [Snowflake User Guides 总目录](https://docs.snowflake.com/en/guides) 和主要子目录作为覆盖基线。官方目录会持续更新，因此这里说明的是本文学习范围，不承诺逐页、逐功能完整复述所有官方文档。目标是帮助 Solution Architect 建立选择能力，并在具体实施时知道该打开哪个官方专题。
