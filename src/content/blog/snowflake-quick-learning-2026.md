@@ -3367,6 +3367,144 @@ Snowflake 项目容易在职责上出现空隙：平台团队配置了 Warehouse
 
 文档负责解释规则、Owner 和例外；自动化检查负责证明数据是否满足规则。两者缺一不可。
 
+## 38. Snowflake 诊断 SQL 工具箱：用系统视图和表函数定位问题
+
+以下语句是运维调查的起点。运行前必须确认权限、视图/函数保留范围和数据延迟；不要把一个查询能返回结果理解为拥有全账户的完整可见性。
+
+### 38.1 从 Query ID 看执行算子和连接膨胀
+
+对最近执行过、已经完成的查询，可以直接使用 `GET_QUERY_OPERATOR_STATS` 读取算子级统计。这对定位 JOIN 输出行数异常尤其有用，不必只依赖手工截图。
+
+```sql
+-- 先运行需要诊断的查询，再保存其 Query ID
+SET query_id_to_inspect = LAST_QUERY_ID();
+
+SELECT
+    step_id,
+    operator_id,
+    operator_type,
+    operator_statistics:input_rows::NUMBER AS input_rows,
+    operator_statistics:output_rows::NUMBER AS output_rows,
+    IFF(
+        operator_statistics:input_rows::NUMBER > 0,
+        operator_statistics:output_rows::NUMBER
+            / operator_statistics:input_rows::NUMBER,
+        NULL
+    ) AS output_to_input_ratio,
+    execution_time_breakdown:overall_percentage::FLOAT AS pct_query_time,
+    operator_attributes
+FROM TABLE(GET_QUERY_OPERATOR_STATS($query_id_to_inspect))
+ORDER BY step_id, operator_id;
+```
+
+字段名大小写和 VARIANT 路径应按当前输出确认。并不是每种算子都会提供 input/output 行数；结果节点也可能没有 `output_rows`。输出比例很高是调查信号，不是错误本身：聚合、生成行、展开数组等合法操作也会改变行数。对于 JOIN，先检查 Join Condition、左右输入的业务键唯一性和预期基数，再决定是否是爆炸式连接。
+
+参考：[GET_QUERY_OPERATOR_STATS](https://docs.snowflake.com/en/sql-reference/functions/get_query_operator_stats)。该函数对过去 14 天内完成的查询提供统计，并要求对执行该查询的 Warehouse 具备相应 MONITOR/OPERATE 权限。
+
+### 38.2 检查 Dynamic Table 刷新历史，而不是只看定义中的 TARGET_LAG
+
+```sql
+SELECT
+    name,
+    qualified_name,
+    state,
+    state_message,
+    refresh_action,
+    refresh_trigger,
+    data_timestamp,
+    refresh_start_time,
+    refresh_end_time,
+    completion_target,
+    target_lag_sec,
+    statistics:queuedTimeMs::NUMBER AS queued_ms,
+    statistics:compilationTimeMs::NUMBER AS compilation_ms,
+    statistics:executionTimeMs::NUMBER AS execution_ms,
+    query_id
+FROM TABLE(
+    SNOWFLAKE.INFORMATION_SCHEMA.DYNAMIC_TABLE_REFRESH_HISTORY(
+        DATA_TIMESTAMP_START => DATEADD(day, -2, CURRENT_TIMESTAMP()),
+        RESULT_LIMIT => 1000,
+        ERROR_ONLY => FALSE
+    )
+)
+WHERE name ILIKE '%POSITION%'
+ORDER BY refresh_start_time DESC;
+```
+
+这段查询的作用是查看指定时间窗口内动态表刷新是否成功、实际处理动作是增量还是全量、排队/编译/执行分别用了多久，以及出错信息和 Query ID。官方函数有结果条数上限；对多表账户查询时，要使用足够的时间范围和 RESULT_LIMIT，并尽量通过 NAME/NAME_PREFIX 缩小范围。若只看最终状态，可能漏掉上游失败、跳过刷新或反复重新初始化的问题。
+
+要判断新鲜度是否真正达标，应比较数据时间戳与上游业务数据截止点，不能只用 `REFRESH_END_TIME` 判断。刷新完成时间晚，不一定表示数据滞后大；刷新很快，也不表示输入已经包含当天所需的所有源记录。参考：[DYNAMIC_TABLE_REFRESH_HISTORY](https://docs.snowflake.com/en/sql-reference/functions/dynamic_table_refresh_history)。
+
+### 38.3 检查 Task 图的运行状态、失败原因与 Query ID
+
+```sql
+SELECT
+    name,
+    database_name,
+    schema_name,
+    state,
+    scheduled_time,
+    query_start_time,
+    completed_time,
+    query_id,
+    error_code,
+    error_message,
+    graph_run_group_id,
+    attempt_number,
+    scheduled_from
+FROM TABLE(
+    SNOWFLAKE.INFORMATION_SCHEMA.TASK_HISTORY(
+        SCHEDULED_TIME_RANGE_START => DATEADD(hour, -24, CURRENT_TIMESTAMP()),
+        SCHEDULED_TIME_RANGE_END   => CURRENT_TIMESTAMP(),
+        DATABASE_NAME => 'ANALYTICS',
+        SCHEMA_NAME   => 'OPS',
+        RESULT_LIMIT  => 1000
+    )
+)
+ORDER BY scheduled_time DESC;
+```
+
+先在参数中限制时间范围和对象范围，可以避免表函数先取回一批不相关记录后再由外层 WHERE 过滤。Task History 需要相应对象权限或监控权限；若需要查看更长历史，还要选择合适的 Account Usage 视图。
+
+观察时不要只看 `SUCCEEDED`。对 Task 图还要核对前驱/后继是否按预期运行、`SKIPPED` 是否是条件触发造成、失败是否自动暂停、重试次数是否异常，以及 Query ID 对应的 SQL 是否实际产生正确数据。用相同 Graph Run Group ID/Run ID 关联一轮图执行，通常比只按 Task 名称查看更有解释力。
+
+参考：[TASK_HISTORY](https://docs.snowflake.com/en/sql-reference/functions/task_history)、[Task Monitoring](https://docs.snowflake.com/en/user-guide/tasks-monitor)。
+
+### 38.4 检查 Warehouse 的计算消耗
+
+```sql
+SELECT
+    warehouse_name,
+    DATE_TRUNC('day', start_time) AS usage_day,
+    SUM(credits_used_compute) AS compute_credits,
+    SUM(credits_used_cloud_services) AS cloud_services_credits,
+    SUM(credits_used) AS total_credits
+FROM SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY
+WHERE start_time >= DATEADD(day, -30, CURRENT_TIMESTAMP())
+GROUP BY warehouse_name, DATE_TRUNC('day', start_time)
+ORDER BY usage_day DESC, total_credits DESC;
+```
+
+这是账户使用历史的趋势分析，不是精确到单条 SQL 的归因。某个 Warehouse 同时跑多个任务时，要结合 Query History、Query Tag 和运行账本归属成本。注意平台视图的刷新延迟与计费规则；在核对财务成本时，以企业使用的实际账单与当前官方说明为准。
+
+同时要看计算消耗和业务产出。例如，历史回填导致 Credits 增长可以是合理的；常规每日增量成本突然增加五倍、但有效记录数没有增长，则值得调查。不要因所有用量都合法产生，就认为没有成本治理问题。
+
+### 38.5 用一张表记录诊断结论，避免重复调查
+
+每次重大查询/管道异常可使用以下结构记录：
+- 事件 ID、发生/发现时间、业务日期；
+- Query ID / Task 名 / Dynamic Table 名 / Batch ID；
+- 影响的数据产品、消费者、行数和业务范围；
+- 预期行为和实际行为；
+- 证据来源、查询结果与时间戳；
+- 根因类别：数据输入、业务逻辑、查询计划、资源容量、权限、平台/连接或外部依赖；
+- 临时缓解措施和永久修复；
+- 重跑范围、幂等性确认、质量/对账验证；
+- 是否回滚/重新发布、通知对象、最终 Owner；
+- 根因预防措施和新增回归测试。
+
+这份记录不仅用于复盘，还能积累已知故障知识，让下次问题更快定位。若故障描述只有“Snowflake 很慢”或“ETL 失败”，就无法可靠区分数据、SQL、计算、权限和上游问题。
+
 ## 对照 Snowflake 官方 Guides 目录：覆盖范围与有意略过的内容
 
 我把 [Snowflake User Guides 总目录](https://docs.snowflake.com/en/guides) 和主要子目录作为覆盖基线。官方目录会持续更新，因此这里说明的是本文学习范围，不承诺逐页、逐功能完整复述所有官方文档。目标是帮助 Solution Architect 建立选择能力，并在具体实施时知道该打开哪个官方专题。
