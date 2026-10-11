@@ -1663,7 +1663,7 @@ AS (row_portfolio_id STRING) RETURNS BOOLEAN ->
     AND EXISTS (
         SELECT 1
         FROM governance.role_portfolio_entitlement e
-        WHERE e.role_name = CURRENT_ROLE()
+        WHERE e.role_name = 'PORTFOLIO_ANALYST'
           AND e.portfolio_id = row_portfolio_id
           AND e.is_active = TRUE
     );
@@ -3721,7 +3721,7 @@ SELECT
     DATE_TRUNC('day', start_time) AS usage_day,
     SUM(credits_used_compute) AS compute_credits,
     SUM(credits_used_cloud_services) AS cloud_services_credits,
-    SUM(credits_used) AS total_credits
+    SUM(credits_used) AS reported_credits_before_cloud_services_adjustment
 FROM SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY
 WHERE start_time >= DATEADD(day, -30, CURRENT_TIMESTAMP())
 GROUP BY warehouse_name, DATE_TRUNC('day', start_time)
@@ -3971,7 +3971,7 @@ Snowflake 的成本不能只用一个 Warehouse 的 Credits 代表。整个账�
 
 #### 43.2 Warehouse Credits 与实际账单不是所有情况下都一比一
 
-Warehouse 按运行资源与时间产生消耗；Serverless 功能使用由平台管理的计算资源；Cloud Services 则会产生与平台请求/协调相关的计算消耗。Snowflake 对 Cloud Services 有特定的日级调整规则：常见情况下，只有每日 Cloud Services 消耗超过当日 Warehouse 消耗的一定比例后，超出部分才按账单规则收费。Snowsight 或部分 Usage 视图可能展示调整前的使用量，而不等同于最终账单数。
+Warehouse 按运行资源与时间产生消耗；Serverless 功能使用由平台管理的计算资源；Cloud Services 则会产生与平台请求/协调相关的计算消耗。Snowflake 对 Cloud Services 有特定的日级调整规则：常见情况下，只有每日 Cloud Services 消耗超过当日 Warehouse 消耗的规定比例后，超出部分才按账单规则收费。这里的使用历史用于分析资源消耗；账单用量仍需按官方计费视图核对。Snowsight 或部分 Usage 视图可能展示调整前的使用量，而不等同于最终账单数。
 
 因此，成本分析要区分：
 - **实际资源消耗指标**：用于定位哪类活动在消耗资源；
