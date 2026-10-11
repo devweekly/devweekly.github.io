@@ -2333,6 +2333,286 @@ Time Travel 有明确的保留期限，Fail-safe 也不是面向用户的长期�
 
 对于金融服务 Solution Architect，Snowflake 的真正学习目标不是背诵一百个功能，而是能把这五个问题落到架构、数据模型、权限、运行指标和恢复演练上。
 
+---
+
+# 第六部分｜一套可复现的工程练习
+
+下面的练习把前文涉及的表设计、SQL、增量处理、质量校验、性能诊断和发布治理串在一起。它不是对某个真实客户内部实现的复刻，而是一套可在受控开发环境中验证 Snowflake 行为的实验。表名和字段是教学模型，运行前应按目标账户的权限和资源策略调整。
+
+## 21. 实战实验：从持仓事件构建可审计的日终持仓数据产品
+
+### 21.1 先写清要回答的问题和结果粒度
+
+实验目标是生成一个经过校验的持仓数据集，可支持以下查询：
+- 某个估值日、组合和证券的持仓数量与市值；
+- 某组合在一个估值日的总市值；
+- 相邻估值日之间的数量/市值变化；
+- 某批次哪些记录被接受、隔离或拒绝；
+- 如果供应商后来修订了记录，能找出受影响的估值日期并重新计算。
+
+先明确粒度：`FCT_POSITION_DAILY` 每行代表“估值日 × 组合 × 账户 × 证券 × 计价币种”。不要一开始创建只有一个 `portfolio_id` 和一个 `market_value` 的汇总表，否则会失去支持对账、解释和多账户拆分的能力。
+
+### 21.2 为 RAW 输入保留载荷和来源证据
+
+概念级 DDL：
+
+```sql
+CREATE TABLE IF NOT EXISTS raw.vendor_position_event (
+    source_system           STRING,
+    source_file             STRING,
+    source_file_version     STRING,
+    source_record_id        STRING,
+    batch_id                STRING,
+    ingested_at             TIMESTAMP_TZ,
+    payload                 VARIANT,
+    parse_status            STRING,
+    parse_error             STRING
+);
+```
+
+这里选择 `VARIANT` 保存原始载荷，便于供应商新增字段或修复解析规则后重放；同时保留文件名、版本、批次、到达时间和解析状态。它并不是要求把每一种原始数据都转成 JSON 存储；若来源本身是可保留的 Parquet、Iceberg 或其他受控文件，也可把源文件和批次账本作为证据层。设计重点是原始输入必须能定位，且不能在没有记录的情况下被覆盖。
+
+对大型批次，应再建一张文件级账本，使每个文件有一个稳定身份、预期记录数、加载记录数、校验结果和最终状态。文件级账本与记录级 RAW 表粒度不同，不应把多个文件的状态直接重复存到每条记录上当作唯一真相。
+
+### 21.3 标准化事件并显式区分解析失败
+
+```sql
+CREATE OR REPLACE VIEW standardized.vendor_position_event AS
+SELECT
+    source_system,
+    source_file,
+    source_file_version,
+    source_record_id,
+    batch_id,
+    ingested_at,
+    payload:event_id::STRING AS event_id,
+    payload:operation::STRING AS operation,
+    payload:position_business_key::STRING AS position_business_key,
+    payload:portfolio_id::STRING AS portfolio_id,
+    payload:account_id::STRING AS account_id,
+    payload:security_id::STRING AS security_id,
+    TRY_TO_DATE(payload:valuation_date::STRING) AS valuation_date,
+    payload:currency_code::STRING AS currency_code,
+    TRY_TO_DECIMAL(payload:quantity::STRING, 18, 6) AS quantity,
+    TRY_TO_DECIMAL(payload:market_value::STRING, 20, 2) AS market_value,
+    TRY_TO_TIMESTAMP_TZ(payload:source_event_time::STRING) AS source_event_time,
+    payload:source_sequence::NUMBER AS source_sequence
+FROM raw.vendor_position_event;
+```
+
+这是一个便于探索的 View 示例。生产流程要额外判断 TRY 转换失败的字段并把记录送入错误分类，不能因为 TRY 函数返回 NULL 就将记录视为正常。日期字符串的格式、时区、币种和金额单位都应由数据契约规定；若供应商提供显式版本号或单调递增序列，应优先保存原值以供追溯。
+
+### 21.4 用质量测试在数据进入消费层前挡住错误
+
+至少对以下约束建立可运行测试：
+
+```sql
+-- A. 关键标识符缺失
+SELECT COUNT(*) AS invalid_key_rows
+FROM standardized.vendor_position_event
+WHERE position_business_key IS NULL
+   OR portfolio_id IS NULL
+   OR security_id IS NULL
+   OR valuation_date IS NULL;
+
+-- B. 事件唯一性（实际键需按供应商契约确定）
+SELECT source_system, event_id, COUNT(*) AS n
+FROM standardized.vendor_position_event
+WHERE event_id IS NOT NULL
+GROUP BY source_system, event_id
+HAVING COUNT(*) > 1;
+
+-- C. 非业务性负值/异常值筛查。具体规则必须由业务决定
+SELECT *
+FROM standardized.vendor_position_event
+WHERE quantity IS NULL
+   OR market_value IS NULL
+   OR currency_code IS NULL;
+
+-- D. 同一业务位置的事件顺序重复或冲突
+SELECT
+    source_system,
+    position_business_key,
+    source_sequence,
+    COUNT(*) AS n
+FROM standardized.vendor_position_event
+WHERE source_sequence IS NOT NULL
+GROUP BY source_system, position_business_key, source_sequence
+HAVING COUNT(*) > 1;
+```
+
+这些查询需要和业务规则共同使用。负数量可能是卖空或其他合法业务场景，负市值也可能在某些产品上有意义；不能没有业务解释就把所有负数定义为坏数据。测试返回记录后，要按约定规则分为拒绝、隔离、警告或允许，并保留阈值版本和责任人。
+
+### 21.5 去重时以源端顺序为准，而不是摄取时间
+
+假设每个业务位置的事件有稳定的源端顺序，可先提取当前批次每个业务键的最后一个事件：
+
+```sql
+SELECT *
+FROM standardized.vendor_position_event
+WHERE batch_id = :batch_id
+QUALIFY ROW_NUMBER() OVER (
+    PARTITION BY source_system, position_business_key
+    ORDER BY source_sequence DESC, ingested_at DESC, source_record_id DESC
+) = 1;
+```
+
+示例中的最后两个排序字段只用于在源顺序相同或缺失时形成稳定排序；它们不能替代源端业务顺序。如果多个不同事件拥有相同源序列，应先认定是否属于源数据冲突，而不是仅通过追加一个 ID 让冲突“消失”。DELETE tombstone 也要保留并按实际状态模型处理；不能在去重之前把它们从输入中删掉。
+
+### 21.6 为当前态、历史态和日终快照分别选择模型
+
+当前态表回答“现在认为这条业务记录的状态是什么”；历史事件表回答“发生过哪些变化”；日终快照回答“在某一估值日/截止点，业务结果是什么”。三者不能用一个表的 `updated_at` 字段完全替代。
+
+- 若业务要求保留每一次原始变更，保存不可覆盖的事件记录和源端顺序。
+- 若下游需要快速查询当前状态，维护可幂等更新的 Current 表，且将删除与撤销的语义明确化。
+- 若用户需要比较历史估值日，保存符合业务截止点的 Daily Snapshot；迟到更正后可以产生修订版本或按政策重算受影响日期。
+- 若需要复现历史发布报告，记录当时输入批次/版本和模型版本，而不是只保存后来被更新的当前态。
+
+将事件流按简单的 `SUM` 汇总为每日持仓，只有在源数据已经是合法的持仓增减量、符号约定与冲正规则明确时才正确。如果事件是完整持仓快照，就应该选择当日有效的快照，而不是对多个快照加总。
+
+### 21.7 构建消费层前做控制总计与键差异检查
+
+针对同一批次或估值日，质量校验不能只看行数。一个合理的发布门槛可能包括：
+- 目标关键键唯一；
+- 必需证券/组合映射覆盖率达到门槛；
+- 输入与输出记录数差异在预期范围；
+- 按币种、业务日期和账户范围核对控制总计；
+- 无无法解释的源端位点缺口；
+- 源文件和批次的完整性已验证；
+- 下游使用的策略与授权已生效。
+
+金额总计比较前先统一计价币种、汇率类型和估值截止；把不同币种金额直接 SUM，只会得到语法上合法但业务上无意义的数值。
+
+### 21.8 发布时采用版本指针或显式状态，不要只覆盖表
+
+对经过质量门槛的数据集，可记录 `dataset_name`、`business_date`、`data_version`、`model_version`、`batch_id`、`quality_status`、`published_at` 和 `supersedes_version`。下游通过已批准视图或发布记录判断当前应使用哪个版本。这样，供应商修订导致旧版本失效时，可以明确新版本取代了什么、影响哪些消费者，以及为什么旧报告与修订报告不同。
+
+这个机制可以是独立发布表、受控 View、任务流程或数据目录中的版本状态。重要的是发布状态必须可查、可审计、可回滚，而不是某个 SQL 成功后所有下游自动假定数据正确。
+
+## 22. 实战实验：对一条慢查询做证据驱动的性能诊断
+
+### 22.1 先声明业务结果，再设性能目标
+
+选择一个具有代表性的查询，例如“指定估值日、多个组合的证券和现金暴露”。记录：
+- 查询参数与使用范围；
+- 预期结果的粒度与控制总计；
+- 目标延迟，例如交互式分析的 P95 或某批次完成时限；
+- 当前的执行时间、扫描量、spill、Warehouse 规格与 Credits；
+- 查询是否冷缓存、是否存在竞争负载。
+
+结果口径先于性能目标。一个返回错误金额的 2 秒查询不能算成功优化。性能优化之前要固定输入版本、SQL 和业务校验方法。
+
+### 22.2 从查询历史中找到可比样本
+
+在具备权限且字段可用时，可以用 `SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY` 取得历史查询。先不要混合不同 SQL 的执行时间；要按 Query Tag、业务作业名、查询指纹或规范化后的查询类别找到同类样本。
+
+```sql
+SELECT
+    query_id,
+    query_tag,
+    user_name,
+    role_name,
+    warehouse_name,
+    start_time,
+    execution_status,
+    total_elapsed_time / 1000.0 AS elapsed_seconds,
+    execution_time / 1000.0 AS execution_seconds,
+    compilation_time / 1000.0 AS compilation_seconds,
+    queued_provisioning_time / 1000.0 AS queued_provisioning_seconds,
+    queued_overload_time / 1000.0 AS queued_overload_seconds,
+    bytes_scanned,
+    bytes_spilled_to_local_storage,
+    bytes_spilled_to_remote_storage,
+    query_text
+FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+WHERE start_time >= DATEADD(day, -7, CURRENT_TIMESTAMP())
+  AND query_tag ILIKE '%portfolio_exposure%'
+ORDER BY start_time DESC
+LIMIT 200;
+```
+
+不同接口的字段名称、可见延迟和权限要求要以当前官方文档为准。这段 SQL 的目的在于展示应收集哪些指标，不代表所有账户都已有相同 Query Tag。查询文本可能包含敏感信息，不应无差别暴露给一般用户。
+
+### 22.3 沿执行计划自上而下定位代价
+
+使用 Snowsight 打开代表性 Query ID 的 Query Profile，检查：
+1. 哪个节点耗时最多，是否有明显串行阶段；
+2. 扫描节点读取了多少微分区、多少字节、输出多少行；
+3. 连接前后行数是否出现不合预期的倍增；
+4. 聚合、排序和窗口运算是否产生大量中间状态；
+5. 有没有本地或远程 spill；
+6. 各分支之间是否存在数量级差异，提示数据倾斜；
+7. 慢是在 SQL 执行阶段，还是排队、启动或结果传输阶段。
+
+不要只根据图形中最大的节点就认定根因。某个节点的耗时可能包含等待上游数据的时间；应看它的输入、输出、父子节点和资源指标，再做局部查询验证。
+
+### 22.4 每次实验只改变一个主要变量
+
+建议的实验顺序：
+- 实验 A：把 `SELECT *` 改成实际需要的列，比较扫描与结果。
+- 实验 B：检查过滤时间范围是否与数据类型/粒度一致，比较裁剪效果。
+- 实验 C：验证 JOIN 键唯一性和基数；修正缺失复合键或预聚合。
+- 实验 D：拆分必需的逻辑层与纯展示层，避免重复计算或多次展开相同半结构化字段。
+- 实验 E：在确认 SQL 合理后，再测试 Warehouse 规格或并发配置。
+- 实验 F：有选择地测试聚类、搜索优化或加速服务，并将维护/服务成本计入。
+
+每次都要保存 Query ID、结果控制总计、耗时、扫描、spill、成本、缓存状态和配置。不能同时改 SQL、Warehouse、聚类策略与缓存条件后，再把所有改善归因于某一个变化。
+
+### 22.5 把性能回归做成可重复的工程测试
+
+对核心查询建立基线，而不是只在出现事故后跑一次手工测试。测试集合至少包括：
+- 常规日期和常规数据量；
+- 月末、季度末等高峰数据量；
+- 历史回填范围；
+- 数据分布变化明显的极端情况；
+- 数据质量错误或维度映射异常时的处理；
+- 多查询并发时的服务表现。
+
+若表规模、上游数据分布或业务筛选模式发生变化，要重新评估基线。Snowflake 可能调整优化器行为和平台能力，因此性能基准应跟随真实工作负载长期维护，而不是把某个 Query Profile 永久当作参考标准。
+
+## 23. 实战实验：设计一份可审查的 Snowflake 架构决策记录
+
+一份架构决策记录（ADR）应该能让后来接手的人理解为什么选了某条路，以及什么证据会让团队改变决定。每个重要决策建议按以下格式记录。
+
+### 决策 1：Vendor 数据放在 S3 还是装入 Snowflake 原生表？
+
+- **上下文**：文件大小/频率、消费频率、许可、需要的查询模式和其他引擎使用情况。
+- **候选方案**：External Table、原生表、Iceberg 或混合方案。
+- **决策**：明确是先外部查询、对常用数据集进行选择性加载，还是以开放表格式作为权威存储。
+- **理由**：用查询基线、存储/计算成本、对象维护责任、数据新鲜度和许可限制作依据。
+- **已知代价**：需要复制数据、额外维护文件/快照、外部元数据刷新或查询性能差异。
+- **验证指标**：扫描量、P95、每批成本、失败恢复时间、可重放性和访问控制。
+- **复核触发条件**：查询频率显著变化、供应商许可调整、文件量增加或新引擎加入。
+
+### 决策 2：Dynamic Tables 还是 Streams/Tasks？
+
+- **上下文**：转换是否能用受支持 SQL 表达、是否需要外部副作用、是否必须严格控制步骤顺序、允许多大数据延迟。
+- **候选方案**：View、Dynamic Tables、Streams/Tasks、dbt/外部编排或组合。
+- **决策理由**：目标新鲜度、支持的刷新模式、可观测性、团队操作能力和总成本。
+- **风险点**：迟到数据、删除/冲正、批次重跑、目标延迟超过预期、上游依赖链变长。
+- **验证指标**：实际 lag、刷新持续时间、失败次数、回填影响范围、重复处理风险。
+- **复核触发条件**：数据变化比例上升、转换 SQL 不再支持增量、业务从分钟级转为秒级或相反。
+
+### 决策 3：何时为表创建 Clustering Key？
+
+- **上下文**：表规模、微分区数量、查询过滤模式与写入/更新频率。
+- **候选方案**：默认布局、改变上游加载/数据组织、Clustering Key、物化结果或其他优化。
+- **决策依据**：代表性查询基线、裁剪能力、扫描字节数与维护 Credits。
+- **风险点**：维护成本超过扫描节省、工作负载改变后旧聚类不再有用。
+- **复核指标**：相关查询的 P95、扫描量、聚类维护开销、每个业务批次的总成本。
+- **复核触发条件**：访问模式、数据量或写入频率显著变化。
+
+### 决策 4：业务结果何时可以发布？
+
+- **上下文**：输入源、报告时间截止、质量规则、用户依赖和错误风险。
+- **候选状态**：自动发布、满足门槛后发布、带警告发布、人工审批、禁止发布。
+- **决策依据**：错误结果的业务后果、可用备用数据、修订规则和监管要求。
+- **必要证据**：批次完整性、控制总计、质量结果、模型/政策版本、访问权限和发布日期。
+- **失败动作**：隔离、阻止发布、通知、回滚、部分重新计算或人工批准。
+- **复核触发条件**：SLA、输入合同、业务阈值或消费者范围改变。
+
+不要让 ADR 变成描述平台功能的长文。它需要记录可选方案、决策理由、可验证证据、代价和复核条件。没有替代方案比较、运行指标和失败处理的“架构决策”通常只是技术介绍。
+
 ## 对照 Snowflake 官方 Guides 目录：覆盖范围与有意略过的内容
 
 我把 [Snowflake User Guides 总目录](https://docs.snowflake.com/en/guides) 和主要子目录作为覆盖基线。官方目录会持续更新，因此这里说明的是本文学习范围，不承诺逐页、逐功能完整复述所有官方文档。目标是帮助 Solution Architect 建立选择能力，并在具体实施时知道该打开哪个官方专题。
