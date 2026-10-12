@@ -2,7 +2,7 @@
 author: W
 featured: false
 draft: false
-description: 从 SELECT、JOIN 和聚合出发，走到窗口函数、QUALIFY、半结构化数据、ASOF JOIN、CDC MERGE、动态表与查询调优，用一条可落地的数据链路理解 Snowflake SQL。
+description: 一份面向真实项目的 Snowflake SQL 手册：完整能力 Cheatsheet、JOIN 与 SAMPLE 详解、窗口和时间序列、高级查询、存储过程与 Tasks、Cortex AI SQL、增量数据管道、生产运维及 2026 年 10 月新特性。
 pubDatetime: 2026-10-13T00:00:00Z
 title: Snowflake SQL 从入门到生产实战：基础查询、窗口函数、增量模型与性能诊断
 tags:
@@ -85,6 +85,54 @@ Snowflake 不只是支持 SELECT、JOIN 和 GROUP BY。它有完整的查询、�
 | 分析聚合 | `COUNT_IF`、`LISTAGG`、`ARRAY_AGG`、`OBJECT_AGG` | 条件计数、集合和对象聚合 |
 | JSON / 半结构化 | `PARSE_JSON`、`TO_VARIANT`、`OBJECT_CONSTRUCT`、路径访问、`FLATTEN` | 接入和规范化半结构化数据 |
 | 运行上下文 | `CURRENT_ROLE()`、`CURRENT_WAREHOUSE()`、`CURRENT_TIMESTAMP()` | 调试上下文、审计和时间记录 |
+
+
+### 6. AI SQL、语义层与 Agent
+
+| 能力 | 核心 SQL / 函数 | 主要用途与边界 |
+| --- | --- | --- |
+| 大模型生成与结构化输出 | `AI_COMPLETE`、`TRY_COMPLETE`（兼容/迁移场景需区分） | 文本生成、抽取；用结构化输出减少下游解析，但仍需校验 |
+| 分类、过滤、情感 | `AI_CLASSIFY`、`AI_FILTER`、`AI_SENTIMENT` | 语义分类、自然语言过滤、整体或方面情绪 |
+| 摘要与大规模文本聚合 | `AI_SUMMARIZE`、`AI_SUMMARIZE_AGG`、`AI_AGG` | 单条文本/文件摘要，或跨多行文本归纳 |
+| 信息抽取与文档解析 | `AI_EXTRACT`、`AI_PARSE_DOCUMENT` | 从文本或文件抽取字段、表格、版面信息；注意不同函数的支持范围 |
+| 翻译、脱敏、语音 | `AI_TRANSLATE`、`AI_REDACT`、`AI_TRANSCRIBE` | 多语言处理、PII 检测/脱敏、音视频转写 |
+| 向量与语义匹配 | `AI_EMBED`、`AI_MULTI_EMBED`、`AI_SIMILARITY` | 生成向量或计算语义相似度；大规模检索需要考虑索引/服务与成本 |
+| Token 预算与文件引用 | `AI_COUNT_TOKENS`、`TO_FILE`、`PROMPT` | 估算 Token、引用 Stage 文件、构造多字段提示 |
+| 自定义 AI 函数 | `CREATE AI FUNCTION` | 把提示词、模型和后处理封装成带权限的可复用对象；需核对 Preview 状态 |
+| AI 评估与优化 | `CREATE EXPERIMENT`、`AI_FUNCTION_EVALUATION`、`AI_FUNCTION_OPTIMIZATION` | 用标注数据比较正确率、成本和 Token 消耗；不要仅靠主观试跑 |
+| 文档搜索与 RAG | `CREATE CORTEX SEARCH SERVICE`、`SEARCH_PREVIEW` | 搜索服务支持语义/关键词混合检索；服务查询通常通过 API / Agent 工具，不等同于普通表查询 |
+| 自然语言分析与 Agent | Semantic View、Cortex Analyst、`SNOWFLAKE.CORTEX.DATA_AGENT_RUN` | 让受治理的数据模型服务自然语言查询、多步分析与工具调用 |
+| AI 可观测性 | `CORTEX_*_USAGE_HISTORY`、AI observability helper functions | 跟踪调用、Token、质量和成本；具体视图与可用性以账号文档为准 |
+
+### 7. 其他重要 SQL 命令与对象
+
+| 类别 | 命令 / 对象 | 为什么需要知道 |
+| --- | --- | --- |
+| DDL：对象生命周期 | `CREATE`、`CREATE OR ALTER`、`ALTER`、`DROP`、`CLONE`、`UNDROP` | 创建、变更、克隆和恢复数据对象；不要把所有 DDL 都当作普通 DML 事务 |
+| DML：数据变化 | `INSERT`、`UPDATE`、`DELETE`、`MERGE`、`INSERT OVERWRITE` | 写入、修改、删除、增量合并与覆盖式装载 |
+| 事务控制 | `BEGIN TRANSACTION`、`COMMIT`、`ROLLBACK`、`AUTOCOMMIT` | 设计多步写入的原子边界和失败恢复 |
+| 权限与授权 | `GRANT`、`REVOKE`、`SHOW GRANTS`、角色/数据库角色 | 数据授权、职责分离、最小权限和审计 |
+| 元数据诊断 | `SHOW`、`DESCRIBE`、`EXPLAIN`、`RESULT_SCAN`、`QUERY_HISTORY` | 看对象结构、权限、执行计划、上一条查询结果和运行历史 |
+| 动态 SQL | `EXECUTE IMMEDIATE`、`IDENTIFIER()`、绑定变量 `USING` | 根据配置运行 SQL；对象名与值参数必须安全处理 |
+| 数据加载与文件访问 | Stage、File Format、Storage Integration、Pipe、`COPY INTO`、`LIST` | 建立可配置、可重放、可观察的数据入口和出口 |
+| 脚本与业务过程 | `CALL`、Snowflake Scripting、Procedure、SQL/JavaScript/Python/Java/Scala UDF | 把查询组合成受控的多步操作或可复用函数 |
+| 数据管道控制 | Stream、Task、Task Graph、Dynamic Table、Alert | 分别处理变化追踪、调度/依赖、声明式刷新和告警 |
+| 文件、外部与半结构化对象 | External Table、Directory Table、Iceberg Table、Hybrid Table、VARIANT、OBJECT、ARRAY | 根据外部文件、事务、半结构化和跨引擎需要选择正确的数据对象 |
+| 数据治理 | Secure View、Masking Policy、Row Access Policy、Tag、Data Metric Function | 让访问控制、脱敏、质量校验和审计成为平台边界的一部分 |
+| 近期 SQL / 数据工程能力 | `PERIOD`、`EXPLAIN CHANGES`、Dynamic Table `REFRESH_MODE` | 显式建模时间区间、预测刷新影响、控制增量/全量刷新取舍 |
+
+### 8. 如何理解“完整 Cheatsheet”
+
+Snowflake 的内置函数、系统函数、对象命令和预览特性持续增长。把每个函数名全部塞进一张表，既难以查阅，也会随版本变化迅速过时。因此本文 Cheatsheet 的目标是**覆盖 SQL 主要语法族、重要对象、复杂分析能力、数据工程操作和 AI 接口**，并提供官方权威索引供查漏。
+
+- [SQL 命令参考（按对象和命令查）](https://docs.snowflake.com/en/sql-reference/sql)
+- [查询语法参考（JOIN、SAMPLE、QUALIFY 等）](https://docs.snowflake.com/en/sql-reference/constructs)
+- [全部系统函数和存储过程（按字母顺序）](https://docs.snowflake.com/en/sql-reference-functions)
+- [Snowflake Scripting 参考](https://docs.snowflake.com/en/developer-guide/snowflake-scripting)
+- [Cortex AI Functions 完整索引](https://docs.snowflake.com/en/sql-reference/functions/ai_complete)
+- [Snowflake 最新发布与功能更新](https://docs.snowflake.com/en/release-notes/new-features)
+
+本文的最新特性盘点以 **2026 年 10 月 13 日**为截止点，聚焦与 SQL、数据管道和 AI SQL 实践直接相关的变化。GA、Public Preview、Private Preview 以及区域/模型可用性会改变，需在目标账号复核。
 
 **使用建议：** 普通分析先掌握 SELECT、JOIN、CTE、窗口函数、QUALIFY、聚合和半结构化访问；数据工程再深入 MERGE、COPY INTO、事务、Streams/Tasks 与 Dynamic Tables；生产运维补上元数据查询、Query Profile、Time Travel 和策略治理。不必一次记住整张表，但应知道遇到某类问题应该查哪一组能力。
 
@@ -249,7 +297,171 @@ ORDER BY total_amount DESC NULLS LAST;
 
 更重要的是，这里统计的是事件数，不一定是订单数。如果一个订单能产生多个事件，就不能用 COUNT(*) 作为订单数量。业务指标首先需要明确粒度：一行代表一次事件、一笔订单、一个订单明细，还是某个客户在某个时间点的状态。
 
-### 3.4 JOIN 之前，先证明两边的数据粒度
+
+### 3.4 JOIN 类型详解：INNER、LEFT、RIGHT、FULL 到底有什么不同？
+
+JOIN 的本质是根据一个匹配条件，把两边相关的行拼成一个结果行。理解 JOIN 时，最重要的问题不是记住英文名称，而是先回答：**左表和右表各代表什么粒度？结果必须保留哪一边的全部记录？没有匹配项时应该发生什么？**
+
+先用小数据集建立直觉。客户表中有 C1、C2、C3；订单表中 C1 有订单，C4 有订单但在客户主数据中不存在。
+
+~~~sql
+WITH customers AS (
+    SELECT column1::VARCHAR AS customer_id,
+           column2::VARCHAR AS customer_name
+    FROM VALUES
+        ('C1', 'Ada'),
+        ('C2', 'Bo'),
+        ('C3', 'Cy')
+),
+orders AS (
+    SELECT column1::VARCHAR AS order_id,
+           column2::VARCHAR AS customer_id,
+           column3::VARCHAR AS status,
+           column4::NUMBER(12,2) AS amount
+    FROM VALUES
+        ('O101', 'C1', 'PAID', 50.00),
+        ('O102', 'C1', 'CANCELLED', 20.00),
+        ('O103', 'C4', 'PAID', 90.00)
+)
+SELECT c.customer_id, c.customer_name, o.order_id, o.amount
+FROM customers c
+INNER JOIN orders o
+    ON o.customer_id = c.customer_id;
+~~~
+
+**INNER JOIN（内连接）：只保留两边都能匹配的行。** 上例会得到 C1 的两笔订单；没有订单的 C2、C3 会消失，订单缺少客户主数据的 C4 也会消失。它适合“只分析存在有效客户档案的订单”等确实需要匹配双方的情况。
+
+~~~sql
+SELECT c.customer_id, c.customer_name, o.order_id, o.amount
+FROM customers c
+LEFT JOIN orders o
+    ON o.customer_id = c.customer_id;
+~~~
+
+**LEFT JOIN（左外连接）：保留左表的全部行，右表能匹配就补充字段，不能匹配则右侧列为 NULL。** 结果里会出现 C2、C3，但它们的订单列为空。常见用途包括“列出全部客户并统计订单”“给所有员工显示是否有审批记录”“保留全部事实记录并补充维度属性”。
+
+注意，LEFT JOIN 的右表可能一对多：C1 有两笔订单，因此 C1 出现两行。这不是 SQL 错误，而是 JOIN 结果粒度从“每位客户”变成了“每个客户-订单组合”。如果报表需要每位客户一行，就应先将订单聚合到客户粒度，或者在目标结果中再次按客户汇总。
+
+~~~sql
+SELECT c.customer_id, c.customer_name, o.order_id, o.amount
+FROM customers c
+RIGHT JOIN orders o
+    ON o.customer_id = c.customer_id;
+~~~
+
+**RIGHT JOIN（右外连接）：保留右表的全部行，左侧未匹配字段补 NULL。** 这次所有订单都会出现，因此 O103 仍然保留，即使其 customer_id=C4 在客户表找不到。它适合“以右表为完整性基准”的查询。不过在团队代码中，很多人倾向于把表交换位置改写为 LEFT JOIN，因为阅读起来更直观；RIGHT JOIN 与 LEFT JOIN 的表达能力相同，选择哪种更重要的是团队一致性。
+
+~~~sql
+SELECT
+    COALESCE(c.customer_id, o.customer_id) AS customer_id,
+    c.customer_name,
+    o.order_id,
+    o.amount
+FROM customers c
+FULL OUTER JOIN orders o
+    ON o.customer_id = c.customer_id;
+~~~
+
+**FULL OUTER JOIN（全外连接）：保留两边所有行。** 双方匹配的记录合并；只有客户的一侧右边补 NULL；只有订单的一侧左边补 NULL。它特别适合源系统与目标系统对账、两个主数据源的差异分析、找出“源有目标没有”和“目标有源没有”的记录。
+
+### 用 JOIN 做对账和找缺失数据
+
+全外连接适合输出差异清单。下面把两份客户系统数据按客户 ID 对齐：
+
+~~~sql
+SELECT
+    COALESCE(a.customer_id, b.customer_id) AS customer_id,
+    a.customer_name AS source_name,
+    b.customer_name AS target_name,
+    CASE
+      WHEN a.customer_id IS NULL THEN 'MISSING_IN_SOURCE'
+      WHEN b.customer_id IS NULL THEN 'MISSING_IN_TARGET'
+      WHEN a.customer_name IS DISTINCT FROM b.customer_name THEN 'VALUE_MISMATCH'
+      ELSE 'MATCHED'
+    END AS reconciliation_status
+FROM source_customers a
+FULL OUTER JOIN target_customers b
+    ON a.customer_id = b.customer_id
+WHERE a.customer_id IS NULL
+   OR b.customer_id IS NULL
+   OR a.customer_name IS DISTINCT FROM b.customer_name;
+~~~
+
+`IS DISTINCT FROM` 用 NULL-safe 语义比较两个值；相比 `a.col <> b.col`，当其中一侧为 NULL 时，它仍能给出稳定的差异判断。对账前仍要确认两侧 customer_id 是唯一键，否则两个来源中同一 ID 有重复行时会产生多对多匹配，夸大差异行数。
+
+### OUTER JOIN 最容易踩的坑：WHERE 条件会把 NULL 过滤掉
+
+如果目标是“保留所有客户，但只关联已支付订单”，不要这样写：
+
+~~~sql
+-- 常见错误：WHERE 把没有支付订单的客户筛掉，效果接近 INNER JOIN
+SELECT c.customer_id, o.order_id
+FROM customers c
+LEFT JOIN orders o
+    ON o.customer_id = c.customer_id
+WHERE o.status = 'PAID';
+~~~
+
+更符合意图的写法，是把右表上的筛选条件放进 ON：
+
+~~~sql
+SELECT c.customer_id, o.order_id
+FROM customers c
+LEFT JOIN orders o
+    ON o.customer_id = c.customer_id
+   AND o.status = 'PAID';
+~~~
+
+区别在于执行语义：ON 决定哪些右表行算作匹配；WHERE 再过滤已经形成的 JOIN 结果。WHERE 中要求 `o.status = 'PAID'` 为 TRUE，会剔除右侧为 NULL 的行。因此，使用 OUTER JOIN 时要问清每个条件是“匹配条件”还是“最终保留结果的条件”。
+
+### Anti Join：找出没有关联记录的数据
+
+找出从未下单的客户，可以使用 LEFT JOIN + NULL 判断：
+
+~~~sql
+SELECT c.customer_id, c.customer_name
+FROM customers c
+LEFT JOIN orders o
+    ON o.customer_id = c.customer_id
+WHERE o.order_id IS NULL;
+~~~
+
+或使用更直接的 NOT EXISTS：
+
+~~~sql
+SELECT c.customer_id, c.customer_name
+FROM customers c
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM orders o
+    WHERE o.customer_id = c.customer_id
+);
+~~~
+
+对于“没有匹配行”的语义，NOT EXISTS 通常清晰且不受子查询投影中的 NULL 影响。与此不同，NOT IN 的子查询若包含 NULL，可能导致比较结果变成 UNKNOWN 而不是 TRUE；除非已证明子查询键非 NULL，否则不要随意将 NOT EXISTS 换成 NOT IN。
+
+### CROSS JOIN、USING 与 NATURAL JOIN
+
+- **CROSS JOIN（交叉连接）**：每一行左表与每一行右表组合，结果行数约等于两边行数的乘积。典型场景是生成日期与产品的组合骨架、枚举参数组合；意外省略 ON 条件也可能无意中生成笛卡尔积。
+- **JOIN ... USING (key)**：双方有同名连接键且希望在投影中只保留一份连接键时可用。但它要求列名一致，遇到不同命名、多个连接键或复杂条件时，显式 ON 往往更清楚。
+- **NATURAL JOIN**：自动把所有同名列当作连接键。它对 schema 演进很敏感：源表新增同名列可能改变 JOIN 语义。业务代码和生产模型通常优先显式 ON，不建议把 NATURAL JOIN 当默认写法。
+- **ASOF JOIN**：不是普通的等值连接，而是按时间寻找最近的匹配值，详见本文时间序列章节。
+
+### JOIN 选择速记
+
+| 业务问题 | 通常优先考虑 | 需要验证的事情 |
+| --- | --- | --- |
+| 只需要两边都存在的记录 | INNER JOIN | 不会错误丢失业务需要保留的未匹配数据 |
+| 必须保留左侧每一条记录 | LEFT JOIN | 右表一对多是否会放大粒度；右侧筛选是否应放在 ON |
+| 必须保留右侧每一条记录 | RIGHT JOIN，或交换表后使用 LEFT JOIN | 右侧基准是否真正是你希望保留的对象 |
+| 比较两份来源并找双向差异 | FULL OUTER JOIN | 两侧键是否唯一，NULL 是否应被视为相同 |
+| 找出左侧没有右侧对应记录 | NOT EXISTS 或 LEFT JOIN ... IS NULL | 匹配键是否有 NULL，NOT IN 是否安全 |
+| 枚举所有组合 | CROSS JOIN | 组合规模是否可接受 |
+| 时间上最近但时间戳不相等 | ASOF JOIN | 最大陈旧时间、时区、同一时点多版本如何处理 |
+
+**性能与正确性原则：** JOIN 的输入行数、输出行数和键的基数比 JOIN 关键字本身更重要。复杂分析 SQL 在上线前应该能回答“每张输入表一行是什么、关联后会变成什么、结果是否需要聚合回原粒度”。
+
+### 3.5 JOIN 之前，先证明两边的数据粒度
 
 最常见的金额错误之一，不是 SUM 写错，而是 JOIN 放大了行数。
 
@@ -279,6 +491,70 @@ WHERE NOT EXISTS (
     WHERE r.order_id = o.order_id
 );
 ~~~
+
+
+### 3.6 SAMPLE / TABLESAMPLE：怎样抽样、何时抽样、什么不能靠抽样证明？
+
+`SAMPLE` 与 `TABLESAMPLE` 是同义写法，用于从表中抽取子集，常见于数据探索、检查 JSON 样本、设计原型和初步估计数据分布。它不是 ORDER BY 的另一种写法，也不是正式数据质量测试的替代品。
+
+#### 按比例抽取行：BERNOULLI / ROW
+
+~~~sql
+-- 从表中按行进行约 10% 的概率抽样
+SELECT order_id, customer_id, net_amount
+FROM fact_orders
+SAMPLE BERNOULLI (10);
+~~~
+
+BERNOULLI（也叫 ROW）会针对每行独立地按指定概率决定是否纳入样本。比如 1,000,000 行按 10% 抽样，期望得到约 100,000 行；实际行数不是严格保证值。它适合尽量分散地覆盖行，但仍不能自动保证罕见类别、边缘时段或极少数客户被抽到。
+
+#### 按数据块抽样：SYSTEM / BLOCK
+
+~~~sql
+-- 按数据块抽样，并给出可复现的 seed
+SELECT order_id, order_date, region
+FROM fact_orders
+SAMPLE SYSTEM (10) SEED (82);
+~~~
+
+SYSTEM（也称 BLOCK）是以数据块为抽样单位，而不是单独对每一行抽签。在大型表上，它可能减少读取和处理量，因此适合快速概览；但如果表在物理上按日期、区域或客户聚集，同一块里的行可能具有类似属性，抽样结果就可能偏斜。小表尤其要谨慎看待其代表性。
+
+#### 抽取固定数量的行
+
+~~~sql
+-- 尽量返回 100 行；表不足 100 行时则返回实际可用行
+SELECT *
+FROM raw_order_events
+SAMPLE (100 ROWS);
+~~~
+
+固定行数样本适合快速检查样例内容。但它与随机的 10% 样本不同：前者目标是行数，后者目标是每行纳入概率。不要把 `LIMIT 100` 和抽样当成相同概念；LIMIT 主要是限制输出行数，不能保证样本随机或有代表性。
+
+#### 如何让 SYSTEM 样本便于复现？
+
+在表数据没有变化的前提下，指定相同 SYSTEM 概率和相同 seed 可以重现样本：
+
+~~~sql
+SELECT *
+FROM fact_orders
+SAMPLE SYSTEM (5) REPEATABLE (20261013);
+~~~
+
+`SEED` 与 `REPEATABLE` 是同一类参数的不同写法，但种子并不意味着“无论数据如何变化，抽样成员永远不变”。底层表新增、删除或重排后，样本可能变化。Snowflake 对 seed 还有语法限制：不能把该 seed 用法直接套在视图或子查询的抽样上；按行 BERNOULLI 抽样与按块 SYSTEM 抽样对 seed 的支持也不同，应该按官方语法查证。
+
+#### SAMPLE 对性能的帮助有边界
+
+| 需求 | 应采用的做法 | 不能据此推断的事情 |
+| --- | --- | --- |
+| 快速查看大表的典型记录 | 从底表抽样，或按业务维度分层取样 | 一小批样本没有发现异常，不代表全表没有异常 |
+| 对未知 JSON 字段结构做探索 | 抽一些原始行再 FLATTEN 检查 | 抽样未覆盖的稀有结构不会因此消失 |
+| 估计大致分布或排查趋势 | 适合时使用 SYSTEM / BERNOULLI，并记录样本参数 | 采样统计不能替代正式财务总额、合规检查或精确对账 |
+| 为 JOIN 查询降低成本 | 在 JOIN 前抽取输入表，仅用于原型探索 | 对 JOIN 结果抽样发生在 JOIN 完成之后，并不会减少 JOIN 本身需要处理的数据 |
+| 构造测试数据集 | 显式记录抽样规则、时间范围、seed 和版本 | 抽样结果不等于可长期依赖的数据契约 |
+
+如果要比较两个业务组，简单随机抽样可能漏掉规模很小但重要的群体。此时先按月份、地区、状态或客户类型分层，再从每层抽样更合理。SAMPLE 是一种研究工具，不是质量保证；重复键、金额对账、合规和全量约束仍要对完整的数据或经过定义的控制集合执行。
+
+官方参考：[SAMPLE / TABLESAMPLE](https://docs.snowflake.com/en/sql-reference/constructs/sample)。
 
 ## 四、Snowflake 特别值得掌握的 SQL：窗口函数与 QUALIFY
 
