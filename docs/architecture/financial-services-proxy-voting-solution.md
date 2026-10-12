@@ -374,7 +374,33 @@ Snowflake 使用哪种刷新技术，应从模型需求决定而不是一律选 
 
 对账差异应生成可分派的异常记录、有负责人、有时间和处理结论；不能只发一条日志就视为已解决。
 
-### 6.4 为 NLQ-to-SQL 预留一条只读分析路径
+### 6.4 PostgreSQL 与 Snowflake 的实体映射和一致性规则
+
+下面的映射是建议的逻辑模型，不要求源表和分析表一一对应。PostgreSQL 保留符合事务写入需要的规范化结构；Snowflake 用明确 grain 的事实表、维度表和历史模型回答分析问题。RAW 可以保存受批准的源表镜像与 CDC 元数据，但它不应直接成为 NLQ Agent 的查询面。
+
+| PostgreSQL 权威模型（候选） | Snowflake 标准层 / Serving 模型（候选） | Grain / 映射规则 |
+|---|---|---|
+| meeting、agenda_item、provider_event | D_MEETING、D_AGENDA_ITEM、来源修订历史 | meeting_id / agenda_item_id 使用稳定 canonical ID；保留供应商 ID 与来源版本的桥接关系 |
+| security、portfolio、外部账户映射 | D_SECURITY、受限 D_PORTFOLIO、实体映射表 | 不依赖名称或会变的证券代码连接；组合和客户相关列必须按角色授权 |
+| holding_snapshot、entitlement_snapshot | F_HOLDING_SNAPSHOT、F_ENTITLEMENT_SNAPSHOT | 明确 record date、适用时间、来源时间、快照时间和数量单位；历史投票资格必须追溯至实际使用的快照 |
+| vote_decision、instruction_version、approval | F_VOTE_DECISION_OUTCOME、F_VOTE_DECISION_VERSION_HISTORY、审批历史 | Outcome 以一个业务决定的规范化版本为粒度；版本历史保留每次修订；approval 必须关联具体 version_id |
+| submission_attempt、provider_ack | F_SUBMISSION_ATTEMPT、F_PROVIDER_ACK | 一个发送尝试 / 回执事件一行；用供应商事件 ID、客户端引用与版本规则去重，不能覆盖原始响应 |
+| audit_event | 经筛选、分类的审计历史模型 | 保存 actor、action、target、时间、关联 ID 和版本；敏感原文按审计政策限制，不默认开放给 NLQ |
+
+为避免两边业务含义分叉，应建立一份版本化的数据契约，至少包含 canonical ID、字段定义、数据类型、状态字典、业务 / 系统时间、空值语义、精度与单位、删除规则、主数据责任人、敏感分类、版本兼容政策和模型负责人。它与 API Schema、数据库迁移、CDC mapping、Snowflake transformation tests 和 Semantic View 共同评审。
+
+#### 一致性不能只靠 CDC 连通
+
+1. PostgreSQL 提交成功后，CDC 将变化复制到 Snowflake。它保证的是按连接器配置传播的数据变更，不代表整个分析模型已经更新、对账或可被用户看见。
+2. 初次快照与后续日志需要有明确衔接水位。记录源端 LSN / offset 或连接器提供的等价进度、目标落地时间、模型发布时间，能区分“数据已经到 RAW”和“Serving 模型已处理完成”。
+3. DELETE、软删除、撤销、修订和迟到事件要有固定规则。若历史记录被修正，需保留来源版本；不能只在 Snowflake 里把最后一个状态静默覆盖，导致无法解释当时的决定。
+4. Schema 演进采用兼容式发布：先加新字段并更新消费者，再迁移数据与验证，最后移除旧字段；未知枚举和缺失必填字段进入异常队列，不能悄悄映射成任意默认值。
+5. PostgreSQL 可以强制执行其主键、唯一约束、外键和事务规则；Snowflake 标准表的 PRIMARY KEY / FOREIGN KEY 等声明通常并不强制执行。因此，Snowflake 上的重复键、孤儿记录、数量差异与关键关系需要在数据发布流水线中测试，不要只检查 DDL。
+6. 对历史报表，明确指标按决定发生日期、会议日期、供应商回执时间还是系统录入时间归属；对“当时已知什么”的复现，保存 effective time 和 recorded time，并将政策、资格与指令的版本关联起来。
+
+建议将以下测试设为发布门槛：唯一键、非空、引用完整性、状态映射、CDC 变更数、迟到 / 重放测试、按源端与目标端计算的关键数量核对、指标固定样例，以及 Semantic View 的 Golden Question 回归测试。有一项失败时，不应把新的模型版本推广为 Agent 的可用语义入口。
+
+### 6.5 为 NLQ-to-SQL 预留一条只读分析路径
 
 自然语言查询应成为经过授权的分析入口，不是绕过 API 和数据治理的捷径。建议独立提供 NLQ API，可以位于现有 Java 服务或受治理的 Agent 平台中；它只获得一个或多个明确定义的语义查询工具，不默认继承提交投票指令、修改决定或审批等命令工具。
 
@@ -410,7 +436,7 @@ flowchart TB
 
 自然语言查询可以返回分析结论、SQL 与数据口径，但不能自动调用提交投票指令的 POST 接口。即使用户问“把所有符合某条件的投票都提交”，NLQ Agent 也只可解释或生成分析结果；真正提交必须转入独立的正式工作流、重新验证资格与版本、执行职责分离并由授权人员确认。
 
-### 6.5 Proxy Voting 的 Semantic View：从一个分析域开始
+### 6.6 Proxy Voting 的 Semantic View：从一个分析域开始
 
 不应该把 Snowflake 的所有表直接暴露给 Agent，也不要一开始就做一个覆盖会议、证券、组合、资格、研究、决定、审批、提交、回执和审计的巨大 Semantic View。建议先选 **Vote Decision Analytics（投票决定分析）**，第二阶段再独立设计 Submission Reconciliation（提交对账分析）。
 
@@ -418,7 +444,7 @@ flowchart TB
 
 | Serving 模型 | 一行代表什么 | 主要分析用途 | 重要的建模限制 |
 |---|---|---|---|
-| F_VOTE_DECISION_OUTCOME | 一个业务投票决定的规范化最终版本；模型发布时按照明确规则消除同一决定的旧版本 | 最终决定数量、政策例外、按会议 / 组合 / 决定日期分析 | 必须定义被替换版本如何处理；如需“当时知道什么”，另建双时态版本历史模型 |
+| F_VOTE_DECISION_OUTCOME | 一个业务决定在明确数据水位下选择出的规范化最新版本；同一决定只保留一个用于当前分析口径的版本 | 最终决定数量、政策例外、按会议 / 组合 / 决定日期分析 | 必须定义被替换版本如何处理；如需“当时知道什么”，另建双时态版本历史模型 |
 | F_VOTE_DECISION_VERSION_HISTORY | 一条投票决定的一个版本或一次状态变更 | 复现旧版本、修改原因、审批与政策变化 | 不可直接将所有版本数当成最终决定数 |
 | F_SUBMISSION_ATTEMPT | 一次对外发送尝试 | 重试、拒绝、延迟和异常调查 | 一条最终指令可能多次尝试，不能把 Attempt Count 当作 Instruction Count |
 | F_PROVIDER_ACK | 一条供应商回执或状态事件 | 已接收 / 已拒绝 / 状态未知的对账与回执延迟 | 重复、迟到或更正回执需要去重规则及事件顺序 |
@@ -449,7 +475,7 @@ description: >
 tables:
   - name: vote_decisions
     description: >
-      F_VOTE_DECISION_OUTCOME 一行代表一个规范化业务决定的最终版本。
+      F_VOTE_DECISION_OUTCOME 一行代表一个业务决定在已发布数据水位下选择出的规范化最新版本。
       不包含每一次对外发送尝试；需要重现历史版本时使用独立版本历史模型。
     base_table:
       database: ANALYTICS
@@ -523,6 +549,11 @@ tables:
         description: 按会议来源规则标准化的日期。
         expr: MEETING_DATE
         data_type: DATE
+      - name: meeting_month
+        synonyms: ["会议月份", "meeting month"]
+        description: 按会议日期所在的自然月分组。
+        expr: DATE_TRUNC('MONTH', MEETING_DATE)
+        data_type: DATE
 
 relationships:
   - name: vote_decisions_to_meetings
@@ -540,6 +571,21 @@ metrics:
       不允许把空分母解释为零；聚合时保持分子与分母口径一致。
     expr: vote_decisions.policy_exception_decision_count
       / NULLIF(vote_decisions.finalized_decision_count, 0)
+
+verified_queries:
+  - name: finalized_decisions_by_meeting_month
+    question: 按会议月份统计最终投票决定数
+    verified_by: Proxy Voting Operations business owner
+    use_as_onboarding_question: true
+    sql: |
+      SELECT * FROM SEMANTIC_VIEW(
+        ANALYTICS.PROXY_VOTING.SV_VOTE_DECISION_ANALYTICS
+        DIMENSIONS meetings.meeting_month
+        METRICS vote_decisions.finalized_decision_count
+        WHERE vote_decisions.finalized_only
+      )
+      ORDER BY meeting_month DESC
+      LIMIT 24;
 
 module_custom_instructions:
   sql_generation: |
@@ -573,7 +619,7 @@ module_custom_instructions:
 
 Gold Question 不只是写一组供模型参考的例子。每条需要保留业务负责人、标准答案、预期 SQL / 结果、数据水位、授权范围与评测结果；指标口径更改后需要重新批准与回归测试。
 
-### 6.6 Semantic View 的访问控制与供应商选择
+### 6.7 Semantic View 的访问控制与供应商选择
 
 Semantic View 仍是一个 Snowflake 权限保护的数据对象；其存在本身不意味着所有字段可对所有人开放。建议按用户群和业务域拆分语义视图，例如投票决定分析、提交对账和合规审计，不要只创建一个巨大的通用视图。
 
