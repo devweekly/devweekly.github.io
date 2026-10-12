@@ -490,6 +490,59 @@ Query Catalog 不一定要成为独立产品。第一版可以是 Java 中的一
 
 对当前架构，我会从 **Java Query API + JDBC + 版本化 SQL 模板 + Snowflake Serving View / 历史模型** 起步。只有当一段流程确实需要在 Snowflake 内多步执行，才考虑 Stored Procedure；只有当重复计算昂贵、更新节奏可预测时，才考虑预先生成读模型。不要为了“把 Query Service 放进 Snowflake”先移植一套 Java 服务逻辑。
 
+#### Decision tree：该用哪种查询方式？
+
+这里要把三个不同的选择拆开：**应用如何连接 Snowflake、查询逻辑用什么写、结果是否要提前计算**。SQL、JDBC、Snowpark 和 Dynamic Tables 并不是同一层的替代品：SQL 是主要的关系查询语言；JDBC / SQL API 是提交与读取查询的接口；Snowpark 是另一种编写数据处理逻辑的 API；Dynamic Tables / Tasks 解决的是读模型何时准备好。
+
+~~~mermaid
+flowchart TD
+    A["先判断请求的业务语义"] --> B{"是否要求刚提交后立即读到最新状态，或参与提交前校验？"}
+    B -- "是" --> C["Java Domain API + PostgreSQL 权威状态"]
+    B -- "否：历史、跨期、组合筛选或分析" --> D["Java Query API 做授权与请求约束"]
+    D --> E{"主要是关系型筛选、Join、窗口、聚合吗？"}
+    E -- "是" --> F["Snowflake SQL：CTE、EXISTS、窗口函数"]
+    E -- "否，确有专用程序计算" --> G{"是否可以用受控函数表达？"}
+    G -- "单值或逐行转换" --> H["UDF / UDTF"]
+    G -- "多步处理或复杂转换" --> I["Snowpark / Stored Procedure"]
+    F --> J{"同一昂贵计算是否被反复执行？"}
+    J -- "否" --> K["普通 View + 本次 SQL"]
+    J -- "是，数据变化慢且查询形状稳定" --> L["评估 Materialized View 的限制与维护成本"]
+    J -- "是，跨表模型或多阶段 Serving Model" --> M["Dynamic Tables / Tasks / dbt 等预构建读模型"]
+    D --> N{"应用怎样提交查询？"}
+    N -- "Java 服务" --> O["优先 JDBC Driver"]
+    N -- "只能走 REST / 需轮询状态或取消语句" --> P["SQL API"]
+    N -- "第三方 BI / 桌面分析客户端" --> Q["使用受支持的 ODBC / JDBC 连接器"]
+    N -- "要把自定义容器应用作为 Snowflake 内服务运行" --> R["单独评估 Snowpark Container Services"]
+~~~
+
+上图的第一道分支比“SQL 还是 Snowpark”更重要：**操作工作台中的当前待办、当前审批状态和投票指令不应依赖有刷新延迟的分析读模型作最终判断**。这类页面优先从 PostgreSQL 读取；Snowflake 负责历史记录、跨期间筛选、批量汇总和分析模型。具体投票决策仍由 Java 领域规则和授权控制。
+
+| 选项 | 适用情况 | 本架构的推荐 |
+|---|---|---|
+| Java Query API + Snowflake JDBC + SQL | Java 已是 EKS 中的应用服务；查询参数、业务授权、DTO 和超时需要清晰控制 | **默认方案**。SQL 模板在代码仓库版本管理，使用参数绑定；应用层 API 不暴露数据库身份 |
+| Snowflake SQL API（REST） | 集成方无法使用驱动，或需要 HTTP 提交语句、查询状态、取消语句和取回结果 | 是 JDBC 的连接/调用方式替代，不是 SQL 语言的替代，也不是完整业务 API |
+| ODBC / JDBC 客户端直连 | 受控的 BI、报表工具或内部分析客户端，有明确的用户身份和角色映射 | 适用于受管理的分析入口；不要把直连凭证下发到浏览器或普通终端应用 |
+| 普通 View + 单次 SQL | 重用命名、标准化字段或共享 Join；计算不昂贵、结果使用不频繁 | 先选它。普通 View 保存查询定义，不等于缓存结果 |
+| Materialized View | 同一查询形状反复执行、底表相对少变、计算成本高，且目标查询满足产品限制 | 先用 Query Profile 验证；当前实现有单表、不能 Join、不能使用窗口函数等限制，不能拿它当通用多表读模型 |
+| Dynamic Tables | 需要用 SQL 构建多阶段、跨表的 Serving Model，并以目标新鲜度驱动刷新 | 用于预先构建查询模型；TARGET_LAG 是尽力而为的新鲜度目标，不是严格 SLA |
+| Tasks + SQL / dbt 或其他编排 | 定时快照、批量回填、质量校验、重算、跨作业依赖和发布流程 | 以团队已采用的编排工具为准。避免再叠一套没有运营责任人的调度系统 |
+| Stored Procedure / Snowflake Scripting | 一次数据库侧操作需要受控地顺序执行多条 SQL、变量分支、异常处理或事务内编排 | 用在数据库侧操作边界清楚的场景，不要将整个领域服务搬进去 |
+| UDF / UDTF | 多个查询需要重用同一段单值计算或表函数逻辑 | 保持小而可测；行访问授权、复杂跨表查询和完整业务流程不应塞进函数 |
+| Snowpark DataFrame API（Python / Java / Scala） | 自定义转换明显比 SQL 更清楚，或需要使用支持的语言库，同时希望计算靠近 Snowflake 数据执行 | 先做 PoC，检查生成 SQL、可观测性、包依赖和成本；不要只为避开 SQL 而迁移 |
+| Snowpark Container Services（SPCS） | 必须运行容器化应用、专用运行时或长运行服务，并且适合在 Snowflake 管理的 Compute Pool 中运营 | **不是默认的 Domain API 部署点**。它可以暴露服务端点，但会引入镜像、Compute Pool、服务权限、网络入口和独立运维边界 |
+| Cortex / 自然语言分析能力 | 用户要用自然语言探索指标或提出临时分析问题 | 作为辅助分析入口单独治理；不能替代确定性的业务授权、固定查询合同、批准流程或投票指令校验 |
+
+#### 推荐方案：先按默认组合落地
+
+对这里的金融服务应用，建议从 **Java Query API + JDBC + 版本化 SQL + Snowflake 受治理的 Serving Models** 起步。只有出现可量化的瓶颈或明确的程序化需求，再选预计算、存储过程或 Snowpark。
+
+1. **简单查询先写 SQL。** CTE、EXISTS / NOT EXISTS、窗口函数和聚合通常足以表达历史查询；优先把查询语义和数据模型设计清楚。
+2. **重复而昂贵的计算才预计算。** 先观察 Query Profile、访问频次、底表变化率和实际刷新需求。Materialized View 与 Dynamic Tables 的适用条件不同，不能混为一类。
+3. **需要调度时单独设计刷新责任。** 设定数据水位、重试、回填、对账、告警和发布方式；不要只配置一个刷新时间，就假定数据一定按时可见。
+4. **复杂代码不自动意味着 Snowpark。** 先证明 SQL 表达不清或无法满足约束；再测量 Snowpark 的开发、执行、包管理、排错和计算成本。
+5. **把查询入口与业务授权分开。** JDBC 或 SQL API 能执行的 SQL 范围必须由服务端限定。无论接口用哪种协议，都不能接受前端提交任意 SQL、任意列名、任意对象名或任意过滤表达式。
+6. **任何分析结果都要带上新鲜度语义。** 对有时点意义的查询，返回模型水位 / as-of 时间，且在水位超限时降级、提示或回源；不能把异步投影伪装成与主库强一致。
+
 #### 查询条件不是一个简单的 WHERE 时，怎么表达？
 
 复杂不等于必须写程序逐行处理。很多高级搜索实际上是几种关系运算的组合：
@@ -677,62 +730,116 @@ Hybrid Tables 支持事务型访问模式，包括行级锁、索引随机查找
 
 不要让 Snowflake 的 RAW 镜像意外成为财务账本的唯一来源。交易事实、记账模型和冲正方式应由相应的业务系统与控制框架确定。Snowflake 可以保留历史镜像、支持分析和对账，但其分析模型不是交易提交记录的替代品。
 
-## 六、可借鉴的大厂架构图
+## 六、公开参考架构的 Mermaid 概念重绘
 
-以下图来自微软官方架构指导、AWS 发布的参考架构和 Netflix Engineering Blog。它们分别解决不同问题，不是一个可以照抄的完整方案。先看原图，再看本文建议的设计，能更清楚地区分通用结构与具体产品选型。
+以下图不是厂商原图的逐组件复刻，而是依据原始公开资料，把与当前设计有关的结构重新画成 Mermaid。保留来源链接便于核对；为避免误导，不再把外部图片直接嵌入文章，也不把案例里使用的产品当作本系统的必选组件。
 
-### 6.1 Microsoft：BFF 夹在前端与业务服务之间
+### 6.1 Microsoft：BFF 按前端体验拆分，而非承接领域规则
 
-微软 Azure Architecture Center 的 BFF 图展示了客户端专属 BFF 与后端服务的分工。此处可借鉴的是前端体验隔离：Angular 需要的页面组合放在 BFF，跨消费者可复用的业务能力放在 Domain API。
+微软的 BFF 模式重点是客户端适配、路由与聚合：不同前端可以有自己的 BFF，共享的业务能力仍放在后端服务。以下图是该模式的概念摘要，不是 Azure 产品拓扑的逐项重画。
 
-![Microsoft Azure Architecture Center 的 BFF Solution 图](https://learn.microsoft.com/en-us/azure/architecture/patterns/_images/backend-for-frontend-solution.svg)
+~~~mermaid
+flowchart LR
+    Mobile["移动端"] --> Gateway["网关 / 路由层"]
+    Desktop["Web / 桌面端"] --> Gateway
+    Gateway --> MobileBFF["Mobile BFF"]
+    Gateway --> WebBFF["Web BFF"]
+    MobileBFF --> Domain["共享业务 API"]
+    WebBFF --> Domain
+    Entra["企业身份提供商"] -. "认证 / Token" .-> Gateway
+    WebBFF --> Obs["日志与监控"]
+    MobileBFF --> Obs
+~~~
 
-来源：[Backends for Frontends pattern — Microsoft Azure Architecture Center](https://learn.microsoft.com/en-us/azure/architecture/patterns/backends-for-frontends)。
+对当前系统的借鉴是让 Angular 页面适配留在 BFF，交易规则、账户权限与指令状态流转留在 Java Domain Service。来源：[Microsoft — Backends for Frontends pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/backends-for-frontends)。
 
-这张图讨论的是模式，不是某个金融客户的生产部署图。当前系统还需要补上 Entra 身份认证、服务端会话、EKS 部署、PostgreSQL 与 Snowflake 的数据路径。上文时序图表达了这些额外边界。
+### 6.2 AWS：支付接口现代化参考架构中的部署与集成边界
 
-### 6.2 AWS：支付接口现代化参考架构
+AWS 于 2022 年发布的 Payment System Interface Modernization 图展示了请求接入、容器化微服务、RDS、Redis、MSK、可观测性以及 IAM / KMS / Secrets Manager 等分层。下面只提炼对当前方案有用的边界，**并不表示本文系统需要采用图里的全部组件**。
 
-![AWS Payment System Interface Modernization 架构图](https://docs.aws.amazon.com/images/reference-architecture-diagrams/latest/payment-system-interface-modernization/images/payment-system-interface-moderization.png)
+~~~mermaid
+flowchart TB
+    Client["内部渠道 / 外部调用方"] --> Entry["受控入口<br/>WAF / API Gateway / ALB<br/>按实际接入方式选择"]
+    subgraph VPC["私有 AWS 网络"]
+        Entry --> EKS["EKS 上的业务服务"]
+        EKS --> RDS[("RDS / PostgreSQL<br/>权威事务数据")]
+        EKS --> Cache[("可选缓存<br/>仅针对已定义的缓存需求")]
+        EKS -. "可选：异步事件" .-> MSK["MSK / 消息平台"]
+        Sec["IAM / 工作负载身份<br/>Secrets Manager / KMS"] -. "身份与密钥控制" .-> EKS
+        Obs["CloudWatch / 日志与告警"] --- EKS
+    end
+    MSK -. "事件消费者 / 集成" .-> Downstream["下游系统"]
+    RDS --> CDC["受控 CDC / 数据集成"]
+    CDC --> SF[("Snowflake 读模型")]
+~~~
 
-来源：[Payment System Interface Modernization on AWS](https://docs.aws.amazon.com/architecture-diagrams/latest/payment-system-interface-modernization/payment-system-interface-modernization.html)。
+本系统应按已有 AWS Landing Zone、EKS 入口、RDS 网络和 Snowflake 连接方式重新确认具体部署。不要仅凭一张参考图就假定 Direct Connect、HSM、MSK、Redis 或某一种 API Gateway 已经存在。来源：[AWS — Payment System Interface Modernization on AWS](https://docs.aws.amazon.com/architecture-diagrams/latest/payment-system-interface-modernization/payment-system-interface-modernization.html)，原图发布日期 2022-04-06。
 
-AWS 的参考图包含 API Gateway、EKS、RDS、MSK、缓存与监控等组件。它适合参考网络入口、容器服务、事务数据和事件流怎样分层。不过它发布于 2022 年，不能把图中每个服务都当作当前项目的必选项；本系统应按现有 AWS 网络、EKS 入口和数据平台配置重新绘制部署图。
+### 6.3 Netflix Data Mesh：管道控制面与执行面分离
 
-### 6.3 Netflix：Data Mesh 的控制面与数据面
+Netflix 公开文章将其数据移动平台区分为 Controller 控制面和 Pipeline 数据面：前者接收请求、部署并管理管道生命周期；后者实际消费源数据、执行转换并写入目标。图中组件名称是文章结构的概念摘要，不代表本文应另建同等规模的平台。
 
-![Netflix Data Mesh Overall Architecture](https://miro.medium.com/v2/resize:fit:700/0*-gA7_aFh4okv6Qp9)
+~~~mermaid
+flowchart TB
+    Operator["平台使用者 / 配置接口"] --> Controller["Control Plane<br/>管道定义、配置、部署、生命周期"]
+    Controller --> Registry["管道配置 / 元数据"]
+    Controller -. "创建、更新、管理" .-> Runtime["Data Plane：运行中的 Pipeline"]
+    subgraph Pipeline["单条数据管道"]
+        Source["Source Connector"] --> Transport["事件传输层"] --> Processor["过滤 / 映射 / Join 等处理"] --> Sink["Destination Connector"]
+    end
+    Runtime --- Pipeline
+    Source --> SourceDB[("源系统 / 数据库")]
+    Sink --> Target[("目标存储 / 读模型")]
+~~~
 
-来源：[Data Mesh — A Data Movement and Processing Platform @ Netflix](https://netflixtechblog.com/data-mesh-a-data-movement-and-processing-platform-netflix-1288bcab2873)。
+可以借鉴“谁管理同步配置”与“谁执行数据复制和转换”是不同职责。当前规模如果一个托管连接器加上模型代码就能解决问题，不需要为了复刻 Netflix 而自建管道控制平台。来源：[Netflix Technology Blog — Data Mesh](https://netflixtechblog.com/data-mesh-a-data-movement-and-processing-platform-netflix-1288bcab2873)。
 
-Netflix 将自己的 Data Mesh 分为管理管道生命周期的控制面与执行数据移动的管道数据面。对当前系统有参考价值的是把“谁配置和管理同步”与“谁执行同步和转换”分开，而不是所有东西塞进一个 CDC Job。Netflix 的平台规模和内部技术栈与这里不同，图用于理解结构，不代表需要引入同样的平台。
+### 6.4 Netflix Delta：避免双写，以 CDC 维护派生读模型
 
-### 6.4 Netflix：Delta 的 CDC 到下游读模型
+Netflix Delta 的公开案例从源数据变更捕获 CDC 事件，经消息传输与流处理，必要时调用其他服务做数据丰富，最后更新搜索索引。目标是说明派生数据同步模式，而非证明某种消息平台是 Snowflake 的必需前置组件。
 
-![Netflix Delta Data Pipeline 图](https://miro.medium.com/v2/resize:fit:700/1*dqHrnUyLz68xCfEJAIpVAw.png)
+~~~mermaid
+flowchart LR
+    SourceDB[("权威源数据库")] --> CDC["CDC Connector"]
+    CDC --> Topic["事件传输 / Kafka Topic"]
+    Topic --> Processor["流处理与数据丰富<br/>可调用其他业务服务"]
+    Processor --> Search[("派生搜索索引")]
+    SourceDB -. "不可做同步双写的依赖" .-> App["写入源系统的应用"]
+    Search --> Query["查询消费者"]
+~~~
 
-来源：[Delta: A Data Synchronization and Enrichment Platform](https://netflixtechblog.com/delta-a-data-synchronization-and-enrichment-platform-e82c36a79aee)。
+对本文的直接启示是：写操作应先提交到权威源，派生读模型通过可重放的异步链路维护；同步失败要有重试、回补与对账，不能把两个系统的独立写入假装为同一事务。实际的 Snowflake 路径可由 CDC、RAW 层与模型刷新构成，不必复制 Netflix 的 Kafka / Flink 组合。来源：[Netflix Technology Blog — Delta: A Data Synchronization and Enrichment Platform](https://netflixtechblog.com/delta-a-data-synchronization-and-enrichment-platform-e82c36a79aee)。
 
-这篇文章介绍的生产平台用 CDC 捕获源数据变更，再经 Kafka 与流处理逻辑将数据送到下游搜索索引。它也解释了为什么双写很难长期维护，以及为什么需要可复用的数据同步层。这里的目标端是搜索索引等下游系统，不是 Snowflake；可借鉴的是 CDC、事件传输、转换与下游读模型之间的边界，而不是直接照搬组件组合。
+### 6.5 Kotak Mahindra Bank：独立只读投影需要新鲜度判断和回源
 
-### 6.5 Kotak Mahindra Bank：把交易写入与只读查询分开
+AWS 在 2025 年公开的 Kotak Mahindra Bank 案例描述了 RTS 写入路径和 ROS / Account Inquiry Service 只读路径。只读服务使用外部维护的投影降低核心系统查询压力，但会检测数据延迟；超出 SLO 时回源到核心系统，并返回数据更新时间。下图只概括 ROS 的查询决策，不重画 RTS 的完整交易架构。
 
-![Kotak Mahindra Bank RTS / ROS 架构图](https://d2908q01vomqb2.cloudfront.net/c5b76da3e608d34edb07244cd9b875ee86906328/2025/12/09/RTSv2.0.png)
+~~~mermaid
+flowchart TB
+    Core[("核心事务系统")] --> CDC["变更捕获 / 事件流"]
+    CDC --> Projection[("独立只读投影")]
+    User["账户查询调用方"] --> AIS["Account Inquiry Service"]
+    AIS --> Fresh{"投影延迟是否满足 SLO？"}
+    Projection --> Fresh
+    Fresh -- "满足" --> ReplyProjection["从只读投影返回结果"]
+    Fresh -- "超限或投影不可用" --> Fallback["回源核心系统"]
+    Core --> Fallback
+    ReplyProjection --> Response["结果 + 数据更新时间"]
+    Fallback --> Response
+    Reconcile["对账 / 新鲜度监控"] --- Projection
+~~~
 
-来源：[AWS for Industries — Kotak Mahindra Bank Modernizes Microledgers Using Amazon DynamoDB for Predictable Low Latency at Scale](https://aws.amazon.com/blogs/industries/kotak-bank-modernizes-microledgers-using-amazon-dynamodb-for-predictable-low-latency-at-scale/)（2025-12-10）。
+这里可以借鉴按新鲜度决定读源、展示数据时间、监控投影与权威源差异的原则。不能直接照搬 DynamoDB、MSK、Redis 或案例中的延迟和吞吐数字；这些是该银行环境中的具体选择与结果。来源：[AWS for Industries — Kotak Mahindra Bank Modernizes Microledgers](https://aws.amazon.com/blogs/industries/kotak-bank-modernizes-microledgers-using-amazon-dynamodb-for-predictable-low-latency-at-scale/)。
 
-这是 AWS 发布的客户架构案例，不是通用产品参考图。文章介绍了两条路径：RTS 接受交易，再通过 MSK 异步向核心银行系统回写；ROS 把读取放到独立的只读投影上，当投影数据超过新鲜度要求时，查询回退到核心系统，并在响应中带上时间信息。它使用 EKS、DynamoDB、MSK、Redis 等组件，不是 PostgreSQL + Snowflake。
+### 6.6 参考图能支撑什么结论
 
-这里值得借鉴的是：把写入和查询路径分开后，仍要为读模型的延迟制定可执行的策略，并且有回源、监控和对账。不能直接照搬它的存储选择，也不能把该案例当成目标架构已经得到验证的证据。
-
-### 6.6 这几张图对当前架构意味着什么
-
-| 借鉴对象             | 适合借鉴的部分                                | 不应照搬的部分                                                 |
-| -------------------- | --------------------------------------------- | -------------------------------------------------------------- |
-| Microsoft BFF        | 前端适配与业务能力分离                        | 不意味着 BFF 应实现交易规则                                    |
-| AWS 支付接口参考架构 | EKS、RDS、入口和事件流的部署关系              | 图中的每个服务都不是本系统的必需组件                           |
-| Netflix Data Mesh    | 管道控制面与执行面分开，数据契约与复用        | 不要求为当前规模自建一套数据移动平台                           |
-| Netflix Delta        | 避免双写，使用 CDC 与可复用管道维护下游读模型 | 其 Kafka / Flink / 搜索索引实现不等于必须使用的 Snowflake 链路 |
+| 来源 | 可借鉴的架构原则 | 不能从案例直接推出的结论 |
+|---|---|---|
+| Microsoft BFF | 前端适配层与共享业务服务分开 | BFF 是领域服务或唯一授权点 |
+| AWS 支付接口图 | 网络入口、容器、事务数据、事件流和运维能力需要各有边界 | 每个 AWS 服务都是必选项；2022 年图等于当前环境的部署事实 |
+| Netflix Data Mesh | 管道配置与管道执行可以分离 | 当前项目需要自建大型数据移动平台 |
+| Netflix Delta | 避免应用双写；CDC、处理和读模型应有可恢复链路 | Snowflake 必须用相同的 Kafka / Flink 组件链 |
+| Kotak Mahindra Bank | 读投影需要新鲜度决策、回源、时间戳与对账 | 特定银行的技术栈、性能指标可直接复制到 PostgreSQL + Snowflake |
 
 ## 七、运行与治理：上线前需要做的决定
 
@@ -742,11 +849,62 @@ EKS 扩容后，Java Pod 数量可能带动连接数与查询并发一起增长�
 
 历史查询应记录 Snowflake query ID、调用 API、请求类别、时间范围和数据模型版本（通过 Query Tag 或等价机制关联）；同时监控队列等待、运行时间、扫描字节与费用。超大导出最好做成异步任务，保存作业状态和结果引用，不要让浏览器请求一直占着应用线程。
 
-### 7.2 授权必须贯穿 BFF、Domain API 与数据模型
+### 7.2 端到端安全架构：认证、业务授权与数据权限分别执行
 
-Entra 验证用户是谁，不代表这个用户有权访问所有客户或账户。Domain API 应执行业务级授权；Snowflake Role、受控 View、行访问策略或动态数据屏蔽等机制则限制数据平台可访问的范围。两层用途不同，不能互相替代。
+Entra 登录只回答“调用者是谁”；Domain API 必须回答“这个人现在能对哪个业务对象做什么”；Snowflake 的 Role、Row Access Policy、Masking Policy / Secure View 等再限制“查询身份能够看到哪些数据”。这三层要互相配合，不能把身份认证、角色菜单或 Query Tag 当成完整的授权方案。
 
-BFF 只应该传递和适配会话及访问凭证，不应成为唯一的授权检查点。CDC 身份、模型刷新身份和应用查询身份也要分开，按实际负责的对象授予最小权限。对敏感字段和导出操作保留审计记录，并确保记录能关联到用户、应用请求、查询 ID 和相关数据模型。
+~~~mermaid
+flowchart TB
+    User["员工 / 业务用户"] --> Browser["Angular 浏览器<br/>无数据库凭证"]
+    Browser --> BFF["BFF<br/>服务端会话、CSRF、请求适配"]
+    Entra["Microsoft Entra ID<br/>OIDC / MFA / 用户身份"] <--> BFF
+    BFF -->|"目标 API 的 access token"| API["Java Domain / Query API"]
+    API --> Authz["Policy / Entitlement<br/>用户 × 业务对象 × 动作"]
+    Authz --> Decision{"允许本次动作？"}
+    Decision -- "否" --> Deny["拒绝并记录原因"]
+    Decision -- "是" --> Route{"命令还是查询？"}
+    Route -- "命令" --> PG[("PostgreSQL<br/>权威状态 + 原子事务")]
+    Route -- "历史查询" --> Adapter["Snowflake Adapter<br/>固定查询目录 / 参数绑定"]
+    Adapter --> SFRoles["Snowflake 最小权限应用角色"]
+    SFRoles --> Policies["Row Access / Masking / 受控 View"]
+    Policies --> SF[("Serving Models")]
+    PG --> CDC["独立 CDC 身份"]
+    CDC --> RAW[("Snowflake RAW / 模型层")]
+    SF --> Audit["应用审计 + Query ID / Access History"]
+    PG --> Audit
+    API --> Audit
+    style Deny fill:#ffe2e2,stroke:#b42318,color:#7a271a
+~~~
+
+#### 权限模型建议
+
+| 控制点 | 实际检查内容 | 必须避免的设计 |
+|---|---|---|
+| Entra / BFF | 用户身份、MFA / 条件访问策略、正确的 OIDC 状态与回调；服务端会话保护、CSRF 与 Cookie 属性 | 把 access token 放进浏览器可读取存储；把 ID Token 当成下游 API 的授权凭证 |
+| Java Domain API | 每次请求验证目标 API 的 access token（签名、issuer、audience、过期、scope / role）；检查用户、账户、组合、区域、任务分配和动作权限 | 因为请求经过 BFF 或菜单隐藏了按钮，就默认有权访问 |
+| 业务策略 | 根据动作、业务对象、当前工作流状态和职责分离要求做 Policy Decision；高风险操作要求独立审批 | 由前端、SQL 条件或 LLM 单方面决定访问边界 |
+| PostgreSQL | 应用工作负载专用数据库角色；事务约束、唯一键、乐观锁；必要时使用数据库权限和行级策略作纵深防御 | 让只读查询角色写业务表；把数据库管理员凭证放进应用；将权限只放在 UI |
+| Snowflake | 应用查询 Role 只读访问批准的 Serving Schema；按需采用 Secure View、Row Access Policy、动态 Masking；Transformation、CDC、应用查询与管理员身份分离 | 应用服务使用 ACCOUNTADMIN / 高权限角色；让面向终端用户的请求触达 RAW；用 Query Tag 当行级授权条件 |
+| 工作负载身份 | EKS 中 BFF、Domain API、CDC、模型刷新和导出作业使用不同 Service Account / IAM Role；凭证进入 Secrets Manager / 合规密钥系统，定期轮换 | 多个工作负载共用一个全权 AWS Role 或 Snowflake 用户，导致无法收窄权限与追查责任 |
+| 网络与密钥 | RDS 放在私有子网；按实际部署收敛 EKS 到 RDS 的网络；限制 Snowflake 入站来源；评估 PrivateLink / 私有连接、TLS、KMS 与出站白名单 | 认为启用 TLS 等于网络隔离，或者把私有连接能力当作默认已配置 |
+| 审计与证据 | 关联用户 / workload identity、业务对象、动作、审批人、请求 ID、PostgreSQL transaction / version、Snowflake query ID、模型版本与数据水位；按策略保留并限制修改 | 只保留应用字符串日志；把“SQL 成功”“Connector Running”当作合规证据 |
+
+#### 需要明确的身份映射方式
+
+如果 Java 用一个共用 Snowflake service role 查询，那么 Snowflake 默认看到的是该服务身份，不会凭 Query Tag 自动知道某个 Entra 用户属于哪个投资组合或账户。可采用两种经过评估的模式：
+
+- **应用层业务授权 + Snowflake 服务角色纵深防御**：Java 在查询前完成对象级 Entitlement 检查；Snowflake Role 只能读取批准的 Serving 数据集。若查询跨多个账户，服务端必须把已验证的授权范围转成经过约束的过滤条件，并把可访问数据范围纳入测试。
+- **Snowflake 也能执行用户级策略的受控映射**：只有当 Snowflake 侧 Row Access Policy 所需的身份 / 映射可信且可维护时才使用。传入的用户标识不能由浏览器自行声明；需要防止连接池上下文串用、角色切换错误和查询复用导致越权。应有针对不同用户、不同账户的负向测试。
+
+不要因为第一种模式容易实现就把 Snowflake 当成没有数据层防护；同样，不能把 Row Access Policy 当成 Java 领域授权的替代品。权限边界需要分别测试，尤其是跨账户过滤、导出、历史查询、服务身份误配置和异常回退路径。
+
+#### 审计与生产控制
+
+1. **审计记录至少分两类。** 业务审计记录谁在何时对哪个业务对象执行了什么、使用了哪一版规则、由谁审批以及外部系统确认了什么；技术审计记录调用链、执行身份、查询 ID、数据模型版本、失败与重试。两类记录要通过关联 ID 串起来。
+2. **外部数据访问与连接器使用独立身份。** CDC 只读取必要的 PostgreSQL 变更并写入指定 RAW 区域；转换身份只能写入模型层；在线 Query API 通常只读 Serving Schema。不要用同一身份同时复制、改模、查询和管理账户。
+3. **导出是独立动作。** 导出权限不能从“可以看页面”自动继承；控制行数、敏感字段、接收位置、有效期与下载审计。批量导出使用可追踪任务，不把大型结果装入普通 HTTP 响应。
+4. **新鲜度与授权不能混为一谈。** 即使 Snowflake 模型水位符合目标，用户仍可能已经失去业务授权；对审批、指令提交等动作必须回到 Domain API 和权威当前状态做校验。
+5. **高风险动作要有可验证的停机路径。** 管理员应能够禁用某类命令、撤销外部发送能力、停用相关服务身份或隔离连接器；执行开关、授权策略变更和紧急操作本身也要被审计。
 
 ### 7.3 生产监控要能定位“哪一段出了问题”
 
@@ -813,3 +971,16 @@ BFF 只应该传递和适配会话及访问凭证，不应成为唯一的授权�
 24. [Snowflake：JDBC Driver](https://docs.snowflake.com/en/developer-guide/jdbc/jdbc-using) — Java 服务连接、参数绑定和异步查询能力。
 25. [Snowflake：Understanding row access policies](https://docs.snowflake.com/en/user-guide/security-row-intro) — 在数据平台执行行级数据访问约束。
 26. [Snowflake：Set the target lag for a Dynamic Table](https://docs.snowflake.com/en/user-guide/dynamic-tables-target-lag) — Target Lag 是新鲜度目标，不是严格刷新时间保证。
+27. [Snowflake — SQL API](https://docs.snowflake.com/en/developer-guide/sql-api) — 通过 REST 提交 SQL、查看状态、取消查询并获取结果；它不是完整的领域 API。
+28. [Snowflake — Snowpark Container Services: Working with services](https://docs.snowflake.com/en/developer-guide/snowpark-container-services/working-with-services) — 容器服务、Job Service 与受权限控制的服务端点。
+29. [Snowflake — Working with Materialized Views](https://docs.snowflake.com/en/user-guide/views-materialized) — 物化视图的适用条件、自动维护机制与单表等限制。
+30. [Snowflake — Snowpark Developer Guide for Java](https://docs.snowflake.com/en/developer-guide/snowpark/java/index) — Java DataFrame API、UDF、Stored Procedure 与底层 SQL 可观测性。
+31. [Snowflake — User-defined functions overview](https://docs.snowflake.com/en/developer-guide/udf/udf-overview) — UDF 与 Stored Procedure 的区别和适用语义。
+32. [Snowflake — Working with DataFrames in Snowpark Python](https://docs.snowflake.com/en/developer-guide/snowpark/python/working-with-dataframes) — Snowpark DataFrame 的惰性执行与数据转换 API。
+33. [Snowflake — Stored Procedures overview](https://docs.snowflake.com/en/developer-guide/stored-procedure/stored-procedures-overview) — 数据库侧过程逻辑的能力与约束。
+34. [Snowflake — Overview of Access Control](https://docs.snowflake.com/en/user-guide/security-access-control-overview) — Snowflake 对象权限、角色层次与访问控制框架。
+35. [Snowflake — Row Access Policies](https://docs.snowflake.com/en/user-guide/security-row-intro) — 数据行级访问限制；是否使用需结合账户版本和部署方式确认。
+36. [Snowflake — Dynamic Data Masking](https://docs.snowflake.com/en/user-guide/security-column-ddm-intro) — 查询时的列级动态屏蔽；需要核实版本和敏感数据场景。
+37. [Snowflake — Network Policies](https://docs.snowflake.com/en/user-guide/network-policies) — 限制到 Snowflake 服务的入站网络访问。
+38. [Snowflake — Access History](https://docs.snowflake.com/en/user-guide/access-history) — 查询所访问对象及所引用的数据保护策略等审计信息。
+39. [AWS — Grant Kubernetes workloads access to AWS using Kubernetes Service Accounts](https://docs.aws.amazon.com/eks/latest/userguide/service-accounts.html) — EKS 工作负载身份与细粒度 AWS 权限。
