@@ -544,7 +544,7 @@ WITH latest_stage_event AS (
         recorded_at,
         ROW_NUMBER() OVER (
             PARTITION BY record_id, stage_code
-            ORDER BY recorded_at DESC, event_id DESC
+            ORDER BY effective_at DESC, recorded_at DESC, event_id DESC
         ) AS rn
     FROM MART.RECORD_STAGE_EVENT
     WHERE effective_at <= ?
@@ -617,7 +617,7 @@ LIMIT ?;
 
 #### 性能与安全一起设计
 
-Snowflake 普通 View 是已命名的查询定义，不会自动保存结果；Materialized View 和预先维护的读模型会引入存储及维护成本。Dynamic Tables 的 TARGET_LAG 表示期望的新鲜度目标，不应当作每一次刷新都准时完成的 SLA。选型前应先看 SQL Profile 与实际延迟，再决定是否值得预计算。
+Snowflake 普通 View 是已命名的查询定义，不会自动保存结果；Materialized View 和预先维护的读模型会引入存储及维护成本。Dynamic Tables 的 [TARGET_LAG](https://docs.snowflake.com/en/user-guide/dynamic-tables-target-lag) 表示期望的新鲜度目标，不应当作每一次刷新都准时完成的 SLA。选型前应先看 SQL Profile 与实际延迟，再决定是否值得预计算。
 
 查询 API 需要控制的内容包括：
 
@@ -812,3 +812,4 @@ BFF 只应该传递和适配会话及访问凭证，不应成为唯一的授权�
 23. [Snowflake：Introduction to the SQL API](https://docs.snowflake.com/en/developer-guide/sql-api/intro) — 通过 REST 提交 SQL、获取状态、取消查询与检索结果。
 24. [Snowflake：JDBC Driver](https://docs.snowflake.com/en/developer-guide/jdbc/jdbc-using) — Java 服务连接、参数绑定和异步查询能力。
 25. [Snowflake：Understanding row access policies](https://docs.snowflake.com/en/user-guide/security-row-intro) — 在数据平台执行行级数据访问约束。
+26. [Snowflake：Set the target lag for a Dynamic Table](https://docs.snowflake.com/en/user-guide/dynamic-tables-target-lag) — Target Lag 是新鲜度目标，不是严格刷新时间保证。
