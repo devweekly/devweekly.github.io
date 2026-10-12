@@ -44,7 +44,7 @@ flowchart TB
     PG --> CDC
     CDC --> Raw --> Model --> Mart
     DomainAPI -->|"历史查询 API"| Mart
-    BI["BI / 投研工具 / 报表消费者"] --> Mart
+    BI["BI / 内部业务应用 / 报表消费者"] --> Mart
 ```
 
 这张图是建议目标架构，不是对某个现有环境的反向还原。里面有两条不同的请求路径：
@@ -435,7 +435,200 @@ RAW 记录来源，标准化层统一类型、标识、状态与删除处理，�
 
 Snowflake 中的普通 View、Materialized View、Dynamic Table 与手工编排 SQL 作业并非可以随意互换。应根据数据量、依赖关系、目标新鲜度、刷新代价和具体功能支持情况选择。无论用哪一种，Serving 模型都要定义数据更新时间或可核验的水位。
 
-### 3.3 把 SQL 模型当作生产代码维护
+### 3.3 Query Service 到底怎么构造：API 在 Java，查询计算在 Snowflake
+
+这里先纠正一个容易造成误解的说法：通常不是把一套 Query Service 微服务部署到 Snowflake。**建议把 Java Query API 继续运行在 EKS，把要查询的数据模型和 SQL 放在 Snowflake。** Java 服务接收查询请求、做授权与参数校验、选择查询定义，再通过 Snowflake JDBC 执行 SQL。Snowflake 负责扫描数据、Join、窗口计算和聚合。
+
+Snowflake 也提供 SQL API，可以通过 REST 提交 SQL、查看执行状态、取消查询和获取结果；但它只是数据库的执行接口，不是完整的业务查询 API。它不会替你定义面向 Angular 的请求合同、业务权限、可选条件规则、结果 DTO 和查询 SLA。不要让浏览器直接拿数据库身份执行任意 SQL，也不要因为有 SQL API 就再造一套通用 SQL 代理。
+
+#### 查询请求的完整路径
+
+```mermaid
+flowchart TB
+    UI["Angular 页面"]
+    BFF["BFF<br/>会话、前端响应格式"]
+    API["Java Query API / EKS"]
+    Auth["请求校验与数据授权"]
+    Catalog["Query Catalog<br/>已批准的查询类型与条件"]
+    SQL["版本管理的 SQL 模板"]
+    JDBC["Snowflake JDBC"]
+    WH["Snowflake Virtual Warehouse"]
+    MODEL["Views / Serving Models"]
+    PREP["预先维护的历史模型<br/>Dynamic Tables、SQL 作业或 dbt"]
+
+    UI --> BFF --> API --> Auth --> Catalog --> SQL --> JDBC --> WH
+    PREP --> MODEL
+    MODEL --> WH
+    WH --> JDBC
+    JDBC --> API
+    API --> BFF --> UI
+```
+
+Query Catalog 不一定要成为独立产品。第一版可以是 Java 中的一组命名查询和请求 schema，再加上 Snowflake 中受版本管理的 View / 表模型。查询数量增长后，可以把 SQL 模板和元数据集中管理，但不需要先引入一套复杂的通用查询引擎。
+
+一次请求的处理顺序建议固定：
+
+1. BFF 把登录会话和调用上下文传给 Java API；Java 验证 token、调用者身份和业务权限，不能只因为请求来自 BFF 就默认放行。
+2. API 校验请求 schema、日期边界、可选筛选条件、排序字段、分页大小和导出权限。它只接受产品明确支持的查询参数，不接受前端直接传入 SQL 或任意 WHERE 字符串。
+3. 根据查询类型选择一个已批准的查询模板。不同查询可以共享基础 View，但不必把所有业务条件硬塞到同一个万能 SQL。
+4. Java 将输入值作为绑定参数交给 Snowflake JDBC，执行并读取结果。对大结果集使用有界分页或异步任务，而不是把所有行加载到 JVM。
+5. API 将结果转换为稳定的 DTO，并按需要返回查询 ID、所用模型的更新时间或 as-of 水位。日志关联到请求 ID 和 Snowflake query ID，便于追查耗时与费用。
+
+#### Snowflake 里面应该写哪种东西？
+
+| Snowflake 中的对象 | 用在哪里 | 不要把它当成什么 |
+|---|---|---|
+| 普通 View | 给复杂 Join、字段标准化或常用业务概念一个稳定名称 | View 定义本身通常不保存结果；创建 View 不意味着已经预计算或查询一定更快 |
+| SQL 查询：CTE、子查询、EXISTS、窗口函数 | 对本次请求执行的过滤、关联、取最新事件、跨期统计和排序 | 不必把每一个 AND 条件都单独做成数据库对象 |
+| 预先维护的表或读模型 | 多个页面反复使用同一套昂贵计算，或者查询必须按一致的历史口径还原 | 不应与源数据镜像混成一张未经治理的大宽表 |
+| Dynamic Tables、Tasks、dbt 等转换流程 | 在查询到来之前构建或更新标准化数据、快照、聚合和 Serving 模型 | Dynamic Tables 是数据转换与刷新机制，不是面向用户请求的 REST Query Service |
+| Stored Procedure | 在 Snowflake 侧按顺序执行多条 SQL、做分支控制或封装受控的数据操作 | 不必给每一种搜索条件都创建一个存储过程 |
+| Snowpark Python / Java / Scala | SQL 难以清楚表达、适合靠近数据执行的转换或计算 | 不应把普通关系查询换成程序代码，只为“看起来更像服务” |
+| UDF / UDTF | 把可复用的标量逻辑或表函数嵌入 SQL 计算 | 不应拿 UDF 代替跨表的数据模型、API 授权或完整的领域服务 |
+
+官方资料：[Views](https://docs.snowflake.com/en/user-guide/views-introduction)、[Dynamic Tables](https://docs.snowflake.com/en/user-guide/dynamic-tables-intro)、[Snowpark](https://docs.snowflake.com/en/developer-guide/snowpark/python)、[在运行时构造 SQL](https://docs.snowflake.com/en/user-guide/querying-construct-at-runtime)、[SQL API](https://docs.snowflake.com/en/developer-guide/sql-api/intro)。
+
+对当前架构，我会从 **Java Query API + JDBC + 版本化 SQL 模板 + Snowflake Serving View / 历史模型** 起步。只有当一段流程确实需要在 Snowflake 内多步执行，才考虑 Stored Procedure；只有当重复计算昂贵、更新节奏可预测时，才考虑预先生成读模型。不要为了“把 Query Service 放进 Snowflake”先移植一套 Java 服务逻辑。
+
+#### 查询条件不是一个简单的 WHERE 时，怎么表达？
+
+复杂不等于必须写程序逐行处理。很多高级搜索实际上是几种关系运算的组合：
+
+- 当前状态和指定日期之前的历史状态必须同时满足；
+- 记录必须经历过若干指定阶段，但不能出现某类后续事件；
+- 同一记录有很多次变更，只取指定时点最后生效的一次；
+- 先按主体或类别分组，再取每组最新记录、排名或累计值；
+- 对记录的历史版本做时间点关联，并统计后续一个观察窗口内的结果。
+
+这类查询通常可以用规范化的历史模型、CTE、EXISTS / NOT EXISTS、ROW_NUMBER() / QUALIFY、窗口函数和分组聚合表达。真正的设计工作不是把条件堆进一条很长的 SQL，而是明确查询语义，再选择合适的数据模型和拆分层次。
+
+前端可以提交有类型的查询请求，而不是自己编 SQL：
+
+```json
+{
+  "asOf": {
+    "effectiveDate": "2026-09-30",
+    "knownAt": "2026-09-30T23:59:59Z"
+  },
+  "filters": {
+    "statuses": ["ACTIVE", "PENDING"],
+    "requiredStages": ["CHECK_A", "CHECK_B"],
+    "excludeEvents": ["BLOCKED", "WITHDRAWN"],
+    "changedBetween": {
+      "from": "2025-01-01",
+      "to": "2026-09-30"
+    }
+  },
+  "sort": {
+    "field": "lastChangedAt",
+    "direction": "DESC"
+  },
+  "page": {
+    "size": 50,
+    "cursor": null
+  }
+}
+```
+
+这些状态和阶段代码是虚构示例。API 必须定义条件的确切语义：requiredStages 是“每个阶段都曾在该时点以前完成”，还是“命中过任意阶段即可”；excludeEvents 是指截至时点曾经发生过，还是只看最新状态。两种定义会生成不同 SQL，不能把它们当成普通字段过滤。
+
+一种可行的 SQL 结构如下。它用于说明关系运算，不是可以直接拷贝的生产查询；真实表名、事件定义、参数占位符和访问条件要按实际模型确定。
+
+```sql
+WITH latest_stage_event AS (
+    SELECT
+        record_id,
+        stage_code,
+        event_type,
+        effective_at,
+        recorded_at,
+        ROW_NUMBER() OVER (
+            PARTITION BY record_id, stage_code
+            ORDER BY recorded_at DESC, event_id DESC
+        ) AS rn
+    FROM MART.RECORD_STAGE_EVENT
+    WHERE effective_at <= ?
+      AND recorded_at <= ?
+),
+eligible_records AS (
+    SELECT r.record_id, r.status, r.last_changed_at
+    FROM MART.RECORD_CURRENT r
+    WHERE r.effective_at <= ?
+      AND r.recorded_at <= ?
+      AND r.status IN (?, ?)
+      AND EXISTS (
+          SELECT 1
+          FROM latest_stage_event e
+          WHERE e.record_id = r.record_id
+            AND e.stage_code = ?
+            AND e.event_type = 'COMPLETED'
+            AND e.rn = 1
+      )
+      AND NOT EXISTS (
+          SELECT 1
+          FROM latest_stage_event e
+          WHERE e.record_id = r.record_id
+            AND e.stage_code = ?
+            AND e.event_type = 'BLOCKED'
+            AND e.rn = 1
+      )
+)
+SELECT record_id, status, last_changed_at
+FROM eligible_records
+ORDER BY last_changed_at DESC
+LIMIT ?;
+```
+
+上例用问号表示 JDBC 参数。日期、状态和值都应绑定，不要拼接字符串。排序字段、列名和表名通常不能直接用值参数绑定，应从服务端白名单中选择。
+
+可选过滤条件较多时，按已批准的查询形状组织有限几种 SQL 模板，而不是生成任何用户想要的 SQL。状态列表等变长输入，应使用驱动支持的安全绑定方式，或依据经过校验的值生成占位符。如果某些搜索需要大量阶段和事件关联，可以先构建可复用的“截至某时点的当前状态 / 阶段投影”，让查询针对稳定、粒度清楚的模型，而不是每次从原始事件表重建所有状态。
+
+若业务用户确实需要组合很多条件，可以设计受限的查询 DSL：每个条件由字段 ID、操作符、值和组合节点构成；字段和操作符由服务器注册，服务器检查字段类型、允许的关系、最大嵌套层数与时间跨度，再编译为固定 SQL 结构。第一版只实现真实使用的条件类型，不需要做成通用 SQL Builder 产品。
+
+#### 跨期回溯查询要先设计历史模型
+
+常见困难不是 WHERE 写得不够长，而是缺少能回答历史问题的数据结构。至少要判断是否需要以下内容：
+
+| 数据结构 | 作用 |
+|---|---|
+| 当前记录 / 主体表 | 保存当前认可的状态和稳定标识 |
+| 事件历史表 | 记录状态或属性何时生效、何时被系统记录以及事件顺序 |
+| 历史快照 / 版本化模型 | 支持“在某个时间点，系统已知的状态是什么” |
+| 后续结果事实表 | 保存观察期内发生的结果、度量和结果可用时间 |
+| 规则与指标版本 | 说明历史计算使用哪一版定义、排除条件和观察窗口 |
+
+必须区分 effective_at（业务事实何时生效）与 recorded_at（系统何时获知事实）。例如，某条更正数据在九月才到达，却把六月的业务值改掉，那么“按六月的最终修正值统计”与“重现六月当时能看到的结果”不是同一项查询。回溯分析如果只按业务日期关联、却使用后来才出现的数据，可能把未来信息带入历史结果。是否需要双时态历史要由可复现性要求决定，不是所有表都要无条件做成双时态。
+
+查询模型中还要固定观察窗口、指标口径和版本。例如结果是截至某个日期，还是在记录创建后 30 天、90 天或一年观察；缺失结果是未知、零，还是不纳入计算；纠正记录是否重算既往结果。这些都是查询语义，不应散落在多个 API 的 if/else 中。
+
+#### 哪些逻辑留在 Java，哪些放在 Snowflake？
+
+| 逻辑 | 建议位置 |
+|---|---|
+| 交易提交前必须通过的业务规则、权限判定、状态转换 | Java Domain Service；需要原子性的数据约束由 PostgreSQL 共同保证 |
+| 对大量历史行做过滤、事件存在性判断、窗口计算、排名、跨期聚合 | Snowflake SQL / 查询模型 |
+| 多个查询共享、且每次临时计算昂贵的历史派生数据 | 预先维护的 Snowflake 模型；按新鲜度要求选择刷新机制 |
+| 多步批处理、受控分支或需在 Snowflake 内顺序执行的数据库操作 | 评估 Snowflake Stored Procedure / Task |
+| 难以表达为关系运算的专用计算 | 先确认 SQL 不适用，再评估 Snowpark；保留可测试、可版本化的实现 |
+| Angular 页面字段拼装、页面专属 DTO | BFF |
+| 请求校验、查询模式选择、授权、超时、分页、结果 DTO 与审计关联 | Java Query API |
+
+即便同一项业务定义既影响写入规则，也影响历史分析，也不要让 Java 和 SQL 各自出现两个互不校验的实现。交易侧需要在提交时执行；历史侧可以在 Snowflake 批量计算，但要用版本化定义和固定案例验证两边的含义一致。
+
+#### 性能与安全一起设计
+
+Snowflake 普通 View 是已命名的查询定义，不会自动保存结果；Materialized View 和预先维护的读模型会引入存储及维护成本。Dynamic Tables 的 TARGET_LAG 表示期望的新鲜度目标，不应当作每一次刷新都准时完成的 SLA。选型前应先看 SQL Profile 与实际延迟，再决定是否值得预计算。
+
+查询 API 需要控制的内容包括：
+
+- 参数必须绑定；动态列名、排序字段和可选 Join 必须来自服务端白名单。
+- 限制日期跨度、最大返回行数、查询执行时间和并发；大导出改走异步任务。
+- 给 SQL 加 Query Tag 或等价关联信息，并记录 Snowflake query ID、请求类型、数据模型版本和处理水位。
+- Java 的业务授权与 Snowflake 的 Role / Row Access Policy / Secure View 是互补关系。若所有用户共用一个 Snowflake service role，Snowflake 不会自动知道每个 Entra 用户的业务权限；要在 Java 侧校验，或设计经过服务端验证的身份/权限映射，不能把 Query Tag 当授权机制。
+
+这些边界比选择“纯 SQL 还是 Snowpark”更重要。通常先把关系计算写成 SQL；只有在 SQL 确实难以表达或需要程序化控制时再引入 Snowpark / Stored Procedure。大部分查询复杂度应通过有版本的查询模板与合理的数据模型来管理，不必把整套业务逻辑移植到 Snowflake 的过程代码里。
+
+### 3.4 把 SQL 模型当作生产代码维护
 
 只要某个查询会被多个应用依赖，就应该有版本管理、Review、自动化测试和发布流程，而不是把 SQL 留在某个人的 worksheet 或 Java 字符串里。
 
@@ -611,3 +804,11 @@ BFF 只应该传递和适配会话及访问凭证，不应成为唯一的授权�
 16. [Snowflake Openflow Connector for PostgreSQL](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/about) — 初始快照和变更复制能力。
 17. [Debezium PostgreSQL Connector](https://debezium.io/documentation/reference/stable/connectors/postgresql.html) — PostgreSQL logical decoding 与 CDC。
 18. [Debezium Outbox Event Router](https://debezium.io/documentation/reference/stable/transformations/outbox-event-router.html) — 领域事件的 Outbox 发布方式。
+
+19. [Snowflake：Overview of Views](https://docs.snowflake.com/en/user-guide/views-introduction) — 普通 View、Materialized View 与 Secure View 的职责和代价。
+20. [Snowflake：Constructing SQL at runtime](https://docs.snowflake.com/en/user-guide/querying-construct-at-runtime) — 动态 SQL、绑定变量和对用户输入的校验要求。
+21. [Snowflake：Bind variables](https://docs.snowflake.com/en/sql-reference/bind-variables) — SQL 参数化与绑定变量限制。
+22. [Snowflake：Snowpark Python Developer Guide](https://docs.snowflake.com/en/developer-guide/snowpark/python) — 在 Snowflake 侧执行数据处理，以及 UDF / Stored Procedure 的用法。
+23. [Snowflake：Introduction to the SQL API](https://docs.snowflake.com/en/developer-guide/sql-api/intro) — 通过 REST 提交 SQL、获取状态、取消查询与检索结果。
+24. [Snowflake：JDBC Driver](https://docs.snowflake.com/en/developer-guide/jdbc/jdbc-using) — Java 服务连接、参数绑定和异步查询能力。
+25. [Snowflake：Understanding row access policies](https://docs.snowflake.com/en/user-guide/security-row-intro) — 在数据平台执行行级数据访问约束。
