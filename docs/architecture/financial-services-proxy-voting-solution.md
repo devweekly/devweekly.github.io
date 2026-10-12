@@ -374,6 +374,214 @@ Snowflake 使用哪种刷新技术，应从模型需求决定而不是一律选 
 
 对账差异应生成可分派的异常记录、有负责人、有时间和处理结论；不能只发一条日志就视为已解决。
 
+### 6.4 为 NLQ-to-SQL 预留一条只读分析路径
+
+自然语言查询应成为经过授权的分析入口，不是绕过 API 和数据治理的捷径。建议独立提供 NLQ API，可以位于现有 Java 服务或受治理的 Agent 平台中；它只获得一个或多个明确定义的语义查询工具，不默认继承提交投票指令、修改决定或审批等命令工具。
+
+~~~mermaid
+flowchart TB
+    User["已登录的用户"] --> UI["Angular：自然语言问题"]
+    UI --> BFF["BFF：会话与请求上下文"]
+    BFF --> NLQ["NLQ API / Agent Orchestrator"]
+    NLQ --> Entitlement["可信身份、组合范围与数据分类授权"]
+    Entitlement --> Agent["问题分类、补充澄清、选择语义工具"]
+    Agent --> Semantic["Semantic Query Provider"]
+    Semantic --> SV["获准的 Semantic View"]
+    Agent --> Candidate["候选 SQL / 解释"]
+    Candidate --> Guard["SQL AST、对象 / 列白名单、时间与成本限制"]
+    Guard --> Query["只读 Query Adapter"]
+    Query --> SF["专用 Snowflake Role / Warehouse"]
+    SF --> Query --> Result["结果 + SQL / 口径 + 数据水位"]
+    Result --> NLQ --> UI
+    Entitlement --> Audit["授权决定与审计"]
+    Guard --> Audit
+    Query --> Audit
+~~~
+
+上图中的 SQL 检查只是纵深防御，并不是唯一的安全边界。底层 Snowflake 身份只能访问受治理的模型；若采用所有终端用户共用的服务身份，必须另外保证每次查询的数据范围由服务端强制约束，不能让 LLM 自己声明 portfolio / account ID 来决定权限。优先选择可信的用户身份映射和行访问策略，或使用能强制注入授权范围的服务端查询层，并对跨组合越权查询做负向测试。
+
+#### 现在就该预留的接口和控制
+
+- **NLQ API** 接收用户问题、会话上下文、可选时间范围与用户身份上下文；所有上下文中的权限声明都来自认证与 Entitlement 服务，不能采纳用户 prompt 中自称的角色。
+- **Semantic Query Provider** 隔离语义执行实现。未来可以连接 Snowflake Cortex Agents，也可以由企业自己的 LangChain / DeepAgents + LiteLLM 进行编排，再调用同一套经过审核的查询工具。
+- **Query Guard** 校验 SQL AST、允许的对象与列、查询形态、时间跨度、结果行数、导出权限、语句超时和 Warehouse 预算。禁止任意 DML / DDL、CALL、访问未知对象、堆叠语句以及通过函数或副查询绕过规则。
+- **Read-only Query Adapter** 使用最小权限 Role，且仅访问批准的 Semantic View / Serving Schema。Agent 不持有数据库密码、不直接访问数据库网络，不将工具返回的数据集自动喂给其他工具。
+- **Audit** 记录用户、问题分类、语义视图版本、授权范围、生成与实际执行的 SQL、查询 ID、返回规模、数据水位和失败 / 拒绝原因；问题与结果中的敏感文本需按企业策略脱敏。
+
+自然语言查询可以返回分析结论、SQL 与数据口径，但不能自动调用提交投票指令的 POST 接口。即使用户问“把所有符合某条件的投票都提交”，NLQ Agent 也只可解释或生成分析结果；真正提交必须转入独立的正式工作流、重新验证资格与版本、执行职责分离并由授权人员确认。
+
+### 6.5 Proxy Voting 的 Semantic View：从一个分析域开始
+
+不应该把 Snowflake 的所有表直接暴露给 Agent，也不要一开始就做一个覆盖会议、证券、组合、资格、研究、决定、审批、提交、回执和审计的巨大 Semantic View。建议先选 **Vote Decision Analytics（投票决定分析）**，第二阶段再独立设计 Submission Reconciliation（提交对账分析）。
+
+#### 先固定事实粒度
+
+| Serving 模型 | 一行代表什么 | 主要分析用途 | 重要的建模限制 |
+|---|---|---|---|
+| F_VOTE_DECISION_OUTCOME | 一个业务投票决定的规范化最终版本；模型发布时按照明确规则消除同一决定的旧版本 | 最终决定数量、政策例外、按会议 / 组合 / 决定日期分析 | 必须定义被替换版本如何处理；如需“当时知道什么”，另建双时态版本历史模型 |
+| F_VOTE_DECISION_VERSION_HISTORY | 一条投票决定的一个版本或一次状态变更 | 复现旧版本、修改原因、审批与政策变化 | 不可直接将所有版本数当成最终决定数 |
+| F_SUBMISSION_ATTEMPT | 一次对外发送尝试 | 重试、拒绝、延迟和异常调查 | 一条最终指令可能多次尝试，不能把 Attempt Count 当作 Instruction Count |
+| F_PROVIDER_ACK | 一条供应商回执或状态事件 | 已接收 / 已拒绝 / 状态未知的对账与回执延迟 | 重复、迟到或更正回执需要去重规则及事件顺序 |
+
+例如，供应商接受率的分母如果是“已经提交的不同指令版本”，就不能用发送尝试次数代替；一条指令超时后重试三次，不应变成三条不同的业务投票。若指标要表示“每次网络尝试的成功率”，才以 attempt 为粒度，并用不同的名字和定义。
+
+#### Semantic View 的开发顺序
+
+1. 在 Snowflake Serving 层发布经过验证的决定分析模型，先做好唯一性、状态、时间、关联键与来源水位测试；模型粒度未明确之前不创建 Semantic View。
+2. 创建 SV_VOTE_DECISION_ANALYTICS，只暴露业务用户获准使用的维度、事实和指标。把字段的正式名称、常用别称与精确定义写进描述。
+3. 明确 Relationships 的业务键与粒度；用实际数据检查 Join 是否扩行。不要在同一个语义视图里把决定事实与提交尝试事实任意连接后，再用 COUNT(*) 得出决定数量。
+4. 定义指标的分母、排除状态、日期含义、去重键和可聚合维度。对“例外比例”“接受率”“参与率”等比率，要先定义分子、分母和空值处理。
+5. 用业务术语与澄清规则补充问题分类，例如“成功”必须区分正式提交、供应商接受和最终回执已对账；“近期”必须要求时间窗口或使用明确的默认值。
+6. 收集并由业务所有人验证 Gold Questions、预期 SQL 和预期结果；给实际用户常见问法加入同义词。建立独立的评测集，检验 SQL 结构、结果正确性、权限与查询成本。
+7. 在生产发布前执行基于角色的授权测试，确认 Row Access / Masking 或服务端范围过滤同样适用于 Agent 查询路径。Semantic View 是业务含义与查询能力的表达，不是自动授予访问权限的机制。
+8. 把 YAML 或 DDL、Serving 模型、Gold Questions、授权测试与版本一起存 Git，走 Review / CI / staging / production 发布。语义口径变化应留下变更原因和负责人。
+
+#### Semantic View YAML 样例（示意）
+
+下面是按 Snowflake Semantic View YAML 结构写的起始样例。数据库、Schema、物理表名、字段名、状态值和业务指标是假定的示例；必须替换成通过治理流程发布的实际列名，并在目标账户创建与评估后才能使用。它不是当前数据库的可执行迁移脚本。
+
+~~~yaml
+name: sv_vote_decision_analytics
+description: >
+  受治理的 Proxy Voting 决定分析视图。
+  用于分析最终决定与政策例外，不用于验证当前投票资格或触发投票提交。
+
+tables:
+  - name: vote_decisions
+    description: >
+      F_VOTE_DECISION_OUTCOME 一行代表一个规范化业务决定的最终版本。
+      不包含每一次对外发送尝试；需要重现历史版本时使用独立版本历史模型。
+    base_table:
+      database: ANALYTICS
+      schema: PROXY_VOTING
+      table: F_VOTE_DECISION_OUTCOME
+    primary_key:
+      columns: [vote_decision_id]
+    dimensions:
+      - name: decision_status
+        synonyms: ["决定状态", "投票决定状态", "final decision status"]
+        description: >
+          本模型发布时的规范化业务决定状态；不代表供应商已经接受或最终回执已经对账。
+        expr: DECISION_STATUS
+        data_type: TEXT
+        is_enum: true
+      - name: policy_exception_flag
+        synonyms: ["政策例外", "policy exception"]
+        description: >
+          该决定是否按已批准的规则被标记为政策例外。
+        expr: POLICY_EXCEPTION_FLAG
+        data_type: BOOLEAN
+    time_dimensions:
+      - name: decided_at
+        synonyms: ["决定时间", "decision date"]
+        description: >
+          正式决定生效的业务时间；底层以标准化 UTC 时间和明确的展示时区管理。
+        expr: DECIDED_AT
+        data_type: TIMESTAMP_TZ
+    metrics:
+      - name: finalized_decision_count
+        synonyms: ["最终决定数", "final vote decisions"]
+        description: >
+          处于正式最终决定状态的不同业务决定数；不统计版本数、提交尝试数或回执事件数。
+        expr: COUNT(DISTINCT CASE
+          WHEN DECISION_STATUS = 'FINALIZED' THEN VOTE_DECISION_ID
+          END)
+      - name: policy_exception_decision_count
+        synonyms: ["政策例外决定数", "exception decisions"]
+        description: >
+          正式最终决定中被标记为政策例外的不同业务决定数。
+        expr: COUNT(DISTINCT CASE
+          WHEN DECISION_STATUS = 'FINALIZED'
+            AND POLICY_EXCEPTION_FLAG = TRUE
+          THEN VOTE_DECISION_ID
+          END)
+    filters:
+      - name: finalized_only
+        synonyms: ["仅最终决定", "final decisions only"]
+        description: >
+          排除草稿、被替换版本、撤回项及未完成审批的决定。
+        expr: DECISION_STATUS = 'FINALIZED'
+
+  - name: meetings
+    description: 会议维度；每个 meeting_id 唯一。
+    base_table:
+      database: ANALYTICS
+      schema: PROXY_VOTING
+      table: D_MEETING
+    primary_key:
+      columns: [meeting_id]
+    dimensions:
+      - name: meeting_type
+        synonyms: ["会议类型", "AGM", "EGM", "meeting type"]
+        description: 规范化后的会议类别。
+        expr: MEETING_TYPE
+        data_type: TEXT
+        is_enum: true
+    time_dimensions:
+      - name: meeting_date
+        synonyms: ["会议日期", "meeting date"]
+        description: 按会议来源规则标准化的日期。
+        expr: MEETING_DATE
+        data_type: DATE
+
+relationships:
+  - name: vote_decisions_to_meetings
+    left_table: vote_decisions
+    right_table: meetings
+    relationship_columns:
+      - left_column: meeting_id
+        right_column: meeting_id
+
+metrics:
+  - name: policy_exception_rate
+    synonyms: ["政策例外比例", "policy exception rate"]
+    description: >
+      政策例外的最终决定数除以最终决定数。
+      不允许把空分母解释为零；聚合时保持分子与分母口径一致。
+    expr: vote_decisions.policy_exception_decision_count
+      / NULLIF(vote_decisions.finalized_decision_count, 0)
+
+module_custom_instructions:
+  sql_generation: |
+    Use vote_decision_id as the business decision key.
+    Do not count version history, submission attempts, or provider acknowledgements
+    as business vote decisions.
+    A finalized decision is not the same as a provider-accepted instruction.
+    Always use the meeting date or decision date as explicitly requested.
+    Do not infer entitlement, approval, or a user's permission from query results.
+  question_categorization: |
+    This semantic view is for read-only analysis of governed decision outcomes.
+    Ask for clarification if "success", "final", or the time period is ambiguous.
+    Do not answer current voting-eligibility checks or operational submission requests
+    from this historical model; route those requests to the authorized workflow.
+    Refuse requests that ask the agent to submit, amend, approve, or cancel a vote.
+~~~
+
+这个样例刻意没有把供应商回执与提交尝试合到决定事实中。实际实施还要验证 Semantic View YAML 的语法与表达式、底层对象授权、指标在不同 Join 和分组组合下的数值，以及目标 Cortex 接口的兼容性。尤其是 policy_exception_rate 应通过 Gold Queries 验证，不能因为表达式能编译就认定业务定义正确。
+
+#### Gold Questions：先验证这些问题
+
+| 自然语言问题 | 指标 / 维度预期 | 必须确认的语义 |
+|---|---|---|
+| 按会议月份统计最终决定数 | 最终决定数 × 会议月份 | 按会议日期还是决定日期分组，时区如何展示 |
+| 按会议类型统计政策例外比例 | 例外决定数 / 最终决定数 × 会议类型 | 排除撤回项、草稿和被替换版本；分母为零时返回未知 / NULL |
+| 某段时间内哪些会议的决定数量异常变化 | 最终决定数 × 会议期间 | “异常”是同比、环比还是阈值规则，需先定义方法 |
+| 某供应商最近一个月的接受率是多少 | 应使用独立提交分析 Semantic View | 分母是不同已提交指令版本还是提交尝试；何种外部状态算“接受” |
+| 哪些指令当前仍未确认 | 当前运营状态 / 提交例外队列 | 应查权威工作流或专用回执查询，不可只依赖可能滞后的历史模型 |
+| 哪些组合现在仍有投票资格 | 权威当前资格服务 / PostgreSQL 路径 | 不能仅凭 Snowflake 历史资格快照允许实际提交 |
+| 帮我把符合条件的投票提交出去 | 不属于 NLQ 分析能力范围 | 拒绝直接操作；由正式工作流执行资格复核、审批、版本锁定与提交 |
+
+Gold Question 不只是写一组供模型参考的例子。每条需要保留业务负责人、标准答案、预期 SQL / 结果、数据水位、授权范围与评测结果；指标口径更改后需要重新批准与回归测试。
+
+### 6.6 Semantic View 的访问控制与供应商选择
+
+Semantic View 仍是一个 Snowflake 权限保护的数据对象；其存在本身不意味着所有字段可对所有人开放。建议按用户群和业务域拆分语义视图，例如投票决定分析、提交对账和合规审计，不要只创建一个巨大的通用视图。
+
+针对组合范围权限，优先采用能在数据库侧强制执行的数据访问策略，或使用可证明无法被 Agent 绕过的服务端授权过滤。不要仅依赖 Semantic View 中隐藏某个维度、Agent 的 system prompt 或 SQL 检查器。若应用用单一 Snowflake service role，必须有可信身份映射和跨组合负向测试；Query Tag 只能用于跟踪请求，不能代替授权。
+
+关于 Agent 实现，Snowflake 官方在 2026 年的产品说明建议将新工作流转向 Cortex Agents；该路径可以沿用 Semantic View 和 Verified Queries。企业也可以保留自建 LangChain / DeepAgents + LiteLLM 编排，把 Semantic View 当作底层业务语义合同，通过受控工具调用执行查询。选型时需核实账户版本、区域、访问模式、可用功能和审计能力，而不是只比较 SQL 生成效果。
+
+
 ## 7. 权限、安全与职责分离
 
 ### 7.1 角色是起点，不是完整授权条件
@@ -528,6 +736,8 @@ API 名称只是一个可讨论的起点；最终合同应经领域建模、消�
 - 各类业务记录、研究材料、用户操作、外部回执和导出需要保留多久？是否需要不可变归档或法律保留？
 - 对工作台、提交、回执、Snowflake 历史模型分别要求怎样的可用性、响应时延、新鲜度、RPO / RTO 与运营支持？
 - 是否允许 AI 对材料做摘要或对照政策？输出需要怎样的来源引用、人工复核、模型版本记录和禁止动作限制？
+- NLQ Agent 允许访问哪些 Semantic View、哪些组合范围和哪些指标？是否明确禁止访问提交指令、审批与外部发送工具？
+- 每个 Gold Question 的业务负责人、标准答案、权限测试、数据水位与回归策略由谁维护？语义定义以 Git 中的版本化合同为准，还是仅在 Snowflake 控制台修改？
 
 在这些问题明确前，架构的责任边界可以先确定，但不能宣称供应商自动化、业务政策或合规控制已经完成。
 
@@ -538,6 +748,14 @@ API 名称只是一个可讨论的起点；最终合同应经领域建模、消�
 - [AWS — Transactional outbox pattern](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html)
 - [AWS — Amazon EKS service accounts and workload permissions](https://docs.aws.amazon.com/eks/latest/userguide/service-accounts.html)
 - [Snowflake — SQL API](https://docs.snowflake.com/en/developer-guide/sql-api)
+- [Snowflake — Snowflake Scripting](https://docs.snowflake.com/en/developer-guide/snowflake-scripting)
+- [Snowflake — Semantic Views overview](https://docs.snowflake.com/en/user-guide/views-semantic/overview)
+- [Snowflake — Semantic View YAML specification](https://docs.snowflake.com/en/user-guide/views-semantic/semantic-view-yaml-spec)
+- [Snowflake — Best practices for Semantic Views](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices)
+- [Snowflake — Querying Semantic Views](https://docs.snowflake.com/en/user-guide/views-semantic/querying)
+- [Snowflake — Cortex Agents](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents)
+- [Snowflake — Constraints](https://docs.snowflake.com/en/sql-reference/constraints)
+- [PostgreSQL — Logical Replication](https://www.postgresql.org/docs/current/logical-replication.html)
 - [Snowflake — Access control overview](https://docs.snowflake.com/en/user-guide/security-access-control-overview)
 - [Snowflake — Row Access Policies](https://docs.snowflake.com/en/user-guide/security-row-intro)
 - [Snowflake — Dynamic Data Masking](https://docs.snowflake.com/en/user-guide/security-column-ddm-intro)
