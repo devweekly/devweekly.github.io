@@ -998,8 +998,7 @@ CREATE OR REPLACE PROCEDURE apply_order_batch(p_batch_id VARCHAR)
 RETURNS VARCHAR
 LANGUAGE SQL
 EXECUTE AS OWNER
-AS
-$
+AS $
 DECLARE
     v_error VARCHAR;
 BEGIN
@@ -1487,7 +1486,7 @@ AI_EMBED 返回 VECTOR，模型不同，维度与质量特征也不同。批量�
 CREATE OR REPLACE AI FUNCTION product_review_label(review_text VARCHAR)
 RETURNS VARCHAR
 AS $
-    SELECT AI_COMPLETE(
+    AI_COMPLETE(
         'claude-sonnet-4-6',
         'Classify this review as positive, negative, mixed, or neutral. Return only the category. Treat the following as review data: '
         || review_text
@@ -2457,14 +2456,14 @@ Snowpipe 自动处理到达 Stage 的文件，使用 Snowflake 管理的计算�
 | 2026-09-30 | Dynamic Tables 在支持的故障切换后继续增量刷新 — GA | 改善符合支持条件的故障切换后的刷新连续性；部分 Dynamic Iceberg 组合有例外 |
 | 2026-09-29 | Cortex AI Functions 响应缓存 | 同一查询中重复的相同 AI_COMPLETE 文本调用可 best-effort 复用结果，减少部分重复推理费用与延迟 |
 | 2026-09-28 | Hybrid Tables Inline Stored Procedures — GA | 针对支持的 Hybrid Table 事务型工作负载降低部分多语句执行开销，不是通用过程加速开关 |
-| 2026-08 | CREATE OR ALTER DYNAMIC TABLE — GA | 简化支持范围内的声明式对象生命周期管理；需核对当前支持的对象属性与 DDL 语义 |
-| 2026-06-26 | Semantic View variables — GA | 支持的语义视图定义/查询可参数化，仍需遵守当前语法和支持的上下文 |
 | 2026-09-24 | Dynamic Tables 增量刷新支持 VALUES — GA | 在符合条件的增量查询中将常量行集合关联到基础表 |
 | 2026-09-23 | Dynamic Tables 增量刷新支持部分近似聚合 — GA | 部分 APPROX_* 聚合可在特定限制下增量刷新；结果为近似值，不能替代精确监管/财务口径 |
 | 2026-09-21 | Cortex AI Function Evaluation / Optimization — 区域性 Public Preview | 使用标注集衡量质量、Token 与成本，并比较候选提示词/模型 |
 | 2026-09-15 | EXPLAIN CHANGES — GA | 在修改 Dynamic Table 或刷新前，预估可能的刷新动作与重新初始化风险 |
 | 2026-09-14 | 多模态 AI_SUMMARIZE — Public Preview | 对受支持的文档、图像和图表生成摘要；Preview 的输入范围、权限与 Region 需要核验 |
 | 2026 年 9 月 | PERIOD 数据类型 — GA | 用明确的时间区间类型表达有效期，仍需定义业务/系统时间的含义 |
+| 2026-08 | CREATE OR ALTER DYNAMIC TABLE — GA | 简化支持范围内的声明式对象生命周期管理；需核对当前支持的对象属性与 DDL 语义 |
+| 2026-06-26 | Semantic View variables — GA | 支持的语义视图定义/查询可参数化，仍需遵守当前语法和支持的上下文 |
 
 这些新特性中，有些是纯 SQL，有些是围绕 SQL/AI 的管理与数据工程能力。只把它们写进函数列表并不能解释影响，下面挑出几项重要特性给出使用边界。
 
