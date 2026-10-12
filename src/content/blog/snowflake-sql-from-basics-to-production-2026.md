@@ -76,6 +76,8 @@ Snowflake 不只是支持 SELECT、JOIN 和 GROUP BY。它有完整的查询、�
 
 ### 5. 常用函数速查
 
+这张表列出日常高频函数；第十七章按照官方函数体系展开分类，并链接到完整函数索引。
+
 | 类别 | 常用函数 / 语法 | 实际用途 |
 | --- | --- | --- |
 | 条件 | `CASE`、`IFF`、`COALESCE`、`NULLIF` | 状态映射、空值兜底、避免除零 |
@@ -1514,13 +1516,13 @@ AI Function Evaluation 与 Optimization 允许使用有标签数据集来评估 
 CREATE OR REPLACE EXPERIMENT my_db.my_schema.classify_ticket_eval
     TYPE = 'AI_FUNCTION_EVALUATION'
     FROM SPECIFICATION $
-query_text: "MY_DB.MY_SCHEMA.CLASSIFY_TICKET(ticket_body)"
+query_text: "MY_DB.MY_SCHEMA.PRODUCT_REVIEW_LABEL(review_text)"
 metrics:
   - name: exact_match
 dataset:
-  name: my_db.my_schema.support_tickets_labeled
+  name: my_db.my_schema.product_reviews_labeled
   version: v1
-  ground_truth: expected_category
+  ground_truth: expected_label
 evaluation:
   num_eval_runs: 3
 $;
@@ -2196,7 +2198,7 @@ CREATE OR REPLACE SEMANTIC VIEW analytics.sales_semantic
     COMMENT = 'Certified sales semantic model';
 ~~~
 
-这段 DDL 是一个结构示例，需按真实列名、约束和语法细节调整。Semantic View 中声明的 PRIMARY KEY / UNIQUE 是语义模型所依赖的键声明，不能代替对底层表进行唯一性数据测试。事实表、维度表的实际基数和 JOIN 关系必须与声明一致，否则模型可能生成逻辑正确却重复计数的 SQL。
+这段 DDL 是一个结构示例，需按真实列名、约束和语法细节调整。Semantic View 中声明的 PRIMARY KEY / UNIQUE 是语义模型所依赖的键声明，不能代替对底层表进行唯一性数据测试。事实表、维度表的实际基数和 JOIN 关系必须与声明一致，否则模型可能生成逻辑正确却重复计数的 SQL。还要注意：SEMANTIC_VIEW(...) 的一次调用不能在同一组参数中混用 FACTS 与 METRICS；同时查询 FACTS 与 DIMENSIONS 时，事实和维度必须来自同一逻辑表，且维度必须能够唯一决定相应事实。私有 Facts/Metrics 不能用于该构造的 WHERE 过滤。具体规则以 [SEMANTIC_VIEW 查询语法](https://docs.snowflake.com/en/sql-reference/constructs/semantic_view) 为准。
 
 ### 18.2 通过 SEMANTIC_VIEW 子句查询已定义指标
 
