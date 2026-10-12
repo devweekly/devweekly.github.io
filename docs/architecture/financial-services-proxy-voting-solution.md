@@ -398,7 +398,7 @@ Snowflake 使用哪种刷新技术，应从模型需求决定而不是一律选 
 - **业务授权：** API 每次调用验证权限，不只在登录时授权；资源范围按 portfolio / mandate / entity / meeting / instruction 检查。
 - **职责分离：** 服务端阻止自我审批、审批过期版本、越权代办，以及由管理员身份直接绕过业务控制的路径。
 - **供应商集成：** 独立工作负载身份、限定出站目标、TLS、凭证存入秘密管理系统、访问凭证轮换；文件交换需要文件签名 / 完整性校验、加密和安全投递。
-- **数据层：** PostgreSQL 业务角色最小权限；Snowflake 应用查询 Role 只读受治理 Serving Schema，CDC / Transformation / App Query 角色分离。需要按行 / 列限制时，评估 Snowflake Row Access Policy、动态 Masking、Secure View、network policy 和私有连接选项。
+- **数据层：** PostgreSQL 业务角色最小权限；Snowflake 应用查询 Role 只读受治理 Serving Schema，CDC / Transformation / App Query 角色分离。需要按行 / 列限制时，评估 Snowflake Row Access Policy、动态 Masking、Secure View、network policy 和私有连接选项。Row Access Policy 与 Dynamic Data Masking 需要 Enterprise Edition 或更高版本，必须在方案成本与授权评审中确认账户版本。若当前版本不支持，应收紧数据集与角色、限制直接查询并在 Java 服务执行对象级授权；不能把普通 View 视作等价的行列安全控制。
 - **数据最小化：** 不复制无查询必要的个人数据、完整客户资料或供应商敏感字段；按用途设分类、访问策略、保留和删除要求。
 - **审计链：** 业务审计记录 actor、action、target、reason、decision / instruction version、policy version、approval 和 provider reference；技术记录 trace ID、请求 ID、submission ID、Snowflake query ID、模型水位与失败重试。日志内容需防止 Token、凭证或敏感 payload 泄露。
 - **异常处置：** 提供禁用外部发送、暂停批次、撤销服务身份、隔离出站、阻止新增审批与查询的应急控制。停止路径也需要权限控制与审计。
