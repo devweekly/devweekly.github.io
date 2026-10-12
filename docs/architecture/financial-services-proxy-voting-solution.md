@@ -63,8 +63,8 @@ flowchart TB
     subgraph App["AWS EKS：业务应用区"]
         API["Java Domain API<br/>Command、当前状态 Query、领域授权"]
         Policy["Policy / Entitlement<br/>角色、组合范围、职责分离"]
-        VendorWorker["Vendor Adapter / Submission Worker"]
-        Outbox["Outbox Publisher / Retry Worker"]
+        VendorWorker["Vendor Adapter / Submission Worker<br/>独立出站、状态查询与回执"]
+        Outbox["Transactional Outbox<br/>与业务事务原子提交"]
     end
     PG[("RDS PostgreSQL<br/>权威工作流、版本、审批、指令、回执")]
     Provider["外部 Proxy Voting 平台<br/>API / 文件交换 / 受控人工路径"]
@@ -97,7 +97,7 @@ flowchart TB
     CDC --> Audit
 ~~~
 
-**读图说明：** 只有 PostgreSQL 记录能够确定当前工作流状态、已批准的指令版本和提交尝试的本地状态；供应商的确认或拒绝需要另行记录为外部证据。Snowflake 是从权威源派生的分析投影，不参与命令事务。Source 的具体连接器与接入方式应根据实际数据供应方确定。
+**读图说明：** 只有 PostgreSQL 记录能够确定当前工作流状态、已批准的指令版本和提交尝试的本地状态；供应商的确认或拒绝需要另行记录为外部证据。Snowflake 是从权威源派生的分析投影，不参与命令事务。Source 的具体连接器与接入方式应根据实际数据供应方确定。Transactional Outbox 是与业务修改在同一 PostgreSQL 事务中写入的持久化记录，不是另一个消息代理；Submission Worker 从中领取待处理任务后再调用供应商，避免把网络调用放进数据库事务。
 
 ### 3.2 部署与信任边界
 
