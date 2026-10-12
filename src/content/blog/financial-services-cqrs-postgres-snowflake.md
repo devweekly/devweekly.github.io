@@ -523,7 +523,7 @@ flowchart TD
 | Snowflake SQL API（REST） | 集成方无法使用驱动，或需要 HTTP 提交语句、查询状态、取消语句和取回结果 | 是 JDBC 的连接/调用方式替代，不是 SQL 语言的替代，也不是完整业务 API |
 | ODBC / JDBC 客户端直连 | 受控的 BI、报表工具或内部分析客户端，有明确的用户身份和角色映射 | 适用于受管理的分析入口；不要把直连凭证下发到浏览器或普通终端应用 |
 | 普通 View + 单次 SQL | 重用命名、标准化字段或共享 Join；计算不昂贵、结果使用不频繁 | 先选它。普通 View 保存查询定义，不等于缓存结果 |
-| Materialized View | 同一查询形状反复执行、底表相对少变、计算成本高，且目标查询满足产品限制 | 先用 Query Profile 验证；当前实现有单表、不能 Join、不能使用窗口函数等限制，不能拿它当通用多表读模型 |
+| Materialized View | 同一查询形状反复执行、底表相对少变、计算成本高，且目标查询满足产品限制 | **Enterprise Edition 功能**；先用 Query Profile 验证。当前实现仅支持单表查询，不支持 Join 与窗口函数等，不能拿它当通用多表读模型 |
 | Dynamic Tables | 需要用 SQL 构建多阶段、跨表的 Serving Model，并以目标新鲜度驱动刷新 | 用于预先构建查询模型；TARGET_LAG 是尽力而为的新鲜度目标，不是严格 SLA |
 | Tasks + SQL / dbt 或其他编排 | 定时快照、批量回填、质量校验、重算、跨作业依赖和发布流程 | 以团队已采用的编排工具为准。避免再叠一套没有运营责任人的调度系统 |
 | Stored Procedure / Snowflake Scripting | 一次数据库侧操作需要受控地顺序执行多条 SQL、变量分支、异常处理或事务内编排 | 用在数据库侧操作边界清楚的场景，不要将整个领域服务搬进去 |
@@ -882,7 +882,7 @@ flowchart TB
 | Java Domain API | 每次请求验证目标 API 的 access token（签名、issuer、audience、过期、scope / role）；检查用户、账户、组合、区域、任务分配和动作权限 | 因为请求经过 BFF 或菜单隐藏了按钮，就默认有权访问 |
 | 业务策略 | 根据动作、业务对象、当前工作流状态和职责分离要求做 Policy Decision；高风险操作要求独立审批 | 由前端、SQL 条件或 LLM 单方面决定访问边界 |
 | PostgreSQL | 应用工作负载专用数据库角色；事务约束、唯一键、乐观锁；必要时使用数据库权限和行级策略作纵深防御 | 让只读查询角色写业务表；把数据库管理员凭证放进应用；将权限只放在 UI |
-| Snowflake | 应用查询 Role 只读访问批准的 Serving Schema；按需采用 Secure View、Row Access Policy、动态 Masking；Transformation、CDC、应用查询与管理员身份分离 | 应用服务使用 ACCOUNTADMIN / 高权限角色；让面向终端用户的请求触达 RAW；用 Query Tag 当行级授权条件 |
+| Snowflake | 应用查询 Role 只读访问批准的 Serving Schema；按需采用 Secure View、Row Access Policy、动态 Masking；Transformation、CDC、应用查询与管理员身份分离 | Row Access Policy 与 Dynamic Data Masking 均需 Enterprise Edition 或更高版本；先核实账户版本。应用服务不得使用 ACCOUNTADMIN / 高权限角色；不要让终端用户查询 RAW，也不能把 Query Tag 当行级授权条件 |
 | 工作负载身份 | EKS 中 BFF、Domain API、CDC、模型刷新和导出作业使用不同 Service Account / IAM Role；凭证进入 Secrets Manager / 合规密钥系统，定期轮换 | 多个工作负载共用一个全权 AWS Role 或 Snowflake 用户，导致无法收窄权限与追查责任 |
 | 网络与密钥 | RDS 放在私有子网；按实际部署收敛 EKS 到 RDS 的网络；限制 Snowflake 入站来源；评估 PrivateLink / 私有连接、TLS、KMS 与出站白名单 | 认为启用 TLS 等于网络隔离，或者把私有连接能力当作默认已配置 |
 | 审计与证据 | 关联用户 / workload identity、业务对象、动作、审批人、请求 ID、PostgreSQL transaction / version、Snowflake query ID、模型版本与数据水位；按策略保留并限制修改 | 只保留应用字符串日志；把“SQL 成功”“Connector Running”当作合规证据 |
@@ -894,7 +894,7 @@ flowchart TB
 - **应用层业务授权 + Snowflake 服务角色纵深防御**：Java 在查询前完成对象级 Entitlement 检查；Snowflake Role 只能读取批准的 Serving 数据集。若查询跨多个账户，服务端必须把已验证的授权范围转成经过约束的过滤条件，并把可访问数据范围纳入测试。
 - **Snowflake 也能执行用户级策略的受控映射**：只有当 Snowflake 侧 Row Access Policy 所需的身份 / 映射可信且可维护时才使用。传入的用户标识不能由浏览器自行声明；需要防止连接池上下文串用、角色切换错误和查询复用导致越权。应有针对不同用户、不同账户的负向测试。
 
-不要因为第一种模式容易实现就把 Snowflake 当成没有数据层防护；同样，不能把 Row Access Policy 当成 Java 领域授权的替代品。权限边界需要分别测试，尤其是跨账户过滤、导出、历史查询、服务身份误配置和异常回退路径。
+不要因为第一种模式容易实现就把 Snowflake 当成没有数据层防护；同样，不能把 Row Access Policy 当成 Java 领域授权的替代品。Row Access Policy 与 Dynamic Data Masking 需要 Enterprise Edition 或更高版本，部署前必须核实账户版本。若功能不可用，应缩小可访问的 Serving 数据集、收紧角色与对象授权，并限制直接查询入口；不能声称普通 View 或 Java 授权本身提供了相同的数据层行列保护。权限边界需要分别测试，尤其是跨账户过滤、导出、历史查询、服务身份误配置和异常回退路径。
 
 #### 审计与生产控制
 
