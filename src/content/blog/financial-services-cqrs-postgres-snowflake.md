@@ -9,13 +9,13 @@ tags:
   - tech
 ---
 
-# 一、先把现有系统画清楚
+## 一、先把现有系统画清楚
 
 本文讨论的系统有五个确定的组成部分：Angular Web 应用由 BFF Service 托管；BFF 集成 Microsoft Entra ID，负责 SSO 和面向前端的接口；Java Domain Service 部署在 AWS EKS；PostgreSQL 承担在线业务写入；Snowflake 保存多年历史数据并执行大范围查询。
 
 争议集中在最后两项：修改放在 Java 和 PostgreSQL，历史查询放在 Snowflake，业务逻辑会不会因此被拆成两套？这需要区分**业务规则由谁定义**和**计算由哪个引擎执行**。两者相关，但不是同一个问题。
 
-## 1.1 系统上下文与整体架构
+### 1.1 系统上下文与整体架构
 
 ```mermaid
 flowchart TB
@@ -54,7 +54,7 @@ flowchart TB
 
 PostgreSQL 到 Snowflake 的同步是异步链路，不在交易提交的同步调用栈内。除非另外建立强一致性机制，在线写入成功并不表示 Snowflake 的查询模型已经刷新。
 
-## 1.2 AWS 部署图
+### 1.2 AWS 部署图
 
 下面按典型的私有网络部署画出边界。它假设 BFF 和 Java 服务均作为工作负载运行在 EKS；如果实际部署把 BFF 放在独立容器平台或托管应用服务，只需调整入口和运行位置，业务分层不变。
 
@@ -117,7 +117,7 @@ flowchart TB
 4. RDS Multi-AZ 主要处理数据库可用性与故障切换，不负责替 Snowflake 提供查询能力。
 5. 图里的 Connector 只是部署位置的抽象。Openflow、Debezium 配合消息平台、托管 CDC 产品的运行方式并不相同，选型后要用实际部署图替换这一块。
 
-## 1.3 BFF、Domain Service 与 Snowflake 的边界
+### 1.3 BFF、Domain Service 与 Snowflake 的边界
 
 微软的 [Backends for Frontends pattern](https://learn.microsoft.com/en-us/azure/architecture/patterns/backends-for-frontends) 对 BFF 的定位很明确：它服务某一种前端体验，负责客户端需要的 API 组合和适配，不应成为第二个领域服务。
 
@@ -133,7 +133,7 @@ BFF 可以调用多个 Domain API，再把数据组织成 Angular 页面需要�
 
 同样，查询使用 Snowflake 不表示整个查询用例都要写成一段 SQL。Java 依然负责验证请求者是否能查询某个账户、控制查询参数和时间范围、选择已批准的数据模型、处理超时并生成 API 响应；Snowflake 执行大规模数据计算。
 
-## 1.4 Middle layer：应用服务、领域模型与数据适配器
+### 1.4 Middle layer：应用服务、领域模型与数据适配器
 
 Java 服务内部建议按用例、业务规则与基础设施拆分，不必先把它们做成三个独立微服务。下面是逻辑模块图；它描述代码和依赖方向，不等于 Kubernetes 部署单元。
 
@@ -183,7 +183,7 @@ flowchart TB
 
 这里有一个边界需要说清：Snowflake SQL 中的指标和转换规则由业务数据产品或领域团队治理，Java 不需要把每个聚合重新写一遍；但领域层仍拥有交易不变量和业务决策。数据计算放在 Snowflake，不等于业务所有权转移给 Snowflake。
 
-## 1.5 Command 与 Query 的详细分层
+### 1.5 Command 与 Query 的详细分层
 
 ```mermaid
 flowchart LR
@@ -212,9 +212,9 @@ flowchart LR
 
 查询侧则先验证调用者能查什么，再确定读模型和执行方式。对五年或十年的历史查询，可以在 Snowflake 中用 SQL、窗口函数和预先维护的分析模型完成集合计算。若一条查询需要同时用当前状态和历史数据，API 契约必须声明对实时性和结果一致性的要求，而不是隐藏一次跨库查询。
 
-# 二、关键请求时序
+## 二、关键请求时序
 
-## 2.1 Angular 首次登录：Microsoft Entra SSO
+### 2.1 Angular 首次登录：Microsoft Entra SSO
 
 以下流程采用服务端 BFF 会话的常见设计：浏览器持有 HttpOnly 会话 Cookie，访问令牌留在 BFF 服务端。实际 OAuth/OIDC 应用注册、回调 URI、令牌受众和 token acquisition 方式应以企业 Entra 配置为准。
 
@@ -254,7 +254,7 @@ sequenceDiagram
 
 可对照 Microsoft 的 [BFF 架构模式](https://learn.microsoft.com/en-us/azure/architecture/patterns/backends-for-frontends)、[Microsoft identity platform 应用类型与令牌流程](https://learn.microsoft.com/en-us/entra/identity-platform/v2-app-types)，以及 [OAuth 2.0 for Browser-Based Applications](https://www.rfc-editor.org/info/rfc10017/)。
 
-## 2.2 新增或修改交易：数据库提交是同步成功点
+### 2.2 新增或修改交易：数据库提交是同步成功点
 
 ```mermaid
 sequenceDiagram
@@ -293,7 +293,7 @@ HTTP 命令不应该等待 Snowflake 模型刷新。交易提交后，前端可�
 
 如果还要发布 TradeApproved 这类业务事件，Outbox 记录应与业务修改在同一 PostgreSQL 事务中提交。表级 CDC 用于复制源表与构造历史镜像；Domain Event 用于表达稳定的业务语义，两者可以共存，但不能把所有数据库行变更都当成领域事件。
 
-## 2.3 查询十年历史：API 负责边界，Snowflake 负责大范围计算
+### 2.3 查询十年历史：API 负责边界，Snowflake 负责大范围计算
 
 ```mermaid
 sequenceDiagram
@@ -323,7 +323,7 @@ sequenceDiagram
 
 对十年查询，还需要限制时间跨度、扫描资源和导出方式。常规 API 不一定适合一次返回全部记录；大批量下载通常应成为可追踪的异步任务。Snowflake 的 Query Tag、Query Profile、排队时间、扫描字节和模型更新时间可以帮助解释慢查询或数据滞后。
 
-## 2.4 刚写完就查询：明确 Read-Your-Own-Writes 规则
+### 2.4 刚写完就查询：明确 Read-Your-Own-Writes 规则
 
 用户提交修改，命令已经成功，但 CDC 和模型转换还没完成。如果 UI 立刻重新查询 Snowflake，它可能暂时读到旧状态。
 
@@ -358,7 +358,7 @@ sequenceDiagram
 
 这里的 version=42 是为了说明协议而使用的示例值，不要求所有业务都实现同样的版本字段。具体可以用源端 LSN、水位、事件版本或业务版本来判定是否追上。若无法可靠地关联某条业务更新与分析模型水位，就不要声称已经实现严格的 read-your-own-writes 保证。
 
-## 2.5 初始快照、CDC 与模型刷新
+### 2.5 初始快照、CDC 与模型刷新
 
 ```mermaid
 flowchart LR
@@ -387,9 +387,9 @@ flowchart LR
 - 如果需要还原某一历史时点当时知道的事实，只在 Snowflake 不断 MERGE 当前行不够；要保存源版本、记录时间，以及必要的更正或冲销关系。
 - 质量对账应包括记录数、金额或数量总和、源端水位、重复主键、缺失记录和延迟分布。
 
-# 三、Snowflake 的查询模型如何与业务模型分工
+## 三、Snowflake 的查询模型如何与业务模型分工
 
-## 3.1 Java 管业务规则，Snowflake 做集合运算；边界在具体规则
+### 3.1 Java 管业务规则，Snowflake 做集合运算；边界在具体规则
 
 | 逻辑 | 维护位置 | 计算执行位置 |
 |---|---|---|
@@ -402,7 +402,7 @@ flowchart LR
 
 更难的情况是横跨多个域的指标，例如净资产、组合收益率或风险敞口。它们需要业务定义和验证，但不意味着应在每个 Java 请求里重新扫描历史交易计算一次。可以把规则作为有版本的口径维护，在 Snowflake 模型里批量计算，并用固定案例测试输出是否符合业务预期。
 
-## 3.2 Snowflake 的分层模型
+### 3.2 Snowflake 的分层模型
 
 ```mermaid
 flowchart TB
@@ -433,7 +433,7 @@ RAW 记录来源，标准化层统一类型、标识、状态与删除处理，�
 
 Snowflake 中的普通 View、Materialized View、Dynamic Table 与手工编排 SQL 作业并非可以随意互换。应根据数据量、依赖关系、目标新鲜度、刷新代价和具体功能支持情况选择。无论用哪一种，Serving 模型都要定义数据更新时间或可核验的水位。
 
-## 3.3 把 SQL 模型当作生产代码维护
+### 3.3 把 SQL 模型当作生产代码维护
 
 只要某个查询会被多个应用依赖，就应该有版本管理、Review、自动化测试和发布流程，而不是把 SQL 留在某个人的 worksheet 或 Java 字符串里。
 
@@ -441,11 +441,11 @@ Snowflake 中的普通 View、Materialized View、Dynamic Table 与手工编排 
 
 Snowflake 语义视图可以帮助统一可复用的业务指标定义，尤其是多个查询消费者需要同一组字段和度量时。它不能代替 Java 写入规则，也不会自动解决业务口径争议；必须有团队负责规则、模型和测试。
 
-# 四、Snowflake 能否直接承担新增、修改和删除？
+## 四、Snowflake 能否直接承担新增、修改和删除？
 
 答案不是“不可以”。Snowflake Standard Tables 支持 DML 和事务；Hybrid Tables 则是面向特定事务型应用场景的另一种表类型。但 SQL 语法可用，并不意味着数据库在锁、约束、点查、故障恢复与运行费用方面可以直接替换 PostgreSQL。
 
-## 4.1 Standard Tables
+### 4.1 Standard Tables
 
 标准表以分析型存储与计算方式为主要设计目标。它们适合历史数据装载、批量 MERGE、数据修正和转换任务，不宜仅因支持 UPDATE 就用来承接每次点击触发的一笔核心交易。
 
@@ -456,7 +456,7 @@ Snowflake 语义视图可以帮助统一可复用的业务指标定义，尤其�
 
 参考：[Snowflake Constraints](https://docs.snowflake.com/en/sql-reference/constraints)、[Snowflake Transactions](https://docs.snowflake.com/en/sql-reference/transactions)、[Snowflake Architecture](https://docs.snowflake.com/en/user-guide/intro-key-concepts)。
 
-## 4.2 Hybrid Tables
+### 4.2 Hybrid Tables
 
 Hybrid Tables 支持事务型访问模式，包括行级锁、索引随机查找及强制执行主键、唯一键和外键约束。它们可以与标准表一起用，但有各自的功能边界、容量规划和费用结构。
 
@@ -470,7 +470,7 @@ Hybrid Tables 支持事务型访问模式，包括行级锁、索引随机查找
 
 对目前描述的系统，没有必要为了让“所有数据都在一个平台”而替换整个 PostgreSQL 交易写入层。更合理的做法是先把 Snowflake 当作分析模型平台；如果某个范围明确的业务以后适合 Hybrid Tables，再单独验证。
 
-# 五、历史数据的时间和审计语义
+## 五、历史数据的时间和审计语义
 
 五年或十年历史数据的难点往往不是查询写法，而是“历史记录”究竟要表达什么。
 
@@ -482,11 +482,11 @@ Hybrid Tables 支持事务型访问模式，包括行级锁、索引随机查找
 
 不要让 Snowflake 的 RAW 镜像意外成为财务账本的唯一来源。交易事实、记账模型和冲正方式应由相应的业务系统与控制框架确定。Snowflake 可以保留历史镜像、支持分析和对账，但其分析模型不是交易提交记录的替代品。
 
-# 六、可借鉴的大厂架构图
+## 六、可借鉴的大厂架构图
 
 以下图来自微软官方架构指导、AWS 发布的参考架构和 Netflix Engineering Blog。它们分别解决不同问题，不是一个可以照抄的完整方案。先看原图，再看本文建议的设计，能更清楚地区分通用结构与具体产品选型。
 
-## 6.1 Microsoft：BFF 夹在前端与业务服务之间
+### 6.1 Microsoft：BFF 夹在前端与业务服务之间
 
 微软 Azure Architecture Center 的 BFF 图展示了客户端专属 BFF 与后端服务的分工。此处可借鉴的是前端体验隔离：Angular 需要的页面组合放在 BFF，跨消费者可复用的业务能力放在 Domain API。
 
@@ -496,7 +496,7 @@ Hybrid Tables 支持事务型访问模式，包括行级锁、索引随机查找
 
 这张图讨论的是模式，不是某个金融客户的生产部署图。当前系统还需要补上 Entra 身份认证、服务端会话、EKS 部署、PostgreSQL 与 Snowflake 的数据路径。上文时序图表达了这些额外边界。
 
-## 6.2 AWS：支付接口现代化参考架构
+### 6.2 AWS：支付接口现代化参考架构
 
 ![AWS Payment System Interface Modernization 架构图](https://docs.aws.amazon.com/images/architecture-diagrams/latest/payment-system-interface-modernization/images/payment-system-interface-moderization.png)
 
@@ -504,7 +504,7 @@ Hybrid Tables 支持事务型访问模式，包括行级锁、索引随机查找
 
 AWS 的参考图包含 API Gateway、EKS、RDS、MSK、缓存与监控等组件。它适合参考网络入口、容器服务、事务数据和事件流怎样分层。不过它发布于 2022 年，不能把图中每个服务都当作当前项目的必选项；本系统应按现有 AWS 网络、EKS 入口和数据平台配置重新绘制部署图。
 
-## 6.3 Netflix：Data Mesh 的控制面与数据面
+### 6.3 Netflix：Data Mesh 的控制面与数据面
 
 ![Netflix Data Mesh Overall Architecture](https://miro.medium.com/v2/resize:fit:700/0*-gA7_aFh4okv6Qp9)
 
@@ -512,7 +512,7 @@ AWS 的参考图包含 API Gateway、EKS、RDS、MSK、缓存与监控等组件�
 
 Netflix 将自己的 Data Mesh 分为管理管道生命周期的控制面与执行数据移动的管道数据面。对当前系统有参考价值的是把“谁配置和管理同步”与“谁执行同步和转换”分开，而不是所有东西塞进一个 CDC Job。Netflix 的平台规模和内部技术栈与这里不同，图用于理解结构，不代表需要引入同样的平台。
 
-## 6.4 Netflix：Delta 的 CDC 到下游读模型
+### 6.4 Netflix：Delta 的 CDC 到下游读模型
 
 ![Netflix Delta Data Pipeline 图](https://miro.medium.com/v2/resize:fit:700/1*dqHrnUyLz68xCfEJAIpVAw.png)
 
@@ -520,7 +520,17 @@ Netflix 将自己的 Data Mesh 分为管理管道生命周期的控制面与执�
 
 这篇文章介绍的生产平台用 CDC 捕获源数据变更，再经 Kafka 与流处理逻辑将数据送到下游搜索索引。它也解释了为什么双写很难长期维护，以及为什么需要可复用的数据同步层。这里的目标端是搜索索引等下游系统，不是 Snowflake；可借鉴的是 CDC、事件传输、转换与下游读模型之间的边界，而不是直接照搬组件组合。
 
-## 6.5 这几张图对当前架构意味着什么
+### 6.5 Kotak Mahindra Bank：把交易写入与只读查询分开
+
+![Kotak Mahindra Bank RTS / ROS 架构图](https://d2908q01vomqb2.cloudfront.net/c5b76da3e608d34edb07244cd9b875ee86906328/2025/12/09/RTSv2.0.png)
+
+来源：[AWS for Industries — Kotak Mahindra Bank Modernizes Microledgers Using Amazon DynamoDB for Predictable Low Latency at Scale](https://aws.amazon.com/blogs/industries/kotak-bank-modernizes-microledgers-using-amazon-dynamodb-for-predictable-low-latency-at-scale/)（2025-12-10）。
+
+这是 AWS 发布的客户架构案例，不是通用产品参考图。文章介绍了两条路径：RTS 接受交易，再通过 MSK 异步向核心银行系统回写；ROS 把读取放到独立的只读投影上，当投影数据超过新鲜度要求时，查询回退到核心系统，并在响应中带上时间信息。它使用 EKS、DynamoDB、MSK、Redis 等组件，不是 PostgreSQL + Snowflake。
+
+这里值得借鉴的是：把写入和查询路径分开后，仍要为读模型的延迟制定可执行的策略，并且有回源、监控和对账。不能直接照搬它的存储选择，也不能把该案例当成目标架构已经得到验证的证据。
+
+### 6.6 这几张图对当前架构意味着什么
 
 | 借鉴对象 | 适合借鉴的部分 | 不应照搬的部分 |
 |---|---|---|
@@ -529,21 +539,21 @@ Netflix 将自己的 Data Mesh 分为管理管道生命周期的控制面与执�
 | Netflix Data Mesh | 管道控制面与执行面分开，数据契约与复用 | 不要求为当前规模自建一套数据移动平台 |
 | Netflix Delta | 避免双写，使用 CDC 与可复用管道维护下游读模型 | 其 Kafka / Flink / 搜索索引实现不等于必须使用的 Snowflake 链路 |
 
-# 七、运行与治理：上线前需要做的决定
+## 七、运行与治理：上线前需要做的决定
 
-## 7.1 连接池、超时与查询负载
+### 7.1 连接池、超时与查询负载
 
 EKS 扩容后，Java Pod 数量可能带动连接数与查询并发一起增长。不要把“增加 Pod”当作所有查询问题的解决办法。在线 Command API 与历史 Query API 应分别设定并发上限、超时、重试和监控维度。
 
 历史查询应记录 Snowflake query ID、调用 API、请求类别、时间范围和数据模型版本（通过 Query Tag 或等价机制关联）；同时监控队列等待、运行时间、扫描字节与费用。超大导出最好做成异步任务，保存作业状态和结果引用，不要让浏览器请求一直占着应用线程。
 
-## 7.2 授权必须贯穿 BFF、Domain API 与数据模型
+### 7.2 授权必须贯穿 BFF、Domain API 与数据模型
 
 Entra 验证用户是谁，不代表这个用户有权访问所有客户或账户。Domain API 应执行业务级授权；Snowflake Role、受控 View、行访问策略或动态数据屏蔽等机制则限制数据平台可访问的范围。两层用途不同，不能互相替代。
 
 BFF 只应该传递和适配会话及访问凭证，不应成为唯一的授权检查点。CDC 身份、模型刷新身份和应用查询身份也要分开，按实际负责的对象授予最小权限。对敏感字段和导出操作保留审计记录，并确保记录能关联到用户、应用请求、查询 ID 和相关数据模型。
 
-## 7.3 生产监控要能定位“哪一段出了问题”
+### 7.3 生产监控要能定位“哪一段出了问题”
 
 | 路径 | 应观测的内容 |
 |---|---|
@@ -554,7 +564,7 @@ BFF 只应该传递和适配会话及访问凭证，不应成为唯一的授权�
 
 连接器 Running、SQL 返回成功或模型刷新完成，都不能单独证明数据完整、口径正确或用户权限适当。对核心金额和数量字段，应定期核对源端与目标端；发现差异时需要有重放或受控回补流程。
 
-# 八、落地顺序
+## 八、落地顺序
 
 先选一个交易对象和一个十年历史查询来验证整条链路，不必同时改造所有 API。
 
@@ -565,15 +575,15 @@ BFF 只应该传递和适配会话及访问凭证，不应成为唯一的授权�
 5. **压测两条路径。** 单独测交易写入并发、历史查询峰值和同步积压；再测它们同时发生时，交易 p95/p99 是否受分析工作负载影响。
 6. **之后再评估更复杂的 CQRS 或 Hybrid Tables。** 只有当服务发布、负载、可用性或数据模型确实要求独立演进时，才有必要把 Command 和 Query 拆成独立部署。Hybrid Tables 则通过独立 PoC 判断是否能改善某个明确的事务型工作负载。
 
-## 结论
+### 结论
 
 对当前系统，推荐的设计是 **Angular + BFF（Entra SSO）→ Java Domain Service → PostgreSQL 交易写入；PostgreSQL 通过可靠 CDC 同步至 Snowflake；Java Query API 调用 Snowflake 中受治理的历史模型执行大范围查询**。
 
 这样并没有把业务逻辑随意拆散。交易规则在领域服务中定义并于提交时强制执行；历史数据的指标和变换在 Snowflake 模型中计算；BFF 只处理前端体验与会话；Query API 负责授权、查询契约和请求控制。要保持一致的是业务定义和数据契约，不是要求同一条规则在 Java、BFF 和 SQL 中重复实现三遍。
 
-## 参考资料
+### 参考资料
 
-### 业界架构与分层模式
+#### 业界架构与分层模式
 
 1. [Microsoft Azure Architecture Center — Backends for Frontends](https://learn.microsoft.com/en-us/azure/architecture/patterns/backends-for-frontends) — BFF 的职责边界与官方图。
 2. [Microsoft identity platform — Application types](https://learn.microsoft.com/en-us/entra/identity-platform/v2-app-types) — Web App 与 SPA 的认证流程差异。
@@ -581,14 +591,14 @@ BFF 只应该传递和适配会话及访问凭证，不应成为唯一的授权�
 4. [AWS Prescriptive Guidance — CQRS pattern](https://docs.aws.amazon.com/prescriptive-guidance/latest/modernization-data-persistence/cqrs-pattern.html) — 命令侧与查询侧按不同负载要求建模。
 5. [AWS Prescriptive Guidance — Transactional outbox pattern](https://docs.aws.amazon.com/prescriptive-guidance/latest/cloud-design-patterns/transactional-outbox.html) — 业务修改与事件发布的原子性。
 
-### AWS 与 Netflix 架构图
+#### AWS 与 Netflix 架构图
 
 6. [AWS — Payment System Interface Modernization](https://docs.aws.amazon.com/architecture-diagrams/latest/payment-system-interface-modernization/payment-system-interface-modernization.html) — EKS、RDS、MSK 和 API 入口的 AWS 参考架构。
 7. [Netflix Technology Blog — Data Mesh](https://netflixtechblog.com/data-mesh-a-data-movement-and-processing-platform-netflix-1288bcab2873) — 管道控制面、数据面、连接器和处理器。
 8. [Netflix Technology Blog — Delta](https://netflixtechblog.com/delta-a-data-synchronization-and-enrichment-platform-e82c36a79aee) — CDC、事件传输和下游读模型同步的生产平台设计。
 9. [Spotify Engineering — Software Visualization](https://engineering.atspotify.com/2022/7/software-visualization-challenge-accepted) — 用标准化组件模型和 C4 思路理解、生成和维护系统架构图。
 
-### Snowflake 与数据同步
+#### Snowflake 与数据同步
 
 10. [Snowflake — Hybrid Tables](https://docs.snowflake.com/en/user-guide/tables-hybrid) — 面向事务型工作负载的表类型。
 11. [Snowflake — Hybrid Tables limitations](https://docs.snowflake.com/en/user-guide/tables-hybrid-limitations) — Hybrid Tables 的功能边界。
