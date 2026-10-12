@@ -689,6 +689,181 @@ Snowflake 普通 View 是已命名的查询定义，不会自动保存结果；M
 
 Snowflake 语义视图可以帮助统一可复用的业务指标定义，尤其是多个查询消费者需要同一组字段和度量时。它不能代替 Java 写入规则，也不会自动解决业务口径争议；必须有团队负责规则、模型和测试。
 
+### 3.5 哪些以前写在存储过程里的工作，现在可以直接用 Snowflake SQL 完成？
+
+可以替代其中相当一部分，但要先分清原存储过程到底做了什么。很多老系统把“从多张表取数、逐行判断、更新目标表、生成汇总、写日志、安排执行顺序”全包在存储过程中；迁移到 Snowflake 时，不应该把过程代码逐行翻译成另一种语言，而应该先看它是否只是集合运算。
+
+| 原来存储过程承担的事情 | 可以先评估的 Snowflake 能力 | 什么时候依旧需要程序化封装 |
+|---|---|---|
+| 过滤、关联、条件判断、跨期计算 | SELECT、CTE、子查询、EXISTS / NOT EXISTS、CASE、窗口函数、QUALIFY、聚合 | SQL 太长且多个职责混在一起时，优先拆成可测试的模型或命名查询，不是先写 Procedure |
+| 增量插入与更新 | MERGE、INSERT … SELECT、UPDATE / DELETE、事务内多个 DML | 需要按一组确定顺序执行多个步骤、对异常分支做统一处理时 |
+| 按规则取最新记录、按组排名和去重 | ROW_NUMBER、RANK、QUALIFY 等窗口计算 | 通常不需要逐行循环；先定义排序和并列时的确定性规则 |
+| 递归层级遍历 | Recursive CTE，前提是递归形状适合 SQL | 需要复杂的迭代状态、调用外部服务或其他程序化能力时 |
+| 识别有顺序的事件模式 | MATCH_RECOGNIZE 等 SQL 模式识别能力，需核实具体数据形态与使用限制 | 跨多个外部系统的流程编排不应该放入单条 SQL |
+| 分阶段执行、变量、条件分支、循环和异常处理 | Snowflake Scripting 的匿名块也能运行过程化语句；无需为了临时或一次性任务一定创建存储过程 | 需要稳定的可调用数据库接口、权限封装、复用或受控发布时 |
+| 定期刷新派生读模型 | Dynamic Tables、Tasks、Streams，或现有 dbt / 编排平台 | 多个作业有复杂依赖、回填、质量检查和发布协议时，需要明确的编排与运营责任；不必全部塞进 Procedure |
+| 调用 Java / Python 领域逻辑、连接供应商、调用外部服务 | 保留在应用服务 / Worker；只有满足 Snowflake 支持模型的专门数据处理才考虑 Snowpark | 领域授权、工作流、人机审批、供应商提交和网络交互不应因为数据在 Snowflake 就迁进数据库过程 |
+
+#### 先把“行循环”改为集合运算
+
+假设旧过程逐条处理历史事件，每条记录都判断是否是某个主体截至指定时点的最新状态，再更新一张汇总表。常见的改法不是直接把循环复制到 Snowflake Scripting，而是先用窗口函数确定每个主体的最新事件，再以一条 MERGE 更新目标表。
+
+~~~sql
+MERGE INTO MART.RECORD_CURRENT AS target
+USING (
+    SELECT
+        record_id,
+        status,
+        effective_at,
+        recorded_at,
+        event_id
+    FROM MART.RECORD_STAGE_EVENT
+    WHERE effective_at <= :effective_as_of
+      AND recorded_at <= :known_at
+    QUALIFY ROW_NUMBER() OVER (
+        PARTITION BY record_id
+        ORDER BY effective_at DESC, recorded_at DESC, event_id DESC
+    ) = 1
+) AS source
+ON target.record_id = source.record_id
+WHEN MATCHED THEN UPDATE SET
+    target.status = source.status,
+    target.effective_at = source.effective_at,
+    target.recorded_at = source.recorded_at
+WHEN NOT MATCHED THEN INSERT (
+    record_id, status, effective_at, recorded_at
+) VALUES (
+    source.record_id, source.status, source.effective_at, source.recorded_at
+);
+~~~
+
+这是展示集合式写法的示例，不是可直接复制的生产过程。实际逻辑还要处理删除事件、并列排序、迟到记录、源数据重复、目标表唯一性、历史版本保留、回补边界和重跑幂等。尤其是“当前状态投影”和“需要复现过去时点的历史版本”是不同模型，不能都用同一条 MERGE 规则处理。
+
+#### 什么时候 Snowflake Scripting 已经够用？
+
+如果一个数据库侧作业确实需要顺序执行几条 SQL、声明变量、用 IF / LOOP 分支，或者在异常时记录错误并结束，那么 Snowflake Scripting 可以实现这些控制流。它既能在支持的调用接口中执行匿名块，也可用于 Stored Procedure / UDF；**过程化语法不等于必须创建一个长期存在的存储过程对象**。
+
+但下面几种事情不能只凭语法上能写就认为应该放在 Snowflake：
+
+- 交易 / 投票等在线业务状态机、用户权限与职责分离，应由 Java Domain Service 和 PostgreSQL 交易边界负责。
+- 与供应商的网络交互、超时后状态核实、幂等提交、重试队列和人工例外处理，应由应用 Worker / 集成服务负责。
+- 数据转换与刷新更适合已有的数据工程生命周期；如果 Dynamic Tables、Tasks 或 dbt 已能清楚表达依赖，就不必在 Procedure 里手工造一套调度器。
+- Snowflake 的 BEGIN…END 是 Scripting 代码块，不应误以为它天然等于事务开始；事务应遵循 Snowflake 对 BEGIN TRANSACTION、COMMIT、ROLLBACK 和 DDL 行为的实际定义。
+
+选型建议是：**先尝试集合 SQL，再判断是否需要过程化语句，最后才决定是否要发布 Stored Procedure。** 不要按“旧系统有一个存储过程，就在 Snowflake 里也建一个存储过程”的方式迁移。
+
+### 3.6 PostgreSQL 与 Snowflake 的数据建模：保持业务语义一致，不要求表结构一模一样
+
+两边的物理模型服务于不同的工作负载。PostgreSQL 负责在线修改、事务约束和当前权威状态，模型通常更重视规范化、关系完整性、并发更新与明确的业务对象边界。Snowflake 的模型面向大范围扫描、跨期关联和聚合，常见做法是按主题构建事实表、维度表、历史快照和 Serving Models。
+
+所以不建议把 PostgreSQL 每一张表原样复制后就宣布完成分析建模；也不建议在 Snowflake 里重新独立定义一套业务术语。应让**业务键、状态含义、时间语义、指标口径、版本规则和数据契约一致**，让表的布局根据运行方式分别设计。
+
+| 需要对齐的内容 | PostgreSQL 一侧 | Snowflake 一侧 | 推荐的保持一致方式 |
+|---|---|---|---|
+| 实体身份 | 聚合根 ID、业务唯一键、外键和唯一约束 | 稳定业务键、跨系统映射、事实表和维度表关联键 | 定义不随显示名称变化的 canonical ID；保留供应商 / 上游 ID 的映射表，不用证券名称或可变代码作为唯一连接键 |
+| 数据粒度 | 以业务事务和写入对象为中心 | 以事件、快照、指令版本、提交尝试或分析事实的明确 grain 建模 | 每张表和每个数据集都写明“一行代表什么”；不能将一条业务决定与多次提交尝试混成同一粒度 |
+| 状态与枚举 | 领域服务校验允许的状态转换，数据库约束保证部分不变量 | 将源状态映射为受治理的业务状态，并保留源值和转换版本 | 维护状态词典、合法转换与兼容规则；不要在 Java、SQL 和 Agent prompt 中分别硬编码不同解释 |
+| 时间与历史 | 交易提交时间、业务生效时间、更新时间、版本号 | 事件时间、effective_at、recorded_at、快照时间和模型水位 | 统一 UTC 存储约定、业务时区与截止时间语义；对于“当时已知什么”的问题，保存系统记录时间，而非只留最终修正值 |
+| 数值和空值 | Numeric 精度、NULL、默认值与业务校验 | NUMBER 精度、NULL 语义和聚合规则 | 对精度、舍入、缺失 / 未知 / 零的含义、百分比基数设定数据契约与测试；不要静默转换金融金额精度 |
+| 更新与删除 | 事务提交、约束、更新版本及删除策略 | CDC upsert、变更事件、删除标记、历史记录与回放 | 约定 tombstone / hard delete、事件顺序、重复消息和更正行为；CDC 回放必须幂等且可对账 |
+| 关系完整性 | 主键 / 外键 / 唯一约束可以由数据库强制执行 | 标准 Snowflake 表的主键、外键和唯一约束通常是信息性声明，不强制执行；NOT NULL 和 CHECK 等有各自的执行语义 | 不依赖 Snowflake DDL 声明自动防止孤儿行或重复键；在加载与模型发布前做唯一性、非空、引用完整性和重复事件测试 |
+| 数据访问 | 事务角色、行级策略（如使用）和业务授权 | Snowflake Role、受控模型、Row Access Policy、Masking 等 | 为应用、CDC、模型刷新和分析消费者分离身份；定义各数据集的分类、可访问字段和行范围 |
+| 指标与业务定义 | 提交前必须立即成立的规则与当前状态 | 以版本化 SQL / 模型大规模计算历史口径 | 一个业务定义应有责任人、正式说明、版本和可复用测试；不能让 SQL 和 Java 各自拥有互相漂移的“唯一正确”版本 |
+| Schema 演进 | 应用迁移脚本、向前 / 向后兼容部署 | CDC schema 演进、RAW / 标准层转换与消费者兼容 | 先新增兼容字段，再部署消费者，最后清理旧字段；记录合同版本、未知枚举、回填策略和失败隔离 |
+
+#### 建议固定一条模型发布链
+
+~~~mermaid
+flowchart LR
+    PG["PostgreSQL<br/>权威事务模型"] --> CDC["CDC / 初始快照<br/>水位、顺序、删除语义"]
+    CDC --> RAW["Snowflake RAW<br/>保留来源与同步信息"]
+    RAW --> STG["Staging / Standardized<br/>类型、键、状态、时间语义"]
+    STG --> MART["History / Serving Model<br/>事实、维度、快照"]
+    MART --> TEST["质量与口径测试<br/>唯一性、引用完整性、对账"]
+    TEST --> PUBLISH["发布版本 / 更新数据水位"]
+    PUBLISH --> SEM["Semantic View / 受控消费者"]
+~~~
+
+实际落地时至少维护以下几类测试：
+
+- **键测试：** 关键主键唯一、必填列非空、事实表外键能匹配维度、供应商 ID 映射没有意外的一对多。
+- **CDC 测试：** 初始快照与增量衔接无缺口；INSERT / UPDATE / DELETE、重复、乱序、迟到和重放都有固定结果。
+- **业务口径测试：** Java 当前业务规则与 Snowflake 历史模型对同一组固定案例应得到符合定义的结果；若两者处理时点不同，测试要明确区分。
+- **历史重现测试：** 对一个过去时点，分别验证“按最终修正事实回算”和“按当时已知数据重现”的结果，不能把二者混作一个查询。
+- **总量与抽样对账：** 比较关键记录数、金额 / 数量汇总、状态分布和源端水位；有差异时产生有负责人的异常任务。
+- **模型与语义兼容测试：** 物理字段改名或指标定义变化时，确认 Semantic View、已验证问题、NLQ 应用和报表消费者没有悄然改变含义。
+
+Snowflake 的标准表约束差异需要特别注意：不能像 PostgreSQL 一样单纯依赖声明 PRIMARY KEY / FOREIGN KEY 就保证装载数据不会有重复或孤儿行。可将测试放进数据工程流水线，并阻止未通过验证的版本进入可供业务查询和 Agent 使用的 Serving Schema。
+
+### 3.7 将来做 NLQ-to-SQL Agent：现在应该预留什么？
+
+NLQ-to-SQL 不应该是“LLM 获得 Snowflake 凭证，然后自己构造并执行任意 SQL”。要先建立一个只读、定义明确的分析能力边界，再让 Agent 在这个边界内生成查询。
+
+~~~mermaid
+flowchart TB
+    User["已登录用户"] --> UI["Angular：自然语言问题"]
+    UI --> BFF["BFF：会话与请求上下文"]
+    BFF --> API["Java NLQ API / EKS"]
+    API --> Auth["业务授权与数据范围"]
+    Auth --> Agent["Agent Orchestrator<br/>问题澄清 / 工具选择"]
+    Agent --> Semantic["Semantic Query Provider"]
+    Semantic --> SV["Semantic View / 已治理 Serving Models"]
+    Agent --> Candidate["生成 SQL 与解释"]
+    Candidate --> Guard["SQL AST 校验、对象 / 列白名单、成本与行数限制"]
+    Guard --> Runner["受限 Read-only Query Adapter"]
+    Runner --> SF["Snowflake 专用只读 Role / Warehouse"]
+    SF --> Runner --> Result["结果、SQL、指标定义与数据水位"]
+    Result --> API --> UI
+    Auth --> Audit["审计：用户、数据范围、语义版本、SQL、Query ID"]
+    Guard --> Audit
+    Runner --> Audit
+~~~
+
+图中的 SQL guard 是额外防线，不是唯一安全边界。即使模型或 SQL 校验器漏掉某个限制，Snowflake 执行身份仍只能访问被批准的对象，并由数据库侧权限与可用的行列策略进一步约束。
+
+#### 应当提前确定的设计约束
+
+1. **Agent 只提供分析工具，不继承写入工具。** NLQ 入口默认只允许查询批准的 Semantic View / Serving Schema。创建决定、修改投票指令、审批、调用供应商提交接口属于独立业务命令，不能因为自然语言问题而自动调用。
+2. **沿用既有身份与业务 Entitlement。** Java 在调用 Agent 前解析用户的可信身份与授权范围。Snowflake 的服务 Role 并不会仅凭一个 prompt 知道该用户有哪些组合或客户权限；必须用经验证的权限映射、受控查询范围或数据库侧行访问策略来约束实际数据。
+3. **把语义层当成接口合同，而不只是 Prompt 文本。** Agent 应优先知道有哪些可用指标、时间维度、状态定义、关系、过滤条件和禁止的查询；不要让每次会话从海量表名和 DDL 中临时猜业务含义。
+4. **先校验查询再执行。** 只允许指定的只读对象与 SELECT 形态；拒绝 DML / DDL、任意 CALL、未知对象、未批准的函数、堆叠语句和越界字段。对标识符和 SQL 结构使用解析 / AST 规则，不用简单正则代替解析器。还需限制时间范围、结果行数、运行时长、Warehouse、并发与导出。
+5. **解释结果并显示边界。** 返回使用的指标定义、筛选条件、SQL 或可检查的查询说明、数据水位 / 更新时间和“无法回答”的原因。遇到“最近”“显著”“已完成”“表现最好”等定义不清的提问时，应追问而不是自行创造业务含义。
+6. **为提示注入与敏感数据泄露做测试。** 数据值、文本材料和历史备注都可能包含误导模型的内容；检索到的文本是数据，不是系统授权指令。不要把不必要的敏感行、原始备注或凭证放进 LLM 上下文。
+7. **建立可复现的 Agent 评测。** 对每个 Gold Question 保存经业务所有人确认的预期 SQL / 结果、权限范围、数据时点和边界条件；对语义定义或模型更改进行回归测试。SQL 执行成功不等于答案正确，答案看似合理也不等于权限合规。
+8. **审计完整链路。** 关联用户、问题分类、Semantic View / 数据模型版本、授权决定、生成 SQL、实际执行 SQL、Snowflake query ID、返回行数、模型水位和结果处理；对敏感字段适当脱敏，并按内部审计要求保存。
+
+#### Cortex Agents、Cortex Analyst 与自建 Agent 怎么选？
+
+Snowflake 在 2026 年的官方说明中建议新方案优先迁移到 Cortex Agents 路径；Cortex Agents 可以把 Cortex Analyst 作为结构化数据查询工具，同时加入工具调用、对话上下文与多步编排。已有 Cortex Analyst Semantic View / verified queries 可以沿用，不必为了换 Agent 入口重建语义层。详细能力仍要按账户、区域和当前产品状态核实。
+
+| 方案 | 合适的情况 | 主要取舍 |
+|---|---|---|
+| Snowflake Cortex Agents + Semantic View | 当前查询大部分在 Snowflake，且其身份、区域、模型可用性、审计和治理能力符合企业要求 | 原生整合较直接，但 Agent 能力与 Snowflake 产品路径绑定；仍要核查底层对象和行列权限 |
+| 企业自建 LangChain / DeepAgents + LiteLLM + Semantic View 查询工具 | 需要跨 Snowflake、PostgreSQL、内部搜索或其他模型，且已经有统一 Agent 运行时与治理 | 编排可跨平台，但必须自己做好 NLQ 工具合同、SQL 校验、身份映射、调用审计与评测 |
+| 把自由 SQL 直接交给通用 LLM 并由高权限账户执行 | 不推荐 | 语义不受控、对象范围过大、越权与成本风险高，也难以复现模型实际使用的业务定义 |
+
+建议给上层 Agent 留一个接口边界，例如 Semantic Query Provider；底层可以先连接 Java 中受控的 SQL 模板，之后再接 Cortex Agents 或其他 NLQ 引擎。这样可以演进 NLQ 实现，不需要把写入、业务授权和领域模型一起改掉。
+
+### 3.8 Semantic View 如何做：先统一业务口径，再接 Agent
+
+Semantic View 是 Snowflake 的 schema-level 语义对象，不是单纯给表和列加几条注释。它定义 Agent 或其他分析消费者可使用的逻辑表、主键、关系、维度、事实、指标、过滤器、同义词与已验证问题，并纳入 Snowflake 的权限治理。
+
+建议按以下顺序实施：
+
+1. **从问题清单开始，而不是从全库 DDL 开始。** 收集 20–50 个真实业务问题，标出业务术语、分组维度、时间范围、指标定义、数据分类、允许人群与问题对应的正确答案。先选择一个明确的分析域。
+2. **先把物理 Serving Model 做对。** 为该域明确事实表的 grain、主键、维度、历史版本、Join key 和数据水位。Semantic View 不应替代错误的底层数据模型，也不要直接开放 RAW。
+3. **确定 Logical Tables 与 Relationships。** 给每个逻辑表定义业务含义和唯一标识，准确声明 Join 键。若存在多个 Join 路径、桥表、多对多关系或按时间点关联，必须显式建模并测试，避免重复行和指标膨胀。
+4. **定义 Dimensions、Facts 和 Metrics。** 维度是按什么切分，Fact 是记录了什么数值或业务事实，Metric 是如何按确切分母、过滤、状态、时点与聚合方式计算。余额、快照值、比率和“每笔最终指令”通常不能不加定义就随意相加。
+5. **增加业务描述与同义词。** 将企业里的口头说法映射到正式术语，例如“投票成功”究竟是已发出、供应商接受，还是最终回执已对账。对同义词可能对应多个含义的术语，声明澄清规则。
+6. **编写 Custom Instructions / Question Categorization。** 明确允许和禁止的查询主题、默认时间语义、缺少必要筛选时要追问的字段、不可混加的指标，以及查询结果必须说明的数据水位。说明不能代替真正的数据权限。
+7. **收集 Verified / Gold Queries。** 为经业务所有人确认的问题保存标准问法、预期 SQL、预期结果和验证人。将部分样例留作评测集，不要让全部验证样例都同时充当每次回归的训练提示而失去独立评估价值。
+8. **设立访问边界。** 按业务域和用户群拆分 Semantic View，底层 Role 只读受治理对象；测试行级和列级策略、直接访问路径以及通过 Agent 的路径。Semantic View 不能自动授予用户底层没有的业务权限。
+9. **将语义定义纳入版本控制和发布。** 把 YAML / DDL、物理模型、验证问题、测试结果、语义负责人、版本与发布记录放进同一工程流程；在开发环境部署，运行验证问题和授权测试，再晋升到生产。
+10. **线上持续收集失败样例。** 把错误 Join、错误指标、错误时间范围、含义不清、被拒绝的问题与用户纠正纳入审核队列。修订 Semantic View 后重跑回归测试，不应每次模型答错就只在 Agent prompt 追加一句临时规则。
+
+对于不希望将业务语义完全绑定到 Snowflake 的企业，可以把业务指标、术语、键、关系和口径的**规范合同**保存在版本控制中，再把其中适用于 Snowflake 的部分发布为 Semantic View。Semantic View 是一个具体执行目标；它不应成为唯一存在的业务定义，也不替代领域服务里的写入规则。
+
+
 ## 四、Snowflake 能否直接承担新增、修改和删除？
 
 答案不是“不可以”。Snowflake Standard Tables 支持 DML 和事务；Hybrid Tables 则是面向特定事务型应用场景的另一种表类型。但 SQL 语法可用，并不意味着数据库在锁、约束、点查、故障恢复与运行费用方面可以直接替换 PostgreSQL。
@@ -930,7 +1105,7 @@ flowchart TB
 
 对当前系统，推荐的设计是 **Angular + BFF（Entra SSO）→ Java Domain Service → PostgreSQL 交易写入；PostgreSQL 通过可靠 CDC 同步至 Snowflake；Java Query API 调用 Snowflake 中受治理的历史模型执行大范围查询**。
 
-这样并没有把业务逻辑随意拆散。交易规则在领域服务中定义并于提交时强制执行；历史数据的指标和变换在 Snowflake 模型中计算；BFF 只处理前端体验与会话；Query API 负责授权、查询契约和请求控制。要保持一致的是业务定义和数据契约，不是要求同一条规则在 Java、BFF 和 SQL 中重复实现三遍。
+这样并没有把业务逻辑随意拆散。交易规则在领域服务中定义并于提交时强制执行；历史数据的指标和变换在 Snowflake 模型中计算；BFF 只处理前端体验与会话；Query API 负责授权、查询契约和请求控制。要保持一致的是业务定义和数据契约，不是要求同一条规则在 Java、BFF 和 SQL 中重复实现三遍。若进一步增加 NLQ-to-SQL，应先把一个受治理的分析域做成具有明确粒度、指标定义、权限和 Gold Queries 的 Semantic View，再接入只读 Agent 工具；不要让 Agent 直接接触写入接口或无边界的原始表。
 
 ### 参考资料
 
@@ -982,3 +1157,12 @@ flowchart TB
 37. [Snowflake — Network Policies](https://docs.snowflake.com/en/user-guide/network-policies) — 限制到 Snowflake 服务的入站网络访问。
 38. [Snowflake — Access History](https://docs.snowflake.com/en/user-guide/access-history) — 查询所访问对象及所引用的数据保护策略等审计信息。
 39. [AWS — Grant Kubernetes workloads access to AWS using Kubernetes Service Accounts](https://docs.aws.amazon.com/eks/latest/userguide/service-accounts.html) — EKS 工作负载身份与细粒度 AWS 权限。
+40. [Snowflake — Snowflake Scripting Developer Guide](https://docs.snowflake.com/en/developer-guide/snowflake-scripting) — 变量、条件、循环、异常处理与匿名块等过程化能力。
+41. [Snowflake — Stored Procedures overview](https://docs.snowflake.com/en/developer-guide/stored-procedure/stored-procedures-overview) — 存储过程的调用与权限模型。
+42. [Snowflake — Semantic Views overview](https://docs.snowflake.com/en/user-guide/views-semantic/overview) — Semantic View 的定位、构建方式和消费者。
+43. [Snowflake — Semantic View YAML specification](https://docs.snowflake.com/en/user-guide/views-semantic/semantic-view-yaml-spec) — Logical Tables、Relationships、Dimensions、Facts、Metrics、Instructions 与 Verified Queries 的结构。
+44. [Snowflake — Best practices for semantic views](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices) — 语义建模、访问控制、部署与准确率迭代。
+45. [Snowflake — Cortex Agents](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents) — 使用结构化数据与其他工具进行多步 Agent 编排。
+46. [Snowflake — Constraints](https://docs.snowflake.com/en/sql-reference/constraints) — 标准表与 Hybrid Tables 的约束执行差异。
+47. [PostgreSQL — Logical Replication](https://www.postgresql.org/docs/current/logical-replication.html) — 逻辑复制的发布 / 订阅语义与注意事项。
+48. [Snowflake — Semantic View SQL commands](https://docs.snowflake.com/en/user-guide/views-semantic/sql) — 通过 DDL 创建语义视图、定义关系和注册已验证查询。
