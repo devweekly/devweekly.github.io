@@ -23,12 +23,12 @@ Snowflake 不只是支持 SELECT、JOIN 和 GROUP BY。它有完整的查询、�
 
 | 语法 / 能力 | 典型用途 | 关键提示 |
 | --- | --- | --- |
-| `SELECT`、`WHERE`、`ORDER BY`、`LIMIT / FETCH` | 读取、过滤、排序和限制结果 | 大表先限制时间范围与列，避免不必要扫描 |
+| `SELECT`、`WHERE`、`ORDER BY`、`LIMIT / FETCH`、`VALUES`、`FOR UPDATE` | 查询、值行构造、排序、分页和适用场景中的行锁语法 | 完整查询语法还包含 QUALIFY、SAMPLE、AT/BEFORE、CHANGES、RESAMPLE 和 SEMANTIC_VIEW |
 | `WITH` / CTE、递归 CTE | 拆分复杂逻辑、层级遍历 | CTE 是组织查询的方式，不应默认把它当作物理缓存 |
 | `UNION [ALL]`、`INTERSECT`、`MINUS / EXCEPT` | 合并或比较结果集 | `UNION` 去重；只需拼接时通常使用 `UNION ALL` |
 | `INNER / LEFT / RIGHT / FULL JOIN`、`CROSS JOIN` | 多表关联 | 在 JOIN 前明确键的唯一性与行粒度 |
 | `QUALIFY` + 窗口函数 | 每组取最新一条、排名过滤 | Snowflake 方言能力；过滤窗口结果，不等同于 WHERE |
-| `GROUP BY ROLLUP / CUBE / GROUPING SETS` | 一次查询生成多层汇总 | 通过 `GROUPING()` 区分汇总产生的 NULL 和原始 NULL |
+| `GROUP BY ALL / ROLLUP / CUBE / GROUPING SETS`、`GROUPING()` / `GROUPING_ID()` | 自动分组、层级小计、维度组合总计与分组标记 | CUBE 组合数随维度指数增长；用 GROUPING 标识汇总 NULL |
 | `PIVOT / UNPIVOT` | 行列互转，生成报表宽表或规范化长表 | PIVOT 可能聚合数据；UNPIVOT 不能还原此前丢失的聚合信息 |
 | `LATERAL`、`FLATTEN` | 展开数组、对象等半结构化数据 | 输出行数和粒度可能变化 |
 | `ASOF JOIN` | 为事件匹配时间上最近的参考记录 | 仍要定义允许的最大时间差和无匹配规则 |
@@ -139,6 +139,7 @@ Snowflake 不只是支持 SELECT、JOIN 和 GROUP BY。它有完整的查询、�
 | 时间区间 | PERIOD(DATE)、相应时间戳区间类型 | 以明确的有效期边界表达时间段 |
 | 唯一标识 | UUID | 将 UUID 类型与普通 VARCHAR 的格式约定区分开 |
 | 用户定义类型 | 支持的 UDT | 仅在对象使用场景和限制适合时引入 |
+| 特殊/兼容性分类 | UNKNOWN、Unsupported、Conversion 相关参考章节 | 用于理解错误推断、不可支持的类型位置和显式/隐式转换损失 |
 | 转换与兼容 | CAST、::、TRY_TO_*、TO_* | 显式类型转换；有些转换有损，TRY 系列的 NULL 必须进入质量检查 |
 
 ### 9. 运算符和函数参考索引
@@ -1134,6 +1135,30 @@ END;
 
 Python、JavaScript、Java 或 Scala 过程则需要进一步考虑 Handler、依赖包、External Access Integration、Secrets、网络策略和供应链控制。简单的 GROUP BY 不应该为了“统一使用 Python”而移出 SQL 执行引擎。
 
+
+### 8.6 异步子任务与 AWAIT：一个过程里并行运行独立查询
+
+当两条查询相互独立、且等待它们完成后才能继续后续步骤时，Snowflake Scripting 支持使用 `ASYNC` 启动异步子任务，再通过 `AWAIT` 或 `AWAIT ALL` 等待完成：
+
+~~~sql
+BEGIN
+    LET orders_rs RESULTSET := ASYNC (
+        SELECT COUNT(*) AS row_count FROM staging.orders
+    );
+
+    LET customers_rs RESULTSET := ASYNC (
+        SELECT COUNT(*) AS row_count FROM staging.customers
+    );
+
+    AWAIT ALL;
+    RETURN 'Both validation queries completed';
+END;
+~~~
+
+这段代码展示并发执行的结构。结果集变量用于标识各自的子任务和后续读取结果；若需要检查两个结果值，应在 AWAIT 之后分别读取并验证，而不是只等待完成就假设数据符合预期。异步子任务不适用于存在读写依赖的步骤，也不会自动形成跨任务的原子事务。Snowflake Scripting 还提供 `CANCEL`，可以取消尚在运行的异步子任务。
+
+对于部署阶段一次执行 Stage 中的 SQL 脚本，可以评估 `EXECUTE IMMEDIATE FROM @stage/path/script.sql`。它适合从 Stage 执行有版本控制的 SQL 文件，并可通过受控模板变量传入参数。它不是存储过程的替代品；脚本仍需管理执行顺序、失败状态、权限、可重放性和变更审计。
+
 官方参考：[CREATE PROCEDURE](https://docs.snowflake.com/en/sql-reference/sql/create-procedure) · [Snowflake Scripting](https://docs.snowflake.com/en/developer-guide/snowflake-scripting) · [异常处理](https://docs.snowflake.com/en/developer-guide/snowflake-scripting/exceptions)。
 
 ---
@@ -1438,6 +1463,18 @@ LIMIT 10;
 ~~~
 
 AI_SIMILARITY 适用于小规模候选内容排序；要检索数百万文档，通常还应评估 AI_EMBED / AI_MULTI_EMBED、分块、Cortex Search、权限过滤和混合搜索，而不是计算全部文本之间的两两相似度。
+
+向量生成可以显式写入派生表，而不必每次检索时重新计算。下面是 TEXT Embedding 的示意；具体模型名、输出维度、成本与 Region 支持应按当前模型目录核实：
+
+~~~sql
+SELECT
+    review_id,
+    AI_EMBED('snowflake-arctic-embed-l-v2.0', review_text) AS review_vector
+FROM product_reviews
+WHERE review_text IS NOT NULL;
+~~~
+
+AI_EMBED 返回 VECTOR，模型不同，维度与质量特征也不同。批量生产应存储模型标识/版本以及文本版本或内容哈希，并在源内容变化时有策略地重新计算。AI_MULTI_EMBED 面向受支持的多模态模型与输入类型；不能假设所有 Embedding 模型同时支持文本、图片、音频和视频。
 
 ### 10.8 将提示词封装为 CREATE AI FUNCTION
 
@@ -2153,7 +2190,7 @@ CREATE OR REPLACE SEMANTIC VIEW analytics.sales_semantic
         orders.net_sales AS SUM(orders.net_amount),
         orders.order_count AS COUNT(DISTINCT orders.order_id)
     )
-    AI_SQL_GENERATION = 'Use orders.net_sales for net sales. Do not reinterpret canceled orders or sum duplicated order-header amounts.'
+    AI_SQL_GENERATION 'Use orders.net_sales for net sales. Do not reinterpret canceled orders or sum duplicated order-header amounts.'
     COMMENT = 'Certified sales semantic model';
 ~~~
 
@@ -2183,6 +2220,15 @@ ORDER BY customers.region;
 ~~~
 
 查询语义视图时，指标需遵守其聚合规则，维度应与指标背后的逻辑表存在正确关系。避免将非唯一维度与不受其决定的事实混用，否则结果可能非确定或不符合业务含义。
+
+
+### 18.3 语义视图变量与可配置查询
+
+Semantic View 在受支持的定义与查询形态中支持变量，可将一些运行参数从语义定义中分离出来。变量需要按官方当前 DDL 与 SEMANTIC_VIEW 查询语法定义和引用；变量名、类型、默认值、调用方可控的值都要验证。
+
+不要把 Semantic View 变量误认为会话变量，也不要通过它绕过行访问策略。即便指标定义来自同一语义视图，不同调用者仍应受到对象授权、行级策略与字段脱敏约束。
+
+参考：[Semantic View variables (GA, 2026-06-26)](https://docs.snowflake.com/en/release-notes/2026/other/2026-06-26-semantic-views-variables)。
 
 ### 18.3 语义模型中最重要的几个对象
 
@@ -2268,7 +2314,37 @@ ON_ERROR = 'ABORT_STATEMENT';
 
 错误处理策略不能只为了“批次不失败”就设置 CONTINUE。若重要财务数据的一部分无法解析，继续加载后仍发布完整的报表会造成误导。通常应定义每批允许的错误率、拒收表、告警以及是否阻止下游任务。
 
-### 19.4 用 VALIDATION_MODE 预检查文件，再执行加载
+
+### 19.4 装载时记录来源文件和行号
+
+文件级可追踪性应该从 Landing 层开始，而不是等出了差错再想办法恢复。对于支持相应元数据映射的 COPY 目标表，可以在加载时保存源文件名、文件中的行号和扫描时间：
+
+~~~sql
+COPY INTO raw_orders_with_lineage (
+    order_id,
+    customer_id,
+    amount,
+    source_filename,
+    source_row_number,
+    scanned_at
+)
+FROM (
+    SELECT
+        $1:order_id::VARCHAR,
+        $1:customer_id::VARCHAR,
+        TRY_TO_DECIMAL($1:amount::VARCHAR, 18, 2),
+        METADATA$FILENAME,
+        METADATA$FILE_ROW_NUMBER,
+        METADATA$START_SCAN_TIME
+    FROM @external_orders_stage
+)
+FILE_FORMAT = (TYPE = JSON)
+ON_ERROR = 'ABORT_STATEMENT';
+~~~
+
+这里的表名与列名是示意，需要提前创建匹配的目标列。对于文件加载，`METADATA$FILENAME` 和 `METADATA$FILE_ROW_NUMBER` 有助于定位异常输入；它们不能替代源系统业务主键和批次 ID。
+
+### 19.5 用 VALIDATION_MODE 预检查文件，再执行加载
 
 ~~~sql
 COPY INTO raw_orders
@@ -2281,7 +2357,7 @@ VALIDATION_MODE 会验证文件而不是正常装载目标数据。根据该选�
 
 在真正加载后，应保存 COPY 返回的文件、ROWS_PARSED、ROWS_LOADED、错误状态和 Query ID。将结果记录到批次审计表，才能回答“哪些文件成功了、哪些跳过、为什么没有达到预期行数”。
 
-### 19.5 装载时做简单转换，以及它的边界
+### 19.6 装载时做简单转换，以及它的边界
 
 COPY 可以使用受支持的 SELECT 转换表达式，重排列、忽略无关字段或转换类型。例子展示了 JSON 字段的抽取：
 
@@ -2299,7 +2375,7 @@ ON_ERROR = 'ABORT_STATEMENT';
 
 COPY 转换只支持规定的函数子集，不能直接假设完整 SELECT 里的所有函数、子查询和复杂 JOIN 都能放进装载语句。对于复杂业务逻辑，先加载原始数据，再通过 View、MERGE、Dynamic Table、Task/Procedure 或 dbt 等进行标准化转换。转换装载和验证模式还存在组合限制，应查看当前 COPY 参考。
 
-### 19.6 COPY INTO 导出、重放与审计
+### 19.7 COPY INTO 导出、重放与审计
 
 ~~~sql
 COPY INTO @export_stage/daily_orders/
@@ -2315,9 +2391,44 @@ OVERWRITE = TRUE;
 
 导出同样需要定义文件格式、命名、切分、覆盖与追加策略、敏感字段筛选和下游确认。OVERWRITE 应限制在专用目录，不要误覆盖其他批次。单个查询的导出通常可能生成多个文件；下游不应假设只有一个固定文件名。
 
-若要重放失败文件，先通过 COPY 历史和目标表判断是否已部分落入，再按原文件名、格式和参数明确重载。FORCE 或重新创建 Pipe 会影响加载元数据，不能把它们当作普通幂等重试。更安全的恢复流程是锁定批次/文件清单、清理或隔离冲突数据、按受控名单回补，再进行行数、唯一键、金额和下游新鲜度对账。
+若要重放失败文件，先通过 COPY 历史和目标表判断是否已部分落入，再按原文件名、格式和参数明确重载。
+可以先检查目标表的加载历史：
 
-### 19.7 Snowpipe、Snowpipe Streaming 和下游刷新不是同一回事
+~~~sql
+SELECT
+    file_name,
+    last_load_time,
+    status,
+    row_count,
+    row_parsed,
+    error_count,
+    first_error_message
+FROM TABLE(
+    MY_DB.INFORMATION_SCHEMA.COPY_HISTORY(
+        TABLE_NAME => 'RAW_ORDERS',
+        START_TIME => DATEADD('day', -1, CURRENT_TIMESTAMP())
+    )
+)
+ORDER BY last_load_time DESC;
+~~~
+
+对适用的 COPY 作业，可用 Query ID 检查错误记录：
+
+~~~sql
+SELECT *
+FROM TABLE(
+    VALIDATE(
+        MY_DB.STAGING.RAW_ORDERS,
+        JOB_ID => '<copy_query_id>'
+    )
+);
+~~~
+
+参数范围、保留期以及对目标表类型的支持要按当前参考确认。COPY_HISTORY 用于查看加载活动；VALIDATE 用于在适用情况下检视 COPY 错误。两者都不能单独证明业务数据完整正确。
+
+FORCE 或重新创建 Pipe 会影响加载元数据，不能把它们当作普通幂等重试。更安全的恢复流程是锁定批次/文件清单、清理或隔离冲突数据、按受控名单回补，再进行行数、唯一键、金额和下游新鲜度对账。
+
+### 19.8 Snowpipe、Snowpipe Streaming 和下游刷新不是同一回事
 
 Snowpipe 自动处理到达 Stage 的文件，使用 Snowflake 管理的计算；Snowpipe Streaming 通过 API/SDK 直接写入行数据，不要求每一批都先生成 Stage 文件。它们都可以缩短数据抵达分析表的延迟，但不负责替代业务数据建模、质量校验或下游指标口径。
 
@@ -2333,13 +2444,17 @@ Snowpipe 自动处理到达 Stage 的文件，使用 Snowflake 管理的计算�
 
 | 日期 | 新功能与发布状态 | 对实际项目的意义 |
 | --- | --- | --- |
+| 2026-10-12 | Named workload identity management for users — see release note for exact availability | Reduces dependence on long-lived credentials for supported identity workflows; validate authentication design and connector support |
+| 2026-10-06 | Data lineage coverage for storage integrations, external tables, model monitors and Cortex Search | Improves traceability across more data/service objects; verify lineage visibility and permissions |
 | 2026-10-07 | Snowflake Decision with AI_COMPLETE — Private Preview | 在 AI_COMPLETE 中评估文本与结构化数据的分类、评分和真假判断，可返回选项概率与置信信息。Private Preview 不应默认用于生产关键决策 |
 | 2026-10-05 | Cortex Agent Code Execution Tool — GA | Agent 可在隔离环境中运行 Python，完成计算、数据整理和可视化；要管理工具权限、输入边界、执行成本和产物追踪 |
 | 2026-10-05 | GPT-6.1 Sol 等 Cortex 模型 — Preview | 模型可用性会影响 AI SQL 选型；模型名和 Region 支持需在目标账号重新核实 |
+| 2026-06-26 | Semantic View variables — GA | Parameterize supported semantic view definitions/queries, subject to current syntax and supported contexts |
 | 2026-09-30 | DCM Projects DEFINE SEMANTIC VIEW — GA | 将语义视图中的逻辑表、关系、指标、维度、AI 指令和已验证查询纳入声明式管理 |
 | 2026-09-30 | Dynamic Tables 在支持的故障切换后继续增量刷新 — GA | 改善满足条件的故障切换后刷新连续性；Dynamic Iceberg Tables 等特定组合仍有例外 |
 | 2026-09-29 | Cortex AI Functions 响应缓存 | 同一条查询中重复的相同 AI_COMPLETE 文本调用可 best-effort 复用结果，降低重复推理费用与延迟 |
 | 2026-09-28 | Hybrid Tables Inline Stored Procedures — GA | 面向 Hybrid Table 事务型工作负载，把受支持的过程体作为单个原子单元执行，降低部分多语句开销 |
+| 2026-08 | CREATE OR ALTER DYNAMIC TABLE — GA | Simplifies declarative lifecycle management for supported object changes; review exact clause support and deployment semantics |
 | 2026-09-24 | Dynamic Tables 增量刷新支持 VALUES — GA | 在受支持的增量查询里，可把常量行集合与基础表关联 |
 | 2026-09-23 | Dynamic Tables 增量刷新支持部分非确定性近似聚合 — GA | APPROX_COUNT_DISTINCT、APPROX_PERCENTILE、APPROX_TOP_K 等可在规定限制下增量刷新；近似值不适合替代精确监管/财务数值 |
 | 2026-09-21 | Cortex AI Function Evaluation / Optimization — 区域性 Public Preview | 以标注数据集衡量 AI 函数质量、Token 和成本，并比较候选提示词/模型实现 |
@@ -2364,7 +2479,7 @@ INSERT INTO customer_validity
 VALUES (
     'C-001',
     'PREMIUM',
-    PERIOD(DATE '2026-01-01', DATE '2027-01-01')
+    PERIOD_CONSTRUCT(DATE '2026-01-01', DATE '2027-01-01')
 );
 ~~~
 
@@ -2439,6 +2554,32 @@ AI Function Evaluation / Optimization 进一步把 AI 从“试几个提示词�
 - [存储侧性能优化：聚簇、Search Optimization 等](https://docs.snowflake.com/en/user-guide/performance-query-storage)
 - [查看计算成本](https://docs.snowflake.com/en/user-guide/cost-exploring-compute)
 - [QUERY_HISTORY：SQL 查询历史](https://docs.snowflake.com/en/sql-reference/account-usage/query_history)
+
+
+### 按官方目录查漏：SQL 命令、类型、运算符与函数
+
+这些是 Snowflake 自己维护的分类目录；函数、命令和数据类型会持续变化。本文 Cheatsheet 按常见工程场景组织，不会在正文手工复制每个命令/函数的完整签名。需要确认“这个命令到底是否存在、完整参数是什么、哪些版本/对象支持它”时，应以官方目录为准。
+
+- [SQL command reference：全部 SQL 命令与对象域](https://docs.snowflake.com/en/sql-reference-commands)
+- [All commands（全部命令，按字母顺序）](https://docs.snowflake.com/en/sql-reference/sql-all)
+- [Query syntax（FROM、JOIN、SAMPLE、SEMANTIC_VIEW 等查询构造）](https://docs.snowflake.com/en/sql-reference/constructs)
+- [Query operators（算术、比较和逻辑运算符）](https://docs.snowflake.com/en/sql-reference/operators)
+- [SQL data types reference（数据类型总目录）](https://docs.snowflake.com/en/sql-reference-data-types)
+- [Summary of operators and functions（函数分类总览）](https://docs.snowflake.com/en/sql-reference/intro-summary-operators-functions)
+- [All functions（全部函数，按字母顺序）](https://docs.snowflake.com/en/sql-reference/functions-all)
+- [Snowflake Scripting reference](https://docs.snowflake.com/en/sql-reference-snowflake-scripting)
+- [Data loading and unloading commands](https://docs.snowflake.com/en/sql-reference/commands-data-loading)
+- [General DDL commands](https://docs.snowflake.com/en/sql-reference/ddl)
+- [General DML commands](https://docs.snowflake.com/en/sql-reference/dml)
+
+### 重点语法的直接参考
+
+- [GROUP BY](https://docs.snowflake.com/en/sql-reference/constructs/group-by) · [ROLLUP](https://docs.snowflake.com/en/sql-reference/constructs/group-by-rollup) · [CUBE](https://docs.snowflake.com/en/sql-reference/constructs/group-by-cube) · [GROUPING SETS](https://docs.snowflake.com/en/sql-reference/constructs/group-by-grouping-sets) · [GROUPING / GROUPING_ID](https://docs.snowflake.com/en/sql-reference/functions/grouping)
+- [SAMPLE / TABLESAMPLE](https://docs.snowflake.com/en/sql-reference/constructs/sample) · [SEMANTIC_VIEW query syntax](https://docs.snowflake.com/en/sql-reference/constructs/semantic_view) · [CREATE SEMANTIC VIEW](https://docs.snowflake.com/en/sql-reference/sql/create-semantic-view) · [Querying semantic views](https://docs.snowflake.com/en/user-guide/views-semantic/querying)
+- [CREATE PROCEDURE](https://docs.snowflake.com/en/sql-reference/sql/create-procedure) · [AWAIT](https://docs.snowflake.com/sql-reference/snowflake-scripting/await) · [EXECUTE IMMEDIATE FROM](https://docs.snowflake.com/en/sql-reference/sql/execute-immediate-from) · [CREATE TASK](https://docs.snowflake.com/en/sql-reference/sql/create-task) · [CREATE STREAM](https://docs.snowflake.com/en/sql-reference/sql/create-stream)
+- [COPY INTO table](https://docs.snowflake.com/en/sql-reference/sql/copy-into-table) · [COPY INTO location](https://docs.snowflake.com/en/sql-reference/sql/copy-into-location) · [Data Loading overview](https://docs.snowflake.com/en/user-guide/data-load-overview) · [Data loading transformations](https://docs.snowflake.com/en/user-guide/data-load-transform) · [CREATE FILE FORMAT](https://docs.snowflake.com/en/sql-reference/sql/create-file-format) · [Snowpipe](https://docs.snowflake.com/en/user-guide/data-load-snowpipe) · [Snowpipe Streaming](https://docs.snowflake.com/en/user-guide/snowpipe-streaming)
+- [Cortex AI Functions](https://docs.snowflake.com/en/user-guide/snowflake-cortex/llm-functions) · [AI_EMBED](https://docs.snowflake.com/en/sql-reference/functions/ai_embed) · [AI_MULTI_EMBED](https://docs.snowflake.com/en/sql-reference/functions/ai_multi_embed) · [AI Function Evaluation / Optimization](https://docs.snowflake.com/en/user-guide/snowflake-cortex/ai-function-studio)
+- [Current feature updates](https://docs.snowflake.com/en/release-notes/new-features) · [Feature updates earlier in 2026](https://docs.snowflake.com/en/release-notes/new-features-2026)
 
 ### 官方 GitHub 实践
 
