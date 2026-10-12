@@ -500,7 +500,7 @@ Hybrid Tables 支持事务型访问模式，包括行级锁、索引随机查找
 
 ### 6.2 AWS：支付接口现代化参考架构
 
-![AWS Payment System Interface Modernization 架构图](https://docs.aws.amazon.com/images/architecture-diagrams/latest/payment-system-interface-modernization/images/payment-system-interface-moderization.png)
+![AWS Payment System Interface Modernization 架构图](https://docs.aws.amazon.com/images/reference-architecture-diagrams/latest/payment-system-interface-modernization/images/payment-system-interface-moderization.png)
 
 来源：[Payment System Interface Modernization on AWS](https://docs.aws.amazon.com/architecture-diagrams/latest/payment-system-interface-modernization/payment-system-interface-modernization.html)。
 
