@@ -784,12 +784,10 @@ flowchart TB
     Operator["平台使用者 / 配置接口"] --> Controller["Control Plane<br/>管道定义、配置、部署、生命周期"]
     Controller --> Registry["管道配置 / 元数据"]
     Controller -. "创建、更新、管理" .-> Runtime["Data Plane：运行中的 Pipeline"]
-    subgraph Pipeline["单条数据管道"]
-        Source["Source Connector"] --> Transport["事件传输层"] --> Processor["过滤 / 映射 / Join 等处理"] --> Sink["Destination Connector"]
-    end
-    Runtime --- Pipeline
     SourceDB[("源系统 / 数据库")] --> Source["Source Connector"]
-    Sink --> Target[("目标存储 / 读模型")]
+    Source --> Transport["事件传输层"] --> Processor["过滤 / 映射 / Join 等处理"] --> Sink["Destination Connector"] --> Target[("目标存储 / 读模型")]
+    Runtime -. "配置与管理" .-> Source
+    Runtime -. "配置与管理" .-> Processor
 ~~~
 
 可以借鉴“谁管理同步配置”与“谁执行数据复制和转换”是不同职责。当前规模如果一个托管连接器加上模型代码就能解决问题，不需要为了复刻 Netflix 而自建管道控制平台。来源：[Netflix Technology Blog — Data Mesh](https://netflixtechblog.com/data-mesh-a-data-movement-and-processing-platform-netflix-1288bcab2873)。
