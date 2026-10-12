@@ -496,7 +496,7 @@ Query Catalog 不一定要成为独立产品。第一版可以是 Java 中的一
 
 ~~~mermaid
 flowchart TD
-    A["先判断请求的业务语义"] --> B{"是否要求刚提交后立即读到最新状态，或参与提交前校验？"}
+    A["先判断请求的业务语义"] --> B{"是否属于在线业务读取，且需要权威当前状态？<br/>例如当前待办、审批状态、资格校验"}
     B -- "是" --> C["Java Domain API + PostgreSQL 权威状态"]
     B -- "否：历史、跨期、组合筛选或分析" --> D["Java Query API 做授权与请求约束"]
     D --> E{"主要是关系型筛选、Join、窗口、聚合吗？"}
@@ -788,7 +788,7 @@ flowchart TB
         Source["Source Connector"] --> Transport["事件传输层"] --> Processor["过滤 / 映射 / Join 等处理"] --> Sink["Destination Connector"]
     end
     Runtime --- Pipeline
-    Source --> SourceDB[("源系统 / 数据库")]
+    SourceDB[("源系统 / 数据库")] --> Source["Source Connector"]
     Sink --> Target[("目标存储 / 读模型")]
 ~~~
 
@@ -800,11 +800,11 @@ Netflix Delta 的公开案例从源数据变更捕获 CDC 事件，经消息传�
 
 ~~~mermaid
 flowchart LR
-    SourceDB[("权威源数据库")] --> CDC["CDC Connector"]
+    Writer["写入源系统的应用"] --> SourceDB[("权威源数据库")]
+    SourceDB --> CDC["CDC Connector"]
     CDC --> Topic["事件传输 / Kafka Topic"]
     Topic --> Processor["流处理与数据丰富<br/>可调用其他业务服务"]
     Processor --> Search[("派生搜索索引")]
-    SourceDB -. "不可做同步双写的依赖" .-> App["写入源系统的应用"]
     Search --> Query["查询消费者"]
 ~~~
 
@@ -823,7 +823,7 @@ flowchart TB
     Projection --> Fresh
     Fresh -- "满足" --> ReplyProjection["从只读投影返回结果"]
     Fresh -- "超限或投影不可用" --> Fallback["回源核心系统"]
-    Core --> Fallback
+    Fallback --> Core
     ReplyProjection --> Response["结果 + 数据更新时间"]
     Fallback --> Response
     Reconcile["对账 / 新鲜度监控"] --- Projection
