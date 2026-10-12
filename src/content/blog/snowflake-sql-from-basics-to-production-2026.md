@@ -2013,7 +2013,411 @@ BEFORE (STATEMENT => '<query_id>');
 
 ---
 
-## 十六、官方文档与可运行示例
+
+## 十六、Snowflake 数据类型：不只 VARCHAR、NUMBER 和 TIMESTAMP
+
+选择数据类型决定了比较、聚合、转换、存储语义和下游接口。Snowflake 支持常见 SQL 类型，也逐步扩展了结构化复合类型、向量、UUID 和 PERIOD 等类型。正式设计数据契约时，应先回答字段代表什么，而不只是“上游传来的是字符串还是数字”。
+
+### 16.1 数据类型全景
+
+| 类型族 | 代表类型 | 典型用途与设计考虑 |
+| --- | --- | --- |
+| 精确数值 | NUMBER(p,s)、DECIMAL、NUMERIC、INTEGER / INT、BIGINT、SMALLINT | 金额、数量、计数。金额使用明确精度和小数位；超出精度需要有意定义舍入和拒收规则 |
+| 近似数值 | FLOAT、DOUBLE、REAL | 科学/统计近似计算。不要把浮点数相等比较或财务金额精确性当作保证 |
+| 字符与二进制 | VARCHAR / STRING / TEXT、CHAR / CHARACTER、BINARY | 代码、说明、标识符和原始字节；把字符集、大小写、比较语义与长度约束纳入契约 |
+| 逻辑值 | BOOLEAN / BOOL | TRUE、FALSE；SQL 条件也可能产生 NULL/UNKNOWN |
+| 日期和时间 | DATE、TIME、TIMESTAMP_NTZ、TIMESTAMP_LTZ、TIMESTAMP_TZ | 区分日期、一天内时间、无时区墙上时间、本地时区语义和带偏移时区信息 |
+| 半结构化 | VARIANT、OBJECT、ARRAY | 在原始层保存 JSON 等灵活结构；标准化层仍应固定字段类型和业务定义 |
+| 结构化复合类型 | 类型化 ARRAY、MAP、OBJECT | 复杂值中元素类型明确时，可比任意 JSON 更容易校验输入输出契约 |
+| 地理空间 | GEOGRAPHY、GEOMETRY | 地球曲面地理数据与平面几何计算，不应在不同坐标语义之间随意混用 |
+| 向量 | VECTOR(FLOAT, dimension)、VECTOR(INT, dimension) | Embedding、相似度和 AI 检索；维度、模型版本与向量类型都应在数据契约中固定 |
+| 时间区间 | PERIOD(DATE)、对应的时间区间类型 | 表示有效起止区间。适合时间有效性模型，但不能替代业务定义 |
+| 唯一标识 | UUID | 明确标识符类型；跨系统时应验证输入格式、生成方和大小写规范 |
+| 用户定义类型 | 支持的 UDT | 仅当复用语义和工具链兼容性带来明显收益时引入 |
+| 文件和非结构化内容 | Stage 文件、FILE 引用及非结构化数据功能 | 文件引用可以作为 AI/文档处理的输入，和“已解析的 VARCHAR 文本列”不是一回事 |
+| 转换与兼容 | CAST、::、TO_*、TRY_TO_* | 显式转换并处理损失；自动类型转换也可能导致精度、时区或比较语义变化 |
+
+Snowflake 的类型参考还单独列出 Unknown、Unsupported 和 Conversion 等专题。这里的“类型全景”是按实际建模分类，并非所有类型都适用于每一种表、函数、外部引擎或 DDL 场景。
+
+### 16.2 金额：NUMBER 与 FLOAT 的区别
+
+~~~sql
+SELECT
+    0.10::NUMBER(18,2) + 0.20::NUMBER(18,2) AS exact_amount,
+    0.10::FLOAT + 0.20::FLOAT AS approximate_amount;
+~~~
+
+在业务模型中，固定精度金额通常应使用 NUMBER(p,s)，并明确币种、税费、四舍五入规则与精度溢出后的处理方式。FLOAT 适合近似计算，但不能替代要求精确十进制结果的会计口径。即使底层使用 NUMBER，也仍需定义跨币种汇总的换算汇率和取整时点。
+
+### 16.3 TIMESTAMP_NTZ、LTZ、TZ：先定义时区契约
+
+- TIMESTAMP_NTZ 只保存日期和时间字段，不携带自己的时区语义。企业常用它存 UTC 时间，但必须由数据契约明确说明“这些值按 UTC 解释”。
+- TIMESTAMP_LTZ 以会话时区规则展示时间，内部对时间点进行标准化处理；不同会话设置可能影响显示结果。
+- TIMESTAMP_TZ 保存时间戳和偏移量信息，但偏移量不等于完整的 IANA 时区规则，不要指望它自动保留某地区未来的夏令时规则。
+
+在跨区域报表里，必须明确业务日历时区，然后将窗口边界一致地转换。仅将时间列转换成 DATE 再做过滤，可能把 UTC 月末附近的记录划到错误的业务日。
+
+### 16.4 VARIANT 与结构化类型：灵活不等于没有 Schema
+
+VARIANT 适合先接住变化频繁的源 JSON，避免原始接入因为单个字段变化就失败。但它不应成为整个数据仓库永远不治理字段类型的理由。对于稳定消费字段，建议将原始结构转换到明确的 NUMBER、VARCHAR、BOOLEAN、DATE/TIMESTAMP 等类型；缺失字段、无法转换和结构变化要进入质量检查。
+
+VECTOR 与 PERIOD 是需要额外认识的类型。VECTOR 用于向量工作流，维度必须和 embedding 模型一致；PERIOD 表示时间范围，适合有效期和区间分析。两者的函数、可用区域、DDL 限制和支持操作不同于普通标量类型，使用前要看专门的类型与函数参考。
+
+完整索引：[Snowflake SQL data types](https://docs.snowflake.com/en/sql-reference-data-types) · [Numeric](https://docs.snowflake.com/en/sql-reference/data-types-numeric) · [Date and time](https://docs.snowflake.com/en/sql-reference/data-types-datetime) · [Semi-structured](https://docs.snowflake.com/en/sql-reference/data-types-semistructured) · [Structured types](https://docs.snowflake.com/en/sql-reference/data-types-structured) · [Geospatial](https://docs.snowflake.com/en/sql-reference/data-types-geospatial) · [PERIOD](https://docs.snowflake.com/en/sql-reference/data-types-period) · [UUID](https://docs.snowflake.com/en/sql-reference/data-types-uuid) · [VECTOR](https://docs.snowflake.com/en/sql-reference/data-types-vector)。
+
+---
+
+## 十七、运算符与函数：从“记住几个函数”到系统查找
+
+Snowflake 有大量标量函数、聚合函数、窗口函数、表函数、系统函数和用户自定义函数。没有必要把所有函数硬写成一份可能过时的清单；应掌握分类方法、核心语义和权威索引。下面把常用类别与工程用途串起来。
+
+### 17.1 运算符不是函数，但同样影响 SQL 正确性
+
+| 运算符组 | 例子 | 需要理解的语义 |
+| --- | --- | --- |
+| 算术 | `+`、`-`、`*`、`/`、`%` | 数据类型提升、精度、舍入和除零 |
+| 比较 | `=`、`<>`、`<`、`>=`、`IS [NOT] DISTINCT FROM` | NULL-safe 比较与三值逻辑 |
+| 逻辑 | `AND`、`OR`、`NOT` | 括号优先级，以及 TRUE/FALSE/UNKNOWN 组合 |
+| 集合与范围 | `IN`、`BETWEEN`、`EXISTS`、`ANY / ALL` | 子查询、空集合和 NULL 的行为 |
+| 字符匹配 | `LIKE`、`ILIKE`、`RLIKE / REGEXP` | 大小写、正则模式、转义和扫描成本 |
+| 集合运算 | `UNION`、`UNION ALL`、`INTERSECT`、`MINUS / EXCEPT` | 去重与列类型兼容 |
+| 路径和复合值 | VARIANT 路径运算符、数组/对象函数 | 路径不存在、类型转换和展开造成的行数变化 |
+
+例如，金额或关键字段比较应小心 NULL：
+
+~~~sql
+SELECT
+    CASE
+        WHEN source_amount IS DISTINCT FROM target_amount
+        THEN 'DIFFERENT'
+        ELSE 'SAME'
+    END AS comparison
+FROM reconciliation_rows;
+~~~
+
+普通的 `source_amount <> target_amount` 在某侧为 NULL 时得到 UNKNOWN，不能保证识别缺失与非空值之间的差异。反过来，如果两边的 NULL 在业务上代表“未知但相同”，就需要先定义适合的空值语义，而不是机械替换成空字符串或 0。
+
+### 17.2 函数类型总览
+
+| 函数家族 | 常见函数 | 真实用途 |
+| --- | --- | --- |
+| 聚合与统计 | SUM、AVG、MIN、MAX、COUNT、COUNT_IF、MEDIAN、STDDEV、近似聚合 | 生成业务指标、质量统计和分布估算 |
+| 窗口函数 | ROW_NUMBER、RANK、DENSE_RANK、LAG、LEAD、FIRST_VALUE、LAST_VALUE | 排名、前后版本、累计量、有效期计算 |
+| 条件与空值 | CASE、IFF、COALESCE、NULLIF、EQUAL_NULL | 状态映射、空值处理、避免除零 |
+| 转换与类型 | CAST、TRY_TO_NUMBER、TRY_TO_TIMESTAMP、TO_VARIANT、AS_* | 类型契约、容错清洗、JSON 转换 |
+| 日期时间 | DATEADD、DATEDIFF、DATE_TRUNC、TIME_SLICE、CONVERT_TIMEZONE | 窗口边界、日历对齐和时区转换 |
+| 字符串与正则 | SPLIT、SPLIT_PART、REGEXP_SUBSTR、REGEXP_REPLACE、LISTAGG | 清洗、解析和文本聚合 |
+| 数组/对象与半结构化 | ARRAY_CONSTRUCT、OBJECT_CONSTRUCT、GET、GET_PATH、FLATTEN | JSON 接入、抽取、展开和重建 |
+| 哈希、加密与编码 | HASH、SHA2、ENCRYPT、DECRYPT、BASE64/HEX 转换类函数 | 行指纹、完整性与受控加密；不能混淆哈希与可逆加密 |
+| 地理空间 | ST_* / GEOGRAPHY / GEOMETRY 相关函数 | 距离、交集、范围查询和空间转换 |
+| 元数据与系统 | CURRENT_ROLE、CURRENT_WAREHOUSE、LAST_QUERY_ID、RESULT_SCAN、INFORMATION_SCHEMA 表函数 | 运行上下文、排障和元数据检查 |
+| 数据质量 | 系统数据指标函数、用户定义函数、聚合质量规则 | 将非空、唯一性和业务规则变成可重复测试 |
+| 向量与 ML | VECTOR_COSINE_SIMILARITY 等向量函数、ML 预测/特征函数 | 向量相似度与模型相关工作流 |
+| AI 函数 | AI_COMPLETE、AI_CLASSIFY、AI_FILTER、AI_SENTIMENT、AI_EXTRACT、AI_SUMMARIZE 等 | 文本、文件和多模态模型推理；详见第十章 |
+
+Snowflake 官方的总结索引还把标量、聚合、窗口、表函数和系统函数分开；更细的类别包括位运算、上下文、数据生成、数据指标、差分隐私、通知、组织用户、PERIOD、Snowpark Container Services 和 AI 辅助函数。查找新函数时，从函数家族索引开始，确认该函数是标量、聚合、窗口还是表函数，再读参数、返回类型、NULL 行为、权限和 Region 限制。
+
+参考：[运算符](https://docs.snowflake.com/en/sql-reference/operators) · [函数分类总览](https://docs.snowflake.com/en/sql-reference/intro-summary-operators-functions) · [全部函数](https://docs.snowflake.com/en/sql-reference-functions)。
+
+---
+
+## 十八、SEMANTIC_VIEW：为什么它不等同于普通 View？
+
+普通 View 保存的是一个查询定义；Semantic View 则额外描述逻辑表、关系、Facts、Dimensions、Metrics、同义词、说明、AI SQL 生成指令和已验证问题。它把“字段如何连接”与“业务指标究竟表示什么”集中到一个可治理对象中，尤其适合 Cortex Analyst 和自然语言数据分析。
+
+### 18.1 从业务事实表定义语义层
+
+假设 `analytics.fact_orders` 每行是一笔订单，而 `analytics.dim_customer` 每个 customer_id 只有一个当前维度记录：
+
+~~~sql
+CREATE OR REPLACE SEMANTIC VIEW analytics.sales_semantic
+    TABLES (
+        orders AS analytics.fact_orders PRIMARY KEY (order_id)
+            WITH SYNONYMS = ('sales', 'transactions'),
+        customers AS analytics.dim_customer PRIMARY KEY (customer_id)
+    )
+    RELATIONSHIPS (
+        orders_customer AS orders(customer_id)
+            REFERENCES customers(customer_id)
+    )
+    FACTS (
+        orders.net_amount AS orders.net_amount,
+        orders.quantity AS orders.quantity
+    )
+    DIMENSIONS (
+        orders.order_date AS orders.order_date,
+        orders.status AS orders.status,
+        customers.region AS customers.region
+    )
+    METRICS (
+        orders.net_sales AS SUM(orders.net_amount),
+        orders.order_count AS COUNT(DISTINCT orders.order_id)
+    )
+    AI_SQL_GENERATION = 'Use orders.net_sales for net sales. Do not reinterpret canceled orders or sum duplicated order-header amounts.'
+    COMMENT = 'Certified sales semantic model';
+~~~
+
+这段 DDL 是一个结构示例，需按真实列名、约束和语法细节调整。Semantic View 中声明的 PRIMARY KEY / UNIQUE 是语义模型所依赖的键声明，不能代替对底层表进行唯一性数据测试。事实表、维度表的实际基数和 JOIN 关系必须与声明一致，否则模型可能生成逻辑正确却重复计数的 SQL。
+
+### 18.2 通过 SEMANTIC_VIEW 子句查询已定义指标
+
+~~~sql
+SELECT *
+FROM SEMANTIC_VIEW(
+    analytics.sales_semantic
+    DIMENSIONS customers.region
+    METRICS orders.net_sales, orders.order_count
+)
+ORDER BY region;
+~~~
+
+SEMANTIC_VIEW 是 SELECT ... FROM 中的查询语法构造，不是把所有业务逻辑都塞进一个普通标量函数。也可以直接将 Semantic View 名称放进 FROM，并使用 AGG(metric) 等语义视图支持的查询写法：
+
+~~~sql
+SELECT
+    customers.region,
+    AGG(orders.net_sales) AS net_sales
+FROM analytics.sales_semantic
+GROUP BY customers.region
+ORDER BY customers.region;
+~~~
+
+查询语义视图时，指标需遵守其聚合规则，维度应与指标背后的逻辑表存在正确关系。避免将非唯一维度与不受其决定的事实混用，否则结果可能非确定或不符合业务含义。
+
+### 18.3 语义模型中最重要的几个对象
+
+- **Logical table**：给底层表定义稳定的逻辑别名、键和说明。
+- **Relationships**：声明可用的表间关联。必须对应真实数据关系，不能仅因为两列同名就声明关联。
+- **Facts**：表达基础事实或计算表达式，例如净金额、数量或经过明确变换的字段。
+- **Dimensions**：为分析提供地区、产品、日期、客户分群等分组属性。
+- **Metrics**：统一定义净销售额、订单数、平均订单金额等指标口径。非加性指标（例如期末余额）需要额外的聚合语义，不能对所有维度简单相加。
+- **AI_SQL_GENERATION / AI_QUESTION_CATEGORIZATION**：为 Cortex Analyst 提供生成 SQL 与分类问题的指令。
+- **AI_VERIFIED_QUERIES**：为典型业务问题保存经过验证的 SQL 样例，帮助覆盖常见问法和业务口径。
+
+语义视图也有 DDL 生命周期命令，例如 CREATE、CREATE OR ALTER、ALTER、DROP、SHOW、DESCRIBE，以及在 DCM Projects 中使用 DEFINE SEMANTIC VIEW 的声明式方式。DEFINE SEMANTIC VIEW 只能用于 DCM 项目定义文件，不能当作普通 Worksheet 中任意执行的 SQL 命令。
+
+Semantic View 不是权限边界本身，也不自动保证指标正确。仍需要对象授权、数据访问策略、键/关系测试、指标对账和已验证查询的持续维护。
+
+官方参考：[CREATE SEMANTIC VIEW](https://docs.snowflake.com/en/sql-reference/sql/create-semantic-view) · [SEMANTIC_VIEW 查询语法](https://docs.snowflake.com/en/sql-reference/constructs/semantic_view) · [查询 Semantic Views](https://docs.snowflake.com/en/user-guide/views-semantic/querying) · [DCM Projects 的 DEFINE SEMANTIC VIEW](https://docs.snowflake.com/en/release-notes/2026/other/2026-09-30-dcm-define-semantic-view-ga)。
+
+---
+
+## 十九、COPY INTO 与 Data Loading：完整的数据装载思路
+
+Snowflake 的 Data Loading 不是一个 COPY 命令就结束。实际方案包括文件落点、身份认证、Stage、File Format、初始加载、增量/持续摄取、错误处理、文件重放、元数据、质量检查以及下游刷新。
+
+### 19.1 先按延迟与来源选择装载方式
+
+| 方式 | 适合场景 | 工作模式与代价 |
+| --- | --- | --- |
+| 批量 COPY INTO | 每小时、每天或按批次落地 CSV / JSON / Parquet | 使用 Warehouse 执行批量文件装载，适合可控批次和历史回补 |
+| Snowpipe 自动文件加载 | 云存储文件持续抵达，希望通常几分钟级可分析 | Snowflake 管理计算和自动加载，需配置事件通知/集成并监控延迟与费用 |
+| Snowpipe Streaming | 行数据持续流入，不想先生成和落地文件 | API/SDK 将行数据直接写入 Snowflake；它不是一个 COPY SQL 语法分支 |
+| Kafka Connector / Openflow / CDC 集成 | 数据库变化或消息流持续同步 | 管理初始快照、增量游标、删除语义、Schema 演进和源端压力 |
+| External Table / Iceberg 等 | 希望查询留在外部存储或跨引擎共享的文件 | 需要评估查询性能、元数据刷新、事务/演进语义与存储布局 |
+| SQL 客户端 PUT / GET | 本地文件与 Snowflake Stage 之间传输 | 是 SnowSQL 等客户端命令，不是普通服务端 SELECT/COPY 子句 |
+
+不要仅按“实时/批量”二分方案；数据量、文件大小、CDC 语义、源端保护、恢复方式、处理时效、事件通知能力和运营团队责任都会影响选型。
+
+### 19.2 Stage 与 File Format 是装载契约的一部分
+
+Stage 是 Snowflake 用于访问文件的逻辑位置，可以是内部 Stage，也可以是通过 Storage Integration 访问外部云存储的 External Stage。File Format 则声明 CSV、JSON、Parquet 等文件内容如何解析。
+
+~~~sql
+CREATE OR REPLACE FILE FORMAT ingest_csv
+    TYPE = CSV
+    FIELD_DELIMITER = ','
+    SKIP_HEADER = 1
+    EMPTY_FIELD_AS_NULL = TRUE
+    TRIM_SPACE = TRUE
+    NULL_IF = ('NULL', 'null');
+
+-- 外部 Stage 示例：storage integration 应预先配置并按最小权限授权。
+CREATE OR REPLACE STAGE external_orders_stage
+    URL = 's3://example-data-bucket/orders/'
+    STORAGE_INTEGRATION = orders_storage_integration
+    FILE_FORMAT = ingest_csv;
+~~~
+
+这里的 bucket 和 integration 名称均为占位示例。生产环境不要把长期云密钥或访问令牌直接写进 SQL；通过 Storage Integration、云 IAM 和允许的路径控制访问范围。文件格式应版本化，尤其要明确 CSV 的分隔符、引号、转义、空值、日期格式和编码规则。
+
+### 19.3 最基础的批量加载，以及文件选择方式
+
+~~~sql
+COPY INTO raw_orders
+FROM @external_orders_stage
+FILE_FORMAT = (FORMAT_NAME = ingest_csv)
+ON_ERROR = 'ABORT_STATEMENT';
+~~~
+
+通常应先将原始文件加载到 Raw/Landing 层，再进行类型标准化和业务转换。按文件名单、路径前缀或 PATTERN 可以加载某个批次；FILES 参数可以精确列出文件，官方文档说明其最多可指定 1,000 个文件。FILES 与 PATTERN 组合使用时只会加载 FILES 中列出的路径，通常不建议同时指定。
+
+生产常用的 COPY 选项包括：
+
+| 选项 | 作用 | 风险与限制 |
+| --- | --- | --- |
+| FILE_FORMAT | 指定文件类型及解析规则 | 不能只看扩展名；压缩、CSV 引号、Parquet 逻辑类型都可能影响结果 |
+| FILES / PATTERN | 选择要加载的文件 | 精确文件列表最多 1,000 个；路径选择要可追踪 |
+| MATCH_BY_COLUMN_NAME | 按列名匹配 Parquet / 半结构化文件字段 | 需要确认大小写和缺失字段处理 |
+| ON_ERROR | ABORT_STATEMENT、CONTINUE、SKIP_FILE 等 | CONTINUE 可能把部分错误数据留在结果里；必须监控拒收率 |
+| VALIDATION_MODE | RETURN_n_ROWS、RETURN_ERRORS、RETURN_ALL_ERRORS | 用于预校验；不支持所有加载形态，不能随意与 COPY 转换组合 |
+| FORCE | 强制重载已记录为加载过的文件 | 可能产生重复数据；通常应作为受控的恢复操作 |
+| PURGE | 处理后删除 Stage 中文件 | 文件删除影响重放和审计，应谨慎启用 |
+| RETURN_FAILED_ONLY | 控制是否仅返回失败结果 | 需保留足够的成功/失败批次元数据 |
+| INCLUDE_METADATA | 将文件名、行号等元数据映射到目标列 | 对审计和重放有帮助；字段需与目标 Schema 相匹配 |
+
+错误处理策略不能只为了“批次不失败”就设置 CONTINUE。若重要财务数据的一部分无法解析，继续加载后仍发布完整的报表会造成误导。通常应定义每批允许的错误率、拒收表、告警以及是否阻止下游任务。
+
+### 19.4 用 VALIDATION_MODE 预检查文件，再执行加载
+
+~~~sql
+COPY INTO raw_orders
+FROM @external_orders_stage
+FILE_FORMAT = (FORMAT_NAME = ingest_csv)
+VALIDATION_MODE = 'RETURN_ERRORS';
+~~~
+
+VALIDATION_MODE 会验证文件而不是正常装载目标数据。根据该选项的限制，不能假定它支持所有 COPY 转换场景。若先前的 COPY 采用 CONTINUE 而发生部分装载，可用 VALIDATE 表函数查看相应加载作业的错误，但也要确认目标表类型和所使用的 COPY 形态是否受支持。
+
+在真正加载后，应保存 COPY 返回的文件、ROWS_PARSED、ROWS_LOADED、错误状态和 Query ID。将结果记录到批次审计表，才能回答“哪些文件成功了、哪些跳过、为什么没有达到预期行数”。
+
+### 19.5 装载时做简单转换，以及它的边界
+
+COPY 可以使用受支持的 SELECT 转换表达式，重排列、忽略无关字段或转换类型。例子展示了 JSON 字段的抽取：
+
+~~~sql
+COPY INTO raw_orders (order_id, amount)
+FROM (
+    SELECT
+        $1:order_id::VARCHAR,
+        $1:amount::NUMBER(18,2)
+    FROM @external_orders_stage
+)
+FILE_FORMAT = (TYPE = JSON)
+ON_ERROR = 'ABORT_STATEMENT';
+~~~
+
+COPY 转换只支持规定的函数子集，不能直接假设完整 SELECT 里的所有函数、子查询和复杂 JOIN 都能放进装载语句。对于复杂业务逻辑，先加载原始数据，再通过 View、MERGE、Dynamic Table、Task/Procedure 或 dbt 等进行标准化转换。转换装载和验证模式还存在组合限制，应查看当前 COPY 参考。
+
+### 19.6 COPY INTO 导出、重放与审计
+
+~~~sql
+COPY INTO @export_stage/daily_orders/
+FROM (
+    SELECT order_id, order_date, net_amount
+    FROM analytics.fact_orders
+    WHERE order_date >= DATEADD('day', -1, CURRENT_DATE())
+      AND order_date < CURRENT_DATE()
+)
+FILE_FORMAT = (TYPE = PARQUET)
+OVERWRITE = TRUE;
+~~~
+
+导出同样需要定义文件格式、命名、切分、覆盖与追加策略、敏感字段筛选和下游确认。OVERWRITE 应限制在专用目录，不要误覆盖其他批次。单个查询的导出通常可能生成多个文件；下游不应假设只有一个固定文件名。
+
+若要重放失败文件，先通过 COPY 历史和目标表判断是否已部分落入，再按原文件名、格式和参数明确重载。FORCE 或重新创建 Pipe 会影响加载元数据，不能把它们当作普通幂等重试。更安全的恢复流程是锁定批次/文件清单、清理或隔离冲突数据、按受控名单回补，再进行行数、唯一键、金额和下游新鲜度对账。
+
+### 19.7 Snowpipe、Snowpipe Streaming 和下游刷新不是同一回事
+
+Snowpipe 自动处理到达 Stage 的文件，使用 Snowflake 管理的计算；Snowpipe Streaming 通过 API/SDK 直接写入行数据，不要求每一批都先生成 Stage 文件。它们都可以缩短数据抵达分析表的延迟，但不负责替代业务数据建模、质量校验或下游指标口径。
+
+装载链路至少应分别监控：文件/事件到达时间、加载开始/结束时间、行数和错误数、源端时间戳到可查询时间的延迟，以及下游 Dynamic Table/Task 完成时间。数据“已经 load 完”不代表业务报表一定已刷新。
+
+官方参考：[Data Loading 总览](https://docs.snowflake.com/en/user-guide/data-load-overview) · [COPY INTO table](https://docs.snowflake.com/en/sql-reference/sql/copy-into-table) · [COPY INTO location](https://docs.snowflake.com/en/sql-reference/sql/copy-into-location) · [文件格式](https://docs.snowflake.com/en/sql-reference/sql/create-file-format) · [加载期转换](https://docs.snowflake.com/en/user-guide/data-load-transform) · [Snowpipe](https://docs.snowflake.com/en/user-guide/data-load-snowpipe) · [Snowpipe Streaming](https://docs.snowflake.com/en/user-guide/snowpipe-streaming)。
+
+---
+
+## 二十、截至 2026 年 10 月 13 日：值得关注的 SQL 与数据工程新特性
+
+这里的时间范围是**截至 2026 年 10 月 13 日**。本节聚焦会影响 SQL、AI 数据管道和生产运维的更新，不声称穷举 Snowflake 所有产品发布；官方完整记录持续变化，必须把 GA、Public Preview、Private Preview 分开评估。
+
+| 日期 | 新功能与发布状态 | 对实际项目的意义 |
+| --- | --- | --- |
+| 2026-10-07 | Snowflake Decision with AI_COMPLETE — Private Preview | 在 AI_COMPLETE 中评估文本与结构化数据的分类、评分和真假判断，可返回选项概率与置信信息。Private Preview 不应默认用于生产关键决策 |
+| 2026-10-05 | Cortex Agent Code Execution Tool — GA | Agent 可在隔离环境中运行 Python，完成计算、数据整理和可视化；要管理工具权限、输入边界、执行成本和产物追踪 |
+| 2026-10-05 | GPT-6.1 Sol 等 Cortex 模型 — Preview | 模型可用性会影响 AI SQL 选型；模型名和 Region 支持需在目标账号重新核实 |
+| 2026-09-30 | DCM Projects DEFINE SEMANTIC VIEW — GA | 将语义视图中的逻辑表、关系、指标、维度、AI 指令和已验证查询纳入声明式管理 |
+| 2026-09-30 | Dynamic Tables 在支持的故障切换后继续增量刷新 — GA | 改善满足条件的故障切换后刷新连续性；Dynamic Iceberg Tables 等特定组合仍有例外 |
+| 2026-09-29 | Cortex AI Functions 响应缓存 | 同一条查询中重复的相同 AI_COMPLETE 文本调用可 best-effort 复用结果，降低重复推理费用与延迟 |
+| 2026-09-28 | Hybrid Tables Inline Stored Procedures — GA | 面向 Hybrid Table 事务型工作负载，把受支持的过程体作为单个原子单元执行，降低部分多语句开销 |
+| 2026-09-24 | Dynamic Tables 增量刷新支持 VALUES — GA | 在受支持的增量查询里，可把常量行集合与基础表关联 |
+| 2026-09-23 | Dynamic Tables 增量刷新支持部分非确定性近似聚合 — GA | APPROX_COUNT_DISTINCT、APPROX_PERCENTILE、APPROX_TOP_K 等可在规定限制下增量刷新；近似值不适合替代精确监管/财务数值 |
+| 2026-09-21 | Cortex AI Function Evaluation / Optimization — 区域性 Public Preview | 以标注数据集衡量 AI 函数质量、Token 和成本，并比较候选提示词/模型实现 |
+| 2026-09-15 | EXPLAIN CHANGES — GA | 在更改 Dynamic Table 定义或执行手工刷新之前，预测可能采取的刷新行动以及是否会重新初始化 |
+| 2026-09-14 | 多模态 AI_SUMMARIZE — Public Preview | 对受支持的文档、图像、图表等直接生成摘要；发布状态和输入范围需要账号级核实 |
+| 2026 年 9 月 | PERIOD 数据类型 — GA | 使用明确时间区间类型表达有效期；要区分时间范围的类型语义与业务历史规则 |
+
+这些新特性中，有些是纯 SQL，有些是围绕 SQL/AI 的管理与数据工程能力。只把它们写进函数列表并不能解释影响，下面挑出几项重要特性给出使用边界。
+
+### 20.1 PERIOD：时间区间是一等数据语义
+
+在历史维表、合同、订阅或价格有效期中，常常用 VALID_FROM 与 VALID_TO 两列表示区间。PERIOD 类型让区间语义显式化，有助于统一边界处理。
+
+~~~sql
+CREATE OR REPLACE TABLE customer_validity (
+    customer_id VARCHAR,
+    segment VARCHAR,
+    valid_period PERIOD(DATE)
+);
+
+INSERT INTO customer_validity
+VALUES (
+    'C-001',
+    'PREMIUM',
+    PERIOD(DATE '2026-01-01', DATE '2027-01-01')
+);
+~~~
+
+上面的示例表达的是概念模式，实际构造和访问应以当前 PERIOD 函数语法为准。PERIOD 使用明确的起止边界，常见的有效期模型采用左闭右开区间；相邻区间可在一个时点首尾衔接而不重叠。仍然需要决定用业务生效时间还是系统记录时间，并用数据测试确保不同版本没有非法重叠。
+
+### 20.2 EXPLAIN CHANGES：修改 Dynamic Table 前预估刷新代价
+
+一行 SQL 改动可能让 Dynamic Table 从增量刷新切换为全量重算，进而影响费用、新鲜度和完成时间。EXPLAIN CHANGES 用于在特定变更或手动刷新之前预测可能采取的刷新动作，包括是否重新初始化：
+
+~~~sql
+EXPLAIN CHANGES
+    ALTER DYNAMIC TABLE mart_daily_sales
+    UNSET FROZEN WHERE;
+~~~
+
+示例中的具体 DDL 需根据需要进行的实际修改调整。EXPLAIN CHANGES 不是对整个下游数据链的完美费用预测，仍需要在真实数据量和依赖关系下验证刷新历史、运行时间与扫描量。修改关键 Dynamic Table 前，把预测结果与变更前基线一起保存在发布记录中，是值得加入的生产实践。
+
+### 20.3 Dynamic Tables 增量刷新支持扩展
+
+官方在 2026 年 9 月扩展了增量刷新支持，包括 VALUES，以及在受支持场景中的近似聚合。近似聚合适合大型分布和趋势的估算；它的结果不是精确值，不能代替需要完全对账的账户余额、金额、法定报表或监管指标。
+
+实际设计中，应该比较 INCREMENTAL、AUTO、ADAPTIVE 和 FULL 刷新模式（以目标对象当前支持项为准）。增量处理可能减少反复扫描，但依赖源端变更跟踪、表达式支持和查询模式；遇到不支持的查询形态，刷新可能无法按预期运行。不要仅凭模式名称就断言它一定更便宜。
+
+### 20.4 AI SQL 缓存、Evaluation 与 Optimization
+
+Cortex 的 AI_COMPLETE 响应缓存主要降低同一查询中重复输入导致的重复推理开销，不是任意跨查询的永久业务缓存。要持久化 AI 结果、控制版本和支持审计，仍应由业务数据模型负责。
+
+AI Function Evaluation / Optimization 进一步把 AI 从“试几个提示词看看”带入可评估的工程过程：使用标注数据集、为特定任务选择指标、衡量质量和成本，再决定是否采用候选实现。对于分类，exact_match 是一个自然起点；对于摘要、解释和复杂问答，则需要语义度量、人工标注或 LLM judge。评估集应覆盖边界、稀有类别、不同语言以及恶意提示，不应只取“容易答对”的样本。
+
+### 20.5 Cortex Agent Code Execution Tool：SQL 与 Agent 的职责边界
+
+截至 2026-10-05，Cortex Agent 的 Code Execution Tool 已 GA，可让 Agent 在隔离执行环境中运行 Python 脚本做计算、数据处理和可视化。它并不意味着所有 SQL 都应转成 Python：集合过滤、关联、聚合仍适合在 Snowflake SQL 中执行；只有确实需要过程计算、统计库或图表生成时，再让 Agent 通过受控工具执行代码。
+
+生产使用需明确工具能访问哪些数据、输入是否经过过滤、代码运行环境是否隔离、是否允许外部网络、输出如何记录，以及如何防止模型将不可信内容转成任意操作。
+
+### 20.6 Hybrid Tables 内联存储过程：适用范围不能外推
+
+2026-09-28 GA 的 Inline Stored Procedures 针对 Hybrid Tables 中的事务型工作负载，旨在把过程体作为单个原子单元推入查询处理层，减少特定多语句操作的开销。这是需要低延迟事务行为的特定能力，并不是把普通标准表的分析 SQL、所有 Stored Procedure 或全部 Snowflake 计算都变成 OLTP 的通用开关。必须按目标表类型、事务要求、并发、延迟和成本做 PoC。
+
+### 20.7 新功能上线前的核对表
+
+1. **发布状态**：GA、Public Preview、Private Preview，还是仅在特定 Region 可用？
+2. **权限和版本**：需要什么角色、数据库对象、模型权限、Edition 或显式启用操作？
+3. **语法和类型限制**：支持哪些数据类型、表类型、函数组合和刷新模式？
+4. **成本与性能**：是否额外消耗 Warehouse、Serverless、模型 Token、索引和维护费用？
+5. **失败与恢复**：失败是否可能部分提交？重试是否幂等？怎样保留审计和来源信息？
+6. **退出与回退**：Preview 发生变更时，有没有回退到既有 SQL、Task 或外部服务的方案？
+
+官方依据：[Snowflake 最新新特性](https://docs.snowflake.com/en/release-notes/new-features) · [2026 年新特性列表](https://docs.snowflake.com/en/release-notes/new-features-2026)。
+
+---
+
+## 二十一、官方文档与可运行示例
 
 以下链接适合在动手时查语法细节、功能限制和官方实践。Snowflake 的功能、版本要求、区域支持和计费规则会变化，正式落地前应以当前账号实际支持情况及官方文档为准。
 
