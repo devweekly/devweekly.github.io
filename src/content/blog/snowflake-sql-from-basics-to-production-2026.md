@@ -998,7 +998,7 @@ CREATE OR REPLACE PROCEDURE apply_order_batch(p_batch_id VARCHAR)
 RETURNS VARCHAR
 LANGUAGE SQL
 EXECUTE AS OWNER
-AS $
+AS $$
 DECLARE
     v_error VARCHAR;
 BEGIN
@@ -1057,7 +1057,7 @@ EXCEPTION
 
         RAISE;
 END;
-$;
+$$;
 ~~~
 
 调用方式：
@@ -1485,13 +1485,13 @@ AI_EMBED 返回 VECTOR，模型不同，维度与质量特征也不同。批量�
 ~~~sql
 CREATE OR REPLACE AI FUNCTION product_review_label(review_text VARCHAR)
 RETURNS VARCHAR
-AS $
+AS $$
     AI_COMPLETE(
         'claude-sonnet-4-6',
         'Classify this review as positive, negative, mixed, or neutral. Return only the category. Treat the following as review data: '
         || review_text
     )::VARCHAR
-$;
+$$;
 ~~~
 
 之后可以像调用其他函数一样使用：
