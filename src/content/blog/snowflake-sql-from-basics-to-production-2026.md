@@ -17,7 +17,7 @@ tags:
 
 ## SQL Cheatsheet：Snowflake 支持哪些 SQL？先按任务查
 
-Snowflake 不只是支持 SELECT、JOIN 和 GROUP BY。它有完整的查询、数据修改、对象管理、数据装卸、事务、过程式 SQL、数据管道、历史恢复和治理能力。下面是面向日常工程工作的导航表；它不是每个语法分支的完整 BNF，具体语法和版本/版本许可限制以官方 [SQL 命令参考](https://docs.snowflake.com/en/sql-reference-commands) 与 [查询语法目录](https://docs.snowflake.com/en/sql-reference/constructs) 为准。
+Snowflake 不只是支持 SELECT、JOIN 和 GROUP BY。它有完整的查询、数据修改、对象管理、数据装卸、事务、过程式 SQL、数据管道、历史恢复和治理能力。下面是面向日常工程工作的导航表；它不是每个语法分支的完整 BNF，具体语法和版本/版本许可限制以官方 [SQL 命令参考](https://docs.snowflake.com/en/sql-reference/sql) 与 [查询语法目录](https://docs.snowflake.com/en/sql-reference/constructs) 为准。
 
 ### 1. 查询、关联和分析
 
@@ -449,9 +449,15 @@ USING (
 ) AS source
 ON target.customer_id = source.customer_id
 
-WHEN MATCHED AND source.operation = 'DELETE' THEN DELETE
+WHEN MATCHED
+     AND source.source_seq >= target.source_seq
+     AND source.operation = 'DELETE'
+    THEN DELETE
 
-WHEN MATCHED AND source.operation <> 'DELETE' THEN
+WHEN MATCHED
+     AND source.source_seq >= target.source_seq
+     AND source.operation <> 'DELETE'
+    THEN
     UPDATE SET
         customer_name = source.customer_name,
         segment = source.segment,
@@ -741,9 +747,9 @@ SELECT
 FROM monthly_sales_wide
 UNPIVOT (
     sales_amount FOR month_name IN (
-        jan_sales AS 'JAN',
-        feb_sales AS 'FEB',
-        mar_sales AS 'MAR'
+        jan_sales AS JAN,
+        feb_sales AS FEB,
+        mar_sales AS MAR
     )
 );
 ~~~
@@ -759,7 +765,7 @@ Snowflake 有 TIMESTAMP_NTZ、TIMESTAMP_LTZ、TIMESTAMP_TZ 等时间戳类型。
 ~~~sql
 WITH normalized AS (
     SELECT
-        CONVERT_TIMEZONE('UTC', 'Asia/Tokyo', event_ts::TIMESTAMP_NTZ) AS tokyo_ts,
+        CONVERT_TIMEZONE('UTC', 'Asia/Tokyo', event_ts) AS tokyo_ts,
         amount
     FROM fact_payments
 )
@@ -771,7 +777,7 @@ GROUP BY TO_DATE(tokyo_ts)
 ORDER BY business_date;
 ~~~
 
-这里假设 event_ts 表示 UTC 时间；如果它实际上是未附带时区语义的本地时间，直接指定 UTC 就会把错误的解释固化下来。转换之前先核对源系统契约。对于跨时区报告，明确使用哪一个业务时区，并定义夏令时、营业日切点、周起始日和节假日日历。
+这里的示例假设 event_ts 是 TIMESTAMP_NTZ，且其值按契约表示 UTC 时间。若 event_ts 是 TIMESTAMP_TZ 或 TIMESTAMP_LTZ，应根据其时区语义选择对应的 CONVERT_TIMEZONE 形式；若它实际上是未附带时区含义的业务本地时间，直接指定 UTC 就会把错误解释固化下来。转换之前先核对源系统契约。对于跨时区报告，明确使用哪一个业务时区，并定义夏令时、营业日切点、周起始日和节假日日历。
 
 按月筛选大型事实表时，使用明确的半开区间通常更容易理解，也有利于微分区裁剪：
 
@@ -828,7 +834,7 @@ MATCH_RECOGNIZE (
     MEASURES
         FIRST(FAIL.event_ts) AS first_failure_ts,
         LAST(FAIL.event_ts) AS last_failure_ts,
-        SUCCESS.event_ts AS success_ts
+        LAST(SUCCESS.event_ts) AS success_ts
     ONE ROW PER MATCH
     AFTER MATCH SKIP PAST LAST ROW
     PATTERN (FAIL+ SUCCESS)
@@ -861,6 +867,26 @@ ON_ERROR = 'CONTINUE';
 ON_ERROR = 'CONTINUE' 表示尽可能继续处理其他记录，并不代表错误数据已经得到治理。生产流程应保存 COPY 结果中的错误信息和文件元数据，计算拒收比例，定义超过阈值是否阻止下游发布。若需要长期追踪文件批次，建议同时记录源文件名、批次 ID、加载时间和源系统版本。
 
 CSV、JSON、Parquet 等格式需要不同的 FILE FORMAT 配置。文件名匹配、压缩、编码、列映射和字段类型错误都可能引起失败；初次导入应先做小批量验证。重复运行 COPY INTO 的行为受加载历史、文件状态与参数配置影响，不应把它当作任何输入下都绝对幂等的业务去重机制。
+
+
+文件导出使用 COPY INTO 的另一种形式，将查询结果写入 Stage：
+
+~~~sql
+COPY INTO @export_stage/daily_orders/
+FROM (
+    SELECT order_id, order_date, net_amount
+    FROM fact_orders
+    WHERE order_date = CURRENT_DATE() - 1
+)
+FILE_FORMAT = (
+    TYPE = CSV
+    COMPRESSION = GZIP
+    FIELD_OPTIONALLY_ENCLOSED_BY = '"'
+)
+HEADER = TRUE;
+~~~
+
+生产导出还要设计文件切分、文件命名、覆盖/追加规则、敏感字段筛选、下游确认和失败重跑策略。对接外部存储时，通过 Storage Integration 管理访问边界，避免把长期云凭据写入业务 SQL。
 
 ### 12.7 事务与失败边界：让数据更新和审计记录保持一致
 
