@@ -93,7 +93,9 @@ flowchart TB
     end
 
     Snowflake[("Snowflake Account<br/>RAW → Model → Serving")]
-    Browser --> DNS --> WAF --> ALB
+    Browser -->|"DNS lookup"| DNS
+    Browser -->|"HTTPS"| ALB
+    WAF -. "保护入口流量" .-> ALB
     ALB --> BFFa
     ALB --> BFFb
     BFFa <--> Entra
