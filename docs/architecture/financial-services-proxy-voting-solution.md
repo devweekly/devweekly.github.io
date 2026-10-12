@@ -448,6 +448,9 @@ flowchart TB
 | F_VOTE_DECISION_VERSION_HISTORY | 一条投票决定的一个版本或一次状态变更 | 复现旧版本、修改原因、审批与政策变化 | 不可直接将所有版本数当成最终决定数 |
 | F_SUBMISSION_ATTEMPT | 一次对外发送尝试 | 重试、拒绝、延迟和异常调查 | 一条最终指令可能多次尝试，不能把 Attempt Count 当作 Instruction Count |
 | F_PROVIDER_ACK | 一条供应商回执或状态事件 | 已接收 / 已拒绝 / 状态未知的对账与回执延迟 | 重复、迟到或更正回执需要去重规则及事件顺序 |
+| F_SUBMISSION_INSTRUCTION_STATUS | 一个 instruction_version 的规范化最终供应商状态，在指定水位下去重得出 | 已确认接受的指令版本、未确认指令数、供应商接受率 | 必须明确何种回执算接受；最新状态选择规则要可复现 |
+
+提交分析应独立建立 SV_SUBMISSION_RECONCILIATION。建议它基于 F_SUBMISSION_INSTRUCTION_STATUS 定义“已提交指令版本数、已接受指令版本数、未确认版本数、接受率”；另用 F_SUBMISSION_ATTEMPT 统计每次发送的延迟、重试和错误码。除非先在模型层聚合到相同 grain，否则不要把指令状态与每次 attempt 直接 Join 后计算接受率。决定分析和提交分析应分别评测、分别授权，避免用户用一张语义视图混淆业务决定数量与供应商发送次数。
 
 例如，供应商接受率的分母如果是“已经提交的不同指令版本”，就不能用发送尝试次数代替；一条指令超时后重试三次，不应变成三条不同的业务投票。若指标要表示“每次网络尝试的成功率”，才以 attempt 为粒度，并用不同的名字和定义。
 
@@ -555,6 +558,22 @@ tables:
         expr: DATE_TRUNC('MONTH', MEETING_DATE)
         data_type: DATE
 
+  - name: portfolios
+    description: 仅对已获授权的用户开放；不在语义模型中默认公开账户明细。
+    base_table:
+      database: ANALYTICS
+      schema: PROXY_VOTING
+      table: D_PORTFOLIO_ANALYTICS
+    primary_key:
+      columns: [portfolio_id]
+    dimensions:
+      - name: portfolio_group
+        synonyms: ["组合类别", "portfolio group"]
+        description: 经数据治理批准可用于分析分组的组合类别，不是用户权限字段。
+        expr: PORTFOLIO_GROUP
+        data_type: TEXT
+        is_enum: true
+
 relationships:
   - name: vote_decisions_to_meetings
     left_table: vote_decisions
@@ -562,6 +581,12 @@ relationships:
     relationship_columns:
       - left_column: meeting_id
         right_column: meeting_id
+  - name: vote_decisions_to_portfolios
+    left_table: vote_decisions
+    right_table: portfolios
+    relationship_columns:
+      - left_column: portfolio_id
+        right_column: portfolio_id
 
 metrics:
   - name: policy_exception_rate
@@ -604,6 +629,20 @@ module_custom_instructions:
 ~~~
 
 这个样例刻意没有把供应商回执与提交尝试合到决定事实中。实际实施还要验证 Semantic View YAML 的语法与表达式、底层对象授权、指标在不同 Join 和分组组合下的数值，以及目标 Cortex 接口的兼容性。尤其是 policy_exception_rate 应通过 Gold Queries 验证，不能因为表达式能编译就认定业务定义正确。
+
+#### 把 YAML 发布成 Snowflake Semantic View
+
+建议由版本化发布脚本读取 Git 中审核通过的 YAML，然后先让 Snowflake 验证它能否生成 Semantic View。以下是部署调用的形状，第二个参数必须是完整 YAML 文件内容，而不是路径占位符：
+
+~~~sql
+CALL SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML(
+  'ANALYTICS.PROXY_VOTING',
+  $$<读取已审核的 sv_vote_decision_analytics.yaml 文件内容>$$,
+  TRUE
+);
+~~~
+
+第三个参数 TRUE 是 verify-only，只验证不创建对象。验证通过后，发布流程再使用同一份、不可变版本的 YAML 创建 / 更新对象，并运行 Gold Queries、权限负向测试及结果对账。部署身份只拥有目标 Schema 的 CREATE SEMANTIC VIEW 和所需源对象 SELECT 权限；不要让 NLQ 运行身份兼具语义视图发布权限。该调用本身是 Snowflake 提供的 YAML 部署接口，不意味着业务规则应该改写成存储过程。
 
 #### Gold Questions：先验证这些问题
 
