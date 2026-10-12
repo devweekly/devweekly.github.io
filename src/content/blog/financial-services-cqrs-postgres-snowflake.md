@@ -38,7 +38,7 @@ tags:
 
 ### 2.1 目标架构：写入权威源与分析读模型分开
 
-\`\`\`mermaid
+```mermaid
 flowchart TB
     U[Web / API Client] --> API[API Gateway / BFF]
     API --> CMD[Java Command / Domain Service\nAWS EKS]
@@ -55,7 +55,7 @@ flowchart TB
     QRY -->|在线当前状态或读后写请求| PG
     QRY -->|历史查询与大范围分析| SEM
     SEM --> BI[BI / Research / Reporting]
-\`\`\`
+```
 
 关键不是规定所有查询都必须经过 Snowflake，而是按查询的**数据范围、延迟要求和一致性语义**选择数据源。
 
