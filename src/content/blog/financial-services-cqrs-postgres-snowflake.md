@@ -1163,7 +1163,7 @@ flowchart TB
 43. [Snowflake — Semantic View YAML specification](https://docs.snowflake.com/en/user-guide/views-semantic/semantic-view-yaml-spec) — Logical Tables、Relationships、Dimensions、Facts、Metrics、Instructions 与 Verified Queries 的结构。
 44. [Snowflake — Best practices for semantic views](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices) — 语义建模、访问控制、部署与准确率迭代。
 45. [Snowflake — Cortex Agents](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents) — 使用结构化数据与其他工具进行多步 Agent 编排。
-49. [Snowflake — Transition from Cortex Analyst to Cortex Agents (2026-08-28)](https://docs.snowflake.cn/en/release-notes/2026/other/2026-08-28-cortex-analyst-transition-cortex-agents) — 说明 2026 年产品入口调整，现有 Semantic View 与 Verified Queries 可沿用。
 46. [Snowflake — Constraints](https://docs.snowflake.com/en/sql-reference/constraints) — 标准表与 Hybrid Tables 的约束执行差异。
 47. [PostgreSQL — Logical Replication](https://www.postgresql.org/docs/current/logical-replication.html) — 逻辑复制的发布 / 订阅语义与注意事项。
 48. [Snowflake — Semantic View SQL commands](https://docs.snowflake.com/en/user-guide/views-semantic/sql) — 通过 DDL 创建语义视图、定义关系和注册已验证查询。
+49. [Snowflake — Transition from Cortex Analyst to Cortex Agents (2026-08-28)](https://docs.snowflake.cn/en/release-notes/2026/other/2026-08-28-cortex-analyst-transition-cortex-agents) — 说明 2026 年产品入口调整，现有 Semantic View 与 Verified Queries 可沿用。
