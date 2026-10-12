@@ -121,7 +121,69 @@ Snowflake 不只是支持 SELECT、JOIN 和 GROUP BY。它有完整的查询、�
 | 数据治理 | Secure View、Masking Policy、Row Access Policy、Tag、Data Metric Function | 让访问控制、脱敏、质量校验和审计成为平台边界的一部分 |
 | 近期 SQL / 数据工程能力 | `PERIOD`、`EXPLAIN CHANGES`、Dynamic Table `REFRESH_MODE` | 显式建模时间区间、预测刷新影响、控制增量/全量刷新取舍 |
 
-### 8. 如何理解“完整 Cheatsheet”
+
+### 8. 数据类型速查
+
+| 类型族 | 主要类型和别名 | 典型用途 / 注意事项 |
+| --- | --- | --- |
+| 精确数值 | NUMBER / DECIMAL / NUMERIC；INTEGER、INT、BIGINT、SMALLINT 等 | 金额、计数、精确十进制；钱通常优先 NUMBER(p,s) |
+| 近似数值 | FLOAT、DOUBLE、REAL | 科学计算与近似值；不能假设金额结果完全精确 |
+| 字符与二进制 | VARCHAR / STRING / TEXT、CHAR / CHARACTER、BINARY | 字符串长度、比较规则、编码和二进制内容 |
+| 逻辑值 | BOOLEAN / BOOL | TRUE、FALSE；还需理解 NULL 带来的 UNKNOWN |
+| 日期时间 | DATE、TIME、TIMESTAMP_NTZ、TIMESTAMP_LTZ、TIMESTAMP_TZ | 区分墙上时间、UTC 和带偏移的时间戳 |
+| 半结构化 | VARIANT、OBJECT、ARRAY | JSON 等灵活结构；读取时仍需类型校验与标准化 |
+| 结构化复合类型 | 类型化 ARRAY、MAP、OBJECT | 当字段结构相对明确时，以结构化元素类型提升契约清晰度 |
+| 非结构化文件 | FILE 及 Stage 文件引用 | 将文件作为数据处理输入，不能与文件内容已解析的文本列混为一谈 |
+| 地理空间 | GEOGRAPHY、GEOMETRY | 地球曲面地理数据与平面几何计算，二者语义不同 |
+| 向量 | VECTOR(FLOAT, n) / VECTOR(INT, n) | Embedding、相似度和 AI 检索；需要注意向量维度及函数兼容性 |
+| 时间区间 | PERIOD(DATE)、相应时间戳区间类型 | 以明确的有效期边界表达时间段 |
+| 唯一标识 | UUID | 将 UUID 类型与普通 VARCHAR 的格式约定区分开 |
+| 用户定义类型 | 支持的 UDT | 仅在对象使用场景和限制适合时引入 |
+| 转换与兼容 | CAST、::、TRY_TO_*、TO_* | 显式类型转换；有些转换有损，TRY 系列的 NULL 必须进入质量检查 |
+
+### 9. 运算符和函数参考索引
+
+SQL 除了函数名，还包括决定表达式含义的运算符。建议按以下类别查官方参考：
+
+| 类别 | 常见写法 | 常见问题 |
+| --- | --- | --- |
+| 算术运算 | `+`、`-`、`*`、`/`、`%`、`POWER` | 类型提升、舍入、除零和精度 |
+| 比较与空值 | `=`、`<>`、`<`、`>=`、`IS NULL`、`IS [NOT] DISTINCT FROM` | NULL 不是普通值；普通比较可能返回 UNKNOWN |
+| 逻辑 | `AND`、`OR`、`NOT` | 三值逻辑和括号优先级 |
+| 范围与集合 | `IN`、`BETWEEN`、`EXISTS`、`ANY / ALL` | NULL、空集合、子查询语义 |
+| 字符匹配 | `LIKE`、`ILIKE`、`RLIKE / REGEXP`、`LIKE ANY` | 精确匹配、大小写、正则性能和转义 |
+| 集合运算 | `UNION [ALL]`、`INTERSECT`、`MINUS / EXCEPT` | 是否去重、NULL 比较和列类型兼容 |
+| 半结构化访问 | `:` 路径访问、`GET`、`GET_PATH`、`FLATTEN` | 缺失路径、VARIANT 类型转换和行数膨胀 |
+| 聚合与窗口 | `SUM`、`COUNT`、`AVG`、`COUNT_IF`、`ROW_NUMBER`、`LAG` | 粒度、窗口框架、NULL 与排序稳定性 |
+| 日期时间 | `DATEADD`、`DATEDIFF`、`DATE_TRUNC`、`TIME_SLICE`、`CONVERT_TIMEZONE` | 时区、夏令时、时间边界和日历 |
+| 字符/编码/安全 | 字符串、二进制、Hash、加密函数 | 明确编码、哈希用途与加密的安全边界 |
+| 表函数/系统信息 | `FLATTEN`、`RESULT_SCAN`、`INFORMATION_SCHEMA` 表函数 | 返回零到多行的调用语义和访问权限 |
+| AI / ML | Cortex AI Functions、ML Functions、AI evaluation helpers | 模型、Region、成本、输出验证和预览限制 |
+
+Snowflake 官方函数参考将函数按聚合、窗口、条件、上下文、转换、数据生成、数据指标、日期时间、差分隐私、加密、文件、地理空间、哈希、元数据、ML 监控、通知、数值、组织用户、PERIOD、正则、半结构化/结构化、Snowpark Container Services、字符串/二进制、系统、表、向量、存储过程及 AI 函数等分类。分类会随版本变化，完整清单应直接查看官方索引，避免在文章里手工抄一份很快过时的全部函数名。
+
+### 10. SQL 命令全域索引：从查询一直到账号与应用对象
+
+官方 SQL Command Reference 不只列 CREATE TABLE 和 DML。重要命令族还包括：
+
+| 官方命令领域 | 应关注的命令 / 对象 |
+| --- | --- |
+| 账户与会话 | Accounts、Sessions、Variables、Transactions |
+| 身份和授权 | Users、Roles、Privileges、GRANT / REVOKE、Security Policies |
+| 连接和外部系统 | Integrations、External Volumes、Storage Integrations、API Integrations |
+| 计算与成本 | Virtual Warehouses、Resource Monitors、Alerts |
+| 数据库与共享 | Databases、Schemas、Tables、Views、Sequences、Types、Shares、Listings |
+| 函数与执行逻辑 | UDF / UDTF、Procedures、Snowflake Scripting、Classes / Instances |
+| 数据管道 | Stages、File Formats、COPY、Pipes、Streams、Tasks、Dynamic Tables、dbt Projects、DCM Projects |
+| 机器学习和 AI | ML、Cortex、Cortex Search、Cortex Agents、Semantic Views、AI Functions |
+| 连续集成与应用 | Git、Native Apps、Snowflake App Runtime、Streamlit、Notebooks、Snowpark Container Services |
+| 外部数据与新表类型 | Openflow、Apache Iceberg、Hybrid Tables、Snowflake Postgres |
+| 安全、治理与合规 | Data Governance、Privacy、Tags、Masking / Row Access Policies、Data Metric Functions |
+| 连续性与恢复 | Failover / Replication、Time Travel、Clone、UNDROP、Disaster Recovery |
+
+这张表是命令体系的导航，而非逐个 CREATE / ALTER / DROP / SHOW / DESCRIBE 变体的逐条抄录。Snowflake 官方命令参考会持续加入新对象，因此应保留对[官方字母顺序命令表](https://docs.snowflake.com/en/sql-reference/sql-all)的直接入口。重要复杂能力则在本文后续章节展开，不能仅停留在索引里。
+
+### 11. 如何理解“完整 Cheatsheet”
 
 Snowflake 的内置函数、系统函数、对象命令和预览特性持续增长。把每个函数名全部塞进一张表，既难以查阅，也会随版本变化迅速过时。因此本文 Cheatsheet 的目标是**覆盖 SQL 主要语法族、重要对象、复杂分析能力、数据工程操作和 AI 接口**，并提供官方权威索引供查漏。
 
@@ -298,7 +360,87 @@ ORDER BY total_amount DESC NULLS LAST;
 更重要的是，这里统计的是事件数，不一定是订单数。如果一个订单能产生多个事件，就不能用 COUNT(*) 作为订单数量。业务指标首先需要明确粒度：一行代表一次事件、一笔订单、一个订单明细，还是某个客户在某个时间点的状态。
 
 
-### 3.4 JOIN 类型详解：INNER、LEFT、RIGHT、FULL 到底有什么不同？
+
+### 3.4 GROUP BY 进阶：ALL、ROLLUP、CUBE、GROUPING SETS 与 GROUPING
+
+GROUP BY 不只是按一列或几列汇总。Snowflake 还提供几种表达多层汇总的语法，避免为了不同的报表粒度多次写相似的 GROUP BY。
+
+**GROUP BY ALL：** 将 SELECT 列表中所有不含聚合函数的表达式自动作为分组列。它减少了重复书写，但 SELECT 中增加非聚合表达式会改变粒度，所以在长期维护的模型中仍要仔细审查输出列变更。
+
+~~~sql
+SELECT
+    region,
+    order_status,
+    COUNT(*) AS order_count,
+    SUM(net_amount) AS net_sales
+FROM fact_orders
+GROUP BY ALL;
+~~~
+
+**ROLLUP：** 产生具有自然层级的汇总。例如国家包含州/省、州/省包含城市：
+
+~~~sql
+SELECT
+    country,
+    state,
+    city,
+    SUM(net_amount) AS net_sales,
+    GROUPING(country) AS country_is_total,
+    GROUPING(state) AS state_is_total,
+    GROUPING(city) AS city_is_total
+FROM fact_orders
+GROUP BY ROLLUP (country, state, city);
+~~~
+
+ROLLUP 会产生城市明细、州/省小计、国家小计和总体合计。列的先后顺序表达层级方向：如果顺序不符合真实业务层级，生成的总计层次也会不符合预期。N 个 ROLLUP 元素会产生 N+1 个 grouping sets。
+
+**CUBE：** 产生所选维度的所有组合汇总，适合探索地区、渠道、产品类别等维度之间的交叉总计：
+
+~~~sql
+SELECT
+    region,
+    channel,
+    SUM(net_amount) AS net_sales
+FROM fact_orders
+GROUP BY CUBE (region, channel);
+~~~
+
+上例包括 (region, channel)、region 总计、channel 总计和全量总计。每增加一个维度，组合数都会翻倍；CUBE 有  N 个维度时相当于 2^N 个 grouping sets。Snowflake 对一个 CUBE 规范中的元素个数有限制（最多 7 个元素），但在真实项目中更应先判断这些汇总是否都有业务价值，否则结果集和后续处理可能迅速膨胀。
+
+**GROUPING SETS：** 明确写出需要哪些分组组合。如果只需要地区+渠道、地区总计和全量总计，不必生成 CUBE 中所有组合：
+
+~~~sql
+SELECT
+    region,
+    channel,
+    SUM(net_amount) AS net_sales,
+    GROUPING(region) AS region_is_total,
+    GROUPING(channel) AS channel_is_total
+FROM fact_orders
+GROUP BY GROUPING SETS (
+    (region, channel),
+    (region),
+    ()
+);
+~~~
+
+GROUPING SETS 最适合报表需要一组明确的明细、小计和总计的情况。它将多组汇总写在同一条 SQL 中，但复杂分组组合的语义仍应通过样本结果验证。
+
+**为什么还要写 GROUPING()？** 在普通分组中，region 为 NULL 可能表示源数据缺失地区；在 ROLLUP 或 GROUPING SETS 的全量总计行中，region 为 NULL 也可能表示“所有地区”。GROUPING(region) 可以标记该 NULL 是否源自汇总层级，避免把数据缺失和汇总标记混淆。
+
+最后区分几个经常混在一起的子句：
+
+| 子句 | 过滤/处理的阶段 | 示例用途 |
+| --- | --- | --- |
+| WHERE | 分组前过滤明细行 | 只分析最近 30 天订单 |
+| GROUP BY | 定义聚合粒度 | 按地区和月份计算销售额 |
+| HAVING | 聚合后过滤分组 | 只保留销售额超过 100 万的地区 |
+| QUALIFY | 窗口函数计算之后过滤 | 每个客户只保留最近一笔订单 |
+| ORDER BY | 最终结果排序 | 排名、分页和报表展示 |
+
+官方参考：[GROUP BY](https://docs.snowflake.com/en/sql-reference/constructs/group-by) · [ROLLUP](https://docs.snowflake.com/en/sql-reference/constructs/group-by-rollup) · [CUBE](https://docs.snowflake.com/en/sql-reference/constructs/group-by-cube) · [GROUPING SETS](https://docs.snowflake.com/en/sql-reference/constructs/group-by-grouping-sets) · [GROUPING](https://docs.snowflake.com/en/sql-reference/functions/grouping)。
+
+### 3.5 JOIN 类型详解：INNER、LEFT、RIGHT、FULL 到底有什么不同？
 
 JOIN 的本质是根据一个匹配条件，把两边相关的行拼成一个结果行。理解 JOIN 时，最重要的问题不是记住英文名称，而是先回答：**左表和右表各代表什么粒度？结果必须保留哪一边的全部记录？没有匹配项时应该发生什么？**
 
@@ -461,7 +603,7 @@ WHERE NOT EXISTS (
 
 **性能与正确性原则：** JOIN 的输入行数、输出行数和键的基数比 JOIN 关键字本身更重要。复杂分析 SQL 在上线前应该能回答“每张输入表一行是什么、关联后会变成什么、结果是否需要聚合回原粒度”。
 
-### 3.5 JOIN 之前，先证明两边的数据粒度
+### 3.6 JOIN 之前，先证明两边的数据粒度
 
 最常见的金额错误之一，不是 SUM 写错，而是 JOIN 放大了行数。
 
@@ -493,7 +635,7 @@ WHERE NOT EXISTS (
 ~~~
 
 
-### 3.6 SAMPLE / TABLESAMPLE：怎样抽样、何时抽样、什么不能靠抽样证明？
+### 3.7 SAMPLE / TABLESAMPLE：怎样抽样、何时抽样、什么不能靠抽样证明？
 
 `SAMPLE` 与 `TABLESAMPLE` 是同义写法，用于从表中抽取子集，常见于数据探索、检查 JSON 样本、设计原型和初步估计数据分布。它不是 ORDER BY 的另一种写法，也不是正式数据质量测试的替代品。
 
