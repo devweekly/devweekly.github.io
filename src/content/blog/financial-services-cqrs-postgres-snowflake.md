@@ -718,8 +718,8 @@ USING (
         recorded_at,
         event_id
     FROM MART.RECORD_STAGE_EVENT
-    WHERE effective_at <= :effective_as_of
-      AND recorded_at <= :known_at
+    WHERE effective_at <= ?
+      AND recorded_at <= ?
     QUALIFY ROW_NUMBER() OVER (
         PARTITION BY record_id
         ORDER BY effective_at DESC, recorded_at DESC, event_id DESC
@@ -737,7 +737,7 @@ WHEN NOT MATCHED THEN INSERT (
 );
 ~~~
 
-这是展示集合式写法的示例，不是可直接复制的生产过程。实际逻辑还要处理删除事件、并列排序、迟到记录、源数据重复、目标表唯一性、历史版本保留、回补边界和重跑幂等。尤其是“当前状态投影”和“需要复现过去时点的历史版本”是不同模型，不能都用同一条 MERGE 规则处理。
+这是展示集合式写法的示例，不是可直接复制的生产过程。问号按 JDBC 绑定参数示意；Snowflake Scripting 变量和 SQL API 的参数传递方式应按相应接口调整，不能混用占位语法。实际逻辑还要处理删除事件、并列排序、迟到记录、源数据重复、目标表唯一性、历史版本保留、回补边界和重跑幂等。尤其是“当前状态投影”和“需要复现过去时点的历史版本”是不同模型，不能都用同一条 MERGE 规则处理。
 
 #### 什么时候 Snowflake Scripting 已经够用？
 
@@ -1163,6 +1163,7 @@ flowchart TB
 43. [Snowflake — Semantic View YAML specification](https://docs.snowflake.com/en/user-guide/views-semantic/semantic-view-yaml-spec) — Logical Tables、Relationships、Dimensions、Facts、Metrics、Instructions 与 Verified Queries 的结构。
 44. [Snowflake — Best practices for semantic views](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices) — 语义建模、访问控制、部署与准确率迭代。
 45. [Snowflake — Cortex Agents](https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents) — 使用结构化数据与其他工具进行多步 Agent 编排。
+49. [Snowflake — Transition from Cortex Analyst to Cortex Agents (2026-08-28)](https://docs.snowflake.cn/en/release-notes/2026/other/2026-08-28-cortex-analyst-transition-cortex-agents) — 说明 2026 年产品入口调整，现有 Semantic View 与 Verified Queries 可沿用。
 46. [Snowflake — Constraints](https://docs.snowflake.com/en/sql-reference/constraints) — 标准表与 Hybrid Tables 的约束执行差异。
 47. [PostgreSQL — Logical Replication](https://www.postgresql.org/docs/current/logical-replication.html) — 逻辑复制的发布 / 订阅语义与注意事项。
 48. [Snowflake — Semantic View SQL commands](https://docs.snowflake.com/en/user-guide/views-semantic/sql) — 通过 DDL 创建语义视图、定义关系和注册已验证查询。
