@@ -4,6 +4,8 @@
 **架构基线：** Angular + BFF / Microsoft Entra ID + Java Domain Service on EKS + PostgreSQL + CDC + Snowflake  
 **设计目标：** 把分散在电子表格、邮件和外部投票平台中的工作整合为可追踪、可授权、可回放、可对账的工作流；保持投票指令的权威状态与历史分析读模型分离。
 
+通用分层、Snowflake 查询选型与横向安全设计见 [金融服务架构中的 CQRS：PostgreSQL 写入、Snowflake 历史查询与业务逻辑边界](../../src/content/blog/financial-services-cqrs-postgres-snowflake.md)。本文只补充 Proxy Voting 的业务状态、外部提交和控制要求。
+
 本文是具体业务方案，不代表当前系统已经拥有下文列出的接口、数据或控制能力。凡涉及供应商 API、数据字段、监管保留期限、授权规则及服务等级目标的内容，均需在发现阶段向相关团队和供应商核实。
 
 ---
@@ -67,6 +69,8 @@ flowchart TB
     PG[("RDS PostgreSQL<br/>权威工作流、版本、审批、指令、回执")]
     Provider["外部 Proxy Voting 平台<br/>API / 文件交换 / 受控人工路径"]
     Source["证券主数据、持仓、资格、会议与议案来源"]
+    SourceIngest["Source Ingestion Adapter<br/>API / 文件、校验、去重、版本化"]
+    SnowAdapter["Snowflake Query Adapter<br/>只读、固定查询合同、参数绑定"]
     CDC["CDC / 数据集成"]
     subgraph SF["Snowflake：历史与分析区"]
         Raw[("受限 RAW / 来源快照")]
@@ -84,9 +88,9 @@ flowchart TB
     PG --> Outbox --> VendorWorker --> Provider
     Provider -->|"接受 / 拒绝 / 回执 / 状态"| VendorWorker
     VendorWorker --> PG
-    Source -->|"受控导入 / API / 文件"| API
+    Source -->|"受控导入 / API / 文件"| SourceIngest --> PG
     PG --> CDC --> Raw --> Model --> Mart
-    API -->|"历史查询 API"| Mart
+    API --> SnowAdapter --> Mart
     BI --> Mart
     API --> Audit
     VendorWorker --> Audit
