@@ -2551,11 +2551,11 @@ AI Function Evaluation / Optimization 进一步把 AI 从“试几个提示词�
 ---
 
 
-## 二十二、实际方案中最值得复用的 SQL 模式
+## 二十一、实际方案中最值得复用的 SQL 模式
 
 这一章补充几个在真实架构评审和生产运维里比单独函数更重要的模式。它们分别解决历史数据、质量门禁、行列安全、成本诊断和 AI 结果可复用的问题。
 
-### 22.1 CDC 到 SCD Type 2：同时保存当前版本和历史版本
+### 21.1 CDC 到 SCD Type 2：同时保存当前版本和历史版本
 
 当需求从“客户当前属于哪个 Segment”变为“客户在某个历史时点属于哪个 Segment”时，只保留当前状态表是不够的。SCD Type 2 在属性变化时关闭旧记录，再插入新的当前版本。假设源批次已标准化到 stg_customer_cdc，包含 customer_id、operation、record_hash、effective_at、source_seq；目标 analytics.dim_customer_scd2 包含 valid_from、valid_to、is_current。
 
@@ -2608,7 +2608,7 @@ WHEN NOT MATCHED AND source.merge_action = 'INSERT' THEN
 
 参考：[MERGE](https://docs.snowflake.com/en/sql-reference/sql/merge) · [Streams 的变更与 offset 语义](https://docs.snowflake.com/en/user-guide/streams-intro)。
 
-### 22.2 数据质量门禁：对关键模型声明可接受的边界
+### 21.2 数据质量门禁：对关键模型声明可接受的边界
 
 对关键表，只写检查 SQL 还不够。Snowflake Data Metric Functions（DMF）可以定期度量质量，Expectation 规定何种结果可接受。Data Quality Monitoring 有 Edition 要求，启用前先确认账户许可与当前语法。
 
@@ -2642,7 +2642,7 @@ HAVING COUNT(*) > 1;
 
 参考：[设置 DMF](https://docs.snowflake.com/en/user-guide/data-quality-working) · [System DMF 目录](https://docs.snowflake.com/en/user-guide/data-quality-system-dmfs) · [Expectations](https://docs.snowflake.com/en/user-guide/data-quality-expectations)。
 
-### 22.3 行列授权要在 Snowflake 边界执行
+### 21.3 行列授权要在 Snowflake 边界执行
 
 多租户、区域或合作机构共用同一张事实表时，不要依赖每个应用都记得追加 WHERE region = ...。行访问策略在查询边界控制可见行，掩码策略控制敏感列的呈现。两者作用不同，且适用 Edition 与权限要求需要先核对。
 
@@ -2677,7 +2677,7 @@ ALTER TABLE analytics.dim_customer
 
 参考：[Row Access Policy 示例](https://docs.snowflake.com/en/user-guide/security-row-using) · [CREATE ROW ACCESS POLICY](https://docs.snowflake.com/en/sql-reference/sql/create-row-access-policy) · [CREATE MASKING POLICY](https://docs.snowflake.com/en/sql-reference/sql/create-masking-policy)。
 
-### 22.4 用查询、刷新历史和 Credits 解释生产表现
+### 21.4 用查询、刷新历史和 Credits 解释生产表现
 
 性能问题要把执行时间、排队、扫描量、Warehouse 负载与 Credits 放在同一张诊断图景里。下面先找过去一周执行慢或排队时间高的查询：
 
@@ -2731,7 +2731,7 @@ Account Usage 历史有延迟；实时排障可使用当前数据库 Information
 
 参考：[QUERY_HISTORY](https://docs.snowflake.com/en/sql-reference/account-usage/query_history) · [WAREHOUSE_METERING_HISTORY](https://docs.snowflake.com/en/sql-reference/account-usage/warehouse_metering_history) · [Dynamic Table Refresh History](https://docs.snowflake.com/en/sql-reference/account-usage/dynamic_table_refresh_history)。
 
-### 22.5 AI SQL 结果也需要版本、幂等和成本边界
+### 21.5 AI SQL 结果也需要版本、幂等和成本边界
 
 不建议每次 BI 刷新都重新对所有文本调用 AI 函数。可以将原文哈希、模型/提示词版本和结果保存为可审计数据产品，只处理新内容或需要重新评估的版本：
 
@@ -2766,7 +2766,7 @@ WHERE s.ticket_text IS NOT NULL
 ---
 
 
-### 22.6 为 Warehouse 设置成本保护阈值
+### 21.6 为 Warehouse 设置成本保护阈值
 
 Resource Monitor 可为分配给它的标准 Virtual Warehouses 设置周期性 Credits 预算与触发动作。它需要账户级管理权限；配额应来自实际基线，暂停动作也要结合 SLA 评估。
 
@@ -2787,7 +2787,7 @@ ALTER WAREHOUSE transform_wh
 
 官方参考：[CREATE RESOURCE MONITOR](https://docs.snowflake.com/en/sql-reference/sql/create-resource-monitor) · [Resource Monitor 说明](https://docs.snowflake.com/en/user-guide/resource-monitors)。
 
-### 22.7 数据共享：把合作方能看到的对象单独定义
+### 21.7 数据共享：把合作方能看到的对象单独定义
 
 安全的数据共享通常先建立专供消费者使用的 View，去除不必要的个人字段，并明确数据粒度，然后再授权 Share。Secure View 可以隐藏视图定义，但不会自动匿名化数据；仍须评估小群体数据的重识别风险。
 
@@ -2824,7 +2824,7 @@ ALTER SHARE partner_sales_share
 
 ---
 
-## 二十三、官方文档与可运行示例
+## 二十二、官方文档与可运行示例
 
 以下链接适合在动手时查语法细节、功能限制和官方实践。Snowflake 的功能、版本要求、区域支持和计费规则会变化，正式落地前应以当前账号实际支持情况及官方文档为准。
 
