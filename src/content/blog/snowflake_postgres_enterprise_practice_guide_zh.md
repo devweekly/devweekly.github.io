@@ -1596,6 +1596,111 @@ External Table 直接扫描文件时也要特别小心数据质量：Snowflake �
 
 ---
 
+
+## 二十三、SQL 承载大量业务逻辑时，如何测试、理解和维护？
+
+当业务规则、数据清洗、金额计算、状态转换和历史口径逐渐集中到 Snowflake SQL 中，团队很容易遇到维护困境：SQL 看起来只是查询，但它可能已经承担了传统应用中的业务服务、转换函数、批处理程序和规则引擎的职责。复杂 CTE、窗口函数、条件表达式、MERGE、动态 SQL 与多层视图叠加之后，代码不再容易靠“读一遍 SQL”理解其业务意图。
+
+这不是把业务逻辑放进 SQL 就一定错误，而是要承认：**SQL 也是生产代码，必须具备模块边界、测试数据、回归验证、代码审查、版本管理和发布门禁。** Snowflake 的计算能力不能代替这些工程实践。
+
+### 23.1 先区分三种测试：逻辑正确、数据合格、运行可靠
+
+| 测试层 | 要回答的问题 | 典型方法 | 失败意味着什么 |
+| --- | --- | --- | --- |
+| SQL 逻辑单元测试 | 给定少量确定输入，转换结果是否符合业务规则？ | 静态 fixture、期望输出、边界与反例 | CASE、JOIN、窗口、日期和舍入逻辑可能错误 |
+| 数据质量测试 | 真实或构建后的数据是否满足约束？ | 唯一性、非空、引用关系、允许值、金额/数量范围、跨表对账 | 输入异常、转换回归或业务数据契约被破坏 |
+| 集成与运行测试 | 模型能否在真实 Snowflake 环境正确部署、刷新、重跑和恢复？ | 测试 Schema、端到端批次、重复运行、故障恢复、查询历史 | 依赖、权限、增量处理、调度或部署可能不可靠 |
+
+这三类测试不能互相替代。模型可以通过 SQL 编译却算错业务口径；可以通过单元测试却在生产数据中遇到重复键；也可能数据结果正确，却因为权限、刷新状态或重试设计而无法稳定运营。
+
+### 23.2 把复杂 SQL 模型当作函数：固定输入，验证精确输出
+
+最适合单元测试的不是 Snowflake 内置的 SUM 或 ROW_NUMBER 本身，而是团队自己组合出来的业务逻辑，例如多条规则的优先级、有效日期选择、冲正与撤销、币种换算、逾期分类、窗口边界、重复事件处理和舍入策略。
+
+每个重要模型至少准备正常案例、边界案例、冲突案例、反例，以及过去生产缺陷的回归案例。测试 fixture 应尽量小而有辨识力，并显式写出输入和期望结果。不要只检查“查询返回了几行”；要比较关键业务键、状态、金额、日期、理由码等业务字段。对于金额或比率，要根据业务定义指定精度与容差，而不是随意忽略小数差异。
+
+dbt 从 v1.8 开始提供 SQL model unit tests，可以使用静态输入验证转换逻辑，并在模型物化前运行；官方特别建议对包含复杂 CASE、日期运算、窗口函数、自定义数据处理、历史缺陷和关键下游模型的 SQL 编写单元测试。它有适用限制，例如递归 SQL、物化视图模型等不能按通用模型方式直接测试，具体以当前版本文档为准。参考：[dbt Unit tests](https://docs.getdbt.com/docs/build/unit-tests)。
+
+### 23.3 数据测试应该返回“失败的记录”，而不是只返回 PASS/FAIL
+
+数据质量测试最实用的形式，是把违反规则的记录查询出来。这样失败不只是一个红灯，而是可以直接调查的业务证据。例如：
+
+~~~sql
+-- 断言：每个账户、估值日和证券的业务键唯一。
+-- 如果查询返回任何记录，测试就失败。
+SELECT
+    account_id,
+    valuation_date,
+    security_id,
+    COUNT(*) AS row_count
+FROM MART.POSITION_DAILY
+GROUP BY account_id, valuation_date, security_id
+HAVING COUNT(*) > 1;
+~~~
+
+其他常见测试包括关键字段非空、状态值属于允许集合、外键能关联到维度表、金额与数量在合理范围内、源批次与目标结果行数/控制总计一致，以及关键数据在规定时间内到达。
+
+dbt 的 data tests 采用类似思路：测试 SQL 返回违反断言的行，零行表示通过；可以使用通用测试，也可以为特定业务规则编写 singular tests，并在需要时保存失败记录。Snowflake 自身也提供 Data Metric Functions（DMFs）与 Expectations，用于对表/列数据质量进行度量、设置阈值并监控违反情况。两者定位不同：dbt 更适合随模型代码版本化、在 CI 中阻止不合格变更；Snowflake DMF/Expectation 更适合对平台中的数据质量指标进行持续监控。具体能力受 Edition 和配置限制。参考：[dbt data tests](https://docs.getdbt.com/docs/build/data-tests)、[Snowflake Data Quality Expectations](https://docs.snowflake.com/en/user-guide/data-quality-expectations)。
+
+### 23.4 关键业务逻辑要测试“变化前后差异”，不能只看新结果是否通过基本规则
+
+对于投资持仓、风险敞口、收入、估值、客户分类等重要模型，修改 SQL 后即使结果满足唯一性、非空等基础测试，也可能整体改变业务口径。建议在隔离 Schema 中以同一份输入快照同时运行旧版本和新版本，生成差异报告：业务键层面的新增/删除/修改，金额和数量的绝对差与相对差，按业务日期/产品/风险类别聚合的总量，分类状态变化，迟到数据与历史修订影响，以及查询耗时、扫描量和刷新延迟变化。
+
+旧版本不是永远正确的黄金答案。若变更本来就是修正口径，目标不应是“新旧结果完全相同”，而是把每项重大差异解释为预期变更、已知例外或缺陷，并由业务责任人批准。需要保留旧口径的历史报表时，还应记录生效日期与版本，而不是悄悄覆盖历史解释。
+
+### 23.5 将 SQL 测试放进 CI/CD：静态检查、单元测试、数据测试、部署验证逐层执行
+
+建议的最小流水线是：
+
+1. **静态检查：** 格式、命名、复杂度约定、禁用模式和 SQL 方言检查。SQLFluff 支持 Snowflake 方言，可以统一团队风格并尽早发现部分解析问题，但 lint 通过不代表查询语义正确。
+2. **编译与依赖检查：** 确认模型引用、宏、来源、权限配置和依赖图可解析。
+3. **单元测试：** 使用固定 fixture 验证复杂转换的精确输出。
+4. **集成构建与数据测试：** 在隔离环境构建受影响模型，再执行非空、唯一性、引用关系、业务规则和对账测试。
+5. **差异评审：** 对高风险模型比较候选版本和当前批准版本的结果。
+6. **发布与冒烟检查：** 部署后确认对象、权限、刷新模式、Task 状态和 Query ID；关键业务批次必须经过质量门禁后才能发布。
+
+Snowflake 的 dbt 最佳实践明确建议使用 CI/CD 验证变更、运行模型与测试，并让测试失败阻止 Pull Request 合并；可以完整运行 dbt build，也可以对改动模型及其下游依赖做选择性验证。SQLFluff 适合作为静态质量层，不能代替真实 Snowflake 执行测试。参考：[Snowflake 的 dbt Projects 最佳实践](https://docs.snowflake.com/en/user-guide/data-engineering/dbt-projects-on-snowflake-best-practices)、[SQLFluff Snowflake 方言](https://docs.sqlfluff.com/en/stable/)。
+
+### 23.6 Snowflake Scripting 能解决一部分问题，但它不是 SQL 可维护性的替代方案
+
+Snowflake Scripting 为 SQL 增加变量、条件分支、循环、游标、异常处理和存储过程能力。它适合把多个数据库步骤组织成一个可控工作流，例如检查批次状态、按顺序执行转换、读取受影响行数、记录运行结果、对异常显式失败或调用补偿流程。Snowflake 官方文档也提供异常捕获与重新抛出机制。
+
+但它**不会自动让复杂业务规则更容易理解，也不会自动生成单元测试**。把一个巨大的 SELECT 改写成一个巨大的 BEGIN…END 块，可能只是把难懂的声明式逻辑换成更难追踪的过程式逻辑。尤其要避免为了“测试方便”而把所有转换塞进循环逐行处理；Snowflake 的优势通常在集合式运算，逐行游标处理可能增加复杂度和成本。
+
+| 需求 | 优先选择 | Scripting 的作用 |
+| --- | --- | --- |
+| 定义清晰、可组合的转换 | View、CTE、分层 SQL 模型或 dbt model | 通常不需要 |
+| 验证模型对固定输入的输出 | dbt unit tests / 测试 fixture | 可负责触发测试，但不能代替期望结果 |
+| 检查真实数据是否满足规则 | dbt data tests、SQL 失败记录查询、Snowflake DMF/Expectations | 可以触发检查、根据结果决定是否继续 |
+| 编排多步 SQL、捕获异常、记录状态 | Stored Procedure / Snowflake Scripting、Tasks 或外部编排器 | 这是其强项 |
+| 执行跨模型回归、差异分析和 Pull Request 门禁 | Git + CI/CD + 测试框架 | 可被流水线调用，但不是完整测试框架 |
+| 复杂、变化频繁且高度程序化的业务规则 | 评估是否应放在领域服务/应用代码中 | 不要因为“能写进 SQL”就强行放在 SQL |
+
+另外，Snowflake Scripting 的 BEGIN…END 代码块与事务的 BEGIN TRANSACTION 不是同一概念。异常处理也不应被当成自动回滚的保证；需要明确事务边界、失败时已执行的副作用以及重跑是否幂等。参考：[Snowflake Scripting Developer Guide](https://docs.snowflake.com/en/developer-guide/snowflake-scripting)、[异常处理](https://docs.snowflake.com/en/developer-guide/snowflake-scripting/exceptions)。
+
+### 23.7 什么业务逻辑应该留在 SQL，什么逻辑不应该？
+
+不要简单按“SQL 还是 Java/Python”二分，可以按逻辑特征划边界：
+
+- **适合 SQL：** 大规模集合转换、JOIN、聚合、窗口分析、历史快照、数据标准化、批量规则应用，以及紧贴数据集的质量检查。
+- **适合 SQL + Scripting：** 以数据库对象为中心的多步流程，需要条件分支、异常处理、执行状态记录和数据库内调度，但仍应避免无必要的逐行处理。
+- **适合领域服务/应用代码：** 需要丰富领域对象、复杂交互流程、外部系统编排、细粒度业务授权、同步在线请求、频繁变化的流程规则，或必须与 OLTP 事务一起原子提交的业务决策。
+- **适合规则配置或专门规则引擎：** 规则由业务人员频繁维护，需要版本审批、有效期、命中原因和独立模拟时；不要把成百上千条业务规则散落在多个 CASE 表达式中。
+
+一个实用判断标准是：规则是否有明确业务所有者、能否被独立命名和测试、是否可以用一组案例解释、变更后能否量化影响、失败后是否能重放与回滚。如果这些问题回答不了，问题就不只是 SQL 语法，而是业务逻辑缺少工程化管理。
+
+**推荐做法：** 先把转换拆成语义清楚、粒度明确的模型；对复杂逻辑建立单元测试，对输出建立数据质量测试，对关键指标做旧新版本差异测试；把这些门禁纳入 CI/CD。只有需要过程控制时才用 Snowflake Scripting，而不是把 Scripting 当作解决 SQL 复杂度的通用答案。
+
+官方文档与工具资料：
+- [Snowflake Scripting Developer Guide](https://docs.snowflake.com/en/developer-guide/snowflake-scripting)
+- [Snowflake dbt Projects 最佳实践](https://docs.snowflake.com/en/user-guide/data-engineering/dbt-projects-on-snowflake-best-practices)
+- [dbt Unit tests](https://docs.getdbt.com/docs/build/unit-tests)
+- [dbt data tests](https://docs.getdbt.com/docs/build/data-tests)
+- [Snowflake Data Quality Expectations](https://docs.snowflake.com/en/user-guide/data-quality-expectations)
+- [SQLFluff](https://docs.sqlfluff.com/en/stable/)
+
+---
+
 ## 总结
 
 对有 PostgreSQL 和 SQL 基础的团队，推荐的学习和落地顺序不是先研究全部 Snowflake 功能，而是：
