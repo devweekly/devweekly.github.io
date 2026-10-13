@@ -1701,6 +1701,147 @@ Snowflake Scripting 为 SQL 增加变量、条件分支、循环、游标、异�
 
 ---
 
+
+## 二十四、Snowflake JavaScript / Python UDF 与 PostgreSQL 函数：何时用、如何治理？
+
+当 SQL 开始承担大量业务转换时，团队经常会考虑把部分逻辑写成 JavaScript 或 Python UDF。这样做确实能复用通用算法、成熟库和既有代码，但“数据库支持某种语言”并不代表应该把所有业务逻辑放进 UDF。真正需要判断的是：逻辑是否适合逐行或批量计算、运行时是否受控、依赖能否固定、行为是否可测试，以及它应该由数据平台还是应用服务负责。
+
+**推荐顺序：先用 Snowflake 原生 SQL 和内置函数；其次考虑 SQL UDF 或 dbt 模型；确实需要通用语言能力时再选 JavaScript / Python UDF；涉及多步操作、写入副作用和流程编排时，使用 Stored Procedure、Tasks 或外部编排器。** 对 PostgreSQL 则要单独评估函数语言的部署与安全模型，不能直接照搬 Snowflake 的做法。
+
+### 24.1 先选执行模型，再选语言
+
+| 需求 | 优先方案 | 典型用途 | 主要注意事项 |
+| --- | --- | --- | --- |
+| 可由常规 SQL 表达的集合转换 | 原生 SQL、CTE、View、Dynamic Table 或 dbt model | JOIN、聚合、窗口、状态映射、日期过滤、增量模型 | 首先保证模型粒度、时间语义、增量和重跑正确 |
+| 多处重复使用的简单确定性表达式 | SQL UDF | 指标小公式、统一的可复用 SQL 表达式 | 保持职责小、签名稳定、业务含义明确 |
+| 轻量字符串或 JSON 处理，且 JavaScript 语义确实有优势 | JavaScript UDF | 小型确定性解析、规范化或转换 | 不支持随意加载第三方 JavaScript 库；代码大小、内存和执行时间有运行限制 |
+| 复杂算法、成熟 Python 库、科学计算或模型推理 | Python UDF | 专用解析、评分算法、科学计算、模型推理 | 固定 Runtime 和依赖版本；处理类型映射、NULL、初始化成本和执行时限 |
+| 对大量行应用 Pandas / NumPy / 机器学习批处理 | Vectorized Python UDF；如需多行输出再评估 UDTF | 批量特征计算、模型批量推理、列式转换 | 只有在算法适合批处理时才可能更快；测试批次边界、NULL、内存和实际吞吐 |
+| 多条 SQL、状态检查、条件分支、异常处理或有副作用的过程 | Stored Procedure、Snowflake Scripting、Tasks 或外部编排器 | 批次装载、重跑、发布门禁、调用其他步骤 | UDF 应保持纯函数式，不能把流程编排误当成单行计算 |
+| 必须在 PostgreSQL 事务内完成的数据局部逻辑 | SQL function / PL/pgSQL | 事务内校验、触发器、数据局部操作 | 控制函数权限、锁持有时间、事务时长和升级兼容性 |
+
+这里的“先用 SQL”并不是因为 Python 或 JavaScript 不够强，而是因为当逻辑本质上是集合运算时，让优化器看到明确的 SQL 表达式，通常更容易进行执行计划分析和性能调优。自定义语言函数应针对 SQL 难以清楚表达的部分，而不是把整个转换管道包装成黑盒。
+
+### 24.2 JavaScript UDF：适合轻量、无外部依赖的纯转换
+
+Snowflake 原生支持 JavaScript UDF，部署时由 SQL 定义函数签名和处理器代码。它适合小型确定性逻辑，例如使用 JavaScript 字符串语义进行规范化，或者实现 SQL 表达不够直观、且无需第三方库的转换。
+
+示意例子：
+
+~~~sql
+CREATE OR REPLACE FUNCTION normalize_identifier_js(v VARCHAR)
+RETURNS VARCHAR
+LANGUAGE JAVASCRIPT
+AS
+$
+if (V === undefined || V === null) {
+  return null;
+}
+return V.trim().toUpperCase();
+$;
+~~~
+
+这只是简化示例。生产环境仍须明确 NULL、空字符串、Unicode、大小写规则以及业务允许值；不能把“统一大写”当成所有业务标识符都适用的标准化规则。Snowflake 会把未加引号的 SQL 参数名转换为大写标识符，因此示例中的 JavaScript 处理器使用 V。
+
+JavaScript UDF 的关键限制包括：
+
+- 只能使用受支持的标准 JavaScript 库，不能像普通 Node.js 项目一样随意导入第三方 npm 包。
+- 官方建议 JavaScript UDF 的源码控制在约 100 KB 以内；内存使用过量、执行时间过长或递归深度过大可能导致运行失败。
+- 不能依赖全局变量在不同调用、不同进程或不同数据分片之间共享状态。
+- UDF 不应读取任意本地文件或执行系统调用。需要访问外部网络时，必须另行评估 Snowflake External Access Integration 的网络规则和凭据权限。
+
+因此，如果逻辑需要大型库、复杂数据科学工具或持续演进的业务规则，通常应优先评估 Python UDF、SQL 模型或应用服务，而不是把依赖代码手工塞进 JavaScript handler。
+
+官方参考：[Introduction to JavaScript UDFs](https://docs.snowflake.com/en/developer-guide/udf/javascript/udf-javascript-introduction)、[JavaScript UDF limitations](https://docs.snowflake.com/en/developer-guide/udf/javascript/udf-javascript-limitations)。
+
+### 24.3 Python UDF：获得库生态，但也引入运行时和依赖治理
+
+Python UDF 的价值在于复用成熟 Python 代码与第三方包，而不是让简单 SQL 变成 Python。典型候选场景包括 SQL 不易清晰表达的算法、科学计算、特殊数据格式解析和模型推理。
+
+一个很小的标量函数可以这样定义：
+
+~~~sql
+CREATE OR REPLACE FUNCTION normalize_identifier_py(v VARCHAR)
+RETURNS VARCHAR
+LANGUAGE PYTHON
+RUNTIME_VERSION = '3.12'
+HANDLER = 'normalize_identifier'
+AS
+$
+def normalize_identifier(v):
+    if v is None:
+        return None
+    return v.strip().upper()
+$;
+~~~
+
+这个例子只用于展示签名、Runtime 和 Handler 的关系；对简单字符串处理，生产选型前仍应比较 Snowflake 内置 SQL 函数或 SQL UDF，不能因为团队熟悉 Python 就默认使用 Python。
+
+Python UDF 在生产环境的工程要求包括：
+
+- **固定运行时与依赖版本。** 明确 Python Runtime，声明需要的包并锁定版本；在 CI 中验证依赖可解析和函数可创建。不要把“使用最新版本”当成可重复部署策略。
+- **正确处理 SQL/Python 类型映射。** 显式测试 NULL、时间戳时区、精度、Decimal/浮点数、半结构化 VARIANT 和返回类型。类型转换既可能导致运行错误，也可能造成业务数值悄然变化。
+- **避免逐行重复初始化。** Snowflake 调用标量 Python UDF 的处理器时按行提供参数。昂贵且不随行变化的初始化应放在模块初始化阶段，而不是每次处理一行时重新执行。
+- **不要依赖跨行状态。** Snowflake 可以把工作分散到不同实例，行和批次的处理顺序不保证固定。缓存、全局变量和共享对象必须是可选优化，不能影响函数正确性；若确实共享状态，还要评估线程安全。
+- **为可观测性和故障设计边界。** 记录足以定位函数版本、Query ID、批次和失败类别的信息；错误消息不要泄露客户数据、凭据或完整敏感输入。
+
+对于 Python 生态中的 Pandas、NumPy 或机器学习库，可以评估 Vectorized Python UDF：处理器一次接收一批行，而不是每次只处理一行。Snowflake 文档指出，这种接口在算法本身适合批量计算时，可能有明显性能优势；它不是任何逻辑都能自动加速的开关。需要实际比较标量与向量化实现的正确性、吞吐、内存、启动开销和总仓库成本。若算法要按分区计算或输出多行，再判断是否适合 UDTF。
+
+官方参考：[Python UDF introduction](https://docs.snowflake.com/en/developer-guide/udf/python/udf-python-introduction)、[Designing Python UDFs](https://docs.snowflake.com/en/developer-guide/udf/python/udf-python-designing)、[Vectorized Python UDFs](https://docs.snowflake.com/en/developer-guide/udf/python/udf-python-batch)、[Snowpark Python UDF dependencies](https://docs.snowflake.com/en/developer-guide/snowpark/python/creating-udfs)。
+
+### 24.4 UDF 不应成为外部 API 调用循环
+
+Snowflake 可以通过 External Access Integration 为 UDF 或存储过程授予经过控制的外部网络访问，并通过网络规则和 Secret 管理目标地址与认证信息。但从技术上“允许连接”不代表应该在每一行数据上调用一次外部 API。
+
+例如，百万行数据逐行调用第三方服务可能造成高延迟、限流、重复调用成本、失败重试复杂化和难以重放。优先考虑以下方案：
+
+1. 能在 SQL 中完成的规则，留在 SQL。
+2. 可批量计算的算法，评估 Vectorized UDF 或一次批次计算。
+3. 必须调用外部服务时，优先设计有明确批次、幂等键、限流、超时、重试、缓存与结果审计的批处理流程。
+4. 只有需要逐条实时响应且外部服务契约明确时，才评估逐行调用；要将其作为独立的运行风险和成本预算评审。
+
+不要在函数源码中硬编码 API 密钥。External Access Integration 应只放行需要的网络目标与 Secret，并检查相关访问权限和审计记录。还要注意，外部调用引入了额外的失败和副作用，因此应明确区分 UDF、Stored Procedure 和外部工作流各自负责的部分。
+
+官方参考：[External network access overview](https://docs.snowflake.com/en/developer-guide/external-network-access/external-network-access-overview)、[Creating and using an external access integration](https://docs.snowflake.com/en/developer-guide/external-network-access/creating-using-external-network-access)、[UDF and procedure security practices](https://docs.snowflake.com/en/developer-guide/udf-stored-procedure-security-practices)。
+
+### 24.5 PostgreSQL 不能直接照搬 Snowflake 的 JS/Python UDF 模式
+
+两个平台都允许在数据库内执行用户定义逻辑，但运行边界、语言安装方式和安全模型不同。
+
+| 维度 | Snowflake | PostgreSQL |
+| --- | --- | --- |
+| 优先表达方式 | 原生 SQL、SQL UDF、View、Dynamic Table/dbt 模型 | 原生 SQL、SQL function、PL/pgSQL |
+| Python | 平台托管 Python UDF Runtime，可声明包依赖；需要按平台规则控制版本与权限 | PL/Python 通常通过扩展安装；官方当前文档提供的是不受信任的 plpython3u，而不是受限的可信 Python 运行时 |
+| JavaScript | Snowflake 原生支持 JavaScript UDF，执行在受限环境中 | JavaScript 并非 PostgreSQL 核心内建语言；通常依赖 PL/V8 等第三方扩展，必须独立管理安装、版本、兼容性与安全 |
+| 网络与系统访问 | 默认受限；需通过受控 External Access Integration 显式开放外部网络 | 函数运行于数据库服务器进程上下文；不受信任的语言可以获得数据库服务账户本身具备的能力，风险明显不同 |
+| 典型边界 | 以无副作用的逐行或批量计算为主，跨步骤工作流交给过程或外部编排 | 在事务边界内的稳定、数据局部逻辑可考虑函数；复杂领域行为仍要比较应用服务实现 |
+
+尤其要注意，PostgreSQL 官方文档明确说明，PL/Python 只提供不受信任的 plpython3u 语言：它不提供限制函数能做什么的安全机制，因此只有超级用户能够创建相应函数。也就是说，不能因为 Python 代码“只做一个转换”就忽略它的运行权限和部署风险。应用团队应通过严格控制谁能创建/替换函数、审查函数体与扩展来源、隔离权限，并评估数据库主机暴露面来治理。
+
+在 PostgreSQL 中，一般优先考虑内建 SQL 和 PL/pgSQL。需要第三方语言时，先评估功能是否真的必须在数据库内执行，再检查该语言是否为核心支持、是否需要扩展、是否属于 trusted/untrusted 语言、谁能安装和升级，以及函数调用频率与事务时长。PL/V8 这类 JavaScript 语言扩展不应被当成所有 PostgreSQL 部署都默认具备的标准能力。
+
+同时要正确使用函数属性和权限：为函数选择准确的 VOLATILE / STABLE / IMMUTABLE 分类，不要为了“让优化器更快”而谎报确定性；对于 SECURITY DEFINER 函数，应设置安全的 search_path、限定对象名，并限制谁可以执行或替换它。函数、触发器和 Row-Level Security 策略都可能成为隐蔽的权限入口。
+
+官方参考：[PostgreSQL PL/Python](https://www.postgresql.org/docs/current/plpython.html)、[PostgreSQL Function Security](https://www.postgresql.org/docs/current/perm-functions.html)、[PostgreSQL CREATE FUNCTION](https://www.postgresql.org/docs/current/sql-createfunction.html)。对于 PL/V8 等第三方扩展，应进一步核查其官方项目文档、发行包支持范围和目标 PostgreSQL 主版本兼容性。
+
+### 24.6 把 UDF 当成正式软件组件测试与部署
+
+UDF 与普通 SQL 模型一样需要测试，但其验证面还包括语言运行时和依赖环境。建议采用以下实践：
+
+- **代码进入 Git。** 将 Python handler、JavaScript 源码、函数 DDL、包依赖、测试 fixture 与部署脚本一并版本化，避免控制台手工修改成为唯一真相。
+- **固定依赖与运行时。** Python 记录 Runtime 和包版本；JavaScript 代码保持精简，并验证目标运行时限制；PostgreSQL 语言扩展还要记录扩展版本、数据库主版本和升级步骤。
+- **测试输入契约。** 至少覆盖 NULL、边界值、非法输入、时间时区、精度、Unicode、空值与异常行为。对于金融计算，应为金额、利率、比例和舍入模式明确预期结果。
+- **构建测试样本和黄金结果。** 使用固定输入验证精确输出；对高风险转换，再以同一份数据快照比较旧版和新版的差异，解释所有重大变化。
+- **性能基准不能只跑一两行。** 使用代表性的行数、NULL 比例、复杂度、批次大小与并发负载，测量总耗时、吞吐、仓库消耗和失败率。向量化实现应与标量实现做相同输入的结果对比。
+- **版本化发布和回滚。** 在开发/测试 Schema 验证后再发布。高风险 UDF 可采用版本化函数名或独立 Schema 切换，让消费者有明确的升级路径；避免覆盖生产函数后才开始验证。
+- **日志不泄露数据。** 使用 Query ID、批次 ID、函数版本和错误类别关联日志；不要将敏感原始输入、凭据或客户信息直接拼入异常文本。
+
+这也是 SQL 业务逻辑测试体系的延伸：单元测试验证函数本身，模型测试验证函数被组合进真实 SQL 后的结果，集成测试验证权限、部署、包解析与运行方式，回归测试验证业务口径没有发生未解释的变化。可以配合 dbt/CI/CD 流水线、Snowflake 事件日志，以及 PostgreSQL 的常规迁移与发布测试来实施。
+
+**最终建议：** 在 Snowflake 上，通常从原生 SQL 开始；简单可复用表达式用 SQL UDF；确实需要 JavaScript 语义且不依赖第三方库时才用 JavaScript UDF；需要成熟库或复杂算法时评估 Python UDF，并先判断是否可以批量向量化。多步执行与外部副作用留给存储过程或外部工作流。在 PostgreSQL 上，优先 SQL/PL/pgSQL；只有在确认语言扩展、安全边界、升级路径和运维责任后，才采用 PL/Python 或 JavaScript 扩展。
+
+---
+
 ## 总结
 
 对有 PostgreSQL 和 SQL 基础的团队，推荐的学习和落地顺序不是先研究全部 Snowflake 功能，而是：
