@@ -14,7 +14,7 @@ tags:
 
 # Snowflake SQL 实战手册：从基础查询到 AI SQL、语义视图与生产数据管道
 
-> 架构延伸阅读：如果你的系统同时使用独立部署的 PostgreSQL 和 Snowflake，如何划分 OLTP/OLAP、选择 CDC、设计数据分层与结果回传，参见[《PostgreSQL 与 Snowflake 联合架构实践》](./postgresql-snowflake-joint-architecture-2026)。
+> 架构延伸阅读：如果你的系统同时使用独立部署的 PostgreSQL 和 Snowflake，如何划分 OLTP/OLAP、选择 CDC、设计数据分层与结果回传，参见[《PostgreSQL + Snowflake 企业落地实践报告》](./snowflake_postgres_enterprise_practice_guide_zh)。
 
 
 
