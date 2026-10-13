@@ -1748,6 +1748,7 @@ JavaScript UDF 的关键限制包括：
 - 只能使用受支持的标准 JavaScript 库，不能像普通 Node.js 项目一样随意导入第三方 npm 包。
 - 官方建议 JavaScript UDF 的源码控制在约 100 KB 以内；内存使用过量、执行时间过长或递归深度过大可能导致运行失败。
 - 不能依赖全局变量在不同调用、不同进程或不同数据分片之间共享状态。
+- **金融数值和时间精度要格外谨慎。** JavaScript 的 Number 是双精度浮点数，不能精确保留任意精度的 Snowflake NUMBER；整数超过 2^53−1 后可能失去精度。JavaScript Date 的精度也只有毫秒级，时区转换还有专门语义。金额、数量、价格、利率和高精度时间戳应优先留在 SQL 的精确数值/时间类型中，或用经过验证的 Decimal/专用表示，不能未经测试就转成 JavaScript Number / Date。
 - UDF 不应读取任意本地文件或执行系统调用。需要访问外部网络时，必须另行评估 Snowflake External Access Integration 的网络规则和凭据权限。
 
 因此，如果逻辑需要大型库、复杂数据科学工具或持续演进的业务规则，通常应优先评估 Python UDF、SQL 模型或应用服务，而不是把依赖代码手工塞进 JavaScript handler。
