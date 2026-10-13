@@ -894,7 +894,7 @@ WHEN NOT MATCHED AND src.operation <> 'DELETE' THEN INSERT (
 
 **Snowflake Scripting 能帮忙，但解决的是另一类问题。** 它为 SQL 增加变量、条件分支、循环和异常处理，适合编排多步操作、检查批次状态、记录执行结果和在条件不满足时中止流程；它不会自动把复杂 SQL 拆成可测试模块，也不会自动产生单元测试。不要把巨大的 SELECT 改写成巨大的 BEGIN…END 块，也不要为测试而把集合式转换改成逐行循环。优先把业务转换拆成语义清晰的模型，用单元测试验证逻辑、用数据测试验证结果、用 Scripting 或 Tasks 管理需要过程控制的运行流程。
 
-更完整的测试分层、SQL 逻辑边界、CI/CD 门禁与官方文档，参见[《PostgreSQL + Snowflake 企业落地实践报告》第 23 章](./snowflake_postgres_enterprise_practice_guide_zh#二十三sql-承载大量业务逻辑时如何测试理解和维护)。
+更完整的测试分层、SQL 逻辑边界、CI/CD 门禁与官方文档，参见[《PostgreSQL + Snowflake 企业落地实践报告》第 23 章](./snowflake_postgres_enterprise_practice_guide_zh)。
 
 参考：[dbt Unit tests](https://docs.getdbt.com/docs/build/unit-tests) · [dbt data tests](https://docs.getdbt.com/docs/build/data-tests) · [Snowflake dbt Projects 最佳实践](https://docs.snowflake.com/en/user-guide/data-engineering/dbt-projects-on-snowflake-best-practices) · [Snowflake Scripting](https://docs.snowflake.com/en/developer-guide/snowflake-scripting) · [Snowflake Data Quality Expectations](https://docs.snowflake.com/en/user-guide/data-quality-expectations)。
 
