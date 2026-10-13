@@ -218,7 +218,7 @@ Snowflake 官方 Openflow PostgreSQL Connector 文档说明，它可复制选定
 
 ### 4.5 补充：连接器代际、精度语义和 Iceberg 目标
 
-在做生产选型时，要区分“PostgreSQL Connector 本身的成熟度”和“某一种目标格式/部署方式的成熟度”。截至 2026 年 10 月 13 日，Snowflake 的 PostgreSQL Openflow Connector 概览将 Connector 标为 Generally Available；而官方 Gen 2 快速入门仍将 Gen 2 connector 创建流程标为 Public Preview，PostgreSQL Connector 的 Iceberg 目标格式页面也单独标为 Preview。不能因为标准表 CDC 已 GA，就推断所有 Gen 2 管理路径或 Iceberg 目标都已 GA。上线前要在目标 Snowflake 账户、区域和部署模式中复核实际状态。
+在做生产选型时，要区分“PostgreSQL Connector 本身的成熟度”和“某一种目标格式/部署方式的成熟度”。截至 2026 年 10 月 13 日，Snowflake 的 PostgreSQL Openflow Connector 概览将 Connector 标为 Generally Available，并在支持矩阵中列出 PostgreSQL 11–18（包括文档列明的标准 PostgreSQL、RDS、Aurora、Cloud SQL 和 Azure Database 服务）；而官方 Gen 2 快速入门仍将 Gen 2 connector 创建流程标为 Public Preview，PostgreSQL Connector 的 Iceberg 目标格式页面也单独标为 Preview。不能因为标准表 CDC 已 GA，就推断所有 Gen 2 管理路径或 Iceberg 目标都已 GA。上线前要在目标 Snowflake 账户、区域和部署模式中复核实际状态。
 
 同样需要把类型转换作为数据契约的一部分，而不是单纯的连接器配置。官方映射显示：`NUMERIC/DECIMAL` 在目标限制范围内保留 precision/scale，`TIMESTAMPTZ` 映射到 `TIMESTAMP_LTZ`，`TIMESTAMP WITHOUT TIME ZONE` 映射到 `TIMESTAMP_NTZ`，而 `MONEY` 映射为 `FLOAT`。对金额或高精度十进制指标，后者可能引入二进制浮点误差；对时间字段也应明确业务时区、存储时区和报表展示时区。类型映射上线前至少要用边界值、NULL、超长字段、小数极值、时区切换和历史数据做逐列验证。
 
@@ -229,6 +229,7 @@ PostgreSQL Connector 还提供了一个值得关注但需要谨慎采用的方�
 - [PostgreSQL Connector：数据类型映射](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/data-mapping)
 - [Gen 2 Openflow 快速入门与预览状态](https://docs.snowflake.com/en/user-guide/data-integration/openflow/gen2/quickstart)
 - [PostgreSQL Connector 的 Iceberg 目标格式与序列化策略](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/iceberg)
+- [PostgreSQL 17+ failover slot：高可用与故障切换要求](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/failover)
 
 
 ## 五、Snowflake 内部如何组织数据
@@ -575,6 +576,17 @@ CDC 通常依赖 PostgreSQL WAL。复制槽未及时前进时，PostgreSQL 为�
 
 Snowflake 官方 Connector 配置文档明确要求给源端 WAL 预留足够磁盘，并指出 replication slot 会保留尚未被 connector 确认推进位置之前的 WAL。
 
+
+### PostgreSQL 17+：把复制槽故障切换纳入 HA 设计
+
+当前 Openflow Connector 文档列出的支持矩阵覆盖 PostgreSQL 11–18（包括文档列明的 RDS、Aurora、Cloud SQL 和 Azure Database 等服务），但“版本受支持”不等于所有高可用行为都自动成立。若 PostgreSQL 17+ 环境需要在主库故障切换后继续 CDC，Snowflake 提供的 failover-slot 支持要求 connector 使用支持该能力的 runtime extensions（文档当前要求 2026.7.16.14 或更高），并且连接字符串必须指向可随故障切换切换到新主库的 writer/primary endpoint。connector 在 PostgreSQL 17+ 创建 replication slot 时会启用 `failover=true`；已有 slot 不会仅因升级 connector 而自动获得该属性。
+
+该机制还依赖 PostgreSQL 集群自身配置，包括主库的 `synchronized_standby_slots`，以及候选 standby 的 `wal_level = logical`、`sync_replication_slots = on`、`hot_standby_feedback = on` 和正确的 `primary_conninfo` / `primary_slot_name`。跨 failover 的投递语义仍是 at-least-once，重连时会去重，因此下游仍必须具备幂等和对账能力。注意：connector 可以从 PostgreSQL 16+ 的 hot standby 读取数据，但如果使用的是 PostgreSQL 17+ failover slot 保护，则必须连接 primary；AWS Aurora 不支持从 read replica 进行逻辑解码，因此不能简单套用 hot-standby 方案。
+
+不要在没有完整演练的情况下在线删除旧 replication slot 或切换 connector。更新已有部署时，官方提供“无重新快照”和“重新快照”两条迁移路径；前者需要协调一个可控的无写入窗口，因为 slot 删除后 PostgreSQL 无法再从原 slot 回放已丢弃的 WAL。应先按官方步骤核对当前消费水位、队列、slot 属性和写入恢复点，再在非生产或可回滚环境演练。
+
+参考：[PostgreSQL 17+ failover slot support](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/failover)。
+
 ### 10.3 建议先准备四种故障手册
 
 **A. 数据延迟突然上升**
@@ -775,6 +787,7 @@ Klika 发布了一篇客户案例：一家多租户广告收入分析产品原�
 14. **Openflow 写入 Iceberg：** [PostgreSQL Connector Iceberg destinations](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/iceberg) — 当前为 Preview；重点核查目标表格式版本、serialization policy 和外部引擎兼容性。
 15. **Snowflake 访问外部 Iceberg：** [Access Iceberg data in Snowflake](https://docs.snowflake.com/en/collaboration/open-format-sharing-access-iceberg) 和 [Open Data Sharing](https://docs.snowflake.com/en/collaboration/open-format-sharing) — 适用于明确有多引擎共享需求的项目。
 16. **DuckDB 产品化混合架构：** [MotherDuck + PlanetScale Postgres](https://motherduck.com/blog/motherduck-planetscale-integration/) — 作为厂商实践参考，注意区分开源 DuckDB 嵌入式引擎与托管云端服务。
+17. **PostgreSQL CDC 的高可用：** [PostgreSQL 17+ failover slot support](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/failover) — 核查 writer endpoint、slot 创建时间、standby 配置、至少一次投递和现有连接器升级的影响。
 
 ---
 
