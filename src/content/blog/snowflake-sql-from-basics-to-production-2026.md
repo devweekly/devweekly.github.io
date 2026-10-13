@@ -2765,7 +2765,66 @@ WHERE s.ticket_text IS NOT NULL
 
 ---
 
-## 二十二、官方文档与可运行示例
+
+### 22.6 为 Warehouse 设置成本保护阈值
+
+Resource Monitor 可为分配给它的标准 Virtual Warehouses 设置周期性 Credits 预算与触发动作。它需要账户级管理权限；配额应来自实际基线，暂停动作也要结合 SLA 评估。
+
+~~~sql
+CREATE OR REPLACE RESOURCE MONITOR etl_monthly_monitor
+    WITH CREDIT_QUOTA = 500
+    FREQUENCY = MONTHLY
+    START_TIMESTAMP = IMMEDIATELY
+    TRIGGERS
+        ON 80 PERCENT DO NOTIFY
+        ON 100 PERCENT DO SUSPEND;
+
+ALTER WAREHOUSE transform_wh
+    SET RESOURCE_MONITOR = etl_monthly_monitor;
+~~~
+
+这里 500 Credits 只是示例，不是通用建议。Resource Monitor 不能视为所有 Serverless 功能、Cortex 推理和平台服务的统一预算上限；还需要从相应 Usage History 监控这些费用。
+
+官方参考：[CREATE RESOURCE MONITOR](https://docs.snowflake.com/en/sql-reference/sql/create-resource-monitor) · [Resource Monitor 说明](https://docs.snowflake.com/en/user-guide/resource-monitors)。
+
+### 22.7 数据共享：把合作方能看到的对象单独定义
+
+安全的数据共享通常先建立专供消费者使用的 View，去除不必要的个人字段，并明确数据粒度，然后再授权 Share。Secure View 可以隐藏视图定义，但不会自动匿名化数据；仍须评估小群体数据的重识别风险。
+
+~~~sql
+CREATE OR REPLACE SECURE VIEW analytics.partner_share.daily_sales AS
+SELECT
+    order_date,
+    region,
+    SUM(net_amount) AS net_sales,
+    COUNT(DISTINCT order_id) AS order_count
+FROM analytics.gold.fact_orders
+WHERE order_status = 'PAID'
+GROUP BY order_date, region;
+
+CREATE SHARE partner_sales_share;
+
+GRANT USAGE ON DATABASE analytics
+    TO SHARE partner_sales_share;
+
+GRANT USAGE ON SCHEMA analytics.partner_share
+    TO SHARE partner_sales_share;
+
+GRANT SELECT ON VIEW analytics.partner_share.daily_sales
+    TO SHARE partner_sales_share;
+
+-- 使用方账号标识为示意值，按组织/账户共享规则替换。
+ALTER SHARE partner_sales_share
+    ADD ACCOUNTS = partner_org.partner_account;
+~~~
+
+对象授权语法和实际账户标识应按共享类型核实；组织内消费者、外部账户、Listing 与跨 Region 共享的交付步骤并不完全相同。交付前应使用低权限消费者身份验证可见对象、行/列范围、指标口径和版本兼容性。
+
+官方参考：[CREATE SHARE](https://docs.snowflake.com/en/sql-reference/sql/create-share) · [GRANT](https://docs.snowflake.com/en/sql-reference/sql/grant-privilege) · [Secure Views](https://docs.snowflake.com/en/user-guide/views-secure)。
+
+---
+
+## 二十三、官方文档与可运行示例
 
 以下链接适合在动手时查语法细节、功能限制和官方实践。Snowflake 的功能、版本要求、区域支持和计费规则会变化，正式落地前应以当前账号实际支持情况及官方文档为准。
 
