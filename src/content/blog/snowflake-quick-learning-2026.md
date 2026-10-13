@@ -898,6 +898,29 @@ WHEN NOT MATCHED AND src.operation <> 'DELETE' THEN INSERT (
 
 参考：[dbt Unit tests](https://docs.getdbt.com/docs/build/unit-tests) · [dbt data tests](https://docs.getdbt.com/docs/build/data-tests) · [Snowflake dbt Projects 最佳实践](https://docs.snowflake.com/en/user-guide/data-engineering/dbt-projects-on-snowflake-best-practices) · [Snowflake Scripting](https://docs.snowflake.com/en/developer-guide/snowflake-scripting) · [Snowflake Data Quality Expectations](https://docs.snowflake.com/en/user-guide/data-quality-expectations)。
 
+
+#### JavaScript / Python UDF：何时应该把逻辑写成代码？
+
+Snowflake 支持 JavaScript 和 Python UDF，但这不意味着复杂 SQL 应该默认重写成脚本。建议按这个顺序评估：**原生 SQL → SQL UDF / dbt 模型 → JavaScript 或 Python UDF → Stored Procedure / 外部编排器**。这不是硬性规则，而是先选能让优化器和维护者看清业务语义的实现。
+
+| 方案 | 适合的职责 | 需要留意 |
+| --- | --- | --- |
+| 原生 SQL / SQL UDF | JOIN、聚合、窗口、规则映射、简单确定性表达式 | 复杂转换拆成有清楚粒度的模型，不要堆叠无边界的 CTE 和 CASE |
+| JavaScript UDF | 轻量字符串、对象或 JSON 处理，且无需外部库 | Snowflake 不支持随意导入 npm 包；源码、内存和执行时间有运行限制，不能依赖全局状态跨行共享 |
+| Python UDF | 需要现有 Python 代码、成熟库、特殊解析或科学计算 | 固定 Runtime 和包版本；明确 SQL/Python 类型映射、NULL、时区和精度 |
+| Vectorized Python UDF | 运算适合 Pandas/NumPy 或模型批量推理 | 只有批处理算法和输入形态合适时才可能更快；需要用相同输入比较结果、吞吐、内存和仓库成本 |
+| Stored Procedure / Tasks | 多步 SQL、批次状态、条件分支、异常处理和流程编排 | 不要把有副作用的工作塞进每行都会调用的 UDF |
+
+例如，日期转换、条件映射、常见字符串处理和集合计算如果可以由 Snowflake 内置 SQL 清楚表达，通常就没有必要先引入 JavaScript/Python。Python 的优势是库生态和算法复用；向量化接口则适合一次处理多行，而不是逐行调用昂贵逻辑。JavaScript UDF 更适合轻量、无第三方依赖的确定性转换。
+
+还要区分 UDF 与 Stored Procedure：UDF 的重点是根据输入计算并返回值，应尽量保持无副作用；多条 SQL 的协调、写入步骤、外部调用和重试应由存储过程、Tasks 或外部工作流管理。虽然可以通过 External Access Integration 显式允许 UDF/过程访问特定外部网络，但逐行调用外部 API 通常会带来延迟、限流、重复计费及重试问题，优先设计批量处理和幂等机制，并通过 Secret 管理凭据。
+
+生产部署时，将 handler 源码、DDL、依赖版本和测试样本一起纳入 Git 与 CI/CD；测试 NULL、边界值、时区、精度和异常输入；对重要函数比较新旧结果，并基于代表性数据规模实测性能。不要只测一两行，也不要把测试通过等同于业务口径正确。
+
+**PostgreSQL 不完全一样：** 通常优先使用 SQL 和 PL/pgSQL。PL/Python 通过扩展安装，官方提供的 plpython3u 属于不受信任语言，只允许超级用户创建，而且函数能力可能达到数据库服务器进程账户的权限范围。JavaScript 通常依赖 PL/V8 等第三方扩展，并非每个 PostgreSQL 环境的内建能力。因此不能照搬 Snowflake 受限 UDF Runtime 的安全假设。详细语言选择、生产治理和官方资料见[《PostgreSQL + Snowflake 企业落地实践报告》](./snowflake_postgres_enterprise_practice_guide_zh)。
+
+官方参考：[Snowflake JavaScript UDF limitations](https://docs.snowflake.com/en/developer-guide/udf/javascript/udf-javascript-limitations) · [Designing Python UDFs](https://docs.snowflake.com/en/developer-guide/udf/python/udf-python-designing) · [Vectorized Python UDFs](https://docs.snowflake.com/en/developer-guide/udf/python/udf-python-batch) · [External network access](https://docs.snowflake.com/en/developer-guide/external-network-access/external-network-access-overview) · [PostgreSQL PL/Python](https://www.postgresql.org/docs/current/plpython.html)。
+
 ### 转换引擎的边界：刷新、消费位点、调度与业务发布不是一回事
 
 选转换技术时，要把四个容易混淆的概念分开：
