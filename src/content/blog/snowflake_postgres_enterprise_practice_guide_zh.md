@@ -51,7 +51,7 @@ flowchart LR
     MART -. 模型测试、业务指标校验 .-> OPS
 ```
 
-**关键认识：** 不是把 PostgreSQL 全库原样复制一次就结束。正确的目标是建立一条可观察、可重试、可对账、能处理源端变化的分析数据链路。
+**关键认识：** 不是把 PostgreSQL 全库原样复制一次就结束。正确的目标是建立一条可观察、可重试、可对账、能处理源端变化的分析数据链路。每个业务实体应有明确的权威写入端；如果分析结果需要回到应用，应通过独立的异步发布链路完成，而不是让应用同时写两个数据库。
 
 ---
 
@@ -1595,6 +1595,76 @@ External Table 直接扫描文件时也要特别小心数据质量：Snowflake �
 只有在明确存在 Athena、Spark、DuckDB 等多个计算引擎要访问同一份可治理数据，或 Vendor 本身已经提供 Iceberg 数据集时，才为 Iceberg 增加 Catalog、快照管理、文件维护与兼容性验证。对于单一 Snowflake 消费者、定时交付的普通 Parquet 文件，External Table 或原生表往往更容易运营。
 
 ---
+
+
+## 二十三、分析结果如何安全地回传 PostgreSQL 应用
+
+前面的主数据流是 PostgreSQL → Snowflake：在线事务留在 PostgreSQL，Snowflake 负责跨域分析、历史计算和数据产品。某些业务还需要把分析结果送回应用，例如客户分群、风险标签、推荐结果、批量计算状态或模型评分。此时应增加一条**独立、异步、可审计的结果发布链路**，而不是把整体架构改成没有明确边界的双向数据库同步。
+
+### 23.1 先定义结果契约，再决定怎么回传
+
+每类结果至少应明确以下字段和语义：
+
+| 契约项 | 需要明确的内容 |
+| --- | --- |
+| 业务键 | 结果对应哪个客户、账户、产品或业务实体；键是否稳定且唯一 |
+| 计算时间与数据水位 | 结果基于什么时间范围、源端 LSN/批次或数据版本计算 |
+| 规则/模型版本 | 使用了哪个模型、规则或 SQL 模型版本，便于复现和审计 |
+| 发布版本 | 如何比较新旧结果，防止迟到批次覆盖较新的结果 |
+| 有效期与撤销 | 结果何时失效，如何显式撤销；不能把“没有新结果”默认解释为“结果无效” |
+| 质量状态 | 哪些对账、完整性和业务规则校验通过后，结果才允许发布 |
+| 失败与重试 | 批次如何识别、如何幂等重试、如何补偿以及谁负责处理失败 |
+
+### 23.2 PostgreSQL 端使用幂等 Upsert，并防止旧版本覆盖新版本
+
+以下示例展示发布端的幂等写入。表结构、版本类型和有效期字段应按具体业务定义；如果版本不是可比较的单调值，应使用明确的排序规则，而不是直接比较时间戳来猜测新旧。
+
+```sql
+INSERT INTO customer_segment (
+    customer_id, segment_code, publish_version, computed_at, expires_at
+)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (customer_id)
+DO UPDATE SET
+    segment_code = EXCLUDED.segment_code,
+    publish_version = EXCLUDED.publish_version,
+    computed_at = EXCLUDED.computed_at,
+    expires_at = EXCLUDED.expires_at
+WHERE customer_segment.publish_version < EXCLUDED.publish_version;
+```
+
+该 SQL 只保证 PostgreSQL 发布端的单行写入具有幂等性，不代表 Snowflake 与 PostgreSQL 之间存在原子事务。生产实现还应记录发布批次 ID、处理状态、尝试次数、错误原因和已确认水位；仅在结果校验通过后推进发布水位。对大批结果，通常先写入 staging 表，完成批次级校验后再以事务或受控合并方式更新应用侧表，避免消费者读到半批新数据。
+
+### 23.3 不要把 Snowflake 查询放进每个在线请求的同步路径
+
+如果每次用户请求都实时访问 Snowflake，应用的响应时间和可用性就会受到网络、仓库启动、并发排队、查询耗时和权限配置的共同影响。若业务要求低延迟在线读取，优先评估预计算后回传 PostgreSQL、缓存或专门的 Serving API，并明确可接受的数据陈旧度、刷新频率和失效策略。只有当实时查询的延迟与可用性已经通过真实负载验证，且业务确实需要时，才考虑在线直查。
+
+### 23.4 结果发布的监控与故障处理
+
+至少监控发布批次成功率、端到端延迟、结果版本是否倒退、过期结果比例、待处理批次、重试次数和应用侧最终水位。发生故障时，应能按批次重放、按版本拒绝旧数据、撤销错误结果，并核对 Snowflake 侧已计算结果与 PostgreSQL 侧已发布结果之间的差异。结果回传是独立的数据产品链路，应有单独的 owner、SLO 和故障手册。
+
+---
+
+## 二十四、Snowflake Postgres 与独立 PostgreSQL：不要混为一谈
+
+本文所说的 PostgreSQL 可以是自建实例、Amazon RDS/Aurora PostgreSQL、Azure Database for PostgreSQL、Google Cloud SQL 等独立部署或托管服务。Snowflake Postgres 则是 Snowflake 平台提供的 PostgreSQL 数据库服务。它们采用 PostgreSQL 生态并不意味着扩展、网络、权限、升级、复制能力和运维责任完全相同。
+
+| 场景 | 优先评估的方案 | 不应默认假设 |
+| --- | --- | --- |
+| 独立 PostgreSQL → Snowflake 分析层 | Openflow PostgreSQL CDC、已有平台上的 Debezium/Kafka，或批量文件加载 | 不要假设 Snowflake Postgres 的原生 mirroring 可直接用于所有外部 PostgreSQL |
+| Snowflake Postgres → Snowflake 分析层 | 在当前区域、版本与功能状态允许时，评估原生 data mirroring | 不要把 mirroring 等同于通用双向复制或跨库事务 |
+| Snowflake Postgres 与开放数据格式协作 | 对适用场景评估 pg_lake、Iceberg 和对象存储集成 | 不要把开放格式访问等同于持续 CDC、事务复制或冲突解决 |
+| 独立 PostgreSQL 迁移到 Snowflake Postgres | 单独制定数据库迁移和切换计划，验证 schema、扩展、序列、连接切换、回滚与一致性 | 不要把分析用 CDC 管道直接当作完整数据库迁移方案 |
+
+选型时，应针对目标云区域、部署方式和当前功能状态查验官方文档，并把连接器代际、Preview/GA 状态、复制槽与 WAL 限制、刷新间隔、源端容量及成本纳入验证。相关能力会随产品迭代变化，不能只依据产品名称推断其支持范围。
+
+官方资料：
+- [Snowflake Postgres 概览与架构](https://docs.snowflake.com/en/user-guide/snowflake-postgres/about)
+- [Snowflake Postgres 数据移动：mirroring 与 pg_lake](https://docs.snowflake.com/en/user-guide/snowflake-postgres/postgres-data-movement)
+- [Snowflake Postgres data mirroring](https://docs.snowflake.com/en/user-guide/snowflake-postgres/postgres-data-mirroring)
+- [Openflow Connector for PostgreSQL：功能与限制](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/about)
+- [Openflow Connector for PostgreSQL：配置步骤](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/setup)
+
 
 ## 总结
 
