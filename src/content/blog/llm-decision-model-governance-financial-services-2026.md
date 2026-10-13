@@ -598,7 +598,24 @@ Sachan 等人 2024 年关于金融科技贷款承保的研究，从人工审核�
 
 可以抽取三项工程做法：明确每条业务规则的可靠性与权重；在存在冲突证据时表达证据强度，而不是把所有信息压成一个无来由的分数；对专家分歧建立审查与治理流程，并用独立结果评测 AI 是否真正提高一致性和质量。
 
-### 14.5 从案例中抽取一个可复用的模式
+### 14.5 传统信贷模型的可解释性研究：可以借鉴什么，不能直接套用什么？
+
+FinRegLab 与斯坦福商学院的研究从不同角度评估了传统机器学习信贷承保模型的解释性、公平性和模型诊断工具。其 [Machine Learning Explainability & Fairness: Insights from Consumer Lending](https://finreglab.org/research/machine-learning-explainability-fairness-insights-from-consumer-lending/) 研究比较了七家技术公司的诊断工具和若干开源工具；相关研究关注这些工具能否提供理解单个申请人预测、群体层面的模型行为、以及模型整体行为所需的信息。FinRegLab 在 2026 年又发布了面向消费信贷模型管理的 [Framework for Managing Machine Learning Models in Consumer Credit Underwriting](https://finreglab.org/research/explainability-and-fairness-in-machine-learning-for-credit-underwriting/)，该工作反映了其与美国银行在 OCC Project REACh 框架下的讨论。
+
+这类研究与 LLM Decision Model 密切相关，但两者不能混为一谈。
+
+| 传统评分/机器学习模型 | 基于 LLM 的 Decision Model |
+| --- | --- |
+| 典型输出是分数、概率、分类或排序 | 输出可能是事实抽取、规则解释、证据综合与自然语言建议 |
+| SHAP、特征重要性、局部解释等可辅助分析特定输入特征对模型输出的贡献，但其结果依赖模型、背景分布和解释方法 | 不能把特征归因直接映射为 Prompt、上下文或生成文本的“真正原因”；LLM 生成的理由也不一定忠实反映输出成因 |
+| 业务理由码通常要映射为具体、可审核的输入因素，并做准确性与一致性测试 | 还要验证每项事实是否在原材料中、引用是否支持结论、采用的政策是否正确，以及模型是否遗漏反向证据 |
+| 传统模型可通过独立模型诊断、群体差异与稳定性测试检查行为 | 除业务结果与公平性测试外，还需测试引用幻觉、上下文/Prompt 敏感性、拒答/升级行为及恶意文档影响 |
+
+可迁移的原则是：解释工具本身也需要验证，不能因为工具输出了一张 SHAP 图、特征重要性榜单或一段 LLM 理由，就认为解释正确。对于 LLM Decision Model，应优先使用可回到原始来源的证据引用、规则求值和版本记录；如果同时存在传统评分模型，则分别保留评分模型的特征级诊断和 LLM 的证据级记录，再将两者按明确的数据契约组合起来。
+
+对受消费者保护、拒绝原因披露或公平放贷规则约束的用途，还应让合规与法律团队验证理由是否具体、准确且真正对应适用的决策因素。不能让生成式模型凭空编造拒绝原因，也不能把一个听起来合理的文字理由当作模型影响该案件的真实特征解释。
+
+### 14.6 从案例中抽取一个可复用的模式
 
 | 可借鉴实践 | 适合解决的问题 | 不能由此推断什么 |
 | --- | --- | --- |
@@ -708,6 +725,9 @@ Sachan 等人 2024 年关于金融科技贷款承保的研究，从人工审核�
 23. Sachan et al., [Human-AI collaboration to mitigate decision noise in financial underwriting: A study on FinTech innovation in a lending firm](https://www.sciencedirect.com/science/article/pii/S1057521924000814), *International Review of Financial Analysis*, 2024 — 对人工承保判断的不一致性、证据权重和规则可靠性进行分析。
 24. Shi et al., [Judging the Judges: A Systematic Study of Position Bias in LLM-as-a-Judge](https://aclanthology.org/2025.ijcnlp-long.18/), IJCNLP 2025 — 研究 LLM Judge 的位置偏差与一致性。
 25. Wei et al., [Systematic Evaluation of LLM-as-a-Judge in LLM Alignment Tasks](https://arxiv.org/abs/2408.13006), 2024 — 评估 Judge 的 Prompt 敏感性、可靠性与人类一致性。
+26. [FinRegLab — Explainability and Fairness in Machine Learning for Credit Underwriting](https://finreglab.org/research/explainability-and-fairness-in-machine-learning-for-credit-underwriting/) — 传统信贷模型诊断、解释性、公平性及 2026 年模型管理框架的项目入口。
+27. [FinRegLab / Stanford GSB — Machine Learning Explainability & Fairness: Insights from Consumer Lending](https://finreglab.org/research/machine-learning-explainability-fairness-insights-from-consumer-lending/) — 对多家厂商与开源模型诊断工具进行实证评估，讨论其在个体预测、群体行为和模型风险管理方面的作用与限制。
+28. [FinRegLab — Framework for Managing Machine Learning Models in Consumer Credit Underwriting (2026)](https://finreglab.org/wp-content/uploads/2026/04/FinRegLab_04-09-2026_Framework-for-Managing-Machine-Learning-Models.pdf) — 传统 ML 模型管理的近期框架，可用于比较其与 LLM 决策记录、证据溯源和运行评测的差异。
 
 ### 与工程评测的衔接
 
