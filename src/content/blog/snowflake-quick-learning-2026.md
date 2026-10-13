@@ -879,6 +879,25 @@ WHEN NOT MATCHED AND src.operation <> 'DELETE' THEN INSERT (
 
 **业界实践：** State Street 的公开案例介绍了其以 Snowflake 改善数据运营的成果，说明金融数据平台不仅需要计算能力，也需要可重复的数据流程与可运营性。公开案例没有披露其内部 SQL 模型和任务编排的逐项实现，因此本节给出的 CDC/转换模板是工程建议，不应冒称为客户原样架构。参见 [State Street 客户案例](https://www.snowflake.com/en/customers/all-customers/case-study/state-street/)。
 
+
+#### SQL 中有大量业务逻辑时，测试与维护应该怎么做？
+
+当 SQL 不再只是简单查询，而是承载复杂 CASE、窗口计算、日期口径、冲正/删除处理和多步业务转换时，应像维护应用代码一样维护它。**SQL 编译成功不等于业务逻辑正确；数据质量测试通过也不等于模型变更没有改变业务口径。**
+
+建议至少分三层：
+
+1. **逻辑单元测试：** 为复杂 SQL 模型准备小型固定输入和期望输出，重点覆盖 CASE 分支、日期边界、NULL、重复记录、冲正、迟到数据、窗口排序和金额精度。dbt 从 v1.8 开始支持 SQL model unit tests，适合在物化完整模型前验证转换逻辑。
+2. **数据质量测试：** 对实际模型检查唯一性、非空、引用关系、允许值、合理范围、控制总计和数据新鲜度。dbt data tests 通常查询违反断言的记录；Snowflake 也提供 Data Metric Functions 与 Expectations 来持续监控数据质量。
+3. **回归与发布测试：** 在同一输入快照上比较新旧模型的新增/删除记录、关键金额差异、聚合结果和分类变化。高风险模型应在隔离 Schema 中构建并通过测试，再部署到生产；CI/CD 应让关键测试失败阻止合并或发布。
+
+静态检查也值得纳入流水线。SQLFluff 支持 Snowflake 方言，可以帮助统一格式并捕获部分解析问题，但不能证明业务语义正确。Snowflake 的 dbt 最佳实践明确建议通过 CI/CD 构建模型、运行测试，并阻止失败变更进入生产。
+
+**Snowflake Scripting 能帮忙，但解决的是另一类问题。** 它为 SQL 增加变量、条件分支、循环和异常处理，适合编排多步操作、检查批次状态、记录执行结果和在条件不满足时中止流程；它不会自动把复杂 SQL 拆成可测试模块，也不会自动产生单元测试。不要把巨大的 SELECT 改写成巨大的 BEGIN…END 块，也不要为测试而把集合式转换改成逐行循环。优先把业务转换拆成语义清晰的模型，用单元测试验证逻辑、用数据测试验证结果、用 Scripting 或 Tasks 管理需要过程控制的运行流程。
+
+更完整的测试分层、SQL 逻辑边界、CI/CD 门禁与官方文档，参见[《PostgreSQL + Snowflake 企业落地实践报告》第 23 章](./snowflake_postgres_enterprise_practice_guide_zh#二十三sql-承载大量业务逻辑时如何测试理解和维护)。
+
+参考：[dbt Unit tests](https://docs.getdbt.com/docs/build/unit-tests) · [dbt data tests](https://docs.getdbt.com/docs/build/data-tests) · [Snowflake dbt Projects 最佳实践](https://docs.snowflake.com/en/user-guide/data-engineering/dbt-projects-on-snowflake-best-practices) · [Snowflake Scripting](https://docs.snowflake.com/en/developer-guide/snowflake-scripting) · [Snowflake Data Quality Expectations](https://docs.snowflake.com/en/user-guide/data-quality-expectations)。
+
 ### 转换引擎的边界：刷新、消费位点、调度与业务发布不是一回事
 
 选转换技术时，要把四个容易混淆的概念分开：
