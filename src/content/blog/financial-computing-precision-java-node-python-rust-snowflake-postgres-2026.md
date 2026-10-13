@@ -16,7 +16,7 @@ tags:
 
 **资料核对日期：2026 年 10 月 13 日。**
 
-本文讨论投资组合、证券交易、费用与佣金、利息计提、外汇换算、税务、估值、账务和分析数据处理中容易被忽略的计算问题。比较范围包括 Java、Node.js/TypeScript、Python、Rust、Snowflake SQL 和 PostgreSQL，重点回答：
+本文讨论投资组合、证券交易、费用与佣金、利息计提、外汇换算、税务、估值、账务和分析数据处理中容易被忽略的计算问题。比较范围包括 Java、C#/.NET、Node.js/TypeScript、Python、Rust、Snowflake SQL 和 PostgreSQL，重点回答：
 
 - 每种语言或平台的原生数值模型有什么限制？
 - 不引入第三方库时，怎样把风险降到可接受的程度？
@@ -368,7 +368,60 @@ Rust 标准库的 f32/f64 是二进制浮点类型；标准库没有通用 Decim
 
 特别注意 Rust 的 serde JSON 配置。一些 Decimal 类型可以配置为输出 JSON 数字，也可以配置为输出字符串。若消费者是 JavaScript，输出为 JSON number 可能再次失去精度；必须根据接口契约选择格式，并在端到端测试中验证。
 
-## 八、Snowflake：NUMBER 很适合精确数值计算，但精度和 scale 有上限
+## 八、C# / .NET：decimal 很适合金额，但它不是任意精度数值类型
+
+C# 的 System.Decimal 是 .NET 标准库提供的十进制数值类型。它由 96 位整数系数、符号和 scale 组成，scale 可表示 0 到 28 位小数；有效精度大约为 28–29 位十进制数字，最大绝对值约为 7.9228 × 10^28。它能精确表示常见的十进制金额输入，但范围和精度都有限，并不像 Java BigDecimal 或 Python Decimal 一样支持任意大的系数。
+
+Microsoft 将 decimal 明确定位于金额、利率等需要十进制精度的计算。文档同时提醒，decimal 仍然需要舍入：例如 1 / 3 的结果只能保留有限位，随后再乘以 3 也可能得到 0.9999999999999999999999999999，而不是数学意义上的 1。[Microsoft：System.Decimal](https://learn.microsoft.com/en-us/dotnet/fundamentals/runtime-libraries/system-decimal)
+
+### 不依赖第三方库
+
+对金额、费用、税额和固定精度比率，优先使用 C# 的 decimal，而不是 double 或 float。
+
+~~~csharp
+using System;
+using System.Globalization;
+
+decimal amount = 10.00m;
+decimal rate = 0.0725m;
+
+// decimal 运算，保留中间值，不立即量化到货币单位。
+decimal rawFee = amount * rate;
+
+// 仅在业务规定的边界进行舍入。
+// AwayFromZero 只是本例选择；生产策略要由业务规则决定。
+decimal fee = Math.Round(rawFee, 2, MidpointRounding.AwayFromZero);
+
+// 从 API 文本解析时，显式指定文化设置，不依赖服务器当前区域。
+decimal parsed = decimal.Parse(
+    "1234.56",
+    NumberStyles.Number,
+    CultureInfo.InvariantCulture);
+~~~
+
+关键事项：
+
+- **使用 decimal 字面量后缀 m。** 例如 0.1m 会按 decimal 字面量处理；不要先把值放入 double，再强制转换成 decimal，转换不能恢复已丢失的原始十进制输入。
+- **舍入模式要显式指定。** Math.Round(decimal, digits) 默认使用 MidpointRounding.ToEven，也就是 ties-to-even / banker’s rounding。它不一定符合产品要求。若规则规定半值远离零，应使用 MidpointRounding.AwayFromZero；其他模式需按运行时支持情况选择并建立测试。
+- **decimal 不意味着除法无限精确。** 除法结果需要落入有限的 precision/scale；不能在一串计算的每个步骤都随意舍入。用领域函数定义最终量化边界，并用边界测试检查结果。
+- **范围仍然有限。** 超出 decimal 可表达范围的运算会触发 OverflowException。不要在捕获异常后把结果静默替换为 0 或默认值；应明确失败、拒绝输入或进入异常处理流程。
+- **不要依赖当前区域解析机器接口数据。** 小数分隔符可能是点，也可能是逗号。数据库和 API 的机器格式需要固定文化规则；货币符号和本地化格式只用于展示。
+- **存储精度和金额精度不是一回事。** .NET decimal 可保留到 28 位小数，但这不代表所有币种都应该保留 28 位，也不代表价格、利率、中间值和最终可支付金额使用同一个 scale。
+- **对宽整数乘法另行检查范围。** 若用 long 存储定标整数，乘法中间值可能溢出。现代 .NET 提供 BigInteger，可在不引入第三方库时做任意精度整数计算；但 BigInteger 本身不包含小数点、币种或舍入规则，需要自己封装系数和 scale。
+
+C# 与 Java/Python 的差异是值得注意的：Java BigDecimal 和 Python Decimal 都提供更灵活的 precision 控制；C# decimal 的常见算术更直接，但固定的数值范围可能不适合所有高精度估值、长链中间运算或极大累计值。对于绝大多数日常金额、订单、费用和账务字段，decimal 通常足够；对于高精度定量计算或需要超出其范围的数值，应先定义实际精度需求，再选择 BigInteger 定标整数或经过评估的高精度库。
+
+### 借助第三方库
+
+- [NodaMoney](https://github.com/RemyDuijkeren/NodaMoney)：为 .NET 提供 Money 和 Currency 类型、货币元数据、解析/格式化、舍入策略以及金额拆分能力，避免业务代码把币种规则散落在各处。它不是任意精度数学引擎，金额运算仍受其底层数值类型和配置约束。
+- 如果系统需要更复杂的多币种金额、汇率或特定业务约定，应把第三方 Money 类型放在领域模型层，并检查该库对 currency minor unit、scale、JSON 序列化、金额拆分和 context 的具体行为。Money 类型可以减少单位混用，但不能代替利息日计数、税务规则和估值政策。
+- 对科学计算、风险模型或矩阵运算，应单独选择经过验证的数值算法和相关库。不要因为这些库提供高性能 double 运算，就用它们计算应付金额、佣金或账面余额。
+
+NodaMoney 的发布说明提供了一个值得注意的工程案例：库的 MoneyContext、舍入和反序列化行为曾随版本演进；例如，反序列化的 Money 值可能根据当前 context 应用舍入。升级库版本时，不应只跑编译与基本加减测试，还要验证 JSON/数据库往返后金额是否变化，context 是否隐式影响业务结果，以及拆分金额是否仍然满足“所有份额之和等于原金额”。[NodaMoney releases](https://github.com/RemyDuijkeren/NodaMoney/releases)
+
+**C# 的核心建议：** 用 decimal 解决常规十进制金额计算，用显式的 MidpointRounding 和统一的金额领域类型约束业务；不要把 decimal 当成无限精度；对外部输入、数据库映射、序列化、版本升级与边界溢出建立自动化测试。
+
+## 九、Snowflake：NUMBER 很适合精确数值计算，但精度和 scale 有上限
 
 Snowflake 的 NUMBER/DECIMAL/NUMERIC 是定点数，最大 precision 为 38 位，scale 最多可达 37；默认 NUMBER 的精度/scale 为 NUMBER(38,0)。FLOAT、DOUBLE 等是近似浮点数。Snowflake 文档也说明，不同算术运算的结果 precision 和 scale 依赖输入类型，不能把 NUMBER(38, 18) 理解为每次运算都能无损保留任意多位小数。[Snowflake Numeric Data Types](https://docs.snowflake.com/en/sql-reference/data-types-numeric)、[Arithmetic Operators](https://docs.snowflake.com/en/sql-reference/operators-arithmetic)。
 
@@ -422,7 +475,7 @@ Snowflake SQL 计算本身通常无需第三方十进制库：精确数值应优
 
 这些都应通过使用真实最大值与小数位的 round-trip test 验证，而不是依靠驱动“支持 Snowflake”这一描述。
 
-## 九、PostgreSQL：优先 NUMERIC，而不是把 money 当作通用财务模型
+## 十、PostgreSQL：优先 NUMERIC，而不是把 money 当作通用财务模型
 
 PostgreSQL 提供整数类型、real/double precision 以及 NUMERIC/DECIMAL。NUMERIC 支持精确十进制运算，并且可容纳的精度范围很大；real 和 double precision 是近似浮点类型。官方明确建议要求精确存储和计算的货币金额使用 NUMERIC，而不是浮点数。[PostgreSQL Numeric Types](https://www.postgresql.org/docs/current/datatype-numeric.html)。
 
@@ -463,7 +516,7 @@ PostgreSQL 内部没有必要为 NUMERIC 再装一套第三方十进制算术库
 
 同理，Java BigDecimal、Python Decimal 与 Node.js 的十进制库都可以用于客户端计算，但必须验证 ORM / driver 的实际映射，而不是只看数据库 schema。
 
-## 十、跨语言和跨数据库的一致性：应如何设计系统？
+## 十一、跨语言和跨数据库的一致性：应如何设计系统？
 
 ### 1. 定义计算契约，而不是仅定义字段类型
 
@@ -537,7 +590,7 @@ PostgreSQL 内部没有必要为 NUMERIC 再装一套第三方十进制算术库
 
 这并不意味着把所有中间值无限期复制到每张表。应根据可审计性、隐私、成本和保留策略决定存储方式，但至少必须能够在授权范围内用原始输入和对应版本重现结果。
 
-## 十一、金融计算常见场景的额外注意事项
+## 十二、金融计算常见场景的额外注意事项
 
 ### 利息计提与复利
 
@@ -569,7 +622,81 @@ FX 相关字段必须记录币种对方向、报价方式、bid/ask 或 mid、�
 
 处理这些风险要用幂等键、唯一业务标识、事务、并发控制和明确状态机。舍入规则和数值类型只能保证每次计算的数学行为，不会自动提供交易幂等性或防止重复记账。
 
-## 十二、落地建议：如何在新系统和遗留系统中应用
+## 十三、业界实践：真实系统暴露的问题，往往不只是浮点数
+
+官方文档解释了类型的规则；支付与账务工程团队的实践，则更能说明为什么“所有金额都存整数分”或“全部改成 Decimal”仍然可能不够。下面选取公开的工程经验和支付平台文档，重点关注可以转化为架构约束的教训。
+
+### 1. Modern Treasury：用整数最小单位做账务金额，把精确性作为账本不变量
+
+Modern Treasury 在其工程文章 [Floats Don’t Work For Storing Cents](https://www.moderntreasury.com/journal/floats-dont-work-for-storing-cents) 中介绍了自身的货币表示实践：支付订单中主要使用 64 位整数表示货币最小单位，在 PostgreSQL 中用 BIGINT 存储，并连同货币代码记录小数位语义。美元 12.34 这样的金额会保存为 1234，而不是浮点数 12.34。
+
+这个决策有非常直接的工程收益：
+
+- 金额加减与相等判断是精确整数运算；
+- 数据库、应用和下游支付接口之间，不需要反复从近似浮点转换成金额；
+- BIGINT 适用于有明确范围的支付金额，存储和运算成本也比较可控；
+- 对账与账本不变量不必靠浮点容差掩盖一分钱的差异。
+
+但这并不是“所有金融数值都应该是整数”的证据。整数表示有一个前提：必须定义整数的单位，且能表达目标值。对于价格、FX 汇率、比例、应计利息中间值和非整数份额，可能需要比结算货币最小单位更高的精度；整数乘法也会遇到范围和余数问题。若使用 64 位整数，需推导最大允许金额并验证运算中间值；不能只检查最终余额。
+
+### 2. Neon Commerce：扩展到 JPY 时，“一律存分”把简单问题变成了隐式转换陷阱
+
+Neon Commerce 的两篇公开工程文章 [Representing money at scale is hard (part 1)](https://www.neonpay.com/blog/representing-money-at-scale-is-hard) 和 [More money, more problems (part 2)](https://www.neonpay.com/blog/more-money-more-problems-part-2-of-2) 记录了一个很具体的多币种设计教训。
+
+最初用整数 cents 表示金额时，USD/EUR/GBP 的主路径很简单。扩展到日元后，团队为避免重写显示逻辑，把 JPY 金额也存成“乘以 100”的数字，例如 123 日元存为 12300。这样虽然能让显示逻辑继续除以 100，却也允许系统表示根本不合法的值，例如 JPY 1.23。之后折扣、税额和对外 API 又需要在不同位置重复判断“这个币种要不要除以 100”，规则分散后很容易漏掉。
+
+他们后来采用了更明确的分层：使用支持精确十进制运算的 big.js 承载一般数值，封装带有 amount 与 scale 的 Decimal，再用 Money 对象把币种和其规定的 scale 绑定；在边界处转换成支付 API 要求的整数最小单位，并拒绝那些会悄悄丢精度的转换。文章还强调，不同币种的 Money 不能相加，即使它们恰好有相同的 scale；将 10 元折扣分给三行，也必须分配余数，确保份额合计仍为 10 元。
+
+这段经验说明了两点：
+
+1. **整数最小单位是边界协议和账务金额的好选择，不是所有中间数值的通用表示。**
+2. **币种 scale 必须进入类型与领域规则。** 不要在每个函数里散落着 if JPY then divide by 100 这样的特殊逻辑。
+
+### 3. Stripe Tax：真实税务计算会“先汇总再舍入”，再把舍入差额分回明细
+
+Stripe 的 [Calculate tax 文档](https://docs.stripe.com/tax/calculating) 描述了其自动税计算的一种路径：保留计算精度，按适用税率分组计算税额总量，再将税额舍入到币种最小单位，随后将舍入后的税额分配回各个明细行。某一行可能需要调整一个最小货币单位，才能让所有行项目重新加总到交易总额。
+
+这不是可以无条件复制到所有税务辖区的通用税法规则，但它说明一个重要事实：**逐行 ROUND 与先计算汇总税额再分摊，可能产生不同金额。** 即使每一步都使用精确 Decimal，算法顺序不同仍然会造成差异。
+
+产品、税务和账务团队应决定哪个金额是权威值，以及采用行级、税率组级、发票级还是其他规定的舍入层级。如果将某个税务或计费系统的实现迁移到 Java、C#、PostgreSQL 或 Snowflake，不应只复制公式，还要复现它的舍入节点和余数分配规则。否则新旧系统都“计算正确”，却无法对账。
+
+### 4. 支付服务商：内部金额模型和外部 API 单位不是同一个概念
+
+[Stripe 的币种文档](https://docs.stripe.com/currencies) 说明，API 金额通常以币种 minor unit 传入：1000 表示 USD 10.00，而 JPY 10 代表 10 日元。同时还存在特殊情况：部分币种在支付和提现场景中的单位规则不同，兼容旧规则的币种可能要求使用固定的末尾零，或只允许 certain increments。换句话说，外部支付 API 的金额格式不仅取决于 ISO 4217 的一般币种信息，还取决于服务商、交易类型与具体 API 的契约。
+
+建议将内部 Money 领域模型与支付渠道适配器隔离：
+
+- 内部记录统一的 currency code、金额值、单位和政策版本；
+- 每个 PSP adapter 按其官方契约转换到 API 所要求的 minor unit 或十进制字符串；
+- 记录发送给服务商的金额与内部金额的对应关系；
+- 明确处理不支持的 scale、超过支付上限的金额以及无效单位，不要自动猜测或默默舍入；
+- 对支付成功、部分捕获、退款、冲正和结算报告使用相同的金额语义与稳定交易标识进行对账。
+
+这比让核心账本永久采用某个支付供应商的字段格式更稳健，也便于将来切换服务商或接入多渠道。
+
+### 5. C# Money 库：库的默认 Context 也可能悄悄改变数据
+
+NodaMoney 的 [发布记录](https://github.com/RemyDuijkeren/NodaMoney/releases) 和实现文档可以看到，MoneyContext 用于配置舍入、scale 与精度；Money 的拆分必须处理舍入余数；序列化与反序列化也可能按当前 context 应用金额规则。相关版本变化曾影响反序列化时的舍入行为。
+
+这提供了一个适用于所有语言的教训：不要把舍入策略作为不可见的全局默认值。特别是当应用将 Money 对象写入 JSON、消息队列或数据库，再由另一服务读取时，应明确反序列化会不会量化金额、是否保留输入 scale，以及 context 是否由环境配置隐式决定。
+
+对第三方数值库做升级时，应加入如下契约测试：同样的金额经过 encode → decode 后必须保持预期数值；同样的输入使用批准的舍入策略必须得到相同输出；Money split 的所有份额之和必须严格等于原始金额；无效币种 scale 或超范围金额必须显式失败。
+
+### 6. 账本经验：精确金额不能替代双重记账、幂等性和不可变事件
+
+Modern Treasury 的 [How to Scale a Ledger](https://www.moderntreasury.com/journal/how-to-scale-a-ledger-part-i) 讨论了可扩展账本中的不变性、双重记账和并发控制。实际金融系统除了要防止每笔金额因舍入而变化，还必须防止同一业务事件被重复记账、余额被并发写坏，或无法从历史记录解释某个余额为何形成。
+
+在核心账务路径中，应把数值规则与状态/交易规则一起设计：
+
+- 使用明确的事务边界与幂等键处理超时重试；
+- 保存不可变的记账事件或可审计的冲正事件，不通过直接改写历史值来“抹平”差异；
+- 对借贷平衡、分配合计、退款不超过可退金额等不变量实施数据库约束或事务性校验；
+- 保留源事件、计算政策版本、交易状态和对账结果的关联；
+- 将无法对齐的记录放进异常处理流程，而不是通过浮点容差或人工改数自动消掉差异。
+
+这些经验将金融计算从“数字类型正确”推进到“整个资金流可验证”。后者才是生产系统需要保证的结果。
+
+## 十四、落地建议：如何在新系统和遗留系统中应用
 
 ### 新建金融服务
 
@@ -606,7 +733,7 @@ FX 相关字段必须记录币种对方向、报价方式、bid/ask 或 mid、�
 
 任何“容差”都应该有明确的业务含义。它可能适用于统计模型的近似输出，但不应该用来让本应精确相等的同币种账务金额通过对账。
 
-## 十三、技术选择矩阵
+## 十五、技术选择矩阵
 
 | 平台 | 不借助第三方库 | 借助第三方库 | 最需要防范的问题 |
 | --- | --- | --- | --- |
@@ -614,12 +741,13 @@ FX 相关字段必须记录币种对方向、报价方式、bid/ask 或 mid、�
 | Node.js / TypeScript | 安全范围内的整数，或 BigInt 定标整数；自行实现明确舍入 | decimal.js、bignumber.js、big.js；Dinero.js 用于货币抽象 | Number 精度、BigInt 序列化、JSON 数值解析、库默认 precision 与 rounding |
 | Python | Decimal、int、Fraction | py-moneyed 管理 Money/Currency；NumPy/pandas 用于适合浮点的分析 | Decimal context、从 float 构造、与 DataFrame/JSON/数据库之间的类型退化 |
 | Rust | i64/i128 定标整数、checked_* 运算；f64 仅用于经过验证的近似模型 | rust_decimal、bigdecimal | 固定 Decimal 的范围上限、整数中间值溢出、serde 数值序列化与数据库映射 |
+| C# / .NET | decimal、BigInteger；明确 Math.Round 的 MidpointRounding | NodaMoney；Money/Currency 领域抽象 | decimal 不是任意精度；默认 ToEven 舍入、区域化解析、溢出和 Context/JSON 映射 |
 | Snowflake | NUMBER(p,s)，必要时评估 DECFLOAT；显式 CAST/ROUND | SQL 数值计算通常不需要第三方十进制库；应用层仍要选精确类型 | 38 位 precision 上限、scale 传播、FLOAT 隐式参与、ROUND 模式、NULL/除零语义 |
 | PostgreSQL | NUMERIC/DECIMAL、整数类型；显式 ROUND/CAST | 客户端 Decimal/BigDecimal 类型映射与 Money 领域库 | NUMERIC(p,s) 约束、NUMERIC 与 FLOAT 的舍入差异、整数除法、money 的 locale/固定 scale |
 
 表中的“无第三方库”不意味着零工程成本。尤其是 Node.js 和 Rust，如果选择定标整数，就必须自己实现并彻底测试舍入、单位转换、溢出和余数分配；若采用十进制库，也必须锁定版本并明确配置。对跨应用和数据库边界的金融数值，类型和规则的统一通常比某个库的 API 更重要。
 
-## 十四、最终结论
+## 十六、最终结论
 
 金融服务中的数值正确性，不是“全部改成 decimal”这么简单，也不是某种语言天然优于其他语言。真正可靠的设计应同时做到：
 
@@ -649,6 +777,23 @@ FX 相关字段必须记录币种对方向、报价方式、bid/ask 或 mid、�
 - [Rust f64](https://doc.rust-lang.org/std/primitive.f64.html)
 - [rust_decimal 文档](https://docs.rs/rust_decimal/latest/rust_decimal/)
 - [bigdecimal 文档](https://docs.rs/bigdecimal/latest/bigdecimal/)
+
+### C# / .NET 与 Money 类型
+
+- [Microsoft: System.Decimal](https://learn.microsoft.com/en-us/dotnet/fundamentals/runtime-libraries/system-decimal)
+- [Microsoft: Decimal.Round](https://learn.microsoft.com/en-us/dotnet/api/system.decimal.round?view=net-10.0)
+- [Microsoft: MidpointRounding](https://learn.microsoft.com/en-us/dotnet/api/system.midpointrounding?view=net-10.0)
+- [NodaMoney 源码与发布记录](https://github.com/RemyDuijkeren/NodaMoney)
+- [NodaMoney releases：Context、拆分与序列化行为变更](https://github.com/RemyDuijkeren/NodaMoney/releases)
+
+### 业界经验与支付实践
+
+- [Modern Treasury: Floats Don’t Work For Storing Cents](https://www.moderntreasury.com/journal/floats-dont-work-for-storing-cents)
+- [Modern Treasury: How to Scale a Ledger, Part I](https://www.moderntreasury.com/journal/how-to-scale-a-ledger-part-i)
+- [Neon Commerce: Representing money at scale is hard (part 1)](https://www.neonpay.com/blog/representing-money-at-scale-is-hard)
+- [Neon Commerce: More money, more problems (part 2)](https://www.neonpay.com/blog/more-money-more-problems-part-2-of-2)
+- [Stripe: Supported currencies and API amount units](https://docs.stripe.com/currencies)
+- [Stripe: Calculate tax and allocate rounded tax totals](https://docs.stripe.com/tax/calculating)
 
 ### 数据库
 
