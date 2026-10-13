@@ -190,7 +190,7 @@ Snowflake 官方 Openflow PostgreSQL Connector 文档说明，它可复制选定
 - **TRUNCATE：** 当前 Connector 文档说明，源端 `TRUNCATE` 不会转换为目标端删除，可能被忽略。如果业务会清空/重建源表，需专门设计处理方案。
 - **新增字段：** 新字段可能会被加入目标表，但旧数据不会自动获得过去的字段值，既有行对应新列可能为 `NULL`。
 - **字段类型变化：** 某些不兼容类型变化、精度/小数位变化、字符长度变化可能令复制停止，需要恢复流程。
-- **大字段与类型映射：** PostgreSQL 的 `JSONB`、`BYTEA`、`NUMERIC`、时区时间戳等需要检查类型映射、大小限制和精度；不要只用小样本验证。
+- **大字段与类型映射：** PostgreSQL 的 `JSONB`、`BYTEA`、`NUMERIC`、时区时间戳等需要检查类型映射、大小限制和精度；不要只用小样本验证。特别注意：当前官方映射中 PostgreSQL `MONEY` → Snowflake `FLOAT`，这不是精确十进制映射。金额、余额、费率和对账字段应优先使用明确精度的 `NUMERIC(p,s)` / `DECIMAL(p,s)`，并验证目标精度与舍入规则；如果源表已经使用 `MONEY`，应在 PoC 中单独验证转换结果，必要时在同步前或落地后显式规范化。
 - **Journal 表：** 其保留可能带来存储增长；不要在复制运行中随意删除正在使用的 journal，清理需要明确生命周期和恢复规则。
 - **没有初始快照就开增量：** 官方文档指出，某些既有行后续变化可能在 `VARCHAR`、`VARIANT`、`BINARY`、`ARRAY` 等列出现缺失值。除非你能证明已存在的目标数据完整且与源端匹配，否则不要把“不做快照的增量复制”当作普通重启方式。
 
@@ -209,6 +209,22 @@ Snowflake 官方 Openflow PostgreSQL Connector 文档说明，它可复制选定
 批量方案非常适合先迁移“几十张报表表、每日更新”的第一阶段；以后新鲜度需求提高，再对重点数据源改用 CDC。不要为了一个每天凌晨更新的报表，从第一天就运维 Kafka 集群。
 
 ---
+
+
+### 4.5 补充：连接器代际、精度语义和 Iceberg 目标
+
+在做生产选型时，要区分“PostgreSQL Connector 本身的成熟度”和“某一种目标格式/部署方式的成熟度”。截至 2026 年 10 月 13 日，Snowflake 的 PostgreSQL Openflow Connector 概览将 Connector 标为 Generally Available；而官方 Gen 2 快速入门仍将 Gen 2 connector 创建流程标为 Public Preview，PostgreSQL Connector 的 Iceberg 目标格式页面也单独标为 Preview。不能因为标准表 CDC 已 GA，就推断所有 Gen 2 管理路径或 Iceberg 目标都已 GA。上线前要在目标 Snowflake 账户、区域和部署模式中复核实际状态。
+
+同样需要把类型转换作为数据契约的一部分，而不是单纯的连接器配置。官方映射显示：`NUMERIC/DECIMAL` 在目标限制范围内保留 precision/scale，`TIMESTAMPTZ` 映射到 `TIMESTAMP_LTZ`，`TIMESTAMP WITHOUT TIME ZONE` 映射到 `TIMESTAMP_NTZ`，而 `MONEY` 映射为 `FLOAT`。对金额或高精度十进制指标，后者可能引入二进制浮点误差；对时间字段也应明确业务时区、存储时区和报表展示时区。类型映射上线前至少要用边界值、NULL、超长字段、小数极值、时区切换和历史数据做逐列验证。
+
+PostgreSQL Connector 还提供了一个值得关注但需要谨慎采用的方向：直接写入 Iceberg 目标表。官方页面目前将此功能标为 Preview，支持 Iceberg v2/v3；外部引擎可读性还与 Catalog、对象存储权限和 serialization policy 等配置相关。文档指出，`STORAGE_SERIALIZATION_POLICY = 'COMPATIBLE'` 生成的 Parquet 文件面向外部引擎兼容，`OPTIMIZED` 则启用 Snowflake 专用查询优化。若希望 DuckDB 与 Snowflake 访问同一份 Iceberg 数据，必须验证两个引擎看到的是同一 Catalog 中的表和快照、存储凭证都遵循最小权限、schema evolution 与删除语义均符合预期。不要把“连接器可以创建 Iceberg 表”直接等同于“DuckDB 已经可以无配置地读取该表”。
+
+参考：
+- [Openflow Connector for PostgreSQL：当前状态与限制](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/about)
+- [PostgreSQL Connector：数据类型映射](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/data-mapping)
+- [Gen 2 Openflow 快速入门与预览状态](https://docs.snowflake.com/en/user-guide/data-integration/openflow/gen2/quickstart)
+- [PostgreSQL Connector 的 Iceberg 目标格式与序列化策略](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/iceberg)
+
 
 ## 五、Snowflake 内部如何组织数据
 
@@ -746,6 +762,14 @@ Klika 发布了一篇客户案例：一家多租户广告收入分析产品原�
 8. **CDC 实作流程：** [Getting Started with PostgreSQL CDC](https://www.snowflake.com/en/developers/guides/getting-started-with-openflow-postgresql-cdc/) — 可按步骤体验初次快照和增量更新。
 9. **Snowflake Postgres 镜像功能：** [Data mirroring](https://docs.snowflake.com/en/user-guide/snowflake-postgres/postgres-data-mirroring) — 了解另一种原生镜像能力，但必须先核验现有源 PostgreSQL 是否满足该功能的源端要求，不能把它与通用 Openflow Connector 混为一谈。
 10. **AWS DMS 支持矩阵：** [Targets for AWS DMS](https://docs.aws.amazon.com/dms/latest/userguide/CHAP_Introduction.Targets.html) 和 [Using PostgreSQL as an AWS DMS source](https://docs.aws.amazon.com/dms/latest/userguide/CHAP_Source.PostgreSQL.html) — 选择 AWS 方案时明确目标端支持范围；必要时评估 DMS → S3 → Snowflake，而不是假设 DMS 会直接写 Snowflake。
+
+
+11. **DuckDB 与 PostgreSQL 直连：** [PostgreSQL Extension](https://duckdb.org/docs/current/core_extensions/postgres/overview) — 理解只读附加、直接查询和把选定数据复制到本地 DuckDB 的区别。
+12. **DuckDB 与 Parquet：** [Reading and Writing Parquet Files](https://duckdb.org/docs/current/data/parquet/overview) — 理解列投影、过滤下推和分区数据扫描。
+13. **DuckDB 与 Iceberg：** [Iceberg Extension](https://duckdb.org/docs/current/core_extensions/iceberg/overview)、[Catalogs](https://duckdb.org/docs/current/core_extensions/iceberg/catalogs) 和 [Writing to Iceberg](https://duckdb.org/docs/current/core_extensions/iceberg/writing_to_iceberg) — 注意路径读取与 Catalog 写入的差异以及 UPDATE/DELETE 的限制。
+14. **Openflow 写入 Iceberg：** [PostgreSQL Connector Iceberg destinations](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/iceberg) — 当前为 Preview；重点核查目标表格式版本、serialization policy 和外部引擎兼容性。
+15. **Snowflake 访问外部 Iceberg：** [Access Iceberg data in Snowflake](https://docs.snowflake.com/en/collaboration/open-format-sharing-access-iceberg) 和 [Open Data Sharing](https://docs.snowflake.com/en/collaboration/open-format-sharing) — 适用于明确有多引擎共享需求的项目。
+16. **DuckDB 产品化混合架构：** [MotherDuck + PlanetScale Postgres](https://motherduck.com/blog/motherduck-planetscale-integration/) — 作为厂商实践参考，注意区分开源 DuckDB 嵌入式引擎与托管云端服务。
 
 ---
 
@@ -1666,6 +1690,125 @@ WHERE customer_segment.publish_version < EXCLUDED.publish_version;
 - [Openflow Connector for PostgreSQL：配置步骤](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/setup)
 
 
+
+## 二十五、PostgreSQL + DuckDB + Snowflake：三者如何分工，什么时候只用 DuckDB？
+
+先给结论：**DuckDB 不是 Snowflake 的廉价同义词，也不应该默认成为 PostgreSQL 与 Snowflake 之间的必经层。** DuckDB 是嵌入式、进程内的分析型 SQL 引擎，适合分析师工作站、Python 数据任务、应用内分析、数据抽样/质量验证，以及对 Parquet 和其他列式文件进行高效查询。Snowflake 更适合需要集中治理、跨系统数据整合、共享的企业级数据模型、并发 BI 和受控运营的场景。PostgreSQL 继续负责事务写入与在线业务状态。
+
+因此，选型不是简单地“再加一个数据库”，而是判断是否有一个明确工作负载值得使用 DuckDB，以及这份分析数据是否需要进入企业共享的 Snowflake 平台。
+
+### 25.1 三种组合各自解决什么问题？
+
+| 组合 | 典型场景 | 推荐的职责划分 | 主要边界 |
+| --- | --- | --- | --- |
+| PostgreSQL + DuckDB | 单个团队、内部工具、批处理、数据探索、交付 Parquet、应用内嵌分析；数据和用户范围有限 | PostgreSQL 是业务数据权威源；DuckDB 在本地进程或受控 Job 中读取有限数据、做聚合/Join/质量分析 | 原生 DuckDB 不等于托管的多团队数据仓库；权限、并发、共享、备份、任务编排与治理仍由应用/平台负责 |
+| PostgreSQL + Snowflake | 企业级 BI、跨业务域整合、多个数据源、长期历史、集中权限治理、多人并发和稳定 SLO | PostgreSQL 承担 OLTP；CDC 或批量数据管道进入 Snowflake；Snowflake 形成共享 RAW/STG/CORE/MART | 不必为了“更快的 SQL”额外引入 DuckDB；先把 CDC、建模、质量和成本治理做好 |
+| PostgreSQL + DuckDB + Snowflake | 企业数据平台之外，仍有明确的本地/边缘分析、开发测试、批处理或多引擎数据消费需求 | Snowflake 是企业共享分析平台；DuckDB 是工作负载专用的分析引擎，而不是第二份企业真相库 | 如果 DuckDB 只是把全量数据长期复制一份且没人依赖它的独特能力，就应删除这一层 |
+
+DuckDB 本身可以通过 `postgres` 扩展直接连接 PostgreSQL，并读取或写入源库；官方文档同时指出，大表被反复从 PostgreSQL 读取时，可能更适合把选定数据复制到 DuckDB，避免一直重扫源表。由于读取发生在查询执行时，这种直连不是 CDC，也不应当作生产级异步复制、审计日志或可靠的共享数据服务。对生产源库，优先使用只读账号、只附加需要的 schema，并在独立只读副本、受控批次或明确限量的数据范围上测试负载。
+
+### 25.2 推荐的企业组合：Snowflake 做共享分析，DuckDB 按需出现
+
+对于已经确认需要 Snowflake 的企业，建议先落地 PostgreSQL → Snowflake 的标准数据链路。只有明确的用户体验、成本或工程工作流需要 DuckDB 时，再把它放到单独的分析路径中。
+
+```mermaid
+flowchart LR
+    APP[在线应用] --> PG[(PostgreSQL<br/>事务权威源)]
+    PG -->|CDC / 批量抽取| ING[数据接入]
+    ING --> RAW[(Snowflake RAW)]
+    RAW --> MODEL[STG / CORE / MART]
+    MODEL --> BI[企业 BI / 指标 / 分析]
+    PG -.->|只读、限定范围的抽取| DUCK[DuckDB<br/>本地分析 / 批处理 / 测试]
+    MODEL -.->|批准的 Parquet / Iceberg 数据产品| FILES[(对象存储 / 开放表格式)]
+    FILES -.-> DUCK
+    DUCK -.->|小结果集：异步、幂等发布| PUB[受控发布任务]
+    PUB -.-> PG
+```
+
+图中实线是通常的企业分析主路径。虚线代表可选能力：DuckDB 可直接对 PostgreSQL 的限定数据做本地分析，也可消费 Snowflake 导出的数据产品或开放表格式；经过业务校验的小结果集可以通过单独的发布任务写回 PostgreSQL。**不要让 DuckDB 在每个在线请求中临时查询 PostgreSQL 大表，也不要让应用在一个业务事务里分别写 PostgreSQL 与 Snowflake。**
+
+DuckDB 的适用位置通常包括：
+
+- **本地开发与数据探索：** 开发者无需为每次检查启动 Snowflake 仓库；可使用受控抽样、脱敏快照或 Parquet 副本复现查询、分析异常数据、验证 SQL 变更。
+- **数据质量与管道验证：** 在 CI 或批处理 Job 中对某个批次的 Parquet 做行数、主键唯一性、空值、金额合计和分布检查；将通过校验的批次再交给主平台处理。
+- **低频、局部分析：** 对产品使用日志、单个业务域的报表快照、CSV/JSON/Parquet 文件执行聚合和 Join，并将最终少量结果交给应用或报表系统。
+- **需要可移植的分析运行时：** 把查询和数据处理打包进 Python/容器任务，在笔记本、开发机或计划任务中运行；明确 DuckDB 文件和中间结果的备份、保留及访问控制。
+
+这并不表示 DuckDB 一定只用于开发环境。若实际负载是嵌入式分析或单团队批处理，DuckDB 也可以承载生产计算；关键是把它的部署边界、状态持久化、并发访问和故障恢复作为应用的一部分设计，而不是把本地数据库文件当成天然具备企业数据平台能力的服务。若需要托管的云端 DuckDB 服务，应另行评估 MotherDuck 等产品；它的共享、计算与运维模型不等同于单机嵌入式 DuckDB，也不等同于 Snowflake。
+
+### 25.3 直接用 DuckDB 查询 PostgreSQL：适合 PoC 和受控任务，不等于把分析搬走
+
+DuckDB 官方扩展支持以只读方式附加 PostgreSQL。示例中的连接串只用于说明连接参数；真实密码应通过 Secret Manager、环境注入或受控连接配置提供，不要提交到代码仓库。
+
+```sql
+INSTALL postgres;
+LOAD postgres;
+
+-- 只附加分析任务需要的 schema，禁止使用应用的高权限账号。
+ATTACH 'host=<host> port=5432 dbname=<database> user=<read_only_user> sslmode=verify-full'
+    AS pg_src
+    (TYPE postgres, READ_ONLY, SCHEMA 'reporting');
+
+-- 将有时间边界的数据复制到本地 DuckDB 表，
+-- 避免每次分析都重新扫描同一批 PostgreSQL 源数据。
+CREATE OR REPLACE TABLE recent_events AS
+SELECT event_id, account_id, event_type, event_ts
+FROM pg_src.reporting.events
+WHERE event_ts >= TIMESTAMPTZ '2026-10-01 00:00:00+00';
+```
+
+该方式的正确性和性能边界应当明确：
+
+1. 直接读取时，扫描工作可能仍给 PostgreSQL 造成 CPU、I/O、网络和连接压力；不要假设每个过滤条件和复杂 SQL 都会完整下推到 PostgreSQL。用 DuckDB 的 `EXPLAIN ANALYZE` 与 PostgreSQL 的查询统计验证真实执行情况。
+2. `CREATE TABLE ... AS SELECT` 是制作本地快照，不会自动跟踪后续变化。增量刷新必须另行定义水位、重复处理和删除语义；不能只依赖时间戳字段，除非你已经验证它不会漏数。
+3. 跨 PostgreSQL、DuckDB 和文件系统的操作不构成同一个原子事务。对账、重跑、快照时间、schema 变化和结果发布都需要独立契约。
+4. 对高负载生产库，优先从只读副本或按批次导出的文件取数；如果分析需要持续、完整、低延迟复制，应使用 CDC/数据平台，而不是用 DuckDB 轮询模拟 CDC。
+
+### 25.4 什么时候让 DuckDB 和 Snowflake 消费同一份 Iceberg 数据？
+
+如果多个引擎确实需要分析同一份数据，开放表格式可以成为三者组合中最有价值的设计；如果只是 Snowflake 自己用，通常没必要为 Iceberg 增加额外复杂度。
+
+一种共享模式是让数据落在对象存储中的 Iceberg 表，由双方都支持的 Catalog 管理元数据和快照。Snowflake 可以访问外部 Catalog 管理的 Iceberg 表；DuckDB 的 Iceberg 扩展既可按表路径读取，也支持连接 Iceberg REST Catalog，连接 Catalog 才能使用完整写入能力。两端必须指向同一个 Catalog 和一致的快照语义；“文件在同一只 S3 bucket”本身不够。
+
+在采用前，至少做以下评估：
+
+- **表的权威位置与写入责任：** 为每张表指定唯一的主要写入者和提交路径。除非已验证 Catalog 的提交协调、冲突处理和具体功能支持，不要让 Snowflake、DuckDB、Spark 同时无约束地更新同一张表。
+- **Catalog 与凭证：** 选择 Snowflake 和 DuckDB 都能访问的 Catalog 实现，配置短期凭证/角色和最小权限；确认 Snowflake 侧的 catalog integration、external volume、DuckDB 的 REST Catalog 设置以及对象存储权限。
+- **版本和写入语义：** 逐项验证 Iceberg v2/v3、schema evolution、删除文件/删除向量、Time Travel、MERGE、更新和删除语义。DuckDB 当前 Iceberg 写入能力仍有特定限制，例如 UPDATE/DELETE 与写入模式相关；不要只通过一次 SELECT 验收完整兼容性。
+- **文件维护与成本：** 设计小文件合并、快照过期、孤儿文件清理、分区策略、表统计和保留期。共享格式减少数据复制的同时，增加了 Catalog 与表生命周期的运营责任。
+- **权限与治理：** 不应认为 Snowflake 上的行访问策略、列级权限和审计会自动延伸到 DuckDB。对每个消费引擎分别配置授权、网络边界、脱敏和审计；跨引擎消费是否符合数据合同及驻留要求也要单独确认。
+
+一个重要的状态限制：截至 2026 年 10 月，Snowflake 的 PostgreSQL Openflow Connector 提供了可选 Iceberg 目标，但官方仍将这一目标格式标为 Preview。若想尝试，可在非关键数据集上验证 v2/v3、兼容序列化、Catalog 注册、DuckDB 读取和恢复流程；在该路径达到目标账户所需的生产成熟度之前，**不要把它当作企业生产链路的默认替代方案**。多引擎共享是明确需求时，可评估以稳定支持的 CDC/数据工程流程写入共用 Iceberg Catalog，而让 Snowflake 和 DuckDB 都以消费者身份访问。相反，如果只有 Snowflake 是核心消费者，标准 Snowflake 表通常更简单。
+
+### 25.5 用真实项目需求决定从哪一步开始
+
+以一个有 PostgreSQL 业务库、客户/事件数据和分析报表的系统为例，建议分阶段实施：
+
+| 阶段 | 目标 | 推荐实现 | 进入下一阶段的条件 |
+| --- | --- | --- | --- |
+| 1. 先解决分析负载 | 明确现有 PostgreSQL 是否因报表查询受到影响 | 从只读副本或限定快照导入 DuckDB，使用真实 SQL 测量耗时、资源、刷新成本及数据差异 | 验证 DuckDB 的计算收益，不对源端 OLTP 产生不可接受的负担 |
+| 2. 建立企业共享数据平台 | 多个团队/业务域需要稳定数据模型、历史数据、治理和并发 BI | PostgreSQL → Openflow CDC 或现有 CDC/批量平台 → Snowflake RAW/STG/CORE/MART；加入数据质量、对账、SLO 和成本监控 | 关键报表完成双跑、业务验收、权限审查和故障恢复演练 |
+| 3. 让 DuckDB 服务明确的专用工作负载 | 开发验证、局部报表、离线批处理或应用内分析仍有独特价值 | 消费脱敏快照、Parquet 导出或被治理的 Iceberg 数据；把结果以小数据产品形式异步发布 | 有明确使用者、SLO、owner 和成本收益，而不是因为“可以装 DuckDB” |
+| 4. 需要真正的多引擎共享时 | Spark、DuckDB、Snowflake 等要使用同一份开放数据集 | 设计公共对象存储、Iceberg Catalog、凭证、版本和文件维护；先做小范围兼容性 PoC | 读写、schema 演进、恢复、权限与总成本均经过验收 |
+
+### 25.6 最终选型规则
+
+- 如果数据主要来自一个 PostgreSQL、分析用户有限、刷新频率低，先评估 **PostgreSQL + DuckDB**；它可能已经足够，不必因为“企业架构”而提前引入 Snowflake。
+- 如果需要跨源整合、多个团队共享的认证指标、集中治理和高并发报表，优先 **PostgreSQL + Snowflake**；DuckDB 可作为开发与专用分析工具，是否进入生产路径由实际需求决定。
+- 如果多个计算引擎要共同使用开放格式数据，才评估 **PostgreSQL + DuckDB + Snowflake + Iceberg/Catalog**。此时主要架构问题不再是 SQL 引擎性能，而是数据权威性、Catalog、快照、提交协调、兼容性和治理边界。
+- 不要为了让架构图看起来完整而强行把三者串成 PostgreSQL → DuckDB → Snowflake。通常更合理的是 PostgreSQL 直接进入企业数据平台；DuckDB 通过受控快照、批次数据或开放表格式参与自己擅长的工作负载。
+
+本章延伸阅读：
+- [DuckDB PostgreSQL 扩展：直接读取/写入与本地复制](https://duckdb.org/docs/current/core_extensions/postgres/overview)
+- [DuckDB Parquet：列投影与过滤下推](https://duckdb.org/docs/current/data/parquet/overview)
+- [DuckDB Iceberg 扩展：路径读取与 Catalog 模式](https://duckdb.org/docs/current/core_extensions/iceberg/overview)
+- [DuckDB Iceberg Catalog：REST Catalog 连接](https://duckdb.org/docs/current/core_extensions/iceberg/catalogs)
+- [DuckDB Iceberg 写入支持与限制](https://duckdb.org/docs/current/core_extensions/iceberg/writing_to_iceberg)
+- [Snowflake：Openflow PostgreSQL Connector 的 Iceberg 目标](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/iceberg)
+- [Snowflake：访问外部 Catalog 的 Iceberg 表](https://docs.snowflake.com/en/collaboration/open-format-sharing-access-iceberg)
+- [MotherDuck + PlanetScale Postgres 集成：产品化混合架构案例](https://motherduck.com/blog/motherduck-planetscale-integration/)（厂商实践材料，应结合自身部署模式和性能测试判断）
+
+
 ## 总结
 
 对有 PostgreSQL 和 SQL 基础的团队，推荐的学习和落地顺序不是先研究全部 Snowflake 功能，而是：
@@ -1679,6 +1822,7 @@ WHERE customer_segment.publish_version < EXCLUDED.publish_version;
 7. **Vendor 数据先选共享、外部文件、按需 API 或持久化同步的方式，不默认复制全部数据；先核对合同和历史可重现要求。**
 8. **Oracle 数据按表和 SLA 规划全量与增量，不必整库搬迁；重点验证快照/CDC 衔接、XStream 许可、DELETE/TRUNCATE 和 SQL/PLSQL 逻辑重写。**
 9. **Vendor 文件落在公司私有 S3 后可以由 Snowflake 直接查询，但需配置 Storage Integration、IAM 最小权限、External Table 元数据刷新和批次完整性校验；普通 Parquet/CSV 不会自动成为 Iceberg。**
+10. **DuckDB 只有在本地分析、批处理、质量验证或多引擎共享场景有明确收益时再引入；不要把它自动放在 PostgreSQL 与 Snowflake 之间。需要共享 Iceberg 时先验证 Preview 状态、Catalog、表格式、权限、并发写入和恢复语义。**
 
 最值得避免的三种错误是：把 CDC 事件当成已经还原好的业务表；为了追求“实时”而接受没有业务价值的成本；以及在没有业务对账、历史语义和恢复流程的情况下，直接让 BI 切换到新库。
 
