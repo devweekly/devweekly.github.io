@@ -2,9 +2,9 @@
 author: W
 featured: false
 draft: false
-description: 面向金融服务架构师和工程团队，比较 Java、Node.js、Python、Rust、Snowflake SQL 与 PostgreSQL 在金融计算中的精度、舍入、类型转换、日期规则和可审计性，并区分不依赖第三方库与使用第三方库的实现方案。
+description: 面向金融服务架构师和工程团队，比较 Java、C#/.NET、Node.js、Python、Rust、Snowflake SQL 与 PostgreSQL 在金融计算中的精度、舍入、类型转换、日期规则和可审计性，并区分不依赖第三方库与使用第三方库的实现方案。
 pubDatetime: 2026-10-13T10:00:00Z
-title: 金融服务中的数值计算工程：Java、Node.js、Python、Rust、Snowflake 与 PostgreSQL 实战指南
+title: 金融服务中的数值计算工程：Java、C#/.NET、Node.js、Python、Rust、Snowflake 与 PostgreSQL 实战指南
 tags:
   - tech
   - data
@@ -12,7 +12,7 @@ tags:
   - architecture
 ---
 
-# 金融服务中的数值计算工程：Java、Node.js、Python、Rust、Snowflake 与 PostgreSQL 实战指南
+# 金融服务中的数值计算工程：Java、C#/.NET、Node.js、Python、Rust、Snowflake 与 PostgreSQL 实战指南
 
 **资料核对日期：2026 年 10 月 13 日。**
 
@@ -662,7 +662,7 @@ Stripe 的 [Calculate tax 文档](https://docs.stripe.com/tax/calculating) 描�
 
 ### 4. 支付服务商：内部金额模型和外部 API 单位不是同一个概念
 
-[Stripe 的币种文档](https://docs.stripe.com/currencies) 说明，API 金额通常以币种 minor unit 传入：1000 表示 USD 10.00，而 JPY 10 代表 10 日元。同时还存在特殊情况：部分币种在支付和提现场景中的单位规则不同，兼容旧规则的币种可能要求使用固定的末尾零，或只允许 certain increments。换句话说，外部支付 API 的金额格式不仅取决于 ISO 4217 的一般币种信息，还取决于服务商、交易类型与具体 API 的契约。
+[Stripe 的币种文档](https://docs.stripe.com/currencies) 说明，API 金额通常以币种 minor unit 传入：1000 表示 USD 10.00，而 JPY 10 代表 10 日元。同时还存在特殊情况：部分币种在支付和提现场景中的单位规则不同；兼容旧规则的币种可能要求金额具有固定的末尾零，或者要求提现金额必须是特定增量的整数倍。换句话说，外部支付 API 的金额格式不仅取决于 ISO 4217 的一般币种信息，还取决于服务商、交易类型与具体 API 的契约。
 
 建议将内部 Money 领域模型与支付渠道适配器隔离：
 
@@ -758,7 +758,7 @@ Modern Treasury 的 [How to Scale a Ledger](https://www.moderntreasury.com/journ
 - 为溢出、缺失数据、重复执行和规则版本提供明确控制；
 - 用黄金测试向量、业务不变量和对账监控证明行为，而不是相信一套类型声明。
 
-技术选择上，Java 可以用标准库 BigDecimal/BigInteger；Python 可以优先用标准库 Decimal；Snowflake 与 PostgreSQL 可通过原生定点/精确数值类型进行计算。Node.js 原生缺少 Decimal，需要在受控范围内选择安全整数/BigInt，或者统一采用十进制第三方库；Rust 则通常需要定标整数或 Decimal crate。
+技术选择上，Java 可以用标准库 BigDecimal/BigInteger；C#/.NET 可优先使用 decimal，并通过显式舍入策略与 Money 领域类型约束行为；Python 可以优先用标准库 Decimal；Snowflake 与 PostgreSQL 可通过原生定点/精确数值类型进行计算。Node.js 原生缺少 Decimal，需要在受控范围内选择安全整数/BigInt，或者统一采用十进制第三方库；Rust 则通常需要定标整数或 Decimal crate。
 
 但无论用什么语言，最终需要回答的都一样：**输入是什么、单位是什么、何时舍入、用什么规则舍入、超出范围怎么办、结果能否跨系统复算和对账。** 这些规则如果没有明确下来，换用任意精度 Decimal 也只是把一部分错误变少，而不是让金融计算自动正确。
 
