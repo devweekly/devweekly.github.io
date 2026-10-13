@@ -2550,7 +2550,222 @@ AI Function Evaluation / Optimization 进一步把 AI 从“试几个提示词�
 
 ---
 
-## 二十一、官方文档与可运行示例
+
+## 二十二、实际方案中最值得复用的 SQL 模式
+
+这一章补充几个在真实架构评审和生产运维里比单独函数更重要的模式。它们分别解决历史数据、质量门禁、行列安全、成本诊断和 AI 结果可复用的问题。
+
+### 22.1 CDC 到 SCD Type 2：同时保存当前版本和历史版本
+
+当需求从“客户当前属于哪个 Segment”变为“客户在某个历史时点属于哪个 Segment”时，只保留当前状态表是不够的。SCD Type 2 在属性变化时关闭旧记录，再插入新的当前版本。假设源批次已标准化到 stg_customer_cdc，包含 customer_id、operation、record_hash、effective_at、source_seq；目标 analytics.dim_customer_scd2 包含 valid_from、valid_to、is_current。
+
+~~~sql
+MERGE INTO analytics.dim_customer_scd2 AS target
+USING (
+    WITH latest AS (
+        SELECT customer_id, operation, customer_name, segment,
+               record_hash, effective_at, source_seq
+        FROM stg_customer_cdc
+        WHERE batch_id = 'batch-20261013-001'
+        QUALIFY ROW_NUMBER() OVER (
+            PARTITION BY customer_id
+            ORDER BY source_seq DESC, effective_at DESC
+        ) = 1
+    ),
+    actions AS (
+        SELECT s.*, 'EXPIRE' AS merge_action
+        FROM latest s
+        JOIN analytics.dim_customer_scd2 t
+          ON t.customer_id = s.customer_id AND t.is_current = TRUE
+        WHERE s.operation = 'DELETE'
+           OR s.record_hash IS DISTINCT FROM t.record_hash
+
+        UNION ALL
+
+        SELECT s.*, 'INSERT' AS merge_action
+        FROM latest s
+        LEFT JOIN analytics.dim_customer_scd2 t
+          ON t.customer_id = s.customer_id AND t.is_current = TRUE
+        WHERE s.operation <> 'DELETE'
+          AND (t.customer_id IS NULL OR s.record_hash IS DISTINCT FROM t.record_hash)
+    )
+    SELECT * FROM actions
+) AS source
+ON target.customer_id = source.customer_id
+AND target.is_current = TRUE
+AND source.merge_action = 'EXPIRE'
+WHEN MATCHED THEN UPDATE SET
+    is_current = FALSE,
+    valid_to = source.effective_at
+WHEN NOT MATCHED AND source.merge_action = 'INSERT' THEN
+    INSERT (customer_id, customer_name, segment, record_hash,
+            valid_from, valid_to, is_current)
+    VALUES (source.customer_id, source.customer_name, source.segment,
+            source.record_hash, source.effective_at, NULL, TRUE);
+~~~
+
+这里用 EXPIRE 与 INSERT 两种源动作，在同一条 MERGE 中关闭旧版本并创建新版本。它假设 source_seq 能决定同一客户的变更顺序，record_hash 只覆盖业务属性；DELETE 会关闭当前版本而不插入新版本。还必须验证同一 customer_id 只有一条当前记录、有效时间区间不重叠、迟到事件的修正规则，以及重复执行同一批次的幂等性。不能将标准表上声明式的主键当成自动去重机制。
+
+参考：[MERGE](https://docs.snowflake.com/en/sql-reference/sql/merge) · [Streams 的变更与 offset 语义](https://docs.snowflake.com/en/user-guide/streams-intro)。
+
+### 22.2 数据质量门禁：对关键模型声明可接受的边界
+
+对关键表，只写检查 SQL 还不够。Snowflake Data Metric Functions（DMF）可以定期度量质量，Expectation 规定何种结果可接受。Data Quality Monitoring 有 Edition 要求，启用前先确认账户许可与当前语法。
+
+~~~sql
+ALTER TABLE analytics.fact_orders
+    ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.NULL_COUNT
+        ON (order_id)
+    EXPECTATION order_id_has_no_nulls (VALUE = 0);
+
+ALTER TABLE analytics.fact_orders
+    ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.ROW_COUNT
+        ON ()
+    EXPECTATION table_not_empty (VALUE > 0);
+
+ALTER TABLE analytics.fact_orders
+    ADD DATA METRIC FUNCTION SNOWFLAKE.CORE.ACCEPTED_VALUES
+        ON (order_status,
+            order_status -> order_status IN ('PAID', 'PENDING', 'CANCELLED'));
+~~~
+
+DMF 的参数各不相同；ROW_COUNT 不接收列参数，ACCEPTED_VALUES 通过表达式判断是否合法。唯一性与财务对账通常还需要显式测试：
+
+~~~sql
+SELECT order_id, COUNT(*) AS duplicate_count
+FROM analytics.fact_orders
+GROUP BY order_id
+HAVING COUNT(*) > 1;
+~~~
+
+将质量检查放在数据产品发布之前：失败时阻止 Gold 层刷新或明确标记产品不可用，并记录失败原因、批次和责任人。一个 DMF 并不自动构成门禁；需要定义阈值、检测频率、通知和修复流程。
+
+参考：[设置 DMF](https://docs.snowflake.com/en/user-guide/data-quality-working) · [System DMF 目录](https://docs.snowflake.com/en/user-guide/data-quality-system-dmfs) · [Expectations](https://docs.snowflake.com/en/user-guide/data-quality-expectations)。
+
+### 22.3 行列授权要在 Snowflake 边界执行
+
+多租户、区域或合作机构共用同一张事实表时，不要依赖每个应用都记得追加 WHERE region = ...。行访问策略在查询边界控制可见行，掩码策略控制敏感列的呈现。两者作用不同，且适用 Edition 与权限要求需要先核对。
+
+~~~sql
+CREATE OR REPLACE ROW ACCESS POLICY governance.region_row_policy
+AS (row_region VARCHAR)
+RETURNS BOOLEAN ->
+    EXISTS (
+        SELECT 1
+        FROM governance.role_region_access a
+        WHERE a.region = row_region
+          AND IS_ROLE_IN_SESSION(a.role_name)
+    );
+
+ALTER TABLE analytics.fact_sales
+    ADD ROW ACCESS POLICY governance.region_row_policy
+    ON (region);
+
+CREATE OR REPLACE MASKING POLICY governance.email_mask
+AS (val VARCHAR)
+RETURNS VARCHAR ->
+    CASE
+        WHEN IS_ROLE_IN_SESSION('PII_READER') THEN val
+        ELSE '***MASKED***'
+    END;
+
+ALTER TABLE analytics.dim_customer
+    MODIFY COLUMN email SET MASKING POLICY governance.email_mask;
+~~~
+
+上述行访问策略假定治理映射表已经维护好角色与地区的授权关系。还应设置策略所有者及映射表权限，并使用低权限业务角色做正反向访问测试。不要只用高权限管理员账户验证。共享前同样要验证低权限消费者看到的数据范围和脱敏效果。
+
+参考：[Row Access Policy 示例](https://docs.snowflake.com/en/user-guide/security-row-using) · [CREATE ROW ACCESS POLICY](https://docs.snowflake.com/en/sql-reference/sql/create-row-access-policy) · [CREATE MASKING POLICY](https://docs.snowflake.com/en/sql-reference/sql/create-masking-policy)。
+
+### 22.4 用查询、刷新历史和 Credits 解释生产表现
+
+性能问题要把执行时间、排队、扫描量、Warehouse 负载与 Credits 放在同一张诊断图景里。下面先找过去一周执行慢或排队时间高的查询：
+
+~~~sql
+SELECT
+    start_time,
+    warehouse_name,
+    query_type,
+    total_elapsed_time / 1000.0 AS elapsed_seconds,
+    execution_time / 1000.0 AS execution_seconds,
+    queued_overload_time / 1000.0 AS queued_overload_seconds,
+    bytes_scanned,
+    partitions_scanned,
+    partitions_total,
+    query_id
+FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+WHERE start_time >= DATEADD('day', -7, CURRENT_TIMESTAMP())
+  AND warehouse_name IS NOT NULL
+ORDER BY total_elapsed_time DESC
+LIMIT 100;
+~~~
+
+查询历史视图有元数据延迟；查询刚结束后的即时诊断可使用对应的 Information Schema 表函数。若需日常成本视图，再按 Warehouse 汇总 Compute Credits：
+
+~~~sql
+SELECT
+    DATE_TRUNC('day', start_time) AS usage_day,
+    warehouse_name,
+    SUM(credits_used_compute) AS compute_credits
+FROM SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY
+WHERE start_time >= DATEADD('day', -30, CURRENT_TIMESTAMP())
+GROUP BY usage_day, warehouse_name
+ORDER BY usage_day DESC, compute_credits DESC;
+~~~
+
+Credits 是资源使用指标，不等于包含所有计费调整后的最终账单金额。Resource Monitor 可以限制分配给它的标准 Warehouses，但不能代替对 Serverless、Cortex 和其他计费服务的独立监控。
+
+Dynamic Tables 也需要单独检查刷新失败：
+
+~~~sql
+SELECT data_timestamp, database_name, schema_name, name,
+       state, state_message, refresh_action, query_id
+FROM SNOWFLAKE.ACCOUNT_USAGE.DYNAMIC_TABLE_REFRESH_HISTORY
+WHERE data_timestamp >= DATEADD('day', -7, CURRENT_TIMESTAMP())
+  AND state = 'FAILED'
+ORDER BY data_timestamp DESC
+LIMIT 100;
+~~~
+
+Account Usage 历史有延迟；实时排障可使用当前数据库 Information Schema 的刷新历史表函数。失败后要结合 Query ID、底层对象变化、刷新模式、Task 历史和权限排查，避免无证据地反复重跑。
+
+参考：[QUERY_HISTORY](https://docs.snowflake.com/en/sql-reference/account-usage/query_history) · [WAREHOUSE_METERING_HISTORY](https://docs.snowflake.com/en/sql-reference/account-usage/warehouse_metering_history) · [Dynamic Table Refresh History](https://docs.snowflake.com/en/sql-reference/account-usage/dynamic_table_refresh_history)。
+
+### 22.5 AI SQL 结果也需要版本、幂等和成本边界
+
+不建议每次 BI 刷新都重新对所有文本调用 AI 函数。可以将原文哈希、模型/提示词版本和结果保存为可审计数据产品，只处理新内容或需要重新评估的版本：
+
+~~~sql
+INSERT INTO analytics.ai_ticket_classifications (
+    ticket_id, source_hash, model_version, classification, processed_at
+)
+SELECT
+    s.ticket_id,
+    SHA2(s.ticket_text, 256),
+    'classification-prompt-v3',
+    AI_CLASSIFY(
+        s.ticket_text,
+        ['billing', 'refund', 'login', 'technical', 'other']
+    ),
+    CURRENT_TIMESTAMP()
+FROM staging.support_tickets s
+WHERE s.ticket_text IS NOT NULL
+  AND NOT EXISTS (
+      SELECT 1
+      FROM analytics.ai_ticket_classifications t
+      WHERE t.ticket_id = s.ticket_id
+        AND t.source_hash = SHA2(s.ticket_text, 256)
+        AND t.model_version = 'classification-prompt-v3'
+  );
+~~~
+
+这样输入变化或提示词版本变化可以触发有意的重算，也能追溯历史结果。但 NOT EXISTS 只减少重复工作，并不能保证多个并发写入者绝不会重复插入。生产上应采用单一写入者或批次协调，并设置重复键质量检查；换模型/提示词前应使用版本化数据集做 Evaluation，再决定是否替换生产版本。
+
+参考：[Cortex AI Functions](https://docs.snowflake.com/en/user-guide/snowflake-cortex/llm-functions) · [AI Function Evaluation / Optimization](https://docs.snowflake.com/en/user-guide/snowflake-cortex/ai-function-studio)。
+
+---
+
+## 二十二、官方文档与可运行示例
 
 以下链接适合在动手时查语法细节、功能限制和官方实践。Snowflake 的功能、版本要求、区域支持和计费规则会变化，正式落地前应以当前账号实际支持情况及官方文档为准。
 
