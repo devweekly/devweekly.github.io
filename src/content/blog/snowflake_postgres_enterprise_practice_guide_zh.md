@@ -2,16 +2,21 @@
 author: W
 featured: false
 draft: false
-description: PostgreSQL + Snowflake 企业落地实践报告
+description: PostgreSQL + Snowflake 企业落地实践报告，涵盖 CDC、数据治理、迁移、生产运维，以及 PostgreSQL + DuckDB + Snowflake 的分层架构与 Iceberg 多引擎共享选型。
 pubDatetime: 2026-10-08T01:24:00Z
 title: PostgreSQL + Snowflake 企业落地实践报告
 tags:
   - tech
+  - data
+  - architecture
+  - postgresql
+  - snowflake
+  - duckdb
 ---
 
 **主题：** 企业保留 PostgreSQL 作为在线业务数据库，将历史数据、分析计算和报表逐步迁移到 Snowflake  
 **面向读者：** 有 SQL、关系数据库经验，但刚开始接触 Snowflake 的工程师、架构师、数据分析人员  
-**资料检索日期：** 2026-10-09  
+**资料检索日期：** 2026-10-13  
 **阅读建议：** 先读第 1–6 章确定架构，再按第 7–12 章动手；文末列出了官方文档和企业工程案例。
 
 ## 一、先给结论：应该如何搭建
