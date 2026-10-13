@@ -906,7 +906,7 @@ Snowflake 支持 JavaScript 和 Python UDF，但这不意味着复杂 SQL 应该
 | 方案 | 适合的职责 | 需要留意 |
 | --- | --- | --- |
 | 原生 SQL / SQL UDF | JOIN、聚合、窗口、规则映射、简单确定性表达式 | 复杂转换拆成有清楚粒度的模型，不要堆叠无边界的 CTE 和 CASE |
-| JavaScript UDF | 轻量字符串、对象或 JSON 处理，且无需外部库 | Snowflake 不支持随意导入 npm 包；源码、内存和执行时间有运行限制，不能依赖全局状态跨行共享 |
+| JavaScript UDF | 轻量字符串、对象或 JSON 处理，且无需外部库 | Snowflake 不支持随意导入 npm 包；源码、内存和执行时间有运行限制，不能依赖全局状态跨行共享；JavaScript Number / Date 还可能丢失高精度金融数值和亚毫秒时间精度 |
 | Python UDF | 需要现有 Python 代码、成熟库、特殊解析或科学计算 | 固定 Runtime 和包版本；明确 SQL/Python 类型映射、NULL、时区和精度 |
 | Vectorized Python UDF | 运算适合 Pandas/NumPy 或模型批量推理 | 只有批处理算法和输入形态合适时才可能更快；需要用相同输入比较结果、吞吐、内存和仓库成本 |
 | Stored Procedure / Tasks | 多步 SQL、批次状态、条件分支、异常处理和流程编排 | 不要把有副作用的工作塞进每行都会调用的 UDF |
