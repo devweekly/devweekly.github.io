@@ -33,6 +33,42 @@ tags:
 | **可复核（Reviewability）** | 独立业务人员是否能检查证据、重做关键步骤、提出异议或推翻判断？ | 只在页面上放一个“Approve”按钮 |
 | **可问责（Accountability）** | 谁负责定义政策、验证系统、批准上线、处理例外、做最终决定和响应事故？ | 把责任笼统归给“AI 模型”或供应商 |
 
+
+### 先把治理变成可执行的行为：谁做、何时做、失败怎么办？
+
+“有人负责”“要有人复核”“上线前做评测”还不是治理机制。每项原则都需要明确责任人、可验证的产物、触发时间和失败后的动作。建议用下面这张控制表作为首次架构评审和上线审批的最低清单。
+
+| 关键治理行为 | 责任角色（建议） | 必须留下的证据 | 触发时点与失败处理 |
+| --- | --- | --- | --- |
+| 登记用例与分类风险 | 业务负责人提出；AI/Operational Risk 共同评估 | Use-case ID、用途、受影响对象、决策影响、自动化范围、禁止用途 | 新用例、用途扩张、数据或权限变化时重评；风险级别未批准，不得接入真实决策流程 |
+| 明确决策权与风险偏好 | 业务决策所有者、合规/风险负责人、运营主管 | Decision Contract、RACI、允许/禁止动作、重大错误定义、风险阈值 | 政策变化、事故或扩大自动化前复核；规则冲突时默认暂停并升级 |
+| 上线前独立挑战 | 独立验证人员（与开发团队保持适当独立） | 基准集、错误分类、边界/对抗测试、残余风险、正式批准记录 | 每次重大模型、Prompt、检索、规则或工具变更必须重新评测；硬门禁失败即阻断发布 |
+| 隔离建议与业务动作 | 应用/平台负责人及业务授权人 | 策略决策结果、权限校验、动作 ID、幂等键、人工批准或自动化授权 | LLM 不能直接取得无限制写权限；门禁缺失、状态冲突、授权不完整时拒绝执行 |
+| 持续监控与事故处理 | 运行负责人、业务负责人、风险/合规 | 质量指标、例外率、漂移、供应商变更、事故与受影响案件清单 | 超阈值、模型版本变化、错误升级或安全事件触发暂停、回滚、重新评测及补救 |
+| 管理第三方模型 | Vendor Risk、采购、信息安全、法律与模型所有者 | 数据使用/留存条款、模型变更通知、可用性、子处理方、事件 SLA、审计/保证材料 | 供应商条款或服务发生重大变化时重评；风险无法降至容忍度内，限制、暂停或替换供应商 |
+| 独立检查实际控制是否有效 | 第二道风险职能与第三道内部审计（按组织安排） | 独立抽样、挑战结论、发现项、整改责任人、到期时间 | 按风险定期检查并对重大事件触发复核；未完成整改应升级而非只登记风险 |
+
+这张表不是说所有机构都要成立一个新的 AI 委员会。MAS 2026 年指引允许金融机构结合既有治理架构，但要求职责明确、协调有效，并按用例风险分配控制强度。指引于 2026 年 10 月 7 日发布；第 3–4 节的治理和风险管理系统期望自 2027 年 10 月 7 日起执行，第 5–6 节的生命周期控制与能力建设可在 2028 年 10 月 7 日前落实。参考：[MAS 正式指引及实施时程](https://www.mas.gov.sg/regulation/guidelines/guidelines-on-artificial-intelligence-risk-management-for-financial-institutions)。
+
+~~~mermaid
+flowchart TD
+    A[提出业务用例] --> B[登记用途、决策影响、数据和动作范围]
+    B --> C{风险及适用政策获批准？}
+    C -->|否| X[修改设计或停止用例]
+    C -->|是| D[建立决策契约、证据链与责任分工]
+    D --> E[离线评测、独立挑战和安全测试]
+    E --> F{硬门禁和残余风险通过？}
+    F -->|否| R[整改、缩小用途或改用更可验证方案]
+    R --> E
+    F -->|是| G[影子运行 / 受限试点]
+    G --> H[检查真实错误、人工复核质量和运行风险]
+    H --> I{持续符合批准的风险阈值？}
+    I -->|是| J[按批准范围逐步扩大]
+    I -->|否| K[暂停自动动作、回滚、调查和补救]
+    J --> H
+~~~
+
+
 第一步不是更换模型，也不一定要马上搭建多 Agent。应先补齐决策契约、证据记录、业务政策、验证、人工复核和运行治理。如果系统在某个关键用途上仍无法达到所需的解释和验证水平，就应该降低其自主权限，或改用更容易验证的决策方法。
 
 ## 二、单轮 Prompt 直接输出判断，缺少了什么？
@@ -91,13 +127,51 @@ NIST 的 [Artificial Intelligence Risk Management Framework: Generative Artifici
 | 可靠性依赖具体任务和使用方式 | 只引用供应商的通用 benchmark | 用本机构代表性案例，测试 Prompt、数据、规则、角色权限与实际工作流 |
 | 系统会随模型、数据和上下文变化 | 只记录某次运行的最终文本 | 版本化 Prompt、模型、检索材料、工具、政策与测试集，持续监控并做回归验证 |
 
+
+### 3.4 CoT 忠实度可以被实验检验，但不能靠阅读一段解释来保证
+
+Lanham 等人的 [Measuring Faithfulness in Chain-of-Thought Reasoning](https://arxiv.org/abs/2307.13702) 通过对模型给出的推理链进行干预，例如插入错误或改写推理内容，观察最终答案对这些变化有多敏感。研究发现，不同任务和模型对所展示推理链的依赖程度不同；生成了较长的推理链，并不表示它就是答案成因的忠实记录。Turpin 等人则通过引入偏置信号，展示模型可能仍受该信号影响，却在解释里没有提及它。
+
+2026 年 ICML 论文 [Monitoring Monitorability](https://proceedings.mlr.press/v306/guan26h.html) 提供了更细致的边界：在当前某些推理模型中，Chain-of-Thought 监测可能比只观察动作更容易发现部分错误行为，但监测能力并非完美，而且可能随训练方法、数据来源和模型规模变化而变得脆弱。
+
+这两类研究并不矛盾。CoT 可以是一种研究或运行期风险信号，却不能代替可以复核的决策证据。金融系统应记录可观察的中间产物、引用、规则校验、工具调用与最终处置；不要把完整的模型自述推理链设为唯一审计材料，也不要声称它揭示了模型的真实内部决策过程。
+
+### 3.5 谄媚、确认偏差与“顺着提问者说”也是决策风险
+
+Sharma 等人的 [Towards Understanding Sycophancy in Language Models](https://arxiv.org/abs/2310.13548) 研究发现，多个经过人类反馈训练的助手在不同任务中会表现出迎合用户观点的倾向；研究还指出，人类偏好评价可能在某些条件下偏爱说服力强、符合用户既有想法的回答，即使它并非更正确。
+
+应用到金融决策中，风险并不只来自模型捏造事实。如果输入已经带有结论，例如“这家客户显然有问题，请找出理由”，模型可能倾向于收集支持该结论的材料，而没有充分挑战它。对应控制应包括：中性的问题模板、明确要求同时列出支持和反对证据、在测试集里加入方向相反但证据相同的案例，以及测量提示措辞变化是否导致判断不合理地变化。
+
+### 3.6 幻觉与不确定性：不能把“猜一个答案”当作业务能力
+
+Kalai 等人的 [Why Language Models Hallucinate](https://arxiv.org/abs/2509.04664) 从统计学习和评测激励角度分析，模型在不确定时仍可能选择猜测，而常见的评分机制可能奖励猜对却惩罚承认不确定的行为。它是对幻觉产生机制的研究分析，不代表每一次幻觉都有同一原因，但对高影响系统的设计有直接启示：如果输出契约强迫模型必须选择一个结论，系统就可能把不确定性转化为自信的错误输出。
+
+因此，需要把 abstain / insufficient evidence / conflict / escalation 作为真正的合法状态，并把“无证据时不作结论”纳入评测的正向目标。衡量的不只是拒答率，也要衡量该拒答时是否拒答、可以判断时是否过度拒答。
+
+### 3.7 LLM Reviewer 与自动评分本身也有系统性偏差
+
+Shi 等人的 IJCNLP-AACL 2025 论文 [Judging the Judges](https://aclanthology.org/2025.ijcnlp-long.18/) 在超过 150,000 次评价中研究了多个 LLM judge 的位置偏差，发现评判会受到候选答案先后次序与任务条件影响。Chen 与 Goldfarb-Tarrant 的 [Safer or Luckier? LLMs as Safety Evaluators Are Not Robust to Artifacts](https://aclanthology.org/2025.acl-long.970/) 则指出，安全评价模型可能受到歉意措辞、冗长或其他输入表面特征影响；其报告的偏差幅度与特定实验任务、模型和比较设置有关，不应泛化成所有评测的固定比例。
+
+这说明独立 Reviewer 并不自动等于独立真理来源。实践上应当为 Reviewer 做校准集和盲测，比较人工标注一致性；对成对比较随机化候选顺序，检查重复运行稳定性；避免让被评测模型与评分模型共享相同的偏见；对关键规则和引用采用程序化断言而不是 LLM 打分。高风险放行决策不能只由一个 LLM Judge 给出总分。
+
+### 3.8 研究结果怎样转化成工程控制？
+
+| 研究发现 | 在 Decision Model 中应该增加的控制 |
+| --- | --- |
+| CoT 可能不忠实，监测能力也会随模型变化 | 保存来源引用、规则结果和可观察步骤；对模型升级重新评测；不把 CoT 当作审计证明 |
+| 解释不必然减少自动化偏差 | 设计独立初判、证据优先界面与挑战动作；用实验测量人工是否更能识别错误 |
+| 模型可能迎合提问者 | 对称测试支持/反对假设；对提示措辞和信息顺序做反事实测试 |
+| 模型在不确定时可能猜测 | 设计缺证/冲突/拒答的正式状态；将错误接受和漏升级作为单独的高风险指标 |
+| LLM Judge 可能受到排序和表面风格影响 | 使用人工校准、顺序翻转、重复测试、独立规则断言及多来源的评测证据 |
+
+
 ## 四、金融服务业的实践与监管动向
 
 要区分正式监管要求、指导性框架和学术研究。具体义务取决于业务、机构类型、司法辖区，以及系统对客户和业务决策的影响。
 
 ### 4.1 MAS：2026 年发布的金融机构 AI 风险管理指引
 
-新加坡金融管理局（MAS）于 **2026 年 10 月 7 日**发布 [Guidelines on Artificial Intelligence Risk Management for Financial Institutions](https://www.mas.gov.sg/regulation/guidelines/guidelines-on-artificial-intelligence-risk-management-for-financial-institutions)。指引适用于金融机构和各种 AI 技术，要求机构在企业层面和具体用例层面管理 AI 风险，包括建立适当的 AI 使用清单、风险重大性评估、生命周期控制、人类监督、测试、监控、变更管理以及第三方 AI 风险管理。指引将于 **2027 年 10 月 7 日**起生效，部分后续章节安排在 2028 年实施。具体时间表以正式指引为准。
+新加坡金融管理局（MAS）于 **2026 年 10 月 7 日**发布 [Guidelines on Artificial Intelligence Risk Management for Financial Institutions](https://www.mas.gov.sg/regulation/guidelines/guidelines-on-artificial-intelligence-risk-management-for-financial-institutions)。指引适用于金融机构和各种 AI 技术，要求机构在企业层面和具体用例层面管理 AI 风险，包括建立适当的 AI 使用清单、风险重大性评估、生命周期控制、人类监督、测试、监控、变更管理以及第三方 AI 风险管理。指引自 **2027 年 10 月 7 日**起生效；第 3–4 节的治理和风险管理系统期望自该日起落实，第 5–6 节的生命周期控制与能力建设可在 **2028 年 10 月 7 日前**落实。具体时间表以正式指引为准。
 
 MAS 同日发布的[反馈文件](https://www.mas.gov.sg/-/media/mas-media-library/publications/consultations/bd/2025/response-to-feedback-received-on-guidelines-on-artificial-intelligence-risk-management.pdf) 对 LLM 解释性、人类监督与可审计记录有几个特别相关的说明：
 
@@ -107,6 +181,9 @@ MAS 同日发布的[反馈文件](https://www.mas.gov.sg/-/media/mas-media-libra
 - 对生成式 AI 或 AI Agent，可根据用例风险和监控需要增强文档记录，例如记录 Prompt 和模型输出。评测文档应支持评测过程的复现，以便审计和独立核验，而不只是留下一份模型输出。
 
 这些是有针对性的监管依据，但不应把反馈文件里的每个例子都误读为对所有用例一体适用的硬性要求。正式指引的风险分级与比例原则仍然重要。
+
+更值得直接借鉴的是正式指引中的操作要求，而不只是它对原则的表述：第 2 节要求按风险维护 AI 用例清单与重大性评估；第 3 节要求董事会/高级管理层明确责任、把 AI 风险纳入风险偏好并确保跨职能协调；第 4 节涉及风险管理系统、政策与程序；第 5 节覆盖数据管理、开发/测试、部署、监控和变更等生命周期控制；第 6 节则涉及组织具备的人员能力与技术基础设施。它允许使用既有治理架构，但并不意味着可以没有责任人、风险升级、定期和触发式复核，以及对第三方模型的风险管理。以上是 MAS 对其适用机构的监管期望，不应误称为所有国家、所有企业都直接适用的法律义务。
+
 
 ### 4.2 MAS FEAT 与 Veritas：把原则转成可评估的方法
 
@@ -149,6 +226,100 @@ flowchart TD
     M --> L
 ~~~
 
+
+### 先看组件边界：C4 Container 视图
+
+下面的架构图刻意将 LLM、确定性规则、验证器、最终决策门禁和业务动作网关拆开。具体部署可以合并服务，但逻辑责任应保持区分，尤其是**模型生成的建议不能直接成为写数据库、发出客户通知、改变风险状态或执行交易的授权**。
+
+~~~mermaid
+C4Container
+title Decision Model：C4 Container View
+Person(analyst, "案件分析人员", "准备材料，查看证据和模型建议")
+Person(approver, "有权限的业务审核人", "批准、修改、拒绝或升级")
+System_Ext(source, "业务数据与原始材料", "案件字段、文件、历史记录")
+System_Ext(policy, "政策与规则目录", "带版本和生效日期的正式政策")
+System_Ext(model, "获批的 LLM 服务", "生成事实候选与建议，不持有最终业务动作权限")
+System_Ext(notify, "下游业务系统", "接收经过授权的最终处置")
+
+System_Boundary(dm, "Decision Model 系统边界") {
+  Container(api, "Decision API / Orchestrator", "Service", "创建运行、推进状态机、分发任务")
+  Container(snapshot, "Case Snapshot Store", "Versioned Store", "保存输入时点、来源版本与快照哈希")
+  Container(retrieval, "Evidence Service", "Retriever", "定位材料、证据段落、反向证据和缺失项")
+  Container(llmstep, "LLM Extraction / Assessment", "LLM Client", "按 Schema 输出事实候选与建议")
+  Container(validate, "Evidence & Schema Validator", "Rules / Code", "验证 Schema、引用定位、数据契约和必要字段")
+  Container(policyengine, "Policy / Rules Engine", "Deterministic Rules", "执行硬条件、有效日期、权限与禁止项")
+  Container(gate, "Decision Gate", "Policy Service", "按风险、证据与授权决定继续、暂停、升级或拒绝")
+  Container(review, "Human Review Workbench", "Web App", "显示证据、冲突、规则结果并记录真实处置")
+  Container(action, "Action Gateway", "Authorized API", "检查审批、状态、权限、幂等性后才执行副作用")
+  ContainerDb(audit, "Decision Record Store", "Append-only Record", "关联快照、模型运行、规则结果、人工决定和动作回执")
+}
+
+Rel(analyst, api, "提交案件/补充材料")
+Rel(api, snapshot, "固定本次输入版本")
+Rel(snapshot, retrieval, "提供受控快照")
+Rel(retrieval, source, "读取授权材料")
+Rel(retrieval, policy, "取得适用政策与版本")
+Rel(api, llmstep, "提交受限的证据包")
+Rel(llmstep, model, "调用获批模型")
+Rel(llmstep, validate, "结构化候选输出")
+Rel(validate, policyengine, "验证通过的事实/缺口")
+Rel(policyengine, gate, "规则结果、失败原因")
+Rel(gate, review, "高风险/不确定/冲突时转人工")
+Rel(approver, review, "审核、修改、升级或批准")
+Rel(review, gate, "提交人工处置")
+Rel(gate, action, "仅对获授权的最终状态放行")
+Rel(action, notify, "执行批准的业务动作")
+Rel(api, audit, "记录运行与证据引用")
+Rel(gate, audit, "记录门禁结果")
+Rel(review, audit, "记录人工处置")
+Rel(action, audit, "记录动作回执")
+~~~
+
+实现时还应把边界写进 API 契约：LLM 返回的是 Proposal，不是 FinalDecision；规则引擎返回 RuleEvaluation，而不是替审核人伪造批准；Action Gateway 只接受已通过授权状态机的命令。权限要在服务端执行，不能仅靠前端隐藏按钮。
+
+### 一次案件实际如何运行：时序图
+
+~~~mermaid
+sequenceDiagram
+    actor User as 业务用户
+    participant API as Decision API
+    participant Snap as Snapshot Store
+    participant Ev as Evidence Service
+    participant LLM as LLM Provider
+    participant Val as Validator
+    participant Rules as Policy Engine
+    participant Gate as Decision Gate
+    participant Review as Human Reviewer
+    participant Action as Action Gateway
+    participant Audit as Decision Record
+
+    User->>API: 提交案件
+    API->>Snap: 固定输入、源版本、时间戳与哈希
+    Snap-->>API: snapshot_id
+    API->>Ev: 按快照检索材料与适用政策
+    Ev-->>API: EvidencePack + 缺失/冲突项
+    API->>LLM: 仅提交获准材料，要求结构化候选输出
+    LLM-->>API: Facts / Citations / Recommendation
+    API->>Val: Schema、引用、字段完整性验证
+    Val-->>API: 通过项与失败项
+    API->>Rules: 运行确定性规则和有效时点检查
+    Rules-->>API: RuleEvaluation
+    API->>Audit: 追加 ModelRun、证据、校验和规则结果
+    API->>Gate: 评估风险、证据充分性与动作授权
+    alt 需要人工审核、证据不足或存在冲突
+        Gate-->>Review: 创建审核任务并说明阻断原因
+        Review->>Review: 查看正反证据、政策条款和失败规则
+        Review-->>Gate: 批准 / 修改 / 驳回 / 补件 / 升级 + 理由
+    else 属于预先批准的低风险自动化
+        Gate->>Action: 提交受约束的授权命令
+        Action->>Action: 校验权限、状态、幂等键与动作范围
+        Action-->>Gate: action_id / 状态
+    end
+    Gate->>Audit: 追加最终处置、批准链与动作回执
+    API-->>User: 返回状态、下一步及 Decision ID
+~~~
+
+
 ### 5.1 明确决策契约
 
 在 Prompt 和代码之前，先定义系统负责什么、不能负责什么、输出会影响什么，以及最终权责归属。最小决策契约应包括预期用途、自动化边界、输入契约、政策契约、输出契约、升级条件和责任主体。应避免让 Prompt 承担所有业务规则；能表达成稳定明确条件的要求，应维护在经过版本管理和测试的规则或策略层。
@@ -189,6 +360,25 @@ RAG 可以改善模型取得背景资料的方式，但不会自动保证检索�
 | `escalate` | 超出模型授权范围、风险阈值或需专业批准 | 人工审核或升级到指定角色 |
 
 不要未经校准就把模型自报的 `confidence: 0.92` 当成“有 92% 概率正确”。LLM 自报的自信程度并不等于经过验证的概率。若需要置信度或风险分数，应通过有代表性的历史案例、校准方法和持续监控证明其含义；否则，使用可核实的证据完整度、规则检查结果和显式升级条件更可靠。
+
+
+### 5.5 把公开业务用例映射成可落地的系统设计
+
+DBS 银行在 2025 年年报中公开表示，使用生成式 AI 辅助员工进行信用评估资料的信息提取与验证，并在推进由员工审核的信用评估备忘录工作流；其风险管理披露还提到生成式 AI 辅助客户对话摘要和通话质检。该披露说明金融机构已把生成式 AI 引入信用评估工作流的一部分，但并未公开完整的内部架构、字段级指标或门禁阈值，不能把下表误写成 DBS 实际采用的技术实现。来源：[DBS 2025 年 CRO 报告](https://www.dbs.com/annualreports/2025/cro-statement.html)。
+
+如果为类似的“信用评估资料提取 + 备忘录草稿”设计一个可审计流程，至少需要这样拆分：
+
+| 环节 | 具体产物 | 硬控制 / 失败路径 |
+| --- | --- | --- |
+| 文档接收 | 文件 ID、版本、收到时间、数据分类、完整性检查 | 缺页、格式错误或未经授权来源隔离，不进入模型调用 |
+| 字段提取 | 收入、负债、业务信息等候选字段及原文位置 | 每个关键字段必须能定位来源；不存在的字段输出 unknown，而不是猜测 |
+| 证据检查 | 多文档冲突、时点冲突、数值差异和缺失清单 | 关键金额不一致时标记 conflicting_evidence，禁止静默选一个 |
+| 政策检查 | 政策 ID/版本、生效日期、硬规则结果 | 过期政策或规则未通过不允许形成确定建议 |
+| 备忘录草稿 | 已引用事实、未决问题、模型建议及限制 | 草稿与最终决定分开存储；模型不能批准自己生成的备忘录 |
+| 人工审核 | 真实审核人、修改差异、理由码、批准/驳回/补件/升级 | 高风险动作必须完成规定审核；不以“审核人已打开页面”视为审核通过 |
+| 最终处置 | 决定、授权凭证、动作回执和记录引用 | 下游动作只接受 Action Gateway 发出的授权命令 |
+
+重点不是多部署几个 Agent，而是把文档提取的错误与信用判断本身的错误区分开来；前者可以通过来源对齐和字段验证发现，后者还需要政策测试、专业评估与正式责任归属。
 
 ## 六、决策记录：应当保存什么，才能经得起复核？
 
@@ -296,6 +486,38 @@ RAG 可以改善模型取得背景资料的方式，但不会自动保证检索�
 
 高影响系统可考虑追加式 Decision Record、独立审计日志、内容哈希或其他防篡改存证方式。这些机制有助于检测记录修改，但哈希本身不证明原始事实真实、结论正确或业务政策适用；数据来源和访问控制同样重要。
 
+
+### 6.4 Decision Record 与标准：没有一个全球标准规定统一 JSON，但控制目标很明确
+
+不同标准和监管框架通常规定治理结果、控制目标或技术义务，而非规定所有机构必须使用同一份 Decision Record JSON。因此要把“法定/监管要求”“可采纳的管理体系标准”和“工程实现建议”分开。
+
+| 框架/标准 | 对 Decision Model 的相关要求或指导 | 应转化成什么实践 | 适用边界 |
+| --- | --- | --- | --- |
+| **EU AI Act** | 对其适用范围内的高风险 AI，Article 12 涉及系统日志能力，Article 14 涉及有效的人类监督 | 事件日志、操作/监督能力、能识别异常并介入的界面、适用版本和责任记录 | 只有在系统用途、类别、经营活动和实施时间满足适用条件时才构成相关法律义务；需法律评估 |
+| **MAS 2026 AI Risk Management Guidelines** | 风险比例原则、AI 用例清单、重大性评估、角色与风险偏好、生命周期控制和第三方管理 | 用例登记、正式批准、测试与变更门禁、异常升级、第三方保证、责任链 | 适用于其范围内的金融机构；按正式指引分阶段落实 |
+| **NIST AI RMF + Generative AI Profile** | Govern / Map / Measure / Manage，强调文件化、测试、独立审查、风险处置与持续监控 | 用例范围、风险登记、评测证据、监控与事故响应、残余风险记录 | 自愿性风险管理框架；可作为控制设计方法，不等同于法律认证 |
+| **ISO/IEC 42001:2023** | AI 管理体系（AIMS）的建立、运行、维护和持续改进 | 组织政策、角色、影响评估、运行控制、绩效评价和改进闭环 | 管理体系标准，不会自动证明某一次模型判断正确 |
+| **ISO/IEC 23894:2023** | AI 风险管理指导，帮助组织把风险管理整合进 AI 相关活动 | 风险识别、分析、评价、处理、监测和沟通 | 指南不是特定行业的统一决策记录 Schema |
+| **美国银行模型风险管理指导（2026 修订）** | 对其适用的传统模型风险治理强调风险比例、验证、模型清单、有效挑战和第三方产品风险 | 记录模型用途、限制、独立挑战、批准和监控；对 LLM 另加上下文/Prompt/检索测试 | 修订指导明确不涵盖生成式 AI 和 Agentic AI；可借鉴治理方法，但不要称为 LLM 的直接适用要求 |
+
+官方资料：[EU AI Act 正式文本](https://eur-lex.europa.eu/eli/reg/2024/1689)、[MAS 指引](https://www.mas.gov.sg/regulation/guidelines/guidelines-on-artificial-intelligence-risk-management-for-financial-institutions)、[NIST AI RMF](https://www.nist.gov/itl/ai-risk-management-framework)、[NIST GenAI Profile](https://nvlpubs.nist.gov/nistpubs/ai/NIST.AI.600-1.pdf)、[ISO/IEC 42001](https://www.iso.org/standard/81230.html)、[ISO/IEC 23894](https://www.iso.org/standard/77304.html)、[美国联储修订的 Model Risk Management Guidance](https://www.federalreserve.gov/frrs/guidance/supervisory-guidance-on-model-risk-management.htm)。
+
+### 6.5 实际审计要能重建一次“为什么当时会这么做”
+
+假设信用资料在 4 月 10 日被评估，而供应商在 4 月 18 日修订了财务报表。如果 Decision Record 只存文档 URL、当前文件和最终结论，审计人员无法判断 4 月 10 日模型实际看到的是哪一版本。一个可复核的案例至少需要关联：
+
+1. 当时实际使用的文档版本和页码/字段位置；
+2. 本次模型实际输入的证据包、检索顺序和被排除/失败的材料；
+3. 适用政策的版本与生效时点；
+4. 模型/Prompt/输出 Schema 及工具版本；
+5. 独立校验与规则引擎的原始结果，而不仅是“全部通过”摘要；
+6. 审核人员看到了哪些证据，做了何种修改/批准或升级；
+7. 后续发现错误时，哪些相关决策受到影响、采取了什么补救。
+
+在 DBS 公开的信用评估辅助用例中，资料抽取和验证、由员工审核的备忘录草稿分别是不同的工作责任。对应到自己的实现，应分别保存“提取结果的证据”和“最终业务决定的授权链”，不要把一份生成的备忘录当成两者的替代品。
+
+还需强调：哈希、追加式日志和时间戳有助于发现记录是否发生变化，但**并不能证明记录的原始内容真实、证据足够或规则结论正确**。防篡改要和受控的数据源、访问审计、独立校验及正式责任人一起设计。
+
 ## 七、人工复核怎样设计，才不会变成走形式？
 
 人类监督不是让人替模型签字，而是让人有机会发现错误，并有足够信息和权力改变结果。
@@ -330,6 +552,45 @@ RAG 可以改善模型取得背景资料的方式，但不会自动保证检索�
 “100% 经过人工审批”不能证明监督有效。应测量人工与模型分歧率、推翻率和升级率；人工识别错误建议的能力；不同风险级别和工作量下的审核质量；审核所需时间、回看证据比例、补件率和未解决冲突；以及独立盲审发现的漏判。
 
 推翻率本身既不应越高越好，也不应越低越好。高推翻率可能意味着模型质量差，也可能反映审核人员发现了不适用案例；低推翻率可能意味着模型好，也可能说明审核流程成了橡皮图章。必须结合盲审、真实结果与任务设计一起分析。
+
+
+### 7.4 用真实研究和金融机构披露检验“人工在环”
+
+Buçinca、Malaya 和 Gajos 在 2021 年的实验 [To Trust or to Think: Cognitive Forcing Functions Can Reduce Overreliance on AI](https://dl.acm.org/doi/10.1145/3449287) 中对 199 名参与者比较了认知强制设计、简单的可解释 AI 设计和没有 AI 的基线。研究报告说，要求使用者先投入判断或执行额外认知步骤的设计，能比简单解释更有效地降低对错误 AI 建议的过度依赖；代价是参与者对最能降低过度依赖的设计主观评价较低，效果也会随个体认知特征而变。它是受控实验，而非金融机构生产运行的效果证明，但说明界面设计会影响监督是否有效。
+
+金融机构公开案例也提供了可落地的例子。Morgan Stanley 披露，Debrief 将会议内容转成客户笔记和后续行动草稿，顾问会在定稿前审阅和修改；DBS 2025 年报告披露，生成式 AI 辅助资料提取与验证，并在推进由员工审核信用评估备忘录的工作流。两者并不意味着所有输出都必须人工批准，而是显示：当生成内容会被用于后续客户或信用流程时，明确的人工定稿点可以成为流程的一部分。来源：[Morgan Stanley / OpenAI 案例](https://openai.com/index/morgan-stanley/)、[DBS 2025 年 CRO 报告](https://www.dbs.com/annualreports/2025/cro-statement.html)。
+
+### 7.5 把“有效复核”写成界面与流程规则
+
+| 设计措施 | 为什么有用 | 如何验证不是形式主义 |
+| --- | --- | --- |
+| 关键案例先显示事实、引用和反向证据，再显示模型建议 | 减少先入为主的锚定，但不会完全消除它 | 与先显示建议的界面开展受控对照测试 |
+| 对高影响、低频决策，要求审核人先写独立判断或选择关键证据，再展示模型建议 | 迫使审核者在依赖 AI 前建立自己的判断依据 | 比较有/无该机制时的错误识别率、耗时与一致性 |
+| 明确接受、修改、拒绝、补件、升级和暂缓的状态 | 让复核可以挑战系统，而不是只有批准按钮 | 监测动作分布，并对低异议率做盲审调查 |
+| 对关键字段展示源文、模型提取值、校验结果和政策条款 | 让人能核对证据和规则，不只是读模型写的理由 | 随机抽样检验审核者能否找出植入的错误 |
+| 将超时、积压和异常高通过率视为监督风险信号 | 过度负荷容易把审核变成机械点击 | 把案件复杂度、审核时间、工作量与盲审漏错一起分析 |
+| 允许停止处理并请求独立意见 | 避免在证据冲突或超授权时被迫作二元决定 | 用缺证、矛盾、过期政策和高风险异常案例测试升级能力 |
+
+~~~mermaid
+sequenceDiagram
+    participant Model as Decision Model
+    participant UI as Review Workbench
+    participant Reviewer as 审核人员
+    participant Blind as 独立质量抽检
+    participant Ops as 运营/风险负责人
+
+    Model->>UI: 结论状态 + 正反证据 + 规则结果 + 未决项
+    UI->>Reviewer: 先显示证据与可复核来源
+    Reviewer->>UI: 独立判断/关键检查项
+    UI->>Reviewer: 显示模型建议与差异
+    Reviewer->>UI: 接受、修改、驳回、补件或升级
+    UI->>Ops: 记录理由码、耗时、覆盖和升级状态
+    Blind->>UI: 随机抽取已处置案例
+    Blind->>Ops: 报告漏错、机械批准与系统性偏差
+    Ops->>Model: 修正流程、评测集、阈值或自动化边界
+~~~
+
+要注意，单独的“独立初判”也不是所有工作流的最佳界面：它可能增加处理时间、对熟练审核人员带来不必要负担，还可能让低频使用者失去效率。应在代表性案件上做实验，按风险级别和决策频率选择设计，依据错误发现能力和决策质量，而不是凭主观体验决定。
 
 ## 八、怎样验证 Decision Model：从模型评测走向决策系统评测
 
