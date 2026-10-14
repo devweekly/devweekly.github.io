@@ -1843,6 +1843,131 @@ UDF 与普通 SQL 模型一样需要测试，但其验证面还包括语言运�
 
 ---
 
+
+## 二十五、外部 Vendor 数据接入与分层：文件应该放在哪里，Raw 应保存多久？
+
+外部 Vendor 数据常见于市场价格、证券主数据、评级、经济指标、参考数据和研究数据。真正的架构问题不只是“怎么把文件加载到 Snowflake”，而是要分别决定：**供应商如何交付、哪一份数据是可追溯的原始依据、历史数据保留在哪里，以及哪些转换结果值得长期维护。**
+
+Snowflake、AWS 和 dbt 的官方实践都提供了可借鉴的模式，但不存在适合所有公司的固定三层模板。AWS 的数据湖指南通常建议将原始数据、处理数据和面向分析的结果分层；Snowflake 的 Dynamic Tables 指南也用 bronze/raw、silver/conformed、gold/aggregated 说明如何拆分转换步骤。它们是帮助团队明确职责的模型，不意味着每一个项目必须维护三份完整、永久的数据副本。参考：[AWS 数据层定义](https://docs.aws.amazon.com/prescriptive-guidance/latest/defining-bucket-names-data-lakes/data-layer-definitions.html)、[Snowflake Dynamic Table 设计模式](https://docs.snowflake.com/en/user-guide/dynamic-tables/design-patterns)、[dbt 模型分层实践](https://docs.getdbt.com/best-practices/how-we-structure/1-guide-overview)。
+
+### 25.1 Vendor 应该把文件送到公司 S3，还是直接送到 Snowflake？
+
+先区分一个容易产生误解的说法：**Snowflake 的 Internal Stage 是由 Snowflake 管理的文件暂存位置，不是一个由客户直接管理、可以向供应商公开 S3 URI 的 Bucket。** 数据可以上传到 Internal Stage，再由 Snowflake 加载到表；客户也可以使用 External Stage 指向自己拥有或获准访问的 S3。官方把这两种都作为支持的文件加载路径。参考：[Snowflake 数据加载概览](https://docs.snowflake.com/en/user-guide/data-load-overview)、[Internal Stage 类型与用法](https://docs.snowflake.com/en/user-guide/data-load-local-file-system-create-stage)。
+
+| 交付模式 | 适合什么情况 | 主要好处 | 需要承担的代价 |
+| --- | --- | --- | --- |
+| **Vendor 已在 Snowflake 提供 Secure Data Sharing / Marketplace 数据** | 供应商本来就在 Snowflake 发布数据，合同与区域条件允许共享 | 不必再建一套文件搬运与落库流程；共享数据可在提供方更新后被消费方访问 | 数据访问依赖供应商账户、共享对象和合同；若需要独立归档、源文件重放或自己的数据快照，还要另作设计 |
+| **Vendor 文件进入公司控制的 AWS S3，再由 Snowflake 读取/加载** | 定期批量交付、需要源文件留存、审计、重放、校验或其他 AWS 服务参与 | 公司控制接收、隔离、加密、版本、生命周期、批次完整性与原始文件归档；S3 可作为平台之外的持久原始依据 | 需要运维 S3、IAM、事件通知、文件校验和生命周期；还要评估 S3 存储、跨区域流量与 Snowflake 加载成本 |
+| **受控的采集服务直接上传到 Snowflake Internal Stage** | Snowflake 是唯一主要目的地，不需要独立的云对象存储归档，且上传程序能够使用 Snowflake 支持的认证和加载接口 | 少一个客户侧的长期文件存储组件；可以直接从 Stage 加载到表 | 仍需提供安全上传通道、批次清单、重试和审计；Internal Stage 不等于公司可独立管理的 S3 原始档案，外部供应商通常需要通过受控采集服务而不是直接访问底层存储 |
+| **Snowflake 通过 External Stage 读取 Vendor 或合作方控制的 S3** | 对方允许跨账户授权访问，文件存放在对方的云存储 | 避免额外搬运或重复持有整份数据；可用 External Table 先做受控、低频查询 | 权限撤销、文件版本、目录变化、跨账户/区域费用和源端生命周期都依赖对方；若要稳定的高频 JOIN/转换，通常仍要评估加载为原生表 |
+
+Snowflake Secure Data Sharing 的官方说明明确指出，共享不会把数据复制到消费者账户，消费者主要为查询使用的计算资源付费；这只适用于供应商确实通过 Snowflake 分享数据并且授权允许的情况，而不是任意 Vendor 文件都能直接这样访问。参考：[About Secure Data Sharing](https://docs.snowflake.com/en/user-guide/data-sharing-intro)。
+
+**我的默认建议：对需要长期使用、可能会回溯修订的文件型 Vendor 数据，优先采用“受控接收 → 公司控制的 S3 → Snowflake”。** 这不是因为 Snowflake Internal Stage 不可靠，而是公司 S3 能承担独立于数仓的文件交付边界、源文件归档、校验和和重放责任。若数据只在 Snowflake 内部使用、没有独立归档/多引擎访问/回放需求，而且受控采集程序已经存在，则可以直接上传到 Internal Stage，避免为了架构图而额外建设一个无明确用途的 S3 层。
+
+### 25.2 建议的文件交付路径：Landing、校验、Ready，再进入 Snowflake
+
+对每日或每小时的 Vendor 文件，建议把“收到了文件”和“文件可以用于业务计算”分开。不要让尚未上传完整、尚未校验或属于错误批次的文件立即进入报表和计算链路。
+
+~~~mermaid
+flowchart TD
+    V[Vendor / 安全文件传输 / API] --> L[S3 Landing：接收与隔离]
+    L --> Q[验证清单、校验和、大小、格式、Schema、业务日期]
+    Q -->|通过| R[S3 Ready：已验证批次]
+    Q -->|失败| X[Quarantine：隔离、告警、人工调查]
+    R --> S[Snowflake External Stage + Storage Integration]
+    S --> I[Snowflake Raw 表或受控加载流程]
+    I --> C[Conformed：规范化、去重、历史与业务键]
+    C --> G[可选 Curated：业务口径、聚合或专用计算结果]
+~~~
+
+建议为每个交付批次生成 manifest 或等价的批次账本，至少记录 Vendor、数据集、文件名、文件大小、校验值、记录数（如果能可靠取得）、业务日期/有效期间、交付时间、Schema 版本、批次 ID 和校验结果。文件覆盖、迟到、重复投递、历史修订或重发时，应当能识别它属于新版本还是重复消费，而不是仅凭文件名判断。
+
+在 Snowflake 侧，推荐用 **Storage Integration + External Stage** 授权访问公司私有 S3，不把长期 AWS Access Key/Secret Key 硬编码到 SQL、作业配置或连接字符串中。Storage Integration 可限制允许使用的 Bucket/Prefix，AWS IAM 策略再限制具体对象访问。参考：[Snowflake S3 Storage Integration 官方配置](https://docs.snowflake.com/en/user-guide/data-load-s3-config-storage-integration)。
+
+根据新数据到达频率和使用方式选择加载策略：
+
+- **历史初始化或低频批量文件：** 用 COPY INTO，按 Vendor、数据集和日期范围分批加载；对很长的历史区间可以按年/月或业务分区运行并逐批对账。
+- **持续到达的文件：** 可评估 Snowpipe 自动摄取，由 S3 事件通知触发加载。需要保证不同 Pipe 的路径范围不重叠，避免同一个文件匹配多个加载流程。
+- **只是低频查看外部文件：** External Table 可以降低不必要的复制，但要验证元数据刷新、文件格式、扫描性能和完整性。
+- **频繁 JOIN、反复计算或要形成稳定历史模型：** 通常应比较加载到 Snowflake 原生表的方案，基于真实工作负载测量性能和成本。
+
+Snowflake 建议对连续数据加载使用有逻辑粒度的目录路径，包含来源等标识与写入日期；对于文件大小也有并行装载建议。不要把每条记录都做成独立小文件，也不要用一个无限膨胀的目录承载所有 Vendor、数据集和年份。参考：[Organizing staged data](https://docs.snowflake.com/en/user-guide/data-load-considerations-stage)、[Snowpipe S3 自动加载](https://docs.snowflake.com/en/user-guide/data-load-snowpipe-auto-s3)、[文件大小建议](https://docs.snowflake.com/en/user-guide/data-load-considerations-prepare)。
+
+### 25.3 Raw Zone 不等于临时表：先定义它的责任和留存策略
+
+Raw Zone 经常被理解成“先放一下，转换完成就删除”，但那只是**短期 Landing/Staging** 的一种设计。企业数据架构中的 Raw/Bronze 通常表示源对齐、尽量不覆盖原始语义的数据层；它的重要职责是支持追溯来源、重放转换、调查供应商重发/修订，以及在业务规则发生变化时重新生成下游数据。AWS 的数据湖指南建议原始层尽可能保留原始文件格式并启用 S3 Versioning；同时允许处理层按需求使用自己的生命周期策略。参考：[AWS 推荐数据层](https://docs.aws.amazon.com/prescriptive-guidance/latest/defining-bucket-names-data-lakes/data-layer-definitions.html)、[AWS 数据湖分层常见问题](https://docs.aws.amazon.com/prescriptive-guidance/latest/defining-bucket-names-data-lakes/faq.html)。
+
+在实践中，应区分三种东西：
+
+1. **Landing / Quarantine：** 接收不完整或待检验的文件。其生命周期通常短，有明确的校验、隔离和清理规则；不能把它当作唯一的历史档案。
+2. **原始文件档案（通常可放在公司 S3）：** 保留 Vendor 交付的原始字节或原始格式，以及批次清单、校验值、对象版本与接收元数据。它是审计或重新解析时可以回到的源证据；保留期限要根据合同、许可、法规和业务需要确定。
+3. **Snowflake Raw 表：** 把已接收的数据装入可查询的表，原则上保持源字段与源含义，做必要的解析、接入元数据补充和最低限度类型处理。它能支持 SQL 级排查、下游重建与数据质量分析，但不是原始文件字节的完美替代品。
+
+最重要的是：**不需要默认同时无限期保存 Landing 文件、S3 原始档案、Snowflake Raw 表、Conformed 表和 Curated 表五份完整数据。** 每一份持久副本都要说明自己的目的、权威性、访问者、保留期和重建方式。若公司 S3 是原始文件的受控档案、Snowflake Conformed 表是长期可查询的业务历史，就可以根据重放需要决定是否还要永久保存 Snowflake Raw 表。
+
+若原始输入需要作为审计证据，应考虑启用 S3 Versioning；确有不可变留存的监管需求时，再评估 S3 Object Lock 及其治理/合规模式。不要仅因“金融数据”就不加评估地启用永久锁定，因为对象不可删除可能与供应商撤回、删除义务或合同终止要求冲突。参考：[S3 Object Lock](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html)。
+
+### 25.4 五年或十年的历史数据应该怎么放？
+
+如果 Vendor 提供五到十年的历史价格、评级或参考数据，先明确“历史数据需要保存”和“历史原始文件需要一直在线可查”是两个不同需求。
+
+| 数据副本 | 推荐用途 | 5–10 年保留建议 |
+| --- | --- | --- |
+| Vendor 原始文件（通常在公司 S3） | 原始证据、重新解析、争议调查、修正转换逻辑后的历史回放 | 若合同/许可、合规和成本允许，可以长期归档；配置版本、加密、访问审计和生命周期，低频历史可转低成本存储层 |
+| Snowflake Raw 表 | 需要查询原始来源值、调查装载问题、重建 Conformed 或比较 Vendor 修订时使用 | 按重放和查询需要决定。若可从 S3 受控档案重建、且日常几乎不查，可不必将所有年份一直保存在可查询 Raw 表中 |
+| Snowflake Conformed 层 | 已统一数据类型、代码、标识符、时间语义和修订规则的规范化历史数据 | 如果五到十年的时间序列是分析需求本身，通常应长期保留可查询的历史模型；需要明确有效时间、源端版本、修订及到达时间 |
+| Curated 层 | 面向具体分析/业务目的的指标、聚合、衍生计算和认证结果 | 仅保留有重复消费、SLA、审计或重算成本价值的产物；可重建的结果不一定都需要永久保存 |
+| 临时计算表 / Landing | 中间步骤、待验证批次、短期计算 | 设定明确的短生命周期与清理条件，不作为唯一的源数据档案 |
+
+建议至少区分四类时间：**Vendor 业务日期/有效时间、供应商发布或修订时间、公司接收时间、Snowflake 加载时间。** 如果只有一个 created_at 或 load_time，就很难解释“这一价格在 2021 年 5 月 3 日有效，但供应商在 2024 年重新发布了修正版本”的情况。
+
+对历史修订，默认不要静默覆盖原始文件。将新交付作为一个有版本/批次标识的输入，经过对账后更新当前规范模型，同时保留所需的原始版本或业务历史。若分析要求回答“当时已知什么”和“以当前最新修订看，过去是什么结果”，就必须保留足够的版本与时间语义，单纯保存一张最新状态表是不够的。
+
+另一个关键点是：**Snowflake Time Travel 不是五到十年历史档案方案。** 官方说明，Standard Edition 的 Time Travel 通常最多为 1 天；Enterprise 及更高版本的永久表可配置最长 90 天。它用于短期恢复与历史状态查询，不替代业务历史建模、外部源文件留存或长期监管档案。参考：[Snowflake Time Travel 与保留期](https://docs.snowflake.com/en/user-guide/data-time-travel)。
+
+### 25.5 Conformed 与 Curated：Curated 是不是必须存在？
+
+**不必须。层的价值在于边界和可复用性，不在于层数。** AWS 的分层指南描述 Raw、Stage、Analytics 等常见职责；dbt 将模型分为 Staging、Intermediate、Marts，意图也是让源映射、业务逻辑组合和消费模型各有明确位置，而不是规定所有项目必须物化所有层。Snowflake 对 Dynamic Tables 的设计建议也指出，复杂 JOIN、聚合与窗口计算需要按逻辑步骤拆分，避免所有操作塞进单个巨型模型。参考：[dbt 模型组织指南](https://docs.getdbt.com/best-practices/how-we-structure/1-guide-overview)、[Snowflake Dynamic Table 设计模式](https://docs.snowflake.com/en/user-guide/dynamic-tables/design-patterns)。
+
+这三层可以按以下方式理解：
+
+| 层 | 应解决的问题 | 常见内容 | 是否必需 |
+| --- | --- | --- | --- |
+| **Raw** | 收到的源数据是什么？怎样追溯、重放和解释？ | 原始字段、来源、批次、文件与加载元数据、源版本 | 应有明确的原始数据策略，但未必需要把所有原始文件永久存进 Snowflake 表 |
+| **Conformed** | 不同来源如何成为语义一致、可以正确 JOIN 和比较的数据？ | 规范类型、统一标识符、代码映射、时区/币种、去重、删除/修订规则、历史有效期 | 对多来源分析和长期历史计算通常很有价值；简单单源场景可以缩减 |
+| **Curated** | 某个业务问题应该如何定义、计算和重复使用？ | 指标、业务聚合、专用事实表、收益/风险/暴露计算、面向分析的模型 | 按消费需求建立；没有独立价值时可以不物化，直接查询 Conformed 层 |
+
+尤其要区分，**Curated 不等于“给其他 App 做 Serving”**。即使暂时没有任何外部 App 消费，Curated 仍可能对报表、分析师查询、风险计算、回测和模型特征有价值。但如果目前只有一个计算用例，计算逻辑简单、使用频率低、没有稳定的共享业务口径，那么不必先建一整套 Curated Schema 或复制出一份大型结果表；可以通过 dbt 模型、View 或直接查询 Conformed 层开始。
+
+何时值得建立 Curated 层？满足以下一项或多项时，再考虑正式建立：
+
+- 同一段复杂的业务计算被多份报表或分析重复使用。
+- 需要统一指标定义、业务负责人、审批流程或结果质量门禁。
+- 计算代价高且结果被反复使用，值得预计算或物化。
+- 需要把规范数据转化成有明确业务粒度的结果，例如按估值日、组合、证券和币种计算风险暴露。
+- Raw/Conformed 字段太接近源系统，不适合直接暴露给消费者；需要权限、脱敏或稳定的数据契约。
+
+反之，如果只是一个探索性查询或一次性分析，View/CTE 往往足够。建立 Curated 不是为了满足分层图，而是为了让业务定义、测试、性能和消费契约真正稳定下来。
+
+### 25.6 一套适合外部 Vendor 数据的渐进式落地方案
+
+不要一开始就把每一个 Vendor、每一类文件和全部历史数据设计成庞大的通用框架。建议按业务需要逐步建设：
+
+**阶段一：确定数据权利和历史语义。** 查清 Vendor 允许哪些用途、复制/缓存/衍生计算的边界、历史保存期限、撤回/修订规则、是否允许跨区域存储，以及合同终止后如何处理数据。明确业务有效时间、源版本和到达时间，不要把“技术上能够保存”当作“合同允许保存”。
+
+**阶段二：建立受控接入和最小原始证据链。** 对定期文件建立 Landing、校验和 Ready 状态，记录 manifest、文件指纹、批次和 Schema 版本；用 Storage Integration 和最小权限外部 Stage 让 Snowflake 访问指定 S3 Prefix。如果 Vendor 已提供 Snowflake Secure Share，先比较直接共享而不是无条件复制。对于直接写 Internal Stage 的路径，也要保留同等的批次和恢复能力。
+
+**阶段三：先建立可查询的 Conformed 历史。** 先选择一个有明确计算需求的数据集，把类型、代码、标识符、货币、时间、重复记录、修订及历史有效期处理清楚。初次加载五到十年历史时按可恢复的时间区间分批装载，并按记录数、业务日期覆盖、关键汇总及异常记录进行对账。
+
+**阶段四：从真实消费需求判断要不要 Curated。** 若业务需要的是稳定的收益、估值、风险或分类结果，再建立针对该需求的模型并维护预期结果测试、数据质量测试和版本变更差异。若当前只是在 Conformed 层做少量探索，就先用 View/CTE 或 dbt 模型，不必为了形式增加物化层。
+
+**阶段五：用证据决定长期保留和性能优化。** 跟踪存储成本、常用历史查询、重放频率、修订频率、刷新延迟和下游复用情况。原始文件、Raw 表、Conformed 表和 Curated 结果分别制定保留策略，定期验证从原始档案重建历史结果的流程。对高频查询再评估原生表、Dynamic Tables、预计算或单独的 Serving 数据集。
+
+**最终原则：** 对长期使用的 Vendor 数据，原始文件的可追溯性、规范化历史的可查询性和业务计算结果的可解释性是三种不同的需求，未必需要用三份永久副本实现。默认优先确保原始来源可追溯、Conformed 历史可正确查询；只有当业务逻辑、性能、治理或重复消费确实需要时，才物化 Curated。这样既保留了回放和审计能力，也避免在没有明确用途时，把每份外部数据复制到所有分层。
+
+---
+
 ## 总结
 
 对有 PostgreSQL 和 SQL 基础的团队，推荐的学习和落地顺序不是先研究全部 Snowflake 功能，而是：
