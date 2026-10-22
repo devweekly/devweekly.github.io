@@ -2,16 +2,21 @@
 author: W
 featured: false
 draft: false
-description: PostgreSQL + Snowflake 企业落地实践报告
+description: PostgreSQL + Snowflake 企业落地实践报告，涵盖 CDC、数据治理、迁移、生产运维，以及 PostgreSQL + DuckDB + Snowflake 的分层架构与 Iceberg 多引擎共享选型。
 pubDatetime: 2026-10-08T01:24:00Z
 title: PostgreSQL + Snowflake 企业落地实践报告
 tags:
   - tech
+  - data
+  - architecture
+  - postgresql
+  - snowflake
+  - duckdb
 ---
 
 **主题：** 企业保留 PostgreSQL 作为在线业务数据库，将历史数据、分析计算和报表逐步迁移到 Snowflake  
 **面向读者：** 有 SQL、关系数据库经验，但刚开始接触 Snowflake 的工程师、架构师、数据分析人员  
-**资料检索日期：** 2026-10-09  
+**资料检索日期：** 2026-10-13  
 **阅读建议：** 先读第 1–6 章确定架构，再按第 7–12 章动手；文末列出了官方文档和企业工程案例。
 
 ## 一、先给结论：应该如何搭建
@@ -51,7 +56,7 @@ flowchart LR
     MART -. 模型测试、业务指标校验 .-> OPS
 ```
 
-**关键认识：** 不是把 PostgreSQL 全库原样复制一次就结束。正确的目标是建立一条可观察、可重试、可对账、能处理源端变化的分析数据链路。
+**关键认识：** 不是把 PostgreSQL 全库原样复制一次就结束。正确的目标是建立一条可观察、可重试、可对账、能处理源端变化的分析数据链路。每个业务实体应有明确的权威写入端；如果分析结果需要回到应用，应通过独立的异步发布链路完成，而不是让应用同时写两个数据库。
 
 ---
 
@@ -190,7 +195,7 @@ Snowflake 官方 Openflow PostgreSQL Connector 文档说明，它可复制选定
 - **TRUNCATE：** 当前 Connector 文档说明，源端 `TRUNCATE` 不会转换为目标端删除，可能被忽略。如果业务会清空/重建源表，需专门设计处理方案。
 - **新增字段：** 新字段可能会被加入目标表，但旧数据不会自动获得过去的字段值，既有行对应新列可能为 `NULL`。
 - **字段类型变化：** 某些不兼容类型变化、精度/小数位变化、字符长度变化可能令复制停止，需要恢复流程。
-- **大字段与类型映射：** PostgreSQL 的 `JSONB`、`BYTEA`、`NUMERIC`、时区时间戳等需要检查类型映射、大小限制和精度；不要只用小样本验证。
+- **大字段与类型映射：** PostgreSQL 的 `JSONB`、`BYTEA`、`NUMERIC`、时区时间戳等需要检查类型映射、大小限制和精度；不要只用小样本验证。特别注意：当前官方映射中 PostgreSQL `MONEY` → Snowflake `FLOAT`，这不是精确十进制映射。金额、余额、费率和对账字段应优先使用明确精度的 `NUMERIC(p,s)` / `DECIMAL(p,s)`，并验证目标精度与舍入规则；如果源表已经使用 `MONEY`，应在 PoC 中单独验证转换结果，必要时在同步前或落地后显式规范化。
 - **Journal 表：** 其保留可能带来存储增长；不要在复制运行中随意删除正在使用的 journal，清理需要明确生命周期和恢复规则。
 - **没有初始快照就开增量：** 官方文档指出，某些既有行后续变化可能在 `VARCHAR`、`VARIANT`、`BINARY`、`ARRAY` 等列出现缺失值。除非你能证明已存在的目标数据完整且与源端匹配，否则不要把“不做快照的增量复制”当作普通重启方式。
 
@@ -209,6 +214,23 @@ Snowflake 官方 Openflow PostgreSQL Connector 文档说明，它可复制选定
 批量方案非常适合先迁移“几十张报表表、每日更新”的第一阶段；以后新鲜度需求提高，再对重点数据源改用 CDC。不要为了一个每天凌晨更新的报表，从第一天就运维 Kafka 集群。
 
 ---
+
+
+### 4.5 补充：连接器代际、精度语义和 Iceberg 目标
+
+在做生产选型时，要区分“PostgreSQL Connector 本身的成熟度”和“某一种目标格式/部署方式的成熟度”。截至 2026 年 10 月 13 日，Snowflake 的 PostgreSQL Openflow Connector 概览将 Connector 标为 Generally Available，并在支持矩阵中列出 PostgreSQL 11–18（包括文档列明的标准 PostgreSQL、RDS、Aurora、Cloud SQL 和 Azure Database 服务）；而官方 Gen 2 快速入门仍将 Gen 2 connector 创建流程标为 Public Preview，PostgreSQL Connector 的 Iceberg 目标格式页面也单独标为 Preview。不能因为标准表 CDC 已 GA，就推断所有 Gen 2 管理路径或 Iceberg 目标都已 GA。上线前要在目标 Snowflake 账户、区域和部署模式中复核实际状态。
+
+同样需要把类型转换作为数据契约的一部分，而不是单纯的连接器配置。官方映射显示：`NUMERIC/DECIMAL` 在目标限制范围内保留 precision/scale，`TIMESTAMPTZ` 映射到 `TIMESTAMP_LTZ`，`TIMESTAMP WITHOUT TIME ZONE` 映射到 `TIMESTAMP_NTZ`，而 `MONEY` 映射为 `FLOAT`。对金额或高精度十进制指标，后者可能引入二进制浮点误差；对时间字段也应明确业务时区、存储时区和报表展示时区。类型映射上线前至少要用边界值、NULL、超长字段、小数极值、时区切换和历史数据做逐列验证。
+
+PostgreSQL Connector 还提供了一个值得关注但需要谨慎采用的方向：直接写入 Iceberg 目标表。官方页面目前将此功能标为 Preview，支持 Iceberg v2/v3；外部引擎可读性还与 Catalog、对象存储权限和 serialization policy 等配置相关。文档指出，`STORAGE_SERIALIZATION_POLICY = 'COMPATIBLE'` 生成的 Parquet 文件面向外部引擎兼容，`OPTIMIZED` 则启用 Snowflake 专用查询优化。若希望 DuckDB 与 Snowflake 访问同一份 Iceberg 数据，必须验证两个引擎看到的是同一 Catalog 中的表和快照、存储凭证都遵循最小权限、schema evolution 与删除语义均符合预期。不要把“连接器可以创建 Iceberg 表”直接等同于“DuckDB 已经可以无配置地读取该表”。
+
+参考：
+- [Openflow Connector for PostgreSQL：当前状态与限制](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/about)
+- [PostgreSQL Connector：数据类型映射](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/data-mapping)
+- [Gen 2 Openflow 快速入门与预览状态](https://docs.snowflake.com/en/user-guide/data-integration/openflow/gen2/quickstart)
+- [PostgreSQL Connector 的 Iceberg 目标格式与序列化策略](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/iceberg)
+- [PostgreSQL 17+ failover slot：高可用与故障切换要求](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/failover)
+
 
 ## 五、Snowflake 内部如何组织数据
 
@@ -554,6 +576,17 @@ CDC 通常依赖 PostgreSQL WAL。复制槽未及时前进时，PostgreSQL 为�
 
 Snowflake 官方 Connector 配置文档明确要求给源端 WAL 预留足够磁盘，并指出 replication slot 会保留尚未被 connector 确认推进位置之前的 WAL。
 
+
+### PostgreSQL 17+：把复制槽故障切换纳入 HA 设计
+
+当前 Openflow Connector 文档列出的支持矩阵覆盖 PostgreSQL 11–18（包括文档列明的 RDS、Aurora、Cloud SQL 和 Azure Database 等服务），但“版本受支持”不等于所有高可用行为都自动成立。若 PostgreSQL 17+ 环境需要在主库故障切换后继续 CDC，Snowflake 提供的 failover-slot 支持要求 connector 使用支持该能力的 runtime extensions（文档当前要求 2026.7.16.14 或更高），并且连接字符串必须指向可随故障切换切换到新主库的 writer/primary endpoint。connector 在 PostgreSQL 17+ 创建 replication slot 时会启用 `failover=true`；已有 slot 不会仅因升级 connector 而自动获得该属性。
+
+该机制还依赖 PostgreSQL 集群自身配置，包括主库的 `synchronized_standby_slots`，以及候选 standby 的 `wal_level = logical`、`sync_replication_slots = on`、`hot_standby_feedback = on` 和正确的 `primary_conninfo` / `primary_slot_name`。跨 failover 的投递语义仍是 at-least-once，重连时会去重，因此下游仍必须具备幂等和对账能力。注意：connector 可以从 PostgreSQL 16+ 的 hot standby 读取数据，但如果使用的是 PostgreSQL 17+ failover slot 保护，则必须连接 primary；AWS Aurora 不支持从 read replica 进行逻辑解码，因此不能简单套用 hot-standby 方案。
+
+不要在没有完整演练的情况下在线删除旧 replication slot 或切换 connector。更新已有部署时，官方提供“无重新快照”和“重新快照”两条迁移路径；前者需要协调一个可控的无写入窗口，因为 slot 删除后 PostgreSQL 无法再从原 slot 回放已丢弃的 WAL。应先按官方步骤核对当前消费水位、队列、slot 属性和写入恢复点，再在非生产或可回滚环境演练。
+
+参考：[PostgreSQL 17+ failover slot support](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/failover)。
+
 ### 10.3 建议先准备四种故障手册
 
 **A. 数据延迟突然上升**
@@ -746,6 +779,15 @@ Klika 发布了一篇客户案例：一家多租户广告收入分析产品原�
 8. **CDC 实作流程：** [Getting Started with PostgreSQL CDC](https://www.snowflake.com/en/developers/guides/getting-started-with-openflow-postgresql-cdc/) — 可按步骤体验初次快照和增量更新。
 9. **Snowflake Postgres 镜像功能：** [Data mirroring](https://docs.snowflake.com/en/user-guide/snowflake-postgres/postgres-data-mirroring) — 了解另一种原生镜像能力，但必须先核验现有源 PostgreSQL 是否满足该功能的源端要求，不能把它与通用 Openflow Connector 混为一谈。
 10. **AWS DMS 支持矩阵：** [Targets for AWS DMS](https://docs.aws.amazon.com/dms/latest/userguide/CHAP_Introduction.Targets.html) 和 [Using PostgreSQL as an AWS DMS source](https://docs.aws.amazon.com/dms/latest/userguide/CHAP_Source.PostgreSQL.html) — 选择 AWS 方案时明确目标端支持范围；必要时评估 DMS → S3 → Snowflake，而不是假设 DMS 会直接写 Snowflake。
+
+
+11. **DuckDB 与 PostgreSQL 直连：** [PostgreSQL Extension](https://duckdb.org/docs/current/core_extensions/postgres/overview) — 理解只读附加、直接查询和把选定数据复制到本地 DuckDB 的区别。
+12. **DuckDB 与 Parquet：** [Reading and Writing Parquet Files](https://duckdb.org/docs/current/data/parquet/overview) — 理解列投影、过滤下推和分区数据扫描。
+13. **DuckDB 与 Iceberg：** [Iceberg Extension](https://duckdb.org/docs/current/core_extensions/iceberg/overview)、[Catalogs](https://duckdb.org/docs/current/core_extensions/iceberg/catalogs) 和 [Writing to Iceberg](https://duckdb.org/docs/current/core_extensions/iceberg/writing_to_iceberg) — 注意路径读取与 Catalog 写入的差异以及 UPDATE/DELETE 的限制。
+14. **Openflow 写入 Iceberg：** [PostgreSQL Connector Iceberg destinations](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/iceberg) — 当前为 Preview；重点核查目标表格式版本、serialization policy 和外部引擎兼容性。
+15. **Snowflake 访问外部 Iceberg：** [Access Iceberg data in Snowflake](https://docs.snowflake.com/en/collaboration/open-format-sharing-access-iceberg) 和 [Open Data Sharing](https://docs.snowflake.com/en/collaboration/open-format-sharing) — 适用于明确有多引擎共享需求的项目。
+16. **DuckDB 产品化混合架构：** [MotherDuck + PlanetScale Postgres](https://motherduck.com/blog/motherduck-planetscale-integration/) — 作为厂商实践参考，注意区分开源 DuckDB 嵌入式引擎与托管云端服务。
+17. **PostgreSQL CDC 的高可用：** [PostgreSQL 17+ failover slot support](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/failover) — 核查 writer endpoint、slot 创建时间、standby 配置、至少一次投递和现有连接器升级的影响。
 
 ---
 
@@ -1981,6 +2023,7 @@ Raw Zone 经常被理解成“先放一下，转换完成就删除”，但那�
 7. **Vendor 数据先选共享、外部文件、按需 API 或持久化同步的方式，不默认复制全部数据；先核对合同和历史可重现要求。**
 8. **Oracle 数据按表和 SLA 规划全量与增量，不必整库搬迁；重点验证快照/CDC 衔接、XStream 许可、DELETE/TRUNCATE 和 SQL/PLSQL 逻辑重写。**
 9. **Vendor 文件落在公司私有 S3 后可以由 Snowflake 直接查询，但需配置 Storage Integration、IAM 最小权限、External Table 元数据刷新和批次完整性校验；普通 Parquet/CSV 不会自动成为 Iceberg。**
+10. **DuckDB 只有在本地分析、批处理、质量验证或多引擎共享场景有明确收益时再引入；不要把它自动放在 PostgreSQL 与 Snowflake 之间。需要共享 Iceberg 时先验证 Preview 状态、Catalog、表格式、权限、并发写入和恢复语义。**
 
 最值得避免的三种错误是：把 CDC 事件当成已经还原好的业务表；为了追求“实时”而接受没有业务价值的成本；以及在没有业务对账、历史语义和恢复流程的情况下，直接让 BI 切换到新库。
 
