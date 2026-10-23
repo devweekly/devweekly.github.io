@@ -933,6 +933,7 @@ Deep Agents 的 context management 还有两个值得借鉴的设计。第一，
 | 工作 | 时间与代码状态 | 核心机制 | 能转化为工程工作的内容 | 尚需验证的风险 |
 |---|---|---|---|---|
 | [Context Language Models (CLM)](https://arxiv.org/abs/2609.37725) | 2026-09；[官方仓库](https://github.com/facebookresearch/context-language-models)，包含 harness、ContextBench 与 serving 实验；仓库列有 Pi 适配入口 | 把活动 transcript 镜像为文件，模型用通用代码任意修改，runtime 再同步回真实消息列表 | 把活动上下文定义为可编辑 projection；对 edit 实现 revision、预算、保护区域、diff、回放与恢复 | 误删关键证据、编辑成本、cache 失效、prompt injection 持久化；原仓库采用 CC BY-NC 4.0，商业复用前必须核验许可证，不能直接假设可将代码复制进商业公共库 |
+| [ReFold: Training-Free Reversible Inter-Turn Context Folding](https://arxiv.org/abs/2610.07863) | 2026-10-06；论文公开 HTML 版本 | 不修改原始交互历史，而是在送给模型前的 rendering layer 中折叠重复的文件/工具内容，并把已完成的 agent turn 变成简短标记；按 chunk 进行重渲染，避免每一轮都改写整个前缀 | 非常适合作为 CLM 之前的低风险实验：原始消息保持可回放，活动上下文视图可逆；恢复时直接从原始历史取回，不一定需要再调用摘要模型 | 论文报告最高约 2.5× token 降幅、KV cache 每会话内存减半和减少 forced compaction；均为作者实验结果。必须在目标 Agent、缓存实现与任务基准上复测，且“agent 声称任务完成”不能被当作未经校验的真相 |
 | [ACM: Agentic Context Management for Long Horizon Tasks](https://arxiv.org/abs/2607.23809) | 2026-07；[公开代码与数据](https://github.com/lixiaochuan2020/agentic-context-management) | 给 Agent 提供上下文编辑工具，允许模型主动压缩、外置和按需检索，再通过训练提高这类动作质量 | 把 offload 与 recall 设计为显式操作，保存原始 evidence ID，而不是强迫所有信息压入摘要 | 自主触发可能浪费调用或错过压缩时机；应先用规则触发和 replay 评估，未必需要训练专用模型 |
 | [Context as an Environment / Scroll](https://arxiv.org/abs/2608.21690) | 2026-08；论文提出可执行 session environment | append-only event log + 持久化、沙箱化的 Python kernel；会话数据存在类型化命名空间，模型通过代码选择并 materialize 信息，只有显式输出进入当前工作视图 | 把完整结果存于事件/工件层，以可编程检索产生每轮 context projection；让 eviction index 指向精确事件 ID | 需要严格隔离的代码执行环境、类型/权限治理、资源上限、确定性恢复和操作审计；不能让普通 Agent shell 无约束访问内部工作状态 |
 | [When History Is Multimodal / VERA](https://arxiv.org/abs/2608.29897) | 2026-08；训练免费方案，论文报告不同任务上的非缓存 token 降幅 | 在文本场景将历史渲染为紧凑表示，在多模态场景尽量保留原始视觉证据而不是强制文字化 | 对截图、视频、图表、架构图和 UI 自动化任务，保存原始 image/video artifact、时间戳、裁剪区域与文字描述的关联；摘要不能替代原始像素 | 视觉压缩/渲染可能损失坐标、细节与时间关系；应以实际定位、视觉问答和跨帧追踪任务测量 |
@@ -942,7 +943,7 @@ Deep Agents 的 context management 还有两个值得借鉴的设计。第一，
 | [Persistent Memory in Multi-Agent LLM Inference](https://arxiv.org/abs/2610.07782) | 2026-10-06；受控实证研究 | 比较多 Agent 分解与持久化推理记忆的收益，发现某些独立问题基准上持久记忆没有可检测的准确率增益 | 记忆功能必须做消融实验；确保测试任务真的需要跨回合/跨样本记忆，并正确隔离每个评测条件 | 不应把持久存储或更多记忆本身当成性能优化；不合适的评测设计会夸大收益或把无关记忆变成噪声 |
 | [Memory for Autonomous LLM Agents](https://arxiv.org/abs/2603.07670) | 2026-03；综述 | 按 temporal scope、representation、control policy 对 Agent memory 分类，并覆盖 write/manage/read 与评测 | 用写入筛选、冲突处理、延迟预算、隐私治理和多会话评测约束长期记忆功能 | taxonomy 不能代替特定业务的正确性/成本验证 |
 
-这些工作对工程实践的共同启示是：未来核心竞争力未必是更复杂的摘要 prompt，而是根据任务需要动态调整活动工作集的能力。不同研究切入点不同：CLM/ACM 控制模型是否可以操作工作集；Scroll 控制工作集能否从外部状态按需物化；ContextEvo/AdaCoM 控制采用什么编辑策略；VERA 关注压缩后是否仍保留原始模态证据；记忆综述则将这些操作放进生命周期与成本框架。
+这些工作对工程实践的共同启示是：未来核心竞争力未必是更复杂的摘要 prompt，而是根据任务需要动态调整活动工作集的能力。ReFold 尤其值得作为生产原型的对照组：它先改变“发送给模型的渲染视图”，不改写权威交互账本；删除的是可以从账本恢复的冗余表示，而不是永久删除信息。这比直接开放任意上下文写权限的 CLM 更容易先做成低风险的基线。不同研究切入点不同：CLM/ACM 控制模型是否可以操作工作集；Scroll 控制工作集能否从外部状态按需物化；ContextEvo/AdaCoM 控制采用什么编辑策略；VERA 关注压缩后是否仍保留原始模态证据；记忆综述则将这些操作放进生命周期与成本框架。
 
 应避免三个误读。第一，论文报告更高准确率或更低 token/FLOPs，并不意味着把同名组件加入生产系统就能取得同等收益。第二，外部保存了某条信息不等于 Agent 当前能正确找到并使用它；需要同时测可恢复性和任务成功率。第三，自主上下文管理会引入新的执行权限：读取日志、运行代码、编辑工作集和选择证据都可能改变安全边界，因此必须把策略能力与权限治理分离。
 
@@ -1230,6 +1231,7 @@ CLM 为活动上下文加入模型可控的读写与删除能力；ACON 帮助�
 ### 2026 年上下文管理与 Agent Memory 研究
 
 - Shao et al., [Context Language Models](https://arxiv.org/abs/2609.37725), 2026-09。
+- Su et al., [ReFold: Training-Free Reversible Inter-Turn Context Folding for Long-Horizon Agents](https://arxiv.org/abs/2610.07863), 2026-10-06；训练免费、可逆的渲染层上下文折叠方法。
 - Li et al., [ACM: Agentic Context Management for Long Horizon Tasks](https://arxiv.org/abs/2607.23809), 2026-07；[代码、数据与模型](https://github.com/lixiaochuan2020/agentic-context-management)。
 - Lin et al., [Context as an Environment: Programmatic Context Management for Long-Horizon Agents](https://arxiv.org/abs/2608.21690), 2026-08；提出 Scroll 的 event log、持久化 kernel 和按需 projection。
 - Su et al., [When History Is Multimodal: Rethinking Context Management for Long-Horizon Agents](https://arxiv.org/abs/2608.29897), 2026-08；提出 VERA，强调多模态历史保留原始视觉证据。
