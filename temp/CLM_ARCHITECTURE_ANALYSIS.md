@@ -632,6 +632,519 @@ LongLLMLingua 研究了长上下文输入中信息密度、位置和压缩的影
 
 ---
 
+
+### 8.7 Context management 流派的架构图、流程图与时序图
+
+不同 context management 方案经常被放在同一张“Memory 技术选型表”里，但它们实际控制的是不同层次。有的改变 API 保存的会话状态，有的改变 Agent 每轮实际收到的消息视图，有的把已持久化的大结果卸载到文件，有的管理跨任务记忆，还有的通过外部计算环境按需物化上下文。架构评估应先明确控制对象，再比较压缩率、准确率与实现复杂度。
+
+#### 8.7.1 主要流派地图：分别改变上下文生命周期的哪一层
+
+```mermaid
+flowchart TB
+  subgraph L1["模型服务与 API 管理"]
+    API["Provider-native compaction<br/>Anthropic / OpenAI"]
+  end
+  subgraph L2["Agent harness 管理活动工作集"]
+    OFFLOAD["Offload first + summary<br/>LangChain Deep Agents"]
+    LOG["Append-only ledger + context projection<br/>Pi durable"]
+    REVERSE["Reversible render-time folding<br/>ReFold"]
+  end
+  subgraph L3["模型直接管理活动上下文"]
+    CLM["Editable context projection<br/>CLM / ACM"]
+  end
+  subgraph L4["跨轮次、跨任务的持久记忆"]
+    MEMORY["Memory write / manage / recall<br/>LangMem / Letta / ACE playbook"]
+  end
+  subgraph L5["超长输入的外部计算环境"]
+    ENV["External environment + recursive inspection<br/>RLM / Scroll"]
+  end
+  subgraph L6["上下文策略优化"]
+    POLICY["Learned / evolving context policy<br/>ACON / AdaCoM / ContextEvo"]
+  end
+  INPUT["原始交互、工具结果、业务资料"] --> API
+  INPUT --> OFFLOAD
+  INPUT --> LOG
+  INPUT --> REVERSE
+  INPUT --> CLM
+  INPUT --> MEMORY
+  INPUT --> ENV
+  POLICY -. "为其它层选择和改进策略" .-> API
+  POLICY -. "优化阈值、压缩和保留策略" .-> OFFLOAD
+  POLICY -. "决定检索和活动集的选择方式" .-> CLM
+```
+
+这张图中的流派并不是互斥选项。比如 Deep Agents 可以同时用长期记忆和 RAG；Pi 可以使用 CLM 插件探索模型自主编辑；OpenAI 或 Anthropic 的原生 compaction 也可以与应用侧 artifact store 组合。最重要的分界是：**某机制修改的是权威历史、活动输入投影、长期记忆，还是仅仅影响策略选择。** 这些对象不能混成一个可随意覆盖的字符串。
+
+#### 8.7.2 推荐的生产参考架构：账本、工件、记忆与活动上下文分离
+
+```mermaid
+flowchart TB
+  subgraph AUTH["权威事实与持久化"]
+    LEDGER[("Append-only interaction ledger")]
+    ARTIFACT[("Artifact store<br/>tool outputs / source files / media")]
+    LONGMEM[("Long-term memory store")]
+    APPSTATE[("Application state<br/>approval / task status / versions")]
+  end
+  subgraph PREP["每次模型调用前的 Context Assembly"]
+    REQUEST["新用户输入 + 当前任务状态"]
+    RECALL["Retrieval / recall<br/>带来源、权限和版本"]
+    SELECT["按相关性、时效、优先级和预算选择"]
+    PROJECT["Activity context projection<br/>本次模型实际看到的 messages"]
+    GUARD["Policy and schema gate<br/>protected instructions / ACL / token budget"]
+  end
+  subgraph STRATEGY["可替换的上下文策略"]
+    DET["Deterministic trim / keep-tail"]
+    NATIVE["Provider-native compaction"]
+    OFF["Offload + references + summary"]
+    EDIT["CLM-style edit transaction"]
+    RECURSE["Recursive inspection / external computation"]
+  end
+  MODEL["Provider adapter + model call"]
+  TOOLS["Tool execution / subagents"]
+  OBS[("Context revisions, diffs, usage and trace")]
+  HUMAN["Human review / acceptance"]
+  REQUEST --> SELECT
+  APPSTATE --> SELECT
+  LEDGER --> RECALL
+  ARTIFACT --> RECALL
+  LONGMEM --> RECALL
+  RECALL --> SELECT
+  SELECT --> PROJECT
+  PROJECT --> GUARD
+  GUARD --> STRATEGY
+  DET --> PROJECT
+  NATIVE --> PROJECT
+  OFF --> PROJECT
+  EDIT --> GUARD
+  RECURSE --> RECALL
+  GUARD --> MODEL
+  MODEL --> TOOLS
+  TOOLS --> LEDGER
+  TOOLS --> ARTIFACT
+  TOOLS --> APPSTATE
+  TOOLS --> HUMAN
+  PROJECT --> OBS
+  GUARD --> OBS
+  MODEL --> OBS
+  TOOLS --> OBS
+  OBS -. "replay / evaluate / improve policy" .-> SELECT
+```
+
+这张图不是说一次请求要串行执行所有策略，而是一个有确定次序的策略选择器。推荐先做确定性校验和可恢复的大内容卸载；只有剩余输入仍超预算，才使用摘要或 provider-native compaction；CLM 和递归环境作为针对特定任务的可选分支。正式事实、审批状态和原始工具结果始终由权威存储负责。
+
+#### 8.7.3 流派 A：Provider-native compaction（Anthropic / OpenAI）
+
+这类方案的优势是将部分压缩逻辑下沉到模型 API 或官方 SDK，复用平台对消息结构、token 计量与 continuation state 的处理。应用仍需保存自身的审计账本，因为平台返回的 compaction item 可能是不透明的延续状态，而不是能替代业务记录的可读摘要。
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant U as User
+  participant H as Host Agent
+  participant S as Session / History Store
+  participant P as Provider API
+  participant M as Model
+  U->>H: 新输入与当前任务
+  H->>S: 读取原始历史和最近一次状态
+  S-->>H: 历史项、活动状态、来源引用
+  H->>H: 组装本轮实际输入并计量 tokens
+  alt 未达到压缩阈值
+    H->>P: 正常生成请求
+  else 原生阈值压缩已启用
+    H->>P: 发送请求与 compaction 配置
+    P->>P: 压缩旧历史并生成 continuation item
+    P-->>H: compaction item + 当前响应流
+  else 应用显式触发压缩
+    H->>P: 发送需要压缩的历史
+    P-->>H: canonical compacted context
+    H->>S: 保存 provider continuation 与本地审计关联
+    H->>P: 用压缩后上下文续接下一轮
+  end
+  P->>M: 实际模型推理
+  M-->>P: assistant response / tool calls
+  P-->>H: response items 与 usage
+  H->>S: 追加用户可读历史、工具结果与关联 ID
+```
+
+**实际实施差异：** Anthropic 的 on-demand compaction、threshold compaction 和 keep-tail compaction 有不同的控制点和消息续接规则；OpenAI 的服务端阈值压缩与独立 compact endpoint 也不能混成一种模式。设计 adapter 时应把这些差异显式建模为 capability，而不是只用一个支持压缩的布尔值。独立 compact endpoint 返回的内容应按官方契约整体续接，不要擅自删除其中项目；对 opaque compaction item 则保存稳定的请求/响应关联，而不要尝试把它解析成业务摘要。
+
+#### 8.7.4 流派 B：Offload first，最后才 summary（LangChain Deep Agents）
+
+该流派把文件系统视为上下文扩容层。它先移除已安全持久化且可重新读取的冗余，再考虑摘要，减少巨大 tool output 在多轮中重复发送。
+
+```mermaid
+flowchart TD
+  START["Tool input / result arrives"] --> SIZE{"超过 offload 阈值？"}
+  SIZE -- "是" --> SAVE["写入受控 filesystem / artifact store"]
+  SIZE -- "否" --> KEEP["按原内容进入 history"]
+  SAVE --> VERIFIED{"持久化成功且引用可读？"}
+  VERIFIED -- "否" --> FAIL["保留原内容或使本轮失败<br/>禁止静默丢弃"]
+  VERIFIED -- "是" --> POINTER["替换为 artifact path + preview + hash"]
+  KEEP --> PRESSURE{"活动上下文接近 soft threshold？"}
+  POINTER --> PRESSURE
+  PRESSURE -- "否" --> NEXT["继续 Agent loop"]
+  PRESSURE -- "是" --> OLD{"是否有可卸载的旧 file-write/edit 参数？"}
+  OLD -- "是" --> TRIM["旧冗余 payload 替换为稳定引用"]
+  OLD -- "否" --> SUMMARY["将更早历史写入原始归档并生成结构化 summary"]
+  TRIM --> CHECK{"上下文低于目标预算？"}
+  CHECK -- "是" --> NEXT
+  CHECK -- "否" --> SUMMARY
+  SUMMARY --> KEEP_TAIL["保留近期消息与合法 tool-call/result 边界"]
+  KEEP_TAIL --> NEXT
+  NEXT --> NEED{"是否需要被卸载的精确内容？"}
+  NEED -- "是" --> READ["通过 file read / grep / search 召回片段"]
+  NEED -- "否" --> DONE["继续当前任务"]
+  READ --> DONE
+```
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant A as Deep Agent
+  participant FS as Filesystem Backend
+  participant MW as Context Middleware
+  participant LLM as Model
+  A->>MW: 大型 tool result 或 file write/edit 参数
+  MW->>MW: 估算 token size 并检查 offload 条件
+  alt 超过阈值
+    MW->>FS: 持久化完整 payload
+    FS-->>MW: path + content hash
+    MW->>MW: 确认写入后才生成指针和预览
+  else 未超过阈值
+    MW->>MW: 保留原消息内容
+  end
+  MW->>LLM: 发送当前活动上下文
+  LLM-->>A: 下一步推理或读取请求
+  opt 后续需要被卸载的精确细节
+    A->>FS: 按 path / keyword / range 读取
+    FS-->>A: 原始内容片段和来源定位
+    A->>MW: 将最小必要证据加入活动上下文
+  end
+  opt offload 无法释放足够上下文
+    MW->>FS: 归档完整原始历史
+    MW->>MW: 生成 summary + recent messages
+    MW->>LLM: 用新的活动视图继续执行
+  end
+```
+
+关键不在固定的 20k/85% 数字，而在操作顺序：**先消除可恢复的重复表示，再做有损摘要。** 阈值需要按模型窗口、工具输出分布和输出预留量校准；持久化失败、引用失效或 ACL 校验不通过时，不能先删掉原内容再补救。
+
+#### 8.7.5 流派 C：不可变交互账本 + 可版本化上下文投影（Pi durable / ReFold）
+
+Pi durable 的 compaction 通过新增压缩 entry 改变模型看到的历史投影，原始 entries 仍可查询；ReFold 则研究在渲染给模型之前对冗余历史做可逆折叠。二者共享“活动视图不等于原始历史”的设计原则，但不是同一种实现：前者显式持久化 compaction entry 和保留边界，后者强调 rendering layer 中的可逆折叠。
+
+```mermaid
+flowchart TB
+  subgraph LOG["不可变来源层"]
+    EVENTS[("Append-only entries / interaction log")]
+    FILES[("Artifacts and cumulative file-operation ledger")]
+  end
+  subgraph RENDER["上下文投影构建"]
+    BOUNDARY["Select stable cut point / revision"]
+    COMPACT["Optional summary entry<br/>points to first kept entry"]
+    FOLD["Optional reversible render folding<br/>deduplicate prior file content / completed turns"]
+    VIEW["Rendered model context<br/>summary or folded stubs + kept tail"]
+  end
+  subgraph RUN["Run-time control"]
+    MODEL["Model / tool loop"]
+    CHECK["Usage, stale-cut and overflow checks"]
+    RESTORE["Recall or restore original ranges"]
+  end
+  EVENTS --> BOUNDARY
+  FILES --> BOUNDARY
+  BOUNDARY --> COMPACT
+  BOUNDARY --> FOLD
+  COMPACT --> VIEW
+  FOLD --> VIEW
+  VIEW --> MODEL
+  MODEL --> CHECK
+  CHECK -->|"context still valid"| VIEW
+  CHECK -->|"needed detail missing"| RESTORE
+  RESTORE --> EVENTS
+  RESTORE --> FILES
+  RESTORE --> VIEW
+```
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant U as User / Tool Loop
+  participant H as Durable Harness
+  participant DB as Persistent Entry Store
+  participant C as Compaction Worker
+  participant M as Summary Model
+  participant P as Context Projection
+  U->>H: 提交输入或工具结果
+  H->>DB: 追加不可变 entry 并提交
+  H->>P: 读取当前 projection 和 token 使用量
+  alt 低于 soft threshold
+    P-->>H: 原有上下文视图
+  else 达到后台压缩阈值
+    H->>C: 创建持久化 compaction task + checkpoint
+    C->>DB: 读取待压缩区间、稳定 cut point 与文件记录
+    C->>M: 生成结构化 checkpoint summary
+    M-->>C: summary + 关键路径和未完成任务
+    C->>DB: 追加 compaction entry，不删除旧 entries
+    DB-->>C: committed entry ID / first-kept boundary
+    C->>P: 重建 summary + 保留区间的 projection
+    P->>P: 检查新输入是否导致 cut point stale
+    alt revision 仍有效
+      P-->>H: 新上下文投影
+    else 压缩结果已过期
+      P-->>H: stale；丢弃投影更新并重试或重新选边界
+    end
+  end
+  H-->>U: 继续运行，并记录压缩状态与成本
+```
+
+该架构有三个比摘要文案更重要的性质。第一，原始 entries 不因为压缩而销毁；第二，压缩边界与摘要一并持久化，才能从确定的边界重建 projection；第三，压缩是一个可失败、可取消、可恢复且有成本的任务，不能只是对历史数组做一次不可追踪的覆盖。ReFold 还提醒我们：渲染层的可逆折叠可以作为独立策略，与语义摘要并存，而不必每次都调用额外 LLM。
+
+#### 8.7.6 流派 D：模型自主编辑活动上下文（CLM / ACM）
+
+CLM 的核心不是让模型写一份外部笔记，而是把本次模型将要看到的活动上下文投影为可编辑对象，然后由 runtime 将经过校验的编辑结果同步回真实消息列表。模型获得的写权限必须局限于临时 context projection；不能因为使用 shell 或 Python 编辑文本，就隐含授予修改宿主工作区和业务事实源的权限。
+
+```mermaid
+flowchart TB
+  INPUT["Current actual messages + revision"] --> PROJECT["Render editable projection"]
+  PROTECTED["Trusted system/developer policy"] --> PIN["Protected region / host-owned metadata"]
+  PROJECT --> SANDBOX["Sandboxed edit environment"]
+  PIN --> SANDBOX
+  SANDBOX --> MODEL["Model chooses code edits<br/>retain / rewrite / offload / retrieve"]
+  MODEL --> CANDIDATE["Edited candidate projection"]
+  CANDIDATE --> PARSE["Parse back into typed message candidate"]
+  PARSE --> SCHEMA{"Schema and tool pairing valid?"}
+  SCHEMA -- "否" --> REJECT["Reject + audit reason"]
+  SCHEMA -- "是" --> SECURITY["Restore protected regions<br/>check source ACL and time boundary"]
+  SECURITY --> BUDGET{"Budget / edit gate accepts?"}
+  BUDGET -- "否" --> REJECT
+  BUDGET -- "是" --> CAS{"Base revision still current?"}
+  CAS -- "否" --> CONFLICT["Reject stale edit; reload latest context"]
+  CAS -- "是" --> COMMIT["Atomically commit new context revision"]
+  COMMIT --> NEXT["Next real model request uses new messages"]
+  REJECT --> OLD["Keep previous valid revision"]
+  CONFLICT --> PROJECT
+  OLD --> NEXT
+  COMMIT --> TRACE[("Diff + tokens + cost + gate audit")]
+  REJECT --> TRACE
+```
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant H as Host / Agent Loop
+  participant E as Context Runtime
+  participant S as Edit Sandbox
+  participant L as Language Model
+  participant G as Edit Gate
+  participant R as Revision Store
+  participant P as Provider Adapter
+  H->>E: prepareContext(runId, revision)
+  E->>R: 读取实际 messages 与权威保护区
+  R-->>E: messages + base revision
+  E->>S: 写入仅供本次 run 使用的 editable projection
+  S-->>L: 可读写 context file 和授权的 artifact refs
+  L->>S: 执行代码编辑活动上下文
+  S-->>E: candidate file + exit status
+  E->>E: parse candidate，并恢复不可编辑的 provider metadata
+  E->>G: 校验 schema、tool pairing、来源、ACL、token budget
+  alt 校验失败或 edit gate 拒绝
+    G-->>E: reject(reason)
+    E->>R: 保留旧 revision，写审计事件
+    E-->>H: edit rejected；继续旧的有效上下文或重新规划
+  else 校验通过
+    G-->>E: accepted(candidate)
+    E->>R: compare-and-swap(baseRevision, candidate)
+    alt revision 未变化
+      R-->>E: 新 revision ID
+      E->>P: 安装新活动 messages
+      P-->>H: next request input ready
+    else revision 已被其它输入更新
+      R-->>E: conflict
+      E-->>H: 拒绝过期 edit，重新读取当前上下文
+    end
+  end
+  E->>R: 保存 old/new hash、diff、gate、token delta 和成本
+  H->>P: 仅使用已提交的新 revision 发出下一次模型请求
+```
+
+CLM 最容易被低估的不是 parse 文件，而是消息语义和事务边界。模型不能在活动投影中伪造工具调用 ID、工具返回、developer/system 指令、拒绝标记或多模态引用；外部 evidence ID 不能被摘要成无法回查的“某资料显示”；并发到达的新用户输入不能被基于旧 revision 的编辑覆盖。`fit`（只需满足预算）与 `shrink`（还必须缩小上下文）是不同的 gate，后者可防止模型为轻微改写付出额外成本。运行时必须保留旧 revision，异常时回滚，而不是直接覆盖原始会话。
+
+#### 8.7.7 流派 E：长期记忆与策略经验（LangMem / Letta / ACE）
+
+长期记忆管理的是跨轮次或跨任务可复用的信息，而不是当下真实消息列表。任何交互都可以作为候选记忆，却不应该自动升级为长期事实；记忆召回也应经过权限、时效和作用域判断。
+
+```mermaid
+flowchart TB
+  subgraph WRITE["Write / manage path"]
+    INTERACTION["New interaction, result or feedback"]
+    EXTRACT["Extract candidate facts / episodes / procedures"]
+    FILTER["Scope, source, privacy and confidence gate"]
+    CONFLICT{"Does it conflict with existing memory?"}
+    MERGE["Versioned update / merge / consolidation"]
+    NEW["New memory item with provenance"]
+    STORE[("Semantic / episodic / procedural memory")]
+    INTERACTION --> EXTRACT --> FILTER --> CONFLICT
+    CONFLICT -- "是" --> MERGE --> STORE
+    CONFLICT -- "否" --> NEW --> STORE
+  end
+  subgraph READ["Read / recall path"]
+    QUERY["Current task and allowed scope"]
+    SEARCH["Keyword / vector / graph / temporal retrieval"]
+    RANK["Rank by relevance, freshness, confidence and provenance"]
+    VALIDATE["Revalidate permission, time boundary and conflicts"]
+    INJECT["Inject minimal useful facts or pointers"]
+    QUERY --> SEARCH --> RANK --> VALIDATE --> INJECT
+    STORE --> SEARCH
+  end
+  INJECT --> WORK["Activity context for this model call"]
+  WORK --> FEEDBACK["Task outcome and user corrections"]
+  FEEDBACK --> EXTRACT
+```
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant A as Agent / Application
+  participant W as Memory Writer
+  participant G as Memory Governance
+  participant DB as Long-term Memory Store
+  participant R as Retriever
+  participant C as Context Assembler
+  A->>W: 交互结果、人工纠正或已验证经验
+  W->>W: 抽取 candidate memory / episode / procedure
+  W->>G: 附上 source、scope、confidence、sensitivity
+  G->>DB: 查询可能冲突或重复的记忆
+  DB-->>G: existing records + versions
+  G->>G: 合并冲突、判断覆盖/版本化/拒绝
+  G->>DB: 写入已批准的版本或 audit decision
+  A->>R: 当前任务的记忆查询
+  R->>DB: 按 scope / time / relevance 检索
+  DB-->>R: 候选记忆和来源
+  R->>G: 校验访问范围、有效期和来源
+  G-->>R: 可用候选集
+  R->>C: 少量证据、历史样例和稳定规则
+  C->>A: 当前活动上下文 projection
+```
+
+ACE 的 generation/reflection/curation 可视为“从轨迹形成、审视并整理可复用 playbook”的策略演化路径；LangMem 和 Letta 则提供各自的长期记忆组织与写入/读取机制。它们可以改进未来任务的 context assembly，但不应替代权威执行状态、已采纳的业务产物或当前运行的 revision。常见反模式是把每轮摘要都写成长期记忆，最终产生重复、冲突、过时甚至跨项目泄漏的事实。
+
+#### 8.7.8 流派 F：外部环境与递归检视（RLM / Scroll）
+
+当输入远大于可用模型窗口时，目标不应是强迫模型压缩整份资料，而是将资料留在可检索、可编程访问的环境中，再让模型递归检查对当前问题必要的片段。RLM 着重于把长输入当作环境，通过代码分解和递归调用模型；Scroll 强调将会话放在持久化 event log / 类型化环境中，以显式查询生成下一次模型可见的上下文视图。
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant U as User
+  participant H as Host Harness
+  participant E as External Context Environment
+  participant K as Sandboxed Code / Query Runtime
+  participant M as Root Model
+  participant C as Child Model Calls
+  U->>H: 提交超长文档 / 仓库 / 历史
+  H->>E: 保存原始输入、稳定 ID、来源与权限
+  E-->>H: object IDs / index / namespace
+  H->>M: 发送任务、索引摘要、可用 query tools
+  M->>K: 查询、切片、过滤或拆分相关范围
+  K->>E: 读取指定片段 / 执行受限查询
+  E-->>K: 精确片段及 source locations
+  opt 子任务可独立并行或需要局部推理
+    K->>C: 对相关片段递归调用模型
+    C-->>K: 片段结论、引用和不确定性
+  end
+  K-->>M: 聚合的证据集与来源 ID
+  M->>H: 请求补充、交叉验证或最终综合
+  H->>E: 按需再次取回原始证据
+  E-->>H: 可回查资料片段
+  H->>M: 只注入下一步需要的片段
+  M-->>U: 综合结果 + 可追溯证据
+```
+
+该流派应把“资料存在于外部”与“资料已经被模型读过并能准确使用”区分开。安全实现需要租户/Run 级 namespace、只读默认权限、查询结果大小上限、递归深度/调用费用上限、确定性的 source ID，以及对代码执行的 CPU/内存/网络约束。返回答案必须带证据引用，不能只把多次子调用的结论拼接成无法核查的摘要。
+
+#### 8.7.9 流派 G：学习或演化上下文策略（ACON / ACM / AdaCoM / ContextEvo）
+
+这类方案优化的是“在何时、以什么策略改变上下文”，未必把活动上下文本身直接交给主 Agent 自由改写。ACON 从压缩后的任务失败分析哪些关键信息丢失并迭代压缩规则；ACM / AdaCoM 探索让外部 context manager 决定编辑或压缩；ContextEvo 等工作尝试从真实执行轨迹中定位上下文管理错误并调整策略。ACE 的 playbook 也能为任务类型沉淀有效操作规则。
+
+```mermaid
+flowchart TD
+  BASE["固定 Agent + baseline context policy"] --> RUNS["运行标准任务集并记录实际输入、动作和结果"]
+  RUNS --> TRACE[("Trajectory corpus<br/>context revisions + outcomes")]
+  TRACE --> ATTRIB["Failure attribution<br/>遗漏约束 / 旧证据 / 过度保留 / 召回失败"]
+  ATTRIB --> CANDIDATE["候选 policy update<br/>阈值 / keep-tail / offload / retrieval / summary schema"]
+  CANDIDATE --> OFFLINE["离线回放与 A/B evaluator"]
+  OFFLINE --> GATE{"成功率、事实保留、安全、总成本均过门槛？"}
+  GATE -- "否" --> REJECT["拒绝策略版本并保留 baseline"]
+  GATE -- "是" --> CANARY["Shadow / canary rollout"]
+  CANARY --> MONITOR["监测任务结果、延迟、tokens、cache 和违规"]
+  MONITOR --> REG{"线上指标稳定？"}
+  REG -- "否" --> ROLLBACK["回滚到上一 policy version"]
+  REG -- "是" --> RELEASE["发布新 policy version"]
+  RELEASE --> RUNS
+  REJECT --> RUNS
+  ROLLBACK --> RUNS
+```
+
+落地时先把论文方法转成可解释的离线反馈闭环，不必一开始就训练新的管理模型。每次策略变更必须带版本、基准结果、失败案例和回滚点；不能让 Agent 在生产流量中无限自修改 prompt、阈值或权限。数据集应覆盖长文档、工具密集、精确约束、错误纠正和不同 token 预算，防止策略只优化平均 token 数却破坏低频关键事实。
+
+#### 8.7.10 面向 common-agent-lib 的统一时序：先准备、再校验、再提交
+
+下面的时序图是建议的公共控制流程，不是假定每个 provider 都能实现所有步骤。Adapter 应上报真实能力；不支持 `replaceNextInput` 的 runtime 仍可以使用原生 compaction、历史过滤或 offload，但不能把它标成 CLM。
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant APP as Host Application
+  participant A as Context Input Adapter
+  participant S as Artifact / Ledger Store
+  participant R as Retrieval and Memory
+  participant P as Context Policy
+  participant G as Security / Budget Gate
+  participant H as Agent Loop
+  participant L as LLM Provider
+  APP->>H: 新输入、task state、scope
+  H->>S: 追加输入和 run event
+  H->>A: readNextInput()
+  A-->>H: actual input + base revision + capabilities
+  H->>R: retrieve authorized evidence and memory
+  R->>S: 读取 artifacts / history references
+  S-->>R: 精确内容、版本、ACL 和来源
+  R-->>P: candidates with provenance
+  P->>P: 选择 none / trim / offload / summary / native compaction / CLM
+  P-->>G: candidate messages + decisions + estimated tokens
+  G->>G: protected instruction、ACL、schema、tool pairing、budget、revision 检查
+  alt 不通过校验
+    G-->>H: reject reason + fallback policy
+    H->>P: 选择更保守策略或安全终止
+  else 通过校验
+    G-->>A: compare-and-swap candidate revision
+    A->>S: 持久化新 revision、diff 和 decision events
+    S-->>A: committed revision ID
+    A-->>H: prepared actual model input
+    H->>L: 发送已提交的真实 messages
+    L-->>H: response / tool calls / usage
+    H->>S: 追加输出、工具结果与成本事件
+  end
+```
+
+在这个统一控制流中，Context Policy 负责选择策略，而不是直接突破宿主权限；Context Input Adapter 负责与真实 Agent loop 对接；Artifact / Ledger Store 保存可回查材料；Security / Budget Gate 是强制准入层。每次请求都应通过 revision 和 trace 回答“模型实际看到了什么、为何保留或删除这些信息，以及失败时怎样恢复”。对只接受服务端 Session continuation 的 SDK，应让对应 adapter 报告它能提供的能力，而不是强制模拟一份无法真实应用的 messages 数组。
+
+#### 8.7.11 用架构图推导工程选型
+
+| 需求或故障信号 | 优先采用的流派 | 选择原因 | 什么时候升级 |
+|---|---|---|---|
+| 平台原生支持 compaction，先要稳定控制成本 | Provider-native compaction | 接入成本低，模型 API 负责平台特定 continuation 语义 | 需要保留严格可审计的原始历史或控制细粒度保留策略时，加应用侧账本和 keep-tail |
+| 文件/工具输出很大，大部分细节偶尔才需复查 | Offload first + artifact references | 不让已保存的文件内容每一轮都重复占 tokens | 若召回困难，再加入 source indexing、稳定分段 ID 和召回评测 |
+| 任务跨越很长时间，要求中断/恢复和查看原始输入 | Append-only ledger + versioned projection | 历史、任务进度、活动视图分别管理，支持确定性恢复 | 若固定策略无法兼顾关键事实和成本，再试 CLM 或 learned policy |
+| 需要对当前消息做局部保留/重写且 runtime 可控 | CLM / ACM | 模型能按任务需要进行非固定的上下文编辑 | 先具备真实 message replacement、沙箱、CAS、预算 gate 和安全回放 |
+| 输入极长且只有一小部分与问题相关 | External environment + recursive inspection | 原始输入不必进入单次窗口，可以递归检视片段 | 子调用过多或结果失去一致性时，增加查询规划、预算上限、证据合并和终止条件 |
+| 希望系统从历史失败中持续改进 | ACON / ContextEvo / ACE 风格的策略更新 | 将失败归因转化为策略版本和回归用例 | 离线回归稳定、canary 成功且支持回滚后才允许自动推广 |
+| 上下文中充满已完成的文件内容和重复轮次 | ReFold / 可逆 render folding | 先折叠活动视图但保留完整原始账本，避免过早做有损摘要 | 需要跨更长历史语义归纳时，再组合结构化 summary |
+
+推荐的落地次序是：先用“账本不丢、活动视图可重建、原始大内容可召回”建立底座，再采用 provider-native compaction 与 offload-first 解决大多数常见压力；只有在明确任务集上证明额外收益后，才启用 CLM 或策略自演化。这样既保留各流派的长处，也避免把单一论文方案变成整个 Agent 框架的强制依赖。
+
+---
+
 ## 9. 面向生产系统的 Context Management 参考架构
 
 建议把 context management 看作一条信息生命周期，而不是一段 prompt 或单个 Memory API。每条信息至少需要可回答：它来自哪里、属于哪个工作范围、能否用于当前任务、是否仍然有效、是否要进入当前计算、如果暂时移出窗口如何恢复。
