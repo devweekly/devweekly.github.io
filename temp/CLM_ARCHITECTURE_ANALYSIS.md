@@ -770,7 +770,407 @@ common-agent-lib 可以统一技术层的编辑准入，但不能替代宿主的
 
 ---
 
-## 11. 结论：把 CLM 放在上下文生命周期体系中，而不是把它变成新的 Memory 单体
+
+## 11. 厂商与框架的最新实现路线：从 API 原生压缩到可恢复的上下文工作集
+
+本节以 2026-10-24 可查到的官方文档、开源实现和论文为准。需要区分三种成熟度：厂商 API 中可直接调用的能力；开源 Agent harness 中已有源代码和测试的机制；以及仍主要存在于论文或研究性代码中的新范式。三者都值得参考，但上线风险与证据强度不同。
+
+### 11.1 Anthropic / Claude：服务端 compaction、选择性清理与保留原始尾部
+
+Anthropic 的 Messages API 已把 context management 做成 API 层能力，而不再完全依赖应用自行实现“拼接全部历史—超限—调用摘要模型—替换 messages”的循环。官方文档推荐长时间运行的 Agent 优先采用服务端 compaction；需要更细的控制时，再组合 context editing。参考 [Compaction](https://platform.claude.com/docs/en/build-with-claude/compaction)、[Compaction threshold](https://platform.claude.com/docs/en/build-with-claude/compaction-threshold) 和 [Context editing](https://platform.claude.com/docs/en/build-with-claude/context-editing)。
+
+| 能力 | 实际行为 | 适合的问题 | 生产注意事项 |
+|---|---|---|---|
+| 服务端压缩（`compact_20260112`） | 达到 input-token 阈值时生成 compaction block；后续请求继续携带压缩后的状态，而不是不断发送整个旧历史 | 长对话、多轮工具调用、研究/编码任务 | 压缩块不是完整、可读的原始 transcript；需要审计时仍应保存应用侧原始记录 |
+| 自定义 compaction 指令 | 可指定保留重点；自定义 `instructions` 会替换默认摘要指令，而非简单追加 | 保留文件路径、术语、待办、精确决策、未完成步骤 | 必须明确要求摘要保留目标、已验证结论、未完成步骤、约束和证据回查线索 |
+| `clear_tool_uses_20250919` | 选择性清理较旧工具调用结果 | 搜索、读取文件、调用 API 导致工具输出快速膨胀 | 只有在旧输出可以重新读取或不再影响后续决策时才清除；工具调用与对应结果必须保持合法消息序列 |
+| `clear_thinking_20251015` | 选择性清理旧 thinking block | 连续推理/工具调用造成额外输入占用 | 不应把 thinking 当作权威业务状态；任务状态、结论、证据和下一步必须另有显式记录 |
+| Keep-tail compaction（`compact-2026-09-04`） | 应用选取 cut point：压缩较早历史，最近若干轮原样保留 | 最近一次用户指令、代码 patch、工具调用参数或人工决定不适合再摘要的任务 | cut point 不能切断一组尚未闭合的 tool call/result；保留尾部越长，释放空间越少 |
+
+对 Python / TypeScript SDK 集成，首选沿用 Messages API 返回的 compaction block 与官方规定的消息续接流程，不要自行把 block 转成普通字符串，也不要在没有理解 API 契约前删除返回内容。若需要精确保留近期轮次，先通过合法的消息边界确定 cut point；测试应覆盖 tool-use block、tool result、多模态内容以及压缩后的下一次工具调用。官方说明特别指出，服务端 compaction 比旧的 SDK 自行摘要更容易正确处理 token 计量；TypeScript/Ruby 的旧 `compaction_control` 方式已弃用，Python SDK 也已移除旧参数。
+
+Claude Code 的趋势不止是 compaction，而是把不同类型的上下文分层：根目录或祖先目录的 `CLAUDE.md` 适合放长期有效的项目约束；Skills 按需加载详细流程；rules、hooks、subagents 和引用文档负责不同的使用时机与权限边界；自动记忆负责跨会话积累可复用信息。Anthropic 在 2026 年的工程文章中强调渐进披露、用工具接口和结构化 schema 承担约束、避免将过多规定预先塞进系统提示词，以及使用更丰富的参考文档。参考 [The new rules of context engineering](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models) 和 [Steering Claude Code](https://claude.com/resources/articles/steering-claude-code-skills-hooks-rules-subagents-and-more)。
+
+可落地的目录组织建议：
+
+- `CLAUDE.md`：只放必须每次都生效、较短且稳定的项目规则和入口索引，不复制完整架构文档。
+- rules 目录：按路径或任务范围注入规则，避免无关内容长期驻留。
+- `skills/<name>/SKILL.md`：描述何时使用某能力；详细规范、参考资料和脚本放在同一 Skill 目录，按需读取。
+- 独立进度文件或应用数据库：记录当前目标、已完成/未完成工作、验证结果、阻塞项、关键文件与下一步；不要只依赖 compaction 后的自然语言摘要。
+- Hooks / 服务端 gate：校验高风险命令、文件范围、权限和重要副作用，不把这些限制只写在 prompt 中。
+
+**工程判断：** 使用 Claude API 的应用应先评估原生 compaction + 选择性工具结果清理；只有在原生机制无法表达的任意局部编辑、业务特有保留策略或跨 provider 可观测性要求下，才考虑自建活动上下文管理。Claude Code 的 `CLAUDE.md` / Skills / hooks 是提示材料和工作流治理，不等同于可替换底层完整消息列表的 CLM runtime。
+
+### 11.2 OpenAI：Responses API 服务端 compaction + Agents SDK 的 Session 输入视图
+
+OpenAI 有两个应分清的层次：Responses API 管理模型调用中的 compaction item；Agents SDK 管理 Session 历史、下一次运行时输入的合并方式，以及何时触发压缩。官方文档：[Compaction](https://developers.openai.com/api/docs/guides/compaction)、[Agents SDK Sessions](https://openai.github.io/openai-agents-python/sessions/)。
+
+**Responses API 的两条路线：**
+
+1. **服务端自动压缩。** 在 `responses.create` 中通过 `context_management` 设置 `compact_threshold`。当渲染后的 token 数超过阈值，服务端执行压缩，并在响应流中发出 compaction item。该 item 是用于延续状态的 opaque/encrypted 表示，不是供用户阅读的普通摘要。若使用 input-array chaining，应将响应项目按官方流程续接；若使用 `previous_response_id`，则按该模式传入新用户输入，不要同时手工裁剪旧历史。
+2. **独立 `/responses/compact`。** 应用将当前完整、尚未超出模型窗口的上下文提交给压缩端点，并将返回的压缩窗口作为下一次请求的规范输入。官方文档明确要求，不要再自行裁剪独立端点的返回结果，因为其中可能同时包含 compaction item 与仍需原样保留的项目。
+
+服务端压缩请求的大致结构如下；实际 model、阈值和保留策略应根据模型窗口及输出预留量配置：
+
+```python
+response = client.responses.create(
+    model=MODEL_ID,
+    input=input_items,
+    context_management={"compact_threshold": TOKEN_THRESHOLD},
+)
+```
+
+这里的 `TOKEN_THRESHOLD` 是应用配置，不是跨模型通用常量。阈值应为最大输出、工具返回和下一轮续接留出空间。采用服务端 compaction 可以减少应用侧自建压缩控制器，但应用仍需要持久化业务事实、审批状态、工具副作用和可审计的原始轨迹。
+
+**Agents SDK 的 Session 机制更接近应用层 context management：**
+
+- `SQLiteSession` / `AsyncSQLiteSession` 等 Session 保存会话项；Session 持久化与“这次调用向模型发送什么”并不是同一件事。
+- `RunConfig.session_input_callback(history, new_input)` 可以在模型调用前过滤、排序或选择旧历史，再与当前输入合并。这个回调控制本次模型输入，但 SDK 仍只把当前新输入持久化为新项目，不会因为裁剪了旧历史就把它重复记成新的用户输入。
+- `SessionSettings(limit=N)` 可以限制每次读取的最近历史项；`call_model_input_filter` 可用作更靠近实际模型调用的最后一层过滤。
+- `OpenAIResponsesCompactionSession` 把底层 Session 与 Responses compaction 组合起来，支持按阈值在回合后自动压缩，也允许手动触发。如果自动压缩在 run 结束前同步执行，流式调用即使已经产生最终输出，也可能继续等待压缩；对严格的时延要求，可以在回合之间或空闲时段安排压缩。
+
+简化的组合模式：
+
+```python
+underlying_session = SQLiteSession(session_id)
+session = OpenAIResponsesCompactionSession(
+    session_id=session_id,
+    underlying_session=underlying_session,
+)
+result = await Runner.run(agent, user_input, session=session)
+```
+
+生产中应把三类状态分别管理：应用侧的原始交互/操作审计记录、SDK 的 session items、Responses API 返回的 compaction continuation。它们可能具有不同的可读性、保留策略和恢复语义。还要明确 `store=False`、响应链可用性与 input-based compaction 的差异；不能假定所有运行都能通过上一个 response ID 恢复压缩。
+
+**工程判断：** OpenAI API 原生 compaction 是最容易快速上线的基线；Agents SDK 的输入回调适合做可控裁剪、重排和历史限量。当需求升级到 CLM 时，要进一步验证所选 Agent loop 是否能读写下一次真实请求中的全部内容，而不是误把 Session 输入过滤能力当成任意消息编辑能力。
+
+### 11.3 LangChain / LangGraph / Deep Agents：先卸载重复内容，之后才摘要
+
+LangChain 的 Deep Agents 把上下文管理作为 Agent harness 的一部分，而不是仅提供一个 `summarize_messages()` 函数。官方在 2026 年的实现说明中描述了三种不同频率的策略：大型工具结果产生时立即卸载；上下文越过阈值后卸载旧的文件写入/编辑参数；只有卸载不足以释放空间时才压缩旧会话。参见 [Context Management for Deep Agents](https://www.langchain.com/blog/context-management-for-deepagents)、[Deep Agents overview](https://docs.langchain.com/oss/python/deepagents)、[summarization middleware source](https://github.com/langchain-ai/deepagents/blob/main/libs/deepagents/deepagents/middleware/summarization.py)。
+
+| 机制 | 官方文章描述的默认行为 | 为什么有用 | 需要自行验证的边界 |
+|---|---|---|---|
+| 大工具结果卸载 | 单次工具响应超过约 20,000 tokens 时，将完整结果写到文件系统；对话中保留文件路径和开头预览 | 大文件、搜索结果、API payload 不会永久占据所有后续轮次的窗口 | 这个值依赖版本和配置，不应把 20k 当作所有任务的最佳阈值；路径必须稳定、权限受控且可重读 |
+| 旧文件写入/编辑参数卸载 | 上下文越过模型窗口约 85% 时，对旧的 write/edit 调用参数做截断/指针替换，因为完整文件已经在文件系统 | 防止“文件已保存，完整文件内容却仍在每轮历史里重复出现” | 只有已成功持久化、可按路径读取的内容才能替换；失败或未确认的写操作不可被当成已保存 |
+| 对话摘要 | 已无足够可卸载内容且达到压缩条件后触发 | 摘要保留目标、产物、进度和下一步 | 要测试目标漂移与被摘要掉的关键事实是否可恢复 |
+| 原始历史文件 | 摘要时将完整原始消息写入文件系统，工作上下文只保留结构化摘要 | 压缩并不等于销毁历史，可通过文件检索恢复特定细节 | 需要明确文件生命周期、线程隔离、数据保留/删除和文件权限 |
+
+Deep Agents 的 context management 还有两个值得借鉴的设计。第一，Skills 渐进披露：先给模型一个小的 Skill 入口，再按任务需要加载说明、参考资料和脚本；长期记忆通常来自 `AGENTS.md` 等文件，而不是把所有领域说明直接塞到系统提示词。第二，文件系统是基础抽象，skills、memory、代码执行、上下文卸载和自定义工具可以共享一套受权限控制的虚拟文件系统；子 Agent 可以拿更窄的工具和文件权限，且只把其结果摘要/产物回传给父 Agent，以隔离子任务产生的大量细节。
+
+部署时一定要检查所选 Deep Agents 版本的实际默认 middleware。项目在 0.7.0 的变更中简化了默认 system prompt，并将 TODO planning middleware 改为按需添加；若业务确实依赖显式任务清单，必须在主 Agent 和需要它的子 Agent 上明确配置，而不是假设框架永远默认提供。自动与按需压缩也可以结合，但应避免多个 middleware 对同一历史重复摘要。
+
+实用配置顺序：
+
+1. 为每次运行明确选择 backend：图线程内的 `StateBackend` 适合随 checkpoint 恢复的临时文件；需要跨线程/重启持久化时，应显式配置持久化文件系统或 store，不能假定 state backend 自动等同于跨会话磁盘。
+2. 启用文件工具，但用路径权限限制读写范围，保护 `.env`、凭据、原始输入与正式产物；子 Agent 仅授予子任务需要的目录。
+3. 先测量实际 tool-output 分布，再配置 offload 与 summarization 触发点。保留原始 payload 的 source key、hash 和文件地址。
+4. 给摘要增加可测试的字段：任务目标、不可变约束、已完成工作、当前工作、阻塞、重要决定、产物路径、未解决问题、下一步以及原始证据引用。
+5. 做两类评测：频繁强制触发压缩以放大信号的机制测试；以及真实任务/真实配置下的端到端测试。
+
+**工程判断：** Deep Agents 是“文件卸载 + 工作集摘要 + 按需召回”的成熟实现参考，特别适合长时间 coding/research Agent。它比第一版 CLM 更容易被已有框架渐进采用。其文件系统和摘要能力并不等于模型可自由编辑整个消息列表；如果接入 CLM，仍需另行实现严格的 context projection、revision gate 和 provider adapter。
+
+### 11.4 Pi：结构化 compaction、分支摘要、文件操作追踪与持久化执行
+
+本节讨论 [earendil-works/pi](https://github.com/earendil-works/pi) 当前公开实现中的 coding-agent compaction 和 `@earendil-works/pi-durable`，不要把不同 Pi 分支/发行版的 API 视为完全相同。相关实现可从 [compaction reference](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/compaction.md)、[agent changelog](https://github.com/earendil-works/pi/blob/main/packages/agent/CHANGELOG.md) 与 [pi-durable README](https://github.com/earendil-works/pi/blob/main/packages/durable/README.md) 核对。
+
+**Coding agent 的 compaction 细节：**
+
+- 默认基于 `contextTokens > contextWindow - reserveTokens` 触发；文档中的默认 `reserveTokens` 为 16,384 tokens，`keepRecentTokens` 默认 20,000 tokens。前者为下一次生成留空间，后者控制近期历史有多少原样保留。它们是初始配置，不是所有模型的普适最佳值。
+- 触发检查不只发生在下一次请求返回超限之后。Pi 会在工具结果写入后、准备下一次 assistant 响应前检查，也会在新用户输入前和某些 overflow recovery 路径中检查。检测到 provider context-overflow 时可执行一次 compact-and-retry 恢复尝试。
+- 找 cut point 时会遵守消息边界，不能在 tool result 处切断并使其脱离对应工具调用。结构化摘要包含 Goal、Constraints & Preferences、Progress、Key Decisions、Next Steps、Critical Context，并要求保留准确的文件路径、函数名和错误信息。
+- 摘要会累计追踪原始历史中已读取/修改的文件，也会继承先前 compaction 或 branch summary 的文件信息。`/tree` 分支切换采用 branch summarization，不是把所有分支历史与当前分支混成一个长摘要。
+- 自动压缩有生命周期事件、持久化的 compaction entry 和扩展 hook；一次压缩的 token 用量也属于 usage 统计。摘要提示可能关闭 prompt-cache writes，因为一次性摘要请求很少被原样复用。
+
+对应的关键配置如下（具体字段需与安装版本核对）：
+
+```json
+{
+  "compaction": {
+    "enabled": true,
+    "reserveTokens": 16384,
+    "keepRecentTokens": 20000
+  }
+}
+```
+
+**`pi-durable` 的更重要贡献是把上下文缩短和执行可靠性结合起来。** 当前 README 将对话表示为持久化的、不可变的 entries。compaction 生成一个新的 `pi.compaction` entry，存储摘要并指向第一条仍保留在活动视图中的 entry；原始旧 entries 仍留在存储里。因此其 compaction 更接近改变可见 transcript projection，而不是删除历史事实。该项目在 2026-10 的版本说明中进一步强化了任务 phase、checkpoint、sleep/wakeup、storage commit 一致性、恢复和可观测性。
+
+值得直接借鉴的细节包括：
+
+- **后台压缩。** `backgroundTokens` 可配置提前启动 compaction 的距离；达到阻塞阈值时等待结果。这样可以降低临界点上的停顿，但要处理并发 compaction、过期摘要和最新活动消息变化。
+- **按模型覆盖阈值。** `modelOverrides` 允许 32k 窗口与超长窗口使用不同的 `reserveTokens` / `keepRecentTokens` / `backgroundTokens`，避免硬编码一个对小窗口太大、对大窗口又太小的数字。
+- **失败时显式暴露状态。** 正在运行的压缩任务和最近一次失败进入 live state 与事件流；当阻塞阈值下的 compaction 失败时，生成任务失败并记录原因，而不是静默发出注定超限的请求。
+- **只在稳定边界创建压缩快照。** cut point、first-kept entry、摘要和原始 entry ID 要一起持久化；如果任务在摘要产生后又新增了输入，旧摘要必须按 revision / cut-point 检查是否已经过时，不能覆盖较新的活动上下文。
+- **让执行状态可恢复。** `pi-durable` 的任务可将阶段与 checkpoint 持久化，进程崩溃后从已提交状态继续；工具执行要明确 replay-safety 和幂等键；数据库写入与可见状态变化必须按同一提交协议完成。
+- **提供有界观测。** 内容由 transcript ID 关联，遥测属性可只记录 ID、阶段、token 和成本等元信息，避免将 prompt、敏感工具参数和结果默认复制进日志。
+
+当前 README 将 `@earendil-works/pi-durable` 标记为 experimental，且 API 可能跨版本变化；上线时应固定版本并运行 storage conformance、crash-recovery 和 compaction regression tests。它也不自动等于 CLM：durable compaction 是结构化摘要驱动的活动视图更新；CLM 的特征是模型通过通用操作自主决定活动上下文中的任意局部改写。两者可以组合，但语义不同。
+
+另一个需要单独核对的方向是 CLM 对 Pi 的适配。Meta 的 [CLM 官方仓库](https://github.com/facebookresearch/context-language-models) 已列出通过 `pi install npm:@lolipopshock/pi-clm` 安装的 Pi 支持。该适配应视为将 CLM 策略带入 Pi 的单独集成，不意味着 `pi-durable` 自身就是 CLM，也不能据此推断插件与所有 Pi 分支兼容。使用前应验证维护状态、版本兼容、数据目录、shell sandbox、消息同步、故障恢复，以及原始 CLM 仓库的许可证边界。
+
+**工程判断：** 对 common-agent-lib 来说，Pi 最值得学习的未必是摘要文案，而是 entry log、稳定 cut point、保留尾部、文件操作累积追踪、版本化压缩 entry、失败恢复和成本事件。将这些工程属性加到上下文管理层，比只移植一个 summarizer 更有实际价值。
+
+### 11.5 四家方案的差异与适用场景
+
+| 对比维度 | Anthropic / Claude | OpenAI | LangChain Deep Agents | Pi / pi-durable |
+|---|---|---|---|---|
+| 首选能力 | 服务端 compaction + 清理旧工具/思考块 + 可保留近期轮次 | Responses API compaction + SDK Session 输入视图 | 工具结果卸载 + 旧工具参数卸载 + 文件系统可召回的摘要 | 基于 session projection 的 compaction、branch summary 和持久化执行 |
+| 原始历史能否独立保留 | 需要应用侧持久化并制定保留策略 | 通常由应用 Session/业务存储负责；compact output 不是可读 transcript 的替代品 | 原始消息可写入文件系统，活动上下文改为摘要与指针 | `pi-durable` 保留原始 entries；新增 compaction entry 指向活动保留边界 |
+| 细粒度清理 | 有 tool/thinking block 清理策略 | 有输入回调和 compaction，细粒度行为依接口而定 | 文件化 offload，文件参数指针化；摘要是后备机制 | cut point、保留尾部、分支摘要和扩展 hook |
+| CLM 式自由编辑 | 不是原生承诺 | 单靠 compaction 或 Session callback 不能实现 | 文件可写，但默认压缩并非任意改写整个消息列表 | 可通过独立 CLM 插件探索；durable core 本身不是 CLM |
+| 运行恢复与任务阶段 | 应用/SDK 工作流负责 | Session / SDK / 应用工作流负责 | LangGraph checkpoint 与 backend 负责 | `pi-durable` 明确强化任务、存储提交与 restart recovery |
+| 主要工程强项 | 少量定制代码即可获得 provider-native context lifecycle | API 与 SDK 有明确的会话和压缩接缝 | 通过文件与 progressive disclosure 限制工作集膨胀 | 历史不可变、压缩可回查、运行可恢复且可观察 |
+| 主要限制 | 平台状态/压缩表示具有 provider 特定语义 | opaque compaction item 与 response chain 形成 API 耦合；自动压缩可能增加回合尾延迟 | 文件系统权限、线程隔离和实际版本的 middleware 默认值必须管理 | 部分包仍处实验阶段；须锁版本并严格测试恢复和并发 |
+
+推荐的采用顺序不是选一个赢家，而是按需求逐层叠加：API 原生压缩作为基线；大工具结果先卸载；任务状态和正式产物写入外部权威存储；旧历史以结构化摘要作为工作集 checkpoint；关键细节通过指针和检索恢复；最后才把 CLM 式任意编辑作为可选策略。越靠后的层越需要更强的运行时控制、安全验证和回归评估。
+
+---
+
+## 12. 2026 年研究前沿：哪些可以用，哪些应当继续验证
+
+以下论文的数字均是作者在各自实验设置中报告的结果，不等价于独立复现或业务承诺。适合把论文中的机制转化为假设、测试和小规模原型，而不是直接将论文性能数字写入生产 SLA。
+
+| 工作 | 时间与代码状态 | 核心机制 | 能转化为工程工作的内容 | 尚需验证的风险 |
+|---|---|---|---|---|
+| [Context Language Models (CLM)](https://arxiv.org/abs/2609.37725) | 2026-09；[官方仓库](https://github.com/facebookresearch/context-language-models)，包含 harness、ContextBench 与 serving 实验；仓库列有 Pi 适配入口 | 把活动 transcript 镜像为文件，模型用通用代码任意修改，runtime 再同步回真实消息列表 | 把活动上下文定义为可编辑 projection；对 edit 实现 revision、预算、保护区域、diff、回放与恢复 | 误删关键证据、编辑成本、cache 失效、prompt injection 持久化；原仓库采用 CC BY-NC 4.0，商业复用前必须核验许可证，不能直接假设可将代码复制进商业公共库 |
+| [ACM: Agentic Context Management for Long Horizon Tasks](https://arxiv.org/abs/2607.23809) | 2026-07；[公开代码与数据](https://github.com/lixiaochuan2020/agentic-context-management) | 给 Agent 提供上下文编辑工具，允许模型主动压缩、外置和按需检索，再通过训练提高这类动作质量 | 把 offload 与 recall 设计为显式操作，保存原始 evidence ID，而不是强迫所有信息压入摘要 | 自主触发可能浪费调用或错过压缩时机；应先用规则触发和 replay 评估，未必需要训练专用模型 |
+| [Context as an Environment / Scroll](https://arxiv.org/abs/2608.21690) | 2026-08；论文提出可执行 session environment | append-only event log + 持久化、沙箱化的 Python kernel；会话数据存在类型化命名空间，模型通过代码选择并 materialize 信息，只有显式输出进入当前工作视图 | 把完整结果存于事件/工件层，以可编程检索产生每轮 context projection；让 eviction index 指向精确事件 ID | 需要严格隔离的代码执行环境、类型/权限治理、资源上限、确定性恢复和操作审计；不能让普通 Agent shell 无约束访问内部工作状态 |
+| [When History Is Multimodal / VERA](https://arxiv.org/abs/2608.29897) | 2026-08；训练免费方案，论文报告不同任务上的非缓存 token 降幅 | 在文本场景将历史渲染为紧凑表示，在多模态场景尽量保留原始视觉证据而不是强制文字化 | 对截图、视频、图表、架构图和 UI 自动化任务，保存原始 image/video artifact、时间戳、裁剪区域与文字描述的关联；摘要不能替代原始像素 | 视觉压缩/渲染可能损失坐标、细节与时间关系；应以实际定位、视觉问答和跨帧追踪任务测量 |
+| [ContextEvo: Self-Evolving Context Management Policies](https://arxiv.org/abs/2609.34649) | 2026-09；论文从开源 Pi-agent harness 开展实验 | 从长任务轨迹重建决策时刻的实际 context，定位上下文相关失败，再定向修正 context policy | 将失败归因到遗漏约束、证据被埋、过度保留、旧假设未更新等类别；对 context policy 做离线回归和版本化改进 | 自我演化的策略可能过拟合少量轨迹或引入不稳定行为；应先离线评估，通过固定基准后再灰度 |
+| [AdaCoM: Learning Agent-Compatible Context Management](https://arxiv.org/abs/2605.30785) | 2026-05；研究由外部管理器为冻结 Agent 修改输入 | 学习一个独立 context manager，为不同能力的 Agent 选择保真度与压缩强度 | 把任务模型与上下文策略模型解耦；同一个 Agent runtime 可通过可插拔策略比较固定压缩与模型管理器 | context manager 自身增加成本和延迟；不同底模/任务域间迁移能力有限，需先证实总成本与质量收益 |
+| [From Long Context to Selective Memory](https://arxiv.org/abs/2610.21165) | 2026-10-15；综述 | 用活动计算与非活动存储的生命周期统一压缩、KV/前缀缓存、offload、recall、eviction、consolidation 和 forgetting | 在数据模型中显式表达“存在于存储”与“进入本次模型计算”的区别，成本核算纳入重新 materialize / prefill | 综述给出概念框架和评估空白，不是单一可直接安装的 runtime |
+| [Persistent Memory in Multi-Agent LLM Inference](https://arxiv.org/abs/2610.07782) | 2026-10-06；受控实证研究 | 比较多 Agent 分解与持久化推理记忆的收益，发现某些独立问题基准上持久记忆没有可检测的准确率增益 | 记忆功能必须做消融实验；确保测试任务真的需要跨回合/跨样本记忆，并正确隔离每个评测条件 | 不应把持久存储或更多记忆本身当成性能优化；不合适的评测设计会夸大收益或把无关记忆变成噪声 |
+| [Memory for Autonomous LLM Agents](https://arxiv.org/abs/2603.07670) | 2026-03；综述 | 按 temporal scope、representation、control policy 对 Agent memory 分类，并覆盖 write/manage/read 与评测 | 用写入筛选、冲突处理、延迟预算、隐私治理和多会话评测约束长期记忆功能 | taxonomy 不能代替特定业务的正确性/成本验证 |
+
+这些工作对工程实践的共同启示是：未来核心竞争力未必是更复杂的摘要 prompt，而是根据任务需要动态调整活动工作集的能力。不同研究切入点不同：CLM/ACM 控制模型是否可以操作工作集；Scroll 控制工作集能否从外部状态按需物化；ContextEvo/AdaCoM 控制采用什么编辑策略；VERA 关注压缩后是否仍保留原始模态证据；记忆综述则将这些操作放进生命周期与成本框架。
+
+应避免三个误读。第一，论文报告更高准确率或更低 token/FLOPs，并不意味着把同名组件加入生产系统就能取得同等收益。第二，外部保存了某条信息不等于 Agent 当前能正确找到并使用它；需要同时测可恢复性和任务成功率。第三，自主上下文管理会引入新的执行权限：读取日志、运行代码、编辑工作集和选择证据都可能改变安全边界，因此必须把策略能力与权限治理分离。
+
+### 12.1 从研究原型迁移到生产功能的准入规则
+
+| 研究机制 | 可先落地的低风险版本 | 通过评估后才考虑的版本 |
+|---|---|---|
+| 任意上下文编辑（CLM / ACM） | 只允许变更活动上下文中的用户/assistant 文本投影；工具与多模态对象以不可伪造的引用表示；保护系统规则 | 在严格 schema 和 CAS revision gate 下更新完整 messages，并处理复杂 provider 原生 blocks |
+| 可编程检索/物化（Scroll） | 使用现有 grep/SQL/RAG/文件读取工具，对外部事件日志按 ID 检索并限制返回条数 | 为每个 session 持久化 kernel/变量命名空间，要求独立沙箱、资源配额和 crash recovery |
+| 策略演化（ContextEvo / ACE / AdaCoM） | 根据离线失败类别调节阈值、保留字段和检索排序；版本化保存策略 | 由模型自动修改线上策略，要求 canary、回滚、独立评测和人类审查 |
+| 多模态历史压缩（VERA） | 把原始图像/音频/视频作为权威工件保存，当前上下文保留 artifact ID、摘要、时间戳和必要 crop 信息 | 将专门的视觉/多模态压缩编码器纳入推理管线，并为每种任务建立精确度基准 |
+| 跨任务长期记忆 | 只写入明确可复用、有出处、非敏感且经筛选的记忆，定期做冲突和过期检查 | 自动 consolidation/dreaming 或多 Agent 共享记忆，需要跨用户隔离、遗忘、删除和权限审计 |
+
+---
+
+## 13. common-agent-lib 的落地蓝图：公共接口、事件结构、策略执行与上线门槛
+
+common-agent-lib 不需要成为一个新的全功能 Agent runtime。较合理的设计是在现有 `agent-context`、`agent-memory`、`agent-knowledge` 和 `agent-eval` 之上增加可选的 context management contract，并让 provider/agent-loop adapter 只声明它真实支持的能力。下面将研究方向收敛到可以按阶段实现和评估的工程方案。
+
+### 13.1 建议的数据模型：原始账本不可变，活动工作集是版本化投影
+
+最重要的设计决定是不要让压缩后的上下文成为唯一记录。建议至少分成以下四种对象：
+
+| 对象 | 保存内容 | 可否覆盖 | 说明 |
+|---|---|---|---|
+| `ContextEvent` | 用户输入、模型输出、工具调用、工具结果、召回、编辑、压缩、拒绝与恢复事件 | 只追加；更正以新事件表达 | 可审计的原始账本；敏感 payload 可引用加密 artifact，而非复制到日志 |
+| `ContextArtifact` | 完整工具结果、文件片段、长文档、图像/音频/视频、模型输出原文、重要 patch | 按 artifact 的业务保留策略版本化 | 超出活动预算的信息仍可找回；提供 stable ID/hash、source、ACL、retention |
+| `ContextRevision` | 某次模型调用实际会看到的上下文投影：引用哪些 event/artifact、使用哪个策略、token 估算及保护区 | 只创建新 revision，不原地覆盖旧 revision | 可用于重放、比较和回滚；不必每个 revision 都存一份重复大文本，可存引用与 snapshot hash |
+| `ContextPolicyVersion` | soft/hard threshold、必留类型、offload/summarize/retrieve 顺序、模型与参数版本、CLM gate | 每次策略修改新版本 | 支持灰度与回归定位，避免无法解释的在线策略漂移 |
+
+一次模型调用应有明确的 `requestId/runId/contextRevision/provider/model` 关联。Context revision 应能指出原始资料的 event ID、artifact ID 或 source location；如果上下文编辑把证据替换成摘要，应保存编辑前后的差异与原始来源，而不是只存新摘要。
+
+建议的概念类型如下，类型名是实现草案而非要求照抄的公共 API：
+
+```typescript
+type ContextAction =
+  | "include"
+  | "offload"
+  | "compress"
+  | "evict"
+  | "recall"
+  | "edit"
+  | "reject"
+  | "restore";
+
+type ContextSourceRef = {
+  eventId?: string;
+  artifactId?: string;
+  sourceUri?: string;
+  sourceVersion?: string;
+  contentHash?: string;
+};
+
+type ContextSegment = {
+  id: string;
+  kind: "instruction" | "user_input" | "assistant" | "tool_call"
+      | "tool_result" | "decision" | "evidence" | "progress"
+      | "artifact_ref" | "memory" | "multimodal_ref";
+  trust: "trusted" | "untrusted" | "derived";
+  priority: number;
+  protected: boolean;
+  sourceRefs: ContextSourceRef[];
+  tokenEstimate: number;
+  payloadRef?: string;
+};
+
+type ContextRevision = {
+  sessionId: string;
+  runId: string;
+  revision: number;
+  parentRevision?: number;
+  policyVersion: string;
+  provider: string;
+  model: string;
+  contentHash: string;
+  tokenEstimate: number;
+  createdAt: string;
+};
+
+type ContextDecisionEvent = {
+  runId: string;
+  requestId: string;
+  revision: number;
+  action: ContextAction;
+  segmentId?: string;
+  reason: string;
+  tokenDelta?: number;
+  sourceRefs?: ContextSourceRef[];
+};
+```
+
+不要把模型编写的全部文本都默认为可信 ContextSegment。来自网页、源代码、日志和检索结果的内容应保留 untrusted 来源属性；摘要和模型推断应是 derived；宿主签发的 system/developer policy 则在独立受保护的区域保存，每次构建下一次输入时由宿主恢复。
+
+### 13.2 公共接口应拆成“能力声明、上下文准备、提交变更”三个层次
+
+Provider/runtime 的能力各不相同，所以接口不应假设每个 SDK 都能完全控制 transcript。建议 adapter 暴露能力声明：
+
+```typescript
+type ContextCapabilities = {
+  canReadActualModelInput: boolean;
+  canReplaceNextModelInput: boolean;
+  canPreserveToolCallStructure: boolean;
+  canPreserveMultimodalPayloads: boolean;
+  supportsProviderCompaction: boolean;
+  supportsSessionInputFilter: boolean;
+};
+
+type PreparedModelInput = {
+  revision: ContextRevision;
+  messages: unknown[];
+  estimatedInputTokens: number;
+  decisions: ContextDecisionEvent[];
+};
+
+interface ContextInputAdapter {
+  capabilities(): ContextCapabilities;
+  readNextInput(): Promise<PreparedModelInput>;
+  replaceNextInput(
+    expectedRevision: number,
+    candidate: PreparedModelInput
+  ): Promise<{ applied: boolean; currentRevision: number; reason?: string }>;
+}
+
+interface ContextPolicy {
+  readonly id: string;
+  prepare(input: PreparedModelInput): Promise<PreparedModelInput>;
+}
+
+interface ContextArtifactStore {
+  put(input: {
+    sessionId: string;
+    runId: string;
+    mediaType: string;
+    content: Uint8Array | string;
+    metadata: Record<string, unknown>;
+  }): Promise<{ artifactId: string; contentHash: string }>;
+  get(artifactId: string): Promise<{
+    content: Uint8Array | string;
+    metadata: Record<string, unknown>;
+  } | undefined>;
+}
+```
+
+这组接口刻意没有要求通用库提供 shell、数据库、向量库或自己的会话存储。ContextArtifactStore 可以适配应用已有的存储，ContextInputAdapter 由具体 SDK/runtime 实现，ContextPolicy 则可换成 none / trim / offload / summarize / provider-native-compaction / CLM。replaceNextInput 应在能力不足时显式失败，而不是默默只更新外部文件。
+
+`messages: unknown[]` 也只是接口边界示意。落地时应按宿主和 provider 将消息结构建模为可保留类型、原生 blocks、tool call/result pairing、refusal、安全元数据和多模态引用的 schema；不要在一个跨 provider 的简单 `{ role, content: string }[]` 中丢弃 SDK 原生字段。
+
+### 13.3 每次模型调用前的实际处理顺序
+
+推荐先采用确定性、可回退的次序，减少不必要的模型摘要调用。流程不是“超过 80% 就直接摘要”，而是先判断哪些数据已在权威存储中、哪些只是重复占用活动窗口。
+
+1. **构建和计量。** 读取当前真正会发送的消息，使用 provider tokenizer 或经过校准的 estimator 计算输入 tokens，并记录模型、上下文窗口、最大输出和 cache 相关指标。
+2. **验证硬约束。** 重新注入受保护的 system/developer instructions；检查权限、当前用户/项目/Run 的作用域，过滤已过期或不允许进入模型的引用。
+3. **优先卸载可恢复的大内容。** 对完整文件内容、冗长工具输出、重复的文件写入参数，先存成 artifact 并保留路径/ID、hash、预览和重新读取方式。只有持久化成功后才能把活动消息替换成指针。
+4. **保留最近和未闭合状态。** 不跨越未完成的 tool call/result；原样保留当前用户输入、近期人工决定、待执行工具操作和少数关键新证据。保留最近轮数只是近似，真实实现应按语义边界与 token 预算共同决定。
+5. **选择性裁剪。** 去除重复、被新证据明确替代、已完成且可重建的中间信息。每次排除要记录理由，不能静默删掉关键决定或精确值。
+6. **需要时生成结构化 checkpoint。** 若卸载后仍超预算，再对更早的历史生成摘要；摘要必须包含任务目标、不能变的约束、已完成/验证的结果、当前假设、未解决问题、重要文件/产物路径、下一步和原始证据 ID。
+7. **提交新 revision。** 检查 tool schema 与 message pairing、受保护区域、token hard limit、revision 是否过期；以 compare-and-swap 原子提交。
+8. **最后再次计量并生成。** 若新 revision 仍超限，不要无限重试摘要；进入有上限的 recovery 路径，记录失败并按当前 runtime 的安全策略 fail-closed 或请求重新规划。
+
+可以把基本目标表达为一个约束优化问题，但实现里应先用可解释规则求解，不要一开始就训练复杂策略：
+
+```text
+maximize  retained_task_relevance + evidence_recoverability
+        + constraint_fidelity + trajectory_continuity
+subject to input_tokens + reserved_output_tokens <= model_context_limit
+           protected_instructions_unchanged
+           tool_call_result_pairs_valid
+           source_acl_and_time_boundary_valid
+           every_offloaded_segment_has_stable_recovery_reference
+```
+
+**阈值应是模型/任务相关配置。** Pi 的 16k reserve、20k recent tail 和 Deep Agents 的约 85% 触发点可以作为比较基线，但不应直接变成 common-agent-lib 的硬编码。实作时至少考虑最大输出 token、工具输出 p95/p99、context window、固定提示前缀、prompt cache 与模型请求失败模式。建议先用 soft threshold 启动卸载/预整理，在硬阈值之前确保可生成；阈值的默认值必须由任务回放校准。
+
+### 13.4 CLM 编辑必须是事务，而不是直接覆盖活动 prompt 文件
+
+如果实现 CLM 原型，推荐 transaction-like 编辑过程：
+
+1. runtime 生成只属于该 sessionId/runId/revision 的可编辑上下文投影，并将 system/developer、权限、tool schemas 与多模态对象放在不可写区，或在 parse-back 时由宿主权威副本重新注入。
+2. 模型只能在 sandbox 中读写投影文件和经授权的 artifact 引用，不应默认给它宿主仓库的任意 shell 权限。运行环境设定 CPU、内存、输出大小、时间、网络、路径及文件数量限制。
+3. 编辑产物先进入临时目录。宿主解析为候选消息结构，校验 schema、来源 ID、禁止字段、tool call/result 的完整性、多模态引用有效性和受保护区域。
+4. edit_gate 至少支持两种可解释模式：fit（编辑后在 token 预算内才接受）和 shrink（编辑必须明显减少活动 tokens 才接受）。建议另外限制单轮可增长量、一次编辑可删除的 protected/unverified segment 数量和连续编辑次数。
+5. 以 expectedRevision 做 compare-and-swap。原消息列表已变更则拒绝过期 edit，重新读取最新 context 后再决定是否重试，不能覆盖并发输入。
+6. 保存 old/new hash、diff、token 前后值、被卸载 ID、gate 判断、工具退出码、编辑成本和失败原因。若校验或下一次请求前检查失败，回滚到旧 revision。
+7. 对低置信度编辑做人工检查或 shadow mode；只有在关键事实保留、任务成功率和总成本达标后才放开自动 apply。
+
+**不要仅凭 CLM 编辑文件后 token 数减少就计为成功。** 它必须证明修改后的投影确实进入下一次模型请求，而且工具流程、业务约束和任务目标仍然连续。编辑轮本身也要计入模型调用数、FLOPs/token、工具费用、延迟和 cache 重新 prefill 的代价。
+
+### 13.5 观测、回放和评测：从一次 run 能重建模型真正看到的内容开始
+
+每个 model call 至少应有以下元数据：
+
+- `runId`、`requestId`、`parentRunId`、provider/model、策略 ID/版本、context revision/hash、开始与结束时间。
+- 输入 token 估算/实际计量、输出 tokens、缓存读取/写入 tokens、compaction tokens/cost、工具输出大小、卸载字节数、恢复/召回次数。
+- 各 context segment 被纳入、保留、卸载、压缩、驱逐、召回或拒绝的原因；每项都可指回来源和 revision。
+- 原始事件/工具结果是否已持久化、artifact hash、message/schema 校验状态，以及 compaction 前后的保留边界。
+- 安全 gate 的判断、越权拒绝、过期 revision、并发冲突和恢复动作。默认 telemetry 只写元数据；敏感消息体按应用保留策略存入受控存储。
+
+对用户可见的 Agent trajectory/trace 页面，应允许检查每次真实 request 的 prompt/context snapshot 和 response，但默认收起长内容；显示活动 revision、压缩/卸载 diff 和源信息链接。需要排查为何模型忘记用户要求、术语、精确路径或工具结果时，必须能回到真实输入，而不是只能看到摘要或者“Context compressed”事件。
+
+测试集建议分三层：
+
+**单元级 context-manager tests：** 预算计算、来源过滤、摘要 schema、stable artifact reference、保护区恢复、revision CAS、并发 edit 拒绝、工具调用与结果配对、多模态 block round-trip、token estimator 误差。
+
+**机制级 context stress tests：** 把压缩阈值人为调低，例如测试配置中设在窗口 10%–25% 以增加压缩频率，注入早期 needle facts、精确文件路径、用户约束、反例、未完成 tool call 和后续更正；压缩后要求 Agent 持续任务并在需要时找回被卸载的信息。此时的阈值只为扩大测试信号，不是生产推荐值。
+
+**端到端 regression tests：** 对同一批任务分别运行 append-only、传统 trim/summary、offload+summary、provider-native compaction 和 CLM。固定模型/版本、工具、任务输入、权限、重试与预算，比较任务成功率、事实/约束保留率、引用有效性、安全违规、p50/p95 延迟、总 tokens、缓存效率、工具成本、压缩后目标漂移率及失败恢复成功率。报告置信区间和分任务结果，不只报告一个平均分。
+
+### 13.6 推荐的公共库实施顺序
+
+| 阶段 | 交付 | 现实验收标准 | 暂时不做什么 |
+|---|---|---|---|
+| P0：输入可观察 | 在每个 runtime 记录实际 model input 的 revision/hash、tokens、provider/model 与 source refs | 可以还原一次请求真实发送的内容；可区分历史账本、活动工作集和长期记忆 | 不做模型自主编辑，不修改现有 Agent loop |
+| P1：工具输出与工件卸载 | 通用 ContextArtifactStore、稳定 artifact ID/hash、指针化输出、恢复工具 | 一个超长 tool result 被卸载后，后续工具/模型能再次取回精确原文；路径、权限、删除策略可测 | 不把摘要写入业务记忆，不复制全部大 payload 到 trace |
+| P2：结构化 checkpoint 与压缩 | 统一 summary schema、切点边界、保留尾部、原始 event/artifact 保留和错误事件 | 随机压缩时能恢复关键 needle facts，tool call/result 完整，过程可解释、可回滚 | 不要求每个 provider 使用相同原生 compaction 表示 |
+| P3：SDK adapter | 首先接入真正支持 Session/filter/compaction 的 OpenAI 或 Anthropic 路径；为 Deep Agents 与 Pi 映射已有能力 | 每个 adapter 逐项声明 capability，不支持的操作显式拒绝；无静默退化 | 不把有输入过滤能力的 SDK 错标成 CLM |
+| P4：CLM sandbox 原型 | 仅选择一个能替换真实下一次 messages 的 runtime，做版本化镜像、受控编辑、edit gate 和完整轨迹 | 证明变更应用到真实请求；revision 冲突、权限、预算、崩溃恢复和多轮工具使用均有测试 | 不先做跨 provider 的通用 shell sandbox，不默认对所有 agent 开启 |
+| P5：策略比较与推广 | 以 agent-eval 建立固定任务集、成本/正确率/保留/恢复指标和 shadow/canary | 比 baseline 有稳定净收益，关键事实与安全指标不下降，总成本而非仅 token 数有改善 | 不以压缩率、论文最高分或一次成功 run 作为推广依据 |
+
+### 13.7 两个关键的实现选择
+
+**先复用 provider 原生 compaction 还是自建 messages loop？** 先优先使用 provider 原生机制以及现有 Agent SDK 的 Session filter，因为它们的接口更稳定，也较少破坏工具调用、多模态数据和缓存语义。只有业务确实需要跨 provider 的任意局部编辑，且无法用 offload + retrieval + structured checkpoint 解决时，才自建可以完全控制消息列表的 loop。自建 loop 带来的不仅是控制权，也包括对 tool scheduling、abort、retry、streaming、provider-native state、cache keys、错误处理和消息兼容性的持续维护责任。
+
+**先加入通用 package 还是先在应用里落地？** 先在一个真实长任务应用里做 ContextArtifactStore、ContextRevision、context events 和 adapter capability 的最小实现，验证接口不会围绕单一 SDK 过拟合；再由第二个应用复用。只有两个以上应用实际共享同一职责时才把实现稳定沉淀进 common-agent-lib。初始可将 CLM 策略放在独立实验包或 app adapter 中，避免因实验方案引入全局 runtime 依赖。
+
+---
+
+## 14. 结论：把 CLM 放在上下文生命周期体系中，而不是把它变成新的 Memory 单体
 
 更成熟的 context management 不是让一个机制统一替代其他机制，而是清楚划分哪些信息是权威事实，哪些是可复用记忆，哪些只是检索候选，哪些信息当前必须进入模型的计算，以及活动上下文如何在预算压力下更新和恢复。
 
@@ -782,7 +1182,7 @@ CLM 为活动上下文加入模型可控的读写与删除能力；ACON 帮助�
 
 ---
 
-## 12. 参考资料与进一步阅读
+## 15. 参考资料与进一步阅读
 
 ### CLM 与专门评测
 
@@ -809,6 +1209,35 @@ CLM 为活动上下文加入模型可控的读写与删除能力；ACON 帮助�
 - [Letta Code Context Architecture / MemFS](https://github.com/letta-ai/letta-code/blob/main/src/agent/prompts/letta_local_memfs.md)。
 - [LangMem conceptual guide](https://github.com/langchain-ai/langmem/blob/main/docs/docs/concepts/conceptual_guide.md)。
 - [LangMem source repository](https://github.com/langchain-ai/langmem)。
+
+
+### 厂商与 Agent 框架的官方实现
+
+- Anthropic, [Compaction](https://platform.claude.com/docs/en/build-with-claude/compaction) 与 [Compaction threshold](https://platform.claude.com/docs/en/build-with-claude/compaction-threshold)：服务端 compaction、阈值、自定义摘要指令与状态续接。
+- Anthropic, [Compaction that keeps recent turns](https://platform.claude.com/docs/en/build-with-claude/compaction-keep-recent-turns)：压缩旧历史、最近若干轮保持原样的方案；注意合法 cut point 及 tool-call/result 完整性。
+- Anthropic, [Context editing](https://platform.claude.com/docs/en/build-with-claude/context-editing)：工具结果与 thinking block 的选择性清理。
+- Anthropic, [The new rules of context engineering for Claude 5 generation models](https://claude.com/blog/the-new-rules-of-context-engineering-for-claude-5-generation-models), 2026-07-24。
+- Anthropic, [Steering Claude Code: skills, hooks, rules, subagents, and more](https://claude.com/resources/articles/steering-claude-code-skills-hooks-rules-subagents-and-more), 2026-06-18。
+- OpenAI, [Compaction guide](https://developers.openai.com/api/docs/guides/compaction)：Responses API 服务端 compact threshold 与独立 compact endpoint。
+- OpenAI, [API deployment checklist](https://developers.openai.com/api/docs/guides/deployment-checklist)：长任务中 compaction 的工程建议。
+- OpenAI Agents SDK, [Sessions](https://openai.github.io/openai-agents-python/sessions/)；重点看 session_input_callback、SessionSettings、OpenAIResponsesCompactionSession 和流式请求压缩时延。
+- LangChain, [Context Management for Deep Agents](https://www.langchain.com/blog/context-management-for-deepagents), 2026-01-28。
+- LangChain, [Deep Agents context management](https://docs.langchain.com/oss/python/deepagents) 与 [summarization middleware source](https://github.com/langchain-ai/deepagents/blob/main/libs/deepagents/deepagents/middleware/summarization.py)。
+- Pi, [coding-agent compaction reference](https://github.com/earendil-works/pi/blob/main/packages/coding-agent/docs/compaction.md) 与 [agent changelog](https://github.com/earendil-works/pi/blob/main/packages/agent/CHANGELOG.md)。
+- Pi, [pi-durable README](https://github.com/earendil-works/pi/blob/main/packages/durable/README.md) 和 [durable changelog](https://github.com/earendil-works/pi/blob/main/packages/durable/CHANGELOG.md)；涉及 immutable entries、compaction、task checkpoint、resume 与 storage。
+- Meta, [Context Language Models repository](https://github.com/facebookresearch/context-language-models)：官方 CLM harness、ContextBench、serving 代码与 Pi 插件入口。仓库采用 CC BY-NC 4.0，商业代码复用前需单独审查许可证。
+
+### 2026 年上下文管理与 Agent Memory 研究
+
+- Shao et al., [Context Language Models](https://arxiv.org/abs/2609.37725), 2026-09。
+- Li et al., [ACM: Agentic Context Management for Long Horizon Tasks](https://arxiv.org/abs/2607.23809), 2026-07；[代码、数据与模型](https://github.com/lixiaochuan2020/agentic-context-management)。
+- Lin et al., [Context as an Environment: Programmatic Context Management for Long-Horizon Agents](https://arxiv.org/abs/2608.21690), 2026-08；提出 Scroll 的 event log、持久化 kernel 和按需 projection。
+- Su et al., [When History Is Multimodal: Rethinking Context Management for Long-Horizon Agents](https://arxiv.org/abs/2608.29897), 2026-08；提出 VERA，强调多模态历史保留原始视觉证据。
+- Li et al., [Beyond Skill Evolution: Self-Evolving Context Management Policies for Long-Horizon Agent Harnesses](https://arxiv.org/abs/2609.34649), 2026-09；ContextEvo 从执行轨迹中演化 context policy。
+- Yi et al., [Learning Agent-Compatible Context Management for Long-Horizon Tasks](https://arxiv.org/abs/2605.30785), 2026-05；AdaCoM 使用外部 context manager 管理冻结的 Agent。
+- Gou, [From Long Context to Selective Memory: A Survey of Memory-Centric Compression for Large Language Models](https://arxiv.org/abs/2610.21165), 2026-10-15。
+- Son et al., [Persistent Memory in Multi-Agent LLM Inference: What It Costs, What It Buys, and When You Can Tell](https://arxiv.org/abs/2610.07782), 2026-10-06；提醒对持久记忆做正确的消融测试。
+- Du et al., [Memory for Autonomous LLM Agents: Mechanisms, Evaluation, and Emerging Frontiers](https://arxiv.org/abs/2603.07670), 2026-03。
 
 ### 长上下文的性能边界
 
