@@ -434,7 +434,7 @@ TEI 尤其重要，因为它允许把作品内容与学术解释分开编码。�
 | [Global Price and Income History Group（GPIH）](https://gpih.ucdavis.edu/Datafilelist.htm) | 长时段商品价格、工资和生活水平资料；覆盖欧洲以及中国、日本、南亚和美洲的若干历史价格/工资序列；部分价格数据可追溯至约 1260 年 | 网站列出多份可下载数据文件和研究成果；每份数据的单位、覆盖与论文来源不同 | 实际工资、生活水平、长期价格、消费者篮子、跨国成本和历史通胀 |
 | [EH.net Economic History Databases](https://eh.net/databases/) | 早期美国证券价格（1790–1860）、商品价格、公共债务、历史劳动力统计、银行和国债交易、历史贸易以及 TRF-GIS 等多类专题数据 | 许多系列直接免费获取；目录也会链接到其他来源或商业数据库 | 历史金融、商品市场、货币制度、劳动、贸易与空间经济史 |
 | [World Inequality Database（WID.world）](https://wid.world/) | 国家内部与国家之间的收入和财富分布，整合税收、家庭调查、国民账户及其他历史来源；部分国家财富不平等序列延伸至 1820 年 | 可公开浏览和下载多类数据及方法说明；不同数据系列有其来源和质量等级 | 财富/收入集中、分配制度、阶层和性别差异、长期不平等 |
-| [IMF Public Finances in Modern History](https://www.imf.org/external/datamapper/profile/MMR) | 历史公共财政数据，研究文献介绍了 55 国、部分系列从 1800 年开始的预算、赤字和政府债务序列 | IMF 提供历史指标和国家数据视图；具体变量定义、覆盖和下载方式按指标核对 | 国家能力、公共债务、财政制度、战争融资与主权债务风险 |
+| [IMF Public Finances in Modern History](https://www.imf.org/external/datamapper/datasets/FPP) | 历史公共财政数据，覆盖政府收入、支出、赤字与债务；IMF 在 2023 年发布更新时说明其覆盖 151 个国家、1800–2022 年（以各系列的数据可用性为限） | IMF DataMapper 提供数据集入口；使用前检查具体指标的国家/年份覆盖、政府层级和版本，避免沿用旧文献中的较小样本数 | 国家能力、公共债务、财政制度、战争融资与主权债务风险 |
 | [Global Macro Database（NBER Working Paper 33714）](https://www.nber.org/papers/w33714) | 将当代 32 个主要来源和 78 个历史数据集整合为全球宏观年序列；论文介绍 243 个国家、46 个变量 | 论文和项目的可用版本与许可需以原始项目说明为准；这是动态更新的数据产品，应固定版本 | 全球宏观长期对比、宏观变量复现和历史—现代数据融合 |
 | [Global Commodity Database / GPIH](https://gpih.ucdavis.edu/) | 按地区、货币和商品组织的历史价格数据，部分系列约从 1260 年到 1914 年 | 开放研究数据入口；来源、观测频率和缺失结构不同 | 历史通胀、实际工资、贸易网络和生活成本 |
 | [SlaveVoyages](https://www.slavevoyages.org/voyage/about) | 跨大西洋奴隶贸易数据库包含超过 36,000 次航行记录；相关论文描述了 258 个变量，覆盖船舶、航程、被奴役者、日期、船员、贸易结果及来源 | 可在线查询并提供研究数据；必须保留下载版本、字段定义、来源与不确定性记录 | 强迫迁徙、人口损失、殖民贸易、非洲与大西洋社会的长期经济影响 |
@@ -579,6 +579,36 @@ TEI 尤其重要，因为它允许把作品内容与学术解释分开编码。�
 - [Open Greek Corpus](https://opengreek.org/)
 - [CLTK](https://github.com/cltk/cltk)
 - [OpenITI Corpus](https://openiti.org/projects/OpenITI%20Corpus.html)
+
+### 量化历史与历史社会科学
+
+- [EH.net：Cliometrics 方法概述](https://eh.net/encyclopedia/cliometrics/)
+- [Maddison Project Database 2023：格罗宁根大学官方发布](https://www.rug.nl/ggdc/historicaldevelopment/maddison/releases/maddison-project-database-2023?lang=en)
+- [GGDC Historical National Accounts](https://research.rug.nl/nl/datasets/ggdc-historical-national-accounts/)
+- [Jordà–Schularick–Taylor Macrohistory Database：NBER](https://www.nber.org/research/data/jorda-schularick-taylor-macrohistory)
+- [NBER Macrohistory Database](https://www.nber.org/research/data/nber-macrohistory-database)
+- [Global Price and Income History Group](https://gpih.ucdavis.edu/Datafilelist.htm)
+- [EH.net 历史经济数据目录](https://eh.net/databases/)
+- [World Inequality Database：方法与下载](https://wid.world/methodology)
+- [IMF Public Finances in Modern History](https://www.imf.org/external/datamapper/datasets/FPP)
+- [Global Macro Database：研究论文与数据](https://www.globalmacrodata.com/research-paper.html)
+- [SlaveVoyages：数据库与方法](https://www.slavevoyages.org/voyage/about)
+- [IPUMS International](https://international.ipums.org/international/)
+- [IPUMS NHGIS](https://www.nhgis.org/)
+- [Correlates of War 数据集](https://correlatesofwar.org/)
+- [TRF-GIS：第三共和国法国历史地理数据](https://eh.net/database/the-trf-gis-a-geographic-information-system-of-third-republic-france-1870-1940)
+- [Seshat Equinox2020 数据发布说明](https://peterturchin.com/publications/the-equinox2020-seshat-data-release)
+- [Human Mortality Database](https://www.humanmortality.de/)
+- [Neotoma Paleoecology Database](https://www.neotomadb.org/)
+- [NOAA Paleoclimatology](https://www.ncei.noaa.gov/products/paleoclimatology)
+- [Database of Religious History](https://religiondatabase.org/landing/about)
+- [IsoArcH 同位素与生物考古数据平台](https://isoarch.eu/)
+- [Global Macro Database 工作论文：NBER WP 33714](https://www.nber.org/papers/w33714)
+- Nunn, *The Long-Term Effects of Africa’s Slave Trades*, QJE 2008：[DOI](https://doi.org/10.1162/qjec.2008.123.1.139)
+- Dell, *The Persistent Effects of Peru’s Mining Mita*, Econometrica 2010：[DOI](https://doi.org/10.3982/ECTA8121)
+- Acemoglu, Johnson & Robinson, *The Colonial Origins of Comparative Development*, AER 2001：[NBER 工作论文](https://www.nber.org/papers/w7771)
+- Dittmar, *Information Technology and Economic Change: The Impact of the Printing Press*, QJE 2011：[DOI](https://doi.org/10.1093/qje/qjr035)
+- Turchin et al., *Quantitative historical analysis uncovers a single dimension of complexity that structures global variation in human social organization*, PNAS 2018：[DOI](https://www.pnas.org/doi/10.1073/pnas.1714698115)
 
 ### 标准和工程
 
