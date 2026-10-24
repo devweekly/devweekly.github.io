@@ -632,7 +632,7 @@ ELTeC 的研究基础与设计见 Schöch 等人的 [*Creating the European Lite
 
 - Hamilton, Leskovec & Jurafsky, [*Diachronic Word Embeddings Reveal Statistical Laws of Semantic Change*](https://aclanthology.org/P16-1141/)（ACL 2016）：用不同时期的词向量研究语义演变，说明时间切片、向量空间对齐与变化度量的重要性。
 - Schlechtweg et al., [*SemEval-2020 Task 1: Unsupervised Lexical Semantic Change Detection*](https://aclanthology.org/2020.semeval-1.1/)：建立多个语言的人工标注评测，解决“算法分数如何与人对语义变化的判断对齐”的评估难题。
-- Alatrash et al., [*CCOHA: Clean Corpus of Historical American English*](https://aclanthology.org/2020.lrec-1.1/)：提出清理后的历时英语语料，以支持更可控的语义变化研究。
+- Alatrash et al., [*CCOHA: Clean Corpus of Historical American English*](https://aclanthology.org/2020.lrec-1.859/)：提出清理后的历时英语语料，以支持更可控的语义变化研究。
 - Davies, [*Expanding Horizons in Historical Linguistics with the 400-Million Word Corpus of Historical American English*](https://doi.org/10.3366/cor.2012.0025)（2012）：强调均衡的文类和年代采样对历史语言研究的价值。
 
 方法上可以从高频词与搭配、词典语义、监督式词义分类，到时间分片的词向量、上下文化语言模型和 change-point detection 逐步推进。实验设计应使用跨时期数据，控制语料规模、文类、OCR 质量与版本差异，并对词向量空间进行对齐或采用上下文层面的评估。对于历史语料，模型观测到的变化可能来自词义变化，也可能来自词性变化、作者/体裁变化、语料构成变化或 OCR 错误，必须用实例上下文和语言学标注验证。
@@ -841,6 +841,54 @@ ELTeC 的研究基础与设计见 Schöch 等人的 [*Creating the European Lite
 - Acemoglu, Johnson & Robinson, *The Colonial Origins of Comparative Development*, AER 2001：[NBER 工作论文](https://www.nber.org/papers/w7771)
 - Dittmar, *Information Technology and Economic Change: The Impact of the Printing Press*, QJE 2011：[DOI](https://doi.org/10.1093/qje/qjr035)
 - Turchin et al., *Quantitative historical analysis uncovers a single dimension of complexity that structures global variation in human social organization*, PNAS 2018：[DOI](https://www.pnas.org/doi/10.1073/pnas.1714698115)
+
+### 数字史学与计算文学
+
+- [State of the Field: Digital History](https://doi.org/10.1111/1468-229X.12969)
+- [Data scopes for digital history research](https://doi.org/10.1080/01615440.2018.1484676)
+- [Digital Perspectives in History](https://www.mdpi.com/2409-9252/2/2/13)
+- [defoe historical text analysis toolkit](https://github.com/defoe-code/defoe)
+- [ELTeC: European Literary Text Collection](https://www.distant-reading.net/eltec/)
+- [Creating the European Literary Text Collection](https://modernlanguagesopen.org/articles/10.3828/mlo.v0i0.364)
+- [DraCor: What is programmable drama corpora?](https://dracor.org/doc/what-is-dracor)
+- [DraCor corpora registry](https://dracor.org/doc/corpora)
+- [CLiC literary corpus](https://clic.bham.ac.uk/)
+- [Survey of Methods in Computational Literary Studies](https://methods.clsinfra.io/)
+- [Stanford Literary Lab](https://litlab.stanford.edu/)
+
+### 计算语言学与历时语义
+
+- [SemEval-2020 Task 1: Unsupervised Lexical Semantic Change Detection](https://aclanthology.org/2020.semeval-1.1/)
+- [CCOHA: Clean Corpus of Historical American English](https://aclanthology.org/2020.lrec-1.859/)
+- [COHA / Corpus of Historical American English](https://www.english-corpora.org/coha/)
+- [HistWords](https://nlp.stanford.edu/projects/histwords/)
+- [Universal Dependencies](https://universaldependencies.org/)
+
+### 计算社会学与计量政治学
+
+- [Lazer et al., Computational Social Science](https://www.science.org/doi/10.1126/science.1167742)
+- [Bit by Bit: Social Research in the Digital Age](https://bitbybitbook.com/)
+- [General Social Survey](https://gss.norc.org/get-the-data.html)
+- [World Values Survey](https://www.worldvaluessurvey.org/)
+- [European Social Survey](https://www.europeansocialsurvey.org/data/)
+- [Manifesto Project Database](https://manifesto-project.wzb.eu/datasets)
+- [Comparative Agendas Project](https://www.comparativeagendas.net/datasets_codebooks)
+- [ParlSpeech data](https://partyfacts.herokuapp.com/data/parlspeech)
+- [ParlSpeech V2 paper](https://doi.org/10.1177/2053168020918610)
+- [V-Dem datasets](https://v-dem.net/data/the-v-dem-dataset)
+- [Voteview](https://voteview.com/data)
+- [GDELT Project](https://www.gdeltproject.org/)
+- [UCDP data downloads](https://ucdp.uu.se/downloads/)
+- [ACLED data](https://acleddata.com/)
+
+### 心理史学、Cliodynamics 与复杂系统
+
+- [Peter Turchin: Psychohistory and Cliodynamics](https://peterturchin.com/psychohistory-and-cliodynamics/)
+- [Toward Cliodynamics—an Analytical, Predictive Science of History](https://doi.org/10.21237/c7clio21210)
+- [Fitting Dynamic Regression Models to Seshat Data](https://doi.org/10.21237/C7clio9137696)
+- [The Equinox2020 Seshat Data Release](https://peterturchin.com/publications/the-equinox2020-seshat-data-release/)
+- [Wenmackers, Of Demons, Game Shows, and Baguettes](https://lirias.kuleuven.be/handle/20.500.12942/724185)
+- [Cliodynamics: The Journal of Quantitative History and Cultural Evolution](https://escholarship.org/uc/cliodynamics)
 
 ### 标准和工程
 
