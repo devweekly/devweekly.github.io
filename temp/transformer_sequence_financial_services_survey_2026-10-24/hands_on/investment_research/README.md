@@ -174,3 +174,44 @@ python transformer_research.py --output-dir outputs/transformer --epochs 10
 当前代码是教学版的单次时间切分，不是足以证明投资优势的统计验证。若 Transformer 只略微改善预测误差，却让回测换手或回撤变差，就不能据此断言它更适合投资业务。应增加多次 walk-forward 测试、置信区间、更多资产和更强基线。
 
 Transformer 依赖 PyTorch 的 `TransformerEncoderLayer` 和 `TransformerEncoder`；其输入采用 `batch_first=True`，张量形状为 batch × sequence × feature。参考 [PyTorch TransformerEncoderLayer 文档](https://docs.pytorch.org/docs/stable/generated/torch.nn.TransformerEncoderLayer.html)。
+
+
+## 9. Gradient Boosting Tree 版本：先尝试强表格模型
+
+除了 GRU 和 Transformer，本项目增加 scikit-learn 的 `HistGradientBoostingRegressor`。它属于梯度提升决策树（GBDT）家族，能学习非线性关系和特征交互；它把每个资产、每个决策日的特征行作为一个样本，不要求 60 天窗口，也不需要 GPU。对于几只 ETF、日频数据和有限样本的研究任务，它是值得优先比较的模型。参考：[官方模型文档](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.HistGradientBoostingRegressor.html) 和[时间序列滞后特征示例](https://scikit-learn.org/stable/auto_examples/applications/plot_time_series_lagged_features.html)。
+
+### Step 1：运行脚本
+
+在项目目录启用已有虚拟环境后运行：
+
+```bash
+python tree_research.py --start 2012-01-01 --end 2026-01-01 --cost-bps 5 --output-dir outputs/tree
+```
+
+依赖已在 `requirements.txt` 中，不需要另装 LightGBM 或 XGBoost。首次运行需要联网下载行情。脚本会打印验证集指标，并将测试集指标、预测、回测曲线和摘要写入 `outputs/tree/`。
+
+### Step 2：模型在做什么
+
+`build_panel()` 将价格变成 8 个结构化特征：1 日、5 日、20 日收益，20 日波动率，60 日趋势，以及市场和跨资产收益统计。GBDT 根据这些特征学习非线性关系，例如趋势强但近期波动也高，与趋势强且波动温和，可能对应不同预测。它不显式读取 60 天逐日序列，因此不能直接学习任意事件顺序；优势是训练快、适合表格特征，且不需要标准化。
+
+### Step 3：时间切分与验证
+
+脚本按日期将样本切为连续的训练、验证和测试区间，并在训练/验证边界前留出未来 5 日标签隔离区。测试集只用于最终评估。缺失值由训练流水线中的中位数填补器处理。模型自身使用 early stopping；如果要系统调参，只能在训练/验证阶段进行，不能根据测试集反复挑参数。
+
+### Step 4：检查结果
+
+`forecast_metrics.csv` 比较零收益、20 日动量与 GBDT 的 MAE、RMSE、方向命中率和每日横截面 rank IC。`backtest_hist_gbr_pred.csv` 是按预测排名构建的教学组合回测。不要只看哪一个模型的年化收益最高；还要检查预测误差、rank IC、换手、最大回撤、成本敏感性，以及结果是否在不同市场子时期稳定。
+
+### Step 5：与 GRU / Transformer 公平比较
+
+```bash
+python research.py --output-dir outputs/gru --epochs 10
+python transformer_research.py --output-dir outputs/transformer --epochs 10
+python tree_research.py --output-dir outputs/tree
+```
+
+三种模型的输入方式不同：GRU / Transformer 使用最近 60 日的特征序列，GBDT 使用决策日的结构化特征行。因此这组实验比较的是完整建模方案，而不是仅替换网络层的严格消融。若要隔离序列历史的增量价值，下一步应给 GBDT 增加 1、5、20、60 日滞后特征，并保持相同的时间切分与特征可见性。
+
+对当前规模，建议先建立动量 → Ridge → GBDT → GRU / Transformer 的递进基线。若 GBDT 已达到相近的时间外效果，神经网络必须证明其额外复杂度带来稳定的增量价值，而不是仅在某一次回测中碰巧收益更高。
+
+**边界：** 本脚本尚未实际下载行情或训练模型验证运行结果；首次运行需要联网。示例数据、单次时间切分与简化回测均不足以证明策略可盈利，正式研究应加入 walk-forward 多窗口验证、交易成本敏感性和 point-in-time 数据治理。
