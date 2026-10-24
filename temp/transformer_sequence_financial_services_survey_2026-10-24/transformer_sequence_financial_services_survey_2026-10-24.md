@@ -1780,3 +1780,34 @@ python regime_transformer.py --start 2012-01-01 --end 2026-01-01 --epochs 12 --o
 三个投资研究任务的验收指标不应混用：收益预测看预测误差和横截面排序；波动率预测看误差、风险覆盖与压力期表现；市场状态分类看各类召回率、概率校准和下游风险政策表现。**任何一个模型的离线分数都不能单独证明组合收益改善。**
 
 本次新增的是代码和逐步说明，没有实际下载行情或运行训练。首次运行需联网访问行情源；结果仅用于教育和研究，不构成投资建议。
+
+
+# 附录 G：金融机构基本面与财经新闻的两种 Transformer 研究用例
+
+前面的收益、波动率和市场状态示例使用公开 ETF 行情。本附录刻意换用两套不同的数据，避免将同一行情表反复包装成不同用例：一套是 SEC EDGAR Company Facts 的金融机构 XBRL 财报数据，另一套是 Financial PhraseBank 的人工标注财经新闻句子。SEC 提供免 API key 的结构化公司披露接口，但自动访问需遵守其 fair-access 要求并设置合适的 User-Agent。[SEC EDGAR API 文档](https://www.sec.gov/search-filings/edgar-application-programming-interfaces)。
+
+## G.1 金融机构季度基本面序列分类
+
+代码：[bank_fundamentals_transformer.py](./hands_on/investment_research/bank_fundamentals_transformer.py)；手把手说明：[README 第 13 节](./hands_on/investment_research/README.md#13-用例三金融机构季度基本面序列研究sec-xbrl--transformer)。
+
+```bash
+pip install requests pandas numpy scikit-learn torch
+python bank_fundamentals_transformer.py --user-agent "Your Name your.email@example.com" --window 8 --epochs 30 --output-dir outputs/bank_fundamentals
+```
+
+该原型下载 JPM、BAC、GS、MS、WFC、C 的 SEC Company Facts，构造季度财务特征序列，以 Transformer Encoder 预测下一报告期净利润是否高于当前报告期。它探索的是基本面变化，不是价格方向预测。SEC XBRL tag 在不同金融机构之间可能存在定义差异，且重述数据可能造成历史时点偏差；在用于严肃投资研究前，必须验证标签映射、报告期转换、filing-date 可见性和 point-in-time 版本，并与简单统计模型和树模型比较。
+
+## G.2 财经新闻情绪分类
+
+代码：[financial_news_transformer.py](./hands_on/investment_research/financial_news_transformer.py)；手把手说明：[README 第 14 节](./hands_on/investment_research/README.md#14-用例四金融新闻情绪与事件研究financial-phrasebank--finbert)。
+
+```bash
+pip install datasets transformers torch pandas scikit-learn
+python financial_news_transformer.py --dataset financial_phrasebank --config sentences_50agree --split train --batch-size 16 --output-dir outputs/financial_news_sentiment
+```
+
+该原型从 Hugging Face 加载 Financial PhraseBank，并使用预训练的 FinBERT 将财经句子分类为负面、中性或正面，输出概率和情绪分数。它与 XBRL 数值序列是不同的数据模态和建模任务。由于 PhraseBank 不提供可靠的公司标识符和事件时间戳，它只验证文本情绪识别，不直接证明新闻情绪能够产生超额收益。要进行事件研究，必须使用有发布时间和公司 ID 的新闻数据，并采用无前视偏差的事件窗口和时间外验证。
+
+## G.3 研究边界
+
+这两份代码是教学原型，尚未实际下载数据或运行训练。SEC 基本面原型尤其需要对 XBRL 概念映射、季度值提取、重述和样本时间切分进行人工核验，不能把输出指标当成经过验证的研究结果。FinBERT 的分类分数也不能直接等同于可交易信号。投资研究应先建立简单基线，再评估 Transformer 是否带来可重复的增量价值。
