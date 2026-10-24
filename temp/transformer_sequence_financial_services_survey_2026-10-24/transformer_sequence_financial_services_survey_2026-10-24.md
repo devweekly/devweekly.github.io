@@ -75,6 +75,7 @@ Ramp 在 2026 年 10 月公开的案例是目前最直接的生产实践之一�
 16. 参考文献与开源资源
 
 - 附录 A：核心架构的 Mermaid 图源（可编辑）
+- 附录 B：用开源金融数据从零训练交易序列模型
 ---
 
 ## 1. 问题定义：交易序列 Transformer 究竟在学什么
@@ -1509,3 +1510,72 @@ flowchart LR
     T -.成熟标签回流.-> S
     T -.图边与实体解析改进.-> G
 ```
+
+---
+
+## 附录 B：用开源金融数据从零训练交易序列模型
+
+本附录配套代码放在 [hands_on/](./hands_on/) 目录，带你从公开数据下载、环境准备、基线模型、序列模型训练到最终评估，完成一个小型交易欺诈排序实验。
+
+### B.1 数据集与研究目标
+
+使用 [PaySim：Synthetic Financial Datasets For Fraud Detection](https://www.kaggle.com/datasets/ealaxi/paysim1)。它是模拟移动支付数据，包含时间步、交易类型、转出/转入账户、金额、余额及模拟欺诈标签。我们按转出账户整理历史事件，预测当前交易是否欺诈。
+
+**边界必须明确：PaySim 是模拟数据，不是真实银行交易。** 这个练习用于学习序列建模和实验设计，不能把公开模拟数据上的成绩当作真实金融机构的生产效果。
+
+### B.2 代码目录
+
+| 文件 | 用途 |
+|---|---|
+| [README.md](./hands_on/README.md) | 数据下载、安装、训练、指标和云端运行说明 |
+| [train.py](./hands_on/train.py) | 时间切分、特征处理、逻辑回归基线、GRU 训练及评估 |
+| [requirements.txt](./hands_on/requirements.txt) | Python 依赖 |
+| [colab_quickstart.ipynb](./hands_on/colab_quickstart.ipynb) | Colab 快速开始 Notebook |
+| [.gitignore](./hands_on/.gitignore) | 忽略本地数据、模型和虚拟环境 |
+
+数据文件不放进 Git 仓库。下载前请阅读 Kaggle 数据集页面的使用条款；不要提交数据文件或 Kaggle API 凭证。
+
+### B.3 MacBook 能否训练？
+
+可以。MacBook Air M5 16 GB 足以运行本附录的小型 GRU，不需要训练大型 Transformer 或通用 LLM。建议先用 CPU 跑通流程，再试 PyTorch 的 Apple Silicon MPS 后端。真正需要关注的是数据加载、序列张量的内存占用和迭代时间，而不是一开始就租 GPU。
+
+下载数据并放入 hands_on/data/raw/ 后，在仓库根目录执行：
+
+```bash
+cd temp/transformer_sequence_financial_services_survey_2026-10-24/hands_on
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+python train.py --data data/raw/PS_20174392719_1491204439457_log.csv --model baseline
+python train.py --data data/raw/PS_20174392719_1491204439457_log.csv --model gru --epochs 1
+```
+
+先用 1 个 epoch 验证环境，再提高到 3–10 个 epoch。训练结果和模型产物写入 outputs/，该目录不会提交到 Git。
+
+### B.4 为什么先跑基线？
+
+逻辑回归是简单的传统机器学习基线，用于检查数据读取、标签、切分和指标流程。GRU（门控循环单元）是循环神经网络，会按顺序读取事件并更新内部状态，适合尝试学习账户近期行为模式。
+
+序列模型不保证一定胜过基线。当前脚本的逻辑回归只使用每笔交易的当前特征，并不是最强表格模型。正式研究应增加 LightGBM、XGBoost 或 CatBoost，并比较当前交易特征、人工历史统计和序列模型，才能判断序列建模是否提供了额外价值。
+
+### B.5 时间切分与指标
+
+脚本按时间顺序切分训练、验证和测试集，而不是随机拆分。标准化参数只从训练集拟合；isFraud 是标签，不作为输入，模拟规则字段 isFlaggedFraud 也不使用。为了保持入门示例简单，序列历史在各自时间切分内部构造。更贴近生产的回测还应在验证/测试期只延续截止时间之前及当前时刻已观测到的历史，并处理标签确认延迟。
+
+输出包括 PR-AUC、ROC-AUC，以及固定审核预算下的 Recall/Precision。比如 Recall@1% review budget 表示：如果团队只能审核风险最高的 1% 交易，这些交易覆盖了全部已标记欺诈中的多少比例。欺诈极少时，准确率可能很高却没有实际价值，因此不应单独使用准确率作为结论。
+
+### B.6 什么时候切换 Colab 或 Kaggle？
+
+| 环境 | 适用场景 | 注意事项 |
+|---|---|---|
+| MacBook | 数据检查、基线、小型 GRU、错误分析 | 首选，先跑通流程 |
+| [Google Colab](https://colab.research.google.com/) | 需要 GPU、更多参数组合或多个随机种子 | 上传 CSV 和 train.py，可选 GPU 运行时；会话可能重置，需另存结果 |
+| [Kaggle Notebooks](https://www.kaggle.com/code) | 数据已在 Kaggle、希望直接挂载 | Notebook 中添加 PaySim 数据集，遵守平台配额和运行限制 |
+
+本项目无需一开始就用 GPU。只有当模型扩大、历史窗口变长或多组实验拖慢迭代时，才值得切换云端。Notebook 操作步骤见 [Colab quickstart](./hands_on/colab_quickstart.ipynb)。
+
+### B.7 如何扩展成研究项目？
+
+建议逐步加入强表格基线、比较历史窗口长度 5/10/20/50、对比 GRU/TCN/小型 Transformer，并记录 PR-AUC、推理延迟和模型参数量。通过消融实验回答性能增益究竟来自序列信息、交易字段还是时间信息。随后再研究标签延迟、时间漂移和在线学习。在线学习应先做离线按时间评估，并具备模型版本、标签成熟时间、污染检测和回滚策略。
+
+**验收标准不是跑出一个漂亮分数，而是实验可重复、没有明显未来信息泄漏，并且能解释序列模型相对简单基线究竟增加了什么价值。**
