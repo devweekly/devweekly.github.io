@@ -58,17 +58,17 @@
 
 | 数据集 | 主要任务/内容 | 原论文或项目 | 使用时的限制 |
 |---|---|---|---|
-| FI-2010 | 限价订单簿分类、短期中间价方向预测 | [数据与相关研究入口](https://www.google.com/search?q=FI-2010+limit+order+book+dataset+paper)；常见订单簿深度学习基准 | 覆盖市场、证券数量和期间有限；同一基准反复训练不能证明跨市场泛化 |
+| FI-2010 | 限价订单簿分类、短期中间价方向预测 | Ntakaris 等的 [FI-2010 基准论文](https://doi.org/10.1002/for.2543)；Zhang 等的 [DeepLOB 论文](https://arxiv.org/abs/1808.03668) | 覆盖市场、证券数量和期间有限；同一基准反复训练不能证明跨市场泛化 |
 | LOBSTER | Nasdaq 历史订单簿事件、提交/撤销/成交、不同深度盘口 | [官方数据入口](https://vdc.univie.ac.at/data-access/lobster) | 有学术访问与许可规则；不是可无条件商用的数据集 |
-| Financial PhraseBank | 金融新闻句子的正/中/负情绪标签，约 4.8k 句 | Malo 等，*Good debt or bad debt: Detecting semantic orientations in economic texts*；常用于 FinBERT 情绪评估 | 数据来源和许可可能是研究用途/非商业，使用前查看原始分发条款，不要依赖不明来源的镜像 |
+| Financial PhraseBank | 金融新闻句子的正/中/负情绪标签，约 4.8k 句 | Malo 等，*Good debt or bad debt: Detecting semantic orientations in economic texts*；FinBERT 相关论文见 [Araci 原论文](https://arxiv.org/abs/1908.10063) 与 [IJCAI 2020 FinBERT](https://www.ijcai.org/proceedings/2020/622) | 数据来源和许可可能是研究用途/非商业，使用前查看原始分发条款，不要依赖不明来源的镜像 |
 | FiQA | 金融意见挖掘、问题回答和情绪打分 | [FiQA 任务入口](https://sites.google.com/view/fiqa/home) | 任务赛数据各部分的条款和再分发权需逐项确认 |
 | FNSPID | 时间对齐的新闻和股票价格；论文报告约 29.7m 价格记录、15.7m 新闻记录，覆盖 4,775 家 S&P 500 公司、1999–2023 | [论文](https://arxiv.org/abs/2402.06698)、[代码/数据](https://github.com/Zdong104/FNSPID) | 规模大不等于新闻文本拥有开放再分发权；保留源网站和抓取规则 |
 | FinQA | 基于财报文本与表格的数值问答，带可执行推理程序 | Chen 等，EMNLP 2021；[论文](https://aclanthology.org/2021.emnlp-main.300/)、[项目](https://github.com/czyssrs/FinQA)、[数据说明与许可](https://finqasite.github.io/about.html) | 应评估答案和推理程序；数值、表格行与单位对齐很重要 |
-| FinTabNet | S&P 500 年报中的财务表格与单元格结构标注 | Zheng 等，*Global Table Extractor*；[IBM 数据入口](https://developer.ibm.com/exchanges/data/all/financial-tables/) | PDF/HTML 源文件的原始权利与数据集标注许可应分开审查 |
+| FinTabNet | S&P 500 年报中的财务表格与单元格结构标注 | Zheng 等，*Global Table Extractor*；[IBM FinTabNet 项目](https://github.com/IBM/FinTabNet) | PDF/HTML 源文件的原始权利与数据集标注许可应分开审查 |
 | TAT-QA | 表格 + 文本混合的财报问答和数值推理 | [论文与代码](https://github.com/NExTplusplus/TAT-QA) | 验证集和测试集应保留原始切分；不要在生成提示模板时使用测试答案 |
 | ConvFinQA | 基于财务报告的多轮对话式数值推理 | [论文/项目](https://github.com/czyssrs/ConvFinQA) | 多轮上下文中要区分问题历史、证据表和答案泄漏 |
 | ENTRANT | 百万级财务表格、面向表格理解预训练 | [论文与数据说明](https://pmc.ncbi.nlm.nih.gov/articles/PMC11322654/) | 大量表格不等同于高质量监督标签；仍需做来源去重和报告级切分 |
-| UCI Taiwan Credit Card Default | 约 30,000 个客户的违约预测经典基准 | [UCI 数据页](https://archive.ics.uci.edu/)（按数据集名检索） | 适合教学/基线，但不是现代全生命周期授信系统的代表 |
+| UCI Taiwan Credit Card Default | 约 30,000 个客户的违约预测经典基准 | [UCI 官方数据页](https://archive.ics.uci.edu/dataset/350/default+of+credit+card+clients) | 适合教学/基线，但不是现代全生命周期授信系统的代表 |
 | UCI Taiwanese Bankruptcy Prediction | 财务比率和企业破产分类 | [UCI 数据页](https://archive.ics.uci.edu/dataset/572/taiwanese+bankruptcy+prediction) | 年份、行业与样本选择可能造成分布偏差 |
 | ULB Credit Card Fraud | 欧洲持卡人交易、强烈类别不平衡、匿名/PCA 特征 | [公开数据介绍与常见入口](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) | 常被用于入门欺诈检测，但匿名字段限制业务可解释性；应确认该副本条款 |
 | IEEE-CIS Fraud Detection | 竞赛型线上交易欺诈特征 | [Kaggle 竞赛](https://www.kaggle.com/competitions/ieee-fraud-detection) | 有复杂匿名特征和标签不平衡；随机切分或过采样很容易高估效果 |
