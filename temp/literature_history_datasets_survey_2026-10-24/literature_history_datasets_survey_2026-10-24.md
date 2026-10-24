@@ -539,7 +539,239 @@ TEI 尤其重要，因为它允许把作品内容与学术解释分开编码。�
 
 这些组合最有价值的不是“用 LLM 汇总更多文本”，而是把不同类型的证据连起来：原始文字提供当时的人如何叙述，结构化统计提供独立的量化信号，地图与边界解释空间差异，学术研究和专家判断校验解释。在数据模型中应保留证据类型与来源，不要把小说叙事、报刊报道、人口统计和模型推断合并成一个无差别的“历史事实”。
 
-## 14. 参考资料与主要入口
+## 14. 数字史学、计算文学、计算语言学、计算社会学与计量政治学
+
+前文已经介绍相关数据集与交叉学科的范围。本节进一步把这些研究方向的**核心问题、可复用数据、代表性论文、非 LLM 方法和 LLM 应用**对应起来，重点补足从学科概览走向项目实施所需要的具体材料。
+
+这几个名称彼此相关，却不等同。数字史学强调如何把数字技术纳入史料发现、来源批判、保存、分析与历史解释；计算文学研究关注文本的形式、叙事、风格、文类和文学史；计算语言学研究语言的结构、处理和变化；计算社会学研究个体、群体、制度与网络的社会机制；计量政治学则对政治态度、政策、政党、选举、议会、冲突和制度进行可重复的定量研究。它们可以共用 NLP、图分析、地理空间、统计推断与机器学习工具，但目标变量、证据要求和验证方式不同。
+
+### 14.1 数字史学（Digital History / Computational History）
+
+数字史学不是把纸质档案扫描后上传网站，也不只是对历史文本跑主题模型。它包括历史来源的数字化、OCR/HTR、元数据与数据模型、数字学术版本、跨档案链接、地理空间分析、网络分析、机器学习和史学方法论。关键问题不只是“算出什么”，还包括“哪些来源被数字化、哪些来源没留下来、哪些清洗和筛选改变了可见的历史”。
+
+#### 14.1.1 代表性论文与方法
+
+| 论文 | 贡献 | 可复用的方法/工程经验 |
+|---|---|---|
+| Romein et al., [*State of the Field: Digital History*](https://doi.org/10.1111/1468-229X.12969)（2020） | 回顾数字史学中的 OCR/HTR、born-digital archives、计算机视觉、数字学术版本、链接开放数据、量化文本和网络分析 | 把数字化、来源选择和方法论放在同一研究流程中；讨论数字化文本作为史料代理的边界 |
+| Hoekstra & Koolen, [*Data scopes for digital history research*](https://doi.org/10.1080/01615440.2018.1484676)（2018） | 提出 data scope，强调选择、增强、链接、分析和评估数据的过程都会改变最终证据 | 记录数据纳入/排除规则、OCR版本、链接规则、抽样、过滤、衍生字段和误差，而非只发布最终图表 |
+| Siebold & Valleriani, [*Digital Perspectives in History*](https://www.mdpi.com/2409-9252/2/2/13)（2022） | 从数据库、网络分析、机器学习、数据模型和研究可持续性介绍计算史学 | 历史研究需要可持续的数据模型、来源透明度与质量政策；知识图谱适合表达人、地、物、事件和概念间的复杂关系 |
+| Filgueira et al., [*Extending defoe for the Efficient Analysis of Historical Texts at Scale*](https://doi.org/10.1109/escience51609.2021.00012)（2021） | 描述 defoe——可并行分析大型数字化报刊/图书的工具箱，支持多个 OCR/XML schema、地理解析和不同存储系统 | 不同图书馆的数据格式应由可配置的 schema adapter 处理；可扩展批量处理与查询不应丢失来源和文档位置 |
+| [*Databases for Quantitative History*](https://ceur-ws.org/Vol-1681/Kirwan_Quantitative_History.pdf) | 讨论大规模历史数据、可视化、数据建构和量化史学之间的关系 | 将数据工程决策视为方法论的一部分：历史数据库的结构本身会影响哪些问题可以被提出 |
+
+#### 14.1.2 数据集、项目与非 LLM 工具
+
+| 数据/项目 | 可研究的内容 | 主要工具与方法 |
+|---|---|---|
+| [Chronicling America](https://www.loc.gov/collections/chronicling-america/) | 美国历史报刊、新闻事件、地点、话语与长期主题变化 | OCR/ALTO、文本检索、地名解析、时序分析、历史 GIS |
+| [Living with Machines](https://www.turing.ac.uk/research/research-projects/living-machines) 与 [LwMDB](https://research.lancaster-university.uk/en/datasets/lwmdb-data/) | 英国工业时代报刊、地图、人口普查、书籍和社会史的跨来源链接 | defoe、地理编码、实体消歧、图分析与空间分析 |
+| [Old Bailey Proceedings Online](https://www.oldbaileyonline.org/) | 1674–1913 年伦敦审判记录、司法制度、犯罪叙事与社会身份 | TEI/XML、事件抽取、社会网络、文本分类、历史词汇研究 |
+| [SlaveVoyages](https://www.slavevoyages.org/voyage/about) | 航程、船只、贸易参与者、被奴役者数量及资料出处 | 缺失数据/不确定性分析、地理空间、网络分析和历史统计 |
+| [EH.net Databases](https://eh.net/databases/) | 历史证券、贸易、公共债务、商品价格、劳工和行政 GIS | 计量史、事件研究、索引构造和地理数据连接 |
+| [defoe](https://github.com/defoe-code/defoe) | 对大型历史文本集合运行可复现查询与 NLP workflow | 并行计算、XML schema 适配、地名解析和规模化文本分析 |
+| [Recogito](https://recogito.pelagios.org/) | 对历史文献和地图中的人物/地名进行人工或协作标注 | 实体规范化、地理注释和知识图谱数据准备 |
+| [Omeka S](https://omeka.org/s/)、[Tropy](https://tropy.org/)、[Gephi](https://gephi.org/) | 数字收藏、研究笔记、档案管理和网络可视化 | 来源管理、可检索的研究对象和历史关系可视化 |
+
+**数字史学的基本做法：** 保存原始扫描图/IIIF manifest、OCR/HTR 原结果、校订文本、结构化版本、标准化文本和分析用语料；将文档日期、事件发生日期、入库日期及估算日期分开；记录来源覆盖和缺失。历史数字语料中“被保存、被扫描、被识别并可下载”往往具有强烈选择性，不能把数字馆藏的频率简单当成整个社会的真实发生率。
+
+### 14.2 计算文学与数字人文（Computational Literary Studies / Digital Humanities）
+
+计算文学研究是数字人文中以文学作品、文学形式、文类、叙事、作者、出版史和阅读文化为核心的一支。它既可以做微观分析（某个词、叙事手法或人物说话模式），也可以做宏观分析（几个世纪、数千部作品的分布与变化）。Distant Reading、Macroanalysis、文体计量和可编程语料是常见路线。
+
+#### 14.2.1 数据集和研究项目
+
+| 数据集/项目 | 语料结构 | 适合研究 |
+|---|---|---|
+| [ELTeC：European Literary Text Collection](https://www.distant-reading.net/eltec/) | 欧洲文学文本集，重点为 1840–1920 年的跨语言小说。核心集合按语言构造相对可比的小说语料，并以 TEI XML 组织；项目扩展到多个欧洲语言与更早时期 | 跨语言文类比较、小说出版史、叙事风格与文学市场的长期变化 |
+| [ELTeC GitHub 组织](https://github.com/COST-ELTeC) | 各语种语料和 schema/metadata | 语料的 reproducible build、XML/TEI 分析、语言间可比性研究 |
+| [DraCor](https://dracor.org/doc/what-is-dracor) | 使用 TEI 标注的多语种戏剧文本；通过 API 暴露人物、场景、角色共现和结构数据 | 角色网络、独白/对话比例、戏剧结构、跨语言戏剧史 |
+| [DraCor corpus registry](https://dracor.org/doc/corpora) | 各国/各语言戏剧语料及独立仓库 | 做跨文类和跨国比较，追踪每份语料的作者/编辑者和许可 |
+| [CLiC: Corpus Linguistics in Context](https://clic.bham.ac.uk/) | Dickens 等文学作品，能够区分引号内外文本、叙述和人物对白等上下文 | 叙述者与角色语言差异、对白、自由间接引语、人物视角和语料文体学 |
+| [LitBank](https://github.com/dbamman/litbank) | 100 部小说的实体、事件、共指和引语标注 | 小说角色、别名与身份、事件/叙事分析 |
+| [Project Gutenberg](https://www.gutenberg.org/) 与 [PG-19](https://github.com/google-deepmind/pg19) | 公有领域电子书和长文档语言建模基准 | 文体研究、作品检索、作者识别、长文档语言建模（每本书仍应核验许可） |
+| [HathiTrust Research Center / BookNLP ELF](https://htrc.atlassian.net/wiki/spaces/COM/pages/43300179/HTRC%2BBookNLP%2BDataset%2Bfor%2BEnglish-Language%2BFiction) | 约 213,000 卷英语小说的 BookNLP 衍生分析数据 | 大规模角色、实体、词汇和文学形式研究；是非消费式衍生数据，不等于开放原书全文 |
+
+ELTeC 的研究基础与设计见 Schöch 等人的 [*Creating the European Literary Text Collection (ELTeC): Challenges and Perspectives*](https://modernlanguagesopen.org/articles/10.3828/mlo.v0i0.364)。DraCor 被设计为 programmable corpora：既能读取 TEI，又可以通过 API 程序化提取每部戏剧的角色、场景与共现信息，避免每个研究项目重建同一套解析器。
+
+#### 14.2.2 论文与方法
+
+| 研究/方法 | 代表论文/资源 | 方法重点 |
+|---|---|---|
+| Distant Reading | Franco Moretti, *Distant Reading*（2013，书）；[Stanford Literary Lab](https://litlab.stanford.edu/) | 通过作品群、出版统计、地图、网络与模型提出文学史问题；统计结果仍需回到原作细读 |
+| Macroanalysis | Matthew L. Jockers, *Macroanalysis: Digital Methods and Literary History*（2013，书） | 文体特征、主题模型、文本分类、元数据和大规模文学语料分析 |
+| Computational literary studies 方法综述 | [Survey of Methods in Computational Literary Studies](https://methods.clsinfra.io/) | 评估适用的语料、采样、传统 NLP、统计、机器学习、文体学工具及其解释边界 |
+| 文学实体和共指 | Bamman, Popat & Shen（NAACL 2019）；Bamman, Lewke & Mansoor（LREC 2020） | 文学领域标注、长距离共指、非专名实体与嵌套描述 |
+| 文学戏剧网络 | [DraCor 文档和论文入口](https://dracor.org/doc/what-is-dracor) | 将角色视为节点，场景共现作为边；按作品、文类、年代比较网络指标 |
+| 文体学与作者归属 | Eder, Rybicki & Kestemont, [*Stylometry with R*](https://doi.org/10.32614/RJ-2016-007)；[stylo 项目](https://github.com/computationalstylistics/stylo) | 高频词、词 n-gram、Burrows’s Delta、聚类和作者归属 |
+| 计算式文学语料学 | [CLiC 项目](https://github.com/mahlberg-lab/clic) | 使用可定义的语境窗口和引号内外分区分析人物语言，不只做全书词频 |
+
+#### 14.2.3 非 LLM 与 LLM 的分工
+
+非 LLM 方向可以使用 stylo、MALLET、BookNLP、CLiC、DraCor、AntConc、Voyant 和传统分类器，建立稳定、可解释的词频/风格/网络/实体基线。LLM 则可用于辅助标注、角色摘要、引用问答、章节间证据检索、翻译对照和人工复核候选生成。
+
+例如，小说人物关系项目不应只让 LLM “读完整本书后总结关系”。更可靠的做法是用 BookNLP 生成共指与对白候选，构建带章节和页/段定位的图，再让 LLM 对可能的关系边寻找证据段落，最后由规则与人工复核确认。人物共现不等于亲密关系，叙述者的陈述也不一定是故事世界中的事实。
+
+### 14.3 计算语言学（Computational Linguistics）与历时语料
+
+计算语言学关注语言结构和处理；其中与文学历史数据最紧密的子领域包括历史语言学、历时语义变化、作者/语域变体、低资源语言处理、语法演变和文本版本分析。它与一般文学文本分析的差别在于：研究结论通常要对齐明确的语言现象和语料采样设计，不应把语义嵌入空间里某个邻居变化就直接称为“词义改变”。
+
+#### 14.3.1 数据集与基准
+
+| 数据集/项目 | 语言/时间范围与标签 | 典型研究任务 |
+|---|---|---|
+| [COHA / CCOHA](https://www.english-corpora.org/coha/) | COHA 覆盖 1810–2009 年美国英语，多文类、按年代组织；CCOHA 为用于历时语义变化评估的清理版本 | 历时词汇/语义变化、跨年代语言模型评测、词频与语义变迁 |
+| [SemEval-2020 Task 1](https://aclanthology.org/2020.semeval-1.1/) | 英语、德语、拉丁语和瑞典语的语义变化任务；有人工标注目标词的二值/分级变化标签 | 无监督词义变化检测、跨语言比较、变化分数评估 |
+| [English test data for SemEval-2020](https://www.ims.uni-stuttgart.de/en/research/resources/corpora/sem-eval-ulscd-eng/) | 基于 CCOHA/COHA 的两个时期，每期约 600 万 tokens；37 个目标词及人工变化标签 | 将词汇变化算法与人工判断进行对照，而不是只展示向量可视化 |
+| [HistWords](https://nlp.stanford.edu/projects/histwords/) | 多种语言的历史词向量与对应年代语料 | 词义变化、词汇语义的时间演变与文化变化分析 |
+| [Google Books Ngram](https://books.google.com/ngrams/info) | 多年代、按 n-gram 聚合的出版文本计数 | 词频趋势、概念扩散和文化史；不能直接替代上下文或完整文档 |
+| [CEEC / CoRD](https://varieng.helsinki.fi/CoRD/) | 早期英语书信及多种历时/社会语言学语料目录 | 礼貌、称谓、语法和社会身份的语言变化 |
+| [Universal Dependencies](https://universaldependencies.org/) | 多语种形态与句法标注；存在古典、历史或低资源语言 treebank | 词性、词元、依存句法和跨语言句法比较 |
+| [Perseus / Open Greek Corpus / CLTK](https://opengreek.org/) | 古希腊语、拉丁语以及相关形态分析和文本资源 | 古典语言词法/句法、词义变化、文本对齐和语言工具建设 |
+
+#### 14.3.2 代表论文和方法
+
+- Hamilton, Leskovec & Jurafsky, [*Diachronic Word Embeddings Reveal Statistical Laws of Semantic Change*](https://aclanthology.org/P16-1141/)（ACL 2016）：用不同时期的词向量研究语义演变，说明时间切片、向量空间对齐与变化度量的重要性。
+- Schlechtweg et al., [*SemEval-2020 Task 1: Unsupervised Lexical Semantic Change Detection*](https://aclanthology.org/2020.semeval-1.1/)：建立多个语言的人工标注评测，解决“算法分数如何与人对语义变化的判断对齐”的评估难题。
+- Alatrash et al., [*CCOHA: Clean Corpus of Historical American English*](https://aclanthology.org/2020.lrec-1.1/)：提出清理后的历时英语语料，以支持更可控的语义变化研究。
+- Davies, [*Expanding Horizons in Historical Linguistics with the 400-Million Word Corpus of Historical American English*](https://doi.org/10.3366/cor.2012.0025)（2012）：强调均衡的文类和年代采样对历史语言研究的价值。
+
+方法上可以从高频词与搭配、词典语义、监督式词义分类，到时间分片的词向量、上下文化语言模型和 change-point detection 逐步推进。实验设计应使用跨时期数据，控制语料规模、文类、OCR 质量与版本差异，并对词向量空间进行对齐或采用上下文层面的评估。对于历史语料，模型观测到的变化可能来自词义变化，也可能来自词性变化、作者/体裁变化、语料构成变化或 OCR 错误，必须用实例上下文和语言学标注验证。
+
+#### 14.3.3 可实施项目
+
+| 项目 | 数据与技术 | 结果 |
+|---|---|---|
+| 历史词义变化监测 | SemEval-2020 + CCOHA，比较词频、静态嵌入与上下文模型 | 生成按词、时期、文类分组的变化分数和人工可查证例句 |
+| 历史称谓/人称演变 | CEEC、COHA、许可兼容的书信文本；搭配分析、句法与语用标签 | 研究不同社会关系中的称谓、礼貌、代词和语域变化 |
+| 低资源古典语言 NLP | Open Greek Corpus / Perseus / OpenITI + CLTK + UD 类数据 | 词元/形态识别、版本对齐、古典语言搜索与辅助阅读 |
+| 文学语言与非文学语言对照 | LitBank、ELTeC、COHA/COCA 的兼容子集 | 测量文学与一般语言在实体、句法、情绪和叙述特征方面的差异 |
+
+### 14.4 计算社会学（Computational Sociology / Computational Social Science）
+
+计算社会学研究个体与群体如何形成互动、规范、意见、社会网络、组织和制度。其数据既可能是传统概率抽样问卷，也可能是社交平台、网络通信、移动设备或交易系统产生的数字痕迹。两类数据各有偏差：问卷的变量定义和抽样更明确，但频率和规模有限；数字痕迹规模大、时间细，却通常只代表某个平台及其可观察用户，无法自动推广到全社会。
+
+#### 14.4.1 代表论文
+
+| 论文/书 | 研究贡献 | 工程/方法启示 |
+|---|---|---|
+| Lazer et al., [*Computational Social Science*](https://www.science.org/doi/10.1126/science.1167742)（Science, 2009） | 提出大规模行为数据和计算分析为社会科学打开新的研究机会 | 规模本身不是代表性；跨领域研究要同时考虑隐私、因果识别、数据所有权和可复现性 |
+| Salganik, [*Bit by Bit: Social Research in the Digital Age*](https://bitbybitbook.com/)（2017） | 系统讨论数字痕迹、调查、实验、伦理与社会研究 | 把抽样、测量、实验设计和伦理纳入数据流水线；线上观察不等同于随机实验 |
+| Watts, *A 21st Century Science*（Nature, 2007） | 讨论更系统地研究社会现象的科学方法和大规模数据 | 不能只以事后观察相关性解释传播、影响或集体行为 |
+| Bakshy, Messing & Adamic, [*Exposure to ideologically diverse news and opinion on Facebook*](https://www.science.org/doi/10.1126/science.aaa1160)（Science, 2015） | 使用 Facebook 的社会关系、用户选择和算法排序数据分析跨意识形态内容接触 | 应区分个体选择、算法排序、社交网络结构与实际曝光；平台样本/特征不能代表所有人 |
+| Bond et al., [*A 61-million-person experiment in social influence and political mobilization*](https://www.nature.com/articles/nature11421)（Nature, 2012） | 通过 Facebook 的大规模现场实验研究社交影响与政治动员 | 实验设计能帮助区分社会影响与简单的同质性，但平台机制与实验期间条件决定外推范围 |
+| Naugle et al., [*The Ground Truth program: simulations as test beds for social science research methods*](https://link.springer.com/article/10.1007/s10588-021-09346-9)（2022） | 用具有已知因果机制的社会系统模拟环境，测试解释、预测和干预方法 | 真实社会通常没有已知 ground truth；可以先用仿真环境验证算法，但仿真上有效不等于现实中有效 |
+
+#### 14.4.2 数据集与平台
+
+| 数据/项目 | 主要数据 | 使用方法与限制 |
+|---|---|---|
+| [General Social Survey（GSS）](https://gss.norc.org/get-the-data.html) | 自 1972 年开始的美国社会态度、行为、人口属性与价值观问卷；有累计数据和文档 | 适合社会趋势、态度、群体差异和时间序列；需要使用调查权重并理解问卷模式/题目变化 |
+| [World Values Survey（WVS）](https://www.worldvaluessurvey.org/) | 多国、多轮次价值观与社会态度调查 | 适合跨文化比较；不同国家翻译、抽样、波次间题目一致性需要核验 |
+| [European Social Survey（ESS）](https://www.europeansocialsurvey.org/data/) | 欧洲跨国、多轮次的态度与行为调查，含问卷、抽样和权重资料 | 适合跨国面板式比较与价值观变化，但要理解轮次、国家与权重 |
+| [IPUMS](https://www.ipums.org/overview) | 人口普查、家庭、职业、迁移等协调化数据 | 适合人口和社会结构研究；微观数据受到注册和使用协议限制，可能禁止商业用途 |
+| [Stanford Network Analysis Project（SNAP）](https://snap.stanford.edu/data/) | 社交网络、引文、通信、互动和其他图数据 | 网络分析、社群发现和传播模型；数据的时间范围和采样机制要明确，部分来源已经陈旧 |
+| [GDELT](https://www.gdeltproject.org/) | 多语新闻、事件、实体、地点、主题与情绪/语气的结构化信号 | 适用于国际事件、媒体框架与跨国报道；新闻覆盖不均，自动抽取错误和来源偏差都很显著 |
+| [Our World in Data](https://ourworldindata.org/) | 人口、健康、环境、经济与社会指标的可下载数据图表 | 适合可复现的描述性研究和数据发现；必须检查图表引用的原始来源、版本和许可 |
+| [The World Bank Open Data](https://data.worldbank.org/) | 跨国发展、贫困、教育、劳动和社会指标 | 适合宏观比较；国家统计定义、指标缺失与修订会影响时间比较 |
+
+计算社会学常用社会网络分析、扩散/阈值模型、事件史、生存分析、面板模型、因果推断、文本分析、Agent-Based Modeling（ABM）和微观模拟。非 LLM 工具包括 NetworkX、igraph、Gephi、NetLogo、Mesa、Repast、R/Python 统计生态以及传统文本分类器；LLM 可用于问卷开放文本编码、访谈主题候选、社交文本分类、数据字典解释和辅助分析，但必须使用双人/人工金标准、隐私控制、偏差测试和明确的标签定义。
+
+### 14.5 计量政治学（Quantitative Political Science / Political Methodology）
+
+计量政治学关注选举、政党、意识形态、议会、政策议程、公共舆论、民主制度、战争和国际关系。其重要特点是：研究数据通常有明确的单位（个人、选区、议案、党派、国家、事件、时间），且必须将统计结果连接到具体政治概念。自动文本模型可以测量语言位置、主题或情绪，但不能仅凭相关词汇就直接认定某政治立场。
+
+#### 14.5.1 重点数据集
+
+| 数据/项目 | 内容与时间特性 | 用于哪些研究 | 注意事项 |
+|---|---|---|---|
+| [Manifesto Project / MARPOR](https://manifesto-project.wzb.eu/datasets) | 政党选举纲领文本及句子/准句子级政策编码；当前公开目录在 2026 年列出 2026a 版本 | 党派立场、政策优先级、竞选承诺和跨国意识形态变化 | 文本与编码有项目许可和使用条款；记录版本、编码方式与缺失纲领，不要把分类视为完全无误的“真实意识形态” |
+| [Comparative Agendas Project（CAP）](https://www.comparativeagendas.net/datasets_codebooks) | 各国政府议程、立法、行政文件、新闻或公共政策活动的标准化政策主题编码 | 政策注意力变化、议程设置、问题竞争和政府回应 | 需要遵守各国家/子项目的 codebook、项目范围和引用要求；同一代码的跨国可比性仍需验证 |
+| [ParlSpeech V2](https://partyfacts.herokuapp.com/data/parlspeech) | 九个民主国家议会的约 630 万条演讲全文（1987–2018）；含演讲者、党派、时间等元数据 | 议会话语、政党立场、议题变化和演讲者分类 | 文本采集和语种覆盖不完全均匀，需确认实际版本的下载与再利用条件；合并前统一党派与议员身份 |
+| [ParlSpeech V2 论文](https://doi.org/10.1177/2053168020918610) | Rauh 与 Schwalbach 对数据集的介绍 | 展示跨国家议会文本如何规范化为可分析语料 | 保留议会/国家/语种的来源元数据，避免只对拼接后的文本进行分析 |
+| [V-Dem Dataset](https://v-dem.net/data/the-v-dem-dataset) | 多维民主、政治参与、自由、选举、制度制衡等指标；每版附 codebook 和 cautionary notes | 民主化、制度变化、比较政治、政体转型与历史面板分析 | 多个指标含专家判断及聚合模型；必须阅读测量模型、置信区间、编码层级和最新版本说明 |
+| [Voteview](https://voteview.com/data) | 美国国会 roll-call 投票、议员与党派数据，可用于较长时段政治行为分析 | 议员意识形态位置、党派极化、议题联盟和投票网络 | 缺席、议案类型和时期差异会影响估计；意识形态量尺是模型估计，不是直接观测的心理属性 |
+| [GDELT Event Database](https://www.gdeltproject.org/) | 新闻报道中抽取的国际事件、参与者、地点与事件类别，自 1979 年以来，部分数据以约 15 分钟频率更新 | 国际事件、冲突/合作、外交与媒体报道趋势 | 它是媒体报道的自动抽取数据库，不是全球所有事件的真值；报道密度、语种偏差、重复报道和分类误差必须入模 |
+| [Correlates of War（COW）](https://correlatesofwar.org/) | 国家体系、战争、军事化国家间争端、联盟及贸易相关历史数据 | 国际冲突、战争成因、国家体系和长期联盟变化 | 各子数据库的事件定义、起止时间、国家编码和版本不同 |
+| [UCDP](https://ucdp.uu.se/downloads/) | 有组织暴力、国家冲突和战斗死亡等事件记录 | 武装冲突、政治暴力和冲突强度 | 与 COW/ACLED 的冲突定义、空间/时间粒度和估算方法不同，跨源合并前要做概念映射 |
+| [ACLED](https://acleddata.com/) | 政治暴力、示威和冲突事件，含地理、时间、参与方和事件细节 | 冲突预警、事件时序、空间风险和事件分类 | 数据访问和使用受 ACLED 条款约束；必须核实当前下载、商业使用与再分发许可 |
+| [GSS / WVS / ESS](https://gss.norc.org/get-the-data.html) | 民众态度、价值观、投票行为及人口属性 | 选民态度、价值观变化、政治信任、群体差异和比较政治行为 | 需要权重、问卷版本和抽样设计；态度调查不能直接等价于真实投票或行为 |
+
+#### 14.5.2 代表性论文与计量方法
+
+| 论文 | 任务与方法 | 对数据工作的启示 |
+|---|---|---|
+| Grimmer & Stewart, [*Text as Data: The Promise and Pitfalls of Automatic Content Analysis Methods for Political Texts*](https://doi.org/10.1093/pan/mps028)（Political Analysis, 2013） | 经典政治文本分析方法论，讨论字典、监督/无监督模型、验证设计与文本测量 | 模型输出需要领域验证；自动文本分析应当补充而非取代精读与政治概念定义 |
+| Gentzkow, Kelly & Taddy, [*Text as Data*](https://doi.org/10.1257/jel.20181020)（Journal of Economic Literature, 2019） | 统计文本方法综述，包括监督式测量、降维、主题发现与因果分析 | 明确研究目标是测量、预测还是因果解释；不同目的需要不同的模型与验证 |
+| Laver, Benoit & Garry, [*Extracting Policy Positions from Political Texts Using Words as Data*](https://doi.org/10.1017/S0003055403000698)（APSR, 2003） | Wordscores：使用已知位置文本作为参考，估计其他文本的位置 | 参考文本选择与标签来源决定测量结果；需要敏感性分析 |
+| Slapin & Proksch, [*A Scaling Model for Estimating Time-Series Party Positions from Texts*](https://doi.org/10.1086/588435)（2008） | Wordfish 无监督文本缩放模型，用词语使用推断政党在一维空间中的相对位置 | 无监督维度并不会自动成为“左—右”；需用外部证据、已知排序和稳健性分析解释 |
+| Poole & Rosenthal 的 DW-NOMINATE/roll-call 研究 | 从议员表决矩阵估计政治空间与意识形态位置 | 需要明确投票选择机制、议案议题与可识别性；文本和投票数据可以交叉验证，但不能直接等同 |
+| [Comparative Agendas Project 研究与数据](https://www.comparativeagendas.net/) | 对政策文件、议案、新闻和政府议程应用统一主题代码 | 分类代码本、跨国适配和编码质量是跨时期比较的基础，而非后处理细节 |
+
+#### 14.5.3 计量政治学的 LLM/非 LLM 项目路线
+
+非 LLM 强基线包括 Wordscores/Wordfish、词典方法、监督文本分类、roll-call scaling、逻辑回归/层级模型、事件研究、差分中的差分、因果森林和网络分析。LLM 可以用于把原始政策文本按 codebook 编码、生成候选政策主题、整理议会发言、提取法规/条约实体和解释异常记录，但应采用抽样人工审计、专家复核、提示版本控制和跨语言验证。
+
+推荐先选定一个可验证任务，例如从议会发言预测既有党派/政策议题分类，或把一份政策文件映射到 CAP 代码本；固定手工标签测试集，比较词典/TF-IDF+Logistic Regression、传统监督模型和 LLM，按语言、党派、时期和文本长度分组评估。对真实政策效果的因果研究，LLM 标签只能当测量步骤，不能替代研究设计与因果识别。
+
+### 14.6 《基地》的“心理史学”（Psychohistory）：科幻设定与现实学科的关系
+
+《基地》（*Foundation*）里哈里·谢顿提出的是**心理史学（psychohistory）**。这是小说中的虚构数学科学：在庞大人口层面，把个体视为难以预测的随机因素，假设群体行为在统计意义上存在可建模规律，以此预测银河帝国的社会走向。小说中的设定还强调预测对人们保持隐秘，否则公众知道预测后会改变行为，使预测本身失效。
+
+现实世界里没有已知方法可以像谢顿那样准确预测数百或数千年后的具体历史。与其说现实研究有“心理史学数据集”，不如说有几类彼此相关的研究路线：量化历史/计量经济史（clio­metrics）、Peter Turchin 推动的 Cliodynamics（历史动力学）、计算社会科学、复杂系统与社会物理学、社会网络分析、系统动力学、Agent-Based Modeling（ABM）以及宏观历史面板和事件数据。它们能研究结构性规律、概率风险和条件性情景，不能消除历史偶然性、非线性、制度变化和人的反应。
+
+还要特别区分两个词义：Asimov 小说里的 psychohistory 是“群体层面预测历史的数学科学”；现实学术语境中的 psychohistory 有时指以心理分析/心理传记理解历史人物与历史行动的研究传统，两者并不是同一学科。
+
+#### 14.6.1 从谢顿计划映射到现实研究
+
+| 《基地》中的概念 | 现实中最接近的研究方向 | 可用数据/方法 | 真实边界 |
+|---|---|---|---|
+| 大规模群体的统计规律 | 计量历史、宏观社会学、人口学、经济史 | Maddison、JST Macrohistory、IPUMS、GSS/WVS/ESS、长期人口和财政数据；面板统计、层级模型 | 聚合规律可能稳定一段时间，但群体构成和机制会变化 |
+| 帝国兴衰与制度周期 | Cliodynamics、历史社会学、比较历史分析 | [Seshat](https://github.com/datasets/seshat)、COW、Maddison、WID、历史国家/战争/制度编码 | 变量定义和历史证据密度存在差异；Seshat 的可下载数据不一定开放商用，部分版本有非商业许可 |
+| 历史危机和政治暴力预测 | 政治不稳定/冲突研究、事件预测、复杂系统 | [COW](https://correlatesofwar.org/)、[UCDP](https://ucdp.uu.se/downloads/)、[ACLED](https://acleddata.com/)、GDELT、历史财政和人口资料 | 预测结果依赖事件定义、报告延迟和训练时期；罕见危机的误报/漏报成本很高 |
+| 结构性压力、人口与精英竞争 | Turchin 的结构—人口理论（Structural-Demographic Theory）与历史动力学 | 长期人口、实际工资、精英规模/竞争、财政压力、国家能力、社会冲突记录；动态回归和理论模型 | 模型变量往往需要历史学者编码；相关模式不保证不同世纪存在完全相同机制 |
+| 社会互动引发的涌现行为 | 计算社会学、社会物理学、ABM | 社交/人口网络、问卷、调查实验、历史关系数据；阈值模型、扩散、微观模拟和系统动力学 | 个体规则和网络结构假设会改变模拟结果；仿真能解释可能机制，却不是现实未来的确定性预言 |
+| 谢顿计划秘密与反身性 | 预测的反身性、Goodhart 定律、行为反馈与策略性适应 | 调查实验、政策事件、在线平台/市场行为、政策预警系统日志 | 预测一旦影响决策对象，数据生成过程就会改变；公开预警有时会减轻风险，有时也会造成恐慌或策略性规避 |
+
+#### 14.6.2 直接讨论心理史学/历史动力学的代表作品
+
+- Peter Turchin, [*Psychohistory and Cliodynamics*](https://peterturchin.com/psychohistory-and-cliodynamics/)（2012）：直接比较 Asimov 的心理史学与现实 Cliodynamics。Turchin 指出，现实复杂非线性系统的长期精确预测存在严格限制；但预测还可以用于检验理论，而不只是给未来事件下结论。
+- Peter Turchin, [*Toward Cliodynamics—an Analytical, Predictive Science of History*](https://doi.org/10.21237/c7clio21210)（2011）：提出历史动力学作为可形成理论、收集数据、进行经验检验的研究路线。
+- Turchin et al., [*Quantitative historical analysis uncovers a single dimension of complexity that structures global variation in human social organization*](https://www.pnas.org/doi/10.1073/pnas.1714698115)（PNAS, 2018）：结合 Seshat 的比较历史数据检验社会组织复杂性的量化结构。重点是跨社会比较及变量编码，不是证明一套算法可以准确预知未来。
+- Turchin, Hoyer et al., [*The Equinox2020 Seshat Data Release*](https://peterturchin.com/publications/the-equinox2020-seshat-data-release/)（2020）：说明 Seshat 某一经过整理的国家/政体—时间序列子集及其编码逻辑，适合用作数据方法研究的入口。
+- Peter Turchin, [*Fitting Dynamic Regression Models to Seshat Data*](https://doi.org/10.21237/C7clio9137696)（Cliodynamics, 2018）：讨论适用于跨文化时间序列数据的动态回归方法，目标是检验文化/社会演化过程的理论，而不是只拟合一条曲线。
+- Sylvia Wenmackers, [*Of Demons, Game Shows, and Baguettes: Tracing the Nineteenth Century Origins of Seldon’s Psychohistory*](https://lirias.kuleuven.be/handle/20.500.12942/724185)（2023）：回溯心理史学背后的数学思想，包括统计决定论、概率、拉普拉斯式决定论与混沌问题，讨论为何群体统计规律不等于对具体历史事件的完美预测。
+- [Cliodynamics: The Journal of Quantitative History and Cultural Evolution](https://escholarship.org/uc/cliodynamics)：量化历史、文化演化与宏观历史模型的重要学术期刊入口。
+- [Seshat Data Analysis（Oxford）](https://opensource.digitalscholarship.ox.ac.uk/seshat-dataset-analysis)：面向 Seshat 时间序列的 Python 分析工具；使用前要核对具体数据版本的许可证。
+
+#### 14.6.3 如果要做一个“现实版心理史学”研究项目
+
+合理目标不是预测“文明将在某年崩溃”，而是建立一组可证伪、范围明确、对不确定性负责的研究问题。例如：哪些可观测因素与历史上的政治不稳定风险相关？不同政体结构在什么条件下更容易出现财政危机？人口压力、精英竞争、实际工资和国家能力之间的关系是否跨地区、跨世纪稳定？某一历史模型能否在未参与拟合的地区/时期中复现已知转型？
+
+建议按以下顺序做：
+
+1. **定义因变量和单位。** 明确预测的是政权更替、战争爆发、财政危机、国家崩解、社会动荡还是某个连续指标；定义观察单位（国家—年、地区—十年、社会—时间段等），不使用含糊的“文明兴衰”作为标签。
+2. **建立数据谱系。** 每个变量记录来源、时间覆盖、定义、原始/估算/人工编码类型、可信度和历史口径。例如 Seshat 的政治组织属性、Maddison 的收入估计、COW 的战争事件与 GPIH 的实际工资属于不同证据类型。
+3. **先复现简单模型。** 从描述统计、逻辑回归、层级面板、事件史或动态回归开始，再和规则基线、树模型、状态空间模型和 ABM 比较。不要一开始就把 LLM 用作全套历史预测器。
+4. **做严格的历史外推验证。** 训练时只用早期时间段，验证较晚时间，再做跨地区 holdout；避免随机切分把相同政体或同一历史事件的记录放进训练集和测试集。使用滚动起点回测（rolling-origin evaluation）并与简单的基准发生率、持续性模型比较。
+5. **报告概率与校准。** 对危机预警报告 precision-recall、Brier score、概率校准、领先时间以及每个误报/漏报的成本；不要只报告 accuracy 或事后解释拟合良好的历史曲线。
+6. **进行机制和敏感性分析。** 更换事件定义、年份窗口、国家边界、缺失值处理和先验假设；把数据重建的不确定性传播到模型结果中。
+7. **处理反身性。** 当模型公开或用于政策时，预测可能改变决策和社会行为。要记录模型是否进入实际决策链，区分未干预的观察预测与实施某项政策后的反事实情景。
+8. **把历史学家的判断留在环路中。** 统计规律可能是错误编码、幸存史料、词汇变化、制度定义漂移或地区偏差产生的假象。专家核查和来源批判是系统的一部分。
+
+适合的非 LLM 工具包括 R/Python 统计模型、statsmodels、scikit-learn、PyMC/Stan、NetworkX/igraph、NetLogo、Mesa 与 Repast；LLM 可以辅助把档案转成候选结构化记录、解释变量字典或生成待核查假设，但每个抽取值都应该能回到原始史料，且不能把模型生成的数据作为独立历史证据来验证同一模型。
+
+### 14.7 五个学科的项目选型对照
+
+| 如果你的问题是…… | 优先学科 | 优先数据/方法 | 非 LLM 基线 | LLM 的合适位置 |
+|---|---|---|---|---|
+| 某类历史文本、人物或事件怎么随时间变化？ | 数字史学 / 计算语言学 | Chronicling America、Old Bailey、COHA、GPIH 等；历时统计、NER、事件研究、GIS | 词频/搭配、规则、传统 NLP、面板统计 | 辅助抽取与整理，提供可定位的原文证据 |
+| 哪些小说风格相似、作者是谁、叙事结构有何差异？ | 计算文学 | ELTeC、DraCor、LitBank、Gutenberg；文体学、角色网络、主题分析 | stylo、MALLET、BookNLP、统计特征 | 生成候选解释、辅助标注和基于文本的问答 |
+| 一个词在过去两百年里发生了什么语义变化？ | 计算语言学 / 历史语言学 | COHA/CCOHA、SemEval-2020、HistWords；历时嵌入、上下文与人工标签 | 词频、搭配、词向量、变点检测 | 从不同年代抽取并比较证据例句 |
+| 社会态度、关系网络或群体行为怎样形成？ | 计算社会学 | GSS、WVS、ESS、SNAP、IPUMS；网络分析、实验、ABM | 统计模型、图算法、模拟、因果推断 | 编码开放式文本、辅助整理访谈和假设生成 |
+| 党派立场、政策议程或政治风险如何随时间变化？ | 计量政治学 | Manifesto、CAP、ParlSpeech、V-Dem、Voteview、COW、UCDP | Wordscores/Wordfish、roll-call scaling、面板/事件研究 | 辅助标注政治文本、映射 codebook、解释待核验案例 |
+| 社会系统是否存在可跨时代验证的结构性规律？ | Cliodynamics / 量化历史 / 复杂系统 | Seshat、Maddison、JST、历史人口/冲突/财政数据；动态回归、ABM、面板与事件史 | 可解释统计模型、模型比较、滚动预测 | 作为史料编码助手和检索层，不作为“历史预言器” |
+
+## 15. 参考资料与主要入口
 
 ### 文学与长文档语言模型
 
