@@ -486,3 +486,12 @@ python trade_orderbook_transformer.py --csv lobster_book.csv --window 100 --hori
 | Trade | LOBSTER 订单簿事件 | 预测短期 mid-price 方向 | balanced accuracy、每类 recall、校准 | 许可、交易成本、排队和成交概率 |
 
 这些代码主要用于建立数据到模型的端到端研究骨架。正式研究应增加统一配置、数据版本和 schema 校验、可重复的 walk-forward 评估、强基线、模型/数据漂移监控，以及失败时可审计的结果记录。
+
+
+## 11. 尚未覆盖的金融业务用例与数据缺口
+
+五类基础实验之外，还有公司债合理价格、期权波动率曲面、基金申赎流量、组合风格漂移、历史证券主数据冲突、NAV break 根因、执行成本、订单成交概率和交易后对账等候选场景。补充文档逐项列出了业务目标、输入与标签、数据重点、Transformer 实现思路、评估指标、数据缺口和建议顺序：
+
+[金融服务五类数据域：尚未覆盖的 Transformer 用例、数据缺口与实现方案](../additional_financial_transformer_use_cases_data_gaps_2026-10-24.md)
+
+优先区分公开数据、受许可数据与内部业务数据。合成数据和市场代理标签只能用于验证流程，不能替代真实生产标签；所有训练均应遵循 point-in-time 数据可见性和时间外验证。
