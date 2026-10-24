@@ -55,15 +55,17 @@ Ramp 在 2026 年 10 月公开的案例是目前最直接的生产实践之一�
 - 连续 3 笔交易都发生在 2 分钟内，与 3 笔交易分散在 3 周内，事件计数相同但时间结构不同。
 - 支付交易前的登录、设备绑定、收款人新增、密码重置、收款账户变更等事件，可能比交易本身更早暴露风险。
 
-交易序列模型把截至决策时点已经发生且系统已经知道的事件作为历史上下文，学习行为如何随时间演化。令实体（持卡人、账户、企业或设备）在时点 \(t\) 的可见历史为：
+交易序列模型把截至决策时点已经发生且系统已经知道的事件作为历史上下文，学习行为如何随时间演化。令实体（持卡人、账户、企业或设备）在时点 $t$ 的可见历史为：
 
-\[
+$
+
 H_{u,t}=\{e_i: event\_time_i < t,\ observed\_time_i \le t\}
-\]
+
+$
 
 这里刻意同时约束了事件发生时间与系统观测时间：事件在现实中发生，不代表授权服务在该时刻已经收到它。训练时若只按业务发生时间取历史、不约束入库/传播时间，就可能得到线上不可复现的“未来信息”。
 
-当前待评分交易写作 \(x_t\)。序列编码器可以输出上下文表示 \(z_t=f_\theta(H_{u,t})\)，再以一个或多个任务头产生：
+当前待评分交易写作 $x_t$。序列编码器可以输出上下文表示 $z_t=f_\theta(H_{u,t})$，再以一个或多个任务头产生：
 
 - **行为 embedding**：把历史压缩成稠密向量，供下游分类、排序或风险决策使用。
 - **逐字段 surprisal（意外程度）**：例如商户、金额、国家、支付方式在当前上下文下的负对数似然，衡量每个字段与历史模式的偏离程度。
@@ -118,11 +120,13 @@ Ramp 在 2026 年 10 月 7 日公开的工程文章称，其新模型会在每�
 
 ![图 2：适合金融事件的三类自监督目标](transformer_finance_report_assets/pretraining_objectives.png){ width=82% }
 
-**任务 A：下一事件字段预测。** 使用截至事件 \(e_t\) 之前的历史来预测下一笔交易的不同字段，例如商户类别、金额区间、国家和支付方式。每个字段都能得到预测概率，负对数似然就形成字段级 surprisal：
+**任务 A：下一事件字段预测。** 使用截至事件 $e_t$ 之前的历史来预测下一笔交易的不同字段，例如商户类别、金额区间、国家和支付方式。每个字段都能得到预测概率，负对数似然就形成字段级 surprisal：
 
-\[
+$
+
 s_{t,j}=-\log P(x_{t,j}\mid H_{u,t})
-\]
+
+$
 
 商户惊奇分数高，代表该商户在此历史下不太常见；金额分数高，代表金额不符合这一行为上下文。这些分数比一个笼统的“异常分”更容易进入下游风控模型和调查证据。
 
@@ -349,18 +353,20 @@ AML 不只是“找出异常交易”。案件可能涉及多个账户、多家�
 
 ### 8.3 参考训练目标
 
-对于每个实体样本，构造事件序列 \(E=(e_1,\ldots,e_L)\)，每个事件由多个字段组成。可从下面的多任务目标开始：
+对于每个实体样本，构造事件序列 $E=(e_1,\ldots,e_L)$，每个事件由多个字段组成。可从下面的多任务目标开始：
 
-\[
+$
+
 \mathcal L = \lambda_{next}\mathcal L_{next} + \lambda_{mask}\mathcal L_{mask} + \lambda_{swap}\mathcal L_{swap} + \lambda_{sup}\mathcal L_{sup}
-\]
+
+$
 
 其中：
 
-- \(\mathcal L_{next}\)：预测下一事件或下一事件的各个字段；通常使用对类别字段的交叉熵、对金额 bucket 的分类损失，或针对连续值的适当似然/分布损失。
-- \(\mathcal L_{mask}\)：隐藏序列中的事件/字段并重建；只用于学习上下文，使用时必须严格定义 mask 与时间方向。
-- \(\mathcal L_{swap}\)：区分真实字段组合与构造的替换负例；需要随机负例、难负例和真实异常案例共同验证。
-- \(\mathcal L_{sup}\)：下游欺诈/风险标签；若标签未成熟，未知不应自动当作负例。该项可以在冻结 embedding 后由单独模型训练，而不是一定与预训练同步。
+- $\mathcal L_{next}$：预测下一事件或下一事件的各个字段；通常使用对类别字段的交叉熵、对金额 bucket 的分类损失，或针对连续值的适当似然/分布损失。
+- $\mathcal L_{mask}$：隐藏序列中的事件/字段并重建；只用于学习上下文，使用时必须严格定义 mask 与时间方向。
+- $\mathcal L_{swap}$：区分真实字段组合与构造的替换负例；需要随机负例、难负例和真实异常案例共同验证。
+- $\mathcal L_{sup}$：下游欺诈/风险标签；若标签未成熟，未知不应自动当作负例。该项可以在冻结 embedding 后由单独模型训练，而不是一定与预训练同步。
 
 推荐先实现一个训练简单、推理稳定的因果 Transformer encoder。把更复杂的对比学习、图融合或多模态输入作为独立实验，不要一开始同时改变数据、模型、损失和下游分类器。
 
@@ -1022,4 +1028,248 @@ flowchart TB
     T -.成熟标签回流.-> S
     T -.图边与实体解析改进.-> G
 ```
+
+
+---
+
+## 14. 非 LLM 深度学习在金融服务业的实践：不止 Transformer
+
+本节区分可确认的线上实践、公司公开的产品能力、学术/工业研究原型。支付网络和银行会披露“AI/深度学习驱动风险决策”，但通常不会披露完整网络结构；不能仅凭“AI”“生成式 AI”或“实时神经网络”就断言其使用 Transformer。
+
+### 14.1 业界实践地图：证据等级与可迁移技术点
+
+| 机构 / 工作 | 公开证据支持的结论 | 模型/方法线索 | 证据等级与边界 | 对架构设计的启示 |
+|---|---|---|---|---|
+| [Ramp：Putting a Transformer Inside Every Card Authorization](https://builders.ramp.com/post/sequence-aware-card-fraud) | 每笔授权读取持卡人历史交易；小型 Transformer 生成 embedding、字段 surprisal 和 swap 分数，交给既有 XGBoost | 自监督序列编码器 + GBDT | **直接生产工程案例**；效果数字是 Ramp 自报 | 把序列编码器作为 feature service，而非重写整个决策系统 |
+| [Stripe：Scaling Radar](https://stripe.dev/blog/scaling-radar-fighting-fraud-with-agent-assisted-machine-learning) | 公开讨论大规模欺诈模型训练、标签延迟、样本扩展与线上实验 | 生产 ML 流程及跨网络信号；未证明所有模型都是 Transformer | **直接工程案例**；不要将所有增益归因于特定网络 | 数据成熟度、样本选择和线上反馈可能比换模型更影响收益 |
+| [Mastercard Decision Intelligence](https://www.mastercard.com/content/mccom/us/en/news-and-trends/press/2024/february/mastercard-supercharges-consumer-protection-with-gen-ai.html) | 网络级实时交易风险评分；官方披露产品能力和延迟/效果主张 | AI 风险评分，具体架构公开信息有限 | **官方产品声明**；GenAI 营销不等于通用 LLM 逐笔生成授权判断 | 网络级上下文和特征覆盖范围可能比模型架构更重要 |
+| [Visa Protect / AI fraud detection](https://corporate.visa.com/en/solutions/visa-protect/insights/ai-fraud-detection.html) | 以网络数据、行为、速度和实时风险信号支持欺诈预防 | AI/ML 风险系统；页面不足以确认具体 Transformer | **官方产品能力说明** | 共享网络信号、实时特征和策略系统都是方案的一部分 |
+| [IBM TabFormer](https://github.com/IBM/TabFormer) | 提供交易序列 Transformer 研究代码和合成交易数据 | GPT-style 自回归、BERT-style 掩码预训练 | **公开研究实现，不是生产部署证明** | 可复现模型目标、字段编码与序列准备 |
+| [FraudTransformer](https://arxiv.org/abs/2509.23712) | 在 HSBC Payment Fraud Group 工业数据上评估时间感知 Transformer | 因果 Transformer + 时间/位置编码 | **工业数据论文**；特征和数据无法完全公开复现 | 显式表示不规则时间间隔，做时间外测试 |
+| [PRAGMA: Revolut Foundation Model](https://arxiv.org/abs/2604.08649) | 研究跨金融任务的交易基础表示 | 交易事件预训练 / 多任务迁移 | **论文/预印本证据**；论文公开不等于所有生产流程均采用同一模型 | 共享表示有价值，但要逐任务验证迁移收益与负迁移 |
+| [TREASURE](https://arxiv.org/abs/2511.19693) | 探索高容量交易序列基础模型 | 大规模交易序列 Transformer | **研究证据** | 规模和收益依赖论文设置，中小机构不一定需要同等规模 |
+| [TransactionGPT](https://doi.org/10.1145/3770855.3818496) | 研究基础交易建模与多任务应用 | 交易表示学习 / 生成式序列建模 | **学术论文**；不是通用聊天 LLM 的证据 | “生成式”可以是结构化事件 next-event 目标，不等于自然语言 LLM |
+| [CoLES](https://doi.org/10.1145/3514221.3526129) | 通过对比学习从离散事件序列学习表示 | 自监督对比学习，不要求 Transformer | **同行评审研究** | 将 GRU、Transformer、对比学习作为可比较选项 |
+| [User Behavior Pre-training for Online Fraud Detection](https://doi.org/10.1145/3534678.3539126) | 用户行为预训练用于在线欺诈检测 | 行为序列预训练与下游欺诈任务 | **KDD 研究** | 先用无标签行为预训练，再用成熟标签训练下游模型 |
+| [Sequence As Genes](https://kdd.org/kdd2023/wp-content/uploads/2023/08/toc.html) | 研究电商欺诈中的用户行为序列建模 | 行为序列与欺诈检测 | **KDD 论文**；具体生产部署信息需另行核实 | 交易前的行为事件可与交易事件统一为有类型的时间序列 |
+| [PyTorch-Lifestream](https://github.com/dllllb/pytorch-lifestream) | 面向离散事件序列表示学习的开源工具 | 多种事件序列编码与 embedding | **开源实现**，不是金融机构部署证明 | 比较不同编码器、训练目标和数据管线 |
+
+### 14.2 非 LLM 深度学习模型家族的适用边界
+
+| 模型家族 | 强项 | 主要短板 | 优先考虑的金融场景 |
+|---|---|---|---|
+| MLP / Wide & Deep | 低延迟，适合固定长度统计和 embedding 拼接 | 不直接建模事件顺序 | 交易表格、账户画像与序列 embedding 融合 |
+| GRU / LSTM | 对短/中等序列较经济；状态式更新可减少重复计算 | 长序列并行性较差 | 登录/支付行为、账户流水、实时状态较小的场景 |
+| Temporal CNN / TCN | 并行推理、固定感受野、吞吐较好 | 感受野需设计；不规则时间需额外编码 | 高吞吐固定窗口序列、设备遥测、节奏异常 |
+| Transformer Encoder / causal Transformer | 建模字段交互和长距离依赖；可自监督预训练 | padding、注意力开销、高基数词表与延迟标签处理复杂 | 交易序列、数字旅程、跨事件上下文 |
+| TabTransformer / FT-Transformer | 对单行结构化字段交互建模 | 单行模型不等于历史序列；树模型常是强基线 | 当前交易字段多、类别特征复杂的监督任务 |
+| Autoencoder / VAE | 无标签/弱标签异常检测 | 重建误差不一定与欺诈损失相关 | 新型异常发现、设备/账户行为偏离 |
+| Deep SVDD / one-class | 可用正常行为为主学习边界 | 多模态正常分布难建模，阈值易漂移 | 欺诈标签稀缺的异常候选生成 |
+| 自监督对比学习（CoLES 等） | 无需每条交易有标签，学习行为表示 | 正负样本不当会引入假负例或身份捷径 | 多任务账户画像、标签稀缺、跨时间迁移 |
+| GNN / temporal GNN | 捕捉账户、设备、受益人、商户间关系与资金路径 | 图构建、实体解析、邻居延迟、解释复杂 | AML、团伙欺诈、mule account、设备/受益人网络 |
+| Survival / temporal point process | 自然建模事件时间、风险到达率与不规则间隔 | 需明确删失、观察窗口和校准 | 违约/流失风险、告警到达、交易突发 |
+| 强化学习 / bandit | 可优化审核资源、step-up 策略或干预选择 | 反馈有偏，探索风险和策略评估困难 | 调查队列排序、客服干预；不宜直接探索拒付动作 |
+
+**架构判断：** 如果历史只有十几笔、字段较少、每毫秒都重要，GRU、TCN 或“窗口统计 + GBDT”可能比 Transformer 更合适。如果实体有长历史、多字段条件依赖且有大量无标签事件，Transformer 更值得验证。对于 AML，图关系与序列时间信息常互补，不应简化成 Transformer 与 GBDT 二选一。
+
+### 14.3 可替换的序列编码器架构
+
+~~~mermaid
+flowchart LR
+    E[交易 / 登录 / 设备 / 账户事件] --> N[事件规范化与 PIT 特征层]
+    N --> S1[GRU / LSTM 状态编码器]
+    N --> S2[TCN / Temporal CNN]
+    N --> S3[Transformer Encoder]
+    N --> S4[Temporal GNN / 图编码器]
+    S1 --> F[融合层：embedding + 异常分数 + 窗口统计]
+    S2 --> F
+    S3 --> F
+    S4 --> F
+    F --> C[GBDT / MLP / 线性风险模型]
+    C --> P[规则与业务成本决策]
+    P --> O[授权 / step-up / 调查队列]
+    O --> L[成熟标签、延迟与漂移监控]
+~~~
+
+这张图表达的是可替换的编码器层，而不是要求同时部署所有模型。实操时应逐个增加组件，并通过配对消融测量每一项的边际收益和服务成本。
+
+### 14.4 案例证据分层规则
+
+1. **生产线上实测**：说明服务路径、流量/时间范围、对照组、工作点、延迟与回滚策略。Ramp 是公开案例，但收益仍是公司自报。
+2. **官方产品说明**：可确认产品存在和宣称能力，不一定披露模型结构、独立评估或可迁移效果。Visa、Mastercard 页面属于此类。
+3. **工业数据论文**：实验可能严谨，但数据受限，特征、样本分布和部署 SLA 未必可复现。FraudTransformer 属于此类。
+4. **公开数据集研究**：可复现方法比较，但合成数据、匿名字段、采样方式和标签机制可能与真实支付网络不同。
+5. **预印本 / benchmark / 厂商基准**：用于形成候选方案，需检查同行评审、独立复现、强基线与时间外测试。
+
+不要用一篇论文的 AP 或 ROC-AUC 排名直接决定生产模型。应在自己的 point-in-time replay、成熟标签和线上 shadow/canary 中验证。
+
+---
+
+## 15. 为什么通用 LLM 通常不适合实时金融交易评分
+
+这里的 LLM 指以自然语言为主要接口、通过文本 token 进行通用生成或推理的模型；它不等于所有 Transformer。Causal Transformer 可以直接训练在结构化事件 token 上，但如果它不以自然语言为目标、不依赖通用文本 tokenizer，也不执行自由文本生成，那么它更准确地属于**专用序列模型/交易基础模型**。问题不是 Transformer 不适合风控，而是通用聊天 LLM 的接口、目标和运行成本通常与授权评分不匹配。
+
+### 15.1 场景要求与模型特性的错位
+
+| 维度 | 通用 LLM 的常见问题 | 专用结构化序列模型的优势 | 实务结论 |
+|---|---|---|---|
+| 输入表示 | 将金额、商户 ID、MCC、国家、时间差序列化成文本引入 token 冗余；数字切分不一定对应数值语义 | 字段有明确 embedding、数值变换和时间编码 | 直接建模 schema，不要把交易 JSON 当聊天提示词 |
+| 输出目标 | 生成 token 或自然语言解释，不天然等于校准后的欺诈概率 | next-event 概率、字段 surprisal、监督分类头可直接优化 | 使用与业务损失相符的训练目标与校准 |
+| 延迟和吞吐 | 生成式解码、网络调用和共享推理服务增加尾延迟 | 小型 encoder/scorer 可固定计算路径并量化 | 实时授权优先使用本地/同区域专用模型；LLM 放异步路径 |
+| 成本 | 历史越长，token 成本和计算量越大 | 字段共享 embedding、限制历史长度、缓存状态 | 用每百万次评分的总成本和峰值吞吐测算 |
+| 确定性 | 采样、服务端变化使输出不稳定；temperature=0 也不保证整条链路严格可复现 | 固定模型、特征快照和数值输出更易版本化回放 | 记录输入版本、模型哈希与输出 |
+| 数值与 schema 精度 | 可能误读字段、单位、币种、负数、时区或稀有代码 | 显式类型、单位、缺失值与范围校验 | 金额保留精确数值语义，不靠提示词保证 schema |
+| 类别长尾 | 文本 token 与商户/设备 ID 的业务等价关系不一致 | 频次阈值、哈希桶、层级类别与 OOV 策略可控 | 明确处理新商户、新设备与词表漂移 |
+| 标签与目标 | 通用预训练目标不会自动优化欺诈金额、误拒成本或调查预算 | 直接使用成熟标签、成本权重和工作点 | 通用能力不能替代业务目标函数 |
+| 解释与审计 | 自然语言理由可能与真正驱动分数的特征不一致 | 记录 surprisal、特征贡献、规则命中和模型版本 | LLM 可把已有证据转成摘要，不应伪造模型理由 |
+| 隐私与治理 | 将交易或个人信息发送给外部 API 引入数据驻留、留存和访问控制风险 | 可在受控环境托管专用模型 | 先做数据分类、隐私评估、供应商审查与日志脱敏 |
+| 故障模式 | API 超时、配额、网络故障和供应商变更进入交易链路 | 内部模型服务可有 SLA 和旧模型 fallback | 不要让外部 LLM 成为唯一授权依赖 |
+| 漂移与更新 | 通用模型升级节奏和训练语料不可由机构完全控制 | 按标签成熟周期和验证结果发布 | 风控更新需治理门禁、回滚与版本追溯 |
+
+### 15.2 成本与时延的粗略估算
+
+若每天有 \(N\) 次授权，每次发送 \(T_{in}\) 个输入 token、平均输出 \(T_{out}\) 个 token，供应商按每百万 token 计价，则直接调用成本可估为：
+
+$$
+C_{day} =
+\frac{N}{10^6}
+\left(T_{in} P_{in} + T_{out} P_{out}\right)
+$$
+
+其中 \(P_{in}\) 和 \(P_{out}\) 是每百万输入/输出 token 的价格。该估算还未计入高可用部署、网络、重试、监控、数据治理与故障回退成本。平均 token 成本也不等于授权时延：必须分别测量 p50/p95/p99、超时率、重试率和尾部并发。
+
+专用序列模型也有 CPU/GPU、特征读取、embedding 查表和在线状态存储成本；优势是输入与计算路径更短、目标更直接，能够把历史编码、推理和降级策略控制在机构的 SLA 内。
+
+### 15.3 LLM 在金融风控中适合承担的任务
+
+- **AML 调查副驾驶**：汇总交易图、时间线、规则命中、已验证外部信息与案件记录，生成带来源引用的调查摘要；不替代法定判断或未经授权自动提交 SAR/STR。
+- **告警解释与案件归纳**：把结构化模型证据转成分析员可读说明；每条结论应链接到真实特征、交易、规则或数据源。
+- **规则/查询开发辅助**：生成候选 SQL、特征定义和回测脚本，必须经代码审查、沙箱和回归测试。
+- **离线特征研究**：从获准使用的文本中抽取商户描述、案件叙述或外部新闻信号，并评估时效、来源质量与许可。
+- **模型开发工作流**：生成实验配置、错误分析和漂移报告，但不能绕过模型风险审批。
+- **非同步客户支持**：在政策允许范围内解释已做出的决定，不应重新计算或编造原始风险分数。
+
+### 15.4 混合架构：专用模型作决定，LLM 解释证据
+
+~~~mermaid
+flowchart TB
+    subgraph Online["同步交易路径：严格 SLA"]
+        E[授权事件] --> H[PIT 历史 / 在线特征]
+        H --> S[专用序列模型：GRU / TCN / Transformer]
+        S --> R[GBDT / 风险模型 / 规则]
+        R --> D[授权决策]
+        D --> A[批准 / 拒绝 / step-up]
+    end
+    subgraph Async["异步分析路径：非阻塞"]
+        D --> X[最小化后的决策证据包]
+        X --> L[LLM 案件摘要 / 解释草稿]
+        L --> V[证据校验、引用与人工审核]
+        V --> C[分析员工作台 / 审计记录]
+    end
+~~~
+
+LLM 摘要只能引用已存在的风险分数、特征贡献、规则命中和交易事实；应区分“模型分数显示”“规则命中”和“分析员推断”。语言流畅程度不能证明解释正确。
+
+### 15.5 什么时候可以考虑 LLM 参与评分
+
+只有在以下条件全部经过验证后，才考虑将 LLM 作为辅助评分信号，而非默认同步依赖：
+
+1. 有明确合法且可控的数据处理边界；敏感字段已最小化，供应商条款、数据驻留和留存策略通过审查。
+2. 用相同时间切分、成熟标签和业务预算证明 LLM 信号在强 GBDT / 专用序列模型之上有稳定增量。
+3. 线上压测证明 p99、峰值吞吐、故障率和成本符合授权 SLA，并有独立 fallback。
+4. 输出受约束为可校验 schema；无效、拒答、超时和版本变化都有明确处理。
+5. 可重放每次决策，并满足模型风险治理、审计、公平性和监管要求。
+
+即使满足这些条件，也优先考虑离线/异步生成的低频信号，或蒸馏到小型专用模型，而不是每笔授权都调用通用生成 API。
+
+---
+
+## 16. 修复 GitHub Markdown 数学公式显示
+
+GitHub 的数学公式渲染使用美元分隔符：单美元符号表示行内公式，双美元符号表示独立公式。本文已把旧式反斜杠括号/方括号分隔符统一为 GitHub 支持的美元分隔符。数学表达式应注意：
+
+- 行内公式写成 $H_{u,t}$，不要依赖部分编辑器支持、但 GitHub 不一定按预期处理的旧式分隔符。
+- 独立公式使用单独成行的双美元符号开始和结束；公式块上下留空行。
+- 避免把公式放在代码围栏中；代码围栏会显示原文，不会渲染数学。
+- 公式中的反斜杠应是单个 LaTeX 命令，例如 \log、\mid、\theta；避免多层转义产生多余反斜杠。
+- GitHub 数学渲染支持常见 LaTeX 语法，但自定义宏和部分环境未必可用。使用基础命令并在 GitHub 页面实际检查。
+
+官方说明：[GitHub Docs — Writing mathematical expressions](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/writing-mathematical-expressions)。
+
+---
+
+## 17. 可直接打开的 Colab、Kaggle Notebook 与数据集清单
+
+以下优先给出可核验的项目、数据入口和 Notebook 搜索入口。**Notebook 搜索链接不代表其中每个 Notebook 已验证能在当前免费运行时无修改运行**；Kaggle 数据访问可能要求登录并接受竞赛规则，Colab 的 GPU/内存供应由平台动态决定。应先检查许可证、数据字段、下载方式和当前依赖版本。
+
+### 17.1 推荐资源
+
+| 目标 | 资源 | 推荐用途 | 注意事项 |
+|---|---|---|---|
+| 交易序列 Transformer | [IBM TabFormer GitHub](https://github.com/IBM/TabFormer) | 查看 GPT/BERT 风格交易序列模型、合成数据和训练流程 | 先确认依赖与硬件要求；是研究代码，不是托管服务 |
+| 交易基础模型端到端实现 | [NVIDIA Transaction Foundation Model Blueprint](https://github.com/NVIDIA-AI-Blueprints/transaction-foundation-model) | 参考时间切分、序列预训练、embedding + XGBoost 路径 | 可能需要较多 GPU/内存；免费 Colab 未必能运行完整训练 |
+| 可复现欺诈评估 | [Fraud Detection Handbook](https://fraud-detection-handbook.github.io/fraud-detection-handbook/) / [GitHub](https://github.com/Fraud-Detection-Handbook/fraud-detection-handbook) | 传统基线、不平衡数据、时间切分、Top-K 与成本评估 | 合成数据结果不能替代生产验证 |
+| 合成账户转账序列 | [PaySim Kaggle dataset](https://www.kaggle.com/datasets/ealaxi/paysim1) | 账户级时间序列、金额变化、转入/转出行为 | 仿真时间不是现实时间戳 |
+| 合成客户-商户支付序列 | [BankSim Kaggle dataset](https://www.kaggle.com/datasets/ntnu-testimon/banksim1) | 客户历史、商户行为与类别异常模型 | 欺诈机制为模拟数据 |
+| 结构化欺诈强基线 | [IEEE-CIS competition data](https://www.kaggle.com/competitions/ieee-fraud-detection/data) | GBDT、时间切分、交易/身份表融合 | 需接受竞赛规则；TransactionDT 是相对时间；不要把行顺序当实体序列 |
+| 快速不平衡分类 | [ULB Credit Card Fraud](https://www.kaggle.com/datasets/mlg-ulb/creditcardfraud) | PR-AUC、阈值、校准和不平衡基线 | 没有真实持卡人 ID，不适合构造持卡人历史 |
+| AML 图与交易流 | [IBM AMLSim](https://github.com/IBM/AMLSim) | 账户图、交易、洗钱 typology 与告警 | 需配置模拟场景，不代表现实洗钱分布 |
+| 加密资产 AML | [Elliptic++](https://github.com/git-disl/EllipticPlusPlus) | 时间图、实体关系与分类 | 注意图快照切分、标签覆盖与时间泄漏 |
+| 多模型事件序列表示 | [PyTorch-Lifestream](https://github.com/dllllb/pytorch-lifestream) | 比较离散事件编码器与 embedding | 先核实其 schema 与目标事件的匹配程度 |
+
+### 17.2 Kaggle Notebook 搜索入口
+
+这些搜索页可按最近更新时间、点赞数和数据版本筛选；Notebook 的数据依赖与许可证需要单独核实。
+
+- [PaySim fraud detection notebooks](https://www.kaggle.com/code?searchQuery=PaySim%20fraud%20detection)
+- [PaySim LSTM / sequence modeling notebooks](https://www.kaggle.com/code?searchQuery=PaySim%20LSTM)
+- [PaySim Transformer notebooks](https://www.kaggle.com/code?searchQuery=PaySim%20Transformer)
+- [IEEE-CIS LightGBM / XGBoost notebooks](https://www.kaggle.com/code?searchQuery=IEEE-CIS%20LightGBM)
+- [IEEE-CIS Transformer notebooks](https://www.kaggle.com/code?searchQuery=IEEE-CIS%20Transformer)
+- [Credit card fraud anomaly detection notebooks](https://www.kaggle.com/code?searchQuery=credit%20card%20fraud%20anomaly%20detection)
+- [BankSim fraud notebooks](https://www.kaggle.com/code?searchQuery=BankSim%20fraud)
+- [Elliptic AML graph notebooks](https://www.kaggle.com/code?searchQuery=Elliptic%20AML%20graph)
+
+优先选择公开代码、固定随机种子、时间外切分、数据来源清楚、明确报告 AP/PR-AUC 与工作点、没有隐藏外部数据依赖的实现。只做随机 train/test split、只报告 accuracy、或用测试集做特征选择的 Notebook，只适合学习 API，不应作为评估模板。
+
+### 17.3 Google Colab 路线
+
+- [IBM TabFormer 仓库](https://github.com/IBM/TabFormer)：先克隆项目、检查依赖和运行数据预处理；完整预训练是否可跑取决于当前运行时资源。
+- [Fraud Detection Handbook](https://fraud-detection-handbook.github.io/fraud-detection-handbook/)：适合从 Notebook 建立时间切分和评估基线；通过 [GitHub 仓库](https://github.com/Fraud-Detection-Handbook/fraud-detection-handbook) 查看代码。
+- [PaySim 数据集](https://www.kaggle.com/datasets/ealaxi/paysim1)：可通过 Kaggle API 下载，需配置个人 API 凭据，不要把 token 写入公开 Notebook。先训练 LightGBM/XGBoost，再训练小型 GRU/Transformer。
+- [BankSim 数据集](https://www.kaggle.com/datasets/ntnu-testimon/banksim1)：适合做轻量实体序列原型；需定义客户历史、当前事件与标签观察时点。
+- [NVIDIA Transaction Foundation Model](https://github.com/NVIDIA-AI-Blueprints/transaction-foundation-model)：适合参考完整工程；若免费 GPU 无法满足要求，先缩小样本和序列长度做 smoke test，不要将缩小实验冒充论文复现。
+
+参阅 [Google Colab 官方 FAQ](https://research.google.com/colaboratory/faq.html)。Notebook 应记录数据版本、schema、随机种子、训练配置和评估输出，避免 session 重置后无法复现。
+
+### 17.4 公平的最小实验矩阵
+
+| 实验 | 模型 | 目的 | 必须保持一致的条件 |
+|---|---|---|---|
+| E0 | 规则 + velocity features | 可运营的最小基线 | 相同历史可见性、窗口与工作点 |
+| E1 | LightGBM / XGBoost | 强结构化基线 | 相同训练时间范围、标签成熟期与切分 |
+| E2 | GRU / LSTM | 低成本序列基线 | 相同实体历史与序列截断规则 |
+| E3 | 小型 causal Transformer | 检验注意力序列建模 | 相同事件字段、时间编码与历史范围 |
+| E4 | Transformer embedding + GBDT | 检验表示层增量价值 | GBDT 数据和超参尽量固定，配对比较 |
+| E5 | Transformer + field surprisal / swap scores | 检验异常信号的额外价值 | 每项分别消融 |
+| E6 | Temporal GNN + 序列编码器（AML/团伙场景） | 检验图关系增量价值 | 只使用当时可见的图边和邻居信息 |
+
+所有实验使用相同时间外测试集和固定审核/拒绝预算，至少报告 Average Precision、Recall@budget、欺诈金额捕获、误拒率/客户影响、校准、分群结果、p95/p99、超时和 fallback。标签未成熟的交易应保持未知，不要强行标记为正常。
+
+---
+
+## 18. 参考资料补充：模型、生产与治理
+
+- [GitHub Docs — Writing mathematical expressions](https://docs.github.com/en/get-started/writing-on-github/working-with-advanced-formatting/writing-mathematical-expressions)
+- [Google Colab FAQ](https://research.google.com/colaboratory/faq.html)
+- [IBM TabFormer](https://github.com/IBM/TabFormer)；[论文 arXiv:2011.01843](https://arxiv.org/abs/2011.01843)
+- [NVIDIA Transaction Foundation Model 技术博客](https://developer.nvidia.com/blog/build-your-own-transaction-foundation-model-for-financial-intelligence/)；[GitHub Blueprint](https://github.com/NVIDIA-AI-Blueprints/transaction-foundation-model)
+- [FraudTransformer arXiv:2509.23712](https://arxiv.org/abs/2509.23712)；[IEEE CAI DOI](https://doi.org/10.1109/CAI68641.2026.11536152)
+- [CoLES — SIGMOD DOI](https://doi.org/10.1145/3514221.3526129)
+- [User Behavior Pre-training — KDD DOI](https://doi.org/10.1145/3534678.3539126)
+- [Sequence As Genes — KDD 2023 proceedings](https://kdd.org/kdd2023/wp-content/uploads/2023/08/toc.html)
+- [PyTorch-Lifestream — IJCAI 2025 paper](https://www.ijcai.org/proceedings/2025/1272)；[GitHub](https://github.com/dllllb/pytorch-lifestream)
+- [IBM AMLSim](https://github.com/IBM/AMLSim)
+- [Federal Reserve SR 26-2 — Model Risk Management](https://www.federalreserve.gov/supervisionreg/srletters/SR2602.htm)
+- [UK FCA — AI in financial services](https://www.fca.org.uk/publications/good-poor-practice/ai-financial-services)
 
