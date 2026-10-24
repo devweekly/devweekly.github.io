@@ -124,3 +124,53 @@ python research.py --start 2012-01-01 --end 2026-01-01 --epochs 10
 - [PyTorch GRU 文档](https://pytorch.org/docs/stable/generated/torch.nn.GRU.html)
 
 **解释边界：** 这个项目证明的是可以搭建一条从公开行情到时间外评估的研究流水线，不证明可盈利、可执行或适合真实资金。任何实盘用途都需要独立的数据、合规、模型风险、交易成本和投资委员会审查。
+
+
+## 8. Transformer 版本：与 GRU 使用同一份数据和评估流程
+
+如果想比较注意力模型而不是循环神经网络，项目另外提供 `transformer_research.py`。它复用相同的数据源、资产集合、特征、预测期限、时间切分、Ridge / 动量基线和回测逻辑，主要替换序列编码器，便于做相对公平的模型比较。
+
+### Step 1：安装依赖
+
+如果已经按前面步骤创建并启用了虚拟环境，不需要重复创建；否则先完成前面的安装步骤。
+
+### Step 2：运行 Transformer
+
+```bash
+python transformer_research.py \
+  --start 2012-01-01 \
+  --end 2026-01-01 \
+  --epochs 10 \
+  --batch-size 256
+```
+
+先跑 1–3 个 epoch 确认环境和数据下载正常，再根据验证集 MAE 和运行时间决定是否增加训练轮数。默认设备自动选择 CUDA、Apple Silicon MPS 或 CPU；这个小模型通常无需 GPU。
+
+### Step 3：理解模型结构
+
+模型把每一天的 8 个数值特征投影到 32 维向量，加入可学习的位置嵌入，然后送入 2 层 Transformer Encoder。每层使用 4 个 attention heads，模型读取 60 个交易日的窗口，取最后一个时间位置的表示，通过小型回归头预测未来 5 个交易日收益。
+
+位置嵌入很重要：注意力机制本身不会自动知道序列里哪个观测更早、哪个更晚。位置向量让模型能区分窗口中的时间位置。此处使用 encoder-only 架构，因为目标是把已知历史编码成一个预测值，不需要 decoder 生成未来价格序列。
+
+### Step 4：检查输出
+
+输出仍然写入 `outputs/`，文件名与 GRU 版本相同，但预测列及回测文件会使用 `transformer_pred` 标识。**不要把两个脚本依次写入同一目录后误以为它们是同一轮实验。** 建议使用不同目录保存结果：
+
+```bash
+python research.py --output-dir outputs/gru --epochs 10
+python transformer_research.py --output-dir outputs/transformer --epochs 10
+```
+
+### Step 5：公平比较 GRU 与 Transformer
+
+至少保持相同的日期范围、资产列表、特征、60 日窗口、5 日目标、训练/验证/测试边界、随机种子和交易成本。对比：
+
+- Transformer 是否在测试集的 MAE / RMSE 上优于 Ridge、动量和 GRU；
+- 每日横截面 rank IC 是否更稳定，而不是只在少数日期表现突出；
+- 策略扣除成本后的收益、最大回撤与换手是否改善；
+- 结果是否对起止日期、不同市场阶段、随机种子和成本假设敏感；
+- 额外的训练时间与模型复杂度是否值得任何性能增益。
+
+当前代码是教学版的单次时间切分，不是足以证明投资优势的统计验证。若 Transformer 只略微改善预测误差，却让回测换手或回撤变差，就不能据此断言它更适合投资业务。应增加多次 walk-forward 测试、置信区间、更多资产和更强基线。
+
+Transformer 依赖 PyTorch 的 `TransformerEncoderLayer` 和 `TransformerEncoder`；其输入采用 `batch_first=True`，张量形状为 batch × sequence × feature。参考 [PyTorch TransformerEncoderLayer 文档](https://docs.pytorch.org/docs/stable/generated/torch.nn.TransformerEncoderLayer.html)。
