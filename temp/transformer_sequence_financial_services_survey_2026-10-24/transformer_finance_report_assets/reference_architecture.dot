@@ -1,0 +1,28 @@
+digraph G {
+  graph [rankdir=TB, bgcolor="white", pad="0.22", nodesep="0.30", ranksep="0.42", fontname="Noto Sans CJK SC", label="建议参考架构：在线决策与离线训练共享事件契约", labelloc=t, fontsize=18];
+  node [shape=box, style="rounded,filled", color="#3B5875", fillcolor="#EEF4F8", fontname="Noto Sans CJK SC", fontsize=10.5, margin="0.15,0.09"];
+  edge [color="#526779", penwidth=1.25, arrowsize=0.7];
+  subgraph cluster_online {
+    label="在线路径"; color="#A9BBCB"; style="rounded"; fontname="Noto Sans CJK SC"; fontsize=12;
+    req [label="授权 / 转账 / 其他风险事件"];
+    hist [label="在线历史状态 / Feature Store\npoint-in-time、事件新鲜度"];
+    enc [label="结构化编码 + 小型序列模型\nembedding / surprisal"];
+    risk [label="下游风险模型 + 规则\n校准 / 策略阈值"];
+    act [label="决策动作\napprove / decline / step-up / review"];
+    fallback [label="超时或依赖不可用\n旧模型 / 规则安全降级", fillcolor="#F4E5E5", color="#9A5555"];
+    req -> hist -> enc -> risk -> act;
+    hist -> fallback [style=dashed, color="#9A5555"];
+    enc -> fallback [style=dashed, color="#9A5555"];
+  }
+  subgraph cluster_offline {
+    label="离线训练与反馈"; color="#A9BBCB"; style="rounded"; fontname="Noto Sans CJK SC"; fontsize=12;
+    raw [label="事件仓库 + 标签/争议/案件结果"];
+    replay [label="as-of 历史回放\n成熟标签与时间外切分"];
+    pretrain [label="自监督预训练\nnext-event / mask / consistency"];
+    eval [label="下游训练 + 消融 + 时间外评估"];
+    release [label="模型注册 / 审批 / 版本化"];
+    raw -> replay -> pretrain -> eval -> release;
+  }
+  release -> enc [style=dashed, label="经过批准的模型包", fontname="Noto Sans CJK SC", fontsize=9];
+  act -> raw [style=dashed, label="记录决策与结果", fontname="Noto Sans CJK SC", fontsize=9];
+}

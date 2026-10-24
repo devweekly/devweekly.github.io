@@ -1,0 +1,13 @@
+digraph G {
+  graph [rankdir=TB, bgcolor="white", pad="0.25", nodesep="0.32", ranksep="0.42", fontname="Noto Sans CJK SC", label="三类互补的自监督目标", labelloc=t, fontsize=18];
+  node [shape=box, style="rounded,filled", color="#3B5875", fillcolor="#EEF4F8", fontname="Noto Sans CJK SC", fontsize=11, margin="0.17,0.10"];
+  edge [color="#526779", penwidth=1.3, arrowsize=0.75, fontname="Noto Sans CJK SC", fontsize=10];
+  history [label="未标注的多字段事件历史\n(商户、金额、国家、方式、时间差等)", fillcolor="#E4EEF7"];
+  next [label="A. 下一事件/字段预测\n学习上下文下的事件概率\n输出逐字段 surprisal"];
+  mask [label="B. 掩码事件重建\n隐藏部分字段，再根据上下文补全\n增强表示学习"];
+  swap [label="C. 字段替换识别\n检测与事件上下文不一致的字段\n学习组合关系"];
+  emb [label="共享序列表示 zₜ\n+ 字段 surprisal + consistency 分数", fillcolor="#DCECE8", color="#397D70"];
+  downstream [label="下游监督模型 / 风险决策\n欺诈标签成熟后训练与校准", fillcolor="#F8EEDB", color="#AD8430"];
+  history -> next; history -> mask; history -> swap;
+  next -> emb; mask -> emb; swap -> emb; emb -> downstream;
+}

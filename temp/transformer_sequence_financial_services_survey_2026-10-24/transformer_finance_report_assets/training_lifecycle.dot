@@ -1,0 +1,15 @@
+digraph G {
+  graph [rankdir=TB, bgcolor="white", pad="0.25", nodesep="0.28", ranksep="0.42", fontname="Noto Sans CJK SC", label="离线训练与线上反馈闭环", labelloc=t, fontsize=18];
+  node [shape=box, style="rounded,filled", color="#3B5875", fillcolor="#EEF4F8", fontname="Noto Sans CJK SC", fontsize=10.5, margin="0.13,0.09"];
+  edge [color="#526779", penwidth=1.3, arrowsize=0.7];
+  events [label="事件归一化\n时间与实体契约"];
+  asof [label="Point-in-time 回放\n成熟标签处理"];
+  train [label="自监督序列预训练\n+ 下游模型训练", fillcolor="#DCECE8", color="#397D70"];
+  evaluate [label="时间外评估\n消融 / 预算曲线 / 分群"];
+  replay [label="历史回放与影子运行\n延迟 / 缺失 / 分数分歧"];
+  canary [label="Canary / A-B\n预定义护栏与回滚门槛", fillcolor="#F8EEDB", color="#AD8430"];
+  deploy [label="版本化部署\n模型包 + 阈值 + 事件 schema"];
+  feedback [label="线上动作 + 新争议/案件标签\n延迟回填与漂移监控", fillcolor="#F3E7E7", color="#9A5555"];
+  events -> asof -> train -> evaluate -> replay -> canary -> deploy -> feedback;
+  feedback -> events [label="持续回流", style=dashed, constraint=false, minlen=2];
+}

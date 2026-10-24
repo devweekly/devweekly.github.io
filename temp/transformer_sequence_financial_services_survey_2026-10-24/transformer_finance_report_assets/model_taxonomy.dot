@@ -1,0 +1,15 @@
+digraph G {
+  graph [rankdir=LR, bgcolor="white", pad="0.25", nodesep="0.28", ranksep="0.55", fontname="Noto Sans CJK SC", label="交易序列 Transformer 的技术模式", labelloc=t, fontsize=18];
+  node [shape=box, style="rounded,filled", color="#3B5875", fillcolor="#EEF4F8", fontname="Noto Sans CJK SC", fontsize=10.5, margin="0.14,0.09"];
+  edge [color="#526779", penwidth=1.3, arrowsize=0.7];
+  input [label="多字段金融事件\n+ 时间戳 + 实体历史", fillcolor="#E4EEF7"];
+  causal [label="因果式 next-event\n(GPT-style)\n实时评分 / surprisal"];
+  masked [label="掩码建模\n(BERT-style)\n双向上下文表示"];
+  contrast [label="对比学习 / 重建\nCoLES / MLEM 等\n无标签行为 embedding"];
+  graphfusion [label="图 + 序列融合\n账户/设备/对手方关联\nAML / 团伙欺诈"];
+  foundation [label="多来源交易基础模型\n预训练后复用\n多任务下游 head", fillcolor="#DCECE8", color="#397D70"];
+  feature [label="embedding / 字段异常分数\n/ 序列分类分数"];
+  decision [label="下游决策模型\nGBDT / 线性模型 / MLP\n+ 规则与人工流程", fillcolor="#F8EEDB", color="#AD8430"];
+  input -> causal; input -> masked; input -> contrast; input -> graphfusion; input -> foundation;
+  causal -> feature; masked -> feature; contrast -> feature; graphfusion -> feature; foundation -> feature; feature -> decision;
+}

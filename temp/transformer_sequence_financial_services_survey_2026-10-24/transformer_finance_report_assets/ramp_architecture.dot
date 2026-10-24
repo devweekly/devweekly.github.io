@@ -1,0 +1,20 @@
+digraph G {
+  graph [rankdir=TB, bgcolor="white", pad="0.25", nodesep="0.45", ranksep="0.6", fontname="Noto Sans CJK SC", label="Ramp 案例：序列特征与既有风控模型协同", labelloc=t, fontsize=18];
+  node [shape=box, style="rounded,filled", color="#3B5875", fillcolor="#EEF4F8", fontname="Noto Sans CJK SC", fontsize=11, margin="0.16,0.10"];
+  edge [color="#526779", penwidth=1.4, arrowsize=0.75, fontname="Noto Sans CJK SC", fontsize=10];
+  auth [label="卡授权请求\n当前交易 xₜ", fillcolor="#E4EEF7"];
+  hist [label="Feature Platform\n仅取决策时点前已可见的历史 Hₜ"];
+  stats [label="历史统计特征\ncount / frequency / velocity"];
+  transformer [label="小型 Transformer\n3 层；128 宽度", fillcolor="#DCECE8", color="#397D70"];
+  tfout [label="序列特征\nembedding + field surprisal\n+ swap / consistency scores"];
+  join [label="既有特征 + 序列特征\n+ 新的计数特征"];
+  xgb [label="XGBoost\n监督式风险排序", fillcolor="#F8EEDB", color="#AD8430"];
+  decision [label="授权决策\napprove / decline / step-up", fillcolor="#F3E7E7", color="#9A5555"];
+  auth -> hist;
+  hist -> stats;
+  hist -> transformer;
+  transformer -> tfout;
+  stats -> join;
+  tfout -> join;
+  join -> xgb -> decision;
+}
