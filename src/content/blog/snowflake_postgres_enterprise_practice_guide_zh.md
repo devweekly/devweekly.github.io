@@ -1639,193 +1639,376 @@ External Table 直接扫描文件时也要特别小心数据质量：Snowflake �
 ---
 
 
-## 二十三、分析结果如何安全地回传 PostgreSQL 应用
+## 二十三、SQL 承载大量业务逻辑时，如何测试、理解和维护？
 
-前面的主数据流是 PostgreSQL → Snowflake：在线事务留在 PostgreSQL，Snowflake 负责跨域分析、历史计算和数据产品。某些业务还需要把分析结果送回应用，例如客户分群、风险标签、推荐结果、批量计算状态或模型评分。此时应增加一条**独立、异步、可审计的结果发布链路**，而不是把整体架构改成没有明确边界的双向数据库同步。
+当业务规则、数据清洗、金额计算、状态转换和历史口径逐渐集中到 Snowflake SQL 中，团队很容易遇到维护困境：SQL 看起来只是查询，但它可能已经承担了传统应用中的业务服务、转换函数、批处理程序和规则引擎的职责。复杂 CTE、窗口函数、条件表达式、MERGE、动态 SQL 与多层视图叠加之后，代码不再容易靠“读一遍 SQL”理解其业务意图。
 
-### 23.1 先定义结果契约，再决定怎么回传
+这不是把业务逻辑放进 SQL 就一定错误，而是要承认：**SQL 也是生产代码，必须具备模块边界、测试数据、回归验证、代码审查、版本管理和发布门禁。** Snowflake 的计算能力不能代替这些工程实践。
 
-每类结果至少应明确以下字段和语义：
+### 23.1 先区分三种测试：逻辑正确、数据合格、运行可靠
 
-| 契约项 | 需要明确的内容 |
-| --- | --- |
-| 业务键 | 结果对应哪个客户、账户、产品或业务实体；键是否稳定且唯一 |
-| 计算时间与数据水位 | 结果基于什么时间范围、源端 LSN/批次或数据版本计算 |
-| 规则/模型版本 | 使用了哪个模型、规则或 SQL 模型版本，便于复现和审计 |
-| 发布版本 | 如何比较新旧结果，防止迟到批次覆盖较新的结果 |
-| 有效期与撤销 | 结果何时失效，如何显式撤销；不能把“没有新结果”默认解释为“结果无效” |
-| 质量状态 | 哪些对账、完整性和业务规则校验通过后，结果才允许发布 |
-| 失败与重试 | 批次如何识别、如何幂等重试、如何补偿以及谁负责处理失败 |
+| 测试层 | 要回答的问题 | 典型方法 | 失败意味着什么 |
+| --- | --- | --- | --- |
+| SQL 逻辑单元测试 | 给定少量确定输入，转换结果是否符合业务规则？ | 静态 fixture、期望输出、边界与反例 | CASE、JOIN、窗口、日期和舍入逻辑可能错误 |
+| 数据质量测试 | 真实或构建后的数据是否满足约束？ | 唯一性、非空、引用关系、允许值、金额/数量范围、跨表对账 | 输入异常、转换回归或业务数据契约被破坏 |
+| 集成与运行测试 | 模型能否在真实 Snowflake 环境正确部署、刷新、重跑和恢复？ | 测试 Schema、端到端批次、重复运行、故障恢复、查询历史 | 依赖、权限、增量处理、调度或部署可能不可靠 |
 
-### 23.2 PostgreSQL 端使用幂等 Upsert，并防止旧版本覆盖新版本
+这三类测试不能互相替代。模型可以通过 SQL 编译却算错业务口径；可以通过单元测试却在生产数据中遇到重复键；也可能数据结果正确，却因为权限、刷新状态或重试设计而无法稳定运营。
 
-以下示例展示发布端的幂等写入。表结构、版本类型和有效期字段应按具体业务定义；如果版本不是可比较的单调值，应使用明确的排序规则，而不是直接比较时间戳来猜测新旧。
+### 23.2 把复杂 SQL 模型当作函数：固定输入，验证精确输出
 
-```sql
-INSERT INTO customer_segment (
-    customer_id, segment_code, publish_version, computed_at, expires_at
-)
-VALUES ($1, $2, $3, $4, $5)
-ON CONFLICT (customer_id)
-DO UPDATE SET
-    segment_code = EXCLUDED.segment_code,
-    publish_version = EXCLUDED.publish_version,
-    computed_at = EXCLUDED.computed_at,
-    expires_at = EXCLUDED.expires_at
-WHERE customer_segment.publish_version < EXCLUDED.publish_version;
-```
+最适合单元测试的不是 Snowflake 内置的 SUM 或 ROW_NUMBER 本身，而是团队自己组合出来的业务逻辑，例如多条规则的优先级、有效日期选择、冲正与撤销、币种换算、逾期分类、窗口边界、重复事件处理和舍入策略。
 
-该 SQL 只保证 PostgreSQL 发布端的单行写入具有幂等性，不代表 Snowflake 与 PostgreSQL 之间存在原子事务。生产实现还应记录发布批次 ID、处理状态、尝试次数、错误原因和已确认水位；仅在结果校验通过后推进发布水位。对大批结果，通常先写入 staging 表，完成批次级校验后再以事务或受控合并方式更新应用侧表，避免消费者读到半批新数据。
+每个重要模型至少准备正常案例、边界案例、冲突案例、反例，以及过去生产缺陷的回归案例。测试 fixture 应尽量小而有辨识力，并显式写出输入和期望结果。不要只检查“查询返回了几行”；要比较关键业务键、状态、金额、日期、理由码等业务字段。对于金额或比率，要根据业务定义指定精度与容差，而不是随意忽略小数差异。
 
-### 23.3 不要把 Snowflake 查询放进每个在线请求的同步路径
+dbt 从 v1.8 开始提供 SQL model unit tests，可以使用静态输入验证转换逻辑，并在模型物化前运行；官方特别建议对包含复杂 CASE、日期运算、窗口函数、自定义数据处理、历史缺陷和关键下游模型的 SQL 编写单元测试。它有适用限制，例如递归 SQL、物化视图模型等不能按通用模型方式直接测试，具体以当前版本文档为准。参考：[dbt Unit tests](https://docs.getdbt.com/docs/build/unit-tests)。
 
-如果每次用户请求都实时访问 Snowflake，应用的响应时间和可用性就会受到网络、仓库启动、并发排队、查询耗时和权限配置的共同影响。若业务要求低延迟在线读取，优先评估预计算后回传 PostgreSQL、缓存或专门的 Serving API，并明确可接受的数据陈旧度、刷新频率和失效策略。只有当实时查询的延迟与可用性已经通过真实负载验证，且业务确实需要时，才考虑在线直查。
+### 23.3 数据测试应该返回“失败的记录”，而不是只返回 PASS/FAIL
 
-### 23.4 结果发布的监控与故障处理
+数据质量测试最实用的形式，是把违反规则的记录查询出来。这样失败不只是一个红灯，而是可以直接调查的业务证据。例如：
 
-至少监控发布批次成功率、端到端延迟、结果版本是否倒退、过期结果比例、待处理批次、重试次数和应用侧最终水位。发生故障时，应能按批次重放、按版本拒绝旧数据、撤销错误结果，并核对 Snowflake 侧已计算结果与 PostgreSQL 侧已发布结果之间的差异。结果回传是独立的数据产品链路，应有单独的 owner、SLO 和故障手册。
+~~~sql
+-- 断言：每个账户、估值日和证券的业务键唯一。
+-- 如果查询返回任何记录，测试就失败。
+SELECT
+    account_id,
+    valuation_date,
+    security_id,
+    COUNT(*) AS row_count
+FROM MART.POSITION_DAILY
+GROUP BY account_id, valuation_date, security_id
+HAVING COUNT(*) > 1;
+~~~
+
+其他常见测试包括关键字段非空、状态值属于允许集合、外键能关联到维度表、金额与数量在合理范围内、源批次与目标结果行数/控制总计一致，以及关键数据在规定时间内到达。
+
+dbt 的 data tests 采用类似思路：测试 SQL 返回违反断言的行，零行表示通过；可以使用通用测试，也可以为特定业务规则编写 singular tests，并在需要时保存失败记录。Snowflake 自身也提供 Data Metric Functions（DMFs）与 Expectations，用于对表/列数据质量进行度量、设置阈值并监控违反情况。两者定位不同：dbt 更适合随模型代码版本化、在 CI 中阻止不合格变更；Snowflake DMF/Expectation 更适合对平台中的数据质量指标进行持续监控。具体能力受 Edition 和配置限制。参考：[dbt data tests](https://docs.getdbt.com/docs/build/data-tests)、[Snowflake Data Quality Expectations](https://docs.snowflake.com/en/user-guide/data-quality-expectations)。
+
+### 23.4 关键业务逻辑要测试“变化前后差异”，不能只看新结果是否通过基本规则
+
+对于投资持仓、风险敞口、收入、估值、客户分类等重要模型，修改 SQL 后即使结果满足唯一性、非空等基础测试，也可能整体改变业务口径。建议在隔离 Schema 中以同一份输入快照同时运行旧版本和新版本，生成差异报告：业务键层面的新增/删除/修改，金额和数量的绝对差与相对差，按业务日期/产品/风险类别聚合的总量，分类状态变化，迟到数据与历史修订影响，以及查询耗时、扫描量和刷新延迟变化。
+
+旧版本不是永远正确的黄金答案。若变更本来就是修正口径，目标不应是“新旧结果完全相同”，而是把每项重大差异解释为预期变更、已知例外或缺陷，并由业务责任人批准。需要保留旧口径的历史报表时，还应记录生效日期与版本，而不是悄悄覆盖历史解释。
+
+### 23.5 将 SQL 测试放进 CI/CD：静态检查、单元测试、数据测试、部署验证逐层执行
+
+建议的最小流水线是：
+
+1. **静态检查：** 格式、命名、复杂度约定、禁用模式和 SQL 方言检查。SQLFluff 支持 Snowflake 方言，可以统一团队风格并尽早发现部分解析问题，但 lint 通过不代表查询语义正确。
+2. **编译与依赖检查：** 确认模型引用、宏、来源、权限配置和依赖图可解析。
+3. **单元测试：** 使用固定 fixture 验证复杂转换的精确输出。
+4. **集成构建与数据测试：** 在隔离环境构建受影响模型，再执行非空、唯一性、引用关系、业务规则和对账测试。
+5. **差异评审：** 对高风险模型比较候选版本和当前批准版本的结果。
+6. **发布与冒烟检查：** 部署后确认对象、权限、刷新模式、Task 状态和 Query ID；关键业务批次必须经过质量门禁后才能发布。
+
+Snowflake 的 dbt 最佳实践明确建议使用 CI/CD 验证变更、运行模型与测试，并让测试失败阻止 Pull Request 合并；可以完整运行 dbt build，也可以对改动模型及其下游依赖做选择性验证。SQLFluff 适合作为静态质量层，不能代替真实 Snowflake 执行测试。参考：[Snowflake 的 dbt Projects 最佳实践](https://docs.snowflake.com/en/user-guide/data-engineering/dbt-projects-on-snowflake-best-practices)、[SQLFluff Snowflake 方言](https://docs.sqlfluff.com/en/stable/)。
+
+### 23.6 Snowflake Scripting 能解决一部分问题，但它不是 SQL 可维护性的替代方案
+
+Snowflake Scripting 为 SQL 增加变量、条件分支、循环、游标、异常处理和存储过程能力。它适合把多个数据库步骤组织成一个可控工作流，例如检查批次状态、按顺序执行转换、读取受影响行数、记录运行结果、对异常显式失败或调用补偿流程。Snowflake 官方文档也提供异常捕获与重新抛出机制。
+
+但它**不会自动让复杂业务规则更容易理解，也不会自动生成单元测试**。把一个巨大的 SELECT 改写成一个巨大的 BEGIN…END 块，可能只是把难懂的声明式逻辑换成更难追踪的过程式逻辑。尤其要避免为了“测试方便”而把所有转换塞进循环逐行处理；Snowflake 的优势通常在集合式运算，逐行游标处理可能增加复杂度和成本。
+
+| 需求 | 优先选择 | Scripting 的作用 |
+| --- | --- | --- |
+| 定义清晰、可组合的转换 | View、CTE、分层 SQL 模型或 dbt model | 通常不需要 |
+| 验证模型对固定输入的输出 | dbt unit tests / 测试 fixture | 可负责触发测试，但不能代替期望结果 |
+| 检查真实数据是否满足规则 | dbt data tests、SQL 失败记录查询、Snowflake DMF/Expectations | 可以触发检查、根据结果决定是否继续 |
+| 编排多步 SQL、捕获异常、记录状态 | Stored Procedure / Snowflake Scripting、Tasks 或外部编排器 | 这是其强项 |
+| 执行跨模型回归、差异分析和 Pull Request 门禁 | Git + CI/CD + 测试框架 | 可被流水线调用，但不是完整测试框架 |
+| 复杂、变化频繁且高度程序化的业务规则 | 评估是否应放在领域服务/应用代码中 | 不要因为“能写进 SQL”就强行放在 SQL |
+
+另外，Snowflake Scripting 的 BEGIN…END 代码块与事务的 BEGIN TRANSACTION 不是同一概念。异常处理也不应被当成自动回滚的保证；需要明确事务边界、失败时已执行的副作用以及重跑是否幂等。参考：[Snowflake Scripting Developer Guide](https://docs.snowflake.com/en/developer-guide/snowflake-scripting)、[异常处理](https://docs.snowflake.com/en/developer-guide/snowflake-scripting/exceptions)。
+
+### 23.7 什么业务逻辑应该留在 SQL，什么逻辑不应该？
+
+不要简单按“SQL 还是 Java/Python”二分，可以按逻辑特征划边界：
+
+- **适合 SQL：** 大规模集合转换、JOIN、聚合、窗口分析、历史快照、数据标准化、批量规则应用，以及紧贴数据集的质量检查。
+- **适合 SQL + Scripting：** 以数据库对象为中心的多步流程，需要条件分支、异常处理、执行状态记录和数据库内调度，但仍应避免无必要的逐行处理。
+- **适合领域服务/应用代码：** 需要丰富领域对象、复杂交互流程、外部系统编排、细粒度业务授权、同步在线请求、频繁变化的流程规则，或必须与 OLTP 事务一起原子提交的业务决策。
+- **适合规则配置或专门规则引擎：** 规则由业务人员频繁维护，需要版本审批、有效期、命中原因和独立模拟时；不要把成百上千条业务规则散落在多个 CASE 表达式中。
+
+一个实用判断标准是：规则是否有明确业务所有者、能否被独立命名和测试、是否可以用一组案例解释、变更后能否量化影响、失败后是否能重放与回滚。如果这些问题回答不了，问题就不只是 SQL 语法，而是业务逻辑缺少工程化管理。
+
+**推荐做法：** 先把转换拆成语义清楚、粒度明确的模型；对复杂逻辑建立单元测试，对输出建立数据质量测试，对关键指标做旧新版本差异测试；把这些门禁纳入 CI/CD。只有需要过程控制时才用 Snowflake Scripting，而不是把 Scripting 当作解决 SQL 复杂度的通用答案。
+
+官方文档与工具资料：
+- [Snowflake Scripting Developer Guide](https://docs.snowflake.com/en/developer-guide/snowflake-scripting)
+- [Snowflake dbt Projects 最佳实践](https://docs.snowflake.com/en/user-guide/data-engineering/dbt-projects-on-snowflake-best-practices)
+- [dbt Unit tests](https://docs.getdbt.com/docs/build/unit-tests)
+- [dbt data tests](https://docs.getdbt.com/docs/build/data-tests)
+- [Snowflake Data Quality Expectations](https://docs.snowflake.com/en/user-guide/data-quality-expectations)
+- [SQLFluff](https://docs.sqlfluff.com/en/stable/)
 
 ---
 
-## 二十四、Snowflake Postgres 与独立 PostgreSQL：不要混为一谈
 
-本文所说的 PostgreSQL 可以是自建实例、Amazon RDS/Aurora PostgreSQL、Azure Database for PostgreSQL、Google Cloud SQL 等独立部署或托管服务。Snowflake Postgres 则是 Snowflake 平台提供的 PostgreSQL 数据库服务。它们采用 PostgreSQL 生态并不意味着扩展、网络、权限、升级、复制能力和运维责任完全相同。
+## 二十四、Snowflake JavaScript / Python UDF 与 PostgreSQL 函数：何时用、如何治理？
 
-| 场景 | 优先评估的方案 | 不应默认假设 |
+当 SQL 开始承担大量业务转换时，团队经常会考虑把部分逻辑写成 JavaScript 或 Python UDF。这样做确实能复用通用算法、成熟库和既有代码，但“数据库支持某种语言”并不代表应该把所有业务逻辑放进 UDF。真正需要判断的是：逻辑是否适合逐行或批量计算、运行时是否受控、依赖能否固定、行为是否可测试，以及它应该由数据平台还是应用服务负责。
+
+**推荐顺序：先用 Snowflake 原生 SQL 和内置函数；其次考虑 SQL UDF 或 dbt 模型；确实需要通用语言能力时再选 JavaScript / Python UDF；涉及多步操作、写入副作用和流程编排时，使用 Stored Procedure、Tasks 或外部编排器。** 对 PostgreSQL 则要单独评估函数语言的部署与安全模型，不能直接照搬 Snowflake 的做法。
+
+### 24.1 先选执行模型，再选语言
+
+| 需求 | 优先方案 | 典型用途 | 主要注意事项 |
+| --- | --- | --- | --- |
+| 可由常规 SQL 表达的集合转换 | 原生 SQL、CTE、View、Dynamic Table 或 dbt model | JOIN、聚合、窗口、状态映射、日期过滤、增量模型 | 首先保证模型粒度、时间语义、增量和重跑正确 |
+| 多处重复使用的简单确定性表达式 | SQL UDF | 指标小公式、统一的可复用 SQL 表达式 | 保持职责小、签名稳定、业务含义明确 |
+| 轻量字符串或 JSON 处理，且 JavaScript 语义确实有优势 | JavaScript UDF | 小型确定性解析、规范化或转换 | 不支持随意加载第三方 JavaScript 库；代码大小、内存和执行时间有运行限制 |
+| 复杂算法、成熟 Python 库、科学计算或模型推理 | Python UDF | 专用解析、评分算法、科学计算、模型推理 | 固定 Runtime 和依赖版本；处理类型映射、NULL、初始化成本和执行时限 |
+| 对大量行应用 Pandas / NumPy / 机器学习批处理 | Vectorized Python UDF；如需多行输出再评估 UDTF | 批量特征计算、模型批量推理、列式转换 | 只有在算法适合批处理时才可能更快；测试批次边界、NULL、内存和实际吞吐 |
+| 多条 SQL、状态检查、条件分支、异常处理或有副作用的过程 | Stored Procedure、Snowflake Scripting、Tasks 或外部编排器 | 批次装载、重跑、发布门禁、调用其他步骤 | UDF 应保持纯函数式，不能把流程编排误当成单行计算 |
+| 必须在 PostgreSQL 事务内完成的数据局部逻辑 | SQL function / PL/pgSQL | 事务内校验、触发器、数据局部操作 | 控制函数权限、锁持有时间、事务时长和升级兼容性 |
+
+这里的“先用 SQL”并不是因为 Python 或 JavaScript 不够强，而是因为当逻辑本质上是集合运算时，让优化器看到明确的 SQL 表达式，通常更容易进行执行计划分析和性能调优。自定义语言函数应针对 SQL 难以清楚表达的部分，而不是把整个转换管道包装成黑盒。
+
+### 24.2 JavaScript UDF：适合轻量、无外部依赖的纯转换
+
+Snowflake 原生支持 JavaScript UDF，部署时由 SQL 定义函数签名和处理器代码。它适合小型确定性逻辑，例如使用 JavaScript 字符串语义进行规范化，或者实现 SQL 表达不够直观、且无需第三方库的转换。
+
+示意例子：
+
+~~~sql
+CREATE OR REPLACE FUNCTION normalize_identifier_js(v VARCHAR)
+RETURNS VARCHAR
+LANGUAGE JAVASCRIPT
+AS
+$
+if (V === undefined || V === null) {
+  return null;
+}
+return V.trim().toUpperCase();
+$;
+~~~
+
+这只是简化示例。生产环境仍须明确 NULL、空字符串、Unicode、大小写规则以及业务允许值；不能把“统一大写”当成所有业务标识符都适用的标准化规则。Snowflake 会把未加引号的 SQL 参数名转换为大写标识符，因此示例中的 JavaScript 处理器使用 V。
+
+JavaScript UDF 的关键限制包括：
+
+- 只能使用受支持的标准 JavaScript 库，不能像普通 Node.js 项目一样随意导入第三方 npm 包。
+- 官方建议 JavaScript UDF 的源码控制在约 100 KB 以内；内存使用过量、执行时间过长或递归深度过大可能导致运行失败。
+- 不能依赖全局变量在不同调用、不同进程或不同数据分片之间共享状态。
+- **金融数值和时间精度要格外谨慎。** JavaScript 的 Number 是双精度浮点数，不能精确保留任意精度的 Snowflake NUMBER；整数超过 2^53−1 后可能失去精度。JavaScript Date 的精度也只有毫秒级，时区转换还有专门语义。金额、数量、价格、利率和高精度时间戳应优先留在 SQL 的精确数值/时间类型中，或用经过验证的 Decimal/专用表示，不能未经测试就转成 JavaScript Number / Date。
+- UDF 不应读取任意本地文件或执行系统调用。需要访问外部网络时，必须另行评估 Snowflake External Access Integration 的网络规则和凭据权限。
+
+因此，如果逻辑需要大型库、复杂数据科学工具或持续演进的业务规则，通常应优先评估 Python UDF、SQL 模型或应用服务，而不是把依赖代码手工塞进 JavaScript handler。
+
+官方参考：[Introduction to JavaScript UDFs](https://docs.snowflake.com/en/developer-guide/udf/javascript/udf-javascript-introduction)、[JavaScript UDF limitations](https://docs.snowflake.com/en/developer-guide/udf/javascript/udf-javascript-limitations)。
+
+### 24.3 Python UDF：获得库生态，但也引入运行时和依赖治理
+
+Python UDF 的价值在于复用成熟 Python 代码与第三方包，而不是让简单 SQL 变成 Python。典型候选场景包括 SQL 不易清晰表达的算法、科学计算、特殊数据格式解析和模型推理。
+
+一个很小的标量函数可以这样定义：
+
+~~~sql
+CREATE OR REPLACE FUNCTION normalize_identifier_py(v VARCHAR)
+RETURNS VARCHAR
+LANGUAGE PYTHON
+RUNTIME_VERSION = '3.12'
+HANDLER = 'normalize_identifier'
+AS
+$
+def normalize_identifier(v):
+    if v is None:
+        return None
+    return v.strip().upper()
+$;
+~~~
+
+这个例子只用于展示签名、Runtime 和 Handler 的关系；对简单字符串处理，生产选型前仍应比较 Snowflake 内置 SQL 函数或 SQL UDF，不能因为团队熟悉 Python 就默认使用 Python。
+
+Python UDF 在生产环境的工程要求包括：
+
+- **固定运行时与依赖版本。** 明确 Python Runtime，声明需要的包并锁定版本；在 CI 中验证依赖可解析和函数可创建。不要把“使用最新版本”当成可重复部署策略。
+- **正确处理 SQL/Python 类型映射。** 显式测试 NULL、时间戳时区、精度、Decimal/浮点数、半结构化 VARIANT 和返回类型。类型转换既可能导致运行错误，也可能造成业务数值悄然变化。
+- **避免逐行重复初始化。** Snowflake 调用标量 Python UDF 的处理器时按行提供参数。昂贵且不随行变化的初始化应放在模块初始化阶段，而不是每次处理一行时重新执行。
+- **不要依赖跨行状态。** Snowflake 可以把工作分散到不同实例，行和批次的处理顺序不保证固定。缓存、全局变量和共享对象必须是可选优化，不能影响函数正确性；若确实共享状态，还要评估线程安全。
+- **为可观测性和故障设计边界。** 记录足以定位函数版本、Query ID、批次和失败类别的信息；错误消息不要泄露客户数据、凭据或完整敏感输入。
+
+对于 Python 生态中的 Pandas、NumPy 或机器学习库，可以评估 Vectorized Python UDF：处理器一次接收一批行，而不是每次只处理一行。Snowflake 文档指出，这种接口在算法本身适合批量计算时，可能有明显性能优势；它不是任何逻辑都能自动加速的开关。需要实际比较标量与向量化实现的正确性、吞吐、内存、启动开销和总仓库成本。若算法要按分区计算或输出多行，再判断是否适合 UDTF。
+
+官方参考：[Python UDF introduction](https://docs.snowflake.com/en/developer-guide/udf/python/udf-python-introduction)、[Designing Python UDFs](https://docs.snowflake.com/en/developer-guide/udf/python/udf-python-designing)、[Vectorized Python UDFs](https://docs.snowflake.com/en/developer-guide/udf/python/udf-python-batch)、[Snowpark Python UDF dependencies](https://docs.snowflake.com/en/developer-guide/snowpark/python/creating-udfs)。
+
+### 24.4 UDF 不应成为外部 API 调用循环
+
+Snowflake 可以通过 External Access Integration 为 UDF 或存储过程授予经过控制的外部网络访问，并通过网络规则和 Secret 管理目标地址与认证信息。但从技术上“允许连接”不代表应该在每一行数据上调用一次外部 API。
+
+例如，百万行数据逐行调用第三方服务可能造成高延迟、限流、重复调用成本、失败重试复杂化和难以重放。优先考虑以下方案：
+
+1. 能在 SQL 中完成的规则，留在 SQL。
+2. 可批量计算的算法，评估 Vectorized UDF 或一次批次计算。
+3. 必须调用外部服务时，优先设计有明确批次、幂等键、限流、超时、重试、缓存与结果审计的批处理流程。
+4. 只有需要逐条实时响应且外部服务契约明确时，才评估逐行调用；要将其作为独立的运行风险和成本预算评审。
+
+不要在函数源码中硬编码 API 密钥。External Access Integration 应只放行需要的网络目标与 Secret，并检查相关访问权限和审计记录。还要注意，外部调用引入了额外的失败和副作用，因此应明确区分 UDF、Stored Procedure 和外部工作流各自负责的部分。
+
+官方参考：[External network access overview](https://docs.snowflake.com/en/developer-guide/external-network-access/external-network-access-overview)、[Creating and using an external access integration](https://docs.snowflake.com/en/developer-guide/external-network-access/creating-using-external-network-access)、[UDF and procedure security practices](https://docs.snowflake.com/en/developer-guide/udf-stored-procedure-security-practices)。
+
+### 24.5 PostgreSQL 不能直接照搬 Snowflake 的 JS/Python UDF 模式
+
+两个平台都允许在数据库内执行用户定义逻辑，但运行边界、语言安装方式和安全模型不同。
+
+| 维度 | Snowflake | PostgreSQL |
 | --- | --- | --- |
-| 独立 PostgreSQL → Snowflake 分析层 | Openflow PostgreSQL CDC、已有平台上的 Debezium/Kafka，或批量文件加载 | 不要假设 Snowflake Postgres 的原生 mirroring 可直接用于所有外部 PostgreSQL |
-| Snowflake Postgres → Snowflake 分析层 | 在当前区域、版本与功能状态允许时，评估原生 data mirroring | 不要把 mirroring 等同于通用双向复制或跨库事务 |
-| Snowflake Postgres 与开放数据格式协作 | 对适用场景评估 pg_lake、Iceberg 和对象存储集成 | 不要把开放格式访问等同于持续 CDC、事务复制或冲突解决 |
-| 独立 PostgreSQL 迁移到 Snowflake Postgres | 单独制定数据库迁移和切换计划，验证 schema、扩展、序列、连接切换、回滚与一致性 | 不要把分析用 CDC 管道直接当作完整数据库迁移方案 |
+| 优先表达方式 | 原生 SQL、SQL UDF、View、Dynamic Table/dbt 模型 | 原生 SQL、SQL function、PL/pgSQL |
+| Python | 平台托管 Python UDF Runtime，可声明包依赖；需要按平台规则控制版本与权限 | PL/Python 通常通过扩展安装；官方当前文档提供的是不受信任的 plpython3u，而不是受限的可信 Python 运行时 |
+| JavaScript | Snowflake 原生支持 JavaScript UDF，执行在受限环境中 | JavaScript 并非 PostgreSQL 核心内建语言；通常依赖 PL/V8 等第三方扩展，必须独立管理安装、版本、兼容性与安全 |
+| 网络与系统访问 | 默认受限；需通过受控 External Access Integration 显式开放外部网络 | 函数运行于数据库服务器进程上下文；不受信任的语言可以获得数据库服务账户本身具备的能力，风险明显不同 |
+| 典型边界 | 以无副作用的逐行或批量计算为主，跨步骤工作流交给过程或外部编排 | 在事务边界内的稳定、数据局部逻辑可考虑函数；复杂领域行为仍要比较应用服务实现 |
 
-选型时，应针对目标云区域、部署方式和当前功能状态查验官方文档，并把连接器代际、Preview/GA 状态、复制槽与 WAL 限制、刷新间隔、源端容量及成本纳入验证。相关能力会随产品迭代变化，不能只依据产品名称推断其支持范围。
+尤其要注意，PostgreSQL 官方文档明确说明，PL/Python 只提供不受信任的 plpython3u 语言：它不提供限制函数能做什么的安全机制，因此只有超级用户能够创建相应函数。也就是说，不能因为 Python 代码“只做一个转换”就忽略它的运行权限和部署风险。应用团队应通过严格控制谁能创建/替换函数、审查函数体与扩展来源、隔离权限，并评估数据库主机暴露面来治理。
 
-官方资料：
-- [Snowflake Postgres 概览与架构](https://docs.snowflake.com/en/user-guide/snowflake-postgres/about)
-- [Snowflake Postgres 数据移动：mirroring 与 pg_lake](https://docs.snowflake.com/en/user-guide/snowflake-postgres/postgres-data-movement)
-- [Snowflake Postgres data mirroring](https://docs.snowflake.com/en/user-guide/snowflake-postgres/postgres-data-mirroring)
-- [Openflow Connector for PostgreSQL：功能与限制](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/about)
-- [Openflow Connector for PostgreSQL：配置步骤](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/setup)
+在 PostgreSQL 中，一般优先考虑内建 SQL 和 PL/pgSQL。需要第三方语言时，先评估功能是否真的必须在数据库内执行，再检查该语言是否为核心支持、是否需要扩展、是否属于 trusted/untrusted 语言、谁能安装和升级，以及函数调用频率与事务时长。PL/V8 这类 JavaScript 语言扩展不应被当成所有 PostgreSQL 部署都默认具备的标准能力。
+
+同时要正确使用函数属性和权限：为函数选择准确的 VOLATILE / STABLE / IMMUTABLE 分类，不要为了“让优化器更快”而谎报确定性；对于 SECURITY DEFINER 函数，应设置安全的 search_path、限定对象名，并限制谁可以执行或替换它。函数、触发器和 Row-Level Security 策略都可能成为隐蔽的权限入口。
+
+官方参考：[PostgreSQL PL/Python](https://www.postgresql.org/docs/current/plpython.html)、[PostgreSQL Function Security](https://www.postgresql.org/docs/current/perm-functions.html)、[PostgreSQL CREATE FUNCTION](https://www.postgresql.org/docs/current/sql-createfunction.html)。对于 PL/V8 等第三方扩展，应进一步核查其官方项目文档、发行包支持范围和目标 PostgreSQL 主版本兼容性。
+
+### 24.6 把 UDF 当成正式软件组件测试与部署
+
+UDF 与普通 SQL 模型一样需要测试，但其验证面还包括语言运行时和依赖环境。建议采用以下实践：
+
+- **代码进入 Git。** 将 Python handler、JavaScript 源码、函数 DDL、包依赖、测试 fixture 与部署脚本一并版本化，避免控制台手工修改成为唯一真相。
+- **固定依赖与运行时。** Python 记录 Runtime 和包版本；JavaScript 代码保持精简，并验证目标运行时限制；PostgreSQL 语言扩展还要记录扩展版本、数据库主版本和升级步骤。
+- **测试输入契约。** 至少覆盖 NULL、边界值、非法输入、时间时区、精度、Unicode、空值与异常行为。对于金融计算，应为金额、利率、比例和舍入模式明确预期结果。
+- **构建测试样本和黄金结果。** 使用固定输入验证精确输出；对高风险转换，再以同一份数据快照比较旧版和新版的差异，解释所有重大变化。
+- **性能基准不能只跑一两行。** 使用代表性的行数、NULL 比例、复杂度、批次大小与并发负载，测量总耗时、吞吐、仓库消耗和失败率。向量化实现应与标量实现做相同输入的结果对比。
+- **版本化发布和回滚。** 在开发/测试 Schema 验证后再发布。高风险 UDF 可采用版本化函数名或独立 Schema 切换，让消费者有明确的升级路径；避免覆盖生产函数后才开始验证。
+- **日志不泄露数据。** 使用 Query ID、批次 ID、函数版本和错误类别关联日志；不要将敏感原始输入、凭据或客户信息直接拼入异常文本。
+
+这也是 SQL 业务逻辑测试体系的延伸：单元测试验证函数本身，模型测试验证函数被组合进真实 SQL 后的结果，集成测试验证权限、部署、包解析与运行方式，回归测试验证业务口径没有发生未解释的变化。可以配合 dbt/CI/CD 流水线、Snowflake 事件日志，以及 PostgreSQL 的常规迁移与发布测试来实施。
+
+**最终建议：** 在 Snowflake 上，通常从原生 SQL 开始；简单可复用表达式用 SQL UDF；确实需要 JavaScript 语义且不依赖第三方库时才用 JavaScript UDF；需要成熟库或复杂算法时评估 Python UDF，并先判断是否可以批量向量化。多步执行与外部副作用留给存储过程或外部工作流。在 PostgreSQL 上，优先 SQL/PL/pgSQL；只有在确认语言扩展、安全边界、升级路径和运维责任后，才采用 PL/Python 或 JavaScript 扩展。
+
+---
 
 
+## 二十五、外部 Vendor 数据接入与分层：文件应该放在哪里，Raw 应保存多久？
 
-## 二十五、PostgreSQL + DuckDB + Snowflake：三者如何分工，什么时候只用 DuckDB？
+外部 Vendor 数据常见于市场价格、证券主数据、评级、经济指标、参考数据和研究数据。真正的架构问题不只是“怎么把文件加载到 Snowflake”，而是要分别决定：**供应商如何交付、哪一份数据是可追溯的原始依据、历史数据保留在哪里，以及哪些转换结果值得长期维护。**
 
-先给结论：**DuckDB 不是 Snowflake 的廉价同义词，也不应该默认成为 PostgreSQL 与 Snowflake 之间的必经层。** DuckDB 是嵌入式、进程内的分析型 SQL 引擎，适合分析师工作站、Python 数据任务、应用内分析、数据抽样/质量验证，以及对 Parquet 和其他列式文件进行高效查询。Snowflake 更适合需要集中治理、跨系统数据整合、共享的企业级数据模型、并发 BI 和受控运营的场景。PostgreSQL 继续负责事务写入与在线业务状态。
+Snowflake、AWS 和 dbt 的官方实践都提供了可借鉴的模式，但不存在适合所有公司的固定三层模板。AWS 的数据湖指南通常建议将原始数据、处理数据和面向分析的结果分层；Snowflake 的 Dynamic Tables 指南也用 bronze/raw、silver/conformed、gold/aggregated 说明如何拆分转换步骤。它们是帮助团队明确职责的模型，不意味着每一个项目必须维护三份完整、永久的数据副本。参考：[AWS 数据层定义](https://docs.aws.amazon.com/prescriptive-guidance/latest/defining-bucket-names-data-lakes/data-layer-definitions.html)、[Snowflake Dynamic Table 设计模式](https://docs.snowflake.com/en/user-guide/dynamic-tables/design-patterns)、[dbt 模型分层实践](https://docs.getdbt.com/best-practices/how-we-structure/1-guide-overview)。
 
-因此，选型不是简单地“再加一个数据库”，而是判断是否有一个明确工作负载值得使用 DuckDB，以及这份分析数据是否需要进入企业共享的 Snowflake 平台。
+### 25.1 Vendor 应该把文件送到公司 S3，还是直接送到 Snowflake？
 
-### 25.1 三种组合各自解决什么问题？
+先区分一个容易产生误解的说法：**Snowflake 的 Internal Stage 是由 Snowflake 管理的文件暂存位置，不是一个由客户直接管理、可以向供应商公开 S3 URI 的 Bucket。** 数据可以上传到 Internal Stage，再由 Snowflake 加载到表；客户也可以使用 External Stage 指向自己拥有或获准访问的 S3。官方把这两种都作为支持的文件加载路径。参考：[Snowflake 数据加载概览](https://docs.snowflake.com/en/user-guide/data-load-overview)、[Internal Stage 类型与用法](https://docs.snowflake.com/en/user-guide/data-load-local-file-system-create-stage)。
 
-| 组合 | 典型场景 | 推荐的职责划分 | 主要边界 |
+| 交付模式 | 适合什么情况 | 主要好处 | 需要承担的代价 |
 | --- | --- | --- | --- |
-| PostgreSQL + DuckDB | 单个团队、内部工具、批处理、数据探索、交付 Parquet、应用内嵌分析；数据和用户范围有限 | PostgreSQL 是业务数据权威源；DuckDB 在本地进程或受控 Job 中读取有限数据、做聚合/Join/质量分析 | 原生 DuckDB 不等于托管的多团队数据仓库；权限、并发、共享、备份、任务编排与治理仍由应用/平台负责 |
-| PostgreSQL + Snowflake | 企业级 BI、跨业务域整合、多个数据源、长期历史、集中权限治理、多人并发和稳定 SLO | PostgreSQL 承担 OLTP；CDC 或批量数据管道进入 Snowflake；Snowflake 形成共享 RAW/STG/CORE/MART | 不必为了“更快的 SQL”额外引入 DuckDB；先把 CDC、建模、质量和成本治理做好 |
-| PostgreSQL + DuckDB + Snowflake | 企业数据平台之外，仍有明确的本地/边缘分析、开发测试、批处理或多引擎数据消费需求 | Snowflake 是企业共享分析平台；DuckDB 是工作负载专用的分析引擎，而不是第二份企业真相库 | 如果 DuckDB 只是把全量数据长期复制一份且没人依赖它的独特能力，就应删除这一层 |
+| **Vendor 已在 Snowflake 提供 Secure Data Sharing / Marketplace 数据** | 供应商本来就在 Snowflake 发布数据，合同与区域条件允许共享 | 不必再建一套文件搬运与落库流程；共享数据可在提供方更新后被消费方访问 | 数据访问依赖供应商账户、共享对象和合同；若需要独立归档、源文件重放或自己的数据快照，还要另作设计 |
+| **Vendor 文件进入公司控制的 AWS S3，再由 Snowflake 读取/加载** | 定期批量交付、需要源文件留存、审计、重放、校验或其他 AWS 服务参与 | 公司控制接收、隔离、加密、版本、生命周期、批次完整性与原始文件归档；S3 可作为平台之外的持久原始依据 | 需要运维 S3、IAM、事件通知、文件校验和生命周期；还要评估 S3 存储、跨区域流量与 Snowflake 加载成本 |
+| **受控的采集服务直接上传到 Snowflake Internal Stage** | Snowflake 是唯一主要目的地，不需要独立的云对象存储归档，且上传程序能够使用 Snowflake 支持的认证和加载接口 | 少一个客户侧的长期文件存储组件；可以直接从 Stage 加载到表 | 仍需提供安全上传通道、批次清单、重试和审计；Internal Stage 不等于公司可独立管理的 S3 原始档案，外部供应商通常需要通过受控采集服务而不是直接访问底层存储 |
+| **Snowflake 通过 External Stage 读取 Vendor 或合作方控制的 S3** | 对方允许跨账户授权访问，文件存放在对方的云存储 | 避免额外搬运或重复持有整份数据；可用 External Table 先做受控、低频查询 | 权限撤销、文件版本、目录变化、跨账户/区域费用和源端生命周期都依赖对方；若要稳定的高频 JOIN/转换，通常仍要评估加载为原生表 |
 
-DuckDB 本身可以通过 `postgres` 扩展直接连接 PostgreSQL，并读取或写入源库；官方文档同时指出，大表被反复从 PostgreSQL 读取时，可能更适合把选定数据复制到 DuckDB，避免一直重扫源表。由于读取发生在查询执行时，这种直连不是 CDC，也不应当作生产级异步复制、审计日志或可靠的共享数据服务。对生产源库，优先使用只读账号、只附加需要的 schema，并在独立只读副本、受控批次或明确限量的数据范围上测试负载。
+Snowflake Secure Data Sharing 的官方说明明确指出，共享不会把数据复制到消费者账户，消费者主要为查询使用的计算资源付费；这只适用于供应商确实通过 Snowflake 分享数据并且授权允许的情况，而不是任意 Vendor 文件都能直接这样访问。参考：[About Secure Data Sharing](https://docs.snowflake.com/en/user-guide/data-sharing-intro)。
 
-### 25.2 推荐的企业组合：Snowflake 做共享分析，DuckDB 按需出现
+**我的默认建议：对需要长期使用、可能会回溯修订的文件型 Vendor 数据，优先采用“受控接收 → 公司控制的 S3 → Snowflake”。** 这不是因为 Snowflake Internal Stage 不可靠，而是公司 S3 能承担独立于数仓的文件交付边界、源文件归档、校验和和重放责任。若数据只在 Snowflake 内部使用、没有独立归档/多引擎访问/回放需求，而且受控采集程序已经存在，则可以直接上传到 Internal Stage，避免为了架构图而额外建设一个无明确用途的 S3 层。
 
-对于已经确认需要 Snowflake 的企业，建议先落地 PostgreSQL → Snowflake 的标准数据链路。只有明确的用户体验、成本或工程工作流需要 DuckDB 时，再把它放到单独的分析路径中。
+### 25.2 建议的文件交付路径：Landing、校验、Ready，再进入 Snowflake
 
-```mermaid
-flowchart LR
-    APP[在线应用] --> PG[(PostgreSQL<br/>事务权威源)]
-    PG -->|CDC / 批量抽取| ING[数据接入]
-    ING --> RAW[(Snowflake RAW)]
-    RAW --> MODEL[STG / CORE / MART]
-    MODEL --> BI[企业 BI / 指标 / 分析]
-    PG -.->|只读、限定范围的抽取| DUCK[DuckDB<br/>本地分析 / 批处理 / 测试]
-    MODEL -.->|批准的 Parquet / Iceberg 数据产品| FILES[(对象存储 / 开放表格式)]
-    FILES -.-> DUCK
-    DUCK -.->|小结果集：异步、幂等发布| PUB[受控发布任务]
-    PUB -.-> PG
-```
+对每日或每小时的 Vendor 文件，建议把“收到了文件”和“文件可以用于业务计算”分开。不要让尚未上传完整、尚未校验或属于错误批次的文件立即进入报表和计算链路。
 
-图中实线是通常的企业分析主路径。虚线代表可选能力：DuckDB 可直接对 PostgreSQL 的限定数据做本地分析，也可消费 Snowflake 导出的数据产品或开放表格式；经过业务校验的小结果集可以通过单独的发布任务写回 PostgreSQL。**不要让 DuckDB 在每个在线请求中临时查询 PostgreSQL 大表，也不要让应用在一个业务事务里分别写 PostgreSQL 与 Snowflake。**
+~~~mermaid
+flowchart TD
+    V[Vendor / 安全文件传输 / API] --> L[S3 Landing：接收与隔离]
+    L --> Q[验证清单、校验和、大小、格式、Schema、业务日期]
+    Q -->|通过| R[S3 Ready：已验证批次]
+    Q -->|失败| X[Quarantine：隔离、告警、人工调查]
+    R --> S[Snowflake External Stage + Storage Integration]
+    S --> I[Snowflake Raw 表或受控加载流程]
+    I --> C[Conformed：规范化、去重、历史与业务键]
+    C --> G[可选 Curated：业务口径、聚合或专用计算结果]
+~~~
 
-DuckDB 的适用位置通常包括：
+建议为每个交付批次生成 manifest 或等价的批次账本，至少记录 Vendor、数据集、文件名、文件大小、校验值、记录数（如果能可靠取得）、业务日期/有效期间、交付时间、Schema 版本、批次 ID 和校验结果。文件覆盖、迟到、重复投递、历史修订或重发时，应当能识别它属于新版本还是重复消费，而不是仅凭文件名判断。
 
-- **本地开发与数据探索：** 开发者无需为每次检查启动 Snowflake 仓库；可使用受控抽样、脱敏快照或 Parquet 副本复现查询、分析异常数据、验证 SQL 变更。
-- **数据质量与管道验证：** 在 CI 或批处理 Job 中对某个批次的 Parquet 做行数、主键唯一性、空值、金额合计和分布检查；将通过校验的批次再交给主平台处理。
-- **低频、局部分析：** 对产品使用日志、单个业务域的报表快照、CSV/JSON/Parquet 文件执行聚合和 Join，并将最终少量结果交给应用或报表系统。
-- **需要可移植的分析运行时：** 把查询和数据处理打包进 Python/容器任务，在笔记本、开发机或计划任务中运行；明确 DuckDB 文件和中间结果的备份、保留及访问控制。
+在 Snowflake 侧，推荐用 **Storage Integration + External Stage** 授权访问公司私有 S3，不把长期 AWS Access Key/Secret Key 硬编码到 SQL、作业配置或连接字符串中。Storage Integration 可限制允许使用的 Bucket/Prefix，AWS IAM 策略再限制具体对象访问。参考：[Snowflake S3 Storage Integration 官方配置](https://docs.snowflake.com/en/user-guide/data-load-s3-config-storage-integration)。
 
-这并不表示 DuckDB 一定只用于开发环境。若实际负载是嵌入式分析或单团队批处理，DuckDB 也可以承载生产计算；关键是把它的部署边界、状态持久化、并发访问和故障恢复作为应用的一部分设计，而不是把本地数据库文件当成天然具备企业数据平台能力的服务。若需要托管的云端 DuckDB 服务，应另行评估 MotherDuck 等产品；它的共享、计算与运维模型不等同于单机嵌入式 DuckDB，也不等同于 Snowflake。
+根据新数据到达频率和使用方式选择加载策略：
 
-### 25.3 直接用 DuckDB 查询 PostgreSQL：适合 PoC 和受控任务，不等于把分析搬走
+- **历史初始化或低频批量文件：** 用 COPY INTO，按 Vendor、数据集和日期范围分批加载；对很长的历史区间可以按年/月或业务分区运行并逐批对账。
+- **持续到达的文件：** 可评估 Snowpipe 自动摄取，由 S3 事件通知触发加载。需要保证不同 Pipe 的路径范围不重叠，避免同一个文件匹配多个加载流程。
+- **只是低频查看外部文件：** External Table 可以降低不必要的复制，但要验证元数据刷新、文件格式、扫描性能和完整性。
+- **频繁 JOIN、反复计算或要形成稳定历史模型：** 通常应比较加载到 Snowflake 原生表的方案，基于真实工作负载测量性能和成本。
 
-DuckDB 官方扩展支持以只读方式附加 PostgreSQL。示例中的连接串只用于说明连接参数；真实密码应通过 Secret Manager、环境注入或受控连接配置提供，不要提交到代码仓库。
+Snowflake 建议对连续数据加载使用有逻辑粒度的目录路径，包含来源等标识与写入日期；对于文件大小也有并行装载建议。不要把每条记录都做成独立小文件，也不要用一个无限膨胀的目录承载所有 Vendor、数据集和年份。参考：[Organizing staged data](https://docs.snowflake.com/en/user-guide/data-load-considerations-stage)、[Snowpipe S3 自动加载](https://docs.snowflake.com/en/user-guide/data-load-snowpipe-auto-s3)、[文件大小建议](https://docs.snowflake.com/en/user-guide/data-load-considerations-prepare)。
 
-```sql
-INSTALL postgres;
-LOAD postgres;
+### 25.3 Raw Zone 不等于临时表：先定义它的责任和留存策略
 
--- 只附加分析任务需要的 schema，禁止使用应用的高权限账号。
-ATTACH 'host=<host> port=5432 dbname=<database> user=<read_only_user> sslmode=verify-full'
-    AS pg_src
-    (TYPE postgres, READ_ONLY, SCHEMA 'reporting');
+Raw Zone 经常被理解成“先放一下，转换完成就删除”，但那只是**短期 Landing/Staging** 的一种设计。企业数据架构中的 Raw/Bronze 通常表示源对齐、尽量不覆盖原始语义的数据层；它的重要职责是支持追溯来源、重放转换、调查供应商重发/修订，以及在业务规则发生变化时重新生成下游数据。AWS 的数据湖指南建议原始层尽可能保留原始文件格式并启用 S3 Versioning；同时允许处理层按需求使用自己的生命周期策略。参考：[AWS 推荐数据层](https://docs.aws.amazon.com/prescriptive-guidance/latest/defining-bucket-names-data-lakes/data-layer-definitions.html)、[AWS 数据湖分层常见问题](https://docs.aws.amazon.com/prescriptive-guidance/latest/defining-bucket-names-data-lakes/faq.html)。
 
--- 将有时间边界的数据复制到本地 DuckDB 表，
--- 避免每次分析都重新扫描同一批 PostgreSQL 源数据。
-CREATE OR REPLACE TABLE recent_events AS
-SELECT event_id, account_id, event_type, event_ts
-FROM pg_src.reporting.events
-WHERE event_ts >= TIMESTAMPTZ '2026-10-01 00:00:00+00';
-```
+在实践中，应区分三种东西：
 
-该方式的正确性和性能边界应当明确：
+1. **Landing / Quarantine：** 接收不完整或待检验的文件。其生命周期通常短，有明确的校验、隔离和清理规则；不能把它当作唯一的历史档案。
+2. **原始文件档案（通常可放在公司 S3）：** 保留 Vendor 交付的原始字节或原始格式，以及批次清单、校验值、对象版本与接收元数据。它是审计或重新解析时可以回到的源证据；保留期限要根据合同、许可、法规和业务需要确定。
+3. **Snowflake Raw 表：** 把已接收的数据装入可查询的表，原则上保持源字段与源含义，做必要的解析、接入元数据补充和最低限度类型处理。它能支持 SQL 级排查、下游重建与数据质量分析，但不是原始文件字节的完美替代品。
 
-1. 直接读取时，扫描工作可能仍给 PostgreSQL 造成 CPU、I/O、网络和连接压力；不要假设每个过滤条件和复杂 SQL 都会完整下推到 PostgreSQL。用 DuckDB 的 `EXPLAIN ANALYZE` 与 PostgreSQL 的查询统计验证真实执行情况。
-2. `CREATE TABLE ... AS SELECT` 是制作本地快照，不会自动跟踪后续变化。增量刷新必须另行定义水位、重复处理和删除语义；不能只依赖时间戳字段，除非你已经验证它不会漏数。
-3. 跨 PostgreSQL、DuckDB 和文件系统的操作不构成同一个原子事务。对账、重跑、快照时间、schema 变化和结果发布都需要独立契约。
-4. 对高负载生产库，优先从只读副本或按批次导出的文件取数；如果分析需要持续、完整、低延迟复制，应使用 CDC/数据平台，而不是用 DuckDB 轮询模拟 CDC。
+最重要的是：**不需要默认同时无限期保存 Landing 文件、S3 原始档案、Snowflake Raw 表、Conformed 表和 Curated 表五份完整数据。** 每一份持久副本都要说明自己的目的、权威性、访问者、保留期和重建方式。若公司 S3 是原始文件的受控档案、Snowflake Conformed 表是长期可查询的业务历史，就可以根据重放需要决定是否还要永久保存 Snowflake Raw 表。
 
-### 25.4 什么时候让 DuckDB 和 Snowflake 消费同一份 Iceberg 数据？
+若原始输入需要作为审计证据，应考虑启用 S3 Versioning；确有不可变留存的监管需求时，再评估 S3 Object Lock 及其治理/合规模式。不要仅因“金融数据”就不加评估地启用永久锁定，因为对象不可删除可能与供应商撤回、删除义务或合同终止要求冲突。参考：[S3 Object Lock](https://docs.aws.amazon.com/AmazonS3/latest/userguide/object-lock.html)。
 
-如果多个引擎确实需要分析同一份数据，开放表格式可以成为三者组合中最有价值的设计；如果只是 Snowflake 自己用，通常没必要为 Iceberg 增加额外复杂度。
+### 25.4 五年或十年的历史数据应该怎么放？
 
-一种共享模式是让数据落在对象存储中的 Iceberg 表，由双方都支持的 Catalog 管理元数据和快照。Snowflake 可以访问外部 Catalog 管理的 Iceberg 表；DuckDB 的 Iceberg 扩展既可按表路径读取，也支持连接 Iceberg REST Catalog，连接 Catalog 才能使用完整写入能力。两端必须指向同一个 Catalog 和一致的快照语义；“文件在同一只 S3 bucket”本身不够。
+如果 Vendor 提供五到十年的历史价格、评级或参考数据，先明确“历史数据需要保存”和“历史原始文件需要一直在线可查”是两个不同需求。
 
-在采用前，至少做以下评估：
+| 数据副本 | 推荐用途 | 5–10 年保留建议 |
+| --- | --- | --- |
+| Vendor 原始文件（通常在公司 S3） | 原始证据、重新解析、争议调查、修正转换逻辑后的历史回放 | 若合同/许可、合规和成本允许，可以长期归档；配置版本、加密、访问审计和生命周期，低频历史可转低成本存储层 |
+| Snowflake Raw 表 | 需要查询原始来源值、调查装载问题、重建 Conformed 或比较 Vendor 修订时使用 | 按重放和查询需要决定。若可从 S3 受控档案重建、且日常几乎不查，可不必将所有年份一直保存在可查询 Raw 表中 |
+| Snowflake Conformed 层 | 已统一数据类型、代码、标识符、时间语义和修订规则的规范化历史数据 | 如果五到十年的时间序列是分析需求本身，通常应长期保留可查询的历史模型；需要明确有效时间、源端版本、修订及到达时间 |
+| Curated 层 | 面向具体分析/业务目的的指标、聚合、衍生计算和认证结果 | 仅保留有重复消费、SLA、审计或重算成本价值的产物；可重建的结果不一定都需要永久保存 |
+| 临时计算表 / Landing | 中间步骤、待验证批次、短期计算 | 设定明确的短生命周期与清理条件，不作为唯一的源数据档案 |
 
-- **表的权威位置与写入责任：** 为每张表指定唯一的主要写入者和提交路径。除非已验证 Catalog 的提交协调、冲突处理和具体功能支持，不要让 Snowflake、DuckDB、Spark 同时无约束地更新同一张表。
-- **Catalog 与凭证：** 选择 Snowflake 和 DuckDB 都能访问的 Catalog 实现，配置短期凭证/角色和最小权限；确认 Snowflake 侧的 catalog integration、external volume、DuckDB 的 REST Catalog 设置以及对象存储权限。
-- **版本和写入语义：** 逐项验证 Iceberg v2/v3、schema evolution、删除文件/删除向量、Time Travel、MERGE、更新和删除语义。DuckDB 当前 Iceberg 写入能力仍有特定限制，例如 UPDATE/DELETE 与写入模式相关；不要只通过一次 SELECT 验收完整兼容性。
-- **文件维护与成本：** 设计小文件合并、快照过期、孤儿文件清理、分区策略、表统计和保留期。共享格式减少数据复制的同时，增加了 Catalog 与表生命周期的运营责任。
-- **权限与治理：** 不应认为 Snowflake 上的行访问策略、列级权限和审计会自动延伸到 DuckDB。对每个消费引擎分别配置授权、网络边界、脱敏和审计；跨引擎消费是否符合数据合同及驻留要求也要单独确认。
+建议至少区分四类时间：**Vendor 业务日期/有效时间、供应商发布或修订时间、公司接收时间、Snowflake 加载时间。** 如果只有一个 created_at 或 load_time，就很难解释“这一价格在 2021 年 5 月 3 日有效，但供应商在 2024 年重新发布了修正版本”的情况。
 
-一个重要的状态限制：截至 2026 年 10 月，Snowflake 的 PostgreSQL Openflow Connector 提供了可选 Iceberg 目标，但官方仍将这一目标格式标为 Preview。若想尝试，可在非关键数据集上验证 v2/v3、兼容序列化、Catalog 注册、DuckDB 读取和恢复流程；在该路径达到目标账户所需的生产成熟度之前，**不要把它当作企业生产链路的默认替代方案**。多引擎共享是明确需求时，可评估以稳定支持的 CDC/数据工程流程写入共用 Iceberg Catalog，而让 Snowflake 和 DuckDB 都以消费者身份访问。相反，如果只有 Snowflake 是核心消费者，标准 Snowflake 表通常更简单。
+对历史修订，默认不要静默覆盖原始文件。将新交付作为一个有版本/批次标识的输入，经过对账后更新当前规范模型，同时保留所需的原始版本或业务历史。若分析要求回答“当时已知什么”和“以当前最新修订看，过去是什么结果”，就必须保留足够的版本与时间语义，单纯保存一张最新状态表是不够的。
 
-### 25.5 用真实项目需求决定从哪一步开始
+另一个关键点是：**Snowflake Time Travel 不是五到十年历史档案方案。** 官方说明，Standard Edition 的 Time Travel 通常最多为 1 天；Enterprise 及更高版本的永久表可配置最长 90 天。它用于短期恢复与历史状态查询，不替代业务历史建模、外部源文件留存或长期监管档案。参考：[Snowflake Time Travel 与保留期](https://docs.snowflake.com/en/user-guide/data-time-travel)。
 
-以一个有 PostgreSQL 业务库、客户/事件数据和分析报表的系统为例，建议分阶段实施：
+### 25.5 Conformed 与 Curated：Curated 是不是必须存在？
 
-| 阶段 | 目标 | 推荐实现 | 进入下一阶段的条件 |
+**不必须。层的价值在于边界和可复用性，不在于层数。** AWS 的分层指南描述 Raw、Stage、Analytics 等常见职责；dbt 将模型分为 Staging、Intermediate、Marts，意图也是让源映射、业务逻辑组合和消费模型各有明确位置，而不是规定所有项目必须物化所有层。Snowflake 对 Dynamic Tables 的设计建议也指出，复杂 JOIN、聚合与窗口计算需要按逻辑步骤拆分，避免所有操作塞进单个巨型模型。参考：[dbt 模型组织指南](https://docs.getdbt.com/best-practices/how-we-structure/1-guide-overview)、[Snowflake Dynamic Table 设计模式](https://docs.snowflake.com/en/user-guide/dynamic-tables/design-patterns)。
+
+这三层可以按以下方式理解：
+
+| 层 | 应解决的问题 | 常见内容 | 是否必需 |
 | --- | --- | --- | --- |
-| 1. 先解决分析负载 | 明确现有 PostgreSQL 是否因报表查询受到影响 | 从只读副本或限定快照导入 DuckDB，使用真实 SQL 测量耗时、资源、刷新成本及数据差异 | 验证 DuckDB 的计算收益，不对源端 OLTP 产生不可接受的负担 |
-| 2. 建立企业共享数据平台 | 多个团队/业务域需要稳定数据模型、历史数据、治理和并发 BI | PostgreSQL → Openflow CDC 或现有 CDC/批量平台 → Snowflake RAW/STG/CORE/MART；加入数据质量、对账、SLO 和成本监控 | 关键报表完成双跑、业务验收、权限审查和故障恢复演练 |
-| 3. 让 DuckDB 服务明确的专用工作负载 | 开发验证、局部报表、离线批处理或应用内分析仍有独特价值 | 消费脱敏快照、Parquet 导出或被治理的 Iceberg 数据；把结果以小数据产品形式异步发布 | 有明确使用者、SLO、owner 和成本收益，而不是因为“可以装 DuckDB” |
-| 4. 需要真正的多引擎共享时 | Spark、DuckDB、Snowflake 等要使用同一份开放数据集 | 设计公共对象存储、Iceberg Catalog、凭证、版本和文件维护；先做小范围兼容性 PoC | 读写、schema 演进、恢复、权限与总成本均经过验收 |
+| **Raw** | 收到的源数据是什么？怎样追溯、重放和解释？ | 原始字段、来源、批次、文件与加载元数据、源版本 | 应有明确的原始数据策略，但未必需要把所有原始文件永久存进 Snowflake 表 |
+| **Conformed** | 不同来源如何成为语义一致、可以正确 JOIN 和比较的数据？ | 规范类型、统一标识符、代码映射、时区/币种、去重、删除/修订规则、历史有效期 | 对多来源分析和长期历史计算通常很有价值；简单单源场景可以缩减 |
+| **Curated** | 某个业务问题应该如何定义、计算和重复使用？ | 指标、业务聚合、专用事实表、收益/风险/暴露计算、面向分析的模型 | 按消费需求建立；没有独立价值时可以不物化，直接查询 Conformed 层 |
 
-### 25.6 最终选型规则
+尤其要区分，**Curated 不等于“给其他 App 做 Serving”**。即使暂时没有任何外部 App 消费，Curated 仍可能对报表、分析师查询、风险计算、回测和模型特征有价值。但如果目前只有一个计算用例，计算逻辑简单、使用频率低、没有稳定的共享业务口径，那么不必先建一整套 Curated Schema 或复制出一份大型结果表；可以通过 dbt 模型、View 或直接查询 Conformed 层开始。
 
-- 如果数据主要来自一个 PostgreSQL、分析用户有限、刷新频率低，先评估 **PostgreSQL + DuckDB**；它可能已经足够，不必因为“企业架构”而提前引入 Snowflake。
-- 如果需要跨源整合、多个团队共享的认证指标、集中治理和高并发报表，优先 **PostgreSQL + Snowflake**；DuckDB 可作为开发与专用分析工具，是否进入生产路径由实际需求决定。
-- 如果多个计算引擎要共同使用开放格式数据，才评估 **PostgreSQL + DuckDB + Snowflake + Iceberg/Catalog**。此时主要架构问题不再是 SQL 引擎性能，而是数据权威性、Catalog、快照、提交协调、兼容性和治理边界。
-- 不要为了让架构图看起来完整而强行把三者串成 PostgreSQL → DuckDB → Snowflake。通常更合理的是 PostgreSQL 直接进入企业数据平台；DuckDB 通过受控快照、批次数据或开放表格式参与自己擅长的工作负载。
+何时值得建立 Curated 层？满足以下一项或多项时，再考虑正式建立：
 
-本章延伸阅读：
-- [DuckDB PostgreSQL 扩展：直接读取/写入与本地复制](https://duckdb.org/docs/current/core_extensions/postgres/overview)
-- [DuckDB Parquet：列投影与过滤下推](https://duckdb.org/docs/current/data/parquet/overview)
-- [DuckDB Iceberg 扩展：路径读取与 Catalog 模式](https://duckdb.org/docs/current/core_extensions/iceberg/overview)
-- [DuckDB Iceberg Catalog：REST Catalog 连接](https://duckdb.org/docs/current/core_extensions/iceberg/catalogs)
-- [DuckDB Iceberg 写入支持与限制](https://duckdb.org/docs/current/core_extensions/iceberg/writing_to_iceberg)
-- [Snowflake：Openflow PostgreSQL Connector 的 Iceberg 目标](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/postgres/iceberg)
-- [Snowflake：访问外部 Catalog 的 Iceberg 表](https://docs.snowflake.com/en/collaboration/open-format-sharing-access-iceberg)
-- [MotherDuck + PlanetScale Postgres 集成：产品化混合架构案例](https://motherduck.com/blog/motherduck-planetscale-integration/)（厂商实践材料，应结合自身部署模式和性能测试判断）
+- 同一段复杂的业务计算被多份报表或分析重复使用。
+- 需要统一指标定义、业务负责人、审批流程或结果质量门禁。
+- 计算代价高且结果被反复使用，值得预计算或物化。
+- 需要把规范数据转化成有明确业务粒度的结果，例如按估值日、组合、证券和币种计算风险暴露。
+- Raw/Conformed 字段太接近源系统，不适合直接暴露给消费者；需要权限、脱敏或稳定的数据契约。
 
+反之，如果只是一个探索性查询或一次性分析，View/CTE 往往足够。建立 Curated 不是为了满足分层图，而是为了让业务定义、测试、性能和消费契约真正稳定下来。
+
+### 25.6 一套适合外部 Vendor 数据的渐进式落地方案
+
+不要一开始就把每一个 Vendor、每一类文件和全部历史数据设计成庞大的通用框架。建议按业务需要逐步建设：
+
+**阶段一：确定数据权利和历史语义。** 查清 Vendor 允许哪些用途、复制/缓存/衍生计算的边界、历史保存期限、撤回/修订规则、是否允许跨区域存储，以及合同终止后如何处理数据。明确业务有效时间、源版本和到达时间，不要把“技术上能够保存”当作“合同允许保存”。
+
+**阶段二：建立受控接入和最小原始证据链。** 对定期文件建立 Landing、校验和 Ready 状态，记录 manifest、文件指纹、批次和 Schema 版本；用 Storage Integration 和最小权限外部 Stage 让 Snowflake 访问指定 S3 Prefix。如果 Vendor 已提供 Snowflake Secure Share，先比较直接共享而不是无条件复制。对于直接写 Internal Stage 的路径，也要保留同等的批次和恢复能力。
+
+**阶段三：先建立可查询的 Conformed 历史。** 先选择一个有明确计算需求的数据集，把类型、代码、标识符、货币、时间、重复记录、修订及历史有效期处理清楚。初次加载五到十年历史时按可恢复的时间区间分批装载，并按记录数、业务日期覆盖、关键汇总及异常记录进行对账。
+
+**阶段四：从真实消费需求判断要不要 Curated。** 若业务需要的是稳定的收益、估值、风险或分类结果，再建立针对该需求的模型并维护预期结果测试、数据质量测试和版本变更差异。若当前只是在 Conformed 层做少量探索，就先用 View/CTE 或 dbt 模型，不必为了形式增加物化层。
+
+**阶段五：用证据决定长期保留和性能优化。** 跟踪存储成本、常用历史查询、重放频率、修订频率、刷新延迟和下游复用情况。原始文件、Raw 表、Conformed 表和 Curated 结果分别制定保留策略，定期验证从原始档案重建历史结果的流程。对高频查询再评估原生表、Dynamic Tables、预计算或单独的 Serving 数据集。
+
+**最终原则：** 对长期使用的 Vendor 数据，原始文件的可追溯性、规范化历史的可查询性和业务计算结果的可解释性是三种不同的需求，未必需要用三份永久副本实现。默认优先确保原始来源可追溯、Conformed 历史可正确查询；只有当业务逻辑、性能、治理或重复消费确实需要时，才物化 Curated。这样既保留了回放和审计能力，也避免在没有明确用途时，把每份外部数据复制到所有分层。
+
+---
 
 ## 总结
 
