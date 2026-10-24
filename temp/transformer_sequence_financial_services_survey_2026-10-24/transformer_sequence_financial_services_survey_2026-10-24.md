@@ -78,6 +78,7 @@ Ramp 在 2026 年 10 月公开的案例是目前最直接的生产实践之一�
 - 附录 B：用开源金融数据从零训练交易序列模型
 - 附录 C：用公开市场数据构建投资研究与多资产分析 PoC
 - 附录 D：使用 Transformer 做多资产投资研究
+- 附录 E：使用 Gradient Boosting Tree 做多资产投资研究
 ---
 
 ## 1. 问题定义：交易序列 Transformer 究竟在学什么
@@ -1705,3 +1706,39 @@ python transformer_research.py --output-dir outputs/transformer --epochs 10
 当前实现仍是教学型单次时间切分。严肃研究应进一步进行 walk-forward 多窗口验证、多个随机种子、子时期分析、参数敏感性与更强基线比较。若 Transformer 没有稳定胜过 Ridge、动量或 GRU，应如实保留较简单模型。
 
 **研究结论不能由某一次回测的最高收益决定。** 应关注跨时期稳定性、交易成本后的表现、风险暴露、可复现性，以及相对简单基线是否有可解释的增量价值。
+
+
+# 附录 E：使用 Gradient Boosting Tree 做多资产投资研究
+
+GRU 与 Transformer 都通过神经网络学习历史序列，但对于这个教学用例——7 只 ETF、日频数据、8 个手工特征、预测未来 5 日收益——还应该加入一个强表格模型作为比较。这里选择 scikit-learn 的 `HistGradientBoostingRegressor`，它属于梯度提升树（GBDT）家族，可以学习非线性特征关系和交互，不需要 GPU，也不需要把输入组织成 60 天序列。它是值得先跑的基线，不代表它必然优于深度学习模型。近期公开金融基准也强调，应在相同数据和评估协议下直接比较方法，而不能假定某一模型家族总是更好。[OFR 金融时间序列预测基准](https://www.financialresearch.gov/working-papers/2026/08/25/time-series-forecasting-methods-financial-markets/)；[scikit-learn 模型文档](https://scikit-learn.org/stable/modules/generated/sklearn.ensemble.HistGradientBoostingRegressor.html)。
+
+## E.1 代码与运行
+
+- [tree_research.py：GBDT 训练、预测、指标与示例回测](./hands_on/investment_research/tree_research.py)
+- [README：逐步说明](./hands_on/investment_research/README.md#9-gradient-boosting-tree-版本先尝试强表格模型)
+- [research.py：GRU 对照](./hands_on/investment_research/research.py)
+- [transformer_research.py：Transformer 对照](./hands_on/investment_research/transformer_research.py)
+
+在项目目录中启用已有虚拟环境后运行：
+
+```bash
+python tree_research.py --start 2012-01-01 --end 2026-01-01 --cost-bps 5 --output-dir outputs/tree
+```
+
+本脚本使用 `requirements.txt` 中已有的 scikit-learn，不需要额外安装 LightGBM 或 XGBoost。输出包含 `forecast_metrics.csv`、`test_predictions.csv`、策略回测 CSV 与 `summary.json`。本次修改没有实际运行行情下载或模型训练，首次执行时需确认网络和环境。
+
+## E.2 逐步理解模型
+
+1. **特征输入：** 使用当前决策日可见的 8 个结构化特征，包括 1/5/20 日收益、20 日波动率、60 日趋势、市场收益和跨资产统计。
+2. **训练：** `HistGradientBoostingRegressor` 逐步增加决策树，拟合特征与未来 5 日收益之间的非线性关系。树模型不要求输入标准化，缺失值由训练流水线中的中位数填补器处理。
+3. **时间切分：** 训练、验证和测试按日期顺序分割，未来 5 日标签跨越边界时留出隔离区。测试数据只用于最终报告，不应反复用于调参。
+4. **比较：** 同时报告零收益、20 日动量和 GBDT 的 MAE、RMSE、方向命中率与每日横截面 rank IC。
+5. **组合示例：** 按预测排名选出两个 ETF，并扣除简单的单边换手成本，观察信号是否可能转化为组合收益。该回测没有模拟真实成交、价差、冲击成本、税费和市场容量。
+
+## E.3 为什么值得加在 GRU / Transformer 前面？
+
+树模型能高效利用手工构造的表格特征，通常比序列神经网络更容易训练。它不直接读取完整 60 日序列，所以不是对 GRU / Transformer 的完全等价替换；当前实验比较的是几种完整建模方案。若 GBDT 已达到相近效果，就需要进一步说明序列模型是否真的从顺序信息中获得增量价值。
+
+建议先比较动量、Ridge 与 GBDT，再评估 GRU 和 Transformer。三者应使用相同日期范围、资产集合、预测目标、测试区间和成本假设。由于 GRU / Transformer 使用 60 日窗口而 GBDT 使用决策日特征，若要更严格比较模型家族，应给 GBDT 增加明确的滞后特征，并做 walk-forward 多窗口评估。
+
+**研究边界：** 本例使用固定 ETF 样本与公开行情数据，只有一次时间切分。它适合学习如何建立可比较的研究流程，不构成投资建议，也不证明任何模型可持续盈利。建议查看 [scikit-learn 时间序列滞后特征示例](https://scikit-learn.org/stable/auto_examples/applications/plot_time_series_lagged_features.html) 了解按时间验证的重要性。
