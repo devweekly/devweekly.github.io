@@ -77,6 +77,7 @@ Ramp 在 2026 年 10 月公开的案例是目前最直接的生产实践之一�
 - 附录 A：核心架构的 Mermaid 图源（可编辑）
 - 附录 B：用开源金融数据从零训练交易序列模型
 - 附录 C：用公开市场数据构建投资研究与多资产分析 PoC
+- 附录 D：使用 Transformer 做多资产投资研究
 ---
 
 ## 1. 问题定义：交易序列 Transformer 究竟在学什么
@@ -1655,3 +1656,52 @@ python research.py --start 2012-01-01 --end 2026-01-01 --epochs 10
 6. 将数据质量、因子暴露、预测、回测、风险归因和研究结论保存为可追溯的 research run，由分析师复核；模型输出不能直接等同于交易指令。
 
 **验收原则：** 不是看 GRU 是否跑出最高回报，而是检查时间切分是否正确、是否胜过简单基线、结果是否跨时期稳定、成本后是否仍有意义，以及研究人员能否重现并解释结果。历史回测不构成未来盈利证据。
+
+
+# 附录 D：使用 Transformer 做多资产投资研究
+
+附录 C 的研究问题和数据保持不变，本附录将 GRU 序列编码器替换为 Transformer Encoder，帮助读者在**同一份公开市场数据、同一组特征、同一预测期限和同一时间外测试集**上比较两种序列模型。不要因为 Transformer 更复杂就预设它会更好；本实验的目标是验证增量价值。
+
+## D.1 代码位置
+
+- [Transformer 版本 README 与逐步操作](./hands_on/investment_research/README.md#8-transformer-版本与-gru-使用同一份数据和评估流程)
+- [transformer_research.py：完整代码](./hands_on/investment_research/transformer_research.py)
+- [research.py：GRU 对照版本](./hands_on/investment_research/research.py)
+
+数据来自 Yahoo Finance 的公开行情接口，依赖 `yfinance`。其官方文档说明该包是非官方开源接口，面向研究和教育用途，使用者仍须遵守数据源条款。<Cite refs={["turn547179search7","turn547179search0"]}/>
+
+## D.2 在 MacBook 上运行
+
+进入项目目录并启用前面创建的 Python 虚拟环境，然后执行：
+
+```bash
+python transformer_research.py \
+  --start 2012-01-01 \
+  --end 2026-01-01 \
+  --epochs 10 \
+  --batch-size 256 \
+  --output-dir outputs/transformer
+```
+
+建议先用 `--epochs 1` 验证数据下载、PyTorch 环境和完整流程。MacBook Air M5 16 GB 可运行这个小型模型，默认自动选择 CPU 或可用的 Apple Silicon MPS；不必先配置云端 GPU。
+
+## D.3 Transformer 在这里做什么？
+
+每个样本包含最近 60 个交易日，每个交易日 8 个数值特征。代码先用线性层把每个时间点映射到 32 维，再加入可学习的位置嵌入，让模型区分较早与较晚的观测。随后使用 2 层 Transformer Encoder，每层 4 个 attention heads，最后取窗口末端的隐藏表示，预测未来 5 个交易日的收益。
+
+这里采用 encoder-only 结构，而不是让通用 LLM 读行情文本，也不是用 decoder 逐日生成未来价格。目标是学习历史窗口的表示并输出一个数值预测。实现使用 PyTorch 的 `TransformerEncoderLayer`，输入形状为 batch × sequence × feature，相关参数见 [官方文档](https://docs.pytorch.org/docs/stable/generated/torch.nn.TransformerEncoderLayer.html)。<Cite refs={["turn547179search3"]}/>
+
+## D.4 如何公平比较？
+
+GRU 和 Transformer 应使用相同日期范围、ETF 集合、特征、窗口长度、预测目标、数据切分、随机种子和交易成本假设。输出应分目录保存，例如：
+
+```bash
+python research.py --output-dir outputs/gru --epochs 10
+python transformer_research.py --output-dir outputs/transformer --epochs 10
+```
+
+重点检查 Transformer 是否在测试集上改善 MAE / RMSE、每日横截面 rank IC、扣除成本后的组合表现、最大回撤和换手率。预测误差改善不必然转化为组合收益改善；模型复杂度增加也会带来更多训练成本与过拟合风险。
+
+当前实现仍是教学型单次时间切分。严肃研究应进一步进行 walk-forward 多窗口验证、多个随机种子、子时期分析、参数敏感性与更强基线比较。若 Transformer 没有稳定胜过 Ridge、动量或 GRU，应如实保留较简单模型。
+
+**研究结论不能由某一次回测的最高收益决定。** 应关注跨时期稳定性、交易成本后的表现、风险暴露、可复现性，以及相对简单基线是否有可解释的增量价值。
