@@ -79,6 +79,7 @@ Ramp 在 2026 年 10 月公开的案例是目前最直接的生产实践之一�
 - 附录 C：用公开市场数据构建投资研究与多资产分析 PoC
 - 附录 D：使用 Transformer 做多资产投资研究
 - 附录 E：使用 Gradient Boosting Tree 做多资产投资研究
+- 附录 F：使用 Transformer 进行波动率预测与市场状态识别
 ---
 
 ## 1. 问题定义：交易序列 Transformer 究竟在学什么
@@ -1742,3 +1743,40 @@ python tree_research.py --start 2012-01-01 --end 2026-01-01 --cost-bps 5 --outpu
 建议先比较动量、Ridge 与 GBDT，再评估 GRU 和 Transformer。三者应使用相同日期范围、资产集合、预测目标、测试区间和成本假设。由于 GRU / Transformer 使用 60 日窗口而 GBDT 使用决策日特征，若要更严格比较模型家族，应给 GBDT 增加明确的滞后特征，并做 walk-forward 多窗口评估。
 
 **研究边界：** 本例使用固定 ETF 样本与公开行情数据，只有一次时间切分。它适合学习如何建立可比较的研究流程，不构成投资建议，也不证明任何模型可持续盈利。建议查看 [scikit-learn 时间序列滞后特征示例](https://scikit-learn.org/stable/auto_examples/applications/plot_time_series_lagged_features.html) 了解按时间验证的重要性。
+
+
+# 附录 F：使用 Transformer 进行波动率预测与市场状态识别
+
+收益预测不是投资研究中唯一有价值的预测任务。本项目新增两个与现有 ETF 收益预测不同的业务用例：其一是预测未来短期实现波动率，为组合风险监控提供输入；其二是识别未来市场状态，为战术资产配置研究提供状态概率。Temporal Fusion Transformer 的原始研究也将波动率作为时间序列预测任务之一，并强调多时间尺度信息与可解释性设计；不过这里实现的是小型 Encoder-only Transformer 教学模型，不是完整 TFT。[原始论文](https://doi.org/10.1016/j.ijforecast.2021.03.012)。
+
+## F.1 用例一：未来 5 日波动率预测
+
+代码：[volatility_transformer.py](./hands_on/investment_research/volatility_transformer.py)；操作指南：[README 第 10 节](./hands_on/investment_research/README.md#10-用例一transformer-预测未来波动率投资组合风险管理)。
+
+运行命令：
+
+```bash
+python volatility_transformer.py --start 2012-01-01 --end 2026-01-01 --epochs 12 --output-dir outputs/volatility
+```
+
+模型读取每只 ETF 过去 60 个交易日的收益、趋势、短中期波动率及跨资产状态特征，预测未来 5 日收益的年化实现波动率。评价采用 MAE、RMSE，并与训练期中位数波动率基线比较。结果可供风险预算、风险限额和压力监控研究使用，但不是收益方向预测，也不是交易信号。由于输入是日线数据，这里的目标是未来日收益波动率的近似，而非高频逐笔数据计算的 realized volatility。
+
+## F.2 用例二：未来市场状态分类
+
+代码：[regime_transformer.py](./hands_on/investment_research/regime_transformer.py)；操作指南：[README 第 11 节](./hands_on/investment_research/README.md#11-用例二transformer-识别市场状态战术资产配置研究)。
+
+运行命令：
+
+```bash
+python regime_transformer.py --start 2012-01-01 --end 2026-01-01 --epochs 12 --output-dir outputs/regime
+```
+
+模型根据 SPY 的收益、趋势和波动率，以及 TLT、GLD、QQQ 等跨资产信息，分类未来 20 个交易日的状态：未来收益不高于 -3% 为 bear/risk-off，不低于 +3% 为 bull/risk-on，其余为 sideways。这些是用于演示的固定标签规则，并不是对市场状态的客观定义。评价报告 balanced accuracy、各类别 precision/recall/F1 与混淆矩阵；尤其需要观察风险规避类别的 recall 和概率校准，不能只看总体准确率。
+
+## F.3 运行前后的关键检查
+
+两个脚本都使用按时间顺序的训练、验证和测试切分，只在训练样本拟合标准化器，并在标签跨越边界的位置留出隔离区。市场状态任务的未来 20 日标签存在更明显的重叠问题，因此正式研究应使用 purged walk-forward 验证，测试阈值敏感性并检查不同市场阶段的稳定性。还应比较 EWMA / GARCH 波动率基线与简单的趋势/动量状态基线。
+
+三个投资研究任务的验收指标不应混用：收益预测看预测误差和横截面排序；波动率预测看误差、风险覆盖与压力期表现；市场状态分类看各类召回率、概率校准和下游风险政策表现。**任何一个模型的离线分数都不能单独证明组合收益改善。**
+
+本次新增的是代码和逐步说明，没有实际下载行情或运行训练。首次运行需联网访问行情源；结果仅用于教育和研究，不构成投资建议。
