@@ -10,7 +10,7 @@
 
 本文研究的不是把交易记录序列化成普通文本，再交给通用大语言模型“读一遍”，而是把每笔交易、账户行为和数字交互视为带时间戳、事件类型和多个字段的序列。模型先通过**自监督学习**（不需要人工逐条标注答案，而是从事件本身设计练习题）学习行为规律，再通过**监督学习**（用已确认的欺诈、违约等标签训练）解决具体业务任务，最后把行为表示、逐字段异常分数或下一事件预测结果接入金融决策系统。这里的行为表示也叫 **embedding**：它是模型把一段历史压缩成的一串数字，供下游模型使用。XGBoost / LightGBM 是一种常见的下游分类器，但不是必选项；逻辑回归、小型 MLP、风险评分模型、规则引擎或多模型决策服务都可以消费序列模型产物。
 
-Ramp 在 2026 年 10 月公开的案例是目前最直接的生产实践之一：小型 Transformer 从持卡人的历史交易中学习“正常行为”，输出 embedding、各字段 surprisal 分数和字段替换分数，再交给既有 XGBoost 对每笔授权评分。Ramp 报告，在相同拦截预算下，新方案较旧模型多捕获 32% 的欺诈金额；但这一总增益不能全部归因于 Transformer。其消融结果显示，金额加权损失本身贡献了大部分金额收益；Transformer 相对于采用相同损失的 XGBoost，将 Average Precision 提高了 12%。上线早期曾因推理耗时翻倍而回滚，随后通过去除无效 padding、避开 Python 垃圾回收开销和直接构建小型输入，将模型栈中相关步骤的中位延迟从 145 ms 降至 65 ms，后续达到 54 ms，说明模型价值必须与线上工程共同评估。[1]
+Ramp 在 2026 年 10 月公开的案例是目前最直接的生产实践之一：小型 Transformer 从持卡人的历史交易中学习“正常行为”，输出 embedding（把历史压缩成一串数字的向量表示）、各字段 surprisal（当前字段在历史上下文中有多意外）分数和字段替换分数，再交给既有 XGBoost 对每笔授权评分。Ramp 报告，在相同拦截预算下，新方案较旧模型多捕获 32% 的欺诈金额；但这一总增益不能全部归因于 Transformer。其消融结果显示，金额加权损失本身贡献了大部分金额收益；Transformer 相对于采用相同损失的 XGBoost（一种常用于结构化表格数据的树模型），将 Average Precision（衡量模型把少数正例排到前面的综合指标）提高了 12%。上线早期曾因推理耗时翻倍而回滚，随后通过去除无效 padding、避开 Python 垃圾回收开销和直接构建小型输入，将模型栈中相关步骤的中位延迟从 145 ms 降至 65 ms，后续达到 54 ms，说明模型价值必须与线上工程共同评估。[1]
 
 截至本报告日期，证据已不止 Ramp 一例。2026 年 IEEE Conference on Artificial Intelligence 收录的 FraudTransformer 使用 HSBC Payment Fraud Group 的数千万笔交易及辅助事件，针对不规则事件间隔显式设计时间编码；PRAGMA、TREASURE、TransactionGPT 等工作则把研究范围扩展到跨任务交易表示、数十亿级支付交易和交易异常识别。与此同时，一项 2026 年的 Temporal Contrastive Transformer 预印本展示了相反方向的结果：序列 embedding 单独有预测力，但加到强特征工程基线后没有提升。这是很重要的工程结论：**Transformer 学到“有信息”的表示，不等于它能在现有模型和特征之上带来增量价值。** [3][5][8][9][11]
 
@@ -54,6 +54,7 @@ Ramp 在 2026 年 10 月公开的案例是目前最直接的生产实践之一�
 
 ## 目录
 
+- 阅读本文前：深度学习术语速查
 1. 问题定义：交易序列 Transformer 究竟在学什么  
 2. Ramp 案例解剖：模型、训练目标、收益归因与延迟优化  
 3. 技术模式图谱：从 next-event 到交易基础模型  
@@ -877,7 +878,7 @@ flowchart LR
 ### A.2 在线评分架构
 
 ```mermaid
-flowchart TB
+flowchart LR
     A[授权或支付事件] --> B[事件规范化与身份边界检查]
     B --> C[在线历史状态：仅包含当时已可见事件]
     C --> D[序列截断、字段编码与时间特征]
@@ -897,7 +898,7 @@ flowchart TB
 ### A.3 训练与反馈生命周期
 
 ```mermaid
-flowchart TD
+flowchart LR
     A[事件归一化与 schema 版本] --> B[Point-in-time 历史回放]
     B --> C[标签成熟度处理：正例 / 负例 / 未成熟]
     C --> D[自监督预训练：next-event / masked / swap]
@@ -967,7 +968,7 @@ sequenceDiagram
 ### A.6 Point-in-time 历史构建与标签成熟流程
 
 ```mermaid
-flowchart TD
+flowchart LR
     A[事件日志：event_time / observed_at / ingested_at] --> B[选择决策时间 t]
     B --> C[按实体键与可见性过滤]
     C --> D{事件发生且已在决策时点可见?}
@@ -1031,7 +1032,7 @@ flowchart TD
 ### A.9 序列与图关系融合：典型 AML 结构
 
 ```mermaid
-flowchart TB
+flowchart LR
     E[账户 / 转账 / 登录 / 收款人变更事件] --> S[Per-account temporal encoder]
     E --> G[账户-设备-受益人-商户图构建]
     S --> ZS[行为序列 embedding / 时间异常]
