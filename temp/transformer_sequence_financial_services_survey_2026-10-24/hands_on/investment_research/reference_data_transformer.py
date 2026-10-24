@@ -9,7 +9,7 @@ the experiment evaluates whether the model learns the injected consistency rules
 import argparse,json,time
 from pathlib import Path
 import numpy as np,pandas as pd,requests,torch
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import GroupShuffleSplit
 from sklearn.metrics import classification_report,balanced_accuracy_score
 from torch import nn
 from torch.utils.data import DataLoader,TensorDataset
