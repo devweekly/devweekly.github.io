@@ -47,7 +47,7 @@ def main():
  if len(base)<8:raise RuntimeError("Too few OpenFIGI results; try a larger ticker set or verify API limits.")
  base.to_csv(out/"openfigi_reference.csv",index=False)
  # Repeat records to make a teaching-sized sample and inject explicit errors into a subset.
- originals=pd.concat([base]*20,ignore_index=True); originals["label"]=0
+ originals=pd.concat([base]*20,ignore_index=True); originals["label"]=0; originals["group_id"]=originals["ticker"]
  corrupted=originals.copy();rng=np.random.default_rng(42)
  for i in range(len(corrupted)):
   if rng.random()<.5:
@@ -55,7 +55,7 @@ def main():
    corrupted.loc[i,field]=str(corrupted.loc[i,field])+"__BAD"
  corrupted["label"]=1
  allrows=pd.concat([originals,corrupted],ignore_index=True);X=encode(allrows);y=allrows.label.to_numpy()
- idx=np.arange(len(y));tr,te=train_test_split(idx,test_size=.25,random_state=42,stratify=y)
+ splitter=GroupShuffleSplit(n_splits=1,test_size=.25,random_state=42);tr,te=next(splitter.split(X,y,groups=allrows["group_id"]))
  model=RefTransformer().to(DEVICE);opt=torch.optim.AdamW(model.parameters(),lr=1e-3);lossfn=nn.CrossEntropyLoss()
  dl=DataLoader(TensorDataset(torch.tensor(X[tr]),torch.tensor(y[tr])),batch_size=64,shuffle=True)
  for ep in range(a.epochs):
