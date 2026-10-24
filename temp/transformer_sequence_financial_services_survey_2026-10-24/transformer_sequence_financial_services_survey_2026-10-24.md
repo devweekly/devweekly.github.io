@@ -1811,3 +1811,78 @@ python financial_news_transformer.py --dataset financial_phrasebank --config sen
 ## G.3 研究边界
 
 这两份代码是教学原型，尚未实际下载数据或运行训练。SEC 基本面原型尤其需要对 XBRL 概念映射、季度值提取、重述和样本时间切分进行人工核验，不能把输出指标当成经过验证的研究结果。FinBERT 的分类分数也不能直接等同于可交易信号。投资研究应先建立简单基线，再评估 Transformer 是否带来可重复的增量价值。
+
+
+# 附录 H：五类金融投资数据域的 Transformer 实战
+
+本附录按 Price/Pricing、Holdings、Reference Data、Fund Accounting、Trade 五类金融数据域分别选择数据来源、业务问题和模型任务。它刻意避免把同一份 ETF 行情数据反复用于不同名目的预测任务。对应代码和逐步操作均在 [投资研究实战 README](./hands_on/investment_research/README.md#五类金融数据域的-transformer-实战) 中。
+
+## H.1 Price / Pricing：国债收益率曲线变化预测
+
+代码：[pricing_curve_transformer.py](./hands_on/investment_research/pricing_curve_transformer.py)。
+
+数据来自 FRED 的 DGS3MO、DGS2、DGS5、DGS10、DGS30 等国债收益率序列；FRED 提供程序化访问接口和 CSV 下载能力。[FRED API 文档](https://fred.stlouisfed.org/docs/api/fred/overview.html)。
+
+```bash
+python pricing_curve_transformer.py --start 2000-01-01 --end 2026-01-01 --window 60 --epochs 20 --output-dir outputs/pricing_curve
+```
+
+模型使用过去 60 个观测点的收益率水平、变化和期限利差，预测未来 5 个观测日的 10 年期收益率变化。这个任务适用于研究定价环境与利率风险，不等于预测某只债券的价格、公允价值或 OAS。需要进一步比较零变化、线性模型、AR/VAR 与 Transformer，并做不同利率周期的时间外验证。
+
+## H.2 Holdings：基金持仓权重变化
+
+代码：[holdings_transformer.py](./hands_on/investment_research/holdings_transformer.py)。
+
+SEC Form N-PORT 数据集公开注册基金持仓申报，按季度发布结构化数据，覆盖报告中的基金及其持仓；数据集官方说明同时提示提取数据可能存在错误，不能替代原始 filing。[SEC Form N-PORT 数据集](https://www.sec.gov/data-research/sec-markets-data/form-n-port-data-sets)。
+
+脚本需要先把原始 N-PORT 表转换为统一 CSV，包含 `fund_id`、`report_date`、`security_id`、`market_value`、`net_assets`。运行：
+
+```bash
+python holdings_transformer.py --csv nport_holdings_normalized.csv --window 4 --epochs 30 --output-dir outputs/holdings
+```
+
+它预测下一报告期的持仓权重变化。公开持仓存在披露延迟和修订，正式回测必须以披露可见日期为准，并处理新增/清仓证券、现金与持仓权重约束。
+
+## H.3 Reference Data：证券主数据质量检测
+
+代码：[reference_data_transformer.py](./hands_on/investment_research/reference_data_transformer.py)。
+
+[OpenFIGI API](https://www.openfigi.com/api/documentation)能够将第三方证券标识映射到 FIGI 和证券描述字段。脚本获取真实元数据，再生成字段被人工破坏的合成样本，训练 Transformer 区分正常记录与这些特定错误。
+
+```bash
+python reference_data_transformer.py --tickers AAPL,MSFT,JPM,SPY,TLT,GLD,NVDA,XOM,KO,IBM,AMZN,META,BAC,GS,QQQ,IWM --epochs 30 --output-dir outputs/reference_data
+```
+
+这是一个可控的错误注入实验，不是实际生产数据质量表现的测量。对于明确的标识符映射，规则和 API 查询通常更合适；模型应当作为复杂描述、多字段冲突和历史变更的辅助检测工具。
+
+## H.4 Fund Accounting：基金会计对账异常检测
+
+代码：[fund_accounting_transformer.py](./hands_on/investment_research/fund_accounting_transformer.py)。
+
+真实基金会计账簿、NAV break、应计费用和管理员调账记录通常不公开，因此本实验明确使用合成数据，不声称存在可公开下载的生产 ledger 数据集。
+
+```bash
+python fund_accounting_transformer.py --days 6000 --window 10 --epochs 20 --output-dir outputs/fund_accounting
+```
+
+脚本生成现金差异、持仓估值差异、应计差异、NAV 变化、未匹配交易和陈旧价格等特征，并注入异常事件。模型判断连续估值日是否出现异常。合成标签使评估结果只能用于验证程序流程；生产应用应使用已确认的 break tickets、人工复核结果和双账簿差异建立标签，并按事件隔离训练/测试集。
+
+## H.5 Trade：订单簿短期价格方向
+
+代码：[trade_orderbook_transformer.py](./hands_on/investment_research/trade_orderbook_transformer.py)。
+
+[LOBSTER](https://vdc.univie.ac.at/data-access/lobster)提供从 NASDAQ TotalView-ITCH 重建的订单簿事件数据，包括高精度时间戳、订单提交、撤销和成交事件；访问需遵守其注册和许可条件。FINRA TRACE 也提供固定收益成交数据，但学术级明细数据有相应访问条件。[FINRA Academic TRACE 数据说明](https://www.finra.org/sites/default/files/TRACE_Academic_Data_sheet.pdf)。
+
+将合法取得的订单簿文件标准化为包含 timestamp、最优买卖价和挂单量的 CSV 后运行：
+
+```bash
+python trade_orderbook_transformer.py --csv lobster_book.csv --window 100 --horizon 10 --epochs 20 --output-dir outputs/trade_orderbook
+```
+
+模型预测未来 10 个事件后中间价上涨、下跌或持平。方向预测不能代替交易回放：真实 PnL 还取决于排队位置、成交概率、延迟、费用、价差、冲击成本和库存风险。
+
+## H.6 统一的研究验收标准
+
+五个任务不应共享一个笼统的“模型准确率”。Pricing 看基点误差和利率周期稳定性；Holdings 看权重变化误差、增减持方向和组合换手；Reference Data 看已确认异常的召回率与人工审查负担；Fund Accounting 看异常召回、金额重要性与每日误报量；Trade 看各类别表现、概率校准以及在含真实成交约束的模拟器中的结果。
+
+本附录的新增代码与文档已提交，但本次没有下载完整数据、执行训练或验证实际指标。任何模型效果都需要在明确的数据许可、点时数据、无泄漏切分、强基线和可复现的时间外实验中单独验证。
