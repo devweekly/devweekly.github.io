@@ -358,3 +358,131 @@ FinBERT 对每条财经句子输出 negative、neutral、positive 三类概率�
 PhraseBank 没有可靠的公司 ID 和事件时间戳，所以它适合验证财经语境下的情绪识别，不足以直接回测股票收益。若要研究财报公告或新闻事件，需要另行取得带发布时间、公司标识符的授权新闻数据，将文本分数按事件窗口聚合，再与严格 point-in-time 的股价、基准收益和行业暴露连接；使用公告之后才可见的信息会产生前视偏差。
 
 两个新用例的数据、任务与模型路径有明确区别：SEC XBRL 是多家公司结构化季度财务指标的序列分类；Financial PhraseBank 是自然语言句子的金融情绪分类。前者侧重基本面序列，后者侧重文本理解。两者都只是研究原型，离投资决策还需要基线比较、时间外验证、数据版本治理和业务验收。
+
+
+# 五类金融数据域的 Transformer 实战
+
+本节新增五个彼此独立的实验。它们不复用前文 ETF 收益预测面板，而分别使用公开利率曲线、SEC 基金持仓、OpenFIGI 证券主数据、合成基金会计对账数据和 LOBSTER 订单簿数据。公开数据可获取性并不相同：有些能直接下载，有些需注册/许可；基金会计账簿通常属于机构内部数据，故明确使用合成数据演示模型流程。
+
+## 15. Price / Pricing：收益率曲线与债券定价环境预测
+
+**业务问题。** 固收定价与估值团队关心收益率曲线形态、期限利差和短期利率变化。此实验使用 FRED 的美国国债恒定期限收益率序列，预测未来 5 个观测日 10 年期收益率变化。这是定价环境的代理任务，不是直接预测某只债券的 clean price、OAS 或公允价值。
+
+**数据来源。** FRED 公布 DGS3MO、DGS2、DGS5、DGS10、DGS30 等日频序列；示例通过 FRED graph CSV 下载，无需在代码里硬编码 API key。请查看 [FRED API 与数据下载说明](https://fred.stlouisfed.org/docs/api/fred/overview.html)。实际使用仍应检查系列许可、缺失日期和修订情况。
+
+### 运行步骤
+
+```bash
+pip install pandas numpy requests scikit-learn torch
+python pricing_curve_transformer.py --start 2000-01-01 --end 2026-01-01 --window 60 --epochs 20 --output-dir outputs/pricing_curve
+```
+
+代码会下载收益率，构造各期限收益率水平、5 日变化、10 年减 3 个月利差和 30 年减 5 年利差。每个样本使用过去 60 个观测点，经 Transformer Encoder 编码后回归未来 5 个观测日的 10 年期收益率变化。收益率以百分比点表示；报告额外乘 100 转换成基点。
+
+输出为 `predictions.csv` 和 `summary.json`。至少比较零变化基线、线性回归、AR/VAR、期限利差规则和 Transformer；还应做滚动时间外测试、升息/降息周期分段分析，并关注 MAE/RMSE（基点）、方向准确率与预测误差的稳定性。若目标是债券价格、利差或估值，应改用对应的 point-in-time 债券价格、票息、到期日、久期、信用利差和现金流数据，不能把国债收益率变化误称为债券价格预测。
+
+## 16. Holdings：预测基金持仓权重变化
+
+**业务问题。** 研究基金下一报告期会增加、减少还是基本维持某项资产的权重。它可用于持仓变化研究、基金风格漂移监控和资金流/拥挤度研究；不应假定公开披露的持仓等于当时实时持仓。
+
+**数据来源。** SEC [Form N-PORT 数据集](https://www.sec.gov/data-research/sec-markets-data/form-n-port-data-sets)提供注册基金的结构化持仓申报。官方季度 ZIP 往往数百 MB，包含多个关系表。下载前先读 SEC 提供的 README / 数据字典，理解 filing、fund、holding 和 identifiers 之间的键。也可先用 [GCAP Lab 基于 N-PORT 构造的公开持仓研究数据](https://www.nber.org/papers/w34494)了解字段和研究用途。不要把第三方镜像当作 SEC 官方版本。
+
+### 准备输入 CSV
+
+脚本采用规范化输入，以避免把 SEC 原始表的列名差异偷偷猜错。准备 `nport_holdings_normalized.csv`，至少有以下字段：
+
+| 字段 | 含义 |
+|---|---|
+| `fund_id` | 稳定的基金/系列标识 |
+| `report_date` | 持仓报告期日期 |
+| `security_id` | 证券标识；优先使用可跨期稳定的 ID |
+| `market_value` | 持仓市值，数值型 |
+| `net_assets` | 同一基金报告期净资产，数值型 |
+
+若从 SEC 原始数据集构造该文件，应将持仓表连接到同一 filing 的基金信息表，并确认 `market_value` 与 `net_assets` 采用相同币种与计量单位；保留 filing accession、filed date 和 amendment 标记，正式研究应使用披露可见时间而不是单纯的 report_date。一个可复现的起步样本可选同一批基金、连续 8 个以上报告期，并抽查原始 filing 核对总额。
+
+### 运行步骤
+
+```bash
+pip install pandas numpy scikit-learn torch
+python holdings_transformer.py --csv nport_holdings_normalized.csv --window 4 --epochs 30 --output-dir outputs/holdings
+```
+
+模型按基金与证券分组，使用最近 4 个报告期的权重和权重变化，预测下一报告期权重变化。输出 `predictions.csv` 和 `summary.json`。重点比较“权重不变”基线、上一期变化延续基线和 Transformer 的 MAE；还应评估增持/减持方向准确率、组合换手、披露延迟以及不同基金类型的稳定性。
+
+**关键限制：** N-PORT 持仓是滞后披露，存在修订；未出现的证券可能代表清仓，也可能是数据缺失/键连接错误。当前脚本把每条证券持仓序列独立建模，没有显式把同一基金的所有证券约束到权重和，也没有处理新增/退出证券的完整状态。正式版本应把持仓向量作为横截面一起建模、加入现金和其他资产、验证权重和，并使用按 filing 可见时间的 purged walk-forward 测试。
+
+## 17. Reference Data：证券主数据一致性与错误记录识别
+
+**业务问题。** 在基金、订单、估值和会计系统之间，证券标识符、交易代码、证券类型、市场和币种必须一致。错误映射可能导致持仓错配、价格取错或交易失败。本实验从 OpenFIGI API 取得真实证券主数据，再人工注入错误，训练一个小型 Transformer 判断记录是否被破坏。
+
+**数据来源。** [OpenFIGI API](https://www.openfigi.com/api/documentation)支持把 ticker、ISIN、CUSIP 等第三方标识映射到 FIGI 和证券元数据；未认证请求有速率限制，注册 API key 可提高额度。
+
+### 运行步骤
+
+```bash
+pip install requests pandas numpy scikit-learn torch
+python reference_data_transformer.py --tickers AAPL,MSFT,JPM,SPY,TLT,GLD,NVDA,XOM,KO,IBM,AMZN,META,BAC,GS,QQQ,IWM --epochs 30 --output-dir outputs/reference_data
+```
+
+如果有 OpenFIGI API key，可追加 `--api-key YOUR_KEY`。脚本将原始查询结果写入 `openfigi_reference.csv`，并生成 `summary.json`。为了展示监督式质量检测，代码对部分记录的人为字段添加 `__BAD`，并把这些合成记录标记为异常。
+
+这不是对真实生产错误率的估计。由于异常是人为注入的，评估结果只回答“模型能否学会识别这类注入错误”，不能证明它能发现实际的 stale mapping、证券合并、公司行动或跨供应商冲突。正式数据质量平台应从已确认的历史 incident、供应商差异、人工 steward 决策和规则引擎中建立标签，并按证券/发行人分组隔离训练测试，避免相同证券的重复样本泄漏。对于简单的 ticker/FIGI 映射，规则、约束和直接 API lookup 往往比 Transformer 更合适；Transformer 的潜在价值主要在多字段上下文、描述文本和历史变更序列。
+
+## 18. Fund Accounting：基金会计对账异常检测
+
+**业务问题。** 每日基金会计流程需要对持仓估值、现金、应收应付、费用计提、交易结算和 NAV 做对账。Transformer 可读取连续多个估值日的差异特征，判断某日是否存在需要人工调查的异常。真正的基金会计 ledger、administrator books、NAV break 和调账记录通常受机构保密与供应商许可限制；这里没有把不存在的公开生产账簿说成开放数据集，而是用可复现的合成数据演示。
+
+### 运行步骤
+
+```bash
+pip install pandas numpy scikit-learn torch
+python fund_accounting_transformer.py --days 6000 --window 10 --epochs 20 --output-dir outputs/fund_accounting
+```
+
+脚本会生成合成的现金差异、持仓估值差异、费用/应计差异、NAV 变化、未匹配交易数量和陈旧价格数量，并注入可追踪的异常事件。Transformer 读取最近 10 天特征，输出正常/异常分类。输出包含 `test_predictions.csv` 和 `summary.json`。
+
+### 如何理解结果
+
+这份实验的异常标签由生成器预先注入，所以分数仅验证代码路径和模型是否能学习这些规则，不能作为真实基金会计系统的预期准确率。实际落地时，应从双账簿对账差异、NAV 复核、未匹配交易、corporate action、价格陈旧、费用应计、FX 估值差异和已确认的 break ticket 建立标签；按基金、估值日和异常事件切分，避免同一异常事件同时进入训练集和测试集。评估应侧重异常召回率、每基金每日告警量、误报调查成本、告警提前量和金额重要性，而非总体 accuracy。Transformer 应与容差规则、控制总额、稳健统计和 Isolation Forest 等简单基线比较，不能取代会计控制与人工复核。
+
+## 19. Trade：基于订单簿事件的短期价格变动分类
+
+**业务问题。** 对执行交易与市场微观结构研究，输入订单簿报价、挂单量和事件序列，预测未来若干事件后中间价是上涨、下跌还是基本不变。它与日频 ETF 收益预测不同，时间粒度是订单簿事件。
+
+**数据来源。** [LOBSTER](https://vdc.univie.ac.at/data-access/lobster)基于 NASDAQ TotalView-ITCH 重建订单簿，提供高精度时间戳、订单提交/撤销/成交事件和多档深度数据。它需要注册访问，许可和可下载范围应以 LOBSTER 的当前条款为准，不应默认认为免费公开下载。FINRA TRACE 是另一个固定收益成交数据源，但学术级交易明细有资格/许可限制；见 [FINRA Academic TRACE 说明](https://www.finra.org/sites/default/files/TRACE_Academic_Data_sheet.pdf)。
+
+### 准备输入数据
+
+从合法取得的 LOBSTER order-book 文件中，先将数据转换为 CSV，至少包含：
+
+| 字段 | 含义 |
+|---|---|
+| `timestamp` | 事件时间，保持文件原始顺序 |
+| `bid_price_1` / `ask_price_1` | 最优买卖价 |
+| `bid_size_1` / `ask_size_1` | 最优买卖挂单量 |
+
+可选加入第二档及更深档位。价格必须统一为实际价格单位，而不是未经转换的整数 tick；同一交易日、证券和交易场所的数据不能混拼。LOBSTER 的原始 order-book 与 message 文件需要按行对应，先根据数据说明核对字段映射。
+
+### 运行步骤
+
+```bash
+pip install pandas numpy scikit-learn torch
+python trade_orderbook_transformer.py --csv lobster_book.csv --window 100 --horizon 10 --epochs 20 --output-dir outputs/trade_orderbook
+```
+
+模型使用最近 100 个事件的中间价变化、价差、买卖挂单不平衡和最优档挂单量，预测未来 10 个事件后中间价上涨、下跌或持平。输出 `predictions.csv` 和 `summary.json`，包含三类概率、平衡准确率和分类报告。
+
+评估必须按时间切分，并在切分边界隔离未来标签窗口。还需比较“持平/多数类”基线、订单簿不平衡规则和 Logistic Regression；报告每类 precision/recall、混淆矩阵、概率校准与不同波动时期表现。即使方向分类准确，也不代表策略可盈利：真实执行还取决于排队位置、成交概率、手续费、延迟、价差、冲击成本、撤单策略和库存风险。当前脚本是事件分类研究，不是完整交易模拟器。
+
+## 20. 五类数据域的建模目标与验收
+
+| 数据域 | 可用数据 | Transformer 目标 | 关键指标 | 最重要的偏差/限制 |
+|---|---|---|---|---|
+| Price / Pricing | FRED 国债收益率曲线 | 预测未来 5 个观测日的 10Y yield 变化 | MAE/RMSE（bp）、方向准确率 | 收益率变化不等于具体债券估值 |
+| Holdings | SEC N-PORT | 预测下一报告期持仓权重变化 | 权重变化 MAE、增减持方向、换手 | 滞后披露、修订、清仓/新增证券 |
+| Reference Data | OpenFIGI 元数据 + 合成错误 | 检测被注入的字段错误 | balanced accuracy、各类 precision/recall | 合成错误不能代表真实生产错误 |
+| Fund Accounting | 合成 NAV / ledger break 特征 | 识别连续估值日中的对账异常 | 异常 recall、每日误报量、金额覆盖 | 真实账簿通常不可公开获取 |
+| Trade | LOBSTER 订单簿事件 | 预测短期 mid-price 方向 | balanced accuracy、每类 recall、校准 | 许可、交易成本、排队和成交概率 |
+
+这些代码主要用于建立数据到模型的端到端研究骨架。正式研究应增加统一配置、数据版本和 schema 校验、可重复的 walk-forward 评估、强基线、模型/数据漂移监控，以及失败时可审计的结果记录。
