@@ -407,7 +407,139 @@ TEI 尤其重要，因为它允许把作品内容与学术解释分开编码。�
 
 一个相对低风险的原型组合是：用 Project Gutenberg 中许可证明确的作品做长篇阅读检索；用 LitBank 验证人物实体/共指；用 BookNLP 建立角色分析基线；用本地 LLM 做基于原文引用的问答；用一小批人工审核问题来评估角色归一、章节边界和引用忠实度。对于历史档案，则从 Chronicling America 与 OCR 基准开始，先验证图像—OCR—页码—来源全链条，之后再接入受控的商业馆藏。
 
-## 12. 参考资料与主要入口
+## 12. 量化历史（Quantitative History）：数据集、论文与研究方法
+
+量化历史是本综述与文学、历史语料相邻、但研究目标不同的关键方向。它不是“把历史文本交给模型做统计”这么简单，而是把历史学中的来源批判、计量经济学、统计推断、人口统计、地理信息系统与数据工程结合起来，从不完整、口径不同、随时间变化的史料中构建可分析的数据，并对历史变化提出可被证据检验的解释。
+
+相关术语有重叠但并不完全等同：
+
+| 名称 | 核心问题 | 典型方法与数据 |
+|---|---|---|
+| Quantitative History / 量化历史 | 如何从过去的可量化证据中研究长期社会、政治、经济和文化变化？ | 历史统计表、人口与税册、价格和工资序列、面板数据、空间数据、网络数据、统计模型和因果推断 |
+| Cliometrics / 计量经济史 | 历史经济学中的理论建模、量化证据和统计推断如何共同检验经济解释？ | 历史国民账户、工资/价格、贸易、金融数据、计量经济学、自然实验与制度分析 |
+| Computational History / Digital History | 如何利用计算技术处理史料、探索大规模文本、建立数字馆藏、检索/映射/可视化历史证据？ | OCR/HTR、NLP、文本挖掘、地理分析、实体解析、数字版本、可视化与网络分析 |
+| Historical Social Science | 历史制度、社会结构、文化和冲突如何产生长期影响？ | 历史边界、制度和人口数据与现代结果合并；比较历史分析、事件研究和机制分析 |
+| Historical Data Science | 如何将史料转化为可复现、可审计、可被多学科复用的数据产品？ | 来源血缘、版本化、数据契约、抽样/测量误差、实体/地名规范、开放数据和计算工作流 |
+
+经典定义可参考 [EH.net 的 Cliometrics 介绍](https://eh.net/encyclopedia/cliometrics/)。它强调量化证据、理论概念、统计估计以及历史学家判断来源质量和历史语境的能力必须结合；没有可信来源和历史解释，复杂的模型也不能把不可靠数据变成可靠结论。
+
+### 12.1 量化历史核心数据集
+
+| 数据集/项目 | 数据范围 | 许可、获取和价格概况 | 主要研究问题 |
+|---|---|---|---|
+| [Maddison Project Database 2023](https://www.rug.nl/ggdc/historicaldevelopment/maddison/releases/maddison-project-database-2023?lang=en) | 169 个国家，GDP/人均收入与长期经济发展指标，最新公开版本覆盖至 2022 年；跨国长时段历史国民账户重建 | 官方研究项目公开发布，可下载数据；必须引用对应版本和原始来源，不要把估算值视为精确观测 | 大分流、长期增长、跨国收入差异、工业化与全球不平等 |
+| [GGDC Historical National Accounts](https://research.rug.nl/nl/datasets/ggdc-historical-national-accounts/) | 19–20 世纪历史国民账户，可追踪不同行业的 GDP、现价和不变价估计；记录覆盖约 1835–1959 年 | 大学研究数据门户公开发布版本，逐项核对文件和引用要求 | 产业结构变化、部门生产率、长期增长来源 |
+| [Jordà–Schularick–Taylor Macrohistory Database](https://www.nber.org/research/data/jorda-schularick-taylor-macrohistory) | NBER 页面介绍的版本覆盖 17 个发达经济体、1870 年以来的年度数据和 45 个实际/名义变量，包括私人部门信贷、按揭、房价及股票/债券/票据长期回报 | NBER 页面公开提供研究数据库；版本与变量数会变，分析时必须固定版本并保留数据说明 | 信贷周期、资产价格、金融危机、住房与宏观经济之间的长期关系 |
+| [NBER Macrohistory Database](https://www.nber.org/research/data/nber-macrohistory-database) | 第一次世界大战前与两次世界大战之间的经济指标，包含生产、建筑、就业、货币、价格、资产市场交易、贸易和政府活动；许多序列为月度或季度 | NBER 免费研究数据入口；不同序列的来源和单位不一 | 金融危机、通胀、货币政策、商业周期和资产市场的历史对照 |
+| [Global Price and Income History Group（GPIH）](https://gpih.ucdavis.edu/Datafilelist.htm) | 长时段商品价格、工资和生活水平资料；覆盖欧洲以及中国、日本、南亚和美洲的若干历史价格/工资序列；部分价格数据可追溯至约 1260 年 | 网站列出多份可下载数据文件和研究成果；每份数据的单位、覆盖与论文来源不同 | 实际工资、生活水平、长期价格、消费者篮子、跨国成本和历史通胀 |
+| [EH.net Economic History Databases](https://eh.net/databases/) | 早期美国证券价格（1790–1860）、商品价格、公共债务、历史劳动力统计、银行和国债交易、历史贸易以及 TRF-GIS 等多类专题数据 | 许多系列直接免费获取；目录也会链接到其他来源或商业数据库 | 历史金融、商品市场、货币制度、劳动、贸易与空间经济史 |
+| [World Inequality Database（WID.world）](https://wid.world/) | 国家内部与国家之间的收入和财富分布，整合税收、家庭调查、国民账户及其他历史来源；部分国家财富不平等序列延伸至 1820 年 | 可公开浏览和下载多类数据及方法说明；不同数据系列有其来源和质量等级 | 财富/收入集中、分配制度、阶层和性别差异、长期不平等 |
+| [IMF Public Finances in Modern History](https://www.imf.org/external/datamapper/profile/MMR) | 历史公共财政数据，研究文献介绍了 55 国、部分系列从 1800 年开始的预算、赤字和政府债务序列 | IMF 提供历史指标和国家数据视图；具体变量定义、覆盖和下载方式按指标核对 | 国家能力、公共债务、财政制度、战争融资与主权债务风险 |
+| [Global Macro Database（NBER Working Paper 33714）](https://www.nber.org/papers/w33714) | 将当代 32 个主要来源和 78 个历史数据集整合为全球宏观年序列；论文介绍 243 个国家、46 个变量 | 论文和项目的可用版本与许可需以原始项目说明为准；这是动态更新的数据产品，应固定版本 | 全球宏观长期对比、宏观变量复现和历史—现代数据融合 |
+| [Global Commodity Database / GPIH](https://gpih.ucdavis.edu/) | 按地区、货币和商品组织的历史价格数据，部分系列约从 1260 年到 1914 年 | 开放研究数据入口；来源、观测频率和缺失结构不同 | 历史通胀、实际工资、贸易网络和生活成本 |
+| [SlaveVoyages](https://www.slavevoyages.org/voyage/about) | 跨大西洋奴隶贸易数据库包含超过 36,000 次航行记录；相关论文描述了 258 个变量，覆盖船舶、航程、被奴役者、日期、船员、贸易结果及来源 | 可在线查询并提供研究数据；必须保留下载版本、字段定义、来源与不确定性记录 | 强迫迁徙、人口损失、殖民贸易、非洲与大西洋社会的长期经济影响 |
+| [IPUMS International](https://international.ipums.org/international/) | 跨国协调后的历史和现代人口普查微观数据；项目页面介绍覆盖 100 多个国家、数百份人口普查/调查及超过十亿条个人记录 | 免费申请式研究访问，但用户需要遵守项目的数据使用协议；具体协议可能禁止商业用途，不能直接用于商业客户产品 | 历史人口、职业结构、城市化、迁移、教育、家庭与代际流动 |
+| [IPUMS NHGIS](https://www.nhgis.org/) | 美国人口、住房、农业和经济统计表以及可用于 GIS 的历史边界；系列时间从 1790 年起，按数据类型和地理版本提供 | 可免费申请与下载；按项目数据使用条款和引用指南使用 | 城市化、历史行政区、选区、人口空间分布与政策效果 |
+| [Correlates of War（COW）](https://correlatesofwar.org/) | 国家体系、战争、军事化国家间争端、联盟、贸易等国际关系历史数据；例如 MIDs v5.0 覆盖 1816–2014 年 | 项目强调免费公开、数据记录和复制研究；每个数据集有自己的 codebook 和版本 | 战争成因、联盟与冲突、贸易/战争关系、国际体系长期变化 |
+| [TRF-GIS：法国第三共和国历史 GIS](https://eh.net/database/the-trf-gis-a-geographic-information-system-of-third-republic-france-1870-1940/) | 1870–1940 年法国年度行政区名称表与 shapefile，覆盖省、区、县以及选举、司法、军事、教育和劳动监察等边界 | 项目数据可获取，需引用数据说明与论文；空间边界随时期变化是研究的一部分 | 历史行政边界、制度差异、地方政策、空间回归和历史地理 |
+| [Seshat: Global History Databank](https://github.com/datasets/seshat) | 将历史社会/政体的政治组织、社会复杂性、战争、人口和制度属性编码为跨地区、跨时期数据 | 可下载不代表开放商用；相关版本标有 CC BY-NC-SA 等非商业限制，应核对当前发布版本 | 国家形成、社会复杂性、制度演变、文化演化和比较历史分析 |
+| [Database of Religious History](https://religiondatabase.org/landing/about) | 对历史宗教传统与社会文化实践进行结构化量化，并附有质性评论、来源和进一步阅读链接 | 提供线上检索与分析能力；导出与再利用条件需按项目政策核查 | 宗教制度、仪式、社会组织、文化比较和历史知识整理 |
+
+其中最适合作为入门组合的是 Maddison Project（长期跨国增长）、GPIH（生活成本与工资）、JST Macrohistory（现代金融化之前后的信贷与资产价格）、NBER Macrohistory（更高频历史经济序列）、IPUMS/NHGIS（人口与空间）以及 SlaveVoyages/COW（迁徙、贸易与冲突）。它们覆盖不同单位和测量目标，不应该不经口径调整就拼进同一张宽表。
+
+### 12.2 重要论文与数据之间的对应关系
+
+| 论文/研究 | 关键数据来源 | 方法与贡献 | 复现时的注意事项 |
+|---|---|---|---|
+| Bolt & van Zanden, *The Maddison Project: collaborative research on historical national accounts*（Economic History Review, 2014）[DOI](https://doi.org/10.1111/1468-0289.12032)；以及 *Maddison-style estimates of the evolution of the world economy: A new 2023 update*（Journal of Economic Surveys）[DOI](https://doi.org/10.1111/joes.12618) | Maddison Project Database 与各国历史国民账户重建 | 通过国家专家协作整合和修订历史 GDP/人口估计，研究长期经济表现 | 不同国家、早期年代和数据版本的不确定性不同；要引用所用版本并记录估计数据与官方统计的区别 |
+| Jordà, Schularick & Taylor, *Macrofinancial History and the New Business Cycle Facts*（NBER Working Paper 22743）[论文](https://www.nber.org/papers/w22743) | JST Macrohistory Database，发达经济体长时段信贷、房价、资产回报和宏观数据 | 将金融周期放入长期历史比较，揭示信贷扩张与危机之间的关联 | 年度数据、国家覆盖和变量构造决定可识别的机制；不要将相关性直接解读为因果 |
+| Nunn, *The Long-Term Effects of Africa’s Slave Trades*（Quarterly Journal of Economics, 2008）[论文 DOI](https://doi.org/10.1162/qjec.2008.123.1.139) | 跨大西洋及其他奴隶贸易历史记录、地理与现代经济发展指标 | 将历史强迫迁徙规模与现代结果联系起来，分析长期制度和社会影响 | 来源记录、估算的奴隶贸易量、地区归属和遗漏航程会带来测量误差；相关结果需要结合历史语境解释 |
+| Dell, *The Persistent Effects of Peru’s Mining Mita*（Econometrica, 2010）[DOI](https://doi.org/10.3982/ECTA8121) | 西班牙殖民时期 mita 强制劳动制度的历史地理边界，及秘鲁现代家庭和经济结果 | 利用历史制度边界与空间邻近设计研究制度的长期影响，典型地结合空间断点思路 | 需精确重建历史行政/制度边界、空间单位和样本，并检验边界两侧的可比性及空间溢出 |
+| Acemoglu, Johnson & Robinson, *The Colonial Origins of Comparative Development: An Empirical Investigation*（AER, 2001）[NBER 工作论文](https://www.nber.org/papers/w7771) | 殖民时期定居者死亡率资料、历史制度指标和现代收入发展指标 | 使用工具变量等方法研究殖民制度与长期发展之间的关系 | 这是计量历史中的经典争论案例。工具变量的排除限制、测量方式、样本与机制一直有讨论，不应当把一个历史工具变量视为自动有效 |
+| Dittmar, *Information Technology and Economic Change: The Impact of the Printing Press*（Quarterly Journal of Economics, 2011）[DOI](https://doi.org/10.1093/qje/qjr035) | 欧洲城市、印刷术引入和传播、城市增长及地理信息 | 利用印刷技术扩散的时间/空间差异研究知识技术对经济增长的长期影响 | 地点对齐、技术扩散日期、城市口径变化和同期制度差异是主要数据工程问题 |
+| *Historical statistics and the Great Divergence* 相关研究 | Maddison/GGDC/GPIH、工资与价格重建和各国国民账户 | 比较欧亚不同地区的人均产出、工资、生活水平和消费篮子 | 货币换算、购买力平价、消费篮子与劳动口径的可比性通常比模型选择更重要 |
+| Turchin 等关于 Seshat 的比较历史研究，如 *Quantitative historical analysis uncovers a single dimension of complexity that structures global variation in human social organization*（PNAS, 2018）[论文](https://www.pnas.org/doi/10.1073/pnas.1714698115) | Seshat 的政体—时间—变量编码，以及历史文献与专家判定 | 比较不同社会的等级、行政、信息系统和组织复杂性 | 变量定义、缺失值、历史年代的区间估计和不同地区证据密度都影响结论；应审查编码者和来源链 |
+| 历史金融与证券数据研究 | EH.net 的早期证券价格、NBER Macrohistory、GPIH 商品价格与 JST 长期资产回报 | 长期回报、债务市场、货币制度、商品价格与金融危机对比 | 价格可能是报价、成交价或零散档案；必须记录币种、频率、市场覆盖、存续偏差和名义/实际值定义 |
+
+**如何理解这些研究。** 量化历史最有价值的贡献往往是重建可复用的数据：学者要花大量时间识别历史边界、找到旧价格记录、协调单位、估算遗漏值并验证来源。回归或机器学习只能建立在这些证据工作的基础之上。像 Dell 的研究需要重建制度边界；Nunn 的研究需要尽可能将不完整航程记录转换为可比较的地区暴露量；宏观历史数据库需要协调不同国家的 GDP、信贷、住房和回报口径。这些任务无法单纯依靠文本生成解决。
+
+### 12.3 量化历史常用方法：从描述统计到因果推断
+
+| 方法 | 适合的问题 | 所需数据 | 主要假设与风险 |
+|---|---|---|---|
+| 描述统计、指数与长期趋势 | 价格、工资、人口、贸易和财富如何随时间变化？ | 有时间戳、单位与来源的历史序列 | 样本和记录保存偏差；指数篮子/基年和名义值的误读 |
+| 购买力与实际工资重建 | 不同国家/年代的工人购买力是否可比？ | 工资、价格、工作日、消费篮子与货币换算 | 代表性商品篮子、家庭规模、非现金消费和地域差异 |
+| 历史国民账户重建 | 很早以前的 GDP、行业结构和人均收入如何估算？ | 农业产量、贸易、税收、工资、人口、能源或生产数据 | 间接估计与模型假设很强，必须保存误差范围/证据等级 |
+| 面板回归与固定效应 | 国家、城市、地区长期差异是否与制度、技术或贸易相关？ | 多地区、多个时点、可比较的变量 | 时间变化混杂、反向因果、测量误差和不均衡面板 |
+| Difference-in-Differences / 事件研究 | 某种历史制度/技术在采用前后是否带来差异？ | 可解释处理时间、可比对照组和多个前后观测期 | 平行趋势与处理时间异质性；要检查前趋势、溢出和样本构成 |
+| 工具变量（IV） | 历史处理存在内生性时，能否找到外生变化来源？ | 历史工具变量、处理和结果变量 | 相关性与排除限制都需论证；“来自历史”不等于工具变量有效 |
+| 地理断点、边界设计与空间回归 | 历史制度边界两侧的长期差异是什么？ | 历史 shapefile、地理定位、边界两侧结果数据 | 边界是否有选择性、空间相关、迁移、制度边界复原误差和空间溢出 |
+| 合成控制与匹配 | 某城市/国家/地区发生重大历史事件后，与合理反事实相比怎样？ | 较长的事件前序列和多个候选对照单位 | donor pool 的可比性、预处理拟合质量和小样本不确定性 |
+| 网络分析与多层图 | 人物、机构、城市、贸易伙伴、信件和引用如何连接？ | 节点/边及时间、角色、来源与关系置信度 | 文献幸存造成网络不完整；不能将未记录关系视为不存在 |
+| 机器学习预测与聚类 | 从历史文本/表格预测类别、发现分组或筛选档案 | 标签、特征、合理的训练测试划分和来源元数据 | 预测准确不等于历史解释或因果机制；跨年代泛化尤其困难 |
+| 贝叶斯估计、插补与敏感性分析 | 档案缺失或不确定年代如何反映到结果上？ | 可说明的不确定范围、来源强弱和先验假设 | 插补不确定性必须传播到下游估计，不能只输出一个伪精确数字 |
+
+对历史数据做因果推断时，除了报告系数和显著性，还应说明处理定义、对照组、来源选择、地理边界、样本保留、缺失处理、替代编码、前趋势与稳健性。历史材料无法完整记录全部社会行动，因此量化结果应与史料阅读、来源批判和机制解释相互校验。
+
+### 12.4 量化历史项目的数据工程要点
+
+1. **保留出处和证据类型。** 每条测量值都应连接原始档案/书页/统计表、转录者、编码规则、页码或表号。历史研究数据不是单纯的最终数值，还包含该数值为何可信的证据链。
+2. **区分观测、估算与编码。** 将官方统计、研究者重建值、插补值、专家判断和模型预测分别记录。不要把五类值放入同一个变量而不保留类型。
+3. **同时保存时间和空间版本。** 历史国家、地区、选区和行政区边界会发生变化。使用 stable ID + valid_from/to + source version，并保存可复算的历史 shapefile/geojson 与映射表。
+4. **统一单位但不丢原值。** 保留原始货币、计量单位、名义值、基年、价格平减指数、PPP 口径和转换公式；所有转换应该可追溯。
+5. **把不确定性作为字段而非脚注。** 对近似年代、估算人口、缺失贸易量、历史价格和冲突事件，保存上下界、精度等级或可靠度等级。敏感性分析要重新计算这些不确定性对结论的影响。
+6. **固定数据版本。** Maddison、JST、WID、IPUMS 等数据会更新。记录下载日期、release、引用、文件哈希、变量字典和代码 commit，防止结果因数据更新而无法复现。
+7. **尊重访问与许可条件。** 如 IPUMS 微观数据、大学购买的书籍全文、订阅式 OCR 或商业历史数据库，访问允许不等于允许发布原始数据或训练商用模型；应采用合规的汇总输出与受控计算。
+8. **区分历史事实和现代回推。** 一份现代边界上的人口表并不自动代表历史行政区；现代收入与历史制度关联也不自动证明持续机制。明确哪些变量在当时真实被测量，哪些是后人回溯估计。
+
+## 13. 其他相近交叉学科：哪些领域也有数据集、论文和可复用方法？
+
+除量化历史本身，以下学科都把历史材料与一种或多种现代方法结合起来。它们可以复用本文前述的馆藏文本、TEI/IIIF、实体解析、数据血缘和机器学习工程，但各自有不同的证据标准。
+
+| 交叉学科 | 核心问题 | 代表数据集/项目 | 主要方法 | 可用于 AI/ML 的项目 |
+|---|---|---|---|---|
+| 历史人口学（Historical Demography） | 人口、家庭、婚姻、生育、迁移、职业和寿命如何变化？ | IPUMS International、IPUMS NHGIS、Human Mortality Database、历史普查与教区记录 | 人口统计、队列分析、生命表、生存分析、记录链接、面板与空间分析 | 历史人口预测、迁移实体匹配、家谱/家庭关系图、疾病与寿命趋势分析 |
+| 历史地理与 GIS（Historical GIS / Spatial History） | 历史地名、行政边界、交通、土地和制度如何在空间中变化？ | CHGIS、TRF-GIS、NHGIS、地图馆藏、历史地籍与道路数据 | 地理编码、时态 GIS、空间统计、网络最短路径、边界设计和遥感 | 古地名消歧、边界历史重建、地图/文本对齐、事件地理检索 |
+| 环境史与古气候（Environmental History / Paleoclimatology） | 气候、土地使用、生态、农业与人类社会如何共同变化？ | [HYDE](https://ourworldindata.org/grapher/population)、[PAGES 2k](https://www.ncei.noaa.gov/products/paleoclimatology)、[Neotoma Paleoecology Database](https://www.neotomadb.org/)、历史气象记录 | 时间序列、贝叶斯重建、空间插值、多代理气候重建、因果面板与地理模型 | 气候—人口关系分析、历史灾害时间线、土地利用变化、文献中的气候事件抽取 |
+| 历史流行病学与公共卫生（Historical Epidemiology） | 疫病、死亡率、城市化、医疗政策与人群脆弱性如何随时间变化？ | Human Mortality Database、Short-Term Mortality Fluctuations、历史死亡登记、教区记录、医院与防疫档案、IPUMS | 年龄标准化死亡率、队列/生存模型、时空模型、干预事件研究、文本事件抽取 | 历史死亡趋势研究、疫情档案搜索、疾病术语演变、政策与疫情时间线 |
+| 考古计量学与数字考古（Digital Archaeology / Archaeometry） | 遗址、年代、器物、饮食、迁徙与交易如何从物质证据重建？ | [IsoArcH](https://isoarch.eu/)、[Neotoma](https://www.neotomadb.org/)、[Archaeology Data Service](https://archaeologydataservice.ac.uk/)、放射性碳年代与出土物数据 | 放射性碳校准、稳定同位素、GIS、计算机视觉、贝叶斯年代模型与聚类 | 文物图像分类、遗址空间关系、同位素/年代数据统一、跨数据库对象匹配 |
+| 历史政治学与冲突研究（Historical Political Science / Conflict Studies） | 国家形成、战争、联盟、殖民、选举和政治制度如何变化？ | Correlates of War、SlaveVoyages、历史选区/GIS、历史条约和议会记录、Seshat | 事件数据编码、网络分析、空间断点、IV/DID、事件史和文本分类 | 冲突时间线、条约实体解析、政治组织演变、历史事件关系图 |
+| 比较历史社会学与文化演化（Comparative Historical Sociology / Cultural Evolution） | 制度、宗教、社会复杂性与文化特征如何在社会间传播或持续？ | Seshat、Database of Religious History、WID、历史法典/宗教文本 | 比较历史分析、层级模型、因果图、文化特征编码与网络扩散 | 可解释历史知识图谱、制度变量抽取、跨社会比较和不确定性分析 |
+| 历史网络科学与传记学（Prosopography / Historical Network Science） | 人物、家族、机构、书信、任职、贸易和知识传播如何形成关系网络？ | CBDB、Wikidata、SlaveVoyages、书信语料、档案目录、议会/大学名录 | 实体消歧、关系抽取、动态图、社群发现、网络中心性和多层图 | 人物别名库、跨档案人物匹配、关系图谱、历史职业路径和知识传播研究 |
+| 历史语言学与社会语言学（Historical Linguistics / Corpus Sociolinguistics） | 词义、语法、拼写、语域和社会称谓如何变化？ | Google Books Ngram、COHA、CEEC、CoRD、Gutenberg、Open Greek Corpus、历史书信 | 词频/搭配、历时词向量、变异分析、文体学、句法树库与语义变化统计 | 词义变化监测、历史翻译词典、语域检测、文本年代判定与语言变化图 |
+| 书籍史、出版史与知识史（Book History / History of Knowledge） | 印刷技术、出版市场、图书流通和思想传播怎样扩散？ | EEBO、ECCO、Gutenberg 元数据、Google Books Ngram、馆藏目录、印刷商/出版地数据 | 书目分析、印刷地点 GIS、引用网络、文本复用和扩散模型 | 版本/书目去重、作品传播地图、思想词汇时间线和知识图谱 |
+| 经济史与金融史（Economic / Financial History） | 价格、工资、证券、信贷、银行、贸易与财富分配如何演变？ | GPIH、JST Macrohistory、NBER Macrohistory、EH.net、WID、IMF 历史财政数据 | 历史指数、面板计量、时间序列、资产定价、金融周期与事件研究 | 历史价格序列重建、长期收益与通胀分析、金融危机对比和实体匹配 |
+| 法律史与计算法学（Legal History / Computational Legal Studies） | 法条、判决、法律概念和司法实践如何发生变化？ | Old Bailey、公开判例/法令、历史议会辩论、法律数字档案、TEI 编码法律文本 | 法律实体识别、引用网络、主题模型、判例链、事件史与语义变迁 | 法律引文图谱、历史判决检索、条文变化对比和司法话语研究 |
+| 科学技术史（History of Science & Technology） | 科学概念、专利、发明、论文与技术制度如何演变？ | 科学通信语料、历史专利、论文与引用数据库、博物馆/档案馆目录、印刷史数据 | 引文分析、发明扩散网络、文本相似性、事件抽取与知识图谱 | 科学家关系网、术语演化、专利/论文溯源和技术路线时间线 |
+
+### 13.1 跨学科项目的代表入口
+
+- **[Human Mortality Database](https://www.humanmortality.de/)：** 高质量、协调后的死亡率和人口估计，适合历史人口学、寿命研究与公共卫生。需要遵守注册、引用与数据使用条款，不能将所有输出混作无条件再分发数据。
+- **[IPUMS International / NHGIS](https://www.ipums.org/overview)：** 对历史人口普查与空间数据做协调，适合人口、城市、迁移、劳动力和政策研究；微观数据使用需申请并按协议约束用途。
+- **[Neotoma Paleoecology Database](https://www.neotomadb.org/) 与 [NOAA Paleoclimatology](https://www.ncei.noaa.gov/products/paleoclimatology)：** 多代理古生态与古气候数据，覆盖跨年际到千年尺度的环境重建；适合环境史和气候—社会研究。
+- **[IsoArcH](https://isoarch.eu/)：** 生物考古样本的稳定同位素与考古上下文的协作式数据库，适合饮食、迁徙与遗址研究。
+- **[Seshat Data Analysis（Oxford）](https://opensource.digitalscholarship.ox.ac.uk/seshat-dataset-analysis)：** 用 Python 分析 Seshat 历史社会数据的开源工具，适合比较历史和社会复杂性研究；应先核查数据集的非商业许可。
+- **[Correlates of War](https://correlatesofwar.org/)：** 提供战争、国家间争端、联盟与国际关系的结构化历史数据，项目强调代码本、数据可靠性和复制研究。
+- **[World Inequality Database](https://wid.world/)：** 提供收入/财富分布、方法说明和不同历史时期的系列；数据使用应保留其来源与不平等估算方法。
+- **[Global Price and Income History Group](https://gpih.ucdavis.edu/)：** 连接经济史、消费史、劳动史、亚洲史与金融史的历史价格和工资数据。
+- **[TRF-GIS](https://victorgay.netlify.app/project/trf_gis)：** 将历史行政区边界与标准化年度地名表结合，适合作为时态 GIS 和地理边界版本管理的样板。
+
+### 13.2 哪些跨学科方向最适合与文学/历史语料项目结合？
+
+| 组合方向 | 可形成的研究/产品 | 优先组合的数据 |
+|---|---|---|
+| 文学 + 历史人口学 | 小说人物年龄、婚姻、职业、家庭与阶层表征如何随时代/文类变化 | LitBank/BookNLP + 公开人口普查与历史人口统计；注意虚构人物不是现实人口的随机样本 |
+| 文学 + 经济史 | 价格、工资、贫困、消费和债务在小说中的叙事频率如何对应历史经济环境 | 公有领域小说 + GPIH + Maddison/GGDC；文本频率是文化表达而不是宏观变量的直接观测 |
+| 文学 + 历史 GIS | 从小说/游记/书信提取地名，将地名映射到历史行政区和历史地图 | Gutenberg/历史书信 + CHGIS/TRF-GIS + IIIF/TEI |
+| 报刊 + 冲突/政治史 | 识别战争、外交、选举和政策事件，比较不同时地报纸的报道差异 | Chronicling America、Trove、COW；用人工验证报道语气、时间与事件的对应关系 |
+| 档案 + 历史网络科学 | 从书信、日记、任职名单与机构文件构建人物/组织动态图 | CBDB、历史书信、档案目录、Wikidata；需为每条关系保留来源与置信度 |
+| 古籍 + 历史语言学 | 追踪概念、词义、典故和异体字随世纪变化 | Chinese Text Project、Open Greek Corpus、OpenITI、Google Books Ngram 适用语言子集；聚合 n-gram 不能替代原文上下文 |
+| 气候史 + 历史事件抽取 | 将旱灾、寒潮、饥荒和迁徙记载与古气候代理数据对齐 | 历史报纸/档案 + HYDE/Neotoma/PAGES 2k；要记录记述事件的时间与气候代理的年代不确定性 |
+| 司法史 + 文学/报刊 | 对比法庭记录、新闻描述、小说叙事中的犯罪与身份概念 | Old Bailey、历史报纸、文学实体/事件标注集；必须区分法庭事实、新闻转述和虚构情节 |
+
+这些组合最有价值的不是“用 LLM 汇总更多文本”，而是把不同类型的证据连起来：原始文字提供当时的人如何叙述，结构化统计提供独立的量化信号，地图与边界解释空间差异，学术研究和专家判断校验解释。在数据模型中应保留证据类型与来源，不要把小说叙事、报刊报道、人口统计和模型推断合并成一个无差别的“历史事实”。
+
+## 14. 参考资料与主要入口
 
 ### 文学与长文档语言模型
 
