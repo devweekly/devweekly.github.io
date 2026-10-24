@@ -95,6 +95,24 @@
 | NYSE TAQ、Nasdaq TotalView、OPRA、Cboe DataShop、CME DataMine | 交易所/合并行情、逐笔成交、订单事件、期权与期货历史数据 | 产品、分辨率、市场、历史年份、用户和分发方式不同，通常需查看官方价目表或询价 | 适合高频/执行研究；采购前把 exchange entitlement、实时/历史数据、存储和衍生产品条款写入清单 |
 | FINRA TRACE 与 WRDS TRACE | 美国公司债交易报告/成交数据 | 部分公共数据和 API 可访问；完整历史、研究产品和商业使用可能受费用/资格限制 | 估值、流动性和信用交易研究；确认交易范围、延迟发布、历史覆盖与债券 ID 映射 |
 
+#### 4.1.1 可查到公开标价的例子
+
+以下是供应方官方页面在研究基准日可检索到的价格样例，旨在提供量级参考，而不是跨厂商等价比较。订阅价格、计费周期、市场数据交易所费用和授权范围可能调整；“个人使用”套餐不能默认用于公司生产系统或对外展示。
+
+| 产品/套餐 | 官网可见价格或限制 | 必须同时注意的条件 |
+|---|---|---|
+| Alpha Vantage | 官方页面说明普通免费额度为每日 25 次 API 请求；Premium 有多个月付/年付档位，但当前网页检索结果未可靠呈现各档具体金额，因此不臆造数字 | [官方价格页](https://www.alphavantage.co/premium/)；确认实时/15 分钟延迟数据、premium 函数、请求速率与商业用途 |
+| Massive / Options API | Basic 免费；Starter US$29/月；Developer US$79/月；Advanced US$199/月 | 官方页面标注为非专业个人使用方案；历史年限、是否实时、报价/成交覆盖各档不同。企业商业用途需另查 business plans。[官方价格页](https://www.massive.com/pricing?product=options) |
+| Massive / Financials & Ratios、Stocks Advanced | Financials & Ratios US$29/月；Stocks Advanced US$199/月（官网列示为个人使用） | 价格是相应产品套餐，不代表可获得完整交易所原始 feed 或再分发权。[官方价格页](https://www.massive.com/pricing) |
+| Intrinio | Individual US$150/月，限个人使用；Startup 起价 US$333/月，官网注明按阶段递增；Enterprise US$1,250/月起 | Individual 不含再分发/展示权；Startup 包含商业使用/展示权但条款和数据 feed 仍需核对。Mutual Fund、News 等部分数据列为 Enterprise 产品。[官方价格页](https://intrinio.com/pricing) |
+| Financial Modeling Prep（FMP） | Basic 免费（250 次/日）；Starter US$19/月、Premium US$49/月、Ultimate US$99/月，页面价格按年付计费展示 | 该价格页为个人套餐示例；官网另有商业/企业计划。显示或再分发需要另签数据展示与许可协议。[个人价格页](https://site.financialmodelingprep.com/datasets/market-data-real-time)、[商业计划说明](https://site.financialmodelingprep.com/developer/docs/pricing?planType=commercial) |
+| LOBSTER academic subscription | 可访问的官方历史价目表（标注日期 2024-03-02）列出学术机构一年期方案 £4,897，首年设置费 £500，均不含 VAT | 这是历史公开价目表，不能认定为 2026 年现行价格；当前方案、机构资格、账户数和商用权限需询价确认。[官方历史价格表 PDF](https://lobsterdata.com/info/docs/legal/LOBSTER_priceList.pdf) |
+| CME DataMine：EBS NDF Level 2 OFF SEF 示例产品 | 搜索时官方目录对该具体历史产品列示 Complete History US$130,000，月订阅 US$2,600/月、年订阅页面列示 US$28,080/年 | 该数字仅对应所列产品及历史区间，不是 CME 所有数据产品的通用价格。采购时应复核目录中的实际数据范围、许可和当前报价。[官方产品目录](https://datamine.new.cmegroup.com/catalog/dataset/cf4d1ced48d84561a06d5b81675168aa) |
+| Nasdaq Data Link Premium | 开放数据集可免费访问；Premium 按数据集购买，官方要求注册后查看每个产品的价格和许可 | 没有统一的“Nasdaq Data Link 总价”。应按数据集逐个评估历史深度、频率、商业训练、存储和再分发。[官方注册及定价说明](https://data.nasdaq.com/sign-up) |
+| Bloomberg、LSEG、FactSet、CRSP/Compustat、Morningstar、专业新闻和另类数据 | 未能从官方公开页面确认可普遍适用的完整机构/API总价，通常需按内容、席位、市场、历史深度与用途询价 | 应分别询问终端、API、bulk、实时、历史、模型训练、derived data、对外展示及再分发权益；第三方文章的估价不能替代正式报价 |
+
+采购时要把软件价格和数据授权价格分开。免费的 Python SDK、开源回测平台或 API wrapper 仅表示工具代码可能开放，不会自动开放底层交易所、新闻、基本面或另类数据的版权与商用权。
+
 ### 4.2 基本面、新闻、基金、信用与另类数据
 
 | 供应方/产品 | 常见数据 | 价格状态 | 风险和核对项 |
