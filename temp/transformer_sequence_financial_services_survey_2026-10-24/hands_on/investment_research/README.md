@@ -284,3 +284,77 @@ python regime_transformer.py \
 | 市场状态分类 | 未来 20 日的风险偏好状态 | 资产配置 / 宏观策略研究 | 调整风险框架或进入组合优化 |
 
 以上三者应共享 point-in-time 数据原则，但必须分别定义标签、评价指标和业务验收标准。不能因为某模型的分类或波动率误差较好，就推断其投资收益一定更好。
+
+
+## 13. 用例三：金融机构季度基本面序列研究（SEC XBRL + Transformer）
+
+**业务问题：** 对银行等金融机构的季度财务指标做序列建模，研究净利润下一季度是否改善。这个用例不使用 ETF 行情特征，而是使用 SEC EDGAR 的 Company Facts / XBRL 财报数据；示例覆盖 JPM、BAC、GS、MS、WFC、C。SEC 官方 API 免费提供公司提交记录和结构化 XBRL facts，访问时必须设置有辨识度的 User-Agent。参考 [SEC EDGAR APIs](https://www.sec.gov/search-filings/edgar-application-programming-interfaces)。
+
+### Step 1：安装依赖
+
+在现有虚拟环境中安装：
+
+```bash
+pip install requests pandas numpy scikit-learn torch
+```
+
+### Step 2：运行下载、构造样本与训练
+
+```bash
+python bank_fundamentals_transformer.py \
+  --user-agent "Your Name your.email@example.com" \
+  --window 8 \
+  --epochs 30 \
+  --output-dir outputs/bank_fundamentals
+```
+
+首次运行需要联网访问 SEC。脚本会下载公司事实、构造收入、净利润、资产、负债、经营现金流及其衍生比率，并将中间数据保存到 `sec_bank_fundamentals.csv`。
+
+### Step 3：理解 Transformer 输入
+
+模型把每家公司最近 8 个财务期间的特征作为一个序列，使用 Transformer Encoder 编码历史，再分类预测下一报告期净利润是否高于当前报告期。它回答的是“财务基本面是否改善”的研究问题，而不是预测股票明天涨跌，也不是估值结论。
+
+### Step 4：评估输出
+
+- `test_predictions.csv`：测试样本日期、实际标签、模型概率和分类结果。
+- `summary.json`：测试集 accuracy、balanced accuracy 和分类报告。
+- `sec_bank_fundamentals.csv`：下载后整理的结构化样本，方便人工抽查。
+
+金融机构的报表项目并不完全可比，银行、投行和综合金融集团的收入定义可能不同。正式研究必须逐公司检查 XBRL tag 映射、会计口径、异常值与报告期。SEC Company Facts 也可能包含重述值；此教学实现不是完整的 point-in-time 财报数据库，因此不能用于无偏的历史投资回测。还应与“上一季度方向不变”、逻辑回归、XGBoost/GBDT 等基线比较。
+
+## 14. 用例四：金融新闻情绪与事件研究（Financial PhraseBank + FinBERT）
+
+**业务问题：** 研究 Transformer 是否能识别财经句子的正面、负面和中性语气，并将情绪分数作为后续事件研究的候选特征。数据集与上面的 SEC 财务比率完全不同：Financial PhraseBank 是人工标注的财经新闻句子；FinBERT 是在金融语料上训练的预训练 Transformer。
+
+### Step 1：安装依赖
+
+```bash
+pip install datasets transformers torch pandas scikit-learn
+```
+
+### Step 2：运行
+
+```bash
+python financial_news_transformer.py \
+  --dataset financial_phrasebank \
+  --config sentences_50agree \
+  --split train \
+  --batch-size 16 \
+  --output-dir outputs/financial_news_sentiment
+```
+
+首次运行需要从 Hugging Face 下载数据集和 `ProsusAI/finbert` 模型。先用少量样本检查环境：
+
+```bash
+python financial_news_transformer.py --max-samples 200 --output-dir outputs/news_smoke
+```
+
+### Step 3：理解模型与结果
+
+FinBERT 对每条财经句子输出 negative、neutral、positive 三类概率。脚本保存 `scored_sentences.csv`，并计算一个简单的情绪分数 `positive_probability - negative_probability`；`summary.json` 保存准确率、分类报告和混淆矩阵。
+
+### Step 4：如何把情绪模型变成投资研究
+
+PhraseBank 没有可靠的公司 ID 和事件时间戳，所以它适合验证财经语境下的情绪识别，不足以直接回测股票收益。若要研究财报公告或新闻事件，需要另行取得带发布时间、公司标识符的授权新闻数据，将文本分数按事件窗口聚合，再与严格 point-in-time 的股价、基准收益和行业暴露连接；使用公告之后才可见的信息会产生前视偏差。
+
+两个新用例的数据、任务与模型路径有明确区别：SEC XBRL 是多家公司结构化季度财务指标的序列分类；Financial PhraseBank 是自然语言句子的金融情绪分类。前者侧重基本面序列，后者侧重文本理解。两者都只是研究原型，离投资决策还需要基线比较、时间外验证、数据版本治理和业务验收。
