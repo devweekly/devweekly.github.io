@@ -47,7 +47,7 @@
 | [HathiTrust Research Center Extracted Features](https://analytics.dev.htrc.indiana.edu/deriveddatasets) | 大规模图书的书目元数据、分页统计、词频和词性特征；v2.0 页面描述覆盖约 1,712 万卷 | 可下载的非消费式衍生特征覆盖公有领域与版权内书籍 | 特征不是原文全文；页面级词袋与词频适合宏观分析，但无法替代逐段阅读、RAG 或全书微调 |
 | [Google Books Ngram](https://books.google.com/ngrams/info) | 按年代聚合的 n-gram 频率，适合研究词汇兴衰、概念流行、文化趋势和部分历时语言现象 | Google 提供可下载的 n-gram 数据；官方说明图表和数据可用于各种用途，并建议注明来源 | 这是聚合统计，而不是完整图书文本；受语种、版本、OCR、书籍出版分布和语料构成偏差影响 |
 | [Internet Archive](https://archive.org/) / Open Library | 大量扫描图书、借阅式数字书籍、OCR 文本和元数据 | 不同条目有不同访问模式和权利状态；不是统一的开放数据集 | 要逐条核对权利、借阅/访问条款和 API 限制；“有 OCR 文件”不意味着全文可用于模型训练 |
-| [Common Pile v0.1](https://arxiv.org/abs/2506.XXXXX) | 面向预训练的约 8 TB 公有领域与开放许可文本，覆盖书籍、论文、百科、教育资料等 | NeurIPS 2025 数据集论文公开介绍，并发布数据、处理代码与模型 | 训练语料混合包的各来源许可、版本和保留规则仍应在实际下载清单中核对；不能因为它是开放许可项目，就忽略每个来源的限制 |
+| [Common Pile v0.1（NeurIPS 2025）](https://proceedings.neurips.cc/paper_files/paper/2025/hash/52acc050138d6f40dad6f12f91a4ce22-Abstract-Datasets_and_Benchmarks_Track.html) | 面向预训练的约 8 TB 公有领域与开放许可文本，覆盖书籍、论文、百科、教育资料等 | NeurIPS 2025 数据集论文公开介绍，并发布数据、处理代码与模型 | 训练语料混合包的各来源许可、版本和保留规则仍应在实际下载清单中核对；不能因为它是开放许可项目，就忽略每个来源的限制 |
 | [The Pile](https://arxiv.org/abs/2101.00027) / Books3 / BookCorpus / BookCorpus2 | 曾用于大型模型或研究的书籍语料组合，可理解为 LLM 训练数据史的重要案例 | 公开论文可研究其组成；数据可用性和版权状态不统一，部分子集存在明显权利争议 | **不应把它们作为默认的“合法开放小说集”**；开源模型权重也不代表训练书籍均有可再利用许可 |
 
 > 关于 Common Pile：NeurIPS 2025 的正式论文题为 *The Common Pile v0.1: An 8TB Dataset of Public Domain and Openly Licensed Text*。为避免把不稳定的预印本编号写入正文，直接以[会议论文页面](https://proceedings.neurips.cc/paper_files/paper/2025/hash/52acc050138d6f40dad6f12f91a4ce22-Abstract-Datasets_and_Benchmarks_Track.html)为主入口。
@@ -65,7 +65,6 @@ Gutenberg 适合启动文学 NLP，因为文本获取门槛低、书目元数据
 | LitBank | 人物、地点、组织等实体；嵌套实体；真实发生事件；篇章级人物共指；引语归属 | Bamman、Popat、Shen 的 *An Annotated Dataset of Literary Entities*（NAACL 2019）；Sims、Park、Bamman 的 *Literary Event Detection*（ACL 2019）；Bamman、Lewke、Mansoor 的 *An Annotated Dataset of Coreference in English Literature*（LREC 2020） | 文学实体识别、角色别名归一化、长距离共指、角色关系图和引用对白分析 |
 | [BookNLP](https://github.com/booknlp/booknlp) | 针对书籍的 NLP pipeline：词性、依存关系、实体识别、角色名聚类、共指、引语说话人识别、语义类型、事件等 | Bamman 等的文学 NLP 工作与后续 BookNLP 代码/模型 | 处理小说中常见的称呼变化，比如“Elizabeth”“Lizzy”“Miss Bennet”；构建角色出现轨迹、角色网络、对白比例和事件图 |
 | [NovelTM / HTRC ELF](https://htrc.atlassian.net/wiki/spaces/COM/pages/43300179/HTRC%2BBookNLP%2BDataset%2Bfor%2BEnglish-Language%2BFiction) | 大规模小说自动抽取后形成的实体、角色和词语衍生表 | HTRC 的数字人文和文化分析项目 | 做大规模跨时代角色、性别表征、角色网络或词汇使用研究；要意识到自动标注噪声和样本分布偏差 |
-| [Financial PhraseBank 不适用此处；推荐从 LitBank、BookNLP 和 Gutenberg 开始] | 不同文类的监督数据极少时，应从小规模高质量语料开始，而不是直接拿新闻 NER 标签替代文学标签 | LitBank 论文明确指出，新闻语料的人物与组织实体分布不能代表文学文本 | 对新文类先建立代表性标注集与独立评测集，再决定是否使用通用模型迁移 |
 
 LitBank 的论文发现，在文学文本上使用领域内标注数据训练实体识别，较直接迁移新闻领域模型可以显著改善表现。其核心启示不仅是“要有更多数据”，而是**标注体系必须匹配文本类型**：文学人物可能以普通名词短语出现，也可能采用嵌套描述；引语不总是有标准引号；叙述者、人物意识、回忆、假设和梦境会让事件标注更复杂。
 
