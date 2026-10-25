@@ -1,5 +1,7 @@
 # PaySim 交易序列模型：手把手实验
 
+如果你有编程经验但刚开始学习深度学习，建议先阅读[《给老程序员的 Transformer 实战入门：从矩阵乘法到金融时序模型》](https://github.com/devweekly/devweekly.github.io/blob/main/src/content/blog/transformer-from-zero-financial-services-hands-on-2026.md)，然后按本文的 Attention、Transformer、真实金融数据实验顺序练习。
+
 使用模拟金融交易数据 PaySim，从数据准备开始，训练逻辑回归基线和小型 GRU（门控循环单元）序列分类器，并按时间切分评估。此项目用于学习实验方法，不是生产反欺诈系统。
 
 ## 数据集
