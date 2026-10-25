@@ -43,3 +43,40 @@ python train.py --data data/raw/PS_20174392719_1491204439457_log.csv --model gru
 云端运行时可能重置，训练产物需另存到 Google Drive 或下载。GPU 不会自动提高模型质量；如果扩大到更长序列、更大 Transformer 或多个随机种子，再考虑云端。
 
 后续可研究：GRU 对比小型 Transformer/TCN；历史窗口长度 5/10/20/50；当前交易特征与序列特征消融；标签延迟、时间漂移、推理延迟。任何在线学习实验都应先做离线按时间评估，并记录模型版本、标签成熟时间和回滚策略。
+
+
+---
+
+## Transformer 入门实验（推荐先完成）
+
+如果没有深度学习经验，先从小型可运行样例入手，再进入 PaySim 的交易分类项目。
+
+### 1. 手写 Attention
+
+运行缩放点积注意力、多头注意力和因果掩码的最小实现：
+
+~~~bash
+python attention_from_scratch.py
+~~~
+
+观察张量形状、Attention Weights 的行和，以及打开因果掩码后早期位置不能查看未来位置的断言。
+
+### 2. 训练一个小型 Transformer
+
+该实验不需要外部数据，程序会生成可重复的合成时间序列，预测未来 5 个时间点的累计收益：
+
+~~~bash
+python toy_transformer.py --epochs 8
+~~~
+
+程序会打印数据形状与时间切分，训练 Transformer，并将零预测和 Ridge 基线与 Transformer 放在同一测试区间比较。输出写入 outputs/toy_transformer/。
+
+**注意：这是用于理解张量、训练循环和时间切分的合成数据练习，不代表真实市场存在可交易的预测信号。**
+
+### 3. 再运行公开金融数据实验
+
+- ETF 多资产收益预测：[investment_research/README.md](investment_research/README.md)，对应代码为 transformer_research.py。
+- 国债收益率曲线预测：pricing_curve_transformer.py，使用公开 FRED 数据。
+- PaySim 欺诈分类：本 README 前半部分的 train.py，提供逻辑回归和 GRU 基线，可用于进一步比较 Transformer Encoder。
+
+进入真实数据实验时，先检查数据源、时间点、目标对齐与基线。合成实验、公开数据离线实验和生产业务收益是不同级别的证据。
