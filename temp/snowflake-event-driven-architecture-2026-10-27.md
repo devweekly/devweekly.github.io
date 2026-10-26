@@ -365,7 +365,7 @@ Snowflake 确实有内建事件驱动机制：Streams 负责发现表的 CDC，T
 
 ## 参考资料
 
-以下均为 Snowflake 官方文档。本文核查了页面当前标注的功能状态和限制；厂商能力说明可以证明文档所述能力，不等于独立验证了生产成熟度或目标环境下的性能。
+以下包含 Snowflake 官方文档以及 Apache NiFi、Apache Kafka 项目官方文档。本文核查了页面当前标注的功能状态和限制；厂商能力说明可以证明文档所述能力，不等于独立验证了生产成熟度或目标环境下的性能。
 
 1. [Introduction to Streams](https://docs.snowflake.com/en/user-guide/streams-intro) — Stream offset、CDC、更新记录语义、staleness 与源对象历史。
 2. [Triggered Tasks](https://docs.snowflake.com/en/user-guide/tasks-triggered) — 数据变更触发、触发间隔、串行执行与配置。
