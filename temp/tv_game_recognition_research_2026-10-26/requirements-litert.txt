@@ -1,0 +1,3 @@
+# Optional dependencies for float LiteRT export only
+litert-torch
+ai-edge-litert
