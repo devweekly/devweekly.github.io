@@ -363,9 +363,103 @@ Snowflake 确实有内建事件驱动机制：Streams 负责发现表的 CDC，T
 
 真正的架构决策不应停留在“是否支持事件驱动”这个二元问题。应根据事件的来源、语义、消费方、延迟目标、重放要求和动作风险，决定哪一层拥有事件的权威记录、哪一层拥有分发职责，以及失败后由谁负责补偿和对账。
 
+## 附录 A：Vendor 数据经过 SnapLogic 后进入 Snowflake，转换放在哪一层？
+
+### 场景与结论
+
+本附录分析一条具体的数据交付链路：Vendor 提供文件、API 或消息，数据先进入公司内部网络，再由 SnapLogic / Snaplex 接入与转换，最后写入 Snowflake。问题不是 Snowflake 是否能做相同转换——多数常见的数据整形都能做——而是**转换应该发生在数据集成边界，还是在数据仓库内部**。
+
+通常更合理的方向是 **SnapLogic 负责接入与边界处理，Snowflake 负责主要的仓库内业务转换**，而不是在 SnapLogic 中完成所有转换后只把最终结果写入 Snowflake。前提是组织允许原始或经过最小必要处理的数据进入 Snowflake，并且转换主要属于 SQL 擅长的集合式数据处理。若有数据不能以原始形态离开公司安全边界，则必须先在内部对其进行脱敏、令牌化、过滤或最小化；不能为了采用 ELT 而越过数据政策。
+
+这是一项有条件的架构建议，不是要求把 SnapLogic 的所有转换逻辑迁移出去。SnapLogic 的 Transform Snap Pack 本来就支持格式转换、字段映射、过滤、聚合、条件处理和加解密；其 Snowflake Snap Pack 也支持 Bulk Load、Upsert、执行 SQL 和 Snowpipe Streaming。因此两端都具备转换能力，关键在于按职责划分转换的所有权，而非按产品功能重复实现。[SnapLogic Transform Snap Pack](https://docs.snaplogic.com/snaps/snaps-core/sp-transform/sp-transform-about.html) [SnapLogic Snowflake Snap Pack](https://docs.snaplogic.com/snaps/snaps-data/sp-snowflake/sp-snowflake-about.html)
+
+### 推荐架构：先可靠落地，再在 Snowflake 内部完成业务转换
+
+```mermaid
+flowchart TD
+    VENDOR["Vendor：文件、API 或数据流"]
+    EDGE["公司内部网络边界"]
+    SL["SnapLogic / Snaplex：认证、拉取、协议与格式适配"]
+    CHECK{"原始字段是否允许进入 Snowflake？"}
+    MIN["必要的过滤、脱敏、令牌化或字段最小化"]
+    RAW["Snowflake RAW / LANDING：原始或最小处理后的数据与摄取元数据"]
+    DT["Dynamic Tables：声明式 SQL、JOIN、聚合与分层模型"]
+    ST["Streams + Tasks：MERGE、SCD、存储过程与条件编排"]
+    CURATED["CURATED / ANALYTICS：受治理的数据模型"]
+    USERS["BI、分析、数据产品与下游消费者"]
+
+    VENDOR --> EDGE --> SL --> CHECK
+    CHECK -->|允许| RAW
+    CHECK -->|不允许| MIN --> RAW
+    RAW --> DT --> CURATED
+    RAW --> ST --> CURATED
+    CURATED --> USERS
+```
+
+图中的 Dynamic Tables 与 Streams + Tasks 是按逻辑选用的替代路径，并不意味着同一份转换必须在两套机制里重复实现。Snowflake 的决策指南建议：以 SELECT 定义、包含 JOIN / 聚合 / 多阶段分层的声明式 SQL 管道，优先考虑 Dynamic Tables；需要存储过程、MERGE、显式调度、条件逻辑或自定义重试时，考虑 Streams + Tasks。[Snowflake Dynamic Tables decision guide](https://docs.snowflake.com/en/user-guide/dynamic-tables/decision-guide) [Streams and Tasks](https://docs.snowflake.com/en/user-guide/data-pipelines-intro)
+
+### 应当把哪些转换留在 SnapLogic？
+
+SnapLogic 更适合处理必须在进入 Snowflake 之前完成、或者本质上属于跨系统集成的逻辑：
+
+| 转换 / 处理类型 | 建议放置位置 | 原因 |
+| --- | --- | --- |
+| 调用 Vendor API、分页、认证、速率限制、文件下载、协议适配 | SnapLogic | 属于来源系统接入，不是仓库数据建模 |
+| CSV / XML / JSON 等格式解析、压缩处理、Vendor 字段到统一接入结构的基本映射 | SnapLogic，或保留原始载荷后在 Snowflake 解析 | 取决于解析复杂度、下游是否还需要原始字段，以及 Vendor schema 变化频率 |
+| 法规或内部安全政策要求在数据出内网前完成的脱敏、令牌化、字段剔除 | 公司内部网络中的 SnapLogic / 受控服务 | 这是信任边界要求，不能单纯为了数据工程便利而后移到仓库 |
+| 对 Vendor 格式进行最低限度的合法性检查、拒绝无法解析的消息、记录原始文件 / 请求标识 | SnapLogic | 保护摄取链路，确保坏数据有可追踪的错误路径；应保留隔离和重放手段 |
+| 调用多个外部系统、编排 API 副作用、跨系统补偿 | SnapLogic 或专门的集成 / 工作流平台 | Snowflake 不是通用的 API 集成运行时 |
+| 数据加载到目标表所需的轻量字段重排、类型转换或列裁剪 | COPY 转换或加载连接器 | Snowflake 的 COPY 支持一部分加载时转换，可避免为了简单投影额外维护一层 ETL；复杂逻辑仍应放在后续 SQL 模型中。[COPY transformation](https://docs.snowflake.com/en/user-guide/data-load-transform) |
+
+不建议把大量 JOIN、跨 Vendor 数据合并、时间窗口聚合、历史版本建模和分析维度计算全部写成逐条 SnapLogic Mapping。它们通常在 Snowflake 中以集合式 SQL 执行更自然，也更容易与目标数据模型、访问控制、数据质量测试及下游查询一起管理。SnapLogic 当然可以实现其中某些处理，但“可以实现”不等于把它放在这层最容易维护。
+
+### 应当优先在 Snowflake 内部完成哪些转换？
+
+| 转换 / 处理类型 | 推荐实现 | 主要理由 |
+| --- | --- | --- |
+| 多张源表的 JOIN、去重、聚合、窗口计算、维度与事实表构建 | Dynamic Tables 或版本化 SQL / dbt 模型 | 数据已在同一查询引擎内，集合式计算避免先把数据逐条搬到集成运行时再写回 |
+| Bronze / Silver / Gold 或 Raw / Standardized / Curated 分层 | Dynamic Tables；也可用现有 dbt 项目编排 | 模型边界清楚，便于复用 SQL、观察依赖并重新计算派生数据 |
+| Vendor 字段映射为企业统一业务定义、跨源对账、数据质量检查 | Snowflake SQL 模型和测试 | 业务规则与实际被分析的数据放在同一平台，减少 SnapLogic 与 Snowflake 中重复维护规则 |
+| 增量数据合并、MERGE、SCD Type 2、需要程序化控制的处理 | Streams + Tasks、SQL 或存储过程 | 对有状态更新、分支逻辑和显式调度的工作流提供控制 |
+| 对已加载数据进行补算、重算、修复历史映射 | Snowflake 内保留的 RAW 数据 + 可重复执行的转换模型 | 业务规则变化时不必要求 Vendor 重新发送，也不必回到 SnapLogic 的旧 pipeline 重新造数 |
+
+Snowflake 官方文档明确支持加载后再通过 Dynamic Tables 或 Streams + Tasks 进行转换；Dynamic Tables 以目标查询定义结果并管理刷新，Streams + Tasks 更适合程序化和显式编排的场景。[Overview of data loading](https://docs.snowflake.com/en/user-guide/data-load-overview) [Dynamic Tables decision guide](https://docs.snowflake.com/en/user-guide/dynamic-tables/decision-guide) 若团队采用 dbt 管理 SQL 模型、测试和依赖，也可以继续使用现有工程化工作流；不需要为了“原生”而强制把所有模型改成某一种 Snowflake 对象。[dbt Projects on Snowflake best practices](https://docs.snowflake.com/en/user-guide/data-engineering/dbt-projects-on-snowflake-best-practices)
+
+### Vendor 数据先入仓，是否意味着所有 RAW 数据都可以直接放入 Snowflake？
+
+不是。这个问题首先是数据安全与网络架构决策，其次才是 ETL / ELT 的技术取舍。
+
+Snowflake 是由云平台承载的服务，不能像传统数据库一样安装在公司的本地机房或私有云中。因此“先进入公司内部网络”不代表后续写入 Snowflake 仍然留在公司内部网络。若组织要求连接经私有网络链路，可评估 Snowflake 的 inbound private connectivity；当前官方文档将该能力标记为 Business Critical（或更高版本）要求，具体配置还取决于云平台、区域和账户配置。[Private connectivity for inbound network traffic](https://docs.snowflake.com/en/user-guide/private-connectivity-inbound) 私有网络连接保护传输路径，但不自动替代数据分类、字段最小化、访问控制、保留期限或加密策略。
+
+推荐先与 Security / Data Governance 确认以下问题：
+
+1. Vendor 原始载荷中是否有禁止进入云数仓的字段？如果有，应在内网边界完成脱敏、令牌化或剔除，并保留可审计的处理记录。
+2. 是否允许在受限 RAW schema 中短期保存原始数据？如果允许，应采用独立角色、最小授权、保留与删除策略，避免全体分析用户默认能够读取原始敏感字段。
+3. 是否需要原始文件或记录用于调查、差异对账和重放？如果需要，应明确保存的权威副本、保留期限、文件 / 请求 ID、源端版本以及清理责任。
+4. Snowflake 连接采用什么网络路径？确认账户是否支持和已配置私有连接、Snaplex 所在网络能否到达目标端、身份验证与网络策略是否匹配；不能把“启用了 TLS”当作“使用了私有网络”。
+
+### 继续用 SnapLogic 转换，还是改成 Snowflake ELT？
+
+最终应按转换的性质、数据政策和成本作决策，而不是比较两边谁的功能列表更长。
+
+| 判断维度 | 更倾向 SnapLogic 转换 | 更倾向 Snowflake 内部转换 |
+| --- | --- | --- |
+| 转换目的 | 为接入协议和 Vendor 格式做适配、跨系统调用、出内网前脱敏 | 分析业务逻辑、跨表合并、维度模型、聚合与历史建模 |
+| 转换依赖 | 依赖外部 API、逐项调用、跨系统顺序或副作用 | 主要依赖已进入 Snowflake 的数据 |
+| 数据量与计算 | 低复杂度、流式逐条处理，或加载前必须过滤大量无用数据 | 大批量集合式 JOIN / 聚合，或需要反复重算与补数 |
+| 原始数据留存 | 由于政策原因不能把原始载荷写入 Snowflake；需先脱敏 | 政策允许受控 RAW 层，且需要审计、对账、重新处理 |
+| 业务规则治理 | 规则是接入特定 Vendor 的适配规则 | 规则定义企业统一业务语义，供多个数据产品复用 |
+| 可运维性 | 有成熟 SnapLogic 技能、监控、错误 pipeline 和发布治理，且逻辑规模适合该平台 | SQL 是团队主要数据工程语言，需版本化模型、数据测试、刷新依赖与血缘 |
+
+建议以一两个 Vendor feed 做小规模重构对照，而不是一开始迁移所有 pipelines。选择存在跨表 JOIN / 聚合的代表性样本，比较现有 SnapLogic ETL 与“SnapLogic 最小预处理 + Snowflake RAW + Native ELT”两种路径，统一测量端到端延迟、数据完整性、失败恢复、补数难度、变更交付时间、计算费用、SnapLogic 执行资源和日常支持成本。另行测试坏记录、重复交付、迟到数据、Vendor schema 演进以及 SQL 规则改变后的历史重算。
+
+如果采用新模式，必须定义唯一的转换所有权：SnapLogic 不要继续保留一份“方便起见”的完整业务转换，而 Snowflake 又重做一份相同逻辑。上游保留接入与安全边界处理，Snowflake 模型拥有仓库业务转换；双方通过清晰的输入合同、运行 ID、源记录 ID、摄取时间、错误隔离和可重放路径衔接。
+
+**综合建议：** 对“Vendor 数据进入内网，经 SnapLogic 转换后写入 Snowflake”这条链路，先检查 SnapLogic 的转换是否主要是在做接入适配，还是已经承担了大量仓库业务建模。如果是后者，并且组织允许原始 / 最小处理后的数据进入 Snowflake，那么把主要 JOIN、聚合、规范化、历史建模和分析逻辑迁到 Snowflake，通常更自然，也更容易复算和复用；但不要迁移必须在内网完成的安全处理、外部 API 编排或无法由仓库 SQL 合理表达的集成逻辑。
+
 ## 参考资料
 
-以下包含 Snowflake 官方文档以及 Apache NiFi、Apache Kafka 项目官方文档。本文核查了页面当前标注的功能状态和限制；厂商能力说明可以证明文档所述能力，不等于独立验证了生产成熟度或目标环境下的性能。
+以下包含 Snowflake、SnapLogic、Apache NiFi 和 Apache Kafka 项目的官方文档。本文核查了页面当前标注的功能状态和限制；厂商能力说明可以证明文档所述能力，不等于独立验证了生产成熟度或目标环境下的性能。
 
 1. [Introduction to Streams](https://docs.snowflake.com/en/user-guide/streams-intro) — Stream offset、CDC、更新记录语义、staleness 与源对象历史。
 2. [Triggered Tasks](https://docs.snowflake.com/en/user-guide/tasks-triggered) — 数据变更触发、触发间隔、串行执行与配置。
@@ -381,3 +475,11 @@ Snowflake 确实有内建事件驱动机制：Streams 负责发现表的 CDC，T
 12. [Apache NiFi In Depth](https://nifi.apache.org/nifi-docs/nifi-in-depth.html) — FlowFile、FlowFile / Content / Provenance Repository，以及数据流的持久化机制。
 13. [Apache Kafka Quickstart](https://kafka.apache.org/quickstart/) — Kafka topic、持久化事件和多个消费者重读事件的基本模型。
 14. [Openflow version history](https://docs.snowflake.com/en/user-guide/data-integration/openflow/version-history) — 用于核对 Openflow runtime 与 connector 的当前版本变更；文档截至 2026-10-27 已列出 2026-10-22 更新。
+15. [Snowflake Dynamic Tables decision guide](https://docs.snowflake.com/en/user-guide/dynamic-tables/decision-guide) — 声明式 SQL 管道与 Streams / Tasks 的选型。
+16. [Overview of data loading](https://docs.snowflake.com/en/user-guide/data-load-overview) — COPY、Snowpipe、Snowpipe Streaming 及加载后的转换选项。
+17. [Transform data during a load](https://docs.snowflake.com/en/user-guide/data-load-transform) — COPY INTO 中支持的加载时基础转换。
+18. [SnapLogic Transform Snap Pack](https://docs.snaplogic.com/snaps/snaps-core/sp-transform/sp-transform-about.html) — 格式转换、映射、过滤、聚合和条件逻辑。
+19. [SnapLogic Snowflake Snap Pack](https://docs.snaplogic.com/snaps/snaps-data/sp-snowflake/sp-snowflake-about.html) — Bulk Load、Upsert、SQL 执行与 Snowpipe Streaming。
+20. [SnapLogic error handling](https://docs.snaplogic.com/design-integrations/error-handling.html) — Snap 级错误处理与 Error Pipeline。
+21. [Private connectivity for inbound network traffic](https://docs.snowflake.com/en/user-guide/private-connectivity-inbound) — Snowflake 服务的入站私有连接及版本要求。
+22. [dbt Projects on Snowflake best practices](https://docs.snowflake.com/en/user-guide/data-engineering/dbt-projects-on-snowflake-best-practices) — 在 Snowflake 中管理 SQL 模型与运行时的建议。
