@@ -6,7 +6,8 @@ This folder accompanies the analysis of why a smart-TV application might use an 
 
 - `analysis_report.md`: feasibility analysis, architecture, dataset strategy, validation plan, quantization considerations, and evidence boundaries.
 - `alexnet_game_embedding.py`: generic ImageNet-pretrained AlexNet embedding baseline; builds a feature gallery, matches explicitly supplied offline images, and optionally attempts float LiteRT export.
-- `requirements.txt`: Python dependencies.
+- `requirements.txt`: core Python dependencies for the offline prototype.
+- `requirements-litert.txt`: optional dependencies used only for LiteRT export.
 
 ## Quick start
 
@@ -32,9 +33,10 @@ python alexnet_game_embedding.py build-gallery ./gallery ./gallery.npz
 python alexnet_game_embedding.py match ./query.jpg ./gallery.npz --top-k 5
 ```
 
-The optional `export-litert` command attempts to export a floating-point `.tflite` model:
+The optional `export-litert` command attempts to export a floating-point `.tflite` model. Install its extra dependencies first:
 
 ```bash
+pip install -r requirements-litert.txt
 python alexnet_game_embedding.py export-litert ./alexnet_game_embedding.tflite
 ```
 
