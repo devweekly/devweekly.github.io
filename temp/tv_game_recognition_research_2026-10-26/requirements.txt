@@ -1,0 +1,7 @@
+torch
+torchvision
+numpy
+pillow
+# Optional, only for export-litert:
+litert-torch
+ai-edge-litert
