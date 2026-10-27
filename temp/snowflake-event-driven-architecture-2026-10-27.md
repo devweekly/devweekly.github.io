@@ -473,6 +473,7 @@ Snowflake 是由云平台承载的服务，不能像传统数据库一样安装�
 | P1 | **数据血缘扩展**，2026-10-06 | 已发布；部分关系只对发布后创建或重新创建的对象记录 | 增加 storage integration → stage、stage → external table，以及某些 Cortex Search 内容表与服务的关系 | 为 Vendor → stage / external table → RAW / Dynamic Table → 数据产品建立可查询的依赖视图；不要假设旧对象自动补齐所有新血缘关系 |
 | P1 | **敏感数据访问与数据导出监控**，2026-10-20 至 2026-10-26 | Sensitive Data Entitlement / Access reports 为 GA；Trust Center Data Security scanner package 于 2026-10-26 GA | 可检查哪些用户、角色和权限能访问敏感表，哪些用户在时间窗口内访问过敏感数据；安全扫描器可检测向内外部 stage 卸载数据的异常行为 | 对 Vendor 原始层、脱敏层和分析层设置不同权限；核查敏感数据访问路径，并对异常 unload 建立调查和响应流程。Sensitive Data reports 要求 Enterprise Edition 或更高版本 |
 | P2 | **Snowflake-provided tags**，2026-10-20 | GA | 提供统一的 sensitivity、environment、project、cost center、certification status 等通用标签，避免各账户自行重复造词汇表 | 将 Vendor、数据域、环境、敏感级别、数据责任人和认证状态纳入一致的标签体系，可与既有 Horizon Catalog / 治理策略配合使用 |
+| P2 | **Feature policy 自定义阻断错误信息**，2026-10-26 | 已发布 | Feature policy rule 可定义 `error_message`，让被阻断的 SQL 操作返回更具体的原因和允许的替代操作 | 有助于把平台规则做成开发者可理解的治理控制，但不代表增加了新的策略评估能力；适合减少团队对权限 / DDL 规则的反复排障 |
 
 官方资料：[Openflow Endpoints](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-16-openflow-endpoints-ga)、[Snowpipe Streaming monitoring](https://docs.snowflake.com/en/release-notes/2026/other/2026-09-24-snowpipe-streaming-monitoring)、[Dynamic Tables ADAPTIVE refresh](https://docs.snowflake.com/en/release-notes/2026/other/2026-07-30-dynamic-tables-adaptive-refresh-mode-ga)、[Dynamic Tables after failover](https://docs.snowflake.com/en/release-notes/2026/other/2026-09-30-dynamic-tables-incremental-refresh-after-failover)、[dbt Projects updates](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-20-dbt-projects-on-snowflake-updates)、[Openflow version history](https://docs.snowflake.com/en/user-guide/data-integration/openflow/version-history)、[data lineage update](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-06-lineage-integrations-monitors-search)、[Sensitive Data reports](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-20-sensitive-data-entitlement-access-reports-ga)、[Data Security scanner package](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-26-trust-center-data-security-scanner-package-ga)、[Snowflake-provided tags](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-20-snowflake-provided-tags-ga)。
 
@@ -518,6 +519,8 @@ flowchart LR
 
 ### B.4 哪些 Preview 值得观察，但不应立即作为关键生产依赖？
 
+- **Pipeline Builder（Preview，2026-10-22）**：在 Workspaces 中以可视化方式把 Snowflake Notebooks、Python 文件、ML Jobs 和 SQL 组织成 task graph；每条 pipeline 对应 DCM project，可预览部署变更并纳入 Git。适合评估 Snowflake 内部 SQL / Python 处理与任务编排，但它不是 SnapLogic 的通用 Vendor connector、API orchestration 或跨系统集成替代品。见 [Pipeline Builder Preview](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-22-pipeline-builder-preview)。
+- **Ingress policies（Preview，2026-10-22）**：可在一个策略中组合网络来源、认证方式、客户端、地理位置、PrivateLink ID 和 endpoint path 等条件，统一决定是否接受 Snowflake 请求。与企业 Snowflake 账户/API 访问治理有关；不要误解为 Openflow Endpoint 的通用 HTTP 防火墙或 Vendor 入站网关。见 [Ingress policies Preview](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-22-ingress-policies-preview)。
 - **IPADDRESS 数据类型（Preview，2026 年 10 月）**：当 Vendor 数据包括 IPv4 / IPv6、网段匹配或基于 IP 的分组和关联时有用；适合安全、网络和欺诈数据，不是一般数据集成的关键依赖。见 [Preview features](https://docs.snowflake.com/en/release-notes/preview-features)。
 - **Cortex AI Function Evaluation / Optimization（Public Preview，2026-09-21）**：如果计划在 Snowflake SQL 转换中使用 AI 函数，需要对输出质量和调用成本做可重复评估，可跟踪这些能力；不应把概率性 AI 输出当成确定性字段转换或强制数据质量规则的替代品。见 [Feature releases 2026](https://docs.snowflake.com/en/release-notes/feature-releases-2026)。
 - **Responses API for Cortex REST API（Preview，2026-10-23）**：对需要以 OpenAI-compatible Responses API 接入 Snowflake Cortex 模型的应用集成有意义；与 Vendor 数据入仓、Dynamic Tables 和 Openflow 选型没有直接关系，应放在 AI 应用接口选型中独立评估。见 [All release notes](https://docs.snowflake.com/en/release-notes/all-release-notes)。
@@ -542,7 +545,7 @@ Preview 的存在证明产品已公开宣布该能力，不自动证明它适合
 
 1. [Introduction to Streams](https://docs.snowflake.com/en/user-guide/streams-intro) — Stream offset、CDC、更新记录语义、staleness 与源对象历史。
 2. [Triggered Tasks](https://docs.snowflake.com/en/user-guide/tasks-triggered) — 数据变更触发、触发间隔、串行执行与配置。
-3. [Introduction to Streams and Tasks](https://docs.snowflake.com/en/en/user-guide/data-pipelines-intro) — 连续数据管道的总体介绍。
+3. [Introduction to Streams and Tasks](https://docs.snowflake.com/en/user-guide/data-pipelines-intro) — 连续数据管道的总体介绍。
 4. [Snowflake Connector for Kafka](https://docs.snowflake.com/en/user-guide/kafka-connector/index) — Kafka-to-Snowflake sink connector v4、性能声明与摄取架构。
 5. [Openflow Connector for Kafka](https://docs.snowflake.com/en/user-guide/data-integration/openflow/connectors/kafka/about) — 从 Kafka 摄取数据，官方页面标记为 Generally Available。
 6. [Automate Snowpipe with Cloud Event Notifications](https://docs.snowflake.com/en/user-guide/data-load-snowpipe-auto) — S3、GCS、Azure 的自动入仓通知流程。
@@ -581,3 +584,6 @@ Preview 的存在证明产品已公开宣布该能力，不自动证明它适合
 39. [Oct 16, 2026: Parquet Direct Preview](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-16-parquet-direct-preview) — 从已有 Parquet 文件创建只读 Iceberg 表的 Preview 能力。
 40. [Snowflake server and feature release notes](https://docs.snowflake.com/en/release-notes/new-features) — 本文按 2026-10-27 截止日期核查的最新发布索引。
 41. [Preview features](https://docs.snowflake.com/en/release-notes/preview-features) — 当前 Preview 特性、适用条件和可用范围。
+42. [Oct 26, 2026: Custom error messages for feature policy rules](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-26-feature-policy-rule-error-messages) — 为受 feature policy 阻断的 SQL 操作提供更可理解的解释。
+43. [Oct 22, 2026: Pipeline Builder Preview](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-22-pipeline-builder-preview) — 在 Workspaces 中可视化编排 Snowflake task graph。
+44. [Oct 22, 2026: Ingress policies Preview](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-22-ingress-policies-preview) — 组合网络、认证、客户端、位置和 endpoint path 进行请求准入判断。
