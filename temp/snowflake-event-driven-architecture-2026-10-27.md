@@ -457,6 +457,85 @@ Snowflake 是由云平台承载的服务，不能像传统数据库一样安装�
 
 **综合建议：** 对“Vendor 数据进入内网，经 SnapLogic 转换后写入 Snowflake”这条链路，先检查 SnapLogic 的转换是否主要是在做接入适配，还是已经承担了大量仓库业务建模。如果是后者，并且组织允许原始 / 最小处理后的数据进入 Snowflake，那么把主要 JOIN、聚合、规范化、历史建模和分析逻辑迁到 Snowflake，通常更自然，也更容易复算和复用；但不要迁移必须在内网完成的安全处理、外部 API 编排或无法由仓库 SQL 合理表达的集成逻辑。
 
+## 附录 B：截至 2026 年 10 月 27 日，值得关注的 Snowflake 新特性
+
+本附录不是 Snowflake 全部新功能的罗列，而是从官方 release notes 中挑选与前文三个架构问题最相关的能力：Openflow 能否成为集成入口、Vendor 数据进入 Snowflake 后如何更自然地做 ELT，以及流式数据管道如何监控、治理和恢复。状态以 **2026-10-27** 为截止日期；GA、Preview、Public Preview 和 Private Preview 不应混为一谈，实际可用区域、版本与部署方式仍需逐项核实。
+
+### B.1 优先评估：直接影响现有数据管道的特性
+
+| 优先级 | 特性与发布日期 | 截至截止日的状态 | 为什么值得关注 | 对当前架构的建议 |
+| --- | --- | --- | --- | --- |
+| P1 | **Openflow Endpoints**，2026-10-16 | GA，适用于 Snowflake deployments 与 BYOC；部署有最低版本要求 | 可为兼容的 HTTP Listen processor 暴露稳定 HTTPS URL，外部客户端不必因为 runtime 或 processor 内部变化而改地址，并可用 Snowflake service user 的 PAT 做认证 | 若 Vendor 支持 webhook / HTTP push，可评估由 Vendor 将通知或事件送到 Openflow flow，再由 Openflow 验证、路由和落地；不能将稳定 URL 等同于完整 API 网关或 Kafka topic |
+| P1 | **Snowpipe Streaming event table monitoring**，2026-09-24 | 已发布 | 可以通过事件表查询行数、服务端延迟、行 / channel 错误与 channel 活动，并据此构建 SQL 监控和告警 | 若采用 Snowpipe Streaming 或 Kafka / Openflow 实时摄取，建立端到端摄取 SLO，而不只监控 connector 进程存活；同时保留源端 lag / 队列指标 |
+| P1 | **Dynamic Tables ADAPTIVE refresh**，2026-07-30；故障切换后继续增量刷新，2026-09-30 | 两项均 GA | ADAPTIVE 默认尝试增量刷新；当系统判断增量刷新成本显著高于全量刷新时会重新初始化。支持的 Dynamic Tables 在 failover group 提升备用端后也能继续增量刷新 | 对 Raw → Standardized → Curated 中主要由 SQL 定义的 JOIN、聚合和分层转换优先试点；仍要核对依赖图、刷新目标、可增量化条件和实际计算成本 |
+| P1 | **dbt Projects on Snowflake 更新**，2026-10-20 | 功能已发布；具体能力按文档和配置适用 | 包括 dbt State 以复用或跳过不必重建的模型、source freshness 状态、跨项目依赖可视化、从 Query History 重跑失败模型 | 如果团队已有 dbt，不必为了“原生 Snowflake”而把模型改写为 Dynamic Tables；可以先将 dbt 的增量执行、数据新鲜度和故障恢复纳入 Snowflake 运行治理 |
+| P1 | **Openflow runtime / connector 持续更新**，截至 2026-10-22 有新版本 | 随 runtime / extension 版本发布 | 近期修复了嵌套 JSON 数组 schema inference 与记录写入问题；PostgreSQL CDC 在写入或提交批次失败时不再推进 WAL 位置，有利于避免因提前推进位置而漏掉变更 | 若考虑用 Openflow 减少 SnapLogic 或 Kafka 周边集成组件，除了评估功能覆盖，还应对照版本历史、升级策略和 CDC 失败恢复行为做验证 |
+| P1 | **数据血缘扩展**，2026-10-06 | 已发布；部分关系只对发布后创建或重新创建的对象记录 | 增加 storage integration → stage、stage → external table，以及某些 Cortex Search 内容表与服务的关系 | 为 Vendor → stage / external table → RAW / Dynamic Table → 数据产品建立可查询的依赖视图；不要假设旧对象自动补齐所有新血缘关系 |
+| P1 | **敏感数据访问与数据导出监控**，2026-10-20 至 2026-10-26 | Sensitive Data Entitlement / Access reports 为 GA；Trust Center Data Security scanner package 于 2026-10-26 GA | 可检查哪些用户、角色和权限能访问敏感表，哪些用户在时间窗口内访问过敏感数据；安全扫描器可检测向内外部 stage 卸载数据的异常行为 | 对 Vendor 原始层、脱敏层和分析层设置不同权限；核查敏感数据访问路径，并对异常 unload 建立调查和响应流程。Sensitive Data reports 要求 Enterprise Edition 或更高版本 |
+| P2 | **Snowflake-provided tags**，2026-10-20 | GA | 提供统一的 sensitivity、environment、project、cost center、certification status 等通用标签，避免各账户自行重复造词汇表 | 将 Vendor、数据域、环境、敏感级别、数据责任人和认证状态纳入一致的标签体系，可与既有 Horizon Catalog / 治理策略配合使用 |
+
+官方资料：[Openflow Endpoints](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-16-openflow-endpoints-ga)、[Snowpipe Streaming monitoring](https://docs.snowflake.com/en/release-notes/2026/other/2026-09-24-snowpipe-streaming-monitoring)、[Dynamic Tables ADAPTIVE refresh](https://docs.snowflake.com/en/release-notes/2026/other/2026-07-30-dynamic-tables-adaptive-refresh-mode-ga)、[Dynamic Tables after failover](https://docs.snowflake.com/en/release-notes/2026/other/2026-09-30-dynamic-tables-incremental-refresh-after-failover)、[dbt Projects updates](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-20-dbt-projects-on-snowflake-updates)、[Openflow version history](https://docs.snowflake.com/en/user-guide/data-integration/openflow/version-history)、[data lineage update](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-06-lineage-integrations-monitors-search)、[Sensitive Data reports](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-20-sensitive-data-entitlement-access-reports-ga)、[Data Security scanner package](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-26-trust-center-data-security-scanner-package-ga)、[Snowflake-provided tags](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-20-snowflake-provided-tags-ga)。
+
+### B.2 对 Vendor → SnapLogic → Snowflake 流程最有用的组合
+
+与其一次性引入所有新能力，更实际的是组合三个层次：
+
+1. **入口与接入：Openflow Endpoints / SnapLogic。** 如果 Vendor 能调用 webhook，可比较“Vendor → SnapLogic endpoint”和“Vendor → Openflow endpoint”两条路径。Openflow Endpoints 提供稳定的 HTTPS 入口，但具体 flow 仍要处理身份认证、payload 校验、限流、重复交付、错误响应和重试。SnapLogic 若已有成熟运行保障，没必要仅因为 Openflow 新能力 GA 就立即重写。
+2. **可靠摄取：Openflow / Snowpipe Streaming + 事件监控。** 对持续到达的记录监控服务端延迟、行错误、channel 错误与活跃状态。对文件交付则继续评估 Snowpipe Auto-Ingest；两者解决的不是同一种数据输入形态。
+3. **仓库内转换：Dynamic Tables 或 dbt。** SQL 模型较声明式、主要是 JOIN / 聚合 / 分层时，测试 Dynamic Tables 的 ADAPTIVE refresh；已有 dbt 资产时，先利用 dbt State、source freshness、模型失败重跑和依赖图增强治理。两者不要求二选一，但应有明确的模型所有权，避免同一业务规则在 SnapLogic、dbt 和 Dynamic Tables 中重复实现。
+
+```mermaid
+flowchart LR
+    VENDOR["Vendor / 外部数据源"]
+    EDGE["企业网络与安全边界"]
+    ENTRY["SnapLogic 或 Openflow Endpoint"]
+    LOAD["Snowpipe Streaming / 批量加载"]
+    RAW["RAW / LANDING"]
+    TRANSFORM["Dynamic Tables 或 dbt SQL 模型"]
+    CURATED["CURATED 数据产品"]
+    OBS["摄取事件、血缘、数据新鲜度与安全监控"]
+
+    VENDOR --> EDGE --> ENTRY --> LOAD --> RAW --> TRANSFORM --> CURATED
+    LOAD -.-> OBS
+    RAW -.-> OBS
+    TRANSFORM -.-> OBS
+```
+
+图中是可选能力的逻辑组合，不表示每个系统都必须由同一工具实现。Openflow endpoint 也不是 Snowflake 内建 SQL 触发器：它是外部 HTTP 请求的接入点，必须与后续的 flow、持久化、错误处理和交付目标一起设计。
+
+### B.3 有条件值得关注：取决于业务目标
+
+| 特性 | 官方状态 / 日期 | 适用条件 | 不应误解为 |
+| --- | --- | --- | --- |
+| **Online Feature Store** | GA，2026-10-20；AWS / Azure 商业区域可用，不支持 Google Cloud | 希望用 Snowflake 数据构建低延迟在线特征，为实时欺诈检测、推荐、个性化或在线推理提供特征；支持 batch、stream 与实时 feature views，并有 online service 监控 | 不是通用消息代理或 OLTP 数据库的完整替代品；上线前要测在线读延迟、写入更新、成本与目标区域支持 |
+| **Declarative Feature Store** | GA，2026-10-21 | 希望把 entities、data sources、feature views / groups 等资源以可版本控制的 YAML / Python spec 管理，并使用 `snow feature` CLI plan-and-apply | 只有在实际建设 Feature Store / ML 特征管理时才需要，不是一般 ELT 的前置依赖 |
+| **Semantic Studio** | GA，2026-09-30 | 需要用 Git-backed YAML 管理 Semantic Views，以稳定的业务定义支持分析或语义层消费 | 不能替代数据建模、业务术语治理和数据质量验证 |
+| **Zero-copy Workday Data Cloud integration** | GA，2026-10-07 | Vendor 源确实是 Workday Data Cloud，且目标场景满足该集成的支持范围时，可避免复制数据或另建 ETL pipeline | 不是适用于任意 Vendor API 的通用 zero-copy 集成 |
+| **Snowpipe Streaming 写入分区化 Snowflake-managed Iceberg 表** | GA，2026-09-24；支持 Iceberg v2 / v3 的 Snowflake-managed tables，当前公告不包括 Streaming Classic 和 externally managed Iceberg tables | 数据产品希望以开放 Iceberg 表承接持续摄取，并需要按分区组织表数据 | 不意味着任何 Iceberg 表、任意 writer 或所有外部 catalog 都自动获得同样能力 |
+| **Parquet Direct** | Preview，2026-10-16 | 有大量已在对象存储中的 Parquet 文件，希望登记为只读 Iceberg 表并原位查询，减少复制或重写 | 仍是 Preview；也不是适合所有需要写入、更新或流式 CDC 的场景 |
+
+资料：[Online Feature Store GA](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-20-online-feature-store-ga)、[Declarative Feature Store GA](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-21-declarative-feature-store-ga)、[Semantic Studio GA](https://docs.snowflake.com/en/release-notes/2026/other/2026-09-30-semantic-studio-ga)、[Workday Data Cloud integration](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-07-zero-copy-workday-data-cloud)、[Snowpipe Streaming for partitioned Iceberg](https://docs.snowflake.com/en/release-notes/2026/other/2026-09-24-snowpipe-streaming-partitioned-iceberg-ga)、[Parquet Direct](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-16-parquet-direct-preview)。
+
+### B.4 哪些 Preview 值得观察，但不应立即作为关键生产依赖？
+
+- **IPADDRESS 数据类型（Preview，2026 年 10 月）**：当 Vendor 数据包括 IPv4 / IPv6、网段匹配或基于 IP 的分组和关联时有用；适合安全、网络和欺诈数据，不是一般数据集成的关键依赖。见 [Preview features](https://docs.snowflake.com/en/release-notes/preview-features)。
+- **Cortex AI Function Evaluation / Optimization（Public Preview，2026-09-21）**：如果计划在 Snowflake SQL 转换中使用 AI 函数，需要对输出质量和调用成本做可重复评估，可跟踪这些能力；不应把概率性 AI 输出当成确定性字段转换或强制数据质量规则的替代品。见 [Feature releases 2026](https://docs.snowflake.com/en/release-notes/feature-releases-2026)。
+- **Responses API for Cortex REST API（Preview，2026-10-23）**：对需要以 OpenAI-compatible Responses API 接入 Snowflake Cortex 模型的应用集成有意义；与 Vendor 数据入仓、Dynamic Tables 和 Openflow 选型没有直接关系，应放在 AI 应用接口选型中独立评估。见 [All release notes](https://docs.snowflake.com/en/release-notes/all-release-notes)。
+
+Preview 的存在证明产品已公开宣布该能力，不自动证明它适合所有区域、账户、 SLA 或关键生产链路。应核实当前 Preview 条件、部署范围、数据处理边界、API 兼容性和退出方案；若关键路径依赖仍在 Preview 的功能，应写入架构风险记录并建立替代路径。
+
+### B.5 建议的评估顺序
+
+按当前讨论的架构背景，我会把后续评估分为三个短周期，而不是做一场“Snowflake 所有功能”的全面 POC。
+
+| 顺序 | 验证主题 | 最小验证内容 | 决策输出 |
+| --- | --- | --- | --- |
+| 1 | Openflow endpoint 与 SnapLogic 入口对比 | 用一个 Vendor webhook / HTTP feed 测量认证、响应行为、重复投递、持久化、错误队列和网络策略 | 保留 SnapLogic、改用 Openflow，或按协议分工 |
+| 2 | Snowflake ELT 与增量刷新 | 选择一个包含 JOIN / 聚合的 Vendor feed，对比现有 SnapLogic ETL、Dynamic Tables ADAPTIVE 与现有 dbt 的延迟、计算成本和补数流程 | 选定转换所有权和模型执行方式 |
+| 3 | 摄取可观察性、血缘和数据安全 | 配置 Snowpipe Streaming event table monitoring，检查对象血缘，试用敏感数据 entitlement / access reports 与 Trust Center scanner | 形成能覆盖 source、ingestion、transformation、consumer 的监控与审计指标 |
+
+**综合判断：** 截至 2026-10-27，最值得优先试点的是 Openflow Endpoints、Snowpipe Streaming 监控、Dynamic Tables 的 ADAPTIVE / failover 增量刷新，以及 dbt Projects 的状态与新鲜度能力。它们直接影响前文讨论的入口、转换和运营可靠性。数据治理方面，10 月 20 日到 26 日的敏感数据访问报表、统一 tags 和 Data Security scanner 也值得纳入平台基线。Online Feature Store、Declarative Feature Store、Semantic Studio 与 Iceberg / Parquet 能力应按实际数据产品目标评估，而不是因为它们较新就全部引入。
+
 ## 参考资料
 
 以下包含 Snowflake、SnapLogic、Apache NiFi 和 Apache Kafka 项目的官方文档。本文核查了页面当前标注的功能状态和限制；厂商能力说明可以证明文档所述能力，不等于独立验证了生产成熟度或目标环境下的性能。
@@ -483,3 +562,22 @@ Snowflake 是由云平台承载的服务，不能像传统数据库一样安装�
 20. [SnapLogic error handling](https://docs.snaplogic.com/design-integrations/error-handling.html) — Snap 级错误处理与 Error Pipeline。
 21. [Private connectivity for inbound network traffic](https://docs.snowflake.com/en/user-guide/private-connectivity-inbound) — Snowflake 服务的入站私有连接及版本要求。
 22. [dbt Projects on Snowflake best practices](https://docs.snowflake.com/en/user-guide/data-engineering/dbt-projects-on-snowflake-best-practices) — 在 Snowflake 中管理 SQL 模型与运行时的建议。
+23. [Oct 16, 2026: Openflow Endpoints GA](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-16-openflow-endpoints-ga) — 稳定 HTTPS URL 路由到 Openflow HTTP Listen processors。
+24. [Sep 24, 2026: Snowpipe Streaming event table monitoring](https://docs.snowflake.com/en/release-notes/2026/other/2026-09-24-snowpipe-streaming-monitoring) — 用事件表检查摄取延迟、行错误和 channel 状态。
+25. [Jul 30, 2026: Dynamic Tables ADAPTIVE refresh GA](https://docs.snowflake.com/en/release-notes/2026/other/2026-07-30-dynamic-tables-adaptive-refresh-mode-ga) — 根据变更规模选择增量刷新或重新初始化。
+26. [Sep 30, 2026: Dynamic Tables after failover GA](https://docs.snowflake.com/en/release-notes/2026/other/2026-09-30-dynamic-tables-incremental-refresh-after-failover) — 满足条件的 Dynamic Tables 可在故障切换后继续增量刷新。
+27. [Oct 20, 2026: dbt Projects on Snowflake updates](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-20-dbt-projects-on-snowflake-updates) — dbt State、source freshness、跨项目依赖和失败模型重跑。
+28. [Sep 24, 2026: Dynamic table incremental refresh with VALUES](https://docs.snowflake.com/en/release-notes/2026/other/2026-09-24-values-dynamic-table-incremental-refresh) — VALUES 子句用于 Dynamic Table 增量刷新。
+29. [Sep 23, 2026: Non-deterministic aggregate functions with incremental refresh](https://docs.snowflake.com/en/release-notes/2026/other/2026-09-23-non-deterministic-aggregate-incremental-refresh) — 扩大支持增量刷新的聚合表达式范围。
+30. [Oct 6, 2026: Data lineage expansion](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-06-lineage-integrations-monitors-search) — 为更多存储集成、stage、external table 与服务增加血缘关系。
+31. [Oct 20, 2026: Sensitive Data Entitlement and Access reports GA](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-20-sensitive-data-entitlement-access-reports-ga) — 敏感数据的权限覆盖和访问历史报告。
+32. [Oct 26, 2026: Trust Center Data Security scanner package GA](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-26-trust-center-data-security-scanner-package-ga) — 检测向内部 / 外部 stage 异常卸载数据。
+33. [Oct 20, 2026: Snowflake-provided tags GA](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-20-snowflake-provided-tags-ga) — 统一敏感度、环境、项目和成本中心等标签。
+34. [Oct 20, 2026: Online Feature Store GA](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-20-online-feature-store-ga) — 支持低延迟在线特征获取和实时 ML 推理。
+35. [Oct 21, 2026: Declarative Feature Store GA](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-21-declarative-feature-store-ga) — 以版本控制的 YAML / Python spec 部署 Feature Store 资源。
+36. [Sep 30, 2026: Semantic Studio GA](https://docs.snowflake.com/en/release-notes/2026/other/2026-09-30-semantic-studio-ga) — 以 YAML 与 Git 管理 Semantic Views。
+37. [Oct 7, 2026: Zero-copy Workday Data Cloud integration GA](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-07-zero-copy-workday-data-cloud) — 对支持的 Workday 数据提供无复制访问。
+38. [Sep 24, 2026: Snowpipe Streaming for partitioned Iceberg tables GA](https://docs.snowflake.com/en/release-notes/2026/other/2026-09-24-snowpipe-streaming-partitioned-iceberg-ga) — 持续摄取到 Snowflake-managed partitioned Iceberg 表。
+39. [Oct 16, 2026: Parquet Direct Preview](https://docs.snowflake.com/en/release-notes/2026/other/2026-10-16-parquet-direct-preview) — 从已有 Parquet 文件创建只读 Iceberg 表的 Preview 能力。
+40. [Snowflake server and feature release notes](https://docs.snowflake.com/en/release-notes/new-features) — 本文按 2026-10-27 截止日期核查的最新发布索引。
+41. [Preview features](https://docs.snowflake.com/en/release-notes/preview-features) — 当前 Preview 特性、适用条件和可用范围。
