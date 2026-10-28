@@ -126,35 +126,201 @@ Semantic View 不会自动把业务口径变正确，也不会因为加了 AI �
 
 ## 二、设计语义模型：先定义业务，再写 YAML
 
-开始建模前，不要先把 schema 中所有列全部导入。先列出用户真实会问的问题，例如：
+这里不应该从“打开 YAML 编辑器”开始。YAML 是最终交付给 Snowflake 的结构化定义，不是业务人员讨论需求的好工具。若团队一开始就围绕 YAML 字段开会，大家很容易讨论 `primary_key`、`expr` 和 `data_type` 怎么填，却没有先确认“市场价值究竟是什么”“一行数据代表什么”“同一指标能不能跨日期求和”。这些问题一旦在部署后才发现，修正成本会高得多。
 
-- 在某个估值日，各投资组合的市场价值是多少？
-- 某个组合按资产类别和行业的市场价值如何分布？
-- 持仓总成本基础和未实现盈亏是多少？
-- 指定组合、证券和估值日后，有多少笔持仓记录？
-- 给定估值日，某个策略持有多少美元市值的证券？
+更合理的顺序是：先用业务问题确定范围，再写一份人能审阅的语义模型设计文档；通过业务与数据负责人评审后，把已确认的部分映射成 YAML 或 SQL DDL；最后在 Snowflake 验证、部署和对账。**不要要求业务人员直接维护 YAML，也不要把 AI 生成的 YAML 当成已批准的业务定义。**
 
-接着把业务名词与计算口径整理成数据契约。下面这张表应由投资运营、投资分析/风险业务和数据工程共同确认，而不是由开发者自行猜测。
+### 2.1 从要回答的问题开始，而不是从所有数据库列开始
 
-| 业务概念 | 本例口径 | 关键边界 |
+先选定一个明确的分析场景。本例是“投资组合每日持仓分析”，目标问题包括：
+
+- 在指定估值日，每个组合的持仓市场价值、成本基础和未实现盈亏是多少？
+- 某个组合的市场价值按资产类别、行业和证券如何分布？
+- 某个投资策略在指定估值日持有多少市场价值的资产？
+- 同一个组合在两个估值日之间的市场价值变化是多少？（这是跨日期比较，不是把两个日期的快照金额相加。）
+
+这些问题决定第一版 Semantic View 的范围。暂时不需要回答的内容，例如交易逐笔分析、税务批次、风险因子敞口和公司行动，不应为了“字段齐全”而一并塞进来。
+
+把问题整理成一张简单的需求表：
+
+| 业务问题 | 需要的维度 | 需要的指标 | 必须澄清的口径 |
+|---|---|---|---|
+| 某日各组合的市场价值是多少？ | 估值日、组合 | 总市场价值 | 是否限定单一估值日、金额币种 |
+| 按资产类别查看组合分布 | 估值日、组合、资产类别 | 总市场价值 | 资产分类体系、未知分类如何处理 |
+| 比较成本与未实现盈亏 | 估值日、组合、证券 | 总成本基础、总未实现盈亏 | 成本和盈亏是否包含应计利息、费用、汇率影响 |
+| 组合有多少项持仓？ | 估值日、组合 | 持仓数 | 计数的是组合-证券持仓行，还是税务批次/账户明细 |
+| 比较两个估值日的市场价值 | 估值日、组合 | 各日总市场价值及其差值 | 先分别计算各日快照，再比较；不能直接把快照金额跨日相加 |
+
+这一阶段产出的是**问题清单和口径问题清单**，不是 YAML。口径暂时无法达成一致时，应记录“待确认”、责任人和影响，不要让开发者自行选一个看似合理的公式。
+
+### 2.2 先写一份可讨论的语义模型设计文档
+
+建议在仓库中先创建 Markdown 文档，例如 `docs/semantic-models/investment-portfolio-overview.md`。它面向业务专家、数据工程师、数据架构师和模型维护者，记录讨论结果、证据、决策及未决问题。Markdown 表格和普通语言比 YAML 更适合评审，因为它能解释为什么这样建模，而不仅是机器需要哪些字段。
+
+下面是本例的设计文档骨架。实际项目可以按规模删减，但应保留粒度、指标口径、连接关系和待确认事项。
+
+```markdown
+# Investment Portfolio Overview — Semantic Model Design
+
+## 1. Purpose and scope
+回答指定估值日的组合持仓价值、成本、未实现盈亏及其分类分布。
+不覆盖交易逐笔、税务批次、风险因子或实时定价。
+
+## 2. Consumers and example questions
+- 投资运营：核对每日持仓总额。
+- 投资分析：按组合、资产类别和行业查看分布。
+- Cortex Analyst / Agent：回答上述范围内的自然语言问题。
+
+## 3. Grain and time semantics
+事实粒度：每个估值日、组合、证券一行。
+业务日期：AS_OF_DATE，表示持仓估值日，不是数据加载时间。
+快照指标：市场价值、成本基础、未实现盈亏。
+跨日期规则：先按估值日分别聚合，不得直接对多个日快照求和。
+
+## 4. Business definitions
+| Term | Definition | Currency | Aggregation | Owner / status |
+|---|---|---|---|---|
+| Total Market Value | 指定估值日的持仓市场价值之和 | USD | SUM；跨估值日不可加 | 投资运营 / 已确认 |
+| Total Cost Basis | 来源持仓快照中的成本基础之和 | USD | SUM；跨估值日不可加 | 会计数据负责人 / 待确认成本口径 |
+| Unrealized P&L | 来源持仓快照提供的未实现盈亏之和 | USD | SUM；需核实应计利息约定 | 投资会计 / 待确认 |
+
+## 5. Logical tables and source mapping
+- POSITION_DAILY <- MART.FACT_POSITION_DAILY
+  Grain: AS_OF_DATE + PORTFOLIO_ID + SECURITY_ID
+- PORTFOLIO <- MART.DIM_PORTFOLIO
+  Grain: PORTFOLIO_ID
+- SECURITY <- MART.DIM_SECURITY
+  Grain: SECURITY_ID
+
+## 6. Relationships and cardinality assumptions
+POSITION_DAILY.PORTFOLIO_ID -> PORTFOLIO.PORTFOLIO_ID (many-to-one)
+POSITION_DAILY.SECURITY_ID -> SECURITY.SECURITY_ID (many-to-one)
+需要用数据测试证明维表键唯一、事实表外键可匹配。
+
+## 7. Dimensions, facts and metrics
+列出每个对消费者有用的业务字段、定义、来源列、类型、同义词和限制。
+不要把底层所有列自动暴露为维度或指标。
+
+## 8. Security and access
+目标角色、允许使用者、底层表授权、敏感字段排除规则。
+
+## 9. Validation and acceptance
+- 事实粒度无重复。
+- 维表主键唯一、事实外键无孤儿。
+- 语义指标与独立 SQL / 已批准报表对账。
+- 验证单日过滤、跨日查询、空值及异常数据行为。
+- 记录业务签署人、日期和验收结果。
+
+## 10. Open questions and decisions
+每项记录问题、候选方案、影响、责任人、截止日期和最终决定。
+```
+
+这份文档不是又一个需要和 YAML 永久同步的“第二套模型定义”。它记录业务意图、理由、评审和证据；YAML/DDL 则是部署契约。二者职责不同：设计文档解释“为什么”，YAML/DDL 精确表达“部署什么”。字段级映射可以从设计文档生成或人工维护，但应通过评审和测试保持一致。
+
+### 2.3 讨论过程应该怎么记录？
+
+不必把每次会议的完整聊天记录都写进模型定义。把重要内容分成三类即可：
+
+1. **已确认的定义**：放在设计文档的业务定义表中，标注负责人和确认状态。
+2. **未决问题**：记录问题、候选口径、对查询结果的影响、责任人和截止日期。例如“未实现盈亏是否含应计利息？”未确认前不要把描述写成确定事实。
+3. **有长期影响的决策**：用简短的决策记录（ADR 或 Decision Log），说明背景、备选方案、决定、理由和后果。例如“选择日持仓快照作为第一版粒度，不支持税务批次级分析”。
+
+评审时最好使用具体查询结果讨论，而不是抽象地争论字段名。拿一个组合、一个估值日和两三条持仓记录，手工计算期望总额，再请业务负责人确认“这是不是他们报表中的市场价值”。每个关键指标至少有一个可复算例子和独立 SQL 对账方式。
+
+### 2.4 哪些字段必须有，哪些是可选的？
+
+需要区分三件事：Snowflake 语法层面创建对象的最低要求、模型正确性所必需的业务信息，以及帮助自然语言查询的增强信息。三者不能混为一谈。
+
+| 项目 | 级别 | 为什么 |
 |---|---|---|
-| 市场价值 | 快照时点持仓市场价值的美元归一化金额，组合/证券间求和 | 只在同一估值日求组合总额；不能把多日快照的市值再相加 |
-| 成本基础 | 快照中该持仓的美元成本基础 | 应明确是交易成本、税务成本还是会计口径；本例只示意一个已标准化字段 |
-| 未实现盈亏 | 来源层提供的美元未实现盈亏 | 要说明是否含应计利息、费用、汇率和公司行动影响 |
-| 持仓数量 | 按本例粒度计数 | 若来源一行是 lot，应称为批次数而不是证券持仓数 |
-| 组合基础币种 | 组合主数据上的基础币种 | 本例金额字段已经是 USD；真实系统要区分交易币种、证券币种、组合报告币种及换算日期 |
+| Semantic View 名称 | 必需 | 创建并引用 schema 级对象所需的名称 |
+| 至少一个逻辑表及其物理来源 | 必需 | 必须知道语义定义对应哪些真实数据对象 |
+| 至少一个维度或指标 | 必需 | 需要暴露可分析的业务语义；只有表清单没有分析接口 |
+| 事实表粒度 | 业务上必需，虽不一定是独立 YAML 字段 | 决定计数、聚合和时间语义是否正确，必须在设计文档中明确 |
+| 指标公式和聚合口径 | 对每个指标必需 | 没有定义就无法保证不同消费者算出相同结果 |
+| 关系与连接键 | 多表模型必需 | 多表查询必须明确怎样连接，避免重复放大 |
+| 主键声明 | 强烈建议；多表关系和粒度校验尤其重要 | 表达逻辑表的唯一键假设；声明本身不能代替数据质量测试 |
+| 维度/事实/指标的数据类型和表达式 | 对每个已声明字段必需 | Snowflake 需要可执行的表达式和类型定义 |
+| 描述（description/comment） | 语法上通常可选；生产模型强烈建议 | 记录业务口径、单位、时间限制和边界 |
+| 同义词（synonyms） | 可选，但自然语言使用时建议 | 帮助识别业务人员使用的不同叫法，不应代替正式定义 |
+| Verified queries / 示例问答 | 可选的增强能力 | 为常见问题提供参考 SQL 和评估样例，提升可验证性 |
+| 标签、物化配置、额外治理属性 | 按需 | 只有在分类治理、性能或运维需求明确时才添加 |
 
-**金额字段名不等于业务定义。** 如果不同报告将“市场价值”“净资产”“总敞口”“净敞口”“盈亏”定义为不同口径，应使用不同的指标名和描述，不要用一个含糊的 total_value 同时代表它们。
+准确的语法要求应以 [Semantic View YAML 规范](https://docs.snowflake.com/en/user-guide/views-semantic/semantic-view-yaml-spec) 为准。不要把“可选”理解为“没有价值”：对于面向 Cortex Analyst 或 Agent 的模型，清晰的描述、同义词、已验证问题和准确的关系往往比多暴露几十个字段更有用。
 
-### Semantic View 的五个核心构件
+### 2.5 从业务术语映射到逻辑表、维度、事实和指标
 
-- **Logical tables（逻辑表）**：为物理表指定适合业务理解的名称。它们并不会复制底层数据。
-- **Relationships（关系）**：说明逻辑表通过哪些键连接。错误的关系会造成 join fan-out（连接放大），让汇总金额被重复计算。
-- **Dimensions（维度）**：用于分类、筛选、分组，例如组合名称、证券代码、行业和估值日。
-- **Facts（事实）**：行级数据或计算表达式，例如持仓市值、数量、成本基础和盈亏，是指标计算的基础。
-- **Metrics（指标）**：具有明确聚合口径的业务数值，例如总市场价值、总成本基础和总未实现盈亏。
+先明确这些构件的职责：
 
-Snowflake 官方教程解释了 [逻辑表、关系、事实、维度与指标](https://docs.snowflake.com/en/user-guide/views-semantic/sql)。可以把这个模型理解为数据库字段到业务语言之间的一层正式契约。
+- **Logical table（逻辑表）**：给物理表一个语义层名称，并声明它的粒度、主键及要公开的字段。它不会复制数据。
+- **Relationship（关系）**：声明逻辑表之间如何连接。必须检查键唯一性、关系方向和连接后的行数是否异常增长。
+- **Dimension（维度）**：用于筛选、分组和描述对象，例如组合名称、证券代码、行业、估值日。
+- **Fact（事实）**：位于事实粒度上的数值或表达式，例如该组合-证券-估值日的市场价值、成本和未实现盈亏。事实通常是构造聚合指标的基础，不应把它和已聚合 KPI 混为一谈。
+- **Metric（指标）**：定义如何聚合事实或列，例如 `SUM(MARKET_VALUE_USD)`。指标名要表达业务意义，描述要说明单位、适用时间范围和不能怎样使用。
+
+下面展示从设计文档到最终 YAML 的一个小型映射例子。它不是完整模型，而是用来说明“为什么要这样写”。
+
+| 设计文档中的决定 | YAML 中的体现 | 目的 |
+|---|---|---|
+| 一行代表某估值日、组合、证券 | `primary_key.columns` 包含 `PORTFOLIO_ID`、`SECURITY_ID`、`AS_OF_DATE` | 明确粒度和唯一性假设 |
+| 估值日是业务日期，不是加载时间 | `time_dimensions` 中的 `AS_OF_DATE` 及描述 | 让模型理解日期字段含义 |
+| 市场价值以 USD 表示 | `MARKET_VALUE_USD` fact 的类型和描述 | 避免与证券交易币种混淆 |
+| 总市场价值是单日快照的合计 | `TOTAL_MARKET_VALUE_USD` metric 的 `SUM(...)`、描述和非加性日期设置 | 降低跨日误加总风险 |
+| 组合和证券通过稳定 ID 连接 | `relationships` 的对应键 | 支持跨实体分组分析 |
+
+例如，YAML 中的关键片段会类似这样：
+
+```yaml
+name: INVESTMENT_PORTFOLIO_OVERVIEW
+description: >
+  Daily position snapshot analytics. USD amounts are normalized upstream.
+  Filter to one AS_OF_DATE for point-in-time portfolio totals.
+tables:
+  - name: POSITION_DAILY
+    description: One row per valuation date, portfolio and security.
+    base_table:
+      database: SV_FINANCE_LAB
+      schema: MART
+      table: FACT_POSITION_DAILY
+    primary_key:
+      columns: [PORTFOLIO_ID, SECURITY_ID, AS_OF_DATE]
+    time_dimensions:
+      - name: AS_OF_DATE
+        expr: AS_OF_DATE
+        data_type: DATE
+        description: Valuation business date, not ingestion timestamp.
+    facts:
+      - name: MARKET_VALUE_USD
+        expr: MARKET_VALUE_USD
+        data_type: NUMBER(20,2)
+        description: Position market value normalized to USD upstream.
+    metrics:
+      - name: TOTAL_MARKET_VALUE_USD
+        expr: SUM(MARKET_VALUE_USD)
+        description: Sum for a selected valuation date; do not sum daily snapshots.
+        non_additive_dimensions:
+          - table: POSITION_DAILY
+            dimension: AS_OF_DATE
+            sort_direction: descending
+            null_order: last
+```
+
+这里的 `primary_key`、`expr`、`data_type` 和 `non_additive_dimensions` 是面向 Snowflake 的机器可读定义；“为什么市场价值不能跨日求和”则应在设计文档和指标描述中同时讲清楚。正式示例还要补充其他维度、逻辑表关系和业务指标，并依据目标账户当前支持的 YAML 规范验证。
+
+### 2.6 从设计文档到部署文件的交接清单
+
+准备 YAML/DDL 之前，评审应能回答以下问题：
+
+- 分析范围是什么，明确排除了什么？
+- 每张逻辑表的一行代表什么？主键假设是否由数据测试支持？
+- 每个指标的分子/分母、币种、时间口径、空值行为和聚合方式是什么？
+- 多表连接是怎样的基数关系？连接后有没有 fan-out 风险？
+- 每个维度和指标映射到哪个物理表、字段或 SQL 表达式？
+- 哪些定义已由业务确认，哪些仍是阻止上线的未决项？
+- 哪些自然语言问题应当得到怎样的 SQL 和预期结果？
+- 哪个角色负责建模、部署、授权、业务验收和后续变更？
+
+只有这些问题得到足够回答后，才进入下一章的创建流程。此时 YAML 不再是设计讨论的起点，而是已评审的语义契约的一种部署表达。Snowflake 的逻辑表、关系、事实、维度和指标的具体语法见[官方 SQL 定义文档](https://docs.snowflake.com/en/user-guide/views-semantic/sql)；YAML 字段及约束见 [YAML 规范](https://docs.snowflake.com/en/user-guide/views-semantic/semantic-view-yaml-spec)。
 
 ## 三、创建 Semantic View：两条路径
 
