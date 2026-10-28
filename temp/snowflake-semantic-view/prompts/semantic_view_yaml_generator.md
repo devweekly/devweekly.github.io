@@ -4,7 +4,7 @@
 
 ## 执行契约与状态报告（优先于下文的一般描述）
 
-先阅读 `references/workflow-execution-contract.md`，以该文件和当前脚本实现为准。不要根据本 Prompt 中“必须检查”的措辞推断脚本已具备该能力。当前 mapping validator 不检查所有 YAML 表达式的列引用；当前 metadata export 不导出唯一性、关系基数、权限或策略；当前漂移流程文档不等于已有自动 diff/定时任务。凡脚本不支持的检查，明确写 `NOT IMPLEMENTED`；支持但本次没执行的写 `NOT RUN`。不能用模型自己的推理把状态升级为 PASS。
+先阅读仓库中的 `temp/snowflake-semantic-view/references/workflow-execution-contract.md`，以该文件和当前脚本实现为准。不要根据本 Prompt 中“必须检查”的措辞推断脚本已具备该能力。当前 mapping validator 不检查所有 YAML 表达式的列引用；当前 metadata export 不导出唯一性、关系基数、权限或策略；当前漂移流程文档不等于已有自动 diff/定时任务。凡脚本不支持的检查，明确写 `NOT IMPLEMENTED`；支持但本次没执行的写 `NOT RUN`。不能用模型自己的推理把状态升级为 PASS。
 
 在调用 Snowflake 之前，先执行并核对会话身份：
 
@@ -118,6 +118,8 @@ SELECT CURRENT_ACCOUNT(), CURRENT_REGION(), CURRENT_USER(),
 7. 每次发布记录 Git commit SHA、目标环境/对象、验证报告、读回定义比较结果、回归结果、审批人和回滚版本。回滚 Semantic View 不代表上游数据或 schema 也已回滚。
 
 ### 阶段 H：变化影响分析的职责边界
+
+需要将结构化变化证据转换为审查说明时，可参考 `temp/snowflake-semantic-view/prompts/semantic_impact_assessment.md`。必须先有确定性分析输出；该 Prompt 不能代替尚未实现的 diff/依赖分析脚本，也未集成到自动流水线。
 
 源表 schema 或 Semantic View 定义发生变化时，不得仅靠人眼检查，也不得把判断完全交给 Prompt。严格按三层执行：
 
