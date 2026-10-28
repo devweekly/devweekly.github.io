@@ -1,0 +1,4 @@
+snowflake-connector-python>=3.12,<5.0
+PyYAML>=6.0,<7.0
+cryptography>=42.0
+jupyterlab>=4.0
