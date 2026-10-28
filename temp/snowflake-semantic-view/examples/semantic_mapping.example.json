@@ -1,0 +1,48 @@
+{
+  "model_name": "INVESTMENT_PORTFOLIO_OVERVIEW",
+  "approval_status": "approved",
+  "design_document": "docs/semantic-model-design.md",
+  "open_questions": [],
+  "mappings": [
+    {
+      "business_concept": "Valuation business date",
+      "design_reference": "Design section: Time semantics",
+      "semantic_kind": "time_dimension",
+      "yaml_path": "tables[POSITION_DAILY].time_dimensions[AS_OF_DATE]",
+      "source_refs": [
+        {
+          "database": "SV_FINANCE_LAB",
+          "schema": "MART",
+          "table": "FACT_POSITION_DAILY",
+          "column": "AS_OF_DATE"
+        }
+      ],
+      "decision_status": "approved",
+      "evidence": "Data owner confirmed this is the valuation date, not the ingestion timestamp.",
+      "required_tests": [
+        "Check AS_OF_DATE type is DATE",
+        "Verify one row per portfolio/security/valuation date"
+      ]
+    },
+    {
+      "business_concept": "Total market value in USD",
+      "design_reference": "Design section: Metrics / Total market value",
+      "semantic_kind": "metric",
+      "yaml_path": "tables[POSITION_DAILY].metrics[TOTAL_MARKET_VALUE_USD]",
+      "source_refs": [
+        {
+          "database": "SV_FINANCE_LAB",
+          "schema": "MART",
+          "table": "FACT_POSITION_DAILY",
+          "column": "MARKET_VALUE_USD"
+        }
+      ],
+      "decision_status": "approved",
+      "evidence": "Business owner approved the point-in-time sum; data owner confirmed upstream USD normalization.",
+      "required_tests": [
+        "Compare metric with independent SQL for a single AS_OF_DATE",
+        "Test that daily snapshots are not summed across dates"
+      ]
+    }
+  ]
+}
