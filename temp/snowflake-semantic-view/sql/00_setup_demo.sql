@@ -46,15 +46,16 @@ INSERT INTO SV_FINANCE_LAB.MART.DIM_PORTFOLIO VALUES
 INSERT INTO SV_FINANCE_LAB.MART.DIM_SECURITY VALUES
   ('SEC-001', 'MSFT', 'Microsoft Corporation', 'EQUITY', 'Information Technology', 'USD', 'US'),
   ('SEC-002', 'VTI', 'Vanguard Total Stock Market ETF', 'ETF', 'US Broad Market', 'USD', 'US'),
-  ('SEC-003', 'AGG', 'iShares Core U.S. Aggregate Bond ETF', 'ETF', 'Fixed Income', 'USD', 'US'),
-  ('SEC-004', 'TLT', 'iShares 20+ Year Treasury Bond ETF', 'ETF', 'US Treasury Bonds', 'USD', 'US');
+  ('SEC-003', 'AAPL', 'Apple Inc.', 'EQUITY', 'Information Technology', 'USD', 'US'),
+  ('SEC-004', 'AGG', 'iShares Core U.S. Aggregate Bond ETF', 'ETF', 'Fixed Income', 'USD', 'US'),
+  ('SEC-005', 'TLT', 'iShares 20+ Year Treasury Bond ETF', 'ETF', 'US Treasury Bonds', 'USD', 'US');
 
 INSERT INTO SV_FINANCE_LAB.MART.FACT_POSITION_DAILY VALUES
   ('P-1001', 'SEC-001', '2026-10-27', 10, 4200.00, 3500.00,  700.00,  0.00),
   ('P-1001', 'SEC-002', '2026-10-27', 20, 5400.00, 4800.00,  600.00,  0.00),
   ('P-1001', 'SEC-003', '2026-10-27', 30, 2850.00, 3000.00, -150.00, 12.00),
-  ('P-2001', 'SEC-003', '2026-10-27', 100, 9500.00, 9200.00, 300.00, 45.00),
-  ('P-2001', 'SEC-004', '2026-10-27', 8, 2160.00, 2000.00, 160.00, 0.00);
+  ('P-2001', 'SEC-004', '2026-10-27', 100, 9500.00, 9200.00, 300.00, 45.00),
+  ('P-2001', 'SEC-005', '2026-10-27', 8, 2160.00, 2000.00, 160.00, 0.00);
 
 -- Expected grain/key checks: zero rows from each duplicate check.
 SELECT PORTFOLIO_ID, SECURITY_ID, AS_OF_DATE, COUNT(*) AS DUPLICATE_COUNT
