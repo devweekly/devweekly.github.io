@@ -97,18 +97,98 @@ Do not add semantic elements merely because columns exist. A physical column bec
 
 Run checks in this order:
 
-1. Parse the mapping manifest and ensure its structure is valid.
-2. Confirm every source table and column referenced by the mapping exists in the metadata snapshot.
-3. Fail if any mapping is not approved, any required evidence is absent, or any blocking question remains.
-4. Parse the YAML and check its declared view name.
-5. Confirm every base table declared by the YAML exists in the same metadata snapshot.
-6. Run the repository's additional YAML structural checks.
-7. Review relationship keys, expected cardinality, fact-table grain, and fan-out/fan-trap risks; existence checks alone are insufficient.
-8. Connect to a non-production Snowflake environment and run `SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML(..., TRUE)` / the repository's verify-only command.
-9. Deploy only to an isolated development schema, then run data-quality and semantic regression tests, including known-answer SQL comparisons for important metrics.
-10. Require review and explicit release approval before production promotion.
+1. Run `scripts/export_semantic_metadata.py` against the actual target source tables; stop if the connection or export fails.
+2. Parse the mapping manifest and ensure its structure is valid.
+3. Run `scripts/validate_semantic_mapping.py --mapping .work/semantic_mapping.json --metadata .work/metadata_snapshot.json`; require human approval and zero open questions.
+4. Generate YAML only after that gate passes.
+5. Run `scripts/validate_semantic_view_yaml.py <yaml-path>` and rerun `scripts/validate_semantic_mapping.py` with `--yaml <yaml-path>`; both must pass.
+6. Review relationship keys, expected cardinality, fact-table grain, and fan-out/fan-trap risks; existence checks alone are insufficient.
+7. Run `scripts/deploy_semantic_view.py --file <yaml-path>` in its default verify-only mode against non-production Snowflake.
+8. Deploy only to an explicitly approved isolated development schema, then run `scripts/test_semantic_view.py`, `sql/20_smoke_tests.sql`, and approved reference SQL/known-answer comparisons.
+9. Require review and explicit release approval before production promotion.
+
+Follow the exact command sequence and failure behavior in **Mandatory script integration** below. Never replace script execution with a prose-only statement that the checks should be run.
 
 A successful deterministic check only proves the properties it actually checks. It does not prove that the business mapping is correct.
+
+
+
+## Mandatory script integration
+
+**The scripts are part of this Skill's execution path, not optional documentation.** Do not stop after writing a mapping or a validation plan. Run the applicable commands when a shell/runtime is available. If execution is unavailable or Snowflake credentials are missing, report each skipped command as NOT RUN with the reason; never claim it passed.
+
+All paths below are relative to the repository root. The lab root is `temp/snowflake-semantic-view/`. Do not resolve `examples/` or `scripts/` relative to the nested Skill directory.
+
+### 1. Prepare the environment
+
+Check `temp/snowflake-semantic-view/requirements.txt` and the Python environment first. Install the lab requirements in an isolated virtual environment if needed. Do not print or inspect secret values in logs. Create a local work directory for generated files; do not commit real-environment snapshots by default.
+
+```bash
+cd temp/snowflake-semantic-view
+mkdir -p .work
+python -m pip install -r requirements.txt
+```
+
+If dependencies are already installed, do not reinstall them unnecessarily.
+
+### 2. Export real metadata before proposing physical mappings
+
+When a configured, authorized Snowflake connection is available, run `scripts/export_semantic_metadata.py` against every source table identified in the design. The example tables below are only for this lab; replace them with actual design candidates.
+
+```bash
+python scripts/export_semantic_metadata.py \
+  --table SV_FINANCE_LAB.MART.FACT_POSITION_DAILY \
+  --table SV_FINANCE_LAB.MART.DIM_PORTFOLIO \
+  --table SV_FINANCE_LAB.MART.DIM_SECURITY \
+  --output .work/metadata_snapshot.json
+```
+
+Read the resulting `.work/metadata_snapshot.json` and use it as the physical-object allowlist. If the command fails, metadata is incomplete, or a source table cannot be inspected, stop physical mapping and report the exact blocker. Never substitute `examples/metadata_snapshot.example.json` for live metadata; it is a fixture only.
+
+### 3. Create and approve the mapping manifest
+
+Save the proposed mapping to `.work/semantic_mapping.json`, following `examples/semantic_mapping.example.json`. Populate it from the design and actual metadata. Do not set `approval_status` or individual `decision_status` to `approved` on behalf of a human. If approvals have not been supplied, retain the pending status and stop before deployable YAML generation.
+
+### 4. Run the deterministic mapping gate
+
+After the required owners have approved the manifest and all blocking questions are resolved, run:
+
+```bash
+python scripts/validate_semantic_mapping.py \
+  --mapping .work/semantic_mapping.json \
+  --metadata .work/metadata_snapshot.json
+```
+
+A non-zero exit code is a blocker. Read and report every error, fix the design/mapping or refresh metadata as appropriate, and rerun the command. Do not edit the generated YAML to conceal a mapping failure.
+
+### 5. Generate YAML, then run both local validators
+
+Generate the YAML only after the mapping gate passes. Run the structural validator and the mapping validator with the YAML included:
+
+```bash
+python scripts/validate_semantic_view_yaml.py position_analytics.yaml
+python scripts/validate_semantic_mapping.py \
+  --mapping .work/semantic_mapping.json \
+  --metadata .work/metadata_snapshot.json \
+  --yaml position_analytics.yaml
+```
+
+Replace `position_analytics.yaml` with the actual output path. Both commands must pass. The mapping validator currently checks the manifest's physical references and YAML name/base tables; it does **not** prove that every YAML expression's column references match the mapping manifest. Never describe it as expression-level validation.
+
+### 6. Run Snowflake verification and development regression
+
+Only after both local validators pass, and only against an authorized non-production target:
+
+```bash
+python scripts/deploy_semantic_view.py --file position_analytics.yaml
+```
+
+The default mode is verify-only. Do not add `--deploy` unless deployment to the explicitly approved isolated development schema is requested and all gates passed. After deployment, run `python scripts/test_semantic_view.py`, execute the approved SQL checks in `sql/20_smoke_tests.sql`, and compare important metrics with approved reference SQL/known answers. These checks require the demo tables and Semantic View to exist in the target development environment.
+
+### 7. Report the actual run status
+
+For every run, report the command, PASS/FAIL/NOT RUN, exit code if available, target environment (without secrets), and any follow-up action. Distinguish fixture-based CI checks from live Snowflake verification. A fixture-only CI pass is not evidence that live metadata or the target Snowflake service was checked.
+
 
 ## Required outputs
 
