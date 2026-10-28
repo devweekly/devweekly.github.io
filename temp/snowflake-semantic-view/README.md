@@ -133,6 +133,17 @@ Prompt/Skill 是对模型的行为约定，不是强制执行的安全边界。�
 
 推荐分阶段实现：M1 Git/静态门禁；M2 元数据 schema diff；M3 已部署定义规范化与语义 diff；M4 结果和安全策略回归；M5 发布后/定时检测、告警和回滚闭环。每阶段的输入输出、失败行为和测试要求已在详细指南中列明。
 
+### 源表变化后，谁来判断是否影响 Semantic View？
+
+不是只靠人眼，也不是把 diff 丢给 Prompt。详细步骤见 references/drift-detection-and-git-workflow.md 的“源表发生变化后：怎样判断是否影响 Semantic View”章节。
+
+- **代码负责确定性分析**：比较前后元数据，解析 YAML 和 SQL 表达式，建立列到语义元素的依赖，定位受影响指标/关系/测试，并执行类型、键唯一性、粒度和 fan-out 检查。
+- **LLM 负责解释证据**：基于结构化 diff、依赖命中、设计/mapping 和测试结果，说明可能的业务影响、证据和缺失检查；输出必须经过 schema 校验，不能自行批准或判 PASS。
+- **人负责业务决策**：只对含义、单位、币种、时间口径、粒度、安全风险及未解析依赖等不确定项审批。
+- **回归测试负责验证行为**：独立参考 SQL 和 known-answer tests 证明结果是否符合批准口径。没有依赖命中并不自动等于无影响。
+
+最终状态应区分 BLOCKED、IMPACT_CONFIRMED、NO_DIRECT_DEPENDENCY_FOUND、REVIEW_REQUIRED、VALIDATED_NO_IMPACT、NOT_RUN。当前仓库尚未实现完整的依赖图、表达式级分析和影响传播，因此不得声称这些检查已经自动化。
+
 ## 上游 Skill 与建模模式参考
 
 已对照 Snowflake Labs 和社区的 Semantic View Skill，并整理出适用模式、局限及后续改进清单：[`references/upstream-guidance.md`](references/upstream-guidance.md)。重点参考 Snowflake Labs 的 [`semantic-view-patterns`](https://github.com/Snowflake-Labs/coco-skills/tree/main/skills/semantic-view-patterns)，补充关系基数、fan trap、半可加指标、时间有效关系、Verified Query 回归和安全策略审查。社区 Skill 只作为工程实践参考，不视为官方产品规范；旧的 [`semantic-model-generator`](https://github.com/Snowflake-Labs/semantic-model-generator) 已被官方标注为由 Snowsight 原生 Semantic View Generator 替代。
