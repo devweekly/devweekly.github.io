@@ -16,7 +16,88 @@
 
 Snowflake 当前文档建议向 Cortex Agents 迁移以获得更完整的 Agent 工作流；这不代表所有 Semantic View 查询都必须经过 Agent。对于固定、可审计的报表或 API，直接 SQL 往往更简单、更可控。
 
-## 2. 方式一：直接用 SQL 查询 Semantic View
+## 2. 为什么 Semantic View 能帮助 Natural Language Query（NLQ）
+
+**Semantic View 本身不是自然语言模型，也不会自动把一句话变成 SQL。** 它的价值在于为 NLQ 系统提供一份可查询、可治理的业务语义契约，让 LLM 不必只凭列名、数据库注释或 Prompt 猜测“用户说的业务概念对应哪张表、哪个字段、怎样计算、如何关联”。
+
+Snowflake 官方将 Semantic View 定义为数据库中的业务语义对象：它集中定义逻辑表、维度、事实、指标和关系；AI 应用可以结合这些规则与 LLM 推理，生成更符合业务定义的查询。<Cite refs={["turn414241search2","turn414241search0"]} />
+
+### 2.1 没有 Semantic View 时，NLQ 必须自己猜什么？
+
+假设业务用户问：
+
+> 截至 2026-10-27，各投资组合的市值是多少？按资产类别拆分，并显示未实现盈亏。
+
+只给 LLM 物理 schema 时，它可能看到 `FACT_POSITION_DAILY`、`DIM_PORTFOLIO`、`DIM_SECURITY` 和诸如 `MARKET_VALUE_USD` 的列名，但仍需自行推断：
+
+- “市值”应该用哪一列？是单证券市值、组合总市值，还是其他估值字段？
+- 应该用 `SUM`、`AVG` 还是其他聚合？组合 + 证券 + 估值日的行粒度是什么？
+- 组合名称与资产类别分别来自哪里？要通过哪些键关联？
+- “截至某日”表示只取这个估值日，还是累积该日期以前的记录？
+- 未实现盈亏是否以 USD 表示？它与市值是否使用一致的口径？
+- 是否允许把多天的持仓快照加总？
+
+LLM 即使生成了语法正确的 SQL，也可能在指标、连接路径、粒度或时间语义上犯错。单靠更长的 Prompt，无法保证所有应用都采用同一口径。
+
+### 2.2 Semantic View 如何提供约束
+
+本项目的 `position_analytics.yaml` 展示了几种直接帮助 NLQ 的机制：
+
+| Semantic View 元素 | 在 NLQ 中的作用 | 本项目中的例子 |
+|---|---|---|
+| 指标（metrics）及表达式 | 告诉系统业务指标的权威计算方式，避免每次重新推导聚合公式 | `TOTAL_MARKET_VALUE_USD = SUM(MARKET_VALUE_USD)` |
+| 同义词（synonyms） | 把用户的业务用词连接到已定义的语义元素 | “market value”“total portfolio market value”“assets under management by position” |
+| 描述（description） | 解释指标、维度和字段的业务含义与使用限制 | 市值是指定估值日的 USD 持仓快照，不应跨日期相加 |
+| 维度（dimensions / time_dimensions） | 指明可用于分组、过滤的业务属性 | `PORTFOLIO_NAME`、`ASSET_CLASS`、`AS_OF_DATE` |
+| 逻辑表和关系（logical tables / relationships） | 规定可用实体及其关联键，减少模型猜测 join 的空间 | `POSITION_DAILY` 关联 `PORTFOLIO` 和 `SECURITY` |
+| 粒度、主键和非可加性说明 | 提醒系统哪些组合与聚合有业务意义，尤其是时点指标 | 每行是组合 + 证券 + 估值日；市值按估值日非可加 |
+| 已验证问题（verified queries，如定义中配置） | 为常见问题提供已审核的问法与 SQL 示例，作为相似问题的参考和回归样本 | “截至某估值日各组合的总市值是多少？” |
+
+这些元数据将“业务人员说的话”与“数据库中的物理实现”之间的映射从每次临时推断，变成可版本化、可评审和可复用的定义。具体哪些字段可用、哪些同义词和 verified queries 会被某个 NLQ 引擎读取，取决于该引擎及其集成方式；不能假设任意 LLM 自动读取 Snowflake 中的 Semantic View。
+
+### 2.3 从自然语言到查询的实际链路
+
+以问题“截至 2026-10-27，各组合按资产类别的总市值是多少？”为例，NLQ 系统需要完成以下工作：
+
+~~~mermaid
+flowchart TD
+    Q["自然语言问题"] --> I["识别意图：市值、估值日、组合、资产类别"]
+    I --> G["从 Semantic View 语义定义中匹配指标、维度、同义词和关系"]
+    G --> P["构造受约束的查询计划"]
+    P --> V["校验元素存在、关系可达、时间和粒度规则"]
+    V --> SQL["生成 Semantic SQL / SQL"]
+    SQL --> DB["Snowflake 执行"]
+    DB --> E["检查结果、错误和查询证据"]
+    E --> A["用自然语言解释结果"]
+~~~
+
+关键是：Semantic View 提供可被 NLQ 系统使用的业务定义，NLQ 引擎负责理解用户问题并选择语义元素，查询执行层负责运行查询。三者不是同一个组件。
+
+### 2.4 Semantic View 能改善什么，不能保证什么？
+
+它通常可以减少指标公式不一致、物理字段猜测、连接路径不一致和业务术语不匹配；如果正确建模，还可以明确时点指标的非可加性、维度含义和数据关系。它不能自动保证：
+
+- 语义定义本身是正确的，或与最新业务政策一致；
+- 模型正确理解了用户含糊的意图，或正确选择了所有指标和过滤条件；
+- 所有 NLQ 框架都会自动发现、读取或遵守 Semantic View；
+- 生成的 SQL 没有错误，结果已经与独立基准核对；
+- 数据权限仅靠语义描述就能得到保护。
+
+因此，生产级 NLQ 仍需要受限查询计划、服务端验证、Snowflake 权限控制、Verified Query/已知答案回归，以及对歧义问题的澄清策略。
+
+### 2.5 在 LangChain Deep Agents 中尤其要注意
+
+Semantic View 不会因为 Deep Agent 使用了 Snowflake Connector 就自动进入模型上下文。应用必须明确选择一种集成方式：
+
+1. **固定查询工具**：把常见业务问题封装为参数化工具。实现简单、风险较低，但只支持预先定义的查询形态。
+2. **语义目录 + 受限查询计划**：把允许的指标、维度、同义词、关系和使用规则提供给 Agent；Agent 输出结构化计划，服务端验证后再编译为查询。这更适合可控范围内的 NLQ。
+3. **调用 Snowflake 的 NLQ 服务**：例如在适用场景下使用 Cortex Analyst API，或通过 Cortex Agent 组织自然语言分析。这样由对应的 Snowflake 服务处理其支持的语义上下文和 NLQ 流程。
+
+本项目的 [Deep Agents 示例](langchain-deepagents-semantic-view.md) 当前采用第一种方式：模型选择并调用一个固定的“指定估值日组合市值”工具。它展示了如何安全地消费 Semantic View，但**不是通用的自然语言到 SQL 引擎**，也没有自动读取 YAML 的所有指标、维度或关系。若目标是让用户自由提问“按策略、资产类别、国家、两个估值日比较”等问题，需要继续实现第二种方式或集成受支持的 NLQ 服务；不能只把 Prompt 改成“请使用 Semantic View”就认为完成了。
+
+参考：[Semantic View overview](https://docs.snowflake.com/en/user-guide/views-semantic/overview)、[Semantic View YAML specification](https://docs.snowflake.com/en/user-guide/views-semantic/semantic-view-yaml-spec)。
+
+## 3. 方式一：直接用 SQL 查询 Semantic View
 
 本实验室的对象为：
 
