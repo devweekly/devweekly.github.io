@@ -152,10 +152,11 @@ def get_portfolio_market_values(as_of_date: str) -> str:
         ORDER BY PORTFOLIO_NAME
     """
 
-    conn = _connect()
+    conn = None
     query_id: str | None = None
 
     try:
+        conn = _connect()
         with conn.cursor() as cur:
             cur.execute(sql, (valuation_date,))
             query_id = cur.sfqid
@@ -210,7 +211,8 @@ def get_portfolio_market_values(as_of_date: str) -> str:
             ensure_ascii=False,
         )
     finally:
-        conn.close()
+        if conn is not None:
+            conn.close()
 
 
 def main() -> None:
