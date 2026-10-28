@@ -7,6 +7,8 @@ description: Turn an approved semantic-model design into a traceable Snowflake S
 
 ## Purpose and boundary
 
+**Execution contract:** before running this workflow, consult `../../references/workflow-execution-contract.md`. It is the source of truth for the current scripts' actual coverage, exact command sequence, status meanings, manual Snowflake environment preflight, and release gates. Never claim a check passed unless the corresponding executable check actually ran and returned a passing result. Distinguish `NOT RUN` (implemented but not executed) from `NOT IMPLEMENTED` (no such automated check exists in this repository).
+
 Use this workflow when converting a semantic-model design written in Markdown into a Snowflake Semantic View YAML definition. The output is a reviewed, testable deployment artifact, not an autonomous production change.
 
 The workflow is deliberately split into four responsibilities:
