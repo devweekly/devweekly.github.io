@@ -111,8 +111,13 @@ tables:
         synonyms:
           - number of positions
           - count of holdings
-        description: Number of portfolio-security snapshot rows at the model grain.
+        description: Number of portfolio-security snapshot rows at the model grain; not additive across valuation dates.
         expr: COUNT(SECURITY_ID)
+        non_additive_dimensions:
+          - table: POSITION_DAILY
+            dimension: AS_OF_DATE
+            sort_direction: descending
+            null_order: last
   - name: PORTFOLIO
     description: Investment portfolio master data with one row per portfolio identifier.
     base_table:
