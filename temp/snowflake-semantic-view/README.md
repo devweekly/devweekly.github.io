@@ -134,7 +134,7 @@ Prompt/Skill 是对模型的行为约定，不是强制执行的安全边界。�
 - 如何从 LangChain Deep Agents 注册自定义 Python 查询工具，通过 Snowflake Connector 查询 Semantic View；包括完整代码、参数绑定、最小权限、限制内置工具和回归测试。
 - 查询权限、安全边界，以及金融持仓时点指标不能跨估值日直接累加的注意事项。
 
-LangChain Deep Agents 的详细实战独立放在 [references/langchain-deepagents-semantic-view.md](references/langchain-deepagents-semantic-view.md)。该方案不依赖 Snowflake Cortex Agent，推荐先用固定 SQL 的白名单工具，不要让模型直接执行任意 SQL。
+LangChain Deep Agents 的详细实战独立放在 [references/langchain-deepagents-semantic-view.md](references/langchain-deepagents-semantic-view.md)，配套的 [可运行 Python 示例](examples/langchain_deepagents_semantic_view.py) 展示了自定义工具、参数绑定和结果处理。该方案不依赖 Snowflake Cortex Agent，推荐先用固定 SQL 的白名单工具，不要让模型直接执行任意 SQL。
 
 选择原则：固定报表和强审计场景优先考虑直接 SQL；后端应用可以用参数化 SQL；只有需要自然语言交互时才引入 Analyst/Agent。无论使用哪种入口，都要验证指标定义、查询结果和实际权限。
 
