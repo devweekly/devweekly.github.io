@@ -198,7 +198,7 @@ Snowflake 支持 Snowsight 的可视化流程、SQL DDL 和 YAML。入门时，�
 
 这里最后的 TRUE 表示使用 CREATE OR ALTER 语义。它可以在受支持的修改范围内调整已有对象，并尽可能保留不受影响的物化配置。部署前仍然需要检查当前版本对具体改动的支持情况。若用默认的 replace 行为，已有对象会被替换，权限、物化对象和下游依赖都应检查；不要把 replace 当成无风险的“保存”。
 
-完整代码已放在 [sql/10_deploy_semantic_view.sql](https://github.com/devweekly/devweekly.github.io/blob/main/temp/snowflake-semantic-view/sql/10_deploy_semantic_view.sql)，脚本通过仓库中的 YAML 生成调用，避免手工维护两份重复定义。
+手工调用示例见 [sql/10_deploy_semantic_view.sql](https://github.com/devweekly/devweekly.github.io/blob/main/temp/snowflake-semantic-view/sql/10_deploy_semantic_view.sql)；完整的自动化部署实现位于 [scripts/deploy_semantic_view.py](https://github.com/devweekly/devweekly.github.io/blob/main/temp/snowflake-semantic-view/scripts/deploy_semantic_view.py)。脚本直接读取仓库中的 YAML，避免手工维护两份重复定义。
 
 ### 如果你更习惯 SQL DDL
 
