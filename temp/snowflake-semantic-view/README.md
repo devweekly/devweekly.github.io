@@ -50,6 +50,10 @@
 
 8. 最终再用低权限角色测试 grants 和边界。成功部署本身不等于业务口径已验证。
 
+## 自动检查与线上验证
+
+仓库中的 .github/workflows/semantic-view-lab-validation.yml 会在相关文件变更时检查 Python 语法并验证 YAML 的基本结构。它不连接 Snowflake，也不代表 Snowflake 一定接受这份语义定义。线上验证由 deploy_semantic_view.py 默认执行的 verify_only 完成；回归脚本则需要一个已部署的 Semantic View 和已创建的教学表。
+
 ## 改成自己的数据
 
 必须先修改 YAML 内的基础表路径、字段表达式、主键、关系和指标，再运行验证。只改 SV_TARGET_SCHEMA 不会自动把 YAML 中的物理表路径转换为你的表。金融场景还需要确认事实表粒度、币种换算口径、估值时点和来源报表；不应把示例数字或指标定义直接带到生产环境。
