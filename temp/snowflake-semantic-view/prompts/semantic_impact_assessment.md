@@ -39,17 +39,17 @@
 ```json
 {
   "run_id": "copied-from-input",
-  "overall_assessment": "BLOCKED | IMPACT_CONFIRMED | NO_DIRECT_DEPENDENCY_FOUND | REVIEW_REQUIRED | VALIDATED_NO_IMPACT | NOT_RUN",
+  "overall_assessment": "REVIEW_REQUIRED",
   "summary": "Concise evidence-based summary",
   "affected_elements": [
     {
       "element": "semantic element or YAML path",
       "change_ids": ["change-id-from-input"],
-      "impact": "DIRECT | POSSIBLE | NO_DIRECT_HIT",
+      "impact": "POSSIBLE",
       "reason": "What the supplied evidence supports",
       "evidence_ids": ["existing-evidence-id"],
       "required_tests": ["test-id-from-input"],
-      "required_owner": "BUSINESS_OWNER | DATA_ENGINEER | SECURITY_OWNER | NONE"
+      "required_owner": "DATA_ENGINEER"
     }
   ],
   "unresolved_items": [
@@ -57,13 +57,13 @@
       "item": "Unresolved dependency or business decision",
       "why_it_matters": "Potential effect on result or safety",
       "evidence_ids": ["existing-evidence-id"],
-      "owner": "BUSINESS_OWNER | DATA_ENGINEER | SECURITY_OWNER"
+      "owner": "BUSINESS_OWNER"
     }
   ],
   "missing_checks": [
     {
       "check": "Required check",
-      "status": "NOT RUN | NOT IMPLEMENTED | FAIL",
+      "status": "NOT IMPLEMENTED",
       "reason": "Evidence-backed reason",
       "blocks_release": true
     }
@@ -71,13 +71,15 @@
   "recommended_actions": [
     {
       "action": "Specific next step",
-      "owner": "BUSINESS_OWNER | DATA_ENGINEER | SECURITY_OWNER | PLATFORM_ENGINEER",
+      "owner": "DATA_ENGINEER",
       "evidence_ids": ["existing-evidence-id"]
     }
   ],
   "requires_human_approval": true
 }
 ```
+
+允许值：`overall_assessment` 为 `BLOCKED`、`IMPACT_CONFIRMED`、`NO_DIRECT_DEPENDENCY_FOUND`、`REVIEW_REQUIRED`、`VALIDATED_NO_IMPACT`、`NOT_RUN` 之一；`impact` 为 `DIRECT`、`POSSIBLE`、`NO_DIRECT_HIT` 之一；`required_owner`/`owner` 使用对应字段列出的单一角色；`missing_checks.status` 为 `NOT RUN`、`NOT IMPLEMENTED`、`FAIL` 之一。上面的 JSON 是格式示例，不是实际分析结果，必须将占位值替换成输入证据支持的值。
 
 ## 状态决策规则
 
