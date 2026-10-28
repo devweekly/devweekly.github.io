@@ -374,6 +374,8 @@ F. 输出“设计文档条目 -> YAML 路径 -> 校验/测试”的追踪表，
 
 团队真正需要维护的是这份 Skill、YAML 规范版本、可信示例和测试集，而不是一份越写越长、每次都靠人临时发挥的 Prompt。若使用 Snowflake 的可视化或 AI 辅助建模功能，也应把生成结果导出到 Git，走相同的评审和测试流程。
 
+配套的 [Skill 规范](https://github.com/devweekly/devweekly.github.io/blob/main/temp/snowflake-semantic-view/skills/semantic-view-generator/SKILL.md)、[独立 Prompt 模板](https://github.com/devweekly/devweekly.github.io/blob/main/temp/snowflake-semantic-view/prompts/semantic_view_yaml_generator.md)、[映射校验脚本](https://github.com/devweekly/devweekly.github.io/blob/main/temp/snowflake-semantic-view/scripts/validate_semantic_mapping.py) 和 [实验目录说明](https://github.com/devweekly/devweekly.github.io/blob/main/temp/snowflake-semantic-view/README.md) 已放入仓库，可作为后续实践的起点。
+
 ### 怎样降低“生成成功但结果错了”的风险？
 
 不能靠一个检查解决所有错误，要分层拦截：
