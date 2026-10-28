@@ -166,6 +166,14 @@ Semantic View 可以成为受控的业务语义访问层，但它不会自动替
 
 不要仅靠字段描述、Prompt、Agent 指令或隐藏 UI 控件实现访问控制。
 
+## 8. 使用 LangChain Deep Agents 查询 Semantic View
+
+如果应用使用 LangChain Deep Agents，而不是 Snowflake Cortex Agent，可以在应用侧注册一个 Python 工具，由工具通过 Snowflake Connector 执行固定 SQL 并查询 Semantic View。Semantic View 不需要转换成 LangChain 专属格式，也不要求部署 Cortex Agent。
+
+详细操作步骤、完整 Python 示例、最小权限设计、工具限制、回归测试清单和从固定查询扩展到受限动态分析的方案，见 [references/langchain-deepagents-semantic-view.md](langchain-deepagents-semantic-view.md)。
+
+推荐从固定 SQL 工具开始，不要把模型生成的任意 SQL 直接交给高权限 Snowflake 角色执行。Deep Agents 的内置工具也应按实际安装版本检查并收窄；Prompt 不能替代工具层校验和 Snowflake 权限控制。
+
 ## 7. 如何选择
 
 - **固定报表、可重复查询、强审计：** 直接 SQL + Semantic View。
