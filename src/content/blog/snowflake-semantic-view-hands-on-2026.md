@@ -322,6 +322,7 @@ SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML 支持 verify_only 参数。传 TRUE 时�
 
 - **SQL + Python Connector**：简单直接，适合用代码部署 YAML/DDL 并运行测试。前提是连接与凭据生命周期设计正确。
 - **dbt**：如果转换模型本来就在 dbt 中维护，可以研究 Snowflake 官方文档推荐的 Semantic View dbt package，把语义定义和数据模型放入同一个变更流程。先核对 package 的当前版本、支持特性和目标环境。
+- **DCM Projects**：Snowflake 当前文档已列出在 DCM project definition file 中使用 DEFINE SEMANTIC VIEW 的声明式管理路径，部署时会按定义协调完整的 Semantic View。文档将相关支持标记为 Preview；而且 DEFINE SEMANTIC VIEW 只能写在 DCM 项目定义文件中，不是可单独执行的 SQL。仅在目标账户已启用且团队接受预览能力边界时评估。
 - **GitHub Actions / 其他 CI**：负责执行静态检查、调用部署脚本、运行回归并保留流水线结果。不要让 CI 以人类管理员的长期凭证部署所有对象。
 - **Snowsight / Semantic Studio**：适合探索、首次建模和人工交互，不应让生产对象长期脱离 Git 的可审查定义。
 - **Terraform**：基础设施自动化可以管理部分 Snowflake 资源，但不要假设 Semantic View 的全部功能都已由当前 provider 原生覆盖。请按当前官方 provider 文档验证支持范围；不要用未经验证的自定义封装代替生产测试。
@@ -433,7 +434,43 @@ Semantic View 的名称、描述、同义词、标签和 SQL 指令可能被用�
 
 ### 何时考虑物化和性能优化？
 
-先让模型口径正确，再基于真实查询和 Query Profile 评估瓶颈。Semantic View 的物化配置可以预聚合选定维度与指标，适合重复频繁且可合理预计算的查询；这不是应该默认打开的选项。应评估刷新仓库、刷新延迟、增量刷新可用性、额外存储与计算成本、数据新鲜度要求，以及查询是否真的命中物化。参考 [ALTER SEMANTIC VIEW 的 materialization 语法](https://docs.snowflake.com/en/sql-reference/sql/alter-semantic-view)。
+先让模型口径正确，再基于真实查询和 Query Profile 评估瓶颈。Semantic View 物化可以预聚合选定维度与指标，但截至本文资料核对日，Snowflake 官方文档仍将这项功能标记为 Preview；正式使用前应再次核对目标账号的可用状态、权限和限制。
+
+官方文档给出的典型流程是先设置最大可接受的数据陈旧时间，再定义物化内容。下面是一个单独的“销售收入”例子，演示语法；它不是本教程投资组合持仓模型的直接部署脚本。
+
+    -- 先确认角色拥有 Semantic View 的 OWNERSHIP，
+    -- 且在目标 schema 上具备 ADD SEMANTIC VIEW MATERIALIZATION。
+    ALTER SEMANTIC VIEW ANALYTICS_DB.MART.SALES_ANALYTICS
+      SET MAX_STALENESS = '1 hour';
+
+    ALTER SEMANTIC VIEW ANALYTICS_DB.MART.SALES_ANALYTICS
+      ADD MATERIALIZATION REVENUE_BY_CUSTOMER_YEAR
+      WAREHOUSE = ANALYTICS_WH
+      REFRESH_MODE = AUTO
+      AS
+        DIMENSIONS CUSTOMERS.CUSTOMER_NAME, ORDERS.ORDER_YEAR
+        METRICS ORDERS.TOTAL_REVENUE;
+
+    SHOW MATERIALIZATIONS IN SEMANTIC VIEW
+      ANALYTICS_DB.MART.SALES_ANALYTICS;
+
+如果要手工刷新、暂停或恢复，可以使用以下管理操作（执行前替换为真实对象名和物化名）：
+
+    ALTER SEMANTIC VIEW ANALYTICS_DB.MART.SALES_ANALYTICS
+      REFRESH MATERIALIZATION REVENUE_BY_CUSTOMER_YEAR;
+
+    ALTER SEMANTIC VIEW ANALYTICS_DB.MART.SALES_ANALYTICS
+      SUSPEND MATERIALIZATION REVENUE_BY_CUSTOMER_YEAR;
+
+    ALTER SEMANTIC VIEW ANALYTICS_DB.MART.SALES_ANALYTICS
+      RESUME MATERIALIZATION REVENUE_BY_CUSTOMER_YEAR;
+
+    ALTER SEMANTIC VIEW ANALYTICS_DB.MART.SALES_ANALYTICS
+      DROP MATERIALIZATION REVENUE_BY_CUSTOMER_YEAR;
+
+这里有几条容易遗漏的限制。第一，官方文档说明半可加指标（semi-additive metrics）、窗口指标和指定关系路径的指标不能放进物化定义；本教程的持仓市场价值、成本基础、未实现盈亏和持仓计数都按估值日处理为时间维度上的半可加指标，因此不要直接把这些指标放进上面的物化例子。第二，CREATE OR REPLACE SEMANTIC VIEW 会立即删除既有物化对象；若要在修改语义定义时尽可能保留未受影响的物化配置，应使用受支持的 CREATE OR ALTER 路径。对已经被修改的物化所依赖的字段/指标，仍需检查其是否进入 suspended 状态以及是否需要重新建立。第三，物化收益取决于消费路径：Snowflake 当前文档指出，Semantic SQL（SEMANTIC_VIEW 子句或直接查询 Semantic View）可以使用物化结果，但 Cortex Analyst、Cortex Agents 和 Snowflake CoWork 如果生成的是直接访问底层表的物理 SQL，则不能利用 Semantic View 的物化。不要假设“给 Agent 配了物化”就会自动变快。
+
+刷新仓库、刷新延迟、FULL/INCREMENTAL 可用性、额外存储与计算成本、查询是否命中物化，都应通过实际执行历史和查询计划验证。参考 [Semantic View 物化文档](https://docs.snowflake.com/en/user-guide/views-semantic/materializations) 与 [ALTER SEMANTIC VIEW 语法](https://docs.snowflake.com/en/sql-reference/sql/alter-semantic-view)。
 
 对于日终持仓或监管汇总，结果正确和新鲜度往往比追求每个问题都最低延迟更重要。把 SLA 写进数据产品契约：例如最大延迟、估值日期、来源完成标志、迟到记录补算与重新对账规则。
 
@@ -456,6 +493,7 @@ Semantic View 的名称、描述、同义词、标签和 SQL 指令可能被用�
 13. **物化由证据驱动。** 观察常见查询、响应时间和刷新成本后再考虑物化；不要把每个指标都提前聚合。
 14. **明确跨 BI、Agent 和 SQL 客户端的治理范围。** Semantic View 对使用 Snowflake 的消费者很有价值，但如果其他系统另有一份重复指标定义，应明确哪份定义是权威的，以及怎么防止口径漂移。
 15. **为模型变更建立 owner。** 指标定义属于业务契约，数据工程不能独自决定绩效口径。模型发布前的业务确认和技术测试应该留下记录。
+16. **采用平台声明式部署时，也要评估功能状态和差异。** DCM Projects 可把 Semantic View 放在目标状态定义中管理，但相关能力当前标记为 Preview；不能因为声明式配置方便就忽略项目部署约束、权限差异和未支持的属性。
 
 可继续阅读以下资料：
 
@@ -465,6 +503,8 @@ Semantic View 的名称、描述、同义词、标签和 SQL 指令可能被用�
 - [Snowflake：YAML 规范](https://docs.snowflake.com/en/user-guide/views-semantic/semantic-view-yaml-spec) —— YAML 的正式字段定义。
 - [Snowflake：CREATE SEMANTIC VIEW](https://docs.snowflake.com/en/sql-reference/sql/create-semantic-view) 与 [ALTER SEMANTIC VIEW](https://docs.snowflake.com/en/sql-reference/sql/alter-semantic-view) —— DDL 语法和修改边界。
 - [Snowflake：YAML/DDL 选型](https://docs.snowflake.com/en/user-guide/views-semantic/yaml-vs-ddl) —— 两种定义方式的特性差异。
+- [Snowflake：Semantic View 物化](https://docs.snowflake.com/en/user-guide/views-semantic/materializations) —— 物化配置、刷新、权限、限制和监控；官方页面当前标记为 Preview。
+- [Snowflake：DCM Projects 支持的对象类型](https://docs.snowflake.com/en/user-guide/dcm-projects/dcm-projects-supported-entities) —— DEFINE SEMANTIC VIEW 的声明式部署路径与限制。
 - [Snowflake：从 YAML 创建对象的系统存储过程](https://docs.snowflake.com/en/sql-reference/stored-procedures/system_create_semantic_view_from_yaml) —— verify_only 与 create_or_alter 参数。
 - [Snowflake：Semantic View 查询方式](https://docs.snowflake.com/en/user-guide/views-semantic/querying) —— SELECT、SEMANTIC_VIEW 子句和权限。
 - [Snowflake：Verified Query Repository](https://docs.snowflake.com/en/user-guide/views-semantic/verified-query-repository) —— 黄金问题、参考 SQL 和 Cortex Analyst。
