@@ -66,6 +66,7 @@
 - `examples/metadata_snapshot.example.json`：元数据格式示例，仅供理解格式，不能当作目标环境的真实元数据。
 - `scripts/export_semantic_metadata.py`：通过当前 Snowflake 连接，对指定表执行 DESCRIBE TABLE，导出真实表列和类型；只导出元数据，不读取业务行。
 - `scripts/validate_semantic_mapping.py`：把映射清单与元数据快照比对，检查表/列是否存在、映射是否审批、是否有未决问题、是否有测试，以及 YAML 声明的基础表是否存在。
+- `scripts/validate_semantic_view_yaml.py`：离线检查 YAML 的基本结构、逻辑表、关系、主键字段和指标声明；不替代 Snowflake verify-only。
 
 ### 推荐执行顺序
 
@@ -90,7 +91,15 @@
          --metadata .work/metadata_snapshot.json \
          --yaml position_analytics.yaml
 
-7. 检查通过后，才由 Skill 依据映射清单生成 YAML。生成后重新运行检查，再执行：
+7. 检查通过后，才由 Skill 依据映射清单生成 YAML。生成后必须运行两项本地检查：
+
+       python scripts/validate_semantic_view_yaml.py position_analytics.yaml
+       python scripts/validate_semantic_mapping.py \
+         --mapping .work/semantic_mapping.json \
+         --metadata .work/metadata_snapshot.json \
+         --yaml position_analytics.yaml
+
+   将 `position_analytics.yaml` 替换为实际生成文件路径。两项检查均通过后，再执行：
 
        python scripts/deploy_semantic_view.py
 
