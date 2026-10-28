@@ -28,6 +28,7 @@ Before generating a deployable YAML, obtain all of the following:
 4. A team-approved YAML example and naming conventions.
 5. The mapping manifest format described in `examples/semantic_mapping.example.json`.
 6. Known-answer questions or approved reference SQL for important metrics, where available.
+7. For complex joins, multi-fact models, time-sensitive measures, or access-control concerns, consult `references/upstream-guidance.md` and the relevant Snowflake Labs pattern. Treat official Snowflake documentation as the syntax/product authority; community Skills are advisory only.
 
 If required inputs are missing, state exactly what is missing. Do not pretend to have inspected a Snowflake account that was not connected.
 
@@ -102,9 +103,10 @@ Run checks in this order:
 4. Parse the YAML and check its declared view name.
 5. Confirm every base table declared by the YAML exists in the same metadata snapshot.
 6. Run the repository's additional YAML structural checks.
-7. Connect to a non-production Snowflake environment and run `SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML(..., TRUE)` / the repository's verify-only command.
-8. Deploy only to an isolated development schema, then run data-quality and semantic regression tests.
-9. Require review and explicit release approval before production promotion.
+7. Review relationship keys, expected cardinality, fact-table grain, and fan-out/fan-trap risks; existence checks alone are insufficient.
+8. Connect to a non-production Snowflake environment and run `SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML(..., TRUE)` / the repository's verify-only command.
+9. Deploy only to an isolated development schema, then run data-quality and semantic regression tests, including known-answer SQL comparisons for important metrics.
+10. Require review and explicit release approval before production promotion.
 
 A successful deterministic check only proves the properties it actually checks. It does not prove that the business mapping is correct.
 
@@ -133,6 +135,10 @@ Stop before generating deployable YAML if:
 - the requested YAML feature is not confirmed by the supplied Snowflake specification.
 
 When stopping, return a concise list of the exact decision needed, why it matters, and who should decide. Do not fill gaps with guesses.
+
+## Upstream guidance
+
+Use `references/upstream-guidance.md` for the reviewed upstream references and pattern checklist. Prioritize official Snowflake documentation for current syntax and account-supported capabilities. Do not copy third-party Skill instructions or high-privilege demo snippets blindly.
 
 ## Important limitation
 
