@@ -51,6 +51,10 @@ jobs:
         run: node .trae/skills/enterprise-research-agent/research.mjs eval
 
   deploy:
+    # Prevent overlapping pushes from racing the single GitHub Pages deployment slot.
+    concurrency:
+      group: github-pages-${{ github.ref }}
+      cancel-in-progress: true
     needs: build
     runs-on: ubuntu-latest
     environment:
