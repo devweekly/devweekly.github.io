@@ -16,13 +16,13 @@
 
 Snowflake 当前文档建议向 Cortex Agents 迁移以获得更完整的 Agent 工作流；这不代表所有 Semantic View 查询都必须经过 Agent。对于固定、可审计的报表或 API，直接 SQL 往往更简单、更可控。
 
-## 2. 为什么 Semantic View 能帮助 Natural Language Query（NLQ）
+## 为什么 Semantic View 能帮助 Natural Language Query（NLQ）
 
 **Semantic View 本身不是自然语言模型，也不会自动把一句话变成 SQL。** 它的价值在于为 NLQ 系统提供一份可查询、可治理的业务语义契约，让 LLM 不必只凭列名、数据库注释或 Prompt 猜测“用户说的业务概念对应哪张表、哪个字段、怎样计算、如何关联”。
 
-Snowflake 官方将 Semantic View 定义为数据库中的业务语义对象：它集中定义逻辑表、维度、事实、指标和关系；AI 应用可以结合这些规则与 LLM 推理，生成更符合业务定义的查询。<Cite refs={["turn414241search2","turn414241search0"]} />
+Snowflake 官方将 Semantic View 定义为数据库中的业务语义对象：它集中定义逻辑表、维度、事实、指标和关系；AI 应用可以结合这些规则与 LLM 推理，生成更符合业务定义的查询。参考 [Semantic View overview](https://docs.snowflake.com/en/user-guide/views-semantic/overview) 和 [Semantic View YAML specification](https://docs.snowflake.com/en/user-guide/views-semantic/semantic-view-yaml-spec)。
 
-### 2.1 没有 Semantic View 时，NLQ 必须自己猜什么？
+### 没有 Semantic View 时，NLQ 必须自己猜什么？
 
 假设业务用户问：
 
@@ -39,7 +39,7 @@ Snowflake 官方将 Semantic View 定义为数据库中的业务语义对象：�
 
 LLM 即使生成了语法正确的 SQL，也可能在指标、连接路径、粒度或时间语义上犯错。单靠更长的 Prompt，无法保证所有应用都采用同一口径。
 
-### 2.2 Semantic View 如何提供约束
+### Semantic View 如何提供约束
 
 本项目的 `position_analytics.yaml` 展示了几种直接帮助 NLQ 的机制：
 
@@ -55,7 +55,7 @@ LLM 即使生成了语法正确的 SQL，也可能在指标、连接路径、粒
 
 这些元数据将“业务人员说的话”与“数据库中的物理实现”之间的映射从每次临时推断，变成可版本化、可评审和可复用的定义。具体哪些字段可用、哪些同义词和 verified queries 会被某个 NLQ 引擎读取，取决于该引擎及其集成方式；不能假设任意 LLM 自动读取 Snowflake 中的 Semantic View。
 
-### 2.3 从自然语言到查询的实际链路
+### 从自然语言到查询的实际链路
 
 以问题“截至 2026-10-27，各组合按资产类别的总市值是多少？”为例，NLQ 系统需要完成以下工作：
 
@@ -73,7 +73,7 @@ flowchart TD
 
 关键是：Semantic View 提供可被 NLQ 系统使用的业务定义，NLQ 引擎负责理解用户问题并选择语义元素，查询执行层负责运行查询。三者不是同一个组件。
 
-### 2.4 Semantic View 能改善什么，不能保证什么？
+### Semantic View 能改善什么，不能保证什么？
 
 它通常可以减少指标公式不一致、物理字段猜测、连接路径不一致和业务术语不匹配；如果正确建模，还可以明确时点指标的非可加性、维度含义和数据关系。它不能自动保证：
 
@@ -85,7 +85,7 @@ flowchart TD
 
 因此，生产级 NLQ 仍需要受限查询计划、服务端验证、Snowflake 权限控制、Verified Query/已知答案回归，以及对歧义问题的澄清策略。
 
-### 2.5 在 LangChain Deep Agents 中尤其要注意
+### 在 LangChain Deep Agents 中尤其要注意
 
 Semantic View 不会因为 Deep Agent 使用了 Snowflake Connector 就自动进入模型上下文。应用必须明确选择一种集成方式：
 
@@ -97,7 +97,7 @@ Semantic View 不会因为 Deep Agent 使用了 Snowflake Connector 就自动进
 
 参考：[Semantic View overview](https://docs.snowflake.com/en/user-guide/views-semantic/overview)、[Semantic View YAML specification](https://docs.snowflake.com/en/user-guide/views-semantic/semantic-view-yaml-spec)。
 
-## 3. 方式一：直接用 SQL 查询 Semantic View
+## 2. 方式一：直接用 SQL 查询 Semantic View
 
 本实验室的对象为：
 
