@@ -60,7 +60,7 @@
 
 新增文件：
 
-- `skills/semantic-view-generator/SKILL.md`：生成工作流的 Skill 规范，规定输入、阶段、禁止事项、停止条件和输出物。
+- `skills/semantic-view-generator/SKILL.md`：生成工作流的 Skill 规范，规定输入、阶段、禁止事项、停止条件和输出物。\n- `prompts/semantic_view_yaml_generator.md`：可单独复用的 Prompt 模板，明确禁止猜测表列名、伪造证据和跳过检查。
 - `examples/semantic_mapping.example.json`：业务概念到物理字段、YAML 路径和测试的映射清单示例。
 - `examples/metadata_snapshot.example.json`：元数据格式示例，仅供理解格式，不能当作目标环境的真实元数据。
 - `scripts/export_semantic_metadata.py`：通过当前 Snowflake 连接，对指定表执行 DESCRIBE TABLE，导出真实表列和类型；只导出元数据，不读取业务行。
