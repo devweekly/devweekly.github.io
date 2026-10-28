@@ -1,0 +1,32 @@
+name: Semantic View Lab - Static Validation
+
+on:
+  pull_request:
+    paths:
+      - "temp/snowflake-semantic-view/**"
+      - ".github/workflows/semantic-view-lab-validation.yml"
+  push:
+    branches: [main]
+    paths:
+      - "temp/snowflake-semantic-view/**"
+      - ".github/workflows/semantic-view-lab-validation.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install YAML parser
+        run: python -m pip install --disable-pip-version-check "PyYAML>=6,<7"
+      - name: Compile Python scripts
+        run: python -m py_compile temp/snowflake-semantic-view/scripts/*.py
+      - name: Validate semantic YAML structure
+        run: python temp/snowflake-semantic-view/scripts/validate_semantic_view_yaml.py
