@@ -107,6 +107,10 @@ Prompt/Skill 是对模型的行为约定，不是强制执行的安全边界。�
 
 必须先修改 YAML 内的基础表路径、字段表达式、主键、关系和指标，再运行验证。只改 SV_TARGET_SCHEMA 不会自动把 YAML 中的物理表路径转换为你的表。金融场景还需要确认事实表粒度、币种换算口径、估值时点和来源报表；不应把示例数字或指标定义直接带到生产环境。
 
+## 上游 Skill 与建模模式参考
+
+已对照 Snowflake Labs 和社区的 Semantic View Skill，并整理出适用模式、局限及后续改进清单：[`references/upstream-guidance.md`](references/upstream-guidance.md)。重点参考 Snowflake Labs 的 [`semantic-view-patterns`](https://github.com/Snowflake-Labs/coco-skills/tree/main/skills/semantic-view-patterns)，补充关系基数、fan trap、半可加指标、时间有效关系、Verified Query 回归和安全策略审查。社区 Skill 只作为工程实践参考，不视为官方产品规范；旧的 [`semantic-model-generator`](https://github.com/Snowflake-Labs/semantic-model-generator) 已被官方标注为由 Snowsight 原生 Semantic View Generator 替代。
+
 ## 权威参考
 
 - https://docs.snowflake.com/en/user-guide/views-semantic/overview
