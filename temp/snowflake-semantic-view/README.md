@@ -54,6 +54,54 @@
 
 仓库中的 .github/workflows/semantic-view-lab-validation.yml 会在相关文件变更时检查 Python 语法并验证 YAML 的基本结构。它不连接 Snowflake，也不代表 Snowflake 一定接受这份语义定义。线上验证由 deploy_semantic_view.py 默认执行的 verify_only 完成；回归脚本则需要一个已部署的 Semantic View 和已创建的教学表。
 
+## 从设计文档生成 YAML：推荐的 Skill + 脚本流程
+
+不要只靠 Prompt，也不要让人逐字段手抄 YAML。推荐把 LLM 用在理解业务描述、提出映射候选和生成 YAML 初稿上；把可确定的检查交给脚本；把 Snowflake 语法/对象检查交给 Snowflake；把业务口径交给业务负责人和回归测试。
+
+新增文件：
+
+- `skills/semantic-view-generator/SKILL.md`：生成工作流的 Skill 规范，规定输入、阶段、禁止事项、停止条件和输出物。
+- `examples/semantic_mapping.example.json`：业务概念到物理字段、YAML 路径和测试的映射清单示例。
+- `examples/metadata_snapshot.example.json`：元数据格式示例，仅供理解格式，不能当作目标环境的真实元数据。
+- `scripts/export_semantic_metadata.py`：通过当前 Snowflake 连接，对指定表执行 DESCRIBE TABLE，导出真实表列和类型；只导出元数据，不读取业务行。
+- `scripts/validate_semantic_mapping.py`：把映射清单与元数据快照比对，检查表/列是否存在、映射是否审批、是否有未决问题、是否有测试，以及 YAML 声明的基础表是否存在。
+
+### 推荐执行顺序
+
+1. 在设计文档里先明确粒度、业务指标公式、币种、时间语义、连接关系和未决问题。
+2. 从目标开发环境导出真实元数据。每张源表重复传入一个 `--table` 参数：
+
+       python scripts/export_semantic_metadata.py \
+         --table SV_FINANCE_LAB.MART.FACT_POSITION_DAILY \
+         --table SV_FINANCE_LAB.MART.DIM_PORTFOLIO \
+         --table SV_FINANCE_LAB.MART.DIM_SECURITY \
+         --output .work/metadata_snapshot.json
+
+3. 让 Skill 读取设计文档、这份元数据、当前官方 YAML 规范和团队示例。第一轮只产出映射清单和歧义问题，不急着生成 YAML。
+4. 数据工程师确认物理字段、类型、粒度和关系；业务负责人确认指标公式、单位、时间口径和聚合规则。未决问题必须先解决。
+5. 将已审批的映射清单保存为 JSON，参照 `examples/semantic_mapping.example.json` 的格式。注意把示例中的对象和字段换成刚刚从目标环境导出的真实对象。
+6. 运行确定性检查：
+
+       python scripts/validate_semantic_mapping.py \
+         --mapping .work/semantic_mapping.json \
+         --metadata .work/metadata_snapshot.json \
+         --yaml position_analytics.yaml
+
+7. 检查通过后，才由 Skill 依据映射清单生成 YAML。生成后重新运行检查，再执行：
+
+       python scripts/deploy_semantic_view.py
+
+   该命令默认走 Snowflake verify-only。随后部署到隔离开发环境并运行 `python scripts/test_semantic_view.py` 和已批准的独立 SQL 对账；不要把 verify-only 当成业务正确性的证明。
+8. PR 中同时评审设计文档、映射清单、YAML 和测试结果。生产发布必须经过明确的审批和发布流程。
+
+元数据快照应与目标账号、schema 和生成时间绑定。表结构变化后要重新导出；不要长期复用过期快照。不要把真实业务数据、凭据或私钥写入快照或提交到 Git。
+
+### 为什么不能只靠 Prompt？
+
+Prompt/Skill 是对模型的行为约定，不是强制执行的安全边界。它可以要求模型禁止猜测，但模型仍可能违反要求。脚本可以确定性地检查映射中引用的表列是否存在、审批状态是否正确、是否存在未决问题，以及 YAML 中的基础表是否在快照中；Snowflake 的 verify-only 可以检查服务端接受情况；数据测试和业务验收则负责检查指标结果。
+
+当前验证脚本**不会**证明表达式业务含义正确，也不会自动证明每个 YAML 表达式都已完整映射到清单。它是发布门禁的一层，而不是全自动语义正确性证明。后续若要强化，可再将 YAML 解析为语法树，校验表达式列引用、关系键与映射清单的一致性，并把独立 SQL 对账纳入 CI。
+
 ## 改成自己的数据
 
 必须先修改 YAML 内的基础表路径、字段表达式、主键、关系和指标，再运行验证。只改 SV_TARGET_SCHEMA 不会自动把 YAML 中的物理表路径转换为你的表。金融场景还需要确认事实表粒度、币种换算口径、估值时点和来源报表；不应把示例数字或指标定义直接带到生产环境。
