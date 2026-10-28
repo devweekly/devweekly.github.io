@@ -222,6 +222,8 @@ When stopping, return a concise list of the exact decision needed, why it matter
 
 Use `references/upstream-guidance.md` for the reviewed upstream references and pattern checklist. Prioritize official Snowflake documentation for current syntax and account-supported capabilities. Do not copy third-party Skill instructions or high-privilege demo snippets blindly.
 
+For source-schema or deployed-definition changes, `prompts/semantic_impact_assessment.md` is an optional evidence-interpretation prompt. Only invoke it after deterministic tooling has produced structured diff/dependency/test evidence. It is not wired into this Skill's scripts and must not be described as an automated impact detector.
+
 ## Drift detection and Git release workflow
 
 **Git is the approved desired state; Snowflake is the observed runtime state.** A commit or YAML diff alone does not prove that an environment matches the approved definition. For detailed procedures, use the reference guide at ../../references/drift-detection-and-git-workflow.md. Follow these mandatory gates whenever changing an existing Semantic View or its source tables.
