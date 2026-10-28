@@ -90,7 +90,9 @@ Cortex Agents 教程示例：<https://github.com/Snowflake-Labs/sfguides/tree/ma
 
 ## 对本项目的具体改进清单
 
-### 立即落实到生成流程
+**状态说明：**下面的“立即落实”和测试夹具清单是目标要求/待办，不代表现有脚本已经实现。当前实际脚本覆盖与未覆盖项以 [`workflow-execution-contract.md`](workflow-execution-contract.md) 为准。尤其是表达式级列引用校验、依赖图、join 基数/fan-out 自动检测、VQR 结果等价检查、权限漂移和定时任务，目前不能被描述为已自动化。
+
+### 立即落实到生成流程（要求，不等于已实现）
 
 - [ ] 将关系两端的列、键声明、基数证据、预期粒度和 fan-out 风险加入 mapping manifest。
 - [ ] YAML 静态检查必须验证所有表达式中的物理列引用，而不仅是 `base_table`。无法可靠解析的表达式应明确标为未覆盖并阻止自动通过，不能静默跳过。
