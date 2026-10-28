@@ -1,0 +1,28 @@
+{
+  "generated_from": "Illustrative example only; replace with a snapshot exported from the target Snowflake environment.",
+  "tables": [
+    {
+      "database": "SV_FINANCE_LAB",
+      "schema": "MART",
+      "table": "FACT_POSITION_DAILY",
+      "columns": [
+        {
+          "name": "AS_OF_DATE",
+          "data_type": "DATE"
+        },
+        {
+          "name": "MARKET_VALUE_USD",
+          "data_type": "NUMBER(20,2)"
+        },
+        {
+          "name": "PORTFOLIO_ID",
+          "data_type": "VARCHAR(20)"
+        },
+        {
+          "name": "SECURITY_ID",
+          "data_type": "VARCHAR(20)"
+        }
+      ]
+    }
+  ]
+}
