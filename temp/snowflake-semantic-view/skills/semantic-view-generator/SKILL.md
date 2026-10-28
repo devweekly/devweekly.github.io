@@ -235,6 +235,17 @@ Use `references/upstream-guidance.md` for the reviewed upstream references and p
 
 Do not call drift detection automated until executable metadata-diff and deployed-definition comparison checks, fixture tests and failure cases exist. Until then, report which steps are manual or NOT RUN. The detailed guide defines the recommended M1–M5 implementation sequence and severity rules.
 
+### How to determine whether a source change affects a Semantic View
+
+Do not delegate this decision solely to visual inspection or an LLM prompt. Use the detailed procedure in ../../references/drift-detection-and-git-workflow.md, section “源表发生变化后：怎样判断是否影响 Semantic View”.
+
+- **Code is authoritative for deterministic checks:** diff before/after metadata; parse YAML; build source-column-to-semantic-element dependencies; match changes to YAML paths, mapping IDs and test IDs; apply explicit type-compatibility rules; run key uniqueness, grain and fan-out tests. Use a SQL parser/AST for expressions where supported, not a naive column-name grep.
+- **LLM is an evidence-based analyst, not a gatekeeper:** give it structured diffs, dependency hits, approved design/mapping, test results and unresolved items. Require structured output with evidence IDs, affected elements, uncertainty, missing checks and a recommended action. Validate its output schema and evidence references. It cannot mark checks PASS, approve mappings, deploy, or treat unresolved dependencies as no impact.
+- **Humans approve business semantics and unresolved risks:** escalate changes in meaning, units, currency, time rules, grain, unclear renames/types, incomplete expression parsing, missing reference SQL, conflicting results and security changes. Show a compact evidence chain rather than asking reviewers to read all raw diffs.
+- **Only code plus required regression evidence can conclude no impact:** a dependency miss is not proof of no impact. Use explicit statuses: BLOCKED, IMPACT_CONFIRMED, NO_DIRECT_DEPENDENCY_FOUND, REVIEW_REQUIRED, VALIDATED_NO_IMPACT, NOT_RUN. If a critical expression is unresolved or a required test did not run, block automatic approval.
+
+Current scripts do not yet implement this complete dependency graph, SQL-expression analysis, impact propagation and evidence-driven LLM review pipeline. Treat these as implementation requirements, not existing capabilities; report missing checks as NOT IMPLEMENTED/NOT RUN.
+
 ## Important limitation
 
 This Skill coordinates the reasoning and workflow. It is not itself a security boundary and cannot reliably enforce every prohibition. The scripts must independently check facts that can be checked mechanically; Snowflake must validate server-side syntax and object references; data tests and business owners must validate meaning.
