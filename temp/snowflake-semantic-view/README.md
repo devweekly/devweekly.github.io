@@ -136,6 +136,8 @@ Prompt/Skill 是对模型的行为约定，不是强制执行的安全边界。�
 
 LangChain Deep Agents 的详细实战独立放在 [references/langchain-deepagents-semantic-view.md](references/langchain-deepagents-semantic-view.md)，配套的 [可运行 Python 示例](examples/langchain_deepagents_semantic_view.py) 展示了自定义工具、参数绑定和结果处理。该方案不依赖 Snowflake Cortex Agent，推荐先用固定 SQL 的白名单工具，不要让模型直接执行任意 SQL。
 
+为什么 Semantic View 能帮助 NLQ、如何通过指标/同义词/维度/关系/粒度定义减少 LLM 对物理 schema 的猜测，以及它不能自动保证什么，详见 [references/using-semantic-view.md](references/using-semantic-view.md) 中的“为什么 Semantic View 能帮助 Natural Language Query（NLQ）”章节。特别注意：当前 Deep Agents Python 示例只是固定查询工具，不是自动读取完整语义模型的通用 NLQ 引擎。
+
 选择原则：固定报表和强审计场景优先考虑直接 SQL；后端应用可以用参数化 SQL；只有需要自然语言交互时才引入 Analyst/Agent。无论使用哪种入口，都要验证指标定义、查询结果和实际权限。
 
 ## Git 基线与漂移检测
