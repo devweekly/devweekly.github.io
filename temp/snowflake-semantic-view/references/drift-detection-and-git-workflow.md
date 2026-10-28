@@ -4,6 +4,8 @@
 
 Git 是批准的变更历史与期望状态的存储位置，不是 Snowflake 实际状态的替代品。只把 YAML 提交到 Git、只比较文件 diff，或只成功执行 verify-only，都不能证明已部署环境与仓库一致。
 
+开始操作前同时阅读 [`workflow-execution-contract.md`](workflow-execution-contract.md)。其中列明当前脚本的实际覆盖范围、逐条命令、会话身份核验方法、PASS/FAIL/NOT RUN/NOT IMPLEMENTED 的区别，以及教学测试的固定对象/日期限制。本指南描述目标流程，不代表所有检测器已经实现；当前自动化缺口必须按实际状态报告。
+
 ## 1. 漂移类型与检测范围
 
 | 漂移类型 | 比较对象 | 常见原因 | 风险 | 推荐处理 |
