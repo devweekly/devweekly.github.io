@@ -56,6 +56,8 @@
 
 ## 从设计文档生成 YAML：推荐的 Skill + 脚本流程
 
+执行前先阅读 [`references/workflow-execution-contract.md`](references/workflow-execution-contract.md)。该文件逐项列出当前每个脚本真正检查的内容、未覆盖的能力、正确命令顺序、人工环境核验步骤、状态定义和发布门禁。它是操作细节的统一说明；不要把 Skill/Prompt 的要求误认为脚本已实现的功能。
+
 不要只靠 Prompt，也不要让人逐字段手抄 YAML。推荐把 LLM 用在理解业务描述、提出映射候选和生成 YAML 初稿上；把可确定的检查交给脚本；把 Snowflake 语法/对象检查交给 Snowflake；把业务口径交给业务负责人和回归测试。
 
 新增文件：
