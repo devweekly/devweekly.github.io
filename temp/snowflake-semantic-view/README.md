@@ -121,6 +121,20 @@ Prompt/Skill 是对模型的行为约定，不是强制执行的安全边界。�
 
 必须先修改 YAML 内的基础表路径、字段表达式、主键、关系和指标，再运行验证。只改 SV_TARGET_SCHEMA 不会自动把 YAML 中的物理表路径转换为你的表。金融场景还需要确认事实表粒度、币种换算口径、估值时点和来源报表；不应把示例数字或指标定义直接带到生产环境。
 
+## 如何使用 Semantic View：必须使用 Snowflake Agent 吗？
+
+不需要。Semantic View 部署后可以直接用 SQL 查询，也可以由 Python/JDBC/ODBC 应用或兼容的 BI 工具访问；自然语言场景才需要考虑 Cortex Analyst API 或 Cortex Agent。Agent 是可选的消费入口，不是 Semantic View 的运行前提。
+
+详细用法见 [references/using-semantic-view.md](references/using-semantic-view.md)，包括：
+
+- 直接查询已部署 Semantic View 的 SQL 示例，以及 SEMANTIC_VIEW(...) 查询形式。
+- Python Snowflake Connector 参数化查询示例。
+- Cortex Analyst REST API 与 Cortex Agent 的适用场景和区别。
+- 如何把 Semantic View 配置为 Agent 工具，以及如何设计自然语言问题的回归评估。
+- 查询权限、安全边界，以及金融持仓时点指标不能跨估值日直接累加的注意事项。
+
+选择原则：固定报表和强审计场景优先考虑直接 SQL；后端应用可以用参数化 SQL；只有需要自然语言交互时才引入 Analyst/Agent。无论使用哪种入口，都要验证指标定义、查询结果和实际权限。
+
 ## Git 基线与漂移检测
 
 “把 YAML 放进 Git”只是起点，不等于完成版本控制或漂移检测。Git 保存经过审批的期望状态；Snowflake 中实际部署的定义、源表结构、权限和查询结果需要单独读取和比较。详细流程见 references/drift-detection-and-git-workflow.md。
