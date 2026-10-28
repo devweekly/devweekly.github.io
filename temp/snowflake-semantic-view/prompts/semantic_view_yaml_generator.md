@@ -48,9 +48,38 @@
 
 同时输出追踪表：设计决定 -> YAML 路径 -> 来源字段 -> 验证/回归测试。对无法一一对应的设计说明，解释它为何是描述性约束而不是 YAML 字段。
 
-### 阶段 E：验证计划
+### 阶段 E：实际执行验证脚本（不是只输出计划）
 
-至少列出并区分以下检查：
+本项目的脚本位于 `temp/snowflake-semantic-view/scripts/`，示例位于 `temp/snowflake-semantic-view/examples/`。先确认仓库根目录并进入实验目录；不要错误地把这些路径相对于 `skills/semantic-view-generator/` 解析。
+
+当具备 shell/runtime 时，按顺序实际运行以下命令，并读取结果：
+
+1. 从目标开发环境导出真实元数据：
+
+   `python scripts/export_semantic_metadata.py --table DATABASE.SCHEMA.TABLE --output .work/metadata_snapshot.json`
+
+   每张表重复 `--table`。必须替换占位符为设计涉及的真实对象。不要使用示例快照代替真实元数据。
+2. 将已批准映射保存为 `.work/semantic_mapping.json`，再运行：
+
+   `python scripts/validate_semantic_mapping.py --mapping .work/semantic_mapping.json --metadata .work/metadata_snapshot.json`
+3. 生成 YAML 后运行：
+
+   `python scripts/validate_semantic_view_yaml.py <yaml-path>`
+
+   `python scripts/validate_semantic_mapping.py --mapping .work/semantic_mapping.json --metadata .work/metadata_snapshot.json --yaml <yaml-path>`
+4. 本地检查通过后，在非生产环境运行 verify-only：
+
+   `python scripts/deploy_semantic_view.py --file <yaml-path>`
+
+5. 只有获得明确的开发环境部署授权且门禁通过后，才加 `--deploy`。部署后运行 `python scripts/test_semantic_view.py` 和 `sql/20_smoke_tests.sql`，再执行已批准的参考 SQL 对账。
+
+遇到任何非零退出码，读取完整错误并修复对应输入/映射/YAML，然后从受影响的门禁重新运行。不要绕过失败继续部署。没有运行环境或连接凭据时，将相关检查标记为 `NOT RUN` 并说明原因；不能把计划说成执行结果。示例文件和 GitHub Actions 的 fixture 检查都不等于真实 Snowflake 环境验证。
+
+当前映射校验器只检查清单引用和 YAML 的名称/基础表，不验证所有 YAML 表达式里的列引用与映射是否一致；必须明确披露这一限制。
+
+### 阶段 F：验证计划与结果报告
+
+至少列出并区分以下检查，并注明实际状态（PASS、FAIL 或 NOT RUN）：
 1. JSON/YAML 解析和本地结构检查；
 2. 脚本对照元数据快照检查表、列是否真实存在；
 3. Snowflake verify-only 服务端验证；
