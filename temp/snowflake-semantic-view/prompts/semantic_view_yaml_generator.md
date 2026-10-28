@@ -103,6 +103,18 @@
 6. 只有实际执行的检查才可标记 PASS/FAIL；缺少连接或执行环境标记 NOT RUN。不得把文档说明、计划或 fixture CI 通过说成实时漂移检查通过。
 7. 每次发布记录 Git commit SHA、目标环境/对象、验证报告、读回定义比较结果、回归结果、审批人和回滚版本。回滚 Semantic View 不代表上游数据或 schema 也已回滚。
 
+### 阶段 H：变化影响分析的职责边界
+
+源表 schema 或 Semantic View 定义发生变化时，不得仅靠人眼检查，也不得把判断完全交给 Prompt。严格按三层执行：
+
+1. **代码先算结构影响。** 对比前后真实元数据；解析 YAML；在支持范围内解析 SQL 表达式并构建源列到语义元素的依赖图；把变化关联到 YAML path、mapping ID、指标和测试。用明确规则检查类型兼容、键唯一性、事实粒度和 join fan-out。不能解析的表达式、缺失的依赖或不完整快照必须标记 unresolved。
+2. **LLM 解释结构化证据。** 输入 schema diff、依赖命中、批准的设计/mapping、测试结果和 unresolved 列表。输出每项判断的 evidence IDs、受影响元素、业务语义不确定性、缺失测试及建议动作。输出必须做 schema/evidence 校验；模型不得自行判 PASS、批准 mapping、部署或把 unresolved 解释成无影响。
+3. **测试验证运行行为。** 根据影响图运行相关 smoke tests、关系/粒度检查、known-answer 和独立参考 SQL 对账。依赖命中表示可能受影响；没有命中不代表业务结果一定不变。
+4. **人工只审批业务和未决风险。** 单位、币种、时间口径、业务含义、无法确认的改名/类型变化、未解析表达式、缺少参考 SQL、测试冲突及安全策略变化必须交由相应 owner 确认。
+5. **门禁由代码计算。** 结果只能是 BLOCKED、IMPACT_CONFIRMED、NO_DIRECT_DEPENDENCY_FOUND、REVIEW_REQUIRED、VALIDATED_NO_IMPACT 或 NOT_RUN。只有依赖覆盖充分、必需回归通过、结果符合已批准口径且必要审批完成，才能标记 VALIDATED_NO_IMPACT。关键依赖 unresolved 或必需测试未执行时，不得自动放行。
+
+本项目目前尚未实现完整的依赖图、SQL 表达式分析、影响传播和证据驱动的 LLM 审查闭环。未实现的检查必须报告 NOT IMPLEMENTED/NOT RUN，不能把 Prompt 的文字结论当作可执行验证。
+
 当前项目还没有完整的自动漂移检测闭环。必须明确披露现有脚本能力边界：映射/基础表检查不等于表达式级依赖 diff；文档流程不等于已实现的 metadata diff、部署定义语义 diff、权限漂移审计或定时监控。若这些检测器尚未实现，状态应为 NOT RUN / NOT IMPLEMENTED，而不能报告自动化通过。
 
 ## 输出格式
