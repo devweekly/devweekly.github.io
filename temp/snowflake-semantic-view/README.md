@@ -118,6 +118,21 @@ Prompt/Skill 是对模型的行为约定，不是强制执行的安全边界。�
 
 必须先修改 YAML 内的基础表路径、字段表达式、主键、关系和指标，再运行验证。只改 SV_TARGET_SCHEMA 不会自动把 YAML 中的物理表路径转换为你的表。金融场景还需要确认事实表粒度、币种换算口径、估值时点和来源报表；不应把示例数字或指标定义直接带到生产环境。
 
+## Git 基线与漂移检测
+
+“把 YAML 放进 Git”只是起点，不等于完成版本控制或漂移检测。Git 保存经过审批的期望状态；Snowflake 中实际部署的定义、源表结构、权限和查询结果需要单独读取和比较。详细流程见 references/drift-detection-and-git-workflow.md。
+
+执行要求：
+
+1. 首次建立基线时，记录 Git commit SHA、目标 Snowflake 环境、对象全名和导出时间；从目标环境导出源表元数据，并读取已部署 Semantic View 定义。经过数据工程师和业务 owner 审查后，才将其认定为可信基线。
+2. Git 中版本化业务设计、批准的 mapping、Semantic View YAML、依赖清单、回归测试和脱敏验证/发布报告。元数据快照是否入库遵循组织数据策略；绝不提交凭据、客户行数据或临时 .work 文件。
+3. 每个相关 PR 执行静态校验和依赖 diff；在受控的非生产环境重新导出实时元数据、执行 verify-only、部署后读回定义并比较，再跑 smoke tests、关系/粒度检查和独立 SQL 对账。
+4. 发布后及定时任务应将当前 Snowflake 状态与该环境最后一次批准的发布基线比较，而不是盲目与 Git HEAD 比较。这样才能发现 merge 后的手工修改、发布遗漏和环境间版本差异。
+5. 差异必须列明类型、变化前后、影响到的 YAML 路径/指标、严重级别、证据和处置状态。生产上发现的未知修改不能自动写回 Git；应冻结证据、分析影响、更新设计/mapping、提交 PR、验证并按审批发布或回滚。
+6. 没有执行的实时检查必须标记 NOT RUN。当前现有脚本尚不能独立完成完整的表达式级依赖分析、已部署 YAML 语义 diff、权限漂移检查和全自动定时监控；在这些可执行能力和测试落地前，不应声称漂移检测已自动化。
+
+推荐分阶段实现：M1 Git/静态门禁；M2 元数据 schema diff；M3 已部署定义规范化与语义 diff；M4 结果和安全策略回归；M5 发布后/定时检测、告警和回滚闭环。每阶段的输入输出、失败行为和测试要求已在详细指南中列明。
+
 ## 上游 Skill 与建模模式参考
 
 已对照 Snowflake Labs 和社区的 Semantic View Skill，并整理出适用模式、局限及后续改进清单：[`references/upstream-guidance.md`](references/upstream-guidance.md)。重点参考 Snowflake Labs 的 [`semantic-view-patterns`](https://github.com/Snowflake-Labs/coco-skills/tree/main/skills/semantic-view-patterns)，补充关系基数、fan trap、半可加指标、时间有效关系、Verified Query 回归和安全策略审查。社区 Skill 只作为工程实践参考，不视为官方产品规范；旧的 [`semantic-model-generator`](https://github.com/Snowflake-Labs/semantic-model-generator) 已被官方标注为由 Snowsight 原生 Semantic View Generator 替代。
