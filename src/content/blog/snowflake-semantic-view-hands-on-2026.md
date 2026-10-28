@@ -322,6 +322,72 @@ tables:
 
 只有这些问题得到足够回答后，才进入下一章的创建流程。此时 YAML 不再是设计讨论的起点，而是已评审的语义契约的一种部署表达。Snowflake 的逻辑表、关系、事实、维度和指标的具体语法见[官方 SQL 定义文档](https://docs.snowflake.com/en/user-guide/views-semantic/sql)；YAML 字段及约束见 [YAML 规范](https://docs.snowflake.com/en/user-guide/views-semantic/semantic-view-yaml-spec)。
 
+## 二点七、底层数据表变化后，Semantic View 会自动感知吗？
+
+这里必须区分“底层数据变化”和“底层表结构变化”。它们不是一回事，也不能都期待 Semantic View 自动完成同步。
+
+**结论先说：Semantic View 不是会自动把底层 schema 重新扫描并更新业务语义的动态模型。** 它保存的是明确声明的逻辑表、列表达式、关系、维度、事实和指标。底层表增加了一个字段，不意味着这个字段会自动出现在 Semantic View 中；即使某个变更没有立刻报错，也不代表业务定义仍然正确。Snowflake 官方建议把语义视图定义放在 Git 中，通过验证、测试和 CI/CD 部署变更，而不是依赖人工发现漂移。[开发与部署最佳实践](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices-dev)
+
+### 先区分三种变化
+
+| 底层变化 | Semantic View 会怎样 | 应采取的动作 |
+|---|---|---|
+| 表中新增一列 | 不会自动把新列作为维度、事实或指标暴露出来 | 判断该列是否属于业务分析范围；需要时更新设计文档和 YAML/DDL，再验证和部署 |
+| 已被语义定义引用的列被删除、改名或类型发生不兼容变化 | 相关表达式可能无法解析，部署或查询可能失败；不应假定系统会自动改写定义 | 将上游变更视为契约变更；先更新映射、语义定义和测试，再发布 |
+| 底层表的数据行新增或更新 | 语义定义通常不需要随每批数据变更而重写；查询读取底层数据 | 按数据管道本身的 SLA 检查数据新鲜度、质量和对账结果 |
+| 底层表或视图的定义被替换，且 Semantic View 配置了物化 | 物化刷新可能在后续刷新时发现依赖变化；刷新失败可能导致物化暂停 | 检查物化刷新历史和状态，按需要恢复或重建物化；不要把物化刷新当成语义定义更新 |
+| 维表的业务含义、分类规则或键关系变化，但列名不变 | 技术层面可能仍可查询，业务结果却可能已经错误 | 通过数据契约、业务评审、指标回归和数据对账识别；仅比较列名无法发现语义漂移 |
+
+关于物化还有一个容易混淆的细节：底层对象变化不会立即等同于 Semantic View 定义被更新。Snowflake 文档说明，依赖变化会在下一次物化刷新时被处理；若刷新失败，物化可能被暂停。物化是查询性能优化机制，不是底层 schema 变更的自动治理机制。参阅[物化及底层对象变化的处理方式](https://docs.snowflake.com/en/user-guide/views-semantic/materializations)。
+
+### 变化发生后，下一步应该怎么做？
+
+推荐把上游数据模型变更纳入一个明确的联动流程。假设数据工程团队准备给 `FACT_POSITION_DAILY` 增加 `PRICE_SOURCE`，或者将 `MARKET_VALUE_USD` 改名，流程不应该是“等 Semantic View 报错，再手工修 YAML”。
+
+```mermaid
+flowchart TD
+    A["上游表结构或业务口径变更"] --> B["检测变更并定位依赖"]
+    B --> C["判断是否影响 Semantic View"]
+    C --> D{"是否影响已暴露字段、关系或指标？"}
+    D -- 否 --> E["记录变更；运行基础兼容性检查"]
+    D -- 是 --> F["更新语义模型设计文档和字段映射"]
+    F --> G["业务/数据 owner 评审"]
+    G --> H["更新 YAML 或 SQL DDL"]
+    H --> I["静态检查与 Snowflake verify_only"]
+    I --> J["部署到开发环境"]
+    J --> K["查询回归、指标对账、权限检查"]
+    K --> L{"全部通过？"}
+    L -- 否 --> M["阻止发布并修复或回滚"]
+    L -- 是 --> N["推广到测试/生产并记录版本"]
+    E --> O["记录结果和依赖状态"]
+    N --> O
+```
+
+建议将下面几个环节落到实际工程里：
+
+1. **变更检测。** 在 dbt、SQL migration 或数据平台的 PR 中检查表的新增/删除/改名列、类型变化、主键/粒度变化。也可以定期从 Snowflake 元数据导出表结构，与上次已批准的 schema manifest 比较。仅靠定期比对列名还不够，因为“市场价值改成含应计利息”可能完全不改变 schema。
+2. **依赖识别。** 维护“物理表/列 → 逻辑表字段 → 语义指标 → Verified Query/报表”的映射。对本例而言，`FACT_POSITION_DAILY.MARKET_VALUE_USD` 不仅映射到同名 fact，还影响 `TOTAL_MARKET_VALUE_USD` 及按组合、行业汇总的回归测试。
+3. **影响分类。** 新增且未被使用的列通常不需要改 Semantic View；被引用列的删除、改名、类型变化属于高风险兼容性变更；指标口径或粒度变化属于业务契约变更，即使 SQL 仍然能运行，也必须重新评审。
+4. **验证与发布。** 先运行 YAML 结构检查，再使用 `SYSTEM$CREATE_SEMANTIC_VIEW_FROM_YAML(..., TRUE)` 做 Snowflake 侧验证；在隔离开发环境部署后，运行基于语义视图的查询、独立底表 SQL 对账和已批准的业务问题测试。只有测试通过才推广到生产。
+5. **监控与回滚。** 记录部署的 Git commit、目标环境、验证结果和业务批准人。生产回归失败时停止推广，必要时重新部署上一个已知良好的定义；同时确认上游 schema 是否也需要回退。仅回滚 Semantic View 并不能修复已被破坏的底层表。
+
+### 如何把联动自动化？
+
+第一版不必建设复杂的元数据平台，可以把检查放进现有 CI/CD：
+
+- 上游表的 DDL/dbt model 变更触发依赖检查。
+- Semantic View 的 YAML/DDL 与设计文档一起进入 Pull Request。
+- CI 检查被引用的物理表和列是否存在、数据类型是否兼容，以及关键粒度/主键测试。
+- 使用专用开发角色连接 Snowflake，执行服务端验证和部署后的 smoke/regression tests。
+- 将验证结果作为发布门禁；失败时禁止晋级生产。
+- 定期对比 Git 中的定义与 Snowflake 当前对象，发现有人在 Snowsight 手工修改后造成的配置漂移。
+
+Snowflake 提供 `SYSTEM$READ_YAML_FROM_SEMANTIC_VIEW`，可把当前 Semantic View 导出为 YAML，适合用于差异比较和漂移检查；但导出当前对象不能替代 Git 中的评审历史，也不能自动判断业务定义是否正确。官方还建议尽可能把定义同步到 Git，并通过 CI/CD 做准确性检查和部署。[官方开发与部署指南](https://docs.snowflake.com/en/user-guide/views-semantic/best-practices-dev)
+
+需要特别注意：Snowflake 当前的语义视图 DDL 支持范围和物化行为有具体限制。若需要修改表、列、关系、事实、维度或指标，应按当前定义能力使用 `CREATE OR ALTER SEMANTIC VIEW` 或受控的替换流程，而不是认为任意修改都可以通过 `ALTER SEMANTIC VIEW` 完成。使用 `CREATE OR REPLACE` 会删除已有物化；如果已经启用物化，应按官方说明评估使用 `CREATE OR ALTER` 并检查物化状态。[CREATE SEMANTIC VIEW](https://docs.snowflake.com/en/sql-reference/sql/create-semantic-view) · [ALTER SEMANTIC VIEW](https://docs.snowflake.com/en/sql-reference/sql/alter-semantic-view)
+
+因此，设计阶段就应在语义模型文档中补充“上游依赖与变更策略”：谁拥有底层表、哪些列和指标属于契约、哪些变更必须通知语义模型 owner、哪些测试是发布门禁，以及发生故障时如何回滚。这样 Semantic View 才能随着数据平台演进，而不是成为一份上线后逐渐过期的静态配置。
+
 ## 三、创建 Semantic View：两条路径
 
 Snowflake 支持 Snowsight 的可视化流程、SQL DDL 和 YAML。入门时，可以用 UI 帮忙探索表结构；需要代码评审、可重复部署和自动测试时，建议把 YAML 或 DDL 存在 Git 中，再从流水线部署。YAML 与 DDL 的能力基本接近，但并非每一个特性都完全相同；选定一种主要源文件格式后，避免让 UI、YAML 和 DDL 成为多人各自修改的多个真相源。
