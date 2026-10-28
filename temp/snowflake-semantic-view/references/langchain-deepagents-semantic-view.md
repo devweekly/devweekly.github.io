@@ -79,7 +79,7 @@ Snowflake 连接角色应仅具有查询目标 Semantic View 所需的权限，�
 
 ## 3. 完整代码：暴露一个受约束的查询工具
 
-将以下代码保存为 examples/langchain_deepagents_semantic_view.py。它只开放“查询指定估值日的组合市值”这一项业务能力。模型不能传入 SQL，也不能指定任意表名、列名或 SQL 子句。
+完整代码已单独保存为 [examples/langchain_deepagents_semantic_view.py](../examples/langchain_deepagents_semantic_view.py)，也在下方列出，便于阅读。它只开放“查询指定估值日的组合市值”这一项业务能力。模型不能传入 SQL，也不能指定任意表名、列名或 SQL 子句。
 
 ~~~python
 from __future__ import annotations
