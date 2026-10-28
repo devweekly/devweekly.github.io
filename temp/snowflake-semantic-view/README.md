@@ -54,6 +54,12 @@
 
 仓库中的 .github/workflows/semantic-view-lab-validation.yml 会在相关文件变更时检查 Python 语法并验证 YAML 的基本结构。它不连接 Snowflake，也不代表 Snowflake 一定接受这份语义定义。线上验证由 deploy_semantic_view.py 默认执行的 verify_only 完成；回归脚本则需要一个已部署的 Semantic View 和已创建的教学表。
 
+## 业务需求访谈：从业务人员获取完整语义
+
+在设计 Semantic View 之前，先与 Business Partner、Business Analyst 和业务 SME 确认业务目标、术语、指标定义、粒度、时间口径、例外规则、真实案例和验收标准。访谈不要求业务人员提供表名、字段名或 SQL；技术团队负责将已确认的业务定义映射到数据模型。
+
+操作指南：[references/business-requirements-interview-guide.md](references/business-requirements-interview-guide.md)。文档包含 60 分钟会议议程、按主题组织的访谈问题、案例走查、会议记录模板、冲突处理和会后确认流程。
+
 ## 从设计文档生成 YAML：推荐的 Skill + 脚本流程
 
 执行前先阅读 [`references/workflow-execution-contract.md`](references/workflow-execution-contract.md)。该文件逐项列出当前每个脚本真正检查的内容、未覆盖的能力、正确命令顺序、人工环境核验步骤、状态定义和发布门禁。它是操作细节的统一说明；不要把 Skill/Prompt 的要求误认为脚本已实现的功能。
