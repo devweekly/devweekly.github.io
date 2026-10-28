@@ -30,3 +30,8 @@ jobs:
         run: python -m py_compile temp/snowflake-semantic-view/scripts/*.py
       - name: Validate semantic YAML structure
         run: python temp/snowflake-semantic-view/scripts/validate_semantic_view_yaml.py
+      - name: Test semantic mapping validator against checked-in fixtures
+        run: >-
+          python temp/snowflake-semantic-view/scripts/validate_semantic_mapping.py
+          --mapping temp/snowflake-semantic-view/examples/semantic_mapping.example.json
+          --metadata temp/snowflake-semantic-view/examples/metadata_snapshot.example.json
