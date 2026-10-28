@@ -1,0 +1,221 @@
+name: INVESTMENT_PORTFOLIO_OVERVIEW
+description: >
+  Curated analytics model for daily investment portfolio positions.
+  Market value, cost basis, and unrealized P&L are expressed in USD by
+  upstream transformations. Position measures are point-in-time snapshots;
+  filter AS_OF_DATE to a single valuation date for portfolio totals.
+tables:
+  - name: POSITION_DAILY
+    description: >
+      One row per portfolio, security, and valuation date. This is an
+      aggregated daily position snapshot, not a transaction or tax-lot table.
+    base_table:
+      database: SV_FINANCE_LAB
+      schema: MART
+      table: FACT_POSITION_DAILY
+    primary_key:
+      columns:
+        - PORTFOLIO_ID
+        - SECURITY_ID
+        - AS_OF_DATE
+    dimensions:
+      - name: PORTFOLIO_ID
+        description: Stable identifier of the investment portfolio.
+        expr: PORTFOLIO_ID
+        data_type: VARCHAR(20)
+      - name: SECURITY_ID
+        description: Stable internal security identifier.
+        expr: SECURITY_ID
+        data_type: VARCHAR(20)
+    time_dimensions:
+      - name: AS_OF_DATE
+        synonyms:
+          - valuation date
+          - snapshot date
+          - as of date
+        description: Business valuation date for the position snapshot, not the load timestamp.
+        expr: AS_OF_DATE
+        data_type: DATE
+    facts:
+      - name: QUANTITY
+        synonyms:
+          - units held
+          - shares held
+        description: Quantity held at the snapshot grain. Unit semantics vary by instrument.
+        expr: QUANTITY
+        data_type: NUMBER(24,8)
+      - name: MARKET_VALUE_USD
+        synonyms:
+          - position market value
+          - market value in dollars
+        description: Position market value normalized to USD by the upstream data pipeline.
+        expr: MARKET_VALUE_USD
+        data_type: NUMBER(20,2)
+      - name: COST_BASIS_USD
+        synonyms:
+          - cost basis
+          - invested cost
+        description: USD cost basis using the source product's approved accounting convention.
+        expr: COST_BASIS_USD
+        data_type: NUMBER(20,2)
+      - name: UNREALIZED_PNL_USD
+        synonyms:
+          - unrealized profit and loss
+          - unrealized gain loss
+        description: Unrealized P&L in USD as supplied by the curated position mart.
+        expr: UNREALIZED_PNL_USD
+        data_type: NUMBER(20,2)
+      - name: ACCRUED_INTEREST_USD
+        synonyms:
+          - accrued interest
+        description: Accrued interest in USD; do not assume it is included in market value or P&L.
+        expr: ACCRUED_INTEREST_USD
+        data_type: NUMBER(20,2)
+    metrics:
+      - name: TOTAL_MARKET_VALUE_USD
+        synonyms:
+          - total portfolio market value
+          - assets under management by position
+          - market value
+        description: >
+          Sum of USD position market values at a selected valuation date.
+          This is semi-additive over time and must not be summed across daily snapshots.
+        expr: SUM(MARKET_VALUE_USD)
+        non_additive_dimensions:
+          - table: POSITION_DAILY
+            dimension: AS_OF_DATE
+            sort_direction: descending
+            null_order: last
+      - name: TOTAL_COST_BASIS_USD
+        synonyms:
+          - total cost basis
+        description: Sum of position cost basis in USD for the selected snapshot.
+        expr: SUM(COST_BASIS_USD)
+        non_additive_dimensions:
+          - table: POSITION_DAILY
+            dimension: AS_OF_DATE
+            sort_direction: descending
+            null_order: last
+      - name: TOTAL_UNREALIZED_PNL_USD
+        synonyms:
+          - total unrealized P&L
+          - unrealized gain loss
+        description: Sum of USD unrealized P&L for the selected snapshot. Source conventions must be documented.
+        expr: SUM(UNREALIZED_PNL_USD)
+        non_additive_dimensions:
+          - table: POSITION_DAILY
+            dimension: AS_OF_DATE
+            sort_direction: descending
+            null_order: last
+      - name: POSITION_COUNT
+        synonyms:
+          - number of positions
+          - count of holdings
+        description: Number of portfolio-security snapshot rows at the model grain.
+        expr: COUNT(SECURITY_ID)
+  - name: PORTFOLIO
+    description: Investment portfolio master data with one row per portfolio identifier.
+    base_table:
+      database: SV_FINANCE_LAB
+      schema: MART
+      table: DIM_PORTFOLIO
+    primary_key:
+      columns:
+        - PORTFOLIO_ID
+    dimensions:
+      - name: PORTFOLIO_ID
+        description: Stable identifier of the investment portfolio.
+        expr: PORTFOLIO_ID
+        data_type: VARCHAR(20)
+      - name: PORTFOLIO_NAME
+        synonyms:
+          - portfolio
+          - fund name
+          - mandate name
+        description: Business name of the investment portfolio.
+        expr: PORTFOLIO_NAME
+        data_type: VARCHAR(100)
+      - name: INVESTMENT_STRATEGY
+        synonyms:
+          - investment mandate
+          - strategy
+        description: Approved high-level investment strategy.
+        expr: INVESTMENT_STRATEGY
+        data_type: VARCHAR(80)
+      - name: BASE_CURRENCY
+        synonyms:
+          - portfolio currency
+        description: Portfolio accounting base currency; distinct from instrument currency.
+        expr: BASE_CURRENCY
+        data_type: VARCHAR(3)
+      - name: RISK_PROFILE
+        description: Portfolio-level risk classification from the portfolio master.
+        expr: RISK_PROFILE
+        data_type: VARCHAR(30)
+  - name: SECURITY
+    description: Curated security master for instrument classification and lookup.
+    base_table:
+      database: SV_FINANCE_LAB
+      schema: MART
+      table: DIM_SECURITY
+    primary_key:
+      columns:
+        - SECURITY_ID
+    dimensions:
+      - name: SECURITY_ID
+        description: Stable internal security identifier.
+        expr: SECURITY_ID
+        data_type: VARCHAR(20)
+      - name: TICKER
+        synonyms:
+          - symbol
+          - security code
+        description: Market ticker/symbol as stored by the curated security master.
+        expr: TICKER
+        data_type: VARCHAR(16)
+      - name: SECURITY_NAME
+        synonyms:
+          - instrument name
+          - security
+        description: Display name of the security.
+        expr: SECURITY_NAME
+        data_type: VARCHAR(160)
+      - name: ASSET_CLASS
+        synonyms:
+          - asset type
+          - instrument type
+        description: Curated broad asset classification.
+        expr: ASSET_CLASS
+        data_type: VARCHAR(40)
+      - name: SECTOR
+        synonyms:
+          - industry sector
+        description: Sector/classification supplied by the security master; not necessarily a regulated taxonomy.
+        expr: SECTOR
+        data_type: VARCHAR(80)
+      - name: SECURITY_CURRENCY
+        synonyms:
+          - trading currency
+          - instrument currency
+        description: Instrument currency; USD-normalized measures must not be confused with this field.
+        expr: SECURITY_CURRENCY
+        data_type: VARCHAR(3)
+      - name: ISSUER_COUNTRY
+        synonyms:
+          - country of issuer
+        description: Issuer country from the curated security master.
+        expr: ISSUER_COUNTRY
+        data_type: VARCHAR(2)
+relationships:
+  - name: POSITION_TO_PORTFOLIO
+    left_table: POSITION_DAILY
+    right_table: PORTFOLIO
+    relationship_columns:
+      - left_column: PORTFOLIO_ID
+        right_column: PORTFOLIO_ID
+  - name: POSITION_TO_SECURITY
+    left_table: POSITION_DAILY
+    right_table: SECURITY
+    relationship_columns:
+      - left_column: SECURITY_ID
+        right_column: SECURITY_ID
