@@ -752,6 +752,376 @@ CostPerSuccessfulTask =
 
 ---
 
+## 17. DeepSeek、Kimi、GLM 的开源项目：哪些与企业 GPU 平台直接相关
+
+本章关注 DeepSeek、Moonshot AI（Kimi）和 Z.ai / 智谱（GLM）公开的代码仓库，而不只是模型权重。它们的开源内容覆盖不同层次：完整或部分推理引擎、CUDA Kernel 和 MoE 通信库、KV Cache 基础设施、Coding Agent Runtime、模型训练和评测。
+
+需要先区分三个概念：
+
+- **模型开源 / Open Weights**：提供模型权重、配置、Tokenizer 和模型说明。它解决“运行哪个模型”，不等于提供生产 Serving 系统。
+- **推理组件开源**：提供 Attention Kernel、GEMM、Expert Parallelism、KV Cache 或调度模块。它们解决推理系统的局部性能问题，通常需要集成到 vLLM、SGLang 等运行时。
+- **生产服务系统开源**：提供模型执行引擎、请求调度、缓存、路由和故障处理等更完整的能力。即使如此，也要检查公开版本是否包含线上服务所需的全部组件。
+
+### 17.1 DeepSeek：最值得关注的是推理内核、MoE 通信和 DeepInfer
+
+DeepSeek 的开源仓库与 GPU 推理架构关系非常直接。其技术路线不是只发布模型，而是把支撑大规模 MoE 推理的底层能力逐步拆出来。
+
+| 项目 | 所属层次 | 解决的问题 | 与 B300 / GB300 的关系 | 建议关注度 |
+| --- | --- | --- | --- | --- |
+| [DeepInfer](https://github.com/deepseek-ai/DeepInfer) | 推理执行引擎 | DeepSeek-V4.1-Flash 高性能离线推理，包含模型运行时、调度、并行、采样和结构化输出 | 直接涉及 SM100 GPU、Attention DP、Context Parallel、MoE EP/EPLB、推测解码 | **最高：重点 POC** |
+| [DeepEP](https://github.com/deepseek-ai/DeepEP) | MoE 通信库 | Expert Parallelism 的 Token Dispatch / Combine、All-to-All 通信 | 依赖 NVLink 和跨节点 RDMA；与 HGX B300 多节点和 GB300 NVL72 互联拓扑直接相关 | **最高：重点研究** |
+| [DeepGEMM](https://github.com/deepseek-ai/DeepGEMM) | GEMM / Tensor Core Kernel | FP8、FP4、BF16 矩阵计算及融合 MoE GEMM | 影响 Blackwell 上 MoE 专家矩阵计算效率 | **最高：持续跟踪** |
+| [FlashMLA](https://github.com/deepseek-ai/FlashMLA) | Attention Kernel | Multi-head Latent Attention、稀疏 Attention、FP8/FP4 KV Cache 相关计算 | 对采用 MLA / DeepSeek Sparse Attention 的模型尤其重要；需核对 GPU 架构和 CUDA 版本 | **高：模型相关** |
+| [TileKernels](https://github.com/deepseek-ai/TileKernels) | Kernel 集合 | MoE Routing、量化、Engram、RoPE 等优化算子 | 可作为 Blackwell Kernel 优化与 TileLang 开发的参考 | **高：底层工程跟踪** |
+| [DeepSelect](https://github.com/deepseek-ai/DeepSelect) | Top-K / Sparse Attention Kernel | DSA 和采样中的 Top-K 选择 | 对稀疏 Attention 的索引和选择路径有价值 | 中高：模型相关 |
+| [DeepJIT](https://github.com/deepseek-ai/DeepJIT) | Kernel JIT 编译 | GPU / xPU Kernel 的运行时编译支持 | 是 DeepGEMM、DeepEP 等底层组件的构建和运行路径之一 | 中：理解依赖 |
+| [deepseek-recipe](https://github.com/deepseek-ai/deepseek-recipe) | Tokenizer / API 协议适配 | 高性能 Token 编解码及 API 协议行为对齐 | 对 API Gateway 和 Model Adapter 的协议兼容测试有参考价值，不负责 GPU 调度 | 中：接口层参考 |
+| [deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) | Coding Agent Harness | 插件化 Agent、工具和工作流执行 | 位于 GPU 推理服务上层，可研究 Agent Runtime、插件边界和工具扩展 | 高：Agent 层参考 |
+| [3FS](https://github.com/deepseek-ai/3FS) | 分布式文件系统 | 面向 AI 训练和推理的高性能分布式文件存储 | 可研究大模型权重加载、共享数据和高吞吐存储；不一定需要直接采用 | 中：存储架构参考 |
+| [DeepSpec](https://github.com/deepseek-ai/DeepSpec) | 推测解码研究与评测 | Speculative Decoding 算法训练和评估 | 对降低 Decode 成本有参考价值，需看是否已被主推理引擎更成熟地集成 | 中：专项研究 |
+
+#### DeepInfer 应该怎样理解
+
+DeepInfer 是这组项目中最值得首先验证的项目，但必须准确理解它的公开边界。它面向 DeepSeek-V4.1-Flash，公开内容包括优化 Kernel、模型和 Sampler Runtime、Attention DP / Balanced CP、MoE EP 与 EPLB、推测解码、异步调度、Batch-invariant Inference 和 Structured Output。
+
+它并不等于下载后就能得到完整的 DeepSeek 在线服务。官方公开说明指出，完整服务还需要 KV Cache 系统、Prefill/Decode 或 Vision Encoder 的分离部署，以及跨 Data Parallel 副本的负载均衡。公开版本没有把这些服务组件全部包含进来。生产部署还需要自行提供 API、身份认证、配额、路由、缓存、监控和多副本故障处理。
+
+这一区别对架构决策很重要：**DeepInfer 可以作为 DeepSeek 模型的专用推理执行路径进行 POC，但不能直接替代企业统一 Serving Control Plane。** 如果企业同时部署 DeepSeek、Kimi 和 GLM，仍然需要一个统一入口和统一运营层。
+
+DeepInfer 的公开依赖和硬件要求也需要进入 POC 兼容性矩阵。当前 README 提到 Linux、Python 3.12、CUDA 13，以及 NVIDIA SM100 GPU；项目也列出 Ascend 950 支持。不能因为它是 DeepSeek 官方项目，就假设任意 CUDA、驱动、推理框架版本和所有 Blackwell SKU 都可以直接运行。需要锁定 commit、CUDA、编译器、PyTorch、NCCL 和 GPU 型号后验证。
+
+#### DeepEP 为什么值得 B300 集群工程师重点学习
+
+DeepEP 不是一个完整推理服务，而是 MoE Expert Parallelism 通信库。MoE 模型在每个 Token 上选择若干 Experts，Token 需要被发送到相应 GPU 上的 Expert，再把结果汇总回来。这个 Dispatch / Combine 过程可能跨 GPU、跨节点，通信效率会直接影响端到端 Decode 和 Prefill 性能。
+
+对 B300 集群来说，应重点验证：
+
+- 单个 HGX B300 节点内 NVLink / NVSwitch 通信；
+- 多节点之间通过 InfiniBand 或 RoCE RDMA 进行的通信；
+- GPU 与 NIC 的 PCIe / NUMA 亲和关系；
+- All-to-All 的小消息延迟和大消息带宽；
+- Expert 负载不均衡、热点 Expert 和 EPLB；
+- 通信与 GEMM 计算是否能够有效重叠；
+- 节点或链路异常时，通信是否超时、恢复或正确失败。
+
+DeepEP 文档列出的环境要求包括 Hopper 或更新 GPU、CUDA 13.1 及以上、NCCL 2.32.3 及以上，以及节点内 NVLink 和节点间 RDMA。它明确说明 InfiniBand 是经过充分测试的网络，RoCE 在理论上兼容，但不能据此认定任意 RoCE Fabric 已经验证。企业若使用 RoCE，必须自行完成端到端压力和故障测试。
+
+#### DeepSeek Harness 与 DeepInfer 是两个不同层次
+
+DeepSeek Harness 是插件化 Coding Agent 项目，关注 Agent 如何组织工具、插件和任务执行；DeepInfer 则关注模型如何在 GPU 上执行。两者可以处于同一企业平台的不同层：
+
+- Harness / Agent Runtime：会话、工具调用、任务编排、工作区和执行过程；
+- AI Gateway：模型路由、身份、配额、审计和协议兼容；
+- DeepInfer / vLLM / SGLang：模型推理执行；
+- DeepEP / DeepGEMM / FlashMLA：更底层的通信和计算 Kernel。
+
+对于企业 AI Coding 平台，DeepSeek Harness 值得作为 Agent Runtime 的架构参考，但不应与 GPU Serving 层混为一谈。若企业已有 Agent Runtime，应重点比较插件生命周期、工具权限、状态持久化、任务恢复和审计能力，而不是为了使用某个模型就替换整个 Agent 平台。
+
+### 17.2 Moonshot AI / Kimi：Mooncake 是最有架构价值的项目
+
+Moonshot 的开源项目覆盖模型、Coding Agent、MoE 通信、Attention Kernel 和 KV Cache 基础设施。其中对 GPU 集群架构最有价值的不是 Kimi Code，而是 Mooncake。
+
+| 项目 | 所属层次 | 解决的问题 | 与 B300 / GB300 的关系 | 建议关注度 |
+| --- | --- | --- | --- | --- |
+| [Mooncake](https://github.com/kvcache-ai/Mooncake) | KV Cache / Transfer / Serving Infrastructure | KV-centric 架构、Prefill/Decode 分离、分布式 KV Cache 和高速数据传输 | 对长上下文、多轮 Agent、跨节点 KV 复用和 RDMA 传输很有价值 | **最高：重点研究和 POC** |
+| [MoonEP](https://github.com/MoonshotAI/MoonEP) | MoE Expert Parallelism | 动态冗余 Experts，改善不同 Rank 的 Token 负载平衡 | 与 DeepEP 属于相邻问题域，可比较负载均衡和通信机制 | 高：MoE 专项比较 |
+| [FlashKDA](https://github.com/MoonshotAI/FlashKDA) | Attention Kernel | Kimi Delta Attention 的高性能 Kernel | 只有采用 KDA / 对应 Kimi 模型架构时才直接相关 | 中高：模型相关 |
+| [checkpoint-engine](https://github.com/MoonshotAI/checkpoint-engine) | 模型权重热更新 | 在 LLM 推理引擎运行期间更新模型权重 | 适用于模型版本切换、权重更新和减少服务中断的设计研究 | 中高：发布运维方向 |
+| [kimi-code](https://github.com/MoonshotAI/kimi-code) | Coding Agent | CLI Agent、代码工作流和开发者交互 | 位于 Agent Runtime 层，不负责 GPU 推理集群管理 | 高：Agent 层参考 |
+| [Kimi-K2 / Kimi-K2.5 / Kimi-K3](https://github.com/MoonshotAI) | 模型与模型架构 | MoE、Agentic Coding、长上下文和多模态能力 | 用于模型候选和架构适配测试，不是部署控制平面 | 高：模型选型 |
+| [Kimi-Vendor-Verifier](https://github.com/MoonshotAI/Kimi-Vendor-Verifier) | 模型 API 一致性验证 | 检查不同模型服务商的 API 输出是否保持一致 | 对多模型供应商、多推理后端的兼容性回归有参考价值 | 中：验证工具 |
+
+#### Mooncake：把 KV Cache 从 GPU 进程内部资源提升为集群级基础设施
+
+传统推理服务通常由一个模型实例管理自己的 KV Cache。请求进入哪个实例，前缀缓存就主要在该实例内部复用。实例重启、请求被路由到其它节点或模型扩容时，缓存复用会受到限制。
+
+Mooncake 的设计把 KV Cache 作为核心资源来管理：分离 Prefill 与 Decode 集群，并利用 GPU 节点中未充分利用的 CPU、DRAM、SSD 和 NIC 资源，形成分层、分布式的 KV Cache 池。它的主要组件可以按职责理解：
+
+- **Mooncake Transfer Engine**：提供跨节点、跨存储和异构设备的数据传输能力，支持 RDMA、拓扑感知路径选择和多网卡带宽聚合。
+- **Mooncake Store**：提供分布式 KV Cache 和模型权重相关存储能力。
+- **KV-aware Scheduler / Conductor 思路**：根据缓存复用、请求负载和 SLO 选择 Prefill / Decode 实例。
+- **Prefill / Decode Disaggregation**：把输入处理和逐 Token 生成拆到不同资源池，允许独立扩缩容。
+
+对 Coding Agent 来说，Mooncake 的价值尤其明显。多个任务可能共享系统提示、工具定义、代码仓库公共上下文，且一个 Session 会产生多轮模型请求。若路由、缓存键和安全隔离设计合理，跨请求复用 KV 可以减少重复 Prefill；长上下文场景还可以把部分缓存放到 GPU 之外的存储层。
+
+但它不是“装上 Mooncake 就能自动节省成本”。必须测量 KV Cache 的实际命中率、缓存块大小、数据传输成本、SSD/DRAM 带宽、缓存淘汰策略、租户隔离和 SLO。若请求前缀高度动态、上下文复用率低，分布式缓存系统本身的网络和运维成本可能超过收益。
+
+Mooncake 也不是只能配 Kimi 模型。其项目定位是 Serving Infrastructure，并已与 vLLM、SGLang 等生态集成。对企业平台来说，应该把它作为可选 KV Cache / Transfer 层评估，而不是绑定某个模型厂商。
+
+#### MoonEP 与 DeepEP：不要把两个项目视为同一个东西
+
+DeepEP 和 MoonEP 都与 MoE Expert Parallelism 有关，但设计重点并不完全相同。DeepEP 更侧重高性能 EP Dispatch / Combine 通信原语；MoonEP 的项目定位强调通过动态冗余 Experts 改善各 Rank 的 Token 负载平衡。
+
+在实际部署中应比较：通信延迟、带宽、Expert 热点、负载均衡开销、冗余 Expert 的显存成本、与 vLLM / SGLang / DeepInfer 的集成方式，以及跨节点网络要求。不要只比较单个 All-to-All Benchmark。
+
+### 17.3 Z.ai / 智谱 GLM：重点在模型适配和 Agent 能力，不是独立 GPU Serving 栈
+
+GLM 官方仓库主要提供模型权重、模型说明、工具调用和推理部署 Recipes。就目前公开项目而言，GLM 并没有一个与 vLLM、SGLang 或 NVIDIA Dynamo 对等的通用 GPU Serving Control Plane。
+
+| 项目 / 资源 | 所属层次 | 解决的问题 | 与 B300 / GB300 的关系 | 建议关注度 |
+| --- | --- | --- | --- | --- |
+| [zai-org/GLM-5](https://github.com/zai-org/GLM-5) | 模型、部署 Recipes、Agent Skills | GLM-5 系列权重、模型配置、工具调用和本地部署说明 | 用于验证 vLLM / SGLang 对 GLM 的模型实现、Parser、量化和并行支持 | **最高：模型适配基线** |
+| [GLM-5.3-Flash 等模型权重](https://github.com/zai-org/GLM-5) | 模型 | 不同规模和精度的模型变体 | 可用于测试 B300 上 FP8 / 其它支持格式的吞吐与质量 | 高：模型候选 |
+| [THUDM/slime](https://github.com/THUDM/slime) | RL 后训练框架 | LLM 强化学习扩展和训练 | 若未来要做自有模型后训练才需要；不是在线推理服务 | 中：后训练方向 |
+| [THUDM/AgentRL](https://github.com/THUDM/AgentRL) | Agent RL | 多轮、多任务 Agent 强化学习 | 用于研究 Agent 行为优化和训练，不属于在线 Agent Runtime | 中：研究方向 |
+| [THUDM/IndexCache](https://github.com/THUDM/IndexCache) | Sparse Attention 优化研究 | 跨层索引复用，降低稀疏 Attention 的索引开销 | 对 GLM 稀疏 Attention 和长上下文架构有研究价值 | 中：模型架构方向 |
+| [THUDM/AgentBench](https://github.com/THUDM/AgentBench) | Agent Benchmark | 评估模型在不同 Agent 环境中的能力 | 可作为模型和 Agent Harness 评测的补充，不是 GPU 压测工具 | 中：评测参考 |
+| [THUDM/DeepDive](https://github.com/THUDM/DeepDive) | Deep Search Agent / RL | 多轮搜索 Agent 与知识图谱相关研究 | 与 Coding GPU 平台不是直接依赖，但可参考多轮 Agent 评估和执行 | 低到中：按需研究 |
+
+GLM-5 系列的部署说明值得重点阅读，因为它清楚地展示了模型能力与 Serving Engine 的分工：模型仓库提供权重和参数配置，实际部署推荐使用 vLLM、SGLang 等推理引擎，并配置对应的 Reasoning Parser、Tool Call Parser 和 Speculative Decoding。换言之，GLM 模型是否能在企业平台稳定运行，很大程度上取决于推理引擎的模型适配是否成熟。
+
+对于 Coding Agent，不能只验证 Chat Completions API 返回正常。需要单独测试 GLM 的 thinking 内容处理、reasoning parser、tool-call parser、并行工具调用、JSON 参数格式、长任务中间状态和多轮上下文。尤其要验证 Agent Harness 是否正确处理模型的思考字段与工具调用边界，避免把内部 reasoning 内容错误地当作普通回答或持久化到不合适的日志中。
+
+GLM-5 仓库还提供模型相关的 Agent Skill 和示例，可以用来理解 GLM 的推荐使用方式，但这并不等于提供了完整的企业 Agent Runtime。企业仍需要自行实现 Session 生命周期、工具权限、沙箱、审计、任务恢复和模型路由。
+
+### 17.4 三家项目在架构中的位置
+
+下面的图将三家公司的开源项目映射到企业 GPU AI Coding 平台。它表示逻辑分层，不意味着所有组件都应该同时部署。
+
+```mermaid
+flowchart TB
+    Dev["Developer / IDE"]
+    Agent["Agent Runtime / Harness"]
+    Gateway["AI Gateway / Model Router"]
+    Serving["Inference Engine"]
+    KV["KV Cache / Transfer / Scheduler"]
+    EP["MoE Communication"]
+    Kernel["Attention / GEMM / Quantization Kernels"]
+    GPU["HGX B300 / GB300 NVL72"]
+
+    Dev --> Agent --> Gateway --> Serving
+    Serving <--> KV
+    Serving <--> EP
+    Serving --> Kernel --> GPU
+
+    DSAgent["DeepSeek Harness"]
+    KimiAgent["Kimi Code"]
+    GLMSkill["GLM Skills / Examples"]
+    DSInfer["DeepInfer"]
+    Mooncake["Mooncake"]
+    DeepEP["DeepEP"]
+    MoonEP["MoonEP"]
+    DSKernel["DeepGEMM / FlashMLA / TileKernels"]
+    KKernel["FlashKDA"]
+
+    DSAgent -. "Agent 层参考" .-> Agent
+    KimiAgent -. "Agent 层参考" .-> Agent
+    GLMSkill -. "模型使用参考" .-> Agent
+    DSInfer -. "模型专用执行引擎" .-> Serving
+    Mooncake -. "KV / Transfer" .-> KV
+    DeepEP -. "EP 通信" .-> EP
+    MoonEP -. "EP 负载均衡" .-> EP
+    DSKernel -. "计算 Kernel" .-> Kernel
+    KKernel -. "Kimi 架构 Kernel" .-> Kernel
+```
+
+### 17.5 面向企业 B300 项目的优先级建议
+
+| 优先级 | 项目 | 建议动作 | 原因 |
+| --- | --- | --- | --- |
+| P0 | DeepSeek DeepInfer | 使用目标 DeepSeek 模型做独立 POC；确认它与统一 Serving 层的集成边界 | 官方推理执行路径，可能带来模型专用性能收益，但公开版不是完整在线服务 |
+| P0 | DeepEP | 在单节点 NVLink 和跨节点 RDMA 环境分别测试 | MoE 模型的通信效率可能成为 B300 集群的核心瓶颈 |
+| P0 | Mooncake | 先验证 KV Cache 命中、Store 和 Transfer Engine，再考虑 Prefill/Decode 分离 | Coding Agent 多轮请求和共享前缀有潜在收益 |
+| P0 | vLLM / SGLang | 作为 DeepSeek、Kimi、GLM 的统一基线引擎 | 跨模型兼容性和生态成熟度比单一厂商专用引擎更重要 |
+| P1 | DeepGEMM / FlashMLA / TileKernels | 跟踪其在目标模型和 Blackwell 上的上游集成及性能差异 | 决定 FP8/FP4、Attention 和 MoE Kernel 的性能上限 |
+| P1 | MoonEP | 与 DeepEP 在相同 MoE Trace 下比较 | 关注动态 Expert 负载平衡是否能提高集群有效吞吐 |
+| P1 | DeepSeek Harness / Kimi Code | 评估 Agent Runtime 的插件、工具和任务管理设计 | 对上层 Coding Agent 平台有参考价值，但不应替代 GPU Serving |
+| P1 | GLM-5 部署 Recipes | 建立模型适配自动化和 Tool/Reasoning Parser 回归测试 | 多模型平台必须保证模型协议行为一致 |
+| P2 | checkpoint-engine | 在多副本模型更新和无中断发布有明确需求时做验证 | 解决模型权重更新问题，不是首期必需组件 |
+| P2 | 3FS | 只有模型加载或共享存储成为瓶颈时才做专项评估 | 企业已有高性能存储时不一定值得替换 |
+| P2 | slime / AgentRL / DeepSpec | 只有开展后训练、Agent RL 或推测解码研发时再投入 | 不属于首期在线推理平台的必要依赖 |
+
+建议把三家项目分为两条技术路线：一条是**模型专用优化**，例如 DeepInfer、DeepEP、FlashMLA；另一条是**通用平台基础设施**，例如 Mooncake、vLLM、SGLang 和统一 Gateway。模型专用优化应通过适配层引入，不能让企业平台的控制面被单一模型厂商的实现锁定。
+
+## 18. 其它值得关注的 GPU 大模型部署与推理开源项目
+
+DeepSeek、Kimi 和 GLM 的项目能反映模型厂商自身的技术路线，但企业平台不能只依赖模型厂商的仓库。真正的生产部署生态由多个社区共同构成：推理引擎、分布式 Serving、KV Cache、GPU Kernel、量化、Kubernetes 管理、监控和 Benchmark 各有专门项目。
+
+本节按工程职责分类。项目被列入并不代表应该全部引入；优先选择少数成熟组件，避免出现多个 Gateway、多个 Scheduler 和多套 KV Cache 管理系统互相争抢职责。
+
+### 18.1 核心推理引擎：先比较这三个
+
+| 项目 | 定位 | 主要能力 | 对 B300 的评估建议 |
+| --- | --- | --- | --- |
+| [vLLM](https://github.com/vllm-project/vllm) | 通用 LLM Serving Engine | PagedAttention、Continuous Batching、Prefix Caching、OpenAI API、TP/PP/EP 和多种 KV Connector | **首选基线**。模型覆盖广、生态和集成多，优先验证目标模型的 Blackwell Kernel、量化和多节点 EP |
+| [SGLang](https://github.com/sgl-project/sglang) | 高性能 Serving Runtime | RadixAttention、结构化生成、Prefix Cache、Speculative Decoding、MoE 和多种分布式 Serving 路径 | **必须并行评估**。特别关注 GLM、Kimi、DeepSeek 的模型适配、Blackwell 镜像和 Agent 多轮缓存 |
+| [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) | NVIDIA 优化推理框架 | TensorRT 优化、量化、专用 Kernel、分布式推理和 Serving | **NVIDIA 环境重点候选**。适合验证 NVFP4、Blackwell 专项优化；要考虑 Engine Build、版本矩阵和模型支持成本 |
+
+三者不是简单的“谁的 tokens/s 更高”。对企业 Coding Agent，建议用相同模型权重、量化格式、上下文长度、请求 Trace 和 Agent Harness，分别测量 TTFT、TPOT、Goodput、KV Cache 命中率、工具调用正确率和每个成功任务成本。
+
+首期不要把三种引擎全部作为长期生产系统运营。建议 vLLM 作为兼容性基线，SGLang 作为性能和 Agent 工作负载候选；如果 TensorRT-LLM 在目标 B300 配置上带来足够明确的收益，再决定是否承担其专用构建和维护流程。
+
+### 18.2 分布式 Serving 与控制平面：把单机引擎变成集群服务
+
+| 项目 | 定位 | 主要职责 | 适合解决的问题 |
+| --- | --- | --- | --- |
+| [NVIDIA Dynamo](https://github.com/ai-dynamo/dynamo) | 分布式推理框架 / 控制层 | Frontend、KV-aware Router、SLO Planner、KV 管理、NIXL、Prefill/Decode 分离和 Grove | 多节点、多 GPU Pool、Prefill/Decode 独立扩缩容、KV-aware 路由 |
+| [llm-d](https://github.com/llm-d/llm-d) | Kubernetes-native 推理平台 | 在 Kubernetes 上编排 vLLM、SGLang 等 Model Server，提供 Inference Scheduler、Endpoint Picker、Prefix Cache 感知路由和运维路径 | 已有 Kubernetes 平台，希望用云原生方式部署和运营推理服务 |
+| [AIBrix](https://github.com/vllm-project/aibrix) | Kubernetes LLM Control Plane | Gateway、模型路由、推理指标驱动 Autoscaling、LoRA 生命周期、KV Cache 和多引擎管理 | 多模型、多副本、多租户和成本优化 |
+| [Ray](https://github.com/ray-project/ray) / [KubeRay](https://github.com/ray-project/kuberay) | 分布式计算与编排 | 分布式任务、Actor、Serve 和集群管理 | 需要自定义分布式执行或特定推理框架依赖 Ray 时 |
+| [KServe](https://github.com/kserve/kserve) | Kubernetes Model Serving | 模型服务 CRD、部署、扩缩容和标准化 Serving 接口 | 企业已有 KServe 生态或同时部署传统 ML / 多模态模型时 |
+
+#### Dynamo、llm-d 和 AIBrix 如何选择
+
+这三个项目都在解决推理服务的集群化问题，但抽象边界和生态重点不同。
+
+- **Dynamo** 更偏向分布式推理运行时和数据路径，强调 KV-aware Routing、Prefill/Decode Disaggregation、NIXL 数据传输、SLO Planner，以及与 vLLM、SGLang、TensorRT-LLM 的组合。
+- **llm-d** 更偏向 Kubernetes-native 的推理编排和生产运营，把模型 Server 与 Router / Scheduler 分开，提供 Well-Lit Paths、InferencePool、Endpoint Picker、Prefix Cache 感知调度和生产运维能力。
+- **AIBrix** 更偏向 LLM 应用基础设施和控制面，关注 Gateway、模型与 LoRA 生命周期、推理指标驱动扩缩容、KV Cache 和多模型运营。
+
+不建议把三者全部部署后再决定谁负责路由。它们在 Gateway、Scheduler、Autoscaler、KV-aware Routing 等领域存在重叠。POC 时应画出实际组件边界，明确每个能力只有一个 Owner。例如：由 Dynamo 负责 P/D 和 KV 传输，外层 Gateway 负责企业身份与配额；或者由 llm-d 负责 Kubernetes InferencePool 和调度，底层引擎使用 vLLM。不要让两个控制平面同时管理同一批 Pod 和同一组流量策略。
+
+### 18.3 KV Cache、数据传输和 Prefill / Decode 分离
+
+| 项目 | 定位 | 核心能力 | 评估重点 |
+| --- | --- | --- | --- |
+| [Mooncake](https://github.com/kvcache-ai/Mooncake) | KV Cache Store / Transfer Engine | 分布式 KV Cache、RDMA Transfer、Prefill/Decode 分离 | 长上下文、多轮 Agent、跨实例前缀复用 |
+| [LMCache](https://github.com/LMCache/LMCache) | KV Cache 管理与 Offload | GPU、CPU、磁盘等层级的 KV 缓存和复用 | 与 vLLM / SGLang 的连接器、缓存命中和 Offload 成本 |
+| [NIXL](https://github.com/ai-dynamo/nixl) | NVIDIA 低延迟数据传输库 | KV Cache 等数据在 GPU、主机和存储之间的传输 | GPU Direct RDMA、NVLink、InfiniBand / UCX 和拓扑适配 |
+| [UCX](https://github.com/openucx/ucx) | HPC 通信框架 | 高性能网络通信抽象 | RDMA / InfiniBand / RoCE 底层传输和网络诊断 |
+| [NCCL](https://github.com/NVIDIA/nccl) | GPU Collective Communication | AllReduce、AllGather、ReduceScatter 等集合通信 | Tensor / Expert Parallelism 的核心依赖，不是通用 KV Store |
+| [3FS](https://github.com/deepseek-ai/3FS) | 分布式文件系统 | 高性能共享文件和数据访问 | 模型权重加载、数据集和大规模缓存存储 |
+
+这里要区分 **Collective Communication** 和 **Point-to-Point KV Transfer**。NCCL 主要解决 GPU 集合通信；NIXL、Mooncake Transfer Engine 关注数据在生产者和消费者之间的传输；Mooncake Store、LMCache 关注 KV Cache 的存储、复用和分层管理。它们可以协作，但不能简单互相替代。
+
+对于 1000 人 Coding Agent 平台，KV Cache 项目值得重点研究，但部署顺序应是：
+
+1. 先验证引擎内部 Prefix Cache；
+2. 采集真实 Agent Session 的前缀复用率和上下文分布；
+3. 再测试 CPU / DRAM / SSD Offload；
+4. 当单实例缓存局部性明显限制容量时，才测试跨节点共享 KV；
+5. 最后再决定是否分离 Prefill 和 Decode。
+
+如果直接从第一天就部署跨节点 KV Cache 和 P/D 分离，复杂度会明显增加，而且可能尚未有足够流量证明收益。
+
+### 18.4 GPU Kernel 与算子库：决定性能上限
+
+| 项目 | 主要职责 | 与 B300 的关系 | 建议 |
+| --- | --- | --- | --- |
+| [FlashInfer](https://github.com/flashinfer-ai/flashinfer) | Attention、KV Cache、GEMM、MoE、Sampling Kernel | 支持 Paged/Ragged KV、MLA、FP8/FP4、Blackwell GEMM 等 | **重点关注**，检查目标引擎是否已集成，避免重复手工替换 |
+| [FlashAttention](https://github.com/Dao-AILab/flash-attention) | 高效 Attention Kernel | 是多个推理框架常用的 Attention 实现基础之一 | 关注具体版本、GPU 架构和模型 Attention 类型 |
+| [CUTLASS](https://github.com/NVIDIA/cutlass) | CUDA C++ Kernel 模板库 | Blackwell Tensor Core 和矩阵计算优化的重要基础 | Kernel 工程师重点学习 |
+| [Triton](https://github.com/triton-lang/triton) | GPU Kernel 编程语言 / 编译器 | 用于快速开发和优化 GPU Kernel；注意它不是 Triton Inference Server | 对自定义算子和性能调优很有价值 |
+| [TileLang](https://github.com/tile-ai/tilelang) | Tile-based Kernel DSL | DeepSeek TileKernels 等项目使用的 Kernel 开发方向 | 适合研究高性能算子和多后端 Kernel |
+| [DeepGEMM](https://github.com/deepseek-ai/DeepGEMM) | FP8 / FP4 GEMM 和 MoE Kernel | DeepSeek 模型和 Blackwell 低精度矩阵计算相关 | 对 MoE / FP8 / FP4 workload 重点评估 |
+| [DeepEP](https://github.com/deepseek-ai/DeepEP) | MoE 通信 Kernel | Expert Parallelism 的 Dispatch / Combine | 与 GPU 网络和 NCCL 测试一起评估 |
+| [AITER](https://github.com/ROCm/aiter) | AMD GPU 优化算子 | AMD MI 系列平台的算子路径 | 只有考虑 AMD GPU 时重点投入 |
+
+大多数企业平台团队不应该自己维护一套 Attention Kernel。优先使用 vLLM / SGLang / TensorRT-LLM 已验证的 Kernel 组合，只有 Profiling 证明某个算子是瓶颈，且上游没有合适实现时，才开发自定义 Kernel。
+
+### 18.5 量化与模型压缩
+
+| 项目 | 主要职责 | 适用场景 | 注意事项 |
+| --- | --- | --- | --- |
+| [NVIDIA Model Optimizer](https://github.com/NVIDIA/Model-Optimizer) | NVIDIA 模型量化和优化工具 | FP8、NVFP4 等 NVIDIA GPU 优化路径 | 重点验证 Blackwell 格式、校准和推理引擎集成 |
+| [llm-compressor](https://github.com/vllm-project/llm-compressor) | LLM 量化与压缩 | 为 vLLM 等推理后端准备量化模型 | 检查模型结构、量化算法、权重格式和运行时支持 |
+| [bitsandbytes](https://github.com/bitsandbytes-foundation/bitsandbytes) | 低比特量化和优化器组件 | 低成本实验、特定模型量化 | 不要假定其量化路径等同于 Blackwell 原生 NVFP4 |
+| [AutoGPTQ](https://github.com/AutoGPTQ/AutoGPTQ) | GPTQ 量化 | 既有 GPTQ 模型和兼容生态 | 需要确认维护状态、模型支持和目标 GPU Kernel；不建议未经验证作为新平台默认方案 |
+
+量化工具与推理引擎必须配套选择。量化产物的格式、Group Size、Scale、Activation Quantization、KV Cache 精度和 Kernel 支持都可能不同。一个模型可以被量化，不代表目标 Serving Engine 能以高性能加载它。
+
+对 B300 的建议是先用模型官方 FP8 权重建立基线，再测试 NVIDIA 原生 FP4 / NVFP4 或模型官方支持的低精度方案。比较时要同时看模型质量、工具调用正确率、长上下文退化、吞吐和成本，不能只看显存缩小比例。
+
+### 18.6 Kubernetes GPU 管理、可观测性与性能测试
+
+| 项目 | 主要职责 | 建议关注点 |
+| --- | --- | --- |
+| [NVIDIA GPU Operator](https://github.com/NVIDIA/gpu-operator) | 在 Kubernetes 部署 Driver、Device Plugin、Container Toolkit、DCGM 等组件 | GPU 节点标准化、升级、驱动管理和健康状态 |
+| [NVIDIA DCGM](https://github.com/NVIDIA/DCGM) | GPU 健康、性能和遥测 | XID、ECC、温度、功耗、HBM、NVLink 和 GPU Health |
+| [Prometheus](https://github.com/prometheus/prometheus) / [Grafana](https://github.com/grafana/grafana) | 指标采集与可视化 | GPU、推理引擎、Router 和 Agent 的统一 Dashboard |
+| [OpenTelemetry](https://github.com/open-telemetry/opentelemetry-collector) | Trace / Metric / Log 采集 | 关联 Agent Task、模型请求、KV Cache 和 GPU Worker |
+| [NVIDIA AIPerf](https://github.com/NVIDIA/aiperf) | 生成式 AI Serving 性能测试 | TTFT、ITL、吞吐和并发测试；注意固定模型和请求分布 |
+| [vLLM Benchmarks](https://github.com/vllm-project/vllm/tree/main/benchmarks) | vLLM Serving Benchmark | 适合推理引擎基准测试和回归 |
+| [GuideLLM](https://github.com/vllm-project/guidellm) | LLM Serving 负载生成和性能分析 | 通过真实或合成请求分布测试服务能力 |
+| [GenAI-Perf](https://github.com/triton-inference-server/perf_analyzer) | 生成式 AI 推理性能分析工具 | 适合兼容相关接口的 Serving Benchmark，注意与 AIPerf 的工具定位重叠 |
+
+性能工具也要分层：NCCL Tests 测通信，DCGM 测硬件状态，AIPerf / GuideLLM / vLLM Bench 测 Serving，Agent Evaluation 测代码任务成功率。没有一个工具可以替代完整的端到端压测。
+
+### 18.7 Triton Inference Server 与 Triton 语言不要混淆
+
+NVIDIA 生态里有两个容易混淆的项目：
+
+- [Triton Inference Server](https://github.com/triton-inference-server/server)：模型 Serving Server，支持多种模型后端和协议，适合传统 ML、视觉、Embedding、Reranker 及多模型组合服务。
+- [Triton Language](https://github.com/triton-lang/triton)：GPU Kernel 编程语言和编译器，用来编写 GPU 算子。
+
+在当前以自回归 LLM 为主的 Coding Agent 平台中，vLLM、SGLang、TensorRT-LLM 更适合作为核心 LLM Runtime；Triton Inference Server 可以承担非自回归模型或多模型组合 Serving，Triton Language 则属于 Kernel 开发工具。不要把它们当成同一层的替代品。
+
+### 18.8 推荐的企业技术组合
+
+对一个以 B300 / HGX B300 为主、约 1000 名开发者使用的企业平台，建议按阶段组合，而不是一次性引入全部开源项目。
+
+| 架构层 | 首选候选 | 第二候选 / 专项组件 | 首期是否必须 |
+| --- | --- | --- | --- |
+| GPU Node Runtime | NVIDIA Driver + CUDA + Container Toolkit | OFED / RDMA Core、Fabric Manager | 是 |
+| Kubernetes GPU | NVIDIA GPU Operator | KubeRay（确有 Ray 负载时） | 已有 K8s 时建议 |
+| GPU Communication | NCCL + NCCL Tests | DeepEP、MoonEP、NIXL | NCCL 必须；EP / NIXL 按模型架构决定 |
+| Model Serving | vLLM | SGLang；TensorRT-LLM | 是，至少选一个 |
+| Model-specific Runtime | DeepInfer（仅目标 DeepSeek 模型） | 其它模型专用实现 | 否 |
+| Distributed Serving | llm-d 或 NVIDIA Dynamo 或 AIBrix | 根据现有 K8s 和推理架构选择 | 初期可以不引入 |
+| KV Cache | 引擎内置 Prefix Cache | LMCache / Mooncake | 内置缓存先行，外部缓存按数据验证 |
+| Kernel | 推理引擎内置 Kernel | FlashInfer、DeepGEMM、FlashMLA、CUTLASS | 不需要全部直接管理 |
+| Quantization | 模型官方 FP8 + Model Optimizer / llm-compressor | FP4 / NVFP4 专项路径 | FP8 基线必须，低精度按质量验证 |
+| Metrics / Logs / Trace | DCGM + Prometheus + Grafana + OpenTelemetry | Loki / ClickHouse 等 | 是 |
+| Serving Benchmark | AIPerf / GuideLLM / vLLM Bench | 自建 Trace Replay | 是 |
+| Agent Evaluation | 企业内部 Coding Task Set | AgentBench 等公开评测 | 是，必须有内部任务集 |
+
+#### 推荐的初期架构
+
+```mermaid
+flowchart TB
+    subgraph Control["企业控制与管理层（CPU Nodes）"]
+      Auth["SSO / IAM / Policy"]
+      Gateway["AI Gateway / Model Router"]
+      Orchestrator["llm-d / Dynamo / 自建控制层（择一）"]
+      Observability["Prometheus / Grafana / OpenTelemetry"]
+    end
+
+    subgraph Compute["GPU 推理层（HGX B300）"]
+      EngineA["vLLM Pool"]
+      EngineB["SGLang Pool"]
+      Specialized["DeepInfer Pool（可选）"]
+      Kernels["CUDA / NCCL / DeepEP / Kernel Libraries"]
+      EngineA --> Kernels
+      EngineB --> Kernels
+      Specialized --> Kernels
+    end
+
+    subgraph Cache["可选 KV Cache 层"]
+      Local["Engine Prefix Cache"]
+      Shared["Mooncake / LMCache（按需）"]
+      Local --> Shared
+    end
+
+    Agent["Coding Agent Runtime / Sandbox"] --> Gateway
+    Auth -.-> Gateway
+    Gateway --> Orchestrator
+    Orchestrator --> EngineA
+    Orchestrator --> EngineB
+    Orchestrator --> Specialized
+    EngineA <--> Cache
+    EngineB <--> Cache
+    Specialized <--> Cache
+    Compute --> Observability
+    Control --> Observability
+```
+
+图中的 llm-d、Dynamo 和 AIBrix 是可选控制层，不是要求同时部署。初期若只有一个模型、一个引擎和少量副本，可以先用简单 Gateway + Kubernetes Service；等到多模型、多副本、KV-aware Routing 和独立 P/D Pool 成为真实需求，再引入更完整的控制平面。
+
+### 18.9 最终选型原则
+
+对于 B300 企业推理平台，最重要的不是开源项目数量，而是清楚划分职责并保持可替换性：
+
+1. **模型与 Serving Engine 解耦**：模型仓库提供权重和模型配置，推理引擎负责运行，Gateway 负责模型路由和企业策略。
+2. **推理引擎与控制平面解耦**：vLLM / SGLang / TensorRT-LLM 负责执行，Dynamo / llm-d / AIBrix 负责集群层调度和运营。
+3. **计算通信与 KV 数据传输分开**：NCCL / DeepEP 处理集合通信和 MoE 通信，NIXL / Mooncake Transfer Engine 处理 KV 等数据移动。
+4. **内存缓存先于分布式缓存**：先把引擎内 Prefix Cache 用好，再根据真实命中率引入 LMCache 或 Mooncake。
+5. **Kernel 采用上游集成优先**：先使用推理引擎已经验证的 Kernel，只有 Profiling 找到瓶颈才替换或自研。
+6. **性能基准与业务评测并行**：AIPerf / GuideLLM 测服务吞吐，内部 Coding Task Set 测代码任务成功率和单位成功任务成本。
+7. **控制平面只保留一个主 Owner**：避免 Dynamo、llm-d、AIBrix 和自建 Gateway 对路由、扩缩容和模型生命周期产生重叠控制。
+
+对于当前项目，建议先深入阅读和 POC 的项目顺序是：**vLLM、SGLang、DeepEP、DeepInfer、Mooncake、NVIDIA Dynamo / llm-d（二选一先做架构比较）、FlashInfer、NVIDIA GPU Operator、DCGM、AIPerf**。这组项目覆盖从 GPU 节点到模型 Serving、分布式推理、缓存、观测和压测的主要技术链路。其余项目根据模型架构和实际瓶颈逐步引入，而不是预先全部部署。
+
+
 ## 结论
 
 企业级 GPU AI Coding 平台不是“买几台 B300、安装 vLLM、开放一个 API”这么简单。真正的工程工作横跨 GPU 硬件、RDMA 网络、Kubernetes、分布式推理、Agent Runtime、安全隔离和生产运维。
