@@ -1,22 +1,22 @@
 # 业务（三）
 
-![](../images/web/casestudy-rakuten1ba.jpg)
+![](../images/casestudy-rakuten1ba.jpg)
 
-![](../images/web/casestudy-salesforce1b.jpg)
+![](../images/casestudy-salesforce1b.jpg)
 
-![](../images/web/casestudy-sap1c.jpg)
+![](../images/casestudy-sap1c.jpg)
 
-![](../images/web/casestudy-shopify1ca.jpg)
+![](../images/casestudy-shopify1ca.jpg)
 
-![](../images/web/casestudy-travelers1ca.jpg)
+![](../images/casestudy-travelers1ca.jpg)
 
-![](../images/web/casestudy-ust1ca.jpg)
+![](../images/casestudy-ust1ca.jpg)
 
-![](../images/web/casestudy-verizon1da.jpg)
+![](../images/casestudy-verizon1da.jpg)
 
-![](../images/web/casestudy-walmart1ca.jpg)
+![](../images/casestudy-walmart1ca.jpg)
 
-![](../images/web/a2026-09x17xcasestudyxshyb.jpg)
+![](../images/a2026-09x17xcasestudyxshyb.jpg)
 
 ## 本公司的文化、价值观与人才
 

@@ -273,4 +273,4 @@ Black-Scholes-Merton 模型在估计股份支付奖励公允价值时考虑若�
 
 有关近期已采用会计公告及近期已发布但尚未采用会计公告的说明，见本招股说明书其他部分所载本公司合并财务报表附注 1。
 
-![](../images/web/a2026-10x24businessa.jpg)
+![](../images/a2026-10x24businessa.jpg)

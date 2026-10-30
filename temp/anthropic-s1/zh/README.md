@@ -48,6 +48,16 @@
 python3 convert.py anthropicpbc-sx1.htm anthropic-s1.en.md   # HTML → Markdown
 python3 split.py                                             # 按章切到 zh/_src/
 python3 assemble.py                                          # 合并成 anthropic-s1.zh.md
+pandoc anthropic-s1.zh.md -f gfm -t html5 -s \
+  --metadata title="Anthropic S-1 中文全译" -o preview.html   # 带图片的 HTML 预览
 ```
 
 `_src/` 是从 `anthropic-s1.en.md` 切出来的中间产物，不入库。
+
+## 图片
+
+原文 42 张设计版式页（封面、章节隔页、图版跨页），5100×6600、300 DPI，共 156 MB。
+正文引用一律指向 `images/` 下的原图，不做压缩与缩放。
+
+原图体积超过仓库承受范围，故未入库；可由 `SOURCE.md` 里的 EDGAR 索引页重新下载，
+或在本地打开 `preview.html` 查看。
