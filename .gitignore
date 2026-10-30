@@ -37,6 +37,9 @@ validation-run.log
 # research-repo skill: large evidence files (regenerable from full.json + repo)
 research-*/*
 
+# EDGAR 原文内嵌大图（156 MB），可由 SOURCE.md 里的 index 页重新下载
+temp/anthropic-s1/images/
+
 # yarn
 .yarn/*
 !.yarn/patches
