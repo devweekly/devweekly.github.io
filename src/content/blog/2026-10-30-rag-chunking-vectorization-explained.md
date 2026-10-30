@@ -91,7 +91,7 @@ Vectorization 通常指使用 Embedding Model，将文本转换成一个数值�
 
 简化表示：
 
-\`\`\`text
+```text
 Text
   |
   v
@@ -99,7 +99,7 @@ Embedding Model
   |
   v
 [0.12, -0.31, 0.87, ...]
-\`\`\`
+```
 
 当用户提出一个问题时，系统也可以将问题转换成向量，再比较问题向量与知识向量之间的距离或相似度。
 
@@ -137,11 +137,11 @@ RAG 的关键是 Retrieval、Augmentation 和 Generation：
 
 例如，系统可以先执行 SQL：
 
-\`\`\`sql
+```sql
 SELECT application_name, technology_name, version
 FROM application_technology
 WHERE application_id = 'APP-1024';
-\`\`\`
+```
 
 然后把查询结果交给 LLM：
 
@@ -216,7 +216,7 @@ Embedding 可以在一定程度上弥补词汇差异，让系统根据语义而�
 3. 返回符合条件的应用和技术清单。
 4. LLM 根据查询结果生成解释和风险摘要。
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     A["User Question"] --> B["LLM: Intent / Query Understanding"]
     B --> C["SQL / API Query"]
@@ -224,7 +224,7 @@ flowchart TD
     D --> E["Result Set"]
     E --> F["LLM: Answer Generation"]
     F --> G["Answer + Evidence"]
-\`\`\`
+```
 
 这种方式不需要 Chunk，也不需要 Vectorization。
 
@@ -244,7 +244,7 @@ BM25 是经典的词项检索排序算法。它会综合考虑查询词在文档
 
 一个简单流程：
 
-\`\`\`mermaid
+```mermaid
 flowchart TD
     A["User Question"] --> B["Query Analysis"]
     B --> C["Full-text Search / BM25"]
@@ -252,7 +252,7 @@ flowchart TD
     D --> E["Context Assembly"]
     E --> F["LLM"]
     F --> G["Grounded Answer"]
-\`\`\`
+```
 
 这里可以按章节或段落组织检索内容，但不需要向量化。
 
@@ -441,7 +441,7 @@ Application → Technology → Business Capability
 
 一个比较合理的架构可以这样组织：
 
-\`\`\`mermaid
+```mermaid
 flowchart TB
     subgraph Sources["Knowledge Sources"]
         A["EA Repository"]
@@ -499,7 +499,7 @@ flowchart TB
     Q --> S
     R -.-> S
     S --> T --> U --> V
-\`\`\`
+```
 
 这里有几个重要设计原则：
 
