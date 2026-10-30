@@ -583,7 +583,283 @@ Chunking 不是为了适应某一个固定的模型 Token 限制而存在。它�
 | 文档短小且独立 | 整篇文档检索 |
 | 问题需要跨多个知识源推理 | Agentic Retrieval / 多路检索 |
 
-## 12. 总结：不要把 RAG 做成 Chunk + Vector 的同义词
+## 12. 从业界生产实践看，RAG 已经发展出哪些架构 Pattern？
+
+前面讨论的是概念边界。再看主流云厂商和模型公司的工程实践，会发现它们并没有把生产级 RAG 定义为单一的 Vector Search Pipeline。更准确地说，业界正在形成一组可组合的检索模式（Retrieval Patterns）。每种模式解决不同的检索质量、上下文、复杂查询和运营问题。
+
+需要区分两件事：云厂商文档展示的是各自平台支持的参考架构和产品能力；下面归纳的 Pattern 是从这些实践中抽象出来的通用设计，不代表每个项目都必须全部采用。
+
+### 12.1 Hybrid Retrieval：关键词检索与语义检索互补
+
+这是企业文档检索中非常实用的模式。
+
+关键词检索擅长精确匹配，例如系统名称、产品型号、错误码、技术版本、API 名称和法规条款；向量检索擅长处理措辞不同但语义接近的表达。两者组合可以提高召回覆盖面。
+
+常见实现是并行执行 BM25 / Full-text Search 和 Vector Search，再使用 Reciprocal Rank Fusion（RRF）融合两个结果列表。RRF 根据结果在不同排序列表中的排名进行融合，不要求两个检索引擎的原始分数处于同一尺度。
+
+```mermaid
+flowchart TD
+    A["User Query"] --> B["Query Normalization"]
+    B --> C["Keyword / BM25 Search"]
+    B --> D["Vector Search"]
+    C --> E["Rank Fusion: RRF"]
+    D --> E
+    E --> F["Candidate Set"]
+    F --> G["Optional Reranker"]
+    G --> H["Context Assembly"]
+    H --> I["LLM"]
+```
+
+Microsoft Azure Architecture Center 的检索设计明确覆盖全文、向量、混合和多路搜索，并给出先扩大候选集、再用 RRF 合并、随后 Rerank、最后截取 Top-N 的实践。它也提醒，Reranker 会增加延迟，必须通过实际查询集评估准确率与成本，而不是默认开启。[Microsoft：Information Retrieval Phase](https://learn.microsoft.com/en-us/azure/architecture/ai-ml/guide/rag/rag-information-retrieval)
+
+**它说明了什么？** Vector Search 不是唯一检索方式。即使已经部署向量索引，关键词检索仍然有独立价值；如果知识库里有大量精确标识符，甚至应该让关键词检索承担主要工作。
+
+### 12.2 Contextual Retrieval：给局部内容补上文档上下文
+
+Chunking 有一个天然问题：切分后，片段可能失去原文中的背景。
+
+例如，一个 Chunk 只有一句：
+
+> 它在迁移完成后停止维护。
+
+如果不知道“它”指哪个系统、迁移到哪里、讨论的是哪个项目，这段文字很难被准确检索和使用。
+
+Anthropic 提出的 Contextual Retrieval 做法，是在建立索引前，让模型为每个 Chunk 生成一段简短的上下文说明，再把这段说明与原始 Chunk 一起用于检索。它还把 Contextual Embeddings 与 Contextual BM25 结合起来。其工程文章报告了在自有测试集上的实验收益，同时强调应根据语料和成本进行验证。[Anthropic：Contextual Retrieval](https://www.anthropic.com/engineering/contextual-retrieval)
+
+```text
+Document
+  |
+  +-- Original Chunk
+  |
+  +-- Document Context
+          |
+          v
+   Contextualized Chunk
+          |
+          +--> BM25 Index
+          |
+          +--> Embedding Index (optional)
+```
+
+这是一种重要的区分：**上下文补充与向量化是两件事。** 可以把标题、章节路径、文档摘要、实体名称和适用范围附加到 Chunk，然后只建立全文索引；只有确实需要语义召回时，才进一步生成 Embedding。
+
+对于企业架构文档，一个有效的上下文前缀可能包含：
+
+- 文档标题、文档类型和章节路径；
+- 相关 Application、Business Capability、Technology 的规范名称和 ID；
+- 适用组织、系统边界和业务范围；
+- 文档版本、生效时间、审批状态。
+
+注意，自动生成的上下文只能作为检索辅助信息，不能覆盖原文，也不能被误当成已审批的业务事实。
+
+### 12.3 Parent-Child Retrieval：小单元检索，大单元提供上下文
+
+有些内容适合用较小的片段定位，却不适合只把这个小片段交给模型。
+
+例如，用户问一个架构标准中的例外条件。检索可能只需要命中一段文字，但理解例外条件还需要它所在的完整条款、章节或父级文档。
+
+Parent-Child Retrieval 将索引单元和最终上下文单元分开：
+
+- Child：较小的检索单元，用于提高定位精度。
+- Parent：较大的上下文单元，例如完整章节、条款或文档。
+
+检索命中 Child 后，通过 parent ID 找回 Parent，再决定向模型提供 Parent 全文、相邻段落或一个受控窗口。
+
+```mermaid
+flowchart TD
+    A["Source Document"] --> B["Parent Sections"]
+    B --> C["Child Passages"]
+    C --> D["Index Child Units"]
+    D --> E["Retrieve Matching Child"]
+    E --> F["Resolve Parent ID"]
+    F --> G["Load Parent / Neighbor Context"]
+    G --> H["LLM Context"]
+```
+
+这个模式说明 Chunk 不一定是最终交给 LLM 的内容单元。索引粒度可以小，生成上下文粒度可以大。
+
+适用场景包括长篇政策、合同、技术标准、ADR、会议记录和有复杂章节层级的设计文档。实现时需要控制 Parent 的最大长度，并保留精确的页码、章节和段落定位，避免一个小片段命中后把整本手册都塞进上下文。
+
+### 12.4 Metadata Filtering：先限定范围，再做相关性排序
+
+生产检索不能只问“内容像不像”，还必须问“这条内容是否属于当前查询允许访问、且在业务上适用的范围”。
+
+典型过滤字段包括：
+
+- tenant / business unit；
+- 用户和角色可访问的 ACL；
+- 文档类型、系统 ID、业务域；
+- 状态（Draft、Approved、Deprecated、Superseded）；
+- 生效日期、失效日期和版本；
+- 来源系统和数据分类。
+
+例如，用户询问某项当前有效的技术标准，系统不应该把已废止的旧版本仅仅因为语义相似而排在前面。
+
+```text
+Query
+  |
+  v
+Authorization + Metadata Filter
+  |
+  v
+Keyword / Vector / Hybrid Retrieval
+  |
+  v
+Reranking
+  |
+  v
+Evidence with Source + Version + ACL
+```
+
+过滤必须在数据访问边界内执行，而不能只依靠 Prompt 告诉模型“不要泄露”。如果使用向量检索，ACL 和租户过滤应由检索服务或数据层强制执行；不能先把不该访问的结果取出来，再指望模型自行忽略。
+
+对于企业知识库，权限过滤、版本有效性和来源追溯通常比再换一个 Embedding Model 更基础。
+
+### 12.5 Query Routing / Query Decomposition：不是每个问题都走同一个索引
+
+固定式 RAG 通常是收到问题后，对一个索引执行一次搜索，再把结果交给模型。它适合简单、单一来源的问题。
+
+但企业问题经常跨越多个知识源。例如：
+
+> 如果淘汰 Oracle 19c，会影响哪些应用和业务能力？过去有哪些 ADR 讨论过迁移风险？
+
+这个问题至少包含三类工作：
+
+1. 查询结构化资产，找出使用 Oracle 19c 的应用。
+2. 沿 Application 到 Business Capability 的关系进行影响分析。
+3. 搜索 ADR 和会议记录，补充迁移决策和风险背景。
+
+这时可以先把问题拆成子问题，再并行调用 SQL、关系查询和文档搜索，最后汇总证据。
+
+```mermaid
+flowchart TD
+    A["Complex User Question"] --> B["Query Planner"]
+    B --> C["Subquery: Find Applications"]
+    B --> D["Subquery: Trace Business Impact"]
+    B --> E["Subquery: Search ADRs"]
+    C --> F["SQL / EA API"]
+    D --> G["Relationship Query"]
+    E --> H["Full-text / Optional Vector Search"]
+    F --> I["Evidence Aggregation"]
+    G --> I
+    H --> I
+    I --> J["Conflict / Coverage Check"]
+    J --> K["LLM Answer with Citations"]
+```
+
+Microsoft Foundry 将 Agentic Retrieval 描述为一种动态检索方式：模型可以根据问题拆分多个聚焦查询、并行执行，并返回带引用和执行元数据的结构化 grounding data。Microsoft 的 Azure 架构指南也区分了固定步骤的 Standard RAG 与把检索作为工具、按需决定检索路径的 Agentic RAG。[Microsoft Foundry：RAG and indexes](https://learn.microsoft.com/en-us/azure/foundry/concepts/retrieval-augmented-generation)；[Azure Architecture Center：Design and develop a RAG solution](https://learn.microsoft.com/en-us/azure/architecture/ai-ml/guide/rag/rag-solution-design-and-evaluation-guide)
+
+Agentic Retrieval 并不意味着所有简单问题都需要 Agent。它引入了额外的模型调用、执行时间、成本和不可预测性。对单一索引、单轮查询，固定流程通常更容易控制；对跨数据源、多步骤问题，动态规划才更有价值。
+
+### 12.6 GraphRAG：当问题依赖实体关系和全局主题时
+
+Vector Search 擅长找语义相近的内容，但它不擅长保证多跳关系完整，也不天然理解组织、应用、技术和业务能力之间的真实依赖。
+
+GraphRAG 将知识图谱或图数据库查询与文本检索结合起来。它通常先识别实体和关系，再通过图遍历找到相关实体、关系或社区摘要，必要时再回到原始文档获取证据。
+
+例如：
+
+> 某个支付平台的关键供应商出现风险，会影响哪些业务能力、应用和数据产品？相关架构决策是什么？
+
+这类问题不是单纯找几段“语义相似”的文本，而是需要沿着供应商、技术组件、应用、接口、数据产品和业务能力之间的关系进行推导。
+
+Google Cloud 已提供将 Vector Search 与 Spanner Graph 结合的 GraphRAG 参考架构，同时也提供基于 AlloyDB for PostgreSQL 的向量检索架构，以及专用 Vector Search 架构。这些是不同工作负载的选项，不是要求所有 RAG 系统都部署图数据库。[Google Cloud：RAG reference architectures](https://docs.cloud.google.com/architecture/rag-reference-architectures)；[Google Cloud：GraphRAG with Spanner Graph](https://docs.cloud.google.com/architecture/gen-ai-graphrag-spanner)
+
+GraphRAG 也有成本：实体抽取、关系消歧、图更新和查询规划都需要工程投入。只有当关系查询、多跳推理或跨文档全局分析确实是主要需求时，才值得引入。关系规模和查询复杂度有限时，关系数据库的 JOIN、递归查询可能已经足够。
+
+### 12.7 Long-context Retrieval：不把所有内容都切成小块
+
+长上下文模型带来了另一种选择：对于数量有限、长度可控的文档，可以直接读取整篇文档或较大的章节，再让模型定位相关内容。
+
+这并不等于“长上下文替代所有检索”。更实际的模式是分层处理：
+
+- 文档数量少、内容短：直接读取原文。
+- 文档数量中等：先按标题、目录、元数据或全文索引缩小范围，再读取完整章节。
+- 文档数量很大：使用搜索索引定位候选内容，必要时再加载父级上下文。
+- 需要跨大量结构化资产：使用 SQL、API 或图查询，不要把所有记录塞进 Prompt。
+
+Microsoft Azure 的检索指南还指出，对于某些多模态模型可以直接将图片放入 Prompt，而不是强制把图片切成文本 Chunk；也可以在预处理阶段生成图像描述。是否分块需要根据模型能力、效果和成本实测。[Microsoft：Information Retrieval Phase](https://learn.microsoft.com/en-us/azure/architecture/ai-ml/guide/rag/rag-information-retrieval)
+
+### 12.8 生产级 RAG 的共同模式：索引之外还有数据治理和运营
+
+AWS 的生产级 RAG 实践清单把文档处理、Chunk 元数据、Metadata Filter、Hybrid Search、Reranking、拒答、引用、文档级授权、敏感信息保护、监控、重试、超时、幂等处理、死信队列和评估数据集都列为需要考虑的工程问题。[AWS Builder Center：Building a Production-Ready RAG Application](https://builder.aws.com/content/3Jx9qmFj3eduzjyJsdk7w6Agy8n/building-a-production-ready-rag-application-on-aws-10-practical-lessons)
+
+这些实践可以归纳为几个独立于 Vector Database 的生产能力：
+
+| 能力 | 要解决的问题 | 典型设计 |
+|---|---|---|
+| Ingestion Reliability | 文档更新是否可靠进入知识库 | 增量同步、幂等、重试、死信队列 |
+| Index Lifecycle | 删除、更新、版本变更如何反映到索引 | 文档版本、索引版本、重建与回滚 |
+| Authorization | 用户能否看到检索结果 | 文档级 ACL、租户隔离、检索前过滤 |
+| Provenance | 答案来自哪里 | Source ID、版本、章节、页码、时间戳 |
+| Observability | 检索为何失败 | 查询、过滤条件、候选结果、排序分数、耗时 |
+| Evaluation | 改动是否真的提升质量 | 固定测试集、相关性标注、回归测试 |
+| Reliability | 依赖服务故障如何处理 | 超时、重试、熔断、降级、限流 |
+
+尤其要区分 Retrieval Evaluation 和 Answer Evaluation。检索阶段可以测 Recall@K、Precision@K、MRR、nDCG；生成阶段则要检查答案是否忠实于证据、是否完整、是否正确引用来源。只看最终答案，很难判断问题究竟来自检索还是生成。
+
+Microsoft 的 RAG 设计指南强调先准备有代表性的文档和查询集，再分别评估 Chunking、Enrichment、Embedding、Search 和最终回答。这个思路比一开始就争论 Chunk Size 或选择 Vector Database 更有工程价值。[Microsoft：RAG solution design and evaluation](https://learn.microsoft.com/en-us/azure/architecture/ai-ml/guide/rag/rag-solution-design-and-evaluation-guide)
+
+## 13. 将这些 Pattern 组合成一套可落地的检索架构
+
+实际系统通常不是在这些 Pattern 中只能选一个，而是按问题复杂度逐步组合。一个比较稳妥的默认架构是：
+
+1. 先执行身份验证和权限范围确定。
+2. 根据问题识别实体、时间、状态和查询意图。
+3. 结构化问题优先走 SQL / API / 关系查询。
+4. 文档问题优先走全文检索；语义召回不足时增加 Vector Search。
+5. 需要多种检索时使用 Hybrid Search 和 RRF。
+6. 候选结果较多或排序质量不足时再增加 Reranker。
+7. 命中细粒度片段后，按需加载 Parent 或相邻上下文。
+8. 多数据源、多步骤问题才启用 Query Decomposition / Agentic Retrieval。
+9. 组装上下文时保留来源、版本、权限和证据位置。
+10. 生成答案后检查证据覆盖和引用，并记录检索轨迹用于评估。
+
+这套架构的关键是按需增加能力，而不是把所有组件一开始就部署齐全。
+
+## 14. 业界产品架构也在说明：Vector Store 只是可选的一种基础设施
+
+看主流云平台的参考架构，可以发现它们提供的是多种存储与检索组合：
+
+| 平台参考实践 | 主要模式 | 对架构选型的启示 |
+|---|---|---|
+| Microsoft Azure AI Search / Foundry | Keyword、Vector、Hybrid、Semantic Ranking、Agentic Retrieval | 一个检索服务可以提供多种检索模式；Agent 可以动态调用检索 |
+| Google Cloud Vector Search | 专用向量检索基础设施 | 大规模近邻搜索是明确的独立工作负载 |
+| Google Cloud AlloyDB for PostgreSQL | 业务关系数据与 Embedding 可共存 | 不一定需要独立部署专用 Vector Database |
+| Google Cloud Spanner Graph + Vector Search | GraphRAG | 关系遍历与语义检索可以组合 |
+| AWS Production RAG | 检索、权限、编排、监控、可靠性和评估 | 生产 RAG 是完整的软件系统，不是一个向量索引 |
+
+这些平台示例并不能证明某一种架构普遍最好。它们说明的是：存储和检索技术应由数据形态、查询负载、规模、权限、延迟和运营能力决定。
+
+对企业知识库而言，先使用已有的 PostgreSQL、搜索平台、EA Repository 和文档系统，往往比一开始增加一个独立向量平台更简单。只有当语义检索的实测收益足以抵消 Embedding 生成、索引维护、权限同步、监控和额外基础设施成本时，才值得引入向量索引。
+
+## 15. 如何判断某个 Pattern 值得引入？
+
+不要用“业界都在用”作为技术选型理由。建议准备一组真实查询，按问题类型标注正确证据，再逐项比较检索方案。
+
+| 测试问题类型 | 基线方案 | 候选增强 Pattern | 重点观察 |
+|---|---|---|---|
+| 精确 ID、版本、错误码 | SQL / BM25 | Metadata Filter | 精确率、漏检率 |
+| 自然语言改写、同义表达 | BM25 | Vector / Hybrid | Recall@K、MRR |
+| 片段依赖章节背景 | 普通 Chunk | Contextual / Parent-Child | 证据完整性 |
+| 候选内容多且相似 | Hybrid Top-K | Reranking | nDCG、答案相关性、延迟 |
+| 一个问题涉及多个系统 | 单次检索 | Query Decomposition | 子问题覆盖率、证据遗漏 |
+| 多跳依赖和影响分析 | 文本检索 | SQL / Graph Query | 关系正确性、路径完整性 |
+| 受权限约束的知识查询 | 无过滤检索 | ACL / Metadata Filtering | 越权结果数必须为零 |
+| 经常变化的知识 | 静态索引 | 增量同步与版本治理 | 更新延迟、过期结果率 |
+
+至少记录以下指标：
+
+- Retrieval：Recall@K、Precision@K、MRR、nDCG。
+- Generation：Faithfulness / Groundedness、Answer Relevance、Citation Correctness。
+- Operations：P50 / P95 Latency、Token Cost、Indexing Cost、Failure Rate。
+- Governance：ACL Violation Count、Stale Result Rate、Source Coverage。
+
+其中权限越界不能作为普通准确率指标处理，必须是零容忍的安全约束。对于其他指标，也应结合业务风险设定验收门槛。
+
+建议采用逐步实验：先建立 SQL / API 和全文检索基线，再测试 Vector、Hybrid、Reranking 或 Agentic Retrieval。每次只增加一个主要变量，保留测试集和实验配置。这样才能知道收益究竟来自哪里，也能避免把复杂度增加误判为质量提升。
+
+## 16. 总结：不要把 RAG 做成 Chunk + Vector 的同义词
 
 回到最初的问题：RAG 是否必须 Chunk 和 Vectorize？
 
