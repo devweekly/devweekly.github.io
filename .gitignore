@@ -40,6 +40,9 @@ research-*/*
 # EDGAR 原文内嵌大图（156 MB），可由 SOURCE.md 里的 index 页重新下载
 temp/anthropic-s1/images/
 
+# 按章切出的英文中间稿，可由 anthropic-s1.en.md + split.py 重新生成
+temp/anthropic-s1/zh/_src/
+
 # yarn
 .yarn/*
 !.yarn/patches
