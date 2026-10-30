@@ -899,3 +899,9 @@ Chunking 是内容组织和检索粒度的选择；Vectorization 是语义检索
 4. [Microsoft Cloud Blog — Common retrieval-augmented generation (RAG) techniques explained](https://www.microsoft.com/en-us/microsoft-cloud/blog/2025/02/04/common-retrieval-augmented-generation-rag-techniques-explained/)：Chunking、Hybrid Search、Query Rewriting 和 Re-ranking。
 5. [Microsoft Azure Architecture Center — Design and develop a RAG solution](https://learn.microsoft.com/en-us/azure/architecture/ai-ml/guide/rag/rag-solution-design-and-evaluation-guide)：RAG 设计、检索策略和评估方法。
 6. [MongoDB — Retrieval-Augmented Generation with MongoDB Vector Search](https://www.mongodb.com/docs/vector-search/tutorials/rag/)：不同 Chunking 策略及适用场景。
+7. [Anthropic Engineering — Contextual Retrieval](https://www.anthropic.com/engineering/contextual-retrieval)：Contextual Embeddings、Contextual BM25 与 Reranking 的组合实践及实验结果。
+8. [Google Cloud Architecture Center — RAG reference architectures](https://docs.cloud.google.com/architecture/rag-reference-architectures)：Vector Search、AlloyDB、GraphRAG 等不同参考架构。
+9. [Google Cloud Architecture Center — GraphRAG with Spanner Graph](https://docs.cloud.google.com/architecture/gen-ai-graphrag-spanner)：图查询与向量检索组合的参考架构。
+10. [AWS Builder Center — Building a Production-Ready RAG Application on AWS](https://builder.aws.com/content/3Jx9qmFj3eduzjyJsdk7w6Agy8n/building-a-production-ready-rag-application-on-aws-10-practical-lessons)：生产系统中的授权、引用、监控、可靠性和评估清单。
+11. [Microsoft Learn — RAG and indexes in Microsoft Foundry](https://learn.microsoft.com/en-us/azure/foundry/concepts/retrieval-augmented-generation)：Agentic Retrieval、查询分解、并行检索和索引模式。
+12. [Microsoft Azure Architecture Center — Information Retrieval Phase](https://learn.microsoft.com/en-us/azure/architecture/ai-ml/guide/rag/rag-information-retrieval)：混合检索、RRF、查询分解、过滤与重排序的详细设计。
