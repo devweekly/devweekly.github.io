@@ -58,7 +58,7 @@ Rezwan D. PavriAllison B. SpinnerLang LiuColin G. ConklinJonie I. KondrackiLeste
 
 **注册人特此于必要的一个或多个日期修订本注册声明，以推迟其生效日期，直至注册人提交进一步修订并明确说明本注册声明此后将依据经修订的 1933 年证券法第 8(a) 条生效，或直至本注册声明于美国证券交易委员会依据上述第 8(a) 条确定的日期生效。**
 
-![](a2026-10x24coverxheadera.jpg)
+![](../images/web/a2026-10x24coverxheadera.jpg)
 
 **本初步招股说明书中的信息并不完整，且可能变更。在向美国证券交易委员会提交的注册声明生效之前，不得出售这些证券。本初步招股说明书并非在任何不允许此类发售或出售的司法管辖区内出售这些证券的要约，也不构成购买这些证券的要约邀请。**
 
@@ -97,21 +97,21 @@ ______________ (1) 关于应付承销商报酬的说明，参见标题为“承�
 
 **招股说明书日期：（原文留白）**
 
-![](a2026-10x25pg1a.jpg)
+![](../images/web/a2026-10x25pg1a.jpg)
 
-![](a2026-10x25pg2a.jpg)
+![](../images/web/a2026-10x25pg2a.jpg)
 
-![](a2026-10x25pg3a.jpg)
+![](../images/web/a2026-10x25pg3a.jpg)
 
-![](a2026-10x25pg4a.jpg)
+![](../images/web/a2026-10x25pg4a.jpg)
 
-![](a2026-10x25pg5a.jpg)
+![](../images/web/a2026-10x25pg5a.jpg)
 
-![](a2026-10x25pg6a.jpg)
+![](../images/web/a2026-10x25pg6a.jpg)
 
-![](a2026-10x25pg7a.jpg)
+![](../images/web/a2026-10x25pg7a.jpg)
 
-![](a2026-10x25pg8a.jpg)
+![](../images/web/a2026-10x25pg8a.jpg)
 
 i
 

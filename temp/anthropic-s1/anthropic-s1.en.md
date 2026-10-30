@@ -56,7 +56,7 @@ If an emerging growth company, indicate by check mark if the registrant has elec
 
 **The registrant hereby amends this registration statement on such date or dates as may be necessary to delay its effective date until the registrant shall file a further amendment which specifically states that this registration statement shall thereafter become effective in accordance with Section 8(a) of the Securities Act of 1933, as amended, or until the registration statement shall become effective on such date as the Securities and Exchange Commission, acting pursuant to said Section 8(a), may determine.**
 
-![](a2026-10x24coverxheadera.jpg)
+![](images/web/a2026-10x24coverxheadera.jpg)
 
 **The information in this preliminary prospectus is not complete and may be changed. These securities may not be sold until the registration statement filed with the Securities and Exchange Commission is effective. This preliminary prospectus is not an offer to sell nor does it seek an offer to buy these securities in any jurisdiction where the offer or sale is not permitted.**
 
@@ -95,21 +95,21 @@ To the extent that the underwriters sell more than shares of Class A common stoc
 
 ### Prospectus dated
 
-![](a2026-10x25pg1a.jpg)
+![](images/web/a2026-10x25pg1a.jpg)
 
-![](a2026-10x25pg2a.jpg)
+![](images/web/a2026-10x25pg2a.jpg)
 
-![](a2026-10x25pg3a.jpg)
+![](images/web/a2026-10x25pg3a.jpg)
 
-![](a2026-10x25pg4a.jpg)
+![](images/web/a2026-10x25pg4a.jpg)
 
-![](a2026-10x25pg5a.jpg)
+![](images/web/a2026-10x25pg5a.jpg)
 
-![](a2026-10x25pg6a.jpg)
+![](images/web/a2026-10x25pg6a.jpg)
 
-![](a2026-10x25pg7a.jpg)
+![](images/web/a2026-10x25pg7a.jpg)
 
-![](a2026-10x25pg8a.jpg)
+![](images/web/a2026-10x25pg8a.jpg)
 
 i
 
@@ -229,7 +229,7 @@ The following are abbreviations, acronyms, and definitions of certain terms used
 
 “**tokens**” refer to numeric units into which an AI model converts the data it processes, including text, images, audio, and video, the number of which varies by the model and tokenizer applied. Tokens are the smallest individual units of a language model and can correspond to words, subwords, characters, or bytes. A tokenizer is the component of a model that converts customer inputs into the sequence of tokens the model processes and then converts the processed tokens into the outputs provided to customers.
 
-![](a2026-10x24prospectusa.jpg)
+![](images/web/a2026-10x24prospectusa.jpg)
 
 ### P rospectus Summar y
 
@@ -340,7 +340,7 @@ Our scale and growth create self-reinforcing loops that make Claude better over 
 
 - *Improvement Loop*. Enterprise deployments of Claude deepen our understanding of the hard problems, edge cases, and domain-specific challenges that matter most to our customers. We improve our models, platform, and applications based on feedback from customers using our offerings in production across their businesses. These improvements result in wider deployments and adoption that fuel the next cycle of improvement.
 - *Investment Loop*. Revenue from expanding enterprise adoption helps us to fund the compute, research, and talent needed to improve Claude. Claude’s advancing capabilities expand the range of tasks and workflows customers use Claude for, broadening our addressable market and driving deeper deployment, additional revenue, and continued reinvestment in Claude.
-![](business2a.jpg)
+![](images/web/business2a.jpg)
 
 *Claude is Accelerating Our Ability to Close the Loop*
 
@@ -576,7 +576,7 @@ In addition to the measures presented in our consolidated financial statements t
 
 See the section titled “Management’s Discussion and Analysis of Financial Condition and Results of Operations —Non-GAAP Financial Measures” for a definition of each non-GAAP financial measure, a discussion of the limitations of each non-GAAP financial measure, and a reconciliation of each non-GAAP financial measure to its most comparable GAAP financial measure for the periods presented and additional information.
 
-![](a2026-10x24riska.jpg)
+![](images/web/a2026-10x24riska.jpg)
 
 ## Risk Factors
 
@@ -1850,7 +1850,7 @@ Our 2026 Plan and ESPP each provide for an annual automatic increase in the numb
 
 To the extent that any outstanding options to purchase our Class A common stock are exercised, RSUs are settled or new awards are granted under our equity compensation plans, there will be further dilution to investors participating in this offering.
 
-![](a2026-10x24mdaa.jpg)
+![](images/web/a2026-10x24mdaa.jpg)
 
 ## Management’s Discussion and Analysis of Financial Condition and Results of Operations
 
@@ -1882,7 +1882,7 @@ We deliver this intelligence through an integrated approach. Our Claude model fa
 
 As more customers adopt Claude and expand their usage, we have rapidly grown our base of customers that generate meaningful revenue. We had more than 11,900 customers with $100,000 or more of revenue on a TTM basis as of September 30, 2026, up from more than 950 as of September 30, 2025. In addition, as customers further embed Claude into their most critical workflows and growth initiatives, many rapidly expand their deployments into higher revenue tiers. As of September 30, 2026, we had more than 1,900 customers with $1 million or more of revenue on a TTM basis and approximately 250 customers with $10 million or more of revenue on a TTM basis.
 
-![](mda2aa.jpg)
+![](images/web/mda2aa.jpg)
 
 This customer momentum is driven by significant usage expansion as customers realize the value of deploying Claude across their organizations. The value that Claude delivers to customers has helped drive our Net Revenue Retention of approximately 900% as of September 30, 2026.
 
@@ -1897,7 +1897,7 @@ We define compute efficiency as maximizing the intelligence produced and revenue
 - Training Efficiency. Our researchers regularly innovate compute multipliers. Increasingly, Claude itself assists in the research and engineering that produce each successive version of our models, which is a recursive dynamic we refer to as “closing the loop,” with successive versions of our models accelerating the development of the next and compounding these gains across model generations.
 - Inference Efficiency. Our researchers have delivered meaningful compute multipliers for inference —reducing the compute required to serve a given level of model performance—while our engineering teams have driven significant optimizations in how efficiently that compute is utilized in production. This allows us to provide greater value for customers and generate greater revenue from our compute base over time, which is critical as we have consistently operated in a compute-constrained environment where customer demand exceeds available compute.
 - Multi-Chip Compute Approach. We train and serve Claude natively across four major chip families (AWS Trainium, Google TPUs, NVIDIA GPUs, and AMD GPUs) using a proprietary orchestration layer that enables us to optimize workloads for price and performance. This flexibility, which took years and significant investment to build and we believe is difficult to replicate at scale, expands our available compute, reduces dependence on any single vendor, and enables us to continuously route workloads to the most optimal hardware for those workloads. This foundation, paired with Claude’s increasing understanding of chip and model architectures, allows us to onboard new chip platforms in a fraction of the time this once required.
-![](mda3aa.jpg)
+![](images/web/mda3aa.jpg)
 
 Revenue per dollar of compute has expanded meaningfully, even as we have accelerated research and product velocity and expanded our internal Claude usage. For example, our revenue grew 1,368% year over year for the three months ended June 30, 2026, compared to our compute and infrastructure expenses that grew 300% during the same period. While serving our growing customer demand, we also made significant research advances to the frontier with new leading models, including Mythos 5, Fable 5, and Opus 5, and launched new products, including Claude Cowork and Claude Design.
 
@@ -1911,7 +1911,7 @@ Our go-to-market model reflects this as well—intelligence-led growth and broad
 
 Our revenue was $16.3 billionfor the six months ended June 30, 2026, up from $1.2 billion for the six months ended June 30, 2025. Our operating loss was $693 million for the six months ended June 30, 2026 , down from $2.1 billion for the six months ended June 30, 2025. The result of our revenue growth, compute efficiency, and operating efficiency has been a significant improvement in Adjusted Operating Income, which was $1.6 billion for the six months ended June 30, 2026, up from Adjusted Operating Loss of $1.8 billion for the six months ended June 30, 2025. We expect operating margin and Adjusted Operating Margin to fluctuate over time, particularly in periods when substantial incremental compute is delivered to us and we incur the associated expenses. See the section titled “—Non-GAAP Financial Measures” for a description of and information about Adjusted Operating Income (Loss) and Adjusted Operating Margin, as well as a reconciliation of these measures to the most directly comparable financial measures calculated in accordance with GAAP.
 
-![](mda4aa.jpg)
+![](images/web/mda4aa.jpg)
 
 ### Compute Investments
 
@@ -2963,7 +2963,7 @@ We routinely assess each significant matter and its potential financial exposure
 
 See Note 1 to our consolidated financial statements included elsewhere in this prospectus for a description of recently adopted accounting pronouncements and recently issued accounting pronouncements not yet adopted.
 
-![](a2026-10x24businessa.jpg)
+![](images/web/a2026-10x24businessa.jpg)
 
 ## Business
 
@@ -2973,7 +2973,7 @@ For the first time in history, intelligence is something humans can build. The c
 
 Anthropic was founded in 2021 by a team of researchers responsible for many of the breakthroughs that define AI. We are first and foremost a research lab—our mission is the responsible development and maintenance of advanced AI for the long-term benefit of humanity. This mission directs our focus—along with our talent and culture, our frontier and safety research, our approach to compute, and our enterprise strategy, it is one of the core advantages that set us apart. These advantages enable us to continuously advance frontier AI and shape the standards for its safe and responsible development. Our frontier AI, Claude, is delivered to customers through our models, platform, and applications. Claude has experienced the fastest enterprise adoption of any technology in history, as demonstrated by revenue growing from $0 at commercial launch in the first quarter of 2023 to $ for the three months ended September 30, 2026. This rapid and growing adoption generates two self-reinforcing dynamics—an improvement loop that advances Claude and an investment loop that helps fund our continued research in frontier AI.
 
-![](a2026-09x27xgraphicsxcompe.jpg)
+![](images/web/a2026-09x27xgraphicsxcompe.jpg)
 
 We believe the diffusion of AI through the global economy represents one of the largest opportunities in history to improve how humans live and work, and this process is just beginning. In our view, the world has only begun to use the capabilities of today’s frontier models, and the gap between what Claude can do and how broadly it is used represents one of our largest growth opportunities, alongside continued advances at the frontier. Claude’s capabilities have evolved significantly in recent years, and we expect they will continue advancing rapidly. This will lead not only to an expanding addressable market, but also to an expanding scope of impact on the world. We aim to ensure that impact is as positive as possible.
 
@@ -3026,7 +3026,7 @@ The demonstrated growth, scale, and efficiency of our financial model help us to
 Our scale and growth create self-reinforcing loops that make Claude better over time and that we believe create durable competitive advantages.
 
 - *Improvement Loop*. Enterprise deployments of Claude deepen our understanding of the hard problems, edge cases, and domain-specific challenges that matter most to our customers. We improve our models, platform, and applications based on feedback from customers using our offerings in production across their businesses. These improvements result in wider deployments and adoption that fuel the next cycle of improvement. • *Investment Loop*. Revenue from expanding enterprise adoption helps us to fund the compute, research, and talent needed to improve Claude. Claude’s advancing capabilities expand the range of tasks and workflows customers use Claude for, broadening our addressable market and driving deeper deployment, additional revenue, and continued reinvestment in Claude.
-![](business2a.jpg)
+![](images/web/business2a.jpg)
 
 ### Claude is Accelerating Our Ability to Close the Loop
 
@@ -3160,7 +3160,7 @@ We refer to these AI systems that work alongside humans to perform complex, mult
 
 continue extending them to knowledge workers globally, a population that is estimated to exceed one billion in 2028.10
 
-![](business4a.jpg)
+![](images/web/business4a.jpg)
 
 ### Claude Code
 
@@ -3308,7 +3308,7 @@ We build first-party applications to demonstrate where frontier models are headi
 
 We also design our products to close the gap between what Claude can do and how fully customers use it, which we believe is important to helping customers realize the value of frontier intelligence. Rather than requiring customers to learn how the underlying models work, we build products that allow them to interact with Claude as they would with a colleague, simply and naturally, so they can adopt new capabilities as they become available. We believe that as we extend the frontier and broaden our application surfaces, customers realize value faster, embed Claude more deeply into their operations, and increasingly rely on us as a primary provider for their AI transformation.
 
-![](business5b.jpg)
+![](images/web/business5b.jpg)
 
 ### The Claude Model Family
 
@@ -3456,45 +3456,45 @@ Across all three dimensions, a significant share of expansion requires minimal t
 
 Despite the pace of adoption, we believe we are in the earliest stages of penetrating the frontier AI opportunity. Most enterprises that use Claude today have deployed it across a small number of teams and use cases relative to the scope of work Claude can address today, and the scope of work we believe Claude can address in the future. We believe most knowledge workers globally have not yet used frontier AI. As each new version of a Claude model advances in capability, the range of tasks and workflows that become viable on the platform continues to expand. Because we operate the platform and offer applications, model advances reach our customers through several channels simultaneously.
 
-![](a2026-10x25xcasestudyxaccea.jpg)
+![](images/web/a2026-10x25xcasestudyxaccea.jpg)
 
-![](casestudy-aig1da.jpg)
+![](images/web/casestudy-aig1da.jpg)
 
-![](casestudiesbristol3da.jpg)
+![](images/web/casestudiesbristol3da.jpg)
 
-![](casestudy-doordash1c.jpg)
+![](images/web/casestudy-doordash1c.jpg)
 
-![](casestudy-internationalres.jpg)
+![](images/web/casestudy-internationalres.jpg)
 
-![](casestudy-janestreet1da.jpg)
+![](images/web/casestudy-janestreet1da.jpg)
 
-![](casestudy-legora1ca.jpg)
+![](images/web/casestudy-legora1ca.jpg)
 
-![](casestudy-lilly1ba.jpg)
+![](images/web/casestudy-lilly1ba.jpg)
 
-![](casestudy-mercadolibrex21da.jpg)
+![](images/web/casestudy-mercadolibrex21da.jpg)
 
-![](casestudy-mozilla1da.jpg)
+![](images/web/casestudy-mozilla1da.jpg)
 
-![](casestudy-paypal1da.jpg)
+![](images/web/casestudy-paypal1da.jpg)
 
-![](casestudy-rakuten1ba.jpg)
+![](images/web/casestudy-rakuten1ba.jpg)
 
-![](casestudy-salesforce1b.jpg)
+![](images/web/casestudy-salesforce1b.jpg)
 
-![](casestudy-sap1c.jpg)
+![](images/web/casestudy-sap1c.jpg)
 
-![](casestudy-shopify1ca.jpg)
+![](images/web/casestudy-shopify1ca.jpg)
 
-![](casestudy-travelers1ca.jpg)
+![](images/web/casestudy-travelers1ca.jpg)
 
-![](casestudy-ust1ca.jpg)
+![](images/web/casestudy-ust1ca.jpg)
 
-![](casestudy-verizon1da.jpg)
+![](images/web/casestudy-verizon1da.jpg)
 
-![](casestudy-walmart1ca.jpg)
+![](images/web/casestudy-walmart1ca.jpg)
 
-![](a2026-09x17xcasestudyxshyb.jpg)
+![](images/web/a2026-09x17xcasestudyxshyb.jpg)
 
 ### Our Culture, Values, and Talent
 
@@ -3724,7 +3724,7 @@ In each of the actions, we believe we have meritorious defenses and dispute any 
 
 In February 2026, in response to our publicly stated position that our technology should not be used for mass domestic surveillance or fully autonomous weapons, the President of the United States stated that he had directed that all federal executive agencies cease using our technology. At the same time, the Secretary of War directed the Department of War to designate Anthropic as a “supply-chain risk to national security” and stated that “effective immediately, no contractor, supplier, or partner that does business with the United States military may conduct any commercial activity” with us. On March 4, 2026, the Department of War sent us two letters—one pursuant to 10 U.S.C. § 3252 and the other pursuant to Section 4713 of the FASCSA—asserting that our models, platform, and applications present a supply-chain risk. These actions referenced above are defined herein as “Challenged Actions.” We vigorously challenged the Challenged Actions in *Anthropic PBC v. Department of War, et al.* (N.D. Cal.) and *Anthropic PBC v. Department of War, et al.* (D.C. Cir.). After first obtaining an order from the United States District Court for the Northern District of California that preliminarily enjoined the Department of War’s directive and Section 3252 supply-chain risk designation of us and preliminarily enjoined the other defendant agencies from implementing the Presidential directive until final resolution of the lawsuit, we subsequently, on August 27, 2026, obtained an order from the United States District Court for the Northern District of California that largely granted summary judgment in our favor. The court ruled that the Challenged Actions were retaliatory acts meant to punish us for speech protected under the First Amendment to the United States Constitution and violated our rights under the Due Process Clause of the Fifth Amendment to the United States Constitution. The court also held that the Secretary of War’s actions, particularly with respect to 10 U.S.C. § 3252, violated the Administrative Procedure Act because they were in excess of statutory authority, contrary to law, and arbitrary and capricious. The court entered final judgment largely in our favor. The defendants filed a notice of appeal of the preliminary injunction. The D.C. Circuit Court of Appeals, however, denied our motion to stay the Secretary of War’s Section 4713 designation of us as a supply-chain risk pending review on the merits. On September 25, 2026, in a 2-1 split decision, the D.C. Circuit Court of Appeals denied our petition for review, ruling that the Department of War’s Section 4713 supply-chain risk designation was proper, and that our rights under the First Amendment and Due Process Clause of the Fifth Amendment were not violated. We filed a petition for rehearing en banc asking the full D.C. Circuit to review the panel’s decision. We cannot predict the ultimate outcome of these lawsuits. While we continue to work with government agencies, we cannot be certain that the resolution of these lawsuits will not adversely affect our ability to sell to government agencies and other customers that sell products and services to the U.S. government, and thus on our business, financial condition, and results of operations.
 
-![](a2026-10x24governancea.jpg)
+![](images/web/a2026-10x24governancea.jpg)
 
 ## Our Governance Structure and Its Goals
 
@@ -7362,7 +7362,7 @@ The Company has evaluated subsequent events for recognition and measurement purp
 
 - In July 2026, the Company entered into a hardware supply framework agreement (the “Hardware Supply Agreement”) with Advanced Micro Devices, Inc. (“AMD”) to purchase, lease, or access AMD Helios rack-scale systems featuring AMD Instinct MI450 series GPUs. Pursuant to the terms of the Hardware Supply Agreement, AMD committed to purchase up to $5.0 billion of the Company’s Class N common stock, if certain conditions are achieved.
 - In addition to the transactions above, subsequent to June 30, 2026, the Company entered into new, and amended existing, lease and commercial agreements primarily to secure additional compute and infrastructure capacity, with aggregate future minimum payment obligations of approximately $245 billion, with some arrangements subject to certain contractual conditions being met. These primarily consist of compute and infrastructure agreements, commencing between 2026 and 2036 with terms greater than one year and up to 20 years. The Company also entered into certain agreements that are short term in nature with minimum non-cancelable payments under such contracts of approximately $21 billion.
-![](a2026-10x24backxcovera.jpg)
+![](images/web/a2026-10x24backxcovera.jpg)
 
 II-1
 

@@ -83,7 +83,7 @@
 
 本公司还通过产品设计来缩小 Claude 能做什么与客户实际使用程度之间的差距，本公司相信这对于帮助客户实现前沿智能的价值十分重要。本公司不要求客户学习底层模型的工作方式，而是构建产品，使客户能够像与同事交流一样与 Claude 交互，简单而自然，从而能够在新增能力可用时予以采用。本公司相信，随着本公司拓展前沿并扩大应用界面，客户将更快实现价值、将 Claude 更深入地嵌入其运营，并日益依赖本公司作为其 AI 转型的主要提供商。
 
-![](business5b.jpg)
+![](../images/web/business5b.jpg)
 
 ## Claude 模型系列
 
@@ -231,24 +231,24 @@ Claude 可通过三大云平台的专用 AI 服务层（Amazon Bedrock、Gemini 
 
 尽管采用速度如此之快，本公司相信本公司仍处于渗透前沿 AI 机遇的最早期阶段。与 Claude 当前所能承担的工作范围、以及本公司相信 Claude 未来所能承担的工作范围相比，当今使用 Claude 的大多数企业仅将其部署在少数团队与用例中。本公司相信，全球大多数知识工作者尚未使用过前沿 AI。随着 Claude 模型的每个新版本在能力上不断进步，平台上可成立的任务与工作流范围持续扩大。由于本公司运营该平台并提供应用程序，模型进步会同时通过多个渠道触达本公司客户。
 
-![](a2026-10x25xcasestudyxaccea.jpg)
+![](../images/web/a2026-10x25xcasestudyxaccea.jpg)
 
-![](casestudy-aig1da.jpg)
+![](../images/web/casestudy-aig1da.jpg)
 
-![](casestudiesbristol3da.jpg)
+![](../images/web/casestudiesbristol3da.jpg)
 
-![](casestudy-doordash1c.jpg)
+![](../images/web/casestudy-doordash1c.jpg)
 
-![](casestudy-internationalres.jpg)
+![](../images/web/casestudy-internationalres.jpg)
 
-![](casestudy-janestreet1da.jpg)
+![](../images/web/casestudy-janestreet1da.jpg)
 
-![](casestudy-legora1ca.jpg)
+![](../images/web/casestudy-legora1ca.jpg)
 
-![](casestudy-lilly1ba.jpg)
+![](../images/web/casestudy-lilly1ba.jpg)
 
-![](casestudy-mercadolibrex21da.jpg)
+![](../images/web/casestudy-mercadolibrex21da.jpg)
 
-![](casestudy-mozilla1da.jpg)
+![](../images/web/casestudy-mozilla1da.jpg)
 
-![](casestudy-paypal1da.jpg)
+![](../images/web/casestudy-paypal1da.jpg)

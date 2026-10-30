@@ -96,7 +96,7 @@ class DocParser(HTMLParser):
             src = dict(attrs).get("src", "")
             if src and not src.startswith("data:"):
                 self._close_line()
-                self.items.append(("img", None, src, 0))
+                self.items.append(("img", None, f"images/{src.lstrip('./')}", 0))
             return
         if self.tdepth:
             if tag == "tr" and self.tdepth == 1:

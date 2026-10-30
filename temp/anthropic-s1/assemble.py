@@ -59,6 +59,7 @@ def main():
 
     for _, title, body in units:
         content = re.sub(r'^(#+)', r'#\1', body, flags=re.M)   # 内部标题降一级
+        content = content.replace('](../images/', '](images/')  # 合并稿与 images/ 同级
         doc += [f'## {title}', content.strip(), '']
 
     out = '\n'.join(doc)

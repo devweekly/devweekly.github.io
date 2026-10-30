@@ -37,8 +37,8 @@ validation-run.log
 # research-repo skill: large evidence files (regenerable from full.json + repo)
 research-*/*
 
-# EDGAR 原文内嵌大图（156 MB），可由 SOURCE.md 里的 index 页重新下载
-temp/anthropic-s1/images/
+# EDGAR 原图（5100×6600，156 MB）；只入库 images/web/ 下的 1100px 压缩版
+temp/anthropic-s1/images/*.jpg
 
 # 按章切出的英文中间稿，可由 anthropic-s1.en.md + split.py 重新生成
 temp/anthropic-s1/zh/_src/
