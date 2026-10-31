@@ -11,6 +11,7 @@ from .types import (
     PreferenceClaim,
     PreferenceEvidence,
     TaskContext,
+    utc_now,
 )
 
 
@@ -193,7 +194,7 @@ class PreferenceStore:
                 claim.valid_to,
                 claim.status,
                 revision,
-                claim.valid_from,
+                utc_now(),
                 supersedes_id,
             ),
         )
