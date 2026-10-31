@@ -9,6 +9,7 @@ from personal_preference_model.interpreter import DemoInterpreter
 from personal_preference_model.learner import PairwisePreferenceModel
 from personal_preference_model.resolver import PreferenceResolver
 from personal_preference_model.store import PreferenceStore
+from personal_preference_model.validation import EvidencePromotionPolicy
 from personal_preference_model.types import (
     FeedbackEvent,
     PairwiseSample,
@@ -47,6 +48,53 @@ class PreferencePipelineTests(unittest.TestCase):
         dimensions = {item.dimension for item in evidence}
         self.assertIn("narration.voice", dimensions)
         self.assertIn("style.polish", dimensions)
+
+    def test_evidence_promotion_rejects_weak_or_unscoped_inference(self) -> None:
+        event = FeedbackEvent(
+            user_id="u1",
+            event_type="negative_feedback",
+            raw_feedback="The style feels over-polished.",
+            task_context=self.task,
+        )
+        from personal_preference_model.types import PreferenceEvidence
+
+        policy = EvidencePromotionPolicy(minimum_confidence=0.75)
+        weak = PreferenceEvidence(
+            event_id=event.event_id,
+            user_id="u1",
+            dimension="style.polish",
+            direction="avoid",
+            confidence=0.52,
+            rationale="Low confidence candidate.",
+            scope={"text_type": ["psychological_narration"]},
+        )
+        unscoped = PreferenceEvidence(
+            event_id=event.event_id,
+            user_id="u1",
+            dimension="style.polish",
+            direction="avoid",
+            confidence=0.95,
+            rationale="No context boundary.",
+            scope={},
+        )
+        self.assertEqual(policy.evaluate(weak).reason, "LOW_EXTRACTION_CONFIDENCE")
+        self.assertEqual(policy.evaluate(unscoped).reason, "UNSCOPED_INFERRED_EVIDENCE")
+
+    def test_evidence_promotion_accepts_scoped_strong_evidence(self) -> None:
+        from personal_preference_model.types import PreferenceEvidence
+
+        evidence = PreferenceEvidence(
+            event_id="event-1",
+            user_id="u1",
+            dimension="style.polish",
+            direction="avoid",
+            confidence=0.90,
+            rationale="The user rejects over-polishing.",
+            scope={"text_type": ["psychological_narration"]},
+        )
+        decision = EvidencePromotionPolicy().evaluate(evidence)
+        self.assertTrue(decision.approved)
+        self.assertEqual(decision.reason, "VALIDATED")
 
     def test_scope_mismatch_is_excluded(self) -> None:
         dialogue_claim = PreferenceClaim(
