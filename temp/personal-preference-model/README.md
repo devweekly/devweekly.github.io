@@ -34,7 +34,7 @@ python -m personal_preference_model.demo
 python -m unittest discover -s tests -v
 ~~~
 
-默认数据库写到系统临时目录，不会把用户数据写进仓库。演示使用合成反馈和合成 A/B 选择，不能把演示权重当作任何真实用户的画像。
+默认数据库和 JSON 模型权重写到系统临时目录，不会把用户数据写进仓库。Demo 将目标用户最后两个 A/B 样本留作小型 hold-out，仅展示评估流程；由于样本极少且全部为合成数据，输出准确率不具备统计意义，不能把演示权重当作任何真实用户的画像。
 
 ## 分阶段实现
 
@@ -79,6 +79,8 @@ PairwisePreferenceModel 是一个简单的 Bradley–Terry / Logistic 成对比�
 - user delta 从单用户样本学习，并用 L2 正则向 population prior 收缩；
 - context interaction 将 text_type、genre、task_type 等上下文与文本特征组合；
 - predict 返回 A/B 选择概率、置信度代理值和用户样本数。
+- save/load 将 population prior 和 user-specific deltas 序列化为 JSON，支持进程重启后的推理。
+- evaluate_pairwise_accuracy 用独立留出样本检查选择准确率；不要在训练数据上报告它作为泛化成绩。
 - save/load 将 population prior 和 user-specific deltas 序列化为 JSON，支持进程重启后的推理。
 - evaluate_pairwise_accuracy 用独立留出样本检查选择准确率；不要在训练数据上报告它作为泛化成绩。
 
