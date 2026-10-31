@@ -28,11 +28,11 @@ function makeUsage(input: Record<string, unknown>, provider: Provider): AgentTok
     ['inputTokens', 'inputTokens'],
     ['outputTokens', 'outputTokens'],
     ['totalTokens', 'totalTokens'],
-    ['cachedInputTokens', provider === 'codebuddy' ? 'cacheReadTokens' : 'cacheReadTokens'],
+    ['cachedInputTokens', provider === 'codebuddy' ? 'cacheReadTokens' : 'cachedInputTokens'],
     ['cacheWriteTokens', provider === 'codebuddy' ? 'cacheCreationTokens' : 'cacheWriteTokens'],
     ['reasoningTokens', 'reasoningTokens'],
     ['modelCalls', 'modelCalls'],
-    ['premiumRequestCost', 'totalPremiumRequestCost'],
+    ['premiumRequestCost', provider === 'codebuddy' ? 'premiumRequestCost' : 'cost'],
     ['totalNanoAiu', 'totalNanoAiu'],
   ];
   const usage: Record<string, unknown> = { source: 'provider-event' };
@@ -74,7 +74,7 @@ export class AgentObserver {
   }): ObserverContext {
     const turnId = input.turnId || newId('turn');
     const context = this.recorder.createContext({
-      sessionId: input.sessionId,
+      ...(input.sessionId ? { sessionId: input.sessionId } : {}),
       agentId: input.agentId,
       turnId,
       correlationId: newId('corr'),
@@ -181,7 +181,7 @@ export class AgentObserver {
       }, {
         category: 'tool',
         status: data.success === false ? 'failed' : 'completed',
-        durationMs: nonNegative(data.durationMs),
+        ...(nonNegative(data.durationMs) !== undefined ? { durationMs: nonNegative(data.durationMs)! } : {}),
       }));
       return;
     }
@@ -191,7 +191,7 @@ export class AgentObserver {
         model: stringValue(data.model) ?? context.model ?? 'unknown',
         durationMs: nonNegative(data.duration),
         finishReason: stringValue(data.finishReason) ?? null,
-      }, { category: 'model', status: 'completed', durationMs: nonNegative(data.duration), ...(usage ? { usage } : {}) }));
+      }, { category: 'model', status: 'completed', ...(nonNegative(data.duration) !== undefined ? { durationMs: nonNegative(data.duration)! } : {}), ...(usage ? { usage } : {}) }));
       return;
     }
     if (type === 'session.usage_info') {
@@ -284,7 +284,7 @@ export class AgentObserver {
       }, {
         category: 'agent',
         status: event.is_error === true || event.subtype !== 'success' ? 'failed' : 'completed',
-        durationMs: nonNegative(event.duration_ms),
+        ...(nonNegative(event.duration_ms) !== undefined ? { durationMs: nonNegative(event.duration_ms)! } : {}),
         ...(usage ? { usage } : {}),
       }));
     }
@@ -312,7 +312,13 @@ export class AgentObserver {
 
   recordTurnResult(context: ObserverContext, result: unknown): void {
     const value = asRecord(result);
-    const usage = makeUsage(asRecord(value.usage), context.provider);
+    const rawUsage = asRecord(value.usage);
+    const usage = makeUsage(context.provider === 'copilot' ? rawUsage : {
+      ...rawUsage,
+      cacheReadTokens: rawUsage.cacheReadTokens,
+      cacheCreationTokens: rawUsage.cacheCreationTokens,
+      totalCostUsd: rawUsage.totalCostUsd,
+    }, context.provider);
     this.enqueue(this.base(context, 'agent.turn.result', {
       textChars: typeof value.text === 'string' ? value.text.length : typeof value.content === 'string' ? value.content.length : 0,
       durationMs: nonNegative(value.durationMs) ?? null,
