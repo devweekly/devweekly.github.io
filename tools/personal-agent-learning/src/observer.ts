@@ -14,6 +14,7 @@ import {
 } from './security.js';
 import type { FeedbackKind, ObserverContext, OutcomeStatus, Provider } from './types.js';
 import { LearningStore } from './store.js';
+import { renderPreferenceInstructions, resolveApplicablePreferences } from './profile-compiler.js';
 
 type CopilotEvent = {
   type?: unknown;
@@ -423,6 +424,41 @@ export class AgentObserver {
     }
   }
 
+  resolvePreferences(
+    context: ObserverContext,
+    explicitOverrides: readonly string[] = [],
+  ): {
+    profileVersion: number;
+    preferences: ReturnType<typeof resolveApplicablePreferences>;
+    instructions: string;
+    deliveryEventId: string;
+  } {
+    const store = new LearningStore(this.config.learningDatabase);
+    let profile;
+    try {
+      profile = store.getProfile();
+    } finally {
+      store.close();
+    }
+    const preferences = resolveApplicablePreferences(profile, {
+      agent: context.agentId,
+      provider: context.provider,
+      ...(context.project ? { project: context.project } : {}),
+      ...(context.taskType ? { taskType: context.taskType } : {}),
+    }, explicitOverrides);
+    const deliveryEventId = this.recordPreferenceDelivery(
+      context,
+      profile.version,
+      preferences.map((item) => item.id),
+    );
+    return {
+      profileVersion: profile.version,
+      preferences,
+      instructions: renderPreferenceInstructions(profile.version, preferences),
+      deliveryEventId,
+    };
+  }
+
   recordPreferenceDelivery(
     context: ObserverContext,
     profileVersion: number,
@@ -461,8 +497,14 @@ export class AgentObserver {
   }
 
   async close(): Promise<void> {
-    await this.flush();
     this.closed = true;
+    let flushError: unknown;
+    try {
+      await this.flush();
+    } catch (error) {
+      flushError = error;
+    }
     await this.recorder.close();
+    if (flushError) throw flushError;
   }
 }
