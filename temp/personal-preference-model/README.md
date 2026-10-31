@@ -79,6 +79,8 @@ PairwisePreferenceModel 是一个简单的 Bradley–Terry / Logistic 成对比�
 - user delta 从单用户样本学习，并用 L2 正则向 population prior 收缩；
 - context interaction 将 text_type、genre、task_type 等上下文与文本特征组合；
 - predict 返回 A/B 选择概率、置信度代理值和用户样本数。
+- save/load 将 population prior 和 user-specific deltas 序列化为 JSON，支持进程重启后的推理。
+- evaluate_pairwise_accuracy 用独立留出样本检查选择准确率；不要在训练数据上报告它作为泛化成绩。
 
 这不是完整 Bayesian posterior，也不应把 confidence_proxy 当作校准概率。正式系统需要按作品和时间分割训练/测试集，检查概率校准、样本覆盖与跨场景泛化。
 
