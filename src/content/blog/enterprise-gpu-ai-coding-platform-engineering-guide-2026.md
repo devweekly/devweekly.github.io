@@ -385,7 +385,7 @@ DeepSeek 是检验国产加速器软件栈成熟度的一个很好的压力测�
 
 | 平台 / 项目 | 已公开的 DeepSeek 适配信息 | 硬件 / 部署特征 | 证据与边界 |
 | --- | --- | --- | --- |
-| **昇腾 + vLLM Ascend** | 官方教程覆盖 DeepSeek-V4-Flash W8A8-MTP；最新发行说明继续推进 V4.1 的 TurboQuant 4-bit latent 支持 | 官方固定版本教程给出 Atlas 800 A2（8×64 GB）或 A3（8×128 GB）单节点方案，也有两节点和 Prefill-Decode 分离示例 | 教程明确写明该版本暂时只支持 V4-Flash，不应据此推断 V4-Pro 同样可用；教程示例绑定 vLLM-Ascend v0.13.0rc3，不要直接当成当前最新版本 |
+| **昇腾 + vLLM Ascend** | v0.30.0 教程覆盖 DeepSeek-V4-Flash 多种权重；发布说明列出 V4.1 W8A8 与 TurboQuant INT4 KV Cache | A2 / A3 可部署 W8A8，950DT 有 BF16 权重方案，950PR / 950DT 支持本地量化 W4A4C8；支持 P/D 分离等特性 | V4-Pro 在支持矩阵中仍标为实验性；需按当前模型、芯片和框架版本矩阵验收，不能从 Flash 的支持状态外推 |
 | **昇腾 + CANN Recipes** | DeepSeek-V3.2-Exp、V4、V4.1-Flash 等模型优化样例；包括 V4 Attention-FFN 分离、DSpark 投机解码和在线 PD 分离 | 覆盖 Atlas A2 / A3 及昇腾 950PR / 950DT 等不同代际产品，具体能力按模型目录和样例脚本区分 | 这是持续更新的工程配方库，不等于每个样例都已在所有芯片、所有软件版本上完成真实模型验证；逐条查看模型目录、提交记录和验证说明 |
 | **昇腾 + KTransformers / KT-Kernel** | DeepSeek-V4-Flash 单 NPU 异构推理教程 | 一颗昇腾 die 承载 Attention、Dense 层和每层 32 个常驻专家；其余 224 个路由专家以 MXFP4 留在 CPU，由 KT-Kernel 的 LLAMAFILE MoE 执行 | 不是“单卡装下并运行整个模型”的传统部署。教程给出的 Atlas 800I A2 主机配置包括 192 核 Kunpeng 920、1.5 TB RAM；CPU 专家卸载的吞吐、NUMA 和内存带宽是核心约束 |
 | **寒武纪 MLU + vLLM-MLU** | 仓库更新历史明确列出 2026-04-24 DeepSeek-V4 Day-0 支持 | README 声明仅支持 MLU370 及以上设备，依赖寒武纪 SDK 提供的专用镜像和软件环境 | 这是厂商维护的独立 vLLM 插件仓库；Day-0 支持不代表上游 vLLM 原生支持，也不代表所有量化和并行策略都已覆盖 |
@@ -393,16 +393,18 @@ DeepSeek 是检验国产加速器软件栈成熟度的一个很好的压力测�
 
 #### 6.3.1 昇腾：官方 vLLM-Ascend 部署路径
 
-vLLM-Ascend 的 DeepSeek-V4 教程是目前比较具体的参考资料。教程所对应的版本明确说明当时暂时只支持 DeepSeek-V4-Flash，并给出 DeepSeek-V4-Flash-w8a8-mtp 量化权重。其资源配置不是“任意一台 8 卡昇腾服务器”：
+vLLM-Ascend 已有面向 DeepSeek-V4-Flash 的新教程，文档注明基于 vLLM-Ascend v0.30.0 验证。除了早期 v0.13.0rc3 文档中的 DeepSeek-V4-Flash-w8a8-mtp，当前教程还列出不同硬件对应的权重方案：A2 / A3 上的 W8A8，950DT（8×96 GB）上的 BF16，以及 950PR / 950DT 上通过 msmodelslim 本地量化得到的 W4A4C8 / MXFP4 混合精度权重。其资源配置不是“任意一台 8 卡昇腾服务器”：
 
-- Atlas 800 A2：8 张 64 GB NPU，单节点部署；
-- Atlas 800 A3：8 张 128 GB NPU，单节点部署；
-- 多节点示例：至少两台 Atlas 800 A2，每台 8 张 64 GB NPU；
+- Atlas 800I A2：8 张 64 GB NPU，运行 W8A8 权重；
+- Atlas 800I A3：8 张 128 GB NPU，运行 W8A8 权重；
+- Atlas 950DT：官方新教程列出 8 张 96 GB NPU 的 BF16 权重方案；
+- Atlas 950PR / 950DT：可使用 W4A4C8 / MXFP4 混合精度量化权重，量化过程和模型精度需单独验收；
+- 较早的多节点示例：至少两台 Atlas 800 A2，每台 8 张 64 GB NPU；
 - 关键推理参数涉及 Tensor Parallel、Expert Parallel、Data Parallel、MTP speculative decoding、模型长度、批处理 Token 数和 NPU 显存利用率。
 
 教程还提供 Prefill-Decode Disaggregation 示例。它说明大规模 MoE 推理不只是把 TP 数量调大：Prefill 和 Decode 可以使用不同资源池，通过 KV Cache 传输和调度分别优化首 Token 延迟与 Decode 吞吐。跨节点部署前，必须先验证 HCCL 通信、网卡选择、节点 IP、RDMA / RoCE 网络和模型权重共享路径。
 
-**版本提醒：** 文档中的 v0.13.0rc3 是该教程绑定的预发布版本示例，不是生产环境应直接复制的版本建议。当前 vLLM-Ascend 发布说明已经继续推进 DeepSeek-V4.1 的 Model Runner V2 和 TurboQuant 4-bit latent 能力。部署时应以目标硬件对应的最新稳定版教程、容器 Tag 和 Release Notes 为准，并保留可复现的镜像 Digest。
+**版本提醒：** v0.13.0rc3 是早期教程绑定的预发布版本，不应继续作为当前部署基线。新教程基于 v0.30.0 验证；当前发布说明进一步列出 DeepSeek-V4.1 在 Atlas 800I A2 / A3 上的 W8A8 服务、Model Runner V2、TurboQuant INT4 KV Cache、torch.compile 和 P/D 部署能力。支持矩阵对 V4-Flash 和 V4-Pro 的标记并不完全相同，V4-Pro 仍需按实验性支持处理。部署时应以目标硬件对应的最新稳定版教程、支持矩阵、容器 Tag 和 Release Notes 为准，并保留可复现的镜像 Digest。
 
 #### 6.3.2 昇腾：CANN Recipes 更适合做模型专项优化入口
 
@@ -459,8 +461,10 @@ POC 至少需要核实：DeepSeek-V4 的具体模型变体、权重格式、MLU 
 
 参考项目和文档：
 
-- [vLLM-Ascend：DeepSeek-V4 部署教程（v0.13.0）](https://docs.vllm.ai/projects/ascend/en/v0.13.0/tutorials/DeepSeek-V4.html)
+- [vLLM-Ascend：DeepSeek-V4-Flash 部署教程（基于 v0.30.0 验证）](https://docs.vllm.ai/projects/ascend/en/main/tutorials/models/DeepSeek-V4-Flash.html)
+- [vLLM-Ascend：DeepSeek-V4 支持矩阵](https://docs.vllm.ai/projects/ascend/en/latest/user_guide/support_matrix/supported_models.html)
 - [vLLM-Ascend：Release Notes](https://docs.vllm.ai/projects/ascend/en/latest/user_guide/release_notes.html)
+- [早期 v0.13.0 DeepSeek-V4 教程（历史版本）](https://docs.vllm.ai/projects/ascend/en/v0.13.0/tutorials/DeepSeek-V4.html)
 - [vllm-project/vllm-ascend](https://github.com/vllm-project/vllm-ascend)
 - [hicann/cann-recipes-infer](https://github.com/hicann/cann-recipes-infer)
 - [kvcache-ai/ktransformers：DeepSeek-V4-Flash Ascend NPU 教程](https://github.com/kvcache-ai/ktransformers/blob/main/doc/en/DeepSeek-V4-Flash_tutorial_for_Ascend_NPU.md)
