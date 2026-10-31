@@ -1959,6 +1959,450 @@ Resolver 的判断不能只返回一个分数，还应该返回一个带理由�
 - **Agent Clients**：翻译工具、Claude Code、企业助手等通过统一 API / MCP 读取 Snapshot 并回传反馈。
 
 
+
+## 35. 谁来判断用户偏好？规则、Classic ML、Transformer 与 LLM 的职责边界
+
+前面提出的 Preference Resolver 需要真正的判断能力。问题不是简单地在规则引擎、机器学习模型、Transformer 和 Jev/LLM 之间选择一个，而是要拆开判断任务：不同阶段面对的是不同类型的问题，应该采用不同方法。
+
+**推荐原则：规则负责约束，Classic ML 负责从反馈中估计偏好，Jev/LLM 负责理解语义和上下文，Preference Resolver 负责最终决策，用户反馈负责校正。**
+
+### 35.1 先区分四类判断
+
+| 判断任务 | 示例 | 最适合的技术 |
+|---|---|---|
+| 明确约束判断 | 用户明确说“所有小说翻译都不要擅自解释潜台词”；当前项目要求保留人称和敬语 | 规则 / Policy Engine |
+| 偏好强度估计 | 用户在相同场景下更偏好自然语序还是保留原文句法？ | Classic ML / Bayesian Preference Model |
+| 语义和上下文理解 | “这个翻译太聪明了，失去了原文的笨拙感”究竟在批评什么？当前段落属于什么叙事场景？ | Jev / 通用 LLM |
+| 当前任务适用性决策 | 用户通常喜欢简洁，但当前任务是意识流长句；某项偏好是否应该使用？ | Resolver：规则 + 统计估计 + LLM 解释性判断 |
+
+这四类任务不能混成一个模型调用。尤其要区分“偏好是什么”和“当前任务是否应该采用它”：前者是长期建模问题，后者是带当前上下文的运行时决策。
+
+### 35.2 规则引擎：必须存在，但只负责可以明确表达的边界
+
+规则适合判断明确、可验证、不可含糊的条件：用户明确声明的硬约束；项目级规则和当前请求的临时覆盖；语言方向、作品、章节、人物、文体等 scope；valid_from / valid_to 时间有效性；权限、隐私和数据使用限制；语义正确性、专名一致性等不能被审美偏好覆盖的约束。
+
+例如：
+
+~~~json
+{
+  "rule_id": "rule-translation-012",
+  "condition": {
+    "task": "literary_translation",
+    "project_id": "novel-001"
+  },
+  "effect": {
+    "dimension": "translation.explanation",
+    "policy": "do_not_add_unstated_psychological_explanation"
+  },
+  "source": "explicit_user_instruction",
+  "priority": "project_override",
+  "valid_from": "2026-10-31T00:00:00Z",
+  "valid_to": null
+}
+~~~
+
+规则的优点是可解释、可测试、确定性高。缺点也很明显：人类通常不会把自己的审美完整描述成几百条规则。用户可能只说“这个翻译太聪明了”，系统需要理解背后的原因。规则引擎不能自己完成这件事。
+
+因此不要用“规则越多越懂用户”作为目标。规则应该保存明确的结论和边界，隐含偏好应该保留为带证据和置信度的假设。
+
+### 35.3 Classic ML：真正学习个人偏好强度的首选
+
+对于个人偏好，最值得优先实现的是层次化的统计偏好模型，而不是单独训练一个用户 Transformer。
+
+假设同一段原文有两个译文，系统能够提取以下特征：
+
+| 特征维度 | 译文 A | 译文 B |
+|---|---:|---:|
+| 原文结构保留程度 | 0.95 | 0.65 |
+| 中文自然度 | 0.60 | 0.90 |
+| 句子节奏 | 0.55 | 0.85 |
+| 情绪解释程度 | 0.20 | 0.30 |
+| 修辞强度 | 0.35 | 0.40 |
+| 人物声音保留 | 0.90 | 0.85 |
+
+这些分值只是特征估计，不是客观文学质量。特征可以由 LLM、专门评估器或人工标注产生，必须通过样本校准，不能让生成模型自行给出的分值冒充真值。
+
+令两个候选的特征差为：
+
+\[
+\Delta \phi = \phi(y_A,x)-\phi(y_B,x)
+\]
+
+可以使用 Bradley–Terry / Logistic Preference Model：
+
+\[
+P_u(A \succ B \mid x,c)
+=
+\sigma\left(w_{u,c}^{T}\Delta\phi\right)
+\]
+
+其中，x 是原文及其局部上下文；c 是当前任务条件，如文体、文本类型、语言方向、作品和人物；候选特征表示译文相对于原文的表达特征；w 是用户在当前上下文下对各维度的偏好权重；输出是在当前条件下用户更可能选择哪个候选。
+
+单一用户数据通常比较稀疏，所以不建议为每个用户独立训练一套权重。更稳妥的做法是采用层次模型：
+
+\[
+w_{u,c}
+=
+w_{\mathrm{population}}
++
+\delta_u
++
+Bz_c
++
+\eta_{u,c}
+\]
+
+其中，群体基础偏好提供先验，用户修正项表示个人差异，上下文表示提供场景相关的系统性调整，最后一项表示特定用户在特定场景下的额外偏差。
+
+对用户和上下文修正项使用正则化或 Bayesian Prior，使数据较少时自动向群体先验收缩；用户反馈逐渐增加、场景覆盖更充分后，个性化程度再逐渐提高。这解决了个人偏好学习的冷启动和过拟合问题。
+
+#### 为什么优先考虑 Bradley–Terry / Bayesian，而不是训练大模型？
+
+1. A/B 比较本身就是偏好学习的自然数据形式，不需要把用户每次反馈都转换成复杂的训练标签。
+2. 模型参数对应具体偏好维度，能分析用户究竟偏向自然度、忠实度、节奏还是修辞。
+3. Bayesian 模型可以输出不确定性，而不只是一个固定分数。
+4. 新反馈可以在线更新，不必重新训练语言模型。
+5. 可以先使用跨用户或公开数据建立群体先验，再用少量个人反馈做适配。
+6. 可以显式加入语言方向、文体和文本类型，而不是让一个全局向量隐式承担全部差异。
+
+NeurIPS 2025 的 **Capturing Individual Human Preferences with Reward Features** 是这条路线的重要研究。它提出先学习通用 Reward Features，再让不同用户通过这些特征的不同组合形成个人奖励函数；论文也从理论上讨论了反馈样本数量、评价者数量和用户偏好异质性对个性化学习的影响。[NeurIPS 2025 论文](https://proceedings.neurips.cc/paper_files/paper/2025/hash/761bc7f095f927e5a5de31ed4154bb45-Abstract-Conference.html)
+
+ICML 2026 的 **What Does Preference Learning Recover from Pairwise Comparison Data?** 专门分析 Bradley–Terry 模型何时能从成对比较中恢复真实偏好，以及样本效率与偏好差距（margin）和比较图连通性（connectivity）的关系。它提醒我们：不是收集了一批 A/B 选择就能可靠推断全部偏好；如果样本只覆盖少数相似风格，模型无法知道用户对未比较维度的真实取舍。[ICML 2026 论文](https://proceedings.mlr.press/v306/pukdee26a.html)
+
+#### 推荐的训练方式
+
+先使用通用文本评估能力抽取候选特征，再只训练轻量的用户偏好层：冻结语言模型或特征提取器；使用结构化特征计算候选差异；使用 Bayesian Logistic Regression、层次 Logistic Regression 或 Bradley–Terry 学习权重；按用户和上下文维护后验分布；对高置信、低置信、冲突样本分别处理；只在证明简单模型存在稳定误差模式后，再增加非线性模型。
+
+不要把用户的一次 8 分、一次 6 分直接作为某个风格权重。绝对评分、成对选择、局部批注和用户重写是不同类型的数据，应采用不同的观测模型。
+
+### 35.4 Jev / LLM：语义理解器与分析员，不是用户偏好的权威裁判
+
+假设用户反馈：“这个翻译太聪明了，反而没有原文那种笨拙、迟疑的感觉。”
+
+LLM 可以把它分析成多个候选解释：
+
+~~~json
+{
+  "feedback_type": "negative",
+  "candidate_evidence": [
+    {
+      "dimension": "style.polish",
+      "effect": "too_much",
+      "confidence": 0.93
+    },
+    {
+      "dimension": "narration.voice",
+      "effect": "source_voice_not_preserved",
+      "confidence": 0.89
+    },
+    {
+      "dimension": "narration.subtlety",
+      "effect": "lost_deliberate_awkwardness",
+      "confidence": 0.96
+    }
+  ],
+  "scope_candidate": "current_text_type",
+  "requires_confirmation": false
+}
+~~~
+
+这些是待验证的 Preference Evidence，不是让模型立即修改长期 Profile 的命令。
+
+Jev / LLM 最适合承担反馈语义解析、当前任务和文本上下文识别、候选特征提取、复杂冲突分析、证据解释，以及在无法可靠推断时生成低打扰的澄清问题。
+
+但 LLM 的推断不能自动变成事实。它输出的维度标签、scope 和置信度都应经过验证；尤其不能让同一个模型既生成译文、又给自己的译文打分、再据此修改长期用户偏好。
+
+#### LLM-as-a-Personalized-Judge 的风险
+
+EMNLP 2024 的 **Can LLM be a Personalized Judge?** 专门研究模型根据 Persona 预测真实用户的二选一偏好。论文报告，普通 LLM 个性化判断与真实用户选择的一致性并不理想，二元选择的总体准确率约 70%，部分任务低于 60%；引入 verbalized uncertainty 后，高置信度样本的一致率可以超过 80%。
+
+这意味着 LLM 可以作为高效的偏好判断代理，但不应该被当作真实用户的替代品。尤其是当 Persona 只有几条概括性偏好时，模型可能把人口特征、兴趣标签或一般审美常识过度解释为具体选择。[EMNLP 2024 论文](https://aclanthology.org/2024.findings-emnlp.592/)
+
+推荐 LLM 输出以下决策契约：
+
+~~~json
+{
+  "decision": "apply",
+  "confidence": 0.87,
+  "reason": "当前是心理描写，与偏好适用范围一致",
+  "supporting_evidence": ["pref-001", "pref-017"],
+  "counter_evidence": ["pref-026"],
+  "requires_user_feedback": false
+}
+~~~
+
+不确定时必须允许：
+
+~~~json
+{
+  "decision": "abstain",
+  "reason": "insufficient_evidence",
+  "next_action": "ask_pairwise_preference"
+}
+~~~
+
+这里的 confidence 不能直接视为校准概率。需要在真实用户数据上评估其可靠性，例如检查置信度 0.8 的判断是否确实大约有 80% 的用户选择一致率。
+
+### 35.5 Transformer / Fine-tuning：等轻量模型证明不足后再考虑
+
+Transformer 适合处理复杂文本表征和跨样例的语义泛化，但应区分两个目标：反馈理解，即理解用户自然语言中的隐含评价；偏好预测，即给定当前文本条件和两个候选，预测用户更可能选择哪个。第一个任务适合通用 LLM；第二个任务未必需要 Transformer，结构化特征 + 统计偏好模型可能更稳定、更便宜、更可解释。
+
+只有在积累大量高质量、经过用户确认的偏好样例，覆盖足够多的作品、语言、文体和偏好冲突，建立稳定的 Event / Evidence / Claim / Snapshot 数据模型，并证明轻量偏好模型在独立测试集上存在持续瓶颈之后，才考虑个性化 Transformer / Adapter / LoRA。
+
+即使进入这一阶段，也优先考虑冻结基础语言模型，只训练 Preference Head、Adapter 或 LoRA，而不是从零训练一个只属于单个用户的 Transformer。
+
+压缩用户向量、User Prefix 或 Personal Adapter 可以作为运行时优化，但它们不能取代可读的偏好主张和原始证据。
+
+## 36. 主动偏好学习：不要等待用户自然产生足够多的数据
+
+对个人用户来说，反馈数据天然稀疏。用户不会愿意每段翻译都填一张评分表。因此，系统需要决定什么时候值得问用户一个问题。
+
+这就是 Active Preference Learning：不是尽可能多地收集反馈，而是选择最能减少模型不确定性、同时对当前任务最有帮助的反馈。
+
+### 36.1 什么情况下值得主动询问？
+
+建议只有同时满足以下条件时才发起偏好询问：两个候选的个人偏好预测非常接近；当前偏好维度对输出结果有明显影响；当前任务与历史样本存在新的上下文差异；这次选择能够帮助区分多个竞争的偏好假设；用户回答的成本足够低。
+
+例如：
+
+> 对这段人物独白，你更倾向于保留原文的长句和迟疑，还是调整为更自然的中文短句？
+
+不要在任务已经非常明确、用户已经给出强约束或这条偏好对结果几乎没有影响时反复询问。
+
+### 36.2 用 Expected Information Gain 选择问题
+
+可以定义一个简化的提问价值：
+
+\[
+Utility(q)
+=
+\frac{
+ExpectedInformationGain(q)
+\times TaskImpact(q)
+}{
+UserEffort(q)+InteractionCost(q)
+}
+\]
+
+ExpectedInformationGain 表示回答后能减少多少偏好模型不确定性；TaskImpact 表示这项偏好会影响多少实际任务结果；UserEffort 和 InteractionCost 分别表示回答难度与打断任务的成本。
+
+实际系统不必一开始就计算精确的信息增益。可以用 Bayesian Active Learning、模型不确定性、当前任务影响和用户打扰成本做近似排序。
+
+### 36.3 相关研究
+
+**MAPLE（AAAI 2025）** 是 LLM-guided Bayesian Active Preference Learning 框架。它把自然语言反馈和成对排序结合起来，学习偏好函数的分布，并主动挑选信息量较高、用户容易回答的问题，减少人工反馈负担。[论文](https://ojs.aaai.org/index.php/AAAI/article/view/34964)
+
+**T-POP（ICML 2026）** 研究 Test-Time Personalization with Online Preference Feedback。它在不更新基础 LLM 参数的情况下，在线学习个人 reward function，并通过 Dueling Bandits 平衡探索新偏好和利用现有偏好，逐步调整生成过程。[论文](https://proceedings.mlr.press/v306/qu26i.html)
+
+**Online LLM Personalization from Pairwise Preferences Across Users（2026 年 10 月预印本）** 将新用户的会话内偏好学习建模为 contextual dueling bandit，并通过多个用户之间的经验共享建立先验。论文在模拟学生偏好数据上报告，相较随机配对，能消除 44%—48% 的额外遗憾；但其核心偏好标签来自 LLM 模拟学生，不应被当成真实用户生产实验。[预印本](https://arxiv.org/abs/2610.17203)
+
+### 36.4 对文学翻译的具体交互
+
+不要让用户填写二十个偏好维度。系统可以根据当前不确定性生成两个有明确差异的版本：A 保留原文的句法、重复和停顿；B 调整为更自然的中文表达，但尽量保留人物迟疑。用户只需选择 A、B、两者都不好或两者差不多，并可选填一句理由。
+
+系统接收反馈后，保存原始 Pairwise Event；Jev 分析差异和可能涉及的偏好维度；统计偏好模型更新对应的用户权重；如果证据支持范围变化，提出新的 Preference Claim；Validation Gate 决定是否更新长期模型；最后记录该反馈对后续任务的预测收益。
+
+这样，用户的每次选择既是一次真实任务反馈，也是一次有针对性的偏好学习样本。
+
+## 37. 组合判断架构：Jev 理解，Classic ML 学习，规则约束，Resolver 决策
+
+最终建议采用如下分工，而不是让一个 Agent 一条条读取所有历史规则后自行决定。
+
+~~~mermaid
+flowchart TB
+    A["用户反馈<br/>评分 / A-B 选择 / 修改 / 自然语言理由"] --> B["Jev / LLM<br/>语义解析和证据分类"]
+    B --> C["Preference Evidence<br/>保留原始事件和来源"]
+    C --> D["Classic ML<br/>Bayesian / Bradley-Terry"]
+    D --> E["Versioned User Model<br/>长期与上下文偏好"]
+
+    F["当前任务"] --> G["Jev / LLM<br/>任务与文本上下文解析"]
+    G --> H["Task Context"]
+    E --> I["候选偏好检索"]
+    H --> I
+    I --> J["规则 / Policy Engine<br/>scope / 时间 / 显式约束"]
+    J --> K["Jev / LLM<br/>复杂冲突和语义适用性"]
+    D --> K
+    K --> L["Preference Resolver"]
+    L --> M{"适用性 / 置信度"}
+    M -->|"充分"| N["应用 Preference Snapshot"]
+    M -->|"不足"| O["不应用 / Active Query"]
+    N --> P["生成 / 校对 / 任务执行"]
+    O --> Q["用户澄清或继续使用通用默认"]
+    P --> R["结果反馈"]
+    Q --> R
+    R --> C
+~~~
+
+### 37.1 每个组件的责任边界
+
+| 组件 | 应该做什么 | 不应该做什么 |
+|---|---|---|
+| Jev / LLM | 理解反馈、识别任务、提取维度、分析冲突 | 直接修改权威偏好状态；对所有样本都强行给出确定结论 |
+| Classic ML | 学习相对偏好、估计概率、计算不确定性 | 自行理解未经结构化的复杂自然语言 |
+| Rule Engine | 验证明确指令、scope、时间、优先级和硬约束 | 通过大量手工规则模拟人的完整审美 |
+| Preference Store | 保存事件、证据、Claim、版本和快照 | 将所有历史压成一个不可解释的 Profile |
+| Preference Resolver | 汇总证据、应用策略、决定使用或弃权 | 仅按向量相似度或单一置信度决定 |
+| Active Learning | 在有价值的不确定场景向用户提问 | 频繁打断用户或重复询问已经明确的偏好 |
+| Evaluation | 用真实选择和历史回归数据检验判断质量 | 只用同一个 LLM 自评自己的结果 |
+
+### 37.2 Preference Resolver 应返回决策，而不是只返回检索结果
+
+例如：
+
+~~~json
+{
+  "task_id": "translation-task-042",
+  "user_model_version": 42,
+  "snapshot_id": "snapshot-20261031-042",
+  "applied": [
+    {
+      "claim_id": "pref-001",
+      "dimension": "narration.subtlety",
+      "decision": "apply",
+      "reason_codes": [
+        "TASK_MATCH",
+        "TEXT_TYPE_MATCH",
+        "TEMPORALLY_VALID",
+        "EVIDENCE_SUFFICIENT"
+      ],
+      "estimated_preference_probability": 0.87
+    }
+  ],
+  "excluded": [
+    {
+      "claim_id": "pref-017",
+      "decision": "exclude",
+      "reason_codes": [
+        "SCOPE_MISMATCH",
+        "CURRENT_TEXT_IS_FORMAL_DIALOGUE"
+      ]
+    }
+  ],
+  "uncertain": [
+    {
+      "dimension": "sentence.rhythm",
+      "decision": "abstain",
+      "reason": "INSUFFICIENT_COMPARATIVE_EVIDENCE",
+      "next_action": "ASK_PAIRWISE_PREFERENCE"
+    }
+  ]
+}
+~~~
+
+这里必须区分三个不同的量：estimated_preference_probability 是统计模型预测用户更可能选择某种表达的概率；applicability 是该偏好对当前任务是否适用；confidence 是系统对上述判断本身有多确定。它们不能合并成一个分数。一个偏好可能非常稳定，但当前任务不适用；也可能适用范围正确，但证据不足。
+
+### 37.3 一个简化的判断流程
+
+~~~python
+def resolve_preferences(task, user_model, evidence_index, preference_model, policy):
+    # Parse task context before retrieving user preferences.
+    task_context = parse_task_context(task)
+
+    # Retrieve candidate claims and positive/negative evidence.
+    candidates = retrieve_candidates(
+        task_context=task_context,
+        claims=user_model.active_claims,
+        evidence_index=evidence_index,
+    )
+
+    applied, excluded, uncertain = [], [], []
+
+    for claim in candidates:
+        # Deterministic checks: scope, validity, explicit overrides, hard constraints.
+        rule_result = policy.check(claim, task_context)
+        if rule_result.decision == "exclude":
+            excluded.append({"claim_id": claim.id, "reason": rule_result.reason})
+            continue
+
+        # Estimate preference strength under this task context.
+        preference_estimate = preference_model.predict(
+            claim=claim,
+            context=task_context,
+        )
+
+        # Use an LLM for semantic ambiguity, not for every easy decision.
+        semantic_result = None
+        if rule_result.is_ambiguous or preference_estimate.is_uncertain:
+            semantic_result = llm_resolve_applicability(
+                claim=claim,
+                task_context=task_context,
+                supporting_evidence=claim.supporting_evidence,
+                refuting_evidence=claim.refuting_evidence,
+            )
+
+        # Combine signals through explicit policy, never an arbitrary score average.
+        decision = combine_signals(
+            rule_result=rule_result,
+            preference_estimate=preference_estimate,
+            semantic_result=semantic_result,
+        )
+
+        if decision == "apply":
+            applied.append(build_snapshot_item(claim, decision))
+        elif decision == "abstain":
+            uncertain.append(build_uncertainty_item(claim, decision))
+        else:
+            excluded.append(build_exclusion_item(claim, decision))
+
+    return compile_snapshot(
+        task_context=task_context,
+        applied=applied,
+        excluded=excluded,
+        uncertain=uncertain,
+        user_model_version=user_model.version,
+    )
+~~~
+
+combine_signals 应使用显式策略，而不是随意把规则、LLM 和 ML 分数做平均。硬规则可以直接否决；统计模型负责估计偏好；LLM 负责解释语义冲突；最终决策应记录来源、理由和版本。
+
+## 38. 实际实施：先统计模型，再考虑个人 Transformer
+
+建议采用渐进式路线：
+
+| 阶段 | 实现 | 验收目标 |
+|---|---|---|
+| 1. 结构化证据 | Event Store、Evidence、Preference Claim、scope 和版本 | 能追溯每条偏好来自哪些反馈 |
+| 2. 语义解析 | Jev 提取反馈维度、上下文、正反证据和候选范围 | 用户自然语言反馈能够稳定转换为结构化证据 |
+| 3. 规则 Resolver | 明确约束、项目覆盖、有效时间、冲突和弃权 | 不会把项目级或过时偏好无条件用于所有任务 |
+| 4. Classic ML | 层次 Bayesian Logistic / Bradley–Terry | 在固定测试集上预测 A/B 选择，并提供不确定性 |
+| 5. Active Learning | 基于不确定性和任务影响选择提问 | 减少用户反馈成本，提高个人偏好估计质量 |
+| 6. 非线性模型 | Preference Head、Adapter 或 LoRA | 证明线性/层次模型存在系统性误差后才引入 |
+| 7. 个性化 Transformer | 在大规模、高质量、场景多样的数据上训练 | 相较统计模型和 LLM 基线，在跨作品/跨场景测试中有显著收益 |
+
+### 38.1 必须建立的基线
+
+任何更复杂的模型都必须与以下基线比较：
+
+1. Generic LLM：不使用用户历史。
+2. Rule-only：只使用用户明确规则和项目约束。
+3. LLM + Profile：把用户偏好摘要加入 Prompt。
+4. LLM + Retrieved Examples：加入相关正反例。
+5. Classic ML：结构化特征 + 用户偏好权重。
+6. Hybrid：规则 + Classic ML + LLM Resolver。
+7. Fine-tuned Model：只有具备足够数据时才加入。
+
+如果 Hybrid 并没有比 LLM + Profile 稳定提升，就没有理由引入更多模型和服务。
+
+### 38.2 评估的不只是预测准确率
+
+需要分别测量 Pairwise Preference Accuracy、Calibration、Applicability Accuracy、False Personalization Rate、Abstention Quality、Preference Update Quality、Cross-Project Generalization，以及达到同样偏好质量所需的用户反馈次数和交互负担。
+
+### 38.3 最终技术选择
+
+针对个人阅读和文学翻译偏好，当前最合理的技术路径不是先训练一个只属于自己的 Transformer，而是：
+
+- Jev / LLM 理解用户反馈、任务语义和复杂上下文；
+- Classic ML 学习不同偏好维度的权重、条件差异和不确定性；
+- 规则引擎保护明确约束、范围、时间和优先级；
+- Preference Resolver 决定当前任务应用、排除还是弃权；
+- Active Preference Learning 在真正需要时向用户提出 A/B 问题；
+- 用户实际选择和修改持续校正 User Model。
+
+**训练 Transformer 是优化选项，不是 User Model 成立的前提。** 如果统计模型已经能稳定预测用户在不同场景下的选择，就没有必要为了“使用 AI”而增加一个更难解释、更难维护的模型。
+
+最终应追求的是：系统能对每一次偏好判断说明依据，并且在它不确定时知道自己不确定。
+
+
 ## 补充参考文献
 
 1. Sun et al. (2026), [Preference-Aware Memory Update for Long-Term LLM Agents](https://aclanthology.org/2026.findings-acl.38/), ACL Findings 2026.
@@ -2021,3 +2465,10 @@ Resolver 的判断不能只返回一个分数，还应该返回一个带理由�
 57. Google Cloud, [AT&T elevates customer experience with Gemini Enterprise for CX and BigQuery](https://cloud.google.com/customers/att-gemini-enterprise-cx), customer case study.
 58. Salesforce Engineering, [AI Agents Need Memory: Building Persistent Memory for Agentforce](https://engineering.salesforce.com/ai-agents-need-memory-building-persistent-memory-for-agentforce/), October 2026.
 59. Google Cloud, [Shop Global case study](https://cloud.google.com/customers/shop-global), AI Personal Shopper customer case study.
+
+60. Barreto et al. (2025), [Capturing Individual Human Preferences with Reward Features](https://proceedings.neurips.cc/paper_files/paper/2025/hash/761bc7f095f927e5a5de31ed4154bb45-Abstract-Conference.html), NeurIPS 2025.
+61. Pukdee, Balcan and Ravikumar (2026), [What Does Preference Learning Recover from Pairwise Comparison Data?](https://proceedings.mlr.press/v306/pukdee26a.html), ICML 2026 / PMLR 306.
+62. Dong, Hu and Collier (2024), [Can LLM be a Personalized Judge?](https://aclanthology.org/2024.findings-emnlp.592/), Findings of EMNLP 2024.
+63. Mahmud, Nakamura and Zilberstein (2025), [MAPLE: A Framework for Active Preference Learning Guided by Large Language Models](https://ojs.aaai.org/index.php/AAAI/article/view/34964), AAAI 2025.
+64. Qu et al. (2026), [T-POP: Test-Time Personalization with Online Preference Feedback](https://proceedings.mlr.press/v306/qu26i.html), ICML 2026 / PMLR 306.
+65. Puech, Salakhutdinov and Bertsimas (2026), [Online LLM Personalization from Pairwise Preferences Across Users](https://arxiv.org/abs/2610.17203), arXiv preprint, October 2026.
