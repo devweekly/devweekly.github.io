@@ -1,3 +1,20 @@
+---
+author: W
+featured: false
+draft: false
+description: 从推荐系统的隐式反馈到 LLM 的自然语言偏好推断，结合 2025–2026 年最新研究和 Spotify、DoorDash、Glean 等真实产品，分析如何建立具有时间维度、上下文条件、证据链和持续修正能力的个人 User Model。
+pubDatetime: 2026-10-31T00:00:00Z
+title: 从阅读偏好到个性化文学翻译：如何让 LLM 学习一个人的审美
+tags:
+  - LLM
+  - personalization
+  - user-model
+  - preference-learning
+  - recommendation
+  - agent-memory
+  - literary-translation
+---
+
 # 从阅读偏好到个性化文学翻译：如何让 LLM 在长期翻译与校对中学习一个人的审美
 
 > 调研日期：2026-10-31  
@@ -2357,6 +2374,8 @@ combine_signals 应使用显式策略，而不是随意把规则、LLM 和 ML �
 
 ## 38. 实际实施：先统计模型，再考虑个人 Transformer
 
+本章对应的可运行分阶段实现已放在仓库 [temp/personal-preference-model](https://github.com/saga/devweekly/tree/main/temp/personal-preference-model)，包含 SQLite 事件/证据/Claim 存储、Jev/LLM JSON 适配器、Evidence Promotion Gate、层次 Bradley–Terry 学习、模型保存/加载、留出集评估、带用户隔离检查的 Resolver、主动询问和 14 个 unittest 用例。代码以 Python 标准库为核心，便于逐阶段运行和替换模型提供方；当前示例用合成数据演示，不应视为真实用户测试结果。
+
 建议采用渐进式路线：
 
 | 阶段 | 实现 | 验收目标 |
@@ -2387,6 +2406,8 @@ combine_signals 应使用显式策略，而不是随意把规则、LLM 和 ML �
 
 需要分别测量 Pairwise Preference Accuracy、Calibration、Applicability Accuracy、False Personalization Rate、Abstention Quality、Preference Update Quality、Cross-Project Generalization，以及达到同样偏好质量所需的用户反馈次数和交互负担。
 
+**代码范围说明：** `temp/personal-preference-model/` 已提供第 1—5 阶段的可运行参考实现，包括证据存储、Jev/LLM 结构化提取、门控、层次 Bradley–Terry、权重持久化、留出集评估、Resolver 和阈值式主动询问。第 6 阶段的 Preference Head / Adapter / LoRA 暂时只定义进入条件，没有用合成数据伪造一个训练脚本。真正的微调需要足够的真实用户样本、跨作品/时间隔离的验证集，以及对生成输出的独立 A/B 评估。
+
 ### 38.3 最终技术选择
 
 针对个人阅读和文学翻译偏好，当前最合理的技术路径不是先训练一个只属于自己的 Transformer，而是：
@@ -2401,6 +2422,672 @@ combine_signals 应使用显式策略，而不是随意把规则、LLM 和 ML �
 **训练 Transformer 是优化选项，不是 User Model 成立的前提。** 如果统计模型已经能稳定预测用户在不同场景下的选择，就没有必要为了“使用 AI”而增加一个更难解释、更难维护的模型。
 
 最终应追求的是：系统能对每一次偏好判断说明依据，并且在它不确定时知道自己不确定。
+
+
+
+## 39. PrefEval 之后：2026 年研究把“偏好遵循”拆成了哪些新问题？
+
+**Do LLMs Recognize Your Preferences?（PrefEval，ICLR 2025）仍然是重要基线，但截至 2026 年 10 月，没有找到一个官方发布、直接把它升级为 PrefEval v2 的版本。** 更准确的描述是：2026 年的研究沿着 PrefEval 暴露的问题，分别建立了更长周期、更隐式、更强调上下文选择和更关注负面副作用的评测。
+
+PrefEval 原始版本包含 3,000 个经过人工整理的偏好与查询组合，覆盖 20 个主题，既有显式偏好，也有隐式偏好；评估任务包括生成和分类。论文测试了最长 100K token 的多会话上下文，并发现多数被测模型在零样本情形下，约 10 轮、3K token 后的偏好遵循准确率就会降到 10% 以下。这个数字是论文特定数据集与实验配置中的结果，不应泛化为所有模型、所有产品的固定能力值。[PrefEval / ICLR 2025](https://proceedings.iclr.cc/paper_files/paper/2025/hash/28a46044775d97a4efcbcf14e7f13209-Abstract-Conference.html)
+
+### 39.1 2026 年的新评测分别补足了什么？
+
+| 研究 | 新增评测重点 | 主要发现 | 相比 PrefEval 的推进 |
+|---|---|---|---|
+| **RealPref**（Findings of EMNLP 2026） | 长期交互中自然表达的偏好，包括显式声明、间接表达和隐式偏好 | 100 个合成用户画像、1,300 条个性化偏好、四类表达方式；上下文越长、偏好越隐含，模型表现越差；对未见场景的迁移也困难 | 从“记住一条偏好”扩展到长期交互中理解不同表达形式的偏好。[论文](https://aclanthology.org/2026.findings-emnlp.2378/) |
+| **VIBE-Bench**（Findings of EMNLP 2026） | Profile 与当前 query 的 Preference 可能不在同一个概念空间 | 3,504 个 Persona、12,239 段对话，并有人类核验测试集；当前个性化模型常依赖表面语义相似，跨概念推断能力不足 | 明确测试“用户画像线索是否足以推出当前任务偏好”。[论文](https://aclanthology.org/2026.findings-emnlp.1676/) |
+| **BenchPreS**（EMNLP 2026） | 判断历史偏好应该应用还是抑制 | 使用 Misapplication Rate 与 Appropriate Application Rate 评价；模型即使更愿意遵循偏好，也可能更容易把它用错场景 | 把“偏好选择性”从偏好记忆和检索中独立出来。[论文](https://aclanthology.org/2026.emnlp-main.1040/) |
+| **Evaluating the Hidden Costs of Personalization**（EMNLP 2026） | 个性化引入的副作用 | 识别无关个性化、偏好收窄和迎合偏差；过度依赖个人上下文可能降低信息多样性和独立判断 | 不再只问“模型有没有满足用户”，还要问个性化是否损害了信息质量和用户探索空间。[论文](https://aclanthology.org/2026.emnlp-main.679/) |
+| **Do LLMs Recognize Your Latent Preferences?**（2025 预印本） | 通过对话发现没有直接说出的用户属性与偏好 | 研究覆盖 20 Questions、个性化问答和个性化摘要；不同任务和上下文下成功率从 32% 到 98% 不等 | 说明隐含偏好可通过交互推断，但效果高度依赖任务和问题设计。[论文](https://arxiv.org/abs/2510.17132) |
+
+这些研究把 PrefEval 的问题拆成了几个独立能力：偏好能否被保留、能否从间接行为中推断、能否跨概念泛化、能否判断适用范围，以及是否会因为过度个性化引入副作用。它们不是单纯的模型规模竞赛，也不是 PrefEval 的统一新版本。
+
+### 39.2 2026 年研究给出的重要转变：用户画像不能直接变成任务偏好
+
+VIBE-Bench 揭示了一个容易被忽略的问题：用户画像与偏好之间可能存在概念错位。比如，系统知道某人喜欢历史小说，并不能直接推断他喜欢古雅措辞；知道某人经常阅读技术资料，也不能推出他在所有解释任务中都希望看到很高的技术细节。
+
+这意味着 Preference Resolver 不能只做语义相似检索，然后把 Profile 中的描述拼进 Prompt。它还需要推断当前任务究竟涉及哪个偏好维度，并检查历史证据能否支持这种跨概念迁移。对无法确认的情况，应保持未知或询问，而不是把个人属性当作偏好。
+
+BenchPreS 又补上了第二道门：即使一条偏好本身没有推断错误，也可能因为当前场景不同而不应该使用。因此，偏好遵循准确率、偏好推断准确率和适用性准确率应分别测量。
+
+### 39.3 评估体系应从 PrefEval 扩展为五个维度
+
+建议保留 PrefEval 的 preference following 测试，同时增加：
+
+| 维度 | 测试问题 | 代表研究 |
+|---|---|---|
+| Preference Retention | 长对话后能否保留明确偏好？ | PrefEval |
+| Latent Preference Inference | 能否从间接表达和行为示例推断偏好？ | RealPref、Latent Preferences |
+| Cross-Concept Generalization | 能否从用户画像线索推断当前任务偏好？ | VIBE-Bench |
+| Preference Selectivity | 是否知道某个偏好在当前场景不适用？ | BenchPreS |
+| Personalization Side Effects | 是否造成偏好收窄、无关个性化或过度迎合？ | Hidden Costs of Personalization |
+
+对于文学翻译，还要单独增加跨作品、跨文本类型的测试。通用对话 Benchmark 不能代替读者审美判断。
+
+## 40. “偏好隐含在少量示例里”是不是 LLM 特有的反馈模式？
+
+不是。**从行为和选择中推断用户偏好，是推荐系统、行为科学、逆向强化学习和偏好学习长期研究的问题；LLM 只是让这种反馈更容易以自然语言、编辑示例和跨任务对话的形式出现。**
+
+这个区别很重要。不能因为今天使用 LLM 就把“通过示例学习偏好”描述成一种新发明。
+
+### 40.1 传统推荐系统早就在使用隐式反馈
+
+在传统推荐系统里，用户并不一定会说“我喜欢某个类别”。系统会从行为中收集信号，例如反复播放、收藏、加入书架、购买、重复访问；点开某个内容后停留较长时间；搜索某类内容但最终没有点击；明确跳过、不感兴趣、取消订阅或排除某项内容；以及在多个候选中选择一个而不是另一个。
+
+这些行为构成 implicit feedback。它们通常比用户显式评分更丰富，但也更含糊：点击可能只是好奇，购买可能是替别人购买，播放可能来自自动播放，跳过也可能是当时没有时间。
+
+因此，成熟推荐系统通常不会把单次行为直接解释为稳定偏好，而是结合重复性、行为类型、上下文、时间和其他证据进行加权建模。
+
+### 40.1.1 这种思想在 LLM 之前已经成熟
+
+推荐系统很早就在用行为反馈推断偏好。Hu、Koren 和 Volinsky 的 ICDM 2008 论文 **Collaborative Filtering for Implicit Feedback Datasets** 使用购买历史、观看习惯和浏览活动作为隐式用户偏好信号，并强调这些行为的置信度不同；没有交互记录不等于用户不喜欢，购买也不是绝对的喜欢证据。[论文](https://doi.org/10.1109/ICDM.2008.22)
+
+逆向强化学习（Inverse Reinforcement Learning, IRL）则从示范行为中反推可能产生这些行为的效用函数或奖励函数。Ziebart 等人的 **Maximum Entropy Inverse Reinforcement Learning**（AAAI 2008）用概率方式从路线选择和轨迹中恢复偏好，并明确处理示范行为中的噪声和不确定性。[论文](https://www.ri.cmu.edu/publications/maximum-entropy-inverse-reinforcement-learning/)
+
+这两条传统路线说明，从行为和示例中推断偏好并非 LLM 发明；但它们也揭示同一个统计难题：**观察到行为不代表观察到了偏好的唯一原因。** 用户购买、点击、播放或选择一个译文，都可能受上下文、任务约束、价格、错误、时间和其他因素影响。模型必须维护置信度与候选解释，而不能把一个行为直接提升为稳定偏好。
+
+需要避免把这些传统方法与 LLM 的自然语言推断混为一谈：推荐系统常从 user-item 行为预测排序，IRL 常从状态—动作轨迹恢复奖励函数，而文学翻译需要从自然语言理由、编辑差异和跨作品示例推断条件化审美。它们在“从观察推断潜在偏好”这一建模原则上相通，但数据结构、监督信号和任务目标不同。
+
+### 40.2 LLM 带来的变化是：示例可以是语义丰富的自然语言证据
+
+传统行为模型通常更容易处理结构化事件，例如点击、购买、播放和评分。文学翻译中的反馈则可能是：用户选择了 B 而没有选择 A；用户将某句重写成另一种表达；用户接受了一个改写却拒绝了另一个改写；用户说“这个译文太聪明，原文的笨拙感消失了”；用户在几个不同作品中反复选择保留留白、迟疑和叙述距离的表达。
+
+这些信号不仅涉及“喜欢哪个对象”，还涉及用户为何喜欢、讨厌的是哪个语言特征，以及这个判断是否能迁移到另一种文本场景。
+
+LLM 的价值在于把自然语言理由和文本差异解释成候选偏好维度，并能够从有限示例中提出可供检验的概括。它并没有消除歧义，也不能保证少量示例足以识别真正偏好。
+
+### 40.3 少量示例为什么可能有效，又为什么容易产生错误？
+
+示例的价值在于它能绕过抽象描述的困难。用户可能说不清“叙述距离”是什么，却很容易指出 A 比 B 好；可能无法定义“翻译腔”，却能改写一句话，让差异变得可见。
+
+但一两个例子通常无法唯一确定偏好。用户选择 B，可能是因为自然度更好，也可能是因为 B 没有误译专名。没有对照和理由，模型可能把偶然的文本质量差异错误归纳为稳定审美。
+
+因此，建议把反馈信号按强弱区分：
+
+| 反馈信号 | 可推断的内容 | 主要风险 |
+|---|---|---|
+| 用户明确声明规则 | 明确表达的偏好或约束 | 范围可能不清楚，未来可能变化 |
+| 同一上下文中的 A/B 选择 | 对候选差异的相对偏好 | 两个候选可能同时存在其他质量差异 |
+| 用户自己重写 | 对具体语言形式的偏好证据 | 修改可能只是纠错，不一定能泛化 |
+| 带理由的批注 | 更容易识别偏好维度和权衡 | 理由可能只针对当前段落 |
+| 多次跨场景重复选择 | 可能形成稳定的条件偏好 | 不同场景不一定同质 |
+| 点击、浏览、停留或未修改 | 弱行为信号 | 可能由无关因素造成，不能直接解释为喜欢 |
+
+正确做法不是仅记录“偏好 = B”，而是保存原文、候选差异、上下文、用户选择、理由、是否纠错，以及这个证据适用于什么范围。
+
+### 40.4 近期研究已经把“从示例推断偏好”作为独立研究问题
+
+**Eliciting Human Preferences with Language Models（ICLR 2025）** 提出 Generative Active Task Elicitation（GATE）。研究指出，用户可能无法准确写出 Prompt 或挑选示例来描述模糊偏好；模型可以通过开放式语言交互，帮助用户逐渐澄清任务目标。研究覆盖内容推荐、道德推理和邮件验证，并发现交互式 elicitation 可以得到比用户自行编写的 Prompt 或示例更有信息量的偏好规格。[论文](https://mlanthology.org/iclr/2025/li2025iclr-eliciting/)
+
+**Beyond Expert Users: Agents Should Help Users Construct Preferences, Not Just Elicit Them（2026 预印本）** 进一步指出，用户有时并没有完整形成自己的偏好，不是“不愿意说”，而是缺乏足够的领域知识。Agent 应通过对比、示例和解释帮助用户形成偏好，而不是不断要求用户回答“你喜欢什么”。其 CoShop 实验中，即使评估五种前沿模型，五轮交互后的准确率也没有超过 56%，说明帮助用户形成偏好本身仍然很难。[论文](https://arxiv.org/abs/2606.30863)
+
+**Inferring the Unspoken: Aligning Embodied Agents with Implicit Preferences（EMNLP 2026）** 研究智能体如何从少量未标注行为示范中推断用户没有说出的约束。论文在 290 项偏好上评估动作参数、放置策略和时间顺序；当偏好规则已经明确提供时，强模型在分类任务上几乎没有错误，但要求模型自行从示范中推断时，性能明显下降；没有示范时准确率进一步下降超过三分之一。这是具身 Agent 研究，不是文学翻译实验，但它证明了“用户通过行为示范表达偏好”并非 LLM 专属现象。[论文](https://aclanthology.org/2026.emnlp-main.206/)
+
+### 40.5 对 LLM 产品的实际意义
+
+可以把用户反馈理解为三种不同的数据：
+
+1. **Preference Statement**：用户主动说出的偏好规则。
+2. **Preference Demonstration**：用户通过选择、修改或行为展示出来的偏好。
+3. **Preference Construction Interaction**：用户和模型通过对比、解释、澄清共同形成的新偏好。
+
+这三种数据都应该进入 User Model，但不能以相同权重处理。明确声明通常可以快速形成候选约束；A/B 选择和重写需要结合上下文归因；探索性尝试则应暂存在会话或项目层，不应直接改写全局稳定偏好。
+
+对于个人文学翻译，建议优先积累“同一段原文的 A/B 选择 + 一句理由 + 用户最终修改”的组合，而不是强迫用户先写一套完整的风格规则。
+
+## 41. Preference Profile：稳定偏好是不是一个通用概念？有没有大规模实际应用？
+
+有，而且它远早于 LLM。**稳定用户偏好画像（Preference Profile / Taste Profile / User Interest Profile）是推荐系统和数字产品个性化的成熟建模模式。** 这里的“稳定”是相对于会话级短期意图而言，表示更新速度较慢、跨多次交互仍能复现的倾向；它不表示偏好永久不变，也不意味着每条 Profile 都应长期有效。不同公司未必使用统一的 PreferenceProfile 数据结构或同一个名称，但核心思想相似：从长期行为和明确反馈中形成用户兴趣、习惯和偏好状态，再用它影响排序、推荐或内容选择。
+
+需要区分两种 Profile：
+
+- **内部预测型 Profile**：通常是特征、Embedding、兴趣类别和权重的组合，主要服务排序模型，用户未必能看懂或修改。
+- **可解释、可治理的 Profile**：以自然语言或结构化标签呈现，用户能够检查、纠正、删除或临时覆盖。
+
+两者可以共存。可解释 Profile 不必替代高维用户 Embedding；它可以成为用户可理解的权威偏好层，再由系统生成适合不同下游模型的派生表示。
+
+### 41.1 推荐系统中的稳定偏好是成熟实践，不是 LLM 新概念
+
+大规模推荐系统通常同时需要长期兴趣和短期意图。长期兴趣帮助系统了解用户持续喜欢什么；短期会话信号帮助系统判断用户现在正在寻找什么。用户可能长期喜欢历史小说，但当前正在寻找一份烹饪食谱。不能让当前搜索改写长期兴趣，也不能让长期画像压制当前意图。
+
+传统系统常把这两种信息分别编码为长期用户表示和 session representation；LLM 时代则进一步尝试把它们转成可读的自然语言 Profile，使模型、用户和不同应用能够更直接地理解它们。
+
+Spotify 是一个公开、直接的产品例子。它的 Taste Profile 根据用户的搜索、播放、跳过、收藏等行为形成对个人音乐和内容口味的解释，并影响推荐。产品截至 2026 年 10 月仍标为 Beta；2026 年 9 月官方公告说明首批扩展到美国和新西兰的 18 岁以上 Premium 用户，支持文档将其描述为移动端 Premium 18+ 功能。AI 生成的 Profile 摘要目前提供英语和西班牙语；Taste Profile 只影响 Home 推荐，不替用户执行 Follow，也不支持将自然语言要求当作“始终展示/永不展示”的硬规则。Spotify 还允许用户把单曲或 Playlist 从 Taste Profile 中排除，避免孩子的音乐、助眠音频或一次性播放污染长期推荐。2026 年，Spotify 将 Taste Profile Beta 扩展为用户可查看和修改的画像：用户可以通过自然语言告诉系统想探索的新风格、当前生活状态、希望减少或增加的内容。[Spotify：Understanding Recommendations](https://www.spotify.com/us/safetyandprivacy/understanding-recommendations) · [Exclude from Taste Profile](https://newsroom.spotify.com/2025-10-01/exclude-tracks-taste-profile/) · [Taste Profile Beta](https://newsroom.spotify.com/2026-09-23/taste-profile-shape-home-feed/)
+
+这个例子非常接近本文所说的 Preference Profile：长期行为形成基础口味；用户可以直接修正系统推断；一次性行为可以排除；当前探索目标可以影响近期推荐；系统允许兴趣变化，而不是把 Profile 固定成永久标签。
+
+Spotify 的公开材料没有披露其完整内部 Profile Schema 或所有排序算法，因此可以确认产品行为和用户控制能力，但不能据此推断其内部实现与本文的 Claim/Evidence/Temporal 模型完全相同。
+
+### 41.2 规模化推荐系统正在把长期行为变成可更新的自然语言画像
+
+**LUPE: Long-History User Profile Evolution for LLM-based Recommendation（Findings of EMNLP 2026）** 直接研究长历史推荐中的 Profile 演化。传统做法常把全部历史一次性摘要成一个 Profile，可能过度压缩早期偏好，也可能过度强调最近行为。LUPE 按时间顺序分块处理交互，持续维护并更新文本 Profile，并通过下游推荐模型的反馈优化 Profile Evolution Policy。实验覆盖 Yelp、Amazon CDs and Vinyl、Amazon Books，在评分预测和排序任务上优于论文中的强基线；长期且行为异质的用户尤其受益。[论文](https://aclanthology.org/2026.findings-emnlp.338/)
+
+**TRACE: A Long-Term Conversational Recommendation Dataset with Evolving User Personas（EMNLP 2026）** 则把长期行为画像与对话画像结合。其核心结论是，行为 Persona 和对话 Persona 能提供不同信息，且持续更新 Persona 对长期偏好演化有帮助。[论文](https://aclanthology.org/2026.emnlp-main.1804/)
+
+这两项工作说明，Profile 不是一次性总结。它应保留长期积累的偏好，同时吸收新行为、识别兴趣迁移，并允许不同来源的用户画像相互补充，而不是把所有历史压成一段不断覆盖的摘要。
+
+### 41.3 2026 年的研究正在把 Profile 从平台内部向用户可控、可携带的偏好资产推进
+
+**A Survey on Natural Language User Profiles for Recommendation（EMNLP 2026）** 系统梳理了自然语言用户画像的生成、基于画像的推荐、数据集和评估方法。研究指出，自然语言 Profile 相比不透明 Embedding 的优势是更容易理解和控制；但也存在可解释性与任务优化之间的张力。[论文](https://aclanthology.org/2026.emnlp-main.2207/)
+
+Amazon Science 的 **Enabling User Agency in Scalable Content Recommendations with Large Language Models（AAMAS 2026）** 提出由用户侧个人 Agent 构造可解释、可编辑的自然语言偏好画像；每条偏好带有可学习的权重，画像可在用户控制下形成，并用于不同内容提供商的推荐。系统在 MIND 和 Goodreads 数据集上评估，论文报告优于其强基线。这是研究原型和实验结果，不等同于 Amazon 已经在全部商业推荐产品中部署该架构。[Amazon Science](https://www.amazon.science/publications/enabling-user-agency-in-scalable-content-recommendations-with-large-language-models)
+
+Microsoft Research 的 **From Hidden Profiles to Governable Personalization（2026）** 进一步讨论了推荐系统如何从平台控制的隐式用户模型，走向用户可检查、可修订、可携带并且可问责的 Profile。它属于研究观点和设计议程，不是已经全面落地的标准或产品能力。[论文](https://www.microsoft.com/en-us/research/publication/from-hidden-profiles-to-governable-personalization-recommender-systems-in-the-age-of-llm-agents/)
+
+### 41.4 稳定价值画像也正在用于主观决策，而不只是内容推荐
+
+**Personalized Alignment of Language Models with Human Value Profiles（EMNLP 2026）** 研究如何把稳定的人类价值优先级用于主观决策任务。论文采用 Schwartz Value Profiles，在 152 个用户价值画像和 1,501 个价值冲突情景上评估；关键步骤不是把全部个人价值一次性塞进 Prompt，而是先判断当前问题与哪些价值相关，再进行 targeted prompting、activation steering 或 LoRA-DPO。研究发现，针对相关价值维度的个性化比仅暴露完整画像更有效，而且用户之间的效果并不相同。[论文](https://aclanthology.org/2026.emnlp-main.1600/)
+
+这个方向与文学阅读偏好有相似之处：用户可以长期偏好克制、诚实、含蓄和不迎合，但当前任务只需要其中一部分。稳定 Profile 提供先验，当前任务决定哪些维度应该被调用。
+
+### 41.5 企业和生产系统中的 Profile 实践
+
+| 产品或系统 | Profile / Memory 的公开形式 | 能说明什么 | 证据边界 |
+|---|---|---|---|
+| **Spotify Taste Profile** | 从长期听歌和互动行为形成可查看、可调整的口味画像；允许排除一次性播放 | 消费级产品已经把长期偏好、用户纠正和短期行为隔离做成实际功能 | Spotify 未公开完整内部画像结构和排序模型 |
+| **DoorDash Unified Consumer Memory** | 长期消费倾向、当前 Session Context、用户明确提供的 Explicit Context 分开维护；Memory Block 可版本化并记录 lineage | 大规模推荐业务需要分离长期偏好、即时意图和明确约束，并使不同下游模型共享语义用户状态 | 这是工程团队公开的架构实践，不是通用行业标准 |
+| **Netflix GenRec** | 在推荐排序中将用户历史与上下文 verbalize，输入 LLM-backed ranker | 自然语言用户历史和上下文可以参与大规模推荐排序，不只是用于聊天记忆 | 研究披露了生产 A/B 测试和模型设计，但不代表 Netflix 已经用可编辑的自然语言 Profile 替代全部传统推荐系统 |
+| **Glean Memory** | Saved Memory 与 Learned Memory；用户级记忆供多个 Agent 通过 MCP 访问 | 企业可以把个人上下文从单一助手中抽离，形成跨工具共享记忆 | Glean 没有公开完整的用户偏好推断算法或可审计 Claim Schema |
+
+Netflix 的 **GenRec: An LLM-Backed Recommendation Ranker at Netflix（2026 预印本）** 介绍了如何把 verbalized user histories 和上下文用于 LLM 推荐排序，并报告与现有生产排序模型对比的大规模 A/B 结果。它展示了 LLM 参与生产推荐的可能性，但不是一个用户可见、可编辑的 Preference Profile 产品。[论文](https://arxiv.org/abs/2608.10257)
+
+### 41.6 Preference Profile 不是一套固定 Schema，而是一种建模模式
+
+目前没有一个跨行业统一的 Preference Profile 标准。不同系统会选择不同表达：推荐平台可能存储用户长期兴趣、品类权重、价格敏感度和内容偏好；流媒体产品可能存储流派、情绪、收听习惯以及用户主动排除项；企业助手可能存储工作角色、沟通风格、项目背景、协作关系；文学翻译工具可能存储语言方向、文本类型、叙述距离、句法节奏和正反例；主观决策助手可能存储稳定价值优先级，而不是单纯的内容兴趣。
+
+这些模型的共同点是：都试图把历史信号压缩为一组在某类任务中可复用的用户状态。差异在于画像能否解释、是否保留证据、是否区分时间、是否允许用户纠正，以及是否会根据当前任务筛选使用范围。
+
+所以，本文的 Preference Profile 应视为可审计 User Model 的一个重要视图，而不是一个需要强行对齐到其他厂商的统一 JSON Schema。
+
+
+
+## 42. 2026 年 10 月的新研究：个性化已经开始形成“分层用户状态 + 统计先验 + 持续更新”的路线
+
+2026 年 10 月的 Findings of EMNLP 又出现了几项与本文架构高度相关的工作。它们不是简单地提出更多 Memory 类型，而是开始回答：怎样将零散行为组织成稳定倾向、怎样在反馈稀疏时学习偏好，以及怎样让轻量统计先验和远程 LLM 协同。
+
+### 42.1 COPE：稀疏用户反馈下的持续个性化
+
+**COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation**（Findings of EMNLP 2026）为每个用户维护可学习的个性化 Embedding，把偏好捕获、自我评价校准和个性化响应优化放在同一个更新过程中。它还使用模型自评产生 Proxy Reward，使系统在没有每次都收到明确用户反馈时仍能尝试持续更新。论文报告，在其稀疏反馈实验中，COPE 优于所比较的 training-free 和 training-based baselines，并可与 Retrieval-Augmented Prompting 互补。[论文](https://aclanthology.org/2026.findings-emnlp.247/)
+
+它说明，当用户偏好样本非常稀疏时，参数化的个人状态也可能提供价值。但应注意两个边界：第一，自评产生的 Proxy Reward 不是用户真实反馈，必须防止模型把自身偏好误当成用户偏好；第二，可学习 Embedding 本身不具备天然可读的证据链。对本文建议的系统而言，COPE 更适合作为后期的个人状态表示或偏好预测优化，而不是取代 Event、Evidence 和 Claim 的权威存储。
+
+### 42.2 PHF：把行为、长期倾向与群体规律分层
+
+**Beyond Isolated Behaviors: Hierarchical User Modeling for LLM Personalization**（Findings of EMNLP 2026）借鉴 Bourdieu 的实践理论，提出 Practice–Habitus–Field（PHF）：
+
+- Practice：用户在具体场景中的行为；
+- Habitus：行为在时间中累积后形成的相对稳定倾向；
+- Field：相似用户或相似社会情境中反复出现的共享规律。
+
+论文提供了冻结 LLM 的 PHF Compass 实现，并在 LaMP 个性化基准上报告不同任务的改进。[论文](https://aclanthology.org/2026.findings-emnlp.259/)
+
+这与本文的 User Model 有一个重要对应关系：不能直接把单次行为当成稳定偏好。单次选择是 Practice，多次跨场景证据才可能支持 Habitus，而相似用户的群体规律只能作为先验（Field），不能覆盖个人的明确选择。
+
+对工程实现不必照搬社会学术语或强行引入三个独立数据库。更简单的映射是：Interaction Event → Preference Claim → Population Prior。重点是保留层次关系和从行为形成稳定倾向的证据链。
+
+### 42.3 Statistical Priors for Implicit Preferences：统计学习和语义解析可以解耦
+
+**Statistical Priors for Implicit Preferences: Decoupling Skill Selection as a Local Harness in Personal Agents**（Findings of EMNLP 2026）研究个人 Agent 如何从隐式用户偏好中学习 Skill 选择。它明确把统计偏好学习与语义意图解析分开：本地统计模块根据历史选择形成先验，再用该统计结果调节远程 LLM 的 Skill 选择。论文报告，在它评估的场景中，这种解耦设计的 cumulative regret 更低、测试准确率更高，并开源了实现。[论文](https://aclanthology.org/2026.findings-emnlp.258/) · [代码](https://github.com/ZyGan1999/Personalized-Skill-Selection)
+
+这项研究与本文推荐的架构非常接近：
+
+- LLM 负责识别当前任务语义和可能的用户意图；
+- 统计模型负责学习哪些选择在这个用户和这个上下文中更可能被接受；
+- Harness / Resolver 把统计先验作为输入，而不是让 LLM 单凭自然语言印象做决定。
+
+它还表明，用户偏好可以作用于工具或 Skill 的选择，并不局限于文本生成风格。相同的 User Model 可以服务翻译、代码 Agent、研究 Agent 和企业助手。
+
+### 42.4 The Reward Model Selection Crisis：偏好排名准确不等于生成行为正确
+
+**The Reward Model Selection Crisis in Personalized Alignment**（Findings of EMNLP 2026）对“训练一个个人 Reward Model 就能让输出符合用户偏好”提出了直接警告。论文发现，Reward Model 的偏好排序准确率与它在推理时真正引导模型生成符合用户偏好内容的 Policy Accuracy 之间相关性很弱，Kendall's \(\tau\) 约为 0.08–0.31。它还提出 Pref-LaMP，用用户真实完成内容评估个性化输出行为，而不是只测排序分数；在其测试中，简单的 In-Context Learning 对参数规模不低于 3B 的模型表现强于所比较的 reward-guided 方法。[论文](https://aclanthology.org/2026.findings-emnlp.123/)
+
+对本文的意义是：不能因为某个个人模型能准确预测 A/B，就宣称它已经能稳定生成用户喜欢的译文。偏好预测、偏好引导和最终生成质量是三个不同层面的指标。训练个人 Reward Model 或 Adapter 之前，必须证明它改善了真实输出，而不只是离线 preference accuracy。
+
+### 42.5 生产流媒体推荐中的 profile 比较：LLM 画像不是所有用户的默认最优方案
+
+**When LLM-Based User Profiling Adds Value in Production Streaming Recommendation**（2026-09 预印本）在真实流媒体平台抽样数据上比较四种 Profile 方案：历史 Item Embedding 的聚合表示、按时间拆分后的聚合表示、LLM 生成的单一自然语言 Profile，以及 LLM 生成的短期/长期两个 Profile。
+
+论文样本包含 10,000 个用户、约 240,000 个电影、电视和体育内容项目，并按用户时间顺序拆分训练、验证和测试数据。结果并不是“LLM Profile 全面优于传统画像”：
+
+- 对长期行为稳定的 Habitual / Non-Explorer 用户，Embedding Aggregate 方法整体表现更稳；
+- 对未来消费明显偏离历史的 Explorer 用户，LLM Narrative Profile 能带来准确率提升；
+- 在全体用户上，LLM 画像的表现可能显著低于聚合表示；
+- LLM Profile 虽然让个别推荐列表略微更丰富，却可能降低总体 Catalog Coverage 和 Novelty，让全站推荐集中到更少、更热门的内容；
+- LLM Profile 的生成与刷新成本更高，因此只有在特定用户群能带来可测收益时才值得使用。
+
+论文因此建议：聚合方法仍然是稳健默认，LLM 画像应按用户行为类型选择性启用。[论文](https://arxiv.org/abs/2609.27183)
+
+这个结果对个人 User Model 很有启发：自然语言 Profile 不是因为更可读就一定更准确；它的价值取决于用户行为的异质性、当前任务和维护成本。稳定用户可能只需要结构化偏好权重，正在探索新领域的用户则更需要语义归纳和澄清交互。对于文学翻译，也应区分稳定审美和探索性试验，不能所有反馈都采用同一种模型更新策略。
+
+### 42.6 Cross-domain Profile：稳定偏好可以跨内容域迁移，但需要抽象到正确层次
+
+**From reviews to preference profiles: LLM-based transfer for cross-domain recommendation**（Egyptian Informatics Journal，2026）提出 LIPA（Language-Induced Profile Abstraction）：从用户跨领域评论中生成中性的自然语言 Profile，再把用户 Profile 与 Item Profile 编码到共享语义空间进行匹配，不需要在目标领域重新训练。论文关注电影与图书等领域之间的冷启动迁移。[论文](https://doi.org/10.1016/j.eij.2026.100981)
+
+它对 User Model 的启发是：有些偏好确实可以跨任务迁移，例如用户喜欢克制叙述、复杂人物关系或含蓄表达；但领域标签和内容兴趣本身不应直接迁移。例如“喜欢历史电影”不能推出“喜欢历史小说使用古雅语言”。跨领域迁移需要抽象为更底层的审美或选择维度，并保留证据和适用范围。
+
+### 42.7 这些新研究对原有技术路线的修正
+
+| 新研究 | 增加的认识 | 对实施路线的影响 |
+|---|---|---|
+| COPE | 稀疏反馈下可以学习个性化 Embedding，并尝试自评辅助更新 | 后期可以加个人 Embedding；Proxy Reward 必须校验，不能替代真实反馈 |
+| PHF | 行为、长期倾向和群体规律有不同层次 | User Model 应区分 Event、Personal Claim 和 Population Prior |
+| Statistical Priors for Implicit Preferences | 本地统计偏好学习可以独立于远程 LLM 语义解析 | 支持 Hybrid / Harness 架构，统计模型不必部署成另一个大模型 |
+| Reward Model Selection Crisis | 排序准确率不等于实际生成对齐 | 增加下游行为评估，不能只看 Pairwise Accuracy 或 Reward Accuracy |
+| Production Streaming Profile Study | LLM Profile 价值依用户行为类型而不同，并有多样性与成本副作用 | LLM Profile 只对探索型、高异质用户按需启用；聚合模型作为低成本基线 |
+| LIPA | 自然语言画像可抽象稳定偏好并在跨域迁移 | 允许迁移高层偏好，但必须检查概念与场景是否真的匹配 |
+
+
+## 43. 2026 年偏好学习的新连接：Profile 学习、冷启动询问和跨用户差异
+
+前面几章分别讨论了从行为中推断偏好、用 Preference Profile 保存稳定倾向，以及用统计模型预测用户选择。2026 年的新论文进一步把这些能力串成了几个可组合的方法：学习用户摘要、用群体先验辅助冷启动、从二元反馈识别个人差异，以及把偏好询问作为主动学习问题。
+
+### 43.1 PLUS：Profile 不只是推理时的 Prompt，还可以成为可学习的中间表示
+
+**Learning to Summarize User Information for Personalized Reinforcement Learning from Human Feedback（PLUS，ICLR 2026）** 研究个性化 RLHF 中的用户表示问题。传统 Reward Model 往往使用一个群体级奖励函数，隐含假设不同用户对“好回答”的判断相同。PLUS 则联合训练用户摘要模型和 Reward Model：前者把用户偏好、特征与历史对话压缩成文本摘要，后者在该摘要条件下预测用户会偏好哪种回答；二者通过在线 co-adaptation 同步调整。
+
+论文报告，PLUS 相较标准 Bradley–Terry 方法，Reward Model 准确率提升 11%—77%；对新用户和新话题也有较好的泛化，且在特定实验中，PLUS 摘要条件化的 GPT-4 输出相较默认 GPT-4o 达到 72% 对 28% 的胜率。[ICLR 2026 论文](https://proceedings.iclr.cc/paper_files/paper/2026/hash/c7af751b5e0a407c62ac023e3cb381f9-Abstract-Conference.html)
+
+它支持一个重要判断：**用户 Profile 可以成为统计偏好模型和生成模型之间的中间表示，而不只是放进 Prompt 的自然语言说明。** 但论文的 72%/28% 是其特定任务和评测设置下的结果，不代表对任意用户、任意内容类型都能获得相同收益。
+
+对本文的设计，PLUS 可以作为后期演进方向：保留可读、可追溯的 Preference Claim，同时训练 Profile Builder 学习如何把大量证据压缩为对 Reward Model 有用的摘要。不能把它压缩出来的文本替代原始 Event 和 Evidence。
+
+### 43.2 POPI：让偏好推断器学习怎样总结用户，而不是直接塞入所有历史
+
+**POPI: Personalizing LLMs via Optimized Natural Language Preference Inference（TMLR，2026-09）** 面向用户偏好表达分散、原始交互冗长且直接放入上下文会产生噪声的问题。它使用 Preference Inference Model，将不同形式的用户信号蒸馏为简洁的自然语言偏好摘要，再用该摘要条件化共享的生成模型。该框架联合优化偏好推断和个性化生成，并报告在四个个性化基准上提升个性化准确率、降低上下文开销；摘要还能够迁移到冻结的现成模型，无需更新其权重。[TMLR 2026 论文列表](https://www.jmlr.org/tmlr/papers/) · [论文预印本与摘要](https://arxiv.org/abs/2510.17881)
+
+POPI 与 PLUS 都把“用户摘要”变成可学习的 Profile Builder，但优化目标有所区别：PLUS 把摘要作为个性化 Reward Model 的条件；POPI 把摘要作为共享生成模型的个性化条件。两者都说明自然语言 Profile 可以成为模型间传递个人偏好的接口。
+
+它们也有共同边界：摘要是对历史证据的压缩，不是权威事实源。摘要即使能提高下游预测，也可能遗漏反例、范围和时间信息。因此在本文建议的架构中，Profile Builder 输出的应是带证据引用的派生视图；权威数据仍然是原始事件和有版本的 Preference Claim。
+
+### 43.3 CAPE：冷启动时不必逐条问遍所有偏好维度
+
+**Cold-Start Personalization via Bayesian Adaptive Questioning（CAPE，ICML 2026）** 研究没有用户历史时，怎样用有限交互建立初始偏好画像。它观察到，不同偏好维度之间存在群体层面的相关性，例如偏好详细解释的用户也可能更喜欢配套示例。CAPE 离线学习这种偏好相关结构，在线使用轻量 Bayesian inference 选择有信息量的问题，并预测尚未直接询问的偏好维度。
+
+论文在医疗、数学、社会和常识推理任务中报告，CAPE 的偏好对齐率为 80.8%，相较 RL 基线的 68.5%；达到结果所需交互次数减少 3—5 倍。简单线性回归式信念模型即可利用群体偏好先验，不需要在线训练一个大型用户模型。[ICML 2026 / PMLR 306](https://proceedings.mlr.press/v306/bose26a.html)
+
+CAPE 的主要价值是提供一种很实际的冷启动策略：不要让新用户从二十个问题的偏好问卷开始，而是利用群体数据推断可能相关的偏好，再选择最有信息量的问题。不过其论文问题设定是结构化偏好询问，主要实验也是任务型的模拟偏好场景；它并未直接解决开放式文学审美反馈、跨月偏好演变或作品级覆盖规则。这些仍需 Event / Claim / Temporal 模型处理。
+
+因此，本文代码中的 ActivePreferenceQuestionSelector 目前只是一个基于预测不确定度与任务影响的阈值示例。未来可以增加 CAPE 式群体相关先验和 Bayesian question selection，但不应把当前简单阈值实现描述成已经复现 CAPE。
+
+### 43.4 C-BPO：跨用户数据能帮助识别个人差异，但必须控制“伪负样本”
+
+**Personalizing LLMs with Binary Feedback: A Preference-Calibrated Optimization Framework（C-BPO，ACL 2026 Long Papers）** 使用目标用户的二元反馈作为正向信号，并把其他用户的数据作为辅助的隐式负向信号，以学习用户之间的偏好差异。论文进一步使用 Positive-Unlabeled Learning，校正不同用户可能共享某些偏好这一问题，避免把“别人也喜欢”错误当成目标用户不喜欢。[ACL 2026 论文](https://aclanthology.org/2026.acl-long.1222/)
+
+它提供了一个重要补充：单个用户数据不足时，群体数据可以帮助建立人口先验和区分个人偏好；但其他用户的选择不是目标用户的可靠负例。若用户 A 喜欢自然中文、用户 B 也喜欢自然中文，B 的数据不能被当作 A 的反向证据。
+
+对个人 User Model，建议先用群体数据建立通用特征和弱先验，再用目标用户自己的反馈学习修正项。跨用户数据可以提供“什么偏好常常一起出现”的信息，但不能覆盖目标用户的明确声明、实际选择和反面证据。
+
+### 43.5 四类方法分别解决哪个问题？
+
+| 方法 | 主要问题 | 学习的对象 | 适合进入 User Model 的哪一层 |
+|---|---|---|---|
+| PLUS | 用户摘要如何服务个性化 Reward Model | 用户摘要器 + Reward Model | Profile Builder / Preference Scorer |
+| POPI | 如何从异构历史信号生成紧凑、可迁移的自然语言偏好 | Preference Inference Model | Task-agnostic Preference Profile |
+| CAPE | 没有历史时，下一步应该问用户什么 | 群体偏好相关先验 + Bayesian belief state | Cold-start / Active Elicitation |
+| C-BPO | 如何利用跨用户数据识别目标用户独特偏好 | 二元反馈校准 + PU learning | Population Prior / User-specific delta |
+
+它们不是相互替代的产品，而是可以放在不同层次组合起来的算法。一个完整 User Model 可以用 CAPE 完成冷启动，用 Event / Claim 存储真实证据，用 POPI 或 PLUS 风格的模型生成紧凑 Profile，再用个性化偏好估计器支持当前任务的判断。每个环节都必须保留其输入证据和评估结果。
+
+
+
+## 44. 让自己使用的 Agent 越来越顺手：从本地使用日志到持续个性化
+
+前面讨论的 Preference Profile 主要回答“系统应该记住什么”。但个人 Agent 的实际体验还取决于另一组问题：它是否知道什么时候该主动做、什么时候该先问；是否反复犯同一种错误；是否总是选错工具或模型；是否能理解用户的工作节奏；以及一次修正能不能在下一次任务中真正生效。
+
+这类改进不应该从“每天把所有对话交给 LLM 总结”开始。更合适的目标是建立一个本地优先的 **Personal Agent Learning Loop**：持续记录 Agent 的行为和用户反馈，定期归纳候选经验，验证经验是否真的改善了后续任务，再把被验证的经验放入合适的记忆、Skill 或 Runtime 配置。
+
+**日志是证据来源，不是记忆本身；写入一条记忆，也不等于 Agent 已经学会。**
+
+### 44.1 先明确要改进的不是模型本身，而是 Agent 的行为
+
+个人 Agent 的“更懂我”至少包含四种能力：
+
+| 能力 | 要解决的问题 | 典型反馈 |
+|---|---|---|
+| Preference Selection | 当前任务应该采用哪一条个人偏好？ | 用户说“这次不要按我平常的简洁风格，详细解释” |
+| Behavior Realization | Agent 是否真的按偏好行动？ | 虽然记住了“不要反复确认”，但执行前仍然问了三次 |
+| Contextual Applicability | 记忆是否只在合适场景生效？ | 把代码评审时的简洁偏好带入文学翻译 |
+| Continual Adaptation | 用户习惯变化后，旧偏好能否更新？ | 过去习惯先给方案，现在更倾向于先直接修改，再解释差异 |
+
+因此，改进对象不只是输出文字风格，还包括 Agent 的 Planning、Tool Selection、Clarification、Execution、Verification 和交互节奏。2026 年的个性化 Agent Survey 也将 Profile Modeling、Memory、Planning、Action Execution 视为相互关联的能力，而不是只在 Prompt 前面追加一段用户画像。[Toward Personalized LLM-Powered Agents](https://arxiv.org/abs/2602.22680)
+
+### 44.2 最新研究已经开始直接测试“Agent 有没有学会如何与你协作”
+
+两个 2026 年 10 月的新 Benchmark 特别值得关注。它们把评价目标从“Agent 是否找回过去的信息”转向“Agent 是否知道怎样与你互动”。
+
+**MemPABench：交互偏好必须在正确的时刻影响行为**
+
+**Why Bother Me Again? Benchmarking Personal Agent Memory for Interaction Preferences**（2026-10-21）研究用户如何通过日常互动表达自己的协作习惯，例如是否希望 Agent 主动汇报、是否需要重复确认、是否接受 Agent 自主采取某些动作。论文使用四个模拟用户、14 项偏好，设计了跨四个月的 99 次交互 Session，并人为改变部分偏好，观察 Agent 是否能够更新。
+
+结果值得警惕：在该 Benchmark 中，Mem0、MemOS 和 Simple RAG 这类 Retrieval-based Memory 在偏好选择准确率上没有优于 No Memory；File-based Memory 有改善，但容易把某条偏好应用到不相关的上下文。作者还发现，即使偏好已经写入 Memory，也可能没有在真正需要决策时被检索出来。[MemPABench](https://arxiv.org/abs/2610.30485)
+
+它说明个人 Agent 最难的部分之一不是存储，而是 **Preference Selection + Behavior Realization**。一条“不要过多解释”的记忆，即使检索成功，也需要运行时的行为策略配合；更不能在所有任务中不加区分地使用。
+
+**iPrefBench：Agent 必须区分哪些信息可以从历史推断，哪些必须向用户询问**
+
+**iPrefBench: A User-Centric Benchmark for Personalized Mobile Use Agents**（2026-10-26）使用包含 3,051 条历史活动事件的用户画像，设计了 130 个任务，涉及 26 个应用。研究将任务中缺失的信息分成两类：
+
+- **Inferable**：历史记录中已经有充分证据，Agent 应该能够推断。
+- **Ask-only**：历史中没有答案，只能向用户询问，不能靠猜测补齐。
+
+七个被测试的 Agent，动作执行完成率达到 77.5%–91.6%，但完整的个性化任务成功率只有 26.2%–47.7%。以论文中表现最好的 Claude Opus 5 为例，动作完成率为 91.6%，完整任务成功率为 47.7%。Agent 对 Ask-only 信息的提问召回率最高也只有 44.3%；单纯鼓励 Agent 多问，虽然提高召回率，却会降低提问精度，产生不必要的打扰。[iPrefBench](https://arxiv.org/abs/2610.34735)
+
+这对个人 Agent 很直接：系统不应该只记录“用户曾经做过什么”，还应能判断“当前缺失的信息是否真的能从过去推断”。历史证据不足时，应该提问；有足够证据时，就不要让用户反复回答相同问题。对用户自己的 Agent，这往往比生成风格多符合几个百分点更影响日常使用体验。
+
+更早的 **Learning Personalized Agents from Human Feedback（PAHF，Meta，2026）** 已经提出了一个持续学习闭环：行动前通过澄清解决未知偏好，执行时根据显式用户记忆做决策，行动后利用用户纠正更新记忆，尤其要处理旧偏好已经过时的情况。论文将 Pre-action Feedback 与 Post-action Feedback 结合，后者能够纠正 Agent “自信但已经过时”的偏好判断。[PAHF](https://arxiv.org/abs/2602.16173)
+
+这几项研究指向同一个结论：**记忆系统必须和实际决策、执行结果以及用户纠正连接起来，不能只评估 Recall。**
+
+### 44.3 业界已经出现了几种可以直接借鉴的实现模式
+
+| 产品 / 项目 | 已公开的实践 | 可借鉴的设计 | 证据边界 |
+|---|---|---|---|
+| Claude Code Auto Memory | 在本机按项目保存记忆，区分 user、feedback、project、reference 等类型；由 Agent 在工作过程中积累有长期价值的内容 | 用户级和项目级分开；保留原始 Session Transcript 与压缩后的 Memory；topic 文件按需加载 | 官方功能说明，不代表自动记忆总能判断正确或适用范围 |
+| VS Code Local Memory | Local Harness 使用 User、Repository、Session 三种 Memory Scope；用户偏好跨 Workspace，项目知识只在当前 Workspace 生效 | 明确的 Scope Hierarchy，避免一个全局 Memory 混入项目约束和临时任务状态 | 官方产品文档；Copilot 云端 Memory 与 Local Memory 是不同实现 |
+| Letta MemFS / Dreaming | Git-backed Memory Filesystem；后台 Subagent 回顾最近对话、整理经验并更新 Memory；可配置额外 Agent Review | 文件可检查、版本化，后台 Consolidation 不阻塞主任务 | 厂商文档所述产品能力；额外 Agent Review 不等于用户审批 |
+| Mastra Observational Memory | Observer 将较早的交互压缩成 Observations，Reflector 定期整合、重组和删除过时内容 | Observation 与 Reflection 分离；按 Token Threshold 异步运行，而不是每个 Turn 都完整回放历史 | 开源框架能力；其主要目标是长上下文压缩，不是已经解决个人偏好学习 |
+| Lyo / Learn Your Own | 通过 Codex / Claude Hooks 收集本地事件，写入 SQLite Learning Ledger；记录候选经验、Scope、Delivery 和 Outcome，并尝试进行 advice / no-advice 对照 | 把“建议被写入”与“建议确实改善了后续结果”分开验证 | 2026 年的开源实验项目，不是成熟的大规模生产产品；作者明确表示跨独立真实任务的泛化验证仍是下一阶段 |
+| Joel Hooks 的 Observer / Reflector 个人实践 | 个人 Agent 记录日常 Observations，后台 Reflector 每日生成长期记忆候选，再由用户审核 | 一份每日观察日志 + 一份候选变更 Review，而不是自动改写所有长期记忆 | 个人工程实践文章；作者明确区分了已经运行的基础设施和尚未完成的 Observer、Reflector、Friction Analysis 功能 |
+
+Claude Code 的 Auto Memory 将机器本地的记忆分成 user、feedback、project 和 reference 类型，并用一个简短索引连接主题文件；VS Code 的 Local Memory 则明确区分 User、Repository 和 Session 三种 Scope。两者共同说明：**Scope 不是 Memory 的附加元数据，而是决定记忆是否能被正确使用的基本结构。** [Claude Code Memory](https://code.claude.com/docs/en/memory) · [VS Code Memory](https://code.visualstudio.com/docs/agents/run/memory)
+
+Letta 的 Dreaming 使用后台 Subagent 检查最近的交互并整合长期记忆；Mastra 的 Observational Memory 则将 Observer 与 Reflector 分开，前者观察和提取事件，后者压缩、合并并淘汰过时观察。两者都支持异步处理，而不是让主 Agent 在每次调用时重新分析全部历史。[Letta Memory & Dreaming](https://docs.letta.com/configuration/memory) · [Mastra Observational Memory](https://mastra.ai/docs/memory/observational-memory)
+
+Lyo 是这里值得额外研究的开源原型。它不是一个“自动摘要所有 Prompt”的 Memory 工具，而是一个本地学习账本：Hooks 负责观察，SQLite 记录 Session、Prompt、Trace、Preference、Delivery 和 Outcome，候选经验需要明确 Scope 和 Evaluator；后续任务可以安排 Advice 与 No-advice 的前瞻性比较，再决定是否继续投放该经验。它还默认不把完整 Prompt 存进 SQLite，而是保留 Hash、长度、摘要和可选文件引用。项目当前仍标注了 API 稳定性、Schema Migration 和完整命令覆盖等未成熟项，因此应把它看成有价值的实现实验，而不是已被广泛验证的行业标准。[Lyo Repository](https://github.com/bebekim/learn-your-own)
+
+这些方案并不冲突：Claude Code 和 VS Code 提供 Memory Scope 的产品实践，Mastra 和 Letta 提供后台 Consolidation 的执行模式，Lyo 则把经验投放和结果验证连成可审计的 Learning Loop。
+
+### 44.4 应不应该 Log Everything？应该记录事件，但不应该无条件保存所有内容
+
+我的建议是：**记录所有对学习和复盘有价值的事件元数据；原始 Prompt、模型输出、工具参数和工具结果采用独立、可配置的内容采集策略。**
+
+“自己分析自己”确实降低了将个人对话交给外部服务的必要性，但本地日志仍然可能包含 API Key、Access Token、内部代码、公司项目内容、客户材料以及其他人的信息。Local-only 不等于没有泄露风险。更重要的是，完整 Prompt、工具输出和文件内容通常体积很大，会让后续分析成本快速上升。
+
+OpenTelemetry 的 GenAI Semantic Conventions 已经把 Agent Invocation、Plan、Tool Execution、Retrieval、Memory Operation 等定义为不同 Span；同时明确建议默认不要采集完整的 System Instructions、Input Messages 和 Output Messages。需要保留内容时，可以将完整内容放在独立存储中，再由 Trace 记录引用。该 Semantic Convention 目前仍标为 Development，因此更适合作为事件建模参考，而不是要求个人 Agent 必须接入一套完整 OTel 平台。[OpenTelemetry GenAI Spans](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-spans.md)
+
+建议将采集分成三层：
+
+| 数据层 | 建议采集内容 | 默认策略 |
+|---|---|---|
+| **Trace Metadata** | Session / Turn / Trace ID、时间、Agent、Model、Task Type、Tool Name、成功/失败、持续时间、Token / Cost、Verifier 结果 | 始终记录 |
+| **Learning Events** | 用户纠正、显式偏好声明、A/B 选择、修改/撤回、重复追问、工具失败、测试结果、最终是否接受 | 始终记录结构化事件 |
+| **Raw Content** | 完整 Prompt、Response、Tool Arguments、Tool Results、Patch、文件内容 | 默认不完整保存；按本地配置、项目范围和需要单独启用 |
+
+原始内容可以保留在本地文件中，但建议由 Trace 记录 Hash、长度、引用和采集策略。对大文件、二进制和工具输出应采用文件引用或 Patch 引用，而不是把全部内容重复塞进 JSONL。需要能够明确排除特定 Workspace、目录或任务类型。
+
+#### 推荐的最小事件 Schema
+
+每个 Agent Event 至少应包含：
+
+~~~json
+{
+  "schema_version": 1,
+  "event_id": "evt_01...",
+  "timestamp": "2026-10-31T10:30:00Z",
+  "session_id": "session_...",
+  "turn_id": "turn_...",
+  "trace_id": "trace_...",
+  "parent_event_id": null,
+  "scope": {
+    "agent": "coding-agent",
+    "project": "repo-a",
+    "task_type": "code_change"
+  },
+  "event_type": "tool_execution_end",
+  "actor": "agent",
+  "tool": {
+    "name": "run_tests",
+    "status": "success",
+    "duration_ms": 4200
+  },
+  "outcome": {
+    "verifier": "passed"
+  },
+  "content_ref": null,
+  "content_hash": "sha256:...",
+  "redaction": {
+    "applied": true,
+    "policy": "local-default"
+  }
+}
+~~~
+
+最重要的是稳定的 event_id、session_id、turn_id、trace_id、event_type 和时间戳。Tool Call 与 Tool Result 要通过稳定的 Call ID 关联。Pi 的 Session File Format 展示了成熟的本地 JSONL 事件结构：每行都有类型、ID、Parent ID 和时间戳，消息、模型变更、Context Compaction 和 Tool Execution 都有独立类型，可以据此重放或分析 Session，而不是解析人类可读的 Console Log。[Pi Session File Format](https://pi.dev/docs/latest/session-format)
+
+对于偏好学习，另外记录以下事件尤其重要：
+
+| 事件 | 为什么要记录 |
+|---|---|
+| user_correction | 用户明确指出 Agent 哪里做错了，通常比普通对话更有价值 |
+| preference_statement | 用户明确表达“以后应该怎样做” |
+| candidate_selection | 用户在不同候选结果中选择了哪一个 |
+| artifact_edit / undo | 用户如何修改或撤回 Agent 的产出 |
+| clarification | 哪些问题用户认为应该提前问，哪些问题属于重复确认 |
+| tool_selection / tool_failure | Agent 是否选错工具、模型、Skill 或执行路径 |
+| verification_result | 修改、测试、构建或其他验收是否成功 |
+| delivery | 某一条偏好是否真的注入了当前任务上下文 |
+| post_action_feedback | 用户在看到最终行为后是否接受、纠正或要求撤回 |
+
+这里有一个重要的区分：**用户没有修改结果，不等于用户明确认可结果；用户没有提出异议，也不等于某项偏好被验证。** “接受”只能作为较弱的行为证据，不能与显式评分、A/B 选择或直接纠正等同。
+
+### 44.5 推荐架构：实时记录，Session 结束时观察，每天归纳，定期审核
+
+不建议每次 Tool Call 后都启动一个 LLM 进行“学习”。这会增加延迟和 Token 成本，而且大量中间状态不具备长期价值。更自然的做法是将 Agent 运行与偏好学习解耦：
+
+~~~mermaid
+flowchart TB
+    A["Agent Session / Tool Execution"] --> B["Local Append-only Event Log"]
+    B --> C["Session Observer"]
+    C --> D["Structured Observations"]
+    D --> E["Daily Reflector"]
+    E --> F["Candidate Preference Claims"]
+    F --> G{"Evidence and Scope Check"}
+    G -->|"Insufficient / conflicting"| H["Keep as Candidate"]
+    G -->|"Ready for review"| I["Local Review Queue"]
+    I --> J{"User Decision"}
+    J -->|"Approve"| K["Versioned User / Agent / Project Profile"]
+    J -->|"Reject / edit"| L["Archive decision and evidence"]
+    K --> M["Preference Compiler"]
+    M --> N["Memory / Skill / Runtime Policy"]
+    N --> O["Agent Execution"]
+    O --> P["Delivery and Outcome Events"]
+    P --> B
+    H --> B
+    L --> B
+~~~
+
+这个架构有四个不同的职责。
+
+**Event Collector：只负责观察，不负责学习。** Agent 通过 Hooks 或 Runtime Callback 将事件写入本地文件。应采用 Append-only JSONL，按 Session 分文件，避免多进程同时直接修改同一个日志。高频 Hook 可以先将事件写入本地 Spool Directory，再由独立进程批量归档到 SQLite；采集过程不能阻塞 Agent 的正常运行。
+
+**Session Observer：提取本次使用中的观察。** 在任务结束、Session Shutdown 或 Context Compaction 时异步执行。它不应该把 Session 改写成一篇通用摘要，而应找出可能改变未来行为的具体事件，例如用户再次纠正了同一个问题、主动接受了某种操作方式、Agent 使用了错误工具，或者某项验证说明某种做法确实有效。
+
+建议将 Observation 至少分成三类：
+
+| 类型 | 例子 | 默认保存位置 |
+|---|---|---|
+| Durable Signal | 用户反复强调的沟通风格、操作习惯、工具选择偏好 | Candidate Profile |
+| Working Context | 当前项目结构、最近修改的文件、当前任务状态 | Project / Session Memory |
+| Ephemeral Event | 一次性探索、临时方案、未采用的想法 | Raw Event Log |
+
+**Daily Reflector：分析跨 Session 的重复模式。** 每天在空闲时间运行一次，读取最近新增的 Observations，而不是读取所有历史原文。它需要合并重复内容、找出相互矛盾的反馈、识别偏好的 Scope、检查旧偏好是否过时，并形成候选变更。每日分析不是必须固定为 Cron；也可以在有足够新事件时触发，再以每日任务做补偿和清理。
+
+**Preference Compiler：决定如何将被确认的经验作用于 Agent。** 它将用户级偏好、Agent Role、Project Rule 和当前 Session Override 组合成运行时配置。每次注入哪条 Preference，都要记录 delivery Event，后面才能判断它是否真正改善了行为。
+
+### 44.6 Daily Reflector 具体应该分析什么？
+
+不要只生成“今天发生了什么”。更有价值的是运行一组稳定的 Learning Queries。
+
+| 分析项 | 示例问题 | 可能产生的改进 |
+|---|---|---|
+| Repeated Correction | 最近是否多次纠正同一种回复或代码模式？ | 更新 User Profile 或 Agent Instructions |
+| Repeated Rework | 哪些任务经常要求 Agent 返工？ | 修改 Skill、Prompt 或验证流程 |
+| Tool Selection | 是否反复选错工具、模型、MCP 或 Skill？ | 更新 Tool Routing / Harness |
+| Clarification Friction | 哪些问题本来能从已有上下文推断，却被重复询问？ | 调整 Clarification Policy |
+| Unnecessary Autonomy | 哪些任务 Agent 应该先问，却自行猜测并导致返工？ | 增加 Ask-before-action 条件 |
+| Verification Failure | 是否重复遗漏测试、Build、Diff 或其他验收？ | 增加确定性 Hook / Workflow |
+| Preference Drift | 最近反馈是否与现有 User Profile 冲突？ | 提出 Profile 更新或限定 Scope |
+| Over-Personalization | 某条偏好是否开始影响无关任务？ | 缩小 Scope、降低权重或撤销 |
+
+输出不应直接写入正式的 Memory，而应产生类似下面的本地 Review Proposal：
+
+~~~markdown
+## Candidate: 代码修改后先完成验证
+
+Evidence:
+- Session A: 用户要求补跑 targeted test。
+- Session B: 用户指出修改后没有执行 build。
+- Session C: 用户再次要求先检查 diff 再报告结果。
+
+Candidate:
+- 对实际代码修改任务，完成修改后应主动执行相关验证。
+- 仅在无法运行验证时，说明具体阻碍。
+
+Scope:
+- Agent: coding-agent
+- Task: code_change
+- Not applicable: research-only / writing-only
+
+Confidence:
+- Candidate, repeated across 3 independent sessions.
+
+Action:
+- Propose update to coding-agent policy.
+- Do not change global user instructions yet.
+~~~
+
+这个 Proposal 不是统计意义上的最终结论，而是一个带有来源、范围和反例的待审核假设。即使某条反馈在多个 Session 中出现，也需要判断是不是同一个项目、同一种任务或某个临时阶段造成的。
+
+Mastra 的 Observer / Reflector 模式和 Joel Hooks 的个人实践都展示了这种“观察与归纳分离”的方向。Joel 的方案将每日 Reflector 产出的内容放入 REVIEW.md，用户批准后才进入长期 Memory；他也明确说明，部分自动分析与自我修复仍是规划中的功能，而不是已经完成的能力。[Mastra Observational Memory](https://mastra.ai/docs/memory/observational-memory) · [Joel Hooks: Observation Pipeline](https://joelclaw.com/observation-pipeline-persistent-ai-memory)
+
+### 44.7 Memory、Skill、Harness：不同的经验应该修改不同的层
+
+一个经常被忽略的问题是：系统发现用户不喜欢某种行为后，不应该默认将它写入 Memory。
+
+| 发现的经验 | 更合适的落点 | 原因 |
+|---|---|---|
+| 用户更喜欢怎样的表达、解释深度、协作节奏 | User / Agent Memory | 它改变 Agent 的判断和行为倾向 |
+| 做某一类任务应该按什么步骤执行 | Skill | 它属于可重复调用的程序性知识 |
+| 某些动作必须先经过校验、授权或人工确认 | Harness / Hook / Permission | 这类约束不能只依赖 LLM 记住 |
+| 某个项目的构建命令、目录约定和技术选型 | Project Memory / AGENTS.md | 它只在特定 Workspace 生效 |
+| 当前任务的临时决定和上下文 | Session Memory | 任务结束后通常不应变成长期规则 |
+
+例如，系统发现你经常要求代码 Agent 完成修改后立即测试。可以有两种不同处理：如果这是你的个人协作偏好，写入 coding-agent Profile；如果它是项目必须满足的工程门禁，就应该成为验证 Hook 或 Workflow。前者依赖判断，后者应由 Runtime 确定性执行。
+
+Letta 的公开设计也把 Memory、Skills 和 Harness Configuration 分开：Memory 改变 Agent 的未来判断，Skill 保存可重用的流程，Harness 决定权限、Hooks、工具、模型和定时任务。[Letta Memory & Dreaming](https://docs.letta.com/configuration/memory)
+
+这可以避免一个常见的错误：发现 Agent 忘记跑测试，就只在 Memory 中增加一句“记住一定要跑测试”。如果它是一个确定性要求，应该由系统执行测试并验证结果，而不是期待模型每次都能从记忆里想起来。
+
+### 44.8 如何判断 Agent 真的变好了？
+
+不能只检查“新增了几条 Memory”或“能不能正确回答你喜欢什么”。至少要同时衡量偏好选择、实际行为、交互负担和任务结果。
+
+| 指标 | 衡量方式 | 关注的问题 |
+|---|---|---|
+| Repeated Correction Rate | 同一问题在后续 Session 中再次被纠正的次数 | 是否真的减少重复犯错 |
+| Preference Selection Accuracy | 当前任务是否选用了正确的个人偏好 | 是否理解该用哪条 Profile |
+| Behavior Realization Rate | Agent 是否实际按已投放偏好行动 | 是否只会说“我记住了” |
+| Context Misapplication Rate | 偏好是否被用于不相关任务 | 是否过度个性化 |
+| Clarification Precision / Recall | 应问的问题是否询问，不需要问的问题是否避免 | 是否减少重复问题而不靠猜 |
+| Rework Rate | 用户修改、撤回或要求重做的次数 | 产出是否真正符合预期 |
+| Task Outcome | 测试、Build、Verifier 或用户验收结果 | 任务本身是否更成功 |
+
+MemPABench 的一个重要贡献正是将 Preference Selection 与 Behavior Realization 分开评估；iPrefBench 则把 Action Completion、Personalization 和用户提问的 Recall / Precision 分开统计。对自己的 Agent，也应该采用类似思路，不能把“Agent 记得你的偏好”当成“Agent 的工作结果一定更好”。
+
+更进一步，可以对某些低风险、可重复的任务做 **Prospective Comparison**：
+
+1. 先记录当前 Agent 的 Baseline 行为和任务结果。
+2. 选择一条候选偏好，只在符合 Scope 的任务中投放。
+3. 对相似任务比较启用该偏好和不启用该偏好时的结果。
+4. 记录 Agent 是否收到并执行建议、用户是否再次纠正、Verifier 是否通过。
+5. 只有证据支持时才继续使用；出现反例就缩小范围、修改或撤销。
+
+Lyo 的 Advice / No-advice Trial 是值得参考的实验设计。个人 Agent 不一定有足够多完全同质的任务做严格 A/B Test，但至少可以采用同一任务类别的前瞻性对照，避免只凭“最近感觉顺手了”就自动升级规则。涉及安全、权限和不可逆动作的规则不应为了实验而随机关闭。
+
+### 44.9 一个适合个人使用的本地目录结构
+
+第一版无需 Vector Database、Graph Database、独立 Memory Service 或 Multi-Agent 系统。使用 JSONL + SQLite + Markdown 就足以完成闭环：
+
+~~~text
+~/.agent-learning/
+  events/
+    2026/
+      10/
+        31/
+          <session-id>.jsonl
+  blobs/
+    <content-hash>             # opt-in raw content, separate from metadata
+  learning.sqlite              # indexed observations, claims, delivery and outcomes
+  profile/
+    global.md                  # cross-agent user preferences
+    agents/
+      coding-agent.md
+      research-agent.md
+      writing-agent.md
+    projects/
+      <project-id>.md
+  reviews/
+    2026-10-31.md              # daily candidate updates
+  experiments/
+    <experiment-id>.jsonl      # baseline/treatment/outcome records
+~~~
+
+各文件职责：
+
+- events/ 保存 Append-only 原始事件，按 Session 分文件，便于检索和重放。
+- blobs/ 保存选择性保留的原始 Prompt、Tool Result 和 Patch；默认不采集。
+- learning.sqlite 是索引和 Learning Ledger，保存 Observation、Preference Claim、Evidence Link、Delivery、Outcome 和版本信息。
+- profile/ 是交给运行时读取的精简视图，避免每次任务读取整个事件库。
+- reviews/ 保存每日候选及批准、拒绝、修改理由。
+- experiments/ 记录某条经验在后续任务中是否真正产生效果。
+
+SQLite 的 FTS 和普通索引可以先解决大多数检索需求。只有在 Observation 数量、自由文本问题和跨 Session 搜索确实需要语义召回时，再增加 Local Embedding Index；不要为了“Agent Memory”这个名字默认增加 Vector Database。
+
+### 44.10 推荐的执行频率
+
+“每天运行一次分析脚本”是合理的，但它应当只是 Consolidation 的节奏，而不是整个学习系统的运行方式。
+
+| 时间点 | 任务 | 是否需要 LLM |
+|---|---|---|
+| 每个事件发生时 | Append-only 写入结构化 Event；记录 Trace ID 和 Outcome | 否 |
+| Session 结束 / Compaction | 汇总本次纠正、选择、修改和验证结果，生成 Observation | 可以使用低成本模型，异步执行 |
+| 每日低峰期 | 去重、跨 Session 聚类、更新统计、生成候选 Profile / Skill / Harness Change | 是，主要的 Reflector 工作 |
+| 每周 | 检查候选、批准或拒绝、查看重复纠正和过度应用 | 可用 LLM 辅助，但应由用户审核 |
+| 每月 | 审查旧偏好、低频偏好、冲突和无效规则；回顾是否真的减少返工 | 可选 |
+
+活动较少的 Agent 不需要每天执行一轮 LLM 分析。可以在新事件积累到一定规模时触发 Reflector，同时每天做一次轻量检查。Session Observer 与 Daily Reflector 也不一定需要两个 Agent；第一版可以是两个独立任务，由同一模型以不同 Prompt 执行。
+
+### 44.11 推荐的 30 天落地顺序
+
+不建议第一天就建设一套“Agent 自我进化平台”。先让系统能够回答“我到底经常在哪些地方纠正它”，再让它尝试修改行为。
+
+| 阶段 | 实施工作 | 验收条件 |
+|---|---|---|
+| Week 1：Observability | 通过 Agent Hooks 采集本地 JSONL 事件，记录 Session、Turn、Tool、结果和用户纠正 | 能按 Session 重建一次任务的主要执行轨迹 |
+| Week 2：Observation | 在 Session Shutdown / Compaction 后提取结构化 Observation，保留 Event ID 和 Scope | 能统计重复纠正、常见失败和工具使用问题 |
+| Week 3：Reflection | 每日生成 Candidate Profile、Skill、Harness Change；写入 REVIEW.md | 能看到候选的证据、反例、适用范围和建议修改位置 |
+| Week 4：Delivery & Evaluation | 批准低风险候选，记录每次投放及后续结果；挑选一两个任务类别做对照 | 能证明至少一条经验减少了重复纠正或返工，且没有明显扩大到无关任务 |
+
+第一阶段不需要改变 Agent 的 Prompt 或行为。先观察一周，统计真正重复发生的摩擦点。若没有一个问题在多个独立 Session 中重复出现，就不要为了实现“自我学习”而制造 Memory。
+
+### 44.12 最终建议
+
+针对个人使用的 Agent，最值得优先构建的是一个 **Local-first Agent Learning Ledger**，而不是一个不断扩大的 Memory Prompt。
+
+推荐的组合是：
+
+- 用 JSONL 保存本地、可回放的事件轨迹；
+- 用 SQLite 记录结构化 Observation、Preference Claim、Scope、Delivery 和 Outcome；
+- 用 Session Observer 提取本次交互中值得留下的信号；
+- 用 Daily Reflector 归纳跨 Session 的重复模式；
+- 用 Review Queue 控制哪些经验可以进入长期 Profile；
+- 用 Memory、Skill 和 Harness 分别承载判断偏好、程序性知识和确定性控制；
+- 用后续任务的结果验证经验是否真的有帮助。
+
+最重要的不是让 Agent 记住所有对话，而是形成这样一个闭环：**用户纠正了什么，系统据此提出了什么假设，假设被投放到哪些任务，后续结果是否支持它，以及什么时候应该撤销它。**
+
+这比每天生成一份“今天的对话总结”更接近真正的个人 Agent 个性化。
 
 
 ## 补充参考文献
@@ -2472,3 +3159,52 @@ combine_signals 应使用显式策略，而不是随意把规则、LLM 和 ML �
 63. Mahmud, Nakamura and Zilberstein (2025), [MAPLE: A Framework for Active Preference Learning Guided by Large Language Models](https://ojs.aaai.org/index.php/AAAI/article/view/34964), AAAI 2025.
 64. Qu et al. (2026), [T-POP: Test-Time Personalization with Online Preference Feedback](https://proceedings.mlr.press/v306/qu26i.html), ICML 2026 / PMLR 306.
 65. Puech, Salakhutdinov and Bertsimas (2026), [Online LLM Personalization from Pairwise Preferences Across Users](https://arxiv.org/abs/2610.17203), arXiv preprint, October 2026.
+
+66. Guo et al. (2026), [Towards Natural Personalization: Evaluating Long-Horizon Preference Following in Personalized User-LLM Interactions](https://aclanthology.org/2026.findings-emnlp.2378/), Findings of EMNLP 2026.
+67. Jiang et al. (2026), [VIBE-Bench: Evaluating Personalized Large Language Models When Profiles Don’t Mean Preferences](https://aclanthology.org/2026.findings-emnlp.1676/), Findings of EMNLP 2026.
+68. Yoon et al. (2026), [BenchPreS: A Benchmark for Context-Aware Personalized Preference Selectivity of Persistent-Memory LLMs](https://aclanthology.org/2026.emnlp-main.1040/), EMNLP 2026.
+69. Wang et al. (2026), [Evaluating the Hidden Costs of Personalization in Large Language Models](https://aclanthology.org/2026.emnlp-main.679/), EMNLP 2026.
+70. Tsaknakis et al. (2025), [Do LLMs Recognize Your Latent Preferences? A Benchmark for Latent Information Discovery in Personalized Interaction](https://arxiv.org/abs/2510.17132), arXiv preprint.
+71. Li et al. (2025), [Eliciting Human Preferences with Language Models](https://mlanthology.org/iclr/2025/li2025iclr-eliciting/), ICLR 2025.
+72. Saracay, Schmidt and Guestrin (2026), [Beyond Expert Users: Agents Should Help Users Construct Preferences, Not Just Elicit Them](https://arxiv.org/abs/2606.30863), arXiv preprint.
+73. Xu et al. (2026), [Inferring the Unspoken: Aligning Embodied Agents with Implicit Preferences](https://aclanthology.org/2026.emnlp-main.206/), EMNLP 2026.
+74. Sun et al. (2026), [LUPE: Long-History User Profile Evolution for LLM-based Recommendation](https://aclanthology.org/2026.findings-emnlp.338/), Findings of EMNLP 2026.
+75. Ahn et al. (2026), [TRACE: A Long-Term Conversational Recommendation Dataset with Evolving User Personas](https://aclanthology.org/2026.emnlp-main.1804/), EMNLP 2026.
+76. Arustashvili and Balog (2026), [A Survey on Natural Language User Profiles for Recommendation: Methods, Datasets, and Metrics](https://aclanthology.org/2026.emnlp-main.2207/), EMNLP 2026.
+77. Poole and Jahanbakhsh (2026), [Personalized Alignment of Language Models with Human Value Profiles](https://aclanthology.org/2026.emnlp-main.1600/), EMNLP 2026.
+78. Li et al. (2026), [Enabling User Agency in Scalable Content Recommendations with Large Language Models](https://www.amazon.science/publications/enabling-user-agency-in-scalable-content-recommendations-with-large-language-models), AAMAS 2026.
+79. Liu et al. (2026), [From Hidden Profiles to Governable Personalization: Recommender Systems in the Age of LLM Agents](https://www.microsoft.com/en-us/research/publication/from-hidden-profiles-to-governable-personalization-recommender-systems-in-the-age-of-llm-agents/), arXiv preprint.
+80. Li et al. (2026), [GenRec: An LLM-Backed Recommendation Ranker at Netflix](https://arxiv.org/abs/2608.10257), arXiv preprint / Netflix Research.
+81. Spotify, [Understanding Recommendations](https://www.spotify.com/us/safetyandprivacy/understanding-recommendations), official product explanation.
+82. Spotify, [Exclude Tracks from Your Taste Profile](https://newsroom.spotify.com/2025-10-01/exclude-tracks-taste-profile/), product feature announcement, October 1, 2025.
+83. Spotify, [Taste Profile: Shape Your Home Feed](https://newsroom.spotify.com/2026-09-23/taste-profile-shape-home-feed/), product announcement, September 23, 2026.
+
+84. Sabouri et al. (2026), [When LLM-Based User Profiling Adds Value in Production Streaming Recommendation](https://arxiv.org/abs/2609.27183), arXiv preprint, September 23, 2026.
+85. Cao et al. (2026), [COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation](https://aclanthology.org/2026.findings-emnlp.247/), Findings of EMNLP 2026.
+86. Gan, Tang and Liu (2026), [Statistical Priors for Implicit Preferences: Decoupling Skill Selection as a Local Harness in Personal Agents](https://aclanthology.org/2026.findings-emnlp.258/), Findings of EMNLP 2026.
+87. Wang et al. (2026), [Beyond Isolated Behaviors: Hierarchical User Modeling for LLM Personalization](https://aclanthology.org/2026.findings-emnlp.259/), Findings of EMNLP 2026.
+88. Rezk et al. (2026), [The Reward Model Selection Crisis in Personalized Alignment](https://aclanthology.org/2026.findings-emnlp.123/), Findings of EMNLP 2026.
+89. [From reviews to preference profiles: LLM-based transfer for cross-domain recommendation](https://doi.org/10.1016/j.eij.2026.100981), Egyptian Informatics Journal, 2026.
+90. Hu, Koren and Volinsky (2008), [Collaborative Filtering for Implicit Feedback Datasets](https://doi.org/10.1109/ICDM.2008.22), IEEE ICDM 2008.
+91. Ziebart et al. (2008), [Maximum Entropy Inverse Reinforcement Learning](https://www.ri.cmu.edu/publications/maximum-entropy-inverse-reinforcement-learning/), AAAI 2008.
+
+92. Nam et al. (2026), [Learning to Summarize User Information for Personalized Reinforcement Learning from Human Feedback](https://proceedings.iclr.cc/paper_files/paper/2026/hash/c7af751b5e0a407c62ac023e3cb381f9-Abstract-Conference.html), ICLR 2026.
+93. Chen et al. (2026), [POPI: Personalizing LLMs via Optimized Natural Language Preference Inference](https://arxiv.org/abs/2510.17881), TMLR, September 2026.
+94. Bose et al. (2026), [Cold-Start Personalization via Bayesian Adaptive Questioning](https://proceedings.mlr.press/v306/bose26a.html), ICML 2026 / PMLR 306.
+95. Ma et al. (2026), [Personalizing LLMs with Binary Feedback: A Preference-Calibrated Optimization Framework](https://aclanthology.org/2026.acl-long.1222/), ACL 2026 Long Papers.
+
+96. Li, Chen, Luo and Salam (2026), [Why Bother Me Again? Benchmarking Personal Agent Memory for Interaction Preferences (MemPABench)](https://arxiv.org/abs/2610.30485), arXiv preprint, October 21, 2026.
+97. Ning et al. (2026), [iPrefBench: A User-Centric Benchmark for Personalized Mobile Use Agents](https://arxiv.org/abs/2610.34735), arXiv preprint, October 26, 2026.
+98. Liang et al. (2026), [Learning Personalized Agents from Human Feedback](https://arxiv.org/abs/2602.16173), Meta Research / arXiv, February 2026.
+99. Xu et al. (2026), [Toward Personalized LLM-Powered Agents: Foundations, Evaluation, and Future Directions](https://arxiv.org/abs/2602.22680), arXiv survey, February 2026.
+100. Lyu et al. (2026), [PersonalAlign: Hierarchical Implicit Intent Alignment for Personalized GUI Agent with Long-Term User-Centric Records](https://aclanthology.org/2026.acl-long.1669/), ACL 2026.
+101. Wang et al. (2026), [Me-Agent: A Personalized Mobile Agent with Two-Level User Habit Learning for Enhanced Interaction](https://aclanthology.org/2026.findings-acl.1211/), Findings of ACL 2026.
+102. Huang et al. (2026), [Mem-PAL: Towards Memory-based Personalized Dialogue Assistants for Long-term User-Agent Interaction](https://doi.org/10.1609/aaai.v40i37.40385), AAAI 2026.
+103. Mastra, [Observational Memory](https://mastra.ai/docs/memory/observational-memory), official documentation.
+104. OpenTelemetry, [Semantic Conventions for Generative AI Spans](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-spans.md), living specification, status Development.
+105. Pi, [Session File Format](https://pi.dev/docs/latest/session-format), official documentation.
+106. bebekim, [Lyo — Learn Your Own](https://github.com/bebekim/learn-your-own), open-source experimental project, repository created May 2026.
+107. Joel Hooks, [How I Built an Observation Pipeline So My AI Remembers Yesterday](https://joelclaw.com/observation-pipeline-persistent-ai-memory), February 15, 2026.
+108. Letta, [Memory & Dreaming](https://docs.letta.com/configuration/memory), official documentation.
+109. Microsoft, [Use Memory with Agents in VS Code](https://code.visualstudio.com/docs/agents/run/memory), official documentation, updated October 28, 2026.
+110. GitHub, [Copilot Memory Supports User Preferences](https://github.blog/changelog/2026-05-15-copilot-memory-supports-user-preferences-for-pro-pro-users/), product announcement, May 15, 2026.

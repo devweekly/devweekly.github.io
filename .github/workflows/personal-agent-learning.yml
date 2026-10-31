@@ -1,0 +1,53 @@
+name: Personal Agent Learning
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/personal-agent-learning/**"
+      - ".github/workflows/personal-agent-learning.yml"
+  pull_request:
+    paths:
+      - "tools/personal-agent-learning/**"
+      - ".github/workflows/personal-agent-learning.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout devweekly
+        uses: actions/checkout@v4
+
+      - name: Checkout shared Agent runtimes
+        uses: actions/checkout@v4
+        with:
+          repository: saga/common-agent-lib
+          path: common-agent-lib
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.13"
+
+      - name: Install shared runtimes and local SDK versions
+        working-directory: tools/personal-agent-learning
+        env:
+          COMMON_AGENT_LIB_DIR: ${{ github.workspace }}/common-agent-lib
+        run: npm run setup:shared
+
+      - name: Type-check
+        working-directory: tools/personal-agent-learning
+        run: npm run typecheck
+
+      - name: Build
+        working-directory: tools/personal-agent-learning
+        run: npm run build
+
+      - name: Test
+        working-directory: tools/personal-agent-learning
+        run: npm test
