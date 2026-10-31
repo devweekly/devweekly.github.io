@@ -2524,7 +2524,7 @@ LLM 的价值在于把自然语言理由和文本差异解释成候选偏好维�
 
 传统系统常把这两种信息分别编码为长期用户表示和 session representation；LLM 时代则进一步尝试把它们转成可读的自然语言 Profile，使模型、用户和不同应用能够更直接地理解它们。
 
-Spotify 是一个公开、直接的产品例子。它的 Taste Profile 根据用户的搜索、播放、跳过、收藏等行为形成对个人音乐和内容口味的解释，并影响推荐。Spotify 还允许用户把单曲或 Playlist 从 Taste Profile 中排除，避免孩子的音乐、助眠音频或一次性播放污染长期推荐。2026 年，Spotify 将 Taste Profile Beta 扩展为用户可查看和修改的画像：用户可以通过自然语言告诉系统想探索的新风格、当前生活状态、希望减少或增加的内容。[Spotify：Understanding Recommendations](https://www.spotify.com/us/safetyandprivacy/understanding-recommendations) · [Exclude from Taste Profile](https://newsroom.spotify.com/2025-10-01/exclude-tracks-taste-profile/) · [Taste Profile Beta](https://newsroom.spotify.com/2026-09-23/taste-profile-shape-home-feed/)
+Spotify 是一个公开、直接的产品例子。它的 Taste Profile 根据用户的搜索、播放、跳过、收藏等行为形成对个人音乐和内容口味的解释，并影响推荐。产品截至 2026 年 10 月仍标为 Beta，官方支持文档列出的范围是移动端 Premium 用户且年满 18 岁；Taste Profile 只影响 Home 推荐，不替用户执行 Follow，也不支持将自然语言要求当作“始终展示/永不展示”的硬规则。Spotify 还允许用户把单曲或 Playlist 从 Taste Profile 中排除，避免孩子的音乐、助眠音频或一次性播放污染长期推荐。2026 年，Spotify 将 Taste Profile Beta 扩展为用户可查看和修改的画像：用户可以通过自然语言告诉系统想探索的新风格、当前生活状态、希望减少或增加的内容。[Spotify：Understanding Recommendations](https://www.spotify.com/us/safetyandprivacy/understanding-recommendations) · [Exclude from Taste Profile](https://newsroom.spotify.com/2025-10-01/exclude-tracks-taste-profile/) · [Taste Profile Beta](https://newsroom.spotify.com/2026-09-23/taste-profile-shape-home-feed/)
 
 这个例子非常接近本文所说的 Preference Profile：长期行为形成基础口味；用户可以直接修正系统推断；一次性行为可以排除；当前探索目标可以影响近期推荐；系统允许兴趣变化，而不是把 Profile 固定成永久标签。
 
@@ -2570,6 +2570,83 @@ Netflix 的 **GenRec: An LLM-Backed Recommendation Ranker at Netflix（2026 预�
 这些模型的共同点是：都试图把历史信号压缩为一组在某类任务中可复用的用户状态。差异在于画像能否解释、是否保留证据、是否区分时间、是否允许用户纠正，以及是否会根据当前任务筛选使用范围。
 
 所以，本文的 Preference Profile 应视为可审计 User Model 的一个重要视图，而不是一个需要强行对齐到其他厂商的统一 JSON Schema。
+
+
+
+## 42. 2026 年 10 月的新研究：个性化已经开始形成“分层用户状态 + 统计先验 + 持续更新”的路线
+
+2026 年 10 月的 Findings of EMNLP 又出现了几项与本文架构高度相关的工作。它们不是简单地提出更多 Memory 类型，而是开始回答：怎样将零散行为组织成稳定倾向、怎样在反馈稀疏时学习偏好，以及怎样让轻量统计先验和远程 LLM 协同。
+
+### 42.1 COPE：稀疏用户反馈下的持续个性化
+
+**COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation**（Findings of EMNLP 2026）为每个用户维护可学习的个性化 Embedding，把偏好捕获、自我评价校准和个性化响应优化放在同一个更新过程中。它还使用模型自评产生 Proxy Reward，使系统在没有每次都收到明确用户反馈时仍能尝试持续更新。论文报告，在其稀疏反馈实验中，COPE 优于所比较的 training-free 和 training-based baselines，并可与 Retrieval-Augmented Prompting 互补。[论文](https://aclanthology.org/2026.findings-emnlp.247/)
+
+它说明，当用户偏好样本非常稀疏时，参数化的个人状态也可能提供价值。但应注意两个边界：第一，自评产生的 Proxy Reward 不是用户真实反馈，必须防止模型把自身偏好误当成用户偏好；第二，可学习 Embedding 本身不具备天然可读的证据链。对本文建议的系统而言，COPE 更适合作为后期的个人状态表示或偏好预测优化，而不是取代 Event、Evidence 和 Claim 的权威存储。
+
+### 42.2 PHF：把行为、长期倾向与群体规律分层
+
+**Beyond Isolated Behaviors: Hierarchical User Modeling for LLM Personalization**（Findings of EMNLP 2026）借鉴 Bourdieu 的实践理论，提出 Practice–Habitus–Field（PHF）：
+
+- Practice：用户在具体场景中的行为；
+- Habitus：行为在时间中累积后形成的相对稳定倾向；
+- Field：相似用户或相似社会情境中反复出现的共享规律。
+
+论文提供了冻结 LLM 的 PHF Compass 实现，并在 LaMP 个性化基准上报告不同任务的改进。[论文](https://aclanthology.org/2026.findings-emnlp.259/)
+
+这与本文的 User Model 有一个重要对应关系：不能直接把单次行为当成稳定偏好。单次选择是 Practice，多次跨场景证据才可能支持 Habitus，而相似用户的群体规律只能作为先验（Field），不能覆盖个人的明确选择。
+
+对工程实现不必照搬社会学术语或强行引入三个独立数据库。更简单的映射是：Interaction Event → Preference Claim → Population Prior。重点是保留层次关系和从行为形成稳定倾向的证据链。
+
+### 42.3 Statistical Priors for Implicit Preferences：统计学习和语义解析可以解耦
+
+**Statistical Priors for Implicit Preferences: Decoupling Skill Selection as a Local Harness in Personal Agents**（Findings of EMNLP 2026）研究个人 Agent 如何从隐式用户偏好中学习 Skill 选择。它明确把统计偏好学习与语义意图解析分开：本地统计模块根据历史选择形成先验，再用该统计结果调节远程 LLM 的 Skill 选择。论文报告，在它评估的场景中，这种解耦设计的 cumulative regret 更低、测试准确率更高，并开源了实现。[论文](https://aclanthology.org/2026.findings-emnlp.258/) · [代码](https://github.com/ZyGan1999/Personalized-Skill-Selection)
+
+这项研究与本文推荐的架构非常接近：
+
+- LLM 负责识别当前任务语义和可能的用户意图；
+- 统计模型负责学习哪些选择在这个用户和这个上下文中更可能被接受；
+- Harness / Resolver 把统计先验作为输入，而不是让 LLM 单凭自然语言印象做决定。
+
+它还表明，用户偏好可以作用于工具或 Skill 的选择，并不局限于文本生成风格。相同的 User Model 可以服务翻译、代码 Agent、研究 Agent 和企业助手。
+
+### 42.4 The Reward Model Selection Crisis：偏好排名准确不等于生成行为正确
+
+**The Reward Model Selection Crisis in Personalized Alignment**（Findings of EMNLP 2026）对“训练一个个人 Reward Model 就能让输出符合用户偏好”提出了直接警告。论文发现，Reward Model 的偏好排序准确率与它在推理时真正引导模型生成符合用户偏好内容的 Policy Accuracy 之间相关性很弱，Kendall's \(\tau\) 约为 0.08–0.31。它还提出 Pref-LaMP，用用户真实完成内容评估个性化输出行为，而不是只测排序分数；在其测试中，简单的 In-Context Learning 对参数规模不低于 3B 的模型表现强于所比较的 reward-guided 方法。[论文](https://aclanthology.org/2026.findings-emnlp.123/)
+
+对本文的意义是：不能因为某个个人模型能准确预测 A/B，就宣称它已经能稳定生成用户喜欢的译文。偏好预测、偏好引导和最终生成质量是三个不同层面的指标。训练个人 Reward Model 或 Adapter 之前，必须证明它改善了真实输出，而不只是离线 preference accuracy。
+
+### 42.5 生产流媒体推荐中的 profile 比较：LLM 画像不是所有用户的默认最优方案
+
+**When LLM-Based User Profiling Adds Value in Production Streaming Recommendation**（2026-09 预印本）在真实流媒体平台抽样数据上比较四种 Profile 方案：历史 Item Embedding 的聚合表示、按时间拆分后的聚合表示、LLM 生成的单一自然语言 Profile，以及 LLM 生成的短期/长期两个 Profile。
+
+论文样本包含 10,000 个用户、约 240,000 个电影、电视和体育内容项目，并按用户时间顺序拆分训练、验证和测试数据。结果并不是“LLM Profile 全面优于传统画像”：
+
+- 对长期行为稳定的 Habitual / Non-Explorer 用户，Embedding Aggregate 方法整体表现更稳；
+- 对未来消费明显偏离历史的 Explorer 用户，LLM Narrative Profile 能带来准确率提升；
+- 在全体用户上，LLM 画像的表现可能显著低于聚合表示；
+- LLM Profile 虽然让个别推荐列表略微更丰富，却可能降低总体 Catalog Coverage 和 Novelty，让全站推荐集中到更少、更热门的内容；
+- LLM Profile 的生成与刷新成本更高，因此只有在特定用户群能带来可测收益时才值得使用。
+
+论文因此建议：聚合方法仍然是稳健默认，LLM 画像应按用户行为类型选择性启用。[论文](https://arxiv.org/abs/2609.27183)
+
+这个结果对个人 User Model 很有启发：自然语言 Profile 不是因为更可读就一定更准确；它的价值取决于用户行为的异质性、当前任务和维护成本。稳定用户可能只需要结构化偏好权重，正在探索新领域的用户则更需要语义归纳和澄清交互。对于文学翻译，也应区分稳定审美和探索性试验，不能所有反馈都采用同一种模型更新策略。
+
+### 42.6 Cross-domain Profile：稳定偏好可以跨内容域迁移，但需要抽象到正确层次
+
+**From reviews to preference profiles: LLM-based transfer for cross-domain recommendation**（Egyptian Informatics Journal，2026）提出 LIPA（Language-Induced Profile Abstraction）：从用户跨领域评论中生成中性的自然语言 Profile，再把用户 Profile 与 Item Profile 编码到共享语义空间进行匹配，不需要在目标领域重新训练。论文关注电影与图书等领域之间的冷启动迁移。[论文](https://doi.org/10.1016/j.eij.2026.100981)
+
+它对 User Model 的启发是：有些偏好确实可以跨任务迁移，例如用户喜欢克制叙述、复杂人物关系或含蓄表达；但领域标签和内容兴趣本身不应直接迁移。例如“喜欢历史电影”不能推出“喜欢历史小说使用古雅语言”。跨领域迁移需要抽象为更底层的审美或选择维度，并保留证据和适用范围。
+
+### 42.7 这些新研究对原有技术路线的修正
+
+| 新研究 | 增加的认识 | 对实施路线的影响 |
+|---|---|---|
+| COPE | 稀疏反馈下可以学习个性化 Embedding，并尝试自评辅助更新 | 后期可以加个人 Embedding；Proxy Reward 必须校验，不能替代真实反馈 |
+| PHF | 行为、长期倾向和群体规律有不同层次 | User Model 应区分 Event、Personal Claim 和 Population Prior |
+| Statistical Priors for Implicit Preferences | 本地统计偏好学习可以独立于远程 LLM 语义解析 | 支持 Hybrid / Harness 架构，统计模型不必部署成另一个大模型 |
+| Reward Model Selection Crisis | 排序准确率不等于实际生成对齐 | 增加下游行为评估，不能只看 Pairwise Accuracy 或 Reward Accuracy |
+| Production Streaming Profile Study | LLM Profile 价值依用户行为类型而不同，并有多样性与成本副作用 | LLM Profile 只对探索型、高异质用户按需启用；聚合模型作为低成本基线 |
+| LIPA | 自然语言画像可抽象稳定偏好并在跨域迁移 | 允许迁移高层偏好，但必须检查概念与场景是否真的匹配 |
 
 
 ## 补充参考文献
@@ -2660,3 +2737,10 @@ Netflix 的 **GenRec: An LLM-Backed Recommendation Ranker at Netflix（2026 预�
 81. Spotify, [Understanding Recommendations](https://www.spotify.com/us/safetyandprivacy/understanding-recommendations), official product explanation.
 82. Spotify, [Exclude Tracks from Your Taste Profile](https://newsroom.spotify.com/2025-10-01/exclude-tracks-taste-profile/), product feature announcement, October 1, 2025.
 83. Spotify, [Taste Profile: Shape Your Home Feed](https://newsroom.spotify.com/2026-09-23/taste-profile-shape-home-feed/), product announcement, September 23, 2026.
+
+84. Sabouri et al. (2026), [When LLM-Based User Profiling Adds Value in Production Streaming Recommendation](https://arxiv.org/abs/2609.27183), arXiv preprint, September 23, 2026.
+85. Cao et al. (2026), [COPE: Continual Personalization of LLMs under Sparse User Feedback via User Embeddings and Self-Evaluation](https://aclanthology.org/2026.findings-emnlp.247/), Findings of EMNLP 2026.
+86. Gan, Tang and Liu (2026), [Statistical Priors for Implicit Preferences: Decoupling Skill Selection as a Local Harness in Personal Agents](https://aclanthology.org/2026.findings-emnlp.258/), Findings of EMNLP 2026.
+87. Wang et al. (2026), [Beyond Isolated Behaviors: Hierarchical User Modeling for LLM Personalization](https://aclanthology.org/2026.findings-emnlp.259/), Findings of EMNLP 2026.
+88. Rezk et al. (2026), [The Reward Model Selection Crisis in Personalized Alignment](https://aclanthology.org/2026.findings-emnlp.123/), Findings of EMNLP 2026.
+89. [From reviews to preference profiles: LLM-based transfer for cross-domain recommendation](https://doi.org/10.1016/j.eij.2026.100981), Egyptian Informatics Journal, 2026.
