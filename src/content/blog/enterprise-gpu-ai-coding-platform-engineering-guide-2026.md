@@ -328,7 +328,141 @@ Router 不应只是随机选择一台推理服务器。它需要理解模型能�
 
 建议把模型路由策略作为版本化配置管理，并支持 shadow traffic、canary、A/B test 和快速回滚。不要让模型自己决定可以绕过的预算、权限或安全策略。
 
-## 6. Coding Agent 平台：不要把 Agent 当成普通聊天请求
+## 6. 国产 GPU / AI 加速器：推理部署与开发工程
+
+在中国境内部署企业 AI Coding 平台，需要把国产 GPU 与 AI 加速器纳入技术选型。但“国产 GPU”是产业统称，实际产品既有通用 GPU，也有 NPU、MLU、GCU 等 AI 加速器；它们不是 CUDA GPU 的等价替代品。选型不能只比较峰值算力，还要比较软件栈、模型覆盖、算子、集合通信、框架适配和生产运维能力。
+
+本节以 2026 年 10 月 31 日可查到的公开资料为准。厂商发布的模型 Day-0 适配、单卡演示或峰值性能，不代表所有模型、量化格式、长上下文、并行策略和生产负载均已验证。必须以具体芯片型号、驱动、SDK、框架分支和版本矩阵为准。
+
+### 6.1 国产加速器与软件栈概览
+
+| 厂商 / 平台 | 硬件类别 | 软件栈 | 推理框架 / 生态入口 | 工程判断 |
+| --- | --- | --- | --- | --- |
+| 华为昇腾 Ascend | AI 处理器 / NPU | CANN、AscendCL、torch-npu、MindStudio、MindIE | vLLM Ascend、SGLang、MindIE Motor | 官方文档体系较完整；需严格核对 CANN、驱动、固件、PyTorch 和推理框架版本 |
+| 寒武纪 MLU | AI 加速器 | NeuWare、CNToolkit、CNCL、CNRT、MagicMind | Cambricon vLLM（vllm-mlu） | 有基于 vLLM 插件机制的公开适配项目；模型、算子、量化和多卡能力按型号验证 |
+| 摩尔线程 MUSA | 全功能 GPU | MUSA SDK、MUSIFY 等 | vLLM-MUSA、SGLang-MUSA | 有 vLLM / SGLang 适配项目，适合评估通用 GPU 编程和推理框架迁移 |
+| 沐曦 MetaX | 通用 GPU | MXMACA、MACA SDK、配套 PyTorch / 算子库 | vLLM-MACA、SGLang 适配 | 有独立开发者文档；PyTorch、Triton、FlashAttention、vLLM 通常需使用匹配的适配版本 |
+| 壁仞 Biren | 通用 GPU | BIRENSUPA、TorchSUPA | 厂商适配的 vLLM 等 | 已公开模型适配和 vLLM 推理案例；需核实目标模型、量化、并行和多节点通信 |
+| 燧原 Enflame | GCU AI 加速器 | TopsRider、torch-gcu | vLLM-GCU | 有基于原生 vLLM 适配 GCU 的公开项目；确认产品型号、驱动和 TopsRider 版本 |
+| 海光 Hygon DCU | 通用 GPU 架构的 DCU 加速器 | DTK、HIP / ROCm 兼容层及配套工具 | 厂商适配的 PyTorch、vLLM 等版本 | 以海光当前 DTK 支持矩阵为准；不能仅凭“兼容 ROCm”推断上游组件可原样安装 |
+
+官方入口：
+
+- [昇腾文档中心](https://www.hiascend.com/document)、[昇腾推理开发](https://www.hiascend.com/cn/developer/inference)、[vLLM Ascend 文档](https://docs.vllm.ai/projects/ascend/en/latest/)、[MindIE Motor 文档](https://www.hiascend.com/document/detail/zh/mindie/310/mindiemotor/motordev/docs/zh/architecture.md)。
+- [寒武纪 NeuWare](https://www.cambricon.com/index.php?m=content&c=index&a=lists&catid=71)、[Cambricon/vllm-mlu](https://github.com/Cambricon/vllm-mlu)。
+- [摩尔线程文档中心](https://docs.mthreads.com/)、[MooreThreads/vllm-musa](https://github.com/MooreThreads/vllm-musa)。
+- [沐曦开发者中心](https://developer.metax-tech.com/)、[MetaX-MACA GitHub](https://github.com/metax-maca)。
+- [壁仞开发者社区](https://developer.birentech.com/)、[壁仞技术动态](https://www.birentech.com/news/yt4wako63dg63co6kpwpi31o/)。
+- [Enflame/vllm-gcu](https://github.com/EnflameTechnology/vllm-gcu)。
+- 海光 DCU：要求供应商提供当前 DTK 开发者文档、驱动/固件兼容矩阵和对应推理框架发行包；第三方博客不能代替正式支持承诺。
+
+### 6.2 昇腾：CANN + PyTorch 适配层 + vLLM / MindIE
+
+昇腾开发链路可以分为五层：
+
+1. **硬件与系统**：确认 Atlas / 昇腾服务器型号、NPU 数量、固件、驱动、操作系统和容器环境。
+2. **CANN**：安装与设备匹配的 Toolkit、Runtime、编译器和通信组件。版本必须与驱动、固件及上层框架匹配。
+3. **框架适配**：使用对应版本的 PyTorch 与 torch-npu，验证设备可见性、张量计算、算子覆盖和多卡通信。
+4. **推理引擎**：按模型与产品支持情况选择 vLLM Ascend、SGLang 或 MindIE 组件。
+5. **服务层**：由企业 AI Gateway 统一处理身份、路由、限流、配额和审计；推理后端在支持时提供 OpenAI-compatible API。
+
+新项目建议优先研究 vLLM Ascend 和 SGLang 的当前适配状态。昇腾文档提供 vLLM、MindIE 等推理开发入口；MindIE 3.1.0 版本说明提示 MindIE LLM 组件暂停后续功能演进，建议关注 MindIE Motor + vLLM Ascend 的部署路径。因此不要把 MindIE 的不同子组件视为同一个生命周期，也不要不加核对地沿用旧版教程。
+
+CANN 文档中心可见 9.2.0-beta.2 等版本条目。Beta 适合开发验证，不应直接作为生产基线。生产环境应选择厂商明确发布、与目标硬件和上层框架匹配的稳定组合，并锁定软件包版本、镜像 digest 和安装记录。
+
+昇腾专项开发知识包括 torch-npu 设备与算子语义、CANN 算子库、AscendCL、GE 图编译、HCCL 集合通信、算子精度与性能调优、模型量化工具、MindStudio 调试和 Profiling。若模型存在不支持算子，应先确认是否有等价实现，再考虑框架兼容实现或自定义算子；CUDA Extension 不能直接视为 NPU 可执行代码。
+
+### 6.3 其他国产平台：关注厂商后端和版本绑定
+
+国产平台逐步采用 PyTorch、vLLM 等开发者熟悉的接口，但接口相似不代表底层实现相同。常见方式是维护厂商自己的 PyTorch 发行版、设备后端、算子库、通信库和推理框架分支，或通过上游框架的 out-of-tree platform / plugin 接口接入。
+
+- **寒武纪 vLLM-MLU**：基于社区 vLLM 插件系统为 MLU 提供推理服务能力。检查插件对应的 vLLM 版本、MLU 型号、模型列表、量化、连续批处理、KV Cache 和多卡通信支持。
+- **摩尔线程 vLLM-MUSA / SGLang-MUSA**：分别基于 vLLM 和 SGLang 适配 MUSA。使用官方指定的软件栈、容器和依赖版本；不能把 CUDA 镜像简单替换设备挂载后就视为迁移完成。
+- **沐曦 MXMACA**：关注官方适配版 PyTorch、Triton、FlashAttention、vLLM 和 SGLang 的版本关系。第三方教程中的版本组合只能作为线索，生产环境以当前官方文档和镜像为准。
+- **壁仞 BIRENSUPA / TorchSUPA**：关注 PyTorch 代码迁移、算子覆盖和 vLLM 适配。模型 Day-0 适配只证明特定模型在特定产品和软件版本上完成了指定验证。
+- **燧原 TopsRider / vLLM-GCU**：关注 GCU 运行时、torch-gcu、集合通信、算子库和 vLLM-GCU 的版本匹配。API、流式输出、多模态、Tool Calling 和多卡推理必须在目标服务器实测。
+- **海光 DCU / DTK**：确认 DTK 与操作系统、内核、驱动、PyTorch、编译工具链及推理框架的支持矩阵。即使存在 HIP 或 ROCm 兼容接口，也要逐项确认编译器、算子、通信库和性能工具的实际支持范围。
+
+上游 vLLM 提供 platform 抽象和 out-of-tree platform 扩展机制，厂商可以通过独立后端适配硬件。但某项功能最终是否可用，取决于后端实现，而不是 vLLM 上游 API 本身。企业应同时跟踪上游 vLLM 与厂商后端版本，避免上游升级后厂商插件尚未跟进。
+
+### 6.4 从 CUDA 迁移：不是替换一个容器镜像
+
+| 层面 | CUDA 环境常见依赖 | 国产平台需要核对的内容 |
+| --- | --- | --- |
+| 设备与运行时 | CUDA Runtime、Driver、NVIDIA Container Toolkit | 厂商 Runtime、驱动、设备插件、容器 Runtime 和设备挂载 |
+| 深度学习框架 | PyTorch CUDA wheel、cuDNN | 厂商适配的 PyTorch / 设备后端、算子覆盖和版本组合 |
+| 自定义算子 | CUDA C++、CUDA Extension、Triton、CUTLASS | 是否有兼容实现；是否需要重写为厂商算子或自定义 Kernel |
+| 推理引擎 | vLLM、SGLang、TensorRT-LLM | 厂商后端、支持的模型架构、Attention、量化和调度特性 |
+| 多卡通信 | NCCL、NVLink、InfiniBand / RoCE | 厂商集合通信库、卡间互联、RDMA、拓扑发现和故障诊断 |
+| 可观测性 | DCGM、NVIDIA SMI、Nsight | 厂商健康监控、Profiler、日志、温度/功耗/显存和错误码 |
+
+迁移路径分三类：
+
+1. **模型不改、替换推理后端**：模型结构和权重格式已被厂商引擎支持时，优先采用官方适配和部署镜像，成本最低。
+2. **框架适配、补齐算子**：模型可运行但存在算子缺失、性能回退或精度差异时，定位到 PyTorch 算子、Attention、量化或自定义算子层，优先复用厂商实现。
+3. **模型图或执行策略调整**：架构不支持、算子组合不兼容或内存行为不适配时，再考虑替换算子、调整并行策略、量化方案或模型结构。所有改动都要做输出质量回归。
+
+`torch.cuda` 兼容层、自动代码迁移工具或设备 API 映射只能降低初期改动，无法自动解决 CUDA Kernel、Triton Kernel、NCCL 通信、图捕获、量化内核和推理调度的语义差异。
+
+### 6.5 生产部署架构：统一平台入口，隔离异构后端
+
+```mermaid
+flowchart TB
+    IDE["IDE / Coding Agent"]
+    Agent["Agent Runtime / Sandbox"]
+    Gateway["Unified AI Gateway / Model Router"]
+    Registry["Model Registry + Compatibility Matrix"]
+    Ascend["Ascend Pool\nCANN + vLLM Ascend / MindIE"]
+    GPU["MUSA / MetaX Pool\nMUSA / MXMACA + vLLM / SGLang"]
+    Other["MLU / GCU / DCU / Biren Pool\nVendor Runtime + Adapted Serving"]
+    Obs["Unified Metrics / Logs / Traces / Cost"]
+    IDE --> Agent --> Gateway
+    Gateway --> Registry
+    Registry --> Ascend
+    Registry --> GPU
+    Registry --> Other
+    Ascend --> Obs
+    GPU --> Obs
+    Other --> Obs
+```
+
+- **统一 API，不强求统一底层实现**：统一 API、Streaming、模型别名和错误协议；后端内部允许不同 Runtime 和推理引擎。
+- **模型路由感知能力**：Model Registry 除模型名称外，还应记录芯片型号、框架版本、量化格式、上下文上限、Tool Calling、结构化输出、多模态和并行能力。
+- **镜像按硬件栈维护**：不同厂商驱动和用户态 Runtime 不宜强行放进同一个通用 GPU 镜像。采用独立、不可变的基础镜像，由统一 CI 构建与扫描。
+- **Kubernetes 统一管理，设备插件按厂商部署**：统一 Namespace、Quota、NetworkPolicy、发布流程；节点标签、Device Plugin、RuntimeClass、拓扑调度和监控适配按厂商实现。
+- **Agent 与 GPU 解耦**：Agent Runtime 不应直接依赖 CUDA、CANN 或某个厂商 SDK，只调用 AI Gateway。更换模型池不应影响 Agent 生命周期和工具安全边界。
+
+### 6.6 POC 验收：服务启动不等于生产可用
+
+| 验证域 | 测试内容 | 验收要求 |
+| --- | --- | --- |
+| 安装与兼容性 | OS、Kernel、驱动、固件、SDK、PyTorch、推理框架 | 形成可重复安装的版本锁定清单 |
+| 模型覆盖 | 权重加载、Tokenizer、模型结构和自定义代码 | 无未解释的算子缺失或隐式 CPU 回退 |
+| 功能正确性 | 普通生成、Streaming、停止词、批处理、长上下文 | 与参考实现做输出和行为对照 |
+| Coding 能力 | Tool Calling、并行工具调用、JSON Schema、代码生成和补丁任务 | 固定任务集成功率达到预定义门槛 |
+| 精度 | 实际支持的 BF16 / FP16 / FP8 / INT8 / INT4 | 记录质量变化、异常输出和数值误差 |
+| 性能 | TTFT、TPOT、吞吐、Goodput、并发、KV Cache | 相同 SLO、上下文和到达率下比较 |
+| 多卡与网络 | P2P、集合通信、TP / PP / EP、跨节点 RDMA | 达到设计目标，故障可定位 |
+| 稳定性 | 长压测、OOM、进程重启、节点维护、升级回滚 | 恢复流程可执行，无持续资源泄漏 |
+| 运维 | 健康、错误码、温度、功耗、显存、日志和告警 | 指标可采集并关联模型请求和节点 |
+| 供应链 | 镜像、驱动、SDK、权重、许可证和漏洞 | 有来源、版本、校验和及回滚记录 |
+
+Coding Agent 场景还要验证工具调用参数是否符合 Schema、长上下文是否丢失代码约束、模型是否能完成多轮工具闭环。模型能流畅回答，不代表它适合 Coding Agent。
+
+性能报告必须公开芯片型号与数量、节点拓扑、软件版本、模型版本、量化格式、输入输出长度分布、并发、请求到达率、缓存冷/热状态和 SLO。不同厂商各自发布的最佳成绩不能直接放在一张表里排名。
+
+### 6.7 企业选型建议
+
+- **昇腾**：优先验证服务器、CANN、PyTorch、vLLM Ascend / MindIE 的完整组合，以及目标模型多卡能力；重点看软件版本治理、模型覆盖和交付支持。
+- **摩尔线程、沐曦、壁仞**：作为通用 GPU 路线重点比较，检查 PyTorch / vLLM / SGLang 适配、CUDA 迁移成本、自定义 Kernel 和集群互联能力。
+- **寒武纪、燧原、海光 DCU**：结合具体加速器定位和软件栈，核实模型覆盖、框架适配和规模化部署能力；不要仅凭设备 API 名称判断它与通用 GPU 的可替换程度。
+- **混合部署**：国产算力与 NVIDIA 并存时，统一 API Gateway、模型注册、配额、日志和评测体系；按模型能力、数据驻留、成本和 SLO 路由，避免 Agent 应用直接感知设备品牌。
+
+最终决策应比较 **Cost per Successful Coding Task**，而不是单卡理论 FLOPS 或厂商宣传的 Tokens/s。模型质量、框架适配人力、算子开发成本、节点利用率、故障恢复、软件升级和供应商支持都要计入 TCO。
+
+---
+
+## 7. Coding Agent 平台：不要把 Agent 当成普通聊天请求
 
 1000 名开发者的 AI Coding 平台，真正消耗资源的单位不是“用户登录数”，而是活跃 Agent Session 和任务执行轨迹。
 
@@ -404,7 +538,7 @@ flowchart TB
 
 这张图是逻辑架构，不代表每个方框都必须部署成独立微服务。初期可以将 Router 和 Gateway 合并为一个可独立扩展的服务，但 Agent Runtime、GPU 推理进程和不可信代码执行环境应保持明确的安全边界。
 
-## 7. 1000 名开发者的容量规划
+## 8. 1000 名开发者的容量规划
 
 “1000 个账号”不是容量指标。至少要区分：
 
@@ -506,7 +640,7 @@ leq M_{available}
 
 50/100/200/300 是测试梯度，不是 B300 对应的用户承载承诺。必须用同一个 Agent Harness、相同工具、相同仓库和相同任务集比较不同 GPU 与推理引擎。
 
-## 8. 可观测性：GPU 指标、推理指标和 Agent Trace 必须关联
+## 9. 可观测性：GPU 指标、推理指标和 Agent Trace 必须关联
 
 只监控 GPU Utilization 无法解释开发者为什么觉得慢。只看 API 延迟也无法定位是队列、Prefill、Decode、网络还是工具执行导致的。
 
@@ -529,7 +663,7 @@ leq M_{available}
 
 每个 Agent Task 应有稳定的 Trace ID；每一次模型请求、工具调用和测试执行都应成为可关联的 Span。日志中记录模型版本、量化、推理节点、Token 用量、队列等待、延迟、错误类型和成本。Prompt 与代码内容是否落日志，需要根据数据分类、隐私和保留政策单独决定，默认应避免记录敏感源代码和 Secret 明文。
 
-## 9. 安全与治理：模型 API 不是唯一的攻击面
+## 10. 安全与治理：模型 API 不是唯一的攻击面
 
 企业 AI Coding 服务至少涉及四类安全边界：
 
@@ -563,7 +697,7 @@ Agent 的权限必须由平台策略强制执行，不能依赖 System Prompt �
 
 对 shell、文件、Git、数据库、云 API 和 MCP 工具，应定义明确的权限边界。对生产环境写操作、删除、发布、凭证读取和外部通信，使用独立授权或人工确认。Sandbox 应默认拒绝未授权网络出口，凭证通过受控 Broker 按请求注入，而不是放进环境变量或模型上下文。
 
-## 10. 生产运维与可靠性设计
+## 11. 生产运维与可靠性设计
 
 GPU 平台的故障不仅是 Pod Crash。还包括 GPU XID、ECC 错误、NVLink 退化、NIC/RDMA 问题、交换机拥塞、驱动不兼容、模型加载失败、KV Cache OOM 和推理引擎死锁。
 
@@ -591,7 +725,7 @@ GPU 平台的故障不仅是 Pod Crash。还包括 GPU XID、ECC 错误、NVLink
 
 不要在高峰时段同时升级 GPU Driver、Kubernetes、推理引擎和模型。每次变更应尽量控制变量。
 
-## 11. 成本模型与供应商采购
+## 12. 成本模型与供应商采购
 
 GPU 租赁成本只是平台总成本的一部分。至少要把成本拆成：
 
@@ -623,7 +757,7 @@ CostPerSuccessfulTask =
 
 长期合同前先做短期 POC。需要对比按需、预留、容量块和长期承诺的 break-even utilization。未测出真实工作负载下的 Goodput，不应把公开的每 GPU 小时价格直接转换成年度预算结论。
 
-## 12. 工程团队需要哪些能力
+## 13. 工程团队需要哪些能力
 
 不要求所有人都成为 CUDA Kernel Engineer。企业建设团队需要覆盖基础设施、分布式系统、推理服务、Agent 应用、安全和 SRE。
 
@@ -639,7 +773,7 @@ CostPerSuccessfulTask =
 
 如果企业已经有成熟 Kubernetes、网络和 SRE 团队，新增 GPU 推理平台的初期核心团队可以从 3–5 名专职工程师开始，再由安全、网络和数据中心团队提供专业支持。这个人数只适用于模型推理平台的初期建设，不包括基础模型训练、数据集研发、模型微调和 7×24 大规模现场硬件运维。若没有现成基础设施能力，团队规模和交付周期都需要上调。
 
-## 13. 建议的实施路线图
+## 14. 建议的实施路线图
 
 不要一次采购几十张 GPU 后才开始验证模型。按阶段交付，每阶段都有明确退出条件。
 
@@ -654,7 +788,7 @@ CostPerSuccessfulTask =
 
 时间只是典型项目拆分，不是交付承诺。机房液冷改造、网络采购、GPU 供应和安全审批可能成为关键路径，且往往不在软件团队控制范围内。
 
-## 14. 验收标准：用可交付结果判断平台是否完成
+## 15. 验收标准：用可交付结果判断平台是否完成
 
 | 验收域 | 验收内容 |
 | --- | --- |
@@ -671,7 +805,7 @@ CostPerSuccessfulTask =
 
 建议把性能验收写成负载合同：模型版本、量化格式、输入输出长度分布、并发、到达率、缓存条件、SLO 和质量门槛都必须固定。否则供应商或团队之间的 benchmark 数字没有可比性。
 
-## 15. 学习与工程准备清单
+## 16. 学习与工程准备清单
 
 ### GPU 与数据中心
 
@@ -719,7 +853,7 @@ CostPerSuccessfulTask =
 - 镜像签名、SBOM、模型制品校验；
 - 数据分类、日志保留、审计和 FinOps。
 
-## 16. 推荐的官方资料与工程入口
+## 17. 推荐的官方资料与工程入口
 
 以下资料优先作为团队的学习和设计依据。阅读时应固定文档版本，尤其是 GPU Operator、CUDA、vLLM、SGLang 和 TensorRT-LLM；不要把 latest 文档中的能力直接视为当前生产环境已验证能力。
 
@@ -752,7 +886,7 @@ CostPerSuccessfulTask =
 
 ---
 
-## 17. DeepSeek、Kimi、GLM 的开源项目：哪些与企业 GPU 平台直接相关
+## 18. DeepSeek、Kimi、GLM 的开源项目：哪些与企业 GPU 平台直接相关
 
 本章关注 DeepSeek、Moonshot AI（Kimi）和 Z.ai / 智谱（GLM）公开的代码仓库，而不只是模型权重。它们的开源内容覆盖不同层次：完整或部分推理引擎、CUDA Kernel 和 MoE 通信库、KV Cache 基础设施、Coding Agent Runtime、模型训练和评测。
 
@@ -933,7 +1067,7 @@ flowchart TB
 
 建议把三家项目分为两条技术路线：一条是**模型专用优化**，例如 DeepInfer、DeepEP、FlashMLA；另一条是**通用平台基础设施**，例如 Mooncake、vLLM、SGLang 和统一 Gateway。模型专用优化应通过适配层引入，不能让企业平台的控制面被单一模型厂商的实现锁定。
 
-## 18. 其它值得关注的 GPU 大模型部署与推理开源项目
+## 19. 其它值得关注的 GPU 大模型部署与推理开源项目
 
 DeepSeek、Kimi 和 GLM 的项目能反映模型厂商自身的技术路线，但企业平台不能只依赖模型厂商的仓库。真正的生产部署生态由多个社区共同构成：推理引擎、分布式 Serving、KV Cache、GPU Kernel、量化、Kubernetes 管理、监控和 Benchmark 各有专门项目。
 
@@ -1123,7 +1257,7 @@ flowchart TB
 
 
 
-## 19. 业界真实案例：企业为什么自部署 GPU 推理，以及生产环境究竟怎么做
+## 20. 业界真实案例：企业为什么自部署 GPU 推理，以及生产环境究竟怎么做
 
 本章从企业实践而不是开源组件出发，回答几个架构决策问题：为什么不直接调用闭源模型 API？租 AWS、Google Cloud、IBM Cloud 或专业 GPU Cloud 的 GPU，算不算自部署？谁在使用这些平台？生产系统如何组织 GPU、Kubernetes、推理引擎、缓存和调度？实际踩过哪些坑？
 
@@ -1532,7 +1666,7 @@ flowchart TB
 如果企业还没有成熟的 GPU Infra 团队，优先从租用 CSP GPU 的自管 POC 或 Dedicated Managed Inference 开始。只有当真实负载、质量收益、利用率和三年 TCO 都证明自管有优势时，再扩大长期预留容量或自购 GPU。自部署的目标不是拥有更多 GPU，而是以可接受的运营复杂度，获得数据、模型、性能和成本的可控性。
 
 
-## 20. 更多业界案例：金融、医疗、自动化、制造业与云 GPU 平台
+## 21. 更多业界案例：金融、医疗、自动化、制造业与云 GPU 平台
 
 第 19 章已经讨论了大型 Coding Agent、企业自托管平台和 GPU Cloud。本章继续补充另一组案例，重点看不同产业的需求差异：金融机构为什么在自己的数据中心运行模型；医院如何让未经匿名化的病历留在院内；企业自动化平台为什么愿意租用 H200 并把 KV Cache 路由作为核心优化；汽车公司如何把 vLLM 纳入 Kubernetes 的生产运维；以及 CSP 和服务器厂商怎样把这些实践产品化。
 
