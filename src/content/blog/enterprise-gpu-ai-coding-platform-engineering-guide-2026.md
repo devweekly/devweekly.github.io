@@ -377,7 +377,96 @@ CANN 文档中心可见 9.2.0-beta.2 等版本条目。Beta 适合开发验证�
 
 昇腾专项开发知识包括 torch-npu 设备与算子语义、CANN 算子库、AscendCL、GE 图编译、HCCL 集合通信、算子精度与性能调优、模型量化工具、MindStudio 调试和 Profiling。若模型存在不支持算子，应先确认是否有等价实现，再考虑框架兼容实现或自定义算子；CUDA Extension 不能直接视为 NPU 可执行代码。
 
-### 6.3 其他国产平台：关注厂商后端和版本绑定
+### 6.3 DeepSeek 在国产加速器上的部署：从 V3 / R1 到 V4 系列
+
+DeepSeek 是检验国产加速器软件栈成熟度的一个很好的压力测试，但不能把“支持 DeepSeek”理解成支持整个 DeepSeek 家族。V3 / R1、V3.2、V4-Flash、V4.1-Flash 的模型结构、权重格式、量化方式和推理优化路径不同；同一厂商也可能只在某个芯片系列、特定量化权重和指定 Runtime 版本上完成适配。
+
+截至 2026-10-31，公开资料中值得重点跟踪的路径如下。
+
+| 平台 / 项目 | 已公开的 DeepSeek 适配信息 | 硬件 / 部署特征 | 证据与边界 |
+| --- | --- | --- | --- |
+| **昇腾 + vLLM Ascend** | 官方教程覆盖 DeepSeek-V4-Flash W8A8-MTP；最新发行说明继续推进 V4.1 的 TurboQuant 4-bit latent 支持 | 官方固定版本教程给出 Atlas 800 A2（8×64 GB）或 A3（8×128 GB）单节点方案，也有两节点和 Prefill-Decode 分离示例 | 教程明确写明该版本暂时只支持 V4-Flash，不应据此推断 V4-Pro 同样可用；教程示例绑定 vLLM-Ascend v0.13.0rc3，不要直接当成当前最新版本 |
+| **昇腾 + CANN Recipes** | DeepSeek-V3.2-Exp、V4、V4.1-Flash 等模型优化样例；包括 V4 Attention-FFN 分离、DSpark 投机解码和在线 PD 分离 | 覆盖 Atlas A2 / A3 及昇腾 950PR / 950DT 等不同代际产品，具体能力按模型目录和样例脚本区分 | 这是持续更新的工程配方库，不等于每个样例都已在所有芯片、所有软件版本上完成真实模型验证；逐条查看模型目录、提交记录和验证说明 |
+| **昇腾 + KTransformers / KT-Kernel** | DeepSeek-V4-Flash 单 NPU 异构推理教程 | 一颗昇腾 die 承载 Attention、Dense 层和每层 32 个常驻专家；其余 224 个路由专家以 MXFP4 留在 CPU，由 KT-Kernel 的 LLAMAFILE MoE 执行 | 不是“单卡装下并运行整个模型”的传统部署。教程给出的 Atlas 800I A2 主机配置包括 192 核 Kunpeng 920、1.5 TB RAM；CPU 专家卸载的吞吐、NUMA 和内存带宽是核心约束 |
+| **寒武纪 MLU + vLLM-MLU** | 仓库更新历史明确列出 2026-04-24 DeepSeek-V4 Day-0 支持 | README 声明仅支持 MLU370 及以上设备，依赖寒武纪 SDK 提供的专用镜像和软件环境 | 这是厂商维护的独立 vLLM 插件仓库；Day-0 支持不代表上游 vLLM 原生支持，也不代表所有量化和并行策略都已覆盖 |
+| **其他国产 GPU** | 本次检索没有找到足以确认所有 DeepSeek V4 / V4.1 变体均已在摩尔线程、沐曦、壁仞、燧原和海光 DCU 上形成统一、可复现生产路径的证据 | 应按具体芯片、模型变体、量化格式、框架分支和镜像逐一核实 | 新闻中的“完成适配”可能指模型加载、单轮推理、性能调优或正式产品交付，含义并不相同 |
+
+#### 6.3.1 昇腾：官方 vLLM-Ascend 部署路径
+
+vLLM-Ascend 的 DeepSeek-V4 教程是目前比较具体的参考资料。教程所对应的版本明确说明当时暂时只支持 DeepSeek-V4-Flash，并给出 DeepSeek-V4-Flash-w8a8-mtp 量化权重。其资源配置不是“任意一台 8 卡昇腾服务器”：
+
+- Atlas 800 A2：8 张 64 GB NPU，单节点部署；
+- Atlas 800 A3：8 张 128 GB NPU，单节点部署；
+- 多节点示例：至少两台 Atlas 800 A2，每台 8 张 64 GB NPU；
+- 关键推理参数涉及 Tensor Parallel、Expert Parallel、Data Parallel、MTP speculative decoding、模型长度、批处理 Token 数和 NPU 显存利用率。
+
+教程还提供 Prefill-Decode Disaggregation 示例。它说明大规模 MoE 推理不只是把 TP 数量调大：Prefill 和 Decode 可以使用不同资源池，通过 KV Cache 传输和调度分别优化首 Token 延迟与 Decode 吞吐。跨节点部署前，必须先验证 HCCL 通信、网卡选择、节点 IP、RDMA / RoCE 网络和模型权重共享路径。
+
+**版本提醒：** 文档中的 v0.13.0rc3 是该教程绑定的预发布版本示例，不是生产环境应直接复制的版本建议。当前 vLLM-Ascend 发布说明已经继续推进 DeepSeek-V4.1 的 Model Runner V2 和 TurboQuant 4-bit latent 能力。部署时应以目标硬件对应的最新稳定版教程、容器 Tag 和 Release Notes 为准，并保留可复现的镜像 Digest。
+
+#### 6.3.2 昇腾：CANN Recipes 更适合做模型专项优化入口
+
+[hicann/cann-recipes-infer](https://github.com/hicann/cann-recipes-infer) 是值得加入工程资料库的项目。它不是一个新的通用推理引擎，而是围绕 CANN 平台沉淀模型推理部署和优化配方，覆盖 DeepSeek、Qwen、GLM、Hunyuan 等模型。
+
+从仓库 2026 年 10 月的提交记录可以看到几个值得关注的方向：
+
+- DeepSeek-V3.2-Exp 等模型的部署和推理样例；
+- DeepSeek-V4.1-Flash 在昇腾 950PR / 950DT 上的适配工作；
+- DeepSeek-V4 的 Attention-FFN Disaggregation（AFD）样例，涉及 P2P 同步、异步执行、双 Microbatch 和 ACLGraph；
+- DeepSeek-V4 DSpark 在 Online Prefill / Decode 分离场景下的投机推理支持；
+- CED Prefill Cutoff / Sliding-Window Bounded Replay 等模型结构相关优化。
+
+这里最重要的架构变化是：推理优化已经从“选一个 vLLM 参数”进入模型结构与执行路径层面。MoE 专家计算、Attention、Indexer、KV Cache、投机解码、Prefill / Decode 分离可能由不同 Kernel、不同设备或不同阶段协作完成。企业在引入这些优化时，必须同步验证输出正确性、Token 接受率、缓存一致性、异常恢复和多节点通信，不能只比较单次 Benchmark 的 Tokens/s。
+
+#### 6.3.3 昇腾：KTransformers 的 CPU / NPU 异构卸载路径
+
+[KTransformers 的 DeepSeek-V4-Flash Ascend 教程](https://github.com/kvcache-ai/ktransformers/blob/main/doc/en/DeepSeek-V4-Flash_tutorial_for_Ascend_NPU.md) 展示了另一种思路：当单张 NPU 的 HBM 无法容纳完整模型时，不是简单地把模型切到更多 NPU，而是把不同计算路径放到不同处理器上。
+
+教程中的单 NPU 方案将 Attention、Dense 层和每层 32 个常驻专家放在 NPU 上，以 W8A8 执行；其余 224 个路由专家以 MXFP4 保留在主机内存，由 KT-Kernel 的 LLAMAFILE MoE 在 CPU 上计算。教程列出的参考主机包括：
+
+- Atlas 800I A2（910B3）：单 die 64 GB HBM，Kunpeng 920，192 核、8 个 NUMA 节点、1.5 TB RAM；
+- Atlas A3（910_93）：单 die 61 GB HBM，教程列出的主机为 40 核、1 个 NUMA 节点、229 GB RAM；
+- 软件环境示例：CANN Toolkit 9.0.0、Driver 25.5.1、Python 3.11，以及相互匹配的 torch / torch_npu 版本。
+
+这种设计的收益是降低 NPU HBM 容量要求，代价则是大量 MoE 专家计算和数据访问转移到 CPU。企业必须测量 CPU 专家执行时间、NUMA 远端内存访问、内存带宽、NPU 与 CPU 之间的数据搬运，以及整体 Decode TPOT。不能仅凭“单 NPU 可以启动”就判断它能满足 Coding Agent 的并发和交互延迟要求。
+
+还要注意该教程依赖特定的 SGLang Ascend 镜像、KTransformers Kernel 和定制 SGLang 分支；教程中甚至提醒同一个可变镜像 Tag 在不同拉取时间可能对应不同内容。生产部署必须固定 Git Commit、容器 Digest、模型权重校验和及完整依赖版本，不能只记录镜像 Tag。
+
+#### 6.3.4 寒武纪：vLLM-MLU 的 DeepSeek-V4 支持
+
+[Cambricon/vllm-mlu](https://github.com/Cambricon/vllm-mlu) 基于 vLLM 的插件系统，为 MLU 提供推理后端。仓库 README 的更新历史列出 2026-04-24 DeepSeek-V4 Day-0 支持，并说明当前仓库仅支持 MLU370 及以上设备，运行依赖寒武纪 SDK 和配套容器。
+
+这个项目还有一个对企业平台设计有意义的地方：它展示了厂商通过 vLLM 插件机制维护独立设备后端的模式。业务服务可以继续使用 vLLM 的服务入口和常见 API，但底层算子、设备运行时、通信和容器仍由厂商栈负责。平台团队应把 vllm-mlu、它所依赖的社区 vLLM 版本和 Cambricon SDK 作为一个整体锁定，而不是单独升级其中一个 Python 包。
+
+POC 至少需要核实：DeepSeek-V4 的具体模型变体、权重格式、MLU 型号与数量、最大上下文、Prefix Cache、Chunk Prefill、Speculative Decoding、Expert Parallel、Ray 多节点部署，以及 Tool Calling 的端到端正确性。仓库列出的特性支持不应自动视为每种模型配置均已验证。
+
+#### 6.3.5 如何把 DeepSeek 适配结果转化为企业可用的兼容矩阵
+
+不要在模型注册表里只写 DeepSeek-V4 supported=true。建议把适配状态拆成以下维度，并绑定到精确的软件制品：
+
+| 维度 | 必须记录的字段 |
+| --- | --- |
+| 模型身份 | 官方模型 ID、模型变体、权重 Commit / Revision、Tokenizer、Chat Template |
+| 硬件 | 厂商、芯片 SKU、单卡显存、节点卡数、节点数、CPU / NUMA、互联拓扑 |
+| 数值格式 | BF16 / FP16 / FP8 / W8A8 / W4A8 / MXFP4 / TurboQuant 等具体权重与 KV Cache 格式 |
+| 软件栈 | OS、Kernel、驱动、固件、CANN / NeuWare / MUSA / MXMACA / DTK、PyTorch、设备插件、推理引擎 |
+| 执行模式 | TP / PP / DP / EP、MTP / DSpark、CPU Offload、PD 分离、AFD |
+| 功能验证 | Streaming、Tool Calling、JSON Schema、长上下文、停止条件、并发请求、取消和超时 |
+| 质量与性能 | 固定评测集结果、输出差异、TTFT、TPOT、Goodput、并发、显存、CPU 内存和成本 |
+| 证据状态 | 官方教程 / 合并代码 / 厂商公告 / 社区复现 / 企业生产验收，以及最后验证日期 |
+
+适配状态建议至少分为四级：**代码已支持**、**官方提供部署教程**、**在指定硬件和版本上完成真实模型验证**、**通过企业目标负载与 SLO 验收**。只有最后一级才能进入生产模型路由白名单。
+
+参考项目和文档：
+
+- [vLLM-Ascend：DeepSeek-V4 部署教程（v0.13.0）](https://docs.vllm.ai/projects/ascend/en/v0.13.0/tutorials/DeepSeek-V4.html)
+- [vLLM-Ascend：Release Notes](https://docs.vllm.ai/projects/ascend/en/latest/user_guide/release_notes.html)
+- [vllm-project/vllm-ascend](https://github.com/vllm-project/vllm-ascend)
+- [hicann/cann-recipes-infer](https://github.com/hicann/cann-recipes-infer)
+- [kvcache-ai/ktransformers：DeepSeek-V4-Flash Ascend NPU 教程](https://github.com/kvcache-ai/ktransformers/blob/main/doc/en/DeepSeek-V4-Flash_tutorial_for_Ascend_NPU.md)
+- [Cambricon/vllm-mlu](https://github.com/Cambricon/vllm-mlu)
+
+### 6.4 其他国产平台：关注厂商后端和版本绑定
 
 国产平台逐步采用 PyTorch、vLLM 等开发者熟悉的接口，但接口相似不代表底层实现相同。常见方式是维护厂商自己的 PyTorch 发行版、设备后端、算子库、通信库和推理框架分支，或通过上游框架的 out-of-tree platform / plugin 接口接入。
 
@@ -390,7 +479,7 @@ CANN 文档中心可见 9.2.0-beta.2 等版本条目。Beta 适合开发验证�
 
 上游 vLLM 提供 platform 抽象和 out-of-tree platform 扩展机制，厂商可以通过独立后端适配硬件。但某项功能最终是否可用，取决于后端实现，而不是 vLLM 上游 API 本身。企业应同时跟踪上游 vLLM 与厂商后端版本，避免上游升级后厂商插件尚未跟进。
 
-### 6.4 从 CUDA 迁移：不是替换一个容器镜像
+### 6.5 从 CUDA 迁移：不是替换一个容器镜像
 
 | 层面 | CUDA 环境常见依赖 | 国产平台需要核对的内容 |
 | --- | --- | --- |
@@ -409,7 +498,7 @@ CANN 文档中心可见 9.2.0-beta.2 等版本条目。Beta 适合开发验证�
 
 `torch.cuda` 兼容层、自动代码迁移工具或设备 API 映射只能降低初期改动，无法自动解决 CUDA Kernel、Triton Kernel、NCCL 通信、图捕获、量化内核和推理调度的语义差异。
 
-### 6.5 生产部署架构：统一平台入口，隔离异构后端
+### 6.6 生产部署架构：统一平台入口，隔离异构后端
 
 ```mermaid
 flowchart TB
@@ -437,7 +526,7 @@ flowchart TB
 - **Kubernetes 统一管理，设备插件按厂商部署**：统一 Namespace、Quota、NetworkPolicy、发布流程；节点标签、Device Plugin、RuntimeClass、拓扑调度和监控适配按厂商实现。
 - **Agent 与 GPU 解耦**：Agent Runtime 不应直接依赖 CUDA、CANN 或某个厂商 SDK，只调用 AI Gateway。更换模型池不应影响 Agent 生命周期和工具安全边界。
 
-### 6.6 POC 验收：服务启动不等于生产可用
+### 6.7 POC 验收：服务启动不等于生产可用
 
 | 验证域 | 测试内容 | 验收要求 |
 | --- | --- | --- |
@@ -456,7 +545,7 @@ Coding Agent 场景还要验证工具调用参数是否符合 Schema、长上下
 
 性能报告必须公开芯片型号与数量、节点拓扑、软件版本、模型版本、量化格式、输入输出长度分布、并发、请求到达率、缓存冷/热状态和 SLO。不同厂商各自发布的最佳成绩不能直接放在一张表里排名。
 
-### 6.7 企业选型建议
+### 6.8 企业选型建议
 
 - **昇腾**：优先验证服务器、CANN、PyTorch、vLLM Ascend / MindIE 的完整组合，以及目标模型多卡能力；重点看软件版本治理、模型覆盖和交付支持。
 - **摩尔线程、沐曦、壁仞**：作为通用 GPU 路线重点比较，检查 PyTorch / vLLM / SGLang 适配、CUDA 迁移成本、自定义 Kernel 和集群互联能力。
