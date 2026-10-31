@@ -28,57 +28,62 @@ def _scope(task_type: str, genre: str, text_type: str) -> dict[str, list[str]]:
 
 
 def build_demo_samples(user_id: str) -> list[PairwiseSample]:
-    """Synthetic preference labels used only to demonstrate the training path."""
-    samples: list[PairwiseSample] = []
+    """Synthetic population and target-user labels; never use as real profile data."""
     examples = [
         (
             "psychological_narration",
             {"source_structure": 0.9, "natural_chinese": 0.6, "subtlety": 0.95, "over_polish": 0.1},
             {"source_structure": 0.6, "natural_chinese": 0.9, "subtlety": 0.55, "over_polish": 0.65},
-            "A",
         ),
         (
             "psychological_narration",
             {"source_structure": 0.85, "natural_chinese": 0.7, "subtlety": 0.9, "over_polish": 0.15},
             {"source_structure": 0.55, "natural_chinese": 0.9, "subtlety": 0.5, "over_polish": 0.7},
-            "A",
         ),
         (
             "psychological_narration",
             {"source_structure": 0.7, "natural_chinese": 0.75, "subtlety": 0.9, "over_polish": 0.2},
             {"source_structure": 0.5, "natural_chinese": 0.95, "subtlety": 0.45, "over_polish": 0.75},
-            "A",
         ),
         (
             "dialogue",
             {"source_structure": 0.9, "natural_chinese": 0.55, "subtlety": 0.7, "over_polish": 0.15},
             {"source_structure": 0.65, "natural_chinese": 0.95, "subtlety": 0.7, "over_polish": 0.2},
-            "B",
         ),
         (
             "dialogue",
             {"source_structure": 0.85, "natural_chinese": 0.6, "subtlety": 0.7, "over_polish": 0.2},
             {"source_structure": 0.6, "natural_chinese": 0.9, "subtlety": 0.72, "over_polish": 0.25},
-            "B",
         ),
     ]
-    for text_type, features_a, features_b, chosen in examples:
-        samples.append(
-            PairwiseSample(
-                user_id=user_id,
-                context={
-                    "task_type": "translation_review",
-                    "genre": "literary-fiction",
-                    "text_type": text_type,
-                    "language_pair": "en->zh-CN",
-                },
-                features_a=features_a,
-                features_b=features_b,
-                chosen=chosen,
-            )
-        )
-    return samples
 
+    # The reference users create a small synthetic population prior. The target
+    # user has a different per-context profile, demonstrating the user delta.
+    persona_choices = {
+        "reference-natural": {"psychological_narration": "B", "dialogue": "B"},
+        "reference-faithful": {"psychological_narration": "A", "dialogue": "A"},
+        "reference-balanced": {"psychological_narration": "A", "dialogue": "B"},
+        user_id: {"psychological_narration": "A", "dialogue": "B"},
+    }
+
+    samples: list[PairwiseSample] = []
+    for persona_id, choices in persona_choices.items():
+        for text_type, features_a, features_b in examples:
+            samples.append(
+                PairwiseSample(
+                    user_id=persona_id,
+                    context={
+                        "task_type": "translation_review",
+                        "genre": "literary-fiction",
+                        "text_type": text_type,
+                        "language_pair": "en->zh-CN",
+                    },
+                    features_a=features_a,
+                    features_b=features_b,
+                    chosen=choices[text_type],
+                )
+            )
+    return samples
 
 def run_demo(database: str, use_llm: bool = False) -> dict[str, object]:
     store = PreferenceStore(database)
