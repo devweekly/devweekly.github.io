@@ -96,6 +96,20 @@ class PreferencePipelineTests(unittest.TestCase):
         self.assertTrue(decision.approved)
         self.assertEqual(decision.reason, "VALIDATED")
 
+    def test_event_context_must_match_event_owner(self) -> None:
+        mismatched_task = TaskContext(
+            user_id="u2",
+            task_type="translation_review",
+        )
+        event = FeedbackEvent(
+            user_id="u1",
+            event_type="explicit_rule",
+            raw_feedback="Keep the narration restrained.",
+            task_context=mismatched_task,
+        )
+        with self.assertRaisesRegex(ValueError, "Event user_id"):
+            self.store.record_event(event)
+
     def test_evidence_cannot_reference_another_users_event(self) -> None:
         event = FeedbackEvent(
             user_id="u1",
@@ -115,7 +129,7 @@ class PreferencePipelineTests(unittest.TestCase):
             rationale="Cross-user reference must be rejected.",
             scope={"text_type": ["psychological_narration"]},
         )
-        with self.assertRaisesRegex(ValueError, "same source Event user_id"):
+        with self.assertRaisesRegex(ValueError, "source Event user_id"):
             self.store.record_evidence(evidence)
 
     def test_claim_cannot_reference_another_users_event(self) -> None:
