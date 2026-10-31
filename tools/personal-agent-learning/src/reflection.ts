@@ -180,13 +180,13 @@ function buildPrompt(input: Awaited<ReturnType<typeof readReflectionInput>>, day
 async function runCodeBuddyReflector(
   config: LearningConfig,
   prompt: string,
-  model: string,
+  model?: string,
 ): Promise<unknown> {
   const runtime = new CodeBuddyAgentRuntime();
   const result = await runtime.run({
     prompt,
     systemPrompt: REFLECTOR_SYSTEM_PROMPT,
-    model,
+    ...(model ? { model } : {}),
     cwd: config.home,
     timeoutMs: 180_000,
     maxTurns: 3,
@@ -200,14 +200,14 @@ async function runCodeBuddyReflector(
 async function runCopilotReflector(
   _config: LearningConfig,
   prompt: string,
-  model: string,
+  model?: string,
 ): Promise<unknown> {
   const runtime = new CopilotAgentRuntime({
     createClient: () => new CopilotClient({ mode: 'empty' }),
   });
   try {
     const session = await runtime.createSession({
-      model,
+      ...(model ? { model } : {}),
       streaming: true,
     });
     const turn = await runtime.runTurn({
@@ -217,7 +217,14 @@ async function runCopilotReflector(
       prompt: REFLECTOR_SYSTEM_PROMPT + '\n\n' + prompt,
       timeoutMs: 180_000,
     });
-    return JSON.parse(turn.content) as unknown;
+    const text = turn.content.trim()
+      .replace(/^\`\`\`(?:json)?\\s*/i, '')
+      .replace(/\\s*\`\`\`$/, '')
+      .trim();
+    const start = text.indexOf('{');
+    const end = text.lastIndexOf('}');
+    if (start < 0 || end <= start) throw new Error('Copilot Reflector did not return a JSON object.');
+    return JSON.parse(text.slice(start, end + 1)) as unknown;
   } finally {
     await runtime.stop();
   }
@@ -229,12 +236,8 @@ export async function runReflection(
 ): Promise<ReflectionResult> {
   const provider = options.provider ?? config.reflectorProvider;
   const days = options.days ?? config.lookbackDays;
-  const model = options.model || (provider === 'copilot' ? config.copilotModel : config.codeBuddyModel);
-  if (!model.trim()) {
-    throw new Error(provider === 'copilot'
-      ? '没有配置 Copilot Reflector 模型。请设置 --model 或 config.json 中的 copilotModel。'
-      : '没有配置 CodeBuddy Reflector 模型。请设置 --model 或 config.json 中的 codeBuddyModel。');
-  }
+  const configuredModel = options.model || (provider === 'copilot' ? config.copilotModel : config.codeBuddyModel);
+  const model = configuredModel || 'runtime-default';
 
   const input = await readReflectionInput(config, days);
   if (!input.learningEvents.some((event) => event.kind === 'feedback')) {
@@ -252,8 +255,8 @@ export async function runReflection(
 
   const prompt = buildPrompt(input, days);
   const raw = provider === 'copilot'
-    ? await runCopilotReflector(config, prompt, model)
-    : await runCodeBuddyReflector(config, prompt, model);
+    ? await runCopilotReflector(config, prompt, configuredModel || undefined)
+    : await runCodeBuddyReflector(config, prompt, configuredModel || undefined);
   const parsed = candidateSchema.parse(raw);
   const allowed = input.allowedEvidenceIds;
   const candidates: PreferenceCandidate[] = parsed.candidates.filter((candidate) => {
