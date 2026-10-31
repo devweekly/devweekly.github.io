@@ -218,8 +218,8 @@ async function runCopilotReflector(
       timeoutMs: 180_000,
     });
     const text = turn.content.trim()
-      .replace(/^\`\`\`(?:json)?\\s*/i, '')
-      .replace(/\\s*\`\`\`$/, '')
+      .replace(/^\`\`\`(?:json)?\s*/i, '')
+      .replace(/\s*\`\`\`$/, '')
       .trim();
     const start = text.indexOf('{');
     const end = text.lastIndexOf('}');
