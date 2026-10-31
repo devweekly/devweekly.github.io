@@ -128,7 +128,7 @@ test('accepted profile updates are versioned and scoped replacements keep histor
         evidenceIds: [event.id],
         rationale: '单项审核测试。',
       };
-      return store.saveCandidates([candidate], 'run-' + sessionId, new Set([event.id]), 2)[0]!;
+      return store.saveCandidates([candidate], 'run-' + sessionId, new Set([event.id]), 1)[0]!;
     };
 
     const first = makeCandidate('说明要完整，但不要重复解释。', 'session-1');
