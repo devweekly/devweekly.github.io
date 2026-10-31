@@ -69,6 +69,8 @@ npm run dev -- report --days 7
 ```text
 ~/.agent-learning/
   config.json
+  events/
+    YYYY/MM/DD/<session-hash>.jsonl  # 已脱敏的 append-only 事件镜像
   agent-traces.sqlite       # @saga/agent-tracing 的本地事件账本
   learning.sqlite           # 用户反馈、候选、审核历史和 Profile 版本
   profile/
@@ -76,7 +78,7 @@ npm run dev -- report --days 7
     AGENT-PREFERENCES.md
 ```
 
-两个 SQLite 文件均在本机创建，目录权限为 0700，文件权限尽可能设为 0600。Trace 数据和偏好学习业务状态分开保存。
+Trace Store 中的事件会同时追加镜像到 `events/YYYY/MM/DD/<session-hash>.jsonl`，便于人工检查、归档和重放；SQLite 用于索引和分析。两个 SQLite 文件及 JSONL 均在本机创建，目录权限为 0700，文件权限尽可能设为 0600。Trace 数据和偏好学习业务状态分开保存。
 
 ## 接入现有 Copilot / CodeBuddy 应用
 
@@ -99,17 +101,22 @@ const context = observer.createContext({
   project: 'my-repository',
   taskType: 'code_change',
 });
+const preferences = observer.resolvePreferences(context, currentExplicitOverrides);
+const observerHandlers = observer.copilotHandlers(context);
 
 try {
   const result = await runtime.runTurn({
     turnId,
     lockKey: session.sessionId,
     session,
-    prompt,
+    prompt: preferences.instructions + '\\n\\n' + prompt,
     timeoutMs: 300_000,
     handlers: {
       onDelta: existingOnDelta,
-      onEvent: observer.copilotHandlers(context).onEvent,
+      onEvent: (event) => {
+        existingOnEvent?.(event);
+        observerHandlers.onEvent(event);
+      },
     },
   });
   observer.recordTurnResult(context, result);
@@ -137,15 +144,20 @@ const context = observer.createContext({
   project: 'my-repository',
   taskType: 'code_change',
 });
+const preferences = observer.resolvePreferences(context, currentExplicitOverrides);
+const observerHandlers = observer.codeBuddyHandlers(context);
 
 try {
   const result = await runtime.run({
-    prompt,
+    prompt: preferences.instructions + '\\n\\n' + prompt,
     model,
     cwd: process.cwd(),
     timeoutMs: 300_000,
-    onEvent: observer.codeBuddyHandlers(context).onEvent,
-    onSessionId: observer.codeBuddyHandlers(context).onSessionId,
+    onEvent: (event) => {
+      existingOnEvent?.(event);
+      observerHandlers.onEvent(event);
+    },
+    onSessionId: observerHandlers.onSessionId,
   });
   observer.recordTurnResult(context, result);
 } finally {
@@ -171,7 +183,7 @@ npm run dev -- outcome --status reworked \\
   --text "结果遗漏了测试，要求重新执行。"
 ```
 
-反馈文本只在用户明确输入 `feedback --text` 或调用 `recordFeedback()` 时保存；保存前会移除常见 Secret / Bearer Token。完整 Prompt、Assistant response、Reasoning、工具参数和工具结果都不由 Observer 保存。
+反馈文本只在用户明确输入 `feedback --text` 或调用 `observer.recordFeedback(context, 'correction', text)` 时保存；保存前会移除常见 Secret / Bearer Token。任务结果可以调用 `observer.recordOutcome(context, 'reworked', note)`；偏好投放通过 `observer.resolvePreferences(context, overrides)` 自动记录 Profile 版本和实际使用的 Preference IDs。完整 Prompt、Assistant response、Reasoning、工具参数和工具结果都不由 Observer 保存。
 
 ## 每日归纳、审核和生效
 
