@@ -2730,6 +2730,366 @@ CAPE 的主要价值是提供一种很实际的冷启动策略：不要让新用
 它们不是相互替代的产品，而是可以放在不同层次组合起来的算法。一个完整 User Model 可以用 CAPE 完成冷启动，用 Event / Claim 存储真实证据，用 POPI 或 PLUS 风格的模型生成紧凑 Profile，再用个性化偏好估计器支持当前任务的判断。每个环节都必须保留其输入证据和评估结果。
 
 
+
+## 44. 让自己使用的 Agent 越来越顺手：从本地使用日志到持续个性化
+
+前面讨论的 Preference Profile 主要回答“系统应该记住什么”。但个人 Agent 的实际体验还取决于另一组问题：它是否知道什么时候该主动做、什么时候该先问；是否反复犯同一种错误；是否总是选错工具或模型；是否能理解用户的工作节奏；以及一次修正能不能在下一次任务中真正生效。
+
+这类改进不应该从“每天把所有对话交给 LLM 总结”开始。更合适的目标是建立一个本地优先的 **Personal Agent Learning Loop**：持续记录 Agent 的行为和用户反馈，定期归纳候选经验，验证经验是否真的改善了后续任务，再把被验证的经验放入合适的记忆、Skill 或 Runtime 配置。
+
+**日志是证据来源，不是记忆本身；写入一条记忆，也不等于 Agent 已经学会。**
+
+### 44.1 先明确要改进的不是模型本身，而是 Agent 的行为
+
+个人 Agent 的“更懂我”至少包含四种能力：
+
+| 能力 | 要解决的问题 | 典型反馈 |
+|---|---|---|
+| Preference Selection | 当前任务应该采用哪一条个人偏好？ | 用户说“这次不要按我平常的简洁风格，详细解释” |
+| Behavior Realization | Agent 是否真的按偏好行动？ | 虽然记住了“不要反复确认”，但执行前仍然问了三次 |
+| Contextual Applicability | 记忆是否只在合适场景生效？ | 把代码评审时的简洁偏好带入文学翻译 |
+| Continual Adaptation | 用户习惯变化后，旧偏好能否更新？ | 过去习惯先给方案，现在更倾向于先直接修改，再解释差异 |
+
+因此，改进对象不只是输出文字风格，还包括 Agent 的 Planning、Tool Selection、Clarification、Execution、Verification 和交互节奏。2026 年的个性化 Agent Survey 也将 Profile Modeling、Memory、Planning、Action Execution 视为相互关联的能力，而不是只在 Prompt 前面追加一段用户画像。[Toward Personalized LLM-Powered Agents](https://arxiv.org/abs/2602.22680)
+
+### 44.2 最新研究已经开始直接测试“Agent 有没有学会如何与你协作”
+
+两个 2026 年 10 月的新 Benchmark 特别值得关注。它们把评价目标从“Agent 是否找回过去的信息”转向“Agent 是否知道怎样与你互动”。
+
+**MemPABench：交互偏好必须在正确的时刻影响行为**
+
+**Why Bother Me Again? Benchmarking Personal Agent Memory for Interaction Preferences**（2026-10-21）研究用户如何通过日常互动表达自己的协作习惯，例如是否希望 Agent 主动汇报、是否需要重复确认、是否接受 Agent 自主采取某些动作。论文使用四个模拟用户、14 项偏好，设计了跨四个月的 99 次交互 Session，并人为改变部分偏好，观察 Agent 是否能够更新。
+
+结果值得警惕：在该 Benchmark 中，Mem0、MemOS 和 Simple RAG 这类 Retrieval-based Memory 在偏好选择准确率上没有优于 No Memory；File-based Memory 有改善，但容易把某条偏好应用到不相关的上下文。作者还发现，即使偏好已经写入 Memory，也可能没有在真正需要决策时被检索出来。[MemPABench](https://arxiv.org/abs/2610.30485)
+
+它说明个人 Agent 最难的部分之一不是存储，而是 **Preference Selection + Behavior Realization**。一条“不要过多解释”的记忆，即使检索成功，也需要运行时的行为策略配合；更不能在所有任务中不加区分地使用。
+
+**iPrefBench：Agent 必须区分哪些信息可以从历史推断，哪些必须向用户询问**
+
+**iPrefBench: A User-Centric Benchmark for Personalized Mobile Use Agents**（2026-10-26）使用包含 3,051 条历史活动事件的用户画像，设计了 130 个任务，涉及 26 个应用。研究将任务中缺失的信息分成两类：
+
+- **Inferable**：历史记录中已经有充分证据，Agent 应该能够推断。
+- **Ask-only**：历史中没有答案，只能向用户询问，不能靠猜测补齐。
+
+七个被测试的 Agent，动作执行完成率达到 77.5%–91.6%，但完整的个性化任务成功率只有 26.2%–47.7%。以论文中表现最好的 Claude Opus 5 为例，动作完成率为 91.6%，完整任务成功率为 47.7%。Agent 对 Ask-only 信息的提问召回率最高也只有 44.3%；单纯鼓励 Agent 多问，虽然提高召回率，却会降低提问精度，产生不必要的打扰。[iPrefBench](https://arxiv.org/abs/2610.34735)
+
+这对个人 Agent 很直接：系统不应该只记录“用户曾经做过什么”，还应能判断“当前缺失的信息是否真的能从过去推断”。历史证据不足时，应该提问；有足够证据时，就不要让用户反复回答相同问题。对用户自己的 Agent，这往往比生成风格多符合几个百分点更影响日常使用体验。
+
+更早的 **Learning Personalized Agents from Human Feedback（PAHF，Meta，2026）** 已经提出了一个持续学习闭环：行动前通过澄清解决未知偏好，执行时根据显式用户记忆做决策，行动后利用用户纠正更新记忆，尤其要处理旧偏好已经过时的情况。论文将 Pre-action Feedback 与 Post-action Feedback 结合，后者能够纠正 Agent “自信但已经过时”的偏好判断。[PAHF](https://arxiv.org/abs/2602.16173)
+
+这几项研究指向同一个结论：**记忆系统必须和实际决策、执行结果以及用户纠正连接起来，不能只评估 Recall。**
+
+### 44.3 业界已经出现了几种可以直接借鉴的实现模式
+
+| 产品 / 项目 | 已公开的实践 | 可借鉴的设计 | 证据边界 |
+|---|---|---|---|
+| Claude Code Auto Memory | 在本机按项目保存记忆，区分 user、feedback、project、reference 等类型；由 Agent 在工作过程中积累有长期价值的内容 | 用户级和项目级分开；保留原始 Session Transcript 与压缩后的 Memory；topic 文件按需加载 | 官方功能说明，不代表自动记忆总能判断正确或适用范围 |
+| VS Code Local Memory | Local Harness 使用 User、Repository、Session 三种 Memory Scope；用户偏好跨 Workspace，项目知识只在当前 Workspace 生效 | 明确的 Scope Hierarchy，避免一个全局 Memory 混入项目约束和临时任务状态 | 官方产品文档；Copilot 云端 Memory 与 Local Memory 是不同实现 |
+| Letta MemFS / Dreaming | Git-backed Memory Filesystem；后台 Subagent 回顾最近对话、整理经验并更新 Memory；可配置额外 Agent Review | 文件可检查、版本化，后台 Consolidation 不阻塞主任务 | 厂商文档所述产品能力；额外 Agent Review 不等于用户审批 |
+| Mastra Observational Memory | Observer 将较早的交互压缩成 Observations，Reflector 定期整合、重组和删除过时内容 | Observation 与 Reflection 分离；按 Token Threshold 异步运行，而不是每个 Turn 都完整回放历史 | 开源框架能力；其主要目标是长上下文压缩，不是已经解决个人偏好学习 |
+| Lyo / Learn Your Own | 通过 Codex / Claude Hooks 收集本地事件，写入 SQLite Learning Ledger；记录候选经验、Scope、Delivery 和 Outcome，并尝试进行 advice / no-advice 对照 | 把“建议被写入”与“建议确实改善了后续结果”分开验证 | 2026 年的开源实验项目，不是成熟的大规模生产产品；作者明确表示跨独立真实任务的泛化验证仍是下一阶段 |
+| Joel Hooks 的 Observer / Reflector 个人实践 | 个人 Agent 记录日常 Observations，后台 Reflector 每日生成长期记忆候选，再由用户审核 | 一份每日观察日志 + 一份候选变更 Review，而不是自动改写所有长期记忆 | 个人工程实践文章；作者明确区分了已经运行的基础设施和尚未完成的 Observer、Reflector、Friction Analysis 功能 |
+
+Claude Code 的 Auto Memory 将机器本地的记忆分成 user、feedback、project 和 reference 类型，并用一个简短索引连接主题文件；VS Code 的 Local Memory 则明确区分 User、Repository 和 Session 三种 Scope。两者共同说明：**Scope 不是 Memory 的附加元数据，而是决定记忆是否能被正确使用的基本结构。** [Claude Code Memory](https://code.claude.com/docs/en/memory) · [VS Code Memory](https://code.visualstudio.com/docs/agents/run/memory)
+
+Letta 的 Dreaming 使用后台 Subagent 检查最近的交互并整合长期记忆；Mastra 的 Observational Memory 则将 Observer 与 Reflector 分开，前者观察和提取事件，后者压缩、合并并淘汰过时观察。两者都支持异步处理，而不是让主 Agent 在每次调用时重新分析全部历史。[Letta Memory & Dreaming](https://docs.letta.com/configuration/memory) · [Mastra Observational Memory](https://mastra.ai/docs/memory/observational-memory)
+
+Lyo 是这里值得额外研究的开源原型。它不是一个“自动摘要所有 Prompt”的 Memory 工具，而是一个本地学习账本：Hooks 负责观察，SQLite 记录 Session、Prompt、Trace、Preference、Delivery 和 Outcome，候选经验需要明确 Scope 和 Evaluator；后续任务可以安排 Advice 与 No-advice 的前瞻性比较，再决定是否继续投放该经验。它还默认不把完整 Prompt 存进 SQLite，而是保留 Hash、长度、摘要和可选文件引用。项目当前仍标注了 API 稳定性、Schema Migration 和完整命令覆盖等未成熟项，因此应把它看成有价值的实现实验，而不是已被广泛验证的行业标准。[Lyo Repository](https://github.com/bebekim/learn-your-own)
+
+这些方案并不冲突：Claude Code 和 VS Code 提供 Memory Scope 的产品实践，Mastra 和 Letta 提供后台 Consolidation 的执行模式，Lyo 则把经验投放和结果验证连成可审计的 Learning Loop。
+
+### 44.4 应不应该 Log Everything？应该记录事件，但不应该无条件保存所有内容
+
+我的建议是：**记录所有对学习和复盘有价值的事件元数据；原始 Prompt、模型输出、工具参数和工具结果采用独立、可配置的内容采集策略。**
+
+“自己分析自己”确实降低了将个人对话交给外部服务的必要性，但本地日志仍然可能包含 API Key、Access Token、内部代码、公司项目内容、客户材料以及其他人的信息。Local-only 不等于没有泄露风险。更重要的是，完整 Prompt、工具输出和文件内容通常体积很大，会让后续分析成本快速上升。
+
+OpenTelemetry 的 GenAI Semantic Conventions 已经把 Agent Invocation、Plan、Tool Execution、Retrieval、Memory Operation 等定义为不同 Span；同时明确建议默认不要采集完整的 System Instructions、Input Messages 和 Output Messages。需要保留内容时，可以将完整内容放在独立存储中，再由 Trace 记录引用。该 Semantic Convention 目前仍标为 Development，因此更适合作为事件建模参考，而不是要求个人 Agent 必须接入一套完整 OTel 平台。[OpenTelemetry GenAI Spans](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-spans.md)
+
+建议将采集分成三层：
+
+| 数据层 | 建议采集内容 | 默认策略 |
+|---|---|---|
+| **Trace Metadata** | Session / Turn / Trace ID、时间、Agent、Model、Task Type、Tool Name、成功/失败、持续时间、Token / Cost、Verifier 结果 | 始终记录 |
+| **Learning Events** | 用户纠正、显式偏好声明、A/B 选择、修改/撤回、重复追问、工具失败、测试结果、最终是否接受 | 始终记录结构化事件 |
+| **Raw Content** | 完整 Prompt、Response、Tool Arguments、Tool Results、Patch、文件内容 | 默认不完整保存；按本地配置、项目范围和需要单独启用 |
+
+原始内容可以保留在本地文件中，但建议由 Trace 记录 Hash、长度、引用和采集策略。对大文件、二进制和工具输出应采用文件引用或 Patch 引用，而不是把全部内容重复塞进 JSONL。需要能够明确排除特定 Workspace、目录或任务类型。
+
+#### 推荐的最小事件 Schema
+
+每个 Agent Event 至少应包含：
+
+~~~json
+{
+  "schema_version": 1,
+  "event_id": "evt_01...",
+  "timestamp": "2026-10-31T10:30:00Z",
+  "session_id": "session_...",
+  "turn_id": "turn_...",
+  "trace_id": "trace_...",
+  "parent_event_id": null,
+  "scope": {
+    "agent": "coding-agent",
+    "project": "repo-a",
+    "task_type": "code_change"
+  },
+  "event_type": "tool_execution_end",
+  "actor": "agent",
+  "tool": {
+    "name": "run_tests",
+    "status": "success",
+    "duration_ms": 4200
+  },
+  "outcome": {
+    "verifier": "passed"
+  },
+  "content_ref": null,
+  "content_hash": "sha256:...",
+  "redaction": {
+    "applied": true,
+    "policy": "local-default"
+  }
+}
+~~~
+
+最重要的是稳定的 event_id、session_id、turn_id、trace_id、event_type 和时间戳。Tool Call 与 Tool Result 要通过稳定的 Call ID 关联。Pi 的 Session File Format 展示了成熟的本地 JSONL 事件结构：每行都有类型、ID、Parent ID 和时间戳，消息、模型变更、Context Compaction 和 Tool Execution 都有独立类型，可以据此重放或分析 Session，而不是解析人类可读的 Console Log。[Pi Session File Format](https://pi.dev/docs/latest/session-format)
+
+对于偏好学习，另外记录以下事件尤其重要：
+
+| 事件 | 为什么要记录 |
+|---|---|
+| user_correction | 用户明确指出 Agent 哪里做错了，通常比普通对话更有价值 |
+| preference_statement | 用户明确表达“以后应该怎样做” |
+| candidate_selection | 用户在不同候选结果中选择了哪一个 |
+| artifact_edit / undo | 用户如何修改或撤回 Agent 的产出 |
+| clarification | 哪些问题用户认为应该提前问，哪些问题属于重复确认 |
+| tool_selection / tool_failure | Agent 是否选错工具、模型、Skill 或执行路径 |
+| verification_result | 修改、测试、构建或其他验收是否成功 |
+| delivery | 某一条偏好是否真的注入了当前任务上下文 |
+| post_action_feedback | 用户在看到最终行为后是否接受、纠正或要求撤回 |
+
+这里有一个重要的区分：**用户没有修改结果，不等于用户明确认可结果；用户没有提出异议，也不等于某项偏好被验证。** “接受”只能作为较弱的行为证据，不能与显式评分、A/B 选择或直接纠正等同。
+
+### 44.5 推荐架构：实时记录，Session 结束时观察，每天归纳，定期审核
+
+不建议每次 Tool Call 后都启动一个 LLM 进行“学习”。这会增加延迟和 Token 成本，而且大量中间状态不具备长期价值。更自然的做法是将 Agent 运行与偏好学习解耦：
+
+~~~mermaid
+flowchart TB
+    A["Agent Session / Tool Execution"] --> B["Local Append-only Event Log"]
+    B --> C["Session Observer"]
+    C --> D["Structured Observations"]
+    D --> E["Daily Reflector"]
+    E --> F["Candidate Preference Claims"]
+    F --> G{"Evidence and Scope Check"}
+    G -->|"Insufficient / conflicting"| H["Keep as Candidate"]
+    G -->|"Ready for review"| I["Local Review Queue"]
+    I --> J{"User Decision"}
+    J -->|"Approve"| K["Versioned User / Agent / Project Profile"]
+    J -->|"Reject / edit"| L["Archive decision and evidence"]
+    K --> M["Preference Compiler"]
+    M --> N["Memory / Skill / Runtime Policy"]
+    N --> O["Agent Execution"]
+    O --> P["Delivery and Outcome Events"]
+    P --> B
+    H --> B
+    L --> B
+~~~
+
+这个架构有四个不同的职责。
+
+**Event Collector：只负责观察，不负责学习。** Agent 通过 Hooks 或 Runtime Callback 将事件写入本地文件。应采用 Append-only JSONL，按 Session 分文件，避免多进程同时直接修改同一个日志。高频 Hook 可以先将事件写入本地 Spool Directory，再由独立进程批量归档到 SQLite；采集过程不能阻塞 Agent 的正常运行。
+
+**Session Observer：提取本次使用中的观察。** 在任务结束、Session Shutdown 或 Context Compaction 时异步执行。它不应该把 Session 改写成一篇通用摘要，而应找出可能改变未来行为的具体事件，例如用户再次纠正了同一个问题、主动接受了某种操作方式、Agent 使用了错误工具，或者某项验证说明某种做法确实有效。
+
+建议将 Observation 至少分成三类：
+
+| 类型 | 例子 | 默认保存位置 |
+|---|---|---|
+| Durable Signal | 用户反复强调的沟通风格、操作习惯、工具选择偏好 | Candidate Profile |
+| Working Context | 当前项目结构、最近修改的文件、当前任务状态 | Project / Session Memory |
+| Ephemeral Event | 一次性探索、临时方案、未采用的想法 | Raw Event Log |
+
+**Daily Reflector：分析跨 Session 的重复模式。** 每天在空闲时间运行一次，读取最近新增的 Observations，而不是读取所有历史原文。它需要合并重复内容、找出相互矛盾的反馈、识别偏好的 Scope、检查旧偏好是否过时，并形成候选变更。每日分析不是必须固定为 Cron；也可以在有足够新事件时触发，再以每日任务做补偿和清理。
+
+**Preference Compiler：决定如何将被确认的经验作用于 Agent。** 它将用户级偏好、Agent Role、Project Rule 和当前 Session Override 组合成运行时配置。每次注入哪条 Preference，都要记录 delivery Event，后面才能判断它是否真正改善了行为。
+
+### 44.6 Daily Reflector 具体应该分析什么？
+
+不要只生成“今天发生了什么”。更有价值的是运行一组稳定的 Learning Queries。
+
+| 分析项 | 示例问题 | 可能产生的改进 |
+|---|---|---|
+| Repeated Correction | 最近是否多次纠正同一种回复或代码模式？ | 更新 User Profile 或 Agent Instructions |
+| Repeated Rework | 哪些任务经常要求 Agent 返工？ | 修改 Skill、Prompt 或验证流程 |
+| Tool Selection | 是否反复选错工具、模型、MCP 或 Skill？ | 更新 Tool Routing / Harness |
+| Clarification Friction | 哪些问题本来能从已有上下文推断，却被重复询问？ | 调整 Clarification Policy |
+| Unnecessary Autonomy | 哪些任务 Agent 应该先问，却自行猜测并导致返工？ | 增加 Ask-before-action 条件 |
+| Verification Failure | 是否重复遗漏测试、Build、Diff 或其他验收？ | 增加确定性 Hook / Workflow |
+| Preference Drift | 最近反馈是否与现有 User Profile 冲突？ | 提出 Profile 更新或限定 Scope |
+| Over-Personalization | 某条偏好是否开始影响无关任务？ | 缩小 Scope、降低权重或撤销 |
+
+输出不应直接写入正式的 Memory，而应产生类似下面的本地 Review Proposal：
+
+~~~markdown
+## Candidate: 代码修改后先完成验证
+
+Evidence:
+- Session A: 用户要求补跑 targeted test。
+- Session B: 用户指出修改后没有执行 build。
+- Session C: 用户再次要求先检查 diff 再报告结果。
+
+Candidate:
+- 对实际代码修改任务，完成修改后应主动执行相关验证。
+- 仅在无法运行验证时，说明具体阻碍。
+
+Scope:
+- Agent: coding-agent
+- Task: code_change
+- Not applicable: research-only / writing-only
+
+Confidence:
+- Candidate, repeated across 3 independent sessions.
+
+Action:
+- Propose update to coding-agent policy.
+- Do not change global user instructions yet.
+~~~
+
+这个 Proposal 不是统计意义上的最终结论，而是一个带有来源、范围和反例的待审核假设。即使某条反馈在多个 Session 中出现，也需要判断是不是同一个项目、同一种任务或某个临时阶段造成的。
+
+Mastra 的 Observer / Reflector 模式和 Joel Hooks 的个人实践都展示了这种“观察与归纳分离”的方向。Joel 的方案将每日 Reflector 产出的内容放入 REVIEW.md，用户批准后才进入长期 Memory；他也明确说明，部分自动分析与自我修复仍是规划中的功能，而不是已经完成的能力。[Mastra Observational Memory](https://mastra.ai/docs/memory/observational-memory) · [Joel Hooks: Observation Pipeline](https://joelclaw.com/observation-pipeline-persistent-ai-memory)
+
+### 44.7 Memory、Skill、Harness：不同的经验应该修改不同的层
+
+一个经常被忽略的问题是：系统发现用户不喜欢某种行为后，不应该默认将它写入 Memory。
+
+| 发现的经验 | 更合适的落点 | 原因 |
+|---|---|---|
+| 用户更喜欢怎样的表达、解释深度、协作节奏 | User / Agent Memory | 它改变 Agent 的判断和行为倾向 |
+| 做某一类任务应该按什么步骤执行 | Skill | 它属于可重复调用的程序性知识 |
+| 某些动作必须先经过校验、授权或人工确认 | Harness / Hook / Permission | 这类约束不能只依赖 LLM 记住 |
+| 某个项目的构建命令、目录约定和技术选型 | Project Memory / AGENTS.md | 它只在特定 Workspace 生效 |
+| 当前任务的临时决定和上下文 | Session Memory | 任务结束后通常不应变成长期规则 |
+
+例如，系统发现你经常要求代码 Agent 完成修改后立即测试。可以有两种不同处理：如果这是你的个人协作偏好，写入 coding-agent Profile；如果它是项目必须满足的工程门禁，就应该成为验证 Hook 或 Workflow。前者依赖判断，后者应由 Runtime 确定性执行。
+
+Letta 的公开设计也把 Memory、Skills 和 Harness Configuration 分开：Memory 改变 Agent 的未来判断，Skill 保存可重用的流程，Harness 决定权限、Hooks、工具、模型和定时任务。[Letta Memory & Dreaming](https://docs.letta.com/configuration/memory)
+
+这可以避免一个常见的错误：发现 Agent 忘记跑测试，就只在 Memory 中增加一句“记住一定要跑测试”。如果它是一个确定性要求，应该由系统执行测试并验证结果，而不是期待模型每次都能从记忆里想起来。
+
+### 44.8 如何判断 Agent 真的变好了？
+
+不能只检查“新增了几条 Memory”或“能不能正确回答你喜欢什么”。至少要同时衡量偏好选择、实际行为、交互负担和任务结果。
+
+| 指标 | 衡量方式 | 关注的问题 |
+|---|---|---|
+| Repeated Correction Rate | 同一问题在后续 Session 中再次被纠正的次数 | 是否真的减少重复犯错 |
+| Preference Selection Accuracy | 当前任务是否选用了正确的个人偏好 | 是否理解该用哪条 Profile |
+| Behavior Realization Rate | Agent 是否实际按已投放偏好行动 | 是否只会说“我记住了” |
+| Context Misapplication Rate | 偏好是否被用于不相关任务 | 是否过度个性化 |
+| Clarification Precision / Recall | 应问的问题是否询问，不需要问的问题是否避免 | 是否减少重复问题而不靠猜 |
+| Rework Rate | 用户修改、撤回或要求重做的次数 | 产出是否真正符合预期 |
+| Task Outcome | 测试、Build、Verifier 或用户验收结果 | 任务本身是否更成功 |
+
+MemPABench 的一个重要贡献正是将 Preference Selection 与 Behavior Realization 分开评估；iPrefBench 则把 Action Completion、Personalization 和用户提问的 Recall / Precision 分开统计。对自己的 Agent，也应该采用类似思路，不能把“Agent 记得你的偏好”当成“Agent 的工作结果一定更好”。
+
+更进一步，可以对某些低风险、可重复的任务做 **Prospective Comparison**：
+
+1. 先记录当前 Agent 的 Baseline 行为和任务结果。
+2. 选择一条候选偏好，只在符合 Scope 的任务中投放。
+3. 对相似任务比较启用该偏好和不启用该偏好时的结果。
+4. 记录 Agent 是否收到并执行建议、用户是否再次纠正、Verifier 是否通过。
+5. 只有证据支持时才继续使用；出现反例就缩小范围、修改或撤销。
+
+Lyo 的 Advice / No-advice Trial 是值得参考的实验设计。个人 Agent 不一定有足够多完全同质的任务做严格 A/B Test，但至少可以采用同一任务类别的前瞻性对照，避免只凭“最近感觉顺手了”就自动升级规则。涉及安全、权限和不可逆动作的规则不应为了实验而随机关闭。
+
+### 44.9 一个适合个人使用的本地目录结构
+
+第一版无需 Vector Database、Graph Database、独立 Memory Service 或 Multi-Agent 系统。使用 JSONL + SQLite + Markdown 就足以完成闭环：
+
+~~~text
+~/.agent-learning/
+  events/
+    2026/
+      10/
+        31/
+          <session-id>.jsonl
+  blobs/
+    <content-hash>             # opt-in raw content, separate from metadata
+  learning.sqlite              # indexed observations, claims, delivery and outcomes
+  profile/
+    global.md                  # cross-agent user preferences
+    agents/
+      coding-agent.md
+      research-agent.md
+      writing-agent.md
+    projects/
+      <project-id>.md
+  reviews/
+    2026-10-31.md              # daily candidate updates
+  experiments/
+    <experiment-id>.jsonl      # baseline/treatment/outcome records
+~~~
+
+各文件职责：
+
+- events/ 保存 Append-only 原始事件，按 Session 分文件，便于检索和重放。
+- blobs/ 保存选择性保留的原始 Prompt、Tool Result 和 Patch；默认不采集。
+- learning.sqlite 是索引和 Learning Ledger，保存 Observation、Preference Claim、Evidence Link、Delivery、Outcome 和版本信息。
+- profile/ 是交给运行时读取的精简视图，避免每次任务读取整个事件库。
+- reviews/ 保存每日候选及批准、拒绝、修改理由。
+- experiments/ 记录某条经验在后续任务中是否真正产生效果。
+
+SQLite 的 FTS 和普通索引可以先解决大多数检索需求。只有在 Observation 数量、自由文本问题和跨 Session 搜索确实需要语义召回时，再增加 Local Embedding Index；不要为了“Agent Memory”这个名字默认增加 Vector Database。
+
+### 44.10 推荐的执行频率
+
+“每天运行一次分析脚本”是合理的，但它应当只是 Consolidation 的节奏，而不是整个学习系统的运行方式。
+
+| 时间点 | 任务 | 是否需要 LLM |
+|---|---|---|
+| 每个事件发生时 | Append-only 写入结构化 Event；记录 Trace ID 和 Outcome | 否 |
+| Session 结束 / Compaction | 汇总本次纠正、选择、修改和验证结果，生成 Observation | 可以使用低成本模型，异步执行 |
+| 每日低峰期 | 去重、跨 Session 聚类、更新统计、生成候选 Profile / Skill / Harness Change | 是，主要的 Reflector 工作 |
+| 每周 | 检查候选、批准或拒绝、查看重复纠正和过度应用 | 可用 LLM 辅助，但应由用户审核 |
+| 每月 | 审查旧偏好、低频偏好、冲突和无效规则；回顾是否真的减少返工 | 可选 |
+
+活动较少的 Agent 不需要每天执行一轮 LLM 分析。可以在新事件积累到一定规模时触发 Reflector，同时每天做一次轻量检查。Session Observer 与 Daily Reflector 也不一定需要两个 Agent；第一版可以是两个独立任务，由同一模型以不同 Prompt 执行。
+
+### 44.11 推荐的 30 天落地顺序
+
+不建议第一天就建设一套“Agent 自我进化平台”。先让系统能够回答“我到底经常在哪些地方纠正它”，再让它尝试修改行为。
+
+| 阶段 | 实施工作 | 验收条件 |
+|---|---|---|
+| Week 1：Observability | 通过 Agent Hooks 采集本地 JSONL 事件，记录 Session、Turn、Tool、结果和用户纠正 | 能按 Session 重建一次任务的主要执行轨迹 |
+| Week 2：Observation | 在 Session Shutdown / Compaction 后提取结构化 Observation，保留 Event ID 和 Scope | 能统计重复纠正、常见失败和工具使用问题 |
+| Week 3：Reflection | 每日生成 Candidate Profile、Skill、Harness Change；写入 REVIEW.md | 能看到候选的证据、反例、适用范围和建议修改位置 |
+| Week 4：Delivery & Evaluation | 批准低风险候选，记录每次投放及后续结果；挑选一两个任务类别做对照 | 能证明至少一条经验减少了重复纠正或返工，且没有明显扩大到无关任务 |
+
+第一阶段不需要改变 Agent 的 Prompt 或行为。先观察一周，统计真正重复发生的摩擦点。若没有一个问题在多个独立 Session 中重复出现，就不要为了实现“自我学习”而制造 Memory。
+
+### 44.12 最终建议
+
+针对个人使用的 Agent，最值得优先构建的是一个 **Local-first Agent Learning Ledger**，而不是一个不断扩大的 Memory Prompt。
+
+推荐的组合是：
+
+- 用 JSONL 保存本地、可回放的事件轨迹；
+- 用 SQLite 记录结构化 Observation、Preference Claim、Scope、Delivery 和 Outcome；
+- 用 Session Observer 提取本次交互中值得留下的信号；
+- 用 Daily Reflector 归纳跨 Session 的重复模式；
+- 用 Review Queue 控制哪些经验可以进入长期 Profile；
+- 用 Memory、Skill 和 Harness 分别承载判断偏好、程序性知识和确定性控制；
+- 用后续任务的结果验证经验是否真的有帮助。
+
+最重要的不是让 Agent 记住所有对话，而是形成这样一个闭环：**用户纠正了什么，系统据此提出了什么假设，假设被投放到哪些任务，后续结果是否支持它，以及什么时候应该撤销它。**
+
+这比每天生成一份“今天的对话总结”更接近真正的个人 Agent 个性化。
+
+
 ## 补充参考文献
 
 1. Sun et al. (2026), [Preference-Aware Memory Update for Long-Term LLM Agents](https://aclanthology.org/2026.findings-acl.38/), ACL Findings 2026.
@@ -2832,3 +3192,19 @@ CAPE 的主要价值是提供一种很实际的冷启动策略：不要让新用
 93. Chen et al. (2026), [POPI: Personalizing LLMs via Optimized Natural Language Preference Inference](https://arxiv.org/abs/2510.17881), TMLR, September 2026.
 94. Bose et al. (2026), [Cold-Start Personalization via Bayesian Adaptive Questioning](https://proceedings.mlr.press/v306/bose26a.html), ICML 2026 / PMLR 306.
 95. Ma et al. (2026), [Personalizing LLMs with Binary Feedback: A Preference-Calibrated Optimization Framework](https://aclanthology.org/2026.acl-long.1222/), ACL 2026 Long Papers.
+
+96. Li, Chen, Luo and Salam (2026), [Why Bother Me Again? Benchmarking Personal Agent Memory for Interaction Preferences (MemPABench)](https://arxiv.org/abs/2610.30485), arXiv preprint, October 21, 2026.
+97. Ning et al. (2026), [iPrefBench: A User-Centric Benchmark for Personalized Mobile Use Agents](https://arxiv.org/abs/2610.34735), arXiv preprint, October 26, 2026.
+98. Liang et al. (2026), [Learning Personalized Agents from Human Feedback](https://arxiv.org/abs/2602.16173), Meta Research / arXiv, February 2026.
+99. Xu et al. (2026), [Toward Personalized LLM-Powered Agents: Foundations, Evaluation, and Future Directions](https://arxiv.org/abs/2602.22680), arXiv survey, February 2026.
+100. Lyu et al. (2026), [PersonalAlign: Hierarchical Implicit Intent Alignment for Personalized GUI Agent with Long-Term User-Centric Records](https://aclanthology.org/2026.acl-long.1669/), ACL 2026.
+101. Wang et al. (2026), [Me-Agent: A Personalized Mobile Agent with Two-Level User Habit Learning for Enhanced Interaction](https://aclanthology.org/2026.findings-acl.1211/), Findings of ACL 2026.
+102. Huang et al. (2026), [Mem-PAL: Towards Memory-based Personalized Dialogue Assistants for Long-term User-Agent Interaction](https://doi.org/10.1609/aaai.v40i37.40385), AAAI 2026.
+103. Mastra, [Observational Memory](https://mastra.ai/docs/memory/observational-memory), official documentation.
+104. OpenTelemetry, [Semantic Conventions for Generative AI Spans](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-spans.md), living specification, status Development.
+105. Pi, [Session File Format](https://pi.dev/docs/latest/session-format), official documentation.
+106. bebekim, [Lyo — Learn Your Own](https://github.com/bebekim/learn-your-own), open-source experimental project, repository created May 2026.
+107. Joel Hooks, [How I Built an Observation Pipeline So My AI Remembers Yesterday](https://joelclaw.com/observation-pipeline-persistent-ai-memory), February 15, 2026.
+108. Letta, [Memory & Dreaming](https://docs.letta.com/configuration/memory), official documentation.
+109. Microsoft, [Use Memory with Agents in VS Code](https://code.visualstudio.com/docs/agents/run/memory), official documentation, updated October 28, 2026.
+110. GitHub, [Copilot Memory Supports User Preferences](https://github.blog/changelog/2026-05-15-copilot-memory-supports-user-preferences-for-pro-pro-users/), product announcement, May 15, 2026.
