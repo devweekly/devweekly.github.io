@@ -16,6 +16,7 @@ personal-preference-model/
     interpreter.py
     learner.py
     active_learning.py
+    validation.py
     resolver.py
     demo.py
   tests/
@@ -53,7 +54,7 @@ python -m unittest discover -s tests -v
 
 对应文件：interpreter.py。
 
-LLM 把自然语言反馈转成候选 Preference Evidence，包括维度、倾向方向、候选适用范围和解释。Evidence 只是候选证据，并不自动修改长期 Claim。
+LLM 把自然语言反馈转成候选 Preference Evidence，包括维度、倾向方向、候选适用范围和解释。Evidence 只是候选证据，并不自动修改长期 Claim。EvidencePromotionPolicy 再按置信度、偏好方向和上下文范围执行确定性门禁；弱证据或无 scope 的推断只保留为 evidence，不升级为长期 Claim。
 
 离线默认使用 DemoInterpreter。需要接入模型时，可使用 OpenAI-compatible endpoint：
 
