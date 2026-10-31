@@ -12,7 +12,8 @@ import {
   safeKeys,
   stringValue,
 } from './security.js';
-import type { ObserverContext, Provider } from './types.js';
+import type { FeedbackKind, ObserverContext, OutcomeStatus, Provider } from './types.js';
+import { LearningStore } from './store.js';
 
 type CopilotEvent = {
   type?: unknown;
@@ -56,11 +57,14 @@ function makeUsage(input: Record<string, unknown>, provider: Provider): AgentTok
 export class AgentObserver {
   private readonly recorder: AgentTraceRecorder;
   private readonly eventDirectory: string;
+  private readonly config: LearningConfig;
+  private readonly sessionIds = new Map<string, string>();
   private pending: Promise<void> = Promise.resolve();
   private readonly failures: string[] = [];
   private closed = false;
 
   constructor(config: LearningConfig) {
+    this.config = config;
     this.eventDirectory = config.eventDirectory;
     this.recorder = new AgentTraceRecorder(
       new SqliteTraceStore({ filename: config.traceDatabase }),
@@ -84,6 +88,7 @@ export class AgentObserver {
       turnId,
       correlationId: newId('corr'),
     });
+    if (input.sessionId) this.sessionIds.set(context.traceId, input.sessionId);
     return {
       ...input,
       turnId,
@@ -247,13 +252,16 @@ export class AgentObserver {
 
     if (type === 'system') {
       const sessionId = stringValue(event.session_id);
-      this.enqueue(this.base({ ...context, ...(sessionId ? { sessionId } : {}) }, 'session.started', {
+      if (sessionId) this.sessionIds.set(context.traceId, sessionId);
+      const eventContext = this.withSession(context);
+      this.enqueue(this.base(eventContext, 'session.started', {
         sessionId: sessionId ?? '',
       }, { category: 'session', status: 'started' }));
       return;
     }
 
     if (type === 'assistant') {
+      const eventContext = this.withSession(context);
       const message = asRecord(event.message);
       const blocks = Array.isArray(message.content) ? message.content : [];
       const textChars = blocks.reduce((sum, block) => {
@@ -261,7 +269,7 @@ export class AgentObserver {
         return sum + (part.type === 'text' && typeof part.text === 'string' ? part.text.length : 0);
       }, 0);
       if (textChars > 0) {
-        this.enqueue(this.base(context, 'assistant.message.completed', {
+        this.enqueue(this.base(eventContext, 'assistant.message.completed', {
           chars: textChars,
         }, { status: 'completed' }));
       }
@@ -269,14 +277,14 @@ export class AgentObserver {
         const part = asRecord(value);
         if (part.type === 'thinking' || part.type === 'reasoning') continue;
         if (part.type === 'tool_use') {
-          this.enqueue(this.base(context, 'tool.execution.started', {
+          this.enqueue(this.base(eventContext, 'tool.execution.started', {
             toolName: stringValue(part.name) ?? 'unknown',
             toolCallId: stringValue(part.id) ?? '',
             argumentKeys: safeKeys(part.input),
             argumentBytes: byteLength(part.input) ?? null,
           }, { category: 'tool', status: 'running' }));
         } else if (part.type === 'tool_result') {
-          this.enqueue(this.base(context, 'tool.execution.completed', {
+          this.enqueue(this.base(eventContext, 'tool.execution.completed', {
             toolName: stringValue(part.name) ?? 'unknown',
             success: part.is_error !== true && part.isError !== true && part.error === undefined,
             resultBytes: recordTextSize(part.content) ?? null,
@@ -291,6 +299,7 @@ export class AgentObserver {
     }
 
     if (type === 'result') {
+      const eventContext = this.withSession(context);
       const usageRaw = asRecord(event.usage);
       const usage = makeUsage({
         inputTokens: usageRaw.input_tokens,
@@ -300,7 +309,7 @@ export class AgentObserver {
         totalCostUsd: event.total_cost_usd,
       }, 'codebuddy');
       const cost = nonNegative(event.total_cost_usd);
-      this.enqueue(this.base(context, 'agent.result', {
+      this.enqueue(this.base(eventContext, 'agent.result', {
         subtype: stringValue(event.subtype) ?? 'unknown',
         isError: event.is_error === true,
         durationMs: nonNegative(event.duration_ms) ?? null,
@@ -329,13 +338,20 @@ export class AgentObserver {
     };
   }
 
+  private withSession(context: ObserverContext): ObserverContext {
+    const sessionId = this.sessionIds.get(context.traceId);
+    return sessionId ? { ...context, sessionId } : context;
+  }
+
   captureSessionId(context: ObserverContext, sessionId: string): void {
+    this.sessionIds.set(context.traceId, sessionId);
     this.enqueue(this.base({ ...context, sessionId }, 'session.id', {
       sessionId,
     }, { category: 'session', status: 'identified' }));
   }
 
   recordTurnResult(context: ObserverContext, result: unknown): void {
+    context = this.withSession(context);
     const value = asRecord(result);
     const rawUsage = asRecord(value.usage);
     const usage = makeUsage(context.provider === 'copilot' ? rawUsage : {
@@ -355,6 +371,79 @@ export class AgentObserver {
       durationMs: nonNegative(value.durationMs),
       ...(usage ? { usage } : {}),
     }));
+  }
+
+  recordFeedback(context: ObserverContext, kind: FeedbackKind, text: string): string {
+    const store = new LearningStore(this.config.learningDatabase);
+    try {
+      const event = store.record({
+        kind: 'feedback',
+        provider: context.provider,
+        agentId: context.agentId,
+        ...(context.project ? { project: context.project } : {}),
+        ...(context.taskType ? { taskType: context.taskType } : {}),
+        ...(context.sessionId ? { sessionId: context.sessionId } : {}),
+        turnId: context.turnId,
+        text,
+        metadata: { feedbackKind: kind, source: 'application-callback' },
+        scope: {
+          agent: context.agentId,
+          ...(context.project ? { project: context.project } : {}),
+          ...(context.taskType ? { taskType: context.taskType } : {}),
+        },
+      }, this.config.maxFeedbackChars);
+      return event.id;
+    } finally {
+      store.close();
+    }
+  }
+
+  recordOutcome(context: ObserverContext, status: OutcomeStatus, text?: string): string {
+    const store = new LearningStore(this.config.learningDatabase);
+    try {
+      const event = store.record({
+        kind: 'outcome',
+        provider: context.provider,
+        agentId: context.agentId,
+        ...(context.project ? { project: context.project } : {}),
+        ...(context.taskType ? { taskType: context.taskType } : {}),
+        ...(context.sessionId ? { sessionId: context.sessionId } : {}),
+        turnId: context.turnId,
+        ...(text ? { text } : {}),
+        metadata: { status, source: 'application-callback' },
+      }, this.config.maxFeedbackChars);
+      return event.id;
+    } finally {
+      store.close();
+    }
+  }
+
+  recordPreferenceDelivery(
+    context: ObserverContext,
+    profileVersion: number,
+    preferenceIds: readonly string[],
+  ): string {
+    const store = new LearningStore(this.config.learningDatabase);
+    try {
+      const event = store.record({
+        kind: 'delivery',
+        provider: context.provider,
+        agentId: context.agentId,
+        ...(context.project ? { project: context.project } : {}),
+        ...(context.taskType ? { taskType: context.taskType } : {}),
+        ...(context.sessionId ? { sessionId: context.sessionId } : {}),
+        turnId: context.turnId,
+        metadata: {
+          profileVersion,
+          preferenceIds: [...preferenceIds],
+          count: preferenceIds.length,
+          source: 'preference-compiler',
+        },
+      });
+      return event.id;
+    } finally {
+      store.close();
+    }
   }
 
   async flush(): Promise<void> {
