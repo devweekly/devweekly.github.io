@@ -1685,6 +1685,280 @@ EMA / 滑动窗口可以用来平滑近期变化，但不能取代范围判断�
 当这些问题都能被数据和决策记录回答时，才可以说系统开始具备一个可验证、可持续修正的 User Model。
 
 
+
+## 32. 2026 年最新研究：从“记忆系统”转向“用户状态推断与偏好选择性”
+
+本轮补充检索重点放在 2026 年研究，尤其是 ACL / EMNLP 论文、ICML 论文和 SIGIR 研究。与前一轮的 RMM、TSM、PAMU、QUMem 等工作相比，这批研究更直接地验证本文两句话中的难点：偏好状态会变化；用户画像线索不等于任务偏好；检索到的偏好也未必应该应用。
+
+### 32.1 用户偏好不是一个静态 Profile，而是需要在线更新的状态
+
+| 研究 | 方法与主要结果 | 对 User Model 的启示 |
+|---|---|---|
+| **HorizonBench: Long-Horizon Personalization with Evolving Preferences**（arXiv，2026-04） | 构建 360 个模拟用户、4,245 个测试项、六个月对话轨迹，平均约 4,300 轮、163K tokens，并为偏好变化保留完整 provenance。评测 25 个前沿模型，最高分为 52.8%，多数模型在 20% 的机会水平附近或以下；模型在偏好变化题目上犯错时，超过三分之一会继续选择用户最初表达的旧偏好。 | 这是“持续修正”必要性的直接证据。长上下文并不能自然解决状态更新；系统需要明确表示偏好何时改变、由什么事件触发，以及旧值何时失效。[论文](https://arxiv.org/abs/2604.17283) |
+| **AlpsBench: An LLM Personalization Benchmark for Real-Dialogue Memorization and Preference Alignment**（SIGIR 2026） | 从 WildChat 真实人机对话中整理 2,500 条长期交互序列，并配有人类验证的结构化记忆。分别评估偏好信息抽取、更新、检索和使用。研究发现，模型难以稳定抽取潜在用户特征；记忆更新能力存在明显瓶颈；干扰项增多时检索准确率下降；显式记忆虽然改善召回，却不能保证最终回答符合用户偏好或情感期待。 | 比完全合成 Persona 更贴近真实交互。最重要的结果是：记忆召回提高，并不等于个性化结果改善。评估必须覆盖从事件到偏好，再到输出应用的完整链路。[论文](https://arxiv.org/abs/2603.26680) |
+| **MATE: Adaptive Long- and Short-Term User Memory for LLM-Based Recommendation**（arXiv，2026-10） | 对每次新行为同时检查历史重复支持和近期行为一致性，分别更新长期与短期记忆；推荐时再由近期上下文动态决定两类记忆的权重。在 MovieLens-10M、Amazon Luxury Beauty 和 KuaiRec 上，NDCG@10 相对最强外部基线提高 7.0%—13.2%。 | 长期偏好应保守更新，短期兴趣应快速变化，而且两者对当前任务的贡献权重应动态变化。该结果来自推荐任务，不能直接等同于对话偏好学习，但时间分层与动态加权值得借鉴。[论文](https://arxiv.org/abs/2610.06050) |
+| **HyperTrace: Hypothesis-Based Preference Tracing for Online LLM Personalization**（Findings of EMNLP 2026） | 不把用户压缩成一个不可解释的向量，而是维护自然语言形式的短期意图与长期偏好假设，再用基于 Sequential Monte Carlo 的重加权过程，根据后续交互持续调整假设权重；无需更新模型参数。 | 用户偏好可以表示为一组相互竞争、置信度不同的假设，而不必过早合并成单一结论。面对证据不足或冲突时，保留多个候选状态比强行决定一个“用户画像”更稳健。[论文](https://aclanthology.org/2026.findings-emnlp.1038/) |
+| **Learning Personalized Agents from Human Feedback（PAHF）**（Meta Research / arXiv，2026-02） | 提出持续个性化闭环：行动前通过澄清问题解决意图歧义；行动时从记忆中取回偏好；行动后利用结果反馈更新记忆。研究在具身操作和在线购物场景中评估从零学习偏好以及适应 Persona Shift。 | 偏好学习不是单向的“观察—总结—存储”。系统在不确定时要敢于问，行动后还要观察用户是否接受结果，并把结果反馈到用户状态更新中。[Meta Research](https://ai.meta.com/research/publications/learning-personalized-agents-from-human-feedback/) · [arXiv](https://arxiv.org/abs/2602.16173) |
+
+### 32.2 用户画像（Profile）不等于当前任务的偏好（Preference）
+
+这是本轮调研里最值得强调的一组研究。很多系统把“知道用户是谁”误当成“知道用户在当前任务中会选择什么”。
+
+| 研究 | 研究问题与发现 | 设计含义 |
+|---|---|---|
+| **VIBE-Bench: Evaluating Personalized LLMs When Profiles Don’t Mean Preferences**（Findings of EMNLP 2026） | 研究 Profile 与任务偏好之间的概念错位（profile-preference conceptual misalignment）。数据集包含 3,504 个 Persona、12,239 条对话和人工核验测试集。用户画像中可观察到的特征，与当前问题真正需要的偏好可能处在不同概念空间，表面语义相似的检索并不可靠。 | “用户喜欢历史小说”不能直接推断“用户喜欢历史小说中使用古雅措辞”；“用户是资深工程师”也不能直接推断“每次回答都要深入技术细节”。必须推断任务相关偏好，而不是把 Profile 标签当成偏好规则。[论文](https://aclanthology.org/2026.findings-emnlp.1676/) |
+| **Persona2Web: Benchmarking Personalized Web Agents for Contextual Reasoning with User History**（ICML 2026） | 在真实开放 Web 上评估个性化 Agent。用户历史中隐含表达了长期偏好，当前查询则有意保留歧义；Agent 需要依据历史解决歧义，而非要求用户重复全部背景。论文把这一原则称为 clarify-to-personalize。 | 当前请求缺少信息时，User Model 可以帮助系统判断用户意图；但只有在历史证据不足以消歧时，才应进一步询问。不能把所有不确定性都交给记忆检索。[论文](https://proceedings.mlr.press/v306/kim26ap.html) |
+| **APeB: Benchmarking Personalization Ability of Large Language Model Agents**（Findings of EMNLP 2026） | 关注原始、未精炼的产品搜索请求，结合真实操作日志和多样用户历史，考察 Agent 如何从含噪声历史中推断潜在意图并在候选商品中作选择。 | 偏好模型不能只在用户明确说出“我喜欢 X”时有效；它还要理解浏览、比较、查看、跳过等行为，但必须区分“看过”与“喜欢”。[论文](https://aclanthology.org/2026.findings-emnlp.315/) |
+| **BenchPreS: A Benchmark for Context-Aware Personalized Preference Selectivity of Persistent-Memory LLMs**（2026） | 评测长期记忆中的偏好在不同社会和沟通场景中是否应该被应用或抑制，以 Misapplication Rate（错误应用率）和 Appropriate Application Rate（适当应用率）衡量。即使是较强模型，也会把某些仅适用于私人语境的偏好带到第三方或制度化沟通场景中；更强的偏好遵循还可能伴随更多过度应用。 | 偏好不是无条件执行的全局指令。系统必须拥有独立的适用性判定和 abstain 能力，不能因为某条偏好被检索到就自动注入 Prompt。[论文](https://aclanthology.org/2026.emnlp-main.1040/) |
+
+### 32.3 用户模型与证据之间的关系，正在从“摘要”转向“可追溯结构”
+
+| 研究 | 研究结果 | 对数据模型的启示 |
+|---|---|---|
+| **PGMem: Tightly Coupled Persona–Memory Graph for Lifelong Personalized Agents**（EMNLP 2026） | 指出很多系统把 Persona 摘要与历史事件分开存储，造成用户画像缺乏有效证据的问题。PGMem 使用异构图，将事件节点和 Persona 节点通过带类型的 provenance/evidence 边连接；检索时从查询相关节点出发，根据证据有效性对用户信号排序。论文报告在三个基准上优于摘要式、Persona-aware、图结构和 Agentic Memory 基线。 | 偏好主张必须能回到支持它、修正它或反驳它的事件。Evidence Link 不能只是附加日志，而应成为 User Model 的一等数据关系。[论文](https://aclanthology.org/2026.emnlp-main.1891/) · [代码](https://github.com/wonjunchoi23/pgmem/) |
+| **From Recall to Forgetting: Benchmarking Long-Term Memory for Personalized Agents（Memora）**（Findings of ACL 2026） | 评估 Remembering、Reasoning、Recommending 三种任务，提出 Forgetting-Aware Memory Accuracy（FAMA），在正确记忆之外，对使用已经过期或被失效记忆的行为进行惩罚。对四个 LLM 和六种 Memory Agent 的评估发现，旧记忆被错误复用、更新后未能消解矛盾的现象仍然常见。 | “忘记”或“停止使用”是记忆生命周期的一部分。旧偏好不应简单物理删除，而应有失效状态和历史版本；当前状态查询必须排除失效记录。[论文](https://aclanthology.org/2026.findings-acl.1337/) |
+| **MemoryCD: Benchmarking Long-Context User Memory of LLM Agents for Lifelong Cross-Domain Personalization**（Findings of EMNLP 2026） | 使用跨多年、跨 12 个领域的真实 Amazon Review 行为数据，对 14 个基础模型、6 种记忆方法和 4 类个性化任务进行评估，覆盖单领域与跨领域个性化。 | 用户模型需要处理跨领域的稳定偏好，也要防止把某个领域的局部兴趣错误迁移到其他领域。单一全局 Profile 不足以表达这些范围差异。[论文](https://aclanthology.org/2026.findings-emnlp.1804/) |
+| **Beyond Retrieval: Learning Compact User Representations for Scalable LLM Personalization（TAP-PER）**（Findings of EMNLP 2026） | 将用户偏好编码为轻量、带时间信息的用户状态 Prefix，并让当前 Query 决定偏好状态如何参与任务，而不是每次都把大量历史序列化进 Prompt。在六个 LaMP 任务上优于 Prompt-based 和 Model-based 基线；在 1,000 用户规模下，单用户参数量比 OPPU 少 130 倍。 | 当用户数量巨大、每次 RAG 成本明显时，可以探索紧凑用户状态表示。但它是压缩表示，不天然具备可读、可审计的证据链，所以不能取代事件和 Claim 的权威存储。[论文](https://aclanthology.org/2026.findings-emnlp.2100/) |
+
+### 32.4 研究综述开始把 User Profile 当成独立的建模对象
+
+2026 年有两类综述值得纳入技术路线。
+
+**Toward Personalized LLM-Powered Agents: Foundations, Evaluation, and Future Directions**（2026-02，预印本）把个性化 Agent 分为 Profile Modeling、Memory、Planning 和 Action Execution 四个相互作用的组成部分。它的关键价值在于：个性化不是生成答案时拼接几条偏好，而是贯穿任务理解、计划形成和行动选择。[论文](https://arxiv.org/abs/2602.22680)
+
+**A Survey on Natural Language User Profiles for Recommendation: Methods, Datasets, and Metrics**（EMNLP 2026）系统讨论了自然语言用户画像的生成和基于画像的推荐，强调它相较不透明 embedding 的优势是可读、可控和便于引用；同时指出可解释性与任务优化效率之间存在张力。[论文](https://aclanthology.org/2026.emnlp-main.2207/)
+
+这两类研究共同支持一个架构判断：**User Model 不应该只有向量，也不应该只有自然语言摘要。** 应保留结构化状态、可读主张、原始证据和面向任务的压缩表示，让不同下游系统在各自需要的抽象层上消费它们。
+
+### 32.5 本轮研究最重要的结论
+
+从这些研究可以提炼出六项工程原则：
+
+1. **状态更新比历史召回更难。** HorizonBench 和 AlpsBench 表明，系统可能记得旧偏好，却不能正确追踪偏好已经发生的变化。
+2. **Profile 到 Preference 之间需要推理。** 用户身份、兴趣或历史行为只是线索，不能直接作为当前任务的选择规则。
+3. **检索和应用必须分离。** BenchPreS 与 OP-Bench 说明，过度应用偏好本身就是独立的失败模式。
+4. **证据关系应该成为模型结构的一部分。** PGMem 展示了把 Persona Claim 和支持/反对事件直接连接起来的做法。
+5. **遗忘和失效也需要建模。** Memora 的 FAMA 将“使用过期信息”纳入记忆评价，说明仅测 Recall 会掩盖重要问题。
+6. **紧凑向量状态是可选优化，不是权威知识源。** TAP-PER 解决的是大规模个性化表示成本，不会自动提供用户可审计的理由和历史证据。
+
+## 33. 真实产品与生产系统：业界已经如何实现用户记忆和偏好个性化？
+
+论文说明为什么需要 User Model；生产系统则展示团队为了规模、延迟、正确性和用户信任，实际把哪些组件拆开。以下区分消费级 AI 产品、企业 AI 助手，以及大规模推荐/客户服务系统。厂商公开的指标应视为厂商或云服务商披露的数据，不等同于独立第三方因果评估。
+
+### 33.1 消费级 AI 助手：正在从“手动保存几条记忆”走向后台持续整理
+
+| 产品 | 公开能力 | 与本文两句话的关系 | 仍然存在的边界 |
+|---|---|---|---|
+| **ChatGPT Memory / Dreaming** | OpenAI 在 2026 年 6 月披露 Dreaming V3，将后台记忆合成用于改善 freshness、continuity 和 relevance，并明确把记忆质量拆成延续有用上下文、遵循偏好/约束、随时间保持最新三个目标。用户可以查看 Memory Summary、补充或修正信息。 | 不只是把聊天内容存起来，而是后台整理长期上下文，并对“过时”单独处理；产品也把用户可查看、可修改作为一部分。 | OpenAI 没有公开全部内部数据结构和偏好适用性算法；公开产品目标不等于每个任务都能正确判断偏好是否适用。[官方说明](https://openai.com/index/chatgpt-memory-dreaming/) · [Memory 文档](https://help.openai.com/en/articles/8590148-memory-in-chatgpt) |
+| **Gemini Personal Intelligence / Memories** | Gemini 可结合过去聊天、用户连接的 Gmail、Photos、YouTube、Search 等信息生成个性化回答。用户可以纠正结论，例如说明自己并不喜欢某项活动，而只是陪家人参与；也可以让模型解释其使用了哪些来源。2026 年还加入从其他 AI 应用导入记忆和聊天历史的功能。 | 它展示了跨数据源的用户上下文如何帮助推断隐含偏好，也公开承认错误关联和 over-personalization 是产品需要持续改善的问题。 | 连接数据、记忆和推断都需要权限边界；产品当前仍然存在资格、地区和账户类型限制。导入的摘要也不等于具备原始证据完整性的 User Model。[Personal Intelligence](https://blog.google/innovation-and-ai/products/gemini-app/personal-intelligence/) · [记忆导入](https://blog.google/innovation-and-ai/products/gemini-app/switch-to-gemini-app/) · [个性化帮助](https://support.google.com/gemini/answer/16598623?hl=en) |
+| **Claude Memory / Projects / Cowork** | Claude 的记忆涵盖用户角色、项目、沟通偏好和技术习惯；项目可维护项目级记忆，并能根据设置与账户级记忆共享或隔离。聊天与 Cowork 之间可以复用相关记忆。 | 体现了用户级和项目级记忆需要不同的 scope，而且不同执行入口应该能够共享适用的用户上下文。 | 产品公开的记忆并没有提供通用、可任意调用的结构化偏好 Claim API；它仍是 Claude 产品自己的记忆系统。[Claude Memory](https://support.claude.com/en/articles/11817273-use-claude-s-chat-search-and-memory-to-build-on-previous-context) |
+| **Microsoft Copilot Memory** | Microsoft 365 Copilot 文档披露 Saved Memories、从聊天历史推断的动态细节以及 Custom Instructions；记忆与聊天历史有不同更新和删除行为，并存储在用户 Exchange mailbox 的隐藏文件夹中。文档目前将相关个性化与记忆标为 Preview。 | 展示了企业身份、邮箱存储、安全与合规控制如何进入长期记忆架构，而不只是采用外部向量库。 | Preview 能力和策略仍可能变化；管理员策略、个人控制、保留策略和删除语义必须逐项验证，不能仅把它当作通用记忆服务。[Microsoft Learn](https://learn.microsoft.com/en-us/microsoft-365/copilot/copilot-personalization-memory) |
+
+一个重要趋势是：ChatGPT、Gemini 和 Claude 都在把用户偏好、历史上下文和项目上下文纳入产品体验；但它们是各自生态中的记忆功能，而不是天然可移植的统一 User Model。Gemini 和 Glean 开始提供记忆导入或跨工具连接，说明用户记忆的可移植性正在变成产品需求。
+
+### 33.2 Glean：很接近企业级“跨 Agent 个人记忆层”的产品形态
+
+Glean 的 Memory and Personalization 文档将记忆分成两种：
+
+- **Saved memories**：用户明确告诉系统要记住的信息；
+- **Learned memories**：系统从聊天和更广泛的工作活动中归纳出的角色、工作风格、项目、目标、协作者和近期上下文。
+
+Glean 的文档进一步披露：Learned Memory 通过日常整理形成长期记录，并作为随用户活动更新的 living records 维护；旧的、关联性下降的信息会逐渐淡出。用户可以查看、编辑、删除记忆，并在某次对话中控制是否使用记忆。系统还显示某个回答是否使用了记忆及其依据。
+
+更值得关注的是，Glean Memory 可通过 MCP 被 ChatGPT、Claude、Cursor、VS Code、Copilot 等连接工具读取或更新。它把用户记忆从某一个模型或 Agent 的私有能力，向跨工具的共享上下文层推进。
+
+**对 User Model 的启发：** 企业可能需要一个统一的用户记忆服务，而不是让每个 Agent 各自保存一份互不一致的偏好。Glean 已经展示出跨 Agent 读写、用户级隔离和用户可管理的产品模式。
+
+**边界：** Glean 的公开产品文档主要说明记忆类别、管理和使用机制，并未公开所有偏好推断算法和可审计 Claim 模型；文档也提示不同云部署的功能可用性存在差异。[Glean Memory and Personalization](https://docs.glean.com/user-guide/assistant/memory-personalization) · [Glean Memory Configuration](https://docs.glean.com/administration/assistant/configuration/memory-personalization)
+
+### 33.3 DoorDash：最值得研究的生产级 User Memory 架构
+
+DoorDash 在 2026 年 6 月公开介绍了 Unified Consumer Memory。它的价值不仅是用历史行为推荐商品，而是把用户行为转成可解释的语义偏好，供传统 ML 排序系统和生成式 AI 共同使用。
+
+它明确指出：Embedding 能捕获消费者经常购买有机食品，却无法直接表达为什么购买，也难以区分饮食限制和随意偏好，更不能自然地把这些理解交给 LLM。因此，DoorDash 从行为数据中生成语言化、结构化的消费者记忆。
+
+它的架构有三个不同的时间层：
+
+1. **Long-term memory**：从订单、搜索、浏览和客服数据中归纳耐久倾向，如饮食选择、价格敏感度、品牌忠诚度。
+2. **In-session context**：当前购物车、正在搜索的类别、已查看/拒绝的商品等即时意图；近期上下文可以覆盖或补充长期倾向。
+3. **Explicit context**：用户明确说出的偏好和限制，与行为推断得到的倾向分开保存。明确约束通常需要显式修改，而行为推断可以逐步调整。
+
+DoorDash 还披露了多个值得直接借鉴的工程实现：
+
+- 将记忆拆成按领域组织的 Memory Blocks，例如饮食偏好、餐饮模式、品牌倾向、商品分类偏好、门店偏好和跨渠道模式；
+- 每个 Block 再拆成拥有严格 Pydantic Schema 的组件，组件可以独立版本化；
+- 记录模型 ID、生成时间、Prompt Hash、Response Hash 等 lineage；
+- 使用 Manifest 组合指定版本的组件，可以对部分用户灰度发布不同 Manifest，并在质量下降时回滚；
+- 能够重建某个消费者在过去某个时间点使用的记忆状态；
+- 在会话中反复出现的短期行为，可以经过校验、去重和合并后晋升为长期记忆；一次性行为自然衰减。
+
+这几项设计与本文的 User Model 高度一致：**不同时间尺度的信号分开存储；显式声明与行为推断分离；偏好组件独立版本化；每个结论保留来源；下游模型使用同一份语义用户状态。**
+
+DoorDash 的架构尤其说明：向量、图特征和自然语言 Profile 并不互斥。结构化语义记忆可以同时转换成 Embedding、Graph Features 和 LLM-readable Context，供不同下游系统使用。向量是消费端表示之一，不是用户模型的全部。
+
+[DoorDash Engineering：Building a unified consumer memory for personalization at scale](https://careersatdoordash.com/blog/doordash-unified-consumer-memory-for-personalization-at-scale/)
+
+### 33.4 AT&T：跨渠道记忆和当前意图联合使用
+
+Google Cloud 的客户案例介绍，AT&T 使用 BigQuery 和 Gemini Enterprise for Customer Experience 构建客户服务 Agent，能够调用最多 60 天的客户历史。客户可能先在线浏览设备、之后到实体门店，再过几周打电话；Agent 可以继续已有上下文，而不是让客户重复描述需求。
+
+Google Cloud 披露的案例结果包括：全自动解决的客户咨询增加 20%，每年约 1.5 亿美元节省。需要注意，这些是 Google Cloud 客户案例披露的整体项目结果，不应把全部收益归因于“60 天记忆”单一功能。
+
+**对 User Model 的启发：** 当前任务应同时查询客户历史、当前渠道和即时意图；历史记忆不是聊天摘要，而是跨触点保持连续性的状态。
+
+[Google Cloud：AT&T elevates customer experience with Gemini Enterprise for CX and BigQuery](https://cloud.google.com/customers/att-gemini-enterprise-cx)
+
+### 33.5 Salesforce Agentforce Memory：把记忆放到 Agent Reasoner 的执行链中
+
+Salesforce Engineering 在 2026 年 10 月公开介绍了 Agentforce Memory 从 PoC 到 Pilot 的工程演进：
+
+- 初期先把对话历史和用户 Profile 注入 Agent Context；
+- 之后发现最近对话不一定是当前任务最相关的信息，因此转向语义检索；
+- 评估过把全部记忆注入上下文、由 LLM 自行调用记忆、逐步提供上下文，以及推理前检索等模式；
+- 为控制延迟和上下文规模，当前描述的方案在推理前执行关键词检索，仅在匹配时注入记忆；
+- 后续将记忆能力从显式 Agent Actions 集成到 Reasoner 的 context.memory 配置中，由平台自动完成整理、检索和注入；
+- 用户可全局或按 Agent 启用/禁用记忆，并通过 Memory Management Console 查看、编辑和管理记忆。
+
+这段工程经验特别有价值：最近消息并不总是最相关的记忆；把记忆作为工具让 Agent 自己调用会增加每个 Sub-agent 的配置复杂度；把记忆纳入 Reasoner 的统一执行流程，可以减少应用方的重复配置。
+
+**对 User Model 的启发：** 记忆检索应当成为 Agent 运行时的标准上下文准备步骤，而不是由每个业务 Agent 各自拼装一套 Memory Tool。但 Salesforce 公开文章描述的是向 Pilot 推进的过程，不应将其误读成所有客户已默认 GA 的能力。
+
+[Salesforce Engineering：AI Agents Need Memory: Building Persistent Memory for Agentforce](https://engineering.salesforce.com/ai-agents-need-memory-building-persistent-memory-for-agentforce/)
+
+### 33.6 Shop Global：把用户画像、会话意图和实时信号合并用于 AI Personal Shopper
+
+Google Cloud 的 Shop Global 客户案例展示了另一类真实应用：AI Personal Shopper 从用户历史购买、浏览行为、愿望清单和会员等级中获取长期背景，同时结合当前浏览和筛选行为、实时趋势以及外部环境（例如当地天气），为超过 1,000 个品牌的商品发现提供个性化推荐，并支持 LINE 内完成购物流程。
+
+这类场景需要区分“长期喜欢什么”和“当前正在找什么”。例如长期偏好高端户外服装，不代表用户每次都在购买户外商品；当前搜索婴儿礼物，也不应该改写其长期个人消费画像。
+
+[Google Cloud：Shop Global case study](https://cloud.google.com/customers/shop-global)
+
+### 33.7 产品应用可以归纳出什么？
+
+| 生产模式 | 代表产品/系统 | 可以复用的设计 |
+|---|---|---|
+| 后台记忆合成 | ChatGPT Dreaming | 从多次交互形成当前记忆状态，并持续纠正陈旧信息 |
+| 多源上下文个性化 | Gemini Personal Intelligence | 跨应用取证，提供来源说明，允许用户纠正推断 |
+| 跨 Agent 个人记忆 | Glean | 用户级共享记忆、MCP 接口、显式/学习型记忆、用户可管理 |
+| 规模化语义用户画像 | DoorDash Unified Consumer Memory | 长期/即时/明确三层，结构化 Block，版本和 lineage，灰度与回滚 |
+| 跨渠道客户连续性 | AT&T Gemini Enterprise for CX | 客户历史与当下渠道意图联合使用 |
+| 平台内置 Agent Memory | Salesforce Agentforce | 统一 Reasoner 预检索、受控注入、低延迟与用户控制 |
+| 对话式商品发现 | Shop Global AI Personal Shopper | 画像、会话行为和实时环境联合影响推荐 |
+
+## 34. 结合研究和实际产品，User Model 的目标架构需要进一步明确
+
+研究与产品实践共同表明，User Model 不应该被定义为“某个向量库里存的一份用户摘要”。更准确的定义是：
+
+**一个由原始证据支撑、对用户状态进行版本化维护、能够按任务解析适用偏好，并将决策结果反馈回自身的用户状态系统。**
+
+### 34.1 五类信息要明确区分
+
+| 信息类型 | 例子 | 生命周期 | 典型写入方式 |
+|---|---|---|---|
+| Explicit Preference | “任何小说翻译都不要擅自解释潜台词” | 通常较稳定，用户明确修改才改变 | 用户明确声明 |
+| Inferred Preference | 多次选择保留原文的含蓄感 | 需要持续验证，允许置信度变化 | 从事件和样例推断 |
+| Long-term State | 常见阅读兴趣、长期项目、常用输出习惯 | 慢速更新 | 多次证据归纳 |
+| Short-term Intent | 本次想尝试华丽译风、当前章节临时要求 | 短期有效，通常任务结束后衰减 | 当前会话或任务信号 |
+| Task/Project Constraint | 当前小说的人物声音、历史术语和叙述规则 | 项目范围内有效 | 项目配置、用户明确说明 |
+
+需要特别指出：Explicit Preference 不一定永远正确，Inferred Preference 也不一定很弱。关键是记录来源类型和置信度，而不是简单规定“显式就是永久、隐式就是临时”。
+
+### 34.2 偏好状态至少需要四个时间字段
+
+DoorDash 的版本化组件、HorizonBench 的偏好演变和 Memora 的过期记忆评价都指向同一个设计要求。建议每个 Preference Claim 至少有：
+
+- observed_at：系统观察到支持该偏好的行为或反馈的时间；
+- valid_from / valid_to：系统认为偏好在用户行为中实际有效的区间；
+- last_confirmed_at：最近一次得到明确或高质量证据确认的时间；
+- superseded_at：该版本何时被新 Claim 替代。
+
+其中 observed_at 和 valid_from 是两种不同的时间。例如用户今天才告诉系统“我从上个月开始不再喜欢这种译风”，系统今天才获知，但偏好变更的有效时间可能早于观察时间。
+
+### 34.3 把证据链作为一等关系，不要只在 Profile 文本后面附几个 ID
+
+借鉴 PGMem 和 DoorDash，建议数据库关系至少能回答：
+
+- 哪些 Interaction Event 支持某个 Claim？
+- 哪些 Event 与 Claim 冲突？
+- 哪些事件导致它从 provisional 变成 active？
+- 哪次用户纠正使其缩小范围或失效？
+- 当前 Snapshot 使用了哪个 Claim 版本？
+- 当时生成 Claim 的模型、Prompt 和规则版本是什么？
+
+如果使用 PostgreSQL，可以先用关系表表达 Claim 与 Event 的多对多关系；不必因为 PGMem 使用图结构就立即引入图数据库。只有需要复杂多跳关系查询时，再增加 Graphiti 或其他图索引。
+
+### 34.4 增加独立的 Preference Applicability Policy
+
+建议把每个偏好 Claim 表达成如下逻辑结构：
+
+~~~json
+{
+  "claim_id": "pref-000184",
+  "dimension": "narration.subtlety",
+  "value": "preserve_implicit_emotion",
+  "scope": {
+    "tasks": ["literary_translation", "translation_review"],
+    "genres": ["literary-fiction"],
+    "text_types": ["interior_monologue", "psychological_narration"],
+    "languages": ["en", "ja", "zh-CN"],
+    "project_ids": []
+  },
+  "source_kind": "inferred",
+  "confidence": 0.78,
+  "strength": 0.82,
+  "observed_at": "2026-10-31T09:00:00Z",
+  "valid_from": "2026-04-01T00:00:00Z",
+  "valid_to": null,
+  "supporting_evidence": ["event-101", "event-126"],
+  "refuting_evidence": ["event-144"],
+  "status": "active",
+  "revision": 4
+}
+~~~
+
+Resolver 的判断不能只返回一个分数，还应该返回一个带理由的决策：
+
+~~~json
+{
+  "claim_id": "pref-000184",
+  "decision": "apply",
+  "applicability": 0.91,
+  "reason_codes": [
+    "TASK_MATCH",
+    "TEXT_TYPE_MATCH",
+    "TEMPORALLY_VALID",
+    "EVIDENCE_SUFFICIENT"
+  ],
+  "snapshot_id": "snapshot-20261031-001"
+}
+~~~
+
+被拒绝的偏好也应该有记录，例如 SCOPE_MISMATCH、STALE_CLAIM、LOW_CONFIDENCE、CONFLICTING_EXPLICIT_OVERRIDE 或 NO_PERSONALIZATION_NEEDED。这让错误应用率和过度个性化可以被真实测量。
+
+### 34.5 把用户反馈闭环设计成“行动前—行动中—行动后”
+
+结合 PAHF、Persona2Web 和 Agentforce 的实践，一次完整的个性化交互应包含：
+
+1. **Before Action**：从当前任务识别缺少的信息，检索相关偏好；必要时提出一个高信息量、低打扰的澄清问题。
+2. **During Action**：把冻结的 Preference Snapshot 注入工作流；不同 Agent 阶段使用同一版本；保存实际采用和排除的偏好。
+3. **After Action**：把用户评分、比较、修改、拒绝和结果纳入 Event Store；提出 Claim 更新；验证后再发布新版本。
+
+这也说明，Preference Resolver 应成为 Agent 工作流的一部分，而不只是一个独立的检索 API。生成、规划、工具选择、推荐和任务执行都可能需要使用用户偏好。
+
+### 34.6 参考 DoorDash，把生成和消费解耦
+
+用户模型的生成与应用不必同步发生。可以把原始事件和偏好更新放在写入/后台整理流程中；任务执行侧读取稳定、已经验证的 Claim 和 Snapshot。这样可以避免每次回答都重新跑一遍偏好抽取，也可以控制延迟。
+
+推荐分层：
+
+- **System of Record**：PostgreSQL 保存 Event、Evidence、Claim、Claim Revision、Snapshot 和决策日志；
+- **Consolidation Pipeline**：LangMem 或自定义 LLM 工作流提出候选 Claim 更新；
+- **Validation Gate**：规则和/或独立模型检查证据、scope、冲突和版本变化；
+- **Runtime Resolver**：LangGraph 编排任务解析、记忆召回、适用性决策和 Snapshot 编译；
+- **Retrieval Indexes**：FTS、pgvector、图索引是可重建的派生索引，不是权威事实；
+- **Agent Clients**：翻译工具、Claude Code、企业助手等通过统一 API / MCP 读取 Snapshot 并回传反馈。
+
+
 ## 补充参考文献
 
 1. Sun et al. (2026), [Preference-Aware Memory Update for Long-Term LLM Agents](https://aclanthology.org/2026.findings-acl.38/), ACL Findings 2026.
@@ -1720,3 +1994,30 @@ EMA / 滑动窗口可以用来平滑近期变化，但不能取代范围判断�
 31. Mem0, [OSS v2 to v3 Migration](https://github.com/mem0ai/mem0/blob/main/docs/migration/oss-v2-to-v3.mdx), official documentation.
 32. Zep, [Graphiti: Temporal Context Graphs for AI Agents](https://github.com/getzep/graphiti), official repository and documentation.
 33. Letta, [Stateful Agents](https://docs.letta.com/concepts/stateful-agents), official documentation.
+
+34. Liang et al. (2026), [Learning Personalized Agents from Human Feedback](https://arxiv.org/abs/2602.16173), Meta Research / arXiv.
+35. Li et al. (2026), [HorizonBench: Long-Horizon Personalization with Evolving Preferences](https://arxiv.org/abs/2604.17283), arXiv.
+36. Xiao et al. (2026), [AlpsBench: An LLM Personalization Benchmark for Real-Dialogue Memorization and Preference Alignment](https://arxiv.org/abs/2603.26680), SIGIR 2026, DOI: 10.1145/3805712.3808634.
+37. Uddin et al. (2026), [From Recall to Forgetting: Benchmarking Long-Term Memory for Personalized Agents](https://aclanthology.org/2026.findings-acl.1337/), Findings of ACL 2026.
+38. Zhang et al. (2026), [MemoryCD: Benchmarking Long-Context User Memory of LLM Agents for Lifelong Cross-Domain Personalization](https://aclanthology.org/2026.findings-emnlp.1804/), Findings of EMNLP 2026.
+39. Shen et al. (2026), [HyperTrace: Hypothesis-Based Preference Tracing for Online LLM Personalization](https://aclanthology.org/2026.findings-emnlp.1038/), Findings of EMNLP 2026.
+40. Choi et al. (2026), [PGMem: Tightly Coupled Persona–Memory Graph for Lifelong Personalized Agents](https://aclanthology.org/2026.emnlp-main.1891/), EMNLP 2026.
+41. Yoon et al. (2026), [BenchPreS: A Benchmark for Context-Aware Personalized Preference Selectivity of Persistent-Memory LLMs](https://aclanthology.org/2026.emnlp-main.1040/), 2026.
+42. Jiang et al. (2026), [VIBE-Bench: Evaluating Personalized Large Language Models When Profiles Don’t Mean Preferences](https://aclanthology.org/2026.findings-emnlp.1676/), Findings of EMNLP 2026.
+43. Kim et al. (2026), [Persona2Web: Benchmarking Personalized Web Agents for Contextual Reasoning with User History](https://proceedings.mlr.press/v306/kim26ap.html), ICML 2026.
+44. Yang et al. (2026), [APeB: Benchmarking Personalization Ability of Large Language Model Agents](https://aclanthology.org/2026.findings-emnlp.315/), Findings of EMNLP 2026.
+45. Cao et al. (2026), [Beyond Retrieval: Learning Compact User Representations for Scalable LLM Personalization](https://aclanthology.org/2026.findings-emnlp.2100/), Findings of EMNLP 2026.
+46. Hou (2026), [MATE: Adaptive Long- and Short-Term User Memory for LLM-Based Recommendation](https://arxiv.org/abs/2610.06050), arXiv.
+47. Arustashvili and Balog (2026), [A Survey on Natural Language User Profiles for Recommendation: Methods, Datasets, and Metrics](https://aclanthology.org/2026.emnlp-main.2207/), EMNLP 2026.
+48. Xu et al. (2026), [Toward Personalized LLM-Powered Agents: Foundations, Evaluation, and Future Directions](https://arxiv.org/abs/2602.22680), arXiv survey.
+49. OpenAI (2026), [Dreaming: Better memory for a more helpful ChatGPT](https://openai.com/index/chatgpt-memory-dreaming/), product and research update, June 4, 2026.
+50. Google (2026), [Personal Intelligence: Connecting Gemini to Google apps](https://blog.google/innovation-and-ai/products/gemini-app/personal-intelligence/), product announcement, January 14, 2026.
+51. Google (2026), [Make the switch: Bring your AI memories and chat history to Gemini](https://blog.google/innovation-and-ai/products/gemini-app/switch-to-gemini-app/), product announcement, March 26, 2026.
+52. Anthropic, [Use Claude’s chat search and memory to build on previous context](https://support.claude.com/en/articles/11817273-use-claude-s-chat-search-and-memory-to-build-on-previous-context), official product documentation.
+53. Microsoft, [Manage Copilot personalization and memory](https://learn.microsoft.com/en-us/microsoft-365/copilot/copilot-personalization-memory), official documentation; preview status as documented.
+54. Glean, [Memory and personalization](https://docs.glean.com/user-guide/assistant/memory-personalization), official product documentation, updated October 12, 2026.
+55. Glean, [Configure memory settings](https://docs.glean.com/administration/assistant/configuration/memory-personalization), official administrator documentation.
+56. DoorDash Engineering, [Building a unified consumer memory for personalization at scale](https://careersatdoordash.com/blog/doordash-unified-consumer-memory-for-personalization-at-scale/), June 8, 2026.
+57. Google Cloud, [AT&T elevates customer experience with Gemini Enterprise for CX and BigQuery](https://cloud.google.com/customers/att-gemini-enterprise-cx), customer case study.
+58. Salesforce Engineering, [AI Agents Need Memory: Building Persistent Memory for Agentforce](https://engineering.salesforce.com/ai-agents-need-memory-building-persistent-memory-for-agentforce/), October 2026.
+59. Google Cloud, [Shop Global case study](https://cloud.google.com/customers/shop-global), AI Personal Shopper customer case study.
