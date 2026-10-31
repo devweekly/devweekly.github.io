@@ -108,6 +108,25 @@ Resolver 将三类输入分开处理：
 
 当预测接近 0.5、任务影响高、用户数据少时，系统可以生成一个 A/B 问题；任务影响低或模型已有足够区分度时则不打扰用户。这里使用简化阈值策略，正式系统可以替换为 Bayesian Active Learning / Expected Information Gain。
 
+
+
+### Stage 6 — Personal Adapter / Transformer fine-tuning（意图上保留，暂不提供伪训练脚本）
+
+本参考项目没有用合成 Demo 数据训练 LoRA、Transformer 或个人 Reward Model。那样会造成一个错误印象：仿佛几条模拟 A/B 样本就足以训练出真实的个人审美模型。
+
+只有在真实反馈量、跨作品覆盖和独立测试样本足够时，才应增加这一阶段。进入 Stage 6 前，至少需要：
+
+- 一个已经稳定的偏好维度体系和上下文 Schema；
+- 用户真实选择、理由和修改所形成的高质量训练记录；
+- 按作品、时间和文本类型进行隔离的 train / validation / test；
+- 对比 Rule-only、LLM + Profile、Retrieved Examples 和 Classic ML 的基线；
+- 对生成输出做用户 A/B 评估，而不是只看 Reward Model 的离线排序准确率。
+
+优先训练共享 Preference Encoder / Reward Feature 或轻量 Adapter，再用少量目标用户数据进行校正；不建议从零训练单用户 Transformer。跨用户样本可以学习群体先验，但不能简单视为目标用户的负样本。
+
+2026 年相关研究给出了可扩展方向：CAPE 可将冷启动提问升级为群体先验 + Bayesian Adaptive Questioning；PLUS / POPI 可学习如何形成用户摘要；C-BPO 可从跨用户二元反馈学习个人差异。它们是进一步的研究实现，不是本仓库当前代码已经复现的算法。
+
+
 ## 完整链路
 
 ~~~mermaid
@@ -137,6 +156,10 @@ flowchart TB
 - uncertain：证据不足或置信度低的 Claim。
 - pairwise_estimate：统计偏好模型的候选选择估计。
 - active_question：是否应该主动询问用户。
+
+## 当前代码覆盖范围
+
+当前仓库提供 Stage 1–5 的可运行参考实现：证据存储、LLM/Jev 语义提取、Evidence Promotion Gate、层次 Bradley–Terry、权重保存/加载、留出样本评估、Resolver 和阈值式主动询问。Stage 6 仅定义了进入条件和技术方向，不包含用合成数据伪训练的 Transformer / LoRA 脚本。当前单元测试文件包含 14 个 unittest 用例；仓库另有 GitHub Actions 工作流自动运行该测试命令。
 
 ## 生产化边界
 
