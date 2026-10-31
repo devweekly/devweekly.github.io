@@ -118,6 +118,8 @@ class PreferenceStore:
         self.close()
 
     def record_event(self, event: FeedbackEvent) -> None:
+        if event.task_context.user_id != event.user_id:
+            raise ValueError("Event user_id must match TaskContext user_id")
         self._conn.execute(
             """
             INSERT INTO events(
@@ -138,6 +140,15 @@ class PreferenceStore:
         self._conn.commit()
 
     def record_evidence(self, evidence: PreferenceEvidence) -> None:
+        event = self._conn.execute(
+            "SELECT user_id FROM events WHERE event_id = ?",
+            (evidence.event_id,),
+        ).fetchone()
+        if event is None:
+            raise ValueError(f"Unknown source event: {evidence.event_id}")
+        if event["user_id"] != evidence.user_id:
+            raise ValueError("Evidence user_id must match its source Event user_id")
+
         self._conn.execute(
             """
             INSERT INTO evidence(
@@ -172,6 +183,17 @@ class PreferenceStore:
 
         revision = (int(previous["revision"]) + 1) if previous else 1
         supersedes_id = previous["claim_id"] if previous else None
+
+        referenced_event_ids = set(claim.supporting_event_ids) | set(claim.refuting_event_ids)
+        for event_id in referenced_event_ids:
+            event = self._conn.execute(
+                "SELECT user_id FROM events WHERE event_id = ?",
+                (event_id,),
+            ).fetchone()
+            if event is None:
+                raise ValueError(f"Unknown Claim evidence Event: {event_id}")
+            if event["user_id"] != claim.user_id:
+                raise ValueError("Claim and evidence Event must belong to the same user")
 
         self._conn.execute(
             """
