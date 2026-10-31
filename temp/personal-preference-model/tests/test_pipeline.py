@@ -288,6 +288,41 @@ class PreferencePipelineTests(unittest.TestCase):
         )
         self.assertGreater(estimate["probability_a_preferred"], 0.5)
 
+    def test_pairwise_model_serialization_preserves_predictions(self) -> None:
+        samples = [
+            PairwiseSample(
+                user_id="u1",
+                context={"text_type": "psychological_narration"},
+                features_a={"subtlety": 0.95, "naturalness": 0.5, "over_polish": 0.1},
+                features_b={"subtlety": 0.4, "naturalness": 0.9, "over_polish": 0.8},
+                chosen="A",
+            )
+            for _ in range(12)
+        ]
+        model = PairwisePreferenceModel(learning_rate=0.1, epochs=300)
+        model.fit_hierarchical(samples)
+        before = model.predict(
+            "u1",
+            {"subtlety": 0.9, "naturalness": 0.6, "over_polish": 0.1},
+            {"subtlety": 0.4, "naturalness": 0.9, "over_polish": 0.8},
+            {"text_type": "psychological_narration"},
+        )
+
+        model_path = Path(self.temp_dir.name) / "preference-model.json"
+        model.save(model_path)
+        restored = PairwisePreferenceModel.load(model_path)
+        after = restored.predict(
+            "u1",
+            {"subtlety": 0.9, "naturalness": 0.6, "over_polish": 0.1},
+            {"subtlety": 0.4, "naturalness": 0.9, "over_polish": 0.8},
+            {"text_type": "psychological_narration"},
+        )
+        self.assertAlmostEqual(
+            before["probability_a_preferred"],
+            after["probability_a_preferred"],
+            places=12,
+        )
+
     def test_active_learning_asks_on_cold_start(self) -> None:
         selector = ActivePreferenceQuestionSelector()
         decision = selector.select(
