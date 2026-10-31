@@ -10,6 +10,7 @@ from .types import (
 from .store import PreferenceStore
 from .learner import PairwisePreferenceModel
 from .resolver import PreferenceResolver
+from .validation import EvidencePromotionPolicy
 
 __all__ = [
     "FeedbackEvent",
@@ -20,4 +21,5 @@ __all__ = [
     "PreferenceStore",
     "PairwisePreferenceModel",
     "PreferenceResolver",
+    "EvidencePromotionPolicy",
 ]
