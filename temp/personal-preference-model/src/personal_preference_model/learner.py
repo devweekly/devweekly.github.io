@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import math
 from collections import defaultdict
+from pathlib import Path
 from typing import Iterable
 
 from .types import PairwiseSample
@@ -166,3 +168,94 @@ class PairwisePreferenceModel:
             "confidence_proxy": abs(probability_a - 0.5) * 2.0,
             "user_sample_count": self.user_sample_counts.get(user_id, 0),
         }
+
+
+    def evaluate_pairwise_accuracy(self, samples: Iterable[PairwiseSample]) -> dict[str, float | int]:
+        """Evaluate held-out pairwise choice accuracy; do not use training rows."""
+        rows = list(samples)
+        if not rows:
+            return {"count": 0, "accuracy": 0.0}
+
+        correct = 0
+        for sample in rows:
+            prediction = self.predict(
+                user_id=sample.user_id,
+                features_a=sample.features_a,
+                features_b=sample.features_b,
+                context=sample.context,
+            )
+            predicted = (
+                "A"
+                if float(prediction["probability_a_preferred"]) >= 0.5
+                else "B"
+            )
+            correct += int(predicted == sample.chosen)
+        return {"count": len(rows), "accuracy": correct / len(rows)}
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "format_version": 1,
+            "learning_rate": self.learning_rate,
+            "epochs": self.epochs,
+            "l2_population": self.l2_population,
+            "l2_user": self.l2_user,
+            "population_weights": dict(self.population_weights),
+            "user_deltas": {
+                user_id: dict(weights)
+                for user_id, weights in self.user_deltas.items()
+            },
+            "user_sample_counts": dict(self.user_sample_counts),
+            "is_fitted": self.is_fitted,
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, object]) -> "PairwisePreferenceModel":
+        if payload.get("format_version") != 1:
+            raise ValueError("Unsupported preference model format_version")
+
+        model = cls(
+            learning_rate=float(payload["learning_rate"]),
+            epochs=int(payload["epochs"]),
+            l2_population=float(payload["l2_population"]),
+            l2_user=float(payload["l2_user"]),
+        )
+        population = payload.get("population_weights", {})
+        user_deltas = payload.get("user_deltas", {})
+        user_counts = payload.get("user_sample_counts", {})
+        if not isinstance(population, dict) or not isinstance(user_deltas, dict):
+            raise ValueError("Invalid model weights payload")
+        if not isinstance(user_counts, dict):
+            raise ValueError("Invalid user sample counts payload")
+
+        model.population_weights = defaultdict(
+            float,
+            {str(key): float(value) for key, value in population.items()},
+        )
+        model.user_deltas = {
+            str(user_id): {
+                str(key): float(value) for key, value in weights.items()
+            }
+            for user_id, weights in user_deltas.items()
+            if isinstance(weights, dict)
+        }
+        model.user_sample_counts = defaultdict(
+            int,
+            {str(key): int(value) for key, value in user_counts.items()},
+        )
+        model.is_fitted = bool(payload.get("is_fitted", False))
+        return model
+
+    def save(self, path: str | Path) -> None:
+        destination = Path(path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(
+            json.dumps(self.to_dict(), ensure_ascii=False, indent=2, sort_keys=True),
+            encoding="utf-8",
+        )
+
+    @classmethod
+    def load(cls, path: str | Path) -> "PairwisePreferenceModel":
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise ValueError("Serialized preference model must be a JSON object")
+        return cls.from_dict(payload)
