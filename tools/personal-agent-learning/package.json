@@ -1,0 +1,29 @@
+{
+  "name": "personal-agent-learning",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Local-first learning ledger and preference reflection for Copilot and CodeBuddy agents.",
+  "engines": {
+    "node": ">=22.13"
+  },
+  "scripts": {
+    "setup:shared": "node scripts/setup-shared.mjs",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "start": "node dist/cli.js",
+    "dev": "tsx src/cli.ts",
+    "test": "tsx --test test/*.test.ts",
+    "daily": "tsx src/cli.ts reflect"
+  },
+  "dependencies": {
+    "@github/copilot-sdk": "1.0.17",
+    "@tencent-ai/agent-sdk": "0.3.276",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.1",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2"
+  }
+}
