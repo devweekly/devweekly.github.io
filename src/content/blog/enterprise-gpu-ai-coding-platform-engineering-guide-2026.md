@@ -560,6 +560,114 @@ Coding Agent 场景还要验证工具调用参数是否符合 Schema、长上下
 
 ---
 
+### 6.9 国产 GPU 学习路线：把 CUDA 知识迁移过来，但不要照搬 CUDA 代码
+
+如果已经学过前面 NVIDIA GPU、CUDA、PyTorch、NCCL 和推理框架的内容，学习国产 GPU 不需要从“什么是 GPU”重新开始。更有效的方式是保留已经掌握的并行计算、内存层次、Kernel、算子、分布式通信和推理系统知识，再逐层学习目标厂商的软件栈与硬件执行模型。
+
+但要先明确一个边界：**CUDA 知识可以迁移，CUDA 二进制、CUDA 专有 API、NVIDIA 的硬件假设和性能经验不能直接迁移。** 不同国产加速器之间也不是一个统一的国产 CUDA。昇腾、摩尔线程、寒武纪、沐曦、壁仞、燧原和海光有各自的设备模型、编译器、Runtime、算子库、通信库和版本配套关系。
+
+#### 推荐学习顺序
+
+建议按下面的顺序学习。不要一开始就钻进某个厂商的 Kernel 语言，也不要同时安装多家 SDK。
+
+**第一步：先选定一套真实硬件和软件版本，建立可复现环境。**
+
+先选一个准备实际部署的目标平台，例如 Atlas 昇腾、摩尔线程服务器 GPU 或寒武纪 MLU。记录具体芯片 SKU、服务器型号、CPU 架构、OS / Kernel、驱动、固件、SDK、PyTorch、推理框架和容器版本。优先使用厂商提供的开发容器或经过验证的整机环境，先完成设备识别、设备信息查询、内存分配、简单计算和多卡可见性检查。
+
+这一阶段的目标不是调性能，而是形成一份可以复现的环境清单。驱动、固件、编译器、Runtime、框架插件往往存在严格的版本配套关系；不要把不同教程中的安装命令拼成一个环境。
+
+**第二步：从 PyTorch 迁移开始，先让熟悉的模型跑起来。**
+
+先学习目标平台的 PyTorch 后端，复用熟悉的 Tensor、Module、Autograd、Optimizer、AMP 和 Distributed API。把一个已经在 NVIDIA GPU 上跑通的模型迁移过来，验证模型加载、前向、反向、保存恢复、混合精度和多卡训练 / 推理。
+
+主要入口因平台而异：
+
+- 昇腾：PyTorch + `torch_npu`，重点理解 `torch.npu`、算子支持情况、设备内存和 HCCL 分布式通信；
+- 摩尔线程：PyTorch + `torch_musa`，重点理解 `torch.musa`、MUSA SDK 和 MCCL；其 CUDA 迁移工具可以降低部分代码改造量；
+- 寒武纪：PyTorch + `torch_mlu`，先掌握 CNToolkit、CNNL、CNCL 和官方 PyTorch Container 的依赖关系；
+- 沐曦、壁仞、燧原、海光 DCU：先从各自官方 PyTorch 适配层和经过验证的容器开始，不要因为接口看起来类似 CUDA 就假定第三方扩展都能直接使用。
+
+这一阶段应优先修复代码中的 CUDA 假设，例如硬编码的 `"cuda"`、`.cuda()`、`torch.cuda.*`、自定义 CUDA Extension、NCCL backend 和只支持 CUDA 的第三方库。把设备选择、通信后端、AMP 和算子能力封装在平台适配层中，而不是在业务代码里散落厂商判断。
+
+**第三步：学习推理框架和模型部署，不要急着自己写算子。**
+
+先使用目标平台已有的 vLLM、SGLang、厂商推理引擎或模型部署配方，跑通一个实际 LLM。重点观察模型权重格式、量化方式、Tokenizer / Chat Template、KV Cache、Continuous Batching、TP / PP / EP、Prefill / Decode、Speculative Decoding 和多节点通信。
+
+以 DeepSeek 为练习对象时，应该选定具体模型变体和权重格式，例如 V4-Flash 的指定 W8A8 或 MXFP4 路径，而不是笼统地测试“DeepSeek”。确认服务可以启动后，还要验证 Streaming、Tool Calling、JSON 输出、长上下文、并发、TTFT、TPOT、Goodput 和错误恢复。先使用已有高性能 Kernel 和算子库，明确瓶颈之后再决定是否需要自己开发算子。
+
+**第四步：补齐目标平台的 Runtime、内存和通信模型。**
+
+这一阶段相当于把 CUDA Runtime、Driver API、cuBLAS / cuDNN、NCCL 的知识映射到目标平台，但不要只记 API 名称，要理解 Host / Device 执行边界、设备内存、异步 Stream、Event、同步、数据搬运、图执行、集合通信和错误处理。
+
+| NVIDIA 已学过的概念 | 国产平台需要进一步学习的对应内容 |
+| --- | --- |
+| CUDA Driver / Runtime、Stream、Event | 各厂商 Driver / Runtime、队列或 Stream、Event、异步执行和设备上下文 |
+| CUDA Memory、Pinned Memory、Unified Memory | 设备内存、Host / Device 数据搬运、缓存与本地片上存储；具体机制按芯片架构学习 |
+| cuBLAS、cuDNN、CUTLASS | 各平台矩阵 / 深度学习算子库、算子模板库和融合算子 |
+| NCCL、NCCL Tests | HCCL、MCCL、CNCL 或厂商对应通信库；学习集合通信、拓扑、带宽和多节点故障定位 |
+| Nsight Systems / Compute | 厂商 Profiling、算子耗时分析、内存分析、精度调试和系统级 Trace |
+| CUDA Graph | 对应平台的图执行、编译图或图捕获能力；不要假定语义和限制完全相同 |
+
+尤其要重新理解片上存储与计算单元。NVIDIA 的 SM、Warp、Shared Memory、Tensor Core 不能直接等同于其他芯片的计算核心、线程模型、片上缓存和矩阵单元。比如昇腾 AI Core 的 Cube / Vector、Unified Buffer、L0 存储和 SIMD / SIMT 组合，都需要按昇腾自己的编程模型学习。
+
+**第五步：开始写一个最小自定义算子，再学习底层 Kernel 语言。**
+
+不要从 FlashAttention 或完整 MoE Kernel 开始。建议按以下练习顺序，每一步都同时写正确性测试和性能基准：
+
+1. Vector Add：熟悉 Host / Device、内存分配、Kernel 启动和数据搬运；
+2. Reduction / Softmax：理解并行归约、同步、数值稳定性和精度误差；
+3. GEMM：理解分块、矩阵单元、数据复用、片上存储和流水线；
+4. LayerNorm / RMSNorm：练习融合算子、内存带宽和小算子启动开销；
+5. Attention：进一步理解访存模式、KV Cache、Mask、长序列和融合；
+6. MoE Routing / Grouped GEMM：理解专家分发、负载均衡、通信与计算重叠。
+
+按目标平台选择底层语言和工具：
+
+- **昇腾**：先学习 Ascend C 的 SIMD / SIMT 编程模型、Host / Device、TPipe / TQue、内存层次、异步执行、编译、调试和性能分析。掌握基础后，再学习 CATLASS、PyPTO，以及 TileLang 的 Ascend 后端。Ascend 950 的编程模型和工具链有新能力，必须使用对应芯片和 CANN 版本的文档，不要把旧型号教程直接套到新型号。
+- **摩尔线程**：先按 MUSA 编程指南学习 Host / Device、Grid / Block / Thread、Warp、寄存器 / 共享 / 全局内存、Runtime API 和 Kernel 启动，再做 MUSA Extension 和性能分析。MUSA 与 CUDA 的编程习惯有相似之处，但 Warp 大小、硬件代际和库支持可能不同，不能把 NVIDIA 的 Block 配置和 Occupancy 经验原样复制。
+- **寒武纪**：先掌握 CNRT 运行时、MLU 存储模型、MLU Core 并行与同步，再学习 BANG C、CNNL 和 MLU-OPS 的算子开发、测试及性能调优。可从官方 MLU-OPS 的 Add / VectorAdd 示例开始。
+- **沐曦、壁仞、燧原、海光 DCU**：先掌握厂商提供的 Runtime、PyTorch 插件和官方算子库，再确认是否提供成熟的自定义 Kernel 语言、编译器和调优工具。不要仅凭“CUDA 兼容”或 API 相似就跳过设备架构与版本矩阵学习。
+
+**第六步：学习更高层的 Kernel DSL 和编译器，再看深度优化。**
+
+如果已经掌握 CUDA Kernel、算子性能分析和底层硬件概念，可以进一步学习 TileLang、Triton 及其国产平台适配。它们有机会让开发者用更高层的 Tile / Tensor 表达方式描述计算，再由编译器映射到不同硬件；但各后端的成熟度、支持算子、编译路径和性能并不一致。
+
+特别值得关注的是 DeepSeek 与昇腾生态的开源项目：
+
+- [TileLang](https://github.com/tile-ai/tilelang)：主仓库已有 Ascend 950 后端文档，展示 Ascend C / PTO 代码生成、Cube / Vector 执行和自动调度等能力；其它硬件的适配器可能位于独立仓库，需按项目状态分别判断。
+- [DeepSeek TileKernels](https://github.com/deepseek-ai/TileKernels)：基于 TileLang 的算子库，适合对照同一算子的 CUDA 与 Ascend 后端实现，学习跨后端 Kernel 的组织方式。
+- [DeepSeek DeepGEMM-Ascend](https://github.com/deepseek-ai/DeepGEMM-Ascend)：用于理解昇腾上的高性能 GEMM 和模型专项计算优化。
+- [DeepSeek DeepEP-Ascend](https://github.com/deepseek-ai/DeepEP-Ascend)：用于理解 MoE 场景下的专家并行和通信优化。
+
+不要把“有一个 backend”理解成“所有 Triton / TileLang 程序都能无修改运行”。应检查对应后端支持的芯片型号、算子子集、编译器版本、测试覆盖和真实设备验证情况。
+
+**第七步：最后再学习多机集群、性能工程和生产化。**
+
+在单机单卡、单机多卡都稳定之后，再进入多节点通信、拓扑感知、集合通信调优、通信计算重叠、Prefill / Decode 分离、故障恢复和 Kubernetes 设备调度。把设备监控、算子 Profiling、推理指标和 Agent Trace 串起来，最终形成从 Kernel 到模型 API 的端到端性能分析能力。
+
+#### 学习时最容易踩的坑
+
+- **把 CUDA 兼容当成二进制兼容。** 能复用 PyTorch 接口，不代表 CUDA Extension、PTX、CUTLASS、NCCL 或依赖 CUDA 私有 API 的库可以直接运行。
+- **只改 device 字符串。** `cuda` 改成 `npu` / `mlu` / `musa` 只是入口修改；算子覆盖、AMP、分布式通信、内存行为和第三方依赖仍需逐项验证。
+- **忽略硬件执行模型差异。** Warp 大小、计算单元、片上内存、矩阵指令、同步语义和数据布局不同，原有 CUDA Kernel 的 Block、Tile、Shared Memory 和流水策略不一定适用。
+- **混装 SDK 和框架版本。** Driver、Firmware、Toolkit、Compiler、Runtime、PyTorch、插件、推理引擎和容器需要按厂商兼容矩阵锁定。不要在一个环境里混用不同版本教程的安装步骤。
+- **拿单卡 Demo 代替生产验证。** 模型能加载不代表长上下文、多卡、多节点、量化、Tool Calling 和高并发都能正常工作。
+- **只看 Tokens/s。** 同时测量输出质量、精度误差、TTFT、TPOT、Goodput、尾延迟、显存 / 主机内存、CPU 占用、功耗和故障恢复。
+- **没有区分实验性能力和生产能力。** 文档中的 Beta、Preview、Experimental、社区分支和厂商正式发行版要分开记录。生产基线应固定版本、Commit、容器 Digest 和模型权重校验和。
+- **一开始就同时学所有国产平台。** 先选一个平台把 PyTorch、推理、算子、Profiling 和多卡链路完整走通，再横向比较其它平台。这样才能区分是模型问题、框架问题还是设备后端问题。
+
+#### 一个可执行的四阶段学习计划
+
+| 阶段 | 练习成果 | 完成标准 |
+| --- | --- | --- |
+| 1. 环境与框架 | 在目标设备运行 PyTorch 模型和一个 LLM | 单卡推理正确；环境版本清单可复现 |
+| 2. 推理与分布式 | 部署 vLLM / SGLang 或厂商引擎，完成多卡推理 | 验证 TP / EP、通信、长上下文、Tool Calling 和性能指标 |
+| 3. 算子开发 | 完成 Vector Add、Softmax、GEMM、RMSNorm 中至少三个算子 | 有正确性测试、精度比较、Profiling 和优化前后基准 |
+| 4. 生产化 | 部署多副本或多节点服务并接入统一模型网关 | 有容量测试、监控、故障演练、版本回滚和 SLO 验收 |
+
+对已经掌握 CUDA 的工程师，最值得花时间的不是重新学习线程块和矩阵乘法的基本概念，而是理解**目标芯片的执行模型、软件栈边界、算子库覆盖、编译器行为和性能分析方法**。这几项决定了 CUDA 经验能迁移多少，以及剩下的迁移成本究竟在哪里。
+
+
 ## 7. Coding Agent 平台：不要把 Agent 当成普通聊天请求
 
 1000 名开发者的 AI Coding 平台，真正消耗资源的单位不是“用户登录数”，而是活跃 Agent Session 和任务执行轨迹。
@@ -908,6 +1016,7 @@ CostPerSuccessfulTask =
 ### GPU 与数据中心
 
 - NVIDIA Blackwell / Blackwell Ultra 架构；
+- 国产 GPU 学习路线见第 6.9 节：PyTorch 后端、推理框架、Runtime、算子开发、TileLang / Triton 和多机生产化；
 - HGX B300、GB300 NVL72 参考架构；
 - HBM、NVLink、NVSwitch、PCIe、NUMA；
 - InfiniBand、RoCE、RDMA、ConnectX、BlueField；
@@ -965,6 +1074,21 @@ CostPerSuccessfulTask =
 - [NVIDIA NCCL Documentation](https://docs.nvidia.com/deeplearning/nccl/user-guide/docs/)：多 GPU 通信。
 - [NVIDIA DCGM](https://docs.nvidia.com/datacenter/dcgm/latest/)：GPU 健康和遥测。
 - [NVIDIA DCGM Exporter](https://docs.nvidia.com/datacenter/cloud-native/gpu-telemetry/latest/dcgm-exporter.html)：Prometheus GPU 指标。
+
+### 国产 GPU / NPU 学习资料
+
+- [昇腾开发者学习中心](https://www.hiascend.com/developer/learn)：包含应用开发、推理开发、训练开发、框架开发和 Ascend C 算子开发课程。
+- [CANN 文档中心](https://www.hiascend.com/cann/document)：CANN 架构、Ascend C、CATLASS、PyPTO、Runtime、HCCL、调试与性能分析；阅读时选择与目标芯片匹配的正式版本。
+- [Ascend C 编程指南：异构系统与编程模型](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/920beta2/programug/Ascendcopdevg/asc-devkit/docs/zh/guide/getting_started/quick_start/heterogeneous_system_and_programming_model.md)：理解 Host / Device、SIMD / SIMT 和 Ascend C 学习路径。该链接当前属于 Beta 文档，学习概念可以参考，生产环境需切换正式版本。
+- [TileLang Ascend 950 Backend](https://github.com/tile-ai/tilelang/blob/main/tilelang/ascend/README.md)：TileLang 的 Ascend 950 后端、Ascend C / PTO 代码生成、编译和 Profiling。
+- [DeepSeek TileKernels](https://github.com/deepseek-ai/TileKernels)：跨 CUDA / Ascend 后端的 TileLang 算子实现。
+- [DeepSeek DeepGEMM-Ascend](https://github.com/deepseek-ai/DeepGEMM-Ascend)：昇腾 GEMM 优化实现。
+- [DeepSeek DeepEP-Ascend](https://github.com/deepseek-ai/DeepEP-Ascend)：昇腾 MoE 专家并行通信组件。
+- [MUSA 编程指南](https://docs.mthreads.com/en/musa-sdk/musa-sdk-doc-online/history_version/v5.1.0/programming_guide/)：按入门、编程模型、语法、API、硬件架构和性能优化的顺序学习。
+- [MooreThreads / torch_musa](https://github.com/MooreThreads/torch_musa)：PyTorch 后端、CUDA 迁移、MUSA Extension 和示例。
+- [MooreThreads / tutorial_on_musa](https://github.com/MooreThreads/tutorial_on_musa)：MUSA 训练、推理和模型示例。
+- [Cambricon / torch_mlu](https://github.com/Cambricon/torch_mlu)：PyTorch MLU 后端和依赖版本说明。
+- [Cambricon / mlu-ops](https://github.com/Cambricon/mlu-ops)：BANG C 算子开发、测试和性能调优教程。
 
 ### 推理框架
 
