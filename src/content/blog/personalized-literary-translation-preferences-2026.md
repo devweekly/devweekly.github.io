@@ -2406,6 +2406,8 @@ combine_signals 应使用显式策略，而不是随意把规则、LLM 和 ML �
 
 需要分别测量 Pairwise Preference Accuracy、Calibration、Applicability Accuracy、False Personalization Rate、Abstention Quality、Preference Update Quality、Cross-Project Generalization，以及达到同样偏好质量所需的用户反馈次数和交互负担。
 
+**代码范围说明：** `temp/personal-preference-model/` 已提供第 1—5 阶段的可运行参考实现，包括证据存储、Jev/LLM 结构化提取、门控、层次 Bradley–Terry、权重持久化、留出集评估、Resolver 和阈值式主动询问。第 6 阶段的 Preference Head / Adapter / LoRA 暂时只定义进入条件，没有用合成数据伪造一个训练脚本。真正的微调需要足够的真实用户样本、跨作品/时间隔离的验证集，以及对生成输出的独立 A/B 评估。
+
 ### 38.3 最终技术选择
 
 针对个人阅读和文学翻译偏好，当前最合理的技术路径不是先训练一个只属于自己的 Transformer，而是：
