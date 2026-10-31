@@ -354,7 +354,10 @@ export class AgentObserver {
     context = this.withSession(context);
     const value = asRecord(result);
     const rawUsage = asRecord(value.usage);
-    const usage = makeUsage(context.provider === 'copilot' ? rawUsage : {
+    const usage = makeUsage(context.provider === 'copilot' ? {
+      ...rawUsage,
+      cost: rawUsage.totalPremiumRequestCost,
+    } : {
       ...rawUsage,
       cacheReadTokens: rawUsage.cacheReadTokens,
       cacheCreationTokens: rawUsage.cacheCreationTokens,
@@ -368,7 +371,7 @@ export class AgentObserver {
     }, {
       category: 'agent',
       status: 'completed',
-      durationMs: nonNegative(value.durationMs),
+      ...(nonNegative(value.durationMs) !== undefined ? { durationMs: nonNegative(value.durationMs)! } : {}),
       ...(usage ? { usage } : {}),
     }));
   }
