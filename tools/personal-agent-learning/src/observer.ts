@@ -107,7 +107,7 @@ export class AgentObserver {
     await mkdir(directory, { recursive: true, mode: 0o700 });
     const filename = join(directory, sessionKey + '.jsonl');
     // Mirror the already bounded and redacted event, never the raw SDK payload.
-    await appendFile(filename, JSON.stringify(saved) + '\\n', {
+    await appendFile(filename, JSON.stringify(saved) + '\n', {
       encoding: 'utf8',
       flag: 'a',
       mode: 0o600,
