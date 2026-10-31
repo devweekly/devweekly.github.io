@@ -96,6 +96,70 @@ class PreferencePipelineTests(unittest.TestCase):
         self.assertTrue(decision.approved)
         self.assertEqual(decision.reason, "VALIDATED")
 
+    def test_evidence_cannot_reference_another_users_event(self) -> None:
+        event = FeedbackEvent(
+            user_id="u1",
+            event_type="negative_feedback",
+            raw_feedback="Over-polished.",
+            task_context=self.task,
+        )
+        self.store.record_event(event)
+        from personal_preference_model.types import PreferenceEvidence
+
+        evidence = PreferenceEvidence(
+            event_id=event.event_id,
+            user_id="u2",
+            dimension="style.polish",
+            direction="avoid",
+            confidence=0.9,
+            rationale="Cross-user reference must be rejected.",
+            scope={"text_type": ["psychological_narration"]},
+        )
+        with self.assertRaisesRegex(ValueError, "same source Event user_id"):
+            self.store.record_evidence(evidence)
+
+    def test_claim_cannot_reference_another_users_event(self) -> None:
+        event = FeedbackEvent(
+            user_id="u2",
+            event_type="explicit_rule",
+            raw_feedback="Prefer restrained prose.",
+            task_context=TaskContext(
+                user_id="u2",
+                task_type="translation_review",
+                genre="literary-fiction",
+                text_type="psychological_narration",
+            ),
+        )
+        self.store.record_event(event)
+        claim = PreferenceClaim(
+            user_id="u1",
+            dimension="style.polish",
+            value="prefer_restrained",
+            strength=0.8,
+            confidence=0.9,
+            scope={"text_type": ["psychological_narration"]},
+            source_kind="inferred",
+            valid_from=self.task.timestamp,
+            supporting_event_ids=(event.event_id,),
+        )
+        with self.assertRaisesRegex(ValueError, "same user"):
+            self.store.create_claim(claim)
+
+    def test_resolver_rejects_claim_from_another_user(self) -> None:
+        claim = PreferenceClaim(
+            user_id="u2",
+            dimension="narration.subtlety",
+            value="preserve_implicit_emotion",
+            strength=0.8,
+            confidence=0.95,
+            scope={"text_type": ["psychological_narration"]},
+            source_kind="inferred",
+            valid_from=self.task.timestamp,
+        )
+        snapshot = PreferenceResolver(self.store).resolve(self.task, [claim])
+        self.assertEqual(snapshot["applied"], [])
+        self.assertEqual(snapshot["excluded"][0]["reason"], "USER_MISMATCH")
+
     def test_scope_mismatch_is_excluded(self) -> None:
         dialogue_claim = PreferenceClaim(
             user_id="u1",
