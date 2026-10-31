@@ -26,7 +26,7 @@ def _scope_matches(scope: dict[str, Any], task: TaskContext) -> bool:
     for scope_key, expected in scope.items():
         context_key = _SCOPE_ALIASES.get(scope_key, scope_key)
         if context_key not in context:
-            continue
+            return False
         if expected in (None, "", [], ()):
             continue
         actual = context.get(context_key)
@@ -47,7 +47,7 @@ def _is_time_valid(claim: PreferenceClaim, timestamp: str) -> bool:
             if current >= end:
                 return False
         return True
-    except ValueError:
+    except (ValueError, TypeError):
         return False
 
 
