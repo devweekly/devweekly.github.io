@@ -6,6 +6,7 @@ export interface LearningConfig {
   version: 1;
   home: string;
   traceDatabase: string;
+  eventDirectory: string;
   learningDatabase: string;
   profileDirectory: string;
   reflectorProvider: 'copilot' | 'codebuddy';
@@ -29,6 +30,7 @@ export function defaultConfig(): LearningConfig {
     version: 1,
     home,
     traceDatabase: join(home, 'agent-traces.sqlite'),
+    eventDirectory: join(home, 'events'),
     learningDatabase: join(home, 'learning.sqlite'),
     profileDirectory: join(home, 'profile'),
     reflectorProvider: 'codebuddy',
@@ -57,6 +59,7 @@ function validateConfig(value: unknown, defaults: LearningConfig): LearningConfi
     version: 1,
     home: defaults.home,
     traceDatabase: resolve(String(input.traceDatabase || defaults.traceDatabase)),
+    eventDirectory: resolve(String(input.eventDirectory || defaults.eventDirectory)),
     learningDatabase: resolve(String(input.learningDatabase || defaults.learningDatabase)),
     profileDirectory: resolve(String(input.profileDirectory || defaults.profileDirectory)),
     reflectorProvider: provider,
@@ -110,6 +113,7 @@ export function loadConfig(): LearningConfig {
 export function ensureConfigDirectories(config: LearningConfig): void {
   ensurePrivateDirectory(config.home);
   ensurePrivateDirectory(dirname(config.traceDatabase));
+  ensurePrivateDirectory(config.eventDirectory);
   ensurePrivateDirectory(dirname(config.learningDatabase));
   ensurePrivateDirectory(config.profileDirectory);
 }
