@@ -11,8 +11,8 @@ function markdownEscape(value: string): string {
     .replaceAll('<', '&lt;')
     .replaceAll('>', '&gt;')
     .replaceAll('|', '\\|')
-    .replaceAll('\\n', ' ')
-    .replaceAll('\\r', ' ');
+    .replaceAll('\n', ' ')
+    .replaceAll('\r', ' ');
 }
 
 function scopeLabel(item: ProfilePreference): string {
