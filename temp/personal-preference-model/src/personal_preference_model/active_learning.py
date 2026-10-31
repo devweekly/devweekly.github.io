@@ -19,6 +19,12 @@ class ActivePreferenceQuestionSelector:
         minimum_task_impact: float = 0.60,
         minimum_user_samples: int = 2,
     ) -> None:
+        if not 0.0 <= uncertainty_band <= 1.0:
+            raise ValueError("uncertainty_band must be between 0 and 1")
+        if not 0.0 <= minimum_task_impact <= 1.0:
+            raise ValueError("minimum_task_impact must be between 0 and 1")
+        if minimum_user_samples < 0:
+            raise ValueError("minimum_user_samples cannot be negative")
         self.uncertainty_band = uncertainty_band
         self.minimum_task_impact = minimum_task_impact
         self.minimum_user_samples = minimum_user_samples
