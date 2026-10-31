@@ -795,3 +795,481 @@ Translation Constraints
 8. He et al. (2024), [Improving Machine Translation with Human Feedback: An Exploration of Quality Estimation as a Reward Model](https://aclanthology.org/2024.naacl-long.451.pdf), NAACL 2024.
 9. Mirkin & Meunier (2015), [Personalized Machine Translation: Predicting Translational Preferences](https://aclanthology.org/D15-1238.pdf), ACL 2015.
 10. Jiang et al. (2024), [A Survey on Human Preference Learning for Large Language Models](https://arxiv.org/abs/2406.11191), survey of feedback sources, preference modeling, utilization and evaluation.
+
+
+---
+
+# 补充研究：长期记忆、短期记忆、RAG 与 Semantic Search 在个人偏好学习中的作用
+
+> 本补充将问题放回通用的 LLM 个性化、用户建模和记忆架构中讨论，不依赖任何具体翻译产品。
+
+## 14. 先区分四种不同的问题
+
+“让模型记住我喜欢什么”至少包含四个独立问题：
+
+1. **记忆形成（Memory Formation）**：一次评分、比较、修改，是否值得保存？保存原始行为还是抽象结论？
+2. **记忆组织（Memory Organization）**：信息属于当前任务状态、一次历史事件、长期稳定偏好，还是可复用的示例？
+3. **记忆检索（Memory Retrieval）**：当前任务需要调用哪些历史证据？按什么线索找？
+4. **记忆应用（Memory Utilization）**：取回的信息如何影响当前生成？是否适用？是否应该忽略？
+
+长期记忆、短期记忆解决的是时间和持久性；RAG 解决的是外部知识按需进入上下文；Semantic Search 解决的是语义层面的候选发现。它们不是同一层技术，也不能互相替代。
+
+## 15. 短期记忆与长期记忆：建议采用多时间尺度模型
+
+### 15.1 短期记忆（Working / Session Memory）
+
+短期记忆保存当前任务和当前会话正在发生的事情，例如：
+
+- 正在阅读哪一本书、哪一章、哪一段；
+- 当前正在比较的 A/B 译文；
+- 本轮已经确认的局部风格要求；
+- 当前讨论中尚未解决的歧义；
+- 用户刚刚表达、尚未判断是否长期有效的偏好；
+- 当前选定的风格组合及其临时调整。
+
+它的特点是高时效性、强上下文依赖、生命周期短。任务结束后，大部分内容不应自动升级为长期记忆。
+
+短期记忆的价值不是“把更多历史塞进 Prompt”，而是保持当前任务的连续性。当前章节的局部决定必须能被后续段落使用，但不能因此污染其他作品。
+
+### 15.2 长期记忆（Long-term User Memory）
+
+长期记忆保存跨会话、跨任务仍有价值的信息：
+
+- 用户明确声明的长期阅读偏好；
+- 多次反馈反复出现的偏好模式；
+- 已确认的正例、反例；
+- 偏好形成和变化的历史；
+- 用户明确要求长期遵守的规则；
+- 不同文体和语言方向下的条件偏好。
+
+长期记忆不是一段永远不变的 Profile。它应该包含可更新的语义画像，也要保留支撑画像的原始事件。
+
+### 15.3 情景记忆与语义记忆（Episodic / Semantic Memory）
+
+这一区分比简单的短期/长期二分更重要。
+
+**情景记忆**记录发生过什么：
+
+- 2026 年 10 月，用户比较了两个译文；
+- 用户选择 B；
+- 用户指出 A 的“作罢”过于总结性；
+- 对应的原文、上下文、两个候选译文和时间戳。
+
+**语义记忆**记录从多个事件中归纳出的知识：
+
+- 用户在文学叙述中倾向保留人物的迟疑和含蓄；
+- 用户不喜欢没有原文依据的动作补写；
+- 用户通常接受中文语序调整，但不喜欢改变叙述距离。
+
+情景记忆回答“过去发生了什么”；语义记忆回答“从这些经历中，目前可以认为用户有什么倾向”。
+
+建议将它们分开存储和更新。语义记忆必须能够回溯到情景证据；如果用户改变偏好，可以重新解释历史事件，而不必丢弃原始记录。
+
+### 15.4 还需要程序性记忆（Procedural Memory）
+
+除了情景和语义记忆，还应考虑程序性记忆，即“如何完成任务”的经验。
+
+例如：
+
+- 用户希望先看忠实译文，再看风格润色版；
+- 用户喜欢比较完整段落，而不是孤立句子；
+- 用户对不确定的文化典故希望保留注释；
+- 用户希望先指出问题，再给出修改版本。
+
+这些并非文学审美本身，而是用户偏好的工作流程。它们可能影响交互和生成，但应与语言审美画像分开。
+
+### 15.5 推荐的记忆分层
+
+| 记忆类型 | 典型内容 | 生命周期 | 更新方式 |
+|---|---|---|---|
+| Working memory | 当前段落、当前比较、待解决问题 | 当前推理/操作 | 连续覆盖和追加 |
+| Session memory | 当前会话形成的临时决定 | 会话或任务周期 | 会话结束时总结 |
+| Episodic memory | 评分、选择、修改、批注等历史事件 | 长期保存 | 追加，不覆盖 |
+| Semantic preference memory | 多次证据归纳出的偏好 | 长期、可演化 | 证据驱动更新 |
+| Procedural memory | 用户喜欢的工作流程和交互方式 | 长期、可演化 | 重复行为和明确声明更新 |
+| Project memory | 某本书、某个作者或某项任务的局部约束 | 项目生命周期 | 项目内更新 |
+
+短期/长期与情景/语义并不是完全相同的分类轴。例如，一条刚发生的反馈最初是 Session 中的情景记录，经过确认后仍然作为长期 Episodic Memory 保存；多条历史事件再归纳为 Semantic Preference Memory。
+
+## 16. RAG 对个人偏好到底有什么帮助？
+
+有帮助，但需要明确：这里不是传统意义上“从文档知识库检索答案”的 RAG，而是 **Preference-aware Memory RAG**，即从用户自己的历史反馈和偏好知识中检索与当前任务有关的证据。
+
+传统 RAG 通常回答：
+
+> 哪些文档包含与当前问题相关的信息？
+
+偏好 RAG 需要回答：
+
+> 用户过去在什么相似情境下表达过什么偏好？这些偏好是否适用于当前任务？有哪些正反例能帮助模型作出符合用户审美的选择？
+
+### 16.1 RAG 可以检索三类内容
+
+**第一类：明确规则。**
+
+例如用户曾多次明确要求，不要擅自解释原文没有说明的心理活动。这类内容可以直接检索，通常不需要向量化。
+
+**第二类：偏好证据。**
+
+例如用户在五个类似段落中都选择了保留迟疑感的译文。这些证据可以帮助模型理解抽象规则从何而来，也能在规则不明确时重新判断。
+
+**第三类：正反例。**
+
+例如用户喜欢的日文对话翻译、拒绝的英文心理描写，以及用户自己修改过的句子。这类材料适合按文本类型和语义场景检索。
+
+### 16.2 不应该把所有偏好历史直接放进 Prompt
+
+这会产生几个问题：
+
+- 历史越多，噪声越多；
+- 同一偏好的多个历史表达可能互相重复；
+- 不同作品的特殊偏好可能被误认为全局规则；
+- 当前任务不相关的偏好占用上下文；
+- 模型容易过度关注历史样例，机械模仿。
+
+更合理的策略是先维护一个紧凑的语义 Profile，再按当前任务检索少量相关事件和样例。
+
+### 16.3 Preference RAG 的检索流程
+
+1. 解析当前任务：语言方向、文体、文本类型、人物/叙述者、当前目标。
+2. 从 Profile 获取稳定偏好作为检索先验。
+3. 通过结构化条件过滤：适用范围、维度、语言、文体、时间、置信度。
+4. 通过全文检索和 Semantic Search 找相似反馈事件及正反例。
+5. 对候选记忆做重排序，考虑偏好强度、证据可信度、时间和适用范围。
+6. 去重、冲突检查和预算裁剪。
+7. 编译成当前任务专用的 Preference Context。
+8. 记录本次实际使用的记忆 ID，供事后分析。
+
+这意味着 RAG 不只是“找相似文本”，还需要用户模型参与检索和排序。
+
+## 17. Semantic Search 是否有必要？
+
+有价值，但它解决的是“语义相似”，不是“偏好正确”。
+
+例如，当前原文是一段人物迟疑的描写。用户历史中可能有：
+
+- 一段英文人物犹豫的叙述；
+- 一段日文对话中的停顿；
+- 一段心理描写中没有说出口的话。
+
+这三段的表面词汇可能完全不同，但它们都涉及“保留含蓄和迟疑”。Semantic Search 有机会发现这些跨语言、跨表达形式的相关例子。
+
+相反，纯关键词搜索可能只找到同样出现“犹豫”“迟疑”的句子，却遗漏表达方式完全不同但审美问题相同的样例。
+
+### 17.1 为什么不能只用向量相似度？
+
+Embedding 相似度通常衡量语义接近程度，而不是用户是否喜欢。
+
+以下两个片段可能语义非常接近，但用户对它们的评价完全相反：
+
+- 一个保留原文的含蓄表达；
+- 一个把含蓄表达解释成明确心理活动。
+
+如果只按向量相似度检索，很可能把负面例子当成正面指导。
+
+因此，每个样例必须携带明确的偏好标签和上下文：
+
+- preferred / rejected；
+- preference dimension；
+- feedback strength；
+- scope；
+- source language；
+- text type；
+- evidence confidence；
+- project / global；
+- original source and context。
+
+检索后还需要根据这些元数据进行过滤和排序。
+
+### 17.2 推荐 Hybrid Retrieval，而不是 Vector-only
+
+| 检索方式 | 优点 | 局限 | 适合内容 |
+|---|---|---|---|
+| Exact / Keyword | 精确、可解释 | 无法识别同义表达 | 专名、明确规则、原始批注 |
+| Metadata filtering | 能严格控制范围 | 依赖标签质量 | 文体、语言、项目、维度 |
+| Semantic Search | 找到跨表达形式的相似案例 | 可能语义相似但偏好相反 | 正反例、隐含审美现象 |
+| Full-text search | 适合用户自然语言理由 | 语义泛化有限 | 反馈理由、用户原话 |
+| Reranking | 综合多种证据重新排序 | 增加推理成本 | 最终候选选择 |
+
+建议采用：
+
+```
+Candidate Retrieval
+    = Metadata Filter
+    + Keyword / Full-text Search
+    + Semantic Search
+
+Final Ranking
+    = Semantic Relevance
+    + Preference Relevance
+    + Scope Match
+    + Evidence Confidence
+    + Temporal Validity
+    + Feedback Strength
+```
+
+这里尤其要区分 Semantic Relevance 和 Preference Relevance。一个历史片段可能与当前句子语义高度相似，却表达了用户不喜欢的翻译方式；另一个片段语义不完全相同，却能说明用户在相同审美维度上的选择。
+
+### 17.3 何时需要向量数据库？
+
+不要一开始就引入。
+
+如果用户只有几十条到几百条反馈，可以先使用：
+
+- SQLite / PostgreSQL；
+- 结构化标签；
+- 全文搜索；
+- 简单的元数据过滤；
+- 小规模 LLM reranking。
+
+当正反例库增长到需要跨语言、跨文体发现隐含审美相似性时，再考虑 Embedding Index。
+
+向量索引应当是样例检索的辅助索引，不应成为 Preference Profile 的唯一存储。原始反馈、评分、选择、规则和置信度必须可以通过结构化查询直接访问。
+
+## 18. 一个更完整的个人记忆架构
+
+综合以上研究，建议把个人偏好学习系统划分为六个逻辑层：
+
+```mermaid
+flowchart TB
+    subgraph Interaction[用户交互]
+        A[阅读 / 评分 / 比较 / 修改]
+    end
+    subgraph Working[工作记忆]
+        B[当前会话与任务状态]
+    end
+    subgraph Store[持久记忆]
+        C[Episodic Memory]
+        D[Semantic Preference Memory]
+        E[Procedural Memory]
+        F[Project / Context Memory]
+    end
+    subgraph Retrieval[记忆检索]
+        G[Metadata Filter]
+        H[Full-text Search]
+        I[Semantic Search]
+        J[Personalized Reranker]
+    end
+    subgraph Compile[任务上下文编译]
+        K[Task-conditioned Preference Context]
+        L[Positive / Negative Examples]
+    end
+    subgraph Apply[模型应用与反馈]
+        M[Generation / Review / Decision]
+        N[User Feedback]
+    end
+    A --> B
+    B --> C
+    C --> D
+    C --> E
+    C --> F
+    D --> G
+    E --> G
+    F --> G
+    C --> H
+    C --> I
+    G --> J
+    H --> J
+    I --> J
+    J --> K
+    J --> L
+    K --> M
+    L --> M
+    M --> N
+    N --> C
+```
+
+注意，这不是要求必须部署六个独立服务。它们是逻辑职责，可以由一个数据库、一组服务函数和一个检索组件实现。
+
+### 18.1 关键组件之间的边界
+
+| 组件 | 职责 | 不应该做什么 |
+|---|---|---|
+| Working Memory | 当前任务连续性 | 不应自动成为长期用户偏好 |
+| Episodic Store | 保存历史行为和证据 | 不应自行把事件改写成确定规则 |
+| Preference Model | 归纳稳定、条件化的偏好 | 不应丢失原始证据 |
+| Retrieval | 选择当前相关记忆 | 不应只看向量相似度 |
+| Context Compiler | 把记忆转成当前任务可用的上下文 | 不应将全部记忆原样拼接 |
+| Feedback Learner | 根据新证据更新偏好 | 不应由生成模型单方面确认自己的判断 |
+
+## 19. 动态偏好：短期变化不应立即覆盖长期偏好
+
+一个人可能今天想读忠实、克制的译文，明天想尝试更有文学修辞的版本。这不一定意味着长期审美发生变化。
+
+建议同时维护：
+
+- Long-term preference：跨任务稳定趋势；
+- Short-term preference：当前会话或当前任务的临时倾向；
+- Explicit override：用户明确要求本次任务偏离长期偏好；
+- Historical preference：历史版本，支持时间回溯。
+
+可以参考 EMA（指数移动平均）和滑动窗口，但不能简单对所有反馈做统一平均。
+
+例如：
+
+[
+P_t = alpha P_{recent} + (1-alpha)P_{long}
+]
+
+这只能作为数值估计的简化形式。实际系统应按偏好维度和适用范围分别更新，并考虑反馈类型、证据强度和用户是否明确声明。
+
+一次明确的“以后不要这样翻译”应比一次普通 7 分评分有更高权重。一次针对某本书的特殊要求，则只应该更新项目级状态。
+
+还应区分：
+
+- **Preference change**：用户的长期偏好确实改变；
+- **Context change**：当前作品要求不同；
+- **Exploration**：用户正在尝试一种新风格；
+- **Feedback noise**：一次偶然评分或误操作。
+
+### 19.1 记忆更新比记忆检索更难
+
+2026 年 ACL Findings 的 PAMU 研究指出，现有记忆系统已经投入大量精力优化向量检索和知识组织，但动态更新偏好表示仍然是重要问题。该研究通过滑动窗口和 EMA 融合短期与长期倾向。
+
+这对个人审美特别重要：系统不能只会“找到过去的偏好”，还必须判断新反馈是临时变化、长期趋势，还是与已有偏好矛盾的新证据。
+
+参考：[Preference-Aware Memory Update for Long-Term LLM Agents — ACL 2026](https://aclanthology.org/2026.findings-acl.38/)
+
+## 20. 不能忽略过度个性化（Over-personalization）
+
+记忆并非越多越好，也不是每次生成都应该调用所有已知偏好。
+
+EMNLP 2026 的 OP-Bench 研究指出，引入用户记忆后，模型可能出现三类过度个性化：
+
+1. **Irrelevance**：把无关的历史偏好用于当前任务；
+2. **Repetition**：反复提及或使用用户历史信息；
+3. **Sycophancy**：过度迎合用户，甚至牺牲判断质量。
+
+这对文学翻译有直接影响。例如，用户喜欢简洁表达，并不意味着所有人物都应该说短句；用户喜欢某位作家的幽默，也不意味着悲剧段落应该被强行幽默化。
+
+因此，检索系统应该有一个重要决策：
+
+> 当前任务是否真的需要使用某条个人偏好？
+
+没有相关证据时，默认使用作品本身的语言特征和通用翻译原则，而不是强行个性化。
+
+参考：[OP-Bench: Benchmarking Over-Personalization — EMNLP 2026](https://aclanthology.org/2026.emnlp-main.1168/)
+
+## 21. 新研究：从相似度检索走向用户条件化检索
+
+近期研究已经开始指出，普通 RAG 的查询相似度不等于用户需要的记忆。
+
+### 21.1 VARS：长期与短期偏好向量
+
+2026 年的 **User Preference Modeling for Conversational LLM Agents: Weak Rewards from Retrieval-Augmented Interaction** 提出 VARS，将用户表示为共享偏好空间中的长期与短期向量，通过用户反馈中的弱标量奖励在线更新，并用这些向量调整结构化偏好记忆的检索分数。
+
+对个人偏好系统的启发是：可以把长期审美倾向与当前阅读状态分开建模，让当前任务影响检索排序，但不立即改写长期画像。
+
+论文：[VARS — arXiv 2603.20939](https://arxiv.org/abs/2603.20939)
+
+### 21.2 PPRO：让用户画像参与记忆检索排序
+
+2026 年的 **Learning User-Aware Recall: Personalized Retrieval in Long-Term Conversational Memory** 提出 PPRO，先构建情景和语义记忆，再通过累积记忆建立用户 Profile，并将 Profile 作为个性化先验参与检索排序。
+
+这比“只拿当前文本做 embedding search”更接近真正的个人偏好检索：系统不仅要判断两个文本是否相似，还要判断这条历史证据对当前用户是否有意义。
+
+论文：[PPRO — arXiv 2607.00017](https://arxiv.org/abs/2607.00017)
+
+### 21.3 Prospection-Guided Retrieval：根据任务目标主动寻找记忆
+
+2026 年的 **Thinking Ahead: Prospection-Guided Retrieval of Memory with Language Models** 指出，某些有价值的历史记忆与当前查询的 embedding 相似度很低。研究提出先推演当前任务可能需要的后续步骤，再把这些步骤作为额外检索线索。
+
+在阅读偏好场景中，当前请求可能只是“润色这段对话”，但真正有用的记忆可能是用户以前对人物身份差异、对话口语度和叙述距离的要求。直接搜索“润色”未必能找到这些偏好。
+
+论文：[Prospection-Guided Retrieval — EMNLP 2026](https://aclanthology.org/2026.emnlp-main.2054/)
+
+### 21.4 AlignXada：通用偏好画像需要按任务裁剪
+
+2026 年的 **Learning Preference Adaptation for Large Language Model Personalization via Verbal Reinforcement Learning** 研究任务条件化偏好适配。它指出，完整的通用偏好摘要往往包含与当前任务无关的信息，直接注入会浪费上下文并产生干扰。
+
+论文提出 AlignXada，根据下游任务把通用画像压缩成任务专用表示。在其 13 个任务、3 个模型的实验中，平均保留约 22.8% 的原 Profile token，同时报告了相对 RAG 的性能收益。
+
+对个人阅读的启发是：不是每次都把完整的阅读偏好交给模型，而是根据“当前是人物对白、景物描写还是心理活动”编译一份相关的偏好子集。
+
+论文：[AlignXada — arXiv 2608.09507](https://arxiv.org/abs/2608.09507)
+
+## 22. 记忆系统的评估：不能只测试能否找回历史
+
+建议建立四层评估：
+
+| 评估层 | 测试问题 | 指标或方法 |
+|---|---|---|
+| Memory Write | 是否保存了真正重要的反馈？是否误存临时信息？ | Precision / Recall、用户审查 |
+| Memory Retrieval | 是否找到了正确证据？是否带回错误项目偏好？ | Recall@K、MRR、NDCG、scope accuracy |
+| Preference Application | 是否正确应用了偏好？是否过度应用？ | Pairwise win rate、维度一致性、过度个性化率 |
+| Preference Evolution | 新反馈是否合理改变画像？旧偏好是否被错误覆盖？ | Temporal consistency、change detection、profile audit |
+
+测试集应包含：
+
+- 同一偏好在不同措辞下的表达；
+- 同一语义场景下的正例和反例；
+- 全局偏好与项目偏好冲突；
+- 旧偏好被明确修正；
+- 用户临时尝试新风格；
+- 当前任务与某条历史偏好无关；
+- 需要多条历史反馈才能推断的隐含偏好。
+
+可以参考以下长期记忆评测：
+
+- [LoCoMo](https://snap-research.github.io/locomo/)：长时间、多会话、单跳、多跳和时间推理。
+- [LongMemEval](https://github.com/xiaowu0162/LongMemEval)：长期对话记忆和个性化信息检索。
+- [PrefEval](https://arxiv.org/abs/2502.09597)：显式与隐式偏好遵循。
+- [OP-Bench](https://aclanthology.org/2026.emnlp-main.1168/)：记忆使用是否过度。
+- [LoCoMo-Plus](https://arxiv.org/abs/2602.10715)：超越表层事实回忆，评估隐含约束的保留和应用。
+
+这些基准可以借鉴任务设计，但不能直接替代文学偏好评估。最终仍需要以真实读者的选择、修改和整段阅读体验作为核心评价依据。
+
+## 23. 综合判断：这些技术分别值得投入多少？
+
+| 技术 | 对个人阅读偏好学习的价值 | 建议 |
+|---|---|---|
+| Working / Short-term Memory | 很高：保持当前阅读和任务状态 | 必须有 |
+| Episodic Long-term Memory | 极高：保存评分、比较、修改等证据 | 必须有 |
+| Semantic Preference Memory | 极高：把历史反馈归纳成可复用的偏好 | 必须有 |
+| Procedural Memory | 中高：记住用户喜欢的交互和工作方式 | 建议有 |
+| RAG | 高：按任务动态取回历史偏好和例子 | 必须有检索能力，但不必一开始部署复杂 RAG |
+| Semantic Search | 中高：发现跨语言、跨文体的隐含审美相似性 | 样例增多后引入 |
+| Metadata / Full-text Search | 极高：控制范围和精确查找 | 应先于或同时于向量检索 |
+| Personalized Reranking | 高：区分“文本相似”与“用户真正偏好” | 第二阶段 |
+| Knowledge Graph | 中等：表达人物、作品、文体、偏好维度之间的关系 | 有复杂关联需求再引入 |
+| Fine-tuning / LoRA / DPO | 后期价值较高，但数据和评估要求高 | 不作为起点 |
+| Long-term Preference Vectors | 研究价值高，工程上可后置 | 大量反馈后探索 |
+
+## 24. 最终结论：个人偏好系统不是一个 Vector Database，而是一个持续演化的 User Model
+
+这项需求真正需要的不是“把所有阅读历史向量化”，而是建立一套完整的个人认知资产：
+
+- 短期记忆负责当前任务；
+- 情景记忆保存用户实际做过的选择；
+- 语义记忆归纳长期审美；
+- 程序性记忆保存用户的工作习惯；
+- 项目记忆保存局部约束；
+- RAG 负责根据当前任务取回相关证据；
+- Semantic Search 帮助发现跨表达形式的相似案例；
+- Personalized Reranking 判断哪些证据真正符合当前用户；
+- Preference Learning 决定如何从新反馈更新画像；
+- Evaluation 判断个性化是否真的改善了用户体验。
+
+最值得强调的设计原则是：
+
+**记忆存储、记忆检索、偏好推断、偏好应用和偏好更新应该是五个可独立验证的过程。**
+
+向量化只是检索索引的一种实现；RAG 只是把外部记忆引入当前推理的一种方式；真正决定系统是否越来越懂用户的，是它能否从有噪声、有上下文、有时间变化的真实反馈中，持续形成正确且可追溯的用户模型。
+
+---
+
+## 补充参考文献
+
+1. Sun et al. (2026), [Preference-Aware Memory Update for Long-Term LLM Agents](https://aclanthology.org/2026.findings-acl.38/), ACL Findings 2026.
+2. Zhang et al. (2025), [PRIME: Large Language Model Personalization with Cognitive Dual-Memory and Personalized Thought Process](https://aclanthology.org/2025.emnlp-main.1711/), EMNLP 2025.
+3. Zhang et al. (2025), [A Survey on Personalized Alignment—The Missing Piece for LLMs in Real-World Applications](https://aclanthology.org/2025.findings-acl.277/), ACL Findings 2025.
+4. Zhang et al. (2025), [A Survey on the Memory Mechanism of Large Language Model-based Agents](https://doi.org/10.1145/3748302), ACM TOIS 2025.
+5. Hao et al. (2026), [User Preference Modeling for Conversational LLM Agents: Weak Rewards from Retrieval-Augmented Interaction](https://arxiv.org/abs/2603.20939), VARS.
+6. Jiang et al. (2026), [Learning User-Aware Recall: Personalized Retrieval in Long-Term Conversational Memory](https://arxiv.org/abs/2607.00017), PPRO.
+7. Chopra et al. (2026), [Thinking Ahead: Prospection-Guided Retrieval of Memory with Language Models](https://aclanthology.org/2026.emnlp-main.2054/), EMNLP 2026.
+8. Liu et al. (2026), [Learning Preference Adaptation for LLM Personalization via Verbal Reinforcement Learning](https://arxiv.org/abs/2608.09507), AlignXada.
+9. Liu et al. (2026), [OP-Bench: Benchmarking Over-Personalization for Memory-Augmented Personalized Conversational Agents](https://aclanthology.org/2026.emnlp-main.1168/), EMNLP 2026.
+10. Terranova et al. (2025), [Evaluating Long-Term Memory for Long-Context Question Answering](https://arxiv.org/abs/2510.23730).
+11. Tan et al. (2025), [In Prospect and Retrospect: Reflective Memory Management for Long-term Personalized Dialogue Agents](https://aclanthology.org/2025.acl-long.413/), ACL 2025.
+12. Nam et al. (2026), [Learning to Summarize User Information for Personalized Reinforcement Learning from Human Feedback](https://www.microsoft.com/en-us/research/publication/learning-to-summarize-user-information-for-personalized-reinforcement-learning-from-human-feedback/), ICLR 2026.
+13. Zhang et al. (2025), [Personalization of Large Language Models: A Survey](https://mlanthology.org/tmlr/2025/zhang2025tmlr-personalization/), TMLR 2025.
