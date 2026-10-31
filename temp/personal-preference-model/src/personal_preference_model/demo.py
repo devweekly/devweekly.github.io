@@ -10,6 +10,7 @@ from .interpreter import DemoInterpreter, FeedbackInterpreter, OpenAICompatibleJ
 from .learner import PairwisePreferenceModel
 from .resolver import PreferenceResolver
 from .store import PreferenceStore
+from .validation import EvidencePromotionPolicy
 from .types import (
     FeedbackEvent,
     PairwiseSample,
@@ -131,9 +132,18 @@ def run_demo(database: str, use_llm: bool = False) -> dict[str, object]:
         interpreter = DemoInterpreter()
 
     evidence_items = interpreter.extract(feedback_event)
-    claims = [explicit_claim]
+    promotion_policy = EvidencePromotionPolicy(minimum_confidence=0.75)
+    promoted_count = 0
+    rejected_evidence: list[dict[str, str]] = []
     for evidence in evidence_items:
         store.record_evidence(evidence)
+        promotion = promotion_policy.evaluate(evidence)
+        if not promotion.approved:
+            rejected_evidence.append(
+                {"evidence_id": evidence.evidence_id, "reason": promotion.reason}
+            )
+            continue
+        promoted_count += 1
         claim_value = (
             f"prefer_{evidence.dimension.replace('.', '_')}"
             if evidence.direction == "prefer"
@@ -152,8 +162,7 @@ def run_demo(database: str, use_llm: bool = False) -> dict[str, object]:
                 supporting_event_ids=(feedback_event.event_id,),
             )
         )
-        claims.append(new_claim)
-
+    
     # Stage 3: train a small pairwise preference model.
     pairwise_samples = build_demo_samples(user_id)
     for sample in pairwise_samples:
@@ -188,6 +197,8 @@ def run_demo(database: str, use_llm: bool = False) -> dict[str, object]:
         "database": str(Path(database).resolve()),
         "event_count": store.get_event_count(user_id),
         "evidence_count": store.get_evidence_count(user_id),
+        "promoted_claim_count": promoted_count,
+        "rejected_evidence": rejected_evidence,
         "pairwise_sample_count": len(pairwise_samples),
         "snapshot": snapshot,
         "note": (
