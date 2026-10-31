@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>io.saga.personal-agent-learning.reflect</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/node</string>
+    <string>/ABSOLUTE/PATH/devweekly/tools/personal-agent-learning/dist/cli.js</string>
+    <string>reflect</string>
+    <string>--provider</string>
+    <string>codebuddy</string>
+    <string>--days</string>
+    <string>7</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/ABSOLUTE/PATH/devweekly/tools/personal-agent-learning</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>PERSONAL_AGENT_LEARNING_HOME</key>
+    <string>/Users/CHANGE_ME/.agent-learning</string>
+  </dict>
+
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>3</integer>
+    <key>Minute</key>
+    <integer>30</integer>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/Users/CHANGE_ME/.agent-learning/launchd-reflector.log</string>
+  <key>StandardErrorPath</key>
+  <string>/Users/CHANGE_ME/.agent-learning/launchd-reflector-error.log</string>
+</dict>
+</plist>
