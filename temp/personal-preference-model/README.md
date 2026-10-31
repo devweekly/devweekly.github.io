@@ -73,7 +73,7 @@ CandidateFeatureExtractor 可用同一 JSON client 评估原文与候选译文�
 
 对应文件：learner.py。
 
-PairwisePreferenceModel 是一个简单的 Bradley–Terry / Logistic 成对比较模型：
+PairwisePreferenceModel 是一个简单的 Bradley–Terry / Logistic 成对比较模型。Demo 会先使用三组虚构 reference users 建立 population prior，再用 demo 用户的独立样本学习 user delta；这些虚构样本仅演示层次结构，不能用于推断真实用户偏好。
 
 - population weights 从所有训练样本学习；
 - user delta 从单用户样本学习，并用 L2 正则向 population prior 收缩；
