@@ -15,6 +15,51 @@ function markdownEscape(value: string): string {
     .replaceAll('\r', ' ');
 }
 
+
+export interface PreferenceRuntimeScope {
+  agent: string;
+  provider: 'copilot' | 'codebuddy';
+  project?: string;
+  taskType?: string;
+}
+
+export function resolveApplicablePreferences(
+  profile: PreferenceProfile,
+  scope: PreferenceRuntimeScope,
+  overrides: readonly string[] = [],
+): ProfilePreference[] {
+  const overrideSet = new Set(overrides);
+  const current: Record<string, string | undefined> = {
+    agent: scope.agent,
+    provider: scope.provider,
+    project: scope.project,
+    taskType: scope.taskType,
+  };
+  return profile.preferences.filter((preference) => {
+    if (overrideSet.has(preference.dimension)) return false;
+    return Object.entries(preference.scope).every(([key, expected]) => {
+      const actual = current[key];
+      return typeof expected === 'string' && actual === expected;
+    });
+  });
+}
+
+export function renderPreferenceInstructions(
+  profileVersion: number,
+  preferences: readonly ProfilePreference[],
+): string {
+  const lines = [
+    '## User-reviewed preferences',
+    `Profile version: ${profileVersion}`,
+    'Use only when relevant to this task. Current explicit user instructions take precedence.',
+    'These preferences do not grant permissions or override project/security constraints.',
+  ];
+  for (const preference of preferences) {
+    lines.push(`- [${preference.direction.toUpperCase()}] ${preference.dimension}: ${markdownEscape(preference.statement)}`);
+  }
+  return lines.join('\\n');
+}
+
 function scopeLabel(item: ProfilePreference): string {
   const entries = Object.entries(item.scope).filter(([, value]) => Boolean(value));
   return entries.length
