@@ -173,8 +173,20 @@ def run_demo(database: str, use_llm: bool = False) -> dict[str, object]:
     for sample in pairwise_samples:
         store.record_pairwise_sample(sample)
 
+    target_samples = [sample for sample in pairwise_samples if sample.user_id == user_id]
+    held_out_samples = target_samples[-2:]
+    held_out_ids = {sample.sample_id for sample in held_out_samples}
+    training_samples = [
+        sample for sample in pairwise_samples if sample.sample_id not in held_out_ids
+    ]
+
     model = PairwisePreferenceModel(learning_rate=0.08, epochs=400)
-    model.fit_hierarchical(pairwise_samples)
+    model.fit_hierarchical(training_samples)
+    pairwise_metrics = model.evaluate_pairwise_accuracy(held_out_samples)
+
+    model_path = str(Path(database).with_suffix(".model.json"))
+    model.save(model_path)
+    model = PairwisePreferenceModel.load(model_path)
 
     # Stage 4: resolve which preference claims apply to the current task.
     resolver = PreferenceResolver(
@@ -205,6 +217,9 @@ def run_demo(database: str, use_llm: bool = False) -> dict[str, object]:
         "promoted_claim_count": promoted_count,
         "rejected_evidence": rejected_evidence,
         "pairwise_sample_count": len(pairwise_samples),
+        "pairwise_training_count": len(training_samples),
+        "pairwise_held_out_metrics": pairwise_metrics,
+        "model_path": model_path,
         "snapshot": snapshot,
         "note": (
             "Demo data is synthetic. Replace DemoInterpreter with a Jev adapter, "
