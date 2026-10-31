@@ -2357,7 +2357,7 @@ combine_signals 应使用显式策略，而不是随意把规则、LLM 和 ML �
 
 ## 38. 实际实施：先统计模型，再考虑个人 Transformer
 
-本章对应的可运行分阶段实现已放在仓库 [temp/personal-preference-model](../temp/personal-preference-model/README.md)，包含 SQLite 证据存储、Jev/LLM 结构化反馈适配器、Bradley–Terry 偏好学习、Resolver 和主动询问示例。代码以标准库为核心，便于逐阶段运行和替换模型提供方。
+本章对应的可运行分阶段实现已放在仓库 [temp/personal-preference-model](../temp/personal-preference-model/README.md)，包含 SQLite 事件/证据/Claim 存储、Jev/LLM JSON 适配器、Evidence Promotion Gate、层次 Bradley–Terry 学习、模型保存/加载、留出集评估、带用户隔离检查的 Resolver、主动询问和 14 个 unittest 用例。代码以 Python 标准库为核心，便于逐阶段运行和替换模型提供方；当前示例用合成数据演示，不应视为真实用户测试结果。
 
 建议采用渐进式路线：
 
@@ -2509,7 +2509,7 @@ LLM 的价值在于把自然语言理由和文本差异解释成候选偏好维�
 
 ## 41. Preference Profile：稳定偏好是不是一个通用概念？有没有大规模实际应用？
 
-有，而且它远早于 LLM。**稳定用户偏好画像（Preference Profile / Taste Profile / User Interest Profile）是推荐系统和数字产品个性化的成熟建模模式。** 不同公司未必使用统一的 PreferenceProfile 数据结构或同一个名称，但核心思想相似：从长期行为和明确反馈中形成用户兴趣、习惯和偏好状态，再用它影响排序、推荐或内容选择。
+有，而且它远早于 LLM。**稳定用户偏好画像（Preference Profile / Taste Profile / User Interest Profile）是推荐系统和数字产品个性化的成熟建模模式。** 这里的“稳定”是相对于会话级短期意图而言，表示更新速度较慢、跨多次交互仍能复现的倾向；它不表示偏好永久不变，也不意味着每条 Profile 都应长期有效。不同公司未必使用统一的 PreferenceProfile 数据结构或同一个名称，但核心思想相似：从长期行为和明确反馈中形成用户兴趣、习惯和偏好状态，再用它影响排序、推荐或内容选择。
 
 需要区分两种 Profile：
 
@@ -2524,7 +2524,7 @@ LLM 的价值在于把自然语言理由和文本差异解释成候选偏好维�
 
 传统系统常把这两种信息分别编码为长期用户表示和 session representation；LLM 时代则进一步尝试把它们转成可读的自然语言 Profile，使模型、用户和不同应用能够更直接地理解它们。
 
-Spotify 是一个公开、直接的产品例子。它的 Taste Profile 根据用户的搜索、播放、跳过、收藏等行为形成对个人音乐和内容口味的解释，并影响推荐。产品截至 2026 年 10 月仍标为 Beta，官方支持文档列出的范围是移动端 Premium 用户且年满 18 岁；Taste Profile 只影响 Home 推荐，不替用户执行 Follow，也不支持将自然语言要求当作“始终展示/永不展示”的硬规则。Spotify 还允许用户把单曲或 Playlist 从 Taste Profile 中排除，避免孩子的音乐、助眠音频或一次性播放污染长期推荐。2026 年，Spotify 将 Taste Profile Beta 扩展为用户可查看和修改的画像：用户可以通过自然语言告诉系统想探索的新风格、当前生活状态、希望减少或增加的内容。[Spotify：Understanding Recommendations](https://www.spotify.com/us/safetyandprivacy/understanding-recommendations) · [Exclude from Taste Profile](https://newsroom.spotify.com/2025-10-01/exclude-tracks-taste-profile/) · [Taste Profile Beta](https://newsroom.spotify.com/2026-09-23/taste-profile-shape-home-feed/)
+Spotify 是一个公开、直接的产品例子。它的 Taste Profile 根据用户的搜索、播放、跳过、收藏等行为形成对个人音乐和内容口味的解释，并影响推荐。产品截至 2026 年 10 月仍标为 Beta；2026 年 9 月官方公告说明首批扩展到美国和新西兰的 18 岁以上 Premium 用户，支持文档将其描述为移动端 Premium 18+ 功能。AI 生成的 Profile 摘要目前提供英语和西班牙语；Taste Profile 只影响 Home 推荐，不替用户执行 Follow，也不支持将自然语言要求当作“始终展示/永不展示”的硬规则。Spotify 还允许用户把单曲或 Playlist 从 Taste Profile 中排除，避免孩子的音乐、助眠音频或一次性播放污染长期推荐。2026 年，Spotify 将 Taste Profile Beta 扩展为用户可查看和修改的画像：用户可以通过自然语言告诉系统想探索的新风格、当前生活状态、希望减少或增加的内容。[Spotify：Understanding Recommendations](https://www.spotify.com/us/safetyandprivacy/understanding-recommendations) · [Exclude from Taste Profile](https://newsroom.spotify.com/2025-10-01/exclude-tracks-taste-profile/) · [Taste Profile Beta](https://newsroom.spotify.com/2026-09-23/taste-profile-shape-home-feed/)
 
 这个例子非常接近本文所说的 Preference Profile：长期行为形成基础口味；用户可以直接修正系统推断；一次性行为可以排除；当前探索目标可以影响近期推荐；系统允许兴趣变化，而不是把 Profile 固定成永久标签。
 
