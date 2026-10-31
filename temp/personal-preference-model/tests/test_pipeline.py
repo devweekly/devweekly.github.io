@@ -57,6 +57,7 @@ class PreferencePipelineTests(unittest.TestCase):
             confidence=0.9,
             scope={"text_type": ["dialogue"]},
             source_kind="inferred",
+            valid_from=self.task.timestamp,
         )
         self.store.create_claim(dialogue_claim)
         snapshot = PreferenceResolver(self.store).resolve(
@@ -75,6 +76,7 @@ class PreferencePipelineTests(unittest.TestCase):
             confidence=0.9,
             scope={"task_type": ["translation_review"]},
             source_kind="inferred",
+            valid_from=self.task.timestamp,
         )
         self.store.create_claim(claim)
         override_task = TaskContext(
@@ -101,6 +103,7 @@ class PreferencePipelineTests(unittest.TestCase):
             confidence=0.7,
             scope={"genre": ["literary-fiction"]},
             source_kind="inferred",
+            valid_from=self.task.timestamp,
         )
         second = PreferenceClaim(
             user_id="u1",
@@ -110,6 +113,7 @@ class PreferencePipelineTests(unittest.TestCase):
             confidence=0.9,
             scope={"genre": ["literary-fiction"]},
             source_kind="explicit",
+            valid_from=self.task.timestamp,
         )
         self.store.create_claim(first)
         saved_second = self.store.create_claim(second)
