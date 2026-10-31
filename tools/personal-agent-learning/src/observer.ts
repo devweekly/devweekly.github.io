@@ -1,3 +1,6 @@
+import { appendFile, mkdir } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { join } from 'node:path';
 import { AgentTraceRecorder, SqliteTraceStore } from '@saga/agent-tracing';
 import type { AgentTokenUsage } from '@saga/agent-contracts';
 import type { LearningConfig } from './config.js';
@@ -52,11 +55,13 @@ function makeUsage(input: Record<string, unknown>, provider: Provider): AgentTok
 
 export class AgentObserver {
   private readonly recorder: AgentTraceRecorder;
+  private readonly eventDirectory: string;
   private pending: Promise<void> = Promise.resolve();
   private readonly failures: string[] = [];
   private closed = false;
 
   constructor(config: LearningConfig) {
+    this.eventDirectory = config.eventDirectory;
     this.recorder = new AgentTraceRecorder(
       new SqliteTraceStore({ filename: config.traceDatabase }),
       { maxPayloadBytes: 16 * 1024, previewChars: 0, redactSecrets: true },
@@ -87,10 +92,30 @@ export class AgentObserver {
     };
   }
 
+  private async archiveJsonl(saved: Awaited<ReturnType<AgentTraceRecorder['record']>>): Promise<void> {
+    const day = saved.timestamp.slice(0, 10).split('-');
+    const sessionKey = createHash('sha256')
+      .update(saved.sessionId ?? saved.traceId)
+      .digest('hex')
+      .slice(0, 20);
+    const directory = join(this.eventDirectory, ...day);
+    await mkdir(directory, { recursive: true, mode: 0o700 });
+    const filename = join(directory, sessionKey + '.jsonl');
+    // Mirror the already bounded and redacted event, never the raw SDK payload.
+    await appendFile(filename, JSON.stringify(saved) + '\\n', {
+      encoding: 'utf8',
+      flag: 'a',
+      mode: 0o600,
+    });
+  }
+
   private enqueue(event: Parameters<AgentTraceRecorder['record']>[0]): void {
     if (this.closed) return;
     this.pending = this.pending
-      .then(() => this.recorder.record(event).then(() => undefined))
+      .then(async () => {
+        const saved = await this.recorder.record(event);
+        await this.archiveJsonl(saved);
+      })
       .catch((error: unknown) => {
         this.failures.push(error instanceof Error ? error.message : String(error));
       });
