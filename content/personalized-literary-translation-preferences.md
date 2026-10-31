@@ -2659,6 +2659,58 @@ Netflix 的 **GenRec: An LLM-Backed Recommendation Ranker at Netflix（2026 预�
 | LIPA | 自然语言画像可抽象稳定偏好并在跨域迁移 | 允许迁移高层偏好，但必须检查概念与场景是否真的匹配 |
 
 
+## 43. 2026 年偏好学习的新连接：Profile 学习、冷启动询问和跨用户差异
+
+前面几章分别讨论了从行为中推断偏好、用 Preference Profile 保存稳定倾向，以及用统计模型预测用户选择。2026 年的新论文进一步把这些能力串成了几个可组合的方法：学习用户摘要、用群体先验辅助冷启动、从二元反馈识别个人差异，以及把偏好询问作为主动学习问题。
+
+### 43.1 PLUS：Profile 不只是推理时的 Prompt，还可以成为可学习的中间表示
+
+**Learning to Summarize User Information for Personalized Reinforcement Learning from Human Feedback（PLUS，ICLR 2026）** 研究个性化 RLHF 中的用户表示问题。传统 Reward Model 往往使用一个群体级奖励函数，隐含假设不同用户对“好回答”的判断相同。PLUS 则联合训练用户摘要模型和 Reward Model：前者把用户偏好、特征与历史对话压缩成文本摘要，后者在该摘要条件下预测用户会偏好哪种回答；二者通过在线 co-adaptation 同步调整。
+
+论文报告，PLUS 相较标准 Bradley–Terry 方法，Reward Model 准确率提升 11%—77%；对新用户和新话题也有较好的泛化，且在特定实验中，PLUS 摘要条件化的 GPT-4 输出相较默认 GPT-4o 达到 72% 对 28% 的胜率。[ICLR 2026 论文](https://proceedings.iclr.cc/paper_files/paper/2026/hash/c7af751b5e0a407c62ac023e3cb381f9-Abstract-Conference.html)
+
+它支持一个重要判断：**用户 Profile 可以成为统计偏好模型和生成模型之间的中间表示，而不只是放进 Prompt 的自然语言说明。** 但论文的 72%/28% 是其特定任务和评测设置下的结果，不代表对任意用户、任意内容类型都能获得相同收益。
+
+对本文的设计，PLUS 可以作为后期演进方向：保留可读、可追溯的 Preference Claim，同时训练 Profile Builder 学习如何把大量证据压缩为对 Reward Model 有用的摘要。不能把它压缩出来的文本替代原始 Event 和 Evidence。
+
+### 43.2 POPI：让偏好推断器学习怎样总结用户，而不是直接塞入所有历史
+
+**POPI: Personalizing LLMs via Optimized Natural Language Preference Inference（TMLR，2026-09）** 面向用户偏好表达分散、原始交互冗长且直接放入上下文会产生噪声的问题。它使用 Preference Inference Model，将不同形式的用户信号蒸馏为简洁的自然语言偏好摘要，再用该摘要条件化共享的生成模型。该框架联合优化偏好推断和个性化生成，并报告在四个个性化基准上提升个性化准确率、降低上下文开销；摘要还能够迁移到冻结的现成模型，无需更新其权重。[TMLR 2026 论文列表](https://www.jmlr.org/tmlr/papers/) · [论文预印本与摘要](https://arxiv.org/abs/2510.17881)
+
+POPI 与 PLUS 都把“用户摘要”变成可学习的 Profile Builder，但优化目标有所区别：PLUS 把摘要作为个性化 Reward Model 的条件；POPI 把摘要作为共享生成模型的个性化条件。两者都说明自然语言 Profile 可以成为模型间传递个人偏好的接口。
+
+它们也有共同边界：摘要是对历史证据的压缩，不是权威事实源。摘要即使能提高下游预测，也可能遗漏反例、范围和时间信息。因此在本文建议的架构中，Profile Builder 输出的应是带证据引用的派生视图；权威数据仍然是原始事件和有版本的 Preference Claim。
+
+### 43.3 CAPE：冷启动时不必逐条问遍所有偏好维度
+
+**Cold-Start Personalization via Bayesian Adaptive Questioning（CAPE，ICML 2026）** 研究没有用户历史时，怎样用有限交互建立初始偏好画像。它观察到，不同偏好维度之间存在群体层面的相关性，例如偏好详细解释的用户也可能更喜欢配套示例。CAPE 离线学习这种偏好相关结构，在线使用轻量 Bayesian inference 选择有信息量的问题，并预测尚未直接询问的偏好维度。
+
+论文在医疗、数学、社会和常识推理任务中报告，CAPE 的偏好对齐率为 80.8%，相较 RL 基线的 68.5%；达到结果所需交互次数减少 3—5 倍。简单线性回归式信念模型即可利用群体偏好先验，不需要在线训练一个大型用户模型。[ICML 2026 / PMLR 306](https://proceedings.mlr.press/v306/bose26a.html)
+
+CAPE 的主要价值是提供一种很实际的冷启动策略：不要让新用户从二十个问题的偏好问卷开始，而是利用群体数据推断可能相关的偏好，再选择最有信息量的问题。不过其论文问题设定是结构化偏好询问，主要实验也是任务型的模拟偏好场景；它并未直接解决开放式文学审美反馈、跨月偏好演变或作品级覆盖规则。这些仍需 Event / Claim / Temporal 模型处理。
+
+因此，本文代码中的 ActivePreferenceQuestionSelector 目前只是一个基于预测不确定度与任务影响的阈值示例。未来可以增加 CAPE 式群体相关先验和 Bayesian question selection，但不应把当前简单阈值实现描述成已经复现 CAPE。
+
+### 43.4 C-BPO：跨用户数据能帮助识别个人差异，但必须控制“伪负样本”
+
+**Personalizing LLMs with Binary Feedback: A Preference-Calibrated Optimization Framework（C-BPO，ACL 2026 Long Papers）** 使用目标用户的二元反馈作为正向信号，并把其他用户的数据作为辅助的隐式负向信号，以学习用户之间的偏好差异。论文进一步使用 Positive-Unlabeled Learning，校正不同用户可能共享某些偏好这一问题，避免把“别人也喜欢”错误当成目标用户不喜欢。[ACL 2026 论文](https://aclanthology.org/2026.acl-long.1222/)
+
+它提供了一个重要补充：单个用户数据不足时，群体数据可以帮助建立人口先验和区分个人偏好；但其他用户的选择不是目标用户的可靠负例。若用户 A 喜欢自然中文、用户 B 也喜欢自然中文，B 的数据不能被当作 A 的反向证据。
+
+对个人 User Model，建议先用群体数据建立通用特征和弱先验，再用目标用户自己的反馈学习修正项。跨用户数据可以提供“什么偏好常常一起出现”的信息，但不能覆盖目标用户的明确声明、实际选择和反面证据。
+
+### 43.5 四类方法分别解决哪个问题？
+
+| 方法 | 主要问题 | 学习的对象 | 适合进入 User Model 的哪一层 |
+|---|---|---|---|
+| PLUS | 用户摘要如何服务个性化 Reward Model | 用户摘要器 + Reward Model | Profile Builder / Preference Scorer |
+| POPI | 如何从异构历史信号生成紧凑、可迁移的自然语言偏好 | Preference Inference Model | Task-agnostic Preference Profile |
+| CAPE | 没有历史时，下一步应该问用户什么 | 群体偏好相关先验 + Bayesian belief state | Cold-start / Active Elicitation |
+| C-BPO | 如何利用跨用户数据识别目标用户独特偏好 | 二元反馈校准 + PU learning | Population Prior / User-specific delta |
+
+它们不是相互替代的产品，而是可以放在不同层次组合起来的算法。一个完整 User Model 可以用 CAPE 完成冷启动，用 Event / Claim 存储真实证据，用 POPI 或 PLUS 风格的模型生成紧凑 Profile，再用个性化偏好估计器支持当前任务的判断。每个环节都必须保留其输入证据和评估结果。
+
+
 ## 补充参考文献
 
 1. Sun et al. (2026), [Preference-Aware Memory Update for Long-Term LLM Agents](https://aclanthology.org/2026.findings-acl.38/), ACL Findings 2026.
@@ -2756,3 +2808,8 @@ Netflix 的 **GenRec: An LLM-Backed Recommendation Ranker at Netflix（2026 预�
 89. [From reviews to preference profiles: LLM-based transfer for cross-domain recommendation](https://doi.org/10.1016/j.eij.2026.100981), Egyptian Informatics Journal, 2026.
 90. Hu, Koren and Volinsky (2008), [Collaborative Filtering for Implicit Feedback Datasets](https://doi.org/10.1109/ICDM.2008.22), IEEE ICDM 2008.
 91. Ziebart et al. (2008), [Maximum Entropy Inverse Reinforcement Learning](https://www.ri.cmu.edu/publications/maximum-entropy-inverse-reinforcement-learning/), AAAI 2008.
+
+92. Nam et al. (2026), [Learning to Summarize User Information for Personalized Reinforcement Learning from Human Feedback](https://proceedings.iclr.cc/paper_files/paper/2026/hash/c7af751b5e0a407c62ac023e3cb381f9-Abstract-Conference.html), ICLR 2026.
+93. Chen et al. (2026), [POPI: Personalizing LLMs via Optimized Natural Language Preference Inference](https://arxiv.org/abs/2510.17881), TMLR, September 2026.
+94. Bose et al. (2026), [Cold-Start Personalization via Bayesian Adaptive Questioning](https://proceedings.mlr.press/v306/bose26a.html), ICML 2026 / PMLR 306.
+95. Ma et al. (2026), [Personalizing LLMs with Binary Feedback: A Preference-Calibrated Optimization Framework](https://aclanthology.org/2026.acl-long.1222/), ACL 2026 Long Papers.
