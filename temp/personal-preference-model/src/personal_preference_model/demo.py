@@ -109,6 +109,7 @@ def run_demo(database: str, use_llm: bool = False) -> dict[str, object]:
             confidence=1.0,
             scope={"task_type": ["translation_review"], "genre": ["literary-fiction"]},
             source_kind="explicit",
+            valid_from=psychological_task.timestamp,
             supporting_event_ids=(explicit_event.event_id,),
         )
     )
@@ -147,6 +148,7 @@ def run_demo(database: str, use_llm: bool = False) -> dict[str, object]:
                 confidence=evidence.confidence,
                 scope=evidence.scope,
                 source_kind="inferred",
+                valid_from=psychological_task.timestamp,
                 supporting_event_ids=(feedback_event.event_id,),
             )
         )
