@@ -224,8 +224,10 @@ export class LearningStore {
             | { session_id?: string | null }
             | undefined,
         );
+        // Events without a session identity cannot prove that feedback came from
+        // independent sessions; do not count each such event as a separate session.
         const distinctSessions = new Set(
-          evidenceRows.map((row, index) => row?.session_id || 'trace:' + uniqueEvidence[index]),
+          evidenceRows.map((row) => row?.session_id).filter((value): value is string => typeof value === 'string' && value.length > 0),
         );
         if (distinctSessions.size < minDistinctSessions && confidence < 0.9) continue;
 
