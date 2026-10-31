@@ -377,6 +377,7 @@ export class AgentObserver {
   }
 
   recordFeedback(context: ObserverContext, kind: FeedbackKind, text: string): string {
+    context = this.withSession(context);
     const store = new LearningStore(this.config.learningDatabase);
     try {
       const event = store.record({
@@ -402,6 +403,7 @@ export class AgentObserver {
   }
 
   recordOutcome(context: ObserverContext, status: OutcomeStatus, text?: string): string {
+    context = this.withSession(context);
     const store = new LearningStore(this.config.learningDatabase);
     try {
       const event = store.record({
@@ -426,6 +428,7 @@ export class AgentObserver {
     profileVersion: number,
     preferenceIds: readonly string[],
   ): string {
+    context = this.withSession(context);
     const store = new LearningStore(this.config.learningDatabase);
     try {
       const event = store.record({
