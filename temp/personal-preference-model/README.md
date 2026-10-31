@@ -140,7 +140,7 @@ flowchart TB
 
 - PostgreSQL、事务隔离、租户/RLS 和数据删除策略；
 - LLM 输出 Schema 校验、超时、重试、审计、Prompt/模型版本；
-- 用户身份认证、授权与数据保留；
+- 生产认证、授权、租户隔离/RLS 与数据保留；本地示例已加入 Event、Evidence、Claim 的同用户归属校验；
 - Claim 更新审批策略和冲突检测；
 - 独立验证集、按作品/时间切分、概率校准和误用率监控；
 - 任务侧完整的 Preference Snapshot 冻结与版本绑定；
