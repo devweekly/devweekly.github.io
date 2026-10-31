@@ -220,8 +220,8 @@ export class LearningStore {
         if (!candidate.dimension.trim() || !candidate.statement.trim()) continue;
         if (uniqueEvidence.length === 0 || uniqueEvidence.some((id) => !allowedEvidenceIds.has(id))) continue;
         const evidenceRows = uniqueEvidence.map((id) =>
-          this.db.prepare('SELECT session_id FROM learning_events WHERE id = ?').get(id) as
-            | { session_id?: string | null }
+          this.db.prepare('SELECT session_id, metadata_json FROM learning_events WHERE id = ?').get(id) as
+            | { session_id?: string | null; metadata_json?: string }
             | undefined,
         );
         // Events without a session identity cannot prove that feedback came from
@@ -229,7 +229,13 @@ export class LearningStore {
         const distinctSessions = new Set(
           evidenceRows.map((row) => row?.session_id).filter((value): value is string => typeof value === 'string' && value.length > 0),
         );
-        if (distinctSessions.size < minDistinctSessions && confidence < 0.9) continue;
+        // One direct "preference" statement can be a valid cold-start signal.
+        // A high confidence number emitted by the LLM alone cannot bypass the
+        // independent-session requirement for corrections or behavioral inference.
+        const hasDirectPreferenceStatement = evidenceRows.some((row) =>
+          parseJson<Record<string, unknown>>(row?.metadata_json, {}).feedbackKind === 'preference',
+        );
+        if (distinctSessions.size < minDistinctSessions && !hasDirectPreferenceStatement) continue;
 
         const stored: StoredCandidate = {
           ...candidate,
