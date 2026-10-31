@@ -8,7 +8,8 @@ import {
 } from '@saga/codebuddy-agent-runtime';
 import { AgentTraceRecorder, SqliteTraceStore } from '@saga/agent-tracing';
 import { z } from 'zod';
-import { loadConfig, type LearningConfig } from './config.js';
+import { ensurePrivateDirectory, loadConfig, type LearningConfig } from './config.js';
+import { join } from 'node:path';
 import { newId } from './security.js';
 import { LearningStore } from './store.js';
 import type { PreferenceCandidate, Provider } from './types.js';
@@ -198,12 +199,17 @@ async function runCodeBuddyReflector(
 }
 
 async function runCopilotReflector(
-  _config: LearningConfig,
+  config: LearningConfig,
   prompt: string,
   model?: string,
 ): Promise<unknown> {
+  const copilotHome = join(config.home, 'copilot-reflector');
+  ensurePrivateDirectory(copilotHome);
   const runtime = new CopilotAgentRuntime({
-    createClient: () => new CopilotClient({ mode: 'empty' }),
+    createClient: () => new CopilotClient({
+      mode: 'empty',
+      baseDirectory: copilotHome,
+    }),
   });
   try {
     const session = await runtime.createSession({
