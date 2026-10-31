@@ -2460,6 +2460,16 @@ BenchPreS 又补上了第二道门：即使一条偏好本身没有推断错误�
 
 因此，成熟推荐系统通常不会把单次行为直接解释为稳定偏好，而是结合重复性、行为类型、上下文、时间和其他证据进行加权建模。
 
+### 40.1.1 这种思想在 LLM 之前已经成熟
+
+推荐系统很早就在用行为反馈推断偏好。Hu、Koren 和 Volinsky 的 ICDM 2008 论文 **Collaborative Filtering for Implicit Feedback Datasets** 使用购买历史、观看习惯和浏览活动作为隐式用户偏好信号，并强调这些行为的置信度不同；没有交互记录不等于用户不喜欢，购买也不是绝对的喜欢证据。[论文](https://doi.org/10.1109/ICDM.2008.22)
+
+逆向强化学习（Inverse Reinforcement Learning, IRL）则从示范行为中反推可能产生这些行为的效用函数或奖励函数。Ziebart 等人的 **Maximum Entropy Inverse Reinforcement Learning**（AAAI 2008）用概率方式从路线选择和轨迹中恢复偏好，并明确处理示范行为中的噪声和不确定性。[论文](https://www.ri.cmu.edu/publications/maximum-entropy-inverse-reinforcement-learning/)
+
+这两条传统路线说明，从行为和示例中推断偏好并非 LLM 发明；但它们也揭示同一个统计难题：**观察到行为不代表观察到了偏好的唯一原因。** 用户购买、点击、播放或选择一个译文，都可能受上下文、任务约束、价格、错误、时间和其他因素影响。模型必须维护置信度与候选解释，而不能把一个行为直接提升为稳定偏好。
+
+需要避免把这些传统方法与 LLM 的自然语言推断混为一谈：推荐系统常从 user-item 行为预测排序，IRL 常从状态—动作轨迹恢复奖励函数，而文学翻译需要从自然语言理由、编辑差异和跨作品示例推断条件化审美。它们在“从观察推断潜在偏好”这一建模原则上相通，但数据结构、监督信号和任务目标不同。
+
 ### 40.2 LLM 带来的变化是：示例可以是语义丰富的自然语言证据
 
 传统行为模型通常更容易处理结构化事件，例如点击、购买、播放和评分。文学翻译中的反馈则可能是：用户选择了 B 而没有选择 A；用户将某句重写成另一种表达；用户接受了一个改写却拒绝了另一个改写；用户说“这个译文太聪明，原文的笨拙感消失了”；用户在几个不同作品中反复选择保留留白、迟疑和叙述距离的表达。
@@ -2744,3 +2754,5 @@ Netflix 的 **GenRec: An LLM-Backed Recommendation Ranker at Netflix（2026 预�
 87. Wang et al. (2026), [Beyond Isolated Behaviors: Hierarchical User Modeling for LLM Personalization](https://aclanthology.org/2026.findings-emnlp.259/), Findings of EMNLP 2026.
 88. Rezk et al. (2026), [The Reward Model Selection Crisis in Personalized Alignment](https://aclanthology.org/2026.findings-emnlp.123/), Findings of EMNLP 2026.
 89. [From reviews to preference profiles: LLM-based transfer for cross-domain recommendation](https://doi.org/10.1016/j.eij.2026.100981), Egyptian Informatics Journal, 2026.
+90. Hu, Koren and Volinsky (2008), [Collaborative Filtering for Implicit Feedback Datasets](https://doi.org/10.1109/ICDM.2008.22), IEEE ICDM 2008.
+91. Ziebart et al. (2008), [Maximum Entropy Inverse Reinforcement Learning](https://www.ri.cmu.edu/publications/maximum-entropy-inverse-reinforcement-learning/), AAAI 2008.
