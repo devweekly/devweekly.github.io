@@ -6,7 +6,13 @@ import { LearningStore } from './store.js';
 import type { PreferenceProfile, ProfilePreference } from './types.js';
 
 function markdownEscape(value: string): string {
-  return value.replace(/[\\`*_{}[\]()#+.!|>]/g, '\\$&');
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('|', '\\|')
+    .replaceAll('\\n', ' ')
+    .replaceAll('\\r', ' ');
 }
 
 function scopeLabel(item: ProfilePreference): string {
