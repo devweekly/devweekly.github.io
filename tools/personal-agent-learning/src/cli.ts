@@ -5,19 +5,23 @@ import { runReflection } from './reflection.js';
 import { LearningStore } from './store.js';
 import type { FeedbackKind, OutcomeStatus, Provider } from './types.js';
 
-type Arguments = { command: string; subcommand?: string; flags: Record<string, string | boolean> };
+type Arguments = { command: string; subcommand?: string; positionals: string[]; flags: Record<string, string | boolean> };
 
 function parseArguments(values: string[]): Arguments {
-  const [command = 'help', first, ...rest] = values;
+  const [command = 'help', ...tail] = values;
   const flags: Record<string, string | boolean> = {};
+  const positionals: string[] = [];
   let subcommand: string | undefined;
-  if (first && !first.startsWith('--')) subcommand = first;
-  const args = first && first.startsWith('--') ? [first, ...rest] : rest;
-  for (let index = 0; index < args.length; index += 1) {
-    const token = args[index];
-    if (!token?.startsWith('--')) continue;
+  for (let index = 0; index < tail.length; index += 1) {
+    const token = tail[index];
+    if (!token) continue;
+    if (!token.startsWith('--')) {
+      if (!subcommand && (command === 'review')) subcommand = token;
+      else positionals.push(token);
+      continue;
+    }
     const key = token.slice(2);
-    const next = args[index + 1];
+    const next = tail[index + 1];
     if (next && !next.startsWith('--')) {
       flags[key] = next;
       index += 1;
@@ -25,7 +29,7 @@ function parseArguments(values: string[]): Arguments {
       flags[key] = true;
     }
   }
-  return { command, ...(subcommand ? { subcommand } : {}), flags };
+  return { command, ...(subcommand ? { subcommand } : {}), positionals, flags };
 }
 
 function getString(args: Arguments, key: string, fallback = ''): string {
@@ -102,12 +106,12 @@ async function run(args: Arguments): Promise<void> {
     try {
       const event = store.record({
         kind: 'feedback',
-        provider: providerValue(getString(args, 'provider')),
-        agentId: getString(args, 'agent') || undefined,
-        project: getString(args, 'project') || undefined,
-        taskType: getString(args, 'task') || undefined,
-        sessionId: getString(args, 'session') || undefined,
-        turnId: getString(args, 'turn') || undefined,
+        ...(providerValue(getString(args, 'provider')) ? { provider: providerValue(getString(args, 'provider'))! } : {}),
+        ...(getString(args, 'agent') ? { agentId: getString(args, 'agent') } : {}),
+        ...(getString(args, 'project') ? { project: getString(args, 'project') } : {}),
+        ...(getString(args, 'task') ? { taskType: getString(args, 'task') } : {}),
+        ...(getString(args, 'session') ? { sessionId: getString(args, 'session') } : {}),
+        ...(getString(args, 'turn') ? { turnId: getString(args, 'turn') } : {}),
         text: requireFlag(args, 'text'),
         metadata: { feedbackKind: kind, source: 'cli' },
         scope: {
@@ -131,13 +135,13 @@ async function run(args: Arguments): Promise<void> {
     try {
       const event = store.record({
         kind: 'outcome',
-        provider: providerValue(getString(args, 'provider')),
-        agentId: getString(args, 'agent') || undefined,
-        project: getString(args, 'project') || undefined,
-        taskType: getString(args, 'task') || undefined,
-        sessionId: getString(args, 'session') || undefined,
-        turnId: getString(args, 'turn') || undefined,
-        text: getString(args, 'text') || undefined,
+        ...(providerValue(getString(args, 'provider')) ? { provider: providerValue(getString(args, 'provider'))! } : {}),
+        ...(getString(args, 'agent') ? { agentId: getString(args, 'agent') } : {}),
+        ...(getString(args, 'project') ? { project: getString(args, 'project') } : {}),
+        ...(getString(args, 'task') ? { taskType: getString(args, 'task') } : {}),
+        ...(getString(args, 'session') ? { sessionId: getString(args, 'session') } : {}),
+        ...(getString(args, 'turn') ? { turnId: getString(args, 'turn') } : {}),
+        ...(getString(args, 'text') ? { text: getString(args, 'text') } : {}),
         metadata: { status, source: 'cli' },
       }, config.maxFeedbackChars);
       console.log(JSON.stringify(event, null, 2));
@@ -182,12 +186,8 @@ async function run(args: Arguments): Promise<void> {
         return;
       }
       if (args.subcommand === 'accept' || args.subcommand === 'reject') {
-        const id = args.flags['0'];
-        const candidateId = typeof id === 'string' ? id : args.subcommand === 'accept' || args.subcommand === 'reject'
-          ? getString(args, 'id')
-          : '';
-        const resolvedId = candidateId || args.flags.candidate;
-        if (typeof resolvedId !== 'string' || !resolvedId.trim()) {
+        const resolvedId = args.positionals[0];
+        if (!resolvedId?.trim()) {
           throw new Error('审核时请提供候选 ID，例如：review accept candidate_xxx');
         }
         const profile = store.reviewCandidate(
