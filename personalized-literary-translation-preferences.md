@@ -5,7 +5,7 @@
 
 ## 摘要
 
-个人文学阅读偏好不应被实现为一段不断膨胀的 system prompt，也不应简单等同于“喜欢某位作家的风格”。更合适的实现是一个可版本化的 **Reader Preference Model（RPM，读者偏好模型）**：它从明确声明、译文评分、候选比较、局部修改、接受/拒绝建议和阅读行为中提取证据，形成多维、带置信度、带适用范围、可追溯和可撤销的偏好知识；翻译时再根据作品、语言方向、文体、叙事角色和当前任务检索出一份小型的 Preference Snapshot，贯穿初译、审校、风格润色和最终验收。
+个人文学阅读偏好不应被实现为一段不断膨胀的 system prompt，也不应简单等同于“喜欢某位作家的风格”。**记住用户做过什么，不等于理解用户喜欢什么；理解用户喜欢什么，也不等于知道当前任务应该调用哪些偏好。** 本文的目标是把个人偏好建模成一个有时间维度、有上下文条件、有证据链、可以持续修正的 **User Model**。更合适的实现是一个可版本化的 **Reader Preference Model（RPM，读者偏好模型）**：它从明确声明、译文评分、候选比较、局部修改、接受/拒绝建议和阅读行为中提取证据，形成多维、带置信度、带适用范围、可追溯和可撤销的偏好知识；翻译时再根据作品、语言方向、文体、叙事角色和当前任务检索出一份小型的 Preference Snapshot，贯穿初译、审校、风格润色和最终验收。
 
 核心结论：
 
@@ -17,6 +17,34 @@
 6. **建立持续评估集。** 每次偏好模型升级，都用固定的原文片段、用户历史选择和反例回归，检查是否真的更符合读者，而不是只让模型自评更高。
 
 ---
+
+## 核心论点：记忆、偏好理解与偏好调用是三个不同的问题
+
+本文要解决的不是简单的“让模型记住用户”，而是三个彼此独立、又必须连接起来的问题：
+
+> **记住用户做过什么，不等于理解用户喜欢什么；理解用户喜欢什么，也不等于知道当前任务应该调用哪些偏好。**
+
+> **个人偏好应建模为一个有时间维度、有上下文条件、有证据链、可以持续修正的 User Model。**
+
+第一句话描述的是系统能力边界。第二句话给出了目标架构。它们共同意味着：不能把原始聊天记录、偏好摘要、向量检索结果和最终 Prompt 混成一个“Memory”概念。
+
+### 一、记住用户做过什么，不等于理解用户喜欢什么
+
+用户做过的事情只是观察（observation），偏好是需要从观察中推断的潜在状态（latent preference）。例如，用户在一段英文心理描写中选择了译文 B，可能是因为它保留了人物迟疑，也可能只是因为 A 有一个词翻错了；一次 6 分可能反映段落本身难译，而不是用户不喜欢这种风格；用户修改一个词，也不等于认同整段译文的其余风格。
+
+所以第一层必须保存**发生过什么、当时的任务是什么、用户做了什么、用户给出的理由是什么**。这些是证据，不是结论。第二层才从多条、不同来源的证据中提出偏好假设，并标记其范围和不确定性。
+
+### 二、理解用户喜欢什么，也不等于知道当前任务应该调用哪些偏好
+
+即使系统已经推断出用户通常偏好简洁、克制、不解释潜台词，也不能在每一个任务中无条件应用它。用户在人物独白中偏好含蓄，不代表景物描写也应该压低修辞；用户平时偏好短句，不代表当前作品中的意识流长句应该被拆碎；用户正在尝试一种新译风，也不代表长期偏好已经改变。
+
+因此，每次执行任务都需要一个独立的 **Preference Applicability / Resolution** 阶段：读取当前请求和作品上下文，识别任务需要哪些偏好维度，判断哪些历史偏好在当前场景中有效，并允许“本次明确要求”覆盖推断出来的长期默认值。
+
+### 三、把 User Model 看成带证据的、随时间变化的假设集合
+
+User Model 不是一段永久正确的用户简介，而是一组可被支持、质疑、限定、替代和撤销的偏好主张（preference claims）。每条主张都应回答：用户偏好什么、在哪些上下文中成立、系统何时观察到证据、偏好从什么时候起被认为有效、结论来自明确声明还是间接推断、有哪些正反证据，以及新证据到来时应当如何修正。
+
+这会把个性化从“把旧信息塞回 Prompt”提升为一个有数据模型、有推断策略、有运行时决策、有评估闭环的 User Modeling 问题。
 
 ## 1. 问题定义：要学习的不是“翻译风格”，而是读者的条件偏好
 
@@ -1235,7 +1263,7 @@ EMNLP 2026 的 OP-Bench 研究指出，引入用户记忆后，模型可能出�
 | Fine-tuning / LoRA / DPO | 后期价值较高，但数据和评估要求高 | 不作为起点 |
 | Long-term Preference Vectors | 研究价值高，工程上可后置 | 大量反馈后探索 |
 
-## 24. 最终结论：个人偏好系统不是一个 Vector Database，而是一个持续演化的 User Model
+## 24. 阶段性结论：个人偏好系统不是一个 Vector Database，而是一个持续演化的 User Model
 
 这项需求真正需要的不是“把所有阅读历史向量化”，而是建立一套完整的个人认知资产：
 
@@ -1258,6 +1286,405 @@ EMNLP 2026 的 OP-Bench 研究指出，引入用户记忆后，模型可能出�
 
 ---
 
+
+## 25. 截至 2026 年 10 月，研究已经走到哪一步？
+
+2025—2026 年的研究趋势很明确：长期个性化研究正在从“记忆能否存下来、能否召回”转向“记忆如何形成、如何更新、如何判断当前有效、如何防止历史偏好干扰当前意图”。下面按本文的三个问题整理有代表性的工作。论文状态也一并标注，避免把预印本与正式发表结果混为一谈。
+
+| 研究 | 主要解决的问题 | 与 User Model 的关系 | 证据与边界 |
+|---|---|---|---|
+| RMM，ACL 2025 | 通过前瞻和回顾式反思，按话语、轮次、会话等不同粒度形成记忆，并根据模型引用的证据迭代改进检索 | 说明记忆形成不能固定为每 N 轮摘要；检索也要根据实际使用结果反思 | 在 LongMemEval 上，相对无记忆管理基线报告超过 10% 的准确率提升。它主要优化长期对话记忆管理，不等于完整的条件偏好模型。[论文](https://aclanthology.org/2025.acl-long.413/) |
+| TSM，ACL Findings 2026 | 将对话时间线改为语义时间线，区分单点事件与持续状态，并按查询中的时间意图检索 | 支持“偏好有持续区间，不是按聊天发生顺序排列的静态事实” | 在 LongMemEval 和 LoCoMo 上报告最高 12.2 个百分点的准确率提升。[论文](https://aclanthology.org/2026.findings-acl.1496/) |
+| PAMU，ACL Findings 2026 | 用滑动窗口与指数移动平均融合短期波动和长期偏好 | 直接触及“新反馈如何修正旧偏好” | 在 LoCoMo 的五个任务场景、五种基线中报告质量改善。它提供的是更新策略，不会自动判断反馈属于全局还是项目级偏好。[论文](https://aclanthology.org/2026.findings-acl.38/) |
+| QUMem，arXiv 预印本，2026-08 | 按语义连续性切分 episode，将内容拆为事实、偏好和可迁移经验；查询时分阶段推断当前用户状态 | 非常接近本文提出的“当前任务条件化 User State Inference” | 其核心观点是单次 top-k 检索不能联合解决时间有效性、偏好演变和上下文适用性；报告在 PersonaMem、KnowU-Bench 上取得较强结果。属于预印本，结果需独立复现。[论文](https://arxiv.org/abs/2608.16168) |
+| CORE，Findings of EMNLP 2026 | 把当前轮的临时证据与持久 Persona 更新分开，采用不确定性感知的信念修正 | 解决“偶然反馈、模糊反馈不应轻易改写长期偏好” | 研究长期 Persona 漂移、歧义和冲突，支持先判断是否发生真正变化，再决定是否更新。[论文](https://aclanthology.org/2026.findings-emnlp.666/) |
+| Pivot，Findings of EMNLP 2026 | 研究 personalization inertia：历史偏好已经过时，却在推理中继续影响当前回答 | 直接回答第二句话：检索到的偏好不一定应该应用 | 提出基于当前证据一致性的检测与局部回退机制。工程启发是运行时要有“拒绝应用 / 撤销个性化影响”的能力。[论文](https://aclanthology.org/2026.findings-emnlp.1744/) |
+| AdaMem，EMNLP 2026 Industry Track | 以自然语言 Memory Policy 决定特定上下文中哪些内容值得写入长期记忆 | 说明“记住什么”本身也应是条件化决策，而不是统一抽取所有信息 | AdaMem-Bench 为不同交互 Persona 设置不同记忆偏好，覆盖多个长期故事。可借鉴为按应用场景配置记忆写入策略。[论文](https://aclanthology.org/2026.emnlp-industry.189/) |
+| RealPref，Findings of EMNLP 2026 | 评估长周期交互中的自然偏好遵循，包含显式到隐式的多种表达方式 | 说明用户偏好理解远不止抽取显式指令 | 数据集包含 100 个合成用户画像、1,300 条偏好和四种表达类型；实验发现上下文变长、表达越隐含，模型表现越差，未见场景的泛化也有困难。[论文](https://aclanthology.org/2026.findings-emnlp.2378/) |
+| TrustMem，Findings of EMNLP 2026 | 检查记忆更新是否遗漏、破坏原有信息或写入无证据内容 | 为 User Model 的证据链和版本更新提供可信度控制 | 引入 Memory Transition Verifier，从 coverage、preservation、faithfulness 检查记忆状态迁移；强调更新过程本身需要验证。[论文](https://aclanthology.org/2026.findings-emnlp.2419/) |
+| AgenticLOCI，REALM 2026 | 将会话检索与长期个性化状态分开，累积有版本的决策状态 | 支持短期召回和长期偏好演化采用不同机制 | 在合成移动出行轨迹上，稳定偏好字段保持率为 97.6%，应更新字段的更新精度为 58.3%。这也提醒我们：保护稳定偏好和正确识别变化之间存在真实权衡。[论文](https://aclanthology.org/2026.realm-1.42/) |
+| PPRO，arXiv 预印本，2026 | 使用用户 Profile 作为个性化先验，对历史记忆检索进行排序优化 | 说明 User Model 不只是检索后的附加 Prompt，还应参与检索计划和排序 | 将用户画像用于 retrieval ranking，并优化查询改写。可作为个性化检索路线的研究参考。[论文](https://arxiv.org/abs/2607.00017) |
+
+### 25.1 研究结果的共同结论
+
+这些研究的技术路线不同，但可以归纳成六个相对稳定的结论。
+
+**第一，原始对话不应该是唯一的记忆单元。** 需要保留完整事件，同时允许从连续事件中形成不同粒度的 episode、持续状态和偏好主张。固定轮数摘要会混合无关事件，也可能拆散一个决策的前因、选择和结果。RMM、TSM、QUMem 都在不同层面处理了这个问题。
+
+**第二，事实、偏好和可迁移经验不是同一种记忆。** “用户正在读某本书”是事实；“用户在心理描写中偏好保留含蓄”是偏好；“面对同一段原文，先比较两个不同风格的候选再润色”是可迁移的程序性经验。把它们压成一条 embedding 会失去类型信息。
+
+**第三，偏好更新需要独立研究和独立验证。** 新反馈可能意味着偏好变化，也可能只是当前作品的临时要求、探索性选择或一次偶然结果。PAMU 的平滑方法有参考价值，但 CORE 的不确定性更新和 TrustMem 的迁移验证更接近生产系统所需的安全边界。
+
+**第四，任务相关性必须在检索之后继续判断。** 找到一条相似历史，不等于应该采用它。Pivot 所研究的 personalization inertia 说明，过时记忆即使成功召回，也可能降低当前任务的正确性。
+
+**第五，偏好记忆的写入策略也应该依上下文而变。** 用户可能只希望系统记住稳定审美，不希望记住一次临时购物选择或某次试验性译风。AdaMem 把这种差异提升为 preference-conditioned write control。
+
+**第六，研究基准仍不等于真实文学阅读验证。** 上述工作主要在长对话、Persona、记忆问答或合成用户轨迹上评估。它们能证明 User Model 的技术方向，却不能直接证明某个模型已经理解了某位读者的文学审美。文学翻译仍需要真实用户的 A/B 选择、局部修改、整段阅读体验和跨章节一致性测试。
+
+因此，研究的答案不是“已经有一个模型可以准确理解个人偏好”。更准确的结论是：**研究已经分别证明了多粒度记忆、时间建模、偏好更新、查询条件化用户状态推断和过时偏好抑制的重要性；把这些能力组合成一个可审计的端到端 User Model，仍然是应用系统需要完成的工程工作。**
+
+## 26. User Model 应该如何建模：事件、证据、主张和快照分开
+
+建议不要只存一个 profile JSON，而是至少保留四种不同实体。
+
+| 实体 | 含义 | 是否可以被覆盖 |
+|---|---|---|
+| Interaction Event | 用户在某个时间、任务、作品和上下文中实际做了什么 | 原始事件只追加，不原地改写 |
+| Preference Evidence | 从事件中识别出来的偏好证据，例如支持某个维度的选择、反例或修改 | 可以补充标签，但需保留原始来源 |
+| Preference Claim | 系统当前认为成立的偏好主张，包括取值、适用范围、置信度和时间有效性 | 通过新版本修正，不覆盖历史版本 |
+| Preference Snapshot | 为一个具体任务解析出的、冻结的可执行偏好集合 | 每次任务重新生成；任务运行期间保持一致 |
+
+### 26.1 一个偏好主张的数据结构
+
+~~~json
+{
+  "claim_id": "pref-000184",
+  "user_id": "reader-001",
+  "dimension": "narration.subtlety",
+  "preference": "preserve_implicit_emotion",
+  "polarity": "prefer",
+  "strength": 0.82,
+  "confidence": 0.78,
+  "scope": {
+    "level": "genre_and_text_type",
+    "genre": ["literary-fiction"],
+    "text_types": ["interior_monologue", "psychological_narration"],
+    "source_languages": ["en", "ja"],
+    "target_language": "zh-CN",
+    "project_ids": []
+  },
+  "valid_time": {
+    "from": "2026-04-01T00:00:00Z",
+    "to": null
+  },
+  "recorded_at": "2026-10-31T09:00:00Z",
+  "status": "active",
+  "evidence": {
+    "supporting_event_ids": ["event-101", "event-126", "event-155"],
+    "refuting_event_ids": ["event-144"],
+    "source_types": ["pairwise_choice", "rewrite", "explicit_feedback"]
+  },
+  "revision": 4,
+  "supersedes": "pref-000133"
+}
+~~~
+
+这只是示意结构，不要求一开始把所有字段都做成独立数据库列。关键是必须能表达偏好维度、适用范围、正反证据、时间有效性、状态和版本。
+
+### 26.2 至少记录两种时间
+
+不要只存一个 created_at。
+
+- **occurred_at / observed_at**：用户实际反馈或系统观察到反馈的时间。
+- **valid_from / valid_to**：系统认为这条偏好在用户行为中有效的时间区间。
+
+例如，用户在 10 月 31 日明确说“从 9 月开始，我越来越不喜欢过度解释心理活动的译法”。系统在 10 月 31 日才知道，但偏好变化可能从 9 月开始。两种时间不同。对审计和“当时系统知道什么”而言，这一区分很重要。
+
+### 26.3 偏好必须有正面证据，也允许反面证据
+
+不要只保存“用户喜欢简洁”。还应保存证据数量、证据是否来自不同作品和场景、用户明确认可的正例、用户明确拒绝的反例、证据之间是否冲突，以及系统最近一次何时重新评估该主张。
+
+一个用户在不同场景里表现出相反偏好，未必表示系统学习失败。它也可能说明原来的偏好主张范围太宽，应拆成两个更具体的条件偏好。
+
+### 26.4 置信度不能等同于反馈次数
+
+连续十次对同一个段落做细微修改，不一定相当于十个独立证据。置信度至少要考虑反馈类型、独立场景数量、用户是否给出明确理由、正反证据是否一致，以及当前上下文是否与历史样本相同。
+
+| 反馈 | 推荐处理 |
+|---|---|
+| “以后所有文学翻译都不要擅自解释心理活动” | 明确、广范围、高优先级的偏好约束 |
+| 在相似段落中多次选择保留含蓄的译文 | 累积为有置信度的条件偏好 |
+| 用户重写一句话，并解释原因 | 强证据，但先判断是局部纠错还是可泛化偏好 |
+| 给整段打 7 分 | 质量证据，不直接推断某个具体风格维度 |
+| 接受模型给出的修改 | 弱正向信号，需要结合上下文 |
+| 没有修改模型输出 | 不构成可靠的喜欢证据 |
+| 本次明确要求“这一章可以更华丽” | 当前项目或章节的临时覆盖，不立即修改全局偏好 |
+
+## 27. 如何判断某条偏好是否应该用于当前任务？
+
+这是整个系统中最容易被忽略、但最重要的运行时步骤。不能直接把 top-k 检索结果拼接到 Prompt。建议设计一个独立的 **Preference Resolver**。
+
+### 27.1 先解析任务条件，再寻找偏好
+
+当前任务应至少被解析为：
+
+~~~json
+{
+  "task": "translation_review",
+  "source_language": "ja",
+  "target_language": "zh-CN",
+  "domain": "literary-fiction",
+  "genre": "historical-fiction",
+  "text_type": "dialogue",
+  "narrative_role": "character_speech",
+  "project_id": "novel-001",
+  "requested_style": "restrained",
+  "explicit_overrides": ["preserve_honorific_distance"],
+  "quality_constraints": ["semantic_fidelity", "character_consistency"]
+}
+~~~
+
+这些字段不是为了建立复杂标签体系，而是为了避免把用户在心理描写、景物描写或现代对话中的偏好错误迁移到当前文本。
+
+### 27.2 采用分层范围，而不是单一全局偏好
+
+可以建立以下适用范围，从宽到窄：用户全局偏好、任务类型或领域偏好、语言方向/文体/文本类型偏好、作品/作者/章节/人物/叙述视角的局部偏好，以及当前请求中明确说明的临时偏好。
+
+越具体的规则通常越能解释当前任务，但不能机械地采用“最具体者永远覆盖”。还要检查它是否仍然有效、证据是否充分，以及是否和当前明确要求冲突。当前请求中的明确指令应优先于系统推断的长期默认值。
+
+### 27.3 检索与应用分成两个阶段
+
+第一阶段是 Candidate Retrieval，尽可能找出潜在相关证据：先按 user、权限、项目、时间、语言方向、文体和偏好维度做结构化过滤；再用全文检索或关键词查找明确规则和用户原话；用 Semantic Search 查找跨语言、跨措辞的相似审美案例；最后对候选证据去重，并保留正例和反例。
+
+第二阶段是 Applicability Resolution，判断哪些候选真正适用于当前任务：
+
+- **Scope match**：历史反馈的范围是否覆盖当前文本？
+- **Temporal validity**：偏好是否仍然有效，是否已有更新版本？
+- **Evidence strength**：来自明确声明，还是少数间接行为？
+- **Preference polarity**：检索到的是用户喜欢的例子，还是用户拒绝的反例？
+- **Context compatibility**：当前任务是否与历史场景具有相同的审美目标？
+- **Conflict**：是否存在同级别但方向相反的偏好？
+- **Current intent**：用户是否明确要求本次偏离通常偏好？
+
+只有通过这一阶段的偏好才应该进入最终的 Preference Snapshot。无法判断时应降低强度或不应用，而不是强行个性化。
+
+### 27.4 为每个任务编译一份 Preference Snapshot
+
+建议返回一份小型、可审计的上下文，而不是完整的用户历史：
+
+~~~json
+{
+  "snapshot_id": "snapshot-20261031-001",
+  "user_model_version": 42,
+  "task_context_hash": "sha256:...",
+  "applicable_preferences": [
+    {
+      "dimension": "dialogue.colloquiality",
+      "instruction": "保持人物语言自然，但不要将所有角色统一改成现代口语",
+      "confidence": 0.84,
+      "claim_id": "pref-000184",
+      "evidence_ids": ["event-101", "event-126"]
+    }
+  ],
+  "excluded_preferences": [
+    {
+      "claim_id": "pref-000091",
+      "reason": "适用于心理描写，不适用于当前人物对白"
+    }
+  ],
+  "positive_examples": ["example-001"],
+  "negative_examples": ["example-017"],
+  "hard_constraints": ["semantic_fidelity", "preserve_character_voice"],
+  "explicit_overrides": ["preserve_honorific_distance"]
+}
+~~~
+
+excluded_preferences 很重要：它让系统能够说明哪些记忆被找到了、但为什么没有使用。这样可以区分“没有检索到偏好”和“检索到了但判断不适用”这两种完全不同的问题。
+
+对于多阶段翻译，初译、风格审校和最终校对应使用同一个冻结快照，除非用户在任务中明确改变要求。否则阶段之间可能因为重新检索而使用不同版本的偏好，导致译文风格漂移。
+
+## 28. 现有框架能解决什么？LangChain、LangGraph、Claude Code 的边界
+
+结论先说：**如果要开发一个有长期用户画像、复杂工作流和明确更新策略的应用，LangGraph + LangMem 是较合适的起点；但 User Model 的领域逻辑仍然必须自己设计。Claude Code 更适合做一个消费 User Model 的客户端，不适合充当 User Model 的中心数据库。**
+
+| 框架 | 已提供的能力 | 对本文需求的匹配度 | 还需要自行实现的部分 |
+|---|---|---|---|
+| LangChain | 模型、工具、检索器和集成等通用应用抽象 | 适合组装模型和检索组件，但不是完整的长期用户建模系统 | 用户画像、时间有效性、偏好推断、适用性判定和证据治理 |
+| LangGraph | Checkpointer 保存 thread 级短期状态；Store 保存跨 thread 的长期数据；支持 namespace 和 semantic search | 很适合作为任务编排与状态持久化层 | 偏好 Claim 的数据模型、时间和版本策略、写入门控、任务条件化检索与应用判断 |
+| LangMem | 记忆管理器、用户 Profile / Collection、情景/语义/程序性记忆模板、热路径记忆工具、后台记忆整理、Prompt 优化；可接入 LangGraph Store | 最接近本文需要的记忆生命周期工具箱 | 领域本体、证据引用、正反证据、范围继承、冲突检测、偏好迁移与业务评估 |
+| Claude Code | CLAUDE.md、用户级规则、项目级规则、Auto Memory、Hooks、Skills、MCP | 适合作为开发者个人偏好的一个消费端，也能通过 Hooks 调用外部服务 | 跨应用共享、结构化偏好状态、精细时间有效性、证据版本、面向任意业务任务的条件化解析 |
+| Mem0 | 记忆 API、自动记忆抽取、用户/会话 scope、元数据过滤和检索 | 适合快速接入基础记忆，减少从零编写抽取和召回管线的工作 | 不应把默认抽取结果当成最终偏好模型；需要自己的 Claim、Scope、Temporal 和 Applicability 层 |
+| Graphiti / Zep | 时间知识图谱、Episode 来源、事实有效时间、混合检索和关系查询 | 当用户、作品、人物、项目之间存在复杂且不断变化的关系时有价值 | 图谱事实并不会自动变成审美偏好；需要自行定义偏好实体和推断规则 |
+| Letta | 有状态 Agent、持久记忆块、外部记忆和由 Agent 管理的记忆更新 | 适合希望由一个长期运行的 Agent 自主管理其状态的产品 | 仍需定义可验证的偏好模型和业务更新政策；引入它往往意味着采用其 Agent Runtime |
+
+### 28.1 LangGraph：很适合做工作流和状态骨架
+
+LangGraph 当前将记忆区分为两类：
+
+- Checkpointer：保存 thread 级运行状态，适合当前会话、任务中断恢复、人机协作和短期状态；
+- Store：保存跨 thread 的长期数据，适合用户偏好、长期事实和共享知识。
+
+官方文档还支持对 Store 配置语义索引，并通过 namespace 将数据按用户或应用隔离。这些正好能提供 User Model 的存储和工作流基础。[LangGraph Memory 文档](https://docs.langchain.com/oss/python/langgraph/add-memory) · [Persistence 文档](https://docs.langchain.com/oss/python/langgraph/persistence)
+
+但要注意：Store 的一条记录可以是一个偏好，也可以只是一段任意文本。框架并不知道一条“喜欢简洁”的记忆到底适用于所有写作、技术说明还是某一本小说。**Store 解决的是数据持久化和查找，不替你决定偏好语义。**
+
+### 28.2 LangMem：最值得优先评估的记忆组件
+
+LangMem 的价值不只是抽取对话摘要。它提供 Semantic Memory（事实和知识，包括用户 Profile 与可检索 Collection）、Episodic Memory（过去的具体经验、事件和样例）、Procedural Memory（系统行为规则和通过反馈优化 Prompt）、Memory Manager（根据新对话与当前记忆做抽取、合并、更新和整理）、Memory Tools（允许 Agent 在执行过程中主动管理和搜索记忆），以及 Background Manager（在交互结束后异步分析和整理记忆）。
+
+LangMem 的官方设计明确指出，记忆是否形成、由谁形成、存在哪里和如何召回，通常是应用特定的问题。它也支持热路径和后台两种形成方式：前者能及时响应明确记忆请求，后者适合跨多次交互发现模式。[LangMem Core Concepts](https://langchain-ai.github.io/langmem/concepts/conceptual_guide/) · [LangMem GitHub](https://github.com/langchain-ai/langmem)
+
+对 User Model 的建议是：把 LangMem 当作抽取与整理的可复用组件，而不是把其输出直接视为权威偏好。每次更新应经过自己的验证函数，确认新主张有证据、范围合理、没有把项目级要求提升为全局偏好。
+
+### 28.3 Claude Code：它有记忆，但它不是通用 User Model 服务
+
+Claude Code 当前有两种跨会话记忆机制：CLAUDE.md / AGENTS.md 是由用户或团队维护的持久指令；Auto Memory 是 Claude 根据用户的修正和偏好自动记录的经验。
+
+官方文档说明，Auto Memory 保存在 ~/.claude/projects/<project>/memory/，按仓库隔离；主 MEMORY.md 索引在启动时只加载前 200 行或 25KB，其他主题文件按需读取。它是机器本地的 Markdown 文件，不会自动成为不同机器、云环境和业务应用共享的用户记忆服务。[Claude Code Memory 文档](https://code.claude.com/docs/en/memory)
+
+Claude Code Hooks 提供 SessionStart、UserPromptSubmit、PreToolUse、PostToolUse、Stop 等生命周期事件，因此可以在用户提交请求时从外部 User Model 获取任务相关偏好，在会话或任务结束时把经过筛选的反馈写回外部服务。[Hooks 文档](https://code.claude.com/docs/en/hooks)
+
+因此，Claude Code 的合理定位是：用 CLAUDE.md 保存少量稳定、经用户确认的工作习惯；用 Auto Memory 保存仓库内的开发经验；用 Hook / MCP 访问外部 User Model；不把本地 Auto Memory 当成跨应用统一数据源。这也适用于其他编码 Agent：Agent 自带的记忆通常服务于自身运行时，而不是企业级或个人级的统一用户画像。
+
+### 28.4 Mem0、Graphiti 和 Letta 应该如何选择？
+
+**Mem0：快速增加记忆 CRUD 和召回能力。** 它的产品化接口易于接入，能够按 user_id 和元数据隔离、抽取信息并进行检索。但它的记忆写入策略和更新语义需要按具体 SDK / 平台版本核实。当前 OSS v3 的自动抽取路径采用 ADD-only，不能假设它会自动、正确地完成所有偏好冲突的 UPDATE / DELETE；需要应用层明确管理修正和失效。[Mem0 How It Works](https://github.com/mem0ai/mem0/blob/main/docs/core-concepts/how-it-works.mdx) · [OSS v2→v3 Migration](https://github.com/mem0ai/mem0/blob/main/docs/migration/oss-v2-to-v3.mdx)
+
+**Graphiti：当时间关系和证据来源本身很复杂时使用。** 它通过 Episode 保留事实来源，并对关系设置有效时间，结合语义、BM25 和图遍历进行混合查询。比如“用户何时开始偏好某类叙述”“某个偏好来自哪几本作品”“人物称谓规则在哪个版本改变”，都可以从时间图谱中获益。但偏好是一个需要学习的用户状态，Graphiti 只提供图结构、时间事实和查询能力，不会替代偏好推断。[Graphiti GitHub](https://github.com/getzep/graphiti)
+
+**Letta：当 Agent 本身需要成为长期存在的主体时使用。** Letta 的 Statefulness 和持久记忆块可以让同一个 Agent 跨会话维护身份和状态，也允许 Agent 自己维护记忆。它适合 Agent Runtime 本身就是产品中心的场景；如果应用已有自己的会话、任务和服务架构，只是需要一个可共享的用户偏好库，引入完整 Agent Runtime 未必必要。[Letta Stateful Agents](https://docs.letta.com/concepts/stateful-agents) · [Memory & Dreaming](https://docs.letta.com/configuration/memory)
+
+### 28.5 推荐组合
+
+| 层 | 建议组件 | 原因 |
+|---|---|---|
+| Agent / Workflow Runtime | LangGraph | 编排多阶段任务、任务状态和恢复 |
+| Memory extraction / consolidation | LangMem | 使用现成的记忆提取、整理和 Prompt 优化能力 |
+| System of Record | PostgreSQL | 结构化 Claim、事件、证据、版本和审计记录由应用掌控 |
+| Initial retrieval | PostgreSQL FTS + metadata filter | 不需要一开始就引入独立向量基础设施 |
+| Semantic retrieval | pgvector 或独立向量索引 | 样例量增加、跨语言和跨表达方式检索确实产生收益后再加 |
+| Temporal graph（可选） | Graphiti | 只有出现复杂实体关系和历史时间查询需求时引入 |
+| Developer assistant client | Claude Code Hooks / MCP | 读取外部 User Model，按当前代码任务注入少量相关偏好 |
+
+这不是要求必须把这些产品全部部署起来。起步时只需要 LangGraph、LangMem 和 PostgreSQL；其他组件应由具体的检索、状态或运行时需求驱动。
+
+## 29. 推荐的端到端实现：把 User Model 作为独立服务能力
+
+建议将 User Model 从某个聊天 Agent 的私有记忆中抽离，变成可被翻译服务、研究助手、编码 Agent、内容创作工具共同调用的服务能力。
+
+~~~mermaid
+flowchart TB
+    A["User Interactions<br/>ratings / choices / edits / explicit rules"] --> B["Immutable Interaction Event Store"]
+    B --> C["Evidence Extraction and Classification"]
+    C --> D["Evidence Validation"]
+    D --> E["Preference Claim Store<br/>versioned / scoped / temporal"]
+    E --> F["User Model Snapshot Builder"]
+    G["Current Task Context"] --> H["Task and Preference Requirement Parser"]
+    H --> I["Preference Resolver"]
+    F --> I
+    E --> J["Hybrid Evidence Retrieval"]
+    J --> I
+    I --> K["Applicability Gate<br/>scope / time / confidence / conflicts"]
+    K --> L["Task-specific Preference Snapshot"]
+    L --> M["Agent Workflow<br/>generation / review / decision"]
+    M --> N["Outcome and User Feedback"]
+    N --> B
+    K --> O["Decision Trace<br/>applied / excluded / reason"]
+~~~
+
+### 29.1 写入链路：先保存事件，再形成偏好主张
+
+写入时不要让一个 LLM 同时完成“识别反馈、总结偏好、修改画像、删除旧偏好”四个动作。建议拆成：
+
+1. **Event Capture**：保存用户原始反馈、候选内容、当前任务上下文和时间信息。
+2. **Evidence Classification**：识别这是明确指令、评分、比较、批注、重写、接受还是拒绝。
+3. **Scope Inference**：判断证据可能作用于全局、任务类别、文体、项目还是当前会话。
+4. **Claim Proposal**：提出新增、细化、缩小范围、冲突或失效的候选偏好。
+5. **Transition Validation**：检查支持证据、反证、旧版本保留、范围变化和更新理由。
+6. **Commit**：生成新的偏好版本；原始事件和旧版本保持可追溯。
+
+对明确的用户指令，可以快速建立高优先级的显式 Claim；对间接推断，则放到后台进行多事件归纳，必要时保持 provisional，不要立即写成全局规则。
+
+### 29.2 偏好推断：建立分层先验，而不是简单平均所有反馈
+
+建议把偏好看成有层级的条件模型：用户全局偏好提供默认先验；领域和任务偏好对全局先验进行细化；文体、语言方向和文本类型进一步限定；作品、人物和章节偏好提供局部修正；当前请求提供一次性的明确覆盖。
+
+在统计上，可以从加权计数、Beta-Binomial 或 Bradley–Terry 等简单方法开始。对于 A/B 选择，用 Bradley–Terry 学习相对偏好；对于评分，使用有序评分模型而不是把 1—10 分直接当成风格权重；对于用户重写，要先识别修改原因和作用范围。
+
+EMA / 滑动窗口可以用来平滑近期变化，但不能取代范围判断。若用户连续几次在某一本小说中要求更华丽的表达，系统应该优先把它解释为这本书或这一类文本的局部偏好，而不是立即调整全局审美。
+
+### 29.3 读取链路：先判断任务需要什么，再决定检索什么
+
+一次任务不应该无条件检索全部用户偏好。推荐的读取链路：
+
+1. 将当前请求解析为结构化 Task Context。
+2. 推导任务可能需要的偏好维度，例如人物对白、句法节奏或叙述距离。
+3. 加载适用范围内的长期 Claim 和当前项目覆盖项。
+4. 从事件库中检索少量正例与反例，提供证据而不是只提供规则。
+5. 对候选结果做时间和冲突解析。
+6. 判断是否应用；不符合范围或证据不足时允许 abstain。
+7. 编译一个小型 Preference Snapshot，并记录所有引用的 Claim / Event ID。
+8. 将 Snapshot 注入模型任务，并在任务结束时记录实际结果和用户反馈。
+
+### 29.4 不要让用户画像取代当前请求
+
+| 层级 | 内容 | 处理原则 |
+|---|---|---|
+| 语义与事实约束 | 原文含义、人物关系、情节、事实、必要的忠实性 | 不被审美偏好覆盖 |
+| 当前明确要求 | 本次任务指定的文风、用途和受众 | 优先于推断出的长期默认偏好 |
+| 项目 / 作品规则 | 作品基调、专名、人物声音、章节要求 | 在项目范围内有效 |
+| 条件化长期偏好 | 与当前任务匹配、证据充分的 User Model Claim | 作为默认行为指导 |
+| 通用默认 | 当前没有相关证据时的稳健做法 | 不强行个性化 |
+
+这里的重点不是“优先级越高越强硬”，而是明确哪些信息是硬约束，哪些是软偏好。模型不应为了符合用户审美而改变原文事实，也不应为了遵循一个历史偏好而违背用户当前意图。
+
+## 30. 如何验证系统真的越来越懂用户？
+
+不要只检查“能否找回用户曾经说过的话”。建议分五层做评估。
+
+| 评估层 | 核心问题 | 测试指标 / 方法 |
+|---|---|---|
+| Event Capture | 是否完整记录原始选择、修改、评分和上下文？ | 事件完整率、字段准确率、原文可追溯率 |
+| Preference Inference | 是否把事件推断成了正确范围的偏好？ | Claim precision、scope accuracy、confidence calibration、反证覆盖率 |
+| Retrieval | 是否找到当前任务需要的证据，而非表面相似的错误样例？ | Recall@K、MRR、NDCG、正反例召回率 |
+| Applicability | 是否正确决定应用或忽略历史偏好？ | 适用判断准确率、错误个性化率、过度个性化率 |
+| Evolution and Outcome | 新反馈是否合理改变模型？最终结果是否更符合读者？ | 版本修正准确率、稳定偏好保留率、A/B win rate、整段阅读评价 |
+
+### 30.1 必须包含的对抗性测试
+
+- 同一个全局偏好，在不同文本类型下需要不同处理；
+- 当前明确要求与历史偏好相反；
+- 历史有高度相似但用户明确拒绝的反例；
+- 用户在一个项目中尝试新风格，但不希望改变全局偏好；
+- 用户的偏好确实发生长期变化；
+- 用户的反馈相互矛盾，且系统没有足够证据做决定；
+- 一条记忆在历史上有效，但在当前时间已经过期；
+- 当前任务根本不需要调用任何个人偏好。
+
+### 30.2 一条关键指标：错误应用率
+
+现有记忆系统常关注 Recall、准确率和回答质量，但本场景还应单独追踪：
+
+\[
+\text{False Personalization Rate}
+=
+\frac{\text{不适用却被应用的偏好数}}
+{\text{所有被应用的偏好数}}
+\]
+
+这个指标越低越好。一个系统即使检索召回率很高，如果经常把错误场景的偏好用于当前任务，也不能算真正理解了用户。
+
+### 30.3 文学阅读场景还需要专门基准
+
+把 LoCoMo、LongMemEval、PersonaMem 等通用记忆基准作为系统级测试；另建一套真实读者基准，保存跨作品、跨章节、跨文体的 A/B 选择、修改和理由。评估时应同时包含局部语言质量、整段阅读体验、人物声音和叙述视角的一致性、正反例是否被正确迁移，以及当前任务是否被错误的长期偏好影响。
+
+通用 Benchmark 只能证明记忆和个性化能力的某个子集，不应直接宣称系统已经掌握了个人文学审美。
+
+## 31. 实施路线：先做 User Model，不要先做复杂 Memory Stack
+
+建议分四个阶段推进。
+
+**阶段一：建立事实基础。** 用 PostgreSQL 保存不可变的 Interaction Event、Preference Evidence、Preference Claim 和版本记录。实现用户、项目、任务和时间范围过滤。暂时使用全文检索，不急于部署向量数据库。
+
+**阶段二：建立偏好推断与版本更新。** 引入 LangMem 做候选记忆提取和后台整理；所有 Claim 通过应用层验证。实现显式偏好与隐式偏好的不同权重、正反证据、scope 推断、临时状态和版本替代。
+
+**阶段三：建立 Preference Resolver。** 用 LangGraph 编排任务解析、候选召回、时间解析、适用性判断和上下文编译。先以 metadata + FTS + 少量正反例完成端到端，再用实际失败案例决定是否引入 pgvector、reranker 或 Graphiti。
+
+**阶段四：建立闭环评估。** 记录每次任务实际应用和排除的偏好，保存 Preference Snapshot 版本，收集用户反馈并建立回归集。只有当高质量反馈数据足够丰富时，再考虑个性化 reranker 或 preference tuning。
+
+最小可用系统不需要多 Agent，也不需要复杂向量库。优先把以下五个接口做正确：
+
+- record_event()：保存发生了什么；
+- propose_preference_claims()：根据证据提出偏好主张；
+- validate_claim_transition()：检查更新是否合理；
+- resolve_preferences(task_context)：判断当前任务适用哪些偏好；
+- compile_preference_snapshot()：形成可追溯的任务上下文。
+
+**最终目标不是让模型拥有更多记忆，而是让系统对每次个性化决策都能回答：我为什么认为用户喜欢这种表达？这个判断在什么范围和时间内成立？为什么本次任务应该使用它？又有哪些历史证据说明本次不应该使用它？**
+
+当这些问题都能被数据和决策记录回答时，才可以说系统开始具备一个可验证、可持续修正的 User Model。
+
+
 ## 补充参考文献
 
 1. Sun et al. (2026), [Preference-Aware Memory Update for Long-Term LLM Agents](https://aclanthology.org/2026.findings-acl.38/), ACL Findings 2026.
@@ -1273,3 +1700,23 @@ EMNLP 2026 的 OP-Bench 研究指出，引入用户记忆后，模型可能出�
 11. Tan et al. (2025), [In Prospect and Retrospect: Reflective Memory Management for Long-term Personalized Dialogue Agents](https://aclanthology.org/2025.acl-long.413/), ACL 2025.
 12. Nam et al. (2026), [Learning to Summarize User Information for Personalized Reinforcement Learning from Human Feedback](https://www.microsoft.com/en-us/research/publication/learning-to-summarize-user-information-for-personalized-reinforcement-learning-from-human-feedback/), ICLR 2026.
 13. Zhang et al. (2025), [Personalization of Large Language Models: A Survey](https://mlanthology.org/tmlr/2025/zhang2025tmlr-personalization/), TMLR 2025.
+14. Tan et al. (2025), [In Prospect and Retrospect: Reflective Memory Management for Long-term Personalized Dialogue Agents](https://aclanthology.org/2025.acl-long.413/), ACL 2025.
+15. Su et al. (2026), [Beyond Dialogue Time: Temporal Semantic Memory for Personalized LLM Agents](https://aclanthology.org/2026.findings-acl.1496/), Findings of ACL 2026.
+16. Sun et al. (2026), [Preference-Aware Memory Update for Long-Term LLM Agents](https://aclanthology.org/2026.findings-acl.38/), Findings of ACL 2026.
+17. Wang et al. (2026), [QUMem: Personalized Memory for Query-Conditioned User-State Inference in LLM Agents](https://arxiv.org/abs/2608.16168), arXiv preprint.
+18. Zhang et al. (2026), [Toward Robust Personalized Alignment for LLMs: Mitigating Persona Drift in Multi-Turn Dialogue](https://aclanthology.org/2026.findings-emnlp.666/), Findings of EMNLP 2026.
+19. Yuan et al. (2026), [Leaving the Past Behind: Breaking Personalization Inertia in Long-Term LLM Agents](https://aclanthology.org/2026.findings-emnlp.1744/), Findings of EMNLP 2026.
+20. Chen et al. (2026), [AdaMem: Learning What to Remember with Adaptive Memory Policies for Personalized Agents](https://aclanthology.org/2026.emnlp-industry.189/), EMNLP 2026 Industry Track.
+21. Guo et al. (2026), [Towards Natural Personalization: Evaluating Long-Horizon Preference Following in Personalized User-LLM Interactions](https://aclanthology.org/2026.findings-emnlp.2378/), Findings of EMNLP 2026.
+22. Yang et al. (2026), [TrustMem: Learning Trustworthy Memory Consolidation for LLM Agents with Long-Term Memory](https://aclanthology.org/2026.findings-emnlp.2419/), Findings of EMNLP 2026.
+23. Schewior et al. (2026), [AgenticLOCI: A Multi-Agent Memory Framework for Conversational AI with Longitudinal Personalization](https://aclanthology.org/2026.realm-1.42/), REALM 2026.
+24. Jiang et al. (2026), [Learning User-Aware Recall: Personalized Retrieval in Long-Term Conversational Memory](https://arxiv.org/abs/2607.00017), arXiv preprint.
+25. LangChain, [LangGraph Memory](https://docs.langchain.com/oss/python/langgraph/add-memory), official documentation.
+26. LangChain, [LangGraph Persistence](https://docs.langchain.com/oss/python/langgraph/persistence), official documentation.
+27. LangChain, [LangMem Core Concepts](https://langchain-ai.github.io/langmem/concepts/conceptual_guide/), official documentation.
+28. Anthropic, [How Claude Code remembers your project](https://code.claude.com/docs/en/memory), official documentation.
+29. Anthropic, [Claude Code Hooks](https://code.claude.com/docs/en/hooks), official documentation.
+30. Mem0, [How Mem0 Works](https://github.com/mem0ai/mem0/blob/main/docs/core-concepts/how-it-works.mdx), official documentation.
+31. Mem0, [OSS v2 to v3 Migration](https://github.com/mem0ai/mem0/blob/main/docs/migration/oss-v2-to-v3.mdx), official documentation.
+32. Zep, [Graphiti: Temporal Context Graphs for AI Agents](https://github.com/getzep/graphiti), official repository and documentation.
+33. Letta, [Stateful Agents](https://docs.letta.com/concepts/stateful-agents), official documentation.
