@@ -78,6 +78,9 @@ class PreferenceResolver:
         uncertain: list[dict[str, Any]] = []
 
         for claim in claims:
+            if claim.user_id != task.user_id:
+                excluded.append({"claim_id": claim.claim_id, "reason": "USER_MISMATCH"})
+                continue
             if claim.status != "active":
                 excluded.append({"claim_id": claim.claim_id, "reason": "INACTIVE_CLAIM"})
                 continue
