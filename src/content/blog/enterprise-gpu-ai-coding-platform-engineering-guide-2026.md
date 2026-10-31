@@ -2,13 +2,18 @@
 author: W
 featured: false
 draft: false
-description: 面向企业级 AI Coding 平台的 NVIDIA B300 / GB300 GPU 基础设施与推理工程指南，覆盖硬件拓扑、集群网络、Kubernetes、模型推理、Agent Runtime、安全、容量规划、运维、团队与实施路线图。
+description: 面向企业级 AI Coding 平台的 GPU 基础设施与推理工程指南，覆盖 NVIDIA B300 / GB300、国产 GPU 与 AI 加速器、异构推理部署、Kubernetes、Agent Runtime、安全、容量规划、运维与实施路线图。
 pubDatetime: 2026-10-30T00:00:00Z
 title: 企业级 GPU AI Coding 平台：从 B300 集群部署到推理与 Agent 工程
 tags:
   - GPU
   - NVIDIA
   - B300
+  - 国产GPU
+  - Ascend
+  - CANN
+  - MUSA
+  - vLLM
   - GB200
   - GB300
   - LLM
