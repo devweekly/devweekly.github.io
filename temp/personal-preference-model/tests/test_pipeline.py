@@ -67,6 +67,25 @@ class PreferencePipelineTests(unittest.TestCase):
         self.assertEqual(snapshot["applied"], [])
         self.assertEqual(snapshot["excluded"][0]["reason"], "SCOPE_MISMATCH")
 
+    def test_matching_claim_is_applied(self) -> None:
+        claim = PreferenceClaim(
+            user_id="u1",
+            dimension="narration.subtlety",
+            value="preserve_implicit_emotion",
+            strength=0.8,
+            confidence=0.9,
+            scope={"text_type": ["psychological_narration"]},
+            source_kind="inferred",
+            valid_from=self.task.timestamp,
+        )
+        self.store.create_claim(claim)
+        snapshot = PreferenceResolver(self.store).resolve(
+            self.task,
+            self.store.list_active_claims("u1"),
+        )
+        self.assertEqual(len(snapshot["applied"]), 1)
+        self.assertEqual(snapshot["applied"][0]["dimension"], "narration.subtlety")
+
     def test_current_override_excludes_matching_claim(self) -> None:
         claim = PreferenceClaim(
             user_id="u1",
