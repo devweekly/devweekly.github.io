@@ -18,6 +18,13 @@ The example follows the public Circuit Tracer API and official Gemma 2 2B tutori
 - Hugging Face access to the Gemma 2 2B weights, subject to the model's access and licence terms.
 - A matching Circuit Tracer transcoder set.
 
+Clone the companion examples from this repository:
+
+~~~bash
+git clone https://github.com/devweekly/devweekly.github.io.git
+cd devweekly.github.io/tools/llm-internal-knowledge-attribution
+~~~
+
 Use an isolated environment:
 
 ~~~bash
