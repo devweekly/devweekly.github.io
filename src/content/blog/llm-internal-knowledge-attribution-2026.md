@@ -1078,7 +1078,9 @@ flowchart TD
 22. [IBM/vLLM-Hook](https://github.com/IBM/vLLM-Hook).
 23. Goodfire, [Silico](https://www.goodfire.com/silico).
 24. Goodfire, [Predictive Data Debugging: Reveal and Shape What Your Model Learns, Before You Train](https://www.goodfire.com/research/predictive-data-debugging), 2026-06-11.
-25. Oxford Martin School, [Automated Interpretability-Driven Model Auditing and Control: A Research Agenda](https://aigi.ox.ac.uk/wp-content/uploads/2026/01/Automated_interp_Research_Agenda.pdf), 2026-01.
+25. Ai2, [How Goodfire used Ai2’s open post-training stack to trace unwanted model behavior](https://allenai.org/blog/goodfire-olmo), 2026-09-09.
+26. Goodfire, [Silico Capabilities](https://docs.goodfire.com/concepts/capabilities/).
+27. Oxford Martin School, [Automated Interpretability-Driven Model Auditing and Control: A Research Agenda](https://aigi.ox.ac.uk/wp-content/uploads/2026/01/Automated_interp_Research_Agenda.pdf), 2026-01.
 
 ---
 
