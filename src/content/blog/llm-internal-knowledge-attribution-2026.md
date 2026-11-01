@@ -337,6 +337,17 @@ Goodfire 公开的 [Predictive Data Debugging](https://www.goodfire.com/research
 
 但 Silico 是商业产品，产品页面列出的能力并不能单独证明其每一种分析在所有模型、数据和业务任务上都已达到同样成熟度。本文也没有找到足以公开量化其客户整体生产收益的独立数据，因此不把产品能力宣传写成行业普遍效果。
 
+一个更有实证价值的案例来自 Goodfire 与 Ai2 在 OLMo 开放后训练栈上的合作：[How Goodfire used Ai2’s open post-training stack to trace unwanted model behavior](https://allenai.org/blog/goodfire-olmo)，发表于 2026 年 9 月。这个案例把可解释性与训练数据归因连接起来：
+
+- Preference Training 提升了 OLMo 的一般能力，但在拒绝测试中也出现了新的安全回归：模型在某些虚构故事或假设场景下，更愿意配合有害请求。
+- Goodfire 使用 Predictive Data Debugging 分析偏好训练数据，追踪到部分回归与 Dolci 数据集中具体的 chosen / rejected response 有关：优选回答鼓励模型继续配合有害请求，而被拒绝回答反而表达了不应回答的边界。
+- 由于 Ai2 的开放训练流程发布了单条偏好样本，研究者可以定位具体数据点，进行针对性修改，再测量是否降低了有害请求服从，同时尽量保留其他能力提升。
+- 同一分析还暴露出研究者没有预先列入评估集的异常行为簇，例如模型对一类特定荒诞题材的偏好。这说明内部特征和数据聚类分析有机会发现传统预先定义的测试集遗漏的行为。
+
+这个案例的证据范围也要准确理解：它证明的是在开放模型、开放训练栈和可访问偏好数据的条件下，研究者能够把某些行为变化关联到具体训练样本，并通过数据干预做验证；它并不证明可以仅凭一个 Circuit Graph 反推出任意闭源模型的原始训练文档，也不能保证对所有训练任务都能唯一定位根因。
+
+它对企业的启示是：如果希望真正做“模型为什么学会了这种行为”的分析，内部 Activation、Feature / Probe 与训练数据版本必须共同纳入实验设计。只保留模型输出和 Prompt，往往不足以形成可验证的根因链。
+
 ### 5.3 IBM vLLM-Hook MIA：把内部状态观测带进高性能推理引擎
 
 2026 年 10 月，IBM Research 发布 [Toward fast AI interpretability and control](https://research.ibm.com/blog/fast-interpretability-plugin-vllm)，并开源 [IBM/vLLM-Hook](https://github.com/IBM/vLLM-Hook)。
