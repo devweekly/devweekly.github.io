@@ -525,6 +525,8 @@ The capital of France is
 
 建议先使用 Gemma 2 2B，复现 Circuit Tracer 官方的 Dallas → Texas → Austin 示例。这样可以验证整条分析链路，而不是一开始就把问题复杂化。
 
+对应的独立 PoC 代码、运行说明和 NNsight 示例已放在 [tools/llm-internal-knowledge-attribution](https://github.com/devweekly/devweekly.github.io/tree/main/tools/llm-internal-knowledge-attribution)。
+
 ### 7.1 环境与模型选择
 
 官方仓库：[decoderesearch/circuit-tracer](https://github.com/decoderesearch/circuit-tracer)
