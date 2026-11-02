@@ -5554,21 +5554,251 @@ WHERE CONFIG_ID = ?
 
 尤其需要避免把一个用户页面拆成几十条独立 SQL：例如页面加载时先查配置，再查权限，再逐条查询每个业务对象。即使每条 SQL 都很简单，查询提交和执行次数也会带来额外开销。应尽量合理地合并读取、批量写入，并减少无意义的往返。
 
+
+#### 65.5.1 一次查询的完整执行路径：从 HTTP 请求到结果返回
+
+原图只表达了应用与 Snowflake 的连接关系。真实查询经过应用侧、Cloud Services 控制面、Virtual Warehouse 计算面、存储访问和结果交付。以下以普通 SELECT 为例；这是逻辑执行图，不意味着每条 SQL 都会经过所有分支。
+
+```mermaid
+flowchart TB
+  subgraph APP["1 应用侧：请求与连接"]
+    U["用户 / Browser / UI"] -->|"HTTPS"| API["Application API"]
+    API --> AUTH["认证、授权、参数校验"]
+    AUTH --> POOL["Connector / Driver<br/>连接池、会话复用、参数绑定"]
+    POOL -->|"TLS + SQL"| GW["Snowflake Endpoint"]
+  end
+  subgraph CLOUD["2 Cloud Services：控制面"]
+    GW --> LOGIN["身份认证 / 会话建立"]
+    LOGIN --> ACL["Role 与对象权限检查"]
+    ACL --> PARSE["SQL Parsing / Semantic Analysis"]
+    PARSE --> META["对象解析 / Schema 与微分区元数据"]
+    META --> CACHE{"Persisted Result Cache 命中？"}
+    CACHE -->|"命中"| RESULT["复用已保存结果<br/>跳过 Warehouse 执行"]
+    CACHE -->|"未命中"| OPT["Query Optimization<br/>谓词、Join、Partition Pruning"]
+    OPT --> PLAN["生成执行计划 / 调度 Warehouse"]
+  end
+  subgraph COMPUTE["3 Virtual Warehouse：计算面"]
+    PLAN --> STATE{"Warehouse 状态"}
+    STATE -->|"Suspended"| RESUME["Provision / Resume"]
+    STATE -->|"Running"| QUEUE["并发资源检查 / Queue"]
+    RESUME --> QUEUE
+    QUEUE --> EXEC["执行计划 / Operators"]
+    EXEC --> SCAN["Micro-partition Scan<br/>列裁剪、分区裁剪"]
+    SCAN --> DCACHE{"Warehouse Local Data Cache 命中？"}
+    DCACHE -->|"命中"| OPS["Filter / Join / Aggregate / Sort"]
+    DCACHE -->|"未命中"| STORAGE["读取 Snowflake Managed Storage"]
+    STORAGE --> OPS
+    OPS --> MEMORY{"内存是否足够？"}
+    MEMORY -->|"是"| FORMAT["结果集整理 / 序列化"]
+    MEMORY -->|"否"| SPILL["Spill to Local / Remote Storage"]
+    SPILL --> OPS
+  end
+  subgraph RETURN["4 结果返回"]
+    FORMAT --> PERSIST["持久化查询结果（可供后续复用）"]
+    PERSIST --> FETCH["Connector 分批 Fetch"]
+    FETCH --> RESPONSE["API 映射 / 脱敏 / 响应"]
+    RESPONSE --> U
+    RESULT --> FETCH
+  end
+  subgraph OBS["5 观测与成本归因（旁路）"]
+    QH["Query History / Query Profile"]
+    WHM["Warehouse Metering / Load History"]
+    CSM["Cloud Services Usage"]
+    TAG["QUERY_TAG / User / Role / Warehouse"]
+  end
+  LOGIN -.-> CSM
+  OPT -.-> CSM
+  EXEC -.-> QH
+  QUEUE -.-> WHM
+  PLAN -.-> TAG
+  FORMAT -.-> QH
+```
+
+**执行阶段说明：**
+
+1. **应用请求与驱动连接。** Browser 发起 HTTP 请求，应用完成身份验证、业务授权和输入校验。应用服务通过 Snowflake Connector / Driver 使用服务身份建立或复用会话，提交 SQL、绑定参数和会话上下文。连接池复用可以减少连接建立开销，但不替代 Snowflake 内部的 SQL 处理。
+2. **认证与访问控制。** Cloud Services 验证身份、会话和角色，检查当前角色是否有权使用 Warehouse，以及是否可以访问目标 Database、Schema、Table、View 等对象。
+3. **解析与编译。** SQL 被解析并进行语义检查，解析对象、列、函数和类型；读取元数据，生成候选执行计划。优化器根据谓词、Join、聚合和微分区元数据生成执行计划。复杂 SQL、大量对象和频繁元数据操作会增加 Cloud Services 工作量。
+4. **结果缓存判断。** 如果满足持久化查询结果复用条件，Snowflake 可以直接返回已有结果，跳过 Warehouse 查询执行。缓存复用有严格条件，并非 SQL 相似就一定命中；查询文本、权限、底层数据和影响结果的会话参数都可能影响复用。
+5. **Warehouse 准备与排队。** 未命中结果缓存且查询需要计算时，执行计划被分配给指定 Warehouse。Warehouse 已挂起时可能需要 Resume / Provision；已经运行时也可能因并发负载而排队。恢复等待与 SQL 执行时间是不同阶段。
+6. **扫描与算子执行。** Warehouse 按执行计划访问所需微分区和列，利用微分区元数据裁剪；也可能利用运行中 Warehouse 的本地数据缓存。之后执行 Filter、Join、Aggregate、Sort、Window 等算子。内存不足时可能发生本地或远程 Spill，增加执行时间和资源压力。
+7. **结果生成与交付。** 执行完成后，结果可被持久化以供后续查询复用。Connector / Driver 分批取回结果，应用服务执行必要的业务映射、脱敏和响应序列化，再返回 Browser。大结果集的网络传输和客户端处理可能成为端到端延迟的重要部分。
+8. **观测与归因。** Query History、Query Profile、Warehouse Metering、Warehouse Load History 和 Cloud Services Usage 分别提供查询执行、算子、Warehouse 资源和控制面使用情况。通过 QUERY_TAG、专用 Warehouse、用户和角色，可以将成本归属到应用或业务域。
+
+#### 65.5.2 执行路径上的费用：哪些会收费，哪些不是独立收费项？
+
+不要把图中的每个方框都理解为一笔单独账单。Snowflake 整体费用通常按 Compute、Storage、Data Transfer 等使用类型归集；Compute 又包括 Virtual Warehouse、Serverless 和 Cloud Services。某阶段发生资源消耗，不代表它必然形成一个独立的逐查询收费项目。
+
+| 执行阶段 / 资源 | 是否可能产生费用 | 费用归属与计费理解 | 低流量应用的关注点 |
+| --- | --- | --- | --- |
+| 应用 Browser / API / Connector | 不属于 Snowflake Warehouse 计费 | 应用运行环境、API Gateway、日志和密钥管理由相应平台计费 | 不要把应用服务器费用误算成 Snowflake Credits |
+| 身份认证、会话、权限检查、元数据管理 | 可能 | Cloud Services Compute；每日 Cloud Services 用量超过当日 Warehouse 用量 10% 的部分才计入相应计费调整 | 高频短小请求、SHOW / 元数据操作可能使 Cloud Services 用量相对突出 |
+| SQL Parsing、Compilation、Optimization | 可能 | 属于 Cloud Services 处理；不是每条 SQL 固定收取一笔编译费 | 复杂 SQL、大量对象、巨大 IN 列表和频繁 DDL 会增加工作量 |
+| Persisted Query Result Cache 命中 | 通常不消耗 Warehouse 执行 Credits | 复用已保存结果，跳过 Warehouse 执行；请求控制和结果交付仍需资源 | 缓存有严格复用条件，不能作为 SLA 保证 |
+| Warehouse Resume / Provision | 是 | Warehouse Compute Credits；每次启动有 60 秒最低计费，之后连续运行按秒计费 | AUTO_SUSPEND 太短会导致频繁 Resume，最低计费可能远大于 SQL 执行时间 |
+| Warehouse Queue | 无独立队列收费项 | 排队等待本身不是独立计费类别；Warehouse 运行期间仍消耗 Credits | 共享 Warehouse 上其他工作负载也会影响排队 |
+| Micro-partition Scan / Filter / Join / Aggregate / Sort | 是 | 主要属于 Warehouse Compute；按 Warehouse 运行时间和规格计费，不按每行或每个算子单独收费 | 执行时间、扫描量、Join、聚合和并发都会影响资源使用 |
+| Warehouse Local Data Cache 命中 | 是，Warehouse 运行时 | Cache 是运行中 Warehouse 的资源，不是独立缓存服务收费；Warehouse 运行时间仍计费 | 为保留 Cache 而延长空闲运行时间，可能增加费用 |
+| Spill to Local / Remote Storage | 可能增加间接成本 | 主要表现为查询执行时间延长和 Warehouse Compute 增加；不要理解为每次 Spill 都有独立存储账单 | 关注 Query Profile 的 Spill Bytes 和 SQL 计划 |
+| Standard Table 持久化存储 | 是，持续性费用 | Storage 按压缩后的数据量计费；Time Travel / Fail-safe 等历史数据也可能增加存储用量 | 低 QPS 不意味着存储费用为零 |
+| 查询结果持久化 | 需区分 | 结果缓存复用不是额外 Warehouse 执行；不能按每次 SELECT 另算一笔 Warehouse 费用 | 不要把结果缓存与 Warehouse 本地数据缓存混为一谈 |
+| 结果返回应用 | 视路径而定 | 跨云、跨 Region 或跨 Cloud 的数据传输可能产生 Data Transfer 费用；应用平台也可能有网络费用 | 控制返回行数和列数，避免先传输大量数据再在应用中过滤 |
+| Search Optimization（若启用） | 是 | Serverless Compute，独立服务计量 | 本例默认不启用，小表通常不需要 |
+| Query Acceleration Service（若启用） | 是 | Serverless Compute，按服务用量计量 | 本例默认不启用 |
+| 成本预算与后台采集 | 视功能而定 | 部分成本管理功能会运行 Serverless 后台任务并产生少量 Compute / Storage 费用 | 监控频率和报表查询也应纳入预算 |
+
+三个容易算错的细节：
+
+- **Warehouse 按运行时间计费，不是只按 SQL Execution Time 计费。** 每次 Resume 有 60 秒最低计费，之后按秒计费。Warehouse 即使暂时没有 SQL 执行，只要仍在运行，也会持续消耗 Credits。
+- **Cloud Services 有每日 10% 调整规则。** Cloud Services 实际计费调整按 UTC 日计算：当日 Cloud Services 消耗超过当日 Warehouse Compute 用量的 10% 时，超出部分才形成相应计费调整。不能把所有 Cloud Services 消耗直接加到 Warehouse 费用上。Serverless Compute 不参与这个 10% 调整计算。
+- **查询成本归因不等于 Warehouse 完整账单。** Query Attribution 可以把 Warehouse 使用成本按资源消耗分配给查询，但不包括 Warehouse 没有执行查询时的 Idle Time。因此，查询归因成本之和不能直接替代 Warehouse Metering 的账单核对。
+
+对于本章的 Standard Table 轻量应用，默认不启用 Search Optimization、Query Acceleration、Snowpipe 或其他 Serverless 特性。先使用普通 Warehouse、标准表和常规 SQL 测量真实成本，再根据证据决定是否需要额外服务。
+
+#### 65.5.3 用哪些视图核对一次查询和整个 Warehouse 的成本？
+
+建议把观测分为三个层次，而不是只看 Query History 的执行时间字段：
+
+| 想回答的问题 | 首选视图 / 工具 | 能看到什么 | 不能单独证明什么 |
+| --- | --- | --- | --- |
+| 这条 SQL 花了多少时间？ | Snowsight Query History、ACCOUNT_USAGE.QUERY_HISTORY | Compilation、Execution、Queue、Provisioning、Bytes Scanned、Warehouse、Query Tag | 不能单独得出完整 Warehouse 账单 |
+| 哪个算子最慢？ | Query Profile、GET_QUERY_OPERATOR_STATS | Scan、Join、Aggregate、Sort、Spill 等算子表现 | 不能把算子耗时直接换算为账单金额 |
+| Warehouse 实际用了多少 Credits？ | ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY | 按 Warehouse / 时间段统计 Credits | 不能仅靠它精确分配到每条 SQL |
+| 每条查询分摊多少 Warehouse 成本？ | ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY | 查询级 Warehouse Compute 成本归因 | 不包含 Warehouse Idle Time，也不等于完整账户成本 |
+| Cloud Services 是否产生实际计费调整？ | ACCOUNT_USAGE.METERING_DAILY_HISTORY | 每日 Cloud Services 用量和调整量 | 不是单条 SQL 的完整费用明细 |
+| Serverless 服务用了多少？ | 对应服务 Usage History / SERVERLESS_TASK_HISTORY 等 | 特定 Serverless 功能的 Credits | 不适用于没有启用这些服务的普通查询 |
+| 存储占用多少？ | TABLE_STORAGE_METRICS、STORAGE_USAGE 等官方视图 | 表、历史数据和账户存储使用情况 | 不能从单次 SELECT 推导月度存储成本 |
+
+下面的 SQL 可以作为成本核对起点：
+
+```sql
+-- 1. 查询级执行时间、扫描量和排队时间
+SELECT
+    QUERY_ID, QUERY_TYPE, EXECUTION_STATUS,
+    WAREHOUSE_NAME, QUERY_TAG,
+    COMPILATION_TIME, EXECUTION_TIME,
+    QUEUED_PROVISIONING_TIME, QUEUED_OVERLOAD_TIME,
+    BYTES_SCANNED, ROWS_PRODUCED, START_TIME
+FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_HISTORY
+WHERE START_TIME >= DATEADD('DAY', -7, CURRENT_TIMESTAMP())
+  AND WAREHOUSE_NAME = 'APP_WH'
+ORDER BY START_TIME DESC;
+
+-- 2. Warehouse 实际 Compute Credits
+SELECT
+    WAREHOUSE_NAME, START_TIME, END_TIME,
+    CREDITS_USED, CREDITS_USED_COMPUTE,
+    CREDITS_USED_CLOUD_SERVICES
+FROM SNOWFLAKE.ACCOUNT_USAGE.WAREHOUSE_METERING_HISTORY
+WHERE START_TIME >= DATEADD('DAY', -7, CURRENT_TIMESTAMP())
+  AND WAREHOUSE_NAME = 'APP_WH'
+ORDER BY START_TIME DESC;
+
+-- 3. 查询级 Warehouse Compute 成本归因
+SELECT
+    QUERY_ID, WAREHOUSE_NAME, START_TIME, END_TIME,
+    CREDITS_ATTRIBUTED_COMPUTE
+FROM SNOWFLAKE.ACCOUNT_USAGE.QUERY_ATTRIBUTION_HISTORY
+WHERE START_TIME >= DATEADD('DAY', -7, CURRENT_TIMESTAMP())
+  AND WAREHOUSE_NAME = 'APP_WH'
+ORDER BY START_TIME DESC;
+
+-- 4. 每日 Cloud Services 实际计费调整
+SELECT
+    USAGE_DATE,
+    CREDITS_USED_CLOUD_SERVICES,
+    CREDITS_ADJUSTMENT_CLOUD_SERVICES,
+    CREDITS_USED_CLOUD_SERVICES
+      + CREDITS_ADJUSTMENT_CLOUD_SERVICES AS BILLED_CLOUD_SERVICES
+FROM SNOWFLAKE.ACCOUNT_USAGE.METERING_DAILY_HISTORY
+WHERE USAGE_DATE >= DATEADD('DAY', -7, CURRENT_DATE())
+ORDER BY USAGE_DATE DESC;
+```
+
+ACCOUNT_USAGE 视图存在数据延迟，不能假设刚执行完 SQL 就能立即查到。即时排障优先使用 Snowsight Query History、Query Profile 或 Information Schema 的近期历史接口；成本对账再使用 ACCOUNT_USAGE / ORGANIZATION_USAGE。查询成本视图本身也需要计算资源，应避免高频轮询。
+
+建议应用在连接会话中设置稳定的 QUERY_TAG，例如应用名、环境和业务模块，并将业务请求 correlation ID 写入应用日志。不要把用户隐私或敏感业务参数直接写入 QUERY_TAG。专用 Warehouse 可以简化成本归因；共享 Warehouse 则需要接受查询级分摊和空闲成本无法完全归属到单个应用的现实。
+
+#### 65.5.4 一个低流量应用的费用优化顺序
+
+1. **先减少不必要的 SQL 往返。** 页面一次性读取需要的数据，避免 N+1；不要每个 HTTP 请求都执行 SHOW、DESCRIBE 或重复查询元数据。
+2. **优先使用批量写入。** Snowflake 官方指出，频繁单行 INSERT 并不是理想的工作负载模式，可能带来较高 Cloud Services 元数据开销。低频人工操作可以考虑合并写入，但必须明确业务提交和持久化时点，不能丢失用户已确认的数据。
+3. **合理设置 AUTO_SUSPEND。** 请求间隔很长时可选择较短自动挂起时间，但要考虑每次 Resume 的 60 秒最低计费；请求间隔很短时，过早挂起反而增加启动等待和最低计费次数。
+4. **避免为了 Cache 延长空闲运行。** Warehouse 本地数据缓存会在 Warehouse 挂起时丢失。是否保持运行，应比较缓存收益和空闲 Compute 成本。
+5. **使用小规格 Warehouse 起步。** 先用 X-Small / Small 做真实负载测试。只有发现排队、内存不足、Spill 或 SLA 不达标时，再考虑调整规格。
+6. **给应用独立的成本身份。** 专用 Warehouse、服务用户、QUERY_TAG 和资源预算有助于识别异常增长；不要让轻量 CRUD 与大型分析查询共享同一成本归因边界而无法解释账单。
+
+本节官方参考资料：
+
+- [Understanding Overall Cost](https://docs.snowflake.com/en/user-guide/cost-understanding-overall) — Compute、Storage、Data Transfer 的费用组成。
+- [Understanding Compute Cost](https://docs.snowflake.com/en/user-guide/cost-understanding-compute) — Warehouse、Serverless、Cloud Services 的计费机制及 10% 规则。
+- [Understanding Storage Cost](https://docs.snowflake.com/en/user-guide/cost-understanding-data-storage) — 表数据、Time Travel、Fail-safe 和存储计费。
+- [Attributing Cost](https://docs.snowflake.com/en/user-guide/cost-attributing) — 查询级成本分摊与 Idle Time 边界。
+- [Exploring Compute Cost](https://docs.snowflake.com/en/user-guide/cost-exploring-compute) — Metering、Query Attribution 和 Serverless 用量视图。
+- [Optimizing Cloud Services for Cost](https://docs.snowflake.com/en/user-guide/cost-optimize-cloud-services) — 高频 SHOW、单行 INSERT、复杂 SQL 和元数据操作的成本模式。
+- [Using Persisted Query Results](https://docs.snowflake.com/en/user-guide/querying-persisted-results) — 结果缓存复用条件。
+- [Optimizing the Warehouse Cache](https://docs.snowflake.com/en/user-guide/performance-query-warehouse-cache) — Warehouse 本地数据缓存与 AUTO_SUSPEND 的关系。
+- [Query History](https://docs.snowflake.com/en/sql-reference/functions/query_history) — 查询阶段时间和状态字段。
+- [Exploring Execution Times](https://docs.snowflake.com/en/user-guide/performance-query-exploring) — Query Profile 和历史执行分析。
+
+
 #### 65.5 一个简单的实现方式：应用服务 + Standard Table
 
 如果决定采用 Standard Table，不需要为了模仿 PostgreSQL 再造一套复杂数据库中间层。可以使用普通应用服务负责业务规则、输入校验、身份与授权、幂等处理和数据写入，Snowflake 负责持久化与查询。
 
 ```mermaid
 flowchart TB
-    U[内部用户 / 管理后台] --> API[Application API]
-    API --> V[业务校验与授权]
-    V --> I[幂等性与并发检查]
-    I --> C[Snowflake Connector]
-    C --> W[Small / X-Small Warehouse]
-    W --> T[(Standard Tables)]
-    T --> A[审计记录与业务数据]
-    M[监控：Query History / Warehouse Usage] -.-> W
-    M -.-> API
+  subgraph APP["1 应用侧：请求与连接"]
+    U["用户 / Browser / UI"] -->|"HTTPS"| API["Application API"]
+    API --> AUTH["认证、授权、参数校验"]
+    AUTH --> POOL["Connector / Driver<br/>连接池、会话复用、参数绑定"]
+    POOL -->|"TLS + SQL"| GW["Snowflake Endpoint"]
+  end
+  subgraph CLOUD["2 Cloud Services：控制面"]
+    GW --> LOGIN["身份认证 / 会话建立"]
+    LOGIN --> ACL["Role 与对象权限检查"]
+    ACL --> PARSE["SQL Parsing / Semantic Analysis"]
+    PARSE --> META["对象解析 / Schema 与微分区元数据"]
+    META --> CACHE{"Persisted Result Cache 命中？"}
+    CACHE -->|"命中"| RESULT["复用已保存结果<br/>跳过 Warehouse 执行"]
+    CACHE -->|"未命中"| OPT["Query Optimization<br/>谓词、Join、Partition Pruning"]
+    OPT --> PLAN["生成执行计划 / 调度 Warehouse"]
+  end
+  subgraph COMPUTE["3 Virtual Warehouse：计算面"]
+    PLAN --> STATE{"Warehouse 状态"}
+    STATE -->|"Suspended"| RESUME["Provision / Resume"]
+    STATE -->|"Running"| QUEUE["并发资源检查 / Queue"]
+    RESUME --> QUEUE
+    QUEUE --> EXEC["执行计划 / Operators"]
+    EXEC --> SCAN["Micro-partition Scan<br/>列裁剪、分区裁剪"]
+    SCAN --> DCACHE{"Warehouse Local Data Cache 命中？"}
+    DCACHE -->|"命中"| OPS["Filter / Join / Aggregate / Sort"]
+    DCACHE -->|"未命中"| STORAGE["读取 Snowflake Managed Storage"]
+    STORAGE --> OPS
+    OPS --> MEMORY{"内存是否足够？"}
+    MEMORY -->|"是"| FORMAT["结果集整理 / 序列化"]
+    MEMORY -->|"否"| SPILL["Spill to Local / Remote Storage"]
+    SPILL --> OPS
+  end
+  subgraph RETURN["4 结果返回"]
+    FORMAT --> PERSIST["持久化查询结果（可供后续复用）"]
+    PERSIST --> FETCH["Connector 分批 Fetch"]
+    FETCH --> RESPONSE["API 映射 / 脱敏 / 响应"]
+    RESPONSE --> U
+    RESULT --> FETCH
+  end
+  subgraph OBS["5 观测与成本归因（旁路）"]
+    QH["Query History / Query Profile"]
+    WHM["Warehouse Metering / Load History"]
+    CSM["Cloud Services Usage"]
+    TAG["QUERY_TAG / User / Role / Warehouse"]
+  end
+  LOGIN -.-> CSM
+  OPT -.-> CSM
+  EXEC -.-> QH
+  QUEUE -.-> WHM
+  PLAN -.-> TAG
+  FORMAT -.-> QH
 ```
 
 一个简单的表定义示例：
