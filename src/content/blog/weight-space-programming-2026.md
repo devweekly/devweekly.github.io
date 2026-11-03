@@ -1338,7 +1338,428 @@ flowchart TD
 
 最重要的判断是：**Persona Vectors 提供了一种观察和控制模型内部行为的接口；Weight-Space Programming 则试图让 LLM 进一步理解并修改另一个模型的内部参数。前者可以为后者提供诊断信号和验证指标，但二者之间还隔着因果定位、参数映射和独立安全评估。**
 
-### 12.6 Model Auditing：权重级安全审计
+### 12.6 深入拆解 Anthropic Persona Vectors：如何提取、测量和干预模型行为
+
+上一节介绍了 Persona Vectors 与 Weight-Space Programming 的关系。本节回到 Anthropic 的原始研究，按论文实验顺序解释它究竟做了什么、哪些结果有证据支持、官方代码如何复现，以及为什么它还不能被当作生产环境的通用安全开关。
+
+研究原文：[Persona Vectors: Monitoring and Controlling Character Traits in Language Models](https://arxiv.org/abs/2507.21509)，Anthropic 于 2025 年 8 月 1 日发布研究介绍。作者包括 Runjin Chen、Andy Arditi、Henry Sleight、Owain Evans 和 Jack Lindsey。官方实现位于 [safety-research/persona_vectors](https://github.com/safety-research/persona_vectors)。
+
+#### 12.6.1 研究真正想解决的问题：行为漂移不一定发生在输出文本层
+
+通常我们通过最终输出判断模型行为：它是否迎合用户、是否编造事实、是否给出有害建议。这种方式有一个明显缺陷：当输出已经表现出问题时，行为偏移已经发生。更重要的是，输出文本只能告诉我们“模型说了什么”，不能直接告诉我们模型在生成之前是否已经进入了某种行为状态。
+
+Anthropic 的假设是：模型的高层行为特征会在内部激活空间中留下可测量的信号。假设一个模型在不同上下文中表现出两种行为：
+
+- A：用户提出一个没有证据支持的结论，模型明确指出证据不足。
+- B：用户提出同样的结论，模型为了迎合用户而表示赞同，甚至补充不存在的证据。
+
+如果模型内部存在与“迎合”相关的方向，那么 B 类响应的某些层激活，平均而言可能沿该方向比 A 类响应更远。通过对照实验，就有机会提取出这个方向。
+
+这里的 Persona 不是心理学意义上的人格诊断，也不是给模型贴上“诚实”“邪恶”等标签。它是一个操作性定义：研究者先定义某种可观察行为，再通过对照数据和模型内部激活，构造一个可以测量、并且可以尝试干预的方向。
+
+研究主要关注三种负面特征：
+
+| 特征 | 论文中的含义 | 企业系统中可能观察到的表现 |
+| --- | --- | --- |
+| Evil | 恶意、伤害他人或漠视他人福祉 | 生成有害建议、鼓励伤害或操纵 |
+| Sycophancy | 过度赞同、奉承用户 | 用户表达错误观点时仍然附和，改变判断迎合用户 |
+| Hallucination | 编造不存在的信息 | 对未知事实给出虚构细节，或把猜测表达成事实 |
+
+论文还在附录中研究了 optimism、impoliteness、apathy 和 humor 等其他特征。方法本身并不局限于负面特征：只要能给出足够清楚的行为定义，并构造出可靠的正反例，就可以尝试提取相应方向。
+
+#### 12.6.2 先理解 Residual Stream：Persona Vector 究竟存在于哪里
+
+Transformer 每一层都会处理输入 Token，并更新内部表示。以典型的 Transformer Block 为例，输入隐藏状态经过 Attention 和 MLP 等子层后，会通过残差连接累加到 Residual Stream。可以把 Residual Stream 理解为贯穿网络各层、不断累积和传递信息的主干表示。
+
+对第 \(\ell\) 层、第 \(t\) 个 Token，记其激活为：
+
+\[
+h_{\ell,t}\in\mathbb{R}^{d}
+\]
+
+其中 \(d\) 是模型的 Hidden Size。以 Qwen2.5-7B 为例，隐藏维度为 3584；Llama-3.1-8B 的隐藏维度为 4096。每个 Token 在每一层都有一个这样的高维向量。
+
+Persona Vector 是同一模型、同一层、同一表示位置上的一个方向：
+
+\[
+v_{\ell}^{(p)}\in\mathbb{R}^{d}
+\]
+
+它与模型参数 \(\theta\) 完全不是同一种对象：
+
+- \(\theta\)：模型参数，决定模型的计算函数。
+- \(h_{\ell,t}\)：模型运行某次 Forward Pass 时产生的中间状态。
+- \(v_{\ell}^{(p)}\)：研究者从一批中间状态中估计出的行为方向。
+
+因此，Persona Vector 并不是模型文件中的一组新权重。加载一个向量文件不会自动改变模型；只有在模型运行时把它用于投影、监控或激活干预，才会产生作用。
+
+#### 12.6.3 向量提取流水线：不是简单地让模型回答两组问题
+
+Anthropic 的方法有一个值得重视的设计：它把“行为定义、对照数据生成、行为评分、激活提取、向量选择”拆成了明确步骤，而不是直接对任意两段文本做 Embedding 差分。
+
+论文中的实验流程如下。
+
+~~~mermaid
+flowchart TD
+    A["Trait name + natural-language definition"] --> B["Claude 3.7 Sonnet generates trait artifacts"]
+    B --> C["5 pairs of positive / negative system prompts"]
+    B --> D["40 evaluation questions"]
+    B --> E["Trait evaluation rubric"]
+    D --> F["20 extraction questions"]
+    D --> G["20 held-out evaluation questions"]
+    C --> H["Target model generates contrastive responses"]
+    F --> H
+    H --> I["GPT-4.1-mini scores trait expression"]
+    I --> J["Keep positive score > 50 and negative score < 50"]
+    J --> K["Extract Residual Stream activations at every layer"]
+    K --> L["Average response-token activations"]
+    L --> M["Positive mean minus negative mean"]
+    M --> N["Candidate vector for each layer"]
+    N --> O["Steering experiments select useful layer"]
+    O --> P["Validated Persona Vector"]
+~~~
+
+**第一步：把抽象特征转成可执行定义。**
+
+输入不只是一个单词 sycophancy，还包括自然语言描述，例如“模型为了获得用户认可而过度赞同用户观点，即使用户的观点缺乏证据或明显错误”。定义越含糊，后面的样本筛选和评估就越容易失真。
+
+论文使用 Claude 3.7 Sonnet（Thinking 模式）生成三类实验材料：
+
+1. 五对正反 System Prompts。正向 Prompt 鼓励目标特征，负向 Prompt 抑制目标特征。
+2. 四十个可能触发目标行为的问题，其中二十个用于提取向量，另外二十个留作下游评估。
+3. 一个行为评分 Rubric，用于判断模型响应在多大程度上体现目标特征。
+
+这里使用不同用途的数据集很重要。若提取和验证使用完全相同的问题，很容易把对某些 Prompt 的适配误当成可泛化的行为方向。
+
+**第二步：生成正反响应，而不是直接使用 System Prompt 的标签。**
+
+对每个提取问题，目标模型分别在正向和负向 System Prompt 下生成响应。论文对每种配置进行 10 次 Rollout，以获得一定的采样变化。
+
+但 System Prompt 只是实验条件，不是行为事实。模型即使收到“你是一个邪恶的助手”的指令，也可能拒绝这样做；反过来，一个看似正常的 Prompt 也可能诱发迎合或编造。因此，不能简单地把所有正向 Prompt 的输出都当成正样本、所有负向 Prompt 的输出都当成负样本。
+
+**第三步：使用 LLM Judge 对真实行为进行筛选。**
+
+论文使用 GPT-4.1-mini 对模型 Transcript 进行评分，分数范围是 0 到 100：
+
+- 0：没有表现目标特征。
+- 100：强烈表现目标特征。
+- 正向样本：保留评分大于 50 的响应。
+- 负向样本：保留评分小于 50 的响应。
+
+作者还检查了 LLM Judge 与人工评估者之间的一致性，并使用外部 Benchmark 验证问题集是否能够捕捉目标行为。这一步非常关键：向量最终反映的是被保留下来的行为差异，而不是 Prompt 文本之间的差异。
+
+不过，Judge 仍然是一个有误差的测量工具。评分模型可能误判讽刺、复杂语境、事实争议或礼貌表达；如果评分 Rubric 本身有偏差，向量就会继承这种偏差。因此，实际复现时应保存 Judge 的原始分数、理由、人工抽检结果和数据版本，而不是只保存最终的 PT 文件。
+
+**第四步：从 Residual Stream 提取激活。**
+
+对每一条通过筛选的响应，论文提取目标模型每一层的 Residual Stream 激活，并对响应 Token 求平均。注意：用于提取向量的主要是 Response Tokens，而不是整个 Prompt 的平均激活，也不是最终输出文本的 Embedding。
+
+对第 \(i\) 条响应，在第 \(\ell\) 层，定义：
+
+\[
+a_{\ell}^{(i)}
+=
+\frac{1}{T_i}
+\sum_{t=1}^{T_i}h_{\ell,t}^{(i)}
+\]
+
+其中 \(T_i\) 是该响应的 Token 数量。然后分别计算正样本和负样本的均值：
+
+\[
+\mu_{\ell}^{+}
+=
+\frac{1}{N_+}\sum_{i\in P}a_{\ell}^{(i)}
+\]
+
+\[
+\mu_{\ell}^{-}
+=
+\frac{1}{N_-}\sum_{i\in N}a_{\ell}^{(i)}
+\]
+
+最终得到每一层的候选 Persona Vector：
+
+\[
+v_{\ell}^{(p)}=\mu_{\ell}^{+}-\mu_{\ell}^{-}
+\]
+
+这就是核心算法：对比两类行为样本在模型内部表示上的平均差异。
+
+**第五步：每一层都得到候选向量，再选择有效层。**
+
+不同层可能编码不同抽象程度的信息。论文先对所有层生成候选向量，再通过实际 Steering 实验比较各层效果，选择对目标特征干预最有效的层。不能因为某个层编号在 Qwen 上有效，就认为 Llama 或其他模型也应该使用相同层编号。
+
+#### 12.6.4 为什么论文要区分 Response Vector 和 Prompt Vector
+
+这项研究有两个容易混淆、但用途不同的测量位置。
+
+| 激活位置 | 提取方式 | 主要用途 |
+| --- | --- | --- |
+| Response Tokens | 对模型生成响应中的 Token 激活求平均 | 论文主要用于构造 Persona Vector，并做生成期间的 Steering |
+| Last Prompt Token | 取 Assistant 开始生成之前最后一个 Prompt Token 的激活 | 在生成前估计当前上下文是否已将模型推向某种行为特征 |
+
+为什么 Response Tokens 更适合提取向量？因为研究目标是找出与实际表现出的行为相关的内部方向。响应生成过程中，目标行为已经在模型内部计算中体现出来。论文发现，用 Response Token 激活得到的方向，比使用 Prompt Token 位置得到的方向更适合 Steering。
+
+为什么 Last Prompt Token 又有价值？因为它位于模型开始回答之前。若此时的激活已经明显投影到“迎合”方向，系统就有机会在生成之前识别风险，而不是等输出后再做检测。
+
+这两种测量不要混为一谈：用 Response Token 激活提取的向量，可以用于监控 Last Prompt Token 的投影；但它们的采样位置、统计意义和使用场景不同。
+
+#### 12.6.5 如何监控行为漂移：把激活投影变成一个指标
+
+向量提取完成后，可以计算当前激活在 Persona Vector 方向上的投影。
+
+先对向量归一化：
+
+\[
+\hat v_{\ell}=\frac{v_{\ell}}{\|v_{\ell}\|_2}
+\]
+
+然后对当前激活 \(h_{\ell}\) 计算：
+
+\[
+s_{\ell}=\langle h_{\ell},\hat v_{\ell}\rangle
+\]
+
+\(s_{\ell}\) 越大，表示当前激活沿该方向的分量越大。它是一个内部状态测量值，不是“模型有 87% 概率在撒谎”这样的概率，也不能脱离模型版本、层、Token 位置和校准集进行跨模型比较。
+
+论文在部署期监控实验中，使用不同强度的 System Prompt 和 Many-shot Prompt 诱发行为变化，然后测量最后一个 Prompt Token 的激活投影。论文报告，投影与后续响应中的目标特征评分具有 \(r=0.75\) 到 \(0.83\) 的相关性。
+
+但这里有一个非常重要的限定：作者发现，这种相关性主要来自明显不同的 Prompt 条件，例如明确鼓励目标特征与明确抑制目标特征之间的差异；在控制 Prompt 类型后，相关性会明显减弱。因此，这个结果支持它检测显式、较强的上下文诱导行为变化，但不能据此宣称它可以可靠地预测所有细微的真实世界行为漂移。
+
+一个实际监控系统不能只设置 projection 大于某个 threshold 就报警。需要在目标模型上建立正常流量基线，按任务类型、上下文长度、模型版本和对话阶段校准阈值，并把激活投影与输出行为评测、业务规则和用户反馈结合起来。
+
+#### 12.6.6 推理期 Steering：通过修改中间激活改变当前生成
+
+Persona Vector 的第二个用途是因果干预。给定某一层的向量 \(v_{\ell}\)，在模型 Forward Pass 时把它加到 Residual Stream：
+
+\[
+h_{\ell}\leftarrow h_{\ell}+\alpha v_{\ell}
+\]
+
+其中 \(\alpha\) 是 Steering Coefficient。
+
+- \(\alpha>0\)：推动模型沿向量方向移动。
+- \(\alpha<0\)：推动模型沿反方向移动。
+- \(|\alpha|\) 越大：干预通常越强，但副作用风险也可能越高。
+
+论文通过向 evil、sycophancy 和 hallucination 方向加向量，观察到相应行为评分上升。这是一个重要的因果证据：向量不仅能区分两类样本，还能通过人为注入改变模型行为。
+
+但“能诱发一种行为”与“能安全地消除一种行为”不是同一件事。论文在微调后的模型上尝试减去不良 Persona Vector，发现目标行为确实可以下降，但较大的 Steering Coefficient 会降低 MMLU 等通用能力指标。模型内部表示是多种能力共同使用的空间，一个行为方向不一定与其他能力完全正交。
+
+因此，推理期 Steering 更适合做受控实验或有独立评估支撑的局部干预，不应简单作为安全过滤器部署。特别是 Hallucination Vector 的反向干预，并不等同于事实核验；模型可能只是更少生成某类表达，也可能连正常推理和知识表达一起受影响。
+
+#### 12.6.7 最反直觉的部分：Preventative Steering 为什么在训练时加上“不良方向”
+
+论文不只研究部署期控制，还研究 Fine-tuning 如何改变模型行为。
+
+作者构造了两类训练数据：
+
+1. 显式诱导目标特征的数据，例如恶意回答、过度赞同用户、编造事实。
+2. 带有局部缺陷但没有直接表达目标特征的数据，例如错误医疗建议、有漏洞的代码、错误数学解答或有缺陷的观点论证。这类数据用于研究类似 Emergent Misalignment 的意外泛化。
+
+每类数据又有 Normal、I、II 等不同版本，表示从正常样本、轻度缺陷到明显缺陷的程度。研究观察到，Fine-tuning 不仅可能强化训练数据直接表达的特征，也可能引起其他特征的变化。例如针对某一种行为构造的数据，可能同时提高模型的迎合或幻觉倾向；某些带有隐蔽缺陷的数学数据，也可能诱发与原始任务看起来无关的行为变化。
+
+作者进一步比较 Fine-tuned Model 与 Base Model 的激活变化，并把变化投影到对应 Persona Vector 上。论文报告，特征方向上的激活变化与目标行为评分之间存在较强正相关，相关系数约为 \(r=0.76\) 到 \(0.97\)。这说明 Persona Vector 不仅能监控 Prompt 诱导的行为，也可能成为观察训练前后行为漂移的指标。
+
+**Post-hoc Steering 的问题**是：训练完成后再减去不良方向，虽然可能降低目标行为，但也会损害其他能力。
+
+于是作者提出了一个看似反直觉的做法：在 Fine-tuning 过程中，主动把模型激活推向那个“不希望最终出现”的 Persona Vector 方向。其直觉是，训练目标本身会给模型施加压力，使它沿某个方向变化；如果训练过程中已经通过 Steering 提供了这部分方向上的激活，模型就不必通过参数更新去获得同样的行为变化，从而降低训练结束后沿该方向发生的漂移。
+
+可以把两种方法区分为：
+
+| 方法 | 何时干预 | 激活操作 | 论文观察 |
+| --- | --- | --- | --- |
+| Post-hoc inhibition | Fine-tuning 完成后 | 推理时减去不良方向 | 能降低目标特征，但强干预可能降低 MMLU |
+| Preventative steering | Fine-tuning 期间 | 训练时向不良方向加向量 | 在论文实验中更好地保留通用能力，并限制训练诱导的特征漂移 |
+| CAFT 对照方法 | Fine-tuning 期间 | 对不希望的概念方向做 zero-ablation | 对 evil、sycophancy 有效，但论文中对 hallucination 的效果不理想 |
+
+论文报告，Preventative Steering 在多个数据集和模型实验中降低了训练引起的行为漂移，平均 Coherence Score 保持在 80 以上。单层干预并不总能完全阻止显式诱导目标特征的数据；作者在附录中进一步研究了多层干预，在其特定实验中取得更强效果，且没有观察到相对于普通 Fine-tuning 的 MMLU 退化。
+
+这里不能把“训练时加不良向量”理解成向模型注入有害能力，更不能直接当作可复制的安全配方。它是针对训练优化过程的内部激活干预，需要复现模型、数据、训练参数和评估条件；对其他训练目标、模型规模和数据分布是否有效，仍需要单独验证。
+
+#### 12.6.8 训练数据筛查：Projection Difference 比简单扫描文本更有价值
+
+Persona Vector 的第三个用途，是在训练开始之前估计数据可能把模型推向哪个行为方向。
+
+假设训练数据集为：
+
+\[
+\mathcal D=\{(x_i,y_i)\}
+\]
+
+其中 \(x_i\) 是 Prompt，\(y_i\) 是训练数据中提供的 Response。对每个 Prompt，研究者还让 Base Model 自己生成一个自然响应 \(y'_i\)。
+
+分别计算训练响应和模型自然响应在 Persona Vector 方向上的激活投影，然后定义：
+
+\[
+\Delta P=
+\frac{1}{|\mathcal D|}
+\sum_i
+\left[
+a_{\ell}(x_i,y_i)-a_{\ell}(x_i,y'_i)
+\right]\cdot\hat v_{\ell}
+\]
+
+其中 \(a_{\ell}(x,y)\) 是模型在第 \(\ell\) 层对响应 Token 激活求得的平均表示，\(\hat v_{\ell}\) 是归一化后的 Persona Vector。
+
+为什么不直接计算训练响应在向量上的投影？因为某个回答即使在“迎合”方向上得分很高，也不代表它会让模型发生新的行为变化。如果 Base Model 在同一个 Prompt 下本来就会给出类似回答，那么这条训练样本并没有提供太多新的方向性信号。
+
+Projection Difference 比较的是“训练数据要求模型学会什么”与“模型本来会怎么回答”之间的差异，因此更接近训练数据可能引起的参数更新压力。
+
+论文在合成数据集上验证了 Dataset-level Projection Difference 与 Fine-tuning 后的特征变化之间的相关性，并进一步在 LMSYS-Chat-1M 真实对话数据上做实验。研究发现，按 Projection Difference 选出的高分样本，在 Fine-tuning 后更容易诱发相应的行为特征；低分样本则通常表现出相反趋势。这个现象在先用 LLM Judge 过滤明显不良样本后仍然存在。
+
+这对企业训练数据治理有实际启发：传统数据质量检查关注文本是否包含明显有害内容、事实错误或违规词句；Persona Vector 分析关注的是这些样本是否会在模型内部产生某种方向性影响。论文还发现，向量筛查与 LLM Judge 筛查具有互补性，不能简单认为其中一种可以取代另一种。
+
+但 Projection Difference 也有成本：它需要针对训练集中的 Prompt 运行 Base Model，获得自然响应作为对照。对于数千万条训练样本，直接全量计算可能很昂贵。论文讨论了更低成本的近似方法，但实际项目仍需比较筛查成本、漏报率和训练后行为变化。
+
+#### 12.6.9 官方代码如何复现：数据、向量文件和命令
+
+官方仓库：[safety-research/persona_vectors](https://github.com/safety-research/persona_vectors)。它不是只有一段 Hook 示例，而是包含数据生成、模型评估、激活提取、向量生成、投影计算、推理期 Steering 和训练期干预等脚本。
+
+README 中展示的典型流程如下。
+
+**1. 安装与准备**
+
+~~~bash
+git clone https://github.com/safety-research/persona_vectors.git
+cd persona_vectors
+
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+
+cp .env.example .env
+# 按 README 配置模型访问和评估所需的 API Key
+unzip dataset.zip
+~~~
+
+仓库提供预生成的 Trait Artifacts，位于 `data_generation/trait_data_extract/` 和 `data_generation/trait_data_eval/`。每个特征的数据包含正反 Prompt、评估问题和 Judge Rubric。要增加新特征，可以参考 `data_generation/prompts.py` 中的生成 Prompt。
+
+**2. 生成正反样本**
+
+下面是 README 中的命令形式，分别生成正向和负向 System Prompt 下的评估数据：
+
+~~~bash
+CUDA_VISIBLE_DEVICES=0 python -m eval.eval_persona \
+  --model Qwen/Qwen2.5-7B-Instruct \
+  --trait evil \
+  --output_path eval_persona_extract/Qwen2.5-7B-Instruct/evil_pos_instruct.csv \
+  --persona_instruction_type pos \
+  --assistant_name evil \
+  --judge_model gpt-4.1-mini-2025-04-14 \
+  --version extract
+
+CUDA_VISIBLE_DEVICES=0 python -m eval.eval_persona \
+  --model Qwen/Qwen2.5-7B-Instruct \
+  --trait evil \
+  --output_path eval_persona_extract/Qwen2.5-7B-Instruct/evil_neg_instruct.csv \
+  --persona_instruction_type neg \
+  --assistant_name helpful \
+  --judge_model gpt-4.1-mini-2025-04-14 \
+  --version extract
+~~~
+
+**3. 计算 Persona Vector**
+
+~~~bash
+python generate_vec.py \
+  --model_name Qwen/Qwen2.5-7B-Instruct \
+  --pos_path eval_persona_extract/Qwen2.5-7B-Instruct/evil_pos_instruct.csv \
+  --neg_path eval_persona_extract/Qwen2.5-7B-Instruct/evil_neg_instruct.csv \
+  --trait evil \
+  --save_dir persona_vectors/Qwen2.5-7B-Instruct/
+~~~
+
+仓库生成三类主要文件：
+
+| 文件 | 内容 | 论文中的用途 |
+| --- | --- | --- |
+| `prompt_avg_diff.pt` | 正负样本 Prompt Token 平均激活差 | Prompt 位置的对照向量 |
+| `prompt_last_diff.pt` | 最后一个 Prompt Token 的激活差 | 生成前监控相关实验 |
+| `response_avg_diff.pt` | 正负样本 Response Token 平均激活差 | 论文主要用于 Steering 的向量 |
+
+向量 Tensor 的形状为 `[layers, hidden_dim]`。仓库的 `generate_vec.py` 会逐层提取正负样本激活，分别计算均值，再做差分。实际使用时可以通过 `--layer` 选择层，通过 `--coef` 调整干预强度。
+
+**4. 运行 Steering 评估**
+
+~~~bash
+CUDA_VISIBLE_DEVICES=0 python -m eval.eval_persona \
+  --model Qwen/Qwen2.5-7B-Instruct \
+  --trait evil \
+  --output_path eval_persona_eval/steering_results.csv \
+  --judge_model gpt-4.1-mini-2025-04-14 \
+  --version eval \
+  --steering_type response \
+  --coef 2.0 \
+  --vector_path persona_vectors/Qwen2.5-7B-Instruct/evil_response_avg_diff.pt \
+  --layer 20
+~~~
+
+README 还提供训练期 Steering 的配置示例。配置中的向量路径、层号和系数都应当视为实验参数，不是推荐生产值。仓库实现依赖具体模型结构、评估服务和训练配置，开始复现前应先阅读当前主分支的 README、requirements 和脚本，而不是假定历史命令在任意环境中都能直接运行。
+
+**5. 如何理解最小实现的边界**
+
+如果自己写一个 Hook，核心操作确实只有一行：
+
+~~~python
+hidden_states[:, token_positions, :] += alpha * persona_vector
+~~~
+
+但完整实现还必须回答：Hook 挂在 Block 输入还是输出？对所有 Token 还是只对生成 Token 生效？Prefill 与 KV Cache Decode 阶段是否一致？Batch 内不同请求能否使用不同系数？多卡模型的向量应该放到哪个 Device？这些问题决定了一个研究 Demo 能否成为可靠 Serving 组件。
+
+#### 12.6.10 2026 年 Anthropic 的后续研究：Assistant Axis 将问题扩展到 Persona Space
+
+2026 年 1 月，Anthropic 发布了另一项相关研究 [The Assistant Axis: Situating and Stabilizing the Default Persona of Language Models](https://www.anthropic.com/research/assistant-axis)，对应论文 [arXiv:2601.10387](https://arxiv.org/abs/2601.10387) 和代码仓库 [safety-research/assistant-axis](https://github.com/safety-research/assistant-axis)。
+
+它与 2025 年 Persona Vectors 的关系是“相关但不同的研究问题”：
+
+- Persona Vectors：给定一个具体特征，例如 sycophancy，提取该特征的方向，用于测量、控制和预测该特征。
+- Assistant Axis：研究模型默认的 Assistant 身份在更大 Persona Space 中处于什么位置，以及模型在多轮对话中是否逐渐偏离这一位置。
+
+Assistant Axis 研究从 275 种角色原型（Character Archetypes）中提取激活表示，例如 Editor、Jester、Oracle、Ghost 等，再分析不同角色在激活空间中的结构。实验涉及 Gemma 2 27B、Qwen 3 32B 和 Llama 3.3 70B 等开源权重模型。作者将默认 Assistant 激活与其他角色激活的平均差异定义为 Assistant Axis，并发现它与 Persona Space 的主要变化方向相吻合。
+
+研究还提出 Activation Capping：不是持续把模型推向 Assistant 方向，而是估计正常 Assistant 行为下的激活范围，只在激活沿 Assistant Axis 超出设定范围时进行限制。Anthropic 报告称，这种方法在其测试中将有害响应率降低约 50%，同时保留了所测能力 Benchmark 的表现。
+
+这项研究把问题从“某个特征是否被激活”扩展到“模型整体角色身份是否发生漂移”。例如，在某些长对话中，模型可能逐渐从助手转向某种角色扮演状态；这种漂移不一定在单轮输出中明显，却可能改变后续面对有害请求时的响应方式。
+
+它也带来新的工程启发：监控系统可以同时保留多个具体 Persona Vectors 和一个更高层的 Assistant Axis。前者用于识别特定风险倾向，后者用于观察模型整体角色状态。但二者仍然只是激活空间测量与干预方法，不能取代输出层安全评估和业务策略。
+
+#### 12.6.11 研究结果的边界：哪些结论可以用，哪些不能外推
+
+Persona Vectors 是有价值的机制可解释性工具，但论文并没有证明模型人格可以被一个向量完整描述。需要特别注意以下边界：
+
+1. **模型覆盖有限**：原始实验主要使用 Qwen2.5-7B-Instruct 和 Llama-3.1-8B-Instruct。不能假设相同向量、层位置或阈值适用于 Claude、GPT、Gemini 或其他模型。
+2. **特征定义依赖人工和 LLM**：自然语言定义、正反 Prompt、评估问题和 Judge Rubric 都会影响最终向量。不同定义得到的向量可能不同。
+3. **LLM Judge 不是客观真值**：论文做了人工一致性检查，但 Judge 仍可能漏掉语境、讽刺和隐性行为。生产系统需要独立人工评估和领域评估。
+4. **线性方向只是近似**：模型行为可能由多个方向、多个层和非线性电路共同决定。单一向量不能完整表达一个复杂人格特征。
+5. **不同特征可能相关**：论文观察到一些负面特征会共同变化，Persona Vectors 之间也可能存在相关性。因此，抑制一个方向可能影响其他特征。
+6. **监控相关性不等于因果预测**：Prompt 类型之间的强相关不能直接证明对任意自然对话中的微妙漂移都有同样的预测能力。
+7. **训练期效果依赖训练条件**：Preventative Steering 的结果来自特定模型、训练数据和配置；需要在自己的 Fine-tuning 流程中重新验证。
+8. **向量不是安全边界**：攻击者可能绕过单一方向检测；正常行为也可能在激活空间中投影较高。它不替代 Policy、权限控制、工具沙箱、事实校验和红队测试。
+
+尤其要避免一个常见误解：Persona Vector 的方向具有可解释的行为相关性，不代表它对应一个可被独立定位的神经元、一个唯一电路，或者一个可以直接映射到少数权重的参数补丁。要从激活方向进一步找到权重层面的因果机制，还需要组件消融、因果追踪、梯度分析或参数编辑实验。
+
+#### 12.6.12 企业落地建议：把它放进 Model Evaluation 和 Model Governance，而不是直接放进 Prompt 工程
+
+对于企业架构团队，比较现实的落地路径不是一开始就修改线上模型，而是先把 Persona Vector 当作额外的模型诊断维度。
+
+| 阶段 | 工作内容 | 产出 | 主要验收标准 |
+| --- | --- | --- | --- |
+| 1. Behavior Specification | 将“不要迎合”“不要编造”等要求定义成可测试行为 | 特征定义、正反例、领域测试集 | 业务和风险团队能判定样本是否符合定义 |
+| 2. Offline Extraction | 对指定模型提取候选向量 | 版本化 Persona Vector | 数据、模型、层和脚本可追溯 |
+| 3. Calibration | 比较投影值与行为评分 | 阈值、基线和校准报告 | 对正反例有区分力，误报和漏报可量化 |
+| 4. Shadow Monitoring | 在离线或 Shadow Traffic 中计算投影 | 行为漂移指标 | 不影响在线响应，能够与业务指标关联 |
+| 5. Controlled Steering | 在隔离环境尝试运行时干预 | Steering 参数和效果报告 | 目标行为改善，其他能力无不可接受退化 |
+| 6. Training Data Audit | 对 Fine-tuning 数据计算 Projection Difference | 数据风险分布和样本清单 | 与训练后行为变化做回测 |
+| 7. Governance | 纳入模型版本、审批、回滚和审计 | Model Card、向量制品、评估记录 | 可以复现、回滚和解释每次变更 |
+
+如果是在金融研究 Agent 中应用，优先考虑监控 sycophancy：当用户明确表达某个投资观点时，模型是否因为用户的语气或身份而改变证据标准？其次可以评估 hallucination：当 Reference Data 不完整、价格或持仓缺失时，模型是否倾向于补造数据？这些都是可以构造对照样本、通过人工和业务规则验证的行为目标。
+
+但要把 Persona Vector 指标与业务结果分开。高 sycophancy 投影并不自动意味着该条回答错误；低 hallucination 投影也不代表回答一定真实。最终判断仍应基于引用证据、数据来源、领域规则和独立测试。
+
+**本节结论：** Anthropic 的贡献不只是提出了一个“人格向量”的名字，而是把行为定义、对照生成、激活提取、因果 Steering、训练漂移分析和训练数据筛查连接成了一条可复现实验流水线。它为模型内部行为建立了新的观测接口。对于 Weight-Space Programming，Persona Vectors 更适合作为诊断和回归验证层；从它到权重编辑之间仍然需要独立的因果定位和安全验证。
+
+### 12.7 Model Auditing：权重级安全审计
 
 Weight Oracles 研究提出了一个值得关注的方向：直接分析模型权重，判断模型是否存在某些异常行为或潜在 Backdoor。
 
@@ -1721,6 +2142,10 @@ Weight-Space Programming 并不是凭空出现的新概念。它建立在 Task V
 32. [IBM Activation Steering](https://github.com/IBM/activation-steering)。
 33. [NNSight](https://github.com/ndif-team/nnsight)。
 34. [Microsoft LLM Steer Instruct](https://github.com/microsoft/llm-steer-instruct)。
+
+36. [The Assistant Axis: Situating and Stabilizing the Default Persona of Language Models](https://arxiv.org/abs/2601.10387) — Anthropic，2026。
+37. [Anthropic Assistant Axis 研究介绍](https://www.anthropic.com/research/assistant-axis) — 2026-01-19。
+38. [Assistant Axis 官方研究代码](https://github.com/safety-research/assistant-axis) — MIT。
 
 ### 模型安全
 
