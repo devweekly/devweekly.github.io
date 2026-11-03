@@ -33,7 +33,7 @@
  <text x="700" y="372" text-anchor="middle" fill="#2d3142" font-size="15" font-weight="600" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">Production Runtime</text>
  <text x="700" y="395" text-anchor="middle" fill="#4f5d75" font-size="10" font-family="'Geist Mono',ui-monospace,monospace">approved version</text></g>
 <path d="M816 262 V302 H260 V340 M352 376 H388 M572 376 H608" fill="none" stroke="#4f5d75" stroke-width="1.5" marker-end="url(#wsp-arrow)"/>
-<path d="M700 412 V440 H144 V262 H166" fill="none" stroke="#bf4520" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#wsp-accent-arrow)"/>
+<path d="M700 412 V440 H144 V270 H166 V262" fill="none" stroke="#bf4520" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#wsp-accent-arrow)"/>
 <text x="480" y="454" text-anchor="middle" fill="#bf4520" font-size="10" font-family="'Geist Mono',ui-monospace,monospace">ROLLBACK TO PRIOR APPROVED VERSION</text>
 <text x="480" y="510" text-anchor="middle" fill="#5a6580" font-size="11" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">基础权重只读；所有修改生成新制品。审批、评估和发布权限与编辑 Agent 分离。</text>
 <line x1="48" y1="548" x2="912" y2="548" stroke="#bfc0c0" stroke-width="1"/>
