@@ -5,7 +5,7 @@
  <marker id="wsp-accent-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6 Z" fill="#bf4520"/></marker>
 </defs>
 <rect width="960" height="600" fill="#f5f5f5"/>
-<text x="48" y="54" fill="#2d3142" font-size="26" font-weight="600" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">Multi-LoRA 推理部署结构</text>
+<text x="48" y="54" fill="#2d3142" font-size="28" font-weight="400" font-family="Instrument Serif,'Songti SC','SimSun',serif">Multi-LoRA 推理部署结构</text>
 <text x="48" y="80" fill="#4f5d75" font-size="12" font-family="'Geist Mono',ui-monospace,monospace">WEIGHT-SPACE PROGRAMMING · WSP-MULTILORA</text>
 
 <rect x="64" y="126" width="832" height="354" rx="8" fill="#ececec" stroke="#bfc0c0"/>
