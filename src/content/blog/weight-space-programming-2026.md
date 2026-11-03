@@ -62,14 +62,9 @@ Weight-Space Programming 的研究方向则尝试进一步利用这些参数本�
 
 传统 Fine-tuning 通过训练数据、损失函数和优化器更新参数。典型流程是：
 
-```mermaid
-flowchart TD
-    A["Training Data"] --> B["Forward Pass"]
-    B --> C["Loss Calculation"]
-    C --> D["Backpropagation"]
-    D --> E["Optimizer Update"]
-    E --> F["New Weights"]
-```
+![Fine-tuning 与 Weight-Space Programming 的更新机制对比](/diagrams/weight-space-programming/01-finetuning-vs-weight-programming.svg)
+
+*图源：[独立 HTML 版本](/diagrams/weight-space-programming/01-finetuning-vs-weight-programming.html)，可在浏览器中放大查看。*
 
 训练过程通常依赖梯度：
 
@@ -267,20 +262,9 @@ SERAC 需要单独区分。它通过外部编辑记忆和模型机制调节原�
 
 下面是几个关键方向之间的关系。它们不是严格的单线继承关系，而是共同构成了今天可以直接研究和操作模型权重的技术基础。
 
-```mermaid
-flowchart TD
-    A["Neural Network Parameters"] --> B["Parameter-efficient Fine-tuning"]
-    A --> C["Model Editing"]
-    A --> D["Model Merging"]
-    B --> E["Task Vectors"]
-    E --> D
-    C --> F["Direct Weight Intervention"]
-    D --> G["Composed Model Weights"]
-    F --> H["LLM-driven Weight-Space Programming"]
-    G --> H
-    I["Mechanistic Interpretability"] --> H
-    J["LLM as Optimizer"] --> H
-```
+![权重空间相关方法的技术谱系](/diagrams/weight-space-programming/02-weight-space-methods.svg)
+
+*图源：[独立 HTML 版本](/diagrams/weight-space-programming/02-weight-space-methods.html)，可在浏览器中放大查看。*
 
 ### 3.1 2022：ROME 与 Task Arithmetic
 
@@ -609,16 +593,9 @@ Microsoft Foundry 提供了一个比较有代表性的企业部署模式：多�
 
 多个 Adapter 使用同一个 Target Deployment 的计算资源和推理端点，但通过不同的 Deployment Name 选择不同的行为。
 
-```mermaid
-flowchart TD
-    A["Shared Base Model Deployment"] --> B["Shared GPU and Inference Runtime"]
-    B --> C["Finance Adapter"]
-    B --> D["Customer Support Adapter"]
-    B --> E["SQL Adapter"]
-    C --> F["Finance Requests"]
-    D --> G["Support Requests"]
-    E --> H["SQL Requests"]
-```
+![Multi-LoRA 推理部署架构](/diagrams/weight-space-programming/03-multi-lora-serving.svg)
+
+*图源：[独立 HTML 版本](/diagrams/weight-space-programming/03-multi-lora-serving.html)，可在浏览器中放大查看。*
 
 根据 Microsoft 官方文档：
 
@@ -944,24 +921,9 @@ print(outputs[0].outputs[0].text)
 
 MIT 的实验提供了一个很有价值的工程模式：LLM 负责理解目标、分析权重和提出修改，确定性工具负责张量读取、计算、写入和评估。
 
-```mermaid
-flowchart TD
-    A["Natural Language Objective"] --> B["Weight Programming LLM"]
-    C["Base Model Weights"] --> D["Tensor Inspection Environment"]
-    B --> D
-    D --> E["Weight Statistics and Structure"]
-    E --> B
-    B --> F["Proposed Weight Patch"]
-    F --> G["Sandboxed Patch Validator"]
-    G --> H["Limited Forward Pass Evaluation"]
-    H --> B
-    H --> I["Candidate Checkpoint"]
-    I --> J["Independent Regression and Safety Tests"]
-    J --> K{"All Gates Passed?"}
-    K -->|Yes| L["Versioned Model Artifact"]
-    K -->|No| M["Reject or Continue Experiment"]
-    M --> B
-```
+![LLM 驱动的权重编程闭环](/diagrams/weight-space-programming/04-weight-programming-loop.svg)
+
+*图源：[独立 HTML 版本](/diagrams/weight-space-programming/04-weight-programming-loop.html)，可在浏览器中放大查看。*
 
 这个流程中有几个重要的设计原则。
 
@@ -1781,24 +1743,9 @@ Weight Oracles 研究提出了一个值得关注的方向：直接分析模型�
 
 如果未来要把 Weight-Space Programming 纳入企业模型平台，建议将它视为一个受控的模型研发和模型修复流程，而不是直接接入生产推理请求的实时工具。
 
-```mermaid
-flowchart TD
-    A["Model Registry"] --> B["Immutable Base Checkpoint"]
-    B --> C["Weight Analysis Sandbox"]
-    D["Objective and Failure Evidence"] --> E["Programming LLM"]
-    C --> E
-    E --> F["Patch Artifact"]
-    F --> G["Deterministic Patch Validator"]
-    G --> H["Evaluation Pipeline"]
-    H --> I["Security and Regression Tests"]
-    I --> J{"Approval"}
-    J -->|Approved| K["Model Registry Candidate Version"]
-    J -->|Rejected| L["Rejected Patch and Evidence"]
-    K --> M["Staged Deployment"]
-    M --> N["Production Inference"]
-    N --> O["Monitoring and Rollback"]
-    O --> B
-```
+![企业级 Weight-Space Programming 治理架构](/diagrams/weight-space-programming/05-enterprise-governance.svg)
+
+*图源：[独立 HTML 版本](/diagrams/weight-space-programming/05-enterprise-governance.html)，可在浏览器中放大查看。*
 
 ### 13.1 Model Registry：权重版本必须可追溯
 
