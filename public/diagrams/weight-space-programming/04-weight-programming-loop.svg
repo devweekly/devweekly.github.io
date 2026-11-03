@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" role="img" aria-labelledby="wsp-loop-title wsp-loop-desc">
+<title id="wsp-loop-title">LLM 驱动的权重编程闭环</title><desc id="wsp-loop-desc">从目标与失败证据出发，经张量检查、补丁验证和模型评估形成受控迭代。</desc>
+<defs>
+ <marker id="wsp-loop-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6 Z" fill="#4f5d75"/></marker>
+ <marker id="wsp-loop-accent-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6 Z" fill="#bf4520"/></marker>
+</defs>
+<rect width="960" height="600" fill="#f5f5f5"/>
+<text x="48" y="54" fill="#2d3142" font-size="26" font-weight="600" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">LLM 驱动的权重编程闭环</text>
+<text x="48" y="80" fill="#4f5d75" font-size="12" font-family="'Geist Mono',ui-monospace,monospace">WEIGHT-SPACE PROGRAMMING · WSP-LOOP</text>
+
+<g><rect x="48" y="176" width="176" height="76" rx="6" fill="#ececec" stroke="#bfc0c0" stroke-width="1"/>
+ <text x="136" y="210" text-anchor="middle" fill="#2d3142" font-size="15" font-weight="600" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">目标与失败证据</text>
+ <text x="136" y="233" text-anchor="middle" fill="#4f5d75" font-size="10" font-family="'Geist Mono',ui-monospace,monospace">task · traces · examples</text></g>
+<g><rect x="284" y="176" width="176" height="76" rx="6" fill="#f8e8e2" stroke="#bf4520" stroke-width="2"/>
+ <text x="372" y="210" text-anchor="middle" fill="#2d3142" font-size="15" font-weight="600" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">Programming LLM</text>
+ <text x="372" y="233" text-anchor="middle" fill="#4f5d75" font-size="10" font-family="'Geist Mono',ui-monospace,monospace">hypothesis · patch proposal</text></g>
+<g><rect x="520" y="176" width="176" height="76" rx="6" fill="#ececec" stroke="#bfc0c0" stroke-width="1"/>
+ <text x="608" y="210" text-anchor="middle" fill="#2d3142" font-size="15" font-weight="600" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">权重分析环境</text>
+ <text x="608" y="233" text-anchor="middle" fill="#4f5d75" font-size="10" font-family="'Geist Mono',ui-monospace,monospace">tensor stats · structure</text></g>
+<g><rect x="756" y="176" width="156" height="76" rx="6" fill="#ececec" stroke="#bfc0c0" stroke-width="1"/>
+ <text x="834" y="210" text-anchor="middle" fill="#2d3142" font-size="15" font-weight="600" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">Patch Validator</text>
+ <text x="834" y="233" text-anchor="middle" fill="#4f5d75" font-size="10" font-family="'Geist Mono',ui-monospace,monospace">shape · dtype · bounds</text></g>
+<path d="M224 214 H284 M460 214 H520 M696 214 H756" fill="none" stroke="#bf4520" stroke-width="2" marker-end="url(#wsp-accent-arrow)"/>
+<g><rect x="650" y="344" width="224" height="72" rx="6" fill="#ececec" stroke="#bfc0c0" stroke-width="1"/>
+ <text x="762" y="376" text-anchor="middle" fill="#2d3142" font-size="15" font-weight="600" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">受限 Forward Pass</text>
+ <text x="762" y="399" text-anchor="middle" fill="#4f5d75" font-size="10" font-family="'Geist Mono',ui-monospace,monospace">behavioral probes</text></g>
+<g><rect x="368" y="344" width="224" height="72" rx="6" fill="#ececec" stroke="#bfc0c0" stroke-width="1"/>
+ <text x="480" y="376" text-anchor="middle" fill="#2d3142" font-size="15" font-weight="600" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">独立评估</text>
+ <text x="480" y="399" text-anchor="middle" fill="#4f5d75" font-size="10" font-family="'Geist Mono',ui-monospace,monospace">regression · safety · held-out</text></g>
+<g><rect x="86" y="344" width="224" height="72" rx="6" fill="#ececec" stroke="#bfc0c0" stroke-width="1"/>
+ <text x="198" y="376" text-anchor="middle" fill="#2d3142" font-size="15" font-weight="600" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">候选 Checkpoint</text>
+ <text x="198" y="399" text-anchor="middle" fill="#4f5d75" font-size="10" font-family="'Geist Mono',ui-monospace,monospace">immutable artifact</text></g>
+<path d="M834 252 V296 H762 V344 M650 380 H592 M368 380 H310" fill="none" stroke="#4f5d75" stroke-width="1.5" marker-end="url(#wsp-arrow)"/>
+<path d="M198 344 V296 H372 V252" fill="none" stroke="#4f5d75" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#wsp-arrow)"/>
+<path d="M480 416 V456 H372 V252" fill="none" stroke="#bf4520" stroke-width="1.5" stroke-dasharray="5,4" marker-end="url(#wsp-accent-arrow)"/>
+<text x="480" y="492" text-anchor="middle" fill="#2d3142" font-size="13" font-weight="600" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">只有独立评估通过，候选权重才进入版本化发布流程。</text>
+<text x="480" y="516" text-anchor="middle" fill="#5a6580" font-size="11" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">LLM 提出修改；确定性工具执行约束、记录差异、复现与评估。</text>
+<line x1="48" y1="548" x2="912" y2="548" stroke="#bfc0c0" stroke-width="1"/>
+<text x="48" y="570" fill="#5a6580" font-size="10" font-family="'Geist Mono',ui-monospace,monospace">DEVWEEKLY / RESEARCH NOTE / 2026-11-03</text>
+</svg>
