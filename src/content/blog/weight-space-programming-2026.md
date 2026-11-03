@@ -1754,13 +1754,13 @@ Weight-Space Programming 不是突然冒出来的一套全新数学。Task Vecto
 33. [NNSight](https://github.com/ndif-team/nnsight)。
 34. [Microsoft LLM Steer Instruct](https://github.com/microsoft/llm-steer-instruct)。
 
-36. [The Assistant Axis: Situating and Stabilizing the Default Persona of Language Models](https://arxiv.org/abs/2601.10387) — Anthropic，2026。
-37. [Anthropic Assistant Axis 研究介绍](https://www.anthropic.com/research/assistant-axis) — 2026-01-19。
-38. [Assistant Axis 官方研究代码](https://github.com/safety-research/assistant-axis) — MIT。
+35. [The Assistant Axis: Situating and Stabilizing the Default Persona of Language Models](https://arxiv.org/abs/2601.10387) — Anthropic，2026。
+36. [Anthropic Assistant Axis 研究介绍](https://www.anthropic.com/research/assistant-axis) — 2026-01-19。
+37. [Assistant Axis 官方研究代码](https://github.com/safety-research/assistant-axis) — MIT。
 
 ### 模型安全
 
-39. [TamperBench: Systematically Stress-Testing LLM Safety Under Fine-Tuning and Tampering](https://dl.acm.org/doi/10.1145/3770855.3817557)。
+38. [TamperBench: Systematically Stress-Testing LLM Safety Under Fine-Tuning and Tampering](https://dl.acm.org/doi/10.1145/3770855.3817557)。
 
 ---
 
