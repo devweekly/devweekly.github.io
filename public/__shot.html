@@ -1,0 +1,31 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>shot</title>
+<style>
+  html,body{margin:0;background:#888}
+  #f{border:0;display:block;background:#fff}
+</style>
+<iframe id="f" src="/posts/weight-space-programming%E4%BB%8E%E6%A8%A1%E5%9E%8B%E6%9D%83%E9%87%8D%E5%B7%A5%E7%A8%8B%E5%88%B0-llm-%E7%9B%B4%E6%8E%A5%E7%BC%96%E7%A8%8B%E7%A5%9E%E7%BB%8F%E7%BD%91%E7%BB%9C/"></iframe>
+<script>
+  const q = new URLSearchParams(location.search);
+  const W = parseInt(q.get("w") || "390", 10);
+  const H = parseInt(q.get("h") || "800", 10);
+  const Y = parseInt(q.get("y") || "0", 10);
+  const SEL = q.get("sel");
+  const IDX = q.get("idx");
+  const f = document.getElementById("f");
+  f.style.width = W + "px";
+  f.style.height = H + "px";
+  f.addEventListener("load", () => {
+    setTimeout(() => {
+      const w = f.contentWindow;
+      let target = Y;
+      if (SEL) {
+        const list = f.contentDocument.querySelectorAll(SEL);
+        const el = list[IDX ? parseInt(IDX, 10) : 0];
+        if (el) target = el.getBoundingClientRect().top + w.scrollY - 40;
+      }
+      w.scrollTo({ top: target, behavior: "instant" });
+    }, 800);
+  });
+</script>
