@@ -60,23 +60,13 @@ Weight-Space Programming 的研究方向则尝试进一步利用这些参数本�
 
 传统 Fine-tuning 通过训练数据、损失函数和优化器更新参数。典型流程是：
 
-```text
-Training Data
-    |
-    v
-Forward Pass
-    |
-    v
-Loss Calculation
-    |
-    v
-Backpropagation
-    |
-    v
-Optimizer Update
-    |
-    v
-New Weights
+```mermaid
+flowchart TD
+    A["Training Data"] --> B["Forward Pass"]
+    B --> C["Loss Calculation"]
+    C --> D["Backpropagation"]
+    D --> E["Optimizer Update"]
+    E --> F["New Weights"]
 ```
 
 训练过程通常依赖梯度：
