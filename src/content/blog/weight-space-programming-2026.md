@@ -1016,7 +1016,7 @@ Weight-Space Programming 提供了另一种可能：让模型分析参数或中�
 
 研究原文：[Persona Vectors: Monitoring and Controlling Character Traits in Language Models](https://arxiv.org/abs/2507.21509)，Anthropic 于 2025 年 8 月 1 日发布研究介绍。作者包括 Runjin Chen、Andy Arditi、Henry Sleight、Owain Evans 和 Jack Lindsey。官方实现位于 [safety-research/persona_vectors](https://github.com/safety-research/persona_vectors)。
 
-#### 12.6.1 研究真正想解决的问题：行为漂移不一定发生在输出文本层
+#### 12.5.1 研究真正想解决的问题：行为漂移不一定发生在输出文本层
 
 通常我们通过最终输出判断模型行为：它是否迎合用户、是否编造事实、是否给出有害建议。这种方式有一个明显缺陷：当输出已经表现出问题时，行为偏移已经发生。更重要的是，输出文本只能告诉我们“模型说了什么”，不能直接告诉我们模型在生成之前是否已经进入了某种行为状态。
 
@@ -1039,7 +1039,7 @@ Anthropic 的假设是：模型的高层行为特征会在内部激活空间中�
 
 论文还在附录中研究了 optimism、impoliteness、apathy 和 humor 等其他特征。方法本身并不局限于负面特征：只要能给出足够清楚的行为定义，并构造出可靠的正反例，就可以尝试提取相应方向。
 
-#### 12.6.2 先理解 Residual Stream：Persona Vector 究竟存在于哪里
+#### 12.5.2 先理解 Residual Stream：Persona Vector 究竟存在于哪里
 
 Transformer 每一层都会处理输入 Token，并更新内部表示。以典型的 Transformer Block 为例，输入隐藏状态经过 Attention 和 MLP 等子层后，会通过残差连接累加到 Residual Stream。可以把 Residual Stream 理解为贯穿网络各层、不断累积和传递信息的主干表示。
 
@@ -1065,7 +1065,7 @@ v_{\ell}^{(p)}\in\mathbb{R}^{d}
 
 因此，Persona Vector 并不是模型文件中的一组新权重。加载一个向量文件不会自动改变模型；只有在模型运行时把它用于投影、监控或激活干预，才会产生作用。
 
-#### 12.6.3 向量提取流水线：不是简单地让模型回答两组问题
+#### 12.5.3 向量提取流水线：不是简单地让模型回答两组问题
 
 Anthropic 的方法有一个值得重视的设计：它把“行为定义、对照数据生成、行为评分、激活提取、向量选择”拆成了明确步骤，而不是直接对任意两段文本做 Embedding 差分。
 
@@ -1161,7 +1161,7 @@ v_{\ell}^{(p)}=\mu_{\ell}^{+}-\mu_{\ell}^{-}
 
 不同层可能编码不同抽象程度的信息。论文先对所有层生成候选向量，再通过实际 Steering 实验比较各层效果，选择对目标特征干预最有效的层。不能因为某个层编号在 Qwen 上有效，就认为 Llama 或其他模型也应该使用相同层编号。
 
-#### 12.6.4 为什么论文要区分 Response Vector 和 Prompt Vector
+#### 12.5.4 为什么论文要区分 Response Vector 和 Prompt Vector
 
 这项研究有两个容易混淆、但用途不同的测量位置。
 
@@ -1176,7 +1176,7 @@ v_{\ell}^{(p)}=\mu_{\ell}^{+}-\mu_{\ell}^{-}
 
 这两种测量不要混为一谈：用 Response Token 激活提取的向量，可以用于监控 Last Prompt Token 的投影；但它们的采样位置、统计意义和使用场景不同。
 
-#### 12.6.5 如何监控行为漂移：把激活投影变成一个指标
+#### 12.5.5 如何监控行为漂移：把激活投影变成一个指标
 
 向量提取完成后，可以计算当前激活在 Persona Vector 方向上的投影。
 
@@ -1200,7 +1200,7 @@ s_{\ell}=\langle h_{\ell},\hat v_{\ell}\rangle
 
 一个实际监控系统不能只设置 projection 大于某个 threshold 就报警。需要在目标模型上建立正常流量基线，按任务类型、上下文长度、模型版本和对话阶段校准阈值，并把激活投影与输出行为评测、业务规则和用户反馈结合起来。
 
-#### 12.6.6 推理期 Steering：通过修改中间激活改变当前生成
+#### 12.5.6 推理期 Steering：通过修改中间激活改变当前生成
 
 Persona Vector 的第二个用途是因果干预。给定某一层的向量 \(v_{\ell}\)，在模型 Forward Pass 时把它加到 Residual Stream：
 
@@ -1220,7 +1220,7 @@ h_{\ell}\leftarrow h_{\ell}+\alpha v_{\ell}
 
 因此，推理期 Steering 更适合做受控实验或有独立评估支撑的局部干预，不应简单作为安全过滤器部署。特别是 Hallucination Vector 的反向干预，并不等同于事实核验；模型可能只是更少生成某类表达，也可能连正常推理和知识表达一起受影响。
 
-#### 12.6.7 最反直觉的部分：Preventative Steering 为什么在训练时加上“不良方向”
+#### 12.5.7 最反直觉的部分：Preventative Steering 为什么在训练时加上“不良方向”
 
 论文不只研究部署期控制，还研究 Fine-tuning 如何改变模型行为。
 
@@ -1249,7 +1249,7 @@ h_{\ell}\leftarrow h_{\ell}+\alpha v_{\ell}
 
 这里不能把“训练时加不良向量”理解成向模型注入有害能力，更不能直接当作可复制的安全配方。它是针对训练优化过程的内部激活干预，需要复现模型、数据、训练参数和评估条件；对其他训练目标、模型规模和数据分布是否有效，仍需要单独验证。
 
-#### 12.6.8 训练数据筛查：Projection Difference 比简单扫描文本更有价值
+#### 12.5.8 训练数据筛查：Projection Difference 比简单扫描文本更有价值
 
 Persona Vector 的第三个用途，是在训练开始之前估计数据可能把模型推向哪个行为方向。
 
@@ -1284,7 +1284,7 @@ Projection Difference 比较的是“训练数据要求模型学会什么”与�
 
 但 Projection Difference 也有成本：它需要针对训练集中的 Prompt 运行 Base Model，获得自然响应作为对照。对于数千万条训练样本，直接全量计算可能很昂贵。论文讨论了更低成本的近似方法，但实际项目仍需比较筛查成本、漏报率和训练后行为变化。
 
-#### 12.6.9 官方代码如何复现：数据、向量文件和命令
+#### 12.5.9 官方代码如何复现：数据、向量文件和命令
 
 官方仓库：[safety-research/persona_vectors](https://github.com/safety-research/persona_vectors)。它不是只有一段 Hook 示例，而是包含数据生成、模型评估、激活提取、向量生成、投影计算、推理期 Steering 和训练期干预等脚本。
 
@@ -1379,7 +1379,7 @@ hidden_states[:, token_positions, :] += alpha * persona_vector
 
 但完整实现还必须回答：Hook 挂在 Block 输入还是输出？对所有 Token 还是只对生成 Token 生效？Prefill 与 KV Cache Decode 阶段是否一致？Batch 内不同请求能否使用不同系数？多卡模型的向量应该放到哪个 Device？这些问题决定了一个研究 Demo 能否成为可靠 Serving 组件。
 
-#### 12.6.10 2026 年 Anthropic 的后续研究：Assistant Axis 将问题扩展到 Persona Space
+#### 12.5.10 2026 年 Anthropic 的后续研究：Assistant Axis 将问题扩展到 Persona Space
 
 2026 年 1 月，Anthropic 发布了另一项相关研究 [The Assistant Axis: Situating and Stabilizing the Default Persona of Language Models](https://www.anthropic.com/research/assistant-axis)，对应论文 [arXiv:2601.10387](https://arxiv.org/abs/2601.10387) 和代码仓库 [safety-research/assistant-axis](https://github.com/safety-research/assistant-axis)。
 
@@ -1396,7 +1396,7 @@ Assistant Axis 研究从 275 种角色原型（Character Archetypes）中提取�
 
 它也带来新的工程启发：监控系统可以同时保留多个具体 Persona Vectors 和一个更高层的 Assistant Axis。前者用于识别特定风险倾向，后者用于观察模型整体角色状态。但二者仍然只是激活空间测量与干预方法，不能取代输出层安全评估和业务策略。
 
-#### 12.6.11 研究结果的边界：哪些结论可以用，哪些不能外推
+#### 12.5.11 研究结果的边界：哪些结论可以用，哪些不能外推
 
 Persona Vectors 是有价值的机制可解释性工具，但论文并没有证明模型人格可以被一个向量完整描述。需要特别注意以下边界：
 
@@ -1411,7 +1411,7 @@ Persona Vectors 是有价值的机制可解释性工具，但论文并没有证�
 
 尤其要避免一个常见误解：Persona Vector 的方向具有可解释的行为相关性，不代表它对应一个可被独立定位的神经元、一个唯一电路，或者一个可以直接映射到少数权重的参数补丁。要从激活方向进一步找到权重层面的因果机制，还需要组件消融、因果追踪、梯度分析或参数编辑实验。
 
-#### 12.6.12 企业落地建议：把它放进 Model Evaluation 和 Model Governance，而不是直接放进 Prompt 工程
+#### 12.5.12 企业落地建议：把它放进 Model Evaluation 和 Model Governance，而不是直接放进 Prompt 工程
 
 对于企业架构团队，比较现实的落地路径不是一开始就修改线上模型，而是先把 Persona Vector 当作额外的模型诊断维度。
 
@@ -1760,7 +1760,7 @@ Weight-Space Programming 不是突然冒出来的一套全新数学。Task Vecto
 
 ### 模型安全
 
-35. [TamperBench: Systematically Stress-Testing LLM Safety Under Fine-Tuning and Tampering](https://dl.acm.org/doi/10.1145/3770855.3817557)。
+39. [TamperBench: Systematically Stress-Testing LLM Safety Under Fine-Tuning and Tampering](https://dl.acm.org/doi/10.1145/3770855.3817557)。
 
 ---
 
