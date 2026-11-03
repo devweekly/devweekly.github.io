@@ -9,6 +9,8 @@ tags:
   - LLM
   - Model Editing
   - Model Merging
+  - Persona Vectors
+  - Activation Steering
   - Fine-tuning
   - Machine Learning
   - AI Architecture
@@ -1046,7 +1048,297 @@ Weight-Space Programming 提供了另一种可能：让模型分析参数或中�
 
 在现阶段，用户个性化不应该直接从权重编辑开始。更合理的路线是先建立偏好数据、评价指标和 Adapter，再研究是否需要进一步做权重级修改。
 
-### 12.5 Model Auditing：权重级安全审计
+### 12.5 Persona Vectors：把模型的行为特征表示成可测量、可干预的内部方向
+
+Persona Vectors 是理解 Weight-Space Programming 的一个重要邻近方向，但首先要明确：**Anthropic 所说的 Persona Vector 通常位于模型的 Activation Space（激活空间），而不是 Weight Space（权重空间）**。它不是用户画像的 embedding，也不是直接写入模型参数的一组权重。
+
+#### 12.5.1 模型的“性格”是否存在于内部表示中？
+
+同一个基础模型可以在不同上下文中表现得谨慎、乐观、谄媚、幽默、冷漠，也可能表现出过度自信或容易编造信息。传统应用通常通过 System Prompt、Few-shot 示例、Memory 或 Fine-tuning 来影响这些行为。
+
+Mechanistic Interpretability（机制可解释性）研究提出了另一个问题：这些行为是否不仅存在于最终生成的文字中，也对应模型内部表示空间中的某些方向？
+
+Transformer 在每一层处理 Token 时，都会产生高维隐藏状态（Hidden State / Activation）。可以把某一层某个 Token 的隐藏状态写成：
+
+\[
+h_{\ell,t} \in \mathbb{R}^{d}
+\]
+
+其中，\(\ell\) 是 Transformer 层，\(t\) 是 Token 位置，\(d\) 是该模型的隐藏维度。Persona Vector 的基本思路是：构造一组表现某个特征的样本，再构造一组不表现该特征的对照样本，分别提取模型在某一层的激活，计算两组激活的差异。
+
+一个简化定义是：
+
+\[
+v_{\ell}^{(p)} =
+\mathbb{E}[h_{\ell,t}\mid p]
+-
+\mathbb{E}[h_{\ell,t}\mid \neg p]
+\]
+
+这里的 \(p\) 可以是 sycophancy（迎合/谄媚）、honesty（诚实）、politeness（礼貌）、humor（幽默）或 hallucination tendency（幻觉倾向）。得到的 \(v_{\ell}^{(p)}\) 与特定模型、层、采样方式和数据构造相关，不是跨模型通用的“人格坐标”。
+
+这并不意味着模型内部真的存在一个独立的“谄媚开关”。它只表示：在当前实验定义和测量方法下，某个行为特征与激活空间中的一个方向存在可测量的关联。要进一步主张这个方向具有因果作用，还需要做干预实验和反事实评估。
+
+#### 12.5.2 Anthropic Persona Vectors：从行为差异到内部监控
+
+Anthropic 的研究 [Persona Vectors: Monitoring and Controlling Character Traits in Language Models](https://www.anthropic.com/research/persona-vectors) 将这一思路用于模型行为特征的提取、监控和干预。研究重点包括 evil、sycophancy 和 hallucination，也考察了 politeness、apathy、humor、optimism 等特征。
+
+其核心实验流程可以概括为：
+
+1. 用自然语言定义一个目标行为特征，例如“在没有充分证据时仍然迎合用户”。
+2. 自动生成能够诱发目标行为和相反行为的对照 Prompt。
+3. 分别运行模型，提取指定层的 Residual Stream Activations。
+4. 对符合目标特征和不符合目标特征的激活求均值差，得到候选 Persona Vector。
+5. 在留出的 Prompt 上验证：向激活中加入或减去该向量，模型行为是否按预期变化。
+6. 用独立评估检查干预是否损害其他能力，避免只优化单一人格指标。
+
+研究展示了三类用法：
+
+- **Deployment monitoring**：在推理过程中监控某个行为方向的激活强度，观察模型是否逐渐表现出不希望出现的倾向。
+- **Inference-time steering**：在指定层的 Residual Stream 中加入或减去向量，改变模型的行为倾向，而不必重新训练或永久修改模型权重。
+- **Training-data auditing / preventative steering**：分析训练样本对目标 Persona Vector 的投影，预判哪些数据可能诱发某种行为变化；研究还探索在训练过程中进行预防性干预。
+
+一个重要结论是：只在推理时减去不良行为方向，并不总是没有代价。它可能同时削弱其他能力。Anthropic 还提出了训练期间的 preventative steering，尝试在模型适应某些训练数据时，降低不良人格漂移的风险。这里的“疫苗”是对方法直觉的类比，不应理解为已经建立了完整的安全保证。
+
+#### 12.5.3 Persona Vector 与 Weight-Space Programming：两个空间、两种修改对象
+
+这是本文主题中最容易混淆的地方。
+
+| 维度 | Persona Vector / Activation Steering | Weight-Space Programming |
+| --- | --- | --- |
+| 操作对象 | 某一层运行时产生的 Hidden State / Activation | 模型参数 Tensor |
+| 典型形式 | \(h'_{\ell,t}=h_{\ell,t}+\alpha v_{\ell}\) | \(\theta'=\theta+\Delta\theta\)，或直接重写部分参数 |
+| 发生时间 | 模型 Forward Pass 期间 | 模型构建、编辑或版本发布阶段 |
+| 是否永久改变模型 | 通常不会；移除 Hook 即可恢复 | 会产生新的模型制品或参数版本 |
+| 主要目标 | 监控、抑制或增强某种行为倾向 | 诊断、修复、重组或创建模型内部机制 |
+| 典型风险 | 过度 Steering、能力退化、层和模型依赖 | 参数破坏、灾难性回归、制品供应链风险 |
+| 主要验证 | 激活投影、行为评测、跨任务能力评测 | 权重差异、模型行为评测、回滚和制品校验 |
+
+可以把二者理解为不同层次的控制接口：Activation Steering 改变模型这一次计算过程中的中间状态；Weight-Space Programming 则试图改变模型下一次运行时所使用的程序参数。
+
+它们之间存在几种值得研究的连接方式：
+
+1. **Persona Vector 作为诊断信号**：先用 Persona Vector 发现模型在某个行为方向上异常，再由 Weight-Space Programming Agent 分析权重，寻找可能造成异常的参数区域。
+2. **Activation Steering 作为临时修复基线**：先通过运行时干预验证“抑制某个方向是否真的能改善目标行为”，再决定是否值得做持久化权重编辑。
+3. **从 Activation 到 Weight 的定位**：结合梯度、消融、特征归因或组件级分析，尝试找到对目标激活方向有因果影响的参数子集。仅凭一个 Activation Vector，不能直接推导出唯一的 Weight Patch。
+4. **编辑后的回归检查**：权重编辑完成后，重新提取和测量 Persona Vectors，检查目标行为是否改善，以及其他行为是否发生意外漂移。
+
+~~~mermaid
+flowchart TD
+    A["Base LLM"] --> B["Forward Pass"]
+    B --> C["Residual Stream Activations"]
+    C --> D["Extract Persona Vector"]
+    D --> E["Behavior Monitoring"]
+    D --> F["Inference-time Activation Steering"]
+    E --> G["Detect Behavioral Drift"]
+    G --> H["Weight-space Diagnosis"]
+    H --> I["Candidate Weight Patch"]
+    I --> J["Independent Evaluation"]
+    J --> K["New Model Checkpoint"]
+    K --> B
+~~~
+
+这条链路说明 Persona Vector 可以成为 Weight-Space Programming 的观测和验证工具，但它本身不是 Weight Patch，也不意味着从激活空间到权重空间存在简单的一一映射。
+
+#### 12.5.4 另一个相近概念：Personality Vector 也可能指权重差分
+
+论文命名并不完全统一。2025 年 EMNLP 论文 [Personality Vector: Modulating Personality of Large Language Models by Model Merging](https://aclanthology.org/2025.emnlp-main.1253.pdf) 使用了另一种做法：先对基础模型进行某种人格方向的 Fine-tuning，再计算微调模型与基础模型的参数差：
+
+\[
+\Delta\theta_{p}=\theta_{\text{persona-tuned}}-\theta_{\text{base}}
+\]
+
+这个差值可以被看作一个 Weight-Space Task Vector。通过把它与基础模型合并，可以尝试让模型表现出相应的人格特征，而不必在每次推理时修改 Activation。
+
+这类方法与 Task Arithmetic、LoRA Adapter Merge 和 Weight-Space Programming 的联系更直接，因为它操作的是参数差分，而不是运行时隐藏状态。
+
+但要注意：两个模型必须在架构、参数形状和参数语义上兼容；参数差分也不保证可以线性叠加。人格特征之间可能存在干扰，合并后仍然需要做完整评估。更不能把这种“人格微调差分”与 Anthropic 的 Activation Persona Vector 当成同一个文件格式或算法。
+
+#### 12.5.5 2026 年研究进展：从静态人格控制到动态组合
+
+2026 年出现了几项值得重点关注的研究：
+
+| 研究 | 主要思路 | 与 WSP 的关系 | 目前应如何看待 |
+| --- | --- | --- | --- |
+| [PERSONA（ICLR 2026）](https://proceedings.iclr.cc/paper_files/paper/2026/hash/f66ce276436c4cd151535b03841ac713-Abstract-Conference.html) | 提取近似正交的人格方向，通过向量加减、缩放和动态组合控制行为 | Activation Space 的组合式编程；不是直接修改权重 | 有论文、代码和预提取向量，可在开源模型上复现实验 |
+| [PersonaSteer（Findings of EMNLP 2026）](https://aclanthology.org/2026.findings-emnlp.1270/) | 从多轮交互历史学习动态 Steering Representation，并注入 Backbone Residual Stream | 把用户偏好转成运行时激活控制，连接长期个性化 Agent | 有公开论文和代码，属于研究实现，不等于托管商业产品 |
+| [Your Language Model Secretly Contains Personality Subnetworks（ICLR 2026）](https://proceedings.iclr.cc/paper_files/paper/2026/hash/9b2086bc4a12c3a8e80105635fd95f66-Abstract-Conference.html) | 通过激活特征识别人格相关子网络，再用 Masking / Contrastive Pruning 分离 | 从 Activation 观测走向 Parameter Subnetwork 选择，和 WSP 的连接更紧密 | 说明人格行为可能对应参数空间中的子结构，但仍需评估可迁移性和副作用 |
+| [Steer Like the LLM（ICML 2026）](https://proceedings.mlr.press/v306/heyman26a.html) | 学习模仿 Prompt 在模型内部触发的动态干预，而不是始终使用固定系数 | 提高 Activation Steering 的动态控制能力 | 研究结果，不代表所有模型都能获得相同效果 |
+
+PERSONA 研究提出 Persona-Base、Persona-Algebra 和 Persona-Flow：先提取人格方向，再用向量运算组合特征，最后根据对话上下文动态决定如何 Steering。论文报告在其 PersonalityBench 上达到 9.60 的平均分，接近其监督微调基线 9.61；在 Persona-Evolve 测试中报告最高 91% 的胜率。这些数字是论文特定数据集、模型和评估方法下的结果，不宜直接外推为通用产品效果。
+
+PersonaSteer 更接近长期 Agent 个性化：它从非结构化交互历史中学习高维 Steering Representation，并通过反馈机制保持多轮对话中的人格一致性。这个方向尤其值得关注，因为它尝试把“用户长期偏好”从静态 Prompt 或 Memory 转换成模型内部的动态行为调节。但这不意味着用户偏好必须写入模型权重；运行时侧模型和 Activation Steering 是另一种架构选择。
+
+#### 12.5.6 可以实际使用的项目和工具：研究代码不等于商业 SaaS
+
+截至 2026 年 11 月，公开资料中已经有可运行的代码、模型向量、研究框架和底层干预库。但需要区分“能在自己的模型上运行”与“有厂商提供 SLA、租户隔离、审计和支持的商业产品”。目前不应把这些开源研究项目描述为已经成熟的托管 Persona Vector 产品。
+
+| 项目 / 资源 | 类型 | 可以做什么 | 适合谁 |
+| --- | --- | --- | --- |
+| [Anthropic safety-research/persona_vectors](https://github.com/safety-research/persona_vectors) | 研究代码，Apache-2.0 | 按论文流程生成 Persona Vector、做 Steering 和评估 | 想复现 Anthropic 研究的研究团队 |
+| [xcfcode/persona](https://github.com/xcfcode/persona) | PERSONA 官方代码，MIT | OCEAN 人格向量提取、向量代数、动态 Steering 和对话评估 | 想实验组合人格和动态个性化的开发者 |
+| [Hugging Face xiachongfeng/persona](https://huggingface.co/datasets/xiachongfeng/persona) | 预提取向量与数据集 | 下载 Qwen2.5、Qwen3、Llama 3.1 等模型对应的向量文件 | 希望跳过部分向量提取步骤的实验者 |
+| [PersonaSteer](https://github.com/tsinghua-fib-lab/PersonaSteer) | 研究代码 | 从交互历史学习动态 Steering Representation | 研究长期多轮个性化 Agent 的团队 |
+| [IBM activation-steering](https://github.com/IBM/activation-steering) | 开源工具库 | 构造、保存、加载和应用 Activation Steering 向量，支持条件化 Steering | 希望把 Activation Steering 集成进实验或自托管推理的团队 |
+| [NNSight](https://github.com/ndif-team/nnsight) | 模型内部访问与干预框架 | 对模型内部激活进行 tracing 和 intervention | 需要深入控制模型 Forward Pass 的研究与工程团队 |
+| [Microsoft llm-steer-instruct](https://github.com/microsoft/llm-steer-instruct) | 研究代码 | 使用激活差分改善格式、长度和指令遵循等行为 | 希望把 Steering 用于指令控制，而不只限于人格的团队 |
+
+这些项目有不同的目标和依赖，不能把它们视为同一个产品的不同版本。尤其是预提取向量必须与对应模型版本、层编号、Hidden Size、Tokenizer 和具体提取方式匹配。将 Qwen 的向量直接用于 Llama，或者把一个版本的向量加载到另一个架构中，通常没有意义。
+
+从商业产品角度看，当前更成熟的是围绕模型部署、Adapter 管理和模型评估提供的基础设施；通用的 Persona Vector 控制通常仍需要用户拥有模型内部访问能力。闭源模型 API 一般不会开放任意 Transformer Layer 的 Residual Stream Hook，因此不能假设能够对任意云端模型直接应用这些向量。
+
+#### 12.5.7 最小代码示例：在本地模型推理时应用 Persona Vector
+
+下面用 Hugging Face Transformers 展示核心机制。假设已经为当前模型提取了某一层的 Persona Vector，并保存为 PyTorch Tensor。代码通过 Hook 修改 Decoder Layer 的输出隐藏状态，不修改模型参数文件。
+
+示例针对常见的 Llama/Qwen2 类模型结构；不同模型的 Decoder Layer 路径、输出结构和缓存机制可能不同，实际使用前需要检查模型实现。
+
+~~~python
+from pathlib import Path
+
+import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+MODEL_ID = "Qwen/Qwen2.5-7B-Instruct"
+VECTOR_PATH = Path("./vectors/sycophancy_layer20.pt")
+LAYER_INDEX = 20
+STEERING_COEFFICIENT = -0.35
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+dtype = torch.bfloat16 if device == "cuda" else torch.float32
+
+tokenizer = AutoTokenizer.from_pretrained(MODEL_ID)
+model = AutoModelForCausalLM.from_pretrained(
+    MODEL_ID,
+    torch_dtype=dtype,
+    device_map="auto",
+)
+model.eval()
+
+# The vector must be extracted for this exact model family and layer.
+persona_vector = torch.load(
+    VECTOR_PATH,
+    map_location="cpu",
+    weights_only=True,
+).to(device=device, dtype=dtype)
+
+# Common Llama/Qwen2-style module path.
+decoder_layer = model.model.layers[LAYER_INDEX]
+
+hidden_size = model.config.hidden_size
+if persona_vector.numel() != hidden_size:
+    raise ValueError(
+        f"Vector size {persona_vector.numel()} != hidden size {hidden_size}"
+    )
+
+def steer_decoder_output(module, inputs, output):
+    # Decoder layers commonly return (hidden_states, cache, ...).
+    if isinstance(output, tuple):
+        hidden_states = output[0]
+        rest = output[1:]
+    else:
+        hidden_states = output
+        rest = None
+
+    # Apply to the last token in the current forward call:
+    # prompt's final position during prefill, then each generated token.
+    modified = hidden_states.clone()
+    modified[:, -1, :] += (
+        STEERING_COEFFICIENT * persona_vector.to(modified.device)
+    )
+
+    if rest is None:
+        return modified
+    return (modified, *rest)
+
+handle = decoder_layer.register_forward_hook(steer_decoder_output)
+
+try:
+    prompt = (
+        "I think this investment strategy is guaranteed to make money. "
+        "Please evaluate the claim objectively and identify uncertainties."
+    )
+    inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
+
+    with torch.inference_mode():
+        output = model.generate(
+            **inputs,
+            max_new_tokens=256,
+            do_sample=False,
+        )
+
+    print(tokenizer.decode(output[0], skip_special_tokens=True))
+finally:
+    # Always remove the hook; the intervention should not leak into
+    # subsequent requests that are expected to use the base behavior.
+    handle.remove()
+~~~
+
+这里使用负系数只是为了演示“沿某个向量的反方向干预”。它不代表 -0.35 是通用的安全值，也不代表负向干预一定能消除谄媚行为。系数、层位置、Token 范围和向量提取方法都需要通过实验确定。
+
+生产环境不能直接照搬这个示例。至少还要处理：
+
+- **模型结构适配**：Llama、Qwen、Mistral 等架构的模块路径、输出 Tuple 和 Cache 结构可能不同。
+- **并发请求隔离**：不能在共享模型上用全局可变系数和全局 Hook 处理不同租户，否则不同请求可能相互影响。
+- **动态控制**：不同用户、任务和对话阶段需要不同的向量组合，应把 Steering 参数作为请求级上下文，而不是修改全局模型状态。
+- **性能**：Hook 会增加执行开销；需要测量 Token Throughput、TTFT、显存和并发性能。
+- **安全与回归**：对目标行为做正反例评估，同时检查数学、代码、事实准确性、拒答、指令遵循等能力是否退化。
+- **兼容性**：向量文件必须绑定模型权重 Hash、层号、Hidden Size、数据版本和提取脚本版本。
+
+如果想先做研究复现，建议优先运行官方 PERSONA 项目提供的 chat.py 和预提取向量，再尝试自己实现 Hook。上面的代码主要用于解释底层原理，不是一个完整的多租户 Serving 实现。
+
+#### 12.5.8 对企业 Agent 的实际价值：Persona Vector 不只是“让模型有个性”
+
+企业应用中，Persona 的价值不应被简化成“让 AI 更像某个人”。更有意义的是将可观察的行为要求转化成可测量、可测试的控制目标。
+
+| 企业需求 | 可定义的行为特征 | 可能的实现方式 | 是否需要改权重 |
+| --- | --- | --- | --- |
+| 金融研究助手 | 谨慎表达、不迎合结论、明确不确定性 | Prompt + Evaluation；Activation Steering 实验 | 通常不需要 |
+| 代码审查 Agent | 严格、具体、优先指出缺陷，不轻易认可 | Prompt / Memory / Adapter；可研究 Steering | 通常不需要 |
+| 企业架构助手 | 结构化、追溯依据、明确 Trade-off | Prompt + Knowledge + Evaluation | 通常不需要 |
+| 客户服务 Agent | 礼貌、同理心、避免过度承诺 | Prompt / Fine-tuning；研究动态 Steering | 视场景而定 |
+| 多轮个人助理 | 稳定保留用户确认的长期交互偏好 | Memory + Preference Model；PersonaSteer 类方案 | 不一定 |
+| 安全敏感 Agent | 降低谄媚、幻觉或遵从不可信工具输出的倾向 | Safety policy + Monitoring + Steering + 独立验证 | 不能只依赖 Steering |
+
+例如，一个金融研究 Agent 的目标不是“更自信”，而是：当证据不足时明确说明不确定性；当用户提出错误假设时指出问题；对预测、事实和推断做区分；不因为用户表达了强烈观点就改变结论。这些要求可以被转化为成对测试样本，测量模型在不同上下文下的行为偏移。
+
+Persona Vector 可以帮助发现模型是否沿着“迎合”或“过度自信”的方向发生变化，但它不能替代事实校验、权限控制、合规规则或业务风险控制。特别是在金融、医疗和法律场景中，不能把单一激活方向当成安全机制。
+
+#### 12.5.9 对 Weight-Space Programming 的启发
+
+Persona Vectors 让我们看到一种可能的模型工程闭环：
+
+1. 用行为定义和测试数据建立目标特征。
+2. 从模型激活中提取可测量的行为方向。
+3. 通过 Activation Steering 验证该方向是否对行为有因果影响。
+4. 如果问题稳定存在，再使用 Mechanistic Interpretability、组件分析或权重差分寻找相关参数区域。
+5. 由 Weight-Space Programming Agent 提出候选修改，而不是直接写生产模型。
+6. 对修改后的 Checkpoint 重新提取 Persona Vectors，运行独立的行为、能力和安全回归测试。
+7. 只有通过门禁的模型版本才进入 Model Registry 和 Staged Deployment。
+
+~~~mermaid
+flowchart TD
+    A["Behavior Specification"] --> B["Contrastive Evaluation Dataset"]
+    B --> C["Persona Vector Extraction"]
+    C --> D["Activation Monitoring"]
+    D --> E{"Behavior Drift or Failure?"}
+    E -->|No| F["Continue Monitoring"]
+    E -->|Yes| G["Activation Steering Experiment"]
+    G --> H["Causal and Capability Evaluation"]
+    H --> I{"Persistent Weight-level Fix Needed?"}
+    I -->|No| J["Use Runtime Control or Prompt / Adapter"]
+    I -->|Yes| K["Weight-space Diagnosis"]
+    K --> L["Candidate Parameter Patch"]
+    L --> M["Re-extract Persona Vectors"]
+    M --> N["Regression and Safety Evaluation"]
+    N --> O["Versioned Model Artifact"]
+~~~
+
+这不是说所有 Agent 都应该采用这条复杂链路。绝大多数企业应用仍然应该从 Prompt、Memory、Evaluation 和 Adapter 开始。Persona Vector 更适合在模型内部可访问、行为变化难以用外部指标解释、并且团队有能力做严谨实验的情况下使用。
+
+最重要的判断是：**Persona Vectors 提供了一种观察和控制模型内部行为的接口；Weight-Space Programming 则试图让 LLM 进一步理解并修改另一个模型的内部参数。前者可以为后者提供诊断信号和验证指标，但二者之间还隔着因果定位、参数映射和独立安全评估。**
+
+### 12.6 Model Auditing：权重级安全审计
 
 Weight Oracles 研究提出了一个值得关注的方向：直接分析模型权重，判断模型是否存在某些异常行为或潜在 Backdoor。
 
@@ -1414,9 +1706,25 @@ Weight-Space Programming 并不是凭空出现的新概念。它建立在 Task V
 20. [Microsoft Foundry Multi-LoRA Adapter Deployment](https://learn.microsoft.com/en-us/azure/foundry/how-to/deploy-lora-managed-compute)。
 21. [Microsoft Foundry Adapter Deployment Overview](https://learn.microsoft.com/en-us/azure/foundry/concepts/adapter-deployment-overview)。
 
+### Persona Vectors 与 Activation Steering
+
+22. [Persona Vectors: Monitoring and Controlling Character Traits in Language Models](https://www.anthropic.com/research/persona-vectors) — Anthropic。
+23. [Persona Vectors 官方研究代码](https://github.com/safety-research/persona_vectors) — Apache-2.0。
+24. [PERSONA: Dynamic and Compositional Inference-Time Personality Control via Activation Vector Algebra](https://proceedings.iclr.cc/paper_files/paper/2026/hash/f66ce276436c4cd151535b03841ac713-Abstract-Conference.html) — ICLR 2026。
+25. [PERSONA 官方代码](https://github.com/xcfcode/persona) — MIT。
+26. [PERSONA Vectors and Datasets](https://huggingface.co/datasets/xiachongfeng/persona) — Hugging Face。
+27. [PersonaSteer: Dynamic Activation Steering for Personalized Multi-turn LLM Conversations](https://aclanthology.org/2026.findings-emnlp.1270/) — Findings of EMNLP 2026。
+28. [PersonaSteer 官方代码](https://github.com/tsinghua-fib-lab/PersonaSteer)。
+29. [Your Language Model Secretly Contains Personality Subnetworks](https://proceedings.iclr.cc/paper_files/paper/2026/hash/9b2086bc4a12c3a8e80105635fd95f66-Abstract-Conference.html) — ICLR 2026。
+30. [Personality Vector: Modulating Personality of Large Language Models by Model Merging](https://aclanthology.org/2025.emnlp-main.1253.pdf) — EMNLP 2025。
+31. [Steer Like the LLM: Activation Steering that Mimics Prompting](https://proceedings.mlr.press/v306/heyman26a.html) — ICML 2026。
+32. [IBM Activation Steering](https://github.com/IBM/activation-steering)。
+33. [NNSight](https://github.com/ndif-team/nnsight)。
+34. [Microsoft LLM Steer Instruct](https://github.com/microsoft/llm-steer-instruct)。
+
 ### 模型安全
 
-22. [TamperBench: Systematically Stress-Testing LLM Safety Under Fine-Tuning and Tampering](https://dl.acm.org/doi/10.1145/3770855.3817557)。
+35. [TamperBench: Systematically Stress-Testing LLM Safety Under Fine-Tuning and Tampering](https://dl.acm.org/doi/10.1145/3770855.3817557)。
 
 ---
 
