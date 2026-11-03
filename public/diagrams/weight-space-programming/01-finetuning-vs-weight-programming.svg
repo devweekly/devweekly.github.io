@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" role="img" aria-labelledby="wsp-compare-title wsp-compare-desc">
+<title id="wsp-compare-title">Fine-tuning 与 Weight-Space Programming</title><desc id="wsp-compare-desc">对比梯度训练与 LLM 直接权重编辑的输入、更新机制和产物。</desc>
+<defs>
+ <marker id="wsp-compare-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6 Z" fill="#4f5d75"/></marker>
+ <marker id="wsp-compare-accent-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6 Z" fill="#bf4520"/></marker>
+</defs>
+<rect width="960" height="600" fill="#f5f5f5"/>
+<text x="48" y="54" fill="#2d3142" font-size="26" font-weight="600" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">Fine-tuning 与 Weight-Space Programming</text>
+<text x="48" y="80" fill="#4f5d75" font-size="12" font-family="'Geist Mono',ui-monospace,monospace">WEIGHT-SPACE PROGRAMMING · WSP-COMPARE</text>
+
+<rect x="48" y="112" width="416" height="382" rx="8" fill="#ececec" stroke="#bfc0c0"/>
+<rect x="496" y="112" width="416" height="382" rx="8" fill="#ececec" stroke="#bfc0c0"/>
+<text x="72" y="146" fill="#4f5d75" font-size="11" font-family="'Geist Mono',ui-monospace,monospace">A / OPTIMIZATION-DRIVEN</text>
+<text x="520" y="146" fill="#bf4520" font-size="11" font-family="'Geist Mono',ui-monospace,monospace">B / REASONING-DRIVEN</text>
+<g><rect x="88" y="178" width="336" height="62" rx="6" fill="#ececec" stroke="#bfc0c0" stroke-width="1"/>
+ <text x="256" y="205" text-anchor="middle" fill="#2d3142" font-size="15" font-weight="600" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">训练数据 + 目标函数</text>
+ <text x="256" y="228" text-anchor="middle" fill="#4f5d75" font-size="10" font-family="'Geist Mono',ui-monospace,monospace">dataset · loss · constraints</text></g>
+<g><rect x="88" y="280" width="336" height="62" rx="6" fill="#ececec" stroke="#bfc0c0" stroke-width="1"/>
+ <text x="256" y="307" text-anchor="middle" fill="#2d3142" font-size="15" font-weight="600" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">Forward / Backward Pass</text>
+ <text x="256" y="330" text-anchor="middle" fill="#4f5d75" font-size="10" font-family="'Geist Mono',ui-monospace,monospace">gradient computation</text></g>
+<g><rect x="88" y="382" width="336" height="62" rx="6" fill="#f8e8e2" stroke="#bf4520" stroke-width="2"/>
+ <text x="256" y="409" text-anchor="middle" fill="#2d3142" font-size="15" font-weight="600" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">Optimizer 更新权重</text>
+ <text x="256" y="432" text-anchor="middle" fill="#4f5d75" font-size="10" font-family="'Geist Mono',ui-monospace,monospace">W ← W − η∇L</text></g>
+<path d="M256 240 V280 M256 342 V382" stroke="#4f5d75" stroke-width="1.5" fill="none" marker-end="url(#wsp-arrow)"/>
+<g><rect x="536" y="178" width="336" height="62" rx="6" fill="#ececec" stroke="#bfc0c0" stroke-width="1"/>
+ <text x="704" y="205" text-anchor="middle" fill="#2d3142" font-size="15" font-weight="600" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">目标 + 失败证据</text>
+ <text x="704" y="228" text-anchor="middle" fill="#4f5d75" font-size="10" font-family="'Geist Mono',ui-monospace,monospace">objective · traces · examples</text></g>
+<g><rect x="536" y="280" width="336" height="62" rx="6" fill="#ececec" stroke="#bfc0c0" stroke-width="1"/>
+ <text x="704" y="307" text-anchor="middle" fill="#2d3142" font-size="15" font-weight="600" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">LLM 检查权重与行为</text>
+ <text x="704" y="330" text-anchor="middle" fill="#4f5d75" font-size="10" font-family="'Geist Mono',ui-monospace,monospace">tensor inspection · forward probes</text></g>
+<g><rect x="536" y="382" width="336" height="62" rx="6" fill="#f8e8e2" stroke="#bf4520" stroke-width="2"/>
+ <text x="704" y="409" text-anchor="middle" fill="#2d3142" font-size="15" font-weight="600" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">提出并应用 Patch</text>
+ <text x="704" y="432" text-anchor="middle" fill="#4f5d75" font-size="10" font-family="'Geist Mono',ui-monospace,monospace">explicit tensor edits</text></g>
+<path d="M704 240 V280 M704 342 V382" stroke="#bf4520" stroke-width="2" fill="none" marker-end="url(#wsp-accent-arrow)"/>
+<text x="256" y="466" text-anchor="middle" fill="#4f5d75" font-size="11" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">更新方向来自梯度</text>
+<text x="704" y="466" text-anchor="middle" fill="#4f5d75" font-size="11" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">更新方案来自推理与实验反馈</text>
+<text x="480" y="520" text-anchor="middle" fill="#4f5d75" font-size="12" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">两者都需要计算与评估；区别不是“有没有计算”，而是“如何决定参数更新”。</text>
+<line x1="48" y1="548" x2="912" y2="548" stroke="#bfc0c0" stroke-width="1"/>
+<text x="48" y="570" fill="#5a6580" font-size="10" font-family="'Geist Mono',ui-monospace,monospace">DEVWEEKLY / RESEARCH NOTE / 2026-11-03</text>
+</svg>
