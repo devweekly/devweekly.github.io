@@ -1,8 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 600" role="img" aria-labelledby="wsp-multilora-title wsp-multilora-desc">
 <title id="wsp-multilora-title">Multi-LoRA 推理部署结构</title><desc id="wsp-multilora-desc">多个业务 Adapter 共享基础模型和推理运行时，由请求路由选择对应 Adapter。</desc>
 <defs>
- <marker id="wsp-multilora-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6 Z" fill="#4f5d75"/></marker>
- <marker id="wsp-multilora-accent-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6 Z" fill="#bf4520"/></marker>
+ <marker id="wsp-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6 Z" fill="#4f5d75"/></marker>
+ <marker id="wsp-accent-arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6 Z" fill="#bf4520"/></marker>
 </defs>
 <rect width="960" height="600" fill="#f5f5f5"/>
 <text x="48" y="54" fill="#2d3142" font-size="26" font-weight="600" font-family="Geist,'Noto Sans SC','PingFang SC','Microsoft YaHei',sans-serif">Multi-LoRA 推理部署结构</text>
