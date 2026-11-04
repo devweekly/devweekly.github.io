@@ -506,9 +506,33 @@ PositiveMatch 表示商品证据与正向偏好的吻合程度，NegativeMatch �
 
 前面的数据资源和语义映射最终要服务于商品检索与个性化推荐。参考架构将产品事实、气味语义、检索服务和用户反馈分开：PostgreSQL 保存可核验的产品与来源数据；全文和向量索引负责候选召回；排序层处理用户偏好、排除条件和证据质量；反馈数据用于持续修正个人偏好。
 
-<img src="/diagrams/fragrance-recommender-architecture.svg" alt="香水推荐系统参考架构：用户界面、推荐 API、查询理解、混合召回、个性化排序、事实数据存储与反馈闭环" width="1040" height="590" style="display:block;width:100%;height:auto" loading="lazy" />
+```mermaid
+flowchart TB
+    U["用户界面<br/>自然语言 / 筛选器"] --> API["Recommendation API<br/>认证 · 限流 · 请求校验"]
+    API --> Q["Query Understanding<br/>偏好 · 否定 · 预算 · 场景"]
+    Q --> R["Hybrid Retrieval<br/>SQL · 全文检索 · 向量召回"]
+    R --> Rank["Ranker<br/>约束过滤 · 个性化排序"]
+    Rank --> Out["推荐结果<br/>匹配理由 · 证据来源 · 不确定性"]
 
-*打开[架构图交互版本](/diagrams/fragrance-recommender-architecture.html)可查看完整图示。*
+    subgraph Knowledge["检索与知识来源"]
+      P[("PostgreSQL<br/>产品 · 品牌 · Note · Accord")]
+      F[("全文索引<br/>评论 · 多语言词汇")]
+      V[("向量索引<br/>语义候选")]
+      E[("来源证据<br/>出处 · 时间 · 许可 · 置信度")]
+    end
+
+    P --> R
+    F --> R
+    V --> R
+    E --> Rank
+
+    Out --> Feedback["用户反馈<br/>点击 · 收藏 · 试香 · 购买 · 跳过"]
+    Feedback -.-> Profile[("个人偏好与反馈历史")]
+    Profile -.-> Q
+    Profile -.-> Rank
+```
+
+图中展示的是逻辑组件和数据关系。也提供独立的 [SVG 架构图](/diagrams/fragrance-recommender-architecture.svg) 和[交互版本](/diagrams/fragrance-recommender-architecture.html)，便于放大查看与复用。
 
 架构图展示的是逻辑组件边界，不意味着第一版就要部署多个独立服务或数据库。产品目录、来源证据和偏好状态可以先由一个应用和 PostgreSQL 承担；只有在检索规模、查询复杂度或团队边界出现实际需求时，再拆分搜索服务、向量索引和排序服务。
 
