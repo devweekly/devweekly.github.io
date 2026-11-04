@@ -171,7 +171,7 @@ Type-specific anti-patterns live in each type reference linked in the guide.
 
 ## 5. Design System
 
-**The design system is skinnable.** [`references/style-guide.md`](references/style-guide.md) is the single source of truth for colors, typography, tokens, and the default palette; this file names semantic roles (`paper`, `ink`, `muted`, `accent`, `link`, …). To apply a brand, edit `style-guide.md` or run the URL-based flow in [`references/onboarding.md`](references/onboarding.md).
+**The design system is skinnable.** [`references/style-guide.md`](references/style-guide.md) is the single source of truth for colors, typography, surfaces, radii, elevation, category chips, and the default palette; this file names semantic roles (`paper`, `surface`, `ink`, `muted`, `accent`, `link`, …). The shared visual skin applies to every visual type; type references retain their own layout and semantic shape grammar. To apply a brand, edit `style-guide.md` or run the URL-based flow in [`references/onboarding.md`](references/onboarding.md).
 
 > When specs below or in type references mention "ink", "accent", "muted", etc., look up the current hex value in `style-guide.md`.
 
@@ -213,7 +213,7 @@ Universal building blocks. Type-specialized primitives (lifeline, activation bar
 Exact markup (background, dotted paper, markers, node box, arrow label, legend) and the long form of each connector rule: [`references/primitives-core.md`](references/primitives-core.md). The static templates (`template.html`, `template-dark.html`, `template-full.html`) already define the background and the `arrow`, `arrow-accent`, and `arrow-link` markers; `template-motion.html` defines only its own prefixed marker, so add the others from primitives-core.md when a motion diagram needs them.
 
 - **Arrows:** `muted` by default, `accent` for the headline path, `link` for HTTP/API and external calls, dashed `5,4` for optional, passive, return, or async. Draw arrows before boxes so lines sit behind nodes.
-- **Node box:** an opaque paper mask rect, then the styled box at `rx=6`, a rectangular type tag at `rx=2` (not a pill), the name in Geist 600, and a Geist Mono sublabel.
+- **Node box:** use the shared Soft Dependency Canvas primitive — raised white surface, 10–12px corners, one subtle shadow, pastel pill category chip, clear name and secondary technical label. The global surface/geometry/elevation contract in `style-guide.md` and `primitives-core.md` supersedes older local references to flat boxes, 4–6px node radii, or rectangular type tags; preserve each visual type's semantic shapes (diamonds, circles, compartments, etc.).
 
 ### Mandatory connector rules
 
