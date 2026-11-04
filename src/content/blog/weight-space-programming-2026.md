@@ -31,7 +31,7 @@ MIT CSAIL 的 Rikiya Takehi、Jayden Teoh、Alex Zhang 和 Omar Khattab 于 2026
 
 这组结果不能说明 LLM 已经能够训练任意模型，也不能说明权重编辑可以绕过数据和算力需求。Qwen 实验针对的是一个具体问题：模型反复生成推理内容，常在给出答案前耗尽 Token 预算。编辑后，模型更容易完成原本就有能力解决的题目。结论目前只适用于论文测试的模型、故障和实验条件。
 
-需要区分几类经常被放在一起讨论的技术。LoRA 和 Fine-tuning 通过训练更新参数；Task Vector 和 Model Merging 运算已有的参数差异；ROME、MEMIT 按预先定义的目标编辑模型。MIT 的实验进一步让通用 LLM 分析权重并提出修改。下文先拆解实验，再讨论相关方法和工程边界。
+需要区分几类经常被放在一起讨论的技术。LoRA 和 Fine-tuning 通过训练更新参数；Task Vector 和 Model Merging 运算已有的参数差异；ROME、MEMIT 按预先定义的目标编辑模型。MIT 的实验让通用 LLM 分析权重并提出修改。下文先拆解实验，再讨论相关方法和工程边界。
 
 ## 1. 模型权重也能成为编程对象
 
@@ -229,7 +229,7 @@ MergeKit、Hugging Face PEFT 等项目让模型合并和参数高效微调有了
 
 ### 4.1 研究问题
 
-研究团队关注的是：通用 LLM 能否根据神经网络权重理解部分计算行为，并按自然语言目标提出参数修改？这和常见的 LLM-as-Optimizer 有一个区别。以往的实验通常让 LLM 调整 Prompt、训练代码或 Hyperparameters，也可能修改数据处理逻辑、模型架构配置和 Evaluation Harness；这次实验把可修改的对象进一步推进到了模型参数本身。
+研究团队关注的是：通用 LLM 能否根据神经网络权重理解部分计算行为，并按自然语言目标提出参数修改？这和常见的 LLM-as-Optimizer 有一个区别。以往的实验通常让 LLM 调整 Prompt、训练代码或 Hyperparameters，也可能修改数据处理逻辑、模型架构配置和 Evaluation Harness；这次实验把可修改的对象扩展到了模型参数本身。
 
 研究文章：[Sparks of Weight-Space Programming](https://rikiyat.github.io/blog/weight-space-programming/)。
 
@@ -248,7 +248,7 @@ MergeKit、Hugging Face PEFT 等项目让模型合并和参数高效微调有了
 | Experiment 7 | 识别特定行为 | 识别经过 Sycophancy 训练的模型 |
 | Experiment 8 | 修改真实语言模型 | 直接修改 Qwen3.5-0.8B 的权重以缓解数学推理循环 |
 
-按任务划分，Experiment 1—3 测试 Weight Reading，Experiment 4 测试 Repair，Experiment 5—6 测试 Weight Writing；Experiment 7—8 则进一步涉及行为识别和真实语言模型编辑。
+按任务划分，Experiment 1—3 测试 Weight Reading，Experiment 4 测试 Repair，Experiment 5—6 测试 Weight Writing；Experiment 7—8 涉及行为识别和真实语言模型编辑。
 
 研究团队公开了每组实验的提示、代码、输出、网络和评估材料：
 
@@ -315,7 +315,7 @@ model.language_model.layers.19.mlp.down_proj.weight
 
 > Editing weights could remove an obstacle that hid an ability, but it could not add an ability the model lacked.
 
-也就是说，权重编辑可以移除阻碍已有能力发挥的故障，但不能凭空创造模型没有的能力。
+权重编辑可以移除阻碍已有能力发挥的故障，但不能凭空创造模型没有的能力。
 
 这与普通 Fine-tuning 的目标不同。Fine-tuning 可能通过训练数据学习新的任务模式；这里的实验则主要是修复模型已有行为中的一个特定问题。
 
@@ -441,7 +441,7 @@ Simon 的完整过程和失败案例见：[Qwen 3.8 27B on my laptop can interpr
 | [EasyEdit](https://github.com/zjunlp/EasyEdit) | 比较和实验多种知识编辑方法 | 统一 Model Editing 实验工具 | 研究工具 |
 | [Steer2Edit](https://github.com/Trustworthy-ML-Lab/Steer2Edit) | 将 Steering 转换为组件级权重编辑 | 与训练无关的权重干预方向 | 研究工具 |
 
-需要特别说明，PEFT 和 vLLM 并不实现 MIT 研究中的通用 Weight-Space Programming。它们解决的是训练、Adapter 管理和模型推理问题。
+PEFT 和 vLLM 并不实现 MIT 研究中的通用 Weight-Space Programming。它们解决的是训练、Adapter 管理和模型推理问题。
 
 ### 5.2 Together AI：LoRA Fine-tuning 与托管部署
 
@@ -828,7 +828,7 @@ print(outputs[0].outputs[0].text)
 | LoRA Adapter | 稳定的任务或风格适配 | 需要训练和回归评估 |
 | Direct Weight Editing | 尝试直接修改模型内部行为 | 可解释性、局部性和副作用尚不成熟 |
 
-在现阶段，用户个性化不应该直接从权重编辑开始。更合理的路线是先建立偏好数据、评价指标和 Adapter，再研究是否需要进一步做权重级修改。
+用户个性化不应该直接从权重编辑开始。更可控的路线是先建立偏好数据、评价指标和 Adapter，再判断是否需要权重级修改。
 
 ### 12.5 Anthropic Persona Vectors：如何提取、测量和干预模型行为
 
@@ -894,7 +894,7 @@ Anthropic 的方法有一个值得重视的设计：它把“行为定义、对�
 2. 四十个可能触发目标行为的问题，其中二十个用于提取向量，另外二十个留作下游评估。
 3. 一个行为评分 Rubric，用于判断模型响应在多大程度上体现目标特征。
 
-这里使用不同用途的数据集很重要。若提取和验证使用完全相同的问题，很容易把对某些 Prompt 的适配误当成可泛化的行为方向。
+提取和验证应使用不同的问题集。若两者完全相同，很容易把模型对特定 Prompt 的适配误当成可泛化的行为方向。
 
 **第二步：生成正反响应，而不是直接使用 System Prompt 的标签。**
 
@@ -904,7 +904,7 @@ Anthropic 的方法有一个值得重视的设计：它把“行为定义、对�
 
 **第三步：使用 LLM Judge 对真实行为进行筛选。**
 
-论文使用 GPT-4.1-mini 对模型 Transcript 进行评分，分数范围为 0 到 100，其中 0 表示没有表现目标特征，100 表示强烈表现该特征。评分大于 50 的响应作为正向样本，低于 50 的响应作为负向样本。作者还检查了 LLM Judge 与人工评估者之间的一致性，并使用外部 Benchmark 验证问题集是否能够捕捉目标行为。这一步非常关键：向量最终反映的是被保留下来的行为差异，而不是 Prompt 文本之间的差异。
+论文使用 GPT-4.1-mini 对模型 Transcript 进行评分，分数范围为 0 到 100，其中 0 表示没有表现目标特征，100 表示强烈表现该特征。评分大于 50 的响应作为正向样本，低于 50 的响应作为负向样本。作者还检查了 LLM Judge 与人工评估者之间的一致性，并使用外部 Benchmark 验证问题集是否能够捕捉目标行为。向量最终反映的是被保留下来的行为差异，而不是 Prompt 文本之间的差异。
 
 不过，Judge 仍然是一个有误差的测量工具。评分模型可能误判讽刺、复杂语境、事实争议或礼貌表达；如果评分 Rubric 本身有偏差，向量就会继承这种偏差。因此，实际复现时应保存 Judge 的原始分数、理由、人工抽检结果和数据版本，而不是只保存最终的 PT 文件。
 
@@ -1009,7 +1009,7 @@ h_{\ell}\leftarrow h_{\ell}+\alpha v_{\ell}
 
 其中 \(\alpha\) 是 Steering Coefficient。系数为正（\(\alpha>0\)）时，模型沿向量方向移动；系数为负（\(\alpha<0\)）时，模型沿反方向移动。\(|\alpha|\) 越大，干预通常越强，副作用风险也可能越高。
 
-论文通过向 evil、sycophancy 和 hallucination 方向加向量，观察到相应行为评分上升。这是一个重要的因果证据：向量不仅能区分两类样本，还能通过人为注入改变模型行为。
+论文通过向 evil、sycophancy 和 hallucination 方向加向量，观察到相应行为评分上升。这是因果证据：向量不仅能区分两类样本，还能通过人为注入改变模型行为。
 
 诱发某种行为，并不等于能够无副作用地消除它。论文在微调后的模型上尝试减去不良 Persona Vector，发现目标行为确实可以下降，但较大的 Steering Coefficient 会降低 MMLU 等通用能力指标。模型内部表示是多种能力共同使用的空间，一个行为方向不一定与其他能力完全正交。
 
@@ -1026,7 +1026,7 @@ h_{\ell}\leftarrow h_{\ell}+\alpha v_{\ell}
 
 每类数据又有 Normal、I、II 等不同版本，表示从正常样本、轻度缺陷到明显缺陷的程度。研究观察到，Fine-tuning 不仅可能强化训练数据直接表达的特征，也可能引起其他特征的变化。例如针对某一种行为构造的数据，可能同时提高模型的迎合或幻觉倾向；某些带有隐蔽缺陷的数学数据，也可能诱发与原始任务看起来无关的行为变化。
 
-作者进一步比较 Fine-tuned Model 与 Base Model 的激活变化，并把变化投影到对应 Persona Vector 上。论文报告，特征方向上的激活变化与目标行为评分之间存在较强正相关，相关系数约为 \(r=0.76\) 到 \(0.97\)。这说明 Persona Vector 不仅能监控 Prompt 诱导的行为，也可能成为观察训练前后行为漂移的指标。
+作者比较 Fine-tuned Model 与 Base Model 的激活变化，并把变化投影到对应 Persona Vector 上。论文报告，特征方向上的激活变化与目标行为评分之间存在较强正相关，相关系数约为 \(r=0.76\) 到 \(0.97\)。这说明 Persona Vector 不仅能监控 Prompt 诱导的行为，也可能成为观察训练前后行为漂移的指标。
 
 **Post-hoc Steering 的问题**是：训练完成后再减去不良方向，虽然可能降低目标行为，但也会损害其他能力。
 
@@ -1073,7 +1073,7 @@ a_{\ell}(x_i,y_i)-a_{\ell}(x_i,y'_i)
 
 Projection Difference 比较的是“训练数据要求模型学会什么”与“模型本来会怎么回答”之间的差异，因此更接近训练数据可能引起的参数更新压力。
 
-论文在合成数据集上验证了 Dataset-level Projection Difference 与 Fine-tuning 后的特征变化之间的相关性，并进一步在 LMSYS-Chat-1M 真实对话数据上做实验。研究发现，按 Projection Difference 选出的高分样本，在 Fine-tuning 后更容易诱发相应的行为特征；低分样本则通常表现出相反趋势。这个现象在先用 LLM Judge 过滤明显不良样本后仍然存在。
+论文在合成数据集上验证了 Dataset-level Projection Difference 与 Fine-tuning 后的特征变化之间的相关性，并进一步在 LMSYS-Chat-1M 真实对话数据上做实验。研究发现，按 Projection Difference 选出的高分样本，在 Fine-tuning 后更容易诱发相应的行为特征；低分样本通常表现出相反趋势。这个现象在先用 LLM Judge 过滤明显不良样本后仍然存在。
 
 这为训练数据审查增加了一个观察角度。常规检查关注文本是否包含有害内容、事实错误或违规词句；Persona Vector 分析则估计样本可能给模型带来的方向性变化。论文发现，向量筛查与 LLM Judge 筛查可以互补，不能相互替代。
 
@@ -1190,7 +1190,7 @@ Assistant Axis 研究从 275 种角色原型（Character Archetypes）中提取�
 
 #### 12.5.11 研究结果的边界：哪些结论可以用，哪些不能外推
 
-Persona Vectors 是有价值的机制可解释性工具，但论文并没有证明模型人格可以被一个向量完整描述。需要特别注意以下边界：
+Persona Vectors 是有价值的机制可解释性工具，但论文并没有证明模型人格可以被一个向量完整描述。边界包括：
 
 1. **模型覆盖有限**：原始实验主要使用 Qwen2.5-7B-Instruct 和 Llama-3.1-8B-Instruct。不能假设相同向量、层位置或阈值适用于 Claude、GPT、Gemini 或其他模型。
 2. **特征定义依赖人工和 LLM**：自然语言定义、正反 Prompt、评估问题和 Judge Rubric 都会影响最终向量。不同定义得到的向量可能不同。
@@ -1201,7 +1201,7 @@ Persona Vectors 是有价值的机制可解释性工具，但论文并没有证�
 7. **训练期效果依赖训练条件**：Preventative Steering 的结果来自特定模型、训练数据和配置；需要在自己的 Fine-tuning 流程中重新验证。
 8. **向量不是安全边界**：攻击者可能绕过单一方向检测；正常行为也可能在激活空间中投影较高。它不替代 Policy、权限控制、工具沙箱、事实校验和红队测试。
 
-尤其要避免一个常见误解：Persona Vector 的方向具有可解释的行为相关性，不代表它对应一个可被独立定位的神经元、一个唯一电路，或者一个可以直接映射到少数权重的参数补丁。要从激活方向进一步找到权重层面的因果机制，还需要组件消融、因果追踪、梯度分析或参数编辑实验。
+需要避免一个误解：Persona Vector 的方向具有可解释的行为相关性，不代表它对应一个可被独立定位的神经元、一个唯一电路，或者一个可以直接映射到少数权重的参数补丁。要从激活方向进一步找到权重层面的因果机制，还需要组件消融、因果追踪、梯度分析或参数编辑实验。
 
 #### 12.5.12 企业落地建议：把它放进 Model Evaluation 和 Model Governance，而不是直接放进 Prompt 工程
 
@@ -1274,7 +1274,7 @@ Weight Oracles 研究提出了一个值得关注的方向：直接分析模型�
 - 对输出 Patch 进行格式校验；
 - 保留每次操作的输入、代码和结果。
 
-权重文件可能非常大，因此实际系统还需要支持按 Tensor 读取、低秩表示、稀疏差异和分块校验，避免把完整模型参数全部塞进 LLM Context Window。
+权重文件可能非常大，系统需要支持按 Tensor 读取、低秩表示、稀疏差异和分块校验，避免把完整模型参数全部塞进 LLM Context Window。
 
 ### 13.3 Evaluation：不能只看一个 Benchmark
 
@@ -1291,7 +1291,7 @@ Weight Oracles 研究提出了一个值得关注的方向：直接分析模型�
 | Performance | Latency、Throughput、Memory |
 | Reproducibility | 相同 Patch 是否可以重建相同模型 |
 
-特别需要区分 Target Improvement 和 Capability Preservation。
+需要区分 Target Improvement 和 Capability Preservation。
 
 目标任务提升不代表其他能力保持不变。
 
@@ -1307,7 +1307,7 @@ Weight Oracles 研究提出了一个值得关注的方向：直接分析模型�
 
 ### 14.1 Malicious Weight Patch
 
-如果一个 Agent 能够修改模型权重，恶意指令或 Patch 就可能改变模型的拒绝行为、植入隐藏 Backdoor、操纵特定输入下的输出，甚至破坏原有安全对齐或诱使模型在特定场景下泄露信息。因此，Patch 必须有来源、Hash、审批和评估记录。
+如果一个 Agent 能够修改模型权重，恶意指令或 Patch 就可能改变模型的拒绝行为、植入隐藏 Backdoor、操纵特定输入下的输出，甚至破坏原有安全对齐或诱使模型在特定场景下泄露信息。Patch 必须有来源、Hash、审批和评估记录。
 
 ### 14.2 Supply Chain Risk
 
