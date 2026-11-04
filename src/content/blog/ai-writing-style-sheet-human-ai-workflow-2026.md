@@ -206,6 +206,17 @@ Tim Kao 提出的“最低必要干预”可以作为一个很好的默认原则
 9. [Generative AI’s Impact on Graduate Student Professional Writing Productivity and Quality](https://link.springer.com/article/10.1007/s40593-025-00528-z) — Allison E. Connell Pensky et al., International Journal of Artificial Intelligence in Education, 2025。
 10. [Style, sentiment, and quality of undergraduate writing in the AI era](https://doi.org/10.1016/j.caeai.2025.100507) — Matthew H. C. Mak and Lukasz Walasek, Computers and Education: Artificial Intelligence, 2025。
 
+11. [Vale](https://github.com/vale-cli/vale) — 开源 prose linter；官方 README 说明其可将团队写作规范转为编辑器和 CI 检查。
+12. [human-writing](https://github.com/KKKKhazix/human-writing) — 中文 AI 写作与改稿 Agent Skill。
+13. [Write Like Me](https://github.com/HopLittleBunny/write-like-me) — 从个人样本学习写作模式，并提供语义保护和修改反馈学习。
+14. [write-like-me-mcp](https://github.com/gwicho38/write-like-me-mcp) — 本地 MCP 写作风格分析与样本检索工具。
+15. [House Style System](https://github.com/kalensr/house-style-system) — House Style、Vale 门禁和可选声音评审/eval 工作流。
+16. [The Style Guide](https://github.com/cote/the-style-guide) — 可移植、多命名风格的 Claude Skill。
+17. [nabokov](https://github.com/viewflow/nabokov) — 英文 prose linter，包含可选 AI 写作痕迹检查。
+18. [WRITER Brand](https://writer.com/brand/) — 官方产品说明：品牌 Voice、批准用语和写作规则。
+19. [Grammarly Style Guide](https://www.grammarly.com/business/styleguide) — 官方产品说明：组织 Style Guide、规则和 Brand Tones。
+20. [Jasper IQ](https://help.jasper.ai/hc/en-us/articles/55085068545819-Jasper-IQ) — 官方文档：Brand Voice、Audience、Knowledge Base、Style Guide 等品牌上下文组件。
+
 ---
 
 *本文区分了作者经验分享、组织实践和受控研究。AMA 与个人文章用于理解真实工作方法，不代表独立质量评估；实验结果只适用于论文所描述的模型、样本和任务，不能直接外推到所有语言、体裁和写作场景。*
