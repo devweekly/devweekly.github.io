@@ -466,13 +466,7 @@ Experiment 8 的 Gemma 3 270M 后续实验也很重要：这个模型本身并�
 
 MIT 的实验发布后，Simon Willison 在 2026 年 11 月 3 日做了一个很有价值的跟进：他没有使用 GPT-6 Astra，而是在自己的笔记本上运行 Qwen 3.8 27B，让它完成作者公开的 Experiment 1 权重识别任务。
 
-这次实验有几个值得注意的地方：
-
-- **模型**：Qwen 3.8 27B，使用 LM Studio 本地运行的 GGUF Q4_K_M 量化版本，文件约 17 GB。
-- **输入**：直接复用作者公开的 lm_understand-logs/exp1_which_game 提示词和权重文本。
-- **模型可用能力**：提示词明确要求不使用代码执行、计算器或其他工具，只根据权重作答。
-- **运行环境**：LM Studio 加载模型，Simon 通过 llm CLI 和 llm-lmstudio 插件发送提示。这里的 CLI 和 LM Studio 是实验 Harness；它们负责加载模型和传递文本，不代表被测模型获得了 Python 或 Shell 工具。
-- **上下文要求**：LM Studio 默认 8,192 Token 的上下文长度不足以完成任务，需要调大上下文窗口；同时将客户端超时调到 900 秒。
+这次实验使用 Qwen 3.8 27B 的 GGUF Q4_K_M 量化版本，在 LM Studio 本地运行，模型文件约 17 GB。Simon 直接复用了作者公开的 `lm_understand-logs/exp1_which_game` 提示词和权重文本，并要求模型不使用代码执行、计算器或其他工具，只根据权重作答。LM Studio 负责加载模型，Simon 通过 llm CLI 和 llm-lmstudio 插件发送提示；这两者只是实验 Harness，并不代表被测模型获得了 Python 或 Shell 工具。LM Studio 默认的 8,192 Token 上下文长度不足以完成任务，因此需要调大上下文窗口，客户端超时也调整到了 900 秒。
 
 结果并不是四题全对：
 
@@ -908,16 +902,7 @@ print(outputs[0].outputs[0].text)
 
 模型故障诊断是较容易定义实验边界的应用场景。例如，一个小模型在数学推理、SQL 生成或代码生成时反复输出相同内容。
 
-传统方式通常是：
-
-- 修改 Prompt；
-- 调整 Sampling；
-- 增加 Stop Sequence；
-- 更换模型；
-- Fine-tuning；
-- 在 Agent Runtime 增加循环检测。
-
-Weight-Space Programming 提供了另一种可能：让模型分析参数或中间计算，定位可能导致重复行为的内部路径，再提出局部修改。
+传统方式通常是先修改 Prompt、调整 Sampling 或增加 Stop Sequence，也可能更换模型、做 Fine-tuning，或者在 Agent Runtime 中增加循环检测。Weight-Space Programming 提供了另一种可能：让模型分析参数或中间计算，定位可能导致重复行为的内部路径，再提出局部修改。
 
 但生产系统仍然应该先排除 Prompt、Sampling、Tokenizer、Chat Template 和 Serving Runtime 等外围问题，不能看到循环就直接修改权重。
 
@@ -991,13 +976,7 @@ Persona Vector 是针对某个模型、某一层激活表示提取的方向：
 v_{\ell}^{(p)}\in\mathbb{R}^{d}
 \]
 
-它与模型参数 \(\theta\) 完全不是同一种对象：
-
-- \(\theta\)：模型参数，决定模型的计算函数。
-- \(h_{\ell,t}\)：模型运行某次 Forward Pass 时产生的中间状态。
-- \(v_{\ell}^{(p)}\)：研究者从一批中间状态中估计出的行为方向。
-
-因此，Persona Vector 并不是模型文件中的一组新权重。加载一个向量文件不会自动改变模型；只有在模型运行时把它用于投影、监控或激活干预，才会产生作用。
+它与模型参数 \(\theta\) 完全不是同一种对象：\(\theta\) 决定模型的计算函数，\(h_{\ell,t}\) 是模型在某次 Forward Pass 中产生的中间状态，\(v_{\ell}^{(p)}\) 则是研究者从一批中间状态中估计出的行为方向。因此，Persona Vector 并不是模型文件中的一组新权重。加载一个向量文件不会自动改变模型；只有在模型运行时把它用于投影、监控或激活干预，才会产生作用。
 
 #### 12.5.3 向量提取流水线：不是简单地让模型回答两组问题
 
@@ -1142,11 +1121,7 @@ Persona Vector 的第二个用途是因果干预。给定某一层的向量 \(v_
 h_{\ell}\leftarrow h_{\ell}+\alpha v_{\ell}
 \]
 
-其中 \(\alpha\) 是 Steering Coefficient。
-
-- \(\alpha>0\)：推动模型沿向量方向移动。
-- \(\alpha<0\)：推动模型沿反方向移动。
-- \(|\alpha|\) 越大：干预通常越强，但副作用风险也可能越高。
+其中 \(\alpha\) 是 Steering Coefficient。系数为正（\(\alpha>0\)）时，模型沿向量方向移动；系数为负（\(\alpha<0\)）时，模型沿反方向移动。\(|\alpha|\) 越大，干预通常越强，副作用风险也可能越高。
 
 论文通过向 evil、sycophancy 和 hallucination 方向加向量，观察到相应行为评分上升。这是一个重要的因果证据：向量不仅能区分两类样本，还能通过人为注入改变模型行为。
 
@@ -1446,15 +1421,7 @@ Weight Oracles 研究提出了一个值得关注的方向：直接分析模型�
 
 ### 14.1 Malicious Weight Patch
 
-如果一个 Agent 能够修改模型权重，那么恶意指令或恶意 Patch 可能：
-
-- 修改模型的拒绝行为；
-- 注入隐藏的 Backdoor；
-- 改变特定输入下的输出；
-- 破坏原有安全对齐；
-- 使模型在特定场景下泄露信息。
-
-因此，Patch 必须有来源、Hash、审批和评估记录。
+如果一个 Agent 能够修改模型权重，恶意指令或 Patch 就可能改变模型的拒绝行为、植入隐藏 Backdoor、操纵特定输入下的输出，甚至破坏原有安全对齐或诱使模型在特定场景下泄露信息。因此，Patch 必须有来源、Hash、审批和评估记录。
 
 ### 14.2 Supply Chain Risk
 
