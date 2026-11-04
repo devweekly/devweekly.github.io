@@ -880,25 +880,9 @@ Anthropic 的方法有一个值得重视的设计：它把“行为定义、对�
 
 论文中的实验流程如下。
 
-~~~mermaid
-flowchart TD
-    A["Trait name + natural-language definition"] --> B["Claude 3.7 Sonnet generates trait artifacts"]
-    B --> C["5 pairs of positive / negative system prompts"]
-    B --> D["40 evaluation questions"]
-    B --> E["Trait evaluation rubric"]
-    D --> F["20 extraction questions"]
-    D --> G["20 held-out evaluation questions"]
-    C --> H["Target model generates contrastive responses"]
-    F --> H
-    H --> I["GPT-4.1-mini scores trait expression"]
-    I --> J["Keep positive score > 50 and negative score < 50"]
-    J --> K["Extract Residual Stream activations at every layer"]
-    K --> L["Average response-token activations"]
-    L --> M["Positive mean minus negative mean"]
-    M --> N["Candidate vector for each layer"]
-    N --> O["Steering experiments select useful layer"]
-    O --> P["Validated Persona Vector"]
-~~~
+![Persona Vector 从行为定义、对照响应、行为评分到逐层激活向量提取和验证的实验流程](/diagrams/weight-space-programming/12-persona-vector-experiment.svg)
+
+*图源：[独立 HTML 版本](/diagrams/weight-space-programming/12-persona-vector-experiment.html)，可在浏览器中查看。*
 
 **第一步：把抽象特征转成可执行定义。**
 
