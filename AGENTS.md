@@ -19,7 +19,7 @@ Assume I am an experienced software architect and senior engineer. Avoid introdu
 - **区分证据类型。** 清楚标明正式监管要求、法律义务、行业标准、指导框架、学术实验、厂商能力说明、客户案例和本文建议。官方文档说明支持某能力，不代表该能力已成熟或在生产中成功；客户案例不等于普遍规律；相关性不等于因果关系。案例未公开的内部实现和指标不得臆测。
 - **不写空泛的“最佳实践”。** 关键结论应说明为什么、什么时候适用、如何实施、责任在哪一层、失败时怎么办，以及主要代价和替代方案。实际案例尽量交代组织/场景、解决的具体问题、公开材料真正支持的做法与结果、适用限制；若找不到可靠案例，明确说明，不编造案例来填空。
 - **把研究转化为工程决策。** 对架构、治理、数据、SQL、AI/Agent 等主题，尽量给出决策表、执行步骤、测试/验收办法、监控和恢复路径。只罗列名词、论文标题、标准名称或链接不算完成分析。
-- **图表规则。** 当用户明确要求图，或流程、时序、权限边界、组件关系、数据流和状态迁移能通过图更清楚地表达时，应使用 Mermaid；架构优先考虑 C4 Context/Container，交互用 sequenceDiagram，流程/门禁用 flowchart，生命周期用 stateDiagram-v2。若渲染环境不支持特定图类型，使用等价且可渲染的 Mermaid 图。禁止使用 ASCII 箭头、树状字符或文本框拼出的伪图替代架构图；不要使用纯文本箭头流程。不要为了数量制造没有语义的图。图应补充正文，不替代关键解释。
+- **图表规则。** 当用户明确要求图，或流程、时序、权限边界、组件关系、数据流和状态迁移能通过图更清楚地表达时，先明确图的语义和关系，再使用 `.agents/skills/diagram-design/SKILL.md` 选择视觉类型并重绘。Mermaid 可作为语义草稿或导入格式，但不能直接作为文章最终图表；文章、README 和静态站点使用独立 SVG，并按 Skill 同时交付同名 HTML。架构优先考虑 Architecture/C4 语义，交互用 Sequence，流程/门禁用 Flowchart，生命周期用 State Machine。遵守 Skill 的复杂度预算、连接线、可访问性和 SVG 导出验证要求。禁止使用 ASCII 箭头、树状字符或文本框拼出的伪图替代架构图；不要使用纯文本箭头流程。不要为了数量制造没有语义的图。图应补充正文，不替代关键解释。
 - **架构图文件交付。** 使用 `.agents/skills/diagram-design/SKILL.md` 生成图时，默认必须同时交付同名 `.html` 和独立 `.svg`，不能只生成包含 inline SVG 的 HTML。HTML 用于交互/完整展示，独立 SVG 用于 Markdown、Astro/SSG、GitHub README 和静态资源引用。HTML 完成后必须运行 Skill 自带的 `scripts/export_svg.py` 导出 SVG；再验证两个文件均存在、SVG 有 XML 声明/命名空间/有效 `viewBox`/明确宽高、可由 XML parser 解析，且 HTML 顶层 inline SVG 与独立 SVG 表达同一张图。文章中的图片引用必须指向实际存在的 `public/` 资源，路径和大小写完全一致。PNG 是可选产物，除非用户要求，不默认生成。
 - **修改与验证。** 写回后重新读取目标文件，检查章节衔接、重复内容、Frontmatter、内部链接、引用 URL、代码围栏、Mermaid 语法和标题层级。对网站/代码仓库应运行可用的构建与相关检查，或查看实际 CI 状态；明确区分“内容检查通过”“检查正在运行”和“构建成功”。不能将尚在运行的 CI 说成通过。
 - **保持范围和证据诚实。** 不为了增加篇幅重复观点，不把推测包装成事实，不把个案推导成行业结论。无法确认的事实应注明不确定性、给出可信的边界或继续检索。完成后报告具体文件、提交、验证结果以及仍未通过/尚未完成的事项。
@@ -36,5 +36,5 @@ Assume I am an experienced software architect and senior engineer. Avoid introdu
 
 - 文章语言、结构和去模板化编辑：使用 skills/article-de-ai/SKILL.md。
 - 论文、标准、产品能力、行业案例和关键结论核验：使用 skills/evidence-and-claim-review/SKILL.md。
-- 流程、时序、架构及状态图：使用 skills/text-to-mermaid/SKILL.md。
+- 流程、时序、架构及状态图：使用 `.agents/skills/diagram-design/SKILL.md`；可先以 Mermaid 整理语义，再按 Import from Mermaid 流程重绘为 HTML+SVG。
 - 以上 Skill 互补，不互相替代：语言润色不能替代事实核查，引用数量不能替代证据评价，生成图也不能替代架构边界与失败路径分析。
