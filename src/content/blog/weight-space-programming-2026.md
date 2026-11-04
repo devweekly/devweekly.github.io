@@ -912,14 +912,17 @@ Anthropic 的方法有一个值得重视的设计：它把“行为定义、对�
 
 对每一条通过筛选的响应，论文提取目标模型每一层的 Residual Stream 激活，并对响应 Token 求平均。注意：用于提取向量的主要是 Response Tokens，而不是整个 Prompt 的平均激活，也不是最终输出文本的 Embedding。
 
-对第 \(i\) 条响应，在第 \(\ell\) 层，定义：
+对第 *i* 条响应，在第 *ℓ* 层，先对该响应的所有 Response Token 激活求平均，得到：
 
-\[
-a_{\ell}^{(i)}
-=
-\frac{1}{T_i}
-\sum_{t=1}^{T_i}h_{\ell,t}^{(i)}
-\]
+<div class="math-equation" role="math" aria-label="a 下标 ℓ 上标 i，等于一除以 T 下标 i，乘以从 t 等于 1 到 T 下标 i 的 h 下标 ℓ,t 上标 i 求和">
+  <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+    <msup><msub><mi>a</mi><mi>ℓ</mi></msub><mrow><mo>(</mo><mi>i</mi><mo>)</mo></mrow></msup>
+    <mo>=</mo>
+    <mfrac><mn>1</mn><msub><mi>T</mi><mi>i</mi></msub></mfrac>
+    <munderover><mo>∑</mo><mrow><mi>t</mi><mo>=</mo><mn>1</mn></mrow><msub><mi>T</mi><mi>i</mi></msub></munderover>
+    <msubsup><mi>h</mi><mrow><mi>ℓ</mi><mo>,</mo><mi>t</mi></mrow><mrow><mo>(</mo><mi>i</mi><mo>)</mo></mrow></msubsup>
+  </math>
+</div>
 
 其中 \(T_i\) 是该响应的 Token 数量。然后分别计算正样本和负样本的均值：
 
