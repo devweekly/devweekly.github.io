@@ -51,7 +51,9 @@ description: "企业建立内部 AI Agent 平台，不只是部署一个 Agent F
 
 企业 Agent 平台比较稳妥的设计是控制平面与执行平面分离。控制平面负责准入、策略、目录和全局运营；执行平面由业务域或产品团队拥有，运行具体 Agent、工具和业务数据访问。
 
-下面是一个逻辑参考架构。它强调职责边界，不绑定某家云厂商或某个 Agent Framework。
+下面的图由仓库中的 diagram-design Skill 生成，采用独立 SVG 作为文章静态资源，HTML 文件用于浏览器查看完整画布。它强调职责边界，不绑定某家云厂商或某个 Agent Framework。
+
+![Enterprise AI Agent Platform：统一控制平面与按业务域隔离的执行单元](/diagrams/enterprise-agent-platform-architecture.svg)
 
 ~~~mermaid
 flowchart TB
@@ -340,6 +342,175 @@ Agent 的回答质量与它拿到的上下文直接相关，但企业 Context �
 - 是否可能包含用户输入的恶意指令或不可信内容。
 
 不要默认将所有对话永久写入长期 Memory。Memory 中的内容也不能自动提升为可信事实，更不能绕过原始数据源的权限。
+
+### 6.3 企业内部知识到底怎么接入 Agent？
+
+企业知识接入通常是 Agent 项目中最容易被低估的工作。企业真正拥有的知识并不只在 PDF、Word 和 Wiki 里，还分散在 SharePoint、Confluence、Teams、Slack、Jira、ServiceNow、Salesforce、SAP、Workday、合同系统、数据仓库、代码仓库、API 文档、运行手册和事件平台中。不同系统的数据结构、权限模型、更新频率和业务语义都不同，不能用“把所有文件切 Chunk，再向量化”作为统一接入方案。
+
+建议把知识接入设计成独立的 Enterprise Knowledge Access Layer。它同时提供同步索引、实时查询和业务工具访问；Agent 不直接持有各个源系统的管理员凭证，也不需要知道每个系统的底层 API 差异。
+
+![Enterprise Knowledge Integration：企业知识源、连接器、知识处理、访问模式和 Agent 上下文组装](/diagrams/enterprise-knowledge-integration.svg)
+
+图中最重要的不是向量索引，而是 Connector Plane 和 Access Patterns：连接器负责把不同系统的内容、身份和权限映射成统一可用的数据契约；访问层决定哪些数据适合提前索引，哪些必须在任务执行时查询权威系统。
+
+#### 6.3.1 先盘点知识源，不要先选向量数据库
+
+企业内部知识源至少分为六类。每类都应该明确 System of Record、Owner、访问方式、数据分类和更新要求。
+
+| 知识类别 | 常见系统 | 主要内容 | 推荐接入方式 |
+| --- | --- | --- | --- |
+| 文档与内容管理 | SharePoint、OneDrive、Google Drive、Box、Confluence | 政策、标准、设计文档、操作手册、会议材料 | Native Connector / API 增量同步，建立全文与混合检索索引 |
+| 协作与工作记录 | Teams、Slack、Email、Jira、ServiceNow | 讨论、决策、工单、问题和项目状态 | 按 Channel / Project / Ticket 范围同步；敏感会话可实时查询 |
+| 业务应用 | Salesforce、SAP、Workday、Oracle、CLM、CRM | 客户、员工、合同、采购、订单等业务对象 | 优先业务 API / Connector；写操作必须通过受控 Tool |
+| 数据与分析平台 | Snowflake、Databricks、PostgreSQL、BI、Semantic Layer | 指标、事实表、维度、业务语义和分析结果 | 受治理 SQL / Semantic View / API，避免把大表全文索引 |
+| 工程知识 | GitHub、GitLab、Bitbucket、代码搜索、API Spec | 源码、ADR、Runbook、配置、依赖关系 | Repo Connector + lexical / semantic code search；必要时调用 IDE / MCP 工具 |
+| 实时运营数据 | Kafka、CDC、监控、日志、事件平台 | 当前状态、告警、交易事件、服务健康度 | Event Stream / API / Observability Query，按时效要求查询 |
+
+盘点时还要区分“知识内容”和“业务操作能力”。例如，Agent 可以检索 ServiceNow 的历史工单作为知识，但创建、分派、关闭工单属于有副作用的 Tool 操作；两者应分别定义权限、审计和 SLA。连接器同步一份合同文本，也不代表 Agent 自动获得修改或签署合同的权限。
+
+#### 6.3.2 接入模式：同步索引、实时查询和事件流各有用途
+
+企业不应把所有知识源都复制到一个统一向量库。至少需要三种接入模式：
+
+| 模式 | 数据路径 | 适用情况 | 主要代价与风险 |
+| --- | --- | --- | --- |
+| Batch / Incremental Indexing | Source → Connector → Parse → Index | 政策、知识文档、历史工单、代码和相对稳定的内容 | 索引延迟、删除同步、权限漂移、重复内容 |
+| Live / Federated Query | Agent → Governed API / SQL → Source | 账户余额、订单状态、员工在职状态、当前 SLA 等动态事实 | 下游延迟、可用性、限流、查询成本和 API 语义差异 |
+| Event / CDC | Source Event → Event Bus → Materialized View / State Store | 状态变化频繁、需要增量更新或触发任务的数据 | 事件顺序、重复投递、Schema Evolution、最终一致性 |
+
+一个简单的判断方法：如果问题是“公司政策怎么规定”，通常适合检索索引；如果问题是“这个客户现在的信用额度是多少”，应查询有权限的权威业务 API 或受控数据视图；如果问题是“订单状态刚刚发生了变化”，则可能需要事件驱动的状态更新。
+
+还可以组合使用：先从文档索引中检索政策和流程，再调用业务 API 获取当前对象状态，最后由 Agent 将两者结合。不要用几分钟前同步的索引数据回答要求实时准确的业务问题。
+
+#### 6.3.3 Connector 应当是企业级集成组件，而不是简单爬虫
+
+每个 Connector 至少应承担以下职责：
+
+1. **Authentication**：支持 OAuth / OIDC、Service Principal、Workload Identity 或受控的源系统账号；凭证存放在 Vault / KMS，不写入 Agent Prompt 或普通配置。
+2. **Incremental Sync**：使用 Change Token、Cursor、Webhook、Delta API 或 CDC；避免每次全量扫描。
+3. **Content Extraction**：解析 Office、PDF、HTML、邮件、表格、附件和代码；保留标题、章节、表格结构、链接和原始 Source ID。
+4. **Identity & ACL Sync**：同步用户、Group、文件夹继承权限、文档 ACL 和必要的拒绝规则；将源系统身份映射到企业统一身份。
+5. **Normalization**：统一 Document ID、Source ID、Version、Owner、Timestamp、Classification、URL、Content Type 和 ACL Metadata。
+6. **Deletion / Revocation**：源系统删除文件、撤销共享、用户离职或 Group 变更时，及时更新索引和权限缓存。
+7. **Reliability**：管理 Cursor、Retry、Rate Limit、Backoff、Dead Letter Queue、重放和连接器健康状态。
+8. **Observability**：记录同步延迟、成功/失败数量、权限同步错误、解析失败、索引延迟和源系统 API 限流。
+
+建议把连接器的健康度作为平台 SLO，而不是等用户投诉“为什么搜不到文档”才排查。对每个数据源至少监控最后成功同步时间、源端变更到索引可见的 P95 延迟、ACL 更新延迟、删除传播延迟和失败积压。
+
+#### 6.3.4 统一知识对象模型，但保留源系统语义
+
+一个跨系统 Knowledge Item 可以采用如下逻辑结构（示意，不要求所有字段都物理存入同一张表）：
+
+```json
+{
+  "id": "canonical-content-id",
+  "source": {
+    "system": "confluence",
+    "native_id": "page-12345",
+    "url": "https://wiki.example/page/12345",
+    "version": "17"
+  },
+  "content": {
+    "type": "document",
+    "title": "Customer Data Handling Policy",
+    "text_ref": "object://knowledge/...",
+    "language": "en"
+  },
+  "governance": {
+    "owner": "data-governance",
+    "classification": "confidential",
+    "effective_from": "2026-01-01",
+    "expires_at": null
+  },
+  "access": {
+    "principals": ["group:data-analysts"],
+    "source_acl_version": "acl-9081"
+  },
+  "lifecycle": {
+    "source_updated_at": "2026-10-30T08:15:00Z",
+    "indexed_at": "2026-10-30T08:17:12Z",
+    "deleted": false
+  }
+}
+```
+
+这个模型的目的不是抹平所有源系统差异。Jira Issue、Confluence Page、Salesforce Account 和 Git Commit 仍然有不同业务语义；统一模型只负责共同的标识、来源、治理和检索契约。Source Native ID 必须保留，结果应能够跳转回原系统，并在必要时由原系统重新校验访问权限。
+
+对于表格、代码、架构图、扫描件和复杂 PDF，不要一律按固定字符数切分。解析层应尽量保留文档结构和父子关系；表格需要保留列标题与行上下文，代码需要保留文件路径、符号和版本，图表/扫描件则要明确 OCR 和视觉解析的适用范围及准确性限制。
+
+#### 6.3.5 权限过滤必须发生在模型看到内容之前
+
+这是知识接入最重要的安全要求。假设员工 A 能看到某个 SharePoint 文档，员工 B 无权访问。Agent 使用服务账号把所有文档放进公共向量库，再只依靠 Prompt 要求“不要向 B 泄露”，这不是权限控制。
+
+更合理的查询链是：
+
+1. 用户通过企业 IdP 登录，获得稳定的 User ID、Group 和必要的租户属性。
+2. Agent Runtime 使用用户委托上下文或受控 Workload Identity 发起知识查询。
+3. Knowledge Access Layer 将 User / Group 映射到源系统 ACL，并在候选检索阶段应用权限过滤。
+4. 对需要实时确认或高敏感的内容，在返回前向源系统或授权服务重新校验。
+5. 只把当前请求有权访问的片段送入模型上下文。
+6. 回答带有 Source ID、标题、版本和可访问链接；打开链接时仍由源系统执行最终授权。
+
+不能只在生成答案之后过滤引用。只要未授权文本已经进入模型上下文，就已经发生数据暴露风险。缓存也必须按身份或授权范围隔离，不能因为 Query 相同就把用户 A 的检索结果直接复用给用户 B。
+
+Group Membership、文档 ACL 和索引更新之间存在时间差。平台必须定义可接受的权限同步延迟；对高敏感数据，可以采用实时源端授权检查、较短 ACL 缓存 TTL 或直接 Live Query。无法确认权限时应 fail closed，而不是默认允许。
+
+#### 6.3.6 Chunk、向量、全文检索和 Knowledge Graph 如何组合
+
+不是每一种知识都需要 Chunk + Embedding：
+
+- 文档问答：结构感知切分、全文检索与向量检索结合，按文档和章节保留父子关系。
+- 精确术语、编号、错误码、API 名称和代码符号：Lexical / BM25 检索通常不可缺少。
+- 用户问题表达与文档措辞差异较大：Semantic / Vector Search 可以补充召回。
+- 客户、产品、员工、系统、项目和工单之间存在多跳关系：Knowledge Graph 或实体关系索引可能有价值。
+- 指标和经营数据：优先 Semantic Layer / Governed SQL，不应把指标数值仅作为文档片段检索。
+- 当前订单、审批、交易和服务状态：使用实时 API 或事件状态，而不是把向量索引当作事实数据库。
+
+常见组合是 Hybrid Retrieval → ACL Filter → Rerank → Context Assembly。是否引入 Knowledge Graph，应该由实体关系、多跳查询、关系维护和可验证收益决定；不能仅因为平台叫 Enterprise Knowledge Platform 就默认需要图数据库。
+
+#### 6.3.7 Context Assembly：把检索结果变成有边界的任务上下文
+
+检索结果不能无差别地拼接到 Prompt。Context Assembly 应根据任务意图选择数据源、控制预算并保留证据关系：
+
+- Query Planner：判断需要政策文档、历史案例、结构化指标还是实时业务状态。
+- Source Router：选择索引检索、Live API、Semantic Layer 或专用 Tool。
+- Permission Filter：在取回内容时执行身份和资源授权。
+- Freshness Check：检查文档版本、有效期、更新时间和源端状态。
+- Conflict Resolution：发现不同版本、相互冲突或过期内容时，明确呈现冲突，不让模型自行编造一个统一答案。
+- Context Budget：按相关性、权威性、时效性和任务价值选择内容，控制 Token。
+- Evidence Binding：保留每个事实对应的 Source ID、版本和片段位置，最终回答可以引用。
+- Output Validation：对关键业务事实回查权威系统，避免仅凭摘要做不可逆操作。
+
+例如，员工询问“供应商是否可以把客户数据传到某个外部模型”，Agent 可能需要同时读取数据分类政策、第三方风险评估、合同条款和当前批准的模型清单。这里不是单一向量搜索可以解决的问题，而是跨知识域的受控查询与证据组合。
+
+#### 6.3.8 哪些数据不应该进入统一索引
+
+不要把“能接入”理解成“应该复制”。以下数据应进行单独评估：
+
+- 高敏感个人数据、薪酬、医疗、身份凭证和受监管数据；
+- 仅用于事务处理、没有检索价值的海量记录；
+- 变化极快、索引延迟会导致业务错误的数据；
+- 存在法律保留、诉讼保全或地域驻留要求的数据；
+- 具有复杂行列级权限且无法可靠映射到索引 ACL 的数据；
+- 源系统条款不允许复制或第三方处理的数据。
+
+这类数据可以通过受控 API、受治理 SQL、私有化部署或只在源系统执行查询的方式接入。平台应记录数据处理位置、复制范围、保留策略、删除路径和供应商责任。
+
+#### 6.3.9 知识接入验收指标
+
+知识平台上线不能只看“回答是否像人”。至少需要单独评估数据接入、权限、检索和回答四层：
+
+| 层次 | 关键指标 | 验收方式 |
+| --- | --- | --- |
+| Connector | Coverage、Sync Lag、Failure Rate、Deletion Lag | 对源系统抽样对账，验证增量同步和删除传播 |
+| Identity / ACL | ACL Mapping Coverage、Permission Freshness、Unauthorized Retrieval | 使用不同用户、Group 和租户执行正向与负向测试 |
+| Retrieval | Recall@K、Precision@K、MRR、NDCG、Source Diversity | 建立按知识域分层的人工标注 Query Set |
+| Answer | Groundedness、Citation Precision、Freshness、Conflict Handling | 验证每个关键结论是否被引用片段支持 |
+| Operations | P95 Latency、Cost / Query、Index Recovery Time | 压测、故障注入和恢复演练 |
+
+尤其要建立 Permission Regression Set：同一问题由有权限和无权限的用户分别执行，验证无权限用户不仅看不到答案，也不会在检索片段、缓存、引用链接或 Agent Trace 中看到受限内容。
+
+知识接入完成的标准不是“文档都进了向量库”，而是 Agent 能在正确的用户权限下找到正确版本的内容，知道内容来自哪里，发现数据过期或冲突时能够处理，并且在需要实时事实时回到权威系统查询。
 
 ## 7. Agent Runtime 的可靠性：一次 Tool Call 不是一个普通函数调用
 
@@ -642,6 +813,48 @@ Salesforce 的 [The Agentic Enterprise](https://architect.salesforce.com/docs/ar
 
 [OWASP Top 10 for Agentic Applications](https://genai.owasp.org/2025/12/09/owasp-genai-security-project-releases-top-10-risks-and-mitigations-for-agentic-ai-security/) 则更接近 Agent 执行时的威胁模型。企业可以把它转成 Threat Modeling、红队测试和发布门禁，而不是仅仅在安全文档中引用它。
 
+### 15.5 AWS：Coupa 的 Sentinel，把 Agent 公共控制能力从业务代码中抽出来
+
+AWS 发布的 [Coupa 客户案例](https://aws.amazon.com/solutions/case-studies/coupa-bedrock/) 描述了 Coupa 内部的 Sentinel：它为工程类 Agent 提供统一模型入口和任务路由，Agent 可以访问代码仓库、创建 Pull Request、提交工单并查询实时数据库。
+
+公开材料明确提到的工程要点包括 OAuth 控制的内部工具访问、Agent 生命周期管理、跨工作流的 Session Persistence，以及生产写操作前需要的 Audit Trail。Sentinel 还根据任务复杂度路由模型：复杂推理使用能力更强的模型，高频任务使用更轻量的模型。Coupa 表示约 100% 的 Sentinel Agent Invocation 通过 AgentCore 作为主要生产执行路径。
+
+**架构启示：** 当 Agent 开始对生产系统产生副作用，身份、持久化、审计和模型路由应成为共享平台能力，而不是每个 Agent 项目重复实现。该案例来自 AWS 客户故事，适合证明具体部署路径和可行性，不足以单独证明其成本或效果可直接复制到其他企业。
+
+### 15.6 Bayer Crop Science：Agentic Decision Engine 连接分散的运营知识
+
+AWS 在 [Bayer Crop Science Agentic Decision Engine 案例](https://aws.amazon.com/blogs/machine-learning/how-bayer-crop-science-built-an-agentic-decision-engine-on-amazon-bedrock-agentcore-with-aws-unified-operations/) 中介绍，Bayer 的运营人员要解释工作流失败、模型行为或某个结果来源，过去需要分别查 API、文档、元数据存储、Dashboard 和日志。Bayer 构建了一个多 Agent 的自然语言入口：Supervisor Agent 将问题路由给专门 Agent，后者查询对应运营系统并汇总结果。AWS 案例称第一阶段约 80% 的用户问题无需工程师介入即可解决。
+
+该架构使用 AgentCore Runtime 做 Session Isolation，通过 Gateway 将 IAM 范围内的工具访问放在 Agent 代码之外，同时保留 LangGraph 编排和模型选择的灵活性。
+
+**架构启示：** 企业知识不仅是政策文档。运行手册、监控指标、日志、元数据、模型运行信息和工作流状态同样是知识。对运维场景而言，Agent 的价值往往来自跨系统上下文关联，而不只是 RAG 问答。80% 是厂商公开案例中的第一阶段结果，不应外推为其他企业的预期自动化率。
+
+### 15.7 Regal Rexnord：先解决知识覆盖率，再扩大 Agent 数量
+
+Microsoft 的 [Regal Rexnord 客户案例](https://www.microsoft.com/en/customers/story/26197-regal-rexnord-microsoft-copilot-studio/) 给出了一个很有价值的反例：公司早期企业问答 Agent 因为知识源接入有限，只能回答约 40% 的员工问题。迁移到 Copilot Studio 后，连接 SharePoint 和 Microsoft 365 内容源，文档处理能力也得到改善。Microsoft 公开称该企业内部 Agent 每月处理超过 2,000 个问题，估算每年节省 2,400 小时；公司还报告有 500 多个 Agent，覆盖内容搜索、部门应用和采购分析等场景。
+
+这个案例说明，Agent 的效果瓶颈可能不是模型推理能力，而是企业知识覆盖、连接器质量和文档处理能力。它也说明从部门级 Citizen Development 扩展到企业级 Agent Fleet 后，Registry、Owner、权限和生命周期管理会变得更重要。
+
+### 15.8 Verdantas：知识跨越 SQL、SharePoint、Workday、Deltek 和 ServiceNow
+
+Microsoft 的 [Verdantas 案例](https://www.microsoft.com/en/customers/story/26233-verdantas-microsoft-copilot-studio) 展示了一个典型的异构企业知识场景。员工通过 Teams 中的技术资源 Agent 查询 SQL、SharePoint、Workday 和 Deltek，ServiceNow 信息则由 Power Automate Flow 拉取；Copilot Studio 负责多 Agent 协作。案例还提到 Microsoft Fabric 用于帮助统一数据，并称多 Agent 编排改进后响应速度最高提升约两倍。
+
+**架构启示：** 不必要求所有源系统都迁移到同一个数据平台。可以通过 Native Connector、API、Workflow Connector 和受治理数据层组合接入。关键是统一身份、数据契约、来源和权限，而不是强行统一底层存储。
+
+### 15.9 Glean：连接器的价值在于内容、身份和活动信号一起接入
+
+Glean 的 [Connector Architecture 文档](https://docs.glean.com/connectors/connectors-power-glean) 说明，连接器不只是下载文档，而是同步内容、元数据、权限和可用的活动信号，构建 Search Index 和 Enterprise Graph。其访问模式同时包含索引检索、Live Retrieval 和混合访问。权限映射使搜索结果遵循源系统授权；Enterprise Graph 则将文档、人员和工作项的关系组织起来。
+
+Glean 的 [Code Search 工程说明](https://docs.glean.com/security/how-code-search-works) 还展示了代码知识的特殊性：它结合 lexical matching 和 semantic understanding，并把代码、设计文档、Runbook、Ticket 和 Slack 讨论关联起来；权限仍以源系统权限为准。
+
+**架构启示：** Enterprise Knowledge 不应该被简化成一个向量索引。连接器需要同时处理 Content、Identity、ACL、Activity 和 Relationships；代码、工单、文档和协作记录也需要不同的解析与检索策略。以上是 Glean 官方产品架构说明，不代表每种 Connector 都具有完全相同的权限与活动信号覆盖能力，具体取决于源系统 API。
+
+### 15.10 Salesforce：将身份、数据与 API Policy 放到统一治理链
+
+Salesforce Engineering 的 [Enterprise Agent Platform：Identity, Data, and API Governance](https://engineering.salesforce.com/building-an-enterprise-agent-platform-enforcing-identity-data-and-api-governance/) 讨论了 Agent 跨越 Agentforce、Data 360、MuleSoft、Informatica 和核心平台时，身份、数据权限和 API 安全分散在不同系统造成的治理缺口。其工程思路是把 Policy Evaluation 提升为平台职责，并让身份与数据治理在跨应用和多渠道执行中保持一致。
+
+**架构启示：** 不应只保护 Agent Runtime 本身。数据层、API 层和业务系统仍然要执行授权；平台级策略要让这些执行点协同，而不是把所有访问控制集中在模型前面的一个 Prompt 或 Gateway。
+
 ## 16. Build vs Buy：哪些应该自己做，哪些不值得重复造
 
 企业自建平台不等于从头开发所有组件。选择标准应是：是否需要企业独有的控制逻辑，还是已有成熟服务可以满足要求。
@@ -762,6 +975,6 @@ Salesforce 的 [The Agentic Enterprise](https://architect.salesforce.com/docs/ar
 10. NIST, [Artificial Intelligence Risk Management Framework: Generative Artificial Intelligence Profile (AI 600-1)](https://www.nist.gov/publications/artificial-intelligence-risk-management-framework-generative-artificial-intelligence), 2024-07.
 11. Model Context Protocol, [Authorization Specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/authorization).
 12. OpenTelemetry, [GenAI Agent Semantic Conventions](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-agent-spans.md).
-13. NSA, [Security Design Considerations for AI-Driven Automation Leveraging the Model Context Protocol](https://www.nsa.gov/Press-Room/Press-Releases-Statements/Press-Release-View/Article/4496698/nsa-releases-security-design-considerations-for-ai-driven-automation-leveraging/), 2026-05-20.
+13. NSA, [Security Design Considerations for AI-Driven Automation Leveraging the Model Context Protocol](https://www.nsa.gov/Press-Room/Press-Releases-Statements/Press-Release-View/Article/4496698/nsa-releases-security-design-considerations-for-ai-driven-automation-leveraging/), 2026-05-20.\n14. AWS Builder Center, [Building a Production-Grade Multi-Agent Platform with Zero Trust Governance on Amazon Bedrock AgentCore](https://builder.aws.com/content/3C6RKnGhT7pBovw7sj1urk5ZeuK/building-a-production-grade-multi-agent-platform-with-zero-trust-governance-on-amazon-bedrock-agentcore), 2026-04-29.\n15. AWS, [Coupa Success Story: Building a production AI agent solution on Amazon Bedrock](https://aws.amazon.com/solutions/case-studies/coupa-bedrock/).\n16. AWS, [How Bayer Crop Science built an agentic decision engine](https://aws.amazon.com/blogs/machine-learning/how-bayer-crop-science-built-an-agentic-decision-engine-on-amazon-bedrock-agentcore-with-aws-unified-operations/).\n17. Microsoft, [Regal Rexnord customer story](https://www.microsoft.com/en/customers/story/26197-regal-rexnord-microsoft-copilot-studio/), 2026-03-10.\n18. Microsoft, [Verdantas customer story](https://www.microsoft.com/en/customers/story/26233-verdantas-microsoft-copilot-studio/), 2026-03-19.\n19. Glean, [How connectors power the Glean experience](https://docs.glean.com/connectors/connectors-power-glean).\n20. Glean, [How code search works](https://docs.glean.com/security/how-code-search-works).\n21. Salesforce Engineering, [Building an Enterprise Agent Platform: Enforcing Identity, Data, and API Governance](https://engineering.salesforce.com/building-an-enterprise-agent-platform-enforcing-identity-data-and-api-governance/).
 
-*资料核对日期：2026-11-04。具体产品功能、协议版本和区域可用性应在项目选型及上线前重新核对。*
+*资料核对日期：2026-11-04。客户案例中的指标均为相应厂商公开材料所述，不能直接视为独立审计结果或其他企业的可复制承诺。具体产品功能、协议版本和区域可用性应在项目选型及上线前重新核对。*
