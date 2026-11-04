@@ -357,7 +357,7 @@ Set these four import decisions **before** drawing. Full spec: [output-spec.md](
 
 | Dial | Options | Default |
 |---|---|---|
-| **Format** | `html` · `svg` · `png` · `html+png` | `html` |
+| **Format** | `html` · `svg` · `png` · `html+svg` · `html+png` · `html+svg+png` | `html+svg` |
 | **Size** | `doc-inline` · `doc-wide` · `slide-16x9` · `slide-4x3` · `social-og` · `social-square` · `print-a4-landscape` · `print-a3-landscape` · `print-letter-landscape` · `fit` | `doc-inline` |
 | **Detail** | `faithful` (≤24 nodes, zoned) · `balanced` (≤12) · `simplified` (≤7) | `balanced` |
 | **Audience** | `engineer` · `mixed` · `executive` — governs wording, not count | `mixed` |
@@ -368,13 +368,30 @@ The size preset sets the `viewBox` **and** the type ramp; `faithful` is the only
 
 ## 12. Output
 
-Always produce a single self-contained `.html` file:
+For a generated diagram, the default deliverable is **two synchronized files** with the same basename:
 
-- Embedded CSS (no external except Google Fonts)
-- Inline SVG (no external images)
-- Static by default; minimal inline JavaScript only for explicit animation controls/state
+- `<slug>.html`: self-contained editorial page, with embedded CSS and inline SVG; no external images.
+- `<slug>.svg`: standalone, well-formed SVG extracted from the HTML by the packaged exporter. This is the portable asset for Markdown, Astro/SSG content, documentation sites, GitHub READMEs, and systems that reference an image URL directly.
 
-Renders correctly in any modern browser. Motion-enabled output must render its complete meaning without JavaScript; under `prefers-reduced-motion: reduce` it shows the complete static frame and hides/disables playback controls.
+Do not treat the inline SVG inside HTML as a substitute for the standalone `.svg` file. A browser preview proves only that the HTML renders; it does not prove that an independently referenced SVG asset exists.
+
+After the HTML passes the §9 taste gate and `scripts/self_check.py`, generate the SVG automatically:
+
+```bash
+python3 scripts/export_svg.py <slug>.html
+```
+
+The exporter writes `<slug>.svg` next to the HTML. This is part of normal diagram generation, not an optional/manual export step. PNG remains opt-in and follows [references/export.md](references/export.md).
+
+Before reporting completion, verify all of the following:
+
+1. Both files exist at the exact requested paths and use the same basename.
+2. The standalone SVG has an XML declaration, root `xmlns="http://www.w3.org/2000/svg"`, a finite non-zero `viewBox`, and explicit positive `width` and `height` attributes. If dimensions are missing, derive them from the `viewBox` only when its units are plain numeric user units; otherwise stop and fix the source.
+3. Parse the standalone file as XML (for example, `python3 -c "import xml.etree.ElementTree as ET,sys; ET.parse(sys.argv[1])" <slug>.svg`). Do not rely on opening it in an HTML browser as proof of XML validity.
+4. Compare the standalone SVG's diagram structure with the HTML's top-level inline SVG. They must represent the same diagram; do not hand-maintain two independent drawings.
+5. If the HTML or SVG is referenced by an article/site, verify the referenced path and case exactly match the generated file and that the file is included in the site's public/static asset directory.
+
+The HTML renders correctly in any modern browser. Motion-enabled output must render its complete meaning without JavaScript; under `prefers-reduced-motion: reduce` it shows the complete static frame and hides/disables playback controls.
 
 ### Accessible SVG contract
 
