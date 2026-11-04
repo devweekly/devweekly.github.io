@@ -1147,7 +1147,7 @@ flowchart TB
 
 这是与本文目标最直接相关的公开案例之一。IBM Research 在 2026 年 9 月发布基于 llm-d 的部署报告：IBM Research、Red Hat 团队使用 544 张 NVIDIA H100 部署 GLM-5.2（约 753B 总参数、约 39B 激活参数的 MoE 模型），面向内部关键业务负载，并用 Agentic Benchmark 验证数千个并发 Coding Agent 的服务能力。IBM 报告称，峰值输出吞吐超过每分钟 660 万 Token，测试中最高支持 3,000 个并发 Coding Agent 且没有发生请求抢占。按其采用的当期云 GPU 租赁价格估算，单位 Token 成本约为商业闭源 API 的 1/5 到 1/10。这个 5–10 倍是 IBM 对特定模型、流量、租赁价格和 API 对比口径的测算，不是任何企业都能复制的固定成本优势。
 
-该案例最重要的不是 544 张卡，而是它对 Agentic Workload 的分析。团队基于 219 个真实 Claude Code Session 的数据，观察到典型请求的输入远大于输出：中位数约 195K 输入 Token，而输出约 317 Token；96% 的主 Agent 请求至少复用了前一个请求 90% 的输入内容。子 Agent 还会在没有预告的情况下并发启动，形成瞬时流量尖峰。这意味着 Coding Agent 的推理负载与普通聊天机器人不同：主要成本可能是重复读取上下文，而不是生成回答。
+这项工作的价值不只是部署了 544 张 GPU，更在于它公开了对 Agentic Workload 的分析。团队基于 219 个真实 Claude Code Session 的数据，观察到典型请求的输入远大于输出：中位数约 195K 输入 Token，而输出约 317 Token；96% 的主 Agent 请求至少复用了前一个请求 90% 的输入内容。子 Agent 还会在没有预告的情况下并发启动，形成瞬时流量尖峰。这意味着 Coding Agent 的推理负载与普通聊天机器人不同：主要成本可能是重复读取上下文，而不是生成回答。
 
 系统组合包括：llm-d 做 Kubernetes-native 分布式推理编排；GLM-5.2 MoE 采用 Wide Expert Parallelism + Data Parallel Attention；Prefill 与 Decode 拆分为独立资源池；NIXL 在两组之间传输 KV Cache；Prefix-aware Routing 把请求路由到已经持有相关前缀缓存的 Worker；GPU KV Cache、CPU DRAM 分层缓存和 Peer-to-Peer KV Cache Sharing；Multi-Token Prediction 提升高并发 Decode 吞吐。
 
@@ -1169,7 +1169,7 @@ Shopify 在 2026 年 10 月公开了 Sidekick 的 Task Expert 实践。它不是
 
 Shopify 基于 NVIDIA Nemotron 3.5 Lightning 做任务后训练。该 MoE 模型总参数约 30B，每 Token 激活约 3B。Shopify 报告称，经过六轮持续改进和约 61,000 条修复样本后，模型在其 GraphQL 任务 Judge 上达到 74.5 分，高于 Frontier Model 的 73 分；生产流量回放中，中位数完整响应时间为 0.87 秒，而 Frontier API 为 6.50 秒；最慢 1% 请求也快约 8 倍。该 Specialist Model 的服务成本比 Frontier Model 低约 90%。Shopify 还表示，跨其 Post-trained Models，自托管服务成本比 Frontier API 低约 90%–98%。
 
-比模型本身更值得关注的是它的工程流程：先定义业务任务质量 Rubric；先把 Frontier Agent 做到足够好，形成质量基线；选择开源模型，在真实 Subagent、真实工具和同一个 Judge 中评估；从一开始就用 AIPerf 回放生产 Trace，输入内容使用合成文本，避免在性能测试中暴露客户数据；对 Batch Workload 比较 vLLM、SGLang 和 TensorRT-LLM；每晚把生产失败案例转化为训练数据，通过 Judge、Critic 和模拟商家回放持续修复模型。
+Shopify 的流程比单纯替换模型更有参考价值：先定义业务任务的质量 Rubric，建立 Frontier Agent 的质量基线；再选择开源模型，在真实 Subagent、真实工具和同一套 Judge 中评估；从一开始就用 AIPerf 回放生产 Trace，输入内容使用合成文本，避免在性能测试中暴露客户数据；对 Batch Workload 比较 vLLM、SGLang 和 TensorRT-LLM；每晚把生产失败案例转化为训练数据，通过 Judge、Critic 和模拟商家回放持续修复模型。
 
 Shopify 还披露，使用 NVIDIA Megatron Bridge 在 Nebius 上进行跨节点后训练；同一个 FP8 后训练任务中，8 张 B300 相比 8 张 H200 快 1.86 倍，GPU-hours 减少 46%。这是训练效率对比，不应误读成推理吞吐提升。
 
@@ -1223,7 +1223,7 @@ AWS 客户案例披露，模型从原先约 12–15 分钟的启动时间降到�
 
 这类优化适合业务负载有明显峰谷、使用异步队列、模型较大且 GPU 节点需要动态扩容的企业，例如客服质检、批量文档处理、离线代码分析和后台 Agent。
 
-这个案例说明，GPU Auto Scaling 不等于 Kubernetes 把 Pod 副本数加上去。节点启动、镜像拉取、权重下载、模型加载、CUDA Graph 初始化和健康检查都可能耗时。必须把从发现需求到模型真正 Ready 的完整时间作为容量指标。
+Observe.AI 的实践说明，GPU Auto Scaling 不只是增加 Kubernetes Pod 副本。节点启动、镜像拉取、权重下载、模型加载、CUDA Graph 初始化和健康检查都可能耗时。必须把从发现需求到模型真正 Ready 的完整时间作为容量指标。
 
 来源：[AWS Customer Story：Observe.AI cuts AI inference costs by over 40%](https://aws.amazon.com/solutions/case-studies/observeai-case-study/)。
 
@@ -1259,7 +1259,7 @@ Google Distributed Cloud（GDC）Air-Gapped 提供了一个 Open Weight Model �
 
 Cognition 公开表示，其在 CoreWeave 上运行 Devin 的训练、强化学习和生产推理，从桥接容量扩展到数千张 GPU，历时不到九个月。2026 年 CoreWeave 公告还提到，Cognition 与 CoreWeave 部署了 Vera Rubin NVL72，并由 Cognition 工程师执行客户侧推理基准；针对 SWE-2 Agentic Coding Workload，公开数据称相较 GB200 NVL72，Token Throughput 最高提升约 4.8 倍。
 
-这个案例说明专业 GPU Cloud 的价值不仅是按小时出租 GPU，还包括提前获得新一代硬件、机架级系统、网络和现场工程支持。对 Agentic Coding，长上下文、高并发、连续多步推理使 GPU 资源成为产品交付能力的一部分。
+专业 GPU Cloud 提供的不只是按小时出租 GPU，还可能包括新一代硬件供给、机架级系统、网络和现场工程支持。对 Agentic Coding，长上下文、高并发、连续多步推理使 GPU 资源成为产品交付能力的一部分。
 
 公开资料没有完整披露 Devin 的生产推理集群具体软件栈、每个模型的 GPU 分配、实际利用率和完整成本，因此不能把它写成 CoreWeave 上某个可直接复制的 vLLM 部署方案。
 
@@ -1295,9 +1295,9 @@ Together AI 在 2026 年 9 月公开了一个匿名全球金融科技客户案�
 
 客户还评估过 1M Context，但发现上下文长度翻倍会压缩并发容量，因此选择 256K / 512K 的工作区间。模型从 GLM-5.1 升级 GLM-5.2 时，在同一账户和 Endpoint Pattern 下完成切换，并通过自助控制面进行配置调整和蓝绿测试。
 
-比较适合金融科技、银行、证券、保险等拥有大量开发团队、Coding Agent 在工作时间集中使用、希望平台团队控制容量和模型发布节奏的组织。
+这类部署面向拥有大量开发人员、Coding Agent 使用高峰集中在工作时间的金融科技公司、银行、证券和保险机构。平台团队可以统一管理容量和模型发布节奏。
 
-运维中还要考虑，GPU 总数相同，不代表服务能力相同。Replica 数量、每个 Replica 的 GPU 数、Prefill / Decode 资源比例、Context Length、KV Cache 和 Router 策略都会改变有效并发。模型配置变更必须作为容量变更进行压测和灰度，不能当成普通参数调整。
+GPU 总数相同，服务能力也可能相差很大。Replica 数量、每个 Replica 的 GPU 数、Prefill / Decode 资源比例、Context Length、KV Cache 和 Router 策略都会改变有效并发。模型配置变更必须作为容量变更进行压测和灰度，不能当成普通参数调整。
 
 **部署边界：** 这是 Dedicated Managed Inference，不是客户自己维护 GPU Driver / K8s / vLLM 的完整自部署。它展示了企业希望获得的运维自主权，也提醒我们：即使购买了专属 GPU 容量，若没有可操作的 Metrics API 和 Endpoint Configuration API，平台团队仍会成为所有扩容和故障排查的瓶颈。
 
@@ -1311,9 +1311,9 @@ Open WebUI 公布的 Samsung Semiconductor 客户案例称，Samsung Semiconduct
 
 不过它披露了一个值得企业架构师注意的采用数据：首周活跃使用率较高，但后续每日活跃用户稳定在目标员工的 5%–10%。这说明“给 1000–5000 名员工部署一个私有 Chat UI”与“1000–5000 人每天都高频使用”完全不同。
 
-通常适用于半导体研发、专有设计数据、实验室文档、内部知识和软件研发场景；首先需要建立员工使用入口、身份、审计和数据边界的企业。
+半导体研发、专有设计数据、实验室文档和内部软件研发都可能采用这种模式。实施前应先明确员工入口、身份认证、审计和数据边界。
 
-实施时还要处理，不要用员工总数推算 GPU 数量。先通过 Pilot 测出 DAU、并发 Session、每 Session 输入 Token、Agent / Chat 比例和峰值时间。平台推广也不能只交付 UI，还要有 SSO、审计、使用培训、帮助台和模型选择策略。
+GPU 容量不能按员工总数直接换算。应先通过 Pilot 测量 DAU、并发 Session、每个 Session 的输入 Token、Agent 与 Chat 的比例，以及使用高峰。推广平台时，除了 UI，还要准备 SSO、审计、用户培训、帮助台和模型选择策略。
 
 证据边界：该案例来自 Open WebUI 的客户案例页面，属于产品供应商发布的客户材料，性能和效率结果未经独立审计；它没有提供底层 GPU 和模型服务细节。
 
@@ -1327,9 +1327,9 @@ Uber 的内部 LLM 工作流同时使用自有 On-Prem 集群中的 A100 GPU，�
 
 训练栈使用 PyTorch、Ray、Hugging Face、DeepSpeed 和 NCCL，数据来自 Uber HDFS、Terrablob 和 Hugging Face。Uber 还讨论了 ZeRO-3 CPU Optimizer Offload 和 FlashAttention 对显存与训练吞吐的影响。
 
-对这类组织而言，已有企业数据中心和 GPU 资产，同时又需要 CSP 弹性资源的组织；需要在自有 GPU 和租赁 GPU 之间调度训练、微调、Batch Inference 或评估任务。
+这种混合模式适合已经拥有数据中心和 GPU 资产、但仍需要 CSP 弹性资源的组织。典型任务包括训练、微调、Batch Inference 和模型评估，调度器需要根据任务特征决定使用自有集群还是租赁资源。
 
-平台运行后，混合 GPU Fleet 的难点不是简单地把两个 Kubernetes Cluster 接起来，而是统一资源描述、GPU 型号能力、镜像和驱动兼容性、数据位置、网络带宽、身份凭据和任务可迁移性。不同云和本地集群的 GPU SKU、网络、存储和驱动栈并不完全等价。调度器必须知道任务能否跨集群运行，而不能只看还有多少张 GPU。
+混合 GPU Fleet 的难点不在于把两个 Kubernetes Cluster 接起来，而在于统一资源描述、GPU 型号能力、镜像和驱动兼容性、数据位置、网络带宽、身份凭据和任务可迁移性。不同云和本地集群的 GPU SKU、网络、存储和驱动栈并不完全等价。调度器必须知道任务能否跨集群运行，而不能只看还有多少张 GPU。
 
 证据边界：Uber 文章重点是 LLM Training / Fine-tuning Infrastructure，而不是证明同一套跨集群架构已经承担所有在线推理流量。它适合作为 Hybrid GPU Resource Management 案例，不应误称为生产 Coding Agent Serving 案例。
 
@@ -1554,7 +1554,7 @@ BC Card 是韩国支付和金融服务公司。Red Hat 于 2026 年 9 月发布�
 
 **部署边界：** 案例明确为 On-Prem GPU 和 OpenShift AI，但公开摘要没有给出 GPU 型号、GPU 数量、具体模型、节点拓扑、存储和网络配置。因此不能据此估算 BC Card 的集群规模，也不能推断其是否采用了多节点 Tensor Parallel 或 Prefill/Decode 分离。
 
-这种平台更适合银行、支付机构、保险和大型金融服务组织；尤其是希望在同一个平台上运行多个受监管业务模型，而不是各部门自行搭建孤立推理服务的企业。
+银行、支付机构和保险公司可以用这类平台统一管理受监管业务模型，避免各部门分别建设孤立的推理服务。
 
 **可借鉴经验：** 把模型服务做成平台能力，把业务任务做成可替换的 Model Endpoint；对不同任务建立独立质量评估和资源配额；量化和小模型编排应以业务质量为约束，而不是只追求 GPU 利用率。金融场景还要把模型调用、输入数据类别、输出、人工复核和模型版本纳入审计。
 
@@ -1620,7 +1620,7 @@ Workato 的结果主要来自请求路由和缓存复用，而不是单卡算力
 
 试点结果显示：系统稳定性和可用性评价较高；报告翻译、文字纠错、简化和基于已有文本的指南建议表现较好；基于影像发现开放式生成诊断结论时，出现了更多关键错误，例如临床相关幻觉或遗漏。研究团队因此明确强调，这套系统用于放射科文本辅助，不是自主临床决策系统。
 
-这类方案主要面向医院、医疗影像中心、临床研究机构，以及必须在内部处理未匿名化数据的组织。
+医院、医疗影像中心和临床研究机构，如果必须在内部处理未匿名化数据，可以评估类似部署。
 
 Bonn 的试点给出的直接教训是，- 安全架构应假设系统可能被攻破，采用 Network Segmentation、Host-enforced Egress Filtering 和持续 Isolation Monitoring，而不是只依赖“没有配置公网地址”。
 - 模型部署审批必须和技术建设并行。医院涉及临床管理、合规、数据保护、信息安全等多个责任主体。
@@ -1685,9 +1685,9 @@ Microsoft Azure Kubernetes Service Engineering Blog 在 2026 年 4 月展示了�
 
 文章给出的 Ollama 示例使用 Kubernetes Deployment，将 Pod 通过 Node Selector 放到带 NVIDIA GPU 的节点，并申请 nvidia.com/gpu: 1；通过 Kubernetes Service 暴露推理 API。模型权重可以在 Pod 中拉取，之后通过 HTTP API 调用。该系列还覆盖 Triton / TensorRT-LLM、NVIDIA Dynamo 多节点推理、RDMA 和 GPU 资源管理等相关主题。
 
-对这些机构而言，制造业、零售、能源、分支机构；需要在工厂、实验室、门店或数据中心部署 GPU 推理，同时希望使用统一 Kubernetes 管理面。
+这种部署主要面向制造业、零售和能源企业，以及拥有分支机构的组织。它们需要在工厂、实验室、门店或数据中心运行 GPU 推理服务，同时通过统一的 Kubernetes 管理面维护分散的集群。
 
-生产化时还需要补上，Edge / On-Prem 的网络、存储和升级条件与公有云不同。模型权重不应在每次 Pod 重启时从互联网拉取；应使用企业镜像和模型制品仓库，设计离线更新、缓存和回滚流程。单副本 Ollama 适合验证连接和设备调度，不应直接视为生产级高并发服务。生产环境还要补齐认证、TLS、限流、模型版本管理、GPU 故障检测和多副本路由。
+Edge / On-Prem 环境的网络、存储和升级条件与公有云不同，生产部署还需要处理以下问题：模型权重不应在每次 Pod 重启时从互联网拉取；应使用企业镜像和模型制品仓库，设计离线更新、缓存和回滚流程。单副本 Ollama 适合验证连接和设备调度，不应直接视为生产级高并发服务。生产环境还要补齐认证、TLS、限流、模型版本管理、GPU 故障检测和多副本路由。
 
 证据范围：Microsoft 官方技术教程 / 参考部署，不是具名终端客户案例，也没有给出该示例的生产吞吐数据。
 
