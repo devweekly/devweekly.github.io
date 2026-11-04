@@ -77,3 +77,8 @@ def test_empty_product_evidence_is_insufficient_not_negative():
     ))
     assert result.decision == "insufficient_evidence"
     assert result.score is None
+
+
+def test_tea_alias_maps_to_canonical_concept():
+    pref = parse_query("白茶香调", Preference())
+    assert "tea" in pref.include
