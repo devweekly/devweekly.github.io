@@ -435,7 +435,9 @@ flowchart TD
 
 下图把事实存储、查询理解、混合召回和排序拆开。关系数据库仍然是产品事实的来源；全文和向量索引只是检索投影，可以从规范数据重建。
 
-<iframe src="/diagrams/fragrance-recommender-architecture.html" title="香水推荐系统参考架构" loading="lazy" width="100%" height="660" style="border:0;max-width:100%;"></iframe>
+![香水推荐系统参考架构](/diagrams/fragrance-recommender-architecture.svg)
+
+*图源：[可交互缩放的 HTML 版本](/diagrams/fragrance-recommender-architecture.html)。*
 
 主要组件的职责如下：
 
@@ -451,7 +453,9 @@ flowchart TD
 
 ### 12.2 推荐请求的处理顺序
 
-<iframe src="/diagrams/fragrance-recommendation-flow.html" title="香水推荐请求处理流程" loading="lazy" width="100%" height="700" style="border:0;max-width:100%;"></iframe>
+![香水推荐请求处理流程](/diagrams/fragrance-recommendation-flow.svg)
+
+*图源：[可交互缩放的 HTML 版本](/diagrams/fragrance-recommendation-flow.html)。*
 
 推荐流程分为两个核心阶段。
 
