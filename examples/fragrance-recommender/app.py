@@ -175,3 +175,228 @@ def recommend_endpoint(body: RecommendationRequest) -> list[Recommendation]:
 @app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok", "catalog_size": str(len(CATALOG))}
+
+
+# Shopping-product assessment: source-aware and product-type-aware.
+from typing import Literal
+
+
+EvidenceType = Literal[
+    "official_spec", "brand_description", "seller_description",
+    "review_observation", "database_fact", "model_inference"
+]
+
+
+class ProductEvidence(BaseModel):
+    evidence_type: EvidenceType
+    source_name: str
+    source_url: str | None = None
+    claim: str
+    confidence: float = Field(default=0.7, ge=0, le=1)
+
+
+class ProductFeature(BaseModel):
+    concept: str
+    intensity: float | None = Field(default=None, ge=0, le=1)
+    evidence: ProductEvidence
+
+
+class ReviewSignal(BaseModel):
+    text: str
+    sentiment: Literal["like", "dislike", "mixed", "unknown"] = "unknown"
+    concepts: list[str] = Field(default_factory=list)
+    confidence: float = Field(default=0.6, ge=0, le=1)
+    source_url: str | None = None
+
+
+class ProductForAssessment(BaseModel):
+    product_id: str | None = None
+    name: str
+    brand: str | None = None
+    product_type: Literal["perfume", "candle"]
+    price: float | None = Field(default=None, ge=0)
+    currency: str = "CNY"
+    features: list[ProductFeature] = Field(default_factory=list)
+    reviews: list[ReviewSignal] = Field(default_factory=list)
+    # Candle-only: cold throw and hot throw are not perfume longevity.
+    cold_throw: float | None = Field(default=None, ge=0, le=5)
+    hot_throw: float | None = Field(default=None, ge=0, le=5)
+    burn_hours: float | None = Field(default=None, gt=0)
+
+
+class ProductAssessmentRequest(BaseModel):
+    product: ProductForAssessment
+    preference: Preference = Field(default_factory=Preference)
+    query: str = ""
+
+
+class ProductAssessment(BaseModel):
+    product_id: str | None
+    name: str
+    product_type: str
+    decision: Literal["likely_match", "possible_mismatch", "insufficient_evidence"]
+    score: float | None
+    evidence_confidence: float
+    matched_concepts: list[str]
+    conflicts: list[str]
+    reasons: list[str]
+    missing_information: list[str]
+    product_specific_notes: list[str]
+    evidence: list[dict[str, Any]]
+
+
+_EVIDENCE_RELIABILITY = {
+    "official_spec": 0.95,
+    "brand_description": 0.82,
+    "database_fact": 0.85,
+    "review_observation": 0.68,
+    "seller_description": 0.52,
+    "model_inference": 0.28,
+}
+
+
+def assess_product(request: ProductAssessmentRequest) -> ProductAssessment:
+    """Assess user-supplied shopping-page data; this function does not scrape a marketplace."""
+    product = request.product
+    preference = parse_query(request.query, request.preference)
+    positive, negative = set(preference.include), set(preference.exclude)
+    feature_map: dict[str, list[ProductFeature]] = {}
+    review_map: dict[str, list[ReviewSignal]] = {}
+    evidence_rows: list[dict[str, Any]] = []
+
+    for feature in product.features:
+        feature_map.setdefault(feature.concept, []).append(feature)
+        evidence_rows.append({
+            "kind": feature.evidence.evidence_type,
+            "source": feature.evidence.source_name,
+            "source_url": feature.evidence.source_url,
+            "claim": feature.evidence.claim,
+            "concept": feature.concept,
+            "confidence": feature.evidence.confidence,
+        })
+    for review in product.reviews:
+        for concept in review.concepts:
+            review_map.setdefault(concept, []).append(review)
+        evidence_rows.append({
+            "kind": "review_observation",
+            "source": "user_supplied_review",
+            "source_url": review.source_url,
+            "claim": review.text,
+            "sentiment": review.sentiment,
+            "concepts": review.concepts,
+            "confidence": review.confidence,
+        })
+
+    matched: list[str] = []
+    conflicts: list[str] = []
+    reasons: list[str] = []
+    match_strength = conflict_strength = evidence_mass = 0.0
+    evidence_count = 0
+
+    def add_evidence(strength: float) -> None:
+        nonlocal evidence_mass, evidence_count
+        evidence_mass += strength
+        evidence_count += 1
+
+    for concept in positive:
+        features = feature_map.get(concept, [])
+        reviews = review_map.get(concept, [])
+        if features:
+            best = max(features, key=lambda x: x.evidence.confidence * _EVIDENCE_RELIABILITY[x.evidence.evidence_type])
+            strength = best.evidence.confidence * _EVIDENCE_RELIABILITY[best.evidence.evidence_type]
+            match_strength += strength
+            add_evidence(strength)
+            matched.append(concept)
+            reasons.append(f"{concept} 有商品资料支持（{best.evidence.evidence_type}）")
+        likes = [x for x in reviews if x.sentiment == "like"]
+        dislikes = [x for x in reviews if x.sentiment == "dislike"]
+        if likes:
+            strength = max(x.confidence * _EVIDENCE_RELIABILITY["review_observation"] for x in likes)
+            match_strength += 0.65 * strength
+            add_evidence(strength)
+            matched.append(concept)
+            reasons.append(f"用户评价中出现正向的 {concept} 体验")
+        if dislikes:
+            strength = max(x.confidence * _EVIDENCE_RELIABILITY["review_observation"] for x in dislikes)
+            conflict_strength += strength
+            add_evidence(strength)
+            conflicts.append(concept)
+            reasons.append(f"部分用户评价对 {concept} 有负面反馈")
+
+    for concept in negative:
+        features = feature_map.get(concept, [])
+        reviews = review_map.get(concept, [])
+        if features:
+            best = max(features, key=lambda x: x.evidence.confidence * _EVIDENCE_RELIABILITY[x.evidence.evidence_type])
+            strength = best.evidence.confidence * _EVIDENCE_RELIABILITY[best.evidence.evidence_type]
+            conflict_strength += strength
+            add_evidence(strength)
+            conflicts.append(concept)
+            reasons.append(f"商品资料显示存在你明确排斥的 {concept}")
+        likes = [x for x in reviews if x.sentiment == "like"]
+        dislikes = [x for x in reviews if x.sentiment == "dislike"]
+        if likes:
+            strength = max(x.confidence * _EVIDENCE_RELIABILITY["review_observation"] for x in likes)
+            conflict_strength += 0.6 * strength
+            add_evidence(strength)
+            conflicts.append(concept)
+            reasons.append(f"评价中有人明确提到 {concept}，与你的排斥偏好冲突")
+        if dislikes:
+            strength = max(x.confidence * _EVIDENCE_RELIABILITY["review_observation"] for x in dislikes)
+            match_strength += 0.35 * strength
+            add_evidence(strength)
+
+    missing: list[str] = []
+    if not product.features:
+        missing.append("没有可核验的香调/气味特征资料")
+    if not product.reviews:
+        missing.append("没有可分析的具体用户气味评价")
+    if product.product_type == "candle":
+        if product.cold_throw is None:
+            missing.append("缺少冷香表现")
+        if product.hot_throw is None:
+            missing.append("缺少点燃后的热香/扩香表现")
+        product_notes = [
+            "蜡烛按冷香与热香分别判断；香水的皮肤留香结论不能直接迁移到蜡烛。",
+            "燃烧表现还受蜡材、烛芯、香精比例、房间面积和通风影响。",
+        ]
+    else:
+        product_notes = [
+            "香调表不等于实际配方；Note 或 Accord 不能证明具体原料及其浓度。",
+            "皮肤表现、扩散和留香受用量、体温、环境与个体嗅觉影响。",
+        ]
+
+    if product.price is not None and preference.max_price is not None and product.price > preference.max_price:
+        conflicts.append("budget")
+        reasons.append(f"商品价格超过预算（{product.currency} {product.price:g}）")
+
+    if evidence_count:
+        evidence_confidence = min(1.0, evidence_mass / evidence_count)
+        score = round(max(-1.0, min(1.0, (match_strength - 1.15 * conflict_strength) /
+                                      max(1.0, len(positive) + len(negative)))), 3)
+    else:
+        evidence_confidence, score = 0.0, None
+
+    if not evidence_count or evidence_confidence < 0.30 or (not positive and not negative):
+        decision = "insufficient_evidence"
+    elif score is not None and score > 0.12 and "budget" not in conflicts:
+        decision = "likely_match"
+    elif score is not None and score < -0.05:
+        decision = "possible_mismatch"
+    else:
+        decision = "insufficient_evidence"
+
+    if not reasons:
+        reasons.append("当前输入没有足够的偏好匹配证据，不能仅凭营销文案判断")
+    return ProductAssessment(
+        product_id=product.product_id, name=product.name, product_type=product.product_type,
+        decision=decision, score=score, evidence_confidence=round(evidence_confidence, 3),
+        matched_concepts=sorted(set(matched)), conflicts=sorted(set(conflicts)),
+        reasons=reasons, missing_information=missing, product_specific_notes=product_notes,
+        evidence=evidence_rows,
+    )
+
+
+@app.post("/assess", response_model=ProductAssessment)
+def assess_endpoint(body: ProductAssessmentRequest) -> ProductAssessment:
+    return assess_product(body)
