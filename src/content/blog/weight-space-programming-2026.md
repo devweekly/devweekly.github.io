@@ -930,7 +930,7 @@ Anthropic 的方法有一个值得重视的设计：它把“行为定义、对�
   <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
     <msubsup><mi>μ</mi><mi>ℓ</mi><mo>+</mo></msubsup><mo>=</mo>
     <mfrac><mn>1</mn><msub><mi>N</mi><mo>+</mo></msub></mfrac>
-    <munderover><mo>∑</mo><mrow><mi>i</mi><mo>∈</mo><mi>P</mi></mrow><mrow></mrow></munderover>
+    <munder><mo>∑</mo><mrow><mi>i</mi><mo>∈</mo><mi>P</mi></mrow></munder>
     <msubsup><mi>a</mi><mi>ℓ</mi><mrow><mo>(</mo><mi>i</mi><mo>)</mo></mrow></msubsup>
   </math>
 </div>
@@ -939,7 +939,7 @@ Anthropic 的方法有一个值得重视的设计：它把“行为定义、对�
   <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
     <msubsup><mi>μ</mi><mi>ℓ</mi><mo>−</mo></msubsup><mo>=</mo>
     <mfrac><mn>1</mn><msub><mi>N</mi><mo>−</mo></msub></mfrac>
-    <munderover><mo>∑</mo><mrow><mi>i</mi><mo>∈</mo><mi>N</mi></mrow><mrow></mrow></munderover>
+    <munder><mo>∑</mo><mrow><mi>i</mi><mo>∈</mo><mi>N</mi></mrow></munder>
     <msubsup><mi>a</mi><mi>ℓ</mi><mrow><mo>(</mo><mi>i</mi><mo>)</mo></mrow></msubsup>
   </math>
 </div>
