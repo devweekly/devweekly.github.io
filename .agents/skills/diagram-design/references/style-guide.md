@@ -12,7 +12,7 @@ To generate your own from a website URL, see [`onboarding.md`](onboarding.md).
 
 ### Semantic roles
 
-Every token is referred to by **semantic role**, not by its hex value. Type references (`type-*.md`) and SKILL.md say `accent`, not `#bf4520`.
+Every token is referred to by **semantic role**, not by its hex value. Type references (`type-*.md`) and SKILL.md say `accent`, not a literal hex value.
 
 | Role | Purpose | Default (light) | Default (dark) |
 |---|---|---|---|
@@ -28,7 +28,7 @@ Every token is referred to by **semantic role**, not by its hex value. Type refe
 | `accent-tint` | Warm sand surface tint | `rgba(176,129,88,0.16)` | `rgba(210,167,125,0.16)` |
 | `link` | HTTP/API calls, external arrows | `#52698E` | `#9EB6DF` |
 
-> **Brand palette source:** this skin maps to a five-color brand palette: `jet-black #2d3142`, `silver #bfc0c0`, `white-smoke #f5f5f5`, `atomic-tangerine`, `blue-slate #4f5d75`. The light `accent` is not the raw brand tangerine. Raw atomic-tangerine reads 2.86:1 on `paper`, too faint for an arrow or a label, so the skin uses `#bf4520`, the same hue darkened until it clears 4.5:1 as text. The `soft`, `rule`, and `link` tokens are derived (a darker slate, ink at opacity, and a saturated variant in the blue-slate hue family) to cover roles the brand palette doesn't name directly. Every derived value is held to the contrast contract below.
+> **Reference source:** Soft Dependency Canvas takes its visual cues from the supplied dependency-diagram image and its documented palette: `#DDE3F0`, `#9299AA`, `#C3BCC3`, `#32394D`, and `#B08158`. The actual diagram canvas is a slightly lighter cool blue-grey (`#EBEDF7`) so white cards remain distinct. Text and fine strokes use darker derived values where necessary to satisfy contrast; the pale source swatches are reserved for quiet structure and pastel surfaces.
 
 
 ### Surface, elevation, and category tokens
@@ -94,7 +94,7 @@ A self-contained palette for the terminal-window primitive (see [primitive-termi
 | `terminal-paper` | `#141414` | Window body, node fill |
 | `terminal-bar` | `#1b1b1b` | Titlebar strip |
 | `terminal-border` | `#2b2b2b` | Window border, hairlines |
-| `terminal-ink` | `#f5f5f5` | Primary text, primary stroke (same white-smoke as default `ink`) |
+| `terminal-ink` | `#f5f5f5` | Primary text, primary stroke (light neutral) |
 | `terminal-muted` | `#9a9a9a` | Secondary text, sublabels, ring stroke |
 | `terminal-soft` | `#5c5c5c` | Tertiary — inactive dots, spokes |
 | `terminal-accent` | `#ff5a36` | The one accent — focal station, prompt sign, active dot |
