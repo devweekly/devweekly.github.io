@@ -197,8 +197,7 @@ Session Memory、跨会话用户偏好和 Agent Task Memory 的用途并不相�
 盘点时还要区分“知识内容”和“业务操作能力”。例如，Agent 可以检索 ServiceNow 的历史工单作为知识，但创建、分派、关闭工单属于有副作用的 Tool 操作；两者应分别定义权限、审计和 SLA。连接器同步一份合同文本，也不代表 Agent 自动获得修改或签署合同的权限。
 
 企业不应把所有知识源都复制到一个统一向量库。至少需要三种接入模式：
-| 模式 | 数据路径 | 适用情况 | 主要代价与风险 |
-| --- | --- | --- | --- |
+| 模式 | 数据路径 | 适用情况 | 主要代价与风险 || --- | --- | --- | --- |
 | Batch / Incremental Indexing | Source → Connector → Parse → Index | 政策、知识文档、历史工单、代码和相对稳定的内容 | 索引延迟、删除同步、权限漂移、重复内容 |
 | Live / Federated Query | Agent → Governed API / SQL → Source | 账户余额、订单状态、员工在职状态、当前 SLA 等动态事实 | 下游延迟、可用性、限流、查询成本和 API 语义差异 |
 | Event / CDC | Source Event → Event Bus → Materialized View / State Store | 状态变化频繁、需要增量更新或触发任务的数据 | 事件顺序、重复投递、Schema Evolution、最终一致性 |
@@ -397,8 +396,7 @@ Prompt Injection 的问题在于，模型可能把不可信内容理解为指令
 
 - 文件系统挂载和读写目录；
 - 网络出口、DNS 和内部地址访问；
-- CPU、Memory、执行时间和进程数量；
-- 凭证注入与凭证读取；
+- CPU、Memory、执行时间和进程数量；- 凭证注入与凭证读取；
 - 容器或 VM 的生命周期；
 - 多任务之间的文件和进程隔离；
 - 沙箱销毁后的残留数据清理。
@@ -556,6 +554,7 @@ Salesforce Engineering 的 [Enterprise Agent Platform：Identity, Data, and API 
 | --- | --- | --- |
 | Agent Framework / SDK | 采用成熟开源或商业框架，允许多框架 | 框架迭代快，平台不应绑定单一实现 |
 | Workflow / Durable Execution | 优先复用现有 Workflow 平台或成熟 Durable Runtime | 状态恢复、重试、定时器和补偿很难靠简单队列实现 |
+| Human Task Management | 复用 BPMN User Task / Case Management 或现有工作管理系统；平台统一生命周期 API | 分派、认领、转交、审批、等待、升级和审计需要跨入口保持一致 |
 | Identity / SSO / Secrets | 复用企业 IAM、OIDC、OAuth、Vault / KMS | 不要再造一套身份和凭证体系 |
 | Policy Decision | 复用 OPA、云策略或企业授权服务 | 策略需要确定性执行和统一审计 |
 | Model Gateway | 视供应商数量、区域和成本控制需求建设或采购 | 多模型路由和统一计量通常具有平台价值 |
@@ -574,7 +573,7 @@ Salesforce Engineering 的 [Enterprise Agent Platform：Identity, Data, and API 
 | 阶段 | 建设重点 | 验收结果 |
 | --- | --- | --- |
 | Phase 1：Foundation | SSO、Agent Registry、Model Gateway、一个 Runtime、基础 Tool Gateway、Trace | 一个 Agent 能够通过企业身份访问授权工具，且完整记录运行轨迹 |
-| Phase 2：Production Controls | 风险分级、权限策略、审批、持久化执行、评估门禁、预算 | 能够安全执行读写操作，处理超时、重复调用、拒绝和故障 |
+| Phase 2：Production Controls | 风险分级、权限策略、Human Task 生命周期、审批、持久化执行、评估门禁、预算 | 多人任务可分派、转交、等待、批准/拒绝和取消；读写操作可安全恢复 |
 | Phase 3：Federated Adoption | 开发者门户、模板、团队隔离、CI/CD、Capability Catalog | 第二、第三个业务团队可以自助创建和发布 Agent |
 | Phase 4：Enterprise Operations | Agent Fleet 管理、SLO、成本归集、审计、退役和事件响应 | 可以统一管理大量 Agent，支持审计、故障处置和资产清理 |
 
@@ -598,7 +597,6 @@ Salesforce Engineering 的 [Enterprise Agent Platform：Identity, Data, and API 
 | Agent 退役只删除入口 | Token、Memory、Tool Grant 和云资源仍然存在 | 依赖顺序撤销并验证零残留 |
 
 ## 19. 结论：企业需要统一的是控制，不是所有 Agent 的实现
-
 随着 Agent 数量增加，平台的主要工作会转向资产和运行治理：每个 Agent 都要有明确用途与负责人，使用获准的模型和工具，以可追溯的身份访问授权数据，并在预算和自主权边界内执行。平台还要支持测试、暂停、回滚和退役。
 
 平台的控制边界可以归结为一个原则：业务团队可以选择适合自己的框架，但不能自行绕过企业身份、授权和审计要求。Agent 可以提出计划和动作，是否允许执行由确定性策略决定，业务系统仍然持有正式状态。User Identity 与 Agent Identity 必须能够区分，工具调用也必须保留委托链和结果证据。评估不能止于回答质量，还要覆盖越权拒绝、数据保护、幂等和故障恢复；这些检查应进入发布流程，而不是留给上线后的人工补救。
@@ -632,5 +630,7 @@ Salesforce Engineering 的 [Enterprise Agent Platform：Identity, Data, and API 
 19. Glean, [How connectors power the Glean experience](https://docs.glean.com/connectors/connectors-power-glean).
 20. Glean, [How code search works](https://docs.glean.com/security/how-code-search-works).
 21. Salesforce Engineering, [Building an Enterprise Agent Platform: Enforcing Identity, Data, and API Governance](https://engineering.salesforce.com/building-an-enterprise-agent-platform-enforcing-identity-data-and-api-governance/).
+22. Camunda, [Understanding human task management](https://docs.camunda.io/docs/8.9/components/best-practices/architecture/understanding-human-tasks-management/).
+23. Camunda, [User task lifecycle](https://docs.camunda.io/docs/apis-tools/frontend-development/task-applications/user-task-lifecycle/).
 
 *资料核对日期：2026-11-04。客户案例中的指标均为相应厂商公开材料所述，不能直接视为独立审计结果或其他企业的可复制承诺。具体产品功能、协议版本和区域可用性应在项目选型及上线前重新核对。*
