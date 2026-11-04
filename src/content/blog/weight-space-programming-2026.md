@@ -19,7 +19,7 @@ description: "MIT CSAIL 展示了 LLM 直接读取和修改神经网络权重的
 
 # Weight-Space Programming：从模型权重工程到 LLM 直接编程神经网络
 
-**研究截止日期：2026 年 11 月 3 日**
+**研究截止日期：2026 年 11 月 4 日**
 
 ## 摘要
 
@@ -526,11 +526,84 @@ Experiment 8 的 Gemma 3 270M 后续实验也很重要：这个模型本身并�
 5. 多次编辑、跨模型合并和长期版本演进都能保持稳定；
 6. 直接权重编辑的成本一定低于传统训练。
 
+### 4.10 本地模型也能读懂权重：Simon Willison 的 Qwen 3.8 27B 实验
+
+MIT 的实验发布后，Simon Willison 在 2026 年 11 月 3 日做了一个很有价值的跟进：他没有使用 GPT-6 Astra，而是在自己的笔记本上运行 Qwen 3.8 27B，让它完成作者公开的 Experiment 1 权重识别任务。
+
+这次实验有几个值得注意的地方：
+
+- **模型**：Qwen 3.8 27B，使用 LM Studio 本地运行的 GGUF Q4_K_M 量化版本，文件约 17 GB。
+- **输入**：直接复用作者公开的 lm_understand-logs/exp1_which_game 提示词和权重文本。
+- **模型可用能力**：提示词明确要求不使用代码执行、计算器或其他工具，只根据权重作答。
+- **运行环境**：LM Studio 加载模型，Simon 通过 llm CLI 和 llm-lmstudio 插件发送提示。这里的 CLI 和 LM Studio 是实验 Harness；它们负责加载模型和传递文本，不代表被测模型获得了 Python 或 Shell 工具。
+- **上下文要求**：LM Studio 默认 8,192 Token 的上下文长度不足以完成任务，需要调大上下文窗口；同时将客户端超时调到 900 秒。
+
+结果并不是四题全对：
+
+| 任务 | Qwen 3.8 27B 结果 | 运行时间 |
+| --- | --- | ---: |
+| Pac-Man | 正确识别 | 46 分 12 秒 |
+| Pong | 正确识别 | 1 小时 4 分 54 秒 |
+| Breakout | 正确识别 | 52 分 25 秒 |
+| Freeway | 误判为类似 Pac-Man 的网格游戏 | 未报告为成功 |
+
+Pac-Man、Pong 和 Breakout 的回答分别给出了 72%、75% 和 88% 的模型自评置信度。完成 Pac-Man 任务消耗了约 43,506 个 Reasoning Tokens。这里的置信度是模型自己的表达，不是经过校准的统计置信区间；三题成功也不能据此推断模型对任意网络都能可靠读懂权重。
+
+这次实验真正增加的证据是：**不依赖 GPT-6 Astra，另一个本地运行的通用模型也能在小型网络的特定权重识别任务上取得成功。** 它降低了“只有某个闭源前沿模型才能完成这类任务”的可能性，也让开发者可以在本地复用公开提示词做验证。
+
+但不要把它理解成 Qwen 3.8 27B 已经能够编辑 Qwen 或其他大模型的权重。Simon 测试的是小型游戏策略网络的 Weight Reading，不是对 Qwen 3.5-0.8B 做 Weight Editing；这次也没有验证模型能否在大型 Transformer 中定位并修复真实故障。
+
+**复现实验可以从公开日志开始，而不是自己重新训练四个游戏模型：**
+
+1. 从 [RikiyaT/lm_understand-logs](https://github.com/RikiyaT/lm_understand-logs/tree/main/exp1_which_game) 选择一个游戏的 prompt.txt。
+2. 使用支持长上下文的本地推理环境加载 Qwen 3.8 27B 或其他模型。
+3. 把提示词原样交给模型，不额外提供游戏名称、答案或工具。
+4. 保存完整回答、Reasoning Token 数、耗时和模型版本。
+5. 对四个任务全部测试，并按预先确定的标准核对答案；不要只挑成功案例。
+6. 更换模型量化版本、上下文长度或提示词时，单独记录实验条件，避免把不同配置的结果直接比较。
+
+Simon 的完整过程和失败案例见：[Qwen 3.8 27B on my laptop can interpret model weights, too](https://simonwillison.net/2026/Nov/3/qwen-can-interpret-model-weights/)。
+
+### 4.11 需要认真对待的反方观点：这是否真的证明了新的研究能力？
+
+这项工作引起关注后，出现了两篇值得一起阅读的技术评论。它们不是在否定实验结果，而是在提醒读者不要把不同实验的能力混为一谈。
+
+**Matthew Honnibal：读权重和修改 Qwen 并不是同一种技术。**
+
+[The “Astra can read and write weights to improve Qwen” post is misleading](https://honnibal.dev/blog/astra-read-write-misleading) 指出，论文中最容易被混为一谈的是两类实验：
+
+- Experiment 1、2 和 4：模型直接读取原始权重，或者在没有工具的情况下提出修改；这些网络约为 17K—172K 参数。
+- 涉及真实语言模型的实验：使用了 Python 分析工具；Qwen 的 Experiment 8 还使用了最多 50 次 Forward Pass 观察模型输出和中间信息。
+
+因此，“模型不借助工具就能读懂大型语言模型全部权重”和“模型可以借助 Python、运行反馈和受控接口完成权重编辑”不是同一个结论。尤其不能把 Qwen 的结果描述成模型只看一份权重文本，就凭空找到了修复方案。
+
+**Sean Goedecke：这些操作是否超出了有经验的机器学习工程师？**
+
+[LLMs are not superhuman at reading and writing neural network weights](https://www.seangoedecke.com/llms-are-not-superhuman-at-reading-and-writing-neural-network-weights/) 从两个角度提出质疑：
+
+1. 游戏网络的输入通道已经标注了 Agent、Moving Objects 等语义，网络输入又直接对应网格位置。对第一层权重按输入通道计算 L2 Norm 并画成热图，人类研究者也可能很快看出挡板、球或迷宫结构。模型能在没有 Python 的条件下完成这种分析很有意思，但不必然意味着它掌握了人类无法理解的神经网络语义。
+2. Qwen 的数学能力提升，首先是因为基础模型存在明显的重复推理循环。Goedecke 认为，研究者可以比较循环与非循环文本的 Residual、识别相关方向，再通过权重裁剪和反复测试修复问题；这与 Activation Steering、Abliteration 一类研究流程有相通之处。
+
+这两个批评都值得纳入判断，但也不应反向夸大：能够让通用 LLM 自主提出分析方案、组织实验、读取反馈并形成有效 Patch，本身仍然具有工程价值。即使其中的分析方法对专业研究者并不新鲜，自动执行完整研究流程也可能降低实验门槛。
+
+**更准确的结论应该分成四层：**
+
+| 能力层次 | 当前证据 | 不应该外推成什么 |
+| --- | --- | --- |
+| 直接从小型网络权重识别行为 | 多个无工具实验成功；本地 Qwen 3.8 27B 也复现了部分游戏识别 | 通用模型已经能理解任意规模网络 |
+| 通过权重结构分析模型内部特征 | 部分实验结合 Python 分析中间层、Attention 或激活 | 仅凭权重文本就能解释完整 Transformer |
+| 通过工具和 Forward Pass 定位故障并修改参数 | Qwen3.5-0.8B 的特定循环问题得到显著改善 | LLM 已经发明了通用、超越人类的模型优化算法 |
+| 对编辑后的模型进行独立评估 | 已有公开权重差异和一次外部复跑 | 跨模型、跨任务、跨团队的稳定性已经得到证明 |
+
+因此，阅读这项研究时最好同时保留两个判断：一方面，LLM 已经能参与过去通常需要机器学习研究者手工完成的权重分析和编辑工作；另一方面，现有证据仍然是若干受控任务的组合，不能直接推导出递归自我改进或自动发现通用优化算法。
+
+这也影响工程路线的选择：如果目标是定位某个已知故障，先用激活分析、差分分析、Steering 或现有 Model Editing 方法建立可解释基线，再让 LLM 负责提出候选假设和 Patch，会比直接把“自主权重编程”当成黑盒能力更容易验证。
+
 ## 5. 现有开源工具和商业产品：哪些已经能用？
 
 需要把严格意义上的 Weight-Space Programming 与周边的模型权重工程分开。
 
-截至 2026 年 11 月 3 日，尚未发现已经成熟商业化、可以让用户用自然语言要求 LLM 自主读取并任意修改生产大模型权重的通用产品。
+截至 2026 年 11 月 4 日，尚未发现已经成熟商业化、可以让用户用自然语言要求 LLM 自主读取并任意修改生产大模型权重的通用产品。
 
 但是，模型合并、LoRA 训练、Adapter 管理和推理部署已经有成熟工具链。
 
@@ -1716,6 +1789,12 @@ Weight-Space Programming 不是突然冒出来的一套全新数学。Task Vecto
 4. [Weight Oracles: Reading Neural Network Weights with Language Models](https://arxiv.org/html/2610.07334) — 2026-10-05。
 5. [Steer2Edit: From Activation Steering to Component-Level Editing](https://arxiv.org/html/2602.09870v2) — 2026。
 
+39. [Qwen 3.8 27B on my laptop can interpret model weights, too](https://simonwillison.net/2026/Nov/3/qwen-can-interpret-model-weights/) — Simon Willison，2026-11-03，本地模型对公开权重识别实验的复测。
+40. [The “Astra can read and write weights to improve Qwen” post is misleading](https://honnibal.dev/blog/astra-read-write-misleading) — Matthew Honnibal，对无工具权重读取与工具辅助模型编辑的区分。
+41. [LLMs are not superhuman at reading and writing neural network weights](https://www.seangoedecke.com/llms-are-not-superhuman-at-reading-and-writing-neural-network-weights/) — Sean Goedecke，对游戏网络可解释性和 Qwen 编辑流程的技术评论。
+42. [A Survey of Weight Space Learning: Understanding, Representation, and Generation](https://arxiv.org/abs/2603.10090) — 2026-03-10，Weight Space Learning 的理解、表示与生成综述。
+43. [Tracr: Compiled Transformers as a Laboratory for Interpretability](https://arxiv.org/abs/2301.05062) — 将符号程序编译为 Transformer 权重的研究，作为权重可编程性的早期相关工作。
+
 ### Model Editing 与 Task Vectors
 
 6. [Locating and Editing Factual Associations in GPT (ROME)](https://arxiv.org/abs/2202.05262)。
@@ -1764,4 +1843,4 @@ Weight-Space Programming 不是突然冒出来的一套全新数学。Task Vecto
 
 ---
 
-*本文中的研究结果以公开论文、作者研究文章、实验日志、模型卡和官方产品文档为依据。实验数字属于对应来源报告的结果，不代表本文独立复现。产品能力和成熟度以 2026 年 11 月 3 日可查阅的公开资料为准。*
+*本文中的研究结果以公开论文、作者研究文章、实验日志、模型卡和官方产品文档为依据。实验数字属于对应来源报告的结果，不代表本文独立复现。产品能力和成熟度以 2026 年 11 月 4 日可查阅的公开资料为准。*
