@@ -372,7 +372,7 @@ def assess_product(request: ProductAssessmentRequest) -> ProductAssessment:
 
     if evidence_count:
         evidence_confidence = min(1.0, evidence_mass / evidence_count)
-        score = round(max(-1.0, min(1.0, (match_strength - 1.15 * conflict_strength) /
+        score = round(max(-1.0, min(1.0, (match_strength - 2.2 * conflict_strength) /
                                       max(1.0, len(positive) + len(negative)))), 3)
     else:
         evidence_confidence, score = 0.0, None
@@ -381,7 +381,7 @@ def assess_product(request: ProductAssessmentRequest) -> ProductAssessment:
         decision = "insufficient_evidence"
     elif score is not None and score > 0.12 and "budget" not in conflicts:
         decision = "likely_match"
-    elif score is not None and score < -0.05:
+    elif "budget" in conflicts or (score is not None and score < -0.05):
         decision = "possible_mismatch"
     else:
         decision = "insufficient_evidence"
