@@ -3,7 +3,7 @@ name: diagram-design
 description: Create branded architecture, architecture delta, IT current-state, flowchart, sequence, state machine, ER/data model, timeline, swimlane, quadrant, radar/spider, polar chart (polar/radial lollipop), loop/flywheel, nested, tree, org chart, layer stack, exploded axonometric, axonometric plan, Venn, pyramid/funnel, treemap and marimekko, heatmap, bar and dumbbell, waterfall, line (slopegraph, ridgeline, streamgraph, bump), Gantt and scatter charts (bubble, beeswarm, box plot), high-level, process, medallion, data flow, DP integration, DP security matrix, Sankey, fishbone, Wardley map, kanban, user journey, service blueprint, deployment, dependency graph, UML class, story map, or database schema diagrams as HTML/SVG/PNG, with .drawio, Mermaid, and .excalidraw import, plus lifecycle phase maps, block decomposition trees, and onboarding guidance.
 license: MIT
 metadata:
-  version: "2.6"
+  version: "2.7"
 ---
 
 # Diagram Design
@@ -138,7 +138,7 @@ Rules of thumb:
 
 **Always load the chosen type reference linked in the guide before drawing.** When routed above, also load `semantic-patterns.md`; when animation is chosen, load `animation.md`.
 
-**Architecture default visual direction:** when the selected type is Architecture, use the *North Atlantic Editorial* direction defined in [`references/type-architecture.md`](references/type-architecture.md#default-visual-direction--north-atlantic-editorial) unless the user explicitly requests another visual style or an active project/client profile takes precedence. This is an Architecture-specific default; do not change the shared skin or impose this palette on other diagram types.
+**Architecture default visual direction:** when the selected type is Architecture, use the *Graphite & Sand Dependency* direction defined in [`references/type-architecture.md`](references/type-architecture.md#default-visual-direction--graphite--sand-dependency) unless the user explicitly requests another visual style or an active project/client profile takes precedence. This is an Architecture-specific default; do not change the shared skin or impose this palette on other diagram types.
 
 ### Confirm before drawing
 
