@@ -124,7 +124,7 @@
     }
     .card-dot.ink    { background: var(--color-ink); }
     .card-dot.muted  { background: var(--color-muted); }
-    .card-dot.coral  { background: var(--color-accent); }
+    .card-dot.accent  { background: var(--color-accent); }
     .card-dot.link   { background: var(--color-link); }
     .card-dot.soft   { background: var(--color-soft); }
 
@@ -205,7 +205,7 @@
             <polygon points="0 0, 8 3, 0 6" fill="#626B80"/>
           </marker>
 
-          <!-- Arrow: coral (accent — primary / highlighted flows) -->
+          <!-- Arrow: warm sand (accent — primary / highlighted flows) -->
           <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
             <polygon points="0 0, 8 3, 0 6" fill="#8B603F"/>
           </marker>
@@ -235,13 +235,13 @@
         <!-- Vertical arrow -->
         <line x1="253" y1="332" x2="253" y2="376" stroke="#626B80" stroke-width="1.2" marker-end="url(#arrow)"/>
 
-        <!-- Auth / security flow (dashed coral) -->
+        <!-- Auth / security flow (dashed warm-sand) -->
         <path d="M 80 140 L 80 200 Q 80 218 98 218 L 200 218 Q 218 218 218 236 L 218 276"
               fill="none" stroke="#8B603F" stroke-width="1.2" stroke-dasharray="5,4"
               marker-end="url(#arrow-accent)"/>
         <text x="148" y="212" fill="#8B603F" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">JWT</text>
 
-        <!-- Primary data flow (coral) -->
+        <!-- Primary data flow (warm sand) -->
         <line x1="620" y1="305" x2="696" y2="305" stroke="#8B603F" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
         <text x="655" y="297" fill="#8B603F" font-size="8" font-family="'Geist Mono', monospace" text-anchor="middle" letter-spacing="0.06em">TLS</text>
 
@@ -376,7 +376,7 @@
     <div class="cards">
       <div class="card">
         <div class="card-header">
-          <span class="card-dot coral"></span>
+          <span class="card-dot accent"></span>
           <h3>Card Title 1</h3>
         </div>
         <ul>
