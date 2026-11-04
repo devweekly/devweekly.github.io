@@ -1789,12 +1789,6 @@ Weight-Space Programming 不是突然冒出来的一套全新数学。Task Vecto
 4. [Weight Oracles: Reading Neural Network Weights with Language Models](https://arxiv.org/html/2610.07334) — 2026-10-05。
 5. [Steer2Edit: From Activation Steering to Component-Level Editing](https://arxiv.org/html/2602.09870v2) — 2026。
 
-39. [Qwen 3.8 27B on my laptop can interpret model weights, too](https://simonwillison.net/2026/Nov/3/qwen-can-interpret-model-weights/) — Simon Willison，2026-11-03，本地模型对公开权重识别实验的复测。
-40. [The “Astra can read and write weights to improve Qwen” post is misleading](https://honnibal.dev/blog/astra-read-write-misleading) — Matthew Honnibal，对无工具权重读取与工具辅助模型编辑的区分。
-41. [LLMs are not superhuman at reading and writing neural network weights](https://www.seangoedecke.com/llms-are-not-superhuman-at-reading-and-writing-neural-network-weights/) — Sean Goedecke，对游戏网络可解释性和 Qwen 编辑流程的技术评论。
-42. [A Survey of Weight Space Learning: Understanding, Representation, and Generation](https://arxiv.org/abs/2603.10090) — 2026-03-10，Weight Space Learning 的理解、表示与生成综述。
-43. [Tracr: Compiled Transformers as a Laboratory for Interpretability](https://arxiv.org/abs/2301.05062) — 将符号程序编译为 Transformer 权重的研究，作为权重可编程性的早期相关工作。
-
 ### Model Editing 与 Task Vectors
 
 6. [Locating and Editing Factual Associations in GPT (ROME)](https://arxiv.org/abs/2202.05262)。
@@ -1840,6 +1834,15 @@ Weight-Space Programming 不是突然冒出来的一套全新数学。Task Vecto
 ### 模型安全
 
 38. [TamperBench: Systematically Stress-Testing LLM Safety Under Fine-Tuning and Tampering](https://dl.acm.org/doi/10.1145/3770855.3817557)。
+
+### 本次更新补充的实验与技术评论
+
+39. [Qwen 3.8 27B on my laptop can interpret model weights, too](https://simonwillison.net/2026/Nov/3/qwen-can-interpret-model-weights/) — Simon Willison，2026-11-03，本地模型对公开权重识别实验的复测。
+40. [The “Astra can read and write weights to improve Qwen” post is misleading](https://honnibal.dev/blog/astra-read-write-misleading) — Matthew Honnibal，对无工具权重读取与工具辅助模型编辑的区分。
+41. [LLMs are not superhuman at reading and writing neural network weights](https://www.seangoedecke.com/llms-are-not-superhuman-at-reading-and-writing-neural-network-weights/) — Sean Goedecke，对游戏网络可解释性和 Qwen 编辑流程的技术评论。
+42. [A Survey of Weight Space Learning: Understanding, Representation, and Generation](https://arxiv.org/abs/2603.10090) — 2026-03-10，Weight Space Learning 的理解、表示与生成综述。
+43. [Tracr: Compiled Transformers as a Laboratory for Interpretability](https://arxiv.org/abs/2301.05062) — 将符号程序编译为 Transformer 权重的研究，作为权重可编程性的早期相关工作。
+
 
 ---
 
