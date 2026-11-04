@@ -48,7 +48,7 @@
   }
   section,
   footer {
-    @apply mx-auto max-w-4xl px-4 sm:px-8;
+    @apply mx-auto max-w-7xl px-4 sm:px-8;
   }
   a {
     @apply outline-2 outline-offset-1 outline-skin-fill 
