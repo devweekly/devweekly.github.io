@@ -60,14 +60,7 @@ description: "企业建立内部 AI Agent 平台，不只是部署一个 Agent F
 
 ### 2.1 开发体验层：让团队走一条可复用的路径
 
-平台应提供一条有默认安全配置的开发路径（Golden Path），至少包括：
-
-- 标准项目模板：应用入口、Agent Runtime、配置、日志、健康检查、测试和部署脚手架。
-- 受支持的开发方式：SDK、Framework、Workflow、MCP Tool、Skill，以及必要的低代码入口。
-- 本地调试和测试：模拟用户身份、工具响应、数据权限、模型错误和人工审批。
-- 标准 Agent Manifest：声明负责人、业务用途、风险等级、模型、工具、数据范围、环境、SLO、保留期限和评估集。
-- CI/CD 模板：代码检查、依赖和镜像扫描、权限检查、离线评估、部署、灰度和回滚。
-- 开发者门户：查看可用模型、工具、知识源、示例、限制、申请流程和运行状态。
+平台应提供有默认安全配置的开发路径（Golden Path），覆盖项目模板、受支持的开发框架、本地调试、标准 Agent Manifest、CI/CD 和开发者门户。开发者可以使用不同框架；平台统一接入契约和治理要求，而不是强制采用同一种编程模型。
 
 不要把 Golden Path 做成一个封闭的 Agent DSL。业务团队仍然需要使用成熟的编程框架解决复杂任务。平台统一的是接入契约和治理要求，而不是强迫所有开发者使用同一种编程模型。
 
@@ -102,24 +95,7 @@ Model Gateway 应提供统一的模型访问入口，但不能只做一个简单
 
 没有 Agent Registry，企业很难回答最基本的治理问题。Registry 不只是一个展示 Agent 名称的列表，而是 Agent 的正式资产目录和生命周期入口。
 
-每个 Agent 至少应有以下元数据：
-
-| 字段 | 要回答的问题 |
-| --- | --- |
-| Agent ID / Version | 这是哪个 Agent 的哪个版本？ |
-| Business Owner | 谁对业务结果负责？ |
-| Technical Owner | 谁负责代码、运行和故障处理？ |
-| Purpose / Scope | 它允许完成什么任务？明确禁止什么？ |
-| Risk Tier | 影响范围和风险等级是什么？ |
-| Runtime / Framework | 使用什么运行时和框架？ |
-| Model Policy | 允许调用哪些模型和区域？ |
-| Tool Entitlements | 可以调用哪些工具、执行哪些动作？ |
-| Data Scope | 可以访问哪些数据集、记录和分类级别？ |
-| Human Approval | 哪些动作需要审批？ |
-| Evaluation Profile | 使用哪些测试集、门槛和评估版本？ |
-| Deployment / SLO | 部署环境、可用性目标和运行限制是什么？ |
-| Retention | 会话、Memory、日志和审计数据保留多久？ |
-| Status | Draft、Approved、Production、Suspended、Retired 等状态 |
+Registry 应记录 Agent 的用途、业务与技术负责人、风险等级、运行环境、模型与工具权限、数据范围、审批要求、评估状态、SLO 和生命周期状态。它还应关联 Prompt、Skill、Tool、模型和数据源版本，以便问题发生时还原实际配置。
 
 Registry 还需要关联 Agent 使用的 Prompt、Skill、Tool、模型和数据源版本。否则，发生问题时只能看到 Agent 名称，却无法还原当时实际执行的配置。
 
@@ -129,16 +105,7 @@ Registry 还需要关联 Agent 使用的 Prompt、Skill、Tool、模型和数据
 
 传统应用通常以用户身份或服务账号访问系统。Agent 增加了一个中间执行者：用户提出任务，Agent 规划步骤，工具代表 Agent 调用企业系统。此时必须区分用户、应用、Agent、工具和目标资源的身份。
 
-一个典型的授权链应能够回答：
-
-1. 谁发起了任务？
-2. 哪个应用或 Agent 正在执行？
-3. Agent 是代表用户操作，还是使用受限的服务身份？
-4. 具体调用了哪个 Tool？
-5. Tool 访问了哪个系统、租户、记录或数据集？
-6. 哪条策略允许或拒绝了这次操作？
-7. 是否需要人工批准？谁批准了？
-8. 最终产生了什么结果？
+一次 Agent 操作必须能够追溯发起用户、执行 Agent、使用的身份、调用工具、目标资源、授权决策、审批记录和最终结果。
 
 不能把“Agent 已经通过 SSO 登录”理解成“Agent 可以执行用户要求的所有操作”。Authentication 证明身份，Authorization 决定这个身份在当前上下文中能做什么。
 
@@ -162,14 +129,7 @@ Registry 还需要关联 Agent 使用的 Prompt、Skill、Tool、模型和数据
 
 只用 Agent 级 RBAC 通常不够。Agent 被授权访问 CRM，不代表它可以删除客户、修改信用额度或批量导出客户信息。
 
-权限判断至少要考虑：
-
-- Subject：用户、Agent、Workload、Tool；
-- Action：Read、Search、Draft、Create、Update、Delete、Approve、Execute；
-- Resource：系统、租户、业务对象、记录、字段；
-- Context：用户部门、任务目的、数据分类、时间、环境、风险等级；
-- Delegation：是否代表用户、委托链是否有效；
-- Policy：是否需要审批、双人复核或额外验证。
+权限判断应结合主体、动作、目标资源、用户和任务上下文，以及是否存在有效委托；高风险操作还要纳入审批和职责分离要求。
 
 授权应当在工具执行前由确定性策略完成，不能只靠 Prompt 告诉模型“不要做危险操作”。
 
@@ -223,42 +183,7 @@ MCP 能降低 Agent 与工具之间的协议集成成本，但不能替代企业
 
 还要注意，MCP Server 的工具描述、文档、返回结果都可能影响模型后续行为。被污染的 Tool Description 或恶意工具返回内容可能成为间接 Prompt Injection 的载体。工具目录需要版本审核和供应链管理，而不是允许 Agent 动态连接任意 URL。
 
-### 5.2 Tool Contract 示例
-
-下面是一个用于说明平台接入契约的简化示例，并非某个标准协议：
-
-~~~yaml
-name: crm.customer.read
-version: 1.2.0
-owner: customer-platform
-purpose: Read customer profile for an authorized business task
-
-input:
-  customer_id:
-    type: string
-    required: true
-
-authorization:
-  mode: delegated
-  actions:
-    - customer.read
-  resource_scope: user-authorized-customers
-
-risk:
-  tier: low
-  data_classification: confidential
-
-execution:
-  timeout_seconds: 5
-  idempotent: true
-  retry: bounded
-
-audit:
-  record_actor: true
-  record_resource: true
-  record_policy_decision: true
-  redact_sensitive_output: true
-~~~
+工具应有明确的接入契约，至少说明用途、输入输出、Owner、版本、授权方式、数据范围、风险等级、超时、幂等和审计要求。平台既要检查契约声明，也要通过运行测试验证实际行为；配置中写了 timeout 或 delegated authorization，并不代表执行层真的落实了这些约束。
 
 平台应对 Tool Contract 做静态校验和运行时执行校验。声明了 delegated authorization，不代表实现真的传递并验证了用户身份；声明了 timeout，也不代表下游调用一定能够被中断。关键约束需要通过测试验证。
 
@@ -346,57 +271,13 @@ Agent 的回答质量与它拿到的上下文直接相关，但企业 Context �
 
 #### 6.3.3 Connector 应当是企业级集成组件，而不是简单爬虫
 
-每个 Connector 至少应承担以下职责：
-
-1. **Authentication**：支持 OAuth / OIDC、Service Principal、Workload Identity 或受控的源系统账号；凭证存放在 Vault / KMS，不写入 Agent Prompt 或普通配置。
-2. **Incremental Sync**：使用 Change Token、Cursor、Webhook、Delta API 或 CDC；避免每次全量扫描。
-3. **Content Extraction**：解析 Office、PDF、HTML、邮件、表格、附件和代码；保留标题、章节、表格结构、链接和原始 Source ID。
-4. **Identity & ACL Sync**：同步用户、Group、文件夹继承权限、文档 ACL 和必要的拒绝规则；将源系统身份映射到企业统一身份。
-5. **Normalization**：统一 Document ID、Source ID、Version、Owner、Timestamp、Classification、URL、Content Type 和 ACL Metadata。
-6. **Deletion / Revocation**：源系统删除文件、撤销共享、用户离职或 Group 变更时，及时更新索引和权限缓存。
-7. **Reliability**：管理 Cursor、Retry、Rate Limit、Backoff、Dead Letter Queue、重放和连接器健康状态。
-8. **Observability**：记录同步延迟、成功/失败数量、权限同步错误、解析失败、索引延迟和源系统 API 限流。
+Connector 不只是内容抓取程序。它需要处理身份认证、增量同步、内容解析、源系统 ACL、元数据标准化、删除与权限撤销，以及失败重试和运行监控。源系统的 Native ID、版本、Owner、分类和访问规则应随内容一起保留。
 
 建议把连接器的健康度作为平台 SLO，而不是等用户投诉“为什么搜不到文档”才排查。对每个数据源至少监控最后成功同步时间、源端变更到索引可见的 P95 延迟、ACL 更新延迟、删除传播延迟和失败积压。
 
 #### 6.3.4 统一知识对象模型，但保留源系统语义
 
-一个跨系统 Knowledge Item 可以采用如下逻辑结构（示意，不要求所有字段都物理存入同一张表）：
-
-```json
-{
-  "id": "canonical-content-id",
-  "source": {
-    "system": "confluence",
-    "native_id": "page-12345",
-    "url": "https://wiki.example/page/12345",
-    "version": "17"
-  },
-  "content": {
-    "type": "document",
-    "title": "Customer Data Handling Policy",
-    "text_ref": "object://knowledge/...",
-    "language": "en"
-  },
-  "governance": {
-    "owner": "data-governance",
-    "classification": "confidential",
-    "effective_from": "2026-01-01",
-    "expires_at": null
-  },
-  "access": {
-    "principals": ["group:data-analysts"],
-    "source_acl_version": "acl-9081"
-  },
-  "lifecycle": {
-    "source_updated_at": "2026-10-30T08:15:00Z",
-    "indexed_at": "2026-10-30T08:17:12Z",
-    "deleted": false
-  }
-}
-```
-
-这个模型的目的不是抹平所有源系统差异。Jira Issue、Confluence Page、Salesforce Account 和 Git Commit 仍然有不同业务语义；统一模型只负责共同的标识、来源、治理和检索契约。Source Native ID 必须保留，结果应能够跳转回原系统，并在必要时由原系统重新校验访问权限。
+跨系统知识对象应保留来源系统、原生 ID、版本、内容类型、Owner、数据分类、ACL 和更新时间等信息，同时允许 Jira Issue、Confluence Page、Salesforce Account、Git Commit 等对象保留各自的业务语义。统一的是检索和治理契约，不是把所有数据强行改造成同一种业务对象。
 
 对于表格、代码、架构图、扫描件和复杂 PDF，不要一律按固定字符数切分。解析层应尽量保留文档结构和父子关系；表格需要保留列标题与行上下文，代码需要保留文件路径、符号和版本，图表/扫描件则要明确 OCR 和视觉解析的适用范围及准确性限制。
 
@@ -432,16 +313,7 @@ Group Membership、文档 ACL 和索引更新之间存在时间差。平台必�
 
 #### 6.3.7 Context Assembly：把检索结果变成有边界的任务上下文
 
-检索结果不能无差别地拼接到 Prompt。Context Assembly 应根据任务意图选择数据源、控制预算并保留证据关系：
-
-- Query Planner：判断需要政策文档、历史案例、结构化指标还是实时业务状态。
-- Source Router：选择索引检索、Live API、Semantic Layer 或专用 Tool。
-- Permission Filter：在取回内容时执行身份和资源授权。
-- Freshness Check：检查文档版本、有效期、更新时间和源端状态。
-- Conflict Resolution：发现不同版本、相互冲突或过期内容时，明确呈现冲突，不让模型自行编造一个统一答案。
-- Context Budget：按相关性、权威性、时效性和任务价值选择内容，控制 Token。
-- Evidence Binding：保留每个事实对应的 Source ID、版本和片段位置，最终回答可以引用。
-- Output Validation：对关键业务事实回查权威系统，避免仅凭摘要做不可逆操作。
+检索结果不能无差别地拼接到 Prompt。上下文组装需要结合任务意图选择数据源，先执行权限过滤，再检查来源、版本和时效性；遇到冲突时应保留差异，并控制送入模型的内容规模。关键业务事实应回查权威系统，最终答案应保留可追溯的证据来源。
 
 例如，员工询问“供应商是否可以把客户数据传到某个外部模型”，Agent 可能需要同时读取数据分类政策、第三方风险评估、合同条款和当前批准的模型清单。这里不是单一向量搜索可以解决的问题，而是跨知识域的受控查询与证据组合。
 
@@ -460,15 +332,7 @@ Group Membership、文档 ACL 和索引更新之间存在时间差。平台必�
 
 #### 6.3.9 知识接入验收指标
 
-知识平台上线不能只看“回答是否像人”。至少需要单独评估数据接入、权限、检索和回答四层：
-
-| 层次 | 关键指标 | 验收方式 |
-| --- | --- | --- |
-| Connector | Coverage、Sync Lag、Failure Rate、Deletion Lag | 对源系统抽样对账，验证增量同步和删除传播 |
-| Identity / ACL | ACL Mapping Coverage、Permission Freshness、Unauthorized Retrieval | 使用不同用户、Group 和租户执行正向与负向测试 |
-| Retrieval | Recall@K、Precision@K、MRR、NDCG、Source Diversity | 建立按知识域分层的人工标注 Query Set |
-| Answer | Groundedness、Citation Precision、Freshness、Conflict Handling | 验证每个关键结论是否被引用片段支持 |
-| Operations | P95 Latency、Cost / Query、Index Recovery Time | 压测、故障注入和恢复演练 |
+知识接入的验收应分别覆盖数据源覆盖率与同步时效、权限映射、检索质量、答案依据和运行成本。除了正常用户的检索效果，还要用不同用户和用户组验证无权访问的数据不会出现在检索结果、缓存、引用或运行记录中。
 
 尤其要建立 Permission Regression Set：同一问题由有权限和无权限的用户分别执行，验证无权限用户不仅看不到答案，也不会在检索片段、缓存、引用链接或 Agent Trace 中看到受限内容。
 
@@ -478,18 +342,7 @@ Group Membership、文档 ACL 和索引更新之间存在时间差。平台必�
 
 Agent 执行路径可能包含多轮模型调用、多个工具、外部 API、人工审批和长时间等待。只用一个 HTTP Request 包住整个过程，会遇到请求超时、客户端断连、重复提交、进程重启和状态不一致等问题。
 
-生产 Runtime 至少应支持：
-
-- Task ID、Session ID、Correlation ID 和 Trace ID；
-- 持久化任务状态、Checkpoint 和恢复；
-- 最大执行时间、最大模型调用次数、最大 Tool Call 次数；
-- Token、成本和工具调用预算；
-- 用户取消、管理员终止和 Kill Switch；
-- Tool Timeout、有限重试、Circuit Breaker；
-- 并发控制和租户隔离；
-- 人工审批等待和超时处理；
-- 失败任务的重放、补偿或转人工；
-- 对外部副作用的幂等处理。
+生产 Runtime 需要具备任务状态持久化与恢复、超时和取消、执行预算、并发隔离、审批等待、故障处理及审计追踪能力。涉及外部写操作时，还必须处理幂等和结果确认。
 
 不要对所有错误都自动重试。读操作通常更容易安全重试；写操作需要幂等键或结果核对。对于“请求已发送，但客户端没有收到响应”的情况，平台不能简单判断执行失败后再次提交，否则可能创建两张工单、发两封邮件或重复执行交易。
 
@@ -580,17 +433,7 @@ flowchart TD
 
 传统应用监控通常关注请求、响应、错误和延迟。Agent 还需要理解模型为什么调用工具、调用了什么、使用了哪些上下文、策略是否允许，以及最终业务系统发生了什么变化。
 
-一次 Agent Task 的 Trace 可以包含：
-
-- 用户请求和任务标识；
-- Agent ID、版本、运行环境和租户；
-- Model ID、版本、参数、Token Usage 和延迟；
-- Context Source、检索结果 ID 和版本；
-- Tool Name、Version、参数摘要和执行结果；
-- Policy Decision、审批人和审批记录；
-- Retry、Timeout、Cancellation、Handoff；
-- 最终业务结果、资源 ID 和外部系统返回的交易标识；
-- 任务总耗时、成本和错误分类。
+Trace 应能够关联用户、Agent 及版本、模型调用、上下文来源、工具执行、策略与审批决策，以及最终业务结果。记录粒度应足以支持故障定位和审计，但不意味着要把完整 Prompt、工具参数和业务数据全部写入日志。
 
 [OpenTelemetry GenAI Semantic Conventions](https://github.com/open-telemetry/semantic-conventions-genai/blob/main/docs/gen-ai/gen-ai-agent-spans.md) 已经定义了 Agent Invocation、Workflow、Tool Execution 和 Skill 等相关 Span 语义，可以作为跨框架 Trace 设计的参考。需要注意，相关约定仍在演进；具体字段和稳定性应按采用版本核对。
 
@@ -657,15 +500,7 @@ Sandbox 不是给 Agent 一个普通容器就算完成。要考虑容器逃逸�
 
 隔离不能只看 Kubernetes Namespace。还要核对身份、数据库 Schema、对象存储、Memory、Cache、日志、网络、密钥和模型推理服务是否共享，以及共享部分是否存在跨租户数据泄漏路径。
 
-网络设计至少应明确：
-
-- Agent Runtime 到模型服务、Tool Gateway、数据源的允许路径；
-- 外部模型和 SaaS 工具的 Egress Allowlist；
-- Private Endpoint、VPC/VNet、DNS 和代理策略；
-- MCP Server 的注册、访问和出站限制；
-- 开发、测试、生产环境之间的隔离；
-- Secret、KMS、证书和短期凭证管理；
-- 数据驻留、跨境传输和供应商数据处理区域。
+网络边界应限制 Agent Runtime 到模型、工具和数据源的访问路径，管理外部 Egress、私有网络、密钥和环境隔离，并满足数据驻留与跨境传输要求。
 
 不能让 Agent 通过任意 URL、任意 HTTP 工具或 Shell 访问内部网络。对 SSRF、云 Metadata、内网扫描和凭证窃取的防护，需要落在网络和运行时层。
 
@@ -729,7 +564,7 @@ stateDiagram-v2
     Retired --> [*]
 ~~~
 
-每个状态都应有进入条件和责任人。例如，Production 状态需要业务 Owner、技术 Owner、风险等级、权限审批、评估结果、SLO、监控和回滚方案。Suspended 状态应能够阻止新的任务和工具调用，并按策略处理正在运行的任务。Retired 不只是从门户隐藏，还要撤销身份和工具授权、删除或归档 Memory、清理运行资源、处理审计保留，并检查是否有其他 Agent 依赖它。
+每个生命周期状态都应有明确的准入条件和负责人。暂停时要阻止新的任务和工具调用；退役时要撤销身份与工具授权，清理运行资源，并处理 Memory 和审计数据的保留要求。
 
 Agent、Tool、Skill、Prompt、Model Policy 和 Evaluation Dataset 应当分别版本化。一个 Agent 版本引用了某个 Tool 版本，不能因为 Tool 被原地修改就悄悄改变生产行为。
 
@@ -847,47 +682,9 @@ Salesforce Engineering 的 [Enterprise Agent Platform：Identity, Data, and API 
 | Phase 3：Federated Adoption | 开发者门户、模板、团队隔离、CI/CD、Capability Catalog | 第二、第三个业务团队可以自助创建和发布 Agent |
 | Phase 4：Enterprise Operations | Agent Fleet 管理、SLO、成本归集、审计、退役和事件响应 | 可以统一管理大量 Agent，支持审计、故障处置和资产清理 |
 
-第一个场景最好包含至少一个只读工具、一个受控写工具、一个需要审批的动作，以及一个明确的失败恢复路径。这样可以验证的不只是模型效果，还包括身份、授权、运行时、审批、审计和业务结果。
+第一个场景应覆盖真实的数据访问和至少一种受控业务操作，以验证平台的端到端能力。
 
-## 18. 上线前检查清单
-
-### 业务和所有权
-
-- [ ] Agent 有明确业务目的、使用人群和禁止事项。
-- [ ] 有 Business Owner 和 Technical Owner。
-- [ ] 有可量化的业务结果和人工基线。
-- [ ] 已确定 Agent 是否可以自动执行，还是只提供建议。
-
-### 身份和安全
-
-- [ ] Agent 有独立、可撤销的身份。
-- [ ] 用户委托和 Agent 工作负载身份已区分。
-- [ ] Tool 权限遵循最小权限，并按动作和资源授权。
-- [ ] 高风险操作有审批、职责分离或双人控制。
-- [ ] MCP Server、Tool、Skill 和依赖有准入及版本管理。
-- [ ] Prompt Injection、越权、数据泄漏和跨租户测试已执行。
-- [ ] Shell、Browser 和代码执行运行在隔离环境。
-
-### 数据和模型
-
-- [ ] 数据访问继承用户或业务授权，检索不会绕过 ACL。
-- [ ] Memory 有作用域、保留期限、纠错和删除机制。
-- [ ] 模型、区域、版本和供应商策略已批准。
-- [ ] 模型故障时的 Fallback 不会绕过数据区域和安全策略。
-- [ ] Prompt、Context、Tool Output 的日志策略已经过隐私审查。
-
-### 运行和交付
-
-- [ ] 有任务状态、Checkpoint、超时、取消和恢复能力。
-- [ ] 写操作有幂等处理和结果核对。
-- [ ] 有离线评估、对抗测试和发布门禁。
-- [ ] 有 Trace、Audit、SLO、告警和事件响应流程。
-- [ ] 有单任务预算、团队配额和成本归集。
-- [ ] 可以暂停 Agent、撤销权限、回滚版本和退役资源。
-
-如果这些问题还没有明确答案，Agent 可以继续留在受控试验环境，但不应因为 Demo 效果不错就直接进入生产。
-
-## 19. 最容易犯的架构错误
+## 18. 常见架构误区
 
 | 错误做法 | 后果 | 更合理的处理 |
 | --- | --- | --- |
@@ -904,7 +701,7 @@ Salesforce Engineering 的 [Enterprise Agent Platform：Identity, Data, and API 
 | 把所有日志和 Prompt 永久保存 | 敏感数据扩散，保留和删除要求难以满足 | 分层记录、脱敏、受控证据存储和生命周期管理 |
 | Agent 退役只删除入口 | Token、Memory、Tool Grant 和云资源仍然存在 | 依赖顺序撤销并验证零残留 |
 
-## 20. 结论：企业需要统一的是控制，不是所有 Agent 的实现
+## 19. 结论：企业需要统一的是控制，不是所有 Agent 的实现
 
 随着 Agent 数量增加，平台的主要工作会转向资产和运行治理：每个 Agent 都要有明确用途与负责人，使用获准的模型和工具，以可追溯的身份访问授权数据，并在预算和自主权边界内执行。平台还要支持测试、暂停、回滚和退役。
 
