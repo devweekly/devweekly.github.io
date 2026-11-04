@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import FastAPI, Query
 from pydantic import BaseModel, Field
@@ -178,7 +178,6 @@ def health() -> dict[str, str]:
 
 
 # Shopping-product assessment: source-aware and product-type-aware.
-from typing import Literal
 
 
 EvidenceType = Literal[
