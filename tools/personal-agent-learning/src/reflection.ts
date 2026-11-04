@@ -215,6 +215,11 @@ async function runCopilotReflector(
     const session = await runtime.createSession({
       ...(model ? { model } : {}),
       streaming: true,
+      // Do not rely on client mode alone: make the session's tool surface empty
+      // and fail closed if the runtime ever requests a permission decision.
+      availableTools: [],
+      tools: [],
+      onPermissionRequest: async () => ({ kind: 'reject' }),
     });
     const turn = await runtime.runTurn({
       turnId: newId('reflect-turn'),

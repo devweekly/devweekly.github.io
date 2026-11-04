@@ -2798,6 +2798,50 @@ Lyo 是这里值得额外研究的开源原型。它不是一个“自动摘要�
 
 这些方案并不冲突：Claude Code 和 VS Code 提供 Memory Scope 的产品实践，Mastra 和 Letta 提供后台 Consolidation 的执行模式，Lyo 则把经验投放和结果验证连成可审计的 Learning Loop。
 
+
+#### 直接相关的开源项目与研究实现
+
+截至 2026-10-31，已经出现一批比通用 Memory Framework 更接近“让 Agent 从真实交互中学习个人偏好”的开源项目。不过它们的目标并不相同：有的研究长期用户画像，有的专门处理偏好漂移，有的主要调整 Agent 的表达风格，还有一些只是提供可审计的本地用户记忆。不能因为它们都使用了 Memory 或 Profile，就把它们视为同一种解决方案。
+
+| 项目 | 定位与主要机制 | 最值得借鉴的部分 | 成熟度与适用边界 |
+|---|---|---|---|
+| [PAHF — Personalized Agents from Human Feedback](https://github.com/facebookresearch/PAHF) | Meta / Princeton 的研究实现。把个性化闭环拆成行动前澄清、依据用户记忆执行、行动后接收纠正并更新记忆；公开代码包含购物与具身 Agent，支持 SQL 和 FAISS Memory。 | **双向反馈通道**：行动前解决未知偏好，行动后修正错误或过期偏好。它尤其强调“模型很确信”不代表偏好仍然有效。 | 论文实验使用模拟用户和购物/机器人任务；公开代码注明是简化版本并主要面向 GPT 模型。适合作为反馈闭环和偏好漂移的参考，不是可直接嵌入生产环境的通用偏好服务。[论文](https://arxiv.org/abs/2602.16173) |
+| [PersonalAgent](https://github.com/Monncyann/PersonalAgent) | ACL 2026 Findings 研究实现。将长对话拆成 turn-level segments，以多轮决策过程持续维护个人长期 Profile，并发布面向冷启动的 ALOE-Unseen 数据集。 | **跨 Session 的长期 Profile 更新**，以及冷启动阶段如何逐步获得信息，而不是假设新用户一开始就有完整画像。 | 主要验证多轮对话中的用户信息推断和画像定制；仓库是论文代码与数据，不是通用 Agent Runtime，也没有覆盖文学翻译的偏好评价。[论文与数据](https://arxiv.org/abs/2512.15302) |
+| [MAPLE Framework](https://github.com/prdeepakbabu/maple-framework) | 一个名为 Memory-Adaptive Personalized Learning 的 AAMAS 2026 参考实现，将架构拆成 Memory、Learning、Personalization：记忆负责存取，后台 Learning Agent 异步提取，运行时 Personalization 决定如何使用。 | **把学习和执行分离**。不要让每个用户请求都同步运行一遍完整的偏好归纳；学习结果进入 Memory 后，再由轻量的运行时层按当前任务选择。 | README 披露的评估使用 150 个合成 Persona、10 轮对话和 LLM-as-a-judge，并报告 14.6% 的个性化分数提升。这是项目自述的研究结果，不是独立生产验证。**它与本文参考文献中 AAAI 2025 的另一篇 MAPLE（主动偏好学习）不是同一项目。** |
+| [przm Voice](https://github.com/OneNomad-LLC/przm-voice) | 面向 Coding Agent 的开源行为/表达个性化层。把 correction、approval、frustration、elaboration、simplification、code accepted/rejected 等交互反应转为 Signals，再汇总成近期 Behavior Profile，并影响后续表达和行为。 | **信号分类与变更所有权**：把用户手工维护的稳定规则，与系统从互动中推导的候选经验分开；表达风格和任务角色也不应混为一层。 | 很适合研究代码优先、回答长度、主动确认、直接程度等交互习惯；但偏向 Agent Voice / Style，不等于带有复杂上下文条件、证据反例和任务级 Resolver 的完整 Preference Model。自动适配也需要防止把某类任务中的反馈推广到所有任务。[项目说明](https://github.com/OneNomad-LLC/przm-voice) |
+| [Personal Model](https://github.com/Intuition-Lab/personal-model) | 本地优先的个人上下文 Runtime，通过用户授权的 macOS 活动采集形成证据关联的个人模型，并通过 MCP 提供给 Claude Code、Codex、Cursor 等客户端。用户可以检查、纠正、导出和删除模型数据。 | **跨 Agent 可移植的用户上下文**，以及让重要结论保留来源证据，而不是只有不可解释的摘要。它还把“一个人使用多个 Agent”视为一等场景。 | 它采集的不只是 Agent 对话，还涉及桌面活动，因此权限、采集范围和敏感数据治理比普通聊天日志更重要；项目当前是本地 Runtime，不应误认为已经验证了各种 Agent 的偏好决策质量。 |
+| [FERNme](https://github.com/mirkofr/FERNme) | 以用户为中心的本地记忆引擎。核心写入和检索采用确定性图更新，不要求每条交互都调用 LLM；可选的模型增强只提出候选关系，由用户确认后再进入记忆。支持 SQLite / PostgreSQL、REST 和 MCP。 | **低成本、可检查、用户拥有的偏好记忆**，以及将确定性更新与可选语义增强分开。它还强调记忆规模增长时，不应把完整历史反复注入 Prompt。 | 仓库标注为 v0.4 research preview，并说明其基准主要使用合成或 LLM 生成数据。项目 README 中的 token 和成本数字属于作者自测，需要独立复现；它是 Memory Engine，而不是完整的 Agent 个性化策略。 |
+| [build-your-users-mind](https://github.com/ellmos-ai/build-your-users-mind) | 本地优先的脚本、文档模板和 Source Adapter，将用户自己的 Agent 日志整理成带证据引用的偏好/决策假设，再预测用户可能的反馈，最后用真实反馈评估预测。 | **从“记住偏好”走向“预测后验证”**：把模型推断明确标成假设，保留证据和置信等级；新颖、高影响或不可逆操作不因预测而跳过确认。 | 这是 1.1.0-dev 阶段的方法与脚本集合，不是完整的线上 Agent 框架或 SaaS；它最有价值的是评估闭环和证据纪律，而不是现成的偏好推断算法。 |
+| [Alter](https://github.com/alter-persona/alter) | 通过对话式访谈、用户自己的写作材料和 AI 聊天记录构建 Persona，之后根据纠正和新增材料持续更新；可接入多种 Agent Skills Host。 | **冷启动访谈、用户原始表达样本，以及冲突时先询问而不是直接覆盖**。它展示了如何把表达风格和用户自己的语料结合。 | 更接近个人声音 / Persona 建模或“数字分身”，不等同于任务偏好学习。模仿用户说话方式，不代表 Agent 已经学会何时提问、如何选择工具、何时执行或怎样验证结果。 |
+
+这组项目中，PAHF、PersonalAgent 和 MAPLE 更接近研究层的偏好学习架构；przm Voice 更接近可实际接入开发 Agent 的行为信号与风格适配；Personal Model 和 FERNme 更接近可复用的个人记忆 Runtime；build-your-users-mind 强调可解释假设与预测验证；Alter 则更偏向 Persona 和语言风格。它们覆盖了不同层次，不能简单按 GitHub Star 数量或是否使用向量数据库排序。
+
+#### 相关评测：VitaBench 2.0 适合补足长期偏好测试
+
+[VitaBench 2.0](https://vitabench2.github.io/)（2026）不是一个可直接接入的 Memory Framework，而是一个值得借鉴的长期个性化 Agent Benchmark。它把同一用户的任务按时间顺序组织起来，在任务之间提供新的交互历史，让用户偏好可能出现、变化或过期。评估分别覆盖 **Preference Inference、Preference Utilization、Preference Updating 和 Proactive Interaction**，并提供 Full Context、Agentic Memory、RAG Memory 等可比较设置。[论文](https://arxiv.org/abs/2605.27141)
+
+这类评测比单独计算“能不能从数据库找回一条记忆”更接近实际体验：Agent 是否从碎片化历史中推断出偏好，是否把偏好用于当前的多步骤决策，偏好变化时是否修正旧结论，以及缺少必要信息时是否主动询问。VitaBench 2.0 的任务和用户反馈仍然是基准环境中的模拟，不是文学翻译质量基准；但它的测试维度可以直接迁移到个人 Agent 的回归测试中。
+
+#### 商业产品已经提供了哪些能力？
+
+ChatGPT Memory、Gemini Personal Intelligence、Claude Memory、Microsoft Copilot Memory 已在 §33.1 讨论；Glean 的跨 Agent 用户记忆在 §33.2 讨论。它们说明“用户级偏好 + 跨 Session 记忆 + 从活动中学习”已经成为产品能力，而不只是论文概念。需要区分的是：这些产品大多把推断和记忆管理留在自己的产品生态中，并不等于提供一个可由开发者自由读写、携带 Claim Evidence、版本、Scope 和冲突规则的通用 User Model API。Glean 通过 MCP 暴露跨 Agent 记忆的方向更接近可复用的共享上下文层，但它仍然是企业产品，而不是开源的偏好学习算法。
+
+因此，对个人 Agent 的工程实现，商业产品更适合作为交互体验、用户控制和跨应用使用方式的参照；开源项目和研究代码更适合作为数据模型、反馈闭环和 Runtime 集成的参照。不要把某个产品的“Memory 已开启”当作已经解决了偏好适用性、偏好漂移和执行行为验证。
+
+#### 对当前实现的具体启发
+
+本仓库的 [Personal Agent Learning](https://github.com/saga/devweekly/tree/main/tools/personal-agent-learning) 已经选择了相对克制的路线：从 Copilot / CodeBuddy Runtime callback 采集事件元数据，记录显式反馈和 Outcome，由 Daily Reflector 生成带 Evidence IDs 与 Scope 的候选偏好，经过人工 Review 后才更新版本化 Profile，最后编译成 Agent 可加载的指令。它比“每轮把全部聊天交给 LLM 总结并覆盖 USER.md”更容易审计，也避免把模型猜测直接变成用户事实。
+
+下一步不需要整体照搬某个项目，而是补齐几种互补能力：
+
+1. 参考 PAHF，把**行动前澄清**与**行动后纠正**都作为偏好学习信号。当前 Profile 没有足够证据时，应主动询问；旧偏好导致错误时，应能撤销或降低其有效性。
+2. 参考 przm Voice，增加更细的行为事件分类，例如用户要求展开、要求简化、拒绝代码、接受代码、要求重做、打断当前方向等；但这些信号必须绑定 Agent、Task Type、Project 和时间范围，不能只按全局计数。
+3. 参考 Personal Model / FERNme，保持用户数据可检查、可更正、可删除，并让关键偏好能回到原始 Event / Evidence；是否使用桌面活动采集应作为独立 opt-in，不能默认扩大采集范围。
+4. 参考 build-your-users-mind，把“预测用户可能怎样评价当前行为”与“实际反馈是否验证了预测”分开记录。预测命中率只能说明特定任务与样本上的可预测性，不能据此推断用户的心理属性。
+5. 参考 VitaBench 2.0，把回归测试从 Preference Recall 扩展到 Preference Selection、Behavior Realization、Preference Drift 和 Clarification Quality。
+
+还要保留一个关键边界：**通用 Agent User Model 与 Reader Preference Model 应共享少量稳定的底层偏好，但不能合并成一份无差别的全局风格表。** 例如，代码任务中偏好直接修改、先跑针对性测试，和小说翻译中偏好保留句法节奏、克制解释，是不同领域的主张；只有当证据表明确实存在跨任务稳定性时，才允许把它们提升为更高层的用户偏好。项目级覆盖和本次明确指令始终优先。
+
 ### 44.4 应不应该 Log Everything？应该记录事件，但不应该无条件保存所有内容
 
 我的建议是：**记录所有对学习和复盘有价值的事件元数据；原始 Prompt、模型输出、工具参数和工具结果采用独立、可配置的内容采集策略。**
@@ -3208,3 +3252,13 @@ SQLite 的 FTS 和普通索引可以先解决大多数检索需求。只有在 O
 108. Letta, [Memory & Dreaming](https://docs.letta.com/configuration/memory), official documentation.
 109. Microsoft, [Use Memory with Agents in VS Code](https://code.visualstudio.com/docs/agents/run/memory), official documentation, updated October 28, 2026.
 110. GitHub, [Copilot Memory Supports User Preferences](https://github.blog/changelog/2026-05-15-copilot-memory-supports-user-preferences-for-pro-pro-users/), product announcement, May 15, 2026.
+
+111. Liang et al. (2026), [Learning Personalized Agents from Human Feedback (PAHF)](https://arxiv.org/abs/2602.16173), arXiv, February 2026; [official code](https://github.com/facebookresearch/PAHF).
+112. [PersonalAgent](https://github.com/Monncyann/PersonalAgent), [Towards Proactive Personalization through Profile Customization for Individual Users in Dialogues](https://arxiv.org/abs/2512.15302), ACL 2026 Findings.
+113. [MAPLE Framework](https://github.com/prdeepakbabu/maple-framework), Memory-Adaptive Personalized Learning for Agentic AI Systems, AAMAS 2026 reference implementation; project-reported evaluation uses synthetic personas.
+114. [przm Voice](https://github.com/OneNomad-LLC/przm-voice), open-source behavioral signal and voice-personalization layer for coding agents, Apache-2.0 repository.
+115. [Personal Model](https://github.com/Intuition-Lab/personal-model), local-first, evidence-linked personal memory Runtime and MCP integrations for coding agents.
+116. [FERNme](https://github.com/mirkofr/FERNme), Fuzzy-Edged Recall Network, Apache-2.0 research-preview memory engine; README notes synthetic / LLM-authored benchmark data.
+117. [build-your-users-mind](https://github.com/ellmos-ai/build-your-users-mind), local-first evidence-backed user preference and decision-support model from authorized agent interaction logs.
+118. [Alter](https://github.com/alter-persona/alter), open-source Agent Skill for building and evolving a user voice / persona from interviews, writing samples and interaction feedback.
+119. Chen et al. (2026), [VitaBench 2.0: Evaluating Personalized and Proactive Agents in Long-Term User Interactions](https://arxiv.org/abs/2605.27141), arXiv, May 2026; [benchmark and leaderboard](https://vitabench2.github.io/).

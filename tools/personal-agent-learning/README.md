@@ -15,18 +15,18 @@
 
 本项目优先复用 `saga/common-agent-lib`，不复制其中的 Runtime / Tracing 实现：
 
-| 作用 | Package | 版本依据 |
+| 作用 | 本工具依赖 | SDK 版本和来源 |
 |---|---|---|
-| Copilot SDK | `@github/copilot-sdk` | 本地工具固定 1.0.17，与 `agentic-data-architect/package-lock.json` 的已锁版本一致 |
-| Copilot Runtime | `@saga/copilot-agent-runtime` | `common-agent-lib/packages/copilot-agent-runtime` |
-| CodeBuddy SDK | `@tencent-ai/agent-sdk` | 固定 0.3.276，与 shared CodeBuddy Runtime 的 exact dependency 一致 |
-| CodeBuddy Runtime | `@saga/codebuddy-agent-runtime` | `common-agent-lib/packages/codebuddy-agent-runtime` |
-| Trace / SQLite | `@saga/agent-tracing` | `common-agent-lib/packages/agent-tracing` |
-| Contracts | `@saga/agent-contracts` | `common-agent-lib/packages/agent-contracts` |
+| Copilot Runtime | `@saga/copilot-agent-runtime@0.1.0` | 内部依赖 `@github/copilot-sdk ^1.0.15`；本工具固定 `@github/copilot-sdk 1.0.17`，与 `agentic-data-architect/package-lock.json` 一致 |
+| CodeBuddy Runtime | `@saga/codebuddy-agent-runtime@0.1.0` | 内部精确依赖 `@tencent-ai/agent-sdk 0.3.276`，与 common-agent-lib 的验证基线一致 |
+| Trace / SQLite | `@saga/agent-tracing@0.1.0` | 由 `@saga/agent-contracts@0.1.0` 提供 Trace Event / Usage Schema |
+| Contracts | `@saga/agent-contracts@0.1.0` | provider-neutral contracts |
+
+本工具不直接调用 `@tencent-ai/agent-sdk`；CodeBuddy SDK 的导入、异步 query stream、timeout、interrupt、session ID 和 usage 统一由 `@saga/codebuddy-agent-runtime` 负责。Copilot 也通过 `@saga/copilot-agent-runtime` 处理 Session / Turn / cancel / usage；本工具仅直接导入 `CopilotClient`，用于配置 `mode: "empty"` 的无工具 Reflector Client。
 
 这里刻意以 common-agent-lib 的 CodeBuddy Runtime 0.3.276 为基线。agentic-data-architect 当前 lockfile 的 SDK 版本是 0.3.274；它的调用方式是应用自己直接使用 `query()`，并拥有自己的工具授权、workspace 限制和 Investigation 业务状态。本工具使用 common-agent-lib 的已封装 `query()` Runtime，因此跟随其已经探测过的 0.3.276，不把 0.3.274 和 0.3.276 混成一个“兼容版本”。
 
-CodeBuddy SDK 的 `query()` 是异步消息流。common-agent-lib 已处理初始化 timeout、迭代读取 cancellation、late query handle interruption、Session ID、usage 和 Structured Output。Reflector 只使用无普通工具的结构化输出调用。Copilot Reflector 使用 `mode: "empty"`，不允许它在整理日志时调用文件、Shell 或 MCP 工具。
+CodeBuddy SDK 的 `query()` 是异步消息流。common-agent-lib 已处理初始化 timeout、迭代读取 cancellation、late query handle interruption、Session ID、usage 和 Structured Output。Reflector 只使用无普通工具的结构化输出调用。Copilot Reflector 使用 `mode: "empty"`，并在 Session 层显式设置 `availableTools: []`、`tools: []`；Permission callback 也会 fail-closed 拒绝任何意外的工具请求。它只负责反思，不具备文件、Shell 或 MCP 工具面。
 
 ## 安装
 
@@ -40,22 +40,29 @@ workspace/
   common-agent-lib/
 ```
 
-在本目录运行：
+在本目录先执行：
 
 ```bash
-npm install
 npm run setup:shared
 npm run build
 npm test
 ```
 
-也可以通过环境变量指定 common-agent-lib 路径：
+默认假设两个仓库并列：
+
+```text
+workspace/
+  devweekly/
+  common-agent-lib/
+```
+
+如目录不同，可指定 common-agent-lib 的绝对路径：
 
 ```bash
 COMMON_AGENT_LIB_DIR=/absolute/path/to/common-agent-lib npm run setup:shared
 ```
 
-`setup:shared` 会安装并构建 common-agent-lib，然后把四个已构建 package 链接到当前工具的 `node_modules/@saga`。SDK 版本按上表固定。它不会复制用户数据或修改 common-agent-lib 源码。
+`setup:shared` 会检查四个 `@saga/*` package 的名称与版本，检查两个底层 SDK 的兼容性基线，安装并构建 common-agent-lib，然后在安装本工具时临时把 `@saga/*` 依赖解析到本机 checkout。它不会把绝对路径写入提交的 `package.json`，也不会生成依赖机器路径的 lockfile。CodeBuddy SDK 不再由本工具重复声明，避免与 shared Runtime 的 0.3.276 产生双重版本来源。
 
 ## 初始化和基本命令
 
@@ -109,7 +116,7 @@ try {
     turnId,
     lockKey: session.sessionId,
     session,
-    prompt: preferences.instructions + '\\n\\n' + prompt,
+    prompt: preferences.instructions + '\n\n' + prompt,
     timeoutMs: 300_000,
     handlers: {
       onDelta: existingOnDelta,
@@ -149,7 +156,7 @@ const observerHandlers = observer.codeBuddyHandlers(context);
 
 try {
   const result = await runtime.run({
-    prompt: preferences.instructions + '\\n\\n' + prompt,
+    prompt: preferences.instructions + '\n\n' + prompt,
     model,
     cwd: process.cwd(),
     timeoutMs: 300_000,
@@ -183,7 +190,7 @@ npm run dev -- outcome --status reworked \\
   --text "结果遗漏了测试，要求重新执行。"
 ```
 
-反馈文本只在用户明确输入 `feedback --text` 或调用 `observer.recordFeedback(context, 'correction', text)` 时保存；保存前会移除常见 Secret / Bearer Token。任务结果可以调用 `observer.recordOutcome(context, 'reworked', note)`；偏好投放通过 `observer.resolvePreferences(context, overrides)` 自动记录 Profile 版本和实际使用的 Preference IDs。完整 Prompt、Assistant response、Reasoning、工具参数和工具结果都不由 Observer 保存。
+反馈文本只在用户明确输入 `feedback --text` 或调用 `observer.recordFeedback(context, 'correction', text)` 时保存；保存前会移除常见 Secret / Bearer Token。 每日 Reflector 会把这些已脱敏的显式反馈文本和不含正文的运行元数据发送给你指定的 Copilot 或 CodeBuddy 模型进行分析；如果你要求分析完全离线，必须使用本地模型/本地执行环境，不能把“本地 SQLite”误认为“分析过程不会出网”。任务结果可以调用 `observer.recordOutcome(context, 'reworked', note)`；偏好投放通过 `observer.resolvePreferences(context, overrides)` 自动记录 Profile 版本和实际使用的 Preference IDs。完整 Prompt、Assistant response、Reasoning、工具参数和工具结果都不由 Observer 保存。
 
 ## 每日归纳、审核和生效
 

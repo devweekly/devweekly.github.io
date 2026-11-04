@@ -18,7 +18,10 @@
   },
   "dependencies": {
     "@github/copilot-sdk": "1.0.17",
-    "@tencent-ai/agent-sdk": "0.3.276",
+    "@saga/agent-contracts": "0.1.0",
+    "@saga/agent-tracing": "0.1.0",
+    "@saga/codebuddy-agent-runtime": "0.1.0",
+    "@saga/copilot-agent-runtime": "0.1.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {

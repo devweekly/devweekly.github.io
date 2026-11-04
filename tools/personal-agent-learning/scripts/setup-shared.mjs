@@ -1,4 +1,4 @@
-import { existsSync, lstatSync, mkdirSync, rmSync, symlinkSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
@@ -7,6 +7,12 @@ const projectDir = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const commonDir = resolve(
   process.env.COMMON_AGENT_LIB_DIR ?? join(projectDir, '..', '..', '..', 'common-agent-lib'),
 );
+const packageNames = [
+  'agent-contracts',
+  'agent-tracing',
+  'copilot-agent-runtime',
+  'codebuddy-agent-runtime',
+] as const;
 
 function run(command, args, cwd) {
   const result = spawnSync(command, args, {
@@ -20,49 +26,77 @@ function run(command, args, cwd) {
   }
 }
 
-const packageNames = [
-  'agent-contracts',
-  'agent-tracing',
-  'copilot-agent-runtime',
-  'codebuddy-agent-runtime',
-];
+function readManifest(filename) {
+  if (!existsSync(filename)) throw new Error(`Cannot find ${filename}`);
+  return JSON.parse(readFileSync(filename, 'utf8'));
+}
+
+const expected = {
+  'agent-contracts': '0.1.0',
+  'agent-tracing': '0.1.0',
+  'copilot-agent-runtime': '0.1.0',
+  'codebuddy-agent-runtime': '0.1.0',
+};
 
 for (const name of packageNames) {
   const manifest = join(commonDir, 'packages', name, 'package.json');
-  if (!existsSync(manifest)) {
+  const metadata = readManifest(manifest);
+  if (metadata.name !== `@saga/${name}`) {
+    throw new Error(`Unexpected package identity in ${manifest}: ${metadata.name}`);
+  }
+  if (metadata.version !== expected[name]) {
     throw new Error(
-      `Cannot find ${manifest}. Clone saga/common-agent-lib beside saga/devweekly, or set COMMON_AGENT_LIB_DIR.`,
+      `Unsupported @saga/${name} version ${metadata.version}; expected ${expected[name]}. ` +
+      'Review its API changes before updating this integration.',
     );
   }
-  const metadata = JSON.parse(readFileSync(manifest, 'utf8'));
-  if (!metadata.name?.startsWith('@saga/')) {
-    throw new Error(`Unexpected package identity in ${manifest}`);
-  }
 }
 
-console.log('Installing the common-agent-lib workspace...');
-run('npm', ['install'], commonDir);
+const copilotRuntime = readManifest(join(commonDir, 'packages/copilot-agent-runtime/package.json'));
+const codeBuddyRuntime = readManifest(join(commonDir, 'packages/codebuddy-agent-runtime/package.json'));
+if (copilotRuntime.dependencies?.['@github/copilot-sdk'] !== '^1.0.15') {
+  throw new Error('The shared Copilot runtime SDK range changed; re-check the pinned host version before continuing.');
+}
+if (codeBuddyRuntime.dependencies?.['@tencent-ai/agent-sdk'] !== '0.3.276') {
+  throw new Error('The shared CodeBuddy runtime SDK pin changed; re-run compatibility probes before continuing.');
+}
 
-// Keep the SDKs on the versions used by this integration: Copilot 1.0.17
-// matches agentic-data-architect's lockfile; CodeBuddy 0.3.276 matches the
-// tested common-agent-lib CodeBuddy runtime baseline.
-run('npm', ['install', '--no-save', '@github/copilot-sdk@1.0.17', '@tencent-ai/agent-sdk@0.3.276'], commonDir);
+console.log('Installing shared runtime dependencies...');
+run('npm', ['install', '--package-lock=false'], commonDir);
+
+// Keep both SDK runtimes aligned with the versions exercised by Saga applications:
+// Copilot 1.0.17 is the agentic-data-architect lockfile version;
+// CodeBuddy 0.3.276 is common-agent-lib's three-layer-probed exact pin.
+run('npm', [
+  'install',
+  '--no-save',
+  '--package-lock=false',
+  '@github/copilot-sdk@1.0.17',
+  '@tencent-ai/agent-sdk@0.3.276',
+], commonDir);
+
+console.log('Building common-agent-lib workspace packages...');
 run('npm', ['run', 'build'], commonDir);
 
-console.log('Installing this tool's CLI dependencies...');
-run('npm', ['install'], projectDir);
-
-const scopeDir = join(projectDir, 'node_modules', '@saga');
-mkdirSync(scopeDir, { recursive: true });
+// The shared packages are local workspace packages and may not be published to npm.
+// Temporarily resolve the declared @saga package names to this checkout. Do not
+// persist absolute machine paths in package.json or generate a machine-specific lockfile.
+const packageJsonPath = join(projectDir, 'package.json');
+const originalPackageJson = readFileSync(packageJsonPath, 'utf8');
+const projectManifest = JSON.parse(originalPackageJson);
+const originalDependencies = { ...projectManifest.dependencies };
 
 for (const name of packageNames) {
-  const source = join(commonDir, 'packages', name);
-  const target = join(scopeDir, name);
-  if (existsSync(target) || (() => { try { lstatSync(target); return true; } catch { return false; } })()) {
-    rmSync(target, { recursive: true, force: true });
-  }
-  symlinkSync(source, target, process.platform === 'win32' ? 'junction' : 'dir');
-  console.log(`Linked @saga/${name}`);
+  projectManifest.dependencies[`@saga/${name}`] = `file:${join(commonDir, 'packages', name)}`;
 }
 
-console.log('Shared runtime packages are ready.');
+try {
+  writeFileSync(packageJsonPath, JSON.stringify(projectManifest, null, 2) + '\n', 'utf8');
+  console.log('Installing Personal Agent Learning and resolving @saga packages from local source...');
+  run('npm', ['install', '--no-package-lock'], projectDir);
+} finally {
+  projectManifest.dependencies = originalDependencies;
+  writeFileSync(packageJsonPath, JSON.stringify(projectManifest, null, 2) + '\n', 'utf8');
+}
+
+console.log('Personal Agent Learning is installed against the common-agent-lib runtime packages.');

@@ -57,7 +57,7 @@ export function renderPreferenceInstructions(
   for (const preference of preferences) {
     lines.push(`- [${preference.direction.toUpperCase()}] ${preference.dimension}: ${markdownEscape(preference.statement)}`);
   }
-  return lines.join('\\n');
+  return lines.join('\n');
 }
 
 function scopeLabel(item: ProfilePreference): string {
