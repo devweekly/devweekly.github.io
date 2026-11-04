@@ -161,10 +161,13 @@
     background-color: rgb(var(--color-card));
     padding: 1.5rem 1rem;
   }
+  /* Mermaid owns its SVG geometry and paint. Do not inherit the global icon SVG rules. */
   .prose .mermaid svg {
+    display: block;
     width: 100%;
     max-width: 640px;
     height: auto;
+    fill: initial;
   }
   .prose ol {
     color: rgb(var(--color-text-base));
