@@ -2,7 +2,7 @@
 author: SW
 featured: false
 draft: false
-description: 从参数化知识、SAE 特征和 Circuit Tracing 出发，梳理 LLM 回答与内部知识的关联方法，比较开源工具、研究论文和 2026 年产业实践，并给出可运行的 Python PoC、工程架构、评估方法与行业影响。
+description: 从参数化知识、SAE 特征和 Circuit Tracing 出发，梳理 LLM 回答与内部知识的关联方法，比较国际研究、中国团队成果及 DeepSeek、Qwen、Kimi 等开源模型的内部分析实践，并给出 Python PoC、工程架构与评估方法。
 pubDatetime: 2026-11-01T08:00:00Z
 title: 从 LLM 回答追溯内部知识：Mechanistic Interpretability、Circuit Tracing 与 Knowledge Attribution
 tags:
@@ -13,6 +13,9 @@ tags:
   - knowledge-attribution
   - model-observability
   - research
+  - open-weight-models
+  - deepseek
+  - qwen
 ---
 
 # 从 LLM 回答追溯内部知识：Mechanistic Interpretability、Circuit Tracing 与 Knowledge Attribution
@@ -1044,6 +1047,279 @@ flowchart TD
 
 一个更务实的目标不是“让每个回答都能解释自己”，而是：**当模型在重要任务上出现异常时，企业有能力针对指定模型和指定输出运行可复现的内部实验，并把观察、干预、训练数据和业务证据分开记录。**
 
+## 十四、中国研究与中国开源模型：从 Qwen-Scope 到 DeepSeek / Kimi 的内部分析
+
+中国团队已经在机制可解释性（Mechanistic Interpretability）上形成了可辨认的研究和工具链，尤其是 SAE 特征、事实知识的 Feature 级分析、安全神经元、推理过程的内部表征，以及面向 Qwen 的模型专用 SAE。与此同时，DeepSeek、Kimi 等模型也开始成为国际研究团队直接分析的对象。
+
+先区分两个经常被混在一起的范围：
+
+- **中国团队开展的研究**：作者或主要研发团队来自中国高校、研究院或中国模型团队，例如清华、北大、中科院、复旦 / OpenMOSS、Qwen 团队和吉林大学。
+- **以中国模型为对象的研究**：论文可能由海外高校或国际公司完成，但实验对象是 DeepSeek、Qwen、Kimi 等模型。这些论文同样有价值，不过不能把它们归类成中国研究机构的成果。
+
+这一区分很重要。某个 Qwen 模型被国际研究团队分析，不等于 Qwen 官方发布了对应解释工具；某个中国高校提出了 SAE 方法，也不代表它已经在 DeepSeek、GLM 和 Kimi 上全部完成验证。
+
+### 14.1 中国研究团队的几条主线
+
+#### A. 中科院自动化所 / 中国科学院大学：The Knowledge Microscope
+
+论文：[The Knowledge Microscope: Features as Better Analytical Lenses than Neurons](https://aclanthology.org/2025.acl-long.516/)，ACL 2025。
+
+这项研究直接对应本文最初的问题：模型内部的事实知识究竟应该用什么粒度来观察？此前不少工作以 MLP Neuron 为分析单位，但一个 Neuron 可能具有多义性（Polysemanticity），同时参与多种不同语义或行为。研究团队提出把 SAE 分解出的 Feature 作为更细粒度的分析对象。
+
+论文给出三个主要发现：
+
+1. 相比单独 Neuron，Feature 对事实知识表达具有更强影响力，也更容易解释。
+2. Feature 对相关事实与无关事实呈现出更有区分度的激活模式。
+3. 基于 Feature 的 FeatureEdit 在删除模型中的隐私敏感知识方面优于 Neuron 级方法。
+
+它的价值是把“某个事实与哪些内部单元有关”推进到 Feature 级，并进一步尝试知识编辑和隐私删除。这里的 Feature 仍然是 SAE 学出来的表征方向，不是模型内置的知识条目，也不意味着可以从某个 Feature 直接读取训练文档 ID。
+
+论文页面说明代码和数据将会提供，但目前不应把它描述成已经具有成熟、通用的生产接口。实施时需要以作者后续正式代码发布为准。
+
+#### B. 清华大学：Safety Neurons 与动态 Activation Patching
+
+论文：[Towards Understanding Safety Alignment: A Mechanistic Perspective from Safety Neurons](https://papers.neurips.cc/paper_files/paper/2025/hash/12a00d85a76fe258e1242c3aced03250-Abstract-Conference.html)，NeurIPS 2025。
+
+代码：[THU-KEG/SafetyNeuron](https://github.com/THU-KEG/SafetyNeuron)。
+
+这项工作研究的是模型安全对齐机制，而不是事实知识本身。团队先比较模型在不同对齐阶段的内部激活，使用 Inference-time Activation Contrasting 找到与安全行为变化相关的候选神经元，再通过 Dynamic Activation Patching 检验它们对生成行为的因果影响。
+
+论文报告，在其评估设置中，约 5% 的神经元构成有效的 Safety Neurons；只对这些神经元做激活修补，可以恢复超过 90% 的安全表现，同时不显著影响一般能力。这些是论文作者在指定模型和基准上的实验结果，不应直接视作所有模型都能达到的指标。
+
+值得注意的是，这项研究明确测试了四种开源模型：Llama 2 7B、Mistral 7B、Gemma 7B 和 **Qwen2.5 3B**。因此它是目前可以核验的、中国团队直接在 Qwen 模型内部做 Activation Patching 的研究案例之一，但研究目标是安全行为，而不是“某个事实从哪里来”。
+
+代码仓库也具备较好的研究复现入口：项目实现了继承 TransformerLens 和 Hugging Face Transformers 的 HookedModel，提供 Activation Change Score、Neuron Ranking 和 Dynamic Activation Patching。仓库 README 明确说明当前的生成干预实现主要覆盖 Greedy Decoding，其他 Sampling 策略不能默认视为同等支持。
+
+#### C. 复旦大学 / 上海人工智能实验室 / 上海创新研究院：OpenMOSS 与 Llamascopium
+
+项目：[OpenMOSS/Llamascopium](https://github.com/OpenMOSS/Llamascopium)。
+
+研究基础之一：[Llama Scope: Extracting Millions of Features from Llama-3.1-8B with Sparse Autoencoders](https://arxiv.org/abs/2410.20526)。
+
+OpenMOSS 的价值不只是发布一批 Feature，而是持续建设 SAE / Transcoder 的训练、分析、分布式计算和可视化工具链。其早期 Llama Scope 为 Llama 3.1 8B 提供跨 Layer 和子层的 SAE；后续 Llamascopium 已发展为支持多种稀疏字典方法的框架，包括 SAE、Transcoder、Crosscoder 和 Lorsa（Low-Rank Sparse Attention）等。
+
+这条路线和 Anthropic 的 Circuit Tracing 关系密切：要把模型计算路径表示成 Feature 级图结构，除了捕获 Activation，还需要能够解释 MLP 或 Attention 计算的稀疏替代表示。OpenMOSS 的研究重点之一正是让这类表示能够规模化训练和分析。
+
+更重要的是，当前 Llamascopium 文档已经提供了针对 **Qwen3 1.7B** 的 Llama-Scope 2 Transcoder 加载示例：
+
+~~~python
+from llamascopium import SparseDictionary
+
+sae = SparseDictionary.from_pretrained(
+    "OpenMOSS-Team/Llama-Scope-2-Qwen3-1.7B:transcoder/8x/k128/layer12_transcoder_8x_k128",
+    fold_activation_scale=False,
+)
+~~~
+
+这意味着 Qwen3 不再只有“可以用 Hook 读取 Hidden State”这种底层能力，而是至少有一套可以直接加载的模型专用 Transcoder 工件。它仍然只是指定模型、指定 Layer、指定版本的工件，不能拿来分析 Qwen3.5、DeepSeek 或 GLM。
+
+#### D. 清华大学 / 北京大学：LinguaLens 与语言机制分析
+
+论文：[LinguaLens: Towards Interpreting Linguistic Mechanisms of Large Language Models via Sparse Auto-Encoder](https://arxiv.org/abs/2502.20344)。
+
+这项工作把机制分析扩展到语言学维度：形态、句法、语义和语用等语言特征。研究构造中英文最小对照和反事实数据，再用 SAE 定位对应特征，并通过 Feature Intervention 检查它们是否会影响模型对语言现象的处理。论文实验使用 Llama 3.1 8B，而不是 Qwen 或 DeepSeek。
+
+另一个相关成果是：[Unveiling Language-Specific Features in Large Language Models via Sparse Autoencoders](https://aclanthology.org/2025.acl-long.229/)，ACL 2025，代码为 [Aatrox103/multilingual-llm-features](https://github.com/Aatrox103/multilingual-llm-features)。
+
+它研究 SAE Feature 的语言特异性，发现一些 Feature 与特定语言显著相关；消融某种语言的 Feature，可能主要损害该语言能力，而对其他语言影响较小。研究还利用语言 Feature 改进 Steering Vector，以控制生成语言。
+
+这些研究不等同于事实归因，但它们对中文、英文和跨语言回答的内部机制分析很有价值。例如，模型把中文问题转成英文式推理、在中文实体与英文术语之间切换，可能涉及语言相关 Feature 的协同，而不是简单的 Token 翻译。
+
+### 14.2 Qwen：目前模型专用工具链最完整的一条路线
+
+#### A. Qwen-Scope：Qwen 团队正式发布的 SAE 套件
+
+论文：[Qwen-Scope: Turning Sparse Features into Development Tools for Large Language Models](https://arxiv.org/abs/2605.11887)，2026 年 5 月。
+
+官方介绍：[Qwen-Scope: Decoding Intelligence, Unleashing Potential](https://qwen.ai/blog?id=qwen-scope)。
+
+Qwen-Scope 是目前最值得关注的模型专用成果之一。它不是简单地在某个 Qwen Checkpoint 上临时训练一个 SAE，而是发布了覆盖 Qwen3 和 Qwen3.5 的 SAE 组合：论文列出 **14 组 SAE、覆盖 7 个模型变体**，包括 Dense 和 Mixture-of-Experts 架构。
+
+论文将用途扩展到四个方向：
+
+| 用途 | 具体做法 | 与内部知识分析的关系 |
+|---|---|---|
+| Inference-time Steering | 使用 SAE Feature 控制语言、概念或偏好，不直接修改模型权重 | 检验 Feature 是否具有可干预的行为影响 |
+| Evaluation Analysis | 对比评测样本激活的 Feature | 分析不同 Benchmark 是否覆盖重复或不同的能力表征 |
+| Data-centric Workflows | 使用 Feature 做多语言毒性分类和安全数据合成 | 把模型内部表征用于数据筛选与合成 |
+| Post-training Optimization | 将 SAE 信号加入 SFT / RL 优化 | 让内部特征成为模型训练和行为调整的反馈信号 |
+
+这里出现了一个值得重视的变化：SAE 不再只是模型训练完成后的“显微镜”，而是逐渐成为模型研发中的一种表示接口（Representation-level Interface）。它能够参与评测、数据处理、推理时控制和后训练优化。
+
+但仍然要区分两个目标：
+
+- Qwen-Scope 可以帮助观察和操纵某些内部 Feature。
+- 它并没有承诺把任意回答中的每个 Claim 精确映射到某条训练样本或唯一的模型参数。
+
+对于本文关心的“回答 Token 与内部知识关联”，Qwen-Scope 给出的是 Feature 侧的模型专用基础；还需要进一步结合 Token Alignment、Attribution、Activation Patching 和事实级评测，才能建立可验证的回答归因链。
+
+#### B. Qwen2.5 的安全神经元与 Qwen3 的 Transcoder
+
+把不同研究组合起来看，目前至少可以确认三类 Qwen 内部分析资产：
+
+- Qwen2.5 3B：清华 SafetyNeuron 在安全对齐研究中做 Neuron 定位和 Dynamic Activation Patching。
+- Qwen3 1.7B：OpenMOSS Llama-Scope 2 / Llamascopium 提供特定 Layer 的 Transcoder。
+- Qwen3 / Qwen3.5：Qwen-Scope 提供模型专用 SAE 组，支持 Feature 分析和若干下游工作流。
+
+这三者的粒度和目的不同。不要把 Safety Neuron、SAE Feature 和 Transcoder Feature 当成同一种对象，也不要把一个项目中学到的 Feature ID 套用到另一个项目。
+
+### 14.3 DeepSeek：推理过程已经成为内部分析的重点对象
+
+DeepSeek 的研究有一个特点：相比一般知识问答，它的推理模型会产生更长的中间推理序列，因此研究者可以重点分析 Thinking Token、Reasoning Feature 和最终答案之间的关系。不过，**分析 DeepSeek-R1-Distill-Qwen 并不等于分析 DeepSeek 原始 671B 模型**：前者是用 DeepSeek-R1 生成的样本蒸馏到 Qwen 基础模型上的独立权重。
+
+#### A. 吉林大学：Thinking vs. NoThinking
+
+论文：[Thinking vs. NoThinking: Towards Interpreting Reasoning Mechanisms of Large Language Models via Sparse Autoencoders](https://arxiv.org/abs/2608.08168)，2026 年 8 月预印本。
+
+研究团队来自吉林大学人工智能学院，并与香港理工大学合作。论文直接对 **DeepSeek-R1-Distill-Qwen-7B** 做内部表征分析，而不是通过 API 观察可见的推理文本。
+
+实验方法比较明确：
+
+- 以 DeepMath-103K 数学问题作为激活采集语料。
+- 在模型 Residual Stream 的第 13 层提取 Activation。
+- 分别对 Thinking 和 NoThinking 两种运行模式训练 Top-K SAE。
+- Thinking 模式采集约 108M Token，NoThinking 模式约 65M Token。
+- 对高激活 Feature 做逐步抑制，观察推理文本和数学答案结构的变化。
+
+作者报告的观察包括：Thinking 模式更依赖少数高强度 Feature；NoThinking 模式的 Feature 激活更分散。对少数主要 Feature 做抑制后，模型更容易出现 LaTeX / boxed 答案结构退化、元认知表达增加、重复和低信息量续写等现象。
+
+这个研究很有价值，因为它没有把可见的 CoT 文本直接当成模型的内部算法，而是将 Thinking 和 NoThinking 两种推理模式的 Activation 分开采集、训练 SAE，再用干预验证 Feature 与行为之间的关系。
+
+它的边界也很清楚：它研究的是 DeepSeek-R1 蒸馏到 Qwen 7B 后的数学推理行为，主要聚焦第 13 层和一组高影响 Feature；不能据此推断原始 DeepSeek-R1 671B 的全部推理机制。arXiv 页面目前未列出官方代码链接，复现需要根据论文方法重新实现或等待作者发布代码。
+
+#### B. Microsoft：从 Reasoning Trace 到最终答案的机制分析
+
+论文：[From Reasoning to Answer: Empirical, Attention-Based and Mechanistic Insights into Distilled DeepSeek R1 Models](https://aclanthology.org/2025.emnlp-main.198/)，EMNLP 2025。
+
+代码：[microsoft/ACV/tree/main/misc/R2A](https://github.com/microsoft/ACV/tree/main/misc/R2A)。
+
+这项研究由 Microsoft 团队完成，实验对象是三种 DeepSeek-R1 蒸馏模型。研究分为三步：
+
+1. 比较保留和移除显式 Reasoning Trace 后的答题表现。
+2. 分析 Attention，发现部分中间层 Reasoning-Focus Heads 会跟踪推理轨迹，包括自我检查信号。
+3. 使用 Activation Patching 改变关键推理 Token 的激活，检查最终答案是否随之改变。
+
+研究结果支持一个重要结论：在这些被测模型中，最终答案确实会受到先前推理激活的影响；改变关键推理 Token 的内部信号，可以可靠地改变最终答案。
+
+代码仓库提供了可复现的实验 Notebook、Attention 分析和 Activation Patching 代码。其 README 给出一个明确的运行入口：
+
+~~~bash
+python trace_collection.py \
+  --model_path "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B" \
+  --dataset "MATH-500" \
+  --with_math_instruction \
+  --with_reasoning \
+  --limit 1
+~~~
+
+这是一个很好的入门实验：先收集同一问题的推理轨迹，再分析 Answer Token 对 Reasoning Token 的 Attention，最后通过 Patching 验证方向性影响。它比直接上完整 671B 模型的 SAE 训练容易得多。
+
+#### C. Goodfire：在完整 DeepSeek-R1 671B 上训练 SAE
+
+研究：[Under the Hood of a Reasoning Model](https://www.goodfire.com/research/under-the-hood-of-a-reasoning-model)。
+
+代码和数据：[goodfire-ai/r1-interpretability](https://github.com/goodfire-ai/r1-interpretability)。
+
+Goodfire 在 671B 参数的 DeepSeek-R1 上训练并开放了两种 SAE：一种面向通用推理，一种面向数学推理。项目还发布了大量 Feature 激活样例的 SQL 数据库和 Colab Notebook，以降低其他研究者必须自行运行完整大模型的门槛。
+
+研究展示的 Feature 包括回溯、引用先前陈述、实体跟踪等推理相关模式。这个工作的重要意义是证明 SAE 不只适用于几 B 参数的实验模型，也可以通过专门的激活采集工程扩展到真正的大规模 MoE 推理模型。
+
+但要注意它是 Goodfire 的研究和工具发布，不是 DeepSeek 官方解释系统；公开 SAE 与 Feature 样例也不意味着已经完整解释 R1 的全部计算路径。
+
+### 14.4 Kimi：已经有针对 Kimi K2 Thinking 的大规模内部激活采集和 SAE
+
+Goodfire 在 2026 年 2 月发布了工程研究：[Interpretability Infrastructure at Frontier Scale: Harvesting Activations from a Trillion-Parameter Model](https://www.goodfire.com/blog/interpretability-infra-at-frontier-scale)。
+
+分析对象是 **Kimi K2 Thinking**。这篇文章不是同行评审论文，而是 Goodfire 对内部分析基础设施的工程实践说明，但它提供了极有价值的可扩展性经验。
+
+Goodfire 描述的主要工作包括：
+
+- 基于 SGLang 做较小范围的 Inference Server Fork，增加 Activation Harvesting。
+- 面对 Continuous Batching、Chunked Prefill、Tensor Parallelism 和 CUDA Graph 等优化带来的数据错位问题，恢复 Activation 与原始 Token / Sequence 的对应关系。
+- 使用 GPU Staging Buffer、Ring Buffer、Pinned CPU Memory 和 Sidecar Thread，把 Tensor 拷贝、CPU 传输和磁盘写入异步化，避免同步 I/O 阻塞 Forward Pass。
+- 为 Kimi K2 Thinking 的单层 Activation 采集约 3B Token；文章估算压缩后的数据约 33 TB。
+- 作者报告单个 8-GPU 节点达到约 14,000 tokens/s；10 个节点并行时，约 6 小时可以完成这轮采集。
+
+随后团队在这些 Activation 上训练 SAE，并展示了对模型内部 Feature 的分析和推理过程中的实时 Steering。
+
+这一案例的产业意义不只是“找到几个 Kimi Feature”，而是揭示了前沿 MoE 模型内部分析的主要瓶颈已经从算法扩展到推理系统工程：
+
+1. Activation Capture 必须理解推理引擎的真实 Batch / Sequence 布局。
+2. Tensor 必须与 Token、Sequence、Chunk 和位置保持可追溯的 Provenance。
+3. GPU -> CPU -> Disk 的数据传输必须异步化和批处理。
+4. Prefill 和 Decode 应分开优化；采集 SAE 训练数据时，不一定需要在 Decode 阶段逐 Token 捕获。
+5. 大模型内部分析需要把推理、激活采集、数据存储、SAE 训练和 Feature 分析设计成独立流水线。
+
+文章中的吞吐和成本数字是 Goodfire 报告的自有实验结果，不是可直接套用的通用 SLA。它也没有提供一套完整的公开 Kimi Circuit Tracing SDK，因此更适合作为大型模型 Activation Capture 架构参考。
+
+### 14.5 GLM：目前缺少可核验的模型专用内部解释工件
+
+针对 GLM 系列，我检索了中文和英文的 Mechanistic Interpretability、SAE、Feature、Activation Patching、Circuit Tracing 等关键词。目前没有找到与 Qwen-Scope、Llama-Scope 或 Goodfire R1 SAE 同等明确、可复现的 GLM 专用 SAE / Transcoder 发布，也没有找到足够明确的、直接针对 GLM-4.x 内部计算路径的公开实验论文和代码仓库。
+
+这不是说 GLM 不能做内部分析，也不能据此断言没有团队在做相关工作。更准确的判断是：**截至本次核查，尚未发现可以直接下载并复用的 GLM 模型专用 Feature Dictionary 或 Circuit Tracing 工具链。**
+
+如果要研究 GLM，工程路径仍然可行：先确认具体 GLM Checkpoint 能否由当前 Transformers / vLLM / SGLang 版本正确加载，再用 NNsight 或自定义 Hook 捕获指定 Layer 的 Activation，构造稳定的采集语料，训练与该模型版本匹配的 SAE。之后才能做 Feature Explanation、Token / Logit Attribution 和 Activation Patching。
+
+特别要注意，GLM 的 MoE 层、专家选择和 Attention 实现可能与 Llama / Qwen 不同。仅仅能调用模型生成文本，或能读到最后一层 Hidden State，并不意味着已经完成了内部特征分析适配。
+
+### 14.6 模型与研究资产对照：哪些可以直接开始，哪些仍需自行建设？
+
+| 模型 / 家族 | 已找到的内部分析工作 | 方法和分析粒度 | 公开工件 / 可复现性 | 当前判断 |
+|---|---|---|---|---|
+| Qwen2.5 3B | 清华 SafetyNeuron | Safety Neuron、Activation Contrasting、Dynamic Patching | 公开论文和代码 | 可直接研究安全对齐内部机制 |
+| Qwen3 / Qwen3.5 | Qwen-Scope | 模型专用 SAE Feature、Steering、评估与数据流程 | 论文、官方介绍和 SAE 模型集合 | 目前最完整的模型专用 SAE 资产 |
+| Qwen3 1.7B | OpenMOSS Llama-Scope 2 | Layer 12 Transcoder / Sparse Dictionary | Llamascopium 文档提供加载路径 | 适合继续做 Feature 与 Circuit 实验 |
+| DeepSeek-R1-Distill-Qwen 1.5B | Microsoft R2A | Reasoning Attention、RFH、Activation Patching | 公开代码和 Notebook | 适合作为推理路径复现实验 |
+| DeepSeek-R1-Distill-Qwen 7B | 吉林大学 Thinking vs. NoThinking | Top-K SAE、Residual Stream Feature、因果抑制 | 公开预印本；arXiv 页面未列官方代码 | 有具体论文路线，复现仍需自行实现 |
+| DeepSeek-R1 671B | Goodfire R1 SAE | 通用推理 / 数学 SAE、Feature 示例 | 公开 SAE、SQL 样例数据和 Notebook | 可研究大模型 Feature；完整推理成本很高 |
+| Kimi K2 Thinking | Goodfire 大规模 Activation Harvesting | SAE、Latent Feature、实时 CoT Steering | 工程报告公开；未见同等完整的公开 SDK | 有大模型内部分析工程案例 |
+| GLM-4.x | 本次核查未找到同等级模型专用工件 | 需要自行捕获 Activation 并训练 SAE | 尚未确认可直接复用的模型专用 Feature 集 | 需要自行建立适配和数据集 |
+
+注意 Qwen 与 DeepSeek 的实验对象存在交叉：DeepSeek-R1-Distill-Qwen 的模型底座是 Qwen，蒸馏数据与训练过程来自 DeepSeek-R1。研究结果必须按实际 Checkpoint 归类，不能把 Distill-Qwen 的 Feature 直接说成 DeepSeek 原始模型的 Feature。
+
+### 14.7 如何把这些成果转化成自己的实验？
+
+如果目标是研究中国开源模型的内部知识，而不是简单比较模型回答质量，我建议按下面顺序选择：
+
+**第一步：优先从 Qwen3 / Qwen3.5 做 Feature 级实验。** Qwen-Scope 已经发布多组 SAE，OpenMOSS 也已经在 Llamascopium 中提供 Qwen3 1.7B 的 Transcoder 加载示例。相比从零训练 SAE，这能减少第一阶段的数据和训练成本。
+
+**第二步：若目标是分析推理过程，使用 DeepSeek-R1-Distill-Qwen。** 可以从 Microsoft 的 1.5B Activation Patching 示例开始，再参考吉林大学的 7B Thinking / NoThinking 双 SAE 方案。先回答“推理中的某个 Token 是否影响最终答案”，再继续研究具体 Feature 的语义。
+
+**第三步：如果目标是完整 DeepSeek-R1 或 Kimi K2 Thinking，要把 Activation Capture 当成独立基础设施建设。** 不能直接在高性能推理服务里随便注册一个 PyTorch Hook 就假设能够正确采集。必须处理 Tensor Parallel、Continuous Batching、Token Provenance、异步数据拷贝、磁盘容量和特征训练吞吐。
+
+**第四步：GLM 应先做模型架构适配和数据集建设。** 先确认内部模块命名、Attention / MLP / MoE 专家输出位置和可捕获的张量，再验证 Hook 的正确性，之后再开始训练 SAE。不要将 Llama 的 Transcoder 或 Qwen 的 SAE 强行迁移到 GLM。
+
+可以把整体工作组织为：
+
+~~~mermaid
+flowchart TD
+    A["选择具体模型与权重 Revision"] --> B["确认架构、Tokenizer、Chat Template"]
+    B --> C["构建可复现 Prompt / Token 数据集"]
+    C --> D["Activation Capture + Token Provenance"]
+    D --> E["加载匹配的 SAE / Transcoder"]
+    E --> F["Feature 与目标 Token / Logit 对齐"]
+    F --> G["Feature Explanation 与反例检查"]
+    G --> H["Ablation / Activation Patching"]
+    H --> I["重复实验与跨 Prompt 验证"]
+    I --> J["形成模型版本化的归因证据记录"]
+~~~
+
+这里最重要的工程约束是：每个 SAE / Transcoder 都要与 Model Revision、Layer、Hook Point、Tokenizer 和具体激活定义绑定。一个 Qwen3 的 Layer 12 Transcoder 不是一个可以跨版本使用的通用中文知识字典。
+
+### 14.8 对中国模型生态和产业实践的影响
+
+目前可以看到三种正在形成的产业能力。
+
+**其一，模型厂商开始把内部表征作为模型研发接口。** Qwen-Scope 是很明确的例子：SAE Feature 不仅供研究人员分析，还被用于推理控制、评测分析、数据处理与后训练优化。未来模型交付物可能不只包含 Weight、Tokenizer 和推理代码，还包含模型专用的 Feature Dictionary、解释样例和评估套件。
+
+**其二，第三方研究机构开始对中国大模型做深层审计。** Goodfire 对 DeepSeek-R1 和 Kimi K2 Thinking 的工作说明，开放权重与可访问的推理执行环境能够让独立团队分析模型内部表征，甚至在推理过程中做 Feature Steering。模型提供方不再是唯一能解释模型内部行为的参与者。
+
+**其三，企业部署开源模型时有机会建设内部 Model Internals Observability。** 对金融、医疗、政务等需要模型风险管理的团队，未来可以针对指定模型和关键业务 Prompt 记录内部 Feature、目标 Logit、干预结果与人工审查。它比单纯记录 Prompt / Completion 更深入，但还不能替代事实核验、数据来源审计或正式的模型验证。
+
+现阶段的实际判断是：Qwen 已经出现较系统的模型专用 SAE 工具链；DeepSeek 已经有原始 R1 和 Distill 模型的 SAE、Attention 与 Patching 案例；Kimi 已有大规模内部激活采集和 SAE 的外部工程实践；GLM 还需要进一步建设公开、可复用的模型专用工件。
+
+对应用团队来说，这些成果不会让闭源 API 的普通使用者突然获得内部归因能力。必须有权访问模型权重和内部 Activation，或者由模型供应方提供受控的内部观测接口，才能真正开展这些分析。
+
 ## 参考资料与项目
 
 ### 机制可解释性、Circuit Tracing 与 Feature
@@ -1081,7 +1357,17 @@ flowchart TD
 25. Ai2, [How Goodfire used Ai2’s open post-training stack to trace unwanted model behavior](https://allenai.org/blog/goodfire-olmo), 2026-09-09.
 26. Goodfire, [Silico Capabilities](https://docs.goodfire.com/concepts/capabilities/).
 27. Oxford Martin School, [Automated Interpretability-Driven Model Auditing and Control: A Research Agenda](https://aigi.ox.ac.uk/wp-content/uploads/2026/01/Automated_interp_Research_Agenda.pdf), 2026-01.
+28. [The Knowledge Microscope: Features as Better Analytical Lenses than Neurons](https://aclanthology.org/2025.acl-long.516/), ACL 2025.
+29. [Towards Understanding Safety Alignment: A Mechanistic Perspective from Safety Neurons](https://arxiv.org/abs/2406.14144), NeurIPS 2025; [THU-KEG/SafetyNeuron](https://github.com/THU-KEG/SafetyNeuron).
+30. [OpenMOSS/Llamascopium](https://github.com/OpenMOSS/Llamascopium), SAE / Transcoder training and analysis framework.
+31. [LinguaLens: Towards Interpreting Linguistic Mechanisms of Large Language Models via Sparse Auto-Encoder](https://arxiv.org/abs/2502.20344).
+32. [Unveiling Language-Specific Features in Large Language Models via Sparse Autoencoders](https://aclanthology.org/2025.acl-long.229/), ACL 2025; [Aatrox103/multilingual-llm-features](https://github.com/Aatrox103/multilingual-llm-features).
+33. [Qwen-Scope: Turning Sparse Features into Development Tools for Large Language Models](https://arxiv.org/abs/2605.11887), 2026; [Qwen official introduction](https://qwen.ai/blog?id=qwen-scope).
+34. [From Reasoning to Answer: Empirical, Attention-Based and Mechanistic Insights into Distilled DeepSeek R1 Models](https://aclanthology.org/2025.emnlp-main.198/), EMNLP 2025; [Microsoft R2A code](https://github.com/microsoft/ACV/tree/main/misc/R2A).
+35. Goodfire, [Under the Hood of a Reasoning Model](https://www.goodfire.com/research/under-the-hood-of-a-reasoning-model), 2025; [goodfire-ai/r1-interpretability](https://github.com/goodfire-ai/r1-interpretability).
+36. [Thinking vs. NoThinking: Towards Interpreting Reasoning Mechanisms of Large Language Models via Sparse Autoencoders](https://arxiv.org/abs/2608.08168), arXiv 2026.
+37. Goodfire, [Interpretability Infrastructure at Frontier Scale: Harvesting Activations from a Trillion-Parameter Model](https://www.goodfire.com/blog/interpretability-infra-at-frontier-scale), 2026-02-25.
 
 ---
 
-*资料核对截止日期：2026 年 11 月 1 日。开源项目的模型支持、API、依赖和硬件要求变化较快，实施前应以对应仓库当前 README、Release、模型卡和实验记录为准。本文中的 PoC 用于研究验证，不应直接作为生产环境的安全检测、事实验证或合规证明。*
+*资料核对截止日期：2026 年 11 月 4 日。开源项目的模型支持、API、依赖和硬件要求变化较快，实施前应以对应仓库当前 README、Release、模型卡和实验记录为准。本文中的 PoC 用于研究验证，不应直接作为生产环境的安全检测、事实验证或合规证明。*
