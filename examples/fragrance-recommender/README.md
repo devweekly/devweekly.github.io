@@ -7,7 +7,8 @@ This is a deliberately small, deterministic reference implementation for the art
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements-dev.txt
+python -m pytest -q
 uvicorn app:app --reload
 ```
 
