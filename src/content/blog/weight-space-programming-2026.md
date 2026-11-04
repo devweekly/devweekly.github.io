@@ -924,25 +924,35 @@ Anthropic 的方法有一个值得重视的设计：它把“行为定义、对�
   </math>
 </div>
 
-其中 \(T_i\) 是该响应的 Token 数量。然后分别计算正样本和负样本的均值：
+其中 <math xmlns="http://www.w3.org/1998/Math/MathML"><msub><mi>T</mi><mi>i</mi></msub></math> 是该响应的 Token 数量。然后分别计算正样本和负样本的均值：
 
-\[
-\mu_{\ell}^{+}
-=
-\frac{1}{N_+}\sum_{i\in P}a_{\ell}^{(i)}
-\]
+<div class="math-equation" role="math" aria-label="正样本均值 mu 下标 ℓ 上标加，等于正样本向量 a 的平均值">
+  <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+    <msubsup><mi>μ</mi><mi>ℓ</mi><mo>+</mo></msubsup><mo>=</mo>
+    <mfrac><mn>1</mn><msub><mi>N</mi><mo>+</mo></msub></mfrac>
+    <munderover><mo>∑</mo><mrow><mi>i</mi><mo>∈</mo><mi>P</mi></mrow><mrow></mrow></munderover>
+    <msubsup><mi>a</mi><mi>ℓ</mi><mrow><mo>(</mo><mi>i</mi><mo>)</mo></mrow></msubsup>
+  </math>
+</div>
 
-\[
-\mu_{\ell}^{-}
-=
-\frac{1}{N_-}\sum_{i\in N}a_{\ell}^{(i)}
-\]
+<div class="math-equation" role="math" aria-label="负样本均值 mu 下标 ℓ 上标减，等于负样本向量 a 的平均值">
+  <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+    <msubsup><mi>μ</mi><mi>ℓ</mi><mo>−</mo></msubsup><mo>=</mo>
+    <mfrac><mn>1</mn><msub><mi>N</mi><mo>−</mo></msub></mfrac>
+    <munderover><mo>∑</mo><mrow><mi>i</mi><mo>∈</mo><mi>N</mi></mrow><mrow></mrow></munderover>
+    <msubsup><mi>a</mi><mi>ℓ</mi><mrow><mo>(</mo><mi>i</mi><mo>)</mo></mrow></msubsup>
+  </math>
+</div>
 
 最终得到每一层的候选 Persona Vector：
 
-\[
-v_{\ell}^{(p)}=\mu_{\ell}^{+}-\mu_{\ell}^{-}
-\]
+<div class="math-equation" role="math" aria-label="第 ℓ 层的 Persona Vector 等于正样本均值减去负样本均值">
+  <math xmlns="http://www.w3.org/1998/Math/MathML" display="block">
+    <msubsup><mi>v</mi><mi>ℓ</mi><mrow><mo>(</mo><mi>p</mi><mo>)</mo></mrow></msubsup><mo>=</mo>
+    <msubsup><mi>μ</mi><mi>ℓ</mi><mo>+</mo></msubsup><mo>−</mo>
+    <msubsup><mi>μ</mi><mi>ℓ</mi><mo>−</mo></msubsup>
+  </math>
+</div>
 
 这就是核心算法：对比两类行为样本在模型内部表示上的平均差异。
 
