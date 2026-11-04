@@ -2,6 +2,45 @@
 
 **Best for:** system overviews, data-flow diagrams, integration maps, infra topology.
 
+## Default visual direction — North Atlantic Editorial
+
+Use this as the default visual direction for Architecture diagrams created with the Devweekly copy of this skill. It is inspired by the restrained blue-black and steel-blue editorial treatment in the Jane & Rosello *Architecture Diagram* reference. This is a diagram-level direction, not a change to the shared `style-guide.md` skin: keep the global palette, templates, and all non-Architecture types unchanged.
+
+### Palette mapping
+
+| Role | Value | Use |
+|---|---|---|
+| Page / node surface | `#FFFFFF` | Clean white canvas and primary node fill |
+| Primary ink | `#020307` | Titles, node names, high-priority labels |
+| Boundary / quiet rule | `#A4B5C1` | Zone outlines, separators, secondary borders |
+| Primary accent | `#043852` | One or two focal nodes and the primary route |
+| Secondary structural blue | `#1E4E64` | Ordinary connectors and secondary emphasis |
+| Muted text | `#828481` | Eyebrows, metadata, secondary labels |
+| Link / integration blue | `#2C6795` | API, HTTP, external integration paths when the distinction matters |
+
+Do not use all seven colors as peer accents. Preserve the hierarchy: white surfaces, near-black text, steel-blue boundaries, one deep-blue focal accent. The secondary blue and link blue are semantic roles, not decorative alternation.
+
+### Composition and component treatment
+
+- Keep the architecture diagram editorial and spacious: clear title and short subtitle, then a small number of broad responsibility zones. Avoid dashboard cards and dense grids.
+- Use large, lightly outlined containers for control plane, execution domains, and enterprise systems. Prefer thin steel-blue borders and very subtle cool-tinted fills over heavy panels.
+- Use white node surfaces with crisp borders. Distinguish focal nodes with a pale blue tint and deep-blue outline; do not fill every important component with accent.
+- Use near-black sans-serif for component names. Keep protocol, runtime, identity, and implementation details smaller and quieter; use monospace only for those technical labels.
+- Route the main flow with deep or secondary blue orthogonal connectors. Use muted gray only for genuinely passive relationships; use link blue for API/integration paths where that semantic distinction helps.
+- Prefer square or restrained 4–6px corners, no shadows, no gradients, no glow, no decorative icon noise, and no rainbow category coloring.
+- Use whitespace, alignment, line weight, containment, and typography to establish hierarchy before adding more colors.
+- Keep the existing Architecture grammar intact: zones, trust boundaries, containment, focal-node budget, orthogonal routing, port selection, crossing bridges, and complexity limits remain mandatory.
+
+### Override and scope
+
+This direction is the default only when this Devweekly skill creates an Architecture diagram. An explicit user style request or an active project/client profile overrides it. Do not rewrite `references/style-guide.md`, change the shared templates, or apply this palette to other visual types. For an existing diagram, preserve its information architecture and only restyle it unless the user asks for structural changes.
+
+### Reference implementation
+
+The Enterprise AI Agent Platform figure at `/diagrams/enterprise-agent-platform-architecture.svg` is the shipped reference example for this direction. Keep its HTML and SVG versions visually synchronized when updating the example.
+
+---
+
 ## Layout conventions
 - Group components by tier or trust boundary (frontend → backend → data; public → private).
 - Primary flow runs left→right or top→down. Pick one and hold it.
