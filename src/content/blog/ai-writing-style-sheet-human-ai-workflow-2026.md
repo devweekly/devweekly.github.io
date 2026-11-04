@@ -3,7 +3,7 @@ author: SW
 pubDatetime: 2026-11-04T08:00:00Z
 title: "AI 写作的关键不是 Prompt：Style Sheet、作者声音与人机协作工作流"
 featured: false
-draft: true
+draft: false
 tags:
   - AI
   - Generative AI
