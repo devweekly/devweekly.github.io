@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg id="12-persona-vector-experiment-svg" viewBox="0 0 960 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="12-persona-vector-experiment-title 12-persona-vector-experiment-desc">
+<svg id="12-persona-vector-experiment-svg" width="960" height="600" viewBox="0 0 960 600" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="12-persona-vector-experiment-title 12-persona-vector-experiment-desc">
 <title id="12-persona-vector-experiment-title">Persona Vector 实验流程</title>
 <desc id="12-persona-vector-experiment-desc">从行为特征定义和实验材料生成开始，目标模型产生对照响应，经评分筛选后提取各层残差流激活，计算正负样本均值差，再通过 Steering 实验选择有效层；保留的测试问题用于下游评估。</desc>
 <defs>
