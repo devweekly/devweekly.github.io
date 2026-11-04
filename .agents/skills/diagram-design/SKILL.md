@@ -138,6 +138,8 @@ Rules of thumb:
 
 **Always load the chosen type reference linked in the guide before drawing.** When routed above, also load `semantic-patterns.md`; when animation is chosen, load `animation.md`.
 
+**Architecture default visual direction:** when the selected type is Architecture, use the *North Atlantic Editorial* direction defined in [`references/type-architecture.md`](references/type-architecture.md#default-visual-direction--north-atlantic-editorial) unless the user explicitly requests another visual style or an active project/client profile takes precedence. This is an Architecture-specific default; do not change the shared skin or impose this palette on other diagram types.
+
 ### Confirm before drawing
 
 Before rendering, state the plan in one short message: the chosen visual type (and semantic pattern, if routed), the size preset, and anything the complexity budget (§7) will force out. If the user is reachable, let them redirect before you draw; if not, proceed and note the assumptions beside the deliverable. Skip the pause only when the request already pins type, size, and content exactly.
