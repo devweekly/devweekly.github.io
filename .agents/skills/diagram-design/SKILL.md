@@ -3,7 +3,7 @@ name: diagram-design
 description: Create branded architecture, architecture delta, IT current-state, flowchart, sequence, state machine, ER/data model, timeline, swimlane, quadrant, radar/spider, polar chart (polar/radial lollipop), loop/flywheel, nested, tree, org chart, layer stack, exploded axonometric, axonometric plan, Venn, pyramid/funnel, treemap and marimekko, heatmap, bar and dumbbell, waterfall, line (slopegraph, ridgeline, streamgraph, bump), Gantt and scatter charts (bubble, beeswarm, box plot), high-level, process, medallion, data flow, DP integration, DP security matrix, Sankey, fishbone, Wardley map, kanban, user journey, service blueprint, deployment, dependency graph, UML class, story map, or database schema diagrams as HTML/SVG/PNG, with .drawio, Mermaid, and .excalidraw import, plus lifecycle phase maps, block decomposition trees, and onboarding guidance.
 license: MIT
 metadata:
-  version: "2.7"
+  version: "2.8"
 ---
 
 # Diagram Design
@@ -40,7 +40,7 @@ Applied to schematics:
 
 - Every node represents a distinct idea. Two nodes that always travel together are one node.
 - Every connection carries information. If the relationship is obvious from layout, remove the line.
-- Coral is **editorial, not a flag.** 1–2 focal nodes per diagram. Using it on 5 nodes erases the signal.
+- Warm sand is **editorial, not a flag.** Use it for 1–2 focal nodes per diagram. Category chips may use the restrained pastel tag palette defined in `style-guide.md`.
 - The schematic isn't done when everything is added. It's done when nothing can be removed.
 
 **Target density: 4/10.** Enough to be technically complete. Not so dense it needs a guide. Above 9 nodes, it's probably two diagrams.
@@ -138,7 +138,7 @@ Rules of thumb:
 
 **Always load the chosen type reference linked in the guide before drawing.** When routed above, also load `semantic-patterns.md`; when animation is chosen, load `animation.md`.
 
-**Architecture default visual direction:** when the selected type is Architecture, use the *Graphite & Sand Dependency* direction defined in [`references/type-architecture.md`](references/type-architecture.md#default-visual-direction--graphite--sand-dependency) unless the user explicitly requests another visual style or an active project/client profile takes precedence. This is an Architecture-specific default; do not change the shared skin or impose this palette on other diagram types.
+**Default visual direction — Soft Dependency Canvas:** use the global *Soft Dependency Canvas* skin defined in [`references/style-guide.md`](references/style-guide.md) for every visual type, not only Architecture. It changes the palette, surfaces, node geometry, category chips, and restrained elevation while preserving each type's semantic layout grammar. Explicit user styles and active project/client profiles take precedence.
 
 ### Confirm before drawing
 
@@ -159,9 +159,9 @@ These mark "AI slop" schematics of any type:
 | Arrow labels with no masking rect | Bleeds through the line |
 | Vertical `writing-mode` text on arrows | Unreadable |
 | 3 equal-width summary cards as default | Generic grid — vary widths |
-| Shadow on any element | Shadows are out. Borders are in. |
-| `rounded-2xl` on boxes | Max radius 6–10px or none |
-| Coral on every "important" node | Coral is 1–2 editorial accents, not a signaling system |
+| Heavy or ambient shadows | A small, low-opacity elevation shadow is allowed on raised node/card surfaces; avoid dramatic depth, glow, and stacked shadows. |
+| Inconsistent corner language | Use 10–12px for primary node/card surfaces, 6–8px for compact blocks, and fully rounded category chips. Avoid mixing unrelated radii. |
+| Warm sand on every "important" node | Warm sand is 1–2 editorial accents, not a signaling system |
 | Reproducing Mermaid's renderer layout | Imports automatic spacing and routing instead of making an editorial layout |
 | Any breach of the six §6 connector rules | Automatic fail: diagonal slants, labels touching their stroke, masks clipped by a later node, overlapping paths, shared attach points, transit behind a non-endpoint box |
 
@@ -238,7 +238,7 @@ Structural geometry sits on a 4px grid: node origins, widths, heights, gaps, and
 |---|---|
 | Max nodes | 9 |
 | Max arrows / transitions | 12 |
-| Max coral elements | 2 |
+| Max warm-sand focal elements | 2 |
 | Max annotation callouts | 2 |
 | Max motion (optional) | 8 steps, 12 marked items, 2 simultaneous items — see [animation.md](references/animation.md) |
 
@@ -277,7 +277,7 @@ Run before producing any diagram.
 
 **Signal:**
 
-- [ ] Coral used on ≤2 elements? If more, which actually deserve focal status?
+- [ ] Warm-sand focal accent used on ≤2 elements? If more, which actually deserve focal status?
 - [ ] Legend covers every type used — and nothing extra?
 - [ ] Within the type's complexity budget (§7)?
 
