@@ -88,6 +88,48 @@ Style Sheet 并不只适用于小说作者。卡内基梅隆大学 Computing Ser
 
 两类结果并不矛盾。AI 可以减少资料整理、初稿组织和语言修改的时间，却不意味着它自动掌握作者的表达习惯，也不意味着生成文本已经达到可以直接交付的质量。效率提升和作者声音保留，是两项需要分别设计、分别验证的目标。
 
+## 可以直接使用的开源项目和商业产品
+
+Style Sheet 已经不只是作者自己维护的 Markdown 文件。开源社区里出现了几类工具：把写作规范变成可执行检查、从历史文本中提取个人风格、把风格规范封装成 Agent Skill，以及在写作过程中做 AI 痕迹审查。商业产品则更多面向企业品牌一致性和内容治理。它们解决的问题不同，不宜都归为“AI Humanizer”。
+
+### 开源项目：从规范检查到个人声音建模
+
+| 项目 | 主要用途 | 适合的场景 | 需要注意 |
+| --- | --- | --- | --- |
+| [Vale](https://github.com/vale-cli/vale) | 可配置的 prose linter，把风格指南、术语和用词规则变成命令行检查，可集成编辑器和 CI | 技术文档、产品文档、企业 Editorial Style Guide | 它主要检查规则是否一致，不负责生成内容，也不会自动理解作者完整的个人声音 |
+| [human-writing](https://github.com/KKKKhazix/human-writing) | 面向中文写作的 Agent Skill，提供写作和改稿流程，目标是减少通用 AI 表达 | 中文文章、内容改写、Agent 工作流 | 属于 Skill 和规则/流程集合，不是独立编辑器；应检查其规则是否适合自己的文体，避免把“去 AI 味”变成统一模板 |
+| [Write Like Me](https://github.com/HopLittleBunny/write-like-me) | 从作者样本或回答中学习可携带的写作模式，审查和改写文本，并用语义保护约束改动 | 个人作者希望保留原意、学习个人表达习惯 | 项目明确区分含义、作者决策、文本质感和声音；其 README 描述的是项目设计能力，不等于已经有独立研究证明风格匹配效果 |
+| [write-like-me-mcp](https://github.com/gwicho38/write-like-me-mcp) | 本地 MCP 服务，从个人文档语料提取句长、词汇、标点等统计特征，并检索真实写作片段供 Agent 使用 | 希望把个人风格资料接入 Claude 等 MCP 客户端，同时让语料留在本机 | README 所述 v0.1 不调用 LLM，负责提供风格上下文，实际写作仍由调用它的模型完成；检索出的样本若被发送给云端模型，仍会离开本机 |
+| [House Style System](https://github.com/kalensr/house-style-system) | House Style 文档、Vale 检查门禁、示例夹具和可选 AI 声音审查/eval 脚本 | 团队想把写作规范、自动检查和发布前评审组合起来 | 它是一个可借鉴的轻量工作流样板，不是通用 SaaS；部分声音审查层是可选的，需按自己的规范调整 |
+| [The Style Guide](https://github.com/cote/the-style-guide) | 将多套命名风格封装为可移植的 Claude Skill，按任务加载不同风格和反模式参考 | 多作者、多内容类型，或需要在不同作者声音之间切换 | 默认示例风格不等于你的风格；需要替换为自己有权使用的样本和规范 |
+| [nabokov](https://github.com/viewflow/nabokov) | 命令行英文 prose linter，检查可读性、冗长表达、被动语态，并提供可选 AI 写作痕迹检查 | 英文稿件的快速质量扫描和 CI 检查 | AI 痕迹规则只能作为审阅提示，不能判断作者身份，也不能证明文本是否由 AI 生成 |
+
+这些项目可以按职责组合，而不是选一个“全能工具”。例如，先用个人样本建立 Voice Profile，再把稳定的术语、格式和禁用模式整理成 Style Sheet；写作 Agent 读取前两者起草和编辑，Vale 或其他 linter 在提交或发布前检查确定性规则。对于中文内容，可以试用 human-writing；对于本地语料和隐私要求较高的个人写作，可以研究 write-like-me-mcp；对于团队文档治理，Vale 和 House Style System 更接近工程化落地。
+
+其中 Vale 的价值尤其容易被低估：风格规范如果只存在于 Prompt 或团队 Wiki 中，执行依赖每个人记得加载；转成可运行规则后，术语、大小写、冗长表达和格式要求就能在编辑器或 CI 中持续检查。反过来，Vale 也不应该承担它做不到的事——它不能判断论点是否有价值，也不能替作者判断某段文字是否真正像自己。
+
+### 商业产品：面向组织的 Brand Voice 和 Style Governance
+
+| 产品 | 官方提供的相关能力 | 主要定位 |
+| --- | --- | --- |
+| [WRITER](https://writer.com/brand/) | 定义团队或品牌的 Voice、批准用语、写作规则，并在生成和审阅流程中应用 | 企业级品牌内容治理，把语言规范、知识和工作流整合到生成过程 |
+| [Grammarly Pro / Enterprise](https://www.grammarly.com/business/styleguide) | 上传组织 Style Guide、配置写作规则和 Brand Tones，在 Grammarly 支持的写作环境中提供上下文建议 | 跨应用的写作一致性、语言质量和品牌语气管理 |
+| [Jasper](https://help.jasper.ai/hc/en-us/articles/55085068545819-Jasper-IQ) | Jasper IQ 组合 Brand Voice、Audiences、Knowledge Base、Style Guide、Visual Guidelines 和 Product IQ；Style Guide 可在生成时自动应用 | 面向营销团队的多品牌、多受众内容生产和品牌治理 |
+
+商业产品的共同点是把规范从“事后检查”前移到“生成时约束”。Jasper 的官方文档还明确区分了 Brand Voice（品牌如何表达）、Audience（面向谁）、Style Guide（词汇、标点和格式规则）、Knowledge（经批准的事实和声明）以及 Agent Instructions（本次任务要做什么）。这种职责划分值得借鉴：不要把所有背景、规则和任务要求塞进一个越来越长的 Prompt。
+
+产品边界也要看清。WRITER、Grammarly 和 Jasper 的主要目标是组织或品牌一致性，不等于能完整复现某位作者的个人写作习惯。企业品牌声音强调跨作者统一；个人 Voice Profile 强调保留作者之间的差异。两者可以共存，但不应混为一谈。商业产品的功能和套餐会变化，采购前应以官方当前计划、数据处理条款、模型训练政策、保留期限和集成方式为准。
+
+### 怎么选：按要解决的问题组合
+
+- **个人作者，希望 AI 写得更像自己：** 从真实样本开始，优先尝试 Write Like Me 或 write-like-me-mcp 这类个人风格工具；保留作者确认的修改记录，逐步形成 Voice Profile。不要只依赖“像某某作家”的模糊指令。
+- **中文内容，希望减少通用 AI 腔调：** 可以评估 human-writing 的 Skill 和规则，但要用自己的文章做对照测试，重点检查是否保留原意、限定条件和作者习惯。
+- **技术文档或团队知识库：** 用 Vale 将术语、大小写、冗长表达和格式要求自动化；House Style System 展示了如何把规范、测试夹具和发布前审查串起来。
+- **多作者企业内容：** 评估 WRITER、Grammarly 或 Jasper 的品牌规范、权限、知识管理和生成时约束能力；重点不是生成文案的演示效果，而是能否进入现有编辑、审批和合规流程。
+- **小说和长篇创作：** 通用 prose linter 只能检查语言表层。人物声音、叙事视角、时间线、世界观和情节连续性仍需要独立的 Craft Bible、Character Sheet、Codex 和人工编辑流程。
+
+选型时至少做一轮自己的对照评估：准备同一组任务和作者样本，比较默认模型、加入文字规范、加入规范与样本、加入规范与样本再经过工具检查这几种条件。记录人工修改量、原意偏移、事实错误、风格匹配度和完成时间。项目 README 中的功能说明、产品官网上的案例和市场宣传都不能代替这项验证。
+
 ## 写作流程应该按阶段分配 AI 的权限
 
 AI 写作工具经常把所有事情放进一个对话框：用户给主题，模型给全文，用户再说“改得更好”。这种交互把选题、构思、组织、起草、编辑和事实核验混在一起，模型很容易在用户只要求改语言时顺手改变观点，也容易在缺少内容资料时补出看似合理的新内容。
