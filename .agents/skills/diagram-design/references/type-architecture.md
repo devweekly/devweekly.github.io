@@ -2,33 +2,34 @@
 
 **Best for:** system overviews, data-flow diagrams, integration maps, infra topology.
 
-## Default visual direction — North Atlantic Editorial
+## Default visual direction — Graphite & Sand Dependency
 
-Use this as the default visual direction for Architecture diagrams created with the Devweekly copy of this skill. It is inspired by the restrained blue-black and steel-blue editorial treatment in the Jane & Rosello *Architecture Diagram* reference. This is a diagram-level direction, not a change to the shared `style-guide.md` skin: keep the global palette, templates, and all non-Architecture types unchanged.
+Use this as the default visual direction for Architecture diagrams created with the Devweekly copy of this skill. It is inspired by Agnieszka Jaźwa's *Dependency diagram* for Synergy Codes: a cool blue-grey canvas, restrained graphite structure, soft neutral grouping, and a warm sand accent. The reference describes data organized into swimlanes, nodes with collapsible property sections, and automatic re-layout. This is a diagram-level direction, not a change to the shared `style-guide.md` skin: keep the global palette, templates, and all non-Architecture types unchanged.
+
+Reference: [Dribbble — Dependency diagram](https://dribbble.com/shots/16373937-Dependency-diagram).
 
 ### Palette mapping
 
 | Role | Value | Use |
 |---|---|---|
-| Page / node surface | `#FFFFFF` | Clean white canvas and primary node fill |
-| Primary ink | `#020307` | Titles, node names, high-priority labels |
-| Boundary / quiet rule | `#A4B5C1` | Zone outlines, separators, secondary borders |
-| Primary accent | `#043852` | One or two focal nodes and the primary route |
-| Secondary structural blue | `#1E4E64` | Ordinary connectors and secondary emphasis |
-| Muted text | `#828481` | Eyebrows, metadata, secondary labels |
-| Link / integration blue | `#2C6795` | API, HTTP, external integration paths when the distinction matters |
+| Canvas / lane base | `#DDE3F0` | Main cool blue-grey canvas and broad lane surfaces |
+| Muted / secondary text | `#9299AA` | Lane labels, metadata, secondary annotations |
+| Soft structure / node separation | `#C3BCC3` | Quiet separators, secondary node surfaces, subtle grouping |
+| Primary ink / connector | `#32394D` | Titles, node names, primary dependency paths and outlines |
+| Warm accent | `#B08158` | One or two focal nodes, selected dependency, or key status |
 
-Do not use all seven colors as peer accents. Preserve the hierarchy: white surfaces, near-black text, steel-blue boundaries, one deep-blue focal accent. The secondary blue and link blue are semantic roles, not decorative alternation.
+Keep the palette restrained. The visual hierarchy is blue-grey canvas → graphite structure and text → pale neutral grouping → a small amount of warm sand. Do not use the bronze accent as a general category color or paint every node with it. Avoid introducing extra saturated colors; distinguish additional categories through labels, grouping, line style, and shape.
 
 ### Composition and component treatment
 
-- Keep the architecture diagram editorial and spacious: clear title and short subtitle, then a small number of broad responsibility zones. Avoid dashboard cards and dense grids.
-- Use large, lightly outlined containers for control plane, execution domains, and enterprise systems. Prefer thin steel-blue borders and very subtle cool-tinted fills over heavy panels.
-- Use white node surfaces with crisp borders. Distinguish focal nodes with a pale blue tint and deep-blue outline; do not fill every important component with accent.
-- Use near-black sans-serif for component names. Keep protocol, runtime, identity, and implementation details smaller and quieter; use monospace only for those technical labels.
-- Route the main flow with deep or secondary blue orthogonal connectors. Use muted gray only for genuinely passive relationships; use link blue for API/integration paths where that semantic distinction helps.
-- Prefer square or restrained 4–6px corners, no shadows, no gradients, no glow, no decorative icon noise, and no rainbow category coloring.
-- Use whitespace, alignment, line weight, containment, and typography to establish hierarchy before adding more colors.
+- Organize components into clear responsibility lanes or grouped regions when those groups explain ownership, data domains, deployment boundaries, or dependency layers. Use lane headers and consistent alignment; do not force swimlanes when the topology is better explained by nested trust boundaries.
+- Give lanes enough horizontal and vertical breathing room. Prefer a few broad, readable regions over a dense dashboard grid or a collection of equal-sized cards.
+- Use graphite for component names, primary outlines, and the main dependency paths. Use muted grey for secondary labels and non-critical relationships.
+- Use soft neutral fills and thin separators to distinguish adjacent lanes and node groups. Keep node surfaces visually quiet; reserve the warm sand accent for the true focal component or dependency.
+- Make dependency direction and hierarchy legible through alignment, connector routing, grouping, and line weight before adding color. Preserve the existing orthogonal connector, port-selection, and crossing-bridge rules.
+- Keep node labels concise. Put implementation details, protocols, versions, and property lists in a secondary text tier; use monospace only for technical values.
+- Use restrained corners and thin borders. Avoid shadows, gradients, neon effects, excessive icons, rainbow category colors, and decorative chrome.
+- The reference includes collapsible node properties and automatic re-layout. Treat those as interaction/layout capabilities, not visual decoration: do not claim or simulate working collapse/re-layout behavior in a static HTML/SVG deliverable. Add interaction only when the requested output and implementation actually support it.
 - Keep the existing Architecture grammar intact: zones, trust boundaries, containment, focal-node budget, orthogonal routing, port selection, crossing bridges, and complexity limits remain mandatory.
 
 ### Override and scope
@@ -37,7 +38,7 @@ This direction is the default only when this Devweekly skill creates an Architec
 
 ### Reference implementation
 
-The Enterprise AI Agent Platform figure at `/diagrams/enterprise-agent-platform-architecture.svg` is the shipped reference example for this direction. Keep its HTML and SVG versions visually synchronized when updating the example.
+The Enterprise AI Agent Platform figure at `/diagrams/enterprise-agent-platform-architecture.svg` is an example asset, not a requirement to reuse its previous North Atlantic palette. Update example HTML and SVG together whenever that example is restyled.
 
 ---
 
@@ -45,7 +46,7 @@ The Enterprise AI Agent Platform figure at `/diagrams/enterprise-agent-platform-
 - Group components by tier or trust boundary (frontend → backend → data; public → private).
 - Primary flow runs left→right or top→down. Pick one and hold it.
 - Draw arrows before boxes so z-order puts connections behind components.
-- 1–2 coral focal nodes: the primary integration point, the primary data store, or the key decision node.
+- 1–2 warm-sand focal nodes: the primary integration point, the primary data store, or the key decision node.
 - Dashed boundary rectangles mark regions (VPC, security group, trust zone); labels sit on a paper-colored mask over the boundary line.
 
 ## Connector style
@@ -140,7 +141,7 @@ Provider-neutral metadata (no vendor prefix):
 `scripts/verify-architecture-containment.py` checks unique IDs, resolving innermost parents, geometric containment, `<rect>` bounds, the admin-band vs traffic-box shapes (with `stroke-dasharray` resolved as rendered, so `none` or all-zero dashes count as solid), PaaS placement, endpoint targets, sibling axes, declared peerings, and the moved-geometry rule above. Files without `data-grammar="architecture-containment"` are skipped.
 
 ## Anti-patterns
-- Every box in coral ("this is important too") — hierarchy collapses.
+- Every box in warm sand ("this is important too") — hierarchy collapses.
 - Bidirectional arrow when one direction is obvious from context.
 - Legend floating inside the diagram area.
 - Flattening two containment levels into one zone eyebrow (`VNET · SNET-APP`) — the hierarchy is the claim.
