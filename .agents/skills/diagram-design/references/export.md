@@ -1,13 +1,13 @@
 # Export to PNG / SVG
 
-Convert a generated diagram HTML file into a portable `.svg` and/or `.png` next to it. **Manual only — never run unprompted.**
+Convert a generated diagram HTML file into portable assets next to it. **SVG is part of the normal HTML diagram-generation deliverable; PNG remains manual/opt-in.**
 
 ## Trigger
 
 Load this file when:
 
-- The user invokes `/diagram-design:export-diagram <html-file>` (the plugin's slash command — defined in `commands/export-diagram.md` at the repo root).
-- The user asks in natural language to export, save, rasterize, convert, or download a diagram in `.svg` or `.png` form. Typical phrasings:
+- The user invokes `/diagram-design:export-diagram <html-file>` (the plugin's slash command — defined in `commands/export-diagram.md` at the repo root) for an additional/manual export, normally PNG.
+- The user asks in natural language to export, save, rasterize, convert, or download a diagram in `.png` form. SVG is already generated with the HTML by default. Typical phrasings:
   - "export this as PNG"
   - "save as SVG"
   - "give me a PNG of that diagram"
