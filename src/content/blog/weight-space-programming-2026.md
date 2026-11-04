@@ -76,28 +76,11 @@ Weight-Space Programming 不要求 LLM 通过梯度或优化器求出更新方�
 
 例如，研究者可以给一个 LLM 提供模型权重、模型结构说明、失败样例和有限的模型运行反馈，让它判断哪些矩阵可能与某种失败行为有关，再生成一个具体的权重修改方案。
 
-这不意味着它完全不需要计算。它仍然可能需要：
-
-- 读取大量权重和张量统计信息；
-- 通过 Python 或其他确定性计算工具分析矩阵；
-- 调用目标模型执行 Forward Pass；
-- 观察输入输出和中间激活；
-- 根据反馈反复修改参数；
-- 对最终结果运行独立评估。
-
-不使用梯度下降并不会消除计算成本。读取权重、分析 Tensor、运行 Forward Pass、尝试不同 Patch，以及评估编辑结果，都需要时间和算力。
+这不意味着它完全不需要计算。实际操作中，系统仍要读取权重和张量统计信息，借助 Python 等确定性工具分析矩阵，调用目标模型执行 Forward Pass，并观察输入输出和中间激活。根据这些反馈调整参数后，还要对最终结果做独立评估。不使用梯度下降并不会消除计算成本。读取权重、分析 Tensor、运行 Forward Pass、尝试不同 Patch，以及评估编辑结果，都需要时间和算力。
 
 ### 1.3 一个容易混淆的地方：Weight Space 不止一种含义
 
-在机器学习文献中，Weight Space 早已是一个常见概念。例如：
-
-- Bayesian Neural Networks 中的 Weight-space View；
-- Neural Network Weight-space Symmetry；
-- Weight-space Diffusion；
-- Hypernetwork 生成其他神经网络的权重；
-- Model Merging 和 Task Vector 的参数空间运算。
-
-这些研究不都属于 2026 年 MIT 文章所定义的 Weight-Space Programming。
+在机器学习文献中，Weight Space 早已是一个常见概念，Bayesian Neural Networks 的 Weight-space View、Neural Network Weight-space Symmetry、Weight-space Diffusion、Hypernetwork 生成其他网络权重，以及 Model Merging 和 Task Vector 的参数运算，都涉及权重空间。这些研究不都属于 2026 年 MIT 文章所定义的 Weight-Space Programming。
 
 本文讨论的范围是：**通过模型权重本身进行理解、诊断、修改或构造，尤其关注由通用 LLM 直接执行这些操作的能力。**
 
@@ -344,29 +327,9 @@ MergeKit、Hugging Face PEFT 等项目把模型合并和参数高效微调变成
 
 数学题的失败记录因此很难直接解释为“不会做”：模型可能已经走到正确解法附近，却因重复推理而在输出答案前触及 Token 上限。
 
-研究者给 Astra 提供了：
+实验环境向 Astra 提供了 Qwen3.5-0.8B 权重和一个可持久化的 Python Kernel，用于读取、计算权重。可供练习的材料包括 7,469 道 GSM8K 训练集题目、7,275 道 MATH 训练集题目，以及 714 道 AIME 练习题的答案；Astra 还可以通过受控接口提交权重修改，并在不同实验设置下调用最多 10、25 或 50 次 Forward Pass。这些练习题来自训练数据，而不是最终评估集。Astra 没有看到最终 Benchmark 的题目和分数。
 
-- Qwen3.5-0.8B 的权重；
-- 一个持久化的 Python Kernel，用于读取和计算权重；
-- 7,469 道 GSM8K 训练集题目；
-- 7,275 道 MATH 训练集题目；
-- 714 道 AIME 练习题的答案；
-- 最多 10、25 或 50 次模型 Forward Pass；
-- 一个可以提交权重修改的受控接口。
-
-这些练习题来自训练数据，而不是最终评估集。Astra 没有看到最终 Benchmark 的题目和分数。
-
-实验明确禁止：
-
-- Gradient Descent；
-- Backpropagation；
-- Autograd；
-- Optimizer；
-- 通过训练 Loss 迭代拟合权重；
-- 在 Python Kernel 中直接运行目标模型；
-- 网络访问。
-
-Forward Pass 由独立接口执行，返回模型输出、Log Probability 或指定的中间信息。
+实验不允许使用 Gradient Descent、Backpropagation、Autograd 或 Optimizer，也不能通过训练 Loss 反复拟合权重。Python Kernel 不能直接运行目标模型，实验环境也没有网络访问权限。Forward Pass 由独立接口执行，返回模型输出、Log Probability 或指定的中间信息。
 
 ### 4.4 权重修改到底发生在哪里？
 
@@ -592,14 +555,7 @@ Simon 的完整过程和失败案例见：[Qwen 3.8 27B on my laptop can interpr
 
 ### 5.2 Together AI：LoRA Fine-tuning 与托管部署
 
-[Together AI Fine-tuning](https://docs.together.ai/docs/fine-tuning/overview) 支持：
-
-- LoRA Fine-tuning；
-- Full Fine-tuning；
-- 数据上传和训练任务管理；
-- Fine-tuned Model 注册；
-- Dedicated Endpoint 部署；
-- 下载 Adapter 或合并后的模型权重。
+[Together AI Fine-tuning](https://docs.together.ai/docs/fine-tuning/overview) 支持 LoRA 和 Full Fine-tuning，也提供数据上传、训练任务管理、Fine-tuned Model 注册、Dedicated Endpoint 部署，以及 Adapter 或合并后模型权重的下载。
 
 一个基本的训练命令：
 
@@ -626,27 +582,13 @@ Together AI 当前文档说明 Serverless LoRA Inference（包括 Serverless Mul
 
 Microsoft Foundry 支持多个 LoRA Adapter 共用一个基础模型推理部署。
 
-例如：
-
-- Base Model：Qwen；
-- Adapter A：金融分析；
-- Adapter B：客服；
-- Adapter C：SQL Generation。
-
-多个 Adapter 使用同一个 Target Deployment 的计算资源和推理端点，但通过不同的 Deployment Name 选择不同的行为。
+例如，基础模型可以使用 Qwen，再分别挂载面向金融分析、客服和 SQL Generation 的 Adapter。它们共用同一个 Target Deployment 的计算资源和推理端点，但通过不同的 Deployment Name 选择对应行为。
 
 ![Multi-LoRA 推理部署架构](/diagrams/weight-space-programming/03-multi-lora-serving.svg)
 
 *图源：[独立 HTML 版本](/diagrams/weight-space-programming/03-multi-lora-serving.html)，可在浏览器中放大查看。*
 
-根据 Microsoft 官方文档：
-
-- 一个 Target Deployment 最多支持 8 个 Adapter Deployments；
-- 多个 Adapter 共享同一份 Target Deployment 的计算资源；
-- Adapter 不会为自己单独创建新的 GPU 容量；
-- 所有 Adapter 会共同消耗 Target Deployment 的推理容量；
-- 当前功能只适用于 Foundry Fine-tuning 产生的 LoRA Adapter；
-- 目前还不能直接导入用户自行提供的 Adapter。
+Microsoft 官方文档给出的限制是：一个 Target Deployment 最多支持 8 个 Adapter Deployments；Adapter 共享同一份计算资源，不会各自创建 GPU 容量，但会共同消耗该 Deployment 的推理容量。这项功能目前只适用于 Foundry Fine-tuning 生成的 LoRA Adapter，还不能直接导入用户自行提供的 Adapter。
 
 **成熟度限制：** 当前文档将该能力标记为 Preview，并明确说明 Preview 没有 SLA，不建议用于生产工作负载。
 
@@ -657,12 +599,7 @@ Microsoft Foundry 支持多个 LoRA Adapter 共用一个基础模型推理部署
 
 ### 5.4 Hugging Face PEFT 与 vLLM：更适合自行搭建的方案
 
-对于希望控制模型版本、Adapter 和推理服务的团队，可以采用：
-
-- PEFT 负责训练和管理 LoRA Adapter；
-- vLLM 负责基础模型加载和推理；
-- Adapter Registry 管理不同任务的 Adapter；
-- API Gateway 根据业务和权限选择 Adapter。
+对于希望自行控制模型版本、Adapter 和推理服务的团队，可以用 PEFT 训练和管理 LoRA Adapter，由 vLLM 加载基础模型并提供推理服务，再通过 Adapter Registry 管理不同任务的适配器，让 API Gateway 根据业务和权限选择要加载的 Adapter。
 
 例如 vLLM 的启动方式：
 
@@ -681,11 +618,7 @@ vllm serve meta-llama/Llama-3.2-3B-Instruct \
 
 先从最简单的权重运算开始。
 
-假设：
-
-- `base_model` 是基础模型；
-- `finance_model` 是基于同一基础模型微调后的金融模型；
-- 希望将金融任务向量以系数 alpha 合并回基础模型。
+假设 `base_model` 是基础模型，`finance_model` 是从同一基础模型微调得到的金融模型，目标是将金融任务向量按系数 alpha 合并回基础模型。
 
 ```python
 from safetensors.torch import load_file, save_file
@@ -992,41 +925,17 @@ Weight-Space Programming 提供了另一种可能：让模型分析参数或中�
 
 如果某种错误能在固定输入下稳定复现，并且能通过评估集明确识别，可以研究局部权重编辑是否能修复它。
 
-例如：
-
-- 特定输入触发重复输出；
-- 某个策略网络总是选择错误动作；
-- 某个模型的输出层出现异常偏向；
-- 某个特定模块造成明显的行为退化。
-
-这类场景的前提是：失败行为可以稳定复现，并且有明确的评估标准。
+例如，某些固定输入会触发重复输出，策略网络总是选择错误动作，模型输出层出现异常偏向，或者某个模块造成明显的行为退化。这类场景的前提是：失败行为可以稳定复现，并且有明确的评估标准。
 
 ### 12.3 Domain Adaptation：领域能力适配
 
-企业可能希望一个模型同时具备：
-
-- 金融领域知识；
-- SQL 生成能力；
-- 企业架构分析能力；
-- 文档理解能力；
-- 特定的输出风格。
-
-短期内，LoRA 和 Fine-tuning 仍然是更可靠的选择。
+企业可能希望一个模型同时处理金融领域问题、生成 SQL、分析企业架构和理解文档，并遵循特定的输出风格。短期内，LoRA 和 Fine-tuning 仍然是更可靠的选择。
 
 未来可以研究 Task Vector 和 Weight Editing 是否能够帮助组合或修复这些能力，但不能默认多个领域能力可以直接相加。
 
 ### 12.4 Personalized Model：用户个性化模型
 
-个性化是另一类可能的应用。Agent 长期使用后，系统可能积累用户的输出格式、编程习惯、术语、代码审查标准和文档风格等偏好。
-
-- 输出格式偏好；
-- 编程习惯；
-- 术语偏好；
-- 代码审查标准；
-- 文档写作风格；
-- 对不同任务的处理偏好。
-
-传统方案通常把这些信息放在 Prompt、Memory 或外部配置中。
+个性化是另一类可能的应用。Agent 长期使用后，系统可能逐渐了解用户偏好的输出格式、编程习惯和术语，也会积累代码审查标准、文档写作风格及不同任务的处理偏好。传统方案通常把这些信息放在 Prompt、Memory 或外部配置中。
 
 另一种可能是把经过用户确认的偏好转化为独立 Adapter 或参数更新，让模型在推理时具备更稳定的个性化行为。
 
@@ -1050,12 +959,7 @@ Persona Vectors 与权重编辑相关，但两者操作的对象不同。下面�
 
 通常只能从最终输出判断模型是否迎合用户、编造事实或给出有害建议。输出能显示结果，却不能直接说明生成前模型内部是否已经出现相关行为倾向。Anthropic 研究的出发点，是寻找能在内部激活中测量这些倾向的信号。
 
-Anthropic 的假设是：模型的高层行为特征会在内部激活空间中留下可测量的信号。假设一个模型在不同上下文中表现出两种行为：
-
-- A：用户提出一个没有证据支持的结论，模型明确指出证据不足。
-- B：用户提出同样的结论，模型为了迎合用户而表示赞同，甚至补充不存在的证据。
-
-如果模型内部存在与“迎合”相关的方向，那么 B 类响应的某些层激活，平均而言可能沿该方向比 A 类响应更远。通过对照实验，就有机会提取出这个方向。
+Anthropic 的假设是：模型的高层行为特征会在内部激活空间中留下可测量的信号。比如，面对用户提出的同一个无证据结论，模型可能在一种上下文中明确指出证据不足（A），却在另一种上下文中为了迎合用户而表示赞同，甚至补充不存在的证据（B）。如果模型内部存在与“迎合”相关的方向，那么 B 类响应的某些层激活，平均而言可能沿该方向比 A 类响应更远。通过对照实验，就有机会提取出这个方向。
 
 这里的 Persona 不是心理学上的人格判断。研究者先把某种行为定义成可观察、可评分的目标，再用对照样本提取与该行为相关的激活方向。这个方向可以用于测量，也可以用于实验性干预。
 
@@ -1413,10 +1317,7 @@ hidden_states[:, token_positions, :] += alpha * persona_vector
 
 2026 年 1 月，Anthropic 发布了另一项相关研究 [The Assistant Axis: Situating and Stabilizing the Default Persona of Language Models](https://www.anthropic.com/research/assistant-axis)，对应论文 [arXiv:2601.10387](https://arxiv.org/abs/2601.10387) 和代码仓库 [safety-research/assistant-axis](https://github.com/safety-research/assistant-axis)。
 
-它与 2025 年 Persona Vectors 的关系是“相关但不同的研究问题”：
-
-- Persona Vectors：给定一个具体特征，例如 sycophancy，提取该特征的方向，用于测量、控制和预测该特征。
-- Assistant Axis：研究模型默认的 Assistant 身份在更大 Persona Space 中处于什么位置，以及模型在多轮对话中是否逐渐偏离这一位置。
+它与 2025 年 Persona Vectors 研究相关，但关注点不同：Persona Vectors 针对 sycophancy 这类具体特征提取方向，用于测量、控制和预测该特征；Assistant Axis 则研究模型默认的 Assistant 身份在更大 Persona Space 中的位置，以及模型在多轮对话中是否逐渐偏离这一位置。
 
 Assistant Axis 研究从 275 种角色原型（Character Archetypes）中提取激活表示，例如 Editor、Jester、Oracle、Ghost 等，再分析不同角色在激活空间中的结构。实验涉及 Gemma 2 27B、Qwen 3 32B 和 Llama 3.3 70B 等开源权重模型。作者将默认 Assistant 激活与其他角色激活的平均差异定义为 Assistant Axis，并发现它与 Persona Space 的主要变化方向相吻合。
 
@@ -1468,15 +1369,7 @@ Weight Oracles 研究提出了一个值得关注的方向：直接分析模型�
 
 该研究报告了小型网络上的 Backdoor Detection 结果，但其测试网络约为 2K 参数，尚不能据此认定能够直接审计真实生产规模的大模型。
 
-在企业环境中，这类能力未来可能用于：
-
-- 模型供应链审查；
-- 权重文件完整性和来源核验；
-- 发现异常参数变化；
-- 对比不同版本的模型行为；
-- 检查第三方模型是否包含非预期修改。
-
-但是，权重异常检测不能代替模型行为测试。没有发现异常权重模式，不等于模型没有 Backdoor。
+在企业环境中，这类能力未来可能用于模型供应链审查、权重文件完整性和来源核验、异常参数变化检测，也可以帮助比较不同版本的模型行为，检查第三方模型是否包含非预期修改。但是，权重异常检测不能代替模型行为测试。没有发现异常权重模式，不等于模型没有 Backdoor。
 
 ## 13. 企业架构应该怎么设计？
 
@@ -1543,14 +1436,7 @@ Weight Oracles 研究提出了一个值得关注的方向：直接分析模型�
 
 ### 13.4 Rollback：不要原地修改基础模型
 
-推荐采用不可变模型制品：
-
-- Base Model：原始模型；
-- Candidate Model：应用 Patch 后的候选模型；
-- Approved Model：经过评估和审批的模型；
-- Production Model：当前生产版本。
-
-任何修改都应该生成新的 Model Version。
+模型制品应保持不可变，并区分原始的 Base Model、应用 Patch 后的 Candidate Model、经过评估和审批的 Approved Model，以及当前生产环境使用的 Production Model。任何修改都应该生成新的 Model Version。
 
 如果出现质量回归或安全问题，应该能够直接切回之前的 Approved Model，而不是尝试反向计算一个不可靠的权重补丁。
 
