@@ -209,12 +209,14 @@ Counting by script is still the trap. `Шкаф ODF-2` is four Cyrillic letters,
 | `stroke-thin` | `0.8` | Tag-box outlines, leaf nodes |
 | `stroke-default` | `1` | Most strokes |
 | `stroke-strong` | `1.2` | Emphasis strokes |
-| `radius-sm` | `4` | Small tags |
-| `radius-md` | `6` | Node boxes |
-| `radius-lg` | `8` | Containers, rings |
+| `radius-sm` | `6` | Compact chips |
+| `radius-md` | `12` | Primary node/card surfaces |
+| `radius-lg` | `12` | Broad containers and raised cards |
 | `grid` | `4` | Every coord, size, and gap is divisible by 4 (hard rule) |
 
 ---
+
+**Shared visual precedence:** these radius, surface, elevation, and chip rules apply across all visual types. A type reference may still specify a semantic shape (diamond, circle, table compartment, etc.), but older flat rectangular tags and 4–6px card radii are superseded by the shared skin where the element is a node/card.
 
 ## Node type → treatment
 
