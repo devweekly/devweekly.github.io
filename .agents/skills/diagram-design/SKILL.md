@@ -262,6 +262,8 @@ Run before producing any diagram.
 
 - [ ] If behavior matters, did I choose one semantic pattern before the visual type and load `semantic-patterns.md`?
 - [ ] Right visual type for the layout? (§3 visual-type guide)
+- [ ] Applied the global Soft Dependency Canvas skin: cool blue-grey canvas, raised white node/card surfaces, 10–12px primary corners, restrained single shadow, and consistent pastel category chips where categories help? (style-guide.md)
+- [ ] Kept semantic shapes and chart marks type-appropriate instead of turning every shape into a raised card?
 - [ ] Stated type, pattern, size preset, and planned cuts before drawing — confirmed, or assumptions noted? (§3)
 - [ ] Would a table / paragraph do the same job? (If yes — don't draw.)
 - [ ] Loaded the matching type reference linked in the visual-type guide?
