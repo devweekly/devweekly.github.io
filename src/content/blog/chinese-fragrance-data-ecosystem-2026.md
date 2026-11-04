@@ -1,6 +1,6 @@
 ---
 author: SW
-pubDatetime: 2026-11-04T08:00:00Z
+pubDatetime: 2026-11-04T04:30:00Z
 title: "香水数据从哪里来？从中文香调知识到分子气味科学与 AI 推荐"
 featured: false
 draft: false
