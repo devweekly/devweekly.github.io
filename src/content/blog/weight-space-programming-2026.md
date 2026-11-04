@@ -142,15 +142,9 @@ W_new = W + scale * B * A
 
 这只是一个示意计算，实际参数量取决于模型中选择了多少个 Target Modules。
 
-LoRA 的优势包括：
+LoRA 的实用之处在于，训练时只需更新少量低秩参数，显存和训练成本通常低于全参数微调。每个任务可以单独保存 Adapter，不必复制整份基础模型；推理服务也可以按请求加载或切换 Adapter。部署条件允许时，还能把 Adapter 合并回基础模型，减少单独管理适配器的需要。
 
-- 训练参数少，显存和训练成本相对较低；
-- 不需要为每个任务保存完整的基础模型副本；
-- 不同任务可以分别保存不同 Adapter；
-- 可以在推理时加载、切换 Adapter；
-- 可以在适用的情况下把 Adapter 合并回基础模型。
-
-但 LoRA 仍然是训练技术。它的参数更新来自训练过程，而不是一个通用 LLM 直接理解模型内部结构后手工编写权重。
+不过，LoRA 的更新仍然来自训练过程。它和通用 LLM 读取模型内部结构、判断应该修改哪些权重，再直接写入参数，是两种不同的工作方式。
 
 官方实现：[Hugging Face PEFT](https://github.com/huggingface/peft)。
 
@@ -188,13 +182,7 @@ W_new = W_base
       + beta  * Delta W_B
 ```
 
-例如：
-
-- A 是代码生成任务微调；
-- B 是金融分析任务微调；
-- C 是中文写作任务微调。
-
-理论上可以通过调整不同 Task Vector 的系数，组合不同任务的行为。
+例如，A 可以代表代码生成微调，B 代表金融分析微调，C 代表中文写作微调。调整各自 Task Vector 的系数，就能尝试把这些任务更新组合到同一个模型中。
 
 这就是 Task Arithmetic（任务算术）的基本思想。
 
@@ -321,16 +309,7 @@ MergeKit、Hugging Face PEFT 等项目把模型合并和参数高效微调变成
 
 ### 4.1 研究问题
 
-研究团队关注的是：通用 LLM 能否根据神经网络权重理解部分计算行为，并按自然语言目标提出参数修改？这比常见的 LLM-as-Optimizer 更接近模型本身。以往这类优化通常让 LLM 修改：
-
-- Prompt；
-- Training Code；
-- Hyperparameters；
-- 数据处理逻辑；
-- 模型架构配置；
-- Evaluation Harness。
-
-这次实验则把目标推进到模型参数本身。
+研究团队关注的是：通用 LLM 能否根据神经网络权重理解部分计算行为，并按自然语言目标提出参数修改？这和常见的 LLM-as-Optimizer 有一个区别。以往的实验通常让 LLM 调整 Prompt、训练代码或 Hyperparameters，也可能修改数据处理逻辑、模型架构配置和 Evaluation Harness；这次实验把可修改的对象进一步推进到了模型参数本身。
 
 研究文章：[Sparks of Weight-Space Programming](https://rikiyat.github.io/blog/weight-space-programming/)。
 
