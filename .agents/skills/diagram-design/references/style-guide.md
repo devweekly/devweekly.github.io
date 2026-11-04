@@ -2,7 +2,7 @@
 
 **The single source of truth for colors, typography, and tokens.** Every diagram draws from this — not from hex values inlined in other reference files. If you want to change the visual skin of Diagram Design, change this file.
 
-Default skin is a cool editorial palette — white-smoke paper, jet-black ink, burnt-tangerine accent, blue-slate muted. It's designed to look good out of the box; swap these values (or run [`onboarding.md`](onboarding.md)) and every new diagram inherits the new skin without touching any type-specific logic.
+Default skin is **Soft Dependency Canvas**, inspired by the supplied dependency-diagram reference. It is a complete visual language, not just a palette: cool blue-grey canvas, white raised surfaces, graphite connectors, soft neutral lane structure, pill-shaped category chips, and restrained low-opacity shadows. Shared primitives and templates carry this treatment across architecture, dependency, process, swimlane, sequence, state, data-model, chart, and other diagram types; each type keeps its own layout grammar.
 
 To generate your own from a website URL, see [`onboarding.md`](onboarding.md).
 
@@ -16,19 +16,39 @@ Every token is referred to by **semantic role**, not by its hex value. Type refe
 
 | Role | Purpose | Default (light) | Default (dark) |
 |---|---|---|---|
-| `paper` | Page background, default node fill | `#f5f5f5` (white-smoke) | `#2d3142` (jet-black) |
-| `paper-2` | Diagram container bg, secondary fill | `#ececec` | `#393e53` |
-| `ink` | Primary text, primary stroke | `#2d3142` (jet-black) | `#f5f5f5` (white-smoke) |
-| `ink-strong` | High-contrast text on warm accent fills | `#111111` | `#111111` |
-| `muted` | Secondary text, default arrow stroke | `#4f5d75` (blue-slate) | `#bfc0c0` (silver) |
-| `soft` | Sublabels, boundary labels | `#5a6580` | `#949eb2` |
-| `rule` | Hairline borders | `rgba(45,49,66,0.12)` | `rgba(245,245,245,0.12)` |
-| `rule-solid` | Stronger borders, baselines | `#bfc0c0` (silver) | `rgba(191,192,192,0.25)` |
-| `accent` | Focal / 1–2 max per diagram | `#bf4520` (burnt-tangerine) | `#f08a59` |
-| `accent-tint` | Fill for accent-bordered boxes | `rgba(191,69,32,0.08)` | `rgba(240,138,89,0.10)` |
-| `link` | HTTP/API calls, external arrows | `#2e5aa8` | `#739fdf` |
+| `paper` | Page background / canvas | `#EBEDF7` (cool blue-grey) | `#252A3A` |
+| `paper-2` | Lane / secondary surface | `#F1F3FA` | `#30364A` |
+| `ink` | Primary text, primary stroke | `#32394D` (graphite) | `#F1F3FA` |
+| `ink-strong` | High-contrast text on warm accent fills | `#32394D` | `#252A3A` |
+| `muted` | Secondary text, default arrow stroke | `#626B80` | `#B8BFCE` |
+| `soft` | Secondary metadata / quiet labels | `#747D91` | `#A5AEC0` |
+| `rule` | Hairline borders | `rgba(50,57,77,0.10)` | `rgba(241,243,250,0.12)` |
+| `rule-solid` | Stronger borders, baselines | `#C3BCC3` | `rgba(195,188,195,0.28)` |
+| `accent` | Focal text / strokes, 1–2 max | `#8B603F` (deep sand) | `#D2A77D` |
+| `accent-tint` | Warm sand surface tint | `rgba(176,129,88,0.16)` | `rgba(210,167,125,0.16)` |
+| `link` | HTTP/API calls, external arrows | `#52698E` | `#9EB6DF` |
 
 > **Brand palette source:** this skin maps to a five-color brand palette: `jet-black #2d3142`, `silver #bfc0c0`, `white-smoke #f5f5f5`, `atomic-tangerine`, `blue-slate #4f5d75`. The light `accent` is not the raw brand tangerine. Raw atomic-tangerine reads 2.86:1 on `paper`, too faint for an arrow or a label, so the skin uses `#bf4520`, the same hue darkened until it clears 4.5:1 as text. The `soft`, `rule`, and `link` tokens are derived (a darker slate, ink at opacity, and a saturated variant in the blue-slate hue family) to cover roles the brand palette doesn't name directly. Every derived value is held to the contrast contract below.
+
+
+### Surface, elevation, and category tokens
+
+| Token | Light | Dark | Use |
+|---|---|---|---|
+| `surface` | `#FFFFFF` | `#343B50` | Raised node/card faces |
+| `surface-hover` | `#FAFBFE` | `#3B4359` | Hover or selected surface |
+| `shadow` | `rgba(50,57,77,0.10)` | `rgba(0,0,0,0.24)` | One soft, short shadow under raised blocks |
+| `tag-blue` | `#DCE5F4` | `#3D4B65` | Category chip background |
+| `tag-green` | `#D8EEE8` | `#31564F` | Category chip background |
+| `tag-amber` | `#F5E7D4` | `#5A4938` | Category chip background |
+| `tag-rose` | `#F0DDEB` | `#5A4054` | Category chip background |
+| `tag-yellow` | `#F4EFC9` | `#5B5534` | Category chip background |
+
+The source reference's five anchor colors remain visible in the system: `#DDE3F0` informs the canvas family, `#9299AA` the quiet structural family, `#C3BCC3` separators, `#32394D` graphite ink, and `#B08158` the warm focal accent. Some text roles are deliberately darker than the source swatches to satisfy contrast: `#9299AA` is not body text, and `#B08158` is not used for small text on a pale background.
+
+**Geometry and depth contract:** primary nodes/cards use 10–12px corner radii, compact blocks 6–8px, and category chips use a full pill radius. Raised surfaces are white (light skin) with a 1px quiet border and one subtle shadow (0 2px 8px at the `shadow` token); avoid stacked shadows, glow, gradients, and heavy outlines. Lane/container surfaces use `paper-2` with no card-like shadow. Use these treatments where the visual type has node/card surfaces; do not turn chart marks, axes, text-only labels, or every SVG primitive into cards.
+
+**Category chip contract:** use the pastel tag tokens for source/system/type labels when categories genuinely help distinguish groups. Keep the same category mapped to the same chip color throughout one diagram. Do not use tag colors to encode status, severity, or access decisions; those need explicit labels and a separately defined semantic status system. Chip text uses `ink`, never the low-contrast pastel swatch as text.
 
 ### Contrast contract
 
@@ -44,15 +64,15 @@ Every token must clear the threshold for each role it plays, against the backgro
 - **A token used in several roles must pass each one.** `accent` is a stroke in one place and a label in another, so it is held to 4.5:1, not the 3:1 its strokes alone would need. Don't assume a token is non-text because it usually is.
 - **Translucent colors are composited first.** An `rgba()` fill or stroke is blended over `paper` before its ratio is measured. A value that clears the bar at full strength can fail at 0.5 opacity.
 - **Surfaces other than `paper` cost contrast.** Inside an `accent-tint` box or on `paper-2` every ratio drops. Measure text placed there against that surface, not against `paper`.
-- **Current defaults:** light `accent` 4.71:1, `soft` 5.34:1, `link` 6.13:1, `muted` 6.11:1 on `#f5f5f5`; dark `accent` 5.21:1, `soft` 4.78:1, `link` 4.76:1 on `#2d3142`.
+- **Current defaults:** light `accent` and `muted` are chosen for readable strokes/text; the source palette's lighter `#9299AA` remains a structural color, not small text. Verify every final combination against its actual surface with `scripts/verify-contrast.py`.
 
 ### Inversion rule (light → dark)
 
-Any `rgba(45,49,66, X)` in light becomes `rgba(245,245,245, X)` in dark. Same opacities, RGB flipped. The accent gets a slight hue-shift brighter to read on dark paper.
+Any `rgba(50,57,77, X)` in light becomes a light-ink equivalent in dark, preserving the same opacity. The warm accent shifts brighter in dark mode; surface shadows remain black and restrained.
 
 ### Series palette (multi-series chart types only)
 
-A small set of desaturated, editorial-tone colors for chart types that genuinely need to distinguish multiple overlapping entities (currently: **radar**). The "1-focal" rule still holds — `accent` is reserved for the focal series; the palette below covers the rest.
+A small set of desaturated, editorial-tone colors for chart types that genuinely need to distinguish multiple overlapping entities (currently: **radar**). The "1-focal" rule still holds — `accent` is reserved for the focal series; the palette below covers the rest. Use the category chip palette only for categorical labels, not quantitative series.
 
 | Token | Light | Dark | Notes |
 |---|---|---|---|
