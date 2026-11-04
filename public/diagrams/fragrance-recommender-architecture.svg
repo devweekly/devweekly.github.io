@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<svg viewBox="0 0 1040 590" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="fr-arch-title fr-arch-desc">
+<svg width="1040" height="590" viewBox="0 0 1040 590" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="fr-arch-title fr-arch-desc">
 <title id="fr-arch-title">香水推荐系统参考架构</title><desc id="fr-arch-desc">展示客户端、API、查询理解、混合召回、排序、数据存储和反馈闭环的分层架构。</desc>
 <defs>
 <marker id="a" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0 0L8 3L0 6Z" fill="#4f5d75"/></marker>
