@@ -95,7 +95,7 @@ These six rules are **non-negotiable**. Run the pre-output checklist (SKILL.md Â
 
 ```svg
 <!-- 1. Opaque paper mask â€” prevents arrows bleeding through transparent fills -->
-<rect x="X" y="Y" width="W" height="H" rx="6" fill="{paper}"/>
+<rect x="X" y="Y" width="W" height="H" rx="12" fill="{paper}"/>
 <!-- 2. Raised node surface: rounded, quiet border, single soft shadow -->
 <rect x="X" y="Y" width="W" height="H" rx="12" fill="{surface}" stroke="{rule}" stroke-width="1" filter="url(#node-shadow)"/>
 <!-- 3. Category chip: pastel fill, no heavy outline, fully rounded pill -->
