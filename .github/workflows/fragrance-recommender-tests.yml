@@ -1,0 +1,33 @@
+name: Fragrance recommender tests
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "examples/fragrance-recommender/**"
+      - ".github/workflows/fragrance-recommender-tests.yml"
+  pull_request:
+    paths:
+      - "examples/fragrance-recommender/**"
+      - ".github/workflows/fragrance-recommender-tests.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/fragrance-recommender
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: examples/fragrance-recommender/requirements-dev.txt
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Run tests
+        run: python -m pytest -q
