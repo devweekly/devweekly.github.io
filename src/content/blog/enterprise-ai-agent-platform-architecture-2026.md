@@ -348,39 +348,9 @@ Agent 执行路径可能包含多轮模型调用、多个工具、外部 API、�
 
 下面的时序图展示一个需要授权和审批的写操作：
 
-~~~mermaid
-sequenceDiagram
-    autonumber
-    actor User as User
-    participant App as Agent Application
-    participant Runtime as Agent Runtime
-    participant Model as Model Gateway
-    participant Policy as Policy Engine
-    participant Approval as Approval Service
-    participant Tool as Tool Gateway
-    participant System as Business System
-    participant Audit as Audit / Trace
+![授权与人工审批时序：模型规划、策略校验、不可变审批和二次授权](/diagrams/agent-write-authorization.svg)
 
-    User->>App: Request business change
-    App->>Runtime: Start task with user identity
-    Runtime->>Model: Request plan / tool proposal
-    Model-->>Runtime: Proposed tool + arguments
-    Runtime->>Policy: Authorize user, agent, action, resource
-    Policy-->>Runtime: Approval required
-    Runtime->>Approval: Create approval with immutable action payload
-    Approval-->>User: Show impact and requested action
-    User->>Approval: Approve / Reject
-    Approval-->>Runtime: Signed approval decision
-    Runtime->>Policy: Revalidate scope and approval
-    Policy-->>Runtime: Permit
-    Runtime->>Tool: Execute with scoped identity + idempotency key
-    Tool->>System: Call business API
-    System-->>Tool: Result + transaction reference
-    Tool-->>Runtime: Normalized result
-    Runtime->>Audit: Record actor, policy, tool, resource, outcome
-    Runtime-->>App: Task result
-    App-->>User: Show result and evidence
-~~~
+![受控工具执行与审计时序：幂等调用、业务结果确认和执行留痕](/diagrams/agent-write-execution.svg)
 
 审批之后仍然需要重新校验权限和资源状态。审批记录应绑定具体动作和参数，不能只保存一句“用户同意了”。如果目标资源、金额、收件人或操作范围发生变化，就不再是同一个被批准的动作。
 
@@ -406,24 +376,7 @@ LLM-as-a-Judge 可以用于辅助评价，但不应成为唯一验收标准。�
 
 Agent 发布流程可以按以下步骤执行：
 
-~~~mermaid
-flowchart TD
-    A["Code / Prompt / Tool Change"] --> B["Build & Dependency Scan"]
-    B --> C["Manifest / Policy Validation"]
-    C --> D["Unit & Contract Tests"]
-    D --> E["Offline Evaluation Dataset"]
-    E --> F["Adversarial / Permission Tests"]
-    F --> G["Deploy to Non-production"]
-    G --> H["Runtime Evaluation"]
-    H --> I{"Quality and Risk Gates Pass?"}
-    I -->|No| J["Reject Release / Fix / Re-run"]
-    I -->|Yes| K["Human Release Approval"]
-    K --> L["Canary / Limited Rollout"]
-    L --> M["Observe SLO / Cost / Safety"]
-    M --> N{"Stable?"}
-    N -->|No| O["Rollback / Disable Agent"]
-    N -->|Yes| P["Promote Production"]
-~~~
+![Agent 发布质量门禁：构建校验、离线评估、运行评估、灰度观察与生产晋级](/diagrams/agent-release-gates.svg)
 
 每次发布需要绑定代码、Prompt、模型、Tool、Skill、数据配置和评估集的版本。只记录代码 Git Commit 不够，因为很多 Agent 行为变化来自模型版本、系统提示、工具描述或检索配置。
 
@@ -547,22 +500,7 @@ Microsoft 的 [Agentic Center of Excellence 指南](https://learn.microsoft.com/
 
 Agent 不是部署完成就结束的应用。模型、Prompt、工具、数据源、权限和业务流程都会变化。建议至少定义以下生命周期状态：
 
-~~~mermaid
-stateDiagram-v2
-    [*] --> Draft
-    Draft --> Assessment: Submit for review
-    Assessment --> Development: Approved for build
-    Assessment --> Rejected: Risk / value not acceptable
-    Development --> Testing: Build complete
-    Testing --> Approved: Evaluation and security gates pass
-    Testing --> Development: Fix required
-    Approved --> Production: Release
-    Production --> Suspended: Incident / policy breach
-    Suspended --> Production: Re-approved
-    Suspended --> Retired: No longer needed
-    Production --> Retired: Business retirement
-    Retired --> [*]
-~~~
+![Agent 生命周期状态：申请、评估、开发、测试、生产、暂停、恢复和退役](/diagrams/agent-lifecycle-states.svg)
 
 每个生命周期状态都应有明确的准入条件和负责人。暂停时要阻止新的任务和工具调用；退役时要撤销身份与工具授权，清理运行资源，并处理 Memory 和审计数据的保留要求。
 
