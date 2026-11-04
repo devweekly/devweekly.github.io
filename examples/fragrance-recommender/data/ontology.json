@@ -1,24 +1,170 @@
 {
   "aliases": {
-    "earthy": ["泥土", "湿润泥土", "土腥", "earthy", "wet soil", "petrichor", "雨后"],
-    "mossy": ["苔藓", "青苔", "mossy", "moss"],
-    "woody": ["木头", "木质", "木材", "woody", "wood"],
-    "green": ["青草", "青绿", "绿叶", "green", "grassy", "herbal"],
-    "fresh": ["清新", "干净", "fresh", "clean"],
-    "floral": ["花香", "玫瑰", "茉莉", "floral", "rose", "jasmine"],
-    "sweet": ["甜", "甜香", "香草甜", "sweet", "vanilla"],
-    "gourmand": ["美食调", "奶油", "焦糖", "gourmand", "creamy", "caramel"],
-    "powdery": ["粉感", "粉香", "粉质", "powdery"]
+    "earthy": [
+      "泥土",
+      "湿润泥土",
+      "土腥",
+      "earthy",
+      "wet soil",
+      "petrichor",
+      "雨后"
+    ],
+    "mossy": [
+      "苔藓",
+      "青苔",
+      "mossy",
+      "moss"
+    ],
+    "woody": [
+      "木头",
+      "木质",
+      "木材",
+      "woody",
+      "wood"
+    ],
+    "green": [
+      "青草",
+      "青绿",
+      "绿叶",
+      "green",
+      "grassy",
+      "herbal"
+    ],
+    "fresh": [
+      "清新",
+      "干净",
+      "fresh",
+      "clean"
+    ],
+    "floral": [
+      "花香",
+      "玫瑰",
+      "茉莉",
+      "floral",
+      "rose",
+      "jasmine"
+    ],
+    "sweet": [
+      "甜",
+      "甜香",
+      "香草甜",
+      "sweet",
+      "vanilla"
+    ],
+    "gourmand": [
+      "美食调",
+      "奶油",
+      "焦糖",
+      "gourmand",
+      "creamy",
+      "caramel"
+    ],
+    "powdery": [
+      "粉感",
+      "粉香",
+      "粉质",
+      "powdery"
+    ],
+    "tea": [
+      "茶香",
+      "白茶",
+      "绿茶",
+      "红茶",
+      "乌龙茶",
+      "茶叶",
+      "tea",
+      "white tea",
+      "green tea",
+      "black tea"
+    ]
   },
   "concepts": {
-    "earthy": {"label": "湿润泥土 / Earthy", "matches": ["earthy", "petrichor", "wet-soil"], "weight": 1.2},
-    "mossy": {"label": "苔藓 / Mossy", "matches": ["mossy", "moss"], "weight": 1.1},
-    "woody": {"label": "木质 / Woody", "matches": ["woody", "cedar", "sandalwood"], "weight": 1.0},
-    "green": {"label": "青绿 / Green", "matches": ["green", "herbal"], "weight": 0.9},
-    "fresh": {"label": "清新 / Fresh", "matches": ["fresh", "clean"], "weight": 0.8},
-    "floral": {"label": "花香 / Floral", "matches": ["floral", "rose", "jasmine"], "weight": 0.8},
-    "sweet": {"label": "甜香 / Sweet", "matches": ["sweet", "vanilla", "sweetness"], "weight": 1.0},
-    "gourmand": {"label": "美食调 / Gourmand", "matches": ["gourmand", "caramel", "creamy"], "weight": 1.0},
-    "powdery": {"label": "粉感 / Powdery", "matches": ["powdery"], "weight": 0.8}
+    "earthy": {
+      "label": "湿润泥土 / Earthy",
+      "matches": [
+        "earthy",
+        "petrichor",
+        "wet-soil"
+      ],
+      "weight": 1.2
+    },
+    "mossy": {
+      "label": "苔藓 / Mossy",
+      "matches": [
+        "mossy",
+        "moss"
+      ],
+      "weight": 1.1
+    },
+    "woody": {
+      "label": "木质 / Woody",
+      "matches": [
+        "woody",
+        "cedar",
+        "sandalwood"
+      ],
+      "weight": 1
+    },
+    "green": {
+      "label": "青绿 / Green",
+      "matches": [
+        "green",
+        "herbal"
+      ],
+      "weight": 0.9
+    },
+    "fresh": {
+      "label": "清新 / Fresh",
+      "matches": [
+        "fresh",
+        "clean"
+      ],
+      "weight": 0.8
+    },
+    "floral": {
+      "label": "花香 / Floral",
+      "matches": [
+        "floral",
+        "rose",
+        "jasmine"
+      ],
+      "weight": 0.8
+    },
+    "sweet": {
+      "label": "甜香 / Sweet",
+      "matches": [
+        "sweet",
+        "vanilla",
+        "sweetness"
+      ],
+      "weight": 1
+    },
+    "gourmand": {
+      "label": "美食调 / Gourmand",
+      "matches": [
+        "gourmand",
+        "caramel",
+        "creamy"
+      ],
+      "weight": 1
+    },
+    "powdery": {
+      "label": "粉感 / Powdery",
+      "matches": [
+        "powdery"
+      ],
+      "weight": 0.8
+    },
+    "tea": {
+      "label": "茶香 / Tea",
+      "matches": [
+        "tea",
+        "white-tea",
+        "green-tea",
+        "black-tea",
+        "oolong"
+      ],
+      "weight": 1
+    }
   }
 }
