@@ -18,11 +18,11 @@ description: "企业建立内部 AI Agent 平台，不只是部署一个 Agent F
 
 企业内部开始出现越来越多的 AI Agent：有人用 Copilot Studio 或低代码工具创建部门助手，有团队基于 LangGraph、AutoGen、CrewAI 或 Agents SDK 开发业务 Agent，也有人直接通过 MCP 把内部 API、数据库和 SaaS 系统接给模型。短期看，这些尝试都能解决一些具体问题；规模扩大后，企业会逐渐遇到另一类问题：到底有哪些 Agent 在运行？谁负责？它们使用了哪些模型和工具？它们以谁的身份访问数据？模型或工具升级后怎么回归测试？一次错误的自动操作能否被及时阻止、追溯和恢复？
 
-这时需要建设的已经不是一个 Agent Demo，也不只是一个统一聊天入口，而是一套企业内部的 **AI Agent Platform**。
+当 Agent 从零散试验进入多个业务团队的日常工作，企业需要一套内部 **AI Agent Platform**，覆盖开发、运行和治理，而不只是提供统一聊天入口。
 
-平台的目标不是把每个 Agent 都集中到同一个框架里，而是让不同团队能够自主开发和运营 Agent，同时让企业在身份、数据、工具、模型、风险、成本、审计和生命周期上保持统一控制。开发框架可以多样化，企业控制不能各自为政。
+平台应允许不同团队自主开发和运营 Agent，同时统一管理身份、数据、工具、模型、风险、成本、审计和生命周期。开发框架可以多样化；身份、授权和运行治理则需要一致的控制要求。
 
-本文讨论企业自建或组合采购 Agent 平台时需要具备的能力、架构边界、组织职责、实施顺序和容易被低估的问题。文中的架构是参考设计，不代表某个厂商产品可以开箱即用地覆盖所有能力。
+以下从平台能力、架构边界、组织职责和实施顺序展开。架构图是参考设计，不代表任何单一厂商产品都能开箱覆盖这些能力。
 
 ## 1. 先明确：企业要建设的不是一个 Agent Builder
 
@@ -51,7 +51,7 @@ description: "企业建立内部 AI Agent 平台，不只是部署一个 Agent F
 
 企业 Agent 平台比较稳妥的设计是控制平面与执行平面分离。控制平面负责准入、策略、目录和全局运营；执行平面由业务域或产品团队拥有，运行具体 Agent、工具和业务数据访问。
 
-下面的图由仓库中的 diagram-design Skill 生成，采用独立 SVG 作为文章静态资源，HTML 文件用于浏览器查看完整画布。它强调职责边界，不绑定某家云厂商或某个 Agent Framework。
+架构按职责划分控制平面与业务域执行单元，不绑定特定云厂商或 Agent Framework。
 
 ![Enterprise AI Agent Platform：统一控制平面与按业务域隔离的执行单元](/diagrams/enterprise-agent-platform-architecture.svg)
 
@@ -743,7 +743,7 @@ AWS 在 2026 年 10 月 28 日发布的 [Building an Agentic AI Platform on Amaz
 
 其架构把平台分成治理基础、Agent Platform Control Plane、Workstream 执行单元，以及安全、审计和可观测性能力。平台团队负责模板、Registry、模型准入、Inference Gateway、Tool Gateway、策略和公共流水线；Workstream 团队在自己的隔离执行单元中拥有 Runtime、Memory、工具、业务数据、评估用例和 SLO。
 
-这套设计有几个值得借鉴的地方：
+该参考架构有五个值得关注的设计点：
 
 1. **控制平面集中，业务执行分域。** 平台团队不替每个业务团队开发 Agent，但能够约束它们访问哪些模型和工具。
 2. **框架可以多样化。** 参考模板覆盖 Strands、LangGraph 和 CrewAI，统一的是 Gateway、Identity、Policy、Evaluation 和 Delivery 契约。
@@ -759,7 +759,7 @@ Microsoft 的 [Cloud Adoption Framework - Govern and secure AI agents](https://l
 
 其 [Enterprise readiness for AI agent identity](https://learn.microsoft.com/en-us/startups/build/identity-management/enterprise-readiness-ai-agent-identity) 给出一条具体的身份链：用户登录、应用记录用户和 Agent 上下文、策略检查、必要时人工审批、工具以受限身份执行、最后记录用户、应用、Agent、工具、资源、策略和结果。
 
-这里值得借鉴的是：Agent Identity 不能代替 User Identity。Agent 自身需要可识别的工作负载身份；当它代表用户访问资源时，还需要保留用户授权上下文。两个身份解决不同问题。
+Agent Identity 与 User Identity 各自承担不同职责。Agent 需要可识别的工作负载身份；代表用户访问资源时，还必须保留用户授权上下文。
 
 Microsoft Foundry Agent Service 的 [产品文档](https://learn.microsoft.com/en-us/azure/ai-foundry/agents/overview) 也列出 Agent Identity、Private Networking、RBAC 和内容安全等企业能力。但这些文档证明的是产品提供了相应能力，不自动证明企业已有的身份体系、网络和数据策略可以无修改地接入。
 
@@ -906,9 +906,9 @@ Salesforce Engineering 的 [Enterprise Agent Platform：Identity, Data, and API 
 
 ## 20. 结论：企业需要统一的是控制，不是所有 Agent 的实现
 
-企业内部 Agent 数量增长后，真正困难的不是再开发一个 Agent，而是确保每个 Agent 都有明确的用途和负责人，使用受控的模型和工具，以可追溯的身份访问授权数据，在明确的预算和自主权范围内执行，并且可以测试、暂停、回滚和退役。
+随着 Agent 数量增加，平台的主要工作会转向资产和运行治理：每个 Agent 都要有明确用途与负责人，使用获准的模型和工具，以可追溯的身份访问授权数据，并在预算和自主权边界内执行。平台还要支持测试、暂停、回滚和退役。
 
-因此，企业 Agent Platform 的设计应围绕几条边界展开：
+企业 Agent Platform 需要守住以下边界：
 
 1. **开发可以分散，控制必须统一。** 允许不同业务团队使用不同框架，但身份、策略、模型准入、工具准入、审计和生命周期要有共同标准。
 2. **Agent 可以规划，业务系统和 Workflow 必须持有正式状态。** 模型提出动作，确定性策略决定是否允许，业务系统确认最终结果。
@@ -917,13 +917,13 @@ Salesforce Engineering 的 [Enterprise Agent Platform：Identity, Data, and API 
 5. **评估必须覆盖行为和副作用。** 任务成功率之外，还要验证越权拒绝、数据保护、幂等、恢复和成本。
 6. **治理必须进入交付流水线。** 如果安全检查、评估和审批只存在于上线后的人工流程，规模扩大后很难保持一致。
 
-一个成熟的企业 Agent 平台，不是一个能够生成最多 Agent 的平台，而是一个能让业务团队在明确边界内自主交付、让企业持续知道 Agent 正在做什么并能够及时干预的平台。
+平台成熟度取决于业务团队能否在明确边界内自主交付，以及企业能否持续掌握 Agent 的运行情况并在必要时干预；Agent 数量本身不是衡量标准。
 
 ---
 
 ## 参考资料
 
-以下资料用于支撑本文的架构模式、产品能力和风险分析。厂商参考架构说明的是其设计主张或产品能力，不等于独立验证的客户生产成效。
+参考资料包括厂商架构与产品文档、客户案例、行业框架和安全规范。厂商材料反映其公开描述的能力或实践，不等于独立验证的生产成效。
 
 1. AWS, [Building an Agentic AI Platform on Amazon Bedrock AgentCore](https://aws.amazon.com/blogs/machine-learning/building-an-agentic-ai-platform-on-amazon-bedrock-agentcore/), 2026-10-28.
 2. AWS, [Agentic AI architecture in the enterprise](https://docs.aws.amazon.com/prescriptive-guidance/latest/govern-architect-agentic-ai/enterprise-architecture.html).
