@@ -912,9 +912,6 @@ uvicorn app:app --reload
 这套方法与前文日本、韩国的日常气味词汇研究，以及印度精油/分子数据库形成互补：区域词汇帮助理解用户如何表达气味，原料数据库帮助解释气味概念，产品目录和评价提供具体商品证据，而个人反馈最终决定推荐是否真正适合这个人。
 
 
-26. [淘宝开放平台](https://open.taobao.com/)：商品 API 与应用权限说明；实际可用接口以应用授权为准。
-27. [IFRA Standards](https://ifrafragrance.org/safe-use/ifra-standards)：香料使用标准与安全资料；符合性声明不等于个人气味偏好评价。
-
 15. [日本日常气味词汇研究：A new systematic collection and classification of odour words](https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0289368)
 16. [NII / IDR Rakuten Dataset：数据范围、申请资格与使用条件](https://www.nii.ac.jp/dsc/idr/rakuten/)
 17. [NTT DATA：香り×人間情報データベース研究会](https://www.nttdata-strategy.com/newsrelease/240627/)
@@ -926,6 +923,8 @@ uvicorn app:app --reload
 23. [sCentInDB batch download](https://cb.imsc.res.in/scentindb/download)
 24. [AromaDb – CSIR-CIMAP](https://bioinfo.cimap.res.in/aromadb/)
 25. [AromaDb publication](https://doi.org/10.3389/fpls.2018.01089)
+26. [淘宝开放平台](https://open.taobao.com/)：商品 API 与应用权限说明；实际可用接口以应用授权为准。
+27. [IFRA Standards](https://ifrafragrance.org/safe-use/ifra-standards)：香料使用标准与安全资料；符合性声明不等于个人气味偏好评价。
 
 ## 参考资料与数据入口
 
