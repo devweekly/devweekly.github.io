@@ -2,43 +2,18 @@
 
 **Best for:** system overviews, data-flow diagrams, integration maps, infra topology.
 
-## Default visual direction — Graphite & Sand Dependency
+## Architecture-specific composition
 
-Use this as the default visual direction for Architecture diagrams created with the Devweekly copy of this skill. It is inspired by Agnieszka Jaźwa's *Dependency diagram* for Synergy Codes: a cool blue-grey canvas, restrained graphite structure, soft neutral grouping, and a warm sand accent. The reference describes data organized into swimlanes, nodes with collapsible property sections, and automatic re-layout. This is a diagram-level direction, not a change to the shared `style-guide.md` skin: keep the global palette, templates, and all non-Architecture types unchanged.
+Architecture diagrams use the global **Soft Dependency Canvas** skin from [style-guide.md](style-guide.md), including its blue-grey canvas, raised white node surfaces, rounded 10–12px blocks, subtle shadows, and pastel category chips. This reference adds only Architecture-specific composition rules; it does not define a separate palette.
 
-Reference: [Dribbble — Dependency diagram](https://dribbble.com/shots/16373937-Dependency-diagram).
+- Organize components into responsibility lanes or grouped regions when they explain ownership, data domains, deployment boundaries, or dependency layers. Use broad, quiet lane surfaces and consistent alignment.
+- Node cards use the shared raised-surface primitive; keep category labels as compact pastel pills and map each category consistently.
+- Keep trust boundaries visually distinct from cards: use quiet dashed outlines or lightly tinted regions, never another raised card.
+- Use graphite for primary connectors and text. Use the warm sand focal accent sparingly for the primary integration point, data store, or key decision node.
+- Preserve the existing Architecture grammar: zones, trust boundaries, containment, focal-node budget, orthogonal routing, port selection, crossing bridges, and complexity limits.
+- The reference's collapsible properties and automatic re-layout are interaction/layout capabilities, not styling. Do not claim or simulate working collapse/re-layout behavior in a static HTML/SVG deliverable.
 
-### Palette mapping
-
-| Role | Value | Use |
-|---|---|---|
-| Canvas / lane base | `#DDE3F0` | Main cool blue-grey canvas and broad lane surfaces |
-| Muted / secondary text | `#9299AA` | Lane labels, metadata, secondary annotations |
-| Soft structure / node separation | `#C3BCC3` | Quiet separators, secondary node surfaces, subtle grouping |
-| Primary ink / connector | `#32394D` | Titles, node names, primary dependency paths and outlines |
-| Warm accent | `#B08158` | One or two focal nodes, selected dependency, or key status |
-
-Keep the palette restrained. The visual hierarchy is blue-grey canvas → graphite structure and text → pale neutral grouping → a small amount of warm sand. Do not use the bronze accent as a general category color or paint every node with it. Avoid introducing extra saturated colors; distinguish additional categories through labels, grouping, line style, and shape.
-
-### Composition and component treatment
-
-- Organize components into clear responsibility lanes or grouped regions when those groups explain ownership, data domains, deployment boundaries, or dependency layers. Use lane headers and consistent alignment; do not force swimlanes when the topology is better explained by nested trust boundaries.
-- Give lanes enough horizontal and vertical breathing room. Prefer a few broad, readable regions over a dense dashboard grid or a collection of equal-sized cards.
-- Use graphite for component names, primary outlines, and the main dependency paths. Use muted grey for secondary labels and non-critical relationships.
-- Use soft neutral fills and thin separators to distinguish adjacent lanes and node groups. Keep node surfaces visually quiet; reserve the warm sand accent for the true focal component or dependency.
-- Make dependency direction and hierarchy legible through alignment, connector routing, grouping, and line weight before adding color. Preserve the existing orthogonal connector, port-selection, and crossing-bridge rules.
-- Keep node labels concise. Put implementation details, protocols, versions, and property lists in a secondary text tier; use monospace only for technical values.
-- Use restrained corners and thin borders. Avoid shadows, gradients, neon effects, excessive icons, rainbow category colors, and decorative chrome.
-- The reference includes collapsible node properties and automatic re-layout. Treat those as interaction/layout capabilities, not visual decoration: do not claim or simulate working collapse/re-layout behavior in a static HTML/SVG deliverable. Add interaction only when the requested output and implementation actually support it.
-- Keep the existing Architecture grammar intact: zones, trust boundaries, containment, focal-node budget, orthogonal routing, port selection, crossing bridges, and complexity limits remain mandatory.
-
-### Override and scope
-
-This direction is the default only when this Devweekly skill creates an Architecture diagram. An explicit user style request or an active project/client profile overrides it. Do not rewrite `references/style-guide.md`, change the shared templates, or apply this palette to other visual types. For an existing diagram, preserve its information architecture and only restyle it unless the user asks for structural changes.
-
-### Reference implementation
-
-The Enterprise AI Agent Platform figure at `/diagrams/enterprise-agent-platform-architecture.svg` is an example asset, not a requirement to reuse its previous North Atlantic palette. Update example HTML and SVG together whenever that example is restyled.
+An explicit user style request or active project/client profile overrides the global skin. Existing diagrams should preserve their information architecture and only be restyled unless structural changes are requested.
 
 ---
 

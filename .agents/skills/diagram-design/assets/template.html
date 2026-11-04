@@ -8,10 +8,14 @@
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     :root {
-      --color-paper:   #f5f5f5;   /* white-smoke */
-      --color-ink:     #2d3142;   /* jet-black */
-      --color-muted:   #4f5d75;   /* blue-slate */
-      --color-accent:  #bf4520;   /* burnt-tangerine */
+      --color-paper:   #EBEDF7;   /* cool blue-grey canvas */
+      --color-ink:     #32394D;   /* jet-black */
+      --color-muted:   #626B80;   /* graphite slate */
+      --color-accent:  #8B603F;   /* deep sand */
+      --color-paper-2: #F1F3FA;
+      --color-surface: #FFFFFF;
+      --color-rule: rgba(50,57,77,0.10);
+      --color-shadow: rgba(50,57,77,0.10);
       --font-sans:     'Geist', system-ui, sans-serif;
       --font-serif:    'Instrument Serif', 'Noto Serif', 'Noto Serif KR', serif;
       --font-mono:     'Geist Mono', ui-monospace, monospace;
@@ -55,6 +59,9 @@
     }
 
     svg { width: 100%; min-width: 960px; display: block; }
+    .node-card { fill: var(--color-surface); stroke: var(--color-rule); stroke-width: 1; filter: drop-shadow(0 2px 4px var(--color-shadow)); }
+    .category-chip { stroke: none; rx: 9; }
+    .lane-surface { fill: var(--color-paper-2); stroke: none; }
     /* Paper has no scrollbar, so the local scroller would clip instead of
        scroll. Let the diagram scale down to the sheet: smaller but whole
        beats sharp but cut off. Must come after the svg rule above - a media
@@ -76,19 +83,20 @@
         <title id="[diagram-slug]-title">[Diagram title]</title>
         <desc id="[diagram-slug]-desc">[One sentence describing what the diagram shows]</desc>
         <defs>
-          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f5d75"/></marker>
-          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#bf4520"/></marker>
-          <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#2e5aa8"/></marker>
+          <filter id="node-shadow" x="-12%" y="-12%" width="124%" height="140%" color-interpolation-filters="sRGB"><feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#32394D" flood-opacity="0.10"/></filter>
+          <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#626B80"/></marker>
+          <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#8B603F"/></marker>
+          <marker id="arrow-link" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#52698E"/></marker>
 
           <!-- OPTIONAL: dot-pattern background. Uncomment the <pattern> and the second <rect> below if you want the dotted paper look. -->
           <!--
           <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
-            <circle cx="1" cy="1" r="0.9" fill="rgba(45,49,66,0.10)"/>
+            <circle cx="1" cy="1" r="0.9" fill="rgba(50,57,77,0.10)"/>
           </pattern>
           -->
         </defs>
 
-        <rect width="100%" height="100%" fill="#f5f5f5"/>
+        <rect width="100%" height="100%" fill="#EBEDF7"/>
         <!-- <rect width="100%" height="100%" fill="url(#dots)" opacity="0.55"/> -->
 
         <!-- Draw arrows first, then nodes. Replace with your content. -->

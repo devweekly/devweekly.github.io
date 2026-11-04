@@ -1,10 +1,10 @@
 # Core SVG primitives
 
-Routed from SKILL.md §6. SKILL.md keeps the six connector rules as one line each, the arrow roles, and a one-line node box summary. This file holds the markup and the long form of every rule. The copied template already carries the background rect, the commented dotted-paper pattern, and all three arrow markers, so load this file when you need exact markup or a rule's edge cases.
+Routed from SKILL.md §6. SKILL.md keeps the six connector rules as one line each, the arrow roles, and a one-line node box summary. This file holds the markup and the long form of every rule. The copied template carries the Soft Dependency Canvas background, subtle node-shadow filter, and all three arrow markers, so load this file when you need exact markup or a rule's edge cases.
 
 Type-specialized primitives (lifeline, activation bar, region) live in the relevant type reference linked in SKILL.md §3.
 
-Snippets here and in every type reference name colors and fonts by role, never by value: `{ink}`, `{muted}`, `{paper}`, `{accent}`, `{link}`, `{soft}` for colors, `{ink @ 0.10}` for a role at an opacity, and `{title}`, `{node-name}`, `{sublabel}`, `{eyebrow}`, `{arrow-label}`, `{callout}` for font families. Resolve each against the active skin in [`style-guide.md`](style-guide.md) before emitting: `{ink @ 0.10}` becomes the `ink` color as `rgba(r,g,b,0.10)`, and `{sublabel}` becomes that role's full family stack. Uppercase names (`X`, `FILL`, `STROKE`) are geometry and per-node values you compute.
+Snippets here and in every type reference name colors and fonts by role, never by value: `{ink}`, `{muted}`, `{paper}`, `{accent}`, `{link}`, `{soft}` for colors, `{ink @ 0.10}` for a role at an opacity, and `{title}`, `{node-name}`, `{sublabel}`, `{eyebrow}`, `{arrow-label}`, `{callout}` for font families. Resolve each against the active skin in [`style-guide.md`](style-guide.md) before emitting: `{ink @ 0.10}` becomes the `ink` color as `rgba(r,g,b,0.10)`, and `{surface}`, `{shadow}`, `{tag-blue}` etc. resolve from `style-guide.md`, and `{sublabel}` becomes that role's full family stack. Uppercase names (`X`, `FILL`, `STROKE`) are geometry and per-node values you compute.
 
 ## Background
 
@@ -27,6 +27,18 @@ Snippets here and in every type reference name colors and fonts by role, never b
 ```
 
 Don't use the dot pattern when the diagram sits inside a product page, slide, or card — the texture compounds with surrounding chrome and reads as noise.
+
+## Raised node shadow
+
+Define this once in `<defs>` when the diagram uses raised node/card surfaces. Keep the filter subtle and bounded so it does not clip near the SVG edge:
+
+```svg
+<filter id="node-shadow" x="-12%" y="-12%" width="124%" height="140%" color-interpolation-filters="sRGB">
+  <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#32394D" flood-opacity="0.10"/>
+</filter>
+```
+
+Do not apply this filter to every shape. Lane backgrounds, axes, separators, connectors, and chart marks stay flat.
 
 ## Arrow markers (define all three, always)
 
@@ -83,12 +95,12 @@ These six rules are **non-negotiable**. Run the pre-output checklist (SKILL.md �
 
 ```svg
 <!-- 1. Opaque paper mask — prevents arrows bleeding through transparent fills -->
-<rect x="X" y="Y" width="W" height="H" rx="6" fill="{paper}"/>
-<!-- 2. Styled box -->
-<rect x="X" y="Y" width="W" height="H" rx="6" fill="FILL" stroke="STROKE" stroke-width="1"/>
-<!-- 3. Rectangular type tag (rx=2, NOT a pill) -->
-<rect x="X+8" y="Y+6" width="28" height="12" rx="2" fill="transparent" stroke="STROKE@0.40" stroke-width="0.8"/>
-<text x="X+22" y="Y+15" fill="STROKE@0.8" font-size="7" font-family="{eyebrow}"
+<rect x="X" y="Y" width="W" height="H" rx="12" fill="{paper}"/>
+<!-- 2. Raised node surface: rounded, quiet border, single soft shadow -->
+<rect x="X" y="Y" width="W" height="H" rx="12" fill="{surface}" stroke="{rule}" stroke-width="1" filter="url(#node-shadow)"/>
+<!-- 3. Category chip: pastel fill, no heavy outline, fully rounded pill -->
+<rect x="X+8" y="Y+6" width="48" height="18" rx="9" fill="{tag-blue}"/>
+<text x="X+22" y="Y+15" fill="{ink}" font-size="8" font-family="{node-name}"
       text-anchor="middle" letter-spacing="0.08em">API</text>
 <!-- 4. Node name (node-name role, sans: human-readable) -->
 <text x="CX" y="CY+2" fill="{ink}" font-size="12" font-weight="600"

@@ -3,7 +3,7 @@ name: diagram-design
 description: Create branded architecture, architecture delta, IT current-state, flowchart, sequence, state machine, ER/data model, timeline, swimlane, quadrant, radar/spider, polar chart (polar/radial lollipop), loop/flywheel, nested, tree, org chart, layer stack, exploded axonometric, axonometric plan, Venn, pyramid/funnel, treemap and marimekko, heatmap, bar and dumbbell, waterfall, line (slopegraph, ridgeline, streamgraph, bump), Gantt and scatter charts (bubble, beeswarm, box plot), high-level, process, medallion, data flow, DP integration, DP security matrix, Sankey, fishbone, Wardley map, kanban, user journey, service blueprint, deployment, dependency graph, UML class, story map, or database schema diagrams as HTML/SVG/PNG, with .drawio, Mermaid, and .excalidraw import, plus lifecycle phase maps, block decomposition trees, and onboarding guidance.
 license: MIT
 metadata:
-  version: "2.7"
+  version: "2.8"
 ---
 
 # Diagram Design
@@ -22,7 +22,7 @@ Do not silently ship default-skinned diagrams into a branded project.
 
 First resolve any project `.diagram-design` marker per [`references/profiles.md`](references/profiles.md); a successfully resolved marker selects its profile and bypasses this gate. That reference owns failures, the protected default, and save behavior.
 
-Open [`references/style-guide.md`](references/style-guide.md) and check the default tokens. If they are still the shipped defaults (paper `#f5f5f5`, ink `#2d3142`, accent `#bf4520`), **pause and ask the user**:
+Open [`references/style-guide.md`](references/style-guide.md) and check the default tokens. If they are still the shipped defaults (paper `#EBEDF7`, ink `#32394D`, accent `#8B603F`), **pause and ask the user**:
 
 > *"This is your first diagram in this project and the style guide is still default. Customize now? Options: (a) website URL, (b) installed skill, (c) local folder/design-system, (d) paste tokens, (e) keep default, (f) load saved profile."*
 
@@ -40,7 +40,7 @@ Applied to schematics:
 
 - Every node represents a distinct idea. Two nodes that always travel together are one node.
 - Every connection carries information. If the relationship is obvious from layout, remove the line.
-- Coral is **editorial, not a flag.** 1–2 focal nodes per diagram. Using it on 5 nodes erases the signal.
+- Warm sand is **editorial, not a flag.** Use it for 1–2 focal nodes per diagram. Category chips may use the restrained pastel tag palette defined in `style-guide.md`.
 - The schematic isn't done when everything is added. It's done when nothing can be removed.
 
 **Target density: 4/10.** Enough to be technically complete. Not so dense it needs a guide. Above 9 nodes, it's probably two diagrams.
@@ -138,7 +138,7 @@ Rules of thumb:
 
 **Always load the chosen type reference linked in the guide before drawing.** When routed above, also load `semantic-patterns.md`; when animation is chosen, load `animation.md`.
 
-**Architecture default visual direction:** when the selected type is Architecture, use the *Graphite & Sand Dependency* direction defined in [`references/type-architecture.md`](references/type-architecture.md#default-visual-direction--graphite--sand-dependency) unless the user explicitly requests another visual style or an active project/client profile takes precedence. This is an Architecture-specific default; do not change the shared skin or impose this palette on other diagram types.
+**Default visual direction — Soft Dependency Canvas:** use the global *Soft Dependency Canvas* skin defined in [`references/style-guide.md`](references/style-guide.md) for every visual type, not only Architecture. It changes the palette, surfaces, node geometry, category chips, and restrained elevation while preserving each type's semantic layout grammar. Explicit user styles and active project/client profiles take precedence.
 
 ### Confirm before drawing
 
@@ -159,9 +159,9 @@ These mark "AI slop" schematics of any type:
 | Arrow labels with no masking rect | Bleeds through the line |
 | Vertical `writing-mode` text on arrows | Unreadable |
 | 3 equal-width summary cards as default | Generic grid — vary widths |
-| Shadow on any element | Shadows are out. Borders are in. |
-| `rounded-2xl` on boxes | Max radius 6–10px or none |
-| Coral on every "important" node | Coral is 1–2 editorial accents, not a signaling system |
+| Heavy or ambient shadows | A small, low-opacity elevation shadow is allowed on raised node/card surfaces; avoid dramatic depth, glow, and stacked shadows. |
+| Inconsistent corner language | Use 10–12px for primary node/card surfaces, 6–8px for compact blocks, and fully rounded category chips. Avoid mixing unrelated radii. |
+| Warm sand on every "important" node | Warm sand is 1–2 editorial accents, not a signaling system |
 | Reproducing Mermaid's renderer layout | Imports automatic spacing and routing instead of making an editorial layout |
 | Any breach of the six §6 connector rules | Automatic fail: diagonal slants, labels touching their stroke, masks clipped by a later node, overlapping paths, shared attach points, transit behind a non-endpoint box |
 
@@ -171,7 +171,7 @@ Type-specific anti-patterns live in each type reference linked in the guide.
 
 ## 5. Design System
 
-**The design system is skinnable.** [`references/style-guide.md`](references/style-guide.md) is the single source of truth for colors, typography, tokens, and the default palette; this file names semantic roles (`paper`, `ink`, `muted`, `accent`, `link`, …). To apply a brand, edit `style-guide.md` or run the URL-based flow in [`references/onboarding.md`](references/onboarding.md).
+**The design system is skinnable.** [`references/style-guide.md`](references/style-guide.md) is the single source of truth for colors, typography, surfaces, radii, elevation, category chips, and the default palette; this file names semantic roles (`paper`, `surface`, `ink`, `muted`, `accent`, `link`, …). The shared visual skin applies to every visual type; type references retain their own layout and semantic shape grammar. To apply a brand, edit `style-guide.md` or run the URL-based flow in [`references/onboarding.md`](references/onboarding.md).
 
 > When specs below or in type references mention "ink", "accent", "muted", etc., look up the current hex value in `style-guide.md`.
 
@@ -213,7 +213,7 @@ Universal building blocks. Type-specialized primitives (lifeline, activation bar
 Exact markup (background, dotted paper, markers, node box, arrow label, legend) and the long form of each connector rule: [`references/primitives-core.md`](references/primitives-core.md). The static templates (`template.html`, `template-dark.html`, `template-full.html`) already define the background and the `arrow`, `arrow-accent`, and `arrow-link` markers; `template-motion.html` defines only its own prefixed marker, so add the others from primitives-core.md when a motion diagram needs them.
 
 - **Arrows:** `muted` by default, `accent` for the headline path, `link` for HTTP/API and external calls, dashed `5,4` for optional, passive, return, or async. Draw arrows before boxes so lines sit behind nodes.
-- **Node box:** an opaque paper mask rect, then the styled box at `rx=6`, a rectangular type tag at `rx=2` (not a pill), the name in Geist 600, and a Geist Mono sublabel.
+- **Node box:** use the shared Soft Dependency Canvas primitive — raised white surface, 10–12px corners, one subtle shadow, pastel pill category chip, clear name and secondary technical label. The global surface/geometry/elevation contract in `style-guide.md` and `primitives-core.md` supersedes older local references to flat boxes, 4–6px node radii, or rectangular type tags; preserve each visual type's semantic shapes (diamonds, circles, compartments, etc.).
 
 ### Mandatory connector rules
 
@@ -238,7 +238,7 @@ Structural geometry sits on a 4px grid: node origins, widths, heights, gaps, and
 |---|---|
 | Max nodes | 9 |
 | Max arrows / transitions | 12 |
-| Max coral elements | 2 |
+| Max warm-sand focal elements | 2 |
 | Max annotation callouts | 2 |
 | Max motion (optional) | 8 steps, 12 marked items, 2 simultaneous items — see [animation.md](references/animation.md) |
 
@@ -262,6 +262,8 @@ Run before producing any diagram.
 
 - [ ] If behavior matters, did I choose one semantic pattern before the visual type and load `semantic-patterns.md`?
 - [ ] Right visual type for the layout? (§3 visual-type guide)
+- [ ] Applied the global Soft Dependency Canvas skin: cool blue-grey canvas, raised white node/card surfaces, 10–12px primary corners, restrained single shadow, and consistent pastel category chips where categories help? (style-guide.md)
+- [ ] Kept semantic shapes and chart marks type-appropriate instead of turning every shape into a raised card?
 - [ ] Stated type, pattern, size preset, and planned cuts before drawing — confirmed, or assumptions noted? (§3)
 - [ ] Would a table / paragraph do the same job? (If yes — don't draw.)
 - [ ] Loaded the matching type reference linked in the visual-type guide?
@@ -277,7 +279,7 @@ Run before producing any diagram.
 
 **Signal:**
 
-- [ ] Coral used on ≤2 elements? If more, which actually deserve focal status?
+- [ ] Warm-sand focal accent used on ≤2 elements? If more, which actually deserve focal status?
 - [ ] Legend covers every type used — and nothing extra?
 - [ ] Within the type's complexity budget (§7)?
 
