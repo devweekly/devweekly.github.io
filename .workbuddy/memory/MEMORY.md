@@ -94,3 +94,15 @@ evidence-and-claim-review                 横切件：审「说法成不成立�
   （Search 上限 400M → **<100M**；Search 授权归因写反 → REFUTED + REVERSE；§6 Google 模型不存在）；
   Maturity **Low–Medium** / Comparison **Low**；Gartner MQ Snowflake = **Visionary**；Reality 可达
   Successful 但 **Outcome 全部 SELF_REPORTED**、Production 最高 L5；战略排他论点 **CONTESTED**。
+
+## 5. 移动端布局：不让任何元素撑宽文档
+
+**硬约束**：`documentElement.scrollWidth` 必须等于视口宽度。被撑宽时 iOS Safari 会 **shrink-to-fit 整页缩放**，
+表现是「正文只剩左侧约 60%，右侧一片空白」—— 看着像容器变窄，其实是缩放，别去查 `max-w-*`。
+
+- Markdown 表格一律由 `rehypeWrapTables()`（`astro.config.ts`）包进 `.table-wrap` 横向滚动容器；
+  **不要**用 `th/td { overflow-wrap: anywhere }` 收宽度 —— 它会把 `Interference` 切成 `Interferenc|e`。
+- `body { overflow-x: clip }` 是兜底，不是修复手段。
+- 回归检查：iframe 定宽 320/360/375/390/414/427，比对 `scrollWidth` 与 `clientWidth`。
+  headless Chrome 的 `--window-size` **不等于**布局视口，量几何必须 iframe + `--dump-dom` 回读。
+- 移动端导航 `nav ul` 用 `justify-between gap-x-1` + 链接 `px-2`，5 项才排得下一行。

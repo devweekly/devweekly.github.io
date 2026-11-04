@@ -43,6 +43,8 @@
   body {
     @apply flex min-h-[100svh] flex-col bg-skin-fill font-mono text-skin-base 
     selection:bg-skin-accent selection:text-skin-inverted;
+    /* 任何元素越过视口宽度都会让移动端浏览器缩放整页，这里直接裁掉横向溢出 */
+    overflow-x: clip;
   }
   section,
   footer {
@@ -63,6 +65,8 @@
   .prose {
     color: rgb(var(--color-text-base));
     line-height: 1.7;
+    /* 长英文词、URL、代码标识符在小屏上不撑宽正文列 */
+    overflow-wrap: break-word;
   }
   @media (min-width: 640px) {
     .prose {
@@ -179,6 +183,18 @@
   }
   .prose table {
     color: rgb(var(--color-text-base));
+  }
+  /* 表格宽于正文列时在自身容器里滚动，而不是把整页撑宽 */
+  .prose .table-wrap {
+    margin-bottom: 1rem;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    -webkit-overflow-scrolling: touch;
+  }
+  .prose .table-wrap > table {
+    margin-bottom: 0;
+    min-width: 100%;
   }
   .prose th {
     border: 1px solid rgb(var(--color-border));
