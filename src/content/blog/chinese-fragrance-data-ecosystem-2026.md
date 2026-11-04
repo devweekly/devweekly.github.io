@@ -288,26 +288,9 @@ CosmeticsKG 是中国科学院大学 2019 年秋季学期自然语言处理课�
 
 可以采用以下分层结构：
 
-~~~mermaid
-flowchart TD
-    A["产品数据<br/>品牌、香水、调香师、版本"] --> G["统一香水知识层"]
-    B["香调词典<br/>Note、Accord、中文语义"] --> G
-    C["原料数据<br/>Ingredient、CAS、来源"] --> G
-    D["分子数据<br/>SMILES、结构、理化属性"] --> G
-    E["嗅觉科学<br/>气味标签、受体、实验"] --> G
-    F["消费者数据<br/>评论、评分、投票"] --> G
-    G --> H["关系查询与过滤"]
-    G --> I["全文检索与同义词检索"]
-    G --> J["语义 Embedding 检索"]
-    H --> K["相似香水推荐"]
-    I --> K
-    J --> K
-    H --> L["产品解释与知识问答"]
-    I --> L
-    J --> L
-    K --> M["个性化推荐与反馈"]
-    L --> M
-~~~
+![香水推荐系统参考架构](/diagrams/fragrance-recommender-architecture.svg)
+
+*图源：[diagram-design HTML 版本](/diagrams/fragrance-recommender-architecture.html)。*
 
 ### 7.1 核心实体与关系
 
@@ -342,19 +325,9 @@ Perfume 与 Note 之间还应保留 Top、Heart、Base 等角色；Perfume 与 A
 
 系统不应该只把整句话转换成一个向量，然后直接取 Top-K 产品。更稳妥的流程是先识别约束，再进行混合检索：
 
-~~~mermaid
-flowchart TD
-    A["用户自然语言描述"] --> B["提取偏好与排除条件"]
-    B --> C["中文嗅觉语义映射"]
-    C --> D["生成标准概念集合"]
-    D --> E["关键词与同义词召回"]
-    D --> F["语义向量召回"]
-    E --> G["候选香水合并"]
-    F --> G
-    G --> H["结构化过滤<br/>甜度、品牌、浓度、价格等"]
-    H --> I["依据来源与评价重新排序"]
-    I --> J["生成推荐理由与证据"]
-~~~
+![香水推荐请求处理流程](/diagrams/fragrance-recommendation-flow.svg)
+
+*图源：[diagram-design HTML 版本](/diagrams/fragrance-recommendation-flow.html)。*
 
 检索系统可以把请求转换为如下概念：
 
@@ -435,9 +408,7 @@ flowchart TD
 
 下图把事实存储、查询理解、混合召回和排序拆开。关系数据库仍然是产品事实的来源；全文和向量索引只是检索投影，可以从规范数据重建。
 
-![香水推荐系统参考架构](/diagrams/fragrance-recommender-architecture.svg)
-
-*图源：[可交互缩放的 HTML 版本](/diagrams/fragrance-recommender-architecture.html)。*
+完整分层架构见第 7 节图。这里强调一个实现边界：产品事实保存在 PostgreSQL，全文和向量索引属于可重建的检索投影。
 
 主要组件的职责如下：
 
@@ -453,9 +424,7 @@ flowchart TD
 
 ### 12.2 推荐请求的处理顺序
 
-![香水推荐请求处理流程](/diagrams/fragrance-recommendation-flow.svg)
-
-*图源：[可交互缩放的 HTML 版本](/diagrams/fragrance-recommendation-flow.html)。*
+完整请求处理流程见第 8 节图。Recall 和 Rank 分离，可以分别评估召回覆盖率和最终排序质量。
 
 推荐流程分为两个核心阶段。
 
