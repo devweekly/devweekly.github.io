@@ -55,44 +55,6 @@ description: "企业建立内部 AI Agent 平台，不只是部署一个 Agent F
 
 ![Enterprise AI Agent Platform：统一控制平面与按业务域隔离的执行单元](/diagrams/enterprise-agent-platform-architecture.svg)
 
-~~~mermaid
-flowchart TB
-    U["员工 / 业务用户 / 应用系统"] --> UX["统一入口<br/>Chat / API / Embedded UI"]
-    UX --> GW["Agent Access Gateway<br/>SSO · Tenant · Rate Limit"]
-    GW --> REG["Agent Registry / Discovery"]
-    GW --> RT["Agent Runtime / Orchestrator"]
-
-    subgraph CP["Enterprise Control Plane"]
-      REG
-      ID["Identity & Delegation"]
-      POL["Policy Decision / Risk / Approval"]
-      MG["Model Gateway & Model Catalog"]
-      TG["Tool Gateway & Capability Catalog"]
-      DG["Data Access Policy"]
-      GOV["Lifecycle / Ownership / Compliance"]
-    end
-
-    subgraph DP["Domain-owned Execution Plane"]
-      RT --> AG["Agent / Workflow Runtime"]
-      AG --> MEM["Session / State / Memory"]
-      AG --> KNOW["Enterprise Context & Retrieval"]
-      AG --> TOOL["Approved Tools / MCP Servers"]
-      TOOL --> SYS["CRM · ERP · ITSM · Data · SaaS"]
-    end
-
-    ID --> GW
-    POL --> RT
-    POL --> TG
-    MG --> AG
-    TG --> TOOL
-    DG --> KNOW
-    GOV --> REG
-
-    AG --> OBS["Telemetry / Evaluation / Audit"]
-    TOOL --> OBS
-    MG --> OBS
-    OBS --> GOV
-~~~
 
 这张图中的模块不一定是独立部署的微服务。例如，Agent Registry 可以先是一个带审批状态的元数据目录；Policy Decision 可以复用企业现有的 OPA、云 IAM 或 API 授权服务；Tool Gateway 也可以基于现有 API Gateway 扩展。架构上要先保证职责和执行边界，再根据规模决定是否拆分部署。
 
