@@ -162,11 +162,7 @@ Model Merging 是把多个模型或模型适配器的参数组合成一个模型
 | TIES-Merging | 剪除冗余更新，处理符号冲突，再合并 | 稀疏率和权重选择需要实验 |
 | DARE | 随机丢弃部分参数更新并重新缩放 | 随机丢弃不保证每个任务都受益 |
 
-TIES 的名称来自 Trim、Elect、Merge 三个步骤。它尝试减少不同模型参数更新之间的冲突。
-
-DARE 则通过 Drop And REscale 减少冗余更新，再配合其他合并方法使用。
-
-开源项目 [MergeKit](https://github.com/arcee-ai/mergekit) 提供了多种模型合并实现，支持通过 YAML 配置模型和合并策略。
+TIES 的名称来自 Trim、Elect、Merge 三个步骤，尝试减少不同模型参数更新之间的冲突；DARE 则通过 Drop And REscale 随机丢弃部分冗余更新，再进行缩放。开源项目 [MergeKit](https://github.com/arcee-ai/mergekit) 实现了多种模型合并方法，可以通过 YAML 配置模型和合并策略。
 
 ### 2.5 Model Editing：直接修改模型中的特定知识或行为
 
@@ -262,11 +258,7 @@ MergeKit、Hugging Face PEFT 等项目让模型合并和参数高效微调有了
 
 ### 4.3 最受关注的实验：直接修改 Qwen3.5-0.8B
 
-研究使用的是 Qwen3.5-0.8B 的文本模型部分，共 24 层。
-
-基础模型存在明显的推理循环问题。实验日志记录，在一次早期练习中，前 96 个回答有 85 个达到 32,768 Token 的生成上限。
-
-数学题的失败记录因此很难直接解释为“不会做”：模型可能已经走到正确解法附近，却因重复推理而在输出答案前触及 Token 上限。
+研究使用 Qwen3.5-0.8B 的文本模型部分，共 24 层。基础模型存在明显的推理循环问题：实验日志记录，在一次早期练习中，前 96 个回答有 85 个达到 32,768 Token 的生成上限。因此，数学题答错或未完成，不能直接解释为模型不会解题；它可能已经接近正确解法，却因重复推理而耗尽 Token 预算。
 
 实验环境向 Astra 提供了 Qwen3.5-0.8B 权重和一个可持久化的 Python Kernel，用于读取、计算权重。可供练习的材料包括 7,469 道 GSM8K 训练集题目、7,275 道 MATH 训练集题目，以及 714 道 AIME 练习题的答案；Astra 还可以通过受控接口提交权重修改，并在不同实验设置下调用最多 10、25 或 50 次 Forward Pass。这些练习题来自训练数据，而不是最终评估集。Astra 没有看到最终 Benchmark 的题目和分数。
 
@@ -341,19 +333,11 @@ model.language_model.layers.19.mlp.down_proj.weight
 | Conversations | 4 |
 | Wall-clock Time | 20.3 小时 |
 
-其中包含约 4.7 小时模型服务无法访问、Harness 等待重试的时间。
-
-Forward Pass 也不是单独生成一道题。根据实验接口定义，一次 Forward Pass 可以处理最多 512 道练习题的生成，或者读取最多 1,024 条文本的 Log Probability、Hidden States、MLP Activations 和 Attention 等信息。
-
-因此，不能把 50 Passes 简单理解成 50 次普通 Chat Completion。
-
-公开材料没有给出完整的美元成本，也没有证明这种方法在相同硬件和任务条件下比 LoRA 或 Fine-tuning 更便宜。20.3 小时是实验运行时间，不是 GPU 费用或 API 账单。
+总运行时间中包含约 4.7 小时模型服务无法访问、Harness 等待重试的时间。这里的 Forward Pass 也不是单独生成一道题：根据实验接口定义，一次调用可以处理最多 512 道练习题的生成，或者读取最多 1,024 条文本的 Log Probability、Hidden States、MLP Activations 和 Attention 等信息。因此，50 Passes 不能简单理解成 50 次普通 Chat Completion。公开材料没有给出完整的美元成本，也没有证明这种方法在相同硬件和任务条件下比 LoRA 或 Fine-tuning 更便宜；20.3 小时是实验运行时间，不是 GPU 费用或 API 账单。
 
 ### 4.8 外部复跑：51.0% 是否能复现？
 
-Hugging Face 上的 [Qwen3.5-0.8B Weight-Space Programming 模型](https://huggingface.co/RikiyaT/Qwen3.5-0.8B-weight-space-programming)公开了重建后的模型权重和评估结果。
-
-Ahsen Khaliq 根据作者公开的精确权重差异重建模型，并在 H200 上重新运行完整 MATH-500。评估覆盖 500 道题，每题采样 4 次，总计生成 2,000 次，约 4,340 万 Token，耗时约 51 分钟。Edited Model 得分为 51.0%，略高于原文报告的 48.1%。
+Hugging Face 上的 [Qwen3.5-0.8B Weight-Space Programming 模型](https://huggingface.co/RikiyaT/Qwen3.5-0.8B-weight-space-programming)公开了重建后的模型权重和评估结果。Ahsen Khaliq 根据作者公开的精确权重差异重建模型，并在 H200 上重新运行完整 MATH-500：评估覆盖 500 道题，每题采样 4 次，总计生成 2,000 次、约 4,340 万 Token，耗时约 51 分钟。Edited Model 得分为 51.0%，略高于原文报告的 48.1%。
 
 但该模型页对 Base Model 只做了 25 道题的 Smoke Test，结果为 5.0%，不能把 51.0% 和 5.0% 当作同等规模、完全配对的独立对照实验。
 
@@ -391,9 +375,7 @@ MIT 的实验发布后，Simon Willison 在 2026 年 11 月 3 日做了一个很
 | Breakout | 正确识别 | 52 分 25 秒 |
 | Freeway | 误判为类似 Pac-Man 的网格游戏 | 未报告为成功 |
 
-Pac-Man、Pong 和 Breakout 的回答分别给出了 72%、75% 和 88% 的模型自评置信度。完成 Pac-Man 任务消耗了约 43,506 个 Reasoning Tokens。这里的置信度是模型自己的表达，不是经过校准的统计置信区间；三题成功也不能据此推断模型对任意网络都能可靠读懂权重。
-
-这次复测补充了一条独立证据：本地运行的 Qwen 3.8 27B 也能识别部分小型游戏网络。它说明这类任务并非只有 GPT-6 Astra 能完成，也让其他人可以直接使用公开提示词复测。
+Pac-Man、Pong 和 Breakout 的回答分别给出了 72%、75% 和 88% 的模型自评置信度，完成 Pac-Man 任务消耗了约 43,506 个 Reasoning Tokens。这里的置信度是模型自己的表达，不是经过校准的统计置信区间；三题成功也不能据此推断模型对任意网络都能可靠读懂权重。这次复测补充了一条独立证据：本地运行的 Qwen 3.8 27B 也能识别部分小型游戏网络，说明这类任务并非只有 GPT-6 Astra 能完成，也让其他人可以使用公开提示词复测。
 
 但不要把它理解成 Qwen 3.8 27B 已经能够编辑 Qwen 或其他大模型的权重。Simon 测试的是小型游戏策略网络的 Weight Reading，不是对 Qwen 3.5-0.8B 做 Weight Editing；这次也没有验证模型能否在大型 Transformer 中定位并修复真实故障。
 
