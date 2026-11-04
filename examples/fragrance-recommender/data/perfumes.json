@@ -1,0 +1,62 @@
+[
+  {
+    "id": "demo-forest-01",
+    "name": "雨林漫步（示例）",
+    "brand": "Studio Sample",
+    "concentration": "EDP",
+    "price": 680,
+    "occasions": ["daily", "outdoor"],
+    "accords": ["woody", "green", "earthy"],
+    "descriptors": ["mossy", "wet-soil", "fresh"],
+    "notes": ["vetiver", "cedar", "moss"],
+    "evidence": [{"source": "demo-curated", "field": "accords", "claim": "woody / green / earthy"}]
+  },
+  {
+    "id": "demo-wood-02",
+    "name": "苔木书房（示例）",
+    "brand": "Studio Sample",
+    "concentration": "EDP",
+    "price": 720,
+    "occasions": ["daily", "office"],
+    "accords": ["woody", "mossy"],
+    "descriptors": ["dry-wood", "mossy", "paper-like"],
+    "notes": ["cedar", "patchouli", "moss"],
+    "evidence": [{"source": "demo-curated", "field": "descriptors", "claim": "mossy / dry-wood"}]
+  },
+  {
+    "id": "demo-green-03",
+    "name": "清晨草叶（示例）",
+    "brand": "Studio Sample",
+    "concentration": "EDT",
+    "price": 390,
+    "occasions": ["daily", "outdoor"],
+    "accords": ["green", "fresh", "citrus"],
+    "descriptors": ["grassy", "fresh"],
+    "notes": ["galbanum", "bergamot"],
+    "evidence": [{"source": "demo-curated", "field": "accords", "claim": "green / fresh"}]
+  },
+  {
+    "id": "demo-sweet-04",
+    "name": "香草奶油（示例）",
+    "brand": "Studio Sample",
+    "concentration": "EDP",
+    "price": 560,
+    "occasions": ["evening"],
+    "accords": ["sweet", "gourmand", "vanilla"],
+    "descriptors": ["creamy", "sweet"],
+    "notes": ["vanilla", "tonka"],
+    "evidence": [{"source": "demo-curated", "field": "accords", "claim": "sweet / gourmand"}]
+  },
+  {
+    "id": "demo-floral-05",
+    "name": "雨后花园（示例）",
+    "brand": "Studio Sample",
+    "concentration": "EDP",
+    "price": 620,
+    "occasions": ["daily"],
+    "accords": ["floral", "fresh", "green"],
+    "descriptors": ["dewy", "fresh", "green"],
+    "notes": ["rose", "jasmine", "green-leaf"],
+    "evidence": [{"source": "demo-curated", "field": "accords", "claim": "floral / fresh / green"}]
+  }
+]
