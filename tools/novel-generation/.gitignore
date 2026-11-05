@@ -4,3 +4,4 @@ dist/
 .env
 worlds/*/story-state.json
 worlds/*/library/
+private/
