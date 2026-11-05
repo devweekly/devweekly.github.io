@@ -191,10 +191,13 @@ export async function analyzeStoryCorpus(
   const chunks = await loadLibraryChunks(join(worldDir, "library"), worldId);
   if (!chunks.length) throw new Error("No indexed text found. Run ingest before analyze-story.");
   const sourceHash = createHash("sha256")
-    .update("story-analysis-v1\nmodel=" + resolveAgentModel(options.model).model + "\n" + chunks.map(chunk => chunk.id + ":" + (chunk.sourceHash ?? "") + ":" + chunk.text).join("\n"))
+    .update(chunks.map(chunk => chunk.id + ":" + (chunk.sourceHash ?? "") + ":" + chunk.text).join("\n"))
+    .digest("hex");
+  const cacheKey = createHash("sha256")
+    .update("story-analysis-v1\nmodel=" + resolveAgentModel(options.model).model + "\nsource=" + sourceHash)
     .digest("hex");
   const batches = groupAnalysisBatches(chunks);
-  const cacheDir = resolve(".output", worldId, "story-analysis", sourceHash);
+  const cacheDir = resolve(".output", worldId, "story-analysis", cacheKey);
   await mkdir(cacheDir, { recursive: true });
   const results: Array<{ analysis: BatchAnalysis; refs: SourceRef[] }> = [];
   for (const batch of batches) {
