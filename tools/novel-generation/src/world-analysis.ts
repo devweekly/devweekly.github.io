@@ -294,10 +294,17 @@ export async function collectWorldAnalysis(worldId: string): Promise<CollectResu
     });
   }
 
-  const result: CollectResult = {
-    worldId, generatedAt: new Date().toISOString(),
-    entries, complete: entries.every(entry => entry.ok)
-  };
+  const complete = entries.every(entry => entry.ok);
+  let generatedAt = new Date().toISOString();
+  // 成稿没变时复用旧时间戳，重复运行 collect 不制造无意义的 diff。
+  try {
+    const previous = JSON.parse(await readFile(join(analysisDir, "manifest.json"), "utf8")) as CollectResult;
+    if (previous.worldId === worldId && previous.complete === complete &&
+        JSON.stringify(previous.entries) === JSON.stringify(entries)) {
+      generatedAt = previous.generatedAt;
+    }
+  } catch { /* 尚无 manifest */ }
+  const result: CollectResult = { worldId, generatedAt, entries, complete };
   await mkdir(analysisDir, { recursive: true });
   await writeFile(join(analysisDir, "manifest.json"), JSON.stringify(result, null, 2) + "\n", "utf8");
 
