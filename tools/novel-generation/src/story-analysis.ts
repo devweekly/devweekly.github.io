@@ -350,7 +350,7 @@ export function normalizeForeshadowingStatus(value: string): string {
   return "未判断";
 }
 
-function buildPrompt(batch: AnalysisBatch): string {
+export function buildAnalysisPrompt(batch: AnalysisBatch): string {
   const material = batch.chapters.map(chapter =>
     `【chapterKey=${chapter.chapterId}｜第${chapter.volume}卷｜${chapter.title}】\n${chapter.text}`
   ).join("\n\n");
@@ -418,7 +418,7 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
       if (options.mergeOnly) { pending++; continue; }
       console.log(`[story-analysis] batch ${batch.index + 1}/${totalBatches} · ${batch.chapters[0]?.title} … ${batch.chapters.at(-1)?.title} · ${batch.chars} chars`);
       try {
-        const raw = await runAgentText(buildPrompt(batch), model, options.timeoutMs ?? 180_000, readTaskProfiles().state);
+        const raw = await runAgentText(buildAnalysisPrompt(batch), model, options.timeoutMs ?? 180_000, readTaskProfiles().state);
         analysis = parseModelJson(raw);
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);

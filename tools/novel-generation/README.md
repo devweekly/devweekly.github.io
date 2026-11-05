@@ -264,6 +264,21 @@ npm run dev -- story-kb     --world conghuoniao --type export   # 导出不含�
 
 SQLite 文件及 WAL/SHM sidecar 已加入本地忽略规则。需要迁移或重建时先保留 JSON 快照，再删除数据库；下一次运行会从快照重新导入。
 
+## 打包审核材料
+
+把数据库样本、分析请求/响应、生成的章节与运行日志打成一个压缩包，交给其他模型或同事审阅：
+
+```bash
+npm run package-review
+npm run package-review -- --out /tmp/review.zip --max-mb 6 --batches 8
+```
+
+只取切片，不打包原文全文、27MB 的 `novel.db` 和完整导出：数据库抽样（人物约 30、事件 8 章、情节线约 20、伏笔约 25、关系 30、梗概 6 卷）、6 组分析请求与响应、万字流水线全链路产物（蓝图、逐场、草稿、审查、润色、节奏指标、状态提取、终稿）、两份早期章节和日志。当前约 1.0MB 未压缩 / 460KB 压缩。
+
+- 请求体由 `buildAnalysisPrompt` 对同一批章节重建，与线上一致；响应体直接取调用缓存。SDK 不落盘 token 与耗时，包里没有这两项。
+- `--max-mb` 是未压缩体积上限，超限时按固定顺序丢弃可选文件（润色稿、检索上下文、草稿、状态、日志、多余批次），丢弃项写进 `manifest.json` 和 `README.md`。
+- 包内 `README.md` 列了建议审查的优先级和已知局限，`manifest.json` 给出每个文件的字节数与 sha256。
+
 ## 目录
 
 ```
