@@ -337,7 +337,7 @@ Router 不应只是随机选择一台推理服务器。它需要理解模型能�
 
 在中国境内部署时，国产 GPU 和 AI 加速器也应纳入候选范围。市场上的产品包括通用 GPU，以及 NPU、MLU、GCU 等不同架构的加速器，软件栈和编程模型并不统一。选型需要核对目标模型的支持情况、算子覆盖、集合通信、框架适配和运维工具，峰值算力只能作为其中一项指标。
 
-本节以 2026 年 10 月 31 日可查到的公开资料为准。厂商发布的模型 Day-0 适配、单卡演示或峰值性能，不代表所有模型、量化格式、长上下文、并行策略和生产负载均已验证。必须以具体芯片型号、驱动、SDK、框架分支和版本矩阵为准。
+以下比较依据截至 2026 年 10 月 31 日公开的产品资料、项目代码和部署文档。厂商公布的 Day-0 适配、单卡演示或峰值性能，不能证明其它模型变体、量化格式、长上下文和多节点负载也已通过验证。评估时需要落实到芯片型号、驱动、SDK、框架分支和具体版本。
 
 ### 6.1 国产加速器与软件栈概览
 
@@ -389,7 +389,7 @@ DeepSeek 是检验国产加速器软件栈成熟度的一个很好的压力测�
 | **昇腾 + CANN Recipes** | DeepSeek-V3.2-Exp、V4、V4.1-Flash 等模型优化样例；包括 V4 Attention-FFN 分离、DSpark 投机解码和在线 PD 分离 | 覆盖 Atlas A2 / A3 及昇腾 950PR / 950DT 等不同代际产品，具体能力按模型目录和样例脚本区分 | 这是持续更新的工程配方库，不等于每个样例都已在所有芯片、所有软件版本上完成真实模型验证；逐条查看模型目录、提交记录和验证说明 |
 | **昇腾 + KTransformers / KT-Kernel** | DeepSeek-V4-Flash 单 NPU 异构推理教程 | 一颗昇腾 die 承载 Attention、Dense 层和每层 32 个常驻专家；其余 224 个路由专家以 MXFP4 留在 CPU，由 KT-Kernel 的 LLAMAFILE MoE 执行 | 不是“单卡装下并运行整个模型”的传统部署。教程给出的 Atlas 800I A2 主机配置包括 192 核 Kunpeng 920、1.5 TB RAM；CPU 专家卸载的吞吐、NUMA 和内存带宽是核心约束 |
 | **寒武纪 MLU + vLLM-MLU** | 仓库更新历史明确列出 2026-04-24 DeepSeek-V4 Day-0 支持 | README 声明仅支持 MLU370 及以上设备，依赖寒武纪 SDK 提供的专用镜像和软件环境 | 这是厂商维护的独立 vLLM 插件仓库；Day-0 支持不代表上游 vLLM 原生支持，也不代表所有量化和并行策略都已覆盖 |
-| **其他国产 GPU** | 本次检索没有找到足以确认所有 DeepSeek V4 / V4.1 变体均已在摩尔线程、沐曦、壁仞、燧原和海光 DCU 上形成统一、可复现生产路径的证据 | 应按具体芯片、模型变体、量化格式、框架分支和镜像逐一核实 | 新闻中的“完成适配”可能指模型加载、单轮推理、性能调优或正式产品交付，含义并不相同 |
+| **其他国产 GPU** | 现有公开资料不足以确认 DeepSeek V4 / V4.1 的各个变体已在摩尔线程、沐曦、壁仞、燧原和海光 DCU 上形成统一、可复现的生产部署路径 | 应按具体芯片、模型变体、量化格式、框架分支和镜像逐一核实 | 新闻中的“完成适配”可能只指模型加载或单轮推理，也可能包含性能调优和正式交付，不能混为一谈 |
 
 #### 6.3.1 昇腾：官方 vLLM-Ascend 部署路径
 
@@ -410,7 +410,7 @@ vLLM-Ascend 已有面向 DeepSeek-V4-Flash 的新教程，文档注明基于 vLL
 
 [hicann/cann-recipes-infer](https://github.com/hicann/cann-recipes-infer) 是值得加入工程资料库的项目。它不是一个新的通用推理引擎，而是围绕 CANN 平台沉淀模型推理部署和优化配方，覆盖 DeepSeek、Qwen、GLM、Hunyuan 等模型。
 
-从仓库 2026 年 10 月的提交记录可以看到几个值得关注的方向：
+该仓库在 2026 年 10 月的提交记录涉及以下优化方向：
 
 - DeepSeek-V3.2-Exp 等模型的部署和推理样例；
 - DeepSeek-V4.1-Flash 在昇腾 950PR / 950DT 上的适配工作；
@@ -483,7 +483,7 @@ POC 至少需要核实：DeepSeek-V4 的具体模型变体、权重格式、MLU 
 
 上游 vLLM 提供 platform 抽象和 out-of-tree platform 扩展机制，厂商可以通过独立后端适配硬件。但某项功能最终是否可用，取决于后端实现，而不是 vLLM 上游 API 本身。企业应同时跟踪上游 vLLM 与厂商后端版本，避免上游升级后厂商插件尚未跟进。
 
-### 6.5 从 CUDA 迁移：不是替换一个容器镜像
+### 6.5 CUDA 迁移涉及的运行时、算子与通信适配
 
 | 层面 | CUDA 环境常见依赖 | 国产平台需要核对的内容 |
 | --- | --- | --- |
@@ -632,7 +632,7 @@ Coding Agent 场景还要验证工具调用参数是否符合 Schema、长上下
 
 如果已经掌握 CUDA Kernel、算子性能分析和底层硬件概念，可以进一步学习 TileLang、Triton 及其国产平台适配。它们有机会让开发者用更高层的 Tile / Tensor 表达方式描述计算，再由编译器映射到不同硬件；但各后端的成熟度、支持算子、编译路径和性能并不一致。
 
-特别值得关注的是 DeepSeek 与昇腾生态的开源项目：
+DeepSeek 与昇腾生态中，有几个项目与企业推理工程直接相关：
 
 - [TileLang](https://github.com/tile-ai/tilelang)：主仓库已有 Ascend 950 后端文档，展示 Ascend C / PTO 代码生成、Cube / Vector 执行和自动调度等能力；其它硬件的适配器可能位于独立仓库，需按项目状态分别判断。
 - [DeepSeek TileKernels](https://github.com/deepseek-ai/TileKernels)：基于 TileLang 的算子库，适合对照同一算子的 CUDA 与 Ascend 后端实现，学习跨后端 Kernel 的组织方式。
@@ -668,7 +668,7 @@ Coding Agent 场景还要验证工具调用参数是否符合 Schema、长上下
 对已经掌握 CUDA 的工程师，最值得花时间的不是重新学习线程块和矩阵乘法的基本概念，而是理解**目标芯片的执行模型、软件栈边界、算子库覆盖、编译器行为和性能分析方法**。这几项决定了 CUDA 经验能迁移多少，以及剩下的迁移成本究竟在哪里。
 
 
-## 7. Coding Agent 平台：不要把 Agent 当成普通聊天请求
+## 7. Coding Agent 平台：会话执行与推理服务的职责边界
 
 平台容量应按活跃 Agent Session 和任务执行轨迹估算，不能用注册用户数或登录人数代替并发负载。一个任务可能触发多轮模型调用、仓库检索、文件读写、终端命令、测试和重试。Token 消耗之外，还要统计 Sandbox 的 CPU、内存、磁盘和网络使用量。
 
@@ -1291,7 +1291,7 @@ flowchart TB
 
 DeepSeek、Kimi 和 GLM 的项目能反映模型厂商自身的技术路线，但企业平台不能只依赖模型厂商的仓库。真正的生产部署生态由多个社区共同构成：推理引擎、分布式 Serving、KV Cache、GPU Kernel、量化、Kubernetes 管理、监控和 Benchmark 各有专门项目。
 
-本节按工程职责分类。项目被列入并不代表应该全部引入；优先选择少数成熟组件，避免出现多个 Gateway、多个 Scheduler 和多套 KV Cache 管理系统互相争抢职责。
+下列项目按工程职责分类。列入清单不代表都要部署；应根据现有平台缺口选择组件，避免多个 Gateway、Scheduler 或 KV Cache 管理系统重复承担同一职责。
 
 ### 19.1 核心推理引擎
 
@@ -1707,7 +1707,7 @@ Deutsche Telekom 与 NVIDIA 建设了位于德国慕尼黑的 Industrial AI Clou
 
 Ada 的客户服务 Agent 使用多个模型协作完成推理任务，其中一部分模型规模较小，并不需要独占一整张 GPU。AWS 客户案例披露，Ada 在迁移到 EKS 后，将模型容器部署在 Kubernetes 上，并对 Reasoning Engine 使用的 GPU 进行切分。AWS 报告称，GPU Slicing 让 GPU 使用成本效率提升约 20%；整体迁移还改善了部署速度和运维效率。
 
-这个案例提醒我们：企业内部并不是每个模型都需要 8 张 B300。模型池中可能同时存在大模型、Embedding、Reranker、Classifier、Guardrail、Small Language Model 和语音 / 视觉子模型。若所有服务都独占整卡，容易产生 GPU Fragmentation。
+这个案例说明，企业模型池通常包含大模型、Embedding、Reranker、Classifier、Guardrail、Small Language Model，以及语音和视觉子模型，并非每个服务都需要 8 张 B300。若所有服务都独占整卡，GPU 容易出现碎片化。
 
 但 GPU Sharing / Slicing 要区分 MIG、Time-slicing、MPS 和软件层虚拟化。它们的隔离、安全、显存保护、故障域和性能可预测性不同。多租户场景不能只为提高 GPU 利用率而牺牲性能隔离和安全边界。
 
@@ -1810,7 +1810,7 @@ API 方案的分子则应包含输入 / 输出 Token 费用、缓存费用、工
 
 ### 20.22 面向 1000 名开发者平台的部署建议
 
-从这些案例推导，1000 名开发者的企业 Coding Agent 不必一开始就把所有请求迁移到自有 B300。更合理的路线是把模型按任务和数据边界分层：
+这些案例支持一种分层部署方式：1000 名开发者的企业 Coding Agent 不必在第一阶段就把所有请求迁移到自有 B300。可以根据任务特征和数据边界分配模型与算力：
 
 - **高敏感代码和企业私有上下文：** 优先进入企业控制的 VPC / 私有 GPU 集群，或经过严格验证的 Dedicated Inference。
 - **高频、输入很重、任务边界明确的工作：** 评估 Specialist Model、自托管开源模型和 Prefix Cache，优先从这类任务获取成本收益。
@@ -1819,7 +1819,14 @@ API 方案的分子则应包含输入 / 输出 Token 费用、缓存费用、工
 - **离线代码扫描、批量文档处理和评估：** 使用可中断或低优先级 GPU Pool，与交互式 Coding Agent 隔离。
 - **峰值突发：** 通过弹性 CSP Capacity 或 Managed API 作为 Burst Capacity，避免为了极少数峰值长期购买大量闲置 GPU。
 
-建议实施顺序：先从现有 Coding Agent 采集脱敏 Trace，记录每任务模型调用次数、Input / Output Token、上下文长度、Cache Prefix、并行子 Agent、峰值并发、取消率、重试率和任务成功率；再选一个 Frontier API、一个开源模型和一个 Specialist Model，统一 Agent Harness、Tool Schema 和评测集；租 1–2 个 8-GPU 节点做 POC，验证单节点部署、模型质量、并发、TTFT、TPOT、KV Cache 和单位任务成本；之后测试多节点网络、RDMA / EFA / RoCE、NCCL、模型并行、权重加载、节点故障和扩容；首期选 vLLM 或 SGLang 建立稳定基线，不要同时运营多个复杂推理控制平面；真实数据证明需要时，再引入 llm-d / Dynamo、外部 KV Cache、P/D 分离和更复杂路由；最后保留托管 API 作为弹性和质量后备。
+实施可以分为六步：
+
+1. 从现有 Coding Agent 采集脱敏 Trace，记录每个任务的模型调用次数、Input / Output Token、上下文长度、Cache Prefix、并行子 Agent、峰值并发、取消率、重试率和任务成功率。
+2. 选择一个 Frontier API、一个开源模型和一个 Specialist Model，统一 Agent Harness、Tool Schema 与评测集，确保后续比较使用相同任务和工具定义。
+3. 租用 1–2 个 8-GPU 节点开展 POC，验证单节点部署、模型质量、并发、TTFT、TPOT、KV Cache 和单位任务成本。
+4. 测试多节点网络、RDMA / EFA / RoCE、NCCL、模型并行、权重加载、节点故障和扩容，确认跨节点方案的性能收益与恢复能力。
+5. 首期选择 vLLM 或 SGLang 建立稳定基线。只有当实测数据证明有必要时，再引入 llm-d / Dynamo、外部 KV Cache、Prefill / Decode 分离和更复杂的路由策略。
+6. 保留托管 API 作为峰值弹性容量和模型质量后备，避免自管集群故障时平台完全失去服务能力。
 
 ~~~mermaid
 flowchart TB
