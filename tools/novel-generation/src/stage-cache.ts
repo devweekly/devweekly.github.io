@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
+import { loadStoryState, validateStoryState, type StoryState } from "./story-state.js";
 
 interface StageEntry {
   inputHash: string;
@@ -86,4 +87,22 @@ export async function runCachedStage(input: {
     completedAt: new Date().toISOString()
   });
   return generated;
+}
+
+
+/** Keep the original story snapshot stable across retries, even if a previous
+ * attempt reached the database commit before the process was interrupted. */
+export async function loadRunStoryState(statePath: string, worldId: string, outputDir: string): Promise<StoryState> {
+  await mkdir(outputDir, { recursive: true });
+  const snapshotPath = resolve(outputDir, "00-input-story-state.json");
+  try {
+    const snapshot = validateStoryState(JSON.parse(await readFile(snapshotPath, "utf8")) as unknown);
+    if (snapshot.worldId !== worldId) throw new Error("Resume directory belongs to another world: " + snapshot.worldId);
+    return snapshot;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  const state = await loadStoryState(statePath, worldId);
+  await atomicWrite(snapshotPath, JSON.stringify(state, null, 2) + "\n");
+  return state;
 }
