@@ -411,60 +411,7 @@ POC 阶段可以先采集 vLLM 暴露的 Prometheus Metrics，并由 CloudWatch 
 
 转到 EKS 时，建议使用 AWS EKS-optimized accelerated NVIDIA AMI，避免在每个 Node 上手工安装一套不同的驱动。创建 GPU Node Group 或 Karpenter NodePool，按 GPU 型号打 Node Label，并通过 Taint/Toleration 将推理 Pod 限定到正确的 GPU 节点。Deployment 中通过 `resources.limits.nvidia.com/gpu` 申请 GPU；同一个模型副本需要 8 张 GPU 时，应确保 Pod 获得完整的 8-GPU 节点资源，并设置 `--tensor-parallel-size 8`，而不是把一个 TP8 副本随意拆到 8 台单 GPU EC2 上。
 
-一个简化的 Deployment 片段如下。镜像、模型路径、Secret 名称和资源规格需要按实际环境替换：
-
-```yaml
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: nemotron-nano
-spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: nemotron-nano
-  template:
-    metadata:
-      labels:
-        app: nemotron-nano
-    spec:
-      containers:
-        - name: vllm
-          image: vllm/vllm-openai:v0.31.0
-          args:
-            - serve
-            - /models/nemotron
-            - --served-model-name
-            - nemotron-nano
-            - --host
-            - 0.0.0.0
-            - --port
-            - "8000"
-            - --tensor-parallel-size
-            - "1"
-            - --max-model-len
-            - "32768"
-          ports:
-            - name: http
-              containerPort: 8000
-          resources:
-            limits:
-              nvidia.com/gpu: "1"
-          readinessProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            initialDelaySeconds: 120
-            periodSeconds: 10
-          livenessProbe:
-            httpGet:
-              path: /health
-              port: 8000
-            initialDelaySeconds: 180
-            periodSeconds: 20
-```
-
-这个片段展示的是单 GPU Pod 的资源声明，不是完整生产清单。生产环境还需要模型卷挂载、Secret、Service、PodDisruptionBudget、拓扑分布、资源配额、NetworkPolicy、日志和指标采集。模型加载时间可能远超普通 Web 服务，Probe 的初始延迟和超时必须按真实启动时间设置；不能因为模型下载慢就让 Kubernetes 不断重启 Pod。对于 TP8，资源请求、节点选择和调度策略都必须保证单节点 8 张 GPU 一起分配。
+实际 Deployment 还需要配置模型卷、Secret、Service、PodDisruptionBudget、拓扑分布、资源配额、NetworkPolicy，以及日志和指标采集。模型加载时间可能远超普通 Web 服务，Probe 必须按真实启动时间设置，避免 Kubernetes 因模型尚未就绪而反复重启 Pod。对于 TP8，调度策略必须保证同一个 Pod 获得单节点的 8 张 GPU，不能把资源分散到多台单卡节点。
 
 AWS 官方 EKS 推理文档已经给出从 S3 模型制品、vLLM Deployment、Service 到 Prometheus/Grafana 的完整部署路径。企业可以在单机 POC 验证完成后，沿着这条路径把模型服务迁移到 EKS，而不是第一天就引入 Kubernetes 的全部复杂度。
 
@@ -541,7 +488,7 @@ export MODEL_ID="moonshotai/Kimi-K2.6"
 export MODEL_REVISION="<approved-commit-sha>"
 export MODEL_DIR="/opt/models/kimi-k2.6"
 
-hf download "$MODEL_ID" --local-dir "$MODEL_DIR"
+hf download "$MODEL_ID" --revision "$MODEL_REVISION" --local-dir "$MODEL_DIR"
 du -sh "$MODEL_DIR"
 ~~~
 
