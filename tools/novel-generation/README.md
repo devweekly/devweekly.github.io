@@ -27,9 +27,9 @@ npm run dev -- search --world conghuoniao --query "人物名字 某次战斗 能
 
 当前检索使用本地词项和中文字符二元组的 BM25 风格排序，不依赖向量数据库或外部服务。它适合快速定位证据，不等同于语义检索；别名、隐喻和跨段落指代仍可能漏检。
 
-## 3. 多阶段章节写作
+## 3. 抽取人物、事件和关系\n\n导入后可以分批调用模型分析文本片段，抽取人物/组织/地点/物品/能力/概念、事件参与者、时间表达、因果结果和明确关系。每条抽取结果都必须附带原文证据；没有证据的条目会被丢弃。任务按片段保存进度，重复执行会跳过已完成片段，失败片段可在下一次执行时重试。\n\n```bash\nnpm run dev -- analyze --world conghuoniao --limit 20\n# 继续处理下一批\nnpm run dev -- analyze --world conghuoniao --limit 20 --model <model-name>\n```\n\n结果保存在本地 `worlds/<world>/library/annotations.json`。重新导入发生变化的源文件时，对应旧标注会自动失效，避免继续使用过期人物和事件信息。当前还没有跨章节人物别名归并和事件去重；抽取结果是候选证据，不等同于已确认正史。\n\n## 4. 多阶段章节写作
 
-`write` 会自动从本地资料库检索与故事构想、前文摘要和续写材料相关的片段，再依次执行章节规划、初稿、编辑审查、修订和故事状态更新。
+`write` 会结合当前故事位置、未解决情节线和人物名单，从本地资料库检索相关片段；如果已经运行 `analyze`，也会把对应片段的人物、事件和关系标注一并交给写作流程。随后依次执行章节规划、初稿、编辑审查、修订和故事状态更新。
 
 ```bash
 npm run dev -- write --world conghuoniao --mode continuation \
@@ -42,7 +42,7 @@ npm run dev -- write --world conghuoniao --mode continuation \
 
 每次运行生成：
 - `00-retrieval.md`：本次检索命中的原文证据及来源位置
-- `01-plan.md`：章节目标和场景计划
+- `00-retrieval.md`：命中的原文片段、来源位置和抽取标注\n- `01-plan.md`：章节目标和场景计划
 - `02-draft.md`：初稿
 - `03-review.md`：连续性、人物、因果和叙事质量审查
 - `chapter.md`：修订后的章节
@@ -50,7 +50,7 @@ npm run dev -- write --world conghuoniao --mode continuation \
 
 故事状态包括当前位置、事实来源、人物状态、事件、情节线和后续连续性约束。模型提取的状态是工作记录，不自动等于原著正史；应定期人工核验。
 
-## 4. 单次生成
+## 5. 单次生成
 
 ```bash
 npm run dev -- generate --world conghuoniao --mode derivative \
