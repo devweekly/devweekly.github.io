@@ -17,12 +17,12 @@ export interface TaskProfile {
   effort: Effort;
 }
 
-/** 判断因果与连续性给中高强度；正文、对白、文风与状态提取保持低强度。 */
+/** 判断与成文都给思考预算；只有终审与状态提取这类纯改写、纯抽取的步骤关掉。 */
 const DEFAULTS: Record<StageKey, TaskProfile> = {
   plot: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "medium" },
   creative: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "medium" },
   plan: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "high" },
-  scene: { thinkingMode: "disabled", thinkingBudgetTokens: 8192, effort: "low" },
+  scene: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "medium" },
   dialogue: { thinkingMode: "disabled", thinkingBudgetTokens: 8192, effort: "low" },
   voice: { thinkingMode: "disabled", thinkingBudgetTokens: 8192, effort: "low" },
   review: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "high" },

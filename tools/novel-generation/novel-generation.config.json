@@ -4,7 +4,7 @@
     "plot": { "thinkingMode": "adaptive", "effort": "medium" },
     "creative": { "thinkingMode": "adaptive", "effort": "medium" },
     "plan": { "thinkingMode": "adaptive", "effort": "high" },
-    "scene": { "thinkingMode": "disabled", "effort": "low" },
+    "scene": { "thinkingMode": "adaptive", "effort": "medium" },
     "review": { "thinkingMode": "adaptive", "effort": "high" }
   }
 }

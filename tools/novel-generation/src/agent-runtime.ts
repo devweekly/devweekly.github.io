@@ -190,7 +190,18 @@ export interface QueryOptionsInput {
   fallbackModel?: string;
   thinking?: { type: "disabled" } | { type: "adaptive" } | { type: "enabled"; budgetTokens: number };
   effort?: "low" | "medium" | "high";
+  systemPrompt?: string;
 }
+
+/**
+ * 纯文本调用的系统提示：替换 CLI 的 Agent 人格。开着思考时，CLI 默认人格会先去探查工作区、
+ * 调工具，工具被禁后就把工具调用语法（DSML / function_calls）当正文吐出来，整章作废。
+ */
+export const TEXT_ONLY_SYSTEM_PROMPT = [
+  "你是纯文本写作与文本处理接口。",
+  "只输出最终结果文本：不调用任何工具，不输出工具调用语法、XML 标签、思考过程、状态说明或创作说明。",
+  "任务要求的格式（章节标题、Markdown、纯文本段落）优先于其他一切习惯。"
+].join("");
 
 /**
  * 托管会话里 SDK fork 的 CLI 会继承宿主的服务端口与会话变量，默认监听同一端口后
@@ -223,6 +234,7 @@ export function buildQueryOptions(model: string, input: QueryOptionsInput) {
     ...(input.fallbackModel ? { fallbackModel: input.fallbackModel } : {}),
     cwd: input.cwd,
     ...(isManagedSession() ? detachedCliOptions() : {}),
+    systemPrompt: input.systemPrompt ?? TEXT_ONLY_SYSTEM_PROMPT,
     permissionMode: "default" as const,
     settingSources: [],
     persistSession: false,

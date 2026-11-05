@@ -38,6 +38,14 @@ function buildPrompt(input: GenerateStoryInput): string {
   ].filter(Boolean).join("\n\n");
 }
 
+/**
+ * 思考开启时，CLI 会尝试调用工具；工具被禁后，部分模型把工具调用语法直接当正文吐出来。
+ * 这类输出不是「文风偏差」，是整章作废，必须在调用层拦住。
+ */
+export function hasToolLeak(text: string): boolean {
+  return /<｜｜DSML｜｜>|<\|?\|?DSML\|?\|?>|<[\w:]*function_calls>|<invoke\s+name=|antml:invoke/.test(text);
+}
+
 export interface AgentStreamState {
   text: string;
   messageCount: number;
@@ -125,6 +133,7 @@ async function callOnce(
     if (timedOut) throw timeoutError();
     const output = state.text.trim();
     if (!output) throw new Error("Agent 未返回文本");
+    if (hasToolLeak(output)) throw new Error("TOOL_LEAK 输出含工具调用语法，正文无效");
     return output;
   } catch (error) {
     if (timedOut) throw timeoutError();
@@ -137,7 +146,7 @@ async function callOnce(
   }
 }
 
-/** 按模型链依次调用；单个模型超时、无输出或执行失败时换下一个。 */
+/** 按模型链依次调用；输出泄漏时先关掉思考重试同一个模型，再换链中下一个。 */
 export async function runAgentText(prompt: string, model?: string, timeoutMs = 120_000, profile?: TaskProfile): Promise<string> {
   const resolved = resolveAgentModel(model);
   const attempts = [resolved.model, ...resolved.fallbacks];
@@ -147,7 +156,16 @@ export async function runAgentText(prompt: string, model?: string, timeoutMs = 1
     try {
       return await callOnce(prompt, candidate, fallback, timeoutMs, profile);
     } catch (error) {
-      failures.push(`${candidate}: ${error instanceof Error ? error.message : String(error)}`);
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.includes("TOOL_LEAK") && profile && profile.thinkingMode !== "disabled") {
+        try {
+          return await callOnce(prompt, candidate, fallback, timeoutMs, { ...profile, thinkingMode: "disabled", effort: "low" });
+        } catch (retryError) {
+          failures.push(`${candidate}（关闭思考重试）: ${retryError instanceof Error ? retryError.message : String(retryError)}`);
+          continue;
+        }
+      }
+      failures.push(`${candidate}: ${message}`);
     }
   }
   throw new Error(`模型链均失败（${attempts.join(" → ")}，来源 ${resolved.source}）：${failures.join(" | ")}；用 npm run dev -- check-runtime 检查 CLI 登录与模型目录`);

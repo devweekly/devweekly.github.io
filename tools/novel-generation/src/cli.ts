@@ -13,10 +13,20 @@ import {
 import { checkRuntime } from "./runtime-check.js";
 import { readTaskProfiles, STAGE_KEYS } from "./task-profiles.js";
 import { writeLongChapter, chineseChars } from "./long-chapter.js";
+import { loadChapters, runRegression } from "./regression.js";
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
   return i >= 0 ? process.argv[i + 1] : undefined;
+}
+
+async function readOptional(path: string): Promise<string | undefined> {
+  try {
+    return await readFile(path, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    return undefined;
+  }
 }
 
 function valuesAfter(name: string): string[] {
@@ -38,6 +48,7 @@ function usage(): never {
     "  npm run dev -- analyze-world --world conghuoniao --phase prepare|status|collect",
     "  npm run dev -- models",
     "  npm run dev -- check-runtime [--model model] [--timeout-ms 90000]",
+    "  npm run dev -- regress --world conghuoniao --chapter 13 [--brief \"本章任务\"] [--model deepseek-v4.1-flash] [--review-model glm-5.3-flash] [--context-lines 90] [--timeout-ms 240000]",
     "  npm run dev -- write --brief \"story direction\" [--world conghuoniao] [--mode derivative|continuation] [--source file] [--context file] [--model model] [--max-words 3000] [--apply-state]",
     "  npm run dev -- write-long --brief \"story direction\" [--scenes 8] [--max-words 10000] [--timeout-ms 180000] [--apply-state]",
     "  npm run dev -- generate --brief \"story idea\" [--mode derivative|continuation] [--source file] [--context file] [--out file]"
@@ -52,7 +63,7 @@ function safeWorldId(value: string): string {
 
 async function main(): Promise<void> {
   const command = process.argv[2];
-  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-world" && command !== "models" && command !== "check-runtime") usage();
+  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-world" && command !== "models" && command !== "check-runtime") usage();
 
   const worldId = safeWorldId(arg("--world") ?? "conghuoniao");
   const libraryDir = resolve("worlds", worldId, "library");
@@ -105,6 +116,64 @@ async function main(): Promise<void> {
     const result = await checkRuntime({ timeoutMs, model: arg("--model") });
     for (const line of result.lines) console.log(line);
     if (!result.ok) process.exitCode = 1;
+    return;
+  }
+
+  if (command === "regress") {
+    const chapterIndex = Number(arg("--chapter") ?? "");
+    if (!Number.isInteger(chapterIndex) || chapterIndex < 1) throw new Error("--chapter 需要 1 起的整数，对应全书目录中的章序。");
+    const contextLines = Number(arg("--context-lines") ?? 90);
+    if (!Number.isInteger(contextLines) || contextLines < 10 || contextLines > 400) {
+      throw new Error("--context-lines must be an integer between 10 and 400.");
+    }
+    const timeoutMs = Number(arg("--timeout-ms") ?? 240_000);
+    if (!Number.isInteger(timeoutMs) || timeoutMs < 30_000 || timeoutMs > 600_000) {
+      throw new Error("--timeout-ms must be an integer between 30000 and 600000.");
+    }
+    const targetWords = Number(arg("--max-words") ?? 0);
+    if (!Number.isInteger(targetWords) || targetWords < 0 || targetWords > 20_000) {
+      throw new Error("--max-words must be an integer between 0 and 20000；0 表示与原章同长。");
+    }
+    const indexPath = resolve("analysis", worldId, "chapter-index.json");
+    const chapters = loadChapters(JSON.parse(await readFile(indexPath, "utf8")) as Parameters<typeof loadChapters>[0]);
+    const chapter = chapters.find(item => item.index === chapterIndex);
+    if (!chapter) throw new Error(`第 ${chapterIndex} 章不存在；本书共 ${chapters.length} 章。`);
+    const styleProfile = await readOptional(resolve("worlds", worldId, "style-profile.md"));
+    const styleRhythm = await readOptional(resolve("analysis", worldId, "style-rhythm.md"));
+    const profiles = readTaskProfiles();
+    const runId = new Date().toISOString().replace(/[:.]/g, "-");
+    const result = await runRegression({
+      worldId,
+      corpusPath: resolve("original.txt"),
+      chapters,
+      chapterIndex,
+      contextLines,
+      targetWords,
+      brief: arg("--brief") ?? "承接前文，在同一时空里推进一条已有的情节线：写具体的人在做具体的事，遇到阻力、做出选择并承担后果。",
+      model: arg("--model") ?? "deepseek-v4.1-flash",
+      reviewModel: arg("--review-model") ?? "glm-5.3-flash",
+      timeoutMs,
+      styleProfile,
+      styleRhythm,
+      profileA: profiles.scene,
+      profileB: { ...profiles.scene, thinkingMode: "adaptive", effort: "high" },
+      reviewProfile: profiles.review,
+      repair: !process.argv.includes("--no-repair"),
+      outputDir: resolve(".output", "regression", runId),
+      archiveDir: resolve("analysis", worldId, "regression", "chapter-" + String(chapterIndex).padStart(3, "0"))
+    });
+    console.log(`对照章节：${result.chapter.title}（卷 ${result.chapter.volume}）`);
+    for (const candidate of result.candidates) {
+      const m = candidate.metrics;
+      console.log(
+        `候选 ${candidate.id}：${candidate.profile.thinkingMode}/${candidate.profile.effort} · ${candidate.chars} 汉字 · ` +
+        `平均句长 ${m.meanSentence} · 短句 ${(m.shortRatio * 100).toFixed(0)}% · 长句 ${(m.longRatio * 100).toFixed(0)}% · ` +
+        `节奏距离 ${candidate.distance} · ${candidate.seconds}s` +
+        (candidate.repaired ? ` · 修订 ${(candidate.scoreBefore * 100).toFixed(0)}%→${(candidate.scoreAfter * 100).toFixed(0)}%` : " · 未修订")
+      );
+    }
+    console.log("评审报告：" + result.reviewPath);
+    console.log("归档：" + result.archiveDir);
     return;
   }
 

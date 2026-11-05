@@ -136,9 +136,27 @@ SDK 用法参照 `vocal-saga/local-agent-service`：模型目录合并产品配�
 
 ### 思考、推理强度与会话
 
-`thinking` 与 `effort` 已按阶段分配，取舍与参考项目 `taskProfiles.ts` 一致：判断类任务多想，成文类任务快且不被推理痕迹带偏。规划与创意发散 `adaptive/medium`，主编蓝图与连续性审查 `adaptive/high`，正文、对白、文风、终审和状态提取 `disabled/low`。`novel-generation.config.json` 的 `taskProfiles` 可逐阶段覆盖（`thinkingMode` 取 disabled/adaptive/enabled，`effort` 取 low/medium/high，另可给 `thinkingBudgetTokens`）；`npm run dev -- models` 打印当前档案。三种思考模式与推理档位都在本机 CLI 实测可用，`enabled` 才使用预算。
+`thinking` 与 `effort` 按阶段分配，取舍同参考项目 `taskProfiles.ts`：判断类任务多想，纯抽取与终审不被推理痕迹带偏。规划、创意发散、正文成文 `adaptive/medium`，主编蓝图与连续性审查 `adaptive/high`，对白、文风、终审与状态提取 `disabled/low`。`novel-generation.config.json` 的 `taskProfiles` 可逐阶段覆盖（`thinkingMode` 取 disabled/adaptive/enabled，`effort` 取 low/medium/high，另可给 `thinkingBudgetTokens`），`npm run dev -- models` 打印当前档案。
 
-**未引入会话池**。参考项目的 `WorkbuddySessionPool` 用 `unstable_v2_createSession` 复用 CLI 进程、按 scope 隔离、用满轮数重建，解决的是高频短文本翻译的冷启动开销；它自己也规定「需要显式思考深度或 effort 的任务改走 `query()`」。本项目一次 `write` 只有九次调用、各阶段角色不同、每轮 prompt 带全量世界设定与不同阶段产物。复用会话会让审校读到别的角色的历史、上下文随轮数膨胀，并把可复核的 `00`–`08` 阶段文件交接变成不可见的对话记忆。长章节改用**显式场景交接**：每场传入上一场原文结尾与已确认事实清单，全部落盘、可逐场重跑。将来若要摊薄冷启动，也只在同一角色的连续场景生成上做有界复用，不跨角色共享。
+三个实现细节会直接影响效果：
+
+- `adaptive` 与 `enabled` 都映射为 `--settings alwaysThinkingEnabled=true`，`enabled` 另设 `MAX_THINKING_TOKENS`；`disabled` 映射为 `alwaysThinkingEnabled=false`。
+- `--effort` 只在思考开启时下发。SDK 在 `thinking.type === "disabled"` 时跳过这个参数，所以「disabled/low」里的 low 并没有生效，写 low 只是保持档案完整。
+- 开启思考后，CLI 的默认 Agent 人格会先探查工作区、调用工具；工具被禁用时，部分模型把工具调用语法（`DSML`）当成正文吐出来，整章作废。现在所有纯文本调用都注入专用 system prompt，调用层检测到这类输出会关掉思考重试同一模型。
+
+回归实验（卷 1 第十三章，原文 2730 字）：关闭思考那版盲写后平均句长 16.9、强调标点 1.6/千字，偏差 20%，句法修订后反而升到 40%；`adaptive/high` 那版修订后偏差 12%，句长中位数、p90 与超长句占比基本命中原文。推理强度影响的是修订执行精度，不能替代「段落即一拍、标点承担语气」这类具体约束。
+
+## 8. 回归对照
+
+```bash
+npm run dev -- regress --world conghuoniao --chapter 13 \
+  --model deepseek-v4.1-flash --review-model glm-5.3-flash \
+  --brief "本章任务：用白描写清这一章发生了什么，不给原文句子"
+```
+
+取原文中的一章做盲写：只把前 `--context-lines` 行（默认 90）、本章任务和风格文档交给写作 Agent，不给原文任何一句。同一提示跑两版推理配置：A 用配置文件里的 `scene` 档案，B 固定 `adaptive/high`。两版各自统计句长、段落、对白、标点密度，指标不达标时做一次句法修订，修订后偏差没有下降就退回原稿。最后由另一个模型的评审 Agent 对照原文判断哪版更近、差在句式还是段落组织。
+
+`.output/regression/<run-id>/` 存原文、两版原稿与修订稿、评审全文；`analysis/<world>/regression/chapter-XXX/` 存 `metrics.json`、`review.md` 与实验说明，随代码提交。`--no-repair` 跳过修订，`--max-words` 控制篇幅（默认与原章同长）。已有实验见 `analysis/conghuoniao/regression/chapter-013/`。
 
 ## 当前实现边界
 
@@ -146,6 +164,7 @@ SDK 用法参照 `vocal-saga/local-agent-service`：模型目录合并产品配�
 - 被 IDE/Agent 托管时（存在 `CODEBUDDY_SESSION_ID` / `WORKBUDDY_CONFIG_DIR`），SDK fork 的 CLI 会继承宿主服务端口并撞上主进程。`buildQueryOptions` 会清掉子进程的宿主会话变量，并加 `--port 0` 让 CLI 自选端口；托管会话内可直接运行 `analyze` / `write` / `generate`。`analyze` 可用 `--timeout-ms` 控制单片段上限。
 - `analyze-world` 走文件交接，不调用模型；输入包与成稿随代码提交，便于复核每个结论的依据。
 - 本地检索是词项/BM25 风格排序，不是向量语义检索。
+- 回归对照只做写法比较：情节不同是预期的，评审 Agent 不据此扣分。指标由确定性函数统计，评审结论属于模型判断，两者分开记录。
 - 文本抽取按片段进行，已有证据校验和断点续跑；尚未实现跨章节实体归并、共指消解、人物状态时间序列和伏笔生命周期分析。全量 `analyze` 涉及 2,594 次模型调用，尚未执行，`annotations.json` 为空。
 - `analysis/build-corpus-index.mjs` 只做确定性结构解析，不调用模型；卷边界由章号重置判定，作者单章与卷末总结单独记录，不做语义归并。
 - 导入器支持 TXT/Markdown；EPUB、PDF、OCR 和网页采集不在当前范围。
@@ -169,6 +188,8 @@ src/
   runtime-check.ts
   task-profiles.ts
   long-chapter.ts
+  regression.ts
+  rhythm.ts
 novel-generation.config.json
 analysis/
   build-corpus-index.mjs
@@ -184,6 +205,11 @@ analysis/
       manifest.json
       <role>/input.md
       <role>/output.md
+    regression/
+      chapter-XXX/
+        metrics.json
+        review.md
+        README.md
 sources/
   public-chapter-sources.md
   local-corpus-analysis.md
@@ -194,6 +220,8 @@ test/
   agent-stream.test.ts
   task-profiles.test.ts
   long-chapter.test.ts
+  regression.test.ts
+  rhythm.test.ts
 worlds/
   conghuoniao/
     world-bible.md
@@ -229,5 +257,8 @@ worlds/
 | 叙事声音编辑 | 统一视角、节奏、句式和描写比例 | 修订叙述表达 |
 | 连续性审查 Agent | 检查人物、设定、时间线、因果和伏笔 | 只提交问题清单 |
 | 状态管理员 | 从最终稿提取人物、事件和情节线变化 | 更新结构化状态 |
+| 评审 Agent（回归用） | 对照原文与盲写成稿，判断节奏、段落与信息承载的差距 | 只出报告，不改稿 |
+
+评审 Agent 用独立模型（默认 `glm-5.3-flash`），与写作 Agent 分开配置：写的人不评自己的稿。评审拿到的是原文、两版成稿和一份确定性指标表，指标由代码算，判断由评审给，两者不混在同一份结论里。
 
 可在 `worlds/<world>/style-profile.md` 中维护抽象叙事约束，例如视角、叙述距离、句长变化、对白密度、动作/环境描写比例和悬念节奏。不要把某位作者的原文或标志性句式作为风格模板。该文件可不创建；缺省时使用通用叙事约束。

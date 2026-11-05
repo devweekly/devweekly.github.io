@@ -7,13 +7,13 @@ import {
   normalizeTaskProfile, readTaskProfiles, thinkingOption, STAGE_KEYS
 } from "../src/task-profiles.js";
 
-test("planning and review stages think; prose stages stay low effort", () => {
+test("planning, review and prose stages think; extraction stages stay off", () => {
   const profiles = readTaskProfiles(join(tmpdir(), "novel-profiles-missing.json"));
   assert.equal(profiles.plan.thinkingMode, "adaptive");
   assert.equal(profiles.plan.effort, "high");
   assert.equal(profiles.review.effort, "high");
-  assert.equal(profiles.scene.thinkingMode, "disabled");
-  assert.equal(profiles.scene.effort, "low");
+  assert.equal(profiles.scene.thinkingMode, "adaptive");
+  assert.equal(profiles.scene.effort, "medium");
   assert.equal(profiles.state.thinkingMode, "disabled");
   assert.equal(STAGE_KEYS.length, 9);
 });
