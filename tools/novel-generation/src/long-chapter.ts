@@ -2,13 +2,14 @@
 // 不复用 SDK session；场景之间靠落盘的原文结尾与事实清单显式交接，可逐场重跑。
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { loadStoryState, parseStoryStateUpdate, saveStoryState } from "./story-state.js";
+import { parseStoryStateUpdate, saveStoryState } from "./story-state.js";
 import type { StoryState } from "./story-state.js";
 import { runAgentText, type GenerationMode } from "./generate.js";
 import { readTaskProfiles, type StageKey } from "./task-profiles.js";
 import { RHYTHM_RULE, mergeStoryState } from "./workflow.js";
 import { searchLibrary } from "./library.js";
 import { formatReview, reviewAndRepair, reviewPrompt } from "./chapter-review.js";
+import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
 
 export interface LongChapterInput {
   worldId: string;
@@ -93,11 +94,19 @@ function tail(text: string, maxChars: number): string {
 }
 
 export async function writeLongChapter(input: LongChapterInput): Promise<string> {
-  const state = await loadStoryState(input.statePath, input.worldId);
+  const state = await loadRunStoryState(input.statePath, input.worldId, input.outputDir);
   const profiles = readTaskProfiles();
   await mkdir(input.outputDir, { recursive: true });
   const call = (stage: StageKey, parts: string[]): Promise<string> =>
     runAgentText(parts.join("\n\n"), input.model, input.timeoutMs, profiles[stage]);
+  const cachedCall = (key: string, outputFile: string, stage: StageKey, parts: string[]): Promise<string> => {
+    const prompt = parts.join("\n\n");
+    return runCachedStage({
+      dir: input.outputDir, key, outputFile,
+      fingerprint: JSON.stringify({ prompt, model: input.model ?? null, profile: profiles[stage], timeoutMs: input.timeoutMs }),
+      execute: () => call(stage, parts)
+    });
+  };
 
   const facts = [
     ...state.canonFacts.map(fact => fact.fact),
@@ -125,13 +134,13 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     RHYTHM_RULE,
     "整章节奏应有场景差异，但不按固定数量分配快慢场景。"
   ];
-  let blueprint = await call("plan", blueprintPrompt);
+  let blueprint = await cachedCall("blueprint", "01-scene-blueprint.md", "plan", blueprintPrompt);
   let scenePlans: string[];
   try {
     scenePlans = splitScenes(blueprint, input.scenes);
   } catch (error) {
     await saveStage(input.outputDir, "01-scene-blueprint-attempt-1.md", blueprint);
-    blueprint = await call("plan", [
+    blueprint = await cachedCall("blueprint-repair", "01-scene-blueprint.md", "plan", [
       ...blueprintPrompt,
       "上一次场景蓝图未通过程序格式校验：" + String(error),
       "请修正上一版蓝图，必须恰好输出连续编号的场景标题，从场景 1 到场景 " + input.scenes + "，每场内容非空。只输出修正后的完整蓝图，不解释。",
@@ -163,9 +172,9 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       "根据本场功能安排长短句、对白和感官细节；推理或交涉可以展开长句，动作和情绪落点可以短句收束。不要为了满足固定字数或清单配额而添加无功能内容。",
       "不复制原文句子，不以近义词替换改写原文；不写「未完待续」「本场结束」等标记。"
     ];
-    let text = await call("scene", scenePrompt);
+    let text = await cachedCall("scene-" + (index + 1), "02-scene-" + String(index + 1).padStart(2, "0") + ".md", "scene", scenePrompt);
     if (chineseChars(text) < perScene * 0.82) {
-      const extra = await call("scene", [
+      const extra = await cachedCall("scene-expansion-" + (index + 1), "02-scene-" + String(index + 1).padStart(2, "0") + "-expansion.md", "scene", [
         scenePrompt[0]!, "已写出的本场正文：", text,
         `本场仍缺字数。从现有最后一句接着往后写，补足到约 ${perScene} 个汉字；不重复、不改写已有内容，不提前收束全章。`,
         RHYTHM_RULE
@@ -184,7 +193,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   const halves = [sceneTexts.slice(0, Math.ceil(input.scenes / 2)), sceneTexts.slice(Math.ceil(input.scenes / 2))];
   const reviews: string[] = [];
   for (let index = 0; index < halves.length; index++) {
-    reviews.push(await call("review", [
+    reviews.push(await cachedCall("batch-review-" + (index + 1), "04-continuity-review-batch-" + (index + 1) + ".md", "review", [
       "角色：连续性与剧情审查 Agent。只报告问题，不重写正文。",
       writingContext, "全章蓝图：", blueprint,
       `第 ${index + 1} 批待审正文：`, halves[index]!.join("\n\n---\n\n"),
@@ -197,7 +206,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
 
   const polished: string[] = [];
   for (let index = 0; index < sceneTexts.length; index++) {
-    const text = await call("voice", [
+    const text = await cachedCall("polish-" + (index + 1), "05-polish-" + String(index + 1).padStart(2, "0") + ".md", "voice", [
       "角色：人物对话编辑兼叙事声音编辑。只修订这一场的对白与叙述表达，不改剧情事实、场景顺序、人物决定和信息揭示。",
       writingContext, "全章蓝图：", blueprint, "连续性审查（只修有证据支持的问题）：", review,
       `第 ${index + 1} 场当前正文：`, sceneTexts[index]!,
@@ -217,16 +226,12 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     initialChapter: buildChapter(),
     sceneCount: input.scenes,
     maxRepairRounds: 2,
-    review: (candidate, correction) => call("review", [
-      reviewPrompt({
-        context: writingContext,
-        blueprint,
-        chapter: candidate,
-        priorReview: review,
-        sceneCount: input.scenes,
-        correction
-      })
-    ]),
+    review: (candidate, correction) => {
+      const round = reviewHistory.length + 1;
+      return cachedCall("final-review-" + round, "08-final-review-round-" + round + ".json", "review", [
+        reviewPrompt({ context: writingContext, blueprint, chapter: candidate, priorReview: review, sceneCount: input.scenes, correction })
+      ]);
+    },
     repair: async (_candidate, issues, round) => {
       const affectedScenes = [...new Set(issues.flatMap(issue => issue.scenes))].sort((a, b) => a - b);
       for (const sceneNumber of affectedScenes) {
@@ -234,7 +239,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
         const index = sceneNumber - 1;
         const currentScene = polished[index];
         if (currentScene === undefined) throw new Error("Review referenced a missing scene: " + sceneNumber);
-        const revised = await call("voice", [
+        const revised = await cachedCall("scene-repair-" + sceneNumber + "-round-" + round, "05-polish-" + String(sceneNumber).padStart(2, "0") + "-repair-" + round + ".md", "voice", [
           "角色：场景修复编辑。只修复指定场景中的实质问题，输出本场完整正文，不得输出解释或标题。",
           writingContext,
           "全章蓝图：", blueprint,
@@ -269,7 +274,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   await saveStage(input.outputDir, "06-rhythm-metrics.json", JSON.stringify(metrics, null, 2));
   console.error("[write-long] 成稿 " + metrics.chars + " 汉字 · 均句长 " + metrics.mean + " · 长句 " + (metrics.long * 100).toFixed(1) + "% · 自动修复 " + reviewed.repairRounds + " 轮");
 
-  const stateText = await call("state", [
+  const stateText = await cachedCall("state-update", "07-state-update-raw.json", "state", [
     "角色：小说连续性资料管理员。根据旧状态和最终章节提取状态变化。",
     "只输出合法 JSON 对象，不要 Markdown 代码围栏。结构：",
     JSON.stringify({
