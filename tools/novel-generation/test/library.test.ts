@@ -45,7 +45,7 @@ test("re-ingesting a changed source removes stale chunks and annotations", async
       failures: []
     }), "utf8");
 
-    await writeFile(input, "第1章 新线索\n新线索取代旧线索。", "utf8");
+    await writeFile(input, "第1章 新线索\n新线索在这里出现。", "utf8");
     await ingestFiles("test-world", [input], library);
 
     assert.equal((await searchLibrary(library, "旧线索", 5)).length, 0);
