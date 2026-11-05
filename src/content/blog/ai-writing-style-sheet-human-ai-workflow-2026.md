@@ -12,7 +12,10 @@ tags:
   - Context Engineering
   - Human-AI Collaboration
   - Writing
-description: "从 Coral Hart 的 AMA 出发，结合 ACL、PNAS 等研究和真实编辑团队实践，拆解 Style Sheet、作者声音、AI 写作痕迹与可执行的人机协作流程。"
+  - Fiction Writing
+  - Long-form Generation
+  - Narrative Consistency
+description: "从 Coral Hart 的 AMA 出发，结合 ACL、PNAS 等研究、编辑团队实践和长篇叙事研究，拆解 Style Sheet、作者声音、AI 写作痕迹，以及小说续写中的 Story Bible、Narrative State 与场景级工作流。"
 ---
 
 # AI 写作的关键不是 Prompt：Style Sheet、作者声音与人机协作工作流
