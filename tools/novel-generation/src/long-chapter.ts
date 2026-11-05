@@ -36,7 +36,7 @@ export function chineseChars(text: string): number {
   return (text.match(/[\u3400-\u4dbf\u4e00-\u9fff]/g) ?? []).length;
 }
 
-/** 与 style-rhythm.md 相同的句长口径，用于成稿验收。 */
+/** 只记录成稿节奏的离线诊断数据，不用于验收、评分或自动修订。 */
 export function rhythmMetrics(text: string): { chars: number; sentences: number; mean: number; short: number; long: number; veryLong: number; dialogueLines: number } {
   const lines = text.split("\n").map(line => line.trim()).filter(line => line && !line.startsWith("#"));
   const sentences: string[] = [];
