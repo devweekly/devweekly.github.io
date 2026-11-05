@@ -1,5 +1,5 @@
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { basename, extname, join, relative, resolve } from "node:path";
+import { basename, extname, join, relative, resolve, sep } from "node:path";
 
 export interface LibraryChunk {
   id: string;
@@ -89,7 +89,7 @@ export async function ingestFiles(worldId: string, inputPaths: string[], library
   for (const inputPath of inputPaths) {
     const absolute = resolve(inputPath);
     const text = await readFile(absolute, "utf8");
-    const sourceKey = relative(process.cwd(), absolute).replace(/\\\\/g, "/");
+    const sourceKey = relative(process.cwd(), absolute).split(sep).join("/");
     const chapters = splitChapters(text, absolute);
     for (let chapterIndex = 0; chapterIndex < chapters.length; chapterIndex++) {
       const chapter = chapters[chapterIndex];
