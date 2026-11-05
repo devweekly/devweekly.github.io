@@ -51,8 +51,8 @@ function usage(): never {
     "  npm run dev -- models",
     "  npm run dev -- check-runtime [--model model] [--timeout-ms 90000]",
     "  npm run dev -- regress --world conghuoniao --chapter 13 [--brief \"本章任务\"] [--model deepseek-v4.1-flash] [--review-model glm-5.3-flash] [--context-lines 90] [--timeout-ms 240000]",
-    "  npm run dev -- write --brief \"story direction\" [--world conghuoniao] [--mode derivative|continuation] [--source file] [--context file] [--model model] [--max-words 3000] [--strict-model] [--apply-state]",
-    "  npm run dev -- write-long --brief \"story direction\" [--scenes 8] [--max-words 10000] [--timeout-ms 180000] [--apply-state]",
+    "  npm run dev -- write --brief \"story direction\" [--world conghuoniao] [--mode derivative|continuation] [--source file] [--context file] [--model model] [--max-words 3000] [--strict-model] [--no-apply-state]",
+    "  npm run dev -- write-long --brief \"story direction\" [--scenes 8] [--max-words 10000] [--timeout-ms 180000] [--no-apply-state]",
     "  npm run dev -- generate --brief \"story idea\" [--mode derivative|continuation] [--source file] [--context file] [--out file]"
   ].join("\n"));
   process.exit(2);
@@ -283,7 +283,7 @@ async function main(): Promise<void> {
         (annotation ? "\n抽取标注：\n" + JSON.stringify(annotation) : "");
     }).join("\n\n");
 
-    const applyState = process.argv.includes("--apply-state");
+    const applyState = !process.argv.includes("--no-apply-state");
     const chapter = await writeChapter({
       worldId, mode, brief, worldBible, styleProfile, styleRhythm, sourceText, contextText, retrievedContext, model,
       strictModel: process.argv.includes("--strict-model"), maxWords,
@@ -291,7 +291,7 @@ async function main(): Promise<void> {
     });
     console.log("\nSaved chapter: " + resolve(outputDir, "chapter.md"));
     console.log("State proposal: " + resolve(outputDir, "08-state-update.json"));
-    console.log(applyState ? "Updated story state: " + statePath : "Story state unchanged; pass --apply-state after review.");
+    console.log(applyState ? "Story state automatically updated: " + statePath : "Story state unchanged (isolated/dry-run mode).");
     if (!chapter.trim()) throw new Error("Generated chapter is empty.");
     return;
   }
@@ -316,7 +316,7 @@ async function main(): Promise<void> {
     const chapter = await writeLongChapter({
       worldId, mode, brief, worldBible, styleProfile, styleRhythm, sourceText, contextText, model,
       maxWords, scenes, timeoutMs, outputDir, statePath, libraryDir, retrievalLimit,
-      applyState: process.argv.includes("--apply-state")
+      applyState: !process.argv.includes("--no-apply-state")
     });
     console.log("\nSaved chapter: " + resolve(outputDir, "chapter.md"));
     console.log("Scenes: " + scenes + " · Chinese characters: " + chineseChars(chapter));
