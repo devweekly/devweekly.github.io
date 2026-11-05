@@ -73,7 +73,7 @@ function stringArray(value: unknown): string[] {
 }
 
 function validConfidence(value: unknown): ExtractionConfidence {
-  return value === "inferred" ? "inferred" : "explicit";
+  return value === "explicit" ? "explicit" : "inferred";
 }
 
 function normalizeAnnotation(raw: Record<string, unknown>, chunk: LibraryChunk): ChunkAnnotation {
@@ -82,7 +82,8 @@ function normalizeAnnotation(raw: Record<string, unknown>, chunk: LibraryChunk):
     const value = item as Record<string, unknown>;
     if (typeof value.name !== "string" || typeof value.evidence !== "string" || !chunk.text.includes(value.evidence)) return [];
     const allowed: NarrativeEntityType[] = ["character", "organization", "location", "object", "ability", "concept"];
-    const type = allowed.includes(value.type as NarrativeEntityType) ? value.type as NarrativeEntityType : "concept";
+    if (!allowed.includes(value.type as NarrativeEntityType)) return [];
+    const type = value.type as NarrativeEntityType;
     return [{
       name: value.name, type, aliases: stringArray(value.aliases),
       ...(typeof value.description === "string" ? { description: value.description } : {}),
