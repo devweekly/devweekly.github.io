@@ -4,6 +4,7 @@ import { join, resolve } from "node:path";
 import { readLibraryChunks, saveStoryAnalysis, type StoryAnalysisSnapshot } from "./database.js";
 import type { LibraryChunk } from "./library.js";
 import { runAgentText } from "./generate.js";
+import { resolveAgentModel } from "./agent-runtime.js";
 import { z } from "zod";
 
 const CharacterSchema = z.object({
@@ -190,7 +191,7 @@ export async function analyzeStoryCorpus(
   const chunks = readLibraryChunks(worldDir, worldId);
   if (!chunks.length) throw new Error("No indexed text found. Run ingest before analyze-story.");
   const sourceHash = createHash("sha256")
-    .update("story-analysis-v1\n" + chunks.map(chunk => chunk.id + ":" + (chunk.sourceHash ?? "") + ":" + chunk.text).join("\n"))
+    .update("story-analysis-v1\nmodel=" + resolveAgentModel(options.model).model + "\n" + chunks.map(chunk => chunk.id + ":" + (chunk.sourceHash ?? "") + ":" + chunk.text).join("\n"))
     .digest("hex");
   const batches = groupAnalysisBatches(chunks);
   const cacheDir = resolve(".output", worldId, "story-analysis", sourceHash);
