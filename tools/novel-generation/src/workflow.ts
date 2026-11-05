@@ -194,7 +194,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   ]);
 
   try {
-    const update = extractJson(stateText) as Partial<StoryState>;
+    const update = parseStoryStateUpdate(extractJson(stateText));
     const nextState = mergeStoryState(state, update);
     // 默认自动提交状态；仅在显式隔离/试写模式下保留为本次运行提案。
     if (input.applyState) await saveStoryState(input.statePath, nextState);
