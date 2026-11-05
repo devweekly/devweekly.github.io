@@ -188,7 +188,6 @@ export interface QueryOptionsInput {
   cwd: string;
   abortController: AbortController;
   fallbackModel?: string;
-  timeoutMs?: number;
 }
 
 /**
@@ -211,14 +210,17 @@ export function detachedCliOptions(): { env: Record<string, string | undefined>;
   return { env, extraArgs: { port: "0" } };
 }
 
-/** 一次性文本调用的 SDK 选项：禁工具、单轮、关闭宿主配置与会话持久化。 */
+/**
+ * 一次性文本调用的 SDK 选项：禁工具、单轮、关闭宿主配置与会话持久化。
+ * 不传 requestTimeoutMs：本机 CLI 收到 --request-timeout-ms 会直接退出，
+ * 超时由调用方在本地逐条消息竞速并 interrupt 控制。
+ */
 export function buildQueryOptions(model: string, input: QueryOptionsInput) {
   return {
     ...(model ? { model } : {}),
     ...(input.fallbackModel ? { fallbackModel: input.fallbackModel } : {}),
     cwd: input.cwd,
     ...(isManagedSession() ? detachedCliOptions() : {}),
-    ...(input.timeoutMs ? { requestTimeoutMs: input.timeoutMs } : {}),
     permissionMode: "default" as const,
     settingSources: [],
     persistSession: false,

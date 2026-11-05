@@ -37,43 +37,95 @@ function buildPrompt(input: GenerateStoryInput): string {
   ].filter(Boolean).join("\n\n");
 }
 
+export interface AgentStreamState {
+  text: string;
+  messageCount: number;
+  firstTextAt?: number;
+}
+
+/**
+ * 消费单条 SDK 消息。除了 assistant 文本，还要检查 result 的 subtype：
+ * CLI 执行失败时可能一条正文都不发，只看文本会把错误误报成「空输出」。
+ */
+export function applyAgentMessage(message: unknown, state: AgentStreamState): void {
+  const raw = (message && typeof message === "object" ? message : {}) as Record<string, any>;
+  state.messageCount += 1;
+  if (raw.type === "assistant" && Array.isArray(raw.message?.content)) {
+    for (const block of raw.message.content) {
+      if (block?.type === "text" && typeof block.text === "string" && block.text.trim()) {
+        if (!state.firstTextAt) state.firstTextAt = Date.now();
+        state.text += (state.text ? "\n" : "") + block.text;
+      }
+    }
+  }
+  if (raw.type === "result" && raw.subtype && raw.subtype !== "success") {
+    const detail = Array.isArray(raw.errors) ? raw.errors.join("; ") : String(raw.error?.message ?? raw.error ?? raw.subtype);
+    throw new Error(`Agent 执行失败（${raw.subtype}）：${detail}`);
+  }
+}
+
+/**
+ * 一次性调用：逐条消息与超时竞速，超时或异常时 interrupt CLI 并停止本地消费。
+ * 只让 Promise.race 拒绝而不收尾，卡住的子进程会在后台继续烧额度。
+ */
 async function callOnce(prompt: string, model: string, fallbackModel: string | undefined, timeoutMs: number): Promise<string> {
   const abortController = new AbortController();
   const stream = query({
     prompt,
     options: buildQueryOptions(model, { cwd: process.cwd(), abortController, fallbackModel })
   });
+  const state: AgentStreamState = { text: "", messageCount: 0 };
+  const startedAt = Date.now();
+  let timedOut = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
-  const timeout = new Promise<never>((_, reject) => {
-    timer = setTimeout(() => {
-      abortController.abort();
-      void stream.interrupt().catch(() => {});
-      reject(new Error(`超过 ${timeoutMs}ms`));
-    }, timeoutMs);
-  });
-  const collect = async (): Promise<string> => {
-    const chunks: string[] = [];
-    for await (const message of stream) {
-      if (message.type !== "assistant") continue;
-      for (const block of message.message.content) {
-        if (block.type === "text") chunks.push(block.text);
-      }
-    }
-    return chunks.join("\n").trim();
+  let heartbeat: ReturnType<typeof setInterval> | undefined;
+  let iterator: AsyncIterator<unknown> | undefined;
+  let rejectTimeout!: (error: Error) => void;
+  const timeoutError = () => new Error(`调用超时（${timeoutMs}ms），已中断`);
+  const timeoutPromise = new Promise<never>((_, reject) => { rejectTimeout = reject; });
+  const interrupt = (): void => {
+    abortController.abort();
+    try { void Promise.resolve(stream.interrupt?.()).catch(() => {}); }
+    catch { /* 中断失败也要由超时拒绝 */ }
   };
+
+  timer = setTimeout(() => {
+    timedOut = true;
+    interrupt();
+    rejectTimeout(timeoutError());
+  }, timeoutMs);
+  timer.unref?.();
+  if (timeoutMs > 60_000) {
+    heartbeat = setInterval(() => {
+      const seconds = ((Date.now() - startedAt) / 1000).toFixed(0);
+      console.error(`[agent] ${model} 已等待 ${seconds}s · 事件 ${state.messageCount} 条 · 已收文本 ${state.text.length} 字`);
+    }, 30_000);
+    heartbeat.unref?.();
+  }
+
   try {
-    const output = await Promise.race([collect(), timeout]);
+    iterator = stream[Symbol.asyncIterator]();
+    for (;;) {
+      const next = await Promise.race([iterator.next(), timeoutPromise]);
+      if (next.done) break;
+      applyAgentMessage(next.value, state);
+    }
+    if (timedOut) throw timeoutError();
+    const output = state.text.trim();
     if (!output) throw new Error("Agent 未返回文本");
     return output;
   } catch (error) {
-    if (abortController.signal.aborted) throw new Error(`调用超时（${timeoutMs}ms），已中断`);
-    throw error;
+    if (timedOut) throw timeoutError();
+    interrupt();
+    throw new Error(`Agent SDK 调用失败（${model}）：${error instanceof Error ? error.message : String(error)}`);
   } finally {
     if (timer) clearTimeout(timer);
+    if (heartbeat) clearInterval(heartbeat);
+    if (iterator?.return) void Promise.resolve(iterator.return()).catch(() => {});
   }
 }
 
-/** 按偏好链依次调用模型；单个模型超时或无输出时换下一个。 */
+/** 按模型链依次调用；单个模型超时、无输出或执行失败时换下一个。 */
 export async function runAgentText(prompt: string, model?: string, timeoutMs = 120_000): Promise<string> {
   const resolved = resolveAgentModel(model);
   const attempts = [resolved.model, ...resolved.fallbacks];
@@ -86,10 +138,7 @@ export async function runAgentText(prompt: string, model?: string, timeoutMs = 1
       failures.push(`${candidate}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  const hint = isManagedSession()
-    ? "；当前进程被 IDE/Agent 托管，SDK 启动的 CLI 子进程可能无法正常拉起，请在普通终端重试"
-    : "";
-  throw new Error(`模型链均失败（${attempts.join(" → ")}，来源 ${resolved.source}）：${failures.join(" | ")}${hint}`);
+  throw new Error(`模型链均失败（${attempts.join(" → ")}，来源 ${resolved.source}）：${failures.join(" | ")}；用 npm run dev -- check-runtime 检查 CLI 登录与模型目录`);
 }
 
 export async function generateStory(input: GenerateStoryInput): Promise<string> {

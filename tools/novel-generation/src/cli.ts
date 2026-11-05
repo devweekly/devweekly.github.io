@@ -6,7 +6,11 @@ import { writeChapter } from "./workflow.js";
 import { loadStoryState } from "./story-state.js";
 import { analyzeLibrary } from "./analysis.js";
 import { prepareWorldAnalysis, collectWorldAnalysis, analysisStatus } from "./world-analysis.js";
-import { readModelCatalog, resolveAgentModel, isManagedSession, MODEL_PREFERENCE, HY4_MODEL_IDS } from "./agent-runtime.js";
+import {
+  readModelCatalog, resolveAgentModel, isManagedSession, readConfiguredModel,
+  MODEL_PREFERENCE, HY4_MODEL_IDS, DEFAULT_MODEL_ID
+} from "./agent-runtime.js";
+import { checkRuntime } from "./runtime-check.js";
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
@@ -31,6 +35,7 @@ function usage(): never {
     "  npm run dev -- analyze --world conghuoniao [--limit 20] [--model model]",
     "  npm run dev -- analyze-world --world conghuoniao --phase prepare|status|collect",
     "  npm run dev -- models",
+    "  npm run dev -- check-runtime [--model model] [--timeout-ms 90000]",
     "  npm run dev -- write --brief \"story direction\" [--world conghuoniao] [--mode derivative|continuation] [--source file] [--context file] [--model model] [--max-words 3000] [--apply-state]",
     "  npm run dev -- generate --brief \"story idea\" [--mode derivative|continuation] [--source file] [--context file] [--out file]"
   ].join("\n"));
@@ -44,7 +49,7 @@ function safeWorldId(value: string): string {
 
 async function main(): Promise<void> {
   const command = process.argv[2];
-  if (command !== "generate" && command !== "write" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-world" && command !== "models") usage();
+  if (command !== "generate" && command !== "write" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-world" && command !== "models" && command !== "check-runtime") usage();
 
   const worldId = safeWorldId(arg("--world") ?? "conghuoniao");
   const libraryDir = resolve("worlds", worldId, "library");
@@ -70,14 +75,29 @@ async function main(): Promise<void> {
 
   if (command === "models") {
     const catalog = readModelCatalog({ projectRoot: process.cwd() });
-    const resolved = resolveAgentModel(undefined, catalog);
+    const resolved = resolveAgentModel(undefined, catalog, undefined);
     const hy4 = catalog.filter(model => HY4_MODEL_IDS.some(id => id === model.id));
-    console.log("模型偏好：" + MODEL_PREFERENCE.join(" → "));
+    const target = catalog.find(model => model.id === resolved.model);
+    console.log("默认模型：" + DEFAULT_MODEL_ID + "；配置文件：" + (readConfiguredModel() ?? "未设置"));
+    console.log("模型链：" + MODEL_PREFERENCE.join(" → "));
     console.log("目录模型数：" + catalog.length);
     console.log("hy4free：" + (hy4.length ? hy4.map(model => model.id + "(" + (model.credits ?? "?") + ")").join(", ") : "未读到"));
     console.log("deepseek-v4.1-flash：" + (catalog.some(model => model.id === "deepseek-v4.1-flash") ? "可用" : "目录未列出"));
+    if (target && target.credits !== 0) console.log("计费提示：" + target.id + " credits=" + target.credits);
     console.log("本次首选：" + resolved.model + "；回退：" + (resolved.fallbacks.join(" → ") || "无") + "；来源：" + resolved.source);
     console.log("执行环境：" + (isManagedSession() ? "IDE/Agent 托管，子进程已隔离宿主会话并自选端口" : "普通终端"));
+    console.log("实际请求模型请用 npm run dev -- check-runtime 核对 CLI 日志");
+    return;
+  }
+
+  if (command === "check-runtime") {
+    const timeoutMs = Number(arg("--timeout-ms") ?? 90_000);
+    if (!Number.isInteger(timeoutMs) || timeoutMs < 5_000 || timeoutMs > 600_000) {
+      throw new Error("--timeout-ms must be an integer between 5000 and 600000.");
+    }
+    const result = await checkRuntime({ timeoutMs, model: arg("--model") });
+    for (const line of result.lines) console.log(line);
+    if (!result.ok) process.exitCode = 1;
     return;
   }
 

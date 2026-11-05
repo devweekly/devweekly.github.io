@@ -1,6 +1,6 @@
 # Novel Generation
 
-本地长篇小说创作工具，使用 CodeBuddy Agent SDK。当前提供小说文本导入、原文检索、人物/事件/关系候选抽取、多 Agent 文本分析，以及多阶段章节写作。
+本地长篇小说创作工具，使用 CodeBuddy Agent SDK。当前提供小说文本导入、原文检索、人物/事件/关系候选抽取、多 Agent 文本分析、多阶段章节写作，以及模型与执行链路自检。
 
 ## 1. 导入小说资料
 
@@ -12,6 +12,7 @@ npm install
 npm run typecheck
 npm test
 npm run dev -- models
+npm run dev -- check-runtime
 
 npm run dev -- ingest --world conghuoniao --input ./original.txt
 npm run dev -- ingest --world conghuoniao --input ./private/novel.txt
@@ -95,9 +96,32 @@ npm run dev -- generate --world conghuoniao --mode derivative \
   --max-words 3500 --out .output/chapter-001.md
 ```
 
+## 7. 模型与执行链路自检
+
+默认模型是 `deepseek-v4.1-flash`，本机产品目录里 credits=0.11，会产生计费；免费的 `hy4free` 只作为失败回退。模型按以下顺序选择：
+
+| 顺序 | 来源 | 写法 |
+|---|---|---|
+| 1 | `--model` | `npm run dev -- generate --model hy4free --brief "..."` |
+| 2 | 环境变量 | `NOVEL_AGENT_MODEL=hy4free npm run dev -- write ...`（也认 `CODEBUDDY_DEFAULT_MODEL`） |
+| 3 | 配置文件 | `novel-generation.config.json` 的 `model` 字段，可用 `NOVEL_AGENT_CONFIG` 指向别处 |
+| 4 | 代码默认 | `DEFAULT_MODEL_ID = "deepseek-v4.1-flash"` |
+
+`auto` 与空值视为未配置，会继续往下一层找；`hy4` 按别名展开为目录里的免费 `hy4free`。调用失败时按 `deepseek-v4.1-flash → hy4free` 换模型重试。
+
+```bash
+npm run dev -- models
+npm run dev -- check-runtime
+npm run dev -- check-runtime --model hy4free --timeout-ms 60000
+```
+
+`models` 显示目录、费率、当前模型链与来源。`check-runtime` 按参考项目的自检脚本拆成配置 → 目录 → CLI → 最小调用 → 日志核对：配置文件写了什么不算证据，CLI 日志里 `Sending request ... model=` 才能证明 `--model` 真的传到了子进程；日志按 cwd 目录名匹配 `~/.codebuddy/logs/YYYY-MM-DD/<cwd>__*.log`。
+
+SDK 用法参照 `vocal-saga/local-agent-service`：模型目录合并产品配置、本地缓存与 user/project `models.json`，`auto` 不当模型 id；`query()` 禁工具、单轮、关闭宿主设置与会话持久化；调用方逐条消息与超时竞速，超时或异常时 `interrupt()` 并停止本地消费，`result.subtype` 非 success 时把 CLI 错误抛出来，不误报成空输出。本机 CLI 收到 `--request-timeout-ms` 会直接退出，超时完全由本地控制。
+
 ## 当前实现边界
 
-- 使用 `@tencent-ai/agent-sdk` 的 `query()`。模型链默认 `hy4free`（hy4 系列免费档）→ `deepseek-v4.1-flash`，按 CodeBuddy 产品目录（`ACC_PRODUCT_CONFIG_PATH` 或 `~/.codebuddy/local_storage`）解析可用性；`npm run dev -- models` 显示解析结果。可用 `--model`、`NOVEL_AGENT_MODEL` 或 `CODEBUDDY_DEFAULT_MODEL` 覆盖，写 `hy4` 会按别名展开。单次调用带超时与主动中断，超时或无输出时换链中下一个模型。
+- 使用 `@tencent-ai/agent-sdk` 的 `query()`。默认 `deepseek-v4.1-flash`、回退 `hy4free`；目录来自 `ACC_PRODUCT_CONFIG_PATH` 或 `~/.codebuddy/local_storage/*.info`（前者解析不出模型时仍会扫缓存），再叠加 user/project `models.json`。`--model`、环境变量与配置文件可覆盖，详见第 7 节。逐条消息竞速超时并主动中断，超时、无文本或执行失败时换链中下一个模型。
 - 被 IDE/Agent 托管时（存在 `CODEBUDDY_SESSION_ID` / `WORKBUDDY_CONFIG_DIR`），SDK fork 的 CLI 会继承宿主服务端口并撞上主进程。`buildQueryOptions` 会清掉子进程的宿主会话变量，并加 `--port 0` 让 CLI 自选端口；托管会话内可直接运行 `analyze` / `write` / `generate`。`analyze` 可用 `--timeout-ms` 控制单片段上限。
 - `analyze-world` 走文件交接，不调用模型；输入包与成稿随代码提交，便于复核每个结论的依据。
 - 本地检索是词项/BM25 风格排序，不是向量语义检索。
@@ -105,6 +129,7 @@ npm run dev -- generate --world conghuoniao --mode derivative \
 - `analysis/build-corpus-index.mjs` 只做确定性结构解析，不调用模型；卷边界由章号重置判定，作者单章与卷末总结单独记录，不做语义归并。
 - 导入器支持 TXT/Markdown；EPUB、PDF、OCR 和网页采集不在当前范围。
 - 多 Agent 通过独立模型调用协作；主线规划与创意发散并行，其余阶段按依赖顺序执行。当前没有持久化 Agent session，中断后不会自动从写作步骤恢复。
+- 状态提取仍从模型返回的文本里解析 JSON；参考项目用的 `outputFormat: json_schema` 与 StructuredOutput 工具在 `deepseek-v4.1-flash` 上尚未验证支持，暂不启用。
 - 故事状态采用 JSON 文件，适合单机原型；暂不支持并发写作或多人协作。
 - 私有原文 `original.txt` 与 `private/` 留在本地，不提交到 Git。导入索引、抽取标注与故事状态随代码提交；`library/index.json` 保存全文切片，公开仓库需自行确认授权。
 
@@ -120,6 +145,8 @@ src/
   analysis.ts
   agent-runtime.ts
   world-analysis.ts
+  runtime-check.ts
+novel-generation.config.json
 analysis/
   build-corpus-index.mjs
   conghuoniao/
@@ -140,6 +167,7 @@ test/
   library.test.ts
   world-analysis.test.ts
   agent-runtime.test.ts
+  agent-stream.test.ts
 worlds/
   conghuoniao/
     world-bible.md
