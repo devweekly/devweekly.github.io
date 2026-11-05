@@ -2,7 +2,7 @@
 
 本地长篇小说创作工具，使用 CodeBuddy Agent SDK。当前提供小说文本导入、原文检索、人物/事件/关系候选抽取、多 Agent 文本分析、多阶段章节写作，以及模型与执行链路自检。全文人物与情节分析通过 `analyze-story` 直接调用 CodeBuddy SDK，并将完整分析快照保存到 SQLite。
 
-续写架构与实现差距审计见 [`ARCHITECTURE.md`](./ARCHITECTURE.md)。续写默认全自动：章节完成后自动提取并提交故事状态；只有模型对照实验等隔离场景才使用 `--no-apply-state`。
+续写架构与实现差距审计见 [`ARCHITECTURE.md`](./ARCHITECTURE.md)。 小说创作的最高原则及全文分析设计决策见 [`ADR-0001`](./ADR/0001-literary-priority-and-corpus-analysis.md)。续写默认全自动：章节完成后自动提取并提交故事状态；只有模型对照实验等隔离场景才使用 `--no-apply-state`。
 
 ## 1. 导入小说资料
 
