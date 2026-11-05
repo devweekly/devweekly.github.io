@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
-import { readLibraryChunks } from "./database.js";
-import { saveStoryAnalysis, type StoryAnalysisSnapshot } from "./database.js";
+import { readLibraryChunks, saveStoryAnalysis, type StoryAnalysisSnapshot } from "./database.js";
 import type { LibraryChunk } from "./library.js";
 import { runAgentText } from "./generate.js";
 import { z } from "zod";
@@ -200,7 +199,7 @@ export async function analyzeStoryCorpus(
     results.push({ analysis, refs: sourceRefs(batch.chunks) });
   }
   const sourceHash = createHash("sha256")
-    .update(chunks.map(chunk => chunk.id + ":" + (chunk.sourceHash ?? "")).join("\n"))
+    .update(chunks.map(chunk => chunk.id + ":" + (chunk.sourceHash ?? "") + ":" + chunk.text).join("\n"))
     .digest("hex");
   const merged = mergeAnalyses(results);
   const snapshot: StoryAnalysisSnapshot = {
