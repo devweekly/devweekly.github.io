@@ -113,9 +113,10 @@ export async function reviewAndRepair(input: {
   let chapter = input.initialChapter;
   const reviews: ChapterReview[] = [];
   for (let round = 0; round <= maxRepairRounds; round++) {
-    let raw = await input.review(chapter);
+    let raw: string;
     let parsed: ChapterReview;
     try {
+      raw = await input.review(chapter);
       parsed = parseChapterReview(raw, chapter, input.sceneCount);
     } catch (firstError) {
       raw = await input.review(
