@@ -95,7 +95,16 @@ evidence-and-claim-review                 横切件：审「说法成不成立�
   Maturity **Low–Medium** / Comparison **Low**；Gartner MQ Snowflake = **Visionary**；Reality 可达
   Successful 但 **Outcome 全部 SELF_REPORTED**、Production 最高 L5；战略排他论点 **CONTESTED**。
 
-## 5. 移动端布局：不让任何元素撑宽文档
+## 5. novel-generation 全书知识库
+
+`worlds/conghuoniao/novel.db`（schema v3）分两层：`characters` / `story_state` / `story_events` 是**写作状态**（接下来怎么写），`novel_*` 是**成书知识库**（全书已经写了什么），不要互相覆盖。`novel.db` 含原文全文，27MB，gitignore；`worlds/conghuoniao/story-kb.json` 不含原文，随仓库提交。
+
+- 分析单元是**章**不是检索片段：分片带 160 字重叠，必须 `dedupeChunkTexts()` 去重后再统计/送模型，否则人物次数虚高 12%。
+- 人名统计**只算本名**，别名只作元数据且要过滤「男人/老头子/老板」这类泛称；别名归并仅允许双向互指。
+- 196 批可 `--shard k/4` 并发，`--merge-only` 合并；单批失败不阻塞，缓存可续跑。
+- 现有规模：753 章 / 544 人 / 1,314 条章级事件 / 862 条局部情节线 / 1,535 条伏笔 / 17 篇卷级梗概。
+
+## 6. 移动端布局：不让任何元素撑宽文档
 
 **硬约束**：`documentElement.scrollWidth` 必须等于视口宽度。被撑宽时 iOS Safari 会 **shrink-to-fit 整页缩放**，
 表现是「正文只剩左侧约 60%，右侧一片空白」—— 看着像容器变窄，其实是缩放，别去查 `max-w-*`。
