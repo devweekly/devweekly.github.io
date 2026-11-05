@@ -1,4 +1,5 @@
 import { readFile, mkdir, writeFile, rename } from "node:fs/promises";
+import { readStoryState as readDatabaseStoryState, syncStoryState } from "./database.js";
 import { dirname } from "node:path";
 import { z } from "zod";
 
@@ -63,6 +64,14 @@ export function emptyStoryState(worldId: string): StoryState {
 }
 
 export async function loadStoryState(path: string, worldId: string): Promise<StoryState> {
+  const worldDir = dirname(path);
+  const databaseState = readDatabaseStoryState(worldDir, worldId);
+  if (databaseState) {
+    const parsedDatabaseState = StoryStateSchema.safeParse(databaseState);
+    if (!parsedDatabaseState.success) throw new Error("Invalid SQLite story state: " + parsedDatabaseState.error.issues.map(issue => issue.path.join(".") + " " + issue.message).join("; "));
+    if (parsedDatabaseState.data.worldId !== worldId) throw new Error("SQLite story state world mismatch: " + worldId);
+    return parsedDatabaseState.data;
+  }
   try {
     const raw: unknown = JSON.parse(await readFile(path, "utf8"));
     const parsed = StoryStateSchema.safeParse(raw);
@@ -70,16 +79,21 @@ export async function loadStoryState(path: string, worldId: string): Promise<Sto
       throw new Error("Invalid story state " + path + ": " + parsed.error.issues.map(issue => issue.path.join(".") + " " + issue.message).join("; "));
     }
     if (parsed.data.worldId !== worldId) throw new Error("Story state world mismatch: " + path);
+    syncStoryState(worldDir, parsed.data);
     return parsed.data;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    return emptyStoryState(worldId);
+    const empty = emptyStoryState(worldId);
+    syncStoryState(worldDir, empty);
+    return empty;
   }
 }
 
 export async function saveStoryState(path: string, state: StoryState): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   const temporaryPath = path + ".tmp";
-  await writeFile(temporaryPath, JSON.stringify({ ...state, updatedAt: new Date().toISOString() }, null, 2) + "\n", "utf8");
+  const next = { ...state, updatedAt: new Date().toISOString() };
+  syncStoryState(dirname(path), next);
+  await writeFile(temporaryPath, JSON.stringify(next, null, 2) + "\n", "utf8");
   await rename(temporaryPath, path);
 }

@@ -1,4 +1,5 @@
 import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
+import { syncLibraryChunks, readLibraryChunks, syncAnnotations, databaseWorldDirFromLibrary } from "./database.js";
 import { createHash } from "node:crypto";
 import { basename, extname, join, relative, resolve, sep } from "node:path";
 
@@ -168,10 +169,12 @@ export async function ingestFiles(worldId: string, inputPaths: string[], library
       const annotationTemp = annotationsPath + ".tmp";
       await writeFile(annotationTemp, JSON.stringify(filtered, null, 2) + "\n", "utf8");
       await rename(annotationTemp, annotationsPath);
+      syncAnnotations(databaseWorldDirFromLibrary(libraryDir), worldId, filtered.annotations as unknown as Array<{ chunkId: string; source: string; chapter?: string; extractedAt?: string }>, null);
     }
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
+  syncLibraryChunks(databaseWorldDirFromLibrary(libraryDir), worldId, index.chunks);
   searchCache.delete(indexPath);
   try { await unlink(join(libraryDir, "entities.json")); }
   catch (error) {
@@ -199,8 +202,13 @@ async function loadSearchIndex(indexPath: string): Promise<CachedSearchIndex> {
   if (cached && cached.mtimeMs === info.mtimeMs && cached.size === info.size) return cached;
 
   const index = JSON.parse(await readFile(indexPath, "utf8")) as LibraryIndex;
+  let chunks = readLibraryChunks(databaseWorldDirFromLibrary(dirname(indexPath)), index.worldId);
+  if (!chunks.length && index.chunks.length) {
+    syncLibraryChunks(databaseWorldDirFromLibrary(dirname(indexPath)), index.worldId, index.chunks);
+    chunks = readLibraryChunks(databaseWorldDirFromLibrary(dirname(indexPath)), index.worldId);
+  }
   const documentFrequency = new Map<string, number>();
-  const documents = index.chunks.map(chunk => {
+  const documents = (chunks.length ? chunks : index.chunks).map(chunk => {
     const counts = new Map<string, number>();
     for (const term of terms(chunk.text)) counts.set(term, (counts.get(term) ?? 0) + 1);
     for (const term of counts.keys()) documentFrequency.set(term, (documentFrequency.get(term) ?? 0) + 1);

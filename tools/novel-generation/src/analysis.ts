@@ -1,4 +1,5 @@
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
+import { syncAnnotations } from "./database.js";
 import { join } from "node:path";
 import { runAgentText } from "./generate.js";
 import type { LibraryChunk } from "./library.js";
@@ -347,6 +348,7 @@ export async function analyzeLibrary(
   const registryTemporary = registryPath + ".tmp";
   await writeFile(registryTemporary, JSON.stringify(registry, null, 2) + "\n", "utf8");
   await rename(registryTemporary, registryPath);
+  syncAnnotations(join(libraryDir, ".."), worldId, store.annotations, registry);
 
   const completed = new Set(store.annotations.filter(isEvidenceReviewed).map(item => item.chunkId));
   return {

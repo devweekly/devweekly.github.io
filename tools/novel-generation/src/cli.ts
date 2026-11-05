@@ -1,4 +1,5 @@
 import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { databaseStatus, readAnnotationsByChunkIds } from "./database.js";
 import { dirname, resolve } from "node:path";
 import { generateStory, type GenerationMode } from "./generate.js";
 import { ingestFiles, listTextFiles, searchLibrary } from "./library.js";
@@ -46,6 +47,7 @@ function usage(): never {
     "  npm run dev -- search --world conghuoniao --query \"人物或事件关键词\" [--limit 8]",
     "  npm run dev -- analyze --world conghuoniao [--limit 20] [--model model]",
     "  npm run dev -- analyze-world --world conghuoniao --phase prepare|status|collect [--source original.txt] [--model model] [--timeout-ms 90000]",
+    "  npm run dev -- db-status --world conghuoniao",
     "  npm run dev -- models",
     "  npm run dev -- check-runtime [--model model] [--timeout-ms 90000]",
     "  npm run dev -- regress --world conghuoniao --chapter 13 [--brief \"本章任务\"] [--model deepseek-v4.1-flash] [--review-model glm-5.3-flash] [--context-lines 90] [--timeout-ms 240000]",
@@ -63,10 +65,15 @@ function safeWorldId(value: string): string {
 
 async function main(): Promise<void> {
   const command = process.argv[2];
-  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-world" && command !== "models" && command !== "check-runtime") usage();
+  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-world" && command !== "models" && command !== "check-runtime" && command !== "db-status") usage();
 
   const worldId = safeWorldId(arg("--world") ?? "conghuoniao");
   const libraryDir = resolve("worlds", worldId, "library");
+
+  if (command === "db-status") {
+    console.log(JSON.stringify(databaseStatus(resolve("worlds", worldId), worldId), null, 2));
+    return;
+  }
 
   if (command === "analyze-world") {
     const phase = arg("--phase") ?? "status";
@@ -264,15 +271,7 @@ async function main(): Promise<void> {
       ...state.characters.slice(0, 12).map(character => character.name)
     ].join("\n");
     const retrieved = await searchLibrary(libraryDir, retrievalQuery, retrievalLimit);
-    let annotationsByChunk = new Map<string, { entities?: unknown[]; events?: unknown[]; relations?: unknown[] }>();
-    try {
-      const annotationStore = JSON.parse(await readFile(resolve(libraryDir, "annotations.json"), "utf8")) as {
-        annotations?: Array<{ chunkId: string; entities?: unknown[]; events?: unknown[]; relations?: unknown[] }>;
-      };
-      annotationsByChunk = new Map((annotationStore.annotations ?? []).map(item => [item.chunkId, item]));
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
+    const annotationsByChunk = readAnnotationsByChunkIds(resolve("worlds", worldId), worldId, retrieved.map(hit => hit.id)) as Map<string, { entities?: unknown[]; events?: unknown[]; relations?: unknown[] }>;
     const retrievedContext = retrieved.map((hit, index) => {
       const annotation = annotationsByChunk.get(hit.id);
       return "[" + (index + 1) + ", score " + hit.score.toFixed(2) + "] " + hit.source + " / " + hit.chapter +

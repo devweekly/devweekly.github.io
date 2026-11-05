@@ -4,3 +4,8 @@ dist/
 .env
 private/
 original.txt
+
+# Per-world SQLite databases and WAL sidecars
+worlds/*/novel.db
+worlds/*/novel.db-wal
+worlds/*/novel.db-shm

@@ -220,6 +220,21 @@ node scripts/compare-models.mjs \\
 - 原章节用于理解上下文和核实事实，不是续写的标准答案。评价重点是新章节是否成立、人物是否可信、故事是否推进，不是模仿原文句子。
 - 不把一次评审意见直接固化成永久规则；先确认问题在重复测试中出现，再决定改 prompt 或 workflow。
 
+
+## SQLite 世界数据库
+
+每个世界使用独立的 `worlds/<world>/novel.db`，使用 Node 22.13+ 内置 `node:sqlite`，不引入原生 npm 扩展。数据库启用 WAL、外键、事务和 schema version，保存章节片段、抽取标注、实体/实体提及，以及人物、正史事实、事件、情节线和连续性备注。章节检索从 SQLite 读取片段，再沿用现有 BM25 排序；续写上下文按命中的 chunk ID 从 SQLite 读取标注。
+
+首次访问会自动把已有 `library/index.json`、`annotations.json` 和 `story-state.json` 导入数据库。此后故事状态以 SQLite 为权威存储，`story-state.json` 保留为可读兼容快照；库索引和标注 JSON 继续作为可重建/交换快照。重新导入源文件会在事务中替换 SQLite 片段索引并清理对应过期标注。数据库不存原始小说全文文件，只存索引片段及结构化信息。
+
+查看数据库状态：
+
+```bash
+npm run dev -- db-status --world conghuoniao
+```
+
+SQLite 文件及 WAL/SHM sidecar 已加入本地忽略规则。需要迁移或重建时先保留 JSON 快照，再删除数据库；下一次运行会从快照重新导入。
+
 ## 目录
 
 ```

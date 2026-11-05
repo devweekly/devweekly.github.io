@@ -81,3 +81,12 @@ CLI 命令（均经 `npm run dev --`）：
 - Use `--strict-model` so failed calls cannot silently fall back. Never apply candidate state proposals during the experiment.
 - Keep `MODEL-MAPPING-PRIVATE.json` and logs away from blind reviewers; share only anonymized chapter text and identical context.
 - Use `prompts/model-comparison-review.md`; judge continuation quality, not imitation of source phrasing.
+
+
+## SQLite world database
+
+- Each world has `worlds/<world>/novel.db`, implemented with Node's built-in `node:sqlite`; keep database files and WAL/SHM sidecars out of Git.
+- SQLite is authoritative for story state after legacy JSON migration. `story-state.json` is a readable compatibility snapshot; library/annotation JSON are rebuildable interchange snapshots.
+- Update SQLite through `src/database.ts` transaction helpers; do not write tables ad hoc from CLI or agents.
+- Library search keeps the existing BM25 ranking but reads chunk records from SQLite. Retrieved chunk annotations are loaded from SQLite by chunk ID.
+- Do not store original novel files in SQLite; only indexed passages and structured derived data belong there.
