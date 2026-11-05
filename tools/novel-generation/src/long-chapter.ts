@@ -166,16 +166,16 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       `本场蓝图：`, scenePlans[index]!,
       "本场相关原文证据（只用于核实事实，不得照搬）：", sceneEvidence,
       "上一场正文的连续性上下文（重点承接人物位置、已知信息、关系变化、道具归属、未完成动作与场景结果，不得重复）：", previous,
-      `本场目标 ${perScene} 个汉字。写完整场景：人物在具体地点做事、遇到阻力、做出选择、承担后果。不要用概述代替关键场景，不要跳到下一场。`,
+      `本场篇幅参考约 ${perScene} 个汉字，不是必须命中的配额。写出完整、自然的场景；人物可以行动、闲谈、观察、犹豫或误判，不必套用固定的目标—阻力—选择—后果结构。不要用概述代替真正重要的场面，也不要为了字数添加无用内容。`,
       RHYTHM_RULE,
       "根据本场功能安排长短句、对白和感官细节；推理或交涉可以展开长句，动作和情绪落点可以短句收束。不要为了满足固定字数或清单配额而添加无功能内容。",
       "不复制原文句子，不以近义词替换改写原文；不写「未完待续」「本场结束」等标记。"
     ];
     let text = await cachedCall("scene-" + (index + 1), "02-scene-" + String(index + 1).padStart(2, "0") + ".md", "scene", scenePrompt);
-    if (chineseChars(text) < perScene * 0.82) {
+    if (chineseChars(text) < perScene * 0.65) {
       const extra = await cachedCall("scene-expansion-" + (index + 1), "02-scene-" + String(index + 1).padStart(2, "0") + "-expansion.md", "scene", [
         scenePrompt[0]!, "已写出的本场正文：", text,
-        `本场仍缺字数。从现有最后一句接着往后写，补足到约 ${perScene} 个汉字；不重复、不改写已有内容，不提前收束全章。`,
+        `当前场景明显偏短。先判断它是否已经自然完成：若确实还缺少必要的动作、对话、情绪或场景收束，请从现有最后一句自然续写；若已经完整，不要为凑字数硬加内容。不得重复或改写已有内容，也不要提前收束全章。`,
         RHYTHM_RULE
       ]);
       text = text.trim() + "\n\n" + extra.trim();
