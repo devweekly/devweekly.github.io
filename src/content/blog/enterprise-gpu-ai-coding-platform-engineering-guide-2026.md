@@ -290,16 +290,11 @@ DeepSeek 是检验国产加速器软件栈成熟度的有效负载，但“支�
 
 ### 6.4 其他国产平台：关注厂商后端和版本绑定
 
-国产平台逐步采用 PyTorch、vLLM 等开发者熟悉的接口，但接口相似不代表底层实现相同。常见方式是维护厂商自己的 PyTorch 发行版、设备后端、算子库、通信库和推理框架分支，或通过上游框架的 out-of-tree platform / plugin 接口接入。
+国产平台逐步采用 PyTorch、vLLM 等开发者熟悉的接口，但接口相似不代表底层实现相同。寒武纪通过 vLLM-MLU 接入推理服务；摩尔线程维护 vLLM-MUSA 和 SGLang-MUSA；沐曦的 MXMACA 需要与适配版 PyTorch、Triton、FlashAttention 和推理框架配套使用。壁仞、燧原和海光也分别维护 BIRENSUPA / TorchSUPA、TopsRider / vLLM-GCU、DTK 等软件栈。
 
-- **寒武纪 vLLM-MLU**：基于社区 vLLM 插件系统为 MLU 提供推理服务能力。检查插件对应的 vLLM 版本、MLU 型号、模型列表、量化、连续批处理、KV Cache 和多卡通信支持。
-- **摩尔线程 vLLM-MUSA / SGLang-MUSA**：分别基于 vLLM 和 SGLang 适配 MUSA。使用官方指定的软件栈、容器和依赖版本；不能把 CUDA 镜像简单替换设备挂载后就视为迁移完成。
-- **沐曦 MXMACA**：关注官方适配版 PyTorch、Triton、FlashAttention、vLLM 和 SGLang 的版本关系。第三方教程中的版本组合只能作为线索，生产环境以当前官方文档和镜像为准。
-- **壁仞 BIRENSUPA / TorchSUPA**：关注 PyTorch 代码迁移、算子覆盖和 vLLM 适配。模型 Day-0 适配只证明特定模型在特定产品和软件版本上完成了指定验证。
-- **燧原 TopsRider / vLLM-GCU**：关注 GCU 运行时、torch-gcu、集合通信、算子库和 vLLM-GCU 的版本匹配。API、流式输出、多模态、Tool Calling 和多卡推理必须在目标服务器实测。
-- **海光 DCU / DTK**：确认 DTK 与操作系统、内核、驱动、PyTorch、编译工具链及推理框架的支持矩阵。即使存在 HIP 或 ROCm 兼容接口，也要逐项确认编译器、算子、通信库和性能工具的实际支持范围。
+这些平台的共同难点是版本绑定。模型 Day-0 适配只说明某个模型在指定芯片和软件版本上完成了特定验证，不代表所有量化格式、Tool Calling、多卡通信或长上下文能力都已可用。企业应把硬件型号、驱动、运行时、算子库、PyTorch、推理框架和模型版本作为一个组合进行验收，并同时跟踪上游框架与厂商后端的升级节奏。
 
-上游 vLLM 提供 platform 抽象和 out-of-tree platform 扩展机制，厂商可以通过独立后端适配硬件。但某项功能最终是否可用，取决于后端实现，而不是 vLLM 上游 API 本身。企业应同时跟踪上游 vLLM 与厂商后端版本，避免上游升级后厂商插件尚未跟进。
+vLLM 的 platform 抽象和 out-of-tree plugin 机制降低了接入成本，但功能最终仍取决于厂商后端实现。不能因为上游 API 存在某项能力，就推断所有设备后端都已支持。
 
 ### 6.5 CUDA 迁移涉及的运行时、算子与通信适配
 
@@ -326,11 +321,9 @@ DeepSeek 是检验国产加速器软件栈成熟度的有效负载，但“支�
 
 [查看完整 HTML 图表](/diagrams/enterprise-gpu-ai-coding-platform/01-heterogeneous-backends.html)
 
-- **统一 API，不强求统一底层实现**：统一 API、Streaming、模型别名和错误协议；后端内部允许不同 Runtime 和推理引擎。
-- **模型路由感知能力**：Model Registry 除模型名称外，还应记录芯片型号、框架版本、量化格式、上下文上限、Tool Calling、结构化输出、多模态和并行能力。
-- **镜像按硬件栈维护**：不同厂商驱动和用户态 Runtime 不宜强行放进同一个通用 GPU 镜像。采用独立、不可变的基础镜像，由统一 CI 构建与扫描。
-- **Kubernetes 统一管理，设备插件按厂商部署**：统一 Namespace、Quota、NetworkPolicy、发布流程；节点标签、Device Plugin、RuntimeClass、拓扑调度和监控适配按厂商实现。
-- **Agent 与 GPU 解耦**：Agent Runtime 不应直接依赖 CUDA、CANN 或某个厂商 SDK，只调用 AI Gateway。更换模型池不应影响 Agent 生命周期和工具安全边界。
+异构部署的统一边界应放在 API 和平台控制面，不应强行统一各厂商的底层 Runtime。AI Gateway 对上提供一致的 API、Streaming、模型别名和错误协议；对下则允许每个 GPU Pool 使用经过验证的驱动、镜像和推理引擎。Model Registry 除了模型名称，还要记录芯片型号、框架版本、量化格式、上下文上限、Tool Calling、结构化输出和并行能力，Router 才能判断某个请求是否真的能在目标后端运行。
+
+镜像应按硬件软件栈分别构建，保持不可变，并由统一 CI 完成扫描和发布。Kubernetes 可以统一 Namespace、Quota、NetworkPolicy 和发布流程，但节点标签、Device Plugin、RuntimeClass、拓扑调度及监控适配仍需按厂商实现。Agent Runtime 只调用 AI Gateway，不直接依赖 CUDA、CANN 或厂商 SDK；更换 GPU Pool 时，Session 生命周期和工具安全边界不应受到影响。
 
 ### 6.7 POC 验收：服务启动不等于生产可用
 
@@ -353,14 +346,9 @@ Coding Agent 场景还要验证工具调用参数是否符合 Schema、长上下
 
 ### 6.8 企业选型建议
 
-- **昇腾**：优先验证服务器、CANN、PyTorch、vLLM Ascend / MindIE 的完整组合，以及目标模型多卡能力；重点看软件版本治理、模型覆盖和交付支持。
-- **摩尔线程、沐曦、壁仞**：作为通用 GPU 路线重点比较，检查 PyTorch / vLLM / SGLang 适配、CUDA 迁移成本、自定义 Kernel 和集群互联能力。
-- **寒武纪、燧原、海光 DCU**：结合具体加速器定位和软件栈，核实模型覆盖、框架适配和规模化部署能力；不要仅凭设备 API 名称判断它与通用 GPU 的可替换程度。
-- **混合部署**：国产算力与 NVIDIA 并存时，统一 API Gateway、模型注册、配额、日志和评测体系；按模型能力、数据驻留、成本和 SLO 路由，避免 Agent 应用直接感知设备品牌。
+昇腾应优先验证服务器、CANN、PyTorch、vLLM Ascend / MindIE 的完整组合，重点观察软件版本治理、目标模型的多卡能力和厂商交付支持。摩尔线程、沐曦和壁仞可以作为通用 GPU 路线重点比较，评估 PyTorch / vLLM / SGLang 适配、CUDA 迁移成本、自定义 Kernel 和集群互联。寒武纪、燧原与海光 DCU 则应结合具体加速器定位核实模型覆盖和框架适配，不要只凭设备 API 名称判断其与通用 GPU 的可替换程度。
 
-最终决策应比较 **Cost per Successful Coding Task**，而不是单卡理论 FLOPS 或厂商宣传的 Tokens/s。模型质量、框架适配人力、算子开发成本、节点利用率、故障恢复、软件升级和供应商支持都要计入 TCO。
-
----
+如果国产算力与 NVIDIA 并存，平台仍可统一 API Gateway、模型注册、配额、日志和评测体系，再按模型能力、数据驻留、成本和 SLO 路由。最终比较对象应是 Cost per Successful Coding Task：模型质量、框架适配人力、算子开发、节点利用率、故障恢复、软件升级和供应商支持都要计入 TCO。
 
 ### 6.9 国产 GPU 学习路线：把 CUDA 知识迁移过来，但不要照搬 CUDA 代码
 
@@ -463,18 +451,7 @@ leq M_{available}
 | OOM / Retry / Cancellation | 失败和重试 | 稳定性与浪费 |
 | Cost per Successful Task | 每个成功代码任务成本 | 企业 FinOps |
 
-对 Coding Agent 还要增加业务指标：
-
-- Task Success Rate；
-- Human Intervention Rate；
-- Tests Passed / Regression Rate；
-- Tool Call Success Rate；
-- Invalid Tool Arguments；
-- Tokens per Successful Task；
-- Time to Complete a Task；
-- Cost per Successful Task。
-
-高 Token Throughput 不等于高业务产出。如果模型生成得更快，但代码任务失败率更高，实际单位成功任务成本可能更差。
+Coding Agent 的评测不能止于推理服务指标。还要统计任务成功率、人工介入率、测试通过和回归情况、Tool Call 成功率、无效参数比例、每个成功任务消耗的 Token，以及从任务创建到完成的时间。高 Token Throughput 不等于高业务产出：如果模型生成更快，却需要更多人工修复，单位成功任务成本反而会上升。
 
 ### 8.4 POC 压测矩阵
 
@@ -494,26 +471,11 @@ leq M_{available}
 
 ## 9. 可观测性：GPU 指标、推理指标和 Agent Trace 必须关联
 
-只监控 GPU Utilization 无法解释开发者为什么觉得慢。只看 API 延迟也无法定位是队列、Prefill、Decode、网络还是工具执行导致的。
+只监控 GPU Utilization 无法解释开发者为什么觉得慢，只看 API 延迟也无法定位问题是在队列、Prefill、Decode、网络还是工具执行。可观测性需要把三个层次关联起来：基础设施侧记录 GPU 温度、功耗、HBM、XID、ECC、NVLink、PCIe、NIC、RDMA 和磁盘状态；推理侧记录 Queue Time、TTFT、TPOT、Batch Size、KV Cache、OOM 和请求错误；Agent 侧则跟踪 Session、Task、模型调用、Tool Call、Workspace、测试结果、人工介入和任务成本。
 
-建议建立三层可观测性：
+实现上，DCGM / DCGM Exporter 提供 GPU 指标，Prometheus 和 Grafana 负责采集与展示，OpenTelemetry 用于关联 Trace、Metric 和 Log。日志系统可以采用 Loki、Elasticsearch 或现有企业平台；调用量和成本分析则可落到 ClickHouse 等分析型存储，具体选择取决于数据量和现有技术栈。
 
-| 层次 | 指标/日志 | 典型问题 |
-| --- | --- | --- |
-| Infrastructure | GPU 温度、功耗、HBM、XID、ECC、NVLink、PCIe、NIC、RDMA、磁盘、节点健康 | GPU 降频、链路异常、硬件故障 |
-| Inference | Queue Time、TTFT、TPOT、Tokens/s、Batch Size、KV Cache、OOM、请求错误 | 模型服务过载、缓存不足、调度不公平 |
-| Agent | Session、Task、模型调用、Tool Call、Workspace、测试结果、人工介入、任务成本 | Agent 循环、工具失败、上下文膨胀、任务未完成 |
-
-推荐的基础组件：
-
-- NVIDIA DCGM / DCGM Exporter：GPU 指标；
-- Prometheus：时序指标；
-- Grafana：仪表盘；
-- OpenTelemetry：Trace、Metric、Log 的统一关联；
-- Loki 或 Elasticsearch：日志；
-- ClickHouse 或其他分析型存储：大规模调用与成本分析（按数据量和现有平台决定）。
-
-每个 Agent Task 应有稳定的 Trace ID；每一次模型请求、工具调用和测试执行都应成为可关联的 Span。日志中记录模型版本、量化、推理节点、Token 用量、队列等待、延迟、错误类型和成本。Prompt 与代码内容是否落日志，需要根据数据分类、隐私和保留政策单独决定，默认应避免记录敏感源代码和 Secret 明文。
+每个 Agent Task 应有稳定的 Trace ID，每次模型请求、工具调用和测试执行都成为可关联的 Span。日志中记录模型版本、量化、推理节点、Token 用量、队列等待、延迟、错误类型和成本。Prompt 与代码内容是否落日志，需要根据数据分类、隐私和保留政策单独决定，默认避免记录敏感源代码和 Secret 明文。
 
 ## 10. 安全与治理：模型 API 不是唯一的攻击面
 
@@ -570,36 +532,15 @@ GPU 平台的故障不仅是 Pod Crash。还包括 GPU XID、ECC 错误、NVLink
 
 ## 12. 成本模型与供应商采购
 
-GPU 租赁成本只是平台总成本的一部分。至少要把成本拆成：
+GPU 租赁成本只是平台总成本的一部分。成本模型还要覆盖网络、存储、机房设施、软件、工程人力、支持合同和故障预留。对企业 Coding 平台，单纯比较 GPU 小时价格没有意义；真正应该比较的是目标 SLO 下的有效吞吐，以及每个成功代码任务的全成本。
 
-[
-TCO = GPU + Network + Storage + Facility + Software + People + Support + FailureReserve
-]
+[TCO = GPU + Network + Storage + Facility + Software + People + Support + FailureReserve]
 
-其中 GPU 成本不能只用标价乘以卡数。应比较在目标 SLO 下的有效吞吐，以及每个成功代码任务的全成本。
+[CostPerSuccessfulTask = \frac{GPU + Infrastructure + Platform + Operations + FailedAttempts}{SuccessfulTasks}]
 
-[
-CostPerSuccessfulTask =
+采购询价时，先确认供应商卖的是什么资源单位：单卡、8-GPU 节点，还是完整 NVL72 机架。随后核实节点能否同时交付、GPU 是否处于同一 NVLink 域、NIC 和交换机是否独占、RDMA 与 oversubscription 如何配置。网络带宽保障、模型缓存和存储费用也要写进报价边界，避免低估实际账单。
 
-rac{GPU + Infrastructure + Platform + Operations + FailedAttempts}
-{SuccessfulTasks}
-]
-
-采购询价应要求供应商回答：
-
-- 报价是按 GPU、8-GPU 节点还是完整 NVL72 机架；
-- 是否承诺整组节点同时可用；
-- GPU 是否属于同一 NVLink 域；
-- NIC、交换机、RDMA 和 oversubscription 配置；
-- 节点间网络是否独占，是否有带宽保障；
-- 是否包含存储、模型缓存和流量费用；
-- 是否提供 DCGM、NCCL、硬件健康和故障数据；
-- SLA、故障更换时限和维护窗口；
-- 预留容量、扩容提前期、缩容条款；
-- 数据驻留、日志、远程运维和人员访问方式；
-- 价格是否包含软件、支持、税费和跨区域流量。
-
-长期合同前先做短期 POC。需要对比按需、预留、容量块和长期承诺的 break-even utilization。未测出真实工作负载下的 Goodput，不应把公开的每 GPU 小时价格直接转换成年度预算结论。
+合同还应明确 DCGM、NCCL 和硬件健康数据是否可见，故障更换时限、维护窗口、预留容量和扩容提前期如何约定。数据驻留、日志、远程运维和人员访问方式不能留到上线前再谈。价格需要说明是否包含软件、技术支持、税费和跨区域流量。长期合同前先做短期 POC，并根据真实工作负载计算 break-even utilization；没有 Goodput 数据，不应把公开 GPU 小时单价直接换算成年预算。
 
 ## 13. 工程团队需要哪些能力
 
