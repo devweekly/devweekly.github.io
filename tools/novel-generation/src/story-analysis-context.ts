@@ -9,23 +9,43 @@ function values(value: unknown): string[] {
   return [];
 }
 
+const STOP_TERMS = new Set([
+  "人物", "角色", "故事", "情节", "发展", "可能", "当前", "本章", "这一", "一个", "一些",
+  "已经", "正在", "之后", "之前", "然后", "因此", "因为", "但是", "如果", "没有", "什么",
+  "如何", "是否", "自己", "他们", "我们", "对方", "事情", "发生", "关系", "方面", "可以",
+  "需要", "成为", "开始", "继续", "以及", "以及", "这个", "那个", "其中", "通过", "对于"
+]);
+
 function terms(text: string): Set<string> {
   const normalized = text.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
-  const result = new Set(normalized.split(/\s+/u).filter(token => token.length > 1));
+  const result = new Set(normalized.split(/\s+/u).filter(token => token.length > 1 && !STOP_TERMS.has(token)));
   const compact = normalized.replace(/\s/gu, "");
-  for (let i = 0; i < compact.length - 1; i++) result.add(compact.slice(i, i + 2));
+  for (let i = 0; i < compact.length - 1; i++) {
+    const pair = compact.slice(i, i + 2);
+    if (!STOP_TERMS.has(pair)) result.add(pair);
+  }
   return result;
 }
 
 function score(item: AnalysisItem, queryTerms: Set<string>, query: string): number {
-  const text = values(item).join(" ");
+  const metadata = new Set(["sourceRefs", "chapterKeys", "aliases", "confidence", "status"]);
+  const text = Object.entries(item)
+    .filter(([key]) => !metadata.has(key))
+    .flatMap(([, value]) => values(value))
+    .join(" ");
   const itemTerms = terms(text);
   let total = 0;
   for (const term of queryTerms) if (itemTerms.has(term)) total += term.length > 2 ? 2 : 1;
+  const queryCompact = query.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
   const name = String(item.name ?? item.title ?? item.clue ?? item.focus ?? "");
-  if (name && query.includes(name)) total += 20;
+  const nameCompact = name.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+  if (nameCompact.length > 1 && queryCompact.includes(nameCompact)) total += 24;
   const aliases = Array.isArray(item.aliases) ? item.aliases : [];
-  for (const alias of aliases) if (typeof alias === "string" && alias.length > 1 && query.includes(alias)) total += 12;
+  for (const alias of aliases) {
+    if (typeof alias !== "string") continue;
+    const aliasCompact = alias.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
+    if (aliasCompact.length > 1 && queryCompact.includes(aliasCompact)) total += 16;
+  }
   return total;
 }
 
