@@ -1,40 +1,65 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseChapterReview, reviewAndRepair } from "../src/chapter-review.js";
+import { formatReview, parseChapterReview, reviewAndRepair, reviewPrompt, MUST_FIX_RULE } from "../src/chapter-review.js";
 
 const chapter = "李玄推开门。门后的人没有说话，只把一枚铜钱放在桌上。";
 
-test("chapter review accepts a pass only when no blocker or major findings exist", () => {
+test("pass requires an empty issue list", () => {
   const report = parseChapterReview(JSON.stringify({
     status: "pass",
-    summary: "未发现需要自动修复的实质问题。",
-    issues: [{ severity: "minor", scenes: [], evidence: "只把一枚铜钱", problem: "动作略显简略。", repair: "可保留，不影响情节。" }]
+    summary: "未发现读者会认定不可能的硬伤",
+    issues: []
   }), chapter);
   assert.equal(report.status, "pass");
+  assert.equal(report.issues.length, 0);
 });
 
-test("chapter review rejects unsupported evidence and inconsistent status", () => {
+test("any reported issue makes the status needs_repair", () => {
   assert.throws(() => parseChapterReview(JSON.stringify({
     status: "pass", summary: "OK", issues: [{
-      severity: "major", scenes: [], evidence: "门后出现一个陌生人",
-      problem: "信息不连贯", repair: "补充人物出现过程"
-    }]
-  }), chapter), /not an exact substring/);
-  assert.throws(() => parseChapterReview(JSON.stringify({
-    status: "pass", summary: "OK", issues: [{
-      severity: "major", scenes: [], evidence: "李玄推开门",
-      problem: "信息不连贯", repair: "补充人物出现过程"
+      scenes: [], evidence: "门后的人", problem: "读者会认为这个人凭空出现", repair: "补一句脚步声"
     }]
   }), chapter), /status is pass/);
+  assert.throws(() => parseChapterReview(JSON.stringify({
+    status: "needs_repair", summary: "有问题", issues: []
+  }), chapter), /no issue is listed/);
 });
 
-test("multi-scene blocker must identify affected scenes", () => {
+test("more than three issues is rejected", () => {
+  const issue = { scenes: [], evidence: "李玄", problem: "不可能", repair: "改" };
   assert.throws(() => parseChapterReview(JSON.stringify({
-    status: "needs_repair", summary: "场景交接存在问题。", issues: [{
-      severity: "major", scenes: [], evidence: "李玄推开门",
-      problem: "位置变化缺少交代", repair: "补足转场"
+    status: "needs_repair", summary: "四条", issues: [issue, issue, issue, issue]
+  }), chapter), /Too big|too_big|Expected array/);
+});
+
+test("证据只用于定位，找不到时加注而不判无效", () => {
+  const report = parseChapterReview(JSON.stringify({
+    status: "needs_repair", summary: "有硬伤", issues: [{
+      scenes: [], evidence: "门后出现一个陌生人", problem: "读者会认为这个人凭空出现", repair: "补一句脚步声"
     }]
-  }), chapter, 3), /must identify at least one affected scene/);
+  }), chapter);
+  assert.equal(report.issues.length, 1);
+  assert.match(report.issues[0]!.evidence, /未定位到/);
+});
+
+test("场景编号超出范围时报错", () => {
+  assert.throws(() => parseChapterReview(JSON.stringify({
+    status: "needs_repair", summary: "越界", issues: [{
+      scenes: [4], evidence: "李玄", problem: "不可能", repair: "改"
+    }]
+  }), chapter, 3), /outside this chapter/);
+});
+
+test("必改规则排除措辞、节奏与偏好", () => {
+  assert.match(MUST_FIX_RULE, /不可能/);
+  assert.match(MUST_FIX_RULE, /一律不报/);
+  for (const word of ["措辞", "节奏", "伏笔", "可以更好"]) {
+    assert.ok(MUST_FIX_RULE.includes(word), word);
+  }
+  const prompt = reviewPrompt({ context: "设定", blueprint: "蓝图", chapter });
+  assert.match(prompt, /只判断一件事/);
+  assert.match(prompt, /上限 3 条/);
+  assert.match(prompt, /issues 必须是空数组/);
 });
 
 test("reviewAndRepair repairs and rechecks until pass without human approval", async () => {
@@ -42,14 +67,14 @@ test("reviewAndRepair repairs and rechecks until pass without human approval", a
   let repairCalls = 0;
   const result = await reviewAndRepair({
     initialChapter: chapter,
-    review: async current => {
+    review: async () => {
       reviewCalls++;
       return JSON.stringify(reviewCalls === 1 ? {
-        status: "needs_repair", summary: "需要补足门后人物出现过程。", issues: [{
-          severity: "major", scenes: [], evidence: "门后的人没有说话",
-          problem: "人物出现缺少前置线索", repair: "在开门前加入可观察的声音或动静"
+        status: "needs_repair", summary: "门后人物出现缺少前提。", issues: [{
+          scenes: [], evidence: "门后的人没有说话",
+          problem: "读者会认为这人凭空出现", repair: "开门前加入可听见的动静"
         }]
-      } : { status: "pass", summary: "修复后因果连贯。", issues: [] });
+      } : { status: "pass", summary: "未发现读者会认定不可能的硬伤", issues: [] });
     },
     repair: async current => {
       repairCalls++;
@@ -72,8 +97,8 @@ test("reviewAndRepair stops after bounded repairs and never reports a false pass
       reviewCalls++;
       return JSON.stringify({
         status: "needs_repair", summary: "仍有硬伤。", issues: [{
-          severity: "blocker", scenes: [], evidence: "李玄推开门",
-          problem: "关键人物动机不成立", repair: "补足动机"
+          scenes: [], evidence: "李玄推开门",
+          problem: "读者会认为他不可能知道门后有人", repair: "补足信息来源"
         }]
       });
     },
@@ -84,4 +109,10 @@ test("reviewAndRepair stops after bounded repairs and never reports a false pass
   }), /after 1 automatic repair rounds/);
   assert.equal(reviewCalls, 2);
   assert.equal(repairCalls, 1);
+});
+
+test("formatReview 在无必改项时只给一行结论", () => {
+  const text = formatReview({ status: "pass", summary: "未发现读者会认定不可能的硬伤", issues: [] });
+  assert.match(text, /状态：pass/);
+  assert.ok(!text.includes("必改"));
 });

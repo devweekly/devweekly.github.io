@@ -78,7 +78,7 @@ test("story analysis can load an existing JSON library index and migrate it to S
       schemaVersion: 1, worldId: "test-world", createdAt: "2026-11-05T00:00:00.000Z",
       updatedAt: "2026-11-05T00:00:00.000Z", chunks
     }), "utf8");
-    assert.deepEqual(await loadLibraryChunks(libraryDir, "test-world"), chunks);
+    assert.deepEqual(JSON.parse(JSON.stringify(await loadLibraryChunks(libraryDir, "test-world"))), chunks);
     assert.equal(databaseStatus(worldDir, "test-world").chunks, 1);
   } finally {
     await rm(root, { recursive: true, force: true });

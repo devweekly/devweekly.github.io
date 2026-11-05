@@ -1,9 +1,12 @@
 import { z } from "zod";
 
+/**
+ * 终审只回答一个问题：有没有读者会认定「不可能」的硬伤。
+ * 措辞、用字、称谓、节奏、伏笔、偏好、需要再核对才能确认的疑点，一律不报。
+ */
 export const ReviewIssueSchema = z.object({
-  severity: z.enum(["blocker", "major", "minor"]),
-  scenes: z.array(z.number().int().min(1).max(20)).default([]),
-  evidence: z.string().min(4),
+  scenes: z.array(z.number().int().min(1).max(40)).default([]),
+  evidence: z.string().min(2).max(40),
   problem: z.string().min(1),
   repair: z.string().min(1)
 }).strict();
@@ -11,11 +14,21 @@ export const ReviewIssueSchema = z.object({
 export const ChapterReviewSchema = z.object({
   status: z.enum(["pass", "needs_repair"]),
   summary: z.string().min(1),
-  issues: z.array(ReviewIssueSchema)
+  issues: z.array(ReviewIssueSchema).max(3)
 }).strict();
 
 export type ReviewIssue = z.infer<typeof ReviewIssueSchema>;
 export type ChapterReview = z.infer<typeof ChapterReviewSchema>;
+
+export const MUST_FIX_RULE = [
+  "判定标准只有一条：读者读到这里会不会认为「不可能」。满足任一条才算必改，其余全部不报。",
+  "一、人物做了他做不到的事：知道了没有渠道知道的信息、用了没有的能力或器物、出现在不可能的位置、同一时间处在两处、伤重到不可能行动却行动自如。",
+  "二、世界规则被打破：与正文已经展示且不可变通的规则矛盾（能力的代价与限制、身份与权限、地理与航程、器物归属），或前后事实互相否定。",
+  "三、时间或因果断裂到读者看不懂：同一事件在不同段落有两个互斥版本，时间倒流，结果先于原因。",
+  "以下一律不报：措辞、用字、称谓是否统一、节奏与句长、标点、伏笔是否回收、场景转换是否顺滑、人物是否讨喜，以及任何「可以更好」的建议。",
+  "需要复算、需要对照另一份文档才能确认的疑点不报；不能确定是有意留白、人物误判、隐瞒或刻意反转的，不报。",
+  "上限 3 条；没有就返回空数组，不要为了显得尽责凑数。"
+].join("\n");
 
 function extractObject(raw: string): unknown {
   const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
@@ -25,28 +38,25 @@ function extractObject(raw: string): unknown {
   return JSON.parse(cleaned.slice(start, end + 1)) as unknown;
 }
 
+/**
+ * 证据只用于定位，不要求逐字命中：强制逐字子串会把审查推向「能截出一句话」的局部瑕疵。
+ * 定位不到时在证据后加注，不判整份审查无效。
+ */
 export function parseChapterReview(raw: string, chapter: string, sceneCount?: number): ChapterReview {
   const parsed = ChapterReviewSchema.parse(extractObject(raw));
-  const blocking = parsed.issues.filter(issue => issue.severity === "blocker" || issue.severity === "major");
+  if (parsed.status === "pass" && parsed.issues.length > 0) {
+    throw new Error("Review status is pass but must-fix issues are present.");
+  }
+  if (parsed.status === "needs_repair" && parsed.issues.length === 0) {
+    throw new Error("Review status is needs_repair but no issue is listed.");
+  }
   for (const issue of parsed.issues) {
-    if (!chapter.includes(issue.evidence)) {
-      throw new Error("Review evidence is not an exact substring of the final chapter: " + issue.evidence);
+    if (sceneCount !== undefined && issue.scenes.some(scene => scene > sceneCount)) {
+      throw new Error("Review references a scene outside this chapter.");
     }
-    if (sceneCount !== undefined) {
-      if (issue.scenes.some(scene => scene > sceneCount)) {
-        throw new Error("Review references a scene outside this chapter.");
-      }
-      if (blocking.includes(issue) && issue.scenes.length === 0) {
-        throw new Error("Every blocker/major finding in a multi-scene chapter must identify at least one affected scene.");
-      }
-    }
-  }
-  const hasBlocking = blocking.length > 0;
-  if (parsed.status === "pass" && hasBlocking) {
-    throw new Error("Review status is pass but blocker/major issues are present.");
-  }
-  if (parsed.status === "needs_repair" && !hasBlocking) {
-    throw new Error("Review status is needs_repair but no blocker/major issues are present.");
+    const probe = issue.evidence.replace(/[.…\s]+/g, "");
+    const located = chapter.includes(issue.evidence) || (probe.length > 0 && chapter.includes(probe.slice(0, 8)));
+    if (!located) issue.evidence = issue.evidence + "（未定位到，按场景号核对）";
   }
   return parsed;
 }
@@ -57,38 +67,35 @@ export function reviewPrompt(input: {
   chapter: string;
   priorReview?: string;
   sceneCount?: number;
+  sceneLabel?: string;
   correction?: string;
 }): string {
   return [
-    "角色：小说责任编辑。首要职责是保护小说的可读性、人物生命力、情绪和文学表达，不是做学术审查、设定审计或格式验收。请通读完整章节，像真正读者一样判断它是否自然、有感染力、是否让人想继续读。",
-    "文学表达和故事体验优先。不要把正文改成设定说明、剧情报告、人物心理分析或逻辑证明。允许留白、偶然、误会、矛盾、冲动、荒诞、含混和暂时无法解释的细节；不要要求每件事都被解释、每个场景都推进主线、每个人物每章都有成长。",
+    "角色：小说终审。只判断一件事：这一章有没有读者会认定「不可能」的硬伤。",
     input.context,
-    "章节蓝图（仅供理解创作意图，不是必须逐项兑现的合同）：",
+    "章节蓝图：",
     input.blueprint,
-    "最终候审正文：",
+    input.sceneLabel ? "候审正文（" + input.sceneLabel + "）：" : "候选正文：",
     input.chapter,
-    input.priorReview ? "前序审查记录（仅供核对，不代表必须接受）：\n" + input.priorReview : "",
-    "先看整体阅读感受：人物是否鲜活，场景是否有吸引力，语言是否自然，情绪是否成立，叙事是否有张力。若正文已经好看，不要为了显示审查价值而找问题，也不要提出纯个人偏好的改写。",
-    "只有会实质破坏读者理解或故事成立的问题才允许报告为 blocker/major：明确的前后事实矛盾、人物不可能获得的信息、时间地点/人物位置冲突、关键行动缺少必要前提导致情节无法理解、明确违反已经展示且不可变通的能力规则。必须确认这不是有意留白、人物误判、隐瞒、欺骗、伏笔或刻意反转。",
-    "人物动机、弧光、关系变化、伏笔、场景推进、对白和文学表达都可以作为阅读观察，但除非造成明确且严重的理解断裂，否则只能作为建议性 minor，不能触发自动重写。人物不需要证明自己为什么改变；意外选择不等于错误，反转不必提前解释清楚。",
-    "严禁用风格统计、句长比例、段落长度、对白占比、设定覆盖率、证据数量或分析完整度评价文学质量；不得因此触发修订。不要把合理的文学留白判为信息缺失。",
+    input.priorReview ? "前序必改清单（只核对是否已修好，不代表必须接受）：\n" + input.priorReview : "",
+    MUST_FIX_RULE,
     input.sceneCount !== undefined
-      ? "这是多场景章节。跨场问题必须列出所有受影响的场景编号；每个 blocker/major 必须至少给出一个场景编号。"
-      : "这是普通章节，不需要填写场景编号。",
-    "证据必须是正文中连续、逐字存在的原文片段，长度至少 4 个字符；不能概述或改写证据。",
-    "输出严格 JSON，不要 Markdown 围栏或其他文字，结构：",
+      ? "跨场问题列出所有受影响场景号；每条至少给一个场景号。"
+      : "不需要填写场景编号。",
+    "evidence 只用于定位，引用不超过 15 字，可加省略号，不要求逐字命中。",
+    "problem 写清读者会在哪一步觉得不可能，不写「建议加强」。repair 给最小改动，不重写整段。",
+    "输出严格 JSON，不要 Markdown 围栏或其他文字：",
     JSON.stringify({
       status: "pass|needs_repair",
-      summary: "一句话说明整体审查结论",
+      summary: "一句话结论；没有硬伤时写「未发现读者会认定不可能的硬伤」",
       issues: [{
-        severity: "blocker|major|minor",
-        scenes: input.sceneCount !== undefined ? [1, 2] : [],
-        evidence: "从正文逐字复制的连续原文",
-        problem: "具体问题及其影响",
-        repair: "最小范围、可执行的修复方式"
+        scenes: input.sceneCount !== undefined ? [1] : [],
+        evidence: "不超过 15 字的定位引用",
+        problem: "读者会在哪一步认为不可能",
+        repair: "最小改动"
       }]
     }, null, 2),
-    "如果没有明确破坏故事成立或读者理解的硬伤，status 必须是 pass；minor 只记录可选建议，不触发重写。如果存在上述硬伤，status 才是 needs_repair。不要虚构问题，不要为了显示审查价值强行找问题；不要把个人审美偏好伪装成客观错误。",
+    "没有必改项时 issues 必须是空数组且 status 为 pass；有必改项时 status 为 needs_repair。",
     input.correction ?? ""
   ].filter(Boolean).join("\n\n");
 }
@@ -112,19 +119,18 @@ export async function reviewAndRepair(input: {
     } catch (firstError) {
       raw = await input.review(
         chapter,
-        "上一次审查结果未通过 JSON / 证据校验：" + String(firstError) +
-        "。请重新检查当前正文，只输出符合指定 schema 的 JSON；证据必须逐字出现在正文中。"
+        "上一次审查结果未通过 JSON / 结构校验：" + String(firstError) +
+        "。请重新检查当前正文，只输出符合指定 schema 的 JSON；没有必改项就返回空数组。"
       );
       parsed = parseChapterReview(raw, chapter, input.sceneCount);
     }
     reviews.push(parsed);
     await input.onReview?.(round, chapter, parsed);
-    const blocking = parsed.issues.filter(issue => issue.severity === "blocker" || issue.severity === "major");
-    if (!blocking.length) return { chapter, reviews, repairRounds: round };
+    if (!parsed.issues.length) return { chapter, reviews, repairRounds: round };
     if (round >= maxRepairRounds) {
-      throw new Error("Chapter still has blocker/major issues after " + maxRepairRounds + " automatic repair rounds. See final review artifacts; story state was not updated.");
+      throw new Error("Chapter still has must-fix issues after " + maxRepairRounds + " automatic repair rounds. See final review artifacts; story state was not updated.");
     }
-    const repaired = (await input.repair(chapter, blocking, round + 1)).trim();
+    const repaired = (await input.repair(chapter, parsed.issues, round + 1)).trim();
     if (!repaired || repaired === chapter.trim()) {
       throw new Error("Automatic chapter repair produced no change. Story state was not updated.");
     }
@@ -134,19 +140,18 @@ export async function reviewAndRepair(input: {
 }
 
 export function formatReview(review: ChapterReview): string {
+  if (!review.issues.length) {
+    return ["## 终审", "", "状态：pass", "", review.summary].join("\n");
+  }
   return [
-    "# 自动质量审查",
-    "",
-    "状态：" + review.status,
+    "## 终审：必改 " + review.issues.length + " 条",
     "",
     review.summary,
     "",
     ...review.issues.map((issue, index) => [
-      "## " + (index + 1) + ". " + issue.severity,
-      "场景：" + (issue.scenes.length ? issue.scenes.join(", ") : "普通章节 / 未指定"),
-      "证据：" + issue.evidence,
-      "问题：" + issue.problem,
-      "最小修复：" + issue.repair
+      (index + 1) + ". " + (issue.scenes.length ? "场景 " + issue.scenes.join("、") + "｜" : "") + issue.evidence,
+      "   读者会认为不可能：" + issue.problem,
+      "   最小改动：" + issue.repair
     ].join("\n"))
   ].join("\n");
 }

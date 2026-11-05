@@ -8,7 +8,7 @@ import { runAgentText, type GenerationMode } from "./generate.js";
 import { readTaskProfiles, type StageKey } from "./task-profiles.js";
 import { RHYTHM_RULE, mergeStoryState } from "./workflow.js";
 import { searchLibrary } from "./library.js";
-import { formatReview, reviewAndRepair, reviewPrompt } from "./chapter-review.js";
+import { formatReview, parseChapterReview, reviewAndRepair, reviewPrompt, type ReviewIssue } from "./chapter-review.js";
 import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
 
 export interface LongChapterInput {
@@ -190,19 +190,39 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   const draft = sceneTexts.join("\n\n---\n\n");
   await saveStage(input.outputDir, "03-draft.md", draft);
 
-  // 审查只看问题清单，分两批控制单次输入；输出合并后交给逐场修订。
-  const halves = [sceneTexts.slice(0, Math.ceil(input.scenes / 2)), sceneTexts.slice(Math.ceil(input.scenes / 2))];
-  const reviews: string[] = [];
+  // 终审只挑「读者会认为不可能」的硬伤；分两批控制单次输入，合并去重后再交给逐场修订。
+  const middle = Math.ceil(input.scenes / 2);
+  const halves = [sceneTexts.slice(0, middle), sceneTexts.slice(middle)];
+  const found: ReviewIssue[] = [];
+  const summaries: string[] = [];
   for (let index = 0; index < halves.length; index++) {
-    reviews.push(await cachedCall("batch-review-" + (index + 1), "04-continuity-review-batch-" + (index + 1) + ".md", "review", [
-      "角色：连续性与剧情审查 Agent。只报告问题，不重写正文。",
-      writingContext, "全章蓝图：", blueprint,
-      `第 ${index + 1} 批待审正文：`, halves[index]!.join("\n\n---\n\n"),
-      "只检查会让读者无法理解的明确连续性冲突，例如人物位置/时间冲突、人物不可能知道的信息、道具归属矛盾或已经明确展示的规则被无意违反。人物动机含蓄、伏笔未回收、场景安静、节奏舒缓都不是错误。不要给每场安排问题清单，也不要按统计指标挑问题；只记录确实需要避免的硬伤。",
-      "不要按句长、段落长度、对白比例或标点统计挑问题；节奏是否合适取决于场景和情绪。只指出会妨碍读者理解的明确问题，文学偏好作为可选建议。"
-    ]));
+    const slice = halves[index]!;
+    if (!slice.length) continue;
+    const batchText = slice.join("\n\n---\n\n");
+    const raw = await cachedCall("batch-review-" + (index + 1), "04-review-batch-" + (index + 1) + "-raw.txt", "review", [
+      reviewPrompt({
+        context: writingContext,
+        blueprint,
+        chapter: batchText,
+        sceneLabel: `第 ${index + 1} 批，场景 ${index === 0 ? 1 : middle + 1}–${index === 0 ? middle : input.scenes}`
+      })
+    ]);
+    const parsed = parseChapterReview(raw, batchText);
+    summaries.push(parsed.summary);
+    found.push(...parsed.issues);
   }
-  const review = reviews.join("\n\n---\n\n");
+  const seen = new Set<string>();
+  const merged = found.filter(issue => {
+    const key = issue.scenes.join(",") + "|" + issue.problem.slice(0, 16);
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  }).slice(0, 3);
+  const review = formatReview({
+    status: merged.length ? "needs_repair" : "pass",
+    summary: summaries.join("；") || "未发现读者会认定不可能的硬伤",
+    issues: merged
+  });
   await saveStage(input.outputDir, "04-continuity-review.md", review);
 
   const polished: string[] = [];
