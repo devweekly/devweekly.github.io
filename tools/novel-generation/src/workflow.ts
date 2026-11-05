@@ -1,10 +1,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { loadStoryState, saveStoryState, type StoryState } from "./story-state.js";
-import { runAgentText } from "./generate.js";
+import { runAgentText, type GenerationMode } from "./generate.js";
 
 export interface WriteWorkflowInput {
   worldId: string;
+  mode: GenerationMode;
   brief: string;
   worldBible: string;
   sourceText?: string;
@@ -57,6 +58,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     "当前故事状态（已有记录优先；不得擅自改写已确认事实）：", JSON.stringify(state, null, 2),
     input.contextText ? "用户补充的前文摘要：\n" + input.contextText : "",
     input.sourceText ? "用户提供且有权使用的续写材料：\n" + input.sourceText : "",
+    input.mode === "continuation" ? "创作模式：续写。严格承接用户提供的合法文本和当前故事状态。" : "创作模式：原创衍生。不得把项目原创内容伪装成原著事实。",
     "本次创作任务：", input.brief
   ].filter(Boolean).join("\n\n");
 
