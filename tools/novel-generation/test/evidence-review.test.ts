@@ -50,3 +50,56 @@ test("rejects substantive report paragraphs without citations", () => {
   assert.equal(result.ok, false);
   assert.ok(result.issues.some(issue => issue.includes("缺少原文行号引用")));
 });
+
+test("同一段里的多句各按自己的引用核验，不再整段连坐", async () => {
+  const { splitEvidenceClaims } = await import("../src/world-analysis.js");
+  const text = [
+    "## 判断",
+    "",
+    "卷 5 为结构转折，十主殿议通报果实脱落（L3，人物推断）。本 Agent 判断转折分两步。结算随即失灵，评价仍按上上给点数（L7）。"
+  ].join("\n");
+  const claims = splitEvidenceClaims(text);
+  assert.equal(claims.length, 2);
+  assert.deepEqual(claims[0]?.lines, [3]);
+  assert.deepEqual(claims[1]?.lines, [7]);
+  assert.equal(claims[0]?.section, "判断");
+});
+
+test("句中没有引用行号时不算待审主张，避免把评价与过渡句判成缺证据", async () => {
+  const { splitEvidenceClaims } = await import("../src/world-analysis.js");
+  const text = "## 判断\n\n这是本 Agent 的归纳，没有行号。这里有引用（L2）。";
+  const claims = splitEvidenceClaims(text);
+  assert.equal(claims.length, 1);
+  assert.deepEqual(claims[0]?.lines, [2]);
+});
+
+test("待核实小节不进入语义核验", async () => {
+  const { splitEvidenceClaims } = await import("../src/world-analysis.js");
+  const text = "## 判断\n\n事实成立（L1）。\n\n## 待核实\n\n这里存疑（L2）。";
+  const claims = splitEvidenceClaims(text);
+  assert.equal(claims.length, 1);
+  assert.deepEqual(claims[0]?.lines, [1]);
+});
+
+test("个别引用行越界不会清空其余可核验句子", () => {
+  const result = validateEvidenceReferences("## 判断\n\n事实成立（L1）。另一条越界（L9）。", ["第一行原文"]);
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.some(issue => issue.includes("L9 超出原文范围")));
+  assert.equal(result.claims.length, 2);
+});
+
+test("证据窗口取锚点邻行，不越过原文首尾", async () => {
+  const { evidenceWindow } = await import("../src/world-analysis.js");
+  assert.deepEqual(evidenceWindow([5], 2, 10), [3, 4, 5, 6, 7]);
+  assert.deepEqual(evidenceWindow([1], 2, 10), [1, 2, 3]);
+  assert.deepEqual(evidenceWindow([10], 2, 10), [8, 9, 10]);
+  assert.deepEqual(evidenceWindow([5], 0, 10), [5]);
+});
+
+test("模型把 JSON 键写成 JS 对象也不会整批失败", async () => {
+  const { parseJsonObject } = await import("../src/model-json.js");
+  const parsed = parseJsonObject('{decisions:[{index:0,supported:true,reason:"行文一致"}]}') as {
+    decisions: Array<{ index: number; supported: boolean }>;
+  };
+  assert.equal(parsed.decisions[0]?.supported, true);
+});

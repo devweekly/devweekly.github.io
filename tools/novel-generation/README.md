@@ -59,10 +59,10 @@ node analysis/build-corpus-index.mjs
 npm run dev -- analyze-world --world conghuoniao --phase prepare   # 生成输入包与协议
 npm run dev -- analyze-world --world conghuoniao --phase status    # 查看交稿状态
 npm run dev -- analyze-world --world conghuoniao --phase collect   # 校验并汇总（确定性，不调模型）
-npm run dev -- analyze-world --world conghuoniao --phase collect --evidence-review  # 逐段语义证据核验（调模型）
+npm run dev -- analyze-world --world conghuoniao --phase collect --evidence-review  # 逐句事实核验（调模型）
 ```
 
-输入包由本地检索库按角色查询词生成，含卷结构、建议精读行号区间与证据规范；成稿要求带 `L####` 行号、区分四级证据、不复制原文。`collect` 默认只校验格式、字数、证据密度与引用行号，输出 `manifest.json` 和 `index.md`，不判断观点对错。加 `--evidence-review` 才会让模型逐段核验结论是否被引用原文支持，未通过项计入 `complete`。章节索引按 schemaVersion 2 富结构读取。结果保存在 `analysis/<world>/agent-analysis/`，与主世界设定分开，属工作记录。
+输入包由本地检索库按角色查询词生成，含卷结构、建议精读行号区间与证据规范；成稿要求带 `L####` 行号、区分四级证据、不复制原文。`collect` 默认只校验格式、字数、证据密度与引用行号，输出 `manifest.json` 和 `index.md`，不判断观点对错。加 `--evidence-review` 才会让模型逐句核验：句中的数值、名称、身份与事件结果是否与该句引用的原文行一致（默认还看 ±2 邻行，`--evidence-window` 可调）。概括、评价、因果判断不参与判定；创意角色的项目原创提案整体豁免。未通过项计入 `complete`。章节索引按 schemaVersion 2 富结构读取。结果保存在 `analysis/<world>/agent-analysis/`，与主世界设定分开，属工作记录。
 
 ## 5. 多阶段章节写作
 
@@ -175,7 +175,7 @@ npm run dev -- regress --world conghuoniao --chapter 13 \
 
 - 使用 `@tencent-ai/agent-sdk` 的 `query()`。默认 `deepseek-v4.1-flash`、回退 `hy4free`；目录来自 `ACC_PRODUCT_CONFIG_PATH` 或 `~/.codebuddy/local_storage/*.info`（前者解析不出模型时仍会扫缓存），再叠加 user/project `models.json`。`--model`、环境变量与配置文件可覆盖，详见第 7 节。逐条消息竞速超时并主动中断，超时、无文本或执行失败时换链中下一个模型。
 - 被 IDE/Agent 托管时（存在 `CODEBUDDY_SESSION_ID` / `WORKBUDDY_CONFIG_DIR`），SDK fork 的 CLI 会继承宿主服务端口并撞上主进程。`buildQueryOptions` 会清掉子进程的宿主会话变量，并加 `--port 0` 让 CLI 自选端口；托管会话内可直接运行 `analyze` / `write` / `generate`。`analyze` 可用 `--timeout-ms` 控制单片段上限。
-- `analyze-world` 默认走文件交接，不调用模型；输入包与成稿随代码提交，便于复核每个结论的依据。`--evidence-review` 会额外调用模型做逐段语义核验。
+- `analyze-world` 默认走文件交接，不调用模型；输入包与成稿随代码提交，便于复核每个结论的依据。`--evidence-review` 会额外调用模型逐句核验句中具体事实与引用行是否一致；解析失败的批次二分重试，不整片作废。
 - 本地检索是词项/BM25 风格排序，不是向量语义检索。倒排统计与片段词频在进程内按索引文件版本缓存；索引更新后自动失效。Zod 是直接运行时依赖，用于校验故事状态、章节索引和模型证据审查输出。
 - 回归对照只做写法比较：情节不同是预期的，评审 Agent 不据此扣分。指标由确定性函数统计，评审结论属于模型判断，两者分开记录。
 - 文本抽取按片段进行，带独立证据审查、来源哈希/章节偏移、显式别名注册表和有证据门槛的共指解析；人物弧光已增加有正文证据的 arcMilestones 基础追踪，但完整人物状态时间序列和伏笔生命周期分析仍未实现。全量 `analyze` 涉及 2,594 次模型调用，尚未执行，`annotations.json` 为空。

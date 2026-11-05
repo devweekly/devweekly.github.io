@@ -59,12 +59,17 @@ export function repairJsonText(text: string): string {
   return out;
 }
 
+/** 模型偶尔把 JSON 当 JS 对象写，键不加引号：`{decisions:[...]}`。 */
+function quoteBareKeys(text: string): string {
+  return text.replace(/([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*:)/g, '$1"$2"$3');
+}
+
 export function parseJsonObject(raw: string): unknown {
   const object = extractJsonText(raw);
   try {
     return JSON.parse(object) as unknown;
   } catch (error) {
-    if (error instanceof SyntaxError) return JSON.parse(repairJsonText(object)) as unknown;
+    if (error instanceof SyntaxError) return JSON.parse(quoteBareKeys(repairJsonText(object))) as unknown;
     throw error;
   }
 }

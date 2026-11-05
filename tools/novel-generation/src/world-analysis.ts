@@ -5,6 +5,13 @@ import { runAgentText } from "./generate.js";
 import { parseJsonObject } from "./model-json.js";
 import { z } from "zod";
 
+/**
+ * fact：句子里的具体事实（数值、名称、身份、事件结果）必须被该句引用行支持；
+ *       概括、评价、因果判断属于分析本身，引用写不出它们是正常的。
+ * proposal：在 fact 之上，项目原创的设想即使带具体细节也不要求引用。
+ */
+export type EvidencePolicy = "fact" | "proposal";
+
 export interface AnalysisRole {
   id: string;
   name: string;
@@ -14,6 +21,7 @@ export interface AnalysisRole {
   lineRanges: Array<[number, number]>;
   rangeNotes: string[];
   questions: string[];
+  evidencePolicy: EvidencePolicy;
 }
 
 export const ANALYSIS_ROLES: AnalysisRole[] = [
@@ -31,7 +39,8 @@ export const ANALYSIS_ROLES: AnalysisRole[] = [
       "卷与卷之间真正构成因果链的连接点，哪些只是时间上的先后",
       "已埋设但未回收的伏笔，以及回收时需要遵守的既有事实",
       "接续卷 17 时不可绕开的主线硬约束"
-    ]
+    ],
+    evidencePolicy: "fact"
   },
   {
     id: "creative",
@@ -47,7 +56,8 @@ export const ANALYSIS_ROLES: AnalysisRole[] = [
       "至少给出一个低风险方向与一个高风险方向，并说明风险来自哪里",
       "哪些方向明确不可碰，因为它们会与已确认的结算结果、时间线或人物状态冲突",
       "把每个方向标为项目原创，不与原著事实混写"
-    ]
+    ],
+    evidencePolicy: "proposal"
   },
   {
     id: "style",
@@ -64,7 +74,8 @@ export const ANALYSIS_ROLES: AnalysisRole[] = [
       "章节与卷的收束方式，以及悬念如何分布",
       "各卷之间可辨认的风格差异，哪些差异来自题材而非笔法",
       "给出可以直接用于写作检查的抽象约束，不写特定句式模板"
-    ]
+    ],
+    evidencePolicy: "fact"
   },
   {
     id: "characters",
@@ -81,7 +92,8 @@ export const ANALYSIS_ROLES: AnalysisRole[] = [
       "主要人物的知识边界：谁在什么时候知道什么，续写时不能让谁提前知道什么",
       "不同身份的人物在对白层面的可辨认差异，以及不该出现的口吻",
       "列出本地全文无法确认的人物状态，标为待核实"
-    ]
+    ],
+    evidencePolicy: "fact"
   },
   {
     id: "continuity",
@@ -98,7 +110,8 @@ export const ANALYSIS_ROLES: AnalysisRole[] = [
       "哪些规则来自正文或结算报告，哪些只是人物转述，哪些来自作者单章",
       "本地全文内部有无明显矛盾或未解释的口径变化",
       "给出续写硬约束清单和待核实清单，每条注明证据行号"
-    ]
+    ],
+    evidencePolicy: "fact"
   }
 ];
 
@@ -127,15 +140,27 @@ const EvidenceReviewResponseSchema = z.object({
   decisions: z.array(z.object({
     index: z.number().int().nonnegative(),
     supported: z.boolean(),
-    reason: z.string().min(1)
+    reason: z.string().min(1),
+    unsupported: z.preprocess(value => {
+      if (Array.isArray(value)) return value.map(item => String(item)).filter(Boolean);
+      if (typeof value === "string" && value.trim()) return [value.trim()];
+      return [];
+    }, z.array(z.string())).default([])
   }))
 });
 
 export interface EvidenceReferenceCheck {
   ok: boolean;
   references: number[];
-  claims: Array<{ text: string; lines: number[] }>;
+  claims: EvidenceClaim[];
   issues: string[];
+}
+
+/** 一条可核验主张：一句带引用行号的话。段落是组织单位，句子才是判断单位。 */
+export interface EvidenceClaim {
+  text: string;
+  lines: number[];
+  section: string;
 }
 
 /**
@@ -148,106 +173,214 @@ function isNonClaimParagraph(text: string): boolean {
   return lines.length > 1 && lines.every(line => /^(?:[-*•]|\d+[.)、])\s/.test(line));
 }
 
+/**
+ * 分号分句只在引用跟得住的时候拆：`A（L1）；B（L2）` 拆成两条，
+ * `A（L1）；B` 合成一条——B 靠前一句的引用兜底，拆开就没人核它了。
+ */
+function splitClauses(sentence: string): string[] {
+  const parts = sentence.split(/(?<=；)/).filter(part => part.trim());
+  const merged: string[] = [];
+  let pending = "";
+  for (const part of parts) {
+    const current = pending + part;
+    if (/\bL\d+\b/.test(current)) {
+      merged.push(current);
+      pending = "";
+    } else {
+      pending = current;
+    }
+  }
+  if (pending) {
+    if (merged.length) merged[merged.length - 1] += pending;
+    else merged.push(pending);
+  }
+  return merged;
+}
+
+/**
+ * 分析成稿的段落常并列五六条主张、各自带引用，按段判定会把整段否掉而说不出哪句有问题。
+ * 这里按句切分，只把自带 L#### 的句子列入待审；句中的评价、过渡和提案不要求逐句有证据。
+ */
+export function splitEvidenceClaims(text: string): EvidenceClaim[] {
+  const claims: EvidenceClaim[] = [];
+  let section = "";
+  for (const block of text.split(/\n\s*\n/)) {
+    const paragraph = block.trim();
+    if (!paragraph) continue;
+    if (/^#{1,6}\s/.test(paragraph)) {
+      section = paragraph.replace(/^#{1,6}\s*/, "").trim();
+      continue;
+    }
+    if (/^\s*\x60{3}/.test(paragraph)) continue;
+    if (section.startsWith("待核实")) continue;
+    if (isNonClaimParagraph(paragraph) && !/\bL\d+\b/.test(paragraph)) continue;
+    for (const sentence of paragraph.split(/(?<=[。！？])/)) {
+      if (!sentence.trim()) continue;
+      for (const clause of splitClauses(sentence.trim())) {
+        const lines = [...clause.matchAll(/\bL(\d+)\b/g)].map(match => Number(match[1]));
+        if (!lines.length) continue;
+        claims.push({ text: clause.trim(), lines: [...new Set(lines)], section });
+      }
+    }
+  }
+  return claims;
+}
+
 export function validateEvidenceReferences(text: string, sourceLines: string[]): EvidenceReferenceCheck {
   const references = [...text.matchAll(/\bL(\d+)\b/g)].map(match => Number(match[1]));
   const issues: string[] = [];
-  const claims: Array<{ text: string; lines: number[] }> = [];
+  const claims = splitEvidenceClaims(text);
   let section = "";
   for (const paragraph of text.split(/\n\s*\n/)) {
-    const claim = paragraph.trim();
-    if (!claim || /^\s*\x60{3}/.test(claim)) continue;
-    if (/^#{1,6}\s/.test(claim)) {
-      section = claim.replace(/^#{1,6}\s*/, "").trim();
+    const block = paragraph.trim();
+    if (!block || /^\s*\x60{3}/.test(block)) continue;
+    if (/^#{1,6}\s/.test(block)) {
+      section = block.replace(/^#{1,6}\s*/, "").trim();
       continue;
     }
-    if (section === "待核实" || section.startsWith("待核实")) continue;
-    const lines = [...claim.matchAll(/\bL(\d+)\b/g)].map(match => Number(match[1]));
-    if (!lines.length) {
-      if (!isNonClaimParagraph(claim)) issues.push("结论段落缺少原文行号引用：" + claim.slice(0, 60));
-      continue;
-    }
-    claims.push({ text: claim, lines: [...new Set(lines)] });
+    if (section.startsWith("待核实")) continue;
+    if (/\bL\d+\b/.test(block)) continue;
+    if (!isNonClaimParagraph(block)) issues.push("结论段落缺少原文行号引用：" + block.slice(0, 60));
   }
   for (const line of references) {
     if (line < 1 || line > sourceLines.length) issues.push("L" + line + " 超出原文范围");
     else if (!sourceLines[line - 1]?.trim()) issues.push("L" + line + " 指向空行");
   }
-  if (!claims.length) issues.push("没有找到带原文行号的可审查结论段落");
+  if (!claims.length) issues.push("没有找到带原文行号的可审查结论句子");
   return { ok: issues.length === 0, references, claims, issues };
 }
 
 export interface SemanticEvidenceReview {
   ok: boolean;
+  policy: EvidencePolicy;
   checked: number;
   supported: number;
   rejected: number;
   issues: string[];
-  decisions: Array<{ claim: string; lines: number[]; supported: boolean; reason: string }>;
+  decisions: Array<{ claim: string; section: string; lines: number[]; supported: boolean; reason: string; unsupported: string[] }>;
 }
+
+/**
+ * 分析稿标的是行号锚点，不是逐字对齐的引文：同一段结算的数值常在锚点上下几行。
+ * 核验时给出锚点邻行，避免把「引了段落开头」误判成「引错了地方」。
+ */
+export function evidenceWindow(lines: number[], radius: number, totalLines: number, cap = 16): number[] {
+  if (radius <= 0) return [...new Set(lines)].sort((a, b) => a - b);
+  const picked = new Set<number>(lines);
+  for (let step = 1; step <= radius && picked.size < cap; step++) {
+    for (const line of lines) {
+      for (const target of [line - step, line + step]) {
+        if (picked.size >= cap) break;
+        if (target >= 1 && target <= totalLines) picked.add(target);
+      }
+    }
+  }
+  return [...picked].sort((a, b) => a - b);
+}
+
+const POLICY_PROMPT: Record<EvidencePolicy, string> = {
+  fact: "核验范围只到具体事实：数值、点数、百分比、名称、编号、身份、时间、事件结果、谁做了什么。这些出现在句中就必须在引用行里找得到；找不到、数值不符或归属错误即判不支持，并写进 unsupported。概括、评价、因果解释、结构性判断不要求引用行写出，即使看起来像论断也一律放过——那不是证据问题。",
+  proposal: "核验范围只到具体事实：数值、名称、编号、身份、时间、事件结果。项目原创的设想、方案、假设场景不需要引用行支持，哪怕写得再具体也放过；只有句中对原著的复述（谁做了什么、原文写了什么数）与引用行不符时才判不支持，并写进 unsupported。概括与评价同样放过。"
+};
 
 export async function reviewAnalysisEvidence(
   text: string,
   sourceLines: string[],
-  model?: string,
-  timeoutMs = 90_000
+  options: { policy: EvidencePolicy; model?: string; timeoutMs?: number; window?: number } = { policy: "fact" }
 ): Promise<SemanticEvidenceReview> {
   const check = validateEvidenceReferences(text, sourceLines);
-  if (!check.ok) return { ok: false, checked: 0, supported: 0, rejected: 0, issues: check.issues, decisions: [] };
+  const policy = options.policy;
+  // 引用行越界或某段漏标行号，只影响那些句子；其余句子仍应逐句核验。
+  const issues: string[] = [...check.issues.filter(issue => !issue.startsWith("没有找到"))];
+  if (!check.claims.length) {
+    return { ok: false, policy, checked: 0, supported: 0, rejected: 0, issues, decisions: [] };
+  }
 
+  const timeoutMs = options.timeoutMs ?? 90_000;
+  const radius = Math.max(0, Math.min(options.window ?? 2, 6));
   const decisions: SemanticEvidenceReview["decisions"] = [];
-  const issues: string[] = [];
   let failedBatches = 0;
-  for (let offset = 0; offset < check.claims.length; offset += 8) {
-    const batch = check.claims.slice(offset, offset + 8);
+
+  const unsupportedDecision = (claim: EvidenceClaim, reason: string): SemanticEvidenceReview["decisions"][number] =>
+    ({ claim: claim.text, section: claim.section, lines: claim.lines, supported: false, reason, unsupported: [] });
+
+  /** 批次越大越容易被截断；解析失败就二分重试，最小到一句。 */
+  const reviewBatch = async (batch: EvidenceClaim[], label: string): Promise<void> => {
     const candidates = batch.map((claim, index) => ({
       index,
+      section: claim.section,
       claim: claim.text,
-      evidence: claim.lines.map(line => "L" + line + ": " + sourceLines[line - 1])
+      evidence: evidenceWindow(claim.lines, radius, sourceLines.length)
+        .map(line => "L" + line + (claim.lines.includes(line) ? ": " : "（邻行）: ") + sourceLines[line - 1])
     }));
     const prompt = [
-      "你是小说研究报告的证据审查员。判断每段分析结论是否被它引用的原文行直接支持。",
-      "只评估证据支持关系，不评价观点是否合理或文笔是否好。",
-      "不能从未引用的上下文补足证据；引用行只支持部分结论时，整段判为不支持。",
+      "你是小说研究报告的证据审查员。判断每个待审句子里的具体事实，是否与该句自己引用的原文行一致。",
+      POLICY_PROMPT[policy],
+      "只核对事实是否对得上，不评价观点是否合理、结构是否清晰或文笔如何。",
+      "标 L#### 的是作者指定的锚点行，标「邻行」的是同一段落的相邻行，两者都可作依据。\n"
+      + "不能再往外扩；数值、名称、身份与这些行不符时，写清是哪一项。",
+      "卷次、章次归属由章节目录确定，引用行不写「第几卷」不算错误；同一数值的不同写法（97/100 与 97100）也不判。",
+      "判断性短语（最集中、只作、不可推算、未收、应改判）属于分析结论，不进 unsupported。",
       "区分原文明确事实、作者设定、人物推断；原文未明确的结论不能判为明确支持。",
-      "每个 index 必须恰好返回一项；不确定、缺项或格式错误均按不支持处理。",
-      "只输出 JSON：{decisions:[{index:number,supported:boolean,reason:string}]}。",
-      "待审结论与原文证据：",
+      "每个 index 必须恰好返回一项；不确定、缺项或格式错误均按不支持处理。reason 一句话，不超过 60 字。",
+      "只输出 JSON：{decisions:[{index:number,supported:boolean,reason:string,unsupported:string[]}]}。",
+      "待审句子与原文证据：",
       JSON.stringify(candidates)
     ].join("\n\n");
 
+    let raw: string;
     try {
-      const raw = await runAgentText(prompt, model, timeoutMs);
-      const parsed = EvidenceReviewResponseSchema.safeParse(parseJsonObject(raw));
-      if (!parsed.success) {
-        issues.push("第 " + (Math.floor(offset / 8) + 1) + " 批审查返回格式无效");
-        for (const claim of batch) decisions.push({ claim: claim.text, lines: claim.lines, supported: false, reason: "审查输出格式无效，按不支持处理" });
-        continue;
-      }
-      const byIndex = new Map(parsed.data.decisions.map(item => [item.index, item]));
-      batch.forEach((claim, index) => {
-        const decision = byIndex.get(index);
-        if (!decision) {
-          issues.push("缺少第 " + (offset + index + 1) + " 段的审查结果");
-          decisions.push({ claim: claim.text, lines: claim.lines, supported: false, reason: "审查结果缺失，按不支持处理" });
-        } else {
-          decisions.push({ claim: claim.text, lines: claim.lines, supported: decision.supported, reason: decision.reason });
-        }
-      });
+      raw = await runAgentText(prompt, options.model, timeoutMs);
     } catch (error) {
       failedBatches++;
-      issues.push("第 " + (Math.floor(offset / 8) + 1) + " 批语义审查失败：" + (error instanceof Error ? error.message : String(error)));
-      for (const claim of batch) decisions.push({ claim: claim.text, lines: claim.lines, supported: false, reason: "模型审查失败，按不支持处理" });
+      issues.push(label + " 语义审查失败：" + (error instanceof Error ? error.message : String(error)));
+      for (const claim of batch) decisions.push(unsupportedDecision(claim, "模型审查失败，按不支持处理"));
+      return;
     }
+
+    let parsed: ReturnType<typeof EvidenceReviewResponseSchema.safeParse> | undefined;
+    try {
+      parsed = EvidenceReviewResponseSchema.safeParse(parseJsonObject(raw));
+    } catch {
+      parsed = undefined;
+    }
+    if (!parsed || !parsed.success) {
+      if (batch.length > 1) {
+        const middle = Math.ceil(batch.length / 2);
+        await reviewBatch(batch.slice(0, middle), `${label}.1`);
+        await reviewBatch(batch.slice(middle), `${label}.2`);
+        return;
+      }
+      issues.push(label + " 审查返回格式无效");
+      for (const claim of batch) decisions.push(unsupportedDecision(claim, "审查输出格式无效，按不支持处理"));
+      return;
+    }
+
+    const byIndex = new Map(parsed.data.decisions.map(item => [item.index, item]));
+    batch.forEach((claim, index) => {
+      const decision = byIndex.get(index);
+      if (!decision) {
+        issues.push(label + " 缺少第 " + (index + 1) + " 句的审查结果");
+        decisions.push(unsupportedDecision(claim, "审查结果缺失，按不支持处理"));
+      } else {
+        decisions.push({ claim: claim.text, section: claim.section, lines: claim.lines, supported: decision.supported, reason: decision.reason, unsupported: decision.unsupported });
+      }
+    });
+  };
+
+  const batchSize = 12;
+  for (let offset = 0; offset < check.claims.length; offset += batchSize) {
+    await reviewBatch(check.claims.slice(offset, offset + batchSize), "第 " + (Math.floor(offset / batchSize) + 1) + " 批");
   }
   const supported = decisions.filter(item => item.supported).length;
   const rejected = decisions.length - supported;
   if (rejected) {
     // 模型不可用是基础设施失败，不是「结论被判定不支持」，两者不能混为同一句诊断。
     issues.push(failedBatches
-      ? `${rejected} 段结论因 ${failedBatches} 批模型审查失败而无法核验（非语义判定，请检查 CLI 登录）`
-      : `${rejected} 段结论未通过原文证据核验`);
+      ? `${rejected} 句结论因 ${failedBatches} 批模型审查失败而无法核验（非语义判定，请检查 CLI 登录）`
+      : `${rejected} 句结论未通过原文证据核验`);
   }
-  return { ok: decisions.length === check.claims.length && rejected === 0 && issues.length === 0, checked: decisions.length, supported, rejected, issues, decisions };
+  return { ok: decisions.length === check.claims.length && rejected === 0 && !issues.length, policy, checked: decisions.length, supported, rejected, issues, decisions };
 }
 
 export interface OutputValidation {
@@ -365,7 +498,7 @@ const PROTOCOL = [
   ...ANALYSIS_ROLES.map(role => `| ${role.name} | \`${role.id}/\` | ${role.mission} |`),
   "",
   "执行顺序：先运行 `prepare` 生成输入包，再由各 Agent 独立分析并写入 `output.md`，最后运行 `collect` 校验并汇总。`status` 可随时查看哪些角色尚未交稿。",
-  "collect 默认读取本地 original.txt，核对引用行是否真实存在且非空，只做确定性校验；缺失原文或行数不一致时该角色不通过。加 --evidence-review 才会用独立模型逐段判断引用原文是否支持结论，模型调用失败或任一段不支持时该角色不通过。",
+  "collect 默认读取本地 original.txt，核对引用行是否真实存在且非空，只做确定性校验；缺失原文或行数不一致时该角色不通过。加 --evidence-review 才会用独立模型逐句判断引用原文是否支持该句的陈述。主线、人物、连续性三类逐句严格核验；创意与文风两类只核句中的原文事实，提案与评价豁免。模型调用失败或任一句不支持时该角色不通过。",
   "",
   "```bash",
   "npm run dev -- analyze-world --world conghuoniao --phase prepare",
@@ -420,7 +553,7 @@ export interface CollectResult {
  */
 export async function collectWorldAnalysis(
   worldId: string,
-  options: { sourcePath?: string; model?: string; timeoutMs?: number; evidenceReview?: boolean } = {}
+  options: { sourcePath?: string; model?: string; timeoutMs?: number; evidenceReview?: boolean; evidenceWindow?: number } = {}
 ): Promise<CollectResult> {
   const analysisDir = resolve("analysis", worldId, "agent-analysis");
   const index = await loadChapterIndex(analysisDir);
@@ -452,7 +585,9 @@ export async function collectWorldAnalysis(
         issues.push("原文行数 " + sourceLines.length + " 与 chapter-index 的 " + index.totalLines + " 不一致");
         referenceOk = false;
       } else if (options.evidenceReview) {
-        evidenceReview = await reviewAnalysisEvidence(text, sourceLines, options.model, options.timeoutMs);
+        evidenceReview = await reviewAnalysisEvidence(text, sourceLines, {
+          policy: role.evidencePolicy, model: options.model, timeoutMs: options.timeoutMs, window: options.evidenceWindow
+        });
         issues.push(...evidenceReview.issues);
       }
     }
@@ -485,17 +620,19 @@ export async function collectWorldAnalysis(
     "",
     `世界：\`${worldId}\`；语料：\`original.txt\`（${index.totalLines} 行）。各 Agent 的分析成稿写入对应目录，输入包与校验规则见 \`PROTOCOL.md\`。`,
     "",
-    "| Agent | 成稿 | 字数 | 证据行号 | 语义核验 | 校验 |",
-    "|---|---|---:|---:|---|---|"
+    "| Agent | 成稿 | 字数 | 证据行号 | 核验口径 | 语义核验 | 校验 |",
+    "|---|---|---:|---:|---|---|---|"
   ];
   for (const entry of entries) {
-    const review = entry.evidenceReview ? entry.evidenceReview.supported + "/" + entry.evidenceReview.checked + " 通过" : "未执行";
-    lines.push(`| ${entry.name} | [\`${entry.id}/output.md\`](./${entry.id}/output.md) | ${entry.chars} | ${entry.evidenceCount} | ${review} | ${entry.ok ? "通过" : entry.issues.join("；")} |`);
+    const role = ANALYSIS_ROLES.find(item => item.id === entry.id);
+    const policy = role?.evidencePolicy === "proposal" ? "事实＋提案豁免" : "事实核验";
+    const review = entry.evidenceReview ? entry.evidenceReview.supported + "/" + entry.evidenceReview.checked + " 句通过" : "未执行";
+    lines.push(`| ${entry.name} | [\`${entry.id}/output.md\`](./${entry.id}/output.md) | ${entry.chars} | ${entry.evidenceCount} | ${policy} | ${review} | ${entry.ok ? "通过" : entry.issues.join("；")} |`);
   }
   lines.push("", result.complete
     ? (options.evidenceReview
-      ? "全部角色已交稿并通过格式、证据密度与逐段语义核验。结论仍属工作记录，引用前按行号复核。"
-      : "全部角色已交稿并通过格式、证据密度与引用行号校验。逐段语义核验可用 --evidence-review 开启；引用前仍应按行号复核。")
+      ? "全部角色已交稿并通过格式、证据密度与逐句语义核验。结论仍属工作记录，引用前按行号复核。"
+      : "全部角色已交稿并通过格式、证据密度与引用行号校验。逐句事实核验可用 --evidence-review 开启；引用前仍应按行号复核。")
     : "存在未通过项，见上表；补齐后重新运行 `collect`。", "");
   await writeFile(join(analysisDir, "index.md"), lines.join("\n"), "utf8");
   return result;

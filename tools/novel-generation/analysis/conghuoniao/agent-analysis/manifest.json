@@ -1,13 +1,13 @@
 {
   "worldId": "conghuoniao",
-  "generatedAt": "2026-11-05T10:44:07.983Z",
+  "generatedAt": "2026-11-05T23:54:52.291Z",
   "entries": [
     {
       "id": "main-plot",
       "name": "主线剧情 Agent",
       "path": "analysis/conghuoniao/agent-analysis/main-plot/output.md",
-      "chars": 1800,
-      "evidenceCount": 56,
+      "chars": 1894,
+      "evidenceCount": 68,
       "ok": true,
       "issues": []
     },
@@ -15,8 +15,8 @@
       "id": "creative",
       "name": "创意剧情 Agent",
       "path": "analysis/conghuoniao/agent-analysis/creative/output.md",
-      "chars": 1792,
-      "evidenceCount": 52,
+      "chars": 1799,
+      "evidenceCount": 53,
       "ok": true,
       "issues": []
     },
@@ -24,8 +24,8 @@
       "id": "style",
       "name": "文风 Agent",
       "path": "analysis/conghuoniao/agent-analysis/style/output.md",
-      "chars": 1778,
-      "evidenceCount": 52,
+      "chars": 1800,
+      "evidenceCount": 55,
       "ok": true,
       "issues": []
     },
@@ -33,8 +33,8 @@
       "id": "characters",
       "name": "人物与关系 Agent",
       "path": "analysis/conghuoniao/agent-analysis/characters/output.md",
-      "chars": 1795,
-      "evidenceCount": 33,
+      "chars": 1898,
+      "evidenceCount": 49,
       "ok": true,
       "issues": []
     },

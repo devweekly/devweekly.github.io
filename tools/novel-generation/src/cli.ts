@@ -21,9 +21,12 @@ import { readTaskProfiles, STAGE_KEYS } from "./task-profiles.js";
 import { writeLongChapter, chineseChars } from "./long-chapter.js";
 import { loadChapters, runRegression } from "./regression.js";
 
+/** `--model --evidence-review` 这种漏值不该把下一个开关当成取值。 */
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
-  return i >= 0 ? process.argv[i + 1] : undefined;
+  if (i < 0) return undefined;
+  const value = process.argv[i + 1];
+  return value && !value.startsWith("--") ? value : undefined;
 }
 
 async function readOptional(path: string): Promise<string | undefined> {
@@ -55,7 +58,7 @@ function usage(): never {
     "  npm run dev -- index-story --world conghuoniao [--catalog analysis/conghuoniao/chapter-index.json]",
     "  npm run dev -- analyze-arcs --world conghuoniao [--model model] [--force]",
     "  npm run dev -- story-kb --world conghuoniao [--type overview|arcs|characters|threads|foreshadowings|beats|export] [--query 关键词] [--status 状态] [--from 1] [--to 100] [--limit 50]",
-    "  npm run dev -- analyze-world --world conghuoniao --phase prepare|status|collect [--source original.txt] [--model model] [--timeout-ms 90000] [--evidence-review]",
+    "  npm run dev -- analyze-world --world conghuoniao --phase prepare|status|collect [--source original.txt] [--model model] [--timeout-ms 90000] [--evidence-review] [--evidence-window 2]",
     "  npm run dev -- db-status --world conghuoniao",
     "  npm run dev -- models",
     "  npm run dev -- check-runtime [--model model] [--timeout-ms 90000]",
@@ -160,7 +163,8 @@ async function main(): Promise<void> {
         sourcePath: arg("--source") ?? "original.txt",
         model: arg("--model"),
         timeoutMs,
-        evidenceReview: process.argv.includes("--evidence-review")
+        evidenceReview: process.argv.includes("--evidence-review"),
+        evidenceWindow: process.argv.includes("--evidence-review") ? Number(arg("--evidence-window") ?? 2) : 0
       });
       for (const entry of result.entries) {
         console.log(entry.id.padEnd(12) + (entry.ok ? " OK   " : " CHECK") + " " + entry.chars + " chars / " + entry.evidenceCount + " refs" + (entry.issues.length ? " / " + entry.issues.join("; ") : ""));

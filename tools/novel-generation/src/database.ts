@@ -52,7 +52,7 @@ function openDatabase(worldDir:string,worldId:string):DatabaseSync {
  return db;
 }
 export function openWorldDatabase(worldDir:string,worldId:string):DatabaseSync{return openDatabase(worldDir,worldId);}
-function transaction<T>(db:DatabaseSync,work:()=>T):T{retryBusy(()=>db.exec("BEGIN IMMEDIATE"));try{const x=work();db.exec("COMMIT");return x;}catch(e){db.exec("ROLLBACK");throw e;}}
+function transaction<T>(db:DatabaseSync,work:()=>T):T{retryBusy(()=>db.exec("BEGIN IMMEDIATE"));try{const x=work();retryBusy(()=>db.exec("COMMIT"));return x;}catch(e){try{db.exec("ROLLBACK");}catch{/* 提交失败时事务可能已结束 */}throw e;}}
 export function syncLibraryChunks(worldDir:string,worldId:string,chunks:LibraryChunk[]):void{
  const db=openDatabase(worldDir,worldId);try{transaction(db,()=>{db.exec("DELETE FROM library_chunks; DELETE FROM story_analysis; DELETE FROM novel_chapters;");clearNovelAnalysis(db);const q=db.prepare("INSERT INTO library_chunks(id,source,chapter,chunk_index,start_offset,end_offset,source_hash,chapter_start,text) VALUES(?,?,?,?,?,?,?,?,?)");for(const c of chunks)q.run(c.id,c.source,c.chapter,c.chunkIndex,c.start,c.end,c.sourceHash??null,c.chapterStart??null,c.text);});}finally{db.close();}
 }
@@ -209,9 +209,6 @@ export function writeNovelKbMeta(worldDir:string,worldId:string,meta:Record<stri
 }
 export function readNovelKbMeta(worldDir:string,worldId:string):Record<string,string>{
  const db=openDatabase(worldDir,worldId);try{const rows=db.prepare("SELECT key,value FROM novel_kb_meta").all() as Array<{key:string;value:string}>;return Object.fromEntries(rows.map(r=>[r.key,r.value]));}finally{db.close();}
-}
-export function clearNovelKnowledge(worldDir:string,worldId:string):void{
- const db=openDatabase(worldDir,worldId);try{transaction(db,()=>clearNovelAnalysis(db));}finally{db.close();}
 }
 export interface NovelCharacterSummary { characterId:string; name:string; aliases:string[]; role:string; bio:string; voice:string; chaptersSeen:number; mentionTotal:number; firstChapter:number|null; lastChapter:number|null; }
 export function listNovelCharacters(worldDir:string,worldId:string,options:{query?:string;limit?:number}={}):NovelCharacterSummary[]{
