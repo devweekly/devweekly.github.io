@@ -813,7 +813,7 @@ GPU Coding 平台需要的能力横跨数据中心、Linux / CUDA、Kubernetes�
 - **Agent 与治理：** [NVIDIA OpenShell](https://github.com/NVIDIA/OpenShell)、[Kubernetes](https://kubernetes.io/docs/home/)、[OpenTelemetry](https://opentelemetry.io/docs/)。
 
 
-## 18. DeepSeek、Kimi、GLM 及推理生态中的关键开源项目
+## 18. DeepSeek、Kimi、GLM 的关键开源项目
 
 模型厂商发布的代码并不都属于同一层。模型权重决定运行什么，推理引擎决定如何执行，Kernel / 通信库优化局部计算路径，KV Cache 与调度组件影响集群吞吐，Agent Harness 则负责会话和工具执行。选型时应先确认职责边界，避免把多个项目误认为可互相替代的 Serving 平台。
 
@@ -825,13 +825,13 @@ GPU Coding 平台需要的能力横跨数据中心、Linux / CUDA、Kubernetes�
 | [DeepEP](https://github.com/deepseek-ai/DeepEP) | MoE 通信 | Expert Parallelism 的 Dispatch / Combine 通信 | 单节点 NVLink 与跨节点 RDMA 的通信效率、热点 Expert 和负载均衡 |
 | [DeepGEMM](https://github.com/deepseek-ai/DeepGEMM)、[FlashMLA](https://github.com/deepseek-ai/FlashMLA) | GPU Kernel | GEMM、MLA 等模型关键算子优化 | 是否已被目标推理引擎集成，避免重复维护自定义 Kernel |
 | [Mooncake](https://github.com/kvcache-ai/Mooncake) | KV Cache / 数据传输 | 分布式 KV Cache、Transfer Engine、Prefill / Decode 分离 | 长上下文和多轮 Agent 是否有足够缓存复用收益，RDMA 与存储开销是否可接受 |
-| [MoonEP](https://github.com/kvcache-ai/Mooncake) | MoE 负载均衡 | 通过冗余 Expert 等机制改善 Rank 间负载分布 | 与 DeepEP 的通信原语定位不同，应比较端到端延迟和显存成本 |
+| MoonEP | MoE 负载均衡 | 通过冗余 Expert 等机制改善 Rank 间负载分布 | 与 DeepEP 的通信原语定位不同，应比较端到端延迟和显存成本 |
 | [DeepSeek Harness](https://github.com/deepseek-ai) | Coding Agent | Agent 会话、工具和任务执行的架构参考 | 与企业现有 Agent Runtime 的差异；不要与模型推理执行层混为一谈 |
 | [GLM 模型与工具](https://github.com/zai-org) | 模型 / Agent 能力 | 模型权重、部署说明、工具调用和 Agent Skills | 验证目标 Serving Runtime 的模型实现、Parser、量化和工具调用兼容性 |
 
 DeepInfer 不等于完整在线推理平台；DeepEP 也不是 Model Server。企业仍需提供统一 API、身份认证、配额、路由、审计、缓存、监控和故障恢复。Mooncake 将 KV Cache 视为可跨实例管理的资源，只有在多轮请求、共享前缀和跨实例复用带来可测量收益时，才值得引入额外的数据传输与调度复杂度。
 
-### 18.2 通用推理与平台组件
+## 19. GPU 推理生态中的通用开源组件
 
 | 类别 | 代表项目 | 主要职责 | 适用判断 |
 | --- | --- | --- | --- |
@@ -844,7 +844,7 @@ DeepInfer 不等于完整在线推理平台；DeepEP 也不是 Model Server。�
 
 不要把 NVIDIA Triton Inference Server 与 Triton Language 混淆：前者是模型 Serving Server，后者是 GPU Kernel 编程语言。对约 1000 名开发者的初期平台，通常只需要一个主推理引擎、一个 Gateway / Router、Kubernetes GPU 管理和统一监控；Dynamo、llm-d、独立 KV Cache 或自定义 Kernel 应由明确的性能瓶颈驱动，而不是一次性全部引入。
 
-### 18.3 推荐的评估顺序
+### 19.1 推荐的评估顺序
 
 1. 用 vLLM 或 SGLang 建立目标模型的单节点基线。
 2. 对 MoE 模型单独验证 DeepEP 等通信优化，区分节点内 NVLink 和节点间 RDMA。
