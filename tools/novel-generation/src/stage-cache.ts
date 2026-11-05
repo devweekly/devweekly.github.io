@@ -61,6 +61,7 @@ export async function runCachedStage(input: {
   outputFile: string;
   fingerprint: string;
   execute: () => Promise<string>;
+  validate?: (output: string) => void;
 }): Promise<string> {
   await mkdir(input.dir, { recursive: true });
   const manifestPath = resolve(input.dir, "pipeline-manifest.json");
@@ -70,7 +71,11 @@ export async function runCachedStage(input: {
   if (previous && previous.inputHash === inputHash && previous.outputFile === input.outputFile) {
     try {
       const cached = await readFile(resolve(input.dir, input.outputFile), "utf8");
-      if (hash(cached) === previous.outputHash && cached.trim()) return cached.trimEnd();
+      if (hash(cached) === previous.outputHash && cached.trim()) {
+        const value = cached.trimEnd();
+        try { input.validate?.(value); return value; }
+        catch { /* Regenerate hash-valid but semantically invalid checkpoints. */ }
+      }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
@@ -78,6 +83,7 @@ export async function runCachedStage(input: {
 
   const generated = (await input.execute()).trim();
   if (!generated) throw new Error("Stage " + input.key + " returned empty output; it was not checkpointed.");
+  input.validate?.(generated);
   const output = generated + "\n";
   await atomicWrite(resolve(input.dir, input.outputFile), output);
   await updateManifest(manifestPath, input.key, {
