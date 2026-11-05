@@ -21,7 +21,7 @@ const StoryStateSchema = z.object({
     }).optional(),
     status: z.string(), location: z.string().optional(), abilities: z.array(z.string()).optional(),
     knowledge: z.array(z.string()).optional(), goals: z.array(z.string()).optional(),
-    relationships: z.array(z.string()).optional(), stateUpdatedAt: z.string().optional()
+    relationships: z.array(z.string()).optional(), arcMilestones: z.array(z.object({ id: z.string().min(1), chapter: z.string().min(1), change: z.string().min(1), choice: z.string().min(1), pressure: z.string().min(1), cost: z.string().min(1), evidence: z.string().min(4) })).optional(), stateUpdatedAt: z.string().optional()
   })),
   events: z.array(z.object({
     id: z.string().min(1), summary: z.string(), position: z.string(),
@@ -49,7 +49,7 @@ const StoryStateUpdateSchema = z.object({
     }).optional(),
     status: z.string(), location: z.string().optional(), abilities: z.array(z.string()).optional(),
     knowledge: z.array(z.string()).optional(), goals: z.array(z.string()).optional(),
-    relationships: z.array(z.string()).optional(), stateUpdatedAt: z.string().optional()
+    relationships: z.array(z.string()).optional(), arcMilestones: z.array(z.object({ id: z.string().min(1), chapter: z.string().min(1), change: z.string().min(1), choice: z.string().min(1), pressure: z.string().min(1), cost: z.string().min(1), evidence: z.string().min(4) })).optional(), stateUpdatedAt: z.string().optional()
   })).optional(),
   events: z.array(z.object({
     id: z.string().min(1), summary: z.string(), position: z.string(),
@@ -62,8 +62,18 @@ const StoryStateUpdateSchema = z.object({
   continuityNotes: z.array(z.string()).optional()
 }).strict();
 
-export function parseStoryStateUpdate(value: unknown): Partial<StoryState> {
-  return StoryStateUpdateSchema.parse(value) as Partial<StoryState>;
+export function parseStoryStateUpdate(value: unknown, chapter?: string): Partial<StoryState> {
+  const update = StoryStateUpdateSchema.parse(value) as Partial<StoryState>;
+  if (chapter !== undefined) {
+    for (const character of update.characters ?? []) {
+      for (const milestone of character.arcMilestones ?? []) {
+        if (!chapter.includes(milestone.evidence)) {
+          throw new Error("Character arc evidence is not present in the final chapter: " + character.name + " / " + milestone.id);
+        }
+      }
+    }
+  }
+  return update;
 }
 
 export function validateStoryState(value: unknown): StoryState {
@@ -85,6 +95,7 @@ export interface StoryState {
     knowledge?: string[];
     goals?: string[];
     relationships?: string[];
+    arcMilestones?: Array<{ id: string; chapter: string; change: string; choice: string; pressure: string; cost: string; evidence: string }>;
     stateUpdatedAt?: string;
   }>;
   events: Array<{ id: string; summary: string; position: string; participants: string[]; consequences: string[] }>;
