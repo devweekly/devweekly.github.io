@@ -132,6 +132,27 @@ export async function ingestFiles(worldId: string, inputPaths: string[], library
   await writeFile(temporary, JSON.stringify(index, null, 2) + "\n", "utf8");
   const { rename } = await import("node:fs/promises");
   await rename(temporary, indexPath);
+
+  const annotationsPath = join(libraryDir, "annotations.json");
+  try {
+    const annotations = JSON.parse(await readFile(annotationsPath, "utf8")) as {
+      schemaVersion: number; worldId: string; annotations: Array<{ source: string }>;
+      failures: Array<{ chunkId: string }>; updatedAt?: string;
+    };
+    if (annotations.schemaVersion === 1 && annotations.worldId === worldId) {
+      const filtered = {
+        ...annotations,
+        updatedAt: now,
+        annotations: annotations.annotations.filter(item => !ingestedSources.has(item.source)),
+        failures: annotations.failures.filter(item => ![...ingestedSources].some(source => item.chunkId.startsWith(source + ":")))
+      };
+      const annotationTemp = annotationsPath + ".tmp";
+      await writeFile(annotationTemp, JSON.stringify(filtered, null, 2) + "\\n", "utf8");
+      await rename(annotationTemp, annotationsPath);
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
   return chunks.length;
 }
 
