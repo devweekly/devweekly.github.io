@@ -146,7 +146,6 @@ export function validateEvidenceReferences(text: string, sourceLines: string[]):
       continue;
     }
     if (section === "待核实" || section.startsWith("待核实")) continue;
-    if (claim.length < 20) continue;
     const lines = [...claim.matchAll(/\bL(\d+)\b/g)].map(match => Number(match[1]));
     if (!lines.length) {
       issues.push("结论段落缺少原文行号引用：" + claim.slice(0, 60));
