@@ -59,3 +59,10 @@ CLI 命令（均经 `npm run dev --`）：
 - 模块化、职责边界清晰；新增依赖前先评估现有依赖能力并查文档 / 类型定义，优先成熟库；决策着眼长期演进，设计前先研究成熟产品同类解法。
 - 技术文章 / 研究报告：核实外部资料、区分证据类型、不写空泛最佳实践、转化为工程决策；图表只能用 `.agents/skills/diagram-design/SKILL.md` 直接产出 HTML + 独立 SVG，**禁止 Mermaid**；写回后复核链接 / 代码围栏 / 残留 Mermaid / 标题层级并跑构建。
 - 交付报告前强制走 `skills/article-de-ai/SKILL.md` 去 AI 味；事实核查用 `skills/evidence-and-claim-review/SKILL.md`。
+
+
+## Entity evidence and search cache
+
+- `library.ts` stores source SHA-256 and exact chapter-relative character offsets; its BM25 token counts and document frequencies are cached per index-file version and invalidated after ingestion.
+- `analysis.ts` preserves evidence spans and performs a separate fail-closed semantic evidence review. A missing verifier decision rejects that candidate.
+- `entity-registry.ts` merges only explicit, unambiguous aliases. It does not use fuzzy matching; unresolved or ambiguous coreferences remain visible for later review.

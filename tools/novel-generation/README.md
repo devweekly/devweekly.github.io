@@ -39,7 +39,7 @@ npm run dev -- analyze --world conghuoniao --limit 20
 npm run dev -- analyze --world conghuoniao --limit 20 --model <model-name> --timeout-ms 60000
 ```
 
-结果保存在本地 `worlds/<world>/library/annotations.json`。重新导入发生变化的源文件时，对应旧标注会自动失效。当前还没有跨章节人物别名归并、共指消解和事件去重；抽取结果是候选证据，不等同于已确认正史。
+结果保存在本地 `worlds/<world>/library/annotations.json`。重新导入发生变化的源文件时，对应旧标注会自动失效。抽取后会进行独立证据审查：模型逐条判断引文是否真正支持实体、事件、关系与共指结论，审查缺项或格式异常时按不支持处理。每条保留来源文件哈希、章节内字符偏移和原文引文；实体注册表只按原文出现且无歧义的显式别名归并，不做模糊匹配。共指仅在片段证据足以支持且目标人物可唯一映射到实体时解析，其余保留为待核实。抽取与审查结果仍是候选证据，不自动等同于已确认正史。
 
 `analyze` 需要逐片段调用模型。全文规模下片段数以千计，全量抽取耗时和成本都高，可以先用确定性结构分析建立世界骨架：
 
@@ -163,9 +163,9 @@ npm run dev -- regress --world conghuoniao --chapter 13 \
 - 使用 `@tencent-ai/agent-sdk` 的 `query()`。默认 `deepseek-v4.1-flash`、回退 `hy4free`；目录来自 `ACC_PRODUCT_CONFIG_PATH` 或 `~/.codebuddy/local_storage/*.info`（前者解析不出模型时仍会扫缓存），再叠加 user/project `models.json`。`--model`、环境变量与配置文件可覆盖，详见第 7 节。逐条消息竞速超时并主动中断，超时、无文本或执行失败时换链中下一个模型。
 - 被 IDE/Agent 托管时（存在 `CODEBUDDY_SESSION_ID` / `WORKBUDDY_CONFIG_DIR`），SDK fork 的 CLI 会继承宿主服务端口并撞上主进程。`buildQueryOptions` 会清掉子进程的宿主会话变量，并加 `--port 0` 让 CLI 自选端口；托管会话内可直接运行 `analyze` / `write` / `generate`。`analyze` 可用 `--timeout-ms` 控制单片段上限。
 - `analyze-world` 走文件交接，不调用模型；输入包与成稿随代码提交，便于复核每个结论的依据。
-- 本地检索是词项/BM25 风格排序，不是向量语义检索。
+- 本地检索是词项/BM25 风格排序，不是向量语义检索。倒排统计与片段词频在进程内按索引文件版本缓存；索引更新后自动失效。
 - 回归对照只做写法比较：情节不同是预期的，评审 Agent 不据此扣分。指标由确定性函数统计，评审结论属于模型判断，两者分开记录。
-- 文本抽取按片段进行，已有证据校验和断点续跑；尚未实现跨章节实体归并、共指消解、人物状态时间序列和伏笔生命周期分析。全量 `analyze` 涉及 2,594 次模型调用，尚未执行，`annotations.json` 为空。
+- 文本抽取按片段进行，带独立证据审查、来源哈希/章节偏移、显式别名注册表和有证据门槛的共指解析；人物状态时间序列和伏笔生命周期分析仍未实现。全量 `analyze` 涉及 2,594 次模型调用，尚未执行，`annotations.json` 为空。
 - `analysis/build-corpus-index.mjs` 只做确定性结构解析，不调用模型；卷边界由章号重置判定，作者单章与卷末总结单独记录，不做语义归并。
 - 导入器支持 TXT/Markdown；EPUB、PDF、OCR 和网页采集不在当前范围。
 - 多 Agent 通过独立模型调用协作；主线规划与创意发散并行，其余阶段按依赖顺序执行。当前没有持久化 Agent session，中断后不会自动从写作步骤恢复。
@@ -183,6 +183,7 @@ src/
   story-state.ts
   library.ts
   analysis.ts
+  entity-registry.ts
   agent-runtime.ts
   world-analysis.ts
   runtime-check.ts
@@ -214,6 +215,7 @@ sources/
   public-chapter-sources.md
   local-corpus-analysis.md
 test/
+  entity-registry.test.ts
   library.test.ts
   world-analysis.test.ts
   agent-runtime.test.ts

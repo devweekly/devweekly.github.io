@@ -1,0 +1,34 @@
+name: Novel generation checks
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "tools/novel-generation/**"
+      - ".github/workflows/novel-generation.yml"
+  pull_request:
+    paths:
+      - "tools/novel-generation/**"
+      - ".github/workflows/novel-generation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/novel-generation
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: tools/novel-generation/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build

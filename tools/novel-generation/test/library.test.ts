@@ -19,8 +19,14 @@ test("ingests chapter headings and retrieves Chinese passages", async () => {
 
     const count = await ingestFiles("test-world", [input], library);
     assert.ok(count >= 2);
+    const index = JSON.parse(await readFile(join(library, "index.json"), "utf8")) as { chunks: Array<{ sourceHash?: string; chapterStart?: number; start: number; end: number; text: string }> };
+    assert.ok(index.chunks.every(chunk => /^[a-f0-9]{64}$/.test(chunk.sourceHash ?? "")));
+    assert.ok(index.chunks.every(chunk => Number.isInteger(chunk.chapterStart) && chunk.end - chunk.start === chunk.text.length));
     const hits = await searchLibrary(library, "铜钱 乌鸦", 5);
     assert.ok(hits.length > 0);
+    const firstPass = hits.map(hit => hit.id + ":" + hit.score.toFixed(6));
+    const secondPass = await searchLibrary(library, "铜钱 乌鸦", 5);
+    assert.deepEqual(secondPass.map(hit => hit.id + ":" + hit.score.toFixed(6)), firstPass);
     assert.match(hits[0]?.text ?? "", /铜钱|乌鸦/);
     assert.equal(hits[0]?.chapter, "第2章 铜钱的秘密");
   } finally {
