@@ -115,18 +115,31 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   ].filter(Boolean).join("\n\n");
 
   const perScene = Math.ceil(input.maxWords / input.scenes * 1.15);
-  const blueprint = await call("plan", [
+  const blueprintPrompt = [
     "角色：长篇章节主编。为一万字章节制定唯一执行蓝图，不写正文。",
     writingContext,
     `把整章拆成恰好 ${input.scenes} 个连续场景，每个场景用单独一行 "## 场景 N" 开头（N 从 1 到 ${input.scenes}），后面依次写：视角、人物、地点、时间、目标、阻力、行动与信息变化、场景结果、本场须埋或须收的伏笔、本场节奏（放慢或提速）。`,
     `每场目标 ${perScene} 个汉字；全章合计约 ${input.maxWords} 个汉字。场景之间必须有因果或时间推进，不写并列的小品。`,
     "区分原著已确认事实与本章新创作。不得安排新果实、十主完整名单、天母去向的解释、人物提前获知未知信息。",
     RHYTHM_RULE,
-    "整章节奏：至少两场放慢（日常、器物、长对白、局势推断），至少两场提速（动作、交锋、拆段推进），不得全章同一速度。"
-  ]);
+    "整章节奏应有场景差异，但不按固定数量分配快慢场景。"
+  ];
+  let blueprint = await call("plan", blueprintPrompt);
+  let scenePlans: string[];
+  try {
+    scenePlans = splitScenes(blueprint, input.scenes);
+  } catch (error) {
+    await saveStage(input.outputDir, "01-scene-blueprint-attempt-1.md", blueprint);
+    blueprint = await call("plan", [
+      ...blueprintPrompt,
+      "上一次场景蓝图未通过程序格式校验：" + String(error),
+      "请修正上一版蓝图，必须恰好输出连续编号的场景标题，从场景 1 到场景 " + input.scenes + "，每场内容非空。只输出修正后的完整蓝图，不解释。",
+      "上一次蓝图：",
+      blueprint
+    ]);
+    scenePlans = splitScenes(blueprint, input.scenes);
+  }
   await saveStage(input.outputDir, "01-scene-blueprint.md", blueprint);
-  const scenePlans = splitScenes(blueprint, input.scenes);
-
   const sceneTexts: string[] = [];
   for (let index = 0; index < input.scenes; index++) {
     const previous = sceneTexts.length ? tail(sceneTexts[sceneTexts.length - 1]!, 3600) : "（本章第一场，无前文）";
