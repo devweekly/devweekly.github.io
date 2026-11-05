@@ -90,7 +90,7 @@ async function main(): Promise<void> {
       Number(arg("--retrieval-limit") ?? 6)
     );
     const retrievedContext = retrieved.map((hit, index) =>
-      "[" + (index + 1) + "] " + hit.source + " / " + hit.chapter +
+      "[" + (index + 1) + ", score " + hit.score.toFixed(2) + "] " + hit.source + " / " + hit.chapter +
       " (offset " + hit.start + "-" + hit.end + ")\n" + hit.text
     ).join("\n\n");
 
