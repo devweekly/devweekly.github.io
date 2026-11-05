@@ -672,7 +672,7 @@ Coding Agent 场景还要验证工具调用参数是否符合 Schema、长上下
 
 平台容量应按活跃 Agent Session 和任务执行轨迹估算，不能用注册用户数或登录人数代替并发负载。一个任务可能触发多轮模型调用、仓库检索、文件读写、终端命令、测试和重试。Token 消耗之外，还要统计 Sandbox 的 CPU、内存、磁盘和网络使用量。
 
-### 6.1 Agent Runtime 的职责
+### 7.1 Agent Runtime 的职责
 
 Agent Runtime 应负责：
 
@@ -687,7 +687,7 @@ Agent Runtime 应负责：
 
 Agent Runtime 不应该直接管理 GPU 驱动、NCCL 或模型进程。它通过 AI Gateway 调用推理服务，避免把模型服务和业务 Agent 的发布周期绑定。
 
-### 6.2 Agent Sandbox 与凭证隔离
+### 7.2 Agent Sandbox 与凭证隔离
 
 Coding Agent 可以读写代码、运行 shell、安装依赖、访问网络和调用 MCP 工具，因此它的风险远高于只读聊天机器人。
 
@@ -706,7 +706,7 @@ Coding Agent 可以读写代码、运行 shell、安装依赖、访问网络和�
 
 2026 年 10 月 21 日，NVIDIA 发布了 OpenShell Reference Architecture 相关技术文章，描述 Gateway、Supervisor、Sandbox 和 Policy Prover 等边界，并讨论 BlueField-4 / NVIDIA Sentry 等硬件辅助治理方向。这是值得评估的新参考架构，但不能仅凭厂商参考设计就认定其已经适合所有企业生产环境。应通过威胁建模、隔离测试、逃逸测试和运维验证评估。
 
-### 6.3 Agent 与 GPU 服务的边界
+### 7.3 Agent 与 GPU 服务的边界
 
 ```mermaid
 flowchart TB
@@ -758,7 +758,7 @@ flowchart TB
 
 一个开发者可能只偶尔问一个问题，也可能同时运行多个 Agent。一个 Agent Session 也不等于一个模型请求：工具调用结束后可能发起下一轮请求。因此不能用“1000 人 ÷ 每张卡能服务多少用户”这种方式计算 GPU 数量。
 
-### 7.1 先建立负载模型
+### 8.1 先建立负载模型
 
 建议从现有 Coding Agent 日志或试点用户采样，得到以下分布：
 
@@ -775,7 +775,7 @@ flowchart TB
 
 在没有真实数据时，可以设置低、中、高三种情景做预算，但这些数字只能作为压测输入，不应被写成 B300 的确定服务能力。
 
-### 7.2 容量计算的基本方法
+### 8.2 容量计算的基本方法
 
 对单个模型部署副本，先测出在目标 SLO 下的有效吞吐 Goodput，而不是峰值吞吐。设：
 
@@ -800,7 +800,7 @@ leq M_{available}
 
 模型权重能装进 GPU，不代表能够满足目标并发。长上下文和高并发通常首先消耗 KV Cache。要通过真实引擎测量，而不是只按参数量乘以每参数字节数来估算。
 
-### 7.3 Benchmark 应测什么
+### 8.3 Benchmark 应测什么
 
 | 指标 | 含义 | 主要用于判断 |
 | --- | --- | --- |
@@ -828,7 +828,7 @@ leq M_{available}
 
 高 Token Throughput 不等于高业务产出。如果模型生成得更快，但代码任务失败率更高，实际单位成功任务成本可能更差。
 
-### 7.4 推荐的 POC 压测矩阵
+### 8.4 POC 压测矩阵
 
 | 维度 | 建议测试档位 |
 | --- | --- |
@@ -876,7 +876,7 @@ leq M_{available}
 3. Agent 工具、MCP 和代码执行；
 4. GPU 集群、模型制品和基础设施管理。
 
-### 9.1 身份与访问控制
+### 10.1 身份与访问控制
 
 - 接入企业 SSO / OIDC；
 - 用户、团队、项目和环境级授权；
@@ -885,7 +885,7 @@ leq M_{available}
 - 组织、团队、用户和 Session 多层预算；
 - 管理员操作、模型发布和策略变更审计。
 
-### 9.2 数据保护
+### 10.2 数据保护
 
 - 代码仓库、Prompt、模型输入输出按数据分类管理；
 - 明确数据是否离开企业网络、是否进入第三方模型或遥测服务；
@@ -895,7 +895,7 @@ leq M_{available}
 - 模型服务与 Agent Workspace 的网络隔离；
 - 对跨租户缓存和共享文件系统进行威胁建模。
 
-### 9.3 Agent 工具安全
+### 10.3 Agent 工具安全
 
 Agent 的权限必须由平台策略强制执行，不能依赖 System Prompt 要求模型“不要做危险的事”。
 
@@ -1116,7 +1116,7 @@ CostPerSuccessfulTask =
 - **推理组件开源**：提供 Attention Kernel、GEMM、Expert Parallelism、KV Cache 或调度模块。它们解决推理系统的局部性能问题，通常需要集成到 vLLM、SGLang 等运行时。
 - **生产服务系统开源**：提供模型执行引擎、请求调度、缓存、路由和故障处理等更完整的能力。即使如此，也要检查公开版本是否包含线上服务所需的全部组件。
 
-### 17.1 DeepSeek：最值得关注的是推理内核、MoE 通信和 DeepInfer
+### 18.1 DeepSeek：推理内核、MoE 通信和 DeepInfer
 
 DeepSeek 的开源仓库与 GPU 推理架构关系非常直接。其技术路线不是只发布模型，而是把支撑大规模 MoE 推理的底层能力逐步拆出来。
 
@@ -1171,7 +1171,7 @@ DeepSeek Harness 是插件化 Coding Agent 项目，关注 Agent 如何组织工
 
 对于企业 AI Coding 平台，DeepSeek Harness 值得作为 Agent Runtime 的架构参考，但不应与 GPU Serving 层混为一谈。若企业已有 Agent Runtime，应重点比较插件生命周期、工具权限、状态持久化、任务恢复和审计能力，而不是为了使用某个模型就替换整个 Agent 平台。
 
-### 17.2 Moonshot AI / Kimi：Mooncake 是最有架构价值的项目
+### 18.2 Moonshot AI / Kimi：Mooncake 的架构价值
 
 Moonshot 的开源项目覆盖模型、Coding Agent、MoE 通信、Attention Kernel 和 KV Cache 基础设施。其中对 GPU 集群架构最有价值的不是 Kimi Code，而是 Mooncake。
 
@@ -1208,7 +1208,7 @@ DeepEP 和 MoonEP 都与 MoE Expert Parallelism 有关，但设计重点并不�
 
 在实际部署中应比较：通信延迟、带宽、Expert 热点、负载均衡开销、冗余 Expert 的显存成本、与 vLLM / SGLang / DeepInfer 的集成方式，以及跨节点网络要求。不要只比较单个 All-to-All Benchmark。
 
-### 17.3 Z.ai / 智谱 GLM：重点在模型适配和 Agent 能力，不是独立 GPU Serving 栈
+### 18.3 Z.ai / 智谱 GLM：模型适配与 Agent 能力
 
 GLM 官方仓库主要提供模型权重、模型说明、工具调用和推理部署 Recipes。就目前公开项目而言，GLM 并没有一个与 vLLM、SGLang 或 NVIDIA Dynamo 对等的通用 GPU Serving Control Plane。
 
@@ -1228,7 +1228,7 @@ GLM-5 系列的部署说明值得重点阅读，因为它清楚地展示了模�
 
 GLM-5 仓库还提供模型相关的 Agent Skill 和示例，可以用来理解 GLM 的推荐使用方式，但这并不等于提供了完整的企业 Agent Runtime。企业仍需要自行实现 Session 生命周期、工具权限、沙箱、审计、任务恢复和模型路由。
 
-### 17.4 三家项目在架构中的位置
+### 18.4 三家项目在架构中的位置
 
 下面的图将三家公司的开源项目映射到企业 GPU AI Coding 平台。它表示逻辑分层，不意味着所有组件都应该同时部署。
 
@@ -1269,7 +1269,7 @@ flowchart TB
     KKernel -. "Kimi 架构 Kernel" .-> Kernel
 ```
 
-### 17.5 面向企业 B300 项目的优先级建议
+### 18.5 企业 B300 项目的评估优先级
 
 | 优先级 | 项目 | 建议动作 | 原因 |
 | --- | --- | --- | --- |
@@ -1293,7 +1293,7 @@ DeepSeek、Kimi 和 GLM 的项目能反映模型厂商自身的技术路线，�
 
 本节按工程职责分类。项目被列入并不代表应该全部引入；优先选择少数成熟组件，避免出现多个 Gateway、多个 Scheduler 和多套 KV Cache 管理系统互相争抢职责。
 
-### 18.1 核心推理引擎：先比较这三个
+### 19.1 核心推理引擎
 
 | 项目 | 定位 | 主要能力 | 对 B300 的评估建议 |
 | --- | --- | --- | --- |
@@ -1305,7 +1305,7 @@ DeepSeek、Kimi 和 GLM 的项目能反映模型厂商自身的技术路线，�
 
 首期不要把三种引擎全部作为长期生产系统运营。建议 vLLM 作为兼容性基线，SGLang 作为性能和 Agent 工作负载候选；如果 TensorRT-LLM 在目标 B300 配置上带来足够明确的收益，再决定是否承担其专用构建和维护流程。
 
-### 18.2 分布式 Serving 与控制平面：把单机引擎变成集群服务
+### 19.2 分布式 Serving 与控制平面
 
 | 项目 | 定位 | 主要职责 | 适合解决的问题 |
 | --- | --- | --- | --- |
@@ -1325,7 +1325,7 @@ DeepSeek、Kimi 和 GLM 的项目能反映模型厂商自身的技术路线，�
 
 不建议把三者全部部署后再决定谁负责路由。它们在 Gateway、Scheduler、Autoscaler、KV-aware Routing 等领域存在重叠。POC 时应画出实际组件边界，明确每个能力只有一个 Owner。例如：由 Dynamo 负责 P/D 和 KV 传输，外层 Gateway 负责企业身份与配额；或者由 llm-d 负责 Kubernetes InferencePool 和调度，底层引擎使用 vLLM。不要让两个控制平面同时管理同一批 Pod 和同一组流量策略。
 
-### 18.3 KV Cache、数据传输和 Prefill / Decode 分离
+### 19.3 KV Cache、数据传输和 Prefill / Decode 分离
 
 | 项目 | 定位 | 核心能力 | 评估重点 |
 | --- | --- | --- | --- |
@@ -1348,7 +1348,7 @@ DeepSeek、Kimi 和 GLM 的项目能反映模型厂商自身的技术路线，�
 
 如果直接从第一天就部署跨节点 KV Cache 和 P/D 分离，复杂度会明显增加，而且可能尚未有足够流量证明收益。
 
-### 18.4 GPU Kernel 与算子库：决定性能上限
+### 19.4 GPU Kernel 与算子库
 
 | 项目 | 主要职责 | 与 B300 的关系 | 建议 |
 | --- | --- | --- | --- |
@@ -1363,7 +1363,7 @@ DeepSeek、Kimi 和 GLM 的项目能反映模型厂商自身的技术路线，�
 
 大多数企业平台团队不应该自己维护一套 Attention Kernel。优先使用 vLLM / SGLang / TensorRT-LLM 已验证的 Kernel 组合，只有 Profiling 证明某个算子是瓶颈，且上游没有合适实现时，才开发自定义 Kernel。
 
-### 18.5 量化与模型压缩
+### 19.5 量化与模型压缩
 
 | 项目 | 主要职责 | 适用场景 | 注意事项 |
 | --- | --- | --- | --- |
@@ -1376,7 +1376,7 @@ DeepSeek、Kimi 和 GLM 的项目能反映模型厂商自身的技术路线，�
 
 对 B300 的建议是先用模型官方 FP8 权重建立基线，再测试 NVIDIA 原生 FP4 / NVFP4 或模型官方支持的低精度方案。比较时要同时看模型质量、工具调用正确率、长上下文退化、吞吐和成本，不能只看显存缩小比例。
 
-### 18.6 Kubernetes GPU 管理、可观测性与性能测试
+### 19.6 Kubernetes GPU 管理、可观测性与性能测试
 
 | 项目 | 主要职责 | 建议关注点 |
 | --- | --- | --- |
@@ -1391,7 +1391,7 @@ DeepSeek、Kimi 和 GLM 的项目能反映模型厂商自身的技术路线，�
 
 性能工具也要分层：NCCL Tests 测通信，DCGM 测硬件状态，AIPerf / GuideLLM / vLLM Bench 测 Serving，Agent Evaluation 测代码任务成功率。没有一个工具可以替代完整的端到端压测。
 
-### 18.7 Triton Inference Server 与 Triton 语言不要混淆
+### 19.7 区分 Triton Inference Server 与 Triton 语言
 
 NVIDIA 生态里有两个容易混淆的项目：
 
@@ -1400,7 +1400,7 @@ NVIDIA 生态里有两个容易混淆的项目：
 
 在当前以自回归 LLM 为主的 Coding Agent 平台中，vLLM、SGLang、TensorRT-LLM 更适合作为核心 LLM Runtime；Triton Inference Server 可以承担非自回归模型或多模型组合 Serving，Triton Language 则属于 Kernel 开发工具。不要把它们当成同一层的替代品。
 
-### 18.8 推荐的企业技术组合
+### 19.8 企业技术组合
 
 对一个以 B300 / HGX B300 为主、约 1000 名开发者使用的企业平台，建议按阶段组合，而不是一次性引入全部开源项目。
 
@@ -1461,7 +1461,7 @@ flowchart TB
 
 图中的 llm-d、Dynamo 和 AIBrix 是可选控制层，不是要求同时部署。初期若只有一个模型、一个引擎和少量副本，可以先用简单 Gateway + Kubernetes Service；等到多模型、多副本、KV-aware Routing 和独立 P/D Pool 成为真实需求，再引入更完整的控制平面。
 
-### 18.9 最终选型原则
+### 19.9 选型原则
 
 对于 B300 企业推理平台，最重要的不是开源项目数量，而是清楚划分职责并保持可替换性：
 
@@ -1483,7 +1483,7 @@ flowchart TB
 
 案例按控制边界分为三类：企业自有或自控推理平台；租 CSP / GPU Cloud 资源但自行运营推理服务；把推理基础设施交给专业平台运营商。第三类不是严格意义上的企业自部署，但对判断自建平台是否值得非常重要。厂商公开的性能和成本数字均保留其原始口径，不视为独立审计结果；公开资料没有披露的架构细节不会自行补齐。
 
-### 19.1 自部署的定义：GPU 归谁所有不是关键
+### 20.1 自部署的定义：GPU 所有权与运营责任
 
 自部署（self-hosted / self-managed inference）的关键不是 GPU 的产权，而是企业是否控制模型服务的数据面和运行边界。
 
@@ -1497,7 +1497,7 @@ flowchart TB
 
 企业在自己的 AWS Account 中创建 EKS、P4d/P5 GPU 节点、FSx for Lustre、VPC、IAM 和 ALB，把模型权重放进自己的存储，由自己运营 vLLM，即使没有购买 A100，也属于 Cloud Self-Hosted。反过来，服务商使用开源权重并不代表客户自部署；如果服务商管理节点、驱动、推理引擎和调度，客户只是调用 API，那么仍然是托管推理。
 
-### 19.2 IBM Research + Red Hat：544 张 H100 服务数千个 Coding Agent
+### 20.2 IBM Research + Red Hat：544 张 H100 服务数千个 Coding Agent
 
 这是与本文目标最直接相关的公开案例之一。IBM Research 在 2026 年 9 月发布基于 llm-d 的部署报告：IBM Research、Red Hat 团队使用 544 张 NVIDIA H100 部署 GLM-5.2（约 753B 总参数、约 39B 激活参数的 MoE 模型），面向内部关键业务负载，并用 Agentic Benchmark 验证数千个并发 Coding Agent 的服务能力。IBM 报告称，峰值输出吞吐超过每分钟 660 万 Token，测试中最高支持 3,000 个并发 Coding Agent 且没有发生请求抢占。按其采用的当期云 GPU 租赁价格估算，单位 Token 成本约为商业闭源 API 的 1/5 到 1/10。这个 5–10 倍是 IBM 对特定模型、流量、租赁价格和 API 对比口径的测算，不是任何企业都能复制的固定成本优势。
 
@@ -1515,7 +1515,7 @@ flowchart TB
 
 来源：[IBM Research：How llm-d makes the most of the hardware you already have（2026-09-08）](https://research.ibm.com/blog/running-open-models-on-h100-gpus-with-llmd)；[llm-d](https://llm-d.ai/)。
 
-### 19.3 Shopify：把高 Token 消耗的子任务交给自托管 Specialist Model
+### 20.3 Shopify：将高 Token 消耗子任务交给自托管 Specialist Model
 
 Shopify 在 2026 年 10 月公开了 Sidekick 的 Task Expert 实践。它不是把一个开源模型直接替换所有闭源模型，而是采用分层 Agent 架构：Frontier Model 负责与商家交互、规划和决定调用什么工具；上下文很重、任务边界清晰的子任务交给 Shopify 自己 Post-train 并托管的开源模型。
 
@@ -1535,7 +1535,7 @@ Shopify 这次实践的重点是，自部署收益不一定来自把主模型全
 
 来源：[Shopify Engineering：How Shopify turns open models into task experts（2026-10-21）](https://shopify.engineering/open-model-task-experts)。
 
-### 19.4 Perplexity：租 AWS A100 / H100，自己运营推理 API
+### 20.4 Perplexity：租用 AWS A100 / H100 并自营推理 API
 
 Perplexity 的 pplx-api 是“租用 CSP GPU 仍然属于自部署”的典型案例。NVIDIA 客户案例披露，Perplexity 最初将 pplx-api 部署在 AWS EC2 P4d 实例上，每台 P4d 配备 8 张 A100 GPU；推理服务使用 TensorRT-LLM，并通过 AWS 与 Kubernetes 的集成扩展到数百张 GPU。模型服务面向外部开发者，支持多个开源模型。
 
@@ -1549,7 +1549,7 @@ NVIDIA 案例给出的结果包括：相对其他部署平台，pplx-api 延迟�
 
 来源：[NVIDIA Customer Story：Perplexity](https://www.nvidia.com/en-us/case-studies/perplexity/)；[NVIDIA：Fast, Low-Cost Inference Offers Key to Profitable AI](https://blogs.nvidia.com/blog/ai-inference-platform/)。
 
-### 19.5 Netflix：把 LLM Serving 接入已有模型平台，而不是另建孤岛
+### 20.5 Netflix：将 LLM Serving 接入现有模型平台
 
 Netflix 在 2026 年公开了内部 Model Scoring Service（MSS）承载 LLM 的实践。它没有把 LLM Serving 当成完全独立的新平台，而是把模型推理集成到已有 JVM Serving Layer 和 MSS 中。
 
@@ -1567,7 +1567,7 @@ Netflix 暴露出的工程问题是，LLM 不一定要成为全新的平台孤�
 
 来源：[Netflix TechBlog：In-House LLM Serving at Netflix（2026-07-17）](https://netflixtechblog.com/in-house-llm-serving-at-netflix-a5a8e799ea2c)；[InfoQ 对 Netflix 技术分享的整理（2026-07-27）](https://www.infoq.com/news/2026/07/netflix-llm-platform/)。
 
-### 19.6 Observe.AI：EKS 上真正的成本优化来自启动链路
+### 20.6 Observe.AI：EKS 上的成本优化与启动链路
 
 Observe.AI 为 Contact Center Quality Assurance 提供 GenAI Moments，使用 LLM 分析客户与客服的对话。它在 AWS 上使用 EKS 运营 GPU 推理。业务增长时，系统遇到两个问题：GPU 推理成本较高，以及流量突增时新 GPU 节点和模型启动太慢。
 
@@ -1581,7 +1581,7 @@ Observe.AI 的实践说明，GPU Auto Scaling 不只是增加 Kubernetes Pod 副
 
 来源：[AWS Customer Story：Observe.AI cuts AI inference costs by over 40%](https://aws.amazon.com/solutions/case-studies/observeai-case-study/)。
 
-### 19.7 AWS EKS + vLLM：客户在自己的 AWS Account 中运营模型服务
+### 20.7 AWS EKS + vLLM：客户在自己的 AWS Account 中运营模型服务
 
 AWS 在 2025 年发布的参考架构展示了企业在自己 AWS Account 中部署 vLLM 的完整路径。架构使用 EKS、EC2 P4d（每台 8×A100）、EFA、FSx for Lustre、AWS Deep Learning Container、LeaderWorkerSet 和 ALB。
 
@@ -1595,7 +1595,7 @@ AWS 在 2025 年发布的参考架构展示了企业在自己 AWS Account 中部
 
 来源：[AWS Architecture Blog：Deploy LLMs on Amazon EKS using vLLM Deep Learning Containers（2025-08-14）](https://aws.amazon.com/blogs/architecture/deploy-llms-on-amazon-eks-using-vllm-deep-learning-containers)；[AWS EKS Load & Serve Models](https://docs.aws.amazon.com/eks/latest/userguide/ml-inference-load-serve-model.html)。
 
-### 19.8 Google Distributed Cloud Air-Gapped：监管和数据主权驱动的隔离部署
+### 20.8 Google Distributed Cloud Air-Gapped：监管和数据主权驱动的隔离部署
 
 Google Distributed Cloud（GDC）Air-Gapped 提供了一个 Open Weight Model 参考架构，面向不能连接公有云、不能把数据发送到外部模型 API 的环境。它支持在客户控制的隔离集群中使用 Kubernetes 部署 vLLM 或 Ollama，模型权重存放在 Persistent Volume，镜像放入私有 Harbor Registry，通过 NetworkPolicy 和 ProjectNetworkPolicy 控制访问。
 
@@ -1609,7 +1609,7 @@ Google Distributed Cloud（GDC）Air-Gapped 提供了一个 Open Weight Model �
 
 来源：[Google Cloud：Open Weight Models reference architecture on GDC air-gapped](https://docs.cloud.google.com/distributed-cloud/hosted/docs/latest/gdcag/solutions/open-weight-models/reference-architecture)。
 
-### 19.9 Cognition / Devin：在 CoreWeave 租用大规模 GPU，按 Agent 推理需求扩容
+### 20.9 Cognition / Devin：在 CoreWeave 租用 GPU 并按 Agent 负载扩容
 
 Cognition 公开表示，其在 CoreWeave 上运行 Devin 的训练、强化学习和生产推理，从桥接容量扩展到数千张 GPU，历时不到九个月。2026 年 CoreWeave 公告还提到，Cognition 与 CoreWeave 部署了 Vera Rubin NVL72，并由 Cognition 工程师执行客户侧推理基准；针对 SWE-2 Agentic Coding Workload，公开数据称相较 GB200 NVL72，Token Throughput 最高提升约 4.8 倍。
 
@@ -1623,7 +1623,7 @@ Cognition 公开表示，其在 CoreWeave 上运行 Devin 的训练、强化学�
 
 来源：[CoreWeave：Cognition at Production Scale](https://investors.coreweave.com/news/news-details/2026/CoreWeave-Delivers-NVIDIA-Vera-Rubin-NVL72-Performance-at-Production-Scale-Starting-With-Cognition/default.aspx)。
 
-### 19.10 Together AI + IBM Cloud + NVIDIA：专属 B300 集群由谁运营？
+### 20.10 Together AI + IBM Cloud + NVIDIA：专属 B300 集群的运营分工
 
 2026 年 8 月，IBM 宣布与 Together AI 达成多年期、约 2.4 亿美元的合作，在 IBM Cloud 上部署大规模 NVIDIA HGX B300 集群，采用 NVIDIA Spectrum-X Ethernet。IBM 提供 Cloud Infrastructure，NVIDIA 提供 GPU 和网络技术，Together AI 负责 Inference Platform。Together AI 在 2026 年 10 月介绍了该集群的企业推理用途。
 
@@ -1637,7 +1637,7 @@ Cognition 公开表示，其在 CoreWeave 上运行 Devin 的训练、强化学�
 
 来源：[Together AI：Expanding our enterprise inference capacity with IBM Cloud and NVIDIA（2026-10-06）](https://www.together.ai/blog/expanding-our-enterprise-inference-capacity-with-ibm-cloud-and-nvidia)；[IBM 新闻稿（2026-08-11）](https://www.prnewswire.com/news-releases/ibm-and-together-ai-sign-multi-year-agreement-to-scale-open-source-ai-inference-with-nvidia-ai-infrastructure-on-ibm-cloud-302847748.html)。
 
-### 19.11 全球金融科技公司 + Together Dedicated Model Inference：56 张 B200 上的 Coding Agent 生产流量
+### 20.11 全球金融科技公司 + Together Dedicated Model Inference：56 张 B200 承载 Coding Agent 生产流量
 
 Together AI 在 2026 年 9 月公开了一个匿名全球金融科技客户案例。客户用 GLM-5.2 运行内部 Coding Assistant，工作负载具有明显的工作时间峰值、低平均生成速率、长上下文和突发并发特征。它不是企业自己管理物理 GPU 和推理引擎，而是使用 Together 的 Dedicated Model Inference（DMI）；但客户工程团队拥有 Endpoint 配置、扩缩容、模型升级和蓝绿测试控制权。
 
@@ -1657,7 +1657,7 @@ GPU 总数相同，服务能力也可能相差很大。Replica 数量、每个 R
 
 来源：[Together AI：How a global fintech scaled coding agent traffic with Dedicated Model Inference（2026-09-18）](https://www.together.ai/blog/global-fintech-scales-coding-agent-traffic-with-dedicated-model-inference)。
 
-### 19.12 Samsung Semiconductor：On-Prem 平台首先解决数据控制和研发效率
+### 20.12 Samsung Semiconductor：On-Prem 平台的数据控制与研发效率
 
 Open WebUI 公布的 Samsung Semiconductor 客户案例称，Samsung Semiconductor 在内部 Kubernetes 集群部署了自托管 AI 平台，运行内部 LLM 和 SLM，使用内部数据库、内部网络隔离、内部 Observability Stack，并集成身份和审计控制。案例披露，团队先用 100 名分析人员进行 14 天试点，再在 30 天内扩大推广；研发团队报告开发周期缩短约 30%。
 
@@ -1673,7 +1673,7 @@ GPU 容量不能按员工总数直接换算。应先通过 Pilot 测量 DAU、�
 
 来源：[Open WebUI：Samsung Semiconductor Private On-Prem AI Platform](https://docs.openwebui.com/enterprise/customers/samsung-semiconductor/)。
 
-### 19.13 Uber：混合使用自有机房 GPU 和 GCP GPU，资源编排跨集群
+### 20.13 Uber：混合使用自有机房 GPU 和 GCP GPU
 
 Uber 在 2026 年披露的 LLM Training Infrastructure 案例不是纯推理平台案例，但它说明企业不必在“全部自建”与“全部公有云”之间二选一。
 
@@ -1689,7 +1689,7 @@ Uber 的内部 LLM 工作流同时使用自有 On-Prem 集群中的 A100 GPU，�
 
 来源：[Uber Engineering：Open Source and In-House: How Uber Optimizes LLM Training（2026-04-14）](https://www.uber.com/us/en/blog/open-source-and-in-house-how-uber-optimizes-llm-training/)。
 
-### 19.14 Deutsche Telekom Industrial AI Cloud：把 GPU 作为主权 AI 基础设施提供给企业和公共部门
+### 20.14 Deutsche Telekom Industrial AI Cloud：面向企业和公共部门的主权 AI 基础设施
 
 Deutsche Telekom 与 NVIDIA 建设了位于德国慕尼黑的 Industrial AI Cloud。Telekom 公开资料称，该 AI Factory 在 2026 年启动，采用最多约 10,000 张 NVIDIA Blackwell GPU（B200 与 RTX PRO 等），配套约 20 PB 存储，目标客户包括德国和欧洲企业、科研机构与公共部门。平台提供从数据中心、GPU Compute、软件平台、安全到行业应用的完整服务能力。
 
@@ -1703,7 +1703,7 @@ Deutsche Telekom 与 NVIDIA 建设了位于德国慕尼黑的 Industrial AI Clou
 
 来源：[Deutsche Telekom：Industrial AI Cloud（2026-02-04）](https://www.telekom.com/en/newsroom/latest-updates/media-information/2026/2/germany-s-first-ai-factory-for-industry)；[Deutsche Telekom：AI sovereignty for Germany and Europe（2025-11-04）](https://www.telekom.com/en/newsroom/latest-updates/media-information/2025/11/ai-sovereignty-for-germany-and-europe)。
 
-### 19.15 Ada：GPU Slicing 解决多模型协作中的资源碎片化
+### 20.15 Ada：GPU Slicing 与多模型资源分配
 
 Ada 的客户服务 Agent 使用多个模型协作完成推理任务，其中一部分模型规模较小，并不需要独占一整张 GPU。AWS 客户案例披露，Ada 在迁移到 EKS 后，将模型容器部署在 Kubernetes 上，并对 Reasoning Engine 使用的 GPU 进行切分。AWS 报告称，GPU Slicing 让 GPU 使用成本效率提升约 20%；整体迁移还改善了部署速度和运维效率。
 
@@ -1715,7 +1715,7 @@ Ada 的客户服务 Agent 使用多个模型协作完成推理任务，其中一
 
 来源：[AWS Customer Story：Ada on Amazon EKS](https://aws.amazon.com/solutions/case-studies/ada-support-eks-case-study/)。
 
-### 19.16 反面参照：Superhuman / Grammarly 从自建 vLLM 转向托管 Serving
+### 20.16 Superhuman / Grammarly：从自建 vLLM 转向托管 Serving
 
 Superhuman（原 Grammarly）曾经运行自建 vLLM Serving Stack 和内部模型管理工具，支撑语法纠错模型。随着业务规模达到峰值 200K+ QPS，L40S GPU Fleet 的性能优化、容量规划、自动扩缩容和每次模型迭代所需的手工调优，逐渐占用精干 ML Infrastructure 团队的大量精力。
 
@@ -1727,7 +1727,7 @@ Superhuman（原 Grammarly）曾经运行自建 vLLM Serving Stack 和内部模�
 
 来源：[Databricks：How Superhuman and Databricks built a 200K QPS inference platform together（2026-05-08）](https://www.databricks.com/blog/how-superhuman-and-databricks-built-200k-qps-inference-platform-together)。
 
-### 19.17 案例横向比较：不同组织到底在为什么付钱？
+### 20.17 案例比较：各组织购买的是什么能力
 
 | 案例 | 资源模式 | 谁使用 | 核心驱动 | 公开的工程经验 |
 | --- | --- | --- | --- | --- |
@@ -1749,7 +1749,7 @@ Superhuman（原 Grammarly）曾经运行自建 vLLM Serving Stack 和内部模�
 
 这些案例对应几种不同经济和责任模型：自己买 GPU、自己运营；租 CSP GPU、自己运营；租专业 GPU Cloud 的 Dedicated Cluster；Dedicated Managed Inference；以及普通 Managed API。它们不是简单的技术先进程度排序，而是企业控制权、成本和运营责任的不同组合。
 
-### 19.18 企业为什么要自部署：五类驱动因素，不能只讲“省钱”
+### 20.18 企业自部署的五类驱动因素
 
 **第一类：数据边界和监管要求。** 银行、保险、政府、医疗、国防、半导体研发和知识产权密集型企业，可能不允许源代码、客户数据、研究文档或交易数据离开企业控制的网络和司法管辖区。自部署能把模型权重、推理请求、日志和缓存放在企业控制的环境内。但这不自动解决安全问题：仍需做模型供应链、管理员访问、审计、密钥、日志脱敏、Prompt Injection 和数据外泄控制。
 
@@ -1763,7 +1763,7 @@ Superhuman（原 Grammarly）曾经运行自建 vLLM Serving Stack 和内部模�
 
 必须强调：**“数据不能出企业”是自部署的强理由，但“自部署一定更便宜”不是。** 对低用量、波动很大、模型更新很快、没有 GPU 工程团队的组织，托管 API 往往更经济。
 
-### 19.19 为什么租 CSP GPU 仍然有价值：它解决资本和设施问题，不会自动消除推理运维
+### 20.19 租用 CSP GPU 的价值与运维责任
 
 租 GPU 的好处是：不需要一次性采购昂贵 GPU 服务器、交换机、机柜、电力和液冷设施；可以先租 1 台 8-GPU 节点或小型 GPU Pool 做 POC，避免过早锁定硬件；可以按需扩容，获得不同 GPU 代际和区域；可以复用 CSP 的 VPC、IAM、KMS、对象存储、Kubernetes 和监控；可以通过 Reserved Capacity / Savings Plans / Dedicated Cluster 获得比按需实例更稳定的容量和价格；并把数据中心设施运维交给 CSP。
 
@@ -1771,7 +1771,7 @@ Superhuman（原 Grammarly）曾经运行自建 vLLM Serving Stack 和内部模�
 
 因此，租 CSP GPU 不是“把运维外包给 AWS”。它通常只是把服务器采购、机房、供电和部分底层设施运维外包了；推理平台的 Day-2 Operations 仍然在企业。
 
-### 19.20 自部署最容易踩的坑：从案例归纳的 12 条经验
+### 20.20 自部署中的常见问题与工程经验
 
 1. **按开发者人数买 GPU。** 注册用户、DAU、同时活跃 Agent、并发请求和 GPU 并发不是同一件事。先采集 Agent Trace，再建立容量模型。
 2. **用普通聊天流量估算 Coding Agent。** 输入上下文可能达到数万到数十万 Token，输出却很短；还会并发启动子 Agent。要按 Input Length、Prefix Reuse、Subagent Burst 和 Prefill / Decode 分别建模。
@@ -1786,7 +1786,7 @@ Superhuman（原 Grammarly）曾经运行自建 vLLM Serving Stack 和内部模�
 11. **低估存储和制品供应链。** 多副本扩容时，模型权重可能成为启动瓶颈；Air-Gapped 环境还需要离线镜像和模型供应链。模型权重不应临时从公共仓库下载到生产节点。
 12. **忽略 GPU 故障和故障域。** 大规模集群中 GPU、NIC、交换机和节点故障是常态。要有 DCGM / XID 监控、节点隔离、Replica 冗余、模型重载和容量余量。GPU 利用率 100% 不是理想目标，生产服务必须保留处理突发和故障的 Headroom。
 
-### 19.21 自有 GPU、租 CSP GPU、Dedicated GPU Cloud、托管 API：经济性如何比较
+### 20.21 自有 GPU、CSP GPU、Dedicated GPU Cloud 与托管 API 的经济性
 
 不要只比较“每 GPU 小时价格”和“每百万 Token API 价格”。应统一到满足业务质量和 SLO 的成本口径。定义 GPU 租赁、预留或折旧成本为 \(C_{gpu}\)，网络和跨区传输成本为 \(C_{network}\)，模型权重、缓存、日志和高性能文件系统成本为 \(C_{storage}\)，Kubernetes、监控、网关和数据库成本为 \(C_{platform}\)，GPU Infra、Inference Engineering、SRE、安全和模型评测人力为 \(C_{people}\)，自有 GPU 的电力、制冷、机房和资本成本为 \(C_{facility}\)，质量与 SLA 达标的业务任务数为 \(N_{success}\)。
 
@@ -1808,7 +1808,7 @@ API 方案的分子则应包含输入 / 输出 Token 费用、缓存费用、工
 
 自部署的盈亏平衡点不是一个固定 GPU 利用率。它取决于模型、输入 / 输出 Token 比例、API 单价、GPU 租赁单价、上下文长度、KV Cache 命中率、模型量化、SLO 和人力成本。建议用实际 Trace 计算每种方案的单位成功任务成本，而不是只算理论 Tokens/s。
 
-### 19.22 对 1000 名开发者平台的建议：先混合，再逐步扩大自管范围
+### 20.22 面向 1000 名开发者平台的部署建议
 
 从这些案例推导，1000 名开发者的企业 Coding Agent 不必一开始就把所有请求迁移到自有 B300。更合理的路线是把模型按任务和数据边界分层：
 
@@ -1860,7 +1860,7 @@ flowchart TB
 
 图中的托管 API 不是自部署的一部分，而是混合架构中的质量兜底和弹性容量。企业自管 GPU Pool 也不一定全部放在 On-Prem：可以先放在企业自己的 CSP Account / VPC 中，等负载、成本和运维能力稳定后再考虑长期预留或采购。
 
-### 19.23 选型前必须向 CSP / GPU Cloud 问清楚的问题
+### 20.23 CSP / GPU Cloud 采购前的核查项
 
 | 维度 | 必须问的问题 | 为什么重要 |
 | --- | --- | --- |
@@ -1875,7 +1875,7 @@ flowchart TB
 | 计费 | 按 GPU-hour、节点小时、预留容量还是 Token 计费？闲置容量、存储、出口、支持如何计费？ | 计算真实 TCO |
 | 退出 | 模型权重、缓存、日志和监控数据如何导出？终止合同后数据如何销毁？ | 避免被供应商锁定 |
 
-### 19.24 本章结论
+### 20.24 本章结论
 
 业界实践已经证明，企业自部署并不意味着必须拥有自己的 GPU 数据中心。Perplexity 在 AWS 上租 GPU 并运营自己的推理 API；IBM / Red Hat 以 H100 为基础验证数千个 Coding Agent 的开源模型服务；Cognition 在 CoreWeave 上获得大规模 Agentic Inference Capacity；Together AI 在 IBM Cloud 上运营专属 B300 推理集群。这些都说明 GPU 资产、推理平台和业务应用可以由不同主体分别负责。
 
@@ -1898,7 +1898,7 @@ flowchart TB
 
 供应商发布的性能数字保留其原始口径，不视为独立审计结果；没有公开的信息不推断。
 
-### 20.1 BC Card：韩国金融机构把 On-Prem GPU 推理平台用于多个业务流程
+### 21.1 BC Card：韩国金融机构在多个业务流程中使用 On-Prem GPU 推理平台
 
 BC Card 是韩国支付和金融服务公司。Red Hat 于 2026 年 9 月发布的客户案例称，BC Card 基于 Red Hat OpenShift AI 建设了企业 AI 模型部署和运营平台，运行在 On-Prem GPU 环境中，覆盖加盟商筛查、RPA 和呼叫中心自动化等业务。
 
@@ -1916,7 +1916,7 @@ BC Card 是韩国支付和金融服务公司。Red Hat 于 2026 年 9 月发布�
 
 来源：[Red Hat：BC Card enhances financial AI operations system with Red Hat OpenShift AI（2026-09-01）](https://www.redhat.com/en/resources/bc-card-openshift-ai-case-study)。
 
-### 20.2 Tesla：从简单 vLLM StatefulSet 演进到 KServe + llm-d 的生产级推理管理
+### 21.2 Tesla：从 vLLM StatefulSet 演进到 KServe + llm-d
 
 KServe 在 2026 年 4 月发布了一篇由 KServe、Red Hat 和 Tesla 工程师共同署名的生产实践文章。Tesla 的工程师明确参与了这套系统在生产环境中的验证。文章讨论的核心不是如何第一次启动 vLLM，而是如何在 Kubernetes 中规模化管理数百个 LLM、适配不同 Serving Topology，并处理 Day-2 Operations。
 
@@ -1939,7 +1939,7 @@ Tesla 的生产经验集中在几个具体问题上：GPU 推理的生产问题�
 
 来源：[KServe：Production-Grade LLM Inference at Scale with KServe, llm-d, and vLLM（2026-04-21）](https://kserve.github.io/website/blog/production-grade-llm-inference-kserve-llm-d-vllm)。
 
-### 20.3 Workato：租 DigitalOcean H200，Dynamo + vLLM 支撑企业 Agentic Automation
+### 21.3 Workato：租用 DigitalOcean H200，以 Dynamo + vLLM 支撑企业 Agentic Automation
 
 Workato 是企业自动化平台，AI Research Lab 正在把 Agentic AI 能力用于跨业务系统的推理、行动和流程编排。Workato 的平台累计处理超过 1 万亿次自动化工作负载，因此模型推理成本、吞吐和尾延迟会直接影响产品经济性。
 
@@ -1964,7 +1964,7 @@ Workato 的结果主要来自请求路由和缓存复用，而不是单卡算力
 
 来源：[DigitalOcean：How DigitalOcean’s Agentic Inference Cloud powered by NVIDIA GPUs Achieved 67% Lower Inference Costs for Workato（2026-03-04 更新）](https://www.digitalocean.com/blog/workato-nvidia-technical-deep-dive-agentic-inference-cloud)；[DigitalOcean Investor Relations：DigitalOcean Powers Workato’s Agentic Enterprise with Production-scale AI（2026-03-03）](https://investors.digitalocean.com/news/news-details/2026/DigitalOcean-Powers-Workatos-Agentic-Enterprise-with-Production-scale-AI/default.aspx)。
 
-### 20.4 University Hospital Bonn：8 张 A100 在院内运行 DeepSeek-R1，处理未经匿名化的医疗数据
+### 21.4 University Hospital Bonn：院内 8 张 A100 运行 DeepSeek-R1
 
 德国 University Hospital Bonn 的放射科和 IT 团队在 2025 年 7 月开展了一周的自托管 LLM 试点，并于 2026 年 3 月公开了研究论文。该案例对医疗、金融和其它高敏感数据行业很有参考价值，因为它明确把“数据不能离开机构网络”作为系统设计的前提。
 
@@ -1985,7 +1985,7 @@ Bonn 的试点给出的直接教训是，- 安全架构应假设系统可能被�
 
 来源：[arXiv：Secure On-Premise Deployment of Open-Weights Large Language Models in Radiology: An Isolation-First Architecture with Prospective Pilot Evaluation（2026-03-25）](https://arxiv.org/abs/2604.22768)；[医院公开部署包 ukb-gpt](https://github.com/ukbonn/ukb-gpt)。
 
-### 20.5 Dell + Meta PyTorch：把 vLLM Production Stack 产品化为 On-Prem AI Factory 的推理层
+### 21.5 Dell + Meta PyTorch：vLLM Production Stack 作为 On-Prem AI Factory 推理层
 
 Dell 与 Meta PyTorch 团队在 2026 年公开了面向 Dell AI Factory 的 Enterprise-Ready vLLM Production Stack。它不是单个终端客户的案例，而是服务器厂商与开源框架团队合作，把 On-Prem LLM Serving 需要的组件组合成企业参考平台。
 
@@ -2001,7 +2001,7 @@ Dell 与 Meta 的方案把模型 Runtime、Kubernetes Operator、缓存路由、
 
 来源：[Dell Technologies：Enterprise-Ready LLM Inferencing with the vLLM Production Stack on Dell AI Factory（2026-05-20）](https://infohub.delltechnologies.com/en-us/p/enterprise-ready-llm-inferencing-with-the-vllm-production-stack-on-dell-ai-factory/)。
 
-### 20.6 Oracle OCI：用 OKE + vLLM + Qdrant + Terraform 建立可自管的 GPU RAG / Agent 平台
+### 21.6 Oracle OCI：OKE + vLLM + Qdrant + Terraform GPU RAG / Agent 平台
 
 Oracle 在 2026 年 7 月发布了一个完整的 OCI Open-Source AI 参考应用：在 Oracle Container Engine for Kubernetes（OKE）上运行 GPU-backed LLM、Qdrant、RAG 和 Agent Tool Calling，并通过 Terraform 一次性创建基础设施。
 
@@ -2017,7 +2017,7 @@ Oracle 在 2026 年 7 月发布了一个完整的 OCI Open-Source AI 参考应�
 
 来源：[Oracle Cloud Infrastructure：Open-Source AI on OCI: Serving LLMs on Kubernetes with vLLM, Qdrant, and Terraform（2026-07-15）](https://blogs.oracle.com/cloud-infrastructure/open-source-ai-oci-with-vllm-qdrant)。
 
-### 20.7 OVHcloud：租用 L40S GPU，在 Managed Kubernetes 上运行多模态 Qwen3-VL
+### 21.7 OVHcloud：租用 L40S GPU，在 Managed Kubernetes 上运行 Qwen3-VL
 
 OVHcloud 在 2026 年 10 月发布了 vLLM + Managed Kubernetes Service（MKS）的 Vision-Language Model 参考架构。方案运行 Qwen3-VL-8B-Instruct，使用两台 NVIDIA L40S GPU Node，提供 OpenAI-compatible API，监控采用 Prometheus、Grafana 和 DCGM。
 
@@ -2033,7 +2033,7 @@ OVHcloud 在 2026 年 10 月发布了 vLLM + Managed Kubernetes Service（MKS）
 
 来源：[OVHcloud：Reference Architecture: Deploying a vision-language model with vLLM on OVHcloud MKS（2026-10-04）](https://blog.ovhcloud.com/en/posts/reference-architecture-deploying-a-vision-language-model-with-vllm-on-ovhcloud-mks-for-high-performance-inference-and-full-observability/)。
 
-### 20.8 Azure Arc：在 On-Prem / Edge Kubernetes 上运行 Ollama 和 vLLM
+### 21.8 Azure Arc：在 On-Prem / Edge Kubernetes 上运行 Ollama 和 vLLM
 
 Microsoft Azure Kubernetes Service Engineering Blog 在 2026 年 4 月展示了通过 AKS enabled by Azure Arc 管理本地或边缘 Kubernetes 集群，并直接部署 Ollama 和 vLLM 的方案。这个案例的意义在于：企业不必把 GPU 节点迁移到 Azure 公有云，也可以通过 Azure Arc 统一管理分布在本地和边缘的 Kubernetes 环境。
 
@@ -2047,7 +2047,7 @@ Edge / On-Prem 环境的网络、存储和升级条件与公有云不同，生�
 
 来源：[Microsoft AKS Engineering Blog：AI Inference on AKS enabled by Azure Arc: Generative AI with Open-Source LLM Server（2026-04-07）](https://blog.aks.azure.com/2026/04/07/ai-inference-on-aks-arc-part-3)。
 
-### 20.9 案例横向比较：新增案例揭示了哪些不同的架构模式？
+### 21.9 案例比较：不同部署模式的架构差异
 
 | 案例 | 部署模式 | 工作负载 / 用户 | 核心技术 | 最重要的经验 | 证据等级 |
 | --- | --- | --- | --- | --- | --- |
@@ -2060,7 +2060,7 @@ Edge / On-Prem 环境的网络、存储和升级条件与公有云不同，生�
 | OVHcloud | 租 L40S + Managed K8s | 多模态推理 | Qwen3-VL、vLLM、MKS、DCGM | Managed K8s 不等于 Managed Inference | 厂商参考架构 |
 | Azure Arc | On-Prem / Edge Kubernetes | 本地模型推理 | Ollama、vLLM、AKS Arc | 统一管理面和离线模型供应链 | 厂商教程 |
 
-### 20.10 从这些案例再提炼六条工程经验
+### 21.10 这些案例对平台设计的启示
 
 **1. 金融行业往往需要的是模型平台，不是单一模型 Endpoint。** BC Card 的案例表明，风险筛查、RPA 和呼叫中心并不需要完全相同的模型。企业平台应提供统一身份、模型注册、部署、审计和配额能力，但允许每个任务使用不同模型、精度和 GPU 资源。
 
