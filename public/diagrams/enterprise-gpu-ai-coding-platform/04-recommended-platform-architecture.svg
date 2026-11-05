@@ -59,12 +59,6 @@
   <text x="716" y="400.5" text-anchor="middle" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="7.5" font-weight="600" letter-spacing=".7" fill="#626B80">GPU</text>
   <text x="692" y="424" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="13.2" font-weight="600" fill="#32394D">Kernels / NCCL / EP</text>
   <text x="692" y="441" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="9.2" fill="#626B80">CUDA · DeepEP · Libraries</text>
- </g><g id="obs">
-  <rect x="360" y="540" width="540" height="48" rx="11" fill="#FFFFFF" stroke="#D5D9E4" stroke-width="1" filter="url(#shadow)"/>
-  <rect x="372" y="550" width="48" height="15" rx="7.5" fill="#E9EDF0"/>
-  <text x="396" y="560.5" text-anchor="middle" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="7.5" font-weight="600" letter-spacing=".7" fill="#626B80">OBS</text>
-  <text x="372" y="584" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="11.5" font-weight="600" fill="#32394D">Prometheus · Grafana · OpenTelemetry</text>
-  <text x="372" y="601" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="9.2" fill="#626B80">Metrics · Logs · Traces</text>
- </g></g>
-<text x="40" y="580" font-family="Geist Mono, monospace" font-size="8" letter-spacing="1.1" fill="#747D91">DEVWEEKLY · GPU AI CODING PLATFORM</text>
+ </g><g id="obs"><rect x="360" y="540" width="540" height="48" rx="11" fill="#FFFFFF" stroke="#D5D9E4" stroke-width="1" filter="url(#shadow)"/><rect x="372" y="547" width="44" height="13" rx="6.5" fill="#E9EDF0"/><text x="394" y="556.5" text-anchor="middle" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="7.2" font-weight="600" letter-spacing=".7" fill="#626B80">OBS</text><text x="372" y="571" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="12.5" font-weight="600" fill="#32394D">Prometheus · Grafana · OpenTelemetry</text><text x="372" y="584" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="8.8" fill="#626B80">Metrics · Logs · Traces</text></g></g>
+
 </svg>
