@@ -40,6 +40,7 @@ npm run dev -- write --world conghuoniao --mode continuation \
 ```
 
 每次运行生成：
+- `00-retrieval.md`：本次检索命中的原文证据及来源位置
 - `01-plan.md`：章节目标和场景计划
 - `02-draft.md`：初稿
 - `03-review.md`：连续性、人物、因果和叙事质量审查
