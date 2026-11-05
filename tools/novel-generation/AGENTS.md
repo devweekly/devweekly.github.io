@@ -41,7 +41,7 @@ CLI 命令（均经 `npm run dev --`）：
 - **src/workflow.ts** — `writeChapter` 多阶段写作：主线架构师与创意发散并行 → 主编蓝图 → 正文 → 对白 → 叙事声音 → 结构化终审复查与最多两轮自动修复 → 运行时校验状态更新 → SQLite/JSON 自动持久化。`mergeStoryState` 按 id/name 归并状态；只有实验隔离使用 `--no-apply-state`。每个模型阶段通过 `stage-cache.ts` 按输入指纹缓存，`--resume-dir` 可从最后一个完整阶段恢复。
 - **src/world-analysis.ts** — 纯文件交接、运行时不调用模型：5 个 `ANALYSIS_ROLES`（main-plot / creative / style / characters / continuity）→ `prepare` 生成各角色 `input.md` → 各 Agent 写 `output.md` → `collect` 用 `validateAnalysisOutput` 校验（≥600 字、≥6 处 `L####` 且在原文行数内、≥3 个二级标题、无占位符）→ `manifest.json` + `index.md`；只校验格式与证据密度，不判断观点。
 - **src/story-state.ts** — `worlds/<world>/story-state.json`（schemaVersion 1）的加载 / 保存与空状态；人物记录区分稳定 profile 与可变剧情快照。
-- **src/long-chapter.ts** — 长章节按场景蓝图逐场检索与生成；每场注入相关人物当前状态，并携带本章已生成正文的滚动上下文；分批审查使用全章场景编号，缺少场景定位或结构无效时自动重试，最终修复不允许空场景列表；状态只从最终通过的完整章节提取并自动提交。阶段缓存校验结构化输出，指纹记录实际模型及回退链。
+- **src/long-chapter.ts** — 长章节按场景蓝图逐场检索与生成；配置场景数是上限，允许蓝图按自然叙事少于上限，不能为了凑数拆分情节；按实际场景数计算篇幅参考和审查范围。每场注入相关人物当前状态，并携带本章已生成正文的滚动上下文；分批审查使用全章场景编号，缺少场景定位或结构无效时自动重试，最终修复不允许空场景列表；状态只从最终通过的完整章节提取并自动提交。阶段缓存校验结构化输出，指纹记录实际模型及回退链。
 - **src/analysis.ts** — 抽取以批次为单位原子保存标注，避免每处理一个片段就重写整个增长中的 JSON 文件。
 
 ## 数据布局与边界
