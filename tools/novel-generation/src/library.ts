@@ -196,6 +196,19 @@ interface CachedSearchIndex {
 }
 const searchCache = new Map<string, CachedSearchIndex>();
 
+export async function loadLibraryChunks(libraryDir: string, worldId: string): Promise<LibraryChunk[]> {
+  const indexPath = join(libraryDir, "index.json");
+  const index = JSON.parse(await readFile(indexPath, "utf8")) as LibraryIndex;
+  if (index.worldId !== worldId) throw new Error("Library index world mismatch: " + worldId);
+  const worldDir = databaseWorldDirFromLibrary(libraryDir);
+  let chunks = readLibraryChunks(worldDir, worldId);
+  if (!chunks.length && index.chunks.length) {
+    syncLibraryChunks(worldDir, worldId, index.chunks);
+    chunks = readLibraryChunks(worldDir, worldId);
+  }
+  return chunks.length ? chunks : index.chunks;
+}
+
 async function loadSearchIndex(indexPath: string): Promise<CachedSearchIndex> {
   const info = await stat(indexPath);
   const cached = searchCache.get(indexPath);
