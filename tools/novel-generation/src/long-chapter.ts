@@ -286,7 +286,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   ]);
   try {
     const cleaned = stateText.trim().replace(/^`{3}(?:json)?\s*/i, "").replace(/\s*`{3}$/i, "");
-    const update = JSON.parse(cleaned.slice(cleaned.indexOf("{"), cleaned.lastIndexOf("}") + 1)) as Partial<StoryState>;
+    const update = parseStoryStateUpdate(JSON.parse(cleaned.slice(cleaned.indexOf("{"), cleaned.lastIndexOf("}") + 1)) as unknown);
     const nextState = mergeStoryState(state, update);
     if (input.applyState) await saveStoryState(input.statePath, nextState);
     await saveStage(input.outputDir, "07-state-update.json", JSON.stringify(nextState, null, 2));
