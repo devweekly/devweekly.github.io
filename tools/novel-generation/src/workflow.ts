@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseStoryStateUpdate, saveStoryState, type StoryState } from "./story-state.js";
-import { runAgentText, type GenerationMode } from "./generate.js";
+import { runAgentText, resolveModelAttempts, type GenerationMode } from "./generate.js";
 import { readTaskProfiles, type StageKey } from "./task-profiles.js";
 import { formatReview, reviewAndRepair, reviewPrompt } from "./chapter-review.js";
 import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
@@ -74,7 +74,8 @@ export function mergeStoryState(current: StoryState, update: Partial<StoryState>
     characters: mergeBy(current.characters, update.characters ?? [], item => item.name.trim().toLocaleLowerCase()),
     events: mergeBy(current.events, update.events ?? [], item => item.id),
     plotThreads: mergeBy(current.plotThreads, update.plotThreads ?? [], item => item.id),
-    continuityNotes: [...new Set([...current.continuityNotes, ...(update.continuityNotes ?? [])])],
+    // Current active notes are a snapshot, not an append-only history.
+    continuityNotes: update.continuityNotes ?? current.continuityNotes,
     updatedAt: new Date().toISOString()
   };
 }
@@ -100,7 +101,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     const prompt = parts.join("\n\n");
     return runCachedStage({
       dir: input.outputDir, key, outputFile,
-      fingerprint: JSON.stringify({ prompt, model: input.model ?? null, profile: profiles[stage], strictModel: input.strictModel ?? false }),
+      fingerprint: JSON.stringify({ prompt, modelAttempts: resolveModelAttempts(input.model, !input.strictModel), profile: profiles[stage], strictModel: input.strictModel ?? false }),
       execute: () => call(stage, parts)
     });
   };
@@ -114,7 +115,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     input.retrievedContext ? "本地资料库证据（用于核实事实，不得整段复制）：\n" + input.retrievedContext : "",
     input.storyAnalysisContext ? "既有小说分析参考（仅供启发，不是正史或写作清单）：\n" + input.storyAnalysisContext : "",
     input.sourceText ? "用户提供且有权使用的续写材料：\n" + input.sourceText : "",
-    input.styleProfile ? "本项目叙事风格约束（仅使用抽象写作特征，不模仿特定作者的独特表达）：\n" + input.styleProfile : "",
+    input.styleProfile ? "本项目叙事风格参考（仅使用抽象写作特征，不模仿特定作者的独特表达；参考不能凌驾于当前人物、场景需要和文学表达）：\n" + input.styleProfile : "",
     input.mode === "continuation" ? "创作模式：续写。严格承接用户提供的合法文本和当前故事状态。" : "创作模式：原创衍生。不得把项目原创内容伪装成原著事实。",
     "本次创作任务：", input.brief
   ].filter(Boolean).join("\n\n");
