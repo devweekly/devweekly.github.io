@@ -1,5 +1,5 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 import { loadStoryState, saveStoryState, type StoryState } from "./story-state.js";
 import { runAgentText } from "./generate.js";
 
@@ -15,9 +15,6 @@ export interface WriteWorkflowInput {
   statePath: string;
 }
 
-function section(title: string, content: string): string {
-  return "\n\n## " + title + "\n\n" + content;
-}
 
 function extractJson(text: string): unknown {
   const cleaned = text.trim().replace(/^\x60{3}(?:json)?\s*/i, "").replace(/\s*\x60{3}$/i, "");
@@ -30,7 +27,13 @@ function extractJson(text: string): unknown {
 function mergeState(current: StoryState, update: Partial<StoryState>): StoryState {
   const mergeBy = <T>(oldItems: T[], newItems: T[], key: (item: T) => string): T[] => {
     const map = new Map(oldItems.map(item => [key(item), item]));
-    for (const item of newItems) map.set(key(item), item);
+    for (const item of newItems) {
+      const id = key(item);
+      const previous = map.get(id);
+      map.set(id, previous && typeof previous === "object" && typeof item === "object"
+        ? { ...previous, ...item }
+        : item);
+    }
     return [...map.values()];
   };
   return {
