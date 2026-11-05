@@ -43,11 +43,20 @@ export function syncAnnotations(worldDir:string,worldId:string,annotations:Annot
  });}finally{db.close();}
 }
 export function readAnnotationsByChunkIds(worldDir:string,worldId:string,ids:string[]):Map<string,Record<string,unknown>>{
- const result=new Map<string,Record<string,unknown>>();if(!ids.length)return result;const db=openDatabase(worldDir,worldId);
- try{const n=Number((db.prepare("SELECT COUNT(*) AS count FROM annotations").get() as {count:number}).count);
- if(n===0){try{const legacy=JSON.parse(readFileSync(join(worldDir,"library","annotations.json"),"utf8")) as {annotations?:AnnotationRow[]};let registry:RegistryData|null=null;try{registry=JSON.parse(readFileSync(join(worldDir,"library","entities.json"),"utf8")) as RegistryData;}catch(e){if((e as NodeJS.ErrnoException).code!=="ENOENT")throw e;}if(legacy.annotations?.length)syncAnnotations(worldDir,worldId,legacy.annotations,registry);}catch(e){if((e as NodeJS.ErrnoException).code!=="ENOENT")throw e;}}
- const q=db.prepare("SELECT chunk_id,payload_json FROM annotations WHERE chunk_id=?");for(const id of ids){const row=q.get(id) as {chunk_id:string;payload_json:string}|undefined;if(row)result.set(row.chunk_id,JSON.parse(row.payload_json) as Record<string,unknown>);}return result;
- }finally{db.close();}
+ const result=new Map<string,Record<string,unknown>>();if(!ids.length)return result;
+ const probe=openDatabase(worldDir,worldId);let annotationCount:number;
+ try{annotationCount=Number((probe.prepare("SELECT COUNT(*) AS count FROM annotations").get() as {count:number}).count);}finally{probe.close();}
+ if(annotationCount===0){
+  try{
+   const legacy=JSON.parse(readFileSync(join(worldDir,"library","annotations.json"),"utf8")) as {annotations?:AnnotationRow[]};
+   let registry:RegistryData|null=null;
+   try{registry=JSON.parse(readFileSync(join(worldDir,"library","entities.json"),"utf8")) as RegistryData;}catch(e){if((e as NodeJS.ErrnoException).code!=="ENOENT")throw e;}
+   if(legacy.annotations?.length||registry?.entities.length)syncAnnotations(worldDir,worldId,legacy.annotations??[],registry);
+  }catch(e){if((e as NodeJS.ErrnoException).code!=="ENOENT")throw e;}
+ }
+ const db=openDatabase(worldDir,worldId);
+ try{const q=db.prepare("SELECT chunk_id,payload_json FROM annotations WHERE chunk_id=?");for(const id of ids){const row=q.get(id) as {chunk_id:string;payload_json:string}|undefined;if(row)result.set(row.chunk_id,JSON.parse(row.payload_json) as Record<string,unknown>);}return result;}
+ finally{db.close();}
 }
 export function syncStoryState(worldDir:string,state:StoryState):void{
  const db=openDatabase(worldDir,state.worldId);try{transaction(db,()=>{
