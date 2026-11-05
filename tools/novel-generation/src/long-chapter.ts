@@ -361,7 +361,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       const retryText = await cachedCall("state-update-retry", "07-state-update-retry-raw.json", "state", [
         "上一次状态提取未通过 JSON 或 schema 校验：" + String(firstError),
         "上一次输出：", stateText,
-        "请重新根据旧状态和下面的最终章节全文提取，只输出符合既定 JSON schema 的对象；不要添加 Markdown、解释或 schema 外字段。",
+        "请重新根据旧状态和下面的最终章节全文提取，只输出符合既定 JSON schema 的对象；continuityNotes 必须返回完整的当前有效备注数组；不要添加 Markdown、解释或 schema 外字段。",
         "旧状态：", JSON.stringify(state, null, 2),
         "最终章节全文：", chapter
       ]);
