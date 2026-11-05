@@ -138,6 +138,16 @@ export interface EvidenceReferenceCheck {
   issues: string[];
 }
 
+/**
+ * 项目原创约束、说明性引子和清单不是「关于原著的结论」，本来就不需要 L#### 行号。
+ * 把它们当缺证据的结论会让整份审查在调用模型前就 fail-closed。
+ */
+function isNonClaimParagraph(text: string): boolean {
+  if (/项目原创|整理层约束|不指向特定|^以下|^注[：:]|^说明[：:]/.test(text)) return true;
+  const lines = text.split("\n").map(line => line.trim()).filter(Boolean);
+  return lines.length > 1 && lines.every(line => /^(?:[-*•]|\d+[.)、])\s/.test(line));
+}
+
 export function validateEvidenceReferences(text: string, sourceLines: string[]): EvidenceReferenceCheck {
   const references = [...text.matchAll(/\bL(\d+)\b/g)].map(match => Number(match[1]));
   const issues: string[] = [];
@@ -153,7 +163,7 @@ export function validateEvidenceReferences(text: string, sourceLines: string[]):
     if (section === "待核实" || section.startsWith("待核实")) continue;
     const lines = [...claim.matchAll(/\bL(\d+)\b/g)].map(match => Number(match[1]));
     if (!lines.length) {
-      issues.push("结论段落缺少原文行号引用：" + claim.slice(0, 60));
+      if (!isNonClaimParagraph(claim)) issues.push("结论段落缺少原文行号引用：" + claim.slice(0, 60));
       continue;
     }
     claims.push({ text: claim, lines: [...new Set(lines)] });
@@ -186,6 +196,7 @@ export async function reviewAnalysisEvidence(
 
   const decisions: SemanticEvidenceReview["decisions"] = [];
   const issues: string[] = [];
+  let failedBatches = 0;
   for (let offset = 0; offset < check.claims.length; offset += 8) {
     const batch = check.claims.slice(offset, offset + 8);
     const candidates = batch.map((claim, index) => ({
@@ -223,13 +234,19 @@ export async function reviewAnalysisEvidence(
         }
       });
     } catch (error) {
+      failedBatches++;
       issues.push("第 " + (Math.floor(offset / 8) + 1) + " 批语义审查失败：" + (error instanceof Error ? error.message : String(error)));
       for (const claim of batch) decisions.push({ claim: claim.text, lines: claim.lines, supported: false, reason: "模型审查失败，按不支持处理" });
     }
   }
   const supported = decisions.filter(item => item.supported).length;
   const rejected = decisions.length - supported;
-  if (rejected) issues.push(rejected + " 段结论未通过原文证据核验");
+  if (rejected) {
+    // 模型不可用是基础设施失败，不是「结论被判定不支持」，两者不能混为同一句诊断。
+    issues.push(failedBatches
+      ? `${rejected} 段结论因 ${failedBatches} 批模型审查失败而无法核验（非语义判定，请检查 CLI 登录）`
+      : `${rejected} 段结论未通过原文证据核验`);
+  }
   return { ok: decisions.length === check.claims.length && rejected === 0 && issues.length === 0, checked: decisions.length, supported, rejected, issues, decisions };
 }
 
