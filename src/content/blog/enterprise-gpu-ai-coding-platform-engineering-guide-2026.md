@@ -50,14 +50,11 @@ NVIDIA 的 HGX B300 参考架构包含 8 张 Blackwell Ultra GPU。官方参考�
 
 | 指标 | HGX B300 |
 | --- | --- |
-| GPU 数量 | 8 |
-| 单 GPU HBM3e | 288 GB |
-| 单节点 GPU 显存合计 | 约 2.30 TB |
+| GPU | 8×B300，单卡 288 GB HBM3e |
+| 总显存 | 约 2.30 TB |
 | 单 GPU HBM 带宽 | 最高 8 TB/s |
-| GPU 互联 | 第五代 NVLink + NVSwitch |
-| GPU-to-GPU 带宽 | 最高 1.8 TB/s（双向口径，需按厂商定义理解） |
-| 节点 NVLink 聚合带宽 | 14.4 TB/s |
-| Scale-out 网络 | 8 个 ConnectX-8 SuperNIC，最高 800 Gb/s/adapter（具体系统实现以 OEM BOM 为准） |
+| GPU 互联 | 第五代 NVLink + NVSwitch，最高 1.8 TB/s/GPU（双向口径） |
+| 网络 | 最高 8×800 Gb/s ConnectX-8，依 OEM 配置 |
 
 这里的 1.8 TB/s 是 GPU 间链路带宽口径，不应与节点聚合带宽 14.4 TB/s 混用，也不应直接与外部以太网/InfiniBand 的端口速率比较。
 
@@ -651,10 +648,10 @@ curl -N http://localhost:8001/v1/chat/completions \
 
 到这一步，企业已经有两个独立的推理 Endpoint：
 
-| 模型服务 | 内部 Endpoint 示例 | 资源池 | 关键配置 |
-| --- | --- | --- | --- |
-| Nemotron Nano | http://nemotron-service:8000/v1 | H100 单卡池 | nemotron-nano、TP1、Nemotron 对应 Parser |
-| Kimi K2.6 | http://kimi-service:8001/v1 | H200/B300 多 GPU 池 | kimi-k2.6、TP8 或经验证的 TP4、Kimi Parser |
+| 模型 | 内部 Endpoint | GPU 资源池 |
+| --- | --- | --- |
+| Nemotron Nano | `http://nemotron-service:8000/v1` | H100 单卡 |
+| Kimi K2.6 | `http://kimi-service:8001/v1` | H200 / B300 多 GPU |
 
 Gateway 对客户端提供统一入口，例如 https://model-gateway.corp.example/v1。
 
@@ -1470,16 +1467,12 @@ Revolut 的 2,000 名工程师案例尤其值得关注，但公开信息需要�
 
 **美国：Llama 是公开企业方案中较常见的基础模型，其他模型通常承担专门角色。**
 
-| 企业 / 项目 | 模型与 GPU 配置 | 工作负载 | 应如何解读 |
-| --- | --- | --- | --- |
-| Cisco Secure AI Factory | 每个 worker 使用 4×NVIDIA RTX PRO 6000 Blackwell；Llama 3.1 70B Instruct 承担主要 RAG 任务，Llama 3.1 8B 与 Nemotron Nano 12B 用于轻量任务，Gemma 3 4B 用于独立 AI Defense 集群中的 guardrail | 企业知识检索、轻量任务和安全防护 | 这是清晰的模型分层和资源隔离参考架构，但不是 Cisco 数千名开发者使用的 Coding Agent 生产披露 |
-| First American | 40×A100，微调 Llama 3.1 8B | 房地产文档处理，目标约每日 100 万份文档；公开材料报告约 695 documents/min | 不是 Coding 案例，但说明 8B 级小模型经过领域适配后，可以承担高吞吐、边界明确的后台任务 |
-| IBM Research、Red Hat 与 llm-d 技术验证 | GLM-5.2，544×H100 | 分布式推理和 Coding Agent 并发测试；公开报告最高约 3,000 个并发 Coding Agent、峰值约 6.6M output tokens/min | 这是大规模 serving 技术验证，不是某家企业已经部署 3,000 个开发者的生产平台；GLM 不属于本文候选范围 |
-| NVIDIA StarCoder2 示例 | StarCoder2-7B，配合 NVIDIA NIM 与 NeMo Guardrails，可部署于 L4、L40S、A100、H100 或 H200 | 代码补全、受控代码助手、CI 依赖验证和提交追踪 | 可作为小型、范围明确的 Coding Assistant 参考实现，不应与复杂多步 Agent 的主力模型混为一谈 |
+| 案例 | 部署与用途 |
+| --- | --- |
+| IBM Research / Red Hat | 544×H100、GLM-5.2；用于分布式推理和 Coding Agent 并发验证，不代表企业 3,000 名开发者的生产部署 |
+| NVIDIA StarCoder2 | 7B 模型配合 NIM / NeMo Guardrails，适合代码补全和范围明确的轻量助手，不等同复杂 Agent 主力模型 |
 
-Cisco 的案例有一个值得借鉴的设计：不是让一个大模型处理所有事情，而是按任务复杂度和安全职责分配模型。70B 模型承担主要知识检索，8B 和 12B 模型处理轻量工作，独立 guardrail 模型负责安全检查。企业 Coding 平台也可以采用相同思路：复杂代码修改由主力模型处理，摘要、分类、简单解释、变更说明和部分验证任务交给小模型，但必须通过统一评测确认任务边界。
-
-First American 的案例则说明，模型选择不能只按参数量或通用榜单排序。对于文档分类、字段抽取和固定格式转换，领域微调的小模型可能比通用大模型更容易获得稳定吞吐和成本优势。这个结论可以迁移到 Coding 平台的后台任务，但不能直接推导出 8B 模型适合复杂代码修改。
+这些案例共同说明，Coding 平台可以按任务复杂度分层：主力模型处理复杂修改，小模型承担摘要、分类和简单解释；是否拆分应由同一套任务评测和成本数据决定。
 
 来源：[Cisco Secure AI Factory 参考架构](https://www.cisco.com/)、[First American 企业 AI 案例](https://www.nvidia.com/en-us/industries/financial-services/)、[IBM Research / Red Hat / llm-d 大规模推理验证](https://research.ibm.com/)、[NVIDIA StarCoder2 Coding Assistant](https://developer.nvidia.com/)。
 
