@@ -218,23 +218,22 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   for (let index = 0; index < halves.length; index++) {
     const slice = halves[index]!;
     if (!slice.length) continue;
-    const batchText = slice.join("\n\n---\n\n");
     const batchStart = index === 0 ? 1 : middle + 1;
+    const batchText = slice.map((scene, localIndex) =>
+      `【场景 ${batchStart + localIndex}】\n${scene}`
+    ).join("\n\n---\n\n");
     const raw = await cachedCall("batch-review-" + (index + 1), "04-review-batch-" + (index + 1) + "-raw.txt", "review", [
       reviewPrompt({
         context: writingContext,
         blueprint,
         chapter: batchText,
-        sceneCount: slice.length,
+        sceneCount: input.scenes,
         sceneLabel: `第 ${index + 1} 批，场景 ${batchStart}–${batchStart + slice.length - 1}`
       })
-    ], output => parseChapterReview(output, batchText, slice.length));
-    const parsed = parseChapterReview(raw, batchText, slice.length);
+    ], output => parseChapterReview(output, batchText, input.scenes));
+    const parsed = parseChapterReview(raw, batchText, input.scenes);
     summaries.push(parsed.summary);
-    found.push(...parsed.issues.map(issue => ({
-      ...issue,
-      scenes: issue.scenes.map(scene => scene + batchStart - 1)
-    })));
+    found.push(...parsed.issues);
   }
   const seen = new Set<string>();
   const merged = found.filter(issue => {
