@@ -340,7 +340,7 @@ worlds/
 
 为续写设计新果实世界时，先阅读 [`original-fruit-world-concepts.md`](./original-fruit-world-concepts.md)。该文档包含六个项目原创候选世界，以及历史背景、经济结构、风俗民俗、日常生活、异常规律、事件入口和人物冲突。所有内容均与原著正史分开；正式使用前需对照 `world-bible.md`、`yanfu-system.md` 和 `fruit-worlds.md`，不得把工作设定误写成原著规则。
 
-## 4. 自动分析人物与故事发展
+## 自动分析人物与故事发展
 
 `analyze-story` 会读取已经导入 SQLite 的全部小说片段，直接通过项目现有 CodeBuddy Agent SDK 分批调用 LLM。它自动梳理人物小传、性格与内在矛盾、欲望和关系、可能的成长/反转方向，以及主线情节、支线、未解问题、可能伏笔和后续发展构想。
 
