@@ -22,3 +22,12 @@ test("requires at least one cited claim paragraph", () => {
   assert.equal(result.ok, false);
   assert.ok(result.issues.some(issue => issue.includes("没有找到")));
 });
+
+test("rejects substantive report paragraphs without citations", () => {
+  const result = validateEvidenceReferences(
+    "## 判断\n\n这是一段较长的分析结论，但是没有任何原文行号作为证据。",
+    ["原文"]
+  );
+  assert.equal(result.ok, false);
+  assert.ok(result.issues.some(issue => issue.includes("缺少原文行号引用")));
+});
