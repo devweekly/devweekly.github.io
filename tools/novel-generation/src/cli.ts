@@ -193,7 +193,7 @@ async function main(): Promise<void> {
       profileA: profiles.scene,
       profileB: { ...profiles.scene, thinkingMode: "adaptive", effort: "high" },
       reviewProfile: profiles.review,
-      repair: !process.argv.includes("--no-repair"),
+      repair: process.argv.includes("--repair"),
       outputDir: resolve(".output", "regression", runId),
       archiveDir: resolve("analysis", worldId, "regression", "chapter-" + String(chapterIndex).padStart(3, "0"))
     });
