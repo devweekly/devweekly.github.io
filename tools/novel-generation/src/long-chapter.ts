@@ -139,7 +139,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   try {
     scenePlans = splitScenes(blueprint, input.scenes);
   } catch (error) {
-    await saveStage(input.outputDir, "01-scene-blueprint-attempt-1.md", blueprint);
+    await saveStage(input.outputDir, "01-scene-blueprint-rejected.md", blueprint);
     blueprint = await cachedCall("blueprint-repair", "01-scene-blueprint-attempt-1.md", "plan", [
       ...blueprintPrompt,
       "上一次场景蓝图未通过程序格式校验：" + String(error),
