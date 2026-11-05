@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { databaseStatus, readStoryAnalysis, saveStoryAnalysis, syncLibraryChunks } from "../src/database.js";
 import { groupAnalysisUnits } from "../src/novel-kb.js";
+import { buildAnalysisPrompt, parseModelJson } from "../src/story-analysis.js";
 import { loadLibraryChunks } from "../src/library.js";
 
 test("story analysis batches preserve every chapter in order without splitting one", () => {
@@ -85,4 +86,24 @@ test("story analysis can load an existing JSON library index and migrate it to S
   } finally {
     await rm(root, { recursive: true, force: true });
   }
+});
+
+
+test("story analysis asks for chapter-scoped sources and preserves multiple character directions", () => {
+  const chapters = [
+    { chapterId: "V01-C001", ordinal: 1, volume: 1, title: "第一章", label: "1", text: "林岚救下同伴。", charCount: 6 },
+    { chapterId: "V01-C002", ordinal: 2, volume: 1, title: "第二章", label: "2", text: "林岚背叛旧盟友。", charCount: 8 }
+  ];
+  const prompt = buildAnalysisPrompt({ index: 0, chapters, chars: 14 });
+  assert.match(prompt, /chapterKeys/);
+  assert.match(prompt, /只列出确实能从中找到该条内容的章节 key/);
+  const parsed = parseModelJson(JSON.stringify({
+    characters: [{ name: "林岚", chapterKeys: ["V01-C001"], shortBio: "复杂人物" }],
+    developmentPossibilities: [
+      { focus: "林岚", direction: "为了救人而背叛", chapterKeys: ["V01-C001"] },
+      { focus: "林岚", direction: "为求自保而背叛", chapterKeys: ["V01-C002"] }
+    ]
+  }));
+  assert.equal(parsed.developmentPossibilities.length, 2);
+  assert.deepEqual(parsed.developmentPossibilities.map(item => item.chapterKeys), [["V01-C001"], ["V01-C002"]]);
 });
