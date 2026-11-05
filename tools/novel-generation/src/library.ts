@@ -1,5 +1,5 @@
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { basename, extname, join, resolve } from "node:path";
+import { basename, extname, join, relative, resolve } from "node:path";
 
 export interface LibraryChunk {
   id: string;
@@ -27,7 +27,7 @@ const HEADING = /^(第[〇零一二三四五六七八九十百千万0-9０-９]+
 
 function splitChapters(text: string, source: string): Array<{ title: string; text: string }> {
   const matches = [...text.matchAll(HEADING)];
-  if (matches.length < 2) return [{ title: basename(source, extname(source)), text: text.trim() }];
+  if (matches.length === 0) return [{ title: basename(source, extname(source)), text: text.trim() }];
   const chapters: Array<{ title: string; text: string }> = [];
   const first = matches[0];
   if (first && first.index !== undefined && first.index > 0) {
@@ -89,6 +89,7 @@ export async function ingestFiles(worldId: string, inputPaths: string[], library
   for (const inputPath of inputPaths) {
     const absolute = resolve(inputPath);
     const text = await readFile(absolute, "utf8");
+    const sourceKey = relative(process.cwd(), absolute).replace(/\\\\/g, "/");
     const chapters = splitChapters(text, absolute);
     for (let chapterIndex = 0; chapterIndex < chapters.length; chapterIndex++) {
       const chapter = chapters[chapterIndex];
@@ -98,8 +99,8 @@ export async function ingestFiles(worldId: string, inputPaths: string[], library
         const part = parts[i];
         if (!part) continue;
         chunks.push({
-          id: basename(absolute, extname(absolute)) + ":" + chapterIndex + ":" + i,
-          source: basename(absolute),
+          id: sourceKey + ":" + chapterIndex + ":" + i,
+          source: sourceKey,
           chapter: chapter.title,
           chunkIndex: i,
           start: part.start,
@@ -120,7 +121,8 @@ export async function ingestFiles(worldId: string, inputPaths: string[], library
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
-  const byId = new Map(existing.map(chunk => [chunk.id, chunk]));
+  const ingestedSources = new Set(chunks.map(chunk => chunk.source));
+  const byId = new Map(existing.filter(chunk => !ingestedSources.has(chunk.source)).map(chunk => [chunk.id, chunk]));
   for (const chunk of chunks) byId.set(chunk.id, chunk);
   const now = new Date().toISOString();
   const index: LibraryIndex = {
@@ -171,15 +173,19 @@ export async function searchLibrary(libraryDir: string, query: string, limit = 6
 
 export async function listTextFiles(paths: string[]): Promise<string[]> {
   const result: string[] = [];
-  for (const path of paths) {
+  const visit = async (path: string): Promise<void> => {
     const ext = extname(path).toLowerCase();
-    if ([".txt", ".md"].includes(ext)) result.push(path);
-    else {
-      const stat = await readdir(path, { withFileTypes: true });
-      for (const entry of stat) {
-        if (entry.isFile() && [".txt", ".md"].includes(extname(entry.name).toLowerCase())) result.push(join(path, entry.name));
-      }
+    if ([".txt", ".md"].includes(ext)) {
+      result.push(path);
+      return;
     }
-  }
-  return result;
+    const entries = await readdir(path, { withFileTypes: true });
+    for (const entry of entries) {
+      const child = join(path, entry.name);
+      if (entry.isDirectory()) await visit(child);
+      else if (entry.isFile() && [".txt", ".md"].includes(extname(entry.name).toLowerCase())) result.push(child);
+    }
+  };
+  for (const path of paths) await visit(path);
+  return [...new Set(result)];
 }
