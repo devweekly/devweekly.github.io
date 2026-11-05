@@ -88,6 +88,21 @@ npm run dev -- write --world conghuoniao --mode continuation \
 
 已跑通的续写成稿归档在 `worlds/conghuoniao/chapters/`，含正文、连续性审查和状态提案；该目录随代码提交，阶段文件仍留在 `.output/<world>/<run-id>/`。
 
+### 万字章节：write-long
+
+`write` 的单次正文调用适合两三千字以内的章节；一万字用 `write-long` 拆成多个场景逐场生成，避免单次输出截断：
+
+```bash
+npm run dev -- write-long --world conghuoniao --mode continuation \
+  --brief "..." --source ./private/continuation-excerpt.md \
+  --context ./private/continuity-summary.md \
+  --max-words 10000 --scenes 8 --timeout-ms 180000
+```
+
+流程：一次生成 N 场蓝图（`01-scene-blueprint.md`）→ 逐场成文（`02-scene-XX.md`，字数不足自动补写一次，场间传入上一场结尾）→ 拼接初稿（`03-draft.md`）→ 分两批连续性审查（`04-continuity-review.md`）→ 逐场对白与文风修订（`05-polish-XX.md`）→ `chapter.md`、`06-rhythm-metrics.json` 与状态提案 `07-state-update.json`。`--apply-state` 才写回正史状态。各阶段产物全部落盘，可逐场复核或重跑。
+
+文风复核见 `analysis/conghuoniao/style-rhythm.md`：原书抽样平均句长 22 字、长句 25.3%、超长句 4.7%，而成稿 `chapter-001.md` 平均 14.7 字、长句 8%、超长句 0%。量化约束已写进 `style-profile.md` 和成文、修订、审查三处提示；`06-rhythm-metrics.json` 用同一口径统计成稿，偏离就回到文风阶段。
+
 ## 6. 单次生成
 
 ```bash
@@ -119,6 +134,12 @@ npm run dev -- check-runtime --model hy4free --timeout-ms 60000
 
 SDK 用法参照 `vocal-saga/local-agent-service`：模型目录合并产品配置、本地缓存与 user/project `models.json`，`auto` 不当模型 id；`query()` 禁工具、单轮、关闭宿主设置与会话持久化；调用方逐条消息与超时竞速，超时或异常时 `interrupt()` 并停止本地消费，`result.subtype` 非 success 时把 CLI 错误抛出来，不误报成空输出。本机 CLI 收到 `--request-timeout-ms` 会直接退出，超时完全由本地控制。
 
+### 思考、推理强度与会话
+
+`thinking` 与 `effort` 已按阶段分配，取舍与参考项目 `taskProfiles.ts` 一致：判断类任务多想，成文类任务快且不被推理痕迹带偏。规划与创意发散 `adaptive/medium`，主编蓝图与连续性审查 `adaptive/high`，正文、对白、文风、终审和状态提取 `disabled/low`。`novel-generation.config.json` 的 `taskProfiles` 可逐阶段覆盖（`thinkingMode` 取 disabled/adaptive/enabled，`effort` 取 low/medium/high，另可给 `thinkingBudgetTokens`）；`npm run dev -- models` 打印当前档案。三种思考模式与推理档位都在本机 CLI 实测可用，`enabled` 才使用预算。
+
+**未引入会话池**。参考项目的 `WorkbuddySessionPool` 用 `unstable_v2_createSession` 复用 CLI 进程、按 scope 隔离、用满轮数重建，解决的是高频短文本翻译的冷启动开销；它自己也规定「需要显式思考深度或 effort 的任务改走 `query()`」。本项目一次 `write` 只有九次调用、各阶段角色不同、每轮 prompt 带全量世界设定与不同阶段产物。复用会话会让审校读到别的角色的历史、上下文随轮数膨胀，并把可复核的 `00`–`08` 阶段文件交接变成不可见的对话记忆。长章节改用**显式场景交接**：每场传入上一场原文结尾与已确认事实清单，全部落盘、可逐场重跑。将来若要摊薄冷启动，也只在同一角色的连续场景生成上做有界复用，不跨角色共享。
+
 ## 当前实现边界
 
 - 使用 `@tencent-ai/agent-sdk` 的 `query()`。默认 `deepseek-v4.1-flash`、回退 `hy4free`；目录来自 `ACC_PRODUCT_CONFIG_PATH` 或 `~/.codebuddy/local_storage/*.info`（前者解析不出模型时仍会扫缓存），再叠加 user/project `models.json`。`--model`、环境变量与配置文件可覆盖，详见第 7 节。逐条消息竞速超时并主动中断，超时、无文本或执行失败时换链中下一个模型。
@@ -146,11 +167,14 @@ src/
   agent-runtime.ts
   world-analysis.ts
   runtime-check.ts
+  task-profiles.ts
+  long-chapter.ts
 novel-generation.config.json
 analysis/
   build-corpus-index.mjs
   conghuoniao/
     analysis-report.md
+    style-rhythm.md
     chapter-index.json
     corpus-profile.json
     volumes.md
@@ -168,6 +192,8 @@ test/
   world-analysis.test.ts
   agent-runtime.test.ts
   agent-stream.test.ts
+  task-profiles.test.ts
+  long-chapter.test.ts
 worlds/
   conghuoniao/
     world-bible.md

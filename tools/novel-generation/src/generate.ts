@@ -1,5 +1,6 @@
 import { query } from "@tencent-ai/agent-sdk";
 import { buildQueryOptions, resolveAgentModel } from "./agent-runtime.js";
+import { thinkingOption, type TaskProfile } from "./task-profiles.js";
 
 export type GenerationMode = "derivative" | "continuation";
 export interface GenerateStoryInput {
@@ -68,11 +69,22 @@ export function applyAgentMessage(message: unknown, state: AgentStreamState): vo
  * 一次性调用：逐条消息与超时竞速，超时或异常时 interrupt CLI 并停止本地消费。
  * 只让 Promise.race 拒绝而不收尾，卡住的子进程会在后台继续烧额度。
  */
-async function callOnce(prompt: string, model: string, fallbackModel: string | undefined, timeoutMs: number): Promise<string> {
+async function callOnce(
+  prompt: string,
+  model: string,
+  fallbackModel: string | undefined,
+  timeoutMs: number,
+  profile?: TaskProfile
+): Promise<string> {
   const abortController = new AbortController();
   const stream = query({
     prompt,
-    options: buildQueryOptions(model, { cwd: process.cwd(), abortController, fallbackModel })
+    options: buildQueryOptions(model, {
+      cwd: process.cwd(),
+      abortController,
+      fallbackModel,
+      ...(profile ? { thinking: thinkingOption(profile), effort: profile.effort } : {})
+    })
   });
   const state: AgentStreamState = { text: "", messageCount: 0 };
   const startedAt = Date.now();
@@ -126,14 +138,14 @@ async function callOnce(prompt: string, model: string, fallbackModel: string | u
 }
 
 /** 按模型链依次调用；单个模型超时、无输出或执行失败时换下一个。 */
-export async function runAgentText(prompt: string, model?: string, timeoutMs = 120_000): Promise<string> {
+export async function runAgentText(prompt: string, model?: string, timeoutMs = 120_000, profile?: TaskProfile): Promise<string> {
   const resolved = resolveAgentModel(model);
   const attempts = [resolved.model, ...resolved.fallbacks];
   const failures: string[] = [];
   for (const candidate of attempts) {
     const fallback = attempts.find(item => item !== candidate);
     try {
-      return await callOnce(prompt, candidate, fallback, timeoutMs);
+      return await callOnce(prompt, candidate, fallback, timeoutMs, profile);
     } catch (error) {
       failures.push(`${candidate}: ${error instanceof Error ? error.message : String(error)}`);
     }

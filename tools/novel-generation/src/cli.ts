@@ -11,6 +11,8 @@ import {
   MODEL_PREFERENCE, HY4_MODEL_IDS, DEFAULT_MODEL_ID
 } from "./agent-runtime.js";
 import { checkRuntime } from "./runtime-check.js";
+import { readTaskProfiles, STAGE_KEYS } from "./task-profiles.js";
+import { writeLongChapter, chineseChars } from "./long-chapter.js";
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
@@ -37,6 +39,7 @@ function usage(): never {
     "  npm run dev -- models",
     "  npm run dev -- check-runtime [--model model] [--timeout-ms 90000]",
     "  npm run dev -- write --brief \"story direction\" [--world conghuoniao] [--mode derivative|continuation] [--source file] [--context file] [--model model] [--max-words 3000] [--apply-state]",
+    "  npm run dev -- write-long --brief \"story direction\" [--scenes 8] [--max-words 10000] [--timeout-ms 180000] [--apply-state]",
     "  npm run dev -- generate --brief \"story idea\" [--mode derivative|continuation] [--source file] [--context file] [--out file]"
   ].join("\n"));
   process.exit(2);
@@ -49,7 +52,7 @@ function safeWorldId(value: string): string {
 
 async function main(): Promise<void> {
   const command = process.argv[2];
-  if (command !== "generate" && command !== "write" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-world" && command !== "models" && command !== "check-runtime") usage();
+  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-world" && command !== "models" && command !== "check-runtime") usage();
 
   const worldId = safeWorldId(arg("--world") ?? "conghuoniao");
   const libraryDir = resolve("worlds", worldId, "library");
@@ -87,6 +90,10 @@ async function main(): Promise<void> {
     console.log("本次首选：" + resolved.model + "；回退：" + (resolved.fallbacks.join(" → ") || "无") + "；来源：" + resolved.source);
     console.log("执行环境：" + (isManagedSession() ? "IDE/Agent 托管，子进程已隔离宿主会话并自选端口" : "普通终端"));
     console.log("实际请求模型请用 npm run dev -- check-runtime 核对 CLI 日志");
+    const profiles = readTaskProfiles();
+    const summary = STAGE_KEYS.map(stage => `${stage} ${profiles[stage].thinkingMode}/${profiles[stage].effort}`).join(" · ");
+    console.log("推理档案：" + summary);
+    console.log("会话：各阶段独立 query，不复用 pool session；跨场景靠显式文本交接");
     return;
   }
 
@@ -148,6 +155,9 @@ async function main(): Promise<void> {
   let styleProfile: string | undefined;
   try { styleProfile = await readFile(resolve("worlds", worldId, "style-profile.md"), "utf8"); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  let styleRhythm: string | undefined;
+  try { styleRhythm = await readFile(resolve("analysis", worldId, "style-rhythm.md"), "utf8"); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   const model = arg("--model");
   const maxWords = Number(arg("--max-words") ?? 3000);
   if (!Number.isInteger(maxWords) || maxWords < 300 || maxWords > 20000) throw new Error("--max-words must be an integer between 300 and 20000.");
@@ -195,12 +205,37 @@ async function main(): Promise<void> {
 
     const applyState = process.argv.includes("--apply-state");
     const chapter = await writeChapter({
-      worldId, mode, brief, worldBible, styleProfile, sourceText, contextText, retrievedContext, model, maxWords,
+      worldId, mode, brief, worldBible, styleProfile, styleRhythm, sourceText, contextText, retrievedContext, model, maxWords,
       outputDir, statePath, applyState
     });
     console.log("\nSaved chapter: " + resolve(outputDir, "chapter.md"));
     console.log("State proposal: " + resolve(outputDir, "08-state-update.json"));
     console.log(applyState ? "Updated story state: " + statePath : "Story state unchanged; pass --apply-state after review.");
+    if (!chapter.trim()) throw new Error("Generated chapter is empty.");
+    return;
+  }
+
+  if (command === "write-long") {
+    const scenes = Number(arg("--scenes") ?? 8);
+    if (!Number.isInteger(scenes) || scenes < 2 || scenes > 20) throw new Error("--scenes must be an integer between 2 and 20.");
+    const timeoutMs = Number(arg("--timeout-ms") ?? 180_000);
+    if (!Number.isInteger(timeoutMs) || timeoutMs < 30_000 || timeoutMs > 600_000) {
+      throw new Error("--timeout-ms must be an integer between 30000 and 600000.");
+    }
+    const mode = (arg("--mode") ?? (sourceText ? "continuation" : "derivative")) as GenerationMode;
+    if (mode !== "derivative" && mode !== "continuation") throw new Error("Unsupported mode: " + mode);
+    if (mode === "continuation" && !sourceText) throw new Error("Continuation mode requires --source with text you provide or are authorized to use.");
+    const runId = new Date().toISOString().replace(/[:.]/g, "-");
+    const outputDir = resolve(".output", worldId, "long-" + runId);
+    const statePath = resolve("worlds", worldId, "story-state.json");
+    const chapter = await writeLongChapter({
+      worldId, mode, brief, worldBible, styleProfile, styleRhythm, sourceText, contextText, model,
+      maxWords, scenes, timeoutMs, outputDir, statePath, applyState: process.argv.includes("--apply-state")
+    });
+    console.log("\nSaved chapter: " + resolve(outputDir, "chapter.md"));
+    console.log("Scenes: " + scenes + " · Chinese characters: " + chineseChars(chapter));
+    console.log("Rhythm metrics: " + resolve(outputDir, "06-rhythm-metrics.json"));
+    console.log("State proposal: " + resolve(outputDir, "07-state-update.json"));
     if (!chapter.trim()) throw new Error("Generated chapter is empty.");
     return;
   }

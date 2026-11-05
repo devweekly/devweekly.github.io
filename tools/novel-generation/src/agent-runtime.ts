@@ -188,6 +188,8 @@ export interface QueryOptionsInput {
   cwd: string;
   abortController: AbortController;
   fallbackModel?: string;
+  thinking?: { type: "disabled" } | { type: "adaptive" } | { type: "enabled"; budgetTokens: number };
+  effort?: "low" | "medium" | "high";
 }
 
 /**
@@ -224,8 +226,8 @@ export function buildQueryOptions(model: string, input: QueryOptionsInput) {
     permissionMode: "default" as const,
     settingSources: [],
     persistSession: false,
-    thinking: { type: "disabled" as const },
-    effort: "low" as const,
+    thinking: input.thinking ?? { type: "disabled" as const },
+    effort: input.effort ?? "low" as const,
     tools: [],
     allowedTools: [],
     maxTurns: 1,
