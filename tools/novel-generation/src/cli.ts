@@ -13,7 +13,7 @@ function usage(): never {
     "Usage:",
     "  npm run dev -- write --brief \"story direction\" [--world conghuoniao] [--source file] [--context file] [--model model] [--max-words 3000]",
     "  npm run dev -- generate --brief \"story idea\" [--mode derivative|continuation] [--source file] [--context file] [--out file]"
-  ].join("\\n"));
+  ].join("\n"));
   process.exit(2);
 }
 
@@ -59,7 +59,7 @@ async function main(): Promise<void> {
   const outputPath = resolve(arg("--out") ?? ".output/" + worldId + "-" + Date.now() + ".md");
   const result = await generateStory({ brief, mode, worldId, worldBible, sourceText, contextText, model, maxWords });
   await mkdir(dirname(outputPath), { recursive: true });
-  await writeFile(outputPath, result + "\\n", "utf8");
+  await writeFile(outputPath, result + "\n", "utf8");
   console.log("\\nSaved: " + outputPath);
 }
 
