@@ -536,6 +536,15 @@ AWS 官方 EKS 推理文档已经给出从 S3 模型制品、vLLM Deployment、S
 
 这条路径的关键结果不是“在 AWS 上成功运行了一个 Docker 容器”，而是得到一份可重复的部署基线：AWS Region 和实例规格、AMI、驱动版本、容器镜像 Digest、vLLM 版本、模型 revision、Parser 版本、启动参数、质量报告、性能报告和成本数据。后续从一台 EC2 扩到 EKS 或 8-GPU 节点时，团队才能判断变化来自模型、硬件、框架还是调度层。
 
+部署时应以对应版本的官方资料为准，尤其不要把不同 vLLM release 的启动参数混用：
+
+- [AWS EC2 Accelerated Computing 实例规格](https://aws.amazon.com/ec2/instance-types/accelerated-computing/)：P5/P5en/P6 的 GPU、显存、网络和实例存储规格。
+- [AWS EKS-optimized accelerated AMI](https://docs.aws.amazon.com/eks/latest/userguide/ml-eks-optimized-ami.html)：EKS GPU 节点预装的 NVIDIA Driver、Container Toolkit 和相关组件。
+- [AWS EKS：Load and Serve Models](https://docs.aws.amazon.com/eks/latest/userguide/ml-inference-load-serve-model.html)：从模型制品到 vLLM Deployment、Service 和监控的端到端流程。
+- [NVIDIA Nemotron 3 Nano 30B A3B FP8 模型卡](https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8)：模型许可、权重、vLLM 启动参数和 reasoning/tool parser。
+- [AWS Deep Learning Containers：vLLM on EC2](https://aws.github.io/deep-learning-containers/vllm/deployment/ec2/)：使用 AWS 容器镜像在 EC2 上启动 vLLM 的示例。
+
+
 ### 5.2 推理服务 API
 
 统一 API 的工作不止是把请求转发到模型。Coding Agent 可能依赖 Chat Completions，也可能使用 Responses 一类接口；流式事件、Tool Calling、JSON Schema 输出、取消请求和错误语义都要与客户端约定一致。服务端还要返回可追踪的 Request ID、Trace ID、模型版本和 Token Usage，才能把一次 Agent 任务的模型成本与后续工具执行关联起来。
