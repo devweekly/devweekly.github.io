@@ -94,7 +94,7 @@ function tail(text: string, maxChars: number): string {
 }
 
 export async function writeLongChapter(input: LongChapterInput): Promise<string> {
-  const state = await loadRunStoryState(input.statePath, input.worldId, input.outputDir);
+  const state = await loadRunStoryState(input.statePath, input.worldId, input.outputDir, "write-long");
   const profiles = readTaskProfiles();
   await mkdir(input.outputDir, { recursive: true });
   const call = (stage: StageKey, parts: string[]): Promise<string> =>
