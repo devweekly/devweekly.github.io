@@ -1,6 +1,6 @@
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { databaseStatus, readAnnotationsByChunkIds } from "./database.js";
-import { dirname, resolve } from "node:path";
+import { basename, dirname, resolve, sep } from "node:path";
 import { generateStory, type GenerationMode } from "./generate.js";
 import { ingestFiles, listTextFiles, searchLibrary } from "./library.js";
 import { writeChapter } from "./workflow.js";
@@ -51,11 +51,26 @@ function usage(): never {
     "  npm run dev -- models",
     "  npm run dev -- check-runtime [--model model] [--timeout-ms 90000]",
     "  npm run dev -- regress --world conghuoniao --chapter 13 [--brief \"本章任务\"] [--model deepseek-v4.1-flash] [--review-model glm-5.3-flash] [--context-lines 90] [--timeout-ms 240000]",
-    "  npm run dev -- write --brief \"story direction\" [--world conghuoniao] [--mode derivative|continuation] [--source file] [--context file] [--model model] [--max-words 3000] [--strict-model] [--no-apply-state]",
-    "  npm run dev -- write-long --brief \"story direction\" [--scenes 8] [--max-words 10000] [--timeout-ms 180000] [--no-apply-state]",
+    "  npm run dev -- write --brief \"story direction\" [--world conghuoniao] [--mode derivative|continuation] [--source file] [--context file] [--model model] [--max-words 3000] [--strict-model] [--no-apply-state] [--resume-dir .output/<world>/<run-id>]",
+    "  npm run dev -- write-long --brief \"story direction\" [--scenes 8] [--max-words 10000] [--timeout-ms 180000] [--no-apply-state] [--resume-dir .output/<world>/long-<run-id>]",
     "  npm run dev -- generate --brief \"story idea\" [--mode derivative|continuation] [--source file] [--context file] [--out file]"
   ].join("\n"));
   process.exit(2);
+}
+
+function resolveRunOutputDir(worldId: string, kind: "write" | "write-long", fallback: string): string {
+  const requested = arg("--resume-dir");
+  if (!requested) return fallback;
+  const outputDir = resolve(requested);
+  const worldOutputRoot = resolve(".output", worldId) + sep;
+  if (!outputDir.startsWith(worldOutputRoot)) {
+    throw new Error("--resume-dir must point inside .output/" + worldId + ".");
+  }
+  const isLong = basename(outputDir).startsWith("long-");
+  if ((kind === "write-long") !== isLong) {
+    throw new Error("--resume-dir points to a different pipeline type.");
+  }
+  return outputDir;
 }
 
 function safeWorldId(value: string): string {
@@ -252,7 +267,7 @@ async function main(): Promise<void> {
 
   if (command === "write") {
     const runId = new Date().toISOString().replace(/[:.]/g, "-");
-    const outputDir = resolve(".output", worldId, runId);
+    const outputDir = resolveRunOutputDir(worldId, "write", resolve(".output", worldId, runId));
     const statePath = resolve("worlds", worldId, "story-state.json");
     const mode = (arg("--mode") ?? (sourceText ? "continuation" : "derivative")) as GenerationMode;
     if (mode !== "derivative" && mode !== "continuation") throw new Error("Unsupported mode: " + mode);
@@ -307,7 +322,7 @@ async function main(): Promise<void> {
     if (mode !== "derivative" && mode !== "continuation") throw new Error("Unsupported mode: " + mode);
     if (mode === "continuation" && !sourceText) throw new Error("Continuation mode requires --source with text you provide or are authorized to use.");
     const runId = new Date().toISOString().replace(/[:.]/g, "-");
-    const outputDir = resolve(".output", worldId, "long-" + runId);
+    const outputDir = resolveRunOutputDir(worldId, "write-long", resolve(".output", worldId, "long-" + runId));
     const statePath = resolve("worlds", worldId, "story-state.json");
     const retrievalLimit = Number(arg("--retrieval-limit") ?? 4);
     if (!Number.isInteger(retrievalLimit) || retrievalLimit < 1 || retrievalLimit > 12) {
