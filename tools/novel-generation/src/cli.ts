@@ -1,6 +1,6 @@
 import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { databaseStatus, readAnnotationsByChunkIds, readStoryAnalysis } from "./database.js";
-import { basename, dirname, resolve, sep } from "node:path";
+import { databaseStatus, readAnnotationsByChunkIds, readStoryAnalysis, listNovelCharacters, listNovelThreads, listNovelForeshadowings, listNovelBeats, readNovelKbMeta, novelKnowledgeOverview, exportNovelKnowledge } from "./database.js";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { generateStory, type GenerationMode } from "./generate.js";
 import { ingestFiles, listTextFiles, searchLibrary } from "./library.js";
 import { writeChapter } from "./workflow.js";
@@ -9,6 +9,8 @@ import { loadRunStoryState } from "./stage-cache.js";
 import { analyzeLibrary } from "./analysis.js";
 import { analyzeStoryCorpus } from "./story-analysis.js";
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
+import { indexNovelStructure } from "./novel-kb.js";
+import { buildVolumeArcs, listVolumeArcs } from "./story-arcs.js";
 import { prepareWorldAnalysis, collectWorldAnalysis, analysisStatus } from "./world-analysis.js";
 import {
   readModelCatalog, resolveAgentModel, isManagedSession, readConfiguredModel,
@@ -49,7 +51,10 @@ function usage(): never {
     "  npm run dev -- ingest --world conghuoniao --input ./private/novel.txt [more files or directories]",
     "  npm run dev -- search --world conghuoniao --query \"人物或事件关键词\" [--limit 8]",
     "  npm run dev -- analyze --world conghuoniao [--limit 20] [--model model]",
-    "  npm run dev -- analyze-story --world conghuoniao [--model model] [--timeout-ms 180000]",
+    "  npm run dev -- analyze-story --world conghuoniao [--model model] [--timeout-ms 180000] [--max-chars 14000] [--shard 0/4] [--merge-only]",
+    "  npm run dev -- index-story --world conghuoniao [--catalog analysis/conghuoniao/chapter-index.json]",
+    "  npm run dev -- analyze-arcs --world conghuoniao [--model model] [--force]",
+    "  npm run dev -- story-kb --world conghuoniao [--type overview|arcs|characters|threads|foreshadowings|beats|export] [--query 关键词] [--status 状态] [--from 1] [--to 100] [--limit 50]",
     "  npm run dev -- analyze-world --world conghuoniao --phase prepare|status|collect [--source original.txt] [--model model] [--timeout-ms 90000]",
     "  npm run dev -- db-status --world conghuoniao",
     "  npm run dev -- models",
@@ -84,7 +89,7 @@ function safeWorldId(value: string): string {
 
 async function main(): Promise<void> {
   const command = process.argv[2];
-  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-story" && command !== "analyze-world" && command !== "models" && command !== "check-runtime" && command !== "db-status") usage();
+  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-story" && command !== "index-story" && command !== "story-kb" && command !== "analyze-arcs" && command !== "analyze-world" && command !== "models" && command !== "check-runtime" && command !== "db-status") usage();
 
   const worldId = safeWorldId(arg("--world") ?? "conghuoniao");
   const libraryDir = resolve("worlds", worldId, "library");
@@ -95,6 +100,48 @@ async function main(): Promise<void> {
     await searchLibrary(libraryDir, "__sqlite_migration_probe__", 1);
     readAnnotationsByChunkIds(worldDir, worldId, ["__sqlite_migration_probe__"]);
     console.log(JSON.stringify(databaseStatus(worldDir, worldId), null, 2));
+    return;
+  }
+
+  if (command === "index-story") {
+    const worldDir = resolve("worlds", worldId);
+    await loadStoryState(resolve(worldDir, "story-state.json"), worldId);
+    const result = await indexNovelStructure(worldId, { worldDir, catalogPath: arg("--catalog") });
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  if (command === "analyze-arcs") {
+    const worldDir = resolve("worlds", worldId);
+    await loadStoryState(resolve(worldDir, "story-state.json"), worldId);
+    const result = await buildVolumeArcs(worldId, {
+      worldDir, model: arg("--model"),
+      timeoutMs: Number(arg("--timeout-ms") ?? 180_000),
+      force: process.argv.includes("--force")
+    });
+    console.log(JSON.stringify({ volumes: result.arcs.length, generated: result.generated, cached: result.cached }, null, 2));
+    return;
+  }
+
+  if (command === "story-kb") {
+    const worldDir = resolve("worlds", worldId);
+    const type = arg("--type") ?? "characters";
+    const limit = Number(arg("--limit") ?? 50);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 2000) throw new Error("--limit must be between 1 and 2000.");
+    if (type === "export") {
+      const out = resolve(arg("--out") ?? join("worlds", worldId, "story-kb.json"));
+      const snapshot = exportNovelKnowledge(worldDir, worldId);
+      await mkdir(dirname(out), { recursive: true });
+      await writeFile(out, JSON.stringify(snapshot) + "\n", "utf8");
+      console.log(JSON.stringify({ out, characters: snapshot.characters.length, threads: snapshot.threads.length, foreshadowings: snapshot.foreshadowings.length, beats: snapshot.beats.length, arcs: snapshot.arcs.length }, null, 2));
+    }
+    else if (type === "overview") console.log(JSON.stringify(novelKnowledgeOverview(worldDir, worldId), null, 2));
+    else if (type === "arcs") console.log(JSON.stringify({ arcs: listVolumeArcs(worldDir, worldId) }, null, 2));
+    else if (type === "characters") console.log(JSON.stringify({ meta: readNovelKbMeta(worldDir, worldId), characters: listNovelCharacters(worldDir, worldId, { query: arg("--query"), limit }) }, null, 2));
+    else if (type === "threads") console.log(JSON.stringify({ threads: listNovelThreads(worldDir, worldId, { limit, status: arg("--status"), query: arg("--query") }) }, null, 2));
+    else if (type === "foreshadowings") console.log(JSON.stringify({ foreshadowings: listNovelForeshadowings(worldDir, worldId, { limit, status: arg("--status"), query: arg("--query") }) }, null, 2));
+    else if (type === "beats") console.log(JSON.stringify({ beats: listNovelBeats(worldDir, worldId, { from: Number(arg("--from") ?? 0), to: Number(arg("--to") ?? 9999), limit }) }, null, 2));
+    else throw new Error("--type must be overview, arcs, characters, threads, foreshadowings, beats or export.");
     return;
   }
 
@@ -246,18 +293,39 @@ async function main(): Promise<void> {
     if (!Number.isInteger(timeoutMs) || timeoutMs < 30_000 || timeoutMs > 600_000) {
       throw new Error("--timeout-ms must be between 30000 and 600000.");
     }
-    const result = await analyzeStoryCorpus(worldId, { model: arg("--model"), timeoutMs, worldDir: resolve("worlds", worldId) });
+    const shardArg = arg("--shard");
+    let shard: { index: number; count: number } | undefined;
+    if (shardArg) {
+      const match = shardArg.match(/^(\d+)\/(\d+)$/);
+      if (!match) throw new Error("--shard must look like 0/4.");
+      shard = { index: Number(match[1]), count: Number(match[2]) };
+    }
+    const result = await analyzeStoryCorpus(worldId, {
+      model: arg("--model"), timeoutMs, shard,
+      mergeOnly: process.argv.includes("--merge-only"),
+      limit: arg("--limit") ? Number(arg("--limit")) : undefined,
+      maxChars: Number(arg("--max-chars") ?? 14_000),
+      worldDir: resolve("worlds", worldId),
+      catalogPath: arg("--catalog")
+    });
+    const snapshot = result.snapshot;
     console.log(JSON.stringify({
-      worldId: result.worldId,
-      sourceHash: result.sourceHash,
-      analyzedAt: result.analyzedAt,
-      complete: result.complete,
       batches: result.batches,
-      characters: result.characters.length,
-      plotThreads: result.plotThreads.length,
-      foreshadowings: result.foreshadowings.length,
-      developmentPossibilities: result.developmentPossibilities.length,
-      database: resolve("worlds", worldId, "novel.db")
+      processed: result.processed,
+      cached: result.cached,
+      failed: result.failed,
+      pending: result.pending,
+      skipped: result.skipped,
+      ...(snapshot ? {
+        worldId: snapshot.worldId,
+        analyzedAt: snapshot.analyzedAt,
+        characters: snapshot.characters.length,
+        plotThreads: snapshot.plotThreads.length,
+        foreshadowings: snapshot.foreshadowings.length,
+        beats: (snapshot as { beats?: unknown[] }).beats?.length ?? 0,
+        malformedBeats: result.malformedBeats,
+        database: resolve("worlds", worldId, "novel.db")
+      } : {})
     }, null, 2));
     return;
   }

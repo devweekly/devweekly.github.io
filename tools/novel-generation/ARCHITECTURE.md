@@ -23,7 +23,7 @@
 **数据与生成边界**
 
 - 输入侧：创作任务、续写起点、前情摘要、世界设定、风格资料。
-- 记忆侧：SQLite 故事状态、原文分块索引、人物/事件/关系证据标注。
+- 记忆侧：SQLite 故事状态、原文分块索引、人物/事件/关系证据标注、成书知识库。
 - 编排侧：CLI、Agent 调用层、普通章节与多场景章节工作流。
 - 质量侧：结构化审查、证据校验、有限修复和最终复查。
 - 持久化侧：最终章节、质量报告、状态快照和阶段恢复 manifest。
@@ -40,6 +40,7 @@
 | 证据抽取 | `src/analysis.ts`、`src/entity-registry.ts` | 抽取人物/事件/关系候选，校验原文证据，维护显式别名与共指 |
 | 世界设定 | `worlds/<world>/world-bible.md` 等 | 保存世界规则、人物和时间线的可读参考；不能把人物推断升级成正史 |
 | 章节状态 | `src/story-state.ts`、`src/database.ts` | SQLite 权威存储；JSON 为兼容快照；状态按人物/事件/情节线 ID 合并；人物 arcMilestones 按 ID 追加并验证正文证据 |
+| 成书知识库 | `src/novel-kb.ts`、`src/story-analysis.ts` | 章目录映射、去重叠重建章节文本、人物出场统计；分片调用模型抽取人物/情节/伏笔/章级事件，合并后写 `novel_*` 表 |
 | 普通章节流水线 | `src/workflow.ts` | 主线与创意并行、主编规划、正文、对白、文风、连续性审查、终审、状态提取 |
 | 万字章节流水线 | `src/long-chapter.ts` | 场景蓝图、逐场检索与生成、场间上下文交接、分批审查、逐场修订、状态提取 |
 | 质量回归 | `src/regression.ts`、`scripts/compare-models.mjs` | 节奏量化、候选盲评和模型对照；不属于每次正式续写的人工审批步骤 |
@@ -189,20 +190,27 @@
 
 ## 8. 全文人物与情节分析（CodeBuddy SDK）
 
-`analyze-story` 是对已导入语料的自动分析命令，不是写作门禁，也不参与章节是否通过的判定。它从 SQLite 读取全部索引片段；若 SQLite 尚未迁移，则从现有 `library/index.json` 载入并同步到 SQLite，按上下文长度分批调用现有 `runAgentText`（底层为 `@tencent-ai/agent-sdk`），提取并跨批次合并：
+`analyze-story` 是对已导入语料的自动分析命令，不是写作门禁，也不参与章节是否通过的判定。分析单元是**章**：`novel-kb.ts` 先按 `analysis/<world>/chapter-index.json` 的行号顺序把检索片段映射回 753 章，再逐章去掉检索用的 160 字重叠，按约 14,000 字装箱；一章不跨批拆开。随后调用现有 `runAgentText`（底层为 `@tencent-ai/agent-sdk`），提取并跨批次合并：
 
 - 人物小传、故事作用、性格特点、欲望、矛盾、关系、说话气质、文本中已呈现的变化，以及可能的成长和转变方向；
 - 主线与重要支线、关键转折、未解决的问题；
-- 可能的伏笔、首次出现位置、不同解释和可能回收方式；
+- 可能的伏笔、首次出现位置、不同解释、回收状态；
+- 章级事件（谁做了什么、结果如何）；
+- 人物之间的具体关系（师徒、表面盟友、互相利用等）；
 - 值得探索的后续发展与意外方向。
 
-每项附带其分析批次的来源 chunk ID、文件和章节，代表上下文来源范围，不表示批次内每个片段都直接支持该项。原文呈现、人物推断和创作可能性必须分开；不确定性可以保留，不要求所有人物都有弧光，不要求所有细节都是伏笔，也不把任何可能性写成必须兑现的剧情合同。
+提示词给每章标注 `chapterKey`（如 `V11-C045`），模型返回的 `beats[].chapterKey` 必须命中该集合，写入时用于对齐 `novel_chapters`；出处因此是「第几卷第几章」，不再依赖片段 ID。原文呈现、人物推断和创作可能性必须分开；不确定性可以保留，不要求所有人物都有弧光，不要求所有细节都是伏笔，也不把任何可能性写成必须兑现的剧情合同。
 
-每批结果缓存到 `.output/<world>/story-analysis/<cache-key>/`，按语料内容和模型生成指纹，中断后重新运行可复用已完成批次。全部批次成功后才通过 `saveStoryAnalysis` 一次性替换 SQLite 中的完整分析快照。失败时不覆盖上一次完整快照。该快照是可重建的创作参考，不是正史，也不直接修改 `story_state` 中的角色状态或情节状态。运行命令：
+每批结果缓存到 `.output/<world>/story-analysis/<cache-key>/`，按语料内容和模型生成指纹，中断后重新运行可复用已完成批次。`--shard i/n` 让多个进程各跑一片、各写各的缓存文件；`--merge-only` 在缓存齐全后合并。合并时才写库：`story_analysis` 留完整快照供写作上下文筛选，`novel_characters`、`novel_plot_threads`、`novel_foreshadowings`、`novel_beats`、`novel_relations` 存规范化结果。单批失败记录后继续，失败批次不写缓存；有失败时不合并，避免半成品覆盖上一次完整快照。该快照是可重建的创作参考，不是正史，也不直接修改 `story_state` 中的角色状态或情节状态。运行命令：
 
 ```bash
-npm run dev -- analyze-story --world conghuoniao
+npm run dev -- index-story  --world conghuoniao                 # 结构与人名统计，不走模型
+npm run dev -- analyze-story --world conghuoniao --shard 0/4    # 全书分片分析
+npm run dev -- analyze-story --world conghuoniao --merge-only   # 合并入库
+npm run dev -- story-kb     --world conghuoniao --type characters
 ```
+
+人物跨批归并按姓名与别名做连通：某批把「小刀」标成「查小刀」的别名时，两条记录落到同一行；姓名不像中文人名（含虚词、泛称、超长短语）的条目直接丢弃。章级事件按 `chapterKey + 摘要` 去重；情节线与伏笔状态归一化，便于按状态查询。
 
 **文学性、文笔、艺术风格，高于其他一切！** 分析质量、字段齐全、证据数量、情节闭环和数据库结构都不能成为牺牲小说表达的理由。
 

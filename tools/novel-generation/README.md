@@ -242,6 +242,26 @@ node scripts/compare-models.mjs \
 npm run dev -- db-status --world conghuoniao
 ```
 
+schema v3 增加一组 `novel_*` 表，用来存放**成书知识库**，与写作状态（`characters`、`story_state`、`story_events`）分开：`novel_chapters`（753 章的卷序、行号、字数）、`novel_characters`、`novel_mentions`（人物×章出场次数）、`novel_plot_threads`、`novel_foreshadowings`、`novel_beats`（章级事件）、`novel_relations`。写作状态描述「这一章之后接下来怎么写」，`novel_*` 描述「全书已经写了什么」，两者不互相覆盖。
+
+```bash
+npm run dev -- index-story  --world conghuoniao        # 章节结构 + 人物出场统计（不调用模型）
+npm run dev -- analyze-arcs --world conghuoniao        # 卷级主线梗概（依赖章级事件）
+npm run dev -- story-kb     --world conghuoniao --type overview
+npm run dev -- story-kb     --world conghuoniao --type characters --query 李阎
+npm run dev -- story-kb     --world conghuoniao --type threads --status 进行中
+npm run dev -- story-kb     --world conghuoniao --type foreshadowings --status 已回收
+npm run dev -- story-kb     --world conghuoniao --type beats --from 1 --to 60
+npm run dev -- story-kb     --world conghuoniao --type arcs
+npm run dev -- story-kb     --world conghuoniao --type export   # 导出不含原文的快照
+```
+
+当前 `conghuoniao` 库的规模：753 章、544 人（6,403 条人物×章出场记录）、1,314 条章级事件（覆盖 738/753 章）、862 条局部情节线、1,535 条伏笔线索、1,649 条人物关系、17 篇卷级梗概。
+
+`novel.db` 里 `library_chunks` 含原文全文，因此数据库本身按 27MB 二进制留在本地不提交；`story-kb --type export` 写出的 `worlds/<world>/story-kb.json` 不含原文，可随仓库保存，换机器后不必重跑 196 次模型调用。
+
+`index-story` 按 `analysis/<world>/chapter-index.json` 的行号顺序把 2,594 个检索片段映射回 753 章。检索片段之间带约 160 字重叠（为检索保留上下文），统计和送模型前会先去重，否则人物出现次数会虚高约 12%。
+
 SQLite 文件及 WAL/SHM sidecar 已加入本地忽略规则。需要迁移或重建时先保留 JSON 快照，再删除数据库；下一次运行会从快照重新导入。
 
 ## 目录
@@ -262,6 +282,10 @@ src/
   long-chapter.ts
   regression.ts
   rhythm.ts
+  database.ts
+  novel-kb.ts
+  story-analysis.ts
+  story-analysis-context.ts
 novel-generation.config.json
 analysis/
   build-corpus-index.mjs
@@ -342,15 +366,22 @@ worlds/
 
 ## 9. 自动分析人物与故事发展
 
-`analyze-story` 会读取已经导入 SQLite 的全部小说片段，直接通过项目现有 CodeBuddy Agent SDK 分批调用 LLM。它自动梳理人物小传、故事作用、性格与内在矛盾、欲望和关系、文本中已呈现的变化及可能的成长/反转方向，以及主线情节、支线、未解问题、可能伏笔和后续发展构想。
+`analyze-story` 会读取已经导入 SQLite 的全部小说片段，直接通过项目现有 CodeBuddy Agent SDK 分批调用 LLM。它自动梳理人物小传、故事作用、性格与内在矛盾、欲望和关系、文本中已呈现的变化及可能的成长/反转方向，以及主线情节、支线、未解问题、可能伏笔、章级事件和后续发展构想。
 
 ```bash
 npm run dev -- analyze-story --world conghuoniao
 npm run dev -- analyze-story --world conghuoniao --model <model-name> --timeout-ms 180000
+npm run dev -- analyze-story --world conghuoniao --limit 1          # 冒烟：只跑第一批，不合并
+npm run dev -- analyze-story --world conghuoniao --shard 0/4        # 并发分片
+npm run dev -- analyze-story --world conghuoniao --merge-only       # 全部缓存齐后合并入库
 npm run dev -- db-status --world conghuoniao
 ```
 
-分析按约 14,000 字符分批处理，每批结果会缓存到 `.output/<world>/story-analysis/<cache-key>/`，中断后重新运行可跳过已完成批次；全部批次成功后才整体写入 `worlds/<world>/novel.db` 的 `story_analysis` 快照；中途失败不会用半成品覆盖上一次完整结果。每项分析附带其分析批次的来源片段 ID、文件和章节，便于回到原文核对；这是上下文来源范围，不表示批次内每个片段都直接支持该项。重复运行会基于当前索引重新生成完整快照。
+分析单元是**章**，不是检索片段：每章文本先去重叠，再按约 14,000 字装箱，一章不跨批拆开。提示词用 `chapterKey`（如 `V11-C045`）标注每章，模型返回的章级事件必须带上同一个 key，写入时用它对齐 `novel_chapters`，出处因此是「第几卷第几章」而不是片段 ID。全书约 196 批。
+
+每批结果缓存到 `.output/<world>/story-analysis/<cache-key>/`，中断后重跑会跳过已完成批次；`--shard i/n` 让多个进程各跑一片，互不写同一文件。全部批次成功后才合并写入 `worlds/<world>/novel.db`：`story_analysis` 保留完整快照供写作上下文检索，`novel_characters`、`novel_plot_threads`、`novel_foreshadowings`、`novel_beats`、`novel_relations` 存规范化结果供查询。中途失败不会用半成品覆盖上一次完整结果；单批失败会记录并继续，其余批次仍会入缓存。
+
+跨批合并按姓名与别名归并人物（`查小刀` / `小刀` 落到同一行），姓名不合中文人名形态（含「的了是在」等虚词、泛称、超长短语）的条目会被丢弃。章级事件按 `chapterKey + 摘要` 去重；情节线与伏笔的 `status` 归一为「进行中 / 已收束 / 悬置」和「埋设 / 已回收 / 未判断」，便于按状态查询。每项分析附带其来源章的键，便于回到原文核对；这是上下文来源范围，不表示批内每章都直接支持该项。
 
 分析不是文学审判。人物小传不是性格定型，成长方向不是人物必须完成的弧光，伏笔也可能只是偶然细节；后续发展建议可以互相矛盾、出人意料，且明确标记为创作可能性。**文学性、文笔、艺术风格，高于其他一切！** 不得为了让数据库条目完整或让情节分析自洽而牺牲小说本身。
 

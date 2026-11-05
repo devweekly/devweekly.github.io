@@ -5,19 +5,21 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { databaseStatus, readStoryAnalysis, saveStoryAnalysis, syncLibraryChunks } from "../src/database.js";
-import { groupAnalysisBatches } from "../src/story-analysis.js";
+import { groupAnalysisUnits } from "../src/novel-kb.js";
 import { loadLibraryChunks } from "../src/library.js";
 
-test("story analysis batches preserve every indexed chunk in order", () => {
-  const chunks = [0, 1, 2].map(index => ({
-    id: "source:0:" + index, source: "source.txt", chapter: "第1章",
-    chunkIndex: index, start: index * 1200, end: (index + 1) * 1200,
-    text: "字".repeat(1200), sourceHash: "a".repeat(64), chapterStart: 0
+test("story analysis batches preserve every chapter in order without splitting one", () => {
+  const units = [0, 1, 2].map(index => ({
+    chapterId: "V01-C00" + index, ordinal: index + 1, volume: 1,
+    title: "第" + (index + 1) + "章", label: String(index + 1),
+    text: "字".repeat(1200), charCount: 1200
   }));
-  const batches = groupAnalysisBatches(chunks, 2500);
+  const batches = groupAnalysisUnits(units, 2500);
   assert.equal(batches.length, 2);
-  assert.deepEqual(batches.flatMap(batch => batch.chunks.map(chunk => chunk.id)), chunks.map(chunk => chunk.id));
-  assert.ok(batches.every(batch => batch.chars <= 2500));
+  assert.deepEqual(batches.flat().map(unit => unit.chapterId), units.map(unit => unit.chapterId));
+  assert.ok(batches.every(batch => batch.reduce((sum, unit) => sum + unit.charCount, 0) <= 2500));
+  const oversized = groupAnalysisUnits([{ ...units[0] as typeof units[0], charCount: 9000, text: "字".repeat(9000) }], 2500);
+  assert.equal(oversized.length, 1, "a chapter longer than the budget must stay in one piece");
 });
 
 test("story analysis snapshot is persisted and replaced atomically as one database record", async () => {
@@ -57,7 +59,7 @@ test("version 1 world databases upgrade to include story analysis storage", asyn
     db.exec("PRAGMA user_version=1");
     db.close();
     const status = databaseStatus(worldDir, "test-world");
-    assert.equal(status.schemaVersion, 2);
+    assert.equal(status.schemaVersion, 3);
     assert.equal(status.storyAnalysis, 0);
   } finally {
     await rm(root, { recursive: true, force: true });
