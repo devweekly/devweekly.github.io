@@ -3,7 +3,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseStoryStateUpdate, saveStoryState } from "./story-state.js";
-import type { StoryState } from "./story-state.js";
+
 import { runAgentText, type GenerationMode } from "./generate.js";
 import { readTaskProfiles, type StageKey } from "./task-profiles.js";
 import { RHYTHM_RULE, mergeStoryState } from "./workflow.js";
