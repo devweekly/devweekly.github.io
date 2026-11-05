@@ -1610,6 +1610,57 @@ Workbench 控制面不能依赖 GPU 节点存活。GPU Pool 故障时，Session�
 
 来源：[GitHub Changelog：Kimi K3 is now available in GitHub Copilot](https://github.blog/changelog/2026-08-06-kimi-k3-is-now-available-in-github-copilot/)。
 
+#### 欧洲与美国的自托管案例：真实主力模型是什么
+
+Kimi 的 H200 / B300 部署案例提供了本方案的直接技术参照，但企业选型不能只看同一模型家族。欧洲和美国已经公开的部署案例，呈现出几条不同路线：欧洲的 Coding 自托管实验更愿意采用 GLM、DeepSeek 或 Mistral；美国公开的企业 AI 平台案例中，Llama 家族较常见，同时也能看到 NVIDIA Nemotron、Gemma 等模型承担专门任务。需要注意，公开案例数量有限，且披露程度差异很大，以下只能说明已公开案例的采用情况，不能据此推断整个欧美市场的模型份额。
+
+**欧洲：Coding 场景中，GLM、DeepSeek 和 Mistral 都有实际采用证据。**
+
+| 企业 / 项目 | 部署方式与模型 | 已披露的规模或结果 | 对本方案的参考价值 |
+| --- | --- | --- | --- |
+| Revolut | 自托管 GLM，早期使用 Gemini，随后采用 Claude Code，再转向自托管模型 | NVIDIA GTC Berlin 2026 演讲称覆盖约 2,000 名工程师；第三方整理披露 56×B200，并报告 lead time 改善约 70%、coding time 改善约 60% | 这是目前较接近大规模企业 Coding 自托管的公开案例。它说明自托管可以与 Claude 等托管模型并存，而不是必须完全替代；但 GLM 不属于本文的模型候选范围 |
+| Parity Technologies | 由工程团队运行 DeepSeek V4 Flash 推理服务 | 约 25 名工程师参与，2026-08-16 至 2026-09-12 处理超过 144,000 次请求、约 12.9B tokens，GPU 计算费用约 $1,200；反馈总体可用，但部分用户认为能力只是勉强够用 | 适合作为小团队自托管的成本与体验观察，不应将其视为 2,000 人规模的生产容量证明；DeepSeek 不属于本文候选范围 |
+| Abanca（西班牙） | 企业自托管 Mistral Codestral | Mistral 公布了 fully self-hosted 企业采用信息，但没有披露 GPU 数量、并发或完整成本 | 可作为银行业代码模型私有部署的采用证据，不能据此推导 H200/B300 的容量 |
+| SNCF（法国） | 使用 Codestral 支持遗留 Java 系统现代化及 Agentic Workflow | 公开材料确认企业应用方向，未披露底层 GPU 集群规模和生产负载 | 说明 Coding 模型的价值不只在 IDE 补全，也可以进入大型遗留系统改造流程 |
+| Capgemini | 在多个行业客户交付中使用 Mistral Coding Stack | 公开材料未给出统一模型版本、GPU 规模或单一客户的量化结果 | 属于系统集成和企业交付层面的采用证据，不能等同于某个客户已经自建大规模 GPU 集群 |
+
+Revolut 的 2,000 名工程师案例尤其值得关注，但公开信息需要分层阅读：NVIDIA GTC 演讲是一手采用信息；56×B200、GLM-5.3、约 $0.30 / 百万 Token 及成本下降幅度等更细节数据来自第三方整理，不应把这些数字当成经过审计的企业财务数据。演讲还提到 Claude Code/Codex 继续用于较难任务，这与本文建议的“自托管主力池 + 托管前沿模型兜底”路线相符。
+
+来源：[NVIDIA GTC Berlin：Revolut 的 AI Coding 工程实践](https://www.nvidia.com/gtc/)、[Revolut 部署细节整理](https://www.latent.space/)、[Parity Technologies：DeepSeek V4 Flash 内部使用报告](https://www.parity.io/)、[Mistral 企业客户案例](https://mistral.ai/customers)。
+
+**英国及欧洲的非 Coding 企业 AI：Llama 也进入受监管环境。**
+
+英国 OneAdvanced 公布了基于 AWS UK sovereign cloud 的企业 AI 方案，自托管 Llama 4 Maverick，并使用 Llama Guard 4 做安全防护。其 Agent 方案采用 Strands Agents SDK，公开材料提到 50 多个专用 Agent；RAG 数据层使用 Aurora PostgreSQL 与 pgvector，工具执行运行在 ECS。采用自托管的核心原因是数据必须留在英国的受控环境中。该案例没有披露 GPU 型号、GPU 数量、并发或模型服务成本，因此它证明的是数据驻留约束下的部署路径，而不是某种 GPU 配置的性能。
+
+来源：[AWS：OneAdvanced customer story](https://aws.amazon.com/solutions/case-studies/)。
+
+**美国：Llama 是公开企业方案中较常见的基础模型，其他模型通常承担专门角色。**
+
+| 企业 / 项目 | 模型与 GPU 配置 | 工作负载 | 应如何解读 |
+| --- | --- | --- | --- |
+| Cisco Secure AI Factory | 每个 worker 使用 4×NVIDIA RTX PRO 6000 Blackwell；Llama 3.1 70B Instruct 承担主要 RAG 任务，Llama 3.1 8B 与 Nemotron Nano 12B 用于轻量任务，Gemma 3 4B 用于独立 AI Defense 集群中的 guardrail | 企业知识检索、轻量任务和安全防护 | 这是清晰的模型分层和资源隔离参考架构，但不是 Cisco 数千名开发者使用的 Coding Agent 生产披露 |
+| First American | 40×A100，微调 Llama 3.1 8B | 房地产文档处理，目标约每日 100 万份文档；公开材料报告约 695 documents/min | 不是 Coding 案例，但说明 8B 级小模型经过领域适配后，可以承担高吞吐、边界明确的后台任务 |
+| IBM Research、Red Hat 与 llm-d 技术验证 | GLM-5.2，544×H100 | 分布式推理和 Coding Agent 并发测试；公开报告最高约 3,000 个并发 Coding Agent、峰值约 6.6M output tokens/min | 这是大规模 serving 技术验证，不是某家企业已经部署 3,000 个开发者的生产平台；GLM 不属于本文候选范围 |
+| NVIDIA StarCoder2 示例 | StarCoder2-7B，配合 NVIDIA NIM 与 NeMo Guardrails，可部署于 L4、L40S、A100、H100 或 H200 | 代码补全、受控代码助手、CI 依赖验证和提交追踪 | 可作为小型、范围明确的 Coding Assistant 参考实现，不应与复杂多步 Agent 的主力模型混为一谈 |
+
+Cisco 的案例有一个值得借鉴的设计：不是让一个大模型处理所有事情，而是按任务复杂度和安全职责分配模型。70B 模型承担主要知识检索，8B 和 12B 模型处理轻量工作，独立 guardrail 模型负责安全检查。企业 Coding 平台也可以采用相同思路：复杂代码修改由主力模型处理，摘要、分类、简单解释、变更说明和部分验证任务交给小模型，但必须通过统一评测确认任务边界。
+
+First American 的案例则说明，模型选择不能只按参数量或通用榜单排序。对于文档分类、字段抽取和固定格式转换，领域微调的小模型可能比通用大模型更容易获得稳定吞吐和成本优势。这个结论可以迁移到 Coding 平台的后台任务，但不能直接推导出 8B 模型适合复杂代码修改。
+
+来源：[Cisco Secure AI Factory 参考架构](https://www.cisco.com/)、[First American 企业 AI 案例](https://www.nvidia.com/en-us/industries/financial-services/)、[IBM Research / Red Hat / llm-d 大规模推理验证](https://research.ibm.com/)、[NVIDIA StarCoder2 Coding Assistant](https://developer.nvidia.com/)。
+
+**北美其他自托管案例的补充观察。** 加拿大 Wealthsimple 曾在 VPC 内使用自托管 Llama 2、Mistral 和 Whisper，以减少个人信息离开内部基础设施的风险。这是较早期的隐私优先部署案例，不能代表其当前模型版本或最新生产架构。Tinfoil 的隐私推理平台也披露过 Llama 3.3 70B 的大规模使用情况，但这属于服务商自身平台的使用数据，不等于某个终端企业在自有 GPU 上部署。两者可以作为“数据边界驱动自托管”的补充证据，不宜用于推算企业 Coding 平台容量。
+
+来源：[Wealthsimple 工程实践](https://www.wealthsimple.com/en-ca/)、[Tinfoil Llama 部署案例](https://tinfoil.sh/)。
+
+**这些案例对本方案意味着什么。**
+
+第一，欧美企业并没有一个统一的“主力模型”。Coding 场景公开案例中，Revolut 和 Parity 分别采用 GLM、DeepSeek，Mistral 则有 Abanca、SNCF 等企业采用证据；通用企业 AI 和 RAG 场景中，Llama 更常出现在公开参考架构与客户案例里。不同任务、数据驻留要求、推理预算和工程团队能力，会形成不同模型组合。
+
+第二，必须区分“企业采用模型”“企业自托管模型”和“披露了 GPU 生产规模”这三个证据等级。Mistral 客户案例证明企业采用，不代表公开了 GPU 集群；Cisco 的架构证明模型分层方式，不代表其已作为 Coding 平台服务数千名开发者；IBM/Red Hat 的 544×H100 数据是技术验证，不是客户生产容量。采购决策不能把这些不同性质的数据放在同一张性能对比表里。
+
+第三，本文的中国模型候选约束不变：**中国模型只保留 Kimi**。因此，Revolut 的 GLM、Parity 的 DeepSeek，以及其他案例中出现的 Qwen 等模型，只作为行业部署事实，不进入本方案 POC 或推荐列表。欧美非中国模型中，Llama 可作为通用 RAG / 轻量任务基线，Mistral Devstral 作为 Coding 专项对照，NVIDIA Nemotron 作为 NVIDIA 生态专项对照；但这些模型是否适合复杂 Coding Agent，仍需使用同一套真实仓库任务验证。主力方案仍以 Kimi K2.6 的 H200 POC 为起点，Kimi K3 单独进入 B300 / GB300 高规格验证，Claude Sonnet / Opus 保留为托管质量基线和兜底。
+
 #### 选型结论与验证顺序
 
 基于目前能查到的公开证据，建议按以下顺序推进：
