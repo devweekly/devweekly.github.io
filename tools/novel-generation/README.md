@@ -11,9 +11,10 @@ cd tools/novel-generation
 npm install
 npm run typecheck
 
-npm run dev -- write --world conghuoniao \
-  --brief "从当前故事位置展开一条新的调查线，逐步引出冲突" \
-  --context ./private/continuity-summary.md \
+npm run dev -- write --world conghuoniao --mode continuation \\
+  --brief "从上一章结尾继续，展开一条新的调查线" \\
+  --source ./private/authorized-excerpt.md \\
+  --context ./private/continuity-summary.md \\
   --max-words 3500
 ```
 
