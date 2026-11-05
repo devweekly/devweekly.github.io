@@ -4,6 +4,7 @@ import { generateStory, type GenerationMode } from "./generate.js";
 import { ingestFiles, listTextFiles, searchLibrary } from "./library.js";
 import { writeChapter } from "./workflow.js";
 import { loadStoryState } from "./story-state.js";
+import { analyzeLibrary } from "./analysis.js";
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
@@ -38,7 +39,7 @@ function safeWorldId(value: string): string {
 
 async function main(): Promise<void> {
   const command = process.argv[2];
-  if (command !== "generate" && command !== "write" && command !== "ingest" && command !== "search") usage();
+  if (command !== "generate" && command !== "write" && command !== "ingest" && command !== "search" && command !== "analyze") usage();
 
   const worldId = safeWorldId(arg("--world") ?? "conghuoniao");
   const libraryDir = resolve("worlds", worldId, "library");
@@ -51,6 +52,17 @@ async function main(): Promise<void> {
     const count = await ingestFiles(worldId, files, libraryDir);
     console.log("Indexed " + count + " text chunks from " + files.length + " file(s).");
     console.log("Library: " + libraryDir);
+    return;
+  }
+
+  if (command === "analyze") {
+    const limit = Number(arg("--limit") ?? 20);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("--limit must be between 1 and 100.");
+    const result = await analyzeLibrary(libraryDir, worldId, limit, arg("--model"));
+    console.log("Analyzed chunks: " + result.processed);
+    console.log("Failed chunks: " + result.failed);
+    console.log("Remaining chunks: " + result.remaining);
+    console.log("Annotations: " + resolve(libraryDir, "annotations.json"));
     return;
   }
 
@@ -101,6 +113,15 @@ async function main(): Promise<void> {
       ...state.characters.slice(0, 12).map(character => character.name)
     ].join("\n");
     const retrieved = await searchLibrary(libraryDir, retrievalQuery, retrievalLimit);
+    let annotationsByChunk = new Map<string, { entities?: unknown[]; events?: unknown[]; relations?: unknown[] }>();
+    try {
+      const annotationStore = JSON.parse(await readFile(resolve(libraryDir, "annotations.json"), "utf8")) as {
+        annotations?: Array<{ chunkId: string; entities?: unknown[]; events?: unknown[]; relations?: unknown[] }>;
+      };
+      annotationsByChunk = new Map((annotationStore.annotations ?? []).map(item => [item.chunkId, item]));
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
     const retrievedContext = retrieved.map((hit, index) =>
       "[" + (index + 1) + ", score " + hit.score.toFixed(2) + "] " + hit.source + " / " + hit.chapter +
       " (offset " + hit.start + "-" + hit.end + ")\n" + hit.text
