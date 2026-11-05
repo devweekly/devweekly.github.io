@@ -62,6 +62,7 @@ function mergeState(current: StoryState, update: Partial<StoryState>): StoryStat
 export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   const state = await loadStoryState(input.statePath, input.worldId);
   await mkdir(input.outputDir, { recursive: true });
+  if (input.retrievedContext) await writeFile(resolve(input.outputDir, "00-retrieval.md"), input.retrievedContext + "\n", "utf8");
 
   const common = [
     "世界设定：", input.worldBible,
