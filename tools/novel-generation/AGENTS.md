@@ -22,7 +22,7 @@ CLI 命令（均经 `npm run dev --`）：
 | `search --world <id> --query "" [--limit 8]` | 检索原文片段 |
 | `analyze --world <id> [--limit 20] [--model m] [--timeout-ms 60000]` | 逐片段抽取人物/事件/关系 |
 | `analyze-world --world <id> --phase prepare/status/collect` | 多 Agent 文本分析（文件交接） |
-| `write --brief "" [--mode continuation/derivative] [--source f] [--context f] [--model m] [--max-words n] [--apply-state]` | 多阶段章节写作 |
+| `write --brief "" [--mode continuation/derivative] [--source f] [--context f] [--model m] [--max-words n] [--no-apply-state] [--resume-dir dir]` | 多阶段章节写作、自动复查与有限修复 |
 | `generate --brief "" [--mode ...] [--out f]` | 单次成稿 |
 
 `--world` 由 `safeWorldId` 校验 `^[a-z0-9][a-z0-9-]*$`；`continuation` 模式必须带 `--source`。
@@ -36,10 +36,10 @@ CLI 命令（均经 `npm run dev --`）：
 - **src/analysis.ts** — 逐片段 LLM 抽取人物/事件/关系 → `annotations.json`；硬性校验 evidence 必须逐字出现在片段中；已完成 / 失败 / 可重试三态断点续跑；写文件用 tmp + rename 原子替换。
 - **src/agent-runtime.ts** — 模型运行时：读 CodeBuddy 产品目录（明文 JSON 或 JSON→base64→gzip，来源 `ACC_PRODUCT_CONFIG_PATH` 或 `~/.codebuddy/local_storage/*.info`），偏好链 `hy4free → deepseek-v4.1-flash`，`hy4` 别名展开；检测托管会话（`CODEBUDDY_SESSION_ID` / `WORKBUDDY_CONFIG_DIR`）后用 `detachedCliOptions` 剥离宿主会话变量并加 `--port 0`；`buildQueryOptions` 禁工具、单轮、不持久化会话。
 - **src/generate.ts** — 唯一调用 `@tencent-ai/agent-sdk` 的地方：`query()` + `runAgentText`（模型链超时 / 中断 / 重试），`generateStory` 单次成稿。
-- **src/workflow.ts** — `writeChapter` 多阶段写作：主线架构师与创意发散并行（Promise.all）→ 主编蓝图 → 场景初稿 → 对白 → 叙事声音 → 连续性审查 → 主编终审 → 状态提取；每阶段落盘 `00-`…`08-` 文件到 `.output/<world>/<run-id>/`。`mergeState` 按 id/name 归并状态；**默认只写 `08-state-update.json` 提案，仅 `--apply-state` 才覆盖正史 `story-state.json`**。
+- **src/workflow.ts** — `writeChapter` 多阶段写作：主线架构师与创意发散并行 → 主编蓝图 → 正文 → 对白 → 叙事声音 → 结构化终审复查与最多两轮自动修复 → 运行时校验状态更新 → SQLite/JSON 自动持久化。`mergeStoryState` 按 id/name 归并状态；只有实验隔离使用 `--no-apply-state`。每个模型阶段通过 `stage-cache.ts` 按输入指纹缓存，`--resume-dir` 可从最后一个完整阶段恢复。
 - **src/world-analysis.ts** — 纯文件交接、运行时不调用模型：5 个 `ANALYSIS_ROLES`（main-plot / creative / style / characters / continuity）→ `prepare` 生成各角色 `input.md` → 各 Agent 写 `output.md` → `collect` 用 `validateAnalysisOutput` 校验（≥600 字、≥6 处 `L####` 且在原文行数内、≥3 个二级标题、无占位符）→ `manifest.json` + `index.md`；只校验格式与证据密度，不判断观点。
 - **src/story-state.ts** — `worlds/<world>/story-state.json`（schemaVersion 1）的加载 / 保存与空状态；人物记录区分稳定 profile 与可变剧情快照。
-- **src/long-chapter.ts** — 长章节按场景蓝图逐场生成；场景标题数量/编号严格校验；每场按蓝图检索原文，并将上一场较完整的尾部上下文传给下一场；状态提案复用 `mergeStoryState`，避免重复追加人物、事件与情节线。
+- **src/long-chapter.ts** — 长章节按场景蓝图逐场检索与生成；蓝图格式错误自动修正一次；先做分批审查和逐场修订，再做最终全章跨场审查；blocker/major 定位到受影响场景，最多两轮局部修复并复查；状态只从最终通过的完整章节提取并自动提交。阶段支持指纹缓存和 `--resume-dir`。
 - **src/analysis.ts** — 抽取以批次为单位原子保存标注，避免每处理一个片段就重写整个增长中的 JSON 文件。
 
 ## 数据布局与边界
@@ -50,7 +50,7 @@ CLI 命令（均经 `npm run dev --`）：
 - `.output/`、`dist/`、`node_modules/`、`private/`、`original.txt`、`.env` 均被 .gitignore 排除；**私有原文绝不入库**。
 - 证据纪律：结论用 `L####` 指向 `original.txt` 行号，区分「原著明确 / 作者设定 / 人物推断 / 待核实」四级；分析结论是工作记录，不等于正史。
 - `library/index.json` 含全文切片，提交到公开仓库前须确认授权范围；import 与 continuation 的 `--source` / `--input` 只能用合法取得的文本。
-- 当前边界：`annotations.json` 为空（全量 `analyze` 约 2594 次模型调用，尚未执行）；无跨章节实体归并 / 共指消解；无持久化 Agent session，中断不会自动恢复；故事状态为单机 JSON 文件，不支持并发写作。
+- 当前边界：`annotations.json` 为空（全量 `analyze` 约 2594 次模型调用，尚未执行）；无跨章节实体归并 / 共指消解；Agent SDK session 不持久化，但模型阶段有本地 checkpoint，可通过 `--resume-dir` 恢复；故事状态以 SQLite 为权威存储，单机写作，不支持并发写作。
 
 ## 仓库根 AGENTS.md 要点（仍适用）
 
@@ -90,3 +90,12 @@ CLI 命令（均经 `npm run dev --`）：
 - Update SQLite through `src/database.ts` transaction helpers; do not write tables ad hoc from CLI or agents.
 - Library search keeps the existing BM25 ranking but reads chunk records from SQLite. Retrieved chunk annotations are loaded from SQLite by chunk ID.
 - Do not store original novel files in SQLite; only indexed passages and structured derived data belong there.
+
+## 全自动章节质量门禁与恢复
+
+- `chapter-review.ts` 定义结构化审查结果；Zod 校验 JSON、严重程度、正文原文证据和多场景受影响场景编号。证据不能逐字定位、审查结构无效或状态与问题严重程度冲突时，自动重试一次；仍无效则失败关闭。
+- blocker / major 触发自动修复；minor 仅记录，不因个人偏好或节奏统计值触发改写。最多两轮修复，每轮必须重新审查；仍有 blocker / major 时任务失败，不提交故事状态。
+- `write-long` 最终审查必须覆盖全章；修复只作用于审查指出的场景。跨场问题需要列出所有受影响场景。
+- `stage-cache.ts` 按完整 prompt、模型和阶段推理配置生成 SHA-256 指纹；输出原子写入并校验输出哈希。并行阶段更新 manifest 时串行合并，避免互相覆盖。
+- `--resume-dir` 只允许指向当前 world 的 `.output/<world>/` 子目录，且普通/长章节目录类型必须匹配。每次运行保存不可变的输入故事状态快照；即使上一次进程已写入 SQLite 但在归档前中断，恢复也会从同一份初始状态重新计算，避免重复累加。
+- 状态管理员输出必须通过 `parseStoryStateUpdate` 校验；`saveStoryState` 再校验完整状态后才写入 SQLite。章节未通过最终审查或状态提取/持久化失败时，不得继续下一章。
