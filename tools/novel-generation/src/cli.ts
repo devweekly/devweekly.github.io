@@ -3,6 +3,7 @@ import { dirname, resolve } from "node:path";
 import { generateStory, type GenerationMode } from "./generate.js";
 import { ingestFiles, listTextFiles, searchLibrary } from "./library.js";
 import { writeChapter } from "./workflow.js";
+import { loadStoryState } from "./story-state.js";
 
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(name);
