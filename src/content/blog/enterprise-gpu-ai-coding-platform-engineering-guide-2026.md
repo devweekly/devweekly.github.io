@@ -823,11 +823,11 @@ GPU Coding 平台需要的能力横跨数据中心、Linux / CUDA、Kubernetes�
 | --- | --- | --- | --- |
 | [DeepInfer](https://github.com/deepseek-ai/DeepInfer) | 专用推理执行 | 面向 DeepSeek 模型的执行、调度、并行和优化 Kernel | 与 vLLM / SGLang 的集成边界、在线 API、KV Cache 和多副本运营是否需要自行补齐 |
 | [DeepEP](https://github.com/deepseek-ai/DeepEP) | MoE 通信 | Expert Parallelism 的 Dispatch / Combine 通信 | 单节点 NVLink 与跨节点 RDMA 的通信效率、热点 Expert 和负载均衡 |
-| [DeepGEMM](https://github.com/deepseek-ai/DeepGEMM)、[FlashMLA](https://github.com/deepseek-ai/FlashMLA) | GPU Kernel | GEMM、MLA 等模型关键算子优化 | 是否已被目标推理引擎集成，避免重复维护自定义 Kernel |
+| [DeepGEMM](https://github.com/deepseek-ai/DeepGEMM)、[FlashMLA](https://github.com/deepseek-ai/FlashMLA)、[DeepJIT](https://github.com/deepseek-ai/DeepJIT) | GPU Kernel | GEMM、MLA 等模型关键算子优化 | 是否已被目标推理引擎集成，避免重复维护自定义 Kernel |
 | [Mooncake](https://github.com/kvcache-ai/Mooncake) | KV Cache / 数据传输 | 分布式 KV Cache、Transfer Engine、Prefill / Decode 分离 | 长上下文和多轮 Agent 是否有足够缓存复用收益，RDMA 与存储开销是否可接受 |
 | MoonEP | MoE 负载均衡 | 通过冗余 Expert 等机制改善 Rank 间负载分布 | 与 DeepEP 的通信原语定位不同，应比较端到端延迟和显存成本 |
-| [DeepSeek Harness](https://github.com/deepseek-ai) | Coding Agent | Agent 会话、工具和任务执行的架构参考 | 与企业现有 Agent Runtime 的差异；不要与模型推理执行层混为一谈 |
-| [GLM 模型与工具](https://github.com/zai-org) | 模型 / Agent 能力 | 模型权重、部署说明、工具调用和 Agent Skills | 验证目标 Serving Runtime 的模型实现、Parser、量化和工具调用兼容性 |
+| DeepSeek Harness | Coding Agent | Agent 会话、工具和任务执行的架构参考 | 与企业现有 Agent Runtime 的差异；不要与模型推理执行层混为一谈 |
+| [GLM 模型与工具](https://github.com/zai-org/GLM-5) | 模型 / Agent 能力 | 模型权重、部署说明、工具调用和 Agent Skills | 验证目标 Serving Runtime 的模型实现、Parser、量化和工具调用兼容性 |
 
 DeepInfer 不等于完整在线推理平台；DeepEP 也不是 Model Server。企业仍需提供统一 API、身份认证、配额、路由、审计、缓存、监控和故障恢复。Mooncake 将 KV Cache 视为可跨实例管理的资源，只有在多轮请求、共享前缀和跨实例复用带来可测量收益时，才值得引入额外的数据传输与调度复杂度。
 
