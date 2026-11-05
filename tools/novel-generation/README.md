@@ -96,7 +96,7 @@ npm run dev -- write --world conghuoniao --mode continuation \
 npm run dev -- write-long --world conghuoniao --mode continuation \
   --brief "..." --source ./private/continuation-excerpt.md \
   --context ./private/continuity-summary.md \
-  --max-words 10000 --scenes 8 --timeout-ms 180000
+  --max-words 10000 --scenes 8 --retrieval-limit 4 --timeout-ms 180000
 ```
 
 流程：一次生成 N 场蓝图（`01-scene-blueprint.md`，必须有连续且唯一的 `## 场景 1..N` 标题；格式不合格直接停止，不会把整份蓝图重复当成每场）→ 按场景蓝图检索相关原文（`00-scene-XX-retrieval.md`）→ 逐场成文（`02-scene-XX.md`，字数不足自动补写一次，场间传入上一场较完整的结尾上下文）→ 拼接初稿（`03-draft.md`）→ 分两批连续性审查（`04-continuity-review.md`）→ 逐场对白与文风修订（`05-polish-XX.md`）→ `chapter.md`、`06-rhythm-metrics.json` 与状态提案 `07-state-update.json`。`--apply-state` 才写回正史状态。各阶段产物全部落盘，可逐场复核或重跑。

@@ -297,10 +297,13 @@ async function main(): Promise<void> {
     const runId = new Date().toISOString().replace(/[:.]/g, "-");
     const outputDir = resolve(".output", worldId, "long-" + runId);
     const statePath = resolve("worlds", worldId, "story-state.json");
+    const retrievalLimit = Number(arg("--retrieval-limit") ?? 4);
+    if (!Number.isInteger(retrievalLimit) || retrievalLimit < 1 || retrievalLimit > 12) {
+      throw new Error("--retrieval-limit must be an integer between 1 and 12.");
+    }
     const chapter = await writeLongChapter({
       worldId, mode, brief, worldBible, styleProfile, styleRhythm, sourceText, contextText, model,
-      maxWords, scenes, timeoutMs, outputDir, statePath, libraryDir,
-      retrievalLimit: Number(arg("--retrieval-limit") ?? 4),
+      maxWords, scenes, timeoutMs, outputDir, statePath, libraryDir, retrievalLimit,
       applyState: process.argv.includes("--apply-state")
     });
     console.log("\nSaved chapter: " + resolve(outputDir, "chapter.md"));
