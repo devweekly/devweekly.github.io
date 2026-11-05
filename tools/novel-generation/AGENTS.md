@@ -20,7 +20,7 @@ CLI 命令（均经 `npm run dev --`）：
 | `models` | 显示模型目录、偏好链、托管会话状态 |
 | `ingest --world <id> --input <f>` | 导入 TXT/MD 建索引 |
 | `search --world <id> --query "" [--limit 8]` | 检索原文片段 |
-| `analyze --world <id> [--limit 20] [--model m] [--timeout-ms 60000]` | 逐片段抽取人物/事件/关系 |
+| `analyze --world <id> [--limit 20] [--model m] [--timeout-ms 60000]` | 逐片段抽取人物/事件/关系候选 |\n| `analyze-story --world <id> [--model m] [--timeout-ms 180000]` | CodeBuddy SDK 自动分析人物小传/成长可能性、主线、伏笔与后续发展并保存 SQLite |
 | `analyze-world --world <id> --phase prepare/status/collect` | 多 Agent 文本分析（文件交接） |
 | `write --brief "" [--mode continuation/derivative] [--source f] [--context f] [--model m] [--max-words n] [--no-apply-state] [--resume-dir dir]` | 多阶段章节写作、自动复查与有限修复 |
 | `generate --brief "" [--mode ...] [--out f]` | 单次成稿 |
@@ -33,7 +33,7 @@ CLI 命令（均经 `npm run dev --`）：
 
 - **src/cli.ts** — 唯一入口：参数解析、命令分派、worldId 校验、组装检索查询（brief + 故事当前位置 + 未结情节线 + 人物），加载 story-state / world-bible / style-profile。
 - **src/library.ts** — 存储检索层：按中文章节标题正则切章 → 带重叠切片（1200 字 / 160 重叠）→ `worlds/<world>/library/index.json`（schemaVersion 1）。中文二元组 + BM25 风格打分，非向量语义检索。重复导入同一 source 会替换旧切片并使对应 annotations 失效。
-- **src/analysis.ts** — 逐片段 LLM 抽取人物/事件/关系 → `annotations.json`；硬性校验 evidence 必须逐字出现在片段中；已完成 / 失败 / 可重试三态断点续跑；写文件用 tmp + rename 原子替换。
+- **src/analysis.ts** — 逐片段 LLM 抽取人物/事件/关系 → `annotations.json`；硬性校验 evidence 必须逐字出现在片段中；已完成 / 失败 / 可重试三态断点续跑；写文件用 tmp + rename 原子替换。\n- **src/story-analysis.ts** — 自动读取 SQLite 全部已索引片段，按上下文长度分批调用 CodeBuddy Agent SDK，分析人物小传/性格矛盾/关系/成长可能性、主线情节、伏笔和后续发展；合并跨批次人物与情节线，完整成功后将结构化快照一次性保存到 SQLite `story_analysis`。
 - **src/agent-runtime.ts** — 模型运行时：读 CodeBuddy 产品目录（明文 JSON 或 JSON→base64→gzip，来源 `ACC_PRODUCT_CONFIG_PATH` 或 `~/.codebuddy/local_storage/*.info`），偏好链 `hy4free → deepseek-v4.1-flash`，`hy4` 别名展开；检测托管会话（`CODEBUDDY_SESSION_ID` / `WORKBUDDY_CONFIG_DIR`）后用 `detachedCliOptions` 剥离宿主会话变量并加 `--port 0`；`buildQueryOptions` 禁工具、单轮、不持久化会话。
 - **src/generate.ts** — 唯一调用 `@tencent-ai/agent-sdk` 的地方：`query()` + `runAgentText`（模型链超时 / 中断 / 重试），`generateStory` 单次成稿。
 - **src/workflow.ts** — `writeChapter` 多阶段写作：主线架构师与创意发散并行 → 主编蓝图 → 正文 → 对白 → 叙事声音 → 结构化终审复查与最多两轮自动修复 → 运行时校验状态更新 → SQLite/JSON 自动持久化。`mergeStoryState` 按 id/name 归并状态；只有实验隔离使用 `--no-apply-state`。每个模型阶段通过 `stage-cache.ts` 按输入指纹缓存，`--resume-dir` 可从最后一个完整阶段恢复。
@@ -99,3 +99,9 @@ CLI 命令（均经 `npm run dev --`）：
 - `stage-cache.ts` 按完整 prompt、模型和阶段推理配置生成 SHA-256 指纹；输出原子写入并校验输出哈希。并行阶段更新 manifest 时串行合并，避免互相覆盖。
 - `--resume-dir` 只允许指向当前 world 的 `.output/<world>/` 子目录，且普通/长章节目录类型必须匹配。每次运行保存不可变的输入故事状态快照；即使上一次进程已写入 SQLite 但在归档前中断，恢复也会从同一份初始状态重新计算，避免重复累加。
 - 状态管理员输出必须通过 `parseStoryStateUpdate` 校验；`saveStoryState` 再校验完整状态后才写入 SQLite。章节未通过最终审查或状态提取/持久化失败时，不得继续下一章。
+
+## 小说创作最高原则：文学性、文笔、艺术风格高于其他
+
+这是项目所有分析、规划、生成和审查任务的最高优先级。人物档案、人物弧光、主线、伏笔、世界设定、连续性和数据库记录都只是辅助创作的参考，不是约束小说的规范。人物可以矛盾、反复、误判、冲动、突然转变、黑化或洗白；故事可以有意外、留白、闲笔和无法预先解释的艺术选择。不得为了分析完整、结构整齐、设定覆盖或指标达标而牺牲文学表达。只有明确妨碍读者理解或破坏故事成立的硬伤才进入自动修复。
+
+`analyze-story` 的分析结果必须区分原文呈现、合理推断和创作可能性。人物成长方向、伏笔解释与情节建议都不是正史事实，更不能成为后续正文必须兑现的清单。分析可以大胆提出多种互相矛盾的可能性，保留未知和歧义。
