@@ -20,7 +20,7 @@ description: "从 Coral Hart 的 AMA 出发，结合 ACL、PNAS 等研究、编�
 
 # AI 写作的关键不是 Prompt：Style Sheet、作者声音与人机协作工作流
 
-**研究截止日期：2026 年 11 月 4 日**
+**研究截止日期：2026 年 11 月 5 日**
 
 ## 写作风格不是一句 Prompt 能描述清楚的
 
