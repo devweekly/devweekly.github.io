@@ -1,5 +1,5 @@
 import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { databaseStatus, readAnnotationsByChunkIds } from "./database.js";
+import { databaseStatus, readAnnotationsByChunkIds, readStoryAnalysis } from "./database.js";
 import { basename, dirname, resolve, sep } from "node:path";
 import { generateStory, type GenerationMode } from "./generate.js";
 import { ingestFiles, listTextFiles, searchLibrary } from "./library.js";
@@ -8,6 +8,7 @@ import { loadStoryState } from "./story-state.js";
 import { loadRunStoryState } from "./stage-cache.js";
 import { analyzeLibrary } from "./analysis.js";
 import { analyzeStoryCorpus } from "./story-analysis.js";
+import { buildStoryAnalysisContext } from "./story-analysis-context.js";
 import { prepareWorldAnalysis, collectWorldAnalysis, analysisStatus } from "./world-analysis.js";
 import {
   readModelCatalog, resolveAgentModel, isManagedSession, readConfiguredModel,
@@ -314,6 +315,7 @@ async function main(): Promise<void> {
       ...state.characters.slice(0, 12).map(character => character.name)
     ].join("\n");
     const retrieved = await searchLibrary(libraryDir, retrievalQuery, retrievalLimit);
+    const storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), retrievalQuery);
     const annotationsByChunk = readAnnotationsByChunkIds(resolve("worlds", worldId), worldId, retrieved.map(hit => hit.id)) as Map<string, { entities?: unknown[]; events?: unknown[]; relations?: unknown[] }>;
     const retrievedContext = retrieved.map((hit, index) => {
       const annotation = annotationsByChunk.get(hit.id);
@@ -324,7 +326,7 @@ async function main(): Promise<void> {
 
     const applyState = !process.argv.includes("--no-apply-state");
     const chapter = await writeChapter({
-      worldId, mode, brief, worldBible, styleProfile, styleRhythm, sourceText, contextText, retrievedContext, model,
+      worldId, mode, brief, worldBible, styleProfile, styleRhythm, sourceText, contextText, retrievedContext, storyAnalysisContext, model,
       strictModel: process.argv.includes("--strict-model"), maxWords,
       outputDir, statePath, applyState
     });
@@ -353,7 +355,7 @@ async function main(): Promise<void> {
       throw new Error("--retrieval-limit must be an integer between 1 and 12.");
     }
     const chapter = await writeLongChapter({
-      worldId, mode, brief, worldBible, styleProfile, styleRhythm, sourceText, contextText, model,
+      worldId, mode, brief, worldBible, styleProfile, styleRhythm, sourceText, contextText, storyAnalysisContext, model,
       maxWords, scenes, timeoutMs, outputDir, statePath, libraryDir, retrievalLimit,
       applyState: !process.argv.includes("--no-apply-state")
     });
