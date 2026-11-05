@@ -190,7 +190,7 @@ export async function analyzeStoryCorpus(
   const chunks = readLibraryChunks(worldDir, worldId);
   if (!chunks.length) throw new Error("No indexed text found. Run ingest before analyze-story.");
   const sourceHash = createHash("sha256")
-    .update("story-analysis-v1\\n" + chunks.map(chunk => chunk.id + ":" + (chunk.sourceHash ?? "") + ":" + chunk.text).join("\\n"))
+    .update("story-analysis-v1\n" + chunks.map(chunk => chunk.id + ":" + (chunk.sourceHash ?? "") + ":" + chunk.text).join("\n"))
     .digest("hex");
   const batches = groupAnalysisBatches(chunks);
   const cacheDir = resolve(".output", worldId, "story-analysis", sourceHash);
@@ -214,7 +214,7 @@ export async function analyzeStoryCorpus(
         throw new Error(`Story analysis batch ${batch.index + 1} returned invalid structured output: ${error instanceof Error ? error.message : String(error)}`);
       }
       const temporary = cachePath + ".tmp";
-      await writeFile(temporary, JSON.stringify(analysis, null, 2) + "\\n", "utf8");
+      await writeFile(temporary, JSON.stringify(analysis, null, 2) + "\n", "utf8");
       await rename(temporary, cachePath);
     }
     results.push({ analysis, refs: sourceRefs(batch.chunks) });
