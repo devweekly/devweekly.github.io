@@ -42,7 +42,7 @@ async function atomicWrite(path: string, content: string): Promise<void> {
 
 async function updateManifest(path: string, key: string, entry: StageEntry): Promise<void> {
   const previous = manifestQueues.get(path) ?? Promise.resolve();
-  const next = previous.then(async () => {
+  const next = previous.catch(() => undefined).then(async () => {
     const manifest = await readManifest(path);
     manifest.stages[key] = entry;
     await atomicWrite(path, JSON.stringify(manifest, null, 2) + "\n");
