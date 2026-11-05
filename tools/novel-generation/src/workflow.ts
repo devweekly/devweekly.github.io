@@ -4,6 +4,7 @@ import { loadStoryState, parseStoryStateUpdate, saveStoryState, type StoryState 
 import { runAgentText, type GenerationMode } from "./generate.js";
 import { readTaskProfiles, type StageKey } from "./task-profiles.js";
 import { formatReview, reviewAndRepair, reviewPrompt } from "./chapter-review.js";
+import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
 
 export interface WriteWorkflowInput {
   worldId: string;
@@ -81,10 +82,18 @@ export const RHYTHM_RULE = [
 ].join("\n");
 
 export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
-  const state = await loadStoryState(input.statePath, input.worldId);
+  const state = await loadRunStoryState(input.statePath, input.worldId, input.outputDir);
   const profiles = readTaskProfiles();
   const call = (stage: StageKey, parts: string[]): Promise<string> =>
     runAgentText(parts.join("\n\n"), input.model, undefined, profiles[stage], !input.strictModel);
+  const cachedCall = (key: string, outputFile: string, stage: StageKey, parts: string[]): Promise<string> => {
+    const prompt = parts.join("\n\n");
+    return runCachedStage({
+      dir: input.outputDir, key, outputFile,
+      fingerprint: JSON.stringify({ prompt, model: input.model ?? null, profile: profiles[stage], strictModel: input.strictModel ?? false }),
+      execute: () => call(stage, parts)
+    });
+  };
   await mkdir(input.outputDir, { recursive: true });
   if (input.retrievedContext) await saveStage(input.outputDir, "00-retrieval.md", input.retrievedContext);
 
@@ -102,12 +111,12 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
 
   // 主线架构与创意发散并行；主编决定哪些点子能进正文，发散本身不构成正史。
   const [plotPlan, ideas] = await Promise.all([
-    call("plot", [
+    cachedCall("plot", "01-main-plot.md", "plot", [
       "角色：主线剧情架构师。负责本章主线推进和长篇结构，不写正文。",
       common,
       "输出可执行章节方案：本章主线目标、因果链、场景顺序、关键选择及代价、与长期主线/伏笔的关系、结尾状态。明确哪些事实不可改变。"
     ]),
-    call("creative", [
+    cachedCall("creative", "02-creative-options.md", "creative", [
       "角色：创意发散 Agent。只负责提出有戏剧价值的备选创意，不负责决定正史。",
       common,
       "提出最多 5 个不同方向的情节/冲突/信息揭示方案。每项说明新鲜点、人物动机、代价、与现有设定的冲突风险。至少给出一个低风险方案和一个高风险方案。不要写正文，不要擅自把建议当作已发生事实。"
@@ -116,7 +125,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   await saveStage(input.outputDir, "01-main-plot.md", plotPlan);
   await saveStage(input.outputDir, "02-creative-options.md", ideas);
 
-  const plan = await call("plan", [
+  const plan = await cachedCall("plan", "03-chapter-plan.md", "plan", [
     "角色：主编 Agent。整合主线架构师方案和创意发散建议，决定本章唯一执行方案。",
     common,
     "主线方案：", plotPlan, "创意备选：", ideas,
@@ -124,7 +133,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   ]);
   await saveStage(input.outputDir, "03-chapter-plan.md", plan);
 
-  const initialDraft = await call("scene", [
+  const initialDraft = await cachedCall("scene", "04-scene-draft.md", "scene", [
     "角色：场景小说家。根据最终蓝图写完整章节正文，不输出分析。",
     common, "最终章节蓝图：", plan,
     "目标篇幅约 " + input.maxWords + " 个中文字符。通过场景、行动、选择和后果推进；不要用概述代替关键场景。",
@@ -132,7 +141,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   ]);
   await saveStage(input.outputDir, "04-scene-draft.md", initialDraft);
 
-  const dialogueDraft = await call("dialogue", [
+  const dialogueDraft = await cachedCall("dialogue", "05-dialogue-edited.md", "dialogue", [
     "角色：人物对话编辑。专门修整人物对白和对白相关动作，不改变剧情事实、场景顺序、人物决定和信息揭示。",
     common, "章节蓝图：", plan, "当前正文：", initialDraft,
     "检查每个人物的词汇、句长、表达习惯、身份关系、情绪和已知信息。删掉解释性过强、所有角色都像同一个人的对白；让潜台词通过停顿、回避、误解和行动体现。",
@@ -140,7 +149,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   ]);
   await saveStage(input.outputDir, "05-dialogue-edited.md", dialogueDraft);
 
-  const voiceDraft = await call("voice", [
+  const voiceDraft = await cachedCall("voice", "06-voice-edited.md", "voice", [
     "角色：叙事声音与文风编辑。只负责统一全章叙述声音，不负责改剧情。",
     common, "章节蓝图：", plan, "当前正文：", dialogueDraft,
     "统一叙述视角、时态、句长变化、段落节奏、叙述距离、动作/环境/心理描写比例和悬念节奏。保持中文自然、有变化，避免模板化排比、总结句、过度解释和重复修辞。不得复刻任何特定作者的独特句式或标志性表达。",
@@ -152,10 +161,13 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   const reviewed = await reviewAndRepair({
     initialChapter: voiceDraft,
     maxRepairRounds: 2,
-    review: (candidate, correction) => call("review", [
-      reviewPrompt({ context: common, blueprint: plan, chapter: candidate, correction })
-    ]),
-    repair: (candidate, issues, round) => call("final", [
+    review: (candidate, correction) => {
+      const round = reviewHistory.length + 1;
+      return cachedCall("quality-review-" + round, "07-review-round-" + round + ".json", "review", [
+        reviewPrompt({ context: common, blueprint: plan, chapter: candidate, correction })
+      ]);
+    },
+    repair: (candidate, issues, round) => cachedCall("quality-repair-" + round, "07-repaired-round-" + round + ".md", "final", [
       "角色：主编修复 Agent。根据结构化审查结果执行最小范围修复，只输出完整章节正文。",
       common, "最终章节蓝图：", plan,
       "当前章节正文：", candidate,
@@ -178,7 +190,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     reviews: reviewed.reviews
   }, null, 2));
 
-  const stateText = await call("state", [
+  const stateText = await cachedCall("state-update", "08-state-update-raw.json", "state", [
     "角色：小说连续性资料管理员。根据旧状态和最终章节提取本章状态变化。",
     "只输出合法 JSON 对象，不要 Markdown 代码围栏。结构：",
     JSON.stringify({
