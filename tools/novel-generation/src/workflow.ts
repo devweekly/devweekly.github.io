@@ -33,14 +33,14 @@ function mergeState(current: StoryState, update: Partial<StoryState>): StoryStat
       const id = key(item);
       const previous = map.get(id);
       if (previous && typeof previous === "object" && typeof item === "object") {
-        const merged = { ...(previous as Record<string, unknown>), ...(item as Record<string, unknown>) };
-        for (const [field, value] of Object.entries(item as Record<string, unknown>)) {
-          const priorValue = (previous as Record<string, unknown>)[field];
+        const merged = { ...(previous as unknown as Record<string, unknown>), ...(item as unknown as Record<string, unknown>) };
+        for (const [field, value] of Object.entries(item as unknown as Record<string, unknown>)) {
+          const priorValue = (previous as unknown as Record<string, unknown>)[field];
           if (Array.isArray(value)) {
             merged[field] = [...new Set([...(Array.isArray(priorValue) ? priorValue : []), ...value])];
           }
         }
-        map.set(id, merged as T);
+        map.set(id, merged as unknown as T);
       } else {
         map.set(id, item);
       }
