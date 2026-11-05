@@ -189,7 +189,7 @@
 
 ## 8. 全文人物与情节分析（CodeBuddy SDK）
 
-`analyze-story` 是对已导入语料的自动分析命令，不是写作门禁，也不参与章节是否通过的判定。它从 SQLite 读取全部索引片段，按上下文长度分批调用现有 `runAgentText`（底层为 `@tencent-ai/agent-sdk`），提取并跨批次合并：
+`analyze-story` 是对已导入语料的自动分析命令，不是写作门禁，也不参与章节是否通过的判定。它从 SQLite 读取全部索引片段；若 SQLite 尚未迁移，则从现有 `library/index.json` 载入并同步到 SQLite，按上下文长度分批调用现有 `runAgentText`（底层为 `@tencent-ai/agent-sdk`），提取并跨批次合并：
 
 - 人物小传、性格特点、欲望、矛盾、关系、说话气质，以及可能的成长和转变方向；
 - 主线与重要支线、关键转折、未解决的问题；
@@ -198,7 +198,7 @@
 
 每项附带其分析批次的来源 chunk ID、文件和章节，代表上下文来源范围，不表示批次内每个片段都直接支持该项。原文呈现、人物推断和创作可能性必须分开；不确定性可以保留，不要求所有人物都有弧光，不要求所有细节都是伏笔，也不把任何可能性写成必须兑现的剧情合同。
 
-每批结果缓存到 `.output/<world>/story-analysis/<source-hash>/`，按语料内容和模型生成指纹，中断后重新运行可复用已完成批次。全部批次成功后才通过 `saveStoryAnalysis` 一次性替换 SQLite 中的完整分析快照。失败时不覆盖上一次完整快照。该快照是可重建的创作参考，不是正史，也不直接修改 `story_state` 中的角色状态或情节状态。运行命令：
+每批结果缓存到 `.output/<world>/story-analysis/<cache-key>/`，按语料内容和模型生成指纹，中断后重新运行可复用已完成批次。全部批次成功后才通过 `saveStoryAnalysis` 一次性替换 SQLite 中的完整分析快照。失败时不覆盖上一次完整快照。该快照是可重建的创作参考，不是正史，也不直接修改 `story_state` 中的角色状态或情节状态。运行命令：
 
 ```bash
 npm run dev -- analyze-story --world conghuoniao
