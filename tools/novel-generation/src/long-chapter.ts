@@ -222,16 +222,27 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     const batchText = slice.map((scene, localIndex) =>
       `【场景 ${batchStart + localIndex}】\n${scene}`
     ).join("\n\n---\n\n");
-    const raw = await cachedCall("batch-review-" + (index + 1), "04-review-batch-" + (index + 1) + "-raw.txt", "review", [
-      reviewPrompt({
-        context: writingContext,
-        blueprint,
-        chapter: batchText,
-        sceneCount: input.scenes,
-        sceneLabel: `第 ${index + 1} 批，场景 ${batchStart}–${batchStart + slice.length - 1}`
-      })
+    const batchPrompt = reviewPrompt({
+      context: writingContext,
+      blueprint,
+      chapter: batchText,
+      sceneCount: input.scenes,
+      sceneLabel: `第 ${index + 1} 批，场景 ${batchStart}–${batchStart + slice.length - 1}`
+    });
+    let raw = await cachedCall("batch-review-" + (index + 1), "04-review-batch-" + (index + 1) + "-raw.txt", "review", [
+      batchPrompt
     ], output => parseChapterReview(output, batchText, input.scenes));
-    const parsed = parseChapterReview(raw, batchText, input.scenes);
+    let parsed: ReturnType<typeof parseChapterReview>;
+    try {
+      parsed = parseChapterReview(raw, batchText, input.scenes);
+    } catch (firstError) {
+      raw = await cachedCall("batch-review-" + (index + 1) + "-retry", "04-review-batch-" + (index + 1) + "-retry-raw.txt", "review", [
+        batchPrompt,
+        "上一次审查结果未通过结构校验：" + String(firstError),
+        "请重新审查同一批正文。每条必改问题都必须给出有效的全章场景编号；没有必改项就返回空 issues 和 pass。只输出 schema 对应的 JSON。"
+      ], output => parseChapterReview(output, batchText, input.scenes));
+      parsed = parseChapterReview(raw, batchText, input.scenes);
+    }
     summaries.push(parsed.summary);
     found.push(...parsed.issues);
   }
