@@ -42,6 +42,15 @@ test("证据只用于定位，找不到时加注而不判无效", () => {
   assert.match(report.issues[0]!.evidence, /未定位到/);
 });
 
+test("长章节的必改问题必须带有效场景编号", () => {
+  const issue = { scenes: [], evidence: "李玄", problem: "人物凭空出现", repair: "补足出场过程" };
+  const raw = JSON.stringify({ status: "needs_repair", summary: "有硬伤", issues: [issue] });
+  assert.throws(() => parseChapterReview(raw, chapter, 2), /missing required scene numbers/);
+  assert.throws(() => parseChapterReview(JSON.stringify({
+    status: "needs_repair", summary: "有硬伤", issues: [{ ...issue, scenes: [3] }]
+  }), chapter, 2), /outside this chapter/);
+});
+
 test("场景编号超出范围时报错", () => {
   assert.throws(() => parseChapterReview(JSON.stringify({
     status: "needs_repair", summary: "越界", issues: [{
