@@ -134,13 +134,13 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     RHYTHM_RULE,
     "整章节奏应有场景差异，但不按固定数量分配快慢场景。"
   ];
-  let blueprint = await cachedCall("blueprint", "01-scene-blueprint.md", "plan", blueprintPrompt);
+  let blueprint = await cachedCall("blueprint", "01-scene-blueprint-attempt-0.md", "plan", blueprintPrompt);
   let scenePlans: string[];
   try {
     scenePlans = splitScenes(blueprint, input.scenes);
   } catch (error) {
     await saveStage(input.outputDir, "01-scene-blueprint-attempt-1.md", blueprint);
-    blueprint = await cachedCall("blueprint-repair", "01-scene-blueprint.md", "plan", [
+    blueprint = await cachedCall("blueprint-repair", "01-scene-blueprint-attempt-1.md", "plan", [
       ...blueprintPrompt,
       "上一次场景蓝图未通过程序格式校验：" + String(error),
       "请修正上一版蓝图，必须恰好输出连续编号的场景标题，从场景 1 到场景 " + input.scenes + "，每场内容非空。只输出修正后的完整蓝图，不解释。",
@@ -228,7 +228,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     maxRepairRounds: 2,
     review: (candidate, correction) => {
       const round = reviewHistory.length + 1;
-      return cachedCall("final-review-" + round, "08-final-review-round-" + round + ".json", "review", [
+      return cachedCall("final-review-" + round + (correction ? "-retry" : ""), "08-final-review-round-" + round + (correction ? "-retry" : "") + "-raw.txt", "review", [
         reviewPrompt({ context: writingContext, blueprint, chapter: candidate, priorReview: review, sceneCount: input.scenes, correction })
       ]);
     },
