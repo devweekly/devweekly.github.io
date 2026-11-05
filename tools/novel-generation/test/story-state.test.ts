@@ -61,7 +61,8 @@ test("model state updates are runtime-validated before they can be merged", () =
     characters: [{ name: "李玄", status: "离开旧城", location: "北门" }]
   }), {
     currentPosition: "第2章结尾",
-    characters: [{ name: "李玄", status: "离开旧城", location: "北门" }]
+    characters: [{ name: "李玄", status: "离开旧城", location: "北门" }],
+    continuityNotes: []
   });
   assert.throws(() => parseStoryStateUpdate({
     characters: [{ name: "李玄", status: "离开旧城" }],
@@ -112,4 +113,14 @@ test("character arc milestones are append-only, deduplicated by id and evidence-
       }]
     }]
   }, "这一章没有这句话"));
+});
+
+
+test("continuity notes are replaced by the complete active snapshot", () => {
+  const current = emptyStoryState("test-world");
+  current.continuityNotes = ["李玄仍然不知道密道位置", "铜钱由守门人持有"];
+  const next = mergeStoryState(current, {
+    continuityNotes: ["李玄已经知道密道位置"]
+  });
+  assert.deepEqual(next.continuityNotes, ["李玄已经知道密道位置"]);
 });
