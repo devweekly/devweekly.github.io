@@ -24,7 +24,7 @@ tags:
 
 # 企业级 GPU AI Coding 平台：从 B300 集群部署到推理与 Agent 工程
 
-本文讨论一个约有 1000 名开发者使用的企业 AI Coding 平台。模型部署在企业自有或租用的 GPU 集群上，通过统一 API 向 Coding Agent 提供推理服务。平台还需要管理开发者会话、仓库上下文、工具执行、租户隔离、容量、监控、成本和故障恢复。
+本文以至少 2000 名开发者、日常中到重度使用为目标，讨论企业 AI Coding 平台的 Workbench、模型服务与 GPU 基础设施。模型部署在企业自有或租用的 GPU 集群上，通过统一 API 向 Coding Agent 提供推理服务。平台还需要管理开发者会话、仓库上下文、工具执行、租户隔离、容量、监控、成本和故障恢复。
 
 架构分为两个相互协作的部分：GPU 推理平台负责模型部署、GPU 调度和请求处理；Coding Agent 平台负责会话生命周期、上下文组装、工具调用、代码执行与任务验证。两者通过模型 API 交互，资源管理和安全边界分别设计。
 
@@ -398,7 +398,6 @@ DeepSeek 是检验国产加速器软件栈成熟度的有效负载，但“支�
 - **功能：** 最大上下文、Tool Calling、Streaming、Prefix Cache、Speculative Decoding、TP / EP、P/D 分离。
 - **性能与质量：** TTFT、TPOT、并发、吞吐、显存、输出正确性和任务成功率。
 - **运维：** 节点重启、进程故障、权重加载、监控、升级与回滚。
-
 参考入口：[vLLM Ascend](https://docs.vllm.ai/projects/ascend/en/latest/)、[CANN Recipes](https://github.com/hicann/cann-recipes-infer)、[KTransformers](https://github.com/kvcache-ai/ktransformers)、[Cambricon/vllm-mlu](https://github.com/Cambricon/vllm-mlu)。生产评估应固定 Git Commit、镜像 Digest 和模型校验和；不要把预发布教程、可变镜像 Tag 或单卡演示当作生产兼容承诺。
 
 ### 6.4 其他国产平台：关注厂商后端和版本绑定
@@ -574,7 +573,10 @@ Coding Agent 可以读写代码、运行 shell、安装依赖、访问网络和�
 可以先用下面的公式估算副本数量：
 
 [
-N = leftlceil rac{D}{G} 	imes (1 + R) ightceil
+N = leftlceil 
+rac{D}{G} 	imes (1 + R) 
+ight
+ceil
 ]
 
 但这里的 D 和 G 必须按输入/输出阶段、模型、上下文长度和负载分布拆分。不同模型、不同精度、不同并行策略的吞吐不能直接相加。若有多个模型池，应分别计算后再汇总。
@@ -729,7 +731,8 @@ TCO = GPU + Network + Storage + Facility + Software + People + Support + Failure
 
 [
 CostPerSuccessfulTask =
-rac{GPU + Infrastructure + Platform + Operations + FailedAttempts}
+
+rac{GPU + Infrastructure + Platform + Operations + FailedAttempts}
 {SuccessfulTasks}
 ]
 
@@ -794,7 +797,6 @@ CostPerSuccessfulTask =
 | Security | 越权、网络逃逸、凭证暴露、跨租户访问测试通过 |
 | Reliability | 节点故障、GPU 故障、网络故障、模型升级和回滚演练通过 |
 | FinOps | GPU、模型、用户、团队和成功任务成本可归因 |
-
 建议把性能验收写成负载合同：模型版本、量化格式、输入输出长度分布、并发、到达率、缓存条件、SLO 和质量门槛都必须固定。否则供应商或团队之间的 benchmark 数字没有可比性。
 
 
@@ -1193,7 +1195,6 @@ Superhuman（原 Grammarly）曾经运行自建 vLLM Serving Stack 和内部模�
 | Lloyds Banking Group | 交易基础模型 ATUM | NVIDIA RTX PRO 6000 Blackwell GPU | 将数十亿笔交易转化为可复用的交易智能 | NVIDIA 行业综述；未披露集群规模和业务指标 |
 
 ### 22.2 BNY：先建设共享计算平台，再扩展业务用例
-
 BNY 在 2024 年宣布部署基于 DGX H100 的 NVIDIA DGX SuperPOD，采用 InfiniBand 网络，并与 NVIDIA Professional Services 合作完成安装配置。系统部署在 BNY 自身基础设施中，使用 NVIDIA AI Enterprise 支持 AI 应用开发和基础设施管理。
 
 这套基础设施并非只服务一个 LLM。BNY 当时已经有 20 多个 AI 方案投入生产，覆盖预测分析、自动化和异常检测；SuperPOD 的候选场景包括存款预测、支付自动化、预测性交易分析和日终现金余额。公司还披露识别出 600 多个 AI 机会，数百名数据科学家、解决方案架构师、风险、控制和合规人员参与平台使用。
@@ -1477,10 +1478,153 @@ GPU 部署的技术难度并不平均分布。单机推理通常是模型与运�
 
 金融机构的案例也显示，GPU 投资不必全部押在通用 LLM 上。交易基础模型、信用风险、欺诈检测、客户服务、研究分析和内部知识平台可能共享部分基础设施，但应保留各自的模型评测、数据权限和服务 SLO。模型服务可以集中，业务风险责任不能因此变得模糊。
 
-对约 1000 名开发者的 AI Coding 平台，先采集实际 Agent Trace，确定模型调用分布和成功任务成本，再用一台 8-GPU 节点建立质量与性能基线。确认模型、上下文和并发需求后，再评估多节点网络与 GB300 NVL72。部署位置则根据数据分类、团队能力和成本选择自有机房、CSP GPU、Dedicated Inference 或混合模式。
+对 2000 名开发者的 AI Coding 平台，先采集实际 Agent Trace，确定模型调用分布和成功任务成本，再用一台 8-GPU 节点建立质量与性能基线。确认模型、上下文和并发需求后，再评估多节点网络与 GB300 NVL72。部署位置则根据数据分类、团队能力和成本选择自有机房、CSP GPU、Dedicated Inference 或混合模式。
 
 最终的采购和架构评审应回答三个问题：目标业务是否需要自管模型；内部团队是否准备好承担 GPU Serving 的 Day-2 责任；自管方案是否在满足安全和 SLO 的同时，降低了单位成功任务成本或带来了托管服务无法提供的控制能力。若答案不明确，继续扩大 GPU 集群只会提前固化尚未验证的假设。
 
 ## 结论
 
-企业是否自部署 GPU，取决于数据边界、负载规模、模型控制需求和内部运维能力，而不是开发者人数或峰值算力。对约 1000 名开发者的 AI Coding 平台，应先用真实 Agent Trace 和单节点 POC 建立质量、延迟及单位成功任务成本基线，再决定采用自有 GPU、CSP、Dedicated Inference 或托管 API，以及是否需要扩展到多节点和 GB300 NVL72。
+企业是否自部署 GPU，取决于数据边界、负载规模、模型控制需求和内部运维能力，而不是开发者人数或峰值算力。对 2000 名开发者的 AI Coding 平台，应先用真实 Agent Trace 和单节点 POC 建立质量、延迟及单位成功任务成本基线，再决定采用自有 GPU、CSP、Dedicated Inference 或托管 API，以及是否需要扩展到多节点和 GB300 NVL72。
+
+## 26. 2000 名开发者的 Workbench：只考虑 AWS 与 Azure GPU 租用
+
+本章将云基础设施范围限定为 **Amazon Web Services（AWS）和 Microsoft Azure**。GPU 以云 VM / GPU 实例租用，不讨论自建机房或其它 GPU 云厂商。两家都能提供 H100、H200 及 Blackwell 级实例，但具体 SKU、区域配额、可用区容量、网络拓扑和价格差异很大；采购前必须以目标区域的实时价格、企业折扣和容量确认结果为准。
+
+### 26.1 从 2000 个席位推导负载，而不是按人数购买 GPU
+
+“支持 2000 名开发者”不等于同时处理 2000 个模型请求。用于初期预算的规划假设如下，最终容量必须由真实 Agent Trace 验证：
+
+| 指标 | 初始规划假设 |
+| --- | ---: |
+| 注册开发者 | 2,000 |
+| 日活比例 | 65%–75%，约 1,300–1,500 DAU |
+| 高峰同时活跃 Agent Session | 180–250 |
+| 短时峰值 | 300–350 |
+| 可用性目标 | 99.9% 起步，控制面、工具执行面和模型服务分别定义 SLO |
+
+这里的 Agent Session 是活跃任务，不是持续占用 GPU 的 Decode 请求。每个 Session 会在上下文检索、工具调用、测试执行和模型生成之间切换。真正决定 GPU 数量的是 Prefill/Decode Token 分布、并发生成数、上下文长度、KV Cache 命中率、TTFT/TPOT 目标，以及每个成功任务调用模型的次数。
+
+POC 至少采集两周脱敏 Trace，覆盖工作日峰值、代码审查高峰、CI 故障处理和长任务。以 P95/P99 延迟、排队时间、任务成功率和每成功任务 GPU-seconds 验收。模型、Prompt、Agent Harness 或 MCP 工具改变后，重新测量单位任务成本。
+
+### 26.2 Workbench 应该包含什么
+
+Workbench 不只是 IDE 插件或 LLM Gateway，而是开发者入口、Agent 生命周期管理、工具执行和推理服务的组合。
+
+| 层次 | 组件 | 职责 |
+| --- | --- | --- |
+| Developer Experience | VS Code / JetBrains 插件、CLI、Web Console | SSO、会话、任务状态、模型选择、差异审阅和人工确认 |
+| Identity & Policy | Entra ID / IAM Identity Center、OIDC、RBAC、策略引擎 | 仓库权限、模型权限、工具权限、数据分类和审批 |
+| Workbench Control Plane | API Gateway、Session Service、Agent Orchestrator、Queue、Quota | 会话生命周期、排队、取消/重试、团队配额、审计和路由 |
+| Agent Runtime | Coding Agent Harness、Context Builder、MCP Registry、Tool Broker | 仓库上下文、代码检索、工具调用、模型协议适配和任务验证 |
+| Isolated Execution | Ephemeral Container / VM、Git Worktree、Test Runner | 每任务隔离文件系统、凭据和网络；不把云凭据交给模型 |
+| Model Gateway | OpenAI-compatible API、Model Router、Prefix Cache | 模型路由、限流、重试、熔断、成本归因和版本治理 |
+| GPU Inference | AWS EC2 P5e/P5en 或 P6；Azure ND H200 / ND GB200 | vLLM / SGLang / TensorRT-LLM 推理池；在线与批处理分池 |
+| Platform Services | Redis、PostgreSQL、对象存储、Logs/Trace/Metrics | 会话元数据、任务事件、模型制品、审计和 FinOps |
+
+Workbench 控制面不能依赖 GPU 节点存活。GPU Pool 故障时，Session、任务状态、审计和权限仍需可用；模型路由可以切换到备用池或托管模型，但不能绕过数据分类。工具执行必须经过 Tool Broker 和隔离环境，不能因为 GPU 与 Agent 位于同一 VPC 就默认共享凭据或生产网络权限。
+
+### 26.3 AWS 与 Azure 的 GPU 实例选择
+
+中到重度 Coding Agent 推理建议先以 H200 做容量基线。B200/B300 或 GB200 适合模型权重、KV Cache 或实测并发已经证明需要更大显存和更高吞吐的情况。不要只根据峰值算力采购；Coding Agent 的瓶颈经常在长上下文 Prefill、KV Cache、Decode、Tokenizer、队列和工具等待。
+
+| 云平台 | 实例系列 | GPU 配置 | 适用场景与注意事项 |
+| --- | --- | --- | --- |
+| AWS | EC2 P5 | 8× H100 | 80GB/GPU；适合已有 H100 运行栈或成本基线 |
+| AWS | EC2 P5e / P5en | 8× H200 | 141GB/GPU；推荐作为初始基线，P5en 面向更高网络带宽与 RDMA 需求 |
+| AWS | EC2 P6-B200 / P6-B300 | 8× B200 / B300 | 大模型、高 KV Cache 容量和高并发；价格与配额要求更高 |
+| Azure | ND H100 v5 | 8× H100 | H100 多 VM 扩展依赖 InfiniBand 与 NCCL 拓扑 |
+| Azure | ND H200 v5 | 8× H200 | 141GB/GPU，节点内 NVLink，跨 VM InfiniBand；推荐基线 |
+| Azure | ND GB200 v6 | 4× GB200 / VM | Blackwell 方案；NVL72 rack-scale 由多 VM 组成，不能按单 VM 规格理解 |
+
+官方规格参考：[AWS P5](https://aws.amazon.com/ec2/instance-types/p5/)、[AWS EC2 加速实例规格](https://docs.aws.amazon.com/ec2/latest/instancetypes/ac.html)、[AWS P6-B300](https://aws.amazon.com/blogs/aws/accelerate-large-scale-ai-applications-with-the-new-amazon-ec2-p6-b300-instances/)、[Azure ND-H200-v5](https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/gpu-accelerated/nd-h200-v5-series)、[Azure ND-GB200-v6](https://learn.microsoft.com/en-us/azure/virtual-machines/sizes/gpu-accelerated/nd-gb200-v6-series)。
+
+建议优先比较 AWS P5en 与 Azure ND H200 v5，而不是直接从 B300 起步。在相同模型、量化、上下文长度和 Agent Harness 下测试每 GPU 的成功任务吞吐，再比较 P6-B300 / ND GB200 的单位任务成本。若 H200 已满足延迟和峰值容量，升级 Blackwell 只会增加成本与运行复杂度。
+
+### 26.4 64–96 张 H200 的规划区间与月租估算
+
+以 8-GPU H200 VM 为一个计算单元，初期预算按 **8 个节点（64 张 H200）常态容量，12 个节点（96 张 H200）扩展上限**估算。这是预算规划，不是已经验证的并发承载承诺。最终数量取决于模型、量化、TP/EP、上下文长度、Prefix Cache、Batching 和 SLO。
+
+公开 On-Demand 价格快照（Linux，按 730 小时/月）：
+
+| 云平台 / 实例 | 8-GPU 节点小时价 | GPU-hour | 单节点月价 | 8 节点/月 | 12 节点/月 |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| AWS P5en.48xlarge（H200） | 约 $63.28 | 约 $7.91 | 约 $46,200 | 约 $369,600 | 约 $554,400 |
+| Azure ND96isr_H200_v5 | $84.80 | $10.60 | $61,904 | $495,232 | $742,848 |
+
+价格来自公开价格追踪及 Azure Retail Prices API 的快照，不是合同报价；区域、税、企业折扣、Savings Plans / Reservations、Spot 和容量预留会改变实际账单。参考：[AWS/Azure GPU 价格对比（2026-11-03）](https://gpuledger.dev/guides/azure-vs-aws/)、[AWS H200 价格追踪](https://vmprices.com/gpus/nvidia-h200/)、[Azure ND H200 价格记录](https://themodelpress.com/gpu-prices/azure-nd-h200-v5-on-demand)。
+
+按 GPU 节点租赁费外加 15%–25% 的存储、网络、负载均衡、监控、控制面和日志等平台开销估算：
+
+| 部署规模 | AWS H200 月预算 | Azure H200 月预算 | 说明 |
+| --- | ---: | ---: | --- |
+| 8 节点常态容量 | $425k–$462k | $569k–$619k | 64 GPU，持续在线规划基线 |
+| 12 节点全部 24×7 | $637k–$693k | $854k–$929k | 96 GPU，峰值全月运行上界 |
+| 8 节点常态 + 4 节点按需扩容 | $425k–$462k 起 | $569k–$619k 起 | 弹性节点按实际小时另计 |
+
+金额为 USD，不包括税、企业支持计划、跨区域灾备、模型 API、工程人力和独立隔离执行集群。Spot 不纳入常态容量，因为交互式 Agent 服务不能把可中断实例作为唯一容量。稳定运行后再评估 1 年/3 年承诺折扣；在 POC 完成前不要对未经验证的 GPU 数量做长期承诺。
+
+**成本风险主要来自 GPU 空转和模型/Agent 效率。** 在线交互、后台 Agent、代码索引和离线评测应分队列；在线服务使用最小常驻池，长任务使用可取消、可扩缩的弹性池；配额同时限制输入/输出 Token、并发和后台运行时间。
+
+### 26.5 模型选择：托管前沿模型 + 自托管模型池
+
+不考虑 DeepSeek 和 Qwen。不要把全部流量押在单一模型，也不要一开始就把所有请求迁移到自托管模型。建议按任务质量、延迟、Token 成本和数据边界分层：
+
+| 模型 | 部署方式 | 建议角色 | 说明 |
+| --- | --- | --- | --- |
+| Claude Sonnet 5.5 | Amazon Bedrock / Microsoft Foundry | 默认高质量 Coding Agent | 主力闭源候选；1M context，编码和 Agent 任务能力强 |
+| Claude Opus 5.5 | Bedrock / Foundry | 复杂重构、疑难 Bug、架构任务 | 高难任务升级路由，不承接所有请求 |
+| GPT-6.1 Sol / GPT-6 Astra | Microsoft Foundry 或对应企业 API | 第二供应商、复杂推理和独立评审 | 用于供应商冗余与交叉评审，核实区域、速率限制和企业条款 |
+| GLM-5.3-Flash | AWS / Azure GPU 自托管，或 Foundry 模型端点 | 自托管主力候选 | 大型 MoE、活跃参数较少；重点验证工具调用和代码任务质量 |
+| gpt-oss-120b | AWS / Azure GPU 自托管 | 内部任务、代码解释、摘要和分类 | 原生 MXFP4 权重，可在 H200 上验证单机/多副本部署 |
+| Mistral Medium 3.5 / Devstral Small 2 | AWS / Azure GPU 自托管 | 局部代码修改、轻量 Agent 任务 | 作为第二开源模型池；核对许可证、商业限制和推理引擎支持 |
+
+模型版本以 2026 年 11 月公开可用信息为候选，模型发布快，不能视为长期固定 BOM。Claude Sonnet 5.5 标准价格为每百万输入 Token $2、输出 Token $10，缓存命中价格更低。参考：[Anthropic 定价](https://platform.claude.com/docs/en/about-claude/pricing)、[Sonnet 5.5 模型说明](https://platform.claude.com/docs/en/models/sonnet-5-5/overview)、[AWS Bedrock Anthropic 模型列表](https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards-anthropic.html)、[Azure AI Foundry 模型目录](https://ai.azure.com/catalog/models)。
+
+建议 Sonnet 5.5 承担大部分需要较高代码质量的交互任务；Opus 5.5 或 GPT-6.1 Sol 处理复杂重构和独立评审；GLM-5.3-Flash 或 gpt-oss-120b 负责允许自托管的高频任务、摘要、分类、解释和后台工作。路由应纳入仓库语言、任务类型、质量等级、数据分类、工具调用风险、上下文长度和历史成功率，不能只按 Token 价格或输入长度决策。
+
+受监管环境需要分别评估 Bedrock / Foundry 的数据处理条款、区域、日志和私网能力。自托管也不自动意味着数据安全：模型日志、Prompt Trace、缓存、对象存储、快照、备份和运维人员访问都属于数据边界。
+
+### 26.6 API 与 GPU 自托管的成本交叉点
+
+不要先假定租 GPU 一定比模型 API 便宜。以 Sonnet 5.5 标准价为例，假设 80% 输入 Token、20% 输出 Token：
+
+| 月度总 Token | 输入 / 输出 | 按 $2 / $10 每百万 Token 估算 |
+| ---: | ---: | ---: |
+| 2B | 1.6B / 0.4B | 约 $7,200 |
+| 5B | 4B / 1B | 约 $18,000 |
+| 10B | 8B / 2B | 约 $36,000 |
+| 20B | 16B / 4B | 约 $72,000 |
+
+这是标准价格的简单计算，未计缓存折扣、长上下文附加费、服务层级、工具费用和不同区域价格。它说明：若 2000 名开发者月度消耗在 5B–20B Token，API 账单可能仍显著低于 64–96 张 H200 全天运行的 GPU 租赁费。自托管的经济性必须建立在高 GPU 利用率、持续流量、模型适配、缓存复用和更低的单位成功任务成本上，而不是比较理论 Tokens/s。
+
+比较公式：
+
+`TCO = GPU VM + Storage + Network + Control Plane + Operations + Idle Capacity + Evaluation`
+
+`Cost per Successful Task = TCO / Successful Agent Tasks`
+
+若 API 成本明显低于 GPU 平台，且数据策略允许，保留托管模型通常更合理；若自托管是为了数据驻留、可控吞吐、稳定容量或降低供应商依赖，应把这些收益写进 ADR，而不是包装成节省成本。
+
+### 26.7 推荐拓扑：AWS 或 Azure 单云主部署
+
+建议选择一个主云承载 Workbench 控制面、隔离执行和主要 GPU 推理池。AWS 与 Azure 都可以做完整方案，但不建议把同一个在线模型集群跨 AWS/Azure 拉成 RDMA 集群；跨云时延、数据传输、故障域、身份体系和运维复杂度会抵消收益。
+
+架构图：[2000 名开发者 Workbench：AWS / Azure GPU 部署架构](../diagrams/enterprise-gpu-ai-coding-platform/05-2000-developer-aws-azure-workbench.html)（[SVG](../diagrams/enterprise-gpu-ai-coding-platform/05-2000-developer-aws-azure-workbench.svg)）。
+
+AWS 方案中，GPU Serving 使用 EC2 P5en/P6，模型制品存储在 S3，镜像与部署由 ECR/EKS 管理，托管模型可经 Bedrock 访问。Azure 方案中，GPU Serving 使用 ND H200 / ND GB200 VM，制品存储在 Blob Storage，部署由 AKS 管理，托管模型由 Microsoft Foundry 提供。统一 Model Gateway 屏蔽模型和云差异，但保留各自私网 Endpoint、身份和审计实现。
+
+在线请求经过鉴权、策略和配额检查后进入模型池；长任务由独立队列调度；工具调用经过 Tool Broker 和隔离执行环境。模型池支持 Canary、按版本切流、快速回滚和熔断。自托管池容量不足时，只能按明确的数据策略切换到 Bedrock / Foundry，不能静默跨越数据边界。
+
+### 26.8 实施顺序与采购门槛
+
+| 阶段 | 建议规模 | 必须验证 |
+| --- | --- | --- |
+| Trace & Workload Discovery | 2000 人抽样 | DAU、Agent 并发、Token 分布、成功率、数据分类 |
+| POC | 1 个 8-GPU H200 节点 | GLM-5.3-Flash、gpt-oss-120b 与 Sonnet 5.5 任务级对照 |
+| Pilot | 2–3 个 8-GPU 节点 | 50–100 人真实 IDE/CLI、MCP 与执行隔离 |
+| Production Wave 1 | 4–6 个节点 | 逐团队放量、配额、审计、熔断、回滚与故障演练 |
+| Production 2000 | 规划 8 节点，按需扩至 12 | 峰值压测、节点故障、模型切换、区域容量与 DR |
+
+采购前必须取得 AWS 和 Azure 两边的书面报价与容量确认，覆盖目标区域 GPU SKU、On-Demand 与承诺折扣、容量预留、Spot 中断策略、网络与跨区费用、存储吞吐、私网访问、数据驻留、支持等级和配额提升周期。P6-B300 / ND GB200 尤其需要确认能否按计划获得连续多节点容量。
+
+最终建议：先用 AWS P5en 或 Azure ND H200 的 8-GPU 节点做 POC；Workbench 控制面和工具执行面独立部署；Sonnet 5.5 建立质量基线，自托管以 GLM-5.3-Flash / gpt-oss-120b 验证成本与吞吐；生产先按 4–6 节点放量，达到实测门槛后再扩至 8 节点，12 节点仅作为峰值容量预留。64–96 GPU 不是已验证结论，最终 sizing 必须由成功任务吞吐、P95 延迟和单位成功任务成本决定。
