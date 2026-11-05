@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { runAgentText } from "./generate.js";
 import type { LibraryChunk } from "./library.js";
+import { buildEntityRegistry } from "./entity-registry.js";
 
 export type NarrativeEntityType = "character" | "organization" | "location" | "object" | "ability" | "concept";
 export type ExtractionConfidence = "explicit" | "inferred";
@@ -12,9 +13,13 @@ export interface EvidenceLocation {
   source: string;
   chapter: string;
   sourceHash?: string;
-  /** Zero-based character offsets within the chapter text, end-exclusive. */
+  chapterStart?: number;
+  /** Zero-based UTF-16 character offsets within the chapter text, end-exclusive. */
   start: number;
   end: number;
+  /** Zero-based UTF-16 character offsets within the complete source file, end-exclusive. */
+  sourceStart?: number;
+  sourceEnd?: number;
 }
 
 export interface ExtractedEntity {
@@ -115,8 +120,10 @@ function evidenceLocation(chunk: LibraryChunk, evidence: string): EvidenceLocati
   return {
     chunkId: chunk.id, source: chunk.source, chapter: chunk.chapter,
     ...(chunk.sourceHash ? { sourceHash: chunk.sourceHash } : {}),
+    ...(typeof chunk.chapterStart === "number" ? { chapterStart: chunk.chapterStart } : {}),
     start: chunk.start + localStart,
-    end: chunk.start + localStart + evidence.length
+    end: chunk.start + localStart + evidence.length,
+    ...(typeof chunk.chapterStart === "number" ? { sourceStart: chunk.chapterStart + chunk.start + localStart, sourceEnd: chunk.chapterStart + chunk.start + localStart + evidence.length } : {})
   };
 }
 
@@ -329,6 +336,11 @@ export async function analyzeLibrary(
   // Persist once per bounded batch instead of rewriting the growing JSON store
   // after every chunk (which made a full run quadratic in bytes written).
   await saveStore(libraryDir, store);
+  const registry = buildEntityRegistry(worldId, store.annotations);
+  const registryPath = join(libraryDir, "entities.json");
+  const registryTemporary = registryPath + ".tmp";
+  await writeFile(registryTemporary, JSON.stringify(registry, null, 2) + "\n", "utf8");
+  await rename(registryTemporary, registryPath);
 
   const completed = new Set(store.annotations.map(item => item.chunkId));
   return {

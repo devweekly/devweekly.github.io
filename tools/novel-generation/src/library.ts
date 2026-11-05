@@ -1,4 +1,4 @@
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { basename, extname, join, relative, resolve, sep } from "node:path";
 
@@ -173,6 +173,10 @@ export async function ingestFiles(worldId: string, inputPaths: string[], library
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   searchCache.delete(indexPath);
+  try { await unlink(join(libraryDir, "entities.json")); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
   return chunks.length;
 }
 
