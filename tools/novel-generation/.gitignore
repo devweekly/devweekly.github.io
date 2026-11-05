@@ -3,3 +3,4 @@ dist/
 .output/
 .env
 worlds/*/story-state.json
+worlds/*/library/
