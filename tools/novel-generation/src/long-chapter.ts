@@ -290,7 +290,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     "profile 记录相对稳定的性格底色、价值观、内在矛盾、语言习惯和行为边界；不要因单次行为轻易改写。其他字段是章节结束时的当前状态快照，数组必须给出完整当前值。人物弧光可以改变人物，但必须由选择、压力、代价和行为证据支撑，不得刻板化，也不得为制造反转而突然黑化/洗白。只记录章节明确支持的内容；推断标为 inferred，项目原创内容标为 original，不得写进原著正史。人物发生实质性弧光变化时，追加 arcMilestones，记录关键选择、压力、代价和正文逐字证据；没有实质变化就不新增里程碑。"
   ]);
   const parseUpdate = (raw: string) => {
-    const cleaned = raw.trim().replace(/^\\x60{3}(?:json)?\\s*/i, "").replace(/\\s*\\x60{3}$/i, "");
+    const cleaned = raw.trim().replace(/^\x60{3}(?:json)?\s*/i, "").replace(/\s*\x60{3}$/i, "");
     const start = cleaned.indexOf("{");
     const end = cleaned.lastIndexOf("}");
     if (start < 0 || end <= start) throw new Error("State agent did not return a JSON object.");
@@ -310,7 +310,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       ]);
       update = parseUpdate(retryText);
     } catch (retryError) {
-      await saveStage(input.outputDir, "07-state-update-error.txt", "First attempt: " + String(firstError) + "\\nRetry: " + String(retryError) + "\\n\\n" + stateText);
+      await saveStage(input.outputDir, "07-state-update-error.txt", "First attempt: " + String(firstError) + "\nRetry: " + String(retryError) + "\n\n" + stateText);
       throw new Error("Chapter was generated, but story-state extraction failed twice. See 07-state-update-error.txt; do not start the next chapter.");
     }
   }
@@ -319,7 +319,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     if (input.applyState) await saveStoryState(input.statePath, nextState);
     await saveStage(input.outputDir, "07-state-update.json", JSON.stringify(nextState, null, 2));
   } catch (error) {
-    await saveStage(input.outputDir, "07-state-update-error.txt", String(error) + "\\n\\n" + stateText);
+    await saveStage(input.outputDir, "07-state-update-error.txt", String(error) + "\n\n" + stateText);
     throw new Error("Chapter was generated, but story-state persistence failed. See 07-state-update-error.txt; do not start the next chapter.");
   }
   return chapter;
