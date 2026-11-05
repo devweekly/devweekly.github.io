@@ -17,16 +17,16 @@ export interface TaskProfile {
   effort: Effort;
 }
 
-/** 判断与成文都给思考预算；只有终审与状态提取这类纯改写、纯抽取的步骤关掉。 */
+/** 小说正文、对白和文风修订需要保留适度思考；不把写作阶段降成低推理的机械改写。 */
 const DEFAULTS: Record<StageKey, TaskProfile> = {
   plot: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "medium" },
   creative: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "medium" },
   plan: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "high" },
   scene: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "medium" },
-  dialogue: { thinkingMode: "disabled", thinkingBudgetTokens: 8192, effort: "low" },
-  voice: { thinkingMode: "disabled", thinkingBudgetTokens: 8192, effort: "low" },
-  review: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "high" },
-  final: { thinkingMode: "disabled", thinkingBudgetTokens: 8192, effort: "low" },
+  dialogue: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "medium" },
+  voice: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "medium" },
+  review: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "medium" },
+  final: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "medium" },
   state: { thinkingMode: "disabled", thinkingBudgetTokens: 8192, effort: "low" }
 };
 
