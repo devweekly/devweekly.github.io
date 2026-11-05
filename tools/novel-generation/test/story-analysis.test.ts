@@ -1,0 +1,43 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { mkdtemp, rm } from "node:fs/promises";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
+import { databaseStatus, readStoryAnalysis, saveStoryAnalysis } from "../src/database.js";
+import { groupAnalysisBatches } from "../src/story-analysis.js";
+
+test("story analysis batches preserve every indexed chunk in order", () => {
+  const chunks = [0, 1, 2].map(index => ({
+    id: "source:0:" + index, source: "source.txt", chapter: "第1章",
+    chunkIndex: index, start: index * 1200, end: (index + 1) * 1200,
+    text: "字".repeat(1200), sourceHash: "a".repeat(64), chapterStart: 0
+  }));
+  const batches = groupAnalysisBatches(chunks, 2000);
+  assert.equal(batches.length, 2);
+  assert.deepEqual(batches.flatMap(batch => batch.chunks.map(chunk => chunk.id)), chunks.map(chunk => chunk.id));
+  assert.ok(batches.every(batch => batch.chars <= 2000));
+});
+
+test("story analysis snapshot is persisted and replaced atomically as one database record", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-story-analysis-"));
+  try {
+    const snapshot = {
+      worldId: "test-world", sourceHash: "b".repeat(64), analyzedAt: "2026-11-05T00:00:00.000Z",
+      complete: true, batches: 2,
+      characters: [{ name: "林岚", shortBio: "一个复杂的人物", sourceRefs: [{ chunkId: "c1", source: "s.txt", chapter: "第一章" }] }],
+      plotThreads: [{ title: "失踪案", summary: "仍未解决" }],
+      foreshadowings: [{ clue: "墙上的旧照片", confidence: "可能线索" }],
+      developmentPossibilities: [{ focus: "林岚", direction: "可能背叛同伴" }]
+    };
+    saveStoryAnalysis(root, "test-world", snapshot);
+    assert.deepEqual(readStoryAnalysis(root, "test-world"), snapshot);
+    assert.equal(databaseStatus(root, "test-world").storyAnalysis, 1);
+    const replacement = { ...snapshot, sourceHash: "c".repeat(64), batches: 3 };
+    saveStoryAnalysis(root, "test-world", replacement);
+    assert.deepEqual(readStoryAnalysis(root, "test-world"), replacement);
+    assert.equal(databaseStatus(root, "test-world").storyAnalysis, 1);
+    assert.throws(() => saveStoryAnalysis(root, "other-world", snapshot), /world mismatch/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
