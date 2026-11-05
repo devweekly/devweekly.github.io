@@ -8,7 +8,7 @@ import { emptyStoryState, loadStoryState } from "../src/story-state.js";
 test("SQLite stores chunks, annotations, entities and normalized story state",async()=>{
  const root=await mkdtemp(join(tmpdir(),"novel-sqlite-"));
  try{const world=join(root,"worlds","test-world");const chunks=[{id:"s:0:0",source:"s.txt",chapter:"第1章",chunkIndex:0,start:0,end:4,text:"测试文本",sourceHash:"a".repeat(64),chapterStart:0}];
- syncLibraryChunks(world,"test-world",chunks);assert.deepEqual(readLibraryChunks(world,"test-world"),chunks);
+ syncLibraryChunks(world,"test-world",chunks);assert.deepEqual(readLibraryChunks(world,"test-world").map(item=>({...item})),chunks);
  const annotation={chunkId:"s:0:0",source:"s.txt",chapter:"第1章",extractedAt:"2026-11-05T00:00:00.000Z",entities:[{name:"李玄"}],events:[],relations:[],coreferences:[],evidenceReviews:[]};
  syncAnnotations(world,"test-world",[annotation],{entities:[{id:"ent_1",name:"李玄",type:"character",aliases:["玄"],mentions:[{chunkId:"s:0:0",source:"s.txt",chapter:"第1章",evidence:"李玄"}]}]});
  assert.equal(readAnnotationsByChunkIds(world,"test-world",["s:0:0"]).get("s:0:0")?.chunkId,"s:0:0");
