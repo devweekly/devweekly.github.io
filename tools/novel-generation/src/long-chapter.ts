@@ -229,11 +229,12 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       sceneCount: input.scenes,
       sceneLabel: `第 ${index + 1} 批，场景 ${batchStart}–${batchStart + slice.length - 1}`
     });
-    let raw = await cachedCall("batch-review-" + (index + 1), "04-review-batch-" + (index + 1) + "-raw.txt", "review", [
-      batchPrompt
-    ], output => parseChapterReview(output, batchText, input.scenes));
+    let raw: string;
     let parsed: ReturnType<typeof parseChapterReview>;
     try {
+      raw = await cachedCall("batch-review-" + (index + 1), "04-review-batch-" + (index + 1) + "-raw.txt", "review", [
+        batchPrompt
+      ], output => parseChapterReview(output, batchText, input.scenes));
       parsed = parseChapterReview(raw, batchText, input.scenes);
     } catch (firstError) {
       raw = await cachedCall("batch-review-" + (index + 1) + "-retry", "04-review-batch-" + (index + 1) + "-retry-raw.txt", "review", [
