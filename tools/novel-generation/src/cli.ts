@@ -47,7 +47,7 @@ async function main(): Promise<void> {
       worldId, brief, worldBible, sourceText, contextText, model, maxWords,
       outputDir, statePath
     });
-    console.log("\\nSaved chapter: " + resolve(outputDir, "chapter.md"));
+    console.log("\nSaved chapter: " + resolve(outputDir, "chapter.md"));
     console.log("Updated story state: " + statePath);
     if (!chapter.trim()) throw new Error("Generated chapter is empty.");
     return;
@@ -60,7 +60,7 @@ async function main(): Promise<void> {
   const result = await generateStory({ brief, mode, worldId, worldBible, sourceText, contextText, model, maxWords });
   await mkdir(dirname(outputPath), { recursive: true });
   await writeFile(outputPath, result + "\n", "utf8");
-  console.log("\\nSaved: " + outputPath);
+  console.log("\nSaved: " + outputPath);
 }
 
 main().catch((error: unknown) => {
