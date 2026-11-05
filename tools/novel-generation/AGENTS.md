@@ -89,7 +89,7 @@ CLI 命令（均经 `npm run dev --`）：
 
 - Each world has `worlds/<world>/novel.db`, implemented with Node's built-in `node:sqlite`; keep database files and WAL/SHM sidecars out of Git.
 - SQLite is authoritative for story state after legacy JSON migration. `story-state.json` is a readable compatibility snapshot; library/annotation JSON are rebuildable interchange snapshots.
-- Update SQLite through `src/database.ts` transaction helpers; do not write tables ad hoc from CLI or agents.
+- Update SQLite through `src/database.ts` transaction helpers; do not write tables ad hoc from CLI or agents. `story_analysis` stores the latest complete corpus-analysis snapshot separately from canonical `story_state`; per-batch resumable work files stay under `.output/`.
 - Library search keeps the existing BM25 ranking but reads chunk records from SQLite. Retrieved chunk annotations are loaded from SQLite by chunk ID.
 - Do not store original novel files in SQLite; only indexed passages and structured derived data belong there.
 
