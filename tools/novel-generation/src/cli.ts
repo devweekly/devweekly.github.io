@@ -71,7 +71,11 @@ async function main(): Promise<void> {
   const libraryDir = resolve("worlds", worldId, "library");
 
   if (command === "db-status") {
-    console.log(JSON.stringify(databaseStatus(resolve("worlds", worldId), worldId), null, 2));
+    const worldDir = resolve("worlds", worldId);
+    await loadStoryState(resolve(worldDir, "story-state.json"), worldId);
+    await searchLibrary(libraryDir, "__sqlite_migration_probe__", 1);
+    readAnnotationsByChunkIds(worldDir, worldId, ["__sqlite_migration_probe__"]);
+    console.log(JSON.stringify(databaseStatus(worldDir, worldId), null, 2));
     return;
   }
 

@@ -227,7 +227,7 @@ node scripts/compare-models.mjs \\
 
 首次访问会自动把已有 `library/index.json`、`annotations.json` 和 `story-state.json` 导入数据库。此后故事状态以 SQLite 为权威存储，`story-state.json` 保留为可读兼容快照；库索引和标注 JSON 继续作为可重建/交换快照。重新导入源文件会在事务中替换 SQLite 片段索引并清理对应过期标注。数据库不存原始小说全文文件，只存索引片段及结构化信息。
 
-查看数据库状态：
+查看数据库状态（会先尝试迁移已有 JSON 快照）：
 
 ```bash
 npm run dev -- db-status --world conghuoniao

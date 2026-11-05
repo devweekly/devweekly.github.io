@@ -30,7 +30,7 @@ export function syncLibraryChunks(worldDir:string,worldId:string,chunks:LibraryC
  const db=openDatabase(worldDir,worldId);try{transaction(db,()=>{db.exec("DELETE FROM library_chunks");const q=db.prepare("INSERT INTO library_chunks(id,source,chapter,chunk_index,start_offset,end_offset,source_hash,chapter_start,text) VALUES(?,?,?,?,?,?,?,?,?)");for(const c of chunks)q.run(c.id,c.source,c.chapter,c.chunkIndex,c.start,c.end,c.sourceHash??null,c.chapterStart??null,c.text);});}finally{db.close();}
 }
 export function readLibraryChunks(worldDir:string,worldId:string):LibraryChunk[]{
- const db=openDatabase(worldDir,worldId);try{return db.prepare("SELECT id,source,chapter,chunk_index AS chunkIndex,start_offset AS start,end_offset AS end,source_hash AS sourceHash,chapter_start AS chapterStart,text FROM library_chunks ORDER BY source,chapter,chunk_index").all() as unknown as LibraryChunk[];}finally{db.close();}
+ const db=openDatabase(worldDir,worldId);try{return db.prepare("SELECT id,source,chapter,chunk_index AS chunkIndex,start_offset AS start,end_offset AS end,source_hash AS sourceHash,chapter_start AS chapterStart,text FROM library_chunks ORDER BY rowid").all() as unknown as LibraryChunk[];}finally{db.close();}
 }
 type AnnotationRow={chunkId:string;source:string;chapter?:string;extractedAt?:string};
 type RegistryData={entities:Array<{id:string;name:string;type:string;aliases:string[];mentions:Array<{chunkId:string;source:string;chapter:string;evidence:string}>}>};
@@ -45,7 +45,7 @@ export function syncAnnotations(worldDir:string,worldId:string,annotations:Annot
 export function readAnnotationsByChunkIds(worldDir:string,worldId:string,ids:string[]):Map<string,Record<string,unknown>>{
  const result=new Map<string,Record<string,unknown>>();if(!ids.length)return result;const db=openDatabase(worldDir,worldId);
  try{const n=Number((db.prepare("SELECT COUNT(*) AS count FROM annotations").get() as {count:number}).count);
- if(n===0){try{const legacy=JSON.parse(readFileSync(join(worldDir,"library","annotations.json"),"utf8")) as {annotations?:AnnotationRow[]};if(legacy.annotations?.length)syncAnnotations(worldDir,worldId,legacy.annotations,null);}catch(e){if((e as NodeJS.ErrnoException).code!=="ENOENT")throw e;}}
+ if(n===0){try{const legacy=JSON.parse(readFileSync(join(worldDir,"library","annotations.json"),"utf8")) as {annotations?:AnnotationRow[]};let registry:RegistryData|null=null;try{registry=JSON.parse(readFileSync(join(worldDir,"library","entities.json"),"utf8")) as RegistryData;}catch(e){if((e as NodeJS.ErrnoException).code!=="ENOENT")throw e;}if(legacy.annotations?.length)syncAnnotations(worldDir,worldId,legacy.annotations,registry);}catch(e){if((e as NodeJS.ErrnoException).code!=="ENOENT")throw e;}}
  const q=db.prepare("SELECT chunk_id,payload_json FROM annotations WHERE chunk_id=?");for(const id of ids){const row=q.get(id) as {chunk_id:string;payload_json:string}|undefined;if(row)result.set(row.chunk_id,JSON.parse(row.payload_json) as Record<string,unknown>);}return result;
  }finally{db.close();}
 }
