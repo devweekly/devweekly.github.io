@@ -60,3 +60,8 @@
 - 对批次分组、结构化输出解析和 SQLite 快照读写编写单元测试。
 - 运行 `npm run typecheck`、`npm test` 和 `npm run build`。
 - 通过 `db-status` 检查 `story_analysis` 是否已写入；实际分析需要在可用的 CodeBuddy 会话环境中运行 `npm run dev -- analyze-story --world <world>`。
+
+
+## 后续写作上下文接入
+
+完整分析快照可以为普通章节和长章节提供少量相关参考，但不得整份注入。程序按本次创作任务筛选人物、情节、伏笔和发展可能性，并明确告知写作 Agent 可自由采用、改造或舍弃。重新导入语料时必须清除旧分析快照，避免分析结果与当前文本脱节。若筛选结果与文学表达冲突，文学表达优先。
