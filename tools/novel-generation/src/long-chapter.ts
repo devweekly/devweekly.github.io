@@ -8,6 +8,7 @@ import { runAgentText, type GenerationMode } from "./generate.js";
 import { readTaskProfiles, type StageKey } from "./task-profiles.js";
 import { RHYTHM_RULE, mergeStoryState } from "./workflow.js";
 import { searchLibrary } from "./library.js";
+import { formatReview, reviewAndRepair, reviewPrompt } from "./chapter-review.js";
 
 export interface LongChapterInput {
   worldId: string;
@@ -209,12 +210,64 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     console.error(`[write-long] 修订 ${index + 1}/${input.scenes} · ${chineseChars(text)} 汉字`);
   }
 
-  const chapter = "# " + (input.mode === "continuation" ? "续写章节" : "衍生章节") + "\n\n" +
-    polished.join("\n\n---\n\n") + "\n";
+  const chapterTitle = "# " + (input.mode === "continuation" ? "续写章节" : "衍生章节") + "\n\n";
+  const buildChapter = (): string => chapterTitle + polished.join("\n\n---\n\n") + "\n";
+  const reviewHistory: string[] = [];
+  const reviewed = await reviewAndRepair({
+    initialChapter: buildChapter(),
+    sceneCount: input.scenes,
+    maxRepairRounds: 2,
+    review: (candidate, correction) => call("review", [
+      reviewPrompt({
+        context: writingContext,
+        blueprint,
+        chapter: candidate,
+        priorReview: review,
+        sceneCount: input.scenes,
+        correction
+      })
+    ]),
+    repair: async (_candidate, issues, round) => {
+      const affectedScenes = [...new Set(issues.flatMap(issue => issue.scenes))].sort((a, b) => a - b);
+      for (const sceneNumber of affectedScenes) {
+        const sceneIssues = issues.filter(issue => issue.scenes.includes(sceneNumber));
+        const index = sceneNumber - 1;
+        const currentScene = polished[index];
+        if (currentScene === undefined) throw new Error("Review referenced a missing scene: " + sceneNumber);
+        const revised = await call("voice", [
+          "角色：场景修复编辑。只修复指定场景中的实质问题，输出本场完整正文，不得输出解释或标题。",
+          writingContext,
+          "全章蓝图：", blueprint,
+          "原始分场审查：", review,
+          "最终全章审查发现：", JSON.stringify(sceneIssues, null, 2),
+          "当前场景正文：", currentScene,
+          "本轮自动修复：" + round,
+          "修复要求：解决列出的问题，保留本场已成立的人物选择、信息揭示和文学表达；不得引入与其他场景冲突的新事实。跨场问题应遵守其他受影响场景已确认的事实。除修复问题外尽量保持原文。"
+        ]);
+        if (chineseChars(revised) < chineseChars(currentScene) * 0.85) {
+          throw new Error("Automatic repair shortened scene " + sceneNumber + " by more than 15%; refusing to silently lose story content.");
+        }
+        polished[index] = revised.trim();
+        await saveStage(input.outputDir, "05-polish-" + String(sceneNumber).padStart(2, "0") + "-repair-" + round + ".md", revised);
+      }
+      return buildChapter();
+    },
+    onReview: async (round, candidate, report) => {
+      reviewHistory.push("## 全章复查轮次 " + (round + 1) + "\n\n" + formatReview(report));
+      await saveStage(input.outputDir, "08-final-review-round-" + (round + 1) + ".json", JSON.stringify(report, null, 2));
+    }
+  });
+  const chapter = reviewed.chapter;
   await saveStage(input.outputDir, "chapter.md", chapter);
+  await saveStage(input.outputDir, "08-final-review.md", reviewHistory.join("\n\n---\n\n"));
+  await saveStage(input.outputDir, "08-quality-summary.json", JSON.stringify({
+    status: "passed",
+    repairRounds: reviewed.repairRounds,
+    reviews: reviewed.reviews
+  }, null, 2));
   const metrics = { target: input.maxWords, scenes: input.scenes, ...rhythmMetrics(chapter) };
   await saveStage(input.outputDir, "06-rhythm-metrics.json", JSON.stringify(metrics, null, 2));
-  console.error(`[write-long] 成稿 ${metrics.chars} 汉字 · 均句长 ${metrics.mean} · 长句 ${(metrics.long * 100).toFixed(1)}%`);
+  console.error("[write-long] 成稿 " + metrics.chars + " 汉字 · 均句长 " + metrics.mean + " · 长句 " + (metrics.long * 100).toFixed(1) + "% · 自动修复 " + reviewed.repairRounds + " 轮");
 
   const stateText = await call("state", [
     "角色：小说连续性资料管理员。根据旧状态和最终章节提取状态变化。",
@@ -228,7 +281,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       continuityNotes: ["facts future chapters must preserve"]
     }, null, 2),
     "旧状态：", JSON.stringify(state, null, 2),
-    "章节结尾（状态提取以这里为准）：", tail(chapter, 4500),
+    "最终章节全文（状态提取必须覆盖每一场的人物、事件、事实与情节线变化）：", chapter,
     "profile 记录相对稳定的性格底色、价值观、内在矛盾、语言习惯和行为边界；不要因单次行为轻易改写。其他字段是章节结束时的当前状态快照，数组必须给出完整当前值。人物弧光可以改变人物，但必须由选择、压力、代价和行为证据支撑，不得刻板化，也不得为制造反转而突然黑化/洗白。只记录章节明确支持的内容；推断标为 inferred，项目原创内容标为 original，不得写进原著正史。"
   ]);
   try {
