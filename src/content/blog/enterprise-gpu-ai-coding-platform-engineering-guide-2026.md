@@ -504,25 +504,9 @@ POC 至少需要核实：DeepSeek-V4 的具体模型变体、权重格式、MLU 
 
 ### 6.6 生产部署架构：统一平台入口，隔离异构后端
 
-```mermaid
-flowchart TB
-    IDE["IDE / Coding Agent"]
-    Agent["Agent Runtime / Sandbox"]
-    Gateway["Unified AI Gateway / Model Router"]
-    Registry["Model Registry + Compatibility Matrix"]
-    Ascend["Ascend Pool\nCANN + vLLM Ascend / MindIE"]
-    GPU["MUSA / MetaX Pool\nMUSA / MXMACA + vLLM / SGLang"]
-    Other["MLU / GCU / DCU / Biren Pool\nVendor Runtime + Adapted Serving"]
-    Obs["Unified Metrics / Logs / Traces / Cost"]
-    IDE --> Agent --> Gateway
-    Gateway --> Registry
-    Registry --> Ascend
-    Registry --> GPU
-    Registry --> Other
-    Ascend --> Obs
-    GPU --> Obs
-    Other --> Obs
-```
+![异构 GPU 后端统一入口与隔离部署池](/diagrams/enterprise-gpu-ai-coding-platform/01-heterogeneous-backends.svg)
+
+[查看完整 HTML 图表](/diagrams/enterprise-gpu-ai-coding-platform/01-heterogeneous-backends.html)
 
 - **统一 API，不强求统一底层实现**：统一 API、Streaming、模型别名和错误协议；后端内部允许不同 Runtime 和推理引擎。
 - **模型路由感知能力**：Model Registry 除模型名称外，还应记录芯片型号、框架版本、量化格式、上下文上限、Tool Calling、结构化输出、多模态和并行能力。
@@ -708,37 +692,9 @@ Coding Agent 可以读写代码、运行 shell、安装依赖、访问网络和�
 
 ### 7.3 Agent 与 GPU 服务的边界
 
-```mermaid
-flowchart TB
-    Dev["Developers / IDE"]
-    Harness["Coding Agent Harness"]
-    Sandbox["Isolated Workspace / Sandbox"]
-    Gateway["AI Gateway"]
-    Router["Model Router"]
-    PoolA["B300 Inference Pool"]
-    PoolB["Fallback / Secondary Model Pool"]
-    Tools["Governed Tools / MCP"]
-    Repo["Git / Repository Services"]
-    Obs["Logs / Metrics / Traces / Audit"]
-    Policy["Identity / Policy / Budget"]
+![Agent Runtime 与 GPU 推理服务的边界](/diagrams/enterprise-gpu-ai-coding-platform/02-agent-inference-boundary.svg)
 
-    Dev --> Harness
-    Harness <--> Sandbox
-    Harness --> Gateway
-    Harness --> Tools
-    Tools --> Repo
-    Gateway --> Router
-    Router --> PoolA
-    Router --> PoolB
-    Policy -.-> Gateway
-    Policy -.-> Harness
-    Policy -.-> Sandbox
-    Harness --> Obs
-    Gateway --> Obs
-    Router --> Obs
-    PoolA --> Obs
-    PoolB --> Obs
-```
+[查看完整 HTML 图表](/diagrams/enterprise-gpu-ai-coding-platform/02-agent-inference-boundary.html)
 
 这张图是逻辑架构，不代表每个方框都必须部署成独立微服务。初期可以将 Router 和 Gateway 合并为一个可独立扩展的服务，但 Agent Runtime、GPU 推理进程和不可信代码执行环境应保持明确的安全边界。
 
@@ -1232,42 +1188,9 @@ GLM-5 仓库还提供模型相关的 Agent Skill 和示例，可以用来理解 
 
 下面的图将三家公司的开源项目映射到企业 GPU AI Coding 平台。它表示逻辑分层，不意味着所有组件都应该同时部署。
 
-```mermaid
-flowchart TB
-    Dev["Developer / IDE"]
-    Agent["Agent Runtime / Harness"]
-    Gateway["AI Gateway / Model Router"]
-    Serving["Inference Engine"]
-    KV["KV Cache / Transfer / Scheduler"]
-    EP["MoE Communication"]
-    Kernel["Attention / GEMM / Quantization Kernels"]
-    GPU["HGX B300 / GB300 NVL72"]
+![开源项目在企业 GPU 推理栈中的位置](/diagrams/enterprise-gpu-ai-coding-platform/03-open-source-stack-mapping.svg)
 
-    Dev --> Agent --> Gateway --> Serving
-    Serving <--> KV
-    Serving <--> EP
-    Serving --> Kernel --> GPU
-
-    DSAgent["DeepSeek Harness"]
-    KimiAgent["Kimi Code"]
-    GLMSkill["GLM Skills / Examples"]
-    DSInfer["DeepInfer"]
-    Mooncake["Mooncake"]
-    DeepEP["DeepEP"]
-    MoonEP["MoonEP"]
-    DSKernel["DeepGEMM / FlashMLA / TileKernels"]
-    KKernel["FlashKDA"]
-
-    DSAgent -. "Agent 层参考" .-> Agent
-    KimiAgent -. "Agent 层参考" .-> Agent
-    GLMSkill -. "模型使用参考" .-> Agent
-    DSInfer -. "模型专用执行引擎" .-> Serving
-    Mooncake -. "KV / Transfer" .-> KV
-    DeepEP -. "EP 通信" .-> EP
-    MoonEP -. "EP 负载均衡" .-> EP
-    DSKernel -. "计算 Kernel" .-> Kernel
-    KKernel -. "Kimi 架构 Kernel" .-> Kernel
-```
+[查看完整 HTML 图表](/diagrams/enterprise-gpu-ai-coding-platform/03-open-source-stack-mapping.html)
 
 ### 18.5 企业 B300 项目的评估优先级
 
@@ -1421,43 +1344,9 @@ NVIDIA 生态里有两个容易混淆的项目：
 
 #### 推荐的初期架构
 
-```mermaid
-flowchart TB
-    subgraph Control["企业控制与管理层（CPU Nodes）"]
-      Auth["SSO / IAM / Policy"]
-      Gateway["AI Gateway / Model Router"]
-      Orchestrator["llm-d / Dynamo / 自建控制层（择一）"]
-      Observability["Prometheus / Grafana / OpenTelemetry"]
-    end
+![企业 AI Coding 平台初期推荐部署架构](/diagrams/enterprise-gpu-ai-coding-platform/04-recommended-platform-architecture.svg)
 
-    subgraph Compute["GPU 推理层（HGX B300）"]
-      EngineA["vLLM Pool"]
-      EngineB["SGLang Pool"]
-      Specialized["DeepInfer Pool（可选）"]
-      Kernels["CUDA / NCCL / DeepEP / Kernel Libraries"]
-      EngineA --> Kernels
-      EngineB --> Kernels
-      Specialized --> Kernels
-    end
-
-    subgraph Cache["可选 KV Cache 层"]
-      Local["Engine Prefix Cache"]
-      Shared["Mooncake / LMCache（按需）"]
-      Local --> Shared
-    end
-
-    Agent["Coding Agent Runtime / Sandbox"] --> Gateway
-    Auth -.-> Gateway
-    Gateway --> Orchestrator
-    Orchestrator --> EngineA
-    Orchestrator --> EngineB
-    Orchestrator --> Specialized
-    EngineA <--> Cache
-    EngineB <--> Cache
-    Specialized <--> Cache
-    Compute --> Observability
-    Control --> Observability
-```
+[查看完整 HTML 图表](/diagrams/enterprise-gpu-ai-coding-platform/04-recommended-platform-architecture.html)
 
 图中的 llm-d、Dynamo 和 AIBrix 是可选控制层，不是要求同时部署。初期若只有一个模型、一个引擎和少量副本，可以先用简单 Gateway + Kubernetes Service；等到多模型、多副本、KV-aware Routing 和独立 P/D Pool 成为真实需求，再引入更完整的控制平面。
 
