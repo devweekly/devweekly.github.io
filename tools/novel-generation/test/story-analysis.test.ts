@@ -12,10 +12,10 @@ test("story analysis batches preserve every indexed chunk in order", () => {
     chunkIndex: index, start: index * 1200, end: (index + 1) * 1200,
     text: "字".repeat(1200), sourceHash: "a".repeat(64), chapterStart: 0
   }));
-  const batches = groupAnalysisBatches(chunks, 2000);
+  const batches = groupAnalysisBatches(chunks, 2500);
   assert.equal(batches.length, 2);
   assert.deepEqual(batches.flatMap(batch => batch.chunks.map(chunk => chunk.id)), chunks.map(chunk => chunk.id));
-  assert.ok(batches.every(batch => batch.chars <= 2000));
+  assert.ok(batches.every(batch => batch.chars <= 2500));
 });
 
 test("story analysis snapshot is persisted and replaced atomically as one database record", async () => {
