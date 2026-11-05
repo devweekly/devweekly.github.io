@@ -2,7 +2,7 @@
 // 不复用 SDK session；场景之间靠落盘的原文结尾与事实清单显式交接，可逐场重跑。
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { loadStoryState, saveStoryState } from "./story-state.js";
+import { loadStoryState, parseStoryStateUpdate, saveStoryState } from "./story-state.js";
 import type { StoryState } from "./story-state.js";
 import { runAgentText, type GenerationMode } from "./generate.js";
 import { readTaskProfiles, type StageKey } from "./task-profiles.js";
