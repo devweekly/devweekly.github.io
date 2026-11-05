@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { parseStoryStateUpdate, saveStoryState, type StoryState } from "./story-state.js";
 import { runAgentText, resolveModelAttempts, type GenerationMode } from "./generate.js";
 import { readTaskProfiles, type StageKey } from "./task-profiles.js";
-import { formatReview, reviewAndRepair, reviewPrompt } from "./chapter-review.js";
+import { formatReview, parseChapterReview, reviewAndRepair, reviewPrompt } from "./chapter-review.js";
 import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
 
 export interface WriteWorkflowInput {
@@ -97,12 +97,13 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   const profiles = readTaskProfiles();
   const call = (stage: StageKey, parts: string[]): Promise<string> =>
     runAgentText(parts.join("\n\n"), input.model, undefined, profiles[stage], !input.strictModel);
-  const cachedCall = (key: string, outputFile: string, stage: StageKey, parts: string[]): Promise<string> => {
+  const cachedCall = (key: string, outputFile: string, stage: StageKey, parts: string[], validate?: (output: string) => void): Promise<string> => {
     const prompt = parts.join("\n\n");
     return runCachedStage({
       dir: input.outputDir, key, outputFile,
       fingerprint: JSON.stringify({ prompt, modelAttempts: resolveModelAttempts(input.model, !input.strictModel), profile: profiles[stage], strictModel: input.strictModel ?? false }),
-      execute: () => call(stage, parts)
+      execute: () => call(stage, parts),
+      validate
     });
   };
   await mkdir(input.outputDir, { recursive: true });
@@ -176,7 +177,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
       const round = reviewHistory.length + 1;
       return cachedCall("quality-review-" + round + (correction ? "-retry" : ""), "07-review-round-" + round + (correction ? "-retry" : "") + "-raw.txt", "review", [
         reviewPrompt({ context: common, blueprint: plan, chapter: candidate, correction })
-      ]);
+      ], output => parseChapterReview(output, candidate));
     },
     repair: (candidate, issues, round) => cachedCall("quality-repair-" + round, "07-repaired-round-" + round + ".md", "final", [
       "角色：主编修复 Agent。根据结构化审查结果执行最小范围修复，只输出完整章节正文。",
