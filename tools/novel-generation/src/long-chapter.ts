@@ -69,8 +69,8 @@ async function saveStage(dir: string, name: string, content: string): Promise<vo
 /** 严格解析场景蓝图，格式错误就停止，绝不把整份蓝图重复当作每一场。 */
 export function splitScenes(plan: string, expected: number): string[] {
   const headings = [...plan.matchAll(/^##\s*场景\s*(\d+)\b[^\n]*$/gm)];
-  if (headings.length !== expected) {
-    throw new Error(`场景蓝图应包含 ${expected} 个场景标题，实际识别到 ${headings.length} 个；请检查 01-scene-blueprint.md 后重试。`);
+  if (headings.length < 1 || headings.length > expected) {
+    throw new Error(`场景蓝图应包含 1 到 ${expected} 个场景，实际识别到 ${headings.length} 个；请检查 01-scene-blueprint.md 后重试。`);
   }
   const scenes: string[] = [];
   for (let index = 0; index < headings.length; index++) {
@@ -130,7 +130,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   const blueprintPrompt = [
     "角色：长篇章节主编。为一万字章节制定唯一执行蓝图，不写正文。",
     writingContext,
-    `把整章拆成恰好 ${input.scenes} 个连续场景，每个场景用单独一行 "## 场景 N" 开头（N 从 1 到 ${input.scenes}）。蓝图只需给小说家足够的创作方向，可按需要提及视角、人物、地点、情境、冲突或悬念；不要求每场填满同一套字段，也不要求每场都埋伏笔、推进主线或安排人物成长。让场景各有自己的气息和功能，允许闲笔、日常、误会、停顿和意外。`,
+    `按情节自然需要划分场景，最多 ${input.scenes} 个；可以少于这个数量，不要为了凑数拆开本来连贯的情节。每个场景用单独一行 "## 场景 N" 开头（N 从 1 开始连续编号）。蓝图只需给小说家足够的创作方向，可按需要提及视角、人物、地点、情境、冲突或悬念；不要求每场填满同一套字段，也不要求每场都埋伏笔、推进主线或安排人物成长。让场景各有自己的气息和功能，允许闲笔、日常、误会、停顿和意外。`,
     `每场篇幅约 ${perScene} 个汉字，全章合计约 ${input.maxWords} 个汉字。场景之间要让读者感到故事在流动，但不必把每场都写成明显的目标—阻力—选择—结果模板。`,
     "区分原著已确认事实与本章新创作。不得安排新果实、十主完整名单、天母去向的解释、人物提前获知未知信息。",
     RHYTHM_RULE,
@@ -145,7 +145,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     blueprint = await cachedCall("blueprint-repair", "01-scene-blueprint-attempt-1.md", "plan", [
       ...blueprintPrompt,
       "上一次场景蓝图未通过程序格式校验：" + String(error),
-      "请修正上一版蓝图，必须恰好输出连续编号的场景标题，从场景 1 到场景 " + input.scenes + "，每场内容非空。只输出修正后的完整蓝图，不解释。",
+      "请修正上一版蓝图：场景数不得超过 " + input.scenes + "，按情节自然需要决定数量（至少 1 场），编号从 1 连续递增，每场内容非空。不要为了满足数量拆分连贯情节。只输出修正后的完整蓝图，不解释。",
       "上一次蓝图：",
       blueprint
     ]);
@@ -153,7 +153,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   }
   await saveStage(input.outputDir, "01-scene-blueprint.md", blueprint);
   const sceneTexts: string[] = [];
-  for (let index = 0; index < input.scenes; index++) {
+  for (let index = 0; index < scenePlans.length; index++) {
     // Use the accumulated chapter, not only the immediately preceding scene.
     // The tail keeps prompts bounded while retaining more cross-scene state.
     const previous = sceneTexts.length
@@ -204,14 +204,14 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     }
     sceneTexts.push(text.trim());
     await saveStage(input.outputDir, `02-scene-${String(index + 1).padStart(2, "0")}.md`, text);
-    console.error(`[write-long] 场景 ${index + 1}/${input.scenes} · ${chineseChars(text)} 汉字`);
+    console.error(`[write-long] 场景 ${index + 1}/${scenePlans.length} · ${chineseChars(text)} 汉字`);
   }
 
   const draft = sceneTexts.join("\n\n---\n\n");
   await saveStage(input.outputDir, "03-draft.md", draft);
 
   // 终审只挑「读者会认为不可能」的硬伤；分两批控制单次输入，合并去重后再交给逐场修订。
-  const middle = Math.ceil(input.scenes / 2);
+  const middle = Math.ceil(sceneTexts.length / 2);
   const halves = [sceneTexts.slice(0, middle), sceneTexts.slice(middle)];
   const found: ReviewIssue[] = [];
   const summaries: string[] = [];
@@ -226,11 +226,11 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       context: writingContext,
       blueprint,
       chapter: batchText,
-      sceneCount: input.scenes,
+      sceneCount: sceneTexts.length,
       sceneLabel: `第 ${index + 1} 批，场景 ${batchStart}–${batchStart + slice.length - 1}`
     });
     const validateBatchReview = (output: string) => {
-      const report = parseChapterReview(output, batchText, input.scenes);
+      const report = parseChapterReview(output, batchText, sceneTexts.length);
       const batchEnd = batchStart + slice.length - 1;
       if (report.issues.some(issue => issue.scenes.some(scene => scene < batchStart || scene > batchEnd))) {
         throw new Error(`Batch review ${index + 1} returned a scene outside its assigned range ${batchStart}–${batchEnd}.`);
@@ -294,8 +294,8 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     review: (candidate, correction) => {
       const round = reviewHistory.length + 1;
       return cachedCall("final-review-" + round + (correction ? "-retry" : ""), "08-final-review-round-" + round + (correction ? "-retry" : "") + "-raw.txt", "review", [
-        reviewPrompt({ context: writingContext, blueprint, chapter: candidate, priorReview: review, sceneCount: input.scenes, correction })
-      ], output => parseChapterReview(output, candidate, input.scenes));
+        reviewPrompt({ context: writingContext, blueprint, chapter: candidate, priorReview: review, sceneCount: sceneTexts.length, correction })
+      ], output => parseChapterReview(output, candidate, sceneTexts.length));
     },
     repair: async (_candidate, issues, round) => {
       const affectedScenes = [...new Set(issues.flatMap(issue => issue.scenes))].sort((a, b) => a - b);
@@ -336,7 +336,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     repairRounds: reviewed.repairRounds,
     reviews: reviewed.reviews
   }, null, 2));
-  const metrics = { target: input.maxWords, scenes: input.scenes, ...rhythmMetrics(chapter) };
+  const metrics = { target: input.maxWords, scenes: polished.length, ...rhythmMetrics(chapter) };
   await saveStage(input.outputDir, "06-rhythm-metrics.json", JSON.stringify(metrics, null, 2));
   console.error("[write-long] 成稿 " + metrics.chars + " 汉字 · 均句长 " + metrics.mean + " · 长句 " + (metrics.long * 100).toFixed(1) + "% · 自动修复 " + reviewed.repairRounds + " 轮");
 
