@@ -33,7 +33,7 @@ function buildPrompt(input: GenerateStoryInput): string {
     "- 角色行为必须有动机，冲突必须有代价；超凡能力必须有来源、条件和限制。",
     "- 以场景、行动、对话和选择推进故事，避免设定堆砌、套路化总结和机械排比。",
     "- 只输出小说正文，使用 Markdown 章节标题，不输出分析过程或创作说明。"
-  ].filter(Boolean).join("\\n\\n");
+  ].filter(Boolean).join("\n\n");
 }
 
 export async function runAgentText(prompt: string, model?: string): Promise<string> {
@@ -53,7 +53,7 @@ export async function runAgentText(prompt: string, model?: string): Promise<stri
       if (block.type === "text") chunks.push(block.text);
     }
   }
-  const output = chunks.join("\\n").trim();
+  const output = chunks.join("\n").trim();
   if (!output) throw new Error("CodeBuddy returned no text output.");
   return output;
 }
