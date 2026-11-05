@@ -290,7 +290,7 @@ sudo chown "$USER":"$USER" /opt/models
 
 python3 -m pip install --user -U huggingface_hub
 hf auth login --token "$HF_TOKEN"
-hf download "$MODEL_ID" --local-dir "$MODEL_DIR"
+hf download "$MODEL_ID" --revision "$MODEL_REVISION" --local-dir "$MODEL_DIR"
 
 du -sh "$MODEL_DIR"
 find "$MODEL_DIR" -maxdepth 1 -type f | head
@@ -555,7 +555,7 @@ AWS 官方 EKS 推理文档已经给出从 S3 模型制品、vLLM Deployment、S
 
 先确认企业说的“部署 Kimi”具体指什么。Moonshot 提供托管 API，企业可以不采购 GPU，直接通过网络调用；也可以下载开放权重，在自己的 AWS 账号和 VPC 中运行。两条路径的架构、成本和数据边界完全不同。
 
-本节讨论的是自托管开源权重。生产决策前应确认模型仓库、模型变体和 License，明确是使用 Moonshot 发布的 moonshotai/Kimi-K2.6 INT4 权重，还是 NVIDIA 发布的 nvidia/Kimi-K2.6-NVFP4 量化权重。后者是针对 NVIDIA Blackwell 优化的制品，不是把前者的模型 ID 改一下就能得到的文件。模型、Tokenizer、Processor、Chat Template、量化配置和 vLLM 版本应作为一个不可随意拆分的部署版本记录。
+本节讨论的是自托管开源权重。生产决策前应确认模型仓库、模型变体和 License，明确是使用 [Moonshot 发布的 Kimi K2.6](https://huggingface.co/moonshotai/Kimi-K2.6) INT4 权重，还是 [NVIDIA 发布的 Kimi K2.6 NVFP4](https://huggingface.co/nvidia/Kimi-K2.6-NVFP4) 量化权重。后者是针对 NVIDIA Blackwell 优化的制品，不是把前者的模型 ID 改一下就能得到的文件。模型、Tokenizer、Processor、Chat Template、量化配置和 vLLM 版本应作为一个不可随意拆分的部署版本记录。
 
 #### 第二步：按 Kimi 的完整权重规模选择 GPU
 
@@ -620,7 +620,7 @@ du -sh "$MODEL_DIR"
 nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv
 ~~~
 
-然后启动 vLLM。下面是说明部署结构的命令模板；生产发布必须固定经过测试的 vLLM 镜像 Digest，并根据上游 Kimi K2.6 recipe 校准启动参数，不要把它当成所有 vLLM 版本都通用的命令：
+然后启动 vLLM。vLLM Recipes 将 Kimi K2.6 的最低版本列为 0.25.0；这只是模型支持基线，不代表每个优化 Kernel 在该版本都可用。下面以 0.31.0 作为命令示例，生产发布必须固定经过测试的 vLLM 镜像 Digest，并根据上游 Kimi K2.6 recipe 校准启动参数，不要把它当成所有 vLLM 版本都通用的命令：
 
 ~~~bash
 docker run -d \
