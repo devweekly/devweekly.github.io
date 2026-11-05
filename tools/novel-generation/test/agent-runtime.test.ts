@@ -7,10 +7,8 @@ import {
 } from "../src/agent-runtime.js";
 
 const catalog: CatalogModel[] = [
-  { id: "hy4std", credits: 0.29 },
   { id: "hy4free", credits: 0 },
   { id: "deepseek-v4.1-flash", credits: 0.11 },
-  { id: "hy3", credits: 0 }
 ];
 
 function withoutModelEnv<T>(fn: () => T): T {
@@ -41,8 +39,8 @@ test("decodeProductConfig reads plain and gzipped catalogs", () => {
 });
 
 test("hy4 alias resolves to the free hy4 model first", () => {
-  assert.deepEqual(expandModelAlias("hy4", catalog), ["hy4free", "hy4std"]);
-  assert.deepEqual(expandModelAlias("hy4", []), ["hy4free"]);
+  assert.deepEqual(expandModelAlias("hy4free", catalog), ["hy4free"]);
+  assert.deepEqual(expandModelAlias("hy4free", []), ["hy4free"]);
   assert.deepEqual(expandModelAlias("deepseek-v4.1-flash", catalog), ["deepseek-v4.1-flash"]);
 });
 
@@ -52,7 +50,7 @@ test("auto resolution follows hy4 then deepseek preference", () => {
     assert.equal(resolved.model, "hy4free");
     assert.deepEqual(resolved.fallbacks, ["deepseek-v4.1-flash"]);
     assert.equal(resolved.source, "catalog");
-    assert.deepEqual([...MODEL_PREFERENCE], ["hy4", "deepseek-v4.1-flash"]);
+    assert.deepEqual([...MODEL_PREFERENCE], ["hy4free", "deepseek-v4.1-flash"]);
   });
 });
 

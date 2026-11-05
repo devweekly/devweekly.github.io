@@ -1,5 +1,5 @@
 import { query } from "@tencent-ai/agent-sdk";
-import { buildQueryOptions, isManagedSession, resolveAgentModel } from "./agent-runtime.js";
+import { buildQueryOptions, resolveAgentModel } from "./agent-runtime.js";
 
 export type GenerationMode = "derivative" | "continuation";
 export interface GenerateStoryInput {

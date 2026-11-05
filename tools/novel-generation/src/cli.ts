@@ -74,7 +74,7 @@ async function main(): Promise<void> {
     const hy4 = catalog.filter(model => HY4_MODEL_IDS.some(id => id === model.id));
     console.log("模型偏好：" + MODEL_PREFERENCE.join(" → "));
     console.log("目录模型数：" + catalog.length);
-    console.log("hy4 系列：" + (hy4.length ? hy4.map(model => model.id + "(" + (model.credits ?? "?") + ")").join(", ") : "未读到"));
+    console.log("hy4free：" + (hy4.length ? hy4.map(model => model.id + "(" + (model.credits ?? "?") + ")").join(", ") : "未读到"));
     console.log("deepseek-v4.1-flash：" + (catalog.some(model => model.id === "deepseek-v4.1-flash") ? "可用" : "目录未列出"));
     console.log("本次首选：" + resolved.model + "；回退：" + (resolved.fallbacks.join(" → ") || "无") + "；来源：" + resolved.source);
     console.log("执行环境：" + (isManagedSession() ? "IDE/Agent 托管，子进程已隔离宿主会话并自选端口" : "普通终端"));

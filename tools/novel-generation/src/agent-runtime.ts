@@ -1,8 +1,9 @@
-// CodeBuddy Agent runtime：模型目录读取、偏好解析与 query() 选项。
-// 做法参照 vocal-saga/local-agent-service 的 src/agents/modelCatalog.ts 与 workbuddy.ts。
+// CodeBuddy Agent runtime：模型目录读取、模型选择与 query() 选项。
+// 目录读取、auto 语义、显式配置优先与调用选项参照 vocal-saga/local-agent-service 的
+// src/agents/modelCatalog.ts、src/agents/workbuddy.ts 与 scripts/check-codebuddy-connectivity.mjs。
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 
 export interface CatalogModel {
@@ -10,19 +11,20 @@ export interface CatalogModel {
   credits: number | null;
 }
 
-/** 用户语义的偏好顺序：先 hy4 系列，再 deepseek-v4.1-flash。 */
-export const MODEL_PREFERENCE = ["hy4", "deepseek-v4.1-flash"] as const;
+/** 默认模型。可用 --model、环境变量或 novel-generation.config.json 覆盖。 */
+export const DEFAULT_MODEL_ID = "deepseek-v4.1-flash";
+
+/** 失败重试链：默认模型之后退到免费的 hy4 档，每项只取一个。 */
+export const MODEL_PREFERENCE = [DEFAULT_MODEL_ID, "hy4free"] as const;
 
 /**
- * `hy4` 是系列别名，不是产品目录里的 id。目录里出现过 hy4free / hy4std / hy4-preview-*，
- * 先在目录内按此顺序找可用项，优先免费档；目录读不到时用已确认存在的 hy4free。
+ * `hy4` 是系列别名，不是产品目录里的 id。目录里还有 hy4std / hy4-preview-*，
+ * 这里只展开到已确认可用的免费档，避免挑到收费的预览模型。
  */
-export const HY4_MODEL_IDS = [
-  "hy4", "hy4free", "hy4std", "hy4-preview-x", "hy4-preview-ctrl",
-  "hy4-preview-exp", "hy4preview-exp1", "hy4preview-exp2"
-] as const;
+export const HY4_MODEL_IDS = ["hy4free"] as const;
 
-export const DEFAULT_MODEL_ID = "hy4free";
+/** 项目级配置文件的默认位置；NOVEL_AGENT_CONFIG 可指向别处。 */
+export const DEFAULT_CONFIG_PATH = "novel-generation.config.json";
 
 export function parseCredits(raw: unknown): number | null {
   if (typeof raw !== "string") return null;
@@ -74,12 +76,19 @@ export interface CatalogOptions {
  * 任何一步读不到都返回空表，不抛错，由调用方回退到默认模型。
  */
 export function readModelCatalog(options: CatalogOptions = {}): CatalogModel[] {
+  let base: CatalogModel[] = [];
   const configured = (process.env.ACC_PRODUCT_CONFIG_PATH ?? "").trim();
-  const candidates: string[] = configured ? [configured] : [];
-  if (!configured) {
+  if (configured) {
+    try { base = decodeProductConfig(readFileSync(configured, "utf8").trim()); }
+    catch { /* 产品配置正在改写或不可读，回落到本地缓存 */ }
+  }
+  // env 指向的文件没解析出模型时仍要扫缓存；不设固定窗口，避免新写入的
+  // 非产品配置缓存把真正的目录挤出候选集。
+  if (!base.length) {
     const dir = options.localStorageDir ?? join(homedir(), ".codebuddy", "local_storage");
+    let files: string[] = [];
     try {
-      candidates.push(...readdirSync(dir)
+      files = readdirSync(dir)
         .filter(name => name.endsWith(".info"))
         .map(name => {
           const full = join(dir, name);
@@ -88,16 +97,14 @@ export function readModelCatalog(options: CatalogOptions = {}): CatalogModel[] {
         })
         .filter((item): item is { full: string; mtime: number } => item !== null)
         .sort((a, b) => b.mtime - a.mtime)
-        .map(item => item.full));
+        .map(item => item.full);
     } catch { /* 目录不存在 */ }
-  }
-
-  let base: CatalogModel[] = [];
-  for (const file of candidates) {
-    try {
-      const models = decodeProductConfig(readFileSync(file, "utf8").trim());
-      if (models.length) { base = models; break; }
-    } catch { /* 不是产品配置，继续 */ }
+    for (const file of files) {
+      try {
+        const models = decodeProductConfig(readFileSync(file, "utf8").trim());
+        if (models.length) { base = models; break; }
+      } catch { /* 不是产品配置，继续 */ }
+    }
   }
 
   const userModels = readJsonModels(options.userModelsPath ?? join(homedir(), ".codebuddy", "models.json"));
@@ -112,58 +119,64 @@ export function readModelCatalog(options: CatalogOptions = {}): CatalogModel[] {
   return [...merged.values()];
 }
 
-/** 把用户写的 `hy4` 展开为目录里真实存在的模型 id。 */
+/** 把用户写的 `hy4` 别名展开为目录里真实存在的模型 id。 */
 export function expandModelAlias(requested: string, catalog: readonly CatalogModel[]): string[] {
   const ids = HY4_MODEL_IDS.filter(id => requested === "hy4" || id === requested);
   if (!ids.length) return [requested];
   const available = new Map(catalog.map(model => [model.id, model]));
-  if (!available.size) {
-    const fallback = ids.find(id => id !== "hy4") ?? DEFAULT_MODEL_ID;
-    return [fallback];
-  }
+  if (!available.size) return [HY4_MODEL_IDS[0]];
   const found = ids
     .map(id => available.get(id))
     .filter((model): model is CatalogModel => model !== undefined)
     .sort((a, b) => (a.credits ?? Number.POSITIVE_INFINITY) - (b.credits ?? Number.POSITIVE_INFINITY));
-  return found.length ? found.map(model => model.id) : [];
+  return found.length ? found.map(model => model.id) : [HY4_MODEL_IDS[0]];
 }
 
 export interface ResolvedModel {
   model: string;
   fallbacks: string[];
-  source: string;
+  source: "explicit" | "env" | "config" | "default";
+}
+
+/** `auto` 和空值都表示「没配置」，不能当成模型 id 传给 CLI。 */
+function nonAuto(value: string | undefined): string | undefined {
+  const trimmed = (value ?? "").trim();
+  return trimmed && trimmed.toLowerCase() !== "auto" ? trimmed : undefined;
+}
+
+/** 项目级配置只认 model 字段；文件缺失或格式不对时由默认模型兜底。 */
+export function readConfiguredModel(configPath?: string): string | undefined {
+  const path = configPath ?? ((process.env.NOVEL_AGENT_CONFIG ?? "").trim() || resolve(DEFAULT_CONFIG_PATH));
+  try {
+    const parsed = JSON.parse(readFileSync(path, "utf8")) as { model?: unknown };
+    return nonAuto(typeof parsed.model === "string" ? parsed.model : undefined);
+  } catch { return undefined; }
 }
 
 /**
- * 解析本次调用的模型链。显式 `--model` 或环境变量优先；`auto` 与空值视为未配置。
- * 返回的首选模型交给 query()，其余按偏好顺序作为失败时的重试链。
+ * 模型优先级：--model > NOVEL_AGENT_MODEL > CODEBUDDY_DEFAULT_MODEL >
+ * novel-generation.config.json > DEFAULT_MODEL_ID。`auto` 会继续往下一层找。
+ * 返回首选模型与失败时的重试链，链按 MODEL_PREFERENCE 去重，不含主模型。
  */
 export function resolveAgentModel(
   explicit?: string,
-  catalog: readonly CatalogModel[] = readModelCatalog()
+  catalog: readonly CatalogModel[] = readModelCatalog(),
+  configPath?: string
 ): ResolvedModel {
-  const envModel = process.env.NOVEL_AGENT_MODEL ?? process.env.CODEBUDDY_DEFAULT_MODEL ?? "";
-  const requested = (explicit ?? envModel).trim();
-  // 每个偏好项只取目录里最合适的那一个，重试链控制在两级，避免逐个变体各等一次超时。
-  const preferredIds = MODEL_PREFERENCE.map(preference => expandModelAlias(preference, catalog)[0]).filter(
-    (id): id is string => Boolean(id)
-  );
-  if (requested && requested.toLowerCase() !== "auto") {
-    const model = expandModelAlias(requested, catalog)[0] ?? requested;
-    return {
-      model,
-      fallbacks: preferredIds.filter(id => id !== model),
-      source: "explicit"
-    };
-  }
+  const fromExplicit = nonAuto(explicit);
+  const fromEnv = nonAuto(process.env.NOVEL_AGENT_MODEL) ?? nonAuto(process.env.CODEBUDDY_DEFAULT_MODEL);
+  const requested = fromExplicit ?? fromEnv;
+  const configured = requested ? undefined : readConfiguredModel(configPath);
+  const chosen = requested ?? configured;
+  const source: ResolvedModel["source"] = fromExplicit ? "explicit" : fromEnv ? "env" : configured ? "config" : "default";
 
-  const chain: string[] = [];
-  for (const id of preferredIds) {
-    if (!chain.includes(id)) chain.push(id);
-  }
-  if (!chain.length) chain.push(DEFAULT_MODEL_ID, "deepseek-v4.1-flash");
-  const model = chain[0] ?? DEFAULT_MODEL_ID;
-  return { model, fallbacks: chain.slice(1), source: catalog.length ? "catalog" : "default" };
+  const preferred = MODEL_PREFERENCE
+    .map(id => expandModelAlias(id, catalog)[0])
+    .filter((id): id is string => Boolean(id));
+  const chain = [...new Set(preferred)];
+  if (!chain.length) chain.push(DEFAULT_MODEL_ID);
+  const model = chosen ? (expandModelAlias(chosen, catalog)[0] ?? chosen) : chain[0]!;
+  return { model, fallbacks: chain.filter(id => id !== model), source };
 }
 
 /** 被 IDE / Agent 托管时，SDK 子进程会继承宿主服务端口，需要隔离会话环境。 */
@@ -175,6 +188,7 @@ export interface QueryOptionsInput {
   cwd: string;
   abortController: AbortController;
   fallbackModel?: string;
+  timeoutMs?: number;
 }
 
 /**
@@ -204,6 +218,7 @@ export function buildQueryOptions(model: string, input: QueryOptionsInput) {
     ...(input.fallbackModel ? { fallbackModel: input.fallbackModel } : {}),
     cwd: input.cwd,
     ...(isManagedSession() ? detachedCliOptions() : {}),
+    ...(input.timeoutMs ? { requestTimeoutMs: input.timeoutMs } : {}),
     permissionMode: "default" as const,
     settingSources: [],
     persistSession: false,
