@@ -163,7 +163,7 @@ npm run dev -- regress --world conghuoniao --chapter 13 \
   --brief "本章任务：用白描写清这一章发生了什么，不给原文句子"
 ```
 
-取原文中的一章做盲写：只把前 `--context-lines` 行（默认 90）、本章任务和风格文档交给写作 Agent，不给原文任何一句。同一提示跑两版推理配置：A 用配置文件里的 `scene` 档案，B 固定 `adaptive/high`。两版各自统计句长、段落、对白、标点密度，指标不达标时做一次句法修订，修订后偏差没有下降就退回原稿。最后由另一个模型的评审 Agent 对照原文判断哪版更近、差在句式还是段落组织。
+取原文中的一章做盲写：只把前 `--context-lines` 行（默认 90）、本章任务和风格参考交给写作 Agent，不给原文任何一句。同一提示跑两版推理配置：A 用配置文件里的 `scene` 档案，B 固定 `adaptive/high`。两版统计句长、段落、对白和标点密度，作为观察材料；默认不自动修订。只有显式启用 `--repair` 才会做一次实验性句法修订，用于研究指标变化，不代表文学质量提升。最后由另一个模型的评审 Agent 对照原文，结合具体段落判断哪版更自然、更有感染力；统计接近程度只是辅助信息。
 
 `.output/regression/<run-id>/` 存原文、两版原稿与修订稿、评审全文；`analysis/<world>/regression/chapter-XXX/` 存 `metrics.json`、`review.md` 与实验说明，随代码提交。默认只统计节奏指标，不按数字自动改稿；只有显式传 `--repair` 才运行实验性的句法修订。该修订只适合对照实验，不建议用于正式小说成稿。`--max-words` 控制篇幅（默认与原章同长）。已有实验见 `analysis/conghuoniao/regression/chapter-013/`。
 
