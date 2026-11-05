@@ -29,6 +29,7 @@ function listOf<T extends z.ZodTypeAny>(schema: T) {
 }
 
 const CharacterSchema = z.object({
+  chapterKeys: stringList,
   name: z.string().default(""),
   aliases: stringList,
   shortBio: z.string().default(""),
@@ -43,6 +44,7 @@ const CharacterSchema = z.object({
 }).passthrough();
 
 const RelationSchema = z.object({
+  chapterKeys: stringList,
   from: z.string().default(""),
   to: z.string().default(""),
   label: z.string().default(""),
@@ -50,6 +52,7 @@ const RelationSchema = z.object({
 }).passthrough();
 
 const PlotThreadSchema = z.object({
+  chapterKeys: stringList,
   title: z.string().default(""),
   summary: z.string().default(""),
   status: z.string().default("未能判断"),
@@ -58,6 +61,7 @@ const PlotThreadSchema = z.object({
 }).passthrough();
 
 const ForeshadowingSchema = z.object({
+  chapterKeys: stringList,
   clue: z.string().default(""),
   firstAppearance: z.string().default(""),
   possibleMeaning: z.string().default(""),
@@ -73,6 +77,7 @@ const BeatSchema = z.object({
 }).passthrough();
 
 const DevelopmentSchema = z.object({
+  chapterKeys: stringList,
   focus: z.string().default(""),
   direction: z.string().default(""),
   tension: z.string().default(""),
@@ -365,16 +370,17 @@ export function buildAnalysisPrompt(batch: AnalysisBatch): string {
     "后续发展：可选，给出 0-3 条真正有戏的方向，可以大胆、反常、残酷或浪漫，但要说明张力在哪。这是可能性，不是原文事实。",
     "不要为了结构完整而虚构情节、关系或伏笔；不要强行解释留白。",
     "只返回 JSON 对象，字段：characters、relations、plotThreads、foreshadowings、beats、developmentPossibilities，均为数组。",
-    "characters[{name,aliases,shortBio,storyFunction,personality,contradictions,observedChanges,desires,relationships,voice,arcPossibilities}]；relations[{from,to,label,evidence}]；plotThreads[{title,summary,status,keyTurns,unresolvedQuestions}]；foreshadowings[{clue,firstAppearance,possibleMeaning,possiblePayoffs,confidence,status}]；beats[{chapterKey,summary,actors}]；developmentPossibilities[{focus,direction,tension,whyPlausible,surpriseOptions}]。",
-    "不确定的字段省略或给空数组。来源由程序按 chapterKey 添加，不要自行编造编号。",
+    "characters[{chapterKeys,name,aliases,shortBio,storyFunction,personality,contradictions,observedChanges,desires,relationships,voice,arcPossibilities}]；relations[{chapterKeys,from,to,label,evidence}]；plotThreads[{chapterKeys,title,summary,status,keyTurns,unresolvedQuestions}]；foreshadowings[{chapterKeys,clue,firstAppearance,possibleMeaning,possiblePayoffs,confidence,status}]；beats[{chapterKey,summary,actors}]；developmentPossibilities[{chapterKeys,focus,direction,tension,whyPlausible,surpriseOptions}]。",
+    "每条人物、关系、情节线、伏笔和发展可能都必须填写 chapterKeys 数组，只列出确实能从中找到该条内容的章节 key；不要把整批章节都填进去。事件使用单个 chapterKey。来源由程序按这些编号精确关联，不要自行编造编号。",
     "章节原文：",
     material
   ].join("\n\n");
 }
 
-function cacheKeyFor(model: string, units: AnalysisUnit[]): string {
+function cacheKeyFor(model: string, units: AnalysisUnit[], maxChars: number): string {
   const sourceHash = createHash("sha256").update(units.map(unit => unit.chapterId + ":" + unit.text).join("\n")).digest("hex");
-  return createHash("sha256").update("story-analysis-v2\nmodel=" + model + "\nsource=" + sourceHash).digest("hex");
+  const batchLayout = groupAnalysisUnits(units, maxChars).map(chapters => chapters.map(chapter => chapter.chapterId).join(",")).join("|");
+  return createHash("sha256").update("story-analysis-v3\nprompt=chapter-refs-v1\nmodel=" + model + "\nmaxChars=" + maxChars + "\nbatches=" + batchLayout + "\nsource=" + sourceHash).digest("hex");
 }
 
 async function readCached(path: string): Promise<BatchAnalysis | undefined> {
@@ -396,7 +402,7 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
     if (!Number.isInteger(options.limit) || options.limit < 1) throw new Error("--limit must be a positive integer.");
     batches.length = Math.min(batches.length, options.limit);
   }
-  const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units));
+  const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, options.maxChars ?? 14_000));
   await mkdir(cacheDir, { recursive: true });
   const cachePath = (batch: AnalysisBatch): string => join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
   const shard = options.shard;
@@ -463,12 +469,24 @@ function mergeAndPersist(
 
   for (const { analysis, chapters } of results) {
     const refs = refsFor(chapters);
-    const attach = (items: Item[]): Item[] => items.map(item => ({ ...item, sourceRefs: refs }));
+    const refsByChapter = new Map(refs.map(ref => [String(ref.chapterId), ref]));
+    const attach = (items: Item[]): Item[] => items.map(item => {
+      const chapterKeys = asStrings(item.chapterKeys);
+      const sourceRefs = chapterKeys.map(key => refsByChapter.get(key)).filter((ref): ref is NovelSourceRef => Boolean(ref));
+      return { ...item, sourceRefs };
+    });
     characters = mergeCharacters(characters, attach(analysis.characters as Item[]));
     relations = mergeSimple(relations, attach(analysis.relations as Item[]), "from", [], ["label", "evidence"], item => String(item.from) + "|" + String(item.to) + "|" + String(item.label));
     plotThreads = mergeSimple(plotThreads, attach(analysis.plotThreads as Item[]), "title", ["keyTurns", "unresolvedQuestions"], ["summary"]);
     foreshadowings = mergeSimple(foreshadowings, attach(analysis.foreshadowings as Item[]), "clue", ["possiblePayoffs"], ["firstAppearance", "possibleMeaning"]);
-    developmentPossibilities = mergeSimple(developmentPossibilities, attach(analysis.developmentPossibilities as Item[]), "focus", ["surpriseOptions"], ["direction", "tension", "whyPlausible"]);
+    developmentPossibilities = mergeSimple(
+      developmentPossibilities,
+      attach(analysis.developmentPossibilities as Item[]),
+      "focus",
+      ["surpriseOptions"],
+      ["tension", "whyPlausible"],
+      item => String(item.focus).replace(/\s/g, "").toLowerCase() + "|" + String(item.direction).replace(/\s/g, "").toLowerCase()
+    );
     beats = mergeBeats(beats, analysis.beats as Item[]);
   }
 
@@ -612,7 +630,7 @@ export async function storyAnalysisCacheStatus(worldId: string, options: StoryAn
   const { units } = await buildAnalysisUnits(worldId, { worldDir, catalogPath: options.catalogPath });
   const model = resolveAgentModel(options.model).model;
   const batches = groupAnalysisUnits(units, options.maxChars ?? 14_000);
-  const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units));
+  const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, options.maxChars ?? 14_000));
   let cached = 0;
   batches.forEach((_, index) => {
     if (existsSync(join(cacheDir, "batch-" + String(index).padStart(4, "0") + ".json"))) cached++;
