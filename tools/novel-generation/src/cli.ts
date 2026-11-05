@@ -84,11 +84,23 @@ async function main(): Promise<void> {
     if (mode !== "derivative" && mode !== "continuation") throw new Error("Unsupported mode: " + mode);
     if (mode === "continuation" && !sourceText) throw new Error("Continuation mode requires --source with text you provide or are authorized to use.");
 
-    const retrieved = await searchLibrary(
-      libraryDir,
-      [brief, contextText ?? "", sourceText ?? ""].join("\n"),
-      Number(arg("--retrieval-limit") ?? 6)
-    );
+    const retrievalLimit = Number(arg("--retrieval-limit") ?? 6);
+    if (!Number.isInteger(retrievalLimit) || retrievalLimit < 1 || retrievalLimit > 20) {
+      throw new Error("--retrieval-limit must be between 1 and 20.");
+    }
+    const state = await loadStoryState(statePath, worldId);
+    const activeThreads = state.plotThreads
+      .filter(thread => thread.status === "open" || thread.status === "active")
+      .map(thread => thread.title);
+    const retrievalQuery = [
+      brief,
+      contextText ?? "",
+      sourceText?.slice(-1500) ?? "",
+      state.currentPosition,
+      ...activeThreads,
+      ...state.characters.slice(0, 12).map(character => character.name)
+    ].join("\n");
+    const retrieved = await searchLibrary(libraryDir, retrievalQuery, retrievalLimit);
     const retrievedContext = retrieved.map((hit, index) =>
       "[" + (index + 1) + ", score " + hit.score.toFixed(2) + "] " + hit.source + " / " + hit.chapter +
       " (offset " + hit.start + "-" + hit.end + ")\n" + hit.text
