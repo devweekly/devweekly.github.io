@@ -73,3 +73,11 @@ CLI 命令（均经 `npm run dev --`）：
 - Zod is a direct runtime dependency. Validate persisted JSON and model-generated decisions at input boundaries; TypeScript interfaces alone do not validate runtime data.
 - `world-analysis.ts` checks cited source lines against local `original.txt` and runs a separate model review over report paragraphs plus their exact cited lines. Missing source, mismatched corpus line count, malformed decisions, or unsupported claims fail collection.
 - `analyze-world --phase collect` accepts `--source`, `--model`, and `--timeout-ms`; the default source path is local `original.txt` in the tool working directory.
+
+
+## Model comparison experiments
+
+- Run `node scripts/compare-models.mjs` for multi-model continuation comparisons.
+- Use `--strict-model` so failed calls cannot silently fall back. Never apply candidate state proposals during the experiment.
+- Keep `MODEL-MAPPING-PRIVATE.json` and logs away from blind reviewers; share only anonymized chapter text and identical context.
+- Use `prompts/model-comparison-review.md`; judge continuation quality, not imitation of source phrasing.

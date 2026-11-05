@@ -15,6 +15,7 @@ export interface WriteWorkflowInput {
   contextText?: string;
   retrievedContext?: string;
   model?: string;
+  strictModel?: boolean;
   maxWords: number;
   outputDir: string;
   statePath: string;
@@ -82,7 +83,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   const state = await loadStoryState(input.statePath, input.worldId);
   const profiles = readTaskProfiles();
   const call = (stage: StageKey, parts: string[]): Promise<string> =>
-    runAgentText(parts.join("\n\n"), input.model, undefined, profiles[stage]);
+    runAgentText(parts.join("\n\n"), input.model, undefined, profiles[stage], !input.strictModel);
   await mkdir(input.outputDir, { recursive: true });
   if (input.retrievedContext) await saveStage(input.outputDir, "00-retrieval.md", input.retrievedContext);
 

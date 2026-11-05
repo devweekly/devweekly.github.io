@@ -173,6 +173,53 @@ npm run dev -- regress --world conghuoniao --chapter 13 \
 - 故事状态采用 JSON 文件，适合单机原型；人物记录区分相对稳定的 `profile`（性格底色、价值观、内在矛盾、语言习惯、行为边界与弧光）和随剧情变化的当前状态（位置、知识、目标、关系等）。状态合并按人物/事件/情节线 ID 更新快照，不再把旧目标、旧关系无限累加。暂不支持并发写作或多人协作。
 - 私有原文 `original.txt` 与 `private/` 留在本地，不提交到 Git。导入索引、抽取标注与故事状态随代码提交；`library/index.json` 保存全文切片，公开仓库需自行确认授权。
 
+
+## 多模型续写对照实验
+
+固定同一份前文、故事状态、续写任务、世界设定、风格约束和目标篇幅，让各模型分别运行完整写作流水线，再匿名盲评正文。
+
+先检查模型目录和登录状态：
+
+\`\`\`bash
+npm run dev -- models
+npm run dev -- check-runtime --model deepseek-v4.1-flash
+npm run dev -- check-runtime --model glm-5.3-flash
+\`\`\`
+
+准备本地文件：\`private/previous-chapter.txt\` 是续写起点（上一章或其结尾，不能包含待生成章节）；\`private/context.md\` 可选，放所有模型共用的前情摘要、人物状态和未回收线索。
+
+运行：
+
+\`\`\`bash
+node scripts/compare-models.mjs \\
+  --world conghuoniao \\
+  --source ./private/previous-chapter.txt \\
+  --context ./private/context.md \\
+  --brief "承接上一章结尾，明确本章目标、主要冲突、必须出现的人物和不可改变的事实；不要预先规定每个场景的具体写法。" \\
+  --models deepseek-v4.1-flash,glm-5.3-flash \\
+  --max-words 3000 \\
+  --repetitions 1
+\`\`\`
+
+脚本顺序运行现有 \`write\` 多 Agent 流水线，并启用 \`--strict-model\`：模型调用失败直接失败，不允许静默切换到其他模型。脚本不传 \`--apply-state\`，各候选读取同一份故事状态，不会污染后续候选。模型参数请使用 \`models\` 输出的完整 ID，不用别名。
+
+结果在 \`.output/model-comparison/<run-id>/\`：\`candidate-XX/\` 保存正文及各阶段产物；\`candidate-XX.log\` 保存日志；\`MODEL-MAPPING-PRIVATE.json\` 保存候选与模型映射。**盲评前不要把映射文件或日志交给评审模型。**
+
+### 盲评步骤
+1. 只取每个候选的 \`chapter.md\`，复制到独立评审会话，改名 Candidate A/B/C 并随机打乱顺序。
+2. 同时提供相同的前文、world-bible、必要的人物状态/连续性材料，以及 \`prompts/model-comparison-review.md\`。
+3. 评审模型必须与写作模型分开；最好再用第二个独立评审模型复核排名和重大问题。
+4. 先看 blocker/major 硬伤，再看加权分。分差小于 3 分不宣布可靠胜者。
+5. 需要判断稳定性时设 \`--repetitions 2\` 或 \`3\`；单次胜出不等于稳定胜出。
+6. 评审完成后再打开私有映射文件，将候选映射回模型，记录结果和下一轮改进。
+
+### 实验控制边界
+- 固定 brief、source、context、world-bible、story-state、style-profile、style-rhythm、task-profiles、篇幅和检索设置。
+- \`--strict-model\` 禁止自动 fallback；脚本顺序执行，避免并发负载差异。
+- 评审不提供模型名、耗时、credits 或生成日志，避免身份和速度偏见。
+- 原章节用于理解上下文和核实事实，不是续写的标准答案。评价重点是新章节是否成立、人物是否可信、故事是否推进，不是模仿原文句子。
+- 不把一次评审意见直接固化成永久规则；先确认问题在重复测试中出现，再决定改 prompt 或 workflow。
+
 ## 目录
 
 ```

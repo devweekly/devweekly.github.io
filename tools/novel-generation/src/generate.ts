@@ -147,9 +147,16 @@ async function callOnce(
 }
 
 /** 按模型链依次调用；输出泄漏时先关掉思考重试同一个模型，再换链中下一个。 */
-export async function runAgentText(prompt: string, model?: string, timeoutMs = 120_000, profile?: TaskProfile): Promise<string> {
+export function resolveModelAttempts(model?: string, allowFallback = true): string[] {
   const resolved = resolveAgentModel(model);
-  const attempts = [resolved.model, ...resolved.fallbacks];
+  return allowFallback ? [resolved.model, ...resolved.fallbacks] : [resolved.model];
+}
+
+export async function runAgentText(
+  prompt: string, model?: string, timeoutMs = 120_000, profile?: TaskProfile, allowFallback = true
+): Promise<string> {
+  const resolved = resolveAgentModel(model);
+  const attempts = resolveModelAttempts(model, allowFallback);
   const failures: string[] = [];
   for (const candidate of attempts) {
     const fallback = attempts.find(item => item !== candidate);

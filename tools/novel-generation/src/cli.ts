@@ -49,7 +49,7 @@ function usage(): never {
     "  npm run dev -- models",
     "  npm run dev -- check-runtime [--model model] [--timeout-ms 90000]",
     "  npm run dev -- regress --world conghuoniao --chapter 13 [--brief \"本章任务\"] [--model deepseek-v4.1-flash] [--review-model glm-5.3-flash] [--context-lines 90] [--timeout-ms 240000]",
-    "  npm run dev -- write --brief \"story direction\" [--world conghuoniao] [--mode derivative|continuation] [--source file] [--context file] [--model model] [--max-words 3000] [--apply-state]",
+    "  npm run dev -- write --brief \"story direction\" [--world conghuoniao] [--mode derivative|continuation] [--source file] [--context file] [--model model] [--max-words 3000] [--strict-model] [--apply-state]",
     "  npm run dev -- write-long --brief \"story direction\" [--scenes 8] [--max-words 10000] [--timeout-ms 180000] [--apply-state]",
     "  npm run dev -- generate --brief \"story idea\" [--mode derivative|continuation] [--source file] [--context file] [--out file]"
   ].join("\n"));
@@ -282,7 +282,8 @@ async function main(): Promise<void> {
 
     const applyState = process.argv.includes("--apply-state");
     const chapter = await writeChapter({
-      worldId, mode, brief, worldBible, styleProfile, styleRhythm, sourceText, contextText, retrievedContext, model, maxWords,
+      worldId, mode, brief, worldBible, styleProfile, styleRhythm, sourceText, contextText, retrievedContext, model,
+      strictModel: process.argv.includes("--strict-model"), maxWords,
       outputDir, statePath, applyState
     });
     console.log("\nSaved chapter: " + resolve(outputDir, "chapter.md"));
