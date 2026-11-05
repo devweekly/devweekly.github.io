@@ -156,8 +156,8 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   const dialogueDraft = await cachedCall("dialogue", "05-dialogue-edited.md", "dialogue", [
     "角色：人物对话编辑。专门修整人物对白和对白相关动作，不改变剧情事实、场景顺序、人物决定和信息揭示。",
     common, "章节蓝图：", plan, "当前正文：", initialDraft,
-    "检查每个人物的词汇、句长、表达习惯、身份关系、情绪和已知信息。删掉解释性过强、所有角色都像同一个人的对白；让潜台词通过停顿、回避、误解和行动体现。",
-    RHYTHM_RULE, "输出完整修订正文，不得缩短篇幅，不得把长对白改成短句问答。"
+    "检查每个人物的词汇、句长、表达习惯、身份关系、情绪和已知信息。删掉解释性过强、所有角色都像同一个人的对白；让潜台词通过停顿、回避、误解和行动体现。可以精简重复或解释过度的内容，但不能删掉有效的人物互动、动作、信息或情绪落点；原文已经成立时可以原样保留。",
+    RHYTHM_RULE, "输出完整修订正文。文学表达优先，不以保持字数为目标。"
   ]);
   await saveStage(input.outputDir, "05-dialogue-edited.md", dialogueDraft);
 
