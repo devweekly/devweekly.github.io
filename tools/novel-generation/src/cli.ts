@@ -31,7 +31,7 @@ function usage(): never {
     "  npm run dev -- analyze --world conghuoniao [--limit 20] [--model model]",
     "  npm run dev -- analyze-world --world conghuoniao --phase prepare|status|collect",
     "  npm run dev -- models",
-    "  npm run dev -- write --brief \"story direction\" [--world conghuoniao] [--mode derivative|continuation] [--source file] [--context file] [--model model] [--max-words 3000]",
+    "  npm run dev -- write --brief \"story direction\" [--world conghuoniao] [--mode derivative|continuation] [--source file] [--context file] [--model model] [--max-words 3000] [--apply-state]",
     "  npm run dev -- generate --brief \"story idea\" [--mode derivative|continuation] [--source file] [--context file] [--out file]"
   ].join("\n"));
   process.exit(2);
@@ -77,7 +77,7 @@ async function main(): Promise<void> {
     console.log("hy4 系列：" + (hy4.length ? hy4.map(model => model.id + "(" + (model.credits ?? "?") + ")").join(", ") : "未读到"));
     console.log("deepseek-v4.1-flash：" + (catalog.some(model => model.id === "deepseek-v4.1-flash") ? "可用" : "目录未列出"));
     console.log("本次首选：" + resolved.model + "；回退：" + (resolved.fallbacks.join(" → ") || "无") + "；来源：" + resolved.source);
-    console.log("执行环境：" + (isManagedSession() ? "IDE/Agent 托管，SDK 子进程可能起不来，建议在普通终端验证" : "普通终端"));
+    console.log("执行环境：" + (isManagedSession() ? "IDE/Agent 托管，子进程已隔离宿主会话并自选端口" : "普通终端"));
     return;
   }
 
@@ -173,12 +173,14 @@ async function main(): Promise<void> {
         (annotation ? "\n抽取标注：\n" + JSON.stringify(annotation) : "");
     }).join("\n\n");
 
+    const applyState = process.argv.includes("--apply-state");
     const chapter = await writeChapter({
       worldId, mode, brief, worldBible, styleProfile, sourceText, contextText, retrievedContext, model, maxWords,
-      outputDir, statePath
+      outputDir, statePath, applyState
     });
     console.log("\nSaved chapter: " + resolve(outputDir, "chapter.md"));
-    console.log("Updated story state: " + statePath);
+    console.log("State proposal: " + resolve(outputDir, "08-state-update.json"));
+    console.log(applyState ? "Updated story state: " + statePath : "Story state unchanged; pass --apply-state after review.");
     if (!chapter.trim()) throw new Error("Generated chapter is empty.");
     return;
   }

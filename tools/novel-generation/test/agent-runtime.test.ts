@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { gzipSync } from "node:zlib";
 import {
   parseCredits, decodeProductConfig, expandModelAlias, resolveAgentModel,
-  buildQueryOptions, MODEL_PREFERENCE, type CatalogModel
+  buildQueryOptions, detachedCliOptions, MODEL_PREFERENCE, type CatalogModel
 } from "../src/agent-runtime.js";
 
 const catalog: CatalogModel[] = [
@@ -62,6 +62,22 @@ test("explicit model overrides the preference chain", () => {
     assert.equal(resolveAgentModel("auto", catalog).model, "hy4free");
     assert.equal(resolveAgentModel("hy4", catalog).model, "hy4free");
   });
+});
+
+test("managed sessions get a detached CLI environment and an auto-selected port", () => {
+  const previous = process.env.CODEBUDDY_SESSION_ID;
+  process.env.CODEBUDDY_SESSION_ID = "test-session";
+  try {
+    const controller = new AbortController();
+    const options = buildQueryOptions("hy4free", { cwd: "/tmp", abortController: controller });
+    assert.deepEqual(options.extraArgs, { port: "0" });
+    assert.equal(options.env.CODEBUDDY_SESSION_ID, undefined);
+    assert.equal(options.env.ACC_PRODUCT_CONFIG_PATH, undefined);
+  } finally {
+    if (previous === undefined) delete process.env.CODEBUDDY_SESSION_ID;
+    else process.env.CODEBUDDY_SESSION_ID = previous;
+  }
+  assert.equal(detachedCliOptions().extraArgs.port, "0");
 });
 
 test("query options disable tools, sessions and host settings", () => {

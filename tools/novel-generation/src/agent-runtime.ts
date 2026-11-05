@@ -166,7 +166,7 @@ export function resolveAgentModel(
   return { model, fallbacks: chain.slice(1), source: catalog.length ? "catalog" : "default" };
 }
 
-/** 被 IDE / Agent 托管时，SDK fork 的 CLI 子进程常静默退出，调用前可用于提示。 */
+/** 被 IDE / Agent 托管时，SDK 子进程会继承宿主服务端口，需要隔离会话环境。 */
 export function isManagedSession(): boolean {
   return Boolean(process.env.CODEBUDDY_SESSION_ID || process.env.WORKBUDDY_CONFIG_DIR);
 }
@@ -177,12 +177,33 @@ export interface QueryOptionsInput {
   fallbackModel?: string;
 }
 
+/**
+ * 托管会话里 SDK fork 的 CLI 会继承宿主的服务端口与会话变量，默认监听同一端口后
+ * 报 EADDRINUSE 并卡住。子进程改用独立会话环境，端口交给 CLI 自选。
+ */
+const HOST_SESSION_ENV_KEYS = [
+  "CODEBUDDY_SERVICE_PROXY_URL",
+  "CODEBUDDY_HOST",
+  "CODEBUDDY_SESSION_ID",
+  "CODEBUDDY_CONVERSATION_REQUEST_ID",
+  "CODEBUDDY_ROOT_REQUEST_ID",
+  "WORKBUDDY_CONFIG_DIR",
+  "ACC_PRODUCT_CONFIG_PATH"
+] as const;
+
+export function detachedCliOptions(): { env: Record<string, string | undefined>; extraArgs: Record<string, string> } {
+  const env: Record<string, string | undefined> = {};
+  for (const key of HOST_SESSION_ENV_KEYS) env[key] = undefined;
+  return { env, extraArgs: { port: "0" } };
+}
+
 /** 一次性文本调用的 SDK 选项：禁工具、单轮、关闭宿主配置与会话持久化。 */
 export function buildQueryOptions(model: string, input: QueryOptionsInput) {
   return {
     ...(model ? { model } : {}),
     ...(input.fallbackModel ? { fallbackModel: input.fallbackModel } : {}),
     cwd: input.cwd,
+    ...(isManagedSession() ? detachedCliOptions() : {}),
     permissionMode: "default" as const,
     settingSources: [],
     persistSession: false,

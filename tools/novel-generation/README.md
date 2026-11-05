@@ -62,7 +62,7 @@ npm run dev -- analyze-world --world conghuoniao --phase collect   # 校验并�
 
 ## 5. 多阶段章节写作
 
-`write` 会结合当前故事位置、未解决情节线和人物名单，从本地资料库检索相关片段；如果已经运行 `analyze`，也会把命中片段对应的人物、事件和关系标注一并交给写作流程。随后由主线剧情 Agent 与创意发散 Agent 并行提出方案，主编 Agent 选定章节蓝图；场景小说家生成正文，人物对话 Agent 修整对白，叙事声音 Agent 统一全章表达，连续性 Agent 审查，主编 Agent 终审并更新故事状态。各 Agent 通过独立阶段文件交接，不并发改写同一份正文。
+`write` 会结合当前故事位置、未解决情节线和人物名单，从本地资料库检索相关片段；如果已经运行 `analyze`，也会把命中片段对应的人物、事件和关系标注一并交给写作流程。随后由主线剧情 Agent 与创意发散 Agent 并行提出方案，主编 Agent 选定章节蓝图；场景小说家生成正文，人物对话 Agent 修整对白，叙事声音 Agent 统一全章表达，连续性 Agent 审查，主编 Agent 终审。各 Agent 通过独立阶段文件交接，不并发改写同一份正文。终审后另由状态管理员提出状态变更，默认只写入本次运行的 `08-state-update.json`，不覆盖 `story-state.json`。
 
 ```bash
 npm run dev -- write --world conghuoniao --mode continuation \
@@ -70,7 +70,8 @@ npm run dev -- write --world conghuoniao --mode continuation \
   --source ./private/authorized-excerpt.md \
   --context ./private/continuity-summary.md \
   --retrieval-limit 6 \
-  --max-words 3500
+  --max-words 3500 \
+  --apply-state
 ```
 
 每次运行生成：
@@ -80,9 +81,11 @@ npm run dev -- write --world conghuoniao --mode continuation \
 - `04-scene-draft.md`、`05-dialogue-edited.md`、`06-voice-edited.md`：正文、对白修订和叙事声音统一
 - `07-continuity-review.md`：连续性审查
 - `chapter.md`：终审后的章节
-- `08-state-update.json`：更新后的故事状态
+- `08-state-update.json`：状态变更提案（合并后的完整状态）
 
-故事状态包括当前位置、事实来源、人物状态、事件、情节线和后续连续性约束。模型提取的状态是工作记录，不自动等于原著正史；应定期人工核验。
+`--apply-state` 是显式开关：核对提案后才用它替换 `worlds/<world>/story-state.json`。不加这个开关，正史状态保持不变，`write` 可以反复试写而不污染已核实的事实与 `L####` 证据。`continuation` 模式的 `--source` 必须是你提供或有权使用的文本，本地 `private/` 不入库。
+
+已跑通的续写成稿归档在 `worlds/conghuoniao/chapters/`，含正文、连续性审查和状态提案；该目录随代码提交，阶段文件仍留在 `.output/<world>/<run-id>/`。
 
 ## 6. 单次生成
 
@@ -95,10 +98,10 @@ npm run dev -- generate --world conghuoniao --mode derivative \
 ## 当前实现边界
 
 - 使用 `@tencent-ai/agent-sdk` 的 `query()`。模型链默认 `hy4free`（hy4 系列免费档）→ `deepseek-v4.1-flash`，按 CodeBuddy 产品目录（`ACC_PRODUCT_CONFIG_PATH` 或 `~/.codebuddy/local_storage`）解析可用性；`npm run dev -- models` 显示解析结果。可用 `--model`、`NOVEL_AGENT_MODEL` 或 `CODEBUDDY_DEFAULT_MODEL` 覆盖，写 `hy4` 会按别名展开。单次调用带超时与主动中断，超时或无输出时换链中下一个模型。
-- 被 IDE/Agent 托管时（存在 `CODEBUDDY_SESSION_ID` / `WORKBUDDY_CONFIG_DIR`），SDK fork 的 CLI 子进程可能静默退出；`analyze` / `write` / `generate` 需在普通终端验证，`analyze` 可用 `--timeout-ms` 控制单片段上限。
+- 被 IDE/Agent 托管时（存在 `CODEBUDDY_SESSION_ID` / `WORKBUDDY_CONFIG_DIR`），SDK fork 的 CLI 会继承宿主服务端口并撞上主进程。`buildQueryOptions` 会清掉子进程的宿主会话变量，并加 `--port 0` 让 CLI 自选端口；托管会话内可直接运行 `analyze` / `write` / `generate`。`analyze` 可用 `--timeout-ms` 控制单片段上限。
 - `analyze-world` 走文件交接，不调用模型；输入包与成稿随代码提交，便于复核每个结论的依据。
 - 本地检索是词项/BM25 风格排序，不是向量语义检索。
-- 文本抽取按片段进行，已有证据校验和断点续跑；尚未实现跨章节实体归并、共指消解、人物状态时间序列和伏笔生命周期分析。当前托管会话下 SDK 调用超时，全量 `analyze` 未执行，`annotations.json` 为空。
+- 文本抽取按片段进行，已有证据校验和断点续跑；尚未实现跨章节实体归并、共指消解、人物状态时间序列和伏笔生命周期分析。全量 `analyze` 涉及 2,594 次模型调用，尚未执行，`annotations.json` 为空。
 - `analysis/build-corpus-index.mjs` 只做确定性结构解析，不调用模型；卷边界由章号重置判定，作者单章与卷末总结单独记录，不做语义归并。
 - 导入器支持 TXT/Markdown；EPUB、PDF、OCR 和网页采集不在当前范围。
 - 多 Agent 通过独立模型调用协作；主线规划与创意发散并行，其余阶段按依赖顺序执行。当前没有持久化 Agent session，中断后不会自动从写作步骤恢复。
@@ -149,6 +152,11 @@ worlds/
     library/
       index.json
       annotations.json
+    chapters/
+      README.md
+      chapter-001.md
+      continuity-review-001.md
+      state-proposal-001.json
 .output/
   conghuoniao/
     <run-id>/

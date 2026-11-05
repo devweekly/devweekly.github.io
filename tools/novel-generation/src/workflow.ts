@@ -16,6 +16,7 @@ export interface WriteWorkflowInput {
   maxWords: number;
   outputDir: string;
   statePath: string;
+  applyState: boolean;
 }
 
 function extractJson(text: string): unknown {
@@ -153,7 +154,8 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   try {
     const update = extractJson(stateText) as Partial<StoryState>;
     const nextState = mergeState(state, update);
-    await saveStoryState(input.statePath, nextState);
+    // 模型提取的状态默认只作为本次运行的工作记录；人工核对后才用它替换正史状态。
+    if (input.applyState) await saveStoryState(input.statePath, nextState);
     await saveStage(input.outputDir, "08-state-update.json", JSON.stringify(nextState, null, 2));
   } catch (error) {
     await saveStage(input.outputDir, "08-state-update-error.txt", String(error) + "\n\n" + stateText);
