@@ -122,10 +122,12 @@ async function main(): Promise<void> {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
-    const retrievedContext = retrieved.map((hit, index) =>
-      "[" + (index + 1) + ", score " + hit.score.toFixed(2) + "] " + hit.source + " / " + hit.chapter +
-      " (offset " + hit.start + "-" + hit.end + ")\n" + hit.text
-    ).join("\n\n");
+    const retrievedContext = retrieved.map((hit, index) => {
+      const annotation = annotationsByChunk.get(hit.id);
+      return "[" + (index + 1) + ", score " + hit.score.toFixed(2) + "] " + hit.source + " / " + hit.chapter +
+        " (offset " + hit.start + "-" + hit.end + ")\n" + hit.text +
+        (annotation ? "\n抽取标注：\n" + JSON.stringify(annotation) : "");
+    }).join("\n\n");
 
     const chapter = await writeChapter({
       worldId, mode, brief, worldBible, sourceText, contextText, retrievedContext, model, maxWords,
