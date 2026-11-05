@@ -181,7 +181,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   try {
     const update = extractJson(stateText) as Partial<StoryState>;
     const nextState = mergeStoryState(state, update);
-    // 模型提取的状态默认只作为本次运行的工作记录；人工核对后才用它替换正史状态。
+    // 默认自动提交状态；仅在显式隔离/试写模式下保留为本次运行提案。
     if (input.applyState) await saveStoryState(input.statePath, nextState);
     await saveStage(input.outputDir, "08-state-update.json", JSON.stringify(nextState, null, 2));
   } catch (error) {
