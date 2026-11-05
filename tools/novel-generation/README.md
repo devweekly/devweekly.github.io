@@ -340,7 +340,7 @@ worlds/
 
 为续写设计新果实世界时，先阅读 [`original-fruit-world-concepts.md`](./original-fruit-world-concepts.md)。该文档包含六个项目原创候选世界，以及历史背景、经济结构、风俗民俗、日常生活、异常规律、事件入口和人物冲突。所有内容均与原著正史分开；正式使用前需对照 `world-bible.md`、`yanfu-system.md` 和 `fruit-worlds.md`，不得把工作设定误写成原著规则。
 
-## 自动分析人物与故事发展
+## 9. 自动分析人物与故事发展
 
 `analyze-story` 会读取已经导入 SQLite 的全部小说片段，直接通过项目现有 CodeBuddy Agent SDK 分批调用 LLM。它自动梳理人物小传、性格与内在矛盾、欲望和关系、可能的成长/反转方向，以及主线情节、支线、未解问题、可能伏笔和后续发展构想。
 
@@ -350,6 +350,6 @@ npm run dev -- analyze-story --world conghuoniao --model <model-name> --timeout-
 npm run dev -- db-status --world conghuoniao
 ```
 
-分析按约 14,000 字符分批处理，每批结果会缓存到 `.output/<world>/story-analysis/<source-hash>/`，中断后重新运行可跳过已完成批次；全部批次成功后才整体写入 `worlds/<world>/novel.db` 的 `story_analysis` 快照；中途失败不会用半成品覆盖上一次完整结果。结果包含每项分析对应的来源片段 ID、文件和章节，便于回到原文核对。重复运行会基于当前索引重新生成完整快照。
+分析按约 14,000 字符分批处理，每批结果会缓存到 `.output/<world>/story-analysis/<source-hash>/`，中断后重新运行可跳过已完成批次；全部批次成功后才整体写入 `worlds/<world>/novel.db` 的 `story_analysis` 快照；中途失败不会用半成品覆盖上一次完整结果。每项分析附带其分析批次的来源片段 ID、文件和章节，便于回到原文核对；这是上下文来源范围，不表示批次内每个片段都直接支持该项。重复运行会基于当前索引重新生成完整快照。
 
 分析不是文学审判。人物小传不是性格定型，成长方向不是人物必须完成的弧光，伏笔也可能只是偶然细节；后续发展建议可以互相矛盾、出人意料，且明确标记为创作可能性。**文学性、文笔、艺术风格，高于其他一切！** 不得为了让数据库条目完整或让情节分析自洽而牺牲小说本身。
