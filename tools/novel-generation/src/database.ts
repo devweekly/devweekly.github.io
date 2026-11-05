@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { LibraryChunk } from "./library.js";
 import type { StoryState } from "./story-state.js";
-export interface DatabaseStatus { path:string; schemaVersion:number; chunks:number; annotations:number; entities:number; entityMentions:number; characters:number; canonFacts:number; events:number; plotThreads:number; }
+export interface DatabaseStatus { path:string; schemaVersion:number; chunks:number; annotations:number; entities:number; entityMentions:number; characters:number; canonFacts:number; events:number; plotThreads:number; storyAnalysis:number; }
 function openDatabase(worldDir:string,worldId:string):DatabaseSync {
  mkdirSync(worldDir,{recursive:true}); const db=new DatabaseSync(join(worldDir,"novel.db"));
  db.exec("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;");
@@ -18,12 +18,13 @@ function openDatabase(worldDir:string,worldId:string):DatabaseSync {
  "CREATE TABLE IF NOT EXISTS canon_facts(id TEXT PRIMARY KEY,fact TEXT NOT NULL,confidence TEXT NOT NULL,source TEXT);"+
  "CREATE TABLE IF NOT EXISTS story_events(id TEXT PRIMARY KEY,summary TEXT NOT NULL,position TEXT NOT NULL,payload_json TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_story_events_position ON story_events(position);"+
  "CREATE TABLE IF NOT EXISTS plot_threads(id TEXT PRIMARY KEY,title TEXT NOT NULL,status TEXT NOT NULL,last_updated TEXT NOT NULL,notes TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_plot_threads_status ON plot_threads(status);"+
- "CREATE TABLE IF NOT EXISTS continuity_notes(ordinal INTEGER PRIMARY KEY,note TEXT NOT NULL);");
+ "CREATE TABLE IF NOT EXISTS continuity_notes(ordinal INTEGER PRIMARY KEY,note TEXT NOT NULL);"+
+ "CREATE TABLE IF NOT EXISTS story_analysis(singleton INTEGER PRIMARY KEY CHECK(singleton=1),world_id TEXT NOT NULL,source_hash TEXT NOT NULL,analyzed_at TEXT NOT NULL,payload_json TEXT NOT NULL);");
  const version=Number((db.prepare("PRAGMA user_version").get() as {user_version:number}).user_version);
- if(version>1){db.close();throw new Error("Novel database schema is newer than this application supports: "+version);}
+ if(version>2){db.close();throw new Error("Novel database schema is newer than this application supports: "+version);}
  const stored=db.prepare("SELECT value FROM world_meta WHERE key='world_id'").get() as {value:string}|undefined;
  if(stored&&stored.value!==worldId){db.close();throw new Error("SQLite database world mismatch: expected "+worldId+", found "+stored.value);}
- db.exec("PRAGMA user_version=1"); db.prepare("INSERT INTO world_meta(key,value) VALUES('world_id',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(worldId); return db;
+ db.exec("PRAGMA user_version=2"); db.prepare("INSERT INTO world_meta(key,value) VALUES('world_id',?) ON CONFLICT(key) DO UPDATE SET value=excluded.value").run(worldId); return db;
 }
 function transaction<T>(db:DatabaseSync,work:()=>T):T{db.exec("BEGIN IMMEDIATE");try{const x=work();db.exec("COMMIT");return x;}catch(e){db.exec("ROLLBACK");throw e;}}
 export function syncLibraryChunks(worldDir:string,worldId:string,chunks:LibraryChunk[]):void{
@@ -72,7 +73,35 @@ export function syncStoryState(worldDir:string,state:StoryState):void{
 export function readStoryState(worldDir:string,worldId:string):StoryState|undefined{
  const db=openDatabase(worldDir,worldId);try{const row=db.prepare("SELECT payload_json FROM story_state WHERE singleton=1").get() as {payload_json:string}|undefined;return row?JSON.parse(row.payload_json) as StoryState:undefined;}finally{db.close();}
 }
+
+export interface StoryAnalysisSnapshot {
+  worldId: string;
+  sourceHash: string;
+  analyzedAt: string;
+  complete: boolean;
+  batches: number;
+  characters: Array<Record<string, unknown>>;
+  plotThreads: Array<Record<string, unknown>>;
+  foreshadowings: Array<Record<string, unknown>>;
+  developmentPossibilities: Array<Record<string, unknown>>;
+}
+export function saveStoryAnalysis(worldDir:string,worldId:string,snapshot:StoryAnalysisSnapshot):void {
+ const db=openDatabase(worldDir,worldId);
+ try {
+  if(snapshot.worldId!==worldId) throw new Error("Story analysis world mismatch: "+worldId);
+  db.prepare("INSERT INTO story_analysis(singleton,world_id,source_hash,analyzed_at,payload_json) VALUES(1,?,?,?,?) ON CONFLICT(singleton) DO UPDATE SET world_id=excluded.world_id,source_hash=excluded.source_hash,analyzed_at=excluded.analyzed_at,payload_json=excluded.payload_json")
+   .run(worldId,snapshot.sourceHash,snapshot.analyzedAt,JSON.stringify(snapshot));
+ } finally { db.close(); }
+}
+export function readStoryAnalysis(worldDir:string,worldId:string):StoryAnalysisSnapshot|undefined {
+ const db=openDatabase(worldDir,worldId);
+ try {
+  const row=db.prepare("SELECT payload_json FROM story_analysis WHERE singleton=1 AND world_id=?").get(worldId) as {payload_json:string}|undefined;
+  return row?JSON.parse(row.payload_json) as StoryAnalysisSnapshot:undefined;
+ } finally { db.close(); }
+}
+
 export function databaseStatus(worldDir:string,worldId:string):DatabaseStatus{
- const db=openDatabase(worldDir,worldId);try{const count=(t:string)=>Number((db.prepare("SELECT COUNT(*) AS count FROM "+t).get() as {count:number}).count);return {path:join(worldDir,"novel.db"),schemaVersion:Number((db.prepare("PRAGMA user_version").get() as {user_version:number}).user_version),chunks:count("library_chunks"),annotations:count("annotations"),entities:count("entities"),entityMentions:count("entity_mentions"),characters:count("characters"),canonFacts:count("canon_facts"),events:count("story_events"),plotThreads:count("plot_threads")};}finally{db.close();}
+ const db=openDatabase(worldDir,worldId);try{const count=(t:string)=>Number((db.prepare("SELECT COUNT(*) AS count FROM "+t).get() as {count:number}).count);return {path:join(worldDir,"novel.db"),schemaVersion:Number((db.prepare("PRAGMA user_version").get() as {user_version:number}).user_version),chunks:count("library_chunks"),annotations:count("annotations"),entities:count("entities"),entityMentions:count("entity_mentions"),characters:count("characters"),canonFacts:count("canon_facts"),events:count("story_events"),plotThreads:count("plot_threads"),storyAnalysis:count("story_analysis")};}finally{db.close();}
 }
 export function databaseWorldDirFromLibrary(libraryDir:string):string{return dirname(libraryDir);}
