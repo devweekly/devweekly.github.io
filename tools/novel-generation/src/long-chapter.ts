@@ -3,6 +3,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { loadStoryState, saveStoryState } from "./story-state.js";
+import type { StoryState } from "./story-state.js";
 import { runAgentText, type GenerationMode } from "./generate.js";
 import { readTaskProfiles, type StageKey } from "./task-profiles.js";
 import { RHYTHM_RULE, mergeStoryState } from "./workflow.js";
@@ -106,7 +107,6 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     "当前位置：", state.currentPosition,
     "已确认事实与连续性约束：", facts,
     input.contextText ? "前文与连续性摘要：\n" + input.contextText : "",
-    input.retrievedContext ? "全章相关原文检索：\n" + input.retrievedContext : "",
     input.sourceText ? "用户提供且有权使用的续写起点（只用于承接，不得整段复制）：\n" + input.sourceText : "",
     input.styleProfile ? "叙事风格约束：\n" + input.styleProfile : "",
     input.styleRhythm ? "叙事节奏复核：\n" + input.styleRhythm : "",

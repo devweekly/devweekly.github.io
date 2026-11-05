@@ -1,5 +1,4 @@
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
-import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { runAgentText } from "./generate.js";
 import type { LibraryChunk } from "./library.js";
