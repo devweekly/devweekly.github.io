@@ -1,0 +1,55 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { emptyStoryState } from "../src/story-state.js";
+import { mergeStoryState } from "../src/workflow.js";
+
+test("character profile is stable metadata while current character fields are replaceable snapshots", () => {
+  const current = emptyStoryState("test-world");
+  current.characters.push({
+    name: "李玄",
+    profile: { coreTraits: ["谨慎"], values: ["守信"], contradictions: ["渴望自由"] },
+    status: "受伤",
+    location: "旧城",
+    knowledge: ["守门人身份"],
+    goals: ["找到入口"],
+    relationships: ["与守门人敌对"]
+  });
+  const next = mergeStoryState(current, {
+    characters: [{
+      name: "李玄",
+      profile: { contradictions: ["害怕失去同伴"], arc: "开始愿意承担责任" },
+      status: "恢复",
+      location: "北门",
+      knowledge: ["密道位置"],
+      goals: ["保护同伴"],
+      relationships: ["与守门人暂时合作"]
+    }]
+  });
+  assert.equal(next.characters.length, 1);
+  assert.deepEqual(next.characters[0]?.profile, {
+    coreTraits: ["谨慎"], values: ["守信"], contradictions: ["害怕失去同伴"], arc: "开始愿意承担责任"
+  });
+  assert.equal(next.characters[0]?.status, "恢复");
+  assert.equal(next.characters[0]?.location, "北门");
+  assert.deepEqual(next.characters[0]?.knowledge, ["密道位置"]);
+  assert.deepEqual(next.characters[0]?.goals, ["保护同伴"]);
+  assert.deepEqual(next.characters[0]?.relationships, ["与守门人暂时合作"]);
+});
+
+test("story facts, events and threads merge by stable id without duplicate accumulation", () => {
+  const current = emptyStoryState("test-world");
+  current.canonFacts.push({ id: "f1", fact: "旧事实", confidence: "confirmed" });
+  current.events.push({ id: "e1", summary: "旧事件", position: "第1章", participants: ["A"], consequences: [] });
+  current.plotThreads.push({ id: "p1", title: "调查", status: "open", lastUpdated: "第1章", notes: "开始" });
+  const next = mergeStoryState(current, {
+    canonFacts: [{ id: "f1", fact: "修正事实", confidence: "confirmed" }],
+    events: [{ id: "e1", summary: "更新事件", position: "第2章", participants: ["A", "B"], consequences: ["关系改变"] }],
+    plotThreads: [{ id: "p1", title: "调查", status: "resolved", lastUpdated: "第2章", notes: "结束" }]
+  });
+  assert.equal(next.canonFacts.length, 1);
+  assert.equal(next.canonFacts[0]?.fact, "修正事实");
+  assert.equal(next.events.length, 1);
+  assert.deepEqual(next.events[0]?.participants, ["A", "B"]);
+  assert.equal(next.plotThreads.length, 1);
+  assert.equal(next.plotThreads[0]?.status, "resolved");
+});

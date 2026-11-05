@@ -38,7 +38,9 @@ CLI 命令（均经 `npm run dev --`）：
 - **src/generate.ts** — 唯一调用 `@tencent-ai/agent-sdk` 的地方：`query()` + `runAgentText`（模型链超时 / 中断 / 重试），`generateStory` 单次成稿。
 - **src/workflow.ts** — `writeChapter` 多阶段写作：主线架构师与创意发散并行（Promise.all）→ 主编蓝图 → 场景初稿 → 对白 → 叙事声音 → 连续性审查 → 主编终审 → 状态提取；每阶段落盘 `00-`…`08-` 文件到 `.output/<world>/<run-id>/`。`mergeState` 按 id/name 归并状态；**默认只写 `08-state-update.json` 提案，仅 `--apply-state` 才覆盖正史 `story-state.json`**。
 - **src/world-analysis.ts** — 纯文件交接、运行时不调用模型：5 个 `ANALYSIS_ROLES`（main-plot / creative / style / characters / continuity）→ `prepare` 生成各角色 `input.md` → 各 Agent 写 `output.md` → `collect` 用 `validateAnalysisOutput` 校验（≥600 字、≥6 处 `L####` 且在原文行数内、≥3 个二级标题、无占位符）→ `manifest.json` + `index.md`；只校验格式与证据密度，不判断观点。
-- **src/story-state.ts** — `worlds/<world>/story-state.json`（schemaVersion 1）的加载 / 保存与空状态。
+- **src/story-state.ts** — `worlds/<world>/story-state.json`（schemaVersion 1）的加载 / 保存与空状态；人物记录区分稳定 profile 与可变剧情快照。
+- **src/long-chapter.ts** — 长章节按场景蓝图逐场生成；场景标题数量/编号严格校验；每场按蓝图检索原文，并将上一场较完整的尾部上下文传给下一场；状态提案复用 `mergeStoryState`，避免重复追加人物、事件与情节线。
+- **src/analysis.ts** — 抽取以批次为单位原子保存标注，避免每处理一个片段就重写整个增长中的 JSON 文件。
 
 ## 数据布局与边界
 

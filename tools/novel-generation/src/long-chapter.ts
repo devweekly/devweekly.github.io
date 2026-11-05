@@ -2,10 +2,11 @@
 // 不复用 SDK session；场景之间靠落盘的原文结尾与事实清单显式交接，可逐场重跑。
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { loadStoryState, saveStoryState, type StoryState } from "./story-state.js";
+import { loadStoryState, saveStoryState } from "./story-state.js";
 import { runAgentText, type GenerationMode } from "./generate.js";
 import { readTaskProfiles, type StageKey } from "./task-profiles.js";
-import { RHYTHM_RULE } from "./workflow.js";
+import { RHYTHM_RULE, mergeStoryState } from "./workflow.js";
+import { searchLibrary } from "./library.js";
 
 export interface LongChapterInput {
   worldId: string;
@@ -22,6 +23,8 @@ export interface LongChapterInput {
   timeoutMs: number;
   outputDir: string;
   statePath: string;
+  libraryDir?: string;
+  retrievalLimit?: number;
   applyState: boolean;
 }
 
@@ -59,11 +62,27 @@ async function saveStage(dir: string, name: string, content: string): Promise<vo
   await writeFile(resolve(dir, name), content.trim() + "\n", "utf8");
 }
 
-/** 按 `## 场景 N` 切蓝图；模型没按格式输出时退回整份蓝图，不让后续场景失去约束。 */
-function splitScenes(plan: string, expected: number): string[] {
-  const parts = plan.split(/^##\s*场景\s*\d+.*$/m).map(part => part.trim()).filter(Boolean);
-  if (parts.length >= expected) return parts.slice(-expected);
-  return Array.from({ length: expected }, () => plan.trim());
+/** 严格解析场景蓝图，格式错误就停止，绝不把整份蓝图重复当作每一场。 */
+export function splitScenes(plan: string, expected: number): string[] {
+  const headings = [...plan.matchAll(/^##\s*场景\s*(\d+)\b[^\n]*$/gm)];
+  if (headings.length !== expected) {
+    throw new Error(`场景蓝图应包含 ${expected} 个场景标题，实际识别到 ${headings.length} 个；请检查 01-scene-blueprint.md 后重试。`);
+  }
+  const scenes: string[] = [];
+  for (let index = 0; index < headings.length; index++) {
+    const heading = headings[index]!;
+    const number = Number(heading[1]);
+    if (number !== index + 1) {
+      throw new Error(`场景蓝图编号必须连续且从 1 开始：第 ${index + 1} 个标题编号为 ${number}。`);
+    }
+    const bodyStart = (heading.index ?? 0) + heading[0].length;
+    const next = headings[index + 1];
+    const bodyEnd = next?.index ?? plan.length;
+    const body = plan.slice(bodyStart, bodyEnd).trim();
+    if (!body) throw new Error(`场景 ${number} 的蓝图内容为空。`);
+    scenes.push(heading[0] + "\n" + body);
+  }
+  return scenes;
 }
 
 function tail(text: string, maxChars: number): string {
@@ -87,6 +106,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     "当前位置：", state.currentPosition,
     "已确认事实与连续性约束：", facts,
     input.contextText ? "前文与连续性摘要：\n" + input.contextText : "",
+    input.retrievedContext ? "全章相关原文检索：\n" + input.retrievedContext : "",
     input.sourceText ? "用户提供且有权使用的续写起点（只用于承接，不得整段复制）：\n" + input.sourceText : "",
     input.styleProfile ? "叙事风格约束：\n" + input.styleProfile : "",
     input.styleRhythm ? "叙事节奏复核：\n" + input.styleRhythm : "",
@@ -109,13 +129,21 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
 
   const sceneTexts: string[] = [];
   for (let index = 0; index < input.scenes; index++) {
-    const previous = sceneTexts.length ? tail(sceneTexts[sceneTexts.length - 1]!, 900) : "（本章第一场，无前文）";
+    const previous = sceneTexts.length ? tail(sceneTexts[sceneTexts.length - 1]!, 3600) : "（本章第一场，无前文）";
+    const sceneRetrieval = input.libraryDir
+      ? await searchLibrary(input.libraryDir, [input.brief, scenePlans[index]!, ...state.characters.map(character => character.name)].join("\n"), input.retrievalLimit ?? 4)
+      : [];
+    const sceneEvidence = sceneRetrieval.map((hit, hitIndex) =>
+      `[${hitIndex + 1}, score ${hit.score.toFixed(2)}] ${hit.source} / ${hit.chapter} / offset ${hit.start}-${hit.end}\n${hit.text}`
+    ).join("\n\n");
+    await saveStage(input.outputDir, `00-scene-${String(index + 1).padStart(2, "0")}-retrieval.md`, sceneEvidence || "本场未检索到额外原文证据。");
     const scenePrompt = [
       `角色：场景小说家。只写第 ${index + 1} 场完整正文，不输出标题、分析或创作说明。`,
       writingContext,
       "全章蓝图：", blueprint,
       `本场蓝图：`, scenePlans[index]!,
-      "上一场已写正文的结尾（用于承接语气、人物位置与未完成动作，不得重复其内容）：", previous,
+      "本场相关原文证据（只用于核实事实，不得照搬）：", sceneEvidence,
+      "上一场正文的连续性上下文（重点承接人物位置、已知信息、关系变化、道具归属、未完成动作与场景结果，不得重复）：", previous,
       `本场目标 ${perScene} 个汉字。写完整场景：人物在具体地点做事、遇到阻力、做出选择、承担后果。不要用概述代替关键场景，不要跳到下一场。`,
       RHYTHM_RULE,
       "本场至少一处 45 字以上的逗号串联长对白或长叙述，随后用 12 字以内的短句收住；至少一处器物或感官清单。",
@@ -181,28 +209,19 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     JSON.stringify({
       currentPosition: "string",
       canonFacts: [{ id: "stable-id", fact: "fact", source: "chapter id", confidence: "confirmed|inferred|original" }],
-      characters: [{ name: "name", status: "current status", knowledge: ["new knowledge"], goals: ["current goals"] }],
+      characters: [{ name: "name", profile: { coreTraits: ["stable traits"], values: ["values"], contradictions: ["internal contradictions"], voice: "distinctive voice", boundaries: ["behavioral boundaries"], arc: "long-term arc" }, status: "current status", location: "current location", abilities: ["current abilities"], knowledge: ["current knowledge"], goals: ["current goals"], relationships: ["current relationships"] }],
       events: [{ id: "stable-id", summary: "event", position: "story position", participants: ["name"], consequences: ["consequence"] }],
       plotThreads: [{ id: "stable-id", title: "thread", status: "open|active|resolved|abandoned", notes: "latest state" }],
       continuityNotes: ["facts future chapters must preserve"]
     }, null, 2),
     "旧状态：", JSON.stringify(state, null, 2),
     "章节结尾（状态提取以这里为准）：", tail(chapter, 4500),
-    "只记录章节明确支持的内容；推断标为 inferred，项目原创内容标为 original，不得写进原著正史。"
+    "profile 记录相对稳定的性格底色、价值观、内在矛盾、语言习惯和行为边界；不要因单次行为轻易改写。其他字段是章节结束时的当前状态快照，数组必须给出完整当前值。人物弧光可以改变人物，但必须由选择、压力、代价和行为证据支撑，不得刻板化，也不得为制造反转而突然黑化/洗白。只记录章节明确支持的内容；推断标为 inferred，项目原创内容标为 original，不得写进原著正史。"
   ]);
   try {
     const cleaned = stateText.trim().replace(/^`{3}(?:json)?\s*/i, "").replace(/\s*`{3}$/i, "");
     const update = JSON.parse(cleaned.slice(cleaned.indexOf("{"), cleaned.lastIndexOf("}") + 1)) as Partial<StoryState>;
-    const nextState: StoryState = {
-      ...state,
-      currentPosition: update.currentPosition || state.currentPosition,
-      canonFacts: [...state.canonFacts, ...(update.canonFacts ?? [])],
-      characters: [...state.characters, ...(update.characters ?? [])],
-      events: [...state.events, ...(update.events ?? [])],
-      plotThreads: [...state.plotThreads, ...(update.plotThreads ?? [])],
-      continuityNotes: [...new Set([...state.continuityNotes, ...(update.continuityNotes ?? [])])],
-      updatedAt: new Date().toISOString()
-    };
+    const nextState = mergeStoryState(state, update);
     if (input.applyState) await saveStoryState(input.statePath, nextState);
     await saveStage(input.outputDir, "07-state-update.json", JSON.stringify(nextState, null, 2));
   } catch (error) {

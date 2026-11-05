@@ -99,7 +99,7 @@ npm run dev -- write-long --world conghuoniao --mode continuation \
   --max-words 10000 --scenes 8 --timeout-ms 180000
 ```
 
-流程：一次生成 N 场蓝图（`01-scene-blueprint.md`）→ 逐场成文（`02-scene-XX.md`，字数不足自动补写一次，场间传入上一场结尾）→ 拼接初稿（`03-draft.md`）→ 分两批连续性审查（`04-continuity-review.md`）→ 逐场对白与文风修订（`05-polish-XX.md`）→ `chapter.md`、`06-rhythm-metrics.json` 与状态提案 `07-state-update.json`。`--apply-state` 才写回正史状态。各阶段产物全部落盘，可逐场复核或重跑。
+流程：一次生成 N 场蓝图（`01-scene-blueprint.md`，必须有连续且唯一的 `## 场景 1..N` 标题；格式不合格直接停止，不会把整份蓝图重复当成每场）→ 按场景蓝图检索相关原文（`00-scene-XX-retrieval.md`）→ 逐场成文（`02-scene-XX.md`，字数不足自动补写一次，场间传入上一场较完整的结尾上下文）→ 拼接初稿（`03-draft.md`）→ 分两批连续性审查（`04-continuity-review.md`）→ 逐场对白与文风修订（`05-polish-XX.md`）→ `chapter.md`、`06-rhythm-metrics.json` 与状态提案 `07-state-update.json`。`--apply-state` 才写回正史状态。各阶段产物全部落盘，可逐场复核或重跑。
 
 文风复核见 `analysis/conghuoniao/style-rhythm.md`：原书抽样平均句长 22 字、长句 25.3%、超长句 4.7%，而成稿 `chapter-001.md` 平均 14.7 字、长句 8%、超长句 0%。量化约束已写进 `style-profile.md` 和成文、修订、审查三处提示；`06-rhythm-metrics.json` 用同一口径统计成稿，偏离就回到文风阶段。
 
@@ -170,7 +170,7 @@ npm run dev -- regress --world conghuoniao --chapter 13 \
 - 导入器支持 TXT/Markdown；EPUB、PDF、OCR 和网页采集不在当前范围。
 - 多 Agent 通过独立模型调用协作；主线规划与创意发散并行，其余阶段按依赖顺序执行。当前没有持久化 Agent session，中断后不会自动从写作步骤恢复。
 - 状态提取仍从模型返回的文本里解析 JSON；参考项目用的 `outputFormat: json_schema` 与 StructuredOutput 工具在 `deepseek-v4.1-flash` 上尚未验证支持，暂不启用。
-- 故事状态采用 JSON 文件，适合单机原型；暂不支持并发写作或多人协作。
+- 故事状态采用 JSON 文件，适合单机原型；人物记录区分相对稳定的 `profile`（性格底色、价值观、内在矛盾、语言习惯、行为边界与弧光）和随剧情变化的当前状态（位置、知识、目标、关系等）。状态合并按人物/事件/情节线 ID 更新快照，不再把旧目标、旧关系无限累加。暂不支持并发写作或多人协作。
 - 私有原文 `original.txt` 与 `private/` 留在本地，不提交到 Git。导入索引、抽取标注与故事状态随代码提交；`library/index.json` 保存全文切片，公开仓库需自行确认授权。
 
 ## 目录

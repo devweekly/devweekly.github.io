@@ -299,7 +299,9 @@ async function main(): Promise<void> {
     const statePath = resolve("worlds", worldId, "story-state.json");
     const chapter = await writeLongChapter({
       worldId, mode, brief, worldBible, styleProfile, styleRhythm, sourceText, contextText, model,
-      maxWords, scenes, timeoutMs, outputDir, statePath, applyState: process.argv.includes("--apply-state")
+      maxWords, scenes, timeoutMs, outputDir, statePath, libraryDir,
+      retrievalLimit: Number(arg("--retrieval-limit") ?? 4),
+      applyState: process.argv.includes("--apply-state")
     });
     console.log("\nSaved chapter: " + resolve(outputDir, "chapter.md"));
     console.log("Scenes: " + scenes + " · Chinese characters: " + chineseChars(chapter));

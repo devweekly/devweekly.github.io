@@ -29,7 +29,7 @@ function extractJson(text: string): unknown {
   return JSON.parse(cleaned.slice(start, end + 1)) as unknown;
 }
 
-function mergeState(current: StoryState, update: Partial<StoryState>): StoryState {
+export function mergeStoryState(current: StoryState, update: Partial<StoryState>): StoryState {
   const mergeBy = <T extends object>(oldItems: T[], newItems: T[], key: (item: T) => string): T[] => {
     const map = new Map(oldItems.map(item => [key(item), item]));
     for (const item of newItems) {
@@ -38,8 +38,13 @@ function mergeState(current: StoryState, update: Partial<StoryState>): StoryStat
       if (previous && typeof previous === "object" && typeof item === "object") {
         const merged = { ...(previous as unknown as Record<string, unknown>), ...(item as unknown as Record<string, unknown>) };
         for (const [field, value] of Object.entries(item as unknown as Record<string, unknown>)) {
-          const priorValue = (previous as unknown as Record<string, unknown>)[field];
-          if (Array.isArray(value)) merged[field] = [...new Set([...(Array.isArray(priorValue) ? priorValue : []), ...value])];
+          // State fields are snapshots, not append-only logs: a new location, goal or
+          // relationship list replaces the previous value. Profile objects merge one level.
+          if (Array.isArray(value)) merged[field] = [...value];
+          else if (value && typeof value === "object" && !Array.isArray(value)) {
+            const oldNested = (previous as unknown as Record<string, unknown>)[field];
+            merged[field] = { ...(oldNested && typeof oldNested === "object" ? oldNested as object : {}), ...(value as object) };
+          }
         }
         map.set(id, merged as unknown as T);
       } else map.set(id, item);
@@ -50,7 +55,7 @@ function mergeState(current: StoryState, update: Partial<StoryState>): StoryStat
     ...current,
     currentPosition: update.currentPosition || current.currentPosition,
     canonFacts: mergeBy(current.canonFacts, update.canonFacts ?? [], item => item.id),
-    characters: mergeBy(current.characters, update.characters ?? [], item => item.name),
+    characters: mergeBy(current.characters, update.characters ?? [], item => item.name.trim().toLocaleLowerCase()),
     events: mergeBy(current.events, update.events ?? [], item => item.id),
     plotThreads: mergeBy(current.plotThreads, update.plotThreads ?? [], item => item.id),
     continuityNotes: [...new Set([...current.continuityNotes, ...(update.continuityNotes ?? [])])],
@@ -163,18 +168,18 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     JSON.stringify({
       currentPosition: "string",
       canonFacts: [{ id: "stable-id", fact: "fact", source: "chapter id", confidence: "confirmed|inferred|original" }],
-      characters: [{ name: "name", status: "current status", location: "optional", abilities: ["only changed/new known abilities"], knowledge: ["new knowledge"], goals: ["current goals"], relationships: ["changed relationships"] }],
+      characters: [{ name: "name", profile: { coreTraits: ["stable traits"], values: ["values"], contradictions: ["internal contradictions"], voice: "distinctive voice", boundaries: ["what this character will not easily do"], arc: "current long-term character arc" }, status: "current status", location: "current location", abilities: ["current abilities"], knowledge: ["current known information"], goals: ["current goals"], relationships: ["current relationships"] }],
       events: [{ id: "stable-id", summary: "event", position: "story position", participants: ["name"], consequences: ["consequence"] }],
       plotThreads: [{ id: "stable-id", title: "thread", status: "open|active|resolved|abandoned", lastUpdated: "chapter id", notes: "latest state" }],
       continuityNotes: ["facts future chapters must preserve"]
     }, null, 2),
     "旧状态：", JSON.stringify(state, null, 2), "最终章节：", chapter,
-    "只记录章节明确支持的内容。无法确认的内容不要写入 canonFacts；推断必须标为 inferred。人物和情节线只输出本章新增或发生变化的记录。"
+    "人物 profile 是相对稳定的性格底色、价值观、内在矛盾、语言习惯与行为边界；不要因单次情绪或行为轻易改写。character 的 status/location/abilities/knowledge/goals/relationships 是当前剧情状态，必须反映本章结束时的最新快照，数组应给出完整当前值而非只追加变化项。人物弧光允许发生真实变化，但必须由连续的选择、压力、代价和行为证据支撑；不要把人物锁死成标签，也不要为了反转强行黑化/洗白。只记录章节明确支持的内容。无法确认的内容不要写入 canonFacts；推断必须标为 inferred。人物和情节线只输出本章新增或发生变化的记录。"
   ]);
 
   try {
     const update = extractJson(stateText) as Partial<StoryState>;
-    const nextState = mergeState(state, update);
+    const nextState = mergeStoryState(state, update);
     // 模型提取的状态默认只作为本次运行的工作记录；人工核对后才用它替换正史状态。
     if (input.applyState) await saveStoryState(input.statePath, nextState);
     await saveStage(input.outputDir, "08-state-update.json", JSON.stringify(nextState, null, 2));

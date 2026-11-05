@@ -7,7 +7,17 @@ export interface StoryState {
   updatedAt: string;
   currentPosition: string;
   canonFacts: Array<{ id: string; fact: string; source?: string; confidence: "confirmed" | "inferred" | "original" }>;
-  characters: Array<{ name: string; status: string; location?: string; abilities?: string[]; knowledge?: string[]; goals?: string[]; relationships?: string[] }>;
+  characters: Array<{
+    name: string;
+    profile?: { coreTraits?: string[]; values?: string[]; contradictions?: string[]; voice?: string; boundaries?: string[]; arc?: string };
+    status: string;
+    location?: string;
+    abilities?: string[];
+    knowledge?: string[];
+    goals?: string[];
+    relationships?: string[];
+    stateUpdatedAt?: string;
+  }>;
   events: Array<{ id: string; summary: string; position: string; participants: string[]; consequences: string[] }>;
   plotThreads: Array<{ id: string; title: string; status: "open" | "active" | "resolved" | "abandoned"; lastUpdated: string; notes: string }>;
   continuityNotes: string[];

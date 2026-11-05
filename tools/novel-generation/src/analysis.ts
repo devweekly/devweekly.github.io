@@ -193,8 +193,11 @@ export async function analyzeLibrary(
       ];
       failed++;
     }
-    await saveStore(libraryDir, store);
   }
+
+  // Persist once per bounded batch instead of rewriting the growing JSON store
+  // after every chunk (which made a full run quadratic in bytes written).
+  await saveStore(libraryDir, store);
 
   const completed = new Set(store.annotations.map(item => item.chunkId));
   return {
