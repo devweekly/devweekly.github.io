@@ -209,13 +209,340 @@ Prefill 处理输入 Token，决定模型读取长上下文的计算量，通常
 
 建议采用一个主推理引擎和一个候选引擎，不要一开始同时运营三套生产系统。可以让 vLLM 作为首个基线，再用同样模型和请求 Trace 对比 SGLang；若 NVIDIA 优化路径带来明确收益，再评估 TensorRT-LLM。不同框架之间的性能数字只有在模型、精度、上下文、并发、硬件和 SLO 相同的情况下才有比较价值。
 
-### 5.1 推理服务 API
+### 5.1 实操：在 AWS EC2 上用 vLLM 部署 NVIDIA Nemotron
+
+前面的章节解释了 GPU、推理框架和服务层分别负责什么，但企业团队真正开始做这件事时，通常面对的是一组具体问题：AWS 控制台里应该选哪台机器？驱动要不要自己装？模型从哪里下载？vLLM 是装在宿主机还是容器里？启动后怎样确认 GPU 确实在工作？应用又应该通过什么地址调用？
+
+下面给出一条可以从空白 AWS 账号环境走到可调用模型 API 的路径。示例选用 NVIDIA Nemotron 3 Nano 30B A3B FP8，通过 vLLM 部署在一台 EC2 GPU 实例上。它是一个用于验证部署链路的起点，不代表它一定是企业 Coding Agent 的最佳模型；模型质量仍要用企业自己的代码任务评测。
+
+这里先把边界说清楚：NVIDIA 提供的是 Nemotron 模型权重、模型实现和部署配方；AWS 提供 EC2、网络、存储、身份和监控；vLLM 负责把模型加载到 GPU，并提供 OpenAI-compatible API。三者不是一个产品，也不是安装一个 NVIDIA 驱动就完成了模型部署。本文使用的是开源权重加 vLLM 的路径，不是 NVIDIA NIM。若企业选择 NIM，容器、授权和服务管理方式会有所不同。
+
+#### 第一步：先选一条能跑通的 AWS 路径
+
+不要一开始就创建 EKS，也不要一开始就申请数十台 GPU。先用一台 EC2 验证模型能否加载、API 是否可用、质量是否满足要求，再决定是否需要 Kubernetes 和多节点集群。
+
+本例的 POC 选择 `p5.4xlarge`，它提供一张 NVIDIA H100、80 GB HBM3 显存、16 vCPU 和 256 GiB 主机内存。Nemotron 3 Nano 30B A3B FP8 的模型卡给出了 vLLM 单卡启动方式，适合用单 GPU 验证模型下载、加载和 API 调用。这个实例没有跨节点 GPUDirect RDMA 能力，但单卡 POC 不需要它。若后续要测试 8-GPU 单节点并行，可升级到 `p5en.48xlarge`，它提供 8 张 H200、总计 1,128 GB HBM3e；若目标是 Blackwell，则评估 AWS 当前提供的 P6-B200 或 P6-B300。具体实例能否在目标 Region 创建，还取决于该 Region 的供给和账户 On-Demand vCPU/GPU 配额，不能只看产品页面。
+
+| 阶段 | AWS 实例起点 | GPU 配置 | 目的 |
+| --- | --- | --- | --- |
+| 单模型 POC | `p5.4xlarge` | 1×H100，80 GB | 跑通模型下载、vLLM、API 和基本评测 |
+| 多 GPU 单节点验证 | `p5en.48xlarge` | 8×H200，1,128 GB 合计 | 测试 TP、并发、KV Cache 和吞吐 |
+| Blackwell 验证 | `p6-b200.48xlarge` / `p6-b300.48xlarge` | 8×B200 / 8×B300 | 验证 Blackwell Kernel、FP8/FP4 和更大模型 |
+
+在 AWS Console 中，先进入 EC2，确认目标 Region，再检查 Service Quotas 中对应 P 实例族的 vCPU 配额。若配额不足，先提交提升申请；不要等到自动化部署时才发现 `InsufficientInstanceCapacity` 或 `VcpuLimitExceeded`。POC 可以按 On-Demand 计费，避免 Spot 中断干扰初始验证。只有在工作负载、可中断性和成本模型明确后，再评估 Savings Plans、Capacity Reservation 或 Spot。
+
+AMI 选择建议使用 AWS Deep Learning AMI（GPU 版）或经团队验证的 NVIDIA GPU 基础 AMI。重点是确认 AMI 对目标实例的 GPU 型号、Linux Kernel 和 NVIDIA Driver 有支持；不要在一台已经有驱动的机器上照抄网上命令，再叠加安装另一套驱动。宿主机负责提供内核驱动，vLLM 容器负责提供匹配的 CUDA 用户态库和 Python 依赖，两者需要兼容，但不是把完整 CUDA Toolkit 装进宿主机的同义词。
+
+#### 第二步：准备 VPC、权限和存储
+
+GPU 推理节点不应该直接暴露在公网。建议把 EC2 放在私有子网，应用通过内部 Model Gateway 或内部负载均衡访问；运维通过 AWS Systems Manager Session Manager 登录，不开放公网 SSH。Security Group 只允许来自 Model Gateway 所在 Security Group 的业务端口，例如 TCP 8000。不要为了测试方便把 `0.0.0.0/0` 加到 8000 端口。
+
+实例需要一个 IAM Instance Profile。最小权限通常包括：通过 Systems Manager 管理实例、从指定 S3 Bucket 读取模型制品、向指定 CloudWatch Log Group 写入日志和指标。不要把 AWS Access Key 写入 User Data、Dockerfile 或 Git 仓库。若模型从 Hugging Face 下载，Hugging Face Token 应通过 Secrets Manager 或受控的参数/密钥注入方式提供；下载完成后，不要把 Token 烘焙进镜像。
+
+模型文件需要有明确的落盘位置。POC 可以使用加密 EBS 卷保存模型和缓存；如果企业已经建立模型制品流程，建议由受控流水线从模型仓库下载、校验并复制到 S3，再由实例从 S3 获取经过批准的固定版本。实例本地 NVMe 适合做高速缓存，但实例停止、终止或替换时可能丢失，不能作为唯一模型存档。需要为模型目录预留足够空间，不能只按权重文件大小估算，还要考虑容器镜像、缓存、临时文件和日志。
+
+如果实例位于私有子网，还要提前设计出站访问：拉取容器镜像需要访问容器 Registry，下载模型需要访问 Hugging Face 或内部模型仓库，安装包需要访问软件源。企业环境通常通过 NAT Gateway、代理或内部镜像解决。生产环境更适合把经过扫描的 vLLM 镜像同步到 ECR，把模型制品存到受控 S3 Bucket，并通过 VPC Endpoint 访问 AWS 服务，避免每次启动都依赖公共互联网。
+
+#### 第三步：启动 EC2 并验收 GPU
+
+创建实例时，选择刚才确认过的 AMI 和 `p5.4xlarge`，放入私有子网，挂载加密 EBS，绑定 IAM Instance Profile 和受限 Security Group。POC 阶段可以先用一台机器，不需要 EKS、FSx for Lustre 或跨节点 EFA 配置。
+
+实例启动后，通过 Session Manager 进入主机，先检查系统是否识别 GPU：
+
+```
+bash
+nvidia-smi
+nvidia-smi --query-gpu=name,memory.total,driver_version,pci.bus_id --format=csv
+uname -r
+```
+
+预期至少能看到一张 H100、约 80 GB GPU 显存和驱动版本。如果 `nvidia-smi` 不存在，或无法与 NVIDIA Driver 通信，先解决 AMI/驱动问题，不要继续启动 vLLM。此时还可以检查 Docker 和 NVIDIA Container Toolkit：
+
+```
+bash
+docker --version
+docker info
+docker run --rm --gpus all nvidia/cuda:12.8.1-base-ubuntu22.04 nvidia-smi
+```
+
+上面的 CUDA 镜像标签只是示例，实际使用时应选与宿主机驱动兼容、并经过团队验证的镜像。容器内能够执行 `nvidia-smi`，才说明 Docker 已经拿到 GPU 设备。若宿主机能看到 GPU、容器看不到，排查 Container Toolkit 和 Docker runtime；若宿主机都看不到，排查 AMI、驱动、实例状态和 AWS 实例健康情况。不要通过反复重装 CUDA 来掩盖底层驱动问题。
+
+#### 第四步：确定模型版本并下载权重
+
+本例使用的模型 ID 是：
+
+```
+text
+nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8
+```
+
+模型权重、模型配置、Tokenizer、模型卡和 License 必须作为一个版本整体管理。部署前由模型治理或开源合规流程确认 NVIDIA Nemotron Open Model License 是否满足企业使用场景，并记录 Hugging Face 仓库的 revision/commit、文件校验值、下载时间和审批记录。不要在生产启动脚本里直接引用一个会变化的 `main` 分支作为唯一版本标识。
+
+在实例上创建模型目录，然后使用 Hugging Face CLI 下载。以下示例假设 Token 已通过安全方式注入当前 Shell 环境：
+
+```
+bash
+export MODEL_ID="nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8"
+export MODEL_DIR="/opt/models/nemotron-3-nano-30b-a3b-fp8"
+
+sudo mkdir -p "$MODEL_DIR"
+sudo chown "$USER":"$USER" /opt/models
+
+python3 -m pip install --user -U huggingface_hub
+hf auth login --token "$HF_TOKEN"
+hf download "$MODEL_ID" --local-dir "$MODEL_DIR"
+
+du -sh "$MODEL_DIR"
+find "$MODEL_DIR" -maxdepth 1 -type f | head
+```
+
+如果企业不允许实例直接访问 Hugging Face，应在受控的模型制品流水线中下载，再执行安全扫描、License 审核和 SHA-256 校验，最后同步到 S3。推理节点只读取已批准的 S3 制品，不自行访问外部模型仓库。模型下载失败时，先检查 License 是否需要接受、Token 是否有权限、出站网络和磁盘空间；不要把 Token 直接放进命令行历史或日志。
+
+#### 第五步：用固定版本的 vLLM 容器启动模型
+
+为了避免宿主机 Python 环境、CUDA Python 包和不同项目依赖互相污染，本例把 vLLM 放在容器中。生产环境必须固定 vLLM 镜像版本，进一步记录镜像 Digest；不能在部署脚本中长期使用 `latest`。下面以 vLLM 官方容器 `vllm/vllm-openai:v0.31.0` 展示启动方式。该版本号是示例基线，实际发布前仍需针对所选模型、H100 驱动和 CUDA 组合跑兼容性测试。
+
+Nemotron 3 Nano FP8 的模型配方还需要模型提供的 `nano_v3_reasoning_parser.py`，以及对应的 FP8 MoE 环境变量。先下载并固定 Parser 文件：
+
+```
+bash
+sudo mkdir -p /opt/nemotron
+cd /opt/nemotron
+
+curl -fL \
+  "https://huggingface.co/nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8/resolve/main/nano_v3_reasoning_parser.py" \
+  -o nano_v3_reasoning_parser.py
+
+sha256sum nano_v3_reasoning_parser.py
+```
+
+生产部署应把 Parser 文件纳入与模型相同的制品审批和版本锁定流程，不要每次容器启动时在线下载。随后拉取容器镜像并启动：
+
+```
+bash
+export VLLM_IMAGE="vllm/vllm-openai:v0.31.0"
+export MODEL_DIR="/opt/models/nemotron-3-nano-30b-a3b-fp8"
+
+docker pull "$VLLM_IMAGE"
+
+docker run -d \
+  --name nemotron-nano \
+  --restart unless-stopped \
+  --gpus '"device=0"' \
+  --ipc=host \
+  --shm-size=16g \
+  -p 8000:8000 \
+  -v "$MODEL_DIR:/models/nemotron:ro" \
+  -v /opt/nemotron/nano_v3_reasoning_parser.py:/opt/nemotron/nano_v3_reasoning_parser.py:ro \
+  -e VLLM_USE_FLASHINFER_MOE_FP8=1 \
+  "$VLLM_IMAGE" \
+  serve /models/nemotron \
+    --served-model-name nemotron-nano \
+    --host 0.0.0.0 \
+    --port 8000 \
+    --tensor-parallel-size 1 \
+    --max-model-len 32768 \
+    --max-num-seqs 8 \
+    --gpu-memory-utilization 0.90 \
+    --kv-cache-dtype fp8 \
+    --trust-remote-code \
+    --enable-auto-tool-choice \
+    --tool-call-parser qwen3_coder \
+    --reasoning-parser-plugin /opt/nemotron/nano_v3_reasoning_parser.py \
+    --reasoning-parser nano_v3
+```
+
+这里有几个参数需要理解。`--tensor-parallel-size 1` 表示这个 POC 只使用一张 GPU；它不是生产集群的最终并行配置。`--max-model-len 32768` 把初始上下文上限设为 32K，目的是先在目标实例上得到可控的显存基线，不是说模型只支持 32K。模型卡给出了更长上下文的示例，但把上限直接提高到 256K 或 1M，会增加 KV Cache 占用并压低可用并发，必须按真实上下文分布逐步提高。`--max-num-seqs 8` 是并发序列上限的初始值，不是每秒请求数；提高它之前要先观察 KV Cache 和延迟。`--gpu-memory-utilization` 控制 vLLM 使用显存的目标比例，不能把它理解为给模型预留了固定的 10% 安全空间。
+
+`--enable-auto-tool-choice` 和 `--tool-call-parser` 让服务能够按 Nemotron 配方解析工具调用；`--reasoning-parser` 用于解析模型的 reasoning 输出。企业如果只需要普通文本生成，可以先移除 Tool Calling 相关参数做最小验证，再逐项打开功能。工具调用解析成功也不意味着工具本身已经安全：实际执行仍应经过企业 Agent Runtime、Tool Broker、授权和审计层，不能让模型服务容器直接持有数据库或生产系统凭据。
+
+初次启动需要加载模型，耗时取决于权重大小、磁盘吞吐、缓存和容器启动情况。通过以下命令观察启动日志和 GPU：
+
+```
+bash
+docker logs -f nemotron-nano
+nvidia-smi -l 2
+```
+
+日志中应能看到模型加载、权重分片、KV Cache 初始化和 API Server 启动。若出现 CUDA out of memory，先确认是否有其他进程占用 GPU，再降低 `--max-model-len` 或 `--max-num-seqs`，并检查模型精度与实例显存是否匹配。若出现不支持的模型架构、Kernel 或参数错误，不要随意删除启动参数；先核对模型卡要求的 vLLM 版本、容器 CUDA 版本和该 GPU 架构的 Kernel 支持。
+
+#### 第六步：验证服务，而不是只看容器处于 Running
+
+容器状态为 Running 不代表模型已经可以服务。先检查模型列表：
+
+```
+bash
+curl -fsS http://localhost:8000/v1/models
+```
+
+再发起一次 Chat Completions 请求：
+
+```
+bash
+curl -N http://localhost:8000/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "nemotron-nano",
+    "messages": [
+      {
+        "role": "user",
+        "content": "用 Python 写一个函数，判断给定字符串是否为回文，并给出两个单元测试。"
+      }
+    ],
+    "max_tokens": 512,
+    "temperature": 0.6
+  }'
+```
+
+如果接口返回模型生成内容，说明基本推理链路已打通。还应分别测试流式响应、长 Prompt、并发请求、工具调用和取消请求。对于 Coding 场景，至少准备一组真实仓库任务，检查代码是否能运行、测试是否通过、工具调用 JSON 是否符合 Schema，以及模型是否正确处理较长的代码上下文。不要用一条“Hello World”请求就宣布 POC 成功。
+
+如果通过 SSM 做端口转发，可以在本地终端运行：
+
+```
+bash
+aws ssm start-session \
+  --target i-xxxxxxxxxxxxxxxxx \
+  --document-name AWS-StartPortForwardingSession \
+  --parameters '{"portNumber":["8000"],"localPortNumber":["8000"]}'
+```
+
+随后本地访问 `http://localhost:8000`。生产环境不应依赖端口转发；应用应通过私有网络访问 Model Gateway，再由 Gateway 调用 vLLM。vLLM 的 OpenAI-compatible API 本身不等于企业 API Gateway，也不自动提供企业所需的用户认证、租户配额、请求审计、数据分类和模型路由。
+
+#### 第七步：把 API 接到企业应用
+
+不要让 IDE、Coding Agent 或业务服务直接连接每台 GPU 实例。应在 vLLM 前面部署 Model Gateway，统一处理身份验证、租户配额、请求大小限制、模型 Allowlist、超时、重试、限流、审计和模型版本切换。Gateway 后端可以是一个或多个 vLLM Endpoint。
+
+应用侧只需要配置一个稳定的 OpenAI-compatible Base URL 和模型名。例如：
+
+```
+text
+Base URL: https://model-gateway.corp.example/v1
+Model:    nemotron-nano
+API Key:  由企业身份系统或 Secret 管理系统提供
+```
+
+客户端示例：
+
+```
+python
+from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://model-gateway.corp.example/v1",
+    api_key="YOUR_GATEWAY_TOKEN",
+)
+
+response = client.chat.completions.create(
+    model="nemotron-nano",
+    messages=[
+        {"role": "user", "content": "Explain this Python function."}
+    ],
+    max_tokens=512,
+)
+
+print(response.choices[0].message.content)
+```
+
+这里的 API Key 是 Gateway 凭据，不应直接复用 Hugging Face Token 或 AWS 凭据。Gateway 记录请求 ID、用户/租户、模型版本、输入输出 Token、延迟和结果状态；日志中对 Prompt、代码片段和工具参数按数据分类进行脱敏或禁止记录。GPU 节点只接受 Gateway 所在安全组的请求，应用层不应知道 EC2 实例地址。
+
+#### 第八步：增加监控、容量控制和故障处理
+
+最小可用的生产监控至少要覆盖三层。EC2 层观察 GPU 利用率、显存、温度、功耗、ECC/Xid 错误、CPU、内存、磁盘和网络；vLLM 层观察请求数、队列等待、TTFT、TPOT、Token 吞吐、KV Cache 使用率、运行中序列和请求失败；业务层观察每个 Agent 任务的完成率、重试率、工具调用成功率、人工返工率和单位成功任务成本。只看 GPU Utilization 无法判断模型服务是否健康：GPU 利用率低可能是请求不足，也可能是请求卡在网络、调度或模型加载阶段。
+
+POC 阶段可以先采集 vLLM 暴露的 Prometheus Metrics，并由 CloudWatch Agent 或 Prometheus/Grafana 收集主机和服务指标。日志统一进入 CloudWatch Logs，保留模型版本、容器镜像 Digest 和部署配置版本。告警应覆盖模型 API 不可用、P95 延迟越界、请求队列持续增长、KV Cache 接近耗尽、GPU Xid/ECC 错误和磁盘空间不足。
+
+容量测试要固定模型版本、精度、上下文长度、输入/输出 Token 分布和并发阶梯。先跑单请求基线，再逐步增加并发，记录 TTFT、TPOT、总吞吐、P95/P99 和错误率。随后改变 Prompt 长度和输出长度，观察 KV Cache 如何影响并发。最终得到的是“在某个 SLO 下每个实例可以稳定处理多少请求/Token”，而不是一个脱离上下文的峰值 Tokens/s。
+
+生产环境还需要定义实例故障时的行为。单台 EC2 不是高可用架构；实例停止、底层硬件维护或模型进程崩溃时，Endpoint 就会中断。至少要部署两个独立实例或两个可用区的服务副本，由内部负载均衡或 Gateway 做健康检查和流量摘除。模型启动时间较长，不能把自动扩容等同于请求到来后再启动 GPU；应保留热容量，按队列长度、KV Cache、请求延迟和 GPU 使用情况扩缩容。模型制品和容器镜像应预先缓存，减少冷启动时间。
+
+#### 第九步：何时从 EC2 单机转到 EKS
+
+单台 EC2 的目标是证明模型和推理引擎可用；当团队开始管理多个模型副本、多个 GPU 节点、滚动升级、自动扩缩容、服务发现和统一监控时，再考虑 EKS。EKS 并不会自动让模型更快，也不会替企业解决模型并行和 GPU 拓扑问题，它主要提供容器编排和服务生命周期管理。
+
+转到 EKS 时，建议使用 AWS EKS-optimized accelerated NVIDIA AMI，避免在每个 Node 上手工安装一套不同的驱动。创建 GPU Node Group 或 Karpenter NodePool，按 GPU 型号打 Node Label，并通过 Taint/Toleration 将推理 Pod 限定到正确的 GPU 节点。Deployment 中通过 `resources.limits.nvidia.com/gpu` 申请 GPU；同一个模型副本需要 8 张 GPU 时，应确保 Pod 获得完整的 8-GPU 节点资源，并设置 `--tensor-parallel-size 8`，而不是把一个 TP8 副本随意拆到 8 台单 GPU EC2 上。
+
+一个简化的 Deployment 片段如下。镜像、模型路径、Secret 名称和资源规格需要按实际环境替换：
+
+```
+yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nemotron-nano
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nemotron-nano
+  template:
+    metadata:
+      labels:
+        app: nemotron-nano
+    spec:
+      containers:
+        - name: vllm
+          image: vllm/vllm-openai:v0.31.0
+          args:
+            - serve
+            - /models/nemotron
+            - --served-model-name
+            - nemotron-nano
+            - --host
+            - 0.0.0.0
+            - --port
+            - "8000"
+            - --tensor-parallel-size
+            - "1"
+            - --max-model-len
+            - "32768"
+          ports:
+            - name: http
+              containerPort: 8000
+          resources:
+            limits:
+              nvidia.com/gpu: "1"
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 120
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 180
+            periodSeconds: 20
+```
+
+这个片段展示的是单 GPU Pod 的资源声明，不是完整生产清单。生产环境还需要模型卷挂载、Secret、Service、PodDisruptionBudget、拓扑分布、资源配额、NetworkPolicy、日志和指标采集。模型加载时间可能远超普通 Web 服务，Probe 的初始延迟和超时必须按真实启动时间设置；不能因为模型下载慢就让 Kubernetes 不断重启 Pod。对于 TP8，资源请求、节点选择和调度策略都必须保证单节点 8 张 GPU 一起分配。
+
+AWS 官方 EKS 推理文档已经给出从 S3 模型制品、vLLM Deployment、Service 到 Prometheus/Grafana 的完整部署路径。企业可以在单机 POC 验证完成后，沿着这条路径把模型服务迁移到 EKS，而不是第一天就引入 Kubernetes 的全部复杂度。
+
+#### 第十步：上线前的验收门槛
+
+一个模型服务只有同时通过功能、性能、安全和运维验收，才应该接入真实开发者流量。
+
+| 验收领域 | 必须验证的内容 | 不通过时的处理 |
+| --- | --- | --- |
+| 模型与许可 | 模型版本、License、权重来源、Parser、制品校验值 | 不允许进入生产制品库 |
+| GPU 与容器 | 宿主机 `nvidia-smi`、容器 GPU 可见、驱动/运行时兼容 | 停止模型部署，先修复节点基线 |
+| 推理功能 | Chat Completions、Streaming、Tool Calling、取消请求、错误语义 | 不接入 Agent 客户端 |
+| 质量 | 真实仓库任务成功率、代码测试通过率、工具参数准确率 | 更换模型/量化/Prompt 或保留托管模型 |
+| 性能 | TTFT、TPOT、P95/P99、Token 吞吐、KV Cache、并发阶梯 | 调整上下文、批处理、GPU 数量或实例规格 |
+| 安全 | 私网访问、Gateway 鉴权、Secret 管理、租户隔离、日志脱敏 | 不开放真实用户流量 |
+| 运维 | 健康检查、告警、滚动升级、回滚、节点故障演练 | 不进入生产 |
+| 成本 | 每百万 Token、每成功任务成本、闲置率、平台人力 | 重新比较 API 与自托管 TCO |
+
+这条路径的关键结果不是“在 AWS 上成功运行了一个 Docker 容器”，而是得到一份可重复的部署基线：AWS Region 和实例规格、AMI、驱动版本、容器镜像 Digest、vLLM 版本、模型 revision、Parser 版本、启动参数、质量报告、性能报告和成本数据。后续从一台 EC2 扩到 EKS 或 8-GPU 节点时，团队才能判断变化来自模型、硬件、框架还是调度层。
+
+### 5.2 推理服务 API
 
 统一 API 的工作不止是把请求转发到模型。Coding Agent 可能依赖 Chat Completions，也可能使用 Responses 一类接口；流式事件、Tool Calling、JSON Schema 输出、取消请求和错误语义都要与客户端约定一致。服务端还要返回可追踪的 Request ID、Trace ID、模型版本和 Token Usage，才能把一次 Agent 任务的模型成本与后续工具执行关联起来。
 
 “兼容 OpenAI API”只能作为初筛条件。不同 Harness 对并行工具调用、流式事件顺序、finish_reason、usage 统计和上下文窗口的处理并不完全相同。应直接拿 Claude Code、OpenCode、Copilot SDK 或企业实际使用的客户端跑协议回归测试，确认取消、重试和客户端断连时不会留下持续运行的推理请求。
 
-### 5.2 Model Router
+### 5.3 Model Router
 
 Router 需要同时看任务和服务状态。一个小范围代码解释可能适合低成本模型；跨模块重构则要看模型在真实仓库任务上的成功率，而不只是公开榜单。上下文长度决定模型是否能接收完整输入，GPU Pool 的队列和缓存状态影响等待时间，用户与项目配额则限制资源消耗。SLO、任务截止时间和数据分类也会改变可选模型范围。
 
