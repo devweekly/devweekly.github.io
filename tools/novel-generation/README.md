@@ -342,7 +342,7 @@ worlds/
 
 ## 9. 自动分析人物与故事发展
 
-`analyze-story` 会读取已经导入 SQLite 的全部小说片段，直接通过项目现有 CodeBuddy Agent SDK 分批调用 LLM。它自动梳理人物小传、性格与内在矛盾、欲望和关系、可能的成长/反转方向，以及主线情节、支线、未解问题、可能伏笔和后续发展构想。
+`analyze-story` 会读取已经导入 SQLite 的全部小说片段，直接通过项目现有 CodeBuddy Agent SDK 分批调用 LLM。它自动梳理人物小传、故事作用、性格与内在矛盾、欲望和关系、文本中已呈现的变化及可能的成长/反转方向，以及主线情节、支线、未解问题、可能伏笔和后续发展构想。
 
 ```bash
 npm run dev -- analyze-story --world conghuoniao
