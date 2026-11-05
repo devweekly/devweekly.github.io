@@ -95,6 +95,11 @@ interface AnnotationStore {
   failures: Array<{ chunkId: string; error: string; attemptedAt: string }>;
 }
 
+export function isEvidenceReviewed(annotation: ChunkAnnotation): boolean {
+  // Legacy annotations created before the semantic-review stage must be reprocessed.
+  return Array.isArray(annotation.evidenceReviews);
+}
+
 function parseObject(raw: string): Record<string, unknown> {
   const cleaned = raw.trim().replace(/^\x60{3}(?:json)?\s*/i, "").replace(/\s*\x60{3}$/i, "");
   const start = cleaned.indexOf("{");
@@ -285,7 +290,7 @@ export async function analyzeLibrary(
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
 
-  const done = new Set(store.annotations.map(item => item.chunkId));
+  const done = new Set(store.annotations.filter(isEvidenceReviewed).map(item => item.chunkId));
   const failedBefore = new Set(store.failures.map(item => item.chunkId));
   const unattempted = index.chunks.filter(chunk => !done.has(chunk.id) && !failedBefore.has(chunk.id));
   const retryable = index.chunks.filter(chunk => !done.has(chunk.id) && failedBefore.has(chunk.id));
@@ -334,14 +339,16 @@ export async function analyzeLibrary(
 
   // Persist once per bounded batch instead of rewriting the growing JSON store
   // after every chunk (which made a full run quadratic in bytes written).
+  // Legacy annotations without evidenceReviews are excluded from the registry
+  // and retried instead of being silently trusted.
+  const registry = buildEntityRegistry(worldId, store.annotations.filter(isEvidenceReviewed));
   await saveStore(libraryDir, store);
-  const registry = buildEntityRegistry(worldId, store.annotations);
   const registryPath = join(libraryDir, "entities.json");
   const registryTemporary = registryPath + ".tmp";
   await writeFile(registryTemporary, JSON.stringify(registry, null, 2) + "\n", "utf8");
   await rename(registryTemporary, registryPath);
 
-  const completed = new Set(store.annotations.map(item => item.chunkId));
+  const completed = new Set(store.annotations.filter(isEvidenceReviewed).map(item => item.chunkId));
   return {
     processed, failed,
     remaining: index.chunks.filter(chunk => !completed.has(chunk.id)).length
