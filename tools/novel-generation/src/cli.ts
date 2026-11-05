@@ -11,7 +11,7 @@ function arg(name: string): string | undefined {
 function usage(): never {
   console.error([
     "Usage:",
-    "  npm run dev -- write --brief \"story direction\" [--world conghuoniao] [--source file] [--context file] [--model model] [--max-words 3000]",
+    "  npm run dev -- write --brief \"story direction\" [--world conghuoniao] [--mode derivative|continuation] [--source file] [--context file] [--model model] [--max-words 3000]",
     "  npm run dev -- generate --brief \"story idea\" [--mode derivative|continuation] [--source file] [--context file] [--out file]"
   ].join("\n"));
   process.exit(2);
