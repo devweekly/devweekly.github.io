@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
-import { databaseStatus, readStoryAnalysis, saveStoryAnalysis } from "../src/database.js";
+import { databaseStatus, readStoryAnalysis, saveStoryAnalysis, syncLibraryChunks } from "../src/database.js";
 import { groupAnalysisBatches } from "../src/story-analysis.js";
 import { loadLibraryChunks } from "../src/library.js";
 
@@ -39,6 +39,8 @@ test("story analysis snapshot is persisted and replaced atomically as one databa
     assert.deepEqual(readStoryAnalysis(root, "test-world"), replacement);
     assert.equal(databaseStatus(root, "test-world").storyAnalysis, 1);
     assert.throws(() => saveStoryAnalysis(root, "other-world", snapshot), /world mismatch/);
+    syncLibraryChunks(root, "test-world", [{ id: "new:0:0", source: "new.txt", chapter: "第一章", chunkIndex: 0, start: 0, end: 2, text: "新文本" }]);
+    assert.equal(readStoryAnalysis(root, "test-world"), undefined, "re-ingesting corpus must invalidate stale analysis");
   } finally {
     await rm(root, { recursive: true, force: true });
   }
