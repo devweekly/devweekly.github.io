@@ -20,6 +20,7 @@ export interface LongChapterInput {
   styleRhythm?: string;
   sourceText?: string;
   contextText?: string;
+  storyAnalysisContext?: string;
   model?: string;
   maxWords: number;
   scenes: number;
@@ -117,6 +118,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     "当前位置：", state.currentPosition,
     "已确认事实与连续性约束：", facts,
     input.contextText ? "前文与连续性摘要：\n" + input.contextText : "",
+    input.storyAnalysisContext ? "既有小说分析参考（仅供启发，不是正史或写作清单）：\n" + input.storyAnalysisContext : "",
     input.sourceText ? "用户提供且有权使用的续写起点（只用于承接，不得整段复制）：\n" + input.sourceText : "",
     input.styleProfile ? "叙事风格约束：\n" + input.styleProfile : "",
     input.mode === "continuation" ? "创作模式：续写，严格承接材料最后一个有效情节节点。" : "创作模式：原创衍生，项目原创内容不得伪装成原著事实。",
