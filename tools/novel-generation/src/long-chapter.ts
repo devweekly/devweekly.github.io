@@ -277,7 +277,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       `第 ${index + 1} 场当前正文：`, sceneTexts[index]!,
       "校准人物语气与知识边界，删解释性过强、所有人同一腔调的对白；统一视角与叙述距离。",
       RHYTHM_RULE,
-      "输出本场完整修订正文。可以精简重复或解释过度的内容，但不能删掉有效动作、信息、人物互动或情绪落点；保留长句、清单与放慢段落，不得把全章改成短促腔。原文已经成立时可以原样保留，不得新增标题或创作说明。
+      "输出本场完整修订正文。可以精简重复或解释过度的内容，但不能删掉有效动作、信息、人物互动或情绪落点；保留长句、清单与放慢段落，不得把全章改成短促腔。原文已经成立时可以原样保留，不得新增标题或创作说明。"
     ]);
     polished.push(text.trim());
     await saveStage(input.outputDir, `05-polish-${String(index + 1).padStart(2, "0")}.md`, text);
