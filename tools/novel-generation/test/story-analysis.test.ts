@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { databaseStatus, readStoryAnalysis, saveStoryAnalysis, syncLibraryChunks } from "../src/database.js";
 import { groupAnalysisUnits } from "../src/novel-kb.js";
-import { buildAnalysisPrompt, parseModelJson } from "../src/story-analysis.js";
+import { assertMergeOptions, buildAnalysisPrompt, parseModelJson } from "../src/story-analysis.js";
 import { loadLibraryChunks } from "../src/library.js";
 
 test("story analysis batches preserve every chapter in order without splitting one", () => {
@@ -106,4 +106,17 @@ test("story analysis asks for chapter-scoped sources and preserves multiple char
   }));
   assert.equal(parsed.developmentPossibilities.length, 2);
   assert.deepEqual(parsed.developmentPossibilities.map(item => item.chapterKeys), [["V01-C001"], ["V01-C002"]]);
+});
+
+test("merge-only 拒绝与分片/限量组合，避免写出残缺 complete 快照", () => {
+  assert.throws(() => assertMergeOptions({ mergeOnly: true, shard: { index: 0, count: 4 } }), /cannot be combined/);
+  assert.throws(() => assertMergeOptions({ mergeOnly: true, limit: 5 }), /cannot be combined/);
+  assert.doesNotThrow(() => assertMergeOptions({ mergeOnly: true }));
+  assert.doesNotThrow(() => assertMergeOptions({ shard: { index: 0, count: 4 } }));
+});
+
+test("批次分析能容忍 JSON 后的说明文字", () => {
+  const raw = JSON.stringify({ characters: [{ name: "林岚", chapterKeys: ["V01-C001"] }] }) +
+    "\n以上为分析结果，注意 } 只是标点。";
+  assert.equal(parseModelJson(raw).characters[0]?.name, "林岚");
 });

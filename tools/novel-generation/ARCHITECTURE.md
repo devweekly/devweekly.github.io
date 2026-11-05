@@ -95,7 +95,7 @@
 
 万字流程在逐场修订后增加完整章节的跨场终审。blocker/major 定位到受影响场景，局部修复后重新审查全章，最多两轮。节奏指标仅离线观察，不进入正式写作提示、章节验收或自动修复；不替代文学判断。
 
-主要阶段文件：`01-scene-blueprint.md`、`00-scene-XX-retrieval.md`、`02-scene-XX.md`、`03-draft.md`、`04-continuity-review.md`、`05-polish-XX.md`、`chapter.md`、`06-rhythm-metrics.json`、`07-state-update.json`。
+主要阶段文件：`01-scene-blueprint.md`、`00-scene-XX-retrieval.md`、`02-scene-XX.md`、`03-draft.md`、`04-continuity-review.md`、`05-polish-XX.md`、`chapter.md`、`06-rhythm-metrics.json`、`07-state-update.json`、`08-final-review.md`、`08-quality-summary.json`。终审两轮仍阻断时另存 `chapter-needs-review.md`，摘要状态为 `needs_human_review`；人工放行后摘要为 `accepted_with_issues`。
 
 ## 5. 全自动目标闭环
 
@@ -188,7 +188,7 @@
 
 普通章节与万字章节现已具备无人值守的单章闭环：检索、规划、生成、修订、硬伤复查、有限修复、状态提取、schema 校验和自动持久化。文学质量优先于统计相似度和分析完整度，审查不得把小说变成研究报告。运行中断可从输入未变化且输出哈希有效的阶段恢复。剩余风险集中在模型审查质量、原文索引覆盖程度和单写者边界，应通过真实语料端到端验证，而不是继续增加 Agent。
 
-## 8. 全文人物与情节分析（CodeBuddy SDK）
+## 9. 全文人物与情节分析（CodeBuddy SDK）
 
 `analyze-story` 是对已导入语料的自动分析命令，不是写作门禁，也不参与章节是否通过的判定。分析单元是**章**：`novel-kb.ts` 先按 `analysis/<world>/chapter-index.json` 的行号顺序把检索片段映射回 753 章，再逐章去掉检索用的 160 字重叠，按约 14,000 字装箱；一章不跨批拆开。随后调用现有 `runAgentText`（底层为 `@tencent-ai/agent-sdk`），提取并跨批次合并：
 
@@ -222,7 +222,7 @@ npm run dev -- story-kb     --world conghuoniao --type characters
 注入内容明确标记为可选创作参考：不属于正史，不是人物行为规范，不是必须回收的伏笔或必须执行的情节任务。它只为写作提供灵感和背景；创作意图、人物生命力、场景自然性和文学表达始终优先。相关上下文作为完整 prompt 的一部分参与阶段缓存指纹。
 
 
-## 9. 本轮 Pipeline 可靠性修正
+## 10. 本轮 Pipeline 可靠性修正
 
 - 长章节场景数是上限而非硬性配额；按实际场景数计算篇幅参考、审查范围和修复定位。终审的每条必改问题必须带有效全章场景编号；分批审查先标注全局场景号并限制在当前批次范围，格式或定位校验失败时自动重试。最终修复若没有受影响场景会明确失败，不允许空修复后继续。
 - 阶段缓存接受可选的阶段语义校验器。模型输出即使非空、哈希正确，只要 JSON/schema/场景定位校验失败，就不能作为有效缓存复用。

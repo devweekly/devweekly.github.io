@@ -5,6 +5,7 @@ import { runAgentText, resolveModelAttempts, type GenerationMode } from "./gener
 import { readTaskProfiles, type StageKey } from "./task-profiles.js";
 import { formatReview, parseChapterReview, reviewAndRepair, reviewPrompt } from "./chapter-review.js";
 import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
+import { parseJsonObject } from "./model-json.js";
 
 export interface WriteWorkflowInput {
   worldId: string;
@@ -19,6 +20,7 @@ export interface WriteWorkflowInput {
   storyAnalysisContext?: string;
   model?: string;
   strictModel?: boolean;
+  acceptReview?: boolean;
   maxWords: number;
   outputDir: string;
   statePath: string;
@@ -26,11 +28,11 @@ export interface WriteWorkflowInput {
 }
 
 function extractJson(text: string): unknown {
-  const cleaned = text.trim().replace(/^`{3}(?:json)?\s*/i, "").replace(/\s*`{3}$/i, "");
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("Model did not return a JSON object for story-state update.");
-  return JSON.parse(cleaned.slice(start, end + 1)) as unknown;
+  try {
+    return parseJsonObject(text);
+  } catch (error) {
+    throw new Error("Model did not return a JSON object for story-state update: " + String(error));
+  }
 }
 
 export function mergeStoryState(current: StoryState, update: Partial<StoryState>): StoryState {
@@ -173,6 +175,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   const reviewed = await reviewAndRepair({
     initialChapter: voiceDraft,
     maxRepairRounds: 2,
+    acceptRemainingIssues: input.acceptReview,
     review: (candidate, correction) => {
       const round = reviewHistory.length + 1;
       return cachedCall("quality-review-" + round + (correction ? "-retry" : ""), "07-review-round-" + round + (correction ? "-retry" : "") + "-raw.txt", "review", [
@@ -191,13 +194,20 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
       const formatted = formatReview(report);
       reviewHistory.push("## 复查轮次 " + (round + 1) + "\n\n" + formatted);
       await saveStage(input.outputDir, "07-continuity-review-round-" + (round + 1) + ".json", JSON.stringify(report, null, 2));
+    },
+    onFailure: async (chapter, reviews, reason) => {
+      await saveStage(input.outputDir, "chapter-needs-review.md", chapter);
+      await saveStage(input.outputDir, "09-quality-summary.json", JSON.stringify({
+        status: "needs_human_review", reason, reviews
+      }, null, 2));
+      console.error("[write] 终审未通过，成稿已保留为 chapter-needs-review.md，故事状态未更新。用 --accept-review 人工放行。");
     }
   });
   const chapter = reviewed.chapter;
   await saveStage(input.outputDir, "07-continuity-review.md", reviewHistory.join("\n\n---\n\n"));
   await saveStage(input.outputDir, "chapter.md", chapter);
   await saveStage(input.outputDir, "09-quality-summary.json", JSON.stringify({
-    status: "passed",
+    status: reviewed.acceptedWithIssues ? "accepted_with_issues" : "passed",
     repairRounds: reviewed.repairRounds,
     reviews: reviewed.reviews
   }, null, 2));

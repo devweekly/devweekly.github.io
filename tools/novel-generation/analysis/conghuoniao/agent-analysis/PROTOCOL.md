@@ -11,6 +11,7 @@
 | 世界观与连续性 Agent | `continuity/` | 核对果实规则、数值、时间线与证据口径的一致性，产出续写必须遵守的硬约束清单。 |
 
 执行顺序：先运行 `prepare` 生成输入包，再由各 Agent 独立分析并写入 `output.md`，最后运行 `collect` 校验并汇总。`status` 可随时查看哪些角色尚未交稿。
+collect 默认读取本地 original.txt，核对引用行是否真实存在且非空，只做确定性校验；缺失原文或行数不一致时该角色不通过。加 --evidence-review 才会用独立模型逐段判断引用原文是否支持结论，模型调用失败或任一段不支持时该角色不通过。
 
 ```bash
 npm run dev -- analyze-world --world conghuoniao --phase prepare

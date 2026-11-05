@@ -2,6 +2,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { searchLibrary } from "./library.js";
 import { runAgentText } from "./generate.js";
+import { parseJsonObject } from "./model-json.js";
 import { z } from "zod";
 
 export interface AnalysisRole {
@@ -101,6 +102,10 @@ export const ANALYSIS_ROLES: AnalysisRole[] = [
   }
 ];
 
+/**
+ * chapter-index.json 由 analysis/build-corpus-index.mjs 生成，是 schemaVersion 2 的富结构
+ * （顶层元数据 + 每卷 chapters[]）。这里只取卷表与总行数，其余字段必须允许存在。
+ */
 const VolumeSummarySchema = z.object({
   volume: z.number().int().positive(),
   startLine: z.number().int().positive(),
@@ -108,12 +113,12 @@ const VolumeSummarySchema = z.object({
   chapterCount: z.number().int().nonnegative(),
   openingChapter: z.string(),
   closingChapter: z.string()
-}).strict();
+});
 
 const ChapterIndexSchema = z.object({
   totalLines: z.number().int().positive(),
   volumes: z.array(VolumeSummarySchema)
-}).strict();
+});
 
 type VolumeSummary = z.infer<typeof VolumeSummarySchema>;
 type ChapterIndexFile = z.infer<typeof ChapterIndexSchema>;
@@ -123,8 +128,8 @@ const EvidenceReviewResponseSchema = z.object({
     index: z.number().int().nonnegative(),
     supported: z.boolean(),
     reason: z.string().min(1)
-  }).strict())
-}).strict();
+  }))
+});
 
 export interface EvidenceReferenceCheck {
   ok: boolean;
@@ -201,8 +206,7 @@ export async function reviewAnalysisEvidence(
 
     try {
       const raw = await runAgentText(prompt, model, timeoutMs);
-      const json = raw.replace(/^\s*\x60{3}(?:json)?\s*/i, "").replace(/\s*\x60{3}\s*$/, "");
-      const parsed = EvidenceReviewResponseSchema.safeParse(JSON.parse(json));
+      const parsed = EvidenceReviewResponseSchema.safeParse(parseJsonObject(raw));
       if (!parsed.success) {
         issues.push("第 " + (Math.floor(offset / 8) + 1) + " 批审查返回格式无效");
         for (const claim of batch) decisions.push({ claim: claim.text, lines: claim.lines, supported: false, reason: "审查输出格式无效，按不支持处理" });
@@ -242,7 +246,8 @@ export function validateAnalysisOutput(text: string, totalLines: number): Output
   const references = [...text.matchAll(/\bL(\d+)\b/g)].map(match => Number(match[1]));
   if (chars < 600) issues.push(`正文过短（${chars} 字，要求至少 600 字）`);
   if (references.length < 6) issues.push(`证据行号不足（${references.length} 处，要求至少 6 处）`);
-  if (!/^##\s/m.test(text)) issues.push("缺少二级标题");
+  const sections = [...text.matchAll(/^##\s/gm)].length;
+  if (sections < 3) issues.push(`二级标题不足（${sections} 个，要求至少 3 个）`);
   if (/TODO|待补|占位|待填/.test(text)) issues.push("残留占位文字");
   const invalid = references.filter(line => line < 1 || line > totalLines);
   if (invalid.length) issues.push(`行号越界：${invalid.slice(0, 5).join("、")}`);
@@ -343,7 +348,7 @@ const PROTOCOL = [
   ...ANALYSIS_ROLES.map(role => `| ${role.name} | \`${role.id}/\` | ${role.mission} |`),
   "",
   "执行顺序：先运行 `prepare` 生成输入包，再由各 Agent 独立分析并写入 `output.md`，最后运行 `collect` 校验并汇总。`status` 可随时查看哪些角色尚未交稿。",
-  "collect 会读取本地 original.txt，核对引用行是否真实存在且非空，并用独立模型逐段判断引用原文是否支持结论。缺失原文、行数不一致、模型调用失败或任一段不支持时，该角色不通过。",
+  "collect 默认读取本地 original.txt，核对引用行是否真实存在且非空，只做确定性校验；缺失原文或行数不一致时该角色不通过。加 --evidence-review 才会用独立模型逐段判断引用原文是否支持结论，模型调用失败或任一段不支持时该角色不通过。",
   "",
   "```bash",
   "npm run dev -- analyze-world --world conghuoniao --phase prepare",
@@ -392,9 +397,13 @@ export interface CollectResult {
   complete: boolean;
 }
 
+/**
+ * 默认只做确定性交接校验（格式、证据密度、引用行号与原文行数）。
+ * 逐段语义证据核验需显式 `--evidence-review`，会调用模型并把不支持的结论计入 complete。
+ */
 export async function collectWorldAnalysis(
   worldId: string,
-  options: { sourcePath?: string; model?: string; timeoutMs?: number } = {}
+  options: { sourcePath?: string; model?: string; timeoutMs?: number; evidenceReview?: boolean } = {}
 ): Promise<CollectResult> {
   const analysisDir = resolve("analysis", worldId, "agent-analysis");
   const index = await loadChapterIndex(analysisDir);
@@ -416,13 +425,16 @@ export async function collectWorldAnalysis(
     }
     const validation = validateAnalysisOutput(text, index.totalLines);
     const issues = [...validation.issues];
+    let referenceOk = true;
     let evidenceReview: SemanticEvidenceReview | undefined;
     if (text && validation.ok) {
       if (!sourceLines) {
-        issues.push("找不到原文文件：" + sourcePath + "，无法核验引用内容");
+        issues.push("找不到原文文件：" + sourcePath + "，无法核验引用行号");
+        referenceOk = false;
       } else if (sourceLines.length !== index.totalLines) {
         issues.push("原文行数 " + sourceLines.length + " 与 chapter-index 的 " + index.totalLines + " 不一致");
-      } else {
+        referenceOk = false;
+      } else if (options.evidenceReview) {
         evidenceReview = await reviewAnalysisEvidence(text, sourceLines, options.model, options.timeoutMs);
         issues.push(...evidenceReview.issues);
       }
@@ -431,7 +443,8 @@ export async function collectWorldAnalysis(
       id: role.id, name: role.name, path: relative,
       chars: validation.chars, evidenceCount: validation.evidenceCount,
       ...(evidenceReview ? { evidenceReview } : {}),
-      ok: text ? validation.ok && evidenceReview?.ok === true : false,
+      ok: Boolean(text) && validation.ok && referenceOk &&
+        (options.evidenceReview ? evidenceReview?.ok === true : true),
       issues: text ? issues : ["尚未生成 output.md"]
     });
   }
@@ -463,7 +476,9 @@ export async function collectWorldAnalysis(
     lines.push(`| ${entry.name} | [\`${entry.id}/output.md\`](./${entry.id}/output.md) | ${entry.chars} | ${entry.evidenceCount} | ${review} | ${entry.ok ? "通过" : entry.issues.join("；")} |`);
   }
   lines.push("", result.complete
-    ? "全部角色已交稿并通过格式与证据密度校验。结论仍属工作记录，引用前按行号复核。"
+    ? (options.evidenceReview
+      ? "全部角色已交稿并通过格式、证据密度与逐段语义核验。结论仍属工作记录，引用前按行号复核。"
+      : "全部角色已交稿并通过格式、证据密度与引用行号校验。逐段语义核验可用 --evidence-review 开启；引用前仍应按行号复核。")
     : "存在未通过项，见上表；补齐后重新运行 `collect`。", "");
   await writeFile(join(analysisDir, "index.md"), lines.join("\n"), "utf8");
   return result;

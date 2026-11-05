@@ -28,7 +28,9 @@ test("accepts a complete analysis with evidence references", () => {
     "正文".repeat(320),
     "依据 L7209、L7317、L7848、L12187、L28122、L45301、L47258、L114297。",
     "## 待核实",
-    "全书总章数与末卷之后的情节。"
+    "全书总章数与末卷之后的情节。",
+    "## 引用范围",
+    "以上行号均来自本地全文。"
   ].join("\n");
   const result = validateAnalysisOutput(text, 118089);
   assert.equal(result.ok, true);

@@ -22,8 +22,11 @@ CLI 命令（均经 `npm run dev --`）：
 | `search --world <id> --query "" [--limit 8]` | 检索原文片段 |
 | `analyze --world <id> [--limit 20] [--model m] [--timeout-ms 60000]` | 逐片段抽取人物/事件/关系候选 |
 | `analyze-story --world <id> [--model m] [--timeout-ms 180000]` | CodeBuddy SDK 自动分析人物小传/成长可能性、主线、伏笔与后续发展并保存 SQLite |
-| `analyze-world --world <id> --phase prepare/status/collect` | 多 Agent 文本分析（文件交接） |
-| `write --brief "" [--mode continuation/derivative] [--source f] [--context f] [--model m] [--max-words n] [--no-apply-state] [--resume-dir dir]` | 多阶段章节写作、自动复查与有限修复 |
+| `analyze-world --world <id> --phase prepare/status/collect [--evidence-review]` | 多 Agent 文本分析（文件交接；默认确定性校验，`--evidence-review` 才调模型） |
+| `analyze-arcs / index-story / story-kb / db-status / check-runtime` | 卷级梗概、章节索引入库、知识库查询、DB 状态、运行时自检 |
+| `write-long --brief "" [--scenes n] [--max-words n] [--strict-model] [--accept-review] [--resume-dir dir]` | 万字长章节逐场生成 |
+| `regress --world <id> --chapter n` | 单章盲写回归对照 |
+| `write --brief "" [--mode continuation/derivative] [--source f] [--context f] [--model m] [--max-words n] [--strict-model] [--accept-review] [--no-apply-state] [--resume-dir dir]` | 多阶段章节写作、自动复查与有限修复 |
 | `generate --brief "" [--mode ...] [--out f]` | 单次成稿 |
 
 `--world` 由 `safeWorldId` 校验 `^[a-z0-9][a-z0-9-]*$`；`continuation` 模式必须带 `--source`。
@@ -36,10 +39,10 @@ CLI 命令（均经 `npm run dev --`）：
 - **src/library.ts** — 存储检索层：按中文章节标题正则切章 → 带重叠切片（1200 字 / 160 重叠）→ `worlds/<world>/library/index.json`（schemaVersion 1）。中文二元组 + BM25 风格打分，非向量语义检索。重复导入同一 source 会替换旧切片并使对应 annotations 失效。
 - **src/analysis.ts** — 逐片段 LLM 抽取人物/事件/关系 → `annotations.json`；硬性校验 evidence 必须逐字出现在片段中；已完成 / 失败 / 可重试三态断点续跑；写文件用 tmp + rename 原子替换。
 - **src/story-analysis.ts** — 自动读取 SQLite 全部已索引片段，按上下文长度分批调用 CodeBuddy Agent SDK，分析人物小传/性格矛盾/关系/成长可能性、主线情节、伏笔和后续发展；人物、关系、情节线、伏笔和发展可能按模型返回的 `chapterKeys` 精确关联来源；人物可保留同一角色的多条独立发展方向。缓存指纹包含模型、语料哈希、`maxChars`、实际批次章节布局和 Prompt 版本；完整成功后将结构化快照一次性保存到 SQLite `story_analysis`。
-- **src/agent-runtime.ts** — 模型运行时：读 CodeBuddy 产品目录（明文 JSON 或 JSON→base64→gzip，来源 `ACC_PRODUCT_CONFIG_PATH` 或 `~/.codebuddy/local_storage/*.info`），偏好链 `hy4free → deepseek-v4.1-flash`，`hy4` 别名展开；检测托管会话（`CODEBUDDY_SESSION_ID` / `WORKBUDDY_CONFIG_DIR`）后用 `detachedCliOptions` 剥离宿主会话变量并加 `--port 0`；`buildQueryOptions` 禁工具、单轮、不持久化会话。
+- **src/agent-runtime.ts** — 模型运行时：读 CodeBuddy 产品目录（明文 JSON 或 JSON→base64→gzip，来源 `ACC_PRODUCT_CONFIG_PATH` 或 `~/.codebuddy/local_storage/*.info`），偏好链 `deepseek-v4.1-flash → hy4free`，`hy4` 别名展开；检测托管会话（`CODEBUDDY_SESSION_ID` / `WORKBUDDY_CONFIG_DIR`）后用 `detachedCliOptions` 剥离宿主会话变量并加 `--port 0`；`buildQueryOptions` 禁工具、单轮、不持久化会话。
 - **src/generate.ts** — 唯一调用 `@tencent-ai/agent-sdk` 的地方：`query()` + `runAgentText`（模型链超时 / 中断 / 重试），`generateStory` 单次成稿。
 - **src/workflow.ts** — `writeChapter` 多阶段写作：主线架构师与创意发散并行 → 主编蓝图 → 正文 → 对白 → 叙事声音 → 结构化终审复查与最多两轮自动修复 → 运行时校验状态更新 → SQLite/JSON 自动持久化。`mergeStoryState` 按 id/name 归并状态；只有实验隔离使用 `--no-apply-state`。每个模型阶段通过 `stage-cache.ts` 按输入指纹缓存，`--resume-dir` 可从最后一个完整阶段恢复。
-- **src/world-analysis.ts** — 纯文件交接、运行时不调用模型：5 个 `ANALYSIS_ROLES`（main-plot / creative / style / characters / continuity）→ `prepare` 生成各角色 `input.md` → 各 Agent 写 `output.md` → `collect` 用 `validateAnalysisOutput` 校验（≥600 字、≥6 处 `L####` 且在原文行数内、≥3 个二级标题、无占位符）→ `manifest.json` + `index.md`；只校验格式与证据密度，不判断观点。
+- **src/world-analysis.ts** — 默认纯文件交接、运行时不调用模型：5 个 `ANALYSIS_ROLES`（main-plot / creative / style / characters / continuity）→ `prepare` 生成各角色 `input.md` → 各 Agent 写 `output.md` → `collect` 用 `validateAnalysisOutput` 校验（≥600 字、≥6 处 `L####` 且在原文行数内、≥3 个二级标题、无占位符），并核对 `original.txt` 行数 → `manifest.json` + `index.md`。显式 `--evidence-review` 才会逐段调用模型做语义证据核验并把不支持的结论计入 `complete`。章节索引按 schemaVersion 2 富结构读取，只取 `totalLines` 与卷表，允许多余字段。
 - **src/story-state.ts** — `worlds/<world>/story-state.json`（schemaVersion 1）的加载 / 保存与空状态；人物记录区分稳定 profile 与可变剧情快照。
 - **src/long-chapter.ts** — 长章节按场景蓝图逐场检索与生成；配置场景数是上限，允许蓝图按自然叙事少于上限，不能为了凑数拆分情节；按实际场景数计算篇幅参考和审查范围。每场注入相关人物当前状态，并携带本章已生成正文的滚动上下文；分批审查使用全章场景编号，缺少场景定位或结构无效时自动重试，最终修复不允许空场景列表；状态只从最终通过的完整章节提取并自动提交。阶段缓存校验结构化输出，指纹记录实际模型及回退链。
 - **src/analysis.ts** — 抽取以批次为单位原子保存标注，避免每处理一个片段就重写整个增长中的 JSON 文件。
@@ -52,7 +55,7 @@ CLI 命令（均经 `npm run dev --`）：
 - `.output/`、`dist/`、`node_modules/`、`private/`、`original.txt`、`.env` 均被 .gitignore 排除；**私有原文绝不入库**。
 - 证据纪律：结论用 `L####` 指向 `original.txt` 行号，区分「原著明确 / 作者设定 / 人物推断 / 待核实」四级；分析结论是工作记录，不等于正史。
 - `library/index.json` 含全文切片，提交到公开仓库前须确认授权范围；import 与 continuation 的 `--source` / `--input` 只能用合法取得的文本。
-- 当前边界：`annotations.json` 为空（全量 `analyze` 约 2594 次模型调用，尚未执行）；无跨章节实体归并 / 共指消解；Agent SDK session 不持久化，但模型阶段有本地 checkpoint，可通过 `--resume-dir` 恢复；故事状态以 SQLite 为权威存储，单机写作，不支持并发写作。
+- 当前边界：`annotations.json` 为空（全量 `analyze` 约 2594 次模型调用，尚未执行）；`entity-registry.ts` 已实现别名归并、共指解析与实体注册表，但该抽取链路尚未产出数据，全书知识库由 `analyze-story` 落库；Agent SDK session 不持久化，但模型阶段有本地 checkpoint，可通过 `--resume-dir` 恢复；故事状态以 SQLite 为权威存储，单机写作，不支持并发写作。
 
 ## 仓库根 AGENTS.md 要点（仍适用）
 

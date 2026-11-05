@@ -6,6 +6,7 @@ import { runAgentText } from "./generate.js";
 import { resolveAgentModel } from "./agent-runtime.js";
 import { readTaskProfiles } from "./task-profiles.js";
 import { openWorldDatabase } from "./database.js";
+import { parseJsonObject } from "./model-json.js";
 
 const ArcSchema = z.object({
   title: z.string().default(""),
@@ -118,14 +119,17 @@ export async function buildVolumeArcs(
     const path = join(cacheDir, "volume-" + String(digest.volume).padStart(2, "0") + ".json");
     let arc: VolumeArc | undefined;
     if (!options.force) {
-      try { arc = JSON.parse(await readFile(path, "utf8")) as VolumeArc; cached++; } catch { /* not cached */ }
+      try {
+        const parsed = ArcSchema.parse(parseJsonObject(await readFile(path, "utf8")));
+        arc = { volume: digest.volume, title: parsed.title, summary: parsed.summary, keyTurns: parsed.keyTurns, characters: parsed.characters };
+        cached++;
+      } catch { /* not cached or invalid: regenerate */ }
     }
     if (!arc) {
       if (!digest.beats.length) continue;
       console.log(`[story-arcs] volume ${digest.volume} · ${digest.chapters} chapters · ${digest.beats.length} beats`);
       const raw = await runAgentText(buildPrompt(digest), model, options.timeoutMs ?? 180_000, readTaskProfiles().state);
-      const start = raw.indexOf("{"); const end = raw.lastIndexOf("}");
-      const parsed = ArcSchema.parse(JSON.parse(start >= 0 && end > start ? raw.slice(start, end + 1) : raw) as unknown);
+      const parsed = ArcSchema.parse(parseJsonObject(raw));
       arc = { volume: digest.volume, title: parsed.title, summary: parsed.summary, keyTurns: parsed.keyTurns, characters: parsed.characters };
       const temporary = path + ".tmp";
       await writeFile(temporary, JSON.stringify(arc, null, 2) + "\n", "utf8");

@@ -120,6 +120,40 @@ test("reviewAndRepair stops after bounded repairs and never reports a false pass
   assert.equal(repairCalls, 1);
 });
 
+test("acceptRemainingIssues 人工放行时返回成稿并显式标记", async () => {
+  const result = await reviewAndRepair({
+    initialChapter: chapter,
+    maxRepairRounds: 1,
+    acceptRemainingIssues: true,
+    review: async () => JSON.stringify({
+      status: "needs_repair", summary: "仍有硬伤。", issues: [{
+        scenes: [], evidence: "李玄推开门", problem: "读者会认为不可能", repair: "补足信息来源"
+      }]
+    }),
+    repair: async current => current + "补充。"
+  });
+  assert.equal(result.acceptedWithIssues, true);
+  assert.match(result.chapter, /补充。/);
+});
+
+test("终审阻断前把最新成稿交给 onFailure，不静默丢稿", async () => {
+  let saved = "";
+  let reason = "";
+  await assert.rejects(() => reviewAndRepair({
+    initialChapter: chapter,
+    maxRepairRounds: 1,
+    review: async () => JSON.stringify({
+      status: "needs_repair", summary: "仍有硬伤。", issues: [{
+        scenes: [], evidence: "李玄推开门", problem: "读者会认为不可能", repair: "补足信息来源"
+      }]
+    }),
+    repair: async current => current + "已修复。",
+    onFailure: async (current, _reviews, message) => { saved = current; reason = message; }
+  }), /after 1 automatic repair rounds/);
+  assert.match(saved, /已修复。/);
+  assert.match(reason, /automatic repair rounds/);
+});
+
 test("formatReview 在无必改项时只给一行结论", () => {
   const text = formatReview({ status: "pass", summary: "未发现读者会认定不可能的硬伤", issues: [] });
   assert.match(text, /状态：pass/);

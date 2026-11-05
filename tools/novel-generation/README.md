@@ -58,10 +58,11 @@ node analysis/build-corpus-index.mjs
 ```bash
 npm run dev -- analyze-world --world conghuoniao --phase prepare   # 生成输入包与协议
 npm run dev -- analyze-world --world conghuoniao --phase status    # 查看交稿状态
-npm run dev -- analyze-world --world conghuoniao --phase collect   # 校验并汇总
+npm run dev -- analyze-world --world conghuoniao --phase collect   # 校验并汇总（确定性，不调模型）
+npm run dev -- analyze-world --world conghuoniao --phase collect --evidence-review  # 逐段语义证据核验（调模型）
 ```
 
-输入包由本地检索库按角色查询词生成，含卷结构、建议精读行号区间与证据规范；成稿要求带 `L####` 行号、区分四级证据、不复制原文。`collect` 只校验格式、字数与证据密度，输出 `manifest.json` 和 `index.md`，不判断观点对错。结果保存在 `analysis/<world>/agent-analysis/`，与主世界设定分开，属工作记录。
+输入包由本地检索库按角色查询词生成，含卷结构、建议精读行号区间与证据规范；成稿要求带 `L####` 行号、区分四级证据、不复制原文。`collect` 默认只校验格式、字数、证据密度与引用行号，输出 `manifest.json` 和 `index.md`，不判断观点对错。加 `--evidence-review` 才会让模型逐段核验结论是否被引用原文支持，未通过项计入 `complete`。章节索引按 schemaVersion 2 富结构读取。结果保存在 `analysis/<world>/agent-analysis/`，与主世界设定分开，属工作记录。
 
 ## 5. 多阶段章节写作
 
@@ -83,6 +84,8 @@ npm run dev -- write --world conghuoniao --mode continuation \
   --resume-dir .output/conghuoniao/<原 run-id>
 ```
 
+终审两轮后仍有必改项会阻断：最新成稿保留为 `chapter-needs-review.md`，诊断写入 `09-quality-summary.json`（`needs_human_review`），故事状态不更新。人工复核确认审查误报后可用 `--accept-review` 放行，此时状态照常提交，摘要记为 `accepted_with_issues`。`--strict-model` 禁止失败时回退到备用模型，保证成稿模型来源可追踪；`write` 与 `write-long` 均支持这两个开关。
+
 每次运行生成：
 - `00-retrieval.md`：命中的原文片段、来源位置和抽取标注
 - `01-main-plot.md`、`02-creative-options.md`：主线方案与创意备选
@@ -91,7 +94,8 @@ npm run dev -- write --world conghuoniao --mode continuation \
 - `07-continuity-review.md`：终审必改清单；没有必改项时只有一行结论
 - `chapter.md`：最终复查通过后的章节
 - `08-state-update.json`：合并后的下一章状态（默认已自动持久化）
-- `07-review-round-*.json`、`09-quality-summary.json`：结构化复查结果和自动修复轮数
+- `07-review-round-*-raw.txt`、`07-continuity-review-round-N.json`、`09-quality-summary.json`：终审原始输出、结构化复查结果与修复轮数
+- `chapter-needs-review.md`：终审两轮后仍阻断时保留的最新成稿。此时故事状态不更新，可用 `--accept-review` 人工放行或按诊断产物复核
 
 章节生成成功后，状态管理员会提取人物、事件、正史事实和情节线变化，并自动写入 SQLite 权威状态及兼容 JSON 快照，供下一章直接使用。只有模型对照、盲测等需要候选互相隔离的场景才传 `--no-apply-state`；普通续写不要使用该参数。状态提取或持久化失败会使本次命令失败，不能把状态未更新的章节当作可继续写作的成功结果。`continuation` 模式的 `--source` 必须是你提供或有权使用的文本，本地 `private/` 不入库。
 
@@ -145,12 +149,12 @@ SDK 用法参照 `vocal-saga/local-agent-service`：模型目录合并产品配�
 
 ### 思考、推理强度与会话
 
-`thinking` 与 `effort` 按阶段分配，取舍同参考项目 `taskProfiles.ts`：判断类任务多想，纯抽取与终审不被推理痕迹带偏。规划、创意发散、正文成文 `adaptive/medium`，主编蓝图与连续性审查 `adaptive/high`，对白、文风、终审与状态提取 `disabled/low`。`novel-generation.config.json` 的 `taskProfiles` 可逐阶段覆盖（`thinkingMode` 取 disabled/adaptive/enabled，`effort` 取 low/medium/high，另可给 `thinkingBudgetTokens`），`npm run dev -- models` 打印当前档案。
+`thinking` 与 `effort` 按阶段分配，取舍同参考项目 `taskProfiles.ts`。代码默认除 `plan`（`adaptive/high`）与 `state`（`disabled/low`）外全部为 `adaptive/medium`；`novel-generation.config.json` 又把 `plan` 与 `review` 覆盖为 `adaptive/high`。`taskProfiles` 可逐阶段覆盖（`thinkingMode` 取 disabled/adaptive/enabled，`effort` 取 low/medium/high，另可给 `thinkingBudgetTokens`），`npm run dev -- models` 打印当前档案。
 
 三个实现细节会直接影响效果：
 
-- `adaptive` 与 `enabled` 都映射为 `--settings alwaysThinkingEnabled=true`，`enabled` 另设 `MAX_THINKING_TOKENS`；`disabled` 映射为 `alwaysThinkingEnabled=false`。
-- `--effort` 只在思考开启时下发。SDK 在 `thinking.type === "disabled"` 时跳过这个参数，所以「disabled/low」里的 low 并没有生效，写 low 只是保持档案完整。
+- 档案通过 SDK 的 `thinking` 对象下发：`disabled` → `{ type: "disabled" }`，`adaptive` → `{ type: "adaptive" }`，`enabled` → `{ type: "enabled", budgetTokens }`；`effort` 作为独立参数传给 `query()`。不使用已弃用的 `maxThinkingTokens`。
+- `effort` 只在思考开启时生效；SDK 在 `thinking.type === "disabled"` 时跳过该参数，所以 `state` 阶段的 `low` 只是保持档案完整。
 - 开启思考后，CLI 的默认 Agent 人格会先探查工作区、调用工具；工具被禁用时，部分模型把工具调用语法（`DSML`）当成正文吐出来，整章作废。现在所有纯文本调用都注入专用 system prompt，调用层检测到这类输出会关掉思考重试同一模型。
 
 历史回归实验（卷 1 第十三章）曾尝试按原文统计值自动修订句法，但这只能说明模型在特定样本上的统计差异，不能证明更接近原文就更好看。该实验保留作研究记录，不作为正式写作策略；当前默认关闭指标驱动修订。
@@ -171,7 +175,7 @@ npm run dev -- regress --world conghuoniao --chapter 13 \
 
 - 使用 `@tencent-ai/agent-sdk` 的 `query()`。默认 `deepseek-v4.1-flash`、回退 `hy4free`；目录来自 `ACC_PRODUCT_CONFIG_PATH` 或 `~/.codebuddy/local_storage/*.info`（前者解析不出模型时仍会扫缓存），再叠加 user/project `models.json`。`--model`、环境变量与配置文件可覆盖，详见第 7 节。逐条消息竞速超时并主动中断，超时、无文本或执行失败时换链中下一个模型。
 - 被 IDE/Agent 托管时（存在 `CODEBUDDY_SESSION_ID` / `WORKBUDDY_CONFIG_DIR`），SDK fork 的 CLI 会继承宿主服务端口并撞上主进程。`buildQueryOptions` 会清掉子进程的宿主会话变量，并加 `--port 0` 让 CLI 自选端口；托管会话内可直接运行 `analyze` / `write` / `generate`。`analyze` 可用 `--timeout-ms` 控制单片段上限。
-- `analyze-world` 走文件交接，不调用模型；输入包与成稿随代码提交，便于复核每个结论的依据。
+- `analyze-world` 默认走文件交接，不调用模型；输入包与成稿随代码提交，便于复核每个结论的依据。`--evidence-review` 会额外调用模型做逐段语义核验。
 - 本地检索是词项/BM25 风格排序，不是向量语义检索。倒排统计与片段词频在进程内按索引文件版本缓存；索引更新后自动失效。Zod 是直接运行时依赖，用于校验故事状态、章节索引和模型证据审查输出。
 - 回归对照只做写法比较：情节不同是预期的，评审 Agent 不据此扣分。指标由确定性函数统计，评审结论属于模型判断，两者分开记录。
 - 文本抽取按片段进行，带独立证据审查、来源哈希/章节偏移、显式别名注册表和有证据门槛的共指解析；人物弧光已增加有正文证据的 arcMilestones 基础追踪，但完整人物状态时间序列和伏笔生命周期分析仍未实现。全量 `analyze` 涉及 2,594 次模型调用，尚未执行，`annotations.json` 为空。
@@ -301,6 +305,10 @@ src/
   novel-kb.ts
   story-analysis.ts
   story-analysis-context.ts
+  story-arcs.ts
+  chapter-review.ts
+  stage-cache.ts
+  model-json.ts          # 共享 JSON 提取：平衡括号截取 + 控制字符/尾逗号修复
 novel-generation.config.json
 analysis/
   build-corpus-index.mjs
@@ -370,6 +378,8 @@ worlds/
 | 终审 Agent | 只判断有没有读者会认定「不可能」的硬伤 | 最多 3 条；其余问题不报 |
 | 状态管理员 | 从最终稿提取人物、事件和情节线变化 | 更新结构化状态 |
 | 评审 Agent（回归用） | 对照原文与盲写成稿，判断节奏、段落与信息承载的差距 | 只出报告，不改稿 |
+
+上表对应 `write`。`write-long` 把人物对话编辑与叙事声音编辑合并为一次逐场修订调用，其余职责相同。
 
 评审 Agent 用独立模型（默认 `glm-5.3-flash`），与写作 Agent 分开配置：写的人不评自己的稿。评审拿到的是原文、两版成稿和一份确定性指标表，指标由代码算，判断由评审给，两者不混在同一份结论里。
 

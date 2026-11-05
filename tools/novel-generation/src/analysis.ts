@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { runAgentText } from "./generate.js";
 import type { LibraryChunk } from "./library.js";
 import { buildEntityRegistry } from "./entity-registry.js";
+import { parseJsonObject } from "./model-json.js";
 
 export type NarrativeEntityType = "character" | "organization" | "location" | "object" | "ability" | "concept";
 export type ExtractionConfidence = "explicit" | "inferred";
@@ -102,13 +103,13 @@ export function isEvidenceReviewed(annotation: ChunkAnnotation): boolean {
 }
 
 function parseObject(raw: string): Record<string, unknown> {
-  const cleaned = raw.trim().replace(/^\x60{3}(?:json)?\s*/i, "").replace(/\s*\x60{3}$/i, "");
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("Model response did not contain a JSON object.");
-  const value: unknown = JSON.parse(cleaned.slice(start, end + 1));
-  if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Extraction response must be a JSON object.");
-  return value as Record<string, unknown>;
+  try {
+    const value = parseJsonObject(raw);
+    if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Extraction response must be a JSON object.");
+    return value as Record<string, unknown>;
+  } catch (error) {
+    throw new Error("Model response did not contain a usable JSON object: " + String(error));
+  }
 }
 
 function stringArray(value: unknown): string[] {

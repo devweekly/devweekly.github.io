@@ -10,6 +10,7 @@ import { RHYTHM_RULE, mergeStoryState } from "./workflow.js";
 import { searchLibrary } from "./library.js";
 import { formatReview, parseChapterReview, reviewAndRepair, reviewPrompt, type ReviewIssue } from "./chapter-review.js";
 import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
+import { parseJsonObject } from "./model-json.js";
 
 export interface LongChapterInput {
   worldId: string;
@@ -22,6 +23,8 @@ export interface LongChapterInput {
   contextText?: string;
   storyAnalysisContext?: string;
   model?: string;
+  strictModel?: boolean;
+  acceptReview?: boolean;
   maxWords: number;
   scenes: number;
   timeoutMs: number;
@@ -99,12 +102,12 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   const profiles = readTaskProfiles();
   await mkdir(input.outputDir, { recursive: true });
   const call = (stage: StageKey, parts: string[]): Promise<string> =>
-    runAgentText(parts.join("\n\n"), input.model, input.timeoutMs, profiles[stage]);
+    runAgentText(parts.join("\n\n"), input.model, input.timeoutMs, profiles[stage], !input.strictModel);
   const cachedCall = (key: string, outputFile: string, stage: StageKey, parts: string[], validate?: (output: string) => void): Promise<string> => {
     const prompt = parts.join("\n\n");
     return runCachedStage({
       dir: input.outputDir, key, outputFile,
-      fingerprint: JSON.stringify({ prompt, modelAttempts: resolveModelAttempts(input.model), profile: profiles[stage], timeoutMs: input.timeoutMs }),
+      fingerprint: JSON.stringify({ prompt, modelAttempts: resolveModelAttempts(input.model, !input.strictModel), profile: profiles[stage], timeoutMs: input.timeoutMs, strictModel: input.strictModel ?? false }),
       execute: () => call(stage, parts),
       validate
     });
@@ -257,11 +260,13 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   }
   const seen = new Set<string>();
   const merged = found.filter(issue => {
-    const key = issue.scenes.join(",") + "|" + issue.problem.slice(0, 16);
+    // 只抹掉空白差异；按前 16 字截断会把两条不同硬伤当成重复。
+    const normalize = (text: string): string => text.replace(/\s+/g, "");
+    const key = issue.scenes.join(",") + "|" + normalize(issue.problem) + "|" + normalize(issue.evidence);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
-  }).slice(0, 3);
+  }).slice(0, 6);
   const review = formatReview({
     status: merged.length ? "needs_repair" : "pass",
     summary: summaries.join("；") || "未发现读者会认定不可能的硬伤",
@@ -291,6 +296,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     initialChapter: buildChapter(),
     sceneCount: sceneTexts.length,
     maxRepairRounds: 2,
+    acceptRemainingIssues: input.acceptReview,
     review: (candidate, correction) => {
       const round = reviewHistory.length + 1;
       return cachedCall("final-review-" + round + (correction ? "-retry" : ""), "08-final-review-round-" + round + (correction ? "-retry" : "") + "-raw.txt", "review", [
@@ -325,13 +331,20 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     onReview: async (round, candidate, report) => {
       reviewHistory.push("## 全章复查轮次 " + (round + 1) + "\n\n" + formatReview(report));
       await saveStage(input.outputDir, "08-final-review-round-" + (round + 1) + ".json", JSON.stringify(report, null, 2));
+    },
+    onFailure: async (chapter, reviews, reason) => {
+      await saveStage(input.outputDir, "chapter-needs-review.md", chapter);
+      await saveStage(input.outputDir, "08-quality-summary.json", JSON.stringify({
+        status: "needs_human_review", reason, reviews
+      }, null, 2));
+      console.error("[write-long] 终审未通过，成稿已保留为 chapter-needs-review.md，故事状态未更新。用 --accept-review 人工放行。");
     }
   });
   const chapter = reviewed.chapter;
   await saveStage(input.outputDir, "chapter.md", chapter);
   await saveStage(input.outputDir, "08-final-review.md", reviewHistory.join("\n\n---\n\n"));
   await saveStage(input.outputDir, "08-quality-summary.json", JSON.stringify({
-    status: "passed",
+    status: reviewed.acceptedWithIssues ? "accepted_with_issues" : "passed",
     repairRounds: reviewed.repairRounds,
     reviews: reviewed.reviews
   }, null, 2));
@@ -355,11 +368,13 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     "continuityNotes 必须返回章节结束时仍然有效的完整备注集合，不是只列新增项；已经变化、解决或被新事实替代的旧备注不要继续返回。profile 记录相对稳定的性格底色、价值观、内在矛盾、语言习惯和行为边界；不要因单次行为轻易改写。其他字段是章节结束时的当前状态快照，数组必须给出完整当前值。人物弧光可以变化、反复、倒退，也可以出现意料之外的选择；不要因为画像或预设弧线限制人物。状态提取只是记录正文已经发生的事，不得反过来要求正文解释人物变化。只有正文自然呈现了重要转折时才追加 arcMilestones；不要为了填写选择、压力、代价字段而补写或拔高剧情。只记录章节明确支持的内容；推断标为 inferred，项目原创内容标为 original，不得写进原著正史。"
   ].join("\n\n");
   const parseUpdate = (raw: string) => {
-    const cleaned = raw.trim().replace(/^\x60{3}(?:json)?\s*/i, "").replace(/\s*\x60{3}$/i, "");
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
-    if (start < 0 || end <= start) throw new Error("State agent did not return a JSON object.");
-    return parseStoryStateUpdate(JSON.parse(cleaned.slice(start, end + 1)) as unknown, chapter);
+    let value: unknown;
+    try {
+      value = parseJsonObject(raw);
+    } catch (error) {
+      throw new Error("State agent did not return a JSON object: " + String(error));
+    }
+    return parseStoryStateUpdate(value, chapter);
   };
   const validateStateUpdate = (output: string) => parseUpdate(output);
   let stateText = "";

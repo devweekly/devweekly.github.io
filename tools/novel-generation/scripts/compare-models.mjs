@@ -16,8 +16,11 @@ for(const model of models)for(let repetition=1;repetition<=repetitions;repetitio
  const id="candidate-"+String(++n).padStart(2,"0");
  const args=["run","dev","--","write","--world",world,"--mode","continuation","--source",resolve(source),"--brief",brief,"--model",model,"--max-words",maxWords,"--strict-model","--no-apply-state"];
  if(context)args.push("--context",resolve(context));
- const result=spawnSync("npm",args,{cwd,encoding:"utf8",maxBuffer:20*1024*1024});
+ const timeoutMs=30*60*1000;
+ const result=spawnSync("npm",args,{cwd,encoding:"utf8",maxBuffer:20*1024*1024,timeout:timeoutMs});
  const log=(result.stdout??"")+"\n"+(result.stderr??""); await writeFile(resolve(root,id+".log"),log,"utf8");
+ if(result.error)throw new Error(model+" failed: "+result.error.message+"; inspect "+resolve(root,id+".log"));
+ if(result.signal)throw new Error(model+" interrupted by "+result.signal+"; inspect "+resolve(root,id+".log"));
  if(result.status!==0)throw new Error(model+" failed; inspect "+resolve(root,id+".log"));
  const match=log.match(/Saved chapter:\s*(.+)\s*$/m);if(!match)throw new Error("Cannot locate output path for "+model);
  const out=dirname(resolve(match[1].trim())), dest=resolve(root,id);await mkdir(dest,{recursive:true});

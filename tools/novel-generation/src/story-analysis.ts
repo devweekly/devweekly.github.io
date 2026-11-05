@@ -12,6 +12,8 @@ import { buildAnalysisUnits, groupAnalysisUnits, isUsableAlias, isUsableCharacte
 import { runAgentText } from "./generate.js";
 import { resolveAgentModel } from "./agent-runtime.js";
 import { readTaskProfiles } from "./task-profiles.js";
+import { parseJsonObject } from "./model-json.js";
+export { repairJsonText } from "./model-json.js";
 
 /** Models drift between `["a"]` and `"a"`; both mean the same thing here. */
 const stringList = z.preprocess(value => {
@@ -126,40 +128,15 @@ export interface StoryAnalysisResult {
   malformedBeats: number;
 }
 
-/** Some models emit raw newlines or tabs inside JSON strings, and trailing commas. */
-export function repairJsonText(text: string): string {
-  let out = "";
-  let inString = false;
-  let escaped = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i] as string;
-    if (inString) {
-      if (escaped) { out += ch; escaped = false; continue; }
-      if (ch === "\\") { out += ch; escaped = true; continue; }
-      if (ch === '"') { inString = false; out += ch; continue; }
-      const code = ch.charCodeAt(0);
-      if (code < 0x20) { out += "\\u" + code.toString(16).padStart(4, "0"); continue; }
-      out += ch;
-      continue;
-    }
-    if (ch === '"') { inString = true; out += ch; continue; }
-    if (ch === "," && /^\s*[}\]]/.test(text.slice(i + 1))) continue;
-    out += ch;
-  }
-  return out;
+/** 批次分析统一走共享解析器：平衡括号截取 + 控制字符/尾逗号修复。 */
+export function parseModelJson(raw: string): BatchAnalysis {
+  return BatchSchema.parse(parseJsonObject(raw));
 }
 
-export function parseModelJson(raw: string): BatchAnalysis {
-  const trimmed = raw.trim();
-  const fenced = trimmed.match(/`{3}(?:json)?\s*([\s\S]*?)\s*`{3}/i)?.[1];
-  const start = trimmed.indexOf("{");
-  const end = trimmed.lastIndexOf("}");
-  const cleaned = fenced ?? (start >= 0 && end > start ? trimmed.slice(start, end + 1) : trimmed);
-  try {
-    return BatchSchema.parse(JSON.parse(cleaned) as unknown);
-  } catch (error) {
-    if (error instanceof SyntaxError) return BatchSchema.parse(JSON.parse(repairJsonText(cleaned)) as unknown);
-    throw error;
+/** 合并必须看到全部批次，否则会写出残缺却标记 complete 的分析快照。 */
+export function assertMergeOptions(options: Pick<StoryAnalysisOptions, "mergeOnly" | "shard" | "limit">): void {
+  if (options.mergeOnly && (options.shard || options.limit !== undefined)) {
+    throw new Error("--merge-only cannot be combined with --shard or --limit; merge needs every batch.");
   }
 }
 
@@ -409,6 +386,7 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
   if (shard && (!Number.isInteger(shard.count) || shard.count < 1 || shard.count > 16 || !Number.isInteger(shard.index) || shard.index < 0 || shard.index >= shard.count)) {
     throw new Error("--shard must be i/n with 0 <= i < n <= 16.");
   }
+  assertMergeOptions(options);
 
   const results: Array<{ analysis: BatchAnalysis; chapters: AnalysisUnit[] }> = [];
   const failures: Array<{ index: number; error: string }> = [];
@@ -448,6 +426,9 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
     throw new Error(`${failures.length} batch(es) failed: ${failures.slice(0, 5).map(item => "#" + (item.index + 1)).join(", ")}${failures.length > 5 ? " …" : ""}. Successful batches are cached; re-run to resume.`);
   }
   if (pending) throw new Error(`Cannot merge: ${pending} batch(es) missing from cache. Run the remaining shards first.`);
+  if (results.length !== totalBatches || skipped) {
+    throw new Error(`Cannot merge: ${results.length}/${totalBatches} batches available, ${skipped} skipped. Refusing to persist a partial snapshot.`);
+  }
 
   const snapshot = mergeAndPersist(worldId, worldDir, units, results, totalBatches);
   return { snapshot, batches: totalBatches, processed, cached, failed: [], pending, skipped, malformedBeats: Number(snapshot.malformedBeats ?? 0) };

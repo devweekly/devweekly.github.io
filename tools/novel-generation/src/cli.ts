@@ -55,13 +55,13 @@ function usage(): never {
     "  npm run dev -- index-story --world conghuoniao [--catalog analysis/conghuoniao/chapter-index.json]",
     "  npm run dev -- analyze-arcs --world conghuoniao [--model model] [--force]",
     "  npm run dev -- story-kb --world conghuoniao [--type overview|arcs|characters|threads|foreshadowings|beats|export] [--query 关键词] [--status 状态] [--from 1] [--to 100] [--limit 50]",
-    "  npm run dev -- analyze-world --world conghuoniao --phase prepare|status|collect [--source original.txt] [--model model] [--timeout-ms 90000]",
+    "  npm run dev -- analyze-world --world conghuoniao --phase prepare|status|collect [--source original.txt] [--model model] [--timeout-ms 90000] [--evidence-review]",
     "  npm run dev -- db-status --world conghuoniao",
     "  npm run dev -- models",
     "  npm run dev -- check-runtime [--model model] [--timeout-ms 90000]",
     "  npm run dev -- regress --world conghuoniao --chapter 13 [--brief \"本章任务\"] [--model deepseek-v4.1-flash] [--review-model glm-5.3-flash] [--context-lines 90] [--timeout-ms 240000]",
-    "  npm run dev -- write --brief \"story direction\" [--world conghuoniao] [--mode derivative|continuation] [--source file] [--context file] [--model model] [--max-words 3000] [--strict-model] [--no-apply-state] [--resume-dir .output/<world>/<run-id>]",
-    "  npm run dev -- write-long --brief \"story direction\" [--scenes 8] [--max-words 10000] [--timeout-ms 180000] [--no-apply-state] [--resume-dir .output/<world>/long-<run-id>]",
+    "  npm run dev -- write --brief \"story direction\" [--world conghuoniao] [--mode derivative|continuation] [--source file] [--context file] [--model model] [--max-words 3000] [--strict-model] [--accept-review] [--no-apply-state] [--resume-dir .output/<world>/<run-id>]",
+    "  npm run dev -- write-long --brief \"story direction\" [--scenes 8] [--max-words 10000] [--timeout-ms 180000] [--model model] [--strict-model] [--accept-review] [--no-apply-state] [--resume-dir .output/<world>/long-<run-id>]",
     "  npm run dev -- generate --brief \"story idea\" [--mode derivative|continuation] [--source file] [--context file] [--out file]"
   ].join("\n"));
   process.exit(2);
@@ -159,7 +159,8 @@ async function main(): Promise<void> {
       const result = await collectWorldAnalysis(worldId, {
         sourcePath: arg("--source") ?? "original.txt",
         model: arg("--model"),
-        timeoutMs
+        timeoutMs,
+        evidenceReview: process.argv.includes("--evidence-review")
       });
       for (const entry of result.entries) {
         console.log(entry.id.padEnd(12) + (entry.ok ? " OK   " : " CHECK") + " " + entry.chars + " chars / " + entry.evidenceCount + " refs" + (entry.issues.length ? " / " + entry.issues.join("; ") : ""));
@@ -395,7 +396,8 @@ async function main(): Promise<void> {
     const applyState = !process.argv.includes("--no-apply-state");
     const chapter = await writeChapter({
       worldId, mode, brief, worldBible, styleProfile, styleRhythm, sourceText, contextText, retrievedContext, storyAnalysisContext, model,
-      strictModel: process.argv.includes("--strict-model"), maxWords,
+      strictModel: process.argv.includes("--strict-model"),
+      acceptReview: process.argv.includes("--accept-review"), maxWords,
       outputDir, statePath, applyState
     });
     console.log("\nSaved chapter: " + resolve(outputDir, "chapter.md"));
@@ -427,6 +429,8 @@ async function main(): Promise<void> {
     }
     const chapter = await writeLongChapter({
       worldId, mode, brief, worldBible, styleProfile, styleRhythm, sourceText, contextText, storyAnalysisContext, model,
+      strictModel: process.argv.includes("--strict-model"),
+      acceptReview: process.argv.includes("--accept-review"),
       maxWords, scenes, timeoutMs, outputDir, statePath, libraryDir, retrievalLimit,
       applyState: !process.argv.includes("--no-apply-state")
     });

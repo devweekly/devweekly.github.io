@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { parseJsonObject } from "./model-json.js";
 
 /**
  * 终审只回答一个问题：有没有读者会认定「不可能」的硬伤。
@@ -31,11 +32,11 @@ export const MUST_FIX_RULE = [
 ].join("\n");
 
 function extractObject(raw: string): unknown {
-  const cleaned = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "");
-  const start = cleaned.indexOf("{");
-  const end = cleaned.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("Review agent did not return a JSON object.");
-  return JSON.parse(cleaned.slice(start, end + 1)) as unknown;
+  try {
+    return parseJsonObject(raw);
+  } catch (error) {
+    throw new Error("Review agent did not return a JSON object: " + String(error));
+  }
 }
 
 /**
@@ -105,40 +106,51 @@ export async function reviewAndRepair(input: {
   initialChapter: string;
   sceneCount?: number;
   maxRepairRounds?: number;
+  /** 人工复核后接受剩余必改项；仅由显式 CLI 开关传入，不改变默认阻断行为。 */
+  acceptRemainingIssues?: boolean;
   review: (chapter: string, correction?: string) => Promise<string>;
   repair: (chapter: string, issues: ReviewIssue[], round: number) => Promise<string>;
   onReview?: (round: number, chapter: string, review: ChapterReview) => Promise<void>;
-}): Promise<{ chapter: string; reviews: ChapterReview[]; repairRounds: number }> {
+  /** 阻断前落盘当前成稿与诊断，避免终审误判导致整章丢失。 */
+  onFailure?: (chapter: string, reviews: ChapterReview[], reason: string) => Promise<void>;
+}): Promise<{ chapter: string; reviews: ChapterReview[]; repairRounds: number; acceptedWithIssues: boolean }> {
   const maxRepairRounds = input.maxRepairRounds ?? 2;
   let chapter = input.initialChapter;
   const reviews: ChapterReview[] = [];
-  for (let round = 0; round <= maxRepairRounds; round++) {
-    let raw: string;
-    let parsed: ChapterReview;
-    try {
-      raw = await input.review(chapter);
-      parsed = parseChapterReview(raw, chapter, input.sceneCount);
-    } catch (firstError) {
-      raw = await input.review(
-        chapter,
-        "上一次审查结果未通过 JSON / 结构校验：" + String(firstError) +
-        "。请重新检查当前正文，只输出符合指定 schema 的 JSON；没有必改项就返回空数组。"
-      );
-      parsed = parseChapterReview(raw, chapter, input.sceneCount);
+  try {
+    for (let round = 0; round <= maxRepairRounds; round++) {
+      let raw: string;
+      let parsed: ChapterReview;
+      try {
+        raw = await input.review(chapter);
+        parsed = parseChapterReview(raw, chapter, input.sceneCount);
+      } catch (firstError) {
+        raw = await input.review(
+          chapter,
+          "上一次审查结果未通过 JSON / 结构校验：" + String(firstError) +
+          "。请重新检查当前正文，只输出符合指定 schema 的 JSON；没有必改项就返回空数组。"
+        );
+        parsed = parseChapterReview(raw, chapter, input.sceneCount);
+      }
+      reviews.push(parsed);
+      await input.onReview?.(round, chapter, parsed);
+      if (!parsed.issues.length) return { chapter, reviews, repairRounds: round, acceptedWithIssues: false };
+      if (round >= maxRepairRounds) {
+        if (input.acceptRemainingIssues) return { chapter, reviews, repairRounds: round, acceptedWithIssues: true };
+        throw new Error("Chapter still has must-fix issues after " + maxRepairRounds + " automatic repair rounds. See final review artifacts; story state was not updated.");
+      }
+      const repaired = (await input.repair(chapter, parsed.issues, round + 1)).trim();
+      if (!repaired || repaired === chapter.trim()) {
+        if (input.acceptRemainingIssues) return { chapter, reviews, repairRounds: round, acceptedWithIssues: true };
+        throw new Error("Automatic chapter repair produced no change. Story state was not updated.");
+      }
+      chapter = repaired;
     }
-    reviews.push(parsed);
-    await input.onReview?.(round, chapter, parsed);
-    if (!parsed.issues.length) return { chapter, reviews, repairRounds: round };
-    if (round >= maxRepairRounds) {
-      throw new Error("Chapter still has must-fix issues after " + maxRepairRounds + " automatic repair rounds. See final review artifacts; story state was not updated.");
-    }
-    const repaired = (await input.repair(chapter, parsed.issues, round + 1)).trim();
-    if (!repaired || repaired === chapter.trim()) {
-      throw new Error("Automatic chapter repair produced no change. Story state was not updated.");
-    }
-    chapter = repaired;
+    throw new Error("Unreachable chapter review state.");
+  } catch (error) {
+    await input.onFailure?.(chapter, reviews, error instanceof Error ? error.message : String(error));
+    throw error;
   }
-  throw new Error("Unreachable chapter review state.");
 }
 
 export function formatReview(review: ChapterReview): string {
