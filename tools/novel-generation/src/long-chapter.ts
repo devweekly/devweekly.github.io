@@ -332,7 +332,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   await saveStage(input.outputDir, "06-rhythm-metrics.json", JSON.stringify(metrics, null, 2));
   console.error("[write-long] 成稿 " + metrics.chars + " 汉字 · 均句长 " + metrics.mean + " · 长句 " + (metrics.long * 100).toFixed(1) + "% · 自动修复 " + reviewed.repairRounds + " 轮");
 
-  const stateText = await cachedCall("state-update", "07-state-update-raw.json", "state", [
+  const statePrompt = [
     "角色：小说连续性资料管理员。根据旧状态和最终章节提取状态变化。",
     "只输出合法 JSON 对象，不要 Markdown 代码围栏。结构：",
     JSON.stringify({
@@ -341,12 +341,12 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       characters: [{ name: "name", profile: { coreTraits: ["stable traits"], values: ["values"], contradictions: ["internal contradictions"], voice: "distinctive voice", boundaries: ["behavioral boundaries"], arc: "long-term arc" }, status: "current status", location: "current location", abilities: ["current abilities"], knowledge: ["current knowledge"], goals: ["current goals"], relationships: ["current relationships"], arcMilestones: [{ id: "stable-milestone-id", chapter: "chapter id", change: "what changed", evidence: "exact excerpt from final chapter", choice: "optional, only if naturally clear", pressure: "optional, only if naturally clear", cost: "optional, only if naturally clear" }] }],
       events: [{ id: "stable-id", summary: "event", position: "story position", participants: ["name"], consequences: ["consequence"] }],
       plotThreads: [{ id: "stable-id", title: "thread", status: "open|active|resolved|abandoned", lastUpdated: "chapter id", notes: "latest state" }],
-      continuityNotes: ["facts future chapters must preserve"]
+      continuityNotes: ["complete current active notes"]
     }, null, 2),
     "旧状态：", JSON.stringify(state, null, 2),
     "最终章节全文（状态提取必须覆盖每一场的人物、事件、事实与情节线变化）：", chapter,
     "continuityNotes 必须返回章节结束时仍然有效的完整备注集合，不是只列新增项；已经变化、解决或被新事实替代的旧备注不要继续返回。profile 记录相对稳定的性格底色、价值观、内在矛盾、语言习惯和行为边界；不要因单次行为轻易改写。其他字段是章节结束时的当前状态快照，数组必须给出完整当前值。人物弧光可以变化、反复、倒退，也可以出现意料之外的选择；不要因为画像或预设弧线限制人物。状态提取只是记录正文已经发生的事，不得反过来要求正文解释人物变化。只有正文自然呈现了重要转折时才追加 arcMilestones；不要为了填写选择、压力、代价字段而补写或拔高剧情。只记录章节明确支持的内容；推断标为 inferred，项目原创内容标为 original，不得写进原著正史。"
-  ]);
+  ].join("\n\n");
   const parseUpdate = (raw: string) => {
     const cleaned = raw.trim().replace(/^\x60{3}(?:json)?\s*/i, "").replace(/\s*\x60{3}$/i, "");
     const start = cleaned.indexOf("{");
@@ -354,19 +354,22 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     if (start < 0 || end <= start) throw new Error("State agent did not return a JSON object.");
     return parseStoryStateUpdate(JSON.parse(cleaned.slice(start, end + 1)) as unknown, chapter);
   };
+  const validateStateUpdate = (output: string) => parseUpdate(output);
+  let stateText = "";
   let update: ReturnType<typeof parseStoryStateUpdate>;
   try {
-    update = parseUpdate(stateText);
+    stateText = await cachedCall("state-update", "07-state-update-raw.json", "state", [statePrompt], validateStateUpdate);
+    update = validateStateUpdate(stateText);
   } catch (firstError) {
     try {
-      const retryText = await cachedCall("state-update-retry", "07-state-update-retry-raw.json", "state", [
+      stateText = await cachedCall("state-update-retry", "07-state-update-retry-raw.json", "state", [
         "上一次状态提取未通过 JSON 或 schema 校验：" + String(firstError),
         "上一次输出：", stateText,
         "请重新根据旧状态和下面的最终章节全文提取，只输出符合既定 JSON schema 的对象；continuityNotes 必须返回完整的当前有效备注数组；不要添加 Markdown、解释或 schema 外字段。",
         "旧状态：", JSON.stringify(state, null, 2),
         "最终章节全文：", chapter
-      ]);
-      update = parseUpdate(retryText);
+      ], validateStateUpdate);
+      update = validateStateUpdate(stateText);
     } catch (retryError) {
       await saveStage(input.outputDir, "07-state-update-error.txt", "First attempt: " + String(firstError) + "\nRetry: " + String(retryError) + "\n\n" + stateText);
       throw new Error("Chapter was generated, but story-state extraction failed twice. See 07-state-update-error.txt; do not start the next chapter.");
