@@ -65,7 +65,7 @@ npm run dev -- analyze-world --world conghuoniao --phase collect   # 校验并�
 
 ## 5. 多阶段章节写作
 
-`write` 会结合当前故事位置、未解决情节线和人物名单，从本地资料库检索相关片段；如果已经运行 `analyze`，也会把命中片段对应的人物、事件和关系标注一并交给写作流程。随后由主线剧情 Agent 与创意发散 Agent 并行提出方案，主编 Agent 选定章节蓝图；场景小说家生成正文，人物对话 Agent 修整对白，叙事声音 Agent 统一全章表达，连续性 Agent 审查，主编 Agent 终审。各 Agent 通过独立阶段文件交接，不并发改写同一份正文。终审后由状态管理员提取状态变更，默认自动写入 SQLite 和兼容快照 `story-state.json`。
+`write` 会结合当前故事位置、未解决情节线和人物名单，从本地资料库检索相关片段；如果已经运行 `analyze`，也会把命中片段对应的人物、事件和关系标注一并交给写作流程。随后由主线剧情 Agent 与创意发散 Agent 并行提出方案，主编 Agent 选定章节蓝图；场景小说家生成正文，人物对话 Agent 修整对白，叙事声音 Agent 统一全章表达，最终审查 Agent 对正文执行结构化连续性与剧情检查，主编按证据修复 blocker/major，最多两轮，每轮修复后重新审查；minor 和主观风格偏好只记录，不触发重写。各 Agent 通过独立阶段文件交接，不并发改写同一份正文。只有最终复查通过，状态管理员才提取并校验故事状态，默认自动写入 SQLite 和兼容快照 `story-state.json`。
 
 ```bash
 npm run dev -- write --world conghuoniao --mode continuation \
@@ -74,6 +74,13 @@ npm run dev -- write --world conghuoniao --mode continuation \
   --context ./private/continuity-summary.md \
   --retrieval-limit 6 \
   --max-words 3500
+
+# 运行中断后，使用原目录恢复；已完成且输入未变化的阶段会直接复用
+npm run dev -- write --world conghuoniao --mode continuation \\
+  --brief "从上一章结尾继续，展开一条新的调查线" \\
+  --source ./private/authorized-excerpt.md \\
+  --context ./private/continuity-summary.md \\
+  --resume-dir .output/conghuoniao/<原 run-id>
 ```
 
 每次运行生成：
@@ -82,8 +89,8 @@ npm run dev -- write --world conghuoniao --mode continuation \
 - `03-chapter-plan.md`：主编确定的章节蓝图
 - `04-scene-draft.md`、`05-dialogue-edited.md`、`06-voice-edited.md`：正文、对白修订和叙事声音统一
 - `07-continuity-review.md`：连续性审查
-- `chapter.md`：终审后的章节
-- `08-state-update.json`：合并后的下一章状态（默认已自动持久化）
+- `chapter.md`：最终复查通过后的章节
+- `08-state-update.json`：合并后的下一章状态（默认已自动持久化）\n- `07-review-round-*.json`、`09-quality-summary.json`：结构化复查结果和自动修复轮数
 
 章节生成成功后，状态管理员会提取人物、事件、正史事实和情节线变化，并自动写入 SQLite 权威状态及兼容 JSON 快照，供下一章直接使用。只有模型对照、盲测等需要候选互相隔离的场景才传 `--no-apply-state`；普通续写不要使用该参数。状态提取或持久化失败会使本次命令失败，不能把状态未更新的章节当作可继续写作的成功结果。`continuation` 模式的 `--source` 必须是你提供或有权使用的文本，本地 `private/` 不入库。
 
@@ -100,7 +107,7 @@ npm run dev -- write-long --world conghuoniao --mode continuation \
   --max-words 10000 --scenes 8 --retrieval-limit 4 --timeout-ms 180000
 ```
 
-流程：一次生成 N 场蓝图（`01-scene-blueprint.md`，必须有连续且唯一的 `## 场景 1..N` 标题；格式不合格自动要求主编修正一次，仍不合格才停止；不会把整份蓝图重复当成每场）→ 按场景蓝图检索相关原文（`00-scene-XX-retrieval.md`）→ 逐场成文（`02-scene-XX.md`，字数不足自动补写一次，场间传入上一场较完整的结尾上下文）→ 拼接初稿（`03-draft.md`）→ 分两批连续性审查（`04-continuity-review.md`）→ 逐场对白与文风修订（`05-polish-XX.md`）→ `chapter.md`、`06-rhythm-metrics.json` 与状态更新 `07-state-update.json`。状态默认自动写回 SQLite 和兼容快照；状态提取或保存失败会让命令失败，避免下一章读取陈旧状态。仅隔离实验使用 `--no-apply-state`。各阶段产物全部落盘，可逐场复核或重跑。
+流程：生成 N 场蓝图（格式错误自动修正一次）→ 按场检索 → 逐场成文与必要补写 → 分批审查 → 逐场对白/文风修订 → 全章跨场终审 → 对 blocker/major 定位到受影响场景并最多自动修复两轮，每轮重新复查 → 最终章节与节奏指标 → 从最终完整正文提取并校验状态 → SQLite 和 JSON 自动持久化。最终复查未通过或状态提取/保存失败时命令失败，不会提交未通过章节的故事状态。仅隔离实验使用 `--no-apply-state`。
 
 文风复核见 `analysis/conghuoniao/style-rhythm.md`：原书抽样平均句长 22 字、长句 25.3%、超长句 4.7%，而成稿 `chapter-001.md` 平均 14.7 字、长句 8%、超长句 0%。量化观察项会随成文与修订提示提供参考；`06-rhythm-metrics.json` 用同一口径统计成稿，偏离用于定位节奏问题，不会单独触发机械回滚或强制改写。
 
@@ -169,7 +176,7 @@ npm run dev -- regress --world conghuoniao --chapter 13 \
 - 文本抽取按片段进行，带独立证据审查、来源哈希/章节偏移、显式别名注册表和有证据门槛的共指解析；人物状态时间序列和伏笔生命周期分析仍未实现。全量 `analyze` 涉及 2,594 次模型调用，尚未执行，`annotations.json` 为空。
 - `analysis/build-corpus-index.mjs` 只做确定性结构解析，不调用模型；卷边界由章号重置判定，作者单章与卷末总结单独记录，不做语义归并。
 - 导入器支持 TXT/Markdown；EPUB、PDF、OCR 和网页采集不在当前范围。
-- 多 Agent 通过独立模型调用协作；主线规划与创意发散并行，其余阶段按依赖顺序执行。当前没有持久化 Agent session，中断后不会自动从写作步骤恢复。
+- 多 Agent 通过独立模型调用协作；主线规划与创意发散并行，其余阶段按依赖顺序执行。Agent SDK session 不持久化，但每个模型阶段有 SHA-256 输入指纹、输出哈希和原子 checkpoint。中断后使用 `--resume-dir` 指向原 `.output/<world>/<run-id>`（长章节为 `long-<run-id>`）恢复；只复用 prompt、模型与阶段配置完全一致且输出哈希未变化的阶段。运行目录保存初始故事状态快照，避免数据库提交后中断造成重复累加。
 - 状态提取仍从模型返回的文本里解析 JSON；参考项目用的 `outputFormat: json_schema` 与 StructuredOutput 工具在 `deepseek-v4.1-flash` 上尚未验证支持，暂不启用。
 - 故事状态采用 JSON 文件，适合单机原型；人物记录区分相对稳定的 `profile`（性格底色、价值观、内在矛盾、语言习惯、行为边界与弧光）和随剧情变化的当前状态（位置、知识、目标、关系等）。状态合并按人物/事件/情节线 ID 更新快照，不再把旧目标、旧关系无限累加。暂不支持并发写作或多人协作。
 - 私有原文 `original.txt` 与 `private/` 留在本地，不提交到 Git。导入索引、抽取标注与故事状态随代码提交；`library/index.json` 保存全文切片，公开仓库需自行确认授权。
