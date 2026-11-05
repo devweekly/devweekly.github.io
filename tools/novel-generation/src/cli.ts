@@ -42,9 +42,11 @@ async function main(): Promise<void> {
     const runId = new Date().toISOString().replace(/[:.]/g, "-");
     const outputDir = resolve(".output", worldId, runId);
     const statePath = resolve("worlds", worldId, "story-state.json");
-    if (!sourceText && arg("--mode") === "continuation") throw new Error("Continuation mode requires --source.");
+    const mode = (arg("--mode") ?? (sourceText ? "continuation" : "derivative")) as GenerationMode;
+    if (mode !== "derivative" && mode !== "continuation") throw new Error("Unsupported mode: " + mode);
+    if (mode === "continuation" && !sourceText) throw new Error("Continuation mode requires --source with text you provide or are authorized to use.");
     const chapter = await writeChapter({
-      worldId, brief, worldBible, sourceText, contextText, model, maxWords,
+      worldId, mode, brief, worldBible, sourceText, contextText, model, maxWords,
       outputDir, statePath
     });
     console.log("\nSaved chapter: " + resolve(outputDir, "chapter.md"));
