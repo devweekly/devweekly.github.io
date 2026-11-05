@@ -128,7 +128,8 @@ export async function loadStoryState(path: string, worldId: string): Promise<Sto
 export async function saveStoryState(path: string, state: StoryState): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
   const temporaryPath = path + ".tmp";
-  const validated = validateStoryState(state);\n  const next = { ...validated, updatedAt: new Date().toISOString() };
+  const validated = validateStoryState(state);
+  const next = { ...validated, updatedAt: new Date().toISOString() };
   syncStoryState(dirname(path), next);
   await writeFile(temporaryPath, JSON.stringify(next, null, 2) + "\n", "utf8");
   await rename(temporaryPath, path);
