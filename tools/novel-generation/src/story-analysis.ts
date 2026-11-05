@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { readLibraryChunks, saveStoryAnalysis, type StoryAnalysisSnapshot } from "./database.js";
-import type { LibraryChunk } from "./library.js";
+import { saveStoryAnalysis, type StoryAnalysisSnapshot } from "./database.js";
+import { loadLibraryChunks, type LibraryChunk } from "./library.js";
 import { runAgentText } from "./generate.js";
 import { resolveAgentModel } from "./agent-runtime.js";
 import { z } from "zod";
@@ -188,7 +188,7 @@ export async function analyzeStoryCorpus(
   options: { model?: string; timeoutMs?: number; worldDir?: string } = {}
 ): Promise<StoryAnalysisSnapshot> {
   const worldDir = options.worldDir ?? `worlds/${worldId}`;
-  const chunks = readLibraryChunks(worldDir, worldId);
+  const chunks = await loadLibraryChunks(join(worldDir, "library"), worldId);
   if (!chunks.length) throw new Error("No indexed text found. Run ingest before analyze-story.");
   const sourceHash = createHash("sha256")
     .update("story-analysis-v1\nmodel=" + resolveAgentModel(options.model).model + "\n" + chunks.map(chunk => chunk.id + ":" + (chunk.sourceHash ?? "") + ":" + chunk.text).join("\n"))
