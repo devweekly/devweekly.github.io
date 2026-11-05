@@ -10,7 +10,9 @@
 
 ## 使用边界
 
-`original.txt`、导入索引、抽取标注和故事状态都留在本地。项目 `.gitignore` 已包含 `original.txt`、`worlds/*/library/`、`worlds/*/story-state.json`、`private/` 和 `.output/`，避免把小说全文或生成状态提交到版本库。
+`original.txt` 与 `private/` 留在本地，不入库。`worlds/*/library/` 下的导入索引与抽取标注、`worlds/*/story-state.json` 随代码提交，其他机器检出后无需重新导入即可检索与续写。项目 `.gitignore` 目前只包含 `original.txt`、`private/`、`node_modules/`、`dist/`、`.output/` 和 `.env`。
+
+`library/index.json` 保存的是按 1200 字切分、带 160 字重叠的全文片段，实质上是原文的重组副本。把它提交到版本库等同于把小说正文纳入版本库；若仓库公开，需确认所持文本的授权覆盖这种存储与分发。授权范围不足时，把 `worlds/*/library/` 加回忽略规则，只提交 `chapter-index.json` 等元数据。
 
 交付的设定文档不复制章节正文。证据以 `L####` 行号定位，必要时保留极短引文（短语或单个句子），用于核对规则表述，不构成可替代阅读的摘录。新写的世界、规则和人物一律标注为项目原创。
 

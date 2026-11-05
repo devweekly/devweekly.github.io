@@ -2,7 +2,5 @@ node_modules/
 dist/
 .output/
 .env
-worlds/*/story-state.json
-worlds/*/library/
 private/
 original.txt

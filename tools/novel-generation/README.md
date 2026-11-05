@@ -4,7 +4,7 @@
 
 ## 1. 导入小说资料
 
-只导入你合法取得且有权使用的 TXT 或 Markdown 文本。导入内容和索引保存在本地 `worlds/<world>/library/`，已加入 Git 忽略规则，不会随代码提交。
+只导入你合法取得且有权使用的 TXT 或 Markdown 文本。导入索引保存在 `worlds/<world>/library/`，故事状态保存在 `worlds/<world>/story-state.json`，两者随代码提交，检出后无需重新导入即可检索与续写。原始文件 `original.txt` 和 `private/` 目录不入库。`library/index.json` 含带重叠的全文片段，提交到公开仓库前需确认授权范围。
 
 ```bash
 cd tools/novel-generation
@@ -88,7 +88,7 @@ npm run dev -- generate --world conghuoniao --mode derivative \
 - 导入器支持 TXT/Markdown；EPUB、PDF、OCR 和网页采集不在当前范围。
 - 多 Agent 通过独立模型调用协作；主线规划与创意发散并行，其余阶段按依赖顺序执行。当前没有持久化 Agent session，中断后不会自动从写作步骤恢复。
 - 故事状态采用 JSON 文件，适合单机原型；暂不支持并发写作或多人协作。
-- 私有原文、导入索引、抽取标注和生成状态均留在本地。不要将未经授权的小说全文提交到 Git。
+- 私有原文 `original.txt` 与 `private/` 留在本地，不提交到 Git。导入索引、抽取标注与故事状态随代码提交；`library/index.json` 保存全文切片，公开仓库需自行确认授权。
 
 ## 目录
 

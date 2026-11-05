@@ -27,7 +27,7 @@
 | `worlds/conghuoniao/story-state.json` | 写作状态初始化，止于卷 17 未完结处 |
 | `sources/local-corpus-analysis.md` | 语料来源、切分方法、证据等级与使用边界 |
 
-`original.txt` 已加入 `.gitignore`，与 `worlds/*/library/`、`worlds/*/story-state.json`、`private/` 一起留在本地，不进入版本库。表中的 `story-state.json` 因此是本机工作文件，不是随代码交付的内容。
+`original.txt` 与 `private/` 已加入 `.gitignore`，不进入版本库。导入索引 `worlds/conghuoniao/library/index.json` 与 `story-state.json` 随代码提交，其他机器检出后无需重新导入即可检索与续写；索引含全文片段，公开仓库需确认授权。
 
 ## 工具链状态
 
