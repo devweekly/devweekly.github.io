@@ -281,7 +281,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     ]);
     polished.push(text.trim());
     await saveStage(input.outputDir, `05-polish-${String(index + 1).padStart(2, "0")}.md`, text);
-    console.error(`[write-long] 修订 ${index + 1}/${input.scenes} · ${chineseChars(text)} 汉字`);
+    console.error(`[write-long] 修订 ${index + 1}/${sceneTexts.length} · ${chineseChars(text)} 汉字`);
   }
 
   const chapterTitle = "# " + (input.mode === "continuation" ? "续写章节" : "衍生章节") + "\n\n";
@@ -289,7 +289,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   const reviewHistory: string[] = [];
   const reviewed = await reviewAndRepair({
     initialChapter: buildChapter(),
-    sceneCount: input.scenes,
+    sceneCount: sceneTexts.length,
     maxRepairRounds: 2,
     review: (candidate, correction) => {
       const round = reviewHistory.length + 1;
