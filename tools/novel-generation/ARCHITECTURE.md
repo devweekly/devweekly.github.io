@@ -198,7 +198,7 @@
 
 每项附带来源 chunk ID、文件和章节。原文呈现、人物推断和创作可能性必须分开；不确定性可以保留，不要求所有人物都有弧光，不要求所有细节都是伏笔，也不把任何可能性写成必须兑现的剧情合同。
 
-批次全部成功后才通过 `saveStoryAnalysis` 一次性替换 SQLite 中的完整分析快照。失败时不覆盖上一次完整快照。该快照是可重建的创作参考，不是正史，也不直接修改 `story_state` 中的角色状态或情节状态。运行命令：
+每批结果缓存到 `.output/<world>/story-analysis/<source-hash>/`，按语料内容和模型生成指纹，中断后重新运行可复用已完成批次。全部批次成功后才通过 `saveStoryAnalysis` 一次性替换 SQLite 中的完整分析快照。失败时不覆盖上一次完整快照。该快照是可重建的创作参考，不是正史，也不直接修改 `story_state` 中的角色状态或情节状态。运行命令：
 
 ```bash
 npm run dev -- analyze-story --world conghuoniao
