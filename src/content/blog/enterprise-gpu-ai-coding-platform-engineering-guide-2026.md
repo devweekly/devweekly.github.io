@@ -529,9 +529,9 @@ Coding Agent 可以读写代码、运行 shell、安装依赖、访问网络和�
 
 这张图是逻辑架构，不代表每个方框都必须部署成独立微服务。初期可以将 Router 和 Gateway 合并为一个可独立扩展的服务，但 Agent Runtime、GPU 推理进程和不可信代码执行环境应保持明确的安全边界。
 
-## 8. 1000 名开发者的容量规划
+## 8. 2000 名开发者的容量规划
 
-“1000 个账号”不是容量指标。至少要区分：
+“2000 个账号”不是容量指标。至少要区分：
 
 - Registered Developers：注册开发者数量；
 - Daily Active Developers：日活开发者；
@@ -543,7 +543,7 @@ Coding Agent 可以读写代码、运行 shell、安装依赖、访问网络和�
 - Task Duration：Agent 任务持续时间；
 - Retry / Tool Call Distribution：重试和工具调用分布。
 
-一个开发者可能只偶尔问一个问题，也可能同时运行多个 Agent。一个 Agent Session 也不等于一个模型请求：工具调用结束后可能发起下一轮请求。因此不能用“1000 人 ÷ 每张卡能服务多少用户”这种方式计算 GPU 数量。
+一个开发者可能只偶尔问一个问题，也可能同时运行多个 Agent。一个 Agent Session 也不等于一个模型请求：工具调用结束后可能发起下一轮请求。因此不能用“2000 人 ÷ 每张卡能服务多少用户”这种方式计算 GPU 数量。
 
 ### 8.1 先建立负载模型
 
@@ -848,7 +848,7 @@ DeepInfer 不等于完整在线推理平台；DeepEP 也不是 Model Server。�
 | 量化 | [NVIDIA Model Optimizer](https://github.com/NVIDIA/Model-Optimizer)、[llm-compressor](https://github.com/vllm-project/llm-compressor)、[bitsandbytes](https://github.com/bitsandbytes-foundation/bitsandbytes) | FP8 / FP4、权重量化与模型压缩 | 同时评估任务质量、显存、吞吐和目标 Runtime 的格式支持 |
 | 运维与测试 | [GPU Operator](https://github.com/NVIDIA/gpu-operator)、[DCGM](https://github.com/NVIDIA/DCGM)、[Prometheus](https://github.com/prometheus/prometheus)、[Grafana](https://github.com/grafana/grafana) | GPU 节点管理、健康监控和指标可视化 | 纳入既有 Kubernetes、Observability 和 SRE 流程，避免再建一套孤立平台 |
 
-不要把 NVIDIA Triton Inference Server 与 Triton Language 混淆：前者是模型 Serving Server，后者是 GPU Kernel 编程语言。对约 1000 名开发者的初期平台，通常只需要一个主推理引擎、一个 Gateway / Router、Kubernetes GPU 管理和统一监控；Dynamo、llm-d、独立 KV Cache 或自定义 Kernel 应由明确的性能瓶颈驱动，而不是一次性全部引入。
+不要把 NVIDIA Triton Inference Server 与 Triton Language 混淆：前者是模型 Serving Server，后者是 GPU Kernel 编程语言。对 2000 名开发者的初期平台，通常只需要一个主推理引擎、一个 Gateway / Router、Kubernetes GPU 管理和统一监控；Dynamo、llm-d、独立 KV Cache 或自定义 Kernel 应由明确的性能瓶颈驱动，而不是一次性全部引入。
 
 ### 19.1 推荐的评估顺序
 
@@ -1132,7 +1132,7 @@ Superhuman（原 Grammarly）曾经运行自建 vLLM Serving Stack 和内部模�
 - **模型升级：** 权重、Tokenizer、Runtime、Kernel 和配置要作为一个 Release 版本进行质量、性能和回滚验证。
 - **服务隔离：** 在线 Coding Agent、离线评测、训练和批量任务应设置不同优先级与资源池，避免相互挤占。
 
-### 20.20 经济性与 1000 名开发者平台的部署建议
+### 20.20 经济性与 2000 名开发者平台的部署建议
 
 ![企业 AI Coding 平台初期推荐部署架构](/diagrams/enterprise-gpu-ai-coding-platform/04-recommended-platform-architecture.svg)
 
@@ -1609,7 +1609,7 @@ Workbench 控制面不能依赖 GPU 节点存活。GPU Pool 故障时，Session�
 
 建议选择一个主云承载 Workbench 控制面、隔离执行和主要 GPU 推理池。AWS 与 Azure 都可以做完整方案，但不建议把同一个在线模型集群跨 AWS/Azure 拉成 RDMA 集群；跨云时延、数据传输、故障域、身份体系和运维复杂度会抵消收益。
 
-架构图：[2000 名开发者 Workbench：AWS / Azure GPU 部署架构](../diagrams/enterprise-gpu-ai-coding-platform/05-2000-developer-aws-azure-workbench.html)（[SVG](../diagrams/enterprise-gpu-ai-coding-platform/05-2000-developer-aws-azure-workbench.svg)）。
+架构图：[2000 名开发者 Workbench：AWS / Azure GPU 部署架构](/diagrams/enterprise-gpu-ai-coding-platform/05-2000-developer-aws-azure-workbench.html)（[SVG](/diagrams/enterprise-gpu-ai-coding-platform/05-2000-developer-aws-azure-workbench.svg)）。
 
 AWS 方案中，GPU Serving 使用 EC2 P5en/P6，模型制品存储在 S3，镜像与部署由 ECR/EKS 管理，托管模型可经 Bedrock 访问。Azure 方案中，GPU Serving 使用 ND H200 / ND GB200 VM，制品存储在 Blob Storage，部署由 AKS 管理，托管模型由 Microsoft Foundry 提供。统一 Model Gateway 屏蔽模型和云差异，但保留各自私网 Endpoint、身份和审计实现。
 
