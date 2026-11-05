@@ -65,7 +65,7 @@ npm run dev -- analyze-world --world conghuoniao --phase collect   # 校验并�
 
 ## 5. 多阶段章节写作
 
-`write` 会结合当前故事位置、未解决情节线和人物名单，从本地资料库检索相关片段；如果已经运行 `analyze`，也会把命中片段对应的人物、事件和关系标注一并交给写作流程。随后由主线剧情 Agent 与创意发散 Agent 并行提出方案，主编 Agent 选定章节蓝图；场景小说家生成正文，人物对话 Agent 修整对白，叙事声音 Agent 统一全章表达，连续性 Agent 审查，主编 Agent 终审。各 Agent 通过独立阶段文件交接，不并发改写同一份正文。终审后另由状态管理员提出状态变更，默认只写入本次运行的 `08-state-update.json`，不覆盖 `story-state.json`。
+`write` 会结合当前故事位置、未解决情节线和人物名单，从本地资料库检索相关片段；如果已经运行 `analyze`，也会把命中片段对应的人物、事件和关系标注一并交给写作流程。随后由主线剧情 Agent 与创意发散 Agent 并行提出方案，主编 Agent 选定章节蓝图；场景小说家生成正文，人物对话 Agent 修整对白，叙事声音 Agent 统一全章表达，连续性 Agent 审查，主编 Agent 终审。各 Agent 通过独立阶段文件交接，不并发改写同一份正文。终审后由状态管理员提取状态变更，默认自动写入 SQLite 和兼容快照 `story-state.json`。
 
 ```bash
 npm run dev -- write --world conghuoniao --mode continuation \
@@ -73,8 +73,7 @@ npm run dev -- write --world conghuoniao --mode continuation \
   --source ./private/authorized-excerpt.md \
   --context ./private/continuity-summary.md \
   --retrieval-limit 6 \
-  --max-words 3500 \
-
+  --max-words 3500
 ```
 
 每次运行生成：
@@ -84,11 +83,11 @@ npm run dev -- write --world conghuoniao --mode continuation \
 - `04-scene-draft.md`、`05-dialogue-edited.md`、`06-voice-edited.md`：正文、对白修订和叙事声音统一
 - `07-continuity-review.md`：连续性审查
 - `chapter.md`：终审后的章节
-- `08-state-update.json`：状态变更提案（合并后的完整状态）
+- `08-state-update.json`：合并后的下一章状态（默认已自动持久化）
 
 章节生成成功后，状态管理员会提取人物、事件、正史事实和情节线变化，并自动写入 SQLite 权威状态及兼容 JSON 快照，供下一章直接使用。只有模型对照、盲测等需要候选互相隔离的场景才传 `--no-apply-state`；普通续写不要使用该参数。状态提取或持久化失败会使本次命令失败，不能把状态未更新的章节当作可继续写作的成功结果。`continuation` 模式的 `--source` 必须是你提供或有权使用的文本，本地 `private/` 不入库。
 
-已跑通的续写成稿归档在 `worlds/conghuoniao/chapters/`，含正文、连续性审查和状态提案；该目录随代码提交，阶段文件仍留在 `.output/<world>/<run-id>/`。
+已跑通的续写成稿归档在 `worlds/conghuoniao/chapters/`，含正文、连续性审查和状态更新记录；该目录随代码提交，阶段文件仍留在 `.output/<world>/<run-id>/`。
 
 ### 万字章节：write-long
 
