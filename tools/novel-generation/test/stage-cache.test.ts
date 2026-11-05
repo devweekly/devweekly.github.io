@@ -71,3 +71,26 @@ test("resume always reads the immutable initial state after a previous attempt c
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+
+test("semantically invalid cached output is regenerated instead of reused", async () => {
+  const dir = await mkdtemp(resolve(tmpdir(), "novel-stage-cache-validation-"));
+  try {
+    let calls = 0;
+    const run = () => runCachedStage({
+      dir, key: "review", outputFile: "review.json", fingerprint: "same-input",
+      execute: async () => { calls++; return JSON.stringify({ status: "pass", issues: [] }); },
+      validate: output => {
+        const value = JSON.parse(output) as { status?: string; issues?: unknown[] };
+        if (value.status !== "pass" || !Array.isArray(value.issues)) throw new Error("invalid review");
+      }
+    });
+    await run();
+    await writeFile(resolve(dir, "review.json"), JSON.stringify({ status: "needs_repair", issues: [] }) + "\\n", "utf8");
+    // The manifest hash no longer matches, so the stage must execute again.
+    await run();
+    assert.equal(calls, 2);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
