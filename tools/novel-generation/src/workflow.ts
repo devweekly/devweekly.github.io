@@ -82,15 +82,12 @@ async function saveStage(dir: string, name: string, content: string): Promise<vo
   await writeFile(resolve(dir, name), content.trim() + "\n", "utf8");
 }
 
-/** 节奏要求同时交给成文、文风修订和终审，避免后两个阶段把长句又改回短句。 */
+/** 文风数据仅作为弱参考，不形成写作配额或自动修订目标。 */
 export const RHYTHM_RULE = [
-  "节奏参考基线（按句末标点切句、只计汉字；短句 ≤10 字、长句 ≥31 字、超长句 ≥60 字）。这些数字来自语料抽样，只用于提醒节奏倾向，不是每章、每场必须完成的配额。",
-  "交锋与审讯通常允许更长的句子和较高的长句比例；铺陈与制度说明通常比动作场景舒展。先判断当前场景功能，再决定句长，不为了命中平均值硬加长句或删短句。",
-  "段落：段落应承担一个叙事拍点；心理反应可以独立成段，也可以融入动作。不要为命中段均句数或单句段落比例拆分、合并段落。",
-  "逗号与标点：标点服务于语气、因果和阅读节奏；问号、感叹号、破折号按人物情绪和场景需要使用，不按每千字配额补标点。",
-  "长句：在推理、交涉、观察和因果链复杂的场景中允许有信息密度高的长句；动作转折和情绪落点可以用短句。两者都必须有场景功能。",
-  "对白：关键人物需要表达复杂立场时允许较长连续对白；寡言、戒备、失态或关系紧张时，短句和停顿同样合理。避免机械要求每个人物都说长段自述。",
-  "回声式确认和重复句式应结合人物关系与对话目的判断；统计指标偏离只能触发检查，不能单独触发自动改写。"
+  "写作首先服务于人物、情绪、场景和阅读体验。句子可以长、可以短，段落可以舒展、可以急促，按当前叙事需要自然决定。",
+  "语料统计只是观察到的倾向，不是目标值，不需要刻意接近；不得为调整句长、段落、对白比例或标点而改动原本有感染力的表达。",
+  "不要把叙事写成设定说明、剧情摘要或分析报告。让信息从人物行动、交谈、误解、观察和后果中自然出现。",
+  "文风修订的任务是提升自然度、画面感、情绪和人物声音；如果原文已经有效，不要为了显示编辑工作而改写。"
 ].join("\n");
 
 export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
@@ -116,7 +113,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     input.retrievedContext ? "本地资料库证据（用于核实事实，不得整段复制）：\n" + input.retrievedContext : "",
     input.sourceText ? "用户提供且有权使用的续写材料：\n" + input.sourceText : "",
     input.styleProfile ? "本项目叙事风格约束（仅使用抽象写作特征，不模仿特定作者的独特表达）：\n" + input.styleProfile : "",
-    input.styleRhythm ? "叙事节奏复核（量化基线与长短句功能）：\n" + input.styleRhythm : "",
+    input.styleRhythm ? "可选的语料节奏观察（只帮助理解风格倾向，不是配额或验收要求）：\n" + input.styleRhythm : "",
     input.mode === "continuation" ? "创作模式：续写。严格承接用户提供的合法文本和当前故事状态。" : "创作模式：原创衍生。不得把项目原创内容伪装成原著事实。",
     "本次创作任务：", input.brief
   ].filter(Boolean).join("\n\n");
