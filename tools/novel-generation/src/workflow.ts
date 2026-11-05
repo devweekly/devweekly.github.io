@@ -8,6 +8,7 @@ export interface WriteWorkflowInput {
   mode: GenerationMode;
   brief: string;
   worldBible: string;
+  styleProfile?: string;
   sourceText?: string;
   contextText?: string;
   retrievedContext?: string;
@@ -17,9 +18,8 @@ export interface WriteWorkflowInput {
   statePath: string;
 }
 
-
 function extractJson(text: string): unknown {
-  const cleaned = text.trim().replace(/^\x60{3}(?:json)?\s*/i, "").replace(/\s*\x60{3}$/i, "");
+  const cleaned = text.trim().replace(/^`{3}(?:json)?\s*/i, "").replace(/\s*`{3}$/i, "");
   const start = cleaned.indexOf("{");
   const end = cleaned.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error("Model did not return a JSON object for story-state update.");
@@ -36,14 +36,10 @@ function mergeState(current: StoryState, update: Partial<StoryState>): StoryStat
         const merged = { ...(previous as unknown as Record<string, unknown>), ...(item as unknown as Record<string, unknown>) };
         for (const [field, value] of Object.entries(item as unknown as Record<string, unknown>)) {
           const priorValue = (previous as unknown as Record<string, unknown>)[field];
-          if (Array.isArray(value)) {
-            merged[field] = [...new Set([...(Array.isArray(priorValue) ? priorValue : []), ...value])];
-          }
+          if (Array.isArray(value)) merged[field] = [...new Set([...(Array.isArray(priorValue) ? priorValue : []), ...value])];
         }
         map.set(id, merged as unknown as T);
-      } else {
-        map.set(id, item);
-      }
+      } else map.set(id, item);
     }
     return [...map.values()];
   };
@@ -59,51 +55,88 @@ function mergeState(current: StoryState, update: Partial<StoryState>): StoryStat
   };
 }
 
+async function saveStage(dir: string, name: string, content: string): Promise<void> {
+  await writeFile(resolve(dir, name), content.trim() + "\n", "utf8");
+}
+
 export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   const state = await loadStoryState(input.statePath, input.worldId);
   await mkdir(input.outputDir, { recursive: true });
-  if (input.retrievedContext) await writeFile(resolve(input.outputDir, "00-retrieval.md"), input.retrievedContext + "\n", "utf8");
+  if (input.retrievedContext) await saveStage(input.outputDir, "00-retrieval.md", input.retrievedContext);
 
   const common = [
     "世界设定：", input.worldBible,
     "当前故事状态（已有记录优先；不得擅自改写已确认事实）：", JSON.stringify(state, null, 2),
     input.contextText ? "用户补充的前文摘要：\n" + input.contextText : "",
-    input.retrievedContext ? "从本地小说资料库检索到的相关原文片段（仅作为事实证据，不得整段复制）：\n" + input.retrievedContext : "",
+    input.retrievedContext ? "本地资料库证据（用于核实事实，不得整段复制）：\n" + input.retrievedContext : "",
     input.sourceText ? "用户提供且有权使用的续写材料：\n" + input.sourceText : "",
+    input.styleProfile ? "本项目叙事风格约束（仅使用抽象写作特征，不模仿特定作者的独特表达）：\n" + input.styleProfile : "",
     input.mode === "continuation" ? "创作模式：续写。严格承接用户提供的合法文本和当前故事状态。" : "创作模式：原创衍生。不得把项目原创内容伪装成原著事实。",
     "本次创作任务：", input.brief
   ].filter(Boolean).join("\n\n");
 
-  const plan = await runAgentText([
-    "你是长篇小说的故事策划编辑。请输出可直接执行的章节计划，而不是文学评论。",
-    common,
-    "规划应明确：本章目标、场景顺序、每场景的视角/人物/地点/冲突/信息揭示/结果、人物选择及代价、与既有情节线的关系、结尾状态。不得为了制造反转破坏已知事实。"
-  ].join("\n\n"), input.model);
-  await writeFile(resolve(input.outputDir, "01-plan.md"), plan + "\n", "utf8");
+  // The plot architect and creative room work independently. The editor later
+  // decides which ideas survive; brainstorming never becomes canon by itself.
+  const [plotPlan, ideas] = await Promise.all([
+    runAgentText([
+      "角色：主线剧情架构师。负责本章主线推进和长篇结构，不写正文。",
+      common,
+      "输出可执行章节方案：本章主线目标、因果链、场景顺序、关键选择及代价、与长期主线/伏笔的关系、结尾状态。明确哪些事实不可改变。"
+    ].join("\n\n"), input.model),
+    runAgentText([
+      "角色：创意发散 Agent。只负责提出有戏剧价值的备选创意，不负责决定正史。",
+      common,
+      "提出最多 5 个不同方向的情节/冲突/信息揭示方案。每项说明新鲜点、人物动机、代价、与现有设定的冲突风险。至少给出一个低风险方案和一个高风险方案。不要写正文，不要擅自把建议当作已发生事实。"
+    ].join("\n\n"), input.model)
+  ]);
+  await saveStage(input.outputDir, "01-main-plot.md", plotPlan);
+  await saveStage(input.outputDir, "02-creative-options.md", ideas);
 
-  const draft = await runAgentText([
-    "你是中文类型小说创作者。根据章节计划写出完整正文，不要输出分析或计划。",
-    common, "章节计划：", plan,
-    "目标篇幅约 " + input.maxWords + " 个中文字符。以完整场景、人物行动、对话和因果推进为准。避免设定说明堆积和重复表达。"
+  const plan = await runAgentText([
+    "角色：主编 Agent。整合主线架构师方案和创意发散建议，决定本章唯一执行方案。",
+    common,
+    "主线方案：", plotPlan, "创意备选：", ideas,
+    "只采纳不破坏人物动机、既有事实和长期主线的创意。输出最终章节蓝图，逐场列出视角、人物、地点、目标、阻力、行动、信息变化和场景结果；区分确定事实与本章新创作。"
   ].join("\n\n"), input.model);
-  await writeFile(resolve(input.outputDir, "02-draft.md"), draft + "\n", "utf8");
+  await saveStage(input.outputDir, "03-chapter-plan.md", plan);
+
+  const initialDraft = await runAgentText([
+    "角色：场景小说家。根据最终蓝图写完整章节正文，不输出分析。",
+    common, "最终章节蓝图：", plan,
+    "目标篇幅约 " + input.maxWords + " 个中文字符。通过场景、行动、选择和后果推进；不要用概述代替关键场景。"
+  ].join("\n\n"), input.model);
+  await saveStage(input.outputDir, "04-scene-draft.md", initialDraft);
+
+  const dialogueDraft = await runAgentText([
+    "角色：人物对话编辑。专门修整人物对白和对白相关动作，不改变剧情事实、场景顺序、人物决定和信息揭示。",
+    common, "章节蓝图：", plan, "当前正文：", initialDraft,
+    "检查每个人物的词汇、句长、表达习惯、身份关系、情绪和已知信息。删掉解释性过强、所有角色都像同一个人的对白；让潜台词通过停顿、回避、误解和行动体现。输出完整修订正文。"
+  ].join("\n\n"), input.model);
+  await saveStage(input.outputDir, "05-dialogue-edited.md", dialogueDraft);
+
+  const voiceDraft = await runAgentText([
+    "角色：叙事声音与文风编辑。只负责统一全章叙述声音，不负责改剧情。",
+    common, "章节蓝图：", plan, "当前正文：", dialogueDraft,
+    "统一叙述视角、时态、句长变化、段落节奏、叙述距离、动作/环境/心理描写比例和悬念节奏。保持中文自然、有变化，避免模板化排比、总结句、过度解释和重复修辞。不得复刻任何特定作者的独特句式或标志性表达。输出完整修订正文。"
+  ].join("\n\n"), input.model);
+  await saveStage(input.outputDir, "06-voice-edited.md", voiceDraft);
 
   const review = await runAgentText([
-    "你是严格的长篇小说责任编辑。只审查这份章节，不要重写。",
-    common, "章节计划：", plan, "章节正文：", draft,
-    "按以下维度给出具体问题及证据：连续性、人物动机、世界规则、因果、节奏、场景清晰度、对话自然度、情节推进、未兑现铺垫。区分确定错误与主观建议。最后给出必须修改项清单；没有问题则明确说明。"
+    "角色：连续性与剧情审查 Agent。只报告问题，不重写正文。",
+    common, "章节蓝图：", plan, "待审正文：", voiceDraft,
+    "检查：主线目标是否推进、人物动机/知识/能力是否越界、时间地点是否冲突、因果是否成立、伏笔是否误回收、对白是否泄露未知信息、场景是否有有效变化。每项给出原文证据、严重程度（blocker/major/minor）和最小修复建议。区分事实错误与个人偏好。"
   ].join("\n\n"), input.model);
-  await writeFile(resolve(input.outputDir, "03-review.md"), review + "\n", "utf8");
+  await saveStage(input.outputDir, "07-continuity-review.md", review);
 
   const chapter = await runAgentText([
-    "你是小说作者。根据审查意见修订正文，只输出最终小说正文。",
-    common, "原章节计划：", plan, "初稿：", draft, "编辑审查意见：", review,
-    "修订时优先解决事实冲突、人物行为不一致和因果断裂；不要为了满足意见而机械扩写。保持完整章节。"
+    "角色：主编终审 Agent。根据审查结果完成最终修订，只输出小说正文。",
+    common, "最终章节蓝图：", plan, "当前正文：", voiceDraft, "连续性审查：", review,
+    "必须修复 blocker 和有证据支持的 major 问题。不要机械接受主观建议，不要增加未经铺垫的设定或反转。保留已经成立的对白和叙事节奏。"
   ].join("\n\n"), input.model);
-  await writeFile(resolve(input.outputDir, "chapter.md"), chapter + "\n", "utf8");
+  await saveStage(input.outputDir, "chapter.md", chapter);
 
   const stateText = await runAgentText([
-    "你是小说连续性资料管理员。根据旧状态和最终章节，提取本章造成的状态变化。",
+    "角色：小说连续性资料管理员。根据旧状态和最终章节提取本章状态变化。",
     "只输出合法 JSON 对象，不要 Markdown 代码围栏。结构：",
     JSON.stringify({
       currentPosition: "string",
@@ -121,11 +154,10 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     const update = extractJson(stateText) as Partial<StoryState>;
     const nextState = mergeState(state, update);
     await saveStoryState(input.statePath, nextState);
-    await writeFile(resolve(input.outputDir, "04-state-update.json"), JSON.stringify(nextState, null, 2) + "\n", "utf8");
+    await saveStage(input.outputDir, "08-state-update.json", JSON.stringify(nextState, null, 2));
   } catch (error) {
-    await writeFile(resolve(input.outputDir, "04-state-update-error.txt"), String(error) + "\n\n" + stateText, "utf8");
-    throw new Error("Chapter was generated, but story-state update failed. See 04-state-update-error.txt; do not start the next chapter until reconciled.");
+    await saveStage(input.outputDir, "08-state-update-error.txt", String(error) + "\n\n" + stateText);
+    throw new Error("Chapter was generated, but story-state update failed. See 08-state-update-error.txt; do not start the next chapter until reconciled.");
   }
-
   return chapter;
 }
