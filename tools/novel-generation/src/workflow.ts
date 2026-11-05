@@ -172,7 +172,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     maxRepairRounds: 2,
     review: (candidate, correction) => {
       const round = reviewHistory.length + 1;
-      return cachedCall("quality-review-" + round, "07-review-round-" + round + ".json", "review", [
+      return cachedCall("quality-review-" + round + (correction ? "-retry" : ""), "07-review-round-" + round + (correction ? "-retry" : "") + "-raw.txt", "review", [
         reviewPrompt({ context: common, blueprint: plan, chapter: candidate, correction })
       ]);
     },
