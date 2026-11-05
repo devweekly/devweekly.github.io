@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import { databaseStatus, readStoryAnalysis, saveStoryAnalysis } from "../src/database.js";
 import { groupAnalysisBatches } from "../src/story-analysis.js";
 
@@ -37,6 +38,25 @@ test("story analysis snapshot is persisted and replaced atomically as one databa
     assert.deepEqual(readStoryAnalysis(root, "test-world"), replacement);
     assert.equal(databaseStatus(root, "test-world").storyAnalysis, 1);
     assert.throws(() => saveStoryAnalysis(root, "other-world", snapshot), /world mismatch/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("version 1 world databases upgrade to include story analysis storage", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-story-analysis-migration-"));
+  try {
+    const worldDir = join(root, "world");
+    const { mkdir } = await import("node:fs/promises");
+    await mkdir(worldDir, { recursive: true });
+    const db = new DatabaseSync(join(worldDir, "novel.db"));
+    db.exec("CREATE TABLE world_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)");
+    db.prepare("INSERT INTO world_meta(key,value) VALUES('world_id',?)").run("test-world");
+    db.exec("PRAGMA user_version=1");
+    db.close();
+    const status = databaseStatus(worldDir, "test-world");
+    assert.equal(status.schemaVersion, 2);
+    assert.equal(status.storyAnalysis, 0);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
