@@ -1,4 +1,4 @@
-import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { readFile, mkdir, writeFile, rename } from "node:fs/promises";
 import { dirname } from "node:path";
 
 export interface StoryState {
@@ -40,5 +40,7 @@ export async function loadStoryState(path: string, worldId: string): Promise<Sto
 
 export async function saveStoryState(path: string, state: StoryState): Promise<void> {
   await mkdir(dirname(path), { recursive: true });
-  await writeFile(path, JSON.stringify({ ...state, updatedAt: new Date().toISOString() }, null, 2) + "\n", "utf8");
+  const temporaryPath = path + ".tmp";
+  await writeFile(temporaryPath, JSON.stringify({ ...state, updatedAt: new Date().toISOString() }, null, 2) + "\n", "utf8");
+  await rename(temporaryPath, path);
 }
