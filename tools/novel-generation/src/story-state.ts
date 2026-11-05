@@ -59,7 +59,7 @@ const StoryStateUpdateSchema = z.object({
     id: z.string().min(1), title: z.string(), status: z.enum(["open", "active", "resolved", "abandoned"]),
     lastUpdated: z.string(), notes: z.string()
   })).optional(),
-  continuityNotes: z.array(z.string()).optional()
+  continuityNotes: z.array(z.string())
 }).strict();
 
 export function parseStoryStateUpdate(value: unknown, chapter?: string): Partial<StoryState> {
