@@ -10,6 +10,7 @@
 cd tools/novel-generation
 npm install
 npm run typecheck
+npm test
 
 npm run dev -- ingest --world conghuoniao --input ./private/novel.txt
 # 也可以一次传入多个文件或目录
