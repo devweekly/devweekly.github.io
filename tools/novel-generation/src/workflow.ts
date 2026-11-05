@@ -82,7 +82,7 @@ export const RHYTHM_RULE = [
 ].join("\n");
 
 export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
-  const state = await loadRunStoryState(input.statePath, input.worldId, input.outputDir);
+  const state = await loadRunStoryState(input.statePath, input.worldId, input.outputDir, "write");
   const profiles = readTaskProfiles();
   const call = (stage: StageKey, parts: string[]): Promise<string> =>
     runAgentText(parts.join("\n\n"), input.model, undefined, profiles[stage], !input.strictModel);
