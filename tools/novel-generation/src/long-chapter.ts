@@ -127,8 +127,8 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   const blueprintPrompt = [
     "角色：长篇章节主编。为一万字章节制定唯一执行蓝图，不写正文。",
     writingContext,
-    `把整章拆成恰好 ${input.scenes} 个连续场景，每个场景用单独一行 "## 场景 N" 开头（N 从 1 到 ${input.scenes}），后面依次写：视角、人物、地点、时间、目标、阻力、行动与信息变化、场景结果、本场须埋或须收的伏笔、本场节奏（放慢或提速）。`,
-    `每场目标 ${perScene} 个汉字；全章合计约 ${input.maxWords} 个汉字。场景之间必须有因果或时间推进，不写并列的小品。`,
+    `把整章拆成恰好 ${input.scenes} 个连续场景，每个场景用单独一行 "## 场景 N" 开头（N 从 1 到 ${input.scenes}）。蓝图只需给小说家足够的创作方向，可按需要提及视角、人物、地点、情境、冲突或悬念；不要求每场填满同一套字段，也不要求每场都埋伏笔、推进主线或安排人物成长。让场景各有自己的气息和功能，允许闲笔、日常、误会、停顿和意外。`,
+    `每场篇幅约 ${perScene} 个汉字，全章合计约 ${input.maxWords} 个汉字。场景之间要让读者感到故事在流动，但不必把每场都写成明显的目标—阻力—选择—结果模板。`,
     "区分原著已确认事实与本章新创作。不得安排新果实、十主完整名单、天母去向的解释、人物提前获知未知信息。",
     RHYTHM_RULE,
     "整章节奏应有场景差异，但不按固定数量分配快慢场景。"
@@ -197,7 +197,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       writingContext, "全章蓝图：", blueprint,
       `第 ${index + 1} 批待审正文：`, halves[index]!.join("\n\n---\n\n"),
       "检查人物动机/知识/能力边界、时间地点、因果、伏笔、对白泄密、场景变化与设定冲突。每项给原文短证据、严重程度（blocker/major/minor）和最小修复建议。",
-      "另检查节奏：指出整段急促、缺少长句、连续短句超过 8 句的位置。区分事实错误与个人偏好。"
+      "不要按句长、段落长度、对白比例或标点统计挑问题；节奏是否合适取决于场景和情绪。只指出会妨碍读者理解的明确问题，文学偏好作为可选建议。"
     ]));
   }
   const review = reviews.join("\n\n---\n\n");
@@ -286,7 +286,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     }, null, 2),
     "旧状态：", JSON.stringify(state, null, 2),
     "最终章节全文（状态提取必须覆盖每一场的人物、事件、事实与情节线变化）：", chapter,
-    "profile 记录相对稳定的性格底色、价值观、内在矛盾、语言习惯和行为边界；不要因单次行为轻易改写。其他字段是章节结束时的当前状态快照，数组必须给出完整当前值。人物弧光可以改变人物，但必须由选择、压力、代价和行为证据支撑，不得刻板化，也不得为制造反转而突然黑化/洗白。只记录章节明确支持的内容；推断标为 inferred，项目原创内容标为 original，不得写进原著正史。人物发生实质性弧光变化时，追加 arcMilestones，记录关键选择、压力、代价和正文逐字证据；没有实质变化就不新增里程碑。"
+    "profile 记录相对稳定的性格底色、价值观、内在矛盾、语言习惯和行为边界；不要因单次行为轻易改写。其他字段是章节结束时的当前状态快照，数组必须给出完整当前值。人物弧光可以变化、反复、倒退，也可以出现意料之外的选择；不要因为画像或预设弧线限制人物。状态提取只是记录正文已经发生的事，不得反过来要求正文解释人物变化。只有正文自然呈现了重要转折时才追加 arcMilestones；不要为了填写选择、压力、代价字段而补写或拔高剧情。只记录章节明确支持的内容；推断标为 inferred，项目原创内容标为 original，不得写进原著正史。"
   ]);
   const parseUpdate = (raw: string) => {
     const cleaned = raw.trim().replace(/^\x60{3}(?:json)?\s*/i, "").replace(/\s*\x60{3}$/i, "");
