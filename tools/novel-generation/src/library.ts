@@ -147,7 +147,7 @@ export async function ingestFiles(worldId: string, inputPaths: string[], library
         failures: annotations.failures.filter(item => ![...ingestedSources].some(source => item.chunkId.startsWith(source + ":")))
       };
       const annotationTemp = annotationsPath + ".tmp";
-      await writeFile(annotationTemp, JSON.stringify(filtered, null, 2) + "\\n", "utf8");
+      await writeFile(annotationTemp, JSON.stringify(filtered, null, 2) + "\n", "utf8");
       await rename(annotationTemp, annotationsPath);
     }
   } catch (error) {
