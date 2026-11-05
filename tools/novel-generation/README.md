@@ -90,7 +90,8 @@ npm run dev -- write --world conghuoniao --mode continuation \\
 - `04-scene-draft.md`、`05-dialogue-edited.md`、`06-voice-edited.md`：正文、对白修订和叙事声音统一
 - `07-continuity-review.md`：连续性审查
 - `chapter.md`：最终复查通过后的章节
-- `08-state-update.json`：合并后的下一章状态（默认已自动持久化）\n- `07-review-round-*.json`、`09-quality-summary.json`：结构化复查结果和自动修复轮数
+- `08-state-update.json`：合并后的下一章状态（默认已自动持久化）
+- `07-review-round-*.json`、`09-quality-summary.json`：结构化复查结果和自动修复轮数
 
 章节生成成功后，状态管理员会提取人物、事件、正史事实和情节线变化，并自动写入 SQLite 权威状态及兼容 JSON 快照，供下一章直接使用。只有模型对照、盲测等需要候选互相隔离的场景才传 `--no-apply-state`；普通续写不要使用该参数。状态提取或持久化失败会使本次命令失败，不能把状态未更新的章节当作可继续写作的成功结果。`continuation` 模式的 `--source` 必须是你提供或有权使用的文本，本地 `private/` 不入库。
 
