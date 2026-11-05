@@ -1567,24 +1567,62 @@ Workbench 控制面不能依赖 GPU 节点存活。GPU Pool 故障时，Session�
 
 ### 26.5 模型选择：托管前沿模型 + 自托管模型池
 
-不考虑 DeepSeek 和 Qwen。不要把全部流量押在单一模型，也不要一开始就把所有请求迁移到自托管模型。建议按任务质量、延迟、Token 成本和数据边界分层：
+模型选择不应从参数量或榜单名次开始，而应从目标任务、可部署硬件和公开生产证据开始。对本方案，建议把 **Kimi K2.6 作为 H200 自托管主力候选**，把 **Kimi K3 作为 B300 / GB300 高规格升级候选**。Claude 等托管前沿模型继续承担质量基线、复杂任务和容量兜底。gpt-oss-120b 不再承担主力 Coding Agent 的定位，只作为轻量任务和成本基线。
 
-| 模型 | 部署方式 | 建议角色 | 说明 |
+| 模型 | 部署方式 | 建议角色 | 选择依据与边界 |
 | --- | --- | --- | --- |
-| Claude Sonnet 5.5 | Amazon Bedrock / Microsoft Foundry | 默认高质量 Coding Agent | 主力闭源候选；1M context，编码和 Agent 任务能力强 |
-| Claude Opus 5.5 | Bedrock / Foundry | 复杂重构、疑难 Bug、架构任务 | 高难任务升级路由，不承接所有请求 |
-| GPT-6.1 Sol / GPT-6 Astra | Microsoft Foundry 或对应企业 API | 第二供应商、复杂推理和独立评审 | 用于供应商冗余与交叉评审，核实区域、速率限制和企业条款 |
-| Kimi K3 / Kimi K2.7 Code | Kimi API；自托管需单独验证权重、许可证和推理栈 | 中国模型的唯一候选，作为可选对照组 | K3 面向长时程 Coding 与 Agent 任务，提供 1M Context；K2.7 Code 面向编码任务、256K Context。K3 的 2.8T 总参数规模意味着不能按普通 8-GPU 节点推定部署可行，必须先确认权重开放范围、硬件需求和实际推理成本 |
-| gpt-oss-120b | AWS / Azure GPU 自托管 | 内部任务、代码解释、摘要和分类 | 原生 MXFP4 权重，可在 H200 上验证单机/多副本部署 |
-| Mistral Medium 3.5 / Devstral Small 2 | AWS / Azure GPU 自托管 | 局部代码修改、轻量 Agent 任务 | 作为第二开源模型池；核对许可证、商业限制和推理引擎支持 |
+| Claude Sonnet 5.5 | Amazon Bedrock / Microsoft Foundry 或企业 API | 托管 Coding Agent 主力基准 | 用于建立代码质量、工具调用和任务成功率基线；同时保留托管服务作为容量和复杂任务兜底 |
+| Claude Opus 5.5 | Bedrock / Foundry 或企业 API | 复杂重构、疑难 Bug、架构任务 | 按任务难度升级路由，不承接所有常规请求 |
+| GPT-6.1 Sol / GPT-6 Astra | 对应企业 API / 企业模型平台 | 第二供应商、复杂推理和独立评审 | 用于供应商冗余与交叉评审；需核实实际可用模型名、区域、速率限制和企业条款 |
+| **Kimi K2.6** | 自托管 H200 / B200；也可先用 Kimi API 做质量对照 | **H200 自托管主力候选** | 已有日本大学医院 8×H200 封闭网络部署案例；NVIDIA Dynamo 提供 8×H200、TP8 的可复现部署配方。适合优先进入企业私有化 POC |
+| **Kimi K3** | 单节点 8×B300；更大规模可评估 GB300 | **高规格 Coding Agent 候选** | Fixstars 已公开单台 8×B300 部署案例，原生 MXFP4 权重约 1.6TB；不应将该结果外推为 8×H200 可部署，也不应把 B300 测试并发直接当作企业生产容量 |
+| NVIDIA Nemotron 3 Super | NVIDIA 支持的托管服务或经验证的自托管环境 | 非中国开源模型的专项 POC | 可作为 NVIDIA 生态内的高吞吐执行模型对照；目前不把它列为已验证的 H200 Coding 主力 |
+| Mistral Devstral 2 / Devstral Small 2 | 托管 API 或自托管（按具体权重和许可确认） | 专项 Coding POC | 作为非中国模型的对照组，重点验证代码修改、工具调用、长上下文和任务成功率；目前缺少与 Kimi K2.6 医院部署同等级的公开 H200 生产证据 |
+| gpt-oss-120b | AWS / Azure GPU 自托管 | 轻量任务、摘要、分类、代码解释及成本基线 | 原生 MXFP4 权重可用于验证 H200 推理栈和低复杂度任务；不作为复杂多步 Coding Agent 的默认主力 |
 
+本方案的中国模型候选只保留 Kimi，不纳入 GLM、DeepSeek、Qwen、MiniMax 或其他中国模型。文章其他章节中出现这些名称时，仅用于解释历史技术路线或引用非候选的行业案例，不构成本方案的模型推荐。
 
+#### 公开部署案例：Kimi 已经不只是模型榜单上的候选
 
-模型范围说明：本节的候选设计不纳入 GLM、DeepSeek、Qwen 或其他中国模型；中国模型仅保留 Kimi 作为可选评估对象。文章其他章节中出现的 DeepSeek、GLM 或 Qwen，是用于说明推理技术、开源项目或业界案例的历史资料，不代表本方案推荐部署这些模型。
+**北海道大学医院：8×H200、封闭网络、真实业务平台。** 2026 年 10 月公开的 LLENS 研究报告介绍了一个部署在北海道大学医院封闭网络中的本地 Agent 平台。平台运行在一台 8×NVIDIA H200 主机上，使用约 1T 参数的 Kimi K2.6，并基于 Open WebUI 重构应用层。它不是简单的聊天机器人：系统包含全文附件输入、页面图像读取、按路径访问的文档树、网络隔离 Sandbox、产物回传、自检、Subagents 和可复用流程等能力。论文报告单用户约 119 tokens/s，16 个并发请求总吞吐约 908 tokens/s；在 180 个医院文档问题上，交互式工具访问准确率为 97.2%，高于固定 Top-10 chunk 检索的 81.3%。平台自 2026 年 9 月 14 日起在医院网络运行。
 
-模型版本以 2026 年 11 月公开可用信息为候选，模型发布快，不能视为长期固定 BOM。Claude Sonnet 5.5 标准价格为每百万输入 Token $2、输出 Token $10，缓存命中价格更低。参考：[Anthropic 定价](https://platform.claude.com/docs/en/about-claude/pricing)、[Sonnet 5.5 模型说明](https://platform.claude.com/docs/en/models/sonnet-5-5/overview)、[AWS Bedrock Anthropic 模型列表](https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards-anthropic.html)、[Azure AI Foundry 模型目录](https://ai.azure.com/catalog/models)。
+这个案例与企业私有化 Coding Agent 平台最相关的地方，不只是模型，而是 **8×H200 + 私有网络 + Agent Harness + 隔离工具执行** 这一整套组合。它证明 Kimi K2.6 可以进入单节点 H200 的本地部署验证范围，也说明复杂任务的效果来自模型与工具访问方式的共同设计，不能把提升全部归因于模型本身。医院文档问答的结果也不能直接当成 Coding Benchmark，企业仍需用自己的代码仓库和任务集验证。
 
-建议 Sonnet 5.5 承担大部分需要较高代码质量的交互任务；Opus 5.5 或 GPT-6.1 Sol 处理复杂重构和独立评审；gpt-oss-120b 与 Mistral / Devstral 作为自托管任务模型。Kimi 只保留为中国模型的可选评估对象，不作为生产默认模型，也不预设其适合当前 H200 节点自托管：先分别验证 Kimi API 的任务质量与成本，再确认可用权重、许可证、显存需求和推理引擎支持后，才决定是否做本地部署测试。路由应纳入仓库语言、任务类型、质量等级、数据分类、工具调用风险、上下文长度和历史成功率，不能只按 Token 价格或输入长度决策。
+来源：[The LLENS Platform for On-Premises Large Language Model Agents in a Japanese University Hospital（arXiv，2026-10-23）](https://arxiv.org/abs/2610.32151)。
+
+**NVIDIA Dynamo：H200 部署配方和 Agentic workload 数据。** NVIDIA 为 Kimi K2.6 发布了基于 Dynamo + vLLM 的部署配方。H200 路径采用每个 worker 8×H200、TP8 和原生 INT4；Agentic trace 的中位输入长度为 64K，KV Cache 命中率目标为 90%，目标交互速度约 50 output tokens/s/user。公开性能表中的 H200 Agentic 测试使用 4 个 worker replicas、48 并发请求；这意味着测试集群是 4 个 8-GPU worker，即 32 张 H200，而不是一台 8-GPU 机器承载 48 个并发用户。配方还组合了 KV-aware routing、EAGLE3 MLA speculative decoding 和 LMCache CPU KV offload。
+
+这份配方的价值是给出可以复现的 serving 起点，而不是承诺企业一定能得到相同吞吐。它也说明 Kimi K2.6 的容量规划不能只看模型权重：64K 输入上下文、KV 命中率、缓存卸载、worker 数量和调度策略会直接影响并发能力。
+
+来源：[NVIDIA Dynamo Kimi K2.6 Recipe](https://docs.nvidia.com/dynamo/v1.6.1/recipes/kimi-k2-6)。
+
+**e-INFRA CZ：国家级研究计算平台的模型服务。** e-INFRA CZ 公布的运行数据称，其平台已服务超过 1,700 名用户，累计处理约 100B tokens。其模型服务包含 Kimi；公开运营文章给出的 Kimi 部署数据为 4×B300，峰值约 1,670 tokens/s，最高约 74 个并发请求。这个案例说明 Kimi 可以进入面向大量研究用户的共享推理服务，但它是 B300 平台的运行数据，不能直接套用到 H200 节点，也不能把峰值吞吐当作持续 SLO。
+
+来源：[e-INFRA CZ：100 Billion Tokens](https://blog.e-infra.cz/blog/llm3/)。
+
+**Fixstars：Kimi K3 的单节点 B300 部署。** Fixstars 在 Kimi K3 权重发布当天，将模型部署到单台 8×B300 节点。模型原生 MXFP4 权重约 1.6TB，无需再做一次额外量化；使用 SGLang，测试中 30–40 并发仍有可用吞吐，50 并发时则出现大量失败请求。该测试说明 Kimi K3 可以在 B300 8-GPU 节点上运行，但也揭示了启动时间、KV Cache 分配和混合注意力状态管理等实际问题。尤其不能将“模型装得下”理解为“所有上下文长度和并发都能满足”。
+
+因此，Kimi K3 的合理定位是 B300 / GB300 高规格候选，而不是当前 H200 预算模型的默认主力。若要将 K3 纳入采购设计，应单独测量长上下文 Coding Agent workload 的 KV 容量、TTFT、TPOT、失败率和单位成功任务成本。
+
+来源：[Fixstars：Deploying Kimi K3 on a Single Node of NVIDIA B300 x8](https://blog.us.fixstars.com/deploying-kimi-k3-on-day-0-can-a-2-8t-model-run-on-a-single-node-of-nvidia-b300-x8/)。
+
+**GitHub Copilot：Kimi K3 已进入主流 Coding 产品，但这是托管服务。** GitHub 于 2026 年 8 月宣布 Kimi K3 在 Copilot 中可用，模型由 Fireworks AI 托管，可用于多个 IDE、CLI 和 Agent 入口。这是模型进入主流 Coding 产品链路的证据，但不是 GitHub 在自有 GPU 上部署 Kimi 的证明，也不能用来推断企业自托管成本。
+
+来源：[GitHub Changelog：Kimi K3 is now available in GitHub Copilot](https://github.blog/changelog/2026-08-06-kimi-k3-is-now-available-in-github-copilot/)。
+
+#### 选型结论与验证顺序
+
+基于目前能查到的公开证据，建议按以下顺序推进：
+
+1. **H200 POC 首选 Kimi K2.6。** 以北海道大学医院的单机 8×H200 部署作为可行性参照，以 NVIDIA Dynamo 的 8×H200 TP8 配方作为推理服务起点。企业 POC 应使用真实仓库、真实工具调用和真实权限策略重新压测。
+2. **B300 / GB300 POC 再评估 Kimi K3。** Fixstars 的 8×B300 案例证明单节点部署可行，但并不意味着 H200 也能按相同方式部署。K3 应作为高规格容量池的候选，不应提前纳入 H200 成本模型。
+3. **Claude Sonnet / Opus 保留为质量基线和兜底。** 复杂重构、跨模块任务和高风险代码修改需要与托管前沿模型进行同任务比较。托管模型成本应按真实 Token、缓存和任务完成情况核算。
+4. **Nemotron、Devstral 进入有限 POC，而不是直接进入生产架构。** 它们用于检验是否存在非中国开源替代方案，只有任务成功率、工具调用稳定性、延迟和完整成本达到门槛后才进入候选池。
+5. **gpt-oss-120b 只作为轻量任务和经济性基线。** 不应仅因它较容易部署，就把它当成复杂 Coding Agent 的主力模型。
+
+模型路由应基于任务类型、仓库语言、修改范围、上下文长度、工具调用风险、数据分类、历史成功率和预算。常规解释、摘要和分类可以路由到轻量模型；常规代码任务进入 Kimi K2.6 或托管 Sonnet；复杂重构和高风险变更升级到 Opus 或其他经过验证的前沿模型；离线索引、批量分析和后台 Agent 使用独立队列与预算。后台 Agent 可以利用交互流量的低谷，但它们仍然消耗 GPU、KV Cache 和模型 Token，必须设置优先级、并发上限、取消机制和独立配额。
+
+模型版本以 2026 年 11 月可查到的公开信息为候选，发布节奏快，不能视为长期固定 BOM。Claude Sonnet 5.5 标准价格为每百万输入 Token $2、输出 Token $10，缓存命中价格更低。参考：[Anthropic 定价](https://platform.claude.com/docs/en/about-claude/pricing)、[Sonnet 5.5 模型说明](https://platform.claude.com/docs/en/models/sonnet-5-5/overview)、[AWS Bedrock Anthropic 模型列表](https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards-anthropic.html)、[Azure AI Foundry 模型目录](https://ai.azure.com/catalog/models)。
 
 受监管环境需要分别评估 Bedrock / Foundry 的数据处理条款、区域、日志和私网能力。自托管也不自动意味着数据安全：模型日志、Prompt Trace、缓存、对象存储、快照、备份和运维人员访问都属于数据边界。
 
@@ -1687,11 +1725,11 @@ AWS 方案中，GPU Serving 使用 EC2 P5en/P6，模型制品存储在 S3，镜�
 | 阶段 | 建议规模 | 必须验证 |
 | --- | --- | --- |
 | Trace & Workload Discovery | 2000 人抽样 | DAU、Agent 并发、Token 分布、成功率、数据分类 |
-| POC | 1 个 8-GPU H200 节点 | gpt-oss-120b、Mistral / Devstral、可选 Kimi API 与 Sonnet 5.5 任务级对照 |
+| POC | 1 个 8-GPU H200 节点 | Kimi K2.6（NVIDIA Dynamo 配方起步）、Sonnet 5.5 同任务质量基准；gpt-oss-120b 作为轻量成本基线，Nemotron / Devstral 作为有限对照 |
 | Pilot | 2–3 个 8-GPU 节点 | 50–100 人真实 IDE/CLI、MCP 与执行隔离 |
 | Production Wave 1 | 4–6 个节点 | 逐团队放量、配额、审计、熔断、回滚与故障演练 |
 | Production 2000 | 规划 8 节点，按需扩至 12 | 峰值压测、节点故障、模型切换、区域容量与 DR |
 
 采购前必须取得 AWS 和 Azure 两边的书面报价与容量确认，覆盖目标区域 GPU SKU、On-Demand 与承诺折扣、容量预留、Spot 中断策略、网络与跨区费用、存储吞吐、私网访问、数据驻留、支持等级和配额提升周期。P6-B300 / ND GB200 尤其需要确认能否按计划获得连续多节点容量。
 
-最终建议：先用 AWS P5en 或 Azure ND H200 的 8-GPU 节点做 POC；Workbench 控制面和工具执行面独立部署；Sonnet 5.5 建立质量基线，自托管以 gpt-oss-120b / Mistral / Devstral 验证成本与吞吐；Kimi 仅作为可选中国模型候选，先评估 API，权重与部署条件满足后再测试自托管；生产先按 4–6 节点放量，达到实测门槛后再扩至 8 节点，12 节点仅作为峰值容量预留。64–96 GPU 不是已验证结论，最终 sizing 必须由成功任务吞吐、P95 延迟和单位成功任务成本决定。
+最终建议：先用 AWS P5en 或 Azure ND H200 的 8-GPU 节点做 POC；Workbench 控制面和工具执行面独立部署；以 Kimi K2.6 作为 H200 自托管主力候选，按 NVIDIA Dynamo 的 8×H200 TP8 配方验证吞吐、KV Cache 和并发，以 Sonnet 5.5 建立同任务质量基线；gpt-oss-120b 仅作为轻量任务成本基线，Nemotron / Devstral 只做有限对照。Kimi K3 单独列入 B300 / GB300 高规格验证，不计入 H200 主力容量假设。生产先按 4–6 节点放量，达到实测门槛后再扩至 8 节点，12 节点仅作为峰值容量预留。64–96 GPU 不是已验证结论，最终 sizing 必须由成功任务吞吐、P95 延迟和单位成功任务成本决定。
