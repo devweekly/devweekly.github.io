@@ -592,6 +592,7 @@ Kimi 的模型制品比 Nemotron 多出一层多模态处理要求。除模型�
 
 ~~~bash
 export MODEL_ID="moonshotai/Kimi-K2.6"
+export MODEL_REVISION="<approved-commit-sha>"
 export MODEL_DIR="/opt/models/kimi-k2.6"
 
 hf download "$MODEL_ID" --local-dir "$MODEL_DIR"
@@ -602,6 +603,7 @@ du -sh "$MODEL_DIR"
 
 ~~~bash
 export MODEL_ID="nvidia/Kimi-K2.6-NVFP4"
+export MODEL_REVISION="<approved-commit-sha>"
 export MODEL_DIR="/opt/models/kimi-k2.6-nvfp4"
 
 hf download "$MODEL_ID" --local-dir "$MODEL_DIR"
