@@ -167,6 +167,7 @@ MoE 经常被误解为“激活参数少，所以 GPU 要求低”。它减少�
 | FP8 | 高性能推理；需确认模型和引擎支持 |
 | FP4 / NVFP4 | Blackwell 高压缩推理；必须验证量化误差和 Kernel |
 | INT8 / INT4 | 依模型量化方案而定，不能只看位宽判断质量 |
+
 | 并行方式 | 何时使用 | 主要代价 |
 | --- | --- | --- |
 | TP | 单层计算或权重需要多 GPU | GPU 间频繁通信 |
@@ -174,6 +175,7 @@ MoE 经常被误解为“激活参数少，所以 GPU 要求低”。它减少�
 | DP | 增加独立模型副本和吞吐 | 额外权重显存 |
 | EP | 分布式部署 MoE Experts | Token Dispatch / Combine 通信 |
 | Context / Sequence Parallelism | 超长上下文，且模型/引擎支持 | 实现和调度复杂 |
+
 | 框架 | 主要定位 | 评估重点 |
 | --- | --- | --- |
 | vLLM | 通用 LLM serving，OpenAI-compatible API 和批处理能力 | 目标模型、Blackwell Kernel、FP8/FP4、MoE、KV Cache 和多节点支持 |
