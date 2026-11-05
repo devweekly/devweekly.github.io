@@ -7,6 +7,7 @@ import { writeChapter } from "./workflow.js";
 import { loadStoryState } from "./story-state.js";
 import { loadRunStoryState } from "./stage-cache.js";
 import { analyzeLibrary } from "./analysis.js";
+import { analyzeStoryCorpus } from "./story-analysis.js";
 import { prepareWorldAnalysis, collectWorldAnalysis, analysisStatus } from "./world-analysis.js";
 import {
   readModelCatalog, resolveAgentModel, isManagedSession, readConfiguredModel,
@@ -47,6 +48,7 @@ function usage(): never {
     "  npm run dev -- ingest --world conghuoniao --input ./private/novel.txt [more files or directories]",
     "  npm run dev -- search --world conghuoniao --query \"人物或事件关键词\" [--limit 8]",
     "  npm run dev -- analyze --world conghuoniao [--limit 20] [--model model]",
+    "  npm run dev -- analyze-story --world conghuoniao [--model model] [--timeout-ms 180000]",
     "  npm run dev -- analyze-world --world conghuoniao --phase prepare|status|collect [--source original.txt] [--model model] [--timeout-ms 90000]",
     "  npm run dev -- db-status --world conghuoniao",
     "  npm run dev -- models",
@@ -81,7 +83,7 @@ function safeWorldId(value: string): string {
 
 async function main(): Promise<void> {
   const command = process.argv[2];
-  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-world" && command !== "models" && command !== "check-runtime" && command !== "db-status") usage();
+  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-story" && command !== "analyze-world" && command !== "models" && command !== "check-runtime" && command !== "db-status") usage();
 
   const worldId = safeWorldId(arg("--world") ?? "conghuoniao");
   const libraryDir = resolve("worlds", worldId, "library");
@@ -235,6 +237,27 @@ async function main(): Promise<void> {
     console.log("Failed chunks: " + result.failed);
     console.log("Remaining chunks: " + result.remaining);
     console.log("Annotations: " + resolve(libraryDir, "annotations.json"));
+    return;
+  }
+
+  if (command === "analyze-story") {
+    const timeoutMs = Number(arg("--timeout-ms") ?? 180_000);
+    if (!Number.isInteger(timeoutMs) || timeoutMs < 30_000 || timeoutMs > 600_000) {
+      throw new Error("--timeout-ms must be between 30000 and 600000.");
+    }
+    const result = await analyzeStoryCorpus(worldId, { model: arg("--model"), timeoutMs, worldDir: resolve("worlds", worldId) });
+    console.log(JSON.stringify({
+      worldId: result.worldId,
+      sourceHash: result.sourceHash,
+      analyzedAt: result.analyzedAt,
+      complete: result.complete,
+      batches: result.batches,
+      characters: result.characters.length,
+      plotThreads: result.plotThreads.length,
+      foreshadowings: result.foreshadowings.length,
+      developmentPossibilities: result.developmentPossibilities.length,
+      database: resolve("worlds", worldId, "novel.db")
+    }, null, 2));
     return;
   }
 
