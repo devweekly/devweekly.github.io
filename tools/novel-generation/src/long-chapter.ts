@@ -4,7 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseStoryStateUpdate, saveStoryState } from "./story-state.js";
 
-import { runAgentText, type GenerationMode } from "./generate.js";
+import { runAgentText, resolveModelAttempts, type GenerationMode } from "./generate.js";
 import { readTaskProfiles, type StageKey } from "./task-profiles.js";
 import { RHYTHM_RULE, mergeStoryState } from "./workflow.js";
 import { searchLibrary } from "./library.js";
@@ -100,12 +100,13 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   await mkdir(input.outputDir, { recursive: true });
   const call = (stage: StageKey, parts: string[]): Promise<string> =>
     runAgentText(parts.join("\n\n"), input.model, input.timeoutMs, profiles[stage]);
-  const cachedCall = (key: string, outputFile: string, stage: StageKey, parts: string[]): Promise<string> => {
+  const cachedCall = (key: string, outputFile: string, stage: StageKey, parts: string[], validate?: (output: string) => void): Promise<string> => {
     const prompt = parts.join("\n\n");
     return runCachedStage({
       dir: input.outputDir, key, outputFile,
-      fingerprint: JSON.stringify({ prompt, model: input.model ?? null, profile: profiles[stage], timeoutMs: input.timeoutMs }),
-      execute: () => call(stage, parts)
+      fingerprint: JSON.stringify({ prompt, modelAttempts: resolveModelAttempts(input.model), profile: profiles[stage], timeoutMs: input.timeoutMs }),
+      execute: () => call(stage, parts),
+      validate
     });
   };
 
@@ -120,7 +121,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     input.contextText ? "前文与连续性摘要：\n" + input.contextText : "",
     input.storyAnalysisContext ? "既有小说分析参考（仅供启发，不是正史或写作清单）：\n" + input.storyAnalysisContext : "",
     input.sourceText ? "用户提供且有权使用的续写起点（只用于承接，不得整段复制）：\n" + input.sourceText : "",
-    input.styleProfile ? "叙事风格约束：\n" + input.styleProfile : "",
+    input.styleProfile ? "叙事风格参考：\n" + input.styleProfile + "\n风格参考不能凌驾于当前人物、场景需要和文学表达。" : "",
     input.mode === "continuation" ? "创作模式：续写，严格承接材料最后一个有效情节节点。" : "创作模式：原创衍生，项目原创内容不得伪装成原著事实。",
     "本次创作任务：", input.brief
   ].filter(Boolean).join("\n\n");
@@ -153,7 +154,25 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   await saveStage(input.outputDir, "01-scene-blueprint.md", blueprint);
   const sceneTexts: string[] = [];
   for (let index = 0; index < input.scenes; index++) {
-    const previous = sceneTexts.length ? tail(sceneTexts[sceneTexts.length - 1]!, 3600) : "（本章第一场，无前文）";
+    // Use the accumulated chapter, not only the immediately preceding scene.
+    // The tail keeps prompts bounded while retaining more cross-scene state.
+    const previous = sceneTexts.length
+      ? tail(sceneTexts.join("\n\n"), 7200)
+      : "（本章第一场，无前文）";
+    const sceneReference = [input.brief, scenePlans[index]!].join("\n");
+    const relevantCharacters = state.characters.filter(character =>
+      sceneReference.includes(character.name) || (character.relationships ?? []).some(name => sceneReference.includes(name))
+    );
+    const characterState = relevantCharacters.map(character => [
+      character.name + "｜" + character.status,
+      character.location ? "位置：" + character.location : "",
+      character.knowledge?.length ? "已知：" + character.knowledge.join("；") : "",
+      character.goals?.length ? "当前欲望/目标：" + character.goals.join("；") : "",
+      character.relationships?.length ? "关系：" + character.relationships.join("；") : "",
+      character.abilities?.length ? "能力：" + character.abilities.join("；") : "",
+      character.profile?.coreTraits?.length ? "性格底色（参考，不是行为限制）：" + character.profile.coreTraits.join("；") : "",
+      character.profile?.contradictions?.length ? "内在矛盾：" + character.profile.contradictions.join("；") : ""
+    ].filter(Boolean).join("\n")).join("\n\n");
     const sceneRetrieval = input.libraryDir
       ? await searchLibrary(input.libraryDir, [input.brief, scenePlans[index]!, ...state.characters.map(character => character.name)].join("\n"), input.retrievalLimit ?? 4)
       : [];
@@ -165,6 +184,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       `角色：场景小说家。只写第 ${index + 1} 场完整正文，不输出标题、分析或创作说明。`,
       writingContext,
       "全章蓝图：", blueprint,
+      characterState ? "本场相关人物的当前状态（仅帮助承接，不是人物行为边界）：\n" + characterState : "",
       `本场蓝图：`, scenePlans[index]!,
       "本场相关原文证据（只用于核实事实，不得照搬）：", sceneEvidence,
       "上一场正文的连续性上下文（重点承接人物位置、已知信息、关系变化、道具归属、未完成动作与场景结果，不得重复）：", previous,
@@ -199,17 +219,22 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     const slice = halves[index]!;
     if (!slice.length) continue;
     const batchText = slice.join("\n\n---\n\n");
+    const batchStart = index === 0 ? 1 : middle + 1;
     const raw = await cachedCall("batch-review-" + (index + 1), "04-review-batch-" + (index + 1) + "-raw.txt", "review", [
       reviewPrompt({
         context: writingContext,
         blueprint,
         chapter: batchText,
-        sceneLabel: `第 ${index + 1} 批，场景 ${index === 0 ? 1 : middle + 1}–${index === 0 ? middle : input.scenes}`
+        sceneCount: slice.length,
+        sceneLabel: `第 ${index + 1} 批，场景 ${batchStart}–${batchStart + slice.length - 1}`
       })
-    ]);
-    const parsed = parseChapterReview(raw, batchText);
+    ], output => parseChapterReview(output, batchText, slice.length));
+    const parsed = parseChapterReview(raw, batchText, slice.length);
     summaries.push(parsed.summary);
-    found.push(...parsed.issues);
+    found.push(...parsed.issues.map(issue => ({
+      ...issue,
+      scenes: issue.scenes.map(scene => scene + batchStart - 1)
+    })));
   }
   const seen = new Set<string>();
   const merged = found.filter(issue => {
@@ -251,10 +276,11 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       const round = reviewHistory.length + 1;
       return cachedCall("final-review-" + round + (correction ? "-retry" : ""), "08-final-review-round-" + round + (correction ? "-retry" : "") + "-raw.txt", "review", [
         reviewPrompt({ context: writingContext, blueprint, chapter: candidate, priorReview: review, sceneCount: input.scenes, correction })
-      ]);
+      ], output => parseChapterReview(output, candidate, input.scenes));
     },
     repair: async (_candidate, issues, round) => {
       const affectedScenes = [...new Set(issues.flatMap(issue => issue.scenes))].sort((a, b) => a - b);
+      if (!affectedScenes.length) throw new Error("Final review reported must-fix issues without scene locations; refusing to mark an empty repair as complete.");
       for (const sceneNumber of affectedScenes) {
         const sceneIssues = issues.filter(issue => issue.scenes.includes(sceneNumber));
         const index = sceneNumber - 1;
