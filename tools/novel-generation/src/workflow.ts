@@ -122,12 +122,12 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     cachedCall("plot", "01-main-plot.md", "plot", [
       "角色：主线剧情架构师。负责本章主线推进和长篇结构，不写正文。",
       common,
-      "输出可执行章节方案：本章主线目标、因果链、场景顺序、关键选择及代价、与长期主线/伏笔的关系、结尾状态。明确哪些事实不可改变。"
+      "提出有吸引力的章节构想，帮助这一章真正好看、能让人物活起来。可考虑主线、人物关系、冲突、悬念、意外性和后续空间，但不要求每项都出现；允许从一个鲜活场景、一段对话或一个反常细节自然生长。只标出确实不能改变的已知事实，不要把创意写成分析报告。""
     ]),
     cachedCall("creative", "02-creative-options.md", "creative", [
       "角色：创意发散 Agent。只负责提出有戏剧价值的备选创意，不负责决定正史。",
       common,
-      "提出最多 5 个不同方向的情节/冲突/信息揭示方案。每项说明新鲜点、人物动机、代价、与现有设定的冲突风险。至少给出一个低风险方案和一个高风险方案。不要写正文，不要擅自把建议当作已发生事实。"
+      "自由发散若干真正不同、鲜活、有戏剧性的可能性，可以大胆、怪异、温柔、残酷或出人意料。不要为了数量凑点子，也不必把每个点子拆成固定字段。关注它能带来什么人物互动、情绪、冲突或故事惊喜；不要写正文，不要把建议当作已发生事实。""
     ])
   ]);
   await saveStage(input.outputDir, "01-main-plot.md", plotPlan);
@@ -137,7 +137,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     "角色：主编 Agent。整合主线架构师方案和创意发散建议，决定本章唯一执行方案。",
     common,
     "主线方案：", plotPlan, "创意备选：", ideas,
-    "只采纳不破坏人物动机、既有事实和长期主线的创意。输出最终章节蓝图，逐场列出视角、人物、地点、目标、阻力、行动、信息变化和场景结果；区分确定事实与本章新创作。"
+    "选出最有小说感染力的方向，形成自然、有变化的章节构想。蓝图帮助写作者理解人物处境和故事走向，不是逐项验收的合同；不要求每场都按目标、阻力、行动、信息变化、结果的模板展开。保留人物的意外性、闲笔和情绪空间。不得无意违反已确认事实；区分确知内容与新创作。""
   ]);
   await saveStage(input.outputDir, "03-chapter-plan.md", plan);
 
@@ -210,7 +210,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
       continuityNotes: ["facts future chapters must preserve"]
     }, null, 2),
     "旧状态：", JSON.stringify(state, null, 2), "最终章节：", chapter,
-    "人物 profile 是相对稳定的性格底色、价值观、内在矛盾、语言习惯与行为边界；不要因单次情绪或行为轻易改写。character 的 status/location/abilities/knowledge/goals/relationships 是当前剧情状态，必须反映本章结束时的最新快照，数组应给出完整当前值而非只追加变化项。人物弧光允许发生真实变化，但必须由连续的选择、压力、代价和行为证据支撑；不要把人物锁死成标签，也不要为了反转强行黑化/洗白。只记录章节明确支持的内容。无法确认的内容不要写入 canonFacts；推断必须标为 inferred。人物和情节线只输出本章新增或发生变化的记录。人物发生实质性弧光变化时，另以 arcMilestones 追加记录关键选择、压力、代价和正文逐字证据；没有实质变化就不新增里程碑。"
+    "人物 profile 是相对稳定的性格底色、价值观、内在矛盾、语言习惯与行为边界；不要因单次情绪或行为轻易改写。character 的 status/location/abilities/knowledge/goals/relationships 是当前剧情状态，必须反映本章结束时的最新快照，数组应给出完整当前值而非只追加变化项。人物可以变化、反复、倒退、误判，也可以做出出乎意料的选择；不要把人物锁死成标签。状态提取只记录正文已经发生的事，不得要求正文为了状态字段而解释动机或安排代价。只记录章节明确支持的内容。无法确认的内容不要写入 canonFacts；推断必须标为 inferred。人物和情节线只输出本章新增或发生变化的记录。只有正文自然呈现重要转折时才追加 arcMilestones；不要为了填写字段而拔高普通情节或反向要求正文增加解释。"
   ]);
 
   let update: Partial<StoryState>;
