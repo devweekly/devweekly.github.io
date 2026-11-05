@@ -119,7 +119,6 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     input.contextText ? "前文与连续性摘要：\n" + input.contextText : "",
     input.sourceText ? "用户提供且有权使用的续写起点（只用于承接，不得整段复制）：\n" + input.sourceText : "",
     input.styleProfile ? "叙事风格约束：\n" + input.styleProfile : "",
-    input.styleRhythm ? "叙事节奏复核：\n" + input.styleRhythm : "",
     input.mode === "continuation" ? "创作模式：续写，严格承接材料最后一个有效情节节点。" : "创作模式：原创衍生，项目原创内容不得伪装成原著事实。",
     "本次创作任务：", input.brief
   ].filter(Boolean).join("\n\n");
