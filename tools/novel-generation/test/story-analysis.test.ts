@@ -1,11 +1,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { databaseStatus, readStoryAnalysis, saveStoryAnalysis } from "../src/database.js";
 import { groupAnalysisBatches } from "../src/story-analysis.js";
+import { loadLibraryChunks } from "../src/library.js";
 
 test("story analysis batches preserve every indexed chunk in order", () => {
   const chunks = [0, 1, 2].map(index => ({
@@ -57,6 +58,27 @@ test("version 1 world databases upgrade to include story analysis storage", asyn
     const status = databaseStatus(worldDir, "test-world");
     assert.equal(status.schemaVersion, 2);
     assert.equal(status.storyAnalysis, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("story analysis can load an existing JSON library index and migrate it to SQLite", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-story-analysis-library-"));
+  try {
+    const worldDir = join(root, "worlds", "test-world");
+    const libraryDir = join(worldDir, "library");
+    await mkdir(libraryDir, { recursive: true });
+    const chunks = [{
+      id: "source:0:0", source: "source.txt", chapter: "第一章", chunkIndex: 0,
+      start: 0, end: 4, text: "故事开篇", sourceHash: "d".repeat(64), chapterStart: 0
+    }];
+    await writeFile(join(libraryDir, "index.json"), JSON.stringify({
+      schemaVersion: 1, worldId: "test-world", createdAt: "2026-11-05T00:00:00.000Z",
+      updatedAt: "2026-11-05T00:00:00.000Z", chunks
+    }), "utf8");
+    assert.deepEqual(await loadLibraryChunks(libraryDir, "test-world"), chunks);
+    assert.equal(databaseStatus(worldDir, "test-world").chunks, 1);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
