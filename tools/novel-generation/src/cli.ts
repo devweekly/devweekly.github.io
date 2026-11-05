@@ -26,6 +26,7 @@ function usage(): never {
     "Usage:",
     "  npm run dev -- ingest --world conghuoniao --input ./private/novel.txt [more files or directories]",
     "  npm run dev -- search --world conghuoniao --query \"人物或事件关键词\" [--limit 8]",
+    "  npm run dev -- analyze --world conghuoniao [--limit 20] [--model model]",
     "  npm run dev -- write --brief \"story direction\" [--world conghuoniao] [--mode derivative|continuation] [--source file] [--context file] [--model model] [--max-words 3000]",
     "  npm run dev -- generate --brief \"story idea\" [--mode derivative|continuation] [--source file] [--context file] [--out file]"
   ].join("\n"));
