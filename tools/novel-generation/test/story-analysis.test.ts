@@ -48,7 +48,6 @@ test("version 1 world databases upgrade to include story analysis storage", asyn
   const root = await mkdtemp(join(tmpdir(), "novel-story-analysis-migration-"));
   try {
     const worldDir = join(root, "world");
-    const { mkdir } = await import("node:fs/promises");
     await mkdir(worldDir, { recursive: true });
     const db = new DatabaseSync(join(worldDir, "novel.db"));
     db.exec("CREATE TABLE world_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)");
