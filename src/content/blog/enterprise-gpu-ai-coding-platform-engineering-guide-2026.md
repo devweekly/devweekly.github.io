@@ -1574,13 +1574,17 @@ Workbench 控制面不能依赖 GPU 节点存活。GPU Pool 故障时，Session�
 | Claude Sonnet 5.5 | Amazon Bedrock / Microsoft Foundry | 默认高质量 Coding Agent | 主力闭源候选；1M context，编码和 Agent 任务能力强 |
 | Claude Opus 5.5 | Bedrock / Foundry | 复杂重构、疑难 Bug、架构任务 | 高难任务升级路由，不承接所有请求 |
 | GPT-6.1 Sol / GPT-6 Astra | Microsoft Foundry 或对应企业 API | 第二供应商、复杂推理和独立评审 | 用于供应商冗余与交叉评审，核实区域、速率限制和企业条款 |
-| GLM-5.3-Flash | AWS / Azure GPU 自托管，或 Foundry 模型端点 | 自托管主力候选 | 大型 MoE、活跃参数较少；重点验证工具调用和代码任务质量 |
+| Kimi K3 / Kimi K2.7 Code | Kimi API；自托管需单独验证权重、许可证和推理栈 | 中国模型的唯一候选，作为可选对照组 | K3 面向长时程 Coding 与 Agent 任务，提供 1M Context；K2.7 Code 面向编码任务、256K Context。K3 的 2.8T 总参数规模意味着不能按普通 8-GPU 节点推定部署可行，必须先确认权重开放范围、硬件需求和实际推理成本 |
 | gpt-oss-120b | AWS / Azure GPU 自托管 | 内部任务、代码解释、摘要和分类 | 原生 MXFP4 权重，可在 H200 上验证单机/多副本部署 |
 | Mistral Medium 3.5 / Devstral Small 2 | AWS / Azure GPU 自托管 | 局部代码修改、轻量 Agent 任务 | 作为第二开源模型池；核对许可证、商业限制和推理引擎支持 |
 
+
+
+模型范围说明：本节的候选设计不纳入 GLM、DeepSeek、Qwen 或其他中国模型；中国模型仅保留 Kimi 作为可选评估对象。文章其他章节中出现的 DeepSeek、GLM 或 Qwen，是用于说明推理技术、开源项目或业界案例的历史资料，不代表本方案推荐部署这些模型。
+
 模型版本以 2026 年 11 月公开可用信息为候选，模型发布快，不能视为长期固定 BOM。Claude Sonnet 5.5 标准价格为每百万输入 Token $2、输出 Token $10，缓存命中价格更低。参考：[Anthropic 定价](https://platform.claude.com/docs/en/about-claude/pricing)、[Sonnet 5.5 模型说明](https://platform.claude.com/docs/en/models/sonnet-5-5/overview)、[AWS Bedrock Anthropic 模型列表](https://docs.aws.amazon.com/bedrock/latest/userguide/model-cards-anthropic.html)、[Azure AI Foundry 模型目录](https://ai.azure.com/catalog/models)。
 
-建议 Sonnet 5.5 承担大部分需要较高代码质量的交互任务；Opus 5.5 或 GPT-6.1 Sol 处理复杂重构和独立评审；GLM-5.3-Flash 或 gpt-oss-120b 负责允许自托管的高频任务、摘要、分类、解释和后台工作。路由应纳入仓库语言、任务类型、质量等级、数据分类、工具调用风险、上下文长度和历史成功率，不能只按 Token 价格或输入长度决策。
+建议 Sonnet 5.5 承担大部分需要较高代码质量的交互任务；Opus 5.5 或 GPT-6.1 Sol 处理复杂重构和独立评审；gpt-oss-120b 与 Mistral / Devstral 作为自托管任务模型。Kimi 只保留为中国模型的可选评估对象，不作为生产默认模型，也不预设其适合当前 H200 节点自托管：先分别验证 Kimi API 的任务质量与成本，再确认可用权重、许可证、显存需求和推理引擎支持后，才决定是否做本地部署测试。路由应纳入仓库语言、任务类型、质量等级、数据分类、工具调用风险、上下文长度和历史成功率，不能只按 Token 价格或输入长度决策。
 
 受监管环境需要分别评估 Bedrock / Foundry 的数据处理条款、区域、日志和私网能力。自托管也不自动意味着数据安全：模型日志、Prompt Trace、缓存、对象存储、快照、备份和运维人员访问都属于数据边界。
 
@@ -1683,11 +1687,11 @@ AWS 方案中，GPU Serving 使用 EC2 P5en/P6，模型制品存储在 S3，镜�
 | 阶段 | 建议规模 | 必须验证 |
 | --- | --- | --- |
 | Trace & Workload Discovery | 2000 人抽样 | DAU、Agent 并发、Token 分布、成功率、数据分类 |
-| POC | 1 个 8-GPU H200 节点 | GLM-5.3-Flash、gpt-oss-120b 与 Sonnet 5.5 任务级对照 |
+| POC | 1 个 8-GPU H200 节点 | gpt-oss-120b、Mistral / Devstral、可选 Kimi API 与 Sonnet 5.5 任务级对照 |
 | Pilot | 2–3 个 8-GPU 节点 | 50–100 人真实 IDE/CLI、MCP 与执行隔离 |
 | Production Wave 1 | 4–6 个节点 | 逐团队放量、配额、审计、熔断、回滚与故障演练 |
 | Production 2000 | 规划 8 节点，按需扩至 12 | 峰值压测、节点故障、模型切换、区域容量与 DR |
 
 采购前必须取得 AWS 和 Azure 两边的书面报价与容量确认，覆盖目标区域 GPU SKU、On-Demand 与承诺折扣、容量预留、Spot 中断策略、网络与跨区费用、存储吞吐、私网访问、数据驻留、支持等级和配额提升周期。P6-B300 / ND GB200 尤其需要确认能否按计划获得连续多节点容量。
 
-最终建议：先用 AWS P5en 或 Azure ND H200 的 8-GPU 节点做 POC；Workbench 控制面和工具执行面独立部署；Sonnet 5.5 建立质量基线，自托管以 GLM-5.3-Flash / gpt-oss-120b 验证成本与吞吐；生产先按 4–6 节点放量，达到实测门槛后再扩至 8 节点，12 节点仅作为峰值容量预留。64–96 GPU 不是已验证结论，最终 sizing 必须由成功任务吞吐、P95 延迟和单位成功任务成本决定。
+最终建议：先用 AWS P5en 或 Azure ND H200 的 8-GPU 节点做 POC；Workbench 控制面和工具执行面独立部署；Sonnet 5.5 建立质量基线，自托管以 gpt-oss-120b / Mistral / Devstral 验证成本与吞吐；Kimi 仅作为可选中国模型候选，先评估 API，权重与部署条件满足后再测试自托管；生产先按 4–6 节点放量，达到实测门槛后再扩至 8 节点，12 节点仅作为峰值容量预留。64–96 GPU 不是已验证结论，最终 sizing 必须由成功任务吞吐、P95 延迟和单位成功任务成本决定。
