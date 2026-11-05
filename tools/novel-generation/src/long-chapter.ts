@@ -280,18 +280,18 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     JSON.stringify({
       currentPosition: "string",
       canonFacts: [{ id: "stable-id", fact: "fact", source: "chapter id", confidence: "confirmed|inferred|original" }],
-      characters: [{ name: "name", profile: { coreTraits: ["stable traits"], values: ["values"], contradictions: ["internal contradictions"], voice: "distinctive voice", boundaries: ["behavioral boundaries"], arc: "long-term arc" }, status: "current status", location: "current location", abilities: ["current abilities"], knowledge: ["current knowledge"], goals: ["current goals"], relationships: ["current relationships"] }],
+      characters: [{ name: "name", profile: { coreTraits: ["stable traits"], values: ["values"], contradictions: ["internal contradictions"], voice: "distinctive voice", boundaries: ["behavioral boundaries"], arc: "long-term arc" }, status: "current status", location: "current location", abilities: ["current abilities"], knowledge: ["current knowledge"], goals: ["current goals"], relationships: ["current relationships"], arcMilestones: [{ id: "stable-milestone-id", chapter: "chapter id", change: "what changed", choice: "the consequential choice", pressure: "the pressure or conflict", cost: "the cost paid", evidence: "exact excerpt from final chapter" }] }],
       events: [{ id: "stable-id", summary: "event", position: "story position", participants: ["name"], consequences: ["consequence"] }],
       plotThreads: [{ id: "stable-id", title: "thread", status: "open|active|resolved|abandoned", lastUpdated: "chapter id", notes: "latest state" }],
       continuityNotes: ["facts future chapters must preserve"]
     }, null, 2),
     "旧状态：", JSON.stringify(state, null, 2),
     "最终章节全文（状态提取必须覆盖每一场的人物、事件、事实与情节线变化）：", chapter,
-    "profile 记录相对稳定的性格底色、价值观、内在矛盾、语言习惯和行为边界；不要因单次行为轻易改写。其他字段是章节结束时的当前状态快照，数组必须给出完整当前值。人物弧光可以改变人物，但必须由选择、压力、代价和行为证据支撑，不得刻板化，也不得为制造反转而突然黑化/洗白。只记录章节明确支持的内容；推断标为 inferred，项目原创内容标为 original，不得写进原著正史。"
+    "profile 记录相对稳定的性格底色、价值观、内在矛盾、语言习惯和行为边界；不要因单次行为轻易改写。其他字段是章节结束时的当前状态快照，数组必须给出完整当前值。人物弧光可以改变人物，但必须由选择、压力、代价和行为证据支撑，不得刻板化，也不得为制造反转而突然黑化/洗白。只记录章节明确支持的内容；推断标为 inferred，项目原创内容标为 original，不得写进原著正史。人物发生实质性弧光变化时，追加 arcMilestones，记录关键选择、压力、代价和正文逐字证据；没有实质变化就不新增里程碑。"
   ]);
   try {
     const cleaned = stateText.trim().replace(/^`{3}(?:json)?\s*/i, "").replace(/\s*`{3}$/i, "");
-    const update = parseStoryStateUpdate(JSON.parse(cleaned.slice(cleaned.indexOf("{"), cleaned.lastIndexOf("}") + 1)) as unknown);
+    const update = parseStoryStateUpdate(JSON.parse(cleaned.slice(cleaned.indexOf("{"), cleaned.lastIndexOf("}") + 1)) as unknown, chapter);
     const nextState = mergeStoryState(state, update);
     if (input.applyState) await saveStoryState(input.statePath, nextState);
     await saveStage(input.outputDir, "07-state-update.json", JSON.stringify(nextState, null, 2));
