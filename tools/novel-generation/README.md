@@ -100,7 +100,7 @@ npm run dev -- write-long --world conghuoniao --mode continuation \
   --max-words 10000 --scenes 8 --retrieval-limit 4 --timeout-ms 180000
 ```
 
-流程：一次生成 N 场蓝图（`01-scene-blueprint.md`，必须有连续且唯一的 `## 场景 1..N` 标题；格式不合格直接停止，不会把整份蓝图重复当成每场）→ 按场景蓝图检索相关原文（`00-scene-XX-retrieval.md`）→ 逐场成文（`02-scene-XX.md`，字数不足自动补写一次，场间传入上一场较完整的结尾上下文）→ 拼接初稿（`03-draft.md`）→ 分两批连续性审查（`04-continuity-review.md`）→ 逐场对白与文风修订（`05-polish-XX.md`）→ `chapter.md`、`06-rhythm-metrics.json` 与状态更新 `07-state-update.json`。状态默认自动写回 SQLite 和兼容快照；状态提取或保存失败会让命令失败，避免下一章读取陈旧状态。仅隔离实验使用 `--no-apply-state`。各阶段产物全部落盘，可逐场复核或重跑。
+流程：一次生成 N 场蓝图（`01-scene-blueprint.md`，必须有连续且唯一的 `## 场景 1..N` 标题；格式不合格自动要求主编修正一次，仍不合格才停止；不会把整份蓝图重复当成每场）→ 按场景蓝图检索相关原文（`00-scene-XX-retrieval.md`）→ 逐场成文（`02-scene-XX.md`，字数不足自动补写一次，场间传入上一场较完整的结尾上下文）→ 拼接初稿（`03-draft.md`）→ 分两批连续性审查（`04-continuity-review.md`）→ 逐场对白与文风修订（`05-polish-XX.md`）→ `chapter.md`、`06-rhythm-metrics.json` 与状态更新 `07-state-update.json`。状态默认自动写回 SQLite 和兼容快照；状态提取或保存失败会让命令失败，避免下一章读取陈旧状态。仅隔离实验使用 `--no-apply-state`。各阶段产物全部落盘，可逐场复核或重跑。
 
 文风复核见 `analysis/conghuoniao/style-rhythm.md`：原书抽样平均句长 22 字、长句 25.3%、超长句 4.7%，而成稿 `chapter-001.md` 平均 14.7 字、长句 8%、超长句 0%。量化观察项会随成文与修订提示提供参考；`06-rhythm-metrics.json` 用同一口径统计成稿，偏离用于定位节奏问题，不会单独触发机械回滚或强制改写。
 
