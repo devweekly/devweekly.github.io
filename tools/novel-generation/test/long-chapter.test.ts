@@ -40,9 +40,9 @@ test("splitScenes maps each numbered heading to exactly one scene", () => {
   ]);
 });
 
-test("splitScenes rejects missing, duplicate, out-of-order and extra scene headings", () => {
-  assert.throws(() => splitScenes("## 场景 1\n内容", 2), /实际识别到 1 个/);
+test("splitScenes allows natural scene counts below the configured maximum", () => {
+  assert.deepEqual(splitScenes("## 场景 1\n内容", 2), ["## 场景 1\n内容"]);
   assert.throws(() => splitScenes("## 场景 1\nA\n## 场景 1\nB", 2), /编号必须连续/);
   assert.throws(() => splitScenes("## 场景 2\nA\n## 场景 1\nB", 2), /编号必须连续/);
-  assert.throws(() => splitScenes("## 场景 1\nA\n## 场景 2\nB\n## 场景 3\nC", 2), /实际识别到 3 个/);
+  assert.throws(() => splitScenes("## 场景 1\nA\n## 场景 2\nB\n## 场景 3\nC", 2), /1 到 2 个场景/);
 });
