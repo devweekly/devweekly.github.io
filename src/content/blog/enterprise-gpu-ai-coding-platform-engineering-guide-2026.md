@@ -429,10 +429,7 @@ ceil
 
 此外，容量必须同时满足显存约束：
 
-[
-M_{weights} + M_{KV} + M_{runtime} + M_{workspace} + M_{reserve}
-leq M_{available}
-]
+`M_weights + M_KV + M_runtime + M_workspace + M_reserve <= M_available`
 
 模型权重能装进 GPU，不代表能够满足目标并发。长上下文和高并发通常首先消耗 KV Cache。要通过真实引擎测量，而不是只按参数量乘以每参数字节数来估算。
 
@@ -534,9 +531,11 @@ GPU 平台的故障不仅是 Pod Crash。还包括 GPU XID、ECC 错误、NVLink
 
 GPU 租赁成本只是平台总成本的一部分。成本模型还要覆盖网络、存储、机房设施、软件、工程人力、支持合同和故障预留。对企业 Coding 平台，单纯比较 GPU 小时价格没有意义；真正应该比较的是目标 SLO 下的有效吞吐，以及每个成功代码任务的全成本。
 
-[TCO = GPU + Network + Storage + Facility + Software + People + Support + FailureReserve]
+成本核算可用两个简单表达式统一口径：
 
-[CostPerSuccessfulTask = \frac{GPU + Infrastructure + Platform + Operations + FailedAttempts}{SuccessfulTasks}]
+`TCO = GPU + Network + Storage + Facility + Software + People + Support + FailureReserve`
+
+`CostPerSuccessfulTask = (GPU + Infrastructure + Platform + Operations + FailedAttempts) / SuccessfulTasks`
 
 采购询价时，先确认供应商卖的是什么资源单位：单卡、8-GPU 节点，还是完整 NVL72 机架。随后核实节点能否同时交付、GPU 是否处于同一 NVLink 域、NIC 和交换机是否独占、RDMA 与 oversubscription 如何配置。网络带宽保障、模型缓存和存储费用也要写进报价边界，避免低估实际账单。
 
