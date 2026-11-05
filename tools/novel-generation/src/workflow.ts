@@ -202,7 +202,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     reviews: reviewed.reviews
   }, null, 2));
 
-  const stateText = await cachedCall("state-update", "08-state-update-raw.json", "state", [
+  const statePrompt = [
     "角色：小说连续性资料管理员。根据旧状态和最终章节提取本章状态变化。",
     "只输出合法 JSON 对象，不要 Markdown 代码围栏。结构：",
     JSON.stringify({
@@ -211,27 +211,29 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
       characters: [{ name: "name", profile: { coreTraits: ["stable traits"], values: ["values"], contradictions: ["internal contradictions"], voice: "distinctive voice", boundaries: ["what this character will not easily do"], arc: "current long-term character arc" }, status: "current status", location: "current location", abilities: ["current abilities"], knowledge: ["current known information"], goals: ["current goals"], relationships: ["current relationships"], arcMilestones: [{ id: "stable-milestone-id", chapter: "chapter id", change: "what changed", evidence: "exact excerpt from final chapter", choice: "optional, only if naturally clear", pressure: "optional, only if naturally clear", cost: "optional, only if naturally clear" }] }],
       events: [{ id: "stable-id", summary: "event", position: "story position", participants: ["name"], consequences: ["consequence"] }],
       plotThreads: [{ id: "stable-id", title: "thread", status: "open|active|resolved|abandoned", lastUpdated: "chapter id", notes: "latest state" }],
-      continuityNotes: ["facts future chapters must preserve"]
+      continuityNotes: ["complete current active notes"]
     }, null, 2),
     "旧状态：", JSON.stringify(state, null, 2), "最终章节：", chapter,
     "continuityNotes 必须返回章节结束时仍然有效的完整备注集合，不是只列新增项；已经变化、解决或被新事实替代的旧备注不要继续返回。人物 profile 是相对稳定的性格底色、价值观、内在矛盾、语言习惯与行为边界；不要因单次情绪或行为轻易改写。character 的 status/location/abilities/knowledge/goals/relationships 是当前剧情状态，必须反映本章结束时的最新快照，数组应给出完整当前值而非只追加变化项。人物可以变化、反复、倒退、误判，也可以做出出乎意料的选择；不要把人物锁死成标签。状态提取只记录正文已经发生的事，不得要求正文为了状态字段而解释动机或安排代价。只记录章节明确支持的内容。无法确认的内容不要写入 canonFacts；推断必须标为 inferred。人物和情节线只输出本章新增或发生变化的记录。只有正文自然呈现重要转折时才追加 arcMilestones；不要为了填写字段而拔高普通情节或反向要求正文增加解释。"
-  ]);
-
+  ].join("\\n\\n");
+  const validateStateUpdate = (output: string) => parseStoryStateUpdate(extractJson(output), chapter);
+  let stateText = "";
   let update: Partial<StoryState>;
   try {
-    update = parseStoryStateUpdate(extractJson(stateText), chapter);
+    stateText = await cachedCall("state-update", "08-state-update-raw.json", "state", [statePrompt], validateStateUpdate);
+    update = validateStateUpdate(stateText);
   } catch (firstError) {
     try {
-      const retryText = await cachedCall("state-update-retry", "08-state-update-retry-raw.json", "state", [
+      stateText = await cachedCall("state-update-retry", "08-state-update-retry-raw.json", "state", [
         "上一次状态提取未通过 JSON 或 schema 校验：" + String(firstError),
         "上一次输出：", stateText,
         "请重新根据旧状态和下面的最终章节全文提取，只输出符合既定 JSON schema 的对象；continuityNotes 必须返回完整的当前有效备注数组；不要添加 Markdown、解释或 schema 外字段。",
         "旧状态：", JSON.stringify(state, null, 2),
         "最终章节全文：", chapter
-      ]);
-      update = parseStoryStateUpdate(extractJson(retryText), chapter);
+      ], validateStateUpdate);
+      update = validateStateUpdate(stateText);
     } catch (retryError) {
-      await saveStage(input.outputDir, "08-state-update-error.txt", "First attempt: " + String(firstError) + "\nRetry: " + String(retryError) + "\n\n" + stateText);
+      await saveStage(input.outputDir, "08-state-update-error.txt", "First attempt: " + String(firstError) + "\\nRetry: " + String(retryError) + "\\n\\n" + stateText);
       throw new Error("Chapter was generated, but story-state extraction failed twice. See 08-state-update-error.txt; do not start the next chapter.");
     }
   }
