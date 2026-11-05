@@ -10,6 +10,7 @@ export interface WriteWorkflowInput {
   worldBible: string;
   sourceText?: string;
   contextText?: string;
+  retrievedContext?: string;
   model?: string;
   maxWords: number;
   outputDir: string;
@@ -57,6 +58,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     "世界设定：", input.worldBible,
     "当前故事状态（已有记录优先；不得擅自改写已确认事实）：", JSON.stringify(state, null, 2),
     input.contextText ? "用户补充的前文摘要：\n" + input.contextText : "",
+    input.retrievedContext ? "从本地小说资料库检索到的相关原文片段（仅作为事实证据，不得整段复制）：\n" + input.retrievedContext : "",
     input.sourceText ? "用户提供且有权使用的续写材料：\n" + input.sourceText : "",
     input.mode === "continuation" ? "创作模式：续写。严格承接用户提供的合法文本和当前故事状态。" : "创作模式：原创衍生。不得把项目原创内容伪装成原著事实。",
     "本次创作任务：", input.brief
