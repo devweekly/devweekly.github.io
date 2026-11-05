@@ -137,11 +137,22 @@ export function validateEvidenceReferences(text: string, sourceLines: string[]):
   const references = [...text.matchAll(/\bL(\d+)\b/g)].map(match => Number(match[1]));
   const issues: string[] = [];
   const claims: Array<{ text: string; lines: number[] }> = [];
+  let section = "";
   for (const paragraph of text.split(/\n\s*\n/)) {
     const claim = paragraph.trim();
-    if (!claim || /^#{1,6}\s/.test(claim) || /^\s*\x60{3}/.test(claim)) continue;
+    if (!claim || /^\s*\x60{3}/.test(claim)) continue;
+    if (/^#{1,6}\s/.test(claim)) {
+      section = claim.replace(/^#{1,6}\s*/, "").trim();
+      continue;
+    }
+    if (section === "待核实" || section.startsWith("待核实")) continue;
+    if (claim.length < 20) continue;
     const lines = [...claim.matchAll(/\bL(\d+)\b/g)].map(match => Number(match[1]));
-    if (lines.length) claims.push({ text: claim, lines: [...new Set(lines)] });
+    if (!lines.length) {
+      issues.push("结论段落缺少原文行号引用：" + claim.slice(0, 60));
+      continue;
+    }
+    claims.push({ text: claim, lines: [...new Set(lines)] });
   }
   for (const line of references) {
     if (line < 1 || line > sourceLines.length) issues.push("L" + line + " 超出原文范围");
