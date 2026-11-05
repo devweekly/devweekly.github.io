@@ -135,7 +135,8 @@ export async function analyzeLibrary(
   libraryDir: string,
   worldId: string,
   limit: number,
-  model?: string
+  model?: string,
+  timeoutMs = 60_000
 ): Promise<{ processed: number; failed: number; remaining: number }> {
   const index = JSON.parse(await readFile(join(libraryDir, "index.json"), "utf8")) as LibraryIndex;
   if (index.schemaVersion !== 1 || index.worldId !== worldId) throw new Error("Library index schema/world mismatch.");
@@ -180,7 +181,7 @@ export async function analyzeLibrary(
     ].join("\n\n");
 
     try {
-      const response = await runAgentText(prompt, model);
+      const response = await runAgentText(prompt, model, timeoutMs);
       const annotation = normalizeAnnotation(parseObject(response), chunk);
       store.annotations = [...store.annotations.filter(item => item.chunkId !== chunk.id), annotation];
       store.failures = store.failures.filter(item => item.chunkId !== chunk.id);

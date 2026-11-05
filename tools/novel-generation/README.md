@@ -1,6 +1,6 @@
 # Novel Generation
 
-本地长篇小说创作工具，使用 CodeBuddy Agent SDK。当前提供小说文本导入、原文检索、人物/事件/关系候选抽取，以及多阶段章节写作。
+本地长篇小说创作工具，使用 CodeBuddy Agent SDK。当前提供小说文本导入、原文检索、人物/事件/关系候选抽取、多 Agent 文本分析，以及多阶段章节写作。
 
 ## 1. 导入小说资料
 
@@ -11,6 +11,7 @@ cd tools/novel-generation
 npm install
 npm run typecheck
 npm test
+npm run dev -- models
 
 npm run dev -- ingest --world conghuoniao --input ./original.txt
 npm run dev -- ingest --world conghuoniao --input ./private/novel.txt
@@ -34,7 +35,7 @@ npm run dev -- search --world conghuoniao --query "人物名字 某次战斗 能
 ```bash
 npm run dev -- analyze --world conghuoniao --limit 20
 # 继续处理下一批；已完成片段会跳过，失败片段会重试
-npm run dev -- analyze --world conghuoniao --limit 20 --model <model-name>
+npm run dev -- analyze --world conghuoniao --limit 20 --model <model-name> --timeout-ms 60000
 ```
 
 结果保存在本地 `worlds/<world>/library/annotations.json`。重新导入发生变化的源文件时，对应旧标注会自动失效。当前还没有跨章节人物别名归并、共指消解和事件去重；抽取结果是候选证据，不等同于已确认正史。
@@ -47,7 +48,19 @@ node analysis/build-corpus-index.mjs
 
 脚本读取根目录 `original.txt`，输出 `analysis/<world>/` 下的卷章索引、语料画像和卷结构表；`conghuoniao` 世界的分析结果见 `analysis/conghuoniao/analysis-report.md`，世界设定见 `worlds/conghuoniao/world-bible.md` 及同目录的 `yanfu-system.md`、`fruit-worlds.md`、`characters.md`、`timeline.md`。语料来源、证据等级和使用边界记在 `sources/local-corpus-analysis.md`。
 
-## 4. 多阶段章节写作
+## 4. 多 Agent 文本分析
+
+`analyze-world` 用文件交接方式组织多个分析 Agent，不依赖 SDK 连通性。角色包括主线剧情、创意剧情、文风、人物与关系、世界观与连续性；各角色读取自己的输入包，成稿写入同目录 `output.md`，互不改写。
+
+```bash
+npm run dev -- analyze-world --world conghuoniao --phase prepare   # 生成输入包与协议
+npm run dev -- analyze-world --world conghuoniao --phase status    # 查看交稿状态
+npm run dev -- analyze-world --world conghuoniao --phase collect   # 校验并汇总
+```
+
+输入包由本地检索库按角色查询词生成，含卷结构、建议精读行号区间与证据规范；成稿要求带 `L####` 行号、区分四级证据、不复制原文。`collect` 只校验格式、字数与证据密度，输出 `manifest.json` 和 `index.md`，不判断观点对错。结果保存在 `analysis/<world>/agent-analysis/`，与主世界设定分开，属工作记录。
+
+## 5. 多阶段章节写作
 
 `write` 会结合当前故事位置、未解决情节线和人物名单，从本地资料库检索相关片段；如果已经运行 `analyze`，也会把命中片段对应的人物、事件和关系标注一并交给写作流程。随后由主线剧情 Agent 与创意发散 Agent 并行提出方案，主编 Agent 选定章节蓝图；场景小说家生成正文，人物对话 Agent 修整对白，叙事声音 Agent 统一全章表达，连续性 Agent 审查，主编 Agent 终审并更新故事状态。各 Agent 通过独立阶段文件交接，不并发改写同一份正文。
 
@@ -71,7 +84,7 @@ npm run dev -- write --world conghuoniao --mode continuation \
 
 故事状态包括当前位置、事实来源、人物状态、事件、情节线和后续连续性约束。模型提取的状态是工作记录，不自动等于原著正史；应定期人工核验。
 
-## 5. 单次生成
+## 6. 单次生成
 
 ```bash
 npm run dev -- generate --world conghuoniao --mode derivative \
@@ -81,9 +94,11 @@ npm run dev -- generate --world conghuoniao --mode derivative \
 
 ## 当前实现边界
 
-- 使用 `@tencent-ai/agent-sdk` 的 `query()` 接口；模型由本机 CodeBuddy 配置决定，也可通过 `--model` 指定。
+- 使用 `@tencent-ai/agent-sdk` 的 `query()`。模型链默认 `hy4free`（hy4 系列免费档）→ `deepseek-v4.1-flash`，按 CodeBuddy 产品目录（`ACC_PRODUCT_CONFIG_PATH` 或 `~/.codebuddy/local_storage`）解析可用性；`npm run dev -- models` 显示解析结果。可用 `--model`、`NOVEL_AGENT_MODEL` 或 `CODEBUDDY_DEFAULT_MODEL` 覆盖，写 `hy4` 会按别名展开。单次调用带超时与主动中断，超时或无输出时换链中下一个模型。
+- 被 IDE/Agent 托管时（存在 `CODEBUDDY_SESSION_ID` / `WORKBUDDY_CONFIG_DIR`），SDK fork 的 CLI 子进程可能静默退出；`analyze` / `write` / `generate` 需在普通终端验证，`analyze` 可用 `--timeout-ms` 控制单片段上限。
+- `analyze-world` 走文件交接，不调用模型；输入包与成稿随代码提交，便于复核每个结论的依据。
 - 本地检索是词项/BM25 风格排序，不是向量语义检索。
-- 文本抽取按片段进行，已有证据校验和断点续跑；尚未实现跨章节实体归并、共指消解、人物状态时间序列和伏笔生命周期分析。全量 `analyze` 尚未跑通，当前 `annotations.json` 为空。
+- 文本抽取按片段进行，已有证据校验和断点续跑；尚未实现跨章节实体归并、共指消解、人物状态时间序列和伏笔生命周期分析。当前托管会话下 SDK 调用超时，全量 `analyze` 未执行，`annotations.json` 为空。
 - `analysis/build-corpus-index.mjs` 只做确定性结构解析，不调用模型；卷边界由章号重置判定，作者单章与卷末总结单独记录，不做语义归并。
 - 导入器支持 TXT/Markdown；EPUB、PDF、OCR 和网页采集不在当前范围。
 - 多 Agent 通过独立模型调用协作；主线规划与创意发散并行，其余阶段按依赖顺序执行。当前没有持久化 Agent session，中断后不会自动从写作步骤恢复。
@@ -100,6 +115,8 @@ src/
   story-state.ts
   library.ts
   analysis.ts
+  agent-runtime.ts
+  world-analysis.ts
 analysis/
   build-corpus-index.mjs
   conghuoniao/
@@ -107,11 +124,19 @@ analysis/
     chapter-index.json
     corpus-profile.json
     volumes.md
+    agent-analysis/
+      PROTOCOL.md
+      index.md
+      manifest.json
+      <role>/input.md
+      <role>/output.md
 sources/
   public-chapter-sources.md
   local-corpus-analysis.md
 test/
   library.test.ts
+  world-analysis.test.ts
+  agent-runtime.test.ts
 worlds/
   conghuoniao/
     world-bible.md

@@ -1,4 +1,5 @@
 import { query } from "@tencent-ai/agent-sdk";
+import { buildQueryOptions, isManagedSession, resolveAgentModel } from "./agent-runtime.js";
 
 export type GenerationMode = "derivative" | "continuation";
 export interface GenerateStoryInput {
@@ -36,26 +37,59 @@ function buildPrompt(input: GenerateStoryInput): string {
   ].filter(Boolean).join("\n\n");
 }
 
-export async function runAgentText(prompt: string, model?: string): Promise<string> {
+async function callOnce(prompt: string, model: string, fallbackModel: string | undefined, timeoutMs: number): Promise<string> {
+  const abortController = new AbortController();
   const stream = query({
     prompt,
-    options: {
-      ...(model ? { model } : {}),
-      permissionMode: "bypassPermissions",
-      allowedTools: [],
-      maxTurns: 1
-    }
+    options: buildQueryOptions(model, { cwd: process.cwd(), abortController, fallbackModel })
   });
-  const chunks: string[] = [];
-  for await (const message of stream) {
-    if (message.type !== "assistant") continue;
-    for (const block of message.message.content) {
-      if (block.type === "text") chunks.push(block.text);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => {
+      abortController.abort();
+      void stream.interrupt().catch(() => {});
+      reject(new Error(`超过 ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
+  const collect = async (): Promise<string> => {
+    const chunks: string[] = [];
+    for await (const message of stream) {
+      if (message.type !== "assistant") continue;
+      for (const block of message.message.content) {
+        if (block.type === "text") chunks.push(block.text);
+      }
+    }
+    return chunks.join("\n").trim();
+  };
+  try {
+    const output = await Promise.race([collect(), timeout]);
+    if (!output) throw new Error("Agent 未返回文本");
+    return output;
+  } catch (error) {
+    if (abortController.signal.aborted) throw new Error(`调用超时（${timeoutMs}ms），已中断`);
+    throw error;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+/** 按偏好链依次调用模型；单个模型超时或无输出时换下一个。 */
+export async function runAgentText(prompt: string, model?: string, timeoutMs = 120_000): Promise<string> {
+  const resolved = resolveAgentModel(model);
+  const attempts = [resolved.model, ...resolved.fallbacks];
+  const failures: string[] = [];
+  for (const candidate of attempts) {
+    const fallback = attempts.find(item => item !== candidate);
+    try {
+      return await callOnce(prompt, candidate, fallback, timeoutMs);
+    } catch (error) {
+      failures.push(`${candidate}: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
-  const output = chunks.join("\n").trim();
-  if (!output) throw new Error("CodeBuddy returned no text output.");
-  return output;
+  const hint = isManagedSession()
+    ? "；当前进程被 IDE/Agent 托管，SDK 启动的 CLI 子进程可能无法正常拉起，请在普通终端重试"
+    : "";
+  throw new Error(`模型链均失败（${attempts.join(" → ")}，来源 ${resolved.source}）：${failures.join(" | ")}${hint}`);
 }
 
 export async function generateStory(input: GenerateStoryInput): Promise<string> {

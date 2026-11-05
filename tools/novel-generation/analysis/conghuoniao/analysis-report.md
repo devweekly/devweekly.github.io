@@ -26,6 +26,8 @@
 | `worlds/conghuoniao/style-profile.md` | 抽象叙事特征，不复制原句与标志性表达 |
 | `worlds/conghuoniao/story-state.json` | 写作状态初始化，止于卷 17 未完结处 |
 | `sources/local-corpus-analysis.md` | 语料来源、切分方法、证据等级与使用边界 |
+| `analysis/conghuoniao/agent-analysis/*/output.md` | 主线、创意剧情、文风、人物关系、连续性五个 Agent 的分析成稿 |
+| `analysis/conghuoniao/agent-analysis/REVIEW.md` | 成稿结论回查原文后对正史索引与状态文件的修正记录 |
 
 `original.txt` 与 `private/` 已加入 `.gitignore`，不进入版本库。导入索引 `worlds/conghuoniao/library/index.json` 与 `story-state.json` 随代码提交，其他机器检出后无需重新导入即可检索与续写；索引含全文片段，公开仓库需确认授权。
 
@@ -33,7 +35,9 @@
 
 `tsconfig.json` 补上 `"types": ["node"]`，TypeScript 7 下 `npm run typecheck` 不再报找不到 `process` 与 Node 命名空间。`src/library.ts` 的章节标题正则允许行首缩进，重新导入得到 2,594 个检索片段。`test/library.test.ts` 中「旧线索」的断言改为检查旧片段确实被移除：中文二元组是近似匹配，「线索」命中「新线索」属正常召回，原断言把检索器行为误当成数据残留。三项测试现全部通过。
 
-`npm run dev -- analyze` 在限时 90 秒的试跑中没有返回抽取结果，也未写出 `annotations.json`。逐片段模型抽取涉及 2,594 次调用，本轮改用确定性结构分析加关键章节精读，实体、事件、关系的候选标注仍为空。跨章节别名归并、共指消解、人物状态时间序列和伏笔生命周期分析因此没有完成，设定文档里相关位置标为待核实。
+`npm run dev -- analyze` 在限时试跑中没有返回抽取结果，也未写出 `annotations.json`。逐片段模型抽取涉及 2,594 次调用，本轮改用确定性结构分析、关键章节精读与文件交接式多 Agent 分析，实体、事件、关系的候选标注仍为空。跨章节别名归并、共指消解、人物状态时间序列和伏笔生命周期分析因此没有完成，设定文档里相关位置标为待核实。
+
+`runAgentText` 已补上模型链、超时中断与托管环境诊断：默认 `hy4free` → `deepseek-v4.1-flash`，单次调用超时后主动 `interrupt()` 并换下一个模型。在当前 IDE/Agent 托管会话里两个模型的探测都在 15 秒内超时，返回明确错误；这不是模型选择问题，需在普通终端验证 SDK 调用。多 Agent 分析走 `analyze-world` 文件交接，不依赖 SDK 连通性，五个角色均已交稿并通过 `collect` 校验。
 
 ## 验证
 

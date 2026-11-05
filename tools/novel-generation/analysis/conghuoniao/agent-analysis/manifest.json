@@ -1,0 +1,52 @@
+{
+  "worldId": "conghuoniao",
+  "generatedAt": "2026-11-05T10:44:07.983Z",
+  "entries": [
+    {
+      "id": "main-plot",
+      "name": "主线剧情 Agent",
+      "path": "analysis/conghuoniao/agent-analysis/main-plot/output.md",
+      "chars": 1800,
+      "evidenceCount": 56,
+      "ok": true,
+      "issues": []
+    },
+    {
+      "id": "creative",
+      "name": "创意剧情 Agent",
+      "path": "analysis/conghuoniao/agent-analysis/creative/output.md",
+      "chars": 1792,
+      "evidenceCount": 52,
+      "ok": true,
+      "issues": []
+    },
+    {
+      "id": "style",
+      "name": "文风 Agent",
+      "path": "analysis/conghuoniao/agent-analysis/style/output.md",
+      "chars": 1778,
+      "evidenceCount": 52,
+      "ok": true,
+      "issues": []
+    },
+    {
+      "id": "characters",
+      "name": "人物与关系 Agent",
+      "path": "analysis/conghuoniao/agent-analysis/characters/output.md",
+      "chars": 1795,
+      "evidenceCount": 33,
+      "ok": true,
+      "issues": []
+    },
+    {
+      "id": "continuity",
+      "name": "世界观与连续性 Agent",
+      "path": "analysis/conghuoniao/agent-analysis/continuity/output.md",
+      "chars": 1783,
+      "evidenceCount": 83,
+      "ok": true,
+      "issues": []
+    }
+  ],
+  "complete": true
+}
