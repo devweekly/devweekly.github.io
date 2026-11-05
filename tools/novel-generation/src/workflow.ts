@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { loadStoryState, saveStoryState, type StoryState } from "./story-state.js";
+import { loadStoryState, parseStoryStateUpdate, saveStoryState, type StoryState } from "./story-state.js";
 import { runAgentText, type GenerationMode } from "./generate.js";
 import { readTaskProfiles, type StageKey } from "./task-profiles.js";
 import { formatReview, reviewAndRepair, reviewPrompt } from "./chapter-review.js";
