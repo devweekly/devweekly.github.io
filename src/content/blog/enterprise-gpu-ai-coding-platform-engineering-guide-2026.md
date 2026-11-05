@@ -2,7 +2,7 @@
 author: W
 featured: false
 draft: false
-description: 面向企业级 AI Coding 平台的 GPU 基础设施与推理工程指南，覆盖 NVIDIA B300 / GB300、国产 GPU 与 AI 加速器、异构推理部署、Kubernetes、Agent Runtime、安全、容量规划、运维与实施路线图。
+description: 面向 2000 名开发者企业级 AI Coding Workbench 的 GPU 基础设施与推理工程指南，涵盖 AWS 与 Azure GPU 租用、H100/H200/Blackwell、模型路由、Agent Runtime、容量规划、成本估算、安全与 Day-2 运维。
 pubDatetime: 2026-10-30T00:00:00Z
 title: 企业级 GPU AI Coding 平台：从 B300 集群部署到推理与 Agent 工程
 tags:
@@ -24,7 +24,7 @@ tags:
 
 # 企业级 GPU AI Coding 平台：从 B300 集群部署到推理与 Agent 工程
 
-本文以至少 2000 名开发者、日常中到重度使用为目标，讨论企业 AI Coding 平台的 Workbench、模型服务与 GPU 基础设施。模型部署在企业自有或租用的 GPU 集群上，通过统一 API 向 Coding Agent 提供推理服务。平台还需要管理开发者会话、仓库上下文、工具执行、租户隔离、容量、监控、成本和故障恢复。
+本文以至少 2000 名开发者、日常中到重度使用为目标，讨论企业 AI Coding 平台的 Workbench、模型服务与 GPU 基础设施。模型部署在企业自有基础设施，或 AWS EC2 / Azure GPU VM 上，通过统一 API 向 Coding Agent 提供推理服务。平台还需要管理开发者会话、仓库上下文、工具执行、租户隔离、容量、监控、成本和故障恢复。
 
 架构分为两个相互协作的部分：GPU 推理平台负责模型部署、GPU 调度和请求处理；Coding Agent 平台负责会话生命周期、上下文组装、工具调用、代码执行与任务验证。两者通过模型 API 交互，资源管理和安全边界分别设计。
 
