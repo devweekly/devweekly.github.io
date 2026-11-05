@@ -49,7 +49,8 @@ function compact(item: AnalysisItem): string {
     .filter(([key, value]) => key !== "sourceRefs" && value !== undefined && value !== null && value !== "")
     .map(([key, value]) => `- ${key}: ${Array.isArray(value) ? value.join("；") : typeof value === "object" ? JSON.stringify(value) : String(value)}`)
     .join("\n");
-  return body + (refs.length ? "\n- 参考来源范围（用于回查，不代表逐条证明）： " + [...new Set(refs)].join("；") : "");
+  const sourceSummary = refs.length ? "\n- 参考来源范围（用于回查，不代表逐条证明）： " + [...new Set(refs)].slice(0, 5).join("；") + (refs.length > 5 ? `；另有 ${refs.length - 5} 处` : "") : "";
+  return body.slice(0, 1400) + (body.length > 1400 ? "…" : "") + sourceSummary;
 }
 
 /** Selects only potentially relevant analysis as optional inspiration; never turns it into canon or a writing checklist. */
@@ -67,10 +68,11 @@ export function buildStoryAnalysisContext(snapshot: StoryAnalysisSnapshot | unde
     return chosen.length ? "### " + title + "\n" + chosen.map(compact).join("\n\n") : "";
   }).filter(Boolean);
   if (!sections.length) return "";
-  return [
+  const rendered = [
     "以下是从既有语料分析中挑选出的相关参考。它们是可选素材和创意火花，不是正史、人物定论、剧情任务或必须兑现的伏笔。",
     "人物画像不能限制人物当下的选择；成长方向可以互相矛盾，人物可以反复、倒退、背叛、和解、黑化或洗白。情节建议可以采用、改造、组合或全部舍弃。",
     "若参考内容与用户本次创作意图、正文自然性或文学表达冲突，以本次创作和文学表达为准。不要为了体现这些资料而强行塞入人物、伏笔或情节。",
     sections.join("\n\n")
   ].join("\n\n");
+  return rendered.length > 12_000 ? rendered.slice(0, 12_000) + "\n\n（参考内容已截断；以本次创作任务和文学表达为准。）" : rendered;
 }
