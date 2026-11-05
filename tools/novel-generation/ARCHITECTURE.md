@@ -3,6 +3,8 @@
 > 本文描述 `tools/novel-generation` 当前代码的真实执行路径，并给出以“全自动续写、无人为编辑”为默认目标的目标架构。  
 > 代码核对范围：`src/cli.ts`、`src/workflow.ts`、`src/long-chapter.ts`、`src/generate.ts`、`src/story-state.ts`、`src/database.ts`、`src/library.ts`、`src/analysis.ts`、`scripts/compare-models.mjs`。
 
+> 流程先以编号步骤说明，未嵌入 Mermaid；独立 HTML/SVG 图形版待确认项目图表风格后补充。
+
 ## 1. 设计目标与运行原则
 
 续写从输入创作任务开始，到章节正文、人物/事件/情节线状态持久化结束，默认由系统自动完成。人工不参与常规提纲选择、正文编辑、对白修改、风格修订、连续性确认或状态确认。
