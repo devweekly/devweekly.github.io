@@ -27,7 +27,7 @@ function extractJson(text: string): unknown {
 }
 
 function mergeState(current: StoryState, update: Partial<StoryState>): StoryState {
-  const mergeBy = <T>(oldItems: T[], newItems: T[], key: (item: T) => string): T[] => {
+  const mergeBy = <T extends object>(oldItems: T[], newItems: T[], key: (item: T) => string): T[] => {
     const map = new Map(oldItems.map(item => [key(item), item]));
     for (const item of newItems) {
       const id = key(item);
