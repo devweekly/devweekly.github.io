@@ -77,3 +77,39 @@ test("full story state validation rejects cross-world or malformed snapshots", (
   assert.equal(validateStoryState(state).worldId, "world-a");
   assert.throws(() => validateStoryState({ ...state, characters: [{ name: "", status: "" }] }));
 });
+
+
+test("character arc milestones are append-only, deduplicated by id and evidence-backed", () => {
+  const current = emptyStoryState("test-world");
+  current.characters.push({
+    name: "李玄",
+    status: "仍在观察",
+    arcMilestones: [{
+      id: "arc-1", chapter: "第1章", change: "开始信任同伴",
+      choice: "把退路交给同伴", pressure: "追兵逼近", cost: "失去独自脱身机会",
+      evidence: "把退路交给同伴"
+    }]
+  });
+  const next = mergeStoryState(current, {
+    characters: [{
+      name: "李玄",
+      status: "决定留下",
+      arcMilestones: [{
+        id: "arc-2", chapter: "第2章", change: "愿意承担责任",
+        choice: "留下断后", pressure: "同伴被困", cost: "暴露行踪",
+        evidence: "他转身挡在门前"
+      }]
+    }]
+  });
+  assert.deepEqual(next.characters[0]?.arcMilestones?.map(item => item.id), ["arc-1", "arc-2"]);
+  assert.throws(() => parseStoryStateUpdate({
+    characters: [{
+      name: "李玄", status: "留下",
+      arcMilestones: [{
+        id: "arc-3", chapter: "第3章", change: "变化",
+        choice: "选择", pressure: "压力", cost: "代价",
+        evidence: "正文中不存在的证据"
+      }]
+    }]
+  }, "这一章没有这句话"));
+});
