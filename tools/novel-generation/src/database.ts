@@ -28,7 +28,7 @@ function openDatabase(worldDir:string,worldId:string):DatabaseSync {
 }
 function transaction<T>(db:DatabaseSync,work:()=>T):T{db.exec("BEGIN IMMEDIATE");try{const x=work();db.exec("COMMIT");return x;}catch(e){db.exec("ROLLBACK");throw e;}}
 export function syncLibraryChunks(worldDir:string,worldId:string,chunks:LibraryChunk[]):void{
- const db=openDatabase(worldDir,worldId);try{transaction(db,()=>{db.exec("DELETE FROM library_chunks");const q=db.prepare("INSERT INTO library_chunks(id,source,chapter,chunk_index,start_offset,end_offset,source_hash,chapter_start,text) VALUES(?,?,?,?,?,?,?,?,?)");for(const c of chunks)q.run(c.id,c.source,c.chapter,c.chunkIndex,c.start,c.end,c.sourceHash??null,c.chapterStart??null,c.text);});}finally{db.close();}
+ const db=openDatabase(worldDir,worldId);try{transaction(db,()=>{db.exec("DELETE FROM library_chunks; DELETE FROM story_analysis");const q=db.prepare("INSERT INTO library_chunks(id,source,chapter,chunk_index,start_offset,end_offset,source_hash,chapter_start,text) VALUES(?,?,?,?,?,?,?,?,?)");for(const c of chunks)q.run(c.id,c.source,c.chapter,c.chunkIndex,c.start,c.end,c.sourceHash??null,c.chapterStart??null,c.text);});}finally{db.close();}
 }
 export function readLibraryChunks(worldDir:string,worldId:string):LibraryChunk[]{
  const db=openDatabase(worldDir,worldId);try{return db.prepare("SELECT id,source,chapter,chunk_index AS chunkIndex,start_offset AS start,end_offset AS end,source_hash AS sourceHash,chapter_start AS chapterStart,text FROM library_chunks ORDER BY rowid").all() as unknown as LibraryChunk[];}finally{db.close();}
