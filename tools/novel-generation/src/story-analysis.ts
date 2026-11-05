@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { readLibraryChunks, saveStoryAnalysis, type StoryAnalysisSnapshot } from "./database.js";
 import type { LibraryChunk } from "./library.js";
 import { runAgentText } from "./generate.js";
@@ -78,9 +80,11 @@ export function groupAnalysisBatches(chunks: LibraryChunk[], maxChars = 14_000):
 }
 
 function parseModelJson(raw: string): BatchAnalysis {
-  const cleaned = raw.trim()
-    .replace(/^\x60{3}(?:json)?\s*/i, "")
-    .replace(/\s*\x60{3}\s*$/, "");
+  const trimmed = raw.trim();
+  const fenced = trimmed.match(/`{3}(?:json)?\s*([\s\S]*?)\s*`{3}/i)?.[1];
+  const start = trimmed.indexOf("{");
+  const end = trimmed.lastIndexOf("}");
+  const cleaned = fenced ?? (start >= 0 && end > start ? trimmed.slice(start, end + 1) : trimmed);
   return BatchSchema.parse(JSON.parse(cleaned) as unknown);
 }
 
@@ -185,22 +189,36 @@ export async function analyzeStoryCorpus(
   const worldDir = options.worldDir ?? `worlds/${worldId}`;
   const chunks = readLibraryChunks(worldDir, worldId);
   if (!chunks.length) throw new Error("No indexed text found. Run ingest before analyze-story.");
+  const sourceHash = createHash("sha256")
+    .update("story-analysis-v1\\n" + chunks.map(chunk => chunk.id + ":" + (chunk.sourceHash ?? "") + ":" + chunk.text).join("\\n"))
+    .digest("hex");
   const batches = groupAnalysisBatches(chunks);
+  const cacheDir = resolve(".output", worldId, "story-analysis", sourceHash);
+  await mkdir(cacheDir, { recursive: true });
   const results: Array<{ analysis: BatchAnalysis; refs: SourceRef[] }> = [];
   for (const batch of batches) {
-    console.log(`[story-analysis] batch ${batch.index + 1}/${batches.length} · ${batch.chunks.length} chunks · ${batch.chars} chars`);
-    const raw = await runAgentText(buildPrompt(batch), options.model, options.timeoutMs ?? 180_000);
-    let analysis: BatchAnalysis;
+    const cachePath = join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
+    let analysis: BatchAnalysis | undefined;
     try {
-      analysis = parseModelJson(raw);
+      analysis = BatchSchema.parse(JSON.parse(await readFile(cachePath, "utf8")) as unknown);
+      console.log(`[story-analysis] batch ${batch.index + 1}/${batches.length} · cache hit`);
     } catch (error) {
-      throw new Error(`Story analysis batch ${batch.index + 1} returned invalid structured output: ${error instanceof Error ? error.message : String(error)}`);
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT" && !(error instanceof SyntaxError) && !(error instanceof z.ZodError)) throw error;
+    }
+    if (!analysis) {
+      console.log(`[story-analysis] batch ${batch.index + 1}/${batches.length} · ${batch.chunks.length} chunks · ${batch.chars} chars`);
+      const raw = await runAgentText(buildPrompt(batch), options.model, options.timeoutMs ?? 180_000);
+      try {
+        analysis = parseModelJson(raw);
+      } catch (error) {
+        throw new Error(`Story analysis batch ${batch.index + 1} returned invalid structured output: ${error instanceof Error ? error.message : String(error)}`);
+      }
+      const temporary = cachePath + ".tmp";
+      await writeFile(temporary, JSON.stringify(analysis, null, 2) + "\\n", "utf8");
+      await rename(temporary, cachePath);
     }
     results.push({ analysis, refs: sourceRefs(batch.chunks) });
   }
-  const sourceHash = createHash("sha256")
-    .update(chunks.map(chunk => chunk.id + ":" + (chunk.sourceHash ?? "") + ":" + chunk.text).join("\n"))
-    .digest("hex");
   const merged = mergeAnalyses(results);
   const snapshot: StoryAnalysisSnapshot = {
     worldId,
