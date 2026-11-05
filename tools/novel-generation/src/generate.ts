@@ -42,6 +42,7 @@ export async function generateStory(input: GenerateStoryInput): Promise<string> 
     options: {
       ...(input.model ? { model: input.model } : {}),
       permissionMode: "bypassPermissions",
+      allowedTools: [],
       maxTurns: 1
     }
   });
