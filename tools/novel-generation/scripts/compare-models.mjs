@@ -14,7 +14,7 @@ const root=resolve(".output","model-comparison",runId); await mkdir(root,{recurs
 const mapping=[];let n=0;
 for(const model of models)for(let repetition=1;repetition<=repetitions;repetition++){
  const id="candidate-"+String(++n).padStart(2,"0");
- const args=["run","dev","--","write","--world",world,"--mode","continuation","--source",resolve(source),"--brief",brief,"--model",model,"--max-words",maxWords,"--strict-model"];
+ const args=["run","dev","--","write","--world",world,"--mode","continuation","--source",resolve(source),"--brief",brief,"--model",model,"--max-words",maxWords,"--strict-model","--no-apply-state"];
  if(context)args.push("--context",resolve(context));
  const result=spawnSync("npm",args,{cwd,encoding:"utf8",maxBuffer:20*1024*1024});
  const log=(result.stdout??"")+"\n"+(result.stderr??""); await writeFile(resolve(root,id+".log"),log,"utf8");
