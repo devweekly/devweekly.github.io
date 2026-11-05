@@ -110,7 +110,7 @@ npm run dev -- write-long --world conghuoniao --mode continuation \
 
 流程：生成 N 场蓝图（格式错误自动修正一次）→ 按场检索 → 逐场成文与必要补写 → 分批审查 → 逐场对白/文风修订 → 全章跨场终审 → 对 blocker/major 定位到受影响场景并最多自动修复两轮，每轮重新复查 → 最终章节与节奏指标 → 从最终完整正文提取并校验状态 → SQLite 和 JSON 自动持久化。最终复查未通过或状态提取/保存失败时命令失败，不会提交未通过章节的故事状态。仅隔离实验使用 `--no-apply-state`。
 
-文风复核见 `analysis/conghuoniao/style-rhythm.md`：原书抽样平均句长 22 字、长句 25.3%、超长句 4.7%，而成稿 `chapter-001.md` 平均 14.7 字、长句 8%、超长句 0%。量化观察项会随成文与修订提示提供参考；`06-rhythm-metrics.json` 用同一口径统计成稿，偏离用于定位节奏问题，不会单独触发机械回滚或强制改写。
+`analysis/conghuoniao/style-rhythm.md` 是离线语料观察资料，不是续写目标。正式写作不要求接近原著句长、段落或对白统计，也不会根据这些数字自动改写正文。`06-rhythm-metrics.json` 只保存诊断数据，供事后观察；不能据此判断小说好坏。
 
 ## 6. 单次生成
 
@@ -165,7 +165,7 @@ npm run dev -- regress --world conghuoniao --chapter 13 \
 
 取原文中的一章做盲写：只把前 `--context-lines` 行（默认 90）、本章任务和风格文档交给写作 Agent，不给原文任何一句。同一提示跑两版推理配置：A 用配置文件里的 `scene` 档案，B 固定 `adaptive/high`。两版各自统计句长、段落、对白、标点密度，指标不达标时做一次句法修订，修订后偏差没有下降就退回原稿。最后由另一个模型的评审 Agent 对照原文判断哪版更近、差在句式还是段落组织。
 
-`.output/regression/<run-id>/` 存原文、两版原稿与修订稿、评审全文；`analysis/<world>/regression/chapter-XXX/` 存 `metrics.json`、`review.md` 与实验说明，随代码提交。`--no-repair` 跳过修订，`--max-words` 控制篇幅（默认与原章同长）。已有实验见 `analysis/conghuoniao/regression/chapter-013/`。
+`.output/regression/<run-id>/` 存原文、两版原稿与修订稿、评审全文；`analysis/<world>/regression/chapter-XXX/` 存 `metrics.json`、`review.md` 与实验说明，随代码提交。`--repair` 跳过修订，`--max-words` 控制篇幅（默认与原章同长）。已有实验见 `analysis/conghuoniao/regression/chapter-013/`。
 
 ## 当前实现边界
 
