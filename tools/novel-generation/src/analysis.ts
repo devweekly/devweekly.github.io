@@ -150,7 +150,10 @@ export async function analyzeLibrary(
   }
 
   const done = new Set(store.annotations.map(item => item.chunkId));
-  const pending = index.chunks.filter(chunk => !done.has(chunk.id)).slice(0, limit);
+  const failedBefore = new Set(store.failures.map(item => item.chunkId));
+  const unattempted = index.chunks.filter(chunk => !done.has(chunk.id) && !failedBefore.has(chunk.id));
+  const retryable = index.chunks.filter(chunk => !done.has(chunk.id) && failedBefore.has(chunk.id));
+  const pending = [...unattempted, ...retryable].slice(0, limit);
   let processed = 0;
   let failed = 0;
 
