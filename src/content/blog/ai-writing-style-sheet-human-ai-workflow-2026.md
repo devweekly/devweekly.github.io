@@ -152,6 +152,209 @@ Tim Kao 在 2026 年 10 月分享的个人写作框架《[How I Intend to Use AI
 
 **最终核验。** 对新增事实、数字、引用、因果关系和限定条件逐项回查。模型自我审稿不能代替独立核验；语言流畅也不能作为事实正确的证据。
 
+## AI 长篇小说创作与续写：从 Style Sheet 到 Narrative State
+
+前面的工作流适用于文章、报告和一般内容创作，但长篇小说还有一个不同的问题：模型不仅要知道“应该怎么写”，还要持续记住“故事已经发生了什么”。人物会获得或失去信息，关系会变化，物品会转移，人物会离开某个地点，伏笔会被解决，也可能被长期搁置。只保存章节摘要，无法可靠表达这些变化。
+
+因此，长篇小说需要在 Style Sheet 之外增加一组叙事资料和状态管理机制。可以把它概括为三个问题：
+
+- **Style Sheet / Voice Profile：** 用什么方式写，叙述者和人物分别如何表达。
+- **Story Bible：** 故事世界里有哪些人物、地点、规则和已经确立的背景资料。
+- **Narrative State：** 到当前章节为止，发生了什么变化；人物知道什么、不知道什么；哪些情节仍未解决。
+
+这不是把 Prompt 写得更长，而是把创作依据从一段上下文拆成可以检索、更新和核验的资料。
+
+### 业界产品已经采用了哪些做法
+
+面向小说作者的产品，已经把部分能力做成了可操作的创作工作区。它们不是长篇叙事一致性问题的完整答案，但有一些值得借鉴的设计。
+
+**Sudowrite：Story Bible 和 Chapter Continuity。** Sudowrite 的 Story Bible 汇集故事梗概、类型、风格、人物、世界设定和大纲等资料；Chapter Continuity 则让作者把文档按前后关系关联起来，在 Write 或 Draft 时提供相关前文。它把“从现有文字继续写”和“根据场景规划起草”区分开来，避免所有任务都依赖同一个自由对话框。参考：[What is Story Bible](https://docs.sudowrite.com/using-sudowrite/1ow1qkGqof9rtcyGnrWUBS/what-is-story-bible/jmWepHcQdJetNrE991fjJC)、[Chapter Continuity](https://docs.sudowrite.com/using-sudowrite/1ow1qkGqof9rtcyGnrWUBS/chapter-continuity/4KL8gFeLZQ6GSBjDWtSbV6)。
+
+**Novelcrafter：Codex。** Novelcrafter 的 Codex 更像一套与正文关联的故事 Wiki，可以维护人物、地点、物品、设定和情节线索，并在写作具体章节或场景时选择相关条目作为上下文。它的价值在于：资料可以长期保存，但每次生成只取当前任务真正相关的部分。参考：[Novelcrafter Codex](https://www.novelcrafter.com/features/codex)。
+
+两种产品都体现了一个共同原则：**长期资料与当前写作上下文分离。** 不要每次把整本小说全部塞给模型，也不要指望模型从一份总摘要中准确还原所有细节。应该维护可查询的资料，再按当前章节和场景组装上下文。
+
+### 研究关注点：长篇生成的核心风险是连续性错误
+
+2026 年 ACL Findings 论文《[Lost in Stories: Consistency Bugs in Long Story Generation by LLMs](https://aclanthology.org/2026.findings-acl.410/)》提出 ConStory-Bench，用 2,000 个 Prompt、四类任务场景和五大类、19 个细分错误类型评估长篇故事一致性，并提出 ConStory-Checker，让检测结果对应到具体文本证据。论文发现，事实跟踪和时间维度的错误尤其突出，错误在故事中段更常见，不同类型的错误还可能同时出现。项目提供了[论文](https://aclanthology.org/2026.findings-acl.410/)、[代码](https://github.com/Picrew/ConStory-Bench)和[项目主页](https://picrew.github.io/constory-bench.github.io/)。
+
+这项研究提醒我们：故事读起来流畅，不代表故事内部没有矛盾。常见问题包括人物已经离开或死亡却再次出现、人物提前知道尚未获知的秘密、物品在没有交代的情况下改变归属、时间顺序冲突，以及世界规则在后文悄悄改变。审核必须回到前后文证据，而不是只让模型给整章打一个“连贯性分数”。
+
+另一项 2026 年 Findings of EMNLP 研究《[ConWriter: Transition-Constrained Stateful Long-Form Story Generation with Lightweight Neuro-Symbolic Consistency Control](https://aclanthology.org/2026.findings-emnlp.359/)》把生成过程组织成受状态转移约束的场景级写作，并结合轻量的符号化一致性控制。它的思路不是先写完一整章再统一找错，而是在场景推进过程中检查状态变化是否符合约束。论文和[实现代码](https://github.com/jindongli-Ai/ConWriter)可供进一步研究。
+
+《[Scaling Long-Form Story Generation via Narrative State Tracking](https://arxiv.org/abs/2609.35759)》提出 NstAgent，将叙事状态拆为人物状态、过去事件和未来要求，并在章节生成后更新状态。作者报告了在更长故事上的一致性和质量实验结果。需要注意，这是一篇 arXiv 预印本，页面标注 Under review，不能把它当作已经经过同行评审的定论；但其状态表示方式具有直接的工程参考价值。
+
+这些研究共同指向一个设计方向：**章节生成不是孤立的文本任务，而是对故事状态的一次受约束的转移。**
+
+### 把 Story Bible 和 Narrative State 分开维护
+
+建议至少区分以下几类资料。初期用 Markdown、JSON 和章节文件就能实现，不需要先引入图数据库或复杂知识平台。
+
+| 资料 | 保存什么 | 变化方式 |
+| --- | --- | --- |
+| Canon / Source Facts | 原作或项目明确确立的事实、来源版本和证据位置 | 默认只读；发现版本差异时显式标注 |
+| Style Sheet / Voice Profile | 叙述视角、语言节奏、人物声音、正反样本 | 经编辑验证后更新 |
+| Story Bible / Codex | 人物背景、地点、物品、世界规则、关系定义 | 随新资料补充，避免与当前状态混为一谈 |
+| Narrative State | 人物当前地点、身体状况、知识、目标、关系和持有物 | 每个场景结束后更新 |
+| Event Ledger | 已发生事件、参与者、时间、地点、因果和证据章节 | 新事件发生时追加，不覆盖历史 |
+| Plot Requirements | 伏笔、承诺、未解问题、后续必须回应的情节 | 标记 open、resolved、deferred 或 invalidated |
+| Draft State | 当前草稿中暂时引入、尚未确认的设定和变化 | 审核通过后才能写入正式状态 |
+
+这里最重要的是区分 **Canon** 和 **Narrative State**。Canon 是故事依据，Narrative State 是故事进行到当前时点的动态状态。人物可以改变，关系可以变化，但不能因此反向改写原作已经明确的事实。新创作产生的事实也不能伪装成原作事实。
+
+状态记录还应区分事实、推断和未确认信息。例如“某人物在第 12 章亲口说出某事”是有文本证据的事实；“某人物可能已经怀疑另一人”是推断；“某人物是否知道这件事”如果原文没有交代，就应该保持 unknown，而不是让模型补成确定事实。每条重要记录最好保留来源章节、原文片段或可回查的位置。
+
+一个简化的状态结构可以是：
+
+```json
+{
+  "character": "人物甲",
+  "as_of": "第 81 章场景 2 结束",
+  "location": "地点 A",
+  "knowledge": [
+    {
+      "fact": "已经获知事件 X",
+      "evidence": ["第 81 章场景 2"],
+      "confidence": "explicit"
+    }
+  ],
+  "relationships": {
+    "人物乙": "关系描述及其变化依据"
+  },
+  "goals": ["当前目标"],
+  "possessions": ["当前持有的重要物品"],
+  "open_questions": ["尚未确认的信息"]
+}
+```
+
+这只是说明数据边界的示例，不是某部具体小说的人物事实。实际项目还应保存状态版本、更新时间和变更来源，便于回滚与追查。
+
+### 从整章生成改为场景级生成
+
+章节仍然是作者规划、阅读和交付的单位，但场景更适合作为生成和状态更新的单位。一次生成整章，容易在长输出中忘记前面刚建立的细节；按场景生成，则可以在每次状态变化后及时检查。
+
+一个可执行的循环如下：
+
+1. **Chapter Planning：** 明确本章在全书中的作用、前置条件、核心冲突、人物出场、必须推进的情节和结尾状态。
+2. **Scene Planning：** 把章节拆成若干场景。每个场景定义视角人物、地点、时间、目标、冲突、必须发生和禁止发生的事项，以及预期状态变化。
+3. **Context Assembly：** 检索当前场景涉及的人物档案、相关原文、历史事件、未解决情节、前一场景和适用的风格样本。只装配必要上下文。
+4. **Scene Drafting：** 生成场景正文。场景目标约束情节，但不把每句台词和每个动作都预先写死。
+5. **Continuity Review：** 对照 Canon、人物知识、时间线、地点、物品归属、人物动机和因果关系检查新场景。
+6. **State Update：** 从通过检查的场景中提取新增事件和人物状态变化，更新 Event Ledger、Narrative State 和 Plot Requirements。
+7. **Next Scene：** 使用更新后的状态生成下一场景。完成所有场景后，再进行整章层面的节奏、结构和文学编辑。
+
+可以把它理解为一个循环，而不是八个必须独立部署的 Agent。一个主 Agent 编排流程，按需调用规划、生成、状态提取和审核能力即可。只有当任务复杂度、模型隔离或并行执行确实需要时，才拆分专门 Agent。
+
+```text
+Chapter Plan
+    |
+    v
+Scene Plan
+    |
+    v
+Assemble Context
+    |
+    v
+Draft Scene
+    |
+    v
+Continuity Review
+    |
+    +---- Failed ----> Local Repair ----+
+    |                                   |
+    v                                   |
+Extract Events & State Changes          |
+    |                                   |
+    v                                   |
+Update Narrative State <----------------+
+    |
+    v
+Next Scene / Chapter Review
+```
+
+状态更新不能直接相信生成模型的自我总结。更稳妥的做法是让状态提取器给出“旧状态—新主张—原文证据—置信等级”，由一致性检查确认后再写入正式状态。无法从正文确认的变化留在 Draft State 或标为 unknown。修复场景时也要重新执行状态提取，避免正文已经改了、状态记录却仍保留旧版本。
+
+### Continuity Review 应该检查什么
+
+建议把审核拆成可定位、可举证的检查项，而不是输出一个笼统的“连贯性良好”。
+
+| 检查 | 典型问题 |
+| --- | --- |
+| Canon Review | 是否与选定版本的原作事实冲突；是否把推测写成原作事实 |
+| Character Review | 人物行为是否符合已建立的性格、动机和关系；是否无缘由地改变人物 |
+| Knowledge Review | 人物是否提前知道尚未获知的信息；信息通过什么事件传递 |
+| Timeline Review | 日期、年龄、事件先后、人物在场时间是否冲突 |
+| World Review | 地点、制度、规则和物品属性是否前后变化 |
+| Causality Review | 事件是否有合理原因；人物行动是否有足够动机 |
+| Plot Review | 已埋伏笔、承诺和未解问题是否被遗忘或无故解决 |
+| Voice Review | 叙述视角、人物语言和叙事节奏是否稳定 |
+
+每条问题都应给出：问题类型、严重程度、冲突双方的文本证据、影响范围和建议修复位置。模型的审核结果仍然可能误报或漏报，因此它是编辑辅助，不是文学裁判。对事实和时间线等可以明确核对的约束，尽量使用结构化检查；对人物动机、节奏和文学效果等判断，保留编辑判断。
+
+还要建立回归检查：新章节通过后，不能只检查它自己，也要检查它对后续已规划情节和既有状态的影响。若修改了某个关键事件，受影响的人物知识、关系、物品归属和伏笔状态都要重新计算。
+
+### 案例：从第八十回之后续写《红楼梦》
+
+《红楼梦》适合作为长篇续写的压力测试：人物众多，关系复杂，诗词、判词和伏笔交织，而且存在不同版本与后四十回作者归属的长期争论。开始生成之前，必须先确定采用哪个版本作为依据。不能让模型在脂本系统、程高本和自行推断的情节之间随意切换。
+
+可以设计三种明确的创作分支：
+
+- **从前八十回续写：** 选定具体脂本或校注本作为主要 Canon；后四十回只作为可选参考，明确标记哪些内容是参考材料、哪些不作为约束。
+- **从一百二十回之后续写：** 选定具体程高本版本作为 Canon，接受该版本已经给出的结局和人物命运，再规划后续故事。
+- **另写一个结局：** 以明确选定的原文版本为基础，建立 Alternate Ending 分支；新结局与既有版本的差异要被记录，不能混成原作事实。
+
+这三个分支不能共用一份未标版本的状态库。每条 Canon 记录都应包含版本标识、章节位置和必要的校勘说明。若不同版本对某个情节存在差异，记录为版本差异，不要由模型自行裁决。
+
+以“从前八十回之后新增若干回”为例，准备阶段应先处理全书，而不是只把第八十回交给模型：
+
+- **人物档案：** 身份、亲属关系、性格、语言特征、重要经历、已知信息、目标和人物命运的版本依据。
+- **关系资料：** 亲属、主仆、婚姻、情感、利益和冲突关系，并记录关系随章节发生的变化。
+- **时间线：** 重要事件、季节和时间线索、人物年龄的依据，以及无法确定的时间点。
+- **地点和物品：** 大观园、荣国府、宁国府等空间关系，以及关键物品的出现、持有和转移记录。
+- **事件账本：** 按章节记录重要事件、参与人物、前因后果和原文证据。
+- **伏笔与未解情节：** 判词、曲文、人物承诺、尚未兑现的暗示，以及它们在不同版本中的解释差异。
+- **文风资料：** 叙述者语言、章回结构、诗词与判词、不同人物的对话样本分别整理，不能把所有人物都写成同一种声音。
+
+完成资料提取后，先规划一个完整的新故事阶段。例如计划新增五回，应先确定五回之间的整体情节关系、人物变化和结尾方向，再为每一回拆分场景。不要让模型先写第八十一回，写到第八十五回才临时决定前面埋下的线索如何收束。
+
+每个场景都需要明确：它承接哪些原文事实、人物当前知道什么、场景结束后哪些状态会变化、推进了哪些情节线索，以及哪些信息仍然不能确定。生成之后，检查人物行为和知识边界，再更新状态。章节完成后，最后进行章回体结构、叙述节奏、人物声音、诗词质量和语言克制等文学编辑。
+
+这里还有一个容易忽略的区别：模仿古典章回体的表面语言，不等于复现《红楼梦》的文学质量。不能靠堆砌文言词、套用诗词格式或频繁使用“且听下回分解”来制造相似感。更值得研究的是叙述视角、人物差异、对话中的潜台词、叙事节奏、讽刺和留白。Style Profile 应从选定版本中提取可观察的写作特征，生成结果仍需文学编辑判断。
+
+### 如何把它纳入通用 AI 写作流水线
+
+不必把普通文章写作也改造成复杂的小说工程。更合适的是保留共享的写作基础设施，再为长篇创作增加专属能力：
+
+| 共享能力 | 长篇小说专属能力 |
+| --- | --- |
+| Style Sheet / Voice Profile | Character Voice、Narrative Style Profile |
+| 资料检索与上下文组装 | Story Bible、Codex、Canon Retrieval |
+| 大纲和内容规划 | Story Arc、Chapter Plan、Scene Plan |
+| 初稿生成 | Scene-level Generation |
+| 内容审核 | Continuity Review、Canon Check |
+| 语言编辑 | Literary Editing |
+| 文档版本管理 | Narrative State、Event Ledger、Plot Requirements |
+
+可以据此定义 Writing Mode：Article、Fiction、Continuation 等。Continuation 模式启用 Canon、人物状态、事件账本和伏笔管理；普通文章仍使用轻量的资料、Style Sheet、大纲、起草和编辑流程。翻译也继续使用自己的术语、原文依据和译文审核流程，不需要与小说状态管理混在一起。
+
+落地时先做最小闭环：选定一个版本和一段已有文本，提取人物、事件和未解情节；规划一章并拆成场景；每生成一个场景就检查并更新状态；最后对整章做文学编辑。用人物知识错误、时间线错误、事实矛盾、状态更新准确率、人工修订量和章节质量来评估。不要一开始就追求全自动写完整本小说，先验证状态提取和连续性检查是否真的减少了后文矛盾。
+
+**核心结论：Style Sheet 解决“怎么写”，Story Bible 解决“依据什么写”，Narrative State 解决“故事到现在发生了什么，以及接下来哪些变化成立”。** 长篇续写需要三者配合；只增加上下文长度或章节摘要，并不能代替叙事状态管理。
+
+### 长篇小说创作的研究与产品资料
+
+- [Lost in Stories: Consistency Bugs in Long Story Generation by LLMs](https://aclanthology.org/2026.findings-acl.410/) — Junjie Li et al., Findings of ACL 2026。ConStory-Bench 与 ConStory-Checker，长篇故事一致性错误分类和证据化评估。
+- [ConStory-Bench GitHub](https://github.com/Picrew/ConStory-Bench) — 论文配套代码与评估实现。
+- [ConWriter: Transition-Constrained Stateful Long-Form Story Generation with Lightweight Neuro-Symbolic Consistency Control](https://aclanthology.org/2026.findings-emnlp.359/) — Jindong Li et al., Findings of EMNLP 2026。场景级状态转移约束和一致性控制。
+- [ConWriter GitHub](https://github.com/jindongli-Ai/ConWriter) — 论文配套实现。
+- [Scaling Long-Form Story Generation via Narrative State Tracking](https://arxiv.org/abs/2609.35759) — Zhennan Wan、Jianfei Chen，arXiv 预印本，提出 NstAgent；页面标注 Under review。
+- [Sudowrite Story Bible](https://docs.sudowrite.com/using-sudowrite/1ow1qkGqof9rtcyGnrWUBS/what-is-story-bible/jmWepHcQdJetNrE991fjJC) — 商业产品的故事资料组织方式。
+- [Sudowrite Chapter Continuity](https://docs.sudowrite.com/using-sudowrite/1ow1qkGqof9rtcyGnrWUBS/chapter-continuity/4KL8gFeLZQ6GSBjDWtSbV6) — 章节前后文关联。
+- [Novelcrafter Codex](https://www.novelcrafter.com/features/codex) — 人物、地点、设定和情节资料库。
+- [Awesome LLM Story Generation](https://github.com/Picrew/awesome-llm-story-generation) — 长篇故事生成、连贯性和可控生成相关论文与项目索引。
+
+---
+
 ## 一套可以直接落地的 Style Sheet 结构
 
 Style Sheet 不需要一开始就写成几十页。先从一页可维护的规范开始，等真实编辑中出现稳定问题再扩展。下面的结构可以作为个人作者或团队的起点。
