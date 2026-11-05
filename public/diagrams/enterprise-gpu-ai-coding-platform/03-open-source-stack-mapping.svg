@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="600" viewBox="0 0 960 600" role="img" aria-labelledby="03-open-source-stack-mapping-title 03-open-source-stack-mapping-desc">
+<title id="03-open-source-stack-mapping-title">开源项目在企业 GPU 推理栈中的位置</title>
+<desc id="03-open-source-stack-mapping-desc">Agent 层、模型服务层、KV 与 MoE 通信、计算内核和 GPU 硬件形成分层依赖。</desc>
+<defs>
+ <filter id="shadow" x="-12%" y="-12%" width="124%" height="140%" color-interpolation-filters="sRGB"><feDropShadow dx="0" dy="2" stdDeviation="3" flood-color="#32394D" flood-opacity=".09"/></filter>
+ <marker id="arrow" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6 Z" fill="#626B80"/></marker>
+ <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto"><path d="M0 0 L8 3 L0 6 Z" fill="#8B603F"/></marker>
+</defs>
+<rect width="960" height="600" fill="#EBEDF7"/>
+<g opacity=".45" fill="#32394D"><pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse"><circle cx="1" cy="1" r=".7" opacity=".13"/></pattern><rect width="960" height="600" fill="url(#dots)"/></g>
+<g><rect x="36" y="210" width="888" height="310" rx="12" fill="#32394D" fill-opacity=".025" stroke="#32394D" stroke-opacity=".13" stroke-dasharray="4 4"/><rect x="48" y="215" width="199" height="14" rx="3" fill="#EBEDF7"/><text x="147.5" y="225" text-anchor="middle" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="7.5" letter-spacing="1" fill="#747D91">INFERENCE EXECUTION STACK</text></g>
+<g><path d="M 244 108 L 390 108" fill="none" stroke="#626B80" stroke-width="1.35"  marker-end="url(#arrow)" stroke-linecap="round" stroke-linejoin="round"/><path d="M 590 108 L 716 108" fill="none" stroke="#626B80" stroke-width="1.35"  marker-end="url(#arrow)" stroke-linecap="round" stroke-linejoin="round"/><path d="M 806 146 L 806 230" fill="none" stroke="#8B603F" stroke-width="1.7"  marker-end="url(#arrow-accent)" stroke-linecap="round" stroke-linejoin="round"/><path d="M 700 270 L 284 270" fill="none" stroke="#626B80" stroke-width="1.35"  marker-end="url(#arrow)" stroke-linecap="round" stroke-linejoin="round"/><path d="M 700 300 L 600 300" fill="none" stroke="#626B80" stroke-width="1.35"  marker-end="url(#arrow)" stroke-linecap="round" stroke-linejoin="round"/><path d="M 485 314 L 485 400" fill="none" stroke="#626B80" stroke-width="1.35"  marker-end="url(#arrow)" stroke-linecap="round" stroke-linejoin="round"/><path d="M 800 314 L 800 342 Q 800 350 792 350 L 608 350 Q 600 350 600 358 L 600 442" fill="none" stroke="#626B80" stroke-width="1.35"  marker-end="url(#arrow)" stroke-linecap="round" stroke-linejoin="round"/><path d="M 600 442 L 700 442" fill="none" stroke="#626B80" stroke-width="1.35"  marker-end="url(#arrow)" stroke-linecap="round" stroke-linejoin="round"/></g>
+<g><g id="dev">
+  <rect x="64" y="70" width="180" height="76" rx="11" fill="#FFFFFF" stroke="#D5D9E4" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="76" y="80" width="55.8" height="15" rx="7.5" fill="#E7EBF4"/>
+  <text x="103.9" y="90.5" text-anchor="middle" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="7.5" font-weight="600" letter-spacing=".7" fill="#626B80">CLIENT</text>
+  <text x="76" y="114" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="13.2" font-weight="600" fill="#32394D">Developer / IDE</text>
+  <text x="76" y="131" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="9.2" fill="#626B80">交互入口</text>
+ </g><g id="agent">
+  <rect x="390" y="70" width="200" height="76" rx="11" fill="#FFFFFF" stroke="#D5D9E4" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="402" y="80" width="49.5" height="15" rx="7.5" fill="#E6EFE9"/>
+  <text x="426.75" y="90.5" text-anchor="middle" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="7.5" font-weight="600" letter-spacing=".7" fill="#626B80">AGENT</text>
+  <text x="402" y="114" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="13.2" font-weight="600" fill="#32394D">Agent Layer</text>
+  <text x="402" y="131" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="9.2" fill="#626B80">DeepSeek Harness · Kimi Code · GLM Skills</text>
+ </g><g id="gateway">
+  <rect x="716" y="70" width="180" height="76" rx="11" fill="#FFFFFF" stroke="#D5D9E4" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="728" y="80" width="62.1" height="15" rx="7.5" fill="#F2E9DF"/>
+  <text x="759.05" y="90.5" text-anchor="middle" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="7.5" font-weight="600" letter-spacing=".7" fill="#626B80">CONTROL</text>
+  <text x="728" y="114" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="13.2" font-weight="600" fill="#32394D">AI Gateway</text>
+  <text x="728" y="131" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="9.2" fill="#626B80">Model routing</text>
+ </g><g id="kv">
+  <rect x="64" y="230" width="220" height="84" rx="11" fill="#FFFFFF" stroke="#D5D9E4" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="76" y="240" width="49.5" height="15" rx="7.5" fill="#E5EDF1"/>
+  <text x="100.75" y="250.5" text-anchor="middle" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="7.5" font-weight="600" letter-spacing=".7" fill="#626B80">CACHE</text>
+  <text x="76" y="274" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="13.2" font-weight="600" fill="#32394D">KV / Transfer</text>
+  <text x="76" y="291" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="9.2" fill="#626B80">Mooncake · KV Cache</text>
+ </g><g id="ep">
+  <rect x="370" y="230" width="230" height="84" rx="11" fill="#FFFFFF" stroke="#D5D9E4" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="382" y="240" width="62.1" height="15" rx="7.5" fill="#E8EAF3"/>
+  <text x="413.05" y="250.5" text-anchor="middle" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="7.5" font-weight="600" letter-spacing=".7" fill="#626B80">SERVING</text>
+  <text x="382" y="274" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="13.2" font-weight="600" fill="#32394D">MoE Communication</text>
+  <text x="382" y="291" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="9.2" fill="#626B80">DeepEP · MoonEP</text>
+ </g><g id="serving">
+  <rect x="700" y="230" width="200" height="84" rx="11" fill="#F5EDE5" stroke="#8B603F" stroke-width="1.6" filter="url(#shadow)"/>
+  <rect x="712" y="240" width="62.1" height="15" rx="7.5" fill="#E8EAF3"/>
+  <text x="743.05" y="250.5" text-anchor="middle" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="7.5" font-weight="600" letter-spacing=".7" fill="#626B80">SERVING</text>
+  <text x="712" y="274" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="13.2" font-weight="600" fill="#32394D">Inference Engine</text>
+  <text x="712" y="291" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="9.2" fill="#626B80">DeepInfer · Model execution</text>
+ </g><g id="kernels">
+  <rect x="370" y="400" width="230" height="84" rx="11" fill="#FFFFFF" stroke="#D5D9E4" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="382" y="410" width="48" height="15" rx="7.5" fill="#F3E8DF"/>
+  <text x="406" y="420.5" text-anchor="middle" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="7.5" font-weight="600" letter-spacing=".7" fill="#626B80">GPU</text>
+  <text x="382" y="444" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="13.2" font-weight="600" fill="#32394D">Kernel Libraries</text>
+  <text x="382" y="461" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="9.2" fill="#626B80">DeepGEMM · FlashMLA · TileKernels · FlashKDA</text>
+ </g><g id="gpu">
+  <rect x="700" y="400" width="200" height="84" rx="11" fill="#FFFFFF" stroke="#D5D9E4" stroke-width="1" filter="url(#shadow)"/>
+  <rect x="712" y="410" width="48" height="15" rx="7.5" fill="#F3E8DF"/>
+  <text x="736" y="420.5" text-anchor="middle" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="7.5" font-weight="600" letter-spacing=".7" fill="#626B80">GPU</text>
+  <text x="712" y="444" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="13.2" font-weight="600" fill="#32394D">GPU Infrastructure</text>
+  <text x="712" y="461" font-family="Geist, 'Noto Sans TC', sans-serif" font-size="9.2" fill="#626B80">HGX B300 · GB300 NVL72</text>
+ </g></g>
+<text x="40" y="580" font-family="Geist Mono, monospace" font-size="8" letter-spacing="1.1" fill="#747D91">DEVWEEKLY · GPU AI CODING PLATFORM</text>
+</svg>
