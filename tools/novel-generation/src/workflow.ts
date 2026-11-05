@@ -47,7 +47,10 @@ export function mergeStoryState(current: StoryState, update: Partial<StoryState>
             const previousMilestones = Array.isArray((previous as unknown as Record<string, unknown>)[field])
               ? (previous as unknown as Record<string, unknown>)[field] as Array<Record<string, unknown>>
               : [];
-            const milestones = new Map(previousMilestones.map(milestone => [String(milestone.id), milestone]));
+            const milestones = new Map<string, Record<string, unknown>>();
+            for (const milestone of previousMilestones) {
+              if (typeof milestone.id === "string") milestones.set(milestone.id, milestone);
+            }
             for (const milestone of value as Array<Record<string, unknown>>) {
               if (typeof milestone.id === "string") milestones.set(milestone.id, milestone);
             }
