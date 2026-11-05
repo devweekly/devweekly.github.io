@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { emptyStoryState } from "../src/story-state.js";
+import { emptyStoryState, parseStoryStateUpdate, validateStoryState } from "../src/story-state.js";
 import { mergeStoryState } from "../src/workflow.js";
 
 test("character profile is stable metadata while current character fields are replaceable snapshots", () => {
@@ -52,4 +52,28 @@ test("story facts, events and threads merge by stable id without duplicate accum
   assert.deepEqual(next.events[0]?.participants, ["A", "B"]);
   assert.equal(next.plotThreads.length, 1);
   assert.equal(next.plotThreads[0]?.status, "resolved");
+});
+
+
+test("model state updates are runtime-validated before they can be merged", () => {
+  assert.deepEqual(parseStoryStateUpdate({
+    currentPosition: "第2章结尾",
+    characters: [{ name: "李玄", status: "离开旧城", location: "北门" }]
+  }), {
+    currentPosition: "第2章结尾",
+    characters: [{ name: "李玄", status: "离开旧城", location: "北门" }]
+  });
+  assert.throws(() => parseStoryStateUpdate({
+    characters: [{ name: "李玄", status: "离开旧城" }],
+    unexpectedField: "must not be persisted"
+  }));
+  assert.throws(() => parseStoryStateUpdate({
+    canonFacts: [{ id: "f1", fact: "事实", confidence: "guess" }]
+  }));
+});
+
+test("full story state validation rejects cross-world or malformed snapshots", () => {
+  const state = emptyStoryState("world-a");
+  assert.equal(validateStoryState(state).worldId, "world-a");
+  assert.throws(() => validateStoryState({ ...state, characters: [{ name: "", status: "" }] }));
 });
