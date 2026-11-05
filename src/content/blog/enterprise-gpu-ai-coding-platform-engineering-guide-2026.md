@@ -85,38 +85,15 @@ GPU 服务器到货后，还需要完成网络、存储、管理和机房设施�
 
 ### 2.1 计算节点
 
-每台 GPU 节点需要明确：
+选 GPU 节点时，最容易被报价单掩盖的是主机平台和 GPU 之间的关系。两台都标着“8×B300”的服务器，可能采用不同的 CPU、NUMA 和 PCIe 拓扑；NIC 如果挂在不合适的 PCIe Root Complex 下，GPU Direct RDMA 的实际路径就可能与设计预期不同。模型权重加载也会受本地 NVMe 吞吐和盘位影响。
 
-- GPU 型号、数量、SXM 形态和显存规格；
-- CPU 型号、物理核心数、NUMA 拓扑和内存通道；
-- GPU 到 CPU 的 PCIe Root Complex 关系；
-- GPU、NIC、DPU 和 NVMe 的 PCIe 拓扑；
-- 本地 NVMe 容量、读写性能和故障更换方式；
-- BMC、TPM 2.0、Secure Boot、固件版本；
-- 电源冗余、风扇或液冷方案、保修和现场响应时间。
-
-不能只接受供应商报价单中的“8×B300”。需要拿到完整 BOM、拓扑图、固件/驱动兼容矩阵、功耗范围、冷却要求和验收工具。尤其要核实 OEM 服务器的 NIC 数量、端口速率、DPU 配置、NVMe 盘位以及实际可持续功耗。
+采购阶段应把完整 BOM、GPU/NIC/NVMe 拓扑图和固件兼容矩阵作为交付物。TPM、Secure Boot、BMC 管理、电源冗余和冷却方式也要写进验收条件。尤其要确认 OEM 提供的是多少个真正可用的高速网络端口、是否包含 DPU，以及标称功耗是否对应持续运行而非短时峰值。
 
 ### 2.2 网络必须按用途分平面
 
-GPU 集群至少有三类网络流量：
+GPU 集群的网络最好按流量路径分开设计。GPU Compute Fabric 承担节点间集合通信和模型并行流量，通常采用 InfiniBand 或经过完整调优的 RoCE；Storage Fabric 负责模型权重加载和数据访问；Management / OOB 网络则用于 BMC、交换机管理、节点 provisioning 和故障诊断。把这几类流量混在普通业务网络里，故障时很难隔离问题，存储突发流量也可能干扰 GPU 间通信。
 
-1. **GPU Compute Fabric（East-West）**：节点之间的 GPU 集合通信和模型并行流量，通常使用 InfiniBand 或经过严格设计的 RoCE。
-2. **Storage / North-South Fabric**：模型权重加载、数据访问、日志和外部存储流量。
-3. **Management / OOB Fabric**：BMC、交换机管理、节点 provisioning、运维访问和故障诊断。
-
-不要让模型通信、开发者 API、存储访问和 BMC 管理全部挤在一张普通以太网里。网络隔离不仅是安全要求，也直接影响推理性能的可预测性。
-
-对于 RoCE，需要具备以太网无损或拥塞管理方面的工程能力，包括 PFC、ECN、拥塞控制、交换机缓冲、队列和端到端验证。不能把“网卡支持 RoCE”理解成网络已经配置正确。对于 InfiniBand，需要理解 Subnet Manager、Fabric Health、端口状态、路由和链路故障诊断。
-
-网络设计应明确：
-
-- 每个 GPU 节点的有效上行带宽和 oversubscription；
-- Leaf-Spine 拓扑、双平面或 rail-optimized 设计；
-- RDMA 是否端到端启用，是否经过不支持的中间设备；
-- NCCL 测试是否覆盖单节点、多节点和故障链路；
-- 计算 Fabric 与存储 Fabric 是否隔离；
-- 多租户场景下的带宽配额和网络策略。
+RoCE 的难点不在网卡是否支持，而在端到端拥塞控制是否一致。PFC、ECN、交换机缓冲和队列配置需要结合实际拓扑验证；InfiniBand 则要持续监控 Subnet Manager、Fabric Health、端口状态和路由。Leaf-Spine 的 oversubscription、双平面或 rail-optimized 设计，以及 RDMA 是否经过不支持的中间设备，都应通过 NCCL 单节点、多节点和故障链路测试来确认。多租户环境还要明确带宽配额，避免一个大规模任务挤占其他在线请求。
 
 ### 2.3 存储与模型分发
 
@@ -135,19 +112,9 @@ GPU 集群至少有三类网络流量：
 
 ### 2.4 机房设施和电力散热
 
-B300 HGX 节点和 GB300 NVL72 的机房要求不同。尤其是 NVL72，液冷、供电和机架功率密度是项目级设计，不是服务器团队自行解决的小问题。
+机房评估要从整机和机架的持续负载出发，核对 UPS、PDU、母线和配电余量，而不是把 GPU TDP 相加后就当成最终功耗。HGX B300 与 GB300 NVL72 的差异尤其明显：后者需要核算 CDU 和泵的冗余、供回水温度与流量，还要安排冷却液过滤、泄漏检测和应急隔离。机柜承重、布线空间、消防、环境监控和现场维护通道也会影响能否按计划交付。
 
-设施评估应覆盖：
-
-- 单机柜 IT 负载、峰值功率和冗余供电；
-- UPS、PDU、母线和配电余量；
-- 液冷 CDU 容量、泵冗余、供回水温度和流量；
-- 冷却液质量、过滤、泄漏检测和应急隔离；
-- 地板承重、机柜尺寸、布线和维护空间；
-- 机房消防、环境监控和运维授权；
-- 断电、冷却故障和网络故障时的安全停机策略。
-
-不要将 GPU TDP 简单相加作为机柜最终功耗，也不要只根据产品宣传的峰值算电力预算。应以 OEM 的系统功耗、机架设计和设施工程评估为准。
+采购前应要求 OEM 提供整机功耗范围和机架设施设计，再由数据中心团队确认供电与散热余量。还要演练断电或冷却故障时的安全停机过程；如果设施团队无法承接液冷系统的日常维护，NVL72 即使算力合适，也不应直接进入采购。
 
 ## 3. 分布式 GPU 软件栈
 
@@ -155,16 +122,9 @@ GPU Driver、CUDA、Container Toolkit、NCCL、OFED、GPU Operator、推理引�
 
 ### 3.1 主机操作系统与驱动
 
-需要掌握：
+主机基线通常由 Linux 发行版和 Kernel、NVIDIA Data Center Driver、CUDA Runtime、Container Toolkit、containerd，以及网络侧的 OFED / RDMA Core 和 NIC 固件共同决定。Fabric Manager 是否需要安装，要按具体 GPU 平台确认。CUDA Toolkit 是开发和编译工具集，Runtime 是应用运行时依赖；容器可以封装用户态库，却不能替代宿主机驱动。
 
-- Linux 发行版、Kernel、systemd、udev、NUMA；
-- NVIDIA Data Center Driver 与 CUDA Runtime/Toolkit 的兼容关系；
-- NVIDIA Container Toolkit 和 containerd；
-- Fabric Manager（按 GPU 平台和部署方式决定）；
-- OFED、RDMA Core、NIC 固件和交换机软件；
-- 固件、BIOS、BMC、GPU 驱动的升级顺序和回滚方法。
-
-要区分 CUDA Toolkit 与 CUDA Runtime，也要区分宿主机驱动和容器中的 CUDA 用户态库。容器不能替代宿主机驱动；驱动升级也不能被当成普通应用镜像升级。
+这些组件存在兼容关系，升级不能各自追最新版。生产环境应把 BIOS、BMC、GPU 驱动、CUDA、NCCL、OFED 和交换机软件纳入同一份经过验证的版本基线，并明确升级顺序与回滚方式。
 
 ### 3.2 Kubernetes 与 GPU Operator
 
@@ -172,40 +132,17 @@ Kubernetes 可以管理 GPU 工作负载，但默认调度器只知道资源请�
 
 NVIDIA GPU Operator 将 GPU 节点的软件栈 Kubernetes 化。官方文档列出的典型组件包括 NVIDIA Driver、Container Toolkit、Device Plugin、DCGM Exporter 和 MIG Manager。实际启用哪些组件，应根据操作系统、驱动管理方式、集群策略和 GPU 型号决定。
 
-需要掌握：
+落到 Kubernetes 后，工程重点是让调度器知道节点差异，并避免 GPU 任务被拆到不合适的资源域。Node Labels、Taints 和 Affinity 用于区分 GPU 型号及用途；Device Plugin 暴露可分配资源，GPU Operator 管理驱动、Container Toolkit、DCGM Exporter 等节点组件。对于需要多卡协同的模型，还要验证拓扑感知调度和 gang scheduling 是否能保证一组 Pod 同时获得所需资源。
 
-- Kubernetes Node Labels、Taints、Tolerations、Affinity；
-- Device Plugin 与 GPU 资源声明；
-- GPU Operator、ClusterPolicy、Helm；
-- GPU 节点池和普通 CPU 节点池隔离；
-- DaemonSet、Pod Security Admission、RBAC；
-- GPU 拓扑感知调度和 gang scheduling；
-- 节点 drain、升级、cordon、恢复和故障隔离；
-- 多租户 GPU 配额与资源公平性。
-
-对模型推理，建议将 API Gateway、Model Router、Agent Runtime、数据库、队列和监控组件部署在 CPU 节点；GPU 节点主要运行推理引擎及必要的 GPU 管理组件。不要把所有业务服务都塞进昂贵的 GPU 节点。
+生产集群通常把 GPU 节点池与 CPU 节点池分开。Gateway、Router、Agent Runtime、数据库和队列没有必要占用昂贵的 GPU 节点。节点 drain、驱动升级和故障隔离也应先在小规模节点池演练，再扩大到在线推理池；多租户配额则要与实际 GPU 隔离能力匹配，不能只依赖 Kubernetes 的资源声明。
 
 MIG、GPU sharing、time-slicing 和 DRA 不能混为一谈。它们的硬件支持范围、隔离强度和调度语义不同。是否可用于 B300、是否满足目标模型和安全要求，必须以对应版本的官方支持矩阵与实际测试为准。不要因为 Kubernetes 能声明共享 GPU，就把它当成硬件级安全隔离。
 
 ### 3.3 NCCL 与分布式通信
 
-NCCL 是多 GPU 集合通信的重要基础。需要理解：
+NCCL 把多 GPU 的集合通信封装成 AllReduce、AllGather、ReduceScatter 等操作，底层可能根据拓扑选择 Ring、Tree 或 NVLS 等算法。平台工程师不必手工实现这些算法，但必须能判断通信究竟发生在单节点 NVLink/NVSwitch 内，还是跨节点 RDMA 网络上。两种路径的带宽、延迟和故障点完全不同，GPU Direct RDMA 也只有在 GPU、NIC、驱动和网络路径都满足条件时才会生效。
 
-- AllReduce、AllGather、ReduceScatter、Broadcast；
-- Ring、Tree、NVLS 等通信算法概念；
-- 单节点 NVLink/NVSwitch 与跨节点 RDMA 的区别；
-- NCCL Topology Detection；
-- NCCL Tests、带宽与延迟测试；
-- 环境变量、接口选择、日志和故障诊断；
-- GPU Direct RDMA、GPUDirect Storage 的适用条件。
-
-验收不能只运行一次 nvidia-smi。至少要分别测试：
-
-1. 单 GPU CUDA 基础计算；
-2. 单节点 8 GPU P2P 和 NCCL；
-3. 跨节点 NCCL；
-4. GPU 与 NIC 的拓扑亲和性；
-5. 节点重启、NIC 故障、交换机端口故障后的恢复。
+节点验收应从单 GPU CUDA 计算开始，再检查 8-GPU P2P、单节点 NCCL 和跨节点 NCCL。随后验证 GPU 与 NIC 的拓扑亲和性，并在节点重启、NIC 失效或交换机端口故障时重复测试。单次 nvidia-smi 只能说明设备被识别，不能证明通信链路可用于生产。
 
 ## 4. 大模型推理工程：从模型文件到稳定 API
 
@@ -213,17 +150,9 @@ AI Coding 的交互体验和运行成本很大程度上取决于推理服务。�
 
 ### 4.1 Transformer、Dense 与 MoE
 
-不要求平台工程师训练 Transformer，但需要理解模型推理时发生了什么：
+平台工程师不需要训练 Transformer，但需要知道模型结构会怎样改变推理资源需求。Attention 的实现可能采用 MHA、GQA 或 MLA；模型也可能是每层都参与计算的 Dense 结构，或由 Router 将 Token 分配给部分 Expert 的 MoE。Tokenizer 和模型配置决定输入如何转换为 Token，Prefill 阶段处理输入上下文，Decode 阶段逐步生成结果，两阶段对算力和显存的压力并不相同。
 
-- Attention、MHA、GQA、MLA 等注意力结构；
-- Dense 模型与 Mixture of Experts（MoE）；
-- Tokenizer、Embedding、模型权重和模型配置；
-- Prefill 与 Decode；
-- KV Cache；
-- Tensor Parallelism、Pipeline Parallelism、Data Parallelism；
-- MoE Expert Parallelism 和 Router。
-
-MoE 的总参数量不等于每个 Token 实际参与计算的参数量。但 Expert Routing 会产生 GPU 间 Token Dispatch / Combine 通信，因此模型的激活参数量小，并不代表它可以在少量 GPU 上高效运行。模型结构、Expert 数量、路由策略和通信拓扑都要纳入部署设计。
+MoE 经常被误解为“激活参数少，所以 GPU 要求低”。它减少了每个 Token 实际参与计算的 Expert 数量，却引入 Token Dispatch / Combine 通信。Expert 分布在不同 GPU 时，路由流量可能成为瓶颈。因此，模型总参数量和激活参数量都不足以单独决定节点数量，还要结合 Expert 布局、并行策略和互联拓扑测试。
 
 ### 4.2 FP16、BF16、FP8、FP4 与量化
 
@@ -254,38 +183,17 @@ MoE 的总参数量不等于每个 Token 实际参与计算的参数量。但 Ex
 
 ### 4.4 KV Cache 决定长上下文并发能力
 
-Coding Agent 的上下文不只是用户问题，还可能包含系统提示、工具定义、仓库文件、代码片段、终端输出、历史对话和工具结果。长上下文会显著占用 KV Cache。
+KV Cache 的大小取决于模型层数、注意力结构、KV Head 数、数据精度和当前活跃序列长度。PagedAttention 一类机制把缓存拆成可管理的 Block，减少连续显存分配带来的浪费；Prefix Cache 则尝试复用系统提示、工具定义等重复前缀。对于 Coding Agent，缓存策略需要和上下文组装方式一起设计，因为仓库文件、终端输出和历史工具结果会让每个 Session 的上下文迅速增长。
 
-需要掌握：
-
-- KV Cache 的显存估算；
-- PagedAttention 或同类分页管理机制；
-- Prefix Caching / Automatic Prefix Caching；
-- KV Cache 命中率、复用边界和缓存隔离；
-- Cache Eviction、Block 管理和显存碎片；
-- Chunked Prefill；
-- Context Truncation / Compaction；
-- 长上下文下的 TTFT、TPOT 和并发退化。
-
-Prefix Cache 的命中并非只由“前缀文本相同”决定，还受到 Tokenization、模型版本、LoRA、缓存配置和安全隔离边界影响。不同租户的缓存能否共享，必须做威胁建模和框架验证，不能为了命中率跨越数据隔离边界。
+缓存并非越多越好。系统需要在命中率、Block 回收、显存碎片和租户隔离之间取舍。Prefix Cache 的命中还受到 Tokenization、模型版本、LoRA 和缓存配置影响；不同租户是否共享缓存必须经过威胁建模。长上下文压测应观察 TTFT、TPOT 和并发随上下文长度变化的曲线，而不是只测短 Prompt 下的峰值吞吐。
 
 ### 4.5 Prefill / Decode 与请求调度
 
-Prefill 处理输入 Token，决定模型读取长上下文的计算量，通常显著影响 Time To First Token（TTFT）。Decode 逐 Token 生成输出，常受到显存带宽、KV Cache 访问和批处理调度影响，影响 Time Per Output Token（TPOT 或 ITL）。
+Prefill 处理输入 Token，决定模型读取长上下文的计算量，通常影响 Time To First Token（TTFT）；Decode 逐 Token 生成输出，常受到显存带宽、KV Cache 访问和批处理调度影响，进而影响 Time Per Output Token（TPOT 或 ITL）。
 
-推理引擎需要处理：
+推理引擎会持续把新请求加入正在运行的 Batch，这就是 Continuous Batching 一类调度机制的价值。长 Prompt 可以通过 Chunked Prefill 分段处理，减少它长时间占用调度窗口；Prefix Cache 能复用重复上下文，但缓存命中不能以跨租户泄露为代价。请求队列还需要限制最大并发和序列长度，否则少量超长上下文任务就可能挤压交互请求。
 
-- Continuous Batching；
-- Dynamic / In-flight Batching；
-- Chunked Prefill；
-- Prefix Cache；
-- Request Queue；
-- 最大并发和最大序列长度；
-- 长短请求的公平调度；
-- 交互请求与后台任务的优先级；
-- 超时、取消、客户端断连和请求重试。
-
-Prefill/Decode Disaggregation 可以将两阶段放到不同 GPU 池，减少阶段间干扰，但需要传输 KV Cache，并增加网络、调度和运维复杂度。它不是默认必须部署的组件。只有测量发现两阶段资源需求明显冲突，并且跨池 KV 传输成本可接受时，才值得引入。
+对 Coding 平台，调度策略应区分 IDE 中等待反馈的交互请求和可以延后执行的后台任务。后台代码扫描、批量迁移或评测任务应有独立队列、配额和取消机制；用户关闭 Session 后，Runtime 需要能取消尚未完成的模型请求。超时与重试也必须有明确语义，避免客户端断连后服务端仍持续消耗 GPU。Prefill/Decode Disaggregation 可以将两个阶段放到不同 GPU 池，但只有在测量发现资源需求明显冲突、且跨池 KV 传输成本可接受时才值得引入。
 
 ## 5. 推理框架和服务层
 
@@ -303,35 +211,15 @@ Prefill/Decode Disaggregation 可以将两阶段放到不同 GPU 池，减少阶
 
 ### 5.1 推理服务 API
 
-统一 API 层至少要处理：
+统一 API 的工作不止是把请求转发到模型。Coding Agent 可能依赖 Chat Completions，也可能使用 Responses 一类接口；流式事件、Tool Calling、JSON Schema 输出、取消请求和错误语义都要与客户端约定一致。服务端还要返回可追踪的 Request ID、Trace ID、模型版本和 Token Usage，才能把一次 Agent 任务的模型成本与后续工具执行关联起来。
 
-- OpenAI-compatible Chat Completions 或 Responses API（按 Coding Agent 实际协议选择）；
-- Streaming / SSE；
-- Tool Calling / Function Calling；
-- JSON Schema / Structured Output；
-- Cancellation；
-- Model ID 和模型版本；
-- Usage / Token Accounting；
-- Request ID、Trace ID 和租户标识；
-- 超时、限流、重试和错误语义。
-
-“兼容 OpenAI API”不是充分条件。不同 Coding Agent 对 tool_calls、并行工具调用、流式事件、usage 统计、finish_reason、上下文窗口和特定 API 扩展的依赖可能不同。需要针对 Claude Code、OpenCode、Copilot SDK 或企业实际使用的 Agent Harness 建立协议兼容测试集。
+“兼容 OpenAI API”只能作为初筛条件。不同 Harness 对并行工具调用、流式事件顺序、finish_reason、usage 统计和上下文窗口的处理并不完全相同。应直接拿 Claude Code、OpenCode、Copilot SDK 或企业实际使用的客户端跑协议回归测试，确认取消、重试和客户端断连时不会留下持续运行的推理请求。
 
 ### 5.2 Model Router
 
-Router 不应只是随机选择一台推理服务器。它需要理解模型能力、租户策略和资源状态。
+Router 需要同时看任务和服务状态。一个小范围代码解释可能适合低成本模型；跨模块重构则要看模型在真实仓库任务上的成功率，而不只是公开榜单。上下文长度决定模型是否能接收完整输入，GPU Pool 的队列和缓存状态影响等待时间，用户与项目配额则限制资源消耗。SLO、任务截止时间和数据分类也会改变可选模型范围。
 
-路由决策可以考虑：
-
-- 任务类型：代码补全、解释、重构、跨文件修改、测试修复；
-- 模型能力和质量评估；
-- 上下文长度和模型窗口；
-- 用户、团队和项目配额；
-- GPU Pool 负载、队列长度和缓存命中；
-- SLO、请求优先级和任务截止时间；
-- 模型故障、容量不足和降级策略。
-
-建议把模型路由策略作为版本化配置管理，并支持 shadow traffic、canary、A/B test 和快速回滚。不要让模型自己决定可以绕过的预算、权限或安全策略。
+路由策略应作为版本化配置发布，先用 Shadow Traffic 观察决策，再对少量流量 Canary。发生模型故障或容量不足时，可以切换到经过验证的候选模型，但降级不能绕过数据驻留、模型 Allowlist 或预算规则。模型本身不能获得修改这些策略的权限。
 
 ## 6. 国产 GPU / AI 加速器：推理部署与开发工程
 
@@ -489,37 +377,17 @@ Coding Agent 场景还要验证工具调用参数是否符合 Schema、长上下
 
 ### 7.1 Agent Runtime 的职责
 
-Agent Runtime 应负责：
+Agent Runtime 管理一次 Coding 任务从创建到交付的完整过程：它保存 Session 和 Task 状态，组装 Prompt 与仓库上下文，调用模型，并把模型返回的工具请求交给文件、终端、测试或 Git 工具执行。工具结果再回到对话循环，直到任务完成、失败、取消或需要人工批准。超时、重试、检查点和审计记录也属于 Runtime 的职责，因为这些状态决定任务能否恢复以及出了问题能否追查。
 
-- Session 和 Task 生命周期；
-- Prompt、上下文和模型调用编排；
-- Tool Calling 和结果回传；
-- 文件、终端、测试、Git 等工具执行；
-- 超时、取消、重试和检查点；
-- 人工确认和权限升级；
-- 任务状态、日志和审计；
-- 任务结果验证和交付。
-
-Agent Runtime 不应该直接管理 GPU 驱动、NCCL 或模型进程。它通过 AI Gateway 调用推理服务，避免把模型服务和业务 Agent 的发布周期绑定。
+GPU 驱动、NCCL 和模型进程由独立的推理平台管理。Runtime 通过 AI Gateway 调用模型 API，双方分别发布和扩缩容。这样 GPU 节点维护不会直接影响 Session 状态，Agent Harness 的升级也不需要重启模型集群。
 
 ### 7.2 Agent Sandbox 与凭证隔离
 
-Coding Agent 可以读写代码、运行 shell、安装依赖、访问网络和调用 MCP 工具，因此它的风险远高于只读聊天机器人。
+Coding Agent 可以读写代码、运行 shell、安装依赖、访问网络和调用 MCP 工具，因此它的风险远高于只读聊天机器人。Sandbox 应按任务隔离：每个 Workspace 使用非 root 身份运行，限制 CPU、内存、磁盘和进程数；根文件系统尽量只读，网络出口默认关闭，只对构建依赖或企业内部服务开放必要域名。这样即使模型生成了危险命令，影响范围也被限制在当前任务的执行环境内。
 
-最低安全要求：
+凭证不应进入模型上下文。云凭证、生产 Secret 和长期 API Key 由受控服务端管理，MCP Server 在完成授权后注入短期凭证。工具调用要经过权限检查并留下审计记录；删除分支、发布制品、访问生产环境等敏感动作应要求人工批准。任务结束后按保留策略销毁 Workspace，确需保留时也要明确访问权限和期限。
 
-- 每个用户或任务有独立 Workspace / Sandbox；
-- 非 root 用户、只读根文件系统和资源限制；
-- 默认禁止任意网络出口，按需开放域名或服务；
-- 短期、最小权限的身份凭证；
-- 不把长期 API Key、云凭证和生产 Secret 暴露给模型上下文；
-- MCP Server 的凭证由受控服务端注入；
-- 文件系统、进程、网络和容器之间隔离；
-- 工具调用进行授权检查和审计；
-- 对敏感动作实施人工确认；
-- 任务结束后销毁或按策略保留 Workspace。
-
-2026 年 10 月 21 日，NVIDIA 发布了 OpenShell Reference Architecture 相关技术文章，描述 Gateway、Supervisor、Sandbox 和 Policy Prover 等边界，并讨论 BlueField-4 / NVIDIA Sentry 等硬件辅助治理方向。这是值得评估的新参考架构，但不能仅凭厂商参考设计就认定其已经适合所有企业生产环境。应通过威胁建模、隔离测试、逃逸测试和运维验证评估。
+2026 年 10 月 21 日，NVIDIA 发布的 OpenShell Reference Architecture 描述了 Gateway、Supervisor、Sandbox 和 Policy Prover 等边界，并讨论 BlueField-4 / NVIDIA Sentry 的硬件辅助治理方向。它可以作为设计参考，但仍需通过威胁建模、容器逃逸测试、网络隔离测试和运维演练验证适用性。
 
 ### 7.3 Agent 与 GPU 服务的边界
 
@@ -531,19 +399,9 @@ Coding Agent 可以读写代码、运行 shell、安装依赖、访问网络和�
 
 ## 8. 2000 名开发者的容量规划
 
-“2000 个账号”不是容量指标。至少要区分：
+2000 名开发者只说明潜在用户规模，不能直接推导 GPU 数量。容量规划要从真实使用行为开始：日活人数决定有多少人实际使用平台，同时运行的 Agent Session 决定任务池规模，而在途模型请求才直接形成推理并发。一个 Session 会在模型调用、工具执行和等待用户确认之间切换，因此它通常不会持续占用一条 GPU 推理请求。
 
-- Registered Developers：注册开发者数量；
-- Daily Active Developers：日活开发者；
-- Concurrent Agent Sessions：同时运行的 Agent Session；
-- Concurrent Model Requests：同时在途的模型请求；
-- Request Arrival Rate：请求到达速率；
-- Input / Output Token Distribution：输入和输出 Token 分布；
-- Context Length Distribution：上下文长度分布；
-- Task Duration：Agent 任务持续时间；
-- Retry / Tool Call Distribution：重试和工具调用分布。
-
-一个开发者可能只偶尔问一个问题，也可能同时运行多个 Agent。一个 Agent Session 也不等于一个模型请求：工具调用结束后可能发起下一轮请求。因此不能用“2000 人 ÷ 每张卡能服务多少用户”这种方式计算 GPU 数量。
+压测前应从现有 Coding 工具或试点环境采集请求到达速率、输入输出 Token 分布、上下文长度、任务持续时间和工具调用/重试分布。尤其要保留长尾数据：少数开发者可能同时启动多个 Agent，少数任务也可能因为大仓库上下文和多轮修复持续很久。用平均值计算会低估这些峰值；直接按注册人数计算则会严重高估常态负载。
 
 ### 8.1 先建立负载模型
 
@@ -668,22 +526,13 @@ leq M_{available}
 
 ### 10.1 身份与访问控制
 
-- 接入企业 SSO / OIDC；
-- 用户、团队、项目和环境级授权；
-- Model Allowlist 和模型能力策略；
-- API Key 短期化、可撤销和最小权限；
-- 组织、团队、用户和 Session 多层预算；
-- 管理员操作、模型发布和策略变更审计。
+身份层应接入企业 SSO / OIDC，并把授权范围落实到用户、团队、项目和运行环境。模型 Allowlist 决定哪些模型可以处理哪些数据；API Key 应短期化、可撤销且遵循最小权限。预算也不能只设在组织级，团队、用户和 Session 都需要可追踪的额度，避免一个后台任务消耗掉整个部门的资源。管理员操作、模型发布和策略变更应进入审计记录。
 
 ### 10.2 数据保护
 
-- 代码仓库、Prompt、模型输入输出按数据分类管理；
-- 明确数据是否离开企业网络、是否进入第三方模型或遥测服务；
-- 明确日志内容、采样、保留期和访问权限；
-- 对 Secret、Token、证书和个人数据做检测与脱敏；
-- 模型权重、Tokenizer、依赖和容器镜像做来源校验；
-- 模型服务与 Agent Workspace 的网络隔离；
-- 对跨租户缓存和共享文件系统进行威胁建模。
+代码仓库、Prompt、模型输入输出和工具结果都应按企业数据分类管理。每个模型路由目标都要明确数据是否离开企业网络、是否进入第三方模型服务或遥测系统；日志则需要定义采样范围、保留期限和可访问角色。Secret、Token、证书和个人数据应在进入模型或日志前检测并按策略脱敏。
+
+模型权重、Tokenizer、容器镜像和依赖包也属于供应链输入，需要校验来源和版本。Agent Workspace 与模型服务之间应有明确网络边界；跨租户 Prefix Cache 或共享文件系统则必须单独进行威胁建模，不能因为共享能降低成本就默认允许。
 
 ### 10.3 Agent 工具安全
 
@@ -1126,11 +975,9 @@ Superhuman（原 Grammarly）曾经运行自建 vLLM Serving Stack 和内部模�
 
 ### 20.19 自部署常见问题与工程经验
 
-- **低利用率：** 不要按峰值需求一次性采购；先用真实 Trace 测量日常与峰值负载，考虑批处理、模型路由和离线任务错峰。
-- **多 GPU 不一定更快更便宜：** 通信、并行切分和同步成本可能抵消算力收益，必须按成功任务成本比较。
-- **模型启动和权重分发：** 大模型冷启动可能成为故障恢复瓶颈，需验证本地 NVMe 缓存、镜像分发和副本预热。
-- **模型升级：** 权重、Tokenizer、Runtime、Kernel 和配置要作为一个 Release 版本进行质量、性能和回滚验证。
-- **服务隔离：** 在线 Coding Agent、离线评测、训练和批量任务应设置不同优先级与资源池，避免相互挤占。
+自部署项目最常见的预算偏差来自低利用率。团队按峰值购买 GPU，平时却没有足够请求填满 Batch；这时应先用真实 Trace 看清日常与峰值差距，再考虑批处理、模型路由和离线任务错峰。盲目增加 GPU 也未必改善吞吐，跨卡通信和同步成本可能抵消算力收益，比较时应看完成同类任务的总成本。
+
+另一个容易被低估的环节是故障恢复。大模型冷启动需要读取数百 GB 甚至更大的权重，若所有节点同时从远端存储拉取，恢复时间可能远超服务团队预期。本地 NVMe 缓存、分层分发和副本预热需要在 POC 阶段验证。模型上线也应把权重、Tokenizer、Runtime、Kernel 和配置视为一个 Release 单元，先做质量与性能回归，再逐步切流。在线 Coding Agent、离线评测、训练和批量任务应使用不同优先级或资源池，避免后台任务拖慢交互请求。
 
 ### 20.20 经济性与 2000 名开发者平台的部署建议
 
@@ -1378,16 +1225,9 @@ POC 应有退出条件。若模型质量不达标，不要通过增加 GPU 掩�
 
 ### 24.2 建立可复现的 GPU 节点基线
 
-每个节点应记录并验证：
+每台节点都应有可复现的基线记录，至少包含 GPU UUID、显存与 ECC 状态、温度和功耗，GPU/CPU/NIC/NVMe 的 PCIe 与 NUMA 拓扑，以及 Driver、CUDA、NCCL、OFED、固件和 Kubernetes GPU 组件版本。节点镜像、容器镜像 Digest 和模型权重 SHA-256 也要纳入记录，否则故障时无法判断是硬件差异还是软件版本漂移。
 
-- GPU 型号、UUID、显存、ECC 状态、温度、功耗和时钟；
-- GPU 与 CPU、NIC、NVMe 的 PCIe / NUMA 拓扑；
-- Driver、CUDA、Container Toolkit、NCCL、OFED 和固件版本；
-- GPU Operator、Device Plugin、DCGM Exporter 等 Kubernetes 组件版本；
-- 节点镜像、容器镜像 Digest、模型权重 SHA-256；
-- 单 GPU 和多 GPU 的基础计算、带宽与通信测试结果。
-
-建议将节点基线做成自动化资格检查。节点加入生产 GPU Pool 前，必须通过设备识别、显存测试、GPU/NIC 拓扑、NCCL、存储吞吐和容器运行测试。节点升级后重新执行同一套测试，结果进入资产与变更记录。
+这些信息不应靠人工填表。节点加入生产 GPU Pool 前，自动资格检查应验证设备识别、显存、GPU/NIC 拓扑、NCCL 通信、存储吞吐和容器运行；驱动或固件升级后重新执行同一套测试。结果进入资产与变更记录，出现性能回退时才能与历史基线比较。
 
 ### 24.3 模型制品和运行配置必须一起版本化
 
@@ -1411,13 +1251,9 @@ POC 应有退出条件。若模型质量不达标，不要通过增加 GPU 掩�
 
 ### 24.4 Benchmark 要模拟 Agent 任务，而不只是压测 Tokens/s
 
-对 AI Coding 平台，建议把评测拆成三层：
+Benchmark 必须覆盖完整 Agent 任务。离线模型评测可以先固定输入输出，检查代码正确性、指令遵循和工具调用格式；Serving 测试再用真实请求分布观察 TTFT、TPOT、队列等待、KV Cache 命中和 OOM。最后要在相同仓库、工具权限和测试集上运行完整 Agent Harness，记录任务是否真正完成、模型调用次数、工具失败、重试、人工接管和总耗时。
 
-- **模型层：** 固定输入输出的离线评测，检查代码正确性、指令遵循、工具调用和结构化输出。
-- **Serving 层：** 固定请求分布，测量 TTFT、TPOT、ITL、吞吐、队列等待、KV Cache 命中、OOM 和 GPU 利用率。
-- **Agent 层：** 在相同仓库、工具、测试和任务集上运行完整 Agent Harness，统计任务成功率、模型调用次数、工具失败率、重试率、人工接管率和总耗时。
-
-一个模型可能在 Tokens/s 上领先，却因为工具调用错误、上下文压缩不佳或多轮重试而增加总任务成本。最终容量和经济性应按成功任务计算，而不是只看推理端吞吐。
+只比较 Tokens/s 很容易得出错误结论。一个模型即使生成速度更快，只要经常调用错误工具、丢失上下文或需要多轮修复，完成任务的总成本就可能更高。容量规划和经济性比较应以同类任务的成功率、耗时和总成本为准。
 
 ### 24.5 生产监控：把 GPU、Serving 和业务指标关联起来
 
@@ -1449,15 +1285,9 @@ POC 应有退出条件。若模型质量不达标，不要通过增加 GPU 掩�
 
 ### 24.7 Day-2 运维：升级、容量和灾难恢复
 
-生产环境至少需要以下运行机制：
+Day-2 运维的重点是让变更可控、故障可恢复。Driver、CUDA、NCCL、推理引擎、模型权重和运行配置都要有明确版本，但每次升级尽量只改变一个可定位的变量。新版本先进入隔离 GPU Pool，完成质量与性能回归后再 Canary 少量流量；只有延迟、成功率和成本都达到门槛，才扩大范围。回滚所需的旧模型、镜像、配置和节点镜像必须保留在可快速访问的位置，不能等故障发生后再从外部重新下载。
 
-- **变更管理：** Driver、CUDA、NCCL、推理引擎、模型和配置分开版本化；一次只改变可定位的变量。
-- **灰度升级：** 先在隔离 GPU Pool 验证，再 Canary 一小部分流量；质量、延迟和成本指标达到门槛后扩大范围。
-- **回滚：** 保留上一份可运行的模型、镜像、配置和节点镜像；回滚不应依赖重新下载未经验证的模型权重。
-- **容量管理：** 按请求分布和 SLO 计算常态、峰值和故障容量；为节点维护、GPU 故障和模型加载预留余量。
-- **故障隔离：** 将训练、离线批处理、在线交互和高优先级实时服务分池，避免资源争抢。
-- **灾难恢复：** 模型制品、配置、审计和评测数据需要跨故障域保存；恢复演练应测量 RTO、RPO 和重新预热时间。
-- **供应链治理：** 模型权重、容器镜像、Python 包、自定义 Kernel 和基础镜像都要记录来源、许可证、扫描结果和签名。
+容量管理要同时考虑常态、峰值和故障场景，为节点维护、GPU 故障及模型重新加载预留余量。训练、离线批处理和在线交互应分池或设置明确优先级。模型制品、配置、审计和评测数据需要跨故障域保存，并定期演练恢复，实际测量 RTO、RPO 和副本预热时间。供应链记录则覆盖模型权重、容器镜像、Python 包、自定义 Kernel 和基础镜像的来源、许可证、扫描结果与签名。
 
 ### 24.8 一个务实的实施顺序
 
