@@ -51,8 +51,9 @@ export function parseChapterReview(raw: string, chapter: string, sceneCount?: nu
     throw new Error("Review status is needs_repair but no issue is listed.");
   }
   for (const issue of parsed.issues) {
-    if (sceneCount !== undefined && issue.scenes.some(scene => scene > sceneCount)) {
-      throw new Error("Review references a scene outside this chapter.");
+    if (sceneCount !== undefined) {
+      if (!issue.scenes.length) throw new Error("Review issue is missing required scene numbers.");
+      if (issue.scenes.some(scene => scene > sceneCount)) throw new Error("Review references a scene outside this chapter.");
     }
     const probe = issue.evidence.replace(/[.…\s]+/g, "");
     const located = chapter.includes(issue.evidence) || (probe.length > 0 && chapter.includes(probe.slice(0, 8)));
