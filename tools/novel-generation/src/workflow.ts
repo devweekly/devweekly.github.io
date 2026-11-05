@@ -217,15 +217,32 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     "人物 profile 是相对稳定的性格底色、价值观、内在矛盾、语言习惯与行为边界；不要因单次情绪或行为轻易改写。character 的 status/location/abilities/knowledge/goals/relationships 是当前剧情状态，必须反映本章结束时的最新快照，数组应给出完整当前值而非只追加变化项。人物弧光允许发生真实变化，但必须由连续的选择、压力、代价和行为证据支撑；不要把人物锁死成标签，也不要为了反转强行黑化/洗白。只记录章节明确支持的内容。无法确认的内容不要写入 canonFacts；推断必须标为 inferred。人物和情节线只输出本章新增或发生变化的记录。人物发生实质性弧光变化时，另以 arcMilestones 追加记录关键选择、压力、代价和正文逐字证据；没有实质变化就不新增里程碑。"
   ]);
 
+  let update: Partial<StoryState>;
   try {
-    const update = parseStoryStateUpdate(extractJson(stateText), chapter);
-    const nextState = mergeStoryState(state, update);
+    update = parseStoryStateUpdate(extractJson(stateText), chapter);
+  } catch (firstError) {
+    try {
+      const retryText = await cachedCall("state-update-retry", "08-state-update-retry-raw.json", "state", [
+        "上一次状态提取未通过 JSON 或 schema 校验：" + String(firstError),
+        "上一次输出：", stateText,
+        "请重新根据旧状态和下面的最终章节全文提取，只输出符合既定 JSON schema 的对象；不要添加 Markdown、解释或 schema 外字段。",
+        "旧状态：", JSON.stringify(state, null, 2),
+        "最终章节全文：", chapter
+      ]);
+      update = parseStoryStateUpdate(extractJson(retryText), chapter);
+    } catch (retryError) {
+      await saveStage(input.outputDir, "08-state-update-error.txt", "First attempt: " + String(firstError) + "\nRetry: " + String(retryError) + "\n\n" + stateText);
+      throw new Error("Chapter was generated, but story-state extraction failed twice. See 08-state-update-error.txt; do not start the next chapter.");
+    }
+  }
+  const nextState = mergeStoryState(state, update);
+  try {
     // 默认自动提交状态；仅在显式隔离/试写模式下保留为本次运行提案。
     if (input.applyState) await saveStoryState(input.statePath, nextState);
     await saveStage(input.outputDir, "08-state-update.json", JSON.stringify(nextState, null, 2));
   } catch (error) {
     await saveStage(input.outputDir, "08-state-update-error.txt", String(error) + "\n\n" + stateText);
-    throw new Error("Chapter was generated, but story-state update failed. See 08-state-update-error.txt; do not start the next chapter until reconciled.");
+    throw new Error("Chapter was generated, but story-state persistence failed. See 08-state-update-error.txt; do not start the next chapter.");
   }
   return chapter;
 }
