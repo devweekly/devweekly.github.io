@@ -49,7 +49,7 @@ const StoryStateUpdateSchema = z.object({
     }).optional(),
     status: z.string(), location: z.string().optional(), abilities: z.array(z.string()).optional(),
     knowledge: z.array(z.string()).optional(), goals: z.array(z.string()).optional(),
-    relationships: z.array(z.string()).optional(), arcMilestones: z.array(z.object({ id: z.string().min(1), chapter: z.string().min(1), change: z.string().min(1), choice: z.string().min(1), pressure: z.string().min(1), cost: z.string().min(1), evidence: z.string().min(4) })).optional(), stateUpdatedAt: z.string().optional()
+    relationships: z.array(z.string()).optional(), arcMilestones: z.array(z.object({ id: z.string().min(1), chapter: z.string().min(1), change: z.string().min(1), choice: z.string().optional(), pressure: z.string().optional(), cost: z.string().optional(), evidence: z.string().min(4) })).optional(), stateUpdatedAt: z.string().optional()
   })).optional(),
   events: z.array(z.object({
     id: z.string().min(1), summary: z.string(), position: z.string(),
