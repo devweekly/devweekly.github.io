@@ -229,20 +229,28 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       sceneCount: input.scenes,
       sceneLabel: `第 ${index + 1} 批，场景 ${batchStart}–${batchStart + slice.length - 1}`
     });
+    const validateBatchReview = (output: string) => {
+      const report = parseChapterReview(output, batchText, input.scenes);
+      const batchEnd = batchStart + slice.length - 1;
+      if (report.issues.some(issue => issue.scenes.some(scene => scene < batchStart || scene > batchEnd))) {
+        throw new Error(`Batch review ${index + 1} returned a scene outside its assigned range ${batchStart}–${batchEnd}.`);
+      }
+      return report;
+    };
     let raw: string;
     let parsed: ReturnType<typeof parseChapterReview>;
     try {
       raw = await cachedCall("batch-review-" + (index + 1), "04-review-batch-" + (index + 1) + "-raw.txt", "review", [
         batchPrompt
-      ], output => parseChapterReview(output, batchText, input.scenes));
-      parsed = parseChapterReview(raw, batchText, input.scenes);
+      ], validateBatchReview);
+      parsed = validateBatchReview(raw);
     } catch (firstError) {
       raw = await cachedCall("batch-review-" + (index + 1) + "-retry", "04-review-batch-" + (index + 1) + "-retry-raw.txt", "review", [
         batchPrompt,
         "上一次审查结果未通过结构校验：" + String(firstError),
         "请重新审查同一批正文。每条必改问题都必须给出有效的全章场景编号；没有必改项就返回空 issues 和 pass。只输出 schema 对应的 JSON。"
-      ], output => parseChapterReview(output, batchText, input.scenes));
-      parsed = parseChapterReview(raw, batchText, input.scenes);
+      ], validateBatchReview);
+      parsed = validateBatchReview(raw);
     }
     summaries.push(parsed.summary);
     found.push(...parsed.issues);
