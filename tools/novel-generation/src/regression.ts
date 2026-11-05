@@ -202,7 +202,7 @@ export interface RegressionInput {
   profileB: TaskProfile;
   /** 评审阶段的档案，默认沿用 B，便于评审自己也想清楚再下结论。 */
   reviewProfile?: TaskProfile;
-  /** 默认在指标不达标时做一次句法修订，修订只改句子组织。 */
+  /** 仅显式开启时按统计基线做一次实验性句法修订；默认不自动改稿。 */
   repair?: boolean;
   targets?: RhythmTarget;
   outputDir: string;
@@ -354,7 +354,7 @@ export async function runRegression(input: RegressionInput): Promise<RegressionR
     const scoreBefore = rhythmScore(draftGaps);
     let repaired = false;
     let rejectedRepair = false;
-    if (input.repair !== false && needsRepair(draftGaps)) {
+    if (input.repair === true && needsRepair(draftGaps)) {
       await save(`03-candidate-${variant.id}-raw.md`, text);
       const revised = await repairRhythm({
         text, gaps: draftGaps, model: input.model, timeoutMs: input.timeoutMs, profile: variant.profile
