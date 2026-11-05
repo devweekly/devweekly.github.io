@@ -76,10 +76,10 @@ npm run dev -- write --world conghuoniao --mode continuation \
   --max-words 3500
 
 # 运行中断后，使用原目录恢复；已完成且输入未变化的阶段会直接复用
-npm run dev -- write --world conghuoniao --mode continuation \\
-  --brief "从上一章结尾继续，展开一条新的调查线" \\
-  --source ./private/authorized-excerpt.md \\
-  --context ./private/continuity-summary.md \\
+npm run dev -- write --world conghuoniao --mode continuation \
+  --brief "从上一章结尾继续，展开一条新的调查线" \
+  --source ./private/authorized-excerpt.md \
+  --context ./private/continuity-summary.md \
   --resume-dir .output/conghuoniao/<原 run-id>
 ```
 
@@ -200,13 +200,13 @@ npm run dev -- check-runtime --model glm-5.3-flash
 运行：
 
 \`\`\`bash
-node scripts/compare-models.mjs \\
-  --world conghuoniao \\
-  --source ./private/previous-chapter.txt \\
-  --context ./private/context.md \\
-  --brief "承接上一章结尾，明确本章目标、主要冲突、必须出现的人物和不可改变的事实；不要预先规定每个场景的具体写法。" \\
-  --models deepseek-v4.1-flash,glm-5.3-flash \\
-  --max-words 3000 \\
+node scripts/compare-models.mjs \
+  --world conghuoniao \
+  --source ./private/previous-chapter.txt \
+  --context ./private/context.md \
+  --brief "承接上一章结尾，明确本章目标、主要冲突、必须出现的人物和不可改变的事实；不要预先规定每个场景的具体写法。" \
+  --models deepseek-v4.1-flash,glm-5.3-flash \
+  --max-words 3000 \
   --repetitions 1
 \`\`\`
 
