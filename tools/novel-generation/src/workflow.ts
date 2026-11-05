@@ -43,7 +43,16 @@ export function mergeStoryState(current: StoryState, update: Partial<StoryState>
         for (const [field, value] of Object.entries(item as unknown as Record<string, unknown>)) {
           // State fields are snapshots, not append-only logs: a new location, goal or
           // relationship list replaces the previous value. Profile objects merge one level.
-          if (Array.isArray(value)) merged[field] = [...value];
+          if (field === "arcMilestones" && Array.isArray(value)) {
+            const previousMilestones = Array.isArray((previous as unknown as Record<string, unknown>)[field])
+              ? (previous as unknown as Record<string, unknown>)[field] as Array<Record<string, unknown>>
+              : [];
+            const milestones = new Map(previousMilestones.map(milestone => [String(milestone.id), milestone]));
+            for (const milestone of value as Array<Record<string, unknown>>) {
+              if (typeof milestone.id === "string") milestones.set(milestone.id, milestone);
+            }
+            merged[field] = [...milestones.values()];
+          } else if (Array.isArray(value)) merged[field] = [...value];
           else if (value && typeof value === "object" && !Array.isArray(value)) {
             const oldNested = (previous as unknown as Record<string, unknown>)[field];
             merged[field] = { ...(oldNested && typeof oldNested === "object" ? oldNested as object : {}), ...(value as object) };
@@ -196,17 +205,17 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     JSON.stringify({
       currentPosition: "string",
       canonFacts: [{ id: "stable-id", fact: "fact", source: "chapter id", confidence: "confirmed|inferred|original" }],
-      characters: [{ name: "name", profile: { coreTraits: ["stable traits"], values: ["values"], contradictions: ["internal contradictions"], voice: "distinctive voice", boundaries: ["what this character will not easily do"], arc: "current long-term character arc" }, status: "current status", location: "current location", abilities: ["current abilities"], knowledge: ["current known information"], goals: ["current goals"], relationships: ["current relationships"] }],
+      characters: [{ name: "name", profile: { coreTraits: ["stable traits"], values: ["values"], contradictions: ["internal contradictions"], voice: "distinctive voice", boundaries: ["what this character will not easily do"], arc: "current long-term character arc" }, status: "current status", location: "current location", abilities: ["current abilities"], knowledge: ["current known information"], goals: ["current goals"], relationships: ["current relationships"], arcMilestones: [{ id: "stable-milestone-id", chapter: "chapter id", change: "what changed", choice: "the consequential choice", pressure: "the pressure or conflict", cost: "the cost paid", evidence: "exact excerpt from final chapter" }] }],
       events: [{ id: "stable-id", summary: "event", position: "story position", participants: ["name"], consequences: ["consequence"] }],
       plotThreads: [{ id: "stable-id", title: "thread", status: "open|active|resolved|abandoned", lastUpdated: "chapter id", notes: "latest state" }],
       continuityNotes: ["facts future chapters must preserve"]
     }, null, 2),
     "旧状态：", JSON.stringify(state, null, 2), "最终章节：", chapter,
-    "人物 profile 是相对稳定的性格底色、价值观、内在矛盾、语言习惯与行为边界；不要因单次情绪或行为轻易改写。character 的 status/location/abilities/knowledge/goals/relationships 是当前剧情状态，必须反映本章结束时的最新快照，数组应给出完整当前值而非只追加变化项。人物弧光允许发生真实变化，但必须由连续的选择、压力、代价和行为证据支撑；不要把人物锁死成标签，也不要为了反转强行黑化/洗白。只记录章节明确支持的内容。无法确认的内容不要写入 canonFacts；推断必须标为 inferred。人物和情节线只输出本章新增或发生变化的记录。"
+    "人物 profile 是相对稳定的性格底色、价值观、内在矛盾、语言习惯与行为边界；不要因单次情绪或行为轻易改写。character 的 status/location/abilities/knowledge/goals/relationships 是当前剧情状态，必须反映本章结束时的最新快照，数组应给出完整当前值而非只追加变化项。人物弧光允许发生真实变化，但必须由连续的选择、压力、代价和行为证据支撑；不要把人物锁死成标签，也不要为了反转强行黑化/洗白。只记录章节明确支持的内容。无法确认的内容不要写入 canonFacts；推断必须标为 inferred。人物和情节线只输出本章新增或发生变化的记录。人物发生实质性弧光变化时，另以 arcMilestones 追加记录关键选择、压力、代价和正文逐字证据；没有实质变化就不新增里程碑。"
   ]);
 
   try {
-    const update = parseStoryStateUpdate(extractJson(stateText));
+    const update = parseStoryStateUpdate(extractJson(stateText), chapter);
     const nextState = mergeStoryState(state, update);
     // 默认自动提交状态；仅在显式隔离/试写模式下保留为本次运行提案。
     if (input.applyState) await saveStoryState(input.statePath, nextState);
