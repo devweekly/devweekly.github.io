@@ -3,6 +3,7 @@ import { resolve } from "node:path";
 import { loadStoryState, saveStoryState, type StoryState } from "./story-state.js";
 import { runAgentText, type GenerationMode } from "./generate.js";
 import { readTaskProfiles, type StageKey } from "./task-profiles.js";
+import { formatReview, reviewAndRepair, reviewPrompt } from "./chapter-review.js";
 
 export interface WriteWorkflowInput {
   worldId: string;
@@ -147,21 +148,35 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   ]);
   await saveStage(input.outputDir, "06-voice-edited.md", voiceDraft);
 
-  const review = await call("review", [
-    "角色：连续性与剧情审查 Agent。只报告问题，不重写正文。",
-    common, "章节蓝图：", plan, "待审正文：", voiceDraft,
-    "检查：主线目标是否推进、人物动机/知识/能力是否越界、时间地点是否冲突、因果是否成立、伏笔是否误回收、对白是否泄露未知信息、场景是否有有效变化。每项给出原文证据、严重程度（blocker/major/minor）和最小修复建议。区分事实错误与个人偏好。",
-    "另检查节奏：统计或估算平均句长、长短句占比与连续短句，指出哪一段整段急促、哪一段缺少长句。"
-  ]);
-  await saveStage(input.outputDir, "07-continuity-review.md", review);
-
-  const chapter = await call("final", [
-    "角色：主编终审 Agent。根据审查结果完成最终修订，只输出小说正文。",
-    common, "最终章节蓝图：", plan, "当前正文：", voiceDraft, "连续性审查：", review,
-    "必须修复 blocker 和有证据支持的 major 问题。不要机械接受主观建议，不要增加未经铺垫的设定或反转。保留已经成立的对白和叙事节奏。",
-    RHYTHM_RULE
-  ]);
+  const reviewHistory: string[] = [];
+  const reviewed = await reviewAndRepair({
+    initialChapter: voiceDraft,
+    maxRepairRounds: 2,
+    review: (candidate, correction) => call("review", [
+      reviewPrompt({ context: common, blueprint: plan, chapter: candidate, correction })
+    ]),
+    repair: (candidate, issues, round) => call("final", [
+      "角色：主编修复 Agent。根据结构化审查结果执行最小范围修复，只输出完整章节正文。",
+      common, "最终章节蓝图：", plan,
+      "当前章节正文：", candidate,
+      "必须处理的问题：", JSON.stringify(issues, null, 2),
+      "本轮为第 " + round + " 次自动修复。只修复 blocker/major，保留无关段落、已经成立的对白和叙事节奏；不采纳主观偏好，不新增未经铺垫的设定、人物行为或反转。修复必须解决证据所指问题。",
+      RHYTHM_RULE
+    ]),
+    onReview: async (round, candidate, report) => {
+      const formatted = formatReview(report);
+      reviewHistory.push("## 复查轮次 " + (round + 1) + "\n\n" + formatted);
+      await saveStage(input.outputDir, "07-continuity-review-round-" + (round + 1) + ".json", JSON.stringify(report, null, 2));
+    }
+  });
+  const chapter = reviewed.chapter;
+  await saveStage(input.outputDir, "07-continuity-review.md", reviewHistory.join("\n\n---\n\n"));
   await saveStage(input.outputDir, "chapter.md", chapter);
+  await saveStage(input.outputDir, "09-quality-summary.json", JSON.stringify({
+    status: "passed",
+    repairRounds: reviewed.repairRounds,
+    reviews: reviewed.reviews
+  }, null, 2));
 
   const stateText = await call("state", [
     "角色：小说连续性资料管理员。根据旧状态和最终章节提取本章状态变化。",
