@@ -113,7 +113,7 @@ function mergeBy<T extends Record<string, unknown>>(
   arrayFields: string[],
   textFields: string[]
 ): T[] {
-  const map = new Map(target.map(item => [keyOf(item), item]));
+  const map = new Map(target.map(item => [keyOf(item), item] as const));
   for (const item of incoming) {
     const key = keyOf(item);
     const previous = map.get(key);
@@ -134,7 +134,7 @@ function mergeBy<T extends Record<string, unknown>>(
       ...(Array.isArray(previous.sourceRefs) ? previous.sourceRefs as SourceRef[] : []),
       ...(Array.isArray(item.sourceRefs) ? item.sourceRefs as SourceRef[] : [])
     ];
-    merged.sourceRefs = [...new Map(refs.map(ref => [ref.chunkId, ref])).values()];
+    merged.sourceRefs = [...new Map(refs.map(ref => [ref.chunkId, ref] as const)).values()];
     map.set(key, merged as T);
   }
   return [...map.values()];
@@ -209,7 +209,7 @@ export async function analyzeStoryCorpus(
       analysis = BatchSchema.parse(JSON.parse(await readFile(cachePath, "utf8")) as unknown);
       console.log(`[story-analysis] batch ${batch.index + 1}/${batches.length} · cache hit`);
     } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT" && !(error instanceof SyntaxError) && !(error instanceof z.ZodError)) throw error;
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT" && !(error instanceof SyntaxError) && !(error instanceof Error && error.name === "ZodError")) throw error;
     }
     if (!analysis) {
       console.log(`[story-analysis] batch ${batch.index + 1}/${batches.length} · ${batch.chunks.length} chunks · ${batch.chars} chars`);
