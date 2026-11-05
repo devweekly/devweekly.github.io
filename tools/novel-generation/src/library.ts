@@ -1,7 +1,7 @@
 import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { syncLibraryChunks, readLibraryChunks, syncAnnotations, databaseWorldDirFromLibrary } from "./database.js";
 import { createHash } from "node:crypto";
-import { basename, extname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
 
 export interface LibraryChunk {
   id: string;

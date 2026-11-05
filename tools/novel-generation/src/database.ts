@@ -38,7 +38,7 @@ export function syncAnnotations(worldDir:string,worldId:string,annotations:Annot
  const db=openDatabase(worldDir,worldId);try{transaction(db,()=>{db.exec("DELETE FROM annotations; DELETE FROM entity_mentions; DELETE FROM entities;");
  const qa=db.prepare("INSERT INTO annotations(chunk_id,source,chapter,extracted_at,payload_json) VALUES(?,?,?,?,?)");
  for(const a of annotations)qa.run(a.chunkId,a.source,a.chapter??"",a.extractedAt??"",JSON.stringify(a));
- if(registry){const qe=db.prepare("INSERT INTO entities(entity_id,name,type,aliases_json,mention_count,payload_json) VALUES(?,?,?,?,?,?)");const qm=db.prepare("INSERT INTO entity_mentions(entity_id,chunk_id,source,chapter,evidence) VALUES(?,?,?,?,?)");
+ if(registry){const qe=db.prepare("INSERT INTO entities(entity_id,name,type,aliases_json,mention_count,payload_json) VALUES(?,?,?,?,?,?)");const qm=db.prepare("INSERT OR IGNORE INTO entity_mentions(entity_id,chunk_id,source,chapter,evidence) VALUES(?,?,?,?,?)");
  for(const e of registry.entities){qe.run(e.id,e.name,e.type,JSON.stringify(e.aliases),e.mentions.length,JSON.stringify(e));for(const m of e.mentions)qm.run(e.id,m.chunkId,m.source,m.chapter,m.evidence);}}
  });}finally{db.close();}
 }
