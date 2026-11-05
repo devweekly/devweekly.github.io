@@ -58,7 +58,8 @@ test("story facts, events and threads merge by stable id without duplicate accum
 test("model state updates are runtime-validated before they can be merged", () => {
   assert.deepEqual(parseStoryStateUpdate({
     currentPosition: "第2章结尾",
-    characters: [{ name: "李玄", status: "离开旧城", location: "北门" }]
+    characters: [{ name: "李玄", status: "离开旧城", location: "北门" }],
+    continuityNotes: []
   }), {
     currentPosition: "第2章结尾",
     characters: [{ name: "李玄", status: "离开旧城", location: "北门" }],
