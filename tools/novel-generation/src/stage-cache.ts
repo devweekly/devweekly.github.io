@@ -93,7 +93,7 @@ export async function runCachedStage(input: {
 /** Keep the original story snapshot stable across retries, even if a previous
  * attempt reached the database commit before the process was interrupted. */
 export async function loadRunStoryState(statePath: string, worldId: string, outputDir: string): Promise<StoryState> {
-  await mkdir(outputDir, { recursive: true });
+  await prepareRunDirectory(outputDir, worldId, outputDir.split(/[\\\\/]/).pop()?.startsWith("long-") ? "write-long" : "write");
   const snapshotPath = resolve(outputDir, "00-input-story-state.json");
   try {
     const snapshot = validateStoryState(JSON.parse(await readFile(snapshotPath, "utf8")) as unknown);
@@ -105,4 +105,19 @@ export async function loadRunStoryState(statePath: string, worldId: string, outp
   const state = await loadStoryState(statePath, worldId);
   await atomicWrite(snapshotPath, JSON.stringify(state, null, 2) + "\n");
   return state;
+}
+
+
+export async function prepareRunDirectory(outputDir: string, worldId: string, kind: "write" | "write-long"): Promise<void> {
+  await mkdir(outputDir, { recursive: true });
+  const infoPath = resolve(outputDir, "run-info.json");
+  try {
+    const info = JSON.parse(await readFile(infoPath, "utf8")) as { worldId?: string; kind?: string };
+    if (info.worldId !== worldId || info.kind !== kind) {
+      throw new Error("Resume directory identity mismatch: expected " + kind + " for " + worldId + ".");
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    await atomicWrite(infoPath, JSON.stringify({ schemaVersion: 1, worldId, kind, createdAt: new Date().toISOString() }, null, 2) + "\n");
+  }
 }
