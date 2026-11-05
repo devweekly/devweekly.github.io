@@ -34,9 +34,12 @@ tags:
 
 采购比较不能只看 GPU 数量。单颗 GPU、8-GPU 服务器和 rack-scale 系统在互联范围、网络拓扑、供电、散热、管理方式及租赁计价单位上都有差异，不能直接按卡数折算。
 
-| 层次 | 典型产品 | 物理含义 | 主要架构问题 |
-| --- | --- | --- | --- |
-| GPU | NVIDIA B300 / B200 | 单颗 GPU 加速器 | 显存容量、HBM 带宽、计算精度、功耗 |
+| 层次 | 典型产品 | 关键区别 |
+| --- | --- | --- |
+| GPU | NVIDIA B300 / B200 | 单颗加速器；关注显存、带宽和计算精度 |
+| GPU 服务器 | HGX B300 | 8-GPU NVLink/NVSwitch 节点 |
+| 机架级系统 | GB300 NVL72 | 72-GPU scale-up 域，涉及液冷和机架供电 |
+| 多机架集群 | 多个 HGX 节点或 NVL72 | 通过 RDMA Fabric 扩展，需处理拓扑和故障域 |
 | GPU 服务器平台 | HGX B300 | 8 张 SXM GPU、NVLink/NVSwitch 和主机平台 | 单节点 GPU 通信、CPU/PCIe 拓扑、节点功耗 |
 | 机架级系统 | GB300 NVL72 | 72 张 Blackwell Ultra GPU、36 颗 Grace CPU 和 NVLink Switch | 72-GPU scale-up 域、液冷、机架供电和集群网络 |
 | 多机架集群 | 多个 HGX 节点或多个 NVL72 | 多个节点/机架通过外部网络互联 | RDMA Fabric、拓扑感知调度、故障域和扩展成本 |
@@ -158,47 +161,19 @@ MoE 经常被误解为“激活参数少，所以 GPU 要求低”。它减少�
 
 精度选择直接影响模型权重占用、吞吐和生成质量。
 
-| 精度/格式 | 典型用途 | 主要考虑 |
+| 格式 | 用途与限制 |
+| --- | --- |
+| BF16 / FP16 | 精度基线；显存占用较高 |
+| FP8 | 高性能推理；需确认模型和引擎支持 |
+| FP4 / NVFP4 | Blackwell 高压缩推理；必须验证量化误差和 Kernel |
+| INT8 / INT4 | 依模型量化方案而定，不能只看位宽判断质量 |
+| 并行方式 | 何时使用 | 主要代价 |
 | --- | --- | --- |
-| BF16 / FP16 | 精度基线、兼容性对照 | 显存占用较大，适合做质量基线 |
-| FP8 | 高性能推理 | 需要检查模型权重和推理引擎支持 |
-| FP4 / NVFP4 | Blackwell 平台上的高压缩推理 | 需要评估量化误差、算子支持和模型质量 |
-| INT8 / INT4 等 | 特定模型和推理路径 | 不同量化方案的精度和内核支持差异较大 |
-
-不能只根据权重大小计算可部署性。显存还要容纳 KV Cache、CUDA Graph、激活、通信 Buffer、临时 Workspace 和运行时开销。也不能把 FP4 的理论算力直接当成生产吞吐：真实性能取决于模型结构、内核、批处理、上下文长度和通信。
-
-量化验收至少应包含：代码生成正确性、工具调用 JSON/Schema 合法率、函数参数准确率、长上下文检索、代码修改回归率和任务成功率。对 Coding Agent 来说，模型输出格式和工具调用稳定性可能比一般问答的语言流畅度更重要。
-
-### 4.3 并行策略
-
-| 并行方式 | 作用 | 适用场景 | 代价 |
-| --- | --- | --- | --- |
-| Tensor Parallelism（TP） | 将单层矩阵计算拆到多 GPU | 单模型权重或计算无法高效放入单 GPU | 每层产生通信，依赖高速互联 |
-| Pipeline Parallelism（PP） | 将模型层拆分到不同 GPU | 模型深度较大、需要跨节点扩展 | Pipeline Bubble、调度和跨阶段传输 |
-| Data Parallelism（DP） | 复制模型副本处理更多请求 | 单个模型副本已能放入资源域，需要提高吞吐 | 增加模型副本和权重显存 |
-| Expert Parallelism（EP） | 将 MoE Experts 分布在多 GPU | MoE 模型 | Token Dispatch / Combine 的通信成本 |
-| Context / Sequence Parallelism | 将长序列计算拆分 | 超长上下文和特定模型结构 | 实现复杂，依赖引擎支持 |
-
-一个实用的起点是：优先让单个模型副本使用同一台 HGX 节点内的高速 NVLink；只有模型大小、吞吐或 MoE 分布需求确实要求跨节点时，再引入跨节点并行。这个原则不是绝对规则，最终要以模型框架支持和性能测试为准。
-
-### 4.4 KV Cache 决定长上下文并发能力
-
-KV Cache 的大小取决于模型层数、注意力结构、KV Head 数、数据精度和当前活跃序列长度。PagedAttention 一类机制把缓存拆成可管理的 Block，减少连续显存分配带来的浪费；Prefix Cache 则尝试复用系统提示、工具定义等重复前缀。对于 Coding Agent，缓存策略需要和上下文组装方式一起设计，因为仓库文件、终端输出和历史工具结果会让每个 Session 的上下文迅速增长。
-
-缓存并非越多越好。系统需要在命中率、Block 回收、显存碎片和租户隔离之间取舍。Prefix Cache 的命中还受到 Tokenization、模型版本、LoRA 和缓存配置影响；不同租户是否共享缓存必须经过威胁建模。长上下文压测应观察 TTFT、TPOT 和并发随上下文长度变化的曲线，而不是只测短 Prompt 下的峰值吞吐。
-
-### 4.5 Prefill / Decode 与请求调度
-
-Prefill 处理输入 Token，决定模型读取长上下文的计算量，通常影响 Time To First Token（TTFT）；Decode 逐 Token 生成输出，常受到显存带宽、KV Cache 访问和批处理调度影响，进而影响 Time Per Output Token（TPOT 或 ITL）。
-
-推理引擎会持续把新请求加入正在运行的 Batch，这就是 Continuous Batching 一类调度机制的价值。长 Prompt 可以通过 Chunked Prefill 分段处理，减少它长时间占用调度窗口；Prefix Cache 能复用重复上下文，但缓存命中不能以跨租户泄露为代价。请求队列还需要限制最大并发和序列长度，否则少量超长上下文任务就可能挤压交互请求。
-
-对 Coding 平台，调度策略应区分 IDE 中等待反馈的交互请求和可以延后执行的后台任务。后台代码扫描、批量迁移或评测任务应有独立队列、配额和取消机制；用户关闭 Session 后，Runtime 需要能取消尚未完成的模型请求。超时与重试也必须有明确语义，避免客户端断连后服务端仍持续消耗 GPU。Prefill/Decode Disaggregation 可以将两个阶段放到不同 GPU 池，但只有在测量发现资源需求明显冲突、且跨池 KV 传输成本可接受时才值得引入。
-
-## 5. 推理框架和服务层
-
-推理框架应根据目标模型和服务要求选择。先确认模型架构、权重格式、量化方式、并行策略、上下文长度、API 兼容性和 SLO，再验证 vLLM、SGLang 或 TensorRT-LLM 的具体版本是否支持。
-
+| TP | 单层计算或权重需要多 GPU | GPU 间频繁通信 |
+| PP | 模型层需跨设备拆分 | Pipeline Bubble 和阶段传输 |
+| DP | 增加独立模型副本和吞吐 | 额外权重显存 |
+| EP | 分布式部署 MoE Experts | Token Dispatch / Combine 通信 |
+| Context / Sequence Parallelism | 超长上下文，且模型/引擎支持 | 实现和调度复杂 |
 | 框架 | 主要定位 | 评估重点 |
 | --- | --- | --- |
 | vLLM | 通用 LLM serving，OpenAI-compatible API 和批处理能力 | 目标模型、Blackwell Kernel、FP8/FP4、MoE、KV Cache 和多节点支持 |
@@ -249,8 +224,7 @@ GPU 推理节点不应该直接暴露在公网。建议把 EC2 放在私有子�
 
 实例启动后，通过 Session Manager 进入主机，先检查系统是否识别 GPU：
 
-```
-bash
+```bash
 nvidia-smi
 nvidia-smi --query-gpu=name,memory.total,driver_version,pci.bus_id --format=csv
 uname -r
@@ -258,10 +232,7 @@ uname -r
 
 预期至少能看到一张 H100、约 80 GB GPU 显存和驱动版本。如果 `nvidia-smi` 不存在，或无法与 NVIDIA Driver 通信，先解决 AMI/驱动问题，不要继续启动 vLLM。此时还可以检查 Docker 和 NVIDIA Container Toolkit：
 
-```
-bash
-docker --version
-docker info
+```bash
 docker run --rm --gpus all nvidia/cuda:12.8.1-base-ubuntu22.04 nvidia-smi
 ```
 
@@ -269,19 +240,13 @@ docker run --rm --gpus all nvidia/cuda:12.8.1-base-ubuntu22.04 nvidia-smi
 
 #### 第四步：确定模型版本并下载权重
 
-本例使用的模型 ID 是：
-
-```
-text
-nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8
-```
+本例使用的模型 ID 为 `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8`。
 
 模型权重、模型配置、Tokenizer、模型卡和 License 必须作为一个版本整体管理。部署前由模型治理或开源合规流程确认 NVIDIA Nemotron Open Model License 是否满足企业使用场景，并记录 Hugging Face 仓库的 revision/commit、文件校验值、下载时间和审批记录。不要在生产启动脚本里直接引用一个会变化的 `main` 分支作为唯一版本标识。
 
 在实例上创建模型目录，然后使用 Hugging Face CLI 下载。以下示例假设 Token 已通过安全方式注入当前 Shell 环境：
 
-```
-bash
+```bash
 export MODEL_ID="nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B-FP8"
 export MODEL_DIR="/opt/models/nemotron-3-nano-30b-a3b-fp8"
 
@@ -304,8 +269,7 @@ find "$MODEL_DIR" -maxdepth 1 -type f | head
 
 Nemotron 3 Nano FP8 的模型配方还需要模型提供的 `nano_v3_reasoning_parser.py`，以及对应的 FP8 MoE 环境变量。先下载并固定 Parser 文件：
 
-```
-bash
+```bash
 sudo mkdir -p /opt/nemotron
 cd /opt/nemotron
 
@@ -318,8 +282,7 @@ sha256sum nano_v3_reasoning_parser.py
 
 生产部署应把 Parser 文件纳入与模型相同的制品审批和版本锁定流程，不要每次容器启动时在线下载。随后拉取容器镜像并启动：
 
-```
-bash
+```bash
 export VLLM_IMAGE="vllm/vllm-openai:v0.31.0"
 export MODEL_DIR="/opt/models/nemotron-3-nano-30b-a3b-fp8"
 
@@ -358,8 +321,7 @@ docker run -d \
 
 初次启动需要加载模型，耗时取决于权重大小、磁盘吞吐、缓存和容器启动情况。通过以下命令观察启动日志和 GPU：
 
-```
-bash
+```bash
 docker logs -f nemotron-nano
 nvidia-smi -l 2
 ```
@@ -370,15 +332,13 @@ nvidia-smi -l 2
 
 容器状态为 Running 不代表模型已经可以服务。先检查模型列表：
 
-```
-bash
+```bash
 curl -fsS http://localhost:8000/v1/models
 ```
 
 再发起一次 Chat Completions 请求：
 
-```
-bash
+```bash
 curl -N http://localhost:8000/v1/chat/completions \
   -H "Content-Type: application/json" \
   -d '{
@@ -398,8 +358,7 @@ curl -N http://localhost:8000/v1/chat/completions \
 
 如果通过 SSM 做端口转发，可以在本地终端运行：
 
-```
-bash
+```bash
 aws ssm start-session \
   --target i-xxxxxxxxxxxxxxxxx \
   --document-name AWS-StartPortForwardingSession \
@@ -412,19 +371,11 @@ aws ssm start-session \
 
 不要让 IDE、Coding Agent 或业务服务直接连接每台 GPU 实例。应在 vLLM 前面部署 Model Gateway，统一处理身份验证、租户配额、请求大小限制、模型 Allowlist、超时、重试、限流、审计和模型版本切换。Gateway 后端可以是一个或多个 vLLM Endpoint。
 
-应用侧只需要配置一个稳定的 OpenAI-compatible Base URL 和模型名。例如：
-
-```
-text
-Base URL: https://model-gateway.corp.example/v1
-Model:    nemotron-nano
-API Key:  由企业身份系统或 Secret 管理系统提供
-```
+应用侧只需配置稳定的 Gateway Base URL（例如 `https://model-gateway.corp.example/v1`）、模型名 `nemotron-nano`，以及由企业身份或 Secret 系统提供的 Gateway Token。
 
 客户端示例：
 
-```
-python
+```python
 from openai import OpenAI
 
 client = OpenAI(
@@ -463,8 +414,7 @@ POC 阶段可以先采集 vLLM 暴露的 Prometheus Metrics，并由 CloudWatch 
 
 一个简化的 Deployment 片段如下。镜像、模型路径、Secret 名称和资源规格需要按实际环境替换：
 
-```
-yaml
+```yaml
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -523,17 +473,14 @@ AWS 官方 EKS 推理文档已经给出从 S3 模型制品、vLLM Deployment、S
 
 一个模型服务只有同时通过功能、性能、安全和运维验收，才应该接入真实开发者流量。
 
-| 验收领域 | 必须验证的内容 | 不通过时的处理 |
-| --- | --- | --- |
-| 模型与许可 | 模型版本、License、权重来源、Parser、制品校验值 | 不允许进入生产制品库 |
-| GPU 与容器 | 宿主机 `nvidia-smi`、容器 GPU 可见、驱动/运行时兼容 | 停止模型部署，先修复节点基线 |
-| 推理功能 | Chat Completions、Streaming、Tool Calling、取消请求、错误语义 | 不接入 Agent 客户端 |
-| 质量 | 真实仓库任务成功率、代码测试通过率、工具参数准确率 | 更换模型/量化/Prompt 或保留托管模型 |
-| 性能 | TTFT、TPOT、P95/P99、Token 吞吐、KV Cache、并发阶梯 | 调整上下文、批处理、GPU 数量或实例规格 |
-| 安全 | 私网访问、Gateway 鉴权、Secret 管理、租户隔离、日志脱敏 | 不开放真实用户流量 |
-| 运维 | 健康检查、告警、滚动升级、回滚、节点故障演练 | 不进入生产 |
-| 成本 | 每百万 Token、每成功任务成本、闲置率、平台人力 | 重新比较 API 与自托管 TCO |
-
+| 验收项 | 最低门槛 |
+| --- | --- |
+| 模型制品 | 版本、许可、来源、Parser 和校验值可追溯 |
+| GPU 运行环境 | 宿主机与容器均能识别 GPU，驱动兼容 |
+| 推理与质量 | Streaming、Tool Calling、取消请求及真实仓库任务通过 |
+| 性能 | 目标并发下 TTFT、TPOT、P95/P99 和 KV Cache 达标 |
+| 安全与运维 | 私网、鉴权、Secret、审计、告警、回滚和故障演练通过 |
+| 成本 | 能计算每个成功任务成本，并与托管 API 比较 |
 这条路径的关键结果不是“在 AWS 上成功运行了一个 Docker 容器”，而是得到一份可重复的部署基线：AWS Region 和实例规格、AMI、驱动版本、容器镜像 Digest、vLLM 版本、模型 revision、Parser 版本、启动参数、质量报告、性能报告和成本数据。后续从一台 EC2 扩到 EKS 或 8-GPU 节点时，团队才能判断变化来自模型、硬件、框架还是调度层。
 
 部署时应以对应版本的官方资料为准，尤其不要把不同 vLLM release 的启动参数混用：
@@ -727,30 +674,13 @@ Kimi 的单副本往往占用一整台多 GPU 节点，故障域也比单卡 Nem
 
 两个模型共用 Gateway 不等于可以共用所有运行配置。模型升级应独立进行：先部署新版本 Kimi Endpoint，运行离线评测和 Shadow Traffic，再对小比例请求 Canary；通过后切换 Registry 指向，保留旧版本用于快速回滚。Nemotron 的升级不应触发 Kimi 重启，反之亦然。
 
-| 检查项 | Nemotron | Kimi K2.6 |
+| 对比项 | Nemotron Nano | Kimi K2.6 |
 | --- | --- | --- |
-| 权重规模 | 30B A3B FP8，单卡 POC | 1T 总参数 MoE，需完整加载专家权重 |
-| 起步硬件 | 1×H100 | 8×H200 INT4，或经验证的 B300 NVFP4 路径 |
-| 并行方式 | POC 可 TP1 | TP、TP+PP 或 DP+EP，按拓扑选择 |
-| 推理解析 | Nemotron 对应 reasoning/tool parser | kimi_k2 reasoning/tool parser |
-| 多模态 | 取决于具体 Nemotron 型号 | K2.6 支持图像和视频输入 |
-| 容量规划 | 单卡显存、KV Cache 和并发 | 全量权重、专家通信、KV Cache 和多 GPU 利用率 |
-| 运维升级 | 独立镜像、模型版本和回滚 | 独立镜像、量化制品、Kernel 和分布式配置 |
-
-最终需要形成两份独立的 Model Deployment Manifest，并由统一 Model Registry 对外呈现。Manifest 至少记录 AWS Region/实例、GPU 型号与数量、AMI/Driver、容器 Digest、vLLM 版本、模型 revision、量化方式、Tokenizer/Processor、Parser、并行参数、上下文上限、Benchmark 结果和成本。这样新增第三个模型时，团队只需要增加新的模型部署单元和能力描述，不必重新设计企业应用的接入方式。
-
-### 5.3 推理服务 API
-
-统一 API 的工作不止是把请求转发到模型。Coding Agent 可能依赖 Chat Completions，也可能使用 Responses 一类接口；流式事件、Tool Calling、JSON Schema 输出、取消请求和错误语义都要与客户端约定一致。服务端还要返回可追踪的 Request ID、Trace ID、模型版本和 Token Usage，才能把一次 Agent 任务的模型成本与后续工具执行关联起来。
-
-“兼容 OpenAI API”只能作为初筛条件。不同 Harness 对并行工具调用、流式事件顺序、finish_reason、usage 统计和上下文窗口的处理并不完全相同。应直接拿 Claude Code、OpenCode、Copilot SDK 或企业实际使用的客户端跑协议回归测试，确认取消、重试和客户端断连时不会留下持续运行的推理请求。
-
-### 5.4 Model Router
-
-Router 需要同时看任务和服务状态。一个小范围代码解释可能适合低成本模型；跨模块重构则要看模型在真实仓库任务上的成功率，而不只是公开榜单。上下文长度决定模型是否能接收完整输入，GPU Pool 的队列和缓存状态影响等待时间，用户与项目配额则限制资源消耗。SLO、任务截止时间和数据分类也会改变可选模型范围。
-
-路由策略应作为版本化配置发布，先用 Shadow Traffic 观察决策，再对少量流量 Canary。发生模型故障或容量不足时，可以切换到经过验证的候选模型，但降级不能绕过数据驻留、模型 Allowlist 或预算规则。模型本身不能获得修改这些策略的权限。
-
+| 模型规模 | 30B A3B FP8 | 1T 总参数 MoE，需加载完整专家权重 |
+| 起步资源 | 1×H100 POC | 8×H200 INT4，或验证过的 B300 NVFP4 |
+| 推理配置 | TP1，Nemotron Parser | TP/PP/EP 按拓扑选择，使用 kimi_k2 Parser |
+| 容量瓶颈 | 单卡显存和 KV Cache | 专家通信、KV Cache 和多 GPU 利用率 |
+| 多模态 | 取决于具体型号 | 支持图像和视频输入 |
 ## 6. 国产 GPU / AI 加速器：推理部署与开发工程
 
 在中国境内部署时，国产 GPU 和 AI 加速器也应纳入候选范围。市场上的产品包括通用 GPU，以及 NPU、MLU、GCU 等不同架构的加速器，软件栈和编程模型并不统一。选型需要核对目标模型的支持情况、算子覆盖、集合通信、框架适配和运维工具，峰值算力只能作为其中一项指标。
@@ -1610,41 +1540,6 @@ First American 的案例则说明，模型选择不能只按参数量或通用�
 `人均月成本拐点 = GPU 平台月成本 ÷ 开发者人数`
 
 以 2,000 名开发者、8 个 H200 节点为例：
-
-| 云平台 | GPU 与平台月预算 | 2,000 人时的人均成本拐点 | 与 Copilot $200 / 人 / 月比较 |
-| --- | ---: | ---: | --- |
-| AWS，64 张 H200 | $425k–$462k | **$213–$231 / 人 / 月** | 高于 $200，尚未划算 |
-| Azure，64 张 H200 | $569k–$619k | **$285–$310 / 人 / 月** | 高于 $200，尚未划算 |
-
-因此，在 2,000 人规模下，若 Copilot 的实际人均月成本是 $200，AWS 方案至少还要降低约 6%–13% 才能达到账面持平；Azure 则需要降低约 30%–35%。这里比较的是现有 GPU 和平台预算，尚未加入额外工程人力与剩余模型 API 费用。
-
-反过来，如果固定 Copilot 支出为 $200 / 人 / 月，计算需要多少开发者才能覆盖 GPU 平台月成本：
-
-| 云平台 | 8 节点 GPU 平台月预算 | $200 / 人 / 月时的盈亏平衡人数 |
-| --- | ---: | ---: |
-| AWS，64 张 H200 | $425k–$462k | **约 2,125–2,310 人** |
-| Azure，64 张 H200 | $569k–$619k | **约 2,845–3,095 人** |
-
-如果采用 12 个节点（96 张 H200），对应的门槛进一步提高：
-
-| 云平台 | 12 节点 GPU 平台月预算 | 2,000 人时的人均成本拐点 | $200 / 人 / 月时的盈亏平衡人数 |
-| --- | ---: | ---: | ---: |
-| AWS | $637k–$693k | **$319–$347** | **约 3,185–3,465 人** |
-| Azure | $854k–$929k | **$427–$465** | **约 4,270–4,645 人** |
-
-**结论：按当前估算，2,000 人、每人每月 $200 的情况下，64 张 H200 尚未达到成本拐点；AWS 要到人均约 $213–$231，或用户规模达到约 2,125–2,310 人才刚好账面持平。Azure 要到人均约 $285–$310，或用户规模达到约 2,845–3,095 人才刚好持平。** 这些是 GPU 平台预算的直接拐点，不包含额外平台团队、模型适配、值班、质量返工和托管模型回退费用；完整 TCO 的实际拐点会更高。
-
-#### 两种产品不是完全相同的成本对象
-
-Copilot 的账单购买的是 GitHub 托管产品能力，包括 IDE 集成、代码补全、Agent 工作流、模型访问和持续升级。租 GPU 只购买推理算力；企业仍然要建设和维护 Workbench、Agent Runtime、代码上下文、MCP / Tool Broker、隔离执行、权限控制、审计、模型路由和开发者支持。即使采用开源模型，企业也要自行承担模型质量回归、量化验证、推理引擎升级和安全运营。
-
-另一方面，Copilot 的 $200 也不能直接代表所有企业 Agent 工作负载。它不一定覆盖企业自定义的长时运行 Agent、内部知识检索、批量代码迁移、私有 MCP 工具和独立执行环境。应先把使用场景拆成三类：标准 IDE 辅助和常规 Agent 任务；高消耗的复杂重构、长上下文和后台任务；数据不能离开企业边界或需要稳定专属吞吐的任务。第一类通常先比较 Copilot Business / Enterprise；第二类比较按量托管模型与 GPU 弹性池；第三类才有充分理由评估自托管或专属推理。
-
-**建议的决策方式是先买服务、再验证自托管，而不是先租满 GPU。** 先对 2000 人启用 Copilot 或同类托管服务，连续记录每用户月度账单、AI Credits、模型分布、Agent 任务类型、成功率和耗时。同步挑选真实高频任务，在一台 8-GPU H200 上对照 Sonnet 等托管模型与自托管候选模型，按“成功完成的同类任务”比较成本、质量、延迟和人工返工。只有当自托管在任务质量不退化的前提下，稳定降低完整 TCO，或提供托管服务无法满足的数据驻留、治理、专属容量和供应商控制能力，才扩至 4–8 节点。
-
-### 21.7 API 与 GPU 自托管的成本交叉点
-
-不要先假定租 GPU 一定比模型 API 便宜。以 Sonnet 5.5 标准价为例，假设 80% 输入 Token、20% 输出 Token：
 
 | 月度总 Token | 输入 / 输出 | 按 $2 / $10 每百万 Token 估算 |
 | ---: | ---: | ---: |
