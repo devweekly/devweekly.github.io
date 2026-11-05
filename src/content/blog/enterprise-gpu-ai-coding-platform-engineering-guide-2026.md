@@ -1241,7 +1241,7 @@ AWS 在 2025 年发布的参考架构展示了企业在自己 AWS Account 中部
 
 来源：[AWS Architecture Blog：Deploy LLMs on Amazon EKS using vLLM Deep Learning Containers（2025-08-14）](https://aws.amazon.com/blogs/architecture/deploy-llms-on-amazon-eks-using-vllm-deep-learning-containers)；[AWS EKS Load & Serve Models](https://docs.aws.amazon.com/eks/latest/userguide/ml-inference-load-serve-model.html)。
 
-### 18.9 Cognition / Devin：在 CoreWeave 租用 GPU 并按 Agent 负载扩容
+### 18.8 Cognition / Devin：在 CoreWeave 租用 GPU 并按 Agent 负载扩容
 
 Cognition 公开表示，其在 CoreWeave 上运行 Devin 的训练、强化学习和生产推理，从桥接容量扩展到数千张 GPU，历时不到九个月。2026 年 CoreWeave 公告还提到，Cognition 与 CoreWeave 部署了 Vera Rubin NVL72，并由 Cognition 工程师执行客户侧推理基准；针对 SWE-2 Agentic Coding Workload，公开数据称相较 GB200 NVL72，Token Throughput 最高提升约 4.8 倍。
 
@@ -1255,7 +1255,7 @@ Cognition 公开表示，其在 CoreWeave 上运行 Devin 的训练、强化学�
 
 来源：[CoreWeave：Cognition at Production Scale](https://investors.coreweave.com/news/news-details/2026/CoreWeave-Delivers-NVIDIA-Vera-Rubin-NVL72-Performance-at-Production-Scale-Starting-With-Cognition/default.aspx)。
 
-### 18.10 Together AI + IBM Cloud + NVIDIA：专属 B300 集群的运营分工
+### 18.9 Together AI + IBM Cloud + NVIDIA：专属 B300 集群的运营分工
 
 2026 年 8 月，IBM 宣布与 Together AI 达成多年期、约 2.4 亿美元的合作，在 IBM Cloud 上部署大规模 NVIDIA HGX B300 集群，采用 NVIDIA Spectrum-X Ethernet。IBM 提供 Cloud Infrastructure，NVIDIA 提供 GPU 和网络技术，Together AI 负责 Inference Platform。Together AI 在 2026 年 10 月介绍了该集群的企业推理用途。
 
@@ -1269,7 +1269,7 @@ Cognition 公开表示，其在 CoreWeave 上运行 Devin 的训练、强化学�
 
 来源：[Together AI：Expanding our enterprise inference capacity with IBM Cloud and NVIDIA（2026-10-06）](https://www.together.ai/blog/expanding-our-enterprise-inference-capacity-with-ibm-cloud-and-nvidia)；[IBM 新闻稿（2026-08-11）](https://www.prnewswire.com/news-releases/ibm-and-together-ai-sign-multi-year-agreement-to-scale-open-source-ai-inference-with-nvidia-ai-infrastructure-on-ibm-cloud-302847748.html)。
 
-### 18.11 全球金融科技公司 + Together Dedicated Model Inference：56 张 B200 承载 Coding Agent 生产流量
+### 18.10 全球金融科技公司 + Together Dedicated Model Inference：56 张 B200 承载 Coding Agent 生产流量
 
 Together AI 在 2026 年 9 月公开了一个匿名全球金融科技客户案例。客户用 GLM-5.2 运行内部 Coding Assistant，工作负载具有明显的工作时间峰值、低平均生成速率、长上下文和突发并发特征。它不是企业自己管理物理 GPU 和推理引擎，而是使用 Together 的 Dedicated Model Inference（DMI）；但客户工程团队拥有 Endpoint 配置、扩缩容、模型升级和蓝绿测试控制权。
 
@@ -1289,7 +1289,7 @@ GPU 总数相同，服务能力也可能相差很大。Replica 数量、每个 R
 
 来源：[Together AI：How a global fintech scaled coding agent traffic with Dedicated Model Inference（2026-09-18）](https://www.together.ai/blog/global-fintech-scales-coding-agent-traffic-with-dedicated-model-inference)。
 
-### 18.13 Uber：混合使用自有机房 GPU 和 GCP GPU
+### 18.11 Uber：混合使用自有机房 GPU 和 GCP GPU
 
 Uber 在 2026 年披露的 LLM Training Infrastructure 案例不是纯推理平台案例，但它说明企业不必在“全部自建”与“全部公有云”之间二选一。
 
@@ -1305,7 +1305,7 @@ Uber 的内部 LLM 工作流同时使用自有 On-Prem 集群中的 A100 GPU，�
 
 来源：[Uber Engineering：Open Source and In-House: How Uber Optimizes LLM Training（2026-04-14）](https://www.uber.com/us/en/blog/open-source-and-in-house-how-uber-optimizes-llm-training/)。
 
-### 18.16 Superhuman / Grammarly：从自建 vLLM 转向托管 Serving
+### 18.12 Superhuman / Grammarly：从自建 vLLM 转向托管 Serving
 
 Superhuman（原 Grammarly）曾经运行自建 vLLM Serving Stack 和内部模型管理工具，支撑语法纠错模型。随着业务规模达到峰值 200K+ QPS，L40S GPU Fleet 的性能优化、容量规划、自动扩缩容和每次模型迭代所需的手工调优，逐渐占用精干 ML Infrastructure 团队的大量精力。
 
@@ -1318,7 +1318,7 @@ Superhuman（原 Grammarly）曾经运行自建 vLLM Serving Stack 和内部模�
 来源：[Databricks：How Superhuman and Databricks built a 200K QPS inference platform together（2026-05-08）](https://www.databricks.com/blog/how-superhuman-and-databricks-built-200k-qps-inference-platform-together)。
 
 
-### 18.17 案例比较：企业实际购买的能力
+### 18.13 案例比较：企业实际购买的能力
 
 | 模式 | 代表案例 | 企业承担的责任 | 适用条件 |
 | --- | --- | --- | --- |
@@ -1327,19 +1327,19 @@ Superhuman（原 Grammarly）曾经运行自建 vLLM Serving Stack 和内部模�
 | Dedicated GPU Cloud / Managed Inference | 金融科技公司、Cognition、Workato | 模型评测、API 集成、配额、供应商和 SLO 管理 | GPU 需求变化较大，或不希望自建底层运维团队 |
 | 托管模型 / Serving | Superhuman、Grammarly 等 | 数据权限、模型质量、成本和供应商治理 | 推理平台不是差异化能力，托管服务能满足控制要求 |
 
-### 18.18 自部署的驱动因素与边界
+### 18.14 自部署的驱动因素与边界
 
 自部署通常由数据驻留、模型定制、稳定的大规模负载、专用低延迟要求或对模型运行路径的控制需求驱动。它不自动意味着必须购买 GPU：租用 GPU VM、Dedicated GPU Cloud 和托管推理仍可能由企业自主管理模型和 API。
 
 租 GPU 只转移了硬件采购和机房设施责任。OS、驱动、容器、模型 Runtime、缓存、API、容量、监控和模型升级仍可能由企业负责。Managed Kubernetes 也不等于 Managed Inference，采购合同必须明确 GPU 故障、节点替换、模型启动、Serving SLO、数据访问和支持响应的责任边界。
 
-### 18.19 自部署常见问题与工程经验
+### 18.15 自部署常见问题与工程经验
 
 自部署项目最常见的预算偏差来自低利用率。团队按峰值购买 GPU，平时却没有足够请求填满 Batch；这时应先用真实 Trace 看清日常与峰值差距，再考虑批处理、模型路由和离线任务错峰。盲目增加 GPU 也未必改善吞吐，跨卡通信和同步成本可能抵消算力收益，比较时应看完成同类任务的总成本。
 
 另一个容易被低估的环节是故障恢复。大模型冷启动需要读取数百 GB 甚至更大的权重，若所有节点同时从远端存储拉取，恢复时间可能远超服务团队预期。本地 NVMe 缓存、分层分发和副本预热需要在 POC 阶段验证。模型上线也应把权重、Tokenizer、Runtime、Kernel 和配置视为一个 Release 单元，先做质量与性能回归，再逐步切流。在线 Coding Agent、离线评测、训练和批量任务应使用不同优先级或资源池，避免后台任务拖慢交互请求。
 
-### 18.20 经济性与 2000 名开发者平台的部署建议
+### 18.16 经济性与 2000 名开发者平台的部署建议
 
 ![企业 AI Coding 平台初期推荐部署架构](/diagrams/enterprise-gpu-ai-coding-platform/04-recommended-platform-architecture.svg)
 
@@ -1355,11 +1355,11 @@ Superhuman（原 Grammarly）曾经运行自建 vLLM Serving Stack 和内部模�
 4. 根据测量结果决定自有机房、CSP GPU、Dedicated GPU Cloud 或托管 API 的组合。
 5. 只有在单节点、多副本或简单路由无法满足 SLO 时，再引入多节点 RDMA、P/D 分离和分布式 KV Cache。
 
-### 18.21 CSP / GPU Cloud 采购核查
+### 18.17 CSP / GPU Cloud 采购核查
 
 合同和技术评审至少确认：GPU 型号与可用性、独占或共享方式、网络带宽及 RDMA、区域和数据驻留、存储吞吐与费用、节点启动和替换时间、维护窗口、SLA、故障赔偿、支持响应、模型与镜像出站费用，以及退出时的数据和制品迁移方式。供应商宣传的峰值性能不能代替目标模型的验收测试。
 
-### 18.22 本章结论
+### 18.18 本章结论
 
 企业自部署的核心不是拥有多少 GPU，而是是否有足够稳定的负载、明确的数据和控制需求，以及能够持续承担 Serving 运维的团队。先验证业务任务和单位成功任务成本，再决定租赁或采购、单机或多节点、通用模型或专用模型。
 
@@ -1387,10 +1387,6 @@ GPU 部署的技术难度并不平均分布。单机推理通常是模型与运�
 对 2000 名开发者的 AI Coding 平台，先采集实际 Agent Trace，确定模型调用分布和成功任务成本，再用一台 8-GPU 节点建立质量与性能基线。确认模型、上下文和并发需求后，再评估多节点网络与 GB300 NVL72。部署位置则根据数据分类、团队能力和成本选择自有机房、CSP GPU、Dedicated Inference 或混合模式。
 
 最终的采购和架构评审应回答三个问题：目标业务是否需要自管模型；内部团队是否准备好承担 GPU Serving 的 Day-2 责任；自管方案是否在满足安全和 SLO 的同时，降低了单位成功任务成本或带来了托管服务无法提供的控制能力。若答案不明确，继续扩大 GPU 集群只会提前固化尚未验证的假设。
-
-## 结论
-
-企业是否自部署 GPU，取决于数据边界、负载规模、模型控制需求和内部运维能力，而不是开发者人数或峰值算力。对 2000 名开发者的 AI Coding 平台，应先用真实 Agent Trace 和单节点 POC 建立质量、延迟及单位成功任务成本基线，再决定采用自有 GPU、CSP、Dedicated Inference 或托管 API，以及是否需要扩展到多节点和 GB300 NVL72。
 
 ## 21. 2000 名开发者的 Workbench：只考虑 AWS 与 Azure GPU 租用
 
@@ -1690,3 +1686,7 @@ AWS 方案中，GPU Serving 使用 EC2 P5en/P6，模型制品存储在 S3，镜�
 采购前必须取得 AWS 和 Azure 两边的书面报价与容量确认，覆盖目标区域 GPU SKU、On-Demand 与承诺折扣、容量预留、Spot 中断策略、网络与跨区费用、存储吞吐、私网访问、数据驻留、支持等级和配额提升周期。P6-B300 / ND GB200 尤其需要确认能否按计划获得连续多节点容量。
 
 最终建议：先用 AWS P5en 或 Azure ND H200 的 8-GPU 节点做 POC；Workbench 控制面和工具执行面独立部署；以 Kimi K2.6 作为 H200 自托管主力候选，按 NVIDIA Dynamo 的 8×H200 TP8 配方验证吞吐、KV Cache 和并发，以 Sonnet 5.5 建立同任务质量基线；gpt-oss-120b 仅作为轻量任务成本基线，Nemotron / Devstral 只做有限对照。Kimi K3 单独列入 B300 / GB300 高规格验证，不计入 H200 主力容量假设。生产先按 4–6 节点放量，达到实测门槛后再扩至 8 节点，12 节点仅作为峰值容量预留。64–96 GPU 不是已验证结论，最终 sizing 必须由成功任务吞吐、P95 延迟和单位成功任务成本决定。
+
+## 结论
+
+企业是否自部署 GPU，取决于数据边界、负载规模、模型控制需求和内部运维能力，而不是开发者人数或峰值算力。对 2000 名开发者的 AI Coding 平台，应先用真实 Agent Trace 和单节点 POC 建立质量、延迟及单位成功任务成本基线，再决定采用自有 GPU、CSP、Dedicated Inference 或托管 API，以及是否需要扩展到多节点和 GB300 NVL72。
