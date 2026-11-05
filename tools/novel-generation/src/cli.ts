@@ -5,6 +5,7 @@ import { generateStory, type GenerationMode } from "./generate.js";
 import { ingestFiles, listTextFiles, searchLibrary } from "./library.js";
 import { writeChapter } from "./workflow.js";
 import { loadStoryState } from "./story-state.js";
+import { loadRunStoryState } from "./stage-cache.js";
 import { analyzeLibrary } from "./analysis.js";
 import { prepareWorldAnalysis, collectWorldAnalysis, analysisStatus } from "./world-analysis.js";
 import {
@@ -277,7 +278,7 @@ async function main(): Promise<void> {
     if (!Number.isInteger(retrievalLimit) || retrievalLimit < 1 || retrievalLimit > 20) {
       throw new Error("--retrieval-limit must be between 1 and 20.");
     }
-    const state = await loadStoryState(statePath, worldId);
+    const state = await loadRunStoryState(statePath, worldId, outputDir, "write");
     const activeThreads = state.plotThreads
       .filter(thread => thread.status === "open" || thread.status === "active")
       .map(thread => thread.title);
