@@ -545,13 +545,205 @@ AWS 官方 EKS 推理文档已经给出从 S3 模型制品、vLLM Deployment、S
 - [AWS Deep Learning Containers：vLLM on EC2](https://aws.github.io/deep-learning-containers/vllm/deployment/ec2/)：使用 AWS 容器镜像在 EC2 上启动 vLLM 的示例。
 
 
-### 5.2 推理服务 API
+### 5.2 第二个模型：在同一平台增加 Kimi K2.6
+
+如果企业已经按照上一节部署了 Nemotron，接下来要增加 Kimi，正确做法是再建设一个独立的 Kimi Model Pool，而不是把 Kimi 的权重复制到 Nemotron 容器里，再通过一个模型名切换。两种模型可以共用模型网关、身份认证、审计、监控平台和客户端协议，但推理进程、GPU 资源、模型制品、启动参数和容量指标必须分别管理。
+
+本节选用 Moonshot AI 的开源 Kimi K2.6。它是 Kimi K2 系列的多模态 Agent 模型，包含文本、图像和视频输入能力，支持工具调用和 thinking 模式。模型是 MoE 架构，总参数约 1T，每个 Token 激活约 32B，包含 384 个专家，每个 Token 选择其中 8 个专家，最大上下文为 256K。这里的 32B 是每个 Token 参与计算的参数量，不是需要加载到 GPU 的全部权重大小。模型部署时仍要容纳完整专家权重，并为激活、通信缓冲区和 KV Cache 留出显存。vLLM Recipes 给出的 K2.6 INT4 权重文件约 595 GB，最低显存需求约 714 GB；NVFP4 变体的最低显存需求约 600 GB。因此它不可能像前面的 Nemotron Nano 一样放进一张 80 GB H100。<https://github.com/vllm-project/recipes/blob/main/models/moonshotai/Kimi-K2.6.yaml>
+
+#### 第一步：决定部署开源权重，还是调用 Kimi 托管 API
+
+先确认企业说的“部署 Kimi”具体指什么。Moonshot 提供托管 API，企业可以不采购 GPU，直接通过网络调用；也可以下载开放权重，在自己的 AWS 账号和 VPC 中运行。两条路径的架构、成本和数据边界完全不同。
+
+本节讨论的是自托管开源权重。生产决策前应确认模型仓库、模型变体和 License，明确是使用 Moonshot 发布的 moonshotai/Kimi-K2.6 INT4 权重，还是 NVIDIA 发布的 nvidia/Kimi-K2.6-NVFP4 量化权重。后者是针对 NVIDIA Blackwell 优化的制品，不是把前者的模型 ID 改一下就能得到的文件。模型、Tokenizer、Processor、Chat Template、量化配置和 vLLM 版本应作为一个不可随意拆分的部署版本记录。
+
+#### 第二步：按 Kimi 的完整权重规模选择 GPU
+
+Kimi K2.6 的第一个现实约束是显存。MoE 每次只计算部分专家，但模型服务启动时仍需要把所有专家权重放到 GPU 或经过验证的分层存储中。若显存不够，就需要量化、跨 GPU 切分，或采用经过验证的 CPU KV/权重卸载方案；这些选择会影响性能和运行复杂度。
+
+对 AWS 而言，可以先看两条实际可执行的路径：
+
+| 路径 | AWS 实例 | 模型制品 | GPU 资源 | 适用场景 |
+| --- | --- | --- | --- | --- |
+| Hopper 路径 | p5en.48xlarge | moonshotai/Kimi-K2.6 INT4 | 8×H200，合计约 1,128 GB HBM3e | 使用 Moonshot 开源模型权重，建立通用 Kimi 服务 |
+| Blackwell 路径 | p6-b300.48xlarge | nvidia/Kimi-K2.6-NVFP4 | 8×B300，合计约 2,144 GB HBM3e | 使用 NVIDIA NVFP4 量化制品，验证 Blackwell 优化路径 |
+
+vLLM Recipes 当前列出的 K2.6 部署验证包括 8×H200 的 INT4 路径，以及 4×B300 的 NVFP4 路径。AWS 的 p6-b300.48xlarge 是 8-GPU 实例，而上游配方的 B300 示例使用 TP4；不能因此认为 AWS 会按 4 张 GPU 的价格出租半台实例。POC 时应把整台实例的成本算进去，并先验证本机 GPU 拓扑、vLLM 对 GPU 分组的支持和实际利用率。不要为了让剩余 GPU 看起来没有浪费，就未经隔离测试把另一模型塞进同一台机器。
+
+p5en.48xlarge 提供 8 张 H200、1,128 GB HBM3e 和 3,200 Gbps EFA；p6-b300.48xlarge 提供 8 张 B300、约 2.1 TB GPU 显存和 6.4 Tbps EFA。多节点部署时，EFA、GPUDirect RDMA 和节点间网络延迟会直接影响专家并行和张量并行的通信成本。AWS 实例规格与可用 Region 会变化，创建前应检查目标 Region 的实例供给和 GPU 配额。<https://aws.amazon.com/ec2/instance-types/accelerated-computing/> <https://docs.aws.amazon.com/ec2/latest/instancetypes/ac.html>
+
+#### 第三步：建立独立的 Kimi GPU Node Pool
+
+不要把 Kimi 与 Nemotron 放在同一组可任意调度的 GPU 节点上。Nemotron Nano 的 POC 可以使用单卡实例；Kimi K2.6 则需要 8×H200 或经过验证的 B300 多 GPU 配置。两者的显存需求、启动时间、并行策略和请求负载差异很大。如果共享同一节点池，Kimi 的大权重加载可能占满显存，影响 Nemotron 的稳定性；Kubernetes 也可能因为 GPU 数量不足而无法调度整个 Kimi Pod。
+
+建议为两种模型分别定义 Node Group 或 Karpenter NodePool，例如：
+
+- gpu-nemotron-h100：承载 Nemotron Nano 等单 GPU 或较小规模模型。
+- gpu-kimi-h200：承载 Kimi K2.6 INT4，使用完整 8-GPU H200 节点。
+- gpu-kimi-b300：承载 Kimi K2.6 NVFP4，使用 B300 节点和相应的 vLLM/Kernel 配置。
+
+为节点添加 GPU 型号、显存容量和架构标签，并使用 Taint/Toleration 防止普通工作负载进入。Kimi 的 TP8 副本需要调度到同一台具有 8 张 GPU 的节点，不能把 8 张 GPU 分散在 8 台单卡 EC2 上，再期望 vLLM 自动获得与单机 NVSwitch 相同的通信性能。跨节点时必须显式配置分布式通信、EFA、NCCL 和节点角色。
+
+#### 第四步：准备 Kimi 模型制品和运行环境
+
+Kimi 的模型制品比 Nemotron 多出一层多模态处理要求。除模型权重和 Tokenizer 外，还需要确认 Processor、图像/视频预处理配置和对应 Chat Template。即使企业第一阶段只做 Coding，也要明确是否加载视觉 Encoder；纯文本部署可以评估 vLLM 配方中的 --language-model-only，以避免加载暂时用不到的视觉组件并释放显存。以后要接收截图、架构图或视频时，再部署完整多模态服务，不能只在 API Gateway 上打开一个 image_url 字段就认为模型已经支持图像。
+
+下载模型时，建议通过模型制品流水线完成，而不是在生产 GPU 节点启动时直接访问 Hugging Face：
+
+~~~bash
+export MODEL_ID="moonshotai/Kimi-K2.6"
+export MODEL_DIR="/opt/models/kimi-k2.6"
+
+hf download "$MODEL_ID" --local-dir "$MODEL_DIR"
+du -sh "$MODEL_DIR"
+~~~
+
+如果选择 Blackwell NVFP4 制品，则模型 ID 改为：
+
+~~~bash
+export MODEL_ID="nvidia/Kimi-K2.6-NVFP4"
+export MODEL_DIR="/opt/models/kimi-k2.6-nvfp4"
+
+hf download "$MODEL_ID" --local-dir "$MODEL_DIR"
+du -sh "$MODEL_DIR"
+~~~
+
+这两段是两种互斥的模型制品路径，不要把两个目录混用。实际下载应锁定 Hugging Face revision，并保存文件校验值、License 审核、模型卡、Tokenizer/Processor 文件和来源记录。对于生产环境，先把制品复制到受控 S3 Bucket，再由推理节点通过 IAM Role 读取。模型目录需要放在足够大的本地 NVMe 或高吞吐共享存储上；不能只按压缩包大小估算空间，还要预留解压、缓存和临时文件空间。
+
+#### 第五步：部署 H200 版本的 Kimi K2.6 INT4
+
+如果企业目前主要使用 H100/H200，先从 H200 INT4 路径开始评估。AWS p5en.48xlarge 有 8 张 H200，vLLM Recipes 将 Kimi K2.6 INT4 列为 8×H200 已验证配置。与前面 Nemotron 的单 GPU docker run 不同，这里要把整台机器的 8 张 GPU 分配给同一个模型副本，并设置 Tensor Parallel Size 为 8。
+
+先确认节点上有 8 张 GPU：
+
+~~~bash
+nvidia-smi --query-gpu=name,memory.total,driver_version --format=csv
+~~~
+
+然后启动 vLLM。下面是说明部署结构的命令模板；生产发布必须固定经过测试的 vLLM 镜像 Digest，并根据上游 Kimi K2.6 recipe 校准启动参数，不要把它当成所有 vLLM 版本都通用的命令：
+
+~~~bash
+docker run -d \
+  --name kimi-k26 \
+  --restart unless-stopped \
+  --gpus all \
+  --ipc=host \
+  --network host \
+  -v /opt/models/kimi-k2.6:/models/kimi:ro \
+  vllm/vllm-openai:v0.31.0 \
+  serve /models/kimi \
+    --served-model-name kimi-k2.6 \
+    --host 0.0.0.0 \
+    --port 8001 \
+    --tensor-parallel-size 8 \
+    --trust-remote-code \
+    --tool-call-parser kimi_k2 \
+    --enable-auto-tool-choice \
+    --reasoning-parser kimi_k2
+~~~
+
+这里的 --tensor-parallel-size 8 表示一个 Kimi 副本跨当前节点的 8 张 GPU 切分权重和计算。它与 Nemotron 的 --tensor-parallel-size 1 有本质区别。Kimi 的 MoE 专家分布还可以使用 Expert Parallelism（EP），在更高并发下配合 Data Parallelism（DP）提高吞吐；这不是简单把 TP 数值调大。vLLM 对 Kimi 的部署配方还提供 DP+EP、TP+PP 等方案，具体选择要结合节点数量、GPU 互联和真实请求分布做 Benchmark。<https://docs.vllm.ai/projects/recipes/en/stable/moonshotai/Kimi-K2.html>
+
+上面的启动模板只展示服务进程和关键 Kimi 参数。生产发布前要核对所选 INT4 权重格式是否与目标 vLLM 版本和 Kernel 匹配，并从对应的 Kimi K2.6 Recipe 补齐量化、KV Cache、上下文长度、批处理和并行配置。不要因为容器能够启动，就跳过权重加载完整性、工具调用和长上下文测试。
+
+#### 第六步：部署 B300 NVFP4 版本
+
+如果企业已经有 Blackwell 节点，可以评估 NVIDIA 发布的 nvidia/Kimi-K2.6-NVFP4。这是专门量化的模型制品，配合 Blackwell 的 FP4 Kernel。vLLM Recipes 给出了 B300 TP4 的验证命令，其中包括 FlashInfer AllReduce Backend、FP8 KV Cache、Tokenspeed MLA Attention 和 EAGLE3 speculative decoding。它依赖特定的 vLLM、FlashInfer、Kernel 和 GPU 架构组合，不能把这些参数复制到 H200 上。
+
+核心启动参数如下，完整配置以 [vLLM Kimi-K2.6 Recipe](https://github.com/vllm-project/recipes/blob/main/models/moonshotai/Kimi-K2.6.yaml) 为准：
+
+~~~bash
+export VLLM_FLASHINFER_ALLREDUCE_BACKEND=trtllm
+
+vllm serve nvidia/Kimi-K2.6-NVFP4 \
+  --tensor-parallel-size 4 \
+  --trust-remote-code \
+  --kv-cache-dtype fp8 \
+  --block-size 64 \
+  --gpu-memory-utilization 0.90 \
+  --attention-backend TOKENSPEED_MLA \
+  --attention-config '{"use_prefill_query_quantization":true}' \
+  --compilation-config '{"cudagraph_mode":"FULL_AND_PIECEWISE","custom_ops":["all"]}' \
+  --max-cudagraph-capture-size 2048 \
+  --speculative-config '{"method":"eagle3","model":"lightseekorg/kimi-k2.6-eagle3-mla","num_speculative_tokens":4}'
+~~~
+
+这条命令是上游 B300 配方中的优化路径，不是通用 Kimi 启动命令。EAGLE3 需要额外的 Draft Model 制品；如果第一阶段只是验证模型能否稳定提供 API，可以先关闭 speculative decoding，跑通基线后再单独比较它对 TPOT 和吞吐的改善。类似地，CPU KV Offload、DCP 和不同 AllReduce Backend 都应作为单独实验项，不要第一次启动就全部打开，否则发生问题时很难判断是模型、量化还是 Kernel 配置导致的。
+
+#### 第七步：验证 Kimi 特有的协议和多模态行为
+
+Kimi 也可以通过 vLLM 的 OpenAI-compatible API 调用，但“API 地址兼容”不意味着与 Nemotron 使用相同的 Tool Parser、Reasoning Parser 或 Chat Template。Kimi K2.6 的工具调用解析器是 kimi_k2，Reasoning Parser 也是 kimi_k2。如果沿用 Nemotron 的 qwen3_coder Parser，可能出现工具调用格式无法正确解析、工具参数被当作普通文本，或者 Agent Runtime 看不到预期的工具调用事件。
+
+首先验证服务和模型名：
+
+~~~bash
+curl -fsS http://localhost:8001/v1/models
+~~~
+
+再验证普通文本生成：
+
+~~~bash
+curl -N http://localhost:8001/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "kimi-k2.6",
+    "messages": [
+      {"role": "user", "content": "Review this Python function and identify potential bugs."}
+    ],
+    "max_tokens": 1024
+  }'
+~~~
+
+然后单独测试 Tool Calling、Thinking、Streaming、取消请求和多轮对话。对于多模态能力，还要测试图像输入、视频帧输入、超大图像、图像预处理缓存和多模态请求的 Token/显存消耗。若企业当前只做 Coding，可以先将文本能力作为上线范围，把图像和视频能力留在后续验收，不要因为模型支持多模态就默认所有客户端都需要开放这些输入。
+
+#### 第八步：把 Nemotron 和 Kimi 接到同一个 Model Gateway
+
+到这一步，企业已经有两个独立的推理 Endpoint：
+
+| 模型服务 | 内部 Endpoint 示例 | 资源池 | 关键配置 |
+| --- | --- | --- | --- |
+| Nemotron Nano | http://nemotron-service:8000/v1 | H100 单卡池 | nemotron-nano、TP1、Nemotron 对应 Parser |
+| Kimi K2.6 | http://kimi-service:8001/v1 | H200/B300 多 GPU 池 | kimi-k2.6、TP8 或经验证的 TP4、Kimi Parser |
+
+Gateway 对客户端提供统一入口，例如 https://model-gateway.corp.example/v1。
+
+但 Gateway 内部必须维护 Model Registry，记录模型名称、真实 Endpoint、模型版本、上下文上限、输入模态、工具调用能力、Reasoning 行为、资源池、SLO、数据分类和授权范围。不要让客户端传入任意 Hugging Face 模型 ID，也不要让模型自行决定调用哪个内部 Endpoint。
+
+路由可以根据任务类型、质量评测、延迟、成本和容量选择模型。例如，普通代码解释可以先走成本较低、延迟较短的 Nemotron；复杂跨文件分析、需要长上下文或更强 Agent 能力的任务可以选择 Kimi。这个策略必须来自企业自己的 Benchmark，而不是因为模型名称或参数量就预设 Kimi 一定更好。Kimi 的多模态请求还应有单独的路由条件，避免图像请求被发送到只配置了文本模型的 Endpoint。
+
+Gateway 还要统一处理租户配额、请求超时、重试、熔断、模型降级、日志脱敏和审计。降级只能转到经过质量验证且允许处理相同数据分类的模型；不能因为 Kimi 服务不可用，就把受限数据自动发给外部托管 API。工具调用则应由 Agent Runtime 统一执行，不应让不同模型的工具协议差异直接渗透到业务系统。
+
+#### 第九步：为 Kimi 单独做容量测试和故障演练
+
+不能把 Nemotron 的 Benchmark 结果用于推算 Kimi 的实例数量。Kimi 的 MoE 专家分布、All-to-All 通信、上下文长度和 KV Cache 占用，会让吞吐与延迟对并行策略更敏感。相同的请求数，在不同输入长度、输出长度和专家路由分布下，GPU 通信与显存压力可能完全不同。
+
+至少应比较 TP、DP+EP、上下文长度和并发阶梯。对 Kimi 的 Coding 场景，建议记录 TTFT、TPOT、P95/P99、输入/输出 Token 吞吐、GPU 显存、KV Cache、专家通信开销和每个成功任务的成本。多模态场景还要把图像/视频预处理耗时、Encoder 显存和输入尺寸纳入测试。
+
+Kimi 的单副本往往占用一整台多 GPU 节点，故障域也比单卡 Nemotron 大。生产环境至少需要考虑另一台独立 GPU 节点上的备用副本、模型权重预热、健康检查、流量摘除和版本回滚。若预算暂时只允许一台 Kimi GPU 节点，应明确标注为非高可用服务，设置维护窗口和请求降级策略，不要在架构图上把一个 Pod 画成高可用集群。
+
+#### 第十步：上线前检查两个模型的隔离和治理
+
+两个模型共用 Gateway 不等于可以共用所有运行配置。模型升级应独立进行：先部署新版本 Kimi Endpoint，运行离线评测和 Shadow Traffic，再对小比例请求 Canary；通过后切换 Registry 指向，保留旧版本用于快速回滚。Nemotron 的升级不应触发 Kimi 重启，反之亦然。
+
+| 检查项 | Nemotron | Kimi K2.6 |
+| --- | --- | --- |
+| 权重规模 | 30B A3B FP8，单卡 POC | 1T 总参数 MoE，需完整加载专家权重 |
+| 起步硬件 | 1×H100 | 8×H200 INT4，或经验证的 B300 NVFP4 路径 |
+| 并行方式 | POC 可 TP1 | TP、TP+PP 或 DP+EP，按拓扑选择 |
+| 推理解析 | Nemotron 对应 reasoning/tool parser | kimi_k2 reasoning/tool parser |
+| 多模态 | 取决于具体 Nemotron 型号 | K2.6 支持图像和视频输入 |
+| 容量规划 | 单卡显存、KV Cache 和并发 | 全量权重、专家通信、KV Cache 和多 GPU 利用率 |
+| 运维升级 | 独立镜像、模型版本和回滚 | 独立镜像、量化制品、Kernel 和分布式配置 |
+
+最终需要形成两份独立的 Model Deployment Manifest，并由统一 Model Registry 对外呈现。Manifest 至少记录 AWS Region/实例、GPU 型号与数量、AMI/Driver、容器 Digest、vLLM 版本、模型 revision、量化方式、Tokenizer/Processor、Parser、并行参数、上下文上限、Benchmark 结果和成本。这样新增第三个模型时，团队只需要增加新的模型部署单元和能力描述，不必重新设计企业应用的接入方式。
+
+### 5.3 推理服务 API
 
 统一 API 的工作不止是把请求转发到模型。Coding Agent 可能依赖 Chat Completions，也可能使用 Responses 一类接口；流式事件、Tool Calling、JSON Schema 输出、取消请求和错误语义都要与客户端约定一致。服务端还要返回可追踪的 Request ID、Trace ID、模型版本和 Token Usage，才能把一次 Agent 任务的模型成本与后续工具执行关联起来。
 
 “兼容 OpenAI API”只能作为初筛条件。不同 Harness 对并行工具调用、流式事件顺序、finish_reason、usage 统计和上下文窗口的处理并不完全相同。应直接拿 Claude Code、OpenCode、Copilot SDK 或企业实际使用的客户端跑协议回归测试，确认取消、重试和客户端断连时不会留下持续运行的推理请求。
 
-### 5.3 Model Router
+### 5.4 Model Router
 
 Router 需要同时看任务和服务状态。一个小范围代码解释可能适合低成本模型；跨模块重构则要看模型在真实仓库任务上的成功率，而不只是公开榜单。上下文长度决定模型是否能接收完整输入，GPU Pool 的队列和缓存状态影响等待时间，用户与项目配额则限制资源消耗。SLO、任务截止时间和数据分类也会改变可选模型范围。
 
