@@ -45,7 +45,7 @@ function usage(): never {
     "  npm run dev -- ingest --world conghuoniao --input ./private/novel.txt [more files or directories]",
     "  npm run dev -- search --world conghuoniao --query \"人物或事件关键词\" [--limit 8]",
     "  npm run dev -- analyze --world conghuoniao [--limit 20] [--model model]",
-    "  npm run dev -- analyze-world --world conghuoniao --phase prepare|status|collect",
+    "  npm run dev -- analyze-world --world conghuoniao --phase prepare|status|collect [--source original.txt] [--model model] [--timeout-ms 90000]",
     "  npm run dev -- models",
     "  npm run dev -- check-runtime [--model model] [--timeout-ms 90000]",
     "  npm run dev -- regress --world conghuoniao --chapter 13 [--brief \"本章任务\"] [--model deepseek-v4.1-flash] [--review-model glm-5.3-flash] [--context-lines 90] [--timeout-ms 240000]",
@@ -75,7 +75,15 @@ async function main(): Promise<void> {
       console.log("Prepared " + result.roles + " agent input packs.");
       console.log("Directory: " + result.dir);
     } else if (phase === "collect") {
-      const result = await collectWorldAnalysis(worldId);
+      const timeoutMs = Number(arg("--timeout-ms") ?? 90_000);
+      if (!Number.isInteger(timeoutMs) || timeoutMs < 5_000 || timeoutMs > 600_000) {
+        throw new Error("--timeout-ms must be an integer between 5000 and 600000.");
+      }
+      const result = await collectWorldAnalysis(worldId, {
+        sourcePath: arg("--source") ?? "original.txt",
+        model: arg("--model"),
+        timeoutMs
+      });
       for (const entry of result.entries) {
         console.log(entry.id.padEnd(12) + (entry.ok ? " OK   " : " CHECK") + " " + entry.chars + " chars / " + entry.evidenceCount + " refs" + (entry.issues.length ? " / " + entry.issues.join("; ") : ""));
       }

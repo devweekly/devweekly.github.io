@@ -66,3 +66,10 @@ CLI 命令（均经 `npm run dev --`）：
 - `library.ts` stores source SHA-256 and exact chapter-relative character offsets; its BM25 token counts and document frequencies are cached per index-file version and invalidated after ingestion.
 - `analysis.ts` preserves evidence spans and performs a separate fail-closed semantic evidence review. A missing verifier decision rejects that candidate.
 - `entity-registry.ts` merges only explicit, unambiguous aliases. It does not use fuzzy matching; unresolved or ambiguous coreferences remain visible for later review.
+
+
+## Runtime schema and report evidence review
+
+- Zod is a direct runtime dependency. Validate persisted JSON and model-generated decisions at input boundaries; TypeScript interfaces alone do not validate runtime data.
+- `world-analysis.ts` checks cited source lines against local `original.txt` and runs a separate model review over report paragraphs plus their exact cited lines. Missing source, mismatched corpus line count, malformed decisions, or unsupported claims fail collection.
+- `analyze-world --phase collect` accepts `--source`, `--model`, and `--timeout-ms`; the default source path is local `original.txt` in the tool working directory.

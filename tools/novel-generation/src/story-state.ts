@@ -1,5 +1,37 @@
 import { readFile, mkdir, writeFile, rename } from "node:fs/promises";
 import { dirname } from "node:path";
+import { z } from "zod";
+
+const StoryStateSchema = z.object({
+  schemaVersion: z.literal(1),
+  worldId: z.string().min(1),
+  updatedAt: z.string().min(1),
+  currentPosition: z.string(),
+  canonFacts: z.array(z.object({
+    id: z.string().min(1), fact: z.string().min(1), source: z.string().optional(),
+    confidence: z.enum(["confirmed", "inferred", "original"])
+  })),
+  characters: z.array(z.object({
+    name: z.string().min(1),
+    profile: z.object({
+      coreTraits: z.array(z.string()).optional(), values: z.array(z.string()).optional(),
+      contradictions: z.array(z.string()).optional(), voice: z.string().optional(),
+      boundaries: z.array(z.string()).optional(), arc: z.string().optional()
+    }).optional(),
+    status: z.string(), location: z.string().optional(), abilities: z.array(z.string()).optional(),
+    knowledge: z.array(z.string()).optional(), goals: z.array(z.string()).optional(),
+    relationships: z.array(z.string()).optional(), stateUpdatedAt: z.string().optional()
+  })),
+  events: z.array(z.object({
+    id: z.string().min(1), summary: z.string(), position: z.string(),
+    participants: z.array(z.string()), consequences: z.array(z.string())
+  })),
+  plotThreads: z.array(z.object({
+    id: z.string().min(1), title: z.string(), status: z.enum(["open", "active", "resolved", "abandoned"]),
+    lastUpdated: z.string(), notes: z.string()
+  })),
+  continuityNotes: z.array(z.string())
+}).passthrough();
 
 export interface StoryState {
   schemaVersion: 1;
@@ -32,16 +64,13 @@ export function emptyStoryState(worldId: string): StoryState {
 
 export async function loadStoryState(path: string, worldId: string): Promise<StoryState> {
   try {
-    const parsed = JSON.parse(await readFile(path, "utf8")) as Partial<StoryState>;
-    if (parsed.schemaVersion !== 1 || parsed.worldId !== worldId) throw new Error("Story state schema/world mismatch: " + path);
-    return {
-      ...emptyStoryState(worldId), ...parsed,
-      canonFacts: Array.isArray(parsed.canonFacts) ? parsed.canonFacts : [],
-      characters: Array.isArray(parsed.characters) ? parsed.characters : [],
-      events: Array.isArray(parsed.events) ? parsed.events : [],
-      plotThreads: Array.isArray(parsed.plotThreads) ? parsed.plotThreads : [],
-      continuityNotes: Array.isArray(parsed.continuityNotes) ? parsed.continuityNotes : []
-    };
+    const raw: unknown = JSON.parse(await readFile(path, "utf8"));
+    const parsed = StoryStateSchema.safeParse(raw);
+    if (!parsed.success) {
+      throw new Error("Invalid story state " + path + ": " + parsed.error.issues.map(issue => issue.path.join(".") + " " + issue.message).join("; "));
+    }
+    if (parsed.data.worldId !== worldId) throw new Error("Story state world mismatch: " + path);
+    return parsed.data;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     return emptyStoryState(worldId);
