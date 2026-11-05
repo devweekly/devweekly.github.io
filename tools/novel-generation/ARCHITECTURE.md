@@ -37,10 +37,12 @@
 | 原文资料库 | `src/library.ts` | TXT/Markdown 导入、分块、BM25 风格检索、来源哈希与位置 |
 | 证据抽取 | `src/analysis.ts`、`src/entity-registry.ts` | 抽取人物/事件/关系候选，校验原文证据，维护显式别名与共指 |
 | 世界设定 | `worlds/<world>/world-bible.md` 等 | 保存世界规则、人物和时间线的可读参考；不能把人物推断升级成正史 |
-| 章节状态 | `src/story-state.ts`、`src/database.ts` | SQLite 权威存储；JSON 为兼容快照；状态按人物/事件/情节线 ID 合并 |
+| 章节状态 | `src/story-state.ts`、`src/database.ts` | SQLite 权威存储；JSON 为兼容快照；状态按人物/事件/情节线 ID 合并；人物 arcMilestones 按 ID 追加并验证正文证据 |
 | 普通章节流水线 | `src/workflow.ts` | 主线与创意并行、主编规划、正文、对白、文风、连续性审查、终审、状态提取 |
 | 万字章节流水线 | `src/long-chapter.ts` | 场景蓝图、逐场检索与生成、场间上下文交接、分批审查、逐场修订、状态提取 |
 | 质量回归 | `src/regression.ts`、`scripts/compare-models.mjs` | 节奏量化、候选盲评和模型对照；不属于每次正式续写的人工审批步骤 |
+| 质量门禁 | `src/chapter-review.ts` | 审查 JSON schema、正文证据、严重程度与多场景定位；有限自动修复和复查 |
+| 阶段恢复 | `src/stage-cache.ts` | 输入指纹、输出哈希、原子阶段产物、运行 manifest 和初始状态快照 |
 
 ## 3. 普通章节：当前执行流程
 
