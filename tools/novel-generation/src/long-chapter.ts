@@ -126,12 +126,11 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     "本次创作任务：", input.brief
   ].filter(Boolean).join("\n\n");
 
-  const perScene = Math.ceil(input.maxWords / input.scenes * 1.15);
   const blueprintPrompt = [
     "角色：长篇章节主编。为一万字章节制定唯一执行蓝图，不写正文。",
     writingContext,
     `按情节自然需要划分场景，最多 ${input.scenes} 个；可以少于这个数量，不要为了凑数拆开本来连贯的情节。每个场景用单独一行 "## 场景 N" 开头（N 从 1 开始连续编号）。蓝图只需给小说家足够的创作方向，可按需要提及视角、人物、地点、情境、冲突或悬念；不要求每场填满同一套字段，也不要求每场都埋伏笔、推进主线或安排人物成长。让场景各有自己的气息和功能，允许闲笔、日常、误会、停顿和意外。`,
-    `每场篇幅约 ${perScene} 个汉字，全章合计约 ${input.maxWords} 个汉字。场景之间要让读者感到故事在流动，但不必把每场都写成明显的目标—阻力—选择—结果模板。`,
+`全章目标篇幅约 ${input.maxWords} 个汉字。不要机械平均分配场景篇幅；根据情节、情绪和场景需要决定每场长短。`,
     "区分原著已确认事实与本章新创作。不得安排新果实、十主完整名单、天母去向的解释、人物提前获知未知信息。",
     RHYTHM_RULE,
     "整章节奏应有场景差异，但不按固定数量分配快慢场景。"
@@ -152,6 +151,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     scenePlans = splitScenes(blueprint, input.scenes);
   }
   await saveStage(input.outputDir, "01-scene-blueprint.md", blueprint);
+  const perScene = Math.ceil(input.maxWords / scenePlans.length * 1.15);
   const sceneTexts: string[] = [];
   for (let index = 0; index < scenePlans.length; index++) {
     // Use the accumulated chapter, not only the immediately preceding scene.
