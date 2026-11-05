@@ -113,7 +113,6 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     input.retrievedContext ? "本地资料库证据（用于核实事实，不得整段复制）：\n" + input.retrievedContext : "",
     input.sourceText ? "用户提供且有权使用的续写材料：\n" + input.sourceText : "",
     input.styleProfile ? "本项目叙事风格约束（仅使用抽象写作特征，不模仿特定作者的独特表达）：\n" + input.styleProfile : "",
-    input.styleRhythm ? "可选的语料节奏观察（只帮助理解风格倾向，不是配额或验收要求）：\n" + input.styleRhythm : "",
     input.mode === "continuation" ? "创作模式：续写。严格承接用户提供的合法文本和当前故事状态。" : "创作模式：原创衍生。不得把项目原创内容伪装成原著事实。",
     "本次创作任务：", input.brief
   ].filter(Boolean).join("\n\n");
