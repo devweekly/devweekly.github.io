@@ -123,7 +123,7 @@ function normalizeAnnotation(raw: Record<string, unknown>, chunk: LibraryChunk):
 }
 
 async function saveStore(path: string, store: AnnotationStore): Promise<void> {
-  await mkdir(join(path, ".."), { recursive: true });
+  await mkdir(path, { recursive: true });
   const file = join(path, "annotations.json");
   const temporary = file + ".tmp";
   await writeFile(temporary, JSON.stringify({ ...store, updatedAt: new Date().toISOString() }, null, 2) + "\n", "utf8");
