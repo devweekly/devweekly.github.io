@@ -92,8 +92,8 @@ export async function runCachedStage(input: {
 
 /** Keep the original story snapshot stable across retries, even if a previous
  * attempt reached the database commit before the process was interrupted. */
-export async function loadRunStoryState(statePath: string, worldId: string, outputDir: string): Promise<StoryState> {
-  await prepareRunDirectory(outputDir, worldId, outputDir.split(/[\\\\/]/).pop()?.startsWith("long-") ? "write-long" : "write");
+export async function loadRunStoryState(statePath: string, worldId: string, outputDir: string, kind: "write" | "write-long"): Promise<StoryState> {
+  await prepareRunDirectory(outputDir, worldId, kind);
   const snapshotPath = resolve(outputDir, "00-input-story-state.json");
   try {
     const snapshot = validateStoryState(JSON.parse(await readFile(snapshotPath, "utf8")) as unknown);
