@@ -833,6 +833,10 @@ DeepInfer 不等于完整在线推理平台；DeepEP 也不是 Model Server。�
 
 ## 19. GPU 推理生态中的通用开源组件
 
+![开源项目在企业 GPU 推理栈中的位置](/diagrams/enterprise-gpu-ai-coding-platform/03-open-source-stack-mapping.svg)
+
+[查看完整 HTML 图表](/diagrams/enterprise-gpu-ai-coding-platform/03-open-source-stack-mapping.html)
+
 | 类别 | 代表项目 | 主要职责 | 适用判断 |
 | --- | --- | --- | --- |
 | 推理引擎 | [vLLM](https://github.com/vllm-project/vllm)、[SGLang](https://github.com/sgl-project/sglang)、[TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) | 模型执行、Batching、KV Cache、并行和 API | 先以目标模型和 GPU 上的实测结果选主运行时，不要无理由同时维护多个引擎 |
@@ -1127,6 +1131,10 @@ Superhuman（原 Grammarly）曾经运行自建 vLLM Serving Stack 和内部模�
 - **服务隔离：** 在线 Coding Agent、离线评测、训练和批量任务应设置不同优先级与资源池，避免相互挤占。
 
 ### 20.20 经济性与 1000 名开发者平台的部署建议
+
+![企业 AI Coding 平台初期推荐部署架构](/diagrams/enterprise-gpu-ai-coding-platform/04-recommended-platform-architecture.svg)
+
+[查看完整 HTML 图表](/diagrams/enterprise-gpu-ai-coding-platform/04-recommended-platform-architecture.html)
 
 经济性比较应统一口径，至少包含 GPU / CPU 费用、存储和网络、闲置容量、软件支持、工程人力、故障冗余、模型质量和每个成功任务的成本。单纯比较 GPU-hour 或每百万 Token 价格，会忽略 Agent 重试、工具失败和人工接管的成本。
 
