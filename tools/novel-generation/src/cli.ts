@@ -85,6 +85,9 @@ async function main(): Promise<void> {
   const sourceText = sourcePath ? await readFile(resolve(sourcePath), "utf8") : undefined;
   const contextText = contextPath ? await readFile(resolve(contextPath), "utf8") : undefined;
   const worldBible = await readFile(resolve("worlds", worldId, "world-bible.md"), "utf8");
+  let styleProfile: string | undefined;
+  try { styleProfile = await readFile(resolve("worlds", worldId, "style-profile.md"), "utf8"); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   const model = arg("--model");
   const maxWords = Number(arg("--max-words") ?? 3000);
   if (!Number.isInteger(maxWords) || maxWords < 300 || maxWords > 20000) throw new Error("--max-words must be an integer between 300 and 20000.");
@@ -131,7 +134,7 @@ async function main(): Promise<void> {
     }).join("\n\n");
 
     const chapter = await writeChapter({
-      worldId, mode, brief, worldBible, sourceText, contextText, retrievedContext, model, maxWords,
+      worldId, mode, brief, worldBible, styleProfile, sourceText, contextText, retrievedContext, model, maxWords,
       outputDir, statePath
     });
     console.log("\nSaved chapter: " + resolve(outputDir, "chapter.md"));
