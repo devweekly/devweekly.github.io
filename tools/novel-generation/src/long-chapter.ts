@@ -226,7 +226,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     await saveStage(input.outputDir, "07-state-update.json", JSON.stringify(nextState, null, 2));
   } catch (error) {
     await saveStage(input.outputDir, "07-state-update-error.txt", String(error) + "\n\n" + stateText);
-    console.error("[write-long] 状态提取失败，成稿不受影响：" + String(error));
+    throw new Error("Chapter was generated, but story-state extraction or persistence failed. See 07-state-update-error.txt; do not start the next chapter until the state is reconciled.");
   }
   return chapter;
 }
