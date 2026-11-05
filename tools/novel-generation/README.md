@@ -12,6 +12,7 @@ npm install
 npm run typecheck
 npm test
 
+npm run dev -- ingest --world conghuoniao --input ./original.txt
 npm run dev -- ingest --world conghuoniao --input ./private/novel.txt
 npm run dev -- ingest --world conghuoniao --input ./private/volume-1.txt ./private/volume-2.txt
 ```
@@ -37,6 +38,14 @@ npm run dev -- analyze --world conghuoniao --limit 20 --model <model-name>
 ```
 
 结果保存在本地 `worlds/<world>/library/annotations.json`。重新导入发生变化的源文件时，对应旧标注会自动失效。当前还没有跨章节人物别名归并、共指消解和事件去重；抽取结果是候选证据，不等同于已确认正史。
+
+`analyze` 需要逐片段调用模型。全文规模下片段数以千计，全量抽取耗时和成本都高，可以先用确定性结构分析建立世界骨架：
+
+```bash
+node analysis/build-corpus-index.mjs
+```
+
+脚本读取根目录 `original.txt`，输出 `analysis/<world>/` 下的卷章索引、语料画像和卷结构表；`conghuoniao` 世界的分析结果见 `analysis/conghuoniao/analysis-report.md`，世界设定见 `worlds/conghuoniao/world-bible.md` 及同目录的 `yanfu-system.md`、`fruit-worlds.md`、`characters.md`、`timeline.md`。语料来源、证据等级和使用边界记在 `sources/local-corpus-analysis.md`。
 
 ## 4. 多阶段章节写作
 
@@ -74,7 +83,8 @@ npm run dev -- generate --world conghuoniao --mode derivative \
 
 - 使用 `@tencent-ai/agent-sdk` 的 `query()` 接口；模型由本机 CodeBuddy 配置决定，也可通过 `--model` 指定。
 - 本地检索是词项/BM25 风格排序，不是向量语义检索。
-- 文本抽取按片段进行，已有证据校验和断点续跑；尚未实现跨章节实体归并、共指消解、人物状态时间序列和伏笔生命周期分析。
+- 文本抽取按片段进行，已有证据校验和断点续跑；尚未实现跨章节实体归并、共指消解、人物状态时间序列和伏笔生命周期分析。全量 `analyze` 尚未跑通，当前 `annotations.json` 为空。
+- `analysis/build-corpus-index.mjs` 只做确定性结构解析，不调用模型；卷边界由章号重置判定，作者单章与卷末总结单独记录，不做语义归并。
 - 导入器支持 TXT/Markdown；EPUB、PDF、OCR 和网页采集不在当前范围。
 - 多 Agent 通过独立模型调用协作；主线规划与创意发散并行，其余阶段按依赖顺序执行。当前没有持久化 Agent session，中断后不会自动从写作步骤恢复。
 - 故事状态采用 JSON 文件，适合单机原型；暂不支持并发写作或多人协作。
@@ -90,11 +100,26 @@ src/
   story-state.ts
   library.ts
   analysis.ts
+analysis/
+  build-corpus-index.mjs
+  conghuoniao/
+    analysis-report.md
+    chapter-index.json
+    corpus-profile.json
+    volumes.md
+sources/
+  public-chapter-sources.md
+  local-corpus-analysis.md
 test/
   library.test.ts
 worlds/
   conghuoniao/
     world-bible.md
+    yanfu-system.md
+    fruit-worlds.md
+    characters.md
+    timeline.md
+    style-profile.md
     story-state.json
     library/
       index.json
@@ -118,4 +143,4 @@ worlds/
 | 连续性审查 Agent | 检查人物、设定、时间线、因果和伏笔 | 只提交问题清单 |
 | 状态管理员 | 从最终稿提取人物、事件和情节线变化 | 更新结构化状态 |
 
-可在 `worlds/<world>/style-profile.md` 中维护抽象叙事约束，例如视角、叙述距离、句长变化、对白密度、动作/环境描写比例和悬念节奏。不要把某位作者的原文或标志性句式作为风格模板。该文件可不创建；缺省时使用通用叙事约束。\n
+可在 `worlds/<world>/style-profile.md` 中维护抽象叙事约束，例如视角、叙述距离、句长变化、对白密度、动作/环境描写比例和悬念节奏。不要把某位作者的原文或标志性句式作为风格模板。该文件可不创建；缺省时使用通用叙事约束。

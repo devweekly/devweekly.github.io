@@ -48,7 +48,8 @@ test("re-ingesting a changed source removes stale chunks and annotations", async
     await writeFile(input, "第1章 新线索\n新线索在这里出现。", "utf8");
     await ingestFiles("test-world", [input], library);
 
-    assert.equal((await searchLibrary(library, "旧线索", 5)).length, 0);
+    // 中文二元组检索是近似匹配，"线索" 会命中 "新线索"；这里验证的是旧片段确实被移除。
+    assert.ok((await searchLibrary(library, "旧线索", 5)).every(hit => !hit.text.includes("旧线索")));
     assert.ok((await searchLibrary(library, "新线索", 5)).length > 0);
     const index = JSON.parse(await readFile(join(library, "index.json"), "utf8")) as { chunks: unknown[] };
     assert.ok(index.chunks.length > 0);

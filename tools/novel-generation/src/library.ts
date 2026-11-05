@@ -23,7 +23,7 @@ export interface SearchHit extends LibraryChunk {
   score: number;
 }
 
-const HEADING = /^(第[〇零一二三四五六七八九十百千万0-9０-９]+[章节回卷部篇].*|序章.*|楔子.*|引子.*|尾声.*|终章.*|番外.*|后记.*)$/gm;
+const HEADING = /^[ \t\u3000]*(第[〇零一二三四五六七八九十百千万0-9０-９]+[章节回卷部篇].*|序章.*|楔子.*|引子.*|尾声.*|终章.*|番外.*|后记.*)[ \t]*$/gm;
 
 function splitChapters(text: string, source: string): Array<{ title: string; text: string }> {
   const matches = [...text.matchAll(HEADING)];

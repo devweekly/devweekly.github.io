@@ -1,469 +1,6233 @@
 {
+  "schemaVersion": 2,
   "work": "从姑获鸟开始",
   "author": "活儿该",
-  "checkedAt": "2026-11-05",
-  "source": "https://m.readnovel.com/bookquery/clrhxanjen",
-  "platformReportedTotalChapters": 787,
-  "platformReportedFreeMaterial": {
-    "workRelatedChapters": 5,
-    "firstVolume": "城寨风云",
-    "firstVolumeChapters": 43,
-    "firstVolumeWordCount": 103132
+  "sourceFile": "original.txt",
+  "sourceType": "user-provided local full text",
+  "generatedAt": "2026-11-05T09:34:28.380Z",
+  "totalLines": 118089,
+  "totalChars": 1915796,
+  "chapterCount": 753,
+  "volumeCount": 17,
+  "volumeBoundaryRule": "章号重置为 1（含带缩进的标题行）；卷间作者单章与卷末总结不计入章节数",
+  "textCollected": true,
+  "publicSurvey": {
+    "surveyedAt": "2026-11-05",
+    "reportedTotalChapters": 787,
+    "firstVolumeTitlesFromPublicCatalog": 42,
+    "note": "公开目录调查与本地全文的章数差异保留为待核验项；本地全文末卷未完结，不能据公开总数推定缺失章节。"
   },
-  "catalogCrossCheck": {
-    "source": "https://hetushu.com/book/8880/index.html",
-    "listedFirstVolumeTitles": 42,
-    "discrepancy": "目录页明确列出第一卷42个标题；小说阅读网搜索索引将城寨风云标为43章免费。两者口径或目录数据不同，暂不虚构第43章。"
-  },
-  "chapters": [
+  "volumes": [
     {
       "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 1,
-      "title": "大枪落幕",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
+      "startLine": 9,
+      "endLine": 7294,
+      "openingChapter": "第一章 大枪落幕",
+      "closingChapter": "第四十二章 终焉（下）",
+      "chapterCount": 42,
+      "chars": 105521,
+      "chapters": [
+        {
+          "volume": 1,
+          "sequenceInVolume": 1,
+          "printedNumber": 1,
+          "title": "第一章 大枪落幕",
+          "label": "大枪落幕",
+          "line": 9
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 2,
+          "printedNumber": 2,
+          "title": "第二章 貘与姑获鸟",
+          "label": "貘与姑获鸟",
+          "line": 186
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 3,
+          "printedNumber": 3,
+          "title": "第三章 子胥过关！",
+          "label": "子胥过关！",
+          "line": 321
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 4,
+          "printedNumber": 4,
+          "title": "第四章 花衫九与文圣拳",
+          "label": "花衫九与文圣拳",
+          "line": 494
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 5,
+          "printedNumber": 5,
+          "title": "第五章 九龙城擂",
+          "label": "九龙城擂",
+          "line": 631
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 6,
+          "printedNumber": 6,
+          "title": "第六章 一个月，三百万！",
+          "label": "一个月，三百万！",
+          "line": 816
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 7,
+          "printedNumber": 7,
+          "title": "第七章 刚柔流？鸣鹤拳！",
+          "label": "刚柔流？鸣鹤拳！",
+          "line": 959
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 8,
+          "printedNumber": 8,
+          "title": "第八章 端倪！",
+          "label": "端倪！",
+          "line": 1102
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 9,
+          "printedNumber": 9,
+          "title": "第九章 第五日",
+          "label": "第五日",
+          "line": 1213
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 10,
+          "printedNumber": 10,
+          "title": "第十章 生死翻盘（一）",
+          "label": "生死翻盘（一）",
+          "line": 1422
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 11,
+          "printedNumber": 11,
+          "title": "第十一章 生死翻盘（二）",
+          "label": "生死翻盘（二）",
+          "line": 1671
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 12,
+          "printedNumber": 12,
+          "title": "第十二章 生死翻盘（三）",
+          "label": "生死翻盘（三）",
+          "line": 1848
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 13,
+          "printedNumber": 13,
+          "title": "第十三章 茱蒂与夜",
+          "label": "茱蒂与夜",
+          "line": 2057
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 14,
+          "printedNumber": 14,
+          "title": "第十四章 残篇的下落",
+          "label": "残篇的下落",
+          "line": 2318
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 15,
+          "printedNumber": 15,
+          "title": "第十五章 强手",
+          "label": "强手",
+          "line": 2475
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 16,
+          "printedNumber": 16,
+          "title": "第十六章 入手！es造血细胞增强剂",
+          "label": "入手！es造血细胞增强剂",
+          "line": 2632
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 17,
+          "printedNumber": 17,
+          "title": "第十七章 缠龙搰眼",
+          "label": "缠龙搰眼",
+          "line": 2781
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 18,
+          "printedNumber": 18,
+          "title": "第十八章 出现！同行者",
+          "label": "出现！同行者",
+          "line": 2901
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 19,
+          "printedNumber": 19,
+          "title": "第十九章 全都拿走",
+          "label": "全都拿走",
+          "line": 3134
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 20,
+          "printedNumber": 20,
+          "title": "第二十章 斗剑母架二十四！",
+          "label": "斗剑母架二十四！",
+          "line": 3293
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 21,
+          "printedNumber": 21,
+          "title": "第二十一章 阎浮的力量",
+          "label": "阎浮的力量",
+          "line": 3418
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 22,
+          "printedNumber": 22,
+          "title": "第二十二章 我能让你拥有更好的",
+          "label": "我能让你拥有更好的",
+          "line": 3535
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 23,
+          "printedNumber": 23,
+          "title": "第二十三章 武德",
+          "label": "武德",
+          "line": 3720
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 24,
+          "printedNumber": 24,
+          "title": "第二十四章 一颗豪胆博富贵",
+          "label": "一颗豪胆博富贵",
+          "line": 3863
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 25,
+          "printedNumber": 25,
+          "title": "第二十五章 盛宴",
+          "label": "盛宴",
+          "line": 4000
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 26,
+          "printedNumber": 26,
+          "title": "第二十六章 势如沸汤",
+          "label": "势如沸汤",
+          "line": 4155
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 27,
+          "printedNumber": 27,
+          "title": "第二十七章 老骥险恶",
+          "label": "老骥险恶",
+          "line": 4310
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 28,
+          "printedNumber": 28,
+          "title": "第二十八章 云与泥",
+          "label": "云与泥",
+          "line": 4455
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 29,
+          "printedNumber": 29,
+          "title": "第二十九章 诸事",
+          "label": "诸事",
+          "line": 4626
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 30,
+          "printedNumber": 30,
+          "title": "第三十章 是时候表演真正的技术了",
+          "label": "是时候表演真正的技术了",
+          "line": 4813
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 31,
+          "printedNumber": 31,
+          "title": "第三十一章 死人，活人",
+          "label": "死人，活人",
+          "line": 4934
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 32,
+          "printedNumber": 32,
+          "title": "第三十二章 鬼与虎！",
+          "label": "鬼与虎！",
+          "line": 5123
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 33,
+          "printedNumber": 33,
+          "title": "第三十三章 跟我走",
+          "label": "跟我走",
+          "line": 5262
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 34,
+          "printedNumber": 34,
+          "title": "第三十四章 破绽！",
+          "label": "破绽！",
+          "line": 5435
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 35,
+          "printedNumber": 35,
+          "title": "第三十五章 巴蛇",
+          "label": "巴蛇",
+          "line": 5632
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 36,
+          "printedNumber": 36,
+          "title": "第三十六章 蛇猛？",
+          "label": "蛇猛？",
+          "line": 5817
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 37,
+          "printedNumber": 37,
+          "title": "第三十七章 虎烈！",
+          "label": "虎烈！",
+          "line": 5964
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 38,
+          "printedNumber": 38,
+          "title": "第三十八章 一念起",
+          "label": "一念起",
+          "line": 6131
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 39,
+          "printedNumber": 39,
+          "title": "第三十九章 天与水",
+          "label": "天与水",
+          "line": 6376
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 40,
+          "printedNumber": 40,
+          "title": "第四十章 终焉之前",
+          "label": "终焉之前",
+          "line": 6553
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 41,
+          "printedNumber": 41,
+          "title": "第四十一章 终焉（上）",
+          "label": "终焉（上）",
+          "line": 6772
+        },
+        {
+          "volume": 1,
+          "sequenceInVolume": 42,
+          "printedNumber": 42,
+          "title": "第四十二章 终焉（下）",
+          "label": "终焉（下）",
+          "line": 7009
+        }
+      ]
     },
     {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 2,
-      "title": "貘与姑获鸟",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
+      "volume": 2,
+      "startLine": 7295,
+      "endLine": 8137,
+      "openingChapter": "第一章 结算",
+      "closingChapter": "第四章 太岁！",
+      "chapterCount": 4,
+      "chars": 11168,
+      "chapters": [
+        {
+          "volume": 2,
+          "sequenceInVolume": 1,
+          "printedNumber": 1,
+          "title": "第一章 结算",
+          "label": "结算",
+          "line": 7295
+        },
+        {
+          "volume": 2,
+          "sequenceInVolume": 2,
+          "printedNumber": 2,
+          "title": "第二章 刺青!",
+          "label": "刺青!",
+          "line": 7501
+        },
+        {
+          "volume": 2,
+          "sequenceInVolume": 3,
+          "printedNumber": 3,
+          "title": "第三章 如是我闻，阎浮行走",
+          "label": "如是我闻，阎浮行走",
+          "line": 7682
+        },
+        {
+          "volume": 2,
+          "sequenceInVolume": 4,
+          "printedNumber": 4,
+          "title": "第四章 太岁！",
+          "label": "太岁！",
+          "line": 7853
+        }
+      ]
     },
     {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 3,
-      "title": "子胥过关！",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
+      "volume": 3,
+      "startLine": 8138,
+      "endLine": 16003,
+      "openingChapter": "第一章 倭寇！尸骨！猫又！",
+      "closingChapter": "第四十七章 回归",
+      "chapterCount": 47,
+      "chars": 116809,
+      "chapters": [
+        {
+          "volume": 3,
+          "sequenceInVolume": 1,
+          "printedNumber": 1,
+          "title": "第一章 倭寇！尸骨！猫又！",
+          "label": "倭寇！尸骨！猫又！",
+          "line": 8138
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 2,
+          "printedNumber": 2,
+          "title": "第二章 不识趣",
+          "label": "不识趣",
+          "line": 8300
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 3,
+          "printedNumber": 3,
+          "title": "第三章 通译",
+          "label": "通译",
+          "line": 8457
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 4,
+          "printedNumber": 4,
+          "title": "第四章 山中有鬼",
+          "label": "山中有鬼",
+          "line": 8790
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 5,
+          "printedNumber": 5,
+          "title": "第五章 遭遇？遭遇？！遭遇！",
+          "label": "遭遇？遭遇？！遭遇！",
+          "line": 8993
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 6,
+          "printedNumber": 6,
+          "title": "第六章 乱局",
+          "label": "乱局",
+          "line": 9206
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 7,
+          "printedNumber": 7,
+          "title": "第七章 生死唯搏",
+          "label": "生死唯搏",
+          "line": 9421
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 8,
+          "printedNumber": 8,
+          "title": "第八章 摄山女（上）（本章大修！）",
+          "label": "摄山女（上）（本章大修！）",
+          "line": 9589
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 9,
+          "printedNumber": 9,
+          "title": "第九章 摄山女（下）",
+          "label": "摄山女（下）",
+          "line": 9790
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 10,
+          "printedNumber": 10,
+          "title": "第十章 冲围（一）",
+          "label": "冲围（一）",
+          "line": 9949
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 11,
+          "printedNumber": 11,
+          "title": "第十一章 冲围（二）",
+          "label": "冲围（二）",
+          "line": 10148
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 12,
+          "printedNumber": 12,
+          "title": "第十二章 冲围（三）",
+          "label": "冲围（三）",
+          "line": 10267
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 13,
+          "printedNumber": 13,
+          "title": "第十三章 归营",
+          "label": "归营",
+          "line": 10394
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 14,
+          "printedNumber": 14,
+          "title": "第十四章 觉醒度10%",
+          "label": "觉醒度10%",
+          "line": 10591
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 15,
+          "printedNumber": 15,
+          "title": "第十五章 无头尸",
+          "label": "无头尸",
+          "line": 10782
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 16,
+          "printedNumber": 16,
+          "title": "第十六章 血蘸与三品孔雀",
+          "label": "血蘸与三品孔雀",
+          "line": 10923
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 17,
+          "printedNumber": 17,
+          "title": "第十七章 宋经略",
+          "label": "宋经略",
+          "line": 11068
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 18,
+          "printedNumber": 18,
+          "title": "第十八章 兵临城下",
+          "label": "兵临城下",
+          "line": 11195
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 19,
+          "printedNumber": 19,
+          "title": "第十九章 牛刀小试",
+          "label": "牛刀小试",
+          "line": 11390
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 20,
+          "printedNumber": 20,
+          "title": "第二十章 恶战牡丹峰",
+          "label": "恶战牡丹峰",
+          "line": 11557
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 21,
+          "printedNumber": 21,
+          "title": "第二十一章 破城！",
+          "label": "破城！",
+          "line": 11676
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 22,
+          "printedNumber": 22,
+          "title": "第二十二章 睚眦之力",
+          "label": "睚眦之力",
+          "line": 11849
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 23,
+          "printedNumber": 23,
+          "title": "第二十三章 降临！",
+          "label": "降临！",
+          "line": 11998
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 24,
+          "printedNumber": 24,
+          "title": "第二十四章 交换",
+          "label": "交换",
+          "line": 12228
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 25,
+          "printedNumber": 25,
+          "title": "第二十五章 再见摄山女（上）",
+          "label": "再见摄山女（上）",
+          "line": 12345
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 26,
+          "printedNumber": 26,
+          "title": "第二十六章 再见摄山女（下）",
+          "label": "再见摄山女（下）",
+          "line": 12452
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 27,
+          "printedNumber": 27,
+          "title": "第二十七章 掠万物于己用",
+          "label": "掠万物于己用",
+          "line": 12601
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 28,
+          "printedNumber": 28,
+          "title": "第二十八章 牛头旃檀，九翅苏都",
+          "label": "牛头旃檀，九翅苏都",
+          "line": 12722
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 29,
+          "printedNumber": 29,
+          "title": "第二十九章 山雨",
+          "label": "山雨",
+          "line": 12902
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 30,
+          "printedNumber": 30,
+          "title": "第三十章 人有千算，天只一算",
+          "label": "人有千算，天只一算",
+          "line": 13067
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 31,
+          "printedNumber": 31,
+          "title": "第三十一章 截杀大同江！",
+          "label": "截杀大同江！",
+          "line": 13282
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 32,
+          "printedNumber": 32,
+          "title": "第三十二章 冲杀！",
+          "label": "冲杀！",
+          "line": 13453
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 33,
+          "printedNumber": 33,
+          "title": "第三十三章 天只一算（一）",
+          "label": "天只一算（一）",
+          "line": 13615
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 34,
+          "printedNumber": 34,
+          "title": "第三十四章 天只一算（二）",
+          "label": "天只一算（二）",
+          "line": 13746
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 35,
+          "printedNumber": 35,
+          "title": "第三十五章 天只一算（三）",
+          "label": "天只一算（三）",
+          "line": 13899
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 36,
+          "printedNumber": 36,
+          "title": "第三十六章 天只一算（四）",
+          "label": "天只一算（四）",
+          "line": 14052
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 37,
+          "printedNumber": 37,
+          "title": "第三十七章 不能输的战争",
+          "label": "不能输的战争",
+          "line": 14205
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 38,
+          "printedNumber": 38,
+          "title": "第三十八章 睚眦伏首，烈火骷髅",
+          "label": "睚眦伏首，烈火骷髅",
+          "line": 14364
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 39,
+          "printedNumber": 39,
+          "title": "第三十九章 东西对垒",
+          "label": "东西对垒",
+          "line": 14573
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 40,
+          "printedNumber": 40,
+          "title": "第四十章 突破“十都”",
+          "label": "突破“十都”",
+          "line": 14759
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 41,
+          "printedNumber": 41,
+          "title": "第四十一章 西国的绞杀",
+          "label": "西国的绞杀",
+          "line": 14866
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 42,
+          "printedNumber": 42,
+          "title": "第四十二章 骑鬼与……我日",
+          "label": "骑鬼与……我日",
+          "line": 14957
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 43,
+          "printedNumber": 43,
+          "title": "第四十三章 深重（本章小修）",
+          "label": "深重（本章小修）",
+          "line": 15103
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 44,
+          "printedNumber": 44,
+          "title": "第四十四章 挑二！",
+          "label": "挑二！",
+          "line": 15260
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 45,
+          "printedNumber": 45,
+          "title": "第四十五章 非和",
+          "label": "非和",
+          "line": 15403
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 46,
+          "printedNumber": 46,
+          "title": "第四十六章 最后一战",
+          "label": "最后一战",
+          "line": 15664
+        },
+        {
+          "volume": 3,
+          "sequenceInVolume": 47,
+          "printedNumber": 47,
+          "title": "第四十七章 回归",
+          "label": "回归",
+          "line": 15801
+        }
+      ]
     },
     {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 4,
-      "title": "花衫九与文圣拳",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
+      "volume": 4,
+      "startLine": 16004,
+      "endLine": 17347,
+      "openingChapter": "第一章 致命丰收",
+      "closingChapter": "第七章 虎挑",
+      "chapterCount": 7,
+      "chars": 17477,
+      "chapters": [
+        {
+          "volume": 4,
+          "sequenceInVolume": 1,
+          "printedNumber": 1,
+          "title": "第一章 致命丰收",
+          "label": "致命丰收",
+          "line": 16004
+        },
+        {
+          "volume": 4,
+          "sequenceInVolume": 2,
+          "printedNumber": 2,
+          "title": "第二章 “十都”的权限",
+          "label": "“十都”的权限",
+          "line": 16203
+        },
+        {
+          "volume": 4,
+          "sequenceInVolume": 3,
+          "printedNumber": 3,
+          "title": "第三章 五仙类的特长",
+          "label": "五仙类的特长",
+          "line": 16360
+        },
+        {
+          "volume": 4,
+          "sequenceInVolume": 4,
+          "printedNumber": 4,
+          "title": "第四章 硬汉的胡萝卜",
+          "label": "硬汉的胡萝卜",
+          "line": 16537
+        },
+        {
+          "volume": 4,
+          "sequenceInVolume": 5,
+          "printedNumber": 5,
+          "title": "第五章 九凤",
+          "label": "九凤",
+          "line": 16726
+        },
+        {
+          "volume": 4,
+          "sequenceInVolume": 6,
+          "printedNumber": 6,
+          "title": "第六章 无题",
+          "label": "无题",
+          "line": 17005
+        },
+        {
+          "volume": 4,
+          "sequenceInVolume": 7,
+          "printedNumber": 7,
+          "title": "第七章 虎挑",
+          "label": "虎挑",
+          "line": 17180
+        }
+      ]
     },
     {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 5,
-      "title": "九龙城擂",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
+      "volume": 5,
+      "startLine": 17348,
+      "endLine": 27536,
+      "openingChapter": "第一章 转瞬即逝的年代（二合一）",
+      "closingChapter": "第五十章 思凡如狼，十主似虎",
+      "chapterCount": 54,
+      "chars": 122220,
+      "chapters": [
+        {
+          "volume": 5,
+          "sequenceInVolume": 1,
+          "printedNumber": 1,
+          "title": "第一章 转瞬即逝的年代（二合一）",
+          "label": "转瞬即逝的年代（二合一）",
+          "line": 17348
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 2,
+          "printedNumber": 2,
+          "title": "第二章 沸腾的午夜",
+          "label": "沸腾的午夜",
+          "line": 17703
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 3,
+          "printedNumber": 3,
+          "title": "第三章 魁与遭遇",
+          "label": "魁与遭遇",
+          "line": 17876
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 4,
+          "printedNumber": 4,
+          "title": "第四章 食技·蓑衣花刀！",
+          "label": "食技·蓑衣花刀！",
+          "line": 18077
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 5,
+          "printedNumber": 5,
+          "title": "第五章 感化胡同",
+          "label": "感化胡同",
+          "line": 18256
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 6,
+          "printedNumber": 6,
+          "title": "第六章 鹦鹉",
+          "label": "鹦鹉",
+          "line": 18487
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 7,
+          "printedNumber": 7,
+          "title": "第七章 扫尾",
+          "label": "扫尾",
+          "line": 18658
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 8,
+          "printedNumber": 8,
+          "title": "第八章 爻",
+          "label": "爻",
+          "line": 18841
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 9,
+          "printedNumber": 8,
+          "title": "第八章 爻",
+          "label": "爻",
+          "line": 19125
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 10,
+          "printedNumber": 9,
+          "title": "第九章 磁器！",
+          "label": "磁器！",
+          "line": 19430
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 11,
+          "printedNumber": 10,
+          "title": "第十章 门卫李阎",
+          "label": "门卫李阎",
+          "line": 19625
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 12,
+          "printedNumber": 11,
+          "title": "第十一章 螳螂？蝉？雀？",
+          "label": "螳螂？蝉？雀？",
+          "line": 19810
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 13,
+          "printedNumber": 12,
+          "title": "第十二章 毕方与菜市口",
+          "label": "毕方与菜市口",
+          "line": 20021
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 14,
+          "printedNumber": 13,
+          "title": "第十三章 风貌与际遇",
+          "label": "风貌与际遇",
+          "line": 20200
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 15,
+          "printedNumber": 14,
+          "title": "第十四章 阴市",
+          "label": "阴市",
+          "line": 20383
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 16,
+          "printedNumber": 15,
+          "title": "第十五章 红旗酱菜厂",
+          "label": "红旗酱菜厂",
+          "line": 20572
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 17,
+          "printedNumber": 16,
+          "title": "第十六章 希夷",
+          "label": "希夷",
+          "line": 20711
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 18,
+          "printedNumber": 17,
+          "title": "第十七章 暗流与明流",
+          "label": "暗流与明流",
+          "line": 20842
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 19,
+          "printedNumber": 18,
+          "title": "第十八章 尸狗钱",
+          "label": "尸狗钱",
+          "line": 21031
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 20,
+          "printedNumber": 19,
+          "title": "第十九章 冬日白昼",
+          "label": "冬日白昼",
+          "line": 21206
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 21,
+          "printedNumber": 20,
+          "title": "第二十章 大石碎胸口",
+          "label": "大石碎胸口",
+          "line": 21381
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 22,
+          "printedNumber": 21,
+          "title": "第二十一章 鬼赌",
+          "label": "鬼赌",
+          "line": 21608
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 23,
+          "printedNumber": 22,
+          "title": "第二十二章 最后一首",
+          "label": "最后一首",
+          "line": 21797
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 24,
+          "printedNumber": 23,
+          "title": "第二十三章 收线！",
+          "label": "收线！",
+          "line": 22029
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 25,
+          "printedNumber": 24,
+          "title": "第二十四章 传承进化",
+          "label": "传承进化",
+          "line": 22266
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 26,
+          "printedNumber": 25,
+          "title": "第二十五章 降临，九翅苏都！",
+          "label": "降临，九翅苏都！",
+          "line": 22453
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 27,
+          "printedNumber": 26,
+          "title": "第二十六章 博弈（求首订）",
+          "label": "博弈（求首订）",
+          "line": 22664
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 28,
+          "printedNumber": 27,
+          "title": "第二十七章 忍土",
+          "label": "忍土",
+          "line": 22839
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 29,
+          "printedNumber": 28,
+          "title": "第二十八章 沸腾前奏",
+          "label": "沸腾前奏",
+          "line": 23030
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 30,
+          "printedNumber": 29,
+          "title": "第二十九章 无毒不丈夫？",
+          "label": "无毒不丈夫？",
+          "line": 23239
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 31,
+          "printedNumber": 30,
+          "title": "第三十章 抛饵",
+          "label": "抛饵",
+          "line": 23444
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 32,
+          "printedNumber": 31,
+          "title": "第三十一章 猫将军与姑获鸟",
+          "label": "猫将军与姑获鸟",
+          "line": 23677
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 33,
+          "printedNumber": 32,
+          "title": "第三十二章 峰值突破！隐飞",
+          "label": "峰值突破！隐飞",
+          "line": 23942
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 34,
+          "printedNumber": 33,
+          "title": "第三十三章 漏在人心",
+          "label": "漏在人心",
+          "line": 24176
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 35,
+          "printedNumber": 34,
+          "title": "第三十四章 未见暗流",
+          "label": "未见暗流",
+          "line": 24361
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 36,
+          "printedNumber": 34,
+          "title": "第三十四章",
+          "label": "",
+          "line": 24363
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 37,
+          "printedNumber": 35,
+          "title": "第三十五章 暗流将起",
+          "label": "暗流将起",
+          "line": 24530
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 38,
+          "printedNumber": 35,
+          "title": "第三十五章暗流将起",
+          "label": "暗流将起",
+          "line": 24532
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 39,
+          "printedNumber": 36,
+          "title": "第三十六章 暗流汹涌！",
+          "label": "暗流汹涌！",
+          "line": 24731
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 40,
+          "printedNumber": 37,
+          "title": "第三十七章",
+          "label": "",
+          "line": 24920
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 41,
+          "printedNumber": 38,
+          "title": "第三十八章 百鬼争食",
+          "label": "百鬼争食",
+          "line": 25075
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 42,
+          "printedNumber": 39,
+          "title": "第三十九章 娘娘庙",
+          "label": "娘娘庙",
+          "line": 25350
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 43,
+          "printedNumber": 40,
+          "title": "第四十章 消失的燕都",
+          "label": "消失的燕都",
+          "line": 25519
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 44,
+          "printedNumber": 41,
+          "title": "第四十一章 羽主！",
+          "label": "羽主！",
+          "line": 25726
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 45,
+          "printedNumber": 42,
+          "title": "第四十二章 思凡的邀请",
+          "label": "思凡的邀请",
+          "line": 25926
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 46,
+          "printedNumber": 43,
+          "title": "第四十三章 签",
+          "label": "签",
+          "line": 26093
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 47,
+          "printedNumber": 44,
+          "title": "第四十四章 末路",
+          "label": "末路",
+          "line": 26276
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 48,
+          "printedNumber": 44,
+          "title": "第四十四章 末路(第1/1页)",
+          "label": "末路(第1/1页)",
+          "line": 26278
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 49,
+          "printedNumber": 45,
+          "title": "第四十五章 穷途",
+          "label": "穷途",
+          "line": 26413
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 50,
+          "printedNumber": 46,
+          "title": "第四十六章 李阎的底牌",
+          "label": "李阎的底牌",
+          "line": 26596
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 51,
+          "printedNumber": 47,
+          "title": "第四十七章 巅峰时刻",
+          "label": "巅峰时刻",
+          "line": 26753
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 52,
+          "printedNumber": 48,
+          "title": "第四十八章 武子弄险",
+          "label": "武子弄险",
+          "line": 26944
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 53,
+          "printedNumber": 49,
+          "title": "第四十九章 核碎，终焉。",
+          "label": "核碎，终焉。",
+          "line": 27125
+        },
+        {
+          "volume": 5,
+          "sequenceInVolume": 54,
+          "printedNumber": 50,
+          "title": "第五十章 思凡如狼，十主似虎",
+          "label": "思凡如狼，十主似虎",
+          "line": 27330
+        }
+      ]
     },
     {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 6,
-      "title": "一个月，三百万！",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
+      "volume": 6,
+      "startLine": 27537,
+      "endLine": 29771,
+      "openingChapter": "第一章 忍·土",
+      "closingChapter": "第十二章 介主的手笔",
+      "chapterCount": 13,
+      "chars": 29769,
+      "chapters": [
+        {
+          "volume": 6,
+          "sequenceInVolume": 1,
+          "printedNumber": 1,
+          "title": "第一章 忍·土",
+          "label": "忍·土",
+          "line": 27537
+        },
+        {
+          "volume": 6,
+          "sequenceInVolume": 2,
+          "printedNumber": 2,
+          "title": "第二章 寒酸的奖励",
+          "label": "寒酸的奖励",
+          "line": 27791
+        },
+        {
+          "volume": 6,
+          "sequenceInVolume": 3,
+          "printedNumber": 3,
+          "title": "第三章 五方老，解放",
+          "label": "五方老，解放",
+          "line": 27990
+        },
+        {
+          "volume": 6,
+          "sequenceInVolume": 4,
+          "printedNumber": 4,
+          "title": "第四章 过眼之暇（一）",
+          "label": "过眼之暇（一）",
+          "line": 28153
+        },
+        {
+          "volume": 6,
+          "sequenceInVolume": 5,
+          "printedNumber": 5,
+          "title": "第五章 过眼之暇（二）",
+          "label": "过眼之暇（二）",
+          "line": 28318
+        },
+        {
+          "volume": 6,
+          "sequenceInVolume": 6,
+          "printedNumber": 6,
+          "title": "第六章 过眼之暇（三）",
+          "label": "过眼之暇（三）",
+          "line": 28511
+        },
+        {
+          "volume": 6,
+          "sequenceInVolume": 7,
+          "printedNumber": 6,
+          "title": "第六章 过眼之暇（三）(第1/1页)",
+          "label": "过眼之暇（三）(第1/1页)",
+          "line": 28513
+        },
+        {
+          "volume": 6,
+          "sequenceInVolume": 8,
+          "printedNumber": 7,
+          "title": "第七章 旧日少年",
+          "label": "旧日少年",
+          "line": 28680
+        },
+        {
+          "volume": 6,
+          "sequenceInVolume": 9,
+          "printedNumber": 8,
+          "title": "第八章 佯狂难免假作真",
+          "label": "佯狂难免假作真",
+          "line": 28888
+        },
+        {
+          "volume": 6,
+          "sequenceInVolume": 10,
+          "printedNumber": 9,
+          "title": "第九章 楚神",
+          "label": "楚神",
+          "line": 29087
+        },
+        {
+          "volume": 6,
+          "sequenceInVolume": 11,
+          "printedNumber": 10,
+          "title": "第十章 再遇貘",
+          "label": "再遇貘",
+          "line": 29220
+        },
+        {
+          "volume": 6,
+          "sequenceInVolume": 12,
+          "printedNumber": 11,
+          "title": "第十一章 睚眦之泥",
+          "label": "睚眦之泥",
+          "line": 29383
+        },
+        {
+          "volume": 6,
+          "sequenceInVolume": 13,
+          "printedNumber": 12,
+          "title": "第十二章 介主的手笔",
+          "label": "介主的手笔",
+          "line": 29534
+        }
+      ]
     },
     {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 7,
-      "title": "刚柔流？鸣鹤拳！",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
+      "volume": 7,
+      "startLine": 29772,
+      "endLine": 44782,
+      "openingChapter": "第一章 天保仔",
+      "closingChapter": "第九十七章 迟来的尾声",
+      "chapterCount": 98,
+      "chars": 240685,
+      "chapters": [
+        {
+          "volume": 7,
+          "sequenceInVolume": 1,
+          "printedNumber": 1,
+          "title": "第一章 天保仔",
+          "label": "天保仔",
+          "line": 29772
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 2,
+          "printedNumber": 2,
+          "title": "第二章 鸭灵号",
+          "label": "鸭灵号",
+          "line": 29939
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 3,
+          "printedNumber": 3,
+          "title": "第三章 妈祖之力",
+          "label": "妈祖之力",
+          "line": 30098
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 4,
+          "printedNumber": 4,
+          "title": "第四章 十夫人之死",
+          "label": "十夫人之死",
+          "line": 30227
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 5,
+          "printedNumber": 5,
+          "title": "第五章 是不是你干的？",
+          "label": "是不是你干的？",
+          "line": 30328
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 6,
+          "printedNumber": 6,
+          "title": "第六章 再吊两天",
+          "label": "再吊两天",
+          "line": 30479
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 7,
+          "printedNumber": 7,
+          "title": "第七章 枪指虎门",
+          "label": "枪指虎门",
+          "line": 30630
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 8,
+          "printedNumber": 8,
+          "title": "第八章 匪焰滔天！",
+          "label": "匪焰滔天！",
+          "line": 30813
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 9,
+          "printedNumber": 8,
+          "title": "第八章 匪焰滔天！(第1/1页)",
+          "label": "匪焰滔天！(第1/1页)",
+          "line": 30815
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 10,
+          "printedNumber": 9,
+          "title": "第九章 摧枯拉朽",
+          "label": "摧枯拉朽",
+          "line": 30938
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 11,
+          "printedNumber": 10,
+          "title": "第十章 好大鱼",
+          "label": "好大鱼",
+          "line": 31067
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 12,
+          "printedNumber": 11,
+          "title": "第十一章 卖砚台的小老儿",
+          "label": "卖砚台的小老儿",
+          "line": 31192
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 13,
+          "printedNumber": 12,
+          "title": "第十二章 远遁",
+          "label": "远遁",
+          "line": 31336
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 14,
+          "printedNumber": 13,
+          "title": "第十三章 天母过海",
+          "label": "天母过海",
+          "line": 31481
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 15,
+          "printedNumber": 14,
+          "title": "第十四章 潜伏的阴影",
+          "label": "潜伏的阴影",
+          "line": 31636
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 16,
+          "printedNumber": 15,
+          "title": "第十五章 鱼叫魂",
+          "label": "鱼叫魂",
+          "line": 31763
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 17,
+          "printedNumber": 16,
+          "title": "第十六章 e i co！",
+          "label": "e i co！",
+          "line": 31908
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 18,
+          "printedNumber": 17,
+          "title": "第十七章 身份迷雾",
+          "label": "身份迷雾",
+          "line": 32067
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 19,
+          "printedNumber": 18,
+          "title": "第十八章 泉郞斗（一）",
+          "label": "泉郞斗（一）",
+          "line": 32195
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 20,
+          "printedNumber": 19,
+          "title": "第十九章 泉郞斗（二）",
+          "label": "泉郞斗（二）",
+          "line": 32312
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 21,
+          "printedNumber": 20,
+          "title": "第二十章 泉郞斗（三）",
+          "label": "泉郞斗（三）",
+          "line": 32513
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 22,
+          "printedNumber": 21,
+          "title": "第二十一章 螳螂，蝉，黄雀",
+          "label": "螳螂，蝉，黄雀",
+          "line": 32662
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 23,
+          "printedNumber": 22,
+          "title": "第二十二章 得手",
+          "label": "得手",
+          "line": 32837
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 24,
+          "printedNumber": 23,
+          "title": "第二十三章 海上啸乱",
+          "label": "海上啸乱",
+          "line": 32962
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 25,
+          "printedNumber": 24,
+          "title": "第二十四章 恐怖过海",
+          "label": "恐怖过海",
+          "line": 33093
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 26,
+          "printedNumber": 25,
+          "title": "第二十五章 惶乱",
+          "label": "惶乱",
+          "line": 33252
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 27,
+          "printedNumber": 26,
+          "title": "第二十六章 短暂落幕",
+          "label": "短暂落幕",
+          "line": 33383
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 28,
+          "printedNumber": 27,
+          "title": "第二十七章 筹划",
+          "label": "筹划",
+          "line": 33484
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 29,
+          "printedNumber": 28,
+          "title": "第二十八章 狂想",
+          "label": "狂想",
+          "line": 33631
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 30,
+          "printedNumber": 29,
+          "title": "第二十九章 收获与出发",
+          "label": "收获与出发",
+          "line": 33770
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 31,
+          "printedNumber": 30,
+          "title": "第三十章 风暴涟漪",
+          "label": "风暴涟漪",
+          "line": 34052
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 32,
+          "printedNumber": 31,
+          "title": "第三十一章 重回大屿山",
+          "label": "重回大屿山",
+          "line": 34189
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 33,
+          "printedNumber": 32,
+          "title": "第三十二章 扣敌！",
+          "label": "扣敌！",
+          "line": 34338
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 34,
+          "printedNumber": 33,
+          "title": "第三十三章 酣战",
+          "label": "酣战",
+          "line": 34483
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 35,
+          "printedNumber": 34,
+          "title": "第三十四章 且采山木棉（上）",
+          "label": "且采山木棉（上）",
+          "line": 34677
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 36,
+          "printedNumber": 35,
+          "title": "第三十五章 且采山木棉（下）",
+          "label": "且采山木棉（下）",
+          "line": 34820
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 37,
+          "printedNumber": 36,
+          "title": "第三十六章 雷霆",
+          "label": "雷霆",
+          "line": 35035
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 38,
+          "printedNumber": 37,
+          "title": "第三十七章",
+          "label": "",
+          "line": 35158
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 39,
+          "printedNumber": 38,
+          "title": "第三十八章 四十年难言",
+          "label": "四十年难言",
+          "line": 35321
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 40,
+          "printedNumber": 39,
+          "title": "第三十九章 大屿山的新章",
+          "label": "大屿山的新章",
+          "line": 35474
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 41,
+          "printedNumber": 40,
+          "title": "第四十章 讨婆娘",
+          "label": "讨婆娘",
+          "line": 35609
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 42,
+          "printedNumber": 41,
+          "title": "第四十一章 蔡牵",
+          "label": "蔡牵",
+          "line": 35726
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 43,
+          "printedNumber": 42,
+          "title": "第四十二章 精心试探",
+          "label": "精心试探",
+          "line": 35895
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 44,
+          "printedNumber": 43,
+          "title": "第四十三章 不给，送客",
+          "label": "不给，送客",
+          "line": 35996
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 45,
+          "printedNumber": 44,
+          "title": "第四十四章 起航",
+          "label": "起航",
+          "line": 36143
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 46,
+          "printedNumber": 45,
+          "title": "第四十五章 邪神五婆仔（上）",
+          "label": "邪神五婆仔（上）",
+          "line": 36320
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 47,
+          "printedNumber": 46,
+          "title": "第四十六章 邪神五婆仔（下）",
+          "label": "邪神五婆仔（下）",
+          "line": 36457
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 48,
+          "printedNumber": 47,
+          "title": "第四十七章 白老头，黑骑鬼",
+          "label": "白老头，黑骑鬼",
+          "line": 36578
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 49,
+          "printedNumber": 48,
+          "title": "第四十八章 黑骑鬼的随身老爷爷",
+          "label": "黑骑鬼的随身老爷爷",
+          "line": 36701
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 50,
+          "printedNumber": 49,
+          "title": "第四十九章 入泉州",
+          "label": "入泉州",
+          "line": 36946
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 51,
+          "printedNumber": 50,
+          "title": "第五十章 行走",
+          "label": "行走",
+          "line": 37101
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 52,
+          "printedNumber": 51,
+          "title": "第五十一章 妈阁具",
+          "label": "妈阁具",
+          "line": 37196
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 53,
+          "printedNumber": 52,
+          "title": "第五十二章 传奇海盗女王的初生",
+          "label": "传奇海盗女王的初生",
+          "line": 37305
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 54,
+          "printedNumber": 53,
+          "title": "第五十三章 天舶司",
+          "label": "天舶司",
+          "line": 37464
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 55,
+          "printedNumber": 54,
+          "title": "第五十四章 火鼎公属，镇海蝾螈！",
+          "label": "火鼎公属，镇海蝾螈！",
+          "line": 37551
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 56,
+          "printedNumber": 55,
+          "title": "第五十五章 过海峡",
+          "label": "过海峡",
+          "line": 37715
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 57,
+          "printedNumber": 56,
+          "title": "第五十六章 元霸对士信",
+          "label": "元霸对士信",
+          "line": 37880
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 58,
+          "printedNumber": 57,
+          "title": "第五十七章 这是一本奶爸流",
+          "label": "这是一本奶爸流",
+          "line": 38021
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 59,
+          "printedNumber": 58,
+          "title": "第五十八章 各自归拢",
+          "label": "各自归拢",
+          "line": 38324
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 60,
+          "printedNumber": 59,
+          "title": "第五十九章 鱼龙舞",
+          "label": "鱼龙舞",
+          "line": 38539
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 61,
+          "printedNumber": 60,
+          "title": "第六十章 章何的锅",
+          "label": "章何的锅",
+          "line": 38678
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 62,
+          "printedNumber": 61,
+          "title": "第六十一章 开锣！",
+          "label": "开锣！",
+          "line": 38845
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 63,
+          "printedNumber": 62,
+          "title": "第六十二章 牛刀小试",
+          "label": "牛刀小试",
+          "line": 38978
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 64,
+          "printedNumber": 63,
+          "title": "第六十三章 禁婆",
+          "label": "禁婆",
+          "line": 39165
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 65,
+          "printedNumber": 64,
+          "title": "第六十四章 第一把传说武器",
+          "label": "第一把传说武器",
+          "line": 39306
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 66,
+          "printedNumber": 65,
+          "title": "第六十五章 湄洲妖寇",
+          "label": "湄洲妖寇",
+          "line": 39479
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 67,
+          "printedNumber": 66,
+          "title": "第六十六章 枪剑七大行！",
+          "label": "枪剑七大行！",
+          "line": 39630
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 68,
+          "printedNumber": 67,
+          "title": "第六十七章 白热化",
+          "label": "白热化",
+          "line": 39811
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 69,
+          "printedNumber": 68,
+          "title": "第六十八章 出局？！",
+          "label": "出局？！",
+          "line": 39966
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 70,
+          "printedNumber": 69,
+          "title": "第六十九章 混乱",
+          "label": "混乱",
+          "line": 40103
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 71,
+          "printedNumber": 70,
+          "title": "第七十章 财压蔡牵，武盖章何！",
+          "label": "财压蔡牵，武盖章何！",
+          "line": 40292
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 72,
+          "printedNumber": 71,
+          "title": "第七十一章 天保仔，非人哉",
+          "label": "天保仔，非人哉",
+          "line": 40477
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 73,
+          "printedNumber": 72,
+          "title": "第七十二章 我来！",
+          "label": "我来！",
+          "line": 40642
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 74,
+          "printedNumber": 73,
+          "title": "第七十三章 破局（上）",
+          "label": "破局（上）",
+          "line": 40757
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 75,
+          "printedNumber": 74,
+          "title": "第七十四章 破局（下）",
+          "label": "破局（下）",
+          "line": 40864
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 76,
+          "printedNumber": 75,
+          "title": "第七十五章 落幕",
+          "label": "落幕",
+          "line": 40996
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 77,
+          "printedNumber": 76,
+          "title": "第七十六章 火鼎丹娘",
+          "label": "火鼎丹娘",
+          "line": 41149
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 78,
+          "printedNumber": 77,
+          "title": "第七十七章 缘由",
+          "label": "缘由",
+          "line": 41304
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 79,
+          "printedNumber": 78,
+          "title": "第七十八章 李蔡交探",
+          "label": "李蔡交探",
+          "line": 41447
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 80,
+          "printedNumber": 79,
+          "title": "第七十九章 大盗枭声（一）",
+          "label": "大盗枭声（一）",
+          "line": 41624
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 81,
+          "printedNumber": 80,
+          "title": "第八十章 大盗枭声（二）",
+          "label": "大盗枭声（二）",
+          "line": 41741
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 82,
+          "printedNumber": 81,
+          "title": "第八十一章 大盗枭声（三）",
+          "label": "大盗枭声（三）",
+          "line": 41972
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 83,
+          "printedNumber": 82,
+          "title": "第八十二章 大盗枭声（四）",
+          "label": "大盗枭声（四）",
+          "line": 42065
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 84,
+          "printedNumber": 83,
+          "title": "第八十三章 大盗枭声（五）",
+          "label": "大盗枭声（五）",
+          "line": 42182
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 85,
+          "printedNumber": 84,
+          "title": "第八十四章 大盗枭声（六）",
+          "label": "大盗枭声（六）",
+          "line": 42328
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 86,
+          "printedNumber": 85,
+          "title": "第八十五章 大盗枭声（完）",
+          "label": "大盗枭声（完）",
+          "line": 42515
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 87,
+          "printedNumber": 86,
+          "title": "第八十六章 洪流下的杂音",
+          "label": "洪流下的杂音",
+          "line": 42734
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 88,
+          "printedNumber": 87,
+          "title": "第八十七章 学舌",
+          "label": "学舌",
+          "line": 42849
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 89,
+          "printedNumber": 88,
+          "title": "第八十八章 深入黑船",
+          "label": "深入黑船",
+          "line": 42999
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 90,
+          "printedNumber": 89,
+          "title": "第八十九章 嫉妒的秘密",
+          "label": "嫉妒的秘密",
+          "line": 43130
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 91,
+          "printedNumber": 90,
+          "title": "第九十章 定调！",
+          "label": "定调！",
+          "line": 43263
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 92,
+          "printedNumber": 91,
+          "title": "第九十一章 丹焰煮海",
+          "label": "丹焰煮海",
+          "line": 43407
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 93,
+          "printedNumber": 92,
+          "title": "第九十二章 余韵",
+          "label": "余韵",
+          "line": 43628
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 94,
+          "printedNumber": 93,
+          "title": "第九十三章 太平文疏！",
+          "label": "太平文疏！",
+          "line": 43791
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 95,
+          "printedNumber": 94,
+          "title": "第九十四章 一撇一捺念个人",
+          "label": "一撇一捺念个人",
+          "line": 43992
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 96,
+          "printedNumber": 95,
+          "title": "第九十五章 干干净净！",
+          "label": "干干净净！",
+          "line": 44159
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 97,
+          "printedNumber": 96,
+          "title": "第九十六章 权限",
+          "label": "权限",
+          "line": 44433
+        },
+        {
+          "volume": 7,
+          "sequenceInVolume": 98,
+          "printedNumber": 97,
+          "title": "第九十七章 迟来的尾声",
+          "label": "迟来的尾声",
+          "line": 44582
+        }
+      ]
     },
     {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 8,
-      "title": "端倪！",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
+      "volume": 8,
+      "startLine": 44783,
+      "endLine": 47187,
+      "openingChapter": "第一章 结算",
+      "closingChapter": "第十四章 就绪",
+      "chapterCount": 15,
+      "chars": 38262,
+      "chapters": [
+        {
+          "volume": 8,
+          "sequenceInVolume": 1,
+          "printedNumber": 1,
+          "title": "第一章 结算",
+          "label": "结算",
+          "line": 44783
+        },
+        {
+          "volume": 8,
+          "sequenceInVolume": 2,
+          "printedNumber": 2,
+          "title": "第二章 可怖提升！",
+          "label": "可怖提升！",
+          "line": 45016
+        },
+        {
+          "volume": 8,
+          "sequenceInVolume": 3,
+          "printedNumber": 3,
+          "title": "第三章 十主特供序列",
+          "label": "十主特供序列",
+          "line": 45150
+        },
+        {
+          "volume": 8,
+          "sequenceInVolume": 4,
+          "printedNumber": 4,
+          "title": "第四章 安身",
+          "label": "安身",
+          "line": 45279
+        },
+        {
+          "volume": 8,
+          "sequenceInVolume": 5,
+          "printedNumber": 5,
+          "title": "第五章 立命",
+          "label": "立命",
+          "line": 45445
+        },
+        {
+          "volume": 8,
+          "sequenceInVolume": 6,
+          "printedNumber": 6,
+          "title": "第六章 以待天时",
+          "label": "以待天时",
+          "line": 45617
+        },
+        {
+          "volume": 8,
+          "sequenceInVolume": 7,
+          "printedNumber": 6,
+          "title": "第六章 以待天时(第1/1页)",
+          "label": "以待天时(第1/1页)",
+          "line": 45619
+        },
+        {
+          "volume": 8,
+          "sequenceInVolume": 8,
+          "printedNumber": 7,
+          "title": "第七章 不可与命争矣",
+          "label": "不可与命争矣",
+          "line": 45757
+        },
+        {
+          "volume": 8,
+          "sequenceInVolume": 9,
+          "printedNumber": 8,
+          "title": "第八章 个屁嘞",
+          "label": "个屁嘞",
+          "line": 45866
+        },
+        {
+          "volume": 8,
+          "sequenceInVolume": 10,
+          "printedNumber": 9,
+          "title": "第九章 渊",
+          "label": "渊",
+          "line": 46019
+        },
+        {
+          "volume": 8,
+          "sequenceInVolume": 11,
+          "printedNumber": 10,
+          "title": "第十章 赵剑中",
+          "label": "赵剑中",
+          "line": 46250
+        },
+        {
+          "volume": 8,
+          "sequenceInVolume": 12,
+          "printedNumber": 11,
+          "title": "第十一章 蝴蝶风暴",
+          "label": "蝴蝶风暴",
+          "line": 46457
+        },
+        {
+          "volume": 8,
+          "sequenceInVolume": 13,
+          "printedNumber": 12,
+          "title": "第十二章 谢谢惠顾",
+          "label": "谢谢惠顾",
+          "line": 46680
+        },
+        {
+          "volume": 8,
+          "sequenceInVolume": 14,
+          "printedNumber": 13,
+          "title": "第十三章 九十吨！无支祁",
+          "label": "九十吨！无支祁",
+          "line": 46839
+        },
+        {
+          "volume": 8,
+          "sequenceInVolume": 15,
+          "printedNumber": 14,
+          "title": "第十四章 就绪",
+          "label": "就绪",
+          "line": 46962
+        }
+      ]
     },
     {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 9,
-      "title": "第五日",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
+      "volume": 9,
+      "startLine": 47188,
+      "endLine": 59359,
+      "openingChapter": "第一章 真理独胜，伪道无存",
+      "closingChapter": "第七十九章 Further On Up The Road（二合一）",
+      "chapterCount": 82,
+      "chars": 217286,
+      "chapters": [
+        {
+          "volume": 9,
+          "sequenceInVolume": 1,
+          "printedNumber": 1,
+          "title": "第一章 真理独胜，伪道无存",
+          "label": "真理独胜，伪道无存",
+          "line": 47188
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 2,
+          "printedNumber": 2,
+          "title": "第二章 一阶改造药剂：双枪救国者",
+          "label": "一阶改造药剂：双枪救国者",
+          "line": 47435
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 3,
+          "printedNumber": 3,
+          "title": "第三章 游神",
+          "label": "游神",
+          "line": 47582
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 4,
+          "printedNumber": 4,
+          "title": "第四章 出人意表的魔动科技",
+          "label": "出人意表的魔动科技",
+          "line": 47713
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 5,
+          "printedNumber": 5,
+          "title": "第五章 凛冬已至",
+          "label": "凛冬已至",
+          "line": 47842
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 6,
+          "printedNumber": 6,
+          "title": "第六章 远遁",
+          "label": "远遁",
+          "line": 48015
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 7,
+          "printedNumber": 7,
+          "title": "第七章 战火中的母子",
+          "label": "战火中的母子",
+          "line": 48178
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 8,
+          "printedNumber": 8,
+          "title": "第八章 夜宿",
+          "label": "夜宿",
+          "line": 48381
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 9,
+          "printedNumber": 9,
+          "title": "第九章 无事生非",
+          "label": "无事生非",
+          "line": 48538
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 10,
+          "printedNumber": 10,
+          "title": "第十章 游神？",
+          "label": "游神？",
+          "line": 48688
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 11,
+          "printedNumber": 11,
+          "title": "第十一章 传说枪械：野牦牛RS107",
+          "label": "传说枪械：野牦牛RS107",
+          "line": 48799
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 12,
+          "printedNumber": 12,
+          "title": "第十二章 疯狂的肖克",
+          "label": "疯狂的肖克",
+          "line": 48928
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 13,
+          "printedNumber": 13,
+          "title": "第十三章 大魔鬼湖",
+          "label": "大魔鬼湖",
+          "line": 49073
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 14,
+          "printedNumber": 14,
+          "title": "第十四章 钢铁与活尸",
+          "label": "钢铁与活尸",
+          "line": 49195
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 15,
+          "printedNumber": 15,
+          "title": "第十五章 又见水株公园",
+          "label": "又见水株公园",
+          "line": 49362
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 16,
+          "printedNumber": 16,
+          "title": "第十六章 冬日雅克！",
+          "label": "冬日雅克！",
+          "line": 49473
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 17,
+          "printedNumber": 17,
+          "title": "第十七章 对于真相，你们一无所知",
+          "label": "对于真相，你们一无所知",
+          "line": 49574
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 18,
+          "printedNumber": 17,
+          "title": "第十七章 对于真相，你们一无所知(第1/1页)",
+          "label": "对于真相，你们一无所知(第1/1页)",
+          "line": 49576
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 19,
+          "printedNumber": 18,
+          "title": "第十八章 希尔盖与……凶恶一枪",
+          "label": "希尔盖与……凶恶一枪",
+          "line": 49702
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 20,
+          "printedNumber": 19,
+          "title": "第十九章 为什么开枪？",
+          "label": "为什么开枪？",
+          "line": 49859
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 21,
+          "printedNumber": 20,
+          "title": "第二十章 导火索",
+          "label": "导火索",
+          "line": 49998
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 22,
+          "printedNumber": 21,
+          "title": "第二十一章 事态明朗",
+          "label": "事态明朗",
+          "line": 50137
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 23,
+          "printedNumber": 22,
+          "title": "第二十二章 轰炸伊始（一）",
+          "label": "轰炸伊始（一）",
+          "line": 50229
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 24,
+          "printedNumber": 23,
+          "title": "第二十三章 轰炸伊始（二）",
+          "label": "轰炸伊始（二）",
+          "line": 50366
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 25,
+          "printedNumber": 24,
+          "title": "第二十四章 轰炸伊始（三）",
+          "label": "轰炸伊始（三）",
+          "line": 50553
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 26,
+          "printedNumber": 25,
+          "title": "第二十五章 轰炸伊始（四）",
+          "label": "轰炸伊始（四）",
+          "line": 50733
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 27,
+          "printedNumber": 26,
+          "title": "第二十六章 轰炸伊始（五）",
+          "label": "轰炸伊始（五）",
+          "line": 50882
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 28,
+          "printedNumber": 27,
+          "title": "第二十七章 轰炸伊始（完）",
+          "label": "轰炸伊始（完）",
+          "line": 51021
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 29,
+          "printedNumber": 28,
+          "title": "第二十八章 战争疑影",
+          "label": "战争疑影",
+          "line": 51180
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 30,
+          "printedNumber": 29,
+          "title": "第二十九章 溃败落实",
+          "label": "溃败落实",
+          "line": 51302
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 31,
+          "printedNumber": 30,
+          "title": "第三十章 超感雅克",
+          "label": "超感雅克",
+          "line": 51413
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 32,
+          "printedNumber": 31,
+          "title": "第三十一章 大魔鬼湖探索始末",
+          "label": "大魔鬼湖探索始末",
+          "line": 51528
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 33,
+          "printedNumber": 32,
+          "title": "第三十二章 冰山一角",
+          "label": "冰山一角",
+          "line": 51648
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 34,
+          "printedNumber": 33,
+          "title": "第三十三章 烈火压城",
+          "label": "烈火压城",
+          "line": 51825
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 35,
+          "printedNumber": 33,
+          "title": "第三十三章 烈火压城(第1/1页)",
+          "label": "烈火压城(第1/1页)",
+          "line": 51827
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 36,
+          "printedNumber": 34,
+          "title": "第三十四章 归来，色林错。（二合一）",
+          "label": "归来，色林错。（二合一）",
+          "line": 51929
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 37,
+          "printedNumber": 35,
+          "title": "第三十五章 谋与强权",
+          "label": "谋与强权",
+          "line": 52152
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 38,
+          "printedNumber": 36,
+          "title": "第三十六章 抽刃向谁？",
+          "label": "抽刃向谁？",
+          "line": 52254
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 39,
+          "printedNumber": 37,
+          "title": "第三十七章 傲慢与偏见",
+          "label": "傲慢与偏见",
+          "line": 52403
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 40,
+          "printedNumber": 38,
+          "title": "第三十八章 擦肩而过",
+          "label": "擦肩而过",
+          "line": 52633
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 41,
+          "printedNumber": 39,
+          "title": "第三十九章 不愉快的插曲",
+          "label": "不愉快的插曲",
+          "line": 52832
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 42,
+          "printedNumber": 40,
+          "title": "第四十章 一夜无话",
+          "label": "一夜无话",
+          "line": 52965
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 43,
+          "printedNumber": 41,
+          "title": "第四十一章 是不是哭了？",
+          "label": "是不是哭了？",
+          "line": 53094
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 44,
+          "printedNumber": 42,
+          "title": "第四十二章 余束的踪迹",
+          "label": "余束的踪迹",
+          "line": 53227
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 45,
+          "printedNumber": 43,
+          "title": "第四十三章 政治问题",
+          "label": "政治问题",
+          "line": 53334
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 46,
+          "printedNumber": 43,
+          "title": "第四十三章 政治问题(第1/1页)",
+          "label": "政治问题(第1/1页)",
+          "line": 53336
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 47,
+          "printedNumber": 44,
+          "title": "第四十四章 鹤唳风声",
+          "label": "鹤唳风声",
+          "line": 53461
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 48,
+          "printedNumber": 45,
+          "title": "第四十五章 知识改变命运",
+          "label": "知识改变命运",
+          "line": 53600
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 49,
+          "printedNumber": 46,
+          "title": "第四十六章 导火索",
+          "label": "导火索",
+          "line": 53759
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 50,
+          "printedNumber": 47,
+          "title": "第四十七章 至高五阶！",
+          "label": "至高五阶！",
+          "line": 53894
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 51,
+          "printedNumber": 48,
+          "title": "第四十八章 古灵怪修（上）",
+          "label": "古灵怪修（上）",
+          "line": 54013
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 52,
+          "printedNumber": 49,
+          "title": "第四十九章 古灵怪修（下）",
+          "label": "古灵怪修（下）",
+          "line": 54098
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 53,
+          "printedNumber": 50,
+          "title": "第五十章 血色祈愿",
+          "label": "血色祈愿",
+          "line": 54279
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 54,
+          "printedNumber": 51,
+          "title": "第五十一章 神秘庄园",
+          "label": "神秘庄园",
+          "line": 54398
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 55,
+          "printedNumber": 52,
+          "title": "第五十二章 罪魁祸首！",
+          "label": "罪魁祸首！",
+          "line": 54515
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 56,
+          "printedNumber": 53,
+          "title": "第五十三章 穷奇",
+          "label": "穷奇",
+          "line": 54734
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 57,
+          "printedNumber": 54,
+          "title": "第五十四章 山雨欲来",
+          "label": "山雨欲来",
+          "line": 54913
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 58,
+          "printedNumber": 55,
+          "title": "第五十五章 欢迎来到，水株公园！",
+          "label": "欢迎来到，水株公园！",
+          "line": 55012
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 59,
+          "printedNumber": 56,
+          "title": "第五十六章 前奏：凛冬",
+          "label": "前奏：凛冬",
+          "line": 55157
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 60,
+          "printedNumber": 57,
+          "title": "第五十七章 前奏：抉择",
+          "label": "前奏：抉择",
+          "line": 55346
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 61,
+          "printedNumber": 58,
+          "title": "第五十八章 间奏：盛宴",
+          "label": "间奏：盛宴",
+          "line": 55629
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 62,
+          "printedNumber": 59,
+          "title": "第五十九章 间奏：图穷匕现",
+          "label": "间奏：图穷匕现",
+          "line": 55844
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 63,
+          "printedNumber": 60,
+          "title": "第六十章 间奏：氤氲",
+          "label": "间奏：氤氲",
+          "line": 56055
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 64,
+          "printedNumber": 61,
+          "title": "第六十一章 间奏：野心始动",
+          "label": "间奏：野心始动",
+          "line": 56184
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 65,
+          "printedNumber": 62,
+          "title": "第六十二章 尾奏：药师佛之死（一）",
+          "label": "尾奏：药师佛之死（一）",
+          "line": 56341
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 66,
+          "printedNumber": 63,
+          "title": "第六十三章 尾奏：药师佛之死（二）",
+          "label": "尾奏：药师佛之死（二）",
+          "line": 56518
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 67,
+          "printedNumber": 64,
+          "title": "第六十四章 尾奏：药师佛之死（三）",
+          "label": "尾奏：药师佛之死（三）",
+          "line": 56649
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 68,
+          "printedNumber": 65,
+          "title": "第六十五章 尾奏：药师佛之死（四）",
+          "label": "尾奏：药师佛之死（四）",
+          "line": 56768
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 69,
+          "printedNumber": 66,
+          "title": "第六十六章 尾奏：药师佛之死（五）",
+          "label": "尾奏：药师佛之死（五）",
+          "line": 56875
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 70,
+          "printedNumber": 67,
+          "title": "第六十七章 尾奏：药师佛之死（完）",
+          "label": "尾奏：药师佛之死（完）",
+          "line": 57032
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 71,
+          "printedNumber": 68,
+          "title": "第六十八章 天是蓝的",
+          "label": "天是蓝的",
+          "line": 57257
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 72,
+          "printedNumber": 69,
+          "title": "第六十九章 雷的回声",
+          "label": "雷的回声",
+          "line": 57398
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 73,
+          "printedNumber": 70,
+          "title": "第七十章 梦是假的",
+          "label": "梦是假的",
+          "line": 57585
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 74,
+          "printedNumber": 71,
+          "title": "第七十一章 死无报应",
+          "label": "死无报应",
+          "line": 57720
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 75,
+          "printedNumber": 72,
+          "title": "第七十二章 我不相信！",
+          "label": "我不相信！",
+          "line": 57817
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 76,
+          "printedNumber": 73,
+          "title": "第七十三章 李阎的，回答（一）",
+          "label": "李阎的，回答（一）",
+          "line": 57932
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 77,
+          "printedNumber": 74,
+          "title": "第七十四章 李阎的，回答（二）",
+          "label": "李阎的，回答（二）",
+          "line": 58085
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 78,
+          "printedNumber": 75,
+          "title": "第七十五章 李阎的，回答（三）",
+          "label": "李阎的，回答（三）",
+          "line": 58286
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 79,
+          "printedNumber": 76,
+          "title": "第七十六章 李阎的，回答（四）",
+          "label": "李阎的，回答（四）",
+          "line": 58503
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 80,
+          "printedNumber": 77,
+          "title": "第七十七章 李阎的，回答（五）",
+          "label": "李阎的，回答（五）",
+          "line": 58730
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 81,
+          "printedNumber": 78,
+          "title": "第七十八章 李阎的，回答（六）",
+          "label": "李阎的，回答（六）",
+          "line": 58869
+        },
+        {
+          "volume": 9,
+          "sequenceInVolume": 82,
+          "printedNumber": 79,
+          "title": "第七十九章 Further On Up The Road（二合一）",
+          "label": "Further On Up The Road（二合一）",
+          "line": 59024
+        }
+      ]
     },
     {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 10,
-      "title": "生死翻盘（一）",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
+      "volume": 10,
+      "startLine": 59360,
+      "endLine": 60910,
+      "openingChapter": "第一章 昂贵的药剂",
+      "closingChapter": "第十章 龙虎劫数",
+      "chapterCount": 10,
+      "chars": 24805,
+      "chapters": [
+        {
+          "volume": 10,
+          "sequenceInVolume": 1,
+          "printedNumber": 1,
+          "title": "第一章 昂贵的药剂",
+          "label": "昂贵的药剂",
+          "line": 59360
+        },
+        {
+          "volume": 10,
+          "sequenceInVolume": 2,
+          "printedNumber": 2,
+          "title": "第二章 天命雅克",
+          "label": "天命雅克",
+          "line": 59519
+        },
+        {
+          "volume": 10,
+          "sequenceInVolume": 3,
+          "printedNumber": 3,
+          "title": "第三章 灯草和尚",
+          "label": "灯草和尚",
+          "line": 59660
+        },
+        {
+          "volume": 10,
+          "sequenceInVolume": 4,
+          "printedNumber": 4,
+          "title": "第四章 前所未有的危机",
+          "label": "前所未有的危机",
+          "line": 59783
+        },
+        {
+          "volume": 10,
+          "sequenceInVolume": 5,
+          "printedNumber": 5,
+          "title": "第五章 四实与十主",
+          "label": "四实与十主",
+          "line": 59982
+        },
+        {
+          "volume": 10,
+          "sequenceInVolume": 6,
+          "printedNumber": 6,
+          "title": "第六章 突飞猛进",
+          "label": "突飞猛进",
+          "line": 60125
+        },
+        {
+          "volume": 10,
+          "sequenceInVolume": 7,
+          "printedNumber": 7,
+          "title": "第七章 追！",
+          "label": "追！",
+          "line": 60254
+        },
+        {
+          "volume": 10,
+          "sequenceInVolume": 8,
+          "printedNumber": 8,
+          "title": "第八章 晋升八极行走",
+          "label": "晋升八极行走",
+          "line": 60403
+        },
+        {
+          "volume": 10,
+          "sequenceInVolume": 9,
+          "printedNumber": 9,
+          "title": "第九章 横生波折",
+          "label": "横生波折",
+          "line": 60548
+        },
+        {
+          "volume": 10,
+          "sequenceInVolume": 10,
+          "printedNumber": 10,
+          "title": "第十章 龙虎劫数",
+          "label": "龙虎劫数",
+          "line": 60705
+        }
+      ]
     },
     {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 11,
-      "title": "生死翻盘（二）",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
+      "volume": 11,
+      "startLine": 60911,
+      "endLine": 81473,
+      "openingChapter": "第一章 甲兵俱消逝",
+      "closingChapter": "第一百二十三章 扶龙蹈虎张义初（完）",
+      "chapterCount": 123,
+      "chars": 361800,
+      "chapters": [
+        {
+          "volume": 11,
+          "sequenceInVolume": 1,
+          "printedNumber": 1,
+          "title": "第一章 甲兵俱消逝",
+          "label": "甲兵俱消逝",
+          "line": 60911
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 2,
+          "printedNumber": 2,
+          "title": "第二章 曹永昌何许人也？",
+          "label": "曹永昌何许人也？",
+          "line": 61090
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 3,
+          "printedNumber": 3,
+          "title": "第三章 李阎射虎",
+          "label": "李阎射虎",
+          "line": 61233
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 4,
+          "printedNumber": 4,
+          "title": "第四章 龙虎旗牌",
+          "label": "龙虎旗牌",
+          "line": 61384
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 5,
+          "printedNumber": 5,
+          "title": "第五章 烈马飞雷；妖箭种罗",
+          "label": "烈马飞雷；妖箭种罗",
+          "line": 61495
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 6,
+          "printedNumber": 6,
+          "title": "第六章 百妖堂会",
+          "label": "百妖堂会",
+          "line": 61628
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 7,
+          "printedNumber": 7,
+          "title": "第七章 一个千古迷弟的诞生",
+          "label": "一个千古迷弟的诞生",
+          "line": 61803
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 8,
+          "printedNumber": 8,
+          "title": "第八章 高僧耳健连",
+          "label": "高僧耳健连",
+          "line": 61978
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 9,
+          "printedNumber": 9,
+          "title": "第九章 优昙婆罗",
+          "label": "优昙婆罗",
+          "line": 62199
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 10,
+          "printedNumber": 10,
+          "title": "第十章 梦地府",
+          "label": "梦地府",
+          "line": 62373
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 11,
+          "printedNumber": 11,
+          "title": "第十一章 鬼梦貘",
+          "label": "鬼梦貘",
+          "line": 62500
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 12,
+          "printedNumber": 12,
+          "title": "第十二章 水婆子尸（上）",
+          "label": "水婆子尸（上）",
+          "line": 62661
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 13,
+          "printedNumber": 13,
+          "title": "第十三章 水婆子尸（中）",
+          "label": "水婆子尸（中）",
+          "line": 62772
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 14,
+          "printedNumber": 14,
+          "title": "第十四章 水婆子尸（下）",
+          "label": "水婆子尸（下）",
+          "line": 62895
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 15,
+          "printedNumber": 15,
+          "title": "第十五章 水婆子尸（完）",
+          "label": "水婆子尸（完）",
+          "line": 63034
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 16,
+          "printedNumber": 16,
+          "title": "第十六章 伏诛！",
+          "label": "伏诛！",
+          "line": 63197
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 17,
+          "printedNumber": 17,
+          "title": "第十七章 打更诡闻",
+          "label": "打更诡闻",
+          "line": 63340
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 18,
+          "printedNumber": 18,
+          "title": "第十八章 龙虎都监",
+          "label": "龙虎都监",
+          "line": 63492
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 19,
+          "printedNumber": 19,
+          "title": "第十九章 大好酒宴",
+          "label": "大好酒宴",
+          "line": 63651
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 20,
+          "printedNumber": 20,
+          "title": "第二十章 夜话与夜宵",
+          "label": "夜话与夜宵",
+          "line": 63800
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 21,
+          "printedNumber": 21,
+          "title": "第二十一章 对峙公堂",
+          "label": "对峙公堂",
+          "line": 63975
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 22,
+          "printedNumber": 22,
+          "title": "第二十二章 人头开口道龙虎",
+          "label": "人头开口道龙虎",
+          "line": 64114
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 23,
+          "printedNumber": 23,
+          "title": "第二十三章 正道外道",
+          "label": "正道外道",
+          "line": 64263
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 24,
+          "printedNumber": 24,
+          "title": "第二十四章 牛三喜",
+          "label": "牛三喜",
+          "line": 64374
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 25,
+          "printedNumber": 25,
+          "title": "第二十五章 启程",
+          "label": "启程",
+          "line": 64529
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 26,
+          "printedNumber": 26,
+          "title": "第二十六章 金旗牌；红旗牌",
+          "label": "金旗牌；红旗牌",
+          "line": 64648
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 27,
+          "printedNumber": 27,
+          "title": "第二十七章 十六天魔舞",
+          "label": "十六天魔舞",
+          "line": 64827
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 28,
+          "printedNumber": 28,
+          "title": "第二十八章 声色犬马",
+          "label": "声色犬马",
+          "line": 64976
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 29,
+          "printedNumber": 29,
+          "title": "第二十九章 风雪神，菜根泥",
+          "label": "风雪神，菜根泥",
+          "line": 65135
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 30,
+          "printedNumber": 30,
+          "title": "第三十章 风云突变",
+          "label": "风云突变",
+          "line": 65280
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 31,
+          "printedNumber": 31,
+          "title": "第三十一章 五仙闹渤海（上）",
+          "label": "五仙闹渤海（上）",
+          "line": 65427
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 32,
+          "printedNumber": 32,
+          "title": "第三十二章 五仙闹渤海（中）",
+          "label": "五仙闹渤海（中）",
+          "line": 65604
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 33,
+          "printedNumber": 33,
+          "title": "第三十三章 五仙闹渤海（下）",
+          "label": "五仙闹渤海（下）",
+          "line": 65727
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 34,
+          "printedNumber": 34,
+          "title": "第三十四章 五仙闹渤海（完）",
+          "label": "五仙闹渤海（完）",
+          "line": 65866
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 35,
+          "printedNumber": 35,
+          "title": "第三十五章 新四阶：手术元素！",
+          "label": "新四阶：手术元素！",
+          "line": 65995
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 36,
+          "printedNumber": 36,
+          "title": "第三十六章 了结",
+          "label": "了结",
+          "line": 66108
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 37,
+          "printedNumber": 37,
+          "title": "第三十七章 猪婆龙",
+          "label": "猪婆龙",
+          "line": 66275
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 38,
+          "printedNumber": 38,
+          "title": "第三十八章 换马记（上）",
+          "label": "换马记（上）",
+          "line": 66416
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 39,
+          "printedNumber": 39,
+          "title": "第三十九章 换马记（中）",
+          "label": "换马记（中）",
+          "line": 66559
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 40,
+          "printedNumber": 40,
+          "title": "第四十章 换马记（下）",
+          "label": "换马记（下）",
+          "line": 66700
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 41,
+          "printedNumber": 41,
+          "title": "第四十一章 换马记（完）",
+          "label": "换马记（完）",
+          "line": 66817
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 42,
+          "printedNumber": 42,
+          "title": "第四十二章 故人",
+          "label": "故人",
+          "line": 66970
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 43,
+          "printedNumber": 43,
+          "title": "第四十三章 胡三闯关",
+          "label": "胡三闯关",
+          "line": 67081
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 44,
+          "printedNumber": 44,
+          "title": "第四十四章 计生绝户！",
+          "label": "计生绝户！",
+          "line": 67284
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 45,
+          "printedNumber": 45,
+          "title": "第四十五章 陈跃武",
+          "label": "陈跃武",
+          "line": 67417
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 46,
+          "printedNumber": 46,
+          "title": "第四十六章 望海观音像",
+          "label": "望海观音像",
+          "line": 67566
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 47,
+          "printedNumber": 47,
+          "title": "第四十七章 野城隍",
+          "label": "野城隍",
+          "line": 67741
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 48,
+          "printedNumber": 48,
+          "title": "第四十八章 鬼妾？",
+          "label": "鬼妾？",
+          "line": 67868
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 49,
+          "printedNumber": 49,
+          "title": "第四十九章 狐妻？",
+          "label": "狐妻？",
+          "line": 68029
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 50,
+          "printedNumber": 50,
+          "title": "第五十章 胯活一身活",
+          "label": "胯活一身活",
+          "line": 68171
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 51,
+          "printedNumber": 51,
+          "title": "第五十一章 狐鬼共舞",
+          "label": "狐鬼共舞",
+          "line": 68320
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 52,
+          "printedNumber": 52,
+          "title": "第五十二章 人间五味难",
+          "label": "人间五味难",
+          "line": 68421
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 53,
+          "printedNumber": 53,
+          "title": "第五十三章 一心忧国李镇抚（二合一）",
+          "label": "一心忧国李镇抚（二合一）",
+          "line": 68554
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 54,
+          "printedNumber": 54,
+          "title": "第五十四章 孙德龙",
+          "label": "孙德龙",
+          "line": 68800
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 55,
+          "printedNumber": 55,
+          "title": "第五十五章 一半缘由！",
+          "label": "一半缘由！",
+          "line": 69087
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 56,
+          "printedNumber": 56,
+          "title": "第五十六章 终果",
+          "label": "终果",
+          "line": 69237
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 57,
+          "printedNumber": 57,
+          "title": "第五十七章 秦城隍（上）",
+          "label": "秦城隍（上）",
+          "line": 69372
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 58,
+          "printedNumber": 58,
+          "title": "第五十八章 秦城隍（中）",
+          "label": "秦城隍（中）",
+          "line": 69493
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 59,
+          "printedNumber": 59,
+          "title": "第五十九章 秦城隍（下）",
+          "label": "秦城隍（下）",
+          "line": 69612
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 60,
+          "printedNumber": 60,
+          "title": "第六十章 秦城隍（完）",
+          "label": "秦城隍（完）",
+          "line": 69721
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 61,
+          "printedNumber": 61,
+          "title": "第六十一章 各显神通！",
+          "label": "各显神通！",
+          "line": 69894
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 62,
+          "printedNumber": 62,
+          "title": "第六十二章 牵星术",
+          "label": "牵星术",
+          "line": 70185
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 63,
+          "printedNumber": 63,
+          "title": "第六十三章 道泥交探",
+          "label": "道泥交探",
+          "line": 70294
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 64,
+          "printedNumber": 64,
+          "title": "第六十四章 神谈",
+          "label": "神谈",
+          "line": 70443
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 65,
+          "printedNumber": 65,
+          "title": "第六十五章 出海",
+          "label": "出海",
+          "line": 70622
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 66,
+          "printedNumber": 66,
+          "title": "第六十六章 秘藏强化：水君宫",
+          "label": "秘藏强化：水君宫",
+          "line": 70833
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 67,
+          "printedNumber": 67,
+          "title": "第六十七章 文魁入命",
+          "label": "文魁入命",
+          "line": 70934
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 68,
+          "printedNumber": 68,
+          "title": "第六十八章 覆海大圣",
+          "label": "覆海大圣",
+          "line": 71059
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 69,
+          "printedNumber": 69,
+          "title": "第六十九章 陈不惹柯不斗？",
+          "label": "陈不惹柯不斗？",
+          "line": 71294
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 70,
+          "printedNumber": 70,
+          "title": "第七十章 惊变",
+          "label": "惊变",
+          "line": 71529
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 71,
+          "printedNumber": 71,
+          "title": "第七十一章 天放先生",
+          "label": "天放先生",
+          "line": 71794
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 72,
+          "printedNumber": 72,
+          "title": "第七十二章 闹剧",
+          "label": "闹剧",
+          "line": 71944
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 73,
+          "printedNumber": 73,
+          "title": "第七十三章 水淹定海",
+          "label": "水淹定海",
+          "line": 72221
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 74,
+          "printedNumber": 74,
+          "title": "第七十四章 天师道剿妖",
+          "label": "天师道剿妖",
+          "line": 72462
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 75,
+          "printedNumber": 75,
+          "title": "第七十五章 诀意全在猪婆龙",
+          "label": "诀意全在猪婆龙",
+          "line": 72679
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 76,
+          "printedNumber": 76,
+          "title": "第七十六章 猪婆龙？支祁连！",
+          "label": "猪婆龙？支祁连！",
+          "line": 72922
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 77,
+          "printedNumber": 77,
+          "title": "第七十七章 大恶之首！",
+          "label": "大恶之首！",
+          "line": 73191
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 78,
+          "printedNumber": 78,
+          "title": "第七十八章 下海虎，出闸龙",
+          "label": "下海虎，出闸龙",
+          "line": 73296
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 79,
+          "printedNumber": 79,
+          "title": "第七十九章 黑饕餮",
+          "label": "黑饕餮",
+          "line": 73583
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 80,
+          "printedNumber": 80,
+          "title": "第八十章 脑魂虫",
+          "label": "脑魂虫",
+          "line": 73814
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 81,
+          "printedNumber": 81,
+          "title": "第八十一章 连根拔起",
+          "label": "连根拔起",
+          "line": 74071
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 82,
+          "printedNumber": 82,
+          "title": "第八十二章 撼江",
+          "label": "撼江",
+          "line": 74384
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 83,
+          "printedNumber": 83,
+          "title": "第八十三章 天下风流三个半",
+          "label": "天下风流三个半",
+          "line": 74629
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 84,
+          "printedNumber": 84,
+          "title": "第八十四章 反目？",
+          "label": "反目？",
+          "line": 74814
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 85,
+          "printedNumber": 85,
+          "title": "第八十五章 火屠",
+          "label": "火屠",
+          "line": 75049
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 86,
+          "printedNumber": 86,
+          "title": "第八十六章 太阴太阳双鱼符罡",
+          "label": "太阴太阳双鱼符罡",
+          "line": 75182
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 87,
+          "printedNumber": 87,
+          "title": "第八十七章 金山十四子",
+          "label": "金山十四子",
+          "line": 75371
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 88,
+          "printedNumber": 88,
+          "title": "第八十八章 祁连山人",
+          "label": "祁连山人",
+          "line": 75657
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 89,
+          "printedNumber": 89,
+          "title": "第八十九章 栈小妖风大（上）",
+          "label": "栈小妖风大（上）",
+          "line": 75872
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 90,
+          "printedNumber": 90,
+          "title": "第九十章 栈小妖风大（中）",
+          "label": "栈小妖风大（中）",
+          "line": 76035
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 91,
+          "printedNumber": 91,
+          "title": "第九十一章 栈小妖风大（下）",
+          "label": "栈小妖风大（下）",
+          "line": 76238
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 92,
+          "printedNumber": 92,
+          "title": "第九十二章 栈小妖风大（完）",
+          "label": "栈小妖风大（完）",
+          "line": 76369
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 93,
+          "printedNumber": 93,
+          "title": "第九十三章 人中大妖",
+          "label": "人中大妖",
+          "line": 76562
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 94,
+          "printedNumber": 94,
+          "title": "第九十四章 龙蛇见血！",
+          "label": "龙蛇见血！",
+          "line": 76682
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 95,
+          "printedNumber": 95,
+          "title": "第九十五章 祸福相倚",
+          "label": "祸福相倚",
+          "line": 76957
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 96,
+          "printedNumber": 96,
+          "title": "第九十六章 埋剑三井",
+          "label": "埋剑三井",
+          "line": 77102
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 97,
+          "printedNumber": 97,
+          "title": "第九十七章 枪剑七大行",
+          "label": "枪剑七大行",
+          "line": 77319
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 98,
+          "printedNumber": 98,
+          "title": "第九十八章 溢彩！",
+          "label": "溢彩！",
+          "line": 77452
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 99,
+          "printedNumber": 99,
+          "title": "第九十九章 冤家终路窄",
+          "label": "冤家终路窄",
+          "line": 77575
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 100,
+          "printedNumber": 100,
+          "title": "第一百章 再见九翅苏都",
+          "label": "再见九翅苏都",
+          "line": 77740
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 101,
+          "printedNumber": 101,
+          "title": "第一百零一章 扑朔迷离",
+          "label": "扑朔迷离",
+          "line": 77963
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 102,
+          "printedNumber": 102,
+          "title": "第一百零二章 纪效新书·相法",
+          "label": "纪效新书·相法",
+          "line": 78116
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 103,
+          "printedNumber": 103,
+          "title": "第一百零三章 大闹伏龙山（上）",
+          "label": "大闹伏龙山（上）",
+          "line": 78246
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 104,
+          "printedNumber": 104,
+          "title": "第一百零四章 大闹伏龙山（中）",
+          "label": "大闹伏龙山（中）",
+          "line": 78421
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 105,
+          "printedNumber": 105,
+          "title": "第一百零五章 大闹伏龙山（下）",
+          "label": "大闹伏龙山（下）",
+          "line": 78556
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 106,
+          "printedNumber": 106,
+          "title": "第一百零六章 大闹伏龙山（完）",
+          "label": "大闹伏龙山（完）",
+          "line": 78721
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 107,
+          "printedNumber": 107,
+          "title": "第一百零七章 火烧乾光洞（上）",
+          "label": "火烧乾光洞（上）",
+          "line": 78872
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 108,
+          "printedNumber": 108,
+          "title": "第一百零八章 火烧乾光洞（中）",
+          "label": "火烧乾光洞（中）",
+          "line": 78989
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 109,
+          "printedNumber": 109,
+          "title": "第一百零九章 火烧乾光洞（下）",
+          "label": "火烧乾光洞（下）",
+          "line": 79205
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 110,
+          "printedNumber": 110,
+          "title": "第一百一十章 火烧乾光洞（完）",
+          "label": "火烧乾光洞（完）",
+          "line": 79330
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 111,
+          "printedNumber": 111,
+          "title": "第一百一十一章 邪火",
+          "label": "邪火",
+          "line": 79429
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 112,
+          "printedNumber": 112,
+          "title": "第一百一十二章 天之蠹虫",
+          "label": "天之蠹虫",
+          "line": 79634
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 113,
+          "printedNumber": 113,
+          "title": "第一百一十三章 金山招婿",
+          "label": "金山招婿",
+          "line": 79761
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 114,
+          "printedNumber": 114,
+          "title": "第一百一十四章 峰回路转",
+          "label": "峰回路转",
+          "line": 79880
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 115,
+          "printedNumber": 115,
+          "title": "第一百一十五章 风云变幻",
+          "label": "风云变幻",
+          "line": 80021
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 116,
+          "printedNumber": 116,
+          "title": "第一百一十六章 狂风骤雨之前",
+          "label": "狂风骤雨之前",
+          "line": 80150
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 117,
+          "printedNumber": 117,
+          "title": "第一百一十七章 谁不是知易行难",
+          "label": "谁不是知易行难",
+          "line": 80302
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 118,
+          "printedNumber": 118,
+          "title": "第一百一十八章 交锋",
+          "label": "交锋",
+          "line": 80453
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 119,
+          "printedNumber": 119,
+          "title": "第一百一十九章 虎头大枪·龙吐雾",
+          "label": "虎头大枪·龙吐雾",
+          "line": 80590
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 120,
+          "printedNumber": 120,
+          "title": "第一百二十章 扶龙蹈虎张义初（上）",
+          "label": "扶龙蹈虎张义初（上）",
+          "line": 80675
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 121,
+          "printedNumber": 121,
+          "title": "第一百二十一章 扶龙蹈虎张义初（中）",
+          "label": "扶龙蹈虎张义初（中）",
+          "line": 80961
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 122,
+          "printedNumber": 122,
+          "title": "第一百二十二章 扶龙蹈虎张义初（下）",
+          "label": "扶龙蹈虎张义初（下）",
+          "line": 81160
+        },
+        {
+          "volume": 11,
+          "sequenceInVolume": 123,
+          "printedNumber": 123,
+          "title": "第一百二十三章 扶龙蹈虎张义初（完）",
+          "label": "扶龙蹈虎张义初（完）",
+          "line": 81265
+        }
+      ]
     },
     {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 12,
-      "title": "生死翻盘（三）",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
+      "volume": 12,
+      "startLine": 81474,
+      "endLine": 84242,
+      "openingChapter": "第一章 斩邪雄剑！",
+      "closingChapter": "第十八章 再入阎浮果实",
+      "chapterCount": 18,
+      "chars": 48579,
+      "chapters": [
+        {
+          "volume": 12,
+          "sequenceInVolume": 1,
+          "printedNumber": 1,
+          "title": "第一章 斩邪雄剑！",
+          "label": "斩邪雄剑！",
+          "line": 81474
+        },
+        {
+          "volume": 12,
+          "sequenceInVolume": 2,
+          "printedNumber": 2,
+          "title": "第二章 万物皆清浊",
+          "label": "万物皆清浊",
+          "line": 81631
+        },
+        {
+          "volume": 12,
+          "sequenceInVolume": 3,
+          "printedNumber": 3,
+          "title": "第三章 杰克陈的蓝色羊毛衫",
+          "label": "杰克陈的蓝色羊毛衫",
+          "line": 81748
+        },
+        {
+          "volume": 12,
+          "sequenceInVolume": 4,
+          "printedNumber": 4,
+          "title": "第四章 黑骑鬼之死！",
+          "label": "黑骑鬼之死！",
+          "line": 81863
+        },
+        {
+          "volume": 12,
+          "sequenceInVolume": 5,
+          "printedNumber": 5,
+          "title": "第五章 只道寻常",
+          "label": "只道寻常",
+          "line": 82100
+        },
+        {
+          "volume": 12,
+          "sequenceInVolume": 6,
+          "printedNumber": 6,
+          "title": "第六章 红山围场的邀请",
+          "label": "红山围场的邀请",
+          "line": 82225
+        },
+        {
+          "volume": 12,
+          "sequenceInVolume": 7,
+          "printedNumber": 7,
+          "title": "第七章 围歼",
+          "label": "围歼",
+          "line": 82380
+        },
+        {
+          "volume": 12,
+          "sequenceInVolume": 8,
+          "printedNumber": 8,
+          "title": "第八章 怪物的碾压！",
+          "label": "怪物的碾压！",
+          "line": 82543
+        },
+        {
+          "volume": 12,
+          "sequenceInVolume": 9,
+          "printedNumber": 9,
+          "title": "第九章 千古传记",
+          "label": "千古传记",
+          "line": 82706
+        },
+        {
+          "volume": 12,
+          "sequenceInVolume": 10,
+          "printedNumber": 10,
+          "title": "第十章 身怀利器，杀心自起",
+          "label": "身怀利器，杀心自起",
+          "line": 82839
+        },
+        {
+          "volume": 12,
+          "sequenceInVolume": 11,
+          "printedNumber": 11,
+          "title": "第十一章 质子星火",
+          "label": "质子星火",
+          "line": 82968
+        },
+        {
+          "volume": 12,
+          "sequenceInVolume": 12,
+          "printedNumber": 12,
+          "title": "第十二章 谈崩",
+          "label": "谈崩",
+          "line": 83097
+        },
+        {
+          "volume": 12,
+          "sequenceInVolume": 13,
+          "printedNumber": 13,
+          "title": "第十三章 斡旋",
+          "label": "斡旋",
+          "line": 83244
+        },
+        {
+          "volume": 12,
+          "sequenceInVolume": 14,
+          "printedNumber": 14,
+          "title": "第十四章 血源剑骨",
+          "label": "血源剑骨",
+          "line": 83429
+        },
+        {
+          "volume": 12,
+          "sequenceInVolume": 15,
+          "printedNumber": 15,
+          "title": "第十五章 平息",
+          "label": "平息",
+          "line": 83564
+        },
+        {
+          "volume": 12,
+          "sequenceInVolume": 16,
+          "printedNumber": 16,
+          "title": "第十六章 互诉衷肠",
+          "label": "互诉衷肠",
+          "line": 83761
+        },
+        {
+          "volume": 12,
+          "sequenceInVolume": 17,
+          "printedNumber": 17,
+          "title": "第十七章 祸元九变",
+          "label": "祸元九变",
+          "line": 83914
+        },
+        {
+          "volume": 12,
+          "sequenceInVolume": 18,
+          "printedNumber": 18,
+          "title": "第十八章 再入阎浮果实",
+          "label": "再入阎浮果实",
+          "line": 84049
+        }
+      ]
     },
     {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 13,
-      "title": "茱蒂与夜",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
+      "volume": 13,
+      "startLine": 84243,
+      "endLine": 92818,
+      "openingChapter": "第一章 天堂太远，圣·弗朗西斯科太近",
+      "closingChapter": "第六十四章 回归",
+      "chapterCount": 65,
+      "chars": 155210,
+      "chapters": [
+        {
+          "volume": 13,
+          "sequenceInVolume": 1,
+          "printedNumber": 1,
+          "title": "第一章 天堂太远，圣·弗朗西斯科太近",
+          "label": "天堂太远，圣·弗朗西斯科太近",
+          "line": 84243
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 2,
+          "printedNumber": 2,
+          "title": "第二章 看在同胞的份上",
+          "label": "看在同胞的份上",
+          "line": 84340
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 3,
+          "printedNumber": 3,
+          "title": "第三章 伟大铁路",
+          "label": "伟大铁路",
+          "line": 84501
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 4,
+          "printedNumber": 4,
+          "title": "第四章 太阴秘典",
+          "label": "太阴秘典",
+          "line": 84617
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 5,
+          "printedNumber": 5,
+          "title": "第五章 常",
+          "label": "常",
+          "line": 84776
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 6,
+          "printedNumber": 6,
+          "title": "第六章 蒸汽与魔法（上）",
+          "label": "蒸汽与魔法（上）",
+          "line": 84977
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 7,
+          "printedNumber": 7,
+          "title": "第七章 蒸汽与魔法（下）",
+          "label": "蒸汽与魔法（下）",
+          "line": 85130
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 8,
+          "printedNumber": 8,
+          "title": "第八章 欢迎来到巨人湖",
+          "label": "欢迎来到巨人湖",
+          "line": 85268
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 9,
+          "printedNumber": 9,
+          "title": "第九章 燕子",
+          "label": "燕子",
+          "line": 85407
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 10,
+          "printedNumber": 10,
+          "title": "第十章 童话蒸汽大会",
+          "label": "童话蒸汽大会",
+          "line": 85518
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 11,
+          "printedNumber": 11,
+          "title": "第十一章 多萝西",
+          "label": "多萝西",
+          "line": 85645
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 12,
+          "printedNumber": 12,
+          "title": "第十二章 深海教会",
+          "label": "深海教会",
+          "line": 85752
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 13,
+          "printedNumber": 13,
+          "title": "第十三章 险恶端倪",
+          "label": "险恶端倪",
+          "line": 85871
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 14,
+          "printedNumber": 14,
+          "title": "第十四章 焰浪！",
+          "label": "焰浪！",
+          "line": 86102
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 15,
+          "printedNumber": 15,
+          "title": "第十五章 食怒",
+          "label": "食怒",
+          "line": 86213
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 16,
+          "printedNumber": 16,
+          "title": "第十六章 河底裂缝",
+          "label": "河底裂缝",
+          "line": 86369
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 17,
+          "printedNumber": 17,
+          "title": "第十七章 月下约定",
+          "label": "月下约定",
+          "line": 86524
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 18,
+          "printedNumber": 18,
+          "title": "第十八章 what's your problem？",
+          "label": "what's your problem？",
+          "line": 86745
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 19,
+          "printedNumber": 19,
+          "title": "第十九章 丧心病狂",
+          "label": "丧心病狂",
+          "line": 86870
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 20,
+          "printedNumber": 20,
+          "title": "第二十章 跑调的童话",
+          "label": "跑调的童话",
+          "line": 86997
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 21,
+          "printedNumber": 21,
+          "title": "第二十一章 三项球联动理论",
+          "label": "三项球联动理论",
+          "line": 87158
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 22,
+          "printedNumber": 22,
+          "title": "第二十二章 多萝西的到访",
+          "label": "多萝西的到访",
+          "line": 87245
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 23,
+          "printedNumber": 23,
+          "title": "第二十三章 万物都有代价",
+          "label": "万物都有代价",
+          "line": 87394
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 24,
+          "printedNumber": 24,
+          "title": "第二十四章 无底之渊（上）",
+          "label": "无底之渊（上）",
+          "line": 87549
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 25,
+          "printedNumber": 25,
+          "title": "第二十五章 无底之渊（下）",
+          "label": "无底之渊（下）",
+          "line": 87664
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 26,
+          "printedNumber": 26,
+          "title": "第二十六章 无底之渊（完）",
+          "label": "无底之渊（完）",
+          "line": 87797
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 27,
+          "printedNumber": 27,
+          "title": "第二十七章 无翼皇帝！",
+          "label": "无翼皇帝！",
+          "line": 87904
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 28,
+          "printedNumber": 28,
+          "title": "第二十八章 大王乌贼号",
+          "label": "大王乌贼号",
+          "line": 88045
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 29,
+          "printedNumber": 29,
+          "title": "第二十九章 赦魂之水",
+          "label": "赦魂之水",
+          "line": 88158
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 30,
+          "printedNumber": 30,
+          "title": "第三十章 收服拉莱耶水虎",
+          "label": "收服拉莱耶水虎",
+          "line": 88302
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 31,
+          "printedNumber": 31,
+          "title": "第三十一章 归来",
+          "label": "归来",
+          "line": 88393
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 32,
+          "printedNumber": 32,
+          "title": "第三十二章 众声（上）",
+          "label": "众声（上）",
+          "line": 88510
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 33,
+          "printedNumber": 33,
+          "title": "第三十三章 众声（下）",
+          "label": "众声（下）",
+          "line": 88623
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 34,
+          "printedNumber": 34,
+          "title": "第三十四章 史官",
+          "label": "史官",
+          "line": 88746
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 35,
+          "printedNumber": 35,
+          "title": "第三十五章 巨人伊米尔",
+          "label": "巨人伊米尔",
+          "line": 88881
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 36,
+          "printedNumber": 36,
+          "title": "第三十六章 魔染刺蛇",
+          "label": "魔染刺蛇",
+          "line": 89036
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 37,
+          "printedNumber": 37,
+          "title": "第三十七章 甄连的心思",
+          "label": "甄连的心思",
+          "line": 89177
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 38,
+          "printedNumber": 38,
+          "title": "第三十八章 《巨人湖》第四幕",
+          "label": "《巨人湖》第四幕",
+          "line": 89304
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 39,
+          "printedNumber": 39,
+          "title": "第三十九章 血色旅店",
+          "label": "血色旅店",
+          "line": 89427
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 40,
+          "printedNumber": 40,
+          "title": "第四十章 江郎才尽的多萝西",
+          "label": "江郎才尽的多萝西",
+          "line": 89598
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 41,
+          "printedNumber": 41,
+          "title": "第四十一章 拒绝",
+          "label": "拒绝",
+          "line": 89739
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 42,
+          "printedNumber": 42,
+          "title": "第四十二章 毒蛇侦探",
+          "label": "毒蛇侦探",
+          "line": 89910
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 43,
+          "printedNumber": 43,
+          "title": "第四十三章 推进",
+          "label": "推进",
+          "line": 90039
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 44,
+          "printedNumber": 44,
+          "title": "第四十四章 青口贝和迟来的常",
+          "label": "青口贝和迟来的常",
+          "line": 90174
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 45,
+          "printedNumber": 45,
+          "title": "第四十五章 走夜路和头骨",
+          "label": "走夜路和头骨",
+          "line": 90327
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 46,
+          "printedNumber": 46,
+          "title": "第四十六章 死神与战车",
+          "label": "死神与战车",
+          "line": 90474
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 47,
+          "printedNumber": 47,
+          "title": "第四十七章 独眼巨人！",
+          "label": "独眼巨人！",
+          "line": 90607
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 48,
+          "printedNumber": 48,
+          "title": "第四十八章 黑袍皇帝的真相（上）",
+          "label": "黑袍皇帝的真相（上）",
+          "line": 90748
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 49,
+          "printedNumber": 49,
+          "title": "第四十九章 黑袍皇帝的真相（中）",
+          "label": "黑袍皇帝的真相（中）",
+          "line": 90855
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 50,
+          "printedNumber": 50,
+          "title": "第五十章 黑袍皇帝的真相（下）",
+          "label": "黑袍皇帝的真相（下）",
+          "line": 90976
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 51,
+          "printedNumber": 51,
+          "title": "第五十一章 鼠疫",
+          "label": "鼠疫",
+          "line": 91085
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 52,
+          "printedNumber": 52,
+          "title": "第五十二章 惊变",
+          "label": "惊变",
+          "line": 91244
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 53,
+          "printedNumber": 53,
+          "title": "第五十三章 孽火",
+          "label": "孽火",
+          "line": 91369
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 54,
+          "printedNumber": 54,
+          "title": "第五十四章 追逃",
+          "label": "追逃",
+          "line": 91494
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 55,
+          "printedNumber": 55,
+          "title": "第五十五章 夜枭",
+          "label": "夜枭",
+          "line": 91611
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 56,
+          "printedNumber": 56,
+          "title": "第五十六章 血肉苦弱（一）",
+          "label": "血肉苦弱（一）",
+          "line": 91726
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 57,
+          "printedNumber": 57,
+          "title": "第五十七章 血肉苦弱（二）",
+          "label": "血肉苦弱（二）",
+          "line": 91819
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 58,
+          "printedNumber": 58,
+          "title": "第五十八章 血肉苦弱（三）",
+          "label": "血肉苦弱（三）",
+          "line": 91948
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 59,
+          "printedNumber": 59,
+          "title": "第五十九章 血肉苦弱（四）",
+          "label": "血肉苦弱（四）",
+          "line": 92073
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 60,
+          "printedNumber": 59,
+          "title": "第五十九章血肉苦弱（四）",
+          "label": "血肉苦弱（四）",
+          "line": 92075
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 61,
+          "printedNumber": 60,
+          "title": "第六十章 机械飞升（一）",
+          "label": "机械飞升（一）",
+          "line": 92206
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 62,
+          "printedNumber": 61,
+          "title": "第六十一章 机械飞升（二）",
+          "label": "机械飞升（二）",
+          "line": 92329
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 63,
+          "printedNumber": 62,
+          "title": "第六十二章 机械飞升（三）",
+          "label": "机械飞升（三）",
+          "line": 92436
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 64,
+          "printedNumber": 63,
+          "title": "第六十三章 机械飞升（四）",
+          "label": "机械飞升（四）",
+          "line": 92573
+        },
+        {
+          "volume": 13,
+          "sequenceInVolume": 65,
+          "printedNumber": 64,
+          "title": "第六十四章 回归",
+          "label": "回归",
+          "line": 92678
+        }
+      ]
     },
     {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 14,
-      "title": "残篇的下落",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
+      "volume": 14,
+      "startLine": 92819,
+      "endLine": 99455,
+      "openingChapter": "第一章 大地震",
+      "closingChapter": "第四十六章",
+      "chapterCount": 47,
+      "chars": 105246,
+      "chapters": [
+        {
+          "volume": 14,
+          "sequenceInVolume": 1,
+          "printedNumber": 1,
+          "title": "第一章 大地震",
+          "label": "大地震",
+          "line": 92819
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 2,
+          "printedNumber": 2,
+          "title": "第二章 貘来访",
+          "label": "貘来访",
+          "line": 92968
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 3,
+          "printedNumber": 3,
+          "title": "第三章 阎昭会",
+          "label": "阎昭会",
+          "line": 93127
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 4,
+          "printedNumber": 4,
+          "title": "第四章 周礼八珍",
+          "label": "周礼八珍",
+          "line": 93248
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 5,
+          "printedNumber": 5,
+          "title": "第五章 云中君",
+          "label": "云中君",
+          "line": 93413
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 6,
+          "printedNumber": 6,
+          "title": "第六章 神庭与巨款",
+          "label": "神庭与巨款",
+          "line": 93566
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 7,
+          "printedNumber": 7,
+          "title": "第七章 整合",
+          "label": "整合",
+          "line": 93747
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 8,
+          "printedNumber": 8,
+          "title": "第八章 虎牙楼",
+          "label": "虎牙楼",
+          "line": 93940
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 9,
+          "printedNumber": 9,
+          "title": "第九章 襟花争夺战",
+          "label": "襟花争夺战",
+          "line": 94149
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 10,
+          "printedNumber": 10,
+          "title": "第十章 烹国",
+          "label": "烹国",
+          "line": 94344
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 11,
+          "printedNumber": 11,
+          "title": "第十一章 步步惊心",
+          "label": "步步惊心",
+          "line": 94481
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 12,
+          "printedNumber": 12,
+          "title": "第十二章 投票",
+          "label": "投票",
+          "line": 94628
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 13,
+          "printedNumber": 13,
+          "title": "第十三章 无人落泪的葬礼（一）",
+          "label": "无人落泪的葬礼（一）",
+          "line": 94745
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 14,
+          "printedNumber": 14,
+          "title": "第十四章 无人落泪的葬礼（二）",
+          "label": "无人落泪的葬礼（二）",
+          "line": 94867
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 15,
+          "printedNumber": 15,
+          "title": "第十五章 无人落泪的葬礼（三）",
+          "label": "无人落泪的葬礼（三）",
+          "line": 95054
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 16,
+          "printedNumber": 16,
+          "title": "第十六章 无人落泪的葬礼 （四）",
+          "label": "无人落泪的葬礼 （四）",
+          "line": 95193
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 17,
+          "printedNumber": 17,
+          "title": "第十七章 无人落泪的葬礼（五）",
+          "label": "无人落泪的葬礼（五）",
+          "line": 95330
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 18,
+          "printedNumber": 18,
+          "title": "第十八章 无人落泪的葬礼（六）",
+          "label": "无人落泪的葬礼（六）",
+          "line": 95473
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 19,
+          "printedNumber": 19,
+          "title": "第十九章 无人落泪的葬礼（七）",
+          "label": "无人落泪的葬礼（七）",
+          "line": 95664
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 20,
+          "printedNumber": 20,
+          "title": "第二十章 邙山闲土",
+          "label": "邙山闲土",
+          "line": 95845
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 21,
+          "printedNumber": 21,
+          "title": "第二十一章 句芒",
+          "label": "句芒",
+          "line": 95984
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 22,
+          "printedNumber": 22,
+          "title": "第二十二章 天空大炸弹",
+          "label": "天空大炸弹",
+          "line": 96137
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 23,
+          "printedNumber": 23,
+          "title": "第二十三章 狰与修罗",
+          "label": "狰与修罗",
+          "line": 96270
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 24,
+          "printedNumber": 24,
+          "title": "第二十四章 独一无二的气泡",
+          "label": "独一无二的气泡",
+          "line": 96403
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 25,
+          "printedNumber": 25,
+          "title": "第二十五章 真君五皂",
+          "label": "真君五皂",
+          "line": 96518
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 26,
+          "printedNumber": 26,
+          "title": "第二十六章 百舸争流",
+          "label": "百舸争流",
+          "line": 96639
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 27,
+          "printedNumber": 27,
+          "title": "第二十七章 怒斗开锣",
+          "label": "怒斗开锣",
+          "line": 96756
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 28,
+          "printedNumber": 28,
+          "title": "第二十八章 十业大身，赤心吼",
+          "label": "十业大身，赤心吼",
+          "line": 96901
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 29,
+          "printedNumber": 29,
+          "title": "第二十九章 极乐会",
+          "label": "极乐会",
+          "line": 97036
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 30,
+          "printedNumber": 30,
+          "title": "第三十章 拉莱耶风暴",
+          "label": "拉莱耶风暴",
+          "line": 97185
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 31,
+          "printedNumber": 31,
+          "title": "第三十一章 公投开始",
+          "label": "公投开始",
+          "line": 97290
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 32,
+          "printedNumber": 32,
+          "title": "第三十二章 危月燕",
+          "label": "危月燕",
+          "line": 97381
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 33,
+          "printedNumber": 33,
+          "title": "第三十三章 权力与职责",
+          "label": "权力与职责",
+          "line": 97504
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 34,
+          "printedNumber": 34,
+          "title": "第三十四章 无上灭妙金书",
+          "label": "无上灭妙金书",
+          "line": 97611
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 35,
+          "printedNumber": 35,
+          "title": "第三十五章 闭票",
+          "label": "闭票",
+          "line": 97740
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 36,
+          "printedNumber": 36,
+          "title": "第三十六章 狰与李阎",
+          "label": "狰与李阎",
+          "line": 97877
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 37,
+          "printedNumber": 37,
+          "title": "第三十七章 三席第一人",
+          "label": "三席第一人",
+          "line": 98040
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 38,
+          "printedNumber": 38,
+          "title": "第三十八章 搏命之争？",
+          "label": "搏命之争？",
+          "line": 98191
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 39,
+          "printedNumber": 39,
+          "title": "第三十九章 十月议案",
+          "label": "十月议案",
+          "line": 98358
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 40,
+          "printedNumber": 40,
+          "title": "第四十章 茱蒂",
+          "label": "茱蒂",
+          "line": 98527
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 41,
+          "printedNumber": 41,
+          "title": "第四十一章 阎浮果核",
+          "label": "阎浮果核",
+          "line": 98644
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 42,
+          "printedNumber": 42,
+          "title": "第四十二章 结束",
+          "label": "结束",
+          "line": 98741
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 43,
+          "printedNumber": 43,
+          "title": "第四十三章 雷池",
+          "label": "雷池",
+          "line": 98896
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 44,
+          "printedNumber": 44,
+          "title": "第四十四章 阎浮的真相",
+          "label": "阎浮的真相",
+          "line": 99033
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 45,
+          "printedNumber": 45,
+          "title": "第四十五章 变革年代",
+          "label": "变革年代",
+          "line": 99174
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 46,
+          "printedNumber": 46,
+          "title": "第四十六章 再入九龙",
+          "label": "再入九龙",
+          "line": 99315
+        },
+        {
+          "volume": 14,
+          "sequenceInVolume": 47,
+          "printedNumber": 46,
+          "title": "第四十六章",
+          "label": "",
+          "line": 99317
+        }
+      ]
     },
     {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 15,
-      "title": "强手",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
+      "volume": 15,
+      "startLine": 99456,
+      "endLine": 110673,
+      "openingChapter": "第一章 裴东升",
+      "closingChapter": "第七十八章 再见，再见",
+      "chapterCount": 79,
+      "chars": 192163,
+      "chapters": [
+        {
+          "volume": 15,
+          "sequenceInVolume": 1,
+          "printedNumber": 1,
+          "title": "第一章 裴东升",
+          "label": "裴东升",
+          "line": 99456
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 2,
+          "printedNumber": 2,
+          "title": "第二章 华茂地产",
+          "label": "华茂地产",
+          "line": 99601
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 3,
+          "printedNumber": 3,
+          "title": "第三章 小别",
+          "label": "小别",
+          "line": 99740
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 4,
+          "printedNumber": 4,
+          "title": "第四章 孤鸾煞！",
+          "label": "孤鸾煞！",
+          "line": 99901
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 5,
+          "printedNumber": 5,
+          "title": "第五章 买包烟",
+          "label": "买包烟",
+          "line": 100032
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 6,
+          "printedNumber": 6,
+          "title": "第六章 青乌序",
+          "label": "青乌序",
+          "line": 100251
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 7,
+          "printedNumber": 7,
+          "title": "第七章 洪流",
+          "label": "洪流",
+          "line": 100376
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 8,
+          "printedNumber": 8,
+          "title": "第八章 凶案",
+          "label": "凶案",
+          "line": 100491
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 9,
+          "printedNumber": 9,
+          "title": "第九章 须陀味",
+          "label": "须陀味",
+          "line": 100690
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 10,
+          "printedNumber": 10,
+          "title": "第十章 翰林冷链",
+          "label": "翰林冷链",
+          "line": 100925
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 11,
+          "printedNumber": 11,
+          "title": "第十一章 天乙贵人",
+          "label": "天乙贵人",
+          "line": 101064
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 12,
+          "printedNumber": 12,
+          "title": "第十二章 插曲",
+          "label": "插曲",
+          "line": 101189
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 13,
+          "printedNumber": 13,
+          "title": "第十三章 冥扎",
+          "label": "冥扎",
+          "line": 101312
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 14,
+          "printedNumber": 14,
+          "title": "第十四章 千岁火精",
+          "label": "千岁火精",
+          "line": 101455
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 15,
+          "printedNumber": 15,
+          "title": "第十五章 画眼秘术",
+          "label": "画眼秘术",
+          "line": 101594
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 16,
+          "printedNumber": 16,
+          "title": "第十六章 三奇贵人？",
+          "label": "三奇贵人？",
+          "line": 101709
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 17,
+          "printedNumber": 17,
+          "title": "第十七章 问讯",
+          "label": "问讯",
+          "line": 101860
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 18,
+          "printedNumber": 18,
+          "title": "第十八章 天乙对水君",
+          "label": "天乙对水君",
+          "line": 102009
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 19,
+          "printedNumber": 19,
+          "title": "第十九章 开运会",
+          "label": "开运会",
+          "line": 102152
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 20,
+          "printedNumber": 20,
+          "title": "第二十章 风水斗",
+          "label": "风水斗",
+          "line": 102325
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 21,
+          "printedNumber": 21,
+          "title": "第二十一章 须弥幻境？",
+          "label": "须弥幻境？",
+          "line": 102416
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 22,
+          "printedNumber": 22,
+          "title": "第二十二章 飞天镇抚",
+          "label": "飞天镇抚",
+          "line": 102527
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 23,
+          "printedNumber": 23,
+          "title": "第二十三章 东窗事发",
+          "label": "东窗事发",
+          "line": 102624
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 24,
+          "printedNumber": 24,
+          "title": "第二十四章 金宅",
+          "label": "金宅",
+          "line": 102779
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 25,
+          "printedNumber": 25,
+          "title": "第二十五章 嘱托",
+          "label": "嘱托",
+          "line": 102916
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 26,
+          "printedNumber": 26,
+          "title": "第二十六章 床头的架",
+          "label": "床头的架",
+          "line": 103073
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 27,
+          "printedNumber": 27,
+          "title": "第二十七章 床尾难合",
+          "label": "床尾难合",
+          "line": 103216
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 28,
+          "printedNumber": 28,
+          "title": "第二十八章 三煞七嗔",
+          "label": "三煞七嗔",
+          "line": 103343
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 29,
+          "printedNumber": 29,
+          "title": "第二十九章 杀子之债",
+          "label": "杀子之债",
+          "line": 103440
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 30,
+          "printedNumber": 30,
+          "title": "第三十章 金宅横祸",
+          "label": "金宅横祸",
+          "line": 103563
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 31,
+          "printedNumber": 31,
+          "title": "第三十一章 灵龟破天狗！",
+          "label": "灵龟破天狗！",
+          "line": 103658
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 32,
+          "printedNumber": 32,
+          "title": "第三十二章 猩红意外",
+          "label": "猩红意外",
+          "line": 103783
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 33,
+          "printedNumber": 33,
+          "title": "第三十三章 太虚罗经仪",
+          "label": "太虚罗经仪",
+          "line": 103886
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 34,
+          "printedNumber": 34,
+          "title": "第三十四章 抽丝剥茧",
+          "label": "抽丝剥茧",
+          "line": 104123
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 35,
+          "printedNumber": 35,
+          "title": "第三十五章 纸虎",
+          "label": "纸虎",
+          "line": 104250
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 36,
+          "printedNumber": 36,
+          "title": "第三十六章 前因",
+          "label": "前因",
+          "line": 104401
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 37,
+          "printedNumber": 37,
+          "title": "第三十七章 后果",
+          "label": "后果",
+          "line": 104564
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 38,
+          "printedNumber": 38,
+          "title": "第三十八章 假痴不癫（上）",
+          "label": "假痴不癫（上）",
+          "line": 104669
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 39,
+          "printedNumber": 39,
+          "title": "第三十九章 假痴不癫（中）",
+          "label": "假痴不癫（中）",
+          "line": 104840
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 40,
+          "printedNumber": 40,
+          "title": "第四十章 假痴不癫（下）",
+          "label": "假痴不癫（下）",
+          "line": 104991
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 41,
+          "printedNumber": 41,
+          "title": "第四十一章 假痴不癫（完）",
+          "label": "假痴不癫（完）",
+          "line": 105140
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 42,
+          "printedNumber": 42,
+          "title": "第四十二章 四废",
+          "label": "四废",
+          "line": 105319
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 43,
+          "printedNumber": 43,
+          "title": "第四十三章 怒涛",
+          "label": "怒涛",
+          "line": 105450
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 44,
+          "printedNumber": 44,
+          "title": "第四十四章 一神斗五煞",
+          "label": "一神斗五煞",
+          "line": 105543
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 45,
+          "printedNumber": 45,
+          "title": "第四十五章 搬风水",
+          "label": "搬风水",
+          "line": 105654
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 46,
+          "printedNumber": 46,
+          "title": "第四十六章 命出三奇",
+          "label": "命出三奇",
+          "line": 105773
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 47,
+          "printedNumber": 46,
+          "title": "第四十六章",
+          "label": "",
+          "line": 105775
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 48,
+          "printedNumber": 47,
+          "title": "第四十七章 天髓传人",
+          "label": "天髓传人",
+          "line": 105852
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 49,
+          "printedNumber": 48,
+          "title": "第四十八章 孰忠孰奸",
+          "label": "孰忠孰奸",
+          "line": 105953
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 50,
+          "printedNumber": 49,
+          "title": "第四十九章 黑手",
+          "label": "黑手",
+          "line": 106040
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 51,
+          "printedNumber": 50,
+          "title": "第五十章 八苦（上）",
+          "label": "八苦（上）",
+          "line": 106207
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 52,
+          "printedNumber": 51,
+          "title": "第五十一章 八苦（中）",
+          "label": "八苦（中）",
+          "line": 106332
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 53,
+          "printedNumber": 52,
+          "title": "第五十二章 八苦（下）",
+          "label": "八苦（下）",
+          "line": 106575
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 54,
+          "printedNumber": 53,
+          "title": "第五十三章 失踪的质量",
+          "label": "失踪的质量",
+          "line": 106769
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 55,
+          "printedNumber": 54,
+          "title": "第五十四章 黑色三分钟",
+          "label": "黑色三分钟",
+          "line": 106962
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 56,
+          "printedNumber": 55,
+          "title": "第五十五章 嗜血牟尼",
+          "label": "嗜血牟尼",
+          "line": 107085
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 57,
+          "printedNumber": 56,
+          "title": "第五十六章 千钧一发",
+          "label": "千钧一发",
+          "line": 107226
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 58,
+          "printedNumber": 57,
+          "title": "第五十七章 谈和与谈和",
+          "label": "谈和与谈和",
+          "line": 107357
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 59,
+          "printedNumber": 58,
+          "title": "第五十八章 千面一人",
+          "label": "千面一人",
+          "line": 107502
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 60,
+          "printedNumber": 59,
+          "title": "第五十九章 迟来的赵剑中",
+          "label": "迟来的赵剑中",
+          "line": 107629
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 61,
+          "printedNumber": 60,
+          "title": "第六十章 赢天寿",
+          "label": "赢天寿",
+          "line": 107816
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 62,
+          "printedNumber": 61,
+          "title": "第六十一章 决心",
+          "label": "决心",
+          "line": 107943
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 63,
+          "printedNumber": 62,
+          "title": "第六十二章 色空的小变故",
+          "label": "色空的小变故",
+          "line": 108160
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 64,
+          "printedNumber": 63,
+          "title": "第六十三章 水君交锋",
+          "label": "水君交锋",
+          "line": 108313
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 65,
+          "printedNumber": 64,
+          "title": "第六十四章 牟尼的盛宴（上）",
+          "label": "牟尼的盛宴（上）",
+          "line": 108468
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 66,
+          "printedNumber": 65,
+          "title": "第六十五章 牟尼的盛宴（中）",
+          "label": "牟尼的盛宴（中）",
+          "line": 108601
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 67,
+          "printedNumber": 66,
+          "title": "第六十六章 牟尼的盛宴（下）",
+          "label": "牟尼的盛宴（下）",
+          "line": 108704
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 68,
+          "printedNumber": 67,
+          "title": "第六十七章 牟尼的盛宴（完）",
+          "label": "牟尼的盛宴（完）",
+          "line": 108793
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 69,
+          "printedNumber": 68,
+          "title": "第六十八章 一线生机",
+          "label": "一线生机",
+          "line": 108960
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 70,
+          "printedNumber": 69,
+          "title": "第六十九章 雷部",
+          "label": "雷部",
+          "line": 109111
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 71,
+          "printedNumber": 70,
+          "title": "第七十章 机械波旬？白骨波旬！",
+          "label": "机械波旬？白骨波旬！",
+          "line": 109208
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 72,
+          "printedNumber": 71,
+          "title": "第七十一章 四柱龙眼煞",
+          "label": "四柱龙眼煞",
+          "line": 109449
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 73,
+          "printedNumber": 72,
+          "title": "第七十二章 黑袍皇帝的福音",
+          "label": "黑袍皇帝的福音",
+          "line": 109588
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 74,
+          "printedNumber": 73,
+          "title": "第七十三章 你快吐啊",
+          "label": "你快吐啊",
+          "line": 109667
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 75,
+          "printedNumber": 74,
+          "title": "第七十四章 我涅槃时",
+          "label": "我涅槃时",
+          "line": 109784
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 76,
+          "printedNumber": 75,
+          "title": "第七十五章 机缘",
+          "label": "机缘",
+          "line": 109893
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 77,
+          "printedNumber": 76,
+          "title": "第七十六章 余寿",
+          "label": "余寿",
+          "line": 110074
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 78,
+          "printedNumber": 77,
+          "title": "第七十七章 直捣黄龙",
+          "label": "直捣黄龙",
+          "line": 110243
+        },
+        {
+          "volume": 15,
+          "sequenceInVolume": 79,
+          "printedNumber": 78,
+          "title": "第七十八章 再见，再见",
+          "label": "再见，再见",
+          "line": 110374
+        }
+      ]
     },
     {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 16,
-      "title": "入手！es造血细胞增强剂",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
+      "volume": 16,
+      "startLine": 110674,
+      "endLine": 114286,
+      "openingChapter": "第一章 予取予求",
+      "closingChapter": "第十九章 惊闻，二入南洋！",
+      "chapterCount": 19,
+      "chars": 56771,
+      "chapters": [
+        {
+          "volume": 16,
+          "sequenceInVolume": 1,
+          "printedNumber": 1,
+          "title": "第一章 予取予求",
+          "label": "予取予求",
+          "line": 110674
+        },
+        {
+          "volume": 16,
+          "sequenceInVolume": 2,
+          "printedNumber": 2,
+          "title": "第二章 赦魂金汤",
+          "label": "赦魂金汤",
+          "line": 110841
+        },
+        {
+          "volume": 16,
+          "sequenceInVolume": 3,
+          "printedNumber": 3,
+          "title": "第三章 云中君vs天命雅克",
+          "label": "云中君vs天命雅克",
+          "line": 110952
+        },
+        {
+          "volume": 16,
+          "sequenceInVolume": 4,
+          "printedNumber": 4,
+          "title": "第四章 疑难杂症",
+          "label": "疑难杂症",
+          "line": 111099
+        },
+        {
+          "volume": 16,
+          "sequenceInVolume": 5,
+          "printedNumber": 5,
+          "title": "第五章 鼓与课",
+          "label": "鼓与课",
+          "line": 111228
+        },
+        {
+          "volume": 16,
+          "sequenceInVolume": 6,
+          "printedNumber": 6,
+          "title": "第六章 分红",
+          "label": "分红",
+          "line": 111393
+        },
+        {
+          "volume": 16,
+          "sequenceInVolume": 7,
+          "printedNumber": 7,
+          "title": "第七章 顶级兵材",
+          "label": "顶级兵材",
+          "line": 111526
+        },
+        {
+          "volume": 16,
+          "sequenceInVolume": 8,
+          "printedNumber": 8,
+          "title": "第八章 大殿议",
+          "label": "大殿议",
+          "line": 111721
+        },
+        {
+          "volume": 16,
+          "sequenceInVolume": 9,
+          "printedNumber": 9,
+          "title": "第九章 风波恶",
+          "label": "风波恶",
+          "line": 111844
+        },
+        {
+          "volume": 16,
+          "sequenceInVolume": 10,
+          "printedNumber": 10,
+          "title": "第十章 火锅与枪剑",
+          "label": "火锅与枪剑",
+          "line": 112009
+        },
+        {
+          "volume": 16,
+          "sequenceInVolume": 11,
+          "printedNumber": 11,
+          "title": "第十一章 整备",
+          "label": "整备",
+          "line": 112319
+        },
+        {
+          "volume": 16,
+          "sequenceInVolume": 12,
+          "printedNumber": 12,
+          "title": "第十二章 通胀",
+          "label": "通胀",
+          "line": 112510
+        },
+        {
+          "volume": 16,
+          "sequenceInVolume": 13,
+          "printedNumber": 13,
+          "title": "第十三章 五味八珍",
+          "label": "五味八珍",
+          "line": 112681
+        },
+        {
+          "volume": 16,
+          "sequenceInVolume": 14,
+          "printedNumber": 14,
+          "title": "第十四章 日常",
+          "label": "日常",
+          "line": 112834
+        },
+        {
+          "volume": 16,
+          "sequenceInVolume": 15,
+          "printedNumber": 15,
+          "title": "第十五章 黑梦",
+          "label": "黑梦",
+          "line": 113031
+        },
+        {
+          "volume": 16,
+          "sequenceInVolume": 16,
+          "printedNumber": 16,
+          "title": "第十六章 烛光",
+          "label": "烛光",
+          "line": 113316
+        },
+        {
+          "volume": 16,
+          "sequenceInVolume": 17,
+          "printedNumber": 17,
+          "title": "第十七章 stairway to heaven",
+          "label": "stairway to heaven",
+          "line": 113421
+        },
+        {
+          "volume": 16,
+          "sequenceInVolume": 18,
+          "printedNumber": 18,
+          "title": "第十八章 平息",
+          "label": "平息",
+          "line": 113712
+        },
+        {
+          "volume": 16,
+          "sequenceInVolume": 19,
+          "printedNumber": 19,
+          "title": "第十九章 惊闻，二入南洋！",
+          "label": "惊闻，二入南洋！",
+          "line": 114059
+        }
+      ]
     },
     {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 17,
-      "title": "缠龙搰眼",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 18,
-      "title": "出现！同行者",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 19,
-      "title": "全都拿走",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 20,
-      "title": "斗剑母架二十四！",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 21,
-      "title": "阎浮的力量",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 22,
-      "title": "我能让你拥有更好的",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 23,
-      "title": "武德",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 24,
-      "title": "一颗豪胆博富贵",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 25,
-      "title": "盛宴",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 26,
-      "title": "势如沸汤",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 27,
-      "title": "老骥险恶",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 28,
-      "title": "云与泥",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 29,
-      "title": "诸事",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 30,
-      "title": "是时候表演真正的技术了",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 31,
-      "title": "死人，活人",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 32,
-      "title": "鬼与虎！",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 33,
-      "title": "跟我走",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 34,
-      "title": "破绽！",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 35,
-      "title": "巴蛇",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 36,
-      "title": "蛇猛？",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 37,
-      "title": "虎烈！",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 38,
-      "title": "一念起",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 39,
-      "title": "天与水",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 40,
-      "title": "终焉之前",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 41,
-      "title": "终焉（上）",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    },
-    {
-      "volume": 1,
-      "volumeTitle": "城寨风云",
-      "chapterNumber": 42,
-      "title": "终焉（下）",
-      "sourceUrl": "https://hetushu.com/book/8880/index.html",
-      "textCollected": false,
-      "analysisStatus": "pending",
-      "titleVerified": true
-    }
-  ],
-  "platformCrossCheck": [
-    {
-      "platform": "起点中文网移动作品页",
-      "reportedTotalChapters": 787,
-      "sourceUrl": "https://m.readnovel.com/bookquery/clrhxanjen"
-    },
-    {
-      "platform": "起点国际 WebNovel 目录",
-      "reportedTotalChapters": 778,
-      "sourceUrl": "https://www.webnovel.com/book/9788724503379203/catalog"
-    },
-    {
-      "platform": "小说阅读网作品页",
-      "reportedTotalChapters": 787,
-      "firstVolumeFreeChapters": 43,
-      "firstVolumeFreeWordCount": 103132,
-      "sourceUrl": "https://readnovel.com/book/9788724503379203"
-    }
-  ],
-  "publicTextEvidence": [
-    {
-      "chapterNumber": 1,
-      "title": "大枪落幕",
-      "sourceUrl": "https://m.readnovel.com/bookquery/clrhxanjen",
-      "evidence": "搜索引擎索引返回开篇片段；官方页面直接打开返回403，未获得完整章节。",
-      "textCollected": false,
-      "analysisStatus": "insufficient-source"
+      "volume": 17,
+      "startLine": 114287,
+      "endLine": 118089,
+      "openingChapter": "第一章 哗变？",
+      "closingChapter": "第二十八章 此土佛法不足言（上）",
+      "chapterCount": 30,
+      "chars": 72007,
+      "chapters": [
+        {
+          "volume": 17,
+          "sequenceInVolume": 1,
+          "printedNumber": 1,
+          "title": "第一章 哗变？",
+          "label": "哗变？",
+          "line": 114287
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 2,
+          "printedNumber": 2,
+          "title": "第二章 雷霆",
+          "label": "雷霆",
+          "line": 114426
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 3,
+          "printedNumber": 3,
+          "title": "第三章 离殇（上）",
+          "label": "离殇（上）",
+          "line": 114657
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 4,
+          "printedNumber": 4,
+          "title": "第四章 离殇（中）",
+          "label": "离殇（中）",
+          "line": 114760
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 5,
+          "printedNumber": 5,
+          "title": "第五章 离殇（下）",
+          "label": "离殇（下）",
+          "line": 114861
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 6,
+          "printedNumber": 6,
+          "title": "第六章 离殇（完）",
+          "label": "离殇（完）",
+          "line": 114966
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 7,
+          "printedNumber": 7,
+          "title": "第七章 考较",
+          "label": "考较",
+          "line": 115081
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 8,
+          "printedNumber": 8,
+          "title": "第八章 神怪与学者（上）",
+          "label": "神怪与学者（上）",
+          "line": 115306
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 9,
+          "printedNumber": 9,
+          "title": "第九章 神怪与学者(中)",
+          "label": "神怪与学者(中)",
+          "line": 115449
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 10,
+          "printedNumber": 10,
+          "title": "第十章 神怪与学者（下）",
+          "label": "神怪与学者（下）",
+          "line": 115592
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 11,
+          "printedNumber": 11,
+          "title": "第十一章 神怪与学者（完）",
+          "label": "神怪与学者（完）",
+          "line": 115715
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 12,
+          "printedNumber": 11,
+          "title": "第十一章神怪与学者（完）",
+          "label": "神怪与学者（完）",
+          "line": 115717
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 13,
+          "printedNumber": 12,
+          "title": "第十二章 修罗",
+          "label": "修罗",
+          "line": 115877
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 14,
+          "printedNumber": 13,
+          "title": "第十三章 谈判失败",
+          "label": "谈判失败",
+          "line": 116126
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 15,
+          "printedNumber": 14,
+          "title": "第十四章 受难的耶稣",
+          "label": "受难的耶稣",
+          "line": 116249
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 16,
+          "printedNumber": 15,
+          "title": "第十五章 天保仔之死（上）",
+          "label": "天保仔之死（上）",
+          "line": 116372
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 17,
+          "printedNumber": 16,
+          "title": "第十六章 天保仔之死(中)",
+          "label": "天保仔之死(中)",
+          "line": 116493
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 18,
+          "printedNumber": 17,
+          "title": "第十七章 天保仔之死（下）",
+          "label": "天保仔之死（下）",
+          "line": 116610
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 19,
+          "printedNumber": 18,
+          "title": "第十八章 天保仔之死（完）",
+          "label": "天保仔之死（完）",
+          "line": 116733
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 20,
+          "printedNumber": 18,
+          "title": "第十八章天保仔之死（完）",
+          "label": "天保仔之死（完）",
+          "line": 116735
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 21,
+          "printedNumber": 19,
+          "title": "第十九章 丽姜",
+          "label": "丽姜",
+          "line": 116900
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 22,
+          "printedNumber": 20,
+          "title": "第二十章 幸臣",
+          "label": "幸臣",
+          "line": 117043
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 23,
+          "printedNumber": 21,
+          "title": "第二十一章 破封（上）",
+          "label": "破封（上）",
+          "line": 117158
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 24,
+          "printedNumber": 22,
+          "title": "第二十二章 破封（中）",
+          "label": "破封（中）",
+          "line": 117255
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 25,
+          "printedNumber": 23,
+          "title": "第二十三章 破封（下）",
+          "label": "破封（下）",
+          "line": 117370
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 26,
+          "printedNumber": 24,
+          "title": "第二十四章 破封（完）",
+          "label": "破封（完）",
+          "line": 117465
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 27,
+          "printedNumber": 25,
+          "title": "第二十五章 魔瓶",
+          "label": "魔瓶",
+          "line": 117570
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 28,
+          "printedNumber": 26,
+          "title": "第二十六章 九斗",
+          "label": "九斗",
+          "line": 117723
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 29,
+          "printedNumber": 27,
+          "title": "第二十七章 山河蠹",
+          "label": "山河蠹",
+          "line": 117886
+        },
+        {
+          "volume": 17,
+          "sequenceInVolume": 30,
+          "printedNumber": 28,
+          "title": "第二十八章 此土佛法不足言（上）",
+          "label": "此土佛法不足言（上）",
+          "line": 117993
+        }
+      ]
     }
   ]
 }

@@ -5,3 +5,4 @@ dist/
 worlds/*/story-state.json
 worlds/*/library/
 private/
+original.txt
