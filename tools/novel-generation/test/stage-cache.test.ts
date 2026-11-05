@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
-import { runCachedStage } from "../src/stage-cache.js";
+import { loadRunStoryState, prepareRunDirectory, runCachedStage } from "../src/stage-cache.js";
+import { emptyStoryState, saveStoryState } from "../src/story-state.js";
 
 test("stage cache reuses only matching prompt fingerprints and intact output", async () => {
   const dir = await mkdtemp(resolve(tmpdir(), "novel-stage-cache-"));
@@ -38,6 +39,34 @@ test("concurrent stage completions do not overwrite each other's manifest entrie
     };
     assert.ok(manifest.stages.plot);
     assert.ok(manifest.stages.creative);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+
+test("resume directory identity is bound to its world and pipeline kind", async () => {
+  const dir = await mkdtemp(resolve(tmpdir(), "novel-run-identity-"));
+  try {
+    await prepareRunDirectory(dir, "world-a", "write-long");
+    await assert.rejects(() => prepareRunDirectory(dir, "world-a", "write"), /identity mismatch/);
+    await assert.rejects(() => prepareRunDirectory(dir, "world-b", "write-long"), /identity mismatch/);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+test("resume always reads the immutable initial state after a previous attempt committed", async () => {
+  const dir = await mkdtemp(resolve(tmpdir(), "novel-state-snapshot-"));
+  try {
+    const statePath = resolve(dir, "worlds", "world-a", "story-state.json");
+    const outputDir = resolve(dir, ".output", "world-a", "run-1");
+    const initial = await loadRunStoryState(statePath, "world-a", outputDir, "write");
+    assert.equal(initial.currentPosition, "尚未建立");
+    const committed = { ...emptyStoryState("world-a"), currentPosition: "第1章结束" };
+    await saveStoryState(statePath, committed);
+    const resumed = await loadRunStoryState(statePath, "world-a", outputDir, "write");
+    assert.equal(resumed.currentPosition, "尚未建立");
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
