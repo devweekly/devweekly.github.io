@@ -350,6 +350,9 @@ async function main(): Promise<void> {
     const runId = new Date().toISOString().replace(/[:.]/g, "-");
     const outputDir = resolveRunOutputDir(worldId, "write-long", resolve(".output", worldId, "long-" + runId));
     const statePath = resolve("worlds", worldId, "story-state.json");
+    const longState = await loadRunStoryState(statePath, worldId, outputDir, "write-long");
+    const storyAnalysisQuery = [brief, contextText ?? "", sourceText?.slice(-1500) ?? "", longState.currentPosition, ...longState.plotThreads.filter(thread => thread.status === "open" || thread.status === "active").map(thread => thread.title), ...longState.characters.slice(0, 12).map(character => character.name)].join("\n");
+    const storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), storyAnalysisQuery);
     const retrievalLimit = Number(arg("--retrieval-limit") ?? 4);
     if (!Number.isInteger(retrievalLimit) || retrievalLimit < 1 || retrievalLimit > 12) {
       throw new Error("--retrieval-limit must be an integer between 1 and 12.");
