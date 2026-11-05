@@ -2,6 +2,8 @@
 
 本地长篇小说创作工具，使用 CodeBuddy Agent SDK。当前提供小说文本导入、原文检索、人物/事件/关系候选抽取、多 Agent 文本分析、多阶段章节写作，以及模型与执行链路自检。
 
+续写架构、流程图与实现差距审计见 [`ARCHITECTURE.md`](./ARCHITECTURE.md)。续写默认全自动：章节完成后自动提取并提交故事状态；只有模型对照实验等隔离场景才使用 `--no-apply-state`。
+
 ## 1. 导入小说资料
 
 只导入你合法取得且有权使用的 TXT 或 Markdown 文本。导入索引保存在 `worlds/<world>/library/`，故事状态保存在 `worlds/<world>/story-state.json`，两者随代码提交，检出后无需重新导入即可检索与续写。原始文件 `original.txt` 和 `private/` 目录不入库。`library/index.json` 含带重叠的全文片段，提交到公开仓库前需确认授权范围。
@@ -72,7 +74,7 @@ npm run dev -- write --world conghuoniao --mode continuation \
   --context ./private/continuity-summary.md \
   --retrieval-limit 6 \
   --max-words 3500 \
-  --apply-state
+
 ```
 
 每次运行生成：
@@ -84,7 +86,7 @@ npm run dev -- write --world conghuoniao --mode continuation \
 - `chapter.md`：终审后的章节
 - `08-state-update.json`：状态变更提案（合并后的完整状态）
 
-`--apply-state` 是显式开关：核对提案后才用它替换 `worlds/<world>/story-state.json`。不加这个开关，正史状态保持不变，`write` 可以反复试写而不污染已核实的事实与 `L####` 证据。`continuation` 模式的 `--source` 必须是你提供或有权使用的文本，本地 `private/` 不入库。
+章节生成成功后，状态管理员会提取人物、事件、正史事实和情节线变化，并自动写入 SQLite 权威状态及兼容 JSON 快照，供下一章直接使用。只有模型对照、盲测等需要候选互相隔离的场景才传 `--no-apply-state`；普通续写不要使用该参数。状态提取或持久化失败会使本次命令失败，不能把状态未更新的章节当作可继续写作的成功结果。`continuation` 模式的 `--source` 必须是你提供或有权使用的文本，本地 `private/` 不入库。
 
 已跑通的续写成稿归档在 `worlds/conghuoniao/chapters/`，含正文、连续性审查和状态提案；该目录随代码提交，阶段文件仍留在 `.output/<world>/<run-id>/`。
 
@@ -99,7 +101,7 @@ npm run dev -- write-long --world conghuoniao --mode continuation \
   --max-words 10000 --scenes 8 --retrieval-limit 4 --timeout-ms 180000
 ```
 
-流程：一次生成 N 场蓝图（`01-scene-blueprint.md`，必须有连续且唯一的 `## 场景 1..N` 标题；格式不合格直接停止，不会把整份蓝图重复当成每场）→ 按场景蓝图检索相关原文（`00-scene-XX-retrieval.md`）→ 逐场成文（`02-scene-XX.md`，字数不足自动补写一次，场间传入上一场较完整的结尾上下文）→ 拼接初稿（`03-draft.md`）→ 分两批连续性审查（`04-continuity-review.md`）→ 逐场对白与文风修订（`05-polish-XX.md`）→ `chapter.md`、`06-rhythm-metrics.json` 与状态提案 `07-state-update.json`。`--apply-state` 才写回正史状态。各阶段产物全部落盘，可逐场复核或重跑。
+流程：一次生成 N 场蓝图（`01-scene-blueprint.md`，必须有连续且唯一的 `## 场景 1..N` 标题；格式不合格直接停止，不会把整份蓝图重复当成每场）→ 按场景蓝图检索相关原文（`00-scene-XX-retrieval.md`）→ 逐场成文（`02-scene-XX.md`，字数不足自动补写一次，场间传入上一场较完整的结尾上下文）→ 拼接初稿（`03-draft.md`）→ 分两批连续性审查（`04-continuity-review.md`）→ 逐场对白与文风修订（`05-polish-XX.md`）→ `chapter.md`、`06-rhythm-metrics.json` 与状态更新 `07-state-update.json`。状态默认自动写回 SQLite 和兼容快照；状态提取或保存失败会让命令失败，避免下一章读取陈旧状态。仅隔离实验使用 `--no-apply-state`。各阶段产物全部落盘，可逐场复核或重跑。
 
 文风复核见 `analysis/conghuoniao/style-rhythm.md`：原书抽样平均句长 22 字、长句 25.3%、超长句 4.7%，而成稿 `chapter-001.md` 平均 14.7 字、长句 8%、超长句 0%。量化约束已写进 `style-profile.md` 和成文、修订、审查三处提示；`06-rhythm-metrics.json` 用同一口径统计成稿，偏离就回到文风阶段。
 
@@ -201,7 +203,7 @@ node scripts/compare-models.mjs \\
   --repetitions 1
 \`\`\`
 
-脚本顺序运行现有 \`write\` 多 Agent 流水线，并启用 \`--strict-model\`：模型调用失败直接失败，不允许静默切换到其他模型。脚本不传 \`--apply-state\`，各候选读取同一份故事状态，不会污染后续候选。模型参数请使用 \`models\` 输出的完整 ID，不用别名。
+脚本顺序运行现有 \`write\` 多 Agent 流水线，并启用 \`--strict-model\`：模型调用失败直接失败，不允许静默切换到其他模型。脚本显式传 `--no-apply-state`，确保所有候选读取同一份故事状态，彼此不会污染。模型参数请使用 \`models\` 输出的完整 ID，不用别名。
 
 结果在 \`.output/model-comparison/<run-id>/\`：\`candidate-XX/\` 保存正文及各阶段产物；\`candidate-XX.log\` 保存日志；\`MODEL-MAPPING-PRIVATE.json\` 保存候选与模型映射。**盲评前不要把映射文件或日志交给评审模型。**
 
