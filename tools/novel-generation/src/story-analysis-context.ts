@@ -10,9 +10,9 @@ function values(value: unknown): string[] {
 }
 
 function terms(text: string): Set<string> {
-  const normalized = text.toLocaleLowerCase().replace(/[^\\p{L}\\p{N}]+/gu, " ").trim();
-  const result = new Set(normalized.split(/\\s+/u).filter(token => token.length > 1));
-  const compact = normalized.replace(/\\s/gu, "");
+  const normalized = text.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ").trim();
+  const result = new Set(normalized.split(/\s+/u).filter(token => token.length > 1));
+  const compact = normalized.replace(/\s/gu, "");
   for (let i = 0; i < compact.length - 1; i++) result.add(compact.slice(i, i + 2));
   return result;
 }
