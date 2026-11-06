@@ -45,7 +45,7 @@
 | 万字章节流水线 | `src/long-chapter.ts` | 场景蓝图、逐场检索与生成、场间上下文交接、分批审查、逐场修订、共享 Anti-AI 编辑、全章终审与 Reader 观察 |
 | 质量回归 | `src/regression.ts`、`scripts/compare-models.mjs` | 节奏量化、候选盲评和模型对照；不属于每次正式续写的人工审批步骤 |
 | 质量门禁 | `src/chapter-review.ts` | 审查 JSON schema、正文证据、严重程度与多场景定位；有限自动修复和复查 |
-| 文学编辑原则 | `src/literary-edit.ts`、`src/style-distillation.ts` | Writer/编辑共享 Living Voice；Anti-AI 诊断、克制编辑与保守复核；盲读 Reader；抽象风格提炼 |
+| 文学编辑原则 | `src/literary-edit.ts`、`src/style-distillation.ts`、`src/style-regression.ts` | Writer/编辑共享 Living Voice；Anti-AI 诊断、克制编辑与保守复核；盲读 Reader；抽象风格提炼与非门禁风格回归 |
 | 角色推演沙盘 | `src/roleplay-sandbox.ts` | 作者主动控制的多轮人物互动推演；只保存候选记录，不写入 Story State |
 | 阶段恢复 | `src/stage-cache.ts` | 输入指纹、实际模型回退链、输出哈希、阶段语义校验、原子阶段产物、运行 manifest 和初始状态快照 |
 
