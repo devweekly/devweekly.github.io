@@ -726,7 +726,13 @@ function mergeAndPersist(
     });
   }
 
-  const storyGraph=buildStoryGraph({storyCore,characters:characterRows,relations,plotThreads,foreshadowings,macguffins,beats:beatRows,developmentPossibilities});
+  const storyGraph=buildStoryGraph({
+    storyCore,
+    characters:characterRows as unknown as Array<Record<string,unknown>>,
+    relations,plotThreads,foreshadowings,macguffins,
+    beats:beatRows as unknown as Array<Record<string,unknown>>,
+    developmentPossibilities
+  });
   syncNovelCharacters(worldDir, worldId, characterRows, relationRows);
   syncNovelThreads(worldDir, worldId, threadRows);
   syncNovelForeshadowings(worldDir, worldId, foreshadowingRows);
