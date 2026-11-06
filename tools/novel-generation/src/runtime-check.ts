@@ -10,6 +10,7 @@ import {
   DEFAULT_CONFIG_PATH
 } from "./agent-runtime.js";
 import { applyAgentMessage, type AgentStreamState } from "./generate.js";
+import { DEFAULT_PROBE_TIMEOUT_MS } from "./constants.js";
 
 const PROMPT = "只回复两个字：连通。不要解释。";
 
@@ -93,7 +94,7 @@ function findCli(): string | undefined {
  * 再核对 CLI 日志里这一轮实际用的模型，避免 --model 没传到 CLI 却看着正常。
  */
 export async function checkRuntime(options: RuntimeCheckOptions = {}): Promise<RuntimeCheckResult> {
-  const timeoutMs = options.timeoutMs ?? 90_000;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
   const lines: string[] = [];
   const failures: string[] = [];
   const catalog = readModelCatalog({ projectRoot: process.cwd() });

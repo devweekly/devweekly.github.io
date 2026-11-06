@@ -4,6 +4,11 @@ import { searchLibrary } from "./library.js";
 import { runAgentText } from "./generate.js";
 import { parseJsonObject } from "./model-json.js";
 import { z } from "zod";
+import {
+  AGENT_REPORT_MIN_CHARS,
+  AGENT_REPORT_MIN_REFERENCES,
+  AGENT_REPORT_MIN_SECTIONS
+} from "./constants.js";
 
 /**
  * fact：句子里的具体事实（数值、名称、身份、事件结果）必须被该句引用行支持；
@@ -394,10 +399,10 @@ export function validateAnalysisOutput(text: string, totalLines: number): Output
   const issues: string[] = [];
   const chars = text.replace(/\s/g, "").length;
   const references = [...text.matchAll(/\bL(\d+)\b/g)].map(match => Number(match[1]));
-  if (chars < 600) issues.push(`正文过短（${chars} 字，要求至少 600 字）`);
-  if (references.length < 6) issues.push(`证据行号不足（${references.length} 处，要求至少 6 处）`);
+  if (chars < AGENT_REPORT_MIN_CHARS) issues.push(`正文过短（${chars} 字，要求至少 ${AGENT_REPORT_MIN_CHARS} 字）`);
+  if (references.length < AGENT_REPORT_MIN_REFERENCES) issues.push(`证据行号不足（${references.length} 处，要求至少 ${AGENT_REPORT_MIN_REFERENCES} 处）`);
   const sections = [...text.matchAll(/^##\s/gm)].length;
-  if (sections < 3) issues.push(`二级标题不足（${sections} 个，要求至少 3 个）`);
+  if (sections < AGENT_REPORT_MIN_SECTIONS) issues.push(`二级标题不足（${sections} 个，要求至少 ${AGENT_REPORT_MIN_SECTIONS} 个）`);
   if (/TODO|待补|占位|待填/.test(text)) issues.push("残留占位文字");
   const invalid = references.filter(line => line < 1 || line > totalLines);
   if (invalid.length) issues.push(`行号越界：${invalid.slice(0, 5).join("、")}`);

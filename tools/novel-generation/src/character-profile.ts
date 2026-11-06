@@ -8,6 +8,7 @@ import {
   type NovelCharacterObservationRow, type NovelCharacterProfileRow
 } from "./database.js";
 import { runAgentText } from "./generate.js";
+import { PROFILE_ANALYSIS_DEFAULT_TIMEOUT_MS } from "./constants.js";
 import { parseJsonObject } from "./model-json.js";
 import { readTaskProfiles } from "./task-profiles.js";
 
@@ -171,7 +172,7 @@ export async function buildCharacterProfiles(worldId: string, options: Character
       let lastError: unknown;
       for (const [index, candidate] of attempts.entries()) {
         try {
-          const raw = await runAgentText(buildProfilePrompt(candidate), options.model, options.timeoutMs ?? 150_000, profile);
+          const raw = await runAgentText(buildProfilePrompt(candidate), options.model, options.timeoutMs ?? PROFILE_ANALYSIS_DEFAULT_TIMEOUT_MS, profile);
           parsed = ProfileSchema.parse(parseJsonObject(raw));
           if (index > 0) console.warn("[character-profile] " + character.name + " 减半采样后成功");
           break;

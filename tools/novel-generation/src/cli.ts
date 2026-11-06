@@ -10,6 +10,17 @@ import { analyzeLibrary } from "./analysis.js";
 import { analyzeStoryCorpus } from "./story-analysis.js";
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
 import { buildWritingBrief } from "./writing-brief.js";
+import {
+  MAX_AGENT_TIMEOUT_MS,
+  MAX_MAX_WORDS,
+  MAX_SCENES,
+  MIN_AGENT_TIMEOUT_MS,
+  MIN_MAX_WORDS,
+  MIN_SCENES,
+  MIN_WRITE_TIMEOUT_MS,
+  PROFILE_ANALYSIS_DEFAULT_TIMEOUT_MS,
+  DEFAULT_REGRESSION_TIMEOUT_MS
+} from "./constants.js";
 import { indexNovelStructure } from "./novel-kb.js";
 import { buildVolumeArcs, listVolumeArcs } from "./story-arcs.js";
 import { buildCharacterProfiles } from "./character-profile.js";
@@ -137,7 +148,7 @@ async function main(): Promise<void> {
       worldDir,
       model: arg("--model"),
       top: Number(arg("--top") ?? 24),
-      timeoutMs: Number(arg("--timeout-ms") ?? 150_000),
+      timeoutMs: Number(arg("--timeout-ms") ?? PROFILE_ANALYSIS_DEFAULT_TIMEOUT_MS),
       force: process.argv.includes("--force"),
       names: (arg("--names") ?? "").split(",").map(name => name.trim()).filter(Boolean)
     });
@@ -186,7 +197,7 @@ async function main(): Promise<void> {
       console.log("Directory: " + result.dir);
     } else if (phase === "collect") {
       const timeoutMs = Number(arg("--timeout-ms") ?? 90_000);
-      if (!Number.isInteger(timeoutMs) || timeoutMs < 5_000 || timeoutMs > 600_000) {
+      if (!Number.isInteger(timeoutMs) || timeoutMs < MIN_AGENT_TIMEOUT_MS || timeoutMs > MAX_AGENT_TIMEOUT_MS) {
         throw new Error("--timeout-ms must be an integer between 5000 and 600000.");
       }
       const result = await collectWorldAnalysis(worldId, {
@@ -265,7 +276,7 @@ async function main(): Promise<void> {
 
   if (command === "check-runtime") {
     const timeoutMs = Number(arg("--timeout-ms") ?? 90_000);
-    if (!Number.isInteger(timeoutMs) || timeoutMs < 5_000 || timeoutMs > 600_000) {
+    if (!Number.isInteger(timeoutMs) || timeoutMs < MIN_AGENT_TIMEOUT_MS || timeoutMs > MAX_AGENT_TIMEOUT_MS) {
       throw new Error("--timeout-ms must be an integer between 5000 and 600000.");
     }
     const result = await checkRuntime({ timeoutMs, model: arg("--model") });
@@ -281,8 +292,8 @@ async function main(): Promise<void> {
     if (!Number.isInteger(contextLines) || contextLines < 10 || contextLines > 400) {
       throw new Error("--context-lines must be an integer between 10 and 400.");
     }
-    const timeoutMs = Number(arg("--timeout-ms") ?? 240_000);
-    if (!Number.isInteger(timeoutMs) || timeoutMs < 30_000 || timeoutMs > 600_000) {
+    const timeoutMs = Number(arg("--timeout-ms") ?? DEFAULT_REGRESSION_TIMEOUT_MS);
+    if (!Number.isInteger(timeoutMs) || timeoutMs < MIN_WRITE_TIMEOUT_MS || timeoutMs > MAX_AGENT_TIMEOUT_MS) {
       throw new Error("--timeout-ms must be an integer between 30000 and 600000.");
     }
     const targetWords = Number(arg("--max-words") ?? 0);
@@ -347,7 +358,7 @@ async function main(): Promise<void> {
     const limit = Number(arg("--limit") ?? 20);
     if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("--limit must be between 1 and 100.");
     const timeoutMs = Number(arg("--timeout-ms") ?? 60_000);
-    if (!Number.isInteger(timeoutMs) || timeoutMs < 5_000 || timeoutMs > 600_000) {
+    if (!Number.isInteger(timeoutMs) || timeoutMs < MIN_AGENT_TIMEOUT_MS || timeoutMs > MAX_AGENT_TIMEOUT_MS) {
       throw new Error("--timeout-ms must be an integer between 5000 and 600000.");
     }
     const result = await analyzeLibrary(libraryDir, worldId, limit, arg("--model"), timeoutMs);
@@ -360,7 +371,7 @@ async function main(): Promise<void> {
 
   if (command === "analyze-story") {
     const timeoutMs = Number(arg("--timeout-ms") ?? 180_000);
-    if (!Number.isInteger(timeoutMs) || timeoutMs < 30_000 || timeoutMs > 600_000) {
+    if (!Number.isInteger(timeoutMs) || timeoutMs < MIN_WRITE_TIMEOUT_MS || timeoutMs > MAX_AGENT_TIMEOUT_MS) {
       throw new Error("--timeout-ms must be between 30000 and 600000.");
     }
     const shardArg = arg("--shard");
@@ -427,7 +438,7 @@ async function main(): Promise<void> {
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   const model = arg("--model");
   const maxWords = Number(arg("--max-words") ?? 3000);
-  if (!Number.isInteger(maxWords) || maxWords < 300 || maxWords > 20000) throw new Error("--max-words must be an integer between 300 and 20000.");
+  if (!Number.isInteger(maxWords) || maxWords < MIN_MAX_WORDS || maxWords > MAX_MAX_WORDS) throw new Error("--max-words must be an integer between 300 and 20000.");
 
   if (command === "write") {
     const runId = new Date().toISOString().replace(/[:.]/g, "-");
@@ -483,9 +494,9 @@ async function main(): Promise<void> {
 
   if (command === "write-long") {
     const scenes = Number(arg("--scenes") ?? 8);
-    if (!Number.isInteger(scenes) || scenes < 2 || scenes > 20) throw new Error("--scenes must be an integer between 2 and 20.");
+    if (!Number.isInteger(scenes) || scenes < MIN_SCENES || scenes > MAX_SCENES) throw new Error("--scenes must be an integer between 2 and 20.");
     const timeoutMs = Number(arg("--timeout-ms") ?? 180_000);
-    if (!Number.isInteger(timeoutMs) || timeoutMs < 30_000 || timeoutMs > 600_000) {
+    if (!Number.isInteger(timeoutMs) || timeoutMs < MIN_WRITE_TIMEOUT_MS || timeoutMs > MAX_AGENT_TIMEOUT_MS) {
       throw new Error("--timeout-ms must be an integer between 30000 and 600000.");
     }
     const mode = (arg("--mode") ?? (sourceText ? "continuation" : "derivative")) as GenerationMode;

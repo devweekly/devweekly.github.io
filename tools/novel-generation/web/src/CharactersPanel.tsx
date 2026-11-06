@@ -4,6 +4,7 @@ import {
   List, Row, Space, Spin, Statistic, Tabs, Tag, Timeline, Typography
 } from "antd";
 import { BookOutlined, ReloadOutlined, UserOutlined } from "@ant-design/icons";
+import { ALIAS_PREVIEW_LIMIT, AVATAR_SIZE_DETAIL, AVATAR_SIZE_LIST, BADGE_OVERFLOW_COUNT, SHORT_ROLE_MAX_LENGTH } from "./constants";
 
 const { Title, Text, Paragraph } = Typography;
 
@@ -77,7 +78,7 @@ const formatDate = (value?: string | null): string =>
 const shortRole = (role: string): string => {
   const head = role.split(/[。：:，,；;\n]/u)[0]?.trim() ?? "";
   if (!head) return "人物";
-  return head.length > 12 ? head.slice(0, 12) + "…" : head;
+  return head.length > SHORT_ROLE_MAX_LENGTH ? head.slice(0, SHORT_ROLE_MAX_LENGTH) + "…" : head;
 };
 
 /** 各观察维度都是独立可检查项；用标签组呈现，避免长文本挤进 Descriptions 窄列。 */
@@ -209,7 +210,7 @@ export default function CharactersPanel({
           title={
             <Space size={8}>
               <span>人物</span>
-              <Badge count={total} showZero overflowCount={9999} color="#405b78" />
+              <Badge count={total} showZero overflowCount={BADGE_OVERFLOW_COUNT} color="#405b78" />
             </Space>
           }
           extra={
@@ -259,7 +260,7 @@ export default function CharactersPanel({
                       }}
                     >
                       <Avatar
-                        size={36}
+                        size={AVATAR_SIZE_LIST}
                         icon={<UserOutlined />}
                         style={{
                           flexShrink: 0,
@@ -299,7 +300,7 @@ export default function CharactersPanel({
             <Space direction="vertical" size={16} style={{ width: "100%" }}>
               <Card styles={{ body: { padding: 20 } }}>
                 <Flex gap={16} align="center" wrap="wrap">
-                  <Avatar size={56} icon={<UserOutlined />} style={{ flexShrink: 0, background: "#405b78" }} />
+                  <Avatar size={AVATAR_SIZE_DETAIL} icon={<UserOutlined />} style={{ flexShrink: 0, background: "#405b78" }} />
                   <Flex vertical gap={6} style={{ flex: 1, minWidth: 220 }}>
                     <Title level={3} style={{ margin: 0 }}>{detail.character.name}</Title>
                     <Space size={8} wrap>
@@ -334,11 +335,11 @@ export default function CharactersPanel({
                 {aliases.length ? (
                   <>
                     <Space size={[6, 6]} wrap>
-                      {(aliasExpanded ? aliases : aliases.slice(0, 24)).map((alias, index) => (
+                      {(aliasExpanded ? aliases : aliases.slice(0, ALIAS_PREVIEW_LIMIT)).map((alias, index) => (
                         <Tag key={`${alias}-${index}`}>{alias}</Tag>
                       ))}
                     </Space>
-                    {aliases.length > 24 ? (
+                    {aliases.length > ALIAS_PREVIEW_LIMIT ? (
                       <div>
                         <Button
                           type="link"

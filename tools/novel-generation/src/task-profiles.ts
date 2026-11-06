@@ -3,6 +3,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { DEFAULT_CONFIG_PATH } from "./agent-runtime.js";
+import { DEFAULT_THINKING_BUDGET_TOKENS, MAX_THINKING_BUDGET_TOKENS, MIN_THINKING_BUDGET_TOKENS } from "./constants.js";
 
 export type StageKey =
   | "plot" | "creative" | "plan" | "scene" | "dialogue"
@@ -19,15 +20,15 @@ export interface TaskProfile {
 
 /** 小说正文、对白和文风修订需要保留适度思考；不把写作阶段降成低推理的机械改写。 */
 const DEFAULTS: Record<StageKey, TaskProfile> = {
-  plot: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "medium" },
-  creative: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "medium" },
-  plan: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "high" },
-  scene: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "medium" },
-  dialogue: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "medium" },
-  voice: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "medium" },
-  review: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "medium" },
-  final: { thinkingMode: "adaptive", thinkingBudgetTokens: 8192, effort: "medium" },
-  state: { thinkingMode: "disabled", thinkingBudgetTokens: 8192, effort: "low" }
+  plot: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },
+  creative: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },
+  plan: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "high" },
+  scene: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },
+  dialogue: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },
+  voice: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },
+  review: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },
+  final: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },
+  state: { thinkingMode: "disabled", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "low" }
 };
 
 export const STAGE_KEYS = Object.keys(DEFAULTS) as StageKey[];
@@ -37,7 +38,7 @@ const EFFORTS = new Set<string>(["low", "medium", "high"]);
 
 function clampBudget(value: unknown, fallback: number): number {
   const parsed = typeof value === "number" || typeof value === "string" ? Number(value) : Number.NaN;
-  return Number.isFinite(parsed) ? Math.max(1024, Math.min(65536, Math.round(parsed))) : fallback;
+  return Number.isFinite(parsed) ? Math.max(MIN_THINKING_BUDGET_TOKENS, Math.min(MAX_THINKING_BUDGET_TOKENS, Math.round(parsed))) : fallback;
 }
 
 /** 把用户配置归一化到完整档案；未知阶段、非法枚举与 auto 都退回默认值。 */

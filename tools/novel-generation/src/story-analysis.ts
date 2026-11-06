@@ -13,6 +13,11 @@ import { runAgentText } from "./generate.js";
 import { resolveAgentModel } from "./agent-runtime.js";
 import { readTaskProfiles } from "./task-profiles.js";
 import { parseJsonObject } from "./model-json.js";
+import {
+  ANALYSIS_BATCH_CHARS,
+  DEFAULT_AGENT_TIMEOUT_MS,
+  MAX_ITEM_SOURCE_REFS
+} from "./constants.js";
 export { repairJsonText } from "./model-json.js";
 
 /** Models drift between `["a"]` and `"a"`; both mean the same thing here. */
@@ -547,13 +552,13 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
   const { units } = await buildAnalysisUnits(worldId, { worldDir, catalogPath: options.catalogPath });
   if (!units.length) throw new Error("No chapter text found. Run ingest and index-story before analyze-story.");
   const model = resolveAgentModel(options.model).model;
-  const batches = groupAnalysisUnits(units, options.maxChars ?? 14_000).map((chapters, index) => ({ index, chapters, chars: chapters.reduce((sum, chapter) => sum + chapter.charCount, 0) }));
+  const batches = groupAnalysisUnits(units, options.maxChars ?? ANALYSIS_BATCH_CHARS).map((chapters, index) => ({ index, chapters, chars: chapters.reduce((sum, chapter) => sum + chapter.charCount, 0) }));
   const totalBatches = batches.length;
   if (options.limit !== undefined) {
     if (!Number.isInteger(options.limit) || options.limit < 1) throw new Error("--limit must be a positive integer.");
     batches.length = Math.min(batches.length, options.limit);
   }
-  const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, options.maxChars ?? 14_000, options.delta));
+  const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, options.maxChars ?? ANALYSIS_BATCH_CHARS, options.delta));
   await mkdir(cacheDir, { recursive: true });
   const legacyDir = options.delta ? findLegacyCacheDir(worldId, totalBatches, cacheDir) : undefined;
   if (legacyDir) console.log("[story-analysis] delta mode · legacy batches from " + legacyDir);
@@ -580,7 +585,7 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
       if (options.mergeOnly) { pending++; continue; }
       console.log(`[story-analysis] batch ${batch.index + 1}/${totalBatches} · ${batch.chapters[0]?.title} … ${batch.chapters.at(-1)?.title} · ${batch.chars} chars`);
       try {
-        const timeoutMs = options.timeoutMs ?? 180_000;
+        const timeoutMs = options.timeoutMs ?? DEFAULT_AGENT_TIMEOUT_MS;
         const profile = readTaskProfiles().state;
         if (legacyDir) {
           const legacy = await loadLegacyBatch(legacyDir, batch);
@@ -806,7 +811,7 @@ function mergeAndPersist(
       arc: unique([...asStrings(item.arcPossibilities), ...asStrings(item.observedChanges)]),
       firstChapter: ordinals.length ? Math.min(...ordinals) : null,
       lastChapter: ordinals.length ? Math.max(...ordinals) : null,
-      sourceRefs: refs.slice(0, 24),
+      sourceRefs: refs.slice(0, MAX_ITEM_SOURCE_REFS),
       source: "story-analysis"
     };
   });
@@ -925,8 +930,8 @@ export async function storyAnalysisCacheStatus(worldId: string, options: StoryAn
   const worldDir = options.worldDir ?? resolve("worlds", worldId);
   const { units } = await buildAnalysisUnits(worldId, { worldDir, catalogPath: options.catalogPath });
   const model = resolveAgentModel(options.model).model;
-  const batches = groupAnalysisUnits(units, options.maxChars ?? 14_000);
-  const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, options.maxChars ?? 14_000));
+  const batches = groupAnalysisUnits(units, options.maxChars ?? ANALYSIS_BATCH_CHARS);
+  const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, options.maxChars ?? ANALYSIS_BATCH_CHARS));
   let cached = 0;
   batches.forEach((_, index) => {
     if (existsSync(join(cacheDir, "batch-" + String(index).padStart(4, "0") + ".json"))) cached++;

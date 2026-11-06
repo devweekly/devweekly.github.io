@@ -5,6 +5,7 @@ import { runAgentText } from "./generate.js";
 import type { LibraryChunk } from "./library.js";
 import { buildEntityRegistry } from "./entity-registry.js";
 import { parseJsonObject } from "./model-json.js";
+import { ANALYSIS_DEFAULT_TIMEOUT_MS } from "./constants.js";
 
 export type NarrativeEntityType = "character" | "organization" | "location" | "object" | "ability" | "concept";
 export type ExtractionConfidence = "explicit" | "inferred";
@@ -201,7 +202,7 @@ export async function verifyAnnotationEvidence(
   annotation: ChunkAnnotation,
   chunk: LibraryChunk,
   model?: string,
-  timeoutMs = 60_000
+  timeoutMs = ANALYSIS_DEFAULT_TIMEOUT_MS
 ): Promise<ChunkAnnotation> {
   const groups = [
     { kind: "entity" as const, items: annotation.entities.map(({ name, type, aliases, description, evidence }) => ({ name, type, aliases, description, evidence })) },
@@ -277,7 +278,7 @@ export async function analyzeLibrary(
   worldId: string,
   limit: number,
   model?: string,
-  timeoutMs = 60_000
+  timeoutMs = ANALYSIS_DEFAULT_TIMEOUT_MS
 ): Promise<{ processed: number; failed: number; remaining: number }> {
   const index = JSON.parse(await readFile(join(libraryDir, "index.json"), "utf8")) as LibraryIndex;
   if (index.schemaVersion !== 1 || index.worldId !== worldId) throw new Error("Library index schema/world mismatch.");

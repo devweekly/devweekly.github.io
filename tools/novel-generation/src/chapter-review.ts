@@ -1,13 +1,18 @@
 import { z } from "zod";
 import { parseJsonObject } from "./model-json.js";
+import {
+  MAX_REVIEW_ISSUES,
+  MAX_SCENES,
+  REVIEW_EVIDENCE_MAX_CHARS
+} from "./constants.js";
 
 /**
  * 终审只回答一个问题：有没有读者会认定「不可能」的硬伤。
  * 措辞、用字、称谓、节奏、伏笔、偏好、需要再核对才能确认的疑点，一律不报。
  */
 export const ReviewIssueSchema = z.object({
-  scenes: z.array(z.number().int().min(1).max(40)).default([]),
-  evidence: z.string().min(2).max(40),
+  scenes: z.array(z.number().int().min(1).max(MAX_SCENES)).default([]),
+  evidence: z.string().min(2).max(REVIEW_EVIDENCE_MAX_CHARS),
   problem: z.string().min(1),
   repair: z.string().min(1)
 }).strict();
@@ -15,7 +20,7 @@ export const ReviewIssueSchema = z.object({
 export const ChapterReviewSchema = z.object({
   status: z.enum(["pass", "needs_repair"]),
   summary: z.string().min(1),
-  issues: z.array(ReviewIssueSchema).max(3)
+  issues: z.array(ReviewIssueSchema).max(MAX_REVIEW_ISSUES)
 }).strict();
 
 export type ReviewIssue = z.infer<typeof ReviewIssueSchema>;
@@ -69,7 +74,7 @@ export function parseChapterReview(raw: string, chapter: string, sceneCount?: nu
  */
 export function withDeterministicIssues(report: ChapterReview, issues: ReviewIssue[]): ChapterReview {
   if (!issues.length) return report;
-  const merged = [...issues, ...report.issues].slice(0, 3);
+  const merged = [...issues, ...report.issues].slice(0, MAX_REVIEW_ISSUES);
   return { status: "needs_repair", summary: report.summary, issues: merged };
 }
 

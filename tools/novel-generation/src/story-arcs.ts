@@ -7,6 +7,7 @@ import { resolveAgentModel } from "./agent-runtime.js";
 import { readTaskProfiles } from "./task-profiles.js";
 import { openWorldDatabase } from "./database.js";
 import { parseJsonObject } from "./model-json.js";
+import { DEFAULT_AGENT_TIMEOUT_MS } from "./constants.js";
 
 const ArcSchema = z.object({
   title: z.string().default(""),
@@ -128,7 +129,7 @@ export async function buildVolumeArcs(
     if (!arc) {
       if (!digest.beats.length) continue;
       console.log(`[story-arcs] volume ${digest.volume} · ${digest.chapters} chapters · ${digest.beats.length} beats`);
-      const raw = await runAgentText(buildPrompt(digest), model, options.timeoutMs ?? 180_000, readTaskProfiles().state);
+      const raw = await runAgentText(buildPrompt(digest), model, options.timeoutMs ?? DEFAULT_AGENT_TIMEOUT_MS, readTaskProfiles().state);
       const parsed = ArcSchema.parse(parseJsonObject(raw));
       arc = { volume: digest.volume, title: parsed.title, summary: parsed.summary, keyTurns: parsed.keyTurns, characters: parsed.characters };
       const temporary = path + ".tmp";

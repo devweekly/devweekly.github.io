@@ -7,6 +7,7 @@ import { formatReview, parseChapterReview, reviewAndRepair, reviewPrompt, withDe
 import { checkIronLaws, ironLawIssues, loadIronLaws } from "./iron-laws.js";
 import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
 import { parseJsonObject } from "./model-json.js";
+import { LONG_CHAPTER_SOURCE_TAIL_CHARS } from "./constants.js";
 import { buildWorldSituationContext } from "./world-situation.js";
 
 export interface WriteWorkflowInput {
@@ -142,7 +143,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   };
   await mkdir(input.outputDir, { recursive: true });
   if (input.retrievedContext) await saveStage(input.outputDir, "00-retrieval.md", input.retrievedContext);
-  const situationQuery = [input.brief, state.currentPosition, input.contextText, input.sourceText?.slice(-2400), input.retrievedContext, input.writingBrief, input.storyPlanText, input.storyAnalysisContext].filter(Boolean).join("\n");
+  const situationQuery = [input.brief, state.currentPosition, input.contextText, input.sourceText?.slice(-LONG_CHAPTER_SOURCE_TAIL_CHARS), input.retrievedContext, input.writingBrief, input.storyPlanText, input.storyAnalysisContext].filter(Boolean).join("\n");
   const worldSituation = buildWorldSituationContext(state, situationQuery);
   if (worldSituation) await saveStage(input.outputDir, "00-world-situation-context.md", worldSituation);
 

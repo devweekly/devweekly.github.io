@@ -1,4 +1,18 @@
 import type { StoryAnalysisSnapshot } from "./database.js";
+import {
+  ANALYSIS_VERSION,
+  CONTEXT_ITEM_RENDER_LIMIT,
+  CONTEXT_LIMIT_CHARACTERS,
+  CONTEXT_LIMIT_DEVELOPMENTS,
+  CONTEXT_LIMIT_FORESHADOWINGS,
+  CONTEXT_LIMIT_GRAPH_EDGES,
+  CONTEXT_LIMIT_GRAPH_NODES,
+  CONTEXT_LIMIT_MAC_GUFFINS,
+  CONTEXT_LIMIT_PLOT_THREADS,
+  CONTEXT_LIMIT_RELATIONS,
+  CONTEXT_SOURCE_HINT_LIMIT,
+  WRITING_CONTEXT_BUDGET
+} from "./constants.js";
 
 type AnalysisItem = Record<string, unknown>;
 
@@ -69,12 +83,9 @@ function compact(item: AnalysisItem): string {
     .filter(([key, value]) => key !== "sourceRefs" && value !== undefined && value !== null && value !== "")
     .map(([key, value]) => `- ${key}: ${Array.isArray(value) ? value.join("；") : typeof value === "object" ? JSON.stringify(value) : String(value)}`)
     .join("\n");
-  const sourceSummary = refs.length ? "\n- 参考来源范围（用于回查，不代表逐条证明）： " + [...new Set(refs)].slice(0, 5).join("；") + (refs.length > 5 ? `；另有 ${refs.length - 5} 处` : "") : "";
-  return body.slice(0, 1400) + (body.length > 1400 ? "…" : "") + sourceSummary;
+  const sourceSummary = refs.length ? "\n- 参考来源范围（用于回查，不代表逐条证明）： " + [...new Set(refs)].slice(0, CONTEXT_SOURCE_HINT_LIMIT).join("；") + (refs.length > CONTEXT_SOURCE_HINT_LIMIT ? `；另有 ${refs.length - CONTEXT_SOURCE_HINT_LIMIT} 处` : "") : "";
+  return body.slice(0, CONTEXT_ITEM_RENDER_LIMIT) + (body.length > CONTEXT_ITEM_RENDER_LIMIT ? "…" : "") + sourceSummary;
 }
-
-/** 当前快照结构版本；ADR-0002 §6：旧版本快照不得注入写作上下文，必须重新分析。 */
-const ANALYSIS_VERSION = 6;
 
 /** Selects only potentially relevant analysis as optional inspiration; never turns it into canon or a writing checklist. */
 export function buildStoryAnalysisContext(snapshot: StoryAnalysisSnapshot | undefined, query: string): string {
@@ -89,12 +100,12 @@ export function buildStoryAnalysisContext(snapshot: StoryAnalysisSnapshot | unde
   }
   const queryTerms = terms(query);
   const groups: Array<[string, AnalysisItem[], number]> = [
-    ["相关人物（画像与变化可能性）", snapshot.characters, 5],
-    ["相关人物互动与关系变化", snapshot.relations ?? [], 6],
-    ["相关主线与支线", snapshot.plotThreads, 5],
-    ["相关 MacGuffin（驱动行动的目标/物件/信息）", snapshot.macguffins ?? [], 4],
-    ["可能的伏笔与不同解释", snapshot.foreshadowings, 5],
-    ["可探索的后续发展（创意选项）", snapshot.developmentPossibilities, 5]
+    ["相关人物（画像与变化可能性）", snapshot.characters, CONTEXT_LIMIT_CHARACTERS],
+    ["相关人物互动与关系变化", snapshot.relations ?? [], CONTEXT_LIMIT_RELATIONS],
+    ["相关主线与支线", snapshot.plotThreads, CONTEXT_LIMIT_PLOT_THREADS],
+    ["相关 MacGuffin（驱动行动的目标/物件/信息）", snapshot.macguffins ?? [], CONTEXT_LIMIT_MAC_GUFFINS],
+    ["可能的伏笔与不同解释", snapshot.foreshadowings, CONTEXT_LIMIT_FORESHADOWINGS],
+    ["可探索的后续发展（创意选项）", snapshot.developmentPossibilities, CONTEXT_LIMIT_DEVELOPMENTS]
   ];
   const sections = groups.map(([title, items, limit]) => {
     const chosen = select(items, queryTerms, query, limit);
@@ -103,11 +114,11 @@ export function buildStoryAnalysisContext(snapshot: StoryAnalysisSnapshot | unde
   const graph=snapshot.storyGraph;
   const nodes=Array.isArray(graph?.nodes)?graph.nodes as Array<Record<string,unknown>>:[];
   const edges=Array.isArray(graph?.edges)?graph.edges as Array<Record<string,unknown>>:[];
-  const matched=select(nodes.map(n=>({...((n.data&&typeof n.data==="object")?n.data as Record<string,unknown>:{}),graphId:n.id})),queryTerms,query,8);
+  const matched=select(nodes.map(n=>({...((n.data&&typeof n.data==="object")?n.data as Record<string,unknown>:{}),graphId:n.id})),queryTerms,query,CONTEXT_LIMIT_GRAPH_NODES);
   const ids=new Set(matched.map(n=>String(n.graphId)));
   const connected=new Set(ids);
   for(const edge of edges)if(ids.has(String(edge.from))||ids.has(String(edge.to))){connected.add(String(edge.from));connected.add(String(edge.to));}
-  const links=edges.filter(e=>connected.has(String(e.from))&&connected.has(String(e.to))).slice(0,16).map(e=>{
+  const links=edges.filter(e=>connected.has(String(e.from))&&connected.has(String(e.to))).slice(0,CONTEXT_LIMIT_GRAPH_EDGES).map(e=>{
     const from=nodes.find(n=>n.id===e.from),to=nodes.find(n=>n.id===e.to);
     return "- "+String(from?.label??e.from)+" —"+String(e.label??e.type)+"→ "+String(to?.label??e.to);
   });
@@ -122,6 +133,6 @@ export function buildStoryAnalysisContext(snapshot: StoryAnalysisSnapshot | unde
     sections.join("\n\n")
   ].join("\n\n");
   // 硬事实已由 writing-brief 承担，这里只留可选启发，预算压到 6k。
-  const budget = 6_000;
+  const budget = WRITING_CONTEXT_BUDGET;
   return rendered.length > budget ? rendered.slice(0, budget) + "\n\n（参考内容已截断；以本次创作任务和文学表达为准。）" : rendered;
 }

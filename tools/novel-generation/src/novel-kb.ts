@@ -1,4 +1,5 @@
 import { readFile } from "node:fs/promises";
+import { ANALYSIS_BATCH_CHARS } from "./constants.js";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
@@ -295,7 +296,7 @@ export async function buildAnalysisUnits(
 }
 
 /** Packs whole chapters into batches; a chapter is never split across batches. */
-export function groupAnalysisUnits(units: AnalysisUnit[], maxChars = 14_000): AnalysisUnit[][] {
+export function groupAnalysisUnits(units: AnalysisUnit[], maxChars = ANALYSIS_BATCH_CHARS): AnalysisUnit[][] {
   if (!Number.isInteger(maxChars) || maxChars < 2_000) throw new Error("maxChars must be at least 2000.");
   const batches: AnalysisUnit[][] = [];
   let current: AnalysisUnit[] = [];

@@ -25,7 +25,7 @@ test("accepts a complete analysis with evidence references", () => {
   const text = [
     "# 主线分析",
     "## 判断",
-    "正文".repeat(320),
+    "正文".repeat(450),
     "依据 L7209、L7317、L7848、L12187、L28122、L45301、L47258、L114297。",
     "## 待核实",
     "全书总章数与末卷之后的情节。",
@@ -35,7 +35,7 @@ test("accepts a complete analysis with evidence references", () => {
   const result = validateAnalysisOutput(text, 118089);
   assert.equal(result.ok, true);
   assert.equal(result.evidenceCount, 8);
-  assert.ok(result.chars >= 600);
+  assert.ok(result.chars >= 900);
 });
 
 test("rejects line numbers outside the corpus", () => {

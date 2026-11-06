@@ -2,6 +2,7 @@
 // 只覆盖「数值、门槛、禁忌」这类可判定的部分；需要理解意图的仍交给终审模型。
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { IRON_LAW_EVIDENCE_MAX_CHARS, IRON_LAW_MAX_HITS } from "./constants.js";
 
 export interface IronLaw {
   id: string;
@@ -25,7 +26,7 @@ export interface IronLawHit {
   index: number;
 }
 
-const MAX_EVIDENCE = 30;
+
 
 function parseLaws(raw: unknown, path: string): IronLaw[] {
   const container = raw as { version?: unknown; laws?: unknown };
@@ -89,12 +90,12 @@ export function checkIronLaws(text: string, laws: IronLaw[]): IronLawHit[] {
       hits.push({
         lawId: law.id,
         statement: law.statement,
-        evidence: match[0].replace(/\s+/g, " ").slice(0, MAX_EVIDENCE),
+        evidence: match[0].replace(/\s+/g, " ").slice(0, IRON_LAW_EVIDENCE_MAX_CHARS),
         problem: law.problem,
         repair: law.repair,
         index
       });
-      if (hits.length >= 6) return hits;
+      if (hits.length >= IRON_LAW_MAX_HITS) return hits;
     }
   }
   return hits;

@@ -3,6 +3,7 @@ import { dirname } from "node:path";
 import { z } from "zod";
 import { runAgentText } from "./generate.js";
 import { parseJsonObject } from "./model-json.js";
+import { DEFAULT_AGENT_TIMEOUT_MS } from "./constants.js";
 import { readTaskProfiles } from "./task-profiles.js";
 import type { StoryState } from "./story-state.js";
 
@@ -26,6 +27,6 @@ export async function generateStoryPlan(input:{worldId:string;worldBible:string;
  const prompt=["角色：长篇网络小说总纲架构师。建立或修订全书长期主线，不写章节正文，不生成逐章大纲。","只输出 JSON 对象，不要 Markdown。字段："+JSON.stringify({corePremise:"string",centralConflict:"string",protagonistLongTermGoal:"string",stakes:["string"],endDirection:"string",majorMilestones:[{id:"stable-id",title:"string",purpose:"string",turningPoint:"string",consequence:"string",status:"planned"}],longTermThreads:[{id:"stable-id",title:"string",goal:"string",stakes:"string",currentPressure:"string",nextPossibilities:["string"],status:"planned"}],revealPlan:["string"],constraints:["string"],openQuestions:["string"],revisionNotes:["string"]},null,2),
  "规划原则：主线回答故事长期讲什么、核心矛盾、主角长期目标、失败代价和最终方向。节点只规划重大转折，不固定未来几万字的场景或每章事件。只保留真正有因果联系的长期剧情线，说明目标、利害和当前压力。主线与支线通过人物选择、事件后果和信息揭示互相影响；允许卷级/单元故事闭环，不要求每章推进主线。区分已发生事实、原文推断和未来创作方向。以当前故事状态为准，不得为迁就旧规划篡改已发生事实。不要凭空发明秘密、伏笔或宏大阴谋；不确定内容放入 openQuestions。避免空泛口号。",
  "世界设定：",input.worldBible,"当前故事状态（已发生事实优先）：",JSON.stringify(input.state,null,2),input.storyAnalysisContext?"全书语料分析（只作参考，可能包含推断）：\n"+input.storyAnalysisContext:"尚无可用的全书语料分析。",input.previousPlan?"上一版规划（保留仍成立的方向和稳定 ID，必要时修订）：\n"+JSON.stringify(input.previousPlan,null,2):"首次建立长期主线。","生成可直接生效、供后续章节创作参考的完整规划；规划是方向性参考，不是逐章任务清单。"].join("\n\n");
- const raw=await runAgentText(prompt,input.model,180000,readTaskProfiles().plot,true);
+ const raw=await runAgentText(prompt,input.model,DEFAULT_AGENT_TIMEOUT_MS,readTaskProfiles().plot,true);
  return PlanSchema.parse({...BodySchema.parse(parseJsonObject(raw)),schemaVersion:1,worldId:input.worldId,status:"draft",updatedAt:new Date().toISOString()});
 }

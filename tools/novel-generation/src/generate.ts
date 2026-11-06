@@ -1,6 +1,7 @@
 import { query } from "@tencent-ai/agent-sdk";
 import { buildQueryOptions, resolveAgentModel } from "./agent-runtime.js";
 import { thinkingOption, type TaskProfile } from "./task-profiles.js";
+import { GENERATION_DEFAULT_TIMEOUT_MS } from "./constants.js";
 
 export type GenerationMode = "derivative" | "continuation";
 export interface GenerateStoryInput {
@@ -153,7 +154,7 @@ export function resolveModelAttempts(model?: string, allowFallback = true): stri
 }
 
 export async function runAgentText(
-  prompt: string, model?: string, timeoutMs = 120_000, profile?: TaskProfile, allowFallback = true
+  prompt: string, model?: string, timeoutMs = GENERATION_DEFAULT_TIMEOUT_MS, profile?: TaskProfile, allowFallback = true
 ): Promise<string> {
   const resolved = resolveAgentModel(model);
   const attempts = resolveModelAttempts(model, allowFallback);

@@ -1,3 +1,4 @@
+import { KB_DEFAULT_LIMIT, KB_FORESHADOWING_DEFAULT_LIMIT } from "./constants.js";
 import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -373,21 +374,21 @@ export function countNovelCharacters(worldDir:string,worldId:string):number{
 
 export function listNovelCharacters(worldDir:string,worldId:string,options:{query?:string;limit?:number}={}):NovelCharacterSummary[]{
  const db=openKnowledgeDatabase(worldDir,worldId);try{
-  const limit=options.limit??50;const like="%"+((options.query??"").trim())+"%";
+  const limit=options.limit??KB_DEFAULT_LIMIT;const like="%"+((options.query??"").trim())+"%";
   const rows=db.prepare("SELECT character_id AS characterId,name,aliases_json,role,bio,voice,chapters_seen AS chaptersSeen,mention_total AS mentionTotal,first_chapter AS firstChapter,last_chapter AS lastChapter FROM novel_characters WHERE (?='%%' OR name LIKE ? OR aliases_json LIKE ?) ORDER BY mention_total DESC, chapters_seen DESC, name LIMIT ?").all(like,like,like,limit) as Array<Record<string,unknown> & {aliases_json:string}>;
   return rows.map(row=>({...row,aliases:JSON.parse(row.aliases_json) as string[],aliases_json:undefined} as unknown as NovelCharacterSummary));
  }finally{db.close();}
 }
 export function listNovelThreads(worldDir:string,worldId:string,options:{limit?:number;status?:string;query?:string}={}):Array<Record<string,unknown> & {keyTurns:string[];unresolved:string[]}>{
  const db=openKnowledgeDatabase(worldDir,worldId);try{
-  const limit=options.limit??50;const like="%"+((options.query??"").trim())+"%";
+  const limit=options.limit??KB_DEFAULT_LIMIT;const like="%"+((options.query??"").trim())+"%";
   const rows=db.prepare("SELECT thread_id AS threadId,title,status,summary,key_turns_json,unresolved_json,first_chapter AS firstChapter,last_chapter AS lastChapter,COALESCE(last_chapter,0)-COALESCE(first_chapter,0) AS span FROM novel_plot_threads WHERE (?='' OR status=?) AND (?='%%' OR title LIKE ? OR summary LIKE ?) ORDER BY span DESC, first_chapter LIMIT ?").all(options.status??"",options.status??"",like,like,like,limit) as Array<Record<string,unknown> & {key_turns_json:string;unresolved_json:string}>;
   return rows.map(row=>({...row,keyTurns:JSON.parse(row.key_turns_json) as string[],unresolved:JSON.parse(row.unresolved_json) as string[],key_turns_json:undefined,unresolved_json:undefined}));
  }finally{db.close();}
 }
 export function listNovelForeshadowings(worldDir:string,worldId:string,options:{limit?:number;status?:string;query?:string}={}):Array<Record<string,unknown> & {payoffs:string[]}>{
  const db=openKnowledgeDatabase(worldDir,worldId);try{
-  const limit=options.limit??100;const like="%"+((options.query??"").trim())+"%";
+  const limit=options.limit??KB_FORESHADOWING_DEFAULT_LIMIT;const like="%"+((options.query??"").trim())+"%";
   const rows=db.prepare("SELECT clue_id AS clueId,clue,first_appearance AS firstAppearance,meaning,payoffs_json,confidence,status,chapter_ordinal AS chapterOrdinal FROM novel_foreshadowings WHERE (?='' OR status=?) AND (?='%%' OR clue LIKE ?) ORDER BY chapter_ordinal LIMIT ?").all(options.status??"",options.status??"",like,like,limit) as Array<Record<string,unknown> & {payoffs_json:string}>;
   return rows.map(row=>({...row,payoffs:JSON.parse(row.payoffs_json) as string[],payoffs_json:undefined}));
  }finally{db.close();}
