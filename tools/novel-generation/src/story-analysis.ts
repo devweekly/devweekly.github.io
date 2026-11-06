@@ -469,7 +469,7 @@ function mergeAndPersist(
       const sourceRefs = chapterKeys.map(key => refsByChapter.get(key)).filter((ref): ref is NovelSourceRef => Boolean(ref));
       const aliasDetails = Array.isArray(item.aliasDetails)
         ? (item.aliasDetails as Array<Record<string, unknown>>).filter(alias =>
-            typeof alias.evidence === "string" && chapterKeys.some(key => chaptersByKey.get(key)?.text.includes(alias.evidence as string)))
+            typeof alias.evidence === "string" && typeof alias.value === "string" && alias.evidence.includes(alias.value) && chapterKeys.some(key => chaptersByKey.get(key)?.text.includes(alias.evidence as string)))
         : undefined;
       return { ...item, sourceRefs, ...(aliasDetails ? { aliasDetails } : {}) };
     });
