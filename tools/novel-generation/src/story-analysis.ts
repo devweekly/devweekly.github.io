@@ -199,6 +199,15 @@ function mergeTextField(target: Item, source: Item, field: string): void {
 }
 
 /** Normalized, filtered aliases: they are metadata, never identity shortcuts. */
+export function filterCharacterAliasEvidence(aliasDetails: unknown[], chapterTexts: string[]): Array<Record<string, unknown>> {
+  return aliasDetails.filter((value): value is Record<string, unknown> => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+    const alias = value as Record<string, unknown>;
+    return typeof alias.value === "string" && typeof alias.evidence === "string" &&
+      alias.evidence.includes(alias.value) && chapterTexts.some(text => text.includes(alias.evidence as string));
+  });
+}
+
 export function cleanCharacterAliases(item: Record<string, unknown>): string[] {
   const name = normalizeCharacterName(String(item.name ?? ""));
   const details = Array.isArray(item.aliasDetails) ? item.aliasDetails as Array<Record<string, unknown>> : [];
@@ -468,8 +477,7 @@ function mergeAndPersist(
       const chapterKeys = asStrings(item.chapterKeys);
       const sourceRefs = chapterKeys.map(key => refsByChapter.get(key)).filter((ref): ref is NovelSourceRef => Boolean(ref));
       const aliasDetails = Array.isArray(item.aliasDetails)
-        ? (item.aliasDetails as Array<Record<string, unknown>>).filter(alias =>
-            typeof alias.evidence === "string" && typeof alias.value === "string" && alias.evidence.includes(alias.value) && chapterKeys.some(key => chaptersByKey.get(key)?.text.includes(alias.evidence as string)))
+        ? filterCharacterAliasEvidence(item.aliasDetails, chapterKeys.map(key => chaptersByKey.get(key)?.text ?? ""))
         : undefined;
       return { ...item, sourceRefs, ...(aliasDetails ? { aliasDetails } : {}) };
     });
