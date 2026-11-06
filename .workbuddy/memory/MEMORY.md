@@ -97,7 +97,7 @@ evidence-and-claim-review                 横切件：审「说法成不成立�
 
 ## 5. novel-generation 全书知识库
 
-`worlds/conghuoniao/novel.db`（schema v3）分两层：`characters` / `story_state` / `story_events` 是**写作状态**（接下来怎么写），`novel_*` 是**成书知识库**（全书已经写了什么），不要互相覆盖。`novel.db` 含原文全文，27MB，gitignore；`worlds/conghuoniao/story-kb.json` 不含原文，随仓库提交。
+`worlds/conghuoniao/novel.db`（schema v3）分两层：`characters` / `story_state` / `story_events` 是**写作状态**（接下来怎么写），`novel_*` 是**成书知识库**（全书已经写了什么），不要互相覆盖。**数据库随仓库提交**（提交前 VACUUM，28MB→22MB）；`.output/` 的模型原始响应、分片日志、生成章节也全部入库，只排除 `original.txt`、`novel.db-wal/-shm`、`private/`、`.output/*.zip`。
 
 - 分析单元是**章**不是检索片段：分片带 160 字重叠，必须 `dedupeChunkTexts()` 去重后再统计/送模型，否则人物次数虚高 12%。
 - 人名统计**只算本名**，别名只作元数据且要过滤「男人/老头子/老板」这类泛称；别名归并仅允许双向互指。
