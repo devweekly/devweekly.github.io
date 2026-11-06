@@ -125,3 +125,19 @@ test("continuity notes are replaced by the complete active snapshot", () => {
   });
   assert.deepEqual(next.continuityNotes, ["李玄已经知道密道位置"]);
 });
+
+
+test("facts introduced by generated prose remain project-original even when model marks them confirmed", () => {
+  const current = emptyStoryState("test-world");
+  current.canonFacts.push({ id: "canon-1", fact: "原著旧事实", confidence: "confirmed" });
+  const next = mergeStoryState(current, {
+    canonFacts: [
+      { id: "canon-1", fact: "原著旧事实的补充表述", confidence: "confirmed" },
+      { id: "new-1", fact: "本章新发生的交易", confidence: "confirmed" }
+    ],
+    events: [{ id: "event-new", summary: "本章新事件", position: "第2章", participants: [], consequences: [] }]
+  });
+  assert.equal(next.canonFacts.find(item => item.id === "canon-1")?.confidence, "confirmed");
+  assert.equal(next.canonFacts.find(item => item.id === "new-1")?.confidence, "original");
+  assert.equal(next.events.find(item => item.id === "event-new")?.origin, "original");
+});
