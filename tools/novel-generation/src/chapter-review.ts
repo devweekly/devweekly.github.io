@@ -122,7 +122,7 @@ export async function reviewAndRepair(input: {
   onReview?: (round: number, chapter: string, review: ChapterReview) => Promise<void>;
   /** 阻断前落盘当前成稿与诊断，避免终审误判导致整章丢失。 */
   onFailure?: (chapter: string, reviews: ChapterReview[], reason: string) => Promise<void>;
-}): Promise<{ chapter: string; reviews: ChapterReview[]; repairRounds: number; acceptedWithIssues: boolean }> {
+}): Promise<{ chapter: string; reviews: ChapterReview[]; repairRounds: number }> {
   const maxRepairRounds = input.maxRepairRounds ?? 2;
   let chapter = input.initialChapter;
   const reviews: ChapterReview[] = [];
@@ -143,7 +143,7 @@ export async function reviewAndRepair(input: {
       }
       reviews.push(parsed);
       await input.onReview?.(round, chapter, parsed);
-      if (!parsed.issues.length) return { chapter, reviews, repairRounds: round, acceptedWithIssues: false };
+      if (!parsed.issues.length) return { chapter, reviews, repairRounds: round };
       if (round >= maxRepairRounds) {
         throw new Error("Chapter still has must-fix issues after " + maxRepairRounds + " automatic repair rounds. See final review artifacts; story state was not updated.");
       }
