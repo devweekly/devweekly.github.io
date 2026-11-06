@@ -97,7 +97,8 @@ evidence-and-claim-review                 横切件：审「说法成不成立�
 
 ## 5. novel-generation 全书知识库
 
-`worlds/conghuoniao/novel.db`（schema v3）分两层：`characters` / `story_state` / `story_events` 是**写作状态**（接下来怎么写），`novel_*` 是**成书知识库**（全书已经写了什么），不要互相覆盖。**数据库随仓库提交**（提交前 VACUUM，28MB→22MB）；`.output/` 的模型原始响应、分片日志、生成章节也全部入库，只排除 `original.txt`、`novel.db-wal/-shm`、`private/`、`.output/*.zip`。
+`worlds/conghuoniao/novel.db`（schema v3）分两层：`characters` / `story_state` / `story_events` 是**写作状态**（接下来怎么写），`novel_*` 是**成书知识库**（全书已经写了什么），不要互相覆盖。**两个库分开**：`novel.db`（22MB，原文分片/标注/`novel_*`/`story_analysis`/`story_graph_*`，只有 ingest 与 analyze 会写）与 `story.db`（68KB，`story_state`/`characters`/`canon_facts`/`story_events`/`plot_threads`/`continuity_notes`，每章重写）。拆分的判据是**写入频率而非数据新旧**——写一章只碰 68KB，不会让 Git 存一份新的 22MB blob。旧库里同库存储的状态表在首次打开 `story.db` 时自动搬迁并删除。
+**都随仓库提交**（提交前 VACUUM）；`.output/` 的模型原始响应、分片日志、生成章节也全部入库，只排除 `original.txt`、`*.db-wal`/`*.db-shm`、`private/`、`.output/*.zip`。
 
 - 分析单元是**章**不是检索片段：分片带 160 字重叠，必须 `dedupeChunkTexts()` 去重后再统计/送模型，否则人物次数虚高 12%。
 - 人名统计**只算本名**，别名只作元数据且要过滤「男人/老头子/老板」这类泛称；别名归并仅允许双向互指。
