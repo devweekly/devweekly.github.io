@@ -212,7 +212,7 @@ export function cleanCharacterAliases(item: Record<string, unknown>): string[] {
   const name = normalizeCharacterName(String(item.name ?? ""));
   const details = Array.isArray(item.aliasDetails) ? item.aliasDetails as Array<Record<string, unknown>> : [];
   return unique(details
-    .filter(alias => alias.type === "name_alias" && typeof alias.evidence === "string" && alias.evidence.trim().length >= 2)
+    .filter(alias => (alias.type === "name_alias" || alias.type === "nickname") && typeof alias.evidence === "string" && alias.evidence.trim().length >= 2)
     .map(alias => normalizeCharacterName(String(alias.value ?? "")))
     .filter(alias => isUsableAlias(alias) && alias !== name));
 }
