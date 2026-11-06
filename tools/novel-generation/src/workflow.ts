@@ -9,7 +9,7 @@ import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
 import { parseJsonObject } from "./model-json.js";
 import { LONG_CHAPTER_SOURCE_TAIL_CHARS } from "./constants.js";
 import { buildWorldSituationContext } from "./world-situation.js";
-import { LIVING_VOICE_RULES, antiAiEditPrompt, readerExperiencePrompt } from "./literary-edit.js";
+import { LIVING_VOICE_RULES, antiAiDiagnosticPrompt, antiAiEditPrompt, readerExperiencePrompt } from "./literary-edit.js";
 
 export interface WriteWorkflowInput {
   worldId: string;
@@ -249,9 +249,18 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   // Anti-AI is a restrained literary edit, never a detector-driven rewrite.
   // If the optional editor call fails, preserve the already valid voice-edited draft.
   let antiAiDraft = voiceDraft;
+  let antiAiDiagnosis = "";
+  try {
+    antiAiDiagnosis = await cachedCall("anti-ai-diagnosis", "06a-anti-ai-diagnosis.md", "antiAi", [
+      antiAiDiagnosticPrompt({ brief: input.brief, blueprint: plan, styleProfile: input.styleProfile, chapter: voiceDraft })
+    ], output => { if (!output.trim()) throw new Error("Anti-AI diagnosis returned an empty report."); });
+  } catch (error) {
+    await saveStage(input.outputDir, "06a-anti-ai-diagnosis-error.txt", String(error));
+    console.error("[write] Anti-AI 诊断未完成；编辑阶段仍按通用文学原则运行。");
+  }
   try {
     antiAiDraft = await cachedCall("anti-ai-edit", "06b-anti-ai-edited.md", "antiAi", [
-      antiAiEditPrompt({ brief: input.brief, blueprint: plan, styleProfile: input.styleProfile, chapter: voiceDraft })
+      antiAiEditPrompt({ brief: input.brief, blueprint: plan, styleProfile: input.styleProfile, diagnosis: antiAiDiagnosis, chapter: voiceDraft })
     ], output => { if (!output.trim()) throw new Error("Anti-AI editor returned an empty chapter."); });
   } catch (error) {
     await saveStage(input.outputDir, "06b-anti-ai-error.txt", String(error));
