@@ -20,21 +20,22 @@ test("writing context selects only relevant analysis and labels it as optional",
   assert.doesNotMatch(context, /顾青/);
 });
 
-test("snapshots with an explicitly older analysis version are not injected", () => {
-  assert.equal(buildStoryAnalysisContext({
-    worldId: "test", sourceHash: "a".repeat(64), analyzedAt: "2026-11-05T00:00:00.000Z",
-    analysisVersion: 3, complete: true, batches: 1, characters: [{ name: "林岚" }],
-    plotThreads: [], foreshadowings: [], developmentPossibilities: []
-  }, "林岚"), "");
+test("every snapshot below the current analysis version is skipped, including v4/v5", () => {
+  for (const version of [3, 4, 5]) {
+    assert.equal(buildStoryAnalysisContext({
+      worldId: "test", sourceHash: "a".repeat(64), analyzedAt: "2026-11-05T00:00:00.000Z",
+      analysisVersion: version, complete: true, batches: 1, characters: [{ name: "林岚" }],
+      plotThreads: [], foreshadowings: [], developmentPossibilities: []
+    }, "林岚"), "");
+  }
 });
 
-test("snapshots written before the version field existed are still usable", () => {
-  const context = buildStoryAnalysisContext({
+test("snapshots without an analysisVersion are not injected", () => {
+  assert.equal(buildStoryAnalysisContext({
     worldId: "test", sourceHash: "a".repeat(64), analyzedAt: "2026-11-05T00:00:00.000Z",
     complete: true, batches: 1, characters: [{ name: "林岚" }],
     plotThreads: [], foreshadowings: [], developmentPossibilities: []
-  }, "林岚");
-  assert.match(context, /林岚/);
+  }, "林岚"), "");
 });
 
 test("writing context does not turn incomplete or irrelevant analysis into instructions", () => {

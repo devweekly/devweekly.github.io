@@ -383,29 +383,6 @@ export function stripUnclassifiedAliases(analysis: BatchAnalysis): BatchAnalysis
   return analysis;
 }
 
-/**
- * Reuses v3 batch analysis without trusting its untyped aliases. The narrative
- * analysis remains useful; old aliases are discarded and must be re-established
- * by a future fresh analysis with exact source evidence.
- */
-async function migrateLegacyAnalysisCache(sourceDir: string, targetDir: string, batches: AnalysisBatch[]): Promise<number> {
-  if (!existsSync(sourceDir)) return 0;
-  let migrated = 0;
-  for (const batch of batches) {
-    const name = "batch-" + String(batch.index).padStart(4, "0") + ".json";
-    const targetPath = join(targetDir, name);
-    if (existsSync(targetPath)) continue;
-    const analysis = await readCached(join(sourceDir, name));
-    if (!analysis) continue;
-    stripUnclassifiedAliases(analysis);
-    const temporary = targetPath + ".tmp";
-    await writeFile(temporary, JSON.stringify(analysis, null, 2) + "\\n", "utf8");
-    await rename(temporary, targetPath);
-    migrated++;
-  }
-  return migrated;
-}
-
 export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysisOptions = {}): Promise<StoryAnalysisResult> {
   const worldDir = options.worldDir ?? resolve("worlds", worldId);
   const { units } = await buildAnalysisUnits(worldId, { worldDir, catalogPath: options.catalogPath });

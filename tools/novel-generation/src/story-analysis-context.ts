@@ -73,25 +73,19 @@ function compact(item: AnalysisItem): string {
   return body.slice(0, 1400) + (body.length > 1400 ? "…" : "") + sourceSummary;
 }
 
-/** 当前快照结构版本；低于它说明字段含义已变，不能直接当写作参考。 */
+/** 当前快照结构版本；ADR-0002 §6：旧版本快照不得注入写作上下文，必须重新分析。 */
 const ANALYSIS_VERSION = 6;
-/** 最早仍能兼容读取的结构：4 版已有 characters/plotThreads/foreshadowings。 */
-const MIN_COMPATIBLE_VERSION = 4;
 
 /** Selects only potentially relevant analysis as optional inspiration; never turns it into canon or a writing checklist. */
 export function buildStoryAnalysisContext(snapshot: StoryAnalysisSnapshot | undefined, query: string): string {
   if (!snapshot?.complete || !query.trim()) return "";
   const version = snapshot.analysisVersion;
-  if (typeof version === "number" && version < MIN_COMPATIBLE_VERSION) {
-    console.warn("[analysis-context] 分析快照版本 " + version + " 低于兼容下限 " + MIN_COMPATIBLE_VERSION + "，已跳过注入。");
+  if (typeof version !== "number" || version < ANALYSIS_VERSION) {
+    console.warn(
+      "[analysis-context] 分析快照版本 " + (typeof version === "number" ? version : "缺失") +
+      " 低于当前 " + ANALYSIS_VERSION + "，已跳过注入；重新运行 npm run dev -- analyze-story 生成当前版本快照。"
+    );
     return "";
-  }
-  if (typeof version === "number" && version < ANALYSIS_VERSION) {
-    // 旧结构缺关系图、MacGuffin 与核心观察，能读的部分仍然可用，但不能假装齐全。
-    console.warn("[analysis-context] 分析快照版本 " + version + " 低于当前 " + ANALYSIS_VERSION + "，按兼容模式注入（缺关系图与核心观察）。");
-  }
-  if (typeof version !== "number") {
-    console.warn("[analysis-context] 分析快照缺少 analysisVersion，按旧版结构使用；重建快照需重新运行 npm run dev -- analyze-story。");
   }
   const queryTerms = terms(query);
   const groups: Array<[string, AnalysisItem[], number]> = [
