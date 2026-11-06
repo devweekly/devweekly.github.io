@@ -120,3 +120,10 @@ test("批次分析能容忍 JSON 后的说明文字", () => {
     "\n以上为分析结果，注意 } 只是标点。";
   assert.equal(parseModelJson(raw).characters[0]?.name, "林岚");
 });
+
+
+test("plot thread merge key deduplicates exact source spans but preserves same-title distinct spans", async () => {
+  const { plotThreadMergeKey } = await import("../src/story-analysis.js");
+  assert.equal(plotThreadMergeKey("金家灭门与冥扎下落", ["V01-C001", "V01-C002"]), plotThreadMergeKey("金家灭门与冥扎下落", ["V01-C002", "V01-C001"]));
+  assert.notEqual(plotThreadMergeKey("金家灭门与冥扎下落", ["V01-C001"]), plotThreadMergeKey("金家灭门与冥扎下落", ["V02-C001"]));
+});
