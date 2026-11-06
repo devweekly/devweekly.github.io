@@ -32,7 +32,7 @@ export function buildRoleplayPrompt(input: {
     "场景设定与作者任务：", input.brief,
     "必要世界资料：", input.worldBible,
     "参与人物当前状态与长期观察（仅供理解，不是人物行为边界）：", JSON.stringify(input.characters, null, 2),
-    input.storyAnalysisContext ? "相关人物互动、情节线、伏笔与故事关系图（仅供启发，不是正史）：\\n" + input.storyAnalysisContext : "",
+    input.storyAnalysisContext ? "相关人物互动、情节线、伏笔与故事关系图（仅供启发，不是正史）：\n" + input.storyAnalysisContext : "",
     input.transcript ? "此前推演记录：\n" + input.transcript : "这是第一轮推演。",
     input.authorDirection ? "作者本轮补充方向：\n" + input.authorDirection : "",
     "请输出这一轮的自然互动正文。不要输出分析、评分或下一步菜单。"
