@@ -496,7 +496,7 @@ D&D Campaign 的借鉴仅限世界设定、人物自主行动、有限局势推�
 
 普通章节和万字章节在叙事声音修订后，都会执行共享的 Living Voice / Anti-AI 编辑。它只处理真正损害阅读体验的模板化表达，不以 AI 检测分数、禁词、连接词频率、句长或段落长度驱动改写。原稿成立时可以零修改；编辑不得改变剧情事实、人物决定、信息揭示、视角和场景顺序。
 
-编辑产物为 `06b-anti-ai-edited.md`。如果编辑调用失败，系统保留上一阶段正文并继续终审，不让辅助编辑失败丢失章节。最终终审通过后，系统还会生成独立的 `10-reader-experience.md`，记录追读意愿、注意力变化、人物鲜活度和情绪抵达等读者反应。Reader 不负责硬伤审查、不输出必改项、不触发自动修复，也不影响章节通过和状态提交。相关设计见 [ARCHITECTURE.md 第 10 节](./ARCHITECTURE.md) 与 [ADR 0004](./ADR/0004-living-voice-and-anti-ai-editing.md)。
+写作、对白、叙事声音和编辑阶段共享 Living Voice 原则。Anti-AI 阶段先生成 `06a-anti-ai-diagnosis.md`，只诊断有具体文本证据的阅读问题，不判断文本是否由 AI 生成；再生成 `06b-anti-ai-edited.md`。诊断失败不阻断编辑，编辑失败保留上一阶段正文并继续终审。最终终审通过后，Reader 以不读取人物档案、蓝图和剧情摘要的盲读方式生成 `10-reader-experience.md`。Reader 不负责硬伤审查、不输出必改项、不触发自动修复，也不影响章节通过和状态提交。相关设计见 [ARCHITECTURE.md 第 10 节](./ARCHITECTURE.md) 与 [ADR 0004](./ADR/0004-living-voice-and-anti-ai-editing.md)。
 
 
 ### 提炼项目风格资料
@@ -507,13 +507,17 @@ D&D Campaign 的借鉴仅限世界设定、人物自主行动、有限局势推�
 npm run dev -- distill-style --world conghuoniao \
   --input ./private/style-sample-1.txt ./private/style-sample-2.md \
   --out .output/conghuoniao/style-profile-candidate.md
+
+# 检查候选后，显式激活为正式项目风格资料
+npm run dev -- distill-style --world conghuoniao \
+  --input ./private/style-sample-1.txt ./private/style-sample-2.md --activate
 ```
 
-默认样本总量上限为 80,000 字符，可通过 `--max-sample-chars` 调整（最高 160,000）。提炼结果描述叙事距离、节奏、视角、对白、意象、情绪表达和场景差异等抽象特征，不输出长段原文或可直接套用的句式模板。候选文件需要作者自行检查后再替换正式风格资料。
+`--out` 只能写入当前 world 的 `.output/<world>/`，避免误覆盖正史或项目文件。默认样本总量上限为 80,000 字符，可通过 `--max-sample-chars` 调整（最高 160,000）。提炼结果描述叙事距离、节奏、视角、对白、意象、情绪表达和场景差异等抽象特征，不输出长段原文或可直接套用的句式模板。候选文件需要作者自行检查。显式使用 `--activate` 才会更新 `worlds/<world>/style-profile.md`；旧版本会先归档到 `.output/<world>/style-profile-history/`。正式写作自动读取激活后的风格资料。
 
 ### 人物互动推演沙盘（作者主动调用）
 
-需要探索人物在某个场景中的互动时，可以启动独立的交互式沙盘。它读取当前 Story State 中指定人物的状态，但所有推演都只是候选创作素材，不会写入正史或 Story State：
+需要探索人物在某个场景中的互动时，可以启动独立的交互式沙盘。它读取当前 Story State 中指定人物的动态状态、成书知识库中的人物长期观察，以及任务相关的故事图谱（人物互动、情节线、伏笔和关系边）；所有推演都只是候选创作素材，不会写入正史或 Story State：
 
 ```bash
 npm run dev -- roleplay-sandbox --world conghuoniao \
@@ -521,4 +525,4 @@ npm run dev -- roleplay-sandbox --world conghuoniao \
   --characters 人物甲,人物乙
 ```
 
-每轮输出后，作者可以直接接受并继续、修改方向、补充场景信息、重演本轮或结束。推演记录默认保存在 `.output/<world>/roleplay-sandbox/`。它不属于每章自动流水线，不会强迫 NPC 每章行动，也不引入 D&D 数值、回合制或任务机制。
+每轮输出后，作者可以直接接受并继续、修改方向、补充场景信息、重演本轮或结束。推演记录默认保存在 `.output/<world>/roleplay-sandbox/`；自定义 `--out` 也必须位于该 world 的 `.output/` 内，避免覆盖正史文件。它不属于每章自动流水线，不会强迫 NPC 每章行动，也不引入 D&D 数值、回合制或任务机制。
