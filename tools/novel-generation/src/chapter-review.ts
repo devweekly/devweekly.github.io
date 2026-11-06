@@ -75,6 +75,7 @@ export function reviewPrompt(input: {
   return [
     "角色：小说终审。只判断一件事：这一章有没有读者会认定「不可能」的硬伤。",
     input.context,
+    "故事图谱只用于核对明确事实、人物知识边界、关键物件归属和因果硬冲突。人物弧光建议、伏笔未回收、支线暂时搁置或 MacGuffin 未按分析建议推进都不是问题；允许有意反转、欺骗、误判、背叛和人物转变。文学性、文笔、艺术风格高于其他一切。",
     "章节蓝图：",
     input.blueprint,
     input.sceneLabel ? "候审正文（" + input.sceneLabel + "）：" : "候选正文：",

@@ -161,9 +161,25 @@ const counts = {
   beats: one("SELECT COUNT(*) AS count FROM novel_beats"),
   relations: one("SELECT COUNT(*) AS count FROM novel_relations"),
   arcs: one("SELECT COUNT(*) AS count FROM novel_arcs"),
+  graphNodes: one("SELECT COUNT(*) AS count FROM story_graph_nodes"),
+  graphEdges: one("SELECT COUNT(*) AS count FROM story_graph_edges"),
   chaptersWithBeats: one("SELECT COUNT(DISTINCT chapter_ordinal) AS count FROM novel_beats")
 };
 
+const storyAnalysis=withDatabase(db=>{const row=db.prepare("SELECT payload_json FROM story_analysis WHERE singleton=1 AND world_id=?").get(worldId) as {payload_json:string}|undefined;return row?JSON.parse(row.payload_json) as Record<string,unknown>:{};});
+const graphNodes=rows("SELECT node_id AS id,node_type AS type,label,properties_json,source_refs_json FROM story_graph_nodes ORDER BY node_type,label").map(row=>({id:row.id,type:row.type,label:row.label,properties:JSON.parse(String(row.properties_json)),sourceRefs:JSON.parse(String(row.source_refs_json))}));
+const graphEdges=rows("SELECT edge_id AS id,from_node_id AS from,to_node_id AS to,edge_type AS type,label,properties_json,source_refs_json FROM story_graph_edges ORDER BY edge_type,label").map(row=>({id:row.id,from:row.from,to:row.to,type:row.type,label:row.label,properties:JSON.parse(String(row.properties_json)),sourceRefs:JSON.parse(String(row.source_refs_json))}));
+const degree=new Set(graphEdges.flatMap(e=>[String(e.from),String(e.to)]));
+const graphQuality={
+  nodeTypes:rows("SELECT node_type AS type,COUNT(*) AS count FROM story_graph_nodes GROUP BY node_type"),
+  edgeTypes:rows("SELECT edge_type AS type,COUNT(*) AS count FROM story_graph_edges GROUP BY edge_type"),
+  isolatedNodes:graphNodes.filter(n=>!degree.has(String(n.id))).map(n=>({id:n.id,type:n.type,label:n.label})),
+  danglingEdges:graphEdges.filter(e=>!graphNodes.some(n=>n.id===e.from)||!graphNodes.some(n=>n.id===e.to)),
+  nodesWithoutSourceRefs:graphNodes.filter(n=>!Array.isArray(n.sourceRefs)||!n.sourceRefs.length).map(n=>({id:n.id,type:n.type,label:n.label})),
+  edgesWithoutSourceRefs:graphEdges.filter(e=>!Array.isArray(e.sourceRefs)||!e.sourceRefs.length).map(e=>({id:e.id,type:e.type,label:e.label}))
+};
+const interactionRows=rows("SELECT beat_id AS beatId,chapter_ordinal AS chapterOrdinal,summary,actors_json FROM novel_beats WHERE json_array_length(actors_json)>=2 ORDER BY chapter_ordinal,beat_id").map(row=>({...row,actors:JSON.parse(String(row.actors_json)),actors_json:undefined}));
+const interactions=interactionRows.filter((_,index)=>index%Math.max(1,Math.ceil(interactionRows.length/120))===0).slice(0,120);
 const summary = {
   worldId,
   generatedAt: new Date().toISOString(),
@@ -175,7 +191,15 @@ const summary = {
   chaptersPerVolume: rows("SELECT volume,COUNT(*) AS chapters,SUM(char_count) AS chars FROM novel_chapters WHERE ordinal>0 GROUP BY volume ORDER BY volume"),
   threadStatus: rows("SELECT status,COUNT(*) AS count FROM novel_plot_threads GROUP BY status ORDER BY count DESC"),
   foreshadowingStatus: rows("SELECT status,confidence,COUNT(*) AS count FROM novel_foreshadowings GROUP BY status,confidence ORDER BY count DESC"),
-  topCharacters: rows("SELECT name,mention_total AS mentions,chapters_seen AS chapters,first_chapter AS firstChapter,last_chapter AS lastChapter FROM novel_characters ORDER BY mention_total DESC LIMIT 15")
+  topCharacters: rows("SELECT name,mention_total AS mentions,chapters_seen AS chapters,first_chapter AS firstChapter,last_chapter AS lastChapter FROM novel_characters ORDER BY mention_total DESC LIMIT 15"),
+  storyCore: storyAnalysis.storyCore ?? {}, macguffins: Array.isArray(storyAnalysis.macguffins)?storyAnalysis.macguffins.length:0,
+  graph: {nodes:counts.graphNodes,edges:counts.graphEdges},
+  storyAnalysisVersion: storyAnalysis.analysisVersion ?? null,
+  storyCoreObservationCount: Array.isArray(storyAnalysis.storyCoreObservations)?storyAnalysis.storyCoreObservations.length:0,
+  graphEvidenceCoverage: {
+    nodesWithSourceRefs: graphNodes.length-graphQuality.nodesWithoutSourceRefs.length,
+    edgesWithSourceRefs: graphEdges.length-graphQuality.edgesWithoutSourceRefs.length
+  }
 };
 
 const characterSample = [
@@ -266,6 +290,7 @@ add("01-database/schema.md", [
   "| `novel_foreshadowings` | 一条伏笔线索 | `clue`、`confidence`、`status`（埋设/已回收）、`chapter_ordinal` |",
   "| `novel_relations` | 一对人物关系 | `from_name`、`to_name`、`label`、`evidence` |",
   "| `novel_arcs` | 一卷的主线梗概 | `volume`、`summary`、`key_turns_json`、`characters_json` |",
+  "| `story_graph_nodes` / `story_graph_edges` | 故事核心、人物、情节线、伏笔、MacGuffin、事件和发展可能组成的关系图 | 节点/边类型、关系方向、来源引用、属性 JSON |",
   "",
   "写作状态另存于 `characters`、`story_state`、`story_events`、`plot_threads`（不带 `novel_` 前缀），与上述成书知识库分开。",
   ""
@@ -282,6 +307,12 @@ add("01-database/foreshadowings.sample.json", json(foreshadowingSample));
 add("01-database/relations.sample.json", json(relationSample));
 add("01-database/arcs.sample.json", json(arcs));
 add("01-database/quality-flags.json", json(qualityFlags));
+add("01-database/story-core.json",json(storyAnalysis.storyCore??{}));
+add("01-database/story-core-observations.json",json(storyAnalysis.storyCoreObservations??[]));
+add("01-database/macguffins.json",json(storyAnalysis.macguffins??[]));
+add("01-database/story-graph.json",json({nodes:graphNodes,edges:graphEdges}),{optional:true});
+add("01-database/story-graph-quality.json",json(graphQuality));
+add("01-database/interactions.sample.json",json(interactions));
 if (existsSync(join(worldDir, "story-state.json"))) {
   add("01-database/writing-state.sample.json", await readFile(join(worldDir, "story-state.json")));
 }
@@ -410,6 +441,7 @@ if (existsSync(join(outputDir, "shard-0.log"))) {
 const dropped: string[] = [];
 const dropOrder = [
   "retrieval-context.md",
+  "story-graph.json",
   "draft.md",
   "state-update.json",
   "analysis-shard-0.log",
@@ -469,7 +501,7 @@ const readme = [
   "",
   "| 路径 | 内容 | 建议关注 |",
   "|---|---|---|",
-  "| `01-database/` | 数据库 schema、统计、各类样本、质量问题清单 | 人物归并、伏笔质量、情节线粒度 |",
+  "| `01-database/` | 数据库 schema、分类样本、故事核心观察、MacGuffin、完整图谱与图质量摘要 | 主线、人物互动链、伏笔承接、MacGuffin 是否驱动情节 |",
   "| `02-analysis-calls/` | " + picks.length + " 次分批分析的完整请求与响应 | 提示词是否明确、输出是否被正确解析 |",
   "| `03-writing/` | 生成的新章节、所有场景润色稿、润色幅度与阶段调用日志 | 连续性、文风、扩写幅度、阶段耗时 |",
   "| `04-logs/` | 分析分片与写作过程的运行日志 | 失败重试、超时、逐阶段耗时 |",
@@ -489,14 +521,17 @@ const readme = [
   "1. **人物归并是否正确**：`characters.sample.json` 里有没有把两个人当成一个，或一个人拆成两条；别名是否可信。",
   "2. **伏笔是否成立**：`foreshadowings.sample.json` 里 `明确线索` 是否真的在原文有落点，`已回收` 的回收方式是否对得上。",
   "3. **情节线粒度**：862 条是局部情节线候选记录；按标题和来源章节范围核查重复项，同名但不同阶段应保留。",
-  "4. **章级事件是否准确**：`beats.sample.json` 覆盖 738/753 章，抽查是否有人物张冠李戴或因果说反。",
+  "4. **故事图谱**：核对 `story-graph.json` 与 `story-graph-quality.json` 中人物—事件—情节线—伏笔—MacGuffin 的连接是否有原文依据；孤立节点不一定是错误。",
+  "5. **故事核心与 MacGuffin**：核对 `story-core.json`、`macguffins.json` 是否识别真正驱动行动的核心目标，而非普通道具。",
+  "6. **人物互动**：`interactions.sample.json` 按章节范围均匀抽样多人事件，抽查互动方式和关系变化。",
+  "7. **章级事件是否准确**：`beats.sample.json` 覆盖 738/753 章，抽查是否有人物张冠李戴或因果说反。",
   "5. **章节质量**：`03-writing/long-chapter/chapter-final.md` 与 `draft.md` 对比，看修订是否改善了节奏而没有引入新事实。",
   "6. **提示词是否安全**：`02-analysis-calls/*.request.md` 是否包含会诱导模型编造设定的指令。",
   "",
   dropped.length ? "> 本包已按体积上限裁剪：" + dropped.join("、") + "\n" : "",
   "## 已知局限（请勿当作新问题重复报告）",
   "",
-  "- 样本是抽样：人物 " + sampleCounts.characters + " 条、事件 " + sampleCounts.chapters + " 章、" + sampleCounts.threads + " 条情节线、" + sampleCounts.foreshadowings + " 条伏笔、" + sampleCounts.relations + " 条关系、" + sampleCounts.arcs + " 卷梗概。",
+  "- 分类样本是抽样；故事核心、MacGuffin 和图质量摘要完整导出；完整图谱为可选文件，超出预算时可裁剪。图质量摘要会列出孤立节点、悬空边和缺少来源引用的节点/边；孤立节点不自动代表分析错误。",
   "- 有 " + qualityFlags.charactersWithoutMentionsCount + " 个人物「有名无实」：模型给出了名字，但正文没有逐字出现，统计为 0。",
   "- 置信度、状态、关系标签都是模型判断，不是人工标注。",
   "- SDK 不落盘 token 与耗时，`02-analysis-calls/` 包含采样请求/响应，以及已保留的失败原始响应；请求体由同一构造函数重建，内容与线上一致。长章节 `stage-calls.jsonl` 记录实际执行的阶段、请求模型候选链、提示词/输出字符数、耗时和结果；缓存命中不会产生模型调用记录。",

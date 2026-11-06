@@ -28,15 +28,26 @@ test("story analysis snapshot is persisted and replaced atomically as one databa
   try {
     const snapshot = {
       worldId: "test-world", sourceHash: "b".repeat(64), analyzedAt: "2026-11-05T00:00:00.000Z",
-      complete: true, batches: 2,
+      analysisVersion: 6, complete: true, batches: 2,
       characters: [{ name: "林岚", shortBio: "一个复杂的人物", sourceRefs: [{ chunkId: "c1", source: "s.txt", chapter: "第一章" }] }],
       plotThreads: [{ title: "失踪案", summary: "仍未解决" }],
       foreshadowings: [{ clue: "墙上的旧照片", confidence: "可能线索" }],
-      developmentPossibilities: [{ focus: "林岚", direction: "可能背叛同伴" }]
+      developmentPossibilities: [{ focus: "林岚", direction: "可能背叛同伴" }],
+      storyCore: { centralConflicts: ["失踪案背后的争夺"], sourceRefs: [{ chunkId: "c1", source: "s.txt", chapter: "第一章" }] },
+      macguffins: [{ name: "旧照片", whoWantsIt: ["林岚"] }],
+      storyGraph: {
+        nodes: [
+          { id: "story_core:main", type: "story_core", label: "故事核心", data: { centralConflicts: ["失踪案背后的争夺"] }, sourceRefs: [{ chunkId: "c1", source: "s.txt", chapter: "第一章" }] },
+          { id: "character:1", type: "character", label: "林岚", data: { name: "林岚" }, sourceRefs: [{ chunkId: "c1", source: "s.txt", chapter: "第一章" }] }
+        ],
+        edges: [{ id: "edge:1", from: "story_core:main", to: "character:1", type: "involves", label: "核心冲突相关人物", data: {}, sourceRefs: [{ chunkId: "c1", source: "s.txt", chapter: "第一章" }] }]
+      }
     };
     saveStoryAnalysis(root, "test-world", snapshot);
     assert.deepEqual(readStoryAnalysis(root, "test-world"), snapshot);
     assert.equal(databaseStatus(root, "test-world").storyAnalysis, 1);
+    assert.equal(databaseStatus(root, "test-world").storyGraphNodes, 2);
+    assert.equal(databaseStatus(root, "test-world").storyGraphEdges, 1);
     const replacement = { ...snapshot, sourceHash: "c".repeat(64), batches: 3 };
     saveStoryAnalysis(root, "test-world", replacement);
     assert.deepEqual(readStoryAnalysis(root, "test-world"), replacement);
@@ -60,7 +71,7 @@ test("version 1 world databases upgrade to include story analysis storage", asyn
     db.exec("PRAGMA user_version=1");
     db.close();
     const status = databaseStatus(worldDir, "test-world");
-    assert.equal(status.schemaVersion, 3);
+    assert.equal(status.schemaVersion, 4);
     assert.equal(status.storyAnalysis, 0);
   } finally {
     await rm(root, { recursive: true, force: true });
