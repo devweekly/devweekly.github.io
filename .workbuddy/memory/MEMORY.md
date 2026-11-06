@@ -105,6 +105,7 @@ evidence-and-claim-review                 横切件：审「说法成不成立�
 - 196 批可 `--shard k/4` 并发，`--merge-only` 合并；单批失败不阻塞，缓存可续跑。
 - 现有规模：753 章 / 544 人 / 1,314 条章级事件 / 862 条局部情节线 / 1,535 条伏笔 / 17 篇卷级梗概。
 - **写作注入分两层**：事实层 = `story-state.json` + `writing-brief.ts`（`novel_*` 选出的相关人物/未收线/未回收伏笔/最近三章，≤3k）+ `world-bible.md`；启发层 = `story_analysis` 快照（≤6k，标注为可选素材）。快照版本门要容忍旧版本并告警，不能因缺 `analysisVersion` 静默返回空串。
+- **人物画像是合并出来的**：`novel_characters` 的 personality/desires/contradictions/arc 是逐批观察（每批只看几章，同一人被反复描述，主角数百条），**不是重复文本**——实测相似度全 <0.6，去重无效。`analyze-profiles` 按章节顺序采样后交给模型合成 `novel_character_profiles`（画像/阶段/性格/矛盾/走向），原始观察保留作证据；观察 <4 条跳过（否则模型会编）。写作事实包优先用档案。
 - **硬约束**写在 `worlds/<world>/laws.json`，只登记可机检项（位阶天花板、数值上限、身份禁忌），由 `iron-laws.ts` 在终审前扫描并入必改清单。规则格式错误必须抛错，不能静默跳过。
 - 万字流水线终审失败时先改蓝图（只替换受影响场景），修订不合规则退回原蓝图。
 - `analyze-world --evidence-review` 核的是**句子里的具体事实**，不是整段结论：`splitEvidenceClaims` 按句切分，`fact` 口径只判数值/名称/身份/事件，概括与评价放过；`creative` 用 `proposal` 豁免项目原创提案。分析稿标的是**行号锚点**不是逐字引文，所以要给 ±2 邻行窗口（`--evidence-window`）。批量解析失败二分重试。
