@@ -35,6 +35,11 @@ function extractJson(text: string): unknown {
   }
 }
 
+function normalizeStateText(value: string): string {
+  return value.normalize("NFKC").toLocaleLowerCase()
+    .replace(/[\\s"'“”‘’「」『』，。！？、；：,.!?;:（）()【】\\[\\]《》]/g, "");
+}
+
 export function dedupeContinuityNotes(notes: string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
@@ -89,13 +94,13 @@ export function mergeStoryState(current: StoryState, update: Partial<StoryState>
     // cannot promote it to canon merely by returning confidence="confirmed".
     canonFacts: mergeBy(current.canonFacts, (update.canonFacts ?? []).map(item => {
       const previous = current.canonFacts.find(existing => existing.id === item.id);
-      return { ...item, confidence: previous?.confidence ?? "original" };
+      return { ...item, confidence: previous && normalizeStateText(previous.fact) === normalizeStateText(item.fact) ? previous.confidence : "original" };
     }), item => item.id),
     characters: mergeBy(current.characters, update.characters ?? [], item => item.name.trim().toLocaleLowerCase()),
     // Preserve provenance for existing events; newly generated events are original.
     events: mergeBy(current.events, (update.events ?? []).map(item => {
       const previous = current.events.find(existing => existing.id === item.id);
-      return { ...item, origin: previous ? previous.origin : "original" };
+      return { ...item, origin: previous && normalizeStateText(previous.summary) === normalizeStateText(item.summary) ? previous.origin : "original" };
     }), item => item.id),
     plotThreads: mergeBy(current.plotThreads, update.plotThreads ?? [], item => item.id),
     // Current active notes are a snapshot, not an append-only history.
