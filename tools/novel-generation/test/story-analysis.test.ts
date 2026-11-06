@@ -139,10 +139,11 @@ test("only evidence-backed personal-name aliases enter character lookup", () => 
       { value: "姑获鸟", type: "title", evidence: "姑获鸟现身" },
       { value: "太岁", type: "inheritance", evidence: "太岁之力" },
       { value: "冯夷", type: "identity", evidence: "冯夷附身" },
-      { value: "九哥", type: "nickname", evidence: "" }
+      { value: "九哥", type: "nickname", evidence: "" },
+      { value: "小刀", type: "nickname", evidence: "查小刀，人称小刀" }
     ]
   });
-  assert.deepEqual(aliases, ["李玄"]);
+  assert.deepEqual(aliases, ["李玄", "小刀"]);
 });
 
 
