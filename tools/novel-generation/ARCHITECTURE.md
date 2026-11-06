@@ -45,7 +45,7 @@
 | 万字章节流水线 | `src/long-chapter.ts` | 场景蓝图、逐场检索与生成、场间上下文交接、分批审查、逐场修订、共享 Anti-AI 编辑、全章终审与 Reader 观察 |
 | 质量回归 | `src/regression.ts`、`scripts/compare-models.mjs` | 节奏量化、候选盲评和模型对照；不属于每次正式续写的人工审批步骤 |
 | 质量门禁 | `src/chapter-review.ts` | 审查 JSON schema、正文证据、严重程度与多场景定位；有限自动修复和复查 |
-| 文学编辑原则 | `src/literary-edit.ts`、`src/style-distillation.ts`、`src/style-regression.ts` | Writer/编辑共享 Living Voice；Anti-AI 诊断、克制编辑与保守复核；盲读 Reader；抽象风格提炼与非门禁风格回归 |
+| 文学编辑原则 | `src/literary-edit.ts`、`src/style-distillation.ts`、`src/style-regression.ts` | Writer/编辑共享 Living Voice；Anti-AI 诊断、克制编辑与保守复核；盲读 Reader；自动注入抽象风格资料并在成稿后回归观察 |
 | 角色推演沙盘 | `src/roleplay-sandbox.ts` | 作者主动控制的多轮人物互动推演；只保存候选记录，不写入 Story State |
 | 阶段恢复 | `src/stage-cache.ts` | 输入指纹、实际模型回退链、输出哈希、阶段语义校验、原子阶段产物、运行 manifest 和初始状态快照 |
 
@@ -63,7 +63,7 @@
 6. Anti-AI 先输出带文本证据的诊断，再做克制编辑；独立复核确认收益后才保留编辑稿，否则恢复原稿。
 7. 对最终采用的正文进行结构化硬伤审查。
 8. 对 blocker/major 做最小修复，最多两轮；每轮重新审查。
-9. 通过后生成独立 Reader 体验报告；Reader 失败不阻塞成功路径。
+9. 通过后自动执行 Style Regression 观察，再生成独立 Reader 体验报告；两者失败均不阻塞成功路径。
 10. 提取并校验状态，自动提交 SQLite 和兼容快照，保存正文、质量摘要和阶段产物。
 
 主要阶段文件：
@@ -79,6 +79,7 @@
 | `06b-anti-ai-edited.md` | Living Voice / Anti-AI 克制编辑后的正文 |
 | `07-continuity-review.md` | 结构化最终审查与自动修复记录 |
 | `10-reader-experience.md` | 独立读者体验观察；不影响章节状态 |
+| `11-style-regression.md` | 自动对照激活的 Style Profile 和可选认可样本，观察风格漂移；不改稿、不阻断 |
 | `chapter.md` | 最终复查通过后的章节 |
 | `08-state-update.json` | 合并后的下一章状态 |
 
@@ -420,6 +421,7 @@ Roleplay Sandbox 已读取当前人物动态、长期人物观察和任务相关
 - **Living Voice**：同一组原则进入普通/长章节 Writer、对白与叙事声音编辑；长章节场景扩写重试也会注入，避免重试阶段退化成单纯凑字数。
 - **Style Distillation**：`distill-style` 提炼授权样本的全局与场景级抽象特征；候选默认隔离，`--activate` 显式激活并归档旧版。已提供显式 `style-regress` 观察报告；仍未建设样本版本管理、自动批量回归和 CI 风格门禁。
 - **Reader**：最终成稿后盲读正文，不预先接收人物档案、世界设定、蓝图或创作任务；只生成观察报告，不影响质量门禁和 Story State。
+- **Style Regression**：普通/长章节终审通过后自动读取 Style Profile 和 `worlds/<world>/style-references/` 下最多四份认可样本，生成 `11-style-regression.md`；无样本时只对照抽象 Style Profile 并说明证据不足。它不改稿、不打分、不阻断。
 - **Roleplay Sandbox**：读取人物当前动态状态、长期人物观察和任务相关故事图谱；交互记录只写入当前 world 的 `.output/`，自定义输出路径也受限，不会覆盖正史文件。
 
-以上能力共享现有模型运行时与阶段缓存，没有新增数据库表、常驻 Agent 或人工审批门禁。尚未完成的 Style Regression 是独立后续工作，不应把当前的一次性风格提炼描述为完整风格回归系统。
+以上能力共享现有模型运行时与阶段缓存，没有新增数据库表、常驻 Agent 或人工审批门禁。手动 `style-regress` 仍可用于任意文件的专项对照；正式写作已自动执行回归观察。尚未建设的是样本版本管理、自动基准集治理和趋势分析，不是每章自动观察本身。
