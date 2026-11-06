@@ -173,3 +173,207 @@ export const PROFILE_ANALYSIS_DEFAULT_TIMEOUT_MS = 150_000;
 
 /** 长章节/工作流组装检索查询时截取原文尾部的长度。 */
 export const LONG_CHAPTER_SOURCE_TAIL_CHARS = 2_400;
+
+// ── 行文切片与索引 ──────────────────────────────────────────────
+/** 单个检索切片的最大字符数。切片过大会稀释检索精度，过小会打断句子。 */
+export const LIBRARY_CHUNK_MAX_CHARS = 1_200;
+
+/** 相邻切片重叠的字符数：保证句子跨切片时，检索仍能看到完整上下文。 */
+export const LIBRARY_CHUNK_OVERLAP_CHARS = 160;
+
+/** 逐章合并切片时，与已累积文本最多比对多少字符找重叠。约两段长度。 */
+export const ANALYSIS_DEDUPE_MAX_OVERLAP_CHARS = 260;
+
+/** 认定「真的重叠」的最短字符数，避免把巧合的开头误判成重复并误删。 */
+export const ANALYSIS_DEDUPE_MIN_OVERLAP_CHARS = 24;
+
+/** groupAnalysisUnits 入参下限：防止把全书塞进一批导致单批不可控。 */
+export const MIN_ANALYSIS_BATCH_CHARS = 2_000;
+
+// ── 人物画像的输入采样与输出上限 ────────────────────────────────
+/** 性格类原始观察的采样上限。主角动辄上百条，模型会被截断。 */
+export const PROFILE_SAMPLE_PERSONALITY = 24;
+
+/** 其余观察维度（欲望/矛盾/走向）的采样上限。比性格少一档即可。 */
+export const PROFILE_SAMPLE_DEFAULT = 16;
+
+/** 画像输出各字段的条数上限，与提示词里的「3–5 条 / 3–6 条」对应。 */
+export const PROFILE_OUTPUT_STAGES_LIMIT = 6;
+export const PROFILE_OUTPUT_TRAITS_LIMIT = 8;
+export const PROFILE_OUTPUT_CONTRADICTIONS_LIMIT = 8;
+export const PROFILE_OUTPUT_ARC_LIMIT = 6;
+
+// ── 长篇主线的规模上限 ─────────────────────────────────────────
+/** 重大剧情节点与长期剧情线最多各保留几条。超过说明抓不住主线。 */
+export const STORY_PLAN_MAX_ITEMS = 30;
+
+// ── 世界局势（章节前轻量推演）的输入预算 ───────────────────────
+/** 整份局势输入的字符预算。只服务本章规划，不能挤占正文上下文。 */
+export const WORLD_SITUATION_MAX_CHARS = 5_200;
+
+/** 参与局势推演的相关人物上限。多了就是全场模拟，违背 ADR-0003。 */
+export const WORLD_SITUATION_CHARACTER_LIMIT = 8;
+
+/** 任务没点名人物时，按最近更新保留的主角团规模。 */
+export const WORLD_SITUATION_FALLBACK_CHARACTERS = 5;
+
+/** 参与推演的相关剧情线上限。 */
+export const WORLD_SITUATION_THREAD_LIMIT = 6;
+
+/** 任务没点名剧情线时，按时间顺序保留的活跃线数作为最临近的上下文。 */
+export const WORLD_SITUATION_FALLBACK_THREADS = 4;
+
+/** 参与推演的相关事件上限。 */
+export const WORLD_SITUATION_EVENT_LIMIT = 8;
+
+/** 没有命中相关事件时，按时间顺序保底的近期事件数。 */
+export const WORLD_SITUATION_FALLBACK_EVENTS = 5;
+
+/** 人物快照里各字段进入局势输入的条数上限；默认 4，字段特异处单独放宽。 */
+export const WORLD_SITUATION_FIELD_DEFAULT_LIMIT = 4;
+export const WORLD_SITUATION_FIELD_KNOWLEDGE_LIMIT = 6;
+export const WORLD_SITUATION_FIELD_RELATIONS_LIMIT = 5;
+export const WORLD_SITUATION_FIELD_CONTRADICTIONS_LIMIT = 3;
+
+/** 相关性打分的启发式权重：整名命中远强于词面重合。 */
+export const WORLD_SITUATION_NAME_HIT_SCORE = 24;
+export const WORLD_SITUATION_PARTICIPANT_BONUS = 28;
+export const WORLD_SITUATION_THREAD_LINK_BONUS = 18;
+export const WORLD_SITUATION_ACTIVE_THREAD_BONUS = 2;
+
+// ── 写作事实包（writing-brief）的查询与呈现预算 ────────────────
+/** 事实包总字符预算。硬事实优先于正文创作空间，但也不能无限大。 */
+export const WRITING_BRIEF_MAX_CHARS = 3_000;
+
+/** 事实包从知识库捞取候选时的查询条数。先宽后精，避免漏掉相关项。 */
+export const WRITING_BRIEF_QUERY_LIMIT_CHARACTERS = 400;
+export const WRITING_BRIEF_QUERY_LIMIT_THREADS = 400;
+export const WRITING_BRIEF_QUERY_LIMIT_FORESHADOWINGS = 600;
+
+/** 默认注入条数：与上一轮推荐的 writing-brief 取值一致。 */
+export const WRITING_BRIEF_DEFAULT_CHARACTERS = 4;
+export const WRITING_BRIEF_DEFAULT_THREADS = 4;
+export const WRITING_BRIEF_DEFAULT_FORESHADOWINGS = 5;
+export const WRITING_BRIEF_DEFAULT_BEATS = 3;
+
+/** 相关性打分的启发式权重与状态加成。 */
+export const WRITING_BRIEF_NAME_HIT_SCORE = 24;
+export const WRITING_BRIEF_ACTIVE_THREAD_BONUS = 3;
+export const WRITING_BRIEF_SUSPENDED_THREAD_BONUS = 1;
+export const WRITING_BRIEF_EXPLICIT_CLUE_BONUS = 2;
+
+/** 条目内字段截取长度：长摘要多留一点，定位性内容点到即止。 */
+export const WRITING_BRIEF_CLIP_LONG_CHARS = 110;
+export const WRITING_BRIEF_CLIP_MEDIUM_CHARS = 90;
+export const WRITING_BRIEF_CLIP_SHORT_CHARS = 60;
+/** 情节线「未解问题」最多展示几条。 */
+export const WRITING_BRIEF_UNRESOLVED_LIMIT = 2;
+/** 人物别名最多展示几个。 */
+export const WRITING_BRIEF_ALIAS_LIMIT = 3;
+
+// ── 节奏与句法闸门 ─────────────────────────────────────────────
+/** 句子长度分档（汉字数）：短句 / 长句 / 超长句的统计口径，三处共用。 */
+export const RHYTHM_SHORT_SENTENCE_CHARS = 10;
+export const RHYTHM_LONG_SENTENCE_CHARS = 31;
+export const RHYTHM_VERY_LONG_SENTENCE_CHARS = 60;
+
+/** 加权节奏偏差超过该值才触发修订，不为几个百分点反复改稿。 */
+export const RHYTHM_REPAIR_THRESHOLD = 0.12;
+
+/** 修订时把短句合并成的目标长句区间（字）。 */
+export const RHYTHM_REPAIR_LONG_MIN_CHARS = 31;
+export const RHYTHM_REPAIR_LONG_MAX_CHARS = 55;
+
+/** 修订后总字数允许的变化幅度。 */
+export const RHYTHM_WORD_COUNT_TOLERANCE = 0.1;
+
+// ── 连通性自检 ─────────────────────────────────────────────────
+/** 自检输出里正文预览的最大字符数。 */
+export const PROBE_TEXT_PREVIEW_CHARS = 40;
+
+/** 最小连通请求耗时超过该值就提示长文任务会明显偏慢。 */
+export const PROBE_SLOW_REQUEST_THRESHOLD_MS = 30_000;
+
+// ── Agent 调用心跳 ─────────────────────────────────────────────
+/** 调用超过该时长才打印心跳，避免短调用刷屏。 */
+export const HEARTBEAT_AFTER_MS = 60_000;
+
+/** 心跳打印间隔：够看清进度，又不会淹没真正的错误输出。 */
+export const HEARTBEAT_INTERVAL_MS = 30_000;
+
+/** 回归盲写时给写作模型的前文上限。再多会挤占输出窗口。 */
+export const REGRESSION_CONTEXT_TAIL_CHARS = 4_000;
+
+// ── 检索查询拼装 ────────────────────────────────────────────────
+/** 全书分析定向查询最多带入几位状态人物。比写作查询略宽，分析不进正文。 */
+export const STORY_ANALYSIS_QUERY_CHARACTERS = 16;
+
+// ── Workbench 本地服务 ─────────────────────────────────────────
+/** 默认监听端口。选 4173 避开 Vite 5173 与常见开发端口。 */
+export const WORKBENCH_DEFAULT_PORT = 4173;
+
+/** 端口合法性边界，即 16 位无符号整数的上限。 */
+export const WORKBENCH_MAX_PORT = 65_535;
+
+// ── 日志与诊断截断 ─────────────────────────────────────────────
+/** 失败日志里单条错误信息最多保留的字符数，只用于定住问题，排版不失控。 */
+export const LOG_ERROR_PREVIEW_CHARS = 400;
+
+/** 错误汇总里最多列出几个已失败批次，其余用省略号概括。 */
+export const LOG_FAILURE_REPORT_LIMIT = 5;
+
+/** 事件去重关键串里摘要的最大字符数：够区分同一章内不同的连续事件即可。 */
+export const BEAT_DEDUPE_KEY_CHARS = 40;
+
+// ── 人物画像 CLI 与回归前文 ─────────────────────────────────────
+/** analyze-profiles 默认处理的相关人物数。全书合并时通常低于此数。 */
+export const PROFILE_DEFAULT_TOP = 24;
+
+/** regress 默认给盲写模型的前文行数与合法区间。 */
+export const DEFAULT_CONTEXT_LINES = 90;
+export const MIN_CONTEXT_LINES = 10;
+export const MAX_CONTEXT_LINES = 400;
+
+// ── 长章节逐场写作 ─────────────────────────────────────────────
+/** 每场目标字数在均分基础上多留的余量，防止前几场偷字数挤压后场。 */
+export const SCENE_WORD_BUDGET_BUFFER = 1.15;
+
+/** 已累积前文作为「本场前情」注入时的字符上限。 */
+export const ACCUMULATED_CONTEXT_TAIL_CHARS = 7_200;
+
+/** 单场局势输入的字符预算。逐场都要重新拼，必须比整章预算紧。 */
+export const SCENE_SITUATION_BUDGET_CHARS = 2_600;
+
+/** 逐批审查合并后的必改项上限；逐批审查覆盖多场，所以比单章终审更宽。 */
+export const BATCH_REVIEW_MAX_ISSUES = 6;
+
+// ── 分析参考检索（story-analysis-context）的相关性打分 ───────────
+/** 分析条目的整名命中权重与别名命中权重。整名命中说明本章大体上在写它。 */
+export const CONTEXT_NAME_HIT_SCORE = 24;
+export const CONTEXT_ALIAS_HIT_SCORE = 16;
+
+// ── 终审证据定位与展示截断 ─────────────────────────────────────
+/** 终审证据去掉省略号后，用它前缀做模糊定位的最短片段。 */
+export const EVIDENCE_PROBE_PREFIX_CHARS = 8;
+
+/** 校验报告里最多列出几个越界行号，其余省略。 */
+export const INVALID_REF_REPORT_LIMIT = 5;
+
+/** 人物画像提示里最多展示几个别名，超出不加。 */
+export const PROFILE_PROMPT_ALIAS_LIMIT = 6;
+
+// ── 知识库默认查询条数（database 层）─────────────────────────────
+/** 逐批人物观察默认返回条数。观察量大，调用方通常显式传 --top。 */
+export const OBSERVATIONS_DEFAULT_LIMIT = 30;
+
+/** 章级事件默认返回条数：导出与常规检查都够用。 */
+export const BEATS_DEFAULT_LIMIT = 200;
+
+// ── SQLite 并发忙等 ────────────────────────────────────────────
+/** 写锁冲突时单次让出的毫秒数与最大重试次数。分析分片并发写库时兜底。 */
+export const SQLITE_BUSY_WAIT_MS = 250;
+export const SQLITE_BUSY_RETRY_ATTEMPTS = 40;
+
+// ── 目录对齐（chapter catalog 匹配） ────────────────────────────
+/** 目录按行顺序匹配时允许跳过的条目数。跳太远通常意味着标题对错了章。 */
+export const CATALOG_SCAN_WINDOW = 40;

@@ -1,6 +1,25 @@
 // 把全书知识库（novel_* 表）压成一份可注入的写作事实包。
 // 与分析参考不同：这里的内容是全书已经写成的事实，用于约束本章，不是创意建议。
 import { listNovelBeats, listNovelCharacterProfiles, listNovelCharacters, listNovelForeshadowings, listNovelThreads } from "./database.js";
+import {
+  WRITING_BRIEF_ACTIVE_THREAD_BONUS,
+  WRITING_BRIEF_ALIAS_LIMIT,
+  WRITING_BRIEF_CLIP_LONG_CHARS,
+  WRITING_BRIEF_CLIP_MEDIUM_CHARS,
+  WRITING_BRIEF_CLIP_SHORT_CHARS,
+  WRITING_BRIEF_DEFAULT_BEATS,
+  WRITING_BRIEF_DEFAULT_CHARACTERS,
+  WRITING_BRIEF_DEFAULT_FORESHADOWINGS,
+  WRITING_BRIEF_DEFAULT_THREADS,
+  WRITING_BRIEF_EXPLICIT_CLUE_BONUS,
+  WRITING_BRIEF_MAX_CHARS,
+  WRITING_BRIEF_NAME_HIT_SCORE,
+  WRITING_BRIEF_QUERY_LIMIT_CHARACTERS,
+  WRITING_BRIEF_QUERY_LIMIT_FORESHADOWINGS,
+  WRITING_BRIEF_QUERY_LIMIT_THREADS,
+  WRITING_BRIEF_SUSPENDED_THREAD_BONUS,
+  WRITING_BRIEF_UNRESOLVED_LIMIT
+} from "./constants.js";
 
 export interface WritingBriefOptions {
   worldDir: string;
@@ -61,17 +80,17 @@ const chapterLabel = (value: unknown): string => {
 export function buildWritingBrief(options: WritingBriefOptions): string {
   const query = briefTerms(options.query);
   if (!query.size) return "";
-  const maxChars = options.maxChars ?? 3000;
+  const maxChars = options.maxChars ?? WRITING_BRIEF_MAX_CHARS;
 
   // 逐批抽取的原始观察太碎（主角动辄上百条），优先用合并档案描述人物。
   const profiles = listNovelCharacterProfiles(options.worldDir, options.worldId);
-  const characters = listNovelCharacters(options.worldDir, options.worldId, { limit: 400 })
+  const characters = listNovelCharacters(options.worldDir, options.worldId, { limit: WRITING_BRIEF_QUERY_LIMIT_CHARACTERS })
     .map(character => {
       const names = [character.name, ...character.aliases];
       // 名字出现在任务描述里，比任何词面重合都更能说明本章会写到这个人。
       const nameHit = names.reduce((best, name) => {
         const compact = name.replace(/\s/g, "");
-        return compact.length > 1 && options.query.includes(compact) ? Math.max(best, 24) : best;
+        return compact.length > 1 && options.query.includes(compact) ? Math.max(best, WRITING_BRIEF_NAME_HIT_SCORE) : best;
       }, 0);
       const summary = profiles.get(character.name)?.summary ?? "";
       const textScore = overlap([character.role, character.bio, character.voice, summary].join(" "), query);
@@ -79,45 +98,45 @@ export function buildWritingBrief(options: WritingBriefOptions): string {
     })
     .filter(entry => entry.score > 0)
     .sort((a, b) => b.score - a.score || b.character.mentionTotal - a.character.mentionTotal)
-    .slice(0, options.characterLimit ?? 4)
+    .slice(0, options.characterLimit ?? WRITING_BRIEF_DEFAULT_CHARACTERS)
     .map(({ character, summary }) => {
-      const aliases = character.aliases.length ? "（" + character.aliases.slice(0, 3).join("、") + "）" : "";
+      const aliases = character.aliases.length ? "（" + character.aliases.slice(0, WRITING_BRIEF_ALIAS_LIMIT).join("、") + "）" : "";
       // 有合并档案就用画像；否则退回 role——它是首次识别那一批的定位，不是当前处境。
-      const gist = summary ? "｜" + clip(summary, 110) : character.role ? "｜" + clip(character.role, 60) : "";
+      const gist = summary ? "｜" + clip(summary, WRITING_BRIEF_CLIP_LONG_CHARS) : character.role ? "｜" + clip(character.role, WRITING_BRIEF_CLIP_SHORT_CHARS) : "";
       return "- " + character.name + aliases + gist +
         "（出场 " + chapterLabel(character.firstChapter) + "–" + chapterLabel(character.lastChapter).replace("第 ", "") + "）";
     });
 
   type ThreadRow = { title: string; status: string; summary: string; firstChapter: number | null; lastChapter: number | null; keyTurns: string[]; unresolved: string[] };
-  const threads = (listNovelThreads(options.worldDir, options.worldId, { limit: 400 }) as unknown as ThreadRow[])
+  const threads = (listNovelThreads(options.worldDir, options.worldId, { limit: WRITING_BRIEF_QUERY_LIMIT_THREADS }) as unknown as ThreadRow[])
     .map(thread => {
       // 状态只是排序偏好，不是相关性：没有词面重合的线不能因为「进行中」就进包。
       const relevance = overlap([thread.title, thread.summary, thread.keyTurns.join(" ")].join(" "), query);
-      return { thread, score: relevance > 0 ? relevance + (thread.status === "进行中" ? 3 : thread.status === "悬置" ? 1 : 0) : 0 };
+      return { thread, score: relevance > 0 ? relevance + (thread.status === "进行中" ? WRITING_BRIEF_ACTIVE_THREAD_BONUS : thread.status === "悬置" ? WRITING_BRIEF_SUSPENDED_THREAD_BONUS : 0) : 0 };
     })
     .filter(entry => entry.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, options.threadLimit ?? 4)
+    .slice(0, options.threadLimit ?? WRITING_BRIEF_DEFAULT_THREADS)
     .map(({ thread }) => "- " + thread.title + "（" + thread.status + "，" +
       chapterLabel(thread.firstChapter) + "–" + chapterLabel(thread.lastChapter).replace("第 ", "") + "）：" +
-      clip(thread.summary, 110) + (thread.unresolved.length ? "；未解：" + clip(thread.unresolved.slice(0, 2).join("；"), 60) : ""));
+      clip(thread.summary, WRITING_BRIEF_CLIP_LONG_CHARS) + (thread.unresolved.length ? "；未解：" + clip(thread.unresolved.slice(0, WRITING_BRIEF_UNRESOLVED_LIMIT).join("；"), WRITING_BRIEF_CLIP_SHORT_CHARS) : ""));
 
   type ClueRow = { clue: string; meaning: string; firstAppearance: string; status: string; confidence: string; chapterOrdinal: number | null };
-  const foreshadowings = (listNovelForeshadowings(options.worldDir, options.worldId, { limit: 600 }) as unknown as ClueRow[])
+  const foreshadowings = (listNovelForeshadowings(options.worldDir, options.worldId, { limit: WRITING_BRIEF_QUERY_LIMIT_FORESHADOWINGS }) as unknown as ClueRow[])
     .filter(item => item.status !== "已回收" && item.status !== "已收束")
     .map(item => {
       const relevance = overlap([item.clue, item.meaning, item.firstAppearance].join(" "), query);
-      return { item, score: relevance > 0 ? relevance + (item.confidence === "明确线索" ? 2 : 0) : 0 };
+      return { item, score: relevance > 0 ? relevance + (item.confidence === "明确线索" ? WRITING_BRIEF_EXPLICIT_CLUE_BONUS : 0) : 0 };
     })
     .filter(entry => entry.score > 0)
     .sort((a, b) => b.score - a.score)
-    .slice(0, options.foreshadowingLimit ?? 5)
-    .map(({ item }) => "- " + clip(item.clue, 60) + "（" + item.status + "／" + item.confidence + "，" +
-      chapterLabel(item.chapterOrdinal) + "）：" + clip(item.meaning, 90));
+    .slice(0, options.foreshadowingLimit ?? WRITING_BRIEF_DEFAULT_FORESHADOWINGS)
+    .map(({ item }) => "- " + clip(item.clue, WRITING_BRIEF_CLIP_SHORT_CHARS) + "（" + item.status + "／" + item.confidence + "，" +
+      chapterLabel(item.chapterOrdinal) + "）：" + clip(item.meaning, WRITING_BRIEF_CLIP_MEDIUM_CHARS));
 
-  const beats = listNovelBeats(options.worldDir, options.worldId, { limit: options.beatLimit ?? 3, latest: true })
+  const beats = listNovelBeats(options.worldDir, options.worldId, { limit: options.beatLimit ?? WRITING_BRIEF_DEFAULT_BEATS, latest: true })
     .reverse()
-    .map(beat => "- " + chapterLabel(beat.chapterOrdinal) + "：" + clip(String(beat.summary), 110));
+    .map(beat => "- " + chapterLabel(beat.chapterOrdinal) + "：" + clip(String(beat.summary), WRITING_BRIEF_CLIP_LONG_CHARS));
 
   const sections = [
     characters.length ? "### 相关人物（跨卷画像；当前处境以故事状态为准）\n" + characters.join("\n") : "",

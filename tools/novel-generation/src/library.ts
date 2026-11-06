@@ -1,4 +1,5 @@
 import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
+import { LIBRARY_CHUNK_MAX_CHARS, LIBRARY_CHUNK_OVERLAP_CHARS } from "./constants.js";
 import { invalidateDerivedAnalysis, syncAnnotations, databaseWorldDirFromLibrary } from "./database.js";
 import { createHash } from "node:crypto";
 import { basename, extname, join, relative, resolve, sep } from "node:path";
@@ -60,7 +61,7 @@ function splitChapters(text: string, source: string): Array<{ title: string; tex
   return chapters;
 }
 
-function chunkText(text: string, maxChars = 1200, overlap = 160): Array<{ text: string; start: number; end: number }> {
+function chunkText(text: string, maxChars = LIBRARY_CHUNK_MAX_CHARS, overlap = LIBRARY_CHUNK_OVERLAP_CHARS): Array<{ text: string; start: number; end: number }> {
   const chunks: Array<{ text: string; start: number; end: number }> = [];
   let start = 0;
   while (start < text.length) {

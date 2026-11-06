@@ -10,7 +10,7 @@ import {
   DEFAULT_CONFIG_PATH
 } from "./agent-runtime.js";
 import { applyAgentMessage, type AgentStreamState } from "./generate.js";
-import { DEFAULT_PROBE_TIMEOUT_MS } from "./constants.js";
+import { DEFAULT_PROBE_TIMEOUT_MS, PROBE_SLOW_REQUEST_THRESHOLD_MS, PROBE_TEXT_PREVIEW_CHARS } from "./constants.js";
 
 const PROMPT = "只回复两个字：连通。不要解释。";
 
@@ -147,9 +147,9 @@ export async function checkRuntime(options: RuntimeCheckOptions = {}): Promise<R
 
   const totalMs = Date.now() - startedAt;
   const ttft = state.firstTextAt ? state.firstTextAt - startedAt : null;
-  lines.push(`4. 调用：${state.text ? JSON.stringify(state.text.slice(0, 40)) : "无文本"} · TTFT ${ttft === null ? "未收到" : ttft + "ms"} · 耗时 ${totalMs}ms · 事件 ${state.messageCount} 条`);
+  lines.push(`4. 调用：${state.text ? JSON.stringify(state.text.slice(0, PROBE_TEXT_PREVIEW_CHARS)) : "无文本"} · TTFT ${ttft === null ? "未收到" : ttft + "ms"} · 耗时 ${totalMs}ms · 事件 ${state.messageCount} 条`);
   if (!state.text.trim()) failures.push("调用没有返回 assistant 文本");
-  if (totalMs > 30_000) lines.push("   ! 最小请求超过 30s，长文任务会明显更慢");
+  if (totalMs > PROBE_SLOW_REQUEST_THRESHOLD_MS) lines.push(`   ! 最小请求超过 ${PROBE_SLOW_REQUEST_THRESHOLD_MS / 1000}s，长文任务会明显更慢`);
 
   const used = readUsedModels(cursor);
   lines.push(`5. CLI 日志实际请求模型：${used.length ? used.map(item => `${item.model} ×${item.count}`).join(", ") : "无新增记录"}`);

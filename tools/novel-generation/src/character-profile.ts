@@ -8,7 +8,17 @@ import {
   type NovelCharacterObservationRow, type NovelCharacterProfileRow
 } from "./database.js";
 import { runAgentText } from "./generate.js";
-import { PROFILE_ANALYSIS_DEFAULT_TIMEOUT_MS } from "./constants.js";
+import {
+  PROFILE_ANALYSIS_DEFAULT_TIMEOUT_MS,
+  PROFILE_DEFAULT_TOP,
+  PROFILE_OUTPUT_ARC_LIMIT,
+  PROFILE_OUTPUT_CONTRADICTIONS_LIMIT,
+  PROFILE_OUTPUT_STAGES_LIMIT,
+  PROFILE_OUTPUT_TRAITS_LIMIT,
+  PROFILE_PROMPT_ALIAS_LIMIT,
+  PROFILE_SAMPLE_DEFAULT,
+  PROFILE_SAMPLE_PERSONALITY
+} from "./constants.js";
 import { parseJsonObject } from "./model-json.js";
 import { readTaskProfiles } from "./task-profiles.js";
 
@@ -75,7 +85,7 @@ export function buildProfilePrompt(input: ProfilePromptInput): string {
       "每一批只看到几章，所以同一个人在不同批次里被反复描述，措辞各异，角度也不同。",
     "任务：把它们合并成一份档案，保留前后变化，不要简单堆叠标签，也不要引入原文没有的内容。",
     "",
-    "人物：" + input.name + (input.aliases.length ? "（又称：" + input.aliases.slice(0, 6).join("、") + "）" : ""),
+    "人物：" + input.name + (input.aliases.length ? "（又称：" + input.aliases.slice(0, PROFILE_PROMPT_ALIAS_LIMIT).join("、") + "）" : ""),
     "出场范围：" + span,
     "首次识别到的身份作用：" + (input.role || "未标注"),
     "初次小传：" + (input.bio || "未标注"),
@@ -137,7 +147,7 @@ export async function buildCharacterProfiles(worldId: string, options: Character
   const existing = options.force ? new Map<string, NovelCharacterProfileRow>() : listNovelCharacterProfiles(worldDir, worldId);
   const wanted = options.names?.length ? new Set(options.names) : undefined;
 
-  const observations = listNovelCharacterObservations(worldDir, worldId, { limit: options.top ?? 24 })
+  const observations = listNovelCharacterObservations(worldDir, worldId, { limit: options.top ?? PROFILE_DEFAULT_TOP })
     .filter(character => !wanted || wanted.has(character.name));
 
   const results: NovelCharacterProfileRow[] = [];
@@ -195,10 +205,10 @@ export async function buildCharacterProfiles(worldId: string, options: Character
       characterId: character.characterId,
       name: character.name,
       summary: parsed.summary.trim(),
-      stages: parsed.stages.slice(0, 6),
-      traits: parsed.traits.slice(0, 8),
-      contradictions: parsed.contradictions.slice(0, 8),
-      arc: parsed.arc.slice(0, 6),
+      stages: parsed.stages.slice(0, PROFILE_OUTPUT_STAGES_LIMIT),
+      traits: parsed.traits.slice(0, PROFILE_OUTPUT_TRAITS_LIMIT),
+      contradictions: parsed.contradictions.slice(0, PROFILE_OUTPUT_CONTRADICTIONS_LIMIT),
+      arc: parsed.arc.slice(0, PROFILE_OUTPUT_ARC_LIMIT),
       observationCount: character.personality.length + character.desires.length + character.contradictions.length + character.arc.length,
       model: model || "default",
       generatedAt: new Date().toISOString()
@@ -222,10 +232,10 @@ function toPromptInput(character: NovelCharacterObservationRow, scale = 1): Prof
     firstChapter: character.firstChapter,
     lastChapter: character.lastChapter,
     observations: {
-      personality: sampleChronologically(character.personality, size(24)),
-      desires: sampleChronologically(character.desires, size(16)),
-      contradictions: sampleChronologically(character.contradictions, size(16)),
-      arc: sampleChronologically(character.arc, size(16))
+      personality: sampleChronologically(character.personality, size(PROFILE_SAMPLE_PERSONALITY)),
+      desires: sampleChronologically(character.desires, size(PROFILE_SAMPLE_DEFAULT)),
+      contradictions: sampleChronologically(character.contradictions, size(PROFILE_SAMPLE_DEFAULT)),
+      arc: sampleChronologically(character.arc, size(PROFILE_SAMPLE_DEFAULT))
     },
     totals: {
       personality: character.personality.length,

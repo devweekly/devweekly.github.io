@@ -1,17 +1,24 @@
-import { KB_DEFAULT_LIMIT, KB_FORESHADOWING_DEFAULT_LIMIT } from "./constants.js";
+import {
+  BEATS_DEFAULT_LIMIT,
+  SQLITE_BUSY_RETRY_ATTEMPTS,
+  SQLITE_BUSY_WAIT_MS,
+  KB_DEFAULT_LIMIT,
+  KB_FORESHADOWING_DEFAULT_LIMIT,
+  OBSERVATIONS_DEFAULT_LIMIT
+} from "./constants.js";
 import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { StoryState } from "./story-state.js";
 export interface DatabaseStatus { path:string; schemaVersion:number; statePath:string; stateSchemaVersion:number; annotations:number; entities:number; entityMentions:number; characters:number; canonFacts:number; events:number; plotThreads:number; storyAnalysis:number; novelChapters:number; novelCharacters:number; novelMentions:number; novelThreads:number; novelForeshadowings:number; novelBeats:number; novelRelations:number; novelArcs:number; novelCharacterProfiles:number; }
 /** Concurrent shards and reader processes compete for the write lock; wait instead of failing. */
-function retryBusy<T>(work:()=>T,attempts=40):T{
+function retryBusy<T>(work:()=>T,attempts = SQLITE_BUSY_RETRY_ATTEMPTS):T{
  for(let attempt=0;;attempt++){
   try{return work();}
   catch(error){
    const message=String((error as Error).message??error);
    if(!/database is locked|SQLITE_BUSY|database table is locked/i.test(message)||attempt>=attempts-1)throw error;
-   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,250);
+   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)),0,0,SQLITE_BUSY_WAIT_MS);
   }
  }
 }
@@ -326,7 +333,7 @@ export interface NovelCharacterObservationRow { characterId:string; name:string;
 /** 逐批抽取的原始观察，用于合并成档案；量很大，只给分析用。 */
 export function listNovelCharacterObservations(worldDir:string,worldId:string,options:{limit?:number;minMentions?:number}={}):NovelCharacterObservationRow[]{
  const db=openKnowledgeDatabase(worldDir,worldId);try{
-  const limit=options.limit??30;const minMentions=options.minMentions??1;
+  const limit=options.limit??OBSERVATIONS_DEFAULT_LIMIT;const minMentions=options.minMentions??1;
   const rows=db.prepare("SELECT character_id AS characterId,name,aliases_json,role,bio,first_chapter AS firstChapter,last_chapter AS lastChapter,mention_total AS mentionTotal,personality_json,desires_json,contradictions_json,arc_json FROM novel_characters WHERE mention_total>=? ORDER BY mention_total DESC, name LIMIT ?").all(minMentions,limit) as Array<Record<string,unknown> & {aliases_json:string;personality_json:string;desires_json:string;contradictions_json:string;arc_json:string}>;
   const parse=(value:string)=>{try{const parsed=JSON.parse(value) as unknown;return Array.isArray(parsed)?parsed.filter((item):item is string=>typeof item==="string"):[];}catch{return [];}};
   return rows.map(row=>({...row,aliases:parse(row.aliases_json),personality:parse(row.personality_json),desires:parse(row.desires_json),contradictions:parse(row.contradictions_json),arc:parse(row.arc_json),aliases_json:undefined,personality_json:undefined,desires_json:undefined,contradictions_json:undefined,arc_json:undefined} as unknown as NovelCharacterObservationRow));
@@ -430,7 +437,7 @@ export function novelKnowledgeOverview(worldDir:string,worldId:string):Record<st
 }
 export function listNovelBeats(worldDir:string,worldId:string,options:{from?:number;to?:number;limit?:number;latest?:boolean}={}):Array<Record<string,unknown> & {actors:string[]}>{
  const db=openKnowledgeDatabase(worldDir,worldId);try{
-  const from=options.from??0;const to=options.to??Number.MAX_SAFE_INTEGER;const limit=options.limit??200;
+  const from=options.from??0;const to=options.to??Number.MAX_SAFE_INTEGER;const limit=options.limit??BEATS_DEFAULT_LIMIT;
   const order=options.latest?"DESC":"ASC";
   const rows=db.prepare("SELECT beat_id AS beatId,chapter_id AS chapterId,chapter_ordinal AS chapterOrdinal,summary,actors_json FROM novel_beats WHERE chapter_ordinal>=? AND chapter_ordinal<=? ORDER BY chapter_ordinal "+order+" LIMIT ?").all(from,to,limit) as Array<Record<string,unknown> & {actors_json:string}>;
   return rows.map(row=>({...row,actors:JSON.parse(row.actors_json) as string[],actors_json:undefined}));

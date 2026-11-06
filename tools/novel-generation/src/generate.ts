@@ -1,7 +1,7 @@
 import { query } from "@tencent-ai/agent-sdk";
 import { buildQueryOptions, resolveAgentModel } from "./agent-runtime.js";
 import { thinkingOption, type TaskProfile } from "./task-profiles.js";
-import { GENERATION_DEFAULT_TIMEOUT_MS } from "./constants.js";
+import { GENERATION_DEFAULT_TIMEOUT_MS, HEARTBEAT_AFTER_MS, HEARTBEAT_INTERVAL_MS } from "./constants.js";
 
 export type GenerationMode = "derivative" | "continuation";
 export interface GenerateStoryInput {
@@ -116,11 +116,11 @@ async function callOnce(
     rejectTimeout(timeoutError());
   }, timeoutMs);
   timer.unref?.();
-  if (timeoutMs > 60_000) {
+  if (timeoutMs > HEARTBEAT_AFTER_MS) {
     heartbeat = setInterval(() => {
       const seconds = ((Date.now() - startedAt) / 1000).toFixed(0);
       console.error(`[agent] ${model} 已等待 ${seconds}s · 事件 ${state.messageCount} 条 · 已收文本 ${state.text.length} 字`);
-    }, 30_000);
+    }, HEARTBEAT_INTERVAL_MS);
     heartbeat.unref?.();
   }
 

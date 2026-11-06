@@ -7,7 +7,9 @@ import { z } from "zod";
 import {
   AGENT_REPORT_MIN_CHARS,
   AGENT_REPORT_MIN_REFERENCES,
-  AGENT_REPORT_MIN_SECTIONS
+  AGENT_REPORT_MIN_SECTIONS,
+  DEFAULT_PROBE_TIMEOUT_MS,
+  INVALID_REF_REPORT_LIMIT
 } from "./constants.js";
 
 /**
@@ -301,7 +303,7 @@ export async function reviewAnalysisEvidence(
     return { ok: false, policy, checked: 0, supported: 0, rejected: 0, issues, decisions: [] };
   }
 
-  const timeoutMs = options.timeoutMs ?? 90_000;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_PROBE_TIMEOUT_MS;
   const radius = Math.max(0, Math.min(options.window ?? 2, 6));
   const decisions: SemanticEvidenceReview["decisions"] = [];
   let failedBatches = 0;
@@ -405,7 +407,7 @@ export function validateAnalysisOutput(text: string, totalLines: number): Output
   if (sections < AGENT_REPORT_MIN_SECTIONS) issues.push(`二级标题不足（${sections} 个，要求至少 ${AGENT_REPORT_MIN_SECTIONS} 个）`);
   if (/TODO|待补|占位|待填/.test(text)) issues.push("残留占位文字");
   const invalid = references.filter(line => line < 1 || line > totalLines);
-  if (invalid.length) issues.push(`行号越界：${invalid.slice(0, 5).join("、")}`);
+  if (invalid.length) issues.push(`行号越界：${invalid.slice(0, INVALID_REF_REPORT_LIMIT).join("、")}`);
   return { ok: issues.length === 0, chars, evidenceCount: references.length, issues };
 }
 

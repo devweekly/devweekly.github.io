@@ -3,7 +3,8 @@ import { parseJsonObject } from "./model-json.js";
 import {
   MAX_REVIEW_ISSUES,
   MAX_SCENES,
-  REVIEW_EVIDENCE_MAX_CHARS
+  REVIEW_EVIDENCE_MAX_CHARS,
+  EVIDENCE_PROBE_PREFIX_CHARS
 } from "./constants.js";
 
 /**
@@ -62,7 +63,7 @@ export function parseChapterReview(raw: string, chapter: string, sceneCount?: nu
       if (issue.scenes.some(scene => scene > sceneCount)) throw new Error("Review references a scene outside this chapter.");
     }
     const probe = issue.evidence.replace(/[.…\s]+/g, "");
-    const located = chapter.includes(issue.evidence) || (probe.length > 0 && chapter.includes(probe.slice(0, 8)));
+    const located = chapter.includes(issue.evidence) || (probe.length > 0 && chapter.includes(probe.slice(0, EVIDENCE_PROBE_PREFIX_CHARS)));
     if (!located) issue.evidence = issue.evidence + "（未定位到，按场景号核对）";
   }
   return parsed;

@@ -12,7 +12,15 @@ import { formatReview, parseChapterReview, reviewAndRepair, reviewPrompt, withDe
 import { checkIronLaws, ironLawIssues, loadIronLaws } from "./iron-laws.js";
 import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
 import { parseJsonObject } from "./model-json.js";
-import { LONG_CHAPTER_SOURCE_TAIL_CHARS } from "./constants.js";
+import {
+  ACCUMULATED_CONTEXT_TAIL_CHARS,
+  BATCH_REVIEW_MAX_ISSUES,
+  LONG_CHAPTER_SOURCE_TAIL_CHARS,
+  SCENE_SITUATION_BUDGET_CHARS,
+  SCENE_WORD_BUDGET_BUFFER,
+  WORLD_SITUATION_FIELD_DEFAULT_LIMIT,
+  WRITE_LONG_RETRIEVAL_LIMIT
+} from "./constants.js";
 import { buildWorldSituationContext } from "./world-situation.js";
 
 export interface LongChapterInput {
@@ -195,7 +203,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   await saveStage(input.outputDir, "01-scene-blueprint.md", blueprint);
   // 终审失败时可能先改蓝图；这里保存逐场蓝图的当前版本。
   let currentPlans = scenePlans;
-  const perScene = Math.ceil(input.maxWords / scenePlans.length * 1.15);
+  const perScene = Math.ceil(input.maxWords / scenePlans.length * SCENE_WORD_BUDGET_BUFFER);
   const sceneTexts: string[] = [];
   for (let index = 0; index < scenePlans.length; index++) {
     // Use the accumulated chapter, not only the immediately preceding scene.
@@ -218,14 +226,14 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       character.resources?.length ? "可调用资源：" + character.resources.join("；") : "",
       character.constraints?.length ? "行动限制：" + character.constraints.join("；") : "",
       character.currentPressure?.length ? "当前压力：" + character.currentPressure.join("；") : "",
-      character.decisionHistory?.length ? "近期重要决定：" + character.decisionHistory.slice(-4).join("；") : "",
+      character.decisionHistory?.length ? "近期重要决定：" + character.decisionHistory.slice(-WORLD_SITUATION_FIELD_DEFAULT_LIMIT).join("；") : "",
       character.relationships?.length ? "关系：" + character.relationships.join("；") : "",
       character.abilities?.length ? "能力：" + character.abilities.join("；") : "",
       character.profile?.coreTraits?.length ? "性格底色（参考，不是行为限制）：" + character.profile.coreTraits.join("；") : "",
       character.profile?.contradictions?.length ? "内在矛盾：" + character.profile.contradictions.join("；") : ""
     ].filter(Boolean).join("\n")).join("\n\n");
     const sceneRetrieval = input.libraryDir
-      ? await searchLibrary(input.libraryDir, [input.brief, scenePlans[index]!, ...state.characters.map(character => character.name)].join("\n"), input.retrievalLimit ?? 4)
+      ? await searchLibrary(input.libraryDir, [input.brief, scenePlans[index]!, ...state.characters.map(character => character.name)].join("\n"), input.retrievalLimit ?? WRITE_LONG_RETRIEVAL_LIMIT)
       : [];
     const sceneEvidence = sceneRetrieval.map((hit, hitIndex) =>
       `[${hitIndex + 1}, score ${hit.score.toFixed(2)}] ${hit.source} / ${hit.chapter} / offset ${hit.start}-${hit.end}\n${hit.text}`
@@ -315,7 +323,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
-  }).slice(0, 6);
+  }).slice(0, BATCH_REVIEW_MAX_ISSUES);
   const review = formatReview({
     status: merged.length ? "needs_repair" : "pass",
     summary: summaries.join("；") || "未发现读者会认定不可能的硬伤",

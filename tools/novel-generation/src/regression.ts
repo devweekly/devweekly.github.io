@@ -4,6 +4,12 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { chineseChars } from "./long-chapter.js";
 import { runAgentText } from "./generate.js";
+import {
+  RHYTHM_LONG_SENTENCE_CHARS,
+  RHYTHM_SHORT_SENTENCE_CHARS,
+  RHYTHM_VERY_LONG_SENTENCE_CHARS,
+  REGRESSION_CONTEXT_TAIL_CHARS
+} from "./constants.js";
 import type { TaskProfile } from "./task-profiles.js";
 import {
   needsRepair, repairRhythm, rhythmGaps, rhythmScore, shouldAcceptRepair,
@@ -106,10 +112,10 @@ export function chapterMetrics(text: string): ChapterMetrics {
     medianSentence: total ? Number(((lengths[Math.floor((total - 1) / 2)]! + lengths[Math.ceil((total - 1) / 2)]!) / 2).toFixed(1)) : 0,
     p90Sentence: at(0.9),
     maxSentence: total ? lengths[total - 1]! : 0,
-    shortRatio: ratio(lengths.filter(length => length <= 10).length, total),
-    midRatio: ratio(lengths.filter(length => length > 10 && length < 31).length, total),
-    longRatio: ratio(lengths.filter(length => length >= 31).length, total),
-    veryLongRatio: ratio(lengths.filter(length => length >= 60).length, total),
+    shortRatio: ratio(lengths.filter(length => length <= RHYTHM_SHORT_SENTENCE_CHARS).length, total),
+    midRatio: ratio(lengths.filter(length => length > RHYTHM_SHORT_SENTENCE_CHARS && length < RHYTHM_LONG_SENTENCE_CHARS).length, total),
+    longRatio: ratio(lengths.filter(length => length >= RHYTHM_LONG_SENTENCE_CHARS).length, total),
+    veryLongRatio: ratio(lengths.filter(length => length >= RHYTHM_VERY_LONG_SENTENCE_CHARS).length, total),
     sentencesPerParagraph: paragraphs.length ? Number((total / paragraphs.length).toFixed(2)) : 0,
     dialogueLineRatio: ratio(paragraphs.filter(line => /^["“「]/.test(line)).length, paragraphs.length),
     commasPerSentence: total ? Number((commas / total).toFixed(2)) : 0,
@@ -136,10 +142,10 @@ const LABELS: Record<keyof ChapterMetrics, string> = {
   medianSentence: "句长中位数",
   p90Sentence: "句长 p90",
   maxSentence: "最长句",
-  shortRatio: "短句占比(≤10)",
-  midRatio: "中句占比(11-30)",
-  longRatio: "长句占比(≥31)",
-  veryLongRatio: "超长句占比(≥60)",
+  shortRatio: "短句占比(≤" + RHYTHM_SHORT_SENTENCE_CHARS + ")",
+  midRatio: "中句占比(11-" + (RHYTHM_LONG_SENTENCE_CHARS - 1) + ")",
+  longRatio: "长句占比(≥" + RHYTHM_LONG_SENTENCE_CHARS + ")",
+  veryLongRatio: "超长句占比(≥" + RHYTHM_VERY_LONG_SENTENCE_CHARS + ")",
   sentencesPerParagraph: "段均句数",
   dialogueLineRatio: "对白行占比",
   commasPerSentence: "句均逗号",
@@ -287,7 +293,7 @@ export function buildReviewPrompt(input: {
     `候选 B（写作阶段推理配置 ${profileText(input.profileB)}）：`,
     input.candidateB,
     input.repairNotes ? "写稿后的处理：\n" + input.repairNotes : "",
-    "已量出的指标（同一口径统计，只数汉字；短句≤10 字，长句≥31 字，超长句≥60 字）：",
+    `已量出的指标（同一口径统计，只数汉字；短句≤${RHYTHM_SHORT_SENTENCE_CHARS} 字，长句≥${RHYTHM_LONG_SENTENCE_CHARS} 字，超长句≥${RHYTHM_VERY_LONG_SENTENCE_CHARS} 字）：`,
     "| 指标 | 原文 | A | A 差值 |\n|---|---|---|---|\n" + table(input.deltasA),
     "| 指标 | 原文 | B | B 差值 |\n|---|---|---|---|\n" + table(input.deltasB),
     "请按以下结构写评审报告：",
@@ -318,7 +324,7 @@ export async function runRegression(input: RegressionInput): Promise<RegressionR
   const lines = (await readFile(input.corpusPath, "utf8")).split(/\r?\n/);
   const slice = (from: number, to: number): string => lines.slice(from - 1, to).join("\n").trim();
   const originalText = slice(chapter.startLine, chapter.endLine);
-  const context = tail(slice(Math.max(1, chapter.startLine - input.contextLines), chapter.startLine - 1), 4000);
+  const context = tail(slice(Math.max(1, chapter.startLine - input.contextLines), chapter.startLine - 1), REGRESSION_CONTEXT_TAIL_CHARS);
   const originalMetrics = chapterMetrics(originalText);
   const targetWords = input.targetWords > 0 ? input.targetWords : originalMetrics.characters;
 

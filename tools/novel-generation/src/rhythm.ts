@@ -1,6 +1,15 @@
 // 节奏闸门：先量出与目标基线的差距，再让模型只改句子组织。
 // 目标值来自 analysis/conghuoniao/style-rhythm.md 的全书抽样，不靠目测判断「太急」。
 import { runAgentText } from "./generate.js";
+import {
+  RHYTHM_LONG_SENTENCE_CHARS,
+  RHYTHM_REPAIR_LONG_MAX_CHARS,
+  RHYTHM_REPAIR_LONG_MIN_CHARS,
+  RHYTHM_REPAIR_THRESHOLD,
+  RHYTHM_SHORT_SENTENCE_CHARS,
+  RHYTHM_VERY_LONG_SENTENCE_CHARS,
+  RHYTHM_WORD_COUNT_TOLERANCE
+} from "./constants.js";
 import type { ChapterMetrics } from "./regression.js";
 import type { TaskProfile } from "./task-profiles.js";
 
@@ -69,9 +78,9 @@ export interface RhythmGap {
 const LABELS: Record<keyof RhythmTarget, string> = {
   meanSentence: "平均句长",
   p90Sentence: "句长 p90",
-  shortRatio: "短句占比(≤10 字)",
-  longRatio: "长句占比(≥31 字)",
-  veryLongRatio: "超长句占比(≥60 字)",
+  shortRatio: `短句占比(≤${RHYTHM_SHORT_SENTENCE_CHARS} 字)`,
+  longRatio: `长句占比(≥${RHYTHM_LONG_SENTENCE_CHARS} 字)`,
+  veryLongRatio: `超长句占比(≥${RHYTHM_VERY_LONG_SENTENCE_CHARS} 字)`,
   dialogueLineRatio: "对白行占比",
   sentencesPerParagraph: "段均句数",
   charsPerParagraph: "段均字数",
@@ -113,7 +122,7 @@ export function rhythmScore(gaps: RhythmGap[]): number {
 }
 
 export function needsRepair(gaps: RhythmGap[]): boolean {
-  return rhythmScore(gaps) > 0.12;
+  return rhythmScore(gaps) > RHYTHM_REPAIR_THRESHOLD;
 }
 
 /**
@@ -130,14 +139,14 @@ export function shouldAcceptRepair(before: number, after: number): boolean {
  */
 export function buildRepairPrompt(text: string, gaps: RhythmGap[]): string {
   const urgent = gaps
-    .filter(gap => Math.abs(gap.deviation) > 0.12)
+    .filter(gap => Math.abs(gap.deviation) > RHYTHM_REPAIR_THRESHOLD)
     .sort((a, b) => Math.abs(b.deviation) * WEIGHTS[b.key] - Math.abs(a.deviation) * WEIGHTS[a.key]);
   const actions: string[] = [];
   for (const gap of urgent) {
     if (gap.key === "shortRatio" && gap.deviation > 0) {
       actions.push(`短句占比 ${(gap.actual * 100).toFixed(0)}%，目标 ${(gap.target * 100).toFixed(0)}%：把功能重复、语气相同的相邻短句用一个逗号并进同一句，只保留结尾的句号。`);
     } else if (gap.key === "longRatio" || gap.key === "p90Sentence" || gap.key === "meanSentence") {
-      actions.push(`长句占比 ${(gap.actual * 100).toFixed(0)}%（目标 ${(gap.target * 100).toFixed(0)}%），平均句长 ${gap.actual} 字（目标 ${gap.target}）：把旁边两到三个短句用逗号、分号串成一句 31–55 字的长句，原句信息全部保留，不新增内容。`);
+      actions.push(`长句占比 ${(gap.actual * 100).toFixed(0)}%（目标 ${(gap.target * 100).toFixed(0)}%），平均句长 ${gap.actual} 字（目标 ${gap.target}）：把旁边两到三个短句用逗号、分号串成一句 ${RHYTHM_REPAIR_LONG_MIN_CHARS}–${RHYTHM_REPAIR_LONG_MAX_CHARS} 字的长句，原句信息全部保留，不新增内容。`);
     } else if (gap.key === "dialogueLineRatio" && gap.deviation > 0) {
       actions.push(`对白行占比 ${(gap.actual * 100).toFixed(0)}%，目标 ${(gap.target * 100).toFixed(0)}%：把连续的一问一答合并成一个人连着说的一段长对白，答话人的回应改成动作或沉默。`);
     } else if (gap.key === "sentencesPerParagraph" && gap.deviation > 0) {
@@ -145,7 +154,7 @@ export function buildRepairPrompt(text: string, gaps: RhythmGap[]): string {
     } else if (gap.key === "strongPunctPer1000" && gap.deviation < 0) {
       actions.push(`强调标点每千字 ${gap.actual} 处，目标 ${gap.target}：对白里的质问、反问、惊讶保留问号与感叹号，不要一律改成句号。`);
     } else if (gap.key === "veryLongRatio" && gap.deviation < 0) {
-      actions.push(`超长句占比 ${(gap.actual * 100).toFixed(1)}%，目标 ${(gap.target * 100).toFixed(1)}%：至少写出一到两处 60 字以上、由逗号串联三个以上分句的长句，用于局势推断或器物清单。`);
+      actions.push(`超长句占比 ${(gap.actual * 100).toFixed(1)}%，目标 ${(gap.target * 100).toFixed(1)}%：至少写出一到两处 ${RHYTHM_VERY_LONG_SENTENCE_CHARS} 字以上、由逗号串联三个以上分句的长句，用于局势推断或器物清单。`);
     }
   }
   return [
@@ -159,7 +168,7 @@ export function buildRepairPrompt(text: string, gaps: RhythmGap[]): string {
     "- 不改写人物说的话，只合并或拆分说话前后的叙述；对白本身只允许合并连续发言，不增加内容。",
     "- 不新增场景、事件、人物、比喻和形容；不删情节。",
     "- 不靠合并段落凑指标：原文单句成段约占一半，段落数应基本不变。",
-    "- 总字数变化控制在 10% 以内。",
+    `- 总字数变化控制在 ${RHYTHM_WORD_COUNT_TOLERANCE * 100}% 以内。`,
     "当前正文：",
     text,
     "输出完整修订后的正文，不要输出修改说明或指标对照。"

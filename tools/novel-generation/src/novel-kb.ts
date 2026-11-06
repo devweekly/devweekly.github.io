@@ -1,5 +1,12 @@
 import { readFile } from "node:fs/promises";
-import { ANALYSIS_BATCH_CHARS } from "./constants.js";
+import {
+  ANALYSIS_BATCH_CHARS,
+  ANALYSIS_DEDUPE_MAX_OVERLAP_CHARS,
+  ANALYSIS_DEDUPE_MIN_OVERLAP_CHARS,
+  CATALOG_SCAN_WINDOW,
+  CHARACTER_LIST_MAX_LIMIT,
+  MIN_ANALYSIS_BATCH_CHARS
+} from "./constants.js";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
@@ -87,7 +94,7 @@ export function assignChapters(chunks: LibraryChunk[], catalog: CatalogChapter[]
     if (chunk.chapter !== currentLabel) {
       currentLabel = chunk.chapter;
       let found = -1;
-      for (let scan = pointer; scan < catalog.length && scan < pointer + 40; scan++) {
+      for (let scan = pointer; scan < catalog.length && scan < pointer + CATALOG_SCAN_WINDOW; scan++) {
         if (catalog[scan]?.title === chunk.chapter) { found = scan; break; }
       }
       if (found >= 0) {
@@ -229,7 +236,7 @@ export function countMentions(text: string, aliasToCanonical: Map<string, string
  * Analysis must see each passage once: trim the repeated head of every chunk
  * against the tail of what has already been accumulated for that chapter.
  */
-export function dedupeChunkTexts(texts: string[], maxOverlap = 260): string {
+export function dedupeChunkTexts(texts: string[], maxOverlap = ANALYSIS_DEDUPE_MAX_OVERLAP_CHARS): string {
   let acc = "";
   for (const text of texts) {
     if (!acc) { acc = text; continue; }
@@ -237,7 +244,7 @@ export function dedupeChunkTexts(texts: string[], maxOverlap = 260): string {
     const head = text.slice(0, maxOverlap);
     const headCompact = head.replace(/\s/g, "");
     let overlap = 0;
-    for (let k = Math.min(tail.length, headCompact.length); k >= 24; k--) {
+    for (let k = Math.min(tail.length, headCompact.length); k >= ANALYSIS_DEDUPE_MIN_OVERLAP_CHARS; k--) {
       if (tail.endsWith(headCompact.slice(0, k))) { overlap = k; break; }
     }
     let cut = 0;
@@ -297,7 +304,7 @@ export async function buildAnalysisUnits(
 
 /** Packs whole chapters into batches; a chapter is never split across batches. */
 export function groupAnalysisUnits(units: AnalysisUnit[], maxChars = ANALYSIS_BATCH_CHARS): AnalysisUnit[][] {
-  if (!Number.isInteger(maxChars) || maxChars < 2_000) throw new Error("maxChars must be at least 2000.");
+  if (!Number.isInteger(maxChars) || maxChars < MIN_ANALYSIS_BATCH_CHARS) throw new Error("maxChars must be at least " + MIN_ANALYSIS_BATCH_CHARS + ".");
   const batches: AnalysisUnit[][] = [];
   let current: AnalysisUnit[] = [];
   let chars = 0;
@@ -368,7 +375,7 @@ export async function indexNovelStructure(
   const seeds = (options.characters ?? await readSeedCharacters(worldDir))
     .filter(entry => isUsableCharacterName(normalizeCharacterName(entry.name)))
     .map(entry => ({ name: normalizeCharacterName(entry.name), aliases: entry.aliases.filter(isUsableAlias) }));
-  const existing = listNovelCharacters(worldDir, worldId, { limit: 4000 });
+  const existing = listNovelCharacters(worldDir, worldId, { limit: CHARACTER_LIST_MAX_LIMIT });
   upsertSeedCharacters(worldDir, worldId, seeds);
   // Mention statistics count canonical names only. Aliases are metadata: a
   // generic alias such as "男人" would otherwise swallow thousands of mentions.

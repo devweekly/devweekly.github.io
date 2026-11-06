@@ -3,13 +3,13 @@ import { dirname } from "node:path";
 import { z } from "zod";
 import { runAgentText } from "./generate.js";
 import { parseJsonObject } from "./model-json.js";
-import { DEFAULT_AGENT_TIMEOUT_MS } from "./constants.js";
+import { DEFAULT_AGENT_TIMEOUT_MS, STORY_PLAN_MAX_ITEMS } from "./constants.js";
 import { readTaskProfiles } from "./task-profiles.js";
 import type { StoryState } from "./story-state.js";
 
 const MilestoneSchema=z.object({id:z.string().min(1),title:z.string().min(1),purpose:z.string().min(1),turningPoint:z.string().default(""),consequence:z.string().default(""),status:z.enum(["planned","reached","revised","deferred"]).default("planned")}).strict();
 const ThreadSchema=z.object({id:z.string().min(1),title:z.string().min(1),goal:z.string().default(""),stakes:z.string().default(""),currentPressure:z.string().default(""),nextPossibilities:z.array(z.string()).default([]),status:z.enum(["planned","active","paused","resolved"]).default("planned")}).strict();
-const BodySchema=z.object({corePremise:z.string().min(1),centralConflict:z.string().min(1),protagonistLongTermGoal:z.string().min(1),stakes:z.array(z.string()).default([]),endDirection:z.string().min(1),majorMilestones:z.array(MilestoneSchema).max(30).default([]),longTermThreads:z.array(ThreadSchema).max(30).default([]),revealPlan:z.array(z.string()).default([]),constraints:z.array(z.string()).default([]),openQuestions:z.array(z.string()).default([]),revisionNotes:z.array(z.string()).default([])}).strict();
+const BodySchema=z.object({corePremise:z.string().min(1),centralConflict:z.string().min(1),protagonistLongTermGoal:z.string().min(1),stakes:z.array(z.string()).default([]),endDirection:z.string().min(1),majorMilestones:z.array(MilestoneSchema).max(STORY_PLAN_MAX_ITEMS).default([]),longTermThreads:z.array(ThreadSchema).max(STORY_PLAN_MAX_ITEMS).default([]),revealPlan:z.array(z.string()).default([]),constraints:z.array(z.string()).default([]),openQuestions:z.array(z.string()).default([]),revisionNotes:z.array(z.string()).default([])}).strict();
 const PlanSchema=BodySchema.extend({schemaVersion:z.literal(1),worldId:z.string().min(1),status:z.enum(["draft","active"]),updatedAt:z.string().min(1)}).strict();
 export type StoryPlan=z.infer<typeof PlanSchema>;
 export function validateStoryPlan(value:unknown,worldId?:string):StoryPlan{const plan=PlanSchema.parse(value);if(worldId&&plan.worldId!==worldId)throw new Error("Story plan world mismatch: expected "+worldId+", found "+plan.worldId);return plan;}

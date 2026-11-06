@@ -1,7 +1,9 @@
 import type { StoryAnalysisSnapshot } from "./database.js";
 import {
   ANALYSIS_VERSION,
+  CONTEXT_ALIAS_HIT_SCORE,
   CONTEXT_ITEM_RENDER_LIMIT,
+  CONTEXT_NAME_HIT_SCORE,
   CONTEXT_LIMIT_CHARACTERS,
   CONTEXT_LIMIT_DEVELOPMENTS,
   CONTEXT_LIMIT_FORESHADOWINGS,
@@ -53,12 +55,12 @@ function score(item: AnalysisItem, queryTerms: Set<string>, query: string): numb
   const queryCompact = query.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
   const name = String(item.name ?? item.title ?? item.clue ?? item.focus ?? "");
   const nameCompact = name.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
-  if (nameCompact.length > 1 && queryCompact.includes(nameCompact)) total += 24;
+  if (nameCompact.length > 1 && queryCompact.includes(nameCompact)) total += CONTEXT_NAME_HIT_SCORE;
   const aliases = Array.isArray(item.aliases) ? item.aliases : [];
   for (const alias of aliases) {
     if (typeof alias !== "string") continue;
     const aliasCompact = alias.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, "");
-    if (aliasCompact.length > 1 && queryCompact.includes(aliasCompact)) total += 16;
+    if (aliasCompact.length > 1 && queryCompact.includes(aliasCompact)) total += CONTEXT_ALIAS_HIT_SCORE;
   }
   return total;
 }

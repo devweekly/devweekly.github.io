@@ -15,7 +15,10 @@ import { readTaskProfiles } from "./task-profiles.js";
 import { parseJsonObject } from "./model-json.js";
 import {
   ANALYSIS_BATCH_CHARS,
+  BEAT_DEDUPE_KEY_CHARS,
   DEFAULT_AGENT_TIMEOUT_MS,
+  LOG_ERROR_PREVIEW_CHARS,
+  LOG_FAILURE_REPORT_LIMIT,
   MAX_ITEM_SOURCE_REFS
 } from "./constants.js";
 export { repairJsonText } from "./model-json.js";
@@ -314,7 +317,7 @@ function mergeSimple(target: Item[], incoming: Item[], keyField: string, arrayFi
 function mergeBeats(target: Item[], incoming: Item[]): Item[] {
   const seen = new Map<string, Item>();
   for (const item of [...target, ...incoming]) {
-    const key = String(item.chapterKey) + "|" + String(item.summary).replace(/\s/g, "").slice(0, 40);
+    const key = String(item.chapterKey) + "|" + String(item.summary).replace(/\s/g, "").slice(0, BEAT_DEDUPE_KEY_CHARS);
     const previous = seen.get(key);
     if (!previous) { seen.set(key, { ...item }); continue; }
     previous.actors = unique([...asStrings(previous.actors), ...asStrings(item.actors)]);
@@ -620,7 +623,7 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         failures.push({ index: batch.index, error: message });
-        console.error(`[story-analysis] batch ${batch.index + 1} failed: ${message.slice(0, 400)}`);
+        console.error(`[story-analysis] batch ${batch.index + 1} failed: ${message.slice(0, LOG_ERROR_PREVIEW_CHARS)}`);
         continue;
       }
       const temporary = path + ".tmp";
@@ -636,7 +639,7 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
     return { batches: totalBatches, processed, cached, failed: failures.map(item => item.index), pending: batches.length - skipped - processed - cached, skipped, malformedBeats: 0 };
   }
   if (failures.length) {
-    throw new Error(`${failures.length} batch(es) failed: ${failures.slice(0, 5).map(item => "#" + (item.index + 1)).join(", ")}${failures.length > 5 ? " …" : ""}. Successful batches are cached; re-run to resume.`);
+    throw new Error(`${failures.length} batch(es) failed: ${failures.slice(0, LOG_FAILURE_REPORT_LIMIT).map(item => "#" + (item.index + 1)).join(", ")}${failures.length > LOG_FAILURE_REPORT_LIMIT ? " …" : ""}. Successful batches are cached; re-run to resume.`);
   }
   if (pending) throw new Error(`Cannot merge: ${pending} batch(es) missing from cache. Run the remaining shards first.`);
   if (results.length !== totalBatches || skipped) {
@@ -829,7 +832,7 @@ function mergeAndPersist(
       unresolved: unique(asStrings(item.unresolvedQuestions)),
       firstChapter: ordinals.length ? Math.min(...ordinals) : null,
       lastChapter: ordinals.length ? Math.max(...ordinals) : null,
-      sourceRefs: refs.slice(0, 12)
+      sourceRefs: refs.slice(0, MAX_ITEM_SOURCE_REFS)
     };
   });
 
@@ -845,7 +848,7 @@ function mergeAndPersist(
       confidence: normalizeConfidence(String(item.confidence ?? "")),
       status: normalizeForeshadowingStatus(String(item.status ?? "")),
       chapterOrdinal: ordinals.length ? Math.min(...ordinals) : null,
-      sourceRefs: refs.slice(0, 12)
+      sourceRefs: refs.slice(0, MAX_ITEM_SOURCE_REFS)
     };
   });
 

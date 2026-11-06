@@ -19,7 +19,28 @@ import {
   MIN_SCENES,
   MIN_WRITE_TIMEOUT_MS,
   PROFILE_ANALYSIS_DEFAULT_TIMEOUT_MS,
-  DEFAULT_REGRESSION_TIMEOUT_MS
+  DEFAULT_REGRESSION_TIMEOUT_MS,
+  STORY_ANALYSIS_QUERY_CHARACTERS,
+  ANALYSIS_BATCH_CHARS,
+  ANALYSIS_DEFAULT_TIMEOUT_MS,
+  QUERY_CONTEXT_CHARACTERS,
+  QUERY_SOURCE_TAIL_CHARS,
+  DEFAULT_AGENT_TIMEOUT_MS,
+  DEFAULT_PROBE_TIMEOUT_MS,
+  KB_DEFAULT_LIMIT,
+  KB_MAX_LIMIT,
+  DEFAULT_SEARCH_LIMIT,
+  MAX_SEARCH_LIMIT,
+  DEFAULT_ANALYZE_LIMIT,
+  MAX_ANALYZE_LIMIT,
+  DEFAULT_MAX_WORDS,
+  DEFAULT_SCENES,
+  WRITE_RETRIEVAL_LIMIT,
+  WRITE_LONG_RETRIEVAL_LIMIT,
+  PROFILE_DEFAULT_TOP,
+  DEFAULT_CONTEXT_LINES,
+  MIN_CONTEXT_LINES,
+  MAX_CONTEXT_LINES
 } from "./constants.js";
 import { indexNovelStructure } from "./novel-kb.js";
 import { buildVolumeArcs, listVolumeArcs } from "./story-arcs.js";
@@ -135,7 +156,7 @@ async function main(): Promise<void> {
     await loadStoryState(resolve(worldDir, "story-state.json"), worldId);
     const result = await buildVolumeArcs(worldId, {
       worldDir, model: arg("--model"),
-      timeoutMs: Number(arg("--timeout-ms") ?? 180_000),
+      timeoutMs: Number(arg("--timeout-ms") ?? DEFAULT_AGENT_TIMEOUT_MS),
       force: process.argv.includes("--force")
     });
     console.log(JSON.stringify({ volumes: result.arcs.length, generated: result.generated, cached: result.cached }, null, 2));
@@ -147,7 +168,7 @@ async function main(): Promise<void> {
     const result = await buildCharacterProfiles(worldId, {
       worldDir,
       model: arg("--model"),
-      top: Number(arg("--top") ?? 24),
+      top: Number(arg("--top") ?? PROFILE_DEFAULT_TOP),
       timeoutMs: Number(arg("--timeout-ms") ?? PROFILE_ANALYSIS_DEFAULT_TIMEOUT_MS),
       force: process.argv.includes("--force"),
       names: (arg("--names") ?? "").split(",").map(name => name.trim()).filter(Boolean)
@@ -165,8 +186,8 @@ async function main(): Promise<void> {
   if (command === "story-kb") {
     const worldDir = resolve("worlds", worldId);
     const type = arg("--type") ?? "characters";
-    const limit = Number(arg("--limit") ?? 50);
-    if (!Number.isInteger(limit) || limit < 1 || limit > 2000) throw new Error("--limit must be between 1 and 2000.");
+    const limit = Number(arg("--limit") ?? KB_DEFAULT_LIMIT);
+    if (!Number.isInteger(limit) || limit < 1 || limit > KB_MAX_LIMIT) throw new Error("--limit must be between 1 and " + KB_MAX_LIMIT + ".");
     if (type === "export") {
       const out = resolve(arg("--out") ?? join("worlds", worldId, "story-kb.json"));
       const snapshot = exportNovelKnowledge(worldDir, worldId);
@@ -184,7 +205,7 @@ async function main(): Promise<void> {
     }
     else if (type === "threads") console.log(JSON.stringify({ threads: listNovelThreads(worldDir, worldId, { limit, status: arg("--status"), query: arg("--query") }) }, null, 2));
     else if (type === "foreshadowings") console.log(JSON.stringify({ foreshadowings: listNovelForeshadowings(worldDir, worldId, { limit, status: arg("--status"), query: arg("--query") }) }, null, 2));
-    else if (type === "beats") console.log(JSON.stringify({ beats: listNovelBeats(worldDir, worldId, { from: Number(arg("--from") ?? 0), to: Number(arg("--to") ?? 9999), limit }) }, null, 2));
+    else if (type === "beats") console.log(JSON.stringify({ beats: listNovelBeats(worldDir, worldId, { from: Number(arg("--from") ?? 0), to: Number(arg("--to") ?? Number.MAX_SAFE_INTEGER), limit }) }, null, 2));
     else throw new Error("--type must be overview, arcs, characters, threads, foreshadowings, beats or export.");
     return;
   }
@@ -196,9 +217,9 @@ async function main(): Promise<void> {
       console.log("Prepared " + result.roles + " agent input packs.");
       console.log("Directory: " + result.dir);
     } else if (phase === "collect") {
-      const timeoutMs = Number(arg("--timeout-ms") ?? 90_000);
+      const timeoutMs = Number(arg("--timeout-ms") ?? DEFAULT_PROBE_TIMEOUT_MS);
       if (!Number.isInteger(timeoutMs) || timeoutMs < MIN_AGENT_TIMEOUT_MS || timeoutMs > MAX_AGENT_TIMEOUT_MS) {
-        throw new Error("--timeout-ms must be an integer between 5000 and 600000.");
+        throw new Error("--timeout-ms must be an integer between " + MIN_AGENT_TIMEOUT_MS + " and " + MAX_AGENT_TIMEOUT_MS + ".");
       }
       const result = await collectWorldAnalysis(worldId, {
         sourcePath: arg("--source") ?? "original.txt",
@@ -240,7 +261,7 @@ async function main(): Promise<void> {
     }
     const worldBible = await readFile(resolve(worldDir, "world-bible.md"), "utf8");
     const state = await loadStoryState(resolve(worldDir, "story-state.json"), worldId);
-    const query = [state.currentPosition, ...state.plotThreads.map(thread => thread.title), ...state.characters.slice(0, 16).map(character => character.name)].join("\n");
+    const query = [state.currentPosition, ...state.plotThreads.map(thread => thread.title), ...state.characters.slice(0, STORY_ANALYSIS_QUERY_CHARACTERS).map(character => character.name)].join("\n");
     const analysisContext = buildStoryAnalysisContext(readStoryAnalysis(worldDir, worldId), query);
     const previousPlan = await loadStoryPlan(resolve(worldDir, "story-plan.json"), worldId);
     const candidate = await generateStoryPlan({worldId,worldBible,state,storyAnalysisContext:analysisContext,previousPlan,model:arg("--model")});
@@ -275,9 +296,9 @@ async function main(): Promise<void> {
   }
 
   if (command === "check-runtime") {
-    const timeoutMs = Number(arg("--timeout-ms") ?? 90_000);
+    const timeoutMs = Number(arg("--timeout-ms") ?? DEFAULT_PROBE_TIMEOUT_MS);
     if (!Number.isInteger(timeoutMs) || timeoutMs < MIN_AGENT_TIMEOUT_MS || timeoutMs > MAX_AGENT_TIMEOUT_MS) {
-      throw new Error("--timeout-ms must be an integer between 5000 and 600000.");
+      throw new Error("--timeout-ms must be an integer between " + MIN_AGENT_TIMEOUT_MS + " and " + MAX_AGENT_TIMEOUT_MS + ".");
     }
     const result = await checkRuntime({ timeoutMs, model: arg("--model") });
     for (const line of result.lines) console.log(line);
@@ -288,17 +309,17 @@ async function main(): Promise<void> {
   if (command === "regress") {
     const chapterIndex = Number(arg("--chapter") ?? "");
     if (!Number.isInteger(chapterIndex) || chapterIndex < 1) throw new Error("--chapter 需要 1 起的整数，对应全书目录中的章序。");
-    const contextLines = Number(arg("--context-lines") ?? 90);
-    if (!Number.isInteger(contextLines) || contextLines < 10 || contextLines > 400) {
-      throw new Error("--context-lines must be an integer between 10 and 400.");
+    const contextLines = Number(arg("--context-lines") ?? DEFAULT_CONTEXT_LINES);
+    if (!Number.isInteger(contextLines) || contextLines < MIN_CONTEXT_LINES || contextLines > MAX_CONTEXT_LINES) {
+      throw new Error("--context-lines must be an integer between " + MIN_CONTEXT_LINES + " and " + MAX_CONTEXT_LINES + ".");
     }
     const timeoutMs = Number(arg("--timeout-ms") ?? DEFAULT_REGRESSION_TIMEOUT_MS);
     if (!Number.isInteger(timeoutMs) || timeoutMs < MIN_WRITE_TIMEOUT_MS || timeoutMs > MAX_AGENT_TIMEOUT_MS) {
-      throw new Error("--timeout-ms must be an integer between 30000 and 600000.");
+      throw new Error("--timeout-ms must be an integer between " + MIN_WRITE_TIMEOUT_MS + " and " + MAX_AGENT_TIMEOUT_MS + ".");
     }
     const targetWords = Number(arg("--max-words") ?? 0);
-    if (!Number.isInteger(targetWords) || targetWords < 0 || targetWords > 20_000) {
-      throw new Error("--max-words must be an integer between 0 and 20000；0 表示与原章同长。");
+    if (!Number.isInteger(targetWords) || targetWords < 0 || targetWords > MAX_MAX_WORDS) {
+      throw new Error("--max-words must be an integer between 0 and " + MAX_MAX_WORDS + "；0 表示与原章同长。");
     }
     const indexPath = resolve("analysis", worldId, "chapter-index.json");
     const chapters = loadChapters(JSON.parse(await readFile(indexPath, "utf8")) as Parameters<typeof loadChapters>[0]);
@@ -355,11 +376,11 @@ async function main(): Promise<void> {
   }
 
   if (command === "analyze") {
-    const limit = Number(arg("--limit") ?? 20);
-    if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("--limit must be between 1 and 100.");
-    const timeoutMs = Number(arg("--timeout-ms") ?? 60_000);
+    const limit = Number(arg("--limit") ?? DEFAULT_ANALYZE_LIMIT);
+    if (!Number.isInteger(limit) || limit < 1 || limit > MAX_ANALYZE_LIMIT) throw new Error("--limit must be between 1 and " + MAX_ANALYZE_LIMIT + ".");
+    const timeoutMs = Number(arg("--timeout-ms") ?? ANALYSIS_DEFAULT_TIMEOUT_MS);
     if (!Number.isInteger(timeoutMs) || timeoutMs < MIN_AGENT_TIMEOUT_MS || timeoutMs > MAX_AGENT_TIMEOUT_MS) {
-      throw new Error("--timeout-ms must be an integer between 5000 and 600000.");
+      throw new Error("--timeout-ms must be an integer between " + MIN_AGENT_TIMEOUT_MS + " and " + MAX_AGENT_TIMEOUT_MS + ".");
     }
     const result = await analyzeLibrary(libraryDir, worldId, limit, arg("--model"), timeoutMs);
     console.log("Analyzed chunks: " + result.processed);
@@ -370,9 +391,9 @@ async function main(): Promise<void> {
   }
 
   if (command === "analyze-story") {
-    const timeoutMs = Number(arg("--timeout-ms") ?? 180_000);
+    const timeoutMs = Number(arg("--timeout-ms") ?? DEFAULT_AGENT_TIMEOUT_MS);
     if (!Number.isInteger(timeoutMs) || timeoutMs < MIN_WRITE_TIMEOUT_MS || timeoutMs > MAX_AGENT_TIMEOUT_MS) {
-      throw new Error("--timeout-ms must be between 30000 and 600000.");
+      throw new Error("--timeout-ms must be between " + MIN_WRITE_TIMEOUT_MS + " and " + MAX_AGENT_TIMEOUT_MS + ".");
     }
     const shardArg = arg("--shard");
     let shard: { index: number; count: number } | undefined;
@@ -386,7 +407,7 @@ async function main(): Promise<void> {
       mergeOnly: process.argv.includes("--merge-only"),
       delta: process.argv.includes("--delta"),
       limit: arg("--limit") ? Number(arg("--limit")) : undefined,
-      maxChars: Number(arg("--max-chars") ?? 14_000),
+      maxChars: Number(arg("--max-chars") ?? ANALYSIS_BATCH_CHARS),
       worldDir: resolve("worlds", worldId),
       catalogPath: arg("--catalog")
     });
@@ -415,8 +436,8 @@ async function main(): Promise<void> {
   if (command === "search") {
     const query = arg("--query");
     if (!query) usage();
-    const limit = Number(arg("--limit") ?? 8);
-    if (!Number.isInteger(limit) || limit < 1 || limit > 30) throw new Error("--limit must be between 1 and 30.");
+    const limit = Number(arg("--limit") ?? DEFAULT_SEARCH_LIMIT);
+    if (!Number.isInteger(limit) || limit < 1 || limit > MAX_SEARCH_LIMIT) throw new Error("--limit must be between 1 and " + MAX_SEARCH_LIMIT + ".");
     const hits = await searchLibrary(libraryDir, query, limit);
     for (const hit of hits) console.log("\n[" + hit.score.toFixed(2) + "] " + hit.source + " / " + hit.chapter + " / chunk " + hit.chunkIndex + "\n" + hit.text);
     if (!hits.length) console.log("No matching passages found.");
@@ -437,8 +458,8 @@ async function main(): Promise<void> {
   try { styleRhythm = await readFile(resolve("analysis", worldId, "style-rhythm.md"), "utf8"); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   const model = arg("--model");
-  const maxWords = Number(arg("--max-words") ?? 3000);
-  if (!Number.isInteger(maxWords) || maxWords < MIN_MAX_WORDS || maxWords > MAX_MAX_WORDS) throw new Error("--max-words must be an integer between 300 and 20000.");
+  const maxWords = Number(arg("--max-words") ?? DEFAULT_MAX_WORDS);
+  if (!Number.isInteger(maxWords) || maxWords < MIN_MAX_WORDS || maxWords > MAX_MAX_WORDS) throw new Error("--max-words must be an integer between " + MIN_MAX_WORDS + " and " + MAX_MAX_WORDS + ".");
 
   if (command === "write") {
     const runId = new Date().toISOString().replace(/[:.]/g, "-");
@@ -448,7 +469,7 @@ async function main(): Promise<void> {
     if (mode !== "derivative" && mode !== "continuation") throw new Error("Unsupported mode: " + mode);
     if (mode === "continuation" && !sourceText) throw new Error("Continuation mode requires --source with text you provide or are authorized to use.");
 
-    const retrievalLimit = Number(arg("--retrieval-limit") ?? 6);
+    const retrievalLimit = Number(arg("--retrieval-limit") ?? WRITE_RETRIEVAL_LIMIT);
     if (!Number.isInteger(retrievalLimit) || retrievalLimit < 1 || retrievalLimit > 20) {
       throw new Error("--retrieval-limit must be between 1 and 20.");
     }
@@ -460,11 +481,11 @@ async function main(): Promise<void> {
     const retrievalQuery = [
       brief,
       contextText ?? "",
-      sourceText?.slice(-1500) ?? "",
+      sourceText?.slice(-QUERY_SOURCE_TAIL_CHARS) ?? "",
       state.currentPosition,
       ...activeThreads,
       storyPlanText,
-      ...state.characters.slice(0, 12).map(character => character.name)
+      ...state.characters.slice(0, QUERY_CONTEXT_CHARACTERS).map(character => character.name)
     ].join("\n");
     const retrieved = await searchLibrary(libraryDir, retrievalQuery, retrievalLimit);
     const storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), retrievalQuery);
@@ -493,11 +514,11 @@ async function main(): Promise<void> {
   }
 
   if (command === "write-long") {
-    const scenes = Number(arg("--scenes") ?? 8);
-    if (!Number.isInteger(scenes) || scenes < MIN_SCENES || scenes > MAX_SCENES) throw new Error("--scenes must be an integer between 2 and 20.");
-    const timeoutMs = Number(arg("--timeout-ms") ?? 180_000);
+    const scenes = Number(arg("--scenes") ?? DEFAULT_SCENES);
+    if (!Number.isInteger(scenes) || scenes < MIN_SCENES || scenes > MAX_SCENES) throw new Error("--scenes must be an integer between " + MIN_SCENES + " and " + MAX_SCENES + ".");
+    const timeoutMs = Number(arg("--timeout-ms") ?? DEFAULT_AGENT_TIMEOUT_MS);
     if (!Number.isInteger(timeoutMs) || timeoutMs < MIN_WRITE_TIMEOUT_MS || timeoutMs > MAX_AGENT_TIMEOUT_MS) {
-      throw new Error("--timeout-ms must be an integer between 30000 and 600000.");
+      throw new Error("--timeout-ms must be an integer between " + MIN_WRITE_TIMEOUT_MS + " and " + MAX_AGENT_TIMEOUT_MS + ".");
     }
     const mode = (arg("--mode") ?? (sourceText ? "continuation" : "derivative")) as GenerationMode;
     if (mode !== "derivative" && mode !== "continuation") throw new Error("Unsupported mode: " + mode);
@@ -507,11 +528,11 @@ async function main(): Promise<void> {
     const statePath = resolve("worlds", worldId, "story-state.json");
     const longState = await loadRunStoryState(statePath, worldId, outputDir, "write-long");
     const storyPlanText = formatStoryPlan(await loadStoryPlan(resolve("worlds", worldId, "story-plan.json"), worldId));
-    const storyAnalysisQuery = [brief, storyPlanText, contextText ?? "", sourceText?.slice(-1500) ?? "", longState.currentPosition, ...longState.plotThreads.filter(thread => thread.status === "open" || thread.status === "active").map(thread => thread.title), ...longState.characters.slice(0, 12).map(character => character.name)].join("\n");
+    const storyAnalysisQuery = [brief, storyPlanText, contextText ?? "", sourceText?.slice(-QUERY_SOURCE_TAIL_CHARS) ?? "", longState.currentPosition, ...longState.plotThreads.filter(thread => thread.status === "open" || thread.status === "active").map(thread => thread.title), ...longState.characters.slice(0, QUERY_CONTEXT_CHARACTERS).map(character => character.name)].join("\n");
     const storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), storyAnalysisQuery);
     const writingBrief = buildWritingBrief({ worldDir: resolve("worlds", worldId), worldId, query: storyAnalysisQuery });
     console.error("[write-long] 注入：事实包 " + writingBrief.length + " 字 / 分析参考 " + storyAnalysisContext.length + " 字");
-    const retrievalLimit = Number(arg("--retrieval-limit") ?? 4);
+    const retrievalLimit = Number(arg("--retrieval-limit") ?? WRITE_LONG_RETRIEVAL_LIMIT);
     if (!Number.isInteger(retrievalLimit) || retrievalLimit < 1 || retrievalLimit > 12) {
       throw new Error("--retrieval-limit must be an integer between 1 and 12.");
     }

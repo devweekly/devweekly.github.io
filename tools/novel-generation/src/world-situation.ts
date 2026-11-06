@@ -1,4 +1,21 @@
 import type { StoryState } from "./story-state.js";
+import {
+  WORLD_SITUATION_ACTIVE_THREAD_BONUS,
+  WORLD_SITUATION_CHARACTER_LIMIT,
+  WORLD_SITUATION_EVENT_LIMIT,
+  WORLD_SITUATION_FALLBACK_CHARACTERS,
+  WORLD_SITUATION_FALLBACK_EVENTS,
+  WORLD_SITUATION_FALLBACK_THREADS,
+  WORLD_SITUATION_FIELD_CONTRADICTIONS_LIMIT,
+  WORLD_SITUATION_FIELD_DEFAULT_LIMIT,
+  WORLD_SITUATION_FIELD_KNOWLEDGE_LIMIT,
+  WORLD_SITUATION_FIELD_RELATIONS_LIMIT,
+  WORLD_SITUATION_MAX_CHARS,
+  WORLD_SITUATION_NAME_HIT_SCORE,
+  WORLD_SITUATION_PARTICIPANT_BONUS,
+  WORLD_SITUATION_THREAD_LIMIT,
+  WORLD_SITUATION_THREAD_LINK_BONUS
+} from "./constants.js";
 
 type Character = StoryState["characters"][number];
 
@@ -22,7 +39,7 @@ function relevance(query: string, values: string[]): number {
   let score = 0;
   for (const value of values.filter(Boolean)) {
     const normalized = compact(value);
-    if (normalized.length > 1 && queryCompact.includes(normalized)) score += 24;
+    if (normalized.length > 1 && queryCompact.includes(normalized)) score += WORLD_SITUATION_NAME_HIT_SCORE;
     for (const term of terms(value)) {
       if (queryTerms.has(term)) score += term.length > 2 ? 2 : 1;
     }
@@ -30,7 +47,7 @@ function relevance(query: string, values: string[]): number {
   return score;
 }
 
-function strings(values: string[] | undefined, limit = 5): string {
+function strings(values: string[] | undefined, limit: number): string {
   return (values ?? []).filter(Boolean).slice(0, limit).join("；");
 }
 
@@ -38,15 +55,15 @@ function renderCharacter(character: Character): string {
   const rows = [
     character.status ? "当前处境：" + character.status : "",
     character.location ? "位置：" + character.location : "",
-    character.goals?.length ? "目标：" + strings(character.goals, 4) : "",
+    character.goals?.length ? "目标：" + strings(character.goals, WORLD_SITUATION_FIELD_DEFAULT_LIMIT) : "",
     character.motivation ? "动机：" + character.motivation : "",
-    character.knowledge?.length ? "已知信息：" + strings(character.knowledge, 6) : "",
-    character.resources?.length ? "可用资源：" + strings(character.resources, 4) : "",
-    character.constraints?.length ? "行动限制：" + strings(character.constraints, 4) : "",
-    character.currentPressure?.length ? "当前压力：" + strings(character.currentPressure, 4) : "",
-    character.relationships?.length ? "关系：" + strings(character.relationships, 5) : "",
-    character.decisionHistory?.length ? "近期重要决定：" + strings(character.decisionHistory.slice(-4), 4) : "",
-    character.profile?.contradictions?.length ? "内在矛盾：" + strings(character.profile.contradictions, 3) : ""
+    character.knowledge?.length ? "已知信息：" + strings(character.knowledge, WORLD_SITUATION_FIELD_KNOWLEDGE_LIMIT) : "",
+    character.resources?.length ? "可用资源：" + strings(character.resources, WORLD_SITUATION_FIELD_DEFAULT_LIMIT) : "",
+    character.constraints?.length ? "行动限制：" + strings(character.constraints, WORLD_SITUATION_FIELD_DEFAULT_LIMIT) : "",
+    character.currentPressure?.length ? "当前压力：" + strings(character.currentPressure, WORLD_SITUATION_FIELD_DEFAULT_LIMIT) : "",
+    character.relationships?.length ? "关系：" + strings(character.relationships, WORLD_SITUATION_FIELD_RELATIONS_LIMIT) : "",
+    character.decisionHistory?.length ? "近期重要决定：" + strings(character.decisionHistory.slice(-WORLD_SITUATION_FIELD_DEFAULT_LIMIT), WORLD_SITUATION_FIELD_DEFAULT_LIMIT) : "",
+    character.profile?.contradictions?.length ? "内在矛盾：" + strings(character.profile.contradictions, WORLD_SITUATION_FIELD_CONTRADICTIONS_LIMIT) : ""
   ].filter(Boolean);
   return "### " + character.name + "\n" + rows.join("\n");
 }
@@ -56,7 +73,7 @@ function renderCharacter(character: Character): string {
  * It supplies facts and constraints; the planner itself decides whether any
  * independent action or off-screen development is narratively useful.
  */
-export function buildWorldSituationContext(state: StoryState, query: string, maxChars = 5200): string {
+export function buildWorldSituationContext(state: StoryState, query: string, maxChars = WORLD_SITUATION_MAX_CHARS): string {
   const source = query.trim();
   const selectedCharacters = state.characters
     .map((character, index) => ({
@@ -73,7 +90,7 @@ export function buildWorldSituationContext(state: StoryState, query: string, max
     }))
     .filter(item => item.score > 0)
     .sort((a, b) => b.score - a.score || b.index - a.index)
-    .slice(0, 8);
+    .slice(0, WORLD_SITUATION_CHARACTER_LIMIT);
 
   // If the request names no character, retain only the most recently updated
   // profiles. Do not turn an underspecified brief into a cast-wide simulation.
@@ -81,7 +98,7 @@ export function buildWorldSituationContext(state: StoryState, query: string, max
     ? selectedCharacters.map(item => item.character)
     : [...state.characters]
         .sort((a, b) => (b.stateUpdatedAt ?? "").localeCompare(a.stateUpdatedAt ?? ""))
-        .slice(0, 5)
+        .slice(0, WORLD_SITUATION_FALLBACK_CHARACTERS)
     );
 
   const characterNames = new Set(characterRows.map(character => character.name));
@@ -99,11 +116,11 @@ export function buildWorldSituationContext(state: StoryState, query: string, max
   // A task that does not name a thread still needs a small amount of immediate
   // story context; use the latest active threads, not the whole backlog.
   const threadRows = (rankedThreads.length
-    ? rankedThreads.slice(0, 6)
+    ? rankedThreads.slice(0, WORLD_SITUATION_THREAD_LIMIT)
     : state.plotThreads
         .map((thread, index) => ({ thread, index, score: 0 }))
         .filter(item => item.thread.status === "active" || item.thread.status === "open")
-        .slice(-4));
+        .slice(-WORLD_SITUATION_FALLBACK_THREADS));
 
   const threadIds = new Set(threadRows.map(item => item.thread.id));
   const rankedEvents = state.events
@@ -111,16 +128,16 @@ export function buildWorldSituationContext(state: StoryState, query: string, max
       event,
       index,
       score: relevance(source, [event.summary, ...event.participants, ...(event.causes ?? []), ...(event.consequences ?? [])]) +
-        (event.participants.some(name => characterNames.has(name)) ? 28 : 0) +
-        (event.relatedPlotThreads ?? []).filter(id => threadIds.has(id)).length * 18
+        (event.participants.some(name => characterNames.has(name)) ? WORLD_SITUATION_PARTICIPANT_BONUS : 0) +
+        (event.relatedPlotThreads ?? []).filter(id => threadIds.has(id)).length * WORLD_SITUATION_THREAD_LINK_BONUS
     }))
     .filter(item => item.score > 0)
     .sort((a, b) => b.score - a.score || b.index - a.index)
-    .slice(0, 8)
+    .slice(0, WORLD_SITUATION_EVENT_LIMIT)
     .sort((a, b) => a.index - b.index);
   const eventRows = rankedEvents.length
     ? rankedEvents
-    : state.events.slice(-5).map((event, index) => ({ event, index, score: 0 }));
+    : state.events.slice(-WORLD_SITUATION_FALLBACK_EVENTS).map((event, index) => ({ event, index, score: 0 }));
   const eventById = new Map(state.events.map(event => [event.id, event]));
   const threadById = new Map(state.plotThreads.map(thread => [thread.id, thread]));
 
@@ -132,9 +149,9 @@ export function buildWorldSituationContext(state: StoryState, query: string, max
       ? "## 已发生事件及其因果关联\n" + eventRows.map(({ event }) => {
           const parts = [
             event.summary,
-            event.causes?.length ? "前因：" + strings(event.causes.map(cause => eventById.get(cause)?.summary ?? cause), 4) : "",
-            event.consequences.length ? "后果：" + strings(event.consequences, 4) : "",
-            event.relatedPlotThreads?.length ? "关联剧情线：" + strings(event.relatedPlotThreads.map(id => threadById.get(id)?.title ?? id), 4) : "",
+            event.causes?.length ? "前因：" + strings(event.causes.map(cause => eventById.get(cause)?.summary ?? cause), WORLD_SITUATION_FIELD_DEFAULT_LIMIT) : "",
+            event.consequences.length ? "后果：" + strings(event.consequences, WORLD_SITUATION_FIELD_DEFAULT_LIMIT) : "",
+            event.relatedPlotThreads?.length ? "关联剧情线：" + strings(event.relatedPlotThreads.map(id => threadById.get(id)?.title ?? id), WORLD_SITUATION_FIELD_DEFAULT_LIMIT) : "",
             event.origin ? "来源：" + event.origin : ""
           ].filter(Boolean);
           return "- " + parts.join("；");
