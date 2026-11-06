@@ -28,15 +28,23 @@ test("story analysis snapshot is persisted and replaced atomically as one databa
   try {
     const snapshot = {
       worldId: "test-world", sourceHash: "b".repeat(64), analyzedAt: "2026-11-05T00:00:00.000Z",
-      complete: true, batches: 2,
+      analysisVersion: 6, complete: true, batches: 2,
       characters: [{ name: "林岚", shortBio: "一个复杂的人物", sourceRefs: [{ chunkId: "c1", source: "s.txt", chapter: "第一章" }] }],
       plotThreads: [{ title: "失踪案", summary: "仍未解决" }],
       foreshadowings: [{ clue: "墙上的旧照片", confidence: "可能线索" }],
-      developmentPossibilities: [{ focus: "林岚", direction: "可能背叛同伴" }]
+      developmentPossibilities: [{ focus: "林岚", direction: "可能背叛同伴" }],
+      storyCore: { centralConflicts: ["失踪案背后的争夺"], sourceRefs: [{ chunkId: "c1", source: "s.txt", chapter: "第一章" }] },
+      macguffins: [{ name: "旧照片", whoWantsIt: ["林岚"] }],
+      storyGraph: {
+        nodes: [{ id: "character:1", type: "character", label: "林岚", data: { name: "林岚" }, sourceRefs: [{ chunkId: "c1", source: "s.txt", chapter: "第一章" }] }],
+        edges: [{ id: "edge:1", from: "character:1", to: "character:1", type: "self", label: "fixture", data: {}, sourceRefs: [{ chunkId: "c1", source: "s.txt", chapter: "第一章" }] }]
+      }
     };
     saveStoryAnalysis(root, "test-world", snapshot);
     assert.deepEqual(readStoryAnalysis(root, "test-world"), snapshot);
     assert.equal(databaseStatus(root, "test-world").storyAnalysis, 1);
+    assert.equal(databaseStatus(root, "test-world").storyGraphNodes, 1);
+    assert.equal(databaseStatus(root, "test-world").storyGraphEdges, 1);
     const replacement = { ...snapshot, sourceHash: "c".repeat(64), batches: 3 };
     saveStoryAnalysis(root, "test-world", replacement);
     assert.deepEqual(readStoryAnalysis(root, "test-world"), replacement);
