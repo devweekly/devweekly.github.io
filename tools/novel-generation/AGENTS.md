@@ -169,3 +169,14 @@ CLI 命令（均经 `npm run dev --`）：
 - 推演输出属于暂定创作素材，绝不直接写入 Story State。Story State 只记录最终正文实际发生的事实。
 - 事件的 causes 与 relatedPlotThreads 用于表达因果关联；没有可靠依据时可以留空，不得为了字段完整编造因果。
 - 详见 `ACTION-PLAN.md`；阶段状态和验收标准必须同步维护。
+
+
+## World Situation implementation
+
+- `src/world-situation.ts` is a deterministic context builder, not a simulator or persistence layer. Reuse it for both `write` and `write-long`.
+- Keep its context bounded and task-scoped. Prefer characters named or surfaced by the brief, Story Plan, writing brief, retrieved passages, or analysis context; otherwise use only a few recently updated character states. Include related recent events and active plot threads, not the full history.
+- The existing plot/planner call performs any optional situation reasoning. Do not add a dedicated DM/WorldSimulation agent or another model call just to restate current state.
+- Distinguish recorded events from possible developments. Never persist planner speculation as Story State; only the final chapter state extractor may write facts.
+- Expand event-cause IDs and related plot-thread IDs into readable summaries/titles when building context. Preserve unknown references as-is instead of inventing relationships.
+- Story Plan participates in retrieval/context selection so long-term direction can surface relevant existing people, threads and foreshadowings. It remains a direction, not a chapter contract.
+- See `ACTION-PLAN.md` for the implemented scope.
