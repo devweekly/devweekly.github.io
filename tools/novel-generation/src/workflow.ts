@@ -142,7 +142,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   };
   await mkdir(input.outputDir, { recursive: true });
   if (input.retrievedContext) await saveStage(input.outputDir, "00-retrieval.md", input.retrievedContext);
-  const situationQuery = [input.brief, input.contextText, input.sourceText?.slice(-2400), input.retrievedContext, input.writingBrief, input.storyPlanText, input.storyAnalysisContext].filter(Boolean).join("\n");
+  const situationQuery = [input.brief, state.currentPosition, input.contextText, input.sourceText?.slice(-2400), input.retrievedContext, input.writingBrief, input.storyPlanText, input.storyAnalysisContext].filter(Boolean).join("\n");
   const worldSituation = buildWorldSituationContext(state, situationQuery);
   if (worldSituation) await saveStage(input.outputDir, "00-world-situation-context.md", worldSituation);
 
@@ -201,7 +201,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
       "提出有吸引力的章节构想，帮助这一章真正好看、能让人物活起来。可考虑主线、人物关系、冲突、悬念、意外性和后续空间，但不要求每项都出现；允许从一个鲜活场景、一段对话或一个反常细节自然生长。",
       "先结合当前 Story State、人物状态、已发生事件及其因果关系，理解本章涉及的局势。只推演确有叙事价值的少数人物或势力：他们为什么行动、各自知道什么、能调用什么资源、受到什么限制，以及主角不介入时局势是否会变化。",
       "如有价值，在输出中用“局势推演（尚未发生）”单独标出一至数项可能发展，再提出本章主线方向；没有有价值的推演时可以省略。推演是待选的创作素材，不是正史，不能把可能性写成已发生事实。人物只能依据自己实际知道的信息行动；不得模拟整个世界、强制 NPC 行动或套用游戏数值和回合规则。",
-      "推演结果只是尚未发生的可能情境，不是正史；只有最终正文实际写出的事件才能进入后续 Story State。行动应有可信原因和可能代价，但不要套用游戏数值、回合制或固定的目标—阻力—选择—后果模板。只标出确实不能改变的已知事实，不要把创意写成分析报告。"
+      "行动应有可信原因和可能代价，但不要套用游戏数值、回合制或固定的目标—阻力—选择—后果模板。只标出确实不能改变的已知事实，不要把创意写成分析报告。"
     ]),
     cachedCall("creative", "02-creative-options.md", "creative", [
       "角色：创意发散 Agent。只负责提出有戏剧价值的备选创意，不负责决定正史。",
