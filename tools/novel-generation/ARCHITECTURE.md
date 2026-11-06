@@ -385,7 +385,7 @@ Living Voice 不是一个独立的正文改写 Agent，而是写作与编辑阶�
 - 普通章节和长章节必须使用相同的 Living Voice 与 Anti-AI 编辑原则，避免两条链路质量分叉。
 - 编辑阶段通过现有 `runCachedStage` 缓存；提示词、输入正文、风格参考或阶段配置变化必须使缓存失效。
 - 编辑前后正文、阶段输出和诊断摘要保留在运行目录，便于比较；不把 Anti-AI 检测标签写入人物、情节或正史数据。
-- Reader 评估只存运行产物，不更新 Story State，不阻塞成功路径。
+- Reader 评估只盲读最终正文并存运行产物，不接收蓝图/人物档案/创作任务，不更新 Story State，不阻塞成功路径。
 - 任何阶段失败遵循现有自动恢复与失败策略；不增加常规人工确认步骤。
 
 ### 10.8 验收标准
@@ -402,16 +402,16 @@ Living Voice 不是一个独立的正文改写 Agent，而是写作与编辑阶�
 
 ADR 0004 的第一阶段已接入两条正式写作链：
 
-- `src/literary-edit.ts` 提供共享 Living Voice、Anti-AI 编辑和 Reader 体验提示。
-- 普通章节在 `06-voice-edited.md` 后生成 `06b-anti-ai-edited.md`，再进入现有最终硬伤审查。
-- 长章节在逐场 `05-polish-XX.md` 汇总后生成 `06b-anti-ai-edited.md`，再进入现有跨场终审。
+- `src/literary-edit.ts` 提供共享 Living Voice、Anti-AI 诊断/编辑/复核和盲读 Reader 提示。
+- 普通章节在 `06-voice-edited.md` 后依次生成 `06a-anti-ai-diagnosis.md`、`06b-anti-ai-edited.md`、`06c-anti-ai-verification.json`，再进入现有最终硬伤审查；复核不通过或失败时恢复 `06-voice-edited.md`。
+- 长章节在逐场 `05-polish-XX.md` 汇总后生成相同的 `06a/06b/06c` 诊断、编辑和复核产物，再进入现有跨场终审；复核不通过或失败时恢复逐场修订稿。
 - Anti-AI 编辑调用失败时保留上一阶段正文，写入错误诊断并继续终审；不会因辅助编辑失败丢失已经生成的章节。
 - 两条写作链在终审通过后生成 `10-reader-experience.md`。Reader 失败只保存错误诊断，不影响章节通过和 Story State 持久化。
 - 新增 `antiAi` 与 `reader` 阶段配置，沿用现有 task profile 和阶段缓存；无新增依赖、数据库表或常驻 Agent。
 - 新增 `distill-style` 命令和 `src/style-distillation.ts`，从授权样本提炼全局与场景级风格候选，默认写入 `.output/<world>/style-profile-candidate.md`；显式 `--activate` 才更新正式风格资料，并先归档旧版本。候选输出路径限制在当前 world 的 `.output/`。
 - 新增 `roleplay-sandbox` 命令和 `src/roleplay-sandbox.ts`，推演注入 Story State 人物动态、成书知识库人物长期观察和任务相关故事图谱；支持作者接受、修改方向、补充信息、重演或结束；所有结果只写入当前 world 的 `.output/`，不进入正史或 Story State。
 
-作者主动调用的 Roleplay Sandbox 已通过 `roleplay-sandbox` 命令实现。当前尚未实现的是 Style Distillation 的样本版本管理与回归工作台；`distill-style` 已提供一次性提炼命令，输出候选文件，不自动覆盖正式风格资料。
+Roleplay Sandbox 已读取当前人物动态、长期人物观察和任务相关故事图谱，输出仍与正史隔离。Style Distillation 已提供候选提炼与显式激活/旧版归档；仍未实现自动代表性样本回归、风格漂移比较和样本版本管理工作台。
 
 
 ### 10.10 五项能力的当前实际落地
