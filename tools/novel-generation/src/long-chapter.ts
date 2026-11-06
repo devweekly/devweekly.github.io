@@ -22,6 +22,7 @@ import {
   WRITE_LONG_RETRIEVAL_LIMIT
 } from "./constants.js";
 import { buildWorldSituationContext } from "./world-situation.js";
+import { antiAiEditPrompt, readerExperiencePrompt } from "./literary-edit.js";
 
 export interface LongChapterInput {
   worldId: string;
@@ -356,9 +357,20 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
 
   const chapterTitle = "# " + (input.mode === "continuation" ? "续写章节" : "衍生章节") + "\n\n";
   const buildChapter = (): string => chapterTitle + polished.join("\n\n---\n\n") + "\n";
+  let antiAiChapter = buildChapter();
+  try {
+    antiAiChapter = await cachedCall("anti-ai-edit", "06b-anti-ai-edited.md", "antiAi", [
+      antiAiEditPrompt({ brief: input.brief, blueprint, styleProfile: input.styleProfile, chapter: antiAiChapter })
+    ], output => { if (!output.trim()) throw new Error("Anti-AI editor returned an empty chapter."); });
+  } catch (error) {
+    await saveStage(input.outputDir, "06b-anti-ai-error.txt", String(error));
+    console.error("[write-long] Anti-AI 编辑阶段失败，保留逐场修订稿继续终审。");
+  }
+  await saveStage(input.outputDir, "06b-anti-ai-edited.md", antiAiChapter);
+
   const reviewHistory: string[] = [];
   const reviewed = await reviewAndRepair({
-    initialChapter: buildChapter(),
+    initialChapter: antiAiChapter,
     sceneCount: sceneTexts.length,
     maxRepairRounds: 2,
     review: (candidate, correction) => {
@@ -446,6 +458,15 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     repairRounds: reviewed.repairRounds,
     reviews: reviewed.reviews
   }, null, 2));
+  try {
+    const readerReport = await cachedCall("reader-experience", "10-reader-experience.md", "reader", [
+      readerExperiencePrompt({ brief: input.brief, chapter })
+    ], output => { if (!output.trim()) throw new Error("Reader returned an empty report."); });
+    await saveStage(input.outputDir, "10-reader-experience.md", readerReport);
+  } catch (error) {
+    await saveStage(input.outputDir, "10-reader-experience-error.txt", String(error));
+    console.error("[write-long] Reader 体验评估未完成；不影响章节通过与状态提交。");
+  }
   const metrics = { target: input.maxWords, scenes: polished.length, ...rhythmMetrics(chapter) };
   await saveStage(input.outputDir, "06-rhythm-metrics.json", JSON.stringify(metrics, null, 2));
   console.error("[write-long] 成稿 " + metrics.chars + " 汉字 · 均句长 " + metrics.mean + " · 长句 " + (metrics.long * 100).toFixed(1) + "% · 自动修复 " + reviewed.repairRounds + " 轮");
