@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { databaseStatus, readStoryAnalysis, saveStoryAnalysis, syncLibraryChunks } from "../src/database.js";
 import { groupAnalysisUnits } from "../src/novel-kb.js";
-import { assertMergeOptions, buildAnalysisPrompt, cleanCharacterAliases, filterCharacterAliasEvidence, parseModelJson, plotThreadId, plotThreadMergeKey } from "../src/story-analysis.js";
+import { assertMergeOptions, buildAnalysisPrompt, cleanCharacterAliases, filterCharacterAliasEvidence, parseModelJson, plotThreadId, plotThreadMergeKey, stripUnclassifiedAliases } from "../src/story-analysis.js";
 import { loadLibraryChunks } from "../src/library.js";
 
 test("story analysis batches preserve every chapter in order without splitting one", () => {
@@ -154,4 +154,16 @@ test("alias evidence must quote the alias and exist in its cited chapter", () =>
     { value: "九哥", type: "name_alias", evidence: "原文中不存在的九哥" }
   ], ["旁人称他李玄，随后离开。"]);
   assert.deepEqual(valid.map(item => item.value), ["李玄"]);
+});
+
+
+test("legacy analysis cache migration discards unclassified aliases but keeps narrative analysis", () => {
+  const analysis = parseModelJson(JSON.stringify({
+    characters: [{ name: "李阎", aliases: ["姑获鸟", "太岁"] }],
+    plotThreads: [{ title: "红旗帮存亡", summary: "围剿与内部异心" }]
+  }));
+  const migrated = stripUnclassifiedAliases(analysis);
+  assert.deepEqual(migrated.characters[0]?.aliases, []);
+  assert.deepEqual(migrated.characters[0]?.aliasDetails, []);
+  assert.equal(migrated.plotThreads[0]?.title, "红旗帮存亡");
 });
