@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { antiAiDiagnosticPrompt, antiAiEditPrompt, readerExperiencePrompt, LIVING_VOICE_RULES } from "../src/literary-edit.js";
+import { antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, readerExperiencePrompt, LIVING_VOICE_RULES } from "../src/literary-edit.js";
 import { STAGE_KEYS } from "../src/task-profiles.js";
 
 test("anti-ai diagnosis uses concrete reading evidence, not AI detection", () => {
@@ -32,6 +32,15 @@ test("anti-ai editor protects literary intent and permits zero-change output", (
   });
   assert.match(withDiagnosis, /诊断线索（可忽略，不是修改清单）/);
   assert.match(LIVING_VOICE_RULES, /人物在场景里有眼下要办的事/);
+});
+
+test("anti-ai post-edit verification restores edits without clear literary benefit", () => {
+  const prompt = antiAiVerificationPrompt({ original: "他没有回答。", edited: "他沉默不语。" });
+  assert.match(prompt, /原文更好或两版相当时选择 restore/);
+  assert.deepEqual(parseAntiAiVerification('{"decision":"restore","reason":"原句更有力量"}'), {
+    decision: "restore", reason: "原句更有力量"
+  });
+  assert.throws(() => parseAntiAiVerification('{"decision":"maybe","reason":"x"}'));
 });
 
 test("reader experience is observational and cannot become a repair gate", () => {
