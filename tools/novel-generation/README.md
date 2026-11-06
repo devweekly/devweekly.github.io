@@ -480,3 +480,8 @@ npm run dev -- db-status --world conghuoniao
 普通写作和主线规划默认自主完成，不等待人工 review 或批准。Web Workbench 中生成的 Story Plan 在 schema 与 World ID 校验通过后立即生效，旧版本自动归档；CLI 的 `plan-story` 也默认激活，只有明确使用 `--draft` 才保存隔离草稿。工作台中的版本记录用于事后检查，不是待审批队列。
 
 章节终审发现明确硬伤时会先进行有限轮自动修复。达到上限仍未解决，当前运行安全失败、不提交 Story State，并保留正文和诊断材料供定位；这不是必须人工点击批准的常规流程。只有无法安全自动恢复、权威状态冲突或不可逆/安全敏感操作才需要人工介入。详见 [ADR 0003](./ADR/0003-autonomous-execution.md)。
+
+
+## 后续改造计划
+
+D&D Campaign 的借鉴仅限世界设定、人物自主行动、有限局势推演和长期连续性，不引入游戏规则或跑团交互。实施阶段和验收标准见 [ACTION-PLAN.md](./ACTION-PLAN.md)。
