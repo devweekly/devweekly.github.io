@@ -23,6 +23,7 @@ import {
 } from "./constants.js";
 import { buildWorldSituationContext } from "./world-situation.js";
 import { LIVING_VOICE_RULES, antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, readerExperiencePrompt } from "./literary-edit.js";
+import { buildStyleRegressionPrompt, loadStyleRegressionReferences } from "./style-regression.js";
 
 export interface LongChapterInput {
   worldId: string;
@@ -486,6 +487,18 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     repairRounds: reviewed.repairRounds,
     reviews: reviewed.reviews
   }, null, 2));
+  if (input.styleProfile?.trim()) {
+    try {
+      const references = await loadStyleRegressionReferences(input.worldDir ?? resolve("worlds", input.worldId));
+      const report = await cachedCall("style-regression", "11-style-regression.md", "styleDistill", [
+        buildStyleRegressionPrompt({ styleProfile: input.styleProfile, references, candidates: [{ label: "本次最终长章节", text: chapter }] })
+      ], output => { if (!output.trim()) throw new Error("Style regression returned an empty report."); });
+      await saveStage(input.outputDir, "11-style-regression.md", report);
+    } catch (error) {
+      await saveStage(input.outputDir, "11-style-regression-error.txt", String(error));
+      console.error("[write-long] 风格回归观察未完成；不改动正文，也不影响章节状态提交。");
+    }
+  }
   try {
     const readerReport = await cachedCall("reader-experience", "10-reader-experience.md", "reader", [
       readerExperiencePrompt({ brief: input.brief, chapter })
