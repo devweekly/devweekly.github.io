@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { emptyStoryState, parseStoryStateUpdate, validateStoryState } from "../src/story-state.js";
+import { emptyStoryState, normalizeStoryStateProvenance, parseStoryStateUpdate, validateStoryState } from "../src/story-state.js";
 import { dedupeContinuityNotes, mergeStoryState } from "../src/workflow.js";
 
 test("character profile is stable metadata while current character fields are replaceable snapshots", () => {
@@ -158,4 +158,20 @@ test("continuity notes deduplicate only formatting and punctuation variants", ()
     "李玄仍然不知道密道位置",
     "铜钱由守门人持有"
   ]);
+});
+
+
+test("legacy generated-continuation facts are downgraded without changing sourced canon facts", () => {
+  const state = emptyStoryState("test-world");
+  state.canonFacts = [
+    { id: "canon", fact: "原著事实", source: "L118031", confidence: "confirmed" },
+    { id: "generated", fact: "续写新增事实", source: "卷17末续章", confidence: "confirmed" }
+  ];
+  state.events = [
+    { id: "generated-event", summary: "续写事件", position: "卷17末", participants: [], consequences: [], source: "项目原创续章", origin: "canon" }
+  ];
+  const normalized = normalizeStoryStateProvenance(state);
+  assert.equal(normalized.canonFacts.find(item => item.id === "canon")?.confidence, "confirmed");
+  assert.equal(normalized.canonFacts.find(item => item.id === "generated")?.confidence, "original");
+  assert.equal(normalized.events[0]?.origin, "original");
 });

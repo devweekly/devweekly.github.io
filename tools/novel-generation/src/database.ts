@@ -104,6 +104,7 @@ export interface StoryAnalysisSnapshot {
   worldId: string;
   sourceHash: string;
   analyzedAt: string;
+  analysisVersion?: number;
   complete: boolean;
   batches: number;
   characters: Array<Record<string, unknown>>;
