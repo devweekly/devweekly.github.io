@@ -463,10 +463,15 @@ function mergeAndPersist(
   for (const { analysis, chapters } of results) {
     const refs = refsFor(chapters);
     const refsByChapter = new Map(refs.map(ref => [String(ref.chapterId), ref]));
+    const chaptersByKey = new Map(chapters.map(chapter => [chapter.chapterId, chapter]));
     const attach = (items: Item[]): Item[] => items.map(item => {
       const chapterKeys = asStrings(item.chapterKeys);
       const sourceRefs = chapterKeys.map(key => refsByChapter.get(key)).filter((ref): ref is NovelSourceRef => Boolean(ref));
-      return { ...item, sourceRefs };
+      const aliasDetails = Array.isArray(item.aliasDetails)
+        ? (item.aliasDetails as Array<Record<string, unknown>>).filter(alias =>
+            typeof alias.evidence === "string" && chapterKeys.some(key => chaptersByKey.get(key)?.text.includes(alias.evidence as string)))
+        : undefined;
+      return { ...item, sourceRefs, ...(aliasDetails ? { aliasDetails } : {}) };
     });
     characters = mergeCharacters(characters, attach(analysis.characters as Item[]));
     relations = mergeSimple(relations, attach(analysis.relations as Item[]), "from", [], ["label", "evidence"], item => String(item.from) + "|" + String(item.to) + "|" + String(item.label));
