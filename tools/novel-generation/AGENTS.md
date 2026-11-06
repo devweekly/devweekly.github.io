@@ -207,7 +207,7 @@ CLI 命令（均经 `npm run dev --`）：
 - Reader 只能盲读最终正文，不得注入章节蓝图、人物档案、世界设定或创作任务；它只输出观察报告，不进入门禁、不更新 Story State。
 - `distill-style` 默认生成候选文件；只有显式 `--activate` 才替换正式 `style-profile.md`，并先归档旧版。候选输出和角色推演输出只能位于 `.output/<world>/`，不能接受指向正史文件的任意 `--out`。
 - Roleplay Sandbox 必须注入指定人物的动态状态、可用的长期人物观察和任务相关故事图谱；推演记录只属于候选素材，不写入 Story State。
-- `style-regress` 可用已认可参考章节与新章节生成非门禁观察报告；不改稿、不打分、不阻断写作。自动批量回归、CI 风格门禁和样本版本工作台仍未实现，不得声称已完成。
+- `style-regress` 可对任意已认可参考章节与候选章节做专项观察；正式 `write` / `write-long` 已在每章终审通过后自动生成只读风格回归报告。尚未实现的是跨章节自动批量趋势分析、CI 风格门禁和样本版本工作台。
 
 
 ## Style Profile and regression workflow
