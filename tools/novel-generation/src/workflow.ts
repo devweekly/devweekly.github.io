@@ -192,7 +192,9 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     cachedCall("plot", "01-main-plot.md", "plot", [
       "角色：主线剧情架构师。负责本章主线推进和长篇结构，不写正文。",
       common,
-      "提出有吸引力的章节构想，帮助这一章真正好看、能让人物活起来。可考虑主线、人物关系、冲突、悬念、意外性和后续空间，但不要求每项都出现；允许从一个鲜活场景、一段对话或一个反常细节自然生长。只标出确实不能改变的已知事实，不要把创意写成分析报告。"
+      "提出有吸引力的章节构想，帮助这一章真正好看、能让人物活起来。可考虑主线、人物关系、冲突、悬念、意外性和后续空间，但不要求每项都出现；允许从一个鲜活场景、一段对话或一个反常细节自然生长。",
+      "构思本章相关人物和势力时，考虑各自目标、动机、实际知道的信息、可用资源、行动限制和当前压力。人物只能依据自己实际知道的信息行动。必要时推演主角不介入时局势可能如何变化，但只考虑与本章有关的少数参与者，不模拟整个世界，也不强迫每个人都行动。",
+      "推演结果只是尚未发生的可能情境，不是正史；只有最终正文实际写出的事件才能进入后续 Story State。行动应有可信原因和可能代价，但不要套用游戏数值、回合制或固定的目标—阻力—选择—后果模板。只标出确实不能改变的已知事实，不要把创意写成分析报告。"
     ]),
     cachedCall("creative", "02-creative-options.md", "creative", [
       "角色：创意发散 Agent。只负责提出有戏剧价值的备选创意，不负责决定正史。",
@@ -207,7 +209,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     "角色：主编 Agent。整合主线架构师方案和创意发散建议，决定本章唯一执行方案。",
     common,
     "主线方案：", plotPlan, "创意备选：", ideas,
-    "选出最有小说感染力的方向，形成自然、有变化的章节构想。蓝图帮助写作者理解人物处境和故事走向，不是逐项验收的合同；不要求每场都按目标、阻力、行动、信息变化、结果的模板展开。保留人物的意外性、闲笔和情绪空间。不得无意违反已确认事实；区分确知内容与新创作。"
+    "选出最有小说感染力的方向，形成自然、有变化的章节构想。必要时吸收主线方案中的人物自主行动和局势推演，但不要把所有可能性都塞进正文。蓝图帮助写作者理解人物处境和故事走向，不是逐项验收的合同；不要求每场都按目标、阻力、行动、信息变化、结果的模板展开。保留人物的意外性、闲笔和情绪空间。人物知识必须受其实际经历和信息来源限制；推演结果不是已经发生的事实。不得无意违反已确认事实；区分确知内容与新创作。"
   ]);
   await saveStage(input.outputDir, "03-chapter-plan.md", plan);
 
@@ -286,13 +288,13 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     JSON.stringify({
       currentPosition: "string",
       canonFacts: [{ id: "stable-id", fact: "fact", source: "chapter id", confidence: "confirmed|inferred|original" }],
-      characters: [{ name: "name", profile: { coreTraits: ["stable traits"], values: ["values"], contradictions: ["internal contradictions"], voice: "distinctive voice", boundaries: ["what this character will not easily do"], arc: "current long-term character arc" }, status: "current status", location: "current location", abilities: ["current abilities"], knowledge: ["current known information"], goals: ["current goals"], relationships: ["current relationships"], arcMilestones: [{ id: "stable-milestone-id", chapter: "chapter id", change: "what changed", evidence: "exact excerpt from final chapter", choice: "optional, only if naturally clear", pressure: "optional, only if naturally clear", cost: "optional, only if naturally clear" }] }],
-      events: [{ id: "stable-id", summary: "event", position: "story position", participants: ["name"], consequences: ["consequence"], origin: "canon|inferred|original", source: "source reference" }],
+      characters: [{ name: "name", profile: { coreTraits: ["stable traits"], values: ["values"], contradictions: ["internal contradictions"], voice: "distinctive voice", boundaries: ["what this character will not easily do"], arc: "current long-term character arc" }, status: "current status", location: "current location", abilities: ["current abilities"], knowledge: ["current known information with source/limits when useful"], goals: ["current goals"], motivation: "why these goals matter now", resources: ["currently available means"], constraints: ["actual limits"], currentPressure: ["pressures currently affecting choices"], decisionHistory: ["consequential decisions already made"], relationships: ["current relationships"], arcMilestones: [{ id: "stable-milestone-id", chapter: "chapter id", change: "what changed", evidence: "exact excerpt from final chapter", choice: "optional, only if naturally clear", pressure: "optional, only if naturally clear", cost: "optional, only if naturally clear" }] }],
+      events: [{ id: "stable-id", summary: "event", position: "story position", participants: ["name"], causes: ["prior event id or concise causal condition"], consequences: ["consequence"], relatedPlotThreads: ["related plot thread id"], origin: "canon|inferred|original", source: "source reference" }],
       plotThreads: [{ id: "stable-id", title: "thread", status: "open|active|resolved|abandoned", lastUpdated: "chapter id", notes: "latest state" }],
       continuityNotes: ["complete current active notes"]
     }, null, 2),
     "旧状态：", JSON.stringify(state, null, 2), "最终章节：", chapter,
-    "continuityNotes 必须返回章节结束时仍然有效的完整备注集合，不是只列新增项；已经变化、解决或被新事实替代的旧备注不要继续返回。人物 profile 是相对稳定的性格底色、价值观、内在矛盾、语言习惯与行为边界；不要因单次情绪或行为轻易改写。character 的 status/location/abilities/knowledge/goals/relationships 是当前剧情状态，必须反映本章结束时的最新快照，数组应给出完整当前值而非只追加变化项。人物可以变化、反复、倒退、误判，也可以做出出乎意料的选择；不要把人物锁死成标签。状态提取只记录正文已经发生的事，不得要求正文为了状态字段而解释动机或安排代价。只记录章节明确支持的内容。本次最终章节是项目续写文本，不是原著原文；首次由本章引入的事实必须标为 original，不能因叙述确定就标 confirmed。只有与旧状态中同一事实 ID、同一事实内容相符的原著事实才保留原有来源等级；无法确认的内容不要写入 canonFacts，推断标为 inferred。新事件默认 origin=original；只有明确回指原著资料的事件才标 canon/inferred 并填写 source。人物和情节线只输出本章新增或发生变化的记录。只有正文自然呈现重要转折时才追加 arcMilestones；不要为了填写字段而拔高普通情节或反向要求正文增加解释。"
+    "continuityNotes 必须返回章节结束时仍然有效的完整备注集合，不是只列新增项；已经变化、解决或被新事实替代的旧备注不要继续返回。人物 profile 是相对稳定的性格底色、价值观、内在矛盾、语言习惯与行为边界；不要因单次情绪或行为轻易改写。character 的 status/location/abilities/knowledge/goals/motivation/resources/constraints/currentPressure/decisionHistory/relationships 是当前剧情状态，必须反映本章结束时有正文依据的最新快照；数组字段给出完整当前值而非只追加变化项。motivation 说明目标背后的当前原因；resources 只记录实际可调用资源；constraints 记录确实影响行动的限制；currentPressure 记录当前压力；decisionHistory 只保留少量重要决定，不写流水账。人物可以变化、反复、倒退、误判，也可以做出出乎意料的选择；不要把人物锁死成标签。状态提取只记录正文已经发生的事，不得要求正文为了状态字段而解释动机或安排代价。只记录章节明确支持的内容。本次最终章节是项目续写文本，不是原著原文；首次由本章引入的事实必须标为 original，不能因叙述确定就标 confirmed。只有与旧状态中同一事实 ID、同一事实内容相符的原著事实才保留原有来源等级；无法确认的内容不要写入 canonFacts，推断标为 inferred。新事件默认 origin=original；只有明确回指原著资料的事件才标 canon/inferred 并填写 source。人物和情节线只输出本章新增或发生变化的记录。只有正文自然呈现重要转折时才追加 arcMilestones；不要为了填写字段而拔高普通情节或反向要求正文增加解释。"
   ].join("\n\n");
   const validateStateUpdate = (output: string) => parseStoryStateUpdate(extractJson(output), chapter);
   let stateText = "";
