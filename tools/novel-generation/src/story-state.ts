@@ -54,7 +54,8 @@ const StoryStateUpdateSchema = z.object({
   })).optional(),
   events: z.array(z.object({
     id: z.string().min(1), summary: z.string(), position: z.string(),
-    participants: z.array(z.string()), consequences: z.array(z.string())
+    participants: z.array(z.string()), consequences: z.array(z.string()),
+    origin: z.enum(["canon", "inferred", "original"]).optional(), source: z.string().optional()
   })).optional(),
   plotThreads: z.array(z.object({
     id: z.string().min(1), title: z.string(), status: z.enum(["open", "active", "resolved", "abandoned"]),
