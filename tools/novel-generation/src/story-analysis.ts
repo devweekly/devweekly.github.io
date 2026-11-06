@@ -372,6 +372,14 @@ async function readCached(path: string): Promise<BatchAnalysis | undefined> {
   }
 }
 
+export function stripUnclassifiedAliases(analysis: BatchAnalysis): BatchAnalysis {
+  for (const character of analysis.characters) {
+    character.aliases = [];
+    character.aliasDetails = [];
+  }
+  return analysis;
+}
+
 /**
  * Reuses v3 batch analysis without trusting its untyped aliases. The narrative
  * analysis remains useful; old aliases are discarded and must be re-established
@@ -386,10 +394,7 @@ async function migrateLegacyAnalysisCache(sourceDir: string, targetDir: string, 
     if (existsSync(targetPath)) continue;
     const analysis = await readCached(join(sourceDir, name));
     if (!analysis) continue;
-    for (const character of analysis.characters) {
-      character.aliases = [];
-      character.aliasDetails = [];
-    }
+    stripUnclassifiedAliases(analysis);
     const temporary = targetPath + ".tmp";
     await writeFile(temporary, JSON.stringify(analysis, null, 2) + "\\n", "utf8");
     await rename(temporary, targetPath);
