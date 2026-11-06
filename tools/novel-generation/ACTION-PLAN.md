@@ -14,10 +14,10 @@
 
 ## Phase 1 — 人物动态状态与因果连续性（P0）
 
-- [ ] 在 Story State 人物快照增加可选字段：motivation、resources、constraints、currentPressure、decisionHistory。
-- [ ] 普通章节与长章节状态提取只记录正文有依据的当前状态。
-- [ ] 让普通章节与长章节的规划/场景上下文都能读取相关人物动态信息。
-- [ ] 事件增加可选 causes、relatedPlotThreads，表达前因和相关剧情线。
+- [x] 在 Story State 人物快照增加可选字段：motivation、resources、constraints、currentPressure、decisionHistory。
+- [x] 普通章节与长章节状态提取只记录正文有依据的当前状态。
+- [x] 让普通章节与长章节的规划/场景上下文都能读取相关人物动态信息。
+- [x] 事件增加可选 causes、relatedPlotThreads，表达前因和相关剧情线。
 - [ ] 增加旧状态兼容、新字段 schema、事件因果解析与合并测试。
 
 验收：人物行动有动机依据，知识范围不全知；字段缺失不阻塞旧状态；状态不记录正文未发生的事。
