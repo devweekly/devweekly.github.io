@@ -280,8 +280,8 @@ function mergePlotThreads(target: Item[], incoming: Item[]): Item[] {
     const key = plotThreadMergeKey(String(item.title ?? ""), refsOf(item).map(ref => String(ref.chapterId ?? ref.chunkId)), asStrings(item.keyTurns), String(item.summary ?? ""));
     const previous = map.get(key);
     if (!previous) { map.set(key, item); continue; }
-    for (const field of ["keyTurns", "unresolvedQuestions"]) mergeArrayField(previous, item, field);
-    for (const field of ["summary", "status"]) mergeTextField(previous, item, field);
+    for (const field of ["keyTurns", "unresolvedQuestions", "relatedCharacters"]) mergeArrayField(previous, item, field);
+    for (const field of ["summary", "status", "narrativeRole"]) mergeTextField(previous, item, field);
     previous.sourceRefs = mergeRefs(refsOf(previous), refsOf(item), 24);
   }
   return [...map.values()];
@@ -364,17 +364,6 @@ function cacheKeyFor(model: string, units: AnalysisUnit[], maxChars: number): st
   return createHash("sha256").update("story-analysis-v5\nprompt=story-graph-core-macguffin-v1\nmodel=" + model + "\nmaxChars=" + maxChars + "\nbatches=" + batchLayout + "\nsource=" + sourceHash).digest("hex");
 }
 
-function legacyV4CacheKeyFor(model: string, units: AnalysisUnit[], maxChars: number): string {
-  const sourceHash = createHash("sha256").update(units.map(unit => unit.chapterId + ":" + unit.text).join("\n")).digest("hex");
-  const batchLayout = groupAnalysisUnits(units, maxChars).map(chapters => chapters.map(chapter => chapter.chapterId).join(",")).join("|");
-  return createHash("sha256").update("story-analysis-v4\nprompt=alias-provenance-thread-dedup-v2\nmodel=" + model + "\nmaxChars=" + maxChars + "\nbatches=" + batchLayout + "\nsource=" + sourceHash).digest("hex");
-}
-function legacyCacheKeyFor(model: string, units: AnalysisUnit[], maxChars: number): string {
-  const sourceHash = createHash("sha256").update(units.map(unit => unit.chapterId + ":" + unit.text).join("\\n")).digest("hex");
-  const batchLayout = groupAnalysisUnits(units, maxChars).map(chapters => chapters.map(chapter => chapter.chapterId).join(",")).join("|");
-  return createHash("sha256").update("story-analysis-v3\\nprompt=chapter-refs-v1\\nmodel=" + model + "\\nmaxChars=" + maxChars + "\\nbatches=" + batchLayout + "\\nsource=" + sourceHash).digest("hex");
-}
-
 async function readCached(path: string): Promise<BatchAnalysis | undefined> {
   try {
     return BatchSchema.parse(JSON.parse(await readFile(path, "utf8")) as unknown);
@@ -427,22 +416,8 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
   }
   const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, options.maxChars ?? 14_000));
   await mkdir(cacheDir, { recursive: true });
-  const legacyV4Dir = resolve(".output", worldId, "story-analysis", legacyV4CacheKeyFor(model, units, options.maxChars ?? 14_000));
-  let migratedV4 = 0;
-  if (existsSync(legacyV4Dir)) for (const batch of batches) {
-    const name = "batch-" + String(batch.index).padStart(4, "0") + ".json";
-    const target = join(cacheDir, name);
-    if (existsSync(target)) continue;
-    const analysis = await readCached(join(legacyV4Dir, name));
-    if (!analysis) continue;
-    const temporary = target + ".tmp";
-    await writeFile(temporary, JSON.stringify(analysis, null, 2) + "\n", "utf8");
-    await rename(temporary, target);
-    migratedV4++;
-  }
-  const legacyCacheDir = resolve(".output", worldId, "story-analysis", legacyCacheKeyFor(model, units, options.maxChars ?? 14_000));
-  const migratedLegacyBatches = await migrateLegacyAnalysisCache(legacyCacheDir, cacheDir, batches);
-  if (migratedV4 || migratedLegacyBatches) console.log("[story-analysis] migrated " + (migratedV4 + migratedLegacyBatches) + " previous batches; v3 aliases sanitized");
+  // v5 adds story-core and MacGuffin extraction; older batch responses cannot satisfy its schema semantically.
+  // Keep previous caches untouched and re-analyze with the v5 prompt.
   const cachePath = (batch: AnalysisBatch): string => join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
   const shard = options.shard;
   if (shard && (!Number.isInteger(shard.count) || shard.count < 1 || shard.count > 16 || !Number.isInteger(shard.index) || shard.index < 0 || shard.index >= shard.count)) {
@@ -476,7 +451,7 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
           const repairPrompt = [
             "你刚才的全文分析结果无法通过 JSON/schema 校验。",
             "只修复 JSON 结构和字段类型，不要重新分析、删减或改写原有分析内容。",
-            "返回一个完整 JSON 对象，字段必须符合 characters、relations、plotThreads、foreshadowings、beats、developmentPossibilities 的既定结构。",
+            "返回一个完整 JSON 对象，字段必须符合 characters、relations、plotThreads、foreshadowings、beats、developmentPossibilities、storyCoreObservations、macguffins 的既定结构。",
             "解析错误：" + String(parseError),
             "原始输出：",
             raw
@@ -536,11 +511,22 @@ export function buildStoryGraph(input: {
   const edge=(from:string|undefined,to:string|undefined,type:string,label:string,data:Record<string,unknown>)=>{
     if(!from||!to||from===to)return;
     const id="edge:"+hash([from,to,type,label].join("|"));
-    if(!edges.some(e=>e.id===id))edges.push({id,from,to,type,label,data,sourceRefs:refsOf(data)});
+    const previous=edges.find(e=>e.id===id);
+    if(previous)previous.sourceRefs=mergeRefs(previous.sourceRefs,refsOf(data),48);
+    else edges.push({id,from,to,type,label,data,sourceRefs:refsOf(data)});
   };
   const chars=new Map<string,string>(),threads=new Map<string,string>();
+  const aliasOwners=new Map<string,Set<string>>();
   const core=node("story_core","故事核心",input.storyCore,"story_core:main");
-  for(const x of input.characters){const n=String(x.name??"");if(n)chars.set(norm(n),node("character",n,x));}
+  for(const x of input.characters){
+    const name=String(x.name??"");if(!name)continue;
+    const id=node("character",name,x);chars.set(norm(name),id);
+    for(const alias of asStrings(x.aliases)){
+      const key=norm(alias),owners=aliasOwners.get(key)??new Set<string>();
+      owners.add(id);aliasOwners.set(key,owners);
+    }
+  }
+  for(const [alias,owners] of aliasOwners)if(owners.size===1)chars.set(alias,[...owners][0]!);
   for(const x of input.plotThreads){const n=String(x.title??"");if(n)threads.set(norm(n),node("plot_thread",n,x));}
   for(const x of input.foreshadowings)node("foreshadowing",String(x.clue??"伏笔"),x);
   for(const x of input.relations)edge(chars.get(norm(String(x.fromName??x.from??""))),chars.get(norm(String(x.toName??x.to??""))),"relationship",String(x.label??"关系"),x);
@@ -601,7 +587,7 @@ function mergeAndPersist(
     characters = mergeCharacters(characters, attach(analysis.characters as Item[]));
     relations = mergeSimple(relations, attach(analysis.relations as Item[]), "from", [], ["label", "evidence"], item => String(item.from) + "|" + String(item.to) + "|" + String(item.label));
     plotThreads = mergePlotThreads(plotThreads, attach(analysis.plotThreads as Item[]));
-    foreshadowings = mergeSimple(foreshadowings, attach(analysis.foreshadowings as Item[]), "clue", ["possiblePayoffs"], ["firstAppearance", "possibleMeaning"]);
+    foreshadowings = mergeSimple(foreshadowings, attach(analysis.foreshadowings as Item[]), "clue", ["possiblePayoffs", "relatedThreadTitles"], ["firstAppearance", "possibleMeaning"]);
     developmentPossibilities = mergeSimple(
       developmentPossibilities,
       attach(analysis.developmentPossibilities as Item[]),
