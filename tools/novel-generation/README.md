@@ -240,10 +240,12 @@ node scripts/compare-models.mjs \
 
 | 文件 | 内容 | 写入时机 | 体积 |
 |---|---|---|---|
-| `worlds/<world>/novel.db` | 章节片段、抽取标注、实体/实体提及、全书分析结果（`novel_*`、`story_analysis`、`story_graph_*`） | `ingest`、`index-story`、`analyze-story`、`analyze-arcs` | 约 22MB |
+| `worlds/<world>/novel.db` | 抽取标注、实体/实体提及、全书分析结果（`novel_*`、`story_analysis`、`story_graph_*`） | `analyze`、`index-story`、`analyze-story`、`analyze-arcs` | 约 12MB |
 | `worlds/<world>/story.db` | 写作状态：`story_state`、`characters`、`canon_facts`、`story_events`、`plot_threads`、`continuity_notes` | 每写一章 | 约 68KB |
 
-分开的理由是写入频率差了三个数量级：写一章会把人物、事件、情节线、连续性备注整批重写，而知识库几周才动一次。放在同一个文件里，每次章节更新都会让 22MB 的二进制重新落一份进 Git；分开之后，日常提交只碰 68KB 的状态库。两个文件各自有 `user_version`，可以独立演进。
+原文分片只存在 `worlds/<world>/library/index.json` 里，检索与章节映射都直接读它，库里不再留第二份文本。
+
+分开的理由是写入频率差了三个数量级：写一章会把人物、事件、情节线、连续性备注整批重写，而知识库几周才动一次。放在同一个文件里，每次章节更新都会让 12MB 的二进制重新落一份进 Git；分开之后，日常提交只碰 68KB 的状态库。两个文件各自有 `user_version`，可以独立演进。
 
 章节检索从知识库读取片段，再沿用现有 BM25 排序；续写上下文按命中的 chunk ID 读取标注；写作状态一律从 `story.db` 读。
 
@@ -256,6 +258,8 @@ npm run dev -- db-status --world conghuoniao
 ```
 
 schema v3 增加一组 `novel_*` 表，用来存放**成书知识库**，与写作状态（`characters`、`story_state`、`story_events`）分开：`novel_chapters`（753 章的卷序、行号、字数）、`novel_characters`、`novel_mentions`（人物×章出场次数）、`novel_plot_threads`、`novel_foreshadowings`、`novel_beats`（章级事件）、`novel_relations`。写作状态描述「这一章之后接下来怎么写」，`novel_*` 描述「全书已经写了什么」，两者不互相覆盖。
+
+schema v6 删掉 `library_chunks`：它存的是 `library/index.json` 里同一批分片的副本，检索、章节映射、写作都直接读 JSON，库里不再保留第二份原文。
 
 ```bash
 npm run dev -- index-story  --world conghuoniao        # 章节结构 + 人物出场统计（不调用模型）
@@ -270,15 +274,15 @@ npm run dev -- story-kb     --world conghuoniao --type arcs
 npm run dev -- story-kb     --world conghuoniao --type export   # 导出不含原文的快照
 ```
 
-当前 `conghuoniao` 库的规模：753 章、544 人（6,403 条人物×章出场记录）、1,314 条章级事件（覆盖 738/753 章）、862 条局部情节线、1,535 条伏笔线索、1,649 条人物关系、17 篇卷级梗概。
+当前 `conghuoniao` 库的规模：753 章、544 人（6,402 条人物×章出场记录）、1,314 条章级事件（覆盖 738/753 章）、862 条局部情节线、1,535 条伏笔线索、1,649 条人物关系、17 篇卷级梗概。
 
 `novel_characters` 的 `personality`/`desires`/`contradictions`/`arc` 是**逐批观察**，不是去重后的画像：每一批只看几章，同一个人会被反复描述。主角尤其明显——李阎有 193 条性格、194 条矛盾、380 条走向，实测两两相似度都低于 0.6，纯文本去重一条也去不掉。`analyze-profiles` 把它们按章节顺序采样后交给模型合并，写入 `novel_character_profiles`：一份 150–250 字画像、3–5 条阶段变化、3–6 条性格与矛盾、3–5 条可能走向。写作事实包和 `story-kb --type characters` 优先用合并档案，原始观察保留作证据。
 
-两个文件都随仓库提交，换机器后不必重跑 196 次模型调用。`novel.db` 重跑 `analyze-story` 会整文件重写（约 22MB），所以它的提交应集中在数据更新的那一次；`story-kb --type export` 写出的 `story-kb.json` 保留了同一批知识的文本形式，便于 diff 和审阅。`story.db` 每次章节落地都会变，但只有几十 KB。
+`novel.db` 与 `story.db` 随仓库提交，换机器后不必重跑 196 次模型调用。`novel.db` 重跑 `analyze-story` 会整文件重写（约 12MB），所以它的提交应集中在数据更新的那一次；`story.db` 每次章节落地都会变，但只有几十 KB。`story-kb --type export` 写出的 `story-kb.json` 是 `novel_*` 表的文本副本，随时可重出，因此不入库。
 
 `index-story` 按 `analysis/<world>/chapter-index.json` 的行号顺序把 2,594 个检索片段映射回 753 章。检索片段之间带约 160 字重叠（为检索保留上下文），统计和送模型前会先去重，否则人物出现次数会虚高约 12%。
 
-WAL/SHM sidecar 仍忽略，它们随进程变化。需要迁移或重建时先保留 JSON 快照，再删掉对应文件；下一次运行会从快照重新导入。改动前后体积差异明显时用 `VACUUM` 收一下（例如 `novel.db` 28MB → 22MB），避免把空闲页也提交进去。
+WAL/SHM sidecar 仍忽略，它们随进程变化。需要迁移或重建时先保留 JSON 快照，再删掉对应文件；下一次运行会从快照重新导入。改动前后体积差异明显时用 `VACUUM` 收一下（例如 `novel.db` 22MB → 12MB），避免把空闲页也提交进去。
 
 旧版本的写作状态存在 `novel.db` 里。首次打开 `story.db` 时会自动把这几张表搬过去并从 `novel.db` 删除；迁移失败只在日志里告警，不会阻塞写作。
 
@@ -317,7 +321,7 @@ npm run package-review -- --out /tmp/review.zip --max-mb 6 --batches 5
 - `04-logs/`：运行日志
 - `REFERENCES.md`：完整数据与产物的仓库路径和查询命令
 
-当前约 500KB 未压缩 / 236KB 压缩，54 个文件。原文全文与 22MB 的 `novel.db` 不进包。
+当前约 500KB 未压缩 / 236KB 压缩，54 个文件。原文全文与 12MB 的 `novel.db` 不进包。
 
 - 请求体由 `buildAnalysisPrompt` 对同一批章节重建，与线上一致；响应体直接取调用缓存。SDK 不落盘 token 与耗时，包里没有这两项。
 - `--max-mb` 是未压缩体积上限，超限时按固定顺序丢弃可选文件（润色稿、检索上下文、草稿、状态、日志、多余批次），丢弃项写进 `manifest.json` 和 `README.md`。

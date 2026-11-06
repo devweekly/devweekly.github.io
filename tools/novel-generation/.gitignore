@@ -9,6 +9,9 @@ original.txt
 worlds/*/*.db-wal
 worlds/*/*.db-shm
 
+# 知识库导出物：内容是 novel.db 里 novel_* 表的副本，用 story-kb --type export 随时重出
+worlds/*/story-kb.json
+
 # 本地覆盖与私有笔记：目录名即约定，需要共享时把文件移到 worlds/<world>/
 private/
 

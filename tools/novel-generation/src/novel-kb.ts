@@ -2,7 +2,7 @@ import { readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import {
-  readLibraryChunks, syncNovelChapters, syncNovelMentions, writeNovelKbMeta, upsertSeedCharacters, listNovelCharacters,
+  syncNovelChapters, syncNovelMentions, writeNovelKbMeta, upsertSeedCharacters, listNovelCharacters,
   type NovelChapterRow
 } from "./database.js";
 import { loadLibraryChunks, type LibraryChunk } from "./library.js";
@@ -268,8 +268,7 @@ export async function buildAnalysisUnits(
   options: { worldDir?: string; catalogPath?: string } = {}
 ): Promise<{ units: AnalysisUnit[]; assignment: ChapterAssignment }> {
   const worldDir = options.worldDir ?? resolve("worlds", worldId);
-  let chunks = readLibraryChunks(worldDir, worldId);
-  if (!chunks.length) chunks = await loadLibraryChunks(join(worldDir, "library"), worldId);
+  const chunks = await loadLibraryChunks(join(worldDir, "library"), worldId);
   if (!chunks.length) throw new Error("No indexed text found. Run ingest first.");
   const catalog = await loadChapterCatalog(worldId, options.catalogPath);
   if (!catalog) throw new Error("No chapter catalog. Run the corpus index script or pass --catalog.");
@@ -357,8 +356,7 @@ export async function indexNovelStructure(
   options: { worldDir?: string; catalogPath?: string; characters?: CharacterDictionaryEntry[] } = {}
 ): Promise<StoryIndexResult> {
   const worldDir = options.worldDir ?? resolve("worlds", worldId);
-  let chunks = readLibraryChunks(worldDir, worldId);
-  if (!chunks.length) chunks = await loadLibraryChunks(join(worldDir, "library"), worldId);
+  const chunks = await loadLibraryChunks(join(worldDir, "library"), worldId);
   if (!chunks.length) throw new Error("No indexed text found. Run ingest before index-story.");
 
   const catalog = await loadChapterCatalog(worldId, options.catalogPath);

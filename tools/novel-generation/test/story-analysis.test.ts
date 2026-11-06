@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
-import { databaseStatus, readStoryAnalysis, saveStoryAnalysis, syncLibraryChunks } from "../src/database.js";
+import { databaseStatus, invalidateDerivedAnalysis, readStoryAnalysis, saveStoryAnalysis } from "../src/database.js";
 import { groupAnalysisUnits } from "../src/novel-kb.js";
 import { assertMergeOptions, buildAnalysisPrompt, cleanCharacterAliases, filterCharacterAliasEvidence, parseModelJson, plotThreadId, plotThreadMergeKey, stripUnclassifiedAliases } from "../src/story-analysis.js";
 import { loadLibraryChunks } from "../src/library.js";
@@ -53,7 +53,7 @@ test("story analysis snapshot is persisted and replaced atomically as one databa
     assert.deepEqual(readStoryAnalysis(root, "test-world"), replacement);
     assert.equal(databaseStatus(root, "test-world").storyAnalysis, 1);
     assert.throws(() => saveStoryAnalysis(root, "other-world", snapshot), /world mismatch/);
-    syncLibraryChunks(root, "test-world", [{ id: "new:0:0", source: "new.txt", chapter: "第一章", chunkIndex: 0, start: 0, end: 2, text: "新文本" }]);
+    invalidateDerivedAnalysis(root, "test-world");
     assert.equal(readStoryAnalysis(root, "test-world"), undefined, "re-ingesting corpus must invalidate stale analysis");
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -71,14 +71,36 @@ test("version 1 world databases upgrade to include story analysis storage", asyn
     db.exec("PRAGMA user_version=1");
     db.close();
     const status = databaseStatus(worldDir, "test-world");
-    assert.equal(status.schemaVersion, 5);
+    assert.equal(status.schemaVersion, 6);
     assert.equal(status.storyAnalysis, 0);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
 
-test("story analysis can load an existing JSON library index and migrate it to SQLite", async () => {
+test("upgrading a database that still holds a chunk copy drops it", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-chunk-table-drop-"));
+  try {
+    const worldDir = join(root, "world");
+    await mkdir(worldDir, { recursive: true });
+    const db = new DatabaseSync(join(worldDir, "novel.db"));
+    db.exec("CREATE TABLE world_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)");
+    db.prepare("INSERT INTO world_meta(key,value) VALUES('world_id',?)").run("test-world");
+    db.exec("CREATE TABLE library_chunks(id TEXT PRIMARY KEY,text TEXT NOT NULL)");
+    db.prepare("INSERT INTO library_chunks(id,text) VALUES('a','x')").run();
+    db.exec("PRAGMA user_version=5");
+    db.close();
+    assert.equal(databaseStatus(worldDir, "test-world").schemaVersion, 6);
+    const check = new DatabaseSync(join(worldDir, "novel.db"));
+    try {
+      assert.equal(check.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='library_chunks'").get(), undefined, "重复的分片表应已删除");
+    } finally { check.close(); }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("library chunks are read from the JSON index and never copied into the database", async () => {
   const root = await mkdtemp(join(tmpdir(), "novel-story-analysis-library-"));
   try {
     const worldDir = join(root, "worlds", "test-world");
@@ -93,7 +115,7 @@ test("story analysis can load an existing JSON library index and migrate it to S
       updatedAt: "2026-11-05T00:00:00.000Z", chunks
     }), "utf8");
     assert.deepEqual(JSON.parse(JSON.stringify(await loadLibraryChunks(libraryDir, "test-world"))), chunks);
-    assert.equal(databaseStatus(worldDir, "test-world").chunks, 1);
+    assert.equal(databaseStatus(worldDir, "test-world").annotations, 0, "读取索引不应写入数据库");
   } finally {
     await rm(root, { recursive: true, force: true });
   }

@@ -7,7 +7,7 @@ import {
   assignChapters, buildCharacterDictionary, countMentions, dedupeChunkTexts, groupAnalysisUnits,
   isUsableCharacterName, normalizeCharacterName, type CatalogChapter
 } from "../src/novel-kb.js";
-import { databaseStatus, readLibraryChunks, syncLibraryChunks, syncNovelChapters, syncNovelMentions } from "../src/database.js";
+import { databaseStatus, syncNovelChapters, syncNovelMentions } from "../src/database.js";
 
 function chunk(id: string, chapter: string, text: string, index: number) {
   return { id, source: "s.txt", chapter, chunkIndex: index, start: index * 100, end: index * 100 + text.length, text };
@@ -67,13 +67,9 @@ test("chapter index and mentions persist into the knowledge base", async () => {
   const root = await mkdtemp(join(tmpdir(), "novel-kb-"));
   try {
     const world = join(root, "world");
-    syncLibraryChunks(world, "test-world", [
-      chunk("s:0", "第一章 开端", "李阎走进城寨。", 0),
-      chunk("s:1", "第二章 转折", "李阎遇见查小刀。", 1)
-    ]);
-    assert.equal(readLibraryChunks(world, "test-world").length, 2);
+    const chunks = [chunk("s:0", "第一章 开端", "李阎走进城寨。", 0), chunk("s:1", "第二章 转折", "李阎遇见查小刀。", 1)];
     const catalog = [catalogChapter(1, 1, "第一章 开端"), catalogChapter(1, 2, "第二章 转折")];
-    const assignment = assignChapters(readLibraryChunks(world, "test-world"), catalog);
+    const assignment = assignChapters(chunks, catalog);
     syncNovelChapters(world, "test-world", assignment.chapters);
     syncNovelMentions(world, "test-world", [
       { chapterId: "V01-C001", name: "李阎", count: 1 },

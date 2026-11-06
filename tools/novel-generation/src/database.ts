@@ -1,9 +1,8 @@
 import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import type { LibraryChunk } from "./library.js";
 import type { StoryState } from "./story-state.js";
-export interface DatabaseStatus { path:string; schemaVersion:number; statePath:string; stateSchemaVersion:number; chunks:number; annotations:number; entities:number; entityMentions:number; characters:number; canonFacts:number; events:number; plotThreads:number; storyAnalysis:number; novelChapters:number; novelCharacters:number; novelMentions:number; novelThreads:number; novelForeshadowings:number; novelBeats:number; novelRelations:number; novelArcs:number; novelCharacterProfiles:number; storyGraphNodes:number; storyGraphEdges:number; }
+export interface DatabaseStatus { path:string; schemaVersion:number; statePath:string; stateSchemaVersion:number; annotations:number; entities:number; entityMentions:number; characters:number; canonFacts:number; events:number; plotThreads:number; storyAnalysis:number; novelChapters:number; novelCharacters:number; novelMentions:number; novelThreads:number; novelForeshadowings:number; novelBeats:number; novelRelations:number; novelArcs:number; novelCharacterProfiles:number; storyGraphNodes:number; storyGraphEdges:number; }
 /** Concurrent shards and reader processes compete for the write lock; wait instead of failing. */
 function retryBusy<T>(work:()=>T,attempts=40):T{
  for(let attempt=0;;attempt++){
@@ -20,7 +19,9 @@ function execWithRetry(db:DatabaseSync,sql:string):void{ retryBusy(()=>db.exec(s
 const KNOWLEDGE_DATABASE_FILE="novel.db";
 const STATE_DATABASE_FILE="story.db";
 /** 知识库结构版本：只有 ingest / analyze 会改它。 */
-const KNOWLEDGE_SCHEMA_VERSION=5;
+const KNOWLEDGE_SCHEMA_VERSION=6;
+/** v6 之前的库把分片文本整份复制进来，与 library/index.json 重复；升级时删掉。 */
+const LEGACY_CHUNK_TABLES=["library_chunks"];
 /** 写作状态结构版本：与知识库分开演进。 */
 const STATE_SCHEMA_VERSION=1;
 /** v4 之前状态表与知识表同库，迁移时按这个顺序搬。 */
@@ -95,8 +96,6 @@ function openKnowledgeDatabase(worldDir:string,worldId:string):DatabaseSync {
  mkdirSync(worldDir,{recursive:true}); const db=new DatabaseSync(join(worldDir,KNOWLEDGE_DATABASE_FILE));
  execWithRetry(db,"PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;");
  execWithRetry(db,"CREATE TABLE IF NOT EXISTS world_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);"+
- "CREATE TABLE IF NOT EXISTS library_chunks(id TEXT PRIMARY KEY,source TEXT NOT NULL,chapter TEXT NOT NULL,chunk_index INTEGER NOT NULL,start_offset INTEGER NOT NULL,end_offset INTEGER NOT NULL,source_hash TEXT,chapter_start INTEGER,text TEXT NOT NULL);"+
- "CREATE INDEX IF NOT EXISTS idx_chunks_source ON library_chunks(source); CREATE INDEX IF NOT EXISTS idx_chunks_chapter ON library_chunks(chapter);"+
  "CREATE TABLE IF NOT EXISTS annotations(chunk_id TEXT PRIMARY KEY,source TEXT NOT NULL,chapter TEXT NOT NULL,extracted_at TEXT NOT NULL,payload_json TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_annotations_source ON annotations(source);"+
  "CREATE TABLE IF NOT EXISTS entities(entity_id TEXT PRIMARY KEY,name TEXT NOT NULL,type TEXT NOT NULL,aliases_json TEXT NOT NULL,mention_count INTEGER NOT NULL,payload_json TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name); CREATE INDEX IF NOT EXISTS idx_entities_type_name ON entities(type,name);"+
  "CREATE TABLE IF NOT EXISTS entity_mentions(entity_id TEXT NOT NULL,chunk_id TEXT NOT NULL,source TEXT NOT NULL,chapter TEXT NOT NULL,evidence TEXT NOT NULL,PRIMARY KEY(entity_id,chunk_id,evidence),FOREIGN KEY(entity_id) REFERENCES entities(entity_id) ON DELETE CASCADE); CREATE INDEX IF NOT EXISTS idx_entity_mentions_chunk ON entity_mentions(chunk_id);"+
@@ -129,7 +128,11 @@ function openKnowledgeDatabase(worldDir:string,worldId:string):DatabaseSync {
  if(version>KNOWLEDGE_SCHEMA_VERSION){db.close();throw new Error("Novel database schema is newer than this application supports: "+version);}
  const stored=db.prepare("SELECT value FROM world_meta WHERE key='world_id'").get() as {value:string}|undefined;
  if(stored&&stored.value!==worldId){db.close();throw new Error("SQLite database world mismatch: expected "+worldId+", found "+stored.value);}
- if(version<KNOWLEDGE_SCHEMA_VERSION)retryBusy(()=>db.exec("PRAGMA user_version="+KNOWLEDGE_SCHEMA_VERSION));
+ if(version<KNOWLEDGE_SCHEMA_VERSION)retryBusy(()=>transaction(db,()=>{
+  // 分片唯一来源是 library/index.json；库里的副本是同一份文本，删掉不影响检索。
+  for(const table of LEGACY_CHUNK_TABLES)db.exec("DROP TABLE IF EXISTS "+table);
+  db.exec("PRAGMA user_version="+KNOWLEDGE_SCHEMA_VERSION);
+ }));
  if(!stored)retryBusy(()=>db.prepare("INSERT INTO world_meta(key,value) VALUES('world_id',?)").run(worldId));
  return db;
 }
@@ -137,11 +140,15 @@ export function openWorldDatabase(worldDir:string,worldId:string):DatabaseSync{r
 /** 写作状态库（story.db）：查错和导出 schema 时单独打开。 */
 export function openStoryStateDatabase(worldDir:string,worldId:string):DatabaseSync{return openStateDatabase(worldDir,worldId);}
 function transaction<T>(db:DatabaseSync,work:()=>T):T{retryBusy(()=>db.exec("BEGIN IMMEDIATE"));try{const x=work();retryBusy(()=>db.exec("COMMIT"));return x;}catch(e){try{db.exec("ROLLBACK");}catch{/* 提交失败时事务可能已结束 */}throw e;}}
-export function syncLibraryChunks(worldDir:string,worldId:string,chunks:LibraryChunk[]):void{
- const db=openKnowledgeDatabase(worldDir,worldId);try{transaction(db,()=>{db.exec("DELETE FROM library_chunks; DELETE FROM story_analysis; DELETE FROM novel_chapters;");clearNovelAnalysis(db);const q=db.prepare("INSERT INTO library_chunks(id,source,chapter,chunk_index,start_offset,end_offset,source_hash,chapter_start,text) VALUES(?,?,?,?,?,?,?,?,?)");for(const c of chunks)q.run(c.id,c.source,c.chapter,c.chunkIndex,c.start,c.end,c.sourceHash??null,c.chapterStart??null,c.text);});}finally{db.close();}
-}
-export function readLibraryChunks(worldDir:string,worldId:string):LibraryChunk[]{
- const db=openKnowledgeDatabase(worldDir,worldId);try{return db.prepare("SELECT id,source,chapter,chunk_index AS chunkIndex,start_offset AS start,end_offset AS end,source_hash AS sourceHash,chapter_start AS chapterStart,text FROM library_chunks ORDER BY rowid").all() as unknown as LibraryChunk[];}finally{db.close();}
+/**
+ * 语料变更后，按旧文本算出来的章节切分与分析全部作废。
+ * 只清派生数据，不动 novel.db 里那份权威快照之外的任何东西。
+ */
+export function invalidateDerivedAnalysis(worldDir:string,worldId:string):void{
+ const db=openKnowledgeDatabase(worldDir,worldId);try{transaction(db,()=>{
+  db.exec("DELETE FROM story_analysis; DELETE FROM novel_chapters;");
+  clearNovelAnalysis(db);
+ });}finally{db.close();}
 }
 type AnnotationRow={chunkId:string;source:string;chapter?:string;extractedAt?:string};
 type RegistryData={entities:Array<{id:string;name:string;type:string;aliases:string[];mentions:Array<{chunkId:string;source:string;chapter:string;evidence:string}>}>};
@@ -234,7 +241,7 @@ export function databaseStatus(worldDir:string,worldId:string):DatabaseStatus{
   const version=(db:DatabaseSync)=>Number((db.prepare("PRAGMA user_version").get() as {user_version:number}).user_version);
   return {path:join(worldDir,KNOWLEDGE_DATABASE_FILE),schemaVersion:version(knowledge),
    statePath:join(worldDir,STATE_DATABASE_FILE),stateSchemaVersion:version(state),
-   chunks:count(knowledge,"library_chunks"),annotations:count(knowledge,"annotations"),entities:count(knowledge,"entities"),entityMentions:count(knowledge,"entity_mentions"),
+   annotations:count(knowledge,"annotations"),entities:count(knowledge,"entities"),entityMentions:count(knowledge,"entity_mentions"),
    storyAnalysis:count(knowledge,"story_analysis"),novelChapters:count(knowledge,"novel_chapters"),novelCharacters:count(knowledge,"novel_characters"),novelMentions:count(knowledge,"novel_mentions"),novelThreads:count(knowledge,"novel_plot_threads"),novelForeshadowings:count(knowledge,"novel_foreshadowings"),novelBeats:count(knowledge,"novel_beats"),novelRelations:count(knowledge,"novel_relations"),novelArcs:count(knowledge,"novel_arcs"),novelCharacterProfiles:count(knowledge,"novel_character_profiles"),storyGraphNodes:count(knowledge,"story_graph_nodes"),storyGraphEdges:count(knowledge,"story_graph_edges"),
    characters:count(state,"characters"),canonFacts:count(state,"canon_facts"),events:count(state,"story_events"),plotThreads:count(state,"plot_threads")};
  }finally{knowledge.close();state.close();}
@@ -391,7 +398,7 @@ export interface NovelKnowledgeSnapshot {
  threads: Array<Record<string,unknown>>; foreshadowings: Array<Record<string,unknown>>; beats: Array<Record<string,unknown>>;
  characterProfiles: Array<Record<string,unknown>>;
 }
-/** Portable excerpt without the source text that library_chunks holds. */
+/** Portable excerpt without the source text, which lives in library/index.json. */
 export function exportNovelKnowledge(worldDir:string,worldId:string):NovelKnowledgeSnapshot{
  const db=openKnowledgeDatabase(worldDir,worldId);try{
   const parse=(value:unknown,fallback:unknown)=>{try{return JSON.parse(String(value));}catch{return fallback;}};

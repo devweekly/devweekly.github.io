@@ -1,7 +1,7 @@
 import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
-import { syncLibraryChunks, readLibraryChunks, syncAnnotations, databaseWorldDirFromLibrary } from "./database.js";
+import { invalidateDerivedAnalysis, syncAnnotations, databaseWorldDirFromLibrary } from "./database.js";
 import { createHash } from "node:crypto";
-import { basename, dirname, extname, join, relative, resolve, sep } from "node:path";
+import { basename, extname, join, relative, resolve, sep } from "node:path";
 
 export interface LibraryChunk {
   id: string;
@@ -174,7 +174,7 @@ export async function ingestFiles(worldId: string, inputPaths: string[], library
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
-  syncLibraryChunks(databaseWorldDirFromLibrary(libraryDir), worldId, index.chunks);
+  invalidateDerivedAnalysis(databaseWorldDirFromLibrary(libraryDir), worldId);
   searchCache.delete(indexPath);
   try { await unlink(join(libraryDir, "entities.json")); }
   catch (error) {
@@ -200,13 +200,7 @@ export async function loadLibraryChunks(libraryDir: string, worldId: string): Pr
   const indexPath = join(libraryDir, "index.json");
   const index = JSON.parse(await readFile(indexPath, "utf8")) as LibraryIndex;
   if (index.worldId !== worldId) throw new Error("Library index world mismatch: " + worldId);
-  const worldDir = databaseWorldDirFromLibrary(libraryDir);
-  let chunks = readLibraryChunks(worldDir, worldId);
-  if (!chunks.length && index.chunks.length) {
-    syncLibraryChunks(worldDir, worldId, index.chunks);
-    chunks = readLibraryChunks(worldDir, worldId);
-  }
-  return chunks.length ? chunks : index.chunks;
+  return index.chunks;
 }
 
 async function loadSearchIndex(indexPath: string): Promise<CachedSearchIndex> {
@@ -215,13 +209,8 @@ async function loadSearchIndex(indexPath: string): Promise<CachedSearchIndex> {
   if (cached && cached.mtimeMs === info.mtimeMs && cached.size === info.size) return cached;
 
   const index = JSON.parse(await readFile(indexPath, "utf8")) as LibraryIndex;
-  let chunks = readLibraryChunks(databaseWorldDirFromLibrary(dirname(indexPath)), index.worldId);
-  if (!chunks.length && index.chunks.length) {
-    syncLibraryChunks(databaseWorldDirFromLibrary(dirname(indexPath)), index.worldId, index.chunks);
-    chunks = readLibraryChunks(databaseWorldDirFromLibrary(dirname(indexPath)), index.worldId);
-  }
   const documentFrequency = new Map<string, number>();
-  const documents = (chunks.length ? chunks : index.chunks).map(chunk => {
+  const documents = index.chunks.map(chunk => {
     const counts = new Map<string, number>();
     for (const term of terms(chunk.text)) counts.set(term, (counts.get(term) ?? 0) + 1);
     for (const term of counts.keys()) documentFrequency.set(term, (documentFrequency.get(term) ?? 0) + 1);

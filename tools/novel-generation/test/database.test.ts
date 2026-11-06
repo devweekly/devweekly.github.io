@@ -5,12 +5,11 @@ import { DatabaseSync } from "node:sqlite";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
-import { databaseStatus, readAnnotationsByChunkIds, readLibraryChunks, readStoryState, syncAnnotations, syncLibraryChunks, syncStoryState } from "../src/database.js";
+import { databaseStatus, readAnnotationsByChunkIds, readStoryState, syncAnnotations, syncStoryState } from "../src/database.js";
 import { emptyStoryState, loadStoryState } from "../src/story-state.js";
-test("SQLite stores chunks, annotations, entities and normalized story state",async()=>{
+test("SQLite stores annotations, entities and normalized story state",async()=>{
  const root=await mkdtemp(join(tmpdir(),"novel-sqlite-"));
- try{const world=join(root,"worlds","test-world");const chunks=[{id:"s:0:0",source:"s.txt",chapter:"第1章",chunkIndex:0,start:0,end:4,text:"测试文本",sourceHash:"a".repeat(64),chapterStart:0}];
- syncLibraryChunks(world,"test-world",chunks);assert.deepEqual(readLibraryChunks(world,"test-world").map(item=>({...item})),chunks);
+ try{const world=join(root,"worlds","test-world");
  const annotation={chunkId:"s:0:0",source:"s.txt",chapter:"第1章",extractedAt:"2026-11-05T00:00:00.000Z",entities:[{name:"李玄"}],events:[],relations:[],coreferences:[],evidenceReviews:[]};
  syncAnnotations(world,"test-world",[annotation],{entities:[{id:"ent_1",name:"李玄",type:"character",aliases:["玄"],mentions:[{chunkId:"s:0:0",source:"s.txt",chapter:"第1章",evidence:"李玄"}]}]});
  assert.equal(readAnnotationsByChunkIds(world,"test-world",["s:0:0"]).get("s:0:0")?.chunkId,"s:0:0");
@@ -18,7 +17,7 @@ test("SQLite stores chunks, annotations, entities and normalized story state",as
  state.canonFacts.push({id:"f1",fact:"城门在北面",confidence:"confirmed"});state.events.push({id:"e1",summary:"进入旧城",position:"第1章",participants:["李玄"],consequences:[]});
  state.plotThreads.push({id:"p1",title:"寻找密道",status:"open",lastUpdated:"第1章",notes:"尚未解决"});syncStoryState(world,state);
  assert.equal(readStoryState(world,"test-world")?.characters[0]?.name,"李玄");
- const s=databaseStatus(world,"test-world");assert.deepEqual([s.chunks,s.annotations,s.entities,s.entityMentions,s.characters,s.canonFacts,s.events,s.plotThreads],[1,1,1,1,1,1,1,1]);
+ const s=databaseStatus(world,"test-world");assert.deepEqual([s.annotations,s.entities,s.entityMentions,s.characters,s.canonFacts,s.events,s.plotThreads],[1,1,1,1,1,1,1]);
  }finally{await rm(root,{recursive:true,force:true});}
 });
 test("SQLite database rejects cross-world reuse",async()=>{
@@ -33,7 +32,7 @@ test("legacy story-state JSON migrates into SQLite on first load",async()=>{
 test("写作状态写入不触碰知识库文件",async()=>{
  const root=await mkdtemp(join(tmpdir(),"novel-split-"));try{
   const world=join(root,"world");
-  syncLibraryChunks(world,"w",[{id:"s:0:0",source:"s.txt",chapter:"第1章",chunkIndex:0,start:0,end:4,text:"测试文本",sourceHash:"a".repeat(64),chapterStart:0}]);
+  syncAnnotations(world,"w",[],null);
   const before=readFileSync(join(world,"novel.db"));
   const state=emptyStoryState("w");state.currentPosition="第二章";state.characters.push({name:"李玄",status:"在旧城",location:"旧城",profile:{coreTraits:["谨慎"]}});
   syncStoryState(world,state);
@@ -45,7 +44,7 @@ test("写作状态写入不触碰知识库文件",async()=>{
 test("旧库里同库存储的状态表首次打开时迁移到 story.db",async()=>{
  const root=await mkdtemp(join(tmpdir(),"novel-legacy-state-"));try{
   const world=join(root,"world");
-  syncLibraryChunks(world,"w",[{id:"s:0:0",source:"s.txt",chapter:"第1章",chunkIndex:0,start:0,end:4,text:"测试文本",sourceHash:"a".repeat(64),chapterStart:0}]);
+  syncAnnotations(world,"w",[],null);
   const legacy=emptyStoryState("w");legacy.currentPosition="第七章";
   const raw=new DatabaseSync(join(world,"novel.db"));
   raw.exec("CREATE TABLE story_state(singleton INTEGER PRIMARY KEY CHECK(singleton=1),updated_at TEXT NOT NULL,payload_json TEXT NOT NULL);"+

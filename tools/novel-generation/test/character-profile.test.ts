@@ -4,7 +4,7 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { buildProfilePrompt, sampleChronologically } from "../src/character-profile.js";
-import { listNovelCharacterProfiles, syncNovelCharacterProfiles, syncLibraryChunks, syncNovelCharacters } from "../src/database.js";
+import { listNovelCharacterProfiles, syncAnnotations, syncNovelCharacterProfiles, syncNovelCharacters } from "../src/database.js";
 
 test("观察采样保留首尾，中间等距", () => {
   const items = Array.from({ length: 100 }, (_, index) => index);
@@ -40,7 +40,7 @@ test("档案写入后可按姓名读回", async () => {
   const root = await mkdtemp(join(tmpdir(), "novel-profile-"));
   try {
     const world = join(root, "world");
-    syncLibraryChunks(world, "w", [{ id: "s:0:0", source: "s.txt", chapter: "第1章", chunkIndex: 0, start: 0, end: 4, text: "测试", sourceHash: "a".repeat(64), chapterStart: 0 }]);
+    syncAnnotations(world, "w", [], null);
     syncNovelCharacters(world, "w", [{
       characterId: "c1", name: "李阎", aliases: ["阎哥"], role: "主角", bio: "小传", voice: "",
       personality: [], desires: [], contradictions: [], arc: [],

@@ -4,7 +4,7 @@
  *   npm run package-review
  *   npm run package-review -- --out /tmp/review.zip --max-mb 6 --batches 6
  *
- * 不打包原文全文与完整数据库（22MB）；只取有代表性的切片。
+ * 不打包原文全文与完整数据库（12MB）；只取有代表性的切片。
  */
 import { createHash } from "node:crypto";
 import { deflateRawSync } from "node:zlib";
@@ -451,7 +451,7 @@ add("REFERENCES.md", [
   "",
   "| 用途 | 路径 | 说明 |",
   "|---|---|---|",
-  "| 知识库 | `worlds/conghuoniao/novel.db` | 22MB：原文分片、标注、`novel_*`、`story_analysis`、`story_graph_*` |",
+  "| 知识库 | `worlds/conghuoniao/novel.db` | 12MB：标注、`novel_*`、`story_analysis`、`story_graph_*` |",
   "| 写作状态 | `worlds/conghuoniao/story.db` | 68KB：人物、正史事实、事件、情节线、连续性备注，每章重写 |",
   "| 知识库文本快照 | `worlds/conghuoniao/story-kb.json` | 3.5MB，不含原文，便于 diff |",
   "| 分析请求/响应缓存 | `.output/conghuoniao/story-analysis/<cache-key>/` | 196 批，`batch-NNNN.json` 为模型原始返回 |",
@@ -631,7 +631,7 @@ const readme = [
   "  这些不是重复文本，实测两两相似度都低于 0.6，去重去不掉。`novel_character_profiles` 把主要人物合并成一份档案（本次 " + counts.characterProfiles + " 人），示例里以 `profile` 字段给出；原始数组保留作证据，示例只留前 5–8 条，总量见 `arrayCounts`。",
   "- 置信度、状态、关系标签都是模型判断，不是人工标注。",
   "- SDK 不落盘 token 与耗时，`02-analysis-calls/` 包含采样请求/响应，以及已保留的失败原始响应；请求体由同一构造函数重建，内容与线上一致。长章节 `stage-calls.jsonl` 记录实际执行的阶段、请求模型候选链、提示词/输出字符数、耗时和结果；缓存命中不会产生模型调用记录。",
-  "- 原文全文与 22MB 的 `novel.db` 未打包；如需核对原文，请另行提供语料。",
+  "- 原文全文与 12MB 的 `novel.db` 未打包；如需核对原文，请另行提供语料。",
   "",
   "## 版权",
   "",
