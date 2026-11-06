@@ -611,6 +611,7 @@ function mergeAndPersist(
     worldId,
     sourceHash,
     analyzedAt: new Date().toISOString(),
+    analysisVersion: 4,
     complete: true,
     batches: batchCount,
     chapters: units.length,
