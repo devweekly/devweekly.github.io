@@ -412,14 +412,14 @@ ADR 0004 的第一阶段已接入两条正式写作链：
 - 新增 `distill-style` 命令和 `src/style-distillation.ts`，从授权样本提炼全局与场景级风格候选，默认写入 `.output/<world>/style-profile-candidate.md`；显式 `--activate` 才更新正式风格资料，并先归档旧版本。候选输出路径限制在当前 world 的 `.output/`。
 - 新增 `roleplay-sandbox` 命令和 `src/roleplay-sandbox.ts`，推演注入 Story State 人物动态、成书知识库人物长期观察和任务相关故事图谱；支持作者接受、修改方向、补充信息、重演或结束；所有结果只写入当前 world 的 `.output/`，不进入正史或 Story State。
 
-Roleplay Sandbox 已读取当前人物动态、长期人物观察和任务相关故事图谱，输出仍与正史隔离。Style Distillation 已提供候选提炼与显式激活/旧版归档；新增 `style-regress`，可用已认可参考章节与新生成章节做显式风格漂移观察；仍未实现样本版本管理、自动批量回归和 CI 风格门禁。
+Roleplay Sandbox 已读取当前人物动态、长期人物观察和任务相关故事图谱，输出仍与正史隔离。Style Distillation 已提供候选提炼与显式激活/旧版归档；正式章节流水线在每章终审通过后自动执行风格回归，`style-regress` 另用于任意文件专项对照。仍未实现样本版本管理、跨章节自动批量趋势分析和 CI 风格门禁。
 
 
 ### 10.10 五项能力的当前实际落地
 
 - **Anti-AI**：普通章节与长章节均执行诊断（`06a`）→ 编辑（`06b`）→ 保守复核（`06c`）。诊断只报告有具体证据的阅读问题，不判断 AI 概率；复核选择 keep/restore，复核格式错误或调用失败时恢复原稿。它不是检测器，也不是质量门禁。
 - **Living Voice**：同一组原则进入普通/长章节 Writer、对白与叙事声音编辑；长章节场景扩写重试也会注入，避免重试阶段退化成单纯凑字数。
-- **Style Distillation**：`distill-style` 提炼授权样本的全局与场景级抽象特征；候选默认隔离，`--activate` 显式激活并归档旧版。已提供显式 `style-regress` 观察报告；仍未建设样本版本管理、自动批量回归和 CI 风格门禁。
+- **Style Distillation**：`distill-style` 提炼授权样本的全局与场景级抽象特征；候选默认隔离，`--activate` 显式激活并归档旧版。正式写作每章自动生成只读 Style Regression 报告；仍未建设样本版本管理、跨章节自动批量趋势分析和 CI 风格门禁。
 - **Reader**：最终成稿后盲读正文，不预先接收人物档案、世界设定、蓝图或创作任务；只生成观察报告，不影响质量门禁和 Story State。
 - **Style Regression**：普通/长章节终审通过后自动读取 Style Profile 和 `worlds/<world>/style-references/` 下最多四份认可样本，生成 `11-style-regression.md`；无样本时只对照抽象 Style Profile 并说明证据不足。它不改稿、不打分、不阻断。
 - **Roleplay Sandbox**：读取人物当前动态状态、长期人物观察和任务相关故事图谱；交互记录只写入当前 world 的 `.output/`，自定义输出路径也受限，不会覆盖正史文件。
