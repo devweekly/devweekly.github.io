@@ -91,7 +91,7 @@ function usage(): never {
     "  npm run dev -- ingest --world conghuoniao --input ./private/novel.txt [more files or directories]",
     "  npm run dev -- search --world conghuoniao --query \"人物或事件关键词\" [--limit 8]",
     "  npm run dev -- analyze --world conghuoniao [--limit 20] [--model model]",
-    "  npm run dev -- distill-style --world conghuoniao --input ./private/style-sample-1.txt ./private/style-sample-2.md [--out .output/style-profile-candidate.md] [--model model]",
+    "  npm run dev -- distill-style --world conghuoniao --input ./private/style-sample-1.txt ./private/style-sample-2.md [--out .output/<world>/style-profile-candidate.md] [--activate] [--model model]",
     "  npm run dev -- roleplay-sandbox --world conghuoniao --brief \"场景设定\" --characters 人物甲,人物乙 [--model model] [--out file]",
     "  npm run dev -- analyze-story --world conghuoniao [--model model] [--timeout-ms 180000] [--max-chars 14000] [--shard 0/4] [--merge-only] [--delta]",
     "  npm run dev -- plan-story --world conghuoniao [--model model] [--draft] [--activate-candidate <file>]  # 默认生成后自动激活；--draft 仅保存实验草稿",
@@ -131,6 +131,16 @@ function safeWorldId(value: string): string {
   return value;
 }
 
+/** Candidate artifacts must stay inside the world's ignored .output directory. */
+function resolveWorldOutputPath(requested: string | undefined, worldId: string, fallback: string): string {
+  const root = resolve(".output", worldId);
+  const output = resolve(requested ?? fallback);
+  if (output !== root && !output.startsWith(root + sep)) {
+    throw new Error("--out must point inside " + root + " to avoid overwriting project or canon files.");
+  }
+  return output;
+}
+
 async function main(): Promise<void> {
   const command = process.argv[2];
   if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-story" && command !== "index-story" && command !== "story-kb" && command !== "analyze-arcs" && command !== "analyze-profiles" && command !== "analyze-world" && command !== "models" && command !== "check-runtime" && command !== "db-status" && command !== "plan-story" && command !== "distill-style" && command !== "roleplay-sandbox") usage();
@@ -147,6 +157,15 @@ async function main(): Promise<void> {
     const characters = state.characters.filter(character => names.includes(character.name));
     const missing = names.filter(name => !characters.some(character => character.name === name));
     if (missing.length) throw new Error("人物不在当前 Story State 中：" + missing.join("、"));
+    const characterProfiles = listNovelCharacterProfiles(worldDir, worldId);
+    const enrichedCharacters = characters.map(character => ({
+      ...character,
+      longTermProfile: characterProfiles.get(character.name) ?? null
+    }));
+    const storyAnalysisContext = buildStoryAnalysisContext(
+      readStoryAnalysis(worldDir, worldId),
+      [brief, ...names].join("\\n")
+    );
     const worldBible = await readFile(resolve(worldDir, "world-bible.md"), "utf8");
     const timeoutMs = Number(arg("--timeout-ms") ?? DEFAULT_AGENT_TIMEOUT_MS);
     if (!Number.isInteger(timeoutMs) || timeoutMs < MIN_AGENT_TIMEOUT_MS || timeoutMs > MAX_AGENT_TIMEOUT_MS) {
@@ -155,13 +174,14 @@ async function main(): Promise<void> {
     const transcript = await runRoleplaySandbox({
       brief,
       worldBible,
-      characters,
+      characters: enrichedCharacters,
+      storyAnalysisContext,
       model: arg("--model"),
       timeoutMs,
       profile: readTaskProfiles().creative
     });
     const runId = new Date().toISOString().replace(/[:.]/g, "-");
-    const out = resolve(arg("--out") ?? join(".output", worldId, "roleplay-sandbox", runId + ".md"));
+    const out = resolveWorldOutputPath(arg("--out"), worldId, join(".output", worldId, "roleplay-sandbox", runId + ".md"));
     await mkdir(dirname(out), { recursive: true });
     await writeFile(out, transcript, "utf8");
     console.log("推演记录已保存（非正史）：" + out);
@@ -420,10 +440,25 @@ async function main(): Promise<void> {
       undefined,
       readTaskProfiles().styleDistill
     );
-    const out = resolve(arg("--out") ?? join(".output", worldId, "style-profile-candidate.md"));
+    if (!profile.trim()) throw new Error("Style distillation returned an empty profile.");
+    const out = resolveWorldOutputPath(arg("--out"), worldId, join(".output", worldId, "style-profile-candidate.md"));
     await mkdir(dirname(out), { recursive: true });
     await writeFile(out, profile.trim() + "\n", "utf8");
-    console.log(JSON.stringify({ out, samples: samples.length, sampleChars: totalChars }, null, 2));
+    let activated = false;
+    if (process.argv.includes("--activate")) {
+      const activePath = resolve("worlds", worldId, "style-profile.md");
+      const previous = await readOptional(activePath);
+      if (previous?.trim()) {
+        const archive = resolveWorldOutputPath(undefined, worldId,
+          join(".output", worldId, "style-profile-history", new Date().toISOString().replace(/[:.]/g, "-") + ".md"));
+        await mkdir(dirname(archive), { recursive: true });
+        await writeFile(archive, previous, "utf8");
+      }
+      await mkdir(dirname(activePath), { recursive: true });
+      await writeFile(activePath, profile.trim() + "\n", "utf8");
+      activated = true;
+    }
+    console.log(JSON.stringify({ out, samples: samples.length, sampleChars: totalChars, activated }, null, 2));
     return;
   }
 
