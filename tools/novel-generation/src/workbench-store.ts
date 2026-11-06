@@ -1,9 +1,9 @@
 import { appendFile, mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
-export type RunStatus = "queued" | "running" | "waiting_review" | "completed" | "failed" | "cancelled";
+export type RunStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 export interface WorkbenchRun { id:string; worldId:string; kind:"story-plan"; status:RunStatus; createdAt:string; updatedAt:string; error?:string; candidateId?:string; }
-export interface StoryPlanCandidate { id:string; worldId:string; type:"story-plan"; status:"pending"|"approved"|"rejected"|"changes_requested"; createdAt:string; updatedAt:string; baseUpdatedAt:string|null; plan:unknown; runId:string; reviewComment?:string; }
+export interface StoryPlanCandidate { id:string; worldId:string; type:"story-plan"; status:"applied"|"superseded"|"pending"|"approved"|"rejected"|"changes_requested"; createdAt:string; updatedAt:string; baseUpdatedAt:string|null; plan:unknown; runId:string; reviewComment?:string; }
 export interface ApprovalDecision { id:string; candidateId:string; worldId:string; action:"approved"|"rejected"|"changes_requested"; comment:string; createdAt:string; baseUpdatedAt:string|null; }
 
 async function readJson<T>(path:string,fallback:T):Promise<T>{try{return JSON.parse(await readFile(path,"utf8")) as T;}catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return fallback;throw error;}}
