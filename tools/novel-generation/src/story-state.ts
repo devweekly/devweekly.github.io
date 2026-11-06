@@ -21,11 +21,15 @@ const StoryStateSchema = z.object({
     }).optional(),
     status: z.string(), location: z.string().optional(), abilities: z.array(z.string()).optional(),
     knowledge: z.array(z.string()).optional(), goals: z.array(z.string()).optional(),
+    motivation: z.string().optional(), resources: z.array(z.string()).optional(),
+    constraints: z.array(z.string()).optional(), currentPressure: z.array(z.string()).optional(),
+    decisionHistory: z.array(z.string()).optional(),
     relationships: z.array(z.string()).optional(), arcMilestones: z.array(z.object({ id: z.string().min(1), chapter: z.string().min(1), change: z.string().min(1), choice: z.string().optional(), pressure: z.string().optional(), cost: z.string().optional(), evidence: z.string().min(4) })).optional(), stateUpdatedAt: z.string().optional()
   })),
   events: z.array(z.object({
     id: z.string().min(1), summary: z.string(), position: z.string(),
     participants: z.array(z.string()), consequences: z.array(z.string()),
+    causes: z.array(z.string()).optional(), relatedPlotThreads: z.array(z.string()).optional(),
     origin: z.enum(["canon", "inferred", "original"]).optional(), source: z.string().optional()
   })),
   plotThreads: z.array(z.object({
@@ -50,11 +54,15 @@ const StoryStateUpdateSchema = z.object({
     }).optional(),
     status: z.string(), location: z.string().optional(), abilities: z.array(z.string()).optional(),
     knowledge: z.array(z.string()).optional(), goals: z.array(z.string()).optional(),
+    motivation: z.string().optional(), resources: z.array(z.string()).optional(),
+    constraints: z.array(z.string()).optional(), currentPressure: z.array(z.string()).optional(),
+    decisionHistory: z.array(z.string()).optional(),
     relationships: z.array(z.string()).optional(), arcMilestones: z.array(z.object({ id: z.string().min(1), chapter: z.string().min(1), change: z.string().min(1), choice: z.string().optional(), pressure: z.string().optional(), cost: z.string().optional(), evidence: z.string().min(4) })).optional(), stateUpdatedAt: z.string().optional()
   })).optional(),
   events: z.array(z.object({
     id: z.string().min(1), summary: z.string(), position: z.string(),
     participants: z.array(z.string()), consequences: z.array(z.string()),
+    causes: z.array(z.string()).optional(), relatedPlotThreads: z.array(z.string()).optional(),
     origin: z.enum(["canon", "inferred", "original"]).optional(), source: z.string().optional()
   })).optional(),
   plotThreads: z.array(z.object({
@@ -96,11 +104,16 @@ export interface StoryState {
     abilities?: string[];
     knowledge?: string[];
     goals?: string[];
+    motivation?: string;
+    resources?: string[];
+    constraints?: string[];
+    currentPressure?: string[];
+    decisionHistory?: string[];
     relationships?: string[];
     arcMilestones?: Array<{ id: string; chapter: string; change: string; choice?: string; pressure?: string; cost?: string; evidence: string }>;
     stateUpdatedAt?: string;
   }>;
-  events: Array<{ id: string; summary: string; position: string; participants: string[]; consequences: string[]; origin?: "canon" | "inferred" | "original"; source?: string }>;
+  events: Array<{ id: string; summary: string; position: string; participants: string[]; consequences: string[]; causes?: string[]; relatedPlotThreads?: string[]; origin?: "canon" | "inferred" | "original"; source?: string }>;
   plotThreads: Array<{ id: string; title: string; status: "open" | "active" | "resolved" | "abandoned"; lastUpdated: string; notes: string }>;
   continuityNotes: string[];
 }
