@@ -9,7 +9,7 @@ import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
 import { parseJsonObject } from "./model-json.js";
 import { LONG_CHAPTER_SOURCE_TAIL_CHARS } from "./constants.js";
 import { buildWorldSituationContext } from "./world-situation.js";
-import { antiAiEditPrompt, readerExperiencePrompt } from "./literary-edit.js";
+import { LIVING_VOICE_RULES, antiAiEditPrompt, readerExperiencePrompt } from "./literary-edit.js";
 
 export interface WriteWorkflowInput {
   worldId: string;
@@ -224,7 +224,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
 
   const initialDraft = await cachedCall("scene", "04-scene-draft.md", "scene", [
     "角色：场景小说家。根据最终蓝图写完整章节正文，不输出分析。",
-    common, "最终章节蓝图：", plan,
+    LIVING_VOICE_RULES, common, "最终章节蓝图：", plan,
     "目标篇幅约 " + input.maxWords + " 个中文字符。通过场景、行动、选择和后果推进；不要用概述代替关键场景。",
     RHYTHM_RULE
   ]);
@@ -232,7 +232,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
 
   const dialogueDraft = await cachedCall("dialogue", "05-dialogue-edited.md", "dialogue", [
     "角色：人物对话编辑。专门修整人物对白和对白相关动作，不改变剧情事实、场景顺序、人物决定和信息揭示。",
-    dialogueContext, "章节蓝图：", plan, "当前正文：", initialDraft,
+    LIVING_VOICE_RULES, dialogueContext, "章节蓝图：", plan, "当前正文：", initialDraft,
     "检查每个人物的词汇、句长、表达习惯、身份关系、情绪和已知信息。删掉解释性过强、所有角色都像同一个人的对白；让潜台词通过停顿、回避、误解和行动体现。可以精简重复或解释过度的内容，但不能删掉有效的人物互动、动作、信息或情绪落点；原文已经成立时可以原样保留。",
     RHYTHM_RULE, "输出完整修订正文。文学表达优先，不以保持字数为目标。"
   ]);
@@ -240,7 +240,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
 
   const voiceDraft = await cachedCall("voice", "06-voice-edited.md", "voice", [
     "角色：叙事声音与文风编辑。只负责统一全章叙述声音，不负责改剧情。",
-    voiceContext, "章节蓝图：", plan, "当前正文：", dialogueDraft,
+    LIVING_VOICE_RULES, voiceContext, "章节蓝图：", plan, "当前正文：", dialogueDraft,
     "统一叙述视角、时态、句长变化、段落节奏、叙述距离、动作/环境/心理描写比例和悬念节奏。保持中文自然、有变化，避免模板化排比、总结句、过度解释和重复修辞。不得复刻任何特定作者的独特句式或标志性表达。",
     RHYTHM_RULE, "输出完整修订正文，保留长句与放慢段落，不得把全章改成短促腔。"
   ]);
