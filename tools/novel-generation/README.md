@@ -260,6 +260,7 @@ schema v3 增加一组 `novel_*` 表，用来存放**成书知识库**，与写�
 ```bash
 npm run dev -- index-story  --world conghuoniao        # 章节结构 + 人物出场统计（不调用模型）
 npm run dev -- analyze-arcs --world conghuoniao        # 卷级主线梗概（依赖章级事件）
+npm run dev -- analyze-profiles --world conghuoniao     # 主要人物合并档案（逐批观察 → 一份画像）
 npm run dev -- story-kb     --world conghuoniao --type overview
 npm run dev -- story-kb     --world conghuoniao --type characters --query 李阎
 npm run dev -- story-kb     --world conghuoniao --type threads --status 进行中
@@ -270,6 +271,8 @@ npm run dev -- story-kb     --world conghuoniao --type export   # 导出不含�
 ```
 
 当前 `conghuoniao` 库的规模：753 章、544 人（6,403 条人物×章出场记录）、1,314 条章级事件（覆盖 738/753 章）、862 条局部情节线、1,535 条伏笔线索、1,649 条人物关系、17 篇卷级梗概。
+
+`novel_characters` 的 `personality`/`desires`/`contradictions`/`arc` 是**逐批观察**，不是去重后的画像：每一批只看几章，同一个人会被反复描述。主角尤其明显——李阎有 193 条性格、194 条矛盾、380 条走向，实测两两相似度都低于 0.6，纯文本去重一条也去不掉。`analyze-profiles` 把它们按章节顺序采样后交给模型合并，写入 `novel_character_profiles`：一份 150–250 字画像、3–5 条阶段变化、3–6 条性格与矛盾、3–5 条可能走向。写作事实包和 `story-kb --type characters` 优先用合并档案，原始观察保留作证据。
 
 两个文件都随仓库提交，换机器后不必重跑 196 次模型调用。`novel.db` 重跑 `analyze-story` 会整文件重写（约 22MB），所以它的提交应集中在数据更新的那一次；`story-kb --type export` 写出的 `story-kb.json` 保留了同一批知识的文本形式，便于 diff 和审阅。`story.db` 每次章节落地都会变，但只有几十 KB。
 

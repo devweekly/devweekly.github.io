@@ -1,5 +1,5 @@
 import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { databaseStatus, readAnnotationsByChunkIds, readStoryAnalysis, listNovelCharacters, listNovelThreads, listNovelForeshadowings, listNovelBeats, readNovelKbMeta, novelKnowledgeOverview, exportNovelKnowledge } from "./database.js";
+import { databaseStatus, readAnnotationsByChunkIds, readStoryAnalysis, listNovelCharacters, listNovelThreads, listNovelForeshadowings, listNovelBeats, readNovelKbMeta, novelKnowledgeOverview, exportNovelKnowledge, listNovelCharacterProfiles } from "./database.js";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { generateStory, type GenerationMode } from "./generate.js";
 import { ingestFiles, listTextFiles, searchLibrary } from "./library.js";
@@ -12,6 +12,7 @@ import { buildStoryAnalysisContext } from "./story-analysis-context.js";
 import { buildWritingBrief } from "./writing-brief.js";
 import { indexNovelStructure } from "./novel-kb.js";
 import { buildVolumeArcs, listVolumeArcs } from "./story-arcs.js";
+import { buildCharacterProfiles } from "./character-profile.js";
 import { prepareWorldAnalysis, collectWorldAnalysis, analysisStatus } from "./world-analysis.js";
 import {
   readModelCatalog, resolveAgentModel, isManagedSession, readConfiguredModel,
@@ -58,6 +59,7 @@ function usage(): never {
     "  npm run dev -- analyze-story --world conghuoniao [--model model] [--timeout-ms 180000] [--max-chars 14000] [--shard 0/4] [--merge-only]",
     "  npm run dev -- index-story --world conghuoniao [--catalog analysis/conghuoniao/chapter-index.json]",
     "  npm run dev -- analyze-arcs --world conghuoniao [--model model] [--force]",
+    "  npm run dev -- analyze-profiles --world conghuoniao [--top 24] [--names 李阎,查小刀] [--model model] [--force]",
     "  npm run dev -- story-kb --world conghuoniao [--type overview|arcs|characters|threads|foreshadowings|beats|export] [--query 关键词] [--status 状态] [--from 1] [--to 100] [--limit 50]",
     "  npm run dev -- analyze-world --world conghuoniao --phase prepare|status|collect [--source original.txt] [--model model] [--timeout-ms 90000] [--evidence-review] [--evidence-window 2]",
     "  npm run dev -- db-status --world conghuoniao",
@@ -93,7 +95,7 @@ function safeWorldId(value: string): string {
 
 async function main(): Promise<void> {
   const command = process.argv[2];
-  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-story" && command !== "index-story" && command !== "story-kb" && command !== "analyze-arcs" && command !== "analyze-world" && command !== "models" && command !== "check-runtime" && command !== "db-status") usage();
+  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-story" && command !== "index-story" && command !== "story-kb" && command !== "analyze-arcs" && command !== "analyze-profiles" && command !== "analyze-world" && command !== "models" && command !== "check-runtime" && command !== "db-status") usage();
 
   const worldId = safeWorldId(arg("--world") ?? "conghuoniao");
   const libraryDir = resolve("worlds", worldId, "library");
@@ -127,6 +129,26 @@ async function main(): Promise<void> {
     return;
   }
 
+  if (command === "analyze-profiles") {
+    const worldDir = resolve("worlds", worldId);
+    const result = await buildCharacterProfiles(worldId, {
+      worldDir,
+      model: arg("--model"),
+      top: Number(arg("--top") ?? 24),
+      timeoutMs: Number(arg("--timeout-ms") ?? 150_000),
+      force: process.argv.includes("--force"),
+      names: (arg("--names") ?? "").split(",").map(name => name.trim()).filter(Boolean)
+    });
+    console.log(JSON.stringify({
+      profiles: result.profiles.length,
+      generated: result.generated,
+      cached: result.cached,
+      failed: result.failed,
+      skipped: result.skipped
+    }, null, 2));
+    return;
+  }
+
   if (command === "story-kb") {
     const worldDir = resolve("worlds", worldId);
     const type = arg("--type") ?? "characters";
@@ -137,11 +159,16 @@ async function main(): Promise<void> {
       const snapshot = exportNovelKnowledge(worldDir, worldId);
       await mkdir(dirname(out), { recursive: true });
       await writeFile(out, JSON.stringify(snapshot) + "\n", "utf8");
-      console.log(JSON.stringify({ out, characters: snapshot.characters.length, threads: snapshot.threads.length, foreshadowings: snapshot.foreshadowings.length, beats: snapshot.beats.length, arcs: snapshot.arcs.length }, null, 2));
+      console.log(JSON.stringify({ out, characters: snapshot.characters.length, characterProfiles: snapshot.characterProfiles.length, threads: snapshot.threads.length, foreshadowings: snapshot.foreshadowings.length, beats: snapshot.beats.length, arcs: snapshot.arcs.length }, null, 2));
     }
     else if (type === "overview") console.log(JSON.stringify(novelKnowledgeOverview(worldDir, worldId), null, 2));
     else if (type === "arcs") console.log(JSON.stringify({ arcs: listVolumeArcs(worldDir, worldId) }, null, 2));
-    else if (type === "characters") console.log(JSON.stringify({ meta: readNovelKbMeta(worldDir, worldId), characters: listNovelCharacters(worldDir, worldId, { query: arg("--query"), limit }) }, null, 2));
+    else if (type === "characters") {
+      const profiles = listNovelCharacterProfiles(worldDir, worldId);
+      const characters = listNovelCharacters(worldDir, worldId, { query: arg("--query"), limit })
+        .map(character => ({ ...character, profile: profiles.get(character.name) ?? null }));
+      console.log(JSON.stringify({ meta: readNovelKbMeta(worldDir, worldId), characters }, null, 2));
+    }
     else if (type === "threads") console.log(JSON.stringify({ threads: listNovelThreads(worldDir, worldId, { limit, status: arg("--status"), query: arg("--query") }) }, null, 2));
     else if (type === "foreshadowings") console.log(JSON.stringify({ foreshadowings: listNovelForeshadowings(worldDir, worldId, { limit, status: arg("--status"), query: arg("--query") }) }, null, 2));
     else if (type === "beats") console.log(JSON.stringify({ beats: listNovelBeats(worldDir, worldId, { from: Number(arg("--from") ?? 0), to: Number(arg("--to") ?? 9999), limit }) }, null, 2));

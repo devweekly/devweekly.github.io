@@ -1,6 +1,6 @@
 // 把全书知识库（novel_* 表）压成一份可注入的写作事实包。
 // 与分析参考不同：这里的内容是全书已经写成的事实，用于约束本章，不是创意建议。
-import { listNovelBeats, listNovelCharacters, listNovelForeshadowings, listNovelThreads } from "./database.js";
+import { listNovelBeats, listNovelCharacterProfiles, listNovelCharacters, listNovelForeshadowings, listNovelThreads } from "./database.js";
 
 export interface WritingBriefOptions {
   worldDir: string;
@@ -63,6 +63,8 @@ export function buildWritingBrief(options: WritingBriefOptions): string {
   if (!query.size) return "";
   const maxChars = options.maxChars ?? 3000;
 
+  // 逐批抽取的原始观察太碎（主角动辄上百条），优先用合并档案描述人物。
+  const profiles = listNovelCharacterProfiles(options.worldDir, options.worldId);
   const characters = listNovelCharacters(options.worldDir, options.worldId, { limit: 400 })
     .map(character => {
       const names = [character.name, ...character.aliases];
@@ -71,17 +73,18 @@ export function buildWritingBrief(options: WritingBriefOptions): string {
         const compact = name.replace(/\s/g, "");
         return compact.length > 1 && options.query.includes(compact) ? Math.max(best, 24) : best;
       }, 0);
-      const textScore = overlap([character.role, character.bio, character.voice].join(" "), query);
-      return { character, score: nameHit + textScore };
+      const summary = profiles.get(character.name)?.summary ?? "";
+      const textScore = overlap([character.role, character.bio, character.voice, summary].join(" "), query);
+      return { character, summary, score: nameHit + textScore };
     })
     .filter(entry => entry.score > 0)
     .sort((a, b) => b.score - a.score || b.character.mentionTotal - a.character.mentionTotal)
     .slice(0, options.characterLimit ?? 4)
-    .map(({ character }) => {
+    .map(({ character, summary }) => {
       const aliases = character.aliases.length ? "（" + character.aliases.slice(0, 3).join("、") + "）" : "";
-      // role 是首次识别到该人物那一批的定位，不是当前处境；当前状态以故事状态为准。
-      const role = character.role ? "｜" + clip(character.role, 60) : "";
-      return "- " + character.name + aliases + role +
+      // 有合并档案就用画像；否则退回 role——它是首次识别那一批的定位，不是当前处境。
+      const gist = summary ? "｜" + clip(summary, 110) : character.role ? "｜" + clip(character.role, 60) : "";
+      return "- " + character.name + aliases + gist +
         "（出场 " + chapterLabel(character.firstChapter) + "–" + chapterLabel(character.lastChapter).replace("第 ", "") + "）";
     });
 
@@ -126,7 +129,7 @@ export function buildWritingBrief(options: WritingBriefOptions): string {
 
   const header = [
     "以下内容来自全书知识库，是已经写成的事实与仍未收的线，不是创意建议。",
-    "人物条目是跨卷画像，可能停留在某一卷的判断上；人物此刻的位置、能力与知情范围以故事状态为准。",
+    "人物条目是跨卷合并后的画像，可能停留在某一卷的判断上；人物此刻的位置、能力与知情范围以故事状态为准。",
     "与本次创作冲突时以这里的事实为准；可以承接、回避或改造未收线，但不得把已写明的事当成没发生。"
   ].join("\n");
   const body = header + "\n\n" + sections.join("\n\n");

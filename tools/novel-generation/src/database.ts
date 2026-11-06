@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { LibraryChunk } from "./library.js";
 import type { StoryState } from "./story-state.js";
-export interface DatabaseStatus { path:string; schemaVersion:number; statePath:string; stateSchemaVersion:number; chunks:number; annotations:number; entities:number; entityMentions:number; characters:number; canonFacts:number; events:number; plotThreads:number; storyAnalysis:number; novelChapters:number; novelCharacters:number; novelMentions:number; novelThreads:number; novelForeshadowings:number; novelBeats:number; novelRelations:number; novelArcs:number; storyGraphNodes:number; storyGraphEdges:number; }
+export interface DatabaseStatus { path:string; schemaVersion:number; statePath:string; stateSchemaVersion:number; chunks:number; annotations:number; entities:number; entityMentions:number; characters:number; canonFacts:number; events:number; plotThreads:number; storyAnalysis:number; novelChapters:number; novelCharacters:number; novelMentions:number; novelThreads:number; novelForeshadowings:number; novelBeats:number; novelRelations:number; novelArcs:number; novelCharacterProfiles:number; storyGraphNodes:number; storyGraphEdges:number; }
 /** Concurrent shards and reader processes compete for the write lock; wait instead of failing. */
 function retryBusy<T>(work:()=>T,attempts=40):T{
  for(let attempt=0;;attempt++){
@@ -20,7 +20,7 @@ function execWithRetry(db:DatabaseSync,sql:string):void{ retryBusy(()=>db.exec(s
 const KNOWLEDGE_DATABASE_FILE="novel.db";
 const STATE_DATABASE_FILE="story.db";
 /** 知识库结构版本：只有 ingest / analyze 会改它。 */
-const KNOWLEDGE_SCHEMA_VERSION=4;
+const KNOWLEDGE_SCHEMA_VERSION=5;
 /** 写作状态结构版本：与知识库分开演进。 */
 const STATE_SCHEMA_VERSION=1;
 /** v4 之前状态表与知识表同库，迁移时按这个顺序搬。 */
@@ -117,6 +117,8 @@ function openKnowledgeDatabase(worldDir:string,worldId:string):DatabaseSync {
  "CREATE TABLE IF NOT EXISTS novel_foreshadowings(clue_id TEXT PRIMARY KEY,clue TEXT NOT NULL,first_appearance TEXT NOT NULL DEFAULT '',meaning TEXT NOT NULL DEFAULT '',payoffs_json TEXT NOT NULL DEFAULT '[]',confidence TEXT NOT NULL DEFAULT '不确定',status TEXT NOT NULL DEFAULT '未判断',chapter_ordinal INTEGER,source_refs_json TEXT NOT NULL DEFAULT '[]');CREATE INDEX IF NOT EXISTS idx_novel_foreshadowings_status ON novel_foreshadowings(status);"+
  "CREATE TABLE IF NOT EXISTS novel_beats(beat_id TEXT PRIMARY KEY,chapter_id TEXT NOT NULL,chapter_ordinal INTEGER,summary TEXT NOT NULL,actors_json TEXT NOT NULL DEFAULT '[]',source_refs_json TEXT NOT NULL DEFAULT '[]');CREATE INDEX IF NOT EXISTS idx_novel_beats_chapter ON novel_beats(chapter_ordinal);"+
  "CREATE TABLE IF NOT EXISTS novel_relations(relation_id TEXT PRIMARY KEY,from_name TEXT NOT NULL,to_name TEXT NOT NULL,label TEXT NOT NULL DEFAULT '',evidence TEXT NOT NULL DEFAULT '',chapter_ordinal INTEGER);CREATE INDEX IF NOT EXISTS idx_novel_relations_from ON novel_relations(from_name);"+
+ "CREATE TABLE IF NOT EXISTS novel_character_profiles(character_id TEXT PRIMARY KEY,name TEXT NOT NULL,summary TEXT NOT NULL DEFAULT '',stages_json TEXT NOT NULL DEFAULT '[]',traits_json TEXT NOT NULL DEFAULT '[]',contradictions_json TEXT NOT NULL DEFAULT '[]',arc_json TEXT NOT NULL DEFAULT '[]',observation_count INTEGER NOT NULL DEFAULT 0,model TEXT NOT NULL DEFAULT '',generated_at TEXT NOT NULL);"+
+ "CREATE INDEX IF NOT EXISTS idx_novel_character_profiles_name ON novel_character_profiles(name);"+
  "CREATE TABLE IF NOT EXISTS novel_arcs(volume INTEGER PRIMARY KEY,title TEXT NOT NULL DEFAULT '',summary TEXT NOT NULL DEFAULT '',key_turns_json TEXT NOT NULL DEFAULT '[]',characters_json TEXT NOT NULL DEFAULT '[]',generated_at TEXT NOT NULL);"+
   "CREATE TABLE IF NOT EXISTS story_graph_nodes(node_id TEXT PRIMARY KEY,node_type TEXT NOT NULL,label TEXT NOT NULL,properties_json TEXT NOT NULL,source_refs_json TEXT NOT NULL DEFAULT '[]');"+
   "CREATE INDEX IF NOT EXISTS idx_story_graph_nodes_type ON story_graph_nodes(node_type);"+
@@ -233,7 +235,7 @@ export function databaseStatus(worldDir:string,worldId:string):DatabaseStatus{
   return {path:join(worldDir,KNOWLEDGE_DATABASE_FILE),schemaVersion:version(knowledge),
    statePath:join(worldDir,STATE_DATABASE_FILE),stateSchemaVersion:version(state),
    chunks:count(knowledge,"library_chunks"),annotations:count(knowledge,"annotations"),entities:count(knowledge,"entities"),entityMentions:count(knowledge,"entity_mentions"),
-   storyAnalysis:count(knowledge,"story_analysis"),novelChapters:count(knowledge,"novel_chapters"),novelCharacters:count(knowledge,"novel_characters"),novelMentions:count(knowledge,"novel_mentions"),novelThreads:count(knowledge,"novel_plot_threads"),novelForeshadowings:count(knowledge,"novel_foreshadowings"),novelBeats:count(knowledge,"novel_beats"),novelRelations:count(knowledge,"novel_relations"),novelArcs:count(knowledge,"novel_arcs"),storyGraphNodes:count(knowledge,"story_graph_nodes"),storyGraphEdges:count(knowledge,"story_graph_edges"),
+   storyAnalysis:count(knowledge,"story_analysis"),novelChapters:count(knowledge,"novel_chapters"),novelCharacters:count(knowledge,"novel_characters"),novelMentions:count(knowledge,"novel_mentions"),novelThreads:count(knowledge,"novel_plot_threads"),novelForeshadowings:count(knowledge,"novel_foreshadowings"),novelBeats:count(knowledge,"novel_beats"),novelRelations:count(knowledge,"novel_relations"),novelArcs:count(knowledge,"novel_arcs"),novelCharacterProfiles:count(knowledge,"novel_character_profiles"),storyGraphNodes:count(knowledge,"story_graph_nodes"),storyGraphEdges:count(knowledge,"story_graph_edges"),
    characters:count(state,"characters"),canonFacts:count(state,"canon_facts"),events:count(state,"story_events"),plotThreads:count(state,"plot_threads")};
  }finally{knowledge.close();state.close();}
 }
@@ -318,6 +320,50 @@ export function readNovelKbMeta(worldDir:string,worldId:string):Record<string,st
  const db=openKnowledgeDatabase(worldDir,worldId);try{const rows=db.prepare("SELECT key,value FROM novel_kb_meta").all() as Array<{key:string;value:string}>;return Object.fromEntries(rows.map(r=>[r.key,r.value]));}finally{db.close();}
 }
 export interface NovelCharacterSummary { characterId:string; name:string; aliases:string[]; role:string; bio:string; voice:string; chaptersSeen:number; mentionTotal:number; firstChapter:number|null; lastChapter:number|null; }
+export interface NovelCharacterObservationRow { characterId:string; name:string; aliases:string[]; role:string; bio:string; firstChapter:number|null; lastChapter:number|null; mentionTotal:number; personality:string[]; desires:string[]; contradictions:string[]; arc:string[]; }
+
+/** 逐批抽取的原始观察，用于合并成档案；量很大，只给分析用。 */
+export function listNovelCharacterObservations(worldDir:string,worldId:string,options:{limit?:number;minMentions?:number}={}):NovelCharacterObservationRow[]{
+ const db=openKnowledgeDatabase(worldDir,worldId);try{
+  const limit=options.limit??30;const minMentions=options.minMentions??1;
+  const rows=db.prepare("SELECT character_id AS characterId,name,aliases_json,role,bio,first_chapter AS firstChapter,last_chapter AS lastChapter,mention_total AS mentionTotal,personality_json,desires_json,contradictions_json,arc_json FROM novel_characters WHERE mention_total>=? ORDER BY mention_total DESC, name LIMIT ?").all(minMentions,limit) as Array<Record<string,unknown> & {aliases_json:string;personality_json:string;desires_json:string;contradictions_json:string;arc_json:string}>;
+  const parse=(value:string)=>{try{const parsed=JSON.parse(value) as unknown;return Array.isArray(parsed)?parsed.filter((item):item is string=>typeof item==="string"):[];}catch{return [];}};
+  return rows.map(row=>({...row,aliases:parse(row.aliases_json),personality:parse(row.personality_json),desires:parse(row.desires_json),contradictions:parse(row.contradictions_json),arc:parse(row.arc_json),aliases_json:undefined,personality_json:undefined,desires_json:undefined,contradictions_json:undefined,arc_json:undefined} as unknown as NovelCharacterObservationRow));
+ }finally{db.close();}
+}
+
+export interface NovelCharacterProfileRow { characterId:string; name:string; summary:string; stages:string[]; traits:string[]; contradictions:string[]; arc:string[]; observationCount:number; model:string; generatedAt:string; }
+
+export function syncNovelCharacterProfiles(worldDir:string,worldId:string,profiles:NovelCharacterProfileRow[]):void{
+ const db=openKnowledgeDatabase(worldDir,worldId);try{transaction(db,()=>{
+  const q=db.prepare("INSERT INTO novel_character_profiles(character_id,name,summary,stages_json,traits_json,contradictions_json,arc_json,observation_count,model,generated_at) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(character_id) DO UPDATE SET name=excluded.name,summary=excluded.summary,stages_json=excluded.stages_json,traits_json=excluded.traits_json,contradictions_json=excluded.contradictions_json,arc_json=excluded.arc_json,observation_count=excluded.observation_count,model=excluded.model,generated_at=excluded.generated_at");
+  for(const profile of profiles)q.run(profile.characterId,profile.name,profile.summary,JSON.stringify(profile.stages),JSON.stringify(profile.traits),JSON.stringify(profile.contradictions),JSON.stringify(profile.arc),profile.observationCount,profile.model,profile.generatedAt);
+ });}finally{db.close();}
+}
+
+/** 观察太少、不足以合并时不写档案；已有档案也要能删掉。 */
+export function deleteNovelCharacterProfiles(worldDir:string,worldId:string,names:string[]):number{
+ if(!names.length)return 0;
+ const db=openKnowledgeDatabase(worldDir,worldId);try{
+  const statement=db.prepare("DELETE FROM novel_character_profiles WHERE name=?");
+  let removed=0;
+  transaction(db,()=>{for(const name of names)removed+=Number(statement.run(name).changes);});
+  return removed;
+ }finally{db.close();}
+}
+
+export function listNovelCharacterProfiles(worldDir:string,worldId:string):Map<string,NovelCharacterProfileRow>{
+ const result=new Map<string,NovelCharacterProfileRow>();
+ const db=openKnowledgeDatabase(worldDir,worldId);try{
+  const rows=db.prepare("SELECT character_id AS characterId,name,summary,stages_json,traits_json,contradictions_json,arc_json,observation_count AS observationCount,model,generated_at AS generatedAt FROM novel_character_profiles ORDER BY observation_count DESC").all() as Array<Record<string,unknown> & {stages_json:string;traits_json:string;contradictions_json:string;arc_json:string}>;
+  for(const row of rows){
+   const parse=(value:string)=>{try{const parsed=JSON.parse(value) as unknown;return Array.isArray(parsed)?parsed.filter((item):item is string=>typeof item==="string"):[];}catch{return [];}};
+   result.set(String(row.name),{characterId:String(row.characterId),name:String(row.name),summary:String(row.summary),stages:parse(row.stages_json),traits:parse(row.traits_json),contradictions:parse(row.contradictions_json),arc:parse(row.arc_json),observationCount:Number(row.observationCount),model:String(row.model),generatedAt:String(row.generatedAt)});
+  }
+  return result;
+ }finally{db.close();}
+}
+
 export function listNovelCharacters(worldDir:string,worldId:string,options:{query?:string;limit?:number}={}):NovelCharacterSummary[]{
  const db=openKnowledgeDatabase(worldDir,worldId);try{
   const limit=options.limit??50;const like="%"+((options.query??"").trim())+"%";
@@ -343,6 +389,7 @@ export interface NovelKnowledgeSnapshot {
  schemaVersion: 1; worldId: string; exportedAt: string; meta: Record<string,string>;
  arcs: Array<Record<string,unknown>>; characters: Array<Record<string,unknown>>;
  threads: Array<Record<string,unknown>>; foreshadowings: Array<Record<string,unknown>>; beats: Array<Record<string,unknown>>;
+ characterProfiles: Array<Record<string,unknown>>;
 }
 /** Portable excerpt without the source text that library_chunks holds. */
 export function exportNovelKnowledge(worldDir:string,worldId:string):NovelKnowledgeSnapshot{
@@ -353,7 +400,8 @@ export function exportNovelKnowledge(worldDir:string,worldId:string):NovelKnowle
   const foreshadowings=(db.prepare("SELECT clue_id AS clueId,clue,first_appearance AS firstAppearance,meaning,payoffs_json,confidence,status,chapter_ordinal AS chapterOrdinal FROM novel_foreshadowings ORDER BY chapter_ordinal").all() as Array<Record<string,unknown>>).map(row=>({...row,payoffs:parse(row.payoffs_json,[]),payoffs_json:undefined}));
   const beats=(db.prepare("SELECT chapter_id AS chapterId,chapter_ordinal AS chapterOrdinal,summary,actors_json FROM novel_beats ORDER BY chapter_ordinal").all() as Array<Record<string,unknown>>).map(row=>({...row,actors:parse(row.actors_json,[]),actors_json:undefined}));
   const arcs=db.prepare("SELECT volume,title,summary,key_turns_json,characters_json FROM novel_arcs ORDER BY volume").all() as Array<Record<string,unknown>>;
-  return {schemaVersion:1,worldId,exportedAt:new Date().toISOString(),meta:readNovelKbMeta(worldDir,worldId),arcs:arcs.map(row=>({...row,keyTurns:parse(row.key_turns_json,[]),characters:parse(row.characters_json,[]),key_turns_json:undefined,characters_json:undefined})),characters,threads,foreshadowings,beats};
+  const characterProfiles=db.prepare("SELECT character_id AS characterId,name,summary,stages_json,traits_json,contradictions_json,arc_json,observation_count AS observationCount,model,generated_at AS generatedAt FROM novel_character_profiles ORDER BY observation_count DESC").all() as Array<Record<string,unknown>>;
+  return {schemaVersion:1,worldId,exportedAt:new Date().toISOString(),meta:readNovelKbMeta(worldDir,worldId),characterProfiles:characterProfiles.map(row=>({...row,stages:parse(row.stages_json,[]),traits:parse(row.traits_json,[]),contradictions:parse(row.contradictions_json,[]),arc:parse(row.arc_json,[]),stages_json:undefined,traits_json:undefined,contradictions_json:undefined,arc_json:undefined})),arcs:arcs.map(row=>({...row,keyTurns:parse(row.key_turns_json,[]),characters:parse(row.characters_json,[]),key_turns_json:undefined,characters_json:undefined})),characters,threads,foreshadowings,beats};
  }finally{db.close();}
 }
 export function novelKnowledgeOverview(worldDir:string,worldId:string):Record<string,unknown>{

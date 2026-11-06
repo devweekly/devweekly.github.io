@@ -195,6 +195,7 @@ const summary = {
   topCharacters: rows("SELECT name,mention_total AS mentions,chapters_seen AS chapters,first_chapter AS firstChapter,last_chapter AS lastChapter FROM novel_characters ORDER BY mention_total DESC LIMIT 15"),
   storyCore: storyAnalysis.storyCore ?? {}, macguffins: Array.isArray(storyAnalysis.macguffins)?storyAnalysis.macguffins.length:0,
   graph: {nodes:counts.graphNodes,edges:counts.graphEdges},
+  characterProfiles: counts.characterProfiles,
   storyAnalysisVersion: storyAnalysis.analysisVersion ?? null,
   storyCoreObservationCount: Array.isArray(storyAnalysis.storyCoreObservations)?storyAnalysis.storyCoreObservations.length:0,
   graphEvidenceCoverage: {
@@ -233,6 +234,20 @@ const characterSample = [
   arc_json: undefined
   };
 });
+
+const profileRows = rows("SELECT name,summary,stages_json,traits_json,contradictions_json,arc_json,observation_count FROM novel_character_profiles");
+const profilesByName = new Map(profileRows.map(row => [String(row.name), {
+  summary: row.summary,
+  stages: JSON.parse(String(row.stages_json)) as string[],
+  traits: JSON.parse(String(row.traits_json)) as string[],
+  contradictions: JSON.parse(String(row.contradictions_json)) as string[],
+  arc: JSON.parse(String(row.arc_json)) as string[],
+  observationCount: row.observation_count
+}]));
+for (const character of characterSample as Array<Record<string, unknown>>) {
+  const profile = profilesByName.get(String(character.name));
+  if (profile) (character as Record<string, unknown>).profile = profile;
+}
 
 const chapterSample = rows(
   "SELECT chapter_id,ordinal,volume,title,label,start_line,char_count,chunk_start,chunk_end FROM novel_chapters WHERE ordinal IN (1,300,753) ORDER BY ordinal"
@@ -612,8 +627,8 @@ const readme = [
   "",
   "- 分类样本只是示例（每类 1–6 条），不能代表分布；需要统计结论时回原库。故事核心、MacGuffin 与图质量摘要是完整导出。孤立节点不自动代表分析错误。",
   "- 有 " + qualityFlags.charactersWithoutMentionsCount + " 个人物「有名无实」：模型给出了名字，但正文没有逐字出现，统计为 0。",
-  "- 人物的性格/欲望/矛盾/成长数组是跨 196 批合并的结果，存在大量近重复条目（李阎：性格 193、欲望 197、矛盾 194、成长 380）。",
-  "  示例文件只保留前 5–8 条，真实条数写在 `arrayCounts` 里；这本身是可报告的问题，不算已知局限之外的新发现。",
+  "- 人物的性格/欲望/矛盾/成长数组是逐批观察（每批只看几章，同一个人被反复描述），主角可达数百条（李阎：性格 193、欲望 197、矛盾 194、成长 380）。",
+  "  这些不是重复文本，实测两两相似度都低于 0.6，去重去不掉。`novel_character_profiles` 把主要人物合并成一份档案（本次 " + counts.characterProfiles + " 人），示例里以 `profile` 字段给出；原始数组保留作证据，示例只留前 5–8 条，总量见 `arrayCounts`。",
   "- 置信度、状态、关系标签都是模型判断，不是人工标注。",
   "- SDK 不落盘 token 与耗时，`02-analysis-calls/` 包含采样请求/响应，以及已保留的失败原始响应；请求体由同一构造函数重建，内容与线上一致。长章节 `stage-calls.jsonl` 记录实际执行的阶段、请求模型候选链、提示词/输出字符数、耗时和结果；缓存命中不会产生模型调用记录。",
   "- 原文全文与 22MB 的 `novel.db` 未打包；如需核对原文，请另行提供语料。",
