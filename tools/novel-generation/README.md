@@ -2,7 +2,7 @@
 
 本地长篇小说创作工具，使用 CodeBuddy Agent SDK。当前提供小说文本导入、原文检索、人物/事件/关系候选抽取、多 Agent 文本分析、多阶段章节写作，以及模型与执行链路自检。全文人物与情节分析通过 `analyze-story` 直接调用 CodeBuddy SDK，并将完整分析快照保存到 SQLite。
 
-Web 工作台：在本目录运行 `npm run dev:web`，默认打开 `http://127.0.0.1:4173`。当前提供 World Dashboard、Story Plan 候选生成、JSON 编辑、批准/拒绝/要求修改、版本归档、运行记录与审核历史。候选生成完成后不会自动激活；只有批准操作才会更新正式 `story-plan.json`。\n\n续写架构与实现差距审计见 [`ARCHITECTURE.md`](./ARCHITECTURE.md)。 小说创作的最高原则及全文分析设计决策见 [`ADR-0001`](./ADR/0001-literary-priority-and-corpus-analysis.md)。续写默认全自动：章节完成后自动提取并提交故事状态；只有模型对照实验等隔离场景才使用 `--no-apply-state`。
+Web 工作台：在本目录运行 `npm run dev:web`，默认打开 `http://127.0.0.1:4173`。当前提供 World Dashboard、Story Plan 候选生成、JSON 编辑、批准/拒绝/要求修改、版本归档、运行记录与审核历史。候选生成完成后不会自动激活；只有批准操作才会更新正式 `story-plan.json`。\n\n```bash\nnpm install\nnpm run dev:web       # 本地开发服务，默认 127.0.0.1:4173\nnpm run typecheck     # 后端与前端 TypeScript 检查\nnpm test\nnpm run build        # TypeScript + Vite 生产构建\nnpm run start:web     # 启动生产 Web 服务\n```\n\n续写架构与实现差距审计见 [`ARCHITECTURE.md`](./ARCHITECTURE.md)。 小说创作的最高原则及全文分析设计决策见 [`ADR-0001`](./ADR/0001-literary-priority-and-corpus-analysis.md)。续写默认全自动：章节完成后自动提取并提交故事状态；只有模型对照实验等隔离场景才使用 `--no-apply-state`。
 
 ## 1. 导入小说资料
 
