@@ -9,7 +9,7 @@ import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
 import { parseJsonObject } from "./model-json.js";
 import { LONG_CHAPTER_SOURCE_TAIL_CHARS } from "./constants.js";
 import { buildWorldSituationContext } from "./world-situation.js";
-import { LIVING_VOICE_RULES, antiAiDiagnosticPrompt, antiAiEditPrompt, readerExperiencePrompt } from "./literary-edit.js";
+import { LIVING_VOICE_RULES, antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, readerExperiencePrompt } from "./literary-edit.js";
 
 export interface WriteWorkflowInput {
   worldId: string;
@@ -265,6 +265,22 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   } catch (error) {
     await saveStage(input.outputDir, "06b-anti-ai-error.txt", String(error));
     console.error("[write] Anti-AI 编辑阶段失败，保留叙事声音修订稿继续终审。");
+  }
+  if (antiAiDraft !== voiceDraft) {
+    try {
+      const verificationRaw = await cachedCall("anti-ai-verification", "06c-anti-ai-verification.json", "antiAi", [
+        antiAiVerificationPrompt({ original: voiceDraft, edited: antiAiDraft })
+      ], output => { parseAntiAiVerification(output); });
+      const verification = parseAntiAiVerification(verificationRaw);
+      await saveStage(input.outputDir, "06c-anti-ai-verification.json", JSON.stringify(verification, null, 2));
+      if (verification.decision === "restore") antiAiDraft = voiceDraft;
+    } catch (error) {
+      await saveStage(input.outputDir, "06c-anti-ai-verification-error.txt", String(error));
+      antiAiDraft = voiceDraft;
+      console.error("[write] Anti-AI 复核未能确认编辑收益，恢复原稿。");
+    }
+  } else {
+    await saveStage(input.outputDir, "06c-anti-ai-verification.json", JSON.stringify({ decision: "keep", reason: "编辑阶段未改变正文。" }, null, 2));
   }
   await saveStage(input.outputDir, "06b-anti-ai-edited.md", antiAiDraft);
 
