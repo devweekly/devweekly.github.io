@@ -515,6 +515,17 @@ npm run dev -- distill-style --world conghuoniao \
 
 `--out` 只能写入当前 world 的 `.output/<world>/`，避免误覆盖正史或项目文件。默认样本总量上限为 80,000 字符，可通过 `--max-sample-chars` 调整（最高 160,000）。提炼结果描述叙事距离、节奏、视角、对白、意象、情绪表达和场景差异等抽象特征，不输出长段原文或可直接套用的句式模板。候选文件需要作者自行检查。显式使用 `--activate` 才会更新 `worlds/<world>/style-profile.md`；旧版本会先归档到 `.output/<world>/style-profile-history/`。正式写作自动读取激活后的风格资料。
 
+可用已认可的参考章节和新生成章节做一次人工触发的风格回归观察。它只报告风格稳定点和可能漂移，不打分、不改稿、不影响章节通过：
+
+```bash
+npm run dev -- style-regress --world conghuoniao \
+  --reference ./private/style-benchmark-1.md ./private/style-benchmark-2.md \
+  --candidate .output/conghuoniao/<run-id>/chapter.md \
+  --scene-type dialogue
+```
+
+报告保存在 `.output/<world>/style-regression/`。参考样本应是经认可的项目样本；候选可以来自不同模型或不同版本的写作运行。当前是显式执行的观察报告，尚无自动基准集管理或 CI 风格门禁。
+
 ### 人物互动推演沙盘（作者主动调用）
 
 需要探索人物在某个场景中的互动时，可以启动独立的交互式沙盘。它读取当前 Story State 中指定人物的动态状态、成书知识库中的人物长期观察，以及任务相关的故事图谱（人物互动、情节线、伏笔和关系边）；所有推演都只是候选创作素材，不会写入正史或 Story State：
