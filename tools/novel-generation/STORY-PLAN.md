@@ -15,13 +15,13 @@
 npm run dev -- plan-story --world <world-id>
 ```
 
-命令结合世界设定、当前故事状态和已有的全书语料分析，生成候选规划，写入 `.output/<world-id>/story-plan-candidate-*.json`。候选默认为 draft，不会进入章节生成上下文。审阅后显式激活：
+命令结合世界设定、当前故事状态和已有的全书语料分析，生成候选规划，写入 `.output/<world-id>/story-plan-candidate-*.json`。候选默认为 draft，不会进入章节生成上下文。审阅后通过候选文件路径激活：
 
 ```bash
-npm run dev -- plan-story --world <world-id> --activate
+npm run dev -- plan-story --world <world-id> --activate-candidate .output/<world-id>/story-plan-candidate-<timestamp>.json
 ```
 
-正式规划保存为 `worlds/<world-id>/story-plan.json`。普通章节和长章节会自动读取它。
+正式规划保存为 `worlds/<world-id>/story-plan.json`。如果希望跳过候选审阅，也可直接用 `--activate` 在生成时启用。普通章节和长章节会自动读取它。
 
 ## 规划原则
 
