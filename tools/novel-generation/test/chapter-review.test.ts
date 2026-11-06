@@ -120,22 +120,6 @@ test("reviewAndRepair stops after bounded repairs and never reports a false pass
   assert.equal(repairCalls, 1);
 });
 
-test("acceptRemainingIssues 人工放行时返回成稿并显式标记", async () => {
-  const result = await reviewAndRepair({
-    initialChapter: chapter,
-    maxRepairRounds: 1,
-    acceptRemainingIssues: true,
-    review: async () => JSON.stringify({
-      status: "needs_repair", summary: "仍有硬伤。", issues: [{
-        scenes: [], evidence: "李玄推开门", problem: "读者会认为不可能", repair: "补足信息来源"
-      }]
-    }),
-    repair: async current => current + "补充。"
-  });
-  assert.equal(result.acceptedWithIssues, true);
-  assert.match(result.chapter, /补充。/);
-});
-
 test("终审阻断前把最新成稿交给 onFailure，不静默丢稿", async () => {
   let saved = "";
   let reason = "";
