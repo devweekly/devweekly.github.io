@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { emptyStoryState, parseStoryStateUpdate, validateStoryState } from "../src/story-state.js";
-import { mergeStoryState } from "../src/workflow.js";
+import { dedupeContinuityNotes, mergeStoryState } from "../src/workflow.js";
 
 test("character profile is stable metadata while current character fields are replaceable snapshots", () => {
   const current = emptyStoryState("test-world");
@@ -140,4 +140,18 @@ test("facts introduced by generated prose remain project-original even when mode
   assert.equal(next.canonFacts.find(item => item.id === "canon-1")?.confidence, "confirmed");
   assert.equal(next.canonFacts.find(item => item.id === "new-1")?.confidence, "original");
   assert.equal(next.events.find(item => item.id === "event-new")?.origin, "original");
+});
+
+
+test("continuity notes deduplicate only formatting and punctuation variants", () => {
+  assert.deepEqual(dedupeContinuityNotes([
+    "李玄仍不知道密道位置",
+    "李玄仍然不知道密道位置",
+    "「李玄仍不知道密道位置。」",
+    "铜钱由守门人持有"
+  ]), [
+    "李玄仍不知道密道位置",
+    "李玄仍然不知道密道位置",
+    "铜钱由守门人持有"
+  ]);
 });
