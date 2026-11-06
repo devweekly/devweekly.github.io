@@ -426,8 +426,31 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
       if (options.mergeOnly) { pending++; continue; }
       console.log(`[story-analysis] batch ${batch.index + 1}/${totalBatches} · ${batch.chapters[0]?.title} … ${batch.chapters.at(-1)?.title} · ${batch.chars} chars`);
       try {
-        const raw = await runAgentText(buildAnalysisPrompt(batch), model, options.timeoutMs ?? 180_000, readTaskProfiles().state);
-        analysis = parseModelJson(raw);
+        const timeoutMs = options.timeoutMs ?? 180_000;
+        const profile = readTaskProfiles().state;
+        const raw = await runAgentText(buildAnalysisPrompt(batch), model, timeoutMs, profile);
+        try {
+          analysis = parseModelJson(raw);
+        } catch (parseError) {
+          // Keep the exact malformed response for diagnosis, then ask the same model
+          // to repair only the JSON structure without changing its analysis.
+          await writeFile(path + ".invalid-raw.txt", raw, "utf8");
+          const repairPrompt = [
+            "你刚才的全文分析结果无法通过 JSON/schema 校验。",
+            "只修复 JSON 结构和字段类型，不要重新分析、删减或改写原有分析内容。",
+            "返回一个完整 JSON 对象，字段必须符合 characters、relations、plotThreads、foreshadowings、beats、developmentPossibilities 的既定结构。",
+            "解析错误：" + String(parseError),
+            "原始输出：",
+            raw
+          ].join("\n\n");
+          const repairedRaw = await runAgentText(repairPrompt, model, timeoutMs, profile);
+          try {
+            analysis = parseModelJson(repairedRaw);
+          } catch (retryError) {
+            await writeFile(path + ".repair-raw.txt", repairedRaw, "utf8");
+            throw new Error("JSON parse/schema repair failed once. Original: " + String(parseError) + "; repair: " + String(retryError));
+          }
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         failures.push({ index: batch.index, error: message });
@@ -496,7 +519,7 @@ function mergeAndPersist(
   }
 
   const ordinalByChapter = new Map(units.map(unit => [unit.chapterId, unit.ordinal]));
-  const cleanCharacters = mergeMutualAliasCharacters(characters.filter(item => isUsableCharacterName(normalizeCharacterName(String(item.name ?? "")))));
+  const cleanCharacters = characters.filter(item => isUsableCharacterName(normalizeCharacterName(String(item.name ?? ""))));
   plotThreads = plotThreads.filter(item => String(item.title ?? "").trim());
   foreshadowings = foreshadowings.filter(item => String(item.clue ?? "").trim());
   developmentPossibilities = developmentPossibilities.filter(item => String(item.focus ?? "").trim() && String(item.direction ?? "").trim());
