@@ -247,3 +247,5 @@ npm run dev -- story-kb     --world conghuoniao --type characters
 
 - 状态加载会对来源明确标注为“续写/续章/衍生/项目原创”的旧事实执行一次保守迁移，将其 confidence 改为 original，并同步 SQLite 与 JSON 快照；原著行号来源不变，无法判定的旧事件不猜测。
 - `story_analysis` 快照带 `analysisVersion`。旧版快照不再注入写作上下文，避免旧的无类型别名污染人物检索；需重新运行 `analyze-story` 生成 v4 快照后恢复分析参考。
+
+- v3 全文分析缓存迁移到 v4 时保留人物/情节分析，清空没有分类和原文证据的旧 aliases；缺失批次仍需重新分析。新快照生成后才重新进入写作上下文。
