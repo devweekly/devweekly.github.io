@@ -91,6 +91,7 @@ npm run dev -- write --world conghuoniao --mode continuation \
 - `01-main-plot.md`、`02-creative-options.md`：主线方案与创意备选
 - `03-chapter-plan.md`：主编确定的章节蓝图
 - `04-scene-draft.md`、`05-dialogue-edited.md`、`06-voice-edited.md`：正文、对白修订和叙事声音统一
+- `06a-anti-ai-diagnosis.md`、`06b-anti-ai-edited.md`、`06c-anti-ai-verification.json`：Anti-AI 证据诊断、编辑稿与保守复核
 - `07-continuity-review.md`：终审必改清单；没有必改项时只有一行结论
 - `chapter.md`：最终复查通过后的章节
 - `08-state-update.json`：合并后的下一章状态（默认已自动持久化）
@@ -525,6 +526,8 @@ npm run dev -- style-regress --world conghuoniao \
 ```
 
 报告保存在 `.output/<world>/style-regression/`。参考样本应是经认可的项目样本；候选可以来自不同模型或不同版本的写作运行。当前是显式执行的观察报告，尚无自动基准集管理或 CI 风格门禁。
+
+风格回归不属于章节自动门禁。报告指出的差异是供作者判断的线索，不能要求模型把候选章节改成参考文本的句式或节奏。
 
 ### 人物互动推演沙盘（作者主动调用）
 
