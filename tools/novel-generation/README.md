@@ -303,10 +303,18 @@ story-analysis 快照   交叉批次分析：人物画像、情节线、伏笔�
 
 ```bash
 npm run package-review
-npm run package-review -- --out /tmp/review.zip --max-mb 6 --batches 8
+npm run package-review -- --out /tmp/review.zip --max-mb 6 --batches 5
 ```
 
-只取切片，不打包原文全文、`novel.db` 与完整导出：数据库抽样（人物约 30、事件 8 章、情节线约 20、伏笔约 25、关系 30、梗概 6 卷）、6 组分析请求与响应、万字流水线全链路产物（蓝图、逐场、草稿、审查、润色、节奏指标、状态提取、终稿）、两份早期章节和日志。当前约 1.0MB 未压缩 / 460KB 压缩。
+打包原则是**已经入库的不重复打包**：分析结果、生成章节都在仓库里，包里只给概要、样例和出处。
+
+- `01-database/`：schema、统计、质量问题清单，每张表 1–6 条示例（人物数组只留前几条，真实条数写在 `arrayCounts`）
+- `02-analysis-calls/`：默认 3 组重建的请求体，加上缓存里实际存在的响应
+- `03-writing/`：万字流水线产物、两份早期章节
+- `04-logs/`：运行日志
+- `REFERENCES.md`：完整数据与产物的仓库路径和查询命令
+
+当前约 500KB 未压缩 / 236KB 压缩，54 个文件。原文全文与 22MB 的 `novel.db` 不进包。
 
 - 请求体由 `buildAnalysisPrompt` 对同一批章节重建，与线上一致；响应体直接取调用缓存。SDK 不落盘 token 与耗时，包里没有这两项。
 - `--max-mb` 是未压缩体积上限，超限时按固定顺序丢弃可选文件（润色稿、检索上下文、草稿、状态、日志、多余批次），丢弃项写进 `manifest.json` 和 `README.md`。

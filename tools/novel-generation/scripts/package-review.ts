@@ -33,7 +33,7 @@ const worldId = arg("--world") ?? "conghuoniao";
 const worldDir = resolve("worlds", worldId);
 const outputDir = resolve(".output");
 const maxBytes = Math.max(1, Number(arg("--max-mb") ?? 8)) * 1024 * 1024;
-const batchCount = Math.max(2, Math.min(12, Number(arg("--batches") ?? 6)));
+const batchCount = Math.max(2, Math.min(12, Number(arg("--batches") ?? 3)));
 const stamp = new Date();
 const localDate = stamp.getFullYear() + String(stamp.getMonth() + 1).padStart(2, "0") + String(stamp.getDate()).padStart(2, "0");
 const localTime = String(stamp.getHours()).padStart(2, "0") + String(stamp.getMinutes()).padStart(2, "0");
@@ -180,7 +180,7 @@ const graphQuality={
   edgesWithoutSourceRefs:graphEdges.filter(e=>!Array.isArray(e.sourceRefs)||!e.sourceRefs.length).map(e=>({id:e.id,type:e.type,label:e.label}))
 };
 const interactionRows=rows("SELECT beat_id AS beatId,chapter_ordinal AS chapterOrdinal,summary,actors_json FROM novel_beats WHERE json_array_length(actors_json)>=2 ORDER BY chapter_ordinal,beat_id").map(row=>({...row,actors:JSON.parse(String(row.actors_json)),actors_json:undefined}));
-const interactions=interactionRows.filter((_,index)=>index%Math.max(1,Math.ceil(interactionRows.length/120))===0).slice(0,120);
+const interactions=interactionRows.filter((_,index)=>index%Math.max(1,Math.ceil(interactionRows.length/8))===0).slice(0,8);
 const summary = {
   worldId,
   generatedAt: new Date().toISOString(),
@@ -204,48 +204,61 @@ const summary = {
 };
 
 const characterSample = [
-  ...rows("SELECT name,aliases_json,role,bio,voice,personality_json,desires_json,contradictions_json,arc_json,first_chapter,last_chapter,chapters_seen,mention_total FROM novel_characters ORDER BY mention_total DESC LIMIT 18"),
-  ...rows("SELECT name,aliases_json,role,bio,voice,personality_json,desires_json,contradictions_json,arc_json,first_chapter,last_chapter,chapters_seen,mention_total FROM novel_characters WHERE mention_total BETWEEN 3 AND 80 ORDER BY RANDOM() LIMIT 10"),
-  ...rows("SELECT name,aliases_json,role,bio,voice,personality_json,desires_json,contradictions_json,arc_json,first_chapter,last_chapter,chapters_seen,mention_total FROM novel_characters WHERE mention_total=0 LIMIT 4")
-].map(row => ({
+  ...rows("SELECT name,aliases_json,role,bio,voice,personality_json,desires_json,contradictions_json,arc_json,first_chapter,last_chapter,chapters_seen,mention_total FROM novel_characters ORDER BY mention_total DESC LIMIT 4"),
+  ...rows("SELECT name,aliases_json,role,bio,voice,personality_json,desires_json,contradictions_json,arc_json,first_chapter,last_chapter,chapters_seen,mention_total FROM novel_characters WHERE mention_total BETWEEN 3 AND 80 ORDER BY RANDOM() LIMIT 2"),
+  ...rows("SELECT name,aliases_json,role,bio,voice,personality_json,desires_json,contradictions_json,arc_json,first_chapter,last_chapter,chapters_seen,mention_total FROM novel_characters WHERE mention_total=0 LIMIT 1")
+].map(row => {
+  // 合并后的数组可能上百条（跨批次重复是已知问题）。示例只留前几条，
+  // 但把总数写进 arrayCounts，审阅者能看出规模而不用背整包体积。
+  const lists = {
+    personality: JSON.parse(String(row.personality_json)) as string[],
+    desires: JSON.parse(String(row.desires_json)) as string[],
+    contradictions: JSON.parse(String(row.contradictions_json)) as string[],
+    arc: JSON.parse(String(row.arc_json)) as string[]
+  };
+  const head = <T,>(items: T[], limit: number): T[] => items.slice(0, limit);
+  return {
   ...row,
+  bio: String(row.bio ?? "").slice(0, 240),
   aliases: JSON.parse(String(row.aliases_json)) as string[],
-  personality: JSON.parse(String(row.personality_json)) as string[],
-  desires: JSON.parse(String(row.desires_json)) as string[],
-  contradictions: JSON.parse(String(row.contradictions_json)) as string[],
-  arc: JSON.parse(String(row.arc_json)) as string[],
+  personality: head(lists.personality, 8),
+  desires: head(lists.desires, 5),
+  contradictions: head(lists.contradictions, 5),
+  arc: head(lists.arc, 5),
+  arrayCounts: Object.fromEntries(Object.entries(lists).map(([key, value]) => [key, value.length])),
   aliases_json: undefined,
   personality_json: undefined,
   desires_json: undefined,
   contradictions_json: undefined,
   arc_json: undefined
-}));
+  };
+});
 
 const chapterSample = rows(
-  "SELECT chapter_id,ordinal,volume,title,label,start_line,char_count,chunk_start,chunk_end FROM novel_chapters WHERE ordinal IN (1,60,150,300,450,600,700,753) ORDER BY ordinal"
+  "SELECT chapter_id,ordinal,volume,title,label,start_line,char_count,chunk_start,chunk_end FROM novel_chapters WHERE ordinal IN (1,300,753) ORDER BY ordinal"
 );
 const beatSample = rows(
-  "SELECT chapter_id,chapter_ordinal AS chapterOrdinal,summary,actors_json FROM novel_beats WHERE chapter_ordinal IN (1,60,150,300,450,600,700,753) ORDER BY chapter_ordinal, beat_id"
+  "SELECT chapter_id,chapter_ordinal AS chapterOrdinal,summary,actors_json FROM novel_beats WHERE chapter_ordinal IN (1,300,753) ORDER BY chapter_ordinal, beat_id"
 ).map(row => ({ ...row, actors: JSON.parse(String(row.actors_json)) as string[], actors_json: undefined }));
 
 const threadSample = [
-  ...rows("SELECT title,status,summary,key_turns_json,first_chapter,last_chapter,COALESCE(last_chapter,0)-COALESCE(first_chapter,0) AS span FROM novel_plot_threads ORDER BY span DESC LIMIT 12"),
-  ...rows("SELECT title,status,summary,key_turns_json,first_chapter,last_chapter,COALESCE(last_chapter,0)-COALESCE(first_chapter,0) AS span FROM novel_plot_threads ORDER BY RANDOM() LIMIT 10")
+  ...rows("SELECT title,status,summary,key_turns_json,first_chapter,last_chapter,COALESCE(last_chapter,0)-COALESCE(first_chapter,0) AS span FROM novel_plot_threads ORDER BY span DESC LIMIT 3"),
+  ...rows("SELECT title,status,summary,key_turns_json,first_chapter,last_chapter,COALESCE(last_chapter,0)-COALESCE(first_chapter,0) AS span FROM novel_plot_threads ORDER BY RANDOM() LIMIT 2")
 ].map(row => ({ ...row, keyTurns: JSON.parse(String(row.key_turns_json)) as string[], key_turns_json: undefined }));
 
 const foreshadowingSample = [
-  ...rows("SELECT clue,first_appearance,meaning,payoffs_json,confidence,status,chapter_ordinal FROM novel_foreshadowings WHERE confidence='明确线索' AND status='埋设' ORDER BY RANDOM() LIMIT 8"),
-  ...rows("SELECT clue,first_appearance,meaning,payoffs_json,confidence,status,chapter_ordinal FROM novel_foreshadowings WHERE confidence='可能线索' ORDER BY RANDOM() LIMIT 8"),
-  ...rows("SELECT clue,first_appearance,meaning,payoffs_json,confidence,status,chapter_ordinal FROM novel_foreshadowings WHERE status='已回收' ORDER BY RANDOM() LIMIT 6"),
-  ...rows("SELECT clue,first_appearance,meaning,payoffs_json,confidence,status,chapter_ordinal FROM novel_foreshadowings WHERE confidence='不确定' ORDER BY RANDOM() LIMIT 4")
+  ...rows("SELECT clue,first_appearance,meaning,payoffs_json,confidence,status,chapter_ordinal FROM novel_foreshadowings WHERE confidence='明确线索' AND status='埋设' ORDER BY RANDOM() LIMIT 2"),
+  ...rows("SELECT clue,first_appearance,meaning,payoffs_json,confidence,status,chapter_ordinal FROM novel_foreshadowings WHERE confidence='可能线索' ORDER BY RANDOM() LIMIT 2"),
+  ...rows("SELECT clue,first_appearance,meaning,payoffs_json,confidence,status,chapter_ordinal FROM novel_foreshadowings WHERE status='已回收' ORDER BY RANDOM() LIMIT 1"),
+  ...rows("SELECT clue,first_appearance,meaning,payoffs_json,confidence,status,chapter_ordinal FROM novel_foreshadowings WHERE confidence='不确定' ORDER BY RANDOM() LIMIT 1")
 ].map(row => ({ ...row, payoffs: JSON.parse(String(row.payoffs_json)) as string[], payoffs_json: undefined }));
 
 const relationSample = rows(
   "SELECT r.from_name,r.to_name,r.label,r.evidence,r.chapter_ordinal,c.mention_total FROM novel_relations r " +
-  "JOIN novel_characters c ON c.name=r.from_name ORDER BY c.mention_total DESC, r.from_name LIMIT 30"
+  "JOIN novel_characters c ON c.name=r.from_name ORDER BY c.mention_total DESC, r.from_name LIMIT 6"
 );
 
-const arcs = rows("SELECT volume,title,summary,key_turns_json,characters_json FROM novel_arcs WHERE volume IN (1,3,7,11,15,17) ORDER BY volume").map(row => ({
+const arcs = rows("SELECT volume,title,summary,key_turns_json,characters_json FROM novel_arcs WHERE volume IN (1,17) ORDER BY volume").map(row => ({
   ...row,
   keyTurns: JSON.parse(String(row.key_turns_json)) as string[],
   characters: JSON.parse(String(row.characters_json)) as string[],
@@ -308,6 +321,35 @@ add("01-database/threads.sample.json", json(threadSample));
 add("01-database/foreshadowings.sample.json", json(foreshadowingSample));
 add("01-database/relations.sample.json", json(relationSample));
 add("01-database/arcs.sample.json", json(arcs));
+add("01-database/README.md", [
+  "# 数据库：概要、样例与出处",
+  "",
+  "完整数据在仓库里，本包不复制。这里只放三类东西：",
+  "",
+  "- `schema.sql` / `schema-state.sql` / `schema.md`：表结构，用来判断字段设计够不够用；",
+  "- `summary.json` / `quality-flags.json`：规模、覆盖、状态分布、质量问题清单；",
+  "- `*.sample.json` / `characters.top50.csv`：每张表 1–6 条示例，只看字段形状与内容粒度。",
+  "",
+  "因为样例很短，**不要用它们判断分布**（例如「人物描写是否普遍空洞」），那类结论要回原库查。",
+  "",
+  "| 内容 | 仓库路径 | 查询方式 |",
+  "|---|---|---|",
+  "| 知识库：2,594 片段 / " + counts.characters + " 人 / " + counts.beats + " 事件 / " + counts.threads + " 线 / " + counts.foreshadowings + " 伏笔 / " + counts.relations + " 关系 | `worlds/conghuoniao/novel.db` | `npm run dev -- story-kb --world conghuoniao --type overview` |",
+  "| 写作状态：人物、事实、事件、情节线、连续性备注 | `worlds/conghuoniao/story.db` | `npm run dev -- db-status --world conghuoniao` |",
+  "| 知识库文本快照（可读、可 diff） | `worlds/conghuoniao/story-kb.json` | 直接读 JSON |",
+  "| 原文 | 不入库 | 需另行提供语料 |",
+  "",
+  "常用查询：",
+  "",
+  "```bash",
+  "npm run dev -- story-kb --world conghuoniao --type characters --query 李阎",
+  "npm run dev -- story-kb --world conghuoniao --type threads --status 进行中",
+  "npm run dev -- story-kb --world conghuoniao --type foreshadowings --status 已回收",
+  "npm run dev -- story-kb --world conghuoniao --type beats --from 1 --to 60",
+  "npm run dev -- story-kb --world conghuoniao --type arcs",
+  "```",
+  ""
+].join("\n"));
 add("01-database/quality-flags.json", json(qualityFlags));
 add("01-database/story-core.json",json(storyAnalysis.storyCore??{}));
 add("01-database/story-core-observations.json",json(storyAnalysis.storyCoreObservations??[]));
@@ -384,6 +426,29 @@ add("02-analysis-calls/config.json", json({
   configFile: JSON.parse(await readFile(resolve("novel-generation.config.json"), "utf8")),
   note: "分析阶段使用 thinkingMode=disabled、effort=low 的 state 档案；写作阶段按 taskProfiles 各自配置。"
 }));
+
+/* ------------------------------------------------------------ references --- */
+
+add("REFERENCES.md", [
+  "# 完整数据与产物索引",
+  "",
+  "本包是切片：已经入库的内容不重复打包。下列路径都在仓库 `tools/novel-generation/` 下。",
+  "",
+  "| 用途 | 路径 | 说明 |",
+  "|---|---|---|",
+  "| 知识库 | `worlds/conghuoniao/novel.db` | 22MB：原文分片、标注、`novel_*`、`story_analysis`、`story_graph_*` |",
+  "| 写作状态 | `worlds/conghuoniao/story.db` | 68KB：人物、正史事实、事件、情节线、连续性备注，每章重写 |",
+  "| 知识库文本快照 | `worlds/conghuoniao/story-kb.json` | 3.5MB，不含原文，便于 diff |",
+  "| 分析请求/响应缓存 | `.output/conghuoniao/story-analysis/<cache-key>/` | 196 批，`batch-NNNN.json` 为模型原始返回 |",
+  "| 万字流水线产物 | `.output/conghuoniao/long-2026-11-05T13-04-56-213Z/` | 蓝图、逐场、草稿、审查、润色、节奏指标、终稿 |",
+  "| 回归实验 | `.output/regression/<run>/` | 原文续写盲测两版 + 评审 |",
+  "| 多 Agent 分析成稿 | `analysis/conghuoniao/agent-analysis/` | 5 份 `output.md` + `manifest.json`（含逐句证据核验） |",
+  "| 卷章索引 | `analysis/conghuoniao/chapter-index.json` | 753 章的卷序、标题、行号、字数 |",
+  "| 世界设定 | `worlds/conghuoniao/{world-bible,yanfu-system,fruit-worlds,characters,timeline,style-profile}.md` | 人工整理的设定摘要 |",
+  "| 硬约束 | `worlds/conghuoniao/laws.json` | 可机检的位阶、数值、身份禁忌 |",
+  "| 原文 | 不入库 | 需另行提供 |",
+  ""
+].join("\n"));
 
 /* -------------------------------------------------------------- writing --- */
 
@@ -507,11 +572,19 @@ const readme = [
   "",
   "| 路径 | 内容 | 建议关注 |",
   "|---|---|---|",
-  "| `01-database/` | 数据库 schema、分类样本、故事核心观察、MacGuffin、完整图谱与图质量摘要 | 主线、人物互动链、伏笔承接、MacGuffin 是否驱动情节 |",
-  "| `02-analysis-calls/` | " + picks.length + " 次分批分析的完整请求与响应 | 提示词是否明确、输出是否被正确解析 |",
+  "| `01-database/` | schema、统计、质量问题清单、每类 1–6 条示例 | 字段设计是否够用、分类口径、异常项 |",
+  "| `02-analysis-calls/` | " + picks.length + " 次分批分析的请求体（响应体需缓存存在） | 提示词是否明确、输出是否被正确解析 |",
   "| `03-writing/` | 生成的新章节、所有场景润色稿、润色幅度与阶段调用日志 | 连续性、文风、扩写幅度、阶段耗时 |",
   "| `04-logs/` | 分析分片与写作过程的运行日志 | 失败重试、超时、逐阶段耗时 |",
   "| `manifest.json` | 每个文件的字节数与 sha256 | 校验用 |",
+  "",
+  "## 本包为什么不完整",
+  "",
+  "分析结果与生成产物都已经随仓库提交，重复打包只会让包变大、且与仓库版本对不上。",
+  "所以这里只放：统计与质量问题清单、每类几条示例、schema、以及少量请求/响应样本；",
+  "完整数据的路径与查询命令见 `REFERENCES.md` 和 `01-database/README.md`。",
+  "",
+  "如果要判定「分布」或「普遍性问题」，请按 `REFERENCES.md` 回原库检索，不要用示例下结论。",
   "",
   "## 数据是怎么来的",
   "",
@@ -524,21 +597,23 @@ const readme = [
   "",
   "## 请重点审什么（按优先级）",
   "",
-  "1. **人物归并是否正确**：`characters.sample.json` 里有没有把两个人当成一个，或一个人拆成两条；别名是否可信。",
+  "1. **人物归并是否正确**：`characters.sample.json` 的几名主要人物里，有没有把两个人当成一个、或一个人拆成两条；别名是否可信。要看全部 544 人，用 `story-kb --type characters` 导出。",
   "2. **伏笔是否成立**：`foreshadowings.sample.json` 里 `明确线索` 是否真的在原文有落点，`已回收` 的回收方式是否对得上。",
-  "3. **情节线粒度**：862 条是局部情节线候选记录；按标题和来源章节范围核查重复项，同名但不同阶段应保留。",
-  "4. **故事图谱**：核对 `story-graph.json` 与 `story-graph-quality.json` 中人物—事件—情节线—伏笔—MacGuffin 的连接是否有原文依据；孤立节点不一定是错误。",
-  "5. **故事核心与 MacGuffin**：核对 `story-core.json`、`macguffins.json` 是否识别真正驱动行动的核心目标，而非普通道具。",
-  "6. **人物互动**：`interactions.sample.json` 按章节范围均匀抽样多人事件，抽查互动方式和关系变化。",
-  "7. **章级事件是否准确**：`beats.sample.json` 覆盖 738/753 章，抽查是否有人物张冠李戴或因果说反。",
-  "5. **章节质量**：`03-writing/long-chapter/chapter-final.md` 与 `draft.md` 对比，看修订是否改善了节奏而没有引入新事实。",
-  "6. **提示词是否安全**：`02-analysis-calls/*.request.md` 是否包含会诱导模型编造设定的指令。",
+  "3. **情节线粒度**：`threads.sample.json` 只给了跨度最长的几条；862 条全部是局部情节线候选记录，同名但不同阶段应保留，不算重复。",
+  "4. **故事图谱**：`story-graph-quality.json` 给的是连通性摘要（孤立节点、悬空边、缺来源引用），完整图谱在 `novel.db` 的 `story_graph_nodes/edges`；当前库内该图为空，属已知状态。",
+  "5. **故事核心与 MacGuffin**：`story-core.json`、`macguffins.json` 是全文导出（体量小），可直接判断是否识别真正驱动行动的核心目标。",
+  "6. **人物互动**：`interactions.sample.json` 是 8 条均匀抽样的多人事件，只看互动写法是否有原文依据；全量在 `novel_beats` 的 `actors`。",
+  "7. **章级事件是否准确**：`beats.sample.json` 只给第 1、300、753 章；1,314 条覆盖 738/753 章，全量用 `story-kb --type beats` 查。",
+  "8. **章节质量**：`03-writing/long-chapter/chapter-final.md` 与 `draft.md` 对比，看修订是否改善了节奏而没有引入新事实。",
+  "9. **提示词是否安全**：`02-analysis-calls/*.request.md` 是否包含会诱导模型编造设定的指令。",
   "",
   dropped.length ? "> 本包已按体积上限裁剪：" + dropped.join("、") + "\n" : "",
   "## 已知局限（请勿当作新问题重复报告）",
   "",
-  "- 分类样本是抽样；故事核心、MacGuffin 和图质量摘要完整导出；完整图谱为可选文件，超出预算时可裁剪。图质量摘要会列出孤立节点、悬空边和缺少来源引用的节点/边；孤立节点不自动代表分析错误。",
+  "- 分类样本只是示例（每类 1–6 条），不能代表分布；需要统计结论时回原库。故事核心、MacGuffin 与图质量摘要是完整导出。孤立节点不自动代表分析错误。",
   "- 有 " + qualityFlags.charactersWithoutMentionsCount + " 个人物「有名无实」：模型给出了名字，但正文没有逐字出现，统计为 0。",
+  "- 人物的性格/欲望/矛盾/成长数组是跨 196 批合并的结果，存在大量近重复条目（李阎：性格 193、欲望 197、矛盾 194、成长 380）。",
+  "  示例文件只保留前 5–8 条，真实条数写在 `arrayCounts` 里；这本身是可报告的问题，不算已知局限之外的新发现。",
   "- 置信度、状态、关系标签都是模型判断，不是人工标注。",
   "- SDK 不落盘 token 与耗时，`02-analysis-calls/` 包含采样请求/响应，以及已保留的失败原始响应；请求体由同一构造函数重建，内容与线上一致。长章节 `stage-calls.jsonl` 记录实际执行的阶段、请求模型候选链、提示词/输出字符数、耗时和结果；缓存命中不会产生模型调用记录。",
   "- 原文全文与 22MB 的 `novel.db` 未打包；如需核对原文，请另行提供语料。",
