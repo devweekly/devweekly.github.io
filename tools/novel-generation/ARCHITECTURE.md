@@ -58,12 +58,11 @@
 3. 主线剧情与创意发散并行提出方案。
 4. 主编选定唯一章节蓝图。
 5. 生成正文，分别修整对白和叙事声音。
-6. 对最终候审正文进行结构化质量审查。
-7. 对 blocker/major 做最小修复，最多两轮；每轮重新审查。
-8. 通过后提取并校验状态，自动提交 SQLite 和兼容快照。
-9. 保存正文、质量摘要和阶段产物。
-
-普通章节现已执行结构化终审复查；blocker/major 最多自动修复两轮，每轮重新审查。最终复查通过后才会提取和提交状态。
+6. 执行共享的 Living Voice / Anti-AI 编辑；编辑失败时保留叙事声音修订稿继续。
+7. 对 Anti-AI 编辑后的正文进行结构化硬伤审查。
+8. 对 blocker/major 做最小修复，最多两轮；每轮重新审查。
+9. 通过后生成独立 Reader 体验报告；Reader 失败不阻塞成功路径。
+10. 提取并校验状态，自动提交 SQLite 和兼容快照，保存正文、质量摘要和阶段产物。
 
 主要阶段文件：
 
@@ -75,7 +74,9 @@
 | `04-scene-draft.md` | 初稿 |
 | `05-dialogue-edited.md` | 对白修订 |
 | `06-voice-edited.md` | 叙事声音修订 |
+| `06b-anti-ai-edited.md` | Living Voice / Anti-AI 克制编辑后的正文 |
 | `07-continuity-review.md` | 结构化最终审查与自动修复记录 |
+| `10-reader-experience.md` | 独立读者体验观察；不影响章节状态 |
 | `chapter.md` | 最终复查通过后的章节 |
 | `08-state-update.json` | 合并后的下一章状态 |
 
@@ -87,16 +88,16 @@
 
 1. 生成场景蓝图，场景数不超过配置上限；允许少于上限，不能为了凑数拆开连贯情节；格式错误自动修正一次。
 2. 逐场检索原文、生成场景；注入本场相关人物的当前状态，并携带本章已生成正文的滚动上下文，避免只依赖上一场末尾。
-3. 分批做初步审查（使用全章场景编号；结构无效时自动重试），再逐场修订对白和叙事声音。\n4. 汇总逐场修订稿，执行共享的 Living Voice / Anti-AI 编辑；编辑失败时保留逐场修订稿。
+3. 分批做初步审查（使用全章场景编号；结构无效时自动重试），再逐场修订对白和叙事声音。
+4. 汇总逐场修订稿，执行共享的 Living Voice / Anti-AI 编辑；编辑失败时保留逐场修订稿。
 5. 对 Anti-AI 编辑后的完整章节进行跨场终审。
 6. 将 blocker/major 定位到受影响场景，最多两轮局部修复；每轮复查全章。
-7. Reader 以独立读者视角生成观察报告；失败不影响章节通过与状态提交。\n8. 从最终完整正文提取并校验状态，自动持久化。
-7. 保存章节、节奏指标、质量报告和阶段产物。
+7. Reader 以独立读者视角生成观察报告；失败不影响章节通过与状态提交。
+8. 从最终完整正文提取并校验状态，自动持久化；保存章节、节奏指标、质量报告和阶段产物。
 
-万字流程在逐场修订后增加完整章节的跨场终审。blocker/major 定位到受影响场景，局部修复后重新审查全章，最多两轮。节奏指标仅离线观察，不进入正式写作提示、章节验收或自动修复；不替代文学判断。
+主要阶段文件：`01-scene-blueprint.md`、`00-scene-XX-retrieval.md`、`02-scene-XX.md`、`03-draft.md`、`04-continuity-review.md`、`05-polish-XX.md`、`06b-anti-ai-edited.md`、`chapter.md`、`06-rhythm-metrics.json`、`07-state-update.json`、`08-final-review.md`、`08-quality-summary.json`、`10-reader-experience.md`。终审两轮仍存在明确硬伤时保存 `chapter-blocked.md` 和诊断摘要，当前运行安全失败且不提交故事状态；这属于自动化无法安全完成时的异常终止，不创建等待人工批准的常规队列。修复问题后可重新运行或从 checkpoint 恢复。
 
-主要阶段文件：`01-scene-blueprint.md`、`00-scene-XX-retrieval.md`、`02-scene-XX.md`、`03-draft.md`、`04-continuity-review.md`、`05-polish-XX.md`、`chapter.md`、`06-rhythm-metrics.json`、`07-state-update.json`、`08-final-review.md`、`08-quality-summary.json`。终审两轮仍存在明确硬伤时保存 `chapter-blocked.md` 和诊断摘要，当前运行安全失败且不提交故事状态；这属于自动化无法安全完成时的异常终止，不创建等待人工批准的常规队列。修复问题后可重新运行或从 checkpoint 恢复。
-
+万字流程在逐场修订后增加完整章节的 Anti-AI 编辑，再进行跨场终审。blocker/major 定位到受影响场景，局部修复后重新审查全章，最多两轮。节奏指标仅离线观察，不进入正式写作提示、章节验收或自动修复；不替代文学判断。
 ## 5. 全自动目标闭环
 
 这是当前正式写作流程实际执行的质量闭环：
