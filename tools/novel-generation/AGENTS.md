@@ -132,3 +132,5 @@ CLI 命令（均经 `npm run dev --`）：
 
 - 状态加载时对来源明确标记为续写/续章/衍生/项目原创的旧事实执行保守迁移，降为 original 并回写 SQLite/JSON；来源不明的旧事件不推断正史属性。
 - 旧版 story_analysis 快照没有当前 analysisVersion 时不得注入写作上下文；必须重新运行 analyze-story 生成当前版本快照。
+
+- v3 story-analysis 缓存可迁移到 v4：保留分析内容，丢弃未分类旧 aliases；不要为 schema 变化无条件重跑全部批次，缺失/损坏批次按新 Prompt 补跑。
