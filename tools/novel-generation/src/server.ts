@@ -18,7 +18,6 @@ app.use((req,res,next)=>{
  next();
 });
 app.use(express.json({limit:"2mb",strict:true}));
-const decisionLocks=new Map<string,Promise<void>>();
 function worldIdOf(value:unknown):string{if(typeof value!=="string"||!/^[a-z0-9][a-z0-9-]*$/i.test(value))throw Object.assign(new Error("Invalid world id."),{status:400});return value;}
 function recordId(value:unknown):string{if(typeof value!=="string"||!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value))throw Object.assign(new Error("Invalid record id."),{status:400});return value;}
 function worldDir(id:string):string{return path.resolve("worlds",id);}
