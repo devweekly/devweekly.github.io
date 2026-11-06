@@ -1,8 +1,6 @@
 import type { StoryState } from "./story-state.js";
 
 type Character = StoryState["characters"][number];
-type Event = StoryState["events"][number];
-type PlotThread = StoryState["plotThreads"][number];
 
 function compact(value: string): string {
   return value.normalize("NFKC").toLocaleLowerCase().replace(/\s+/g, "");
@@ -87,7 +85,7 @@ export function buildWorldSituationContext(state: StoryState, query: string, max
     );
 
   const characterNames = new Set(characterRows.map(character => character.name));
-  const threadRows = state.plotThreads
+  const rankedThreads = state.plotThreads
     .map((thread, index) => ({
       thread,
       index,
@@ -97,11 +95,18 @@ export function buildWorldSituationContext(state: StoryState, query: string, max
     .filter(item => item.score > 2 || characterRows.some(character =>
       (character.relationships ?? []).some(relationship => relationship.includes(item.thread.title))
     ))
-    .sort((a, b) => b.score - a.score || b.index - a.index)
-    .slice(0, 6);
+    .sort((a, b) => b.score - a.score || b.index - a.index);
+  // A task that does not name a thread still needs a small amount of immediate
+  // story context; use the latest active threads, not the whole backlog.
+  const threadRows = (rankedThreads.length
+    ? rankedThreads.slice(0, 6)
+    : state.plotThreads
+        .map((thread, index) => ({ thread, index, score: 0 }))
+        .filter(item => item.thread.status === "active" || item.thread.status === "open")
+        .slice(-4));
 
   const threadIds = new Set(threadRows.map(item => item.thread.id));
-  const eventRows = state.events
+  const rankedEvents = state.events
     .map((event, index) => ({
       event,
       index,
@@ -113,6 +118,11 @@ export function buildWorldSituationContext(state: StoryState, query: string, max
     .sort((a, b) => b.score - a.score || b.index - a.index)
     .slice(0, 8)
     .sort((a, b) => a.index - b.index);
+  const eventRows = rankedEvents.length
+    ? rankedEvents
+    : state.events.slice(-5).map((event, index) => ({ event, index, score: 0 }));
+  const eventById = new Map(state.events.map(event => [event.id, event]));
+  const threadById = new Map(state.plotThreads.map(thread => [thread.id, thread]));
 
   const sections = [
     characterRows.length
@@ -122,9 +132,9 @@ export function buildWorldSituationContext(state: StoryState, query: string, max
       ? "## 已发生事件及其因果关联\n" + eventRows.map(({ event }) => {
           const parts = [
             event.summary,
-            event.causes?.length ? "前因：" + strings(event.causes, 4) : "",
+            event.causes?.length ? "前因：" + strings(event.causes.map(cause => eventById.get(cause)?.summary ?? cause), 4) : "",
             event.consequences.length ? "后果：" + strings(event.consequences, 4) : "",
-            event.relatedPlotThreads?.length ? "关联剧情线：" + strings(event.relatedPlotThreads, 4) : "",
+            event.relatedPlotThreads?.length ? "关联剧情线：" + strings(event.relatedPlotThreads.map(id => threadById.get(id)?.title ?? id), 4) : "",
             event.origin ? "来源：" + event.origin : ""
           ].filter(Boolean);
           return "- " + parts.join("；");
