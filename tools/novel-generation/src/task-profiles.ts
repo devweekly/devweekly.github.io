@@ -25,7 +25,9 @@ const DEFAULTS: Record<StageKey, TaskProfile> = {
   plan: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "high" },
   scene: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },
   dialogue: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },
-  voice: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },\n  antiAi: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },\n  reader: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },
+  voice: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },
+  antiAi: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },
+  reader: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },
   review: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },
   final: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },
   state: { thinkingMode: "disabled", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "low" }
