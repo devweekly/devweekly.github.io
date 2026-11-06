@@ -48,7 +48,7 @@ app.post("/api/candidates/:candidateId/decision",async(req,res)=>{
   const id=worldIdOf(req.body?.worldId);const candidate=await getCandidate(id,key);if(!candidate)return res.status(404).json({error:"Candidate not found."});if(candidate.status!=="pending"&&candidate.status!=="changes_requested")return res.status(409).json({error:"Candidate has already been reviewed."});
   const action=req.body?.action;if(!["approved","rejected","changes_requested"].includes(action))return res.status(400).json({error:"Unsupported decision."});
   const comment=typeof req.body?.comment==="string"?req.body.comment.slice(0,10000):"";const dir=worldDir(id);const activePath=path.join(dir,"story-plan.json");const currentPlan=await loadStoryPlan(activePath,id);
-  if((currentPlan?.updatedAt??null)!==candidate.baseUpdatedAt)return res.status(409).json({error:"Story Plan has changed since this candidate was generated. Reload and compare against the latest version before reviewing."});
+  if(action!=="rejected"&&(currentPlan?.updatedAt??null)!==candidate.baseUpdatedAt)return res.status(409).json({error:"Story Plan has changed since this candidate was generated. Reload and compare against the latest version before approving or requesting changes."});
   let reviewedCandidate=candidate;
   if(action==="approved"){
    const submitted=req.body?.plan??candidate.plan;const plan=validateStoryPlan(submitted,id);
@@ -59,7 +59,7 @@ app.post("/api/candidates/:candidateId/decision",async(req,res)=>{
   }else if(req.body?.plan!==undefined){reviewedCandidate={...candidate,plan:validateStoryPlan(req.body.plan,id)};}
   const decision:ApprovalDecision={id:randomUUID(),candidateId:key,worldId:id,action,comment,createdAt:new Date().toISOString(),baseUpdatedAt:candidate.baseUpdatedAt};
   await appendDecision(decision);await saveCandidate({...reviewedCandidate,status:action,reviewComment:comment,updatedAt:decision.createdAt});
-  const run=await getRun(id,candidate.runId);if(run)await saveRun({...run,status:action==="approved"?"completed":"waiting_review",updatedAt:decision.createdAt});
+  const run=await getRun(id,candidate.runId);if(run)await saveRun({...run,status:action==="approved"||action==="rejected"?"completed":"waiting_review",updatedAt:decision.createdAt});
   res.json({decision,storyPlan:action==="approved"?await loadStoryPlan(activePath,id):currentPlan});
  }catch(e){sendError(res,e);}finally{release();if(decisionLocks.get(key)===lock)decisionLocks.delete(key);}
 });
