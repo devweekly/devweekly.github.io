@@ -255,6 +255,10 @@ export function plotThreadMergeKey(title: string, chapterKeys: string[]): string
   return normalizedTitle + "|" + sources.join(",");
 }
 
+export function plotThreadId(title: string, chapterKeys: string[]): string {
+  return "th_" + createHash("sha1").update(plotThreadMergeKey(title, chapterKeys)).digest("hex").slice(0, 12);
+}
+
 function mergePlotThreads(target: Item[], incoming: Item[]): Item[] {
   const map = new Map(target.map(item => [plotThreadMergeKey(String(item.title ?? ""), refsOf(item).map(ref => String(ref.chapterId ?? ref.chunkId))), item] as const));
   for (const item of incoming) {
@@ -525,7 +529,7 @@ function mergeAndPersist(
     const refs = refsOf(item);
     const ordinals = refs.map(ref => ordinalByChapter.get(String(ref.chapterId ?? ""))).filter((value): value is number => typeof value === "number");
     return {
-      threadId: "th_" + createHash("sha1").update(String(item.title)).digest("hex").slice(0, 12),
+      threadId: plotThreadId(String(item.title), refs.map(ref => String(ref.chapterId ?? ref.chunkId))),
       title: String(item.title),
       status: normalizeThreadStatus(String(item.status ?? "")),
       summary: normalizeBatchWording(String(item.summary ?? "")),
