@@ -47,6 +47,7 @@ export function buildRoleplayPrompt(input: {
 export async function runRoleplaySandbox(input: RoleplaySandboxInput): Promise<string> {
   const terminal = createInterface({ input: stdin, output: stdout });
   const transcript: string[] = [];
+  let acceptedTurns = 0;
   let authorDirection = "";
   try {
     for (;;) {
@@ -78,7 +79,8 @@ export async function runRoleplaySandbox(input: RoleplaySandboxInput): Promise<s
         console.log("请输入 Enter、a、e、i、r 或 q。");
         continue;
       }
-      transcript.push("【推演轮次 " + (transcript.length + 1) + "】\n" + output);
+      acceptedTurns++;
+      transcript.push("【推演轮次 " + acceptedTurns + "】\n" + output);
       authorDirection = "";
     }
     return [
