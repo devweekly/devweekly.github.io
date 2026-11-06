@@ -5,7 +5,7 @@ import { buildStoryAnalysisContext } from "../src/story-analysis-context.js";
 test("writing context selects only relevant analysis and labels it as optional", () => {
   const context = buildStoryAnalysisContext({
     worldId: "test", sourceHash: "a".repeat(64), analyzedAt: "2026-11-05T00:00:00.000Z",
-    complete: true, batches: 1,
+    analysisVersion: 4, complete: true, batches: 1,
     characters: [
       { name: "林岚", aliases: ["阿岚"], shortBio: "擅长隐瞒心事", arcPossibilities: ["可能背叛旧友"] },
       { name: "顾青", shortBio: "行事谨慎" }
@@ -18,6 +18,14 @@ test("writing context selects only relevant analysis and labels it as optional",
   assert.match(context, /旧城失踪案/);
   assert.match(context, /可选素材和创意火花/);
   assert.doesNotMatch(context, /顾青/);
+});
+
+test("legacy snapshots without the current analysis version are not injected", () => {
+  assert.equal(buildStoryAnalysisContext({
+    worldId: "test", sourceHash: "a".repeat(64), analyzedAt: "2026-11-05T00:00:00.000Z",
+    complete: true, batches: 1, characters: [{ name: "林岚" }],
+    plotThreads: [], foreshadowings: [], developmentPossibilities: []
+  }, "林岚"), "");
 });
 
 test("writing context does not turn incomplete or irrelevant analysis into instructions", () => {
