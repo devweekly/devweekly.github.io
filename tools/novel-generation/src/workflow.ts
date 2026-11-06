@@ -21,6 +21,7 @@ export interface WriteWorkflowInput {
   retrievedContext?: string;
   storyAnalysisContext?: string;
   writingBrief?: string;
+  storyPlanText?: string;
   model?: string;
   strictModel?: boolean;
   acceptReview?: boolean;
@@ -149,6 +150,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     input.contextText ? "用户补充的前文摘要：\n" + input.contextText : "",
     input.retrievedContext ? "本地资料库证据（用于核实事实，不得整段复制）：\n" + input.retrievedContext : "",
     input.writingBrief ? "全书知识库（已经写成的事实与未收线，优先于分析参考）：\n" + input.writingBrief : "",
+    input.storyPlanText ? input.storyPlanText : "",
     input.storyAnalysisContext ? "既有小说分析参考（仅供启发，不是正史或写作清单）：\n" + input.storyAnalysisContext : "",
     input.sourceText ? "用户提供且有权使用的续写材料：\n" + input.sourceText : "",
     input.styleProfile ? "本项目叙事风格参考（仅使用抽象写作特征，不模仿特定作者的独特表达；参考不能凌驾于当前人物、场景需要和文学表达）：\n" + input.styleProfile : "",
@@ -168,6 +170,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     "当前位置：", state.currentPosition,
     input.contextText ? "前情摘要：\n" + input.contextText : "",
     input.writingBrief ? "相关既成事实、人物和未收线：\n" + input.writingBrief : "",
+    input.storyPlanText ? input.storyPlanText : "",
     input.brief ? "本次创作任务：\n" + input.brief : ""
   ].filter(Boolean).join("\n\n");
   const dialogueContext = [
