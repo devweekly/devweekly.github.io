@@ -9,8 +9,14 @@ const ref = [{ chapterId: "V01-C001", chapter: "第一章", volume: 1 }];
 test("story graph connects core, characters, threads, foreshadowings, MacGuffins and events", () => {
   const graph = buildStoryGraph({
     storyCore: { centralConflicts: ["争夺秘钥"], mainPlotThreadTitles: ["夺回秘钥"], sourceRefs: ref },
-    characters: [{ name: "甲", sourceRefs: ref }, { name: "乙", sourceRefs: ref }],
-    relations: [{ from: "甲", to: "乙", label: "互相利用", sourceRefs: ref }],
+    characters: [
+      { name: "甲", aliases: ["甲的化名", "共同称号"], sourceRefs: ref },
+      { name: "乙", aliases: ["共同称号"], sourceRefs: ref }
+    ],
+    relations: [
+      { from: "甲的化名", to: "乙", label: "互相利用", sourceRefs: ref },
+      { from: "共同称号", to: "乙", label: "歧义别名不得连接", sourceRefs: ref }
+    ],
     plotThreads: [{ title: "夺回秘钥", narrativeRole: "main", relatedCharacters: ["甲"], sourceRefs: ref }],
     foreshadowings: [{ clue: "黑色印记", relatedThreadTitles: ["夺回秘钥"], sourceRefs: ref }],
     macguffins: [{ name: "秘钥", whoWantsIt: ["乙"], relatedThreadTitles: ["夺回秘钥"], sourceRefs: ref }],
@@ -27,6 +33,8 @@ test("story graph connects core, characters, threads, foreshadowings, MacGuffins
   }
   assert.ok(graph.edges.every(edge => graph.nodes.some(node => node.id === edge.from) && graph.nodes.some(node => node.id === edge.to)));
   assert.ok(graph.nodes.every(node => node.sourceRefs.length > 0));
+  const relationshipEdges=graph.edges.filter(edge=>edge.type==="relationship");
+  assert.equal(relationshipEdges.length,1,"unique aliases resolve; shared aliases stay ambiguous");
 });
 
 test("writing context expands relevant story graph and keeps literary freedom explicit", () => {
