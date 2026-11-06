@@ -219,7 +219,7 @@ async function main(): Promise<void> {
         const historyDir = resolve(worldDir, "story-plan-history");
         await mkdir(historyDir, { recursive: true });
         const historyPath = resolve(historyDir, previousPlan.updatedAt.replace(/[^a-zA-Z0-9.-]/g, "_") + ".json");
-        await writeFile(historyPath, JSON.stringify(previousPlan, null, 2) + "\\n", { encoding: "utf8", flag: "wx" }).catch(error => {
+        await writeFile(historyPath, JSON.stringify(previousPlan, null, 2) + "\n", { encoding: "utf8", flag: "wx" }).catch(error => {
           if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
         });
       }
