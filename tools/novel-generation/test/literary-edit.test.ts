@@ -40,6 +40,9 @@ test("anti-ai post-edit verification restores edits without clear literary benef
   assert.deepEqual(parseAntiAiVerification('{"decision":"restore","reason":"原句更有力量"}'), {
     decision: "restore", reason: "原句更有力量"
   });
+  assert.deepEqual(parseAntiAiVerification('```json\n{"decision":"keep","reason":"没有损害原文"}\n```'), {
+    decision: "keep", reason: "没有损害原文"
+  });
   assert.throws(() => parseAntiAiVerification('{"decision":"maybe","reason":"x"}'));
 });
 
