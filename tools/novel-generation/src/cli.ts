@@ -22,6 +22,7 @@ import { checkRuntime } from "./runtime-check.js";
 import { readTaskProfiles, STAGE_KEYS } from "./task-profiles.js";
 import { writeLongChapter, chineseChars } from "./long-chapter.js";
 import { loadChapters, runRegression } from "./regression.js";
+import { formatStoryPlan, generateStoryPlan, loadStoryPlan, saveStoryPlan } from "./story-plan.js";
 
 /** `--model --evidence-review` 这种漏值不该把下一个开关当成取值。 */
 function arg(name: string): string | undefined {
@@ -57,6 +58,7 @@ function usage(): never {
     "  npm run dev -- search --world conghuoniao --query \"人物或事件关键词\" [--limit 8]",
     "  npm run dev -- analyze --world conghuoniao [--limit 20] [--model model]",
     "  npm run dev -- analyze-story --world conghuoniao [--model model] [--timeout-ms 180000] [--max-chars 14000] [--shard 0/4] [--merge-only]",
+    "  npm run dev -- plan-story --world conghuoniao [--model model] [--activate]  # 生成主线候选；显式激活后供写作使用",
     "  npm run dev -- index-story --world conghuoniao [--catalog analysis/conghuoniao/chapter-index.json]",
     "  npm run dev -- analyze-arcs --world conghuoniao [--model model] [--force]",
     "  npm run dev -- analyze-profiles --world conghuoniao [--top 24] [--names 李阎,查小刀] [--model model] [--force]",
@@ -95,7 +97,7 @@ function safeWorldId(value: string): string {
 
 async function main(): Promise<void> {
   const command = process.argv[2];
-  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-story" && command !== "index-story" && command !== "story-kb" && command !== "analyze-arcs" && command !== "analyze-profiles" && command !== "analyze-world" && command !== "models" && command !== "check-runtime" && command !== "db-status") usage();
+  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-story" && command !== "index-story" && command !== "story-kb" && command !== "analyze-arcs" && command !== "analyze-profiles" && command !== "analyze-world" && command !== "models" && command !== "check-runtime" && command !== "db-status" && command !== "plan-story") usage();
 
   const worldId = safeWorldId(arg("--world") ?? "conghuoniao");
   const libraryDir = resolve("worlds", worldId, "library");
@@ -202,6 +204,21 @@ async function main(): Promise<void> {
     } else if (phase === "status") {
       for (const line of await analysisStatus(worldId)) console.log(line);
     } else throw new Error("Unsupported --phase: " + phase);
+    return;
+  }
+
+  if (command === "plan-story") {
+    const worldDir = resolve("worlds", worldId);
+    const worldBible = await readFile(resolve(worldDir, "world-bible.md"), "utf8");
+    const state = await loadStoryState(resolve(worldDir, "story-state.json"), worldId);
+    const query = [state.currentPosition, ...state.plotThreads.map(thread => thread.title), ...state.characters.slice(0, 16).map(character => character.name)].join("\n");
+    const analysisContext = buildStoryAnalysisContext(readStoryAnalysis(worldDir, worldId), query);
+    const previousPlan = await loadStoryPlan(resolve(worldDir, "story-plan.json"), worldId);
+    const candidate = await generateStoryPlan({worldId,worldBible,state,storyAnalysisContext:analysisContext,previousPlan,model:arg("--model")});
+    const activate = process.argv.includes("--activate");
+    const outputPath = activate ? resolve(worldDir,"story-plan.json") : resolve(".output",worldId,"story-plan-candidate-"+new Date().toISOString().replace(/[:.]/g,"-")+".json");
+    await saveStoryPlan(outputPath,{...candidate,status:activate?"active":"draft"});
+    console.log(JSON.stringify({status:activate?"active":"draft",output:outputPath,milestones:candidate.majorMilestones.length,longTermThreads:candidate.longTermThreads.length,previousPlanLoaded:Boolean(previousPlan),note:activate?"正式主线已启用，write / write-long 将自动注入。":"候选规划尚未启用；审阅后重新运行并加 --activate。"},null,2));
     return;
   }
 
@@ -418,6 +435,7 @@ async function main(): Promise<void> {
     const retrieved = await searchLibrary(libraryDir, retrievalQuery, retrievalLimit);
     const storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), retrievalQuery);
     const writingBrief = buildWritingBrief({ worldDir: resolve("worlds", worldId), worldId, query: retrievalQuery });
+    const storyPlanText = formatStoryPlan(await loadStoryPlan(resolve("worlds", worldId, "story-plan.json"), worldId));
     console.error("[write] 注入：事实包 " + writingBrief.length + " 字 / 分析参考 " + storyAnalysisContext.length + " 字 / 检索片段 " + retrieved.length + " 条");
     const annotationsByChunk = readAnnotationsByChunkIds(resolve("worlds", worldId), worldId, retrieved.map(hit => hit.id)) as Map<string, { entities?: unknown[]; events?: unknown[]; relations?: unknown[] }>;
     const retrievedContext = retrieved.map((hit, index) => {
@@ -429,7 +447,7 @@ async function main(): Promise<void> {
 
     const applyState = !process.argv.includes("--no-apply-state");
     const chapter = await writeChapter({
-      worldId, worldDir: resolve("worlds", worldId), mode, brief, worldBible, styleProfile, sourceText, contextText, retrievedContext, storyAnalysisContext, writingBrief, model,
+      worldId, worldDir: resolve("worlds", worldId), mode, brief, worldBible, styleProfile, sourceText, contextText, retrievedContext, storyAnalysisContext, writingBrief, storyPlanText, model,
       strictModel: process.argv.includes("--strict-model"),
       acceptReview: process.argv.includes("--accept-review"), maxWords,
       outputDir, statePath, applyState
@@ -458,13 +476,14 @@ async function main(): Promise<void> {
     const storyAnalysisQuery = [brief, contextText ?? "", sourceText?.slice(-1500) ?? "", longState.currentPosition, ...longState.plotThreads.filter(thread => thread.status === "open" || thread.status === "active").map(thread => thread.title), ...longState.characters.slice(0, 12).map(character => character.name)].join("\n");
     const storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), storyAnalysisQuery);
     const writingBrief = buildWritingBrief({ worldDir: resolve("worlds", worldId), worldId, query: storyAnalysisQuery });
+    const storyPlanText = formatStoryPlan(await loadStoryPlan(resolve("worlds", worldId, "story-plan.json"), worldId));
     console.error("[write-long] 注入：事实包 " + writingBrief.length + " 字 / 分析参考 " + storyAnalysisContext.length + " 字");
     const retrievalLimit = Number(arg("--retrieval-limit") ?? 4);
     if (!Number.isInteger(retrievalLimit) || retrievalLimit < 1 || retrievalLimit > 12) {
       throw new Error("--retrieval-limit must be an integer between 1 and 12.");
     }
     const chapter = await writeLongChapter({
-      worldId, worldDir: resolve("worlds", worldId), mode, brief, worldBible, styleProfile, sourceText, contextText, storyAnalysisContext, writingBrief, model,
+      worldId, worldDir: resolve("worlds", worldId), mode, brief, worldBible, styleProfile, sourceText, contextText, storyAnalysisContext, writingBrief, storyPlanText, model,
       strictModel: process.argv.includes("--strict-model"),
       acceptReview: process.argv.includes("--accept-review"),
       maxWords, scenes, timeoutMs, outputDir, statePath, libraryDir, retrievalLimit,
