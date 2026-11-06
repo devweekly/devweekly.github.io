@@ -406,6 +406,6 @@ ADR 0004 的第一阶段已接入两条正式写作链：
 - 长章节在逐场 `05-polish-XX.md` 汇总后生成 `06b-anti-ai-edited.md`，再进入现有跨场终审。
 - Anti-AI 编辑调用失败时保留上一阶段正文，写入错误诊断并继续终审；不会因辅助编辑失败丢失已经生成的章节。
 - 两条写作链在终审通过后生成 `10-reader-experience.md`。Reader 失败只保存错误诊断，不影响章节通过和 Story State 持久化。
-- 新增 `antiAi` 与 `reader` 阶段配置，沿用现有 task profile 和阶段缓存；无新增依赖、数据库表或常驻 Agent。
+- 新增 `antiAi` 与 `reader` 阶段配置，沿用现有 task profile 和阶段缓存；无新增依赖、数据库表或常驻 Agent。\n- 新增 `distill-style` 命令和 `src/style-distillation.ts`，从授权样本提炼全局与场景级风格候选，默认写入 `.output/<world>/style-profile-candidate.md`，不覆盖正式风格资料。
 
 当前尚未实现的独立创作能力：作者主动调用的 Roleplay Sandbox，以及 Style Distillation 的样本版本管理与回归工作台。`distill-style` 已提供一次性提炼命令，输出候选文件，不自动覆盖正式风格资料。
