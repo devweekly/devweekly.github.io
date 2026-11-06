@@ -525,20 +525,21 @@ npm run dev -- distill-style --world conghuoniao \
   --input ./private/style-sample-1.txt ./private/style-sample-2.md --activate
 ```
 
-`--out` 只能写入当前 world 的 `.output/<world>/`，避免误覆盖正史或项目文件。默认样本总量上限为 80,000 字符，可通过 `--max-sample-chars` 调整（最高 160,000）。提炼结果描述叙事距离、节奏、视角、对白、意象、情绪表达和场景差异等抽象特征，不输出长段原文或可直接套用的句式模板。候选文件需要作者自行检查。显式使用 `--activate` 才会更新 `worlds/<world>/style-profile.md`；旧版本会先归档到 `.output/<world>/style-profile-history/`。正式写作自动读取激活后的风格资料。
+`--out` 只能写入当前 world 的 `.output/<world>/`，避免误覆盖正史或项目文件。默认样本总量上限为 80,000 字符，可通过 `--max-sample-chars` 调整（最高 160,000）。提炼结果描述叙事距离、节奏、视角、对白、意象、情绪表达和场景差异等抽象特征，不输出长段原文或可直接套用的句式模板。候选文件需要作者自行检查。显式使用 `--activate` 才会更新 `worlds/<world>/style-profile.md`；旧版本会先归档到 `.output/<world>/style-profile-history/`。正式写作自动读取激活后的风格资料，并把抽象风格资料注入剧情规划、正文写作、对白与叙事声音编辑等相关阶段。
 
-可用已认可的参考章节和新生成章节做一次人工触发的风格回归观察。它只报告风格稳定点和可能漂移，不打分、不改稿、不影响章节通过：
+**正式小说生成 Pipeline 会自动执行风格回归观察**，不需要每章手动运行。普通章节和长章节通过终审后，自动读取激活的 `style-profile.md`，并尝试读取 `worlds/<world>/style-references/` 下最多 4 个经认可的 `.md` / `.txt` 样本，生成 `11-style-regression.md`。参考样本只需维护一次，后续每次写作自动使用。没有参考样本时，仍以 Style Profile 做有限观察，并明确标记证据不足。
 
-```bash
-npm run dev -- style-regress --world conghuoniao \
-  --reference ./private/style-benchmark-1.md ./private/style-benchmark-2.md \
-  --candidate .output/conghuoniao/<run-id>/chapter.md \
-  --scene-type dialogue
+```text
+worlds/<world>/
+  style-profile.md             # 激活的抽象风格资料，自动注入写作阶段
+  style-references/
+    dialogue.md                # 可选：认可的对白样本
+    narration.md               # 可选：认可的叙述样本
 ```
 
-报告保存在 `.output/<world>/style-regression/`。参考样本应是经认可的项目样本；候选可以来自不同模型或不同版本的写作运行。当前是显式执行的观察报告，尚无自动基准集管理或 CI 风格门禁。
+风格回归只生成观察报告，不打分、不改稿、不影响章节通过。报告中的差异不会自动变成改写指令，也不能要求模型把新章节改成参考文本的句式或节奏。
 
-风格回归不属于章节自动门禁。报告指出的差异是供作者判断的线索，不能要求模型把候选章节改成参考文本的句式或节奏。
+手动 `style-regress` 命令仍保留，用于对任意参考/候选文件做一次性对照实验，不是正常写作流程的必需步骤。
 
 ### 人物互动推演沙盘（作者主动调用）
 
