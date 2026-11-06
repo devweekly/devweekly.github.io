@@ -46,6 +46,7 @@
 | 质量回归 | `src/regression.ts`、`scripts/compare-models.mjs` | 节奏量化、候选盲评和模型对照；不属于每次正式续写的人工审批步骤 |
 | 质量门禁 | `src/chapter-review.ts` | 审查 JSON schema、正文证据、严重程度与多场景定位；有限自动修复和复查 |
 | 文学编辑原则 | `src/literary-edit.ts`、`src/style-distillation.ts` | 共享 Living Voice、Anti-AI 编辑、Reader 体验提示与抽象风格提炼 |
+| 角色推演沙盘 | `src/roleplay-sandbox.ts` | 作者主动控制的多轮人物互动推演；只保存候选记录，不写入 Story State |
 | 阶段恢复 | `src/stage-cache.ts` | 输入指纹、实际模型回退链、输出哈希、阶段语义校验、原子阶段产物、运行 manifest 和初始状态快照 |
 
 ## 3. 普通章节：当前执行流程
@@ -408,5 +409,6 @@ ADR 0004 的第一阶段已接入两条正式写作链：
 - 两条写作链在终审通过后生成 `10-reader-experience.md`。Reader 失败只保存错误诊断，不影响章节通过和 Story State 持久化。
 - 新增 `antiAi` 与 `reader` 阶段配置，沿用现有 task profile 和阶段缓存；无新增依赖、数据库表或常驻 Agent。
 - 新增 `distill-style` 命令和 `src/style-distillation.ts`，从授权样本提炼全局与场景级风格候选，默认写入 `.output/<world>/style-profile-candidate.md`，不覆盖正式风格资料。
+- 新增 `roleplay-sandbox` 命令和 `src/roleplay-sandbox.ts`，支持作者接受、修改方向、补充信息、重演或结束；所有结果只写入 `.output/`，不进入正史或 Story State。
 
-当前尚未实现的独立创作能力：作者主动调用的 Roleplay Sandbox，以及 Style Distillation 的样本版本管理与回归工作台。`distill-style` 已提供一次性提炼命令，输出候选文件，不自动覆盖正式风格资料。
+作者主动调用的 Roleplay Sandbox 已通过 `roleplay-sandbox` 命令实现。当前尚未实现的是 Style Distillation 的样本版本管理与回归工作台；`distill-style` 已提供一次性提炼命令，输出候选文件，不自动覆盖正式风格资料。
