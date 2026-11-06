@@ -203,7 +203,12 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       character.name + "｜" + character.status,
       character.location ? "位置：" + character.location : "",
       character.knowledge?.length ? "已知：" + character.knowledge.join("；") : "",
-      character.goals?.length ? "当前欲望/目标：" + character.goals.join("；") : "",
+      character.goals?.length ? "当前目标：" + character.goals.join("；") : "",
+      character.motivation ? "当前动机：" + character.motivation : "",
+      character.resources?.length ? "可调用资源：" + character.resources.join("；") : "",
+      character.constraints?.length ? "行动限制：" + character.constraints.join("；") : "",
+      character.currentPressure?.length ? "当前压力：" + character.currentPressure.join("；") : "",
+      character.decisionHistory?.length ? "近期重要决定：" + character.decisionHistory.slice(-4).join("；") : "",
       character.relationships?.length ? "关系：" + character.relationships.join("；") : "",
       character.abilities?.length ? "能力：" + character.abilities.join("；") : "",
       character.profile?.coreTraits?.length ? "性格底色（参考，不是行为限制）：" + character.profile.coreTraits.join("；") : "",
@@ -432,14 +437,14 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     JSON.stringify({
       currentPosition: "string",
       canonFacts: [{ id: "stable-id", fact: "fact", source: "chapter id", confidence: "confirmed|inferred|original" }],
-      characters: [{ name: "name", profile: { coreTraits: ["stable traits"], values: ["values"], contradictions: ["internal contradictions"], voice: "distinctive voice", boundaries: ["behavioral boundaries"], arc: "long-term arc" }, status: "current status", location: "current location", abilities: ["current abilities"], knowledge: ["current knowledge"], goals: ["current goals"], relationships: ["current relationships"], arcMilestones: [{ id: "stable-milestone-id", chapter: "chapter id", change: "what changed", evidence: "exact excerpt from final chapter", choice: "optional, only if naturally clear", pressure: "optional, only if naturally clear", cost: "optional, only if naturally clear" }] }],
-      events: [{ id: "stable-id", summary: "event", position: "story position", participants: ["name"], consequences: ["consequence"], origin: "canon|inferred|original", source: "source reference" }],
+      characters: [{ name: "name", profile: { coreTraits: ["stable traits"], values: ["values"], contradictions: ["internal contradictions"], voice: "distinctive voice", boundaries: ["behavioral boundaries"], arc: "long-term arc" }, status: "current status", location: "current location", abilities: ["current abilities"], knowledge: ["current knowledge with source/limits when useful"], goals: ["current goals"], motivation: "why these goals matter now", resources: ["currently available means"], constraints: ["actual limits"], currentPressure: ["current pressures"], decisionHistory: ["consequential decisions already made"], relationships: ["current relationships"], arcMilestones: [{ id: "stable-milestone-id", chapter: "chapter id", change: "what changed", evidence: "exact excerpt from final chapter", choice: "optional, only if naturally clear", pressure: "optional, only if naturally clear", cost: "optional, only if naturally clear" }] }],
+      events: [{ id: "stable-id", summary: "event", position: "story position", participants: ["name"], causes: ["prior event id or concise causal condition"], consequences: ["consequence"], relatedPlotThreads: ["related plot thread id"], origin: "canon|inferred|original", source: "source reference" }],
       plotThreads: [{ id: "stable-id", title: "thread", status: "open|active|resolved|abandoned", lastUpdated: "chapter id", notes: "latest state" }],
       continuityNotes: ["complete current active notes"]
     }, null, 2),
     "旧状态：", JSON.stringify(state, null, 2),
     "最终章节全文（状态提取必须覆盖每一场的人物、事件、事实与情节线变化）：", chapter,
-    "continuityNotes 必须返回章节结束时仍然有效的完整备注集合，不是只列新增项；已经变化、解决或被新事实替代的旧备注不要继续返回。profile 记录相对稳定的性格底色、价值观、内在矛盾、语言习惯和行为边界；不要因单次行为轻易改写。其他字段是章节结束时的当前状态快照，数组必须给出完整当前值。人物弧光可以变化、反复、倒退，也可以出现意料之外的选择；不要因为画像或预设弧线限制人物。状态提取只是记录正文已经发生的事，不得反过来要求正文解释人物变化。只有正文自然呈现了重要转折时才追加 arcMilestones；不要为了填写选择、压力、代价字段而补写或拔高剧情。本次最终章节是项目续写文本，不是原著原文。凡首次由本次正文引入的事实一律标为 original；只有能由旧状态中已有的原著事实明确对应的条目才可沿用原有 canon/inferred 来源，不得仅因正文写得确定就标 confirmed。新事件必须标 origin=original；事件如明确回指原著资料，须填写 source。不要把项目原创写进原著正史。"
+    "continuityNotes 必须返回章节结束时仍然有效的完整备注集合，不是只列新增项；已经变化、解决或被新事实替代的旧备注不要继续返回。profile 记录相对稳定的性格底色、价值观、内在矛盾、语言习惯和行为边界；不要因单次行为轻易改写。其他字段是章节结束时的当前状态快照，数组必须给出完整当前值。 motivation 说明目标背后的当前原因；resources 只记录实际可调用资源；constraints 记录影响行动的限制；currentPressure 记录当前压力；decisionHistory 只保留少量重要决定。人物弧光可以变化、反复、倒退，也可以出现意料之外的选择；不要因为画像或预设弧线限制人物。状态提取只是记录正文已经发生的事，不得反过来要求正文解释人物变化。只有正文自然呈现了重要转折时才追加 arcMilestones；不要为了填写选择、压力、代价字段而补写或拔高剧情。本次最终章节是项目续写文本，不是原著原文。凡首次由本次正文引入的事实一律标为 original；只有能由旧状态中已有的原著事实明确对应的条目才可沿用原有 canon/inferred 来源，不得仅因正文写得确定就标 confirmed。新事件必须标 origin=original；事件如明确回指原著资料，须填写 source。不要把项目原创写进原著正史。"
   ].join("\n\n");
   const parseUpdate = (raw: string) => {
     let value: unknown;
