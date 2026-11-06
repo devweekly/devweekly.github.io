@@ -12,3 +12,5 @@
 .character-tabs .ant-tabs-nav{padding:0 20px;margin-bottom:16px}
 .character-tabs .ant-tabs-content-holder{padding:0 20px 20px}
 .character-tabs .ant-descriptions-item-label{font-size:12px}
+.character-count-hint{display:block;font-size:12px;margin:8px 2px 0}
+.character-list-card .ant-alert{margin-top:8px;margin-bottom:0}

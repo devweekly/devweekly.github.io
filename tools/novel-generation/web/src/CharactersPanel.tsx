@@ -64,6 +64,8 @@ export interface CharactersPanelProps {
   selected: string;
   onSelect: (name: string) => void;
   detail: CharacterDetail | null;
+  /** 库中人物总数，不受搜索与 limit 影响。 */
+  total: number;
   loading: boolean;
   onRefresh: () => void;
 }
@@ -91,7 +93,7 @@ const SectionLabel = ({ children }: { children: React.ReactNode }): React.ReactN
 );
 
 export default function CharactersPanel({
-  characters, query, onQueryChange, selected, onSelect, detail, loading, onRefresh
+  characters, query, onQueryChange, selected, onSelect, detail, total, loading, onRefresh
 }: CharactersPanelProps) {
   const [aliasExpanded, setAliasExpanded] = useState(false);
   const aliases = detail?.character.aliases ?? [];
@@ -207,7 +209,7 @@ export default function CharactersPanel({
           title={
             <Space size={8}>
               <span>人物</span>
-              <Badge count={characters.length} showZero overflowCount={999} color="#405b78" />
+              <Badge count={total} showZero overflowCount={9999} color="#405b78" />
             </Space>
           }
           extra={
@@ -223,6 +225,14 @@ export default function CharactersPanel({
             value={query}
             onChange={event => onQueryChange(event.target.value)}
           />
+          <Text type="secondary" className="character-count-hint">
+            {query.trim()
+              ? `匹配 ${characters.length} 人 / 共 ${total} 人`
+              : `共 ${total} 人，按提及次数排序`}
+          </Text>
+          {!query.trim() && characters.length < total
+            ? <Alert type="warning" showIcon message={`当前仅加载 ${characters.length} 人，库中共有 ${total} 人`} />
+            : null}
           <div className="character-scroll">
             <List
               dataSource={characters}

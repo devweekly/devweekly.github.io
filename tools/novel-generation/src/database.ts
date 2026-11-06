@@ -364,6 +364,13 @@ export function listNovelCharacterProfiles(worldDir:string,worldId:string):Map<s
  }finally{db.close();}
 }
 
+/** 人物总数，与搜索/截断无关；列表 Badge 不应把当前加载条数当成总数。 */
+export function countNovelCharacters(worldDir:string,worldId:string):number{
+ const db=openKnowledgeDatabase(worldDir,worldId);
+ try{return Number((db.prepare("SELECT COUNT(*) AS count FROM novel_characters").get() as {count:number}).count);}
+ finally{db.close();}
+}
+
 export function listNovelCharacters(worldDir:string,worldId:string,options:{query?:string;limit?:number}={}):NovelCharacterSummary[]{
  const db=openKnowledgeDatabase(worldDir,worldId);try{
   const limit=options.limit??50;const like="%"+((options.query??"").trim())+"%";
