@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { databaseStatus, readStoryAnalysis, saveStoryAnalysis, syncLibraryChunks } from "../src/database.js";
 import { groupAnalysisUnits } from "../src/novel-kb.js";
-import { assertMergeOptions, buildAnalysisPrompt, cleanCharacterAliases, parseModelJson, plotThreadMergeKey } from "../src/story-analysis.js";
+import { assertMergeOptions, buildAnalysisPrompt, cleanCharacterAliases, parseModelJson, plotThreadId, plotThreadMergeKey } from "../src/story-analysis.js";
 import { loadLibraryChunks } from "../src/library.js";
 
 test("story analysis batches preserve every chapter in order without splitting one", () => {
@@ -125,6 +125,7 @@ test("批次分析能容忍 JSON 后的说明文字", () => {
 test("plot thread merge key deduplicates exact source spans but preserves same-title distinct spans", async () => {
   assert.equal(plotThreadMergeKey("金家灭门与冥扎下落", ["V01-C001", "V01-C002"]), plotThreadMergeKey("金家灭门与冥扎下落", ["V01-C002", "V01-C001"]));
   assert.notEqual(plotThreadMergeKey("金家灭门与冥扎下落", ["V01-C001"]), plotThreadMergeKey("金家灭门与冥扎下落", ["V02-C001"]));
+  assert.notEqual(plotThreadId("金家灭门与冥扎下落", ["V01-C001"]), plotThreadId("金家灭门与冥扎下落", ["V02-C001"]));
 });
 
 
