@@ -2,7 +2,7 @@ import express, { type Request, type Response, type NextFunction } from "express
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { loadStoryPlan, saveStoryPlan, generateStoryPlan, validateStoryPlan } from "./story-plan.js";
+import { loadStoryPlan, saveStoryPlan, generateStoryPlan } from "./story-plan.js";
 import { loadStoryState } from "./story-state.js";
 import { readStoryAnalysis } from "./database.js";
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
