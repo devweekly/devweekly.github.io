@@ -249,18 +249,21 @@ function mergeCharacters(target: Item[], incoming: Item[]): Item[] {
   return target;
 }
 
-export function plotThreadMergeKey(title: string, chapterKeys: string[]): string {
-  const normalizedTitle = title.replace(/\s/g, "").toLocaleLowerCase();
+export function plotThreadMergeKey(title: string, chapterKeys: string[], keyTurns: string[] = [], summary = ""): string {
+  const normalize = (value: string): string => value.normalize("NFKC").replace(/\s/g, "").toLocaleLowerCase();
+  const normalizedTitle = normalize(title);
   const sources = [...new Set(chapterKeys.map(key => key.trim()).filter(Boolean))].sort();
-  return normalizedTitle + "|" + sources.join(",");
+  const turns = [...new Set(keyTurns.map(normalize).filter(Boolean))].sort();
+  const contentIdentity = turns.length ? turns.join(";") : normalize(summary);
+  return normalizedTitle + "|" + sources.join(",") + "|" + contentIdentity;
 }
 
-export function plotThreadId(title: string, chapterKeys: string[]): string {
-  return "th_" + createHash("sha1").update(plotThreadMergeKey(title, chapterKeys)).digest("hex").slice(0, 12);
+export function plotThreadId(title: string, chapterKeys: string[], keyTurns: string[] = [], summary = ""): string {
+  return "th_" + createHash("sha1").update(plotThreadMergeKey(title, chapterKeys, keyTurns, summary)).digest("hex").slice(0, 12);
 }
 
 function mergePlotThreads(target: Item[], incoming: Item[]): Item[] {
-  const map = new Map(target.map(item => [plotThreadMergeKey(String(item.title ?? ""), refsOf(item).map(ref => String(ref.chapterId ?? ref.chunkId))), item] as const));
+  const map = new Map(target.map(item => [plotThreadMergeKey(String(item.title ?? ""), refsOf(item).map(ref => String(ref.chapterId ?? ref.chunkId)), asStrings(item.keyTurns), String(item.summary ?? "")), item] as const));
   for (const item of incoming) {
     const key = plotThreadMergeKey(String(item.title ?? ""), refsOf(item).map(ref => String(ref.chapterId ?? ref.chunkId)));
     const previous = map.get(key);
@@ -529,7 +532,7 @@ function mergeAndPersist(
     const refs = refsOf(item);
     const ordinals = refs.map(ref => ordinalByChapter.get(String(ref.chapterId ?? ""))).filter((value): value is number => typeof value === "number");
     return {
-      threadId: plotThreadId(String(item.title), refs.map(ref => String(ref.chapterId ?? ref.chunkId))),
+      threadId: plotThreadId(String(item.title), refs.map(ref => String(ref.chapterId ?? ref.chunkId)), asStrings(item.keyTurns), String(item.summary ?? "")),
       title: String(item.title),
       status: normalizeThreadStatus(String(item.status ?? "")),
       summary: normalizeBatchWording(String(item.summary ?? "")),
