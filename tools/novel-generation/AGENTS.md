@@ -140,3 +140,14 @@ CLI 命令（均经 `npm run dev --`）：
 - 故事核心、主线/支线、人物互动、伏笔与回收可能、MacGuffin、章级事件和人物发展可能统一进入 SQLite 故事图谱。节点与边保留原文来源引用；只允许精确人物名或唯一无歧义别名建立人物连接。
 - 不增加专职人物/主线/伏笔 Agent。全文分析由现有 analyze-story 完成；普通写作、长章节写作和终审复用同一份按当前任务筛选的图谱上下文。终审只核对明确硬冲突，不检查创意是否服从分析结果。
 - 故事图谱的字段、SQLite 持久化、写作/终审职责和缓存边界以 `ADR/0002-story-graph-and-review-context.md` 为准。
+
+
+## Web Workbench
+
+- Web entry: `src/server-main.ts`; Express API assembly: `src/server.ts`; local UI: `web/`; Vite config: `vite.config.ts`.
+- Start from `tools/novel-generation` with `npm run dev:web`; default bind is loopback `127.0.0.1:4173`. Do not expose the local Agent service to LAN by default.
+- Keep CLI and Web on shared domain services. The Web API calls `generateStoryPlan`, `loadStoryPlan`, `saveStoryPlan`, `loadStoryState`, and the existing story-analysis context builder; do not fork prompt or Story Plan schema logic.
+- A generated Story Plan is a draft Candidate. Only an explicit approval may activate it. Approval checks the candidate's `baseUpdatedAt` against the current active plan and returns HTTP 409 on stale candidates. Previous active plans are archived under `worlds/<world>/story-plan-history/`.
+- Workbench run/candidate/decision records live under ignored `.output/<world>/workbench/`; they are operational records, not canon. Formal Story Plan remains `worlds/<world>/story-plan.json`.
+- The first Web slice covers dashboard + Story Plan approval. It does not yet gate the existing chapter workflow or defer Story State commits; do not describe chapter generation as human-approved until the chapter pipeline is explicitly changed to stage its state proposal.
+- `npm run build` runs TypeScript compilation and Vite production build. `npm run dev` remains the existing CLI entry; `npm run dev:web` starts the Web Workbench.
