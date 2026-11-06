@@ -22,7 +22,7 @@ import {
   WRITE_LONG_RETRIEVAL_LIMIT
 } from "./constants.js";
 import { buildWorldSituationContext } from "./world-situation.js";
-import { LIVING_VOICE_RULES, antiAiDiagnosticPrompt, antiAiEditPrompt, readerExperiencePrompt } from "./literary-edit.js";
+import { LIVING_VOICE_RULES, antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, readerExperiencePrompt } from "./literary-edit.js";
 
 export interface LongChapterInput {
   worldId: string;
@@ -376,6 +376,23 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   } catch (error) {
     await saveStage(input.outputDir, "06b-anti-ai-error.txt", String(error));
     console.error("[write-long] Anti-AI 编辑阶段失败，保留逐场修订稿继续终审。");
+  }
+  if (antiAiChapter !== buildChapter()) {
+    try {
+      const originalChapter = buildChapter();
+      const verificationRaw = await cachedCall("anti-ai-verification", "06c-anti-ai-verification.json", "antiAi", [
+        antiAiVerificationPrompt({ original: originalChapter, edited: antiAiChapter })
+      ], output => { parseAntiAiVerification(output); });
+      const verification = parseAntiAiVerification(verificationRaw);
+      await saveStage(input.outputDir, "06c-anti-ai-verification.json", JSON.stringify(verification, null, 2));
+      if (verification.decision === "restore") antiAiChapter = originalChapter;
+    } catch (error) {
+      await saveStage(input.outputDir, "06c-anti-ai-verification-error.txt", String(error));
+      antiAiChapter = buildChapter();
+      console.error("[write-long] Anti-AI 复核未能确认编辑收益，恢复原稿。");
+    }
+  } else {
+    await saveStage(input.outputDir, "06c-anti-ai-verification.json", JSON.stringify({ decision: "keep", reason: "编辑阶段未改变正文。" }, null, 2));
   }
   await saveStage(input.outputDir, "06b-anti-ai-edited.md", antiAiChapter);
 
