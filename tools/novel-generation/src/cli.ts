@@ -56,6 +56,7 @@ import { writeLongChapter, chineseChars } from "./long-chapter.js";
 import { loadChapters, runRegression } from "./regression.js";
 import { formatStoryPlan, generateStoryPlan, loadStoryPlan, saveStoryPlan } from "./story-plan.js";
 import { buildStyleDistillationPrompt } from "./style-distillation.js";
+import { buildStyleRegressionPrompt } from "./style-regression.js";
 import { runRoleplaySandbox } from "./roleplay-sandbox.js";
 
 /** `--model --evidence-review` 这种漏值不该把下一个开关当成取值。 */
@@ -92,6 +93,7 @@ function usage(): never {
     "  npm run dev -- search --world conghuoniao --query \"人物或事件关键词\" [--limit 8]",
     "  npm run dev -- analyze --world conghuoniao [--limit 20] [--model model]",
     "  npm run dev -- distill-style --world conghuoniao --input ./private/style-sample-1.txt ./private/style-sample-2.md [--out .output/<world>/style-profile-candidate.md] [--activate] [--model model]",
+    "  npm run dev -- style-regress --world conghuoniao --reference ./benchmarks/ref-1.md [more files] --candidate .output/chapter.md [more files] [--scene-type dialogue] [--out .output/<world>/style-regression/report.md]",
     "  npm run dev -- roleplay-sandbox --world conghuoniao --brief \"场景设定\" --characters 人物甲,人物乙 [--model model] [--out file]",
     "  npm run dev -- analyze-story --world conghuoniao [--model model] [--timeout-ms 180000] [--max-chars 14000] [--shard 0/4] [--merge-only] [--delta]",
     "  npm run dev -- plan-story --world conghuoniao [--model model] [--draft] [--activate-candidate <file>]  # 默认生成后自动激活；--draft 仅保存实验草稿",
@@ -143,7 +145,7 @@ function resolveWorldOutputPath(requested: string | undefined, worldId: string, 
 
 async function main(): Promise<void> {
   const command = process.argv[2];
-  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-story" && command !== "index-story" && command !== "story-kb" && command !== "analyze-arcs" && command !== "analyze-profiles" && command !== "analyze-world" && command !== "models" && command !== "check-runtime" && command !== "db-status" && command !== "plan-story" && command !== "distill-style" && command !== "roleplay-sandbox") usage();
+  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-story" && command !== "index-story" && command !== "story-kb" && command !== "analyze-arcs" && command !== "analyze-profiles" && command !== "analyze-world" && command !== "models" && command !== "check-runtime" && command !== "db-status" && command !== "plan-story" && command !== "distill-style" && command !== "style-regress" && command !== "roleplay-sandbox") usage();
 
   const worldId = safeWorldId(arg("--world") ?? "conghuoniao");
   const libraryDir = resolve("worlds", worldId, "library");
@@ -415,6 +417,42 @@ async function main(): Promise<void> {
     }
     console.log("评审报告：" + result.reviewPath);
     console.log("归档：" + result.archiveDir);
+    return;
+  }
+
+  if (command === "style-regress") {
+    const referenceFiles = valuesAfter("--reference");
+    const candidateFiles = valuesAfter("--candidate");
+    if (!referenceFiles.length || !candidateFiles.length) usage();
+    const styleProfile = await readOptional(resolve("worlds", worldId, "style-profile.md"));
+    if (!styleProfile?.trim()) throw new Error("No active worlds/" + worldId + "/style-profile.md; distill and activate a style profile first.");
+    const readSamples = async (files: string[]) => Promise.all(files.map(async file => {
+      const path = resolve(file);
+      if (!/\.(txt|md)$/i.test(path)) throw new Error("Style regression samples must be .txt or .md files: " + file);
+      const text = await readFile(path, "utf8");
+      if (!text.trim()) throw new Error("Style regression sample is empty: " + file);
+      return { label: file, text };
+    }));
+    const [references, candidates] = await Promise.all([readSamples(referenceFiles), readSamples(candidateFiles)]);
+    const totalChars = [...references, ...candidates].reduce((sum, sample) => sum + sample.text.length, 0);
+    const maxChars = Number(arg("--max-sample-chars") ?? 120000);
+    if (!Number.isInteger(maxChars) || maxChars < 2000 || maxChars > 160000) {
+      throw new Error("--max-sample-chars must be between 2000 and 160000.");
+    }
+    if (totalChars > maxChars) throw new Error("Style regression samples contain " + totalChars + " characters; maximum is " + maxChars + ".");
+    const report = await runAgentText(
+      buildStyleRegressionPrompt({ styleProfile, references, candidates, sceneType: arg("--scene-type") }),
+      arg("--model"),
+      undefined,
+      readTaskProfiles().styleDistill
+    );
+    if (!report.trim()) throw new Error("Style regression returned an empty report.");
+    const runId = new Date().toISOString().replace(/[:.]/g, "-");
+    const out = resolveWorldOutputPath(arg("--out"), worldId,
+      join(".output", worldId, "style-regression", runId + ".md"));
+    await mkdir(dirname(out), { recursive: true });
+    await writeFile(out, report.trim() + "\n", "utf8");
+    console.log(JSON.stringify({ out, references: references.length, candidates: candidates.length, sampleChars: totalChars, gate: false }, null, 2));
     return;
   }
 
