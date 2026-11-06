@@ -61,12 +61,9 @@ const RelationSchema = z.object({
 }).passthrough();
 
 const PlotThreadSchema = z.object({
-  chapterKeys: stringList,
-  title: z.string().default(""),
-  summary: z.string().default(""),
-  status: z.string().default("未能判断"),
-  keyTurns: stringList,
-  unresolvedQuestions: stringList
+  chapterKeys: stringList, title: z.string().default(""), summary: z.string().default(""),
+  status: z.string().default("未能判断"), narrativeRole: z.enum(["main","subplot","unclear"]).default("unclear"),
+  relatedCharacters: stringList, keyTurns: stringList, unresolvedQuestions: stringList
 }).passthrough();
 
 const ForeshadowingSchema = z.object({
@@ -75,14 +72,20 @@ const ForeshadowingSchema = z.object({
   firstAppearance: z.string().default(""),
   possibleMeaning: z.string().default(""),
   possiblePayoffs: stringList,
+  relatedThreadTitles: stringList,
   confidence: z.string().default("不确定"),
   status: z.string().default("未判断")
 }).passthrough();
 
-const BeatSchema = z.object({
-  chapterKey: z.string().default(""),
-  summary: z.string().default(""),
-  actors: stringList
+const BeatSchema = z.object({ chapterKey: z.string().default(""), summary: z.string().default(""), actors: stringList }).passthrough();
+const StoryCoreObservationSchema = z.object({
+  chapterKeys: stringList, centralConflict: z.string().default(""), centralQuestion: z.string().default(""),
+  stakes: stringList, themes: stringList, narrativePromise: z.string().default(""), mainPlotThreadTitles: stringList
+}).passthrough();
+const MacGuffinSchema = z.object({
+  chapterKeys: stringList, name: z.string().default(""), kind: z.string().default(""), significance: z.string().default(""),
+  whoWantsIt: stringList, whyTheyWantIt: stringList, shifts: stringList, relatedCharacters: stringList,
+  relatedThreadTitles: stringList, confidence: z.string().default("不确定")
 }).passthrough();
 
 const DevelopmentSchema = z.object({
@@ -99,8 +102,8 @@ const BatchSchema = z.object({
   relations: listOf(RelationSchema),
   plotThreads: listOf(PlotThreadSchema),
   foreshadowings: listOf(ForeshadowingSchema),
-  beats: listOf(BeatSchema),
-  developmentPossibilities: listOf(DevelopmentSchema)
+  beats: listOf(BeatSchema), developmentPossibilities: listOf(DevelopmentSchema),
+  storyCoreObservations: listOf(StoryCoreObservationSchema), macguffins: listOf(MacGuffinSchema)
 }).passthrough();
 
 type BatchAnalysis = z.infer<typeof BatchSchema>;
@@ -343,9 +346,12 @@ export function buildAnalysisPrompt(batch: AnalysisBatch): string {
     "伏笔：只写原文里能指认的线索（某件物品、某句话、某个异象），并说明它可能指向什么。不要把每个细节都解释成伏笔；不确定就标「不确定」。status 用「埋设」或「回收」。",
     "事件：按章记录本批发生的实质情节，每章 1-3 条。写清谁做了什么、结果如何。不要写「本章推进了剧情」这类空话。chapterKey 必须使用原文标注里的值。",
     "后续发展：可选，给出 0-3 条真正有戏的方向，可以大胆、反常、残酷或浪漫，但要说明张力在哪。这是可能性，不是原文事实。",
+    "故事核心：记录本批原文支持的核心冲突、核心问题、 stakes、主题、叙事承诺和主要主线标题；不要把主题阐释冒充作者意图。",
+    "MacGuffin：只识别真正驱动多方行动的目标、物件、信息或人物，不要把普通道具都升级为 MacGuffin；说明追逐者、动机、变化及关联人物和情节线。",
+    "人物互动：留意联手、对抗、利用、误解、背叛、救赎和关系变化，不只记录静态关系。",
     "不要为了结构完整而虚构情节、关系或伏笔；不要强行解释留白。",
-    "只返回 JSON 对象，字段：characters、relations、plotThreads、foreshadowings、beats、developmentPossibilities，均为数组。",
-    "characters[{chapterKeys,name,aliases,aliasDetails:[{value,type,evidence}],shortBio,storyFunction,personality,contradictions,observedChanges,desires,relationships,voice,arcPossibilities}]；relations[{chapterKeys,from,to,label,evidence}]；plotThreads[{chapterKeys,title,summary,status,keyTurns,unresolvedQuestions}]；foreshadowings[{chapterKeys,clue,firstAppearance,possibleMeaning,possiblePayoffs,confidence,status}]；beats[{chapterKey,summary,actors}]；developmentPossibilities[{chapterKeys,focus,direction,tension,whyPlausible,surpriseOptions}]。",
+    "只返回 JSON 对象，字段：characters、relations、plotThreads、foreshadowings、beats、developmentPossibilities、storyCoreObservations、macguffins，均为数组。",
+    "characters[{chapterKeys,name,aliases,aliasDetails:[{value,type,evidence}],shortBio,storyFunction,personality,contradictions,observedChanges,desires,relationships,voice,arcPossibilities}]；relations[{chapterKeys,from,to,label,evidence}]；plotThreads[{chapterKeys,title,summary,status,narrativeRole,relatedCharacters,keyTurns,unresolvedQuestions}]；foreshadowings[{chapterKeys,clue,firstAppearance,possibleMeaning,possiblePayoffs,relatedThreadTitles,confidence,status}]；beats[{chapterKey,summary,actors}]；developmentPossibilities[{chapterKeys,focus,direction,tension,whyPlausible,surpriseOptions}]；storyCoreObservations[{chapterKeys,centralConflict,centralQuestion,stakes,themes,narrativePromise,mainPlotThreadTitles}]；macguffins[{chapterKeys,name,kind,significance,whoWantsIt,whyTheyWantIt,shifts,relatedCharacters,relatedThreadTitles,confidence}]。",
     "每条人物、关系、情节线、伏笔和发展可能都必须填写 chapterKeys 数组，只列出确实能从中找到该条内容的章节 key；不要把整批章节都填进去。事件使用单个 chapterKey。来源由程序按这些编号精确关联，不要自行编造编号。",
     "章节原文：",
     material
@@ -355,7 +361,7 @@ export function buildAnalysisPrompt(batch: AnalysisBatch): string {
 function cacheKeyFor(model: string, units: AnalysisUnit[], maxChars: number): string {
   const sourceHash = createHash("sha256").update(units.map(unit => unit.chapterId + ":" + unit.text).join("\n")).digest("hex");
   const batchLayout = groupAnalysisUnits(units, maxChars).map(chapters => chapters.map(chapter => chapter.chapterId).join(",")).join("|");
-  return createHash("sha256").update("story-analysis-v4\nprompt=alias-provenance-thread-dedup-v2\nmodel=" + model + "\nmaxChars=" + maxChars + "\nbatches=" + batchLayout + "\nsource=" + sourceHash).digest("hex");
+  return createHash("sha256").update("story-analysis-v5\nprompt=story-graph-core-macguffin-v1\nmodel=" + model + "\nmaxChars=" + maxChars + "\nbatches=" + batchLayout + "\nsource=" + sourceHash).digest("hex");
 }
 
 function legacyCacheKeyFor(model: string, units: AnalysisUnit[], maxChars: number): string {
@@ -495,6 +501,57 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
   return { snapshot, batches: totalBatches, processed, cached, failed: [], pending, skipped, malformedBeats: Number(snapshot.malformedBeats ?? 0) };
 }
 
+export function buildStoryGraph(input: {
+  storyCore: Record<string,unknown>; characters:Array<Record<string,unknown>>; relations:Array<Record<string,unknown>>;
+  plotThreads:Array<Record<string,unknown>>; foreshadowings:Array<Record<string,unknown>>; macguffins:Array<Record<string,unknown>>;
+  beats:Array<Record<string,unknown>>; developmentPossibilities:Array<Record<string,unknown>>;
+}): {nodes:Array<{id:string;type:string;label:string;data:Record<string,unknown>;sourceRefs:NovelSourceRef[]}>;edges:Array<{id:string;from:string;to:string;type:string;label:string;data:Record<string,unknown>;sourceRefs:NovelSourceRef[]}>} {
+  const nodes:Array<{id:string;type:string;label:string;data:Record<string,unknown>;sourceRefs:NovelSourceRef[]}>=[];
+  const edges:Array<{id:string;from:string;to:string;type:string;label:string;data:Record<string,unknown>;sourceRefs:NovelSourceRef[]}>=[];
+  const hash=(s:string)=>createHash("sha1").update(s).digest("hex").slice(0,12);
+  const norm=(s:string)=>normalizeCharacterName(s).replace(/\s/g,"").toLowerCase();
+  const node=(type:string,label:string,data:Record<string,unknown>,id?:string)=>{
+    const key=id??type+":"+hash(label);
+    if(!nodes.some(n=>n.id===key))nodes.push({id:key,type,label,data,sourceRefs:refsOf(data)});
+    return key;
+  };
+  const edge=(from:string|undefined,to:string|undefined,type:string,label:string,data:Record<string,unknown>)=>{
+    if(!from||!to||from===to)return;
+    const id="edge:"+hash([from,to,type,label].join("|"));
+    if(!edges.some(e=>e.id===id))edges.push({id,from,to,type,label,data,sourceRefs:refsOf(data)});
+  };
+  const chars=new Map<string,string>(),threads=new Map<string,string>();
+  const core=node("story_core","故事核心",input.storyCore,"story_core:main");
+  for(const x of input.characters){const n=String(x.name??"");if(n)chars.set(norm(n),node("character",n,x));}
+  for(const x of input.plotThreads){const n=String(x.title??"");if(n)threads.set(norm(n),node("plot_thread",n,x));}
+  for(const x of input.foreshadowings)node("foreshadowing",String(x.clue??"伏笔"),x);
+  for(const x of input.relations)edge(chars.get(norm(String(x.fromName??""))),chars.get(norm(String(x.toName??""))),"relationship",String(x.label??"关系"),x);
+  for(const x of input.plotThreads){
+    const id=threads.get(norm(String(x.title??"")));
+    for(const name of asStrings(x.relatedCharacters))edge(chars.get(norm(name)),id,"involved_in","参与情节线",x);
+    if(x.narrativeRole==="main")edge(core,id,"main_plot","核心主线",x);
+  }
+  for(const x of input.foreshadowings){
+    const n=nodes.find(v=>v.type==="foreshadowing"&&v.label===String(x.clue??""));
+    for(const title of asStrings(x.relatedThreadTitles))edge(n?.id,threads.get(norm(title)),"foreshadows","关联伏笔/情节线",x);
+  }
+  for(const x of input.macguffins){
+    const id=node("macguffin",String(x.name??"MacGuffin"),x);
+    for(const name of unique([...asStrings(x.whoWantsIt),...asStrings(x.relatedCharacters)]))edge(chars.get(norm(name)),id,"pursues","追逐或争夺",x);
+    for(const title of asStrings(x.relatedThreadTitles))edge(id,threads.get(norm(title)),"drives","推动情节线",x);
+  }
+  for(const x of input.beats){
+    const id=node("beat",String(x.summary??"事件"),x,"beat:"+String(x.beatId??hash(JSON.stringify(x))));
+    for(const name of asStrings(x.actors))edge(chars.get(norm(name)),id,"participates_in","参与事件",x);
+  }
+  for(const x of input.developmentPossibilities){
+    const focus=String(x.focus??""),id=node("development",focus+"："+String(x.direction??""),x);
+    edge(chars.get(norm(focus)),id,"possible_arc","人物发展可能",x);
+  }
+  for(const title of asStrings(input.storyCore.mainPlotThreadTitles))edge(core,threads.get(norm(title)),"main_plot","故事核心主线",input.storyCore);
+  return {nodes,edges};
+}
+
 function mergeAndPersist(
   worldId: string,
   worldDir: string,
@@ -508,6 +565,8 @@ function mergeAndPersist(
   let developmentPossibilities: Item[] = [];
   let beats: Item[] = [];
   let relations: Item[] = [];
+  let storyCoreObservations: Item[] = [];
+  let macguffins: Item[] = [];
 
   for (const { analysis, chapters } of results) {
     const refs = refsFor(chapters);
@@ -533,6 +592,12 @@ function mergeAndPersist(
       ["tension", "whyPlausible"],
       item => String(item.focus).replace(/\s/g, "").toLowerCase() + "|" + String(item.direction).replace(/\s/g, "").toLowerCase()
     );
+    storyCoreObservations = mergeSimple(storyCoreObservations, attach(analysis.storyCoreObservations as Item[]), "centralConflict",
+      ["stakes","themes","mainPlotThreadTitles"], ["centralQuestion","narrativePromise"],
+      item => [item.centralConflict,item.centralQuestion].map(value=>String(value??"").replace(/\s/g,"").toLowerCase()).join("|"));
+    macguffins = mergeSimple(macguffins, attach(analysis.macguffins as Item[]), "name",
+      ["whoWantsIt","whyTheyWantIt","shifts","relatedCharacters","relatedThreadTitles"], ["significance","kind","confidence"],
+      item => String(item.name??"").replace(/\s/g,"").toLowerCase()+"|"+String(item.kind??"").replace(/\s/g,"").toLowerCase());
     beats = mergeBeats(beats, analysis.beats as Item[]);
   }
 
@@ -541,6 +606,17 @@ function mergeAndPersist(
   plotThreads = plotThreads.filter(item => String(item.title ?? "").trim());
   foreshadowings = foreshadowings.filter(item => String(item.clue ?? "").trim());
   developmentPossibilities = developmentPossibilities.filter(item => String(item.focus ?? "").trim() && String(item.direction ?? "").trim());
+  storyCoreObservations = storyCoreObservations.filter(item => String(item.centralConflict??"").trim() || String(item.centralQuestion??"").trim());
+  macguffins = macguffins.filter(item => String(item.name??"").trim());
+  const storyCore = {
+    centralConflicts: unique(storyCoreObservations.map(item=>normalizeBatchWording(String(item.centralConflict??"")))),
+    centralQuestions: unique(storyCoreObservations.map(item=>normalizeBatchWording(String(item.centralQuestion??"")))),
+    stakes: unique(storyCoreObservations.flatMap(item=>asStrings(item.stakes))),
+    themes: unique(storyCoreObservations.flatMap(item=>asStrings(item.themes))),
+    narrativePromises: unique(storyCoreObservations.map(item=>normalizeBatchWording(String(item.narrativePromise??"")))),
+    mainPlotThreadTitles: unique(storyCoreObservations.flatMap(item=>asStrings(item.mainPlotThreadTitles))),
+    sourceRefs: mergeRefs([],storyCoreObservations.flatMap(refsOf),48)
+  };
   let malformedBeats = 0;
   const beatRows: NovelBeatRow[] = [];
   const seenBeat = new Set<string>();
@@ -641,6 +717,7 @@ function mergeAndPersist(
     });
   }
 
+  const storyGraph=buildStoryGraph({storyCore,characters:characterRows,relations:relationRows,plotThreads:threadRows,foreshadowings:foreshadowingRows,macguffins,beats:beatRows,developmentPossibilities});
   syncNovelCharacters(worldDir, worldId, characterRows, relationRows);
   syncNovelThreads(worldDir, worldId, threadRows);
   syncNovelForeshadowings(worldDir, worldId, foreshadowingRows);
@@ -651,7 +728,7 @@ function mergeAndPersist(
     worldId,
     sourceHash,
     analyzedAt: new Date().toISOString(),
-    analysisVersion: 4,
+    analysisVersion: 5,
     complete: true,
     batches: batchCount,
     chapters: units.length,
@@ -659,6 +736,7 @@ function mergeAndPersist(
     plotThreads: plotThreads as Array<Record<string, unknown>>,
     foreshadowings: foreshadowings as Array<Record<string, unknown>>,
     developmentPossibilities: developmentPossibilities as Array<Record<string, unknown>>,
+    storyCore, storyCoreObservations, macguffins, storyGraph,
     relations: relations as Array<Record<string, unknown>>,
     beats: beatRows as unknown as Array<Record<string, unknown>>,
     malformedBeats
