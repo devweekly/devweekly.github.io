@@ -25,7 +25,8 @@ const StoryStateSchema = z.object({
   })),
   events: z.array(z.object({
     id: z.string().min(1), summary: z.string(), position: z.string(),
-    participants: z.array(z.string()), consequences: z.array(z.string())
+    participants: z.array(z.string()), consequences: z.array(z.string()),
+    origin: z.enum(["canon", "inferred", "original"]).optional(), source: z.string().optional()
   })),
   plotThreads: z.array(z.object({
     id: z.string().min(1), title: z.string(), status: z.enum(["open", "active", "resolved", "abandoned"]),
@@ -98,7 +99,7 @@ export interface StoryState {
     arcMilestones?: Array<{ id: string; chapter: string; change: string; choice?: string; pressure?: string; cost?: string; evidence: string }>;
     stateUpdatedAt?: string;
   }>;
-  events: Array<{ id: string; summary: string; position: string; participants: string[]; consequences: string[] }>;
+  events: Array<{ id: string; summary: string; position: string; participants: string[]; consequences: string[]; origin?: "canon" | "inferred" | "original"; source?: string }>;
   plotThreads: Array<{ id: string; title: string; status: "open" | "active" | "resolved" | "abandoned"; lastUpdated: string; notes: string }>;
   continuityNotes: string[];
 }
