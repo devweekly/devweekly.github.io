@@ -196,3 +196,14 @@ CLI 命令（均经 `npm run dev --`）：
 - Reader 体验评估是独立观察产物，不进入 blocker/major 门禁，不触发自动修复，不更新 Story State。
 - 角色推演沙盘是作者主动调用的工具；所有推演均为候选创作素材，不自动成为正史。
 - 详见 `ARCHITECTURE.md` 第 10 节与 `ADR/0004-living-voice-and-anti-ai-editing.md`。
+
+
+## Literary workflow implementation invariants
+
+- 普通章节与长章节的 Writer、对白编辑、叙事声音编辑和场景扩写重试必须注入同一份 `LIVING_VOICE_RULES`；不能只把 Living Voice 留在末端 Anti-AI 编辑器。
+- Anti-AI 流程顺序固定为诊断 → 克制编辑 → 保守复核 → 最终硬伤审查。诊断不得判断 AI 生成概率；复核只允许 keep/restore，复核失败必须恢复编辑前正文，不得增加人工确认。
+- Anti-AI 诊断报告、编辑稿和复核结果分别保存在 `06a`、`06b`、`06c` 阶段文件中，全部进入阶段缓存指纹。
+- Reader 只能盲读最终正文，不得注入章节蓝图、人物档案、世界设定或创作任务；它只输出观察报告，不进入门禁、不更新 Story State。
+- `distill-style` 默认生成候选文件；只有显式 `--activate` 才替换正式 `style-profile.md`，并先归档旧版。候选输出和角色推演输出只能位于 `.output/<world>/`，不能接受指向正史文件的任意 `--out`。
+- Roleplay Sandbox 必须注入指定人物的动态状态、可用的长期人物观察和任务相关故事图谱；推演记录只属于候选素材，不写入 Story State。
+- 当前 Style Distillation 不等于 Style Regression：自动代表性样本回归、风格漂移检测和样本版本工作台仍未实现，不得在文档或交付说明中声称已完成。
