@@ -20,12 +20,21 @@ test("writing context selects only relevant analysis and labels it as optional",
   assert.doesNotMatch(context, /顾青/);
 });
 
-test("legacy snapshots without the current analysis version are not injected", () => {
+test("snapshots with an explicitly older analysis version are not injected", () => {
   assert.equal(buildStoryAnalysisContext({
     worldId: "test", sourceHash: "a".repeat(64), analyzedAt: "2026-11-05T00:00:00.000Z",
-    analysisVersion: 5, complete: true, batches: 1, characters: [{ name: "林岚" }],
+    analysisVersion: 3, complete: true, batches: 1, characters: [{ name: "林岚" }],
     plotThreads: [], foreshadowings: [], developmentPossibilities: []
   }, "林岚"), "");
+});
+
+test("snapshots written before the version field existed are still usable", () => {
+  const context = buildStoryAnalysisContext({
+    worldId: "test", sourceHash: "a".repeat(64), analyzedAt: "2026-11-05T00:00:00.000Z",
+    complete: true, batches: 1, characters: [{ name: "林岚" }],
+    plotThreads: [], foreshadowings: [], developmentPossibilities: []
+  }, "林岚");
+  assert.match(context, /林岚/);
 });
 
 test("writing context does not turn incomplete or irrelevant analysis into instructions", () => {

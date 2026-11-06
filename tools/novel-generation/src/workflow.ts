@@ -3,12 +3,15 @@ import { resolve } from "node:path";
 import { parseStoryStateUpdate, saveStoryState, type StoryState } from "./story-state.js";
 import { runAgentText, resolveModelAttempts, type GenerationMode } from "./generate.js";
 import { readTaskProfiles, type StageKey } from "./task-profiles.js";
-import { formatReview, parseChapterReview, reviewAndRepair, reviewPrompt } from "./chapter-review.js";
+import { formatReview, parseChapterReview, reviewAndRepair, reviewPrompt, withDeterministicIssues } from "./chapter-review.js";
+import { checkIronLaws, ironLawIssues, loadIronLaws } from "./iron-laws.js";
 import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
 import { parseJsonObject } from "./model-json.js";
 
 export interface WriteWorkflowInput {
   worldId: string;
+  /** 世界资料目录，默认 worlds/<worldId>。 */
+  worldDir?: string;
   mode: GenerationMode;
   brief: string;
   worldBible: string;
@@ -18,6 +21,7 @@ export interface WriteWorkflowInput {
   contextText?: string;
   retrievedContext?: string;
   storyAnalysisContext?: string;
+  writingBrief?: string;
   model?: string;
   strictModel?: boolean;
   acceptReview?: boolean;
@@ -124,6 +128,7 @@ export const RHYTHM_RULE = [
 export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   const state = await loadRunStoryState(input.statePath, input.worldId, input.outputDir, "write");
   const profiles = readTaskProfiles();
+  const laws = loadIronLaws(input.worldDir ?? resolve("worlds", input.worldId));
   const call = (stage: StageKey, parts: string[]): Promise<string> =>
     runAgentText(parts.join("\n\n"), input.model, undefined, profiles[stage], !input.strictModel);
   const cachedCall = (key: string, outputFile: string, stage: StageKey, parts: string[], validate?: (output: string) => void): Promise<string> => {
@@ -144,6 +149,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     "事实来源说明：canonFacts.confidence=confirmed 表示原著已确认，inferred 表示基于原文的推断，original 表示项目原创。项目原创事实可在续写中承接，但不得伪装成原著事实。",
     input.contextText ? "用户补充的前文摘要：\n" + input.contextText : "",
     input.retrievedContext ? "本地资料库证据（用于核实事实，不得整段复制）：\n" + input.retrievedContext : "",
+    input.writingBrief ? "全书知识库（已经写成的事实与未收线，优先于分析参考）：\n" + input.writingBrief : "",
     input.storyAnalysisContext ? "既有小说分析参考（仅供启发，不是正史或写作清单）：\n" + input.storyAnalysisContext : "",
     input.sourceText ? "用户提供且有权使用的续写材料：\n" + input.sourceText : "",
     input.styleProfile ? "本项目叙事风格参考（仅使用抽象写作特征，不模仿特定作者的独特表达；参考不能凌驾于当前人物、场景需要和文学表达）：\n" + input.styleProfile : "",
@@ -208,7 +214,12 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
       const round = reviewHistory.length + 1;
       return cachedCall("quality-review-" + round + (correction ? "-retry" : ""), "07-review-round-" + round + (correction ? "-retry" : "") + "-raw.txt", "review", [
         reviewPrompt({ context: common, blueprint: plan, chapter: candidate, correction })
-      ], output => parseChapterReview(output, candidate));
+      ], output => parseChapterReview(output, candidate)).then(raw => {
+        // 数值、位阶这类能机器判定的硬约束先于模型意见进入必改项。
+        const parsed = parseChapterReview(raw, candidate);
+        const lawIssues = ironLawIssues(checkIronLaws(candidate, laws));
+        return JSON.stringify(withDeterministicIssues(parsed, lawIssues));
+      });
     },
     repair: (candidate, issues, round) => cachedCall("quality-repair-" + round, "07-repaired-round-" + round + ".md", "final", [
       "角色：主编修复 Agent。根据结构化审查结果执行最小范围修复，只输出完整章节正文。",
@@ -266,6 +277,8 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
         "上一次状态提取未通过 JSON 或 schema 校验：" + String(firstError),
         "上一次输出：", stateText,
         "请重新根据旧状态和下面的最终章节全文提取，只输出符合既定 JSON schema 的对象；continuityNotes 必须返回完整的当前有效备注数组；不要添加 Markdown、解释或 schema 外字段。",
+        "只返回本章发生变化的部分：不要回传 schemaVersion、worldId、updatedAt 等整份状态字段。",
+        "arcMilestones.evidence 必须逐字出现在本章正文中；找不到原文的里程碑不要写入，宁可少记一条。",
         "旧状态：", JSON.stringify(state, null, 2),
         "最终章节全文：", chapter
       ], validateStateUpdate);

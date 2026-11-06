@@ -9,6 +9,7 @@ import { loadRunStoryState } from "./stage-cache.js";
 import { analyzeLibrary } from "./analysis.js";
 import { analyzeStoryCorpus } from "./story-analysis.js";
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
+import { buildWritingBrief } from "./writing-brief.js";
 import { indexNovelStructure } from "./novel-kb.js";
 import { buildVolumeArcs, listVolumeArcs } from "./story-arcs.js";
 import { prepareWorldAnalysis, collectWorldAnalysis, analysisStatus } from "./world-analysis.js";
@@ -389,6 +390,8 @@ async function main(): Promise<void> {
     ].join("\n");
     const retrieved = await searchLibrary(libraryDir, retrievalQuery, retrievalLimit);
     const storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), retrievalQuery);
+    const writingBrief = buildWritingBrief({ worldDir: resolve("worlds", worldId), worldId, query: retrievalQuery });
+    console.error("[write] 注入：事实包 " + writingBrief.length + " 字 / 分析参考 " + storyAnalysisContext.length + " 字 / 检索片段 " + retrieved.length + " 条");
     const annotationsByChunk = readAnnotationsByChunkIds(resolve("worlds", worldId), worldId, retrieved.map(hit => hit.id)) as Map<string, { entities?: unknown[]; events?: unknown[]; relations?: unknown[] }>;
     const retrievedContext = retrieved.map((hit, index) => {
       const annotation = annotationsByChunk.get(hit.id);
@@ -399,7 +402,7 @@ async function main(): Promise<void> {
 
     const applyState = !process.argv.includes("--no-apply-state");
     const chapter = await writeChapter({
-      worldId, mode, brief, worldBible, styleProfile, styleRhythm, sourceText, contextText, retrievedContext, storyAnalysisContext, model,
+      worldId, worldDir: resolve("worlds", worldId), mode, brief, worldBible, styleProfile, styleRhythm, sourceText, contextText, retrievedContext, storyAnalysisContext, writingBrief, model,
       strictModel: process.argv.includes("--strict-model"),
       acceptReview: process.argv.includes("--accept-review"), maxWords,
       outputDir, statePath, applyState
@@ -427,12 +430,14 @@ async function main(): Promise<void> {
     const longState = await loadRunStoryState(statePath, worldId, outputDir, "write-long");
     const storyAnalysisQuery = [brief, contextText ?? "", sourceText?.slice(-1500) ?? "", longState.currentPosition, ...longState.plotThreads.filter(thread => thread.status === "open" || thread.status === "active").map(thread => thread.title), ...longState.characters.slice(0, 12).map(character => character.name)].join("\n");
     const storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), storyAnalysisQuery);
+    const writingBrief = buildWritingBrief({ worldDir: resolve("worlds", worldId), worldId, query: storyAnalysisQuery });
+    console.error("[write-long] 注入：事实包 " + writingBrief.length + " 字 / 分析参考 " + storyAnalysisContext.length + " 字");
     const retrievalLimit = Number(arg("--retrieval-limit") ?? 4);
     if (!Number.isInteger(retrievalLimit) || retrievalLimit < 1 || retrievalLimit > 12) {
       throw new Error("--retrieval-limit must be an integer between 1 and 12.");
     }
     const chapter = await writeLongChapter({
-      worldId, mode, brief, worldBible, styleProfile, styleRhythm, sourceText, contextText, storyAnalysisContext, model,
+      worldId, worldDir: resolve("worlds", worldId), mode, brief, worldBible, styleProfile, styleRhythm, sourceText, contextText, storyAnalysisContext, writingBrief, model,
       strictModel: process.argv.includes("--strict-model"),
       acceptReview: process.argv.includes("--accept-review"),
       maxWords, scenes, timeoutMs, outputDir, statePath, libraryDir, retrievalLimit,

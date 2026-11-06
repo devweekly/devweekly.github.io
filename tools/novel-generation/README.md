@@ -268,6 +268,24 @@ npm run dev -- story-kb     --world conghuoniao --type export   # 导出不含�
 
 SQLite 文件及 WAL/SHM sidecar 已加入本地忽略规则。需要迁移或重建时先保留 JSON 快照，再删除数据库；下一次运行会从快照重新导入。
 
+## 写作前的注入顺序与硬约束
+
+写作分两层给模型看世界：**事实**和**启发**。事实来自 `novel_*` 表与 `story-state.json`，用来约束本章；启发来自 `story_analysis` 分析快照，只是素材。
+
+```text
+world-bible.md        世界索引（9KB）
+story-state.json      当前处境：位置、能力、知情、目标、关系
+writing-brief.ts      全书知识库：相关人物画像、未收情节线、未回收伏笔、最近三章既成事实（≤3k 字）
+story-analysis 快照   交叉批次分析：人物画像、情节线、伏笔、后续构想（≤6k 字，标注为可选素材）
+检索片段              BM25 命中的原文段落
+```
+
+前三项是事实，后两项是参考。`write` / `write-long` 启动时会打印各段注入字符数，长度异常可以直接看到。
+
+硬约束写在 `worlds/<world>/laws.json`，只登记能机器判定的部分（位阶天花板、数值上限、身份禁忌）。`src/iron-laws.ts` 在终审前扫描正文，命中项带场景号并入必改清单，和模型审查结果一起进入修复流程。规则写错会直接报错，不会静默跳过；文件不存在表示这个世界没有登记硬约束。
+
+万字流水线在终审失败时先改蓝图：把必改项映射到场景，只重写受影响场景的目标、信息差与代价，其余场景保持原蓝图，再生成这些场景的正文。蓝图修订格式不合规或改了场景数时退回原蓝图，不会拖垮整章。
+
 ## 打包审核材料
 
 把数据库样本、分析请求/响应、生成的章节与运行日志打成一个压缩包，交给其他模型或同事审阅：
@@ -307,6 +325,8 @@ src/
   story-analysis-context.ts
   story-arcs.ts
   chapter-review.ts
+  writing-brief.ts       # 从 novel_* 表生成写作事实包（相关人物/未收线/未回收伏笔/最近既成事实）
+  iron-laws.ts           # laws.json 的确定性检查：位阶天花板、数值上限、身份禁忌
   stage-cache.ts
   model-json.ts          # 共享 JSON 提取：平衡括号截取 + 控制字符/尾逗号修复
 novel-generation.config.json

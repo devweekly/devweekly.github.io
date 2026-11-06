@@ -283,10 +283,11 @@ export function novelKnowledgeOverview(worldDir:string,worldId:string):Record<st
    volumes,threadStatus,foreshadowStatus,topCharacters,longThreads,meta:readNovelKbMeta(worldDir,worldId)};
  }finally{db.close();}
 }
-export function listNovelBeats(worldDir:string,worldId:string,options:{from?:number;to?:number;limit?:number}={}):Array<Record<string,unknown> & {actors:string[]}>{
+export function listNovelBeats(worldDir:string,worldId:string,options:{from?:number;to?:number;limit?:number;latest?:boolean}={}):Array<Record<string,unknown> & {actors:string[]}>{
  const db=openDatabase(worldDir,worldId);try{
   const from=options.from??0;const to=options.to??Number.MAX_SAFE_INTEGER;const limit=options.limit??200;
-  const rows=db.prepare("SELECT beat_id AS beatId,chapter_id AS chapterId,chapter_ordinal AS chapterOrdinal,summary,actors_json FROM novel_beats WHERE chapter_ordinal>=? AND chapter_ordinal<=? ORDER BY chapter_ordinal LIMIT ?").all(from,to,limit) as Array<Record<string,unknown> & {actors_json:string}>;
+  const order=options.latest?"DESC":"ASC";
+  const rows=db.prepare("SELECT beat_id AS beatId,chapter_id AS chapterId,chapter_ordinal AS chapterOrdinal,summary,actors_json FROM novel_beats WHERE chapter_ordinal>=? AND chapter_ordinal<=? ORDER BY chapter_ordinal "+order+" LIMIT ?").all(from,to,limit) as Array<Record<string,unknown> & {actors_json:string}>;
   return rows.map(row=>({...row,actors:JSON.parse(row.actors_json) as string[],actors_json:undefined}));
  }finally{db.close();}
 }

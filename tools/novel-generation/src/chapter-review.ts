@@ -63,6 +63,16 @@ export function parseChapterReview(raw: string, chapter: string, sceneCount?: nu
   return parsed;
 }
 
+/**
+ * 确定性检查（硬约束、数值越界）先于模型意见进入必改清单。
+ * schema 上限是 3 条，超出部分丢弃——下一轮复查会重新给出。
+ */
+export function withDeterministicIssues(report: ChapterReview, issues: ReviewIssue[]): ChapterReview {
+  if (!issues.length) return report;
+  const merged = [...issues, ...report.issues].slice(0, 3);
+  return { status: "needs_repair", summary: report.summary, issues: merged };
+}
+
 export function reviewPrompt(input: {
   context: string;
   blueprint: string;

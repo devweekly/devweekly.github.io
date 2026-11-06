@@ -8,12 +8,15 @@ import { runAgentText, resolveModelAttempts, type GenerationMode } from "./gener
 import { readTaskProfiles, type StageKey } from "./task-profiles.js";
 import { RHYTHM_RULE, mergeStoryState } from "./workflow.js";
 import { searchLibrary } from "./library.js";
-import { formatReview, parseChapterReview, reviewAndRepair, reviewPrompt, type ReviewIssue } from "./chapter-review.js";
+import { formatReview, parseChapterReview, reviewAndRepair, reviewPrompt, withDeterministicIssues, type ReviewIssue } from "./chapter-review.js";
+import { checkIronLaws, ironLawIssues, loadIronLaws } from "./iron-laws.js";
 import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
 import { parseJsonObject } from "./model-json.js";
 
 export interface LongChapterInput {
   worldId: string;
+  /** 世界资料目录，默认 worlds/<worldId>。 */
+  worldDir?: string;
   mode: GenerationMode;
   brief: string;
   worldBible: string;
@@ -22,6 +25,7 @@ export interface LongChapterInput {
   sourceText?: string;
   contextText?: string;
   storyAnalysisContext?: string;
+  writingBrief?: string;
   model?: string;
   strictModel?: boolean;
   acceptReview?: boolean;
@@ -100,6 +104,7 @@ function tail(text: string, maxChars: number): string {
 export async function writeLongChapter(input: LongChapterInput): Promise<string> {
   const state = await loadRunStoryState(input.statePath, input.worldId, input.outputDir, "write-long");
   const profiles = readTaskProfiles();
+  const laws = loadIronLaws(input.worldDir ?? resolve("worlds", input.worldId));
   await mkdir(input.outputDir, { recursive: true });
   const call = (stage: StageKey, parts: string[]): Promise<string> =>
     runAgentText(parts.join("\n\n"), input.model, input.timeoutMs, profiles[stage], !input.strictModel);
@@ -147,6 +152,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     "当前位置：", state.currentPosition,
     "事实来源与当前连续性信息：", facts,
     input.contextText ? "前文与连续性摘要：\n" + input.contextText : "",
+    input.writingBrief ? "全书知识库（已经写成的事实与未收线，优先于分析参考）：\n" + input.writingBrief : "",
     input.storyAnalysisContext ? "既有小说分析参考（仅供启发，不是正史或写作清单）：\n" + input.storyAnalysisContext : "",
     input.sourceText ? "用户提供且有权使用的续写起点（只用于承接，不得整段复制）：\n" + input.sourceText : "",
     input.styleProfile ? "叙事风格参考：\n" + input.styleProfile + "\n风格参考不能凌驾于当前人物、场景需要和文学表达。" : "",
@@ -179,6 +185,8 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     scenePlans = splitScenes(blueprint, input.scenes);
   }
   await saveStage(input.outputDir, "01-scene-blueprint.md", blueprint);
+  // 终审失败时可能先改蓝图；这里保存逐场蓝图的当前版本。
+  let currentPlans = scenePlans;
   const perScene = Math.ceil(input.maxWords / scenePlans.length * 1.15);
   const sceneTexts: string[] = [];
   for (let index = 0; index < scenePlans.length; index++) {
@@ -334,11 +342,44 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       const round = reviewHistory.length + 1;
       return cachedCall("final-review-" + round + (correction ? "-retry" : ""), "08-final-review-round-" + round + (correction ? "-retry" : "") + "-raw.txt", "review", [
         reviewPrompt({ context: writingContext, blueprint, chapter: candidate, priorReview: review, sceneCount: sceneTexts.length, correction })
-      ], output => parseChapterReview(output, candidate, sceneTexts.length));
+      ], output => parseChapterReview(output, candidate, sceneTexts.length)).then(raw => {
+        const parsed = parseChapterReview(raw, candidate, sceneTexts.length);
+        // 分场做硬约束检查，命中项带场景号，修复阶段才能定位。
+        const lawIssues = polished.flatMap((text, index) => ironLawIssues(checkIronLaws(text, laws), [index + 1]));
+        return JSON.stringify(withDeterministicIssues(parsed, lawIssues));
+      });
     },
     repair: async (_candidate, issues, round) => {
       const affectedScenes = [...new Set(issues.flatMap(issue => issue.scenes))].sort((a, b) => a - b);
       if (!affectedScenes.length) throw new Error("Final review reported must-fix issues without scene locations; refusing to mark an empty repair as complete.");
+      // 先在大纲层收敛：正文里改不动的问题，多半是蓝图里的目标、信息差或代价没安排好。
+      // 只在第一轮做，且未受影响的场景保持原蓝图，避免越修越偏。
+      if (round === 1) {
+        const revised = await cachedCall("blueprint-revision", "01-scene-blueprint-revision.md", "plan", [
+          "角色：长篇章节主编。终审发现的问题不是句子层面能修好的，先回到蓝图层调整。",
+          writingContext,
+          "当前全章蓝图：", blueprint,
+          "终审必改项：", JSON.stringify(issues, null, 2),
+          `只调整受影响场景（${affectedScenes.join("、")}）的目标、人物掌握的信息差、代价与结果安排；其余场景保持原样，不要顺手改写。`,
+          `场景数量必须保持 ${scenePlans.length} 个，"## 场景 N" 编号连续从 1 开始。`,
+          "输出完整修订蓝图，不解释，不写正文。"
+        ]);
+        // 蓝图修订是优化路径：格式不合规或改了场景数就退回原蓝图，不能让它拖垮整章。
+        let revisedPlans: string[] | undefined;
+        try {
+          revisedPlans = splitScenes(revised, input.scenes);
+        } catch (error) {
+          console.warn("[write-long] 蓝图修订未通过格式校验，保留原蓝图：" + String(error));
+        }
+        if (!revisedPlans || revisedPlans.length !== scenePlans.length) {
+          await saveStage(input.outputDir, "01-scene-blueprint-revision-rejected.md", revised);
+        } else {
+          currentPlans = revisedPlans.map((plan, index) => affectedScenes.includes(index + 1) ? plan : scenePlans[index]!);
+          blueprint = currentPlans.join("\n\n");
+          await saveStage(input.outputDir, "01-scene-blueprint-revision.md", blueprint);
+          console.error("[write-long] 已在大纲层修订蓝图：场景 " + affectedScenes.join("、"));
+        }
+      }
       for (const sceneNumber of affectedScenes) {
         const sceneIssues = issues.filter(issue => issue.scenes.includes(sceneNumber));
         const index = sceneNumber - 1;
@@ -348,6 +389,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
           "角色：场景修复编辑。只修复指定场景中的实质问题，输出本场完整正文，不得输出解释或标题。",
           writingContext,
           "全章蓝图：", blueprint,
+          "本场蓝图（如有修订以修订版为准）：", currentPlans[index] ?? "",
           "原始分场审查：", review,
           "最终全章审查发现：", JSON.stringify(sceneIssues, null, 2),
           "当前场景正文：", currentScene,

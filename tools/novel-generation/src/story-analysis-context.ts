@@ -73,9 +73,26 @@ function compact(item: AnalysisItem): string {
   return body.slice(0, 1400) + (body.length > 1400 ? "…" : "") + sourceSummary;
 }
 
+/** 当前快照结构版本；低于它说明字段含义已变，不能直接当写作参考。 */
+const ANALYSIS_VERSION = 6;
+/** 最早仍能兼容读取的结构：4 版已有 characters/plotThreads/foreshadowings。 */
+const MIN_COMPATIBLE_VERSION = 4;
+
 /** Selects only potentially relevant analysis as optional inspiration; never turns it into canon or a writing checklist. */
 export function buildStoryAnalysisContext(snapshot: StoryAnalysisSnapshot | undefined, query: string): string {
-  if (!snapshot?.complete || snapshot.analysisVersion !== 6 || !query.trim()) return "";
+  if (!snapshot?.complete || !query.trim()) return "";
+  const version = snapshot.analysisVersion;
+  if (typeof version === "number" && version < MIN_COMPATIBLE_VERSION) {
+    console.warn("[analysis-context] 分析快照版本 " + version + " 低于兼容下限 " + MIN_COMPATIBLE_VERSION + "，已跳过注入。");
+    return "";
+  }
+  if (typeof version === "number" && version < ANALYSIS_VERSION) {
+    // 旧结构缺关系图、MacGuffin 与核心观察，能读的部分仍然可用，但不能假装齐全。
+    console.warn("[analysis-context] 分析快照版本 " + version + " 低于当前 " + ANALYSIS_VERSION + "，按兼容模式注入（缺关系图与核心观察）。");
+  }
+  if (typeof version !== "number") {
+    console.warn("[analysis-context] 分析快照缺少 analysisVersion，按旧版结构使用；重建快照需重新运行 npm run dev -- analyze-story。");
+  }
   const queryTerms = terms(query);
   const groups: Array<[string, AnalysisItem[], number]> = [
     ["相关人物（画像与变化可能性）", snapshot.characters, 5],
@@ -110,5 +127,7 @@ export function buildStoryAnalysisContext(snapshot: StoryAnalysisSnapshot | unde
     core,
     sections.join("\n\n")
   ].join("\n\n");
-  return rendered.length > 12_000 ? rendered.slice(0, 12_000) + "\n\n（参考内容已截断；以本次创作任务和文学表达为准。）" : rendered;
+  // 硬事实已由 writing-brief 承担，这里只留可选启发，预算压到 6k。
+  const budget = 6_000;
+  return rendered.length > budget ? rendered.slice(0, budget) + "\n\n（参考内容已截断；以本次创作任务和文学表达为准。）" : rendered;
 }
