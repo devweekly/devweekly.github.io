@@ -420,6 +420,6 @@ npm run dev -- db-status --world conghuoniao
 
 ### 数据来源与润色诊断
 
-新章节首次引入的事实会在状态合并时强制标记为项目原创（`original`），只有已有事实 ID 才保留原有正史来源等级；事件记录 `origin`。人物别名按 `name_alias / nickname / title / role / inheritance / ability / identity` 分类，只有带原文证据的个人姓名别称参与检索，别名不会触发人物自动合并。情节线去重同时看标题和来源章节集合，同名不同来源范围保留独立记录。
+新章节首次引入的事实会在状态合并时强制标记为项目原创（`original`），只有已有事实 ID 才保留原有正史来源等级；事件记录 `origin`。人物别名按 `name_alias / nickname / title / role / inheritance / ability / identity` 分类，只有带原文证据的本名/化名/个人绰号参与检索，别名不会触发人物自动合并。情节线去重同时看标题和来源章节集合，同名不同来源范围保留独立记录。
 
 `write-long` 每场润色会保存 `05-polish-diagnostics.json`，记录修改前后汉字数与变化比例。这只是发现异常扩写/精简的诊断数据，不是字数门槛；润色后的完整章节仍经过最终连续性审查。连续性备注只做格式级去重，不以语义相似度合并可能不同的事实。
