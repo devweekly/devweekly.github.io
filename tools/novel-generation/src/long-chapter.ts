@@ -22,7 +22,7 @@ import {
   WRITE_LONG_RETRIEVAL_LIMIT
 } from "./constants.js";
 import { buildWorldSituationContext } from "./world-situation.js";
-import { LIVING_VOICE_RULES, antiAiEditPrompt, readerExperiencePrompt } from "./literary-edit.js";
+import { LIVING_VOICE_RULES, antiAiDiagnosticPrompt, antiAiEditPrompt, readerExperiencePrompt } from "./literary-edit.js";
 
 export interface LongChapterInput {
   worldId: string;
@@ -360,9 +360,18 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   const chapterTitle = "# " + (input.mode === "continuation" ? "续写章节" : "衍生章节") + "\n\n";
   const buildChapter = (): string => chapterTitle + polished.join("\n\n---\n\n") + "\n";
   let antiAiChapter = buildChapter();
+  let antiAiDiagnosis = "";
+  try {
+    antiAiDiagnosis = await cachedCall("anti-ai-diagnosis", "06a-anti-ai-diagnosis.md", "antiAi", [
+      antiAiDiagnosticPrompt({ brief: input.brief, blueprint, styleProfile: input.styleProfile, chapter: antiAiChapter })
+    ], output => { if (!output.trim()) throw new Error("Anti-AI diagnosis returned an empty report."); });
+  } catch (error) {
+    await saveStage(input.outputDir, "06a-anti-ai-diagnosis-error.txt", String(error));
+    console.error("[write-long] Anti-AI 诊断未完成；编辑阶段仍按通用文学原则运行。");
+  }
   try {
     antiAiChapter = await cachedCall("anti-ai-edit", "06b-anti-ai-edited.md", "antiAi", [
-      antiAiEditPrompt({ brief: input.brief, blueprint, styleProfile: input.styleProfile, chapter: antiAiChapter })
+      antiAiEditPrompt({ brief: input.brief, blueprint, styleProfile: input.styleProfile, diagnosis: antiAiDiagnosis, chapter: antiAiChapter })
     ], output => { if (!output.trim()) throw new Error("Anti-AI editor returned an empty chapter."); });
   } catch (error) {
     await saveStage(input.outputDir, "06b-anti-ai-error.txt", String(error));
