@@ -116,6 +116,7 @@ export interface StoryAnalysisSnapshot {
   plotThreads: Array<Record<string, unknown>>;
   foreshadowings: Array<Record<string, unknown>>;
   developmentPossibilities: Array<Record<string, unknown>>;
+  relations?: Array<Record<string, unknown>>;
   storyCore?: Record<string, unknown>;
   storyCoreObservations?: Array<Record<string, unknown>>;
   macguffins?: Array<Record<string, unknown>>;
