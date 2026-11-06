@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { databaseStatus, readStoryAnalysis, saveStoryAnalysis, syncLibraryChunks } from "../src/database.js";
 import { groupAnalysisUnits } from "../src/novel-kb.js";
-import { assertMergeOptions, buildAnalysisPrompt, cleanCharacterAliases, parseModelJson, plotThreadId, plotThreadMergeKey } from "../src/story-analysis.js";
+import { assertMergeOptions, buildAnalysisPrompt, cleanCharacterAliases, filterCharacterAliasEvidence, parseModelJson, plotThreadId, plotThreadMergeKey } from "../src/story-analysis.js";
 import { loadLibraryChunks } from "../src/library.js";
 
 test("story analysis batches preserve every chapter in order without splitting one", () => {
@@ -143,4 +143,14 @@ test("only evidence-backed personal-name aliases enter character lookup", () => 
     ]
   });
   assert.deepEqual(aliases, ["李玄"]);
+});
+
+
+test("alias evidence must quote the alias and exist in its cited chapter", () => {
+  const valid = filterCharacterAliasEvidence([
+    { value: "李玄", type: "name_alias", evidence: "旁人称他李玄" },
+    { value: "太岁", type: "name_alias", evidence: "旁人称他李玄" },
+    { value: "九哥", type: "name_alias", evidence: "原文中不存在的九哥" }
+  ], ["旁人称他李玄，随后离开。"]);
+  assert.deepEqual(valid.map(item => item.value), ["李玄"]);
 });
