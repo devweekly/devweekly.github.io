@@ -112,6 +112,20 @@ export function emptyStoryState(worldId: string): StoryState {
   };
 }
 
+/** Downgrades legacy facts whose source explicitly identifies generated continuation text. */
+export function normalizeStoryStateProvenance(state: StoryState): StoryState {
+  const generatedSource = /续写|续章|衍生|项目原创|生成章节|本章原创/i;
+  return {
+    ...state,
+    canonFacts: state.canonFacts.map(fact =>
+      fact.source && generatedSource.test(fact.source) ? { ...fact, confidence: "original" as const } : fact
+    ),
+    events: state.events.map(event =>
+      event.source && generatedSource.test(event.source) ? { ...event, origin: "original" as const } : event
+    )
+  };
+}
+
 export async function loadStoryState(path: string, worldId: string): Promise<StoryState> {
   const worldDir = dirname(path);
   const databaseState = readDatabaseStoryState(worldDir, worldId);
@@ -119,7 +133,9 @@ export async function loadStoryState(path: string, worldId: string): Promise<Sto
     const parsedDatabaseState = StoryStateSchema.safeParse(databaseState);
     if (!parsedDatabaseState.success) throw new Error("Invalid SQLite story state: " + parsedDatabaseState.error.issues.map(issue => issue.path.join(".") + " " + issue.message).join("; "));
     if (parsedDatabaseState.data.worldId !== worldId) throw new Error("SQLite story state world mismatch: " + worldId);
-    return parsedDatabaseState.data;
+    const normalized = normalizeStoryStateProvenance(parsedDatabaseState.data);
+    if (JSON.stringify(normalized) !== JSON.stringify(parsedDatabaseState.data)) await saveStoryState(path, normalized);
+    return normalized;
   }
   try {
     const raw: unknown = JSON.parse(await readFile(path, "utf8"));
@@ -128,8 +144,10 @@ export async function loadStoryState(path: string, worldId: string): Promise<Sto
       throw new Error("Invalid story state " + path + ": " + parsed.error.issues.map(issue => issue.path.join(".") + " " + issue.message).join("; "));
     }
     if (parsed.data.worldId !== worldId) throw new Error("Story state world mismatch: " + path);
-    syncStoryState(worldDir, parsed.data);
-    return parsed.data;
+    const normalized = normalizeStoryStateProvenance(parsed.data);
+    if (JSON.stringify(normalized) !== JSON.stringify(parsed.data)) await saveStoryState(path, normalized);
+    else syncStoryState(worldDir, normalized);
+    return normalized;
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     const empty = emptyStoryState(worldId);
