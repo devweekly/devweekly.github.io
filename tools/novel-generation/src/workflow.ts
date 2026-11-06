@@ -7,6 +7,7 @@ import { formatReview, parseChapterReview, reviewAndRepair, reviewPrompt, withDe
 import { checkIronLaws, ironLawIssues, loadIronLaws } from "./iron-laws.js";
 import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
 import { parseJsonObject } from "./model-json.js";
+import { buildWorldSituationContext } from "./world-situation.js";
 
 export interface WriteWorkflowInput {
   worldId: string;
@@ -141,10 +142,14 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   };
   await mkdir(input.outputDir, { recursive: true });
   if (input.retrievedContext) await saveStage(input.outputDir, "00-retrieval.md", input.retrievedContext);
+  const situationQuery = [input.brief, input.contextText, input.sourceText?.slice(-2400), input.retrievedContext, input.writingBrief, input.storyPlanText, input.storyAnalysisContext].filter(Boolean).join("\n");
+  const worldSituation = buildWorldSituationContext(state, situationQuery);
+  if (worldSituation) await saveStage(input.outputDir, "00-world-situation-context.md", worldSituation);
 
   const common = [
     "世界设定：", input.worldBible,
     "当前故事状态（已有记录优先；不得擅自改写已确认事实）：", JSON.stringify(state, null, 2),
+    worldSituation ? "本章相关人物与局势上下文（用于理解当前局面，不是新增正史）：\n" + worldSituation : "",
     "事实来源说明：canonFacts.confidence=confirmed 表示原著已确认，inferred 表示基于原文的推断，original 表示项目原创。项目原创事实可在续写中承接，但不得伪装成原著事实。",
     input.contextText ? "用户补充的前文摘要：\n" + input.contextText : "",
     input.retrievedContext ? "本地资料库证据（用于核实事实，不得整段复制）：\n" + input.retrievedContext : "",
@@ -159,7 +164,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
 
   // 不同阶段只接收完成当前任务所需的上下文。完整事实包仍用于规划、正文和终审；
   // 创意发散不需要逐条原文证据，编辑阶段也不应反复携带整份语料与续写材料。
-  const taskText = [input.brief, input.contextText, input.writingBrief].filter(Boolean).join("\n");
+  const taskText = [input.brief, input.contextText, input.writingBrief, input.storyPlanText, input.storyAnalysisContext].filter(Boolean).join("\n");
   const relevantCharacters = state.characters.filter(character => taskText.includes(character.name));
   const relevantThreads = state.plotThreads.filter(thread =>
     taskText.includes(thread.title) || taskText.includes(thread.id)
@@ -176,6 +181,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     "当前位置：", state.currentPosition,
     "本章涉及的人物当前状态：", JSON.stringify(relevantCharacters, null, 2),
     "本章涉及的情节线：", JSON.stringify(relevantThreads, null, 2),
+    worldSituation ? "当前局势与相关事件：\n" + worldSituation : "",
     "当前有效连续性备注：", state.continuityNotes.join("\n"),
     input.contextText ? "必要前情：\n" + input.contextText : "",
     input.writingBrief ? "相关人物、关系与既成事实：\n" + input.writingBrief : "",
@@ -193,7 +199,8 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
       "角色：主线剧情架构师。负责本章主线推进和长篇结构，不写正文。",
       common,
       "提出有吸引力的章节构想，帮助这一章真正好看、能让人物活起来。可考虑主线、人物关系、冲突、悬念、意外性和后续空间，但不要求每项都出现；允许从一个鲜活场景、一段对话或一个反常细节自然生长。",
-      "构思本章相关人物和势力时，考虑各自目标、动机、实际知道的信息、可用资源、行动限制和当前压力。人物只能依据自己实际知道的信息行动。必要时推演主角不介入时局势可能如何变化，但只考虑与本章有关的少数参与者，不模拟整个世界，也不强迫每个人都行动。",
+      "先结合当前 Story State、人物状态、已发生事件及其因果关系，理解本章涉及的局势。只推演确有叙事价值的少数人物或势力：他们为什么行动、各自知道什么、能调用什么资源、受到什么限制，以及主角不介入时局势是否会变化。",
+      "如有价值，在输出中用“局势推演（尚未发生）”单独标出一至数项可能发展，再提出本章主线方向；没有有价值的推演时可以省略。推演是待选的创作素材，不是正史，不能把可能性写成已发生事实。人物只能依据自己实际知道的信息行动；不得模拟整个世界、强制 NPC 行动或套用游戏数值和回合规则。",
       "推演结果只是尚未发生的可能情境，不是正史；只有最终正文实际写出的事件才能进入后续 Story State。行动应有可信原因和可能代价，但不要套用游戏数值、回合制或固定的目标—阻力—选择—后果模板。只标出确实不能改变的已知事实，不要把创意写成分析报告。"
     ]),
     cachedCall("creative", "02-creative-options.md", "creative", [
@@ -209,7 +216,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     "角色：主编 Agent。整合主线架构师方案和创意发散建议，决定本章唯一执行方案。",
     common,
     "主线方案：", plotPlan, "创意备选：", ideas,
-    "选出最有小说感染力的方向，形成自然、有变化的章节构想。必要时吸收主线方案中的人物自主行动和局势推演，但不要把所有可能性都塞进正文。蓝图帮助写作者理解人物处境和故事走向，不是逐项验收的合同；不要求每场都按目标、阻力、行动、信息变化、结果的模板展开。保留人物的意外性、闲笔和情绪空间。人物知识必须受其实际经历和信息来源限制；推演结果不是已经发生的事实。不得无意违反已确认事实；区分确知内容与新创作。"
+    "选出最有小说感染力的方向，形成自然、有变化的章节构想。结合局势推演判断哪些人物行动或冲突值得进入本章，也可以全部舍弃。不要把所有可能性塞进正文；推演不是章节必须兑现的清单。蓝图帮助写作者理解人物处境和故事走向，不是逐项验收的合同；不要求每场都按目标、阻力、行动、信息变化、结果的模板展开。保留人物的意外性、闲笔和情绪空间。人物知识必须受其实际经历和信息来源限制；不得无意违反已确认事实；区分确知内容与新创作。
   ]);
   await saveStage(input.outputDir, "03-chapter-plan.md", plan);
 
