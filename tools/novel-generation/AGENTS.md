@@ -21,6 +21,7 @@ CLI 命令（均经 `npm run dev --`）：
 | `ingest --world <id> --input <f>` | 导入 TXT/MD 建索引 |
 | `search --world <id> --query "" [--limit 8]` | 检索原文片段 |
 | `analyze --world <id> [--limit 20] [--model m] [--timeout-ms 60000]` | 逐片段抽取人物/事件/关系候选 |
+| `distill-style --world <id> --input <f> [more files] [--out file] [--model m]` | 从授权样本提炼抽象风格候选，不覆盖正式 style-profile.md |
 | `analyze-story --world <id> [--model m] [--timeout-ms 180000] [--shard i/n] [--merge-only] [--delta]` | CodeBuddy SDK 自动分析人物小传/成长可能性、主线、伏笔与后续发展并保存 SQLite；`--delta` 复用旧批次长文本，只重抽 v6 新增字段 |
 | `analyze-world --world <id> --phase prepare/status/collect [--evidence-review]` | 多 Agent 文本分析（文件交接；默认确定性校验，`--evidence-review` 才调模型） |
 | `analyze-arcs / index-story / story-kb / db-status / check-runtime` | 卷级梗概、章节索引入库、知识库查询、DB 状态、运行时自检 |
@@ -48,6 +49,7 @@ CLI 命令（均经 `npm run dev --`）：
 - **src/writing-brief.ts** — 把 `novel_*` 表压成写作事实包：按任务词面选相关人物、未收情节线与未回收伏笔，再附最近三章既成事实；状态与置信只是排序偏好，没有词面重合的条目不进包。上限 3k 字。
 - **src/iron-laws.ts** — 读 `worlds/<world>/laws.json`，在终审前做确定性检查（越阶、超额、违背禁忌），命中转成带场景号的必改项。缺文件视为无约束，格式错直接抛错。
 - **src/literary-edit.ts** — 普通章节与长章节共享 Living Voice、Anti-AI 编辑和 Reader 体验提示；编辑失败保留上一版，Reader 失败不阻塞成功路径。
+- **src/style-distillation.ts** — 从授权样本提炼全局与场景级抽象风格，避免复刻原文独特表达；CLI 输出候选资料而不覆盖正式风格文件。
 - **src/long-chapter.ts** — 长章节按场景蓝图逐场检索与生成；配置场景数是上限，允许蓝图按自然叙事少于上限，不能为了凑数拆分情节；按实际场景数计算篇幅参考和审查范围。每场注入相关人物当前状态，并携带本章已生成正文的滚动上下文；分批审查使用全章场景编号，缺少场景定位或结构无效时自动重试，最终修复不允许空场景列表；终审失败时先在大纲层修订受影响场景再重生成，未受影响场景保持原蓝图；状态只从最终通过的完整章节提取并自动提交。阶段缓存校验结构化输出，指纹记录实际模型及回退链。
 - **src/analysis.ts** — 抽取以批次为单位原子保存标注，避免每处理一个片段就重写整个增长中的 JSON 文件。
 
