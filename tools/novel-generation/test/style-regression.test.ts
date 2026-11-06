@@ -1,6 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { buildStyleRegressionPrompt } from "../src/style-regression.js";
+import { mkdtemp, mkdir, writeFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { buildStyleRegressionPrompt, loadStyleRegressionReferences } from "../src/style-regression.js";
 
 test("style regression compares approved references with candidates without imitation or gating", () => {
   const prompt = buildStyleRegressionPrompt({
@@ -14,4 +17,22 @@ test("style regression compares approved references with candidates without imit
   assert.match(prompt, /不要复制参考文本/);
   assert.match(prompt, /不触发自动改写/);
   assert.match(prompt, /quiet dialogue/);
+});
+
+test("pipeline discovers curated style references automatically and bounds their size", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-style-"));
+  try {
+    const world = join(root, "world");
+    const refs = join(world, "style-references");
+    await mkdir(refs, { recursive: true });
+    await writeFile(join(refs, "02-dialogue.md"), "对白样本", "utf8");
+    await writeFile(join(refs, "01-scene.txt"), "场景样本", "utf8");
+    await writeFile(join(refs, "ignore.json"), "ignored", "utf8");
+    const samples = await loadStyleRegressionReferences(world);
+    assert.deepEqual(samples.map(sample => sample.label), ["01-scene.txt", "02-dialogue.md"]);
+    assert.equal(samples.length, 2);
+    assert.deepEqual(await loadStyleRegressionReferences(join(root, "missing-world")), []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
