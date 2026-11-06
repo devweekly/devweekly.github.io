@@ -258,7 +258,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     let text = await cachedCall("scene-" + (index + 1), "02-scene-" + String(index + 1).padStart(2, "0") + ".md", "scene", scenePrompt);
     if (chineseChars(text) < perScene * 0.65) {
       const extra = await cachedCall("scene-expansion-" + (index + 1), "02-scene-" + String(index + 1).padStart(2, "0") + "-expansion.md", "scene", [
-        scenePrompt[0]!, "已写出的本场正文：", text,
+        scenePrompt[0]!, LIVING_VOICE_RULES, "已写出的本场正文：", text,
         `当前场景明显偏短。先判断它是否已经自然完成：若确实还缺少必要的动作、对话、情绪或场景收束，请从现有最后一句自然续写；若已经完整，不要为凑字数硬加内容。不得重复或改写已有内容，也不要提前收束全章。`,
         RHYTHM_RULE
       ]);
