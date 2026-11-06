@@ -132,12 +132,16 @@ test("facts introduced by generated prose remain project-original even when mode
   current.canonFacts.push({ id: "canon-1", fact: "原著旧事实", confidence: "confirmed" });
   const next = mergeStoryState(current, {
     canonFacts: [
-      { id: "canon-1", fact: "原著旧事实的补充表述", confidence: "confirmed" },
+      { id: "canon-1", fact: "原著旧事实", confidence: "confirmed" },
+      { id: "canon-1-reused", fact: "本章新增内容复用了旧 ID", confidence: "confirmed" },
       { id: "new-1", fact: "本章新发生的交易", confidence: "confirmed" }
     ],
     events: [{ id: "event-new", summary: "本章新事件", position: "第2章", participants: [], consequences: [] }]
   });
   assert.equal(next.canonFacts.find(item => item.id === "canon-1")?.confidence, "confirmed");
+  current.canonFacts.push({ id: "canon-1-reused", fact: "旧的另一条事实", confidence: "confirmed" });
+  const collision = mergeStoryState(current, { canonFacts: [{ id: "canon-1-reused", fact: "本章新增内容复用了旧 ID", confidence: "confirmed" }] });
+  assert.equal(collision.canonFacts.find(item => item.id === "canon-1-reused")?.confidence, "original");
   assert.equal(next.canonFacts.find(item => item.id === "new-1")?.confidence, "original");
   assert.equal(next.events.find(item => item.id === "event-new")?.origin, "original");
 });
