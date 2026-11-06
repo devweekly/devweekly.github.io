@@ -338,7 +338,7 @@ add("02-analysis-calls/README.md", [
 ].join("\n"));
 add("02-analysis-calls/meta.json", json(analysisMeta));
 for (const name of await readdir(cache.directory)) {
-  if (!/^batch-\\d{4}\\.json\\.(invalid-raw|repair-raw)\\.txt$/.test(name)) continue;
+  if (!/^batch-\d{4}\.json\.(invalid-raw|repair-raw)\.txt$/.test(name)) continue;
   add("02-analysis-calls/failed/" + name, await readFile(join(cache.directory, name)), { optional: true });
 }
 
@@ -376,9 +376,9 @@ if (latestRun) {
 
   // Include every scene's actual polish output, not just scene 1. Keep these
   // optional so the pack budget can trim them only when necessary.
-  const polishFiles = (await readdir(runDir)).filter(name => /^05-polish-\\d{2}\\.md$/.test(name)).sort();
+  const polishFiles = (await readdir(runDir)).filter(name => /^05-polish-\d{2}\.md$/.test(name)).sort();
   for (const name of polishFiles) {
-    add("03-writing/long-chapter/" + name.replace(/^05-/, "").replace(/\\.md$/, ".md"), await readFile(join(runDir, name)), { optional: true });
+    add("03-writing/long-chapter/" + name.slice(3), await readFile(join(runDir, name)), { optional: true });
   }
   const polishDiagnostics = join(runDir, "05-polish-diagnostics.json");
   if (existsSync(polishDiagnostics)) add("03-writing/long-chapter/polish-diagnostics.json", await readFile(polishDiagnostics), { optional: true });
@@ -408,7 +408,6 @@ if (existsSync(join(outputDir, "shard-0.log"))) {
 
 const dropped: string[] = [];
 const dropOrder = [
-  "polish-01.md",
   "retrieval-context.md",
   "draft.md",
   "state-update.json",
@@ -416,7 +415,7 @@ const dropOrder = [
   "kimi-write.log",
   "scene-03.md"
 ];
-for (const entry of [...entries].filter(item => item.optional && /\\/polish-\\d{2}\\.md$/.test(item.path))) {
+for (const entry of [...entries].filter(item => item.optional && item.path.includes("/polish-") && /polish-\d{2}\.md$/.test(item.path))) {
   if (totalBytes() <= maxBytes) break;
   dropped.push(entry.path);
   entries.splice(entries.indexOf(entry), 1);
