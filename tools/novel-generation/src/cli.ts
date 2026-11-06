@@ -164,7 +164,7 @@ async function main(): Promise<void> {
     }));
     const storyAnalysisContext = buildStoryAnalysisContext(
       readStoryAnalysis(worldDir, worldId),
-      [brief, ...names].join("\\n")
+      [brief, ...names].join("\n")
     );
     const worldBible = await readFile(resolve(worldDir, "world-bible.md"), "utf8");
     const timeoutMs = Number(arg("--timeout-ms") ?? DEFAULT_AGENT_TIMEOUT_MS);
