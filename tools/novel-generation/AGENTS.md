@@ -147,7 +147,15 @@ CLI 命令（均经 `npm run dev --`）：
 - Web entry: `src/server-main.ts`; Express API assembly: `src/server.ts`; local UI: `web/`; Vite config: `vite.config.ts`.
 - Start from `tools/novel-generation` with `npm run dev:web`; default bind is loopback `127.0.0.1:4173`. Do not expose the local Agent service to LAN by default.
 - Keep CLI and Web on shared domain services. The Web API calls `generateStoryPlan`, `loadStoryPlan`, `saveStoryPlan`, `loadStoryState`, and the existing story-analysis context builder; do not fork prompt or Story Plan schema logic.
-- A generated Story Plan is a draft Candidate. Only an explicit approval may activate it. Approval checks the candidate's `baseUpdatedAt` against the current active plan and returns HTTP 409 on stale candidates. Previous active plans are archived under `worlds/<world>/story-plan-history/`.
-- Workbench run/candidate/decision records live under ignored `.output/<world>/workbench/`; they are operational records, not canon. Formal Story Plan remains `worlds/<world>/story-plan.json`.
-- The first Web slice covers dashboard + Story Plan approval. It does not yet gate the existing chapter workflow or defer Story State commits; do not describe chapter generation as human-approved until the chapter pipeline is explicitly changed to stage its state proposal.
+- Autonomous execution is the default. Web-generated Story Plans are validated and activated automatically; the previous active version is archived under `worlds/<world>/story-plan-history/`. CLI `plan-story` also activates by default; use `--draft` only for an isolated experiment. A generated plan is a direction, not a chapter-by-chapter contract.
+- Workbench run/version records live under ignored `.output/<world>/workbench/`; they are operational history, not canon. Formal Story Plan remains `worlds/<world>/story-plan.json`.
+- The Workbench is for visibility, diagnostics, history and optional intervention. Do not add mandatory approval queues or human-click gates to ordinary generation. Human intervention is reserved for cases the system cannot safely resolve after bounded automatic recovery, such as irreconcilable state conflicts, corrupted authoritative data, or destructive operations.
 - `npm run build` runs TypeScript compilation and Vite production build. `npm run dev` remains the existing CLI entry; `npm run dev:web` starts the Web Workbench.
+
+
+## Autonomous execution policy (ADR 0003)
+
+- Continue by default: ordinary planning, generation, review, bounded repair, state extraction and persistence run without waiting for a human. UI review is observational and optional, not a workflow state.
+- Prefer automatic recovery with explicit limits, checkpoints and durable diagnostics. A failed automated run may stop safely; it must not silently convert a blocker into success or require a human approval click to resume ordinary successful work.
+- Ask for human intervention only when no safe deterministic/model-assisted resolution remains, or when an operation is destructive, irreversible, security-sensitive, or changes authoritative canon in a way that cannot be reconciled automatically.
+- Preserve generated versions and decisions as history. History must not become an approval queue, and a generated plan should become active automatically after schema/world validation.
