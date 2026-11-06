@@ -43,9 +43,11 @@ app.post("/api/worlds/:worldId/story-plan/generate",async(req,res)=>{
  }catch(e){sendError(res,e);}
 });
 app.post("/api/candidates/:candidateId/decision",async(req,res)=>{
- const key=recordId(req.params.candidateId);const previous=decisionLocks.get(key)??Promise.resolve();let release!:()=>void;const current=new Promise<void>(resolve=>{release=resolve;});const lock=previous.then(()=>current);decisionLocks.set(key,lock);await previous;
+ const candidateId=recordId(req.params.candidateId);let id:string;
+ try{id=worldIdOf(req.body?.worldId);}catch(error){sendError(res,error);return;}
+ const key=id;const previous=decisionLocks.get(key)??Promise.resolve();let release!:()=>void;const current=new Promise<void>(resolve=>{release=resolve;});const lock=previous.then(()=>current);decisionLocks.set(key,lock);await previous;
  try{
-  const id=worldIdOf(req.body?.worldId);const candidate=await getCandidate(id,key);if(!candidate)return res.status(404).json({error:"Candidate not found."});if(candidate.status!=="pending"&&candidate.status!=="changes_requested")return res.status(409).json({error:"Candidate has already been reviewed."});
+  const candidate=await getCandidate(id,candidateId);if(!candidate)return res.status(404).json({error:"Candidate not found."});if(candidate.status!=="pending"&&candidate.status!=="changes_requested")return res.status(409).json({error:"Candidate has already been reviewed."});
   const action=req.body?.action;if(!["approved","rejected","changes_requested"].includes(action))return res.status(400).json({error:"Unsupported decision."});
   const comment=typeof req.body?.comment==="string"?req.body.comment.slice(0,10000):"";const dir=worldDir(id);const activePath=path.join(dir,"story-plan.json");const currentPlan=await loadStoryPlan(activePath,id);
   if(action!=="rejected"&&(currentPlan?.updatedAt??null)!==candidate.baseUpdatedAt)return res.status(409).json({error:"Story Plan has changed since this candidate was generated. Reload and compare against the latest version before approving or requesting changes."});
@@ -54,10 +56,10 @@ app.post("/api/candidates/:candidateId/decision",async(req,res)=>{
    const submitted=req.body?.plan??candidate.plan;const plan=validateStoryPlan(submitted,id);
    if(plan.status!=="draft")return res.status(400).json({error:"Candidate Story Plan must remain in draft status."});
    reviewedCandidate={...candidate,plan};
-   if(currentPlan){const historyDir=path.join(dir,"story-plan-history");await mkdir(historyDir,{recursive:true});const historyPath=path.join(historyDir,currentPlan.updatedAt.replace(/[^a-zA-Z0-9.-]/g,"_")+".json");await writeFile(historyPath,JSON.stringify(currentPlan,null,2)+"\n",{encoding:"utf8",flag:"wx"}).catch(error=>{if((error as NodeJS.ErrnoException).code!=="EEXIST")throw error;});}
+   if(currentPlan){const historyDir=path.join(dir,"story-plan-history");await mkdir(historyDir,{recursive:true});const historyPath=path.join(historyDir,currentPlan.updatedAt.replace(/[^a-zA-Z0-9.-]/g,"_")+".json");await writeFile(historyPath,JSON.stringify(currentPlan,null,2)+"\\n",{encoding:"utf8",flag:"wx"}).catch(error=>{if((error as NodeJS.ErrnoException).code!=="EEXIST")throw error;});}
    await saveStoryPlan(activePath,{...plan,status:"active",updatedAt:new Date().toISOString()});
   }else if(req.body?.plan!==undefined){reviewedCandidate={...candidate,plan:validateStoryPlan(req.body.plan,id)};}
-  const decision:ApprovalDecision={id:randomUUID(),candidateId:key,worldId:id,action,comment,createdAt:new Date().toISOString(),baseUpdatedAt:candidate.baseUpdatedAt};
+  const decision:ApprovalDecision={id:randomUUID(),candidateId,worldId:id,action,comment,createdAt:new Date().toISOString(),baseUpdatedAt:candidate.baseUpdatedAt};
   await appendDecision(decision);await saveCandidate({...reviewedCandidate,status:action,reviewComment:comment,updatedAt:decision.createdAt});
   const run=await getRun(id,candidate.runId);if(run)await saveRun({...run,status:action==="approved"||action==="rejected"?"completed":"waiting_review",updatedAt:decision.createdAt});
   res.json({decision,storyPlan:action==="approved"?await loadStoryPlan(activePath,id):currentPlan});
