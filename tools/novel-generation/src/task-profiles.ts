@@ -7,7 +7,7 @@ import { DEFAULT_THINKING_BUDGET_TOKENS, MAX_THINKING_BUDGET_TOKENS, MIN_THINKIN
 
 export type StageKey =
   | "plot" | "creative" | "plan" | "scene" | "dialogue"
-  | "voice" | "antiAi" | "reader" | "review" | "final" | "state";
+  | "voice" | "antiAi" | "reader" | "styleDistill" | "review" | "final" | "state";
 
 export type ThinkingMode = "disabled" | "adaptive" | "enabled";
 export type Effort = "low" | "medium" | "high";
@@ -28,6 +28,7 @@ const DEFAULTS: Record<StageKey, TaskProfile> = {
   voice: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },
   antiAi: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },
   reader: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },
+  styleDistill: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "high" },
   review: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },
   final: { thinkingMode: "adaptive", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "medium" },
   state: { thinkingMode: "disabled", thinkingBudgetTokens: DEFAULT_THINKING_BUDGET_TOKENS, effort: "low" }
