@@ -441,6 +441,7 @@ async function main(): Promise<void> {
       throw new Error("--retrieval-limit must be between 1 and 20.");
     }
     const state = await loadRunStoryState(statePath, worldId, outputDir, "write");
+    const storyPlanText = formatStoryPlan(await loadStoryPlan(resolve("worlds", worldId, "story-plan.json"), worldId));
     const activeThreads = state.plotThreads
       .filter(thread => thread.status === "open" || thread.status === "active")
       .map(thread => thread.title);
@@ -450,12 +451,12 @@ async function main(): Promise<void> {
       sourceText?.slice(-1500) ?? "",
       state.currentPosition,
       ...activeThreads,
+      storyPlanText,
       ...state.characters.slice(0, 12).map(character => character.name)
     ].join("\n");
     const retrieved = await searchLibrary(libraryDir, retrievalQuery, retrievalLimit);
     const storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), retrievalQuery);
     const writingBrief = buildWritingBrief({ worldDir: resolve("worlds", worldId), worldId, query: retrievalQuery });
-    const storyPlanText = formatStoryPlan(await loadStoryPlan(resolve("worlds", worldId, "story-plan.json"), worldId));
     console.error("[write] 注入：事实包 " + writingBrief.length + " 字 / 分析参考 " + storyAnalysisContext.length + " 字 / 检索片段 " + retrieved.length + " 条");
     const annotationsByChunk = readAnnotationsByChunkIds(resolve("worlds", worldId), worldId, retrieved.map(hit => hit.id)) as Map<string, { entities?: unknown[]; events?: unknown[]; relations?: unknown[] }>;
     const retrievedContext = retrieved.map((hit, index) => {
@@ -493,10 +494,10 @@ async function main(): Promise<void> {
     const outputDir = resolveRunOutputDir(worldId, "write-long", resolve(".output", worldId, "long-" + runId));
     const statePath = resolve("worlds", worldId, "story-state.json");
     const longState = await loadRunStoryState(statePath, worldId, outputDir, "write-long");
-    const storyAnalysisQuery = [brief, contextText ?? "", sourceText?.slice(-1500) ?? "", longState.currentPosition, ...longState.plotThreads.filter(thread => thread.status === "open" || thread.status === "active").map(thread => thread.title), ...longState.characters.slice(0, 12).map(character => character.name)].join("\n");
+    const storyPlanText = formatStoryPlan(await loadStoryPlan(resolve("worlds", worldId, "story-plan.json"), worldId));
+    const storyAnalysisQuery = [brief, storyPlanText, contextText ?? "", sourceText?.slice(-1500) ?? "", longState.currentPosition, ...longState.plotThreads.filter(thread => thread.status === "open" || thread.status === "active").map(thread => thread.title), ...longState.characters.slice(0, 12).map(character => character.name)].join("\n");
     const storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), storyAnalysisQuery);
     const writingBrief = buildWritingBrief({ worldDir: resolve("worlds", worldId), worldId, query: storyAnalysisQuery });
-    const storyPlanText = formatStoryPlan(await loadStoryPlan(resolve("worlds", worldId, "story-plan.json"), worldId));
     console.error("[write-long] 注入：事实包 " + writingBrief.length + " 字 / 分析参考 " + storyAnalysisContext.length + " 字");
     const retrievalLimit = Number(arg("--retrieval-limit") ?? 4);
     if (!Number.isInteger(retrievalLimit) || retrievalLimit < 1 || retrievalLimit > 12) {
