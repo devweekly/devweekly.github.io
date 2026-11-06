@@ -358,12 +358,44 @@ function cacheKeyFor(model: string, units: AnalysisUnit[], maxChars: number): st
   return createHash("sha256").update("story-analysis-v4\nprompt=alias-provenance-thread-dedup-v2\nmodel=" + model + "\nmaxChars=" + maxChars + "\nbatches=" + batchLayout + "\nsource=" + sourceHash).digest("hex");
 }
 
+function legacyCacheKeyFor(model: string, units: AnalysisUnit[], maxChars: number): string {
+  const sourceHash = createHash("sha256").update(units.map(unit => unit.chapterId + ":" + unit.text).join("\\n")).digest("hex");
+  const batchLayout = groupAnalysisUnits(units, maxChars).map(chapters => chapters.map(chapter => chapter.chapterId).join(",")).join("|");
+  return createHash("sha256").update("story-analysis-v3\\nprompt=chapter-refs-v1\\nmodel=" + model + "\\nmaxChars=" + maxChars + "\\nbatches=" + batchLayout + "\\nsource=" + sourceHash).digest("hex");
+}
+
 async function readCached(path: string): Promise<BatchAnalysis | undefined> {
   try {
     return BatchSchema.parse(JSON.parse(await readFile(path, "utf8")) as unknown);
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Reuses v3 batch analysis without trusting its untyped aliases. The narrative
+ * analysis remains useful; old aliases are discarded and must be re-established
+ * by a future fresh analysis with exact source evidence.
+ */
+async function migrateLegacyAnalysisCache(sourceDir: string, targetDir: string, batches: AnalysisBatch[]): Promise<number> {
+  if (!existsSync(sourceDir)) return 0;
+  let migrated = 0;
+  for (const batch of batches) {
+    const name = "batch-" + String(batch.index).padStart(4, "0") + ".json";
+    const targetPath = join(targetDir, name);
+    if (existsSync(targetPath)) continue;
+    const analysis = await readCached(join(sourceDir, name));
+    if (!analysis) continue;
+    for (const character of analysis.characters) {
+      character.aliases = [];
+      character.aliasDetails = [];
+    }
+    const temporary = targetPath + ".tmp";
+    await writeFile(temporary, JSON.stringify(analysis, null, 2) + "\\n", "utf8");
+    await rename(temporary, targetPath);
+    migrated++;
+  }
+  return migrated;
 }
 
 export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysisOptions = {}): Promise<StoryAnalysisResult> {
@@ -379,6 +411,9 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
   }
   const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, options.maxChars ?? 14_000));
   await mkdir(cacheDir, { recursive: true });
+  const legacyCacheDir = resolve(".output", worldId, "story-analysis", legacyCacheKeyFor(model, units, options.maxChars ?? 14_000));
+  const migratedLegacyBatches = await migrateLegacyAnalysisCache(legacyCacheDir, cacheDir, batches);
+  if (migratedLegacyBatches) console.log("[story-analysis] safely migrated " + migratedLegacyBatches + " legacy batches; discarded unclassified aliases");
   const cachePath = (batch: AnalysisBatch): string => join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
   const shard = options.shard;
   if (shard && (!Number.isInteger(shard.count) || shard.count < 1 || shard.count > 16 || !Number.isInteger(shard.index) || shard.index < 0 || shard.index >= shard.count)) {
