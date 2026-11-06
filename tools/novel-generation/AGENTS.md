@@ -24,7 +24,7 @@ CLI 命令（均经 `npm run dev --`）：
 | `analyze-story --world <id> [--model m] [--timeout-ms 180000]` | CodeBuddy SDK 自动分析人物小传/成长可能性、主线、伏笔与后续发展并保存 SQLite |
 | `analyze-world --world <id> --phase prepare/status/collect [--evidence-review]` | 多 Agent 文本分析（文件交接；默认确定性校验，`--evidence-review` 才调模型） |
 | `analyze-arcs / index-story / story-kb / db-status / check-runtime` | 卷级梗概、章节索引入库、知识库查询、DB 状态、运行时自检 |
-| `write-long --brief "" [--scenes n] [--max-words n] [--strict-model] [--accept-review] [--resume-dir dir]` | 万字长章节逐场生成 |
+| `write-long --brief "" [--scenes n] [--max-words n] [--strict-model] [--resume-dir dir]` | 万字长章节逐场生成 |
 | `regress --world <id> --chapter n` | 单章盲写回归对照 |
 | `write --brief "" [--mode continuation/derivative] [--source f] [--context f] [--model m] [--max-words n] [--strict-model] [--accept-review] [--no-apply-state] [--resume-dir dir]` | 多阶段章节写作、自动复查与有限修复 |
 | `generate --brief "" [--mode ...] [--out f]` | 单次成稿 |
