@@ -84,7 +84,7 @@ npm run dev -- write --world conghuoniao --mode continuation \
   --resume-dir .output/conghuoniao/<原 run-id>
 ```
 
-终审两轮后仍有必改项会阻断：最新成稿保留为 `chapter-needs-review.md`，诊断写入 `09-quality-summary.json`（`needs_human_review`），故事状态不更新。人工复核确认审查误报后可用 `--accept-review` 放行，此时状态照常提交，摘要记为 `accepted_with_issues`。`--strict-model` 禁止失败时回退到备用模型，保证成稿模型来源可追踪；`write` 与 `write-long` 均支持这两个开关。
+终审两轮后仍有必改项时，本次运行安全失败：最新成稿保留为 `chapter-blocked.md`，诊断写入质量摘要（状态为 `blocked`），故事状态不更新。系统不会提供人工批准绕过硬伤的开关；修复输入或问题后可从 checkpoint 恢复或重新运行。`--strict-model` 禁止失败时回退到备用模型，保证成稿模型来源可追踪。
 
 每次运行生成：
 - `00-retrieval.md`：命中的原文片段、来源位置和抽取标注
@@ -95,7 +95,7 @@ npm run dev -- write --world conghuoniao --mode continuation \
 - `chapter.md`：最终复查通过后的章节
 - `08-state-update.json`：合并后的下一章状态（默认已自动持久化）
 - `07-review-round-*-raw.txt`、`07-continuity-review-round-N.json`、`09-quality-summary.json`：终审原始输出、结构化复查结果与修复轮数
-- `chapter-needs-review.md`：终审两轮后仍阻断时保留的最新成稿。此时故事状态不更新，可用 `--accept-review` 人工放行或按诊断产物复核
+- `chapter-blocked.md`：终审两轮后仍有明确硬伤时保留的最新成稿；本次运行失败且故事状态不更新
 
 章节生成成功后，状态管理员会提取人物、事件、正史事实和情节线变化，并自动写入 SQLite 权威状态及兼容 JSON 快照，供下一章直接使用。只有模型对照、盲测等需要候选互相隔离的场景才传 `--no-apply-state`；普通续写不要使用该参数。状态提取或持久化失败会使本次命令失败，不能把状态未更新的章节当作可继续写作的成功结果。`continuation` 模式的 `--source` 必须是你提供或有权使用的文本，本地 `private/` 不入库。
 
