@@ -352,7 +352,7 @@ export function buildAnalysisPrompt(batch: AnalysisBatch): string {
     "不要为了结构完整而虚构情节、关系或伏笔；不要强行解释留白。",
     "只返回 JSON 对象，字段：characters、relations、plotThreads、foreshadowings、beats、developmentPossibilities、storyCoreObservations、macguffins，均为数组。",
     "characters[{chapterKeys,name,aliases,aliasDetails:[{value,type,evidence}],shortBio,storyFunction,personality,contradictions,observedChanges,desires,relationships,voice,arcPossibilities}]；relations[{chapterKeys,from,to,label,evidence}]；plotThreads[{chapterKeys,title,summary,status,narrativeRole,relatedCharacters,keyTurns,unresolvedQuestions}]；foreshadowings[{chapterKeys,clue,firstAppearance,possibleMeaning,possiblePayoffs,relatedThreadTitles,confidence,status}]；beats[{chapterKey,summary,actors}]；developmentPossibilities[{chapterKeys,focus,direction,tension,whyPlausible,surpriseOptions}]；storyCoreObservations[{chapterKeys,centralConflict,centralQuestion,stakes,themes,narrativePromise,mainPlotThreadTitles}]；macguffins[{chapterKeys,name,kind,significance,whoWantsIt,whyTheyWantIt,shifts,relatedCharacters,relatedThreadTitles,confidence}]。",
-    "每条人物、关系、情节线、伏笔和发展可能都必须填写 chapterKeys 数组，只列出确实能从中找到该条内容的章节 key；不要把整批章节都填进去。事件使用单个 chapterKey。来源由程序按这些编号精确关联，不要自行编造编号。",
+    "每条人物、关系、情节线、伏笔、发展可能、故事核心观察和 MacGuffin 都必须填写 chapterKeys 数组，只列出确实能从中找到该条内容的章节 key；不要把整批章节都填进去。事件使用单个 chapterKey。来源由程序按这些编号精确关联，不要自行编造编号。",
     "章节原文：",
     material
   ].join("\n\n");
@@ -364,6 +364,11 @@ function cacheKeyFor(model: string, units: AnalysisUnit[], maxChars: number): st
   return createHash("sha256").update("story-analysis-v5\nprompt=story-graph-core-macguffin-v1\nmodel=" + model + "\nmaxChars=" + maxChars + "\nbatches=" + batchLayout + "\nsource=" + sourceHash).digest("hex");
 }
 
+function legacyV4CacheKeyFor(model: string, units: AnalysisUnit[], maxChars: number): string {
+  const sourceHash = createHash("sha256").update(units.map(unit => unit.chapterId + ":" + unit.text).join("\n")).digest("hex");
+  const batchLayout = groupAnalysisUnits(units, maxChars).map(chapters => chapters.map(chapter => chapter.chapterId).join(",")).join("|");
+  return createHash("sha256").update("story-analysis-v4\nprompt=alias-provenance-thread-dedup-v2\nmodel=" + model + "\nmaxChars=" + maxChars + "\nbatches=" + batchLayout + "\nsource=" + sourceHash).digest("hex");
+}
 function legacyCacheKeyFor(model: string, units: AnalysisUnit[], maxChars: number): string {
   const sourceHash = createHash("sha256").update(units.map(unit => unit.chapterId + ":" + unit.text).join("\\n")).digest("hex");
   const batchLayout = groupAnalysisUnits(units, maxChars).map(chapters => chapters.map(chapter => chapter.chapterId).join(",")).join("|");
@@ -422,9 +427,22 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
   }
   const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, options.maxChars ?? 14_000));
   await mkdir(cacheDir, { recursive: true });
+  const legacyV4Dir = resolve(".output", worldId, "story-analysis", legacyV4CacheKeyFor(model, units, options.maxChars ?? 14_000));
+  let migratedV4 = 0;
+  if (existsSync(legacyV4Dir)) for (const batch of batches) {
+    const name = "batch-" + String(batch.index).padStart(4, "0") + ".json";
+    const target = join(cacheDir, name);
+    if (existsSync(target)) continue;
+    const analysis = await readCached(join(legacyV4Dir, name));
+    if (!analysis) continue;
+    const temporary = target + ".tmp";
+    await writeFile(temporary, JSON.stringify(analysis, null, 2) + "\n", "utf8");
+    await rename(temporary, target);
+    migratedV4++;
+  }
   const legacyCacheDir = resolve(".output", worldId, "story-analysis", legacyCacheKeyFor(model, units, options.maxChars ?? 14_000));
   const migratedLegacyBatches = await migrateLegacyAnalysisCache(legacyCacheDir, cacheDir, batches);
-  if (migratedLegacyBatches) console.log("[story-analysis] safely migrated " + migratedLegacyBatches + " legacy batches; discarded unclassified aliases");
+  if (migratedV4 || migratedLegacyBatches) console.log("[story-analysis] migrated " + (migratedV4 + migratedLegacyBatches) + " previous batches; v3 aliases sanitized");
   const cachePath = (batch: AnalysisBatch): string => join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
   const shard = options.shard;
   if (shard && (!Number.isInteger(shard.count) || shard.count < 1 || shard.count > 16 || !Number.isInteger(shard.index) || shard.index < 0 || shard.index >= shard.count)) {
@@ -525,7 +543,7 @@ export function buildStoryGraph(input: {
   for(const x of input.characters){const n=String(x.name??"");if(n)chars.set(norm(n),node("character",n,x));}
   for(const x of input.plotThreads){const n=String(x.title??"");if(n)threads.set(norm(n),node("plot_thread",n,x));}
   for(const x of input.foreshadowings)node("foreshadowing",String(x.clue??"伏笔"),x);
-  for(const x of input.relations)edge(chars.get(norm(String(x.fromName??""))),chars.get(norm(String(x.toName??""))),"relationship",String(x.label??"关系"),x);
+  for(const x of input.relations)edge(chars.get(norm(String(x.fromName??x.from??""))),chars.get(norm(String(x.toName??x.to??""))),"relationship",String(x.label??"关系"),x);
   for(const x of input.plotThreads){
     const id=threads.get(norm(String(x.title??"")));
     for(const name of asStrings(x.relatedCharacters))edge(chars.get(norm(name)),id,"involved_in","参与情节线",x);
@@ -717,7 +735,7 @@ function mergeAndPersist(
     });
   }
 
-  const storyGraph=buildStoryGraph({storyCore,characters:characterRows,relations:relationRows,plotThreads:threadRows,foreshadowings:foreshadowingRows,macguffins,beats:beatRows,developmentPossibilities});
+  const storyGraph=buildStoryGraph({storyCore,characters:characterRows,relations,plotThreads,foreshadowings,macguffins,beats:beatRows,developmentPossibilities});
   syncNovelCharacters(worldDir, worldId, characterRows, relationRows);
   syncNovelThreads(worldDir, worldId, threadRows);
   syncNovelForeshadowings(worldDir, worldId, foreshadowingRows);
