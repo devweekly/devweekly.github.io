@@ -1,0 +1,66 @@
+
+> novel-generation@0.2.0 dev
+> tsx src/cli.ts analyze-story --world conghuoniao --shard 1/4 --timeout-ms 240000
+
+(node:19030) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+[story-analysis] batch 2/196 · cache hit
+[story-analysis] batch 6/196 · cache hit
+[story-analysis] batch 10/196 · cache hit
+[story-analysis] batch 14/196 · cache hit
+[story-analysis] batch 18/196 · cache hit
+[story-analysis] batch 22/196 · cache hit
+[story-analysis] batch 26/196 · cache hit
+[story-analysis] batch 30/196 · cache hit
+[story-analysis] batch 34/196 · cache hit
+[story-analysis] batch 38/196 · cache hit
+[story-analysis] batch 42/196 · cache hit
+[story-analysis] batch 46/196 · cache hit
+[story-analysis] batch 50/196 · cache hit
+[story-analysis] batch 54/196 · cache hit
+[story-analysis] batch 58/196 · cache hit
+[story-analysis] batch 62/196 · cache hit
+[story-analysis] batch 66/196 · cache hit
+[story-analysis] batch 70/196 · cache hit
+[story-analysis] batch 74/196 · cache hit
+[story-analysis] batch 78/196 · cache hit
+[story-analysis] batch 82/196 · cache hit
+[story-analysis] batch 86/196 · cache hit
+[story-analysis] batch 90/196 · cache hit
+[story-analysis] batch 94/196 · cache hit
+[story-analysis] batch 98/196 · cache hit
+[story-analysis] batch 102/196 · cache hit
+[story-analysis] batch 106/196 · cache hit
+[story-analysis] batch 110/196 · cache hit
+[story-analysis] batch 114/196 · cache hit
+[story-analysis] batch 118/196 · cache hit
+[story-analysis] batch 122/196 · cache hit
+[story-analysis] batch 126/196 · cache hit
+[story-analysis] batch 130/196 · cache hit
+[story-analysis] batch 134/196 · cache hit
+[story-analysis] batch 138/196 · cache hit
+[story-analysis] batch 142/196 · cache hit
+[story-analysis] batch 146/196 · cache hit
+[story-analysis] batch 150/196 · cache hit
+[story-analysis] batch 154/196 · cache hit
+[story-analysis] batch 158/196 · cache hit
+[story-analysis] batch 162/196 · cache hit
+[story-analysis] batch 166/196 · 第八章 凶案 … 第十一章 天乙贵人 · 13539 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 170/196 · cache hit
+[story-analysis] batch 174/196 · cache hit
+[story-analysis] batch 178/196 · cache hit
+[story-analysis] batch 182/196 · cache hit
+[story-analysis] batch 186/196 · cache hit
+[story-analysis] batch 190/196 · cache hit
+[story-analysis] batch 194/196 · cache hit
+[story-analysis] partial run done · processed 1 · cached 48 · failed 0 · skipped 147
+{
+  "batches": 196,
+  "processed": 1,
+  "cached": 48,
+  "failed": [],
+  "pending": 147,
+  "skipped": 147
+}

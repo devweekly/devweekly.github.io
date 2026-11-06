@@ -1,0 +1,11 @@
+{
+  "target": 8000,
+  "scenes": 8,
+  "chars": 16018,
+  "sentences": 662,
+  "mean": 24.2,
+  "short": 0.273,
+  "long": 0.272,
+  "veryLong": 0.073,
+  "dialogueLines": 0.455
+}

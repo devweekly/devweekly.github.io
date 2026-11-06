@@ -1,0 +1,67 @@
+
+> novel-generation@0.2.0 dev
+> tsx src/cli.ts analyze-story --world conghuoniao --shard 0/4 --timeout-ms 240000
+
+(node:18945) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+[story-analysis] batch 1/196 · cache hit
+[story-analysis] batch 5/196 · cache hit
+[story-analysis] batch 9/196 · cache hit
+[story-analysis] batch 13/196 · cache hit
+[story-analysis] batch 17/196 · cache hit
+[story-analysis] batch 21/196 · cache hit
+[story-analysis] batch 25/196 · cache hit
+[story-analysis] batch 29/196 · cache hit
+[story-analysis] batch 33/196 · cache hit
+[story-analysis] batch 37/196 · cache hit
+[story-analysis] batch 41/196 · cache hit
+[story-analysis] batch 45/196 · cache hit
+[story-analysis] batch 49/196 · cache hit
+[story-analysis] batch 53/196 · cache hit
+[story-analysis] batch 57/196 · cache hit
+[story-analysis] batch 61/196 · cache hit
+[story-analysis] batch 65/196 · cache hit
+[story-analysis] batch 69/196 · cache hit
+[story-analysis] batch 73/196 · cache hit
+[story-analysis] batch 77/196 · cache hit
+[story-analysis] batch 81/196 · 第三十四章 归来，色林错。（二合一） … 第三十六章 抽刃向谁？ · 11322 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 85/196 · cache hit
+[story-analysis] batch 89/196 · cache hit
+[story-analysis] batch 93/196 · cache hit
+[story-analysis] batch 97/196 · cache hit
+[story-analysis] batch 101/196 · cache hit
+[story-analysis] batch 105/196 · cache hit
+[story-analysis] batch 109/196 · cache hit
+[story-analysis] batch 113/196 · cache hit
+[story-analysis] batch 117/196 · 第七十四章 天师道剿妖 … 第七十五章 诀意全在猪婆龙 · 9528 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 121/196 · cache hit
+[story-analysis] batch 125/196 · cache hit
+[story-analysis] batch 129/196 · cache hit
+[story-analysis] batch 133/196 · cache hit
+[story-analysis] batch 137/196 · cache hit
+[story-analysis] batch 141/196 · cache hit
+[story-analysis] batch 145/196 · cache hit
+[story-analysis] batch 149/196 · cache hit
+[story-analysis] batch 153/196 · cache hit
+[story-analysis] batch 157/196 · cache hit
+[story-analysis] batch 161/196 · cache hit
+[story-analysis] batch 165/196 · cache hit
+[story-analysis] batch 169/196 · cache hit
+[story-analysis] batch 173/196 · cache hit
+[story-analysis] batch 177/196 · cache hit
+[story-analysis] batch 181/196 · cache hit
+[story-analysis] batch 185/196 · cache hit
+[story-analysis] batch 189/196 · cache hit
+[story-analysis] batch 193/196 · cache hit
+[story-analysis] partial run done · processed 2 · cached 47 · failed 0 · skipped 147
+{
+  "batches": 196,
+  "processed": 2,
+  "cached": 47,
+  "failed": [],
+  "pending": 147,
+  "skipped": 147
+}

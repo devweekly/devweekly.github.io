@@ -1,0 +1,362 @@
+{
+  "worldId": "conghuoniao",
+  "generatedAt": "2026-11-05T23:04:46.401Z",
+  "entries": [
+    {
+      "id": "main-plot",
+      "name": "主线剧情 Agent",
+      "path": "analysis/conghuoniao/agent-analysis/main-plot/output.md",
+      "chars": 1800,
+      "evidenceCount": 56,
+      "evidenceReview": {
+        "ok": false,
+        "checked": 6,
+        "supported": 0,
+        "rejected": 6,
+        "issues": [
+          "第 1 批语义审查失败：模型链均失败（deepseek-v4.1-flash → hy4free，来源 config）：deepseek-v4.1-flash: Agent SDK 调用失败（deepseek-v4.1-flash）：401 Authentication required. Please use /login command to sign in to your account (auth-type:cli-external-link,token-type:Bearer,token-length:1472) (proxy: http_proxy=http://127.0.0.1:55250; https_proxy=http://127.0.0.1:55250; HTTP_PROXY=http://127.0.0.1:55250; HTTPS_PROXY=http://127.0.0.1:55250 -> https://www.codebuddy.ai) (01a1adf3b1de753ba4d609e011593895/01a1adf3-949e-7479-a06b-0c65b38bd434) | hy4free: Agent SDK 调用失败（hy4free）：401 Authentication required. Please use /login command to sign in to your account (auth-type:cli-external-link,token-type:Bearer,token-length:1472) (proxy: http_proxy=http://127.0.0.1:55250; https_proxy=http://127.0.0.1:55250; HTTP_PROXY=http://127.0.0.1:55250; HTTPS_PROXY=http://127.0.0.1:55250 -> https://www.codebuddy.ai) (01a1adf3eaa87f3482fab69eba7bc361/01a1adf3-c569-72cb-b787-aa5cd1b67584)；用 npm run dev -- check-runtime 检查 CLI 登录与模型目录",
+          "6 段结论未通过原文证据核验"
+        ],
+        "decisions": [
+          {
+            "claim": "卷 1—3 单次事件求生：首事件计数 1、上吉，500 点、钩星复苏 9%（L7343）。本 Agent 判断转折分两步。卷 5 为结构转折：十主殿议通报 `神·甲子九百八十四` 大规模果实脱落（L25892，人物推断），冯夷给出八苦与太岁叛出后空出五席（L26010，人物推断），羽主抹去记忆、果核被打碎、果实萎靡不可逆，代价五十年阳寿、沉睡两年（L27434）；结算随即失灵：评价「大吉」却按「上上」给 300 点、权限 103%、无特殊奖励（L27821）。卷 12 完成身份转折：登顶报总数 13、600 点、权限 250%，获阎浮瞩目与专属忍土（L81476）；结算细则由十主修订、可经阎昭会重新决议（L81731，原著明确）。阎昭会卷 12 已开（L81230），与卷 14 的索引冲突。卷 14 倮主之死使活跃十主剩五人（L93068），只有二席可申请终极事件（L94002）。",
+            "lines": [
+              7343,
+              25892,
+              26010,
+              27434,
+              27821,
+              81476,
+              81731,
+              81230,
+              93068,
+              94002
+            ],
+            "supported": false,
+            "reason": "模型审查失败，按不支持处理"
+          },
+          {
+            "claim": "睚眦线：卷 4 结算开启「睚眦的传承」、任务破碎百件精良兵器（L16370，原著明确），卷 6 进度 19/100（L27847），卷 13 完成并开启「腥杀」（L84245），卷 16 获睚眦之角·怒肠（L110700）。神庭线：卷 9 赵剑中给东皇太一线索（L46491，人物推断），卷 10 给出三项传承峰值突破的开启条件（L60173，原著明确），卷 14 集齐三项楚地传承后正式接受试炼（L93630），第一阶段要求三相觉醒度 100% 并集齐部件、禁代行者与七宫（L93584），卷 16 三相大圆满，「洞观天地（未完成）」（L114210）、三五斩邪雌雄剑卡住（L112405）；`story-state.json` 标为 open 与此冲突，应改判已开启。思凡线：卷 5 八苦五席空缺、思凡主销声匿迹（L26008，人物推断），卷 14 太岁重新纳入记录、十主不容长驻 `天·甲子九`（L93209），卷 16 `地·甲子二百五十九` 已脱落致记录丢失（L110676）。南洋线：卷 7 李阎为「天保仔」、75% 海战专精（L29852），卷 8 命名「秀儿」并取得随时进入权（L44851），卷 17 写六年过去、官府联东印度公司清剿、红旗帮由五百艘船万余人降至三百艘（L114303）；卷末一分作五、郑秀南下（L118005），李阎失联逾半月、被天母带走（L118031）。",
+            "lines": [
+              16370,
+              27847,
+              84245,
+              110700,
+              46491,
+              60173,
+              93630,
+              93584,
+              114210,
+              112405,
+              26008,
+              93209,
+              110676,
+              29852,
+              44851,
+              114303,
+              118005,
+              118031
+            ],
+            "supported": false,
+            "reason": "模型审查失败，按不支持处理"
+          },
+          {
+            "claim": "卷 3 再次进入权（L16392）通向卷 11 再入同一果实、七年多后（L60927）；卷 14 倮主之死致二席空缺，卷 16 李阎已为二席（L114069）。仅时间先后的是卷 4、6、8、10 现实卷（L16360）与卷 13、15 两处果实（L84243）。",
+            "lines": [
+              16392,
+              60927,
+              114069,
+              16360,
+              84243
+            ],
+            "supported": false,
+            "reason": "模型审查失败，按不支持处理"
+          },
+          {
+            "claim": "- 通行锁定署名截断（L10675）、卷 9 脱落痕迹归属未明（L57572）；八苦空席与思凡主去向未收（L93203）。\n- 瀚海龙元剩 97/100（L114246）未用；神庭第二阶段、腥杀、强制事件「天母道场的要求」（L117966）未收。",
+            "lines": [
+              10675,
+              57572,
+              93203,
+              114246,
+              117966
+            ],
+            "supported": false,
+            "reason": "模型审查失败，按不支持处理"
+          },
+          {
+            "claim": "回收须遵守：脱落后记忆抹平、忍土不回收是章程（L111904）；神庭禁代行者、禁七宫、禁楚地神系外传承（L93561）；终极事件只能由二席申请（L94002）。",
+            "lines": [
+              111904,
+              93561,
+              94002
+            ],
+            "supported": false,
+            "reason": "模型审查失败，按不支持处理"
+          },
+          {
+            "claim": "卷 17 未完结，起点为红旗帮一分作五、李阎失联逾半月且被天母带走、大屿山良港被填平（L118031）。会话「对方可能已经结束本次阎浮事件」与「可用召令金牌回归」却未回归（L117995）并存，李阎状态未定。李阎位业八极、实力约七宫巅峰（L110802），受神庭禁七宫约束（L93580），不能写成升阶或取非楚地传承。与共者一方死亡则觉醒度降 10%、扣 5000 点（L12197，作者设定）。太岁与十主对立未收（L93209）。数值已降至三百艘、弹药钱粮短缺（L114303），卷末联合舰队已被暴风雨与旋涡瓦解（L118037），不可再写「联军即将进剿」（L114307）。卷 17 果实编号未交代，不得补造。",
+            "lines": [
+              118031,
+              117995,
+              110802,
+              93580,
+              12197,
+              93209,
+              114303,
+              118037,
+              114307
+            ],
+            "supported": false,
+            "reason": "模型审查失败，按不支持处理"
+          }
+        ]
+      },
+      "ok": false,
+      "issues": [
+        "第 1 批语义审查失败：模型链均失败（deepseek-v4.1-flash → hy4free，来源 config）：deepseek-v4.1-flash: Agent SDK 调用失败（deepseek-v4.1-flash）：401 Authentication required. Please use /login command to sign in to your account (auth-type:cli-external-link,token-type:Bearer,token-length:1472) (proxy: http_proxy=http://127.0.0.1:55250; https_proxy=http://127.0.0.1:55250; HTTP_PROXY=http://127.0.0.1:55250; HTTPS_PROXY=http://127.0.0.1:55250 -> https://www.codebuddy.ai) (01a1adf3b1de753ba4d609e011593895/01a1adf3-949e-7479-a06b-0c65b38bd434) | hy4free: Agent SDK 调用失败（hy4free）：401 Authentication required. Please use /login command to sign in to your account (auth-type:cli-external-link,token-type:Bearer,token-length:1472) (proxy: http_proxy=http://127.0.0.1:55250; https_proxy=http://127.0.0.1:55250; HTTP_PROXY=http://127.0.0.1:55250; HTTPS_PROXY=http://127.0.0.1:55250 -> https://www.codebuddy.ai) (01a1adf3eaa87f3482fab69eba7bc361/01a1adf3-c569-72cb-b787-aa5cd1b67584)；用 npm run dev -- check-runtime 检查 CLI 登录与模型目录",
+        "6 段结论未通过原文证据核验"
+      ]
+    },
+    {
+      "id": "creative",
+      "name": "创意剧情 Agent",
+      "path": "analysis/conghuoniao/agent-analysis/creative/output.md",
+      "chars": 1792,
+      "evidenceCount": 52,
+      "evidenceReview": {
+        "ok": false,
+        "checked": 6,
+        "supported": 0,
+        "rejected": 6,
+        "issues": [
+          "第 1 批语义审查失败：模型链均失败（deepseek-v4.1-flash → hy4free，来源 config）：deepseek-v4.1-flash: Agent SDK 调用失败（deepseek-v4.1-flash）：401 Authentication required. Please use /login command to sign in to your account (auth-type:cli-external-link,token-type:Bearer,token-length:1472) (proxy: http_proxy=http://127.0.0.1:55250; https_proxy=http://127.0.0.1:55250; HTTP_PROXY=http://127.0.0.1:55250; HTTPS_PROXY=http://127.0.0.1:55250 -> https://www.codebuddy.ai) (01a1adf4459d72b7a3582e6350a99db6/01a1adf4-1ff2-7e1c-9210-fb9e5d45874a) | hy4free: Agent SDK 调用失败（hy4free）：401 Authentication required. Please use /login command to sign in to your account (auth-type:cli-external-link,token-type:Bearer,token-length:1472) (proxy: http_proxy=http://127.0.0.1:55250; https_proxy=http://127.0.0.1:55250; HTTP_PROXY=http://127.0.0.1:55250; HTTPS_PROXY=http://127.0.0.1:55250 -> https://www.codebuddy.ai) (01a1adf492047bd283b5a93f9729bf8f/01a1adf4-5cb5-7dda-a5ec-79c4f0f7c65e)；用 npm run dev -- check-runtime 检查 CLI 登录与模型目录",
+          "6 段结论未通过原文证据核验"
+        ],
+        "decisions": [
+          {
+            "claim": "可写的边角不靠主角：卷 1 擂台、卷 13 船埠华工、卷 14 阎昭会名录。证据分四级：结算与正文为原著明确，L12187 作者单章为作者设定，貘转述规矩（L7919）、查小刀估量（L84968）为人物推断，只有现象的进「待核实」。四方向均项目原创，不写成正史。",
+            "lines": [
+              12187,
+              7919,
+              84968
+            ],
+            "supported": false,
+            "reason": "模型审查失败，按不支持处理"
+          },
+          {
+            "claim": "方向一，卷 14 阎昭会散会当日（L98773）名录岗，低风险，项目原创，地点主干大楼（L99016，原著明确）。赵玄坛记新人长相、名字、传承（L98813）；丑慈拿建材公司名片搭讪、被扔又捡回（L98827，原著明确）。主角是登记员：缺人手的阎昭会把外勤派成去丁亥轴清理思凡种子（L98853），名字进名录即成可派差、可追责的人。代价是外勤后果未写明，递名片只换到被挑拣资格。风险低：李阎散会后被后土叫走（L98789），此线不碰结算与人物状态。",
+            "lines": [
+              98773,
+              99016,
+              98813,
+              98827,
+              98853,
+              98789
+            ],
+            "supported": false,
+            "reason": "模型审查失败，按不支持处理"
+          },
+          {
+            "claim": "低风险另一处在卷 13，李阎初到圣·弗朗西斯科、尚未上山时（L84303），地点船埠码头，项目原创。工头说广东话、带打手和洋人（L84295）；华工或被合同欺骗、或被贩卖，工资远比当地人低廉并受歧视（L84305，原著明确），多数华人不准进城（L84605）。冲突给管华工的工头：在合同名额与危险岗位间分配同乡，自己也是被雇的黄皮肤。代价是伤亡与签字即失去议价的合同。该果实强度低（L84968，人物推断），不能写华工获得超凡能力；超凡主线在旧神与黑袍皇帝一侧（L84541），与船埠不交叉。",
+            "lines": [
+              84303,
+              84295,
+              84305,
+              84605,
+              84968,
+              84541
+            ],
+            "supported": false,
+            "reason": "模型审查失败，按不支持处理"
+          },
+          {
+            "claim": "方向三落在卷 15 香港，李阎到中兴保德国际拍卖有限公司驻香港办事处报到至下月十五号前（L99611、L99641），高风险，项目原创。规则：报名须提前十五天缴两千万港币保证金、责任事故不退（L99625），十五天内说动三名以上港地富豪、行走轮休护卫拍卖品（L99641）。冲突给执行层：既凑富豪又得守住不透露阎浮信息的掩护（L7919，人物推断），高保证金把普通竞买人挡在门外。代价是身份可回收：前台「忍一」凯瑞序号离开该果实后会重新分配（L99665），事故判定在己方则两千万全损。风险三处：该忍土隶属「地·甲子二百五十九号果实」（L99665），而果实在卷 16 已脱落、记录丢失（L110676，原著明确）；被摘取果实准入收紧（L59500）；「鬼主」所指不一，L81731 括注刘大均「已经死亡」，L59498 又写额度由鬼主苏灵制订。",
+            "lines": [
+              99611,
+              99641,
+              99625,
+              7919,
+              99665,
+              110676,
+              59500,
+              81731,
+              59498
+            ],
+            "supported": false,
+            "reason": "模型审查失败，按不支持处理"
+          },
+          {
+            "claim": "卷 17 未完结处属高风险，项目原创。时间点为南洋六年后、密报送到的次日、官府倾巢而出之前（L114297），地点大屿山红旗帮。局势已写明：官府断粮禁船、与东印度公司组联军（L114299），红旗帮从五百艘船减到三百艘、弹药钱粮短缺、人心浮动（L114303），忍土发求救信（L114309）。卷首「第一章 哗变？」（L114287），全文停在「第二十八章 此土佛法不足言（上）」（L117993）。冲突给管钱粮的头目：随旧旗倒戈还是撑到联军压境；代价是倒戈筹码为旧旗身份，撑下去持续减员。风险高在兵力、钱粮、内讧与联军都已写定，不能把「哗变」补成已发生或已平息，也不能替主角做决定（L114309）；写他不在的六年，须按卷 7 忍土替身规则交代是忍土维持身份（L44630）还是本人往返（L44642）。",
+            "lines": [
+              114297,
+              114299,
+              114303,
+              114309,
+              114287,
+              117993,
+              44630,
+              44642
+            ],
+            "supported": false,
+            "reason": "模型审查失败，按不支持处理"
+          },
+          {
+            "claim": "不能碰的方向与已确认结算、时间线或人物状态冲突。「地·甲子二百五十九（茱蒂）」在卷 16 已脱落、记录丢失（L110676，原著明确），卷 5 又写明脱落不可逆（L27434），不能再当完好果实展开。被摘取果实的结算归属不能改：卷 9 摘取人为穷奇（L47268），卷 10 李阎命名「罗布」（L59402），L59382 记苏灵为得利者，L59500 把准入归鬼主特许，所指未合拢前不能让任一方重新摘取。刘大均已死亡（L81731）、十主不容许太岁长驻天·甲子九（L93209）、卷 4、6、8、10、12、14、16 是结算卷（L110674），这几条不能翻。",
+            "lines": [
+              110676,
+              27434,
+              47268,
+              59402,
+              59382,
+              59500,
+              81731,
+              93209,
+              110674
+            ],
+            "supported": false,
+            "reason": "模型审查失败，按不支持处理"
+          }
+        ]
+      },
+      "ok": false,
+      "issues": [
+        "第 1 批语义审查失败：模型链均失败（deepseek-v4.1-flash → hy4free，来源 config）：deepseek-v4.1-flash: Agent SDK 调用失败（deepseek-v4.1-flash）：401 Authentication required. Please use /login command to sign in to your account (auth-type:cli-external-link,token-type:Bearer,token-length:1472) (proxy: http_proxy=http://127.0.0.1:55250; https_proxy=http://127.0.0.1:55250; HTTP_PROXY=http://127.0.0.1:55250; HTTPS_PROXY=http://127.0.0.1:55250 -> https://www.codebuddy.ai) (01a1adf4459d72b7a3582e6350a99db6/01a1adf4-1ff2-7e1c-9210-fb9e5d45874a) | hy4free: Agent SDK 调用失败（hy4free）：401 Authentication required. Please use /login command to sign in to your account (auth-type:cli-external-link,token-type:Bearer,token-length:1472) (proxy: http_proxy=http://127.0.0.1:55250; https_proxy=http://127.0.0.1:55250; HTTP_PROXY=http://127.0.0.1:55250; HTTPS_PROXY=http://127.0.0.1:55250 -> https://www.codebuddy.ai) (01a1adf492047bd283b5a93f9729bf8f/01a1adf4-5cb5-7dda-a5ec-79c4f0f7c65e)；用 npm run dev -- check-runtime 检查 CLI 登录与模型目录",
+        "6 段结论未通过原文证据核验"
+      ]
+    },
+    {
+      "id": "style",
+      "name": "文风 Agent",
+      "path": "analysis/conghuoniao/agent-analysis/style/output.md",
+      "chars": 1778,
+      "evidenceCount": 52,
+      "evidenceReview": {
+        "ok": false,
+        "checked": 0,
+        "supported": 0,
+        "rejected": 0,
+        "issues": [
+          "结论段落缺少原文行号引用：以下约束均为项目原创，不指向特定句式或比喻：",
+          "结论段落缺少原文行号引用：- 他人视角起笔时主角姓名与归属延后；脱离人物的概括句须同段内被感知或记忆回收，否则按说明段处理。\n- 新世界用苏醒、身"
+        ],
+        "decisions": []
+      },
+      "ok": false,
+      "issues": [
+        "结论段落缺少原文行号引用：以下约束均为项目原创，不指向特定句式或比喻：",
+        "结论段落缺少原文行号引用：- 他人视角起笔时主角姓名与归属延后；脱离人物的概括句须同段内被感知或记忆回收，否则按说明段处理。\n- 新世界用苏醒、身"
+      ]
+    },
+    {
+      "id": "characters",
+      "name": "人物与关系 Agent",
+      "path": "analysis/conghuoniao/agent-analysis/characters/output.md",
+      "chars": 1795,
+      "evidenceCount": 33,
+      "evidenceReview": {
+        "ok": false,
+        "checked": 5,
+        "supported": 0,
+        "rejected": 5,
+        "issues": [
+          "第 1 批语义审查失败：模型链均失败（deepseek-v4.1-flash → hy4free，来源 config）：deepseek-v4.1-flash: Agent SDK 调用失败（deepseek-v4.1-flash）：401 Authentication required. Please use /login command to sign in to your account (auth-type:cli-external-link,token-type:Bearer,token-length:1472) (proxy: http_proxy=http://127.0.0.1:55250; https_proxy=http://127.0.0.1:55250; HTTP_PROXY=http://127.0.0.1:55250; HTTPS_PROXY=http://127.0.0.1:55250 -> https://www.codebuddy.ai) (01a1adf4d7787c49887d30d4a3650634/01a1adf4-acb6-70e7-ab40-0797b57faa13) | hy4free: Agent SDK 调用失败（hy4free）：401 Authentication required. Please use /login command to sign in to your account (auth-type:cli-external-link,token-type:Bearer,token-length:1472) (proxy: http_proxy=http://127.0.0.1:55250; https_proxy=http://127.0.0.1:55250; HTTP_PROXY=http://127.0.0.1:55250; HTTPS_PROXY=http://127.0.0.1:55250 -> https://www.codebuddy.ai) (01a1adf520b37e1b85a069a6615b3d4a/01a1adf4-f36b-7034-a5ff-4d28c3fdaa95)；用 npm run dev -- check-runtime 检查 CLI 登录与模型目录",
+          "5 段结论未通过原文证据核验"
+        ],
+        "decisions": [
+          {
+            "claim": "李阎起步是拒事：卷 1 确诊 aml、无亲无故，回绝雷晶邀他赴广东任顾问（原著明确，L95）。卷 2 结算得上吉 500 点、权限 195%、传承「姑获鸟之灵·钩星」复苏 9%（钩星增 90% 爆发力与攻速），他只求健康、不谈延寿；貘问目的，他只答关心能带来什么（人物推断，L7317）。作者单章定其为散阶（作者设定，L12223）。卷 3 系统判实力达十都级却因靠碧渊剑等外力不给审核资格，同期古武术专精 93%（原著明确，L14855）；九级四层与门槛（十都 39% 加上吉、九曜 69%、八极 99%、七宫须代行者）由查小刀经验加余束消息拼成（人物推断，L28138）。卷 8 赵剑中「你已经九曜」确认上移，李阎已把妈祖换湘君、记下神庭（原著明确，L46471）；卷 14 他是八极行走，能查果实概括找重铸錾金虎头枪、补魂药物（原著明确，L92847）。由拒事到调配跨果实资源，节点均由结算或位阶说明支持。",
+            "lines": [
+              95,
+              7317,
+              12223,
+              14855,
+              28138,
+              46471,
+              92847
+            ],
+            "supported": false,
+            "reason": "模型审查失败，按不支持处理"
+          },
+          {
+            "claim": "作者单章分同行者、与共者、猎食者：与共者并肩基础素质升 30%、与传承加成相加，一人死亡其余人传承觉醒度降 10%、扣 5000 点（作者设定，L12199、L12201）。卷 3 系统投放十都级与共者只维持一次事件（原著明确，L12042）；查小刀讲同行者无保障、与共者奖励共享且逃杀事件算完成，金兰帖结契限两人、索价千点（人物推断，L24887）。惊鸿一瞥读出其面板：天赋厨艺 79%、刀术 59%，传承「饕餮之心·食技」稀有品质，开启后厨艺转战斗技能（原著明确，L18113）。卷 6 李阎压下【纪效新书·相法】，因永久与共者带隐患、须核「有杀错无放过」与「不能滥杀无辜」的分歧（人物推断，L28074）；该道具永久效果为彼此 15% 肉体素质加成（原著明确，L78222）。末卷查小刀做后勤支援，原文点回初见兵戎相见、下手阴狠（原著明确，L118059）。加成、连坐扣点与绑定隐患使搭档成为代价决策。",
+            "lines": [
+              12199,
+              12201,
+              12042,
+              24887,
+              18113,
+              28074,
+              78222,
+              118059
+            ],
+            "supported": false,
+            "reason": "模型审查失败，按不支持处理"
+          },
+          {
+            "claim": "余束卷 3 自报太岁之称（原著明确，L2891）；死苦太岁叛出思凡、生老病怨憎会战死出自冯夷转述，李阎称没有她帮助难活着走下战场也只写作一种感觉，五方老权限得自余束（人物推断，L26010）。貘自陈祸斗传承与阳火咒，借国术设喻解释技能与传承之别，把阎浮说成宝树，承认挖掘新人、看重首次上吉运气（人物推断，L7877）；果实养料、清浊二气、结算细则草拟者到卷 12 才由专属忍土转述十主内部刊物给出（人物推断，L81729）。赵剑中看出换湘君是想走神庭、劝五仙只炼一个，李阎以听人说的口吻探神庭少有人走而赵静看未证实（人物推断，L46477）。",
+            "lines": [
+              2891,
+              26010,
+              7877,
+              81729,
+              46477
+            ],
+            "supported": false,
+            "reason": "模型审查失败，按不支持处理"
+          },
+          {
+            "claim": "characters.md 把不容许太岁长驻天·甲子九系于余束，但貘望向丹娘、邀持有太岁传承的六司行走赴倮主葬礼，答应的是丹娘（原著明确，L93203）；丹娘持自太岁处来的传承，只能随李阎出入、无奖励（原著明确，L45309）。查小刀自称高位阶不清楚、丹娘自陈没见识且不参与结算（人物推断，L28118）；李阎位阶卷 2 散阶、卷 8 九曜、卷 14 八极（原著明确，L92847）。续写不得把余束放进这场对话、让卷 2 的貘提前说出十主内部刊物内容、让查小刀讲七宫以上评定或让丹娘报点数（项目原创）。",
+            "lines": [
+              93203,
+              45309,
+              28118,
+              92847
+            ],
+            "supported": false,
+            "reason": "模型审查失败，按不支持处理"
+          },
+          {
+            "claim": "雷晶谈协会、政客弄权，措辞斟酌（原著明确，L79）；李阎开场嗓音温和却话锋带刺、以「声名狼藉」自况并反诘，到赵剑中面前改晚辈口吻自称什么也不懂，在貘面前单刀直入、冷笑（原著明确，L83）。貘以国术设喻、反问代解答、句尾留余地（原著明确，L7865）；查小刀讲与共者带自得、直报千点，末卷发号施令裹着客气话头却转手制人（原著明确，L24857）；丹娘话最家常，绕着做饭、学架子鼓，自认没见识（原著明确，L46252）。口吻约束：丹娘不说位阶术语，赵剑中不闲谈讲规则，貘不做全知断言，查小刀不替高位阶下结论（项目原创）。",
+            "lines": [
+              79,
+              83,
+              7865,
+              24857,
+              46252
+            ],
+            "supported": false,
+            "reason": "模型审查失败，按不支持处理"
+          }
+        ]
+      },
+      "ok": false,
+      "issues": [
+        "第 1 批语义审查失败：模型链均失败（deepseek-v4.1-flash → hy4free，来源 config）：deepseek-v4.1-flash: Agent SDK 调用失败（deepseek-v4.1-flash）：401 Authentication required. Please use /login command to sign in to your account (auth-type:cli-external-link,token-type:Bearer,token-length:1472) (proxy: http_proxy=http://127.0.0.1:55250; https_proxy=http://127.0.0.1:55250; HTTP_PROXY=http://127.0.0.1:55250; HTTPS_PROXY=http://127.0.0.1:55250 -> https://www.codebuddy.ai) (01a1adf4d7787c49887d30d4a3650634/01a1adf4-acb6-70e7-ab40-0797b57faa13) | hy4free: Agent SDK 调用失败（hy4free）：401 Authentication required. Please use /login command to sign in to your account (auth-type:cli-external-link,token-type:Bearer,token-length:1472) (proxy: http_proxy=http://127.0.0.1:55250; https_proxy=http://127.0.0.1:55250; HTTP_PROXY=http://127.0.0.1:55250; HTTPS_PROXY=http://127.0.0.1:55250 -> https://www.codebuddy.ai) (01a1adf520b37e1b85a069a6615b3d4a/01a1adf4-f36b-7034-a5ff-4d28c3fdaa95)；用 npm run dev -- check-runtime 检查 CLI 登录与模型目录",
+        "5 段结论未通过原文证据核验"
+      ]
+    },
+    {
+      "id": "continuity",
+      "name": "世界观与连续性 Agent",
+      "path": "analysis/conghuoniao/agent-analysis/continuity/output.md",
+      "chars": 1783,
+      "evidenceCount": 83,
+      "evidenceReview": {
+        "ok": false,
+        "checked": 0,
+        "supported": 0,
+        "rejected": 0,
+        "issues": [
+          "结论段落缺少原文行号引用：以下为项目原创的整理层约束。"
+        ],
+        "decisions": []
+      },
+      "ok": false,
+      "issues": [
+        "结论段落缺少原文行号引用：以下为项目原创的整理层约束。"
+      ]
+    }
+  ],
+  "complete": false
+}

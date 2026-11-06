@@ -1,11 +1,16 @@
 node_modules/
 dist/
-.output/
 .env
-private/
+
+# 原始语料：唯一不入库的内容（约 5.9MB，可由外部来源重新获取）
 original.txt
 
-# Per-world SQLite databases and WAL sidecars
-worlds/*/novel.db
+# SQLite 运行时文件：随进程变化，提交没有意义
 worlds/*/novel.db-wal
 worlds/*/novel.db-shm
+
+# 本地覆盖与私有笔记：目录名即约定，需要共享时把文件移到 worlds/<world>/
+private/
+
+# 审核包是可从已提交内容重新生成的二进制产物
+.output/*.zip

@@ -1,0 +1,65 @@
+
+> novel-generation@0.2.0 dev
+> tsx src/cli.ts analyze-story --world conghuoniao --shard 2/4 --timeout-ms 240000
+
+(node:19214) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+[story-analysis] batch 3/196 · cache hit
+[story-analysis] batch 7/196 · cache hit
+[story-analysis] batch 11/196 · 第四十章 终焉之前 … 第四十二章 终焉（下） · 12132 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 15/196 · cache hit
+[story-analysis] batch 19/196 · cache hit
+[story-analysis] batch 23/196 · cache hit
+[story-analysis] batch 27/196 · cache hit
+[story-analysis] batch 31/196 · cache hit
+[story-analysis] batch 35/196 · cache hit
+[story-analysis] batch 39/196 · cache hit
+[story-analysis] batch 43/196 · cache hit
+[story-analysis] batch 47/196 · cache hit
+[story-analysis] batch 51/196 · cache hit
+[story-analysis] batch 55/196 · cache hit
+[story-analysis] batch 59/196 · cache hit
+[story-analysis] batch 63/196 · cache hit
+[story-analysis] batch 67/196 · cache hit
+[story-analysis] batch 71/196 · cache hit
+[story-analysis] batch 75/196 · cache hit
+[story-analysis] batch 79/196 · cache hit
+[story-analysis] batch 83/196 · cache hit
+[story-analysis] batch 87/196 · cache hit
+[story-analysis] batch 91/196 · cache hit
+[story-analysis] batch 95/196 · cache hit
+[story-analysis] batch 99/196 · cache hit
+[story-analysis] batch 103/196 · cache hit
+[story-analysis] batch 107/196 · cache hit
+[story-analysis] batch 111/196 · cache hit
+[story-analysis] batch 115/196 · cache hit
+[story-analysis] batch 119/196 · cache hit
+[story-analysis] batch 123/196 · cache hit
+[story-analysis] batch 127/196 · cache hit
+[story-analysis] batch 131/196 · cache hit
+[story-analysis] batch 135/196 · cache hit
+[story-analysis] batch 139/196 · cache hit
+[story-analysis] batch 143/196 · cache hit
+[story-analysis] batch 147/196 · cache hit
+[story-analysis] batch 151/196 · cache hit
+[story-analysis] batch 155/196 · cache hit
+[story-analysis] batch 159/196 · cache hit
+[story-analysis] batch 163/196 · cache hit
+[story-analysis] batch 167/196 · cache hit
+[story-analysis] batch 171/196 · cache hit
+[story-analysis] batch 175/196 · cache hit
+[story-analysis] batch 179/196 · cache hit
+[story-analysis] batch 183/196 · cache hit
+[story-analysis] batch 187/196 · cache hit
+[story-analysis] batch 191/196 · cache hit
+[story-analysis] batch 195/196 · cache hit
+[story-analysis] partial run done · processed 1 · cached 48 · failed 0 · skipped 147
+{
+  "batches": 196,
+  "processed": 1,
+  "cached": 48,
+  "failed": [],
+  "pending": 147,
+  "skipped": 147
+}

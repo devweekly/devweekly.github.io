@@ -1,0 +1,12 @@
+
+> novel-generation@0.2.0 dev
+> tsx src/cli.ts analyze-world --world conghuoniao --phase collect --evidence-review --timeout-ms 180000
+
+(node:9627) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+main-plot    CHECK 1800 chars / 56 refs / 24 句结论未通过原文证据核验
+creative     CHECK 1792 chars / 52 refs / 14 句结论未通过原文证据核验
+style        CHECK 1778 chars / 52 refs / 11 句结论未通过原文证据核验
+characters   CHECK 1795 chars / 33 refs / 25 句结论未通过原文证据核验
+continuity   CHECK 1783 chars / 83 refs / 18 句结论未通过原文证据核验
+Manifest: /Users/saga/code-repos/devweekly.github.io/tools/novel-generation/analysis/conghuoniao/agent-analysis/manifest.json

@@ -1,0 +1,12 @@
+First attempt: Error: Character arc evidence is not present in the final chapter: 查小刀 / M-CHA-01\nRetry: [
+  {
+    "code": "unrecognized_keys",
+    "keys": [
+      "schemaVersion",
+      "worldId",
+      "updatedAt"
+    ],
+    "path": [],
+    "message": "Unrecognized keys: \"schemaVersion\", \"worldId\", \"updatedAt\""
+  }
+]\n\n

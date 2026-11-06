@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "stages": {
+    "creative": {
+      "inputHash": "5695790bac03477e9c1a0aecc58d68089cfea2e912d306fe6b0a093373193d21",
+      "outputFile": "02-creative-options.md",
+      "outputHash": "e50f907c864b3990f606288e876d3eda1c1cb9273f6abdced011eb21314a0d01",
+      "completedAt": "2026-11-06T04:29:35.441Z"
+    },
+    "plot": {
+      "inputHash": "9dde391be4e02e7b609b007e5f8f71aec360596c84b15cfc7b1841fa221c899f",
+      "outputFile": "01-main-plot.md",
+      "outputHash": "358bac1bccc93fa15384f619ee100a3e24285e79ae63603f0adfe7b4ff7a5022",
+      "completedAt": "2026-11-06T04:29:49.976Z"
+    },
+    "plan": {
+      "inputHash": "83dc8db74bc41d518446cd53baff44c9ac8658898115098be1a21b2f54fa5258",
+      "outputFile": "03-chapter-plan.md",
+      "outputHash": "bf4c0446905b35206c7aaa1f1c8b222774b83d4f620a276cee1e397a5535c1d4",
+      "completedAt": "2026-11-06T04:31:12.582Z"
+    },
+    "scene": {
+      "inputHash": "fa13d76c10242743859b6fced16059cacc55e427c01b4f502898b801fe2c9ece",
+      "outputFile": "04-scene-draft.md",
+      "outputHash": "70f92cee92e4d9a783e3496eeaa69ea0e1774a2b476b83b5bcc5e4ea1b524b8f",
+      "completedAt": "2026-11-06T04:31:29.546Z"
+    },
+    "dialogue": {
+      "inputHash": "65b1f67633e028f37ebb1dcf6427480e623ce56430e2328bb1f9ff674e90281f",
+      "outputFile": "05-dialogue-edited.md",
+      "outputHash": "9123e03eae4bc04ae16790e4971e15e3f96d82731ce88c4940f79df7010abe8a",
+      "completedAt": "2026-11-06T04:32:41.047Z"
+    },
+    "voice": {
+      "inputHash": "59ff1e9c87d62533a0564888394c372deebd1d29d4c45097c05af09cfe3f1a75",
+      "outputFile": "06-voice-edited.md",
+      "outputHash": "379f1558f7779fa6c9af405597cf4f635071aa540c341fc2ec70fc3b59061d72",
+      "completedAt": "2026-11-06T04:33:36.563Z"
+    },
+    "quality-review-1": {
+      "inputHash": "4303d0da1f444bd157f604c88da5fbe3efa6645e3c565a29f1376d1b049a9c2b",
+      "outputFile": "07-review-round-1-raw.txt",
+      "outputHash": "11ed2c4881b3fe1fb5bbf120d13f0bdcb432a784610c2bef7cbf29fc08110b60",
+      "completedAt": "2026-11-06T04:33:59.834Z"
+    },
+    "state-update": {
+      "inputHash": "380a7d8bf22aa36e227d399b4276fb2957a4316b7cb279d960046ea2058803f1",
+      "outputFile": "08-state-update-raw.json",
+      "outputHash": "c48dfb5fe927e1a8a19a1235fdd3405558ce2f45dcaae877e02e4637d64d4f0b",
+      "completedAt": "2026-11-06T04:34:27.303Z"
+    }
+  }
+}

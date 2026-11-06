@@ -1,0 +1,140 @@
+
+> novel-generation@0.2.0 dev
+> tsx src/cli.ts analyze-story --world conghuoniao --shard 2/4 --timeout-ms 240000
+
+(node:51870) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+[story-analysis] batch 3/196 · 第九章 第五日 … 第十一章 生死翻盘（二） · 11123 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 7/196 · 第二十四章 一颗豪胆博富贵 … 第二十七章 老骥险恶 · 12030 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 11/196 · 第四十章 终焉之前 … 第四十二章 终焉（下） · 12132 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 11 failed: Bad control character in string literal in JSON at position 5846 (line 127 column 30)
+[story-analysis] batch 15/196 · 第六章 乱局 … 第九章 摄山女（下） · 12688 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 19/196 · 第二十二章 睚眦之力 … 第二十五章 再见摄山女（上） · 11741 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 23/196 · 第三十八章 睚眦伏首，烈火骷髅 … 第四十一章 西国的绞杀 · 12387 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 27/196 · 第五章 九凤 … 第七章 虎挑 · 10737 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 31/196 · 第十章 门卫李阎 … 第十三章 风貌与际遇 · 12115 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 35/196 · 第二十六章 博弈（求首订） … 第二十九章 无毒不丈夫？ · 11931 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 39/196 · 第四十二章 思凡的邀请 … 第四十五章 穷途 · 11542 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 43/196 · 第八章 佯狂难免假作真 … 第十一章 睚眦之泥 · 12235 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 47/196 · 第十三章 天母过海 … 第十七章 身份迷雾 · 13754 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 51/196 · 第三十章 风暴涟漪 … 第三十三章 酣战 · 12805 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 55/196 · 第四十八章 黑骑鬼的随身老爷爷 … 第五十一章 妈阁具 · 12589 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 59/196 · 第六十四章 第一把传说武器 … 第六十七章 白热化 · 12926 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 63/196 · 第八十章 大盗枭声（二） … 第八十三章 大盗枭声（五） · 13774 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 67/196 · 第九十四章 一撇一捺念个人 … 第九十六章 权限 · 10610 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 71/196 · 第十一章 蝴蝶风暴 … 第十三章 九十吨！无支祁 · 9748 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 75/196 · 第十一章 传说枪械：野牦牛RS107 … 第十四章 钢铁与活尸 · 11596 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 79/196 · 第二十七章 轰炸伊始（完） … 第三十章 超感雅克 · 11331 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 83/196 · 第四十章 一夜无话 … 第四十三章 政治问题(第1/1页) · 12196 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 87/196 · 第五十五章 欢迎来到，水株公园！ … 第五十七章 前奏：抉择 · 12654 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 91/196 · 第六十九章 雷的回声 … 第七十二章 我不相信！ · 12227 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 95/196 · 第三章 灯草和尚 … 第六章 突飞猛进 · 12003 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 99/196 · 第八章 高僧耳健连 … 第十一章 鬼梦貘 · 13448 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 103/196 · 第二十五章 启程 … 第二十八章 声色犬马 · 12555 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 107/196 · 第四十一章 换马记（完） … 第四十四章 计生绝户！ · 12332 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 111/196 · 第五十五章 一半缘由！ … 第五十九章 秦城隍（下） · 13609 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 115/196 · 第七十章 惊变 … 第七十一章 天放先生 · 9003 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 119/196 · 第七十八章 下海虎，出闸龙 … 第七十九章 黑饕餮 · 11404 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 123/196 · 第八十七章 金山十四子 … 第八十八章 祁连山人 · 11749 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 127/196 · 第九十九章 冤家终路窄 … 第一百零一章 扑朔迷离 · 11547 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 131/196 · 第一百一十四章 峰回路转 … 第一百一十七章 谁不是知易行难 · 13212 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 135/196 · 第五章 只道寻常 … 第八章 怪物的碾压！ · 13126 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 139/196 · 第二章 看在同胞的份上 … 第四章 太阴秘典 · 9514 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 143/196 · 第十七章 月下约定 … 第二十章 跑调的童话 · 13575 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 147/196 · 第三十四章 史官 … 第三十八章 《巨人湖》第四幕 · 13659 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 151/196 · 第五十二章 惊变 … 第五十六章 血肉苦弱（一） · 13042 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 155/196 · 第五章 云中君 … 第八章 虎牙楼 · 12792 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 159/196 · 第二十二章 天空大炸弹 … 第二十六章 百舸争流 · 13104 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 163/196 · 第四十一章 阎浮果核 … 第四十六章 再入九龙 · 13912 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 167/196 · 第十二章 插曲 … 第十六章 三奇贵人？ · 13564 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 171/196 · 第二十九章 杀子之债 … 第三十二章 猩红意外 · 10750 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 175/196 · 第四十六章 … 第四十九章 黑手 · 10831 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 179/196 · 第六十一章 决心 … 第六十四章 牟尼的盛宴（上） · 12905 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 183/196 · 第七十八章 再见，再见 … 第三章 云中君vs天命雅克 · 13069 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 187/196 · 第十四章 日常 … 第十六章 烛光 · 11723 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 191/196 · 第七章 考较 … 第十一章 神怪与学者（完） · 13728 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] batch 195/196 · 第二十四章 破封（完） … 第二十七章 山河蠹 · 13110 chars
+[agent] deepseek-v4.1-flash 已等待 30s · 事件 3 条 · 已收文本 0 字
+[agent] deepseek-v4.1-flash 已等待 60s · 事件 3 条 · 已收文本 0 字
+[story-analysis] partial run done · processed 48 · cached 0 · failed 1 · skipped 147
+{
+  "batches": 196,
+  "processed": 48,
+  "cached": 0,
+  "failed": [
+    10
+  ],
+  "pending": 148,
+  "skipped": 147
+}

@@ -1,0 +1,353 @@
+{
+  "chapter": {
+    "index": 13,
+    "title": "第十三章 茱蒂与夜",
+    "volume": 1
+  },
+  "models": {
+    "writer": "deepseek-v4.1-flash",
+    "reviewer": "glm-5.3-flash"
+  },
+  "candidates": [
+    {
+      "id": "A",
+      "profile": {
+        "thinkingMode": "disabled",
+        "thinkingBudgetTokens": 8192,
+        "effort": "low"
+      },
+      "chars": 2576,
+      "seconds": 27.9,
+      "distance": 0.3316
+    },
+    {
+      "id": "B",
+      "profile": {
+        "thinkingMode": "adaptive",
+        "thinkingBudgetTokens": 8192,
+        "effort": "high"
+      },
+      "chars": 0,
+      "seconds": 11.2,
+      "distance": 1
+    }
+  ],
+  "metrics": {
+    "original": {
+      "characters": 2730,
+      "paragraphs": 131,
+      "sentences": 159,
+      "meanSentence": 17.2,
+      "medianSentence": 13,
+      "p90Sentence": 40,
+      "maxSentence": 70,
+      "shortRatio": 0.403,
+      "midRatio": 0.421,
+      "longRatio": 0.176,
+      "veryLongRatio": 0.006,
+      "sentencesPerParagraph": 1.21,
+      "dialogueLineRatio": 0.466,
+      "commasPerSentence": 1.01,
+      "charsPerParagraph": 20.8,
+      "strongPunctPer1000": 20.1
+    },
+    "A": {
+      "characters": 2576,
+      "paragraphs": 96,
+      "sentences": 172,
+      "meanSentence": 15,
+      "medianSentence": 12,
+      "p90Sentence": 31,
+      "maxSentence": 57,
+      "shortRatio": 0.453,
+      "midRatio": 0.442,
+      "longRatio": 0.105,
+      "veryLongRatio": 0,
+      "sentencesPerParagraph": 1.79,
+      "dialogueLineRatio": 0.573,
+      "commasPerSentence": 1.4,
+      "charsPerParagraph": 26.8,
+      "strongPunctPer1000": 8.5
+    },
+    "B": {
+      "characters": 0,
+      "paragraphs": 10,
+      "sentences": 0,
+      "meanSentence": 0,
+      "medianSentence": 0,
+      "p90Sentence": 0,
+      "maxSentence": 0,
+      "shortRatio": 0,
+      "midRatio": 0,
+      "longRatio": 0,
+      "veryLongRatio": 0,
+      "sentencesPerParagraph": 0,
+      "dialogueLineRatio": 0,
+      "commasPerSentence": 0,
+      "charsPerParagraph": 0,
+      "strongPunctPer1000": 0
+    }
+  },
+  "deltas": {
+    "A": [
+      {
+        "key": "veryLongRatio",
+        "label": "超长句占比(≥60)",
+        "original": 0.006,
+        "candidate": 0,
+        "delta": -0.01,
+        "relative": 1
+      },
+      {
+        "key": "strongPunctPer1000",
+        "label": "强调标点每千字",
+        "original": 20.1,
+        "candidate": 8.5,
+        "delta": -11.6,
+        "relative": 0.577
+      },
+      {
+        "key": "sentencesPerParagraph",
+        "label": "段均句数",
+        "original": 1.21,
+        "candidate": 1.79,
+        "delta": 0.58,
+        "relative": 0.479
+      },
+      {
+        "key": "longRatio",
+        "label": "长句占比(≥31)",
+        "original": 0.176,
+        "candidate": 0.105,
+        "delta": -0.07,
+        "relative": 0.403
+      },
+      {
+        "key": "commasPerSentence",
+        "label": "句均逗号",
+        "original": 1.01,
+        "candidate": 1.4,
+        "delta": 0.39,
+        "relative": 0.386
+      },
+      {
+        "key": "charsPerParagraph",
+        "label": "段均字数",
+        "original": 20.8,
+        "candidate": 26.8,
+        "delta": 6,
+        "relative": 0.288
+      },
+      {
+        "key": "paragraphs",
+        "label": "段落数",
+        "original": 131,
+        "candidate": 96,
+        "delta": -35,
+        "relative": 0.267
+      },
+      {
+        "key": "dialogueLineRatio",
+        "label": "对白行占比",
+        "original": 0.466,
+        "candidate": 0.573,
+        "delta": 0.11,
+        "relative": 0.23
+      },
+      {
+        "key": "p90Sentence",
+        "label": "句长 p90",
+        "original": 40,
+        "candidate": 31,
+        "delta": -9,
+        "relative": 0.225
+      },
+      {
+        "key": "maxSentence",
+        "label": "最长句",
+        "original": 70,
+        "candidate": 57,
+        "delta": -13,
+        "relative": 0.186
+      },
+      {
+        "key": "meanSentence",
+        "label": "平均句长",
+        "original": 17.2,
+        "candidate": 15,
+        "delta": -2.2,
+        "relative": 0.128
+      },
+      {
+        "key": "shortRatio",
+        "label": "短句占比(≤10)",
+        "original": 0.403,
+        "candidate": 0.453,
+        "delta": 0.05,
+        "relative": 0.124
+      },
+      {
+        "key": "sentences",
+        "label": "句数",
+        "original": 159,
+        "candidate": 172,
+        "delta": 13,
+        "relative": 0.082
+      },
+      {
+        "key": "medianSentence",
+        "label": "句长中位数",
+        "original": 13,
+        "candidate": 12,
+        "delta": -1,
+        "relative": 0.077
+      },
+      {
+        "key": "characters",
+        "label": "汉字数",
+        "original": 2730,
+        "candidate": 2576,
+        "delta": -154,
+        "relative": 0.056
+      },
+      {
+        "key": "midRatio",
+        "label": "中句占比(11-30)",
+        "original": 0.421,
+        "candidate": 0.442,
+        "delta": 0.02,
+        "relative": 0.05
+      }
+    ],
+    "B": [
+      {
+        "key": "characters",
+        "label": "汉字数",
+        "original": 2730,
+        "candidate": 0,
+        "delta": -2730,
+        "relative": 1
+      },
+      {
+        "key": "sentences",
+        "label": "句数",
+        "original": 159,
+        "candidate": 0,
+        "delta": -159,
+        "relative": 1
+      },
+      {
+        "key": "meanSentence",
+        "label": "平均句长",
+        "original": 17.2,
+        "candidate": 0,
+        "delta": -17.2,
+        "relative": 1
+      },
+      {
+        "key": "medianSentence",
+        "label": "句长中位数",
+        "original": 13,
+        "candidate": 0,
+        "delta": -13,
+        "relative": 1
+      },
+      {
+        "key": "p90Sentence",
+        "label": "句长 p90",
+        "original": 40,
+        "candidate": 0,
+        "delta": -40,
+        "relative": 1
+      },
+      {
+        "key": "maxSentence",
+        "label": "最长句",
+        "original": 70,
+        "candidate": 0,
+        "delta": -70,
+        "relative": 1
+      },
+      {
+        "key": "shortRatio",
+        "label": "短句占比(≤10)",
+        "original": 0.403,
+        "candidate": 0,
+        "delta": -0.4,
+        "relative": 1
+      },
+      {
+        "key": "midRatio",
+        "label": "中句占比(11-30)",
+        "original": 0.421,
+        "candidate": 0,
+        "delta": -0.42,
+        "relative": 1
+      },
+      {
+        "key": "longRatio",
+        "label": "长句占比(≥31)",
+        "original": 0.176,
+        "candidate": 0,
+        "delta": -0.18,
+        "relative": 1
+      },
+      {
+        "key": "veryLongRatio",
+        "label": "超长句占比(≥60)",
+        "original": 0.006,
+        "candidate": 0,
+        "delta": -0.01,
+        "relative": 1
+      },
+      {
+        "key": "sentencesPerParagraph",
+        "label": "段均句数",
+        "original": 1.21,
+        "candidate": 0,
+        "delta": -1.21,
+        "relative": 1
+      },
+      {
+        "key": "dialogueLineRatio",
+        "label": "对白行占比",
+        "original": 0.466,
+        "candidate": 0,
+        "delta": -0.47,
+        "relative": 1
+      },
+      {
+        "key": "commasPerSentence",
+        "label": "句均逗号",
+        "original": 1.01,
+        "candidate": 0,
+        "delta": -1.01,
+        "relative": 1
+      },
+      {
+        "key": "charsPerParagraph",
+        "label": "段均字数",
+        "original": 20.8,
+        "candidate": 0,
+        "delta": -20.8,
+        "relative": 1
+      },
+      {
+        "key": "strongPunctPer1000",
+        "label": "强调标点每千字",
+        "original": 20.1,
+        "candidate": 0,
+        "delta": -20.1,
+        "relative": 1
+      },
+      {
+        "key": "paragraphs",
+        "label": "段落数",
+        "original": 131,
+        "candidate": 10,
+        "delta": -121,
+        "relative": 0.924
+      }
+    ]
+  }
+}

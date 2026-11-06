@@ -1,0 +1,7 @@
+
+> novel-generation@0.2.0 dev
+> tsx src/cli.ts analyze-world --world conghuoniao --phase collect --evidence-review --timeout-ms 180000
+
+(node:47402) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+(Use `node --trace-warnings ...` to show where the warning was created)
+Expected ':' after property name in JSON at position 91 (line 1 column 92)
