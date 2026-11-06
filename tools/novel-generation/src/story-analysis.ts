@@ -505,7 +505,9 @@ export function buildStoryGraph(input: {
   const norm=(s:string)=>normalizeCharacterName(s).replace(/\s/g,"").toLowerCase();
   const node=(type:string,label:string,data:Record<string,unknown>,id?:string)=>{
     const key=id??type+":"+hash(label);
-    if(!nodes.some(n=>n.id===key))nodes.push({id:key,type,label,data,sourceRefs:refsOf(data)});
+    const previous=nodes.find(n=>n.id===key);
+    if(previous)previous.sourceRefs=mergeRefs(previous.sourceRefs,refsOf(data),48);
+    else nodes.push({id:key,type,label,data,sourceRefs:refsOf(data)});
     return key;
   };
   const edge=(from:string|undefined,to:string|undefined,type:string,label:string,data:Record<string,unknown>)=>{
