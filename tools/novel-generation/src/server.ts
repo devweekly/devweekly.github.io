@@ -4,7 +4,7 @@ import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { loadStoryPlan, saveStoryPlan, generateStoryPlan } from "./story-plan.js";
 import { loadStoryState } from "./story-state.js";
-import { readStoryAnalysis } from "./database.js";
+import { readStoryAnalysis, listNovelCharacters, readNovelCharacterWorkbenchDetail } from "./database.js";
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
 import { getCandidate, getRun, listCandidates, listRuns, recoverInterruptedRuns, saveCandidate, saveRun, type StoryPlanCandidate, type WorkbenchRun } from "./workbench-store.js";
 
@@ -38,6 +38,9 @@ async function serializeWorld<T>(worldId:string,task:()=>Promise<T>):Promise<T>{
 app.get("/api/health",(_req,res)=>res.json({ok:true,service:"novel-generation-workbench"}));
 app.get("/api/worlds",async(_req,res)=>{try{res.json({worlds:await listWorlds()});}catch(e){sendError(res,e);}});
 app.get("/api/worlds/:worldId/dashboard",async(req,res)=>{try{const id=worldIdOf(req.params.worldId);assertInsideWorld(id);const [storyPlan,runs,candidates]=await Promise.all([loadStoryPlan(path.join(worldDir(id),"story-plan.json"),id),listRuns(id),listCandidates(id)]);res.json({worldId:id,storyPlan:storyPlan??null,counts:{running:runs.filter(x=>x.status==="queued"||x.status==="running").length,completedRuns:runs.filter(x=>x.status==="completed").length,failedRuns:runs.filter(x=>x.status==="failed").length},recentRuns:runs.slice(0,12),planVersions:candidates.map(candidate=>candidate.status==="pending"||candidate.status==="changes_requested"?{...candidate,status:"superseded"}:candidate).slice(0,20)});}catch(e){sendError(res,e);}});
+
+app.get("/api/worlds/:worldId/characters",async(req,res)=>{try{const id=worldIdOf(req.params.worldId);assertInsideWorld(id);const query=typeof req.query.q==="string"?req.query.q:"";res.json({characters:listNovelCharacters(worldDir(id),id,{query,limit:200})});}catch(e){sendError(res,e);}});
+app.get("/api/worlds/:worldId/characters/:name",async(req,res)=>{try{const id=worldIdOf(req.params.worldId);assertInsideWorld(id);const name=decodeURIComponent(req.params.name);const detail=readNovelCharacterWorkbenchDetail(worldDir(id),id,name);if(!detail)return res.status(404).json({error:"Character not found."});res.json(detail);}catch(e){sendError(res,e);}});
 app.get("/api/worlds/:worldId/candidates",async(req,res)=>{try{res.json({candidates:await listCandidates(worldIdOf(req.params.worldId))});}catch(e){sendError(res,e);}});
 app.get("/api/worlds/:worldId/runs",async(req,res)=>{try{res.json({runs:await listRuns(worldIdOf(req.params.worldId))});}catch(e){sendError(res,e);}});
 
