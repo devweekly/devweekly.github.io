@@ -10,6 +10,7 @@ import { parseJsonObject } from "./model-json.js";
 import { LONG_CHAPTER_SOURCE_TAIL_CHARS } from "./constants.js";
 import { buildWorldSituationContext } from "./world-situation.js";
 import { LIVING_VOICE_RULES, antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, readerExperiencePrompt } from "./literary-edit.js";
+import { buildStyleRegressionPrompt, loadStyleRegressionReferences } from "./style-regression.js";
 
 export interface WriteWorkflowInput {
   worldId: string;
@@ -329,7 +330,22 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     reviews: reviewed.reviews
   }, null, 2));
 
+  // Automatic style regression is observational: never rewrites or blocks prose.
+  if (input.styleProfile?.trim()) {
+    try {
+      const references = await loadStyleRegressionReferences(input.worldDir ?? resolve("worlds", input.worldId));
+      const report = await cachedCall("style-regression", "11-style-regression.md", "styleDistill", [
+        buildStyleRegressionPrompt({ styleProfile: input.styleProfile, references, candidates: [{ label: "本次最终章节", text: chapter }] })
+      ], output => { if (!output.trim()) throw new Error("Style regression returned an empty report."); });
+      await saveStage(input.outputDir, "11-style-regression.md", report);
+    } catch (error) {
+      await saveStage(input.outputDir, "11-style-regression-error.txt", String(error));
+      console.error("[write] 风格回归观察未完成；不改动正文，也不影响章节状态提交。");
+    }
+  }
+
   // Reader experience is observational only: it never blocks state persistence.
+  try {  // Reader experience is observational only: it never blocks state persistence.
   try {
     const readerReport = await cachedCall("reader-experience", "10-reader-experience.md", "reader", [
       readerExperiencePrompt({ brief: input.brief, chapter })
