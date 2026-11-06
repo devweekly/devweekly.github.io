@@ -157,6 +157,27 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     "本次创作任务：", input.brief
   ].filter(Boolean).join("\n\n");
 
+  // 不同阶段只接收完成当前任务所需的上下文。完整事实包仍用于规划、正文和终审；
+  // 创意发散不需要逐条原文证据，编辑阶段也不应反复携带整份语料与续写材料。
+  const creativeContext = [
+    "世界设定：", input.worldBible,
+    "当前故事状态：", JSON.stringify(state, null, 2),
+    input.contextText ? "前情摘要：\n" + input.contextText : "",
+    input.writingBrief ? "相关既成事实与未收线：\n" + input.writingBrief : "",
+    input.brief ? "本次创作任务：\n" + input.brief : ""
+  ].filter(Boolean).join("\n\n");
+  const dialogueContext = [
+    "当前人物与故事状态：", JSON.stringify(state, null, 2),
+    input.contextText ? "必要前情：\n" + input.contextText : "",
+    input.writingBrief ? "相关人物、关系与既成事实：\n" + input.writingBrief : "",
+    "本次创作任务：", input.brief
+  ].filter(Boolean).join("\n\n");
+  const voiceContext = [
+    input.styleProfile ? "本项目叙事风格参考（仅作抽象参考，不模仿特定作者的独特表达）：\n" + input.styleProfile : "",
+    input.contextText ? "必要前情：\n" + input.contextText : "",
+    "本次创作任务：", input.brief
+  ].filter(Boolean).join("\n\n");
+
   // 主线架构与创意发散并行；主编决定哪些点子能进正文，发散本身不构成正史。
   const [plotPlan, ideas] = await Promise.all([
     cachedCall("plot", "01-main-plot.md", "plot", [
@@ -166,7 +187,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     ]),
     cachedCall("creative", "02-creative-options.md", "creative", [
       "角色：创意发散 Agent。只负责提出有戏剧价值的备选创意，不负责决定正史。",
-      common,
+      creativeContext,
       "自由发散若干真正不同、鲜活、有戏剧性的可能性，可以大胆、怪异、温柔、残酷或出人意料。不要为了数量凑点子，也不必把每个点子拆成固定字段。关注它能带来什么人物互动、情绪、冲突或故事惊喜；不要写正文，不要把建议当作已发生事实。"
     ])
   ]);
@@ -191,7 +212,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
 
   const dialogueDraft = await cachedCall("dialogue", "05-dialogue-edited.md", "dialogue", [
     "角色：人物对话编辑。专门修整人物对白和对白相关动作，不改变剧情事实、场景顺序、人物决定和信息揭示。",
-    common, "章节蓝图：", plan, "当前正文：", initialDraft,
+    dialogueContext, "章节蓝图：", plan, "当前正文：", initialDraft,
     "检查每个人物的词汇、句长、表达习惯、身份关系、情绪和已知信息。删掉解释性过强、所有角色都像同一个人的对白；让潜台词通过停顿、回避、误解和行动体现。可以精简重复或解释过度的内容，但不能删掉有效的人物互动、动作、信息或情绪落点；原文已经成立时可以原样保留。",
     RHYTHM_RULE, "输出完整修订正文。文学表达优先，不以保持字数为目标。"
   ]);
@@ -199,7 +220,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
 
   const voiceDraft = await cachedCall("voice", "06-voice-edited.md", "voice", [
     "角色：叙事声音与文风编辑。只负责统一全章叙述声音，不负责改剧情。",
-    common, "章节蓝图：", plan, "当前正文：", dialogueDraft,
+    voiceContext, "章节蓝图：", plan, "当前正文：", dialogueDraft,
     "统一叙述视角、时态、句长变化、段落节奏、叙述距离、动作/环境/心理描写比例和悬念节奏。保持中文自然、有变化，避免模板化排比、总结句、过度解释和重复修辞。不得复刻任何特定作者的独特句式或标志性表达。",
     RHYTHM_RULE, "输出完整修订正文，保留长句与放慢段落，不得把全章改成短促腔。"
   ]);
