@@ -56,6 +56,7 @@ import { writeLongChapter, chineseChars } from "./long-chapter.js";
 import { loadChapters, runRegression } from "./regression.js";
 import { formatStoryPlan, generateStoryPlan, loadStoryPlan, saveStoryPlan } from "./story-plan.js";
 import { buildStyleDistillationPrompt } from "./style-distillation.js";
+import { runRoleplaySandbox } from "./roleplay-sandbox.js";
 
 /** `--model --evidence-review` 这种漏值不该把下一个开关当成取值。 */
 function arg(name: string): string | undefined {
@@ -91,6 +92,7 @@ function usage(): never {
     "  npm run dev -- search --world conghuoniao --query \"人物或事件关键词\" [--limit 8]",
     "  npm run dev -- analyze --world conghuoniao [--limit 20] [--model model]",
     "  npm run dev -- distill-style --world conghuoniao --input ./private/style-sample-1.txt ./private/style-sample-2.md [--out .output/style-profile-candidate.md] [--model model]",
+    "  npm run dev -- roleplay-sandbox --world conghuoniao --brief \"场景设定\" --characters 人物甲,人物乙 [--model model] [--out file]",
     "  npm run dev -- analyze-story --world conghuoniao [--model model] [--timeout-ms 180000] [--max-chars 14000] [--shard 0/4] [--merge-only] [--delta]",
     "  npm run dev -- plan-story --world conghuoniao [--model model] [--draft] [--activate-candidate <file>]  # 默认生成后自动激活；--draft 仅保存实验草稿",
     "  npm run dev -- index-story --world conghuoniao [--catalog analysis/conghuoniao/chapter-index.json]",
@@ -131,10 +133,36 @@ function safeWorldId(value: string): string {
 
 async function main(): Promise<void> {
   const command = process.argv[2];
-  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-story" && command !== "index-story" && command !== "story-kb" && command !== "analyze-arcs" && command !== "analyze-profiles" && command !== "analyze-world" && command !== "models" && command !== "check-runtime" && command !== "db-status" && command !== "plan-story" && command !== "distill-style") usage();
+  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-story" && command !== "index-story" && command !== "story-kb" && command !== "analyze-arcs" && command !== "analyze-profiles" && command !== "analyze-world" && command !== "models" && command !== "check-runtime" && command !== "db-status" && command !== "plan-story" && command !== "distill-style" && command !== "roleplay-sandbox") usage();
 
   const worldId = safeWorldId(arg("--world") ?? "conghuoniao");
   const libraryDir = resolve("worlds", worldId, "library");
+
+  if (command === "roleplay-sandbox") {
+    const brief = arg("--brief");
+    const names = (arg("--characters") ?? "").split(",").map(name => name.trim()).filter(Boolean);
+    if (!brief || !names.length) usage();
+    const worldDir = resolve("worlds", worldId);
+    const state = await loadStoryState(resolve(worldDir, "story-state.json"), worldId);
+    const characters = state.characters.filter(character => names.includes(character.name));
+    const missing = names.filter(name => !characters.some(character => character.name === name));
+    if (missing.length) throw new Error("人物不在当前 Story State 中：" + missing.join("、"));
+    const worldBible = await readFile(resolve(worldDir, "world-bible.md"), "utf8");
+    const transcript = await runRoleplaySandbox({
+      brief,
+      worldBible,
+      characters,
+      model: arg("--model"),
+      timeoutMs: Number(arg("--timeout-ms") ?? DEFAULT_AGENT_TIMEOUT_MS),
+      profile: readTaskProfiles().creative
+    });
+    const runId = new Date().toISOString().replace(/[:.]/g, "-");
+    const out = resolve(arg("--out") ?? join(".output", worldId, "roleplay-sandbox", runId + ".md"));
+    await mkdir(dirname(out), { recursive: true });
+    await writeFile(out, transcript, "utf8");
+    console.log("推演记录已保存（非正史）：" + out);
+    return;
+  }
 
   if (command === "db-status") {
     const worldDir = resolve("worlds", worldId);
