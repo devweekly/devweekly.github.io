@@ -152,6 +152,12 @@ function toCsv(records: Array<Record<string, unknown>>, columns: string[]): stri
   return [columns.join(","), ...records.map(record => columns.map(column => escape(record[column])).join(","))].join("\n") + "\n";
 }
 
+const storyAnalysis=withDatabase(db=>{const row=db.prepare("SELECT payload_json FROM story_analysis WHERE singleton=1 AND world_id=?").get(worldId) as {payload_json:string}|undefined;return row?JSON.parse(row.payload_json) as Record<string,unknown>:{};});
+// 图谱只存在快照的 storyGraph 字段里，没有单独的表；这里按原样展开成节点与边两份数组。
+const analysisGraph=(storyAnalysis.storyGraph??{nodes:[],edges:[]}) as {nodes:Array<{id:string;type:string;label:string;data?:Record<string,unknown>;sourceRefs?:unknown[]}>;edges:Array<{id:string;from:string;to:string;type:string;label:string;data?:Record<string,unknown>;sourceRefs?:unknown[]}>};
+const graphNodes=analysisGraph.nodes.map(node=>({id:node.id,type:node.type,label:node.label,properties:node.data??{},sourceRefs:node.sourceRefs??[]}));
+const graphEdges=analysisGraph.edges.map(edge=>({id:edge.id,from:edge.from,to:edge.to,type:edge.type,label:edge.label,properties:edge.data??{},sourceRefs:edge.sourceRefs??[]}));
+
 const counts = {
   chapters: one("SELECT COUNT(*) AS count FROM novel_chapters"),
   characters: one("SELECT COUNT(*) AS count FROM novel_characters"),
@@ -161,19 +167,20 @@ const counts = {
   beats: one("SELECT COUNT(*) AS count FROM novel_beats"),
   relations: one("SELECT COUNT(*) AS count FROM novel_relations"),
   arcs: one("SELECT COUNT(*) AS count FROM novel_arcs"),
-  graphNodes: one("SELECT COUNT(*) AS count FROM story_graph_nodes"),
-  graphEdges: one("SELECT COUNT(*) AS count FROM story_graph_edges"),
+  graphNodes: graphNodes.length,
+  graphEdges: graphEdges.length,
   chaptersWithBeats: one("SELECT COUNT(DISTINCT chapter_ordinal) AS count FROM novel_beats")
 };
 
-const storyAnalysis=withDatabase(db=>{const row=db.prepare("SELECT payload_json FROM story_analysis WHERE singleton=1 AND world_id=?").get(worldId) as {payload_json:string}|undefined;return row?JSON.parse(row.payload_json) as Record<string,unknown>:{};});
-const graphNodes=rows("SELECT node_id AS id,node_type AS type,label,properties_json,source_refs_json FROM story_graph_nodes ORDER BY node_type,label").map(row=>({id:row.id,type:row.type,label:row.label,properties:JSON.parse(String(row.properties_json)),sourceRefs:JSON.parse(String(row.source_refs_json))}));
-// `from` 是保留字，做别名会让整条 SQL 解析失败；用 from_id 再映射。
-const graphEdges=rows("SELECT edge_id AS id,from_node_id AS from_id,to_node_id AS to_id,edge_type AS type,label,properties_json,source_refs_json FROM story_graph_edges ORDER BY edge_type,label").map(row=>({id:row.id,from:row.from_id,to:row.to_id,type:row.type,label:row.label,properties:JSON.parse(String(row.properties_json)),sourceRefs:JSON.parse(String(row.source_refs_json))}));
+function tally(items:Array<{type:string}>):Array<{type:string;count:number}>{
+  const counts=new Map<string,number>();
+  for(const item of items)counts.set(item.type,(counts.get(item.type)??0)+1);
+  return [...counts.entries()].map(([type,count])=>({type,count})).sort((a,b)=>b.count-a.count);
+}
 const degree=new Set(graphEdges.flatMap(e=>[String(e.from),String(e.to)]));
 const graphQuality={
-  nodeTypes:rows("SELECT node_type AS type,COUNT(*) AS count FROM story_graph_nodes GROUP BY node_type"),
-  edgeTypes:rows("SELECT edge_type AS type,COUNT(*) AS count FROM story_graph_edges GROUP BY edge_type"),
+  nodeTypes:tally(graphNodes),
+  edgeTypes:tally(graphEdges),
   isolatedNodes:graphNodes.filter(n=>!degree.has(String(n.id))).map(n=>({id:n.id,type:n.type,label:n.label})),
   danglingEdges:graphEdges.filter(e=>!graphNodes.some(n=>n.id===e.from)||!graphNodes.some(n=>n.id===e.to)),
   nodesWithoutSourceRefs:graphNodes.filter(n=>!Array.isArray(n.sourceRefs)||!n.sourceRefs.length).map(n=>({id:n.id,type:n.type,label:n.label})),
@@ -320,7 +327,7 @@ add("01-database/schema.md", [
   "| `novel_foreshadowings` | 一条伏笔线索 | `clue`、`confidence`、`status`（埋设/已回收）、`chapter_ordinal` |",
   "| `novel_relations` | 一对人物关系 | `from_name`、`to_name`、`label`、`evidence` |",
   "| `novel_arcs` | 一卷的主线梗概 | `volume`、`summary`、`key_turns_json`、`characters_json` |",
-  "| `story_graph_nodes` / `story_graph_edges` | 故事核心、人物、情节线、伏笔、MacGuffin、事件和发展可能组成的关系图 | 节点/边类型、关系方向、来源引用、属性 JSON |",
+  "| `story_analysis` 的 `storyGraph` | 故事核心、人物、情节线、伏笔、MacGuffin、事件和发展可能组成的关系图 | 节点/边类型、关系方向、来源引用、属性 JSON；不单独建表 |",
   "",
   "写作状态另存于 `characters`、`story_state`、`story_events`、`plot_threads`（不带 `novel_` 前缀），与上述成书知识库分开。",
   ""
@@ -451,7 +458,7 @@ add("REFERENCES.md", [
   "",
   "| 用途 | 路径 | 说明 |",
   "|---|---|---|",
-  "| 知识库 | `worlds/conghuoniao/novel.db` | 12MB：标注、`novel_*`、`story_analysis`、`story_graph_*` |",
+  "| 知识库 | `worlds/conghuoniao/novel.db` | 12MB：标注、`novel_*`、`story_analysis` |",
   "| 写作状态 | `worlds/conghuoniao/story.db` | 68KB：人物、正史事实、事件、情节线、连续性备注，每章重写 |",
   "| 知识库文本快照 | `worlds/conghuoniao/story-kb.json` | 3.5MB，不含原文，便于 diff |",
   "| 分析请求/响应缓存 | `.output/conghuoniao/story-analysis/<cache-key>/` | 196 批，`batch-NNNN.json` 为模型原始返回 |",
@@ -615,7 +622,7 @@ const readme = [
   "1. **人物归并是否正确**：`characters.sample.json` 的几名主要人物里，有没有把两个人当成一个、或一个人拆成两条；别名是否可信。要看全部 544 人，用 `story-kb --type characters` 导出。",
   "2. **伏笔是否成立**：`foreshadowings.sample.json` 里 `明确线索` 是否真的在原文有落点，`已回收` 的回收方式是否对得上。",
   "3. **情节线粒度**：`threads.sample.json` 只给了跨度最长的几条；862 条全部是局部情节线候选记录，同名但不同阶段应保留，不算重复。",
-  "4. **故事图谱**：`story-graph-quality.json` 给的是连通性摘要（孤立节点、悬空边、缺来源引用），完整图谱在 `novel.db` 的 `story_graph_nodes/edges`；当前库内该图为空，属已知状态。",
+  "4. **故事图谱**：`story-graph-quality.json` 给的是连通性摘要（孤立节点、悬空边、缺来源引用），完整图谱在 `novel.db` 的 `story_analysis` 快照 `storyGraph` 字段；当前快照为 v4，尚无该字段，属已知状态。",
   "5. **故事核心与 MacGuffin**：`story-core.json`、`macguffins.json` 是全文导出（体量小），可直接判断是否识别真正驱动行动的核心目标。",
   "6. **人物互动**：`interactions.sample.json` 是 8 条均匀抽样的多人事件，只看互动写法是否有原文依据；全量在 `novel_beats` 的 `actors`。",
   "7. **章级事件是否准确**：`beats.sample.json` 只给第 1、300、753 章；1,314 条覆盖 738/753 章，全量用 `story-kb --type beats` 查。",

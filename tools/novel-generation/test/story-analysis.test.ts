@@ -46,8 +46,6 @@ test("story analysis snapshot is persisted and replaced atomically as one databa
     saveStoryAnalysis(root, "test-world", snapshot);
     assert.deepEqual(readStoryAnalysis(root, "test-world"), snapshot);
     assert.equal(databaseStatus(root, "test-world").storyAnalysis, 1);
-    assert.equal(databaseStatus(root, "test-world").storyGraphNodes, 2);
-    assert.equal(databaseStatus(root, "test-world").storyGraphEdges, 1);
     const replacement = { ...snapshot, sourceHash: "c".repeat(64), batches: 3 };
     saveStoryAnalysis(root, "test-world", replacement);
     assert.deepEqual(readStoryAnalysis(root, "test-world"), replacement);
@@ -71,7 +69,7 @@ test("version 1 world databases upgrade to include story analysis storage", asyn
     db.exec("PRAGMA user_version=1");
     db.close();
     const status = databaseStatus(worldDir, "test-world");
-    assert.equal(status.schemaVersion, 6);
+    assert.equal(status.schemaVersion, 7);
     assert.equal(status.storyAnalysis, 0);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -90,10 +88,42 @@ test("upgrading a database that still holds a chunk copy drops it", async () => 
     db.prepare("INSERT INTO library_chunks(id,text) VALUES('a','x')").run();
     db.exec("PRAGMA user_version=5");
     db.close();
-    assert.equal(databaseStatus(worldDir, "test-world").schemaVersion, 6);
+    assert.equal(databaseStatus(worldDir, "test-world").schemaVersion, 7);
     const check = new DatabaseSync(join(worldDir, "novel.db"));
     try {
       assert.equal(check.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='library_chunks'").get(), undefined, "重复的分片表应已删除");
+    } finally { check.close(); }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("upgrading a database drops the graph tables and keeps the graph in the snapshot", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-graph-drop-"));
+  try {
+    const worldDir = join(root, "world");
+    await mkdir(worldDir, { recursive: true });
+    const snapshot = {
+      worldId: "test-world", sourceHash: "a".repeat(64), analyzedAt: "2026-11-05T00:00:00.000Z",
+      analysisVersion: 6, complete: true, batches: 1,
+      characters: [], plotThreads: [], foreshadowings: [], developmentPossibilities: [],
+      storyGraph: { nodes: [{ id: "n1", type: "character", label: "林岚", data: { name: "林岚" } }], edges: [] }
+    };
+    const db = new DatabaseSync(join(worldDir, "novel.db"));
+    db.exec("CREATE TABLE world_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL)");
+    db.prepare("INSERT INTO world_meta(key,value) VALUES('world_id',?)").run("test-world");
+    db.exec("CREATE TABLE story_analysis(singleton INTEGER PRIMARY KEY CHECK(singleton=1),world_id TEXT NOT NULL,source_hash TEXT NOT NULL,analyzed_at TEXT NOT NULL,payload_json TEXT NOT NULL)");
+    db.exec("CREATE TABLE story_graph_nodes(node_id TEXT PRIMARY KEY,node_type TEXT NOT NULL,label TEXT NOT NULL,properties_json TEXT NOT NULL,source_refs_json TEXT NOT NULL DEFAULT '[]')");
+    db.prepare("INSERT INTO story_analysis(singleton,world_id,source_hash,analyzed_at,payload_json) VALUES(1,?,?,?,?)").run("test-world", snapshot.sourceHash, snapshot.analyzedAt, JSON.stringify(snapshot));
+    db.prepare("INSERT INTO story_graph_nodes(node_id,node_type,label,properties_json,source_refs_json) VALUES(?,?,?,?,?)").run("n1", "character", "林岚", "{}", "[]");
+    db.exec("PRAGMA user_version=6");
+    db.close();
+
+    assert.equal(databaseStatus(worldDir, "test-world").schemaVersion, 7);
+    assert.equal(readStoryAnalysis(worldDir, "test-world")?.storyGraph?.nodes?.[0]?.label, "林岚", "图仍保存在快照里");
+    const check = new DatabaseSync(join(worldDir, "novel.db"));
+    try {
+      assert.equal(check.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='story_graph_nodes'").get(), undefined, "图谱表应已删除");
     } finally { check.close(); }
   } finally {
     await rm(root, { recursive: true, force: true });

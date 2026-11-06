@@ -1,8 +1,10 @@
 # ADR 0002：统一故事图谱与写作/终审上下文
 
-- 状态：Accepted
+- 状态：Accepted（存储方式已被取代，见下）
 - 日期：2026-11-06
 - 范围：`tools/novel-generation`
+
+> 现状：v7 起 `story_graph_nodes` / `story_graph_edges` 两张表已删除。它们建好后只被写入，没有任何读取方——写作上下文读的是快照里的 `storyGraph`，审核包也从那里取。图现在只存在于 `story_analysis` 快照的 `storyGraph` 字段。以下保留当时为什么需要图谱的推理。
 
 ## 背景
 

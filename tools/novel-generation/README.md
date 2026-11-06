@@ -240,7 +240,7 @@ node scripts/compare-models.mjs \
 
 | 文件 | 内容 | 写入时机 | 体积 |
 |---|---|---|---|
-| `worlds/<world>/novel.db` | 抽取标注、实体/实体提及、全书分析结果（`novel_*`、`story_analysis`、`story_graph_*`） | `analyze`、`index-story`、`analyze-story`、`analyze-arcs` | 约 12MB |
+| `worlds/<world>/novel.db` | 抽取标注、实体/实体提及、全书分析结果（`novel_*`、`story_analysis`） | `analyze`、`index-story`、`analyze-story`、`analyze-arcs` | 约 12MB |
 | `worlds/<world>/story.db` | 写作状态：`story_state`、`characters`、`canon_facts`、`story_events`、`plot_threads`、`continuity_notes` | 每写一章 | 约 68KB |
 
 原文分片只存在 `worlds/<world>/library/index.json` 里，检索与章节映射都直接读它，库里不再留第二份文本。
