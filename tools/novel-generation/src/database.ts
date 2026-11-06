@@ -1,9 +1,9 @@
 import { DatabaseSync } from "node:sqlite";
-import { mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { LibraryChunk } from "./library.js";
 import type { StoryState } from "./story-state.js";
-export interface DatabaseStatus { path:string; schemaVersion:number; chunks:number; annotations:number; entities:number; entityMentions:number; characters:number; canonFacts:number; events:number; plotThreads:number; storyAnalysis:number; novelChapters:number; novelCharacters:number; novelMentions:number; novelThreads:number; novelForeshadowings:number; novelBeats:number; novelRelations:number; novelArcs:number; storyGraphNodes:number; storyGraphEdges:number; }
+export interface DatabaseStatus { path:string; schemaVersion:number; statePath:string; stateSchemaVersion:number; chunks:number; annotations:number; entities:number; entityMentions:number; characters:number; canonFacts:number; events:number; plotThreads:number; storyAnalysis:number; novelChapters:number; novelCharacters:number; novelMentions:number; novelThreads:number; novelForeshadowings:number; novelBeats:number; novelRelations:number; novelArcs:number; storyGraphNodes:number; storyGraphEdges:number; }
 /** Concurrent shards and reader processes compete for the write lock; wait instead of failing. */
 function retryBusy<T>(work:()=>T,attempts=40):T{
  for(let attempt=0;;attempt++){
@@ -16,8 +16,83 @@ function retryBusy<T>(work:()=>T,attempts=40):T{
  }
 }
 function execWithRetry(db:DatabaseSync,sql:string):void{ retryBusy(()=>db.exec(sql)); }
-function openDatabase(worldDir:string,worldId:string):DatabaseSync {
- mkdirSync(worldDir,{recursive:true}); const db=new DatabaseSync(join(worldDir,"novel.db"));
+
+const KNOWLEDGE_DATABASE_FILE="novel.db";
+const STATE_DATABASE_FILE="story.db";
+/** 知识库结构版本：只有 ingest / analyze 会改它。 */
+const KNOWLEDGE_SCHEMA_VERSION=4;
+/** 写作状态结构版本：与知识库分开演进。 */
+const STATE_SCHEMA_VERSION=1;
+/** v4 之前状态表与知识表同库，迁移时按这个顺序搬。 */
+const LEGACY_STATE_TABLES=["story_state","characters","canon_facts","story_events","plot_threads","continuity_notes"];
+
+/** 写作状态（story.db）：每写一章都会重写，体积保持在几十 KB。 */
+const STATE_TABLES =
+ "CREATE TABLE IF NOT EXISTS world_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);"+
+ "CREATE TABLE IF NOT EXISTS story_state(singleton INTEGER PRIMARY KEY CHECK(singleton=1),updated_at TEXT NOT NULL,payload_json TEXT NOT NULL);"+
+ "CREATE TABLE IF NOT EXISTS characters(name TEXT PRIMARY KEY,status TEXT NOT NULL,location TEXT,profile_json TEXT,payload_json TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_characters_location ON characters(location);"+
+ "CREATE TABLE IF NOT EXISTS canon_facts(id TEXT PRIMARY KEY,fact TEXT NOT NULL,confidence TEXT NOT NULL,source TEXT);"+
+ "CREATE TABLE IF NOT EXISTS story_events(id TEXT PRIMARY KEY,summary TEXT NOT NULL,position TEXT NOT NULL,payload_json TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_story_events_position ON story_events(position);"+
+ "CREATE TABLE IF NOT EXISTS plot_threads(id TEXT PRIMARY KEY,title TEXT NOT NULL,status TEXT NOT NULL,last_updated TEXT NOT NULL,notes TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_plot_threads_status ON plot_threads(status);"+
+ "CREATE TABLE IF NOT EXISTS continuity_notes(ordinal INTEGER PRIMARY KEY,note TEXT NOT NULL);";
+
+function tableExists(db:DatabaseSync,name:string):boolean{
+ return Boolean(db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name=?").get(name));
+}
+
+/**
+ * 旧库里状态表与知识表同库：首次创建 story.db 时把行搬过来，搬完删掉旧表。
+ * 留下旧表会让「状态到底存在哪」变成两个答案，之后读到的可能是过期副本。
+ */
+function adoptLegacyState(worldDir:string,target:DatabaseSync):void{
+ const legacyPath=join(worldDir,KNOWLEDGE_DATABASE_FILE);
+ if(!existsSync(legacyPath))return;
+ let legacy:DatabaseSync;
+ try{legacy=new DatabaseSync(legacyPath);}catch{return;}
+ try{
+  if(!tableExists(legacy,"story_state"))return;
+  const rows=(table:string)=>tableExists(legacy,table)?legacy.prepare("SELECT * FROM "+table).all() as Array<Record<string,unknown>>:[];
+  const stateRows=rows("story_state"),characterRows=rows("characters"),factRows=rows("canon_facts"),
+        eventRows=rows("story_events"),threadRows=rows("plot_threads"),noteRows=rows("continuity_notes");
+  transaction(target,()=>{
+   for(const row of stateRows)target.prepare("INSERT INTO story_state(singleton,updated_at,payload_json) VALUES(?,?,?) ON CONFLICT(singleton) DO UPDATE SET updated_at=excluded.updated_at,payload_json=excluded.payload_json").run(Number(row.singleton),String(row.updated_at),String(row.payload_json));
+   const qc=target.prepare("INSERT OR REPLACE INTO characters(name,status,location,profile_json,payload_json) VALUES(?,?,?,?,?)");
+   for(const row of characterRows)qc.run(String(row.name),String(row.status),row.location==null?null:String(row.location),row.profile_json==null?null:String(row.profile_json),String(row.payload_json));
+   const qf=target.prepare("INSERT OR REPLACE INTO canon_facts(id,fact,confidence,source) VALUES(?,?,?,?)");
+   for(const row of factRows)qf.run(String(row.id),String(row.fact),String(row.confidence),row.source==null?null:String(row.source));
+   const qe=target.prepare("INSERT OR REPLACE INTO story_events(id,summary,position,payload_json) VALUES(?,?,?,?)");
+   for(const row of eventRows)qe.run(String(row.id),String(row.summary),String(row.position),String(row.payload_json));
+   const qp=target.prepare("INSERT OR REPLACE INTO plot_threads(id,title,status,last_updated,notes) VALUES(?,?,?,?,?)");
+   for(const row of threadRows)qp.run(String(row.id),String(row.title),String(row.status),String(row.last_updated),String(row.notes));
+   const qn=target.prepare("INSERT OR REPLACE INTO continuity_notes(ordinal,note) VALUES(?,?)");
+   for(const row of noteRows)qn.run(Number(row.ordinal),String(row.note));
+  });
+  for(const table of LEGACY_STATE_TABLES)legacy.exec("DROP TABLE IF EXISTS "+table);
+  console.log("[database] 已把写作状态从 "+KNOWLEDGE_DATABASE_FILE+" 迁到 "+STATE_DATABASE_FILE+"（"+stateRows.length+" 份状态快照）");
+ }catch(error){
+  // 迁移失败不能让章节写不进去：保留旧表，下次打开再试。
+  console.warn("[database] 旧状态表迁移未完成："+String(error));
+ }finally{legacy.close();}
+}
+
+function openStateDatabase(worldDir:string,worldId:string):DatabaseSync {
+ mkdirSync(worldDir,{recursive:true});
+ const path=join(worldDir,STATE_DATABASE_FILE);
+ const fresh=!existsSync(path);
+ const db=new DatabaseSync(path);
+ execWithRetry(db,"PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;");
+ execWithRetry(db,STATE_TABLES);
+ const version=Number((db.prepare("PRAGMA user_version").get() as {user_version:number}).user_version);
+ if(version>STATE_SCHEMA_VERSION){db.close();throw new Error("Story state database schema is newer than this application supports: "+version);}
+ const stored=db.prepare("SELECT value FROM world_meta WHERE key='world_id'").get() as {value:string}|undefined;
+ if(stored&&stored.value!==worldId){db.close();throw new Error("Story state database world mismatch: expected "+worldId+", found "+stored.value);}
+ if(version<STATE_SCHEMA_VERSION)retryBusy(()=>db.exec("PRAGMA user_version="+STATE_SCHEMA_VERSION));
+ if(!stored)retryBusy(()=>db.prepare("INSERT INTO world_meta(key,value) VALUES('world_id',?)").run(worldId));
+ if(fresh)adoptLegacyState(worldDir,db);
+ return db;
+}
+function openKnowledgeDatabase(worldDir:string,worldId:string):DatabaseSync {
+ mkdirSync(worldDir,{recursive:true}); const db=new DatabaseSync(join(worldDir,KNOWLEDGE_DATABASE_FILE));
  execWithRetry(db,"PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;");
  execWithRetry(db,"CREATE TABLE IF NOT EXISTS world_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);"+
  "CREATE TABLE IF NOT EXISTS library_chunks(id TEXT PRIMARY KEY,source TEXT NOT NULL,chapter TEXT NOT NULL,chunk_index INTEGER NOT NULL,start_offset INTEGER NOT NULL,end_offset INTEGER NOT NULL,source_hash TEXT,chapter_start INTEGER,text TEXT NOT NULL);"+
@@ -25,12 +100,12 @@ function openDatabase(worldDir:string,worldId:string):DatabaseSync {
  "CREATE TABLE IF NOT EXISTS annotations(chunk_id TEXT PRIMARY KEY,source TEXT NOT NULL,chapter TEXT NOT NULL,extracted_at TEXT NOT NULL,payload_json TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_annotations_source ON annotations(source);"+
  "CREATE TABLE IF NOT EXISTS entities(entity_id TEXT PRIMARY KEY,name TEXT NOT NULL,type TEXT NOT NULL,aliases_json TEXT NOT NULL,mention_count INTEGER NOT NULL,payload_json TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_entities_name ON entities(name); CREATE INDEX IF NOT EXISTS idx_entities_type_name ON entities(type,name);"+
  "CREATE TABLE IF NOT EXISTS entity_mentions(entity_id TEXT NOT NULL,chunk_id TEXT NOT NULL,source TEXT NOT NULL,chapter TEXT NOT NULL,evidence TEXT NOT NULL,PRIMARY KEY(entity_id,chunk_id,evidence),FOREIGN KEY(entity_id) REFERENCES entities(entity_id) ON DELETE CASCADE); CREATE INDEX IF NOT EXISTS idx_entity_mentions_chunk ON entity_mentions(chunk_id);"+
- "CREATE TABLE IF NOT EXISTS story_state(singleton INTEGER PRIMARY KEY CHECK(singleton=1),updated_at TEXT NOT NULL,payload_json TEXT NOT NULL);"+
- "CREATE TABLE IF NOT EXISTS characters(name TEXT PRIMARY KEY,status TEXT NOT NULL,location TEXT,profile_json TEXT,payload_json TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_characters_location ON characters(location);"+
- "CREATE TABLE IF NOT EXISTS canon_facts(id TEXT PRIMARY KEY,fact TEXT NOT NULL,confidence TEXT NOT NULL,source TEXT);"+
- "CREATE TABLE IF NOT EXISTS story_events(id TEXT PRIMARY KEY,summary TEXT NOT NULL,position TEXT NOT NULL,payload_json TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_story_events_position ON story_events(position);"+
- "CREATE TABLE IF NOT EXISTS plot_threads(id TEXT PRIMARY KEY,title TEXT NOT NULL,status TEXT NOT NULL,last_updated TEXT NOT NULL,notes TEXT NOT NULL); CREATE INDEX IF NOT EXISTS idx_plot_threads_status ON plot_threads(status);"+
- "CREATE TABLE IF NOT EXISTS continuity_notes(ordinal INTEGER PRIMARY KEY,note TEXT NOT NULL);"+
+ 
+ 
+ 
+ 
+ 
+ 
  "CREATE TABLE IF NOT EXISTS story_analysis(singleton INTEGER PRIMARY KEY CHECK(singleton=1),world_id TEXT NOT NULL,source_hash TEXT NOT NULL,analyzed_at TEXT NOT NULL,payload_json TEXT NOT NULL);"+
  "CREATE TABLE IF NOT EXISTS novel_kb_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);"+
  "CREATE TABLE IF NOT EXISTS novel_chapters(chapter_id TEXT PRIMARY KEY,world_id TEXT NOT NULL,ordinal INTEGER NOT NULL,volume INTEGER NOT NULL,printed_number INTEGER,title TEXT NOT NULL,label TEXT NOT NULL,start_line INTEGER,char_count INTEGER NOT NULL,chunk_start INTEGER NOT NULL,chunk_end INTEGER NOT NULL);"+
@@ -49,25 +124,27 @@ function openDatabase(worldDir:string,worldId:string):DatabaseSync {
   "CREATE INDEX IF NOT EXISTS idx_story_graph_edges_from ON story_graph_edges(from_node_id);"+
   "CREATE INDEX IF NOT EXISTS idx_story_graph_edges_to ON story_graph_edges(to_node_id);");
  const version=Number((db.prepare("PRAGMA user_version").get() as {user_version:number}).user_version);
- if(version>4){db.close();throw new Error("Novel database schema is newer than this application supports: "+version);}
+ if(version>KNOWLEDGE_SCHEMA_VERSION){db.close();throw new Error("Novel database schema is newer than this application supports: "+version);}
  const stored=db.prepare("SELECT value FROM world_meta WHERE key='world_id'").get() as {value:string}|undefined;
  if(stored&&stored.value!==worldId){db.close();throw new Error("SQLite database world mismatch: expected "+worldId+", found "+stored.value);}
- if(version<4)retryBusy(()=>db.exec("PRAGMA user_version=4"));
+ if(version<KNOWLEDGE_SCHEMA_VERSION)retryBusy(()=>db.exec("PRAGMA user_version="+KNOWLEDGE_SCHEMA_VERSION));
  if(!stored)retryBusy(()=>db.prepare("INSERT INTO world_meta(key,value) VALUES('world_id',?)").run(worldId));
  return db;
 }
-export function openWorldDatabase(worldDir:string,worldId:string):DatabaseSync{return openDatabase(worldDir,worldId);}
+export function openWorldDatabase(worldDir:string,worldId:string):DatabaseSync{return openKnowledgeDatabase(worldDir,worldId);}
+/** 写作状态库（story.db）：查错和导出 schema 时单独打开。 */
+export function openStoryStateDatabase(worldDir:string,worldId:string):DatabaseSync{return openStateDatabase(worldDir,worldId);}
 function transaction<T>(db:DatabaseSync,work:()=>T):T{retryBusy(()=>db.exec("BEGIN IMMEDIATE"));try{const x=work();retryBusy(()=>db.exec("COMMIT"));return x;}catch(e){try{db.exec("ROLLBACK");}catch{/* 提交失败时事务可能已结束 */}throw e;}}
 export function syncLibraryChunks(worldDir:string,worldId:string,chunks:LibraryChunk[]):void{
- const db=openDatabase(worldDir,worldId);try{transaction(db,()=>{db.exec("DELETE FROM library_chunks; DELETE FROM story_analysis; DELETE FROM novel_chapters;");clearNovelAnalysis(db);const q=db.prepare("INSERT INTO library_chunks(id,source,chapter,chunk_index,start_offset,end_offset,source_hash,chapter_start,text) VALUES(?,?,?,?,?,?,?,?,?)");for(const c of chunks)q.run(c.id,c.source,c.chapter,c.chunkIndex,c.start,c.end,c.sourceHash??null,c.chapterStart??null,c.text);});}finally{db.close();}
+ const db=openKnowledgeDatabase(worldDir,worldId);try{transaction(db,()=>{db.exec("DELETE FROM library_chunks; DELETE FROM story_analysis; DELETE FROM novel_chapters;");clearNovelAnalysis(db);const q=db.prepare("INSERT INTO library_chunks(id,source,chapter,chunk_index,start_offset,end_offset,source_hash,chapter_start,text) VALUES(?,?,?,?,?,?,?,?,?)");for(const c of chunks)q.run(c.id,c.source,c.chapter,c.chunkIndex,c.start,c.end,c.sourceHash??null,c.chapterStart??null,c.text);});}finally{db.close();}
 }
 export function readLibraryChunks(worldDir:string,worldId:string):LibraryChunk[]{
- const db=openDatabase(worldDir,worldId);try{return db.prepare("SELECT id,source,chapter,chunk_index AS chunkIndex,start_offset AS start,end_offset AS end,source_hash AS sourceHash,chapter_start AS chapterStart,text FROM library_chunks ORDER BY rowid").all() as unknown as LibraryChunk[];}finally{db.close();}
+ const db=openKnowledgeDatabase(worldDir,worldId);try{return db.prepare("SELECT id,source,chapter,chunk_index AS chunkIndex,start_offset AS start,end_offset AS end,source_hash AS sourceHash,chapter_start AS chapterStart,text FROM library_chunks ORDER BY rowid").all() as unknown as LibraryChunk[];}finally{db.close();}
 }
 type AnnotationRow={chunkId:string;source:string;chapter?:string;extractedAt?:string};
 type RegistryData={entities:Array<{id:string;name:string;type:string;aliases:string[];mentions:Array<{chunkId:string;source:string;chapter:string;evidence:string}>}>};
 export function syncAnnotations(worldDir:string,worldId:string,annotations:AnnotationRow[],registry?:RegistryData|null):void{
- const db=openDatabase(worldDir,worldId);try{transaction(db,()=>{db.exec("DELETE FROM annotations; DELETE FROM entity_mentions; DELETE FROM entities;");
+ const db=openKnowledgeDatabase(worldDir,worldId);try{transaction(db,()=>{db.exec("DELETE FROM annotations; DELETE FROM entity_mentions; DELETE FROM entities;");
  const qa=db.prepare("INSERT INTO annotations(chunk_id,source,chapter,extracted_at,payload_json) VALUES(?,?,?,?,?)");
  for(const a of annotations)qa.run(a.chunkId,a.source,a.chapter??"",a.extractedAt??"",JSON.stringify(a));
  if(registry){const qe=db.prepare("INSERT INTO entities(entity_id,name,type,aliases_json,mention_count,payload_json) VALUES(?,?,?,?,?,?)");const qm=db.prepare("INSERT OR IGNORE INTO entity_mentions(entity_id,chunk_id,source,chapter,evidence) VALUES(?,?,?,?,?)");
@@ -76,7 +153,7 @@ export function syncAnnotations(worldDir:string,worldId:string,annotations:Annot
 }
 export function readAnnotationsByChunkIds(worldDir:string,worldId:string,ids:string[]):Map<string,Record<string,unknown>>{
  const result=new Map<string,Record<string,unknown>>();if(!ids.length)return result;
- const probe=openDatabase(worldDir,worldId);let annotationCount:number;
+ const probe=openKnowledgeDatabase(worldDir,worldId);let annotationCount:number;
  try{annotationCount=Number((probe.prepare("SELECT COUNT(*) AS count FROM annotations").get() as {count:number}).count);}finally{probe.close();}
  if(annotationCount===0){
   try{
@@ -86,12 +163,14 @@ export function readAnnotationsByChunkIds(worldDir:string,worldId:string,ids:str
    if(legacy.annotations?.length||registry?.entities.length)syncAnnotations(worldDir,worldId,legacy.annotations??[],registry);
   }catch(e){if((e as NodeJS.ErrnoException).code!=="ENOENT")throw e;}
  }
- const db=openDatabase(worldDir,worldId);
+ const db=openKnowledgeDatabase(worldDir,worldId);
  try{const q=db.prepare("SELECT chunk_id,payload_json FROM annotations WHERE chunk_id=?");for(const id of ids){const row=q.get(id) as {chunk_id:string;payload_json:string}|undefined;if(row)result.set(row.chunk_id,JSON.parse(row.payload_json) as Record<string,unknown>);}return result;}
  finally{db.close();}
 }
 export function syncStoryState(worldDir:string,state:StoryState):void{
- const db=openDatabase(worldDir,state.worldId);try{transaction(db,()=>{
+ // 同时校验知识库的世界归属：两个文件必须属于同一个世界
+ openKnowledgeDatabase(worldDir,state.worldId).close();
+ const db=openStateDatabase(worldDir,state.worldId);try{transaction(db,()=>{
  db.prepare("INSERT INTO story_state(singleton,updated_at,payload_json) VALUES(1,?,?) ON CONFLICT(singleton) DO UPDATE SET updated_at=excluded.updated_at,payload_json=excluded.payload_json").run(state.updatedAt,JSON.stringify(state));
  db.exec("DELETE FROM characters; DELETE FROM canon_facts; DELETE FROM story_events; DELETE FROM plot_threads; DELETE FROM continuity_notes;");
  const qc=db.prepare("INSERT INTO characters(name,status,location,profile_json,payload_json) VALUES(?,?,?,?,?)");for(const x of state.characters)qc.run(x.name,x.status,x.location??null,x.profile?JSON.stringify(x.profile):null,JSON.stringify(x));
@@ -102,7 +181,7 @@ export function syncStoryState(worldDir:string,state:StoryState):void{
  });}finally{db.close();}
 }
 export function readStoryState(worldDir:string,worldId:string):StoryState|undefined{
- const db=openDatabase(worldDir,worldId);try{const row=db.prepare("SELECT payload_json FROM story_state WHERE singleton=1").get() as {payload_json:string}|undefined;return row?JSON.parse(row.payload_json) as StoryState:undefined;}finally{db.close();}
+ const db=openStateDatabase(worldDir,worldId);try{const row=db.prepare("SELECT payload_json FROM story_state WHERE singleton=1").get() as {payload_json:string}|undefined;return row?JSON.parse(row.payload_json) as StoryState:undefined;}finally{db.close();}
 }
 
 export interface StoryAnalysisSnapshot {
@@ -123,7 +202,7 @@ export interface StoryAnalysisSnapshot {
   storyGraph?: {nodes:Array<{id:string;type:string;label:string;data:Record<string,unknown>;sourceRefs?:unknown[]}>;edges:Array<{id:string;from:string;to:string;type:string;label:string;data:Record<string,unknown>;sourceRefs?:unknown[]}>};
 }
 export function saveStoryAnalysis(worldDir:string,worldId:string,snapshot:StoryAnalysisSnapshot):void {
- const db=openDatabase(worldDir,worldId);
+ const db=openKnowledgeDatabase(worldDir,worldId);
  try {
   if(snapshot.worldId!==worldId) throw new Error("Story analysis world mismatch: "+worldId);
   transaction(db,()=>{
@@ -138,7 +217,7 @@ export function saveStoryAnalysis(worldDir:string,worldId:string,snapshot:StoryA
  } finally { db.close(); }
 }
 export function readStoryAnalysis(worldDir:string,worldId:string):StoryAnalysisSnapshot|undefined {
- const db=openDatabase(worldDir,worldId);
+ const db=openKnowledgeDatabase(worldDir,worldId);
  try {
   const row=db.prepare("SELECT payload_json FROM story_analysis WHERE singleton=1 AND world_id=?").get(worldId) as {payload_json:string}|undefined;
   return row?JSON.parse(row.payload_json) as StoryAnalysisSnapshot:undefined;
@@ -146,7 +225,17 @@ export function readStoryAnalysis(worldDir:string,worldId:string):StoryAnalysisS
 }
 
 export function databaseStatus(worldDir:string,worldId:string):DatabaseStatus{
- const db=openDatabase(worldDir,worldId);try{const count=(t:string)=>Number((db.prepare("SELECT COUNT(*) AS count FROM "+t).get() as {count:number}).count);return {path:join(worldDir,"novel.db"),schemaVersion:Number((db.prepare("PRAGMA user_version").get() as {user_version:number}).user_version),chunks:count("library_chunks"),annotations:count("annotations"),entities:count("entities"),entityMentions:count("entity_mentions"),characters:count("characters"),canonFacts:count("canon_facts"),events:count("story_events"),plotThreads:count("plot_threads"),storyAnalysis:count("story_analysis"),novelChapters:count("novel_chapters"),novelCharacters:count("novel_characters"),novelMentions:count("novel_mentions"),novelThreads:count("novel_plot_threads"),novelForeshadowings:count("novel_foreshadowings"),novelBeats:count("novel_beats"),novelRelations:count("novel_relations"),novelArcs:count("novel_arcs"),storyGraphNodes:count("story_graph_nodes"),storyGraphEdges:count("story_graph_edges")};}finally{db.close();}
+ const knowledge=openKnowledgeDatabase(worldDir,worldId);
+ const state=openStateDatabase(worldDir,worldId);
+ try{
+  const count=(db:DatabaseSync,table:string)=>Number((db.prepare("SELECT COUNT(*) AS count FROM "+table).get() as {count:number}).count);
+  const version=(db:DatabaseSync)=>Number((db.prepare("PRAGMA user_version").get() as {user_version:number}).user_version);
+  return {path:join(worldDir,KNOWLEDGE_DATABASE_FILE),schemaVersion:version(knowledge),
+   statePath:join(worldDir,STATE_DATABASE_FILE),stateSchemaVersion:version(state),
+   chunks:count(knowledge,"library_chunks"),annotations:count(knowledge,"annotations"),entities:count(knowledge,"entities"),entityMentions:count(knowledge,"entity_mentions"),
+   storyAnalysis:count(knowledge,"story_analysis"),novelChapters:count(knowledge,"novel_chapters"),novelCharacters:count(knowledge,"novel_characters"),novelMentions:count(knowledge,"novel_mentions"),novelThreads:count(knowledge,"novel_plot_threads"),novelForeshadowings:count(knowledge,"novel_foreshadowings"),novelBeats:count(knowledge,"novel_beats"),novelRelations:count(knowledge,"novel_relations"),novelArcs:count(knowledge,"novel_arcs"),storyGraphNodes:count(knowledge,"story_graph_nodes"),storyGraphEdges:count(knowledge,"story_graph_edges"),
+   characters:count(state,"characters"),canonFacts:count(state,"canon_facts"),events:count(state,"story_events"),plotThreads:count(state,"plot_threads")};
+ }finally{knowledge.close();state.close();}
 }
 export function databaseWorldDirFromLibrary(libraryDir:string):string{return dirname(libraryDir);}
 
@@ -164,7 +253,7 @@ function clearNovelAnalysis(db:DatabaseSync):void{
 }
 
 export function syncNovelChapters(worldDir:string,worldId:string,chapters:NovelChapterRow[]):void{
- const db=openDatabase(worldDir,worldId);try{transaction(db,()=>{
+ const db=openKnowledgeDatabase(worldDir,worldId);try{transaction(db,()=>{
   db.exec("DELETE FROM novel_chapters;");
   const q=db.prepare("INSERT INTO novel_chapters(chapter_id,world_id,ordinal,volume,printed_number,title,label,start_line,char_count,chunk_start,chunk_end) VALUES(?,?,?,?,?,?,?,?,?,?,?)");
   for(const c of chapters)q.run(c.chapterId,worldId,c.ordinal,c.volume,c.printedNumber,c.title,c.label,c.startLine,c.charCount,c.chunkStart,c.chunkEnd);
@@ -172,7 +261,7 @@ export function syncNovelChapters(worldDir:string,worldId:string,chapters:NovelC
 }
 
 export function syncNovelMentions(worldDir:string,worldId:string,mentions:Array<{chapterId:string;name:string;count:number}>):void{
- const db=openDatabase(worldDir,worldId);try{transaction(db,()=>{
+ const db=openKnowledgeDatabase(worldDir,worldId);try{transaction(db,()=>{
   db.exec("DELETE FROM novel_mentions;");
   const q=db.prepare("INSERT OR REPLACE INTO novel_mentions(chapter_id,name,count) VALUES(?,?,?)");
   for(const m of mentions)if(m.count>0)q.run(m.chapterId,m.name,m.count);
@@ -181,7 +270,7 @@ export function syncNovelMentions(worldDir:string,worldId:string,mentions:Array<
 }
 
 export function syncNovelCharacters(worldDir:string,worldId:string,characters:NovelCharacterRow[],relations:NovelRelationRow[]):void{
- const db=openDatabase(worldDir,worldId);try{transaction(db,()=>{
+ const db=openKnowledgeDatabase(worldDir,worldId);try{transaction(db,()=>{
   db.exec("DELETE FROM novel_characters; DELETE FROM novel_relations;");
   const q=db.prepare("INSERT INTO novel_characters(character_id,name,aliases_json,role,bio,voice,personality_json,desires_json,contradictions_json,arc_json,first_chapter,last_chapter,source_refs_json,source) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)");
   for(const c of characters)q.run(c.characterId,c.name,JSON.stringify(c.aliases),c.role,c.bio,c.voice,JSON.stringify(c.personality),JSON.stringify(c.desires),JSON.stringify(c.contradictions),JSON.stringify(c.arc),c.firstChapter,c.lastChapter,JSON.stringify(c.sourceRefs),c.source);
@@ -192,14 +281,14 @@ export function syncNovelCharacters(worldDir:string,worldId:string,characters:No
 
 /** Seeds keep the roster usable before corpus analysis; analysis rows always win. */
 export function upsertSeedCharacters(worldDir:string,worldId:string,entries:Array<{name:string;aliases:string[]}>):number{
- const db=openDatabase(worldDir,worldId);let inserted=0;
+ const db=openKnowledgeDatabase(worldDir,worldId);let inserted=0;
  try{transaction(db,()=>{const q=db.prepare("INSERT INTO novel_characters(character_id,name,aliases_json,role,bio,voice,personality_json,desires_json,contradictions_json,arc_json,first_chapter,last_chapter,chapters_seen,mention_total,source_refs_json,source) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?) ON CONFLICT(name) DO NOTHING");
   for(const entry of entries){const result=q.run("seed:"+entry.name,entry.name,JSON.stringify(entry.aliases),"","","","[]","[]","[]","[]",null,null,0,0,"[]","seed");inserted+=Number(result.changes);}
  });}finally{db.close();}
  return inserted;
 }
 
-export function syncNovelThreads(worldDir:string,worldId:string,threads:NovelThreadRow[]):void{ const db=openDatabase(worldDir,worldId);try{transaction(db,()=>{
+export function syncNovelThreads(worldDir:string,worldId:string,threads:NovelThreadRow[]):void{ const db=openKnowledgeDatabase(worldDir,worldId);try{transaction(db,()=>{
   db.exec("DELETE FROM novel_plot_threads;");
   const q=db.prepare("INSERT INTO novel_plot_threads(thread_id,title,status,summary,key_turns_json,unresolved_json,first_chapter,last_chapter,source_refs_json) VALUES(?,?,?,?,?,?,?,?,?)");
   for(const t of threads)q.run(t.threadId,t.title,t.status,t.summary,JSON.stringify(t.keyTurns),JSON.stringify(t.unresolved),t.firstChapter,t.lastChapter,JSON.stringify(t.sourceRefs));
@@ -207,7 +296,7 @@ export function syncNovelThreads(worldDir:string,worldId:string,threads:NovelThr
 }
 
 export function syncNovelForeshadowings(worldDir:string,worldId:string,items:NovelForeshadowingRow[]):void{
- const db=openDatabase(worldDir,worldId);try{transaction(db,()=>{
+ const db=openKnowledgeDatabase(worldDir,worldId);try{transaction(db,()=>{
   db.exec("DELETE FROM novel_foreshadowings;");
   const q=db.prepare("INSERT INTO novel_foreshadowings(clue_id,clue,first_appearance,meaning,payoffs_json,confidence,status,chapter_ordinal,source_refs_json) VALUES(?,?,?,?,?,?,?,?,?)");
   for(const f of items)q.run(f.clueId,f.clue,f.firstAppearance,f.meaning,JSON.stringify(f.payoffs),f.confidence,f.status,f.chapterOrdinal,JSON.stringify(f.sourceRefs));
@@ -215,7 +304,7 @@ export function syncNovelForeshadowings(worldDir:string,worldId:string,items:Nov
 }
 
 export function syncNovelBeats(worldDir:string,worldId:string,beats:NovelBeatRow[]):void{
- const db=openDatabase(worldDir,worldId);try{transaction(db,()=>{
+ const db=openKnowledgeDatabase(worldDir,worldId);try{transaction(db,()=>{
   db.exec("DELETE FROM novel_beats;");
   const q=db.prepare("INSERT INTO novel_beats(beat_id,chapter_id,chapter_ordinal,summary,actors_json,source_refs_json) VALUES(?,?,?,?,?,?)");
   for(const b of beats)q.run(b.beatId,b.chapterId,b.chapterOrdinal,b.summary,JSON.stringify(b.actors),JSON.stringify(b.sourceRefs));
@@ -223,28 +312,28 @@ export function syncNovelBeats(worldDir:string,worldId:string,beats:NovelBeatRow
 }
 
 export function writeNovelKbMeta(worldDir:string,worldId:string,meta:Record<string,string>):void{
- const db=openDatabase(worldDir,worldId);try{transaction(db,()=>{const q=db.prepare("INSERT INTO novel_kb_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value");for(const [k,v] of Object.entries(meta))q.run(k,v);});}finally{db.close();}
+ const db=openKnowledgeDatabase(worldDir,worldId);try{transaction(db,()=>{const q=db.prepare("INSERT INTO novel_kb_meta(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value");for(const [k,v] of Object.entries(meta))q.run(k,v);});}finally{db.close();}
 }
 export function readNovelKbMeta(worldDir:string,worldId:string):Record<string,string>{
- const db=openDatabase(worldDir,worldId);try{const rows=db.prepare("SELECT key,value FROM novel_kb_meta").all() as Array<{key:string;value:string}>;return Object.fromEntries(rows.map(r=>[r.key,r.value]));}finally{db.close();}
+ const db=openKnowledgeDatabase(worldDir,worldId);try{const rows=db.prepare("SELECT key,value FROM novel_kb_meta").all() as Array<{key:string;value:string}>;return Object.fromEntries(rows.map(r=>[r.key,r.value]));}finally{db.close();}
 }
 export interface NovelCharacterSummary { characterId:string; name:string; aliases:string[]; role:string; bio:string; voice:string; chaptersSeen:number; mentionTotal:number; firstChapter:number|null; lastChapter:number|null; }
 export function listNovelCharacters(worldDir:string,worldId:string,options:{query?:string;limit?:number}={}):NovelCharacterSummary[]{
- const db=openDatabase(worldDir,worldId);try{
+ const db=openKnowledgeDatabase(worldDir,worldId);try{
   const limit=options.limit??50;const like="%"+((options.query??"").trim())+"%";
   const rows=db.prepare("SELECT character_id AS characterId,name,aliases_json,role,bio,voice,chapters_seen AS chaptersSeen,mention_total AS mentionTotal,first_chapter AS firstChapter,last_chapter AS lastChapter FROM novel_characters WHERE (?='%%' OR name LIKE ? OR aliases_json LIKE ?) ORDER BY mention_total DESC, chapters_seen DESC, name LIMIT ?").all(like,like,like,limit) as Array<Record<string,unknown> & {aliases_json:string}>;
   return rows.map(row=>({...row,aliases:JSON.parse(row.aliases_json) as string[],aliases_json:undefined} as unknown as NovelCharacterSummary));
  }finally{db.close();}
 }
 export function listNovelThreads(worldDir:string,worldId:string,options:{limit?:number;status?:string;query?:string}={}):Array<Record<string,unknown> & {keyTurns:string[];unresolved:string[]}>{
- const db=openDatabase(worldDir,worldId);try{
+ const db=openKnowledgeDatabase(worldDir,worldId);try{
   const limit=options.limit??50;const like="%"+((options.query??"").trim())+"%";
   const rows=db.prepare("SELECT thread_id AS threadId,title,status,summary,key_turns_json,unresolved_json,first_chapter AS firstChapter,last_chapter AS lastChapter,COALESCE(last_chapter,0)-COALESCE(first_chapter,0) AS span FROM novel_plot_threads WHERE (?='' OR status=?) AND (?='%%' OR title LIKE ? OR summary LIKE ?) ORDER BY span DESC, first_chapter LIMIT ?").all(options.status??"",options.status??"",like,like,like,limit) as Array<Record<string,unknown> & {key_turns_json:string;unresolved_json:string}>;
   return rows.map(row=>({...row,keyTurns:JSON.parse(row.key_turns_json) as string[],unresolved:JSON.parse(row.unresolved_json) as string[],key_turns_json:undefined,unresolved_json:undefined}));
  }finally{db.close();}
 }
 export function listNovelForeshadowings(worldDir:string,worldId:string,options:{limit?:number;status?:string;query?:string}={}):Array<Record<string,unknown> & {payoffs:string[]}>{
- const db=openDatabase(worldDir,worldId);try{
+ const db=openKnowledgeDatabase(worldDir,worldId);try{
   const limit=options.limit??100;const like="%"+((options.query??"").trim())+"%";
   const rows=db.prepare("SELECT clue_id AS clueId,clue,first_appearance AS firstAppearance,meaning,payoffs_json,confidence,status,chapter_ordinal AS chapterOrdinal FROM novel_foreshadowings WHERE (?='' OR status=?) AND (?='%%' OR clue LIKE ?) ORDER BY chapter_ordinal LIMIT ?").all(options.status??"",options.status??"",like,like,limit) as Array<Record<string,unknown> & {payoffs_json:string}>;
   return rows.map(row=>({...row,payoffs:JSON.parse(row.payoffs_json) as string[],payoffs_json:undefined}));
@@ -257,7 +346,7 @@ export interface NovelKnowledgeSnapshot {
 }
 /** Portable excerpt without the source text that library_chunks holds. */
 export function exportNovelKnowledge(worldDir:string,worldId:string):NovelKnowledgeSnapshot{
- const db=openDatabase(worldDir,worldId);try{
+ const db=openKnowledgeDatabase(worldDir,worldId);try{
   const parse=(value:unknown,fallback:unknown)=>{try{return JSON.parse(String(value));}catch{return fallback;}};
   const characters=(db.prepare("SELECT character_id AS characterId,name,aliases_json,role,bio,voice,personality_json,desires_json,contradictions_json,arc_json,first_chapter AS firstChapter,last_chapter AS lastChapter,chapters_seen AS chaptersSeen,mention_total AS mentionTotal,source FROM novel_characters ORDER BY mention_total DESC").all() as Array<Record<string,unknown>>).map(row=>({...row,aliases:parse(row.aliases_json,[]),personality:parse(row.personality_json,[]),desires:parse(row.desires_json,[]),contradictions:parse(row.contradictions_json,[]),arc:parse(row.arc_json,[]),aliases_json:undefined,personality_json:undefined,desires_json:undefined,contradictions_json:undefined,arc_json:undefined}));
   const threads=(db.prepare("SELECT thread_id AS threadId,title,status,summary,key_turns_json,unresolved_json,first_chapter AS firstChapter,last_chapter AS lastChapter FROM novel_plot_threads ORDER BY first_chapter").all() as Array<Record<string,unknown>>).map(row=>({...row,keyTurns:parse(row.key_turns_json,[]),unresolved:parse(row.unresolved_json,[]),key_turns_json:undefined,unresolved_json:undefined}));
@@ -268,7 +357,7 @@ export function exportNovelKnowledge(worldDir:string,worldId:string):NovelKnowle
  }finally{db.close();}
 }
 export function novelKnowledgeOverview(worldDir:string,worldId:string):Record<string,unknown>{
- const db=openDatabase(worldDir,worldId);try{
+ const db=openKnowledgeDatabase(worldDir,worldId);try{
   const one=(sql:string,...params:Array<string|number>)=>Number((db.prepare(sql).get(...params) as {count:number}).count);
   const volumes=db.prepare("SELECT volume,COUNT(*) AS chapters,SUM(char_count) AS chars FROM novel_chapters GROUP BY volume ORDER BY volume").all();
   const threadStatus=db.prepare("SELECT status,COUNT(*) AS count FROM novel_plot_threads GROUP BY status ORDER BY count DESC").all();
@@ -284,7 +373,7 @@ export function novelKnowledgeOverview(worldDir:string,worldId:string):Record<st
  }finally{db.close();}
 }
 export function listNovelBeats(worldDir:string,worldId:string,options:{from?:number;to?:number;limit?:number;latest?:boolean}={}):Array<Record<string,unknown> & {actors:string[]}>{
- const db=openDatabase(worldDir,worldId);try{
+ const db=openKnowledgeDatabase(worldDir,worldId);try{
   const from=options.from??0;const to=options.to??Number.MAX_SAFE_INTEGER;const limit=options.limit??200;
   const order=options.latest?"DESC":"ASC";
   const rows=db.prepare("SELECT beat_id AS beatId,chapter_id AS chapterId,chapter_ordinal AS chapterOrdinal,summary,actors_json FROM novel_beats WHERE chapter_ordinal>=? AND chapter_ordinal<=? ORDER BY chapter_ordinal "+order+" LIMIT ?").all(from,to,limit) as Array<Record<string,unknown> & {actors_json:string}>;

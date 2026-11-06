@@ -236,7 +236,16 @@ node scripts/compare-models.mjs \
 
 ## SQLite 世界数据库
 
-每个世界使用独立的 `worlds/<world>/novel.db`，使用 Node 22.13+ 内置 `node:sqlite`，不引入原生 npm 扩展。数据库启用 WAL、外键、事务和 schema version，保存章节片段、抽取标注、实体/实体提及，以及人物、正史事实、事件、情节线和连续性备注。章节检索从 SQLite 读取片段，再沿用现有 BM25 排序；续写上下文按命中的 chunk ID 从 SQLite 读取标注。
+每个世界有两个 SQLite 文件，都用 Node 22.13+ 内置 `node:sqlite`，不引入原生 npm 扩展。
+
+| 文件 | 内容 | 写入时机 | 体积 |
+|---|---|---|---|
+| `worlds/<world>/novel.db` | 章节片段、抽取标注、实体/实体提及、全书分析结果（`novel_*`、`story_analysis`、`story_graph_*`） | `ingest`、`index-story`、`analyze-story`、`analyze-arcs` | 约 22MB |
+| `worlds/<world>/story.db` | 写作状态：`story_state`、`characters`、`canon_facts`、`story_events`、`plot_threads`、`continuity_notes` | 每写一章 | 约 68KB |
+
+分开的理由是写入频率差了三个数量级：写一章会把人物、事件、情节线、连续性备注整批重写，而知识库几周才动一次。放在同一个文件里，每次章节更新都会让 22MB 的二进制重新落一份进 Git；分开之后，日常提交只碰 68KB 的状态库。两个文件各自有 `user_version`，可以独立演进。
+
+章节检索从知识库读取片段，再沿用现有 BM25 排序；续写上下文按命中的 chunk ID 读取标注；写作状态一律从 `story.db` 读。
 
 首次访问会自动把已有 `library/index.json`、`annotations.json` 和 `story-state.json` 导入数据库。此后故事状态以 SQLite 为权威存储，`story-state.json` 保留为可读兼容快照；库索引和标注 JSON 继续作为可重建/交换快照。重新导入源文件会在事务中替换 SQLite 片段索引并清理对应过期标注。数据库不存原始小说全文文件，只存索引片段及结构化信息。
 
@@ -262,11 +271,13 @@ npm run dev -- story-kb     --world conghuoniao --type export   # 导出不含�
 
 当前 `conghuoniao` 库的规模：753 章、544 人（6,403 条人物×章出场记录）、1,314 条章级事件（覆盖 738/753 章）、862 条局部情节线、1,535 条伏笔线索、1,649 条人物关系、17 篇卷级梗概。
 
-`worlds/<world>/novel.db` 随仓库提交（VACUUM 后约 22MB），换机器后不必重跑 196 次模型调用。它同时是数据库和快照，重跑 `analyze-story` 会重写整个文件，因此改动集中在数据更新时，不适合频繁小改。`story-kb --type export` 写出的 `story-kb.json` 保留了同一批知识的文本形式，便于 diff 和审阅。
+两个文件都随仓库提交，换机器后不必重跑 196 次模型调用。`novel.db` 重跑 `analyze-story` 会整文件重写（约 22MB），所以它的提交应集中在数据更新的那一次；`story-kb --type export` 写出的 `story-kb.json` 保留了同一批知识的文本形式，便于 diff 和审阅。`story.db` 每次章节落地都会变，但只有几十 KB。
 
 `index-story` 按 `analysis/<world>/chapter-index.json` 的行号顺序把 2,594 个检索片段映射回 753 章。检索片段之间带约 160 字重叠（为检索保留上下文），统计和送模型前会先去重，否则人物出现次数会虚高约 12%。
 
-`novel.db` 已入库；WAL/SHM sidecar 仍忽略，它们随进程变化。需要迁移或重建时先保留 JSON 快照，再删除数据库；下一次运行会从快照重新导入。数据库改动前后体积差异明显时用 `VACUUM` 收一下（例如 28MB → 22MB），避免把空闲页也提交进去。
+WAL/SHM sidecar 仍忽略，它们随进程变化。需要迁移或重建时先保留 JSON 快照，再删掉对应文件；下一次运行会从快照重新导入。改动前后体积差异明显时用 `VACUUM` 收一下（例如 `novel.db` 28MB → 22MB），避免把空闲页也提交进去。
+
+旧版本的写作状态存在 `novel.db` 里。首次打开 `story.db` 时会自动把这几张表搬过去并从 `novel.db` 删除；迁移失败只在日志里告警，不会阻塞写作。
 
 ## 写作前的注入顺序与硬约束
 

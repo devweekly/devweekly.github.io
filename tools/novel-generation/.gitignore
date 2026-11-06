@@ -6,8 +6,8 @@ dist/
 original.txt
 
 # SQLite 运行时文件：随进程变化，提交没有意义
-worlds/*/novel.db-wal
-worlds/*/novel.db-shm
+worlds/*/*.db-wal
+worlds/*/*.db-shm
 
 # 本地覆盖与私有笔记：目录名即约定，需要共享时把文件移到 worlds/<world>/
 private/

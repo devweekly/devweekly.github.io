@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { existsSync, readFileSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { databaseStatus, readAnnotationsByChunkIds, readLibraryChunks, readStoryState, syncAnnotations, syncLibraryChunks, syncStoryState } from "../src/database.js";
@@ -25,5 +27,46 @@ test("SQLite database rejects cross-world reuse",async()=>{
 test("legacy story-state JSON migrates into SQLite on first load",async()=>{
  const root=await mkdtemp(join(tmpdir(),"novel-sqlite-migrate-"));try{const world=join(root,"worlds","legacy");await mkdir(world,{recursive:true});const state=emptyStoryState("legacy");state.currentPosition="第七章";
  await writeFile(join(world,"story-state.json"),JSON.stringify(state),"utf8");assert.equal((await loadStoryState(join(world,"story-state.json"),"legacy")).currentPosition,"第七章");assert.equal(readStoryState(world,"legacy")?.currentPosition,"第七章");
+ }finally{await rm(root,{recursive:true,force:true});}
+});
+
+test("写作状态写入不触碰知识库文件",async()=>{
+ const root=await mkdtemp(join(tmpdir(),"novel-split-"));try{
+  const world=join(root,"world");
+  syncLibraryChunks(world,"w",[{id:"s:0:0",source:"s.txt",chapter:"第1章",chunkIndex:0,start:0,end:4,text:"测试文本",sourceHash:"a".repeat(64),chapterStart:0}]);
+  const before=readFileSync(join(world,"novel.db"));
+  const state=emptyStoryState("w");state.currentPosition="第二章";state.characters.push({name:"李玄",status:"在旧城",location:"旧城",profile:{coreTraits:["谨慎"]}});
+  syncStoryState(world,state);
+  assert.ok(existsSync(join(world,"story.db")),"story.db 应被创建");
+  assert.ok(before.equals(readFileSync(join(world,"novel.db"))),"知识库不应因状态写入而变化");
+  assert.equal(readStoryState(world,"w")?.currentPosition,"第二章");
+ }finally{await rm(root,{recursive:true,force:true});}
+});
+test("旧库里同库存储的状态表首次打开时迁移到 story.db",async()=>{
+ const root=await mkdtemp(join(tmpdir(),"novel-legacy-state-"));try{
+  const world=join(root,"world");
+  syncLibraryChunks(world,"w",[{id:"s:0:0",source:"s.txt",chapter:"第1章",chunkIndex:0,start:0,end:4,text:"测试文本",sourceHash:"a".repeat(64),chapterStart:0}]);
+  const legacy=emptyStoryState("w");legacy.currentPosition="第七章";
+  const raw=new DatabaseSync(join(world,"novel.db"));
+  raw.exec("CREATE TABLE story_state(singleton INTEGER PRIMARY KEY CHECK(singleton=1),updated_at TEXT NOT NULL,payload_json TEXT NOT NULL);"+
+   "CREATE TABLE characters(name TEXT PRIMARY KEY,status TEXT NOT NULL,location TEXT,profile_json TEXT,payload_json TEXT NOT NULL);"+
+   "CREATE TABLE canon_facts(id TEXT PRIMARY KEY,fact TEXT NOT NULL,confidence TEXT NOT NULL,source TEXT);"+
+   "CREATE TABLE story_events(id TEXT PRIMARY KEY,summary TEXT NOT NULL,position TEXT NOT NULL,payload_json TEXT NOT NULL);"+
+   "CREATE TABLE plot_threads(id TEXT PRIMARY KEY,title TEXT NOT NULL,status TEXT NOT NULL,last_updated TEXT NOT NULL,notes TEXT NOT NULL);"+
+   "CREATE TABLE continuity_notes(ordinal INTEGER PRIMARY KEY,note TEXT NOT NULL);");
+  raw.prepare("INSERT INTO story_state(singleton,updated_at,payload_json) VALUES(1,?,?)").run(legacy.updatedAt,JSON.stringify(legacy));
+  raw.prepare("INSERT INTO characters(name,status,location,profile_json,payload_json) VALUES(?,?,?,?,?)").run("李玄","在旧城","旧城",JSON.stringify({coreTraits:["谨慎"]}),JSON.stringify({name:"李玄"}));
+  raw.prepare("INSERT INTO continuity_notes(ordinal,note) VALUES(?,?)").run(0,"旧备注");
+  raw.close();
+
+  assert.equal(readStoryState(world,"w")?.currentPosition,"第七章");
+  const migrated=new DatabaseSync(join(world,"story.db"));
+  try{
+   assert.equal(Number((migrated.prepare("SELECT COUNT(*) AS c FROM characters").get() as {c:number}).c),1);
+   assert.equal((migrated.prepare("SELECT note FROM continuity_notes WHERE ordinal=0").get() as {note:string}).note,"旧备注");
+  }finally{migrated.close();}
+  const check=new DatabaseSync(join(world,"novel.db"));
+  try{assert.equal(check.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='story_state'").get(),undefined,"旧表应已删除");}
+  finally{check.close();}
  }finally{await rm(root,{recursive:true,force:true});}
 });

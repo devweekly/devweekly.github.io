@@ -4,7 +4,7 @@
  *   npm run package-review
  *   npm run package-review -- --out /tmp/review.zip --max-mb 6 --batches 6
  *
- * 不打包原文全文、完整数据库和 27MB 二进制；只取有代表性的切片。
+ * 不打包原文全文与完整数据库（22MB）；只取有代表性的切片。
  */
 import { createHash } from "node:crypto";
 import { deflateRawSync } from "node:zlib";
@@ -14,7 +14,7 @@ import { dirname, join, resolve } from "node:path";
 import { buildAnalysisUnits, groupAnalysisUnits } from "../src/novel-kb.js";
 import { buildAnalysisPrompt, storyAnalysisCacheStatus } from "../src/story-analysis.js";
 import { resolveAgentModel } from "../src/agent-runtime.js";
-import { openWorldDatabase } from "../src/database.js";
+import { openStoryStateDatabase, openWorldDatabase } from "../src/database.js";
 
 interface Entry {
   path: string;
@@ -168,7 +168,8 @@ const counts = {
 
 const storyAnalysis=withDatabase(db=>{const row=db.prepare("SELECT payload_json FROM story_analysis WHERE singleton=1 AND world_id=?").get(worldId) as {payload_json:string}|undefined;return row?JSON.parse(row.payload_json) as Record<string,unknown>:{};});
 const graphNodes=rows("SELECT node_id AS id,node_type AS type,label,properties_json,source_refs_json FROM story_graph_nodes ORDER BY node_type,label").map(row=>({id:row.id,type:row.type,label:row.label,properties:JSON.parse(String(row.properties_json)),sourceRefs:JSON.parse(String(row.source_refs_json))}));
-const graphEdges=rows("SELECT edge_id AS id,from_node_id AS from,to_node_id AS to,edge_type AS type,label,properties_json,source_refs_json FROM story_graph_edges ORDER BY edge_type,label").map(row=>({id:row.id,from:row.from,to:row.to,type:row.type,label:row.label,properties:JSON.parse(String(row.properties_json)),sourceRefs:JSON.parse(String(row.source_refs_json))}));
+// `from` 是保留字，做别名会让整条 SQL 解析失败；用 from_id 再映射。
+const graphEdges=rows("SELECT edge_id AS id,from_node_id AS from_id,to_node_id AS to_id,edge_type AS type,label,properties_json,source_refs_json FROM story_graph_edges ORDER BY edge_type,label").map(row=>({id:row.id,from:row.from_id,to:row.to_id,type:row.type,label:row.label,properties:JSON.parse(String(row.properties_json)),sourceRefs:JSON.parse(String(row.source_refs_json))}));
 const degree=new Set(graphEdges.flatMap(e=>[String(e.from),String(e.to)]));
 const graphQuality={
   nodeTypes:rows("SELECT node_type AS type,COUNT(*) AS count FROM story_graph_nodes GROUP BY node_type"),
@@ -277,6 +278,7 @@ const qualityFlags = {
 
 add("01-database/summary.json", json(summary));
 add("01-database/schema.sql", withDatabase(db => (db.prepare("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, name").all() as Array<{ sql: string }>).map(row => row.sql + ";").join("\n\n") + "\n"));
+add("01-database/schema-state.sql", (() => { const db = openStoryStateDatabase(worldDir, worldId); try { return (db.prepare("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, name").all() as Array<{ sql: string }>).map(row => row.sql + ";").join("\n\n") + "\n"; } finally { db.close(); } })());
 add("01-database/schema.md", [
   "# 数据表说明",
   "",
@@ -323,6 +325,8 @@ const model = resolveAgentModel().model;
 const { units } = await buildAnalysisUnits(worldId, { worldDir });
 const batches = groupAnalysisUnits(units, 14_000);
 const cache = await storyAnalysisCacheStatus(worldId, { worldDir });
+// 语料或提示词版本变化后，当前指纹对应的缓存目录可能还没生成：这是缺数据，不是错误。
+const cacheAvailable = existsSync(cache.directory);
 const picks = [...new Set(Array.from({ length: batchCount }, (_, index) =>
   Math.min(batches.length - 1, Math.round((index * (batches.length - 1)) / Math.max(1, batchCount - 1)))
 ))];
@@ -353,6 +357,7 @@ add("02-analysis-calls/sampling.json", json({
   batchSizeChars: 14_000,
   selected: picks,
   cacheDirectory: cache.directory.replace(process.cwd() + "/", ""),
+  cacheAvailable,
   note: "请求体由 CLI 的提示词构造函数原样重建；响应体来自实际调用缓存。SDK 不落盘 token 数与耗时，故未包含。"
 }));
 add("02-analysis-calls/README.md", [
@@ -364,11 +369,12 @@ add("02-analysis-calls/README.md", [
   "- `sampling.json`：总批数、采样点、模型、缓存目录。",
   "",
   "未包含 token 数与耗时：Agent SDK 只返回文本，不落盘这些指标。",
+  cacheAvailable ? "" : "当前语料指纹下没有分析缓存（`sampling.json` 里 `cacheAvailable=false`），因此这一节只有重建的请求体、没有响应体；响应体需要先跑一次 `analyze-story` 才会产生。",
   "响应里的「本批」是模型按提示词写的批次内措辞，入库时会统一改写为「这一阶段」。",
   ""
 ].join("\n"));
 add("02-analysis-calls/meta.json", json(analysisMeta));
-for (const name of await readdir(cache.directory)) {
+for (const name of cacheAvailable ? await readdir(cache.directory) : []) {
   if (!/^batch-\d{4}\.json\.(invalid-raw|repair-raw)\.txt$/.test(name)) continue;
   add("02-analysis-calls/failed/" + name, await readFile(join(cache.directory, name)), { optional: true });
 }
@@ -535,7 +541,7 @@ const readme = [
   "- 有 " + qualityFlags.charactersWithoutMentionsCount + " 个人物「有名无实」：模型给出了名字，但正文没有逐字出现，统计为 0。",
   "- 置信度、状态、关系标签都是模型判断，不是人工标注。",
   "- SDK 不落盘 token 与耗时，`02-analysis-calls/` 包含采样请求/响应，以及已保留的失败原始响应；请求体由同一构造函数重建，内容与线上一致。长章节 `stage-calls.jsonl` 记录实际执行的阶段、请求模型候选链、提示词/输出字符数、耗时和结果；缓存命中不会产生模型调用记录。",
-  "- 原文全文与 27MB 的 `novel.db` 未打包；如需核对原文，请另行提供语料。",
+  "- 原文全文与 22MB 的 `novel.db` 未打包；如需核对原文，请另行提供语料。",
   "",
   "## 版权",
   "",
