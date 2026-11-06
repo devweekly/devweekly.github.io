@@ -341,7 +341,7 @@ AI 可以成为一个有耐心的创意伙伴、情节推演器、人物模拟�
 - [Hambly, “The Not So Universal Hero’s Journey”](https://doi.org/10.1386/josc_00056_1) —— 对英雄之旅普遍性主张的文化语境批评。
 - [Eder, “Motivation and Plot: Characters’ Needs, Goals, and Actions”](https://doi.org/10.11647/obp.0283.09) —— 人物动机如何连接心理、行动和情节。
 - [Ward, “Creative Cognition, Conceptual Combination, and the Creative Writing of Stephen R. Donaldson”](https://doi.org/10.1037/0003-066X.56.4.350) —— 概念组合与奇幻创作的案例分析。
-- [Riedl & Leon, “Generating Story Analogues”](https://ojs.aaai.org/index.php/AIIDE/article/download/12373/12232) —— 将故事关系结构迁移到不同世界设定的计算方法。
+- [Riedl & Leon, “Generating Story Analogues”](https://faculty.cc.gatech.edu/~riedl/pubs/aiide09.pdf) —— 将故事关系结构迁移到不同世界设定的计算方法。
 - [“Battle of the Paradigms: Screenplay Structure”](https://scriptmag.com/features/battle-of-paradigms-screenplay-structure-whose-choose) —— 比较不同编剧结构模型及其适用边界。
 
 ### 网络小说作者与连载经验
