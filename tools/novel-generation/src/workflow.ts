@@ -8,7 +8,7 @@ import { checkIronLaws, ironLawIssues, loadIronLaws } from "./iron-laws.js";
 import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
 import { parseJsonObject } from "./model-json.js";
 import { LONG_CHAPTER_SOURCE_TAIL_CHARS } from "./constants.js";
-import { buildWorldSituationContext } from "./world-situation.js";
+import { buildWorldSituationContext } from "./world-situation.js";\nimport { antiAiEditPrompt, readerExperiencePrompt } from "./literary-edit.js";
 
 export interface WriteWorkflowInput {
   worldId: string;
@@ -245,9 +245,22 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   ]);
   await saveStage(input.outputDir, "06-voice-edited.md", voiceDraft);
 
+  // Anti-AI is a restrained literary edit, never a detector-driven rewrite.
+  // If the optional editor call fails, preserve the already valid voice-edited draft.
+  let antiAiDraft = voiceDraft;
+  try {
+    antiAiDraft = await cachedCall("anti-ai-edit", "06b-anti-ai-edited.md", "antiAi", [
+      antiAiEditPrompt({ brief: input.brief, blueprint: plan, styleProfile: input.styleProfile, chapter: voiceDraft })
+    ], output => { if (!output.trim()) throw new Error("Anti-AI editor returned an empty chapter."); });
+  } catch (error) {
+    await saveStage(input.outputDir, "06b-anti-ai-error.txt", String(error));
+    console.error("[write] Anti-AI 编辑阶段失败，保留叙事声音修订稿继续终审。");
+  }
+  await saveStage(input.outputDir, "06b-anti-ai-edited.md", antiAiDraft);
+
   const reviewHistory: string[] = [];
   const reviewed = await reviewAndRepair({
-    initialChapter: voiceDraft,
+    initialChapter: antiAiDraft,
     maxRepairRounds: 2,
     review: (candidate, correction) => {
       const round = reviewHistory.length + 1;
@@ -289,6 +302,17 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     repairRounds: reviewed.repairRounds,
     reviews: reviewed.reviews
   }, null, 2));
+
+  // Reader experience is observational only: it never blocks state persistence.
+  try {
+    const readerReport = await cachedCall("reader-experience", "10-reader-experience.md", "reader", [
+      readerExperiencePrompt({ brief: input.brief, chapter })
+    ], output => { if (!output.trim()) throw new Error("Reader returned an empty report."); });
+    await saveStage(input.outputDir, "10-reader-experience.md", readerReport);
+  } catch (error) {
+    await saveStage(input.outputDir, "10-reader-experience-error.txt", String(error));
+    console.error("[write] Reader 体验评估未完成；不影响章节通过与状态提交。");
+  }
 
   const statePrompt = [
     "角色：小说连续性资料管理员。根据旧状态和最终章节提取本章状态变化。",
