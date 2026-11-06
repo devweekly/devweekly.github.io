@@ -75,23 +75,39 @@ function compact(item: AnalysisItem): string {
 
 /** Selects only potentially relevant analysis as optional inspiration; never turns it into canon or a writing checklist. */
 export function buildStoryAnalysisContext(snapshot: StoryAnalysisSnapshot | undefined, query: string): string {
-  if (!snapshot?.complete || snapshot.analysisVersion !== 4 || !query.trim()) return "";
+  if (!snapshot?.complete || snapshot.analysisVersion !== 5 || !query.trim()) return "";
   const queryTerms = terms(query);
   const groups: Array<[string, AnalysisItem[], number]> = [
     ["相关人物（画像与变化可能性）", snapshot.characters, 5],
-    ["相关情节线", snapshot.plotThreads, 4],
-    ["可能的伏笔与不同解释", snapshot.foreshadowings, 4],
+    ["相关人物互动与关系变化", snapshot.relations ?? [], 6],
+    ["相关主线与支线", snapshot.plotThreads, 5],
+    ["相关 MacGuffin（驱动行动的目标/物件/信息）", snapshot.macguffins ?? [], 4],
+    ["可能的伏笔与不同解释", snapshot.foreshadowings, 5],
     ["可探索的后续发展（创意选项）", snapshot.developmentPossibilities, 5]
   ];
   const sections = groups.map(([title, items, limit]) => {
     const chosen = select(items, queryTerms, query, limit);
     return chosen.length ? "### " + title + "\n" + chosen.map(compact).join("\n\n") : "";
   }).filter(Boolean);
-  if (!sections.length) return "";
+  const graph=snapshot.storyGraph;
+  const nodes=Array.isArray(graph?.nodes)?graph.nodes as Array<Record<string,unknown>>:[];
+  const edges=Array.isArray(graph?.edges)?graph.edges as Array<Record<string,unknown>>:[];
+  const matched=select(nodes.map(n=>({...((n.data&&typeof n.data==="object")?n.data as Record<string,unknown>:{}),graphId:n.id})),queryTerms,query,8);
+  const ids=new Set(matched.map(n=>String(n.graphId)));
+  const connected=new Set(ids);
+  for(const edge of edges)if(ids.has(String(edge.from))||ids.has(String(edge.to))){connected.add(String(edge.from));connected.add(String(edge.to));}
+  const links=edges.filter(e=>connected.has(String(e.from))&&connected.has(String(e.to))).slice(0,16).map(e=>{
+    const from=nodes.find(n=>n.id===e.from),to=nodes.find(n=>n.id===e.to);
+    return "- "+String(from?.label??e.from)+" —"+String(e.label??e.type)+"→ "+String(to?.label??e.to);
+  });
+  if(links.length)sections.push("### 与本次任务相关的故事关系图\n"+links.join("\n"));
+  const core=snapshot.storyCore&&Object.keys(snapshot.storyCore).length?"### 故事核心观察（保留多种解释）\n"+compact(snapshot.storyCore as AnalysisItem):"";
+  if(!sections.length&&!core)return "";
   const rendered = [
     "以下是从既有语料分析中挑选出的相关参考。它们是可选素材和创意火花，不是正史、人物定论、剧情任务或必须兑现的伏笔。",
     "人物画像不能限制人物当下的选择；成长方向可以互相矛盾，人物可以反复、倒退、背叛、和解、黑化或洗白。情节建议可以采用、改造、组合或全部舍弃。",
     "若参考内容与用户本次创作意图、正文自然性或文学表达冲突，以本次创作和文学表达为准。不要为了体现这些资料而强行塞入人物、伏笔或情节。",
+    core,
     sections.join("\n\n")
   ].join("\n\n");
   return rendered.length > 12_000 ? rendered.slice(0, 12_000) + "\n\n（参考内容已截断；以本次创作任务和文学表达为准。）" : rendered;
