@@ -45,7 +45,7 @@
 | 万字章节流水线 | `src/long-chapter.ts` | 场景蓝图、逐场检索与生成、场间上下文交接、分批审查、逐场修订、共享 Anti-AI 编辑、全章终审与 Reader 观察 |
 | 质量回归 | `src/regression.ts`、`scripts/compare-models.mjs` | 节奏量化、候选盲评和模型对照；不属于每次正式续写的人工审批步骤 |
 | 质量门禁 | `src/chapter-review.ts` | 审查 JSON schema、正文证据、严重程度与多场景定位；有限自动修复和复查 |
-| 文学编辑原则 | `src/literary-edit.ts` | 普通章节与长章节共享 Living Voice、Anti-AI 编辑和独立 Reader 体验提示；不含检测器门禁 |
+| 文学编辑原则 | `src/literary-edit.ts`、`src/style-distillation.ts` | 共享 Living Voice、Anti-AI 编辑、Reader 体验提示与抽象风格提炼 |
 | 阶段恢复 | `src/stage-cache.ts` | 输入指纹、实际模型回退链、输出哈希、阶段语义校验、原子阶段产物、运行 manifest 和初始状态快照 |
 
 ## 3. 普通章节：当前执行流程
@@ -368,7 +368,7 @@ Living Voice 不是一个独立的正文改写 Agent，而是写作与编辑阶�
 
 ### 10.5 Style Distillation 与回归
 
-现有 `style-profile.md` 继续作为项目级抽象风格资料。后续风格提炼应从经授权的作品样本中提取叙述距离、节奏变化、视角习惯、对白倾向、意象使用和情绪表达等抽象特征，并提供正例/反例及适用场景。不得复刻特定作者的独特句式、标志性表达或长段落。
+现有 `style-profile.md` 继续作为项目级抽象风格资料。新增 `distill-style` 命令从经授权的作品样本中提取叙述距离、节奏变化、视角习惯、对白倾向、意象使用和情绪表达等抽象特征，并提供正例/反例及适用场景。不得复刻特定作者的独特句式、标志性表达或长段落。
 
 全局风格资料与场景级风格观察分开；对话、动作、打斗、群像、内心独白、环境和情感爆发等场景不应被统一成一种声音。风格样本回归用于发现明显漂移，不设统计相似度硬门槛，不自动优化句长或段落比例。
 
@@ -408,4 +408,4 @@ ADR 0004 的第一阶段已接入两条正式写作链：
 - 两条写作链在终审通过后生成 `10-reader-experience.md`。Reader 失败只保存错误诊断，不影响章节通过和 Story State 持久化。
 - 新增 `antiAi` 与 `reader` 阶段配置，沿用现有 task profile 和阶段缓存；无新增依赖、数据库表或常驻 Agent。
 
-当前尚未实现的独立创作能力：作者主动调用的 Roleplay Sandbox、Style Distillation 样本管理与回归工作台。它们不属于本轮自动写作链的必要依赖。
+当前尚未实现的独立创作能力：作者主动调用的 Roleplay Sandbox，以及 Style Distillation 的样本版本管理与回归工作台。`distill-style` 已提供一次性提炼命令，输出候选文件，不自动覆盖正式风格资料。
