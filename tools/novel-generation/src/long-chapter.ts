@@ -411,7 +411,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       await saveStage(input.outputDir, "08-quality-summary.json", JSON.stringify({
         status: "blocked", reason, reviews
       }, null, 2));
-      console.error("[write-long] 终审未通过，成稿已保留为 chapter-needs-review.md，故事状态未更新。用 --accept-review 人工放行。");
+      console.error("[write-long] 终审仍有未解决硬伤，成稿已保留为 chapter-blocked.md；本次运行安全失败，故事状态未更新。");
     }
   });
   const chapter = reviewed.chapter;
