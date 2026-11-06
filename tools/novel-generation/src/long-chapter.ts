@@ -22,7 +22,7 @@ import {
   WRITE_LONG_RETRIEVAL_LIMIT
 } from "./constants.js";
 import { buildWorldSituationContext } from "./world-situation.js";
-import { antiAiEditPrompt, readerExperiencePrompt } from "./literary-edit.js";
+import { LIVING_VOICE_RULES, antiAiEditPrompt, readerExperiencePrompt } from "./literary-edit.js";
 
 export interface LongChapterInput {
   worldId: string;
@@ -242,6 +242,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     await saveStage(input.outputDir, `00-scene-${String(index + 1).padStart(2, "0")}-retrieval.md`, sceneEvidence || "本场未检索到额外原文证据。");
     const scenePrompt = [
       `角色：场景小说家。只写第 ${index + 1} 场完整正文，不输出标题、分析或创作说明。`,
+      LIVING_VOICE_RULES,
       writingContext,
       "全章蓝图：", blueprint,
       characterState ? "本场相关人物的当前状态（仅帮助承接，不是人物行为边界）：\n" + characterState : "",
@@ -336,6 +337,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   for (let index = 0; index < sceneTexts.length; index++) {
     const text = await cachedCall("polish-" + (index + 1), "05-polish-" + String(index + 1).padStart(2, "0") + ".md", "voice", [
       "角色：人物对话编辑兼叙事声音编辑。以原稿为基础做精修，不重新创作场景。只修订确有问题的对白与叙述表达，不改剧情事实、场景顺序、人物决定和信息揭示。",
+      LIVING_VOICE_RULES,
       writingContext, "全章蓝图：", blueprint, "连续性审查（只修有证据支持的问题）：", review,
       `第 ${index + 1} 场当前正文：`, sceneTexts[index]!,
       "校准人物语气与知识边界，删解释性过强、所有人同一腔调的对白；统一视角与叙述距离。",
