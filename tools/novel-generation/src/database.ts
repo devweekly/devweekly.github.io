@@ -3,7 +3,7 @@ import { mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { LibraryChunk } from "./library.js";
 import type { StoryState } from "./story-state.js";
-export interface DatabaseStatus { path:string; schemaVersion:number; chunks:number; annotations:number; entities:number; entityMentions:number; characters:number; canonFacts:number; events:number; plotThreads:number; storyAnalysis:number; novelChapters:number; novelCharacters:number; novelMentions:number; novelThreads:number; novelForeshadowings:number; novelBeats:number; novelRelations:number; novelArcs:number; }
+export interface DatabaseStatus { path:string; schemaVersion:number; chunks:number; annotations:number; entities:number; entityMentions:number; characters:number; canonFacts:number; events:number; plotThreads:number; storyAnalysis:number; novelChapters:number; novelCharacters:number; novelMentions:number; novelThreads:number; novelForeshadowings:number; novelBeats:number; novelRelations:number; novelArcs:number; storyGraphNodes:number; storyGraphEdges:number; }
 /** Concurrent shards and reader processes compete for the write lock; wait instead of failing. */
 function retryBusy<T>(work:()=>T,attempts=40):T{
  for(let attempt=0;;attempt++){
@@ -42,12 +42,17 @@ function openDatabase(worldDir:string,worldId:string):DatabaseSync {
  "CREATE TABLE IF NOT EXISTS novel_foreshadowings(clue_id TEXT PRIMARY KEY,clue TEXT NOT NULL,first_appearance TEXT NOT NULL DEFAULT '',meaning TEXT NOT NULL DEFAULT '',payoffs_json TEXT NOT NULL DEFAULT '[]',confidence TEXT NOT NULL DEFAULT '不确定',status TEXT NOT NULL DEFAULT '未判断',chapter_ordinal INTEGER,source_refs_json TEXT NOT NULL DEFAULT '[]');CREATE INDEX IF NOT EXISTS idx_novel_foreshadowings_status ON novel_foreshadowings(status);"+
  "CREATE TABLE IF NOT EXISTS novel_beats(beat_id TEXT PRIMARY KEY,chapter_id TEXT NOT NULL,chapter_ordinal INTEGER,summary TEXT NOT NULL,actors_json TEXT NOT NULL DEFAULT '[]',source_refs_json TEXT NOT NULL DEFAULT '[]');CREATE INDEX IF NOT EXISTS idx_novel_beats_chapter ON novel_beats(chapter_ordinal);"+
  "CREATE TABLE IF NOT EXISTS novel_relations(relation_id TEXT PRIMARY KEY,from_name TEXT NOT NULL,to_name TEXT NOT NULL,label TEXT NOT NULL DEFAULT '',evidence TEXT NOT NULL DEFAULT '',chapter_ordinal INTEGER);CREATE INDEX IF NOT EXISTS idx_novel_relations_from ON novel_relations(from_name);"+
- "CREATE TABLE IF NOT EXISTS novel_arcs(volume INTEGER PRIMARY KEY,title TEXT NOT NULL DEFAULT '',summary TEXT NOT NULL DEFAULT '',key_turns_json TEXT NOT NULL DEFAULT '[]',characters_json TEXT NOT NULL DEFAULT '[]',generated_at TEXT NOT NULL);");
+ "CREATE TABLE IF NOT EXISTS novel_arcs(volume INTEGER PRIMARY KEY,title TEXT NOT NULL DEFAULT '',summary TEXT NOT NULL DEFAULT '',key_turns_json TEXT NOT NULL DEFAULT '[]',characters_json TEXT NOT NULL DEFAULT '[]',generated_at TEXT NOT NULL);"+
+  "CREATE TABLE IF NOT EXISTS story_graph_nodes(node_id TEXT PRIMARY KEY,node_type TEXT NOT NULL,label TEXT NOT NULL,properties_json TEXT NOT NULL,source_refs_json TEXT NOT NULL DEFAULT '[]');"+
+  "CREATE INDEX IF NOT EXISTS idx_story_graph_nodes_type ON story_graph_nodes(node_type);"+
+  "CREATE TABLE IF NOT EXISTS story_graph_edges(edge_id TEXT PRIMARY KEY,from_node_id TEXT NOT NULL,to_node_id TEXT NOT NULL,edge_type TEXT NOT NULL,label TEXT NOT NULL DEFAULT '',properties_json TEXT NOT NULL,source_refs_json TEXT NOT NULL DEFAULT '[]');"+
+  "CREATE INDEX IF NOT EXISTS idx_story_graph_edges_from ON story_graph_edges(from_node_id);"+
+  "CREATE INDEX IF NOT EXISTS idx_story_graph_edges_to ON story_graph_edges(to_node_id);");
  const version=Number((db.prepare("PRAGMA user_version").get() as {user_version:number}).user_version);
- if(version>3){db.close();throw new Error("Novel database schema is newer than this application supports: "+version);}
+ if(version>4){db.close();throw new Error("Novel database schema is newer than this application supports: "+version);}
  const stored=db.prepare("SELECT value FROM world_meta WHERE key='world_id'").get() as {value:string}|undefined;
  if(stored&&stored.value!==worldId){db.close();throw new Error("SQLite database world mismatch: expected "+worldId+", found "+stored.value);}
- if(version<3)retryBusy(()=>db.exec("PRAGMA user_version=3"));
+ if(version<4)retryBusy(()=>db.exec("PRAGMA user_version=4"));
  if(!stored)retryBusy(()=>db.prepare("INSERT INTO world_meta(key,value) VALUES('world_id',?)").run(worldId));
  return db;
 }
@@ -111,6 +116,10 @@ export interface StoryAnalysisSnapshot {
   plotThreads: Array<Record<string, unknown>>;
   foreshadowings: Array<Record<string, unknown>>;
   developmentPossibilities: Array<Record<string, unknown>>;
+  storyCore?: Record<string, unknown>;
+  storyCoreObservations?: Array<Record<string, unknown>>;
+  macguffins?: Array<Record<string, unknown>>;
+  storyGraph?: {nodes:Array<{id:string;type:string;label:string;data:Record<string,unknown>;sourceRefs?:unknown[]}>;edges:Array<{id:string;from:string;to:string;type:string;label:string;data:Record<string,unknown>;sourceRefs?:unknown[]}>};
 }
 export function saveStoryAnalysis(worldDir:string,worldId:string,snapshot:StoryAnalysisSnapshot):void {
  const db=openDatabase(worldDir,worldId);
@@ -118,6 +127,11 @@ export function saveStoryAnalysis(worldDir:string,worldId:string,snapshot:StoryA
   if(snapshot.worldId!==worldId) throw new Error("Story analysis world mismatch: "+worldId);
   db.prepare("INSERT INTO story_analysis(singleton,world_id,source_hash,analyzed_at,payload_json) VALUES(1,?,?,?,?) ON CONFLICT(singleton) DO UPDATE SET world_id=excluded.world_id,source_hash=excluded.source_hash,analyzed_at=excluded.analyzed_at,payload_json=excluded.payload_json")
    .run(worldId,snapshot.sourceHash,snapshot.analyzedAt,JSON.stringify(snapshot));
+   db.exec("DELETE FROM story_graph_edges; DELETE FROM story_graph_nodes;");
+   const nq=db.prepare("INSERT INTO story_graph_nodes(node_id,node_type,label,properties_json,source_refs_json) VALUES(?,?,?,?,?)");
+   for(const n of snapshot.storyGraph?.nodes ?? [])nq.run(n.id,n.type,n.label,JSON.stringify(n.data),JSON.stringify(n.sourceRefs ?? []));
+   const eq=db.prepare("INSERT INTO story_graph_edges(edge_id,from_node_id,to_node_id,edge_type,label,properties_json,source_refs_json) VALUES(?,?,?,?,?,?,?)");
+   for(const e of snapshot.storyGraph?.edges ?? [])eq.run(e.id,e.from,e.to,e.type,e.label,JSON.stringify(e.data),JSON.stringify(e.sourceRefs ?? []));
  } finally { db.close(); }
 }
 export function readStoryAnalysis(worldDir:string,worldId:string):StoryAnalysisSnapshot|undefined {
@@ -129,7 +143,7 @@ export function readStoryAnalysis(worldDir:string,worldId:string):StoryAnalysisS
 }
 
 export function databaseStatus(worldDir:string,worldId:string):DatabaseStatus{
- const db=openDatabase(worldDir,worldId);try{const count=(t:string)=>Number((db.prepare("SELECT COUNT(*) AS count FROM "+t).get() as {count:number}).count);return {path:join(worldDir,"novel.db"),schemaVersion:Number((db.prepare("PRAGMA user_version").get() as {user_version:number}).user_version),chunks:count("library_chunks"),annotations:count("annotations"),entities:count("entities"),entityMentions:count("entity_mentions"),characters:count("characters"),canonFacts:count("canon_facts"),events:count("story_events"),plotThreads:count("plot_threads"),storyAnalysis:count("story_analysis"),novelChapters:count("novel_chapters"),novelCharacters:count("novel_characters"),novelMentions:count("novel_mentions"),novelThreads:count("novel_plot_threads"),novelForeshadowings:count("novel_foreshadowings"),novelBeats:count("novel_beats"),novelRelations:count("novel_relations"),novelArcs:count("novel_arcs")};}finally{db.close();}
+ const db=openDatabase(worldDir,worldId);try{const count=(t:string)=>Number((db.prepare("SELECT COUNT(*) AS count FROM "+t).get() as {count:number}).count);return {path:join(worldDir,"novel.db"),schemaVersion:Number((db.prepare("PRAGMA user_version").get() as {user_version:number}).user_version),chunks:count("library_chunks"),annotations:count("annotations"),entities:count("entities"),entityMentions:count("entity_mentions"),characters:count("characters"),canonFacts:count("canon_facts"),events:count("story_events"),plotThreads:count("plot_threads"),storyAnalysis:count("story_analysis"),novelChapters:count("novel_chapters"),novelCharacters:count("novel_characters"),novelMentions:count("novel_mentions"),novelThreads:count("novel_plot_threads"),novelForeshadowings:count("novel_foreshadowings"),novelBeats:count("novel_beats"),novelRelations:count("novel_relations"),novelArcs:count("novel_arcs"),storyGraphNodes:count("story_graph_nodes"),storyGraphEdges:count("story_graph_edges")};}finally{db.close();}
 }
 export function databaseWorldDirFromLibrary(libraryDir:string):string{return dirname(libraryDir);}
 
@@ -143,7 +157,7 @@ export interface NovelBeatRow { beatId:string; chapterId:string; chapterOrdinal:
 export interface NovelRelationRow { relationId:string; fromName:string; toName:string; label:string; evidence:string; chapterOrdinal:number|null; }
 
 function clearNovelAnalysis(db:DatabaseSync):void{
- db.exec("DELETE FROM novel_characters; DELETE FROM novel_mentions; DELETE FROM novel_plot_threads; DELETE FROM novel_foreshadowings; DELETE FROM novel_beats; DELETE FROM novel_relations; DELETE FROM novel_kb_meta;");
+ db.exec("DELETE FROM novel_characters; DELETE FROM novel_mentions; DELETE FROM novel_plot_threads; DELETE FROM novel_foreshadowings; DELETE FROM novel_beats; DELETE FROM novel_relations; DELETE FROM novel_kb_meta; DELETE FROM story_graph_nodes; DELETE FROM story_graph_edges;");
 }
 
 export function syncNovelChapters(worldDir:string,worldId:string,chapters:NovelChapterRow[]):void{
