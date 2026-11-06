@@ -171,7 +171,7 @@ const graphNodes=rows("SELECT node_id AS id,node_type AS type,label,properties_j
 const graphEdges=rows("SELECT edge_id AS id,from_node_id AS from,to_node_id AS to,edge_type AS type,label,properties_json,source_refs_json FROM story_graph_edges ORDER BY edge_type,label").map(row=>({id:row.id,from:row.from,to:row.to,type:row.type,label:row.label,properties:JSON.parse(String(row.properties_json)),sourceRefs:JSON.parse(String(row.source_refs_json))}));
 const degree=new Set(graphEdges.flatMap(e=>[String(e.from),String(e.to)]));
 const graphQuality={nodeTypes:rows("SELECT node_type AS type,COUNT(*) AS count FROM story_graph_nodes GROUP BY node_type"),edgeTypes:rows("SELECT edge_type AS type,COUNT(*) AS count FROM story_graph_edges GROUP BY edge_type"),isolatedNodes:graphNodes.filter(n=>!degree.has(String(n.id))).map(n=>({id:n.id,type:n.type,label:n.label})),danglingEdges:graphEdges.filter(e=>!graphNodes.some(n=>n.id===e.from)||!graphNodes.some(n=>n.id===e.to))};
-const interactions=rows("SELECT beat_id AS beatId,chapter_ordinal AS chapterOrdinal,summary,actors_json FROM novel_beats WHERE json_array_length(actors_json)>=2 ORDER BY chapter_ordinal LIMIT 120").map(row=>({...row,actors:JSON.parse(String(row.actors_json)),actors_json:undefined}));
+const interactions=rows("SELECT beat_id AS beatId,chapter_ordinal AS chapterOrdinal,summary,actors_json FROM novel_beats WHERE json_array_length(actors_json)>=2 ORDER BY RANDOM() LIMIT 120").map(row=>({...row,actors:JSON.parse(String(row.actors_json)),actors_json:undefined}));
 const summary = {
   worldId,
   generatedAt: new Date().toISOString(),
@@ -426,6 +426,7 @@ if (existsSync(join(outputDir, "shard-0.log"))) {
 const dropped: string[] = [];
 const dropOrder = [
   "retrieval-context.md",
+  "story-graph.json",
   "draft.md",
   "state-update.json",
   "analysis-shard-0.log",
