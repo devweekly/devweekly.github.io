@@ -148,12 +148,16 @@ async function main(): Promise<void> {
     const missing = names.filter(name => !characters.some(character => character.name === name));
     if (missing.length) throw new Error("人物不在当前 Story State 中：" + missing.join("、"));
     const worldBible = await readFile(resolve(worldDir, "world-bible.md"), "utf8");
+    const timeoutMs = Number(arg("--timeout-ms") ?? DEFAULT_AGENT_TIMEOUT_MS);
+    if (!Number.isInteger(timeoutMs) || timeoutMs < MIN_AGENT_TIMEOUT_MS || timeoutMs > MAX_AGENT_TIMEOUT_MS) {
+      throw new Error("--timeout-ms must be between " + MIN_AGENT_TIMEOUT_MS + " and " + MAX_AGENT_TIMEOUT_MS + ".");
+    }
     const transcript = await runRoleplaySandbox({
       brief,
       worldBible,
       characters,
       model: arg("--model"),
-      timeoutMs: Number(arg("--timeout-ms") ?? DEFAULT_AGENT_TIMEOUT_MS),
+      timeoutMs,
       profile: readTaskProfiles().creative
     });
     const runId = new Date().toISOString().replace(/[:.]/g, "-");
