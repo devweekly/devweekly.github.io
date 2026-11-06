@@ -126,13 +126,15 @@ export function saveStoryAnalysis(worldDir:string,worldId:string,snapshot:StoryA
  const db=openDatabase(worldDir,worldId);
  try {
   if(snapshot.worldId!==worldId) throw new Error("Story analysis world mismatch: "+worldId);
-  db.prepare("INSERT INTO story_analysis(singleton,world_id,source_hash,analyzed_at,payload_json) VALUES(1,?,?,?,?) ON CONFLICT(singleton) DO UPDATE SET world_id=excluded.world_id,source_hash=excluded.source_hash,analyzed_at=excluded.analyzed_at,payload_json=excluded.payload_json")
-   .run(worldId,snapshot.sourceHash,snapshot.analyzedAt,JSON.stringify(snapshot));
+  transaction(db,()=>{
+   db.prepare("INSERT INTO story_analysis(singleton,world_id,source_hash,analyzed_at,payload_json) VALUES(1,?,?,?,?) ON CONFLICT(singleton) DO UPDATE SET world_id=excluded.world_id,source_hash=excluded.source_hash,analyzed_at=excluded.analyzed_at,payload_json=excluded.payload_json")
+    .run(worldId,snapshot.sourceHash,snapshot.analyzedAt,JSON.stringify(snapshot));
    db.exec("DELETE FROM story_graph_edges; DELETE FROM story_graph_nodes;");
    const nq=db.prepare("INSERT INTO story_graph_nodes(node_id,node_type,label,properties_json,source_refs_json) VALUES(?,?,?,?,?)");
    for(const n of snapshot.storyGraph?.nodes ?? [])nq.run(n.id,n.type,n.label,JSON.stringify(n.data),JSON.stringify(n.sourceRefs ?? []));
    const eq=db.prepare("INSERT INTO story_graph_edges(edge_id,from_node_id,to_node_id,edge_type,label,properties_json,source_refs_json) VALUES(?,?,?,?,?,?,?)");
    for(const e of snapshot.storyGraph?.edges ?? [])eq.run(e.id,e.from,e.to,e.type,e.label,JSON.stringify(e.data),JSON.stringify(e.sourceRefs ?? []));
+  });
  } finally { db.close(); }
 }
 export function readStoryAnalysis(worldDir:string,worldId:string):StoryAnalysisSnapshot|undefined {
