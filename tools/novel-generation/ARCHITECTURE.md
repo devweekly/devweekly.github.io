@@ -95,7 +95,7 @@
 
 万字流程在逐场修订后增加完整章节的跨场终审。blocker/major 定位到受影响场景，局部修复后重新审查全章，最多两轮。节奏指标仅离线观察，不进入正式写作提示、章节验收或自动修复；不替代文学判断。
 
-主要阶段文件：`01-scene-blueprint.md`、`00-scene-XX-retrieval.md`、`02-scene-XX.md`、`03-draft.md`、`04-continuity-review.md`、`05-polish-XX.md`、`chapter.md`、`06-rhythm-metrics.json`、`07-state-update.json`、`08-final-review.md`、`08-quality-summary.json`。终审两轮仍存在明确硬伤时保存 `chapter-needs-review.md` 和诊断摘要，当前运行安全失败且不提交故事状态；这属于自动化无法安全完成时的异常终止，不创建等待人工批准的常规队列。修复问题后可重新运行或从 checkpoint 恢复。
+主要阶段文件：`01-scene-blueprint.md`、`00-scene-XX-retrieval.md`、`02-scene-XX.md`、`03-draft.md`、`04-continuity-review.md`、`05-polish-XX.md`、`chapter.md`、`06-rhythm-metrics.json`、`07-state-update.json`、`08-final-review.md`、`08-quality-summary.json`。终审两轮仍存在明确硬伤时保存 `chapter-blocked.md` 和诊断摘要，当前运行安全失败且不提交故事状态；这属于自动化无法安全完成时的异常终止，不创建等待人工批准的常规队列。修复问题后可重新运行或从 checkpoint 恢复。
 
 ## 5. 全自动目标闭环
 
