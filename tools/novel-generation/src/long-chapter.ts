@@ -1,6 +1,6 @@
 // 万字章节流水线：一次规划、逐场成文、分批审校与文风统一。
 // 不复用 SDK session；场景之间靠落盘的原文结尾与事实清单显式交接，可逐场重跑。
-import { mkdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseStoryStateUpdate, saveStoryState } from "./story-state.js";
 
@@ -108,7 +108,29 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     return runCachedStage({
       dir: input.outputDir, key, outputFile,
       fingerprint: JSON.stringify({ prompt, modelAttempts: resolveModelAttempts(input.model, !input.strictModel), profile: profiles[stage], timeoutMs: input.timeoutMs, strictModel: input.strictModel ?? false }),
-      execute: () => call(stage, parts),
+      execute: async () => {
+        const started = Date.now();
+        const startedAt = new Date(started).toISOString();
+        const modelAttempts = resolveModelAttempts(input.model, !input.strictModel);
+        const record = async (outcome: "success" | "failed", details: Record<string, unknown> = {}) => {
+          const entry = {
+            timestamp: new Date().toISOString(), event: "stage_call", stage, key,
+            startedAt, durationMs: Date.now() - started,
+            timeoutMs: input.timeoutMs, requestedModel: input.model ?? null,
+            modelAttempts, promptChars: prompt.length, outcome, ...details
+          };
+          try { await appendFile(resolve(input.outputDir, "stage-calls.jsonl"), JSON.stringify(entry) + "\\n", "utf8"); }
+          catch (error) { console.error("[write-long] unable to append stage diagnostics: " + String(error)); }
+        };
+        try {
+          const output = await call(stage, parts);
+          await record("success", { outputChars: output.length });
+          return output;
+        } catch (error) {
+          await record("failed", { error: error instanceof Error ? error.message : String(error) });
+          throw error;
+        }
+      },
       validate
     });
   };
