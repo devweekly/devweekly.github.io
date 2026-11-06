@@ -254,7 +254,7 @@ SQLite 继续作为唯一存储，新增 `story_graph_nodes` / `story_graph_edge
 - **连续性备注**：只去除空白、引号、常见标点差异导致的重复，不自动合并语义近似但可能不同的事实。
 
 - 状态加载会对来源明确标注为“续写/续章/衍生/项目原创”的旧事实执行一次保守迁移，将其 confidence 改为 original，并同步 SQLite 与 JSON 快照；原著行号来源不变，无法判定的旧事件不猜测。
-- `story_analysis` 快照带 `analysisVersion`。旧版快照不再注入写作上下文，避免旧的无类型别名污染人物检索；需重新运行 `analyze-story` 生成 v5 快照后恢复分析参考。
+- `story_analysis` 快照带 `analysisVersion`。旧版快照不再注入写作上下文，避免旧的无类型别名污染人物检索；需重新运行 `analyze-story` 生成 v6 快照后恢复分析参考。
 
 - v3 全文分析缓存迁移到 v4 时保留人物/情节分析，清空没有分类和原文证据的旧 aliases；缺失批次仍需重新分析。新快照生成后才重新进入写作上下文。
 
@@ -263,6 +263,6 @@ SQLite 继续作为唯一存储，新增 `story_graph_nodes` / `story_graph_edge
 
 全文分析在原有人物、关系、情节线、伏笔、事件和发展可能之外，识别故事核心观察与 MacGuffin。分析项和图谱边均保留章节来源引用。图谱只表达有来源的观察关系，不把关系解释为必然因果或未来任务。
 
-SQLite 中的 `story_graph_nodes` / `story_graph_edges` 与 `story_analysis` 快照在同一事务中更新，避免快照与图谱处于不同版本。v5 新字段必须由 v5 Prompt 重新抽取；v3/v4 缓存不得伪装成含有新字段的完整分析。审核包包含故事核心观察、MacGuffin、完整图谱（体积预算允许时）、图谱来源质量和跨章节均匀抽样的人物互动事件。
+SQLite 中的 `story_graph_nodes` / `story_graph_edges` 与 `story_analysis` 快照在同一事务中更新，避免快照与图谱处于不同版本。v6 新字段必须由 v6 Prompt 重新抽取；v3/v4/v5 缓存不得伪装成含有新字段的完整分析。审核包包含故事核心观察、MacGuffin、完整图谱（体积预算允许时）、图谱来源质量和跨章节均匀抽样的人物互动事件。
 
 写作和终审复用同一任务相关上下文，不增加专职 Agent。终审只检查明确硬冲突；不以人物弧光、伏笔兑现、支线推进或 MacGuffin 走向评判小说。
