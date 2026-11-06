@@ -55,6 +55,33 @@ export function antiAiEditPrompt(input: {
   ].filter(Boolean).join("\n\n");
 }
 
+export interface AntiAiVerification {
+  decision: "keep" | "restore";
+  reason: string;
+}
+
+/** Ask for a conservative semantic-preservation check after the optional edit. */
+export function antiAiVerificationPrompt(input: { original: string; edited: string }): string {
+  return [
+    "角色：独立文学编辑复核员。比较编辑前后两版，只判断编辑是否带来明确的阅读收益，且没有损害原文。",
+    "检查剧情事实、因果、人物决定、人物关系、信息揭示、视角、场景顺序、人物声音、情绪走向、意象、节奏与有意重复。",
+    "如果出现事实/语义漂移，削弱人物独特声音或情绪力量，抹平有效修辞、留白、闲笔、复杂句、重复或节奏，或者收益无法明确判断，decision 必须为 restore。",
+    "只有编辑确实改善了具体阅读问题、且没有明显损害任何原有文学效果时才选择 keep。原文更好或两版相当时选择 restore。",
+    "不要因为字数变化或表达不同本身判定失败。文学性、文笔、艺术风格高于其他一切。",
+    "只输出 JSON 对象：{\"decision\":\"keep|restore\",\"reason\":\"简短具体原因\"}。不得输出 Markdown。",
+    "编辑前正文：", input.original,
+    "编辑后正文：", input.edited
+  ].join("\n\n");
+}
+
+export function parseAntiAiVerification(raw: string): AntiAiVerification {
+  const value = JSON.parse(raw.trim()) as Record<string, unknown>;
+  if ((value.decision !== "keep" && value.decision !== "restore") || typeof value.reason !== "string" || !value.reason.trim()) {
+    throw new Error("Anti-AI verification must contain decision=keep|restore and a non-empty reason.");
+  }
+  return { decision: value.decision, reason: value.reason.trim() };
+}
+
 export function readerExperiencePrompt(input: {
   brief: string;
   chapter: string;
