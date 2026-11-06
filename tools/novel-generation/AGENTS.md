@@ -21,7 +21,7 @@ CLI 命令（均经 `npm run dev --`）：
 | `ingest --world <id> --input <f>` | 导入 TXT/MD 建索引 |
 | `search --world <id> --query "" [--limit 8]` | 检索原文片段 |
 | `analyze --world <id> [--limit 20] [--model m] [--timeout-ms 60000]` | 逐片段抽取人物/事件/关系候选 |
-| `analyze-story --world <id> [--model m] [--timeout-ms 180000]` | CodeBuddy SDK 自动分析人物小传/成长可能性、主线、伏笔与后续发展并保存 SQLite |
+| `analyze-story --world <id> [--model m] [--timeout-ms 180000] [--shard i/n] [--merge-only] [--delta]` | CodeBuddy SDK 自动分析人物小传/成长可能性、主线、伏笔与后续发展并保存 SQLite；`--delta` 复用旧批次长文本，只重抽 v6 新增字段 |
 | `analyze-world --world <id> --phase prepare/status/collect [--evidence-review]` | 多 Agent 文本分析（文件交接；默认确定性校验，`--evidence-review` 才调模型） |
 | `analyze-arcs / index-story / story-kb / db-status / check-runtime` | 卷级梗概、章节索引入库、知识库查询、DB 状态、运行时自检 |
 | `write-long --brief "" [--scenes n] [--max-words n] [--strict-model] [--resume-dir dir]` | 万字长章节逐场生成 |
@@ -135,7 +135,7 @@ CLI 命令（均经 `npm run dev --`）：
 - 长章节润色以原稿精修为主。记录逐场润色前后汉字数及变化比例，仅作诊断，不设硬阈值；润色后的完整章节仍必须经过最终连续性审查。
 
 - 状态加载时对来源明确标记为续写/续章/衍生/项目原创的旧事实执行保守迁移，降为 original 并回写 SQLite/JSON；来源不明的旧事件不推断正史属性。
-- 旧版 story_analysis 快照没有当前 analysisVersion 时不得注入写作上下文；必须重新运行 analyze-story 生成当前版本快照。当前图谱为 analysisVersion=6；v6 增加关系动态与主线/支线分类，v3/v4/v5 批次缓存不能作为 v6 结果复用，必须按 v6 Prompt 重新分析。旧缓存保留在磁盘作为历史材料，不覆盖新结果。
+- 旧版 story_analysis 快照的 analysisVersion 缺失或低于当前值（6）时不得注入写作上下文；必须重新生成当前版本快照。v6 增加关系动态与主线/支线分类；v3/v4/v5 批次缓存不能整体冒充 v6 结果：其长文本字段可由 `--delta` 复用，但 v6 新增字段必须由新提示词按原文重新抽取并通过 `assertV6DeltaFields` 校验。旧缓存保留在磁盘作为历史材料，不覆盖新结果。
 
 - 故事核心、主线/支线、人物互动、伏笔与回收可能、MacGuffin、章级事件和人物发展可能统一进入 SQLite 故事图谱。节点与边保留原文来源引用；只允许精确人物名或唯一无歧义别名建立人物连接。
 - 不增加专职人物/主线/伏笔 Agent。全文分析由现有 analyze-story 完成；普通写作、长章节写作和终审复用同一份按当前任务筛选的图谱上下文。终审只核对明确硬冲突，不检查创意是否服从分析结果。

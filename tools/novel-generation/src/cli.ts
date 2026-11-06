@@ -57,7 +57,7 @@ function usage(): never {
     "  npm run dev -- ingest --world conghuoniao --input ./private/novel.txt [more files or directories]",
     "  npm run dev -- search --world conghuoniao --query \"人物或事件关键词\" [--limit 8]",
     "  npm run dev -- analyze --world conghuoniao [--limit 20] [--model model]",
-    "  npm run dev -- analyze-story --world conghuoniao [--model model] [--timeout-ms 180000] [--max-chars 14000] [--shard 0/4] [--merge-only]",
+    "  npm run dev -- analyze-story --world conghuoniao [--model model] [--timeout-ms 180000] [--max-chars 14000] [--shard 0/4] [--merge-only] [--delta]",
     "  npm run dev -- plan-story --world conghuoniao [--model model] [--draft] [--activate-candidate <file>]  # 默认生成后自动激活；--draft 仅保存实验草稿",
     "  npm run dev -- index-story --world conghuoniao [--catalog analysis/conghuoniao/chapter-index.json]",
     "  npm run dev -- analyze-arcs --world conghuoniao [--model model] [--force]",
@@ -373,6 +373,7 @@ async function main(): Promise<void> {
     const result = await analyzeStoryCorpus(worldId, {
       model: arg("--model"), timeoutMs, shard,
       mergeOnly: process.argv.includes("--merge-only"),
+      delta: process.argv.includes("--delta"),
       limit: arg("--limit") ? Number(arg("--limit")) : undefined,
       maxChars: Number(arg("--max-chars") ?? 14_000),
       worldDir: resolve("worlds", worldId),

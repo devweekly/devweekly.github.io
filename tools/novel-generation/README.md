@@ -445,8 +445,13 @@ npm run dev -- analyze-story --world conghuoniao --model <model-name> --timeout-
 npm run dev -- analyze-story --world conghuoniao --limit 1          # 冒烟：只跑第一批，不合并
 npm run dev -- analyze-story --world conghuoniao --shard 0/4        # 并发分片
 npm run dev -- analyze-story --world conghuoniao --merge-only       # 全部缓存齐后合并入库
+npm run dev -- analyze-story --world conghuoniao --delta --shard 0/4  # 增量补齐 v6 字段
 npm run dev -- db-status --world conghuoniao
 ```
+
+`--delta` 用于把旧版快照升级到 `analysisVersion=6`：它复用磁盘上已有的旧批次长文本分析（人物小传、情节线摘要、伏笔、章级事件等），只对每批重新抽取 v6 新增字段——故事核心观察、MacGuffin、情节线主线/支线分类与关联人物、关系动态与互动时刻、伏笔关联情节线、别名分类与原文证据。章节原文仍需重新喂给模型，因为新增字段要带 `chapterKeys` 才能回查；省的是输出，不是输入。旧条目没有 `chapterKeys`，升级时补成本批章节集合，保持旧版原有的「整批来源」粒度，不伪装成逐条精确引用。
+
+增量缓存用独立指纹 `story-analysis-delta-v1`，不覆盖旧批次缓存。命令会打印它选用的旧缓存目录。只有全部 196 批成功、且确实产出了 v4 不可能有的新字段时，才写入 `analysisVersion=6`；否则抛错并保持原快照不变，避免「填空数组 + 改版本号」式的伪造升级。分片跑完后用 `--delta --merge-only` 合并（合并时不带 `--shard`）。
 
 分析单元是**章**，不是检索片段：每章文本先去重叠，再按约 14,000 字装箱，一章不跨批拆开。提示词用 `chapterKey`（如 `V11-C045`）标注每章，模型返回的章级事件必须带上同一个 key，写入时用它对齐 `novel_chapters`，出处因此是「第几卷第几章」而不是片段 ID。全书约 196 批。
 
@@ -470,9 +475,9 @@ npm run dev -- db-status --world conghuoniao
 
 `write-long` 每场润色会保存 `05-polish-diagnostics.json`，记录修改前后汉字数与变化比例。这只是发现异常扩写/精简的诊断数据，不是字数门槛；润色后的完整章节仍经过最终连续性审查。连续性备注只做格式级去重，不以语义相似度合并可能不同的事实。
 
-旧状态加载时会把来源明确包含“续写/续章/衍生/项目原创”的事实降为 `original`，并自动回写 SQLite 与兼容 JSON。旧版全文分析快照因缺少当前 `analysisVersion` 不再注入写作上下文；完成新版 `analyze-story` 后才重新启用人物、情节与伏笔参考。
+旧状态加载时会把来源明确包含“续写/续章/衍生/项目原创”的事实降为 `original`，并自动回写 SQLite 与兼容 JSON。`analysisVersion` 缺失或低于当前版本（6）的快照一律不注入写作上下文；完成 `analyze-story` 或 `analyze-story --delta` 并生成 v6 快照后才重新启用人物、情节与伏笔参考。
 
-旧版 v3 分析批次缓存会迁移到 v4：保留正文分析结果，清空未分类的旧人物别名；缺失/损坏批次才重新调用模型。完成 `analyze-story`（必要时补跑失败批次）即可生成 v4 快照，不需要无条件重跑全部 196 批。
+旧批次缓存不会自动迁移成新版本：v3/v4/v5 缺少 v6 字段语义，直接复用会产出残缺图谱。`--delta` 是受控的升级通道——保留旧长文本，但 v6 新增字段必须由新提示词按原文重新抽取。
 
 
 ### 自主运行与人工介入

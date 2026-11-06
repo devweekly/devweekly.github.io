@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, statSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import {
@@ -126,6 +126,8 @@ export interface StoryAnalysisOptions {
   maxChars?: number;
   shard?: { index: number; count: number };
   mergeOnly?: boolean;
+  /** 复用旧版批次的长文本分析，只抽取 v6 新增字段。 */
+  delta?: boolean;
   /** Smoke-run guard: only the first N batches are processed and nothing is merged. */
   limit?: number;
 }
@@ -361,10 +363,167 @@ export function buildAnalysisPrompt(batch: AnalysisBatch): string {
   ].join("\n\n");
 }
 
-function cacheKeyFor(model: string, units: AnalysisUnit[], maxChars: number): string {
+/**
+ * --delta：v4 批次已有人物小传、情节线摘要、伏笔与事件等长文本，只补 v6 新增字段。
+ * 输入仍必须重喂章节原文（chapterKeys 与证据要可回查），省的是输出。
+ */
+const DeltaSchema = z.object({
+  storyCoreObservations: listOf(StoryCoreObservationSchema),
+  macguffins: listOf(MacGuffinSchema),
+  plotThreadRoles: listOf(z.object({
+    title: z.string().default(""),
+    narrativeRole: z.enum(["main", "subplot", "unclear"]).default("unclear"),
+    relatedCharacters: stringList
+  }).passthrough()),
+  relationDynamics: listOf(z.object({
+    from: z.string().default(""), to: z.string().default(""), label: z.string().default(""),
+    dynamic: z.string().default(""), change: z.string().default(""), interactionMoments: stringList
+  }).passthrough()),
+  foreshadowingThreads: listOf(z.object({
+    clue: z.string().default(""), relatedThreadTitles: stringList
+  }).passthrough()),
+  aliasDetails: listOf(z.object({
+    name: z.string().default(""), aliases: z.array(AliasSchema).default([])
+  }).passthrough())
+}).passthrough();
+type DeltaAnalysis = z.infer<typeof DeltaSchema>;
+
+export function parseDelta(raw: string): DeltaAnalysis {
+  return DeltaSchema.parse(parseJsonObject(raw));
+}
+
+function deltaKey(value: unknown): string {
+  return String(value ?? "").replace(/\s/gu, "").toLocaleLowerCase();
+}
+
+/** 旧缓存目录名是旧版指纹；按 batch 文件数匹配，取最近修改的一个。 */
+function findLegacyCacheDir(worldId: string, expectedBatches: number, excludeDir: string): string {
+  const root = resolve(".output", worldId, "story-analysis");
+  if (!existsSync(root)) throw new Error("No legacy analysis cache under " + root + "; run analyze-story without --delta.");
+  const matches = readdirSync(root, { withFileTypes: true })
+    .filter(entry => entry.isDirectory())
+    .map(entry => join(root, entry.name))
+    .filter(dir => dir !== excludeDir)
+    .map(dir => ({ dir, count: readdirSync(dir).filter(name => /^batch-\d{4}\.json$/u.test(name)).length, mtime: statSync(dir).mtimeMs }))
+    .filter(item => item.count === expectedBatches)
+    .sort((a, b) => b.mtime - a.mtime);
+  if (!matches.length) throw new Error(`No legacy cache with ${expectedBatches} batches under ${root}; run analyze-story without --delta.`);
+  return matches[0]!.dir;
+}
+
+function withBatchKeys(items: Item[], chapterKeys: string[]): Item[] {
+  return items.map(item => {
+    const own = asStrings(item.chapterKeys);
+    return { ...item, chapterKeys: own.length ? own : chapterKeys };
+  });
+}
+
+/** v4 条目没有 chapterKeys；补成本批章节集合，等价于 v4 原有的整批来源粒度，不伪装成精确引用。 */
+async function loadLegacyBatch(dir: string, batch: AnalysisBatch): Promise<BatchAnalysis | undefined> {
+  const path = join(dir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
+  try {
+    const parsed = BatchSchema.parse(JSON.parse(await readFile(path, "utf8")) as unknown);
+    const chapterKeys = batch.chapters.map(chapter => chapter.chapterId);
+    return {
+      ...parsed,
+      characters: withBatchKeys(parsed.characters as unknown as Item[], chapterKeys),
+      relations: withBatchKeys(parsed.relations as unknown as Item[], chapterKeys),
+      plotThreads: withBatchKeys(parsed.plotThreads as unknown as Item[], chapterKeys),
+      foreshadowings: withBatchKeys(parsed.foreshadowings as unknown as Item[], chapterKeys),
+      developmentPossibilities: withBatchKeys(parsed.developmentPossibilities as unknown as Item[], chapterKeys),
+      storyCoreObservations: [],
+      macguffins: []
+    } as unknown as BatchAnalysis;
+  } catch {
+    return undefined;
+  }
+}
+
+function buildDeltaPrompt(batch: AnalysisBatch, legacy: BatchAnalysis): string {
+  const material = batch.chapters.map(chapter =>
+    `【chapterKey=${chapter.chapterId}｜第${chapter.volume}卷｜${chapter.title}】\n${chapter.text}`
+  ).join("\n\n");
+  const known = {
+    plotThreads: legacy.plotThreads.map(item => item.title),
+    relations: legacy.relations.map(item => `${item.from} → ${item.to}：${item.label}`),
+    foreshadowings: legacy.foreshadowings.map(item => item.clue),
+    characters: legacy.characters.map(item => ({ name: item.name, aliases: item.aliases }))
+  };
+  const shape = {
+    storyCoreObservations: [{ chapterKeys: ["V01-C001"], centralConflict: "", centralQuestion: "", stakes: [], themes: [], narrativePromise: "", mainPlotThreadTitles: [] }],
+    macguffins: [{ chapterKeys: ["V01-C001"], name: "", kind: "", significance: "", whoWantsIt: [], whyTheyWantIt: [], shifts: [], relatedCharacters: [], relatedThreadTitles: [], confidence: "不确定" }],
+    plotThreadRoles: [{ title: "", narrativeRole: "unclear", relatedCharacters: [] }],
+    relationDynamics: [{ from: "", to: "", label: "", dynamic: "", change: "", interactionMoments: [] }],
+    foreshadowingThreads: [{ clue: "", relatedThreadTitles: [] }],
+    aliasDetails: [{ name: "", aliases: [{ value: "", type: "title", evidence: "" }] }]
+  };
+  return [
+    "你是读过大量中文类型小说的故事编辑。下面给出同一批章节的原文，以及这批章节已经抽取过的条目清单。",
+    "已有的人物小传、关系描述、情节线摘要、伏笔含义和章级事件都已存在。不要重复输出，也不要改写它们。",
+    "只补齐这份档案缺少的 v6 字段：故事核心观察、MacGuffin、情节线的主线/支线分类与关联人物、关系的动态与互动时刻、伏笔关联的情节线标题、人物别名的分类与原文证据。",
+    "故事核心观察只记录本章原文支持的核心冲突、核心问题、stakes、主题、叙事承诺和主要主线标题；不要把主题阐释冒充作者意图。",
+    "MacGuffin 只识别真正驱动多方行动的目标、物件、信息或人物；普通道具不要升级，没有就返回空数组。",
+    "情节线只有真正统摄全书才标 main，其余标 subplot，不确定标 unclear。",
+    "别名分类：只有明确指向同一人的本名、化名或稳定个人别称标 name_alias 并给原文证据；绰号、尊称、职位、身份、传承、能力、附身/化身身份分别标 nickname/title/role/inheritance/ability/identity。共享称号不得标 name_alias。",
+    "用 title / from+to+label / clue / name 精确对齐已有条目，不要编造新条目。每条新增项和补丁都要给 chapterKeys，只列出确实能从中找到该条内容的章节 key。不确定的字段留空或给空数组。",
+    "只返回 JSON 对象，结构：", JSON.stringify(shape, null, 2),
+    "本批已有条目清单：", JSON.stringify(known),
+    "章节原文：", material
+  ].join("\n\n");
+}
+
+/** 防止「填空数组 + 改版本号」式的伪造升级：至少要有 v4 不可能产生的新字段。 */
+export function assertV6DeltaFields(input: {
+  storyCoreObservations: Item[]; macguffins: Item[]; plotThreads: Item[]; relations: Item[]; foreshadowings: Item[];
+}): void {
+  const hasCore = input.storyCoreObservations.length > 0;
+  const hasPatches = input.macguffins.length > 0 ||
+    input.plotThreads.some(item => item.narrativeRole === "main" || item.narrativeRole === "subplot") ||
+    input.relations.some(item => String(item.dynamic ?? "").trim()) ||
+    input.foreshadowings.some(item => asStrings(item.relatedThreadTitles).length);
+  if (!hasCore || !hasPatches) {
+    throw new Error("Delta upgrade produced no v6-only fields; refusing to write analysisVersion 6. Previous snapshot is untouched.");
+  }
+}
+
+export function applyDelta(legacy: BatchAnalysis, delta: DeltaAnalysis, batch: AnalysisBatch): BatchAnalysis {
+  const chapterKeys = batch.chapters.map(chapter => chapter.chapterId);
+  const roleByTitle = new Map(delta.plotThreadRoles.map(item => [deltaKey(item.title), item]));
+  const dynamicByKey = new Map(delta.relationDynamics.map(item =>
+    [deltaKey(item.from) + "|" + deltaKey(item.to) + "|" + deltaKey(item.label), item]));
+  const threadByClue = new Map(delta.foreshadowingThreads.map(item => [deltaKey(item.clue), item]));
+  const aliasByName = new Map(delta.aliasDetails.map(item => [deltaKey(item.name), item]));
+  const withKeys = (items: Item[]): Item[] => withBatchKeys(items, chapterKeys);
+  return {
+    ...legacy,
+    characters: withKeys(legacy.characters.map(item => {
+      const patch = aliasByName.get(deltaKey(item.name));
+      return patch ? { ...item, aliasDetails: patch.aliases } : item;
+    }) as unknown as Item[]),
+    relations: withKeys(legacy.relations.map(item => {
+      const patch = dynamicByKey.get(deltaKey(item.from) + "|" + deltaKey(item.to) + "|" + deltaKey(item.label));
+      return patch ? { ...item, dynamic: patch.dynamic, change: patch.change, interactionMoments: patch.interactionMoments } : item;
+    }) as unknown as Item[]),
+    plotThreads: withKeys(legacy.plotThreads.map(item => {
+      const patch = roleByTitle.get(deltaKey(item.title));
+      return patch ? { ...item, narrativeRole: patch.narrativeRole, relatedCharacters: patch.relatedCharacters } : item;
+    }) as unknown as Item[]),
+    foreshadowings: withKeys(legacy.foreshadowings.map(item => {
+      const patch = threadByClue.get(deltaKey(item.clue));
+      return patch ? { ...item, relatedThreadTitles: patch.relatedThreadTitles } : item;
+    }) as unknown as Item[]),
+    developmentPossibilities: withKeys(legacy.developmentPossibilities as unknown as Item[]),
+    storyCoreObservations: withKeys(delta.storyCoreObservations as unknown as Item[]),
+    macguffins: withKeys(delta.macguffins as unknown as Item[])
+  } as unknown as BatchAnalysis;
+}
+
+function cacheKeyFor(model: string, units: AnalysisUnit[], maxChars: number, delta = false): string {
   const sourceHash = createHash("sha256").update(units.map(unit => unit.chapterId + ":" + unit.text).join("\n")).digest("hex");
   const batchLayout = groupAnalysisUnits(units, maxChars).map(chapters => chapters.map(chapter => chapter.chapterId).join(",")).join("|");
-  return createHash("sha256").update("story-analysis-v6\nprompt=story-graph-core-macguffin-interactions-v2\nmodel=" + model + "\nmaxChars=" + maxChars + "\nbatches=" + batchLayout + "\nsource=" + sourceHash).digest("hex");
+  const version = delta ? "story-analysis-delta-v1" : "story-analysis-v6";
+  const promptTag = delta ? "delta-fields-v1" : "story-graph-core-macguffin-interactions-v2";
+  return createHash("sha256").update(version + "\nprompt=" + promptTag + "\nmodel=" + model + "\nmaxChars=" + maxChars + "\nbatches=" + batchLayout + "\nsource=" + sourceHash).digest("hex");
 }
 
 async function readCached(path: string): Promise<BatchAnalysis | undefined> {
@@ -394,8 +553,10 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
     if (!Number.isInteger(options.limit) || options.limit < 1) throw new Error("--limit must be a positive integer.");
     batches.length = Math.min(batches.length, options.limit);
   }
-  const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, options.maxChars ?? 14_000));
+  const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, options.maxChars ?? 14_000, options.delta));
   await mkdir(cacheDir, { recursive: true });
+  const legacyDir = options.delta ? findLegacyCacheDir(worldId, totalBatches, cacheDir) : undefined;
+  if (legacyDir) console.log("[story-analysis] delta mode · legacy batches from " + legacyDir);
   // v6 adds evolving relationship dynamics and main/subplot classification.
   // Older batch responses cannot satisfy its schema semantically; keep them untouched and re-analyze.
   const cachePath = (batch: AnalysisBatch): string => join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
@@ -421,27 +582,34 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
       try {
         const timeoutMs = options.timeoutMs ?? 180_000;
         const profile = readTaskProfiles().state;
-        const raw = await runAgentText(buildAnalysisPrompt(batch), model, timeoutMs, profile);
-        try {
-          analysis = parseModelJson(raw);
-        } catch (parseError) {
-          // Keep the exact malformed response for diagnosis, then ask the same model
-          // to repair only the JSON structure without changing its analysis.
-          await writeFile(path + ".invalid-raw.txt", raw, "utf8");
-          const repairPrompt = [
-            "你刚才的全文分析结果无法通过 JSON/schema 校验。",
-            "只修复 JSON 结构和字段类型，不要重新分析、删减或改写原有分析内容。",
-            "返回一个完整 JSON 对象，字段必须符合 characters、relations、plotThreads、foreshadowings、beats、developmentPossibilities、storyCoreObservations、macguffins 的既定结构。",
-            "解析错误：" + String(parseError),
-            "原始输出：",
-            raw
-          ].join("\n\n");
-          const repairedRaw = await runAgentText(repairPrompt, model, timeoutMs, profile);
+        if (legacyDir) {
+          const legacy = await loadLegacyBatch(legacyDir, batch);
+          if (!legacy) throw new Error("Legacy batch #" + (batch.index + 1) + " is missing or invalid.");
+          const raw = await runAgentText(buildDeltaPrompt(batch, legacy), model, timeoutMs, profile);
+          analysis = applyDelta(legacy, parseDelta(raw), batch);
+        } else {
+          const raw = await runAgentText(buildAnalysisPrompt(batch), model, timeoutMs, profile);
           try {
-            analysis = parseModelJson(repairedRaw);
-          } catch (retryError) {
-            await writeFile(path + ".repair-raw.txt", repairedRaw, "utf8");
-            throw new Error("JSON parse/schema repair failed once. Original: " + String(parseError) + "; repair: " + String(retryError));
+            analysis = parseModelJson(raw);
+          } catch (parseError) {
+            // Keep the exact malformed response for diagnosis, then ask the same model
+            // to repair only the JSON structure without changing its analysis.
+            await writeFile(path + ".invalid-raw.txt", raw, "utf8");
+            const repairPrompt = [
+              "你刚才的全文分析结果无法通过 JSON/schema 校验。",
+              "只修复 JSON 结构和字段类型，不要重新分析、删减或改写原有分析内容。",
+              "返回一个完整 JSON 对象，字段必须符合 characters、relations、plotThreads、foreshadowings、beats、developmentPossibilities、storyCoreObservations、macguffins 的既定结构。",
+              "解析错误：" + String(parseError),
+              "原始输出：",
+              raw
+            ].join("\n\n");
+            const repairedRaw = await runAgentText(repairPrompt, model, timeoutMs, profile);
+            try {
+              analysis = parseModelJson(repairedRaw);
+            } catch (retryError) {
+              await writeFile(path + ".repair-raw.txt", repairedRaw, "utf8");
+              throw new Error("JSON parse/schema repair failed once. Original: " + String(parseError) + "; repair: " + String(retryError));
+            }
           }
         }
       } catch (error) {
@@ -470,7 +638,7 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
     throw new Error(`Cannot merge: ${results.length}/${totalBatches} batches available, ${skipped} skipped. Refusing to persist a partial snapshot.`);
   }
 
-  const snapshot = mergeAndPersist(worldId, worldDir, units, results, totalBatches);
+  const snapshot = mergeAndPersist(worldId, worldDir, units, results, totalBatches, options.delta);
   return { snapshot, batches: totalBatches, processed, cached, failed: [], pending, skipped, malformedBeats: Number(snapshot.malformedBeats ?? 0) };
 }
 
@@ -543,7 +711,8 @@ function mergeAndPersist(
   worldDir: string,
   units: AnalysisUnit[],
   results: Array<{ analysis: BatchAnalysis; chapters: AnalysisUnit[] }>,
-  batchCount: number
+  batchCount: number,
+  requireV6Fields = false
 ): StoryAnalysisSnapshot & { malformedBeats?: number; relations?: unknown[]; beats?: unknown[] } {
   let characters: Item[] = [];
   let plotThreads: Item[] = [];
@@ -714,6 +883,10 @@ function mergeAndPersist(
   syncNovelThreads(worldDir, worldId, threadRows);
   syncNovelForeshadowings(worldDir, worldId, foreshadowingRows);
   syncNovelBeats(worldDir, worldId, beatRows);
+
+  if (requireV6Fields) {
+    assertV6DeltaFields({ storyCoreObservations, macguffins, plotThreads, relations, foreshadowings });
+  }
 
   const sourceHash = createHash("sha256").update(units.map(unit => unit.chapterId + ":" + unit.text).join("\n")).digest("hex");
   const snapshot = {
