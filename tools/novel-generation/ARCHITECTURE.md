@@ -273,3 +273,15 @@ npm run dev -- story-kb     --world conghuoniao --type characters
 ## 12. 阶段上下文裁剪（2026-11-06）
 
 普通章节仍由独立 Agent 承担主线、创意、规划、正文、对白、叙事声音和终审，但不再把同一份完整上下文无差别注入所有阶段。规划、正文和终审保留事实核对所需资料；创意发散省略逐条原文检索证据；对白编辑聚焦人物状态与相关既成事实；叙事声音编辑聚焦风格参考与必要前情。各阶段输入仍进入缓存指纹，修改上下文后旧阶段结果自动失效。长章节本身采用单次场景精修，不增加第二轮全章润色。
+
+
+## Web Workbench（当前实现）
+
+Web 工作台作为 CLI 之外的本地交互入口，不改变既有章节 CLI 的默认自动写作流程。
+
+- `src/server-main.ts` 负责 HTTP 生命周期和 Vite 开发中间件 / 生产静态资源；`src/server.ts` 提供 Express API；`web/` 是 React + Ant Design 前端。
+- 当前第一条端到端人工审批链路是 Story Plan：生成任务持久化为 Run，模型结果保存为 draft Candidate，前端编辑/审核，批准后才写入正式 `worlds/<world>/story-plan.json`。
+- 候选记录、运行记录和决策日志位于忽略目录 `.output/<world>/workbench/`；正式 Story Plan 仍是唯一生效规划。旧版正式规划在批准新版本时归档到 `story-plan-history/`。
+- 审批时比较候选生成时的 `baseUpdatedAt` 与当前正式规划版本；并发或过期候选返回 409，要求重新查看差异，避免静默覆盖。
+- 服务默认只监听 loopback。开发启动：`npm run dev:web`；生产构建：`npm run build`；生产启动：`npm run start:web`。
+- 目前 Web UI 只管理 Story Plan 候选，不会拦截现有 `write` / `write-long` 的自动 Story State 提交。章节审核、章节版本管理和 Story State 提案的批准提交属于下一阶段，完成前不能将章节写作描述为人工审批流程。
