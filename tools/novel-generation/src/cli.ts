@@ -58,7 +58,7 @@ function usage(): never {
     "  npm run dev -- search --world conghuoniao --query \"人物或事件关键词\" [--limit 8]",
     "  npm run dev -- analyze --world conghuoniao [--limit 20] [--model model]",
     "  npm run dev -- analyze-story --world conghuoniao [--model model] [--timeout-ms 180000] [--max-chars 14000] [--shard 0/4] [--merge-only]",
-    "  npm run dev -- plan-story --world conghuoniao [--model model] [--activate] [--activate-candidate <file>]  # 生成主线候选；显式激活后供写作使用",
+    "  npm run dev -- plan-story --world conghuoniao [--model model] [--draft] [--activate-candidate <file>]  # 默认生成后自动激活；--draft 仅保存实验草稿",
     "  npm run dev -- index-story --world conghuoniao [--catalog analysis/conghuoniao/chapter-index.json]",
     "  npm run dev -- analyze-arcs --world conghuoniao [--model model] [--force]",
     "  npm run dev -- analyze-profiles --world conghuoniao [--top 24] [--names 李阎,查小刀] [--model model] [--force]",
