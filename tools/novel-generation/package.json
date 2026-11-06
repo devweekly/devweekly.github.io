@@ -9,8 +9,8 @@
   },
   "scripts": {
     "dev": "tsx src/cli.ts",
-    "build": "tsc -p tsconfig.json && vite build",
-    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "build": "tsc -p tsconfig.json && tsc -p web/tsconfig.json && vite build",
+    "typecheck": "tsc -p tsconfig.json --noEmit && tsc -p web/tsconfig.json",
     "start": "node dist/cli.js",
     "test": "node --import tsx --test test/*.test.ts",
     "package-review": "node --import tsx scripts/package-review.ts",
