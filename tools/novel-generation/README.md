@@ -490,3 +490,10 @@ npm run dev -- db-status --world conghuoniao
 ## 后续改造计划
 
 D&D Campaign 的借鉴仅限世界设定、人物自主行动、有限局势推演和长期连续性，不引入游戏规则或跑团交互。实施阶段和验收标准见 [ACTION-PLAN.md](./ACTION-PLAN.md)。
+
+
+## Living Voice、Anti-AI 与读者体验
+
+普通章节和万字章节在叙事声音修订后，都会执行共享的 Living Voice / Anti-AI 编辑。它只处理真正损害阅读体验的模板化表达，不以 AI 检测分数、禁词、连接词频率、句长或段落长度驱动改写。原稿成立时可以零修改；编辑不得改变剧情事实、人物决定、信息揭示、视角和场景顺序。
+
+编辑产物为 `06b-anti-ai-edited.md`。如果编辑调用失败，系统保留上一阶段正文并继续终审，不让辅助编辑失败丢失章节。最终终审通过后，系统还会生成独立的 `10-reader-experience.md`，记录追读意愿、注意力变化、人物鲜活度和情绪抵达等读者反应。Reader 不负责硬伤审查、不输出必改项、不触发自动修复，也不影响章节通过和状态提交。相关设计见 [ARCHITECTURE.md 第 10 节](./ARCHITECTURE.md) 与 [ADR 0004](./ADR/0004-living-voice-and-anti-ai-editing.md)。
