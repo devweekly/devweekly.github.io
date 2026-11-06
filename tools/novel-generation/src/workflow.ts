@@ -35,6 +35,19 @@ function extractJson(text: string): unknown {
   }
 }
 
+export function dedupeContinuityNotes(notes: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const note of notes) {
+    const normalized = note.normalize("NFKC").toLocaleLowerCase()
+      .replace(/[\\s"'“”‘’「」『』，。！？、；：,.!?;:（）()【】\\[\\]《》]/g, "");
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(note.trim());
+  }
+  return result;
+}
+
 export function mergeStoryState(current: StoryState, update: Partial<StoryState>): StoryState {
   const mergeBy = <T extends object>(oldItems: T[], newItems: T[], key: (item: T) => string): T[] => {
     const map = new Map(oldItems.map(item => [key(item), item]));
@@ -86,7 +99,7 @@ export function mergeStoryState(current: StoryState, update: Partial<StoryState>
     }), item => item.id),
     plotThreads: mergeBy(current.plotThreads, update.plotThreads ?? [], item => item.id),
     // Current active notes are a snapshot, not an append-only history.
-    continuityNotes: update.continuityNotes ?? current.continuityNotes,
+    continuityNotes: dedupeContinuityNotes(update.continuityNotes ?? current.continuityNotes),
     updatedAt: new Date().toISOString()
   };
 }
