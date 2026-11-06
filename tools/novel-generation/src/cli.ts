@@ -375,7 +375,7 @@ async function main(): Promise<void> {
     }
     const samples = await Promise.all(inputs.map(async file => {
       const path = resolve(file);
-      if (!/\\.(txt|md)$/i.test(path)) throw new Error("Style samples must be .txt or .md files: " + file);
+      if (!/\.(txt|md)$/i.test(path)) throw new Error("Style samples must be .txt or .md files: " + file);
       return { label: file, text: await readFile(path, "utf8") };
     }));
     const totalChars = samples.reduce((sum, sample) => sum + sample.text.length, 0);
@@ -390,7 +390,7 @@ async function main(): Promise<void> {
     );
     const out = resolve(arg("--out") ?? join(".output", worldId, "style-profile-candidate.md"));
     await mkdir(dirname(out), { recursive: true });
-    await writeFile(out, profile.trim() + "\\n", "utf8");
+    await writeFile(out, profile.trim() + "\n", "utf8");
     console.log(JSON.stringify({ out, samples: samples.length, sampleChars: totalChars }, null, 2));
     return;
   }
