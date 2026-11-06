@@ -45,7 +45,7 @@
 | 万字章节流水线 | `src/long-chapter.ts` | 场景蓝图、逐场检索与生成、场间上下文交接、分批审查、逐场修订、共享 Anti-AI 编辑、全章终审与 Reader 观察 |
 | 质量回归 | `src/regression.ts`、`scripts/compare-models.mjs` | 节奏量化、候选盲评和模型对照；不属于每次正式续写的人工审批步骤 |
 | 质量门禁 | `src/chapter-review.ts` | 审查 JSON schema、正文证据、严重程度与多场景定位；有限自动修复和复查 |
-| 文学编辑原则 | `src/literary-edit.ts`、`src/style-distillation.ts` | 共享 Living Voice、Anti-AI 编辑、Reader 体验提示与抽象风格提炼 |
+| 文学编辑原则 | `src/literary-edit.ts`、`src/style-distillation.ts` | Writer/编辑共享 Living Voice；Anti-AI 诊断、克制编辑与保守复核；盲读 Reader；抽象风格提炼 |
 | 角色推演沙盘 | `src/roleplay-sandbox.ts` | 作者主动控制的多轮人物互动推演；只保存候选记录，不写入 Story State |
 | 阶段恢复 | `src/stage-cache.ts` | 输入指纹、实际模型回退链、输出哈希、阶段语义校验、原子阶段产物、运行 manifest 和初始状态快照 |
 
@@ -59,9 +59,9 @@
 2. 检索相关原文及已有的人物/事件/关系标注。
 3. 主线剧情与创意发散并行提出方案。
 4. 主编选定唯一章节蓝图。
-5. 生成正文，分别修整对白和叙事声音。
-6. 执行共享的 Living Voice / Anti-AI 编辑；编辑失败时保留叙事声音修订稿继续。
-7. 对 Anti-AI 编辑后的正文进行结构化硬伤审查。
+5. 生成正文；Writer、对白和叙事声音阶段共享 Living Voice 原则，分别修整对白和叙事声音。
+6. Anti-AI 先输出带文本证据的诊断，再做克制编辑；独立复核确认收益后才保留编辑稿，否则恢复原稿。
+7. 对最终采用的正文进行结构化硬伤审查。
 8. 对 blocker/major 做最小修复，最多两轮；每轮重新审查。
 9. 通过后生成独立 Reader 体验报告；Reader 失败不阻塞成功路径。
 10. 提取并校验状态，自动提交 SQLite 和兼容快照，保存正文、质量摘要和阶段产物。
@@ -408,7 +408,18 @@ ADR 0004 的第一阶段已接入两条正式写作链：
 - Anti-AI 编辑调用失败时保留上一阶段正文，写入错误诊断并继续终审；不会因辅助编辑失败丢失已经生成的章节。
 - 两条写作链在终审通过后生成 `10-reader-experience.md`。Reader 失败只保存错误诊断，不影响章节通过和 Story State 持久化。
 - 新增 `antiAi` 与 `reader` 阶段配置，沿用现有 task profile 和阶段缓存；无新增依赖、数据库表或常驻 Agent。
-- 新增 `distill-style` 命令和 `src/style-distillation.ts`，从授权样本提炼全局与场景级风格候选，默认写入 `.output/<world>/style-profile-candidate.md`，不覆盖正式风格资料。
-- 新增 `roleplay-sandbox` 命令和 `src/roleplay-sandbox.ts`，支持作者接受、修改方向、补充信息、重演或结束；所有结果只写入 `.output/`，不进入正史或 Story State。
+- 新增 `distill-style` 命令和 `src/style-distillation.ts`，从授权样本提炼全局与场景级风格候选，默认写入 `.output/<world>/style-profile-candidate.md`；显式 `--activate` 才更新正式风格资料，并先归档旧版本。候选输出路径限制在当前 world 的 `.output/`。
+- 新增 `roleplay-sandbox` 命令和 `src/roleplay-sandbox.ts`，推演注入 Story State 人物动态、成书知识库人物长期观察和任务相关故事图谱；支持作者接受、修改方向、补充信息、重演或结束；所有结果只写入当前 world 的 `.output/`，不进入正史或 Story State。
 
 作者主动调用的 Roleplay Sandbox 已通过 `roleplay-sandbox` 命令实现。当前尚未实现的是 Style Distillation 的样本版本管理与回归工作台；`distill-style` 已提供一次性提炼命令，输出候选文件，不自动覆盖正式风格资料。
+
+
+### 10.10 五项能力的当前实际落地
+
+- **Anti-AI**：普通章节与长章节均执行诊断（`06a`）→ 编辑（`06b`）→ 保守复核（`06c`）。诊断只报告有具体证据的阅读问题，不判断 AI 概率；复核选择 keep/restore，复核格式错误或调用失败时恢复原稿。它不是检测器，也不是质量门禁。
+- **Living Voice**：同一组原则进入普通/长章节 Writer、对白与叙事声音编辑；长章节场景扩写重试也会注入，避免重试阶段退化成单纯凑字数。
+- **Style Distillation**：`distill-style` 提炼授权样本的全局与场景级抽象特征；候选默认隔离，`--activate` 显式激活并归档旧版。仍未建设自动代表性样本回归、风格漂移比较和样本版本工作台。
+- **Reader**：最终成稿后盲读正文，不预先接收人物档案、世界设定、蓝图或创作任务；只生成观察报告，不影响质量门禁和 Story State。
+- **Roleplay Sandbox**：读取人物当前动态状态、长期人物观察和任务相关故事图谱；交互记录只写入当前 world 的 `.output/`，自定义输出路径也受限，不会覆盖正史文件。
+
+以上能力共享现有模型运行时与阶段缓存，没有新增数据库表、常驻 Agent 或人工审批门禁。尚未完成的 Style Regression 是独立后续工作，不应把当前的一次性风格提炼描述为完整风格回归系统。
