@@ -1,7 +1,7 @@
 # Novel Generation：续写架构与自动化流程
 
 > 本文描述 `tools/novel-generation` 当前代码的真实执行路径，并给出以“全自动续写、无人为编辑”为默认目标的目标架构。  
-> 代码核对范围：`src/cli.ts`、`src/workflow.ts`、`src/long-chapter.ts`、`src/generate.ts`、`src/story-state.ts`、`src/database.ts`、`src/library.ts`、`src/analysis.ts`、`scripts/compare-models.mjs`。
+> 代码核对范围：`src/cli.ts`、`src/workflow.ts`、`src/long-chapter.ts`、`src/generate.ts`、`src/story-state.ts`、`src/database.ts`、`src/library.ts`、`src/analysis.ts`、`src/literary-edit.ts`、`src/style-distillation.ts`、`src/roleplay-sandbox.ts`、`scripts/compare-models.mjs`。
 
 > 流程说明以实际执行路径为准；人工审核仅作为可选的事后观察和干预，不是常规执行门禁。
 
