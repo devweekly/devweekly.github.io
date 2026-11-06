@@ -215,7 +215,9 @@ function absorbCharacter(target: Item, source: Item): void {
   for (const field of ["shortBio", "voice"]) mergeTextField(target, source, field);
   // The first batch that meets a character usually states their role most plainly.
   if (!String(target.storyFunction ?? "").trim()) target.storyFunction = String(source.storyFunction ?? "");
-  target.aliases = unique([...cleanCharacterAliases(target), ...cleanAliases(source)]);
+  const aliasDetails = [...(Array.isArray(target.aliasDetails) ? target.aliasDetails as unknown[] : []), ...(Array.isArray(source.aliasDetails) ? source.aliasDetails as unknown[] : [])];
+  target.aliasDetails = [...new Map(aliasDetails.map(value => [JSON.stringify(value), value])).values()];
+  target.aliases = cleanCharacterAliases(target);
   target.sourceRefs = mergeRefs(refsOf(target), refsOf(source));
 }
 
@@ -228,11 +230,11 @@ function mergeCharacters(target: Item[], incoming: Item[]): Item[] {
   const index = (item: Item): void => {
     const name = normalizeCharacterName(String(item.name ?? ""));
     if (name && !byName.has(name)) byName.set(name, item);
-    item.aliases = cleanAliases(item);
+    item.aliases = cleanCharacterAliases(item);
   };
   target.forEach(index);
   for (const item of incoming) {
-    item.aliases = cleanAliases(item);
+    item.aliases = cleanCharacterAliases(item);
     const key = normalizeCharacterName(String(item.name ?? ""));
     let existing = byName.get(key);
 
@@ -248,7 +250,7 @@ function mergeCharacters(target: Item[], incoming: Item[]): Item[] {
 }
 
 export function plotThreadMergeKey(title: string, chapterKeys: string[]): string {
-  const normalizedTitle = title.replace(/\\s/g, "").toLocaleLowerCase();
+  const normalizedTitle = title.replace(/\s/g, "").toLocaleLowerCase();
   const sources = [...new Set(chapterKeys.map(key => key.trim()).filter(Boolean))].sort();
   return normalizedTitle + "|" + sources.join(",");
 }
@@ -503,7 +505,7 @@ function mergeAndPersist(
     return {
       characterId: "ch_" + createHash("sha1").update(name).digest("hex").slice(0, 12),
       name,
-      aliases: cleanAliases(item),
+      aliases: cleanCharacterAliases(item),
       role: normalizeBatchWording(String(item.storyFunction ?? "")),
       bio: normalizeBatchWording(String(item.shortBio ?? "")),
       voice: normalizeBatchWording(String(item.voice ?? "")),
