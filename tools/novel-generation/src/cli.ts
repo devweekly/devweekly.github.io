@@ -58,7 +58,7 @@ function usage(): never {
     "  npm run dev -- search --world conghuoniao --query \"人物或事件关键词\" [--limit 8]",
     "  npm run dev -- analyze --world conghuoniao [--limit 20] [--model model]",
     "  npm run dev -- analyze-story --world conghuoniao [--model model] [--timeout-ms 180000] [--max-chars 14000] [--shard 0/4] [--merge-only]",
-    "  npm run dev -- plan-story --world conghuoniao [--model model] [--activate]  # 生成主线候选；显式激活后供写作使用",
+    "  npm run dev -- plan-story --world conghuoniao [--model model] [--activate] [--activate-candidate <file>]  # 生成主线候选；显式激活后供写作使用",
     "  npm run dev -- index-story --world conghuoniao [--catalog analysis/conghuoniao/chapter-index.json]",
     "  npm run dev -- analyze-arcs --world conghuoniao [--model model] [--force]",
     "  npm run dev -- analyze-profiles --world conghuoniao [--top 24] [--names 李阎,查小刀] [--model model] [--force]",
@@ -209,6 +209,15 @@ async function main(): Promise<void> {
 
   if (command === "plan-story") {
     const worldDir = resolve("worlds", worldId);
+    const candidatePath = arg("--activate-candidate");
+    if (candidatePath) {
+      const candidate = await loadStoryPlan(resolve(candidatePath), worldId);
+      if (!candidate || candidate.status !== "draft") throw new Error("--activate-candidate must point to a valid draft plan for this world.");
+      const activePath = resolve(worldDir, "story-plan.json");
+      await saveStoryPlan(activePath, { ...candidate, status: "active", updatedAt: new Date().toISOString() });
+      console.log(JSON.stringify({ status: "active", output: activePath, source: resolve(candidatePath) }, null, 2));
+      return;
+    }
     const worldBible = await readFile(resolve(worldDir, "world-bible.md"), "utf8");
     const state = await loadStoryState(resolve(worldDir, "story-state.json"), worldId);
     const query = [state.currentPosition, ...state.plotThreads.map(thread => thread.title), ...state.characters.slice(0, 16).map(character => character.name)].join("\n");
@@ -218,7 +227,7 @@ async function main(): Promise<void> {
     const activate = process.argv.includes("--activate");
     const outputPath = activate ? resolve(worldDir,"story-plan.json") : resolve(".output",worldId,"story-plan-candidate-"+new Date().toISOString().replace(/[:.]/g,"-")+".json");
     await saveStoryPlan(outputPath,{...candidate,status:activate?"active":"draft"});
-    console.log(JSON.stringify({status:activate?"active":"draft",output:outputPath,milestones:candidate.majorMilestones.length,longTermThreads:candidate.longTermThreads.length,previousPlanLoaded:Boolean(previousPlan),note:activate?"正式主线已启用，write / write-long 将自动注入。":"候选规划尚未启用；审阅后重新运行并加 --activate。"},null,2));
+    console.log(JSON.stringify({status:activate?"active":"draft",output:outputPath,milestones:candidate.majorMilestones.length,longTermThreads:candidate.longTermThreads.length,previousPlanLoaded:Boolean(previousPlan),note:activate?"正式主线已启用，write / write-long 将自动注入。":"候选规划尚未启用；审阅后使用 --activate-candidate <file> 激活该候选。"},null,2));
     return;
   }
 
