@@ -129,7 +129,7 @@ Teun van Dijk 在《Narrative Macro-Structures》中把叙事看作具有因果�
 
 ### 创意材料来自观察、阅读和知识迁移
 
-血红在访谈中提到，小说中的人物、世界和情节都可以从现实找到原始材料。他会广泛阅读历史、自然科学、传统文化、网络作品和各类非虚构文本；一段游记、一张照片或一个陌生地点，都可能触发人物和故事的联想。江月年年的访谈也谈到从社会观察、新闻、网络信息和专业阅读中积累素材，再把这些内容转化为故事，而不是直接把资料搬进小说。
+血红在访谈中提到，小说中的人物、世界和情节都可以从现实找到原始材料。他会广泛阅读历史、自然科学、传统文化、网络作品和各类非虚构文本；一段游记、一张照片或一个陌生地点，都可能触发人物和故事的联想。[江月年年在中国作家网的访谈](https://www.chinawriter.com.cn/n1/2024/0327/c404024-40204446.html)也谈到从社会观察、新闻、网络信息和专业阅读中积累素材，再把这些内容转化为故事，而不是直接把资料搬进小说。
 
 创意不是看到一个奇怪的物件就完成了。真正有价值的是继续追问：它为什么存在？谁从中受益？谁承担代价？它会改变哪一种关系？假如它出现在一个完全不同的时代、职业或社会制度中，会发生什么？
 
@@ -153,7 +153,7 @@ Finke、Ward 和 Smith 的 Geneplore 模型同样把创造活动描述为生成�
 
 最后让人物进入设定。选择一个真正有欲望、有弱点的人，问他为什么非得参与这件事不可。一个有趣的世界设定可能只适合短篇展示；当人物为了它必须做选择、承担代价并改变关系，它才有机会支撑长篇。
 
-Wallas 的准备、酝酿、顿悟和验证四阶段模型，可以作为理解创意过程的参考，但不应该被当成固定流水线。现实创作经常在阅读、写作、观察和修改之间来回移动；有些想法在数周后才会因为另一件事变得可用。把素材记录下来、允许暂时不写出答案，比强迫自己每次坐到电脑前都必须立即想出完整剧情更实际。
+[Wallas 的准备、酝酿、顿悟和验证四阶段模型](https://onlinelibrary.wiley.com/doi/10.1002/jocb.70126)可以作为理解创意过程的参考，但不应该被当成固定流水线。对这一模型的后续讨论强调了元认知在不同阶段中的作用；现实创作经常在阅读、写作、观察和修改之间来回移动，有些想法在数周后才会因为另一件事变得可用。把素材记录下来、允许暂时不写出答案，比强迫自己每次坐到电脑前都必须立即想出完整剧情更实际。
 
 ## 四、AI 能怎样参与创意写作
 
@@ -175,7 +175,7 @@ Wallas 的准备、酝酿、顿悟和验证四阶段模型，可以作为理解�
 
 **对白 Agent**专门处理人物说话的方式、潜台词、对话中的信息差和关系变化。人物对白不应只是交换设定和解释剧情。一个人可能故意回避问题，另一个人可能只听见自己愿意相信的部分；对话的内容、停顿和误解都可以推动情节。
 
-**叙事声音 Agent**统一视角、叙述距离、句式节奏和描写密度。它可以维护作品自己的风格规范，但不应该通过复制某位作者的独特句子或段落来模拟文风。此前文章[《AI 写作的关键不是 Prompt：Style Sheet、作者声音与人机协作工作流》](./ai-writing-style-sheet-human-ai-workflow-2026.md)已经讨论了 Style Sheet 和作者声音，长篇小说可以沿用这一层配置，不必把它与剧情规划混在一起。
+**叙事声音 Agent**统一视角、叙述距离、句式节奏和描写密度。它可以维护作品自己的风格规范，但不应该通过复制某位作者的独特句子或段落来模拟文风。此前文章[《AI 写作的关键不是 Prompt：Style Sheet、作者声音与人机协作工作流》](https://github.com/devweekly/devweekly.github.io/blob/main/src/content/blog/ai-writing-style-sheet-human-ai-workflow-2026.md)已经讨论了 Style Sheet 和作者声音，长篇小说可以沿用这一层配置，不必把它与剧情规划混在一起。
 
 **连续性与故事资料 Agent**维护人物状态、事件时间线、物品去向、世界规则、未解决情节线和读者已经得到的信息。它要能区分原文事实、合理推断和新创作提案，不能因为模型在上一轮提出一个可能性，就把它升级为已经发生的故事事实。
 
@@ -303,6 +303,7 @@ AI 可以成为一个有耐心的创意伙伴、情节推演器、人物模拟�
 - [Brewer & Lichtenstein, “Event Schemas, Story Schemas, and Story Grammars”](https://www.ideals.illinois.edu/items/17594/bitstreams/63253/data.pdf) —— 事件结构、话语结构与悬念/惊奇。
 - [Boden, “Computer Models of Creativity”](https://ojs.aaai.org/aimagazine/index.php/aimagazine/article/view/2254/0) —— 组合式、探索式和变革式创造力。
 - [Childs et al., “The Creativity Diamond”](https://pmc.ncbi.nlm.nih.gov/articles/PMC9590016/) —— 发散生成与收敛筛选。
+- [Puryear et al., “Revisiting the Four Stages of Creativity: The Role of Metacognition”](https://onlinelibrary.wiley.com/doi/10.1002/jocb.70126) —— 对经典创意阶段模型的后续讨论。
 
 ### 网络小说作者与连载经验
 
@@ -322,4 +323,4 @@ AI 可以成为一个有耐心的创意伙伴、情节推演器、人物模拟�
 - [Ai.llude: Encouraging Rewriting AI-Generated Text to Support Creative Expression](https://arxiv.org/html/2405.17843v1)
 - [“It Felt Like Having a Second Mind”: Investigating Human-AI Co-creativity in Prewriting](https://arxiv.org/abs/2307.10811)
 
-相关工程实践：[devweekly 小说生成工具](../../../tools/novel-generation/README.md)。
+相关工程实践：[devweekly 小说生成工具](https://github.com/devweekly/devweekly.github.io/blob/main/tools/novel-generation/README.md)。
