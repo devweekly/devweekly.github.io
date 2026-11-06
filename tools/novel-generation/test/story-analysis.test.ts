@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { databaseStatus, readStoryAnalysis, saveStoryAnalysis, syncLibraryChunks } from "../src/database.js";
 import { groupAnalysisUnits } from "../src/novel-kb.js";
-import { assertMergeOptions, buildAnalysisPrompt, parseModelJson } from "../src/story-analysis.js";
+import { assertMergeOptions, buildAnalysisPrompt, cleanCharacterAliases, filterCharacterAliasEvidence, parseModelJson, plotThreadId, plotThreadMergeKey } from "../src/story-analysis.js";
 import { loadLibraryChunks } from "../src/library.js";
 
 test("story analysis batches preserve every chapter in order without splitting one", () => {
@@ -119,4 +119,39 @@ test("批次分析能容忍 JSON 后的说明文字", () => {
   const raw = JSON.stringify({ characters: [{ name: "林岚", chapterKeys: ["V01-C001"] }] }) +
     "\n以上为分析结果，注意 } 只是标点。";
   assert.equal(parseModelJson(raw).characters[0]?.name, "林岚");
+});
+
+
+test("plot thread merge key deduplicates exact source spans but preserves same-title distinct spans", async () => {
+  assert.equal(plotThreadMergeKey("金家灭门与冥扎下落", ["V01-C001", "V01-C002"]), plotThreadMergeKey("金家灭门与冥扎下落", ["V01-C002", "V01-C001"]));
+  assert.notEqual(plotThreadMergeKey("金家灭门与冥扎下落", ["V01-C001"]), plotThreadMergeKey("金家灭门与冥扎下落", ["V02-C001"]));
+  assert.notEqual(plotThreadId("金家灭门与冥扎下落", ["V01-C001"]), plotThreadId("金家灭门与冥扎下落", ["V02-C001"]));
+  assert.notEqual(plotThreadMergeKey("金家灭门与冥扎下落", ["V01-C001"], ["金家灭门"]), plotThreadMergeKey("金家灭门与冥扎下落", ["V01-C001"], ["冥扎下落"]));
+});
+
+
+test("only evidence-backed personal-name aliases enter character lookup", () => {
+  const aliases = cleanCharacterAliases({
+    name: "李阎",
+    aliases: ["姑获鸟", "太岁", "冯夷"],
+    aliasDetails: [
+      { value: "李玄", type: "name_alias", evidence: "旁人称他李玄" },
+      { value: "姑获鸟", type: "title", evidence: "姑获鸟现身" },
+      { value: "太岁", type: "inheritance", evidence: "太岁之力" },
+      { value: "冯夷", type: "identity", evidence: "冯夷附身" },
+      { value: "九哥", type: "nickname", evidence: "" },
+      { value: "小刀", type: "nickname", evidence: "查小刀，人称小刀" }
+    ]
+  });
+  assert.deepEqual(aliases, ["李玄", "小刀"]);
+});
+
+
+test("alias evidence must quote the alias and exist in its cited chapter", () => {
+  const valid = filterCharacterAliasEvidence([
+    { value: "李玄", type: "name_alias", evidence: "旁人称他李玄" },
+    { value: "太岁", type: "name_alias", evidence: "旁人称他李玄" },
+    { value: "九哥", type: "name_alias", evidence: "原文中不存在的九哥" }
+  ], ["旁人称他李玄，随后离开。"]);
+  assert.deepEqual(valid.map(item => item.value), ["李玄"]);
 });

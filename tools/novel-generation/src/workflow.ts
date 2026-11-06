@@ -35,6 +35,24 @@ function extractJson(text: string): unknown {
   }
 }
 
+function normalizeStateText(value: string): string {
+  return value.normalize("NFKC").toLocaleLowerCase()
+    .replace(/[\s"'“”‘’「」『』，。！？、；：,.!?;:（）()【】\[\]《》]/g, "");
+}
+
+export function dedupeContinuityNotes(notes: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const note of notes) {
+    const normalized = note.normalize("NFKC").toLocaleLowerCase()
+      .replace(/[\s"'“”‘’「」『』，。！？、；：,.!?;:（）()【】\[\]《》]/g, "");
+    if (!normalized || seen.has(normalized)) continue;
+    seen.add(normalized);
+    result.push(note.trim());
+  }
+  return result;
+}
+
 export function mergeStoryState(current: StoryState, update: Partial<StoryState>): StoryState {
   const mergeBy = <T extends object>(oldItems: T[], newItems: T[], key: (item: T) => string): T[] => {
     const map = new Map(oldItems.map(item => [key(item), item]));
@@ -72,12 +90,21 @@ export function mergeStoryState(current: StoryState, update: Partial<StoryState>
   return {
     ...current,
     currentPosition: update.currentPosition || current.currentPosition,
-    canonFacts: mergeBy(current.canonFacts, update.canonFacts ?? [], item => item.id),
+    // A fact first introduced by generated prose is project-original. A model
+    // cannot promote it to canon merely by returning confidence="confirmed".
+    canonFacts: mergeBy(current.canonFacts, (update.canonFacts ?? []).map(item => {
+      const previous = current.canonFacts.find(existing => existing.id === item.id);
+      return { ...item, confidence: previous && normalizeStateText(previous.fact) === normalizeStateText(item.fact) ? previous.confidence : "original" };
+    }), item => item.id),
     characters: mergeBy(current.characters, update.characters ?? [], item => item.name.trim().toLocaleLowerCase()),
-    events: mergeBy(current.events, update.events ?? [], item => item.id),
+    // Preserve provenance for existing events; newly generated events are original.
+    events: mergeBy(current.events, (update.events ?? []).map(item => {
+      const previous = current.events.find(existing => existing.id === item.id);
+      return { ...item, origin: previous && normalizeStateText(previous.summary) === normalizeStateText(item.summary) ? previous.origin : "original" };
+    }), item => item.id),
     plotThreads: mergeBy(current.plotThreads, update.plotThreads ?? [], item => item.id),
     // Current active notes are a snapshot, not an append-only history.
-    continuityNotes: update.continuityNotes ?? current.continuityNotes,
+    continuityNotes: dedupeContinuityNotes(update.continuityNotes ?? current.continuityNotes),
     updatedAt: new Date().toISOString()
   };
 }
@@ -114,6 +141,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   const common = [
     "世界设定：", input.worldBible,
     "当前故事状态（已有记录优先；不得擅自改写已确认事实）：", JSON.stringify(state, null, 2),
+    "事实来源说明：canonFacts.confidence=confirmed 表示原著已确认，inferred 表示基于原文的推断，original 表示项目原创。项目原创事实可在续写中承接，但不得伪装成原著事实。",
     input.contextText ? "用户补充的前文摘要：\n" + input.contextText : "",
     input.retrievedContext ? "本地资料库证据（用于核实事实，不得整段复制）：\n" + input.retrievedContext : "",
     input.storyAnalysisContext ? "既有小说分析参考（仅供启发，不是正史或写作清单）：\n" + input.storyAnalysisContext : "",
@@ -219,12 +247,12 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
       currentPosition: "string",
       canonFacts: [{ id: "stable-id", fact: "fact", source: "chapter id", confidence: "confirmed|inferred|original" }],
       characters: [{ name: "name", profile: { coreTraits: ["stable traits"], values: ["values"], contradictions: ["internal contradictions"], voice: "distinctive voice", boundaries: ["what this character will not easily do"], arc: "current long-term character arc" }, status: "current status", location: "current location", abilities: ["current abilities"], knowledge: ["current known information"], goals: ["current goals"], relationships: ["current relationships"], arcMilestones: [{ id: "stable-milestone-id", chapter: "chapter id", change: "what changed", evidence: "exact excerpt from final chapter", choice: "optional, only if naturally clear", pressure: "optional, only if naturally clear", cost: "optional, only if naturally clear" }] }],
-      events: [{ id: "stable-id", summary: "event", position: "story position", participants: ["name"], consequences: ["consequence"] }],
+      events: [{ id: "stable-id", summary: "event", position: "story position", participants: ["name"], consequences: ["consequence"], origin: "canon|inferred|original", source: "source reference" }],
       plotThreads: [{ id: "stable-id", title: "thread", status: "open|active|resolved|abandoned", lastUpdated: "chapter id", notes: "latest state" }],
       continuityNotes: ["complete current active notes"]
     }, null, 2),
     "旧状态：", JSON.stringify(state, null, 2), "最终章节：", chapter,
-    "continuityNotes 必须返回章节结束时仍然有效的完整备注集合，不是只列新增项；已经变化、解决或被新事实替代的旧备注不要继续返回。人物 profile 是相对稳定的性格底色、价值观、内在矛盾、语言习惯与行为边界；不要因单次情绪或行为轻易改写。character 的 status/location/abilities/knowledge/goals/relationships 是当前剧情状态，必须反映本章结束时的最新快照，数组应给出完整当前值而非只追加变化项。人物可以变化、反复、倒退、误判，也可以做出出乎意料的选择；不要把人物锁死成标签。状态提取只记录正文已经发生的事，不得要求正文为了状态字段而解释动机或安排代价。只记录章节明确支持的内容。无法确认的内容不要写入 canonFacts；推断必须标为 inferred。人物和情节线只输出本章新增或发生变化的记录。只有正文自然呈现重要转折时才追加 arcMilestones；不要为了填写字段而拔高普通情节或反向要求正文增加解释。"
+    "continuityNotes 必须返回章节结束时仍然有效的完整备注集合，不是只列新增项；已经变化、解决或被新事实替代的旧备注不要继续返回。人物 profile 是相对稳定的性格底色、价值观、内在矛盾、语言习惯与行为边界；不要因单次情绪或行为轻易改写。character 的 status/location/abilities/knowledge/goals/relationships 是当前剧情状态，必须反映本章结束时的最新快照，数组应给出完整当前值而非只追加变化项。人物可以变化、反复、倒退、误判，也可以做出出乎意料的选择；不要把人物锁死成标签。状态提取只记录正文已经发生的事，不得要求正文为了状态字段而解释动机或安排代价。只记录章节明确支持的内容。本次最终章节是项目续写文本，不是原著原文；首次由本章引入的事实必须标为 original，不能因叙述确定就标 confirmed。只有与旧状态中同一事实 ID、同一事实内容相符的原著事实才保留原有来源等级；无法确认的内容不要写入 canonFacts，推断标为 inferred。新事件默认 origin=original；只有明确回指原著资料的事件才标 canon/inferred 并填写 source。人物和情节线只输出本章新增或发生变化的记录。只有正文自然呈现重要转折时才追加 arcMilestones；不要为了填写字段而拔高普通情节或反向要求正文增加解释。"
   ].join("\n\n");
   const validateStateUpdate = (output: string) => parseStoryStateUpdate(extractJson(output), chapter);
   let stateText = "";
