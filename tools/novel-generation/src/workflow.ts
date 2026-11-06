@@ -159,15 +159,23 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
 
   // 不同阶段只接收完成当前任务所需的上下文。完整事实包仍用于规划、正文和终审；
   // 创意发散不需要逐条原文证据，编辑阶段也不应反复携带整份语料与续写材料。
+  const taskText = [input.brief, input.contextText, input.writingBrief].filter(Boolean).join("\n");
+  const relevantCharacters = state.characters.filter(character => taskText.includes(character.name));
+  const relevantThreads = state.plotThreads.filter(thread =>
+    taskText.includes(thread.title) || taskText.includes(thread.id)
+  );
   const creativeContext = [
     "世界设定：", input.worldBible,
-    "当前故事状态：", JSON.stringify(state, null, 2),
+    "当前位置：", state.currentPosition,
     input.contextText ? "前情摘要：\n" + input.contextText : "",
-    input.writingBrief ? "相关既成事实与未收线：\n" + input.writingBrief : "",
+    input.writingBrief ? "相关既成事实、人物和未收线：\n" + input.writingBrief : "",
     input.brief ? "本次创作任务：\n" + input.brief : ""
   ].filter(Boolean).join("\n\n");
   const dialogueContext = [
-    "当前人物与故事状态：", JSON.stringify(state, null, 2),
+    "当前位置：", state.currentPosition,
+    "本章涉及的人物当前状态：", JSON.stringify(relevantCharacters, null, 2),
+    "本章涉及的情节线：", JSON.stringify(relevantThreads, null, 2),
+    "当前有效连续性备注：", state.continuityNotes.join("\n"),
     input.contextText ? "必要前情：\n" + input.contextText : "",
     input.writingBrief ? "相关人物、关系与既成事实：\n" + input.writingBrief : "",
     "本次创作任务：", input.brief
