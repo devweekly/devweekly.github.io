@@ -366,6 +366,7 @@ if (latestRun) {
     ["03-draft.md", "draft.md", true],
     ["04-continuity-review.md", "continuity-review.md", false],
       ["06-rhythm-metrics.json", "rhythm-metrics.json", false],
+    ["stage-calls.jsonl", "stage-calls.jsonl", true],
     ["07-state-update.json", "state-update.json", true],
     ["chapter.md", "chapter-final.md", false]
   ];
@@ -412,6 +413,7 @@ const dropOrder = [
   "draft.md",
   "state-update.json",
   "analysis-shard-0.log",
+  "stage-calls.jsonl",
   "kimi-write.log",
   "scene-03.md"
 ];
@@ -469,8 +471,8 @@ const readme = [
   "|---|---|---|",
   "| `01-database/` | 数据库 schema、统计、各类样本、质量问题清单 | 人物归并、伏笔质量、情节线粒度 |",
   "| `02-analysis-calls/` | " + picks.length + " 次分批分析的完整请求与响应 | 提示词是否明确、输出是否被正确解析 |",
-  "| `03-writing/` | 生成的新章节与万字流水线中间产物 | 连续性、文风、是否存在设定漂移 |",
-  "| `04-logs/` | 分析分片与写作过程的运行日志 | 失败重试、超时  |",
+  "| `03-writing/` | 生成的新章节、所有场景润色稿、润色幅度与阶段调用日志 | 连续性、文风、扩写幅度、阶段耗时 |",
+  "| `04-logs/` | 分析分片与写作过程的运行日志 | 失败重试、超时、逐阶段耗时 |",
   "| `manifest.json` | 每个文件的字节数与 sha256 | 校验用 |",
   "",
   "## 数据是怎么来的",
@@ -497,7 +499,7 @@ const readme = [
   "- 样本是抽样：人物 " + sampleCounts.characters + " 条、事件 " + sampleCounts.chapters + " 章、" + sampleCounts.threads + " 条情节线、" + sampleCounts.foreshadowings + " 条伏笔、" + sampleCounts.relations + " 条关系、" + sampleCounts.arcs + " 卷梗概。",
   "- 有 " + qualityFlags.charactersWithoutMentionsCount + " 个人物「有名无实」：模型给出了名字，但正文没有逐字出现，统计为 0。",
   "- 置信度、状态、关系标签都是模型判断，不是人工标注。",
-  "- SDK 不落盘 token 与耗时，`02-analysis-calls/` 包含采样请求/响应，以及已保留的失败原始响应；请求体由同一构造函数重建，内容与线上一致。写作阶段（蓝图/逐场/审查）的提示词未单独落盘，包内提供其输入上下文与产物。",
+  "- SDK 不落盘 token 与耗时，`02-analysis-calls/` 包含采样请求/响应，以及已保留的失败原始响应；请求体由同一构造函数重建，内容与线上一致。长章节 `stage-calls.jsonl` 记录实际执行的阶段、请求模型候选链、提示词/输出字符数、耗时和结果；缓存命中不会产生模型调用记录。",
   "- 原文全文与 27MB 的 `novel.db` 未打包；如需核对原文，请另行提供语料。",
   "",
   "## 版权",
