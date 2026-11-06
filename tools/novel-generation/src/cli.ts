@@ -429,7 +429,7 @@ async function main(): Promise<void> {
 
     const applyState = !process.argv.includes("--no-apply-state");
     const chapter = await writeChapter({
-      worldId, worldDir: resolve("worlds", worldId), mode, brief, worldBible, styleProfile, styleRhythm, sourceText, contextText, retrievedContext, storyAnalysisContext, writingBrief, model,
+      worldId, worldDir: resolve("worlds", worldId), mode, brief, worldBible, styleProfile, sourceText, contextText, retrievedContext, storyAnalysisContext, writingBrief, model,
       strictModel: process.argv.includes("--strict-model"),
       acceptReview: process.argv.includes("--accept-review"), maxWords,
       outputDir, statePath, applyState
@@ -464,7 +464,7 @@ async function main(): Promise<void> {
       throw new Error("--retrieval-limit must be an integer between 1 and 12.");
     }
     const chapter = await writeLongChapter({
-      worldId, worldDir: resolve("worlds", worldId), mode, brief, worldBible, styleProfile, styleRhythm, sourceText, contextText, storyAnalysisContext, writingBrief, model,
+      worldId, worldDir: resolve("worlds", worldId), mode, brief, worldBible, styleProfile, sourceText, contextText, storyAnalysisContext, writingBrief, model,
       strictModel: process.argv.includes("--strict-model"),
       acceptReview: process.argv.includes("--accept-review"),
       maxWords, scenes, timeoutMs, outputDir, statePath, libraryDir, retrievalLimit,
