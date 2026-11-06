@@ -277,15 +277,15 @@ npm run dev -- story-kb     --world conghuoniao --type characters
 
 ## Web Workbench（当前实现）
 
-Web 工作台作为 CLI 之外的本地交互入口，不改变既有章节 CLI 的默认自动写作流程。
+Web 工作台是 CLI 之外的本地交互入口，提供运行观察、规划版本追溯和可选干预，不改变章节 CLI 的自动写作流程。
 
 - `src/server-main.ts` 负责 HTTP 生命周期和 Vite 开发中间件 / 生产静态资源；`src/server.ts` 提供 Express API；`web/` 是 React + Ant Design 前端。
-- 当前第一条端到端人工审批链路是 Story Plan：生成任务持久化为 Run，模型结果保存为 draft Candidate，前端编辑/审核，批准后才写入正式 `worlds/<world>/story-plan.json`。
-- 候选记录、运行记录和决策日志位于忽略目录 `.output/<world>/workbench/`；正式 Story Plan 仍是唯一生效规划。旧版正式规划在批准新版本时归档到 `story-plan-history/`。
-- 审批时比较候选生成时的 `baseUpdatedAt` 与当前正式规划版本；并发或过期候选返回 409，要求重新查看差异，避免静默覆盖。
+- Story Plan 生成任务进入队列后按 World 串行执行。模型结果经 schema 校验后立即激活；旧正式版本自动归档，Run 标记 completed。并发生成不会基于同一旧版本互相覆盖。
+- 候选记录是已应用版本的审计快照，不是待审批项。工作台不提供批准/拒绝门禁；用户可以事后查看版本与运行记录。
+- CLI `plan-story` 与 Web 行为一致，默认自动激活；`--draft` 只用于隔离实验，`--activate-candidate` 用于主动提升实验草稿。
+- 运行记录与版本快照位于忽略目录 `.output/<world>/workbench/`；正式 Story Plan 仍是唯一生效规划，旧版本归档到 `story-plan-history/`。
 - 服务默认只监听 loopback。开发启动：`npm run dev:web`；生产构建：`npm run build`；生产启动：`npm run start:web`。
-- 目前 Web UI 只管理 Story Plan 候选，不会拦截现有 `write` / `write-long` 的自动 Story State 提交。章节审核、章节版本管理和 Story State 提案的批准提交属于下一阶段，完成前不能将章节写作描述为人工审批流程。
-
+- 章节写作仍沿用既有自动 Story State 提交流程。终审经有限修复仍有明确硬伤时，当前运行安全失败并保留现场，不等待人工批准后继续。
 
 ## 10. 人工介入边界（ADR 0003）
 
