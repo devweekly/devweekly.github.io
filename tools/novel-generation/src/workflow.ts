@@ -8,7 +8,8 @@ import { checkIronLaws, ironLawIssues, loadIronLaws } from "./iron-laws.js";
 import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
 import { parseJsonObject } from "./model-json.js";
 import { LONG_CHAPTER_SOURCE_TAIL_CHARS } from "./constants.js";
-import { buildWorldSituationContext } from "./world-situation.js";\nimport { antiAiEditPrompt, readerExperiencePrompt } from "./literary-edit.js";
+import { buildWorldSituationContext } from "./world-situation.js";
+import { antiAiEditPrompt, readerExperiencePrompt } from "./literary-edit.js";
 
 export interface WriteWorkflowInput {
   worldId: string;
