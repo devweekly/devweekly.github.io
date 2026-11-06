@@ -337,6 +337,11 @@ add("02-analysis-calls/README.md", [
   ""
 ].join("\n"));
 add("02-analysis-calls/meta.json", json(analysisMeta));
+for (const name of await readdir(cache.directory)) {
+  if (!/^batch-\\d{4}\\.json\\.(invalid-raw|repair-raw)\\.txt$/.test(name)) continue;
+  add("02-analysis-calls/failed/" + name, await readFile(join(cache.directory, name)), { optional: true });
+}
+
 add("02-analysis-calls/config.json", json({
   model,
   configFile: JSON.parse(await readFile(resolve("novel-generation.config.json"), "utf8")),
@@ -360,8 +365,7 @@ if (latestRun) {
     ["02-scene-03.md", "scene-03.md", true],
     ["03-draft.md", "draft.md", true],
     ["04-continuity-review.md", "continuity-review.md", false],
-    ["05-polish-01.md", "polish-01.md", true],
-    ["06-rhythm-metrics.json", "rhythm-metrics.json", false],
+      ["06-rhythm-metrics.json", "rhythm-metrics.json", false],
     ["07-state-update.json", "state-update.json", true],
     ["chapter.md", "chapter-final.md", false]
   ];
@@ -369,12 +373,22 @@ if (latestRun) {
     const file = join(runDir, source);
     if (existsSync(file)) add("03-writing/long-chapter/" + target, await readFile(file), { optional });
   }
+
+  // Include every scene's actual polish output, not just scene 1. Keep these
+  // optional so the pack budget can trim them only when necessary.
+  const polishFiles = (await readdir(runDir)).filter(name => /^05-polish-\\d{2}\\.md$/.test(name)).sort();
+  for (const name of polishFiles) {
+    add("03-writing/long-chapter/" + name.replace(/^05-/, "").replace(/\\.md$/, ".md"), await readFile(join(runDir, name)), { optional: true });
+  }
+  const polishDiagnostics = join(runDir, "05-polish-diagnostics.json");
+  if (existsSync(polishDiagnostics)) add("03-writing/long-chapter/polish-diagnostics.json", await readFile(polishDiagnostics), { optional: true });
+
   add("03-writing/long-chapter/README.md", [
     "# 万字章节流水线样本",
     "",
     "- 来源：`.output/" + worldId + "/" + latestRun + "/`",
     "- 顺序：蓝图 → 逐场检索与生成 → 拼章草稿 → 连续性审查 → 逐场润色 → 节奏指标 → 状态提取。",
-    "- `chapter-final.md` 是最终交给用户的正文章节；`draft.md` 是润色前全文，可用于对比修订幅度。",
+    "- `chapter-final.md` 是最终交给用户的正文章节；`draft.md` 是润色前全文；所有 `polish-XX.md` 与 `polish-diagnostics.json` 用于检查逐场修订幅度。",
     "- `state-update.json` 是模型从正文提取的结构化状态，写入前会经过 schema 校验。",
     ""
   ].join("\n"));
@@ -402,6 +416,11 @@ const dropOrder = [
   "kimi-write.log",
   "scene-03.md"
 ];
+for (const entry of [...entries].filter(item => item.optional && /\\/polish-\\d{2}\\.md$/.test(item.path))) {
+  if (totalBytes() <= maxBytes) break;
+  dropped.push(entry.path);
+  entries.splice(entries.indexOf(entry), 1);
+}
 for (const token of dropOrder) {
   if (totalBytes() <= maxBytes) break;
   const index = entries.findIndex(entry => entry.optional && entry.path.endsWith(token));
@@ -461,14 +480,14 @@ const readme = [
   "   不去重会让文本虚增 12%（`李阎` 从 14,024 次涨到 15,724 次）。",
   "2. `analyze-story`：以章为分析单元装箱（约 14,000 字一批，共 196 批），每批让模型返回人物、关系、情节线、伏笔、章级事件；",
   "   章级事件必须带 `chapterKey`（如 `V11-C045`），用于对齐真实章节。",
-  "3. 合并：人物按姓名归并，别名只在双方互相指认时合并；别名中的泛称（男人、老头子、老板）被过滤，且**不参与**人名词频统计。",
+  "3. 合并：人物只按规范姓名合并；带原文证据的个人化名/别称只作为检索元数据，不用于实体合并；称号、职位、传承、能力和身份分开分类，共享别名不参与关系解析。",
   "4. `analyze-arcs`：把每卷的章级事件汇总成一篇主线梗概。",
   "",
   "## 请重点审什么（按优先级）",
   "",
   "1. **人物归并是否正确**：`characters.sample.json` 里有没有把两个人当成一个，或一个人拆成两条；别名是否可信。",
   "2. **伏笔是否成立**：`foreshadowings.sample.json` 里 `明确线索` 是否真的在原文有落点，`已回收` 的回收方式是否对得上。",
-  "3. **情节线粒度**：862 条是「每批识别出的局部冲突」，不是重复项；请判断这个粒度对写作是否有用，而不是数量是否太多。",
+  "3. **情节线粒度**：862 条是局部情节线候选记录；按标题和来源章节范围核查重复项，同名但不同阶段应保留。",
   "4. **章级事件是否准确**：`beats.sample.json` 覆盖 738/753 章，抽查是否有人物张冠李戴或因果说反。",
   "5. **章节质量**：`03-writing/long-chapter/chapter-final.md` 与 `draft.md` 对比，看修订是否改善了节奏而没有引入新事实。",
   "6. **提示词是否安全**：`02-analysis-calls/*.request.md` 是否包含会诱导模型编造设定的指令。",
@@ -479,7 +498,7 @@ const readme = [
   "- 样本是抽样：人物 " + sampleCounts.characters + " 条、事件 " + sampleCounts.chapters + " 章、" + sampleCounts.threads + " 条情节线、" + sampleCounts.foreshadowings + " 条伏笔、" + sampleCounts.relations + " 条关系、" + sampleCounts.arcs + " 卷梗概。",
   "- 有 " + qualityFlags.charactersWithoutMentionsCount + " 个人物「有名无实」：模型给出了名字，但正文没有逐字出现，统计为 0。",
   "- 置信度、状态、关系标签都是模型判断，不是人工标注。",
-  "- SDK 不落盘 token 与耗时，`02-analysis-calls/` 只有请求体与响应体；请求体由同一构造函数重建，内容与线上一致。写作阶段（蓝图/逐场/审查）的提示词未单独落盘，包内提供其输入上下文与产物。",
+  "- SDK 不落盘 token 与耗时，`02-analysis-calls/` 包含采样请求/响应，以及已保留的失败原始响应；请求体由同一构造函数重建，内容与线上一致。写作阶段（蓝图/逐场/审查）的提示词未单独落盘，包内提供其输入上下文与产物。",
   "- 原文全文与 27MB 的 `novel.db` 未打包；如需核对原文，请另行提供语料。",
   "",
   "## 版权",
