@@ -12,6 +12,7 @@ import { formatReview, parseChapterReview, reviewAndRepair, reviewPrompt, withDe
 import { checkIronLaws, ironLawIssues, loadIronLaws } from "./iron-laws.js";
 import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
 import { parseJsonObject } from "./model-json.js";
+import { buildWorldSituationContext } from "./world-situation.js";
 
 export interface LongChapterInput {
   worldId: string;
@@ -146,10 +147,14 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     }),
     ...state.continuityNotes.map(note => "[当前连续性备注] " + note)
   ].join("\n");
+  const situationQuery = [input.brief, input.contextText, input.sourceText?.slice(-2400), input.writingBrief, input.storyPlanText, input.storyAnalysisContext].filter(Boolean).join("\n");
+  const worldSituation = buildWorldSituationContext(state, situationQuery);
+  if (worldSituation) await saveStage(input.outputDir, "00-world-situation-context.md", worldSituation);
   const writingContext = [
     "世界设定（辅助索引，未知内容不得写成原著事实）：", input.worldBible,
     "当前位置：", state.currentPosition,
     "事实来源与当前连续性信息：", facts,
+    worldSituation ? "本章相关人物、已发生事件与局势上下文：\n" + worldSituation : "",
     input.contextText ? "前文与连续性摘要：\n" + input.contextText : "",
     input.writingBrief ? "全书知识库（已经写成的事实与未收线，优先于分析参考）：\n" + input.writingBrief : "",
     input.storyPlanText ? input.storyPlanText : "",
@@ -164,7 +169,8 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     "角色：长篇章节主编。为一万字章节制定唯一执行蓝图，不写正文。",
     writingContext,
     `按情节自然需要划分场景，最多 ${input.scenes} 个；可以少于这个数量，不要为了凑数拆开本来连贯的情节。每个场景用单独一行 "## 场景 N" 开头（N 从 1 开始连续编号）。蓝图只需给小说家足够的创作方向，可按需要提及视角、人物、地点、情境、冲突或悬念；不要求每场填满同一套字段，也不要求每场都埋伏笔、推进主线或安排人物成长。让场景各有自己的气息和功能，允许闲笔、日常、误会、停顿和意外。`,
-    "构思相关配角与势力时，考虑其自身目标、动机、知识范围、可用资源、行动限制和压力；必要时推演主角不介入时的局势，但只考虑本章相关人物。推演只是可能情境，不是已发生事实；不要模拟整个世界，也不要强迫每个角色行动。",
+    "结合上面的当前人物状态、已发生事件和因果关系，判断本章相关局势。人物和势力应有自己的目标与行动理由，并受其知识范围、资源和限制影响。",
+    "如确有叙事价值，可在场景列表之前增加“## 局势推演（尚未发生）”，写一至数项可能的发展或主角不介入时的变化；没有价值时省略。局势推演只是创作参考，不是正史，不能写成已发生事实，不要模拟整个世界或强迫每个 NPC 行动。",
 `全章目标篇幅约 ${input.maxWords} 个汉字。不要机械平均分配场景篇幅；根据情节、情绪和场景需要决定每场长短。`,
     "区分原著已确认事实与本章新创作。不得安排新果实、十主完整名单、天母去向的解释、人物提前获知未知信息。",
     RHYTHM_RULE,
@@ -200,6 +206,8 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     const relevantCharacters = state.characters.filter(character =>
       sceneReference.includes(character.name) || (character.relationships ?? []).some(name => sceneReference.includes(name))
     );
+    const sceneSituation = buildWorldSituationContext(state, [input.brief, scenePlans[index]!, previous].join("\n"), 2600);
+    if (sceneSituation) await saveStage(input.outputDir, `00-scene-${String(index + 1).padStart(2, "0")}-world-situation.md`, sceneSituation);
     const characterState = relevantCharacters.map(character => [
       character.name + "｜" + character.status,
       character.location ? "位置：" + character.location : "",
@@ -227,6 +235,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       writingContext,
       "全章蓝图：", blueprint,
       characterState ? "本场相关人物的当前状态（仅帮助承接，不是人物行为边界）：\n" + characterState : "",
+      sceneSituation ? "本场相关人物与事件的当前局势（可能性不是正史）：\n" + sceneSituation : "",
       `本场蓝图：`, scenePlans[index]!,
       "本场相关原文证据（只用于核实事实，不得照搬）：", sceneEvidence,
       "上一场正文的连续性上下文（重点承接人物位置、已知信息、关系变化、道具归属、未完成动作与场景结果，不得重复）：", previous,
