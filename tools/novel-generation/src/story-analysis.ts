@@ -199,7 +199,7 @@ function mergeTextField(target: Item, source: Item, field: string): void {
 }
 
 /** Normalized, filtered aliases: they are metadata, never identity shortcuts. */
-function cleanAliases(item: Item): string[] {
+export function cleanCharacterAliases(item: Record<string, unknown>): string[] {
   const name = normalizeCharacterName(String(item.name ?? ""));
   const details = Array.isArray(item.aliasDetails) ? item.aliasDetails as Array<Record<string, unknown>> : [];
   return unique(details
@@ -215,14 +215,13 @@ function absorbCharacter(target: Item, source: Item): void {
   for (const field of ["shortBio", "voice"]) mergeTextField(target, source, field);
   // The first batch that meets a character usually states their role most plainly.
   if (!String(target.storyFunction ?? "").trim()) target.storyFunction = String(source.storyFunction ?? "");
-  target.aliases = unique([...cleanAliases(target), ...cleanAliases(source)]);
+  target.aliases = unique([...cleanCharacterAliases(target), ...cleanAliases(source)]);
   target.sourceRefs = mergeRefs(refsOf(target), refsOf(source));
 }
 
 /**
- * Merges characters across batches by exact name. Alias-based merging requires
- * both directions to agree (A lists B as an alias and B lists A), because a
- * single noisy alias should not fuse two different people.
+ * Merges character observations by exact canonical name only. Aliases are
+ * lookup metadata; they never establish identity or merge two people.
  */
 function mergeCharacters(target: Item[], incoming: Item[]): Item[] {
   const byName = new Map<string, Item>();
@@ -246,49 +245,6 @@ function mergeCharacters(target: Item[], incoming: Item[]): Item[] {
 
   }
   return target;
-}
-
-/** Two records that list each other as aliases are the same person. */
-function mergeMutualAliasCharacters(items: Item[]): Item[] {
-  const byName = new Map<string, Item>();
-  for (const item of items) byName.set(normalizeCharacterName(String(item.name ?? "")), item);
-  const parent = new Map<string, string>();
-  const find = (key: string): string => {
-    const current = parent.get(key);
-    if (!current || current === key) return key;
-    const root = find(current);
-    parent.set(key, root);
-    return root;
-  };
-  const union = (a: string, b: string): void => {
-    const ra = find(a); const rb = find(b);
-    if (ra !== rb) parent.set(rb, ra);
-  };
-  for (const item of items) {
-    const name = normalizeCharacterName(String(item.name ?? ""));
-    for (const alias of asStrings(item.aliases)) {
-      const other = byName.get(alias);
-      if (!other) continue;
-      const otherName = normalizeCharacterName(String(other.name ?? ""));
-      if (asStrings(other.aliases).includes(name)) union(name, otherName);
-    }
-  }
-  const groups = new Map<string, Item[]>();
-  for (const item of items) {
-    const root = find(normalizeCharacterName(String(item.name ?? "")));
-    const group = groups.get(root) ?? [];
-    group.push(item);
-    groups.set(root, group);
-  }
-  const result: Item[] = [];
-  for (const group of groups.values()) {
-    const ordered = [...group].sort((a, b) => refsOf(b).length - refsOf(a).length || String(a.name).length - String(b.name).length);
-    const survivor = ordered[0] as Item;
-    for (const extra of ordered.slice(1)) absorbCharacter(survivor, extra);
-    survivor.aliases = cleanAliases(survivor);
-    result.push(survivor);
-  }
-  return result;
 }
 
 export function plotThreadMergeKey(title: string, chapterKeys: string[]): string {
