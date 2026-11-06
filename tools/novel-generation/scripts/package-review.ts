@@ -308,6 +308,7 @@ add("01-database/relations.sample.json", json(relationSample));
 add("01-database/arcs.sample.json", json(arcs));
 add("01-database/quality-flags.json", json(qualityFlags));
 add("01-database/story-core.json",json(storyAnalysis.storyCore??{}));
+add("01-database/story-core-observations.json",json(storyAnalysis.storyCoreObservations??[]));
 add("01-database/macguffins.json",json(storyAnalysis.macguffins??[]));
 add("01-database/story-graph.json",json({nodes:graphNodes,edges:graphEdges}),{optional:true});
 add("01-database/story-graph-quality.json",json(graphQuality));
@@ -500,7 +501,7 @@ const readme = [
   "",
   "| 路径 | 内容 | 建议关注 |",
   "|---|---|---|",
-  "| `01-database/` | 数据库 schema、分类样本、故事核心、MacGuffin、完整图谱与图质量摘要 | 主线、人物互动链、伏笔承接、MacGuffin 是否驱动情节 |",
+  "| `01-database/` | 数据库 schema、分类样本、故事核心观察、MacGuffin、完整图谱与图质量摘要 | 主线、人物互动链、伏笔承接、MacGuffin 是否驱动情节 |",
   "| `02-analysis-calls/` | " + picks.length + " 次分批分析的完整请求与响应 | 提示词是否明确、输出是否被正确解析 |",
   "| `03-writing/` | 生成的新章节、所有场景润色稿、润色幅度与阶段调用日志 | 连续性、文风、扩写幅度、阶段耗时 |",
   "| `04-logs/` | 分析分片与写作过程的运行日志 | 失败重试、超时、逐阶段耗时 |",
