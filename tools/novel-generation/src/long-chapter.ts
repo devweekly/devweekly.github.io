@@ -147,7 +147,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     }),
     ...state.continuityNotes.map(note => "[当前连续性备注] " + note)
   ].join("\n");
-  const situationQuery = [input.brief, input.contextText, input.sourceText?.slice(-2400), input.writingBrief, input.storyPlanText, input.storyAnalysisContext].filter(Boolean).join("\n");
+  const situationQuery = [input.brief, state.currentPosition, input.contextText, input.sourceText?.slice(-2400), input.writingBrief, input.storyPlanText, input.storyAnalysisContext].filter(Boolean).join("\n");
   const worldSituation = buildWorldSituationContext(state, situationQuery);
   if (worldSituation) await saveStage(input.outputDir, "00-world-situation-context.md", worldSituation);
   const writingContext = [
