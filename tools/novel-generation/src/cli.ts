@@ -224,10 +224,12 @@ async function main(): Promise<void> {
     const analysisContext = buildStoryAnalysisContext(readStoryAnalysis(worldDir, worldId), query);
     const previousPlan = await loadStoryPlan(resolve(worldDir, "story-plan.json"), worldId);
     const candidate = await generateStoryPlan({worldId,worldBible,state,storyAnalysisContext:analysisContext,previousPlan,model:arg("--model")});
-    const activate = process.argv.includes("--activate");
-    const outputPath = activate ? resolve(worldDir,"story-plan.json") : resolve(".output",worldId,"story-plan-candidate-"+new Date().toISOString().replace(/[:.]/g,"-")+".json");
-    await saveStoryPlan(outputPath,{...candidate,status:activate?"active":"draft"});
-    console.log(JSON.stringify({status:activate?"active":"draft",output:outputPath,milestones:candidate.majorMilestones.length,longTermThreads:candidate.longTermThreads.length,previousPlanLoaded:Boolean(previousPlan),note:activate?"正式主线已启用，write / write-long 将自动注入。":"候选规划尚未启用；审阅后使用 --activate-candidate <file> 激活该候选。"},null,2));
+    const draftOnly = process.argv.includes("--draft");
+    const outputPath = draftOnly
+      ? resolve(".output",worldId,"story-plan-draft-"+new Date().toISOString().replace(/[:.]/g,"-")+".json")
+      : resolve(worldDir,"story-plan.json");
+    await saveStoryPlan(outputPath,{...candidate,status:draftOnly?"draft":"active"});
+    console.log(JSON.stringify({status:draftOnly?"draft":"active",output:outputPath,milestones:candidate.majorMilestones.length,longTermThreads:candidate.longTermThreads.length,previousPlanLoaded:Boolean(previousPlan),note:draftOnly?"已保存隔离草稿，不影响正式写作上下文。":"新主线已自动生效；可在 Web Workbench 中事后检查或手动修订。"},null,2));
     return;
   }
 
