@@ -49,7 +49,7 @@ test("writing context expands relevant story graph and keeps literary freedom ex
     developmentPossibilities: []
   });
   const snapshot = {
-    worldId: "test", sourceHash: "hash", analyzedAt: new Date().toISOString(), analysisVersion: 5,
+    worldId: "test", sourceHash: "hash", analyzedAt: new Date().toISOString(), analysisVersion: 6,
     complete: true, batches: 1, characters: [{ name: "甲", shortBio: "守护秘钥", sourceRefs: ref }],
     plotThreads: [{ title: "夺回秘钥", summary: "各方争夺秘钥", sourceRefs: ref }],
     foreshadowings: [], developmentPossibilities: [], relations: [],
