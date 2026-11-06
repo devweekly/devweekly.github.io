@@ -159,3 +159,13 @@ CLI 命令（均经 `npm run dev --`）：
 - Prefer automatic recovery with explicit limits, checkpoints and durable diagnostics. A failed automated run may stop safely; it must not silently convert a blocker into success or require a human approval click to resume ordinary successful work.
 - Ask for human intervention only when no safe deterministic/model-assisted resolution remains, or when an operation is destructive, irreversible, security-sensitive, or changes authoritative canon in a way that cannot be reconciled automatically.
 - Preserve generated versions and decisions as history. History must not become an approval queue, and a generated plan should become active automatically after schema/world validation.
+
+
+## 人物自主行动与 World Situation
+
+- 小说续写是唯一目标；不要把 D&D 的数值检定、回合制、等级、HP、任务奖励或玩家/DM 交互引入生成链路。
+- 人物当前目标必须结合动机、实际知识、资源、限制和压力理解。Knowledge Boundary 防止角色全知，但不禁止人物误判、隐瞒、冲动或改变立场。
+- World Situation 复用现有主线规划阶段，只针对当前章节相关人物/势力做有限推演；不模拟全世界，不要求 NPC 每章行动，不新增专职 DM Agent。
+- 推演输出属于暂定创作素材，绝不直接写入 Story State。Story State 只记录最终正文实际发生的事实。
+- 事件的 causes 与 relatedPlotThreads 用于表达因果关联；没有可靠依据时可以留空，不得为了字段完整编造因果。
+- 详见 `ACTION-PLAN.md`；阶段状态和验收标准必须同步维护。
