@@ -180,3 +180,15 @@ CLI 命令（均经 `npm run dev --`）：
 - Expand event-cause IDs and related plot-thread IDs into readable summaries/titles when building context. Preserve unknown references as-is instead of inventing relationships.
 - Story Plan participates in retrieval/context selection so long-term direction can surface relevant existing people, threads and foreshadowings. It remains a direction, not a chapter contract.
 - See `ACTION-PLAN.md` for the implemented scope.
+
+
+## Living Voice 与 Anti-AI 编辑（ADR 0004）
+
+- 普通章节与长章节在叙事声音修订后、最终硬伤终审前复用同一 Anti-AI 编辑能力；不得建立平行写作流水线或新增常驻专职 Agent。
+- Living Voice 贯穿规划、正文、对白和编辑：人物有当下目标，细节来自人物视角，性格通过选择呈现，对白承担关系动作，世界观通过行动和后果显现。
+- Anti-AI 不是 AI 检测器优化。禁止以检测分数、禁词、连接词频率、句长、段落长度或统计分布单独触发正文改写。
+- 原稿成立时允许零修改。不得机械删词、制造口语腔、错字、粗口、网络梗、固定口头禅或随机闲笔；不得抹平有意重复、长句、留白和文学修辞。
+- 编辑不得改变剧情事实、因果、人物决定、信息揭示、叙事视角、人物关系或场景顺序，不得新增剧情事实。编辑前后版本必须保留并经过最终硬伤审查。
+- Reader 体验评估是独立观察产物，不进入 blocker/major 门禁，不触发自动修复，不更新 Story State。
+- 角色推演沙盘是作者主动调用的工具；所有推演均为候选创作素材，不自动成为正史。
+- 详见 `ARCHITECTURE.md` 第 10 节与 `ADR/0004-living-voice-and-anti-ai-editing.md`。
