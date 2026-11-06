@@ -75,7 +75,7 @@ function compact(item: AnalysisItem): string {
 
 /** Selects only potentially relevant analysis as optional inspiration; never turns it into canon or a writing checklist. */
 export function buildStoryAnalysisContext(snapshot: StoryAnalysisSnapshot | undefined, query: string): string {
-  if (!snapshot?.complete || !query.trim()) return "";
+  if (!snapshot?.complete || snapshot.analysisVersion !== 4 || !query.trim()) return "";
   const queryTerms = terms(query);
   const groups: Array<[string, AnalysisItem[], number]> = [
     ["相关人物（画像与变化可能性）", snapshot.characters, 5],
