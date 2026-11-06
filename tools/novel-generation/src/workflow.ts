@@ -37,7 +37,7 @@ function extractJson(text: string): unknown {
 
 function normalizeStateText(value: string): string {
   return value.normalize("NFKC").toLocaleLowerCase()
-    .replace(/[\\s"'“”‘’「」『』，。！？、；：,.!?;:（）()【】\\[\\]《》]/g, "");
+    .replace(/[\s"'“”‘’「」『』，。！？、；：,.!?;:（）()【】\[\]《》]/g, "");
 }
 
 export function dedupeContinuityNotes(notes: string[]): string[] {
