@@ -64,10 +64,14 @@ export async function runRoleplaySandbox(input: RoleplaySandboxInput): Promise<s
         authorDirection = "";
         continue;
       }
-      if (choice !== "" && choice !== "a") {\n        console.log("请输入 Enter、a、e、i、r 或 q。");\n        continue;\n      }\n      if (choice === "e" || choice === "i") {
+      if (choice === "e" || choice === "i") {
         const note = await terminal.question(choice === "e" ? "作者方向： " : "补充信息： ");
         authorDirection = choice === "e" ? "修改方向：" + note + "\n上一轮候选内容（请在此基础上重新演绎，不要照抄）：\n" + output : "";
         if (choice === "i") transcript.push("【作者补充】" + note);
+        continue;
+      }
+      if (choice !== "" && choice !== "a") {
+        console.log("请输入 Enter、a、e、i、r 或 q。");
         continue;
       }
       transcript.push("【推演轮次 " + (transcript.length + 1) + "】\n" + output);
