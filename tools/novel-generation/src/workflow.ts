@@ -24,7 +24,6 @@ export interface WriteWorkflowInput {
   storyPlanText?: string;
   model?: string;
   strictModel?: boolean;
-  acceptReview?: boolean;
   maxWords: number;
   outputDir: string;
   statePath: string;
@@ -240,7 +239,6 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   const reviewed = await reviewAndRepair({
     initialChapter: voiceDraft,
     maxRepairRounds: 2,
-    acceptRemainingIssues: input.acceptReview,
     review: (candidate, correction) => {
       const round = reviewHistory.length + 1;
       return cachedCall("quality-review-" + round + (correction ? "-retry" : ""), "07-review-round-" + round + (correction ? "-retry" : "") + "-raw.txt", "review", [
@@ -266,9 +264,9 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
       await saveStage(input.outputDir, "07-continuity-review-round-" + (round + 1) + ".json", JSON.stringify(report, null, 2));
     },
     onFailure: async (chapter, reviews, reason) => {
-      await saveStage(input.outputDir, "chapter-needs-review.md", chapter);
+      await saveStage(input.outputDir, "chapter-blocked.md", chapter);
       await saveStage(input.outputDir, "09-quality-summary.json", JSON.stringify({
-        status: "needs_human_review", reason, reviews
+        status: "blocked", reason, reviews
       }, null, 2));
       console.error("[write] 终审未通过，成稿已保留为 chapter-needs-review.md，故事状态未更新。用 --accept-review 人工放行。");
     }
@@ -277,7 +275,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   await saveStage(input.outputDir, "07-continuity-review.md", reviewHistory.join("\n\n---\n\n"));
   await saveStage(input.outputDir, "chapter.md", chapter);
   await saveStage(input.outputDir, "09-quality-summary.json", JSON.stringify({
-    status: reviewed.acceptedWithIssues ? "accepted_with_issues" : "passed",
+    status: "passed",
     repairRounds: reviewed.repairRounds,
     reviews: reviewed.reviews
   }, null, 2));
