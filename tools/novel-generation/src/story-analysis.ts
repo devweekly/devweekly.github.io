@@ -265,7 +265,7 @@ export function plotThreadId(title: string, chapterKeys: string[], keyTurns: str
 function mergePlotThreads(target: Item[], incoming: Item[]): Item[] {
   const map = new Map(target.map(item => [plotThreadMergeKey(String(item.title ?? ""), refsOf(item).map(ref => String(ref.chapterId ?? ref.chunkId)), asStrings(item.keyTurns), String(item.summary ?? "")), item] as const));
   for (const item of incoming) {
-    const key = plotThreadMergeKey(String(item.title ?? ""), refsOf(item).map(ref => String(ref.chapterId ?? ref.chunkId)));
+    const key = plotThreadMergeKey(String(item.title ?? ""), refsOf(item).map(ref => String(ref.chapterId ?? ref.chunkId)), asStrings(item.keyTurns), String(item.summary ?? ""));
     const previous = map.get(key);
     if (!previous) { map.set(key, item); continue; }
     for (const field of ["keyTurns", "unresolvedQuestions"]) mergeArrayField(previous, item, field);
