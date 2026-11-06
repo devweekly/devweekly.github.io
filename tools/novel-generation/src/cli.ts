@@ -214,8 +214,17 @@ async function main(): Promise<void> {
       const candidate = await loadStoryPlan(resolve(candidatePath), worldId);
       if (!candidate || candidate.status !== "draft") throw new Error("--activate-candidate must point to a valid draft plan for this world.");
       const activePath = resolve(worldDir, "story-plan.json");
+      const previousPlan = await loadStoryPlan(activePath, worldId);
+      if (previousPlan) {
+        const historyDir = resolve(worldDir, "story-plan-history");
+        await mkdir(historyDir, { recursive: true });
+        const historyPath = resolve(historyDir, previousPlan.updatedAt.replace(/[^a-zA-Z0-9.-]/g, "_") + ".json");
+        await writeFile(historyPath, JSON.stringify(previousPlan, null, 2) + "\\n", { encoding: "utf8", flag: "wx" }).catch(error => {
+          if ((error as NodeJS.ErrnoException).code !== "EEXIST") throw error;
+        });
+      }
       await saveStoryPlan(activePath, { ...candidate, status: "active", updatedAt: new Date().toISOString() });
-      console.log(JSON.stringify({ status: "active", output: activePath, source: resolve(candidatePath) }, null, 2));
+      console.log(JSON.stringify({ status: "active", output: activePath, source: resolve(candidatePath), archivedPreviousPlan: Boolean(previousPlan) }, null, 2));
       return;
     }
     const worldBible = await readFile(resolve(worldDir, "world-bible.md"), "utf8");
