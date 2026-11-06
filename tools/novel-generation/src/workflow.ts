@@ -164,7 +164,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
 
   // 不同阶段只接收完成当前任务所需的上下文。完整事实包仍用于规划、正文和终审；
   // 创意发散不需要逐条原文证据，编辑阶段也不应反复携带整份语料与续写材料。
-  const taskText = [input.brief, input.contextText, input.writingBrief, input.storyPlanText, input.storyAnalysisContext].filter(Boolean).join("\n");
+  const taskText = [input.brief, input.contextText, input.writingBrief, input.storyPlanText, worldSituation].filter(Boolean).join("\n");
   const relevantCharacters = state.characters.filter(character => taskText.includes(character.name));
   const relevantThreads = state.plotThreads.filter(thread =>
     taskText.includes(thread.title) || taskText.includes(thread.id)
