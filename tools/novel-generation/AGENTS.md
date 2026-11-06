@@ -50,7 +50,7 @@ CLI 命令（均经 `npm run dev --`）：
 - **src/iron-laws.ts** — 读 `worlds/<world>/laws.json`，在终审前做确定性检查（越阶、超额、违背禁忌），命中转成带场景号的必改项。缺文件视为无约束，格式错直接抛错。
 - **src/literary-edit.ts** — 普通章节与长章节共享 Living Voice、Anti-AI 诊断/编辑/复核和盲读 Reader 提示；复核失败恢复原稿，Reader 失败不阻塞成功路径。
 - **src/style-distillation.ts** — 从授权样本提炼全局与场景级抽象风格，避免复刻原文独特表达；CLI 输出候选资料而不覆盖正式风格文件。
-- **src/style-regression.ts** — 对照已认可参考章节与候选章节观察风格漂移；只输出证据报告，不打分、不改稿、不阻断章节。
+- **src/style-regression.ts** — 正式普通/长章节 Pipeline 自动读取 `style-profile.md` 和 `style-references/` 中的认可样本，成稿后输出风格观察报告；不打分、不改稿、不阻断章节。手动 CLI 仅用于专项对照。
 - **src/roleplay-sandbox.ts** — 作者主动控制的多轮人物互动推演；接受/修改/补充/重演/结束，产物只保存在 `.output/`，不更新 Story State。
 - **src/long-chapter.ts** — 长章节按场景蓝图逐场检索与生成；配置场景数是上限，允许蓝图按自然叙事少于上限，不能为了凑数拆分情节；按实际场景数计算篇幅参考和审查范围。每场注入相关人物当前状态，并携带本章已生成正文的滚动上下文；分批审查使用全章场景编号，缺少场景定位或结构无效时自动重试，最终修复不允许空场景列表；终审失败时先在大纲层修订受影响场景再重生成，未受影响场景保持原蓝图；状态只从最终通过的完整章节提取并自动提交。阶段缓存校验结构化输出，指纹记录实际模型及回退链。
 - **src/analysis.ts** — 抽取以批次为单位原子保存标注，避免每处理一个片段就重写整个增长中的 JSON 文件。
@@ -208,3 +208,12 @@ CLI 命令（均经 `npm run dev --`）：
 - `distill-style` 默认生成候选文件；只有显式 `--activate` 才替换正式 `style-profile.md`，并先归档旧版。候选输出和角色推演输出只能位于 `.output/<world>/`，不能接受指向正史文件的任意 `--out`。
 - Roleplay Sandbox 必须注入指定人物的动态状态、可用的长期人物观察和任务相关故事图谱；推演记录只属于候选素材，不写入 Story State。
 - `style-regress` 可用已认可参考章节与新章节生成非门禁观察报告；不改稿、不打分、不阻断写作。自动批量回归、CI 风格门禁和样本版本工作台仍未实现，不得声称已完成。
+
+
+## Style Profile and regression workflow
+
+- `worlds/<world>/style-profile.md` 是正式写作的活动风格资料。CLI 必须在每次 `write` / `write-long` 时自动加载，并注入规划、正文、对白和叙事声音相关阶段；不得要求作者每章手工指定。
+- 可选的认可样本放在 `worlds/<world>/style-references/`，每次正式写作自动读取最多四个 Markdown/TXT 样本，作为风格回归观察的对照材料。
+- 普通章节和长章节在终审通过后自动生成 `11-style-regression.md`。没有参考样本时，以活动 Style Profile 做有限观察并明确证据不足。
+- 风格回归是只读诊断，不是写作门禁或自动修订指令；报告失败不得影响成稿、Reader 或 Story State 提交。
+- `style-regress` 是任意文件专项对照命令，不是正式 Pipeline 的必要步骤。
