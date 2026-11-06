@@ -428,3 +428,23 @@ export function listNovelBeats(worldDir:string,worldId:string,options:{from?:num
   return rows.map(row=>({...row,actors:JSON.parse(row.actors_json) as string[],actors_json:undefined}));
  }finally{db.close();}
 }
+
+
+/** 人物工作台：合并人物档案、画像与正文事件时间线；事件只按明确 actors 关联。 */
+export function readNovelCharacterWorkbenchDetail(worldDir:string,worldId:string,name:string):Record<string,unknown>|undefined{
+ const db=openKnowledgeDatabase(worldDir,worldId);
+ try{
+  const character=db.prepare("SELECT character_id AS characterId,name,aliases_json,role,bio,voice,personality_json,desires_json,contradictions_json,arc_json,first_chapter AS firstChapter,last_chapter AS lastChapter,chapters_seen AS chaptersSeen,mention_total AS mentionTotal,source FROM novel_characters WHERE name=?").get(name) as Record<string,unknown>|undefined;
+  if(!character)return undefined;
+  const parse=(value:unknown):unknown[]=>{try{const v=JSON.parse(String(value??"[]")) as unknown;return Array.isArray(v)?v:[];}catch{return [];}};
+  const profileRow=db.prepare("SELECT summary,stages_json,traits_json,contradictions_json,arc_json,observation_count AS observationCount,model,generated_at AS generatedAt FROM novel_character_profiles WHERE name=?").get(name) as Record<string,unknown>|undefined;
+  const beats=db.prepare("SELECT b.beat_id AS beatId,b.chapter_id AS chapterId,b.chapter_ordinal AS chapterOrdinal,b.summary,b.actors_json AS actors,c.volume,c.title AS chapterTitle,c.label AS chapterLabel FROM novel_beats b LEFT JOIN novel_chapters c ON c.chapter_id=b.chapter_id WHERE b.actors_json LIKE ? ORDER BY b.chapter_ordinal").all("%"+name+"%") as Array<Record<string,unknown>>;
+  const timeline=beats.filter(row=>parse(row.actors_json).includes(name)).map(row=>({beatId:row.beatId,chapterId:row.chapterId,chapterOrdinal:row.chapterOrdinal,volume:row.volume,chapterTitle:row.chapterTitle??row.chapterId,chapterLabel:row.chapterLabel??"",summary:row.summary,actors:parse(row.actors_json)}));
+  const relations=db.prepare("SELECT from_name AS fromName,to_name AS toName,label,evidence,chapter_ordinal AS chapterOrdinal FROM novel_relations WHERE from_name=? OR to_name=? ORDER BY chapter_ordinal").all(name,name);
+  return {
+   character:{...character,aliases:parse(character.aliases_json),personality:parse(character.personality_json),desires:parse(character.desires_json),contradictions:parse(character.contradictions_json),arc:parse(character.arc_json),aliases_json:undefined,personality_json:undefined,desires_json:undefined,contradictions_json:undefined,arc_json:undefined},
+   profile:profileRow?{summary:profileRow.summary,stages:parse(profileRow.stages_json),traits:parse(profileRow.traits_json),contradictions:parse(profileRow.contradictions_json),arc:parse(profileRow.arc_json),observationCount:profileRow.observationCount,model:profileRow.model,generatedAt:profileRow.generatedAt}:null,
+   timeline,relations
+  };
+ }finally{db.close();}
+}
