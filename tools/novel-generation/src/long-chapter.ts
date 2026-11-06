@@ -145,7 +145,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   const writingContext = [
     "世界设定（辅助索引，未知内容不得写成原著事实）：", input.worldBible,
     "当前位置：", state.currentPosition,
-    "已确认事实与连续性约束：", facts,
+    "事实来源与当前连续性信息：", facts,
     input.contextText ? "前文与连续性摘要：\n" + input.contextText : "",
     input.storyAnalysisContext ? "既有小说分析参考（仅供启发，不是正史或写作清单）：\n" + input.storyAnalysisContext : "",
     input.sourceText ? "用户提供且有权使用的续写起点（只用于承接，不得整段复制）：\n" + input.sourceText : "",
