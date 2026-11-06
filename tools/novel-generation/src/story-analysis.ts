@@ -429,7 +429,7 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
 
   if (!options.mergeOnly && (shard || options.limit !== undefined)) {
     console.log(`[story-analysis] partial run done · processed ${processed} · cached ${cached} · failed ${failures.length} · skipped ${skipped}`);
-    return { batches: totalBatches, processed, cached, failed: failures.map(item => item.index), pending: batches.length - processed - cached, skipped, malformedBeats: 0 };
+    return { batches: totalBatches, processed, cached, failed: failures.map(item => item.index), pending: batches.length - skipped - processed - cached, skipped, malformedBeats: 0 };
   }
   if (failures.length) {
     throw new Error(`${failures.length} batch(es) failed: ${failures.slice(0, 5).map(item => "#" + (item.index + 1)).join(", ")}${failures.length > 5 ? " …" : ""}. Successful batches are cached; re-run to resume.`);
