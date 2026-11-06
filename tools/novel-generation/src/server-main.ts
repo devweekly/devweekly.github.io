@@ -1,7 +1,7 @@
 import { createServer as createHttpServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import express from "express";
+import express, { type RequestHandler } from "express";
 import { createServer as createViteServer, type ViteDevServer } from "vite";
 import { createApp, recoverWorkbenchRuns } from "./server.js";
 
@@ -18,7 +18,7 @@ async function main():Promise<void>{
  let vite:ViteDevServer|undefined;
  if(process.env.NODE_ENV!=="production"){
   vite=await createViteServer({root:webRoot,server:{middlewareMode:true},appType:"spa"});
-  app.use(vite.middlewares);
+  app.use(vite.middlewares as unknown as RequestHandler);
  }else{
   app.use(express.static(path.join(webRoot,"dist")));
   app.use((_req,res)=>res.sendFile(path.join(webRoot,"dist","index.html")));
