@@ -119,7 +119,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
             timeoutMs: input.timeoutMs, requestedModel: input.model ?? null,
             modelAttempts, promptChars: prompt.length, outcome, ...details
           };
-          try { await appendFile(resolve(input.outputDir, "stage-calls.jsonl"), JSON.stringify(entry) + "\\n", "utf8"); }
+          try { await appendFile(resolve(input.outputDir, "stage-calls.jsonl"), JSON.stringify(entry) + "\n", "utf8"); }
           catch (error) { console.error("[write-long] unable to append stage diagnostics: " + String(error)); }
         };
         try {
