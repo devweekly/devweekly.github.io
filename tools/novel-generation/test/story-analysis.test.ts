@@ -60,7 +60,7 @@ test("version 1 world databases upgrade to include story analysis storage", asyn
     db.exec("PRAGMA user_version=1");
     db.close();
     const status = databaseStatus(worldDir, "test-world");
-    assert.equal(status.schemaVersion, 3);
+    assert.equal(status.schemaVersion, 4);
     assert.equal(status.storyAnalysis, 0);
   } finally {
     await rm(root, { recursive: true, force: true });
