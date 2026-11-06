@@ -117,8 +117,6 @@ export async function reviewAndRepair(input: {
   initialChapter: string;
   sceneCount?: number;
   maxRepairRounds?: number;
-  /** 人工复核后接受剩余必改项；仅由显式 CLI 开关传入，不改变默认阻断行为。 */
-  acceptRemainingIssues?: boolean;
   review: (chapter: string, correction?: string) => Promise<string>;
   repair: (chapter: string, issues: ReviewIssue[], round: number) => Promise<string>;
   onReview?: (round: number, chapter: string, review: ChapterReview) => Promise<void>;
@@ -147,12 +145,10 @@ export async function reviewAndRepair(input: {
       await input.onReview?.(round, chapter, parsed);
       if (!parsed.issues.length) return { chapter, reviews, repairRounds: round, acceptedWithIssues: false };
       if (round >= maxRepairRounds) {
-        if (input.acceptRemainingIssues) return { chapter, reviews, repairRounds: round, acceptedWithIssues: true };
         throw new Error("Chapter still has must-fix issues after " + maxRepairRounds + " automatic repair rounds. See final review artifacts; story state was not updated.");
       }
       const repaired = (await input.repair(chapter, parsed.issues, round + 1)).trim();
       if (!repaired || repaired === chapter.trim()) {
-        if (input.acceptRemainingIssues) return { chapter, reviews, repairRounds: round, acceptedWithIssues: true };
         throw new Error("Automatic chapter repair produced no change. Story state was not updated.");
       }
       chapter = repaired;
