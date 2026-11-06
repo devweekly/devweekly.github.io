@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.output/*/workbench/
 .env
 
 # 原始语料：唯一不入库的内容（约 5.9MB，可由外部来源重新获取）
