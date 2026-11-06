@@ -174,7 +174,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   );
   const creativeContext = [
     "世界设定：", input.worldBible,
-    input.styleProfile ? "本项目叙事风格参考（仅作抽象创作参考，不模仿特定作者的独特表达；不得压过当前创意与文学表达）：\\n" + input.styleProfile : "",
+    input.styleProfile ? "本项目叙事风格参考（仅作抽象创作参考，不模仿特定作者的独特表达；不得压过当前创意与文学表达）：\n" + input.styleProfile : "",
     "当前位置：", state.currentPosition,
     input.contextText ? "前情摘要：\n" + input.contextText : "",
     input.writingBrief ? "相关既成事实、人物和未收线：\n" + input.writingBrief : "",
@@ -182,7 +182,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     input.brief ? "本次创作任务：\n" + input.brief : ""
   ].filter(Boolean).join("\n\n");
   const dialogueContext = [
-    input.styleProfile ? "本项目叙事风格参考（仅作抽象参考，不模仿特定作者的独特表达；人物当下的情绪、关系和场景需要优先）：\\n" + input.styleProfile : "",
+    input.styleProfile ? "本项目叙事风格参考（仅作抽象参考，不模仿特定作者的独特表达；人物当下的情绪、关系和场景需要优先）：\n" + input.styleProfile : "",
     "当前位置：", state.currentPosition,
     "本章涉及的人物当前状态：", JSON.stringify(relevantCharacters, null, 2),
     "本章涉及的情节线：", JSON.stringify(relevantThreads, null, 2),
