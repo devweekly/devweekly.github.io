@@ -44,7 +44,6 @@ export async function runRoleplaySandbox(input: RoleplaySandboxInput): Promise<s
   const terminal = createInterface({ input: stdin, output: stdout });
   const transcript: string[] = [];
   let authorDirection = "";
-  let retry = false;
   try {
     for (;;) {
       const prompt = buildRoleplayPrompt({
@@ -61,19 +60,17 @@ export async function runRoleplaySandbox(input: RoleplaySandboxInput): Promise<s
       )).trim().toLowerCase();
       if (choice === "q") break;
       if (choice === "r") {
-        retry = true;
         authorDirection = "";
         continue;
       }
       if (choice === "e" || choice === "i") {
         const note = await terminal.question(choice === "e" ? "作者方向： " : "补充信息： ");
-        authorDirection = (choice === "e" ? "修改方向：" : "新增场景信息：") + note;
+        authorDirection = (choice === "e" ? "修改方向：" : "新增场景信息：") + note + (choice === "e" ? "\n上一轮候选内容（请在此基础上重新演绎，不要照抄）：\n" + output : "");
         if (choice === "i") transcript.push("【作者补充】" + note);
         continue;
       }
       transcript.push("【推演轮次 " + (transcript.length + 1) + "】\n" + output);
       authorDirection = "";
-      retry = false;
     }
     return [
       "# 角色互动推演记录",
