@@ -25,7 +25,7 @@ function worldDir(id:string):string{return path.resolve("worlds",id);}
 function assertInsideWorld(id:string):void{if(!worldDir(id).startsWith(path.resolve("worlds")+path.sep))throw Object.assign(new Error("Invalid world path."),{status:400});}
 async function listWorlds():Promise<Array<{id:string;title:string;hasStoryPlan:boolean}>>{
  const root=path.resolve("worlds");let entries:string[];try{entries=await readdir(root);}catch{return [];}
- const result=[];for(const id of entries.filter(x=>/^[a-z0-9][a-z0-9-]*$/i.test(x))){try{const bible=await readFile(path.join(root,id,"world-bible.md"),"utf8");const plan=await loadStoryPlan(path.join(root,id,"story-plan.json"),id);const title=bible.split("\n").find(x=>x.startsWith("# "))?.slice(2).trim()||id;result.push({id,title,hasStoryPlan:Boolean(plan)});}catch{/* Ignore non-world folders and invalid world metadata. */}}
+ const result=[];for(const id of entries.filter(x=>/^[a-z0-9][a-z0-9-]*$/i.test(x))){try{const bible=await readFile(path.join(root,id,"world-bible.md"),"utf8");let plan;try{plan=await loadStoryPlan(path.join(root,id,"story-plan.json"),id);}catch(error){console.warn("[workbench] Invalid Story Plan for "+id,error);}const title=bible.split("\n").find(x=>x.startsWith("# "))?.slice(2).trim()||id;result.push({id,title,hasStoryPlan:Boolean(plan)});}catch{/* Ignore non-world folders and invalid world metadata. */}}
  return result;
 }
 function sendError(res:Response,error:unknown):void{const status=Number((error as {status?:number})?.status)||500;res.status(status).json({error:error instanceof Error?error.message:String(error)});}
