@@ -126,6 +126,7 @@ test("plot thread merge key deduplicates exact source spans but preserves same-t
   assert.equal(plotThreadMergeKey("金家灭门与冥扎下落", ["V01-C001", "V01-C002"]), plotThreadMergeKey("金家灭门与冥扎下落", ["V01-C002", "V01-C001"]));
   assert.notEqual(plotThreadMergeKey("金家灭门与冥扎下落", ["V01-C001"]), plotThreadMergeKey("金家灭门与冥扎下落", ["V02-C001"]));
   assert.notEqual(plotThreadId("金家灭门与冥扎下落", ["V01-C001"]), plotThreadId("金家灭门与冥扎下落", ["V02-C001"]));
+  assert.notEqual(plotThreadMergeKey("金家灭门与冥扎下落", ["V01-C001"], ["金家灭门"]), plotThreadMergeKey("金家灭门与冥扎下落", ["V01-C001"], ["冥扎下落"]));
 });
 
 
