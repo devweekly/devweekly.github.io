@@ -9,7 +9,6 @@ async function atomicJson(path:string,value:unknown):Promise<void>{await mkdir(d
 function root(worldId:string):string{return join(process.cwd(),".output",worldId,"workbench");}
 function runPath(worldId:string,id:string):string{return join(root(worldId),"runs",id+".json");}
 function candidatePath(worldId:string,id:string):string{return join(root(worldId),"candidates",id+".json");}
-function decisionsPath(worldId:string):string{return join(root(worldId),"decisions.jsonl");}
 export async function saveRun(run:WorkbenchRun):Promise<void>{await atomicJson(runPath(run.worldId,run.id),run);}
 export async function getRun(worldId:string,id:string):Promise<WorkbenchRun|undefined>{return readJson<WorkbenchRun|undefined>(runPath(worldId,id),undefined);}
 export async function listRuns(worldId:string):Promise<WorkbenchRun[]>{const dir=join(root(worldId),"runs");try{const names=await readdir(dir);const rows=await Promise.all(names.filter(x=>x.endsWith(".json")).map(x=>readJson<WorkbenchRun|undefined>(join(dir,x),undefined)));return rows.filter((x):x is WorkbenchRun=>Boolean(x)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));}catch(error){if((error as NodeJS.ErrnoException).code==="ENOENT")return [];throw error;}}
