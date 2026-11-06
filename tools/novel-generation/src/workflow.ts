@@ -16,7 +16,6 @@ export interface WriteWorkflowInput {
   brief: string;
   worldBible: string;
   styleProfile?: string;
-  styleRhythm?: string;
   sourceText?: string;
   contextText?: string;
   retrievedContext?: string;
