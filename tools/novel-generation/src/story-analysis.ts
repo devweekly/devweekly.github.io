@@ -419,8 +419,8 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
   }
   const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, options.maxChars ?? 14_000));
   await mkdir(cacheDir, { recursive: true });
-  // v5 adds story-core and MacGuffin extraction; older batch responses cannot satisfy its schema semantically.
-  // Keep previous caches untouched and re-analyze with the v5 prompt.
+  // v6 adds evolving relationship dynamics and main/subplot classification.
+  // Older batch responses cannot satisfy its schema semantically; keep them untouched and re-analyze.
   const cachePath = (batch: AnalysisBatch): string => join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
   const shard = options.shard;
   if (shard && (!Number.isInteger(shard.count) || shard.count < 1 || shard.count > 16 || !Number.isInteger(shard.index) || shard.index < 0 || shard.index >= shard.count)) {
