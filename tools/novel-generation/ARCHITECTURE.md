@@ -3,11 +3,11 @@
 > 本文描述 `tools/novel-generation` 当前代码的真实执行路径，并给出以“全自动续写、无人为编辑”为默认目标的目标架构。  
 > 代码核对范围：`src/cli.ts`、`src/workflow.ts`、`src/long-chapter.ts`、`src/generate.ts`、`src/story-state.ts`、`src/database.ts`、`src/library.ts`、`src/analysis.ts`、`scripts/compare-models.mjs`。
 
-> 流程先以编号步骤说明，未嵌入 Mermaid；独立 HTML/SVG 图形版待确认项目图表风格后补充。
+> 流程说明以实际执行路径为准；人工审核仅作为可选的事后观察和干预，不是常规执行门禁。
 
 ## 1. 设计目标与运行原则
 
-续写从输入创作任务开始，到章节正文、人物/事件/情节线状态持久化结束，默认由系统自动完成。人工不参与常规提纲选择、正文编辑、对白修改、风格修订、连续性确认或状态确认。
+续写从输入创作任务开始，到章节正文、人物/事件/情节线状态持久化结束，默认由系统自动完成。人工不参与常规提纲选择、正文编辑、对白修改、风格修订、连续性确认或状态确认；工作台不设置必须点击才能继续的常规审批状态。
 
 1. **自动推进**：规划、生成、审查、必要修复、状态更新按依赖顺序自动运行，不等待人工点击。
 2. **文学性、文笔、艺术风格高于其他一切**：这是小说创作的最高原则，不与连续性、证据、结构、覆盖率或工程指标并列。分析、检索、状态、数据库和审查都只是幕后辅助；发生冲突时，优先保留文学表达、人物生命力、情绪感染力、场景吸引力和阅读体验。连续性只保护明确事实，不把创作变成考据、证明或设定审计。
@@ -95,7 +95,7 @@
 
 万字流程在逐场修订后增加完整章节的跨场终审。blocker/major 定位到受影响场景，局部修复后重新审查全章，最多两轮。节奏指标仅离线观察，不进入正式写作提示、章节验收或自动修复；不替代文学判断。
 
-主要阶段文件：`01-scene-blueprint.md`、`00-scene-XX-retrieval.md`、`02-scene-XX.md`、`03-draft.md`、`04-continuity-review.md`、`05-polish-XX.md`、`chapter.md`、`06-rhythm-metrics.json`、`07-state-update.json`、`08-final-review.md`、`08-quality-summary.json`。终审两轮仍阻断时另存 `chapter-needs-review.md`，摘要状态为 `needs_human_review`；人工放行后摘要为 `accepted_with_issues`。
+主要阶段文件：`01-scene-blueprint.md`、`00-scene-XX-retrieval.md`、`02-scene-XX.md`、`03-draft.md`、`04-continuity-review.md`、`05-polish-XX.md`、`chapter.md`、`06-rhythm-metrics.json`、`07-state-update.json`、`08-final-review.md`、`08-quality-summary.json`。终审两轮仍存在明确硬伤时保存 `chapter-needs-review.md` 和诊断摘要，当前运行安全失败且不提交故事状态；这属于自动化无法安全完成时的异常终止，不创建等待人工批准的常规队列。修复问题后可重新运行或从 checkpoint 恢复。
 
 ## 5. 全自动目标闭环
 
@@ -285,3 +285,10 @@ Web 工作台作为 CLI 之外的本地交互入口，不改变既有章节 CLI 
 - 审批时比较候选生成时的 `baseUpdatedAt` 与当前正式规划版本；并发或过期候选返回 409，要求重新查看差异，避免静默覆盖。
 - 服务默认只监听 loopback。开发启动：`npm run dev:web`；生产构建：`npm run build`；生产启动：`npm run start:web`。
 - 目前 Web UI 只管理 Story Plan 候选，不会拦截现有 `write` / `write-long` 的自动 Story State 提交。章节审核、章节版本管理和 Story State 提案的批准提交属于下一阶段，完成前不能将章节写作描述为人工审批流程。
+
+
+## 10. 人工介入边界（ADR 0003）
+
+默认路径必须自主完成。普通 Story Plan 生成校验后立即生效，旧版本自动归档；工作台只展示当前版本、历史版本和运行状态。人工检查、编辑或回滚是用户主动选择的管理操作，不得成为生成任务的前置条件。
+
+章节流程同样不等待人工 review。终审只处理会破坏故事成立的明确硬伤，自动修复轮数有限；达到上限仍失败时，任务安全失败、不提交故事状态并保留 checkpoint。只有系统无法安全恢复、权威状态发生不可调和冲突、数据损坏或不可逆/安全敏感操作，才请求人工介入。不得为了追求自动化而把未解决的 blocker 静默标记成功，也不得把普通运行结果放入必须审批才能继续的队列。
