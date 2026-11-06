@@ -141,6 +141,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   const common = [
     "世界设定：", input.worldBible,
     "当前故事状态（已有记录优先；不得擅自改写已确认事实）：", JSON.stringify(state, null, 2),
+    "事实来源说明：canonFacts.confidence=confirmed 表示原著已确认，inferred 表示基于原文的推断，original 表示项目原创。项目原创事实可在续写中承接，但不得伪装成原著事实。",
     input.contextText ? "用户补充的前文摘要：\n" + input.contextText : "",
     input.retrievedContext ? "本地资料库证据（用于核实事实，不得整段复制）：\n" + input.retrievedContext : "",
     input.storyAnalysisContext ? "既有小说分析参考（仅供启发，不是正史或写作清单）：\n" + input.storyAnalysisContext : "",
