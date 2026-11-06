@@ -21,7 +21,6 @@ export interface LongChapterInput {
   brief: string;
   worldBible: string;
   styleProfile?: string;
-  styleRhythm?: string;
   sourceText?: string;
   contextText?: string;
   storyAnalysisContext?: string;
