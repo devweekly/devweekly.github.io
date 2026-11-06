@@ -266,3 +266,6 @@ SQLite 继续作为唯一存储，新增 `story_graph_nodes` / `story_graph_edge
 SQLite 中的 `story_graph_nodes` / `story_graph_edges` 与 `story_analysis` 快照在同一事务中更新，避免快照与图谱处于不同版本。v6 新字段必须由 v6 Prompt 重新抽取；v3/v4/v5 缓存不得伪装成含有新字段的完整分析。审核包包含故事核心观察、MacGuffin、完整图谱（体积预算允许时）、图谱来源质量和跨章节均匀抽样的人物互动事件。
 
 写作和终审复用同一任务相关上下文，不增加专职 Agent。终审只检查明确硬冲突；不以人物弧光、伏笔兑现、支线推进或 MacGuffin 走向评判小说。
+
+
+故事图谱决策详见 [ADR 0002：统一故事图谱与写作/终审上下文](ADR/0002-story-graph-and-review-context.md)。
