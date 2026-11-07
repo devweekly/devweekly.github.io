@@ -10,7 +10,7 @@ import { DatabaseSync } from "node:sqlite";
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import type { StoryState } from "./story-state.js";
-export interface DatabaseStatus { path:string; schemaVersion:number; statePath:string; stateSchemaVersion:number; annotations:number; entities:number; entityMentions:number; characters:number; canonFacts:number; events:number; plotThreads:number; storyAnalysis:number; novelChapters:number; novelCharacters:number; novelMentions:number; novelThreads:number; novelForeshadowings:number; novelBeats:number; novelRelations:number; novelArcs:number; novelCharacterProfiles:number; }
+export interface DatabaseStatus { path:string; schemaVersion:number; statePath:string; stateSchemaVersion:number; annotations:number; entities:number; entityMentions:number; characters:number; canonFacts:number; events:number; plotThreads:number; storyAnalysis:number; novelChapters:number; novelCharacters:number; novelMentions:number; novelThreads:number; novelForeshadowings:number; novelBeats:number; novelRelations:number; novelArcs:number; novelCharacterProfiles:number; novelCharacterChapterStates:number; }
 /** Concurrent shards and reader processes compete for the write lock; wait instead of failing. */
 function retryBusy<T>(work:()=>T,attempts = SQLITE_BUSY_RETRY_ATTEMPTS):T{
  for(let attempt=0;;attempt++){
@@ -244,7 +244,7 @@ export function databaseStatus(worldDir:string,worldId:string):DatabaseStatus{
   return {path:join(worldDir,KNOWLEDGE_DATABASE_FILE),schemaVersion:version(knowledge),
    statePath:join(worldDir,STATE_DATABASE_FILE),stateSchemaVersion:version(state),
    annotations:count(knowledge,"annotations"),entities:count(knowledge,"entities"),entityMentions:count(knowledge,"entity_mentions"),
-   storyAnalysis:count(knowledge,"story_analysis"),novelChapters:count(knowledge,"novel_chapters"),novelCharacters:count(knowledge,"novel_characters"),novelMentions:count(knowledge,"novel_mentions"),novelThreads:count(knowledge,"novel_plot_threads"),novelForeshadowings:count(knowledge,"novel_foreshadowings"),novelBeats:count(knowledge,"novel_beats"),novelRelations:count(knowledge,"novel_relations"),novelArcs:count(knowledge,"novel_arcs"),novelCharacterProfiles:count(knowledge,"novel_character_profiles"),
+   storyAnalysis:count(knowledge,"story_analysis"),novelChapters:count(knowledge,"novel_chapters"),novelCharacters:count(knowledge,"novel_characters"),novelMentions:count(knowledge,"novel_mentions"),novelThreads:count(knowledge,"novel_plot_threads"),novelForeshadowings:count(knowledge,"novel_foreshadowings"),novelBeats:count(knowledge,"novel_beats"),novelRelations:count(knowledge,"novel_relations"),novelArcs:count(knowledge,"novel_arcs"),novelCharacterProfiles:count(knowledge,"novel_character_profiles"),novelCharacterChapterStates:count(knowledge,"novel_character_chapter_states"),
    characters:count(state,"characters"),canonFacts:count(state,"canon_facts"),events:count(state,"story_events"),plotThreads:count(state,"plot_threads")};
  }finally{knowledge.close();state.close();}
 }
