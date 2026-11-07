@@ -247,7 +247,7 @@ async function main(): Promise<void> {
     const query = (arg("--query") ?? "").trim().toLocaleLowerCase();
     const limit = Number(arg("--limit") ?? 100);
     if (!Number.isInteger(limit) || limit < 1 || limit > 5000) throw new Error("--limit must be between 1 and 5000.");
-    const matches = (value: unknown): boolean => !query || JSON.stringify(value).toLocaleLowerCase().includes(query);
+    const matches = (value: unknown): boolean => !query || JSON.stringify(value ?? null).toLocaleLowerCase().includes(query);
     const take = <T,>(items: T[]): T[] => items.filter(matches).slice(0, limit);
     if (type === "overview") {
       console.log(JSON.stringify({
