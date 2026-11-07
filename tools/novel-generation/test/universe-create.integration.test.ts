@@ -15,6 +15,7 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
   const source = join(root, "worlds", "source-world");
   await mkdir(join(source, "library"), { recursive: true });
   await writeFile(join(source, "world-bible.md"), "# Test World\n");
+  await writeFile(join(source, "original.txt"), "第一章正文\\n第二章正文\\n未来剧情泄漏标记", "utf8");
   await writeFile(join(source, "world-bible-full.md"), "source setting");
   await writeFile(join(source, "characters.md"), "全书人物画像：未来剧情泄漏标记");
   await writeFile(join(source, "timeline.md"), "未来时间线泄漏标记");
