@@ -27,7 +27,7 @@ function execWithRetry(db:DatabaseSync,sql:string):void{ retryBusy(()=>db.exec(s
 const KNOWLEDGE_DATABASE_FILE="novel.db";
 const STATE_DATABASE_FILE="story.db";
 /** 知识库结构版本：只有 ingest / analyze 会改它。 */
-const KNOWLEDGE_SCHEMA_VERSION=7;
+const KNOWLEDGE_SCHEMA_VERSION=8;
 /** v6 之前的库把分片文本整份复制进来，与 library/index.json 重复；升级时删掉。 */
 const LEGACY_CHUNK_TABLES=["library_chunks"];
 /** 图谱是快照 `storyGraph` 的规范化副本，只被写入、没有任何读者；v7 起只保留快照里的那份。 */
@@ -128,6 +128,7 @@ function openKnowledgeDatabase(worldDir:string,worldId:string):DatabaseSync {
  "CREATE TABLE IF NOT EXISTS novel_relations(relation_id TEXT PRIMARY KEY,from_name TEXT NOT NULL,to_name TEXT NOT NULL,label TEXT NOT NULL DEFAULT '',evidence TEXT NOT NULL DEFAULT '',chapter_ordinal INTEGER);CREATE INDEX IF NOT EXISTS idx_novel_relations_from ON novel_relations(from_name);"+
  "CREATE TABLE IF NOT EXISTS novel_character_profiles(character_id TEXT PRIMARY KEY,name TEXT NOT NULL,summary TEXT NOT NULL DEFAULT '',stages_json TEXT NOT NULL DEFAULT '[]',traits_json TEXT NOT NULL DEFAULT '[]',contradictions_json TEXT NOT NULL DEFAULT '[]',arc_json TEXT NOT NULL DEFAULT '[]',observation_count INTEGER NOT NULL DEFAULT 0,model TEXT NOT NULL DEFAULT '',generated_at TEXT NOT NULL);"+
  "CREATE INDEX IF NOT EXISTS idx_novel_character_profiles_name ON novel_character_profiles(name);"+
+ "CREATE TABLE IF NOT EXISTS novel_character_chapter_states(character_id TEXT NOT NULL,name TEXT NOT NULL,chapter_id TEXT NOT NULL,chapter_ordinal INTEGER NOT NULL,chapter_title TEXT NOT NULL,volume INTEGER NOT NULL,source_hash TEXT NOT NULL,model TEXT NOT NULL,generated_at TEXT NOT NULL,payload_json TEXT NOT NULL,PRIMARY KEY(character_id,chapter_id));CREATE INDEX IF NOT EXISTS idx_character_chapter_states_chapter ON novel_character_chapter_states(chapter_ordinal);"+
  "CREATE TABLE IF NOT EXISTS novel_arcs(volume INTEGER PRIMARY KEY,title TEXT NOT NULL DEFAULT '',summary TEXT NOT NULL DEFAULT '',key_turns_json TEXT NOT NULL DEFAULT '[]',characters_json TEXT NOT NULL DEFAULT '[]',generated_at TEXT NOT NULL);");
  const version=Number((db.prepare("PRAGMA user_version").get() as {user_version:number}).user_version);
  if(version>KNOWLEDGE_SCHEMA_VERSION){db.close();throw new Error("Novel database schema is newer than this application supports: "+version);}
@@ -337,6 +338,32 @@ export function listNovelCharacterObservations(worldDir:string,worldId:string,op
   const rows=db.prepare("SELECT character_id AS characterId,name,aliases_json,role,bio,first_chapter AS firstChapter,last_chapter AS lastChapter,mention_total AS mentionTotal,personality_json,desires_json,contradictions_json,arc_json FROM novel_characters WHERE mention_total>=? ORDER BY mention_total DESC, name LIMIT ?").all(minMentions,limit) as Array<Record<string,unknown> & {aliases_json:string;personality_json:string;desires_json:string;contradictions_json:string;arc_json:string}>;
   const parse=(value:string)=>{try{const parsed=JSON.parse(value) as unknown;return Array.isArray(parsed)?parsed.filter((item):item is string=>typeof item==="string"):[];}catch{return [];}};
   return rows.map(row=>({...row,aliases:parse(row.aliases_json),personality:parse(row.personality_json),desires:parse(row.desires_json),contradictions:parse(row.contradictions_json),arc:parse(row.arc_json),aliases_json:undefined,personality_json:undefined,desires_json:undefined,contradictions_json:undefined,arc_json:undefined} as unknown as NovelCharacterObservationRow));
+ }finally{db.close();}
+}
+
+export interface NovelCharacterChapterStateRow {
+ characterId:string; name:string; chapterId:string; chapterOrdinal:number; chapterTitle:string; volume:number;
+ sourceHash:string; model:string; generatedAt:string;
+ behavior:string[]; goals:string[]; knowledge:string[]; relationships:string[]; resources:string[];
+ situation:string; changes:string[]; evidence:string[]; uncertainty:string[];
+}
+export function syncNovelCharacterChapterStates(worldDir:string,worldId:string,rows:NovelCharacterChapterStateRow[]):void{
+ if(!rows.length)return;
+ const db=openKnowledgeDatabase(worldDir,worldId);try{transaction(db,()=>{
+  const q=db.prepare("INSERT INTO novel_character_chapter_states(character_id,name,chapter_id,chapter_ordinal,chapter_title,volume,source_hash,model,generated_at,payload_json) VALUES(?,?,?,?,?,?,?,?,?,?) ON CONFLICT(character_id,chapter_id) DO UPDATE SET name=excluded.name,chapter_ordinal=excluded.chapter_ordinal,chapter_title=excluded.chapter_title,volume=excluded.volume,source_hash=excluded.source_hash,model=excluded.model,generated_at=excluded.generated_at,payload_json=excluded.payload_json");
+  for(const row of rows)q.run(row.characterId,row.name,row.chapterId,row.chapterOrdinal,row.chapterTitle,row.volume,row.sourceHash,row.model,row.generatedAt,JSON.stringify(row));
+ });}finally{db.close();}
+}
+export function listNovelCharacterChapterStates(worldDir:string,worldId:string,options:{characterId?:string;name?:string;fromOrdinal?:number;toOrdinal?:number;limit?:number}={}):NovelCharacterChapterStateRow[]{
+ const db=openKnowledgeDatabase(worldDir,worldId);try{
+  const rows=db.prepare("SELECT payload_json FROM novel_character_chapter_states WHERE (?='' OR character_id=?) AND (?='' OR name=?) AND (?<0 OR chapter_ordinal>=?) AND (?<0 OR chapter_ordinal<=?) ORDER BY chapter_ordinal DESC LIMIT ?").all(options.characterId??"",options.characterId??"",options.name??"",options.name??"",options.fromOrdinal??-1,options.fromOrdinal??-1,options.toOrdinal??-1,options.toOrdinal??-1,options.limit??5000) as Array<{payload_json:string}>;
+  return rows.map(row=>JSON.parse(row.payload_json) as NovelCharacterChapterStateRow);
+ }finally{db.close();}
+}
+export function listNovelCharacterChapterStateHashes(worldDir:string,worldId:string):Map<string,string>{
+ const db=openKnowledgeDatabase(worldDir,worldId);try{
+  const rows=db.prepare("SELECT character_id,chapter_id,source_hash FROM novel_character_chapter_states").all() as Array<{character_id:string;chapter_id:string;source_hash:string}>;
+  return new Map(rows.map(row=>[row.character_id+"\\0"+row.chapter_id,row.source_hash]));
  }finally{db.close();}
 }
 
