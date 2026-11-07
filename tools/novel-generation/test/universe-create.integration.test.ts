@@ -18,6 +18,15 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
   await writeFile(join(source, "timeline.md"), "未来时间线泄漏标记");
   await mkdir(join(source, "analysis"), { recursive: true });
   await writeFile(join(source, "analysis", "whole-book.json"), "未来素材泄漏标记");
+  await mkdir(join(root, "analysis", "source-world"), { recursive: true });
+  await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify({
+    schemaVersion: 2, totalLines: 300,
+    volumes: [{ volume: 1, chapters: [
+      { sequenceInVolume: 1, printedNumber: 1, title: "第一章", label: "第一章", line: 1 },
+      { sequenceInVolume: 2, printedNumber: 2, title: "第二章", label: "第二章", line: 100 },
+      { sequenceInVolume: 3, printedNumber: 3, title: "第三章", label: "第三章", line: 200, futureMarker: "未来剧情泄漏标记" }
+    ] }]
+  }));
   await writeFile(join(source, "library", "index.json"), JSON.stringify({
     schemaVersion: 1, worldId: "source-world", createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
@@ -59,6 +68,9 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     const boundedIndex = JSON.parse(await readFile(join(universeDir, "library", "index.json"), "utf8")) as { chunks: Array<{ chapter: string; text: string }> };
     assert.deepEqual(boundedIndex.chunks.map(chunk => chunk.chapter), ["第一章", "第二章"]);
     assert.ok(!JSON.stringify(boundedIndex).includes("未来剧情泄漏标记"));
+    const boundedCatalog = JSON.parse(await readFile(join(root, "analysis", payload.universe.id, "chapter-index.json"), "utf8")) as { volumes: Array<{ chapters: Array<{ title: string; futureMarker?: string }> }> };
+    assert.deepEqual(boundedCatalog.volumes.flatMap(volume => volume.chapters.map(chapter => chapter.title)), ["第一章", "第二章"]);
+    assert.ok(!JSON.stringify(boundedCatalog).includes("未来剧情泄漏标记"));
     assert.equal(await readFile(join(universeDir, "characters.md"), "utf8").catch(() => ""), "");
     assert.equal(await readFile(join(universeDir, "timeline.md"), "utf8").catch(() => ""), "");
     assert.equal(await readFile(join(universeDir, "analysis", "whole-book.json"), "utf8").catch(() => ""), "");
