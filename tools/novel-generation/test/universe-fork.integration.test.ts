@@ -21,7 +21,26 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
   try {
     process.chdir(root);
     await mkdir(join(parentDir, "library"), { recursive: true });
+    await mkdir(join(root, "worlds", "source-world", "library"), { recursive: true });
+    await mkdir(join(root, "analysis", "source-world"), { recursive: true });
     await mkdir(outputDir, { recursive: true });
+    await writeFile(join(root, "worlds", "source-world", "library", "index.json"), JSON.stringify({
+      schemaVersion: 1, worldId: "source-world", createdAt: "2026-11-01T00:00:00.000Z",
+      updatedAt: "2026-11-01T00:00:00.000Z",
+      chunks: [
+        { chapter: "原文第一章", chunkIndex: 0, start: 0, end: 6, text: "此前正文" },
+        { chapter: "原文第二章", chunkIndex: 0, start: 0, end: 6, text: "起点正文" },
+        { chapter: "原文第三章", chunkIndex: 0, start: 0, end: 6, text: "未来原文" }
+      ]
+    }));
+    await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify({
+      schemaVersion: 1, totalLines: 300,
+      volumes: [{ volume: 1, chapters: [
+        { sequenceInVolume: 1, printedNumber: 1, title: "原文第一章", label: "原文第一章", line: 1 },
+        { sequenceInVolume: 2, printedNumber: 2, title: "原文第二章", label: "原文第二章", line: 100 },
+        { sequenceInVolume: 3, printedNumber: 3, title: "原文第三章", label: "原文第三章", line: 200 }
+      ] }]
+    }));
     await writeFile(join(parentDir, "world-bible.md"), "# Test universe\n");
     await writeFile(join(parentDir, "universe.json"), JSON.stringify({
       id: parentId, sourceWorldId: "source-world", name: "父宇宙", type: "free",
