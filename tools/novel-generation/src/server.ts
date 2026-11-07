@@ -211,9 +211,14 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
       state.status = "running";
       const universe = await readUniverse(worldId);
       const existingAnalysis = readStoryAnalysis(worldDir(worldId), worldId) as (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined;
+      const hasReusableFacts = Boolean(existingAnalysis && (
+        existingAnalysis.characters.length || existingAnalysis.plotThreads.length || existingAnalysis.foreshadowings.length ||
+        (existingAnalysis.relations?.length ?? 0) || (existingAnalysis.macguffins?.length ?? 0) ||
+        Object.keys(existingAnalysis.storyCore ?? {}).length || (existingAnalysis.storyGraph?.nodes.length ?? 0)
+      ));
       const reusableBoundedAnalysis = Boolean(
         universe && existingAnalysis?.analysisVersion === 6 && existingAnalysis.complete === true &&
-        existingAnalysis.asOfEntryChapter === universe.entryChapter
+        existingAnalysis.asOfEntryChapter === universe.entryChapter && hasReusableFacts
       );
       for (const step of KNOWLEDGE_BUILD_STEPS) {
         if (step.name === "story-analysis" && reusableBoundedAnalysis) {
