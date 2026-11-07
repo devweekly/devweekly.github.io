@@ -31,6 +31,8 @@ type WorldIdParams = { worldId: string };
 type NamedParams = { worldId: string; name: string };
 type ReferenceVersionParams = { worldId: string; name: string; version: string };
 
+let backgroundUniverseAnalysisEnabled = true;
+
 const app = express();
 app.disable("x-powered-by");
 
@@ -549,7 +551,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     // Rebuild the historical story graph asynchronously from this universe's bounded corpus.
     // Analysis is enrichment only: model/runtime failure must never block the first chapter.
     let analysisJob = null;
-    try { analysisJob = await startUniverseAnalysisRebuild(id, entryChapter); }
+    try { if (backgroundUniverseAnalysisEnabled) analysisJob = await startUniverseAnalysisRebuild(id, entryChapter); }
     catch (analysisError) { console.error("[universe-analysis] unable to enqueue as-of analysis:", analysisError); }
     res.status(201).json({ universe, analysisJob });
     });
@@ -686,7 +688,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     }
     await rename(stagingDir, targetDir);
     let analysisJob = null;
-    try { analysisJob = await startUniverseAnalysisRebuild(id, parent.entryChapter); }
+    try { if (backgroundUniverseAnalysisEnabled) analysisJob = await startUniverseAnalysisRebuild(id, parent.entryChapter); }
     catch (analysisError) { console.error("[universe-analysis] unable to enqueue fork analysis:", analysisError); }
     res.status(201).json({ universe, forkedAt: forkRun.id, analysisJob });
     });
@@ -1127,7 +1129,8 @@ app.post("/api/worlds/:worldId/story-plan/generate", async (req, res) => {
 /** 顶层兜底：路由处理器之外抛出的异常也映射成统一的 JSON 错误。 */
 app.use((error: unknown, _req: Request<WorldIdParams>, res: Response, _next: NextFunction) => sendError(res, error));
 
-export function createApp() {
+export function createApp(options: { backgroundUniverseAnalysis?: boolean } = {}) {
+  backgroundUniverseAnalysisEnabled = options.backgroundUniverseAnalysis ?? true;
   return app;
 }
 
