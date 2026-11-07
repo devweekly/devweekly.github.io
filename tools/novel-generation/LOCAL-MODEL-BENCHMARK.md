@@ -57,6 +57,9 @@ npm run benchmark-local-models -- --chat-models "" --embedding-models "text-embe
 
 Embedding 当前使用原文片段前缀作为查询、完整片段作为候选。这只验证模型、维度和检索链路的基本行为，不等同于人工标注的语义检索 benchmark。若要严谨比较中文小说语义检索质量，后续应建立人工标注的“问题—相关段落—困难负例”数据集。
 
+
+当前模型清单没有 Reranker，因此脚本不虚构 Reranker 测试。后续若增加 Cross-Encoder/Reranker 模型，再补充带人工相关性标签的排序集；Embedding 自检不能替代 Reranker 评测。
+
 ## 输出
 
 结果保存在 .output/<world>/local-model-benchmark/<run-id>/：
