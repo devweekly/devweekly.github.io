@@ -708,7 +708,7 @@ GET  /api/worlds/<universe-id>/knowledge-build
 
 任务按顺序运行 `analyze-story`、`analyze-arcs`、`ensure-style-profile`、`analyze-profiles`、`analyze-character-states`、`analyze-corpus-craft`、`export-asof-dossier` 和 `vane-index`。如果原著项目已有完整 v6 故事分析，Create/Fork 会将其按章节来源严格截断后写入新宇宙；起点一致且快照完整时直接复用，跳过耗时的全文 LLM 分析。`ensure-style-profile` 只在当前宇宙缺少 Style Profile 时，从本宇宙按起点截断的章节样本重建，不覆盖用户已有的人工风格资料。Create/Fork 默认自动启动该后台任务，创建接口可通过 `buildKnowledge:false` 显式关闭；知识构建与章节生成可并行：知识库写入 `novel.db`，章节状态提交写入独立的 `story.db`，不再以整套知识资料完成作为写作前置条件。状态与各步骤日志摘要保存在 `.output/<world>/workbench/knowledge-build.json`。任务重启中断会被标记为失败，可重新触发。Vane 原生包未安装时，知识构建将该可选步骤标记为 skipped，而不是把整个知识构建标成失败；已配置 embedding endpoint 但请求失败或维度不匹配时，该步骤明确失败。两种情况都不影响 SQLite/BM25 写作路径。
 
-Chapter Studio 已提供显式构建入口和逐步骤状态面板，并每 2 秒轮询任务状态。构建不是创建宇宙时自动触发的：人物逐章状态分析会写入 novel.db，必须避免与章节写作并发。服务端会串行协调构建请求，并拒绝在章节运行中启动构建；构建期间也会拒绝启动章节生成、归档或分叉。归档宇宙不能启动构建。
+Chapter Studio 已提供显式构建入口和逐步骤状态面板，并每 2 秒轮询任务状态。Create/Fork 默认自动触发后台构建；构建期间仍可直接生成章节。分析写入 novel.db，章节状态写入独立的 story.db，因此不需要等待分析完成。归档和 fork 仍与构建互斥，避免复制或变更正在写入的宇宙目录。
 
 
 历史宇宙不会复制原文项目的全书 world-bible.md。Create/Fork 会为每个宇宙生成自己的最小 world-bible.md，记录原文起点、父宇宙/分叉信息、正史边界和创作方向，并明确指向本地截断后的 universe-entry.md 与 universe-origin-context.md。这样既避免全书设定中的未来剧情泄漏，也满足章节生成流程对 world-bible.md 的运行要求。
