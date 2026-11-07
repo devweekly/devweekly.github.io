@@ -66,11 +66,14 @@ test("historical snapshot retains only chapter evidence through the selected ent
     const analysis = JSON.parse(String(rows(f.databasePath, "SELECT payload_json FROM story_analysis")[0]?.payload_json)) as Record<string, any>;
     assert.equal(analysis.worldId, "universe-one");
     assert.equal(analysis.asOfEntryChapter, "第二章");
+    assert.equal(analysis.asOfEntryChapterId, "c2");
+    assert.equal(analysis.asOfEntryOrdinal, 2);
     assert.equal(analysis.chapters, 2);
     assert.deepEqual(analysis.characters.map((item: any) => item.name), ["甲"]);
     assert.deepEqual(analysis.plotThreads.map((item: any) => item.title), ["安全主线"]);
     assert.deepEqual(analysis.storyCoreObservations.map((item: any) => item.centralQuestion), ["安全问题"]);
     assert.deepEqual(analysis.storyCore.observations.map((item: any) => item.centralQuestion), ["安全问题"]);
+    assert.equal("centralConflict" in analysis.storyCore, false);
     assert.deepEqual(analysis.storyGraph.nodes.map((item: any) => item.id), ["safe"]);
     assert.deepEqual(rows(f.databasePath, "SELECT character_id FROM novel_characters"), [{ character_id: "char1" }]);
     assert.deepEqual(rows(f.databasePath, "SELECT thread_id FROM novel_plot_threads"), [{ thread_id: "thread1" }]);
@@ -157,5 +160,24 @@ test("stable chapter id wins even when the displayed title is not unique", () =>
       db.prepare("INSERT INTO novel_chapters VALUES('c4','第一章',4,4)").run();
     } finally { db.close(); }
     assert.equal(restrictKnowledgeDatabaseToEntry(f.databasePath, "universe-id", "第一章", "c1"), 1);
+  } finally { f.close(); }
+});
+
+
+test("whole-book storyCore text without bounded observations is discarded", () => {
+  const f = fixture();
+  try {
+    const db = new DatabaseSync(f.databasePath);
+    try {
+      db.prepare("UPDATE story_analysis SET payload_json=? WHERE singleton=1").run(JSON.stringify({
+        analysisVersion: 6, complete: true, sourceHash: "full",
+        characters: [], plotThreads: [], foreshadowings: [], relations: [], macguffins: [],
+        storyCore: { centralConflict: "第五卷之后才揭示的真相" },
+        storyCoreObservations: [{ centralQuestion: "安全问题", chapterKeys: ["c1"] }]
+      }));
+    } finally { db.close(); }
+    restrictKnowledgeDatabaseToEntry(f.databasePath, "bounded", "第一章", "c1");
+    const snapshot = JSON.parse(String(rows(f.databasePath, "SELECT payload_json FROM story_analysis")[0]?.payload_json)) as any;
+    assert.deepEqual(snapshot.storyCore, { observations: [{ centralQuestion: "安全问题", chapterKeys: ["c1"] }] });
   } finally { f.close(); }
 });
