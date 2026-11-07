@@ -48,6 +48,18 @@
       "outputFile": "06b-anti-ai-edited.md",
       "outputHash": "cdae0917862bfb71d6c0f1ff90530de25b746524e83349631fc88175d8d6639c",
       "completedAt": "2026-11-07T14:25:03.124Z"
+    },
+    "anti-ai-verification": {
+      "inputHash": "0bb13b4a2ead03c31bc5a04d48cfd3505181a06a8604be9bd9ffaaf646296824",
+      "outputFile": "06c-anti-ai-verification.json",
+      "outputHash": "95d7b7479f979a6286951bc2ae38cb6cba097790a90ba5957bc3724cc1f1d604",
+      "completedAt": "2026-11-07T14:25:33.802Z"
+    },
+    "quality-review-1": {
+      "inputHash": "357a6c2124cd0b8b9ed6a3894a92c4ae2b4e706530570ecd94d3cbd3f3781353",
+      "outputFile": "07-review-round-1-raw.txt",
+      "outputHash": "11ed2c4881b3fe1fb5bbf120d13f0bdcb432a784610c2bef7cbf29fc08110b60",
+      "completedAt": "2026-11-07T14:26:32.247Z"
     }
   }
 }
