@@ -240,6 +240,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
         const relative = path.relative(sourceDir, source).split(path.sep);
         if (!relative.length || relative[0] === "") return true;
         const first = relative[0];
+        if (!first) return true;
         if (["story.db", "story-state.json", "story-arc.md", "story-plan.json", ".output", "universes"].includes(first)) return false;
         if (first === "universe.json") return false;
         return true;
