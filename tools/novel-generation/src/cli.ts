@@ -213,10 +213,10 @@ async function main(): Promise<void> {
     } catch { /* report missing index below */ }
     try {
       const store = JSON.parse(await readFile(join(libraryDir, "annotations.json"), "utf8")) as {
-        annotations?: Array<{ evidenceReviews?: unknown[] }>; failures?: unknown[];
+        annotations?: Array<{ chunkId?: string; evidenceReviews?: unknown[] }>; failures?: unknown[];
       };
       annotationFileAvailable = true;
-      reviewedAnnotations = (store.annotations ?? []).filter(item => Array.isArray(item.evidenceReviews)).length;
+      reviewedAnnotations = new Set((store.annotations ?? []).filter(item => item.chunkId && Array.isArray(item.evidenceReviews)).map(item => item.chunkId)).size;
       annotationFailures = (store.failures ?? []).length;
     } catch { /* report missing annotation store below */ }
     const v6Complete = Boolean(snapshot && snapshot.analysisVersion === 6 && snapshot.complete === true && snapshot.storyGraph);
