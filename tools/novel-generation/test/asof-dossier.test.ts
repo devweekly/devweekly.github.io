@@ -65,8 +65,10 @@ test("as-of dossier falls back to the consolidated story core when observations 
 
 test("as-of dossier publishes a complete directory and removes stale generated files", async () => {
   const root = await mkdtemp(join(tmpdir(), "asof-dossier-publish-"));
+  const previousCwd = process.cwd();
   const worldDir = join(root, "worlds", "u-child");
   try {
+    process.chdir(root);
     await mkdir(join(worldDir, "as-of-analysis"), { recursive: true });
     await writeFile(join(worldDir, "as-of-analysis", "stale-old-section.md"), "stale");
     const chapterText = "第一章正文：先验货籍，再放车马入城。";
@@ -112,6 +114,7 @@ test("as-of dossier publishes a complete directory and removes stale generated f
     const leftovers = (await readdir(worldDir)).filter(name => name.startsWith(".as-of-analysis."));
     assert.deepEqual(leftovers, []);
   } finally {
+    process.chdir(previousCwd);
     await rm(root, { recursive: true, force: true });
   }
 });
