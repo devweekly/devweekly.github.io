@@ -23,7 +23,7 @@ import { archiveStyleReference, listStyleReferenceHistory, listStyleReferences, 
 import { getCandidate, getRun, listCandidates, listRuns, recoverInterruptedRuns, saveCandidate, saveRun, type StoryPlanCandidate, type WorkbenchRun } from "./workbench-store.js";
 import type { StoryState } from "./story-state.js";
 import { buildUniverseOriginContext, buildUniverseWorldBible, rebaseStoryState, remapForkedRun, shouldCopyUniverseAsset } from "./universe-branch.js";
-import { restrictKnowledgeDatabaseToEntry } from "./source-canon-snapshot.js";
+import { importBoundedStoryAnalysisSnapshot, restrictKnowledgeDatabaseToEntry } from "./source-canon-snapshot.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
@@ -210,7 +210,11 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
       let failed = 0;
       state.status = "running";
       const universe = await readUniverse(worldId);
-      const existingAnalysis = readStoryAnalysis(worldDir(worldId), worldId) as (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined;
+      let existingAnalysis = readStoryAnalysis(worldDir(worldId), worldId) as (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined;
+      if (universe && !hasBoundedStoryAnalysis(existingAnalysis, universe.entryChapter)) {
+        await ensureUniverseStoryAnalysis(worldId, universe);
+        existingAnalysis = readStoryAnalysis(worldDir(worldId), worldId) as (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined;
+      }
       const hasReusableFacts = Boolean(existingAnalysis && (
         existingAnalysis.characters.length || existingAnalysis.plotThreads.length || existingAnalysis.foreshadowings.length ||
         (existingAnalysis.relations?.length ?? 0) || (existingAnalysis.macguffins?.length ?? 0) ||
@@ -368,6 +372,27 @@ async function readUniverse(id: string): Promise<StoryUniverse | null> {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
     throw error;
   }
+}
+
+function hasBoundedStoryAnalysis(
+  snapshot: (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined,
+  entryChapter: string
+): boolean {
+  return Boolean(snapshot?.analysisVersion === 6 && snapshot.complete === true && snapshot.asOfEntryChapter === entryChapter);
+}
+
+/** Existing universes created before bounded snapshot reuse can recover their source project's offline analysis. */
+async function ensureUniverseStoryAnalysis(worldId: string, universe: StoryUniverse): Promise<void> {
+  const current = readStoryAnalysis(worldDir(worldId), worldId) as (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined;
+  if (hasBoundedStoryAnalysis(current, universe.entryChapter)) return;
+  const source = readStoryAnalysis(worldDir(universe.sourceWorldId), universe.sourceWorldId);
+  if (!source || source.analysisVersion !== 6 || source.complete !== true) return;
+  importBoundedStoryAnalysisSnapshot(
+    path.join(worldDir(worldId), "novel.db"),
+    worldId,
+    universe.entryChapter,
+    source as unknown as Record<string, unknown>
+  );
 }
 
 /**
@@ -1052,6 +1077,7 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
 
     const universe = await readUniverse(id);
     if (universe?.archivedAt) return void res.status(409).json({ error: "当前故事宇宙已归档，请先恢复后再生成章节。" });
+    if (universe) await ensureUniverseStoryAnalysis(id, universe);
     const universeEntryPath = universe ? path.join(dir, "universe-entry.md") : undefined;
     const now = new Date().toISOString();
     const runId = randomUUID(); const outputDir = path.resolve(".output", id, "chapter-" + runId);
