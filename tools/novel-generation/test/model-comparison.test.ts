@@ -33,6 +33,17 @@ test("response diagnostics capture finish reason, usage and content shape", () =
   assert.equal(result.contentType, "array");
 });
 
+test("response diagnostics distinguish reasoning-only output from final content", () => {
+  const result = summarizeLocalResponse({
+    usage: { completion_tokens: 1718, completion_tokens_details: { reasoning_tokens: 1667 } },
+    choices: [{ finish_reason: "length", message: { content: "", reasoning_content: "internal reasoning" } }]
+  });
+  assert.equal(result.finishReason, "length");
+  assert.equal(result.contentChars, 0);
+  assert.equal(result.reasoningContentChars, 18);
+  assert.equal(result.reasoningPreview, "internal reasoning");
+});
+
 test("evidence validation checks short, altered and exact quotes", () => {
   const raw = JSON.stringify({ characters: [{ name: "甲", evidence: ["原文连续引用", "改写后的引用", "短"] }], styleAnalysis: {} });
   const result = parseComparisonResult(raw, "原文连续引用");
