@@ -1,12 +1,21 @@
 import { useEffect, useState } from "react";
-import { Alert, Button, Card, Collapse, Empty, Progress, Space, Tag, Typography, message } from "antd";
+import { Alert, Button, Card, Collapse, Empty, Input, Modal, Progress, Select, Space, Tag, Typography, message } from "antd";
 import { PlayCircleOutlined, ReloadOutlined } from "@ant-design/icons";
 const { Title, Text, Paragraph } = Typography;
 type Run = { id:string; kind?:string; status:string; createdAt:string; updatedAt:string; error?:string; outputDir?:string; chapterPath?:string; previousChapterPath?:string };
 type Preview = { storyArc:string; chapterPlan:string; chapter:string };
+type Universe = { id:string; sourceWorldId:string; name:string; type:string; entryChapter:string; brief:string; createdAt:string };
 async function api<T>(url:string, init?:RequestInit):Promise<T>{const response=await fetch(url,{headers:{"Content-Type":"application/json",...(init?.headers??{})},...init});const body=await response.json();if(!response.ok)throw new Error(body.error??response.statusText);return body as T;}
 const emptyPreview:Preview={storyArc:"",chapterPlan:"",chapter:""};
 export default function ChapterStudio({worldId}:{worldId:string}){
+ const [activeWorldId,setActiveWorldId]=useState(worldId);
+ const [universes,setUniverses]=useState<Universe[]>([]);
+ const [createOpen,setCreateOpen]=useState(false);
+ const [universeName,setUniverseName]=useState("");
+ const [entryChapter,setEntryChapter]=useState("");
+ const [universeBrief,setUniverseBrief]=useState("");
+ const [universeType,setUniverseType]=useState("free");
+ const [creatingUniverse,setCreatingUniverse]=useState(false);
  const [run,setRun]=useState<Run|null>(null);
  const [starting,setStarting]=useState(false);
  const [loading,setLoading]=useState(false);
@@ -15,35 +24,46 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [notice,setNotice]=useState("");
  const busy=run?.status==="queued"||run?.status==="running";
  const refresh=async()=>{
-  if(!worldId)return;setLoading(true);
+  if(!activeWorldId)return;setLoading(true);
   try{
    const [runs,arc]=await Promise.all([
-    api<{runs:Run[]}>("/api/worlds/"+worldId+"/runs"),
-    api<{storyArc:string}>("/api/worlds/"+worldId+"/story-arc")
+    api<{runs:Run[]}>("/api/worlds/"+activeWorldId+"/runs"),
+    api<{storyArc:string}>("/api/worlds/"+activeWorldId+"/story-arc")
    ]);
    setActiveArc(arc.storyArc);
    const latest=runs.runs.find(x=>x.kind==="chapter")??null;setRun(latest);
-   if(latest){const p=await api<Preview>("/api/runs/"+latest.id+"/preview?worldId="+worldId);setPreview(p);}
+   if(latest){const p=await api<Preview>("/api/runs/"+latest.id+"/preview?worldId="+activeWorldId);setPreview(p);}
    else setPreview(emptyPreview);
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
   finally{setLoading(false);}
  };
- useEffect(()=>{setRun(null);setPreview(emptyPreview);void refresh();},[worldId]);
+ useEffect(()=>{setActiveWorldId(worldId);setRun(null);setPreview(emptyPreview);void refresh();void api<{universes:Universe[]}>("/api/worlds/"+worldId+"/universes").then(x=>setUniverses(x.universes)).catch(()=>setUniverses([]));},[worldId]);
+ useEffect(()=>{void refresh();},[activeWorldId]);
  useEffect(()=>{
   if(!busy||!run)return;
   const timer=window.setInterval(()=>{
    void Promise.all([
-    api<{run:Run}>("/api/runs/"+run.id+"?worldId="+worldId),
-    api<Preview>("/api/runs/"+run.id+"/preview?worldId="+worldId)
+    api<{run:Run}>("/api/runs/"+run.id+"?worldId="+activeWorldId),
+    api<Preview>("/api/runs/"+run.id+"/preview?worldId="+activeWorldId)
    ]).then(([r,p])=>{setRun(r.run);setPreview(p);if(r.run.status==="completed"||r.run.status==="failed")void api<{storyArc:string}>("/api/worlds/"+worldId+"/story-arc").then(x=>setActiveArc(x.storyArc));}).catch(()=>{});
   },2000);
   return()=>window.clearInterval(timer);
- },[busy,run?.id,worldId]);
+ },[busy,run?.id,activeWorldId]);
  const generate=async()=>{
   setNotice("");setStarting(true);
-  try{const data=await api<{run:Run}>("/api/worlds/"+worldId+"/chapters/generate",{method:"POST",body:"{}"});setRun(data.run);message.success("已启动：自动检查、滚动规划、续写、终审和状态更新。");}
+  try{const data=await api<{run:Run}>("/api/worlds/"+activeWorldId+"/chapters/generate",{method:"POST",body:"{}"});setRun(data.run);message.success("已启动：自动检查、滚动规划、续写、终审和状态更新。");}
   catch(e){const text=e instanceof Error?e.message:String(e);setNotice(text);message.error(text);}
   finally{setStarting(false);}
+ };
+ const createUniverse=async()=>{
+  setCreatingUniverse(true);
+  try{
+   const result=await api<{universe:Universe}>("/api/worlds/"+worldId+"/universes",{method:"POST",body:JSON.stringify({name:universeName,entryChapter,brief:universeBrief,type:universeType})});
+   setUniverses(current=>[...current,result.universe]);setActiveWorldId(result.universe.id);setCreateOpen(false);
+   setUniverseName("");setEntryChapter("");setUniverseBrief("");setUniverseType("free");
+   message.success("独立故事宇宙已创建。");
+  }catch(e){message.error(e instanceof Error?e.message:String(e));}
+  finally{setCreatingUniverse(false);}
  };
  return <div className="chapter-studio">
   <section className="chapter-hero">
@@ -51,7 +71,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
    <Title level={2}>继续写下一章</Title>
    <Paragraph type="secondary">系统先维护一个有因果关系的中期故事阶段，再从中选择下一章。每章完成后自动更新人物、事件和后续计划；正文可以推动计划调整，不需要人工审批。</Paragraph>
    <Space wrap>
-    <Button type="primary" size="large" className="chapter-action" icon={<PlayCircleOutlined/>} loading={starting||Boolean(busy)} disabled={!worldId||Boolean(busy)} onClick={()=>void generate()}>生成下一章</Button>
+    <Button type="primary" size="large" className="chapter-action" icon={<PlayCircleOutlined/>} loading={starting||Boolean(busy)} disabled={!activeWorldId||Boolean(busy)} onClick={()=>void generate()}>生成下一章</Button>
     <Button icon={<ReloadOutlined/>} loading={loading} onClick={()=>void refresh()}>刷新状态</Button>
     {busy&&<Tag color="processing">正在自动创作</Tag>}
    </Space>
