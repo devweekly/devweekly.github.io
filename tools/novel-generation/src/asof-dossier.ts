@@ -153,7 +153,11 @@ export async function exportAsOfDossier(worldId: string, worldDir: string): Prom
         if (chapter.worldId !== worldId || !Array.isArray(chapter.worldDetails)) continue;
         for (const item of chapter.worldDetails) {
           if (typeof item?.evidence !== "string" || !item.evidence.trim()) continue;
-          worldDetails.push({ ...item, chapterId: chapter.chapterId, chapterTitle: chapter.title, ordinal: chapter.ordinal });
+          worldDetails.push({
+            ...item,
+            name: value(item, "category") || value(item, "detail") || "未分类世界细节",
+            chapterId: chapter.chapterId, chapterTitle: chapter.title, ordinal: chapter.ordinal
+          });
         }
       } catch { /* a corrupt optional Corpus Craft chapter is skipped, not trusted */ }
     }
