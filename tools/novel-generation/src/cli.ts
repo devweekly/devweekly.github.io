@@ -301,7 +301,9 @@ async function main(): Promise<void> {
     else if (type === "graph") {
       const snapshot = readStoryAnalysis(worldDir, worldId);
       const graph = snapshot?.storyGraph;
-      if (!graph) throw new Error("No original story graph found. Run analyze-story and complete its v6 merge first.");
+      if (!snapshot || !graph || snapshot.analysisVersion !== 6 || snapshot.complete !== true) {
+        throw new Error("A complete v6 original story graph is not available. Finish all analyze-story v6 batches, then run --delta --merge-only before querying the graph.");
+      }
       const query = (arg("--query") ?? "").trim().toLocaleLowerCase();
       const matches = (value: unknown): boolean => !query || (JSON.stringify(value ?? null) ?? "").toLocaleLowerCase().includes(query);
       const directMatches = query ? graph.nodes.filter(matches) : graph.nodes;
