@@ -13,6 +13,7 @@ import {
 import CharactersPanel, { type Character, type CharacterDetail } from "./CharactersPanel";
 import GraphExplorer from "./GraphExplorer";
 import StyleReferencesPanel from "./StyleReferencesPanel";
+import ChapterStudio from "./ChapterStudio";
 import { DASHBOARD_POLL_INTERVAL_MS, RECENT_RUNS_DISPLAY_LIMIT } from "./constants";
 
 const { Header, Sider, Content } = Layout;
@@ -173,6 +174,7 @@ export default function Workbench() {
 
   // 侧边导航；key 与下方 body 的分支一一对应。
   const nav = [
+    { key: "chapter", icon: <PlayCircleOutlined />, label: "续写章节" },
     { key: "overview", icon: <DashboardOutlined />, label: "工作台" },
     { key: "story-plan", icon: <BookOutlined />, label: "长期主线" },
     { key: "characters", icon: <UserOutlined />, label: "人物" },
@@ -384,6 +386,7 @@ export default function Workbench() {
 
   /** 当前激活页对应的正文；子面板组件各自管理自己的内部状态。 */
   function body() {
+    if (active === "chapter") return <ChapterStudio worldId={worldId} />;
     if (active === "style-references") return <StyleReferencesPanel worldId={worldId} />;
     if (active === "graph") return <GraphExplorer worldId={worldId} />;
     if (active === "characters") {
@@ -409,6 +412,7 @@ export default function Workbench() {
 
   /** 顶栏副标题随页面切换，说明当前区块观察的是什么。 */
   function pageHint(): string {
+    if (active === "chapter") return "一键生成下一章；规划、正文、自动修订与状态更新由系统完成";
     if (active === "characters") return "人物档案、人物关系与正文事件时间线";
     if (active === "graph") return "原著故事结构与续写动态关系的交互式浏览";
     if (active === "style-references") return "管理认可样本及历史版本；只有活动样本进入风格回归";
