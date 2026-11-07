@@ -93,3 +93,47 @@ export function buildUniverseOriginContext(
   }
   return parts.join("\n");
 }
+
+
+export interface UniverseWorldBibleInput {
+  name: string;
+  sourceWorldId: string;
+  entryChapter: string;
+  brief?: string;
+  parentUniverseId?: string;
+}
+
+/**
+ * Whole-book world bibles are excluded from historical branches because they
+ * may contain future spoilers. Create a minimal local bible that points writers
+ * to the bounded canon files instead of silently omitting the required file.
+ */
+export function buildUniverseWorldBible(input: UniverseWorldBibleInput): string {
+  return [
+    "# " + input.name,
+    "",
+    "## 宇宙定位",
+    "",
+    "- 原文项目：" + input.sourceWorldId,
+    "- 原文分支起点：" + input.entryChapter,
+    ...(input.parentUniverseId ? ["- 分叉来源宇宙：" + input.parentUniverseId] : []),
+    "",
+    "## 原文边界",
+    "",
+    "本宇宙是独立的历史分支。原著只读背景严格截止于上述起点，不得读取、推断或引用起点之后的原文剧情作为本宇宙已发生事实。",
+    "",
+    "理解起点时，优先阅读本目录的 universe-entry.md；需要前情时阅读 universe-origin-context.md。两者是本宇宙经过时点截断的原文材料。",
+    "",
+    "## 本宇宙正史",
+    "",
+    "本宇宙从分支起点开始独立发展。起点之后的事实以本宇宙自己的 story-state.json、已完成章节正文和章节状态快照为准；不得引用父宇宙或其他分支的续写事实。",
+    "",
+    "人物、关系、主线、伏笔和世界细节分析属于可选创作参考，不是人物行为硬约束，也不是必须兑现的剧情清单。人物可以改变、反复、背叛、和解、黑化或洗白。",
+    "",
+    "## 创作方向",
+    "",
+    input.brief?.trim() || "从指定原文时点自然展开独立故事，尊重当时的人物处境与已发生事件；允许探索新的情节和人物发展。",
+    "",
+    "文学性、文笔、艺术风格高于分析字段完整度、图谱闭环和统计指标。"
+  ].join("\n") + "\n";
+}
