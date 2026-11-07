@@ -66,6 +66,10 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     const payload = JSON.parse(responseBody) as { universe: { id: string; entryChapter: string } };
     const universeDir = join(root, "worlds", payload.universe.id);
     assert.equal(payload.universe.entryChapter, "第二章");
+    const bootstrapBible = await readFile(join(universeDir, "world-bible.md"), "utf8");
+    assert.ok(bootstrapBible.includes("第二章"));
+    assert.ok(bootstrapBible.includes("不得从原文项目或父宇宙的全书汇总资料补全未来信息"));
+    assert.ok(!bootstrapBible.includes("未来剧情泄漏标记"));
 
     const boundedIndex = JSON.parse(await readFile(join(universeDir, "library", "index.json"), "utf8")) as { chunks: Array<{ chapter: string; text: string }> };
     assert.deepEqual(boundedIndex.chunks.map(chunk => chunk.chapter), ["第一章", "第二章"]);
