@@ -526,14 +526,11 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     };
     await writeFile(path.join(stagingDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
     await writeFile(path.join(stagingDir, "source-canon.json"), JSON.stringify({ sourceWorldId: parent.sourceWorldId, readOnly: true }, null, 2) + "\n", "utf8");
-    const parentLibrary = path.join(parentDir, "library");
-    if (existsSync(path.join(parentLibrary, "index.json"))) {
-      await cp(parentLibrary, path.join(stagingDir, "library"), { recursive: true });
-      const childIndexPath = path.join(stagingDir, "library", "index.json");
-      const childIndex = JSON.parse(await readFile(childIndexPath, "utf8")) as { worldId?: string };
-      childIndex.worldId = id;
-      await writeFile(childIndexPath, JSON.stringify(childIndex, null, 2) + "\n", "utf8");
-    }
+    const parentCanonChapters = await readCanonChapters(parent.sourceWorldId);
+    const parentEntryIndex = parentCanonChapters.findIndex(chapter => chapter.title === parent.entryChapter);
+    if (parentEntryIndex < 0) throw new Error("父宇宙的原文起点已无法在共享章节目录中定位，拒绝创建可能泄漏未来剧情的分支。");
+    await writeUniverseLibrarySnapshot(parent.sourceWorldId, stagingDir, id, parentEntryIndex);
+
     const forkState = rebaseStoryState(state, parentId, id);
     await writeFile(path.join(stagingDir, "story-state.json"), JSON.stringify(forkState, null, 2) + "\n", "utf8");
     await loadStoryState(path.join(stagingDir, "story-state.json"), id);
