@@ -56,12 +56,17 @@ export function buildUniverseOriginContext(
     "以下章节发生在本宇宙起点之前，只用于理解人物处境、关系和已发生事件。不得把原著起点之后的剧情当成本宇宙事实。",
     ""
   ];
+  // 从最近章节向前分配预算，确保最接近起点的前情优先；最后再恢复原文顺序。
   let remaining = maxChars;
-  for (const chapter of preceding) {
+  const selectedContext: Array<{ title: string; text: string }> = [];
+  for (const chapter of [...preceding].reverse()) {
     if (remaining <= 0) break;
     const body = chapter.text.slice(-remaining);
-    parts.push("## " + chapter.title, "", body, "");
+    selectedContext.push({ title: chapter.title, text: body });
     remaining -= body.length;
+  }
+  for (const chapter of selectedContext.reverse()) {
+    parts.push("## " + chapter.title, "", chapter.text, "");
   }
   return parts.join("\n");
 }
