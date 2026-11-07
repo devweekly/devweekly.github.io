@@ -487,7 +487,7 @@ export function readNovelCharacterWorkbenchDetail(worldDir:string,worldId:string
   return {
    character:{...character,aliases:parse(character.aliases_json),personality:parse(character.personality_json),desires:parse(character.desires_json),contradictions:parse(character.contradictions_json),arc:parse(character.arc_json),aliases_json:undefined,personality_json:undefined,desires_json:undefined,contradictions_json:undefined,arc_json:undefined},
    profile:profileRow?{summary:profileRow.summary,stages:parse(profileRow.stages_json),traits:parse(profileRow.traits_json),contradictions:parse(profileRow.contradictions_json),arc:parse(profileRow.arc_json),observationCount:profileRow.observationCount,model:profileRow.model,generatedAt:profileRow.generatedAt}:null,
-   timeline,relations
+   timeline,relations,chapterStates:chapterStates.map(row=>JSON.parse(row.payload_json))
   };
  }finally{db.close();}
 }
