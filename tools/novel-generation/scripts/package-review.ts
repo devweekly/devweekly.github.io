@@ -2,7 +2,7 @@
  * 打包审核材料：数据库样本 + 分析请求/响应样本 + 生成的章节与写作中间产物。
  *
  *   npm run package-review
- *   npm run package-review -- --out /tmp/review.zip --max-mb 6 --batches 6
+ *   npm run package-review -- --world conghuoniao\n *\n * 默认输出到项目本地 review-packages/，可用 --out 指定其他本地路径。
  *
  * 不打包原文全文与完整数据库（12MB）；只取有代表性的切片。
  */
@@ -37,13 +37,30 @@ const batchCount = Math.max(2, Math.min(12, Number(arg("--batches") ?? 3)));
 const stamp = new Date();
 const localDate = stamp.getFullYear() + String(stamp.getMonth() + 1).padStart(2, "0") + String(stamp.getDate()).padStart(2, "0");
 const localTime = String(stamp.getHours()).padStart(2, "0") + String(stamp.getMinutes()).padStart(2, "0");
-const outPath = resolve(arg("--out") ?? join(outputDir, `review-pack-${worldId}-${localDate}-${localTime}.zip`));
+const outPath = resolve(arg("--out") ?? join("review-packages", `review-pack-${worldId}-${localDate}-${localTime}.zip`));
 
 const entries: Entry[] = [];
 const add = (path: string, data: Buffer | string, options: { optional?: boolean; note?: string } = {}): void => {
   entries.push({ path, data: typeof data === "string" ? Buffer.from(data, "utf8") : data, ...options });
 };
-const totalBytes = (): number => entries.reduce((sum, entry) => sum + entry.data.length, 0);
+const totalBytes = (): number => entries.reduce((sum, entry) => sum + entry.data.length, 0);\n
+async function addDirectoryFiles(sourceDir: string, archivePrefix: string): Promise<number> {
+  let count = 0;
+  const visit = async (dir: string, relative = ""): Promise<void> => {
+    for (const entry of await readdir(dir, { withFileTypes: true })) {
+      const absolute = join(dir, entry.name);
+      const rel = relative ? join(relative, entry.name) : entry.name;
+      if (entry.isDirectory()) await visit(absolute, rel);
+      else if (entry.isFile()) {
+        add(archivePrefix + rel.split("\\\\").join("/"), await readFile(absolute));
+        count++;
+      }
+    }
+  };
+  await visit(sourceDir);
+  return count;
+}
+
 
 /* ---------------------------------------------------------------- zip ---- */
 
@@ -540,7 +557,49 @@ if (existsSync(join(outputDir, "shard-0.log"))) {
   add("04-logs/analysis-shard-0.log", await readFile(join(outputDir, "shard-0.log")), { optional: true });
 }
 
-/* --------------------------------------------------------------- budget --- */
+
+/* ---------------------------------------------------- latest chapter run --- */
+
+// Workbench 章节运行记录是本次打包的主对象。完整复制最近一次 chapter run
+// 的运行目录，而不是只挑选旧 long-chapter 的固定文件名。
+const workbenchRunsDir = join(outputDir, worldId, "workbench", "runs");
+let latestChapterRun: Record<string, unknown> | undefined;
+try {
+  const runFiles = (await readdir(workbenchRunsDir)).filter(name => name.endsWith(".json"));
+  const runs = await Promise.all(runFiles.map(async name => {
+    try { return JSON.parse(await readFile(join(workbenchRunsDir, name), "utf8")) as Record<string, unknown>; }
+    catch { return undefined; }
+  }));
+  latestChapterRun = runs.filter((run): run is Record<string, unknown> =>
+    Boolean(run && run.kind === "chapter" && typeof run.createdAt === "string")
+  ).sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt)))[0];
+} catch (error) {
+  if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+}
+if (latestChapterRun) {
+  add("03-writing/latest-chapter-run/workbench-run.json", json(latestChapterRun));
+  const rawRunDir = typeof latestChapterRun.outputDir === "string" ? latestChapterRun.outputDir : "";
+  const runDir = rawRunDir ? resolve(rawRunDir) : "";
+  const safeRoot = resolve(outputDir, worldId) + "/";
+  if (runDir && runDir.startsWith(safeRoot) && existsSync(runDir)) {
+    const copied = await addDirectoryFiles(runDir, "03-writing/latest-chapter-run/artifacts/");
+    add("03-writing/latest-chapter-run/README.md", [
+      "# 最近一次章节生成运行",
+      "",
+      "- Run ID: " + String(latestChapterRun.id ?? "unknown"),
+      "- Status: " + String(latestChapterRun.status ?? "unknown"),
+      "- Created: " + String(latestChapterRun.createdAt ?? "unknown"),
+      "- Updated: " + String(latestChapterRun.updatedAt ?? "unknown"),
+      "- Source directory: " + runDir.replace(process.cwd() + "/", ""),
+      "- Included files: " + copied,
+      "- 目录内文件按原样完整收集，包括阶段产物、manifest、进程日志和错误记录（若存在）。",
+      ""
+    ].join("\\n"));
+  } else {
+    add("03-writing/latest-chapter-run/README.md", "最近章节任务记录存在，但没有可访问的本地 outputDir。\\n");
+  }
+}
+\n/* --------------------------------------------------------------- budget --- */
 
 const dropped: string[] = [];
 const dropOrder = [
@@ -590,7 +649,7 @@ const sizeMb = (bytes: number): string => (bytes / 1024 / 1024).toFixed(2) + " M
 const readme = [
   "# 小说续写系统 · 审核材料包",
   "",
-  "生成时间：" + stamp.toLocaleString("zh-CN", { hour12: false }) + "（本机时区）　世界：" + worldId + "　模型：" + model,
+  "生成时间：" + stamp.toLocaleString("zh-CN", { hour12: false }) + "（本机时区）　世界：" + worldId + "　模型：" + model,\n  "最近章节运行：" + (latestChapterRun ? String(latestChapterRun.id) + " / " + String(latestChapterRun.status) : "未找到 chapter run"),
   "",
   "## 这是什么",
   "",
@@ -607,7 +666,7 @@ const readme = [
   "|---|---|---|",
   "| `01-database/` | schema、统计、质量问题清单、每类 1–6 条示例 | 字段设计是否够用、分类口径、异常项 |",
   "| `02-analysis-calls/` | " + picks.length + " 次分批分析的请求体（响应体需缓存存在） | 提示词是否明确、输出是否被正确解析 |",
-  "| `03-writing/` | 生成的新章节、所有场景润色稿、润色幅度与阶段调用日志 | 连续性、文风、扩写幅度、阶段耗时 |",
+  "| `03-writing/latest-chapter-run/` | 最近一次普通章节续写的完整运行目录、任务记录和阶段产物 | 还原本次生成全过程 |",\n  "| `03-writing/long-chapter/` | 最近一次旧版长章节样本 | 长章节流水线分析 |",
   "| `04-logs/` | 分析分片与写作过程的运行日志 | 失败重试、超时、逐阶段耗时 |",
   "| `manifest.json` | 每个文件的字节数与 sha256 | 校验用 |",
   "",
