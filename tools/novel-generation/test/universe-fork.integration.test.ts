@@ -99,6 +99,10 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
     assert.equal(payload.universe.parentUniverseId, parentId);
     assert.equal(payload.universe.forkPoint, runId);
     assert.equal(payload.universe.entryChapter, "原文第二章");
+    const localBible = await readFile(join(childDir, "world-bible.md"), "utf8");
+    assert.ok(localBible.includes("原文第二章"));
+    assert.ok(localBible.includes(parentId));
+    assert.ok(!localBible.includes("未来原文"));
     assert.equal(payload.forkedAt, runId);
     assert.ok((await readFile(join(childDir, "story-state.json"), "utf8")).includes(childId));
     const restored = JSON.parse(await readFile(join(childDir, "story-state.json"), "utf8")) as typeof state;
