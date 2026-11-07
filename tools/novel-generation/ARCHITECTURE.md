@@ -548,3 +548,5 @@ CLI `write` 同样读取活动 Story Arc；没有旧 Arc 时首次生成自动�
 这项任务是可选增强，不是章节写作前置条件。特别是 analyze-character-states 会写入 novel.db，因此不在宇宙创建后自动启动，也不应与章节写作并行执行；Workbench 在章节运行期间禁用构建按钮。Vane 语义检索仍依赖独立 embedding 配置，构建失败必须明确显示，不能把未生成的向量索引显示为可用。
 
 Fork 复制历史章节产物时，不仅重映射 WorkbenchRun 的 outputDir、chapterPath 和 previousChapterPath，还必须逐个校验并重绑定产物内的 08-state-update.json。否则子宇宙虽然能读取复制的正文，却无法把这些历史章节作为下一次分叉点。状态快照缺失时保留历史正文但不提供该章节的分叉能力；快照存在但身份不匹配或结构非法时，整个 fork staging 失败并清理，不得将父宇宙状态混入子宇宙。
+
+知识构建子进程必须兼容开发与构建后运行：开发环境通过 tsx 执行 src/cli.ts，生产环境直接执行 dist/cli.js，不依赖生产环境安装开发依赖。两种方式共用相同命令参数和 worldId，确保任务始终在当前宇宙目录运行。
