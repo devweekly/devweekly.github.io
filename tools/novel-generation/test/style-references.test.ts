@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { addStyleReference, archiveStyleReference, listStyleReferences } from "../src/style-references.js";
+import { addStyleReference, archiveStyleReference, listStyleReferences, listStyleReferenceHistory } from "../src/style-references.js";
 
 test("style reference updates preserve the previous approved sample", async () => {
   const root = await mkdtemp(join(tmpdir(), "style-reference-"));
@@ -20,11 +20,13 @@ test("style reference updates preserve the previous approved sample", async () =
     assert.ok(updated.archivePath);
     assert.equal(await readFile(join(world, "style-references", "dialogue.md"), "utf8"), "second version");
     assert.equal(await readFile(updated.archivePath!, "utf8"), "first version");
+    assert.equal((await listStyleReferenceHistory(world, "dialogue.md")).length, 1);
     assert.equal((await listStyleReferences(world))[0]?.name, "dialogue.md");
     const archived = await archiveStyleReference(world, "dialogue.md");
     assert.equal(archived.action, "archived");
     assert.equal(await listStyleReferences(world).then(items => items.length), 0);
     assert.equal(await readFile(archived.archivePath!, "utf8"), "second version");
+    assert.equal((await listStyleReferenceHistory(world, "dialogue.md")).length, 2);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
