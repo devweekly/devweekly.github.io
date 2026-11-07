@@ -19,6 +19,17 @@ test("style regression compares approved references with candidates without imit
   assert.match(prompt, /quiet dialogue/);
 });
 
+test("missing reference samples cannot produce a no-drift conclusion", () => {
+  const prompt = buildStyleRegressionPrompt({
+    styleProfile: "叙述克制",
+    references: [],
+    candidates: [{ label: "chapter.md", text: "他没有回答。" }]
+  });
+  assert.match(prompt, /无法判断与原著的风格距离/);
+  assert.match(prompt, /不能得出“没有风格漂移”/);
+  assert.match(prompt, /不能表述为与原著一致/);
+});
+
 test("pipeline discovers curated style references automatically and bounds their size", async () => {
   const root = await mkdtemp(join(tmpdir(), "novel-style-"));
   try {
