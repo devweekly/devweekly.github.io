@@ -671,6 +671,17 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
       const targetOutput = path.resolve(".output", id, path.basename(sourceOutput));
       await mkdir(path.dirname(targetOutput), { recursive: true });
       await cp(sourceOutput, targetOutput, { recursive: true });
+      // Rebase every copied chapter-time state snapshot as well as the run index.
+      // Otherwise the child can display the chapter but cannot safely fork from it:
+      // forkable-chapters correctly rejects snapshots still owned by the parent world.
+      const copiedStatePath = path.join(targetOutput, "08-state-update.json");
+      try {
+        const copiedState = validateStoryState(JSON.parse(await readFile(copiedStatePath, "utf8")));
+        if (copiedState.worldId !== parentId) throw new Error("Copied chapter state belongs to another universe.");
+        await writeFile(copiedStatePath, JSON.stringify(rebaseStoryState(copiedState, parentId, id), null, 2) + "\n", "utf8");
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
       outputMap.set(sourceOutput, targetOutput);
     }
     for (const historicalRun of history) {
