@@ -679,7 +679,7 @@ npm run benchmark-local-models
 
 同样重要的是，历史分支不会复制可能包含全书未来剧情的根级汇总文件（包括 world-bible、人物、时间线、世界设定汇总和 style profile），也不会复制 analysis、Corpus Craft、Vane 与 Style Reference 派生目录。这是保守隔离策略：在按起点重建这些资料之前，部分背景资料可能暂时不可用，但不会为了资料完整而把后续剧情泄漏进历史宇宙。原文章节正文仍通过 bounded library 和起点前情上下文提供。
 
-当前已增加真实 SQLite 快照测试、Create/Fork API + 文件系统集成测试，以及按起点过滤的 universe-local chapter catalog。新增后台知识重建 API 可显式启动和查询任务。仍需完整 GitHub Actions 结果核验、写作上下文级未来剧情泄漏 E2E、并发/失败回滚测试，以及 Workbench UI 的任务入口。不要把“代码已过滤”误认为“隔离已通过完整端到端验收”。
+当前已增加真实 SQLite 快照测试、Create/Fork API + 文件系统集成测试、连续分叉回归，以及按起点过滤的 universe-local chapter catalog。Workbench 已提供后台知识重建入口和逐步骤状态。仍需写作上下文级未来剧情泄漏 E2E、并发/失败回滚压力测试和真实原著语料上的分析质量验收。不要把“代码已过滤”误认为“隔离已通过完整端到端验收”。
 
 
 ### 故事宇宙的后台知识重建
@@ -691,7 +691,7 @@ POST /api/worlds/<universe-id>/knowledge-build
 GET  /api/worlds/<universe-id>/knowledge-build
 ```
 
-任务按顺序复用 `analyze-story`、`analyze-profiles`、`analyze-character-states`、`analyze-corpus-craft` 和 `vane-index`，状态与各步骤日志摘要保存在 `.output/<world>/workbench/knowledge-build.json`。任务重启中断会被标记为失败，可重新触发。Vane 未安装或 embedding 服务不可用时会显示对应步骤失败；这不影响 SQLite/BM25 写作路径。
+任务按顺序复用 `analyze-story`、`analyze-arcs`、`analyze-profiles`、`analyze-character-states`、`analyze-corpus-craft` 和 `vane-index`，状态与各步骤日志摘要保存在 `.output/<world>/workbench/knowledge-build.json`。任务重启中断会被标记为失败，可重新触发。Vane 未安装或 embedding 服务不可用时会显示对应步骤失败；这不影响 SQLite/BM25 写作路径。
 
 Chapter Studio 已提供显式构建入口和逐步骤状态面板，并每 2 秒轮询任务状态。构建不是创建宇宙时自动触发的：人物逐章状态分析会写入 novel.db，必须避免与章节写作并发。服务端会串行协调构建请求，并拒绝在章节运行中启动构建；构建期间也会拒绝启动章节生成、归档或分叉。归档宇宙不能启动构建。
 
