@@ -184,6 +184,29 @@ interface StoryUniverse {
   createdAt: string;
 }
 
+function rebindKnowledgeDatabase(databasePath: string, worldId: string): void {
+  if (!existsSync(databasePath)) return;
+  const db = new DatabaseSync(databasePath);
+  try {
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all() as Array<{ name: string }>;
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      for (const { name } of tables) {
+        const columns = db.prepare("PRAGMA table_info(" + JSON.stringify(name) + ")").all() as Array<{ name: string }>;
+        if (columns.some(column => column.name === "world_id")) {
+          db.prepare("UPDATE \"" + name.replace(/"/g, "\"\"") + "\" SET world_id=?").run(worldId);
+        }
+      }
+      const meta = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='world_meta'").get();
+      if (meta) db.prepare("UPDATE world_meta SET value=? WHERE key='world_id'").run(worldId);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  } finally { db.close(); }
+}
+
 async function readUniverse(id: string): Promise<StoryUniverse | null> {
   try {
     return JSON.parse(await readFile(path.join(worldDir(id), "universe.json"), "utf8")) as StoryUniverse;
@@ -267,7 +290,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     const selectedChapter = canonChapters[selectedIndex];
     if (!selectedChapter?.text.trim()) return void res.status(400).json({ error: "所选章节不在原文目录中，或章节正文为空。请从原文目录选择一个章节。" });
     // 起点前情属于原著只读背景，不是新宇宙已发生的续写事实。
-    const preceding = canonChapters.slice(Math.max(0, selectedIndex - 3), selectedIndex).reverse();
+    const preceding = canonChapters.slice(Math.max(0, selectedIndex - 3), selectedIndex);
     const contextParts = ["# 原著起点前情（只读背景）", "", "以下章节发生在本宇宙起点之前，只用于理解人物处境、关系和已发生事件。不得把原著起点之后的剧情当成本宇宙事实。", ""];
     let contextBudget = 18000;
     for (const chapter of preceding) {
@@ -294,13 +317,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
       }
     });
     // novel.db 是原著分析只读快照的初期副本；重置其世界身份，防止数据库身份校验误认为属于源项目。
-    const novelDbPath = path.join(targetDir, "novel.db");
-    if (existsSync(novelDbPath)) {
-      const db = new DatabaseSync(novelDbPath);
-      try {
-        db.prepare("UPDATE world_meta SET value=? WHERE key='world_id'").run(id);
-      } finally { db.close(); }
-    }
+    rebindKnowledgeDatabase(path.join(targetDir, "novel.db"), id);
     const universe: StoryUniverse = {
       id, sourceWorldId: rootSourceId, name, type, entryChapter, brief,
       createdAt: new Date().toISOString()
@@ -380,12 +397,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
         return !["story.db", "story-state.json", "story-arc.md", "story-plan.json", ".output", "universes", "library"].includes(first);
       }
     });
-    const novelDbPath = path.join(targetDir, "novel.db");
-    if (existsSync(novelDbPath)) {
-      const db = new DatabaseSync(novelDbPath);
-      try { db.prepare("UPDATE world_meta SET value=? WHERE key='world_id'").run(id); }
-      finally { db.close(); }
-    }
+    rebindKnowledgeDatabase(path.join(targetDir, "novel.db"), id);
     const universe: StoryUniverse = {
       id, sourceWorldId: parent.sourceWorldId, name, type: parent.type,
       entryChapter: parent.entryChapter, brief: parent.brief,
