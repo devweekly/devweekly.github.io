@@ -529,7 +529,7 @@ D&D Campaign 的借鉴仅限世界设定、人物自主行动、有限局势推�
 
 普通章节和万字章节在叙事声音修订后，都会执行共享的 Living Voice / Anti-AI 编辑。它只处理真正损害阅读体验的模板化表达，不以 AI 检测分数、禁词、连接词频率、句长或段落长度驱动改写。原稿成立时可以零修改；编辑不得改变剧情事实、人物决定、信息揭示、视角和场景顺序。
 
-写作、对白、叙事声音和编辑阶段共享 Living Voice 原则。Anti-AI 阶段依次生成 `06a-anti-ai-diagnosis.md`、`06b-anti-ai-edited.md` 和 `06c-anti-ai-verification.json`：诊断只报告有具体文本证据的阅读问题，不判断文本是否由 AI 生成；独立复核只有确认编辑有明确收益且没有损害原文时才保留编辑稿，否则恢复原稿。诊断失败不阻断编辑，编辑失败或复核失败均保留安全的上一阶段正文并继续终审。最终终审通过后，Reader 以不读取人物档案、蓝图和剧情摘要的盲读方式生成 `10-reader-experience.md`。Reader 不负责硬伤审查、不输出必改项、不触发自动修复，也不影响章节通过和状态提交。相关设计见 [ARCHITECTURE.md 第 10 节](./ARCHITECTURE.md) 与 [ADR 0004](./ADR/0004-living-voice-and-anti-ai-editing.md)。
+写作、对白、叙事声音和编辑阶段共享 Living Voice 原则。Editorial Review 前的 Anti-AI 阶段依次生成 `06a-anti-ai-diagnosis.md`、`06b-anti-ai-edited.md` 和 `06c-anti-ai-verification.json`：诊断只报告有具体文本证据的阅读问题，不判断文本是否由 AI 生成；只有明确发现值得修改的问题才编辑，空诊断、无问题或诊断失败均跳过整章改写；独立复核只有确认编辑有明确收益且没有损害原文时才保留编辑稿，否则恢复原稿。编辑失败或复核失败均保留安全的上一阶段正文并继续终审。终审若执行过自动修复，还会生成 `10-post-review-literary-check.md`，只读比较修复前后文本，检查修复是否引入模板化表达；不再次改写、不阻断章节。没有修复则跳过。最终终审通过后，Reader 以不读取人物档案、蓝图和剧情摘要的盲读方式生成 `10-reader-experience.md`。Reader 不负责硬伤审查、不输出必改项、不触发自动修复，也不影响章节通过和状态提交。相关设计见 [ARCHITECTURE.md 第 10 节](./ARCHITECTURE.md) 与 [ADR 0004](./ADR/0004-living-voice-and-anti-ai-editing.md)。
 
 
 ### 提炼项目风格资料
