@@ -44,6 +44,17 @@ export default function StyleReferencesPanel({ worldId }: { worldId: string }) {
     finally { setSaving(false); }
   };
 
+  const loadActive = async (item: ActiveReference) => {
+    setError("");
+    try {
+      const response = await fetch(`/api/worlds/${encodeURIComponent(worldId)}/style-references/${encodeURIComponent(item.name)}`);
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "读取活动样本失败");
+      setName(item.name); setContent(body.content);
+      message.info("活动样本已载入编辑框");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+  };
+
   const loadVersion = async (item: HistoryReference) => {
     setError("");
     try {
@@ -80,7 +91,7 @@ export default function StyleReferencesPanel({ worldId }: { worldId: string }) {
               dataSource={data.active}
               renderItem={item => (
                 <List.Item
-                  actions={[<Button key="archive" danger type="text" icon={<ArchiveOutlined />} onClick={() => void archive(item.name)}>归档</Button>]}
+                  actions={[<Button key="edit" type="link" onClick={() => void loadActive(item)}>编辑</Button>, <Button key="archive" danger type="text" icon={<ArchiveOutlined />} onClick={() => void archive(item.name)}>归档</Button>]}
                 >
                   <List.Item.Meta
                     title={<Text strong>{item.name}</Text>}
