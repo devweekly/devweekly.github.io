@@ -69,10 +69,10 @@ export function antiAiEditPrompt(input: {
 
 /** A failed/empty diagnosis is not permission to rewrite a whole chapter. */
 export function shouldRunAntiAiEdit(diagnosis: string): boolean {
-  const text = diagnosis.trim();
-  if (!text) return false;
-  const cleanConclusion = /^(?:结论|总体判断)?\s*[:：]?\s*(?:未发现值得修改的地方|没有明确需要修改(?:的问题)?|无需修改|无须修改)[。！.!]?\s*$/m;
-  return !cleanConclusion.test(text);
+  const firstLine = diagnosis.split(/\r?\n/).map(line => line.trim()).find(Boolean) ?? "";
+  if (!firstLine) return false;
+  const cleanConclusion = /^(?:结论|总体判断)?\s*[:：]?\s*(?:未发现值得修改的地方|没有明确需要修改(?:的问题)?|无需修改|无须修改)[。！.!]?\s*$/;
+  return !cleanConclusion.test(firstLine);
 }
 
 export interface AntiAiVerification {
