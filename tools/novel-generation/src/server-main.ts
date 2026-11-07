@@ -28,6 +28,15 @@ async function main():Promise<void>{
   app.use((_req,res)=>res.sendFile(path.join(webRoot,"dist","index.html")));
  }
  const server=createHttpServer(app);
+ server.on("error",(error:NodeJS.ErrnoException)=>{
+  if(error.code==="EADDRINUSE"){
+   console.error(`[workbench] 端口 ${port} 已被占用。已有实例在 http://${host}:${port} 运行，直接访问即可；` +
+    `如需另起一个实例，用 PORT=<其他端口> npm run start:web。`);
+  }else{
+   console.error("[workbench] 服务启动失败：",error);
+  }
+  process.exit(1);
+ });
  server.listen(port,host,()=>console.info("[workbench] http://"+host+":"+port));
  const shutdown=async()=>{await new Promise<void>(resolve=>server.close(()=>resolve()));await vite?.close();};
  process.once("SIGINT",()=>void shutdown());process.once("SIGTERM",()=>void shutdown());

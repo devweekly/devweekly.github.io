@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "stages": {
+    "story-arc": {
+      "inputHash": "5af977c6c08881bd05f77d7ec373b639dc87f19a49671c2c3f38c97627b15289",
+      "outputFile": "00-story-arc.md",
+      "outputHash": "eafd662097122e56ee019ee806cc5b22fbbf982741dd14824b47d0f00ea7f71e",
+      "completedAt": "2026-11-07T14:18:32.931Z"
+    },
+    "creative": {
+      "inputHash": "00df06ab5a60ac209c208b28822889713052ec03fdc1c89f9e9a67b815523f08",
+      "outputFile": "02-creative-options.md",
+      "outputHash": "6eb352f61e568639de7772760907a2c4251c6a2a746e964db4e031f1ea260238",
+      "completedAt": "2026-11-07T14:19:16.904Z"
+    },
+    "plot": {
+      "inputHash": "3b739fdc41608a422a3cd481cb69907fcef02741d4ab59dc24891c9cfb481043",
+      "outputFile": "01-main-plot.md",
+      "outputHash": "e68b7f4f8ae02ad9306c0e7aefbc2d78aff2f2c5d13c3f771afab0a80461b11c",
+      "completedAt": "2026-11-07T14:19:37.245Z"
+    }
+  }
+}

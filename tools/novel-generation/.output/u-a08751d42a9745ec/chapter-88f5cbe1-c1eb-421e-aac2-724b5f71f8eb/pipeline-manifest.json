@@ -1,0 +1,71 @@
+{
+  "schemaVersion": 1,
+  "stages": {
+    "story-arc": {
+      "inputHash": "3f302623fa15daa273e24cc4fe378061b334baebb646aa191c974e50fd22a356",
+      "outputFile": "00-story-arc.md",
+      "outputHash": "6971f453e9178fb96e5a36c4ba6d525f773d70c1b34ff87c4ce6ac81bfb93e62",
+      "completedAt": "2026-11-07T14:06:13.077Z"
+    },
+    "plot": {
+      "inputHash": "6f44c9aede296a21a3686699042135cf0c1ef161fc2532601bb4c5fe5157e6a6",
+      "outputFile": "01-main-plot.md",
+      "outputHash": "c310f17f06994954ba72104401da54a9b00ca1f4d611516f2d523eedf36afd88",
+      "completedAt": "2026-11-07T14:06:48.312Z"
+    },
+    "creative": {
+      "inputHash": "d76d45dc63de3bd5a4e133f4acb51e03ad596b705d406cdd5d0ace7f9ccf8619",
+      "outputFile": "02-creative-options.md",
+      "outputHash": "3ed501304bf3c333172f9fe09f93f1ebbdbef44e962d6da452d3b860a6b17b03",
+      "completedAt": "2026-11-07T14:06:50.772Z"
+    },
+    "plan": {
+      "inputHash": "9ffcaa73a69df19419f6602da67e1f9c0c95de4575eca423e6569841b6bae663",
+      "outputFile": "03-chapter-plan.md",
+      "outputHash": "8c1666fc49e87d4f975fadd744b513439eed979166ccb13485bb319bc1083055",
+      "completedAt": "2026-11-07T14:07:39.256Z"
+    },
+    "scene": {
+      "inputHash": "c5a630a6f562fdb3ce0fddade135c2350d3bbf71c964ea1c912c244b6874206a",
+      "outputFile": "04-scene-draft.md",
+      "outputHash": "6543c8f98eefc47ce38efc8602319053fa49b15744ef97ef925a8245b07225ae",
+      "completedAt": "2026-11-07T14:08:54.373Z"
+    },
+    "literary-edit": {
+      "inputHash": "31c64033418a3143b9e7ca743c98002d26afa5d78b5191569b73bab1e5ba69f1",
+      "outputFile": "05-literary-edited.md",
+      "outputHash": "4cc87f6899379b7fcba9dfbd22f7de768b78e4325172cb5a5c201fe322eef550",
+      "completedAt": "2026-11-07T14:10:14.636Z"
+    },
+    "anti-ai-diagnosis": {
+      "inputHash": "0451915bbc8dd0888d78c2efe8c8ea337266df63ec027c9aec0b140768c8ea5e",
+      "outputFile": "06a-anti-ai-diagnosis.md",
+      "outputHash": "a174139932b815678090d3af2c7eedb13c0cfd3737f70786241d17561faaaab6",
+      "completedAt": "2026-11-07T14:11:44.417Z"
+    },
+    "anti-ai-edit": {
+      "inputHash": "8fe263c38b308cc645a8881cf5d9791505697d9d06c04ce09515a017c039d362",
+      "outputFile": "06b-anti-ai-edited.md",
+      "outputHash": "9ea1cd38435b4844d60b9f1b8a8ff9bbd35aca2529d4e16de0d2a7f0f72fa103",
+      "completedAt": "2026-11-07T14:13:00.851Z"
+    },
+    "anti-ai-verification": {
+      "inputHash": "fcc4587b388eb6e592004ed7ad0fc616879d69076a09deddc0e97598ea7f84a8",
+      "outputFile": "06c-anti-ai-verification.json",
+      "outputHash": "4eb32d58211c2eb054aacdc3bb709a3e8e74c5b778fbf30d8685cc4065d89832",
+      "completedAt": "2026-11-07T14:13:17.854Z"
+    },
+    "quality-review-1": {
+      "inputHash": "e979be653a82741edb5aafa10ef5817772a86641d0cf9616b4a5b330fa2e209a",
+      "outputFile": "07-review-round-1-raw.txt",
+      "outputHash": "c56507ab409c5ea7700c536d6e690bcddfead65d7bfe32978c4a3a5c6a95de24",
+      "completedAt": "2026-11-07T14:14:22.611Z"
+    },
+    "state-update": {
+      "inputHash": "db247230da7e1ce2a392e059a789cdce04453d5eab1f5dab8044ba58dd64316a",
+      "outputFile": "08-state-update-raw.json",
+      "outputHash": "2c123bed892cf028218af3561003764093410020162fa49e66d23e1afbb10c8c",
+      "completedAt": "2026-11-07T14:15:01.243Z"
+    }
+  }
+}

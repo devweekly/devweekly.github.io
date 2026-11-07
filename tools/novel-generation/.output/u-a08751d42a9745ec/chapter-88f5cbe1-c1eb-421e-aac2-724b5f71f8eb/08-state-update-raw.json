@@ -1,0 +1,488 @@
+{
+  "currentPosition": "第一章末尾，李阎在鼓楼根底下坐等，十一点三十收到阎浮通报：地点朝内大街八十一号，时间为十二点之前，目标是另一名男性阎浮行走。",
+  "canonFacts": [
+    {
+      "id": "fact-yanfu-walker-death-notice",
+      "fact": "阎浮行走死亡时，其他行走会收到干哑金属声的通报：“一名阎浮行走已经死亡。”",
+      "source": "chapter-1",
+      "confidence": "original"
+    },
+    {
+      "id": "fact-yanfu-mission-notice",
+      "fact": "阎浮以视网膜边的红字向行走下达任务，包含地点、时间与目标描述。",
+      "source": "chapter-1",
+      "confidence": "original"
+    },
+    {
+      "id": "fact-yanfu-currency",
+      "fact": "李阎持有阎浮点数，当前余额为五十点。",
+      "source": "chapter-1",
+      "confidence": "original"
+    },
+    {
+      "id": "fact-guhuoniao-puppet-count",
+      "fact": "李阎的羽织黑帕中可放出姑获鸟，总数一百只，死一只少一只；本章他只放出十只，收回七只，损失三只。",
+      "source": "chapter-1",
+      "confidence": "original"
+    },
+    {
+      "id": "fact-pailou-rule",
+      "fact": "永延帝祚牌楼底下存在压制力：靠近券洞会攥紧胸口的姑获鸟，退开即缓解；夜里牌楼存在，白天同一位置没有。",
+      "source": "chapter-1",
+      "confidence": "original"
+    },
+    {
+      "id": "fact-liuyi-jinqian",
+      "fact": "李阎贴身佩戴一枚六纹金钱，与某个“她”存在联系，可按压感应，但本章无回应。",
+      "source": "chapter-1",
+      "confidence": "original"
+    }
+  ],
+  "characters": [
+    {
+      "name": "李阎",
+      "profile": {
+        "coreTraits": [
+          "谨慎，先量尺寸后行动",
+          "务实，算得清代价与收益",
+          "对陌生环境不慌，习惯用观察代替追问",
+          "嘴上有糙话，话不多"
+        ],
+        "values": [
+          "活下来优先于弄清真相",
+          "资源要算着用，不为一时的好奇或善意付出额外代价"
+        ],
+        "contradictions": [
+          "明知追上去换不出东西就不追，却又会为一只不肯落下的鸟走回牌楼底下"
+        ],
+        "voice": "短句，答话多为“嗯”“哎”，心里骂一句就过去，不解释不抒情",
+        "boundaries": [
+          "不穿牌楼券洞，宁可绕行",
+          "不贸然追进黑影里",
+          "不为了弄清一座城的奇怪之处耗尽手里的底牌"
+        ],
+        "arc": "在规则不明的陌生城池里先求站住脚，再逐步摸清阎浮与这座城的关系；对同类的态度尚未显露"
+      },
+      "status": "健康，夜间失鸟三只，白天补觉两个钟头后恢复正常；刚接到新任务",
+      "location": "鼓楼根底下的台阶上",
+      "abilities": [
+        "羽织黑帕可放出姑获鸟，每只轻三五克，可共享断断续续的视野，分散多方向侦查",
+        "环龙剑随身，睡觉时搁在手边",
+        "六纹金钱可感应联系，但无回应",
+        "能忍痛，忍受胸口被攥住的压迫感",
+        "进陌生地方先数步子、量街道与巷道的习惯"
+      ],
+      "knowledge": [
+        "踩碎街上那颗人头没有任何通报，因此判定它不是行走、身上也没有可拿的东西",
+        "不认识这个世界的纸币，也不认识这条街",
+        "夜里有永延帝祚牌楼，白天同一拐弯后没有",
+        "牌楼附近会压制体内的姑获鸟，退开即缓解；到券洞还差一步时仍够不到鸟",
+        "城里会周期性通报行走死亡",
+        "有人在他睡觉时来过院外：一支凉透的大前门烟头，烟灰完整，没有牙印；墙头磨白痕迹是新的",
+        "有一名阎浮行走已经死亡，但不知道是谁",
+        "新任务目标为一名男性行走，中等身材，右手有伤，惯用短兵器，需在十二点前到朝内大街八十一号",
+        "不知道朝内大街八十一号有多远"
+      ],
+      "goals": [
+        "在十二点之前赶到朝内大街八十一号",
+        "弄清这座城的规则，判断牌楼与阎浮通报意味着什么"
+      ],
+      "motivation": "刚落地不久，手里只有五十点阎浮点数和几件底牌，通报给出的坐标是眼下唯一明确的方向；同时也想弄清是谁在他睡觉时到过院外",
+      "resources": [
+        "五十点阎浮点数",
+        "羽织黑帕与剩余九十七只姑获鸟",
+        "环龙剑",
+        "四根烟（一根返潮后塞回盒里）",
+        "两张换来的本地零钱",
+        "一件从晾衣绳上取来的灰蓝中山装",
+        "死胡同尽头一处半拆的空院子（可从窗台取回烟头）"
+      ],
+      "constraints": [
+        "姑获鸟死一只少一只，可放出的数量有限",
+        "牌楼底下的压迫感让他无法靠近券洞",
+        "白天与夜里的城不一致，无法按正常方位记路",
+        "不知道任务目标的底细，也不知道对方的实力"
+      ],
+      "currentPressure": [
+        "十二点之前必须赶到指定地点，而他还没数过这段路的远近",
+        "有人在暗中盯过他睡觉的地方，却没有现身",
+        "城里刚死过一名行走，去向不明"
+      ],
+      "decisionHistory": [
+        "踩碎人头后不继续追究，判定它不是行走",
+        "不追进黑影里的男孩",
+        "绕开牌楼券洞，走侧面经过",
+        "只放出十只鸟而不是全部，接受损失三只换取半城视野",
+        "走进牌楼底下把不肯落下的那只鸟抓回来，随即退出",
+        "白天先睡两个钟头，把账留到白天算",
+        "换掉身上衣服，白天重走夜里的路线验证牌楼是否存在",
+        "不去追理发店门口那个注视他的人"
+      ],
+      "relationships": [
+        "与六纹金钱另一头的“她”有联系，知道她在，但本章没有回应",
+        "与锅炉房披军大衣的人只有两句寒暄，互不相识",
+        "与理发店门口那名个子不高的人隔街对视过，对方没有转头，之后消失"
+      ],
+      "arcMilestones": [
+        {
+          "id": "arc-liyan-pailou-test",
+          "chapter": "chapter-1",
+          "change": "明知牌楼底下会压制体内的姑获鸟，仍走进去把鸟抓回来，第一次主动试探这座城的规则边界",
+          "evidence": "他往前一步。",
+          "choice": "为一只不肯落下的鸟走进牌楼底下的压迫区",
+          "pressure": "那只鸟钉在檐角，翅膀还在扇却不掉也不走，明显不对",
+          "cost": "胸口被攥到只能吸一半气，退出后弯腰大口喘了十几下，冷汗才下去"
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "id": "event-liyan-crush-head",
+      "summary": "李阎踩碎街上一颗人头状的东西，没有出现任何通报，他据此判定那东西不是行走。",
+      "position": "第一章开头，落地后不久",
+      "participants": [
+        "李阎"
+      ],
+      "causes": [],
+      "consequences": [
+        "确认这类街景残影没有可拿的东西",
+        "确立了判断行走与否的依据"
+      ],
+      "relatedPlotThreads": [
+        "thread-city-rules"
+      ],
+      "origin": "original",
+      "source": "chapter-1"
+    },
+    {
+      "id": "event-liyan-meets-boy-ghost",
+      "summary": "一个断头、眼皮被割的男孩反复求他教踢球，李阎问不出来历，男孩抱着碎砖走进墙根黑影消失。",
+      "position": "第一章开头",
+      "participants": [
+        "李阎"
+      ],
+      "causes": [],
+      "consequences": [
+        "确认城中存在无解的残影",
+        "他没有追"
+      ],
+      "relatedPlotThreads": [
+        "thread-city-rules"
+      ],
+      "origin": "original",
+      "source": "chapter-1"
+    },
+    {
+      "id": "event-liyan-sees-pailou-twice",
+      "summary": "李阎在直街上两次走到“永延帝祚”牌楼下，确认中间没有岔口，判定这座城在跟他绕圈子。",
+      "position": "第一章夜",
+      "participants": [
+        "李阎"
+      ],
+      "causes": [],
+      "consequences": [
+        "放弃按正常方位记路",
+        "开始把这座城当作有规则的东西对待"
+      ],
+      "relatedPlotThreads": [
+        "thread-city-rules",
+        "thread-pailou"
+      ],
+      "origin": "original",
+      "source": "chapter-1"
+    },
+    {
+      "id": "event-liyan-deploys-birds",
+      "summary": "李阎放出十只姑获鸟，分四个方向侦查，收回七只；西南方向三只没有回来。",
+      "position": "第一章凌晨三点多",
+      "participants": [
+        "李阎"
+      ],
+      "causes": [],
+      "consequences": [
+        "他大致摸到半个城的样子",
+        "损失三只鸟",
+        "发现东北方向那只鸟行为异常"
+      ],
+      "relatedPlotThreads": [
+        "thread-city-rules"
+      ],
+      "origin": "original",
+      "source": "chapter-1"
+    },
+    {
+      "id": "event-walker-death-announcement",
+      "summary": "城中响起一声长啸，随后阎浮通报“一名阎浮行走已经死亡”。",
+      "position": "第一章凌晨",
+      "participants": [
+        "李阎"
+      ],
+      "causes": [],
+      "consequences": [
+        "李阎得知城中还有别的行走，且行走会死"
+      ],
+      "relatedPlotThreads": [
+        "thread-walker-death",
+        "thread-yanfu-mission"
+      ],
+      "origin": "original",
+      "source": "chapter-1"
+    },
+    {
+      "id": "event-liyan-enters-pailou",
+      "summary": "那只鸟飞向牌楼檐角后钉在半空，李阎走进牌楼底下把它抓回，胸口被攥到只能吸半口气，退出后缓解。",
+      "position": "第一章凌晨",
+      "participants": [
+        "李阎"
+      ],
+      "causes": [
+        "event-liyan-deploys-birds",
+        "event-liyan-sees-pailou-twice"
+      ],
+      "consequences": [
+        "确认牌楼对体内的姑获鸟有实际压制作用",
+        "确认再往前一步就是券洞范围"
+      ],
+      "relatedPlotThreads": [
+        "thread-pailou",
+        "thread-city-rules"
+      ],
+      "origin": "original",
+      "source": "chapter-1"
+    },
+    {
+      "id": "event-liyan-buys-breakfast",
+      "summary": "天亮后李阎在早点摊用夜里捡到的两张纸币买豆浆油条，确认这钱在本地能用，换回一把零钱。",
+      "position": "第一章清晨",
+      "participants": [
+        "李阎"
+      ],
+      "causes": [],
+      "consequences": [
+        "他手上有了本地零钱"
+      ],
+      "relatedPlotThreads": [
+        "thread-city-rules"
+      ],
+      "origin": "original",
+      "source": "chapter-1"
+    },
+    {
+      "id": "event-liyan-squats-empty-yard",
+      "summary": "李阎在死胡同尽头找到一处半拆的空院子，卸门板挡窗，白天在那里睡下。",
+      "position": "第一章上午",
+      "participants": [
+        "李阎"
+      ],
+      "causes": [],
+      "consequences": [
+        "有了临时落脚点",
+        "醒来后在窗下发现别人留下的烟头"
+      ],
+      "relatedPlotThreads": [
+        "thread-unknown-watcher"
+      ],
+      "origin": "original",
+      "source": "chapter-1"
+    },
+    {
+      "id": "event-liyan-daily-recon",
+      "summary": "下午李阎换衣重走夜里路线，发现白天没有牌楼，并在街对面被一个拎东西的人长久注视，回头时对方已消失。",
+      "position": "第一章下午",
+      "participants": [
+        "李阎"
+      ],
+      "causes": [
+        "event-liyan-sees-pailou-twice"
+      ],
+      "consequences": [
+        "确认昼夜的城不一致",
+        "确认有人在盯着他"
+      ],
+      "relatedPlotThreads": [
+        "thread-city-rules",
+        "thread-pailou",
+        "thread-unknown-watcher"
+      ],
+      "origin": "original",
+      "source": "chapter-1"
+    },
+    {
+      "id": "event-liyan-receives-mission",
+      "summary": "十一点三十，阎浮通报地点朝内大街八十一号、十二点之前、目标为一名右手有伤的男性行走。",
+      "position": "第一章夜，章末",
+      "participants": [
+        "李阎"
+      ],
+      "causes": [
+        "event-walker-death-announcement"
+      ],
+      "consequences": [
+        "李阎需要在十二点前赶到指定地点"
+      ],
+      "relatedPlotThreads": [
+        "thread-yanfu-mission"
+      ],
+      "origin": "original",
+      "source": "chapter-1"
+    }
+  ],
+  "plotThreads": [
+    {
+      "id": "thread-city-rules",
+      "title": "这座城的规则与昼夜差异",
+      "status": "active",
+      "lastUpdated": "chapter-1",
+      "notes": "李阎仍在摸索：残影有真有假、街道不走直线，同一地点夜里是牌楼，白天是空街。他尚未确定白天到底是城变了，还是他看不见。"
+    },
+    {
+      "id": "thread-pailou",
+      "title": "永延帝祚牌楼",
+      "status": "active",
+      "lastUpdated": "chapter-1",
+      "notes": "牌楼只在夜里出现；靠近券洞会压制李阎体内的姑获鸟，退开即缓解；鸟在檐角附近会失去飞行能力。"
+    },
+    {
+      "id": "thread-walker-death",
+      "title": "一名阎浮行走的死亡",
+      "status": "open",
+      "lastUpdated": "chapter-1",
+      "notes": "凌晨有长啸与死亡通报，死者身份与地点未明；夜里那三只失联的鸟往西南去了。"
+    },
+    {
+      "id": "thread-yanfu-mission",
+      "title": "朝内大街八十一号任务",
+      "status": "active",
+      "lastUpdated": "chapter-1",
+      "notes": "十一点三十下达，要求十二点前抵达；目标为男性行走，中等身材，右手有伤，惯用短兵器。李阎尚不知道路程远近。"
+    },
+    {
+      "id": "thread-unknown-watcher",
+      "title": "暗中监视李阎的人",
+      "status": "open",
+      "lastUpdated": "chapter-1",
+      "notes": "有人在他睡觉时到过院外，留下完整烟灰、没有牙印的大前门烟头，墙头也有新的磨白痕迹；下午又有一个拎东西的矮个男人隔街注视他，回头后人已不见。两者是否同一方未确认。"
+    }
+  ],
+  "foreshadowingUpdates": [
+    {
+      "id": "clue-walker-death-announcement:chapter-1",
+      "clueId": "clue-walker-death-announcement",
+      "clue": "行走死亡通报与城中长啸",
+      "status": "planted",
+      "chapter": "chapter-1",
+      "change": "首次出现行走死亡通报，死者身份与死因未揭示",
+      "relatedThreadIds": [
+        "thread-walker-death",
+        "thread-yanfu-mission"
+      ],
+      "evidence": "“一名阎浮行走已经死亡。”"
+    },
+    {
+      "id": "clue-sipo-bird:chapter-1",
+      "clueId": "clue-sipo-bird",
+      "clue": "西南方向失联的三只姑获鸟",
+      "status": "planted",
+      "chapter": "chapter-1",
+      "change": "三只鸟飞入两个院子接一个煤棚的区域后没有再出来，李阎只记下大致方位",
+      "relatedThreadIds": [
+        "thread-walker-death",
+        "thread-city-rules"
+      ],
+      "evidence": "西南那片是两个院子接一个煤棚，鸟进去就没再出来。"
+    },
+    {
+      "id": "clue-cigarette-butt:chapter-1",
+      "clueId": "clue-cigarette-butt",
+      "clue": "窗下的大前门烟头与墙头磨白痕迹",
+      "status": "planted",
+      "chapter": "chapter-1",
+      "change": "有人趁李阎睡觉时到过院外，痕迹是新的",
+      "relatedThreadIds": [
+        "thread-unknown-watcher"
+      ],
+      "evidence": "窗户底下，砖地上有个烟头。已经凉透，烟灰却是整的，没被风吹散。"
+    },
+    {
+      "id": "clue-barber-watcher:chapter-1",
+      "clueId": "clue-barber-watcher",
+      "clue": "理发店门口隔街注视李阎的人",
+      "status": "planted",
+      "chapter": "chapter-1",
+      "change": "李阎走过并回头时对方已消失，身份未明",
+      "relatedThreadIds": [
+        "thread-unknown-watcher"
+      ],
+      "evidence": "到街口，李阎回头看了一眼。\n\n理发店门口空了。"
+    },
+    {
+      "id": "clue-six-mark-coin:chapter-1",
+      "clueId": "clue-six-mark-coin",
+      "clue": "六纹金钱与另一头的“她”",
+      "status": "planted",
+      "chapter": "chapter-1",
+      "change": "李阎白天按压金钱，没有声音也没有回应，但他确知她在",
+      "relatedThreadIds": [
+        "thread-city-rules"
+      ],
+      "evidence": "铜是凉的。按了一会儿，没有声音，也没有人从那一头按回来。可他知道她在，好比知道隔壁屋有人，听不见喘气。"
+    }
+  ],
+  "macguffinUpdates": [
+    {
+      "id": "macguffin-yanfu-points:chapter-1",
+      "macguffinId": "macguffin-yanfu-points",
+      "name": "阎浮点数",
+      "status": "held",
+      "chapter": "chapter-1",
+      "change": "确认李阎名下只有五十点，少到换不出东西",
+      "holder": "李阎",
+      "relatedThreadIds": [
+        "thread-city-rules"
+      ],
+      "evidence": "兜里就五十点阎浮点数，掉不出一枚铜板。"
+    },
+    {
+      "id": "macguffin-yuzhi-heipa:chapter-1",
+      "macguffinId": "macguffin-yuzhi-heipa",
+      "name": "羽织黑帕（姑获鸟载体）",
+      "status": "held",
+      "chapter": "chapter-1",
+      "change": "总数一百只，本章损失三只，余九十七只，李阎已明确死一只少一只",
+      "holder": "李阎",
+      "relatedThreadIds": [
+        "thread-pailou",
+        "thread-city-rules"
+      ],
+      "evidence": "一百只，他在心里默了一遍这个数，死一只少一只。他只放出十只。"
+    },
+    {
+      "id": "macguffin-jinqian-six:chapter-1",
+      "macguffinId": "macguffin-jinqian-six",
+      "name": "六纹金钱",
+      "status": "held",
+      "chapter": "chapter-1",
+      "change": "首次出现并确认与“她”有关联，按压无回应",
+      "holder": "李阎",
+      "relatedThreadIds": [
+        "thread-city-rules"
+      ],
+      "evidence": "他伸手进领口，拇指按在那枚六纹金钱上。"
+    }
+  ],
+  "relationshipUpdates": [],
+  "continuityNotes": [
+    "阎浮会以干哑金属声通报行走死亡，并以视网膜红字下达任务：地点、时间、目标描述三项。",
+    "李阎当前持有五十点阎浮点数，能听懂本地话、用本地纸币消费，但不认识这个世界的钱。",
+    "羽织黑帕中的姑获鸟共一百只，死一只少一只；本章损失三只，剩余九十七只，夜间与白天都可使用。",
+    "永延帝祚牌楼只在夜里出现，白天在同一拐弯后不存在；靠近券洞会压制体内的姑获鸟，退开即恢复。",
+    "这座城的街道不走直线，同一段路会重复出现同一牌楼，李阎已放弃按正常方位记路。",
+    "凌晨有一名阎浮行走死亡，身份未明；李阎西南方向失联三只鸟的区域尚未探明。",
+    "李阎睡觉期间有人到过院外，留下凉透但烟灰完整、没有牙印的大前门烟头，以及墙头新的磨白痕迹；对方身份与目的未确认。",
+    "下午有一名个子不高、穿深色外套、手里拎东西的人在理发店门口隔街注视李阎，李阎回头时对方已消失。",
+    "李阎的临时落脚点是死胡同尽头一处半拆的空院子，北房炕上铺旧席，窗上靠两块门板挡光，窗台放着那枚烟头。",
+    "李阎已换上一件袖子短了一截的灰蓝中山装，身上还有环龙剑、四根烟和换来的本地零钱。",
+    "十一点三十阎浮通报任务：十二点之前到朝内大街八十一号，目标为一名男性行走，中等身材，右手有伤，惯用短兵器；李阎尚不知道这段路有多远。"
+  ]
+}
