@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:http";
@@ -163,6 +163,19 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     assert.equal(analysisContext, "");
     const futureSearch = await searchLibrary(join(universeDir, "library"), "未来剧情泄漏标记", 10);
     assert.equal(futureSearch.length, 0);
+
+    // Inject a post-staging failure while building the bounded library snapshot.
+    await writeFile(join(source, "library", "index.json"), "{ malformed json");
+    const failedCreate = await fetch(`http://127.0.0.1:${address.port}/api/worlds/source-world/universes`, {
+      method: "POST",
+      headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
+      body: JSON.stringify({ name: "应回滚的宇宙", entryChapter: "第二章", type: "free", brief: "故障注入", buildKnowledge: false })
+    });
+    assert.equal(failedCreate.status, 500);
+    const remainingWorlds = (await readdir(join(root, "worlds"))).sort();
+    assert.deepEqual(remainingWorlds, ["source-world", payload.universe.id].sort());
+    assert.equal(remainingWorlds.some(name => name.startsWith(".staging-")), false);
+
   } finally {
     if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
     process.chdir(previousCwd);
