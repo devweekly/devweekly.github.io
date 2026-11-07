@@ -140,6 +140,19 @@ export function buildCliEntryArgs(command: string[], production = process.env.NO
     : ["--import", "tsx", "src/cli.ts", ...command];
 }
 
+export function classifyKnowledgeBuildStepResult(
+  stepName: KnowledgeBuildStep,
+  exitCode: number | null,
+  output: string
+): "completed" | "failed" | "skipped" {
+  if (stepName === "vane-index" && exitCode === 0) {
+    try {
+      if ((JSON.parse(output) as { skipped?: boolean }).skipped === true) return "skipped";
+    } catch { /* successful commands may emit non-JSON diagnostics */ }
+  }
+  return exitCode === 0 ? "completed" : "failed";
+}
+
 const knowledgeBuilds = new Set<string>();
 function knowledgeBuildPath(id: string): string {
   return path.resolve(".output", id, "workbench", "knowledge-build.json");
@@ -207,12 +220,7 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
         record.output = result.output.slice(-12000);
         record.error = result.error.slice(-6000);
         record.completedAt = new Date().toISOString();
-        let optionalSkip = false;
-        if (step.name === "vane-index" && result.exitCode === 0) {
-          try { optionalSkip = (JSON.parse(result.output) as { skipped?: boolean }).skipped === true; }
-          catch { /* ordinary successful CLI output */ }
-        }
-        record.status = optionalSkip ? "skipped" : result.exitCode === 0 ? "completed" : "failed";
+        record.status = classifyKnowledgeBuildStepResult(step.name, result.exitCode, result.output);
         if (record.status === "failed") failed++;
         state.updatedAt = new Date().toISOString();
         await writeKnowledgeBuild(state);
