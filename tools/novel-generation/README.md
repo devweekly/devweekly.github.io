@@ -660,6 +660,20 @@ Vane 索引位于 worlds/<world>/vane-index/，每个 world 独立。普通章�
 离线分析资料会自动进入普通 write 和 write-long 的写作上下文，按当前任务选取少量相关素材；它们是创作参考，不是剧情清单、人物行为规范或风格验收指标。
 
 
+### BM25 / Vane 检索质量评测
+
+检索引擎不能只凭少量演示决定是否采用。先复制 benchmarks/retrieval-eval.example.json，替换为真实 worldId、问题和人工确认的 relevantChunkIds。chunk ID 可从 worlds/<world>/library/index.json 中查看；每个问题至少标注一个真正相关的原文片段。
+
+运行：
+
+```bash
+npm run evaluate-retrieval -- --world conghuoniao --dataset ./benchmarks/my-retrieval-set.json
+```
+
+报告默认写入 .output/<world>/retrieval-evaluation/，比较 BM25 与当前可用的 Vane 检索，输出 Recall@5、MRR@10、nDCG@10、每条查询的排序和延迟。未安装 Vane 或没有可用索引时会明确记录 vaneAvailable=false，不会伪造对比结果。若要评估 hybrid 语义检索，必须先配置 embedding 并确认 Vane manifest 的 vectorMode=true。
+
+评测集应覆盖精确人名/别名、事件事实、相似场景、人物知识差异、世界习俗和伏笔回查；同一问题的相关片段由人工标注，不要让待测模型自己生成 gold labels。当前仓库只提供模板和指标计算器，真实作品评测集仍需按实际原著建立。
+
 ## 本地模型与 DeepSeek 分析质量对比
 
 见 [MODEL-COMPARISON.md](./MODEL-COMPARISON.md)。运行 `npm run compare-models` 可使用相同章节和提示词比较 LM Studio 本地模型与 DeepSeek，并自动生成 ZIP 诊断包。
