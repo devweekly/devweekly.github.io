@@ -21,7 +21,7 @@ import { buildStoryStateGraph, filterGraph } from "./story-state-graph.js";
 import { archiveStyleReference, listStyleReferenceHistory, listStyleReferences, putStyleReference, readActiveStyleReference, readStyleReferenceVersion } from "./style-references.js";
 import { getCandidate, getRun, listCandidates, listRuns, recoverInterruptedRuns, saveCandidate, saveRun, type StoryPlanCandidate, type WorkbenchRun } from "./workbench-store.js";
 import type { StoryState } from "./story-state.js";
-import { buildUniverseOriginContext, rebaseStoryState, remapForkedRun } from "./universe-branch.js";
+import { buildUniverseOriginContext, rebaseStoryState, remapForkedRun, shouldCopyUniverseAsset } from "./universe-branch.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
 // noUncheckedIndexedAccess 放宽成 string | undefined。
@@ -442,21 +442,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     await cp(sourceDir, stagingDir, {
       recursive: true,
       filter: source => {
-        const relative = path.relative(sourceDir, source).split(path.sep);
-        if (!relative.length || relative[0] === "") return true;
-        const first = relative[0];
-        if (!first) return true;
-        if (["story.db", "story-state.json", "story-arc.md", "story-plan.json", ".output", "universes", "library", "vane-index", "analysis", "corpus-craft", "style-references", "style-reference-history"].includes(first)) return false;
-        if (first === "universe.json") return false;
-        // Root-level derived summaries are whole-book products. Their timestamps or
-        // filenames do not prove that their contents stop at the selected entry.
-        // Until an as-of rebuild exists, do not copy them into a historical branch.
-        if (relative.length === 1 && [
-          "world-bible.md", "characters.md", "timeline.md", "fruit-worlds.md",
-          "yanfu-system.md", "style-profile.md", "story-analysis.md",
-          "character-profiles.md", "plot-summary.md", "foreshadowing.md"
-        ].includes(first)) return false;
-        return true;
+        return shouldCopyUniverseAsset(path.relative(sourceDir, source));
       }
     });
     // novel.db 是原著分析只读快照的初期副本；重置其世界身份，防止数据库身份校验误认为属于源项目。
@@ -551,20 +537,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     await cp(parentDir, stagingDir, {
       recursive: true,
       filter: source => {
-        const relative = path.relative(parentDir, source).split(path.sep);
-        if (!relative.length || relative[0] === "") return true;
-        const first = relative[0];
-        if (!first) return true;
-        if (["story.db", "story-state.json", "story-arc.md", "story-plan.json", ".output", "universes", "library", "vane-index", "analysis", "corpus-craft", "style-references", "style-reference-history"].includes(first)) return false;
-        if (first === "universe.json") return false;
-        // Parent-world summaries may describe events after this fork point.
-        // Rebuild these from the forked state instead of inheriting stale aggregates.
-        if (relative.length === 1 && [
-          "world-bible.md", "characters.md", "timeline.md", "fruit-worlds.md",
-          "yanfu-system.md", "style-profile.md", "story-analysis.md",
-          "character-profiles.md", "plot-summary.md", "foreshadowing.md"
-        ].includes(first)) return false;
-        return true;
+        return shouldCopyUniverseAsset(path.relative(parentDir, source));
       }
     });
     rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
