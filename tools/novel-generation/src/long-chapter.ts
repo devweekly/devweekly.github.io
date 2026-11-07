@@ -48,6 +48,8 @@ export interface LongChapterInput {
   libraryDir?: string;
   retrievalLimit?: number;
   applyState: boolean;
+  /** Optional blind-reader report; disabled in normal one-click generation. */
+  readerExperience?: boolean;
 }
 
 /** 只数汉字，与「一万字」的口径一致；标点与空白不计。 */
@@ -553,7 +555,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       console.error("[write-long] 风格回归观察未完成；不改动正文，也不影响章节状态提交。");
     }
   }
-  try {
+  if (input.readerExperience) try {
     const readerReport = await cachedCall("reader-experience", "10-reader-experience.md", "reader", [
       readerExperiencePrompt({ brief: input.brief, chapter })
     ], output => { if (!output.trim()) throw new Error("Reader returned an empty report."); });
