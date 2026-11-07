@@ -1,0 +1,65 @@
+{
+  "schemaVersion": 1,
+  "stages": {
+    "creative": {
+      "inputHash": "048a5a5b05ceabf24cc7c0d66611ac45ce991cbdbe44bc550988733827d4f4a4",
+      "outputFile": "02-creative-options.md",
+      "outputHash": "c1002ae5acf216244a40591ef08b813673b0ae83a59befa245b4fb1ea06b0903",
+      "completedAt": "2026-11-07T05:54:15.827Z"
+    },
+    "plot": {
+      "inputHash": "80551adcc352538273f03deca225ee0616a87ce5829cfd126ce42cd47b9134c4",
+      "outputFile": "01-main-plot.md",
+      "outputHash": "ac8232a55569c1132b7e744c1d9a62816953282a99f088e716bba237f17b5c5c",
+      "completedAt": "2026-11-07T05:55:11.722Z"
+    },
+    "plan": {
+      "inputHash": "5150ae5710ec1c259a772679a33dc82ce83342c6abde6b8c888df0315c991171",
+      "outputFile": "03-chapter-plan.md",
+      "outputHash": "60d238765d39a6c5b95b9b29d37d9ad28501d95507c4ae90280bf5385cf61f95",
+      "completedAt": "2026-11-07T05:56:21.595Z"
+    },
+    "scene": {
+      "inputHash": "e222335854eac00421f0c00404278ca5a908804e082ad138f723156113b94a40",
+      "outputFile": "04-scene-draft.md",
+      "outputHash": "bcd1a85a5b6865b86bbbbc413e0efc6669d49a18c8a4cbdf34b65b88d2ea7363",
+      "completedAt": "2026-11-07T05:57:02.918Z"
+    },
+    "dialogue": {
+      "inputHash": "067a30b27c6a4722cf7f68c2a9cb2ea34dcde74740b8a08471f9d72ec8367828",
+      "outputFile": "05-dialogue-edited.md",
+      "outputHash": "ee62e2b5247862101e7e63abcd5aeab7165eb1f91dbdb7a8f67df694d0aabf37",
+      "completedAt": "2026-11-07T05:57:59.681Z"
+    },
+    "voice": {
+      "inputHash": "f9f3630ab29d37847f73662b064f4e4a0a5ef94d3113aca9092a537be7f86d95",
+      "outputFile": "06-voice-edited.md",
+      "outputHash": "ddb942ae3608fe6aa71580f0aba0e64f9e935f133f49bf1a3bf3b0d3e671a676",
+      "completedAt": "2026-11-07T05:58:51.041Z"
+    },
+    "anti-ai-diagnosis": {
+      "inputHash": "c1b28bf413fc3b0672a1e42dcbad4dbd1f590107a5537e0e34939bcf425d22e1",
+      "outputFile": "06a-anti-ai-diagnosis.md",
+      "outputHash": "c0b2ba07906baa2483359478e3cc261f215f89ddc7129d0357c3b6cba6db115f",
+      "completedAt": "2026-11-07T06:00:04.865Z"
+    },
+    "anti-ai-edit": {
+      "inputHash": "325e41fc0463e3850c9b4d63939663799f56df72d02d8aa0c19cd41149ced83d",
+      "outputFile": "06b-anti-ai-edited.md",
+      "outputHash": "b3486c967451c330f84a26586f5dea46b0bd92f87557bb6df0cf461f411617dd",
+      "completedAt": "2026-11-07T06:00:56.184Z"
+    },
+    "anti-ai-verification": {
+      "inputHash": "e52b183f23859514c9ee3f844e6d00704f296b44c9132eeee8061af3d6c0f859",
+      "outputFile": "06c-anti-ai-verification.json",
+      "outputHash": "474c9c87a4fafef41c2404302c9afb5cacf5abacd0a4802c95e01780336beb52",
+      "completedAt": "2026-11-07T06:01:14.750Z"
+    },
+    "quality-review-1": {
+      "inputHash": "d5a6ef6fbead08ce3105cb1f86dfff2affe512727cc18829e73de20eaaf2672e",
+      "outputFile": "07-review-round-1-raw.txt",
+      "outputHash": "11ed2c4881b3fe1fb5bbf120d13f0bdcb432a784610c2bef7cbf29fc08110b60",
+      "completedAt": "2026-11-07T06:01:41.170Z"
+    }
+  }
+}
