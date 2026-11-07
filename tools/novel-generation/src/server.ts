@@ -121,6 +121,87 @@ function sendError(res: Response, error: unknown): void {
 const worldQueues = new Map<string, Promise<void>>();
 const worldMutationLocks = new Set<string>();
 
+type KnowledgeBuildStep = "story-analysis" | "character-profiles" | "character-states" | "corpus-craft" | "vane-index";
+type KnowledgeBuildState = {
+  worldId: string; status: "queued" | "running" | "completed" | "partial" | "failed";
+  startedAt: string; updatedAt: string; completedAt?: string;
+  currentStep?: KnowledgeBuildStep;
+  steps: Array<{ name: KnowledgeBuildStep; status: "running" | "completed" | "failed" | "skipped"; startedAt: string; completedAt?: string; exitCode?: number | null; output?: string; error?: string }>;
+};
+const knowledgeBuilds = new Set<string>();
+function knowledgeBuildPath(id: string): string {
+  return path.resolve(".output", id, "workbench", "knowledge-build.json");
+}
+async function readKnowledgeBuild(id: string): Promise<KnowledgeBuildState | null> {
+  try { return JSON.parse(await readFile(knowledgeBuildPath(id), "utf8")) as KnowledgeBuildState; }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
+}
+async function writeKnowledgeBuild(state: KnowledgeBuildState): Promise<void> {
+  const target = knowledgeBuildPath(state.worldId);
+  await mkdir(path.dirname(target), { recursive: true });
+  const temporary = target + ".tmp";
+  await writeFile(temporary, JSON.stringify(state, null, 2) + "\\n", "utf8");
+  await rename(temporary, target);
+}
+const KNOWLEDGE_BUILD_STEPS: Array<{ name: KnowledgeBuildStep; command: string[] }> = [
+  { name: "story-analysis", command: ["analyze-story"] },
+  { name: "character-profiles", command: ["analyze-profiles"] },
+  { name: "character-states", command: ["analyze-character-states"] },
+  { name: "corpus-craft", command: ["analyze-corpus-craft"] },
+  { name: "vane-index", command: ["vane-index"] }
+];
+async function runKnowledgeBuildStep(worldId: string, command: string[]): Promise<{ exitCode: number | null; output: string; error: string }> {
+  return await new Promise(resolve => {
+    const child = spawn(process.execPath, ["--import", "tsx", "src/cli.ts", ...command, "--world", worldId], {
+      cwd: process.cwd(), env: process.env, stdio: ["ignore", "pipe", "pipe"]
+    });
+    let output = "", error = "", settled = false;
+    child.stdout.setEncoding("utf8").on("data", chunk => { output += chunk; });
+    child.stderr.setEncoding("utf8").on("data", chunk => { error += chunk; });
+    child.on("error", cause => { if (settled) return; settled = true; resolve({ exitCode: null, output, error: error + cause.message }); });
+    child.on("close", code => { if (settled) return; settled = true; resolve({ exitCode: code, output, error }); });
+  });
+}
+async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState> {
+  const existing = await readKnowledgeBuild(worldId);
+  if (knowledgeBuilds.has(worldId) || existing?.status === "queued" || existing?.status === "running") {
+    throw Object.assign(new Error("该宇宙已有知识构建任务正在运行。"), { status: 409 });
+  }
+  const now = new Date().toISOString();
+  const state: KnowledgeBuildState = { worldId, status: "queued", startedAt: now, updatedAt: now, steps: [] };
+  knowledgeBuilds.add(worldId);
+  await writeKnowledgeBuild(state);
+  void (async () => {
+    let failed = 0;
+    state.status = "running";
+    for (const step of KNOWLEDGE_BUILD_STEPS) {
+      const record: KnowledgeBuildState["steps"][number] = { name: step.name, status: "running", startedAt: new Date().toISOString() };
+      state.currentStep = step.name; state.steps.push(record); state.updatedAt = new Date().toISOString();
+      await writeKnowledgeBuild(state);
+      const result = await runKnowledgeBuildStep(worldId, step.command);
+      record.exitCode = result.exitCode;
+      record.output = result.output.slice(-12000);
+      record.error = result.error.slice(-6000);
+      record.completedAt = new Date().toISOString();
+      record.status = result.exitCode === 0 ? "completed" : "failed";
+      if (record.status === "failed") failed++;
+      state.updatedAt = new Date().toISOString();
+      await writeKnowledgeBuild(state);
+    }
+    state.status = failed === 0 ? "completed" : failed === state.steps.length ? "failed" : "partial";
+    state.completedAt = new Date().toISOString(); state.updatedAt = state.completedAt;
+    delete state.currentStep;
+    await writeKnowledgeBuild(state);
+  })().catch(async error => {
+    state.status = "failed"; state.completedAt = new Date().toISOString(); state.updatedAt = state.completedAt;
+    state.steps.push({ name: state.currentStep ?? "story-analysis", status: "failed", startedAt: state.updatedAt, completedAt: state.completedAt, error: String(error) });
+    delete state.currentStep;
+    await writeKnowledgeBuild(state).catch(() => undefined);
+  }).finally(() => knowledgeBuilds.delete(worldId));
+  return state;
+}
+
+
 /** Reserve the short metadata mutation window synchronously, before the first await. */
 function acquireWorldMutation(worldId: string): (() => void) | null {
   if (worldMutationLocks.has(worldId)) return null;
@@ -696,6 +777,19 @@ app.delete("/api/worlds/:worldId/style-references/:name", async (req, res) => {
 
 app.get("/api/worlds/:worldId/candidates", async (req, res) => {
   try { res.json({ candidates: await listCandidates(worldIdOf(req.params.worldId)) }); } catch (error) { sendError(res, error); }
+});
+app.get("/api/worlds/:worldId/knowledge-build", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    res.json({ build: await readKnowledgeBuild(id) });
+  } catch (error) { sendError(res, error); }
+});
+app.post("/api/worlds/:worldId/knowledge-build", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    if (!(await readUniverse(id))) return void res.status(409).json({ error: "该入口用于独立故事宇宙；原文项目请使用现有分析命令。" });
+    res.status(202).json({ build: await startKnowledgeBuild(id) });
+  } catch (error) { sendError(res, error); }
 });
 app.get("/api/worlds/:worldId/runs", async (req, res) => {
   try { res.json({ runs: await listRuns(worldIdOf(req.params.worldId)) }); } catch (error) { sendError(res, error); }
