@@ -44,6 +44,29 @@ export function buildCharacterArcRetrospective(state: StoryState, taskText: stri
 }
 
 
+export function buildCommonWritingContext(
+  input: Pick<WriteWorkflowInput, "worldBible" | "contextText" | "retrievedContext" | "writingBrief" | "storyPlanText" | "storyArcText" | "storyAnalysisContext" | "sourceText" | "styleProfile" | "mode" | "brief">,
+  state: StoryState,
+  worldSituation: string
+): string {
+  return [
+    "世界设定：", input.worldBible,
+    "当前故事状态（已有记录优先；不得擅自改写已确认事实）：", JSON.stringify(state, null, 2),
+    worldSituation ? "本章相关人物与局势上下文（用于理解当前局面，不是新增正史）：\n" + worldSituation : "",
+    "事实来源说明：canonFacts.confidence=confirmed 表示原著已确认，inferred 表示基于原文的推断，original 表示项目原创。项目原创事实可在续写中承接，但不得伪装成原著事实。",
+    input.contextText ? "用户补充的前文摘要：\n" + input.contextText : "",
+    input.retrievedContext ? "本地资料库证据（用于核实事实，不得整段复制）：\n" + input.retrievedContext : "",
+    input.writingBrief ? "全书知识库（已经写成的事实与未收线，优先于分析参考）：\n" + input.writingBrief : "",
+    input.storyPlanText ? input.storyPlanText : "",
+    input.storyArcText ? "当前滚动式多章节 Story Arc（优先承接已发生事实；未执行章节可调整）：\n" + input.storyArcText : "",
+    input.storyAnalysisContext ? "既有小说分析参考（仅供启发，不是正史或写作清单）：\n" + input.storyAnalysisContext : "",
+    input.sourceText ? "用户提供且有权使用的续写材料：\n" + input.sourceText : "",
+    input.styleProfile ? "本项目叙事风格参考（仅使用抽象写作特征，不模仿特定作者的独特表达；参考不能凌驾于当前人物、场景需要和文学表达）：\n" + input.styleProfile : "",
+    input.mode === "continuation" ? "创作模式：续写。严格承接用户提供的合法文本和当前故事状态。" : "创作模式：原创衍生。不得把项目原创内容伪装成原著事实。",
+    "本次创作任务：", input.brief
+  ].filter(Boolean).join("\n\n");
+}
+
 export interface WriteWorkflowInput {
   worldId: string;
   /** 世界资料目录，默认 worlds/<worldId>。 */
@@ -188,22 +211,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   const worldSituation = buildWorldSituationContext(state, situationQuery);
   if (worldSituation) await saveStage(input.outputDir, "00-world-situation-context.md", worldSituation);
 
-  const common = [
-    "世界设定：", input.worldBible,
-    "当前故事状态（已有记录优先；不得擅自改写已确认事实）：", JSON.stringify(state, null, 2),
-    worldSituation ? "本章相关人物与局势上下文（用于理解当前局面，不是新增正史）：\n" + worldSituation : "",
-    "事实来源说明：canonFacts.confidence=confirmed 表示原著已确认，inferred 表示基于原文的推断，original 表示项目原创。项目原创事实可在续写中承接，但不得伪装成原著事实。",
-    input.contextText ? "用户补充的前文摘要：\n" + input.contextText : "",
-    input.retrievedContext ? "本地资料库证据（用于核实事实，不得整段复制）：\n" + input.retrievedContext : "",
-    input.writingBrief ? "全书知识库（已经写成的事实与未收线，优先于分析参考）：\n" + input.writingBrief : "",
-    input.storyPlanText ? input.storyPlanText : "",
-    input.storyArcText ? "当前滚动式多章节 Story Arc（优先承接已发生事实；未执行章节可调整）：\n" + input.storyArcText : "",
-    input.storyAnalysisContext ? "既有小说分析参考（仅供启发，不是正史或写作清单）：\n" + input.storyAnalysisContext : "",
-    input.sourceText ? "用户提供且有权使用的续写材料：\n" + input.sourceText : "",
-    input.styleProfile ? "本项目叙事风格参考（仅使用抽象写作特征，不模仿特定作者的独特表达；参考不能凌驾于当前人物、场景需要和文学表达）：\n" + input.styleProfile : "",
-    input.mode === "continuation" ? "创作模式：续写。严格承接用户提供的合法文本和当前故事状态。" : "创作模式：原创衍生。不得把项目原创内容伪装成原著事实。",
-    "本次创作任务：", input.brief
-  ].filter(Boolean).join("\n\n");
+  const common = buildCommonWritingContext(input, state, worldSituation);
 
   // 不同阶段只接收完成当前任务所需的上下文。完整事实包仍用于规划、正文和终审；
   // 创意发散不需要逐条原文证据，编辑阶段也不应反复携带整份语料与续写材料。
