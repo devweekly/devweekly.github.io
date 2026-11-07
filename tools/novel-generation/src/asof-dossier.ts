@@ -154,7 +154,7 @@ export async function exportAsOfDossier(worldId: string, worldDir: string): Prom
     for (const file of (await readdir(corpusCraftDir)).filter(name => name.endsWith(".json"))) {
       try {
         const chapter = JSON.parse(await readFile(join(corpusCraftDir, file), "utf8")) as {
-          worldId?: string; chapterId?: string; title?: string; ordinal?: number;
+          worldId?: string; chapterId?: string; title?: string; ordinal?: number; sourceHash?: string;
           worldDetails?: Array<Record<string, unknown>>;
         };
         if (chapter.worldId !== worldId || sourceHashes.get(chapter.chapterId ?? "") !== chapter.sourceHash || !Array.isArray(chapter.worldDetails)) continue;
