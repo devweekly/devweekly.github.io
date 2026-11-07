@@ -344,9 +344,6 @@ export const ACCUMULATED_CONTEXT_TAIL_CHARS = 7_200;
 /** 单场局势输入的字符预算。逐场都要重新拼，必须比整章预算紧。 */
 export const SCENE_SITUATION_BUDGET_CHARS = 2_600;
 
-/** 逐批审查合并后的必改项上限；逐批审查覆盖多场，所以比单章终审更宽。 */
-export const BATCH_REVIEW_MAX_ISSUES = 6;
-
 // ── 分析参考检索（story-analysis-context）的相关性打分 ───────────
 /** 分析条目的整名命中权重与别名命中权重。整名命中说明本章大体上在写它。 */
 export const CONTEXT_NAME_HIT_SCORE = 24;
