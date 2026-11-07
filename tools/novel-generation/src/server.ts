@@ -1025,6 +1025,22 @@ export function createApp() {
 
 /** 服务启动前把上次进程中断的运行记录标记为失败，避免 UI 出现永远 queued 的假任务。 */
 export async function recoverWorkbenchRuns(): Promise<void> {
-  const worlds = await listWorlds();
-  await Promise.all(worlds.map(x => recoverInterruptedRuns(x.id)));
+  const root = path.resolve("worlds");
+  let entries: string[] = [];
+  try { entries = await readdir(root); } catch { /* no worlds yet */ }
+  const ids = entries.filter(id => /^[a-z0-9][a-z0-9-]*$/i.test(id));
+  await Promise.all(ids.map(async id => {
+    await recoverInterruptedRuns(id);
+    const build = await readKnowledgeBuild(id);
+    if (build && (build.status === "queued" || build.status === "running")) {
+      build.status = "failed";
+      build.completedAt = new Date().toISOString();
+      build.updatedAt = build.completedAt;
+      build.steps = build.steps.map(step => step.status === "running"
+        ? { ...step, status: "failed" as const, completedAt: build.completedAt, error: "Workbench restarted before this step completed. Start a new knowledge build to retry." }
+        : step);
+      delete build.currentStep;
+      await writeKnowledgeBuild(build);
+    }
+  }));
 }
