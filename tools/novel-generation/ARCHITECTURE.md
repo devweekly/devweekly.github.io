@@ -543,7 +543,7 @@ CLI `write` 同样读取活动 Story Arc；没有旧 Arc 时首次生成自动�
 
 ## 宇宙知识构建任务
 
-故事宇宙创建和历史分叉只负责建立时点安全的最小运行环境，不在请求内同步执行长时间 LLM 分析。Chapter Studio 的“原著知识与语料构建”面板提供显式后台任务入口，依次复用 analyze-story、analyze-arcs、ensure-style-profile、analyze-profiles、analyze-character-states、analyze-corpus-craft 和 vane-index，全部以当前宇宙 ID 运行。状态持久化在 .output/<worldId>/workbench/knowledge-build.json，Workbench 轮询展示总状态、当前步骤和逐步错误；失败或部分失败可重新启动，服务重启后未完成任务会被标记失败。
+故事宇宙创建和历史分叉先建立时点安全的最小运行环境，再默认异步启动后台知识重建，不阻塞创建请求。Chapter Studio 的“原著知识与语料构建”面板展示任务状态，也允许手动重试；任务依次复用 analyze-story、analyze-arcs、ensure-style-profile、analyze-profiles、analyze-character-states、analyze-corpus-craft 和 vane-index，全部以当前宇宙 ID 运行。ensure-style-profile 只从当前宇宙 bounded library 选取分散章节样本，只填补缺失画像，不覆盖人工维护的 Style Profile。状态持久化在 .output/<worldId>/workbench/knowledge-build.json，Workbench 轮询展示总状态、当前步骤和逐步错误；失败或部分失败可重新启动，服务重启后未完成任务会被标记失败。
 
 这项任务是可选增强，不是章节写作前置条件。特别是 analyze-character-states 会写入 novel.db，因此不在宇宙创建后自动启动，也不应与章节写作并行执行；Workbench 在章节运行期间禁用构建按钮。Vane 语义检索仍依赖独立 embedding 配置，构建失败必须明确显示，不能把未生成的向量索引显示为可用。
 
