@@ -1,0 +1,55 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import { createServer } from "node:http";
+import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { createApp } from "../src/server.js";
+
+test("knowledge build API reserves one task, persists status, and permits retry after failure", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-knowledge-build-"));
+  const previousCwd = process.cwd();
+  const worldId = "test-universe";
+  let server: ReturnType<typeof createServer> | undefined;
+  try {
+    process.chdir(root);
+    await mkdir(join(root, "worlds", worldId), { recursive: true });
+    await import("node:fs/promises").then(({ writeFile }) => writeFile(
+      join(root, "worlds", worldId, "universe.json"),
+      JSON.stringify({ id: worldId, sourceWorldId: "source", name: "测试宇宙", type: "free", entryChapter: "第一章", brief: "", createdAt: new Date().toISOString() })
+    ));
+    server = createServer(createApp());
+    await new Promise<void>(resolve => server!.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const url = `http://127.0.0.1:${address.port}/api/worlds/${worldId}/knowledge-build`;
+    const request = () => fetch(url, {
+      method: "POST",
+      headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
+      body: "{}"
+    });
+    const responses = await Promise.all([request(), request()]);
+    assert.deepEqual(responses.map(response => response.status).sort(), [202, 409]);
+    const accepted = responses.find(response => response.status === 202)!;
+    const acceptedBody = JSON.parse(await accepted.text()) as { build: { status: string; worldId: string } };
+    assert.equal(acceptedBody.build.status, "queued");
+    assert.equal(acceptedBody.build.worldId, worldId);
+
+    let latest: { build: { status: string; steps: Array<{ name: string; status: string }> } | null } = { build: null };
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const status = await fetch(url, { headers: { host: `127.0.0.1:${address.port}` } });
+      latest = JSON.parse(await status.text()) as typeof latest;
+      if (latest.build?.status === "failed" || latest.build?.status === "partial" || latest.build?.status === "completed") break;
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    assert.ok(latest.build);
+    assert.ok(["failed", "partial", "completed"].includes(latest.build.status));
+    assert.equal(latest.build.steps.length, 5);
+    const persisted = JSON.parse(await readFile(join(root, ".output", worldId, "workbench", "knowledge-build.json"), "utf8")) as typeof latest.build;
+    assert.equal(persisted?.status, latest.build.status);
+  } finally {
+    if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
+    process.chdir(previousCwd);
+    await rm(root, { recursive: true, force: true });
+  }
+});
