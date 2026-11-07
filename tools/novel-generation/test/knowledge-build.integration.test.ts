@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createApp, recoverWorkbenchRuns } from "../src/server.js";
+import { classifyKnowledgeBuildStepResult, createApp, recoverWorkbenchRuns } from "../src/server.js";
 import { saveRun } from "../src/workbench-store.js";
 
 test("knowledge build API reserves one task, persists status, and rejects conflicting operations", async () => {
@@ -120,4 +120,14 @@ test("workbench restart marks an interrupted knowledge build failed and retryabl
     process.chdir(previousCwd);
     await rm(root, { recursive: true, force: true });
   }
+});
+
+
+test("optional Vane unavailability is reported as skipped, not a failed knowledge build", () => {
+  assert.equal(classifyKnowledgeBuildStepResult("vane-index", 0, JSON.stringify({
+    skipped: true, reason: "Vane 原生包未安装；本宇宙继续使用现有 BM25 检索。"
+  })), "skipped");
+  assert.equal(classifyKnowledgeBuildStepResult("vane-index", 0, JSON.stringify({ documents: 120, vectorMode: false })), "completed");
+  assert.equal(classifyKnowledgeBuildStepResult("story-analysis", 1, "model timeout"), "failed");
+  assert.equal(classifyKnowledgeBuildStepResult("corpus-craft", 0, "done"), "completed");
 });
