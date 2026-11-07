@@ -192,6 +192,7 @@ npm run dev -- story-state --world conghuoniao --type overview
 npm run dev -- story-state --world conghuoniao --type relationships --query 李阎
 npm run dev -- story-state --world conghuoniao --type foreshadowings --query 天母
 npm run dev -- story-state --world conghuoniao --type macguffins --query 铜匣
+npm run dev -- story-kb --world conghuoniao --type graph --query 李阎
 npm run dev -- story-state --world conghuoniao --type graph --query 李阎
 ```
 
