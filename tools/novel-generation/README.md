@@ -183,6 +183,19 @@ npm run dev -- regress --world conghuoniao --chapter 13 \
 
 `.output/regression/<run-id>/` 存原文、两版原稿与修订稿、评审全文；`analysis/<world>/regression/chapter-XXX/` 存 `metrics.json`、`review.md` 与实验说明，随代码提交。默认只统计节奏指标，不按数字自动改稿；只有显式传 `--repair` 才运行实验性的句法修订。该修订只适合对照实验，不建议用于正式小说成稿。`--max-words` 控制篇幅（默认与原章同长）。已有实验见 `analysis/conghuoniao/regression/chapter-013/`。
 
+## 查看续写动态故事状态
+
+原著成书知识库通过 `story-kb` 查询；续写过程中产生的人物状态、事件、关系变化、伏笔生命周期和 MacGuffin 变化保存在独立的 Story State 中。使用只读命令查看当前状态：
+
+```bash
+npm run dev -- story-state --world conghuoniao --type overview
+npm run dev -- story-state --world conghuoniao --type relationships --query 李阎
+npm run dev -- story-state --world conghuoniao --type foreshadowings --query 天母
+npm run dev -- story-state --world conghuoniao --type macguffins --query 铜匣
+```
+
+`--type` 支持 `overview`、`characters`、`events`、`threads`、`relationships`、`foreshadowings`、`macguffins`；`--query` 做文本筛选，`--limit` 控制返回数量。该命令只读取现有 Story State，不触发模型分析或修改记录。
+
 ## 续写中的伏笔与 MacGuffin 生命周期
 
 每章终审通过后，状态管理员会从最终正文中提取本章确实发生的伏笔、关键目标/物件/信息以及重要人物关系变化，分别追加到 Story State 的 `foreshadowingUpdates`、`macguffinUpdates` 与 `relationshipUpdates`。每条更新包含稳定对象 ID、章节、变化说明和正文逐字证据；伏笔与 MacGuffin 还可关联情节线；同一运行恢复时按更新 ID 幂等合并。没有自然发生变化时返回空数组，不要求每章必须埋设或回收伏笔，也不把分析建议变成剧情任务。
