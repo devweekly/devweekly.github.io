@@ -15,7 +15,7 @@ export async function collectStyleRegressionReports(
   limit = 30,
   maxCharsPerReport = 6000
 ): Promise<StyleRegressionReport[]> {
-  if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new Error("Report limit must be between 1 and 100.");
+  if (!Number.isInteger(limit) || limit < 1 || limit > 1000) throw new Error("Report limit must be between 1 and 1000.");
   if (!Number.isInteger(maxCharsPerReport) || maxCharsPerReport < 500 || maxCharsPerReport > 20000) {
     throw new Error("Per-report character limit must be between 500 and 20000.");
   }
