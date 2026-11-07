@@ -12,6 +12,7 @@ import {
 } from "./constants.js";
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
 import { buildStoryStateGraph, filterGraph } from "./story-state-graph.js";
+import { archiveStyleReference, listStyleReferenceHistory, listStyleReferences, putStyleReference } from "./style-references.js";
 import { getCandidate, getRun, listCandidates, listRuns, recoverInterruptedRuns, saveCandidate, saveRun, type StoryPlanCandidate, type WorkbenchRun } from "./workbench-store.js";
 
 const app=express();
@@ -66,6 +67,9 @@ app.get("/api/worlds/:worldId/graph",async(req,res)=>{try{
  }catch(e){sendError(res,e);}});
 app.get("/api/worlds/:worldId/characters",async(req,res)=>{try{const id=worldIdOf(req.params.worldId);assertInsideWorld(id);const query=typeof req.query.q==="string"?req.query.q:"";const requested=Number(req.query.limit??CHARACTER_LIST_DEFAULT_LIMIT);const limit=Number.isFinite(requested)?Math.min(Math.max(Math.round(requested),1),CHARACTER_LIST_MAX_LIMIT):CHARACTER_LIST_DEFAULT_LIMIT;const dir=worldDir(id);res.json({characters:listNovelCharacters(dir,id,{query,limit}),total:countNovelCharacters(dir,id)});}catch(e){sendError(res,e);}});
 app.get("/api/worlds/:worldId/characters/:name",async(req,res)=>{try{const id=worldIdOf(req.params.worldId);assertInsideWorld(id);const name=decodeURIComponent(req.params.name);const detail=readNovelCharacterWorkbenchDetail(worldDir(id),id,name);if(!detail)return res.status(404).json({error:"Character not found."});res.json(detail);}catch(e){sendError(res,e);}});
+app.get("/api/worlds/:worldId/style-references",async(req,res)=>{try{const id=worldIdOf(req.params.worldId);assertInsideWorld(id);const dir=worldDir(id);res.json({active:await listStyleReferences(dir),history:await listStyleReferenceHistory(dir)});}catch(e){sendError(res,e);}});
+app.post("/api/worlds/:worldId/style-references",async(req,res)=>{try{const id=worldIdOf(req.params.worldId);assertInsideWorld(id);const name=req.body?.name;const content=req.body?.content;if(typeof name!=="string"||typeof content!=="string")return res.status(400).json({error:"name and content are required strings."});const result=await putStyleReference(worldDir(id),name,content);res.json({result,active:await listStyleReferences(worldDir(id)),history:await listStyleReferenceHistory(worldDir(id),name)});}catch(e){sendError(res,e);}});
+app.delete("/api/worlds/:worldId/style-references/:name",async(req,res)=>{try{const id=worldIdOf(req.params.worldId);assertInsideWorld(id);const name=decodeURIComponent(req.params.name);const result=await archiveStyleReference(worldDir(id),name);res.json({result,active:await listStyleReferences(worldDir(id)),history:await listStyleReferenceHistory(worldDir(id),name)});}catch(e){sendError(res,e);}});
 app.get("/api/worlds/:worldId/candidates",async(req,res)=>{try{res.json({candidates:await listCandidates(worldIdOf(req.params.worldId))});}catch(e){sendError(res,e);}});
 app.get("/api/worlds/:worldId/runs",async(req,res)=>{try{res.json({runs:await listRuns(worldIdOf(req.params.worldId))});}catch(e){sendError(res,e);}});
 
