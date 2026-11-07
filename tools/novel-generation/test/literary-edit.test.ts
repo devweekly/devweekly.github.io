@@ -74,6 +74,7 @@ test("Anti-AI edit is skipped when diagnosis is absent or explicitly clean", () 
   assert.equal(shouldRunAntiAiEdit("结论：未发现值得修改的地方。"), false);
   assert.equal(shouldRunAntiAiEdit("没有明确需要修改的问题。"), false);
   assert.equal(shouldRunAntiAiEdit("说明：上一段未发现值得修改的地方，但第 5 段仍有重复。"), true);
+  assert.equal(shouldRunAntiAiEdit("结论：有值得修改的问题。\n- 另一个段落未发现值得修改的地方。"), true);
 });
 
 test("Anti-AI edit runs only when diagnosis contains actionable findings", () => {
