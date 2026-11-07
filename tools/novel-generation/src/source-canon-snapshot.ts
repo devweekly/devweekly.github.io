@@ -103,8 +103,8 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
             const boundedItems = (value: unknown): Array<Record<string, unknown>> => Array.isArray(value)
               ? value.filter((item): item is Record<string, unknown> => {
                   if (!item || typeof item !== "object" || Array.isArray(item)) return false;
-                  const keys = Array.isArray(item.chapterKeys) ? item.chapterKeys.filter((key): key is string => typeof key === "string") : [];
-                  return keys.length > 0 && keys.every(key => allowedKeys.has(key));
+                  const keys = Array.isArray(item.chapterKeys) ? item.chapterKeys.filter((key: unknown): key is string => typeof key === "string") : [];
+                  return keys.length > 0 && keys.every((key: string) => allowedKeys.has(key));
                 })
               : [];
             const boundedRefs = (value: unknown): boolean => Array.isArray(value) && value.length > 0 && value.every(ref => {

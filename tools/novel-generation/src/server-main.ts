@@ -5,7 +5,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import express, { type RequestHandler } from "express";
 import { createServer as createViteServer, type ViteDevServer } from "vite";
-import { createApp, recoverWorkbenchRuns } from "./server.js";
+import { createApp, recoverWorkbenchRuns, recoverKnowledgeBuilds } from "./server.js";
 import { WORKBENCH_DEFAULT_PORT, WORKBENCH_MAX_PORT } from "./constants.js";
 
 const here=path.dirname(fileURLToPath(import.meta.url));
@@ -17,6 +17,7 @@ if(!Number.isInteger(port)||port<1||port>WORKBENCH_MAX_PORT)throw new Error("POR
 
 async function main():Promise<void>{
  await recoverWorkbenchRuns();
+ await recoverKnowledgeBuilds();
  const app=createApp();
  let vite:ViteDevServer|undefined;
  if(process.env.NODE_ENV!=="production"){

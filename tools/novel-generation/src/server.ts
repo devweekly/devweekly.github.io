@@ -124,11 +124,15 @@ const worldQueues = new Map<string, Promise<void>>();
 const worldMutationLocks = new Set<string>();
 
 type KnowledgeBuildStep = "story-analysis" | "as-of-dossier" | "volume-arcs" | "style-profile" | "character-profiles" | "character-states" | "corpus-craft" | "vane-index";
+type KnowledgeBuildProgress = { current: number; total: number; label: string };
 type KnowledgeBuildState = {
-  worldId: string; status: "queued" | "running" | "completed" | "partial" | "failed";
+  worldId: string; status: "queued" | "running" | "completed" | "partial" | "failed" | "interrupted";
   startedAt: string; updatedAt: string; completedAt?: string;
   currentStep?: KnowledgeBuildStep;
-  steps: Array<{ name: KnowledgeBuildStep; status: "running" | "completed" | "failed" | "skipped"; startedAt: string; completedAt?: string; exitCode?: number | null; output?: string; error?: string }>;
+  /** 当前步骤的实时进度，从子进程 stdout 解析。步骤内可能持续数分钟，
+   *  只在步骤结束时写状态会让前端看起来「一直不动」。 */
+  progress?: KnowledgeBuildProgress;
+  steps: Array<{ name: KnowledgeBuildStep; status: "running" | "completed" | "failed" | "skipped"; startedAt: string; completedAt?: string; exitCode?: number | null; output?: string; error?: string; progress?: KnowledgeBuildProgress }>;
 };
 /**
  * Resolve a CLI entry that exists in both source checkout and production package.
@@ -164,7 +168,8 @@ async function readKnowledgeBuild(id: string): Promise<KnowledgeBuildState | nul
 async function writeKnowledgeBuild(state: KnowledgeBuildState): Promise<void> {
   const target = knowledgeBuildPath(state.worldId);
   await mkdir(path.dirname(target), { recursive: true });
-  const temporary = target + ".tmp";
+  // 进度写入可能与步骤结束写入并发；唯一临时文件名避免互相覆盖。
+  const temporary = target + "." + process.pid + "." + randomUUID().slice(0, 8) + ".tmp";
   await writeFile(temporary, JSON.stringify(state, null, 2) + "\n", "utf8");
   await rename(temporary, target);
 }
@@ -178,14 +183,34 @@ const KNOWLEDGE_BUILD_STEPS: Array<{ name: KnowledgeBuildStep; command: string[]
   { name: "as-of-dossier", command: ["export-asof-dossier"] },
   { name: "vane-index", command: ["vane-index", "--optional"] }
 ];
-async function runKnowledgeBuildStep(worldId: string, command: string[]): Promise<{ exitCode: number | null; output: string; error: string }> {
+/** analyze-story 每批打印 `[story-analysis] batch N/M · ...`，用于实时进度。 */
+function parseBatchProgress(text: string): KnowledgeBuildProgress | undefined {
+  const matches = [...text.matchAll(/\[story-analysis\] batch (\d+)\/(\d+)/g)];
+  const last = matches.at(-1);
+  if (!last) return undefined;
+  const current = Number(last[1]), total = Number(last[2]);
+  return Number.isFinite(current) && Number.isFinite(total) && total > 0
+    ? { current, total, label: "批次" }
+    : undefined;
+}
+
+async function runKnowledgeBuildStep(
+  worldId: string,
+  command: string[],
+  onProgress?: (progress: KnowledgeBuildProgress) => void
+): Promise<{ exitCode: number | null; output: string; error: string }> {
   return await new Promise(resolve => {
     const cliArgs = [...buildCliEntryArgs(command), "--world", worldId];
     const child = spawn(process.execPath, cliArgs, {
       cwd: process.cwd(), env: process.env, stdio: ["ignore", "pipe", "pipe"]
     });
-    let output = "", error = "", settled = false;
-    child.stdout.setEncoding("utf8").on("data", chunk => { output += chunk; });
+    let output = "", error = "", settled = false, lastCurrent = 0;
+    child.stdout.setEncoding("utf8").on("data", chunk => {
+      output += chunk;
+      if (!onProgress) return;
+      const progress = parseBatchProgress(output.slice(-4096));
+      if (progress && progress.current !== lastCurrent) { lastCurrent = progress.current; onProgress(progress); }
+    });
     child.stderr.setEncoding("utf8").on("data", chunk => { error += chunk; });
     child.on("error", cause => { if (settled) return; settled = true; resolve({ exitCode: null, output, error: error + cause.message }); });
     child.on("close", code => { if (settled) return; settled = true; resolve({ exitCode: code, output, error }); });
@@ -199,10 +224,9 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
   }
   knowledgeBuilds.add(worldId);
   try {
-    const existing = await readKnowledgeBuild(worldId);
-    if (existing?.status === "queued" || existing?.status === "running") {
-      throw Object.assign(new Error("该宇宙已有知识构建任务正在运行。"), { status: 409 });
-    }
+    // 落盘状态不参与互斥判定：服务重启后它可能是上一次构建的残留 running，
+    // 仅凭它会把「重新构建」永久挡在 409。真正的互斥由内存 Set 负责，
+    // 残留状态由 recoverKnowledgeBuilds() 在启动时标记为 interrupted。
     const now = new Date().toISOString();
     const state: KnowledgeBuildState = { worldId, status: "queued", startedAt: now, updatedAt: now, steps: [] };
     await writeKnowledgeBuild(state);
@@ -234,8 +258,17 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
         }
         const record: KnowledgeBuildState["steps"][number] = { name: step.name, status: "running", startedAt: new Date().toISOString() };
         state.currentStep = step.name; state.steps.push(record); state.updatedAt = new Date().toISOString();
+        delete state.progress;
         await writeKnowledgeBuild(state);
-        const result = await runKnowledgeBuildStep(worldId, step.command);
+        let progressWrite: Promise<unknown> = Promise.resolve();
+        const result = await runKnowledgeBuildStep(worldId, step.command, progress => {
+          state.progress = progress;
+          record.progress = progress;
+          state.updatedAt = new Date().toISOString();
+          // 串行链式写，避免批次密集时多个 tmp+rename 交错。
+          progressWrite = progressWrite.then(() => writeKnowledgeBuild(state)).catch(() => undefined);
+        });
+        await progressWrite;
         record.exitCode = result.exitCode;
         record.output = result.output.slice(-12000);
         record.error = result.error.slice(-6000);
@@ -247,12 +280,12 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
       }
       state.status = failed === 0 ? "completed" : failed === state.steps.length ? "failed" : "partial";
       state.completedAt = new Date().toISOString(); state.updatedAt = state.completedAt;
-      delete state.currentStep;
+      delete state.currentStep; delete state.progress;
       await writeKnowledgeBuild(state);
     })().catch(async error => {
       state.status = "failed"; state.completedAt = new Date().toISOString(); state.updatedAt = state.completedAt;
       state.steps.push({ name: state.currentStep ?? "story-analysis", status: "failed", startedAt: state.updatedAt, completedAt: state.completedAt, error: String(error) });
-      delete state.currentStep;
+      delete state.currentStep; delete state.progress;
       await writeKnowledgeBuild(state).catch(() => undefined);
     }).finally(() => knowledgeBuilds.delete(worldId));
     return state;
@@ -260,6 +293,31 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
     knowledgeBuilds.delete(worldId);
     throw error;
   }
+}
+
+/**
+ * 服务重启会丢掉内存里的 knowledgeBuilds 标记，但落盘状态可能仍是 running/queued。
+ * 不处理会形成永久卡死：重建被 409 拒绝、前端按钮 disabled、章节生成也被挡。
+ * 启动时统一标为 interrupted；已完成的批次缓存仍在磁盘上，重新构建会直接复用。
+ */
+export async function recoverKnowledgeBuilds(): Promise<void> {
+  const root = path.resolve(".output");
+  let entries: string[];
+  try { entries = await readdir(root); } catch { return; }
+  await Promise.all(entries.map(async id => {
+    const state = await readKnowledgeBuild(id).catch(() => null);
+    if (!state || (state.status !== "running" && state.status !== "queued")) return;
+    const interruptedAt = new Date().toISOString();
+    state.status = "interrupted";
+    state.completedAt = interruptedAt;
+    state.updatedAt = interruptedAt;
+    state.steps = state.steps.map(step => step.status === "running"
+      ? { ...step, status: "failed" as const, completedAt: interruptedAt, error: "服务重启，构建被中断；已完成的批次缓存仍可复用。" }
+      : step);
+    delete state.currentStep;
+    delete state.progress;
+    await writeKnowledgeBuild(state).catch(() => undefined);
+  }));
 }
 
 
