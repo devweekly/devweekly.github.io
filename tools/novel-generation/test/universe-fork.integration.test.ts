@@ -153,6 +153,21 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
     assert.equal(copiedRun.outputDir, childOutput);
     assert.equal(copiedRun.chapterPath, join(childOutput, "chapter.md"));
     assert.ok(!copiedRun.outputDir.includes(parentId));
+
+    // A fork must itself remain a valid source for another historical fork.
+    const grandchildResponse = await fetch(`http://127.0.0.1:${address.port}/api/worlds/${childId}/universes/fork`, {
+      method: "POST",
+      headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
+      body: JSON.stringify({ name: "二次分支", chapterRunId: runId })
+    });
+    const grandchildBody = await grandchildResponse.text();
+    assert.equal(grandchildResponse.status, 201, grandchildBody);
+    const grandchildPayload = JSON.parse(grandchildBody) as { universe: { id: string } };
+    const grandchildId = grandchildPayload.universe.id;
+    const grandchildState = JSON.parse(await readFile(join(root, ".output", grandchildId, "workbench", "runs", runId + ".json"), "utf8")) as WorkbenchRun;
+    assert.equal(grandchildState.worldId, grandchildId);
+    const grandchildSnapshot = JSON.parse(await readFile(join(root, ".output", grandchildId, path.basename(childOutput), "08-state-update.json"), "utf8")) as StoryState;
+    assert.equal(grandchildSnapshot.worldId, grandchildId);
   } finally {
     if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
     process.chdir(previousCwd);
