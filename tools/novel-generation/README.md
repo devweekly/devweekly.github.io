@@ -680,3 +680,17 @@ npm run benchmark-local-models
 同样重要的是，历史分支不会复制可能包含全书未来剧情的根级汇总文件（包括 world-bible、人物、时间线、世界设定汇总和 style profile），也不会复制 analysis、Corpus Craft、Vane 与 Style Reference 派生目录。这是保守隔离策略：在按起点重建这些资料之前，部分背景资料可能暂时不可用，但不会为了资料完整而把后续剧情泄漏进历史宇宙。原文章节正文仍通过 bounded library 和起点前情上下文提供。
 
 当前尚未完成的工程验收：真实 SQLite 快照集成测试、create/fork API 文件系统端到端隔离测试，以及完整 GitHub Actions 结果核验。不要把“代码已过滤”误认为“隔离已通过端到端验证”。
+
+
+### 故事宇宙的后台知识重建
+
+新建或 fork 的历史宇宙使用独立的截断 SQLite 与 bounded library。需要补齐起点之前的人物、关系、主线、伏笔和章节素材时，可通过 Workbench API 启动后台重建；它不阻塞写作，失败也不会阻止继续生成章节：
+
+```http
+POST /api/worlds/<universe-id>/knowledge-build
+GET  /api/worlds/<universe-id>/knowledge-build
+```
+
+任务按顺序复用 `analyze-story`、`analyze-profiles`、`analyze-character-states`、`analyze-corpus-craft` 和 `vane-index`，状态与各步骤日志摘要保存在 `.output/<world>/workbench/knowledge-build.json`。任务重启中断会被标记为失败，可重新触发。Vane 未安装或 embedding 服务不可用时会显示对应步骤失败；这不影响 SQLite/BM25 写作路径。
+
+当前 API 已可显式触发和查询，但尚未自动绑定宇宙创建事件，也尚未接入 Workbench UI 的一键入口。
