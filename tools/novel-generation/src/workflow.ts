@@ -311,7 +311,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   // 同时检查人物声音、潜台词、叙述距离和节奏，避免两个编辑 Agent 相互覆盖。
   const literaryDraft = await cachedCall("literary-edit", "05-literary-edited.md", "voice", [
     "角色：小说文学编辑。一次性检查并修整人物对白与全章叙事声音；这是整体编辑，不是重写剧情。",
-    LIVING_VOICE_RULES, dialogueContext, voiceContext,
+    CREATIVE_FREEDOM_RULES, LIVING_VOICE_RULES, dialogueContext, voiceContext,
     "章节蓝图：", plan, "当前正文：", initialDraft,
     "对白方面：检查人物词汇、句长、表达习惯、身份关系、情绪和已知信息；删掉解释性过强、所有角色都像同一个人的对白，让潜台词通过停顿、回避、误解和行动体现。",
     "叙事方面：统一叙述视角、时态、叙述距离和段落节奏；检查全章是否反复使用同一种停顿、否定式收束、动作切片或静物结尾。删并不增加信息/压力/判断的重复动作与解释，保留真正改变人物关系、信息差和情绪走向的细节。不要把“短、冷、克制”当作风格目标，不要把每个动作写成慢镜头，也不要把读者已经看懂的潜台词再解释一遍。保持句式和段落自然变化，允许准确的长句、直接判断和粗粝表达。",
@@ -383,8 +383,8 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
       });
     },
     repair: (candidate, issues, round) => cachedCall("quality-repair-" + round, "07-repaired-round-" + round + ".md", "final", [
-      "角色：主编修复 Agent。根据结构化审查结果执行最小范围修复，只输出完整章节正文。",
-      common, "最终章节蓝图：", plan,
+      "角色：主编修复 Agent。根据结构化审查结果执行最小范围修复，只输出完整章节正文。不得借修复之名增加戏剧性、补齐场景结构或推动原本无需推进的情节。",
+      CREATIVE_FREEDOM_RULES, common, "最终章节蓝图：", plan,
       "当前章节正文：", candidate,
       "必须处理的问题：", JSON.stringify(issues, null, 2),
       "本轮为第 " + round + " 次自动修复。只修复 blocker/major，保留无关段落、已经成立的对白和叙事节奏；不采纳主观偏好，不新增未经铺垫的设定、人物行为或反转。修复必须解决证据所指问题。",
