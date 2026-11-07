@@ -203,6 +203,38 @@ async function listUniverses(sourceWorldId: string): Promise<StoryUniverse[]> {
   return items.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
+interface CanonChapterChunk { chapter: string; chunkIndex: number; start: number; end: number; text: string; }
+async function readCanonChapters(sourceWorldId: string): Promise<Array<{ title: string; text: string }>> {
+  const index = JSON.parse(await readFile(path.join(worldDir(sourceWorldId), "library", "index.json"), "utf8")) as { chunks?: CanonChapterChunk[] };
+  const grouped = new Map<string, CanonChapterChunk[]>();
+  for (const chunk of index.chunks ?? []) {
+    const rows = grouped.get(chunk.chapter) ?? [];
+    rows.push(chunk);
+    grouped.set(chunk.chapter, rows);
+  }
+  return [...grouped.entries()].map(([title, rows]) => {
+    rows.sort((a, b) => a.chunkIndex - b.chunkIndex);
+    let text = "";
+    let previousEnd = -1;
+    for (const chunk of rows) {
+      const overlap = previousEnd < 0 ? 0 : Math.max(0, previousEnd - chunk.start);
+      text += chunk.text.slice(overlap);
+      previousEnd = Math.max(previousEnd, chunk.end);
+    }
+    return { title, text };
+  });
+}
+
+app.get("/api/worlds/:worldId/source-chapters", async (req, res) => {
+  try {
+    const sourceId = worldIdOf(req.params.worldId); assertInsideWorld(sourceId);
+    const universe = await readUniverse(sourceId);
+    if (universe) return void res.status(409).json({ error: "章节目录应从原文项目读取。" });
+    const chapters = await readCanonChapters(sourceId);
+    res.json({ chapters: chapters.map(({ title }) => title) });
+  } catch (error) { sendError(res, error); }
+});
+
 app.get("/api/worlds/:worldId/universes", async (req, res) => {
   try {
     const sourceId = worldIdOf(req.params.worldId); assertInsideWorld(sourceId);
@@ -229,7 +261,9 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     if (!entryChapter || entryChapter.length > 160) return void res.status(400).json({ error: "必须指定原文起始章节（章节标题或编号）。" });
     if (!allowedTypes.includes(type)) return void res.status(400).json({ error: "Invalid universe type." });
     await readFile(path.join(sourceDir, "world-bible.md"), "utf8");
-    await readFile(path.join(sourceDir, "library", "index.json"), "utf8");
+    const canonChapters = await readCanonChapters(rootSourceId);
+    const selectedChapter = canonChapters.find(chapter => chapter.title === entryChapter);
+    if (!selectedChapter?.text.trim()) return void res.status(400).json({ error: "所选章节不在原文目录中，或章节正文为空。请从原文目录选择一个章节。" });
     const id = "u-" + randomUUID().replace(/-/g, "").slice(0, 16);
     const targetDir = worldDir(id);
     await mkdir(targetDir, { recursive: true });
@@ -263,6 +297,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
       createdAt: new Date().toISOString()
     };
     await writeFile(path.join(targetDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
+    await writeFile(path.join(targetDir, "universe-entry.md"), selectedChapter.text + "\n", "utf8");
     res.status(201).json({ universe });
   } catch (error) { sendError(res, error); }
 });
@@ -492,6 +527,7 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
     }
 
     const universe = await readUniverse(id);
+    const universeEntryPath = universe ? path.join(dir, "universe-entry.md") : undefined;
     const now = new Date().toISOString();
     const runId = randomUUID(); const outputDir = path.resolve(".output", id, "chapter-" + runId);
     const mode = previousChapterPath ? "continuation" : "derivative";
@@ -504,7 +540,7 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
     const args = [
       "--import", "tsx", "src/cli.ts", "write", "--world", id,
       "--mode", mode,
-      ...(previousChapterPath ? ["--source", previousChapterPath] : []),
+      ...(previousChapterPath ? ["--source", previousChapterPath] : universeEntryPath ? ["--source", universeEntryPath] : []),
       "--brief", previousChapterPath
         ? "紧接上一章的结尾继续写下一章。保持时间、地点、人物位置、人物认知、情绪和未完成行动的连续性；不要重述上一章，不要无故跳线或重启冲突。若有充分的叙事理由，可以自然转场或切换视角，但必须让因果和时间线成立。"
         : universe
