@@ -17,9 +17,9 @@ async function loadGraph(worldId:string,source:string,q:string):Promise<GraphRes
 }
 export default function GraphExplorer({worldId}:{worldId:string}){
  const [source,setSource]=useState("original");const [query,setQuery]=useState("");const [submitted,setSubmitted]=useState("");
- const [data,setData]=useState<GraphResponse|null>(null);const [loading,setLoading]=useState(false);const [error,setError]=useState("");
+ const [data,setData]=useState<GraphResponse|null>(null);const [loading,setLoading]=useState(false);const [error,setError]=useState("");const [revision,setRevision]=useState(0);
  const [selected,setSelected]=useState<string>("");
- useEffect(()=>{let cancelled=false;setLoading(true);setError("");loadGraph(worldId,source,submitted).then(result=>{if(!cancelled){setData(result);setSelected(result.nodes[0]?.id??"");}}).catch(e=>{if(!cancelled)setError(e instanceof Error?e.message:String(e));}).finally(()=>{if(!cancelled)setLoading(false);});return()=>{cancelled=true;};},[worldId,source,submitted]);
+ useEffect(()=>{let cancelled=false;setLoading(true);setError("");loadGraph(worldId,source,submitted).then(result=>{if(!cancelled){setData(result);setSelected(result.nodes[0]?.id??"");}}).catch(e=>{if(!cancelled)setError(e instanceof Error?e.message:String(e));}).finally(()=>{if(!cancelled)setLoading(false);});return()=>{cancelled=true;};},[worldId,source,submitted,revision]);
  const positions=useMemo(()=>{
   const nodes=data?.nodes??[];const width=960,height=560;const cx=width/2,cy=height/2;
   const radius=Math.min(235,Math.max(100,55+nodes.length*4));
@@ -30,7 +30,7 @@ export default function GraphExplorer({worldId}:{worldId:string}){
  const counts=Object.entries((data?.nodes??[]).reduce<Record<string,number>>((acc,n)=>{acc[n.type]=(acc[n.type]??0)+1;return acc;},{}));
  const search=()=>setSubmitted(query.trim());
  return <Space direction="vertical" size={16} style={{width:"100%"}}>
-  <Card title="故事图谱" extra={<Button icon={<ReloadOutlined/>} onClick={()=>setSubmitted(x=>x)}>刷新</Button>}>
+  <Card title="故事图谱" extra={<Button icon={<ReloadOutlined/>} onClick={()=>setRevision(x=>x+1)}>刷新</Button>}>
    <Space wrap style={{width:"100%",justifyContent:"space-between"}}>
     <Space wrap>
      <Select value={source} onChange={setSource} style={{width:180}} options={[{value:"original",label:"原著全文图谱"},{value:"sequel",label:"续写动态状态图谱"}]}/>
