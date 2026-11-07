@@ -32,7 +32,7 @@ async function embed(texts:string[]):Promise<number[][]|undefined> {
 }
 async function openVane(worldId:string):Promise<{db:VaneDb;col:VaneCollection}> {
   let module:VaneModule;
-  try { module=await import("@vane-rs/node") as unknown as VaneModule; }
+  try { const packageName="@vane-rs/node"; module=await import(packageName) as unknown as VaneModule; }
   catch { throw new Error("Vane 未安装。请在 tools/novel-generation 运行 npm install @vane-rs/node。"); }
   const dir=resolve("worlds",worldId,"vane-index");
   await mkdir(dir,{recursive:true});
@@ -46,6 +46,11 @@ async function openVane(worldId:string):Promise<{db:VaneDb;col:VaneCollection}> 
 export async function rebuildVaneIndex(worldId:string,worldDir=resolve("worlds",worldId)):Promise<{documents:number;vectorMode:boolean}> {
   const {db,col}=await openVane(worldId);
   try {
+    const indexDir=resolve(worldDir,"vane-index");
+    try {
+      const previous=JSON.parse(await readFile(resolve(indexDir,"manifest.json"),"utf8")) as {ids?:string[]};
+      if(previous.ids?.length)await col.delete?.(previous.ids);
+    }catch{/* first build or missing manifest */}
     const chunks=await loadLibraryChunks(resolve(worldDir,"library"),worldId);
     const docs:Array<{id:string;text:string;vector:number[];meta:Record<string,string|number|boolean>}>=[];
     for(const chunk of chunks)docs.push({
@@ -69,8 +74,10 @@ export async function rebuildVaneIndex(worldId:string,worldDir=resolve("worlds",
       if(expected!==Number(process.env.VANE_EMBEDDING_DIM??8))throw new Error("Set VANE_EMBEDDING_DIM to "+expected+" before creating the Vane index.");
       vectors.forEach((vector,index)=>{docs[index]!.vector=vector;});
     }
-    await col.add(docs);
+    for(let offset=0;offset<docs.length;offset+=128)await col.add(docs.slice(offset,offset+128));
     await col.flush();
+    const {writeFile}=await import("node:fs/promises");
+    await writeFile(resolve(indexDir,"manifest.json"),JSON.stringify({worldId,updatedAt:new Date().toISOString(),ids:docs.map(doc=>doc.id),documents:docs.length,vectorMode:Boolean(vectors)},null,2)+"\\n","utf8");
     return {documents:docs.length,vectorMode:Boolean(vectors)};
   }finally{await db.close();}
 }
