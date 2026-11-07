@@ -330,7 +330,6 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     // 起点前情属于原著只读背景，不是新宇宙已发生的续写事实。
     const originContext = buildUniverseOriginContext(canonChapters, selectedIndex);
     const id = "u-" + randomUUID().replace(/-/g, "").slice(0, 16);
-    createdUniverseId = id;
     const targetDir = worldDir(id);
     const stagingDir = path.join(path.resolve("worlds"), ".staging-" + id);
     stagingPath = stagingDir;
