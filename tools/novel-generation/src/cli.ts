@@ -7,6 +7,7 @@ import { basename, dirname, join, resolve, sep } from "node:path";
 import { generateStory, runAgentText, type GenerationMode } from "./generate.js";
 import { ingestFiles, listTextFiles, searchLibrary } from "./library.js";
 import { writeChapter } from "./workflow.js";
+import { resolveWorldLibraryDir } from "./universe-library.js";
 import { loadStoryState } from "./story-state.js";
 import { buildStoryStateGraph, filterGraph, filterStoryStateGraph } from "./story-state-graph.js";
 import { loadRunStoryState } from "./stage-cache.js";
@@ -178,16 +179,7 @@ async function main(): Promise<void> {
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
-  let libraryDir = resolve("worlds", canonWorldId, "library");
-  if (canonWorldId !== worldId) {
-    const boundedLibraryDir = resolve("worlds", worldId, "library");
-    try {
-      await access(resolve(boundedLibraryDir, "index.json"));
-      libraryDir = boundedLibraryDir;
-    } catch {
-      throw new Error("该故事宇宙缺少按起点章节截断的原文检索索引。为避免检索到起点之后的剧情，请从原文项目重新创建宇宙，或先运行迁移工具生成时点索引。");
-    }
-  }
+  const libraryDir = await resolveWorldLibraryDir(worldId, resolve("worlds"));
   if (canonWorldId !== worldId && (command === "ingest" || command === "analyze")) {
     throw new Error("故事宇宙共享原文资料库为只读；请回到原文项目导入原文或执行原文分块标注。");
   }
