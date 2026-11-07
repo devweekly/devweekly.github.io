@@ -522,6 +522,14 @@ CLI `write` 同样读取活动 Story Arc；没有旧 Arc 时首次生成自动�
 当前 Story Arc 以 Markdown 文件作为可读的滚动规划快照；尚未将 Arc/Chapter/Scene 计划规范化为 SQLite 多表及显式版本迁移。该项保留为后续增强，不阻塞第一阶段自动连载闭环。
 
 
+## 宇宙变更与章节生成并发控制
+
+同一原文项目/故事宇宙的创建、分叉、归档/恢复和章节生成入口必须经过同一条 `serializeWorld(worldId, ...)` 队列。队列只覆盖“检查状态并完成关键写入/启动子进程”的短窗口；章节生成在写入 queued/running 运行记录并成功启动子进程后释放队列，不会把整段长时间生成锁在队列中。
+
+归档和分叉另外使用同步获取的 mutation lock，避免两个元数据变更在首个 await 之后同时通过检查。归档前再次检查 queued/running 章节任务；分叉前检查父宇宙没有活动章节任务。归档、分叉和生成共用队列，避免“先检查无任务、随后另一请求启动任务”的竞态。
+
+创建与分叉采用 staging 目录：先在 `worlds/.staging-<universeId>` 准备元数据、数据库和状态快照，验证 Story State 可加载后再通过目录 rename 发布。分叉的章节产物先复制到子宇宙专属 `.output/<universeId>`，运行记录路径全部重映射到子宇宙；失败时清理 staging 目录和已复制的子宇宙输出，不留下可见的半成品。分叉快照必须从 staging 路径加载，不能提前访问尚未发布的正式目录。
+
 ## 故事宇宙管理与分支树
 
 - `GET /api/worlds/:worldId/universes` 返回同一原文来源下全部宇宙，包含已归档宇宙；`parentUniverseId` / `forkPoint` 用于恢复分支树关系。
