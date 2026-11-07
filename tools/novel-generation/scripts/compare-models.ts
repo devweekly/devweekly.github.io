@@ -98,7 +98,7 @@ async function localCall(prompt: string, model: string): Promise<any> {
   if (!response.ok) {
     const error: any = new Error("LM Studio HTTP " + response.status + ": " + rawBody.slice(0, 1500));
     error.diagnostics = { status: response.status, response: summarizeLocalResponse(body), responsePreview: rawBody.slice(0, 20000) };
-    const match = rawBody.match(/request\\s*\\((\\d+) tokens\\) exceeds the available context size \\((\\d+) tokens\\)/i);
+    const match = rawBody.match(/request\s*\((\d+) tokens\) exceeds the available context size \((\d+) tokens\)/i);
     if (match) {
       error.diagnostics.contextLimit = { promptTokens: Number(match[1]), contextTokens: Number(match[2]) };
       error.message += `；输入 ${match[1]} tokens 超过上下文 ${match[2]}。请在 LM Studio 重新加载模型并把 Context Length 提高到至少 8192（建议 16384），或同时降低 --max-chars 后重新运行两边模型。`;
@@ -170,7 +170,7 @@ async function main(): Promise<void> {
   const lines = ["# 本地模型与 DeepSeek 原著分析对比","","- World: "+world,"- Local: "+localModel,"- DeepSeek: "+deepseekModel,"- Chapters: "+selected.length,"- Prompt excerpt limit: "+maxChars+" chars","",
     "| Chapter | Local JSON | Local evidence | DeepSeek JSON | DeepSeek evidence | DeepSeek evidence issues |","|---|---:|---:|---:|---:|---:|",
     ...records.map(r=>"| "+r.chapterId+" | "+(r.local.evaluation?.jsonValid?"有效":"失败")+" | "+(r.local.evaluation?.evidenceGroundingRate??"—")+" | "+(r.deepseek.evaluation?.jsonValid?"有效":"失败")+" | "+(r.deepseek.evaluation?.evidenceGroundingRate??"—")+" | "+(r.deepseek.evaluation?.evidenceIssueCount??"—")+" |"),
-    "","证据命中率检查所有非空 evidence（包括短引用）是否为输入文本中的连续原文。报告会列出每条不匹配引用；命中不代表观察正确或文学质量。JSON 有效也不代表分析质量好。","","## 本地模型失败诊断",...records.filter(r=>r.local.error).map(r=>"- "+r.chapterId+": "+r.local.error), "","## 人工评审重点",
+    "","证据命中率检查所有非空 evidence（包括短引用）是否为输入文本中的连续原文。命中不代表观察正确或文学质量。JSON 有效也不代表分析质量好。","","## Evidence 不匹配明细",...records.flatMap(r=>["local","deepseek"].flatMap(side=>(r[side]?.evaluation?.evidenceIssues??[]).map((issue:any)=>"- "+r.chapterId+" / "+side+" / "+issue.path+" / "+issue.reason+": "+JSON.stringify(issue.evidence)))), "","## 本地模型失败诊断",...records.filter(r=>r.local.error).map(r=>"- "+r.chapterId+": "+r.local.error), "","## 人工评审重点",
     "1. 人物是否准确识别；行为、动机、认知是否有原文依据，是否避免把人物固定化。",
     "2. 是否识别真正推动情节的事件与因果，而非把时间先后当因果。",
     "3. 是否克制地识别伏笔，保留不确定性。",
