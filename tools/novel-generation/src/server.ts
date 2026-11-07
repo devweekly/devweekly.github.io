@@ -4,7 +4,9 @@
 import express, { type Request, type Response, type NextFunction } from "express";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { loadStoryPlan, saveStoryPlan, generateStoryPlan } from "./story-plan.js";
 import { loadStoryState } from "./story-state.js";
@@ -164,6 +166,98 @@ async function dashboardHandler(req: Request<WorldIdParams>, res: Response): Pro
 }
 app.get("/api/worlds/:worldId/dashboard", async (req, res) => {
   try { await dashboardHandler(req, res); } catch (error) { sendError(res, error); }
+});
+
+// ── 独立故事宇宙 ──────────────────────────────────────────
+
+interface StoryUniverse {
+  id: string;
+  sourceWorldId: string;
+  name: string;
+  type: string;
+  entryChapter: string;
+  brief: string;
+  parentUniverseId?: string;
+  forkPoint?: string;
+  createdAt: string;
+}
+
+async function readUniverse(id: string): Promise<StoryUniverse | null> {
+  try {
+    return JSON.parse(await readFile(path.join(worldDir(id), "universe.json"), "utf8")) as StoryUniverse;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw error;
+  }
+}
+
+async function listUniverses(sourceWorldId: string): Promise<StoryUniverse[]> {
+  const root = path.resolve("worlds");
+  const entries = await readdir(root).catch(() => []);
+  const items: StoryUniverse[] = [];
+  for (const id of entries.filter(x => /^[a-z0-9][a-z0-9-]*$/i.test(x))) {
+    const universe = await readUniverse(id);
+    if (universe?.sourceWorldId === sourceWorldId) items.push(universe);
+  }
+  return items.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+app.get("/api/worlds/:worldId/universes", async (req, res) => {
+  try {
+    const sourceId = worldIdOf(req.params.worldId); assertInsideWorld(sourceId);
+    const sourceUniverse = await readUniverse(sourceId);
+    const rootSourceId = sourceUniverse?.sourceWorldId ?? sourceId;
+    const universes = await listUniverses(rootSourceId);
+    res.json({ sourceWorldId: rootSourceId, universes });
+  } catch (error) { sendError(res, error); }
+});
+
+app.post("/api/worlds/:worldId/universes", async (req, res) => {
+  try {
+    const sourceId = worldIdOf(req.params.worldId); assertInsideWorld(sourceId);
+    const sourceUniverse = await readUniverse(sourceId);
+    const rootSourceId = sourceUniverse?.sourceWorldId ?? sourceId;
+    const sourceDir = worldDir(rootSourceId);
+    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    const entryChapter = typeof req.body?.entryChapter === "string" ? req.body.entryChapter.trim() : "";
+    const brief = typeof req.body?.brief === "string" ? req.body.brief.trim() : "";
+    const type = typeof req.body?.type === "string" ? req.body.type : "free";
+    const allowedTypes = ["mainline", "side-story", "character", "parallel", "free"];
+    if (!name || name.length > 80) return void res.status(400).json({ error: "宇宙名称必填，且不能超过 80 个字符。" });
+    if (!entryChapter || entryChapter.length > 160) return void res.status(400).json({ error: "必须指定原文起始章节（章节标题或编号）。" });
+    if (!allowedTypes.includes(type)) return void res.status(400).json({ error: "Invalid universe type." });
+    await readFile(path.join(sourceDir, "world-bible.md"), "utf8");
+    await readFile(path.join(sourceDir, "library", "index.json"), "utf8");
+    const id = "u-" + randomUUID().replace(/-/g, "").slice(0, 16);
+    const targetDir = worldDir(id);
+    await mkdir(targetDir, { recursive: true });
+    // 只复制原文只读资产和基础世界资料；所有派生状态、计划、输出与运行记录从空白开始。
+    await cp(sourceDir, targetDir, {
+      recursive: true,
+      filter: source => {
+        const relative = path.relative(sourceDir, source).split(path.sep);
+        if (!relative.length || relative[0] === "") return true;
+        const first = relative[0];
+        if (["story.db", "story-state.json", "story-arc.md", "story-plan.json", ".output", "universes"].includes(first)) return false;
+        if (first === "universe.json") return false;
+        return true;
+      }
+    });
+    // novel.db 是原著分析只读快照的初期副本；重置其世界身份，防止数据库身份校验误认为属于源项目。
+    const novelDbPath = path.join(targetDir, "novel.db");
+    if (existsSync(novelDbPath)) {
+      const db = new DatabaseSync(novelDbPath);
+      try { db.prepare("UPDATE world_meta SET value=? WHERE key='world_id'").run(id); }
+      finally { db.close(); }
+    }
+    const universe: StoryUniverse = {
+      id, sourceWorldId: rootSourceId, name, type, entryChapter, brief,
+      ...(sourceUniverse ? { parentUniverseId: sourceUniverse.id, forkPoint: entryChapter } : {}),
+      createdAt: new Date().toISOString()
+    };
+    await writeFile(path.join(targetDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
+    res.status(201).json({ universe });
+  } catch (error) { sendError(res, error); }
 });
 
 // ── 当前滚动式多章节 Story Arc ─────────────────────────────
