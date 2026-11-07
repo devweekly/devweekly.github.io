@@ -443,6 +443,7 @@ app.patch("/api/worlds/:worldId/universe-archive", async (req, res) => {
 
 app.post("/api/worlds/:worldId/universes", async (req, res) => {
   let stagingPath: string | null = null;
+  let createdUniverseId: string | null = null;
   try {
     const lockId = worldIdOf(req.params.worldId);
     await serializeWorld(lockId, async () => {
@@ -467,6 +468,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     // 起点前情属于原著只读背景，不是新宇宙已发生的续写事实。
     const originContext = buildUniverseOriginContext(canonChapters, selectedIndex);
     const id = "u-" + randomUUID().replace(/-/g, "").slice(0, 16);
+    createdUniverseId = id;
     const targetDir = worldDir(id);
     const stagingDir = path.join(path.resolve("worlds"), ".staging-" + id);
     stagingPath = stagingDir;
@@ -497,6 +499,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     });
   } catch (error) {
     if (stagingPath) await rm(stagingPath, { recursive: true, force: true }).catch(() => undefined);
+    if (createdUniverseId) await rm(path.resolve("analysis", createdUniverseId), { recursive: true, force: true }).catch(() => undefined);
     sendError(res, error);
   }
 });
@@ -626,6 +629,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
       await Promise.all([
         rm(worldDir(failedId), { recursive: true, force: true }),
         rm(path.resolve(".output", failedId), { recursive: true, force: true }),
+        rm(path.resolve("analysis", failedId), { recursive: true, force: true }),
         rm(path.join(path.resolve("worlds"), ".staging-" + failedId), { recursive: true, force: true })
       ]).catch(() => undefined);
     } else if (forkStagingPath) {
