@@ -22,17 +22,17 @@
 
 一个原文项目可以创建多个独立故事宇宙。原文是只读来源；每个宇宙有自己的 worldId、Story State、Story Arc、Story Plan、章节输出和运行历史。创建宇宙时指定任意原文章节和创作方向，第一章以该起点为准，不默认从原文末尾开始。
 
-第一阶段实现采用隔离目录：创建时复制原文资料库、原著分析快照和基础世界设定到独立 world 目录，但不复制 story.db、story-state.json、story-arc.md、story-plan.json、旧续写输出和运行历史。novel.db 的 world identity 会更新为新宇宙 ID；每个宇宙的派生写作状态因此独立。原文目录本身不会被写入。此阶段是逻辑只读共享的安全副本方案，不是物理去重；第二阶段再把原文知识库和检索索引抽成真正共享的只读 Source Canon。
+第一阶段采用隔离目录与保守时点快照：创建时复制必要的非派生资产，生成宇宙本地、截至起点章节的 library/index.json，并对 novel.db 执行显式表白名单与章节截止过滤。全书聚合表、未知表和不能证明可按章过滤的表不进入快照。创建与 fork 都排除 analysis、Corpus Craft、Vane、Style Reference 目录，以及 world-bible.md、characters.md、timeline.md、fruit-worlds.md、yanfu-system.md、style-profile.md 等可能由全书分析生成的根级汇总文件；这些资料尚未实现 as-of 重建，因此宁可暂时缺失，也不让未来剧情通过设定文件绕过 SQLite/library 截止。原文目录只读，当前方案仍有数据库/索引副本，不是物理去重。
 
 宇宙元数据保存在各自目录的 universe.json：sourceWorldId、name、type、entryChapter、brief、createdAt。工作台支持列出、创建和切换宇宙；章节生成的首章 brief 会携带所选起始章节和创作方向。支持的类型包括原著主线、支线、人物故事、平行发展和自由续写，它们共用同一生成流水线。
 
 当前边界必须如实说明：
 - 从原文项目创建全新独立宇宙已接入 API 和章节工作台。
 - 工作台已从原文索引读取章节目录并提供章节选择；创建时校验章节存在，并将该章正文写入宇宙专属的 universe-entry.md。
-- 首章通过 --source 显式注入所选原文章节全文，并同时携带起点与创作意图；起点之前的前情仍依赖原文检索和原著分析资料，尚未形成专门的“截至起点”状态快照。
+- 首章通过 --source 显式注入所选原文章节全文，并携带起点与创作意图；起点前情使用截断索引与最近章节上下文。全书人物画像/主线/伏笔聚合的 as-of 重建仍未实现，因此目前不会复制这些全书级汇总文件。
 - 已支持从已有宇宙任意已完成章节分叉：`GET /forkable-chapters` 只列出具有有效状态快照的章节；创建分支时恢复该章的 `08-state-update.json` 完整状态快照和 `00-story-arc.md`，复制截至分叉点的已完成章节正文、运行产物和 Workbench 历史，并将章节路径及上一章路径全部重写到子宇宙。若快照缺失/校验失败、世界身份不匹配、产物越界或父宇宙仍有活动章节任务，则拒绝分叉。`universe-branch.ts` 将状态身份重绑定和历史路径重映射抽为纯函数，并有单元测试。
-- 宇宙归档/删除管理尚未实现；目前没有提供会误删原文或其他分支的删除入口。
-- 原文 `library/` 已改为共享只读 Source Canon：宇宙目录通过 `source-canon.json` 指向原文项目，CLI 检索直接读取原文 `library/`，不再复制索引；宇宙中的 `ingest`/`analyze` 写操作被拒绝。`novel.db` 仍为本地副本，复制时自动重绑定所有含 `world_id` 的表，避免读库因身份不匹配而丢失数据。
+- 工作台已支持宇宙归档/恢复；没有物理删除入口是有意保护原文与分支数据。
+- `source-canon.json` 保留原文来源指针，但 CLI 使用宇宙本地 bounded `library/index.json`；缺失时 fail closed，不回退原文完整索引。`novel.db` 是本地副本，创建/fork 时重绑定身份并按原文起点过滤。
 - 新宇宙保存 `universe-origin-context.md`：从所选原文章节之前取最近三章，最多 18,000 字，按原文顺序注入首章 `--context`。它仅用于理解起点前人物关系与处境，不将起点之后的原著未来剧情带入新宇宙。
 
 ## 2. 系统架构
