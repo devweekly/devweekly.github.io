@@ -15,21 +15,17 @@ function removeUnsafeDatabase(filePath: string): void {
  * aggregates with missing or future provenance are discarded.
  */
 export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: string, entryChapter: string, entryChapterId?: string): number {
-  if (!existsSync(databasePath)) return 0;
+  if (!existsSync(databasePath)) throw new Error("原著 novel.db 不存在，无法建立安全的历史知识快照。");
   const db = new DatabaseSync(databasePath);
   try {
     const tables = new Set((db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all() as Array<{name:string}>).map(row=>row.name));
     const has = (name:string) => tables.has(name);
-    if (!has("novel_chapters")) {
-      removeUnsafeDatabase(databasePath);
-      return 0;
-    }
+    if (!has("novel_chapters")) throw new Error("原著知识库缺少 novel_chapters，无法安全定位宇宙起点。");
     const chapterColumns = new Set((db.prepare("PRAGMA table_info(novel_chapters)").all() as Array<{name:string}>).map(column=>column.name));
-    if (!chapterColumns.has("title") || !chapterColumns.has("ordinal")) {
-      removeUnsafeDatabase(databasePath);
-      return 0;
+    if (!chapterColumns.has("title") || !chapterColumns.has("ordinal") || !chapterColumns.has("chapter_id")) {
+      throw new Error("原著知识库缺少 title、ordinal 或稳定 chapter_id，无法安全定位宇宙起点。");
     }
-    if (!chapterColumns.has("chapter_id")) throw new Error("原著知识库缺少稳定的 chapter_id，无法安全确定宇宙起点。");
+
     const chapterSelect = "SELECT chapter_id,ordinal" + (chapterColumns.has("volume") ? ",volume" : "") +
       " FROM novel_chapters WHERE " + (entryChapterId ? "chapter_id=?" : "title=?") + " ORDER BY ordinal";
     const matches = (entryChapterId
