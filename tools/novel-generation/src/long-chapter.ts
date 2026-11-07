@@ -1,4 +1,4 @@
-// 万字章节流水线：一次规划、逐场成文、分批审校与文风统一。
+// 万字章节流水线：一次规划、逐场成文与文学修订、一次全章硬伤终审和文风统一。
 // 不复用 SDK session；场景之间靠落盘的原文结尾与事实清单显式交接，可逐场重跑。
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -8,13 +8,12 @@ import { runAgentText, resolveModelAttempts, type GenerationMode } from "./gener
 import { readTaskProfiles, type StageKey } from "./task-profiles.js";
 import { RHYTHM_RULE, mergeStoryState } from "./workflow.js";
 import { searchLibrary } from "./library.js";
-import { formatReview, parseChapterReview, reviewAndRepair, reviewPrompt, withDeterministicIssues, type ReviewIssue } from "./chapter-review.js";
+import { formatReview, parseChapterReview, reviewAndRepair, reviewPrompt, withDeterministicIssues } from "./chapter-review.js";
 import { checkIronLaws, ironLawIssues, loadIronLaws } from "./iron-laws.js";
 import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
 import { parseJsonObject } from "./model-json.js";
 import {
   ACCUMULATED_CONTEXT_TAIL_CHARS,
-  BATCH_REVIEW_MAX_ISSUES,
   LONG_CHAPTER_SOURCE_TAIL_CHARS,
   SCENE_SITUATION_BUDGET_CHARS,
   SCENE_WORD_BUDGET_BUFFER,
@@ -276,73 +275,15 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   const draft = sceneTexts.join("\n\n---\n\n");
   await saveStage(input.outputDir, "03-draft.md", draft);
 
-  // 终审只挑「读者会认为不可能」的硬伤；分两批控制单次输入，合并去重后再交给逐场修订。
-  const middle = Math.ceil(sceneTexts.length / 2);
-  const halves = [sceneTexts.slice(0, middle), sceneTexts.slice(middle)];
-  const found: ReviewIssue[] = [];
-  const summaries: string[] = [];
-  for (let index = 0; index < halves.length; index++) {
-    const slice = halves[index]!;
-    if (!slice.length) continue;
-    const batchStart = index === 0 ? 1 : middle + 1;
-    const batchText = slice.map((scene, localIndex) =>
-      `【场景 ${batchStart + localIndex}】\n${scene}`
-    ).join("\n\n---\n\n");
-    const batchPrompt = reviewPrompt({
-      context: writingContext,
-      blueprint,
-      chapter: batchText,
-      sceneCount: sceneTexts.length,
-      sceneLabel: `第 ${index + 1} 批，场景 ${batchStart}–${batchStart + slice.length - 1}`
-    });
-    const validateBatchReview = (output: string) => {
-      const report = parseChapterReview(output, batchText, sceneTexts.length);
-      const batchEnd = batchStart + slice.length - 1;
-      if (report.issues.some(issue => issue.scenes.some(scene => scene < batchStart || scene > batchEnd))) {
-        throw new Error(`Batch review ${index + 1} returned a scene outside its assigned range ${batchStart}–${batchEnd}.`);
-      }
-      return report;
-    };
-    let raw: string;
-    let parsed: ReturnType<typeof parseChapterReview>;
-    try {
-      raw = await cachedCall("batch-review-" + (index + 1), "04-review-batch-" + (index + 1) + "-raw.txt", "review", [
-        batchPrompt
-      ], validateBatchReview);
-      parsed = validateBatchReview(raw);
-    } catch (firstError) {
-      raw = await cachedCall("batch-review-" + (index + 1) + "-retry", "04-review-batch-" + (index + 1) + "-retry-raw.txt", "review", [
-        batchPrompt,
-        "上一次审查结果未通过结构校验：" + String(firstError),
-        "请重新审查同一批正文。每条必改问题都必须给出有效的全章场景编号；没有必改项就返回空 issues 和 pass。只输出 schema 对应的 JSON。"
-      ], validateBatchReview);
-      parsed = validateBatchReview(raw);
-    }
-    summaries.push(parsed.summary);
-    found.push(...parsed.issues);
-  }
-  const seen = new Set<string>();
-  const merged = found.filter(issue => {
-    // 只抹掉空白差异；按前 16 字截断会把两条不同硬伤当成重复。
-    const normalize = (text: string): string => text.replace(/\s+/g, "");
-    const key = issue.scenes.join(",") + "|" + normalize(issue.problem) + "|" + normalize(issue.evidence);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  }).slice(0, BATCH_REVIEW_MAX_ISSUES);
-  const review = formatReview({
-    status: merged.length ? "needs_repair" : "pass",
-    summary: summaries.join("；") || "未发现读者会认定不可能的硬伤",
-    issues: merged
-  });
-  await saveStage(input.outputDir, "04-continuity-review.md", review);
+  const draft = sceneTexts.join("\n\n---\n\n");
+  await saveStage(input.outputDir, "03-draft.md", draft);
 
   const polished: string[] = [];
   for (let index = 0; index < sceneTexts.length; index++) {
     const text = await cachedCall("polish-" + (index + 1), "05-polish-" + String(index + 1).padStart(2, "0") + ".md", "voice", [
       "角色：人物对话编辑兼叙事声音编辑。以原稿为基础做精修，不重新创作场景。只修订确有问题的对白与叙述表达，不改剧情事实、场景顺序、人物决定和信息揭示。",
       LIVING_VOICE_RULES,
-      writingContext, "全章蓝图：", blueprint, "连续性审查（只修有证据支持的问题）：", review,
+      writingContext, "全章蓝图：", blueprint,
       `第 ${index + 1} 场当前正文：`, sceneTexts[index]!,
       "校准人物语气与知识边界，删解释性过强、所有人同一腔调的对白；统一视角与叙述距离。检查全章是否反复使用同一种停顿、否定式收束、动作切片或静物结尾；删并不增加信息/压力/判断的重复动作与解释。不要把“短、冷、克制”当作目标，允许准确的长句、直接判断和粗粝表达。",
       RHYTHM_RULE,
@@ -440,7 +381,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     review: (candidate, correction) => {
       const round = reviewHistory.length + 1;
       return cachedCall("final-review-" + round + (correction ? "-retry" : ""), "08-final-review-round-" + round + (correction ? "-retry" : "") + "-raw.txt", "review", [
-        reviewPrompt({ context: writingContext, blueprint, chapter: candidate, priorReview: review, sceneCount: sceneTexts.length, correction })
+        reviewPrompt({ context: writingContext, blueprint, chapter: candidate, sceneCount: sceneTexts.length, correction })
       ], output => parseChapterReview(output, candidate, sceneTexts.length)).then(raw => {
         const parsed = parseChapterReview(raw, candidate, sceneTexts.length);
         // 分场做硬约束检查，命中项带场景号，修复阶段才能定位。
@@ -489,8 +430,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
           writingContext,
           "全章蓝图：", blueprint,
           "本场蓝图（如有修订以修订版为准）：", currentPlans[index] ?? "",
-          "原始分场审查：", review,
-          "最终全章审查发现：", JSON.stringify(sceneIssues, null, 2),
+          "本轮最终审查发现的必改项：", JSON.stringify(sceneIssues, null, 2),
           "当前场景正文：", currentScene,
           "本轮自动修复：" + round,
           "修复要求：解决列出的问题，保留本场已成立的人物选择、信息揭示和文学表达；不得引入与其他场景冲突的新事实。跨场问题应遵守其他受影响场景已确认的事实。除修复问题外尽量保持原文。"
