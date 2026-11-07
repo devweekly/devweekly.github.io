@@ -1,4 +1,4 @@
-import { mkdir, rename, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { listNovelBeats, readStoryAnalysis, type StoryAnalysisSnapshot } from "./database.js";
 
@@ -126,12 +126,37 @@ export async function exportAsOfDossier(worldId: string, worldDir: string): Prom
   const beats = listNovelBeats(worldDir, worldId, { limit: 10000 });
   const files = renderAsOfDossier(snapshot, beats as Array<Record<string, unknown>>);
   const directory = join(worldDir, "as-of-analysis");
-  await mkdir(directory, { recursive: true });
-  for (const [name, content] of Object.entries(files)) {
-    const target = join(directory, name);
-    const temporary = target + "." + process.pid + ".tmp";
-    await writeFile(temporary, content.trimEnd() + "\n", "utf8");
-    await rename(temporary, target);
+  await mkdir(worldDir, { recursive: true });
+  const staging = await mkdtemp(join(worldDir, ".as-of-analysis.staging-"));
+  const backup = join(worldDir, ".as-of-analysis.backup-" + process.pid + "-" + Date.now());
+  let previousMoved = false;
+  try {
+    for (const [name, content] of Object.entries(files)) {
+      await writeFile(join(staging, name), content.trimEnd() + "\n", "utf8");
+    }
+    try {
+      await rename(directory, backup);
+      previousMoved = true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    try {
+      await rename(staging, directory);
+    } catch (error) {
+      if (previousMoved) await rename(backup, directory);
+      previousMoved = false;
+      throw error;
+    }
+    if (previousMoved) {
+      await rm(backup, { recursive: true, force: true });
+      previousMoved = false;
+    }
+    return { files: Object.keys(files) };
+  } finally {
+    await rm(staging, { recursive: true, force: true });
+    if (previousMoved) {
+      // A cleanup error must not destroy the last published dossier.
+      try { await rename(backup, directory); } catch { /* retain backup for manual recovery */ }
+    }
   }
-  return { files: Object.keys(files) };
 }
