@@ -7,9 +7,9 @@ import { dirname, join } from "node:path";
 export type RunStatus = "queued" | "running" | "completed" | "failed" | "cancelled";
 
 export interface WorkbenchRun {
-  id: string; worldId: string; kind: "story-plan";
+  id: string; worldId: string; kind: "story-plan" | "chapter";
   status: RunStatus; createdAt: string; updatedAt: string;
-  error?: string; candidateId?: string;
+  error?: string; candidateId?: string; outputDir?: string; chapterPath?: string;
 }
 
 export interface StoryPlanCandidate {
