@@ -16,6 +16,7 @@ test("anti-ai diagnosis uses concrete reading evidence, not AI detection", () =>
   assert.match(prompt, /动作逐帧拆解/);
   assert.match(prompt, /全章层面的节奏检查/);
   assert.match(prompt, /机械复沓/);
+  assert.match(prompt, /人物对白过度完整/);
 });
 
 test("anti-ai editor protects literary intent and permits zero-change output", () => {
