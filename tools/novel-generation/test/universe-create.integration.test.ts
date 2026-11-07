@@ -140,6 +140,21 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
 
     const corpusCraftContext = await buildCorpusCraftContext(payload.universe.id, "未来剧情泄漏标记");
     assert.ok(!corpusCraftContext.includes("未来剧情泄漏标记"));
+    // A stale derived file with a matching worldId must still fail closed if
+    // its chapter hash does not match the current bounded source chapter.
+    const childCraftDir = join(root, "analysis", payload.universe.id, "corpus-craft", "chapters");
+    await mkdir(childCraftDir, { recursive: true });
+    const boundedChapter = units.units[0]!;
+    await writeFile(join(childCraftDir, boundedChapter.chapterId + ".json"), JSON.stringify({
+      schemaVersion: 1, worldId: payload.universe.id, chapterId: boundedChapter.chapterId,
+      ordinal: boundedChapter.ordinal, title: boundedChapter.title, sourceHash: "stale-source-hash",
+      scenes: [{ evidence: "未来剧情泄漏标记", summary: "未来剧情泄漏标记" }],
+      dialogueExemplars: [], voiceObservations: [], causalLinks: [], knowledgeStates: [],
+      worldDetails: [{ category: "未来设定", detail: "未来剧情泄漏标记", evidence: "未来剧情泄漏标记" }],
+      narrativeObservations: []
+    }));
+    const staleCraftContext = await buildCorpusCraftContext(payload.universe.id, "未来剧情泄漏标记");
+    assert.ok(!staleCraftContext.includes("未来剧情泄漏标记"), "same-world stale Corpus Craft must not bypass bounded source hash validation");
 
     const writingBrief = buildWritingBrief({ worldDir: universeDir, worldId: payload.universe.id, query: "未来剧情泄漏标记" });
     assert.ok(!writingBrief.includes("未来剧情泄漏标记"));
