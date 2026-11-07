@@ -4,7 +4,7 @@ import { PlayCircleOutlined, ReloadOutlined } from "@ant-design/icons";
 const { Title, Text, Paragraph } = Typography;
 type Run = { id:string; kind?:string; status:string; createdAt:string; updatedAt:string; error?:string; outputDir?:string; chapterPath?:string; previousChapterPath?:string };
 type Preview = { storyArc:string; chapterPlan:string; chapter:string };
-type Universe = { id:string; sourceWorldId:string; name:string; type:string; entryChapter:string; brief:string; createdAt:string; parentUniverseId?:string; forkPoint?:string; archivedAt?:string };
+type Universe = { id:string; sourceWorldId:string; name:string; type:string; entryChapter:string; entryChapterId?:string; entryOrdinal?:number; brief:string; createdAt:string; parentUniverseId?:string; forkPoint?:string; archivedAt?:string };
 type ForkableRun = { id:string; chapterTitle:string; createdAt:string };
 type KnowledgeBuild = { worldId:string; status:"queued"|"running"|"completed"|"partial"|"failed"; currentStep?:string; updatedAt:string; completedAt?:string; steps:Array<{name:string;status:"running"|"completed"|"failed"|"skipped";exitCode?:number|null;output?:string;error?:string}> };
 async function api<T>(url:string, init?:RequestInit):Promise<T>{const response=await fetch(url,{headers:{"Content-Type":"application/json",...(init?.headers??{})},...init});const body=await response.json();if(!response.ok)throw new Error(body.error??response.statusText);return body as T;}
@@ -12,7 +12,8 @@ const emptyPreview:Preview={storyArc:"",chapterPlan:"",chapter:""};
 export default function ChapterStudio({worldId}:{worldId:string}){
  const [activeWorldId,setActiveWorldId]=useState(worldId);
  const [universes,setUniverses]=useState<Universe[]>([]);
- const [sourceChapters,setSourceChapters]=useState<string[]>([]);
+ const [sourceChapters,setSourceChapters]=useState<Array<{id:number;title:string;label:string}>>([]);
+ const [entryChapterIndex,setEntryChapterIndex]=useState<number|undefined>();
  const [createOpen,setCreateOpen]=useState(false);
  const [universeName,setUniverseName]=useState("");
  const [entryChapter,setEntryChapter]=useState("");
@@ -47,7 +48,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
   finally{setLoading(false);}
  };
- useEffect(()=>{setActiveWorldId(worldId);setRun(null);setPreview(emptyPreview);void refresh();void Promise.all([api<{universes:Universe[]}>("/api/worlds/"+worldId+"/universes"),api<{chapters:string[]}>("/api/worlds/"+worldId+"/source-chapters")]).then(([u,c])=>{setUniverses(u.universes);setSourceChapters(c.chapters);}).catch(()=>{setUniverses([]);setSourceChapters([]);});},[worldId]);
+ useEffect(()=>{setActiveWorldId(worldId);setRun(null);setPreview(emptyPreview);void refresh();void Promise.all([api<{universes:Universe[]}>("/api/worlds/"+worldId+"/universes"),api<{chapters:Array<{id:number;title:string;label:string}>}>("/api/worlds/"+worldId+"/source-chapters")]).then(([u,c])=>{setUniverses(u.universes);setSourceChapters(c.chapters);}).catch(()=>{setUniverses([]);setSourceChapters([]);});},[worldId]);
  useEffect(()=>{void refresh();},[activeWorldId]);
  useEffect(()=>{
   if(!busy||!run)return;
@@ -100,9 +101,9 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const createUniverse=async()=>{
   setCreatingUniverse(true);
   try{
-   const result=await api<{universe:Universe}>("/api/worlds/"+worldId+"/universes",{method:"POST",body:JSON.stringify({name:universeName,entryChapter,brief:universeBrief,type:universeType})});
+   const result=await api<{universe:Universe}>("/api/worlds/"+worldId+"/universes",{method:"POST",body:JSON.stringify({name:universeName,entryChapter,entryChapterIndex,brief:universeBrief,type:universeType})});
    setUniverses(current=>[...current,result.universe]);setActiveWorldId(result.universe.id);setCreateOpen(false);
-   setUniverseName("");setEntryChapter("");setUniverseBrief("");setUniverseType("free");
+   setUniverseName("");setEntryChapter("");setEntryChapterIndex(undefined);setUniverseBrief("");setUniverseType("free");
    message.success("独立故事宇宙已创建。");
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
   finally{setCreatingUniverse(false);}
@@ -203,7 +204,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   <Modal title="创建独立故事宇宙" open={createOpen} onCancel={()=>setCreateOpen(false)} onOk={()=>void createUniverse()} confirmLoading={creatingUniverse} okText="创建宇宙">
    <Space direction="vertical" style={{width:"100%"}} size="middle">
     <Input placeholder="宇宙名称" value={universeName} onChange={e=>setUniverseName(e.target.value)} />
-    <Select showSearch optionFilterProp="label" style={{width:"100%"}} placeholder="选择原文起始章节" value={entryChapter||undefined} onChange={setEntryChapter} options={sourceChapters.map(chapter=>({value:chapter,label:chapter}))} notFoundContent="原文目录为空，请先导入并建立原文索引。" />
+    <Select showSearch optionFilterProp="label" style={{width:"100%"}} placeholder="选择原文起始章节" value={entryChapterIndex} onChange={index=>{setEntryChapterIndex(index);setEntryChapter(sourceChapters.find(chapter=>chapter.id===index)?.title??"");}} options={sourceChapters.map(chapter=>({value:chapter.id,label:chapter.label+" · "+chapter.title}))} notFoundContent="原文目录为空，请先导入并建立原文索引。" />
     <Select style={{width:"100%"}} value={universeType} onChange={setUniverseType} options={[{value:"mainline",label:"原著主线延续"},{value:"side-story",label:"原著支线扩展"},{value:"character",label:"人物独立故事"},{value:"parallel",label:"平行发展"},{value:"free",label:"自由续写"}]} />
     <Input.TextArea rows={3} placeholder="创作方向（可选）：人物、支线、关键事件或希望探索的剧情" value={universeBrief} onChange={e=>setUniverseBrief(e.target.value)} />
     <Text type="secondary">原文资料作为只读来源；新宇宙从空白续写状态开始，拥有独立的主线、人物状态、伏笔和章节记录。</Text>
