@@ -21,6 +21,7 @@ import { buildStoryStateGraph, filterGraph } from "./story-state-graph.js";
 import { archiveStyleReference, listStyleReferenceHistory, listStyleReferences, putStyleReference, readActiveStyleReference, readStyleReferenceVersion } from "./style-references.js";
 import { getCandidate, getRun, listCandidates, listRuns, recoverInterruptedRuns, saveCandidate, saveRun, type StoryPlanCandidate, type WorkbenchRun } from "./workbench-store.js";
 import type { StoryState } from "./story-state.js";
+import { rebaseStoryState, remapForkedRun } from "./universe-branch.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
 // noUncheckedIndexedAccess 放宽成 string | undefined。
@@ -320,7 +321,6 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     let state: StoryState;
     try {
       const parsed = JSON.parse(await readFile(statePath, "utf8")) as StoryState;
-      if (parsed.worldId !== parentId) throw new Error("Story State snapshot belongs to another universe.");
       state = parsed;
     } catch {
       return void res.status(409).json({ error: "该章节缺少完整的 Story State 快照，无法安全恢复历史时点。请从更新的、具备状态快照的章节分叉。" });
@@ -353,7 +353,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
       createdAt: new Date().toISOString()
     };
     await writeFile(path.join(targetDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
-    const forkState = { ...state, worldId: id, updatedAt: new Date().toISOString() };
+    const forkState = rebaseStoryState(state, parentId, id);
     await writeFile(path.join(targetDir, "story-state.json"), JSON.stringify(forkState, null, 2) + "\n", "utf8");
     await loadStoryState(path.join(targetDir, "story-state.json"), id);
     if (arcSnapshot) await writeFile(path.join(targetDir, "story-arc.md"), arcSnapshot, "utf8");
@@ -373,26 +373,8 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     }
     for (const historicalRun of history) {
       if (!historicalRun.outputDir || !historicalRun.chapterPath) continue;
-      const sourceOutput = path.resolve(historicalRun.outputDir);
-      const sourceChapter = path.resolve(historicalRun.chapterPath);
-      const targetOutput = outputMap.get(sourceOutput);
-      if (!targetOutput || !sourceChapter.startsWith(sourceOutput + path.sep)) continue;
-      const relativeChapter = path.relative(sourceOutput, sourceChapter);
-      const targetChapter = path.join(targetOutput, relativeChapter);
-      const previousSource = historicalRun.previousChapterPath ? path.resolve(historicalRun.previousChapterPath) : "";
-      let previousTarget: string | undefined;
-      if (previousSource) {
-        for (const [oldOutput, newOutput] of outputMap) {
-          if (previousSource.startsWith(oldOutput + path.sep)) {
-            previousTarget = path.join(newOutput, path.relative(oldOutput, previousSource));
-            break;
-          }
-        }
-      }
-      await saveRun({
-        ...historicalRun, worldId: id, outputDir: targetOutput, chapterPath: targetChapter,
-        ...(previousTarget ? { previousChapterPath: previousTarget } : { previousChapterPath: undefined })
-      });
+      const forkedRun = remapForkedRun(historicalRun, id, outputMap);
+      if (forkedRun) await saveRun(forkedRun);
     }
     res.status(201).json({ universe, forkedAt: forkRun.id });
   } catch (error) { sendError(res, error); }
