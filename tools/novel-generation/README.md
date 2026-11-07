@@ -657,3 +657,8 @@ npm run dev -- vane-index --world conghuoniao
 Vane 索引位于 worlds/<world>/vane-index/，每个 world 独立。普通章节和长章节会自动尝试检索 Vane；未安装、未建索引或检索失败时，原有 BM25/SQLite 路径继续工作。重新导入或重做离线分析后，重新执行 vane-index 更新索引。
 
 离线分析资料会自动进入普通 write 和 write-long 的写作上下文，按当前任务选取少量相关素材；它们是创作参考，不是剧情清单、人物行为规范或风格验收指标。
+
+
+## 本地模型与 DeepSeek 分析质量对比
+
+见 [MODEL-COMPARISON.md](./MODEL-COMPARISON.md)。运行 `npm run compare-models` 可使用相同章节和提示词比较 LM Studio 本地模型与 DeepSeek，并自动生成 ZIP 诊断包。
