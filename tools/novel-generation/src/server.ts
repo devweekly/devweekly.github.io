@@ -23,15 +23,12 @@ import { getCandidate, getRun, listCandidates, listRuns, recoverInterruptedRuns,
 import type { StoryState } from "./story-state.js";
 import { buildUniverseOriginContext, rebaseStoryState, remapForkedRun, shouldCopyUniverseAsset } from "./universe-branch.js";
 import { restrictKnowledgeDatabaseToEntry } from "./source-canon-snapshot.js";
-import { readUniverseAnalysisJob, startUniverseAnalysisRebuild } from "./universe-analysis-jobs.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
 // noUncheckedIndexedAccess 放宽成 string | undefined。
 type WorldIdParams = { worldId: string };
 type NamedParams = { worldId: string; name: string };
 type ReferenceVersionParams = { worldId: string; name: string; version: string };
-
-let backgroundUniverseAnalysisEnabled = true;
 
 const app = express();
 app.disable("x-powered-by");
@@ -255,18 +252,14 @@ app.get("/api/worlds", async (_req, res) => {
 async function dashboardHandler(req: Request<WorldIdParams>, res: Response): Promise<void> {
   const id = worldIdOf(req.params.worldId);
   assertInsideWorld(id);
-  const [storyPlan, runs, candidates, universe, asOfAnalysis] = await Promise.all([
+  const [storyPlan, runs, candidates] = await Promise.all([
     loadStoryPlan(path.join(worldDir(id), "story-plan.json"), id),
     listRuns(id),
-    listCandidates(id),
-    readUniverse(id),
-    readUniverseAnalysisJob(id)
+    listCandidates(id)
   ]);
   res.json({
     worldId: id,
     storyPlan: storyPlan ?? null,
-    universe: universe ?? null,
-    asOfAnalysis: universe ? asOfAnalysis : null,
     counts: {
       running: runs.filter(x => x.status === "queued" || x.status === "running").length,
       completedRuns: runs.filter(x => x.status === "completed").length,
@@ -557,27 +550,13 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     await writeUniverseAnalysisCatalogSnapshot(rootSourceId, stagingDir, id, selectedIndex);
     await writeFile(path.join(stagingDir, "source-canon-as-of.json"), JSON.stringify({ sourceWorldId: rootSourceId, entryChapter, entryOrdinal, policy: "chapter-scoped-evidence-only", fullBookAggregates: "excluded" }, null, 2) + "\n", "utf8");
     await rename(stagingDir, targetDir);
-    // Rebuild the historical story graph asynchronously from this universe's bounded corpus.
-    // Analysis is enrichment only: model/runtime failure must never block the first chapter.
-    let analysisJob = null;
-    try { if (backgroundUniverseAnalysisEnabled) analysisJob = await startUniverseAnalysisRebuild(id, entryChapter); }
-    catch (analysisError) { console.error("[universe-analysis] unable to enqueue as-of analysis:", analysisError); }
-    res.status(201).json({ universe, analysisJob });
+    res.status(201).json({ universe });
     });
   } catch (error) {
     if (stagingPath) await rm(stagingPath, { recursive: true, force: true }).catch(() => undefined);
     if (createdUniverseId) await rm(path.resolve("analysis", createdUniverseId), { recursive: true, force: true }).catch(() => undefined);
     sendError(res, error);
   }
-});
-
-app.get("/api/worlds/:worldId/as-of-analysis", async (req, res) => {
-  try {
-    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
-    if (!(await readUniverse(id))) return void res.status(404).json({ error: "Not a story universe." });
-    const job = await readUniverseAnalysisJob(id);
-    res.json({ job });
-  } catch (error) { sendError(res, error); }
 });
 
 app.get("/api/worlds/:worldId/forkable-chapters", async (req, res) => {
@@ -696,10 +675,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
       if (forkedRun) await saveRun(forkedRun);
     }
     await rename(stagingDir, targetDir);
-    let analysisJob = null;
-    try { if (backgroundUniverseAnalysisEnabled) analysisJob = await startUniverseAnalysisRebuild(id, parent.entryChapter); }
-    catch (analysisError) { console.error("[universe-analysis] unable to enqueue fork analysis:", analysisError); }
-    res.status(201).json({ universe, forkedAt: forkRun.id, analysisJob });
+    res.status(201).json({ universe, forkedAt: forkRun.id });
     });
   } catch (error) {
     // Failed fork must not leave a half-visible universe or orphaned copied chapters.
@@ -1138,8 +1114,7 @@ app.post("/api/worlds/:worldId/story-plan/generate", async (req, res) => {
 /** 顶层兜底：路由处理器之外抛出的异常也映射成统一的 JSON 错误。 */
 app.use((error: unknown, _req: Request<WorldIdParams>, res: Response, _next: NextFunction) => sendError(res, error));
 
-export function createApp(options: { backgroundUniverseAnalysis?: boolean } = {}) {
-  backgroundUniverseAnalysisEnabled = options.backgroundUniverseAnalysis ?? true;
+export function createApp() {
   return app;
 }
 
