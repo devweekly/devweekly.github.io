@@ -68,7 +68,7 @@
 ## 当前仍未完成的能力（不影响五个阶段的已实施链路）
 
 - [ ] 原著人物逐章完整状态快照：当前有逐章人物观察、人物 Profile 阶段和章级事件/互动，但没有对全书每章重建同一人物的完整状态向量。
-- [ ] 视觉化 Story Graph Explorer：目前通过 `story-kb --type graph` / `story-state --type graph` 查询 JSON 图谱，尚无前端交互式图谱浏览器。
+- [x] 视觉化 Story Graph Explorer：Workbench 新增“故事图谱”页面，支持原著全文图谱与续写动态图谱切换、关键词及一跳邻接搜索、节点详情和关系查看；原著 v6 快照未完整合并时明确提示，不伪装为空图。
 - [ ] Style Reference 样本版本工作台与跨章节风格趋势报告：逐章自动回归已实现，跨章趋势与样本版本治理尚未实现。
 - [ ] `analyze` 逐片段 annotations 全量运行：约 2,594 次模型调用，与 `analyze-story` v6 全文故事图谱分析相互独立；不是写作/图谱的前置条件。
 - [ ] v6 全文分析快照是否已写入当前 world 的 SQLite，必须由本机 `analyze-story --delta --merge-only` 验证；仓库里有批次缓存不等于本地快照已合并。
