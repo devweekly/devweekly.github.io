@@ -6,6 +6,21 @@ import { parseJsonObject } from "./model-json.js";
  * Shared literary editing prompts for both ordinary and long-chapter workflows.
  * These are editorial principles, not a detector or a checklist gate.
  */
+/**
+ * Shared creative-freedom principles for planners and prose writers.
+ * A novel is not a checklist of scene functions.
+ */
+export const CREATIVE_FREEDOM_RULES = [
+  "文学性、文笔、艺术风格高于情节推进率、信息增量、人物成长率和结构完整度。",
+  "不是每个场景都必须推动主线、制造冲突、揭示信息、改变关系、完成选择或留下悬念。场景可以只是人物生活的一部分：闲谈、办事、等待、观察、误会、走神、回忆、无功而返，或一段暂时没有明确用途的相处。",
+  "允许情节绕路、停留、暂时没有结果，允许人物做不够聪明、不够有效、甚至当下看起来没有意义的事。不要替作者把每件事解释成伏笔、成长、象征或后续铺垫。",
+  "人物不是状态字段的执行器。当前目标、压力、关系和人物画像只是理解人物的参考；人物可以改变主意、逃避、犯错、反复、冲动、沉默，甚至做出与既有倾向相反的选择，只要这种选择在当下情境中成立。",
+  "不要为了让章节显得完整而给每场安排起因、阻力、行动、转折、结果；不要让每段都承担信息增量，不要让每句都显得重要。允许自然的过渡、生活质感、空白和不被解释的细节。",
+  "规划只标记不能丢失的事实、必要的因果衔接和少量真正重要的戏剧锚点。其余内容留给写作者在正文中发现；正文可以偏离蓝图，只要不破坏已发生事实和必要连续性。",
+  "篇幅是预期，不是填充任务。若场景已经自然完成，不得为了达到字数而扩写、重复动作、补充心理解释或延长对白。宁可短一些，也不要注水。"
+].join("\n");
+
+/**
 export const LIVING_VOICE_RULES = [
   "人物在场景里有眼下要办的事。细节来自人物正在看、在意、误解、记住或试图回避的东西。",
   "人物性格通过选择、行动、犹豫、误判和关系反应呈现，不靠反复贴标签或解释心理档案。",
