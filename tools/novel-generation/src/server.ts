@@ -203,15 +203,26 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
     if (existing?.status === "queued" || existing?.status === "running") {
       throw Object.assign(new Error("该宇宙已有知识构建任务正在运行。"), { status: 409 });
     }
-    const activeRun = (await listRuns(worldId)).find(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"));
-    if (activeRun) throw Object.assign(new Error("当前宇宙正在生成章节，章节结束后再构建知识资料。"), { status: 409 });
     const now = new Date().toISOString();
     const state: KnowledgeBuildState = { worldId, status: "queued", startedAt: now, updatedAt: now, steps: [] };
     await writeKnowledgeBuild(state);
     void (async () => {
       let failed = 0;
       state.status = "running";
+      const universe = await readUniverse(worldId);
+      const existingAnalysis = readStoryAnalysis(worldDir(worldId), worldId) as (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined;
+      const reusableBoundedAnalysis = Boolean(
+        universe && existingAnalysis?.analysisVersion === 6 && existingAnalysis.complete === true &&
+        existingAnalysis.asOfEntryChapter === universe.entryChapter
+      );
       for (const step of KNOWLEDGE_BUILD_STEPS) {
+        if (step.name === "story-analysis" && reusableBoundedAnalysis) {
+          const now = new Date().toISOString();
+          state.steps.push({ name: step.name, status: "skipped", startedAt: now, completedAt: now, output: "Reused the existing complete, entry-bounded v6 story analysis snapshot." });
+          state.updatedAt = now;
+          await writeKnowledgeBuild(state);
+          continue;
+        }
         const record: KnowledgeBuildState["steps"][number] = { name: step.name, status: "running", startedAt: new Date().toISOString() };
         state.currentStep = step.name; state.steps.push(record); state.updatedAt = new Date().toISOString();
         await writeKnowledgeBuild(state);
@@ -976,10 +987,8 @@ app.post("/api/worlds/:worldId/knowledge-build", async (req, res) => {
       const universe = await readUniverse(id);
       if (!universe) return void res.status(409).json({ error: "该入口用于独立故事宇宙；原文项目请使用现有分析命令。" });
       if (universe.archivedAt) return void res.status(409).json({ error: "已归档的故事宇宙不能启动知识构建，请先恢复。" });
-      const runs = await listRuns(id);
-      if (runs.some(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"))) {
-        return void res.status(409).json({ error: "当前宇宙正在生成章节，完成后再构建知识资料。" });
-      }
+      // Knowledge data lives in novel.db; chapter state commits live in story.db.
+      // They can run concurrently, so analysis completion is never a writing prerequisite.
       res.status(202).json({ build: await startKnowledgeBuild(id) });
     });
   } catch (error) { sendError(res, error); }
@@ -1010,7 +1019,6 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
     const lockId = worldIdOf(req.params.worldId);
     await serializeWorld(lockId, async () => {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id); const dir = worldDir(id);
-    if (knowledgeBuilds.has(id)) return void res.status(409).json({ error: "当前宇宙正在构建知识资料，完成后再启动章节生成。" });
     try { await readFile(path.join(dir, "world-bible.md"), "utf8"); } catch { return void res.status(409).json({ error: "缺少 worlds/" + id + "/world-bible.md。请先建立世界设定；这是续写不可自动猜测的基础资料。" }); }
     try {
       const retrievalLibraryDir = await resolveWorldLibraryDir(id, path.resolve("worlds"));
