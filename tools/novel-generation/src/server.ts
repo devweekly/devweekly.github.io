@@ -359,8 +359,11 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     if (arcSnapshot) await writeFile(path.join(targetDir, "story-arc.md"), arcSnapshot, "utf8");
 
     // 复制分叉点及其之前的已完成章节产物和运行索引，重写所有路径指向子宇宙。
-    const history = runs.filter(run => run.kind === "chapter" && run.status === "completed" && run.createdAt <= forkRun.createdAt)
+    const orderedHistory = runs.filter(run => run.kind === "chapter" && run.status === "completed")
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const forkIndex = orderedHistory.findIndex(run => run.id === forkRun.id);
+    if (forkIndex < 0) return void res.status(409).json({ error: "无法定位分叉章节在当前宇宙中的顺序。" });
+    const history = orderedHistory.slice(0, forkIndex + 1);
     const outputMap = new Map<string, string>();
     for (const historicalRun of history) {
       if (!historicalRun.outputDir) continue;
