@@ -128,7 +128,7 @@ function usage(): never {
     "  npm run dev -- check-runtime [--model model] [--timeout-ms 90000]",
     "  npm run dev -- regress --world conghuoniao --chapter 13 [--brief \"本章任务\"] [--model deepseek-v4.1-flash] [--review-model glm-5.3-flash] [--context-lines 90] [--timeout-ms 240000]",
     "  npm run dev -- write --brief \"story direction\" [--world conghuoniao] [--mode derivative|continuation] [--source file] [--context file] [--model model] [--max-words 3000] [--strict-model] [--no-apply-state] [--resume-dir .output/<world>/<run-id>]",
-    "  npm run dev -- write-long --brief \"story direction\" [--scenes 8] [--max-words 10000] [--timeout-ms 180000] [--model model] [--strict-model] [--no-apply-state] [--resume-dir .output/<world>/long-<run-id>]",
+    "  npm run dev -- write-long --brief \"story direction\" [--scenes 8] [--max-words 10000] [--timeout-ms 180000] [--model model] [--strict-model] [--no-apply-state] [--reader-experience] [--resume-dir .output/<world>/long-<run-id>]",
     "  npm run dev -- generate --brief \"story idea\" [--mode derivative|continuation] [--source file] [--context file] [--out file]"
   ].join("\n"));
   process.exit(2);
@@ -997,7 +997,8 @@ async function main(): Promise<void> {
       worldId, worldDir: resolve("worlds", worldId), mode, brief, worldBible, styleProfile, sourceText, contextText, storyAnalysisContext, writingBrief, storyPlanText, model,
       strictModel: process.argv.includes("--strict-model"),
       maxWords, scenes, timeoutMs, outputDir, statePath, libraryDir, retrievalLimit,
-      applyState: !process.argv.includes("--no-apply-state")
+      applyState: !process.argv.includes("--no-apply-state"),
+      readerExperience: process.argv.includes("--reader-experience")
     });
     console.log("\nSaved chapter: " + resolve(outputDir, "chapter.md"));
     console.log("Scenes: " + scenes + " · Chinese characters: " + chineseChars(chapter));
