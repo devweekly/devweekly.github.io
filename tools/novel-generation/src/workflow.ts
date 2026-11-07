@@ -30,6 +30,7 @@ export interface WriteWorkflowInput {
   storyAnalysisContext?: string;
   writingBrief?: string;
   storyPlanText?: string;
+  storyArcText?: string;
   model?: string;
   strictModel?: boolean;
   maxWords: number;
@@ -166,6 +167,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     input.retrievedContext ? "本地资料库证据（用于核实事实，不得整段复制）：\n" + input.retrievedContext : "",
     input.writingBrief ? "全书知识库（已经写成的事实与未收线，优先于分析参考）：\n" + input.writingBrief : "",
     input.storyPlanText ? input.storyPlanText : "",
+    input.storyArcText ? "当前滚动式多章节 Story Arc（优先承接已发生事实；未执行章节可调整）：\\n" + input.storyArcText : "",
     input.storyAnalysisContext ? "既有小说分析参考（仅供启发，不是正史或写作清单）：\n" + input.storyAnalysisContext : "",
     input.sourceText ? "用户提供且有权使用的续写材料：\n" + input.sourceText : "",
     input.styleProfile ? "本项目叙事风格参考（仅使用抽象写作特征，不模仿特定作者的独特表达；参考不能凌驾于当前人物、场景需要和文学表达）：\n" + input.styleProfile : "",
@@ -207,6 +209,19 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   ].filter(Boolean).join("\n\n");
 
   // 主线架构与创意发散并行；主编决定哪些点子能进正文，发散本身不构成正史。
+  // 中期 Story Arc 是长期方向与单章蓝图之间的因果层。每次续写滚动校准未来章节，
+  // 不把旧计划当合同；已发生正文和事实优先，文学性优先于计划完成率。
+  const previousArc = input.storyArcText?.trim() ?? "";
+  const storyArc = await cachedCall("story-arc", "00-story-arc.md", "plan", [
+    "角色：中期故事架构师。为接下来约 5–8 章设计一个连贯但可调整的故事阶段；若现有阶段尚未自然结束，延续并修订它，不要无故另起炉灶。",
+    common,
+    "既有 Story Arc（可能为空）：", previousArc || "尚无中期故事阶段，请从当前局势自然推演。",
+    "结合已发生事件、人物目标与选择、资源/信息变化、开放情节线，设计一段可供连续写作的故事推进。输出 Markdown，至少包含：阶段核心冲突与阶段性结果；5–8 个有因果关系的章节节点（每个写清事件推进、关键人物行动/选择、冲突或关系变化、结尾留下的局面）；哪些人物/伏笔/主线可以暂时不推进；可能的意外转折空间；当前下一章应从哪里自然开始。不要强制每章都发生人物弧光，不要把人物固定为善恶标签，不要预先写死角色选择。章节节点可以合并、拆分、跳过或因正文发展而改写。",
+    "文学性、文笔、艺术风格高于其他。故事规划只为因果连续性服务，不是待完成清单。"
+  ], output => { if (!output.trim() || output.trim().length < 300) throw new Error("Story Arc is empty or implausibly short."); });
+  await saveStage(input.outputDir, "00-story-arc.md", storyArc);
+  if (input.worldDir) await writeFile(resolve(input.worldDir, "story-arc.md"), storyArc.trim() + "\\n", "utf8");
+
   const [plotPlan, ideas] = await Promise.all([
     cachedCall("plot", "01-main-plot.md", "plot", [
       "角色：主线剧情架构师。负责本章主线推进和长篇结构，不写正文。",
@@ -226,7 +241,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   await saveStage(input.outputDir, "02-creative-options.md", ideas);
 
   const plan = await cachedCall("plan", "03-chapter-plan.md", "plan", [
-    "角色：主编 Agent。整合主线架构师方案和创意发散建议，决定本章唯一执行方案。",
+    "角色：主编 Agent。整合中期 Story Arc、主线架构师方案和创意发散建议，决定本章唯一执行方案。",\n    "中期 Story Arc：", storyArc,
     common,
     "主线方案：", plotPlan, "创意备选：", ideas,
     "选出最有小说感染力的方向，形成自然、有变化的章节构想。结合局势推演判断哪些人物行动或冲突值得进入本章，也可以全部舍弃。不要把所有可能性塞进正文；推演不是章节必须兑现的清单。蓝图帮助写作者理解人物处境和故事走向，不是逐项验收的合同；不要求每场都按目标、阻力、行动、信息变化、结果的模板展开。保留人物的意外性、闲笔和情绪空间。人物知识必须受其实际经历和信息来源限制；不得无意违反已确认事实；区分确知内容与新创作。",
