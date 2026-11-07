@@ -28,7 +28,13 @@ export function buildStoryStateGraph(state: StoryState): StoryStateGraph {
   const edges = new Map<string, StoryStateGraphEdge>();
   const addNode = (node: StoryStateGraphNode): void => {
     const previous = nodes.get(node.id);
-    nodes.set(node.id, previous ? { ...previous, data: { ...previous.data, ...node.data } } : node);
+    if (!previous) { nodes.set(node.id, node); return; }
+    const data = { ...previous.data, ...node.data };
+    if (node.type === "character" && (node.data.status !== undefined || node.data.profile !== undefined)) {
+      delete data.observedInEventsOnly;
+      delete data.observedInRelationshipsOnly;
+    }
+    nodes.set(node.id, { ...previous, ...node, data });
   };
   const addEdge = (edge: StoryStateGraphEdge): void => { edges.set(edge.id, edge); };
   const characterId = (name: string): string => "character:" + name;
