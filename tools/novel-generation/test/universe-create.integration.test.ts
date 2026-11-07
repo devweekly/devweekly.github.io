@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:http";
@@ -65,6 +65,9 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     assert.equal(response.status, 201, responseBody);
     const payload = JSON.parse(responseBody) as { universe: { id: string; entryChapter: string } };
     const universeDir = join(root, "worlds", payload.universe.id);
+    const sourceCanonStat = await stat(join(source, "original.txt"));
+    const universeCanonStat = await stat(join(universeDir, "original.txt"));
+    assert.equal(universeCanonStat.ino, sourceCanonStat.ino, "immutable original.txt should be physically shared when hard links are supported");
     assert.equal(payload.universe.entryChapter, "第二章");
 
     const archiveResponse = await fetch(`http://127.0.0.1:${address.port}/api/worlds/${payload.universe.id}/universe-archive`, {
