@@ -23,6 +23,14 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
   await writeFile(join(source, "world-bible-full.md"), "source setting");
   await writeFile(join(source, "characters.md"), "全书人物画像：未来剧情泄漏标记");
   await writeFile(join(source, "timeline.md"), "未来时间线泄漏标记");
+  await writeFile(join(source, "style-profile.md"), "未来风格信息泄漏标记");
+  await writeFile(join(source, "story-arc.md"), "未来故事弧线泄漏标记");
+  await writeFile(join(source, "story-plan.json"), JSON.stringify({ future: "未来计划泄漏标记" }));
+  await writeFile(join(source, "story-state.json"), JSON.stringify({ future: "未来状态泄漏标记" }));
+  await mkdir(join(source, "vane-index"), { recursive: true });
+  await writeFile(join(source, "vane-index", "manifest.json"), JSON.stringify({ future: "未来 Vane 泄漏标记" }));
+  await mkdir(join(source, "style-references"), { recursive: true });
+  await writeFile(join(source, "style-references", "future.md"), "未来风格样本泄漏标记");
   await mkdir(join(source, "analysis"), { recursive: true });
   await writeFile(join(source, "analysis", "whole-book.json"), "未来素材泄漏标记");
   await mkdir(join(root, "analysis", "source-world", "corpus-craft", "chapters"), { recursive: true });
@@ -132,6 +140,12 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     assert.ok(!writingBrief.includes("未来剧情泄漏标记"));
     assert.equal(await readFile(join(universeDir, "characters.md"), "utf8").catch(() => ""), "");
     assert.equal(await readFile(join(universeDir, "timeline.md"), "utf8").catch(() => ""), "");
+    for (const relative of [
+      "style-profile.md", "story-arc.md", "story-plan.json", "story-state.json",
+      "vane-index/manifest.json", "style-references/future.md"
+    ]) {
+      assert.equal(await readFile(join(universeDir, relative), "utf8").catch(() => ""), "", relative + " must not be inherited");
+    }
     assert.equal(await readFile(join(universeDir, "analysis", "whole-book.json"), "utf8").catch(() => ""), "");
 
     const snapshot = new DatabaseSync(join(universeDir, "novel.db"));
