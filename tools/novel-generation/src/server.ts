@@ -336,6 +336,7 @@ interface StoryUniverse {
   type: string;
   entryChapter: string;
   entryChapterId?: string;
+  entryChapterIndex?: number;
   entryOrdinal?: number;
   brief: string;
   parentUniverseId?: string;
@@ -682,7 +683,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     const entryOrdinal = restrictKnowledgeDatabaseToEntry(knowledgePath, id, entryChapter, entryChapterId);
     if (entryOrdinal !== Number(entryRecord.ordinal)) throw new Error("章节起点 ordinal 校验失败，已终止创建。");
     const universe: StoryUniverse = {
-      id, sourceWorldId: rootSourceId, name, type, entryChapter, entryChapterId, entryOrdinal, brief,
+      id, sourceWorldId: rootSourceId, name, type, entryChapter, entryChapterId, entryChapterIndex: selectedIndex, entryOrdinal, brief,
       createdAt: new Date().toISOString()
     };
     await writeFile(path.join(stagingDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
@@ -692,7 +693,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     await writeFile(path.join(stagingDir, "universe-origin-context.md"), originContext + "\n", "utf8");
     await writeUniverseLibrarySnapshot(rootSourceId, stagingDir, id, selectedIndex);
     await writeUniverseAnalysisCatalogSnapshot(rootSourceId, stagingDir, id, selectedIndex);
-    await writeFile(path.join(stagingDir, "source-canon-as-of.json"), JSON.stringify({ sourceWorldId: rootSourceId, entryChapter, entryChapterId, entryOrdinal, policy: "chapter-scoped-evidence-only", fullBookAggregates: "excluded" }, null, 2) + "\n", "utf8");
+    await writeFile(path.join(stagingDir, "source-canon-as-of.json"), JSON.stringify({ sourceWorldId: rootSourceId, entryChapter, entryChapterId, entryChapterIndex: selectedIndex, entryOrdinal, policy: "chapter-scoped-evidence-only", fullBookAggregates: "excluded" }, null, 2) + "\n", "utf8");
     await rename(stagingDir, targetDir);
     const knowledgeBuild = req.body?.buildKnowledge === false ? null : await serializeWorld(id, () => startKnowledgeBuild(id));
     res.status(201).json({ universe, ...(knowledgeBuild ? { knowledgeBuild } : {}) });
@@ -797,8 +798,8 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     await writeFile(path.join(stagingDir, "world-bible.md"), buildUniverseWorldBible(universe), "utf8");
     await writeFile(path.join(stagingDir, "source-canon.json"), JSON.stringify({ sourceWorldId: parent.sourceWorldId, readOnly: true }, null, 2) + "\n", "utf8");
     const parentCanonChapters = await readCanonChapters(parent.sourceWorldId);
-    const parentEntryIndex = parent.entryChapterId
-      ? parentCanonChapters.findIndex((_chapter, index) => index === (parent.entryOrdinal ?? -1) - 1)
+    const parentEntryIndex = Number.isSafeInteger(parent.entryChapterIndex)
+      ? parent.entryChapterIndex!
       : parentCanonChapters.findIndex(chapter => chapter.title === parent.entryChapter);
     if (parentEntryIndex < 0) throw new Error("父宇宙的原文起点已无法在共享章节目录中定位，拒绝创建可能泄漏未来剧情的分支。");
     await writeUniverseLibrarySnapshot(parent.sourceWorldId, stagingDir, id, parentEntryIndex);
