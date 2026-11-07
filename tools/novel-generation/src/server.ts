@@ -685,7 +685,10 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
       if (forkedRun) await saveRun(forkedRun);
     }
     await rename(stagingDir, targetDir);
-    res.status(201).json({ universe, forkedAt: forkRun.id });
+    let analysisJob = null;
+    try { analysisJob = await startUniverseAnalysisRebuild(id, parent.entryChapter); }
+    catch (analysisError) { console.error("[universe-analysis] unable to enqueue fork analysis:", analysisError); }
+    res.status(201).json({ universe, forkedAt: forkRun.id, analysisJob });
     });
   } catch (error) {
     // Failed fork must not leave a half-visible universe or orphaned copied chapters.
