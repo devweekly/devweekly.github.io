@@ -45,16 +45,18 @@ export async function startUniverseAnalysisRebuild(worldId: string, entryChapter
 
   const now = new Date().toISOString();
   const logPath = path.resolve(".output", worldId, "workbench", "as-of-analysis.log");
-  const job: UniverseAnalysisJob = {
+  const queued: UniverseAnalysisJob = {
     worldId, kind: "as-of-story-analysis", status: "queued",
     createdAt: now, updatedAt: now, entryChapter, logPath
   };
-  await writeJob(job);
+  await writeJob(queued);
+  const running: UniverseAnalysisJob = { ...queued, status: "running", updatedAt: new Date().toISOString() };
+  await writeJob(running);
 
-  const logFd = openSync(logPath, "a");
-  let child;
+  let logFd: number | undefined;
   try {
-    child = spawn(process.execPath, [
+    logFd = openSync(logPath, "a");
+    const child = spawn(process.execPath, [
       "--import", "tsx", "src/cli.ts", "analyze-story",
       "--world", worldId,
       "--catalog", path.join("analysis", worldId, "chapter-index.json")
@@ -62,34 +64,33 @@ export async function startUniverseAnalysisRebuild(worldId: string, entryChapter
       cwd: process.cwd(), env: process.env, detached: true,
       stdio: ["ignore", logFd, logFd]
     });
-  } catch (error) {
     closeSync(logFd);
+    logFd = undefined;
+
+    child.once("error", error => {
+      void writeJob({ ...running, status: "failed", error: error.message, updatedAt: new Date().toISOString() });
+    });
+    child.once("exit", (code, signal) => {
+      const updatedAt = new Date().toISOString();
+      if (code === 0) {
+        void writeJob({ ...running, status: "completed", updatedAt, result: { exitCode: code, signal: signal ?? null } });
+      } else {
+        void writeJob({
+          ...running, status: "failed", updatedAt,
+          error: "analyze-story exited with code " + String(code) + (signal ? " (signal " + signal + ")" : "")
+        });
+      }
+    });
+    child.unref();
+    return running;
+  } catch (error) {
+    if (logFd !== undefined) closeSync(logFd);
     const failed: UniverseAnalysisJob = {
-      ...job, status: "failed",
+      ...running, status: "failed",
       error: error instanceof Error ? error.message : String(error),
       updatedAt: new Date().toISOString()
     };
     await writeJob(failed);
     return failed;
   }
-  closeSync(logFd);
-
-  child.once("error", error => {
-    void writeJob({ ...job, status: "failed", error: error.message, updatedAt: new Date().toISOString() });
-  });
-  child.once("exit", (code, signal) => {
-    const updatedAt = new Date().toISOString();
-    if (code === 0) {
-      void writeJob({ ...job, status: "completed", updatedAt, result: { exitCode: code, signal: signal ?? null } });
-    } else {
-      void writeJob({
-        ...job, status: "failed", updatedAt,
-        error: "analyze-story exited with code " + String(code) + (signal ? " (signal " + signal + ")" : "")
-      });
-    }
-  });
-  child.unref();
-  const running = { ...job, status: "running" as const, updatedAt: new Date().toISOString() };
-  await writeJob(running);
-  return running;
 }
