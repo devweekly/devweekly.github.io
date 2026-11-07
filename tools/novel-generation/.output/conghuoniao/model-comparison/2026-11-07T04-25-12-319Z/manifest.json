@@ -1,0 +1,95 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-11-07T04-25-12-319Z",
+  "world": "conghuoniao",
+  "createdAt": "2026-11-07T04:25:12.414Z",
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.14.1",
+    "os": "27.2.0",
+    "totalMemoryBytes": 17179869184
+  },
+  "settings": {
+    "localBaseUrl": "http://127.0.0.1:1234/v1",
+    "localModel": "qwen3.8-9b-distill-slerp-f451-pro-writer-uncensored",
+    "deepseekModel": "deepseek-v4.1-flash",
+    "maxChars": 12000,
+    "timeoutMs": 300000,
+    "maxTokens": 6000,
+    "localTemperature": 0.2,
+    "deepseekSampling": "CodeBuddy SDK defaults; temperature not exposed"
+  },
+  "localModelsVisibleAtStart": [
+    "qwen3.8-9b-distill-slerp-f451-pro-writer-uncensored",
+    "sparkmuse-4b",
+    "text-embedding-qwen3-embedding-0.6b",
+    "text-embedding-nomic-embed-text-v1.5"
+  ],
+  "localModelInventory": [
+    {
+      "id": "qwen3.8-9b-distill-slerp-f451-pro-writer-uncensored",
+      "object": "model",
+      "owned_by": "organization_owner"
+    },
+    {
+      "id": "sparkmuse-4b",
+      "object": "model",
+      "owned_by": "organization_owner"
+    },
+    {
+      "id": "text-embedding-qwen3-embedding-0.6b",
+      "object": "model",
+      "owned_by": "organization_owner"
+    },
+    {
+      "id": "text-embedding-nomic-embed-text-v1.5",
+      "object": "model",
+      "owned_by": "organization_owner"
+    }
+  ],
+  "chapters": [
+    {
+      "chapterId": "V01-C001",
+      "title": "第一章 大枪落幕",
+      "local": {
+        "error": "LM Studio 请求成功，但响应中没有可用的 assistant 文本。"
+      },
+      "deepseek": {
+        "jsonValid": true,
+        "categoryCounts": {
+          "characters": 4,
+          "relationships": 3,
+          "plotEvents": 5,
+          "foreshadowings": 4,
+          "macguffins": 1,
+          "worldDetails": 4,
+          "narrativeCraft": 5
+        },
+        "evidenceCount": 34,
+        "groundedEvidenceCount": 34,
+        "evidenceIssueCount": 0,
+        "evidenceGroundingRate": 1,
+        "evidenceIssues": [],
+        "styleAnalysisPresent": true,
+        "uncertaintyCount": 5
+      }
+    },
+    {
+      "chapterId": "V05-C052",
+      "title": "第四十八章 武子弄险",
+      "local": {
+        "error": "LM Studio 请求成功，但响应中没有可用的 assistant 文本。"
+      },
+      "deepseek": {
+        "jsonValid": false,
+        "parseError": "Expected ',' or ']' after array element in JSON at position 567 (line 1 column 568)",
+        "outputPreview": "{\"characters\":[{\"name\":\"羽主\",\"observedActions\":[\"鞭腿凶猛揣在恨别离的肋骨上，带起尖锐的空爆声音\",\"一拳头砸破了傩木面具，捏着指骨迈步走了出来\",\"一手拉住了冯夷，一手拉住了恨别离\",\"他不着痕迹地看了一眼天空，被自己鹏翅撑开的口子\"],\"goals\":[\"强取阎浮果核\",\"撑开进入果实内部的口子\"],\"knowledge\":[\"认出恨别离的新苦器不过是花哨之物\",\"知道果实专属道具受规则限制\"],\"contradictions\":[\"占据压倒性的爆发力，却被矮小干瘦的对手死死拖住、寸步难进\",\"被黑色火焰包裹焚烧仍能破面而出，却对规则限制无计可施\"],\"possibleArc\":[\"为越境夺果愿意付出传承代价，目标受阻时可能转向更加冒险的手段\"],\"evidence\":[\"羽主眉锋倒立，鞭腿凶猛揣在恨别离的肋骨上，带起尖锐的空爆声音。\",\"羽主身上冒着白烟，一拳头砸破了傩木面具，捏着指骨迈步走了出来。\",\"羽主距离那颗阎浮果核不过两百多米左右的距离，对于他来说简直是唾手可得，却被恨别离和冯夷两个人死死地牵制，寸步难进。\",\"羽主强行越境，要拿自己的传承去撑开进入果实内部的口子，就是这个道理。\"]},{\"name\":\"恨别离\",\"observedActions\":[\"\"恨别离\"的嗓子的确干哑难听\",\"恨别离蔫蔫地应了一声，手指往旁边一搭\",\"恨别离却欺身上前，两人四只胳膊架在一起\",\"冲着冯夷喊道：\"阿冯，老板给你的思凡之力呢？\"\"],\"goals\":[\"拖住羽主，不让其接近果核\",\"等虫洞中人过来\"],\"knowledge\":[\"苦火炼得了灵五仙，却炼不了顽五虫\",\"果实专属道具并非无法可解\"],\"contradictions\":[\"言语自谦苦火无用，实则靠角力与面具拖住强敌\",\"被砸破心口、面具碎裂仍不改口称不急\"],\"possibleArc\":[\"以小博大者一旦被破解规则优势，可能暴露真实底牌或转而弃守\"],\"evidence\":[\"恨别离扶了扶沉重的面具：\"我的苦火，炼得了灵五仙，却炼不了顽五虫啊~\"\",\"打，胜负难料。\",\"拖，轻而易举。\",\"恨别离眼光老辣，眼睛盯在李阎腰上的皂带上。\"]},{\"name\":\"冯夷\",\"observedActions\":[\"完好的左手平伸，两根手指打了一个响指\",\"滚滚黄河大潮把三个人连同阎浮果核都卷在了里面\",\"冯夷苦笑一声：\"被羽主毁了。\"\"],\"goals\":[\"协助恨别离牵制羽主\"],\"knowledge\":[\"思凡之力已被羽主毁去\"],\"contradictions\":[\"能召黄河大潮困住强敌，却在李阎脱去皂带后暴露出相对弱势\"],\"possibleArc\":[\"赖以自保的底牌被毁后，可能更加依赖恨别离\"],\"evidence\":[\"一身西装的冯夷把眼睛埋在",
+        "evidenceCount": 0,
+        "groundedEvidenceCount": 0,
+        "evidenceIssueCount": 0,
+        "evidenceGroundingRate": null
+      }
+    }
+  ]
+}

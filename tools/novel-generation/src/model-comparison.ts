@@ -1,3 +1,7 @@
+// 模型对比实验（scripts/compare-models.mjs）的纯函数集：从不同本地 API 的响应结构中
+// 标准化提取正文与遥测摘要，并检查证据是否逐字来自原文。评测对象是各模型的原始
+// JSON 遵从能力，因此刻意不走 parseJsonObject 修复链路，解析失败需要如实上报对比。
+
 export interface EvidenceIssue {
   path: string;
   evidence: string;
@@ -52,8 +56,9 @@ export function summarizeLocalResponse(body: any): Record<string, unknown> {
 }
 
 export function parseComparisonResult(raw: string, source: string): Record<string, unknown> {
-  const tick = String.fromCharCode(96).repeat(3);
-  const cleaned = raw.trim().replace(new RegExp("^" + tick + "(?:json)?\\s*", "i"), "").replace(new RegExp("\\s*" + tick + "$"), "");
+  // 字面量正则剥掉 ``` / ```json 围栏；此前这里用 String.fromCharCode(96) 动态拼正则，
+  // 纯粹是为了在源码里绕开三个反引号，反而让读者看不出在剥什么围栏。
+  const cleaned = raw.trim().replace(/^`{3}(?:json)?\s*/i, "").replace(/\s*`{3}$/, "");
   let root: any;
   try { root = JSON.parse(cleaned); }
   catch (error) {

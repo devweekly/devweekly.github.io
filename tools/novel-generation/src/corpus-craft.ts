@@ -1,11 +1,17 @@
+// 原文章节素材整理（corpus-craft）：按章离线抽取场景、对白范例、人物声音、因果链、
+// 知识状态、世界细节与叙事观察，全部条目必须带逐字证据，供写作阶段按任务召回。
+// 产物在 analysis/<world>/corpus-craft/，属于工作记录，不是正史；worldId 不匹配的文件跳过。
 import { createHash } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { buildAnalysisUnits } from "./novel-kb.js";
 import { runAgentText } from "./generate.js";
+import { parseJsonObject } from "./model-json.js";
 
 const ANALYSIS_VERSION = 1;
+/** prompt 版本进缓存指纹，改提示词后自动重新分析。 */
 const ANALYSIS_PROMPT_VERSION = "corpus-craft-v1";
+/** 注入写作上下文时的单次预算上限；素材按相关度取，不满也合法。 */
 const MAX_CONTEXT_CHARS = 9_000;
 
 type EvidenceItem = { evidence: string; [key: string]: unknown };
@@ -28,15 +34,32 @@ export interface CorpusCraftChapter {
 }
 
 function hash(value: string): string { return createHash("sha256").update(value).digest("hex"); }
-function parseJson(raw: string): unknown {
-  const cleaned = raw.trim().replace(/^\u0060\u0060\u0060(?:json)?\s*/i, "").replace(/\s*\u0060\u0060\u0060$/, "");
-  return JSON.parse(cleaned);
-}
+
+/**
+ * 只保留能被原文逐字检索到的条目：模型补写或改写证据的条目直接丢弃，
+ * 而不是降级保留——坏证据在后续检索里会被当成事实召回。
+ */
 export function retainGroundedItems<T extends EvidenceItem>(value: unknown, source: string): T[] {
   if (!Array.isArray(value)) return [];
-  return value.filter((item): item is T => Boolean(item && typeof item === "object" && typeof (item as EvidenceItem).evidence === "string" && ((item as EvidenceItem).evidence as string).trim().length >= 4 && source.includes((item as EvidenceItem).evidence as string))).slice(0, 24);
+  return value
+    .filter((item): item is T =>
+      Boolean(
+        item && typeof item === "object" &&
+        typeof (item as EvidenceItem).evidence === "string" &&
+        ((item as EvidenceItem).evidence as string).trim().length >= 4 &&
+        source.includes((item as EvidenceItem).evidence as string)
+      )
+    )
+    .slice(0, 24);
 }
-function validate(raw: unknown, unit: { chapterId: string; ordinal: number; title: string; text: string }, worldId: string, model: string): CorpusCraftChapter {
+
+/** 交付态整理：条目逐项过滤 + 章节标识/来源哈希由程序填写，不信任模型自报字段。 */
+function validate(
+  raw: unknown,
+  unit: { chapterId: string; ordinal: number; title: string; text: string },
+  worldId: string,
+  model: string
+): CorpusCraftChapter {
   if (!raw || typeof raw !== "object") throw new Error("Corpus craft response must be a JSON object.");
   const value = raw as Record<string, unknown>;
   const source = unit.text;
@@ -52,6 +75,7 @@ function validate(raw: unknown, unit: { chapterId: string; ordinal: number; titl
     narrativeObservations: retainGroundedItems(value.narrativeObservations, source)
   };
 }
+
 function promptFor(unit: { chapterId: string; title: string; text: string }): string {
   return [
     "你是小说续写项目的原文素材整理助手。目标是帮助后续写出更好的小说，不是写文学论文，也不是制定创作规则。",
@@ -73,8 +97,8 @@ function promptFor(unit: { chapterId: string; title: string; text: string }): st
     "7. 世界细节可记录社会习俗、称谓、阶层、组织、交易、器物、民俗、仪式、超自然规则如何进入日常生活；不要补写原文没有的设定。",
     "8. 叙事观察可记录视角、节奏、信息揭示、悬念、留白、动作/对白/心理的叙事作用；绝不输出句长配额或要求续写模仿句式。",
     "9. 允许空数组。少而准，不能为覆盖字段编造内容。所有 evidence 必须能在原文中精确匹配。",
-    "章节标识："+unit.chapterId+" / "+unit.title,
-    "原文：\n"+unit.text
+    "章节标识：" + unit.chapterId + " / " + unit.title,
+    "原文：\n" + unit.text
   ].join("\n\n");
 }
 
@@ -93,55 +117,75 @@ export async function analyzeCorpusCraft(worldId: string, options: {
   for (const unit of limited) {
     const path = join(outputDir, unit.chapterId + ".json");
     const sourceHash = hash(unit.text);
+    // 语料或提示词变化都会让 sourceHash / promptVersion 对不上，从而重新分析。
     if (!options.force) {
       try {
         const previous = JSON.parse(await readFile(path, "utf8")) as CorpusCraftChapter & { promptVersion?: string };
-        if (previous.schemaVersion === 1 && previous.sourceHash === sourceHash && previous.worldId === worldId && previous.promptVersion === ANALYSIS_PROMPT_VERSION) { cached++; continue; }
-      } catch { /* absent or invalid cache: regenerate */ }
+        if (previous.schemaVersion === 1 && previous.sourceHash === sourceHash && previous.worldId === worldId && previous.promptVersion === ANALYSIS_PROMPT_VERSION) {
+          cached++;
+          continue;
+        }
+      } catch { /* 无缓存或缓存无效：重新生成 */ }
     }
     try {
       const model = options.model ?? "configured-default";
       const prompt = promptFor(unit);
-      let raw: string;
-      try { raw = await runAgentText(prompt, options.model, options.timeoutMs); }
-      catch (error) { throw error; }
+      let raw = await runAgentText(prompt, options.model, options.timeoutMs);
       let parsed: unknown;
-      try { parsed = parseJson(raw); }
-      catch {
-        raw = await runAgentText("只修复以下响应为符合要求的 JSON，不要增加分析内容：\n"+raw, options.model, options.timeoutMs);
-        parsed = parseJson(raw);
+      try {
+        parsed = parseJsonObject(raw);
+      } catch {
+        // 模型输出坏损时先让模型自修复一次 JSON；再失败才抛给调用方按单章失败处理——与全文分析批次同策略。
+        raw = await runAgentText("只修复以下响应为符合要求的 JSON，不要增加分析内容：\n" + raw, options.model, options.timeoutMs);
+        parsed = parseJsonObject(raw);
       }
       const result = validate(parsed, unit, worldId, model);
       const stored = { ...result, promptVersion: ANALYSIS_PROMPT_VERSION };
-      await writeFile(path, JSON.stringify(stored, null, 2)+"\n", "utf8");
+      await writeFile(path, JSON.stringify(stored, null, 2) + "\n", "utf8");
       generated++;
     } catch (error) {
       failed++;
-      failures.push(unit.chapterId+": "+(error instanceof Error ? error.message : String(error)));
+      failures.push(unit.chapterId + ": " + (error instanceof Error ? error.message : String(error)));
     }
   }
   const manifest = {
     schemaVersion: ANALYSIS_VERSION, worldId, promptVersion: ANALYSIS_PROMPT_VERSION,
-    updatedAt: new Date().toISOString(), processed: generated+cached, failed,
+    updatedAt: new Date().toISOString(), processed: generated + cached, failed,
     totalSelected: limited.length, failures
   };
-  await writeFile(resolve("analysis", worldId, "corpus-craft", "manifest.json"), JSON.stringify(manifest, null, 2)+"\n", "utf8");
+  await writeFile(resolve("analysis", worldId, "corpus-craft", "manifest.json"), JSON.stringify(manifest, null, 2) + "\n", "utf8");
   return { total: limited.length, generated, cached, failed, failures };
 }
 
+/** 查询词切词：长 token 额外补二元组，中文没有空格边界，依赖二元组命中。 */
 function terms(value: string): string[] {
   const normalized = value.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, " ");
-  return [...new Set(normalized.split(/\s+/).filter(token => token.length > 1).flatMap(token => token.length > 4 ? [token, ...Array.from({length:token.length-1},(_,i)=>token.slice(i,i+2))] : [token]))];
+  return [...new Set(
+    normalized.split(/\s+/).filter(token => token.length > 1).flatMap(token =>
+      token.length > 4
+        ? [token, ...Array.from({ length: token.length - 1 }, (_, i) => token.slice(i, i + 2))]
+        : [token]
+    )
+  )];
 }
+
 function scoreDocument(doc: CorpusCraftChapter, queryTerms: string[]): number {
   const text = JSON.stringify(doc).toLocaleLowerCase();
-  return queryTerms.reduce((score, term) => score + (text.includes(term) ? (term.length > 2 ? 2 : 1) : 0), 0);
+  return queryTerms.reduce(
+    (score, term) => score + (text.includes(term) ? (term.length > 2 ? 2 : 1) : 0),
+    0
+  );
 }
+
+/** 写作上下文召回：按词面相关度取章，逐章截取字段写入预算内；不按相关度硬过滤掉全章。 */
 export async function buildCorpusCraftContext(worldId: string, query: string, options: { maxChars?: number; maxDocs?: number } = {}): Promise<string> {
   const dir = resolve("analysis", worldId, "corpus-craft", "chapters");
   let files: string[];
-  try { files = (await readdir(dir)).filter(file => file.endsWith(".json")); }
-  catch { return ""; }
+  try {
+    files = (await readdir(dir)).filter(file => file.endsWith(".json"));
+  } catch {
+    return "";
+  }
   const queryTerms = terms(query);
   if (!queryTerms.length) return "";
   const ranked: Array<{ score: number; doc: CorpusCraftChapter }> = [];
@@ -151,27 +195,29 @@ export async function buildCorpusCraftContext(worldId: string, query: string, op
       if (doc.schemaVersion !== 1 || doc.worldId !== worldId) continue;
       const score = scoreDocument(doc, queryTerms);
       if (score > 0) ranked.push({ score, doc });
-    } catch { /* ignore one corrupt chapter artifact */ }
+    } catch { /* 单份章节产物损坏跳过，不阻塞写作 */ }
   }
-  ranked.sort((a,b)=>b.score-a.score || a.doc.ordinal-b.doc.ordinal);
+  ranked.sort((a, b) => b.score - a.score || a.doc.ordinal - b.doc.ordinal);
   const maxChars = options.maxChars ?? MAX_CONTEXT_CHARS;
   const maxDocs = options.maxDocs ?? 8;
   const sections: string[] = [];
   let used = 0;
-  for (const {score,doc} of ranked.slice(0,maxDocs)) {
+  for (const { score, doc } of ranked.slice(0, maxDocs)) {
     const selected = {
-      chapter: doc.chapterId+" "+doc.title,
-      scenes: doc.scenes.slice(0,5),
-      dialogueExemplars: doc.dialogueExemplars.slice(0,4),
-      voiceObservations: doc.voiceObservations.slice(0,5),
-      causalLinks: doc.causalLinks.slice(0,5),
-      knowledgeStates: doc.knowledgeStates.slice(0,5),
-      worldDetails: doc.worldDetails.slice(0,4),
-      narrativeObservations: doc.narrativeObservations.slice(0,3)
+      chapter: doc.chapterId + " " + doc.title,
+      scenes: doc.scenes.slice(0, 5),
+      dialogueExemplars: doc.dialogueExemplars.slice(0, 4),
+      voiceObservations: doc.voiceObservations.slice(0, 5),
+      causalLinks: doc.causalLinks.slice(0, 5),
+      knowledgeStates: doc.knowledgeStates.slice(0, 5),
+      worldDetails: doc.worldDetails.slice(0, 4),
+      narrativeObservations: doc.narrativeObservations.slice(0, 3)
     };
-    const block = "### "+selected.chapter+"（相关度 "+score+"）\n"+JSON.stringify(selected);
-    if (used+block.length>maxChars) continue;
-    sections.push(block); used+=block.length;
+    const block = "### " + selected.chapter + "（相关度 " + score + "）\n" + JSON.stringify(selected);
+    // 超预算的章节直接跳过，保留更靠前的章节组合，避免上下文膨胀挤掉其他注入。
+    if (used + block.length > maxChars) continue;
+    sections.push(block);
+    used += block.length;
   }
   return sections.length ? [
     "以下是从原文离线整理、带逐字证据的续写素材。它们用于找回具体场景、人物说话方式、信息差、因果和世界细节，不是正史新增条款或剧情任务。",

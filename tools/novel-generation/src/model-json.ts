@@ -1,7 +1,14 @@
 /**
- * 模型输出常在 JSON 前后夹围栏、说明文字，或在字符串里放裸换行/制表符、尾逗号。
- * 这里只负责拿到「第一个完整 JSON 对象」，字段语义仍由各调用方的 schema 校验。
+ * 模型输出常在 JSON 前后夹围栏、说明文字，或在字符串里放裸换行/制表符、尾逗号、不加引号的键。
+ * 这里分两步处理：
+ * 1) extractJsonText 只定位「第一个完整 JSON 对象」。这步不能交给 jsonrepair：
+ *    实测它对首尾带说明文字的输出会拼接出错误结构（如把前后文本当作字符串数组成员），
+ *    也无法在两个相邻对象之间选出第一个。
+ * 2) 已定位的对象交给 jsonrepair 库修复裸控制字符、尾逗号、单引号、裸键等常见坏损，
+ *    不再手写字符扫描器。
+ * 字段语义仍由各调用方的 schema 校验；本模块只负责把文本变成可解析的 JSON。
  */
+import { jsonrepair } from "jsonrepair";
 
 function stripFence(raw: string): string {
   return raw.trim()
@@ -36,40 +43,16 @@ export function extractJsonText(raw: string): string {
   throw new Error("Model output contains no complete JSON object.");
 }
 
-/** 把字符串内的裸控制字符转义，并去掉数组/对象末尾的逗号。 */
-export function repairJsonText(text: string): string {
-  let out = "";
-  let inString = false;
-  let escaped = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i] as string;
-    if (inString) {
-      if (escaped) { out += ch; escaped = false; continue; }
-      if (ch === "\\") { out += ch; escaped = true; continue; }
-      if (ch === '"') { inString = false; out += ch; continue; }
-      const code = ch.charCodeAt(0);
-      if (code < 0x20) { out += "\\u" + code.toString(16).padStart(4, "0"); continue; }
-      out += ch;
-      continue;
-    }
-    if (ch === '"') { inString = true; out += ch; continue; }
-    if (ch === "," && /^\s*[}\]]/.test(text.slice(i + 1))) continue;
-    out += ch;
-  }
-  return out;
-}
-
-/** 模型偶尔把 JSON 当 JS 对象写，键不加引号：`{decisions:[...]}`。 */
-function quoteBareKeys(text: string): string {
-  return text.replace(/([{,]\s*)([A-Za-z_][A-Za-z0-9_]*)(\s*:)/g, '$1"$2"$3');
-}
-
 export function parseJsonObject(raw: string): unknown {
   const object = extractJsonText(raw);
   try {
     return JSON.parse(object) as unknown;
   } catch (error) {
-    if (error instanceof SyntaxError) return JSON.parse(quoteBareKeys(repairJsonText(object))) as unknown;
-    throw error;
+    // 库能修就修；库也修不了时抛原始 SyntaxError——它带出错位置，比库的报错更容易回溯是哪条模型输出坏损。
+    try {
+      return JSON.parse(jsonrepair(object)) as unknown;
+    } catch {
+      throw error;
+    }
   }
 }

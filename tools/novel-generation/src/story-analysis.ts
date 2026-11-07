@@ -21,7 +21,6 @@ import {
   LOG_FAILURE_REPORT_LIMIT,
   MAX_ITEM_SOURCE_REFS
 } from "./constants.js";
-export { repairJsonText } from "./model-json.js";
 
 /** Models drift between `["a"]` and `"a"`; both mean the same thing here. */
 const stringList = z.preprocess(value => {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { extractJsonText, parseJsonObject, repairJsonText } from "../src/model-json.js";
+import { extractJsonText, parseJsonObject } from "../src/model-json.js";
 
 test("extracts the first complete object even when trailing prose contains braces", () => {
   const raw = '先看结论：{"status":"pass","issues":[]}\n补充说明：这里有个 } 不是 JSON。';
@@ -12,12 +12,16 @@ test("handles fenced output and braces inside strings", () => {
   assert.deepEqual(parseJsonObject(raw), { title: "场景 } 一", note: "{不是对象}" });
 });
 
-test("repairs raw control characters and trailing commas", () => {
-  const raw = '{"characters":[{"name":"李阎","shortBio":"第一行\n第二行",}],}';
-  assert.equal(repairJsonText(extractJsonText(raw)).includes("\n"), false);
-  assert.deepEqual(parseJsonObject(raw), {
-    characters: [{ name: "李阎", shortBio: "第一行\n第二行" }]
-  });
+// 裸换行、尾逗号与裸键都由 jsonrepair 修复；这里保证三条坏损路径最终都解析出正确对象。
+test("repairs raw control characters, trailing commas and bare keys", () => {
+  assert.deepEqual(
+    parseJsonObject('{"characters":[{"name":"李阎","shortBio":"第一行\n第二行",}],}'),
+    { characters: [{ name: "李阎", shortBio: "第一行\n第二行" }] }
+  );
+  assert.deepEqual(
+    parseJsonObject("{decisions:[{index:0,supported:true,reason:\"行文一致\"}]}"),
+    { decisions: [{ index: 0, supported: true, reason: "行文一致" }] }
+  );
 });
 
 test("ignores a second JSON object instead of slicing across both", () => {
