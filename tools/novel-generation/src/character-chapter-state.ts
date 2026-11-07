@@ -49,6 +49,15 @@ export function matchChapterCharacters(text: string, characters: NovelCharacterS
 export function hasExactEvidence(text: string, evidence: string[]): boolean {
   return evidence.some(value => value.length >= 4 && text.includes(value));
 }
+export function latestPriorState<T extends { chapterOrdinal: number }>(states: T[], ordinal: number): T | undefined {
+  let low = 0; let high = states.length - 1; let found = -1;
+  while (low <= high) {
+    const middle = Math.floor((low + high) / 2);
+    if ((states[middle]?.chapterOrdinal ?? Number.MAX_SAFE_INTEGER) < ordinal) { found = middle; low = middle + 1; }
+    else high = middle - 1;
+  }
+  return found >= 0 ? states[found] : undefined;
+}
 function promptForChapter(input: {
   chapter: { chapterId: string; ordinal: number; volume: number; title: string; text: string };
   characters: NovelCharacterSummary[];
