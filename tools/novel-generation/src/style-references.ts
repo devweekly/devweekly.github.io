@@ -75,7 +75,7 @@ export async function listStyleReferenceHistory(worldDir: string, onlyName?: str
 }
 
 export async function readStyleReferenceVersion(worldDir: string, name: string, version: string): Promise<string> {
-  if (!validName(name) || !version || version !== basename(version) || !/^[a-zA-Z0-9T_.-]+\\.(md|txt)$/i.test(version)) {
+  if (!validName(name) || !version || version !== basename(version) || !/^[a-zA-Z0-9T_.-]+\.(md|txt)$/i.test(version)) {
     throw new Error("Invalid Style Reference history version.");
   }
   return readFile(join(worldDir, "style-references", ".history", name, version), "utf8");
