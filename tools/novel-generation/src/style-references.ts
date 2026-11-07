@@ -58,7 +58,6 @@ export async function archiveStyleReference(worldDir: string, name: string): Pro
   await mkdir(archiveDir, { recursive: true });
   const archivePath = join(archiveDir, stamp() + extname(name));
   await writeFile(archivePath, text, { encoding: "utf8", flag: "wx" });
-  const { unlink } = await import("node:fs/promises");
   await unlink(target);
   return { name, action: "archived", archivePath };
 }
