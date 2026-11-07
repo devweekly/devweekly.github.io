@@ -230,7 +230,6 @@ function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: string,
     if (!chapter) {
       // Fail closed. A database without a resolvable chapter ordinal cannot be
       // proven safe for a historical branch.
-      db.close();
       rmSyncIfExists(databasePath);
       return 0;
     }
@@ -497,6 +496,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
       }
     });
     rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
+    restrictKnowledgeDatabaseToEntry(path.join(stagingDir, "novel.db"), id, parent.entryChapter);
     const universe: StoryUniverse = {
       id, sourceWorldId: parent.sourceWorldId, name, type: parent.type,
       entryChapter: parent.entryChapter, brief: parent.brief,
