@@ -323,7 +323,6 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
       createdAt: new Date().toISOString()
     };
     await writeFile(path.join(targetDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
-    await writeFile(path.join(targetDir, "source-canon.json"), JSON.stringify({ sourceWorldId: parent.sourceWorldId, readOnly: true }, null, 2) + "\n", "utf8");
     await writeFile(path.join(targetDir, "source-canon.json"), JSON.stringify({ sourceWorldId: rootSourceId, readOnly: true }, null, 2) + "\n", "utf8");
     await writeFile(path.join(targetDir, "universe-entry.md"), selectedChapter.text + "\n", "utf8");
     await writeFile(path.join(targetDir, "universe-origin-context.md"), originContext + "\n", "utf8");
@@ -405,6 +404,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
       createdAt: new Date().toISOString()
     };
     await writeFile(path.join(targetDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
+    await writeFile(path.join(targetDir, "source-canon.json"), JSON.stringify({ sourceWorldId: parent.sourceWorldId, readOnly: true }, null, 2) + "\n", "utf8");
     const forkState = rebaseStoryState(state, parentId, id);
     await writeFile(path.join(targetDir, "story-state.json"), JSON.stringify(forkState, null, 2) + "\n", "utf8");
     await loadStoryState(path.join(targetDir, "story-state.json"), id);
