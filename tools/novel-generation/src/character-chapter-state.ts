@@ -36,10 +36,18 @@ export interface CharacterChapterStateResult {
 }
 
 function hash(text: string): string { return createHash("sha256").update(text).digest("hex"); }
-function matchesCharacter(text: string, character: NovelCharacterSummary): boolean {
-  const names = [character.name, ...character.aliases]
-    .map(value => value.trim()).filter(value => value.length >= 2);
-  return names.some(name => text.includes(name));
+export function matchChapterCharacters(text: string, characters: NovelCharacterSummary[]): NovelCharacterSummary[] {
+  const aliasOwners = new Map<string, Set<string>>();
+  for (const character of characters) for (const alias of character.aliases.map(value => value.trim()).filter(value => value.length >= 3)) {
+    const owners = aliasOwners.get(alias) ?? new Set<string>(); owners.add(character.characterId); aliasOwners.set(alias, owners);
+  }
+  return characters.filter(character => text.includes(character.name) || character.aliases.some(alias => {
+    const value = alias.trim();
+    return value.length >= 3 && aliasOwners.get(value)?.size === 1 && text.includes(value);
+  }));
+}
+export function hasExactEvidence(text: string, evidence: string[]): boolean {
+  return evidence.some(value => value.length >= 4 && text.includes(value));
 }
 function promptForChapter(input: {
   chapter: { chapterId: string; ordinal: number; volume: number; title: string; text: string };
