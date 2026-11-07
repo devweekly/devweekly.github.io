@@ -59,7 +59,7 @@
 | 章节状态 | `src/story-state.ts`、`src/database.ts` | SQLite 权威存储；JSON 为兼容快照；状态按人物/事件/情节线 ID 合并；人物 arcMilestones 按 ID 追加并验证正文证据 |
 | 成书知识库 | `src/novel-kb.ts`、`src/story-analysis.ts` | 章目录映射、去重叠重建章节文本、人物出场统计；分片调用模型抽取人物/情节/伏笔/章级事件，合并后写 `novel_*` 表 |
 | 普通章节流水线 | `src/workflow.ts` | 主线与创意并行、主编规划、正文、对白、叙事声音、共享 Anti-AI 编辑、硬伤终审、Reader 观察与状态提取 |
-| 万字章节流水线 | `src/long-chapter.ts` | 场景蓝图、逐场检索与生成、场间上下文交接、分批审查、逐场修订、共享 Anti-AI 编辑、全章终审与 Reader 观察 |
+| 万字章节流水线 | `src/long-chapter.ts` | 场景蓝图、逐场检索与生成、场间上下文交接、逐场修订、共享 Anti-AI 编辑、一次全章硬伤终审与可选 Reader 观察 |
 | 质量回归 | `src/regression.ts`、`scripts/compare-models.mjs` | 节奏量化、候选盲评和模型对照；不属于每次正式续写的人工审批步骤 |
 | 质量门禁 | `src/chapter-review.ts` | 审查 JSON schema、正文证据、严重程度与多场景定位；有限自动修复和复查 |
 | 文学编辑原则 | `src/literary-edit.ts`、`src/style-distillation.ts`、`src/style-regression.ts`、`src/style-trend.ts`、`src/style-references.ts` | Writer/编辑共享 Living Voice；Anti-AI 诊断、克制编辑与保守复核；盲读 Reader；逐章风格回归、跨章节趋势观察与认可样本版本归档 |
