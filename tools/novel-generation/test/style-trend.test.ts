@@ -28,5 +28,5 @@ test("collects completed chapter and manual style regression reports without dra
 });
 
 test("validates trend report limits", async () => {
-  await assert.rejects(() => collectStyleRegressionReports("/missing", 0), /between 1 and 100/);
+  await assert.rejects(() => collectStyleRegressionReports("/missing", 0), /between 1 and 1000/);
 });
