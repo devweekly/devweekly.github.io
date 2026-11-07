@@ -305,7 +305,7 @@ app.get("/api/worlds/:worldId/forkable-chapters", async (req, res) => {
     if (!(await readUniverse(parentId))) return void res.status(409).json({ error: "只能列出故事宇宙中的可分叉章节。" });
     const runs = (await listRuns(parentId)).filter(run => run.kind === "chapter" && run.status === "completed" && run.outputDir && run.chapterPath);
     const root = path.resolve(".output", parentId) + path.sep;
-    const chapters = [];
+    const chapters: Array<{ id: string; title: string; createdAt: string }> = [];
     for (const run of runs) {
       const outputDir = path.resolve(run.outputDir!);
       const chapterPath = path.resolve(run.chapterPath!);
