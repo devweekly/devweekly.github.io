@@ -91,11 +91,11 @@ export function renderAsOfDossier(snapshot: StoryAnalysisSnapshot, beats: Array<
     list("相关人物", row.relatedCharacters),
     chapters(row)
   ].filter(Boolean).join("\n\n"));
-  const coreRows = snapshot.storyCoreObservations ?? [];
+  const coreRows = snapshot.storyCoreObservations?.length ? snapshot.storyCoreObservations : (snapshot.storyCore ? [snapshot.storyCore] : []);
   const core = section("故事核心", coreRows, row => [
     value(row, "centralConflict") ? "核心冲突：" + value(row, "centralConflict") : "",
     value(row, "centralQuestion") ? "核心问题：" + value(row, "centralQuestion") : "",
-    list(" stakes", row.stakes),
+    list("关键 stakes", row.stakes),
     list("主题", row.themes),
     value(row, "narrativePromise") ? "叙事承诺：" + value(row, "narrativePromise") : "",
     list("主要剧情线", row.mainPlotThreadTitles),
