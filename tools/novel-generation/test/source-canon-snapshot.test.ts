@@ -70,8 +70,8 @@ test("historical snapshot retains only chapter evidence through the selected ent
     assert.deepEqual(analysis.characters.map((item: any) => item.name), ["甲"]);
     assert.deepEqual(analysis.plotThreads.map((item: any) => item.title), ["安全主线"]);
     assert.deepEqual(analysis.storyCoreObservations.map((item: any) => item.centralQuestion), ["安全问题"]);
+    assert.deepEqual(analysis.storyCore.observations.map((item: any) => item.centralQuestion), ["安全问题"]);
     assert.deepEqual(analysis.storyGraph.nodes.map((item: any) => item.id), ["safe"]);
-    assert.equal("storyCore" in analysis, false);
     assert.deepEqual(rows(f.databasePath, "SELECT character_id FROM novel_characters"), [{ character_id: "char1" }]);
     assert.deepEqual(rows(f.databasePath, "SELECT thread_id FROM novel_plot_threads"), [{ thread_id: "thread1" }]);
     assert.deepEqual(rows(f.databasePath, "SELECT volume FROM novel_arcs"), [{ volume: 1 }]);
