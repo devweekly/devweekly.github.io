@@ -2,7 +2,7 @@
 // 领域逻辑（Story Plan、Story State、故事图谱、风格参考）全部走共享 domain service，
 // 不得在路由层复制 prompt 或 schema 逻辑。
 import express, { type Request, type Response, type NextFunction } from "express";
-import { spawn } from "node:child_process";
+import { spawn } from "node:child_process";\nimport { createWriteStream } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
