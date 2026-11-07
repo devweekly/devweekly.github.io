@@ -59,6 +59,7 @@ import { formatStoryPlan, generateStoryPlan, loadStoryPlan, saveStoryPlan } from
 import { buildStyleDistillationPrompt } from "./style-distillation.js";
 import { buildStyleRegressionPrompt } from "./style-regression.js";
 import { buildStyleTrendPrompt, collectStyleRegressionReports } from "./style-trend.js";
+import { addStyleReference, archiveStyleReference, listStyleReferences } from "./style-references.js";
 import { runRoleplaySandbox } from "./roleplay-sandbox.js";
 
 /** `--model --evidence-review` 这种漏值不该把下一个开关当成取值。 */
@@ -97,6 +98,7 @@ function usage(): never {
     "  npm run dev -- distill-style --world conghuoniao --input ./private/style-sample-1.txt ./private/style-sample-2.md [--out .output/<world>/style-profile-candidate.md] [--activate] [--model model]",
     "  npm run dev -- style-regress --world conghuoniao --reference ./benchmarks/ref-1.md [more files] --candidate .output/chapter.md [more files] [--scene-type dialogue] [--out .output/<world>/style-regression/report.md]",
     "  npm run dev -- style-trend --world conghuoniao [--limit 30] [--model model] [--out .output/<world>/style-regression-trend/report.md]",
+    "  npm run dev -- style-reference --world conghuoniao --list | --add ./samples/dialogue.md [more files] | --remove dialogue.md",
     "  npm run dev -- roleplay-sandbox --world conghuoniao --brief \"场景设定\" --characters 人物甲,人物乙 [--model model] [--out file]",
     "  npm run dev -- analyze-story --world conghuoniao [--model model] [--timeout-ms 180000] [--max-chars 14000] [--shard 0/4] [--merge-only] [--delta]",
     "  npm run dev -- plan-story --world conghuoniao [--model model] [--draft] [--activate-candidate <file>]  # 默认生成后自动激活；--draft 仅保存实验草稿",
@@ -467,6 +469,28 @@ async function main(): Promise<void> {
     }
     console.log("评审报告：" + result.reviewPath);
     console.log("归档：" + result.archiveDir);
+    return;
+  }
+
+  if (command === "style-reference") {
+    const worldDir = resolve("worlds", worldId);
+    const additions = valuesAfter("--add");
+    const removal = arg("--remove");
+    const listing = process.argv.includes("--list");
+    if (Number(Boolean(additions.length)) + Number(Boolean(removal)) + Number(listing) !== 1) {
+      throw new Error("Choose exactly one operation: --list, --add <file...>, or --remove <active-filename>.");
+    }
+    if (listing) {
+      console.log(JSON.stringify(await listStyleReferences(worldDir), null, 2));
+      return;
+    }
+    if (removal) {
+      console.log(JSON.stringify(await archiveStyleReference(worldDir, removal), null, 2));
+      return;
+    }
+    const changes = [];
+    for (const file of additions) changes.push(await addStyleReference(worldDir, file));
+    console.log(JSON.stringify(changes, null, 2));
     return;
   }
 
