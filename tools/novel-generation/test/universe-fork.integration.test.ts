@@ -170,7 +170,7 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
     const grandchildId = grandchildPayload.universe.id;
     const grandchildState = JSON.parse(await readFile(join(root, ".output", grandchildId, "workbench", "runs", runId + ".json"), "utf8")) as WorkbenchRun;
     assert.equal(grandchildState.worldId, grandchildId);
-    const grandchildSnapshot = JSON.parse(await readFile(join(root, ".output", grandchildId, path.basename(childOutput), "08-state-update.json"), "utf8")) as { worldId: string };
+    const grandchildSnapshot = JSON.parse(await readFile(join(root, ".output", grandchildId, "chapter-001", "08-state-update.json"), "utf8")) as { worldId: string };
     assert.equal(grandchildSnapshot.worldId, grandchildId);
   } finally {
     if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
