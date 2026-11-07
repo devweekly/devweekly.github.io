@@ -113,21 +113,24 @@ export function buildStoryStateGraph(state: StoryState): StoryStateGraph {
   return { nodes: [...nodes.values()], edges: [...edges.values()] };
 }
 
-export interface StoryStateGraphSlice extends StoryStateGraph {
+export interface GraphSlice<TNode, TEdge> {
   totalNodes: number;
   totalEdges: number;
   matchedNodes: number;
   returnedNodes: number;
   returnedEdges: number;
   truncated: boolean;
+  nodes: TNode[];
+  edges: TEdge[];
 }
 
-/** Query matching nodes plus exactly one hop of explicit adjacency. */
-export function filterStoryStateGraph(graph: StoryStateGraph, query = "", limit = 500): StoryStateGraphSlice {
+/** Generic graph query: matching nodes plus exactly one hop of explicit adjacency. */
+export function filterGraph<TNode extends { id: string }, TEdge extends { from: string; to: string }>(
+  graph: { nodes: TNode[]; edges: TEdge[] }, query = "", limit = 500
+): GraphSlice<TNode, TEdge> {
   if (!Number.isInteger(limit) || limit < 1 || limit > 5000) throw new Error("Graph limit must be between 1 and 5000.");
   const normalized = query.trim().toLocaleLowerCase();
-  const matches = (node: StoryStateGraphNode): boolean =>
-    !normalized || (JSON.stringify(node).toLocaleLowerCase().includes(normalized));
+  const matches = (node: TNode): boolean => !normalized || (JSON.stringify(node) ?? "").toLocaleLowerCase().includes(normalized);
   const direct = normalized ? graph.nodes.filter(matches) : graph.nodes;
   const seeds = new Set(direct.map(node => node.id));
   const selected = new Set(seeds);
@@ -148,4 +151,9 @@ export function filterStoryStateGraph(graph: StoryStateGraph, query = "", limit 
     truncated: nodes.length < candidateNodes.length || edges.length < candidateEdges.length,
     nodes, edges
   };
+}
+
+/** Query a derived sequel graph with the same bounded one-hop semantics. */
+export function filterStoryStateGraph(graph: StoryStateGraph, query = "", limit = 500): GraphSlice<StoryStateGraphNode, StoryStateGraphEdge> {
+  return filterGraph(graph, query, limit);
 }
