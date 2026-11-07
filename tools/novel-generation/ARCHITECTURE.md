@@ -439,7 +439,7 @@ Roleplay Sandbox 已读取当前人物动态、长期人物观察和任务相关
 ### 10.10 五项能力的当前实际落地
 
 - **Anti-AI**：普通章节与长章节均执行诊断（`06a`）→ 有问题才编辑（`06b`）→ 保守复核（`06c`）。诊断只报告有具体证据的阅读问题，不判断 AI 概率；空诊断、无问题或诊断失败均跳过整章改写；复核格式错误或调用失败时恢复原稿。Editorial Review 发生修复时追加 `10-post-review-literary-check.md` 只读观察，检查修复是否引入 AI 腔，不再次改稿、不阻断交付。
-- **Living Voice**：同一组原则进入普通/长章节 Writer、对白与叙事声音编辑；长章节场景扩写重试也会注入，避免重试阶段退化成单纯凑字数。
+- **Creative Freedom + Living Voice**：共享创作自由原则进入普通/长章节的规划与 Writer；不是每个场景都必须推进主线、制造冲突或改变关系。长章节不再因单场篇幅低于预算比例而自动扩写；目标篇幅只作整体预期，避免为凑字数注水。Living Voice 继续进入正文与文学编辑。
 - **Style Distillation**：`distill-style` 提炼授权样本的全局与场景级抽象特征；候选默认隔离，`--activate` 显式激活并归档旧版。正式写作每章自动生成只读 Style Regression 报告；仍未建设样本版本管理、跨章节自动批量趋势分析和 CI 风格门禁。
 - **Reader**：可选的盲读观察；默认不运行，普通章节和长章节均通过 `--reader-experience` 显式启用。启用后只读取最终正文，不预先接收人物档案、世界设定、蓝图或创作任务；只生成观察报告，不影响质量门禁和 Story State。
 - **Style Regression**：普通/长章节终审通过后自动读取 Style Profile 和 `worlds/<world>/style-references/` 下最多四份认可样本，生成 `11-style-regression.md`；无样本时只对照抽象 Style Profile 并说明证据不足。它不改稿、不打分、不阻断。
