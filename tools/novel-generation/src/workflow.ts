@@ -407,7 +407,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
       await saveStage(input.outputDir, "11-style-regression.md", report);
       // Every fifth completed chapter produces a lightweight longitudinal review.
       // It is observational only and is isolated from chapter acceptance and prose.
-      const trendReports = await collectStyleRegressionReports(resolve(".output", input.worldId), 100);
+      const trendReports = await collectStyleRegressionReports(resolve(".output", input.worldId), 1000);
       if (trendReports.length >= 5 && trendReports.length % 5 === 0) {
         try {
           const trend = await cachedCall("style-regression-trend", "12-style-regression-trend.md", "styleDistill", [
