@@ -21,14 +21,20 @@ async function embed(texts:string[]):Promise<number[][]|undefined> {
   const base=process.env.VANE_EMBEDDING_BASE_URL;
   const model=process.env.VANE_EMBEDDING_MODEL;
   if(!base||!model)return undefined;
-  const response=await fetch(base.replace(/\/$/,"")+"/embeddings",{
-    method:"POST",headers:{"content-type":"application/json",...(process.env.VANE_EMBEDDING_API_KEY?{authorization:"Bearer "+process.env.VANE_EMBEDDING_API_KEY}:{})},
-    body:JSON.stringify({model,input:texts})
-  });
-  if(!response.ok)throw new Error("Embedding endpoint returned "+response.status);
-  const payload=await response.json() as {data?:Array<{embedding?:number[]}>};
-  if(!Array.isArray(payload.data)||payload.data.length!==texts.length||payload.data.some(x=>!Array.isArray(x.embedding)))throw new Error("Invalid embeddings response.");
-  return payload.data.map(x=>x.embedding as number[]);
+  const results:number[][]=[];
+  for(let offset=0;offset<texts.length;offset+=32){
+    const batch=texts.slice(offset,offset+32);
+    const response=await fetch(base.replace(/\/$/,"")+"/embeddings",{
+      method:"POST",headers:{"content-type":"application/json",...(process.env.VANE_EMBEDDING_API_KEY?{authorization:"Bearer "+process.env.VANE_EMBEDDING_API_KEY}:{})},
+      body:JSON.stringify({model,input:batch})
+    });
+    if(!response.ok)throw new Error("Embedding endpoint returned "+response.status);
+    const payload=await response.json() as {data?:Array<{embedding?:number[];index?:number}>};
+    if(!Array.isArray(payload.data)||payload.data.length!==batch.length||payload.data.some(x=>!Array.isArray(x.embedding)))throw new Error("Invalid embeddings response.");
+    const ordered=[...payload.data].sort((left,right)=>(left.index??0)-(right.index??0));
+    results.push(...ordered.map(item=>item.embedding as number[]));
+  }
+  return results;
 }
 async function openVane(worldId:string,dim:number):Promise<{db:VaneDb;col:VaneCollection}> {
   let module:VaneModule;
