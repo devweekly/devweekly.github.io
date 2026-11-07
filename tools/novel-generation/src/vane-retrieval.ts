@@ -39,7 +39,7 @@ async function openVane(worldId:string):Promise<{db:VaneDb;col:VaneCollection}> 
   const db=await module.open(dir,{autoCommit:"off"});
   const dim=Number(process.env.VANE_EMBEDDING_DIM??8);
   const col=await db.collection("novel-corpus",{
-    fields:[{name:"body",type:"text"},{name:"vec",type:"vector",dim,metric:"cosine"}]
+    fields:[{name:"body",type:"text"},{name:"vec",type:"vector",dim,metric:"cosine"},{name:"kind",type:"scalar",kind:"keyword"},{name:"chapter",type:"scalar",kind:"keyword"},{name:"source",type:"scalar",kind:"keyword"}]
   },{tokenizer:"jieba"});
   return {db,col};
 }
