@@ -15,6 +15,7 @@ import { LONG_CHAPTER_SOURCE_TAIL_CHARS } from "./constants.js";
 import { buildWorldSituationContext } from "./world-situation.js";
 import { LIVING_VOICE_RULES, antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, readerExperiencePrompt } from "./literary-edit.js";
 import { buildStyleRegressionPrompt, loadStyleRegressionReferences } from "./style-regression.js";
+import { buildStyleTrendPrompt, collectStyleRegressionReports } from "./style-trend.js";
 /**
  * Build a compact retrospective from body-evidenced character milestones.
  * It is creative context for the rolling planner, never a personality constraint.
@@ -404,6 +405,20 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
         buildStyleRegressionPrompt({ styleProfile: input.styleProfile, references, candidates: [{ label: "本次最终章节", text: chapter }] })
       ], output => { if (!output.trim()) throw new Error("Style regression returned an empty report."); });
       await saveStage(input.outputDir, "11-style-regression.md", report);
+      // Every fifth completed chapter produces a lightweight longitudinal review.
+      // It is observational only and is isolated from chapter acceptance and prose.
+      const trendReports = await collectStyleRegressionReports(resolve(".output", input.worldId), 100);
+      if (trendReports.length >= 5 && trendReports.length % 5 === 0) {
+        try {
+          const trend = await cachedCall("style-regression-trend", "12-style-regression-trend.md", "styleDistill", [
+            buildStyleTrendPrompt({ styleProfile: input.styleProfile, reports: trendReports.slice(0, 30) })
+          ], output => { if (!output.trim()) throw new Error("Style trend returned an empty report."); });
+          await saveStage(input.outputDir, "12-style-regression-trend.md", trend);
+        } catch (trendError) {
+          await saveStage(input.outputDir, "12-style-regression-trend-error.txt", String(trendError));
+          console.error("[write] 跨章节风格趋势观察未完成；不影响正文与状态提交。");
+        }
+      }
     } catch (error) {
       await saveStage(input.outputDir, "11-style-regression-error.txt", String(error));
       console.error("[write] 风格回归观察未完成；不改动正文，也不影响章节状态提交。");
