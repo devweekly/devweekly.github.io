@@ -1,5 +1,5 @@
-// 普通章节多阶段写作流水线：主线架构师/创意发散并行 → 主编蓝图 → 正文 → 对白 → 叙事声音 →
-// Living Voice/Anti-AI 编辑 → 终审复查与最多两轮自动修复 → Reader 观察 → 状态提取与提交。
+// 普通章节多阶段写作流水线：主线架构师/创意发散并行 → 主编蓝图 → 正文 → 整体文学编辑 →
+// 有问题才执行 Anti-AI 编辑 → 硬伤终审与最多两轮修复 → 修复后只读文风观察 → 可选 Reader → 状态提交。
 // 各阶段按职责裁剪上下文：创意阶段不给逐条证据，对白编辑只看人物状态，只有事实核对类
 // 阶段才保留证据材料。每阶段走 stage-cache 指纹缓存；未通过终审不写 Story State。
 import { mkdir, writeFile } from "node:fs/promises";
@@ -331,7 +331,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     ], output => { if (!output.trim()) throw new Error("Anti-AI diagnosis returned an empty report."); });
   } catch (error) {
     await saveStage(input.outputDir, "06a-anti-ai-diagnosis-error.txt", String(error));
-    console.error("[write] Anti-AI 诊断未完成；编辑阶段仍按通用文学原则运行。");
+    console.error("[write] Anti-AI 诊断未完成；跳过无依据的整章改写，保留上阶段正文继续终审。");
   }
   const needsAntiAiEdit = shouldRunAntiAiEdit(antiAiDiagnosis);
   if (needsAntiAiEdit) {
