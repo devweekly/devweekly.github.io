@@ -183,6 +183,12 @@ npm run dev -- regress --world conghuoniao --chapter 13 \
 
 `.output/regression/<run-id>/` 存原文、两版原稿与修订稿、评审全文；`analysis/<world>/regression/chapter-XXX/` 存 `metrics.json`、`review.md` 与实验说明，随代码提交。默认只统计节奏指标，不按数字自动改稿；只有显式传 `--repair` 才运行实验性的句法修订。该修订只适合对照实验，不建议用于正式小说成稿。`--max-words` 控制篇幅（默认与原章同长）。已有实验见 `analysis/conghuoniao/regression/chapter-013/`。
 
+## 续写中的伏笔与 MacGuffin 生命周期
+
+每章终审通过后，状态管理员会从最终正文中提取本章确实发生的伏笔和关键目标/物件/信息变化，分别追加到 Story State 的 `foreshadowingUpdates` 与 `macguffinUpdates`。每条更新包含稳定对象 ID、章节、变化说明、关联情节线和正文逐字证据；同一运行恢复时按更新 ID 幂等合并。没有自然发生变化时返回空数组，不要求每章必须埋设或回收伏笔，也不把分析建议变成剧情任务。
+
+后续普通章节和长章节会从这些记录中按本次任务检索最近状态；终审可据此核对明确的线索状态、关键物件持有者/位置和因果冲突，但不因伏笔尚未回收或 MacGuffin 没有推进而判定失败。原著成书知识库与续写动态状态分开保存，避免续写内容污染原著分析。
+
 ## 当前实现边界
 
 - 使用 `@tencent-ai/agent-sdk` 的 `query()`。默认 `deepseek-v4.1-flash`、回退 `hy4free`；目录来自 `ACC_PRODUCT_CONFIG_PATH` 或 `~/.codebuddy/local_storage/*.info`（前者解析不出模型时仍会扫缓存），再叠加 user/project `models.json`。`--model`、环境变量与配置文件可覆盖，详见第 7 节。逐条消息竞速超时并主动中断，超时、无文本或执行失败时换链中下一个模型。
@@ -190,7 +196,7 @@ npm run dev -- regress --world conghuoniao --chapter 13 \
 - `analyze-world` 默认走文件交接，不调用模型；输入包与成稿随代码提交，便于复核每个结论的依据。`--evidence-review` 会额外调用模型逐句核验句中具体事实与引用行是否一致；解析失败的批次二分重试，不整片作废。
 - 本地检索是词项/BM25 风格排序，不是向量语义检索。倒排统计与片段词频在进程内按索引文件版本缓存；索引更新后自动失效。Zod 是直接运行时依赖，用于校验故事状态、章节索引和模型证据审查输出。
 - 回归对照只做写法比较：情节不同是预期的，评审 Agent 不据此扣分。指标由确定性函数统计，评审结论属于模型判断，两者分开记录。
-- 文本抽取按片段进行，带独立证据审查、来源哈希/章节偏移、显式别名注册表和有证据门槛的共指解析；人物弧光已增加有正文证据的 arcMilestones 基础追踪，但完整人物状态时间序列和伏笔生命周期分析仍未实现。全量 `analyze` 涉及 2,594 次模型调用，尚未执行，`annotations.json` 为空。
+- 文本抽取按片段进行，带独立证据审查、来源哈希/章节偏移、显式别名注册表和有证据门槛的共指解析；原著人物出场/事件时间线与人物 Profile 已进入成书知识库。续写 Story State 另行追加有正文逐字证据的 `arcMilestones`、`foreshadowingUpdates` 和 `macguffinUpdates`，并在后续章节规划/终审上下文中按任务相关性读取；这些记录不反向改写原著分析快照。完整原著人物状态逐章重建、跨章节实体自动消歧仍有边界。全量 `analyze` 涉及 2,594 次模型调用，需以当前 `story-analysis` 快照的 `analysisVersion` / `complete` 状态确认是否已完成，不能仅凭批次缓存数量推断。
 - `analysis/build-corpus-index.mjs` 只做确定性结构解析，不调用模型；卷边界由章号重置判定，作者单章与卷末总结单独记录，不做语义归并。
 - 导入器支持 TXT/Markdown；EPUB、PDF、OCR 和网页采集不在当前范围。
 - 多 Agent 通过独立模型调用协作；主线规划与创意发散并行，其余阶段按依赖顺序执行。Agent SDK session 不持久化，但每个模型阶段有 SHA-256 输入指纹、输出哈希和原子 checkpoint。中断后使用 `--resume-dir` 指向原 `.output/<world>/<run-id>`（长章节为 `long-<run-id>`）恢复；只复用 prompt、模型与阶段配置完全一致且输出哈希未变化的阶段。运行目录保存初始故事状态快照，避免数据库提交后中断造成重复累加。
