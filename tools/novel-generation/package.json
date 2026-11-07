@@ -17,7 +17,8 @@
     "dev:web": "tsx src/server-main.ts",
     "start:web": "NODE_ENV=production node dist/server-main.js",
     "compare-models": "node --import tsx scripts/compare-models.ts",
-    "benchmark-local-models": "node --import tsx scripts/benchmark-local-models.ts"
+    "benchmark-local-models": "node --import tsx scripts/benchmark-local-models.ts",
+    "package-latest-run": "node --import tsx scripts/package-review.ts --latest-run-only"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
@@ -39,4 +40,4 @@
     "typescript": "^7.0.2",
     "vite": "^8.3.5"
   }
-}
+}\n
