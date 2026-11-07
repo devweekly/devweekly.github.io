@@ -908,7 +908,7 @@ async function main(): Promise<void> {
       worldId, worldDir: resolve("worlds", worldId), mode, brief, worldBible, styleProfile, sourceText, contextText, retrievedContext, storyAnalysisContext, writingBrief, storyPlanText, storyArcText, model,
       strictModel: process.argv.includes("--strict-model"),
       maxWords,
-      outputDir, statePath, applyState
+      outputDir, statePath, applyState, readerExperience: process.argv.includes("--reader-experience")
     });
     console.log("\nSaved chapter: " + resolve(outputDir, "chapter.md"));
     console.log("State proposal: " + resolve(outputDir, "08-state-update.json"));
