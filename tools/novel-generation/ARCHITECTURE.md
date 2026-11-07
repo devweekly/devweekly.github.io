@@ -47,7 +47,7 @@
 | 质量门禁 | `src/chapter-review.ts` | 审查 JSON schema、正文证据、严重程度与多场景定位；有限自动修复和复查 |
 | 文学编辑原则 | `src/literary-edit.ts`、`src/style-distillation.ts`、`src/style-regression.ts`、`src/style-trend.ts`、`src/style-references.ts` | Writer/编辑共享 Living Voice；Anti-AI 诊断、克制编辑与保守复核；盲读 Reader；逐章风格回归、跨章节趋势观察与认可样本版本归档 |
 | 角色推演沙盘 | `src/roleplay-sandbox.ts` | 作者主动控制的多轮人物互动推演；只保存候选记录，不写入 Story State |
-| 原著人物逐章状态 | `src/character-chapter-state.ts`、`novel_character_chapter_states` | 按章节原文提取人物行为/目标/认知/关系/资源/处境/变化；逐字证据校验；正文哈希增量、逐章落库、可分片恢复；Workbench 展示时间线 |
+| 原著人物逐章状态 | `src/character-chapter-state.ts`、`novel_character_chapter_states` | 按章节原文提取人物行为/目标/认知/关系/资源/处境/变化；逐字证据校验；结合最近一条前序人物快照判断变化；正文与前序状态双指纹增量、逐章落库、可分片恢复；Workbench 展示时间线 |
 | Style Reference 管理 | `src/style-references.ts`、`web/src/StyleReferencesPanel.tsx` | 本地 Workbench 添加/更新/归档活动样本，自动保留历史版本；只有活动样本进入风格回归 |
 | 阶段恢复 | `src/stage-cache.ts` | 输入指纹、实际模型回退链、输出哈希、阶段语义校验、原子阶段产物、运行 manifest 和初始状态快照 |
 
