@@ -52,9 +52,9 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     schemaVersion: 1, worldId: "source-world", createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     chunks: [
-      { chapter: "第一章", chunkIndex: 0, start: 0, end: 8, text: "第一章正文" },
-      { chapter: "第二章", chunkIndex: 0, start: 0, end: 8, text: "第二章正文" },
-      { chapter: "第三章", chunkIndex: 0, start: 0, end: 8, text: "未来剧情泄漏标记" }
+      { chapter: "第一章", chunkIndex: 0, start: 0, end: 8, chapterStart: 0, sourceHash: "a".repeat(64), text: "第一章正文" },
+      { chapter: "第二章", chunkIndex: 0, start: 0, end: 8, chapterStart: 100, sourceHash: "a".repeat(64), text: "第二章正文" },
+      { chapter: "第三章", chunkIndex: 0, start: 0, end: 8, chapterStart: 200, sourceHash: "a".repeat(64), text: "未来剧情泄漏标记" }
     ]
   }));
   const db = new DatabaseSync(join(source, "novel.db"));
