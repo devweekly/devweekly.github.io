@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { hasExactEvidence, matchChapterCharacters } from "../src/character-chapter-state.js";
+import { hasExactEvidence, latestPriorState, matchChapterCharacters } from "../src/character-chapter-state.js";
 
 const characters = [
   { characterId: "c1", name: "李阎", aliases: ["阎王", "老李"], role: "", bio: "", voice: "", chaptersSeen: 10, mentionTotal: 20, firstChapter: 1, lastChapter: 10 },
@@ -17,4 +17,11 @@ test("chapter state evidence must be an exact verbatim substring", () => {
   assert.equal(hasExactEvidence("他把刀放在桌上，转身离开。", ["把刀放在桌上"]), true);
   assert.equal(hasExactEvidence("他把刀放在桌上，转身离开。", ["他将刀放在桌上"]), false);
   assert.equal(hasExactEvidence("短句", ["短句"]), false);
+});
+
+test("previous state lookup excludes the current and future chapter", () => {
+  const states = [{ chapterOrdinal: 2, situation: "早期" }, { chapterOrdinal: 5, situation: "中期" }, { chapterOrdinal: 9, situation: "后期" }];
+  assert.equal(latestPriorState(states, 5)?.situation, "早期");
+  assert.equal(latestPriorState(states, 6)?.situation, "中期");
+  assert.equal(latestPriorState(states, 1), undefined);
 });
