@@ -25,7 +25,7 @@ CLI 命令（均经 `npm run dev --`）：
 | `analyze-story --world <id> [--model m] [--timeout-ms 180000] [--shard i/n] [--merge-only] [--delta]` | CodeBuddy SDK 自动分析人物小传/成长可能性、主线、伏笔与后续发展并保存 SQLite；`--delta` 复用旧批次长文本，只重抽 v6 新增字段 |
 | `analyze-world --world <id> --phase prepare/status/collect [--evidence-review]` | 多 Agent 文本分析（文件交接；默认确定性校验，`--evidence-review` 才调模型） |
 | `analyze-arcs / index-story / story-kb / db-status / check-runtime` | 卷级梗概、章节索引入库、知识库查询、DB 状态、运行时自检 |
-| `story-state --world <id> [--type overview/characters/events/threads/relationships/foreshadowings/macguffins] [--query q]` | 只读查看续写 Story State 与关系/伏笔/MacGuffin 生命周期记录 |
+| `story-state --world <id> [--type overview/characters/events/threads/relationships/foreshadowings/macguffins/graph] [--query q]` | 只读查看续写 Story State、动态关系/伏笔/MacGuffin 记录及派生图谱 |
 | `write-long --brief "" [--scenes n] [--max-words n] [--strict-model] [--resume-dir dir]` | 万字长章节逐场生成 |
 | `regress --world <id> --chapter n` | 单章盲写回归对照 |
 | `write --brief "" [--mode continuation/derivative] [--source f] [--context f] [--model m] [--max-words n] [--strict-model] [--no-apply-state] [--resume-dir dir]` | 多阶段章节写作、自动复查与有限修复 |
@@ -45,7 +45,8 @@ CLI 命令（均经 `npm run dev --`）：
 - **src/generate.ts** — 唯一调用 `@tencent-ai/agent-sdk` 的地方：`query()` + `runAgentText`（模型链超时 / 中断 / 重试），`generateStory` 单次成稿。
 - **src/workflow.ts** — `writeChapter` 多阶段写作：主线架构师与创意发散并行 → 主编蓝图 → 正文 → 对白 → 叙事声音 → Living Voice / Anti-AI 编辑 → 结构化终审复查与最多两轮自动修复 → 独立 Reader 观察 → 状态更新与持久化。各阶段按职责构造上下文：创意阶段省略逐条原文证据，人物对白编辑只接收人物状态与相关事实，叙事声音编辑只接收风格参考和必要前情；规划、正文和终审保留事实核对所需资料。`mergeStoryState` 按 id/name 归并状态；只有实验隔离使用 `--no-apply-state`。每个模型阶段通过 `stage-cache.ts` 按输入指纹缓存，`--resume-dir` 可从最后一个完整阶段恢复。
 - **src/world-analysis.ts** — 默认纯文件交接、运行时不调用模型：5 个 `ANALYSIS_ROLES`（main-plot / creative / style / characters / continuity）→ `prepare` 生成各角色 `input.md` → 各 Agent 写 `output.md` → `collect` 用 `validateAnalysisOutput` 校验（≥600 字、≥6 处 `L####` 且在原文行数内、≥3 个二级标题、无占位符），并核对 `original.txt` 行数 → `manifest.json` + `index.md`。显式 `--evidence-review` 才会逐句调用模型核验句中具体事实（数值、名称、身份、事件结果）与引用行是否一致，`--evidence-window` 控制邻行范围；概括与评价不判，创意角色的项目原创提案豁免；解析失败的批次二分重试，未通过句计入 `complete`。章节索引按 schemaVersion 2 富结构读取，只取 `totalLines` 与卷表，允许多余字段。
-- **src/story-state.ts** — `worlds/<world>/story-state.json`（schemaVersion 1）的加载 / 保存与空状态；人物记录区分稳定 profile 与可变剧情快照。
+- **src/story-state.ts** — `worlds/<world>/story-state.json`（schemaVersion 1）的加载 / 保存与空状态；人物记录区分稳定 profile 与可变剧情快照，并保存证据支持的关系/伏笔/MacGuffin 更新日志。
+- **src/story-state-graph.ts** — 从 Story State 的稳定 ID 和显式引用派生续写图谱；不做模糊实体合并，保留关系/伏笔/MacGuffin 更新历史。
 - **src/character-profile.ts** — 把 `novel_characters` 的逐批观察（同一人物在不同批次被反复描述，主角可达数百条）按章节顺序采样后交给模型合并成一份档案，写明阶段变化、稳定性格、内在矛盾与可能走向；写入 `novel_character_profiles`，原始观察保留作证据。缓存按提示词版本 + 采样内容取键。
 - **src/writing-brief.ts** — 把 `novel_*` 表压成写作事实包：按任务词面选相关人物、未收情节线与未回收伏笔，再附最近三章既成事实；状态与置信只是排序偏好，没有词面重合的条目不进包。上限 3k 字。
 - **src/iron-laws.ts** — 读 `worlds/<world>/laws.json`，在终审前做确定性检查（越阶、超额、违背禁忌），命中转成带场景号的必改项。缺文件视为无约束，格式错直接抛错。
