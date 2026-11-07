@@ -49,6 +49,26 @@ export async function addStyleReference(worldDir: string, sourceFile: string): P
   return { name, action: previous === undefined ? "added" : "updated", ...(archivePath ? { archivePath } : {}) };
 }
 
+export async function listStyleReferenceHistory(worldDir: string, onlyName?: string): Promise<Array<{ name: string; version: string; chars: number; updatedAt: string }>> {
+  const historyRoot = join(worldDir, "style-references", ".history");
+  let names: string[];
+  try { names = await readdir(historyRoot); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
+  const result: Array<{ name: string; version: string; chars: number; updatedAt: string }> = [];
+  for (const name of names.filter(value => !onlyName || value === onlyName).sort()) {
+    if (!validName(name)) continue;
+    const directory = join(historyRoot, name);
+    let versions: string[];
+    try { versions = await readdir(directory); } catch { continue; }
+    for (const version of versions.filter(value => /\.(md|txt)$/i.test(value)).sort()) {
+      const path = join(directory, version);
+      const text = await readFile(path, "utf8");
+      result.push({ name, version, chars: text.length, updatedAt: (await stat(path)).mtime.toISOString() });
+    }
+  }
+  return result.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
 export async function archiveStyleReference(worldDir: string, name: string): Promise<StyleReferenceChange> {
   if (!validName(name)) throw new Error("Provide an active style reference filename ending in .md or .txt.");
   const directory = join(worldDir, "style-references");
