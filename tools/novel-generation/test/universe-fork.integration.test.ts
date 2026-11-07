@@ -58,7 +58,7 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
     };
     await saveRun(run);
 
-    server = createServer(createApp());
+    server = createServer(createApp({ backgroundUniverseAnalysis: false }));
     await new Promise<void>(resolve => server!.listen(0, "127.0.0.1", resolve));
     const address = server.address();
     assert.ok(address && typeof address === "object");
