@@ -1,5 +1,5 @@
 import { readFile, mkdir, writeFile } from "node:fs/promises";
-import { databaseStatus, readAnnotationsByChunkIds, readStoryAnalysis, listNovelCharacters, listNovelThreads, listNovelForeshadowings, listNovelBeats, readNovelKbMeta, novelKnowledgeOverview, exportNovelKnowledge, listNovelCharacterProfiles } from "./database.js";
+import { databaseStatus, readAnnotationsByChunkIds, readStoryAnalysis, listNovelCharacters, listNovelThreads, listNovelForeshadowings, listNovelBeats, readNovelKbMeta, novelKnowledgeOverview, exportNovelKnowledge, listNovelCharacterProfiles, listNovelCharacterChapterStates } from "./database.js";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { generateStory, type GenerationMode } from "./generate.js";
 import { ingestFiles, listTextFiles, searchLibrary } from "./library.js";
@@ -107,7 +107,7 @@ function usage(): never {
     "  npm run dev -- analyze-arcs --world conghuoniao [--model model] [--force]",
     "  npm run dev -- analyze-profiles --world conghuoniao [--top 24] [--names 李阎,查小刀] [--model model] [--force]",
     "  npm run dev -- analyze-character-states --world conghuoniao [--limit 20] [--shard 0/4] [--names 李阎,查小刀] [--model model] [--force]",
-    "  npm run dev -- story-kb --world conghuoniao [--type overview|arcs|characters|threads|foreshadowings|beats|graph|export] [--query 关键词] [--status 状态] [--from 1] [--to 100] [--limit 50]",
+    "  npm run dev -- story-kb --world conghuoniao [--type overview|arcs|characters|character-states|threads|foreshadowings|beats|graph|export] [--query 关键词] [--status 状态] [--from 1] [--to 100] [--limit 50]",
     "  npm run dev -- story-state --world conghuoniao [--type overview|characters|events|threads|relationships|foreshadowings|macguffins|graph] [--query 关键词] [--limit 500]",
     "  npm run dev -- analyze-world --world conghuoniao --phase prepare|status|collect [--source original.txt] [--model model] [--timeout-ms 90000] [--evidence-review] [--evidence-window 2]",
     "  npm run dev -- db-status --world conghuoniao",
@@ -322,6 +322,7 @@ async function main(): Promise<void> {
         .map(character => ({ ...character, profile: profiles.get(character.name) ?? null }));
       console.log(JSON.stringify({ meta: readNovelKbMeta(worldDir, worldId), characters }, null, 2));
     }
+    else if (type === "character-states") console.log(JSON.stringify({ states: listNovelCharacterChapterStates(worldDir, worldId, { name: arg("--query"), fromOrdinal: arg("--from") ? Number(arg("--from")) : undefined, toOrdinal: arg("--to") ? Number(arg("--to")) : undefined, limit }) }, null, 2));
     else if (type === "threads") console.log(JSON.stringify({ threads: listNovelThreads(worldDir, worldId, { limit, status: arg("--status"), query: arg("--query") }) }, null, 2));
     else if (type === "foreshadowings") console.log(JSON.stringify({ foreshadowings: listNovelForeshadowings(worldDir, worldId, { limit, status: arg("--status"), query: arg("--query") }) }, null, 2));
     else if (type === "beats") console.log(JSON.stringify({ beats: listNovelBeats(worldDir, worldId, { from: Number(arg("--from") ?? 0), to: Number(arg("--to") ?? Number.MAX_SAFE_INTEGER), limit }) }, null, 2));
@@ -337,7 +338,7 @@ async function main(): Promise<void> {
         sourceHash: snapshot.sourceHash, ...filterGraph(graph, query, limit)
       }, null, 2));
     }
-    else throw new Error("--type must be overview, arcs, characters, threads, foreshadowings, beats, graph or export.");
+    else throw new Error("--type must be overview, arcs, characters, character-states, threads, foreshadowings, beats, graph or export.");
     return;
   }
 
