@@ -28,13 +28,19 @@ const snapshot: StoryAnalysisSnapshot = {
 };
 
 test("as-of dossier exports all major story dimensions from a completed bounded snapshot", () => {
-  const files = renderAsOfDossier(snapshot, [{ chapterId: "ch-2", chapterOrdinal: 2, summary: "人物甲发现旧盟约被篡改", actors: ["人物甲", "人物乙"] }]);
+  const files = renderAsOfDossier(
+    snapshot,
+    [{ chapterId: "ch-2", chapterOrdinal: 2, summary: "人物甲发现旧盟约被篡改", actors: ["人物甲", "人物乙"] }],
+    [{ category: "社会习俗", detail: "商旅入城前须在关亭登记", context: "商队经过城门", evidence: "先验货籍，再放车马入城。", chapterTitle: "第一章", ordinal: 1 }]
+  );
   assert.match(files["characters.md"]!, /人物甲/);
   assert.match(files["story-analysis.md"]!, /个人自由与组织控制/);
   assert.match(files["story-analysis.md"]!, /谁泄露了消息/);
   assert.match(files["foreshadowing.md"]!, /断裂的铜环/);
   assert.match(files["relationships.md"]!, /互相猜疑/);
   assert.match(files["timeline.md"]!, /旧盟约被篡改/);
+  assert.match(files["world-details.md"]!, /商旅入城前须在关亭登记/);
+  assert.match(files["world-details.md"]!, /先验货籍，再放车马入城/);
   assert.match(files["macguffins.md"]!, /铜环/);
   assert.match(files["development-possibilities.md"]!, /主动暴露秘密/);
   assert.match(files["characters.md"]!, /不是正史补写/);
@@ -61,12 +67,19 @@ test("as-of dossier publishes a complete directory and removes stale generated f
   try {
     await mkdir(join(worldDir, "as-of-analysis"), { recursive: true });
     await writeFile(join(worldDir, "as-of-analysis", "stale-old-section.md"), "stale");
+    const craftDir = join(root, "analysis", "u-child", "corpus-craft", "chapters");
+    await mkdir(craftDir, { recursive: true });
+    await writeFile(join(craftDir, "chapter-1.json"), JSON.stringify({
+      worldId: "u-child", chapterId: "ch-1", title: "第一章", ordinal: 1,
+      worldDetails: [{ category: "礼俗", detail: "城门关亭查验货籍", context: "商队入城", evidence: "先验货籍，再放车马入城。" }]
+    }));
     saveStoryAnalysis(worldDir, "u-child", snapshot);
     const result = await exportAsOfDossier("u-child", worldDir);
     assert.ok(result.files.includes("characters.md"));
     const published = await readdir(join(worldDir, "as-of-analysis"));
     assert.deepEqual(published.sort(), [...result.files].sort());
     assert.match(await readFile(join(worldDir, "as-of-analysis", "characters.md"), "utf8"), /人物甲/);
+    assert.match(await readFile(join(worldDir, "as-of-analysis", "world-details.md"), "utf8"), /城门关亭查验货籍/);
     const leftovers = (await readdir(worldDir)).filter(name => name.startsWith(".as-of-analysis."));
     assert.deepEqual(leftovers, []);
   } finally {
