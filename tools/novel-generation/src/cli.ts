@@ -179,8 +179,8 @@ async function main(): Promise<void> {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   const libraryDir = resolve("worlds", canonWorldId, "library");
-  if (canonWorldId !== worldId && command === "ingest") {
-    throw new Error("故事宇宙共享原文资料库为只读；请回到原文项目导入或更新原文。");
+  if (canonWorldId !== worldId && (command === "ingest" || command === "analyze")) {
+    throw new Error("故事宇宙共享原文资料库为只读；请回到原文项目导入原文或执行原文分块标注。");
   }
 
   if (command === "roleplay-sandbox") {
