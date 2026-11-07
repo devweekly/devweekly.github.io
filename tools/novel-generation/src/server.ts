@@ -216,16 +216,9 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
         await ensureUniverseStoryAnalysis(worldId, universe);
         existingAnalysis = readStoryAnalysis(worldDir(worldId), worldId) as (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined;
       }
-      const hasReusableFacts = Boolean(existingAnalysis && (
-        existingAnalysis.characters.length || existingAnalysis.plotThreads.length || existingAnalysis.foreshadowings.length ||
-        (existingAnalysis.relations?.length ?? 0) || (existingAnalysis.macguffins?.length ?? 0) ||
-        Object.keys(existingAnalysis.storyCore ?? {}).length || (existingAnalysis.storyGraph?.nodes.length ?? 0)
-      ));
-      const reusableBoundedAnalysis = Boolean(
-        universe && existingAnalysis?.analysisVersion === 6 && existingAnalysis.complete === true &&
-        existingAnalysis.asOfEntryChapter === universe.entryChapter &&
-        (!universe.entryChapterId || (existingAnalysis as typeof existingAnalysis & {asOfEntryChapterId?:string}).asOfEntryChapterId === universe.entryChapterId) && hasReusableFacts
-      );
+      // Use the same semantic validity predicate as backfill. A marker-only or
+      // empty storyCore:{observations:[]} snapshot must never suppress analysis.
+      const reusableBoundedAnalysis = Boolean(universe && hasBoundedStoryAnalysis(existingAnalysis, universe));
       for (const step of KNOWLEDGE_BUILD_STEPS) {
         if (step.name === "story-analysis" && reusableBoundedAnalysis) {
           const now = new Date().toISOString();
