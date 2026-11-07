@@ -662,3 +662,13 @@ Vane 索引位于 worlds/<world>/vane-index/，每个 world 独立。普通章�
 ## 本地模型与 DeepSeek 分析质量对比
 
 见 [MODEL-COMPARISON.md](./MODEL-COMPARISON.md)。运行 `npm run compare-models` 可使用相同章节和提示词比较 LM Studio 本地模型与 DeepSeek，并自动生成 ZIP 诊断包。
+
+## 6. 本地模型能力测试
+
+测试 LM Studio 中的 Chat 与 Embedding 模型：人物/事件/场景抽取、章节摘要、对白续写、场景创作、文学编辑，以及 Embedding 检索自检。完整说明见 [LOCAL-MODEL-BENCHMARK.md](./LOCAL-MODEL-BENCHMARK.md)。
+
+```bash
+npm run benchmark-local-models
+```
+
+建议在 LM Studio 中每次只加载一个模型，分别运行并比较结果；未加载模型会标记为 not_loaded，不会当成模型能力失败。
