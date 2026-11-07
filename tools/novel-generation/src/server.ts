@@ -222,6 +222,11 @@ function acquireWorldMutation(worldId: string): (() => void) | null {
   return () => worldMutationLocks.delete(worldId);
 }
 
+/** Release callbacks are assigned inside async queue callbacks; isolate invocation from outer control-flow narrowing. */
+function releaseWorldMutation(release: (() => void) | null): void {
+  if (release) release();
+}
+
 async function serializeWorld<T>(worldId: string, task: () => Promise<T>): Promise<T> {
   const previous = worldQueues.get(worldId) ?? Promise.resolve();
   let release!: () => void;
@@ -495,7 +500,7 @@ app.patch("/api/worlds/:worldId/universe-archive", async (req, res) => {
     res.json({ universe: updated });
     });
   } catch (error) { sendError(res, error); }
-  finally { release?.(); }
+  finally { releaseWorldMutation(release); }
 });
 
 app.post("/api/worlds/:worldId/universes", async (req, res) => {
@@ -710,7 +715,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
       await rm(forkStagingPath, { recursive: true, force: true }).catch(() => undefined);
     }
     sendError(res, error);
-  } finally { release?.(); }
+  } finally { releaseWorldMutation(release); }
 });
 
 // ── 当前滚动式多章节 Story Arc ─────────────────────────────
