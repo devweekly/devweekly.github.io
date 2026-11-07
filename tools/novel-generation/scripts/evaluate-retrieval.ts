@@ -64,10 +64,16 @@ async function main(): Promise<void> {
     if (unknown.length) throw new Error("Unknown relevant chunk IDs in query " + item.id + ": " + unknown.join(", "));
   }
   let vaneAvailable = false;
+  let vaneVectorMode = false;
   try {
     const manifest = JSON.parse(await readFile(resolve("worlds", worldId, "vane-index", "manifest.json"), "utf8")) as unknown;
-    vaneAvailable = isVaneManifestUsable(manifest, worldId);
-  } catch { /* no local Vane index */ }
+    if (isVaneManifestUsable(manifest, worldId)) {
+      const packageName = "@vane-rs/node";
+      await import(packageName);
+      vaneAvailable = true;
+      vaneVectorMode = manifest.vectorMode === true;
+    }
+  } catch { /* missing native binding or local index */ }
 
   const perQuery: Array<{ id: string; query: string; relevantChunkIds: string[]; bm25: RankedResult; vane: RankedResult }> = [];
   for (const item of dataset.queries) {
@@ -87,7 +93,7 @@ async function main(): Promise<void> {
   }
   const report = {
     schemaVersion: 1, worldId, evaluatedAt: new Date().toISOString(), dataset: datasetPath,
-    queryCount: perQuery.length, vaneAvailable,
+    queryCount: perQuery.length, vaneAvailable, vaneVectorMode,
     aggregate: {
       bm25: average(perQuery.map(row => row.bm25.metrics)),
       vane: average(perQuery.map(row => row.vane.metrics))
@@ -99,7 +105,7 @@ async function main(): Promise<void> {
     : resolve(".output", worldId, "retrieval-evaluation", new Date().toISOString().replace(/[:.]/g, "-") + ".json");
   await mkdir(dirname(output), { recursive: true });
   await writeFile(output, JSON.stringify(report, null, 2) + "\n", "utf8");
-  console.log(JSON.stringify({ output, queryCount: report.queryCount, vaneAvailable, aggregate: report.aggregate }, null, 2));
+  console.log(JSON.stringify({ output, queryCount: report.queryCount, vaneAvailable, vaneVectorMode, aggregate: report.aggregate }, null, 2));
 }
 
 if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/"))) {
