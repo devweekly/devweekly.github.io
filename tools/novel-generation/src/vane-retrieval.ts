@@ -91,12 +91,22 @@ export async function rebuildVaneIndex(worldId:string,worldDir=resolve("worlds",
     return {documents:docs.length,vectorMode:Boolean(vectors)};
   }finally{await db.close();}
 }
+export function isVaneManifestUsable(manifest: unknown, worldId: string): manifest is { worldId: string; dim: number; ids: string[]; vectorMode?: boolean; embeddingModel?: string | null } {
+  if (!manifest || typeof manifest !== "object") return false;
+  const value = manifest as Record<string, unknown>;
+  return value.worldId === worldId &&
+    Number.isInteger(value.dim) && Number(value.dim) > 0 &&
+    Array.isArray(value.ids) && value.ids.every(id => typeof id === "string");
+}
+
 export async function searchVane(worldId:string,query:string,limit=6):Promise<Array<{id:string;score:number;text:string}>> {
   try{
     const manifestPath=resolve("worlds",worldId,"vane-index","manifest.json");
-    let manifest:{dim?:number;vectorMode?:boolean;embeddingModel?:string|null}|undefined;
-    try{manifest=JSON.parse(await readFile(manifestPath,"utf8")) as {dim?:number;vectorMode?:boolean;embeddingModel?:string|null};}catch{/* index not built yet */}
-    const dim=manifest?.dim??Number(process.env.VANE_EMBEDDING_DIM??8);
+    let rawManifest: unknown;
+    try{rawManifest=JSON.parse(await readFile(manifestPath,"utf8")) as unknown;}catch{return [];}
+    if (!isVaneManifestUsable(rawManifest, worldId)) return [];
+    const manifest = rawManifest;
+    const dim=manifest.dim;
     const {db,col}=await openVane(worldId,dim);
     try{
       const canUseVectors=Boolean(manifest?.vectorMode && manifest.embeddingModel && manifest.embeddingModel===process.env.VANE_EMBEDDING_MODEL);
