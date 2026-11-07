@@ -38,6 +38,29 @@ export function remapForkedRun(
   };
 }
 
+
+/**
+ * Historical universes must not inherit whole-book derived material.
+ * Unknown files are retained only when they are not in a known derived namespace;
+ * root-level aggregate summaries are explicitly denied until as-of rebuilding exists.
+ */
+export function shouldCopyUniverseAsset(relativePath: string): boolean {
+  const parts = relativePath.split(/[\\/]+/).filter(Boolean);
+  if (parts.length === 0) return true;
+  const first = parts[0]!;
+  if ([
+    "story.db", "story-state.json", "story-arc.md", "story-plan.json",
+    ".output", "universes", "library", "vane-index", "analysis",
+    "corpus-craft", "style-references", "style-reference-history", "universe.json"
+  ].includes(first)) return false;
+  if (parts.length === 1 && [
+    "world-bible.md", "characters.md", "timeline.md", "fruit-worlds.md",
+    "yanfu-system.md", "style-profile.md", "story-analysis.md",
+    "character-profiles.md", "plot-summary.md", "foreshadowing.md"
+  ].includes(first)) return false;
+  return true;
+}
+
 export interface CanonChapterText { title: string; text: string; }
 
 /** Build bounded, chronological canon context strictly before the selected entry chapter. */
