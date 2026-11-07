@@ -149,7 +149,18 @@ test("foreshadowing and MacGuffin lifecycle updates are evidence-backed and appe
   const afterSecond = mergeStoryState(afterFirst, second);
   assert.deepEqual(afterSecond.foreshadowingUpdates?.map(item => item.status), ["planted", "reinforced"]);
   assert.equal(afterSecond.macguffinUpdates?.[1]?.holder, "李玄");
-  const resumed = mergeStoryState(afterSecond, second);
+  const relation = parseStoryStateUpdate({
+    continuityNotes: [],
+    relationshipUpdates: [{
+      id: "relation-1:chapter-3", relationId: "relation-1", from: "李玄", to: "守门人",
+      label: "暂时合作", chapter: "第3章", change: "两人开始互相信任",
+      evidence: "李玄把后背交给了守门人"
+    }]
+  }, "李玄把后背交给了守门人。");
+  const afterRelation = mergeStoryState(afterSecond, relation);
+  assert.equal(afterRelation.relationshipUpdates?.[0]?.label, "暂时合作");
+  const resumed = mergeStoryState(afterRelation, relation);
+  assert.equal(resumed.relationshipUpdates?.length, 1);
   assert.equal(resumed.foreshadowingUpdates?.length, 2);
   assert.equal(resumed.macguffinUpdates?.length, 2);
   assert.throws(() => parseStoryStateUpdate({
