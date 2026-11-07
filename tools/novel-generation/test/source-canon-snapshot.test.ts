@@ -110,14 +110,14 @@ test("unresolvable entry chapter deletes the copied database instead of retainin
   } finally { f.close(); }
 });
 
-test("missing chapter ordinal schema fails closed and removes the copied database", () => {
+test("missing chapter identity or ordinal schema fails closed and removes the copied database", () => {
   const dir = mkdtempSync(join(tmpdir(), "novel-canon-invalid-"));
   const databasePath = join(dir, "novel.db");
   const db = new DatabaseSync(databasePath);
   db.exec("CREATE TABLE novel_chapters(chapter_id TEXT PRIMARY KEY,title TEXT NOT NULL); INSERT INTO novel_chapters VALUES('c1','第一章');");
   db.close();
   try {
-    assert.throws(() => restrictKnowledgeDatabaseToEntry(databasePath, "universe-one", "第一章"), /稳定的 chapter_id/);
+    assert.throws(() => restrictKnowledgeDatabaseToEntry(databasePath, "universe-one", "第一章"), /title、ordinal 或稳定 chapter_id/);
     assert.equal(existsSync(databasePath), false);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
