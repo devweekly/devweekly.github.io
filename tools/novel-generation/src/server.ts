@@ -170,12 +170,12 @@ async function writeKnowledgeBuild(state: KnowledgeBuildState): Promise<void> {
 }
 const KNOWLEDGE_BUILD_STEPS: Array<{ name: KnowledgeBuildStep; command: string[] }> = [
   { name: "story-analysis", command: ["analyze-story"] },
-  { name: "as-of-dossier", command: ["export-asof-dossier"] },
   { name: "volume-arcs", command: ["analyze-arcs"] },
   { name: "style-profile", command: ["ensure-style-profile"] },
   { name: "character-profiles", command: ["analyze-profiles"] },
   { name: "character-states", command: ["analyze-character-states"] },
   { name: "corpus-craft", command: ["analyze-corpus-craft"] },
+  { name: "as-of-dossier", command: ["export-asof-dossier"] },
   { name: "vane-index", command: ["vane-index", "--optional"] }
 ];
 async function runKnowledgeBuildStep(worldId: string, command: string[]): Promise<{ exitCode: number | null; output: string; error: string }> {
