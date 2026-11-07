@@ -577,7 +577,13 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     });
   } catch (error) {
     if (stagingPath) await rm(stagingPath, { recursive: true, force: true }).catch(() => undefined);
-    if (createdUniverseId) await rm(path.resolve("analysis", createdUniverseId), { recursive: true, force: true }).catch(() => undefined);
+    if (createdUniverseId && /^u-[a-f0-9]{16}$/.test(createdUniverseId)) {
+      await Promise.all([
+        rm(worldDir(createdUniverseId), { recursive: true, force: true }),
+        rm(path.resolve(".output", createdUniverseId), { recursive: true, force: true }),
+        rm(path.resolve("analysis", createdUniverseId), { recursive: true, force: true })
+      ]).catch(() => undefined);
+    }
     sendError(res, error);
   }
 });
