@@ -216,7 +216,8 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
   try {
     const sourceId = worldIdOf(req.params.worldId); assertInsideWorld(sourceId);
     const sourceUniverse = await readUniverse(sourceId);
-    const rootSourceId = sourceUniverse?.sourceWorldId ?? sourceId;
+    if (sourceUniverse) return void res.status(409).json({ error: "当前版本的新建入口只从原文项目创建独立宇宙；从已有宇宙的历史时点分叉将在后续版本提供。" });
+    const rootSourceId = sourceId;
     const sourceDir = worldDir(rootSourceId);
     const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
     const entryChapter = typeof req.body?.entryChapter === "string" ? req.body.entryChapter.trim() : "";
@@ -252,7 +253,6 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     }
     const universe: StoryUniverse = {
       id, sourceWorldId: rootSourceId, name, type, entryChapter, brief,
-      ...(sourceUniverse ? { parentUniverseId: sourceUniverse.id, forkPoint: entryChapter } : {}),
       createdAt: new Date().toISOString()
     };
     await writeFile(path.join(targetDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
@@ -484,6 +484,7 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
       catch { return void res.status(409).json({ error: "找不到上一章正文：" + previousChapterPath + "。已停止生成，避免在缺少前文时另起故事。" }); }
     }
 
+    const universe = await readUniverse(id);
     const now = new Date().toISOString();
     const runId = randomUUID(); const outputDir = path.resolve(".output", id, "chapter-" + runId);
     const mode = previousChapterPath ? "continuation" : "derivative";
@@ -499,7 +500,9 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
       ...(previousChapterPath ? ["--source", previousChapterPath] : []),
       "--brief", previousChapterPath
         ? "紧接上一章的结尾继续写下一章。保持时间、地点、人物位置、人物认知、情绪和未完成行动的连续性；不要重述上一章，不要无故跳线或重启冲突。若有充分的叙事理由，可以自然转场或切换视角，但必须让因果和时间线成立。"
-        : "这是本作品的起始章节。根据当前世界设定和长期故事方向，自动确定切入点、人物行动、场景推进和结尾悬念。",
+        : universe
+          ? "这是独立故事宇宙「" + universe.name + "」的第一章。原文分支起点：" + universe.entryChapter + "。创作方向：" + (universe.brief || universe.type) + "。从指定原文位置理解当时的人物处境、已发生事件和未解决冲突，在此基础上自然展开本宇宙的第一章；不要从原文最后一章开始，也不要继承其他宇宙的续写事实。"
+          : "这是本作品的起始章节。根据当前世界设定和长期故事方向，自动确定切入点、人物行动、场景推进和结尾悬念。",
       "--max-words", "3000", "--resume-dir", outputDir
     ];
     await mkdir(outputDir, { recursive: true });
