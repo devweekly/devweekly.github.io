@@ -19,15 +19,18 @@ const snapshot: StoryAnalysisSnapshot = {
   foreshadowings: [{ clue: "断裂的铜环", firstAppearance: "第一章", possibleMeaning: "身份凭证", possiblePayoffs: ["揭示旧身份"], confidence: "中", status: "未回收", chapterKeys: ["第一章"] }],
   developmentPossibilities: [{ focus: "人物甲", direction: "反向选择", tension: "忠诚与自由冲突", whyPlausible: "已有矛盾", surpriseOptions: ["主动暴露秘密"], chapterKeys: ["第二章"] }],
   storyCoreObservations: [{ centralConflict: "个人自由与组织控制", centralQuestion: "自由是否值得代价", stakes: ["家人安全"], themes: ["选择"], narrativePromise: "关系与代价", mainPlotThreadTitles: ["主线"], chapterKeys: ["第二章"] }],
+  relations: [{ from: "人物甲", to: "人物乙", label: "旧友", dynamic: "互相猜疑", change: "关系破裂", interactionMoments: ["铜环交接"], chapterKeys: ["第二章"] }],
   macguffins: [{ name: "铜环", kind: "信物", significance: "牵动身份", whoWantsIt: ["人物甲"], whyTheyWantIt: ["证明身份"], shifts: ["从遗失到被发现"], relatedCharacters: ["人物甲"], chapterKeys: ["第一章"] }]
 };
 
 test("as-of dossier exports all major story dimensions from a completed bounded snapshot", () => {
-  const files = renderAsOfDossier(snapshot);
+  const files = renderAsOfDossier(snapshot, [{ chapterId: "ch-2", chapterOrdinal: 2, summary: "人物甲发现旧盟约被篡改", actors: ["人物甲", "人物乙"] }]);
   assert.match(files["characters.md"]!, /人物甲/);
   assert.match(files["story-analysis.md"]!, /个人自由与组织控制/);
   assert.match(files["story-analysis.md"]!, /谁泄露了消息/);
   assert.match(files["foreshadowing.md"]!, /断裂的铜环/);
+  assert.match(files["relationships.md"]!, /互相猜疑/);
+  assert.match(files["timeline.md"]!, /旧盟约被篡改/);
   assert.match(files["macguffins.md"]!, /铜环/);
   assert.match(files["development-possibilities.md"]!, /主动暴露秘密/);
   assert.match(files["characters.md"]!, /不是正史补写/);
