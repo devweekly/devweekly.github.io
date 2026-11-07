@@ -5,6 +5,7 @@ import { generateStory, type GenerationMode } from "./generate.js";
 import { ingestFiles, listTextFiles, searchLibrary } from "./library.js";
 import { writeChapter } from "./workflow.js";
 import { loadStoryState } from "./story-state.js";
+import { buildStoryStateGraph } from "./story-state-graph.js";
 import { loadRunStoryState } from "./stage-cache.js";
 import { analyzeLibrary } from "./analysis.js";
 import { analyzeStoryCorpus } from "./story-analysis.js";
@@ -101,7 +102,7 @@ function usage(): never {
     "  npm run dev -- analyze-arcs --world conghuoniao [--model model] [--force]",
     "  npm run dev -- analyze-profiles --world conghuoniao [--top 24] [--names 李阎,查小刀] [--model model] [--force]",
     "  npm run dev -- story-kb --world conghuoniao [--type overview|arcs|characters|threads|foreshadowings|beats|export] [--query 关键词] [--status 状态] [--from 1] [--to 100] [--limit 50]",
-    "  npm run dev -- story-state --world conghuoniao [--type overview|characters|events|threads|relationships|foreshadowings|macguffins] [--query 关键词] [--limit 100]",
+    "  npm run dev -- story-state --world conghuoniao [--type overview|characters|events|threads|relationships|foreshadowings|macguffins|graph] [--query 关键词] [--limit 500]",
     "  npm run dev -- analyze-world --world conghuoniao --phase prepare|status|collect [--source original.txt] [--model model] [--timeout-ms 90000] [--evidence-review] [--evidence-window 2]",
     "  npm run dev -- db-status --world conghuoniao",
     "  npm run dev -- models",
@@ -245,7 +246,7 @@ async function main(): Promise<void> {
     const state = await loadStoryState(resolve(worldDir, "story-state.json"), worldId);
     const type = arg("--type") ?? "overview";
     const query = (arg("--query") ?? "").trim().toLocaleLowerCase();
-    const limit = Number(arg("--limit") ?? 100);
+    const limit = Number(arg("--limit") ?? (type === "graph" ? 500 : 100));
     if (!Number.isInteger(limit) || limit < 1 || limit > 5000) throw new Error("--limit must be between 1 and 5000.");
     const matches = (value: unknown): boolean => !query || (JSON.stringify(value ?? null) ?? "").toLocaleLowerCase().includes(query);
     const take = <T,>(items: T[]): T[] => items.filter(matches).slice(0, limit);
@@ -266,7 +267,27 @@ async function main(): Promise<void> {
     else if (type === "relationships") console.log(JSON.stringify({ relationshipUpdates: take(state.relationshipUpdates ?? []) }, null, 2));
     else if (type === "foreshadowings") console.log(JSON.stringify({ foreshadowingUpdates: take(state.foreshadowingUpdates ?? []) }, null, 2));
     else if (type === "macguffins") console.log(JSON.stringify({ macguffinUpdates: take(state.macguffinUpdates ?? []) }, null, 2));
-    else throw new Error("--type must be overview, characters, events, threads, relationships, foreshadowings or macguffins.");
+    else if (type === "graph") {
+      const graph = buildStoryStateGraph(state);
+      const directMatches = query ? graph.nodes.filter(matches) : graph.nodes;
+      const selectedIds = new Set(directMatches.map(node => node.id));
+      if (query) {
+        for (const edge of graph.edges) {
+          if (selectedIds.has(edge.from)) selectedIds.add(edge.to);
+          if (selectedIds.has(edge.to)) selectedIds.add(edge.from);
+        }
+      }
+      const nodes = graph.nodes.filter(node => selectedIds.has(node.id)).slice(0, limit);
+      const nodeIds = new Set(nodes.map(node => node.id));
+      const edges = graph.edges.filter(edge => nodeIds.has(edge.from) && nodeIds.has(edge.to)).slice(0, limit * 4);
+      console.log(JSON.stringify({
+        totalNodes: graph.nodes.length, totalEdges: graph.edges.length,
+        matchedNodes: directMatches.length, returnedNodes: nodes.length, returnedEdges: edges.length,
+        truncated: nodes.length < selectedIds.size || edges.length < graph.edges.filter(edge => nodeIds.has(edge.from) && nodeIds.has(edge.to)).length,
+        nodes, edges
+      }, null, 2));
+    }
+    else throw new Error("--type must be overview, characters, events, threads, relationships, foreshadowings, macguffins or graph.");
     return;
   }
 
