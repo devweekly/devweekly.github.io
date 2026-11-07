@@ -117,6 +117,48 @@ test("character arc milestones are append-only, deduplicated by id and evidence-
 });
 
 
+test("foreshadowing and MacGuffin lifecycle updates are evidence-backed and append-only", () => {
+  const current = emptyStoryState("test-world");
+  const first = parseStoryStateUpdate({
+    continuityNotes: [],
+    foreshadowingUpdates: [{
+      id: "clue-1:chapter-1", clueId: "clue-1", clue: "墙上的三道刻痕",
+      status: "planted", chapter: "第1章", change: "首次出现",
+      relatedThreadIds: ["thread-1"], evidence: "墙上有三道新刻痕"
+    }],
+    macguffinUpdates: [{
+      id: "object-1:chapter-1", macguffinId: "object-1", name: "铜匣",
+      status: "introduced", chapter: "第1章", change: "首次出现",
+      holder: "守门人", location: "旧城门房", relatedThreadIds: ["thread-1"], evidence: "守门人把铜匣放在桌上"
+    }]
+  }, "墙上有三道新刻痕。守门人把铜匣放在桌上。");
+  const afterFirst = mergeStoryState(current, first);
+  const second = parseStoryStateUpdate({
+    continuityNotes: [],
+    foreshadowingUpdates: [{
+      id: "clue-1:chapter-2", clueId: "clue-1", clue: "墙上的三道刻痕",
+      status: "reinforced", chapter: "第2章", change: "刻痕与失踪案出现关联",
+      relatedThreadIds: ["thread-1"], evidence: "三道刻痕竟与失踪者的记号一致"
+    }],
+    macguffinUpdates: [{
+      id: "object-1:chapter-2", macguffinId: "object-1", name: "铜匣",
+      status: "transferred", chapter: "第2章", change: "铜匣被交给李玄",
+      holder: "李玄", location: "北门", relatedThreadIds: ["thread-1"], evidence: "他将铜匣交到李玄手中"
+    }]
+  }, "三道刻痕竟与失踪者的记号一致。他将铜匣交到李玄手中。");
+  const afterSecond = mergeStoryState(afterFirst, second);
+  assert.deepEqual(afterSecond.foreshadowingUpdates?.map(item => item.status), ["planted", "reinforced"]);
+  assert.equal(afterSecond.macguffinUpdates?.[1]?.holder, "李玄");
+  assert.throws(() => parseStoryStateUpdate({
+    continuityNotes: [],
+    foreshadowingUpdates: [{
+      id: "clue-1:chapter-3", clueId: "clue-1", clue: "墙上的三道刻痕",
+      status: "resolved", chapter: "第3章", change: "已经解释",
+      relatedThreadIds: [], evidence: "正文里没有的证据"
+    }]
+  }, "本章没有这句证据"));
+});
+
 test("continuity notes are replaced by the complete active snapshot", () => {
   const current = emptyStoryState("test-world");
   current.continuityNotes = ["李玄仍然不知道密道位置", "铜钱由守门人持有"];
