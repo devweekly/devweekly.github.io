@@ -430,7 +430,7 @@ export function listNovelForeshadowings(worldDir:string,worldId:string,options:{
 export interface NovelKnowledgeSnapshot {
  schemaVersion: 1; worldId: string; exportedAt: string; meta: Record<string,string>;
  arcs: Array<Record<string,unknown>>; characters: Array<Record<string,unknown>>;
- threads: Array<Record<string,unknown>>; foreshadowings: Array<Record<string,unknown>>; beats: Array<Record<string,unknown>>;
+ threads: Array<Record<string,unknown>>; foreshadowings: Array<Record<string,unknown>>; beats: Array<Record<string,unknown>>; characterChapterStates: Array<Record<string,unknown>>;
  characterProfiles: Array<Record<string,unknown>>;
 }
 /** Portable excerpt without the source text, which lives in library/index.json. */
@@ -443,7 +443,8 @@ export function exportNovelKnowledge(worldDir:string,worldId:string):NovelKnowle
   const beats=(db.prepare("SELECT chapter_id AS chapterId,chapter_ordinal AS chapterOrdinal,summary,actors_json FROM novel_beats ORDER BY chapter_ordinal").all() as Array<Record<string,unknown>>).map(row=>({...row,actors:parse(row.actors_json,[]),actors_json:undefined}));
   const arcs=db.prepare("SELECT volume,title,summary,key_turns_json,characters_json FROM novel_arcs ORDER BY volume").all() as Array<Record<string,unknown>>;
   const characterProfiles=db.prepare("SELECT character_id AS characterId,name,summary,stages_json,traits_json,contradictions_json,arc_json,observation_count AS observationCount,model,generated_at AS generatedAt FROM novel_character_profiles ORDER BY observation_count DESC").all() as Array<Record<string,unknown>>;
-  return {schemaVersion:1,worldId,exportedAt:new Date().toISOString(),meta:readNovelKbMeta(worldDir,worldId),characterProfiles:characterProfiles.map(row=>({...row,stages:parse(row.stages_json,[]),traits:parse(row.traits_json,[]),contradictions:parse(row.contradictions_json,[]),arc:parse(row.arc_json,[]),stages_json:undefined,traits_json:undefined,contradictions_json:undefined,arc_json:undefined})),arcs:arcs.map(row=>({...row,keyTurns:parse(row.key_turns_json,[]),characters:parse(row.characters_json,[]),key_turns_json:undefined,characters_json:undefined})),characters,threads,foreshadowings,beats};
+  const characterChapterStates=(db.prepare("SELECT payload_json FROM novel_character_chapter_states ORDER BY chapter_ordinal,character_id").all() as Array<{payload_json:string}>).map(row=>parse(row.payload_json,{}));
+  return {schemaVersion:1,worldId,exportedAt:new Date().toISOString(),meta:readNovelKbMeta(worldDir,worldId),characterProfiles:characterProfiles.map(row=>({...row,stages:parse(row.stages_json,[]),traits:parse(row.traits_json,[]),contradictions:parse(row.contradictions_json,[]),arc:parse(row.arc_json,[]),stages_json:undefined,traits_json:undefined,contradictions_json:undefined,arc_json:undefined})),arcs:arcs.map(row=>({...row,keyTurns:parse(row.key_turns_json,[]),characters:parse(row.characters_json,[]),key_turns_json:undefined,characters_json:undefined})),characters,threads,foreshadowings,beats,characterChapterStates};
  }finally{db.close();}
 }
 export function novelKnowledgeOverview(worldDir:string,worldId:string):Record<string,unknown>{
