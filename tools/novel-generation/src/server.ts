@@ -396,11 +396,58 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
         : "这是本作品的起始章节。根据当前世界设定和长期故事方向，自动确定切入点、人物行动、场景推进和结尾悬念。",
       "--max-words", "3000", "--resume-dir", outputDir
     ];
-    const child = spawn(process.execPath, args, { cwd: process.cwd(), env: process.env, stdio: ["ignore", "pipe", "pipe"] }); let output = ""; let errors = "";
-    child.stdout.setEncoding("utf8").on("data", chunk => { output += chunk; }); child.stderr.setEncoding("utf8").on("data", chunk => { errors += chunk; });
+    await mkdir(outputDir, { recursive: true });
+    const child = spawn(process.execPath, args, { cwd: process.cwd(), env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+    let output = ""; let errors = ""; let settled = false;
+    child.stdout.setEncoding("utf8").on("data", chunk => { output += chunk; });
+    child.stderr.setEncoding("utf8").on("data", chunk => { errors += chunk; });
     await saveRun({ ...run, status: "running", updatedAt: new Date().toISOString() });
-    child.on("error", error => { void saveRun({ ...run, status: "failed", error: error.message, updatedAt: new Date().toISOString() }); });
-    child.on("close", code => { const saved = output.match(/Saved chapter:\\s*(.+)/)?.[1]?.trim(); const completed = code === 0 && Boolean(saved); void saveRun({ ...run, status: completed ? "completed" : "failed", ...(saved ? { chapterPath: saved } : {}), ...(!completed ? { error: (errors || output || "章节生成进程异常退出，exit code=" + code).slice(-5000) } : {}), updatedAt: new Date().toISOString() }); });
+    child.on("error", error => {
+      if (settled) return; settled = true;
+      void (async () => {
+        await Promise.all([
+          writeFile(path.join(outputDir, "process.stdout.log"), output, "utf8"),
+          writeFile(path.join(outputDir, "process.stderr.log"), errors + "\n" + error.stack, "utf8"),
+          writeFile(path.join(outputDir, "process-result.json"), JSON.stringify({ exitCode: null, error: error.message, completed: false }, null, 2) + "\n", "utf8")
+        ]);
+        await saveRun({ ...run, status: "failed", error: error.message, updatedAt: new Date().toISOString() });
+      })().catch(console.error);
+    });
+    child.on("close", code => {
+      if (settled) return; settled = true;
+      void (async () => {
+        const saved = output.match(/Saved chapter:\s*(.+)/)?.[1]?.trim();
+        const chapterPath = saved ? path.resolve(saved) : undefined;
+        const outputRoot = path.resolve(".output", id) + path.sep;
+        let finalChapterExists = false; let stateCommitted = false; let qualityPassed = false;
+        if (chapterPath && chapterPath.startsWith(outputRoot)) {
+          try { finalChapterExists = (await readFile(chapterPath, "utf8")).trim().length > 0; } catch { /* missing final artifact */ }
+        }
+        try {
+          const summary = JSON.parse(await readFile(path.join(outputDir, "09-quality-summary.json"), "utf8")) as { status?: string };
+          qualityPassed = summary.status === "passed";
+        } catch { /* missing/invalid quality summary is a failed run */ }
+        try {
+          const update = JSON.parse(await readFile(path.join(outputDir, "08-state-update.json"), "utf8")) as { worldId?: string };
+          stateCommitted = update.worldId === id && /Story state automatically updated:/i.test(output);
+        } catch { /* missing/invalid state update is a failed run */ }
+        const completed = code === 0 && finalChapterExists && qualityPassed && stateCommitted;
+        const result = { exitCode: code, chapterPath: chapterPath ?? null, finalChapterExists, qualityPassed, stateCommitted, completed };
+        await Promise.all([
+          writeFile(path.join(outputDir, "process.stdout.log"), output, "utf8"),
+          writeFile(path.join(outputDir, "process.stderr.log"), errors, "utf8"),
+          writeFile(path.join(outputDir, "process-result.json"), JSON.stringify(result, null, 2) + "\n", "utf8")
+        ]);
+        await saveRun({
+          ...run, status: completed ? "completed" : "failed",
+          ...(chapterPath && finalChapterExists ? { chapterPath } : {}),
+          ...(!completed ? { error: ("章节流程未完成：exit=" + code + "；正文=" + finalChapterExists + "；终审=" + qualityPassed + "；状态提交=" + stateCommitted + "\n" + (errors || output).slice(-5000)) } : {}),
+          updatedAt: new Date().toISOString()
+        });
+      })().catch(error => {
+        void saveRun({ ...run, status: "failed", error: "Finalizing chapter run failed: " + String(error), updatedAt: new Date().toISOString() });
+      });
+    });
     res.status(202).json({ run });
   } catch (error) { sendError(res, error); }
 });
