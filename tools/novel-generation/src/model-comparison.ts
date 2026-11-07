@@ -37,11 +37,16 @@ export function summarizeLocalResponse(body: any): Record<string, unknown> {
     finishReason: choice?.finish_reason,
     messageKeys: message && typeof message === "object" ? Object.keys(message) : [],
     contentType: Array.isArray(message?.content) ? "array" : typeof message?.content,
+    contentChars: typeof message?.content === "string" ? message.content.length : undefined,
     contentPreview: typeof message?.content === "string" ? message.content.slice(0, 2000)
       : Array.isArray(message?.content) ? message.content.slice(0, 8).map((part: any) =>
         typeof part === "string" ? part.slice(0, 500)
           : { type: part?.type, text: typeof part?.text === "string" ? part.text.slice(0, 1000) : undefined, keys: part && typeof part === "object" ? Object.keys(part) : [] })
       : undefined,
+    reasoningContentType: typeof message?.reasoning_content,
+    reasoningContentChars: typeof message?.reasoning_content === "string" ? message.reasoning_content.length : undefined,
+    reasoningPreview: typeof message?.reasoning_content === "string" ? message.reasoning_content.slice(0, 1500) : undefined,
+    toolCallCount: Array.isArray(message?.tool_calls) ? message.tool_calls.length : 0,
     refusal: message?.refusal
   };
 }
