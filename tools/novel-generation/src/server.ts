@@ -163,7 +163,7 @@ const KNOWLEDGE_BUILD_STEPS: Array<{ name: KnowledgeBuildStep; command: string[]
   { name: "character-profiles", command: ["analyze-profiles"] },
   { name: "character-states", command: ["analyze-character-states"] },
   { name: "corpus-craft", command: ["analyze-corpus-craft"] },
-  { name: "vane-index", command: ["vane-index"] }
+  { name: "vane-index", command: ["vane-index", "--optional"] }
 ];
 async function runKnowledgeBuildStep(worldId: string, command: string[]): Promise<{ exitCode: number | null; output: string; error: string }> {
   return await new Promise(resolve => {
@@ -207,7 +207,12 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
         record.output = result.output.slice(-12000);
         record.error = result.error.slice(-6000);
         record.completedAt = new Date().toISOString();
-        record.status = result.exitCode === 0 ? "completed" : "failed";
+        let optionalSkip = false;
+        if (step.name === "vane-index" && result.exitCode === 0) {
+          try { optionalSkip = (JSON.parse(result.output) as { skipped?: boolean }).skipped === true; }
+          catch { /* ordinary successful CLI output */ }
+        }
+        record.status = optionalSkip ? "skipped" : result.exitCode === 0 ? "completed" : "failed";
         if (record.status === "failed") failed++;
         state.updatedAt = new Date().toISOString();
         await writeKnowledgeBuild(state);
