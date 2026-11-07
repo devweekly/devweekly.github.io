@@ -26,7 +26,7 @@ CLI 命令（均经 `npm run dev --`）：
 | `analyze-world --world <id> --phase prepare/status/collect [--evidence-review]` | 多 Agent 文本分析（文件交接；默认确定性校验，`--evidence-review` 才调模型） |
 | `analyze-arcs / index-story / story-kb / db-status / check-runtime` | 卷级梗概、章节索引入库、知识库查询（`story-kb --type graph` 可查完整 v6 原著图谱）、DB 状态、运行时自检 |
 | `story-state --world <id> [--type overview/characters/events/threads/relationships/foreshadowings/macguffins/graph] [--query q]` | 只读查看续写 Story State、动态关系/伏笔/MacGuffin 记录及派生图谱 |
-| `write-long --brief "" [--scenes n] [--max-words n] [--strict-model] [--resume-dir dir]` | 万字长章节逐场生成 |
+| `write-long --brief "" [--scenes n] [--max-words n] [--strict-model] [--no-apply-state] [--reader-experience] [--resume-dir dir]` | 万字长章节逐场生成；Reader 体验报告默认关闭 |
 | `regress --world <id> --chapter n` | 单章盲写回归对照 |
 | `write --brief "" [--mode continuation/derivative] [--source f] [--context f] [--model m] [--max-words n] [--strict-model] [--no-apply-state] [--resume-dir dir]` | 多阶段章节写作、自动复查与有限修复 |
 | `generate --brief "" [--mode ...] [--out f]` | 单次成稿 |
@@ -56,7 +56,7 @@ CLI 命令（均经 `npm run dev --`）：
 - **src/style-references.ts**、**web/src/StyleReferencesPanel.tsx** — 管理认可样本的活动版本和归档历史；Workbench 可添加/更新/归档，替换前归档旧字节，历史目录不进入自动风格回归样本加载。
 - **src/style-trend.ts** — 聚合最近的逐章/专项风格回归报告，供 `style-trend` 命令生成跨章节只读观察；不读取草稿、不打分、不触发改写。
 - **src/roleplay-sandbox.ts** — 作者主动控制的多轮人物互动推演；接受/修改/补充/重演/结束，产物只保存在 `.output/`，不更新 Story State。
-- **src/long-chapter.ts** — 长章节按场景蓝图逐场检索与生成；配置场景数是上限，允许蓝图按自然叙事少于上限，不能为了凑数拆分情节；按实际场景数计算篇幅参考和审查范围。每场注入相关人物当前状态，并携带本章已生成正文的滚动上下文；分批审查使用全章场景编号，缺少场景定位或结构无效时自动重试，最终修复不允许空场景列表；终审失败时先在大纲层修订受影响场景再重生成，未受影响场景保持原蓝图；状态只从最终通过的完整章节提取并自动提交。阶段缓存校验结构化输出，指纹记录实际模型及回退链。
+- **src/long-chapter.ts** — 长章节按场景蓝图逐场检索与生成；配置场景数是上限，允许蓝图按自然叙事少于上限，不能为了凑数拆分情节；按实际场景数计算篇幅参考和审查范围。每场注入相关人物当前状态，并携带本章已生成正文的滚动上下文；分批审查使用全章场景编号，缺少场景定位或结构无效时自动重试。逐场修订后执行 Anti-AI 诊断，只有发现明确问题才编辑；诊断无问题或失败时跳过整章改写。终审修复后只读检查文风回归；Reader 体验报告默认关闭，使用 `--reader-experience` 显式启用。终审失败时先在大纲层修订受影响场景再重生成，未受影响场景保持原蓝图；状态只从最终通过的完整章节提取并自动提交。阶段缓存校验结构化输出，指纹记录实际模型及回退链。
 - **src/analysis.ts** — 抽取以批次为单位原子保存标注，避免每处理一个片段就重写整个增长中的 JSON 文件；`analyze --all` 以有限批次循环，持续失败时不会无限重试。`verify-world` 对照 library chunk 数、唯一证据复核完成数和 SQLite 行数检查覆盖率。
 - **src/character-chapter-state.ts** — 原著人物逐章状态分析；只从章节原文提取观察，要求逐字证据；按人物 ID + 章节 ID 保存 SQLite 快照；输入指纹同时覆盖章节正文和最近前序状态，避免上游状态变化后沿用过期下游结论；可按章节分片，Workbench 人物页读取 `chapterStates` 展示历史状态。
 - **novel_character_chapter_states** — 原著人物逐章状态表；不要与续写中的 Story State 动态人物状态混用。
