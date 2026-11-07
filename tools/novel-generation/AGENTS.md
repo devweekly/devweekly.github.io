@@ -235,3 +235,7 @@ CLI 命令（均经 `npm run dev --`）：
 - 诊断必须检查全章累积效果：动作逐帧拆解、机械停顿、重复否定式收束、短句/断行堆叠、画面后的解释性旁白。区分有意复沓与机械复沓。
 - 编辑可合并重复动作、压缩解释、重组句子和段落；复核保护的是信息、因果、人物选择、人物声音和有效情绪，不是逐字保留。
 - 没有真实认可参考样本时，Style Regression 不能判断与原著的距离，也不能得出“没有风格漂移”的结论。
+
+
+- Knowledge build is never a chapter-generation prerequisite. `novel.db` (analysis) and `story.db` (chapter state) are separate; do not reintroduce a whole-build lock on writing.
+- Historical universe reuse must remain chapter-bounded: only reuse source Story Analysis records whose complete chapter provenance is at or before the branch entry; discard unbounded whole-book aggregates and future-touching records.
