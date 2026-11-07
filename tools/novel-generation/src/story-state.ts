@@ -152,6 +152,8 @@ export interface StoryState {
     status: "planted" | "reinforced" | "misdirected" | "partially_revealed" | "revealed" | "resolved" | "abandoned" | "uncertain";
     chapter: string; change: string; relatedThreadIds: string[]; evidence: string;
   }>;
+  /** Append-only, evidence-backed relationship and interaction changes. */
+  relationshipUpdates?: Array<{ id: string; relationId: string; from: string; to: string; label: string; chapter: string; change: string; evidence: string }>;
   /** Append-only, evidence-backed changes to important story-driving objects or information. */
   macguffinUpdates?: Array<{
     id: string; macguffinId: string; name: string;
@@ -163,7 +165,7 @@ export interface StoryState {
 export function emptyStoryState(worldId: string): StoryState {
   return {
     schemaVersion: 1, worldId, updatedAt: new Date().toISOString(), currentPosition: "尚未建立",
-    canonFacts: [], characters: [], events: [], plotThreads: [], continuityNotes: [], foreshadowingUpdates: [], macguffinUpdates: []
+    canonFacts: [], characters: [], events: [], plotThreads: [], continuityNotes: [], foreshadowingUpdates: [], macguffinUpdates: [], relationshipUpdates: []
   };
 }
 
