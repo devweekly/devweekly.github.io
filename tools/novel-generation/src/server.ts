@@ -367,7 +367,6 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
     const safeVolumes = (source.volumes ?? []).map(volume => {
       const chapters = (volume.chapters ?? []).filter(chapter => allowed.has(String(chapter.title ?? ""))).map(safeChapter);
       if (!chapters.length) return null;
-      const firstLine = chapters.find(chapter => typeof chapter.line === "number")?.line;
       const lastLine = [...chapters].reverse().find(chapter => typeof chapter.line === "number")?.line;
       return {
         volume: volume.volume,
