@@ -18,3 +18,7 @@ private/
 
 # 审核包是可从已提交内容重新生成的二进制产物
 .output/*.zip
+
+# 离线原文衍生素材与 Vane 原生索引可由本机语料重建，不提交引文副本/二进制段文件
+analysis/*/corpus-craft/
+worlds/*/vane-index/
