@@ -29,7 +29,7 @@ function fixture(): { dir: string; databasePath: string; close: () => void } {
     CREATE TABLE novel_character_chapter_states(id TEXT PRIMARY KEY,chapter_ordinal INTEGER,character_name TEXT,state TEXT);
     INSERT INTO novel_character_chapter_states VALUES ('s1',1,'甲','before'),('s2',2,'乙','entry'),('s3',3,'丙','future');
     CREATE TABLE story_analysis(singleton INTEGER PRIMARY KEY,payload_json TEXT);
-    INSERT INTO story_analysis VALUES (1,'{"future":"spoiler"}');
+    INSERT INTO story_analysis VALUES (1,'{"worldId":"source-world","sourceHash":"full-book","analysisVersion":6,"complete":true,"chapters":3,"characters":[{"name":"甲","chapterKeys":["c1"],"shortBio":"安全人物"},{"name":"未来人物","chapterKeys":["c3"],"shortBio":"未来剧情"}],"plotThreads":[{"title":"安全主线","chapterKeys":["c1","c2"]},{"title":"未来主线","chapterKeys":["c3"]}],"storyCore":{"centralConflict":"包含未来剧情"},"storyCoreObservations":[{"centralQuestion":"安全问题","chapterKeys":["c1","c2"]},{"centralQuestion":"未来问题","chapterKeys":["c3"]}],"storyGraph":{"nodes":[{"id":"safe","type":"character","label":"甲","data":{},"sourceRefs":[{"chapterId":"c1"}]},{"id":"future","type":"character","label":"未来人物","data":{},"sourceRefs":[{"chapterId":"c3"}]}],"edges":[]}}');
     CREATE TABLE novel_characters(character_id TEXT PRIMARY KEY,name TEXT,bio TEXT);
     INSERT INTO novel_characters VALUES ('char1','全书人物画像','包含未来剧情');
     CREATE TABLE future_aggregate(id TEXT PRIMARY KEY,summary TEXT);
@@ -59,7 +59,14 @@ test("historical snapshot retains only chapter evidence through the selected ent
     assert.deepEqual(rows(f.databasePath, "SELECT id FROM novel_beats ORDER BY id"), [{ id: "b1" }, { id: "b2" }]);
     assert.deepEqual(rows(f.databasePath, "SELECT id FROM novel_relations ORDER BY id"), [{ id: "r1" }, { id: "r2" }]);
     assert.deepEqual(rows(f.databasePath, "SELECT id FROM novel_character_chapter_states ORDER BY id"), [{ id: "s1" }, { id: "s2" }]);
-    assert.equal(rows(f.databasePath, "SELECT * FROM story_analysis").length, 0);
+    const analysis = JSON.parse(String(rows(f.databasePath, "SELECT payload_json FROM story_analysis")[0]?.payload_json)) as Record<string, any>;
+    assert.equal(analysis.asOfEntryChapter, "第二章");
+    assert.equal(analysis.chapters, 2);
+    assert.deepEqual(analysis.characters.map((item: any) => item.name), ["甲"]);
+    assert.deepEqual(analysis.plotThreads.map((item: any) => item.title), ["安全主线"]);
+    assert.deepEqual(analysis.storyCoreObservations.map((item: any) => item.centralQuestion), ["安全问题"]);
+    assert.deepEqual(analysis.storyGraph.nodes.map((item: any) => item.id), ["safe"]);
+    assert.equal("storyCore" in analysis, false);
     assert.equal(rows(f.databasePath, "SELECT * FROM novel_characters").length, 0);
     assert.equal(rows(f.databasePath, "SELECT * FROM future_aggregate").length, 0);
     assert.deepEqual(rows(f.databasePath, "SELECT value FROM world_meta WHERE key='world_id'"), [{ value: "universe-one" }]);
