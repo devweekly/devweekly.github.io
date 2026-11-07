@@ -188,11 +188,21 @@ export async function buildCorpusCraftContext(worldId: string, query: string, op
   }
   const queryTerms = terms(query);
   if (!queryTerms.length) return "";
+  // Corpus Craft is a derived cache, not canon. Its worldId alone is insufficient:
+  // reject stale files whose source chapter no longer matches this world's bounded corpus.
+  let sourceHashes: Map<string, string>;
+  try {
+    const { units } = await buildAnalysisUnits(worldId);
+    sourceHashes = new Map(units.map(unit => [unit.chapterId, hash(unit.text)]));
+  } catch {
+    return "";
+  }
   const ranked: Array<{ score: number; doc: CorpusCraftChapter }> = [];
   for (const file of files) {
     try {
       const doc = JSON.parse(await readFile(join(dir, file), "utf8")) as CorpusCraftChapter;
       if (doc.schemaVersion !== 1 || doc.worldId !== worldId) continue;
+      if (sourceHashes.get(doc.chapterId) !== doc.sourceHash) continue;
       const score = scoreDocument(doc, queryTerms);
       if (score > 0) ranked.push({ score, doc });
     } catch { /* 单份章节产物损坏跳过，不阻塞写作 */ }
