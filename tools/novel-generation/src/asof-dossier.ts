@@ -1,5 +1,5 @@
-import { mkdir, mkdtemp, rename, rm, stat, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
+import { join, resolve } from "node:path";
 import { listNovelBeats, readStoryAnalysis, type StoryAnalysisSnapshot } from "./database.js";
 
 function strings(value: unknown): string[] {
@@ -29,7 +29,11 @@ async function directoryExists(path: string): Promise<boolean> {
 }
 
 /** Render a human-readable dossier only from this world's completed, bounded SQLite snapshot. */
-export function renderAsOfDossier(snapshot: StoryAnalysisSnapshot, beats: Array<Record<string, unknown>> = []): Record<string, string> {
+export function renderAsOfDossier(
+  snapshot: StoryAnalysisSnapshot,
+  beats: Array<Record<string, unknown>> = [],
+  worldDetails: Array<Record<string, unknown>> = []
+): Record<string, string> {
   if (!snapshot.complete) throw new Error("Story analysis snapshot is incomplete; refusing to publish a partial dossier.");
   const preface = [
     "# 历史时点分析资料",
@@ -106,6 +110,13 @@ export function renderAsOfDossier(snapshot: StoryAnalysisSnapshot, beats: Array<
     list("主要剧情线", row.mainPlotThreadTitles),
     chapters(row)
   ].filter(Boolean).join("\n\n"));
+  const setting = section("世界细节、社会习俗与规则", worldDetails, row => [
+    value(row, "category") ? "类别：" + value(row, "category") : "",
+    value(row, "detail"),
+    value(row, "context") ? "原文情境：" + value(row, "context") : "",
+    value(row, "chapterTitle") ? "证据章节：" + value(row, "chapterTitle") : "",
+    value(row, "evidence") ? "原文逐字证据：" + value(row, "evidence") : ""
+  ].filter(Boolean).join("\n\n"));
   const development = section("后续发展可能性", snapshot.developmentPossibilities, row => [
     value(row, "direction"),
     value(row, "tension") ? "张力：" + value(row, "tension") : "",
@@ -120,7 +131,8 @@ export function renderAsOfDossier(snapshot: StoryAnalysisSnapshot, beats: Array<
     "characters.md": preface + characters,
     "foreshadowing.md": preface + foreshadowings,
     "macguffins.md": preface + macguffins,
-    "development-possibilities.md": preface + development
+    "development-possibilities.md": preface + development,
+    "world-details.md": preface + setting
   };
 }
 
@@ -129,7 +141,27 @@ export async function exportAsOfDossier(worldId: string, worldDir: string): Prom
   if (!snapshot) throw new Error("No completed bounded story-analysis snapshot exists for this universe.");
   if (snapshot.worldId !== worldId) throw new Error("Story-analysis snapshot belongs to another universe.");
   const beats = listNovelBeats(worldDir, worldId, { limit: 10000 });
-  const files = renderAsOfDossier(snapshot, beats as Array<Record<string, unknown>>);
+  const corpusCraftDir = resolve(worldDir, "..", "..", "analysis", worldId, "corpus-craft", "chapters");
+  const worldDetails: Array<Record<string, unknown>> = [];
+  try {
+    for (const file of (await readdir(corpusCraftDir)).filter(name => name.endsWith(".json"))) {
+      try {
+        const chapter = JSON.parse(await readFile(join(corpusCraftDir, file), "utf8")) as {
+          worldId?: string; chapterId?: string; title?: string; ordinal?: number;
+          worldDetails?: Array<Record<string, unknown>>;
+        };
+        if (chapter.worldId !== worldId || !Array.isArray(chapter.worldDetails)) continue;
+        for (const item of chapter.worldDetails) {
+          if (typeof item?.evidence !== "string" || !item.evidence.trim()) continue;
+          worldDetails.push({ ...item, chapterId: chapter.chapterId, chapterTitle: chapter.title, ordinal: chapter.ordinal });
+        }
+      } catch { /* a corrupt optional Corpus Craft chapter is skipped, not trusted */ }
+    }
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  worldDetails.sort((a, b) => Number(a.ordinal ?? 0) - Number(b.ordinal ?? 0));
+  const files = renderAsOfDossier(snapshot, beats as Array<Record<string, unknown>>, worldDetails);
   const directory = join(worldDir, "as-of-analysis");
   await mkdir(worldDir, { recursive: true });
   const staging = await mkdtemp(join(worldDir, ".as-of-analysis.staging-"));
