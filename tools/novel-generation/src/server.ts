@@ -286,10 +286,6 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
       const db = new DatabaseSync(novelDbPath);
       try {
         db.prepare("UPDATE world_meta SET value=? WHERE key='world_id'").run(id);
-        for (const table of ["story_analysis", "novel_chapters"]) {
-          const exists = db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name=?").get(table);
-          if (exists) db.prepare("UPDATE " + table + " SET world_id=?").run(id);
-        }
       } finally { db.close(); }
     }
     const universe: StoryUniverse = {
@@ -299,6 +295,89 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     await writeFile(path.join(targetDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
     await writeFile(path.join(targetDir, "universe-entry.md"), selectedChapter.text + "\n", "utf8");
     res.status(201).json({ universe });
+  } catch (error) { sendError(res, error); }
+});
+
+app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
+  try {
+    const parentId = worldIdOf(req.params.worldId); assertInsideWorld(parentId);
+    const parent = await readUniverse(parentId);
+    if (!parent) return void res.status(409).json({ error: "只能从已有故事宇宙创建分叉。" });
+    const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
+    const chapterRunId = recordId(req.body?.chapterRunId);
+    if (!name || name.length > 80) return void res.status(400).json({ error: "分支名称必填，且不能超过 80 个字符。" });
+    const runs = await listRuns(parentId);
+    const forkRun = runs.find(run => run.id === chapterRunId && run.kind === "chapter" && run.status === "completed" && run.chapterPath && run.outputDir);
+    if (!forkRun?.outputDir || !forkRun.chapterPath) return void res.status(404).json({ error: "指定章节不是已完成的章节，无法从这里分叉。" });
+    const parentOutputRoot = path.resolve(".output", parentId) + path.sep;
+    const forkOutputDir = path.resolve(forkRun.outputDir);
+    const forkChapterPath = path.resolve(forkRun.chapterPath);
+    if (!forkOutputDir.startsWith(parentOutputRoot) || !forkChapterPath.startsWith(forkOutputDir + path.sep)) {
+      return void res.status(409).json({ error: "章节产物路径不属于当前宇宙，拒绝分叉。" });
+    }
+    const statePath = path.join(forkOutputDir, "08-state-update.json");
+    let state: StoryState;
+    try {
+      const parsed = JSON.parse(await readFile(statePath, "utf8")) as StoryState;
+      state = { ...parsed, worldId: "pending" };
+    } catch {
+      return void res.status(409).json({ error: "该章节缺少完整的 Story State 快照，无法安全恢复历史时点。请从更新的、具备状态快照的章节分叉。" });
+    }
+    const arcSnapshot = await readFile(path.join(forkOutputDir, "00-story-arc.md"), "utf8").catch(() => "");
+    const id = "u-" + randomUUID().replace(/-/g, "").slice(0, 16);
+    const targetDir = worldDir(id);
+    await mkdir(targetDir, { recursive: true });
+    const parentDir = worldDir(parentId);
+    await cp(parentDir, targetDir, {
+      recursive: true,
+      filter: source => {
+        const relative = path.relative(parentDir, source).split(path.sep);
+        if (!relative.length || relative[0] === "") return true;
+        const first = relative[0];
+        if (!first) return true;
+        return !["story.db", "story-state.json", "story-arc.md", "story-plan.json", ".output", "universes"].includes(first);
+      }
+    });
+    const novelDbPath = path.join(targetDir, "novel.db");
+    if (existsSync(novelDbPath)) {
+      const db = new DatabaseSync(novelDbPath);
+      try { db.prepare("UPDATE world_meta SET value=? WHERE key='world_id'").run(id); }
+      finally { db.close(); }
+    }
+    const universe: StoryUniverse = {
+      id, sourceWorldId: parent.sourceWorldId, name, type: parent.type,
+      entryChapter: parent.entryChapter, brief: parent.brief,
+      parentUniverseId: parent.id, forkPoint: forkRun.id,
+      createdAt: new Date().toISOString()
+    };
+    await writeFile(path.join(targetDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
+    const forkState = { ...state, worldId: id, updatedAt: new Date().toISOString() };
+    await writeFile(path.join(targetDir, "story-state.json"), JSON.stringify(forkState, null, 2) + "\n", "utf8");
+    await loadStoryState(path.join(targetDir, "story-state.json"), id);
+    if (arcSnapshot) await writeFile(path.join(targetDir, "story-arc.md"), arcSnapshot, "utf8");
+
+    // 复制分叉点及其之前的已完成章节产物和运行索引，重写所有路径指向子宇宙。
+    const history = runs.filter(run => run.kind === "chapter" && run.status === "completed" && run.createdAt <= forkRun.createdAt)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    for (const historicalRun of history) {
+      if (!historicalRun.outputDir || !historicalRun.chapterPath) continue;
+      const sourceOutput = path.resolve(historicalRun.outputDir);
+      const sourceChapter = path.resolve(historicalRun.chapterPath);
+      if (!sourceOutput.startsWith(parentOutputRoot) || !sourceChapter.startsWith(sourceOutput + path.sep)) continue;
+      const targetOutput = path.resolve(".output", id, path.basename(sourceOutput));
+      await mkdir(path.dirname(targetOutput), { recursive: true });
+      await cp(sourceOutput, targetOutput, { recursive: true });
+      const relativeChapter = path.relative(sourceOutput, sourceChapter);
+      const targetChapter = path.join(targetOutput, relativeChapter);
+      const relativePrevious = historicalRun.previousChapterPath
+        ? path.relative(sourceOutput, path.resolve(historicalRun.previousChapterPath)) : "";
+      const previousIsLocal = Boolean(historicalRun.previousChapterPath && !relativePrevious.startsWith("..") && !path.isAbsolute(relativePrevious));
+      await saveRun({
+        ...historicalRun, worldId: id, outputDir: targetOutput, chapterPath: targetChapter,
+        ...(previousIsLocal ? { previousChapterPath: path.join(targetOutput, relativePrevious) } : { previousChapterPath: undefined })
+      });
+    }
+    res.status(201).json({ universe, forkedAt: forkRun.id });
   } catch (error) { sendError(res, error); }
 });
 
