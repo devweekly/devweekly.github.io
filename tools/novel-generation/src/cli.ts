@@ -302,9 +302,13 @@ async function main(): Promise<void> {
     const limitArg = arg("--limit");
     const limit = limitArg === undefined ? undefined : Number(limitArg);
     if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) throw new Error("--limit must be a positive integer.");
+    const timeoutMs = Number(arg("--timeout-ms") ?? DEFAULT_AGENT_TIMEOUT_MS);
+    if (!Number.isInteger(timeoutMs) || timeoutMs < MIN_WRITE_TIMEOUT_MS || timeoutMs > MAX_AGENT_TIMEOUT_MS) {
+      throw new Error("--timeout-ms must be between " + MIN_WRITE_TIMEOUT_MS + " and " + MAX_AGENT_TIMEOUT_MS + ".");
+    }
     const result = await analyzeCharacterChapterStates(worldId, {
       worldDir: resolve("worlds", worldId), model: arg("--model"),
-      timeoutMs: Number(arg("--timeout-ms") ?? DEFAULT_AGENT_TIMEOUT_MS),
+      timeoutMs,
       force: process.argv.includes("--force"), limit, shard,
       names: (arg("--names") ?? "").split(",").map(name => name.trim()).filter(Boolean)
     });
