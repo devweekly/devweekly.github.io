@@ -655,10 +655,10 @@ async function main(): Promise<void> {
       failed += result.failed;
       remaining = result.remaining;
       batches++;
-      console.log("[analyze] batch " + batches + " · processed " + result.processed + " · failed " + result.failed + " · remaining " + result.remaining);
-      if (!process.argv.includes("--all") || result.processed === 0 || remaining === 0) break;
+      console.log("[analyze] batch " + batches + " · processed " + result.processed + " · failed " + result.failed + " · unattempted " + result.unattempted + " · remaining " + result.remaining);
+      if (!process.argv.includes("--all") || remaining === 0 || (result.processed === 0 && unattempted === 0)) break;
     } while (true);
-    console.log(JSON.stringify({ processed, failed, remaining, batches, complete: remaining === 0, annotations: resolve(libraryDir, "annotations.json") }, null, 2));
+    console.log(JSON.stringify({ processed, failed, unattempted, remaining, batches, complete: remaining === 0, annotations: resolve(libraryDir, "annotations.json") }, null, 2));
     return;
   }
 
