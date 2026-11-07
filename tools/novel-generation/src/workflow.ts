@@ -259,21 +259,22 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   ]);
   await saveStage(input.outputDir, "04-scene-draft.md", initialDraft);
 
-  const dialogueDraft = await cachedCall("dialogue", "05-dialogue-edited.md", "dialogue", [
-    "角色：人物对话编辑。专门修整人物对白和对白相关动作，不改变剧情事实、场景顺序、人物决定和信息揭示。",
-    LIVING_VOICE_RULES, dialogueContext, "章节蓝图：", plan, "当前正文：", initialDraft,
-    "检查每个人物的词汇、句长、表达习惯、身份关系、情绪和已知信息。删掉解释性过强、所有角色都像同一个人的对白；让潜台词通过停顿、回避、误解和行动体现。可以精简重复或解释过度的内容，但不能删掉有效的人物互动、动作、信息或情绪落点；原文已经成立时可以原样保留。",
+  // 对白与叙事声音属于同一轮整体文学编辑：减少一次完整章节重写，
+  // 同时检查人物声音、潜台词、叙述距离和节奏，避免两个编辑 Agent 相互覆盖。
+  const literaryDraft = await cachedCall("literary-edit", "05-literary-edited.md", "voice", [
+    "角色：小说文学编辑。一次性检查并修整人物对白与全章叙事声音；这是整体编辑，不是重写剧情。",
+    LIVING_VOICE_RULES, dialogueContext, voiceContext,
+    "章节蓝图：", plan, "当前正文：", initialDraft,
+    "对白方面：检查人物词汇、句长、表达习惯、身份关系、情绪和已知信息；删掉解释性过强、所有角色都像同一个人的对白，让潜台词通过停顿、回避、误解和行动体现。",
+    "叙事方面：统一叙述视角、时态、叙述距离和段落节奏；避免模板化排比、总结句、过度解释和重复修辞。保持句式和段落有自然变化，不要把全章改成短促腔。",
+    "不得改变剧情事实、场景顺序、人物决定和信息揭示；不能删掉有效的人物互动、动作、意象、信息或情绪落点。原文已经成立时可以原样保留。不得复刻特定作者的独特句式。",
     RHYTHM_RULE, "输出完整修订正文。文学表达优先，不以保持字数为目标。"
-  ]);
-  await saveStage(input.outputDir, "05-dialogue-edited.md", dialogueDraft);
-
-  const voiceDraft = await cachedCall("voice", "06-voice-edited.md", "voice", [
-    "角色：叙事声音与文风编辑。只负责统一全章叙述声音，不负责改剧情。",
-    LIVING_VOICE_RULES, voiceContext, "章节蓝图：", plan, "当前正文：", dialogueDraft,
-    "统一叙述视角、时态、句长变化、段落节奏、叙述距离、动作/环境/心理描写比例和悬念节奏。保持中文自然、有变化，避免模板化排比、总结句、过度解释和重复修辞。不得复刻任何特定作者的独特句式或标志性表达。",
-    RHYTHM_RULE, "输出完整修订正文，保留长句与放慢段落，不得把全章改成短促腔。"
-  ]);
-  await saveStage(input.outputDir, "06-voice-edited.md", voiceDraft);
+  ], output => { if (!output.trim()) throw new Error("Literary edit returned an empty chapter."); });
+  await saveStage(input.outputDir, "05-literary-edited.md", literaryDraft);
+  // 保留旧文件名作为诊断兼容副本，但不再运行第二个独立的 voice Agent。
+  await saveStage(input.outputDir, "05-dialogue-edited.md", literaryDraft);
+  await saveStage(input.outputDir, "06-voice-edited.md", literaryDraft);
+  const voiceDraft = literaryDraft;
 
   // Anti-AI is a restrained literary edit, never a detector-driven rewrite.
   // If the optional editor call fails, preserve the already valid voice-edited draft.
