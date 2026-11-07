@@ -194,7 +194,7 @@ npm run dev -- story-state --world conghuoniao --type foreshadowings --query 天
 npm run dev -- story-state --world conghuoniao --type macguffins --query 铜匣
 ```
 
-`--type` 支持 `overview`、`characters`、`events`、`threads`、`relationships`、`foreshadowings`、`macguffins`；`--query` 做文本筛选，`--limit` 控制返回数量。该命令不触发模型分析、不修改已有记录；若该 world 尚未初始化状态，首次读取会按既有 loader 逻辑创建空状态存储。
+`--type` 支持 `overview`、`characters`、`events`、`threads`、`relationships`、`foreshadowings`、`macguffins`；`--query` 做文本筛选，`--limit` 控制返回数量。`--type graph` 会从 Story State 的稳定 ID 和显式引用派生节点/边，并保留关系、伏笔和 MacGuffin 的更新历史；不做模糊实体合并。该命令不触发模型分析、不修改已有记录；若该 world 尚未初始化状态，首次读取会按既有 loader 逻辑创建空状态存储。
 
 ## 续写中的伏笔与 MacGuffin 生命周期
 
