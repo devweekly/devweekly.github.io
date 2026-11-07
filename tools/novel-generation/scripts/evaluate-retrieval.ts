@@ -14,8 +14,9 @@ type RankedResult = { ids: string[]; latencyMs: number; metrics: Metric };
 
 function score(rankedIds: string[], relevantIds: string[]): Metric {
   const relevant = new Set(relevantIds);
-  const top5 = rankedIds.slice(0, 5);
-  const top10 = rankedIds.slice(0, 10);
+  const uniqueRankedIds = [...new Set(rankedIds)];
+  const top5 = uniqueRankedIds.slice(0, 5);
+  const top10 = uniqueRankedIds.slice(0, 10);
   const recallAt5 = new Set(top5.filter(id => relevant.has(id))).size / relevant.size;
   const first = top10.findIndex(id => relevant.has(id));
   const mrrAt10 = first < 0 ? 0 : 1 / (first + 1);
