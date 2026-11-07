@@ -10,7 +10,7 @@ test("chapter character states are upserted by stable character and chapter IDs"
   try {
     const row = {
       characterId: "character-1", name: "李阎", chapterId: "chapter-7",
-      chapterOrdinal: 7, chapterTitle: "雨夜", volume: 1, sourceHash: "sha256-a",
+      chapterOrdinal: 7, chapterTitle: "雨夜", volume: 1, sourceHash: "sha256-a", contextHash: "context-a",
       model: "test-model", generatedAt: "2026-11-07T00:00:00.000Z",
       behavior: ["推门进入"], goals: ["找到线索"], knowledge: ["知道门后有人"],
       relationships: ["对查小刀保持戒备"], resources: ["持有短刀"],
