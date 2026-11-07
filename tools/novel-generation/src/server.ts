@@ -887,7 +887,9 @@ app.post("/api/worlds/:worldId/knowledge-build", async (req, res) => {
   try {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
     await serializeWorld(id, async () => {
-      if (!(await readUniverse(id))) return void res.status(409).json({ error: "该入口用于独立故事宇宙；原文项目请使用现有分析命令。" });
+      const universe = await readUniverse(id);
+      if (!universe) return void res.status(409).json({ error: "该入口用于独立故事宇宙；原文项目请使用现有分析命令。" });
+      if (universe.archivedAt) return void res.status(409).json({ error: "已归档的故事宇宙不能启动知识构建，请先恢复。" });
       res.status(202).json({ build: await startKnowledgeBuild(id) });
     });
   } catch (error) { sendError(res, error); }
