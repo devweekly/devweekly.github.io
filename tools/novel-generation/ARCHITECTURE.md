@@ -111,16 +111,16 @@
 
 1. 生成场景蓝图，场景数不超过配置上限；允许少于上限，不能为了凑数拆开连贯情节；格式错误自动修正一次。
 2. 逐场检索原文、生成场景；注入本场相关人物的当前状态，并携带本章已生成正文的滚动上下文，避免只依赖上一场末尾。
-3. 分批做初步审查（使用全章场景编号；结构无效时自动重试），再逐场修订对白和叙事声音。
+3. 逐场修订对白和叙事声音；不再在修订前对场景批次重复做一轮审查。
 4. 汇总逐场修订稿，执行共享的 Living Voice / Anti-AI 诊断；只有发现明确问题才编辑，诊断无问题或失败时跳过整章改写。
 5. 对最终采用的完整章节进行跨场终审。
 6. 将 blocker/major 定位到受影响场景，最多两轮局部修复；每轮复查全章。发生修复时追加只读文风回归观察，不再次改稿、不阻断成稿。
 7. Reader 体验报告改为显式可选（`--reader-experience`）；默认不额外调用模型，启用后失败也不影响章节通过与状态提交。
 8. 从最终完整正文提取并校验状态，自动持久化；保存章节、节奏指标、质量报告和阶段产物。
 
-主要阶段文件：`01-scene-blueprint.md`、`00-scene-XX-retrieval.md`、`02-scene-XX.md`、`03-draft.md`、`04-continuity-review.md`、`05-polish-XX.md`、`06b-anti-ai-edited.md`、`chapter.md`、`06-rhythm-metrics.json`、`07-state-update.json`、`08-final-review.md`、`08-quality-summary.json`、`10-post-review-literary-check.md`（仅终审修复后生成）、`10-reader-experience.md`。终审两轮仍存在明确硬伤时保存 `chapter-blocked.md` 和诊断摘要，当前运行安全失败且不提交故事状态；这属于自动化无法安全完成时的异常终止，不创建等待人工批准的常规队列。修复问题后可重新运行或从 checkpoint 恢复。
+主要阶段文件：`01-scene-blueprint.md`、`00-scene-XX-retrieval.md`、`02-scene-XX.md`、`03-draft.md`、`05-polish-XX.md`、`06b-anti-ai-edited.md`、`chapter.md`、`06-rhythm-metrics.json`、`07-state-update.json`、`08-final-review.md`、`08-quality-summary.json`、`10-post-review-literary-check.md`（仅终审修复后生成）、`10-reader-experience.md`。终审两轮仍存在明确硬伤时保存 `chapter-blocked.md` 和诊断摘要，当前运行安全失败且不提交故事状态；这属于自动化无法安全完成时的异常终止，不创建等待人工批准的常规队列。修复问题后可重新运行或从 checkpoint 恢复。
 
-万字流程在逐场修订后执行完整章节的 Anti-AI 诊断；只有诊断确认存在具体问题时才编辑，再进行跨场终审。终审修复后只做只读文风回归观察，不再自动润色。Reader 默认关闭，需要时使用 `--reader-experience`。blocker/major 定位到受影响场景，局部修复后重新审查全章，最多两轮。节奏指标仅离线观察，不进入正式写作提示、章节验收或自动修复；不替代文学判断。
+万字流程不再在逐场修订前执行分批审查；逐场修订后执行完整章节的 Anti-AI 诊断，只有诊断确认存在具体问题时才编辑，再进行一次跨场硬伤终审。终审修复后只做只读文风回归观察，不再自动润色。Reader 默认关闭，需要时使用 `--reader-experience`。blocker/major 定位到受影响场景，局部修复后重新审查全章，最多两轮。节奏指标仅离线观察，不进入正式写作提示、章节验收或自动修复；不替代文学判断。
 ## 5. 全自动目标闭环
 
 这是当前正式写作流程实际执行的质量闭环：
