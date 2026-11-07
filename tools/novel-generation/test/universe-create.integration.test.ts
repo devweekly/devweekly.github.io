@@ -66,6 +66,22 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     const payload = JSON.parse(responseBody) as { universe: { id: string; entryChapter: string } };
     const universeDir = join(root, "worlds", payload.universe.id);
     assert.equal(payload.universe.entryChapter, "第二章");
+
+    const archiveResponse = await fetch(`http://127.0.0.1:${address.port}/api/worlds/${payload.universe.id}/universe-archive`, {
+      method: "PATCH", headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
+      body: JSON.stringify({ archived: true })
+    });
+    assert.equal(archiveResponse.status, 200);
+    const archivedPayload = JSON.parse(await archiveResponse.text()) as { universe: { archivedAt?: string } };
+    assert.ok(archivedPayload.universe.archivedAt);
+
+    const restoreResponse = await fetch(`http://127.0.0.1:${address.port}/api/worlds/${payload.universe.id}/universe-archive`, {
+      method: "PATCH", headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
+      body: JSON.stringify({ archived: false })
+    });
+    assert.equal(restoreResponse.status, 200);
+    const restoredPayload = JSON.parse(await restoreResponse.text()) as { universe: { archivedAt?: string } };
+    assert.equal(restoredPayload.universe.archivedAt, undefined);
     const localBible = await readFile(join(universeDir, "world-bible.md"), "utf8");
     assert.ok(localBible.includes("第二章"));
     assert.ok(localBible.includes("原文边界"));
