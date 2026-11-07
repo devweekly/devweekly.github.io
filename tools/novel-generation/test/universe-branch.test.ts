@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import path from "node:path";
 import { emptyStoryState } from "../src/story-state.js";
-import { rebaseStoryState, remapForkedRun } from "../src/universe-branch.js";
+import { buildUniverseOriginContext, rebaseStoryState, remapForkedRun } from "../src/universe-branch.js";
 import type { WorkbenchRun } from "../src/workbench-store.js";
 
 test("forked state keeps the selected chapter snapshot but receives a new universe identity", () => {
@@ -36,4 +36,23 @@ test("forked run history rewrites chapter and previous chapter paths into child 
   assert.equal(forked.chapterPath, path.join(childB, "chapter.md"));
   assert.equal(forked.previousChapterPath, path.join(childA, "chapter.md"));
   assert.equal(remapForkedRun({ ...run, chapterPath: "/outside/chapter.md" }, "universe-b", outputs), null);
+});
+
+test("origin context contains only earlier canon chapters in chronological order and respects its budget", () => {
+  const chapters = [
+    { title: "第一章", text: "旧事一" },
+    { title: "第二章", text: "旧事二" },
+    { title: "第三章", text: "旧事三" },
+    { title: "第四章", text: "起点正文" },
+    { title: "第五章", text: "未来剧情" }
+  ];
+  const context = buildUniverseOriginContext(chapters, 3, 3, 100);
+  assert.ok(context.indexOf("第一章") < context.indexOf("第二章"));
+  assert.ok(context.indexOf("第二章") < context.indexOf("第三章"));
+  assert.ok(context.includes("旧事一"));
+  assert.ok(context.includes("旧事二"));
+  assert.ok(context.includes("旧事三"));
+  assert.ok(!context.includes("起点正文"));
+  assert.ok(!context.includes("未来剧情"));
+  assert.throws(() => buildUniverseOriginContext(chapters, 99), /does not exist/);
 });
