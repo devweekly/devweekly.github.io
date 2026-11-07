@@ -1,4 +1,5 @@
-import { readdir, readFile, mkdir, writeFile, rename } from "node:fs/promises";
+import { readdir, readFile, mkdir, writeFile, stat, unlink } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { basename, extname, join, resolve } from "node:path";
 
 export interface StyleReferenceEntry { name: string; chars: number; updatedAt: string; }
@@ -7,7 +8,7 @@ export interface StyleReferenceChange { name: string; action: "added" | "unchang
 function validName(name: string): boolean {
   return name.length > 0 && name !== "." && name !== ".." && !name.includes("/") && !name.includes("\\") && /\.(md|txt)$/i.test(name);
 }
-function stamp(): string { return new Date().toISOString().replace(/[:.]/g, "-"); }
+function stamp(): string { return new Date().toISOString().replace(/[:.]/g, "-") + "-" + randomUUID().slice(0, 8); }
 
 export async function listStyleReferences(worldDir: string): Promise<StyleReferenceEntry[]> {
   const directory = join(worldDir, "style-references");
@@ -18,7 +19,7 @@ export async function listStyleReferences(worldDir: string): Promise<StyleRefere
   for (const name of entries.filter(validName).sort()) {
     const path = join(directory, name);
     const text = await readFile(path, "utf8");
-    result.push({ name, chars: text.length, updatedAt: (await import("node:fs/promises")).stat ? (await (await import("node:fs/promises")).stat(path)).mtime.toISOString() : "" });
+    result.push({ name, chars: text.length, updatedAt: (await stat(path)).mtime.toISOString() });
   }
   return result;
 }
