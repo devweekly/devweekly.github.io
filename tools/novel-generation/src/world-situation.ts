@@ -154,6 +154,9 @@ export function buildWorldSituationContext(state: StoryState, query: string, max
     .map(item => ({ item, score: relevance(source, [item.name, item.change, item.holder ?? "", item.location ?? "", item.status]) }))
     .filter(row => row.score > 0 && !["destroyed", "irrelevant"].includes(row.item.status))
     .sort((a, b) => b.score - a.score).slice(0, 4);
+  const latestRelationships = latestByKey(state.relationshipUpdates ?? [], item => item.relationId)
+    .map(item => ({ item, score: relevance(source, [item.from, item.to, item.label, item.change]) }))
+    .filter(row => row.score > 0).sort((a, b) => b.score - a.score).slice(0, 5);
 
   const sections = [
     latestClues.length
@@ -166,6 +169,11 @@ export function buildWorldSituationContext(state: StoryState, query: string, max
           "- " + item.name + "（" + item.status + "，" + item.chapter + "）：" + item.change +
           (item.holder ? "；持有者：" + item.holder : "") + (item.location ? "；位置：" + item.location : "") +
           "；证据：" + item.evidence
+        ).join("\n")
+      : "",
+    latestRelationships.length
+      ? "## 本章相关人物关系的最新变化\n" + latestRelationships.map(({ item }) =>
+          "- " + item.from + " —" + item.label + "→ " + item.to + "（" + item.chapter + "）：" + item.change + "；证据：" + item.evidence
         ).join("\n")
       : "",
     characterRows.length
