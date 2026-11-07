@@ -1,4 +1,6 @@
-import { existsSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 
@@ -167,3 +169,70 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
   } finally { db.close(); }
 }
 
+
+/**
+ * Backfill an already-created universe from its source project's offline v6
+ * snapshot. The target novel.db already contains only bounded chapter rows;
+ * a temporary minimal database reuses the exact same fail-closed filter above.
+ */
+export function importBoundedStoryAnalysisSnapshot(
+  targetDatabasePath: string,
+  worldId: string,
+  entryChapter: string,
+  sourceSnapshot: Record<string, unknown>
+): boolean {
+  if (!existsSync(targetDatabasePath)) return false;
+  const temporaryDir = mkdtempSync(join(tmpdir(), "novel-bounded-analysis-"));
+  const temporaryDatabasePath = join(temporaryDir, "novel.db");
+  const target = new DatabaseSync(targetDatabasePath);
+  try {
+    const tables = new Set((target.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all() as Array<{name:string}>).map(row=>row.name));
+    if (!tables.has("novel_chapters") || !tables.has("story_analysis")) return false;
+    const chapterColumns = new Set((target.prepare("PRAGMA table_info(novel_chapters)").all() as Array<{name:string}>).map(column=>column.name));
+    if (!["chapter_id","title","ordinal"].every(column=>chapterColumns.has(column))) return false;
+    const select = "SELECT chapter_id,title,ordinal" + (chapterColumns.has("volume") ? ",volume" : "") + " FROM novel_chapters ORDER BY ordinal";
+    const chapters = target.prepare(select).all() as Array<{chapter_id:string;title:string;ordinal:number;volume?:number}>;
+    if (!chapters.length) return false;
+
+    const temporary = new DatabaseSync(temporaryDatabasePath);
+    try {
+      temporary.exec("CREATE TABLE novel_chapters(chapter_id TEXT PRIMARY KEY,title TEXT NOT NULL,ordinal INTEGER NOT NULL,volume INTEGER NOT NULL); CREATE TABLE story_analysis(singleton INTEGER PRIMARY KEY,payload_json TEXT NOT NULL);");
+      const insertChapter = temporary.prepare("INSERT INTO novel_chapters(chapter_id,title,ordinal,volume) VALUES(?,?,?,?)");
+      for (const chapter of chapters) insertChapter.run(chapter.chapter_id, chapter.title, chapter.ordinal, chapter.volume ?? 1);
+      temporary.prepare("INSERT INTO story_analysis(singleton,payload_json) VALUES(1,?)").run(JSON.stringify(sourceSnapshot));
+    } finally { temporary.close(); }
+
+    const cutoff = restrictKnowledgeDatabaseToEntry(temporaryDatabasePath, worldId, entryChapter);
+    if (!cutoff) return false;
+    const boundedDb = new DatabaseSync(temporaryDatabasePath);
+    let bounded: Record<string, unknown>;
+    try {
+      const row = boundedDb.prepare("SELECT payload_json FROM story_analysis WHERE singleton=1").get() as {payload_json:string} | undefined;
+      if (!row) return false;
+      bounded = JSON.parse(row.payload_json) as Record<string, unknown>;
+    } finally { boundedDb.close(); }
+
+    const characters = Array.isArray(bounded.characters) ? bounded.characters.length : 0;
+    const threads = Array.isArray(bounded.plotThreads) ? bounded.plotThreads.length : 0;
+    const clues = Array.isArray(bounded.foreshadowings) ? bounded.foreshadowings.length : 0;
+    const relations = Array.isArray(bounded.relations) ? bounded.relations.length : 0;
+    const nodes = Array.isArray((bounded.storyGraph as {nodes?:unknown[]}|undefined)?.nodes) ? ((bounded.storyGraph as {nodes:unknown[]}).nodes.length) : 0;
+    if (!(characters || threads || clues || relations || nodes || Object.keys((bounded.storyCore as object) ?? {}).length)) return false;
+
+    target.exec("BEGIN IMMEDIATE");
+    try {
+      target.prepare(
+        "INSERT INTO story_analysis(singleton,world_id,source_hash,analyzed_at,payload_json) VALUES(1,?,?,?,?) " +
+        "ON CONFLICT(singleton) DO UPDATE SET world_id=excluded.world_id,source_hash=excluded.source_hash,analyzed_at=excluded.analyzed_at,payload_json=excluded.payload_json"
+      ).run(worldId, String(bounded.sourceHash ?? ""), String(bounded.analyzedAt ?? new Date().toISOString()), JSON.stringify(bounded));
+      target.exec("COMMIT");
+    } catch (error) {
+      target.exec("ROLLBACK");
+      throw error;
+    }
+    return true;
+  } finally {
+    target.close();
+    rmSync(temporaryDir, { recursive: true, force: true });
+  }
+}
