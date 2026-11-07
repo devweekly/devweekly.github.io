@@ -63,5 +63,5 @@ export function buildUniverseOriginContext(
     parts.push("## " + chapter.title, "", body, "");
     remaining -= body.length;
   }
-  return parts.join("\\n");
+  return parts.join("\n");
 }
