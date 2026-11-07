@@ -14,7 +14,7 @@ function removeUnsafeDatabase(filePath: string): void {
  * Only records with complete chapter provenance inside the boundary are reused;
  * aggregates with missing or future provenance are discarded.
  */
-export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: string, entryChapter: string): number {
+export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: string, entryChapter: string, entryChapterId?: string): number {
   if (!existsSync(databasePath)) return 0;
   const db = new DatabaseSync(databasePath);
   try {
@@ -29,14 +29,19 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
       removeUnsafeDatabase(databasePath);
       return 0;
     }
-    const chapterSelect = "SELECT ordinal" + (chapterColumns.has("volume") ? ",volume" : "") + " FROM novel_chapters WHERE title=? ORDER BY ordinal LIMIT 1";
-    const chapter = db.prepare(chapterSelect).get(entryChapter) as { ordinal: number; volume?: number } | undefined;
+    if (!chapterColumns.has("chapter_id")) throw new Error("原著知识库缺少稳定的 chapter_id，无法安全确定宇宙起点。");
+    const chapterSelect = "SELECT chapter_id,ordinal" + (chapterColumns.has("volume") ? ",volume" : "") +
+      " FROM novel_chapters WHERE " + (entryChapterId ? "chapter_id=?" : "title=?") + " ORDER BY ordinal";
+    const matches = (entryChapterId
+      ? db.prepare(chapterSelect).all(entryChapterId)
+      : db.prepare(chapterSelect).all(entryChapter)) as Array<{ chapter_id:string; ordinal:number; volume?:number }>;
+    const chapter = matches.length === 1 ? matches[0] : undefined;
     if (!chapter || !Number.isSafeInteger(Number(chapter.ordinal))) {
-      // Fail closed. A database without a resolvable chapter ordinal cannot be
-      // proven safe for a historical branch.
-      removeUnsafeDatabase(databasePath);
-      return 0;
+      throw new Error(matches.length > 1
+        ? "章节标题在原著中重复，必须使用稳定章节 ID，不能按标题猜测起点。"
+        : "无法在原著知识库中定位所选章节，已终止宇宙创建。");
     }
+    if (entryChapterId && chapter.chapter_id !== entryChapterId) throw new Error("章节 ID 与原著知识库记录不匹配。");
     const cutoff = Number(chapter.ordinal);
     const columns = (name:string) => new Set((db.prepare("PRAGMA table_info(\"" + name.replace(/"/g, "\"\"") + "\")").all() as Array<{name:string}>).map(column=>column.name));
     db.exec("BEGIN IMMEDIATE");
@@ -122,6 +127,8 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
               worldId,
               sourceHash: createHash("sha256").update(JSON.stringify({ sourceHash: source.sourceHash, entryChapter, cutoff })).digest("hex"),
               asOfEntryChapter: entryChapter,
+              asOfEntryChapterId: chapter.chapter_id,
+              asOfEntryOrdinal: cutoff,
               chapters: chapterRows.length,
               characters: boundedItems(source.characters),
               plotThreads: boundedItems(source.plotThreads),
@@ -179,7 +186,8 @@ export function importBoundedStoryAnalysisSnapshot(
   targetDatabasePath: string,
   worldId: string,
   entryChapter: string,
-  sourceSnapshot: Record<string, unknown>
+  sourceSnapshot: Record<string, unknown>,
+  entryChapterId?: string
 ): boolean {
   if (!existsSync(targetDatabasePath)) return false;
   const temporaryDir = mkdtempSync(join(tmpdir(), "novel-bounded-analysis-"));
@@ -202,8 +210,7 @@ export function importBoundedStoryAnalysisSnapshot(
       temporary.prepare("INSERT INTO story_analysis(singleton,payload_json) VALUES(1,?)").run(JSON.stringify(sourceSnapshot));
     } finally { temporary.close(); }
 
-    const cutoff = restrictKnowledgeDatabaseToEntry(temporaryDatabasePath, worldId, entryChapter);
-    if (!cutoff) return false;
+    const cutoff = restrictKnowledgeDatabaseToEntry(temporaryDatabasePath, worldId, entryChapter, entryChapterId);
     const boundedDb = new DatabaseSync(temporaryDatabasePath);
     let bounded: Record<string, unknown>;
     try {
