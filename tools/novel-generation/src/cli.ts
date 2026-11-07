@@ -5,7 +5,7 @@ import { generateStory, type GenerationMode } from "./generate.js";
 import { ingestFiles, listTextFiles, searchLibrary } from "./library.js";
 import { writeChapter } from "./workflow.js";
 import { loadStoryState } from "./story-state.js";
-import { buildStoryStateGraph } from "./story-state-graph.js";
+import { buildStoryStateGraph, filterStoryStateGraph } from "./story-state-graph.js";
 import { loadRunStoryState } from "./stage-cache.js";
 import { analyzeLibrary } from "./analysis.js";
 import { analyzeStoryCorpus } from "./story-analysis.js";
@@ -268,25 +268,8 @@ async function main(): Promise<void> {
     else if (type === "foreshadowings") console.log(JSON.stringify({ foreshadowingUpdates: take(state.foreshadowingUpdates ?? []) }, null, 2));
     else if (type === "macguffins") console.log(JSON.stringify({ macguffinUpdates: take(state.macguffinUpdates ?? []) }, null, 2));
     else if (type === "graph") {
-      const graph = buildStoryStateGraph(state);
-      const directMatches = query ? graph.nodes.filter(matches) : graph.nodes;
-      const seedIds = new Set(directMatches.map(node => node.id));
-      const selectedIds = new Set(seedIds);
-      if (query) {
-        for (const edge of graph.edges) {
-          if (seedIds.has(edge.from)) selectedIds.add(edge.to);
-          if (seedIds.has(edge.to)) selectedIds.add(edge.from);
-        }
-      }
-      const nodes = graph.nodes.filter(node => selectedIds.has(node.id)).slice(0, limit);
-      const nodeIds = new Set(nodes.map(node => node.id));
-      const edges = graph.edges.filter(edge => nodeIds.has(edge.from) && nodeIds.has(edge.to)).slice(0, limit * 4);
-      console.log(JSON.stringify({
-        totalNodes: graph.nodes.length, totalEdges: graph.edges.length,
-        matchedNodes: directMatches.length, returnedNodes: nodes.length, returnedEdges: edges.length,
-        truncated: nodes.length < selectedIds.size || edges.length < graph.edges.filter(edge => nodeIds.has(edge.from) && nodeIds.has(edge.to)).length,
-        nodes, edges
-      }, null, 2));
+      const graph = filterStoryStateGraph(buildStoryStateGraph(state), query, limit);
+      console.log(JSON.stringify(graph, null, 2));
     }
     else throw new Error("--type must be overview, characters, events, threads, relationships, foreshadowings, macguffins or graph.");
     return;
