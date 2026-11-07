@@ -392,6 +392,7 @@ app.get("/api/worlds/:worldId/forkable-chapters", async (req, res) => {
 
 app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
   let createdUniverseId: string | null = null;
+  let forkStagingPath: string | null = null;
   let release: (() => void) | null = null;
   try {
     const lockId = worldIdOf(req.params.worldId);
@@ -429,6 +430,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     createdUniverseId = id;
     const targetDir = worldDir(id);
     const stagingDir = path.join(path.resolve("worlds"), ".staging-" + id);
+    forkStagingPath = stagingDir;
     await mkdir(stagingDir, { recursive: true });
     const parentDir = worldDir(parentId);
     await cp(parentDir, stagingDir, {
@@ -488,6 +490,8 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
         rm(path.resolve(".output", failedId), { recursive: true, force: true }),
         rm(path.join(path.resolve("worlds"), ".staging-" + failedId), { recursive: true, force: true })
       ]).catch(() => undefined);
+    } else if (forkStagingPath) {
+      await rm(forkStagingPath, { recursive: true, force: true }).catch(() => undefined);
     }
     sendError(res, error);
   } finally { release?.(); }
