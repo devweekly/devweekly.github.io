@@ -13,7 +13,7 @@ import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
 import { parseJsonObject } from "./model-json.js";
 import { LONG_CHAPTER_SOURCE_TAIL_CHARS } from "./constants.js";
 import { buildWorldSituationContext } from "./world-situation.js";
-import { LIVING_VOICE_RULES, antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, postReviewLiteraryCheckPrompt, readerExperiencePrompt, shouldRunAntiAiEdit } from "./literary-edit.js";
+import { CREATIVE_FREEDOM_RULES, LIVING_VOICE_RULES, antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, postReviewLiteraryCheckPrompt, readerExperiencePrompt, shouldRunAntiAiEdit } from "./literary-edit.js";
 import { buildStyleRegressionPrompt, loadStyleRegressionReferences } from "./style-regression.js";
 import { buildStyleTrendPrompt, collectStyleRegressionReports, countStyleRegressionReports } from "./style-trend.js";
 /**
@@ -257,7 +257,8 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     common,
     "既有 Story Arc（可能为空）：", previousArc || "尚无中期故事阶段，请从当前局势自然推演。",
     characterArcRetrospective ? "跨章人物弧光回顾（仅供创意启发）：\\n" + characterArcRetrospective : "",
-    "结合已发生事件、人物目标与选择、资源/信息变化、开放情节线，设计一段可供连续写作的故事推进。输出 Markdown，至少包含：阶段核心冲突与阶段性结果；5–8 个有因果关系的章节节点（每个写清事件推进、关键人物行动/选择、冲突或关系变化、结尾留下的局面）；哪些人物/伏笔/主线可以暂时不推进；可能的意外转折空间；当前下一章应从哪里自然开始。不要强制每章都发生人物弧光，不要把人物固定为善恶标签，不要预先写死角色选择。章节节点可以合并、拆分、跳过或因正文发展而改写。",
+    CREATIVE_FREEDOM_RULES,
+    "结合已发生事件、人物目标与选择、资源/信息变化、开放情节线，设计一段可供连续写作的故事推进。只记录真正值得预先考虑的少数阶段节点，不要求凑足章节数，也不要求每个节点都包含冲突、关系变化或悬念。可指出哪些人物/伏笔/主线可以暂时不推进、哪些章节可以只是日常或过渡、可能的意外转折空间，以及下一章自然可能从哪里开始。不要强制人物弧光，不要把人物固定为善恶标签，不要预先写死角色选择；节点可以合并、拆分、跳过或被正文发展推翻。",
     "文学性、文笔、艺术风格高于其他。故事规划只为因果连续性服务，不是待完成清单。"
   ], output => { if (!output.trim() || output.trim().length < 300) throw new Error("Story Arc is empty or implausibly short."); });
   if (previousArc) await saveStage(input.outputDir, "00-story-arc-previous.md", previousArc);
@@ -266,12 +267,13 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
 
   const [plotPlan, ideas] = await Promise.all([
     cachedCall("plot", "01-main-plot.md", "plot", [
-      "角色：主线剧情架构师。负责本章主线推进和长篇结构，不写正文。",
+      "角色：小说构思编辑。理解本章与长篇主线的关系，但不要求本章必须推进主线；不写正文。",
       common,
       "中期 Story Arc：", storyArc,
       "提出有吸引力的章节构想，帮助这一章真正好看、能让人物活起来。可考虑主线、人物关系、冲突、悬念、意外性和后续空间，但不要求每项都出现；允许从一个鲜活场景、一段对话或一个反常细节自然生长。",
       "先结合当前 Story State、人物状态、已发生事件及其因果关系，理解本章涉及的局势。只推演确有叙事价值的少数人物或势力：他们为什么行动、各自知道什么、能调用什么资源、受到什么限制，以及主角不介入时局势是否会变化。势力目标与资源以 World Bible 和已有事实为依据；资料不足时保留未知，不补造组织结构或关系。",
       "如有价值，在输出中用“局势推演（尚未发生）”单独标出一至数项可能发展，再提出本章主线方向；没有有价值的推演时可以省略。推演是待选的创作素材，不是正史，不能把可能性写成已发生事实。人物只能依据自己实际知道的信息行动；不得模拟整个世界、强制 NPC 行动或套用游戏数值和回合规则。",
+      CREATIVE_FREEDOM_RULES,
       "行动应有可信原因和可能代价，但不要套用游戏数值、回合制或固定的目标—阻力—选择—后果模板。只标出确实不能改变的已知事实，不要把创意写成分析报告。"
     ]),
     cachedCall("creative", "02-creative-options.md", "creative", [
@@ -288,17 +290,18 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     "中期 Story Arc：", storyArc,
     common,
     "主线方案：", plotPlan, "创意备选：", ideas,
-    "选出最有小说感染力的方向，形成自然、有变化的章节构想。结合局势推演判断哪些人物行动或冲突值得进入本章，也可以全部舍弃。不要把所有可能性塞进正文；推演不是章节必须兑现的清单。蓝图帮助写作者理解人物处境和故事走向，不是逐项验收的合同；不要求每场都按目标、阻力、行动、信息变化、结果的模板展开。保留人物的意外性、闲笔和情绪空间。人物知识必须受其实际经历和信息来源限制；不得无意违反已确认事实；区分确知内容与新创作。",
-    "蓝图只规定场景的戏剧功能、人物当下的欲望/压力、关键冲突、信息差、不可逆选择及其后果，不要替小说家编排逐帧动作。禁止指定停顿几息、先看手再伸手、伸手又收回、推物件几寸、反复看/不看等微动作序列；也不要把比喻、心理解释或句子直接写进蓝图。只有确实影响剧情理解的动作才写入，其他细节留给正文生成时自然发现。",
-    "每个场景最多保留一两个不可丢失的戏剧锚点，其余只写功能和可变化空间。不要用“沉默”“停顿”“不再问”“没有人来”等姿态词代替场景推进；它们只有在改变关系、权力或信息时才有意义。不要预先规定短句、断行、留白或冷峻语气。",
+    CREATIVE_FREEDOM_RULES,
+    "选择最有小说感染力的方向，但不要把章节收束成唯一正确的执行方案。蓝图是可偏离的参考，不是逐项验收合同；允许保留未解决的问题、闲笔、生活场景和没有明确结论的段落。只写必须承接的事实与少量重要锚点；场景不必逐一承担目标、阻力、行动、信息变化和结果。人物知识必须受其实际经历和信息来源限制；不得无意违反已确认事实；区分确知内容与新创作。",
+    "蓝图只记录场景从哪里开始、人物大致处境，以及确实不能丢失的事实或戏剧锚点。只有本场自然存在时才写欲望、压力、冲突、信息差、选择及后果；允许场景没有明显冲突或结果，也允许纯粹的日常、闲谈、观察、过渡和氛围场景。不要替小说家编排逐帧动作、解释心理或指定句子；其他细节留给正文生成时自然发现。",
+    "每个场景可以没有戏剧锚点；有锚点时只保留真正不可丢失的部分。不要用“沉默”“停顿”等姿态词机械制造文学感，但也不要因为它们没有推进情节就删除真实、自然的沉默。不要预先规定短句、断行、留白或冷峻语气。",
   ]);
   await saveStage(input.outputDir, "03-chapter-plan.md", plan);
 
   const initialDraft = await cachedCall("scene", "04-scene-draft.md", "scene", [
-    "角色：场景小说家。根据最终蓝图写完整章节正文，不输出分析。",
-    LIVING_VOICE_RULES, common, "最终章节蓝图：", plan,
-    "目标篇幅约 " + input.maxWords + " 个中文字符。通过场景、行动、选择和后果推进；不要用概述代替关键场景。",
-    "像小说家一样写，不要像舞台监督一样逐项执行蓝图。蓝图中的动作建议可以合并、替换或省略，只要保留场景的戏剧功能与事实连续性。叙事锋利来自准确的信息选择、因果压力、人物判断和行动后果，不来自短句堆叠、逐帧手势、连续停顿或装饰性诗意。",
+    "角色：小说家。根据蓝图与当前人物处境写章节正文，不输出分析。蓝图允许偏离，不要求逐项兑现。",
+    CREATIVE_FREEDOM_RULES, LIVING_VOICE_RULES, common, "最终章节蓝图：", plan,
+    "目标篇幅约 " + input.maxWords + " 个中文字符，仅作整体预期，不是必须命中的配额。重要事件可以充分展开；日常、过渡和重复过程可以自然概述。不要为了达到字数而添加场景、动作、心理解释或对白。",
+    "像小说家一样写，不要像舞台监督一样执行蓝图。蓝图中的建议可以合并、替换、省略或发展出新方向，只要不破坏已发生事实和必要连续性。不是每个场景都要推进情节或制造悬念；不要把普通生活强行解释成伏笔、成长或象征。叙事锋利来自准确选择，不来自每段都要有意义的压力。",
     "同一动作只写到足以让读者看清并感受到后果；不要把准备、迟疑、伸手、触碰、收手拆成一串没有新增信息的句子。不要在对白/动作已呈现潜台词后，再替读者解释一遍。每段都要有自己的推进或质感，不能靠反复否定和静物收束拖长。",
     RHYTHM_RULE
   ]);
