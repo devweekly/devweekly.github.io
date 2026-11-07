@@ -45,7 +45,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
    void Promise.all([
     api<{run:Run}>("/api/runs/"+run.id+"?worldId="+activeWorldId),
     api<Preview>("/api/runs/"+run.id+"/preview?worldId="+activeWorldId)
-   ]).then(([r,p])=>{setRun(r.run);setPreview(p);if(r.run.status==="completed"||r.run.status==="failed")void api<{storyArc:string}>("/api/worlds/"+worldId+"/story-arc").then(x=>setActiveArc(x.storyArc));}).catch(()=>{});
+   ]).then(([r,p])=>{setRun(r.run);setPreview(p);if(r.run.status==="completed"||r.run.status==="failed")void api<{storyArc:string}>("/api/worlds/"+activeWorldId+"/story-arc").then(x=>setActiveArc(x.storyArc));}).catch(()=>{});
   },2000);
   return()=>window.clearInterval(timer);
  },[busy,run?.id,activeWorldId]);
@@ -71,6 +71,8 @@ export default function ChapterStudio({worldId}:{worldId:string}){
    <Title level={2}>继续写下一章</Title>
    <Paragraph type="secondary">系统先维护一个有因果关系的中期故事阶段，再从中选择下一章。每章完成后自动更新人物、事件和后续计划；正文可以推动计划调整，不需要人工审批。</Paragraph>
    <Space wrap>
+    <Select style={{minWidth:220}} value={activeWorldId} onChange={setActiveWorldId} options={[{value:worldId,label:"原文项目（现有续写）"},...universes.map(u=>({value:u.id,label:u.name+" · 从"+u.entryChapter+"开始"}))]} />
+    <Button onClick={()=>setCreateOpen(true)}>新建故事宇宙</Button>
     <Button type="primary" size="large" className="chapter-action" icon={<PlayCircleOutlined/>} loading={starting||Boolean(busy)} disabled={!activeWorldId||Boolean(busy)} onClick={()=>void generate()}>生成下一章</Button>
     <Button icon={<ReloadOutlined/>} loading={loading} onClick={()=>void refresh()}>刷新状态</Button>
     {busy&&<Tag color="processing">正在自动创作</Tag>}
@@ -100,5 +102,14 @@ export default function ChapterStudio({worldId}:{worldId:string}){
      {run.outputDir&&<Collapse ghost style={{marginTop:12}} items={[{key:"diagnostics",label:"运行诊断（中间产物与日志）",children:<Text type="secondary">{run.outputDir}。完整过程日志、质量审查、状态更新和阶段缓存均保存在该目录。</Text>}]}/>}
     </div>}
   </Card>
+  <Modal title="创建独立故事宇宙" open={createOpen} onCancel={()=>setCreateOpen(false)} onOk={()=>void createUniverse()} confirmLoading={creatingUniverse} okText="创建宇宙">
+   <Space direction="vertical" style={{width:"100%"}} size="middle">
+    <Input placeholder="宇宙名称" value={universeName} onChange={e=>setUniverseName(e.target.value)} />
+    <Input placeholder="原文起始章节（章节编号或标题）" value={entryChapter} onChange={e=>setEntryChapter(e.target.value)} />
+    <Select style={{width:"100%"}} value={universeType} onChange={setUniverseType} options={[{value:"mainline",label:"原著主线延续"},{value:"side-story",label:"原著支线扩展"},{value:"character",label:"人物独立故事"},{value:"parallel",label:"平行发展"},{value:"free",label:"自由续写"}]} />
+    <Input.TextArea rows={3} placeholder="创作方向（可选）：人物、支线、关键事件或希望探索的剧情" value={universeBrief} onChange={e=>setUniverseBrief(e.target.value)} />
+    <Text type="secondary">原文资料作为只读来源；新宇宙从空白续写状态开始，拥有独立的主线、人物状态、伏笔和章节记录。</Text>
+   </Space>
+  </Modal>
  </div>;
 }
