@@ -486,7 +486,7 @@ async function main(): Promise<void> {
     const out = resolveWorldOutputPath(arg("--out"), worldId,
       join(".output", worldId, "style-regression-trend", runId + ".md"));
     await mkdir(dirname(out), { recursive: true });
-    await writeFile(out, report.trim() + "\\n", "utf8");
+    await writeFile(out, report.trim() + "\n", "utf8");
     console.log(JSON.stringify({ out, reports: reports.length, gate: false }, null, 2));
     return;
   }
