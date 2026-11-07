@@ -619,3 +619,41 @@ npm run dev -- roleplay-sandbox --world conghuoniao \
 ```
 
 每轮输出后，作者可以直接接受并继续、修改方向、补充场景信息、重演本轮或结束。推演记录默认保存在 `.output/<world>/roleplay-sandbox/`；自定义 `--out` 也必须位于该 world 的 `.output/` 内，避免覆盖正史文件。它不属于每章自动流水线，不会强迫 NPC 每章行动，也不引入 D&D 数值、回合制或任务机制。
+
+### 原文创作素材分析（Scene / Voice / Causality）
+
+在现有全文人物/情节分析之外，可运行增量离线素材分析。它重点整理实际场景、对白原句、人物表达观察、事件因果、角色知识边界、世界日常细节和叙事手法。每条分析保留原文逐字证据；没有证据的条目不会进入素材库。
+
+```bash
+# 先确保已完成 ingest，并已有 analysis/<world>/chapter-index.json
+npm run dev -- analyze-corpus-craft --world conghuoniao --limit 20
+npm run dev -- analyze-corpus-craft --world conghuoniao
+# 大语料可分片；corpus-craft 各章独立，可并行
+npm run dev -- analyze-corpus-craft --world conghuoniao --shard 0/4
+npm run dev -- analyze-corpus-craft --world conghuoniao --shard 1/4
+```
+
+输出位于 analysis/<world>/corpus-craft/chapters/。每章以正文哈希和分析提示版本做增量缓存；失败章节可在下次运行重试。它与原有 analyze-story、analyze-character-states 并行互补，不覆盖原有 SQLite 知识图谱。
+
+### 可选 Vane 混合检索
+
+Vane 仅是第二检索索引，不是 SQLite 替代品，也不是必需运行时。按需安装 Node binding：
+
+```bash
+npm install --no-save @vane-rs/node@0.4.1
+npm run dev -- vane-index --world conghuoniao
+```
+
+默认不配置 embedding 时，Vane 使用中文 jieba BM25；需要语义混合检索时，设置 OpenAI-compatible embedding endpoint：
+
+```bash
+export VANE_EMBEDDING_BASE_URL=http://127.0.0.1:11434/v1
+export VANE_EMBEDDING_MODEL=<embedding-model>
+export VANE_EMBEDDING_DIM=<embedding-dimension>
+# 如果服务需要 key，再设置 VANE_EMBEDDING_API_KEY
+npm run dev -- vane-index --world conghuoniao
+```
+
+Vane 索引位于 worlds/<world>/vane-index/，每个 world 独立。普通章节和长章节会自动尝试检索 Vane；未安装、未建索引或检索失败时，原有 BM25/SQLite 路径继续工作。重新导入或重做离线分析后，重新执行 vane-index 更新索引。
+
+离线分析资料会自动进入普通 write 和 write-long 的写作上下文，按当前任务选取少量相关素材；它们是创作参考，不是剧情清单、人物行为规范或风格验收指标。
