@@ -80,8 +80,7 @@
 4. 主编选定唯一章节蓝图。
 5. 生成正文；Writer、对白和叙事声音阶段共享 Living Voice 原则，分别修整对白和叙事声音。
 6. Editorial Review 前执行文学去 AI 味：先输出带文本证据的诊断，仅在确有问题时编辑；独立复核确认收益后才保留，否则恢复原稿。诊断为空、明确无问题或失败时跳过编辑。
-7. Editorial Review 只处理明确硬伤；发生自动修复后，追加只读文风回归观察，检查修复是否引入 AI 腔，不再次改写、不阻断成稿。
-7. 对最终采用的正文进行结构化硬伤审查。
+7. Editorial Review 对最终采用的正文进行结构化硬伤审查，只处理明确硬伤；发生自动修复后，追加只读文风回归观察，检查修复是否引入 AI 腔，不再次改写、不阻断成稿。
 8. 对 blocker/major 做最小修复，最多两轮；每轮重新审查。若发生修复，追加只读文风回归观察；没有修复则跳过。
 9. 通过后自动执行 Style Regression 观察，再生成独立 Reader 体验报告；两者失败均不阻塞成功路径。
 10. 提取并校验状态，自动提交 SQLite 和兼容快照，保存正文、质量摘要和阶段产物。
@@ -113,13 +112,13 @@
 1. 生成场景蓝图，场景数不超过配置上限；允许少于上限，不能为了凑数拆开连贯情节；格式错误自动修正一次。
 2. 逐场检索原文、生成场景；注入本场相关人物的当前状态，并携带本章已生成正文的滚动上下文，避免只依赖上一场末尾。
 3. 分批做初步审查（使用全章场景编号；结构无效时自动重试），再逐场修订对白和叙事声音。
-4. 汇总逐场修订稿，执行共享的 Living Voice / Anti-AI 编辑；编辑失败时保留逐场修订稿。
-5. 对 Anti-AI 编辑后的完整章节进行跨场终审。
-6. 将 blocker/major 定位到受影响场景，最多两轮局部修复；每轮复查全章。
+4. 汇总逐场修订稿，执行共享的 Living Voice / Anti-AI 诊断；只有发现明确问题才编辑，诊断无问题或失败时跳过整章改写。
+5. 对最终采用的完整章节进行跨场终审。
+6. 将 blocker/major 定位到受影响场景，最多两轮局部修复；每轮复查全章。发生修复时追加只读文风回归观察，不再次改稿、不阻断成稿。
 7. Reader 以独立读者视角生成观察报告；失败不影响章节通过与状态提交。
 8. 从最终完整正文提取并校验状态，自动持久化；保存章节、节奏指标、质量报告和阶段产物。
 
-主要阶段文件：`01-scene-blueprint.md`、`00-scene-XX-retrieval.md`、`02-scene-XX.md`、`03-draft.md`、`04-continuity-review.md`、`05-polish-XX.md`、`06b-anti-ai-edited.md`、`chapter.md`、`06-rhythm-metrics.json`、`07-state-update.json`、`08-final-review.md`、`08-quality-summary.json`、`10-reader-experience.md`。终审两轮仍存在明确硬伤时保存 `chapter-blocked.md` 和诊断摘要，当前运行安全失败且不提交故事状态；这属于自动化无法安全完成时的异常终止，不创建等待人工批准的常规队列。修复问题后可重新运行或从 checkpoint 恢复。
+主要阶段文件：`01-scene-blueprint.md`、`00-scene-XX-retrieval.md`、`02-scene-XX.md`、`03-draft.md`、`04-continuity-review.md`、`05-polish-XX.md`、`06b-anti-ai-edited.md`、`chapter.md`、`06-rhythm-metrics.json`、`07-state-update.json`、`08-final-review.md`、`08-quality-summary.json`、`10-post-review-literary-check.md`（仅终审修复后生成）、`10-reader-experience.md`。终审两轮仍存在明确硬伤时保存 `chapter-blocked.md` 和诊断摘要，当前运行安全失败且不提交故事状态；这属于自动化无法安全完成时的异常终止，不创建等待人工批准的常规队列。修复问题后可重新运行或从 checkpoint 恢复。
 
 万字流程在逐场修订后增加完整章节的 Anti-AI 编辑，再进行跨场终审。blocker/major 定位到受影响场景，局部修复后重新审查全章，最多两轮。节奏指标仅离线观察，不进入正式写作提示、章节验收或自动修复；不替代文学判断。
 ## 5. 全自动目标闭环
