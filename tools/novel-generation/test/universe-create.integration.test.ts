@@ -6,6 +6,9 @@ import { join } from "node:path";
 import { createServer } from "node:http";
 import { DatabaseSync } from "node:sqlite";
 import { createApp } from "../src/server.js";
+import { readStoryAnalysis } from "../src/database.js";
+import { buildStoryAnalysisContext } from "../src/story-analysis-context.js";
+import { searchLibrary } from "../src/library.js";
 
 test("create universe builds a bounded canon and excludes whole-book derived files", async () => {
   const root = await mkdtemp(join(tmpdir(), "novel-universe-api-"));
@@ -83,6 +86,10 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     } finally { snapshot.close(); }
     assert.ok((await readFile(join(universeDir, "universe-entry.md"), "utf8")).includes("第二章正文"));
     assert.ok(!(await readFile(join(universeDir, "universe-entry.md"), "utf8")).includes("未来剧情泄漏标记"));
+    const analysisContext = buildStoryAnalysisContext(readStoryAnalysis(universeDir, payload.universe.id), "未来剧情泄漏标记");
+    assert.equal(analysisContext, "");
+    const futureSearch = await searchLibrary(payload.universe.id, "未来剧情泄漏标记", { worldDir: universeDir, limit: 10 }).catch(() => []);
+    assert.equal(futureSearch.length, 0);
   } finally {
     if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
     process.chdir(previousCwd);
