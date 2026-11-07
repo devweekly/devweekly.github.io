@@ -19,7 +19,7 @@ const deepseekModel = arg("deepseek-model", "deepseek-v4.1-flash");
 const count = Math.max(1, Math.min(12, Number(arg("chapters", "6"))));
 const maxChars = Math.max(1500, Math.min(30000, Number(arg("max-chars", "12000"))));
 const timeoutMs = Math.max(30000, Math.min(900000, Number(arg("timeout-ms", "300000"))));
-const maxTokens = Math.max(1000, Math.min(12000, Number(arg("max-tokens", "6000"))));
+const maxTokens = Math.max(1000, Math.min(20000, Number(arg("max-tokens", "12000"))));
 const chapterIds = arg("chapter-ids", "").split(",").map(s => s.trim()).filter(Boolean);
 const runId = new Date().toISOString().replace(/[:.]/g, "-");
 const outDir = resolve(".output", world, "model-comparison", runId);
@@ -106,18 +106,31 @@ async function localCall(prompt: string, model: string): Promise<any> {
     throw error;
   }
   const extracted = extractLocalResponseText(body);
+  const responseDiagnostics = summarizeLocalResponse(body);
+  const finishReason = responseDiagnostics.finishReason;
+  const usage = body.usage ?? {};
+  const reasoningOnly = !extracted.text.trim() && Number(usage.completion_tokens_details?.reasoning_tokens ?? 0) > 0;
   if (!extracted.text.trim()) {
-    const error: any = new Error("LM Studio 请求成功，但响应中没有可用的 assistant 文本。");
+    const failureKind = finishReason === "length"
+      ? (reasoningOnly ? "reasoning_exhausted_output_budget" : "generation_truncated_without_final_text")
+      : reasoningOnly ? "reasoning_only_no_final_text" : "empty_assistant_output";
+    const error: any = new Error(failureKind === "reasoning_exhausted_output_budget"
+      ? "LM Studio 已生成 reasoning，但输出预算/上下文窗口耗尽，未生成最终文本（finish_reason=length）。"
+      : failureKind === "reasoning_only_no_final_text"
+        ? "LM Studio 只返回 reasoning_content，没有生成最终 assistant 文本。"
+        : "LM Studio 请求成功，但响应中没有可用的 assistant 文本。");
     error.diagnostics = {
-      status: response.status, response: summarizeLocalResponse(body),
+      failureKind, status: response.status, response: responseDiagnostics,
       responsePreview: rawBody.slice(0, 20000),
-      hint: "检查 finish_reason、message.content 类型、refusal，以及 LM Studio 服务端日志。"
+      hint: "不要把 reasoning_content 当作最终 JSON。提高 LM Studio 模型加载时的 Context Length（建议 16384），并使用 --max-tokens 12000 或更高；若模型支持，关闭/降低 thinking。"
     };
     throw error;
   }
+  const generationStatus = finishReason === "length" ? "incomplete_generation" : "completed";
   return {
     text: extracted.text, elapsedMs: Date.now() - start, usage: body.usage,
-    responseModel: body.model, responseDiagnostics: summarizeLocalResponse(body)
+    responseModel: body.model, responseDiagnostics, generationStatus,
+    warning: generationStatus === "incomplete_generation" ? "finish_reason=length；输出可能被截断，不能仅凭 JSON 可解析判定完整。" : undefined
   };
 }
 async function deepseekCall(prompt: string): Promise<any> {
