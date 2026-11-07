@@ -3,6 +3,20 @@ import { readStoryState as readDatabaseStoryState, syncStoryState } from "./data
 import { dirname } from "node:path";
 import { z } from "zod";
 
+const ForeshadowingUpdateSchema = z.object({
+  id: z.string().min(1), clueId: z.string().min(1), clue: z.string().min(1),
+  status: z.enum(["planted", "reinforced", "misdirected", "partially_revealed", "revealed", "resolved", "abandoned", "uncertain"]),
+  chapter: z.string().min(1), change: z.string().min(1),
+  relatedThreadIds: z.array(z.string()).default([]), evidence: z.string().min(4)
+});
+const MacGuffinUpdateSchema = z.object({
+  id: z.string().min(1), macguffinId: z.string().min(1), name: z.string().min(1),
+  status: z.enum(["introduced", "sought", "located", "held", "transferred", "lost", "destroyed", "secured", "irrelevant", "uncertain"]),
+  chapter: z.string().min(1), change: z.string().min(1),
+  holder: z.string().optional(), location: z.string().optional(),
+  relatedThreadIds: z.array(z.string()).default([]), evidence: z.string().min(4)
+});
+
 const StoryStateSchema = z.object({
   schemaVersion: z.literal(1),
   worldId: z.string().min(1),
@@ -36,7 +50,9 @@ const StoryStateSchema = z.object({
     id: z.string().min(1), title: z.string(), status: z.enum(["open", "active", "resolved", "abandoned"]),
     lastUpdated: z.string(), notes: z.string()
   })),
-  continuityNotes: z.array(z.string())
+  continuityNotes: z.array(z.string()),
+  foreshadowingUpdates: z.array(ForeshadowingUpdateSchema).optional(),
+  macguffinUpdates: z.array(MacGuffinUpdateSchema).optional()
 }).passthrough();
 
 const StoryStateUpdateSchema = z.object({
@@ -69,12 +85,19 @@ const StoryStateUpdateSchema = z.object({
     id: z.string().min(1), title: z.string(), status: z.enum(["open", "active", "resolved", "abandoned"]),
     lastUpdated: z.string(), notes: z.string()
   })).optional(),
-  continuityNotes: z.array(z.string())
+  continuityNotes: z.array(z.string()),
+  foreshadowingUpdates: z.array(ForeshadowingUpdateSchema).optional(),
+  macguffinUpdates: z.array(MacGuffinUpdateSchema).optional()
 }).strict();
 
 export function parseStoryStateUpdate(value: unknown, chapter?: string): Partial<StoryState> {
   const update = StoryStateUpdateSchema.parse(value) as Partial<StoryState>;
   if (chapter !== undefined) {
+    for (const item of [...(update.foreshadowingUpdates ?? []), ...(update.macguffinUpdates ?? [])]) {
+      if (!chapter.includes(item.evidence)) {
+        throw new Error("Story graph update evidence is not present in the final chapter: " + item.id);
+      }
+    }
     for (const character of update.characters ?? []) {
       for (const milestone of character.arcMilestones ?? []) {
         if (!chapter.includes(milestone.evidence)) {
@@ -116,12 +139,24 @@ export interface StoryState {
   events: Array<{ id: string; summary: string; position: string; participants: string[]; consequences: string[]; causes?: string[]; relatedPlotThreads?: string[]; origin?: "canon" | "inferred" | "original"; source?: string }>;
   plotThreads: Array<{ id: string; title: string; status: "open" | "active" | "resolved" | "abandoned"; lastUpdated: string; notes: string }>;
   continuityNotes: string[];
+  /** Append-only, evidence-backed lifecycle changes to story clues. */
+  foreshadowingUpdates?: Array<{
+    id: string; clueId: string; clue: string;
+    status: "planted" | "reinforced" | "misdirected" | "partially_revealed" | "revealed" | "resolved" | "abandoned" | "uncertain";
+    chapter: string; change: string; relatedThreadIds: string[]; evidence: string;
+  }>;
+  /** Append-only, evidence-backed changes to important story-driving objects or information. */
+  macguffinUpdates?: Array<{
+    id: string; macguffinId: string; name: string;
+    status: "introduced" | "sought" | "located" | "held" | "transferred" | "lost" | "destroyed" | "secured" | "irrelevant" | "uncertain";
+    chapter: string; change: string; holder?: string; location?: string; relatedThreadIds: string[]; evidence: string;
+  }>;
 }
 
 export function emptyStoryState(worldId: string): StoryState {
   return {
     schemaVersion: 1, worldId, updatedAt: new Date().toISOString(), currentPosition: "尚未建立",
-    canonFacts: [], characters: [], events: [], plotThreads: [], continuityNotes: []
+    canonFacts: [], characters: [], events: [], plotThreads: [], continuityNotes: [], foreshadowingUpdates: [], macguffinUpdates: []
   };
 }
 
