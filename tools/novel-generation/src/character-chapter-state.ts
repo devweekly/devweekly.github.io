@@ -49,6 +49,16 @@ export function matchChapterCharacters(text: string, characters: NovelCharacterS
 export function hasExactEvidence(text: string, evidence: string[]): boolean {
   return evidence.some(value => value.length >= 4 && text.includes(value));
 }
+function priorStateContext(state: NovelCharacterChapterStateRow | null): unknown {
+  if (!state) return null;
+  return {
+    chapterOrdinal: state.chapterOrdinal, chapterTitle: state.chapterTitle,
+    behavior: state.behavior, goals: state.goals, knowledge: state.knowledge,
+    relationships: state.relationships, resources: state.resources,
+    situation: state.situation, changes: state.changes, evidence: state.evidence,
+    uncertainty: state.uncertainty
+  };
+}
 export function latestPriorState<T extends { chapterOrdinal: number }>(states: T[], ordinal: number): T | undefined {
   let low = 0; let high = states.length - 1; let found = -1;
   while (low <= high) {
@@ -119,7 +129,7 @@ export async function analyzeCharacterChapterStates(
       character.characterId,
       latestPriorState(statesByCharacter.get(character.characterId) ?? [], chapter.ordinal) ?? null
     ] as const));
-    const contextHashByCharacter = new Map<string, string>([...previousByCharacter].map(([characterId, state]) => [characterId, hash(JSON.stringify(state))] as const));
+    const contextHashByCharacter = new Map<string, string>([...previousByCharacter].map(([characterId, state]) => [characterId, hash(JSON.stringify(priorStateContext(state)))] as const));
     const pending = item.characters.filter(character => {
       const stored = existing.get(character.characterId + "\\0" + chapter.chapterId);
       return options.force || stored?.sourceHash !== sourceHash ||
@@ -128,7 +138,7 @@ export async function analyzeCharacterChapterStates(
     if (!pending.length) { result.cached += item.characters.length; continue; }
     const previousStates = pending.map(character => ({
       characterId: character.characterId, name: character.name,
-      state: previousByCharacter.get(character.characterId) ?? null
+      state: priorStateContext(previousByCharacter.get(character.characterId) ?? null)
     }));
     const cacheKey = hash(JSON.stringify({ chapterId: chapter.chapterId, sourceHash, model, ids: pending.map(c => c.characterId), previousStates, promptVersion: 3 }));
     const cachePath = join(cacheDir, cacheKey + ".json");
