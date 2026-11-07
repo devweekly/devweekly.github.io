@@ -4,7 +4,8 @@
 import express, { type Request, type Response, type NextFunction } from "express";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { cp, link, mkdir, readFile, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { cp, copyFile, mkdir, readFile, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { constants as fsConstants } from "node:fs";
 import { existsSync, rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
@@ -445,11 +446,11 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
 }
 
 /**
- * original.txt is immutable source canon. Hard-link it into each universe so
- * many historical branches do not duplicate the largest raw corpus file.
- * Keep the copied file if the filesystem does not support hard links.
+ * original.txt is immutable source canon. Prefer a copy-on-write reflink so
+ * branches share physical blocks without sharing a mutable inode. If the
+ * filesystem cannot clone, keep the ordinary copy produced by cp().
  */
-async function linkOriginalCanon(sourceDir: string, targetDir: string): Promise<boolean> {
+async function cloneOriginalCanon(sourceDir: string, targetDir: string): Promise<boolean> {
   const source = path.join(sourceDir, "original.txt");
   const target = path.join(targetDir, "original.txt");
   try {
@@ -459,18 +460,15 @@ async function linkOriginalCanon(sourceDir: string, targetDir: string): Promise<
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
     throw error;
   }
-  const temporary = target + ".hardlink-" + process.pid;
+  const temporary = target + ".reflink-" + process.pid;
   try {
-    await link(source, temporary);
-    await unlink(target).catch(error => {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    });
+    await copyFile(source, temporary, fsConstants.COPYFILE_FICLONE_FORCE);
     await rename(temporary, target);
     return true;
   } catch (error) {
     await rm(temporary, { force: true }).catch(() => undefined);
     const code = (error as NodeJS.ErrnoException).code;
-    if (["EXDEV", "EPERM", "EACCES", "ENOTSUP", "EOPNOTSUPP"].includes(code ?? "")) return false;
+    if (["EXDEV", "EPERM", "EACCES", "ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EINVAL"].includes(code ?? "")) return false;
     throw error;
   }
 }
@@ -589,7 +587,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
         return shouldCopyUniverseAsset(path.relative(sourceDir, source));
       }
     });
-    await linkOriginalCanon(sourceDir, stagingDir);
+    await cloneOriginalCanon(sourceDir, stagingDir);
     // novel.db 是原著分析只读快照的初期副本；重置其世界身份，防止数据库身份校验误认为属于源项目。
     rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
     const entryOrdinal = restrictKnowledgeDatabaseToEntry(path.join(stagingDir, "novel.db"), id, entryChapter);
@@ -696,7 +694,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
         return shouldCopyUniverseAsset(path.relative(parentDir, source));
       }
     });
-    await linkOriginalCanon(parentDir, stagingDir);
+    await cloneOriginalCanon(parentDir, stagingDir);
     rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
     restrictKnowledgeDatabaseToEntry(path.join(stagingDir, "novel.db"), id, parent.entryChapter);
     const universe: StoryUniverse = {
