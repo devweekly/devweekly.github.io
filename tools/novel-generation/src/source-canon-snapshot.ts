@@ -9,9 +9,8 @@ function removeUnsafeDatabase(filePath: string): void {
 
 /**
  * Build a conservative knowledge snapshot for a universe entry point.
- * Full-book aggregates are deliberately discarded: their summaries/profiles may
- * encode events that occur after the selected chapter even when their row has
- * an early first_chapter value.
+ * Only records with complete chapter provenance inside the boundary are reused;
+ * aggregates with missing or future provenance are discarded.
  */
 export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: string, entryChapter: string): number {
   if (!existsSync(databasePath)) return 0;
@@ -97,6 +96,7 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
               : undefined;
             const bounded: Record<string, unknown> = {
               ...source,
+              worldId,
               sourceHash: createHash("sha256").update(JSON.stringify({ sourceHash: source.sourceHash, entryChapter, cutoff })).digest("hex"),
               asOfEntryChapter: entryChapter,
               chapters: chapterRows.length,
