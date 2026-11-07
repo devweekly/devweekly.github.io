@@ -74,6 +74,13 @@ export async function listStyleReferenceHistory(worldDir: string, onlyName?: str
   return result.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
+export async function readStyleReferenceVersion(worldDir: string, name: string, version: string): Promise<string> {
+  if (!validName(name) || !version || version !== basename(version) || !/^[a-zA-Z0-9T_.-]+\\.(md|txt)$/i.test(version)) {
+    throw new Error("Invalid Style Reference history version.");
+  }
+  return readFile(join(worldDir, "style-references", ".history", name, version), "utf8");
+}
+
 export async function archiveStyleReference(worldDir: string, name: string): Promise<StyleReferenceChange> {
   if (!validName(name)) throw new Error("Provide an active style reference filename ending in .md or .txt.");
   const directory = join(worldDir, "style-references");
