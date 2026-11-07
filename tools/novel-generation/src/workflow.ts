@@ -220,7 +220,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     "文学性、文笔、艺术风格高于其他。故事规划只为因果连续性服务，不是待完成清单。"
   ], output => { if (!output.trim() || output.trim().length < 300) throw new Error("Story Arc is empty or implausibly short."); });
   await saveStage(input.outputDir, "00-story-arc.md", storyArc);
-  if (input.worldDir) await writeFile(resolve(input.worldDir, "story-arc.md"), storyArc.trim() + "\\n", "utf8");
+  if (input.worldDir) await writeFile(resolve(input.worldDir, "story-arc.md"), storyArc.trim() + "\n", "utf8");
 
   const [plotPlan, ideas] = await Promise.all([
     cachedCall("plot", "01-main-plot.md", "plot", [
@@ -241,7 +241,8 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   await saveStage(input.outputDir, "02-creative-options.md", ideas);
 
   const plan = await cachedCall("plan", "03-chapter-plan.md", "plan", [
-    "角色：主编 Agent。整合中期 Story Arc、主线架构师方案和创意发散建议，决定本章唯一执行方案。",\n    "中期 Story Arc：", storyArc,
+    "角色：主编 Agent。整合中期 Story Arc、主线架构师方案和创意发散建议，决定本章唯一执行方案。",
+    "中期 Story Arc：", storyArc,
     common,
     "主线方案：", plotPlan, "创意备选：", ideas,
     "选出最有小说感染力的方向，形成自然、有变化的章节构想。结合局势推演判断哪些人物行动或冲突值得进入本章，也可以全部舍弃。不要把所有可能性塞进正文；推演不是章节必须兑现的清单。蓝图帮助写作者理解人物处境和故事走向，不是逐项验收的合同；不要求每场都按目标、阻力、行动、信息变化、结果的模板展开。保留人物的意外性、闲笔和情绪空间。人物知识必须受其实际经历和信息来源限制；不得无意违反已确认事实；区分确知内容与新创作。",
