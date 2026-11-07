@@ -52,7 +52,7 @@ function rows(databasePath: string, sql: string): Array<Record<string, unknown>>
 test("historical snapshot retains only chapter evidence through the selected entry and rebinds world identity", () => {
   const f = fixture();
   try {
-    const cutoff = restrictKnowledgeDatabaseToEntry(f.databasePath, "universe-one", "第二章");
+    const cutoff = restrictKnowledgeDatabaseToEntry(f.databasePath, "universe-one", "第二章", "c2");
     assert.equal(cutoff, 2);
     assert.deepEqual(rows(f.databasePath, "SELECT chapter_id,ordinal FROM novel_chapters ORDER BY ordinal"), [
       { chapter_id: "c1", ordinal: 1 }, { chapter_id: "c2", ordinal: 2 }
@@ -87,7 +87,7 @@ test("an existing universe can backfill its source project's offline analysis wi
     const sourceSnapshot = JSON.parse(String(rows(source.databasePath, "SELECT payload_json FROM story_analysis")[0]?.payload_json)) as Record<string, unknown>;
     const targetDb = new DatabaseSync(target.databasePath);
     try { targetDb.prepare("DELETE FROM story_analysis").run(); } finally { targetDb.close(); }
-    assert.equal(importBoundedStoryAnalysisSnapshot(target.databasePath, "universe-two", "第二章", sourceSnapshot), true);
+    assert.equal(importBoundedStoryAnalysisSnapshot(target.databasePath, "universe-two", "第二章", sourceSnapshot, "c2"), true);
     const imported = JSON.parse(String(rows(target.databasePath, "SELECT payload_json FROM story_analysis")[0]?.payload_json)) as Record<string, any>;
     assert.equal(imported.worldId, "universe-two");
     assert.equal(imported.asOfEntryChapter, "第二章");
@@ -102,7 +102,7 @@ test("an existing universe can backfill its source project's offline analysis wi
 test("unresolvable entry chapter deletes the copied database instead of retaining full canon", () => {
   const f = fixture();
   try {
-    assert.equal(restrictKnowledgeDatabaseToEntry(f.databasePath, "universe-one", "不存在的章节"), 0);
+    assert.throws(() => restrictKnowledgeDatabaseToEntry(f.databasePath, "universe-one", "不存在的章节"), /无法在原著知识库中定位/);
     assert.equal(existsSync(f.databasePath), false);
   } finally { f.close(); }
 });
@@ -114,7 +114,7 @@ test("missing chapter ordinal schema fails closed and removes the copied databas
   db.exec("CREATE TABLE novel_chapters(chapter_id TEXT PRIMARY KEY,title TEXT NOT NULL); INSERT INTO novel_chapters VALUES('c1','第一章');");
   db.close();
   try {
-    assert.equal(restrictKnowledgeDatabaseToEntry(databasePath, "universe-one", "第一章"), 0);
+    assert.throws(() => restrictKnowledgeDatabaseToEntry(databasePath, "universe-one", "第一章"), /稳定的 chapter_id/);
     assert.equal(existsSync(databasePath), false);
   } finally { rmSync(dir, { recursive: true, force: true }); }
 });
@@ -134,4 +134,28 @@ test("a chapter-addressable table missing its cutoff column is emptied", () => {
     assert.equal(restrictKnowledgeDatabaseToEntry(databasePath, "universe-one", "第一章"), 1);
     assert.equal(rows(databasePath, "SELECT * FROM novel_beats").length, 0);
   } finally { rmSync(dir, { recursive: true, force: true }); }
+});
+
+
+test("duplicate chapter titles require a stable chapter id instead of choosing the first volume", () => {
+  const f = fixture();
+  try {
+    const db = new DatabaseSync(f.databasePath);
+    try {
+      db.prepare("INSERT INTO novel_chapters VALUES('c4','第一章',4,4)").run();
+    } finally { db.close(); }
+    assert.throws(() => restrictKnowledgeDatabaseToEntry(f.databasePath, "universe-duplicate", "第一章"), /标题在原著中重复/);
+    assert.equal(existsSync(f.databasePath), false);
+  } finally { f.close(); }
+});
+
+test("stable chapter id wins even when the displayed title is not unique", () => {
+  const f = fixture();
+  try {
+    const db = new DatabaseSync(f.databasePath);
+    try {
+      db.prepare("INSERT INTO novel_chapters VALUES('c4','第一章',4,4)").run();
+    } finally { db.close(); }
+    assert.equal(restrictKnowledgeDatabaseToEntry(f.databasePath, "universe-id", "第一章", "c1"), 1);
+  } finally { f.close(); }
 });
