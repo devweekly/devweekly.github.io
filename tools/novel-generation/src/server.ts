@@ -128,6 +128,16 @@ type KnowledgeBuildState = {
   currentStep?: KnowledgeBuildStep;
   steps: Array<{ name: KnowledgeBuildStep; status: "running" | "completed" | "failed" | "skipped"; startedAt: string; completedAt?: string; exitCode?: number | null; output?: string; error?: string }>;
 };
+/**
+ * Resolve a CLI entry that exists in both source checkout and production package.
+ * Production installs intentionally omit devDependencies such as tsx.
+ */
+export function buildCliEntryArgs(command: string[], production = process.env.NODE_ENV === "production"): string[] {
+  return production
+    ? ["dist/cli.js", ...command]
+    : ["--import", "tsx", "src/cli.ts", ...command];
+}
+
 const knowledgeBuilds = new Set<string>();
 function knowledgeBuildPath(id: string): string {
   return path.resolve(".output", id, "workbench", "knowledge-build.json");
@@ -983,7 +993,7 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
     };
     await saveRun(run);
     const args = [
-      "--import", "tsx", "src/cli.ts", "write", "--world", id,
+      ...buildCliEntryArgs(["write"]), "--world", id,
       "--mode", mode,
       ...(previousChapterPath ? ["--source", previousChapterPath] : universeEntryPath ? ["--source", universeEntryPath] : []),
       ...(!previousChapterPath && universe ? ["--context", path.join(dir, "universe-origin-context.md")] : []),
