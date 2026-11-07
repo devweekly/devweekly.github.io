@@ -67,6 +67,13 @@ export function antiAiEditPrompt(input: {
   ].filter(Boolean).join("\n\n");
 }
 
+/** A failed/empty diagnosis is not permission to rewrite a whole chapter. */
+export function shouldRunAntiAiEdit(diagnosis: string): boolean {
+  const text = diagnosis.trim();
+  if (!text) return false;
+  return !/(?:未发现值得修改的地方|没有明确需要修改|无需修改|无须修改)/.test(text);
+}
+
 export interface AntiAiVerification {
   decision: "keep" | "restore";
   reason: string;
