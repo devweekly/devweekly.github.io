@@ -284,6 +284,7 @@ npm run dev -- story-kb     --world conghuoniao --type characters
 Web 工作台是 CLI 之外的本地交互入口，提供运行观察、规划版本追溯和可选干预，不改变章节 CLI 的自动写作流程。
 
 - `src/server-main.ts` 负责 HTTP 生命周期和 Vite 开发中间件 / 生产静态资源；`src/server.ts` 提供 Express API；`web/` 是 React + Ant Design 前端。
+- Workbench 的“故事图谱”页调用 `/api/worlds/:worldId/graph`，可切换原著全文 v6 图谱和续写 Story State 派生图谱；支持关键词命中、一跳邻接、节点详情和关系历史。图谱仅作可视化检查，布局位置不表达时间或因果权重；原著快照不完整时明确提示，不显示伪造的空图。
 - Story Plan 生成任务进入队列后按 World 串行执行。模型结果经 schema 校验后立即激活；旧正式版本自动归档，Run 标记 completed。并发生成不会基于同一旧版本互相覆盖。
 - 候选记录是已应用版本的审计快照，不是待审批项。工作台不提供批准/拒绝门禁；用户可以事后查看版本与运行记录。
 - CLI `plan-story` 与 Web 行为一致，默认自动激活；`--draft` 只用于隔离实验，`--activate-candidate` 用于主动提升实验草稿。
