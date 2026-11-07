@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { closeSync, openSync } from "node:fs";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export type UniverseAnalysisStatus = "queued" | "running" | "completed" | "failed";
@@ -25,7 +26,6 @@ async function writeJob(job: UniverseAnalysisJob): Promise<void> {
   await mkdir(path.dirname(target), { recursive: true });
   const temporary = target + ".tmp";
   await writeFile(temporary, JSON.stringify(job, null, 2) + "\n", "utf8");
-  const { rename } = await import("node:fs/promises");
   await rename(temporary, target);
 }
 
@@ -38,11 +38,7 @@ export async function readUniverseAnalysisJob(worldId: string): Promise<Universe
   }
 }
 
-/**
- * Rebuild the universe-local story analysis using only its bounded library and
- * bounded chapter catalog. This is deliberately detached from universe creation:
- * writing remains available even when the model/runtime is unavailable.
- */
+/** Rebuild from bounded local inputs; failures never block writing. */
 export async function startUniverseAnalysisRebuild(worldId: string, entryChapter: string): Promise<UniverseAnalysisJob> {
   const previous = await readUniverseAnalysisJob(worldId);
   if (previous?.status === "queued" || previous?.status === "running") return previous;
@@ -55,46 +51,45 @@ export async function startUniverseAnalysisRebuild(worldId: string, entryChapter
   };
   await writeJob(job);
 
-  const child = spawn(process.execPath, [
-    "--import", "tsx", "src/cli.ts", "analyze-story",
-    "--world", worldId,
-    "--catalog", path.join("analysis", worldId, "chapter-index.json")
-  ], {
-    cwd: process.cwd(),
-    env: process.env,
-    detached: true,
-    stdio: ["ignore", "ignore", "ignore"]
-  });
-  child.unref();
+  const logFd = openSync(logPath, "a");
+  let child;
+  try {
+    child = spawn(process.execPath, [
+      "--import", "tsx", "src/cli.ts", "analyze-story",
+      "--world", worldId,
+      "--catalog", path.join("analysis", worldId, "chapter-index.json")
+    ], {
+      cwd: process.cwd(), env: process.env, detached: true,
+      stdio: ["ignore", logFd, logFd]
+    });
+  } catch (error) {
+    closeSync(logFd);
+    const failed: UniverseAnalysisJob = {
+      ...job, status: "failed",
+      error: error instanceof Error ? error.message : String(error),
+      updatedAt: new Date().toISOString()
+    };
+    await writeJob(failed);
+    return failed;
+  }
+  closeSync(logFd);
 
-  void (async () => {
-    try {
-      await writeJob({ ...job, status: "running", updatedAt: new Date().toISOString() });
-      child.once("error", async error => {
-        await writeJob({ ...job, status: "failed", error: error.message, updatedAt: new Date().toISOString() });
-      });
-      child.once("exit", async (code, signal) => {
-        const finishedAt = new Date().toISOString();
-        if (code === 0) {
-          await writeJob({
-            ...job, status: "completed", updatedAt: finishedAt,
-            result: { exitCode: code, signal: signal ?? null }
-          });
-        } else {
-          await writeJob({
-            ...job, status: "failed", updatedAt: finishedAt,
-            error: "analyze-story exited with code " + String(code) + (signal ? " (signal " + signal + ")" : "")
-          });
-        }
-      });
-    } catch (error) {
-      await writeJob({
-        ...job, status: "failed",
-        error: error instanceof Error ? error.message : String(error),
-        updatedAt: new Date().toISOString()
+  child.once("error", error => {
+    void writeJob({ ...job, status: "failed", error: error.message, updatedAt: new Date().toISOString() });
+  });
+  child.once("exit", (code, signal) => {
+    const updatedAt = new Date().toISOString();
+    if (code === 0) {
+      void writeJob({ ...job, status: "completed", updatedAt, result: { exitCode: code, signal: signal ?? null } });
+    } else {
+      void writeJob({
+        ...job, status: "failed", updatedAt,
+        error: "analyze-story exited with code " + String(code) + (signal ? " (signal " + signal + ")" : "")
       });
     }
-  })();
-
-  return job;
+  });
+  child.unref();
+  const running = { ...job, status: "running" as const, updatedAt: new Date().toISOString() };
+  await writeJob(running);
+  return running;
 }
