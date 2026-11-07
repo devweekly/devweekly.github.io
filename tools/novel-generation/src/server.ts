@@ -347,7 +347,7 @@ async function readCanonChapters(sourceWorldId: string): Promise<Array<{ title: 
  * The source catalog is full-book metadata, so write a universe-local copy filtered to
  * the same as-of chapter boundary. Never fall back to the parent's unbounded catalog.
  */
-async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targetDir: string, universeId: string, entryIndex: number): Promise<void> {
+async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targetDir: string, universeId: string): Promise<void> {
   const sourcePath = path.resolve("analysis", sourceWorldId, "chapter-index.json");
   try {
     const source = JSON.parse(await readFile(sourcePath, "utf8")) as {
@@ -490,7 +490,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     await writeFile(path.join(stagingDir, "universe-entry.md"), selectedChapter.text + "\n", "utf8");
     await writeFile(path.join(stagingDir, "universe-origin-context.md"), originContext + "\n", "utf8");
     await writeUniverseLibrarySnapshot(rootSourceId, stagingDir, id, selectedIndex);
-    await writeUniverseAnalysisCatalogSnapshot(rootSourceId, stagingDir, id, selectedIndex);
+    await writeUniverseAnalysisCatalogSnapshot(rootSourceId, stagingDir, id);
     await writeFile(path.join(stagingDir, "source-canon-as-of.json"), JSON.stringify({ sourceWorldId: rootSourceId, entryChapter, entryOrdinal, policy: "chapter-scoped-evidence-only", fullBookAggregates: "excluded" }, null, 2) + "\n", "utf8");
     await rename(stagingDir, targetDir);
     res.status(201).json({ universe });
@@ -588,7 +588,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     const parentEntryIndex = parentCanonChapters.findIndex(chapter => chapter.title === parent.entryChapter);
     if (parentEntryIndex < 0) throw new Error("父宇宙的原文起点已无法在共享章节目录中定位，拒绝创建可能泄漏未来剧情的分支。");
     await writeUniverseLibrarySnapshot(parent.sourceWorldId, stagingDir, id, parentEntryIndex);
-    await writeUniverseAnalysisCatalogSnapshot(parent.sourceWorldId, stagingDir, id, parentEntryIndex);
+    await writeUniverseAnalysisCatalogSnapshot(parent.sourceWorldId, stagingDir, id);
 
     const forkState = rebaseStoryState(state, parentId, id);
     await writeFile(path.join(stagingDir, "story-state.json"), JSON.stringify(forkState, null, 2) + "\n", "utf8");
