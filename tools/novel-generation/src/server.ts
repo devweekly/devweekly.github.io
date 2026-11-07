@@ -140,7 +140,7 @@ async function writeKnowledgeBuild(state: KnowledgeBuildState): Promise<void> {
   const target = knowledgeBuildPath(state.worldId);
   await mkdir(path.dirname(target), { recursive: true });
   const temporary = target + ".tmp";
-  await writeFile(temporary, JSON.stringify(state, null, 2) + "\\n", "utf8");
+  await writeFile(temporary, JSON.stringify(state, null, 2) + "\n", "utf8");
   await rename(temporary, target);
 }
 const KNOWLEDGE_BUILD_STEPS: Array<{ name: KnowledgeBuildStep; command: string[] }> = [
