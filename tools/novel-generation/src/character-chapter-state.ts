@@ -4,7 +4,7 @@ import { join, resolve } from "node:path";
 import { z } from "zod";
 import { buildAnalysisUnits } from "./novel-kb.js";
 import {
-  listNovelCharacters, listNovelCharacterChapterStateHashes, syncNovelCharacterChapterStates,
+  listNovelCharacters, listNovelCharacterChapterStateHashes, listNovelCharacterChapterStates, syncNovelCharacterChapterStates,
   type NovelCharacterChapterStateRow, type NovelCharacterSummary
 } from "./database.js";
 import { runAgentText } from "./generate.js";
@@ -78,7 +78,7 @@ export async function analyzeCharacterChapterStates(
   const allCharacters = listNovelCharacters(worldDir, worldId, { limit: 100000 });
   const wanted = options.names?.length ? new Set(options.names) : undefined;
   const characters = allCharacters.filter(character => !wanted || wanted.has(character.name));
-  const existing = options.force ? new Map<string, string>() : listNovelCharacterChapterStateHashes(worldDir, worldId);
+  const existing = options.force ? new Map<string, string>() : listNovelCharacterChapterStateHashes(worldDir, worldId);\n  const priorStates = listNovelCharacterChapterStates(worldDir, worldId, { limit: 1000000 });\n  const statesByCharacter = new Map<string, NovelCharacterChapterStateRow[]>();\n  for (const state of priorStates) { const list = statesByCharacter.get(state.characterId) ?? []; list.push(state); statesByCharacter.set(state.characterId, list); }\n  for (const list of statesByCharacter.values()) list.sort((a, b) => a.chapterOrdinal - b.chapterOrdinal);
   const eligibleUnits = units.map(chapter => ({
     chapter, characters: characters.filter(character => matchesCharacter(chapter.text, character))
   })).filter(item => item.characters.length > 0);
@@ -112,7 +112,7 @@ export async function analyzeCharacterChapterStates(
         states = ResponseSchema.parse(cached).states;
       } catch {
         const raw = await runAgentText(
-          promptForChapter({ chapter, characters: pending }), model,
+          promptForChapter({ chapter, characters: pending, previousStates: pending.map(character => ({ characterId: character.characterId, name: character.name, state: latestPriorState(statesByCharacter.get(character.characterId) ?? [], chapter.ordinal) ?? null })) }), model,
           options.timeoutMs ?? 180000, readTaskProfiles().state
         );
         states = ResponseSchema.parse(parseJsonObject(raw)).states;
