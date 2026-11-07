@@ -7,6 +7,10 @@ import { createServer } from "node:http";
 import { DatabaseSync } from "node:sqlite";
 import { createApp } from "../src/server.js";
 import { buildStoryAnalysisContext } from "../src/story-analysis-context.js";
+import { readStoryAnalysis } from "../src/database.js";
+import { buildAnalysisUnits } from "../src/novel-kb.js";
+import { buildCorpusCraftContext } from "../src/corpus-craft.js";
+import { buildWritingBrief } from "../src/writing-brief.js";
 import { searchLibrary } from "../src/library.js";
 
 test("create universe builds a bounded canon and excludes whole-book derived files", async () => {
@@ -21,6 +25,12 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
   await writeFile(join(source, "timeline.md"), "未来时间线泄漏标记");
   await mkdir(join(source, "analysis"), { recursive: true });
   await writeFile(join(source, "analysis", "whole-book.json"), "未来素材泄漏标记");
+  await mkdir(join(root, "analysis", "source-world", "corpus-craft", "chapters"), { recursive: true });
+  await writeFile(join(root, "analysis", "source-world", "corpus-craft", "chapters", "future.json"), JSON.stringify({
+    schemaVersion: 1, worldId: "source-world", chapterId: "future", ordinal: 3, title: "未来章节",
+    scenes: [{ evidence: "未来剧情泄漏标记", summary: "未来剧情泄漏标记" }],
+    dialogueExemplars: [], voiceObservations: [], causalLinks: [], knowledgeStates: [], worldDetails: [], narrativeObservations: []
+  }));
   await mkdir(join(root, "analysis", "source-world"), { recursive: true });
   await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify({
     schemaVersion: 2, totalLines: 300,
@@ -101,6 +111,25 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     const boundedCatalog = JSON.parse(await readFile(join(root, "analysis", payload.universe.id, "chapter-index.json"), "utf8")) as { volumes: Array<{ chapters: Array<{ title: string; futureMarker?: string }> }> };
     assert.deepEqual(boundedCatalog.volumes.flatMap(volume => volume.chapters.map(chapter => chapter.title)), ["第一章", "第二章"]);
     assert.ok(!JSON.stringify(boundedCatalog).includes("未来剧情泄漏标记"));
+    // Exercise the same chapter-unit and context assemblers used by analysis/write.
+    const units = await buildAnalysisUnits(payload.universe.id, {
+      worldDir: universeDir,
+      catalogPath: join(root, "analysis", payload.universe.id, "chapter-index.json")
+    });
+    assert.deepEqual(units.units.map(unit => unit.title), ["第一章", "第二章"]);
+    assert.ok(!JSON.stringify(units.units).includes("未来剧情泄漏标记"));
+
+    const storyAnalysisContext = buildStoryAnalysisContext(
+      readStoryAnalysis(universeDir, payload.universe.id),
+      "未来剧情泄漏标记"
+    );
+    assert.ok(!storyAnalysisContext.includes("未来剧情泄漏标记"));
+
+    const corpusCraftContext = await buildCorpusCraftContext(payload.universe.id, "未来剧情泄漏标记");
+    assert.ok(!corpusCraftContext.includes("未来剧情泄漏标记"));
+
+    const writingBrief = buildWritingBrief({ worldDir: universeDir, worldId: payload.universe.id, query: "未来剧情泄漏标记" });
+    assert.ok(!writingBrief.includes("未来剧情泄漏标记"));
     assert.equal(await readFile(join(universeDir, "characters.md"), "utf8").catch(() => ""), "");
     assert.equal(await readFile(join(universeDir, "timeline.md"), "utf8").catch(() => ""), "");
     assert.equal(await readFile(join(universeDir, "analysis", "whole-book.json"), "utf8").catch(() => ""), "");
