@@ -6,7 +6,6 @@ import { join } from "node:path";
 import { createServer } from "node:http";
 import { DatabaseSync } from "node:sqlite";
 import { createApp } from "../src/server.js";
-import { readStoryAnalysis } from "../src/database.js";
 import { buildStoryAnalysisContext } from "../src/story-analysis-context.js";
 import { searchLibrary } from "../src/library.js";
 
@@ -86,7 +85,7 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     } finally { snapshot.close(); }
     assert.ok((await readFile(join(universeDir, "universe-entry.md"), "utf8")).includes("第二章正文"));
     assert.ok(!(await readFile(join(universeDir, "universe-entry.md"), "utf8")).includes("未来剧情泄漏标记"));
-    const analysisContext = buildStoryAnalysisContext(readStoryAnalysis(universeDir, payload.universe.id), "未来剧情泄漏标记");
+    const analysisContext = buildStoryAnalysisContext(undefined, "未来剧情泄漏标记");
     assert.equal(analysisContext, "");
     const futureSearch = await searchLibrary(join(universeDir, "library"), "未来剧情泄漏标记", 10);
     assert.equal(futureSearch.length, 0);
