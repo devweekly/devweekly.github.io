@@ -944,6 +944,7 @@ export async function importBoundedStoryAnalysisFromBatchCache(
   targetWorldId: string,
   targetWorldDir: string,
   entryChapterId: string,
+  entryChapter: string,
   options: Pick<StoryAnalysisOptions, "model" | "maxChars"> = {}
 ): Promise<boolean> {
   const sourceWorldDir = resolve("worlds", sourceWorldId);
@@ -968,7 +969,7 @@ export async function importBoundedStoryAnalysisFromBatchCache(
   const snapshot = mergeAndPersist(targetWorldId, targetWorldDir, boundedUnits, results, results.length);
   const boundedSnapshot = {
     ...snapshot,
-    asOfEntryChapter: entry.title,
+    asOfEntryChapter: entryChapter,
     asOfEntryChapterId: entry.chapterId,
     asOfEntryOrdinal: entry.ordinal,
     sourceWorldId
