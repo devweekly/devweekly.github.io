@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, readerExperiencePrompt, LIVING_VOICE_RULES } from "../src/literary-edit.js";
+import { antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, readerExperiencePrompt, LIVING_VOICE_RULES, postReviewLiteraryCheckPrompt, shouldRunAntiAiEdit } from "../src/literary-edit.js";
 import { STAGE_KEYS } from "../src/task-profiles.js";
 
 test("anti-ai diagnosis uses concrete reading evidence, not AI detection", () => {
@@ -65,4 +65,27 @@ test("reader experience is observational and cannot become a repair gate", () =>
 test("literary stages are part of the existing task profile registry", () => {
   assert.ok(STAGE_KEYS.includes("antiAi"));
   assert.ok(STAGE_KEYS.includes("reader"));
+});
+
+test("Anti-AI edit is skipped when diagnosis is absent or explicitly clean", () => {
+  assert.equal(shouldRunAntiAiEdit(""), false);
+  assert.equal(shouldRunAntiAiEdit("   "), false);
+  assert.equal(shouldRunAntiAiEdit("结论：未发现值得修改的地方。"), false);
+  assert.equal(shouldRunAntiAiEdit("没有明确需要修改的问题。"), false);
+});
+
+test("Anti-AI edit runs only when diagnosis contains actionable findings", () => {
+  assert.equal(shouldRunAntiAiEdit("发现两处解释过度，分别见第 3、8 段。"), true);
+  assert.equal(shouldRunAntiAiEdit("问题：人物动作重复，第二句没有新增信息。"), true);
+});
+
+test("post-review literary check is observational and cannot trigger rewriting", () => {
+  const prompt = postReviewLiteraryCheckPrompt({
+    beforeReview: "他走进屋里。",
+    finalChapter: "他走进屋里。门已经关了。",
+    reviewHistory: "修复时间线"
+  });
+  assert.match(prompt, /这是只读诊断/);
+  assert.match(prompt, /不得输出重写正文/);
+  assert.match(prompt, /不得改变章节通过状态/);
 });
