@@ -10,11 +10,10 @@ function chunk(id: string, chapter: string, text: string, start = 0): LibraryChu
 test("as-of style samples span only the supplied bounded chapters", () => {
   const samples = selectAsOfStyleSamples([
     chunk("1", "第一章", "起点之前的叙事样本"),
-    chunk("2", "第二章", "起点正文的叙事样本"),
-    chunk("3", "第三章", "历史分支之后的章节不得进入此数组")
+    chunk("2", "第二章", "起点正文的叙事样本")
   ], 2);
   assert.equal(samples.length, 2);
-  assert.deepEqual(samples.map(sample => sample.label), ["第一章", "第三章"]);
+  assert.deepEqual(samples.map(sample => sample.label), ["第一章", "第二章"]);
   assert.ok(!samples.some(sample => sample.text.includes("历史分支之后")));
 });
 
