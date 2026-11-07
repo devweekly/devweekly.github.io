@@ -30,21 +30,21 @@ async function embed(texts:string[]):Promise<number[][]|undefined> {
   if(!Array.isArray(payload.data)||payload.data.length!==texts.length||payload.data.some(x=>!Array.isArray(x.embedding)))throw new Error("Invalid embeddings response.");
   return payload.data.map(x=>x.embedding as number[]);
 }
-async function openVane(worldId:string):Promise<{db:VaneDb;col:VaneCollection}> {
+async function openVane(worldId:string,dim:number):Promise<{db:VaneDb;col:VaneCollection}> {
   let module:VaneModule;
   try { const packageName="@vane-rs/node"; const imported=await import(packageName) as {default?:unknown}; module=(imported.default??imported) as VaneModule; }
   catch { throw new Error("Vane 未安装。请在 tools/novel-generation 运行 npm install @vane-rs/node。"); }
   const dir=resolve("worlds",worldId,"vane-index");
   await mkdir(dir,{recursive:true});
   const db=await module.open(dir,{autoCommit:"off"});
-  const dim=Number(process.env.VANE_EMBEDDING_DIM??8);
-  const col=await db.collection("novel-corpus",{
+  const col=await db.collection("novel-corpus-"+dim,{
     fields:[{name:"body",type:"text"},{name:"vec",type:"vector",dim,metric:"cosine"},{name:"kind",type:"scalar",kind:"keyword"},{name:"chapter",type:"scalar",kind:"keyword"},{name:"source",type:"scalar",kind:"keyword"}]
   },{tokenizer:"jieba"});
   return {db,col};
 }
 export async function rebuildVaneIndex(worldId:string,worldDir=resolve("worlds",worldId)):Promise<{documents:number;vectorMode:boolean}> {
-  const {db,col}=await openVane(worldId);
+  const dim=Number(process.env.VANE_EMBEDDING_DIM??8);
+  const {db,col}=await openVane(worldId,dim);
   try {
     const indexDir=resolve(worldDir,"vane-index");
     try {
@@ -77,15 +77,20 @@ export async function rebuildVaneIndex(worldId:string,worldDir=resolve("worlds",
     for(let offset=0;offset<docs.length;offset+=128)await col.add(docs.slice(offset,offset+128));
     await col.flush();
     const {writeFile}=await import("node:fs/promises");
-    await writeFile(resolve(indexDir,"manifest.json"),JSON.stringify({worldId,updatedAt:new Date().toISOString(),ids:docs.map(doc=>doc.id),documents:docs.length,vectorMode:Boolean(vectors)},null,2)+"\\n","utf8");
+    await writeFile(resolve(indexDir,"manifest.json"),JSON.stringify({worldId,updatedAt:new Date().toISOString(),ids:docs.map(doc=>doc.id),documents:docs.length,vectorMode:Boolean(vectors),embeddingModel:vectors?process.env.VANE_EMBEDDING_MODEL:null,dim},null,2)+"\n","utf8");
     return {documents:docs.length,vectorMode:Boolean(vectors)};
   }finally{await db.close();}
 }
 export async function searchVane(worldId:string,query:string,limit=6):Promise<Array<{id:string;score:number;text:string}>> {
   try{
-    const {db,col}=await openVane(worldId);
+    const manifestPath=resolve("worlds",worldId,"vane-index","manifest.json");
+    let manifest:{dim?:number;vectorMode?:boolean;embeddingModel?:string|null}|undefined;
+    try{manifest=JSON.parse(await readFile(manifestPath,"utf8")) as {dim?:number;vectorMode?:boolean;embeddingModel?:string|null};}catch{/* index not built yet */}
+    const dim=manifest?.dim??Number(process.env.VANE_EMBEDDING_DIM??8);
+    const {db,col}=await openVane(worldId,dim);
     try{
-      const vectors=await embed([query]);
+      const canUseVectors=Boolean(manifest?.vectorMode && manifest.embeddingModel && manifest.embeddingModel===process.env.VANE_EMBEDDING_MODEL);
+      const vectors=canUseVectors?await embed([query]):undefined;
       const hits=await col.search({text:query,...(vectors?{vector:vectors[0]}:{}),topK:limit,mode:vectors?"hybrid":"text"});
       return hits.map(hit=>({id:hit.id,score:hit.score,text:String(hit.fields?.body??"")}));
     }finally{await db.close();}
