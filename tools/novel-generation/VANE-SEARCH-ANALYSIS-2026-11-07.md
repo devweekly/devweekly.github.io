@@ -2,8 +2,8 @@
 
 > 分析日期：2026-11-07  
 > 范围：tools/novel-generation 的原文检索、写作上下文召回与后续检索架构  
-> 决策状态：**Proposed**。建议先完成同语料 PoC，再决定是否将 Vane 作为生产检索后端。  
-> 本文是针对当前代码的工程选型报告，不代表已经批准或实施 Vane 集成。
+> 决策状态：**部分实现，尚未完成生产验收**。当前代码已有每宇宙独立 Vane 索引、可选 embedding、text/hybrid 查询和写作/长章节召回接入；仍需真实语料检索评测、索引异常恢复和 Node 原生包兼容性验收。  
+> 本文是针对当前代码的工程选型与验收报告。后续代码已实现第一版可选 Vane 路径，但不代表已通过生产检索质量验收。
 
 ## 结论
 
@@ -16,6 +16,19 @@ Vane 值得进入候选方案，但目前没有足够证据支持直接把它作
 3. **Vane hybrid 模式**：在同样的文本索引上增加 embedding 和向量召回，检验语义检索是否实际改善续写证据质量。
 
 当前建议是：**先建立检索评测集和适配层，再做 Vane PoC；不要同时在生产路径维护 FTS5 与 Vane 两套全文索引，也不要因为 Vane 支持向量就默认每个检索任务都走 hybrid。** 如果 Vane 的混合检索在真实样本上有稳定收益，并且 Node 过滤、持久化与重建验收通过，再采用 Vane。否则 SQLite FTS5 足以替代手写实现。
+
+## 当前代码状态补充（2026-11-07）
+
+此前本文记录的“尚未集成”已经部分过期：当前代码已通过每宇宙独立的 vane-index 目录构建索引，manifest 记录 worldId、embedding 模型、维度和文档 ID；普通 write 与 write-long 会在 BM25 / Story Analysis / Corpus Craft 上下文之外尝试召回 Vane 命中，失败时保留原有检索路径。Vane 的索引目录现改为 staging 构建、关闭数据库后切换发布，失败时恢复上一份索引；这避免在旧索引上先删除再重建造成的半成品状态。
+
+但以下原始 PoC 验收仍未完成：
+
+- 没有基于真实小说续写问题的 gold query / relevant chunk 评测集，也没有 BM25 与 Vane text/hybrid 的 Recall@k、MRR、nDCG 对照。
+- 还未在目标 MacBook / Node 运行时对 @vane-rs/node 原生依赖、重启恢复、索引重建和长期运行做完整验收。
+- 当前 embedding 缺配置时使用稳定占位向量满足 collection schema，但 manifest 的 vectorMode=false，查询只走 text 模式；占位向量绝不代表语义检索。
+- 当前 Vane 是附加召回，不替代 SQLite、原文片段和 Story State；所有命中仍须视为候选材料，不能升级为事实。
+
+因此当前状态应称为“可选的 Vane 第一版检索路径”，不能称为“已经证明优于 BM25 的生产检索后端”。
 
 ## 1. 当前项目的检索现状
 
