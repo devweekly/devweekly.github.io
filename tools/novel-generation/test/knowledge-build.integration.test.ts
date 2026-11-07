@@ -5,6 +5,7 @@ import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../src/server.js";
+import { saveRun } from "../src/workbench-store.js";
 
 test("knowledge build API reserves one task, persists status, and permits retry after failure", async () => {
   const root = await mkdtemp(join(tmpdir(), "novel-knowledge-build-"));
@@ -23,10 +24,20 @@ test("knowledge build API reserves one task, persists status, and permits retry 
     const address = server.address();
     assert.ok(address && typeof address === "object");
     const url = `http://127.0.0.1:${address.port}/api/worlds/${worldId}/knowledge-build`;
+    await saveRun({
+      id: "11111111-1111-4111-8111-111111111111", worldId, kind: "chapter",
+      status: "running", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
+    });
     const request = () => fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
       body: "{}"
+    });
+    const blocked = await request();
+    assert.equal(blocked.status, 409);
+    await saveRun({
+      id: "11111111-1111-4111-8111-111111111111", worldId, kind: "chapter",
+      status: "completed", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
     });
     const responses = await Promise.all([request(), request()]);
     assert.deepEqual(responses.map(response => response.status).sort(), [202, 409]);
