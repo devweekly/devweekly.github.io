@@ -3,10 +3,6 @@
 import { parseJsonObject } from "./model-json.js";
 
 /**
- * Shared literary editing prompts for both ordinary and long-chapter workflows.
- * These are editorial principles, not a detector or a checklist gate.
- */
-/**
  * Shared creative-freedom principles for planners and prose writers.
  * A novel is not a checklist of scene functions.
  */
