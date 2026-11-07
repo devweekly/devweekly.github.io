@@ -288,7 +288,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
         if (!relative.length || relative[0] === "") return true;
         const first = relative[0];
         if (!first) return true;
-        if (["story.db", "story-state.json", "story-arc.md", "story-plan.json", ".output", "universes"].includes(first)) return false;
+        if (["story.db", "story-state.json", "story-arc.md", "story-plan.json", ".output", "universes", "library"].includes(first)) return false;
         if (first === "universe.json") return false;
         return true;
       }
@@ -306,6 +306,8 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
       createdAt: new Date().toISOString()
     };
     await writeFile(path.join(targetDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
+    await writeFile(path.join(targetDir, "source-canon.json"), JSON.stringify({ sourceWorldId: parent.sourceWorldId, readOnly: true }, null, 2) + "\n", "utf8");
+    await writeFile(path.join(targetDir, "source-canon.json"), JSON.stringify({ sourceWorldId: rootSourceId, readOnly: true }, null, 2) + "\n", "utf8");
     await writeFile(path.join(targetDir, "universe-entry.md"), selectedChapter.text + "\n", "utf8");
     await writeFile(path.join(targetDir, "universe-origin-context.md"), originContext + "\n", "utf8");
     res.status(201).json({ universe });
@@ -375,7 +377,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
         if (!relative.length || relative[0] === "") return true;
         const first = relative[0];
         if (!first) return true;
-        return !["story.db", "story-state.json", "story-arc.md", "story-plan.json", ".output", "universes"].includes(first);
+        return !["story.db", "story-state.json", "story-arc.md", "story-plan.json", ".output", "universes", "library"].includes(first);
       }
     });
     const novelDbPath = path.join(targetDir, "novel.db");
@@ -625,7 +627,8 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
   try {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id); const dir = worldDir(id);
     try { await readFile(path.join(dir, "world-bible.md"), "utf8"); } catch { return void res.status(409).json({ error: "缺少 worlds/" + id + "/world-bible.md。请先建立世界设定；这是续写不可自动猜测的基础资料。" }); }
-    try { await readFile(path.join(dir, "library", "index.json"), "utf8"); } catch { return void res.status(409).json({ error: "原著资料库尚未建立。请先导入原著并执行 ingest；其余分析资料可以在续写时按需补齐。" }); }
+    const canonWorldId = (await readUniverse(id))?.sourceWorldId ?? id;
+    try { await readFile(path.join(worldDir(canonWorldId), "library", "index.json"), "utf8"); } catch { return void res.status(409).json({ error: "原著资料库尚未建立。请先导入原著并执行 ingest；其余分析资料可以在续写时按需补齐。" }); }
     const runs = await listRuns(id);
     const active = runs.find(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"));
     if (active) return void res.status(409).json({ error: "已有章节正在生成。", run: active });
