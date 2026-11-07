@@ -361,7 +361,7 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
       chapters?: Array<Record<string, unknown>>;
     };
     const library = JSON.parse(await readFile(path.join(targetDir, "library", "index.json"), "utf8")) as { chunks?: Array<{ chapter: string }> };
-    const boundedChapterCount = [...new Set((library.chunks ?? []).map(chunk => chunk.chapter))].length;
+    const boundedChapterCount = (library.chunks ?? []).reduce((count, chunk, index, rows) => count + (index === 0 || rows[index - 1]?.chapter !== chunk.chapter ? 1 : 0), 0);
     const safeChapter = (chapter: Record<string, unknown>) => ({
       ...(typeof chapter.sequenceInVolume === "number" ? { sequenceInVolume: chapter.sequenceInVolume } : {}),
       ...(typeof chapter.printedNumber === "number" || chapter.printedNumber === null ? { printedNumber: chapter.printedNumber } : {}),
