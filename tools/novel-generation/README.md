@@ -679,7 +679,7 @@ npm run benchmark-local-models
 
 同样重要的是，历史分支不会复制可能包含全书未来剧情的根级汇总文件（包括 world-bible、人物、时间线、世界设定汇总和 style profile），也不会复制 analysis、Corpus Craft、Vane 与 Style Reference 派生目录。这是保守隔离策略：在按起点重建这些资料之前，部分背景资料可能暂时不可用，但不会为了资料完整而把后续剧情泄漏进历史宇宙。原文章节正文仍通过 bounded library 和起点前情上下文提供。
 
-当前已增加真实 SQLite 快照测试、Create/Fork API + 文件系统集成测试、连续分叉回归，以及按起点过滤的 universe-local chapter catalog。Workbench 已提供后台知识重建入口和逐步骤状态。仍需写作上下文级未来剧情泄漏 E2E、并发/失败回滚压力测试和真实原著语料上的分析质量验收。不要把“代码已过滤”误认为“隔离已通过完整端到端验收”。
+当前已增加真实 SQLite 快照测试、Create/Fork API + 文件系统集成测试、连续分叉回归，以及按起点过滤的 universe-local chapter catalog。Workbench 已提供后台知识重建入口和逐步骤状态；Create/Fork 默认异步启动七步时点知识重建。写作检索路径统一使用 fail-closed 的 universe-local bounded index，Vane manifest 也必须与当前 worldId 匹配；集成测试实际执行章节单元构建、SQLite 分析上下文、Corpus Craft 与 Writing Brief 的历史 marker 泄漏检查。仍需在具体原著语料上做 LLM 生成结果抽样与并发故障注入压力验收。
 
 
 ### 故事宇宙的后台知识重建
