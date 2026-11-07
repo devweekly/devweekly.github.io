@@ -6,6 +6,7 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rename, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { loadLibraryChunks } from "./library.js";
+import { buildAnalysisUnits } from "./novel-kb.js";
 import type { CorpusCraftChapter } from "./corpus-craft.js";
 
 type VaneCollection = {
@@ -107,11 +108,16 @@ export async function rebuildVaneIndex(worldId:string,worldDir=resolve("worlds",
       meta:{kind:"original",chapter:chunk.chapter,source:chunk.source}
     });
     const analysisDir=resolve(worldDir,"..","..","analysis",worldId,"corpus-craft","chapters");
+    let sourceHashes = new Map<string,string>();
+    try {
+      const {units}=await buildAnalysisUnits(worldId,{worldDir});
+      sourceHashes=new Map(units.map(unit=>[unit.chapterId,createHash("sha256").update(unit.text).digest("hex")]));
+    } catch { /* if the bounded chapter catalog is unavailable, index original chunks only */ }
     try {
       const {readdir}=await import("node:fs/promises");
       for(const file of (await readdir(analysisDir)).filter(x=>x.endsWith(".json"))){
         const item=JSON.parse(await readFile(resolve(analysisDir,file),"utf8")) as CorpusCraftChapter;
-        if(item.worldId!==worldId)continue;
+        if(item.worldId!==worldId||sourceHashes.get(item.chapterId)!==item.sourceHash)continue;
         const text=JSON.stringify(item);
         docs.push({id:"craft:"+item.chapterId,text,vector:stableVector(text,dim),meta:{kind:"corpus-craft",chapter:item.chapterId}});
       }
