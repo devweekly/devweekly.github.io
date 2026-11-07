@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import test from "node:test";
 import { exportAsOfDossier, renderAsOfDossier } from "../src/asof-dossier.js";
 import { saveStoryAnalysis } from "../src/database.js";
+import { buildAnalysisUnits } from "../src/novel-kb.js";
 import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -85,11 +86,14 @@ test("as-of dossier publishes a complete directory and removes stale generated f
         { sequenceInVolume: 2, printedNumber: 2, title: "第二章", label: "第二章", line: 100 }
       ] }]
     }));
+    const { units } = await buildAnalysisUnits("u-child", { worldDir });
+    const firstChapter = units.find(unit => unit.title === "第一章");
+    assert.ok(firstChapter, "bounded chapter catalog must produce the first chapter unit");
     const craftDir = join(root, "analysis", "u-child", "corpus-craft", "chapters");
     await mkdir(craftDir, { recursive: true });
-    await writeFile(join(craftDir, "V01-C001.json"), JSON.stringify({
-      worldId: "u-child", chapterId: "V01-C001", title: "第一章", ordinal: 1,
-      sourceHash: createHash("sha256").update(chapterText).digest("hex"),
+    await writeFile(join(craftDir, firstChapter.chapterId + ".json"), JSON.stringify({
+      worldId: "u-child", chapterId: firstChapter.chapterId, title: firstChapter.title, ordinal: firstChapter.ordinal,
+      sourceHash: createHash("sha256").update(firstChapter.text).digest("hex"),
       worldDetails: [{ category: "礼俗", detail: "城门关亭查验货籍", context: "商队入城", evidence: "先验货籍，再放车马入城。" }]
     }));
     await writeFile(join(root, "analysis", "u-child", "corpus-craft", "manifest.json"), JSON.stringify({
