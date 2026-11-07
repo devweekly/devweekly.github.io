@@ -12,7 +12,7 @@ function removeUnsafeDatabase(filePath: string): void {
  * encode events that occur after the selected chapter even when their row has
  * an early first_chapter value.
  */
-function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: string, entryChapter: string): number {
+export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: string, entryChapter: string): number {
   if (!existsSync(databasePath)) return 0;
   const db = new DatabaseSync(databasePath);
   try {
