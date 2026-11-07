@@ -246,10 +246,8 @@ function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: string,
       if (has("novel_beats")) db.prepare("DELETE FROM novel_beats WHERE chapter_ordinal IS NULL OR chapter_ordinal>?").run(cutoff);
       if (has("novel_relations")) db.prepare("DELETE FROM novel_relations WHERE chapter_ordinal IS NULL OR chapter_ordinal>?").run(cutoff);
       if (has("novel_character_chapter_states")) db.prepare("DELETE FROM novel_character_chapter_states WHERE chapter_ordinal>?").run(cutoff);
+      if (has("novel_mentions")) db.prepare("DELETE FROM novel_mentions WHERE chapter_id NOT IN (SELECT chapter_id FROM novel_chapters WHERE ordinal<=?)").run(cutoff);
       if (has("novel_chapters")) db.prepare("DELETE FROM novel_chapters WHERE ordinal>?").run(cutoff);
-      if (has("novel_mentions")) {
-        db.prepare("DELETE FROM novel_mentions WHERE chapter_id NOT IN (SELECT chapter_id FROM novel_chapters)").run();
-      }
       const meta = has("world_meta");
       if (meta) db.prepare("UPDATE world_meta SET value=? WHERE key='world_id'").run(worldId);
       db.exec("COMMIT");
