@@ -58,6 +58,7 @@ import { loadChapters, runRegression } from "./regression.js";
 import { formatStoryPlan, generateStoryPlan, loadStoryPlan, saveStoryPlan } from "./story-plan.js";
 import { buildStyleDistillationPrompt } from "./style-distillation.js";
 import { buildStyleRegressionPrompt } from "./style-regression.js";
+import { buildStyleTrendPrompt, collectStyleRegressionReports } from "./style-trend.js";
 import { runRoleplaySandbox } from "./roleplay-sandbox.js";
 
 /** `--model --evidence-review` 这种漏值不该把下一个开关当成取值。 */
@@ -94,7 +95,7 @@ function usage(): never {
     "  npm run dev -- search --world conghuoniao --query \"人物或事件关键词\" [--limit 8]",
     "  npm run dev -- analyze --world conghuoniao [--limit 20] [--model model]",
     "  npm run dev -- distill-style --world conghuoniao --input ./private/style-sample-1.txt ./private/style-sample-2.md [--out .output/<world>/style-profile-candidate.md] [--activate] [--model model]",
-    "  npm run dev -- style-regress --world conghuoniao --reference ./benchmarks/ref-1.md [more files] --candidate .output/chapter.md [more files] [--scene-type dialogue] [--out .output/<world>/style-regression/report.md]",
+    "  npm run dev -- style-regress --world conghuoniao --reference ./benchmarks/ref-1.md [more files] --candidate .output/chapter.md [more files] [--scene-type dialogue] [--out .output/<world>/style-regression/report.md]",\n    "  npm run dev -- style-trend --world conghuoniao [--limit 30] [--model model] [--out .output/<world>/style-regression-trend/report.md]",
     "  npm run dev -- roleplay-sandbox --world conghuoniao --brief \"场景设定\" --characters 人物甲,人物乙 [--model model] [--out file]",
     "  npm run dev -- analyze-story --world conghuoniao [--model model] [--timeout-ms 180000] [--max-chars 14000] [--shard 0/4] [--merge-only] [--delta]",
     "  npm run dev -- plan-story --world conghuoniao [--model model] [--draft] [--activate-candidate <file>]  # 默认生成后自动激活；--draft 仅保存实验草稿",
@@ -465,6 +466,28 @@ async function main(): Promise<void> {
     }
     console.log("评审报告：" + result.reviewPath);
     console.log("归档：" + result.archiveDir);
+    return;
+  }
+
+  if (command === "style-trend") {
+    const styleProfile = await readOptional(resolve("worlds", worldId, "style-profile.md"));
+    if (!styleProfile?.trim()) throw new Error("No active worlds/" + worldId + "/style-profile.md; distill and activate a style profile first.");
+    const limit = Number(arg("--limit") ?? 30);
+    const reports = await collectStyleRegressionReports(resolve(".output", worldId), limit);
+    if (reports.length < 2) throw new Error("At least two completed style regression reports are required; found " + reports.length + ".");
+    const report = await runAgentText(
+      buildStyleTrendPrompt({ styleProfile, reports }),
+      arg("--model"),
+      undefined,
+      readTaskProfiles().styleDistill
+    );
+    if (!report.trim()) throw new Error("Style trend analysis returned an empty report.");
+    const runId = new Date().toISOString().replace(/[:.]/g, "-");
+    const out = resolveWorldOutputPath(arg("--out"), worldId,
+      join(".output", worldId, "style-regression-trend", runId + ".md"));
+    await mkdir(dirname(out), { recursive: true });
+    await writeFile(out, report.trim() + "\\n", "utf8");
+    console.log(JSON.stringify({ out, reports: reports.length, gate: false }, null, 2));
     return;
   }
 
