@@ -23,7 +23,7 @@ Vane 值得进入候选方案，但目前没有足够证据支持直接把它作
 
 但以下原始 PoC 验收仍未完成：
 
-- 没有基于真实小说续写问题的 gold query / relevant chunk 评测集，也没有 BM25 与 Vane text/hybrid 的 Recall@k、MRR、nDCG 对照。
+- 已新增 evaluate-retrieval runner、Recall@5/MRR@10/nDCG@10 指标和数据集模板；但尚无基于真实小说续写问题人工标注的 gold query / relevant chunk 数据集，因此仍没有 BM25 与 Vane text/hybrid 的真实对照结论。
 - 还未在目标 MacBook / Node 运行时对 @vane-rs/node 原生依赖、重启恢复、索引重建和长期运行做完整验收。
 - 当前 embedding 缺配置时使用稳定占位向量满足 collection schema，但 manifest 的 vectorMode=false，查询只走 text 模式；占位向量绝不代表语义检索。
 - 当前 Vane 是附加召回，不替代 SQLite、原文片段和 Story State；所有命中仍须视为候选材料，不能升级为事实。
