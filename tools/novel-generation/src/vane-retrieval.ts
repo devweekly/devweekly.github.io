@@ -28,9 +28,11 @@ async function embed(texts:string[]):Promise<number[][]|undefined> {
   const results:number[][]=[];
   for(let offset=0;offset<texts.length;offset+=32){
     const batch=texts.slice(offset,offset+32);
+    const timeoutMs=Number(process.env.VANE_EMBEDDING_TIMEOUT_MS??30000);
+    if(!Number.isInteger(timeoutMs)||timeoutMs<1000||timeoutMs>300000)throw new Error("VANE_EMBEDDING_TIMEOUT_MS must be between 1000 and 300000.");
     const response=await fetch(base.replace(/\/$/,"")+"/embeddings",{
       method:"POST",headers:{"content-type":"application/json",...(process.env.VANE_EMBEDDING_API_KEY?{authorization:"Bearer "+process.env.VANE_EMBEDDING_API_KEY}:{})},
-      body:JSON.stringify({model,input:batch})
+      body:JSON.stringify({model,input:batch}),signal:AbortSignal.timeout(timeoutMs)
     });
     if(!response.ok)throw new Error("Embedding endpoint returned "+response.status);
     const payload=await response.json() as {data?:Array<{embedding?:number[];index?:number}>};
@@ -46,10 +48,15 @@ async function openVane(worldId:string,dim:number,indexDir=resolve("worlds",worl
   catch { throw new Error("Vane 未安装。请在 tools/novel-generation 运行 npm install @vane-rs/node。"); }
   await mkdir(indexDir,{recursive:true});
   const db=await module.open(indexDir,{autoCommit:"off"});
-  const col=await db.collection("novel-corpus-"+dim,{
-    fields:[{name:"body",type:"text"},{name:"vec",type:"vector",dim,metric:"cosine"},{name:"kind",type:"scalar",kind:"keyword"},{name:"chapter",type:"scalar",kind:"keyword"},{name:"source",type:"scalar",kind:"keyword"}]
-  },{tokenizer:"jieba"});
-  return {db,col};
+  try {
+    const col=await db.collection("novel-corpus-"+dim,{
+      fields:[{name:"body",type:"text"},{name:"vec",type:"vector",dim,metric:"cosine"},{name:"kind",type:"scalar",kind:"keyword"},{name:"chapter",type:"scalar",kind:"keyword"},{name:"source",type:"scalar",kind:"keyword"}]
+    },{tokenizer:"jieba"});
+    return {db,col};
+  } catch (error) {
+    await db.close().catch(()=>undefined);
+    throw error;
+  }
 }
 /** Publish a fully built Vane index directory; preserve the previous index if the switch fails. */
 export async function publishVaneIndexDirectory(staging: string, indexDir: string): Promise<void> {
