@@ -102,19 +102,32 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
         if (row) {
           try {
             const source = JSON.parse(row.payload_json) as Record<string, unknown>;
+            // A mixed-provenance aggregate cannot be safely sliced at the cutoff.
+            // Drop it, but mark the snapshot incomplete so knowledge build re-analyzes
+            // the already-bounded corpus instead of mistaking a partial snapshot for full coverage.
+            let requiresReanalysis = false;
             const boundedItems = (value: unknown): Array<Record<string, unknown>> => Array.isArray(value)
               ? value.filter((item): item is Record<string, unknown> => {
                   if (!item || typeof item !== "object" || Array.isArray(item)) return false;
                   const keys = Array.isArray(item.chapterKeys) ? item.chapterKeys.filter((key): key is string => typeof key === "string") : [];
-                  return keys.length > 0 && keys.every(key => allowedKeys.has(key));
+                  if (!keys.length) { requiresReanalysis = true; return false; }
+                  const safe = keys.filter(key => allowedKeys.has(key)).length;
+                  if (safe > 0 && safe < keys.length) requiresReanalysis = true;
+                  return safe === keys.length;
                 })
               : [];
-            const boundedRefs = (value: unknown): boolean => Array.isArray(value) && value.length > 0 && value.every(ref => {
-              if (!ref || typeof ref !== "object" || Array.isArray(ref)) return false;
-              const item = ref as Record<string, unknown>;
-              const key = String(item.chapterId ?? item.chunkId ?? "");
-              return Boolean(key && allowedKeys.has(key));
-            });
+            const boundedRefs = (value: unknown): boolean => {
+              if (!Array.isArray(value) || value.length === 0) { requiresReanalysis = true; return false; }
+              const keys = value.map(ref => {
+                if (!ref || typeof ref !== "object" || Array.isArray(ref)) return "";
+                const item = ref as Record<string, unknown>;
+                return String(item.chapterId ?? item.chunkId ?? "");
+              });
+              if (keys.some(key => !key)) { requiresReanalysis = true; return false; }
+              const safe = keys.filter(key => allowedKeys.has(key)).length;
+              if (safe > 0 && safe < keys.length) requiresReanalysis = true;
+              return safe === keys.length;
+            };
             const safeCoreObservations = boundedItems(source.storyCoreObservations);
             const graph = source.storyGraph && typeof source.storyGraph === "object"
               ? source.storyGraph as {nodes?:unknown;edges?:unknown}
@@ -122,6 +135,7 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
             const bounded: Record<string, unknown> = {
               ...source,
               worldId,
+              complete: source.complete === true && !requiresReanalysis,
               sourceHash: createHash("sha256").update(JSON.stringify({ sourceHash: source.sourceHash, entryChapter, entryChapterId: chapter.chapter_id, cutoff })).digest("hex"),
               asOfEntryChapter: entryChapter,
               asOfEntryChapterId: chapter.chapter_id,
@@ -138,7 +152,8 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
               beats: Array.isArray(source.beats) ? source.beats.filter(item => {
                 if (!item || typeof item !== "object" || Array.isArray(item)) return false;
                 const key = String((item as Record<string, unknown>).chapterKey ?? "");
-                return Boolean(key && allowedKeys.has(key));
+                if (!key) { requiresReanalysis = true; return false; }
+                return allowedKeys.has(key);
               }) : [],
               storyGraph: graph ? {
                 nodes: Array.isArray(graph.nodes) ? graph.nodes.filter(node =>
