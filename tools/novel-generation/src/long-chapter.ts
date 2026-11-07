@@ -274,7 +274,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   for (let index = 0; index < sceneTexts.length; index++) {
     const text = await cachedCall("polish-" + (index + 1), "05-polish-" + String(index + 1).padStart(2, "0") + ".md", "voice", [
       "角色：人物对话编辑兼叙事声音编辑。以原稿为基础做精修，不重新创作场景。只修订确有问题的对白与叙述表达，不改剧情事实、场景顺序、人物决定和信息揭示。",
-      LIVING_VOICE_RULES,
+      CREATIVE_FREEDOM_RULES, LIVING_VOICE_RULES,
       writingContext, "全章蓝图：", blueprint,
       `第 ${index + 1} 场当前正文：`, sceneTexts[index]!,
       "校准人物语气与知识边界，删解释性过强、所有人同一腔调的对白；统一视角与叙述距离。检查全章是否反复使用同一种停顿、否定式收束、动作切片或静物结尾；删并不增加信息/压力/判断的重复动作与解释。不要把“短、冷、克制”当作目标，允许准确的长句、直接判断和粗粝表达。",
