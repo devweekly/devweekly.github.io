@@ -79,3 +79,17 @@
 ## 明确不做
 
 不把章节转成任务、遭遇或回合；不以游戏数值决定人物能力和胜负；不模拟所有人物日常；不要求每个人物都有冲突或成长节点；不让伏笔、人物弧光或 Story Plan 成为正文必须兑现的清单；不增加专职 Agent 或复杂基础设施，除非后续证据证明现有模块无法满足续写质量要求。
+
+## Phase 6 — 原文创作素材与可选混合检索（已接入代码，待本机执行验收）
+
+- [x] 新增按章节增量运行的 analyze-corpus-craft：场景/节拍、人物对白范例与声音观察、事件因果、人物知识来源、世界日常细节、叙事手法。
+- [x] 每条素材保留原文逐字 evidence；证据不匹配的条目不落库；正文哈希与 prompt 版本用于缓存失效判断；支持 limit/shard/force。
+- [x] 普通 write 与 write-long 自动检索相关离线素材，并将其追加到现有 storyAnalysisContext；不增加 Agent 或每章额外模型调用。
+- [x] 新增可选 Vane Node adapter 和 vane-index 命令；Vane 索引只作为第二检索层，SQLite 与现有 BM25 保持可用。
+- [x] Vane 无安装/索引失败时回退，不阻断续写；支持文本 BM25，配置 embeddings endpoint 后使用 hybrid。
+- [x] 新增 ADR-0004，并同步 ARCHITECTURE.md、README.md。
+- [ ] 在本机语料执行 analyze-corpus-craft 全量分析，抽样复核场景边界、对白说话人、因果和知识状态。
+- [ ] 安装 Vane Node binding，在本机构建索引并对比 BM25 与 hybrid 的 top-k 召回；检查索引重建和重导入后的 stale entries。
+- [ ] 运行 typecheck、test、build，并用真实续写任务做启用/停用对照；确认新增素材提升了正文，而非增加上下文噪声。
+
+Phase 6 的数据处理与检索都服务小说续写。离线分析不构成创作清单；Vane 不是运行必需项；任何检索或分析失败都不得降低现有续写路径的可用性。
