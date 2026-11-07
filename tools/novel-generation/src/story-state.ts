@@ -9,6 +9,11 @@ const ForeshadowingUpdateSchema = z.object({
   chapter: z.string().min(1), change: z.string().min(1),
   relatedThreadIds: z.array(z.string()).default([]), evidence: z.string().min(4)
 });
+const RelationshipUpdateSchema = z.object({
+  id: z.string().min(1), relationId: z.string().min(1),
+  from: z.string().min(1), to: z.string().min(1), label: z.string().min(1),
+  chapter: z.string().min(1), change: z.string().min(1), evidence: z.string().min(4)
+});
 const MacGuffinUpdateSchema = z.object({
   id: z.string().min(1), macguffinId: z.string().min(1), name: z.string().min(1),
   status: z.enum(["introduced", "sought", "located", "held", "transferred", "lost", "destroyed", "secured", "irrelevant", "uncertain"]),
@@ -52,7 +57,8 @@ const StoryStateSchema = z.object({
   })),
   continuityNotes: z.array(z.string()),
   foreshadowingUpdates: z.array(ForeshadowingUpdateSchema).optional(),
-  macguffinUpdates: z.array(MacGuffinUpdateSchema).optional()
+  macguffinUpdates: z.array(MacGuffinUpdateSchema).optional(),
+  relationshipUpdates: z.array(RelationshipUpdateSchema).optional()
 }).passthrough();
 
 const StoryStateUpdateSchema = z.object({
@@ -87,13 +93,14 @@ const StoryStateUpdateSchema = z.object({
   })).optional(),
   continuityNotes: z.array(z.string()),
   foreshadowingUpdates: z.array(ForeshadowingUpdateSchema).optional(),
-  macguffinUpdates: z.array(MacGuffinUpdateSchema).optional()
+  macguffinUpdates: z.array(MacGuffinUpdateSchema).optional(),
+  relationshipUpdates: z.array(RelationshipUpdateSchema).optional()
 }).strict();
 
 export function parseStoryStateUpdate(value: unknown, chapter?: string): Partial<StoryState> {
   const update = StoryStateUpdateSchema.parse(value) as Partial<StoryState>;
   if (chapter !== undefined) {
-    for (const item of [...(update.foreshadowingUpdates ?? []), ...(update.macguffinUpdates ?? [])]) {
+    for (const item of [...(update.foreshadowingUpdates ?? []), ...(update.macguffinUpdates ?? []), ...(update.relationshipUpdates ?? [])]) {
       if (!chapter.includes(item.evidence)) {
         throw new Error("Story graph update evidence is not present in the final chapter: " + item.id);
       }
