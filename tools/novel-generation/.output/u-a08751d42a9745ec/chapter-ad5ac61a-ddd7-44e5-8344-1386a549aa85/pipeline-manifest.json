@@ -18,6 +18,36 @@
       "outputFile": "01-main-plot.md",
       "outputHash": "e68b7f4f8ae02ad9306c0e7aefbc2d78aff2f2c5d13c3f771afab0a80461b11c",
       "completedAt": "2026-11-07T14:19:37.245Z"
+    },
+    "plan": {
+      "inputHash": "f163fd089f84f1d0b2558e54958dbd12e2bc6fb30fa21dc0cee29869154176b2",
+      "outputFile": "03-chapter-plan.md",
+      "outputHash": "3c1985ac7e8f4613601fab98acc2fc1c4d519a7eb88a2f1465ee36d0df5fb5ea",
+      "completedAt": "2026-11-07T14:20:54.075Z"
+    },
+    "scene": {
+      "inputHash": "e99f6c7abd3e95cdb17c382553912f87e2dd7bee7f129d27310b2c9a7442b159",
+      "outputFile": "04-scene-draft.md",
+      "outputHash": "d34a4d59ade4adac5b8d39ea8a44cb7b34773360a5fcb1dd46563a730ee45f2a",
+      "completedAt": "2026-11-07T14:21:35.477Z"
+    },
+    "literary-edit": {
+      "inputHash": "f0266909a6a74e4560069cef749c5168faf1cd041c817945d897c744ae8e6a86",
+      "outputFile": "05-literary-edited.md",
+      "outputHash": "a86b9f81331077ec2ac363cd29321af2b08632231bd51f90331756b7deeb8895",
+      "completedAt": "2026-11-07T14:22:45.226Z"
+    },
+    "anti-ai-diagnosis": {
+      "inputHash": "f36cfc391a0927b19af21955b8e3a80ab9eb68c3c76b676c3de33d664ce5105b",
+      "outputFile": "06a-anti-ai-diagnosis.md",
+      "outputHash": "b46db290a4c08c5986fe1e128982a60d23b0c601d1ce5612dab3fcbbce63d0df",
+      "completedAt": "2026-11-07T14:24:20.370Z"
+    },
+    "anti-ai-edit": {
+      "inputHash": "0f0cdfcf9de9f58ff10e2468d988d98ea936964d7d2d18b8e7de7f5888c61006",
+      "outputFile": "06b-anti-ai-edited.md",
+      "outputHash": "cdae0917862bfb71d6c0f1ff90530de25b746524e83349631fc88175d8d6639c",
+      "completedAt": "2026-11-07T14:25:03.124Z"
     }
   }
 }
