@@ -41,7 +41,8 @@ export function retrievalMetrics(rankedIds: string[], relevantIds: string[]): Me
 
 function arg(name: string): string | undefined {
   const index = process.argv.indexOf(name);
-  return index >= 0 ? process.argv[index + 1] : undefined;
+  const value = index >= 0 ? process.argv[index + 1] : undefined;
+  return value && !value.startsWith("--") ? value : undefined;
 }
 
 async function main(): Promise<void> {
