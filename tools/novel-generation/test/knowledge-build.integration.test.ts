@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { createApp } from "../src/server.js";
 import { saveRun } from "../src/workbench-store.js";
 
-test("knowledge build API reserves one task, persists status, and permits retry after failure", async () => {
+test("knowledge build API reserves one task, persists status, and rejects conflicting operations", async () => {
   const root = await mkdtemp(join(tmpdir(), "novel-knowledge-build-"));
   const previousCwd = process.cwd();
   const worldId = "test-universe";
