@@ -21,7 +21,7 @@ import { buildStoryStateGraph, filterGraph } from "./story-state-graph.js";
 import { archiveStyleReference, listStyleReferenceHistory, listStyleReferences, putStyleReference, readActiveStyleReference, readStyleReferenceVersion } from "./style-references.js";
 import { getCandidate, getRun, listCandidates, listRuns, recoverInterruptedRuns, saveCandidate, saveRun, type StoryPlanCandidate, type WorkbenchRun } from "./workbench-store.js";
 import type { StoryState } from "./story-state.js";
-import { rebaseStoryState, remapForkedRun } from "./universe-branch.js";
+import { buildUniverseOriginContext, rebaseStoryState, remapForkedRun } from "./universe-branch.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
 // noUncheckedIndexedAccess 放宽成 string | undefined。
@@ -290,16 +290,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     const selectedChapter = canonChapters[selectedIndex];
     if (!selectedChapter?.text.trim()) return void res.status(400).json({ error: "所选章节不在原文目录中，或章节正文为空。请从原文目录选择一个章节。" });
     // 起点前情属于原著只读背景，不是新宇宙已发生的续写事实。
-    const preceding = canonChapters.slice(Math.max(0, selectedIndex - 3), selectedIndex);
-    const contextParts = ["# 原著起点前情（只读背景）", "", "以下章节发生在本宇宙起点之前，只用于理解人物处境、关系和已发生事件。不得把原著起点之后的剧情当成本宇宙事实。", ""];
-    let contextBudget = 18000;
-    for (const chapter of preceding) {
-      if (contextBudget <= 0) break;
-      const body = chapter.text.slice(-contextBudget);
-      contextParts.push("## " + chapter.title, "", body, "");
-      contextBudget -= body.length;
-    }
-    const originContext = contextParts.join("\n");
+    const originContext = buildUniverseOriginContext(canonChapters, selectedIndex);
     const id = "u-" + randomUUID().replace(/-/g, "").slice(0, 16);
     const targetDir = worldDir(id);
     await mkdir(targetDir, { recursive: true });
