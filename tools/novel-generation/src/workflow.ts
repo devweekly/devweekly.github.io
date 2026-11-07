@@ -37,6 +37,8 @@ export interface WriteWorkflowInput {
   outputDir: string;
   statePath: string;
   applyState: boolean;
+  /** Optional blind-reader feedback; disabled in normal one-click chapter generation. */
+  readerExperience?: boolean;
 }
 
 function extractJson(text: string): unknown {
@@ -379,8 +381,8 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     }
   }
 
-  // Reader experience is observational only: it never blocks state persistence.
-  try {
+  // Blind-reader feedback is useful for deliberate evaluation, but is not required for every chapter.
+  if (input.readerExperience) try {
     const readerReport = await cachedCall("reader-experience", "10-reader-experience.md", "reader", [
       readerExperiencePrompt({ brief: input.brief, chapter })
     ], output => { if (!output.trim()) throw new Error("Reader returned an empty report."); });
