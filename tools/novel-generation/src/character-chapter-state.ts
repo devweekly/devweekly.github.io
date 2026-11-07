@@ -78,9 +78,13 @@ export async function analyzeCharacterChapterStates(
   const allCharacters = listNovelCharacters(worldDir, worldId, { limit: 100000 });
   const wanted = options.names?.length ? new Set(options.names) : undefined;
   const characters = allCharacters.filter(character => !wanted || wanted.has(character.name));
-  const existing = options.force ? new Map<string, string>() : listNovelCharacterChapterStateHashes(worldDir, worldId);\n  const priorStates = listNovelCharacterChapterStates(worldDir, worldId, { limit: 1000000 });\n  const statesByCharacter = new Map<string, NovelCharacterChapterStateRow[]>();\n  for (const state of priorStates) { const list = statesByCharacter.get(state.characterId) ?? []; list.push(state); statesByCharacter.set(state.characterId, list); }\n  for (const list of statesByCharacter.values()) list.sort((a, b) => a.chapterOrdinal - b.chapterOrdinal);
+  const existing = options.force ? new Map<string, string>() : listNovelCharacterChapterStateHashes(worldDir, worldId);
+  const priorStates = listNovelCharacterChapterStates(worldDir, worldId, { limit: 1000000 });
+  const statesByCharacter = new Map<string, NovelCharacterChapterStateRow[]>();
+  for (const state of priorStates) { const list = statesByCharacter.get(state.characterId) ?? []; list.push(state); statesByCharacter.set(state.characterId, list); }
+  for (const list of statesByCharacter.values()) list.sort((a, b) => a.chapterOrdinal - b.chapterOrdinal);
   const eligibleUnits = units.map(chapter => ({
-    chapter, characters: characters.filter(character => matchesCharacter(chapter.text, character))
+    chapter, characters: matchChapterCharacters(chapter.text, characters)
   })).filter(item => item.characters.length > 0);
   const shard = options.shard;
   if (shard && (!Number.isInteger(shard.count) || shard.count < 1 || shard.count > 32 ||
