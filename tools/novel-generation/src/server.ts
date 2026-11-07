@@ -382,18 +382,26 @@ function hasBoundedStoryAnalysis(
 }
 
 /** Existing universes created before bounded snapshot reuse can recover their source project's offline analysis. */
+const universeAnalysisBackfills = new Map<string, Promise<void>>();
 async function ensureUniverseStoryAnalysis(worldId: string, universe: StoryUniverse): Promise<void> {
-  const current = readStoryAnalysis(worldDir(worldId), worldId) as (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined;
-  if (hasBoundedStoryAnalysis(current, universe.entryChapter)) return;
-  if (!existsSync(path.join(worldDir(universe.sourceWorldId), "novel.db"))) return;
-  const source = readStoryAnalysis(worldDir(universe.sourceWorldId), universe.sourceWorldId);
-  if (!source || source.analysisVersion !== 6 || source.complete !== true) return;
-  importBoundedStoryAnalysisSnapshot(
-    path.join(worldDir(worldId), "novel.db"),
-    worldId,
-    universe.entryChapter,
-    source as unknown as Record<string, unknown>
-  );
+  const active = universeAnalysisBackfills.get(worldId);
+  if (active) return active;
+  const task = (async () => {
+    const current = readStoryAnalysis(worldDir(worldId), worldId) as (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined;
+    if (hasBoundedStoryAnalysis(current, universe.entryChapter)) return;
+    if (!existsSync(path.join(worldDir(universe.sourceWorldId), "novel.db"))) return;
+    const source = readStoryAnalysis(worldDir(universe.sourceWorldId), universe.sourceWorldId);
+    if (!source || source.analysisVersion !== 6 || source.complete !== true) return;
+    importBoundedStoryAnalysisSnapshot(
+      path.join(worldDir(worldId), "novel.db"),
+      worldId,
+      universe.entryChapter,
+      source as unknown as Record<string, unknown>
+    );
+  })();
+  universeAnalysisBackfills.set(worldId, task);
+  try { await task; }
+  finally { if (universeAnalysisBackfills.get(worldId) === task) universeAnalysisBackfills.delete(worldId); }
 }
 
 /**
