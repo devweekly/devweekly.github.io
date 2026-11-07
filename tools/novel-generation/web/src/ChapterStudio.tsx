@@ -17,6 +17,11 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [universeBrief,setUniverseBrief]=useState("");
  const [universeType,setUniverseType]=useState("free");
  const [creatingUniverse,setCreatingUniverse]=useState(false);
+ const [forkOpen,setForkOpen]=useState(false);
+ const [forkName,setForkName]=useState("");
+ const [forkRunId,setForkRunId]=useState<string>();
+ const [forkableRuns,setForkableRuns]=useState<Run[]>([]);
+ const [forking,setForking]=useState(false);
  const [run,setRun]=useState<Run|null>(null);
  const [starting,setStarting]=useState(false);
  const [loading,setLoading]=useState(false);
@@ -66,6 +71,23 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
   finally{setCreatingUniverse(false);}
  };
+ const openFork=async()=>{
+  try{
+   const data=await api<{runs:Run[]}>("/api/worlds/"+activeWorldId+"/runs");
+   const completed=data.runs.filter(x=>x.kind==="chapter"&&x.status==="completed"&&x.chapterPath&&x.outputDir);
+   setForkableRuns(completed);setForkRunId(completed[0]?.id);setForkName("");setForkOpen(true);
+  }catch(e){message.error(e instanceof Error?e.message:String(e));}
+ };
+ const createFork=async()=>{
+  if(!forkRunId)return;
+  setForking(true);
+  try{
+   const data=await api<{universe:Universe}>("/api/worlds/"+activeWorldId+"/universes/fork",{method:"POST",body:JSON.stringify({name:forkName,chapterRunId:forkRunId})});
+   setUniverses(current=>[...current,data.universe]);setActiveWorldId(data.universe.id);setForkOpen(false);
+   message.success("已从所选章节创建独立分支宇宙。");
+  }catch(e){message.error(e instanceof Error?e.message:String(e));}
+  finally{setForking(false);}
+ };
  return <div className="chapter-studio">
   <section className="chapter-hero">
    <Text type="secondary">ROLLING STORY ARC</Text>
@@ -74,6 +96,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
    <Space wrap>
     <Select style={{minWidth:220}} value={activeWorldId} onChange={setActiveWorldId} options={[{value:worldId,label:"原文项目（现有续写）"},...universes.map(u=>({value:u.id,label:u.name+" · 从"+u.entryChapter+"开始"}))]} />
     <Button onClick={()=>setCreateOpen(true)}>新建故事宇宙</Button>
+    {activeWorldId!==worldId&&<Button onClick={()=>void openFork()}>从本宇宙分叉</Button>}
     <Button type="primary" size="large" className="chapter-action" icon={<PlayCircleOutlined/>} loading={starting||Boolean(busy)} disabled={!activeWorldId||Boolean(busy)} onClick={()=>void generate()}>生成下一章</Button>
     <Button icon={<ReloadOutlined/>} loading={loading} onClick={()=>void refresh()}>刷新状态</Button>
     {busy&&<Tag color="processing">正在自动创作</Tag>}
@@ -110,6 +133,13 @@ export default function ChapterStudio({worldId}:{worldId:string}){
     <Select style={{width:"100%"}} value={universeType} onChange={setUniverseType} options={[{value:"mainline",label:"原著主线延续"},{value:"side-story",label:"原著支线扩展"},{value:"character",label:"人物独立故事"},{value:"parallel",label:"平行发展"},{value:"free",label:"自由续写"}]} />
     <Input.TextArea rows={3} placeholder="创作方向（可选）：人物、支线、关键事件或希望探索的剧情" value={universeBrief} onChange={e=>setUniverseBrief(e.target.value)} />
     <Text type="secondary">原文资料作为只读来源；新宇宙从空白续写状态开始，拥有独立的主线、人物状态、伏笔和章节记录。</Text>
+   </Space>
+  </Modal>
+  <Modal title="从历史章节创建分支" open={forkOpen} onCancel={()=>setForkOpen(false)} onOk={()=>void createFork()} confirmLoading={forking} okText="创建分支" okButtonProps={{disabled:!forkRunId||!forkName.trim()}}>
+   <Space direction="vertical" style={{width:"100%"}} size="middle">
+    <Input placeholder="新宇宙名称" value={forkName} onChange={e=>setForkName(e.target.value)} />
+    <Select style={{width:"100%"}} showSearch optionFilterProp="label" placeholder="选择分叉章节" value={forkRunId} onChange={setForkRunId} options={forkableRuns.map((item,index)=>({value:item.id,label:"第 "+(forkableRuns.length-index)+" 个已完成章节 · "+new Date(item.createdAt).toLocaleString()}))} notFoundContent="当前宇宙还没有可分叉的已完成章节。" />
+    <Text type="secondary">新宇宙会恢复所选章节完成时的 Story State 和 Story Arc，并复制截至该章的正文与运行历史。之后的剧情、人物状态和规划独立演进。</Text>
    </Space>
   </Modal>
  </div>;
