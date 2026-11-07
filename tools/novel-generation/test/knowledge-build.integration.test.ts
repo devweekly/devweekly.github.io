@@ -75,7 +75,7 @@ test("knowledge build API reserves one task, persists status, and rejects confli
     }
     assert.ok(latest.build);
     assert.ok(["failed", "partial", "completed"].includes(latest.build.status));
-    assert.equal(latest.build.steps.length, 6);
+    assert.equal(latest.build.steps.length, 7);
     const persisted = JSON.parse(await readFile(join(root, ".output", worldId, "workbench", "knowledge-build.json"), "utf8")) as typeof latest.build;
     assert.equal(persisted?.status, latest.build.status);
   } finally {
