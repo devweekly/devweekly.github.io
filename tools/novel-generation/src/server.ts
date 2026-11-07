@@ -250,14 +250,18 @@ app.get("/api/worlds", async (_req, res) => {
 async function dashboardHandler(req: Request<WorldIdParams>, res: Response): Promise<void> {
   const id = worldIdOf(req.params.worldId);
   assertInsideWorld(id);
-  const [storyPlan, runs, candidates] = await Promise.all([
+  const [storyPlan, runs, candidates, universe, asOfAnalysis] = await Promise.all([
     loadStoryPlan(path.join(worldDir(id), "story-plan.json"), id),
     listRuns(id),
-    listCandidates(id)
+    listCandidates(id),
+    readUniverse(id),
+    readUniverseAnalysisJob(id)
   ]);
   res.json({
     worldId: id,
     storyPlan: storyPlan ?? null,
+    universe: universe ?? null,
+    asOfAnalysis: universe ? asOfAnalysis : null,
     counts: {
       running: runs.filter(x => x.status === "queued" || x.status === "running").length,
       completedRuns: runs.filter(x => x.status === "completed").length,
