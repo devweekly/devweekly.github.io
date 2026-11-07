@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { classifyKnowledgeBuildStepResult, createApp, recoverWorkbenchRuns } from "../src/server.js";
 import { saveRun } from "../src/workbench-store.js";
 
-test("knowledge build API reserves one task, persists status, and rejects conflicting operations", async () => {
+test("knowledge build can run during chapter work while archive and duplicate builds remain guarded", async () => {
   const root = await mkdtemp(join(tmpdir(), "novel-knowledge-build-"));
   const previousCwd = process.cwd();
   const worldId = "test-universe";
@@ -39,11 +39,28 @@ test("knowledge build API reserves one task, persists status, and rejects confli
       body: JSON.stringify({ archived })
     });
     assert.equal((await archive(true)).status, 409);
-    assert.equal((await request()).status, 409);
+    const firstBuild = await request();
+    assert.equal(firstBuild.status, 202, await firstBuild.clone().text());
     await saveRun({
       id: "11111111-1111-4111-8111-111111111111", worldId, kind: "chapter",
       status: "completed", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
     });
+    const generation = await fetch(`http://127.0.0.1:${address.port}/api/worlds/${worldId}/chapters/generate`, {
+      method: "POST", headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` }, body: "{}"
+    });
+    assert.equal(generation.status, 409);
+    const generationError = await generation.json();
+    assert.match(String(generationError.error), /world-bible/);
+    assert.equal((await archive(true)).status, 409);
+    assert.equal((await request()).status, 409);
+    let buildFinished = false;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const status = await fetch(url, { headers: { host: `127.0.0.1:${address.port}` } });
+      const body = await status.json();
+      if (body.build && ["failed", "partial", "completed"].includes(body.build.status)) { buildFinished = true; break; }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    assert.equal(buildFinished, true);
     assert.equal((await archive(true)).status, 200);
     assert.equal((await request()).status, 409);
     assert.equal((await archive(false)).status, 200);
