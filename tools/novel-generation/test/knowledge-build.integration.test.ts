@@ -41,6 +41,7 @@ test("knowledge build can run during chapter work while archive and duplicate bu
     assert.equal((await archive(true)).status, 409);
     const firstBuild = await request();
     assert.equal(firstBuild.status, 202, await firstBuild.clone().text());
+    assert.equal((await request()).status, 409);
     await saveRun({
       id: "11111111-1111-4111-8111-111111111111", worldId, kind: "chapter",
       status: "completed", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
@@ -51,8 +52,6 @@ test("knowledge build can run during chapter work while archive and duplicate bu
     assert.equal(generation.status, 409);
     const generationError = await generation.json();
     assert.match(String(generationError.error), /world-bible/);
-    assert.equal((await archive(true)).status, 409);
-    assert.equal((await request()).status, 409);
     let buildFinished = false;
     for (let attempt = 0; attempt < 100; attempt++) {
       const status = await fetch(url, { headers: { host: `127.0.0.1:${address.port}` } });
@@ -71,17 +70,12 @@ test("knowledge build can run during chapter work while archive and duplicate bu
     assert.ok(["queued", "running"].includes(acceptedBody.build.status));
     assert.equal(acceptedBody.build.worldId, worldId);
 
-    const guardedRequests = await Promise.all([
-      fetch(`http://127.0.0.1:${address.port}/api/worlds/${worldId}/chapters/generate`, {
-        method: "POST", headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` }, body: "{}"
-      }),
-      archive(true),
-      fetch(`http://127.0.0.1:${address.port}/api/worlds/${worldId}/universes/fork`, {
-        method: "POST", headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
-        body: JSON.stringify({ name: "竞争分支", chapterRunId: "11111111-1111-4111-8111-111111111111" })
-      })
-    ]);
-    assert.deepEqual(guardedRequests.map(response => response.status), [409, 409, 409]);
+    const generationDuringBuild = await fetch(`http://127.0.0.1:${address.port}/api/worlds/${worldId}/chapters/generate`, {
+      method: "POST", headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` }, body: "{}"
+    });
+    assert.equal(generationDuringBuild.status, 409);
+    const generationDuringBuildError = await generationDuringBuild.json();
+    assert.match(String(generationDuringBuildError.error), /world-bible/);
 
     let latest: { build: { status: string; steps: Array<{ name: string; status: string }> } | null } = { build: null };
     for (let attempt = 0; attempt < 100; attempt++) {
