@@ -14,3 +14,5 @@
 .character-tabs .ant-descriptions-item-label{font-size:12px}
 .character-count-hint{display:block;font-size:12px;margin:8px 2px 0}
 .character-list-card .ant-alert{margin-top:8px;margin-bottom:0}
+
+.chapter-studio{max-width:1120px;margin:0 auto}.chapter-hero{border:1px solid #e7eaf0;border-radius:14px;background:linear-gradient(135deg,#fff 0%,#f8fafc 100%);padding:28px 32px;margin-bottom:18px}.chapter-hero h2{margin:0 0 8px!important}.chapter-action{height:48px;padding:0 28px;font-size:16px;font-weight:650}.chapter-flow{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px}.chapter-flow-step{background:#fff;border:1px solid #edf0f3;border-radius:10px;padding:14px;min-height:94px}.chapter-flow-step strong{display:block;margin-bottom:6px}.chapter-status{padding:18px;border:1px solid #e7eaf0;border-radius:12px;background:#fff}@media(max-width:768px){.chapter-hero{padding:20px}.chapter-flow{grid-template-columns:repeat(2,minmax(0,1fr))}}
