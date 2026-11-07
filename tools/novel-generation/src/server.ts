@@ -23,6 +23,7 @@ import { getCandidate, getRun, listCandidates, listRuns, recoverInterruptedRuns,
 import type { StoryState } from "./story-state.js";
 import { buildUniverseOriginContext, buildUniverseWorldBible, rebaseStoryState, remapForkedRun, shouldCopyUniverseAsset } from "./universe-branch.js";
 import { restrictKnowledgeDatabaseToEntry } from "./source-canon-snapshot.js";
+import { resolveWorldLibraryDir } from "./universe-library.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
 // noUncheckedIndexedAccess 放宽成 string | undefined。
@@ -998,8 +999,12 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id); const dir = worldDir(id);
     if (knowledgeBuilds.has(id)) return void res.status(409).json({ error: "当前宇宙正在构建知识资料，完成后再启动章节生成。" });
     try { await readFile(path.join(dir, "world-bible.md"), "utf8"); } catch { return void res.status(409).json({ error: "缺少 worlds/" + id + "/world-bible.md。请先建立世界设定；这是续写不可自动猜测的基础资料。" }); }
-    const canonWorldId = (await readUniverse(id))?.sourceWorldId ?? id;
-    try { await readFile(path.join(worldDir(canonWorldId), "library", "index.json"), "utf8"); } catch { return void res.status(409).json({ error: "原著资料库尚未建立。请先导入原著并执行 ingest；其余分析资料可以在续写时按需补齐。" }); }
+    try {
+      const retrievalLibraryDir = await resolveWorldLibraryDir(id, path.resolve("worlds"));
+      await readFile(path.join(retrievalLibraryDir, "index.json"), "utf8");
+    } catch (error) {
+      return void res.status(409).json({ error: error instanceof Error ? error.message : "原著资料库尚未建立。请先导入原著并执行 ingest；其余分析资料可以在续写时按需补齐。" });
+    }
     const runs = await listRuns(id);
     const active = runs.find(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"));
     if (active) return void res.status(409).json({ error: "已有章节正在生成。", run: active });
