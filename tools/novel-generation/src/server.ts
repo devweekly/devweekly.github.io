@@ -388,10 +388,13 @@ app.get("/api/worlds/:worldId/forkable-chapters", async (req, res) => {
 
 app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
   let createdUniverseId: string | null = null;
+  let release: (() => void) | null = null;
   try {
     const lockId = worldIdOf(req.params.worldId);
     await serializeWorld(lockId, async () => {
     const parentId = worldIdOf(req.params.worldId); assertInsideWorld(parentId);
+    release = acquireWorldMutation(parentId);
+    if (!release) return void res.status(409).json({ error: "当前宇宙正在执行创建、分叉或归档操作，请稍后重试。" });
     const parent = await readUniverse(parentId);
     if (!parent) return void res.status(409).json({ error: "只能从已有故事宇宙创建分叉。" });
     if (parent.archivedAt) return void res.status(409).json({ error: "已归档的故事宇宙不能继续分叉，请先恢复。" });
@@ -419,6 +422,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     }
     const arcSnapshot = await readFile(path.join(forkOutputDir, "00-story-arc.md"), "utf8").catch(() => "");
     const id = "u-" + randomUUID().replace(/-/g, "").slice(0, 16);
+    createdUniverseId = id;
     const targetDir = worldDir(id);
     const stagingDir = path.join(path.resolve("worlds"), ".staging-" + id);
     await mkdir(stagingDir, { recursive: true });
@@ -444,7 +448,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     await writeFile(path.join(stagingDir, "source-canon.json"), JSON.stringify({ sourceWorldId: parent.sourceWorldId, readOnly: true }, null, 2) + "\n", "utf8");
     const forkState = rebaseStoryState(state, parentId, id);
     await writeFile(path.join(stagingDir, "story-state.json"), JSON.stringify(forkState, null, 2) + "\n", "utf8");
-    await loadStoryState(path.join(targetDir, "story-state.json"), id);
+    await loadStoryState(path.join(stagingDir, "story-state.json"), id);
     if (arcSnapshot) await writeFile(path.join(stagingDir, "story-arc.md"), arcSnapshot, "utf8");
 
     // 复制分叉点及其之前的已完成章节产物和运行索引，重写所有路径指向子宇宙。
