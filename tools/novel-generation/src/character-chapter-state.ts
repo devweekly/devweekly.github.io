@@ -107,7 +107,8 @@ export async function analyzeCharacterChapterStates(
       options.force || existing.get(character.characterId + "\\0" + chapter.chapterId) !== sourceHash
     );
     if (!pending.length) { result.cached += item.characters.length; continue; }
-    const cacheKey = hash(JSON.stringify({ chapterId: chapter.chapterId, sourceHash, model, ids: pending.map(c => c.characterId), promptVersion: 1 }));
+    const previousStates = pending.map(character => ({ characterId: character.characterId, name: character.name, state: latestPriorState(statesByCharacter.get(character.characterId) ?? [], chapter.ordinal) ?? null }));
+    const cacheKey = hash(JSON.stringify({ chapterId: chapter.chapterId, sourceHash, model, ids: pending.map(c => c.characterId), previousStates, promptVersion: 2 }));
     const cachePath = join(cacheDir, cacheKey + ".json");
     let states: Array<z.infer<typeof StateSchema>> | undefined;
     try {
@@ -116,7 +117,7 @@ export async function analyzeCharacterChapterStates(
         states = ResponseSchema.parse(cached).states;
       } catch {
         const raw = await runAgentText(
-          promptForChapter({ chapter, characters: pending, previousStates: pending.map(character => ({ characterId: character.characterId, name: character.name, state: latestPriorState(statesByCharacter.get(character.characterId) ?? [], chapter.ordinal) ?? null })) }), model,
+          promptForChapter({ chapter, characters: pending, previousStates }), model,
           options.timeoutMs ?? 180000, readTaskProfiles().state
         );
         states = ResponseSchema.parse(parseJsonObject(raw)).states;
