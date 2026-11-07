@@ -93,7 +93,9 @@ async function main(): Promise<void> {
     },
     perQuery
   };
-  const output = resolve(arg("--out") ?? ".output", worldId, "retrieval-evaluation", new Date().toISOString().replace(/[:.]/g, "-") + ".json");
+  const output = arg("--out")
+    ? resolve(arg("--out") as string)
+    : resolve(".output", worldId, "retrieval-evaluation", new Date().toISOString().replace(/[:.]/g, "-") + ".json");
   await mkdir(dirname(output), { recursive: true });
   await writeFile(output, JSON.stringify(report, null, 2) + "\n", "utf8");
   console.log(JSON.stringify({ output, queryCount: report.queryCount, vaneAvailable, aggregate: report.aggregate }, null, 2));
