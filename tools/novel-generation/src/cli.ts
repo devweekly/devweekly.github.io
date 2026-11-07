@@ -270,11 +270,12 @@ async function main(): Promise<void> {
     else if (type === "graph") {
       const graph = buildStoryStateGraph(state);
       const directMatches = query ? graph.nodes.filter(matches) : graph.nodes;
-      const selectedIds = new Set(directMatches.map(node => node.id));
+      const seedIds = new Set(directMatches.map(node => node.id));
+      const selectedIds = new Set(seedIds);
       if (query) {
         for (const edge of graph.edges) {
-          if (selectedIds.has(edge.from)) selectedIds.add(edge.to);
-          if (selectedIds.has(edge.to)) selectedIds.add(edge.from);
+          if (seedIds.has(edge.from)) selectedIds.add(edge.to);
+          if (seedIds.has(edge.to)) selectedIds.add(edge.from);
         }
       }
       const nodes = graph.nodes.filter(node => selectedIds.has(node.id)).slice(0, limit);
