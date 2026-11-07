@@ -38,15 +38,15 @@ test("knowledge build API reserves one task, persists status, and permits retry 
       headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
       body: JSON.stringify({ archived })
     });
-    assert.equal((await archive(true)).status, 200);
+    assert.equal((await archive(true)).status, 409);
     assert.equal((await request()).status, 409);
-    assert.equal((await archive(false)).status, 200);
-    const blocked = await request();
-    assert.equal(blocked.status, 409);
     await saveRun({
       id: "11111111-1111-4111-8111-111111111111", worldId, kind: "chapter",
       status: "completed", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
     });
+    assert.equal((await archive(true)).status, 200);
+    assert.equal((await request()).status, 409);
+    assert.equal((await archive(false)).status, 200);
     const responses = await Promise.all([request(), request()]);
     assert.deepEqual(responses.map(response => response.status).sort(), [202, 409]);
     const accepted = responses.find(response => response.status === 202)!;
