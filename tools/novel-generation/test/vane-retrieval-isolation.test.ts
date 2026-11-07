@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isVaneManifestUsable, searchVane } from "../src/vane-retrieval.js";
+import { isVaneManifestUsable, publishVaneIndexDirectory, searchVane } from "../src/vane-retrieval.js";
 
 test("Vane search rejects missing and foreign-world manifests before opening an index", async () => {
   const root = await mkdtemp(join(tmpdir(), "vane-world-isolation-"));
@@ -23,6 +23,41 @@ test("Vane search rejects missing and foreign-world manifests before opening an 
     assert.equal(isVaneManifestUsable(local, "u-child"), true);
   } finally {
     process.chdir(previousCwd);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test("Vane index publication replaces the old index only after a complete staging directory exists", async () => {
+  const root = await mkdtemp(join(tmpdir(), "vane-index-publish-"));
+  try {
+    const active = join(root, "vane-index");
+    const staging = join(root, ".vane-index.staging-test");
+    await mkdir(active);
+    await writeFile(join(active, "manifest.json"), "old manifest");
+    await mkdir(staging);
+    await writeFile(join(staging, "manifest.json"), "new manifest");
+    await writeFile(join(staging, "documents.bin"), "new index");
+    await publishVaneIndexDirectory(staging, active);
+    assert.equal(await readFile(join(active, "manifest.json"), "utf8"), "new manifest");
+    assert.equal(await readFile(join(active, "documents.bin"), "utf8"), "new index");
+    assert.deepEqual((await readdir(root)).sort(), ["vane-index"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("Vane index publication restores the previous index if the staged directory cannot be published", async () => {
+  const root = await mkdtemp(join(tmpdir(), "vane-index-rollback-"));
+  try {
+    const active = join(root, "vane-index");
+    const missingStaging = join(root, "missing-staging");
+    await mkdir(active);
+    await writeFile(join(active, "manifest.json"), "last known good");
+    await assert.rejects(() => publishVaneIndexDirectory(missingStaging, active));
+    assert.equal(await readFile(join(active, "manifest.json"), "utf8"), "last known good");
+    assert.deepEqual((await readdir(root)).sort(), ["vane-index"]);
+  } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
