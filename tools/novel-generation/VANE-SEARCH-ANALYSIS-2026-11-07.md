@@ -1,4 +1,4 @@
-# 检索引擎选型分析：Vane、SQLite FTS5 与现有 BM25
+# 检索引擎选型分析：Vane、SQLite FTS5、BM25 与本地 Embedding 模型
 
 > 分析日期：2026-11-07  
 > 范围：tools/novel-generation 的原文检索、写作上下文召回与后续检索架构  
@@ -207,11 +207,120 @@ NovelSearchService 是写作、全文分析和 CLI 共用的边界。上层只�
 | 文风参考 | 经认可样本 + 专门策略 | 语义相似不能证明叙述风格相似；保留 Style Profile 的抽象风格约束 |
 | 连续性审查 | SQLite + text | 人物当时知道什么、位于何处、事件发生顺序等由结构化状态和原文证据核对 |
 
-## 6. PoC 设计与验收
+
+## 6. 本地 Embedding 模型选型
+
+Vane 不生成 embedding。项目必须单独运行本地 embedding provider：导入时批量生成每个 chunk 的向量，查询时生成 query vector，再把 `text + vector + meta` 一起交给 Vane。Embedding 模型、向量维度和编码方式因此是 Vane 集成的一部分，不应留到实现阶段临时决定。
+
+### 6.1 选择标准
+
+当前 `src/constants.ts` 将原文检索 chunk 的最大长度设为 **1,200 个字符**，相邻 chunk 重叠 160 个字符。模型至少需要完整接收这一长度；优先选择 8K 以上上下文，避免模型 tokenization 后在 512-token 上限处静默截断。中文字符数和模型 token 数并不完全等价，PoC 必须直接用每个模型自己的 tokenizer 检查实际 token 长度。
+
+另外几个条件同样重要：中文检索能力、向量维度不超过 Vane 的 4096 维上限、许可证足够宽松、能够在本机批量推理、提供明确的 query/document 编码规则。C-MTEB 可以帮助筛选，但它不是长篇小说检索基准，不能直接预测人物、事件和跨章节剧情召回效果。
+
+### 6.2 候选模型
+
+| 模型 | 参数量 / 向量维度 | 最大输入长度 | 许可证 | 中文检索参考 | 本地部署情况 | 判断 |
+|---|---:|---:|---|---:|---|---|
+| [Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B) | 0.6B / 1024 | 32K | Apache-2.0 | C-MTEB Retrieval 71.03 | 官方 GGUF、llama.cpp、Ollama；Q8_0 GGUF 约 639MB | **首选默认模型**。长上下文、指令感知、多语言、维度适中，Node 接入简单 |
+| [richinfoai/ritrieve_zh_v1](https://huggingface.co/richinfoai/ritrieve_zh_v1) | 0.3B / 1792 | 模型卡未明确说明 | MIT | C-MTEB Retrieval 76.97 | SentenceTransformers；F32 权重文件约 1.3GB | 中文专项对照。公开分数很强，但必须先验证 1,200 字符 chunk 是否被截断 |
+| [BAAI/bge-m3](https://huggingface.co/BAAI/bge-m3) | 约 0.57B / 1024 | 8192 | MIT | 模型卡主要展示多语言及 MIRACL 评测，不与 Qwen 的 C-MTEB 表直接横比 | Ollama 官方模型库，约 1.2GB；FlagEmbedding / SentenceTransformers | 稳健的多语言长文本备选。Vane 只会使用其 dense 向量，无法直接消费 BGE-M3 的 sparse 和 ColBERT 多向量输出 |
+| [BAAI/bge-base-zh-v1.5](https://huggingface.co/BAAI/bge-base-zh-v1.5) | 109M / 768 | 512 | MIT | C-MTEB Retrieval 69.49 | SentenceTransformers / ONNX | 轻量中文基线；当前 1,200 字符 chunk 可能超过 512-token 上限，不建议未经切分验证就用于正式索引 |
+| [BAAI/bge-small-zh-v1.5](https://huggingface.co/BAAI/bge-small-zh-v1.5) | 33M / 512 | 512 | MIT | C-MTEB Retrieval 61.77 | SentenceTransformers / ONNX | 资源极低时的速度基线，检索质量和输入长度均不占优 |
+| [google/embeddinggemma-300m](https://huggingface.co/google/embeddinggemma-300m) | 300M / 768 | 2048 | Gemma Terms | 未找到与上述模型同口径的中文检索分数 | 官方定位为端侧 / 笔记本部署；Hugging Face 需要接受 Google 使用条款 | 小模型备选，但许可证不是 Apache/MIT，且上下文短于 Qwen3 |
+| [dunzhang/stella-mrl-large-zh-v3.5-1792d](https://huggingface.co/dunzhang/stella-mrl-large-zh-v3.5-1792d) | 约 0.3B / 1792（MRL 可降维） | 模型卡需进一步核实 | MIT | 模型卡报告 C-MTEB Retrieval 73.51（1792 维） | SentenceTransformers | 中文专项对照；同样要检查长文本截断，且已有分数更高的 Ritrieve 可优先测试 |
+| [jinaai/jina-embeddings-v5-text-small](https://huggingface.co/jinaai/jina-embeddings-v5-text-small) | 以模型卡为准 | 以模型卡为准 | CC-BY-NC-4.0 | 不纳入本次可商用候选比较 | Hugging Face / SentenceTransformers | 有能力但带非商业限制；除非确认项目用途接受该条款，否则不选 |
+
+Qwen 官方 C-MTEB 对比表列出的 Retrieval 分数为：Qwen3-Embedding-0.6B 71.03、4B 77.03、8B 78.21；同一表中的 Ritrieve-zh-v1 为 76.97。这个结果说明 0.6B 不是中文检索分数最高的模型，4B 和 Ritrieve 的公开分数都更高。但 4B 需要更大的运行内存，Ritrieve 的最大输入长度在模型卡中没有明确说明，所以不能只按这几个分数决定生产选型。参见 [Qwen3-Embedding 模型与评测表](https://github.com/QwenLM/Qwen3-Embedding) 和 [Ritrieve 模型卡](https://huggingface.co/richinfoai/ritrieve_zh_v1)。
+
+BGE-M3 的特点是一个模型可输出 dense、sparse 和 ColBERT 多向量结果，支持 100 多种语言及最多 8192 tokens。Vane 目前只接收一个 dense vector 字段；项目已经使用 Vane 自己的 BM25，所以不能把 BGE-M3 的 sparse 路径也算作 Vane 集成后的额外收益。它仍然值得作为 dense embedding 对照组，但不应因为其“多功能”宣传就默认优于 Qwen3。
+
+### 6.3 推荐结论
+
+**默认采用 Qwen3-Embedding-0.6B，中文专项 PoC 同时测试 Ritrieve-zh-v1，BGE-M3 作为多语言长文本对照。**
+
+选择 Qwen3-Embedding-0.6B 的原因不是它在 C-MTEB 排名最高，而是它对当前工程约束最均衡：
+
+- 32K context 能完整容纳当前 1,200 字符 chunk，并为将来较长场景片段留有空间。
+- 1024 维向量适合 Vane；单条 float32 向量约 4KB，10 万条原始向量约 410MB，尚未计入 HNSW 图和索引开销。
+- 支持 100 多种语言，可保留将来处理英文、日文或多语言参考资料的空间。
+- Apache-2.0 许可证明确，且有官方 GGUF 和现成的本地运行路径。
+- Qwen3 的 query/document 非对称编码规则明确，能够针对“用户的剧情描述 → 原文证据片段”这一检索任务定制 query instruction。
+
+Ritrieve-zh-v1 应该进入 PoC，而不是直接成为默认模型。它在公开 C-MTEB 表上的检索分数比 Qwen3-0.6B 高约 5.9 分，且模型卡采用 MIT 许可证、不需要额外 query instruction；但它是中文专向模型，输出维度为 1792，F32 权重文件约 1.3GB，最关键的是模型卡没有清楚标注最大输入长度。必须先验证它是否能完整编码项目当前的 chunk；如果真实 tokenizer 会在 512 tokens 左右截断，那么公开榜单上的优势不能直接转化成当前语料的优势。
+
+Qwen3-Embedding-4B 可作为质量上限对照，但不是第一版默认值。其 C-MTEB Retrieval 为 77.03，和 Ritrieve 的 76.97 几乎相同；Ollama 版本约 2.5GB，运行时内存还会高于模型文件大小。先验证 0.6B 和 Ritrieve，只有小说自建评测集显示明显收益时再考虑 4B。8B 不纳入本地默认候选。
+
+### 6.4 本地运行方式
+
+对 Qwen3-Embedding-0.6B，建议优先采用官方 GGUF + llama.cpp。它不需要 Ollama，也不需要项目自行转换模型：
+
+```bash
+# macOS / Linux：安装 llama.cpp 应用
+curl -LsSf https://llama.app/install.sh | sh
+
+# 官方 Q8_0 GGUF，启动本地 OpenAI-compatible embedding endpoint
+llama serve -hf Qwen/Qwen3-Embedding-0.6B-GGUF:Q8_0 --embeddings
+```
+
+官方 Hugging Face GGUF 仓库提供 Q8_0（约 639MB）和 F16（约 1.2GB）文件，并直接列出 llama.cpp、LM Studio、Jan、Ollama 等本地运行入口。对于本地 Mac，先用 Q8_0 做 PoC；不要仅凭量化名称推断质量，最终仍需用小说检索集检查向量召回是否退化。参考 [Qwen3-Embedding-0.6B-GGUF](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF)。
+
+若希望用 Ollama 管理模型，也可以直接运行：
+
+```bash
+ollama pull qwen3-embedding:0.6b
+ollama pull bge-m3
+```
+
+Ollama 提供 `/api/embed` 和 JavaScript SDK 的 `embed()`，支持批量输入。Vane Node adapter 只需要把本地 endpoint 返回的 embedding 数组转成 Vane 所需的 number[] / float32 向量。对 Ritrieve-zh-v1，先用 SentenceTransformers 常驻加载模型，再通过本机 HTTP 或子进程 RPC 暴露批量 embedding 接口；不要每个 chunk 都启动一次 Python 进程。
+
+建议统一抽象 `NovelEmbeddingProvider`，由配置选择模型和 endpoint。模型运行时不应进入 Agent 生成路径；索引构建时批量调用，查询时只编码一条 query。远端模型服务可以作为显式可选配置，但默认不把原著正文发送到第三方 embedding API。
+
+### 6.5 Qwen3 的 query/document 编码规则
+
+Qwen3-Embedding 是 instruction-aware 模型。官方推荐为 query 加一条任务指令，而 document 不加指令；官方说明使用合适的 query instruction 在多数检索任务中可带来约 1%–5% 的提升。多语言场景推荐使用英文 instruction，查询内容本身仍可为中文。参见 [Qwen3-Embedding 使用说明](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B)。
+
+建议先固定一条小说检索指令，所有 Agent 共用同一模板：
+
+```text
+Instruct: Retrieve passages from a Chinese novel that provide evidence relevant to the user's writing query, including relevant characters, events, scenes, actions, or causal situations even when the wording differs.
+Query: {query}
+```
+
+文档侧使用原文 chunk（第一轮不要混入额外摘要或模型生成的标签），查询侧使用上面的 instruction + query。等基础结果稳定后，再单独比较“正文”与“章节标题 + 正文”两种 document 输入。Ritrieve-zh-v1 和 BGE-M3 则按各自模型卡要求编码；Ritrieve 官方示例明确说明不需要 instruction。
+
+Vane collection schema 的向量维度必须与模型输出严格一致。建议第一版固定 Qwen3 的 1024 维和 cosine metric；Ritrieve 的 1792 维、BGE-M3 的 1024 维应放在独立 PoC collection，不能混写到同一 collection。索引 manifest 至少记录 model ID、HF revision、量化方式、输出维度、归一化方式、query instruction 版本和 chunker 版本。更换模型或维度时重建新 collection，校验完再切换活动索引，不允许新旧模型向量混用。
+
+### 6.6 本项目的实际 PoC 模型矩阵
+
+使用当前 1,200 字符 chunk、相同 chunk ID 和相同查询集，最少比较：
+
+| 测试组 | 模型 / 模式 | 目的 |
+|---|---|---|
+| A | Vane text（BM25 only） | 确立不依赖 embedding 的基线 |
+| B | Vane hybrid + Qwen3-Embedding-0.6B Q8_0 | 第一候选默认路径 |
+| C | Vane hybrid + richinfoai/ritrieve_zh_v1 | 中文专向质量对照；特别检查 token 截断 |
+| D | Vane hybrid + BAAI/bge-m3 dense | 多语言、长文本对照 |
+| E（可选） | Vane hybrid + Qwen3-Embedding-4B | 只用于测量 0.6B 到大模型的质量增益和资源代价 |
+
+评测集至少覆盖：人物真名和别名、两字短称谓、具体物品/能力、精确原文短语、改写事件描述、相似场景、跨章节同一人物的不同阶段、时间相近但事实不同的干扰项。对每条查询记录必须命中的 chunk、可接受的相关 chunk，以及不应命中的错误人物/错误时间结果。
+
+除了 Recall@10、nDCG@10、MRR、误召回率和检索延迟，Embedding PoC 还必须记录：
+
+- 索引阶段每 1,000 chunks 的生成时间、批量吞吐和失败重试次数。
+- Query embedding 的 P50/P95 延迟。
+- 每个 chunk 的 tokenizer 长度、实际送入模型的 token 数及截断比例；截断比例必须为 0，或者将截断明确作为测试变量。
+- 模型加载后的常驻内存、批量推理峰值内存、Vane 索引体积。
+- 模型量化前后的检索指标变化。
+- 重建索引所需时间，以及模型 revision / 量化版本变更是否触发正确重建。
+
+C-MTEB 只用于选候选，不能作为验收通过条件。最终采用标准应是：在中文小说真实检索任务上比 Vane text 有稳定增益，且不损伤人物精确命中和原文证据召回；模型再大、榜单再高，如果引入更多错误人物或错误时间召回，也不应进入生产路径。
+
+## 7. PoC 设计与验收
 
 不应以 Vane README 的合成数据 Benchmark 代替本项目的真实检索质量测试。建议选取一部已完成导入和分析的小说，先固定一份 5,000–10,000 个现有 chunk 的测试语料；所有方案使用相同片段边界、查询集和人工标注的相关证据。
 
-### 6.1 对比对象
+### 7.1 对比对象
 
 | 方案 | 验证目的 |
 |---|---|
@@ -223,7 +332,7 @@ NovelSearchService 是写作、全文分析和 CLI 共用的边界。上层只�
 
 测试时不要把 FTS5 和 Vane 的切片结果混在一起比较。必须固定 chunk ID 和源文本，否则结果差异可能来自切片，而非检索算法。
 
-### 6.2 查询集覆盖
+### 7.2 查询集覆盖
 
 至少覆盖以下场景：
 
@@ -238,7 +347,7 @@ NovelSearchService 是写作、全文分析和 CLI 共用的边界。上层只�
 
 建议先构造 50–100 条有明确预期结果的真实写作查询，每条记录“相关片段”“必须命中的事实”“明确不应命中的干扰项”。标注重点是证据是否适合当前写作任务，而不是只判断文本主题是否相似。
 
-### 6.3 指标与门槛
+### 7.3 指标与门槛
 
 | 指标 | 验证方式 | 采用要求 |
 |---|---|---|
@@ -253,7 +362,7 @@ NovelSearchService 是写作、全文分析和 CLI 共用的边界。上层只�
 
 采用 Vane hybrid 的条件不是“平均分高一点”，而是它要在改写表达、相似场景和跨章节关联这些当前薄弱的任务上带来可复现的增益，同时不破坏精确名称和原文证据检索。若只改善语义相似度，却增加错误人物、错误时间或无关情节的召回，不应采用。
 
-### 6.4 必须通过的工程验收
+### 7.4 必须通过的工程验收
 
 在做正式集成前，应验证：
 
@@ -266,7 +375,7 @@ NovelSearchService 是写作、全文分析和 CLI 共用的边界。上层只�
 7. Vane 索引目录可备份、导出、恢复；重建后的结果与当前语料哈希一致。
 8. embedding provider 不可用时，text-only 路径仍然工作；不允许因为语义检索不可用而阻断普通写作。
 
-## 7. 分阶段实施建议
+## 8. 分阶段实施建议
 
 ### 阶段 A：先建立检索契约和评测基线
 
@@ -294,7 +403,7 @@ PoC 只比较检索结果和资源数据，不把实验召回直接注入正式�
 
 检索服务失效时可以退化到 text provider；embedding 失败时 Vane text 模式仍可使用。检索层不应成为普通写作的人工审批门禁。
 
-## 8. 最终建议
+## 9. 最终建议
 
 **现在应该淘汰继续扩展手写 BM25 的路线，但不应未经评测就将 Vane 直接设为唯一生产检索后端。**
 
@@ -321,6 +430,7 @@ Vane 的方向与当前项目吻合，尤其适合将来把“关键词找原文
 - [检索回归测试](./test/library.test.ts)
 - [长章节逐场检索调用](./src/long-chapter.ts)
 - [全文分析检索调用](./src/world-analysis.ts)
+- [Embedding 模型选型与本地部署](#6-本地-embedding-模型选型)
 
 ### Vane
 
@@ -330,3 +440,16 @@ Vane 的方向与当前项目吻合，尤其适合将来把“关键词找原文
 - [Vane Node 查询参数转换](https://github.com/ximing/vane/blob/main/crates/vane-node/src/convert.rs)
 - [Vane Node package.json](https://github.com/ximing/vane/blob/main/crates/vane-node/package.json)
 - [Vane Releases](https://github.com/ximing/vane/releases)
+
+### 本地 Embedding 模型
+
+- [Qwen3-Embedding-0.6B](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B)
+- [Qwen3-Embedding 官方技术报告与 C-MTEB 对比](https://github.com/QwenLM/Qwen3-Embedding)
+- [Qwen3-Embedding-0.6B-GGUF（官方 Q8_0 / F16）](https://huggingface.co/Qwen/Qwen3-Embedding-0.6B-GGUF)
+- [Ollama Qwen3-Embedding 模型与本地 API](https://ollama.com/library/qwen3-embedding)
+- [richinfoai/ritrieve_zh_v1](https://huggingface.co/richinfoai/ritrieve_zh_v1)
+- [BAAI/bge-m3](https://huggingface.co/BAAI/bge-m3)
+- [Ollama BGE-M3 模型与本地 API](https://ollama.com/library/bge-m3)
+- [BAAI/bge-base-zh-v1.5 的 C-MTEB 对比](https://huggingface.co/BAAI/bge-base-zh-v1.5)
+- [EmbeddingGemma 300M](https://huggingface.co/google/embeddinggemma-300m)
+- [Jina Embeddings v5 Text Small 许可证](https://huggingface.co/jinaai/jina-embeddings-v5-text-small)
