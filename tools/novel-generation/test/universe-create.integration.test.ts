@@ -86,7 +86,8 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     const universeDir = join(root, "worlds", payload.universe.id);
     const sourceCanonStat = await stat(join(source, "original.txt"));
     const universeCanonStat = await stat(join(universeDir, "original.txt"));
-    assert.equal(universeCanonStat.ino, sourceCanonStat.ino, "immutable original.txt should be physically shared when hard links are supported");
+    assert.notEqual(universeCanonStat.ino, sourceCanonStat.ino, "source canon must not share a mutable inode across universes");
+    assert.equal(await readFile(join(universeDir, "original.txt"), "utf8"), await readFile(join(source, "original.txt"), "utf8"));
     assert.equal(payload.universe.entryChapter, "第二章");
 
     const archiveResponse = await fetch(`http://127.0.0.1:${address.port}/api/worlds/${payload.universe.id}/universe-archive`, {
