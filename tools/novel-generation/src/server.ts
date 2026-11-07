@@ -174,6 +174,8 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
     if (existing?.status === "queued" || existing?.status === "running") {
       throw Object.assign(new Error("该宇宙已有知识构建任务正在运行。"), { status: 409 });
     }
+    const activeRun = (await listRuns(worldId)).find(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"));
+    if (activeRun) throw Object.assign(new Error("当前宇宙正在生成章节，章节结束后再构建知识资料。"), { status: 409 });
     const now = new Date().toISOString();
     const state: KnowledgeBuildState = { worldId, status: "queued", startedAt: now, updatedAt: now, steps: [] };
     await writeKnowledgeBuild(state);
@@ -481,6 +483,7 @@ app.patch("/api/worlds/:worldId/universe-archive", async (req, res) => {
     const universe = await readUniverse(id);
     if (!universe) return void res.status(409).json({ error: "原文项目不能归档为故事宇宙。" });
     const archive = req.body?.archived === true;
+    if (knowledgeBuilds.has(id)) return void res.status(409).json({ error: "当前宇宙正在构建知识资料，完成后再归档或恢复。" });
     const runs = await listRuns(id);
     if (runs.some(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"))) {
       return void res.status(409).json({ error: "当前宇宙仍有章节正在生成，结束后再归档或恢复。" });
@@ -596,6 +599,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     const parent = await readUniverse(parentId);
     if (!parent) return void res.status(409).json({ error: "只能从已有故事宇宙创建分叉。" });
     if (parent.archivedAt) return void res.status(409).json({ error: "已归档的故事宇宙不能继续分叉，请先恢复。" });
+    if (knowledgeBuilds.has(parentId)) return void res.status(409).json({ error: "当前宇宙正在构建知识资料，完成后再分叉。" });
     const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
     const chapterRunId = recordId(req.body?.chapterRunId);
     if (!name || name.length > 80) return void res.status(400).json({ error: "分支名称必填，且不能超过 80 个字符。" });
@@ -882,8 +886,10 @@ app.get("/api/worlds/:worldId/knowledge-build", async (req, res) => {
 app.post("/api/worlds/:worldId/knowledge-build", async (req, res) => {
   try {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
-    if (!(await readUniverse(id))) return void res.status(409).json({ error: "该入口用于独立故事宇宙；原文项目请使用现有分析命令。" });
-    res.status(202).json({ build: await startKnowledgeBuild(id) });
+    await serializeWorld(id, async () => {
+      if (!(await readUniverse(id))) return void res.status(409).json({ error: "该入口用于独立故事宇宙；原文项目请使用现有分析命令。" });
+      res.status(202).json({ build: await startKnowledgeBuild(id) });
+    });
   } catch (error) { sendError(res, error); }
 });
 app.get("/api/worlds/:worldId/runs", async (req, res) => {
@@ -912,6 +918,7 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
     const lockId = worldIdOf(req.params.worldId);
     await serializeWorld(lockId, async () => {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id); const dir = worldDir(id);
+    if (knowledgeBuilds.has(id)) return void res.status(409).json({ error: "当前宇宙正在构建知识资料，完成后再启动章节生成。" });
     try { await readFile(path.join(dir, "world-bible.md"), "utf8"); } catch { return void res.status(409).json({ error: "缺少 worlds/" + id + "/world-bible.md。请先建立世界设定；这是续写不可自动猜测的基础资料。" }); }
     const canonWorldId = (await readUniverse(id))?.sourceWorldId ?? id;
     try { await readFile(path.join(worldDir(canonWorldId), "library", "index.json"), "utf8"); } catch { return void res.status(409).json({ error: "原著资料库尚未建立。请先导入原著并执行 ingest；其余分析资料可以在续写时按需补齐。" }); }
