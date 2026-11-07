@@ -1,6 +1,8 @@
+import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { listNovelBeats, readStoryAnalysis, type StoryAnalysisSnapshot } from "./database.js";
+import { buildAnalysisUnits } from "./novel-kb.js";
 
 function strings(value: unknown): string[] {
   if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
@@ -143,6 +145,11 @@ export async function exportAsOfDossier(worldId: string, worldDir: string): Prom
   const beats = listNovelBeats(worldDir, worldId, { limit: 10000 });
   const corpusCraftDir = resolve(worldDir, "..", "..", "analysis", worldId, "corpus-craft", "chapters");
   const worldDetails: Array<Record<string, unknown>> = [];
+  let sourceHashes = new Map<string, string>();
+  try {
+    const { units } = await buildAnalysisUnits(worldId, { worldDir });
+    sourceHashes = new Map(units.map(unit => [unit.chapterId, createHash("sha256").update(unit.text).digest("hex")]));
+  } catch { /* without a verifiable bounded catalog, no derived world details are trusted */ }
   try {
     for (const file of (await readdir(corpusCraftDir)).filter(name => name.endsWith(".json"))) {
       try {
@@ -150,7 +157,7 @@ export async function exportAsOfDossier(worldId: string, worldDir: string): Prom
           worldId?: string; chapterId?: string; title?: string; ordinal?: number;
           worldDetails?: Array<Record<string, unknown>>;
         };
-        if (chapter.worldId !== worldId || !Array.isArray(chapter.worldDetails)) continue;
+        if (chapter.worldId !== worldId || sourceHashes.get(chapter.chapterId ?? "") !== chapter.sourceHash || !Array.isArray(chapter.worldDetails)) continue;
         for (const item of chapter.worldDetails) {
           if (typeof item?.evidence !== "string" || !item.evidence.trim()) continue;
           worldDetails.push({
