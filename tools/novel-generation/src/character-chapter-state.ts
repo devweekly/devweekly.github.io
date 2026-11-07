@@ -103,12 +103,22 @@ export async function analyzeCharacterChapterStates(
   for (const item of limited) {
     const { chapter } = item;
     const sourceHash = hash(chapter.text);
-    const pending = item.characters.filter(character =>
-      options.force || existing.get(character.characterId + "\\0" + chapter.chapterId) !== sourceHash
-    );
+    const previousByCharacter = new Map(item.characters.map(character => [
+      character.characterId,
+      latestPriorState(statesByCharacter.get(character.characterId) ?? [], chapter.ordinal) ?? null
+    ]));
+    const contextHashByCharacter = new Map([...previousByCharacter].map(([characterId, state]) => [characterId, hash(JSON.stringify(state))]));
+    const pending = item.characters.filter(character => {
+      const stored = existing.get(character.characterId + "\\0" + chapter.chapterId);
+      return options.force || stored?.sourceHash !== sourceHash ||
+        stored.contextHash !== contextHashByCharacter.get(character.characterId);
+    });
     if (!pending.length) { result.cached += item.characters.length; continue; }
-    const previousStates = pending.map(character => ({ characterId: character.characterId, name: character.name, state: latestPriorState(statesByCharacter.get(character.characterId) ?? [], chapter.ordinal) ?? null }));
-    const cacheKey = hash(JSON.stringify({ chapterId: chapter.chapterId, sourceHash, model, ids: pending.map(c => c.characterId), previousStates, promptVersion: 2 }));
+    const previousStates = pending.map(character => ({
+      characterId: character.characterId, name: character.name,
+      state: previousByCharacter.get(character.characterId) ?? null
+    }));
+    const cacheKey = hash(JSON.stringify({ chapterId: chapter.chapterId, sourceHash, model, ids: pending.map(c => c.characterId), previousStates, promptVersion: 3 }));
     const cachePath = join(cacheDir, cacheKey + ".json");
     let states: Array<z.infer<typeof StateSchema>> | undefined;
     try {
@@ -136,7 +146,7 @@ export async function analyzeCharacterChapterStates(
         rows.push({
           characterId: character.characterId, name: character.name, chapterId: chapter.chapterId,
           chapterOrdinal: chapter.ordinal, chapterTitle: chapter.title, volume: chapter.volume,
-          sourceHash, model: model || "default", generatedAt: new Date().toISOString(),
+          sourceHash, contextHash: contextHashByCharacter.get(character.characterId) ?? hash("null"), model: model || "default", generatedAt: new Date().toISOString(),
           behavior: state.behavior, goals: state.goals, knowledge: state.knowledge,
           relationships: state.relationships, resources: state.resources, situation: state.situation,
           changes: state.changes, evidence, uncertainty: state.uncertainty
