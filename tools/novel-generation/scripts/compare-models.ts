@@ -5,6 +5,7 @@ import { deflateRawSync } from "node:zlib";
 import os from "node:os";
 import { buildAnalysisUnits, type AnalysisUnit } from "../src/novel-kb.js";
 import { runAgentText } from "../src/generate.js";
+import { extractLocalResponseText, parseComparisonResult, summarizeLocalResponse } from "../src/model-comparison.js";
 
 const argv = process.argv.slice(2);
 const arg = (name: string, fallback: string): string => {
@@ -16,7 +17,7 @@ const base = (process.env.LM_STUDIO_BASE_URL || arg("local-url", "http://127.0.0
 const localModelArg = process.env.LM_STUDIO_MODEL || arg("local-model", "");
 const deepseekModel = arg("deepseek-model", "deepseek-v4.1-flash");
 const count = Math.max(1, Math.min(12, Number(arg("chapters", "6"))));
-const maxChars = Math.max(3000, Math.min(30000, Number(arg("max-chars", "12000"))));
+const maxChars = Math.max(1500, Math.min(30000, Number(arg("max-chars", "12000"))));
 const timeoutMs = Math.max(30000, Math.min(900000, Number(arg("timeout-ms", "300000"))));
 const maxTokens = Math.max(1000, Math.min(12000, Number(arg("max-tokens", "6000"))));
 const chapterIds = arg("chapter-ids", "").split(",").map(s => s.trim()).filter(Boolean);
@@ -64,27 +65,7 @@ function promptFor(u: AnalysisUnit, source: string): string {
   ].join("\n\n");
 }
 function parseResult(raw: string, source: string): Record<string, unknown> {
-  const tick = String.fromCharCode(96).repeat(3);
-  const cleaned = raw.trim().replace(new RegExp("^" + tick + "(?:json)?\\s*", "i"), "").replace(new RegExp("\\s*" + tick + "$"), "");
-  let root: any;
-  try { root = JSON.parse(cleaned); } catch { return { jsonValid: false, evidenceCount: 0, groundedEvidenceCount: 0, evidenceGroundingRate: null }; }
-  if (!root || typeof root !== "object" || Array.isArray(root)) return { jsonValid: false };
-  const counts: Record<string, number> = {};
-  for (const k of ["characters","relationships","plotEvents","foreshadowings","macguffins","worldDetails","narrativeCraft"]) counts[k] = Array.isArray(root[k]) ? root[k].length : 0;
-  const evidence: string[] = [];
-  const walk = (v: any): void => {
-    if (Array.isArray(v)) { v.forEach(walk); return; }
-    if (!v || typeof v !== "object") return;
-    if (typeof v.evidence === "string") evidence.push(v.evidence);
-    if (Array.isArray(v.evidence)) evidence.push(...v.evidence.filter((x: unknown): x is string => typeof x === "string"));
-    for (const [k, child] of Object.entries(v)) if (k !== "evidence") walk(child);
-  };
-  walk(root);
-  const grounded = evidence.filter(e => e.trim().length >= 4 && source.includes(e));
-  return { jsonValid: true, categoryCounts: counts, evidenceCount: evidence.length, groundedEvidenceCount: grounded.length,
-    evidenceGroundingRate: evidence.length ? Number((grounded.length / evidence.length).toFixed(4)) : null,
-    styleAnalysisPresent: Boolean(root.styleAnalysis && typeof root.styleAnalysis === "object"),
-    uncertaintyCount: Array.isArray(root.uncertainties) ? root.uncertainties.length : 0 };
+  return parseComparisonResult(raw, source);
 }
 async function getJson(url: string, init?: RequestInit): Promise<any> {
   const res = await fetch(url, init), body = await res.text();
@@ -92,20 +73,52 @@ async function getJson(url: string, init?: RequestInit): Promise<any> {
   return JSON.parse(body);
 }
 const authHeaders = (): Record<string,string> => process.env.LM_API_TOKEN ? { Authorization: "Bearer " + process.env.LM_API_TOKEN } : {};
-async function localModels(): Promise<string[]> {
+async function localModelInventory(): Promise<any[]> {
   const data = await getJson(base + "/models", { headers: authHeaders(), signal: AbortSignal.timeout(15000) });
-  return Array.isArray(data.data) ? data.data.map((m: any) => String(m.id || "")).filter(Boolean) : [];
+  return Array.isArray(data.data) ? data.data.filter((m: any) => m && m.id).map((m: any) => ({
+    id: String(m.id), object: m.object, owned_by: m.owned_by,
+    context_length: m.context_length ?? m.max_context_length ?? m.n_ctx ?? m.context_window
+  })) : [];
 }
 async function localCall(prompt: string, model: string): Promise<any> {
   const start = Date.now();
-  const body = await getJson(base + "/chat/completions", {
+  const response = await fetch(base + "/chat/completions", {
     method: "POST", headers: { "Content-Type": "application/json", ...authHeaders() },
     body: JSON.stringify({ model, messages: [{ role: "user", content: prompt }], temperature: 0.2, max_tokens: maxTokens, stream: false }),
     signal: AbortSignal.timeout(timeoutMs)
   });
-  const text = body.choices?.[0]?.message?.content;
-  if (typeof text !== "string" || !text.trim()) throw new Error("LM Studio 未返回文本。");
-  return { text, elapsedMs: Date.now() - start, usage: body.usage, responseModel: body.model };
+  const rawBody = await response.text();
+  let body: any;
+  try { body = JSON.parse(rawBody); }
+  catch {
+    const error: any = new Error(`LM Studio 返回非 JSON 响应（HTTP ${response.status}）。`);
+    error.diagnostics = { status: response.status, contentType: response.headers.get("content-type"), responsePreview: rawBody.slice(0, 20000) };
+    throw error;
+  }
+  if (!response.ok) {
+    const error: any = new Error("LM Studio HTTP " + response.status + ": " + rawBody.slice(0, 1500));
+    error.diagnostics = { status: response.status, response: summarizeLocalResponse(body), responsePreview: rawBody.slice(0, 20000) };
+    const match = rawBody.match(/request\\s*\\((\\d+) tokens\\) exceeds the available context size \\((\\d+) tokens\\)/i);
+    if (match) {
+      error.diagnostics.contextLimit = { promptTokens: Number(match[1]), contextTokens: Number(match[2]) };
+      error.message += `；输入 ${match[1]} tokens 超过上下文 ${match[2]}。请在 LM Studio 重新加载模型并把 Context Length 提高到至少 8192（建议 16384），或同时降低 --max-chars 后重新运行两边模型。`;
+    }
+    throw error;
+  }
+  const extracted = extractLocalResponseText(body);
+  if (!extracted.text.trim()) {
+    const error: any = new Error("LM Studio 请求成功，但响应中没有可用的 assistant 文本。");
+    error.diagnostics = {
+      status: response.status, response: summarizeLocalResponse(body),
+      responsePreview: rawBody.slice(0, 20000),
+      hint: "检查 finish_reason、message.content 类型、refusal，以及 LM Studio 服务端日志。"
+    };
+    throw error;
+  }
+  return {
+    text: extracted.text, elapsedMs: Date.now() - start, usage: body.usage,
+    responseModel: body.model, responseDiagnostics: summarizeLocalResponse(body)
+  };
 }
 async function deepseekCall(prompt: string): Promise<any> {
   const start = Date.now();
@@ -138,7 +151,7 @@ async function main(): Promise<void> {
   const manifest: any = { schemaVersion:1, runId, world, createdAt:new Date().toISOString(),
     host:{platform:process.platform,arch:process.arch,node:process.version,os:os.release(),totalMemoryBytes:os.totalmem()},
     settings:{localBaseUrl:base,localModel,deepseekModel,maxChars,timeoutMs,maxTokens,localTemperature:0.2,deepseekSampling:"CodeBuddy SDK defaults; temperature not exposed"},
-    localModelsVisibleAtStart:models,chapters:[] };
+    localModelsVisibleAtStart:models,localModelInventory:modelInventory,chapters:[] };
   for (const unit of selected) {
     const source = excerpt(unit.text), prompt = promptFor(unit, source.text);
     const record: any = { chapterId:unit.chapterId,ordinal:unit.ordinal,title:unit.title,originalCharCount:unit.text.length,
@@ -146,7 +159,7 @@ async function main(): Promise<void> {
       sourceExcerpt:source.text,prompt,local:null,deepseek:null };
     console.log("\n[" + unit.chapterId + "] " + unit.title);
     try { const r=await localCall(prompt,localModel);record.local={...r,evaluation:parseResult(r.text,source.text)};console.log("  LM Studio: "+r.elapsedMs+"ms"); }
-    catch(e){record.local={error:e instanceof Error?e.message:String(e)};console.error("  LM Studio 失败："+record.local.error);}
+    catch(e){const error=e as any;record.local={error:e instanceof Error?e.message:String(e),diagnostics:error?.diagnostics};console.error("  LM Studio 失败："+record.local.error);}
     try { const r=await deepseekCall(prompt);record.deepseek={...r,evaluation:parseResult(r.text,source.text)};console.log("  DeepSeek: "+r.elapsedMs+"ms"); }
     catch(e){record.deepseek={error:e instanceof Error?e.message:String(e)};console.error("  DeepSeek 失败："+record.deepseek.error);}
     records.push(record);
@@ -154,10 +167,10 @@ async function main(): Promise<void> {
     manifest.chapters.push({chapterId:unit.chapterId,title:unit.title,local:record.local.evaluation??{error:record.local.error},deepseek:record.deepseek.evaluation??{error:record.deepseek.error}});
     await writeFile(join(outDir,"manifest.json"),json(manifest),"utf8");
   }
-  const lines = ["# 本地模型与 DeepSeek 原著分析对比","","- World: "+world,"- Local: "+localModel,"- DeepSeek: "+deepseekModel,"- Chapters: "+selected.length,"",
-    "| Chapter | Local JSON | Local evidence | DeepSeek JSON | DeepSeek evidence |","|---|---:|---:|---:|---:|",
-    ...records.map(r=>"| "+r.chapterId+" | "+(r.local.evaluation?.jsonValid?"有效":"失败")+" | "+(r.local.evaluation?.evidenceGroundingRate??"—")+" | "+(r.deepseek.evaluation?.jsonValid?"有效":"失败")+" | "+(r.deepseek.evaluation?.evidenceGroundingRate??"—")+" |"),
-    "","证据命中率仅检查引用是否为输入文本中的连续原文，不代表观察正确或文学质量。JSON 有效也不代表分析质量好。","","## 人工评审重点",
+  const lines = ["# 本地模型与 DeepSeek 原著分析对比","","- World: "+world,"- Local: "+localModel,"- DeepSeek: "+deepseekModel,"- Chapters: "+selected.length,"- Prompt excerpt limit: "+maxChars+" chars","",
+    "| Chapter | Local JSON | Local evidence | DeepSeek JSON | DeepSeek evidence | DeepSeek evidence issues |","|---|---:|---:|---:|---:|---:|",
+    ...records.map(r=>"| "+r.chapterId+" | "+(r.local.evaluation?.jsonValid?"有效":"失败")+" | "+(r.local.evaluation?.evidenceGroundingRate??"—")+" | "+(r.deepseek.evaluation?.jsonValid?"有效":"失败")+" | "+(r.deepseek.evaluation?.evidenceGroundingRate??"—")+" | "+(r.deepseek.evaluation?.evidenceIssueCount??"—")+" |"),
+    "","证据命中率检查所有非空 evidence（包括短引用）是否为输入文本中的连续原文。报告会列出每条不匹配引用；命中不代表观察正确或文学质量。JSON 有效也不代表分析质量好。","","## 本地模型失败诊断",...records.filter(r=>r.local.error).map(r=>"- "+r.chapterId+": "+r.local.error), "","## 人工评审重点",
     "1. 人物是否准确识别；行为、动机、认知是否有原文依据，是否避免把人物固定化。",
     "2. 是否识别真正推动情节的事件与因果，而非把时间先后当因果。",
     "3. 是否克制地识别伏笔，保留不确定性。",
