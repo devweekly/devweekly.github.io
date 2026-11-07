@@ -75,7 +75,7 @@
 这些记录以稳定对象 ID 和章节级更新 ID 关联人物、线索、关键目标/物件/信息及剧情线；每条更新必须附最终正文逐字证据。checkpoint 恢复按更新 ID 幂等合并。后续规划与终审按任务相关性读取最新状态；终审只检查明确事实冲突，不因人物关系变化、伏笔暂未回收或 MacGuffin 暂无推进而阻断章节。
 
 不新增数据库表或专职 Agent：动态更新保存在现有 `story.db` 的 Story State JSON payload 中；原著图谱仍保存在 `story_analysis.storyGraph`。人物可以改变立场，关系可以破裂或修复，伏笔可以误导或废弃，MacGuffin 也可以失去意义。结构化记录只帮助后续章节记住已经发生的变化，不构成创作任务或人物约束。
-动态视图通过 `src/story-state-graph.ts` 从人物、事件、情节线、关系变化、伏笔更新和 MacGuffin 更新派生节点/边；CLI 的 `story-state --type graph` 提供只读检查。连接只使用稳定 ID 和明确姓名，不做模糊实体归并。
+动态视图通过 `src/story-state-graph.ts` 从人物、事件、情节线、关系变化、伏笔更新和 MacGuffin 更新派生节点/边；CLI 的 `story-kb --type graph` 检查原著全文图谱，`story-state --type graph` 检查续写动态图谱；两份图保持分离。连接只使用稳定 ID 和明确姓名，不做模糊实体归并。
 
 
 ## 后果

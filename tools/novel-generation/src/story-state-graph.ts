@@ -112,3 +112,48 @@ export function buildStoryStateGraph(state: StoryState): StoryStateGraph {
 
   return { nodes: [...nodes.values()], edges: [...edges.values()] };
 }
+
+export interface GraphSlice<TNode, TEdge> {
+  totalNodes: number;
+  totalEdges: number;
+  matchedNodes: number;
+  returnedNodes: number;
+  returnedEdges: number;
+  truncated: boolean;
+  nodes: TNode[];
+  edges: TEdge[];
+}
+
+/** Generic graph query: matching nodes plus exactly one hop of explicit adjacency. */
+export function filterGraph<TNode extends { id: string }, TEdge extends { from: string; to: string }>(
+  graph: { nodes: TNode[]; edges: TEdge[] }, query = "", limit = 500
+): GraphSlice<TNode, TEdge> {
+  if (!Number.isInteger(limit) || limit < 1 || limit > 5000) throw new Error("Graph limit must be between 1 and 5000.");
+  const normalized = query.trim().toLocaleLowerCase();
+  const matches = (node: TNode): boolean => !normalized || (JSON.stringify(node) ?? "").toLocaleLowerCase().includes(normalized);
+  const direct = normalized ? graph.nodes.filter(matches) : graph.nodes;
+  const seeds = new Set(direct.map(node => node.id));
+  const selected = new Set(seeds);
+  if (normalized) {
+    for (const edge of graph.edges) {
+      if (seeds.has(edge.from)) selected.add(edge.to);
+      if (seeds.has(edge.to)) selected.add(edge.from);
+    }
+  }
+  const candidateNodes = graph.nodes.filter(node => selected.has(node.id));
+  const nodes = candidateNodes.slice(0, limit);
+  const nodeIds = new Set(nodes.map(node => node.id));
+  const candidateEdges = graph.edges.filter(edge => nodeIds.has(edge.from) && nodeIds.has(edge.to));
+  const edges = candidateEdges.slice(0, limit * 4);
+  return {
+    totalNodes: graph.nodes.length, totalEdges: graph.edges.length, matchedNodes: direct.length,
+    returnedNodes: nodes.length, returnedEdges: edges.length,
+    truncated: nodes.length < candidateNodes.length || edges.length < candidateEdges.length,
+    nodes, edges
+  };
+}
+
+/** Query a derived sequel graph with the same bounded one-hop semantics. */
+export function filterStoryStateGraph(graph: StoryStateGraph, query = "", limit = 500): GraphSlice<StoryStateGraphNode, StoryStateGraphEdge> {
+  return filterGraph(graph, query, limit);
+}

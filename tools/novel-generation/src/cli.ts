@@ -5,7 +5,7 @@ import { generateStory, type GenerationMode } from "./generate.js";
 import { ingestFiles, listTextFiles, searchLibrary } from "./library.js";
 import { writeChapter } from "./workflow.js";
 import { loadStoryState } from "./story-state.js";
-import { buildStoryStateGraph } from "./story-state-graph.js";
+import { buildStoryStateGraph, filterGraph, filterStoryStateGraph } from "./story-state-graph.js";
 import { loadRunStoryState } from "./stage-cache.js";
 import { analyzeLibrary } from "./analysis.js";
 import { analyzeStoryCorpus } from "./story-analysis.js";
@@ -101,7 +101,7 @@ function usage(): never {
     "  npm run dev -- index-story --world conghuoniao [--catalog analysis/conghuoniao/chapter-index.json]",
     "  npm run dev -- analyze-arcs --world conghuoniao [--model model] [--force]",
     "  npm run dev -- analyze-profiles --world conghuoniao [--top 24] [--names 李阎,查小刀] [--model model] [--force]",
-    "  npm run dev -- story-kb --world conghuoniao [--type overview|arcs|characters|threads|foreshadowings|beats|export] [--query 关键词] [--status 状态] [--from 1] [--to 100] [--limit 50]",
+    "  npm run dev -- story-kb --world conghuoniao [--type overview|arcs|characters|threads|foreshadowings|beats|graph|export] [--query 关键词] [--status 状态] [--from 1] [--to 100] [--limit 50]",
     "  npm run dev -- story-state --world conghuoniao [--type overview|characters|events|threads|relationships|foreshadowings|macguffins|graph] [--query 关键词] [--limit 500]",
     "  npm run dev -- analyze-world --world conghuoniao --phase prepare|status|collect [--source original.txt] [--model model] [--timeout-ms 90000] [--evidence-review] [--evidence-window 2]",
     "  npm run dev -- db-status --world conghuoniao",
@@ -268,25 +268,8 @@ async function main(): Promise<void> {
     else if (type === "foreshadowings") console.log(JSON.stringify({ foreshadowingUpdates: take(state.foreshadowingUpdates ?? []) }, null, 2));
     else if (type === "macguffins") console.log(JSON.stringify({ macguffinUpdates: take(state.macguffinUpdates ?? []) }, null, 2));
     else if (type === "graph") {
-      const graph = buildStoryStateGraph(state);
-      const directMatches = query ? graph.nodes.filter(matches) : graph.nodes;
-      const seedIds = new Set(directMatches.map(node => node.id));
-      const selectedIds = new Set(seedIds);
-      if (query) {
-        for (const edge of graph.edges) {
-          if (seedIds.has(edge.from)) selectedIds.add(edge.to);
-          if (seedIds.has(edge.to)) selectedIds.add(edge.from);
-        }
-      }
-      const nodes = graph.nodes.filter(node => selectedIds.has(node.id)).slice(0, limit);
-      const nodeIds = new Set(nodes.map(node => node.id));
-      const edges = graph.edges.filter(edge => nodeIds.has(edge.from) && nodeIds.has(edge.to)).slice(0, limit * 4);
-      console.log(JSON.stringify({
-        totalNodes: graph.nodes.length, totalEdges: graph.edges.length,
-        matchedNodes: directMatches.length, returnedNodes: nodes.length, returnedEdges: edges.length,
-        truncated: nodes.length < selectedIds.size || edges.length < graph.edges.filter(edge => nodeIds.has(edge.from) && nodeIds.has(edge.to)).length,
-        nodes, edges
-      }, null, 2));
+      const graph = filterStoryStateGraph(buildStoryStateGraph(state), query, limit);
+      console.log(JSON.stringify(graph, null, 2));
     }
     else throw new Error("--type must be overview, characters, events, threads, relationships, foreshadowings, macguffins or graph.");
     return;
@@ -315,7 +298,19 @@ async function main(): Promise<void> {
     else if (type === "threads") console.log(JSON.stringify({ threads: listNovelThreads(worldDir, worldId, { limit, status: arg("--status"), query: arg("--query") }) }, null, 2));
     else if (type === "foreshadowings") console.log(JSON.stringify({ foreshadowings: listNovelForeshadowings(worldDir, worldId, { limit, status: arg("--status"), query: arg("--query") }) }, null, 2));
     else if (type === "beats") console.log(JSON.stringify({ beats: listNovelBeats(worldDir, worldId, { from: Number(arg("--from") ?? 0), to: Number(arg("--to") ?? Number.MAX_SAFE_INTEGER), limit }) }, null, 2));
-    else throw new Error("--type must be overview, arcs, characters, threads, foreshadowings, beats or export.");
+    else if (type === "graph") {
+      const snapshot = readStoryAnalysis(worldDir, worldId);
+      const graph = snapshot?.storyGraph;
+      if (!snapshot || !graph || snapshot.analysisVersion !== 6 || snapshot.complete !== true) {
+        throw new Error("A complete v6 original story graph is not available. Finish all analyze-story v6 batches, then run --delta --merge-only before querying the graph.");
+      }
+      const query = arg("--query") ?? "";
+      console.log(JSON.stringify({
+        worldId, analysisVersion: snapshot.analysisVersion, complete: snapshot.complete,
+        sourceHash: snapshot.sourceHash, ...filterGraph(graph, query, limit)
+      }, null, 2));
+    }
+    else throw new Error("--type must be overview, arcs, characters, threads, foreshadowings, beats, graph or export.");
     return;
   }
 
