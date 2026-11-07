@@ -351,7 +351,6 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   }
 
   // Reader experience is observational only: it never blocks state persistence.
-  try {  // Reader experience is observational only: it never blocks state persistence.
   try {
     const readerReport = await cachedCall("reader-experience", "10-reader-experience.md", "reader", [
       readerExperiencePrompt({ brief: input.brief, chapter })
