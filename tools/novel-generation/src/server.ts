@@ -322,13 +322,18 @@ async function listUniverses(sourceWorldId: string): Promise<StoryUniverse[]> {
 interface CanonChapterChunk { chapter: string; chunkIndex: number; start: number; end: number; text: string; }
 async function readCanonChapters(sourceWorldId: string): Promise<Array<{ title: string; text: string }>> {
   const index = JSON.parse(await readFile(path.join(worldDir(sourceWorldId), "library", "index.json"), "utf8")) as { chunks?: CanonChapterChunk[] };
-  const grouped = new Map<string, CanonChapterChunk[]>();
+  // Chapter labels repeat across volumes. Group contiguous runs, not a Map keyed by title,
+  // otherwise distinct "第一章" entries from different volumes collapse into one chapter.
+  const groups: Array<{ title: string; rows: CanonChapterChunk[] }> = [];
   for (const chunk of index.chunks ?? []) {
-    const rows = grouped.get(chunk.chapter) ?? [];
-    rows.push(chunk);
-    grouped.set(chunk.chapter, rows);
+    let group = groups[groups.length - 1];
+    if (!group || group.title !== chunk.chapter) {
+      group = { title: chunk.chapter, rows: [] };
+      groups.push(group);
+    }
+    group.rows.push(chunk);
   }
-  return [...grouped.entries()].map(([title, rows]) => {
+  return groups.map(({ title, rows }) => {
     rows.sort((a, b) => a.chunkIndex - b.chunkIndex);
     let text = "";
     let previousEnd = -1;
@@ -406,14 +411,22 @@ async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: st
     schemaVersion: number; createdAt: string; updatedAt: string;
     chunks: Array<{ chapter: string; [key: string]: unknown }>;
   };
-  const chapterOrder = [...new Set(source.chunks.map(chunk => chunk.chapter))];
-  const allowed = new Set(chapterOrder.slice(0, entryIndex + 1));
+  // Use contiguous chapter occurrences, not distinct title strings: volume titles can repeat.
+  let chapterOccurrence = -1;
+  let previousTitle: string | undefined;
+  const chunks = source.chunks.filter(chunk => {
+    if (chunk.chapter !== previousTitle) {
+      chapterOccurrence++;
+      previousTitle = chunk.chapter;
+    }
+    return chapterOccurrence <= entryIndex;
+  });
   const snapshot = {
     schemaVersion: source.schemaVersion,
     worldId: universeId,
     createdAt: source.createdAt,
     updatedAt: source.updatedAt,
-    chunks: source.chunks.filter(chunk => allowed.has(chunk.chapter))
+    chunks
   };
   const libraryDir = path.join(targetDir, "library");
   await mkdir(libraryDir, { recursive: true });
