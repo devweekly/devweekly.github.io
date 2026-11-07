@@ -3,7 +3,6 @@
 // 不得在路由层复制 prompt 或 schema 逻辑。
 import express, { type Request, type Response, type NextFunction } from "express";
 import { spawn } from "node:child_process";
-import { createWriteStream } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import path from "node:path";
