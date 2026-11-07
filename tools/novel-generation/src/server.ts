@@ -389,7 +389,8 @@ function hasBoundedStoryAnalysis(
   const coreObservations = Array.isArray(snapshot.storyCore?.observations) ? snapshot.storyCore.observations.length : 0;
   const facts = snapshot.characters.length + snapshot.plotThreads.length + snapshot.foreshadowings.length +
     (snapshot.relations?.length ?? 0) + (snapshot.macguffins?.length ?? 0) +
-    (snapshot.storyGraph?.nodes.length ?? 0) + coreObservations;
+    (snapshot.storyGraph?.nodes.length ?? 0) + coreObservations +
+    ((snapshot as typeof snapshot & {storyCoreObservations?:unknown[]}).storyCoreObservations?.length ?? 0);
   return facts > 0;
 }
 
@@ -803,7 +804,11 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     restrictKnowledgeDatabaseToEntry(path.join(stagingDir, "novel.db"), id, parent.entryChapter, parent.entryChapterId);
     const universe: StoryUniverse = {
       id, sourceWorldId: parent.sourceWorldId, name, type: parent.type,
-      entryChapter: parent.entryChapter, brief: parent.brief,
+      entryChapter: parent.entryChapter,
+      entryChapterId: parent.entryChapterId,
+      entryChapterIndex: parent.entryChapterIndex,
+      entryOrdinal: parent.entryOrdinal,
+      brief: parent.brief,
       parentUniverseId: parent.id, forkPoint: forkRun.id,
       createdAt: new Date().toISOString()
     };
@@ -811,10 +816,11 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     await writeFile(path.join(stagingDir, "world-bible.md"), buildUniverseWorldBible(universe), "utf8");
     await writeFile(path.join(stagingDir, "source-canon.json"), JSON.stringify({ sourceWorldId: parent.sourceWorldId, readOnly: true }, null, 2) + "\n", "utf8");
     const parentCanonChapters = await readCanonChapters(parent.sourceWorldId);
+    const matchingParentIndexes = parentCanonChapters.flatMap((chapter, index) => chapter.title === parent.entryChapter ? [index] : []);
     const parentEntryIndex = Number.isSafeInteger(parent.entryChapterIndex)
       ? parent.entryChapterIndex!
-      : parentCanonChapters.findIndex(chapter => chapter.title === parent.entryChapter);
-    if (parentEntryIndex < 0) throw new Error("父宇宙的原文起点已无法在共享章节目录中定位，拒绝创建可能泄漏未来剧情的分支。");
+      : matchingParentIndexes.length === 1 ? matchingParentIndexes[0]! : -1;
+    if (parentEntryIndex < 0 || parentEntryIndex >= parentCanonChapters.length) throw new Error("父宇宙的原文起点无法通过稳定章节索引唯一定位，拒绝创建可能泄漏未来剧情的分支。");
     await writeUniverseLibrarySnapshot(parent.sourceWorldId, stagingDir, id, parentEntryIndex);
     await writeUniverseAnalysisCatalogSnapshot(parent.sourceWorldId, stagingDir, id, parentEntryIndex);
 
