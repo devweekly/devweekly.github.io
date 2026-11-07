@@ -21,7 +21,7 @@ import {
   WRITE_LONG_RETRIEVAL_LIMIT
 } from "./constants.js";
 import { buildWorldSituationContext } from "./world-situation.js";
-import { LIVING_VOICE_RULES, antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, postReviewLiteraryCheckPrompt, readerExperiencePrompt, shouldRunAntiAiEdit } from "./literary-edit.js";
+import { CREATIVE_FREEDOM_RULES, LIVING_VOICE_RULES, antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, postReviewLiteraryCheckPrompt, readerExperiencePrompt, shouldRunAntiAiEdit } from "./literary-edit.js";
 import { buildStyleRegressionPrompt, loadStyleRegressionReferences } from "./style-regression.js";
 
 export interface LongChapterInput {
@@ -178,12 +178,13 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   ].filter(Boolean).join("\n\n");
 
   const blueprintPrompt = [
-    "角色：长篇章节主编。为一万字章节制定唯一执行蓝图，不写正文。",
+    "角色：长篇小说构思编辑。为本章提供可偏离的场景参考，不写正文。",
     writingContext,
-    `按情节自然需要划分场景，最多 ${input.scenes} 个；可以少于这个数量，不要为了凑数拆开本来连贯的情节。每个场景用单独一行 "## 场景 N" 开头（N 从 1 开始连续编号）。蓝图只规定场景功能、人物欲望与压力、关键冲突、信息差、选择及后果，不要替小说家编排逐帧动作。禁止指定停顿几息、先看手再伸手、伸手又收回、反复看/不看等微动作序列；不要把比喻、心理解释或句子直接写进蓝图。每场最多保留一两个不可丢失的戏剧锚点，其余交给小说家自由发现。`,
-    "结合上面的当前人物状态、已发生事件和因果关系，判断本章相关局势。人物和势力应有自己的目标与行动理由，并受其知识范围、资源和限制影响。势力信息以 World Bible 和已有事实为准；资料不足时保留未知，不补造组织结构或关系。",
+    `按情节自然需要划分场景，最多 ${input.scenes} 个；可以少于这个数量，不要为了凑数拆开本来连贯的情节。每个场景用单独一行 "## 场景 N" 开头（N 从 1 开始连续编号）。场景条目只需说明从哪里开始、人物大致处境，以及确实不能丢失的事实或锚点。只有本场自然存在时才写欲望、压力、冲突、信息差、选择和后果；允许日常、闲谈、观察、过渡、氛围或没有明确结果的场景。不要替小说家编排逐帧动作、比喻、心理解释或句子；其他细节留给正文自然发现。`,
+    CREATIVE_FREEDOM_RULES,
+    "结合当前人物状态和已发生事件理解局势。人物和势力可以有自己的目标与行动理由，但不必每次都采取有效行动，也不必每个目标都在本章推进；资料不足时保留未知，不补造组织结构或关系。",
     "如确有叙事价值，可在场景列表之前增加“## 局势推演（尚未发生）”，写一至数项可能的发展或主角不介入时的变化；没有价值时省略。局势推演只是创作参考，不是正史，不能写成已发生事实，不要模拟整个世界或强迫每个 NPC 行动。",
-`全章目标篇幅约 ${input.maxWords} 个汉字。不要机械平均分配场景篇幅；根据情节、情绪和场景需要决定每场长短。`,
+`全章目标篇幅约 ${input.maxWords} 个汉字，只是整体预期，不是填充任务。不要机械平均分配场景篇幅；根据情节、情绪和场景需要决定每场长短，场景自然结束时不为字数续写。`,
     "区分原著已确认事实与本章新创作。不得安排新果实、十主完整名单、天母去向的解释、人物提前获知未知信息。",
     RHYTHM_RULE,
     "整章节奏应有场景差异，但不按固定数量分配快慢场景。"
@@ -252,21 +253,15 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       `本场蓝图：`, scenePlans[index]!,
       "本场相关原文证据（只用于核实事实，不得照搬）：", sceneEvidence,
       "上一场正文的连续性上下文（重点承接人物位置、已知信息、关系变化、道具归属、未完成动作与场景结果，不得重复）：", previous,
-      `本场篇幅参考约 ${perScene} 个汉字，不是必须命中的配额。写出完整、自然的场景；人物可以行动、闲谈、观察、犹豫或误判，不必套用固定的目标—阻力—选择—后果结构。不要用概述代替真正重要的场面，也不要为了字数添加无用内容。`,
+      `本场篇幅参考约 ${perScene} 个汉字，仅供估算，不是最低字数或验收门槛。写出自然完整的场景；人物可以行动、闲谈、观察、犹豫、误判或暂时无所事事。场景不必制造冲突、改变关系或推进主线；如果已经自然结束，就停在最合适的位置，不要为了篇幅继续写。`,
+      CREATIVE_FREEDOM_RULES,
       RHYTHM_RULE,
-      "根据本场功能安排长短句、对白和感官细节；推理或交涉可以展开长句，动作和情绪落点可以短句收束。不要为了满足固定字数或清单配额而添加无功能内容。",
-      "像小说家一样写，不要逐项执行蓝图。叙事锋利来自准确的信息选择、因果压力、人物判断和行动后果，不来自短句堆叠、逐帧手势、连续停顿或装饰性诗意。同一动作只写到足以让读者看清并感受到后果；不要把准备、迟疑、伸手、触碰、收手拆成没有新增信息的句子。不要在对白/动作已呈现潜台词后再解释一遍。",
+      "让句子和段落服从当前场景，不要为了场景之间看起来均衡而调整节奏。",
+      "像小说家一样写，不要逐项执行蓝图。允许偏离场景预设，允许人物绕路、闲谈、误判、改变主意或做出当下看来无用的事；不要替每个细节安排象征意义或后续用途。叙事锋利来自准确的信息选择，不来自每段都要有冲突和结果。同一动作不必逐帧拆解，也不要在对白/动作已呈现潜台词后再解释一遍。",
       "不复制原文句子，不以近义词替换改写原文；不写「未完待续」「本场结束」等标记。"
     ];
     let text = await cachedCall("scene-" + (index + 1), "02-scene-" + String(index + 1).padStart(2, "0") + ".md", "scene", scenePrompt);
-    if (chineseChars(text) < perScene * 0.65) {
-      const extra = await cachedCall("scene-expansion-" + (index + 1), "02-scene-" + String(index + 1).padStart(2, "0") + "-expansion.md", "scene", [
-        scenePrompt[0]!, LIVING_VOICE_RULES, "已写出的本场正文：", text,
-        `当前场景明显偏短。先判断它是否已经自然完成：若确实还缺少必要的动作、对话、情绪或场景收束，请从现有最后一句自然续写；若已经完整，不要为凑字数硬加内容。不得重复或改写已有内容，也不要提前收束全章。`,
-        RHYTHM_RULE
-      ]);
-      text = text.trim() + "\n\n" + extra.trim();
-    }
+    // A short scene is not evidence that it is incomplete; never pad it automatically.
     sceneTexts.push(text.trim());
     await saveStage(input.outputDir, `02-scene-${String(index + 1).padStart(2, "0")}.md`, text);
     console.error(`[write-long] 场景 ${index + 1}/${scenePlans.length} · ${chineseChars(text)} 汉字`);
