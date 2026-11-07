@@ -550,6 +550,15 @@ npm run dev -- distill-style --world conghuoniao \
 
 **正式小说生成 Pipeline 会自动执行风格回归观察**，不需要每章手动运行。普通章节和长章节通过终审后，自动读取激活的 `style-profile.md`，并尝试读取 `worlds/<world>/style-references/` 下最多 4 个经认可的 `.md` / `.txt` 样本，生成 `11-style-regression.md`。参考样本只需维护一次，后续每次写作自动使用。没有参考样本时，仍以 Style Profile 做有限观察，并明确标记证据不足。
 
+认可样本通过 CLI 管理，替换和移除都会保留历史版本，历史目录不会被正式写作读取：
+
+```bash
+npm run dev -- style-reference --world conghuoniao --list
+npm run dev -- style-reference --world conghuoniao --history
+npm run dev -- style-reference --world conghuoniao --add ./samples/dialogue.md ./samples/narration.txt
+npm run dev -- style-reference --world conghuoniao --remove dialogue.md
+```
+
 ```text
 worlds/<world>/
   style-profile.md             # 激活的抽象风格资料，自动注入写作阶段
