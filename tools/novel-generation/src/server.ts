@@ -333,38 +333,6 @@ async function readUniverse(id: string): Promise<StoryUniverse | null> {
  * it may contain future spoilers. Write still requires world-bible.md, so
  * create a spoiler-safe bootstrap that points the writer at bounded local canon.
  */
-function buildUniverseWorldBible(universe: StoryUniverse): string {
-  return [
-    "# " + universe.name + " · 历史时点设定底稿",
-    "",
-    "本文件是独立故事宇宙的启动底稿，不是原著全书设定摘要。",
-    "",
-    "## 宇宙边界",
-    "",
-    "- 原文项目：" + universe.sourceWorldId,
-    "- 原文起点：" + universe.entryChapter,
-    "- 宇宙类型：" + universe.type,
-    ...(universe.parentUniverseId ? ["- 父宇宙：" + universe.parentUniverseId] : []),
-    ...(universe.forkPoint ? ["- 分叉章节运行记录：" + universe.forkPoint] : []),
-    "",
-    "## 创作方向",
-    "",
-    universe.brief.trim() || "从原文起点自然展开，尊重当时的人物处境与未解决冲突。",
-    "",
-    "## 资料使用边界",
-    "",
-    "- 只把本宇宙本地 bounded library、universe-entry.md、universe-origin-context.md 及本宇宙后续生成的章节当作可用材料。",
-    "- 原文起点之后的剧情不属于本宇宙已知事实；不得从原文项目或父宇宙的全书汇总资料补全未来信息。",
-    "- 起点之前的原文只作为只读背景；它不是本宇宙续写已经发生的章节。",
-    "- 本底稿没有明确说明的世界规则、人物关系和事件结果均视为未知，不要自行补成确定正史。",
-    "- 文学性、文笔和艺术风格优先；人物可以变化、反复、误判、反转，不受静态画像约束。",
-    "",
-    "## 后续补充",
-    "",
-    "知识构建任务可以基于本宇宙截至起点的资料补充人物、关系、主线和伏笔分析；这些分析是创作参考，不是必须执行的剧情合同。",
-    ""
-  ].join("\n");
-}
 
 async function listUniverses(sourceWorldId: string): Promise<StoryUniverse[]> {
   const root = path.resolve("worlds");
