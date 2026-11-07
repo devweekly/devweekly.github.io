@@ -299,6 +299,30 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
   } catch (error) { sendError(res, error); }
 });
 
+app.get("/api/worlds/:worldId/forkable-chapters", async (req, res) => {
+  try {
+    const parentId = worldIdOf(req.params.worldId); assertInsideWorld(parentId);
+    if (!(await readUniverse(parentId))) return void res.status(409).json({ error: "只能列出故事宇宙中的可分叉章节。" });
+    const runs = (await listRuns(parentId)).filter(run => run.kind === "chapter" && run.status === "completed" && run.outputDir && run.chapterPath);
+    const root = path.resolve(".output", parentId) + path.sep;
+    const chapters = [];
+    for (const run of runs) {
+      const outputDir = path.resolve(run.outputDir!);
+      const chapterPath = path.resolve(run.chapterPath!);
+      if (!outputDir.startsWith(root) || !chapterPath.startsWith(outputDir + path.sep)) continue;
+      try {
+        const state = validateStoryState(JSON.parse(await readFile(path.join(outputDir, "08-state-update.json"), "utf8")));
+        if (state.worldId !== parentId) continue;
+        const chapter = await readFile(chapterPath, "utf8");
+        const title = chapter.split("\n").map(line => line.trim()).find(Boolean) || "未命名章节";
+        chapters.push({ id: run.id, title: title.slice(0, 120), createdAt: run.createdAt });
+      } catch { /* 不具备可恢复状态快照的旧章节不作为分叉入口。 */ }
+    }
+    chapters.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    res.json({ chapters });
+  } catch (error) { sendError(res, error); }
+});
+
 app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
   try {
     const parentId = worldIdOf(req.params.worldId); assertInsideWorld(parentId);
