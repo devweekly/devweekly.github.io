@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import path from "node:path";
 import { emptyStoryState } from "../src/story-state.js";
-import { buildUniverseOriginContext, rebaseStoryState, remapForkedRun } from "../src/universe-branch.js";
+import { buildUniverseOriginContext, rebaseStoryState, remapForkedRun, shouldCopyUniverseAsset } from "../src/universe-branch.js";
 import type { WorkbenchRun } from "../src/workbench-store.js";
 
 test("forked state keeps the selected chapter snapshot but receives a new universe identity", () => {
@@ -69,4 +69,25 @@ test("origin context budget prioritizes chapters nearest to the selected entry",
   assert.ok(context.includes("第二章"));
   assert.ok(!context.includes("第一章"));
   assert.ok(context.indexOf("第二章") < context.indexOf("第三章"));
+});
+
+test("historical universe asset policy excludes full-book and derived data from create and fork", () => {
+  for (const file of [
+    "world-bible.md", "characters.md", "timeline.md", "fruit-worlds.md",
+    "yanfu-system.md", "style-profile.md", "story-analysis.md",
+    "character-profiles.md", "plot-summary.md", "foreshadowing.md",
+    "analysis/chapter-index.json", "corpus-craft/chapters/1.json",
+    "vane-index/index.json", "style-references/active.json",
+    "library/index.json", "novel.db", "story-state.json", ".output/run/chapter.md"
+  ]) {
+    assert.equal(shouldCopyUniverseAsset(file), false, file);
+  }
+});
+
+test("historical universe asset policy retains ordinary source material and nested non-derived assets", () => {
+  for (const file of [
+    "source-notes/folklore.txt", "images/map.png", "research/period-customs.md"
+  ]) {
+    assert.equal(shouldCopyUniverseAsset(file), true, file);
+  }
 });
