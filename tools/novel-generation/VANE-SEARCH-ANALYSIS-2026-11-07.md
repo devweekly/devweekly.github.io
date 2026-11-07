@@ -19,7 +19,7 @@ Vane 值得进入候选方案，但目前没有足够证据支持直接把它作
 
 ## 当前代码状态补充（2026-11-07）
 
-此前本文记录的“尚未集成”已经部分过期：当前代码已通过每宇宙独立的 vane-index 目录构建索引，manifest 记录 worldId、embedding 模型、维度和文档 ID；普通 write 与 write-long 会在 BM25 / Story Analysis / Corpus Craft 上下文之外尝试召回 Vane 命中，失败时保留原有检索路径。Vane 的索引目录现改为 staging 构建、关闭数据库后切换发布，失败时恢复上一份索引；这避免在旧索引上先删除再重建造成的半成品状态。
+此前本文记录的“尚未集成”已经部分过期：当前代码已通过每宇宙独立的 vane-index 目录构建索引，manifest 记录 worldId、embedding 模型、维度和文档 ID；普通 write 与 write-long 会在 BM25 / Story Analysis / Corpus Craft 上下文之外尝试召回 Vane 命中，失败时保留原有检索路径。Vane 的索引目录现改为 staging 构建、关闭数据库后切换发布，失败时恢复上一份索引；这避免在旧索引上先删除再重建造成的半成品状态。Vane 重建只接纳 sourceHash 与当前 bounded chapter unit 匹配的 Corpus Craft 资料，避免同一 worldId 下的旧缓存混入当前索引。
 
 但以下原始 PoC 验收仍未完成：
 
