@@ -27,7 +27,8 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
       removeUnsafeDatabase(databasePath);
       return 0;
     }
-    const chapter = db.prepare("SELECT ordinal,volume FROM novel_chapters WHERE title=? ORDER BY ordinal LIMIT 1").get(entryChapter) as { ordinal: number; volume?: number } | undefined;
+    const chapterSelect = "SELECT ordinal" + (chapterColumns.has("volume") ? ",volume" : "") + " FROM novel_chapters WHERE title=? ORDER BY ordinal LIMIT 1";
+    const chapter = db.prepare(chapterSelect).get(entryChapter) as { ordinal: number; volume?: number } | undefined;
     if (!chapter || !Number.isSafeInteger(Number(chapter.ordinal))) {
       // Fail closed. A database without a resolvable chapter ordinal cannot be
       // proven safe for a historical branch.
