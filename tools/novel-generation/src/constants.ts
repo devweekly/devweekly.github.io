@@ -335,9 +335,6 @@ export const MIN_CONTEXT_LINES = 10;
 export const MAX_CONTEXT_LINES = 400;
 
 // ── 长章节逐场写作 ─────────────────────────────────────────────
-/** 每场目标字数在均分基础上多留的余量，防止前几场偷字数挤压后场。 */
-export const SCENE_WORD_BUDGET_BUFFER = 1.15;
-
 /** 已累积前文作为「本场前情」注入时的字符上限。 */
 export const ACCUMULATED_CONTEXT_TAIL_CHARS = 7_200;
 
