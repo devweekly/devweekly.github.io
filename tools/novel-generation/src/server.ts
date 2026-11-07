@@ -385,6 +385,7 @@ function hasBoundedStoryAnalysis(
 async function ensureUniverseStoryAnalysis(worldId: string, universe: StoryUniverse): Promise<void> {
   const current = readStoryAnalysis(worldDir(worldId), worldId) as (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined;
   if (hasBoundedStoryAnalysis(current, universe.entryChapter)) return;
+  if (!existsSync(path.join(worldDir(universe.sourceWorldId), "novel.db"))) return;
   const source = readStoryAnalysis(worldDir(universe.sourceWorldId), universe.sourceWorldId);
   if (!source || source.analysisVersion !== 6 || source.complete !== true) return;
   importBoundedStoryAnalysisSnapshot(
