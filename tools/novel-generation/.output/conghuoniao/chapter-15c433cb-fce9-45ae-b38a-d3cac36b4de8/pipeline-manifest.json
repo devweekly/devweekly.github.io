@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "stages": {
+    "plot": {
+      "inputHash": "a56556b85ee64086a777b2fd1d67c74672b3d9e1806b36b2fb9764a720092df1",
+      "outputFile": "01-main-plot.md",
+      "outputHash": "c7d0f853264addd6077937cc35859c75ab7a4cd0c7a5891f6824d219a0202c57",
+      "completedAt": "2026-11-07T05:43:26.199Z"
+    },
+    "creative": {
+      "inputHash": "2327c9c1e94b15521a6f5249a8a50372b30fc0791ad6a5235197a37c9f7315ff",
+      "outputFile": "02-creative-options.md",
+      "outputHash": "93a289eb3b327ba64388efda1d3cc85950c86c3572e6fbde89cd26312e693828",
+      "completedAt": "2026-11-07T05:43:34.200Z"
+    }
+  }
+}
