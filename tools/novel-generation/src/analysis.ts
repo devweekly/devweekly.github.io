@@ -353,8 +353,11 @@ export async function analyzeLibrary(
   syncAnnotations(join(libraryDir, ".."), worldId, store.annotations, registry);
 
   const completed = new Set(store.annotations.filter(isEvidenceReviewed).map(item => item.chunkId));
+  const remainingChunks = index.chunks.filter(chunk => !completed.has(chunk.id));
+  const failedIds = new Set(store.failures.map(item => item.chunkId));
   return {
     processed, failed,
-    remaining: index.chunks.filter(chunk => !completed.has(chunk.id)).length
+    remaining: remainingChunks.length,
+    unattempted: remainingChunks.filter(chunk => !failedIds.has(chunk.id)).length
   };
 }
