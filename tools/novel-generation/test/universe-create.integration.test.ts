@@ -109,6 +109,9 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     } finally { snapshot.close(); }
     assert.ok((await readFile(join(universeDir, "universe-entry.md"), "utf8")).includes("第二章正文"));
     assert.ok(!(await readFile(join(universeDir, "universe-entry.md"), "utf8")).includes("未来剧情泄漏标记"));
+    const originContext = await readFile(join(universeDir, "universe-origin-context.md"), "utf8");
+    assert.ok(originContext.includes("第一章正文"));
+    assert.ok(!originContext.includes("未来剧情泄漏标记"));
     const analysisContext = buildStoryAnalysisContext(undefined, "未来剧情泄漏标记");
     assert.equal(analysisContext, "");
     const futureSearch = await searchLibrary(join(universeDir, "library"), "未来剧情泄漏标记", 10);
