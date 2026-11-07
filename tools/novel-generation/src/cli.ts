@@ -63,6 +63,7 @@ import { loadChapters, runRegression } from "./regression.js";
 import { formatStoryPlan, generateStoryPlan, loadStoryPlan, saveStoryPlan } from "./story-plan.js";
 import { buildStyleDistillationPrompt } from "./style-distillation.js";
 import { ensureAsOfStyleProfile } from "./asof-style-profile.js";
+import { exportAsOfDossier } from "./asof-dossier.js";
 import { buildStyleRegressionPrompt } from "./style-regression.js";
 import { buildStyleTrendPrompt, collectStyleRegressionReports } from "./style-trend.js";
 import { addStyleReference, archiveStyleReference, listStyleReferences, listStyleReferenceHistory } from "./style-references.js";
@@ -107,6 +108,7 @@ function usage(): never {
     "  npm run dev -- style-regress --world conghuoniao --reference ./benchmarks/ref-1.md [more files] --candidate .output/chapter.md [more files] [--scene-type dialogue] [--out .output/<world>/style-regression/report.md]",
     "  npm run dev -- style-trend --world conghuoniao [--limit 30] [--model model] [--out .output/<world>/style-regression-trend/report.md]",
     "  npm run dev -- ensure-style-profile --world conghuoniao [--model model]  # 从当前宇宙时点安全语料重建缺失的风格画像",
+    "  npm run dev -- export-asof-dossier --world conghuoniao  # 从当前宇宙完整分析快照导出时点人物/主线/伏笔资料",
     "  npm run dev -- style-reference --world conghuoniao --list | --history [dialogue.md] | --add ./samples/dialogue.md [more files] | --remove dialogue.md",
     "  npm run dev -- roleplay-sandbox --world conghuoniao --brief \"场景设定\" --characters 人物甲,人物乙 [--model model] [--out file]",
     "  npm run dev -- analyze-story --world conghuoniao [--model model] [--timeout-ms 180000] [--max-chars 14000] [--shard 0/4] [--merge-only] [--delta]",
@@ -166,7 +168,7 @@ const COMMANDS = new Set([
   "generate", "write", "write-long", "regress", "ingest", "search", "analyze", "analyze-story",
   "index-story", "story-kb", "story-state", "analyze-arcs", "analyze-profiles", "analyze-character-states",
   "analyze-world", "models", "check-runtime", "db-status", "verify-world", "plan-story", "distill-style",
-  "style-regress", "roleplay-sandbox", "style-reference", "style-trend", "analyze-corpus-craft", "vane-index", "ensure-style-profile"
+  "style-regress", "roleplay-sandbox", "style-reference", "style-trend", "analyze-corpus-craft", "vane-index", "ensure-style-profile", "export-asof-dossier"
 ]);
 
 async function main(): Promise<void> {
@@ -654,6 +656,12 @@ async function main(): Promise<void> {
     const changes = [];
     for (const file of additions) changes.push(await addStyleReference(worldDir, file));
     console.log(JSON.stringify(changes, null, 2));
+    return;
+  }
+
+  if (command === "export-asof-dossier") {
+    const result = await exportAsOfDossier(worldId, resolve("worlds", worldId));
+    console.log(JSON.stringify(result, null, 2));
     return;
   }
 
