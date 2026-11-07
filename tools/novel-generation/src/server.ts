@@ -163,42 +163,52 @@ async function runKnowledgeBuildStep(worldId: string, command: string[]): Promis
   });
 }
 async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState> {
-  const existing = await readKnowledgeBuild(worldId);
-  if (knowledgeBuilds.has(worldId) || existing?.status === "queued" || existing?.status === "running") {
+  // Reserve synchronously before any await: two POSTs in the same event loop
+  // must not both pass the active-task check.
+  if (knowledgeBuilds.has(worldId)) {
     throw Object.assign(new Error("该宇宙已有知识构建任务正在运行。"), { status: 409 });
   }
-  const now = new Date().toISOString();
-  const state: KnowledgeBuildState = { worldId, status: "queued", startedAt: now, updatedAt: now, steps: [] };
   knowledgeBuilds.add(worldId);
-  await writeKnowledgeBuild(state);
-  void (async () => {
-    let failed = 0;
-    state.status = "running";
-    for (const step of KNOWLEDGE_BUILD_STEPS) {
-      const record: KnowledgeBuildState["steps"][number] = { name: step.name, status: "running", startedAt: new Date().toISOString() };
-      state.currentStep = step.name; state.steps.push(record); state.updatedAt = new Date().toISOString();
-      await writeKnowledgeBuild(state);
-      const result = await runKnowledgeBuildStep(worldId, step.command);
-      record.exitCode = result.exitCode;
-      record.output = result.output.slice(-12000);
-      record.error = result.error.slice(-6000);
-      record.completedAt = new Date().toISOString();
-      record.status = result.exitCode === 0 ? "completed" : "failed";
-      if (record.status === "failed") failed++;
-      state.updatedAt = new Date().toISOString();
-      await writeKnowledgeBuild(state);
+  try {
+    const existing = await readKnowledgeBuild(worldId);
+    if (existing?.status === "queued" || existing?.status === "running") {
+      throw Object.assign(new Error("该宇宙已有知识构建任务正在运行。"), { status: 409 });
     }
-    state.status = failed === 0 ? "completed" : failed === state.steps.length ? "failed" : "partial";
-    state.completedAt = new Date().toISOString(); state.updatedAt = state.completedAt;
-    delete state.currentStep;
+    const now = new Date().toISOString();
+    const state: KnowledgeBuildState = { worldId, status: "queued", startedAt: now, updatedAt: now, steps: [] };
     await writeKnowledgeBuild(state);
-  })().catch(async error => {
-    state.status = "failed"; state.completedAt = new Date().toISOString(); state.updatedAt = state.completedAt;
-    state.steps.push({ name: state.currentStep ?? "story-analysis", status: "failed", startedAt: state.updatedAt, completedAt: state.completedAt, error: String(error) });
-    delete state.currentStep;
-    await writeKnowledgeBuild(state).catch(() => undefined);
-  }).finally(() => knowledgeBuilds.delete(worldId));
-  return state;
+    void (async () => {
+      let failed = 0;
+      state.status = "running";
+      for (const step of KNOWLEDGE_BUILD_STEPS) {
+        const record: KnowledgeBuildState["steps"][number] = { name: step.name, status: "running", startedAt: new Date().toISOString() };
+        state.currentStep = step.name; state.steps.push(record); state.updatedAt = new Date().toISOString();
+        await writeKnowledgeBuild(state);
+        const result = await runKnowledgeBuildStep(worldId, step.command);
+        record.exitCode = result.exitCode;
+        record.output = result.output.slice(-12000);
+        record.error = result.error.slice(-6000);
+        record.completedAt = new Date().toISOString();
+        record.status = result.exitCode === 0 ? "completed" : "failed";
+        if (record.status === "failed") failed++;
+        state.updatedAt = new Date().toISOString();
+        await writeKnowledgeBuild(state);
+      }
+      state.status = failed === 0 ? "completed" : failed === state.steps.length ? "failed" : "partial";
+      state.completedAt = new Date().toISOString(); state.updatedAt = state.completedAt;
+      delete state.currentStep;
+      await writeKnowledgeBuild(state);
+    })().catch(async error => {
+      state.status = "failed"; state.completedAt = new Date().toISOString(); state.updatedAt = state.completedAt;
+      state.steps.push({ name: state.currentStep ?? "story-analysis", status: "failed", startedAt: state.updatedAt, completedAt: state.completedAt, error: String(error) });
+      delete state.currentStep;
+      await writeKnowledgeBuild(state).catch(() => undefined);
+    }).finally(() => knowledgeBuilds.delete(worldId));
+    return state;
+  } catch (error) {
+    knowledgeBuilds.delete(worldId);
+    throw error;
+  }
 }
 
 
