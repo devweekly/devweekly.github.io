@@ -1179,7 +1179,7 @@ export async function recoverWorkbenchRuns(): Promise<void> {
     // A hard process exit can happen before a staging rename. Such directories
     // are never visible worlds and must not accumulate or be resumed on startup.
     await Promise.all(directoryEntries
-      .filter(entry => entry.isDirectory() && /^\\.staging-u-[a-f0-9]{16}$/.test(entry.name))
+      .filter(entry => entry.isDirectory() && /^\.\staging-u-[a-f0-9]{16}$/.test(entry.name))
       .map(entry => rm(path.join(root, entry.name), { recursive: true, force: true })));
     entries = directoryEntries.filter(entry => entry.isDirectory()).map(entry => entry.name);
   } catch { /* no worlds yet */ }
