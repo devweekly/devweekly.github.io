@@ -166,6 +166,18 @@ app.get("/api/worlds/:worldId/dashboard", async (req, res) => {
   try { await dashboardHandler(req, res); } catch (error) { sendError(res, error); }
 });
 
+// ── 当前滚动式多章节 Story Arc ─────────────────────────────
+app.get("/api/worlds/:worldId/story-arc", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    const content = await readFile(path.join(worldDir(id), "story-arc.md"), "utf8").catch(error => {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
+      throw error;
+    });
+    res.json({ storyArc: content });
+  } catch (error) { sendError(res, error); }
+});
+
 // ── 故事图谱查询 ─────────────────────────────────────────────
 
 /** 限制图谱查询的返回规模；非法或未传参时回落到 500。 */
@@ -458,8 +470,8 @@ app.get("/api/runs/:runId/preview", async (req, res) => {
     const root = path.resolve(".output", id) + path.sep; const outputDir = path.resolve(run.outputDir);
     if (!outputDir.startsWith(root)) return void res.status(400).json({ error: "Invalid chapter output path." });
     const readOptionalText = async (name: string): Promise<string> => readFile(path.join(outputDir, name), "utf8").catch(error => { if ((error as NodeJS.ErrnoException).code === "ENOENT") return ""; throw error; });
-    const [chapterPlan, sceneBlueprint, chapter] = await Promise.all([readOptionalText("03-chapter-plan.md"), readOptionalText("01-scene-blueprint.md"), readOptionalText("chapter.md")]);
-    res.json({ chapterPlan: chapterPlan || sceneBlueprint, chapter });
+    const [chapterPlan, sceneBlueprint, chapter, storyArc] = await Promise.all([readOptionalText("03-chapter-plan.md"), readOptionalText("01-scene-blueprint.md"), readOptionalText("chapter.md"), readOptionalText("00-story-arc.md")]);
+    res.json({ storyArc, chapterPlan: chapterPlan || sceneBlueprint, chapter });
   } catch (error) { sendError(res, error); }
 });
 // ── Story Plan 生成（异步任务） ──────────────────────────────
