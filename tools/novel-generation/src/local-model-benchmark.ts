@@ -1,9 +1,9 @@
-export function collectEvidence(value: unknown, path = "$."): Array<{path:string;evidence:string}> {
+export function collectEvidence(value: unknown, path = "$"): Array<{path:string;evidence:string}> {
   const found: Array<{path:string;evidence:string}> = [];
   if (Array.isArray(value)) value.forEach((item,index)=>found.push(...collectEvidence(item,path+"["+index+"]")));
   else if (value && typeof value === "object") for (const [key,item] of Object.entries(value as Record<string,unknown>)) {
-    if (key.toLowerCase().includes("evidence") && Array.isArray(item)) item.forEach((entry,index)=>{ if(typeof entry==="string"&&entry.trim())found.push({path:path+key+"["+index+"]",evidence:entry.trim()}); });
-    else found.push(...collectEvidence(item,path+key+"."));
+    if (key.toLowerCase().includes("evidence") && Array.isArray(item)) item.forEach((entry,index)=>{ if(typeof entry==="string"&&entry.trim())found.push({path:path+"."+key+"["+index+"]",evidence:entry.trim()}); });
+    else found.push(...collectEvidence(item,path+"."+key));
   }
   return found;
 }
