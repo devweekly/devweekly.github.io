@@ -418,8 +418,8 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
         const currentScene = polished[index];
         if (currentScene === undefined) throw new Error("Review referenced a missing scene: " + sceneNumber);
         const revised = await cachedCall("scene-repair-" + sceneNumber + "-round-" + round, "05-polish-" + String(sceneNumber).padStart(2, "0") + "-repair-" + round + ".md", "voice", [
-          "角色：场景修复编辑。只修复指定场景中的实质问题，输出本场完整正文，不得输出解释或标题。",
-          writingContext,
+          "角色：场景修复编辑。只修复指定场景中的实质问题，输出本场完整正文，不得输出解释或标题。不得借修复之名增加戏剧性、补齐场景结构或推动原本无需推进的情节。",
+          CREATIVE_FREEDOM_RULES, writingContext,
           "全章蓝图：", blueprint,
           "本场蓝图（如有修订以修订版为准）：", currentPlans[index] ?? "",
           "本轮最终审查发现的必改项：", JSON.stringify(sceneIssues, null, 2),
