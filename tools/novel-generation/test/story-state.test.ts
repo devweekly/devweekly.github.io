@@ -149,6 +149,9 @@ test("foreshadowing and MacGuffin lifecycle updates are evidence-backed and appe
   const afterSecond = mergeStoryState(afterFirst, second);
   assert.deepEqual(afterSecond.foreshadowingUpdates?.map(item => item.status), ["planted", "reinforced"]);
   assert.equal(afterSecond.macguffinUpdates?.[1]?.holder, "李玄");
+  const resumed = mergeStoryState(afterSecond, second);
+  assert.equal(resumed.foreshadowingUpdates?.length, 2);
+  assert.equal(resumed.macguffinUpdates?.length, 2);
   assert.throws(() => parseStoryStateUpdate({
     continuityNotes: [],
     foreshadowingUpdates: [{
