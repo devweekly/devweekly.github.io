@@ -208,7 +208,7 @@ CLI 命令（均经 `npm run dev --`）：
 
 ## Literary workflow implementation invariants
 
-- 普通章节与长章节的 Writer、对白编辑、叙事声音编辑和场景扩写重试必须注入同一份 `LIVING_VOICE_RULES`；不能只把 Living Voice 留在末端 Anti-AI 编辑器。
+- 普通章节与长章节的规划器和 Writer 必须注入 `CREATIVE_FREEDOM_RULES`，正文编辑继续注入 `LIVING_VOICE_RULES`。不是每个场景都必须推进主线、制造冲突、揭示信息或改变关系；不得因单场篇幅不足自动扩写。事实连续性是约束，蓝图不是逐项执行合同。
 - Anti-AI 流程顺序固定为诊断 → 克制编辑 → 保守复核 → 最终硬伤审查。诊断不得判断 AI 生成概率；复核只允许 keep/restore，复核失败必须恢复编辑前正文，不得增加人工确认。
 - Anti-AI 诊断报告、编辑稿和复核结果分别保存在 `06a`、`06b`、`06c` 阶段文件中，全部进入阶段缓存指纹。
 - Reader 只能盲读最终正文，不得注入章节蓝图、人物档案、世界设定或创作任务；它只输出观察报告，不进入门禁、不更新 Story State。
