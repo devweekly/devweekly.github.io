@@ -79,9 +79,10 @@
 3. 主线剧情与创意发散并行提出方案。
 4. 主编选定唯一章节蓝图。
 5. 生成正文；Writer、对白和叙事声音阶段共享 Living Voice 原则，分别修整对白和叙事声音。
-6. Anti-AI 先输出带文本证据的诊断，再做克制编辑；独立复核确认收益后才保留编辑稿，否则恢复原稿。
+6. Editorial Review 前执行文学去 AI 味：先输出带文本证据的诊断，仅在确有问题时编辑；独立复核确认收益后才保留，否则恢复原稿。诊断为空、明确无问题或失败时跳过编辑。
+7. Editorial Review 只处理明确硬伤；发生自动修复后，追加只读文风回归观察，检查修复是否引入 AI 腔，不再次改写、不阻断成稿。
 7. 对最终采用的正文进行结构化硬伤审查。
-8. 对 blocker/major 做最小修复，最多两轮；每轮重新审查。
+8. 对 blocker/major 做最小修复，最多两轮；每轮重新审查。若发生修复，追加只读文风回归观察；没有修复则跳过。
 9. 通过后自动执行 Style Regression 观察，再生成独立 Reader 体验报告；两者失败均不阻塞成功路径。
 10. 提取并校验状态，自动提交 SQLite 和兼容快照，保存正文、质量摘要和阶段产物。
 
@@ -98,6 +99,7 @@
 | `06b-anti-ai-edited.md` | Living Voice / Anti-AI 克制编辑后的正文 |
 | `07-continuity-review.md` | 结构化最终审查与自动修复记录 |
 | `10-reader-experience.md` | 独立读者体验观察；不影响章节状态 |
+| `10-post-review-literary-check.md` | 仅在终审修复后生成的文风回归观察；只读、不改稿、不阻断 |
 | `11-style-regression.md` | 自动对照激活的 Style Profile 和可选认可样本，观察风格漂移；不改稿、不阻断 |
 | `chapter.md` | 最终复查通过后的章节 |
 | `08-state-update.json` | 合并后的下一章状态 |
@@ -423,9 +425,9 @@ Living Voice 不是一个独立的正文改写 Agent，而是写作与编辑阶�
 
 ADR 0004 的第一阶段已接入两条正式写作链：
 
-- `src/literary-edit.ts` 提供共享 Living Voice、Anti-AI 诊断/编辑/复核和盲读 Reader 提示。
+- `src/literary-edit.ts` 提供共享 Living Voice、Anti-AI 诊断/编辑/复核、终审后文风回归观察和盲读 Reader 提示。
 - 普通章节在 `06-voice-edited.md` 后依次生成 `06a-anti-ai-diagnosis.md`、`06b-anti-ai-edited.md`、`06c-anti-ai-verification.json`，再进入现有最终硬伤审查；复核不通过或失败时恢复 `06-voice-edited.md`。
-- 长章节在逐场 `05-polish-XX.md` 汇总后生成相同的 `06a/06b/06c` 诊断、编辑和复核产物，再进入现有跨场终审；复核不通过或失败时恢复逐场修订稿。
+- 长章节在逐场 `05-polish-XX.md` 汇总后生成相同的 `06a/06b/06c` 诊断、编辑和复核产物，再进入现有跨场终审；诊断无问题或失败时跳过编辑，复核不通过或失败时恢复逐场修订稿。
 - Anti-AI 编辑调用失败时保留上一阶段正文，写入错误诊断并继续终审；不会因辅助编辑失败丢失已经生成的章节。
 - 两条写作链在终审通过后生成 `10-reader-experience.md`。Reader 失败只保存错误诊断，不影响章节通过和 Story State 持久化。
 - 新增 `antiAi` 与 `reader` 阶段配置，沿用现有 task profile 和阶段缓存；无新增依赖、数据库表或常驻 Agent。
@@ -437,7 +439,7 @@ Roleplay Sandbox 已读取当前人物动态、长期人物观察和任务相关
 
 ### 10.10 五项能力的当前实际落地
 
-- **Anti-AI**：普通章节与长章节均执行诊断（`06a`）→ 编辑（`06b`）→ 保守复核（`06c`）。诊断只报告有具体证据的阅读问题，不判断 AI 概率；复核选择 keep/restore，复核格式错误或调用失败时恢复原稿。它不是检测器，也不是质量门禁。
+- **Anti-AI**：普通章节与长章节均执行诊断（`06a`）→ 有问题才编辑（`06b`）→ 保守复核（`06c`）。诊断只报告有具体证据的阅读问题，不判断 AI 概率；空诊断、无问题或诊断失败均跳过整章改写；复核格式错误或调用失败时恢复原稿。Editorial Review 发生修复时追加 `10-post-review-literary-check.md` 只读观察，检查修复是否引入 AI 腔，不再次改稿、不阻断交付。
 - **Living Voice**：同一组原则进入普通/长章节 Writer、对白与叙事声音编辑；长章节场景扩写重试也会注入，避免重试阶段退化成单纯凑字数。
 - **Style Distillation**：`distill-style` 提炼授权样本的全局与场景级抽象特征；候选默认隔离，`--activate` 显式激活并归档旧版。正式写作每章自动生成只读 Style Regression 报告；仍未建设样本版本管理、跨章节自动批量趋势分析和 CI 风格门禁。
 - **Reader**：最终成稿后盲读正文，不预先接收人物档案、世界设定、蓝图或创作任务；只生成观察报告，不影响质量门禁和 Story State。
