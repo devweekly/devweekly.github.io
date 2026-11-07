@@ -32,7 +32,7 @@ async function embed(texts:string[]):Promise<number[][]|undefined> {
 }
 async function openVane(worldId:string):Promise<{db:VaneDb;col:VaneCollection}> {
   let module:VaneModule;
-  try { const packageName="@vane-rs/node"; module=await import(packageName) as unknown as VaneModule; }
+  try { const packageName="@vane-rs/node"; const imported=await import(packageName) as {default?:unknown}; module=(imported.default??imported) as VaneModule; }
   catch { throw new Error("Vane 未安装。请在 tools/novel-generation 运行 npm install @vane-rs/node。"); }
   const dir=resolve("worlds",worldId,"vane-index");
   await mkdir(dir,{recursive:true});
