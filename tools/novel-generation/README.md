@@ -2,7 +2,7 @@
 
 本地长篇小说创作工具，使用 CodeBuddy Agent SDK。当前提供小说文本导入、原文检索、人物/事件/关系候选抽取、多 Agent 文本分析、多阶段章节写作，以及模型与执行链路自检。全文人物与情节分析通过 `analyze-story` 直接调用 CodeBuddy SDK，并将完整分析快照保存到 SQLite。
 
-Web 工作台：在本目录运行 `npm run dev:web`，默认打开 `http://127.0.0.1:4173`。当前提供 World Dashboard、Story Plan 自动生成并激活、规划版本追溯和运行记录。生成结果经 schema 校验后立即更新正式 `story-plan.json`，旧版本自动归档；工作台不设置人工审批门禁。
+Web 工作台：在本目录运行 `npm run dev:web`，默认打开 `http://127.0.0.1:4173`。当前提供 World Dashboard、Story Plan 自动生成并激活、规划版本追溯、运行记录、人物档案与交互式故事图谱。故事图谱页面可切换原著全文图谱和续写动态关系图，支持搜索节点及一跳关联；原著图谱要求本地 SQLite 已合并完整 v6 快照。生成结果经 schema 校验后立即更新正式 `story-plan.json`，旧版本自动归档；工作台不设置人工审批门禁。
 
 ```bash
 npm install
