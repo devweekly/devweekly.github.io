@@ -1,3 +1,7 @@
+// Vane 本地向量混合检索适配层：把 library 切片与 corpus-craft 分析产物灌入 Vane 索引。
+// 未配置真实 embedding 时用 SHA-256 派生的稳定伪向量兜底——索引可用但排序只有词面意义，
+// 结果不能当语义检索引用。manifest 记录 embedding 模型与维度；模型不匹配时自动退回
+// 纯文本检索，避免新旧向量混入同一索引。
 import { createHash } from "node:crypto";
 import { mkdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";

@@ -1,3 +1,5 @@
+// 风格回归观察（只读诊断）：正式写作终审通过后按 Style Profile 与认可样本生成报告。
+// 不打分、不改稿、不阻断成稿与状态提交；style-regress CLI 仅作任意文件专项对照。
 import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 

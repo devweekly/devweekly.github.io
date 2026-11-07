@@ -1,3 +1,4 @@
+// Workbench 前端入口（Vite）。本地单机工具，主题与语言在根配置一次，不按面板分设。
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { App as AntApp, ConfigProvider } from "antd";

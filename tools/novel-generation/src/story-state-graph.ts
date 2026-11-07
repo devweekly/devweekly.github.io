@@ -1,3 +1,5 @@
+// 从 Story State 的稳定 ID 与显式引用派生续写图谱：不做模糊实体合并，未解析的引用保持原样。
+// 边只表达关系/参与/因果等显式声明；布局仅用于导航展示，不代表语义强度或重要性排序。
 import type { StoryState } from "./story-state.js";
 
 export interface StoryStateGraphNode {

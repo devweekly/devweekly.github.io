@@ -1,3 +1,6 @@
+// 多 Agent 文本分析（analyze-world）：默认纯文件交接、运行时不调模型——prepare 生成各角色
+// input.md，Agent 写 output.md，collect 用确定性校验核对字数、L#### 引用与标题结构，
+// 并对照 original.txt 真实行数。--evidence-review 才逐句调模型核验具体事实；解析失败批次二分重试。
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { searchLibrary } from "./library.js";

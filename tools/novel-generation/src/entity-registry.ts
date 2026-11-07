@@ -1,3 +1,5 @@
+// 实体注册表：别名归并与共指解析只接受明确、无歧义的匹配，歧义别名登记后保持可见。
+// 刻意不做模糊匹配——猜测性合并会把两个实体捏成假事实，合并错了比缺失更难回滚。
 import { createHash } from "node:crypto";
 import type { ChunkAnnotation, NarrativeEntityType } from "./analysis.js";
 

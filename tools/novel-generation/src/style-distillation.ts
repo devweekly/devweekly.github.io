@@ -1,3 +1,5 @@
+// distill-style 的提示词构建：从授权样本提炼抽象风格描述，明确禁止复刻原文独特表达。
+// 只产出候选资料（.output/ 下），不覆盖正式 style-profile.md；替换必须显式 --activate。
 export interface StyleSample {
   label: string;
   text: string;

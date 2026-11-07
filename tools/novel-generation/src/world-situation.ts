@@ -1,3 +1,6 @@
+// World Situation 确定性上下文构建器：不是模拟器，也不是持久层。按任务词面挑相关人物/
+// 事件/情节线（无命中时仅回退少量最近记录），把记录展开成可读上下文；真正的局势推演
+// 由既有主线规划阶段完成。未知引用保持原样，不编造关系，不把推测写进 Story State。
 import type { StoryState } from "./story-state.js";
 import {
   WORLD_SITUATION_ACTIVE_THREAD_BONUS,

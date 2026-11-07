@@ -1,3 +1,7 @@
+// 普通章节多阶段写作流水线：主线架构师/创意发散并行 → 主编蓝图 → 正文 → 对白 → 叙事声音 →
+// Living Voice/Anti-AI 编辑 → 终审复查与最多两轮自动修复 → Reader 观察 → 状态提取与提交。
+// 各阶段按职责裁剪上下文：创意阶段不给逐条证据，对白编辑只看人物状态，只有事实核对类
+// 阶段才保留证据材料。每阶段走 stage-cache 指纹缓存；未通过终审不写 Story State。
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { parseStoryStateUpdate, saveStoryState, type StoryState } from "./story-state.js";

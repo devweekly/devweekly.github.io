@@ -1,3 +1,6 @@
+// 语料存储与检索层：导入按中文章节标题切章、带重叠切片，BM25 词面打分（中文二元组），
+// 非向量语义检索。切片记录来源 SHA-256 与章节内字符偏移，供证据逐字定位。
+// 重复导入同一 source 会替换全部旧切片并使对应 annotations 失效——语料变化后旧证据不能沿用。
 import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
 import { LIBRARY_CHUNK_MAX_CHARS, LIBRARY_CHUNK_OVERLAP_CHARS } from "./constants.js";
 import { invalidateDerivedAnalysis, syncAnnotations, databaseWorldDirFromLibrary } from "./database.js";

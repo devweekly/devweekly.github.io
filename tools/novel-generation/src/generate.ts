@@ -1,3 +1,5 @@
+// 唯一调用 @tencent-ai/agent-sdk 的模块：query() 封装 + runAgentText（模型链解析、超时、
+// 中断重试与心跳都收在这里）。其他模块一律经 runAgentText 取模型文本，避免各处自建调用策略。
 import { query } from "@tencent-ai/agent-sdk";
 import { buildQueryOptions, resolveAgentModel } from "./agent-runtime.js";
 import { thinkingOption, type TaskProfile } from "./task-profiles.js";

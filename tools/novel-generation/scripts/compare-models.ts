@@ -1,3 +1,6 @@
+// 续写对比实验脚本：本地候选模型与 deepseek 基线在同一上下文下各生成章节，产出匿名对照
+// 文本与证据锁定摘要（parseComparisonResult）。实验产物只进 .output/；用于人工评审
+// 续写质量，不模仿原文措辞，不把候选状态建议写入正史。
 import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";

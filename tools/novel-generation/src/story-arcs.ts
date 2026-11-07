@@ -1,3 +1,5 @@
+// 卷级梗概（analyze-arcs）：把每卷压缩成供续写定位的卷摘要与关键转折，写 SQLite 并带
+// 确定性缓存指纹。梗概是分析产物，不是后续情节必须逐项执行的合同。
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";

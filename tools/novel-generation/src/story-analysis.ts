@@ -1,3 +1,7 @@
+// 全文分析（analyze-story）：自动读取 SQLite 全部已索引片段，按上下文长度分批调 Agent SDK，
+// 分析人物小传/主线/伏笔/后续发展并按 chapterKeys 精确关联来源。批次失败保留失败状态可
+// 重跑，不计入完整快照；缓存指纹覆盖模型、语料哈希、批次布局与 Prompt 版本。完整成功后
+// 一次性把结构化快照写入 SQLite story_analysis（当前 v6）。
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { existsSync, readdirSync, statSync } from "node:fs";

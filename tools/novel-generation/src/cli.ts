@@ -1,3 +1,6 @@
+// 唯一 CLI 入口：参数解析、worldId 校验（^[a-z0-9][a-z0-9-]*$）、命令分派，以及把
+// brief / 故事当前位置 / 未结情节线 / 人物组装成检索查询。所有路径经 resolve() 锚定 CWD，
+// 必须在 tools/novel-generation 目录运行，换目录会把 worlds/、.output/、analysis/ 读写到错误位置。
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { databaseStatus, readAnnotationsByChunkIds, readStoryAnalysis, listNovelCharacters, listNovelThreads, listNovelForeshadowings, listNovelBeats, readNovelKbMeta, novelKnowledgeOverview, exportNovelKnowledge, listNovelCharacterProfiles, listNovelCharacterChapterStates } from "./database.js";
 import { basename, dirname, join, resolve, sep } from "node:path";

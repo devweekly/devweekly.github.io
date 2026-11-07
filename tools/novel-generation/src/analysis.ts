@@ -1,3 +1,6 @@
+// 逐片段证据抽取（analyze 命令）：LLM 候选必须带逐字 evidence，先确定性核对，再走独立的
+// fail-closed 语义审查；分析批次原子保存，失败批次可重跑。产物写 annotations.json（原子替换）+ SQLite。
+// 注：该链路在全量语料上尚未执行过（约 2594 次模型调用）；当前知识库由 analyze-story 落库。
 import { mkdir, readFile, writeFile, rename } from "node:fs/promises";
 import { syncAnnotations } from "./database.js";
 import { join } from "node:path";
@@ -237,6 +240,7 @@ export async function verifyAnnotationEvidence(
         const value = item as Record<string, unknown>;
         if (typeof value.index !== "number" || !Number.isInteger(value.index)) continue;
         byIndex.set(value.index, {
+          // 只接受字面 true：字符串 "false"、null、缺失都按不支持处理，防止宽松真值放行坏证据。
           supported: value.supported === true,
           reason: typeof value.reason === "string" ? value.reason : "缺少可核验的审查理由"
         });
@@ -245,6 +249,7 @@ export async function verifyAnnotationEvidence(
     const pass = new Set<number>();
     group.items.forEach((item, index) => {
       const decision = byIndex.get(index);
+      // 审查结果缺失或无效时按不支持处理：宁可丢一条可辩护的候选，也不放行无法核验的证据。
       const supported = decision?.supported === true;
       if (supported) pass.add(index);
       reviews.push({

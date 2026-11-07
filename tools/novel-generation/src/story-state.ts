@@ -1,3 +1,6 @@
+// Story State 的加载/保存层：SQLite 是权威存储，story-state.json 只是可读快照。
+// saveStoryState 写入前校验完整状态；章节未过终审或状态提取失败时不会走到保存，
+// 保持「未通过审查的状态永不进正史」这条单向门。
 import { readFile, mkdir, writeFile, rename } from "node:fs/promises";
 import { readStoryState as readDatabaseStoryState, syncStoryState } from "./database.js";
 import { dirname } from "node:path";

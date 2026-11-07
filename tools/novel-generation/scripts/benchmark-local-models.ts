@@ -1,3 +1,6 @@
+// LM Studio 本地小模型基准脚本：对同一批章节跑抽取/摘要/对白/写作等任务，用
+// evaluateExtraction / rankRetrieval 度量 JSON 遵从性与证据锁定率，产物写 .output/。
+// 目的是观察小模型的原始能力，因此不走任何 JSON 修复链路（见 src/local-model-benchmark.ts）。
 import { mkdir, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import os from "node:os";

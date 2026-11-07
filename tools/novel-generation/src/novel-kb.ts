@@ -1,3 +1,6 @@
+// 语料知识库批处理：把 library 切片组成定长批次（相邻批次做重叠去重，避免同一段落
+// 被算成两次事件），同步 novel_* 知识表；同时提供目录扫描与语料画像入口。
+// 语料重新导入后派生分析必须失效重建，本模块导出失效钩子供 library 调用。
 import { readFile } from "node:fs/promises";
 import {
   ANALYSIS_BATCH_CHARS,

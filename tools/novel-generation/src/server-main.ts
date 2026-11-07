@@ -1,3 +1,5 @@
+// 本地 Web Workbench 入口：开发态挂 Vite 中间件，生产态托管 web/dist。
+// 默认只绑回环 127.0.0.1——Agent 服务持有本地模型凭据，绝不能默认暴露到局域网。
 import { createServer as createHttpServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";

@@ -1,3 +1,7 @@
+// 原著人物逐章状态分析：只从章节原文提取行为/目标/知识/关系/资源等可观察项，要求逐字证据，
+// 无证据不输出。按人物 ID + 章节 ID 存 SQLite 快照；输入指纹同时覆盖章节正文与最近前序状态——
+// 上游状态变化后沿用旧结论会造成错误的历史回放，必须重算。
+// 这是原著历史状态表，与续写中的 Story State 动态人物状态无关，禁止互相覆盖。
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";

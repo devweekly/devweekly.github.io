@@ -1,3 +1,6 @@
+// 认可风格样本管理：worlds/<world>/style-references/ 的活动样本与归档历史。
+// 替换前先归档旧字节；历史目录不参与写作期自动样本加载，只作版本追溯——
+// 否则旧版本会混入风格回归对照，观察结果不可信。
 import { readdir, readFile, mkdir, writeFile, stat, unlink } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
 import { basename, extname, join, resolve } from "node:path";

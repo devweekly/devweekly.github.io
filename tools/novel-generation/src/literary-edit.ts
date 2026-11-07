@@ -1,3 +1,5 @@
+// 普通/长章节共用 Living Voice 与 Anti-AI 编辑提示：诊断只描述效果、不做 AI 概率检测，
+// 复核失败恢复原稿；Reader 盲读结果只作观察，不进门禁。
 import { parseJsonObject } from "./model-json.js";
 
 /**

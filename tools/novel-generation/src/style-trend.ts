@@ -1,3 +1,5 @@
+// 聚合最近几章/专项的风格回归观察报告，生成跨章节只读趋势（style-trend 命令）。
+// 不读草稿、不打分、不触发改写——趋势只回答「风格是否漂移」这一观察问题。
 import { readdir, readFile, stat } from "node:fs/promises";
 import { join, relative } from "node:path";
 

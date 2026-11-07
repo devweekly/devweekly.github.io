@@ -1,3 +1,5 @@
+// Workbench 风格样本面板：查看/添加/更新/归档 worlds/<world>/style-references/ 认可样本。
+// 归档与替换逻辑在服务端，面板只调 API；历史版本仅展示，加载与否由后端样本策略决定。
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Button, Card, Empty, Input, List, Space, Spin, Tag, Typography, message } from "antd";
 import { FolderAddOutlined, ReloadOutlined, SaveOutlined } from "@ant-design/icons";

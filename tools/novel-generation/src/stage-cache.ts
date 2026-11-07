@@ -1,3 +1,6 @@
+// 阶段缓存：按完整 prompt、实际解析模型及回退链、阶段推理配置生成 SHA-256 指纹。
+// 命中还要过阶段级语义校验——结构合法但内容无效的输出被复用会污染下游所有阶段。
+// 输出 tmp+rename 原子写入并校验哈希；并行阶段更新 manifest 时串行合并防止互相覆盖。
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";

@@ -1,3 +1,5 @@
+// 作者主动调用的多轮人物互动推演沙盘：注入指定人物动态状态、长期人物观察与任务相关图谱。
+// 所有推演都是候选素材，只保存在 .output/，绝不写入 Story State——正史只记录正文实际发生的事。
 import { createInterface } from "node:readline/promises";
 import { stdin, stdout } from "node:process";
 import { runAgentText } from "./generate.js";

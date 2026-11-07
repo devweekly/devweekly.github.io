@@ -1,3 +1,5 @@
+// Workbench 人物页：人物列表与详情（档案、逐章状态历史）。数据只读自服务端 API，
+// 面板不写正史；条目是否可信仍以证据等级与来源为准，展示层不做二次合并。
 import { useState } from "react";
 import {
   Alert, Avatar, Badge, Button, Card, Col, Descriptions, Divider, Empty, Flex, Input,

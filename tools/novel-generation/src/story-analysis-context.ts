@@ -1,3 +1,6 @@
+// 把 v6 story_analysis 快照压成写作上下文：按任务词面挑人物/关系/情节线/伏笔/MacGuffin/图谱，
+// 每类设数量与字数预算。筛选只决定「哪些参考可能有用」，不对创意做硬过滤。
+// 快照缺 v6 版本号时拒绝构建——旧版字段残缺，注入会让写作阶段误以为已拿到完整事实。
 import type { StoryAnalysisSnapshot } from "./database.js";
 import {
   ANALYSIS_VERSION,

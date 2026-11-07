@@ -1,3 +1,6 @@
+// 人物档案合并：novel_characters 的逐批观察（主角可达数百条）按章节序采样后交给模型
+// 合成一份含阶段变化/稳定性格/内在矛盾的档案写入 SQLite；原始观察保留作证据。
+// 缓存键覆盖提示词版本与采样内容——观察窗口变了就重算，否则档案描述的是旧观测。
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
