@@ -306,7 +306,7 @@ async function main(): Promise<void> {
     const shardArg = arg("--shard");
     let shard: { index: number; count: number } | undefined;
     if (shardArg) {
-      const match = shardArg.match(/^(\\d+)\\/(\\d+)$/);
+      const match = shardArg.match(/^(\d+)\/(\d+)$/);
       if (!match) throw new Error("--shard must look like 0/4.");
       shard = { index: Number(match[1]), count: Number(match[2]) };
       if (shard.count < 1 || shard.index >= shard.count) throw new Error("--shard index must be less than shard count.");
