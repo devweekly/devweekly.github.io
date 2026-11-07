@@ -393,7 +393,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     ], output => { if (!output.trim()) throw new Error("Anti-AI diagnosis returned an empty report."); });
   } catch (error) {
     await saveStage(input.outputDir, "06a-anti-ai-diagnosis-error.txt", String(error));
-    console.error("[write-long] Anti-AI 诊断未完成；编辑阶段仍按通用文学原则运行。");
+    console.error("[write-long] Anti-AI 诊断未完成；跳过无依据的整章改写，保留逐场修订稿继续终审。");
   }
   const needsAntiAiEdit = shouldRunAntiAiEdit(antiAiDiagnosis);
   if (needsAntiAiEdit) {
