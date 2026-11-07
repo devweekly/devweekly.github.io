@@ -386,9 +386,10 @@ function hasBoundedStoryAnalysis(
   if (!snapshot || snapshot.analysisVersion !== 6 || snapshot.complete !== true ||
       snapshot.asOfEntryChapter !== universe.entryChapter ||
       (universe.entryChapterId && snapshot.asOfEntryChapterId !== universe.entryChapterId)) return false;
+  const coreObservations = Array.isArray(snapshot.storyCore?.observations) ? snapshot.storyCore.observations.length : 0;
   const facts = snapshot.characters.length + snapshot.plotThreads.length + snapshot.foreshadowings.length +
     (snapshot.relations?.length ?? 0) + (snapshot.macguffins?.length ?? 0) +
-    (snapshot.storyGraph?.nodes.length ?? 0) + (snapshot.storyCore?.observations?.length ?? 0);
+    (snapshot.storyGraph?.nodes.length ?? 0) + coreObservations;
   return facts > 0;
 }
 
@@ -406,7 +407,7 @@ async function ensureUniverseStoryAnalysis(worldId: string, universe: StoryUnive
     const targetDir = worldDir(worldId);
     const reusedBatches = universe.entryChapterId
       ? await importBoundedStoryAnalysisFromBatchCache(
-          universe.sourceWorldId, worldId, targetDir, universe.entryChapterId
+          universe.sourceWorldId, worldId, targetDir, universe.entryChapterId, universe.entryChapter
         ).catch(error => {
           console.warn("[workbench] bounded batch-cache reuse failed; falling back to filtered merged snapshot", error);
           return false;
