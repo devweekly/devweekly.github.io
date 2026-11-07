@@ -182,6 +182,7 @@ interface StoryUniverse {
   parentUniverseId?: string;
   forkPoint?: string;
   createdAt: string;
+  archivedAt?: string;
 }
 
 function rebindKnowledgeDatabase(databasePath: string, worldId: string): void {
@@ -269,6 +270,23 @@ app.get("/api/worlds/:worldId/universes", async (req, res) => {
   } catch (error) { sendError(res, error); }
 });
 
+app.patch("/api/worlds/:worldId/universe-archive", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    const universe = await readUniverse(id);
+    if (!universe) return void res.status(409).json({ error: "原文项目不能归档为故事宇宙。" });
+    const archive = req.body?.archived === true;
+    const runs = await listRuns(id);
+    if (runs.some(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"))) {
+      return void res.status(409).json({ error: "当前宇宙仍有章节正在生成，结束后再归档或恢复。" });
+    }
+    const updated: StoryUniverse = { ...universe, ...(archive ? { archivedAt: new Date().toISOString() } : { archivedAt: undefined }) };
+    if (!archive) delete updated.archivedAt;
+    await writeFile(path.join(worldDir(id), "universe.json"), JSON.stringify(updated, null, 2) + "\\n", "utf8");
+    res.json({ universe: updated });
+  } catch (error) { sendError(res, error); }
+});
+
 app.post("/api/worlds/:worldId/universes", async (req, res) => {
   try {
     const sourceId = worldIdOf(req.params.worldId); assertInsideWorld(sourceId);
@@ -350,6 +368,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     const parentId = worldIdOf(req.params.worldId); assertInsideWorld(parentId);
     const parent = await readUniverse(parentId);
     if (!parent) return void res.status(409).json({ error: "只能从已有故事宇宙创建分叉。" });
+    if (parent.archivedAt) return void res.status(409).json({ error: "已归档的故事宇宙不能继续分叉，请先恢复。" });
     const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
     const chapterRunId = recordId(req.body?.chapterRunId);
     if (!name || name.length > 80) return void res.status(400).json({ error: "分支名称必填，且不能超过 80 个字符。" });
@@ -652,6 +671,7 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
     }
 
     const universe = await readUniverse(id);
+    if (universe?.archivedAt) return void res.status(409).json({ error: "当前故事宇宙已归档，请先恢复后再生成章节。" });
     const universeEntryPath = universe ? path.join(dir, "universe-entry.md") : undefined;
     const now = new Date().toISOString();
     const runId = randomUUID(); const outputDir = path.resolve(".output", id, "chapter-" + runId);
