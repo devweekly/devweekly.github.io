@@ -24,6 +24,7 @@ import { getCandidate, getRun, listCandidates, listRuns, recoverInterruptedRuns,
 import type { StoryState } from "./story-state.js";
 import { buildUniverseOriginContext, buildUniverseWorldBible, rebaseStoryState, remapForkedRun, shouldCopyUniverseAsset } from "./universe-branch.js";
 import { importBoundedStoryAnalysisSnapshot, restrictKnowledgeDatabaseToEntry } from "./source-canon-snapshot.js";
+import { importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
@@ -402,13 +403,24 @@ async function ensureUniverseStoryAnalysis(worldId: string, universe: StoryUnive
     if (!existsSync(path.join(worldDir(universe.sourceWorldId), "novel.db"))) return;
     const source = readStoryAnalysis(worldDir(universe.sourceWorldId), universe.sourceWorldId);
     if (!source || source.analysisVersion !== 6 || source.complete !== true) return;
-    importBoundedStoryAnalysisSnapshot(
-      path.join(worldDir(worldId), "novel.db"),
-      worldId,
-      universe.entryChapter,
-      source as unknown as Record<string, unknown>,
-      universe.entryChapterId
-    );
+    const targetDir = worldDir(worldId);
+    const reusedBatches = universe.entryChapterId
+      ? await importBoundedStoryAnalysisFromBatchCache(
+          universe.sourceWorldId, worldId, targetDir, universe.entryChapterId
+        ).catch(error => {
+          console.warn("[workbench] bounded batch-cache reuse failed; falling back to filtered merged snapshot", error);
+          return false;
+        })
+      : false;
+    if (!reusedBatches) {
+      importBoundedStoryAnalysisSnapshot(
+        path.join(targetDir, "novel.db"),
+        worldId,
+        universe.entryChapter,
+        source as unknown as Record<string, unknown>,
+        universe.entryChapterId
+      );
+    }
   })();
   universeAnalysisBackfills.set(worldId, task);
   try { await task; }
