@@ -216,4 +216,6 @@ CLI 命令（均经 `npm run dev --`）：
 - 可选的认可样本放在 `worlds/<world>/style-references/`，每次正式写作自动读取最多四个 Markdown/TXT 样本，作为风格回归观察的对照材料。
 - 普通章节和长章节在终审通过后自动生成 `11-style-regression.md`。没有参考样本时，以活动 Style Profile 做有限观察并明确证据不足。
 - 风格回归是只读诊断，不是写作门禁或自动修订指令；报告失败不得影响成稿、Reader 或 Story State 提交。
+- Story State 的 `foreshadowingUpdates` / `macguffinUpdates` 是续写动态生命周期日志，只能记录最终正文明确发生的变化并附逐字证据；按稳定 ID 幂等追加，不得将分析猜测写成事实。
+- 后续规划和终审只读取与当前任务相关的最新生命周期状态；不要求每章埋设/回收伏笔或推进 MacGuffin，不能把未推进判为质量问题。
 - `style-regress` 是任意文件专项对照命令，不是正式 Pipeline 的必要步骤。
