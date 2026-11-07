@@ -24,7 +24,7 @@ CLI 命令（均经 `npm run dev --`）：
 | `distill-style --world <id> --input <f> [more files] [--out file] [--model m]` | 从授权样本提炼抽象风格候选，不覆盖正式 style-profile.md |
 | `analyze-story --world <id> [--model m] [--timeout-ms 180000] [--shard i/n] [--merge-only] [--delta]` | CodeBuddy SDK 自动分析人物小传/成长可能性、主线、伏笔与后续发展并保存 SQLite；`--delta` 复用旧批次长文本，只重抽 v6 新增字段 |
 | `analyze-world --world <id> --phase prepare/status/collect [--evidence-review]` | 多 Agent 文本分析（文件交接；默认确定性校验，`--evidence-review` 才调模型） |
-| `analyze-arcs / index-story / story-kb / db-status / check-runtime` | 卷级梗概、章节索引入库、知识库查询（含原著图谱）、DB 状态、运行时自检 |
+| `analyze-arcs / index-story / story-kb / db-status / check-runtime` | 卷级梗概、章节索引入库、知识库查询（`story-kb --type graph` 可查完整 v6 原著图谱）、DB 状态、运行时自检 |
 | `story-state --world <id> [--type overview/characters/events/threads/relationships/foreshadowings/macguffins/graph] [--query q]` | 只读查看续写 Story State、动态关系/伏笔/MacGuffin 记录及派生图谱 |
 | `write-long --brief "" [--scenes n] [--max-words n] [--strict-model] [--resume-dir dir]` | 万字长章节逐场生成 |
 | `regress --world <id> --chapter n` | 单章盲写回归对照 |
