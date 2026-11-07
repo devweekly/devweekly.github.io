@@ -103,11 +103,11 @@ export async function analyzeCharacterChapterStates(
   for (const item of limited) {
     const { chapter } = item;
     const sourceHash = hash(chapter.text);
-    const previousByCharacter = new Map(item.characters.map(character => [
+    const previousByCharacter = new Map<string, NovelCharacterChapterStateRow | null>(item.characters.map(character => [
       character.characterId,
       latestPriorState(statesByCharacter.get(character.characterId) ?? [], chapter.ordinal) ?? null
-    ]));
-    const contextHashByCharacter = new Map([...previousByCharacter].map(([characterId, state]) => [characterId, hash(JSON.stringify(state))]));
+    ] as const));
+    const contextHashByCharacter = new Map<string, string>([...previousByCharacter].map(([characterId, state]) => [characterId, hash(JSON.stringify(state))] as const));
     const pending = item.characters.filter(character => {
       const stored = existing.get(character.characterId + "\\0" + chapter.chapterId);
       return options.force || stored?.sourceHash !== sourceHash ||
