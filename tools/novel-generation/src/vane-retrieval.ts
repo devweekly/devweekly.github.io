@@ -1,0 +1,89 @@
+import { createHash } from "node:crypto";
+import { mkdir, readFile } from "node:fs/promises";
+import { resolve } from "node:path";
+import { loadLibraryChunks } from "./library.js";
+import type { CorpusCraftChapter } from "./corpus-craft.js";
+
+type VaneCollection = {
+  add(docs: Array<{id:string;text:string;vector:number[];meta?:Record<string,string|number|boolean>}>): Promise<unknown>;
+  flush(): Promise<unknown>;
+  search(query: {text:string;vector?:number[];topK:number;mode:"text"|"hybrid"}): Promise<Array<{id:string;score:number;fields?:Record<string,unknown>}>>;
+  delete?(ids:string[]):Promise<unknown>;
+};
+type VaneDb = { collection(name:string,schema:unknown,options?:unknown):Promise<VaneCollection>; close():Promise<void> };
+type VaneModule = { open(path:string,options?:unknown):Promise<VaneDb> };
+
+function stableVector(text:string, dim=8): number[] {
+  const bytes=createHash("sha256").update(text).digest();
+  return Array.from({length:dim},(_,i)=>((bytes[i%bytes.length]??0)/127.5)-1);
+}
+async function embed(texts:string[]):Promise<number[][]|undefined> {
+  const base=process.env.VANE_EMBEDDING_BASE_URL;
+  const model=process.env.VANE_EMBEDDING_MODEL;
+  if(!base||!model)return undefined;
+  const response=await fetch(base.replace(/\/$/,"")+"/embeddings",{
+    method:"POST",headers:{"content-type":"application/json",...(process.env.VANE_EMBEDDING_API_KEY?{authorization:"Bearer "+process.env.VANE_EMBEDDING_API_KEY}:{})},
+    body:JSON.stringify({model,input:texts})
+  });
+  if(!response.ok)throw new Error("Embedding endpoint returned "+response.status);
+  const payload=await response.json() as {data?:Array<{embedding?:number[]}>};
+  if(!Array.isArray(payload.data)||payload.data.length!==texts.length||payload.data.some(x=>!Array.isArray(x.embedding)))throw new Error("Invalid embeddings response.");
+  return payload.data.map(x=>x.embedding as number[]);
+}
+async function openVane(worldId:string):Promise<{db:VaneDb;col:VaneCollection}> {
+  let module:VaneModule;
+  try { module=await import("@vane-rs/node") as unknown as VaneModule; }
+  catch { throw new Error("Vane 未安装。请在 tools/novel-generation 运行 npm install @vane-rs/node。"); }
+  const dir=resolve("worlds",worldId,"vane-index");
+  await mkdir(dir,{recursive:true});
+  const db=await module.open(dir,{autoCommit:"off"});
+  const dim=Number(process.env.VANE_EMBEDDING_DIM??8);
+  const col=await db.collection("novel-corpus",{
+    fields:[{name:"body",type:"text"},{name:"vec",type:"vector",dim,metric:"cosine"}]
+  },{tokenizer:"jieba"});
+  return {db,col};
+}
+export async function rebuildVaneIndex(worldId:string,worldDir=resolve("worlds",worldId)):Promise<{documents:number;vectorMode:boolean}> {
+  const {db,col}=await openVane(worldId);
+  try {
+    const chunks=await loadLibraryChunks(resolve(worldDir,"library"),worldId);
+    const docs:Array<{id:string;text:string;vector:number[];meta:Record<string,string|number|boolean>}>=[];
+    for(const chunk of chunks)docs.push({
+      id:"chunk:"+chunk.id,text:chunk.text,vector:stableVector(chunk.text,Number(process.env.VANE_EMBEDDING_DIM??8)),
+      meta:{kind:"original",chapter:chunk.chapter,source:chunk.source}
+    });
+    const analysisDir=resolve("analysis",worldId,"corpus-craft","chapters");
+    try {
+      const {readdir}=await import("node:fs/promises");
+      for(const file of (await readdir(analysisDir)).filter(x=>x.endsWith(".json"))){
+        const item=JSON.parse(await readFile(resolve(analysisDir,file),"utf8")) as CorpusCraftChapter;
+        if(item.worldId!==worldId)continue;
+        const text=JSON.stringify(item);
+        docs.push({id:"craft:"+item.chapterId,text,vector:stableVector(text,Number(process.env.VANE_EMBEDDING_DIM??8)),meta:{kind:"corpus-craft",chapter:item.chapterId}});
+      }
+    }catch{/* analysis is optional */}
+    const vectors=await embed(docs.map(x=>x.text));
+    if(vectors){
+      const expected=vectors[0]?.length??0;
+      if(!expected||vectors.some(v=>v.length!==expected))throw new Error("Embedding dimensions are inconsistent.");
+      if(expected!==Number(process.env.VANE_EMBEDDING_DIM??8))throw new Error("Set VANE_EMBEDDING_DIM to "+expected+" before creating the Vane index.");
+      vectors.forEach((vector,index)=>{docs[index]!.vector=vector;});
+    }
+    await col.add(docs);
+    await col.flush();
+    return {documents:docs.length,vectorMode:Boolean(vectors)};
+  }finally{await db.close();}
+}
+export async function searchVane(worldId:string,query:string,limit=6):Promise<Array<{id:string;score:number;text:string}>> {
+  try{
+    const {db,col}=await openVane(worldId);
+    try{
+      const vectors=await embed([query]);
+      const hits=await col.search({text:query,...(vectors?{vector:vectors[0]}:{}),topK:limit,mode:vectors?"hybrid":"text"});
+      return hits.map(hit=>({id:hit.id,score:hit.score,text:String(hit.fields?.body??"")}));
+    }finally{await db.close();}
+  }catch(error){
+    if(String(error).includes("Vane 未安装"))return [];
+    throw error;
+  }
+}
