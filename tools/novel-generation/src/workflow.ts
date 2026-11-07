@@ -13,7 +13,7 @@ import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
 import { parseJsonObject } from "./model-json.js";
 import { LONG_CHAPTER_SOURCE_TAIL_CHARS } from "./constants.js";
 import { buildWorldSituationContext } from "./world-situation.js";
-import { LIVING_VOICE_RULES, antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, postReviewLiteraryCheckPrompt, readerExperiencePrompt } from "./literary-edit.js";
+import { LIVING_VOICE_RULES, antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, postReviewLiteraryCheckPrompt, readerExperiencePrompt, shouldRunAntiAiEdit } from "./literary-edit.js";
 import { buildStyleRegressionPrompt, loadStyleRegressionReferences } from "./style-regression.js";
 import { buildStyleTrendPrompt, collectStyleRegressionReports, countStyleRegressionReports } from "./style-trend.js";
 /**
@@ -333,7 +333,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     await saveStage(input.outputDir, "06a-anti-ai-diagnosis-error.txt", String(error));
     console.error("[write] Anti-AI 诊断未完成；编辑阶段仍按通用文学原则运行。");
   }
-  const needsAntiAiEdit = Boolean(antiAiDiagnosis.trim()) && !/未发现值得修改的地方|没有明确需要修改/i.test(antiAiDiagnosis);
+  const needsAntiAiEdit = shouldRunAntiAiEdit(antiAiDiagnosis);
   if (needsAntiAiEdit) {
     try {
       antiAiDraft = await cachedCall("anti-ai-edit", "06b-anti-ai-edited.md", "antiAi", [
