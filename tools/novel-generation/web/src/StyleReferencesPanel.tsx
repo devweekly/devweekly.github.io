@@ -44,6 +44,17 @@ export default function StyleReferencesPanel({ worldId }: { worldId: string }) {
     finally { setSaving(false); }
   };
 
+  const loadVersion = async (item: HistoryReference) => {
+    setError("");
+    try {
+      const response = await fetch(`/api/worlds/${encodeURIComponent(worldId)}/style-references/${encodeURIComponent(item.name)}/history/${encodeURIComponent(item.version)}`);
+      const body = await response.json();
+      if (!response.ok) throw new Error(body.error ?? "读取历史版本失败");
+      setName(item.name); setContent(body.content);
+      message.info("历史版本已载入编辑框；点击“保存样本”即可恢复为活动版本");
+    } catch (cause) { setError(cause instanceof Error ? cause.message : String(cause)); }
+  };
+
   const archive = async (filename: string) => {
     setError("");
     try {
@@ -96,7 +107,7 @@ export default function StyleReferencesPanel({ worldId }: { worldId: string }) {
           <List
             dataSource={data.history}
             renderItem={item => (
-              <List.Item>
+              <List.Item actions={[<Button key="restore" type="link" onClick={() => void loadVersion(item)}>查看 / 恢复</Button>]}>
                 <List.Item.Meta
                   title={<Text>{item.name}</Text>}
                   description={<Text type="secondary">{item.version} · {item.chars.toLocaleString()} 字符 · {new Date(item.updatedAt).toLocaleString()}</Text>}
