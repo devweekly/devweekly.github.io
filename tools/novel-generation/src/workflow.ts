@@ -220,6 +220,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     "结合已发生事件、人物目标与选择、资源/信息变化、开放情节线，设计一段可供连续写作的故事推进。输出 Markdown，至少包含：阶段核心冲突与阶段性结果；5–8 个有因果关系的章节节点（每个写清事件推进、关键人物行动/选择、冲突或关系变化、结尾留下的局面）；哪些人物/伏笔/主线可以暂时不推进；可能的意外转折空间；当前下一章应从哪里自然开始。不要强制每章都发生人物弧光，不要把人物固定为善恶标签，不要预先写死角色选择。章节节点可以合并、拆分、跳过或因正文发展而改写。",
     "文学性、文笔、艺术风格高于其他。故事规划只为因果连续性服务，不是待完成清单。"
   ], output => { if (!output.trim() || output.trim().length < 300) throw new Error("Story Arc is empty or implausibly short."); });
+  if (previousArc) await saveStage(input.outputDir, "00-story-arc-previous.md", previousArc);
   await saveStage(input.outputDir, "00-story-arc.md", storyArc);
   if (input.worldDir) await writeFile(resolve(input.worldDir, "story-arc.md"), storyArc.trim() + "\n", "utf8");
 
