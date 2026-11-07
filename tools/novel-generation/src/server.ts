@@ -305,6 +305,7 @@ app.patch("/api/worlds/:worldId/universe-archive", async (req, res) => {
 });
 
 app.post("/api/worlds/:worldId/universes", async (req, res) => {
+  let stagingPath: string | null = null;
   try {
     const lockId = worldIdOf(req.params.worldId);
     await serializeWorld(lockId, async () => {
@@ -332,6 +333,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     createdUniverseId = id;
     const targetDir = worldDir(id);
     const stagingDir = path.join(path.resolve("worlds"), ".staging-" + id);
+    stagingPath = stagingDir;
     await mkdir(stagingDir, { recursive: true });
     // 只复制原文只读资产和基础世界资料；所有派生状态、计划、输出与运行记录从空白开始。
     await cp(sourceDir, stagingDir, {
@@ -359,7 +361,10 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     await rename(stagingDir, targetDir);
     res.status(201).json({ universe });
     });
-  } catch (error) { sendError(res, error); }
+  } catch (error) {
+    if (stagingPath) await rm(stagingPath, { recursive: true, force: true }).catch(() => undefined);
+    sendError(res, error);
+  }
 });
 
 app.get("/api/worlds/:worldId/forkable-chapters", async (req, res) => {
