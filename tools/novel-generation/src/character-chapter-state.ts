@@ -49,7 +49,7 @@ export function matchChapterCharacters(text: string, characters: NovelCharacterS
 export function hasExactEvidence(text: string, evidence: string[]): boolean {
   return evidence.some(value => value.length >= 4 && text.includes(value));
 }
-function priorStateContext(state: NovelCharacterChapterStateRow | null): unknown {
+type PriorStateContext = Pick<NovelCharacterChapterStateRow, "chapterOrdinal" | "chapterTitle" | "behavior" | "goals" | "knowledge" | "relationships" | "resources" | "situation" | "changes" | "evidence" | "uncertainty">;\nfunction priorStateContext(state: NovelCharacterChapterStateRow | null): PriorStateContext | null {
   if (!state) return null;
   return {
     chapterOrdinal: state.chapterOrdinal, chapterTitle: state.chapterTitle,
@@ -71,7 +71,7 @@ export function latestPriorState<T extends { chapterOrdinal: number }>(states: T
 function promptForChapter(input: {
   chapter: { chapterId: string; ordinal: number; volume: number; title: string; text: string };
   characters: NovelCharacterSummary[];
-  previousStates: Array<{ characterId: string; name: string; state: NovelCharacterChapterStateRow | null }>;
+  previousStates: Array<{ characterId: string; name: string; state: PriorStateContext | null }>;
 }): string {
   return [
     "你正在为一部长篇小说建立逐章人物状态档案。只分析本章原文，不借用后文知识，不推测人物未表达的心理。",
