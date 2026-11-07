@@ -181,3 +181,25 @@ test("whole-book storyCore text without bounded observations is discarded", () =
     assert.deepEqual(snapshot.storyCore, { observations: [{ centralQuestion: "安全问题", chapterKeys: ["c1"] }] });
   } finally { f.close(); }
 });
+
+
+test("mixed before-and-after character provenance is dropped and forces bounded reanalysis", () => {
+  const f = fixture();
+  try {
+    const db = new DatabaseSync(f.databasePath);
+    try {
+      db.prepare("UPDATE story_analysis SET payload_json=? WHERE singleton=1").run(JSON.stringify({
+        analysisVersion: 6, complete: true, sourceHash: "full",
+        characters: [{ name: "贯穿全书的人物", chapterKeys: ["c1", "c3"], shortBio: "合并了起点之后的信息" }],
+        plotThreads: [], foreshadowings: [], relations: [], macguffins: [],
+        storyCore: { centralConflict: "全书冲突" }, storyCoreObservations: [],
+        storyGraph: { nodes: [], edges: [] }, beats: []
+      }));
+    } finally { db.close(); }
+    restrictKnowledgeDatabaseToEntry(f.databasePath, "bounded-mixed", "第二章", "c2");
+    const snapshot = JSON.parse(String(rows(f.databasePath, "SELECT payload_json FROM story_analysis")[0]?.payload_json)) as any;
+    assert.equal(snapshot.complete, false);
+    assert.deepEqual(snapshot.characters, []);
+    assert.deepEqual(snapshot.storyCore, { observations: [] });
+  } finally { f.close(); }
+});
