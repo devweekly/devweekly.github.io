@@ -312,7 +312,7 @@ async function main(): Promise<void> {
       const snapshot = exportNovelKnowledge(worldDir, worldId);
       await mkdir(dirname(out), { recursive: true });
       await writeFile(out, JSON.stringify(snapshot) + "\n", "utf8");
-      console.log(JSON.stringify({ out, characters: snapshot.characters.length, characterProfiles: snapshot.characterProfiles.length, threads: snapshot.threads.length, foreshadowings: snapshot.foreshadowings.length, beats: snapshot.beats.length, arcs: snapshot.arcs.length }, null, 2));
+      console.log(JSON.stringify({ out, characters: snapshot.characters.length, characterProfiles: snapshot.characterProfiles.length, characterChapterStates: snapshot.characterChapterStates.length, threads: snapshot.threads.length, foreshadowings: snapshot.foreshadowings.length, beats: snapshot.beats.length, arcs: snapshot.arcs.length }, null, 2));
     }
     else if (type === "overview") console.log(JSON.stringify(novelKnowledgeOverview(worldDir, worldId), null, 2));
     else if (type === "arcs") console.log(JSON.stringify({ arcs: listVolumeArcs(worldDir, worldId) }, null, 2));
