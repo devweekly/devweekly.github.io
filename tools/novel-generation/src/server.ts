@@ -555,7 +555,16 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
         if (!relative.length || relative[0] === "") return true;
         const first = relative[0];
         if (!first) return true;
-        return !["story.db", "story-state.json", "story-arc.md", "story-plan.json", ".output", "universes", "library", "vane-index"].includes(first);
+        if (["story.db", "story-state.json", "story-arc.md", "story-plan.json", ".output", "universes", "library", "vane-index", "analysis", "corpus-craft", "style-references", "style-reference-history"].includes(first)) return false;
+        if (first === "universe.json") return false;
+        // Parent-world summaries may describe events after this fork point.
+        // Rebuild these from the forked state instead of inheriting stale aggregates.
+        if (relative.length === 1 && [
+          "world-bible.md", "characters.md", "timeline.md", "fruit-worlds.md",
+          "yanfu-system.md", "style-profile.md", "story-analysis.md",
+          "character-profiles.md", "plot-summary.md", "foreshadowing.md"
+        ].includes(first)) return false;
+        return true;
       }
     });
     rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
