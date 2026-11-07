@@ -308,6 +308,26 @@ async function readCanonChapters(sourceWorldId: string): Promise<Array<{ title: 
   });
 }
 
+async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: string, universeId: string, entryIndex: number): Promise<void> {
+  const sourceIndexPath = path.join(worldDir(sourceWorldId), "library", "index.json");
+  const source = JSON.parse(await readFile(sourceIndexPath, "utf8")) as {
+    schemaVersion: number; createdAt: string; updatedAt: string;
+    chunks: Array<{ chapter: string; [key: string]: unknown }>;
+  };
+  const chapterOrder = [...new Set(source.chunks.map(chunk => chunk.chapter))];
+  const allowed = new Set(chapterOrder.slice(0, entryIndex + 1));
+  const snapshot = {
+    schemaVersion: source.schemaVersion,
+    worldId: universeId,
+    createdAt: source.createdAt,
+    updatedAt: source.updatedAt,
+    chunks: source.chunks.filter(chunk => allowed.has(chunk.chapter))
+  };
+  const libraryDir = path.join(targetDir, "library");
+  await mkdir(libraryDir, { recursive: true });
+  await writeFile(path.join(libraryDir, "index.json"), JSON.stringify(snapshot, null, 2) + "\n", "utf8");
+}
+
 app.get("/api/worlds/:worldId/source-chapters", async (req, res) => {
   try {
     const sourceId = worldIdOf(req.params.worldId); assertInsideWorld(sourceId);
@@ -408,6 +428,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     await writeFile(path.join(stagingDir, "source-canon.json"), JSON.stringify({ sourceWorldId: rootSourceId, readOnly: true }, null, 2) + "\n", "utf8");
     await writeFile(path.join(stagingDir, "universe-entry.md"), selectedChapter.text + "\n", "utf8");
     await writeFile(path.join(stagingDir, "universe-origin-context.md"), originContext + "\n", "utf8");
+    await writeUniverseLibrarySnapshot(rootSourceId, stagingDir, id, selectedIndex);
     await writeFile(path.join(stagingDir, "source-canon-as-of.json"), JSON.stringify({ sourceWorldId: rootSourceId, entryChapter, entryOrdinal, policy: "chapter-scoped-evidence-only", fullBookAggregates: "excluded" }, null, 2) + "\n", "utf8");
     await rename(stagingDir, targetDir);
     res.status(201).json({ universe });
@@ -505,6 +526,8 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     };
     await writeFile(path.join(stagingDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
     await writeFile(path.join(stagingDir, "source-canon.json"), JSON.stringify({ sourceWorldId: parent.sourceWorldId, readOnly: true }, null, 2) + "\n", "utf8");
+    const parentLibrary = path.join(parentDir, "library");
+    if (existsSync(path.join(parentLibrary, "index.json"))) await cp(parentLibrary, path.join(stagingDir, "library"), { recursive: true });
     const forkState = rebaseStoryState(state, parentId, id);
     await writeFile(path.join(stagingDir, "story-state.json"), JSON.stringify(forkState, null, 2) + "\n", "utf8");
     await loadStoryState(path.join(stagingDir, "story-state.json"), id);
