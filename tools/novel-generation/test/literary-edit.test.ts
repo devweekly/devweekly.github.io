@@ -13,6 +13,9 @@ test("anti-ai diagnosis uses concrete reading evidence, not AI detection", () =>
   assert.match(prompt, /每项必须引用短片段/);
   assert.match(prompt, /未发现值得修改的地方/);
   assert.match(prompt, /文学性、文笔、艺术风格高于其他一切/);
+  assert.match(prompt, /动作逐帧拆解/);
+  assert.match(prompt, /全章层面的节奏检查/);
+  assert.match(prompt, /机械复沓/);
 });
 
 test("anti-ai editor protects literary intent and permits zero-change output", () => {
@@ -26,6 +29,8 @@ test("anti-ai editor protects literary intent and permits zero-change output", (
   assert.match(prompt, /原样输出/);
   assert.match(prompt, /不得改变剧情事实/);
   assert.match(prompt, /不得制造错字/);
+  assert.match(prompt, /合并重复动作/);
+  assert.match(prompt, /不来自短句堆叠/);
   const withDiagnosis = antiAiEditPrompt({
     brief: "写两个人久别重逢", blueprint: "两人相见", diagnosis: "某处可能解释过度",
     chapter: "他没有说话。"
@@ -37,6 +42,7 @@ test("anti-ai editor protects literary intent and permits zero-change output", (
 test("anti-ai post-edit verification restores edits without clear literary benefit", () => {
   const prompt = antiAiVerificationPrompt({ original: "他没有回答。", edited: "他沉默不语。" });
   assert.match(prompt, /原文更好或两版相当时选择 restore/);
+  assert.match(prompt, /修复了可定位的重复/);
   assert.deepEqual(parseAntiAiVerification('{"decision":"restore","reason":"原句更有力量"}'), {
     decision: "restore", reason: "原句更有力量"
   });
