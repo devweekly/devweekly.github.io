@@ -9,7 +9,7 @@ export type RunStatus = "queued" | "running" | "completed" | "failed" | "cancell
 export interface WorkbenchRun {
   id: string; worldId: string; kind: "story-plan" | "chapter";
   status: RunStatus; createdAt: string; updatedAt: string;
-  error?: string; candidateId?: string; outputDir?: string; chapterPath?: string;
+  error?: string; candidateId?: string; outputDir?: string; chapterPath?: string; previousChapterPath?: string;
 }
 
 export interface StoryPlanCandidate {
