@@ -458,7 +458,7 @@ export function novelKnowledgeOverview(worldDir:string,worldId:string):Record<st
   return {chapters:one("SELECT COUNT(*) AS count FROM novel_chapters"),characters:one("SELECT COUNT(*) AS count FROM novel_characters"),
    charactersWithoutMentions:one("SELECT COUNT(*) AS count FROM novel_characters WHERE mention_total=0"),
    threads:one("SELECT COUNT(*) AS count FROM novel_plot_threads"),foreshadowings:one("SELECT COUNT(*) AS count FROM novel_foreshadowings"),
-   beats:one("SELECT COUNT(*) AS count FROM novel_beats"),relations:one("SELECT COUNT(*) AS count FROM novel_relations"),
+   beats:one("SELECT COUNT(*) AS count FROM novel_beats"),characterChapterStates:one("SELECT COUNT(*) AS count FROM novel_character_chapter_states"),relations:one("SELECT COUNT(*) AS count FROM novel_relations"),
    chaptersWithBeats:one("SELECT COUNT(DISTINCT chapter_ordinal) AS count FROM novel_beats"),
    volumes,threadStatus,foreshadowStatus,topCharacters,longThreads,meta:readNovelKbMeta(worldDir,worldId)};
  }finally{db.close();}
