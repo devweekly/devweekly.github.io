@@ -167,7 +167,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     input.retrievedContext ? "本地资料库证据（用于核实事实，不得整段复制）：\n" + input.retrievedContext : "",
     input.writingBrief ? "全书知识库（已经写成的事实与未收线，优先于分析参考）：\n" + input.writingBrief : "",
     input.storyPlanText ? input.storyPlanText : "",
-    input.storyArcText ? "当前滚动式多章节 Story Arc（优先承接已发生事实；未执行章节可调整）：\\n" + input.storyArcText : "",
+    input.storyArcText ? "当前滚动式多章节 Story Arc（优先承接已发生事实；未执行章节可调整）：\n" + input.storyArcText : "",
     input.storyAnalysisContext ? "既有小说分析参考（仅供启发，不是正史或写作清单）：\n" + input.storyAnalysisContext : "",
     input.sourceText ? "用户提供且有权使用的续写材料：\n" + input.sourceText : "",
     input.styleProfile ? "本项目叙事风格参考（仅使用抽象写作特征，不模仿特定作者的独特表达；参考不能凌驾于当前人物、场景需要和文学表达）：\n" + input.styleProfile : "",
@@ -189,6 +189,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     input.contextText ? "前情摘要：\n" + input.contextText : "",
     input.writingBrief ? "相关既成事实、人物和未收线：\n" + input.writingBrief : "",
     input.storyPlanText ? input.storyPlanText : "",
+    input.storyArcText ? "当前滚动式多章节 Story Arc：\n" + input.storyArcText : "",
     input.brief ? "本次创作任务：\n" + input.brief : ""
   ].filter(Boolean).join("\n\n");
   const dialogueContext = [
@@ -226,6 +227,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     cachedCall("plot", "01-main-plot.md", "plot", [
       "角色：主线剧情架构师。负责本章主线推进和长篇结构，不写正文。",
       common,
+      "中期 Story Arc：", storyArc,
       "提出有吸引力的章节构想，帮助这一章真正好看、能让人物活起来。可考虑主线、人物关系、冲突、悬念、意外性和后续空间，但不要求每项都出现；允许从一个鲜活场景、一段对话或一个反常细节自然生长。",
       "先结合当前 Story State、人物状态、已发生事件及其因果关系，理解本章涉及的局势。只推演确有叙事价值的少数人物或势力：他们为什么行动、各自知道什么、能调用什么资源、受到什么限制，以及主角不介入时局势是否会变化。势力目标与资源以 World Bible 和已有事实为依据；资料不足时保留未知，不补造组织结构或关系。",
       "如有价值，在输出中用“局势推演（尚未发生）”单独标出一至数项可能发展，再提出本章主线方向；没有有价值的推演时可以省略。推演是待选的创作素材，不是正史，不能把可能性写成已发生事实。人物只能依据自己实际知道的信息行动；不得模拟整个世界、强制 NPC 行动或套用游戏数值和回合规则。",
