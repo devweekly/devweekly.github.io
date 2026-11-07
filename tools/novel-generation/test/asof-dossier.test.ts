@@ -73,13 +73,19 @@ test("as-of dossier publishes a complete directory and removes stale generated f
       worldId: "u-child", chapterId: "ch-1", title: "第一章", ordinal: 1,
       worldDetails: [{ category: "礼俗", detail: "城门关亭查验货籍", context: "商队入城", evidence: "先验货籍，再放车马入城。" }]
     }));
+    await writeFile(join(root, "analysis", "u-child", "corpus-craft", "manifest.json"), JSON.stringify({
+      worldId: "u-child", totalSelected: 10, processed: 9, failed: 1, updatedAt: "2026-11-07T00:00:00.000Z"
+    }));
     saveStoryAnalysis(worldDir, "u-child", snapshot);
     const result = await exportAsOfDossier("u-child", worldDir);
     assert.ok(result.files.includes("characters.md"));
     const published = await readdir(join(worldDir, "as-of-analysis"));
     assert.deepEqual(published.sort(), [...result.files].sort());
     assert.match(await readFile(join(worldDir, "as-of-analysis", "characters.md"), "utf8"), /人物甲/);
-    assert.match(await readFile(join(worldDir, "as-of-analysis", "world-details.md"), "utf8"), /城门关亭查验货籍/);
+    const worldDetails = await readFile(join(worldDir, "as-of-analysis", "world-details.md"), "utf8");
+    assert.match(worldDetails, /城门关亭查验货籍/);
+    assert.match(worldDetails, /计划分析章节：10/);
+    assert.match(worldDetails, /失败章节：1/);
     const leftovers = (await readdir(worldDir)).filter(name => name.startsWith(".as-of-analysis."));
     assert.deepEqual(leftovers, []);
   } finally {
