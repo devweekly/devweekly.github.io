@@ -6,6 +6,7 @@ type Run = { id:string; kind?:string; status:string; createdAt:string; updatedAt
 type Preview = { storyArc:string; chapterPlan:string; chapter:string };
 type Universe = { id:string; sourceWorldId:string; name:string; type:string; entryChapter:string; brief:string; createdAt:string; parentUniverseId?:string; forkPoint?:string; archivedAt?:string };
 type ForkableRun = { id:string; chapterTitle:string; createdAt:string };
+type KnowledgeBuild = { worldId:string; status:"queued"|"running"|"completed"|"partial"|"failed"; currentStep?:string; updatedAt:string; completedAt?:string; steps:Array<{name:string;status:"running"|"completed"|"failed"|"skipped";exitCode?:number|null;output?:string;error?:string}> };
 async function api<T>(url:string, init?:RequestInit):Promise<T>{const response=await fetch(url,{headers:{"Content-Type":"application/json",...(init?.headers??{})},...init});const body=await response.json();if(!response.ok)throw new Error(body.error??response.statusText);return body as T;}
 const emptyPreview:Preview={storyArc:"",chapterPlan:"",chapter:""};
 export default function ChapterStudio({worldId}:{worldId:string}){
@@ -29,6 +30,8 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [preview,setPreview]=useState<Preview>(emptyPreview);
  const [activeArc,setActiveArc]=useState("");
  const [notice,setNotice]=useState("");
+ const [knowledgeBuild,setKnowledgeBuild]=useState<KnowledgeBuild|null>(null);
+ const [startingKnowledgeBuild,setStartingKnowledgeBuild]=useState(false);
  const busy=run?.status==="queued"||run?.status==="running";
  const refresh=async()=>{
   if(!activeWorldId)return;setLoading(true);
@@ -63,6 +66,24 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   finally{setStarting(false);}
  };
  const activeUniverse=universes.find(item=>item.id===activeWorldId);
+ useEffect(()=>{
+  let disposed=false;
+  if(!activeUniverse){setKnowledgeBuild(null);return;}
+  const load=()=>api<{build:KnowledgeBuild|null}>("/api/worlds/"+activeWorldId+"/knowledge-build")
+   .then(result=>{if(!disposed)setKnowledgeBuild(result.build);}).catch(()=>{});
+  void load();
+  const timer=window.setInterval(load,2000);
+  return()=>{disposed=true;window.clearInterval(timer);};
+ },[activeWorldId,activeUniverse?.id]);
+ const startKnowledgeBuild=async()=>{
+  setStartingKnowledgeBuild(true);
+  try{
+   const result=await api<{build:KnowledgeBuild}>("/api/worlds/"+activeWorldId+"/knowledge-build",{method:"POST",body:"{}"});
+   setKnowledgeBuild(result.build);
+   message.success("知识构建任务已在后台启动。");
+  }catch(e){message.error(e instanceof Error?e.message:String(e));}
+  finally{setStartingKnowledgeBuild(false);}
+ };
  const changeArchive=async(archived:boolean)=>{
   if(!activeUniverse)return;
   try{
@@ -129,6 +150,32 @@ export default function ChapterStudio({worldId}:{worldId:string}){
      </div>)}
     </Space>}
   </Card>
+  {activeUniverse&&<Card title="原著知识与语料构建" style={{marginBottom:18}}>
+   <Space direction="vertical" style={{width:"100%"}} size="middle">
+    <Paragraph type="secondary" style={{marginBottom:0}}>按当前宇宙的历史起点，重建人物画像、人物逐章状态、主线与伏笔分析、Corpus Craft 素材和 Vane 检索索引。所有输入均来自该宇宙自己的截断原文资料，不继承父宇宙的后续剧情。此任务是可选增强，不是开始写作的前置条件。</Paragraph>
+    <Space wrap>
+     <Tag color={knowledgeBuild?.status==="completed"?"success":knowledgeBuild?.status==="failed"?"error":knowledgeBuild?.status==="partial"?"warning":knowledgeBuild?.status==="running"||knowledgeBuild?.status==="queued"?"processing":"default"}>
+      {knowledgeBuild?.status==="completed"?"已完成":knowledgeBuild?.status==="failed"?"构建失败":knowledgeBuild?.status==="partial"?"部分完成":knowledgeBuild?.status==="running"?"正在构建":knowledgeBuild?.status==="queued"?"排队中":"尚未构建"}
+     </Tag>
+     {knowledgeBuild?.currentStep&&<Text type="secondary">当前步骤：{knowledgeBuild.currentStep}</Text>}
+     {knowledgeBuild?.updatedAt&&<Text type="secondary">更新于 {new Date(knowledgeBuild.updatedAt).toLocaleString()}</Text>}
+    </Space>
+    <Button onClick={()=>void startKnowledgeBuild()} loading={startingKnowledgeBuild} disabled={busy||startingKnowledgeBuild||knowledgeBuild?.status==="queued"||knowledgeBuild?.status==="running"}>
+     {knowledgeBuild?.status==="failed"||knowledgeBuild?.status==="partial"?"重新构建知识资料":"构建知识资料"}
+    </Button>
+    {knowledgeBuild?.steps?.length>0&&<Space direction="vertical" style={{width:"100%"}} size="small">
+     {knowledgeBuild.steps.map(step=><div key={step.name} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+      <Tag color={step.status==="completed"?"success":step.status==="failed"?"error":step.status==="running"?"processing":"default"}>{step.status==="completed"?"完成":step.status==="failed"?"失败":step.status==="running"?"执行中":"跳过"}</Tag>
+      <div style={{flex:1,minWidth:0}}>
+       <Text>{step.name}</Text>
+       {step.error&&<Paragraph type="danger" style={{fontSize:12,whiteSpace:"pre-wrap",marginBottom:4}}>{step.error}</Paragraph>}
+      </div>
+     </div>)}
+    </Space>}
+    {knowledgeBuild?.status==="partial"&&<Alert type="warning" showIcon message="部分资料未能构建" description="已成功的分析结果仍可使用；修复失败步骤后可重新构建。"/>}
+    {knowledgeBuild?.status==="failed"&&<Alert type="error" showIcon message="知识构建未完成" description="章节写作仍可继续；修复失败步骤后可重新构建。"/>}
+   </Space>
+  </Card>}
   {notice&&<Alert type="warning" showIcon message="本次任务未能启动" description={notice} style={{marginBottom:18}}/>}
   <Card title="当前故事阶段" style={{marginBottom:18}}>
    {preview.storyArc||activeArc?<Paragraph style={{whiteSpace:"pre-wrap",marginBottom:0}}>{preview.storyArc||activeArc}</Paragraph>:<Empty description="首次生成时自动推演一个中期故事阶段（约 5–8 章），不需要单独启动规划任务。"/>}
