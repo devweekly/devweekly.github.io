@@ -111,6 +111,7 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
               const key = String(item.chapterId ?? item.chunkId ?? item.chapter ?? "");
               return Boolean(key && allowedKeys.has(key));
             });
+            const safeCoreObservations = boundedItems(source.storyCoreObservations);
             const graph = source.storyGraph && typeof source.storyGraph === "object"
               ? source.storyGraph as {nodes?:unknown;edges?:unknown}
               : undefined;
@@ -125,7 +126,8 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
               foreshadowings: boundedItems(source.foreshadowings),
               developmentPossibilities: boundedItems(source.developmentPossibilities),
               relations: boundedItems(source.relations),
-              storyCoreObservations: boundedItems(source.storyCoreObservations),
+              storyCoreObservations: safeCoreObservations,
+              ...(safeCoreObservations.length ? { storyCore: { observations: safeCoreObservations } } : {}),
               macguffins: boundedItems(source.macguffins),
               beats: Array.isArray(source.beats) ? source.beats.filter(item => {
                 if (!item || typeof item !== "object" || Array.isArray(item)) return false;
@@ -141,8 +143,7 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
                 ) : []
               } : undefined
             };
-            // Whole-book storyCore has no chapter provenance and is unsafe to reuse.
-            delete bounded.storyCore;
+            // Reconstruct a bounded core only from chapter-provenanced observations.
             db.prepare("UPDATE story_analysis SET payload_json=? WHERE singleton=1").run(JSON.stringify(bounded));
           } catch {
             db.prepare("DELETE FROM story_analysis").run();
