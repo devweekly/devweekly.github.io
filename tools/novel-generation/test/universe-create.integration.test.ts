@@ -43,7 +43,7 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
   db.exec(`
     CREATE TABLE world_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
     INSERT INTO world_meta VALUES('world_id','source-world');
-    CREATE TABLE novel_chapters(chapter_id TEXT PRIMARY KEY,title TEXT NOT NULL,ordinal INTEGER NOT NULL);
+    CREATE TABLE novel_chapters(chapter_id TEXT PRIMARY KEY,title TEXT NOT NULL,ordinal INTEGER NOT NULL,volume INTEGER NOT NULL DEFAULT 1);
     INSERT INTO novel_chapters VALUES('c1','第一章',1),('c2','第二章',2),('c3','第三章',3);
     CREATE TABLE story_analysis(singleton INTEGER PRIMARY KEY,world_id TEXT NOT NULL,payload_json TEXT);
     INSERT INTO story_analysis VALUES(1,'source-world','未来剧情泄漏标记');
