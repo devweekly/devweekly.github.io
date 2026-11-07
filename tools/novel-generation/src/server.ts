@@ -263,8 +263,20 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     if (!allowedTypes.includes(type)) return void res.status(400).json({ error: "Invalid universe type." });
     await readFile(path.join(sourceDir, "world-bible.md"), "utf8");
     const canonChapters = await readCanonChapters(rootSourceId);
-    const selectedChapter = canonChapters.find(chapter => chapter.title === entryChapter);
+    const selectedIndex = canonChapters.findIndex(chapter => chapter.title === entryChapter);
+    const selectedChapter = canonChapters[selectedIndex];
     if (!selectedChapter?.text.trim()) return void res.status(400).json({ error: "所选章节不在原文目录中，或章节正文为空。请从原文目录选择一个章节。" });
+    // 起点前情属于原著只读背景，不是新宇宙已发生的续写事实。
+    const preceding = canonChapters.slice(Math.max(0, selectedIndex - 3), selectedIndex).reverse();
+    const contextParts = ["# 原著起点前情（只读背景）", "", "以下章节发生在本宇宙起点之前，只用于理解人物处境、关系和已发生事件。不得把原著起点之后的剧情当成本宇宙事实。", ""];
+    let contextBudget = 18000;
+    for (const chapter of preceding) {
+      if (contextBudget <= 0) break;
+      const body = chapter.text.slice(-contextBudget);
+      contextParts.push("## " + chapter.title, "", body, "");
+      contextBudget -= body.length;
+    }
+    const originContext = contextParts.join("\n");
     const id = "u-" + randomUUID().replace(/-/g, "").slice(0, 16);
     const targetDir = worldDir(id);
     await mkdir(targetDir, { recursive: true });
@@ -295,6 +307,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     };
     await writeFile(path.join(targetDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
     await writeFile(path.join(targetDir, "universe-entry.md"), selectedChapter.text + "\n", "utf8");
+    await writeFile(path.join(targetDir, "universe-origin-context.md"), originContext + "\n", "utf8");
     res.status(201).json({ universe });
   } catch (error) { sendError(res, error); }
 });
@@ -647,6 +660,7 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
       "--import", "tsx", "src/cli.ts", "write", "--world", id,
       "--mode", mode,
       ...(previousChapterPath ? ["--source", previousChapterPath] : universeEntryPath ? ["--source", universeEntryPath] : []),
+      ...(!previousChapterPath && universe ? ["--context", path.join(dir, "universe-origin-context.md")] : []),
       "--brief", previousChapterPath
         ? "紧接上一章的结尾继续写下一章。保持时间、地点、人物位置、人物认知、情绪和未完成行动的连续性；不要重述上一章，不要无故跳线或重启冲突。若有充分的叙事理由，可以自然转场或切换视角，但必须让因果和时间线成立。"
         : universe
