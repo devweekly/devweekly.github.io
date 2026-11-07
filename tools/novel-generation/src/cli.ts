@@ -111,6 +111,7 @@ function usage(): never {
     "  npm run dev -- story-state --world conghuoniao [--type overview|characters|events|threads|relationships|foreshadowings|macguffins|graph] [--query 关键词] [--limit 500]",
     "  npm run dev -- analyze-world --world conghuoniao --phase prepare|status|collect [--source original.txt] [--model model] [--timeout-ms 90000] [--evidence-review] [--evidence-window 2]",
     "  npm run dev -- db-status --world conghuoniao",
+    "  npm run dev -- verify-world --world conghuoniao",
     "  npm run dev -- models",
     "  npm run dev -- check-runtime [--model model] [--timeout-ms 90000]",
     "  npm run dev -- regress --world conghuoniao --chapter 13 [--brief \"本章任务\"] [--model deepseek-v4.1-flash] [--review-model glm-5.3-flash] [--context-lines 90] [--timeout-ms 240000]",
@@ -153,7 +154,7 @@ function resolveWorldOutputPath(requested: string | undefined, worldId: string, 
 
 async function main(): Promise<void> {
   const command = process.argv[2];
-  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-story" && command !== "index-story" && command !== "story-kb" && command !== "story-state" && command !== "analyze-arcs" && command !== "analyze-profiles" && command !== "analyze-character-states" && command !== "analyze-world" && command !== "models" && command !== "check-runtime" && command !== "db-status" && command !== "plan-story" && command !== "distill-style" && command !== "style-regress" && command !== "roleplay-sandbox") usage();
+  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-story" && command !== "index-story" && command !== "story-kb" && command !== "story-state" && command !== "analyze-arcs" && command !== "analyze-profiles" && command !== "analyze-character-states" && command !== "analyze-world" && command !== "models" && command !== "check-runtime" && command !== "db-status" && command !== "verify-world" && command !== "plan-story" && command !== "distill-style" && command !== "style-regress" && command !== "roleplay-sandbox") usage();
 
   const worldId = safeWorldId(arg("--world") ?? "conghuoniao");
   const libraryDir = resolve("worlds", worldId, "library");
@@ -195,6 +196,49 @@ async function main(): Promise<void> {
     await mkdir(dirname(out), { recursive: true });
     await writeFile(out, transcript, "utf8");
     console.log("推演记录已保存（非正史）：" + out);
+    return;
+  }
+
+  if (command === "verify-world") {
+    const worldDir = resolve("worlds", worldId);
+    const status = databaseStatus(worldDir, worldId);
+    const snapshot = readStoryAnalysis(worldDir, worldId);
+    let chunks = 0;
+    let reviewedAnnotations = 0;
+    let annotationFailures = 0;
+    let annotationFileAvailable = false;
+    try {
+      const index = JSON.parse(await readFile(join(libraryDir, "index.json"), "utf8")) as { chunks?: unknown[] };
+      chunks = Array.isArray(index.chunks) ? index.chunks.length : 0;
+    } catch { /* report missing index below */ }
+    try {
+      const store = JSON.parse(await readFile(join(libraryDir, "annotations.json"), "utf8")) as {
+        annotations?: Array<{ evidenceReviews?: unknown[] }>; failures?: unknown[];
+      };
+      annotationFileAvailable = true;
+      reviewedAnnotations = (store.annotations ?? []).filter(item => Array.isArray(item.evidenceReviews)).length;
+      annotationFailures = (store.failures ?? []).length;
+    } catch { /* report missing annotation store below */ }
+    const v6Complete = Boolean(snapshot && snapshot.analysisVersion === 6 && snapshot.complete === true && snapshot.storyGraph);
+    const annotationsComplete = chunks > 0 && reviewedAnnotations === chunks && annotationFailures === 0;
+    console.log(JSON.stringify({
+      worldId, database: status,
+      originalStoryGraph: {
+        complete: v6Complete, analysisVersion: snapshot?.analysisVersion ?? null,
+        sourceHash: snapshot?.sourceHash ?? null, analyzedAt: snapshot?.analyzedAt ?? null,
+        nextStep: v6Complete ? null : "npm run dev -- analyze-story --world " + worldId + " --delta --merge-only"
+      },
+      annotations: {
+        libraryChunks: chunks, reviewed: reviewedAnnotations, failures: annotationFailures,
+        databaseRows: status.annotations, fileAvailable: annotationFileAvailable,
+        complete: annotationsComplete,
+        nextStep: annotationsComplete ? null : "npm run dev -- analyze --world " + worldId + " --all --batch-size 20"
+      },
+      characterChapterStates: {
+        rows: status.novelCharacterChapterStates,
+        nextStep: status.novelCharacterChapterStates ? null : "npm run dev -- analyze-character-states --world " + worldId
+      }
+    }, null, 2));
     return;
   }
 
