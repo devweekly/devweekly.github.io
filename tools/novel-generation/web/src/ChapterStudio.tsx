@@ -163,7 +163,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
     <Button onClick={()=>void startKnowledgeBuild()} loading={startingKnowledgeBuild} disabled={busy||startingKnowledgeBuild||knowledgeBuild?.status==="queued"||knowledgeBuild?.status==="running"}>
      {knowledgeBuild?.status==="failed"||knowledgeBuild?.status==="partial"?"重新构建知识资料":"构建知识资料"}
     </Button>
-    {knowledgeBuild?.steps?.length>0&&<Space direction="vertical" style={{width:"100%"}} size="small">
+    {knowledgeBuild && knowledgeBuild.steps.length > 0 && <Space direction="vertical" style={{width:"100%"}} size="small">
      {knowledgeBuild.steps.map(step=><div key={step.name} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
       <Tag color={step.status==="completed"?"success":step.status==="failed"?"error":step.status==="running"?"processing":"default"}>{step.status==="completed"?"完成":step.status==="failed"?"失败":step.status==="running"?"执行中":"跳过"}</Tag>
       <div style={{flex:1,minWidth:0}}>
