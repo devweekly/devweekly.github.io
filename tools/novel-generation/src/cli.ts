@@ -870,6 +870,7 @@ async function main(): Promise<void> {
     }
     const state = await loadRunStoryState(statePath, worldId, outputDir, "write");
     const storyPlanText = formatStoryPlan(await loadStoryPlan(resolve("worlds", worldId, "story-plan.json"), worldId));
+    let storyArcText = "";\n    try { storyArcText = await readFile(resolve("worlds", worldId, "story-arc.md"), "utf8"); }\n    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     const activeThreads = state.plotThreads
       .filter(thread => thread.status === "open" || thread.status === "active")
       .map(thread => thread.title);
@@ -902,7 +903,7 @@ async function main(): Promise<void> {
 
     const applyState = !process.argv.includes("--no-apply-state");
     const chapter = await writeChapter({
-      worldId, worldDir: resolve("worlds", worldId), mode, brief, worldBible, styleProfile, sourceText, contextText, retrievedContext, storyAnalysisContext, writingBrief, storyPlanText, model,
+      worldId, worldDir: resolve("worlds", worldId), mode, brief, worldBible, styleProfile, sourceText, contextText, retrievedContext, storyAnalysisContext, writingBrief, storyPlanText, storyArcText, model,
       strictModel: process.argv.includes("--strict-model"),
       maxWords,
       outputDir, statePath, applyState
