@@ -49,7 +49,8 @@ export function matchChapterCharacters(text: string, characters: NovelCharacterS
 export function hasExactEvidence(text: string, evidence: string[]): boolean {
   return evidence.some(value => value.length >= 4 && text.includes(value));
 }
-type PriorStateContext = Pick<NovelCharacterChapterStateRow, "chapterOrdinal" | "chapterTitle" | "behavior" | "goals" | "knowledge" | "relationships" | "resources" | "situation" | "changes" | "evidence" | "uncertainty">;\nfunction priorStateContext(state: NovelCharacterChapterStateRow | null): PriorStateContext | null {
+type PriorStateContext = Pick<NovelCharacterChapterStateRow, "chapterOrdinal" | "chapterTitle" | "behavior" | "goals" | "knowledge" | "relationships" | "resources" | "situation" | "changes" | "evidence" | "uncertainty">;
+function priorStateContext(state: NovelCharacterChapterStateRow | null): PriorStateContext | null {
   if (!state) return null;
   return {
     chapterOrdinal: state.chapterOrdinal, chapterTitle: state.chapterTitle,
