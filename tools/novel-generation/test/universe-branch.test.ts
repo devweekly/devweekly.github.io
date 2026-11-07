@@ -56,3 +56,17 @@ test("origin context contains only earlier canon chapters in chronological order
   assert.ok(!context.includes("未来剧情"));
   assert.throws(() => buildUniverseOriginContext(chapters, 99), /does not exist/);
 });
+
+test("origin context budget prioritizes chapters nearest to the selected entry", () => {
+  const chapters = [
+    { title: "第一章", text: "A".repeat(100) },
+    { title: "第二章", text: "B".repeat(100) },
+    { title: "第三章", text: "C".repeat(100) },
+    { title: "起点", text: "ENTRY" }
+  ];
+  const context = buildUniverseOriginContext(chapters, 3, 3, 120);
+  assert.ok(context.includes("第三章"));
+  assert.ok(context.includes("第二章"));
+  assert.ok(!context.includes("第一章"));
+  assert.ok(context.indexOf("第二章") < context.indexOf("第三章"));
+});
