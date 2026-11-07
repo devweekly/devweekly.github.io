@@ -4,7 +4,7 @@ import os from "node:os";
 import { buildAnalysisUnits, type AnalysisUnit } from "../src/novel-kb.js";
 import { evaluateExtraction, rankRetrieval } from "../src/local-model-benchmark.js";
 const argv=process.argv.slice(2);
-const arg=(name:string,fallback:string)=>{const i=argv.indexOf("--"+name);return i>=0&&argv[i+1]&&!argv[i+1]!.startsWith("--")?argv[i+1]!:fallback;};
+const arg=(name:string,fallback:string)=>{const i=argv.indexOf("--"+name);return i>=0&&argv[i+1]!==undefined&&!argv[i+1]!.startsWith("--")?argv[i+1]!:fallback;};
 const list=(v:string)=>v.split(",").map(x=>x.trim()).filter(Boolean);
 const world=arg("world","conghuoniao"),base=(process.env.LM_STUDIO_BASE_URL||arg("local-url","http://127.0.0.1:1234/v1")).replace(/\\/+$/ ,"");
 const chatModels=list(arg("chat-models","qwen3.8-9b-distill-slerp-f451-pro-writer-uncensored,sparkmuse-4b"));
