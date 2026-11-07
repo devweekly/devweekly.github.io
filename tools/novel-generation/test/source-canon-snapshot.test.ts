@@ -60,6 +60,7 @@ test("historical snapshot retains only chapter evidence through the selected ent
     assert.deepEqual(rows(f.databasePath, "SELECT id FROM novel_relations ORDER BY id"), [{ id: "r1" }, { id: "r2" }]);
     assert.deepEqual(rows(f.databasePath, "SELECT id FROM novel_character_chapter_states ORDER BY id"), [{ id: "s1" }, { id: "s2" }]);
     const analysis = JSON.parse(String(rows(f.databasePath, "SELECT payload_json FROM story_analysis")[0]?.payload_json)) as Record<string, any>;
+    assert.equal(analysis.worldId, "universe-one");
     assert.equal(analysis.asOfEntryChapter, "第二章");
     assert.equal(analysis.chapters, 2);
     assert.deepEqual(analysis.characters.map((item: any) => item.name), ["甲"]);
