@@ -706,7 +706,7 @@ POST /api/worlds/<universe-id>/knowledge-build
 GET  /api/worlds/<universe-id>/knowledge-build
 ```
 
-任务按顺序运行 `analyze-story`、`analyze-arcs`、`ensure-style-profile`、`analyze-profiles`、`analyze-character-states`、`analyze-corpus-craft`、`export-asof-dossier` 和 `vane-index`。如果原著项目已有完整 v6 故事分析，Create/Fork 会将其按章节来源严格截断后写入新宇宙；起点一致且快照完整时直接复用，跳过耗时的全文 LLM 分析。`ensure-style-profile` 只在当前宇宙缺少 Style Profile 时，从本宇宙按起点截断的章节样本重建，不覆盖用户已有的人工风格资料。Create/Fork 默认自动启动该后台任务，创建接口可通过 `buildKnowledge:false` 显式关闭；知识构建与章节生成可并行：知识库写入 `novel.db`，章节状态提交写入独立的 `story.db`，不再以整套知识资料完成作为写作前置条件。状态与各步骤日志摘要保存在 `.output/<world>/workbench/knowledge-build.json`。任务重启中断会被标记为失败，可重新触发。Vane 原生包未安装时，知识构建将该可选步骤标记为 skipped，而不是把整个知识构建标成失败；已配置 embedding endpoint 但请求失败或维度不匹配时，该步骤明确失败。两种情况都不影响 SQLite/BM25 写作路径。
+任务按顺序运行 `analyze-story`、`analyze-arcs`、`ensure-style-profile`、`analyze-profiles`、`analyze-character-states`、`analyze-corpus-craft`、`export-asof-dossier` 和 `vane-index`。如果原著项目已有完整 v6 故事分析，Create/Fork 会将其按章节来源严格截断后写入新宇宙；起点一致且快照完整时直接复用，跳过耗时的全文 LLM 分析。旧版本已创建的宇宙在首次续写或手动启动知识构建时，也会从 `sourceWorldId` 回填同一份时点安全快照。`ensure-style-profile` 只在当前宇宙缺少 Style Profile 时，从本宇宙按起点截断的章节样本重建，不覆盖用户已有的人工风格资料。Create/Fork 默认自动启动该后台任务，创建接口可通过 `buildKnowledge:false` 显式关闭；知识构建与章节生成可并行：知识库写入 `novel.db`，章节状态提交写入独立的 `story.db`，不再以整套知识资料完成作为写作前置条件。状态与各步骤日志摘要保存在 `.output/<world>/workbench/knowledge-build.json`。任务重启中断会被标记为失败，可重新触发。Vane 原生包未安装时，知识构建将该可选步骤标记为 skipped，而不是把整个知识构建标成失败；已配置 embedding endpoint 但请求失败或维度不匹配时，该步骤明确失败。两种情况都不影响 SQLite/BM25 写作路径。
 
 Chapter Studio 已提供显式构建入口和逐步骤状态面板，并每 2 秒轮询任务状态。Create/Fork 默认自动触发后台构建；构建期间仍可直接生成章节。分析写入 novel.db，章节状态写入独立的 story.db，因此不需要等待分析完成。归档和 fork 仍与构建互斥，避免复制或变更正在写入的宇宙目录。
 
