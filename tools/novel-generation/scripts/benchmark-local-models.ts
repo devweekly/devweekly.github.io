@@ -11,7 +11,7 @@ const chatModels=list(arg("chat-models","qwen3.8-9b-distill-slerp-f451-pro-write
 const embeddingModels=list(arg("embedding-models","text-embedding-nomic-embed-text-v1.5,text-embedding-qwen3-embedding-0.6b"));
 const chapterCount=Math.max(2,Math.min(12,Number(arg("chapters","4")))),maxChars=Math.max(1000,Math.min(8000,Number(arg("max-chars","3500"))));
 const timeoutMs=Math.max(15000,Math.min(600000,Number(arg("timeout-ms","180000")))),maxTokens=Math.max(500,Math.min(8000,Number(arg("max-tokens","3000"))));
-const tasks=list(arg("tasks","extraction,summary,dialogue,writing,editing")),runId=new Date().toISOString().replace(/[:.]/g,"-"),outDir=resolve(".output",world,"local-model-benchmark",runId);
+const tasks=list(arg("tasks","extraction,summary,dialogue,writing,editing,style")),runId=new Date().toISOString().replace(/[:.]/g,"-"),outDir=resolve(".output",world,"local-model-benchmark",runId);
 const auth=process.env.LM_API_TOKEN?{Authorization:"Bearer "+process.env.LM_API_TOKEN}:{},json=(v:unknown)=>JSON.stringify(v,null,2)+"\n";
 const clip=(s:string,n:number)=>s.length<=n?s:s.slice(0,Math.floor(n*.7))+"\n【中间内容省略】\n"+s.slice(-Math.floor(n*.3));
 function choose(units:AnalysisUnit[]){const a=units.filter(u=>u.ordinal>0);if(a.length<=chapterCount)return a;return Array.from({length:chapterCount},(_,i)=>a[Math.round(i*(a.length-1)/(chapterCount-1))]!);}
@@ -24,7 +24,7 @@ function prompt(task:string,u:AnalysisUnit,source:string){
  if(task==="summary")return common+"\n任务：写供后续续写使用的章节摘要，5-8条要点说明事件、人物选择、因果变化和未解决问题。区分事实与推测，不补全未知信息。避免空泛评价。";
  if(task==="dialogue")return common+"\n对白摘录：\n"+(quotes||"未检测到明显对白")+"\n任务：分析可观察到的声音差异（措辞、语气、信息回避、权力关系），再续写约300-500字原创对话。人物声音要可区分，不贴固定性格标签，不照抄原句。";
  if(task==="writing")return "你是中文类型小说作家。文学性、文笔、艺术风格高于其他一切。不要分析或总结。\n故事上下文最后部分：\n"+source.slice(-1800)+"\n任务：从当前场景自然接续，写约600-900个中文字符的正文。推进具体行动或冲突，体现人物选择及代价；避免套路化转折、设定堆砌和总结式结尾。只输出正文。";
- if(task==="editing")return common+"\n任务：对原文最后一个完整段落做文学编辑。保留人物、事件、信息和叙事视角，不增加新事实；改善节奏、动作与心理结合、对白自然度。先输出修改稿，再用不超过3条说明改动意图。避免华丽辞藻堆砌。";
+ if(task==="style")return common+"\\n任务：分析这段文字可观察到的叙事风格。按叙述视角与距离、节奏与段落组织、对白特征、动作/心理/环境的比例、意象与细节、情绪控制、幽默或暴力等元素的并置方式，给出具体观察。每个判断引用一处原文短证据；区分稳定特征和本段偶然现象。不要输出模仿配方、句长指标或泛泛的‘生动形象’评价。";\n if(task==="editing")return common+"\n任务：对原文最后一个完整段落做文学编辑。保留人物、事件、信息和叙事视角，不增加新事实；改善节奏、动作与心理结合、对白自然度。先输出修改稿，再用不超过3条说明改动意图。避免华丽辞藻堆砌。";
  throw new Error("Unknown task: "+task);
 }
 async function chat(model:string,p:string){const started=Date.now(),b=await post("/chat/completions",{model,messages:[{role:"user",content:p}],temperature:0.3,max_tokens:maxTokens,stream:false}),c=b.choices?.[0],v=c?.message?.content;const text=typeof v==="string"?v:Array.isArray(v)?v.map((x:any)=>x?.text??"").join("\n"):"";if(!text.trim())throw new Error("No final assistant text; finish_reason="+String(c?.finish_reason??"unknown"));return {text,elapsedMs:Date.now()-started,usage:b.usage,finishReason:c?.finish_reason};}
