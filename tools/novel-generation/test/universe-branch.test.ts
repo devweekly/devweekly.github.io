@@ -78,10 +78,12 @@ test("historical universe asset policy excludes full-book and derived data from 
     "character-profiles.md", "plot-summary.md", "foreshadowing.md",
     "analysis/chapter-index.json", "corpus-craft/chapters/1.json",
     "vane-index/index.json", "style-references/active.json",
-    "library/index.json", "novel.db", "story-state.json", ".output/run/chapter.md"
+    "library/index.json", "story-state.json", ".output/run/chapter.md"
   ]) {
     assert.equal(shouldCopyUniverseAsset(file), false, file);
   }
+  // novel.db is retained only as an input to the explicit as-of snapshot filter.
+  assert.equal(shouldCopyUniverseAsset("novel.db"), true);
 });
 
 test("historical universe asset policy retains ordinary source material and nested non-derived assets", () => {
