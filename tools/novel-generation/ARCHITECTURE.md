@@ -493,3 +493,13 @@ Workbench 的默认入口是「续写章节」，而不是长期主线、故事�
 7. 连续不等于机械地从同一场景开始。允许有叙事理由的时间跳转、视角切换和场景转换，但必须保持人物认知、行动因果、时间线和上一章结尾的连续性。
 
 WorkbenchRun 保存 `previousChapterPath`，以便追踪本章接续来源。此规则只影响 Workbench 的「生成下一章」入口；手动 CLI 调用仍可显式选择 `derivative` 或 `continuation`。
+
+## 滚动式多章节续写（ADR 0004）
+
+Workbench 的“一键生成下一章”现在会先生成/滚动校准一个中期 Story Arc（约 5–8 个章节节点），保存为 `worlds/<worldId>/story-arc.md`，并把它注入主线推演、创意发散、章节蓝图和正文生成。每次完成章节后，下一次生成会读取上次 Story Arc 作为基线重新推演；已发生正文与 Story State 优先，未执行节点允许调整。Arc 快照同时保存在本次运行目录的 `00-story-arc.md`，可追溯每次规划变化。
+
+CLI `write` 同样读取活动 Story Arc；没有旧 Arc 时首次生成自动建立，不要求单独运行规划任务。Workbench 的章节页展示当前 Arc、本章蓝图和正文，不增加审批步骤。
+
+章节运行只有在退出码为 0、最终正文存在、`09-quality-summary.json` 为 passed、`08-state-update.json` 有效且 CLI 明确报告 Story State 自动提交后，才标记 completed。stdout/stderr 和 `process-result.json` 保存在本次 `.output` 运行目录。此规则避免终审或状态回写缺失时出现“章节已完成”的假成功。
+
+当前 Story Arc 以 Markdown 文件作为可读的滚动规划快照；尚未将 Arc/Chapter/Scene 计划规范化为 SQLite 多表及显式版本迁移。该项保留为后续增强，不阻塞第一阶段自动连载闭环。
