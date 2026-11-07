@@ -1174,7 +1174,15 @@ export function createApp() {
 export async function recoverWorkbenchRuns(): Promise<void> {
   const root = path.resolve("worlds");
   let entries: string[] = [];
-  try { entries = await readdir(root); } catch { /* no worlds yet */ }
+  try {
+    const directoryEntries = await readdir(root, { withFileTypes: true });
+    // A hard process exit can happen before a staging rename. Such directories
+    // are never visible worlds and must not accumulate or be resumed on startup.
+    await Promise.all(directoryEntries
+      .filter(entry => entry.isDirectory() && /^\\.staging-u-[a-f0-9]{16}$/.test(entry.name))
+      .map(entry => rm(path.join(root, entry.name), { recursive: true, force: true })));
+    entries = directoryEntries.filter(entry => entry.isDirectory()).map(entry => entry.name);
+  } catch { /* no worlds yet */ }
   const ids = entries.filter(id => /^[a-z0-9][a-z0-9-]*$/i.test(id));
   await Promise.all(ids.map(async id => {
     await recoverInterruptedRuns(id);
