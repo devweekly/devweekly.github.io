@@ -65,9 +65,9 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
 
     const snapshot = new DatabaseSync(join(universeDir, "novel.db"));
     try {
-      assert.deepEqual(snapshot.prepare("SELECT title FROM novel_chapters ORDER BY ordinal").all(), [{ title: "第一章" }, { title: "第二章" }]);
+      assert.deepEqual((snapshot.prepare("SELECT title FROM novel_chapters ORDER BY ordinal").all() as Array<{ title: string }>).map(row => row.title), ["第一章", "第二章"]);
       assert.equal(snapshot.prepare("SELECT * FROM story_analysis").all().length, 0);
-      assert.deepEqual(snapshot.prepare("SELECT value FROM world_meta WHERE key='world_id'").get(), { value: payload.universe.id });
+      assert.equal((snapshot.prepare("SELECT value FROM world_meta WHERE key='world_id'").get() as { value: string }).value, payload.universe.id);
     } finally { snapshot.close(); }
     assert.ok((await readFile(join(universeDir, "universe-entry.md"), "utf8")).includes("第二章正文"));
     assert.ok(!(await readFile(join(universeDir, "universe-entry.md"), "utf8")).includes("未来剧情泄漏标记"));
