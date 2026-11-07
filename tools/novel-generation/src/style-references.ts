@@ -24,13 +24,11 @@ export async function listStyleReferences(worldDir: string): Promise<StyleRefere
   return result;
 }
 
-/** Replace an approved sample only after archiving the previous exact bytes. */
-export async function addStyleReference(worldDir: string, sourceFile: string): Promise<StyleReferenceChange> {
-  const source = resolve(sourceFile);
-  const name = basename(source);
-  if (!validName(name)) throw new Error("Style reference must be a .md or .txt file.");
-  const text = await readFile(source, "utf8");
-  if (!text.trim()) throw new Error("Style reference is empty: " + sourceFile);
+/** Store approved sample content; previous bytes are archived before replacement. */
+export async function putStyleReference(worldDir: string, name: string, text: string): Promise<StyleReferenceChange> {
+  if (!validName(name)) throw new Error("Style reference filename must be a simple .md or .txt name.");
+  if (!text.trim()) throw new Error("Style reference is empty: " + name);
+  if (text.length > 200000) throw new Error("Style reference exceeds 200,000 characters.");
   const directory = join(worldDir, "style-references");
   await mkdir(directory, { recursive: true });
   const target = join(directory, name);
@@ -47,6 +45,13 @@ export async function addStyleReference(worldDir: string, sourceFile: string): P
   }
   await writeFile(target, text, "utf8");
   return { name, action: previous === undefined ? "added" : "updated", ...(archivePath ? { archivePath } : {}) };
+}
+
+export async function addStyleReference(worldDir: string, sourceFile: string): Promise<StyleReferenceChange> {
+  const source = resolve(sourceFile);
+  const name = basename(source);
+  if (!validName(name)) throw new Error("Style reference must be a .md or .txt file.");
+  return putStyleReference(worldDir, name, await readFile(source, "utf8"));
 }
 
 export async function listStyleReferenceHistory(worldDir: string, onlyName?: string): Promise<Array<{ name: string; version: string; chars: number; updatedAt: string }>> {
