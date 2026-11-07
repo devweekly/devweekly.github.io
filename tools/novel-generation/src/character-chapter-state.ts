@@ -52,6 +52,7 @@ export function hasExactEvidence(text: string, evidence: string[]): boolean {
 function promptForChapter(input: {
   chapter: { chapterId: string; ordinal: number; volume: number; title: string; text: string };
   characters: NovelCharacterSummary[];
+  previousStates: Array<{ characterId: string; name: string; state: NovelCharacterChapterStateRow | null }>;
 }): string {
   return [
     "你正在为一部长篇小说建立逐章人物状态档案。只分析本章原文，不借用后文知识，不推测人物未表达的心理。",
@@ -62,6 +63,8 @@ function promptForChapter(input: {
     "evidence 必须是本章原文中逐字连续出现的短句或片段，至少一条；每个状态结论都应能被这些证据支持。不要改写证据，不要输出章节以外的引文。",
     "候选人物：",
     JSON.stringify(input.characters.map(c => ({ characterId: c.characterId, name: c.name, aliases: c.aliases, role: c.role }))),
+    "每个人物最近一条已分析的前序章节状态（可能为空）。只有对照此状态和当前原文后确有变化，才填写 changes；没有前序状态时不要猜测变化。该历史状态是模型分析产物，不是不可推翻的正史。",
+    JSON.stringify(input.previousStates),
     "章节信息：" + JSON.stringify({ chapterId: input.chapter.chapterId, ordinal: input.chapter.ordinal, volume: input.chapter.volume, title: input.chapter.title }),
     "本章原文：\n" + input.chapter.text,
     "只输出 JSON：{states:[{characterId,behavior:string[],goals:string[],knowledge:string[],relationships:string[],resources:string[],situation:string,changes:string[],evidence:string[],uncertainty:string[]}]}",
