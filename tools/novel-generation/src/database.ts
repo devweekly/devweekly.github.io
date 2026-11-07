@@ -343,7 +343,7 @@ export function listNovelCharacterObservations(worldDir:string,worldId:string,op
 
 export interface NovelCharacterChapterStateRow {
  characterId:string; name:string; chapterId:string; chapterOrdinal:number; chapterTitle:string; volume:number;
- sourceHash:string; model:string; generatedAt:string;
+ sourceHash:string; contextHash:string; model:string; generatedAt:string;
  behavior:string[]; goals:string[]; knowledge:string[]; relationships:string[]; resources:string[];
  situation:string; changes:string[]; evidence:string[]; uncertainty:string[];
 }
