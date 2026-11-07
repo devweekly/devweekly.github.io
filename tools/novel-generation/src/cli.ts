@@ -95,7 +95,7 @@ function usage(): never {
     "Usage:",
     "  npm run dev -- ingest --world conghuoniao --input ./private/novel.txt [more files or directories]",
     "  npm run dev -- search --world conghuoniao --query \"人物或事件关键词\" [--limit 8]",
-    "  npm run dev -- analyze --world conghuoniao [--limit 20] [--model model]",
+    "  npm run dev -- analyze --world conghuoniao [--limit 20 | --all] [--batch-size 20] [--model model]",
     "  npm run dev -- distill-style --world conghuoniao --input ./private/style-sample-1.txt ./private/style-sample-2.md [--out .output/<world>/style-profile-candidate.md] [--activate] [--model model]",
     "  npm run dev -- style-regress --world conghuoniao --reference ./benchmarks/ref-1.md [more files] --candidate .output/chapter.md [more files] [--scene-type dialogue] [--out .output/<world>/style-regression/report.md]",
     "  npm run dev -- style-trend --world conghuoniao [--limit 30] [--model model] [--out .output/<world>/style-regression-trend/report.md]",
@@ -643,11 +643,22 @@ async function main(): Promise<void> {
     if (!Number.isInteger(timeoutMs) || timeoutMs < MIN_AGENT_TIMEOUT_MS || timeoutMs > MAX_AGENT_TIMEOUT_MS) {
       throw new Error("--timeout-ms must be an integer between " + MIN_AGENT_TIMEOUT_MS + " and " + MAX_AGENT_TIMEOUT_MS + ".");
     }
-    const result = await analyzeLibrary(libraryDir, worldId, limit, arg("--model"), timeoutMs);
-    console.log("Analyzed chunks: " + result.processed);
-    console.log("Failed chunks: " + result.failed);
-    console.log("Remaining chunks: " + result.remaining);
-    console.log("Annotations: " + resolve(libraryDir, "annotations.json"));
+    const batchSize = Number(arg("--batch-size") ?? limit);
+    if (!Number.isInteger(batchSize) || batchSize < 1 || batchSize > 500) throw new Error("--batch-size must be between 1 and 500.");
+    let processed = 0;
+    let failed = 0;
+    let remaining = 0;
+    let batches = 0;
+    do {
+      const result = await analyzeLibrary(libraryDir, worldId, process.argv.includes("--all") ? batchSize : limit, arg("--model"), timeoutMs);
+      processed += result.processed;
+      failed += result.failed;
+      remaining = result.remaining;
+      batches++;
+      console.log("[analyze] batch " + batches + " · processed " + result.processed + " · failed " + result.failed + " · remaining " + result.remaining);
+      if (!process.argv.includes("--all") || result.processed === 0 || remaining === 0) break;
+    } while (true);
+    console.log(JSON.stringify({ processed, failed, remaining, batches, complete: remaining === 0, annotations: resolve(libraryDir, "annotations.json") }, null, 2));
     return;
   }
 
