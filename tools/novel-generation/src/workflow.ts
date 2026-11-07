@@ -288,13 +288,18 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     await saveStage(input.outputDir, "06a-anti-ai-diagnosis-error.txt", String(error));
     console.error("[write] Anti-AI 诊断未完成；编辑阶段仍按通用文学原则运行。");
   }
-  try {
-    antiAiDraft = await cachedCall("anti-ai-edit", "06b-anti-ai-edited.md", "antiAi", [
-      antiAiEditPrompt({ brief: input.brief, blueprint: plan, styleProfile: input.styleProfile, diagnosis: antiAiDiagnosis, chapter: voiceDraft })
-    ], output => { if (!output.trim()) throw new Error("Anti-AI editor returned an empty chapter."); });
-  } catch (error) {
-    await saveStage(input.outputDir, "06b-anti-ai-error.txt", String(error));
-    console.error("[write] Anti-AI 编辑阶段失败，保留叙事声音修订稿继续终审。");
+  const needsAntiAiEdit = Boolean(antiAiDiagnosis.trim()) && !/未发现值得修改的地方|没有明确需要修改/i.test(antiAiDiagnosis);
+  if (needsAntiAiEdit) {
+    try {
+      antiAiDraft = await cachedCall("anti-ai-edit", "06b-anti-ai-edited.md", "antiAi", [
+        antiAiEditPrompt({ brief: input.brief, blueprint: plan, styleProfile: input.styleProfile, diagnosis: antiAiDiagnosis, chapter: voiceDraft })
+      ], output => { if (!output.trim()) throw new Error("Anti-AI editor returned an empty chapter."); });
+    } catch (error) {
+      await saveStage(input.outputDir, "06b-anti-ai-error.txt", String(error));
+      console.error("[write] Anti-AI 编辑阶段失败，保留整体文学编辑稿继续终审。");
+    }
+  } else {
+    await saveStage(input.outputDir, "06b-anti-ai-skipped.json", JSON.stringify({ skipped: true, reason: antiAiDiagnosis.trim() ? "诊断未发现值得修改的问题。" : "诊断不可用，避免无依据改写。" }, null, 2));
   }
   if (antiAiDraft !== voiceDraft) {
     try {
