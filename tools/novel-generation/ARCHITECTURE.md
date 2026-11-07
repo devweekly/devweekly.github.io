@@ -540,3 +540,9 @@ CLI `write` 同样读取活动 Story Arc；没有旧 Arc 时首次生成自动�
 - 新建宇宙与章节分叉先在 `worlds/.staging-<id>` 构建目录中完成数据库身份重绑定、元数据和状态快照写入，再通过同文件系统 rename 发布正式目录；分叉失败时清理 staging、子宇宙目录和子宇宙输出目录，避免留下可见的半成品。
 - 归档元数据先写入临时文件，再原子 rename 替换 `universe.json`。新建、分叉、归档和章节启动使用同一 World 串行队列，避免管理操作与章节启动交错。
 - **原文知识库时点隔离（第一版已落地）**：新建宇宙时根据原文索引的章节顺序生成宇宙本地只读 `library/index.json`，只包含起点章节及此前章节；CLI 优先使用该本地截断索引，缺失时拒绝续写而不是退回全书索引。知识库副本按 `novel_chapters.ordinal` 截断，保留起点及此前的章节目录、章级 beats/relations/人物状态；无法证明时点安全的全书 `story_analysis`、人物总画像/小传、卷级摘要、主线/伏笔聚合、实体注册与 annotations 全部清除。分叉时重新从原文只读索引构建相同起点的截断索引，并对知识库再次执行截断，兼容旧宇宙。该策略宁可暂时少注入全书级人物画像和伏笔总结，也不让起点之后的剧情泄漏到新宇宙。它仍不是完整的 as-of 语义分析：后续需要基于截至起点的证据重新生成角色画像、剧情线和伏笔状态，并覆盖 Vane/语料 craft 等旁路检索源。 同时不复制原文项目的 Vane 向量索引；Vane 检索只允许使用当前宇宙自己从截断索引重建的索引。Corpus Craft 章节素材位于宇宙独立的 analysis 命名空间，不继承原文项目的全书整理产物。 数据库截断采用显式安全表白名单：仅保留世界/知识库元数据、截断后的章节目录，以及具备章节定位字段的 mentions、beats、relations、character chapter states；任何新增或未知表默认清空。章级表缺少必要定位字段时整表清空；章节目录或起点 ordinal 无法验证时删除该知识库副本，过滤异常也会清理 staging 中的未过滤数据库，避免失败路径保留全书知识。
+
+## 宇宙知识构建任务
+
+故事宇宙创建和历史分叉只负责建立时点安全的最小运行环境，不在请求内同步执行长时间 LLM 分析。Chapter Studio 的“原著知识与语料构建”面板提供显式后台任务入口，依次复用 analyze-story、analyze-profiles、analyze-character-states、analyze-corpus-craft 和 vane-index，全部以当前宇宙 ID 运行。状态持久化在 .output/<worldId>/workbench/knowledge-build.json，Workbench 轮询展示总状态、当前步骤和逐步错误；失败或部分失败可重新启动，服务重启后未完成任务会被标记失败。
+
+这项任务是可选增强，不是章节写作前置条件。特别是 analyze-character-states 会写入 novel.db，因此不在宇宙创建后自动启动，也不应与章节写作并行执行；Workbench 在章节运行期间禁用构建按钮。Vane 语义检索仍依赖独立 embedding 配置，构建失败必须明确显示，不能把未生成的向量索引显示为可用。
