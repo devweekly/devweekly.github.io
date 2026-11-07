@@ -46,6 +46,7 @@ import {
 import { indexNovelStructure } from "./novel-kb.js";
 import { buildVolumeArcs, listVolumeArcs } from "./story-arcs.js";
 import { buildCharacterProfiles } from "./character-profile.js";
+import { analyzeCharacterChapterStates } from "./character-chapter-state.js";
 import { prepareWorldAnalysis, collectWorldAnalysis, analysisStatus } from "./world-analysis.js";
 import {
   readModelCatalog, resolveAgentModel, isManagedSession, readConfiguredModel,
@@ -105,6 +106,7 @@ function usage(): never {
     "  npm run dev -- index-story --world conghuoniao [--catalog analysis/conghuoniao/chapter-index.json]",
     "  npm run dev -- analyze-arcs --world conghuoniao [--model model] [--force]",
     "  npm run dev -- analyze-profiles --world conghuoniao [--top 24] [--names 李阎,查小刀] [--model model] [--force]",
+    "  npm run dev -- analyze-character-states --world conghuoniao [--limit 20] [--shard 0/4] [--names 李阎,查小刀] [--model model] [--force]",
     "  npm run dev -- story-kb --world conghuoniao [--type overview|arcs|characters|threads|foreshadowings|beats|graph|export] [--query 关键词] [--status 状态] [--from 1] [--to 100] [--limit 50]",
     "  npm run dev -- story-state --world conghuoniao [--type overview|characters|events|threads|relationships|foreshadowings|macguffins|graph] [--query 关键词] [--limit 500]",
     "  npm run dev -- analyze-world --world conghuoniao --phase prepare|status|collect [--source original.txt] [--model model] [--timeout-ms 90000] [--evidence-review] [--evidence-window 2]",
@@ -151,7 +153,7 @@ function resolveWorldOutputPath(requested: string | undefined, worldId: string, 
 
 async function main(): Promise<void> {
   const command = process.argv[2];
-  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-story" && command !== "index-story" && command !== "story-kb" && command !== "story-state" && command !== "analyze-arcs" && command !== "analyze-profiles" && command !== "analyze-world" && command !== "models" && command !== "check-runtime" && command !== "db-status" && command !== "plan-story" && command !== "distill-style" && command !== "style-regress" && command !== "roleplay-sandbox") usage();
+  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-story" && command !== "index-story" && command !== "story-kb" && command !== "story-state" && command !== "analyze-arcs" && command !== "analyze-profiles" && command !== "analyze-character-states" && command !== "analyze-world" && command !== "models" && command !== "check-runtime" && command !== "db-status" && command !== "plan-story" && command !== "distill-style" && command !== "style-regress" && command !== "roleplay-sandbox") usage();
 
   const worldId = safeWorldId(arg("--world") ?? "conghuoniao");
   const libraryDir = resolve("worlds", worldId, "library");
@@ -242,6 +244,27 @@ async function main(): Promise<void> {
       failed: result.failed,
       skipped: result.skipped
     }, null, 2));
+    return;
+  }
+
+  if (command === "analyze-character-states") {
+    const shardArg = arg("--shard");
+    let shard: { index: number; count: number } | undefined;
+    if (shardArg) {
+      const match = shardArg.match(/^(\\d+)\\/(\\d+)$/);
+      if (!match) throw new Error("--shard must look like 0/4.");
+      shard = { index: Number(match[1]), count: Number(match[2]) };
+    }
+    const limitArg = arg("--limit");
+    const limit = limitArg === undefined ? undefined : Number(limitArg);
+    if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) throw new Error("--limit must be a positive integer.");
+    const result = await analyzeCharacterChapterStates(worldId, {
+      worldDir: resolve("worlds", worldId), model: arg("--model"),
+      timeoutMs: Number(arg("--timeout-ms") ?? DEFAULT_AGENT_TIMEOUT_MS),
+      force: process.argv.includes("--force"), limit, shard,
+      names: (arg("--names") ?? "").split(",").map(name => name.trim()).filter(Boolean)
+    });
+    console.log(JSON.stringify(result, null, 2));
     return;
   }
 
