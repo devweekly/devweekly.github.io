@@ -356,7 +356,8 @@ export function syncNovelCharacterChapterStates(worldDir:string,worldId:string,r
 }
 export function listNovelCharacterChapterStates(worldDir:string,worldId:string,options:{characterId?:string;name?:string;fromOrdinal?:number;toOrdinal?:number;limit?:number}={}):NovelCharacterChapterStateRow[]{
  const db=openKnowledgeDatabase(worldDir,worldId);try{
-  const rows=db.prepare("SELECT payload_json FROM novel_character_chapter_states WHERE (?='' OR character_id=?) AND (?='' OR name=?) AND (?<0 OR chapter_ordinal>=?) AND (?<0 OR chapter_ordinal<=?) ORDER BY chapter_ordinal DESC LIMIT ?").all(options.characterId??"",options.characterId??"",options.name??"",options.name??"",options.fromOrdinal??-1,options.fromOrdinal??-1,options.toOrdinal??-1,options.toOrdinal??-1,options.limit??5000) as Array<{payload_json:string}>;
+  const nameLike="%"+(options.name??"").trim()+"%";
+  const rows=db.prepare("SELECT payload_json FROM novel_character_chapter_states WHERE (?='' OR character_id=?) AND (?='%%' OR name LIKE ?) AND (?<0 OR chapter_ordinal>=?) AND (?<0 OR chapter_ordinal<=?) ORDER BY chapter_ordinal DESC LIMIT ?").all(options.characterId??"",options.characterId??"",nameLike,nameLike,options.fromOrdinal??-1,options.fromOrdinal??-1,options.toOrdinal??-1,options.toOrdinal??-1,options.limit??5000) as Array<{payload_json:string}>;
   return rows.map(row=>JSON.parse(row.payload_json) as NovelCharacterChapterStateRow);
  }finally{db.close();}
 }
