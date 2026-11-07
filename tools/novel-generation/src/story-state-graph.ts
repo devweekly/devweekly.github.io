@@ -117,6 +117,8 @@ export interface StoryStateGraphSlice extends StoryStateGraph {
   totalNodes: number;
   totalEdges: number;
   matchedNodes: number;
+  returnedNodes: number;
+  returnedEdges: number;
   truncated: boolean;
 }
 
@@ -145,5 +147,5 @@ export function filterStoryStateGraph(graph: StoryStateGraph, query = "", limit 
     returnedNodes: nodes.length, returnedEdges: edges.length,
     truncated: nodes.length < candidateNodes.length || edges.length < candidateEdges.length,
     nodes, edges
-  } as StoryStateGraphSlice & { returnedNodes: number; returnedEdges: number };
+  };
 }
