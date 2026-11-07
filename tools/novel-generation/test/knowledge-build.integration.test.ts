@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, readFile, rm } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createApp } from "../src/server.js";
+import { createApp, recoverWorkbenchRuns } from "../src/server.js";
 import { saveRun } from "../src/workbench-store.js";
 
 test("knowledge build API reserves one task, persists status, and rejects conflicting operations", async () => {
@@ -80,6 +80,43 @@ test("knowledge build API reserves one task, persists status, and rejects confli
     assert.equal(persisted?.status, latest.build.status);
   } finally {
     if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
+    process.chdir(previousCwd);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+
+test("workbench restart marks an interrupted knowledge build failed and retryable", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-knowledge-recovery-"));
+  const previousCwd = process.cwd();
+  const worldId = "recovery-universe";
+  const workbenchDir = join(root, ".output", worldId, "workbench");
+  try {
+    process.chdir(root);
+    await mkdir(join(root, "worlds", worldId), { recursive: true });
+    await mkdir(workbenchDir, { recursive: true });
+    await writeFile(join(root, "worlds", worldId, "universe.json"), JSON.stringify({
+      id: worldId, sourceWorldId: "source", name: "恢复测试", type: "free",
+      entryChapter: "第一章", brief: "", createdAt: new Date().toISOString()
+    }));
+    await writeFile(join(workbenchDir, "knowledge-build.json"), JSON.stringify({
+      worldId, status: "running", startedAt: "2026-11-07T00:00:00.000Z",
+      updatedAt: "2026-11-07T00:01:00.000Z", currentStep: "character-states",
+      steps: [
+        { name: "story-analysis", status: "completed", startedAt: "2026-11-07T00:00:00.000Z", completedAt: "2026-11-07T00:00:30.000Z", exitCode: 0 },
+        { name: "character-states", status: "running", startedAt: "2026-11-07T00:00:31.000Z" }
+      ]
+    }));
+    await recoverWorkbenchRuns();
+    const recovered = JSON.parse(await readFile(join(workbenchDir, "knowledge-build.json"), "utf8")) as {
+      status: string; currentStep?: string; steps: Array<{ name: string; status: string; error?: string }>
+    };
+    assert.equal(recovered.status, "failed");
+    assert.equal(recovered.currentStep, undefined);
+    assert.equal(recovered.steps[0]?.status, "completed");
+    assert.equal(recovered.steps[1]?.status, "failed");
+    assert.match(recovered.steps[1]?.error ?? "", /restarted/i);
+  } finally {
     process.chdir(previousCwd);
     await rm(root, { recursive: true, force: true });
   }
