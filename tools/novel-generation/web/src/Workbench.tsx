@@ -68,7 +68,7 @@ export default function Workbench() {
   const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
-  const [active, setActive] = useState("overview");
+  const [active, setActive] = useState("chapter");
 
   // 人物页独立维护状态：查询词、选中项与详情缓存互不阻塞看板轮询。
   const [characters, setCharacters] = useState<Character[]>([]);
