@@ -694,3 +694,6 @@ GET  /api/worlds/<universe-id>/knowledge-build
 任务按顺序复用 `analyze-story`、`analyze-profiles`、`analyze-character-states`、`analyze-corpus-craft` 和 `vane-index`，状态与各步骤日志摘要保存在 `.output/<world>/workbench/knowledge-build.json`。任务重启中断会被标记为失败，可重新触发。Vane 未安装或 embedding 服务不可用时会显示对应步骤失败；这不影响 SQLite/BM25 写作路径。
 
 Chapter Studio 已提供显式构建入口和逐步骤状态面板，并每 2 秒轮询任务状态。构建不是创建宇宙时自动触发的：人物逐章状态分析会写入 novel.db，必须避免与章节写作并发。服务端会串行协调构建请求，并拒绝在章节运行中启动构建；构建期间也会拒绝启动章节生成、归档或分叉。归档宇宙不能启动构建。
+
+
+历史宇宙不会复制原文项目的全书 world-bible.md。Create/Fork 会为每个宇宙生成自己的最小 world-bible.md，记录原文起点、父宇宙/分叉信息、正史边界和创作方向，并明确指向本地截断后的 universe-entry.md 与 universe-origin-context.md。这样既避免全书设定中的未来剧情泄漏，也满足章节生成流程对 world-bible.md 的运行要求。
