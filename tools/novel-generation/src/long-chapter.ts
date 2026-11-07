@@ -16,7 +16,6 @@ import {
   ACCUMULATED_CONTEXT_TAIL_CHARS,
   LONG_CHAPTER_SOURCE_TAIL_CHARS,
   SCENE_SITUATION_BUDGET_CHARS,
-  SCENE_WORD_BUDGET_BUFFER,
   WORLD_SITUATION_FIELD_DEFAULT_LIMIT,
   WRITE_LONG_RETRIEVAL_LIMIT
 } from "./constants.js";
@@ -207,7 +206,6 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   await saveStage(input.outputDir, "01-scene-blueprint.md", blueprint);
   // 终审失败时可能先改蓝图；这里保存逐场蓝图的当前版本。
   let currentPlans = scenePlans;
-  const perScene = Math.ceil(input.maxWords / scenePlans.length * SCENE_WORD_BUDGET_BUFFER);
   const sceneTexts: string[] = [];
   for (let index = 0; index < scenePlans.length; index++) {
     // Use the accumulated chapter, not only the immediately preceding scene.
@@ -253,7 +251,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       `本场蓝图：`, scenePlans[index]!,
       "本场相关原文证据（只用于核实事实，不得照搬）：", sceneEvidence,
       "上一场正文的连续性上下文（重点承接人物位置、已知信息、关系变化、道具归属、未完成动作与场景结果，不得重复）：", previous,
-      `本场篇幅参考约 ${perScene} 个汉字，仅供估算，不是最低字数或验收门槛。写出自然完整的场景；人物可以行动、闲谈、观察、犹豫、误判或暂时无所事事。场景不必制造冲突、改变关系或推进主线；如果已经自然结束，就停在最合适的位置，不要为了篇幅继续写。`,
+      "写出自然完整的场景；人物可以行动、闲谈、观察、犹豫、误判或暂时无所事事。场景不必制造冲突、改变关系或推进主线；如果已经自然结束，就停在最合适的位置。",
       CREATIVE_FREEDOM_RULES,
       RHYTHM_RULE,
       "让句子和段落服从当前场景，不要为了场景之间看起来均衡而调整节奏。",
