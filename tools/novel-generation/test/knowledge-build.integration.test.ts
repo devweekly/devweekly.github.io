@@ -54,6 +54,18 @@ test("knowledge build API reserves one task, persists status, and rejects confli
     assert.ok(["queued", "running"].includes(acceptedBody.build.status));
     assert.equal(acceptedBody.build.worldId, worldId);
 
+    const guardedRequests = await Promise.all([
+      fetch(`http://127.0.0.1:${address.port}/api/worlds/${worldId}/chapters/generate`, {
+        method: "POST", headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` }, body: "{}"
+      }),
+      archive(true),
+      fetch(`http://127.0.0.1:${address.port}/api/worlds/${worldId}/universes/fork`, {
+        method: "POST", headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
+        body: JSON.stringify({ name: "竞争分支", chapterRunId: "11111111-1111-4111-8111-111111111111" })
+      })
+    ]);
+    assert.deepEqual(guardedRequests.map(response => response.status), [409, 409, 409]);
+
     let latest: { build: { status: string; steps: Array<{ name: string; status: string }> } | null } = { build: null };
     for (let attempt = 0; attempt < 100; attempt++) {
       const status = await fetch(url, { headers: { host: `127.0.0.1:${address.port}` } });
