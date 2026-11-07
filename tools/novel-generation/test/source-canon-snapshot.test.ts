@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { restrictKnowledgeDatabaseToEntry } from "../src/source-canon-snapshot.js";
+import { importBoundedStoryAnalysisSnapshot, restrictKnowledgeDatabaseToEntry } from "../src/source-canon-snapshot.js";
 
 function fixture(): { dir: string; databasePath: string; close: () => void } {
   const dir = mkdtempSync(join(tmpdir(), "novel-canon-snapshot-"));
@@ -78,6 +78,25 @@ test("historical snapshot retains only chapter evidence through the selected ent
     assert.equal(rows(f.databasePath, "SELECT * FROM future_aggregate").length, 0);
     assert.deepEqual(rows(f.databasePath, "SELECT value FROM world_meta WHERE key='world_id'"), [{ value: "universe-one" }]);
   } finally { f.close(); }
+});
+
+test("an existing universe can backfill its source project's offline analysis with the same cutoff filter", () => {
+  const source = fixture();
+  const target = fixture();
+  try {
+    const sourceSnapshot = JSON.parse(String(rows(source.databasePath, "SELECT payload_json FROM story_analysis")[0]?.payload_json)) as Record<string, unknown>;
+    const targetDb = new DatabaseSync(target.databasePath);
+    try { targetDb.prepare("DELETE FROM story_analysis").run(); } finally { targetDb.close(); }
+    assert.equal(importBoundedStoryAnalysisSnapshot(target.databasePath, "universe-two", "第二章", sourceSnapshot), true);
+    const imported = JSON.parse(String(rows(target.databasePath, "SELECT payload_json FROM story_analysis")[0]?.payload_json)) as Record<string, any>;
+    assert.equal(imported.worldId, "universe-two");
+    assert.equal(imported.asOfEntryChapter, "第二章");
+    assert.deepEqual(imported.characters.map((item: any) => item.name), ["甲"]);
+    assert.deepEqual(imported.storyCore.observations.map((item: any) => item.centralQuestion), ["安全问题"]);
+  } finally {
+    source.close();
+    target.close();
+  }
 });
 
 test("unresolvable entry chapter deletes the copied database instead of retaining full canon", () => {
