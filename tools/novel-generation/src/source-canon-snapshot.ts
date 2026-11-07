@@ -14,29 +14,30 @@ function removeUnsafeDatabase(filePath: string): void {
  * Only records with complete chapter provenance inside the boundary are reused;
  * aggregates with missing or future provenance are discarded.
  */
-export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: string, entryChapter: string): number {
-  if (!existsSync(databasePath)) return 0;
+export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: string, entryChapter: string, entryChapterId?: string): number {
+  if (!existsSync(databasePath)) throw new Error("原著 novel.db 不存在，无法建立安全的历史知识快照。");
   const db = new DatabaseSync(databasePath);
   try {
     const tables = new Set((db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all() as Array<{name:string}>).map(row=>row.name));
     const has = (name:string) => tables.has(name);
-    if (!has("novel_chapters")) {
-      removeUnsafeDatabase(databasePath);
-      return 0;
-    }
+    if (!has("novel_chapters")) throw new Error("原著知识库缺少 novel_chapters，无法安全定位宇宙起点。");
     const chapterColumns = new Set((db.prepare("PRAGMA table_info(novel_chapters)").all() as Array<{name:string}>).map(column=>column.name));
-    if (!chapterColumns.has("title") || !chapterColumns.has("ordinal")) {
-      removeUnsafeDatabase(databasePath);
-      return 0;
+    if (!chapterColumns.has("title") || !chapterColumns.has("ordinal") || !chapterColumns.has("chapter_id")) {
+      throw new Error("原著知识库缺少 title、ordinal 或稳定 chapter_id，无法安全定位宇宙起点。");
     }
-    const chapterSelect = "SELECT ordinal" + (chapterColumns.has("volume") ? ",volume" : "") + " FROM novel_chapters WHERE title=? ORDER BY ordinal LIMIT 1";
-    const chapter = db.prepare(chapterSelect).get(entryChapter) as { ordinal: number; volume?: number } | undefined;
+
+    const chapterSelect = "SELECT chapter_id,ordinal" + (chapterColumns.has("volume") ? ",volume" : "") +
+      " FROM novel_chapters WHERE " + (entryChapterId ? "chapter_id=?" : "title=?") + " ORDER BY ordinal";
+    const matches = (entryChapterId
+      ? db.prepare(chapterSelect).all(entryChapterId)
+      : db.prepare(chapterSelect).all(entryChapter)) as Array<{ chapter_id:string; ordinal:number; volume?:number }>;
+    const chapter = matches.length === 1 ? matches[0] : undefined;
     if (!chapter || !Number.isSafeInteger(Number(chapter.ordinal))) {
-      // Fail closed. A database without a resolvable chapter ordinal cannot be
-      // proven safe for a historical branch.
-      removeUnsafeDatabase(databasePath);
-      return 0;
+      throw new Error(matches.length > 1
+        ? "章节标题在原著中重复，必须使用稳定章节 ID，不能按标题猜测起点。"
+        : "无法在原著知识库中定位所选章节，已终止宇宙创建。");
     }
+    if (entryChapterId && chapter.chapter_id !== entryChapterId) throw new Error("章节 ID 与原著知识库记录不匹配。");
     const cutoff = Number(chapter.ordinal);
     const columns = (name:string) => new Set((db.prepare("PRAGMA table_info(\"" + name.replace(/"/g, "\"\"") + "\")").all() as Array<{name:string}>).map(column=>column.name));
     db.exec("BEGIN IMMEDIATE");
@@ -94,25 +95,42 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
       // Reuse completed offline analysis only when every cited chapter is within
       // this branch's boundary. Future-touching aggregates are dropped whole.
       const chapterRows = db.prepare("SELECT chapter_id,title FROM novel_chapters WHERE ordinal<=?").all(cutoff) as Array<{chapter_id:string;title:string}>;
-      const allowedKeys = new Set(chapterRows.flatMap(row => [row.chapter_id, row.title]));
+      // Only immutable chapter IDs are admissible provenance. Titles are display labels and may repeat across volumes.
+      const allowedKeys = new Set(chapterRows.map(row => row.chapter_id));
       if (has("story_analysis") && columns("story_analysis").has("payload_json")) {
         const row = db.prepare("SELECT singleton,payload_json FROM story_analysis WHERE singleton=1").get() as {singleton:number;payload_json:string} | undefined;
         if (row) {
           try {
             const source = JSON.parse(row.payload_json) as Record<string, unknown>;
+            // A mixed-provenance aggregate cannot be safely sliced at the cutoff.
+            // Drop it, but mark the snapshot incomplete so knowledge build re-analyzes
+            // the already-bounded corpus instead of mistaking a partial snapshot for full coverage.
+            let requiresReanalysis = false;
             const boundedItems = (value: unknown): Array<Record<string, unknown>> => Array.isArray(value)
               ? value.filter((item): item is Record<string, unknown> => {
                   if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+                  // Merge note: keep the remote `requiresReanalysis` logic (a mixed-provenance
+                  // aggregate must be dropped and rebuilt), but retain explicit parameter types —
+                  // Array.isArray narrows `unknown` to `any[]`, whose callbacks trigger TS7006.
                   const keys = Array.isArray(item.chapterKeys) ? item.chapterKeys.filter((key: unknown): key is string => typeof key === "string") : [];
-                  return keys.length > 0 && keys.every((key: string) => allowedKeys.has(key));
+                  if (!keys.length) { requiresReanalysis = true; return false; }
+                  const safe = keys.filter((key: string) => allowedKeys.has(key)).length;
+                  if (safe > 0 && safe < keys.length) requiresReanalysis = true;
+                  return safe === keys.length;
                 })
               : [];
-            const boundedRefs = (value: unknown): boolean => Array.isArray(value) && value.length > 0 && value.every(ref => {
-              if (!ref || typeof ref !== "object" || Array.isArray(ref)) return false;
-              const item = ref as Record<string, unknown>;
-              const key = String(item.chapterId ?? item.chunkId ?? item.chapter ?? "");
-              return Boolean(key && allowedKeys.has(key));
-            });
+            const boundedRefs = (value: unknown): boolean => {
+              if (!Array.isArray(value) || value.length === 0) { requiresReanalysis = true; return false; }
+              const keys = value.map(ref => {
+                if (!ref || typeof ref !== "object" || Array.isArray(ref)) return "";
+                const item = ref as Record<string, unknown>;
+                return String(item.chapterId ?? item.chunkId ?? "");
+              });
+              if (keys.some(key => !key)) { requiresReanalysis = true; return false; }
+              const safe = keys.filter(key => allowedKeys.has(key)).length;
+              if (safe > 0 && safe < keys.length) requiresReanalysis = true;
+              return safe === keys.length;
+            };
             const safeCoreObservations = boundedItems(source.storyCoreObservations);
             const graph = source.storyGraph && typeof source.storyGraph === "object"
               ? source.storyGraph as {nodes?:unknown;edges?:unknown}
@@ -120,8 +138,10 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
             const bounded: Record<string, unknown> = {
               ...source,
               worldId,
-              sourceHash: createHash("sha256").update(JSON.stringify({ sourceHash: source.sourceHash, entryChapter, cutoff })).digest("hex"),
+              sourceHash: createHash("sha256").update(JSON.stringify({ sourceHash: source.sourceHash, entryChapter, entryChapterId: chapter.chapter_id, cutoff })).digest("hex"),
               asOfEntryChapter: entryChapter,
+              asOfEntryChapterId: chapter.chapter_id,
+              asOfEntryOrdinal: cutoff,
               chapters: chapterRows.length,
               characters: boundedItems(source.characters),
               plotThreads: boundedItems(source.plotThreads),
@@ -129,12 +149,13 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
               developmentPossibilities: boundedItems(source.developmentPossibilities),
               relations: boundedItems(source.relations),
               storyCoreObservations: safeCoreObservations,
-              ...(safeCoreObservations.length ? { storyCore: { observations: safeCoreObservations } } : {}),
+              storyCore: { observations: safeCoreObservations },
               macguffins: boundedItems(source.macguffins),
               beats: Array.isArray(source.beats) ? source.beats.filter(item => {
                 if (!item || typeof item !== "object" || Array.isArray(item)) return false;
                 const key = String((item as Record<string, unknown>).chapterKey ?? "");
-                return Boolean(key && allowedKeys.has(key));
+                if (!key) { requiresReanalysis = true; return false; }
+                return allowedKeys.has(key);
               }) : [],
               storyGraph: graph ? {
                 nodes: Array.isArray(graph.nodes) ? graph.nodes.filter(node =>
@@ -145,6 +166,8 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
                 ) : []
               } : undefined
             };
+            // Set completeness only after every field has been checked for unsafe provenance.
+            bounded.complete = source.complete === true && !requiresReanalysis;
             // Reconstruct a bounded core only from chapter-provenanced observations.
             db.prepare("UPDATE story_analysis SET payload_json=? WHERE singleton=1").run(JSON.stringify(bounded));
           } catch {
@@ -179,7 +202,8 @@ export function importBoundedStoryAnalysisSnapshot(
   targetDatabasePath: string,
   worldId: string,
   entryChapter: string,
-  sourceSnapshot: Record<string, unknown>
+  sourceSnapshot: Record<string, unknown>,
+  entryChapterId?: string
 ): boolean {
   if (!existsSync(targetDatabasePath)) return false;
   const temporaryDir = mkdtempSync(join(tmpdir(), "novel-bounded-analysis-"));
@@ -202,8 +226,7 @@ export function importBoundedStoryAnalysisSnapshot(
       temporary.prepare("INSERT INTO story_analysis(singleton,payload_json) VALUES(1,?)").run(JSON.stringify(sourceSnapshot));
     } finally { temporary.close(); }
 
-    const cutoff = restrictKnowledgeDatabaseToEntry(temporaryDatabasePath, worldId, entryChapter);
-    if (!cutoff) return false;
+    const cutoff = restrictKnowledgeDatabaseToEntry(temporaryDatabasePath, worldId, entryChapter, entryChapterId);
     const boundedDb = new DatabaseSync(temporaryDatabasePath);
     let bounded: Record<string, unknown>;
     try {
@@ -217,7 +240,9 @@ export function importBoundedStoryAnalysisSnapshot(
     const clues = Array.isArray(bounded.foreshadowings) ? bounded.foreshadowings.length : 0;
     const relations = Array.isArray(bounded.relations) ? bounded.relations.length : 0;
     const nodes = Array.isArray((bounded.storyGraph as {nodes?:unknown[]}|undefined)?.nodes) ? ((bounded.storyGraph as {nodes:unknown[]}).nodes.length) : 0;
-    if (!(characters || threads || clues || relations || nodes || Object.keys((bounded.storyCore as object) ?? {}).length)) return false;
+    const coreObservations = Array.isArray((bounded.storyCore as {observations?:unknown[]}|undefined)?.observations)
+      ? (bounded.storyCore as {observations:unknown[]}).observations.length : 0;
+    if (!(characters || threads || clues || relations || nodes || coreObservations)) return false;
 
     target.exec("BEGIN IMMEDIATE");
     try {

@@ -932,6 +932,52 @@ function mergeAndPersist(
   return snapshot;
 }
 
+
+/**
+ * Rebuild an as-of snapshot from already completed source batch caches.
+ * A batch is reusable only when every chapter in it is at/before the boundary.
+ * If a batch straddles the boundary, or any earlier batch is missing/invalid,
+ * return false rather than mixing future context into the historical universe.
+ */
+export async function importBoundedStoryAnalysisFromBatchCache(
+  sourceWorldId: string,
+  targetWorldId: string,
+  targetWorldDir: string,
+  entryChapterId: string,
+  entryChapter: string,
+  options: Pick<StoryAnalysisOptions, "model" | "maxChars"> = {}
+): Promise<boolean> {
+  const sourceWorldDir = resolve("worlds", sourceWorldId);
+  const { units } = await buildAnalysisUnits(sourceWorldId, { worldDir: sourceWorldDir });
+  const entry = units.find(unit => unit.chapterId === entryChapterId);
+  if (!entry) return false;
+  const boundedUnits = units.filter(unit => unit.ordinal <= entry.ordinal);
+  const maxChars = options.maxChars ?? ANALYSIS_BATCH_CHARS;
+  const model = resolveAgentModel(options.model).model;
+  const batches = groupAnalysisUnits(units, maxChars).map((chapters, index) => ({ index, chapters, chars: chapters.reduce((sum, chapter) => sum + chapter.charCount, 0) }));
+  const reusable = batches.filter(batch => batch.chapters.every(chapter => chapter.ordinal <= entry.ordinal));
+  const covered = new Set(reusable.flatMap(batch => batch.chapters.map(chapter => chapter.chapterId)));
+  if (boundedUnits.some(unit => !covered.has(unit.chapterId))) return false;
+  const cacheDir = resolve(".output", sourceWorldId, "story-analysis", cacheKeyFor(model, units, maxChars));
+  const results: Array<{ analysis: BatchAnalysis; chapters: AnalysisUnit[] }> = [];
+  for (const batch of reusable) {
+    const analysis = await readCached(join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json"));
+    if (!analysis) return false;
+    results.push({ analysis, chapters: batch.chapters });
+  }
+  if (!results.length) return false;
+  const snapshot = mergeAndPersist(targetWorldId, targetWorldDir, boundedUnits, results, results.length);
+  const boundedSnapshot = {
+    ...snapshot,
+    asOfEntryChapter: entryChapter,
+    asOfEntryChapterId: entry.chapterId,
+    asOfEntryOrdinal: entry.ordinal,
+    sourceWorldId
+  };
+  saveStoryAnalysis(targetWorldDir, targetWorldId, boundedSnapshot as unknown as StoryAnalysisSnapshot);
+  return true;
+}
+
 export async function storyAnalysisCacheStatus(worldId: string, options: StoryAnalysisOptions = {}): Promise<{ batches: number; cached: number; directory: string }> {
   const worldDir = options.worldDir ?? resolve("worlds", worldId);
   const { units } = await buildAnalysisUnits(worldId, { worldDir, catalogPath: options.catalogPath });

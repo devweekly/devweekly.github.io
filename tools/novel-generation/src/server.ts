@@ -24,6 +24,7 @@ import { getCandidate, getRun, listCandidates, listRuns, recoverInterruptedRuns,
 import type { StoryState } from "./story-state.js";
 import { buildUniverseOriginContext, buildUniverseWorldBible, rebaseStoryState, remapForkedRun, shouldCopyUniverseAsset } from "./universe-branch.js";
 import { importBoundedStoryAnalysisSnapshot, restrictKnowledgeDatabaseToEntry } from "./source-canon-snapshot.js";
+import { importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
@@ -235,19 +236,13 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
       state.status = "running";
       const universe = await readUniverse(worldId);
       let existingAnalysis = readStoryAnalysis(worldDir(worldId), worldId) as (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined;
-      if (universe && !hasBoundedStoryAnalysis(existingAnalysis, universe.entryChapter)) {
+      if (universe && !hasBoundedStoryAnalysis(existingAnalysis, universe)) {
         await ensureUniverseStoryAnalysis(worldId, universe);
         existingAnalysis = readStoryAnalysis(worldDir(worldId), worldId) as (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined;
       }
-      const hasReusableFacts = Boolean(existingAnalysis && (
-        existingAnalysis.characters.length || existingAnalysis.plotThreads.length || existingAnalysis.foreshadowings.length ||
-        (existingAnalysis.relations?.length ?? 0) || (existingAnalysis.macguffins?.length ?? 0) ||
-        Object.keys(existingAnalysis.storyCore ?? {}).length || (existingAnalysis.storyGraph?.nodes.length ?? 0)
-      ));
-      const reusableBoundedAnalysis = Boolean(
-        universe && existingAnalysis?.analysisVersion === 6 && existingAnalysis.complete === true &&
-        existingAnalysis.asOfEntryChapter === universe.entryChapter && hasReusableFacts
-      );
+      // Use the same semantic validity predicate as backfill. A marker-only or
+      // empty storyCore:{observations:[]} snapshot must never suppress analysis.
+      const reusableBoundedAnalysis = Boolean(universe && hasBoundedStoryAnalysis(existingAnalysis, universe));
       for (const step of KNOWLEDGE_BUILD_STEPS) {
         if (step.name === "story-analysis" && reusableBoundedAnalysis) {
           const now = new Date().toISOString();
@@ -392,6 +387,9 @@ interface StoryUniverse {
   name: string;
   type: string;
   entryChapter: string;
+  entryChapterId?: string;
+  entryChapterIndex?: number;
+  entryOrdinal?: number;
   brief: string;
   parentUniverseId?: string;
   forkPoint?: string;
@@ -433,10 +431,18 @@ async function readUniverse(id: string): Promise<StoryUniverse | null> {
 }
 
 function hasBoundedStoryAnalysis(
-  snapshot: (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined,
-  entryChapter: string
+  snapshot: (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string; asOfEntryChapterId?: string }) | undefined,
+  universe: StoryUniverse
 ): boolean {
-  return Boolean(snapshot?.analysisVersion === 6 && snapshot.complete === true && snapshot.asOfEntryChapter === entryChapter);
+  if (!snapshot || snapshot.analysisVersion !== 6 || snapshot.complete !== true ||
+      snapshot.asOfEntryChapter !== universe.entryChapter ||
+      (universe.entryChapterId && snapshot.asOfEntryChapterId !== universe.entryChapterId)) return false;
+  const coreObservations = Array.isArray(snapshot.storyCore?.observations) ? snapshot.storyCore.observations.length : 0;
+  const facts = snapshot.characters.length + snapshot.plotThreads.length + snapshot.foreshadowings.length +
+    (snapshot.relations?.length ?? 0) + (snapshot.macguffins?.length ?? 0) +
+    (snapshot.storyGraph?.nodes.length ?? 0) + coreObservations +
+    ((snapshot as typeof snapshot & {storyCoreObservations?:unknown[]}).storyCoreObservations?.length ?? 0);
+  return facts > 0;
 }
 
 /** Existing universes created before bounded snapshot reuse can recover their source project's offline analysis. */
@@ -446,16 +452,28 @@ async function ensureUniverseStoryAnalysis(worldId: string, universe: StoryUnive
   if (active) return active;
   const task = (async () => {
     const current = readStoryAnalysis(worldDir(worldId), worldId) as (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined;
-    if (hasBoundedStoryAnalysis(current, universe.entryChapter)) return;
+    if (hasBoundedStoryAnalysis(current, universe)) return;
     if (!existsSync(path.join(worldDir(universe.sourceWorldId), "novel.db"))) return;
     const source = readStoryAnalysis(worldDir(universe.sourceWorldId), universe.sourceWorldId);
     if (!source || source.analysisVersion !== 6 || source.complete !== true) return;
-    importBoundedStoryAnalysisSnapshot(
-      path.join(worldDir(worldId), "novel.db"),
-      worldId,
-      universe.entryChapter,
-      source as unknown as Record<string, unknown>
-    );
+    const targetDir = worldDir(worldId);
+    const reusedBatches = universe.entryChapterId
+      ? await importBoundedStoryAnalysisFromBatchCache(
+          universe.sourceWorldId, worldId, targetDir, universe.entryChapterId, universe.entryChapter
+        ).catch(error => {
+          console.warn("[workbench] bounded batch-cache reuse failed; falling back to filtered merged snapshot", error);
+          return false;
+        })
+      : false;
+    if (!reusedBatches) {
+      importBoundedStoryAnalysisSnapshot(
+        path.join(targetDir, "novel.db"),
+        worldId,
+        universe.entryChapter,
+        source as unknown as Record<string, unknown>,
+        universe.entryChapterId
+      );
+    }
   })();
   universeAnalysisBackfills.set(worldId, task);
   try { await task; }
@@ -629,7 +647,7 @@ app.get("/api/worlds/:worldId/source-chapters", async (req, res) => {
     const universe = await readUniverse(sourceId);
     if (universe) return void res.status(409).json({ error: "章节目录应从原文项目读取。" });
     const chapters = await readCanonChapters(sourceId);
-    res.json({ chapters: chapters.map(({ title }) => title) });
+    res.json({ chapters: chapters.map(({ title }, index) => ({ id: index, title, label: String(index + 1).padStart(4, "0") + " · " + title })) });
   } catch (error) { sendError(res, error); }
 });
 
@@ -683,6 +701,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     const sourceDir = worldDir(rootSourceId);
     const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
     const entryChapter = typeof req.body?.entryChapter === "string" ? req.body.entryChapter.trim() : "";
+    const entryChapterIndex = req.body?.entryChapterIndex;
     const brief = typeof req.body?.brief === "string" ? req.body.brief.trim() : "";
     const type = typeof req.body?.type === "string" ? req.body.type : "free";
     const allowedTypes = ["mainline", "side-story", "character", "parallel", "free"];
@@ -691,9 +710,12 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     if (!allowedTypes.includes(type)) return void res.status(400).json({ error: "Invalid universe type." });
     await readFile(path.join(sourceDir, "world-bible.md"), "utf8");
     const canonChapters = await readCanonChapters(rootSourceId);
-    const selectedIndex = canonChapters.findIndex(chapter => chapter.title === entryChapter);
+    if (!Number.isSafeInteger(entryChapterIndex) || entryChapterIndex < 0 || entryChapterIndex >= canonChapters.length) {
+      return void res.status(400).json({ error: "必须通过章节目录提供有效的章节索引，不能只提交可能重复的章节标题。" });
+    }
+    const selectedIndex = entryChapterIndex as number;
     const selectedChapter = canonChapters[selectedIndex];
-    if (!selectedChapter?.text.trim()) return void res.status(400).json({ error: "所选章节不在原文目录中，或章节正文为空。请从原文目录选择一个章节。" });
+    if (!selectedChapter?.text.trim() || selectedChapter.title !== entryChapter) return void res.status(400).json({ error: "所选章节索引、标题或正文不匹配，请刷新原文目录后重试。" });
     // 起点前情属于原著只读背景，不是新宇宙已发生的续写事实。
     const originContext = buildUniverseOriginContext(canonChapters, selectedIndex);
     const id = "u-" + randomUUID().replace(/-/g, "").slice(0, 16);
@@ -712,9 +734,21 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     await cloneOriginalCanon(sourceDir, stagingDir);
     // novel.db 是原著分析只读快照的初期副本；重置其世界身份，防止数据库身份校验误认为属于源项目。
     rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
-    const entryOrdinal = restrictKnowledgeDatabaseToEntry(path.join(stagingDir, "novel.db"), id, entryChapter);
+    const knowledgePath = path.join(stagingDir, "novel.db");
+    if (!existsSync(knowledgePath)) throw new Error("原著 novel.db 不存在，无法建立无未来剧情泄漏的历史宇宙。请先完成原著索引与知识库构建。");
+    const sourceDb = new DatabaseSync(knowledgePath);
+    let entryRecord: { chapter_id:string; ordinal:number } | undefined;
+    try {
+      const chapterCount = Number((sourceDb.prepare("SELECT COUNT(*) AS count FROM novel_chapters").get() as {count:number}).count);
+      if (chapterCount !== canonChapters.length) throw new Error("原文目录与 novel.db 章节数量不一致，拒绝猜测章节映射。请重新导入并构建索引。");
+      entryRecord = sourceDb.prepare("SELECT chapter_id,ordinal FROM novel_chapters ORDER BY ordinal LIMIT 1 OFFSET ?").get(selectedIndex) as {chapter_id:string;ordinal:number} | undefined;
+    } finally { sourceDb.close(); }
+    if (!entryRecord?.chapter_id || !Number.isSafeInteger(Number(entryRecord.ordinal))) throw new Error("无法将所选章节映射到 novel.db 的稳定 chapter_id，已终止创建。");
+    const entryChapterId = entryRecord.chapter_id;
+    const entryOrdinal = restrictKnowledgeDatabaseToEntry(knowledgePath, id, entryChapter, entryChapterId);
+    if (entryOrdinal !== Number(entryRecord.ordinal)) throw new Error("章节起点 ordinal 校验失败，已终止创建。");
     const universe: StoryUniverse = {
-      id, sourceWorldId: rootSourceId, name, type, entryChapter, brief,
+      id, sourceWorldId: rootSourceId, name, type, entryChapter, entryChapterId, entryChapterIndex: selectedIndex, entryOrdinal, brief,
       createdAt: new Date().toISOString()
     };
     await writeFile(path.join(stagingDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
@@ -724,7 +758,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     await writeFile(path.join(stagingDir, "universe-origin-context.md"), originContext + "\n", "utf8");
     await writeUniverseLibrarySnapshot(rootSourceId, stagingDir, id, selectedIndex);
     await writeUniverseAnalysisCatalogSnapshot(rootSourceId, stagingDir, id, selectedIndex);
-    await writeFile(path.join(stagingDir, "source-canon-as-of.json"), JSON.stringify({ sourceWorldId: rootSourceId, entryChapter, entryOrdinal, policy: "chapter-scoped-evidence-only", fullBookAggregates: "excluded" }, null, 2) + "\n", "utf8");
+    await writeFile(path.join(stagingDir, "source-canon-as-of.json"), JSON.stringify({ sourceWorldId: rootSourceId, entryChapter, entryChapterId, entryChapterIndex: selectedIndex, entryOrdinal, policy: "chapter-scoped-evidence-only", fullBookAggregates: "excluded" }, null, 2) + "\n", "utf8");
     await rename(stagingDir, targetDir);
     const knowledgeBuild = req.body?.buildKnowledge === false ? null : await serializeWorld(id, () => startKnowledgeBuild(id));
     res.status(201).json({ universe, ...(knowledgeBuild ? { knowledgeBuild } : {}) });
@@ -818,10 +852,14 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     });
     await cloneOriginalCanon(parentDir, stagingDir);
     rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
-    restrictKnowledgeDatabaseToEntry(path.join(stagingDir, "novel.db"), id, parent.entryChapter);
+    restrictKnowledgeDatabaseToEntry(path.join(stagingDir, "novel.db"), id, parent.entryChapter, parent.entryChapterId);
     const universe: StoryUniverse = {
       id, sourceWorldId: parent.sourceWorldId, name, type: parent.type,
-      entryChapter: parent.entryChapter, brief: parent.brief,
+      entryChapter: parent.entryChapter,
+      entryChapterId: parent.entryChapterId,
+      entryChapterIndex: parent.entryChapterIndex,
+      entryOrdinal: parent.entryOrdinal,
+      brief: parent.brief,
       parentUniverseId: parent.id, forkPoint: forkRun.id,
       createdAt: new Date().toISOString()
     };
@@ -829,8 +867,11 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     await writeFile(path.join(stagingDir, "world-bible.md"), buildUniverseWorldBible(universe), "utf8");
     await writeFile(path.join(stagingDir, "source-canon.json"), JSON.stringify({ sourceWorldId: parent.sourceWorldId, readOnly: true }, null, 2) + "\n", "utf8");
     const parentCanonChapters = await readCanonChapters(parent.sourceWorldId);
-    const parentEntryIndex = parentCanonChapters.findIndex(chapter => chapter.title === parent.entryChapter);
-    if (parentEntryIndex < 0) throw new Error("父宇宙的原文起点已无法在共享章节目录中定位，拒绝创建可能泄漏未来剧情的分支。");
+    const matchingParentIndexes = parentCanonChapters.flatMap((chapter, index) => chapter.title === parent.entryChapter ? [index] : []);
+    const parentEntryIndex = Number.isSafeInteger(parent.entryChapterIndex)
+      ? parent.entryChapterIndex!
+      : matchingParentIndexes.length === 1 ? matchingParentIndexes[0]! : -1;
+    if (parentEntryIndex < 0 || parentEntryIndex >= parentCanonChapters.length) throw new Error("父宇宙的原文起点无法通过稳定章节索引唯一定位，拒绝创建可能泄漏未来剧情的分支。");
     await writeUniverseLibrarySnapshot(parent.sourceWorldId, stagingDir, id, parentEntryIndex);
     await writeUniverseAnalysisCatalogSnapshot(parent.sourceWorldId, stagingDir, id, parentEntryIndex);
 
