@@ -118,6 +118,9 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
     const childSnapshot = JSON.parse(await readFile(join(childOutput, "08-state-update.json"), "utf8")) as typeof state;
     assert.equal(childSnapshot.worldId, childId);
     assert.equal(childSnapshot.currentPosition, state.currentPosition);
+    const childBible = await readFile(join(childDir, "world-bible.md"), "utf8");
+    assert.ok(childBible.includes("分叉"));
+    assert.ok(!childBible.includes("父宇宙后续剧情泄漏标记"));
 
     const archiveResponse = await fetch(`http://127.0.0.1:${address.port}/api/worlds/${childId}/universe-archive`, {
       method: "PATCH",
