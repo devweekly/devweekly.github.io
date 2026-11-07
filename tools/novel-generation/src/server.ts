@@ -23,6 +23,7 @@ import { getCandidate, getRun, listCandidates, listRuns, recoverInterruptedRuns,
 import type { StoryState } from "./story-state.js";
 import { buildUniverseOriginContext, rebaseStoryState, remapForkedRun, shouldCopyUniverseAsset } from "./universe-branch.js";
 import { restrictKnowledgeDatabaseToEntry } from "./source-canon-snapshot.js";
+import { readUniverseAnalysisJob, startUniverseAnalysisRebuild } from "./universe-analysis-jobs.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
 // noUncheckedIndexedAccess 放宽成 string | undefined。
@@ -545,13 +546,27 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     await writeUniverseAnalysisCatalogSnapshot(rootSourceId, stagingDir, id, selectedIndex);
     await writeFile(path.join(stagingDir, "source-canon-as-of.json"), JSON.stringify({ sourceWorldId: rootSourceId, entryChapter, entryOrdinal, policy: "chapter-scoped-evidence-only", fullBookAggregates: "excluded" }, null, 2) + "\n", "utf8");
     await rename(stagingDir, targetDir);
-    res.status(201).json({ universe });
+    // Rebuild the historical story graph asynchronously from this universe's bounded corpus.
+    // Analysis is enrichment only: model/runtime failure must never block the first chapter.
+    let analysisJob = null;
+    try { analysisJob = await startUniverseAnalysisRebuild(id, entryChapter); }
+    catch (analysisError) { console.error("[universe-analysis] unable to enqueue as-of analysis:", analysisError); }
+    res.status(201).json({ universe, analysisJob });
     });
   } catch (error) {
     if (stagingPath) await rm(stagingPath, { recursive: true, force: true }).catch(() => undefined);
     if (createdUniverseId) await rm(path.resolve("analysis", createdUniverseId), { recursive: true, force: true }).catch(() => undefined);
     sendError(res, error);
   }
+});
+
+app.get("/api/worlds/:worldId/as-of-analysis", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    if (!(await readUniverse(id))) return void res.status(404).json({ error: "Not a story universe." });
+    const job = await readUniverseAnalysisJob(id);
+    res.json({ job });
+  } catch (error) { sendError(res, error); }
 });
 
 app.get("/api/worlds/:worldId/forkable-chapters", async (req, res) => {
