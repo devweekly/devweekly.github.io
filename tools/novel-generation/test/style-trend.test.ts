@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildStyleTrendPrompt, collectStyleRegressionReports } from "../src/style-trend.js";
+import { buildStyleTrendPrompt, collectStyleRegressionReports, countStyleRegressionReports } from "../src/style-trend.js";
 
 test("collects completed chapter and manual style regression reports without drafts", async () => {
   const root = await mkdtemp(join(tmpdir(), "style-trend-"));
@@ -29,4 +29,20 @@ test("collects completed chapter and manual style regression reports without dra
 
 test("validates trend report limits", async () => {
   await assert.rejects(() => collectStyleRegressionReports("/missing", 0), /between 1 and 1000/);
+});
+
+
+test("full style history count does not saturate at the model context window limit", async () => {
+  const root = await mkdtemp(join(tmpdir(), "style-trend-long-history-"));
+  try {
+    const directory = join(root, "style-regression");
+    await mkdir(directory, { recursive: true });
+    await Promise.all(Array.from({ length: 1005 }, (_, index) =>
+      writeFile(join(directory, "report-" + index + ".md"), "report " + index, "utf8")
+    ));
+    assert.equal(await countStyleRegressionReports(root), 1005);
+    assert.equal((await collectStyleRegressionReports(root, 30)).length, 30);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
