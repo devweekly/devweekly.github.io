@@ -352,21 +352,46 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
   try {
     const source = JSON.parse(await readFile(sourcePath, "utf8")) as {
       schemaVersion?: number; totalLines?: number;
-      volumes?: Array<{ volume: number; chapters?: Array<Record<string, unknown>>; [key: string]: unknown }>;
+      volumes?: Array<{ volume: number; startLine?: number; endLine?: number; chapterCount?: number; openingChapter?: string; closingChapter?: string; chapters?: Array<Record<string, unknown>> }>;
       chapters?: Array<Record<string, unknown>>;
-      [key: string]: unknown;
     };
     const library = JSON.parse(await readFile(path.join(targetDir, "library", "index.json"), "utf8")) as { chunks?: Array<{ chapter: string }> };
     const allowed = new Set([...new Set((library.chunks ?? []).map(chunk => chunk.chapter))]);
-    const snapshot = { ...source };
-    if (Array.isArray(source.volumes)) {
-      snapshot.volumes = source.volumes
-        .map(volume => ({ ...volume, chapters: (volume.chapters ?? []).filter(chapter => allowed.has(String(chapter.title ?? ""))) }))
-        .filter(volume => (volume.chapters ?? []).length > 0);
-    }
-    if (Array.isArray(source.chapters)) snapshot.chapters = source.chapters.filter(chapter => allowed.has(String(chapter.title ?? "")));
-    const remaining = (snapshot.volumes ?? []).reduce((sum, volume) => sum + (volume.chapters?.length ?? 0), 0) + (snapshot.volumes?.length ? 0 : (snapshot.chapters?.length ?? 0));
-    if (!remaining) return; // Missing/incompatible source catalog remains absent; analysis fails closed.
+    const safeChapter = (chapter: Record<string, unknown>) => ({
+      ...(typeof chapter.sequenceInVolume === "number" ? { sequenceInVolume: chapter.sequenceInVolume } : {}),
+      ...(typeof chapter.printedNumber === "number" || chapter.printedNumber === null ? { printedNumber: chapter.printedNumber } : {}),
+      title: String(chapter.title ?? ""),
+      label: String(chapter.label ?? chapter.title ?? ""),
+      ...(typeof chapter.line === "number" ? { line: chapter.line } : {})
+    });
+    const safeVolumes = (source.volumes ?? []).map(volume => {
+      const chapters = (volume.chapters ?? []).filter(chapter => allowed.has(String(chapter.title ?? ""))).map(safeChapter);
+      if (!chapters.length) return null;
+      const firstLine = chapters.find(chapter => typeof chapter.line === "number")?.line;
+      const lastLine = [...chapters].reverse().find(chapter => typeof chapter.line === "number")?.line;
+      return {
+        volume: volume.volume,
+        ...(typeof volume.startLine === "number" ? { startLine: volume.startLine } : {}),
+        ...(typeof lastLine === "number" ? { endLine: lastLine } : {}),
+        chapterCount: chapters.length,
+        openingChapter: chapters[0]!.title,
+        closingChapter: chapters[chapters.length - 1]!.title,
+        chapters
+      };
+    }).filter((volume): volume is NonNullable<typeof volume> => volume !== null);
+    const safeChapters = (source.chapters ?? []).filter(chapter => allowed.has(String(chapter.title ?? ""))).map(safeChapter);
+    const retainedLines = [
+      ...safeVolumes.flatMap(volume => volume.chapters.map(chapter => chapter.line ?? 0)),
+      ...safeChapters.map(chapter => chapter.line ?? 0)
+    ];
+    const totalLines = Math.max(1, ...retainedLines);
+    const snapshot = {
+      ...(typeof source.schemaVersion === "number" ? { schemaVersion: source.schemaVersion } : {}),
+      totalLines,
+      ...(safeVolumes.length ? { volumes: safeVolumes } : {}),
+      ...(!safeVolumes.length && safeChapters.length ? { chapters: safeChapters } : {})
+    };
+    if (!safeVolumes.length && !safeChapters.length) return;
     const directory = path.resolve("analysis", universeId);
     await mkdir(directory, { recursive: true });
     await writeFile(path.join(directory, "chapter-index.json"), JSON.stringify(snapshot, null, 2) + "\n", "utf8");
@@ -375,6 +400,7 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
     throw error;
   }
 }
+
 async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: string, universeId: string, entryIndex: number): Promise<void> {
   const sourceIndexPath = path.join(worldDir(sourceWorldId), "library", "index.json");
   const source = JSON.parse(await readFile(sourceIndexPath, "utf8")) as {
