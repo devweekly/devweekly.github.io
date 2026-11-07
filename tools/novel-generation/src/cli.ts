@@ -346,8 +346,16 @@ async function main(): Promise<void> {
   }
 
   if (command === "vane-index") {
-    const result = await rebuildVaneIndex(worldId, resolve("worlds", worldId));
-    console.log(JSON.stringify(result, null, 2));
+    try {
+      const result = await rebuildVaneIndex(worldId, resolve("worlds", worldId));
+      console.log(JSON.stringify(result, null, 2));
+    } catch (error) {
+      if (process.argv.includes("--optional") && error instanceof Error && error.message.includes("Vane 未安装")) {
+        console.log(JSON.stringify({ skipped: true, reason: "Vane 原生包未安装；本宇宙继续使用现有 BM25 检索。" }, null, 2));
+        return;
+      }
+      throw error;
+    }
     return;
   }
 
