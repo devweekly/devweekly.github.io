@@ -901,6 +901,10 @@ app.post("/api/worlds/:worldId/knowledge-build", async (req, res) => {
       const universe = await readUniverse(id);
       if (!universe) return void res.status(409).json({ error: "该入口用于独立故事宇宙；原文项目请使用现有分析命令。" });
       if (universe.archivedAt) return void res.status(409).json({ error: "已归档的故事宇宙不能启动知识构建，请先恢复。" });
+      const runs = await listRuns(id);
+      if (runs.some(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"))) {
+        return void res.status(409).json({ error: "当前宇宙正在生成章节，完成后再构建知识资料。" });
+      }
       res.status(202).json({ build: await startKnowledgeBuild(id) });
     });
   } catch (error) { sendError(res, error); }
