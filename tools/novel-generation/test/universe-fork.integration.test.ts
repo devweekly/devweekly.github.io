@@ -172,6 +172,32 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
     assert.equal(grandchildState.worldId, grandchildId);
     const grandchildSnapshot = JSON.parse(await readFile(join(root, ".output", grandchildId, "chapter-001", "08-state-update.json"), "utf8")) as { worldId: string };
     assert.equal(grandchildSnapshot.worldId, grandchildId);
+
+    // Race a second fork against archive on the same parent. The shared per-world
+    // queue must serialize them: either the fork completes before archive, or
+    // archive wins and the fork is rejected. A half-published fork is never valid.
+    const raceForkPromise = fetch(`http://127.0.0.1:${address.port}/api/worlds/${childId}/universes/fork`, {
+      method: "POST",
+      headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
+      body: JSON.stringify({ name: "并发竞态分支", chapterRunId: runId, buildKnowledge: false })
+    });
+    const raceArchivePromise = fetch(`http://127.0.0.1:${address.port}/api/worlds/${childId}/universe-archive`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
+      body: JSON.stringify({ archived: true })
+    });
+    const [raceForkResponse, raceArchiveResponse] = await Promise.all([raceForkPromise, raceArchivePromise]);
+    const raceForkBody = await raceForkResponse.text();
+    const raceArchiveBody = await raceArchiveResponse.text();
+    assert.equal(raceArchiveResponse.status, 200, raceArchiveBody);
+    assert.ok([201, 409].includes(raceForkResponse.status), raceForkBody);
+    if (raceForkResponse.status === 409) {
+      const worlds = await (await import("node:fs/promises")).readdir(join(root, "worlds"));
+      assert.equal(worlds.some(name => name.startsWith("u-") && name !== childId && name !== grandchildId), false);
+    } else {
+      const raced = JSON.parse(raceForkBody) as { universe: { id: string } };
+      assert.ok(await readFile(join(root, "worlds", raced.universe.id, "universe.json"), "utf8"));
+    }
   } finally {
     if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
     process.chdir(previousCwd);
