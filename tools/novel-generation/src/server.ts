@@ -572,7 +572,8 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     await writeUniverseAnalysisCatalogSnapshot(rootSourceId, stagingDir, id, selectedIndex);
     await writeFile(path.join(stagingDir, "source-canon-as-of.json"), JSON.stringify({ sourceWorldId: rootSourceId, entryChapter, entryOrdinal, policy: "chapter-scoped-evidence-only", fullBookAggregates: "excluded" }, null, 2) + "\n", "utf8");
     await rename(stagingDir, targetDir);
-    res.status(201).json({ universe });
+    const knowledgeBuild = req.body?.buildKnowledge === false ? null : await startKnowledgeBuild(id);
+    res.status(201).json({ universe, ...(knowledgeBuild ? { knowledgeBuild } : {}) });
     });
   } catch (error) {
     if (stagingPath) await rm(stagingPath, { recursive: true, force: true }).catch(() => undefined);
@@ -710,7 +711,8 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
       if (forkedRun) await saveRun(forkedRun);
     }
     await rename(stagingDir, targetDir);
-    res.status(201).json({ universe, forkedAt: forkRun.id });
+    const knowledgeBuild = req.body?.buildKnowledge === false ? null : await startKnowledgeBuild(id);
+    res.status(201).json({ universe, forkedAt: forkRun.id, ...(knowledgeBuild ? { knowledgeBuild } : {}) });
     });
   } catch (error) {
     // Failed fork must not leave a half-visible universe or orphaned copied chapters.
