@@ -249,8 +249,13 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     const novelDbPath = path.join(targetDir, "novel.db");
     if (existsSync(novelDbPath)) {
       const db = new DatabaseSync(novelDbPath);
-      try { db.prepare("UPDATE world_meta SET value=? WHERE key='world_id'").run(id); }
-      finally { db.close(); }
+      try {
+        db.prepare("UPDATE world_meta SET value=? WHERE key='world_id'").run(id);
+        for (const table of ["story_analysis", "novel_chapters"]) {
+          const exists = db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name=?").get(table);
+          if (exists) db.prepare("UPDATE " + table + " SET world_id=?").run(id);
+        }
+      } finally { db.close(); }
     }
     const universe: StoryUniverse = {
       id, sourceWorldId: rootSourceId, name, type, entryChapter, brief,
