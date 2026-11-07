@@ -279,7 +279,7 @@ export async function analyzeLibrary(
   limit: number,
   model?: string,
   timeoutMs = ANALYSIS_DEFAULT_TIMEOUT_MS
-): Promise<{ processed: number; failed: number; remaining: number }> {
+): Promise<{ processed: number; failed: number; remaining: number; unattempted: number }> {
   const index = JSON.parse(await readFile(join(libraryDir, "index.json"), "utf8")) as LibraryIndex;
   if (index.schemaVersion !== 1 || index.worldId !== worldId) throw new Error("Library index schema/world mismatch.");
 
