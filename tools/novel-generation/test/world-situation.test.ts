@@ -21,7 +21,8 @@ test("world situation injects only the latest relevant clue and MacGuffin lifecy
   assert.match(context, /reinforced/);
   assert.match(context, /第2章/);
   assert.match(context, /李玄/);
-  assert.match(context, /暂时合作/);\n  assert.doesNotMatch(context, /互相提防/);
+  assert.match(context, /暂时合作/);
+  assert.doesNotMatch(context, /互相提防/);
   assert.doesNotMatch(context, /首次出现/);
 });
 
