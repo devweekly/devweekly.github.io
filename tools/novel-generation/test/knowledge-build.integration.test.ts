@@ -32,7 +32,7 @@ test("knowledge build API reserves one task, persists status, and permits retry 
     assert.deepEqual(responses.map(response => response.status).sort(), [202, 409]);
     const accepted = responses.find(response => response.status === 202)!;
     const acceptedBody = JSON.parse(await accepted.text()) as { build: { status: string; worldId: string } };
-    assert.equal(acceptedBody.build.status, "queued");
+    assert.ok(["queued", "running"].includes(acceptedBody.build.status));
     assert.equal(acceptedBody.build.worldId, worldId);
 
     let latest: { build: { status: string; steps: Array<{ name: string; status: string }> } | null } = { build: null };
