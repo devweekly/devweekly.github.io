@@ -515,27 +515,6 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     }
   });
   const chapter = reviewed.chapter;
-  // Only inspect post-review prose when a hard-fact repair actually changed it.
-  // This is diagnostic-only: never launch another full-chapter rewrite after acceptance.
-  if (reviewed.repairRounds > 0) {
-    try {
-      const report = await cachedCall("post-review-literary-check", "10-post-review-literary-check.md", "antiAi", [
-        postReviewLiteraryCheckPrompt({
-          beforeReview: antiAiChapter,
-          finalChapter: chapter,
-          reviewHistory: reviewHistory.join("\n\n---\n\n")
-        })
-      ], output => { if (!output.trim()) throw new Error("Post-review literary check returned an empty report."); });
-      await saveStage(input.outputDir, "10-post-review-literary-check.md", report);
-    } catch (error) {
-      await saveStage(input.outputDir, "10-post-review-literary-check-error.txt", String(error));
-      console.error("[write-long] 终审后的文风观察未完成；不改动正文，也不影响章节提交。");
-    }
-  } else {
-    await saveStage(input.outputDir, "10-post-review-literary-check-skipped.json", JSON.stringify({
-      skipped: true, reason: "终审没有修复正文，无需重复检查文风回归。"
-    }, null, 2));
-  }
   await saveStage(input.outputDir, "chapter.md", chapter);
   await saveStage(input.outputDir, "08-final-review.md", reviewHistory.join("\n\n---\n\n"));
   await saveStage(input.outputDir, "08-quality-summary.json", JSON.stringify({
@@ -686,6 +665,27 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   } catch (error) {
     await saveStage(input.outputDir, "07-state-update-error.txt", String(error) + "\n\n" + stateText);
     throw new Error("Chapter was generated, but story-state persistence failed. See 07-state-update-error.txt; do not start the next chapter.");
+  }
+  // Only inspect post-review prose when a hard-fact repair actually changed it.
+  // This is diagnostic-only: never launch another full-chapter rewrite after acceptance.
+  if (reviewed.repairRounds > 0) {
+    try {
+      const report = await cachedCall("post-review-literary-check", "10-post-review-literary-check.md", "antiAi", [
+        postReviewLiteraryCheckPrompt({
+          beforeReview: antiAiChapter,
+          finalChapter: chapter,
+          reviewHistory: reviewHistory.join("\n\n---\n\n")
+        })
+      ], output => { if (!output.trim()) throw new Error("Post-review literary check returned an empty report."); });
+      await saveStage(input.outputDir, "10-post-review-literary-check.md", report);
+    } catch (error) {
+      await saveStage(input.outputDir, "10-post-review-literary-check-error.txt", String(error));
+      console.error("[write-long] 终审后的文风观察未完成；不改动正文，也不影响章节提交。");
+    }
+  } else {
+    await saveStage(input.outputDir, "10-post-review-literary-check-skipped.json", JSON.stringify({
+      skipped: true, reason: "终审没有修复正文，无需重复检查文风回归。"
+    }, null, 2));
   }
   return chapter;
 }
