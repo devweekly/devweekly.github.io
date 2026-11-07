@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { emptyStoryState } from "../src/story-state.js";
-import { buildStoryStateGraph, filterStoryStateGraph } from "../src/story-state-graph.js";
+import { buildStoryStateGraph, filterGraph, filterStoryStateGraph } from "../src/story-state-graph.js";
 
 test("dynamic story graph links characters, events, plot threads, clues, MacGuffins and relationships", () => {
   const state = emptyStoryState("test-world");
@@ -61,4 +61,23 @@ test("graph keyword query returns exactly one hop and reports truncation", () =>
   const limited = filterStoryStateGraph(graph, "", 1);
   assert.equal(limited.returnedNodes, 1);
   assert.equal(limited.truncated, true);
+});
+
+test("generic graph filter also supports the original corpus graph without crossing more than one hop", () => {
+  const original = {
+    nodes: [
+      { id: "core:1", label: "故事核心：寻找失落之城" },
+      { id: "character:1", label: "李阎" },
+      { id: "thread:1", label: "寻找失落之城主线" }
+    ],
+    edges: [
+      { id: "core-character", from: "core:1", to: "character:1", label: "drives" },
+      { id: "character-thread", from: "character:1", to: "thread:1", label: "pursues" }
+    ]
+  };
+  const result = filterGraph(original, "故事核心", 10);
+  assert.equal(result.matchedNodes, 1);
+  assert.ok(result.nodes.some(node => node.id === "character:1"));
+  assert.ok(!result.nodes.some(node => node.id === "thread:1"));
+  assert.equal(result.edges.length, 1);
 });
