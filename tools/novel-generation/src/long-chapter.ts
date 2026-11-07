@@ -354,9 +354,31 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     const after = polished[index] ?? "";
     const beforeChars = chineseChars(before);
     const afterChars = chineseChars(after);
-    return { scene: index + 1, beforeChars, afterChars, deltaChars: afterChars - beforeChars, deltaRatio: beforeChars ? Number(((afterChars - beforeChars) / beforeChars).toFixed(3)) : null };
+    return {
+      scene: index + 1,
+      beforeChars,
+      afterChars,
+      deltaChars: afterChars - beforeChars,
+      deltaRatio: beforeChars ? Number(((afterChars - beforeChars) / beforeChars).toFixed(3)) : null
+    };
   });
-  await saveStage(input.outputDir, "05-polish-diagnostics.json", JSON.stringify({ scenes: polishDiagnostics, totalBeforeChars: polishDiagnostics.reduce((sum, item) => sum + item.beforeChars, 0), totalAfterChars: polishDiagnostics.reduce((sum, item) => sum + item.afterChars, 0), note: "诊断信息，不是篇幅门槛；扩写或精简都应结合文学效果判断。" }, null, 2));
+  // 逐场字数诊断只作观察记录：篇幅变化本身不构成改稿门槛，判断仍看文学效果。
+  const totalBeforeChars = polishDiagnostics.reduce((sum, item) => sum + item.beforeChars, 0);
+  const totalAfterChars = polishDiagnostics.reduce((sum, item) => sum + item.afterChars, 0);
+  await saveStage(
+    input.outputDir,
+    "05-polish-diagnostics.json",
+    JSON.stringify(
+      {
+        scenes: polishDiagnostics,
+        totalBeforeChars,
+        totalAfterChars,
+        note: "诊断信息，不是篇幅门槛；扩写或精简都应结合文学效果判断。"
+      },
+      null,
+      2
+    )
+  );
 
   const chapterTitle = "# " + (input.mode === "continuation" ? "续写章节" : "衍生章节") + "\n\n";
   const buildChapter = (): string => chapterTitle + polished.join("\n\n---\n\n") + "\n";
@@ -512,18 +534,81 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   await saveStage(input.outputDir, "06-rhythm-metrics.json", JSON.stringify(metrics, null, 2));
   console.error("[write-long] 成稿 " + metrics.chars + " 汉字 · 均句长 " + metrics.mean + " · 长句 " + (metrics.long * 100).toFixed(1) + "% · 自动修复 " + reviewed.repairRounds + " 轮");
 
+  // 状态提取的 JSON 结构示例，发给模型作字段说明；写全每字段的取值约定，避免模型自造含义。
   const statePrompt = [
     "角色：小说连续性资料管理员。根据旧状态和最终章节提取状态变化。",
     "只输出合法 JSON 对象，不要 Markdown 代码围栏。结构：",
     JSON.stringify({
       currentPosition: "string",
-      canonFacts: [{ id: "stable-id", fact: "fact", source: "chapter id", confidence: "confirmed|inferred|original" }],
-      characters: [{ name: "name", profile: { coreTraits: ["stable traits"], values: ["values"], contradictions: ["internal contradictions"], voice: "distinctive voice", boundaries: ["behavioral boundaries"], arc: "long-term arc" }, status: "current status", location: "current location", abilities: ["current abilities"], knowledge: ["current knowledge with source/limits when useful"], goals: ["current goals"], motivation: "why these goals matter now", resources: ["currently available means"], constraints: ["actual limits"], currentPressure: ["current pressures"], decisionHistory: ["consequential decisions already made"], relationships: ["current relationships"], arcMilestones: [{ id: "stable-milestone-id", chapter: "chapter id", change: "what changed", evidence: "exact excerpt from final chapter", choice: "optional, only if naturally clear", pressure: "optional, only if naturally clear", cost: "optional, only if naturally clear" }] }],
-      events: [{ id: "stable-id", summary: "event", position: "story position", participants: ["name"], causes: ["prior event id or concise causal condition"], consequences: ["consequence"], relatedPlotThreads: ["related plot thread id"], origin: "canon|inferred|original", source: "source reference" }],
-      plotThreads: [{ id: "stable-id", title: "thread", status: "open|active|resolved|abandoned", lastUpdated: "chapter id", notes: "latest state" }],
-      foreshadowingUpdates: [{ id: "stable-clue-id:chapter", clueId: "stable-clue-id", clue: "线索内容", status: "planted|reinforced|misdirected|partially_revealed|revealed|resolved|abandoned|uncertain", chapter: "chapter id", change: "本章对线索生命周期造成的变化", relatedThreadIds: ["plot-thread-id"], evidence: "exact excerpt from final chapter" }],
-      macguffinUpdates: [{ id: "stable-macguffin-id:chapter", macguffinId: "stable-macguffin-id", name: "关键物件/目标/信息", status: "introduced|sought|located|held|transferred|lost|destroyed|secured|irrelevant|uncertain", chapter: "chapter id", change: "本章发生的状态变化", holder: "optional current holder", location: "optional current location", relatedThreadIds: ["plot-thread-id"], evidence: "exact excerpt from final chapter" }],
-      relationshipUpdates: [{ id: "stable-relation-id:chapter", relationId: "stable-relation-id", from: "人物甲", to: "人物乙", label: "旧友/敌对/师徒等关系类型", chapter: "chapter id", change: "本章真实发生的互动或关系变化", evidence: "exact excerpt from final chapter" }],
+      canonFacts: [{
+        id: "stable-id", fact: "fact", source: "chapter id",
+        confidence: "confirmed|inferred|original"
+      }],
+      characters: [{
+        name: "name",
+        profile: {
+          coreTraits: ["stable traits"], values: ["values"],
+          contradictions: ["internal contradictions"],
+          voice: "distinctive voice", boundaries: ["behavioral boundaries"],
+          arc: "long-term arc"
+        },
+        status: "current status",
+        location: "current location",
+        abilities: ["current abilities"],
+        knowledge: ["current knowledge with source/limits when useful"],
+        goals: ["current goals"],
+        motivation: "why these goals matter now",
+        resources: ["currently available means"],
+        constraints: ["actual limits"],
+        currentPressure: ["current pressures"],
+        decisionHistory: ["consequential decisions already made"],
+        relationships: ["current relationships"],
+        arcMilestones: [{
+          id: "stable-milestone-id", chapter: "chapter id",
+          change: "what changed", evidence: "exact excerpt from final chapter",
+          choice: "optional, only if naturally clear",
+          pressure: "optional, only if naturally clear",
+          cost: "optional, only if naturally clear"
+        }]
+      }],
+      events: [{
+        id: "stable-id", summary: "event", position: "story position",
+        participants: ["name"],
+        causes: ["prior event id or concise causal condition"],
+        consequences: ["consequence"],
+        relatedPlotThreads: ["related plot thread id"],
+        origin: "canon|inferred|original", source: "source reference"
+      }],
+      plotThreads: [{
+        id: "stable-id", title: "thread", status: "open|active|resolved|abandoned",
+        lastUpdated: "chapter id", notes: "latest state"
+      }],
+      foreshadowingUpdates: [{
+        id: "stable-clue-id:chapter", clueId: "stable-clue-id", clue: "线索内容",
+        status: "planted|reinforced|misdirected|partially_revealed|revealed|resolved|abandoned|uncertain",
+        chapter: "chapter id",
+        change: "本章对线索生命周期造成的变化",
+        relatedThreadIds: ["plot-thread-id"],
+        evidence: "exact excerpt from final chapter"
+      }],
+      macguffinUpdates: [{
+        id: "stable-macguffin-id:chapter", macguffinId: "stable-macguffin-id",
+        name: "关键物件/目标/信息",
+        status: "introduced|sought|located|held|transferred|lost|destroyed|secured|irrelevant|uncertain",
+        chapter: "chapter id",
+        change: "本章发生的状态变化",
+        holder: "optional current holder",
+        location: "optional current location",
+        relatedThreadIds: ["plot-thread-id"],
+        evidence: "exact excerpt from final chapter"
+      }],
+      relationshipUpdates: [{
+        id: "stable-relation-id:chapter", relationId: "stable-relation-id",
+        from: "人物甲", to: "人物乙", label: "旧友/敌对/师徒等关系类型",
+        chapter: "chapter id",
+        change: "本章真实发生的互动或关系变化",
+        evidence: "exact excerpt from final chapter"
+      }],
       continuityNotes: ["complete current active notes"]
     }, null, 2),
     "旧状态：", JSON.stringify(state, null, 2),

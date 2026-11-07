@@ -3,6 +3,12 @@ import { readStoryState as readDatabaseStoryState, syncStoryState } from "./data
 import { dirname } from "node:path";
 import { z } from "zod";
 
+// 人物弧光里程碑：本章出现的重要转折 + 逐字证据；choice/pressure/cost 由正文自然呈现时填写。
+const ARC_MILESTONE_SCHEMA = z.object({
+  id: z.string().min(1), chapter: z.string().min(1), change: z.string().min(1),
+  choice: z.string().optional(), pressure: z.string().optional(), cost: z.string().optional(),
+  evidence: z.string().min(4)
+});
 const ForeshadowingUpdateSchema = z.object({
   id: z.string().min(1), clueId: z.string().min(1), clue: z.string().min(1),
   status: z.enum(["planted", "reinforced", "misdirected", "partially_revealed", "revealed", "resolved", "abandoned", "uncertain"]),
@@ -43,7 +49,9 @@ const StoryStateSchema = z.object({
     motivation: z.string().optional(), resources: z.array(z.string()).optional(),
     constraints: z.array(z.string()).optional(), currentPressure: z.array(z.string()).optional(),
     decisionHistory: z.array(z.string()).optional(),
-    relationships: z.array(z.string()).optional(), arcMilestones: z.array(z.object({ id: z.string().min(1), chapter: z.string().min(1), change: z.string().min(1), choice: z.string().optional(), pressure: z.string().optional(), cost: z.string().optional(), evidence: z.string().min(4) })).optional(), stateUpdatedAt: z.string().optional()
+    relationships: z.array(z.string()).optional(),
+    // 弧光里程碑只记录正文自然呈现的转折，字段多为可选。
+    arcMilestones: z.array(ARC_MILESTONE_SCHEMA).optional(), stateUpdatedAt: z.string().optional()
   })),
   events: z.array(z.object({
     id: z.string().min(1), summary: z.string(), position: z.string(),
@@ -79,7 +87,9 @@ const StoryStateUpdateSchema = z.object({
     motivation: z.string().optional(), resources: z.array(z.string()).optional(),
     constraints: z.array(z.string()).optional(), currentPressure: z.array(z.string()).optional(),
     decisionHistory: z.array(z.string()).optional(),
-    relationships: z.array(z.string()).optional(), arcMilestones: z.array(z.object({ id: z.string().min(1), chapter: z.string().min(1), change: z.string().min(1), choice: z.string().optional(), pressure: z.string().optional(), cost: z.string().optional(), evidence: z.string().min(4) })).optional(), stateUpdatedAt: z.string().optional()
+    relationships: z.array(z.string()).optional(),
+    // 弧光里程碑只记录正文自然呈现的转折，字段多为可选。
+    arcMilestones: z.array(ARC_MILESTONE_SCHEMA).optional(), stateUpdatedAt: z.string().optional()
   })).optional(),
   events: z.array(z.object({
     id: z.string().min(1), summary: z.string(), position: z.string(),

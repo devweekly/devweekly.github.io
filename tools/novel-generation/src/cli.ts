@@ -367,7 +367,16 @@ async function main(): Promise<void> {
       const snapshot = exportNovelKnowledge(worldDir, worldId);
       await mkdir(dirname(out), { recursive: true });
       await writeFile(out, JSON.stringify(snapshot) + "\n", "utf8");
-      console.log(JSON.stringify({ out, characters: snapshot.characters.length, characterProfiles: snapshot.characterProfiles.length, characterChapterStates: snapshot.characterChapterStates.length, threads: snapshot.threads.length, foreshadowings: snapshot.foreshadowings.length, beats: snapshot.beats.length, arcs: snapshot.arcs.length }, null, 2));
+      console.log(JSON.stringify({
+        out,
+        characters: snapshot.characters.length,
+        characterProfiles: snapshot.characterProfiles.length,
+        characterChapterStates: snapshot.characterChapterStates.length,
+        threads: snapshot.threads.length,
+        foreshadowings: snapshot.foreshadowings.length,
+        beats: snapshot.beats.length,
+        arcs: snapshot.arcs.length
+      }, null, 2));
     }
     else if (type === "overview") console.log(JSON.stringify(novelKnowledgeOverview(worldDir, worldId), null, 2));
     else if (type === "arcs") console.log(JSON.stringify({ arcs: listVolumeArcs(worldDir, worldId) }, null, 2));
@@ -377,7 +386,17 @@ async function main(): Promise<void> {
         .map(character => ({ ...character, profile: profiles.get(character.name) ?? null }));
       console.log(JSON.stringify({ meta: readNovelKbMeta(worldDir, worldId), characters }, null, 2));
     }
-    else if (type === "character-states") console.log(JSON.stringify({ states: listNovelCharacterChapterStates(worldDir, worldId, { name: arg("--query"), fromOrdinal: arg("--from") ? Number(arg("--from")) : undefined, toOrdinal: arg("--to") ? Number(arg("--to")) : undefined, limit }) }, null, 2));
+    else if (type === "character-states") {
+      // --from/--to 未传时不传条件，而不是传 NaN；Number(undefined) 会被当成有效过滤。
+      console.log(JSON.stringify({
+        states: listNovelCharacterChapterStates(worldDir, worldId, {
+          name: arg("--query"),
+          fromOrdinal: arg("--from") ? Number(arg("--from")) : undefined,
+          toOrdinal: arg("--to") ? Number(arg("--to")) : undefined,
+          limit
+        })
+      }, null, 2));
+    }
     else if (type === "threads") console.log(JSON.stringify({ threads: listNovelThreads(worldDir, worldId, { limit, status: arg("--status"), query: arg("--query") }) }, null, 2));
     else if (type === "foreshadowings") console.log(JSON.stringify({ foreshadowings: listNovelForeshadowings(worldDir, worldId, { limit, status: arg("--status"), query: arg("--query") }) }, null, 2));
     else if (type === "beats") console.log(JSON.stringify({ beats: listNovelBeats(worldDir, worldId, { from: Number(arg("--from") ?? 0), to: Number(arg("--to") ?? Number.MAX_SAFE_INTEGER), limit }) }, null, 2));
@@ -454,10 +473,19 @@ async function main(): Promise<void> {
     const candidate = await generateStoryPlan({worldId,worldBible,state,storyAnalysisContext:analysisContext,previousPlan,model:arg("--model")});
     const draftOnly = process.argv.includes("--draft");
     const outputPath = draftOnly
-      ? resolve(".output",worldId,"story-plan-draft-"+new Date().toISOString().replace(/[:.]/g,"-")+".json")
-      : resolve(worldDir,"story-plan.json");
-    await saveStoryPlan(outputPath,{...candidate,status:draftOnly?"draft":"active"});
-    console.log(JSON.stringify({status:draftOnly?"draft":"active",output:outputPath,milestones:candidate.majorMilestones.length,longTermThreads:candidate.longTermThreads.length,previousPlanLoaded:Boolean(previousPlan),note:draftOnly?"已保存隔离草稿，不影响正式写作上下文。":"新主线已自动生效；可在 Web Workbench 中事后检查或手动修订。"},null,2));
+      ? resolve(".output", worldId, "story-plan-draft-" + new Date().toISOString().replace(/[:.]/g, "-") + ".json")
+      : resolve(worldDir, "story-plan.json");
+    await saveStoryPlan(outputPath, { ...candidate, status: draftOnly ? "draft" : "active" });
+    console.log(JSON.stringify({
+      status: draftOnly ? "draft" : "active",
+      output: outputPath,
+      milestones: candidate.majorMilestones.length,
+      longTermThreads: candidate.longTermThreads.length,
+      previousPlanLoaded: Boolean(previousPlan),
+      note: draftOnly
+        ? "已保存隔离草稿，不影响正式写作上下文。"
+        : "新主线已自动生效；可在 Web Workbench 中事后检查或手动修订。"
+    }, null, 2));
     return;
   }
 
@@ -857,7 +885,19 @@ async function main(): Promise<void> {
     const statePath = resolve("worlds", worldId, "story-state.json");
     const longState = await loadRunStoryState(statePath, worldId, outputDir, "write-long");
     const storyPlanText = formatStoryPlan(await loadStoryPlan(resolve("worlds", worldId, "story-plan.json"), worldId));
-    const storyAnalysisQuery = [brief, storyPlanText, contextText ?? "", sourceText?.slice(-QUERY_SOURCE_TAIL_CHARS) ?? "", longState.currentPosition, ...longState.plotThreads.filter(thread => thread.status === "open" || thread.status === "active").map(thread => thread.title), ...longState.characters.slice(0, QUERY_CONTEXT_CHARACTERS).map(character => character.name)].join("\n");
+    // 检索查询按优先级拼装：本次 brief / 主线方向 / 传统衍生文尾段 / 原著定位句、
+    // 活跃情节线标题与有限人数。顺序影响 BM25 召回，不要随意调换。
+    const storyAnalysisQuery = [
+      brief,
+      storyPlanText,
+      contextText ?? "",
+      sourceText?.slice(-QUERY_SOURCE_TAIL_CHARS) ?? "",
+      longState.currentPosition,
+      ...longState.plotThreads
+        .filter(thread => thread.status === "open" || thread.status === "active")
+        .map(thread => thread.title),
+      ...longState.characters.slice(0, QUERY_CONTEXT_CHARACTERS).map(character => character.name)
+    ].join("\n");
     const storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), storyAnalysisQuery);
     const writingBrief = buildWritingBrief({ worldDir: resolve("worlds", worldId), worldId, query: storyAnalysisQuery });
     console.error("[write-long] 注入：事实包 " + writingBrief.length + " 字 / 分析参考 " + storyAnalysisContext.length + " 字");

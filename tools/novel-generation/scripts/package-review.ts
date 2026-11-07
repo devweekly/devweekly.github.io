@@ -311,9 +311,20 @@ const qualityFlags = {
   foreshadowingsUncertain: one("SELECT COUNT(*) AS count FROM novel_foreshadowings WHERE confidence='不确定'")
 };
 
+/** story.db 的建表 DDL 导出：打开一次读 sqlite_master，读完立即关闭。 */
+function storyStateDdl(worldDir: string, worldId: string): string {
+  const db = openStoryStateDatabase(worldDir, worldId);
+  try {
+    return (db.prepare("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, name").all() as Array<{ sql: string }>)
+      .map(row => row.sql + ";").join("\n\n") + "\n";
+  } finally {
+    db.close();
+  }
+}
+
 add("01-database/summary.json", json(summary));
 add("01-database/schema.sql", withDatabase(db => (db.prepare("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, name").all() as Array<{ sql: string }>).map(row => row.sql + ";").join("\n\n") + "\n"));
-add("01-database/schema-state.sql", (() => { const db = openStoryStateDatabase(worldDir, worldId); try { return (db.prepare("SELECT sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY CASE type WHEN 'table' THEN 0 ELSE 1 END, name").all() as Array<{ sql: string }>).map(row => row.sql + ";").join("\n\n") + "\n"; } finally { db.close(); } })());
+add("01-database/schema-state.sql", storyStateDdl(worldDir, worldId));
 add("01-database/schema.md", [
   "# 数据表说明",
   "",
