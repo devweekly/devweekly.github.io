@@ -477,11 +477,16 @@ async function main(): Promise<void> {
     const additions = valuesAfter("--add");
     const removal = arg("--remove");
     const listing = process.argv.includes("--list");
-    if (Number(Boolean(additions.length)) + Number(Boolean(removal)) + Number(listing) !== 1) {
-      throw new Error("Choose exactly one operation: --list, --add <file...>, or --remove <active-filename>.");
+    const history = process.argv.includes("--history");
+    if (Number(Boolean(additions.length)) + Number(Boolean(removal)) + Number(listing) + Number(history) !== 1) {
+      throw new Error("Choose exactly one operation: --list, --history [filename], --add <file...>, or --remove <active-filename>.");
     }
     if (listing) {
       console.log(JSON.stringify(await listStyleReferences(worldDir), null, 2));
+      return;
+    }
+    if (history) {
+      console.log(JSON.stringify(await listStyleReferenceHistory(worldDir, arg("--history")), null, 2));
       return;
     }
     if (removal) {
