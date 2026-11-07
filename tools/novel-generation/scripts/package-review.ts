@@ -516,7 +516,6 @@ if (latestRun) {
     ["02-scene-02.md", "scene-02.md", false],
     ["02-scene-03.md", "scene-03.md", true],
     ["03-draft.md", "draft.md", true],
-    ["04-continuity-review.md", "continuity-review.md", false],
       ["06-rhythm-metrics.json", "rhythm-metrics.json", false],
     ["stage-calls.jsonl", "stage-calls.jsonl", true],
     ["07-state-update.json", "state-update.json", true],
