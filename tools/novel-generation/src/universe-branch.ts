@@ -37,3 +37,59 @@ export function remapForkedRun(
     ...(previousTarget ? { previousChapterPath: previousTarget } : { previousChapterPath: undefined })
   };
 }
+
+
+/**
+ * Historical universes must not inherit whole-book derived material.
+ * Unknown files are retained only when they are not in a known derived namespace;
+ * root-level aggregate summaries are explicitly denied until as-of rebuilding exists.
+ */
+export function shouldCopyUniverseAsset(relativePath: string): boolean {
+  const parts = relativePath.split(/[\\/]+/).filter(Boolean);
+  if (parts.length === 0) return true;
+  const first = parts[0]!;
+  if ([
+    "story.db", "story-state.json", "story-arc.md", "story-plan.json",
+    ".output", "universes", "library", "vane-index", "analysis",
+    "corpus-craft", "style-references", "style-reference-history", "universe.json"
+  ].includes(first)) return false;
+  if (parts.length === 1 && [
+    "world-bible.md", "characters.md", "timeline.md", "fruit-worlds.md",
+    "yanfu-system.md", "style-profile.md", "story-analysis.md",
+    "character-profiles.md", "plot-summary.md", "foreshadowing.md"
+  ].includes(first)) return false;
+  return true;
+}
+
+export interface CanonChapterText { title: string; text: string; }
+
+/** Build bounded, chronological canon context strictly before the selected entry chapter. */
+export function buildUniverseOriginContext(
+  chapters: CanonChapterText[],
+  selectedIndex: number,
+  maxPreviousChapters = 3,
+  maxChars = 18_000
+): string {
+  const selected = chapters[selectedIndex];
+  if (!selected) throw new Error("Selected canon chapter does not exist.");
+  const preceding = chapters.slice(Math.max(0, selectedIndex - maxPreviousChapters), selectedIndex);
+  const parts = [
+    "# 原著起点前情（只读背景）",
+    "",
+    "以下章节发生在本宇宙起点之前，只用于理解人物处境、关系和已发生事件。不得把原著起点之后的剧情当成本宇宙事实。",
+    ""
+  ];
+  // 从最近章节向前分配预算，确保最接近起点的前情优先；最后再恢复原文顺序。
+  let remaining = maxChars;
+  const selectedContext: Array<{ title: string; text: string }> = [];
+  for (const chapter of [...preceding].reverse()) {
+    if (remaining <= 0) break;
+    const body = chapter.text.slice(-remaining);
+    selectedContext.push({ title: chapter.title, text: body });
+    remaining -= body.length;
+  }
+  for (const chapter of selectedContext.reverse()) {
+    parts.push("## " + chapter.title, "", chapter.text, "");
+  }
+  return parts.join("\n");
+}

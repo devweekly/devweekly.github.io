@@ -1,7 +1,7 @@
 // 唯一 CLI 入口：参数解析、worldId 校验（^[a-z0-9][a-z0-9-]*$）、命令分派，以及把
 // brief / 故事当前位置 / 未结情节线 / 人物组装成检索查询。所有路径经 resolve() 锚定 CWD，
 // 必须在 tools/novel-generation 目录运行，换目录会把 worlds/、.output/、analysis/ 读写到错误位置。
-import { readFile, mkdir, writeFile } from "node:fs/promises";
+import { access, readFile, mkdir, writeFile } from "node:fs/promises";
 import { databaseStatus, readAnnotationsByChunkIds, readStoryAnalysis, listNovelCharacters, listNovelThreads, listNovelForeshadowings, listNovelBeats, readNovelKbMeta, novelKnowledgeOverview, exportNovelKnowledge, listNovelCharacterProfiles, listNovelCharacterChapterStates } from "./database.js";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { generateStory, runAgentText, type GenerationMode } from "./generate.js";
@@ -171,7 +171,26 @@ async function main(): Promise<void> {
   if (!COMMANDS.has(command as string)) usage();
 
   const worldId = safeWorldId(arg("--world") ?? "conghuoniao");
-  const libraryDir = resolve("worlds", worldId, "library");
+  let canonWorldId = worldId;
+  try {
+    const pointer = JSON.parse(await readFile(resolve("worlds", worldId, "source-canon.json"), "utf8")) as { sourceWorldId?: string; readOnly?: boolean };
+    if (pointer.readOnly && typeof pointer.sourceWorldId === "string") canonWorldId = safeWorldId(pointer.sourceWorldId);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  let libraryDir = resolve("worlds", canonWorldId, "library");
+  if (canonWorldId !== worldId) {
+    const boundedLibraryDir = resolve("worlds", worldId, "library");
+    try {
+      await access(resolve(boundedLibraryDir, "index.json"));
+      libraryDir = boundedLibraryDir;
+    } catch {
+      throw new Error("该故事宇宙缺少按起点章节截断的原文检索索引。为避免检索到起点之后的剧情，请从原文项目重新创建宇宙，或先运行迁移工具生成时点索引。");
+    }
+  }
+  if (canonWorldId !== worldId && (command === "ingest" || command === "analyze")) {
+    throw new Error("故事宇宙共享原文资料库为只读；请回到原文项目导入原文或执行原文分块标注。");
+  }
 
   if (command === "roleplay-sandbox") {
     const brief = arg("--brief");

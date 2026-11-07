@@ -4,12 +4,12 @@
 import express, { type Request, type Response, type NextFunction } from "express";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
+import { existsSync, rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { loadStoryPlan, saveStoryPlan, generateStoryPlan } from "./story-plan.js";
-import { loadStoryState } from "./story-state.js";
+import { loadStoryState, validateStoryState } from "./story-state.js";
 import { readStoryAnalysis, listNovelCharacters, countNovelCharacters, readNovelCharacterWorkbenchDetail } from "./database.js";
 import {
   CHARACTER_LIST_MAX_LIMIT, CHARACTER_LIST_DEFAULT_LIMIT, DASHBOARD_PLAN_VERSIONS_LIMIT, DASHBOARD_RECENT_RUNS_LIMIT,
@@ -21,7 +21,8 @@ import { buildStoryStateGraph, filterGraph } from "./story-state-graph.js";
 import { archiveStyleReference, listStyleReferenceHistory, listStyleReferences, putStyleReference, readActiveStyleReference, readStyleReferenceVersion } from "./style-references.js";
 import { getCandidate, getRun, listCandidates, listRuns, recoverInterruptedRuns, saveCandidate, saveRun, type StoryPlanCandidate, type WorkbenchRun } from "./workbench-store.js";
 import type { StoryState } from "./story-state.js";
-import { rebaseStoryState, remapForkedRun } from "./universe-branch.js";
+import { buildUniverseOriginContext, rebaseStoryState, remapForkedRun, shouldCopyUniverseAsset } from "./universe-branch.js";
+import { restrictKnowledgeDatabaseToEntry } from "./source-canon-snapshot.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
 // noUncheckedIndexedAccess 放宽成 string | undefined。
@@ -118,6 +119,14 @@ function sendError(res: Response, error: unknown): void {
  * 各世界独立排队；队列尾部只保留最新任务，避免长链引用堆积。
  */
 const worldQueues = new Map<string, Promise<void>>();
+const worldMutationLocks = new Set<string>();
+
+/** Reserve the short metadata mutation window synchronously, before the first await. */
+function acquireWorldMutation(worldId: string): (() => void) | null {
+  if (worldMutationLocks.has(worldId)) return null;
+  worldMutationLocks.add(worldId);
+  return () => worldMutationLocks.delete(worldId);
+}
 
 async function serializeWorld<T>(worldId: string, task: () => Promise<T>): Promise<T> {
   const previous = worldQueues.get(worldId) ?? Promise.resolve();
@@ -182,7 +191,32 @@ interface StoryUniverse {
   parentUniverseId?: string;
   forkPoint?: string;
   createdAt: string;
+  archivedAt?: string;
 }
+
+function rebindKnowledgeDatabase(databasePath: string, worldId: string): void {
+  if (!existsSync(databasePath)) return;
+  const db = new DatabaseSync(databasePath);
+  try {
+    const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'").all() as Array<{ name: string }>;
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      for (const { name } of tables) {
+        const columns = db.prepare("PRAGMA table_info(" + JSON.stringify(name) + ")").all() as Array<{ name: string }>;
+        if (columns.some(column => column.name === "world_id")) {
+          db.prepare("UPDATE \"" + name.replace(/"/g, "\"\"") + "\" SET world_id=?").run(worldId);
+        }
+      }
+      const meta = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='world_meta'").get();
+      if (meta) db.prepare("UPDATE world_meta SET value=? WHERE key='world_id'").run(worldId);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+  } finally { db.close(); }
+}
+
 
 async function readUniverse(id: string): Promise<StoryUniverse | null> {
   try {
@@ -226,6 +260,26 @@ async function readCanonChapters(sourceWorldId: string): Promise<Array<{ title: 
   });
 }
 
+async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: string, universeId: string, entryIndex: number): Promise<void> {
+  const sourceIndexPath = path.join(worldDir(sourceWorldId), "library", "index.json");
+  const source = JSON.parse(await readFile(sourceIndexPath, "utf8")) as {
+    schemaVersion: number; createdAt: string; updatedAt: string;
+    chunks: Array<{ chapter: string; [key: string]: unknown }>;
+  };
+  const chapterOrder = [...new Set(source.chunks.map(chunk => chunk.chapter))];
+  const allowed = new Set(chapterOrder.slice(0, entryIndex + 1));
+  const snapshot = {
+    schemaVersion: source.schemaVersion,
+    worldId: universeId,
+    createdAt: source.createdAt,
+    updatedAt: source.updatedAt,
+    chunks: source.chunks.filter(chunk => allowed.has(chunk.chapter))
+  };
+  const libraryDir = path.join(targetDir, "library");
+  await mkdir(libraryDir, { recursive: true });
+  await writeFile(path.join(libraryDir, "index.json"), JSON.stringify(snapshot, null, 2) + "\n", "utf8");
+}
+
 app.get("/api/worlds/:worldId/source-chapters", async (req, res) => {
   try {
     const sourceId = worldIdOf(req.params.worldId); assertInsideWorld(sourceId);
@@ -246,8 +300,37 @@ app.get("/api/worlds/:worldId/universes", async (req, res) => {
   } catch (error) { sendError(res, error); }
 });
 
-app.post("/api/worlds/:worldId/universes", async (req, res) => {
+app.patch("/api/worlds/:worldId/universe-archive", async (req, res) => {
+  let release: (() => void) | null = null;
   try {
+    const lockId = worldIdOf(req.params.worldId);
+    await serializeWorld(lockId, async () => {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    release = acquireWorldMutation(id);
+    if (!release) return void res.status(409).json({ error: "当前宇宙正在执行创建、分叉或归档操作，请稍后重试。" });
+    const universe = await readUniverse(id);
+    if (!universe) return void res.status(409).json({ error: "原文项目不能归档为故事宇宙。" });
+    const archive = req.body?.archived === true;
+    const runs = await listRuns(id);
+    if (runs.some(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"))) {
+      return void res.status(409).json({ error: "当前宇宙仍有章节正在生成，结束后再归档或恢复。" });
+    }
+    const updated: StoryUniverse = { ...universe, ...(archive ? { archivedAt: new Date().toISOString() } : { archivedAt: undefined }) };
+    if (!archive) delete updated.archivedAt;
+    const tempPath = path.join(worldDir(id), "universe.json.tmp");
+    await writeFile(tempPath, JSON.stringify(updated, null, 2) + "\n", "utf8");
+    await rename(tempPath, path.join(worldDir(id), "universe.json"));
+    res.json({ universe: updated });
+    });
+  } catch (error) { sendError(res, error); }
+  finally { release?.(); }
+});
+
+app.post("/api/worlds/:worldId/universes", async (req, res) => {
+  let stagingPath: string | null = null;
+  try {
+    const lockId = worldIdOf(req.params.worldId);
+    await serializeWorld(lockId, async () => {
     const sourceId = worldIdOf(req.params.worldId); assertInsideWorld(sourceId);
     const sourceUniverse = await readUniverse(sourceId);
     if (sourceUniverse) return void res.status(409).json({ error: "当前版本的新建入口只从原文项目创建独立宇宙；从已有宇宙的历史时点分叉将在后续版本提供。" });
@@ -263,47 +346,82 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     if (!allowedTypes.includes(type)) return void res.status(400).json({ error: "Invalid universe type." });
     await readFile(path.join(sourceDir, "world-bible.md"), "utf8");
     const canonChapters = await readCanonChapters(rootSourceId);
-    const selectedChapter = canonChapters.find(chapter => chapter.title === entryChapter);
+    const selectedIndex = canonChapters.findIndex(chapter => chapter.title === entryChapter);
+    const selectedChapter = canonChapters[selectedIndex];
     if (!selectedChapter?.text.trim()) return void res.status(400).json({ error: "所选章节不在原文目录中，或章节正文为空。请从原文目录选择一个章节。" });
+    // 起点前情属于原著只读背景，不是新宇宙已发生的续写事实。
+    const originContext = buildUniverseOriginContext(canonChapters, selectedIndex);
     const id = "u-" + randomUUID().replace(/-/g, "").slice(0, 16);
     const targetDir = worldDir(id);
-    await mkdir(targetDir, { recursive: true });
+    const stagingDir = path.join(path.resolve("worlds"), ".staging-" + id);
+    stagingPath = stagingDir;
+    await mkdir(stagingDir, { recursive: true });
     // 只复制原文只读资产和基础世界资料；所有派生状态、计划、输出与运行记录从空白开始。
-    await cp(sourceDir, targetDir, {
+    await cp(sourceDir, stagingDir, {
       recursive: true,
       filter: source => {
-        const relative = path.relative(sourceDir, source).split(path.sep);
-        if (!relative.length || relative[0] === "") return true;
-        const first = relative[0];
-        if (!first) return true;
-        if (["story.db", "story-state.json", "story-arc.md", "story-plan.json", ".output", "universes"].includes(first)) return false;
-        if (first === "universe.json") return false;
-        return true;
+        return shouldCopyUniverseAsset(path.relative(sourceDir, source));
       }
     });
     // novel.db 是原著分析只读快照的初期副本；重置其世界身份，防止数据库身份校验误认为属于源项目。
-    const novelDbPath = path.join(targetDir, "novel.db");
-    if (existsSync(novelDbPath)) {
-      const db = new DatabaseSync(novelDbPath);
-      try {
-        db.prepare("UPDATE world_meta SET value=? WHERE key='world_id'").run(id);
-      } finally { db.close(); }
-    }
+    rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
+    const entryOrdinal = restrictKnowledgeDatabaseToEntry(path.join(stagingDir, "novel.db"), id, entryChapter);
     const universe: StoryUniverse = {
       id, sourceWorldId: rootSourceId, name, type, entryChapter, brief,
       createdAt: new Date().toISOString()
     };
-    await writeFile(path.join(targetDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
-    await writeFile(path.join(targetDir, "universe-entry.md"), selectedChapter.text + "\n", "utf8");
+    await writeFile(path.join(stagingDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
+    await writeFile(path.join(stagingDir, "source-canon.json"), JSON.stringify({ sourceWorldId: rootSourceId, readOnly: true }, null, 2) + "\n", "utf8");
+    await writeFile(path.join(stagingDir, "universe-entry.md"), selectedChapter.text + "\n", "utf8");
+    await writeFile(path.join(stagingDir, "universe-origin-context.md"), originContext + "\n", "utf8");
+    await writeUniverseLibrarySnapshot(rootSourceId, stagingDir, id, selectedIndex);
+    await writeFile(path.join(stagingDir, "source-canon-as-of.json"), JSON.stringify({ sourceWorldId: rootSourceId, entryChapter, entryOrdinal, policy: "chapter-scoped-evidence-only", fullBookAggregates: "excluded" }, null, 2) + "\n", "utf8");
+    await rename(stagingDir, targetDir);
     res.status(201).json({ universe });
+    });
+  } catch (error) {
+    if (stagingPath) await rm(stagingPath, { recursive: true, force: true }).catch(() => undefined);
+    sendError(res, error);
+  }
+});
+
+app.get("/api/worlds/:worldId/forkable-chapters", async (req, res) => {
+  try {
+    const parentId = worldIdOf(req.params.worldId); assertInsideWorld(parentId);
+    if (!(await readUniverse(parentId))) return void res.status(409).json({ error: "只能列出故事宇宙中的可分叉章节。" });
+    const runs = (await listRuns(parentId)).filter(run => run.kind === "chapter" && run.status === "completed" && run.outputDir && run.chapterPath);
+    const root = path.resolve(".output", parentId) + path.sep;
+    const chapters: Array<{ id: string; title: string; createdAt: string }> = [];
+    for (const run of runs) {
+      const outputDir = path.resolve(run.outputDir!);
+      const chapterPath = path.resolve(run.chapterPath!);
+      if (!outputDir.startsWith(root) || !chapterPath.startsWith(outputDir + path.sep)) continue;
+      try {
+        const state = validateStoryState(JSON.parse(await readFile(path.join(outputDir, "08-state-update.json"), "utf8")));
+        if (state.worldId !== parentId) continue;
+        const chapter = await readFile(chapterPath, "utf8");
+        const title = chapter.split("\n").map(line => line.trim()).find(Boolean) || "未命名章节";
+        chapters.push({ id: run.id, title: title.slice(0, 120), createdAt: run.createdAt });
+      } catch { /* 不具备可恢复状态快照的旧章节不作为分叉入口。 */ }
+    }
+    chapters.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    res.json({ chapters });
   } catch (error) { sendError(res, error); }
 });
 
 app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
+  let createdUniverseId: string | null = null;
+  let forkStagingPath: string | null = null;
+  let release: (() => void) | null = null;
   try {
+    const lockId = worldIdOf(req.params.worldId);
+    await serializeWorld(lockId, async () => {
     const parentId = worldIdOf(req.params.worldId); assertInsideWorld(parentId);
+    release = acquireWorldMutation(parentId);
+    if (!release) return void res.status(409).json({ error: "当前宇宙正在执行创建、分叉或归档操作，请稍后重试。" });
     const parent = await readUniverse(parentId);
     if (!parent) return void res.status(409).json({ error: "只能从已有故事宇宙创建分叉。" });
+    if (parent.archivedAt) return void res.status(409).json({ error: "已归档的故事宇宙不能继续分叉，请先恢复。" });
     const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
     const chapterRunId = recordId(req.body?.chapterRunId);
     if (!name || name.length > 80) return void res.status(400).json({ error: "分支名称必填，且不能超过 80 个字符。" });
@@ -320,43 +438,45 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     const statePath = path.join(forkOutputDir, "08-state-update.json");
     let state: StoryState;
     try {
-      const parsed = JSON.parse(await readFile(statePath, "utf8")) as StoryState;
+      const parsed = validateStoryState(JSON.parse(await readFile(statePath, "utf8")));
+      if (parsed.worldId !== parentId) throw new Error("Story State snapshot belongs to another universe.");
       state = parsed;
     } catch {
       return void res.status(409).json({ error: "该章节缺少完整的 Story State 快照，无法安全恢复历史时点。请从更新的、具备状态快照的章节分叉。" });
     }
     const arcSnapshot = await readFile(path.join(forkOutputDir, "00-story-arc.md"), "utf8").catch(() => "");
     const id = "u-" + randomUUID().replace(/-/g, "").slice(0, 16);
+    createdUniverseId = id;
     const targetDir = worldDir(id);
-    await mkdir(targetDir, { recursive: true });
+    const stagingDir = path.join(path.resolve("worlds"), ".staging-" + id);
+    forkStagingPath = stagingDir;
+    await mkdir(stagingDir, { recursive: true });
     const parentDir = worldDir(parentId);
-    await cp(parentDir, targetDir, {
+    await cp(parentDir, stagingDir, {
       recursive: true,
       filter: source => {
-        const relative = path.relative(parentDir, source).split(path.sep);
-        if (!relative.length || relative[0] === "") return true;
-        const first = relative[0];
-        if (!first) return true;
-        return !["story.db", "story-state.json", "story-arc.md", "story-plan.json", ".output", "universes"].includes(first);
+        return shouldCopyUniverseAsset(path.relative(parentDir, source));
       }
     });
-    const novelDbPath = path.join(targetDir, "novel.db");
-    if (existsSync(novelDbPath)) {
-      const db = new DatabaseSync(novelDbPath);
-      try { db.prepare("UPDATE world_meta SET value=? WHERE key='world_id'").run(id); }
-      finally { db.close(); }
-    }
+    rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
+    restrictKnowledgeDatabaseToEntry(path.join(stagingDir, "novel.db"), id, parent.entryChapter);
     const universe: StoryUniverse = {
       id, sourceWorldId: parent.sourceWorldId, name, type: parent.type,
       entryChapter: parent.entryChapter, brief: parent.brief,
       parentUniverseId: parent.id, forkPoint: forkRun.id,
       createdAt: new Date().toISOString()
     };
-    await writeFile(path.join(targetDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
+    await writeFile(path.join(stagingDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
+    await writeFile(path.join(stagingDir, "source-canon.json"), JSON.stringify({ sourceWorldId: parent.sourceWorldId, readOnly: true }, null, 2) + "\n", "utf8");
+    const parentCanonChapters = await readCanonChapters(parent.sourceWorldId);
+    const parentEntryIndex = parentCanonChapters.findIndex(chapter => chapter.title === parent.entryChapter);
+    if (parentEntryIndex < 0) throw new Error("父宇宙的原文起点已无法在共享章节目录中定位，拒绝创建可能泄漏未来剧情的分支。");
+    await writeUniverseLibrarySnapshot(parent.sourceWorldId, stagingDir, id, parentEntryIndex);
+
     const forkState = rebaseStoryState(state, parentId, id);
-    await writeFile(path.join(targetDir, "story-state.json"), JSON.stringify(forkState, null, 2) + "\n", "utf8");
-    await loadStoryState(path.join(targetDir, "story-state.json"), id);
-    if (arcSnapshot) await writeFile(path.join(targetDir, "story-arc.md"), arcSnapshot, "utf8");
+    await writeFile(path.join(stagingDir, "story-state.json"), JSON.stringify(forkState, null, 2) + "\n", "utf8");
+    await loadStoryState(path.join(stagingDir, "story-state.json"), id);
+    if (arcSnapshot) await writeFile(path.join(stagingDir, "story-arc.md"), arcSnapshot, "utf8");
 
     // 复制分叉点及其之前的已完成章节产物和运行索引，重写所有路径指向子宇宙。
     const orderedHistory = runs.filter(run => run.kind === "chapter" && run.status === "completed")
@@ -379,8 +499,23 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
       const forkedRun = remapForkedRun(historicalRun, id, outputMap);
       if (forkedRun) await saveRun(forkedRun);
     }
+    await rename(stagingDir, targetDir);
     res.status(201).json({ universe, forkedAt: forkRun.id });
-  } catch (error) { sendError(res, error); }
+    });
+  } catch (error) {
+    // Failed fork must not leave a half-visible universe or orphaned copied chapters.
+    const failedId = createdUniverseId ?? "";
+    if (failedId && /^u-[a-f0-9]{16}$/.test(failedId)) {
+      await Promise.all([
+        rm(worldDir(failedId), { recursive: true, force: true }),
+        rm(path.resolve(".output", failedId), { recursive: true, force: true }),
+        rm(path.join(path.resolve("worlds"), ".staging-" + failedId), { recursive: true, force: true })
+      ]).catch(() => undefined);
+    } else if (forkStagingPath) {
+      await rm(forkStagingPath, { recursive: true, force: true }).catch(() => undefined);
+    }
+    sendError(res, error);
+  } finally { release?.(); }
 });
 
 // ── 当前滚动式多章节 Story Arc ─────────────────────────────
@@ -585,9 +720,12 @@ app.get("/api/runs/:runId", async (req, res) => {
 // ── 一键续写下一章 ────────────────────────────────────────────
 app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
   try {
+    const lockId = worldIdOf(req.params.worldId);
+    await serializeWorld(lockId, async () => {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id); const dir = worldDir(id);
     try { await readFile(path.join(dir, "world-bible.md"), "utf8"); } catch { return void res.status(409).json({ error: "缺少 worlds/" + id + "/world-bible.md。请先建立世界设定；这是续写不可自动猜测的基础资料。" }); }
-    try { await readFile(path.join(dir, "library", "index.json"), "utf8"); } catch { return void res.status(409).json({ error: "原著资料库尚未建立。请先导入原著并执行 ingest；其余分析资料可以在续写时按需补齐。" }); }
+    const canonWorldId = (await readUniverse(id))?.sourceWorldId ?? id;
+    try { await readFile(path.join(worldDir(canonWorldId), "library", "index.json"), "utf8"); } catch { return void res.status(409).json({ error: "原著资料库尚未建立。请先导入原著并执行 ingest；其余分析资料可以在续写时按需补齐。" }); }
     const runs = await listRuns(id);
     const active = runs.find(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"));
     if (active) return void res.status(409).json({ error: "已有章节正在生成。", run: active });
@@ -608,6 +746,7 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
     }
 
     const universe = await readUniverse(id);
+    if (universe?.archivedAt) return void res.status(409).json({ error: "当前故事宇宙已归档，请先恢复后再生成章节。" });
     const universeEntryPath = universe ? path.join(dir, "universe-entry.md") : undefined;
     const now = new Date().toISOString();
     const runId = randomUUID(); const outputDir = path.resolve(".output", id, "chapter-" + runId);
@@ -622,6 +761,7 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
       "--import", "tsx", "src/cli.ts", "write", "--world", id,
       "--mode", mode,
       ...(previousChapterPath ? ["--source", previousChapterPath] : universeEntryPath ? ["--source", universeEntryPath] : []),
+      ...(!previousChapterPath && universe ? ["--context", path.join(dir, "universe-origin-context.md")] : []),
       "--brief", previousChapterPath
         ? "紧接上一章的结尾继续写下一章。保持时间、地点、人物位置、人物认知、情绪和未完成行动的连续性；不要重述上一章，不要无故跳线或重启冲突。若有充分的叙事理由，可以自然转场或切换视角，但必须让因果和时间线成立。"
         : universe
@@ -682,6 +822,7 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
       });
     });
     res.status(202).json({ run });
+    });
   } catch (error) { sendError(res, error); }
 });
 app.get("/api/runs/:runId/preview", async (req, res) => {
