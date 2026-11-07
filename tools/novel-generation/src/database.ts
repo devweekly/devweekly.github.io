@@ -360,10 +360,13 @@ export function listNovelCharacterChapterStates(worldDir:string,worldId:string,o
   return rows.map(row=>JSON.parse(row.payload_json) as NovelCharacterChapterStateRow);
  }finally{db.close();}
 }
-export function listNovelCharacterChapterStateHashes(worldDir:string,worldId:string):Map<string,string>{
+export function listNovelCharacterChapterStateHashes(worldDir:string,worldId:string):Map<string,{sourceHash:string;contextHash:string}>{
  const db=openKnowledgeDatabase(worldDir,worldId);try{
-  const rows=db.prepare("SELECT character_id,chapter_id,source_hash FROM novel_character_chapter_states").all() as Array<{character_id:string;chapter_id:string;source_hash:string}>;
-  return new Map(rows.map(row=>[row.character_id+"\\0"+row.chapter_id,row.source_hash]));
+  const rows=db.prepare("SELECT character_id,chapter_id,source_hash,payload_json FROM novel_character_chapter_states").all() as Array<{character_id:string;chapter_id:string;source_hash:string;payload_json:string}>;
+  return new Map(rows.map(row=>{
+   let contextHash="";try{contextHash=String((JSON.parse(row.payload_json) as {contextHash?:string}).contextHash??"");}catch{/* legacy payload is reanalyzed once */}
+   return [row.character_id+"\\0"+row.chapter_id,{sourceHash:row.source_hash,contextHash}];
+  }));
  }finally{db.close();}
 }
 
