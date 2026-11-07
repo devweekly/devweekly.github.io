@@ -89,6 +89,7 @@ async function listWorlds(): Promise<Array<{ id: string; title: string; hasStory
   const result: Array<{ id: string; title: string; hasStoryPlan: boolean }> = [];
   for (const id of entries.filter(validId)) {
     try {
+      if (await readUniverse(id)) continue; // 宇宙是原文项目的分支，不重复列为独立原文项目。
       const bible = await readFile(path.join(root, id, "world-bible.md"), "utf8");
       let plan;
       try {
