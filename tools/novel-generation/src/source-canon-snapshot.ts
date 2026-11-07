@@ -99,7 +99,8 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
       // Reuse completed offline analysis only when every cited chapter is within
       // this branch's boundary. Future-touching aggregates are dropped whole.
       const chapterRows = db.prepare("SELECT chapter_id,title FROM novel_chapters WHERE ordinal<=?").all(cutoff) as Array<{chapter_id:string;title:string}>;
-      const allowedKeys = new Set(chapterRows.flatMap(row => [row.chapter_id, row.title]));
+      // Only immutable chapter IDs are admissible provenance. Titles are display labels and may repeat across volumes.
+      const allowedKeys = new Set(chapterRows.map(row => row.chapter_id));
       if (has("story_analysis") && columns("story_analysis").has("payload_json")) {
         const row = db.prepare("SELECT singleton,payload_json FROM story_analysis WHERE singleton=1").get() as {singleton:number;payload_json:string} | undefined;
         if (row) {
@@ -115,7 +116,7 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
             const boundedRefs = (value: unknown): boolean => Array.isArray(value) && value.length > 0 && value.every(ref => {
               if (!ref || typeof ref !== "object" || Array.isArray(ref)) return false;
               const item = ref as Record<string, unknown>;
-              const key = String(item.chapterId ?? item.chunkId ?? item.chapter ?? "");
+              const key = String(item.chapterId ?? item.chunkId ?? "");
               return Boolean(key && allowedKeys.has(key));
             });
             const safeCoreObservations = boundedItems(source.storyCoreObservations);
@@ -125,7 +126,7 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
             const bounded: Record<string, unknown> = {
               ...source,
               worldId,
-              sourceHash: createHash("sha256").update(JSON.stringify({ sourceHash: source.sourceHash, entryChapter, cutoff })).digest("hex"),
+              sourceHash: createHash("sha256").update(JSON.stringify({ sourceHash: source.sourceHash, entryChapter, entryChapterId: chapter.chapter_id, cutoff })).digest("hex"),
               asOfEntryChapter: entryChapter,
               asOfEntryChapterId: chapter.chapter_id,
               asOfEntryOrdinal: cutoff,
@@ -136,7 +137,7 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
               developmentPossibilities: boundedItems(source.developmentPossibilities),
               relations: boundedItems(source.relations),
               storyCoreObservations: safeCoreObservations,
-              ...(safeCoreObservations.length ? { storyCore: { observations: safeCoreObservations } } : {}),
+              storyCore: { observations: safeCoreObservations },
               macguffins: boundedItems(source.macguffins),
               beats: Array.isArray(source.beats) ? source.beats.filter(item => {
                 if (!item || typeof item !== "object" || Array.isArray(item)) return false;
@@ -224,7 +225,9 @@ export function importBoundedStoryAnalysisSnapshot(
     const clues = Array.isArray(bounded.foreshadowings) ? bounded.foreshadowings.length : 0;
     const relations = Array.isArray(bounded.relations) ? bounded.relations.length : 0;
     const nodes = Array.isArray((bounded.storyGraph as {nodes?:unknown[]}|undefined)?.nodes) ? ((bounded.storyGraph as {nodes:unknown[]}).nodes.length) : 0;
-    if (!(characters || threads || clues || relations || nodes || Object.keys((bounded.storyCore as object) ?? {}).length)) return false;
+    const coreObservations = Array.isArray((bounded.storyCore as {observations?:unknown[]}|undefined)?.observations)
+      ? (bounded.storyCore as {observations:unknown[]}).observations.length : 0;
+    if (!(characters || threads || clues || relations || nodes || coreObservations)) return false;
 
     target.exec("BEGIN IMMEDIATE");
     try {
