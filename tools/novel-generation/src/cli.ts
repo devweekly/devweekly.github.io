@@ -5,7 +5,7 @@ import { generateStory, type GenerationMode } from "./generate.js";
 import { ingestFiles, listTextFiles, searchLibrary } from "./library.js";
 import { writeChapter } from "./workflow.js";
 import { loadStoryState } from "./story-state.js";
-import { buildStoryStateGraph, filterStoryStateGraph } from "./story-state-graph.js";
+import { buildStoryStateGraph, filterGraph, filterStoryStateGraph } from "./story-state-graph.js";
 import { loadRunStoryState } from "./stage-cache.js";
 import { analyzeLibrary } from "./analysis.js";
 import { analyzeStoryCorpus } from "./story-analysis.js";
@@ -304,25 +304,10 @@ async function main(): Promise<void> {
       if (!snapshot || !graph || snapshot.analysisVersion !== 6 || snapshot.complete !== true) {
         throw new Error("A complete v6 original story graph is not available. Finish all analyze-story v6 batches, then run --delta --merge-only before querying the graph.");
       }
-      const query = (arg("--query") ?? "").trim().toLocaleLowerCase();
-      const matches = (value: unknown): boolean => !query || (JSON.stringify(value ?? null) ?? "").toLocaleLowerCase().includes(query);
-      const directMatches = query ? graph.nodes.filter(matches) : graph.nodes;
-      const seeds = new Set(directMatches.map(node => node.id));
-      const selected = new Set(seeds);
-      if (query) for (const edge of graph.edges) {
-        if (seeds.has(edge.from)) selected.add(edge.to);
-        if (seeds.has(edge.to)) selected.add(edge.from);
-      }
-      const nodes = graph.nodes.filter(node => selected.has(node.id)).slice(0, limit);
-      const nodeIds = new Set(nodes.map(node => node.id));
-      const candidateEdges = graph.edges.filter(edge => nodeIds.has(edge.from) && nodeIds.has(edge.to));
-      const edges = candidateEdges.slice(0, limit * 4);
+      const query = arg("--query") ?? "";
       console.log(JSON.stringify({
         worldId, analysisVersion: snapshot.analysisVersion, complete: snapshot.complete,
-        sourceHash: snapshot.sourceHash, totalNodes: graph.nodes.length, totalEdges: graph.edges.length,
-        matchedNodes: directMatches.length, returnedNodes: nodes.length, returnedEdges: edges.length,
-        truncated: nodes.length < graph.nodes.filter(node => selected.has(node.id)).length || edges.length < candidateEdges.length,
-        nodes, edges
+        sourceHash: snapshot.sourceHash, ...filterGraph(graph, query, limit)
       }, null, 2));
     }
     else throw new Error("--type must be overview, arcs, characters, threads, foreshadowings, beats, graph or export.");
