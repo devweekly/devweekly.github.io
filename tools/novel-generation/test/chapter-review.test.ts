@@ -69,6 +69,7 @@ test("必改规则排除措辞、节奏与偏好", () => {
   assert.match(prompt, /只判断一件事/);
   assert.match(prompt, /人物关系变化/);
   assert.match(prompt, /人物关系可以因新的互动而变化/);
+  assert.match(prompt, /同一时点出现互斥关系状态/);
   assert.match(prompt, /上限 3 条/);
   assert.match(prompt, /issues 必须是空数组/);
 });
