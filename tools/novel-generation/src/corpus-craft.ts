@@ -34,7 +34,7 @@ function parseJson(raw: string): unknown {
 }
 function asItems<T extends EvidenceItem>(value: unknown, source: string): T[] {
   if (!Array.isArray(value)) return [];
-  return value.filter((item): item is T => Boolean(item && typeof item === "object" && typeof (item as EvidenceItem).evidence === "string" && source.includes((item as EvidenceItem).evidence as string)));
+  return value.filter((item): item is T => Boolean(item && typeof item === "object" && typeof (item as EvidenceItem).evidence === "string" && ((item as EvidenceItem).evidence as string).trim().length >= 4 && source.includes((item as EvidenceItem).evidence as string))).slice(0, 24);
 }
 function validate(raw: unknown, unit: { chapterId: string; ordinal: number; title: string; text: string }, worldId: string, model: string): CorpusCraftChapter {
   if (!raw || typeof raw !== "object") throw new Error("Corpus craft response must be a JSON object.");
