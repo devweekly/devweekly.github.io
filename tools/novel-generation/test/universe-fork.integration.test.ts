@@ -84,7 +84,7 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
     const response = await fetch(`http://127.0.0.1:${address.port}/api/worlds/${parentId}/universes/fork`, {
       method: "POST",
       headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
-      body: JSON.stringify({ name: "北门之后的分支", chapterRunId: runId })
+      body: JSON.stringify({ name: "北门之后的分支", chapterRunId: runId, buildKnowledge: false })
     });
     const responseBody = await response.text();
     assert.equal(response.status, 201, responseBody);
@@ -135,7 +135,7 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
     const archivedForkResponse = await fetch(`http://127.0.0.1:${address.port}/api/worlds/${childId}/universes/fork`, {
       method: "POST",
       headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
-      body: JSON.stringify({ name: "不应创建", chapterRunId: runId })
+      body: JSON.stringify({ name: "不应创建", chapterRunId: runId, buildKnowledge: false })
     });
     assert.equal(archivedForkResponse.status, 409);
     const restoreResponse = await fetch(`http://127.0.0.1:${address.port}/api/worlds/${childId}/universe-archive`, {
@@ -162,7 +162,7 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
     const grandchildResponse = await fetch(`http://127.0.0.1:${address.port}/api/worlds/${childId}/universes/fork`, {
       method: "POST",
       headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
-      body: JSON.stringify({ name: "二次分支", chapterRunId: runId })
+      body: JSON.stringify({ name: "二次分支", chapterRunId: runId, buildKnowledge: false })
     });
     const grandchildBody = await grandchildResponse.text();
     assert.equal(grandchildResponse.status, 201, grandchildBody);
