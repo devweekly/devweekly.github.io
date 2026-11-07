@@ -446,8 +446,16 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
         if (!relative.length || relative[0] === "") return true;
         const first = relative[0];
         if (!first) return true;
-        if (["story.db", "story-state.json", "story-arc.md", "story-plan.json", ".output", "universes", "library", "vane-index"].includes(first)) return false;
+        if (["story.db", "story-state.json", "story-arc.md", "story-plan.json", ".output", "universes", "library", "vane-index", "analysis", "corpus-craft", "style-references", "style-reference-history"].includes(first)) return false;
         if (first === "universe.json") return false;
+        // Root-level derived summaries are whole-book products. Their timestamps or
+        // filenames do not prove that their contents stop at the selected entry.
+        // Until an as-of rebuild exists, do not copy them into a historical branch.
+        if (relative.length === 1 && [
+          "world-bible.md", "characters.md", "timeline.md", "fruit-worlds.md",
+          "yanfu-system.md", "style-profile.md", "story-analysis.md",
+          "character-profiles.md", "plot-summary.md", "foreshadowing.md"
+        ].includes(first)) return false;
         return true;
       }
     });
