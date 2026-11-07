@@ -16,7 +16,8 @@
     "package-review": "node --import tsx scripts/package-review.ts",
     "dev:web": "tsx src/server-main.ts",
     "start:web": "NODE_ENV=production node dist/server-main.js",
-    "compare-models": "node --import tsx scripts/compare-models.ts"
+    "compare-models": "node --import tsx scripts/compare-models.ts",
+    "benchmark-local-models": "node --import tsx scripts/benchmark-local-models.ts"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
