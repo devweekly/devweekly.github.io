@@ -282,7 +282,7 @@ app.patch("/api/worlds/:worldId/universe-archive", async (req, res) => {
     }
     const updated: StoryUniverse = { ...universe, ...(archive ? { archivedAt: new Date().toISOString() } : { archivedAt: undefined }) };
     if (!archive) delete updated.archivedAt;
-    await writeFile(path.join(worldDir(id), "universe.json"), JSON.stringify(updated, null, 2) + "\\n", "utf8");
+    await writeFile(path.join(worldDir(id), "universe.json"), JSON.stringify(updated, null, 2) + "\n", "utf8");
     res.json({ universe: updated });
   } catch (error) { sendError(res, error); }
 });
