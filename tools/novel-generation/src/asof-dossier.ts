@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rename, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rename, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { listNovelBeats, readStoryAnalysis, type StoryAnalysisSnapshot } from "./database.js";
 
@@ -21,6 +21,11 @@ function chapters(row: Record<string, unknown>): string {
 }
 function section(title: string, rows: Array<Record<string, unknown>>, render: (row: Record<string, unknown>) => string): string {
   return "## " + title + "\n\n" + (rows.length ? rows.map((row, index) => "### " + (value(row, "name") || value(row, "title") || value(row, "clue") || value(row, "focus") || (index + 1)) + "\n\n" + render(row)).join("\n\n") : "当前时点没有足够证据形成条目。");
+}
+
+async function directoryExists(path: string): Promise<boolean> {
+  try { return (await stat(path)).isDirectory(); }
+  catch { return false; }
 }
 
 /** Render a human-readable dossier only from this world's completed, bounded SQLite snapshot. */
@@ -147,10 +152,9 @@ export async function exportAsOfDossier(worldId: string, worldDir: string): Prom
       previousMoved = false;
       throw error;
     }
-    if (previousMoved) {
-      await rm(backup, { recursive: true, force: true });
-      previousMoved = false;
-    }
+    const published = previousMoved || await directoryExists(directory);
+    if (previousMoved) previousMoved = false;
+    if (published) await rm(backup, { recursive: true, force: true }).catch(() => undefined);
     return { files: Object.keys(files) };
   } finally {
     await rm(staging, { recursive: true, force: true });
