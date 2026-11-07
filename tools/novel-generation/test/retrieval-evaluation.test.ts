@@ -14,3 +14,10 @@ test("retrieval metrics return zero for misses and reject empty relevance labels
   assert.deepEqual(result, { recallAt5: 0, mrrAt10: 0, ndcgAt10: 0 });
   assert.throws(() => retrievalMetrics([], []), /at least one relevant/);
 });
+
+test("duplicate document IDs do not inflate retrieval ranking metrics", () => {
+  const result = retrievalMetrics(["relevant-a", "relevant-a", "relevant-b"], ["relevant-a", "relevant-b"]);
+  assert.equal(result.recallAt5, 1);
+  assert.equal(result.mrrAt10, 1);
+  assert.equal(result.ndcgAt10, 1);
+});
