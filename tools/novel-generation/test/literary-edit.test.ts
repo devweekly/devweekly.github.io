@@ -1,7 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, readerExperiencePrompt, LIVING_VOICE_RULES, postReviewLiteraryCheckPrompt, shouldRunAntiAiEdit } from "../src/literary-edit.js";
+import { antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, readerExperiencePrompt, CREATIVE_FREEDOM_RULES, LIVING_VOICE_RULES, postReviewLiteraryCheckPrompt, shouldRunAntiAiEdit } from "../src/literary-edit.js";
 import { STAGE_KEYS } from "../src/task-profiles.js";
+
+test("creative freedom prevents scene checklists and padding", () => {
+  assert.match(CREATIVE_FREEDOM_RULES, /不是每个场景都必须推动主线/);
+  assert.match(CREATIVE_FREEDOM_RULES, /允许情节绕路/);
+  assert.match(CREATIVE_FREEDOM_RULES, /人物不是状态字段的执行器/);
+  assert.match(CREATIVE_FREEDOM_RULES, /篇幅是预期，不是填充任务/);
+});
 
 test("anti-ai diagnosis uses concrete reading evidence, not AI detection", () => {
   const prompt = antiAiDiagnosticPrompt({
