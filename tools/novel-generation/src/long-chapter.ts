@@ -275,9 +275,6 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   const draft = sceneTexts.join("\n\n---\n\n");
   await saveStage(input.outputDir, "03-draft.md", draft);
 
-  const draft = sceneTexts.join("\n\n---\n\n");
-  await saveStage(input.outputDir, "03-draft.md", draft);
-
   const polished: string[] = [];
   for (let index = 0; index < sceneTexts.length; index++) {
     const text = await cachedCall("polish-" + (index + 1), "05-polish-" + String(index + 1).padStart(2, "0") + ".md", "voice", [
