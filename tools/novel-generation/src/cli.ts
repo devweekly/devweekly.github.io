@@ -62,6 +62,8 @@ import { buildStyleRegressionPrompt } from "./style-regression.js";
 import { buildStyleTrendPrompt, collectStyleRegressionReports } from "./style-trend.js";
 import { addStyleReference, archiveStyleReference, listStyleReferences, listStyleReferenceHistory } from "./style-references.js";
 import { runRoleplaySandbox } from "./roleplay-sandbox.js";
+import { analyzeCorpusCraft, buildCorpusCraftContext } from "./corpus-craft.js";
+import { rebuildVaneIndex, searchVane } from "./vane-retrieval.js";
 
 /** `--model --evidence-review` 这种漏值不该把下一个开关当成取值。 */
 function arg(name: string): string | undefined {
@@ -107,6 +109,8 @@ function usage(): never {
     "  npm run dev -- analyze-arcs --world conghuoniao [--model model] [--force]",
     "  npm run dev -- analyze-profiles --world conghuoniao [--top 24] [--names 李阎,查小刀] [--model model] [--force]",
     "  npm run dev -- analyze-character-states --world conghuoniao [--limit 20] [--shard 0/4] [--names 李阎,查小刀] [--model model] [--force]",
+    "  npm run dev -- analyze-corpus-craft --world conghuoniao [--limit 20] [--shard 0/4] [--model model] [--timeout-ms 180000] [--force]",
+    "  npm run dev -- vane-index --world conghuoniao",
     "  npm run dev -- story-kb --world conghuoniao [--type overview|arcs|characters|character-states|threads|foreshadowings|beats|graph|export] [--query 关键词] [--status 状态] [--from 1] [--to 100] [--limit 50]",
     "  npm run dev -- story-state --world conghuoniao [--type overview|characters|events|threads|relationships|foreshadowings|macguffins|graph] [--query 关键词] [--limit 500]",
     "  npm run dev -- analyze-world --world conghuoniao --phase prepare|status|collect [--source original.txt] [--model model] [--timeout-ms 90000] [--evidence-review] [--evidence-window 2]",
@@ -156,7 +160,7 @@ const COMMANDS = new Set([
   "generate", "write", "write-long", "regress", "ingest", "search", "analyze", "analyze-story",
   "index-story", "story-kb", "story-state", "analyze-arcs", "analyze-profiles", "analyze-character-states",
   "analyze-world", "models", "check-runtime", "db-status", "verify-world", "plan-story", "distill-style",
-  "style-regress", "roleplay-sandbox", "style-reference", "style-trend"
+  "style-regress", "roleplay-sandbox", "style-reference", "style-trend", "analyze-corpus-craft", "vane-index"
 ]);
 
 async function main(): Promise<void> {
@@ -295,6 +299,37 @@ async function main(): Promise<void> {
       failed: result.failed,
       skipped: result.skipped
     }, null, 2));
+    return;
+  }
+
+  if (command === "analyze-corpus-craft") {
+    const shardArg = arg("--shard");
+    let shard: { index: number; count: number } | undefined;
+    if (shardArg) {
+      const match = shardArg.match(/^(\\d+)\\/(\\d+)$/);
+      if (!match) throw new Error("--shard must look like 0/4.");
+      shard = { index: Number(match[1]), count: Number(match[2]) };
+      if (shard.count < 1 || shard.index >= shard.count) throw new Error("--shard index must be less than shard count.");
+    }
+    const limitArg = arg("--limit");
+    const limit = limitArg === undefined ? undefined : Number(limitArg);
+    if (limit !== undefined && (!Number.isInteger(limit) || limit < 1)) throw new Error("--limit must be a positive integer.");
+    const timeoutMs = Number(arg("--timeout-ms") ?? DEFAULT_AGENT_TIMEOUT_MS);
+    if (!Number.isInteger(timeoutMs) || timeoutMs < MIN_WRITE_TIMEOUT_MS || timeoutMs > MAX_AGENT_TIMEOUT_MS) {
+      throw new Error("--timeout-ms must be between " + MIN_WRITE_TIMEOUT_MS + " and " + MAX_AGENT_TIMEOUT_MS + ".");
+    }
+    const result = await analyzeCorpusCraft(worldId, {
+      worldDir: resolve("worlds", worldId), model: arg("--model"), timeoutMs,
+      limit, shard, force: process.argv.includes("--force")
+    });
+    console.log(JSON.stringify(result, null, 2));
+    if (result.failed) process.exitCode = 1;
+    return;
+  }
+
+  if (command === "vane-index") {
+    const result = await rebuildVaneIndex(worldId, resolve("worlds", worldId));
+    console.log(JSON.stringify(result, null, 2));
     return;
   }
 
@@ -845,7 +880,13 @@ async function main(): Promise<void> {
       ...state.characters.slice(0, QUERY_CONTEXT_CHARACTERS).map(character => character.name)
     ].join("\n");
     const retrieved = await searchLibrary(libraryDir, retrievalQuery, retrievalLimit);
-    const storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), retrievalQuery);
+    let storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), retrievalQuery);
+    const corpusCraftContext = await buildCorpusCraftContext(worldId, retrievalQuery);
+    if (corpusCraftContext) storyAnalysisContext += "\n\n" + corpusCraftContext;
+    try {
+      const vaneHits = await searchVane(worldId, retrievalQuery, Math.min(retrievalLimit, 6));
+      if (vaneHits.length) storyAnalysisContext += "\n\n## Vane 原文与分析素材检索\n" + vaneHits.map((hit, index) => "["+(index+1)+"] "+hit.id+" (score "+hit.score.toFixed(3)+")\n"+hit.text).join("\n\n");
+    } catch (error) { console.error("[write] Vane 检索不可用，继续使用 SQLite/BM25：" + String(error)); }
     const writingBrief = buildWritingBrief({ worldDir: resolve("worlds", worldId), worldId, query: retrievalQuery });
     console.error("[write] 注入：事实包 " + writingBrief.length + " 字 / 分析参考 " + storyAnalysisContext.length + " 字 / 检索片段 " + retrieved.length + " 条");
     const annotationsByChunk = readAnnotationsByChunkIds(resolve("worlds", worldId), worldId, retrieved.map(hit => hit.id)) as Map<string, { entities?: unknown[]; events?: unknown[]; relations?: unknown[] }>;
@@ -898,7 +939,13 @@ async function main(): Promise<void> {
         .map(thread => thread.title),
       ...longState.characters.slice(0, QUERY_CONTEXT_CHARACTERS).map(character => character.name)
     ].join("\n");
-    const storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), storyAnalysisQuery);
+    let storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(resolve("worlds", worldId), worldId), storyAnalysisQuery);
+    const corpusCraftContext = await buildCorpusCraftContext(worldId, storyAnalysisQuery);
+    if (corpusCraftContext) storyAnalysisContext += "\n\n" + corpusCraftContext;
+    try {
+      const vaneHits = await searchVane(worldId, storyAnalysisQuery, 6);
+      if (vaneHits.length) storyAnalysisContext += "\n\n## Vane 原文与分析素材检索\n" + vaneHits.map((hit, index) => "["+(index+1)+"] "+hit.id+" (score "+hit.score.toFixed(3)+")\n"+hit.text).join("\n\n");
+    } catch (error) { console.error("[write-long] Vane 检索不可用，继续使用 SQLite/BM25：" + String(error)); }
     const writingBrief = buildWritingBrief({ worldDir: resolve("worlds", worldId), worldId, query: storyAnalysisQuery });
     console.error("[write-long] 注入：事实包 " + writingBrief.length + " 字 / 分析参考 " + storyAnalysisContext.length + " 字");
     const retrievalLimit = Number(arg("--retrieval-limit") ?? WRITE_LONG_RETRIEVAL_LIMIT);
