@@ -28,7 +28,7 @@ CLI 命令（均经 `npm run dev --`）：
 | `story-state --world <id> [--type overview/characters/events/threads/relationships/foreshadowings/macguffins/graph] [--query q]` | 只读查看续写 Story State、动态关系/伏笔/MacGuffin 记录及派生图谱 |
 | `write-long --brief "" [--scenes n] [--max-words n] [--strict-model] [--no-apply-state] [--reader-experience] [--resume-dir dir]` | 万字长章节逐场生成；Reader 体验报告默认关闭 |
 | `regress --world <id> --chapter n` | 单章盲写回归对照 |
-| `write --brief "" [--mode continuation/derivative] [--source f] [--context f] [--model m] [--max-words n] [--strict-model] [--no-apply-state] [--resume-dir dir]` | 多阶段章节写作、自动复查与有限修复 |
+| `write --brief "" [--mode continuation/derivative] [--source f] [--context f] [--model m] [--max-words n] [--strict-model] [--no-apply-state] [--reader-experience] [--resume-dir dir]` | 多阶段章节写作、自动复查与有限修复；Reader 默认关闭 |
 | `generate --brief "" [--mode ...] [--out f]` | 单次成稿 |
 
 `--world` 由 `safeWorldId` 校验 `^[a-z0-9][a-z0-9-]*$`；`continuation` 模式必须带 `--source`。
