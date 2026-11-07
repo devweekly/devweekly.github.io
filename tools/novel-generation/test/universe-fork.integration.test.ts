@@ -100,6 +100,25 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
     assert.equal(childSnapshot.worldId, childId);
     assert.equal(childSnapshot.currentPosition, state.currentPosition);
 
+    const archiveResponse = await fetch(`http://127.0.0.1:${address.port}/api/worlds/${childId}/universe-archive`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
+      body: JSON.stringify({ archived: true })
+    });
+    assert.equal(archiveResponse.status, 200, await archiveResponse.text());
+    const archivedForkResponse = await fetch(`http://127.0.0.1:${address.port}/api/worlds/${childId}/universes/fork`, {
+      method: "POST",
+      headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
+      body: JSON.stringify({ name: "不应创建", chapterRunId: runId })
+    });
+    assert.equal(archivedForkResponse.status, 409);
+    const restoreResponse = await fetch(`http://127.0.0.1:${address.port}/api/worlds/${childId}/universe-archive`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
+      body: JSON.stringify({ archived: false })
+    });
+    assert.equal(restoreResponse.status, 200, await restoreResponse.text());
+
     const childRunResponse = await fetch(`http://127.0.0.1:${address.port}/api/worlds/${childId}/forkable-chapters`, {
       headers: { host: `127.0.0.1:${address.port}` }
     });
