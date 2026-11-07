@@ -220,7 +220,7 @@ async function main(): Promise<void> {
       annotationFailures = (store.failures ?? []).length;
     } catch { /* report missing annotation store below */ }
     const v6Complete = Boolean(snapshot && snapshot.analysisVersion === 6 && snapshot.complete === true && snapshot.storyGraph);
-    const annotationsComplete = chunks > 0 && reviewedAnnotations === chunks && annotationFailures === 0;
+    const annotationsComplete = chunks > 0 && reviewedAnnotations === chunks && status.annotations === reviewedAnnotations && annotationFailures === 0;
     console.log(JSON.stringify({
       worldId, database: status,
       originalStoryGraph: {
