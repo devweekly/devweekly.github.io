@@ -216,6 +216,57 @@ function rebindKnowledgeDatabase(databasePath: string, worldId: string): void {
   } finally { db.close(); }
 }
 
+/**
+ * Build a conservative knowledge snapshot for a universe entry point.
+ * Full-book aggregates are deliberately discarded: their summaries/profiles may
+ * encode events that occur after the selected chapter even when their row has
+ * an early first_chapter value.
+ */
+function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: string, entryChapter: string): number {
+  if (!existsSync(databasePath)) return 0;
+  const db = new DatabaseSync(databasePath);
+  try {
+    const chapter = db.prepare("SELECT ordinal FROM novel_chapters WHERE title=? ORDER BY ordinal LIMIT 1").get(entryChapter) as { ordinal: number } | undefined;
+    if (!chapter) {
+      // Fail closed. A database without a resolvable chapter ordinal cannot be
+      // proven safe for a historical branch.
+      db.close();
+      rmSyncIfExists(databasePath);
+      return 0;
+    }
+    const cutoff = Number(chapter.ordinal);
+    const tables = new Set((db.prepare("SELECT name FROM sqlite_master WHERE type='table'").all() as Array<{name:string}>).map(row=>row.name));
+    const has = (name:string) => tables.has(name);
+    db.exec("BEGIN IMMEDIATE");
+    try {
+      // These tables are whole-book model summaries. Do not try to truncate
+      // prose summaries by ordinal; remove them until an as-of analyzer exists.
+      for (const table of ["story_analysis","novel_characters","novel_character_profiles","novel_plot_threads","novel_foreshadowings","novel_arcs","entities","entity_mentions","annotations"]) {
+        if (has(table)) db.exec("DELETE FROM \"" + table + "\"");
+      }
+      if (has("novel_beats")) db.prepare("DELETE FROM novel_beats WHERE chapter_ordinal IS NULL OR chapter_ordinal>?").run(cutoff);
+      if (has("novel_relations")) db.prepare("DELETE FROM novel_relations WHERE chapter_ordinal IS NULL OR chapter_ordinal>?").run(cutoff);
+      if (has("novel_character_chapter_states")) db.prepare("DELETE FROM novel_character_chapter_states WHERE chapter_ordinal>?").run(cutoff);
+      if (has("novel_chapters")) db.prepare("DELETE FROM novel_chapters WHERE ordinal>?").run(cutoff);
+      if (has("novel_mentions")) {
+        db.prepare("DELETE FROM novel_mentions WHERE chapter_id NOT IN (SELECT chapter_id FROM novel_chapters)").run();
+      }
+      const meta = has("world_meta");
+      if (meta) db.prepare("UPDATE world_meta SET value=? WHERE key='world_id'").run(worldId);
+      db.exec("COMMIT");
+    } catch (error) {
+      db.exec("ROLLBACK");
+      throw error;
+    }
+    return cutoff;
+  } finally { db.close(); }
+}
+
+/** Synchronous best-effort cleanup for an unsafe copied database. */
+function rmSyncIfExists(filePath: string): void {
+  try { require("node:fs").rmSync(filePath, { force: true }); } catch { /* missing or unavailable */ }
+}
+
 async function readUniverse(id: string): Promise<StoryUniverse | null> {
   try {
     return JSON.parse(await readFile(path.join(worldDir(id), "universe.json"), "utf8")) as StoryUniverse;
@@ -349,6 +400,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     });
     // novel.db 是原著分析只读快照的初期副本；重置其世界身份，防止数据库身份校验误认为属于源项目。
     rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
+    const entryOrdinal = restrictKnowledgeDatabaseToEntry(path.join(stagingDir, "novel.db"), id, entryChapter);
     const universe: StoryUniverse = {
       id, sourceWorldId: rootSourceId, name, type, entryChapter, brief,
       createdAt: new Date().toISOString()
@@ -357,6 +409,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     await writeFile(path.join(stagingDir, "source-canon.json"), JSON.stringify({ sourceWorldId: rootSourceId, readOnly: true }, null, 2) + "\n", "utf8");
     await writeFile(path.join(stagingDir, "universe-entry.md"), selectedChapter.text + "\n", "utf8");
     await writeFile(path.join(stagingDir, "universe-origin-context.md"), originContext + "\n", "utf8");
+    await writeFile(path.join(stagingDir, "source-canon-as-of.json"), JSON.stringify({ sourceWorldId: rootSourceId, entryChapter, entryOrdinal, policy: "chapter-scoped-evidence-only", fullBookAggregates: "excluded" }, null, 2) + "\n", "utf8");
     await rename(stagingDir, targetDir);
     res.status(201).json({ universe });
     });
