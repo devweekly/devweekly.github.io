@@ -577,6 +577,29 @@ worlds/<world>/
 npm run dev -- style-trend --world conghuoniao --limit 30
 ```
 
+逐章状态快照与全量 annotations 是两个独立任务：
+
+```bash
+# 原著逐章人物状态；默认处理所有有明确人物候选的章节，逐章写入 SQLite，可中断后重复运行
+npm run dev -- analyze-character-states --world conghuoniao
+
+# 分片并行执行（不同进程使用不同 shard）
+npm run dev -- analyze-character-states --world conghuoniao --shard 0/4
+npm run dev -- analyze-character-states --world conghuoniao --shard 1/4
+
+# 小范围试跑或指定人物
+npm run dev -- analyze-character-states --world conghuoniao --limit 5
+npm run dev -- analyze-character-states --world conghuoniao --names 李阎,查小刀
+
+# 查询人物逐章状态
+npm run dev -- story-kb --world conghuoniao --type character-states --query 李阎 --limit 500
+
+# 全量逐片段 annotations；每批落盘，失败记录保留，重新执行会继续未完成项并在无进展时停止
+npm run dev -- analyze --world conghuoniao --all --batch-size 20
+```
+
+逐章状态只记录原文支持的观察；证据必须是本章原文的逐字连续片段。没有证据的模型输出不会进入数据库。正文变化后按章节正文哈希重新分析。人物状态不是角色设定的强约束。
+
 该命令聚合最近最多 30 份已完成的章节回归报告和专项回归报告，输出到 `.output/<world>/style-regression-trend/`。它只总结持续特征、变化迹象和场景差异，不读取章节草稿、不打分、不设置门槛，也不会触发正文修改。Workbench 的“文风样本”页面可添加、更新和归档认可样本，并查看历史版本；更新会先保存旧版本。历史版本不会进入正式写作回归上下文。
 
 ### 人物互动推演沙盘（作者主动调用）
