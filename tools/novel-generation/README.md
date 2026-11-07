@@ -577,7 +577,7 @@ worlds/<world>/
 npm run dev -- style-trend --world conghuoniao --limit 30
 ```
 
-该命令聚合最近最多 30 份已完成的章节回归报告和专项回归报告，输出到 `.output/<world>/style-regression-trend/`。它只总结持续特征、变化迹象和场景差异，不读取章节草稿、不打分、不设置门槛，也不会触发正文修改。当前仍未提供 Style Reference 样本的版本登记与 Workbench 管理界面。
+该命令聚合最近最多 30 份已完成的章节回归报告和专项回归报告，输出到 `.output/<world>/style-regression-trend/`。它只总结持续特征、变化迹象和场景差异，不读取章节草稿、不打分、不设置门槛，也不会触发正文修改。Workbench 的“文风样本”页面可添加、更新和归档认可样本，并查看历史版本；更新会先保存旧版本。历史版本不会进入正式写作回归上下文。
 
 ### 人物互动推演沙盘（作者主动调用）
 
