@@ -453,3 +453,28 @@ Roleplay Sandbox 已读取当前人物动态、长期人物观察和任务相关
 Vane 是可选的第二检索索引，不是数据库替代品：SQLite 仍保存权威结构化数据和故事状态；原文索引与创作素材 JSON 是可重建来源；Vane 只提供原文片段/分析素材的 BM25 或向量+BM25 检索。通过 vane-index 构建 worlds/<world>/vane-index。Node binding @vane-rs/node 按需安装；未安装时自动跳过，Vane 索引不可用时写作继续使用既有 SQLite/BM25。Vane 本身不生成 embedding；配置 VANE_EMBEDDING_BASE_URL、VANE_EMBEDDING_MODEL、VANE_EMBEDDING_DIM 后才启用混合语义检索，否则仅使用文本 BM25。Node binding 当前未暴露 metadata filter，因此本项目不依赖 Vane 查询过滤，world 隔离由独立索引目录保证。
 
 重要边界：这套离线分析的价值是让写作 Agent 找回“具体发生过什么、人物当时怎么说、他们知道什么、场景如何转折”，不是要求新章节复刻原文统计规律。文学性、文笔和艺术风格始终优先。
+
+
+## 10. Chapter-first Workbench：一键续写工作台
+
+Workbench 的默认入口是「续写章节」，而不是长期主线、故事图谱或分析报告。用户点击一次「生成下一章」后，系统启动既有 `write` 完整流水线：原著检索、主线与创意并行规划、主编自动选定章节蓝图、正文生成、对白与叙事声音修订、Living Voice / Anti-AI 编辑、硬伤终审、有限自动修复、Story State 提取和 SQLite 自动提交。章节蓝图与正文是运行产物；蓝图只读展示，不创建审批状态，也不等待用户点击。
+
+### 前置条件策略
+
+- 硬性前置条件：有效的 `world-bible.md` 和已建立的原著 `library/index.json`。缺失时明确指出文件和恢复动作，不猜测世界设定，也不伪装成已自动补齐。
+- 可选增强资料：活动 Story Plan、完整 v6 故事图谱、人物逐章状态、风格样本、语料 craft、Vane 索引。缺失时按现有领域服务能力降级或不注入，不阻断章节生成；不得要求作者先完成一轮资料管理工作。
+- 本章蓝图、人物行动、伏笔取舍由 Agent 自动决定。它们不是用户审批项，也不是必须逐条执行的硬约束。
+
+### Web API 与运行记录
+
+- `POST /api/worlds/:worldId/chapters/generate` 检查硬性前置条件，拒绝同一 World 的重复活动章节任务，并在后台启动 `write` CLI 子进程。
+- 章节任务沿用 Workbench 运行记录，保存状态、错误、成稿路径和输出目录；服务重启时按既有规则将未完成任务标记失败。
+- `GET /api/runs/:runId/preview?worldId=...` 仅从本次运行目录读取章节蓝图（普通章节 `03-chapter-plan.md`，长章节 `01-scene-blueprint.md`）和最终 `chapter.md`。输出路径必须位于对应 World 的 `.output` 目录内。
+- UI 轮询任务状态，并在生成过程中显示已产出的蓝图；章节完成后直接展示正文。运行记录用于观察与故障诊断，不形成审批队列。
+
+### 首页信息架构
+
+- 第一入口：续写章节。最显眼的唯一主操作是「生成下一章」。
+- 页面显示自动执行的四段流程、当前任务状态、自动生成的章节主线和正文。
+- 人物、故事图谱、文风样本、长期主线、规划版本和运行记录保留为辅助导航，不再成为续写前必须逐一访问的页面。
+- 长期主线与人物/伏笔图谱是 Agent 的幕后创作素材，不把 Workbench 变成资料审核系统。
