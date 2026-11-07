@@ -10,6 +10,7 @@ const emptyPreview:Preview={storyArc:"",chapterPlan:"",chapter:""};
 export default function ChapterStudio({worldId}:{worldId:string}){
  const [activeWorldId,setActiveWorldId]=useState(worldId);
  const [universes,setUniverses]=useState<Universe[]>([]);
+ const [sourceChapters,setSourceChapters]=useState<string[]>([]);
  const [createOpen,setCreateOpen]=useState(false);
  const [universeName,setUniverseName]=useState("");
  const [entryChapter,setEntryChapter]=useState("");
@@ -37,7 +38,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
   finally{setLoading(false);}
  };
- useEffect(()=>{setActiveWorldId(worldId);setRun(null);setPreview(emptyPreview);void refresh();void api<{universes:Universe[]}>("/api/worlds/"+worldId+"/universes").then(x=>setUniverses(x.universes)).catch(()=>setUniverses([]));},[worldId]);
+ useEffect(()=>{setActiveWorldId(worldId);setRun(null);setPreview(emptyPreview);void refresh();void Promise.all([api<{universes:Universe[]}>("/api/worlds/"+worldId+"/universes"),api<{chapters:string[]}>("/api/worlds/"+worldId+"/source-chapters")]).then(([u,c])=>{setUniverses(u.universes);setSourceChapters(c.chapters);}).catch(()=>{setUniverses([]);setSourceChapters([]);});},[worldId]);
  useEffect(()=>{void refresh();},[activeWorldId]);
  useEffect(()=>{
   if(!busy||!run)return;
@@ -105,7 +106,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   <Modal title="创建独立故事宇宙" open={createOpen} onCancel={()=>setCreateOpen(false)} onOk={()=>void createUniverse()} confirmLoading={creatingUniverse} okText="创建宇宙">
    <Space direction="vertical" style={{width:"100%"}} size="middle">
     <Input placeholder="宇宙名称" value={universeName} onChange={e=>setUniverseName(e.target.value)} />
-    <Input placeholder="原文起始章节（章节编号或标题）" value={entryChapter} onChange={e=>setEntryChapter(e.target.value)} />
+    <Select showSearch optionFilterProp="label" style={{width:"100%"}} placeholder="选择原文起始章节" value={entryChapter||undefined} onChange={setEntryChapter} options={sourceChapters.map(chapter=>({value:chapter,label:chapter}))} notFoundContent="原文目录为空，请先导入并建立原文索引。" />
     <Select style={{width:"100%"}} value={universeType} onChange={setUniverseType} options={[{value:"mainline",label:"原著主线延续"},{value:"side-story",label:"原著支线扩展"},{value:"character",label:"人物独立故事"},{value:"parallel",label:"平行发展"},{value:"free",label:"自由续写"}]} />
     <Input.TextArea rows={3} placeholder="创作方向（可选）：人物、支线、关键事件或希望探索的剧情" value={universeBrief} onChange={e=>setUniverseBrief(e.target.value)} />
     <Text type="secondary">原文资料作为只读来源；新宇宙从空白续写状态开始，拥有独立的主线、人物状态、伏笔和章节记录。</Text>
