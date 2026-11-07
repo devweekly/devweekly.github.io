@@ -583,7 +583,7 @@ npm run dev -- style-trend --world conghuoniao --limit 30
 # 原著逐章人物状态；默认处理所有有明确人物候选的章节，逐章写入 SQLite，可中断后重复运行
 npm run dev -- analyze-character-states --world conghuoniao
 
-# 分片并行执行（不同进程使用不同 shard）
+# 大语料可分片执行；由于后续章节会参考前序人物状态，建议按 shard 序号顺序运行；若并行执行，前序 shard 完成后需重跑后续 shard 以刷新状态差异
 npm run dev -- analyze-character-states --world conghuoniao --shard 0/4
 npm run dev -- analyze-character-states --world conghuoniao --shard 1/4
 
