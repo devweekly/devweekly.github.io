@@ -41,7 +41,7 @@ function fixture(): { dir: string; databasePath: string; close: () => void } {
 
 function rows(databasePath: string, sql: string): Array<Record<string, unknown>> {
   const db = new DatabaseSync(databasePath);
-  try { return db.prepare(sql).all() as Array<Record<string, unknown>>; }
+  try { return db.prepare(sql).all().map(row => ({ ...row })) as Array<Record<string, unknown>>; }
   finally { db.close(); }
 }
 
