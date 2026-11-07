@@ -27,7 +27,7 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
       removeUnsafeDatabase(databasePath);
       return 0;
     }
-    const chapter = db.prepare("SELECT ordinal FROM novel_chapters WHERE title=? ORDER BY ordinal LIMIT 1").get(entryChapter) as { ordinal: number } | undefined;
+    const chapter = db.prepare("SELECT ordinal,volume FROM novel_chapters WHERE title=? ORDER BY ordinal LIMIT 1").get(entryChapter) as { ordinal: number; volume?: number } | undefined;
     if (!chapter || !Number.isSafeInteger(Number(chapter.ordinal))) {
       // Fail closed. A database without a resolvable chapter ordinal cannot be
       // proven safe for a historical branch.
@@ -40,7 +40,7 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
     try {
       // Explicit allow-list: an unfamiliar table may contain a new whole-book
       // aggregate. Preserve only metadata and chapter-addressable evidence.
-      const safeTables = new Set(["world_meta","novel_kb_meta","novel_chapters","novel_mentions","novel_beats","novel_relations","novel_character_chapter_states","story_analysis"]);
+      const safeTables = new Set(["world_meta","novel_kb_meta","novel_chapters","novel_mentions","novel_beats","novel_relations","novel_character_chapter_states","novel_characters","novel_plot_threads","novel_arcs","story_analysis"]);
       for (const table of tables) {
         if (!safeTables.has(table)) db.exec("DELETE FROM \"" + table.replace(/"/g, "\"\"") + "\"");
       }
@@ -67,6 +67,25 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
       }
       if (has("novel_mentions") && columns("novel_mentions").has("chapter_id")) {
         db.prepare("DELETE FROM novel_mentions WHERE chapter_id NOT IN (SELECT chapter_id FROM novel_chapters WHERE ordinal<=?)").run(cutoff);
+      }
+      // These aggregate rows carry explicit last-chapter provenance. Keep only
+      // records wholly observed by the cutoff; missing provenance fails closed.
+      for (const table of ["novel_characters", "novel_plot_threads"]) {
+        if (!has(table)) continue;
+        if (columns(table).has("last_chapter")) {
+          db.prepare("DELETE FROM \"" + table + "\" WHERE last_chapter IS NULL OR last_chapter>?").run(cutoff);
+        } else {
+          db.exec("DELETE FROM \"" + table + "\"");
+        }
+      }
+      // A completed prior-volume arc is safe; the selected volume is not, since
+      // its aggregate may summarize chapters after the chosen entry point.
+      if (has("novel_arcs")) {
+        if (typeof chapter.volume === "number" && columns("novel_arcs").has("volume")) {
+          db.prepare("DELETE FROM novel_arcs WHERE volume>=?").run(chapter.volume);
+        } else {
+          db.exec("DELETE FROM novel_arcs");
+        }
       }
 
       // Reuse completed offline analysis only when every cited chapter is within
