@@ -9,7 +9,7 @@ import { existsSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { loadStoryPlan, saveStoryPlan, generateStoryPlan } from "./story-plan.js";
-import { loadStoryState } from "./story-state.js";
+import { loadStoryState, validateStoryState } from "./story-state.js";
 import { readStoryAnalysis, listNovelCharacters, countNovelCharacters, readNovelCharacterWorkbenchDetail } from "./database.js";
 import {
   CHARACTER_LIST_MAX_LIMIT, CHARACTER_LIST_DEFAULT_LIMIT, DASHBOARD_PLAN_VERSIONS_LIMIT, DASHBOARD_RECENT_RUNS_LIMIT,
@@ -320,7 +320,8 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     const statePath = path.join(forkOutputDir, "08-state-update.json");
     let state: StoryState;
     try {
-      const parsed = JSON.parse(await readFile(statePath, "utf8")) as StoryState;
+      const parsed = validateStoryState(JSON.parse(await readFile(statePath, "utf8")));
+      if (parsed.worldId !== parentId) throw new Error("Story State snapshot belongs to another universe.");
       state = parsed;
     } catch {
       return void res.status(409).json({ error: "该章节缺少完整的 Story State 快照，无法安全恢复历史时点。请从更新的、具备状态快照的章节分叉。" });
