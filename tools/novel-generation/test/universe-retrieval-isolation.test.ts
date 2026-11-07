@@ -17,12 +17,12 @@ test("historical universe retrieval uses only its bounded local index", async ()
     await writeFile(join(childDir, "source-canon.json"), JSON.stringify({ sourceWorldId: "source-world", readOnly: true }));
     const fullText = join(root, "full.txt");
     const boundedText = join(root, "bounded.txt");
-    await writeFile(fullText, "第1章 起点前
+    await writeFile(fullText, `第1章 起点前
 铜钱藏在旧城门下。
 第2章 未来
-未来剧情泄漏标记：沈砚在终局背叛所有人。");
-    await writeFile(boundedText, "第1章 起点前
-铜钱藏在旧城门下。");
+未来剧情泄漏标记：沈砚在终局背叛所有人。`);
+    await writeFile(boundedText, `第1章 起点前
+铜钱藏在旧城门下。`);
     await ingestFiles("source-world", [fullText], join(sourceDir, "library"));
     await ingestFiles("u-historical", [boundedText], join(childDir, "library"));
 
