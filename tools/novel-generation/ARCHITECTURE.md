@@ -543,7 +543,7 @@ CLI `write` 同样读取活动 Story Arc；没有旧 Arc 时首次生成自动�
 
 ## 宇宙知识构建任务
 
-故事宇宙创建和历史分叉先建立时点安全的最小运行环境，再默认异步启动后台知识重建，不阻塞创建请求。Chapter Studio 的“原著知识与语料构建”面板展示任务状态，也允许手动重试；任务依次复用 analyze-story、export-asof-dossier、analyze-arcs、ensure-style-profile、analyze-profiles、analyze-character-states、analyze-corpus-craft 和 vane-index。export-asof-dossier 只从当前宇宙 complete 的 SQLite StoryAnalysisSnapshot 导出人物、人物关系、逐章时间线、主线、伏笔、MacGuffin、故事核心和发展可能性，输出到 worlds/<worldId>/as-of-analysis；该目录在下一次 Create/Fork 时同样排除。全部以当前宇宙 ID 运行。ensure-style-profile 只从当前宇宙 bounded library 选取分散章节样本，只填补缺失画像，不覆盖人工维护的 Style Profile。状态持久化在 .output/<worldId>/workbench/knowledge-build.json，Workbench 轮询展示总状态、当前步骤和逐步错误；失败或部分失败可重新启动，服务重启后未完成任务会被标记失败。
+故事宇宙创建和历史分叉先建立时点安全的最小运行环境，再默认异步启动后台知识重建，不阻塞创建请求。Chapter Studio 的“原著知识与语料构建”面板展示任务状态，也允许手动重试；任务依次复用 analyze-story、analyze-arcs、ensure-style-profile、analyze-profiles、analyze-character-states、analyze-corpus-craft、export-asof-dossier 和 vane-index。export-asof-dossier 从当前宇宙 complete 的 SQLite StoryAnalysisSnapshot、章级 beats 和 bounded Corpus Craft 证据导出人物、人物关系、逐章时间线、主线、伏笔、MacGuffin、故事核心、发展可能性及世界细节，输出到 worlds/<worldId>/as-of-analysis；该目录在下一次 Create/Fork 时同样排除。全部以当前宇宙 ID 运行。ensure-style-profile 只从当前宇宙 bounded library 选取分散章节样本，只填补缺失画像，不覆盖人工维护的 Style Profile。状态持久化在 .output/<worldId>/workbench/knowledge-build.json，Workbench 轮询展示总状态、当前步骤和逐步错误；失败或部分失败可重新启动，服务重启后未完成任务会被标记失败。
 
 这项任务不是章节写作前置条件，但 Create/Fork 默认在目录原子发布后异步启动；可通过 buildKnowledge:false 显式关闭。analyze-character-states 会写入 novel.db，因此知识构建与章节写作、归档和 fork 通过 per-world 队列/活动任务锁互斥。Vane 是可选步骤：原生包未安装时标记 skipped；配置了 embedding 却调用失败、返回维度不一致或索引无法发布时明确标记 failed，不能把未生成的向量索引显示为可用。
 
