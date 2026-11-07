@@ -110,7 +110,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
    <Space wrap>
     <Select style={{minWidth:220}} value={activeWorldId} onChange={setActiveWorldId} options={[{value:worldId,label:"原文项目（现有续写）"},...universes.map(u=>({value:u.id,label:(u.archivedAt?"[已归档] ":"")+u.name+" · 从"+u.entryChapter+"开始"}))]} />
     <Button onClick={()=>setCreateOpen(true)}>新建故事宇宙</Button>
-    {activeWorldId!==worldId&&<Button onClick={()=>void openFork()}>从本宇宙分叉</Button>}
+    {activeWorldId!==worldId&&!activeUniverse?.archivedAt&&<Button onClick={()=>void openFork()}>从本宇宙分叉</Button>}
     {activeUniverse&&(activeUniverse.archivedAt?<Button onClick={()=>void changeArchive(false)}>恢复宇宙</Button>:<Button danger onClick={()=>void changeArchive(true)} disabled={Boolean(busy)}>归档当前宇宙</Button>)}
     <Button type="primary" size="large" className="chapter-action" icon={<PlayCircleOutlined/>} loading={starting||Boolean(busy)} disabled={!activeWorldId||Boolean(busy)||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generate()}>生成下一章</Button>
     <Button icon={<ReloadOutlined/>} loading={loading} onClick={()=>void refresh()}>刷新状态</Button>
