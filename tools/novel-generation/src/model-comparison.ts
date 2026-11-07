@@ -38,7 +38,10 @@ export function summarizeLocalResponse(body: any): Record<string, unknown> {
     messageKeys: message && typeof message === "object" ? Object.keys(message) : [],
     contentType: Array.isArray(message?.content) ? "array" : typeof message?.content,
     contentPreview: typeof message?.content === "string" ? message.content.slice(0, 2000)
-      : Array.isArray(message?.content) ? message.content.slice(0, 8) : undefined,
+      : Array.isArray(message?.content) ? message.content.slice(0, 8).map((part: any) =>
+        typeof part === "string" ? part.slice(0, 500)
+          : { type: part?.type, text: typeof part?.text === "string" ? part.text.slice(0, 1000) : undefined, keys: part && typeof part === "object" ? Object.keys(part) : [] })
+      : undefined,
     refusal: message?.refusal
   };
 }
