@@ -307,6 +307,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     const chapterRunId = recordId(req.body?.chapterRunId);
     if (!name || name.length > 80) return void res.status(400).json({ error: "分支名称必填，且不能超过 80 个字符。" });
     const runs = await listRuns(parentId);
+    if (runs.some(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"))) return void res.status(409).json({ error: "当前宇宙仍有章节正在生成，请等待任务结束后再分叉。" });
     const forkRun = runs.find(run => run.id === chapterRunId && run.kind === "chapter" && run.status === "completed" && run.chapterPath && run.outputDir);
     if (!forkRun?.outputDir || !forkRun.chapterPath) return void res.status(404).json({ error: "指定章节不是已完成的章节，无法从这里分叉。" });
     const parentOutputRoot = path.resolve(".output", parentId) + path.sep;
@@ -319,7 +320,8 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     let state: StoryState;
     try {
       const parsed = JSON.parse(await readFile(statePath, "utf8")) as StoryState;
-      state = { ...parsed, worldId: "pending" };
+      if (parsed.worldId !== parentId) throw new Error("Story State snapshot belongs to another universe.");
+      state = parsed;
     } catch {
       return void res.status(409).json({ error: "该章节缺少完整的 Story State 快照，无法安全恢复历史时点。请从更新的、具备状态快照的章节分叉。" });
     }
@@ -359,22 +361,37 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     // 复制分叉点及其之前的已完成章节产物和运行索引，重写所有路径指向子宇宙。
     const history = runs.filter(run => run.kind === "chapter" && run.status === "completed" && run.createdAt <= forkRun.createdAt)
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    const outputMap = new Map<string, string>();
+    for (const historicalRun of history) {
+      if (!historicalRun.outputDir) continue;
+      const sourceOutput = path.resolve(historicalRun.outputDir);
+      if (!sourceOutput.startsWith(parentOutputRoot)) continue;
+      const targetOutput = path.resolve(".output", id, path.basename(sourceOutput));
+      await mkdir(path.dirname(targetOutput), { recursive: true });
+      await cp(sourceOutput, targetOutput, { recursive: true });
+      outputMap.set(sourceOutput, targetOutput);
+    }
     for (const historicalRun of history) {
       if (!historicalRun.outputDir || !historicalRun.chapterPath) continue;
       const sourceOutput = path.resolve(historicalRun.outputDir);
       const sourceChapter = path.resolve(historicalRun.chapterPath);
-      if (!sourceOutput.startsWith(parentOutputRoot) || !sourceChapter.startsWith(sourceOutput + path.sep)) continue;
-      const targetOutput = path.resolve(".output", id, path.basename(sourceOutput));
-      await mkdir(path.dirname(targetOutput), { recursive: true });
-      await cp(sourceOutput, targetOutput, { recursive: true });
+      const targetOutput = outputMap.get(sourceOutput);
+      if (!targetOutput || !sourceChapter.startsWith(sourceOutput + path.sep)) continue;
       const relativeChapter = path.relative(sourceOutput, sourceChapter);
       const targetChapter = path.join(targetOutput, relativeChapter);
-      const relativePrevious = historicalRun.previousChapterPath
-        ? path.relative(sourceOutput, path.resolve(historicalRun.previousChapterPath)) : "";
-      const previousIsLocal = Boolean(historicalRun.previousChapterPath && !relativePrevious.startsWith("..") && !path.isAbsolute(relativePrevious));
+      const previousSource = historicalRun.previousChapterPath ? path.resolve(historicalRun.previousChapterPath) : "";
+      let previousTarget: string | undefined;
+      if (previousSource) {
+        for (const [oldOutput, newOutput] of outputMap) {
+          if (previousSource.startsWith(oldOutput + path.sep)) {
+            previousTarget = path.join(newOutput, path.relative(oldOutput, previousSource));
+            break;
+          }
+        }
+      }
       await saveRun({
         ...historicalRun, worldId: id, outputDir: targetOutput, chapterPath: targetChapter,
-        ...(previousIsLocal ? { previousChapterPath: path.join(targetOutput, relativePrevious) } : { previousChapterPath: undefined })
+        ...(previousTarget ? { previousChapterPath: previousTarget } : { previousChapterPath: undefined })
       });
     }
     res.status(201).json({ universe, forkedAt: forkRun.id });
