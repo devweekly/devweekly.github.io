@@ -32,7 +32,7 @@ function parseJson(raw: string): unknown {
   const cleaned = raw.trim().replace(/^\u0060\u0060\u0060(?:json)?\s*/i, "").replace(/\s*\u0060\u0060\u0060$/, "");
   return JSON.parse(cleaned);
 }
-function asItems<T extends EvidenceItem>(value: unknown, source: string): T[] {
+export function retainGroundedItems<T extends EvidenceItem>(value: unknown, source: string): T[] {
   if (!Array.isArray(value)) return [];
   return value.filter((item): item is T => Boolean(item && typeof item === "object" && typeof (item as EvidenceItem).evidence === "string" && ((item as EvidenceItem).evidence as string).trim().length >= 4 && source.includes((item as EvidenceItem).evidence as string))).slice(0, 24);
 }
@@ -43,13 +43,13 @@ function validate(raw: unknown, unit: { chapterId: string; ordinal: number; titl
   return {
     schemaVersion: 1, worldId, chapterId: unit.chapterId, ordinal: unit.ordinal, title: unit.title,
     sourceHash: hash(source), model, analyzedAt: new Date().toISOString(),
-    scenes: asItems(value.scenes, source),
-    dialogueExemplars: asItems(value.dialogueExemplars, source),
-    voiceObservations: asItems(value.voiceObservations, source),
-    causalLinks: asItems(value.causalLinks, source),
-    knowledgeStates: asItems(value.knowledgeStates, source),
-    worldDetails: asItems(value.worldDetails, source),
-    narrativeObservations: asItems(value.narrativeObservations, source)
+    scenes: retainGroundedItems(value.scenes, source),
+    dialogueExemplars: retainGroundedItems(value.dialogueExemplars, source),
+    voiceObservations: retainGroundedItems(value.voiceObservations, source),
+    causalLinks: retainGroundedItems(value.causalLinks, source),
+    knowledgeStates: retainGroundedItems(value.knowledgeStates, source),
+    worldDetails: retainGroundedItems(value.worldDetails, source),
+    narrativeObservations: retainGroundedItems(value.narrativeObservations, source)
   };
 }
 function promptFor(unit: { chapterId: string; title: string; text: string }): string {
