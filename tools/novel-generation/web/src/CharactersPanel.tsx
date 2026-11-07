@@ -49,6 +49,11 @@ export type CharacterDetail = {
     summary: string;
     actors: string[];
   }>;
+  chapterStates: Array<{
+    chapterId: string; chapterOrdinal: number; chapterTitle: string; volume: number;
+    behavior: string[]; goals: string[]; knowledge: string[]; relationships: string[]; resources: string[];
+    situation: string; changes: string[]; evidence: string[]; uncertainty: string[];
+  }>;
   relations: Array<{
     fromName: string;
     toName: string;
@@ -200,6 +205,39 @@ export default function CharactersPanel({
         }))}
       />
     ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="知识库中暂无明确关联到该人物的章级事件" />
+  ) : null;
+
+  const chapterStates = detail ? (
+    detail.chapterStates.length ? (
+      <Timeline
+        items={detail.chapterStates.map(state => ({
+          key: state.chapterId,
+          children: (
+            <Space direction="vertical" size={8} style={{ width: "100%" }}>
+              <Space size={8} wrap>
+                <Tag color="blue">第 {state.volume ?? "?"} 卷</Tag>
+                <Text strong>第 {state.chapterOrdinal} 章 · {state.chapterTitle}</Text>
+              </Space>
+              {state.situation ? <Paragraph style={{ margin: 0 }}>{state.situation}</Paragraph> : null}
+              {([
+                ["行为", state.behavior], ["目标", state.goals], ["认知", state.knowledge],
+                ["关系", state.relationships], ["资源", state.resources], ["本章变化", state.changes],
+                ["不确定", state.uncertainty]
+              ] as Array<[string, string[]]>).filter(([, values]) => values.length).map(([label, values]) => (
+                <div key={label}>
+                  <Text type="secondary">{label}：</Text><TagGroup items={values} />
+                </div>
+              ))}
+              {state.evidence.length ? (
+                <Paragraph type="secondary" style={{ margin: 0, fontSize: 12 }}>
+                  原文证据：{state.evidence.join("；")}
+                </Paragraph>
+              ) : null}
+            </Space>
+          )
+        }))}
+      />
+    ) : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="尚未生成逐章人物状态。运行 analyze-character-states 后显示。" />
   ) : null;
 
   return (
@@ -361,7 +399,8 @@ export default function CharactersPanel({
                     { key: "dossier", label: "人物档案", children: dossier },
                     { key: "profile", label: "合并 Profile", children: profile },
                     { key: "relations", label: `关联人物（${detail.relations.length}）`, children: relations },
-                    { key: "timeline", label: `关联时间线（${detail.timeline.length}）`, children: timeline }
+                    { key: "timeline", label: `关联时间线（${detail.timeline.length}）`, children: timeline },
+                    { key: "chapter-states", label: `逐章状态（${detail.chapterStates.length}）`, children: chapterStates }
                   ]}
                 />
               </Card>
