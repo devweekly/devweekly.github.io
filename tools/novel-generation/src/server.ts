@@ -152,7 +152,10 @@ const KNOWLEDGE_BUILD_STEPS: Array<{ name: KnowledgeBuildStep; command: string[]
 ];
 async function runKnowledgeBuildStep(worldId: string, command: string[]): Promise<{ exitCode: number | null; output: string; error: string }> {
   return await new Promise(resolve => {
-    const child = spawn(process.execPath, ["--import", "tsx", "src/cli.ts", ...command, "--world", worldId], {
+    const cliArgs = process.env.NODE_ENV === "production"
+      ? ["dist/cli.js", ...command, "--world", worldId]
+      : ["--import", "tsx", "src/cli.ts", ...command, "--world", worldId];
+    const child = spawn(process.execPath, cliArgs, {
       cwd: process.cwd(), env: process.env, stdio: ["ignore", "pipe", "pipe"]
     });
     let output = "", error = "", settled = false;
