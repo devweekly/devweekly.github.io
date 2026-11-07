@@ -22,7 +22,7 @@ import {
   WRITE_LONG_RETRIEVAL_LIMIT
 } from "./constants.js";
 import { buildWorldSituationContext } from "./world-situation.js";
-import { LIVING_VOICE_RULES, antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, readerExperiencePrompt } from "./literary-edit.js";
+import { LIVING_VOICE_RULES, antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, postReviewLiteraryCheckPrompt, readerExperiencePrompt } from "./literary-edit.js";
 import { buildStyleRegressionPrompt, loadStyleRegressionReferences } from "./style-regression.js";
 
 export interface LongChapterInput {
@@ -393,13 +393,23 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     await saveStage(input.outputDir, "06a-anti-ai-diagnosis-error.txt", String(error));
     console.error("[write-long] Anti-AI 诊断未完成；编辑阶段仍按通用文学原则运行。");
   }
-  try {
-    antiAiChapter = await cachedCall("anti-ai-edit", "06b-anti-ai-edited.md", "antiAi", [
-      antiAiEditPrompt({ brief: input.brief, blueprint, styleProfile: input.styleProfile, diagnosis: antiAiDiagnosis, chapter: antiAiChapter })
-    ], output => { if (!output.trim()) throw new Error("Anti-AI editor returned an empty chapter."); });
-  } catch (error) {
-    await saveStage(input.outputDir, "06b-anti-ai-error.txt", String(error));
-    console.error("[write-long] Anti-AI 编辑阶段失败，保留逐场修订稿继续终审。");
+  const needsAntiAiEdit = Boolean(antiAiDiagnosis.trim()) && !/未发现值得修改的地方|没有明确需要修改/i.test(antiAiDiagnosis);
+  if (needsAntiAiEdit) {
+    try {
+      antiAiChapter = await cachedCall("anti-ai-edit", "06b-anti-ai-edited.md", "antiAi", [
+        antiAiEditPrompt({ brief: input.brief, blueprint, styleProfile: input.styleProfile, diagnosis: antiAiDiagnosis, chapter: antiAiChapter })
+      ], output => { if (!output.trim()) throw new Error("Anti-AI editor returned an empty chapter."); });
+    } catch (error) {
+      await saveStage(input.outputDir, "06b-anti-ai-error.txt", String(error));
+      console.error("[write-long] Anti-AI 编辑阶段失败，保留逐场修订稿继续终审。");
+    }
+  } else {
+    await saveStage(input.outputDir, "06b-anti-ai-skipped.json", JSON.stringify({
+      skipped: true,
+      reason: antiAiDiagnosis.trim()
+        ? "诊断未发现值得修改的问题。"
+        : "诊断不可用，避免在没有证据时改写整章。"
+    }, null, 2));
   }
   if (antiAiChapter !== buildChapter()) {
     try {
@@ -503,6 +513,27 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     }
   });
   const chapter = reviewed.chapter;
+  // Only inspect post-review prose when a hard-fact repair actually changed it.
+  // This is diagnostic-only: never launch another full-chapter rewrite after acceptance.
+  if (reviewed.repairRounds > 0) {
+    try {
+      const report = await cachedCall("post-review-literary-check", "10-post-review-literary-check.md", "antiAi", [
+        postReviewLiteraryCheckPrompt({
+          beforeReview: antiAiChapter,
+          finalChapter: chapter,
+          reviewHistory: reviewHistory.join("\n\n---\n\n")
+        })
+      ], output => { if (!output.trim()) throw new Error("Post-review literary check returned an empty report."); });
+      await saveStage(input.outputDir, "10-post-review-literary-check.md", report);
+    } catch (error) {
+      await saveStage(input.outputDir, "10-post-review-literary-check-error.txt", String(error));
+      console.error("[write-long] 终审后的文风观察未完成；不改动正文，也不影响章节提交。");
+    }
+  } else {
+    await saveStage(input.outputDir, "10-post-review-literary-check-skipped.json", JSON.stringify({
+      skipped: true, reason: "终审没有修复正文，无需重复检查文风回归。"
+    }, null, 2));
+  }
   await saveStage(input.outputDir, "chapter.md", chapter);
   await saveStage(input.outputDir, "08-final-review.md", reviewHistory.join("\n\n---\n\n"));
   await saveStage(input.outputDir, "08-quality-summary.json", JSON.stringify({
