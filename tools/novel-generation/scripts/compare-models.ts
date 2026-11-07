@@ -142,7 +142,8 @@ async function main(): Promise<void> {
   const { units } = await buildAnalysisUnits(world, { worldDir: resolve("worlds", world) });
   const selected = choose(units);
   if (!selected.length) throw new Error("没有可用于对比的章节。");
-  const models = await localModels();
+  const modelInventory = await localModelInventory();
+  const models = modelInventory.map(model => model.id);
   const localModel = localModelArg || (models.length === 1 ? models[0]! : "");
   if (!localModel) throw new Error("LM Studio 没有唯一可用模型，请加载目标模型或指定 --local-model。可见模型：" + models.join(", "));
   if (models.length && !models.includes(localModel)) throw new Error("指定模型不在 LM Studio /v1/models 列表中：" + localModel);
