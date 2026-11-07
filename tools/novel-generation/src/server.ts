@@ -4,7 +4,7 @@
 import express, { type Request, type Response, type NextFunction } from "express";
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
-import { cp, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
@@ -118,6 +118,14 @@ function sendError(res: Response, error: unknown): void {
  * 各世界独立排队；队列尾部只保留最新任务，避免长链引用堆积。
  */
 const worldQueues = new Map<string, Promise<void>>();
+const worldMutationLocks = new Set<string>();
+
+/** Reserve the short metadata mutation window synchronously, before the first await. */
+function acquireWorldMutation(worldId: string): (() => void) | null {
+  if (worldMutationLocks.has(worldId)) return null;
+  worldMutationLocks.add(worldId);
+  return () => worldMutationLocks.delete(worldId);
+}
 
 async function serializeWorld<T>(worldId: string, task: () => Promise<T>): Promise<T> {
   const previous = worldQueues.get(worldId) ?? Promise.resolve();
@@ -271,8 +279,11 @@ app.get("/api/worlds/:worldId/universes", async (req, res) => {
 });
 
 app.patch("/api/worlds/:worldId/universe-archive", async (req, res) => {
+  let release: (() => void) | null = null;
   try {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    release = acquireWorldMutation(id);
+    if (!release) return void res.status(409).json({ error: "当前宇宙正在执行创建、分叉或归档操作，请稍后重试。" });
     const universe = await readUniverse(id);
     if (!universe) return void res.status(409).json({ error: "原文项目不能归档为故事宇宙。" });
     const archive = req.body?.archived === true;
@@ -282,9 +293,12 @@ app.patch("/api/worlds/:worldId/universe-archive", async (req, res) => {
     }
     const updated: StoryUniverse = { ...universe, ...(archive ? { archivedAt: new Date().toISOString() } : { archivedAt: undefined }) };
     if (!archive) delete updated.archivedAt;
-    await writeFile(path.join(worldDir(id), "universe.json"), JSON.stringify(updated, null, 2) + "\n", "utf8");
+    const tempPath = path.join(worldDir(id), "universe.json.tmp");
+    await writeFile(tempPath, JSON.stringify(updated, null, 2) + "\n", "utf8");
+    await rename(tempPath, path.join(worldDir(id), "universe.json"));
     res.json({ universe: updated });
   } catch (error) { sendError(res, error); }
+  finally { release?.(); }
 });
 
 app.post("/api/worlds/:worldId/universes", async (req, res) => {
@@ -310,10 +324,12 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     // 起点前情属于原著只读背景，不是新宇宙已发生的续写事实。
     const originContext = buildUniverseOriginContext(canonChapters, selectedIndex);
     const id = "u-" + randomUUID().replace(/-/g, "").slice(0, 16);
+    createdUniverseId = id;
     const targetDir = worldDir(id);
-    await mkdir(targetDir, { recursive: true });
+    const stagingDir = path.join(path.resolve("worlds"), ".staging-" + id);
+    await mkdir(stagingDir, { recursive: true });
     // 只复制原文只读资产和基础世界资料；所有派生状态、计划、输出与运行记录从空白开始。
-    await cp(sourceDir, targetDir, {
+    await cp(sourceDir, stagingDir, {
       recursive: true,
       filter: source => {
         const relative = path.relative(sourceDir, source).split(path.sep);
@@ -326,15 +342,16 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
       }
     });
     // novel.db 是原著分析只读快照的初期副本；重置其世界身份，防止数据库身份校验误认为属于源项目。
-    rebindKnowledgeDatabase(path.join(targetDir, "novel.db"), id);
+    rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
     const universe: StoryUniverse = {
       id, sourceWorldId: rootSourceId, name, type, entryChapter, brief,
       createdAt: new Date().toISOString()
     };
-    await writeFile(path.join(targetDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
-    await writeFile(path.join(targetDir, "source-canon.json"), JSON.stringify({ sourceWorldId: rootSourceId, readOnly: true }, null, 2) + "\n", "utf8");
-    await writeFile(path.join(targetDir, "universe-entry.md"), selectedChapter.text + "\n", "utf8");
-    await writeFile(path.join(targetDir, "universe-origin-context.md"), originContext + "\n", "utf8");
+    await writeFile(path.join(stagingDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
+    await writeFile(path.join(stagingDir, "source-canon.json"), JSON.stringify({ sourceWorldId: rootSourceId, readOnly: true }, null, 2) + "\n", "utf8");
+    await writeFile(path.join(stagingDir, "universe-entry.md"), selectedChapter.text + "\n", "utf8");
+    await writeFile(path.join(stagingDir, "universe-origin-context.md"), originContext + "\n", "utf8");
+    await rename(stagingDir, targetDir);
     res.status(201).json({ universe });
   } catch (error) { sendError(res, error); }
 });
@@ -364,6 +381,7 @@ app.get("/api/worlds/:worldId/forkable-chapters", async (req, res) => {
 });
 
 app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
+  let createdUniverseId: string | null = null;
   try {
     const parentId = worldIdOf(req.params.worldId); assertInsideWorld(parentId);
     const parent = await readUniverse(parentId);
@@ -394,9 +412,10 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     const arcSnapshot = await readFile(path.join(forkOutputDir, "00-story-arc.md"), "utf8").catch(() => "");
     const id = "u-" + randomUUID().replace(/-/g, "").slice(0, 16);
     const targetDir = worldDir(id);
-    await mkdir(targetDir, { recursive: true });
+    const stagingDir = path.join(path.resolve("worlds"), ".staging-" + id);
+    await mkdir(stagingDir, { recursive: true });
     const parentDir = worldDir(parentId);
-    await cp(parentDir, targetDir, {
+    await cp(parentDir, stagingDir, {
       recursive: true,
       filter: source => {
         const relative = path.relative(parentDir, source).split(path.sep);
@@ -406,19 +425,19 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
         return !["story.db", "story-state.json", "story-arc.md", "story-plan.json", ".output", "universes", "library"].includes(first);
       }
     });
-    rebindKnowledgeDatabase(path.join(targetDir, "novel.db"), id);
+    rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
     const universe: StoryUniverse = {
       id, sourceWorldId: parent.sourceWorldId, name, type: parent.type,
       entryChapter: parent.entryChapter, brief: parent.brief,
       parentUniverseId: parent.id, forkPoint: forkRun.id,
       createdAt: new Date().toISOString()
     };
-    await writeFile(path.join(targetDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
-    await writeFile(path.join(targetDir, "source-canon.json"), JSON.stringify({ sourceWorldId: parent.sourceWorldId, readOnly: true }, null, 2) + "\n", "utf8");
+    await writeFile(path.join(stagingDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
+    await writeFile(path.join(stagingDir, "source-canon.json"), JSON.stringify({ sourceWorldId: parent.sourceWorldId, readOnly: true }, null, 2) + "\n", "utf8");
     const forkState = rebaseStoryState(state, parentId, id);
-    await writeFile(path.join(targetDir, "story-state.json"), JSON.stringify(forkState, null, 2) + "\n", "utf8");
+    await writeFile(path.join(stagingDir, "story-state.json"), JSON.stringify(forkState, null, 2) + "\n", "utf8");
     await loadStoryState(path.join(targetDir, "story-state.json"), id);
-    if (arcSnapshot) await writeFile(path.join(targetDir, "story-arc.md"), arcSnapshot, "utf8");
+    if (arcSnapshot) await writeFile(path.join(stagingDir, "story-arc.md"), arcSnapshot, "utf8");
 
     // 复制分叉点及其之前的已完成章节产物和运行索引，重写所有路径指向子宇宙。
     const orderedHistory = runs.filter(run => run.kind === "chapter" && run.status === "completed")
@@ -441,8 +460,20 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
       const forkedRun = remapForkedRun(historicalRun, id, outputMap);
       if (forkedRun) await saveRun(forkedRun);
     }
+    await rename(stagingDir, targetDir);
     res.status(201).json({ universe, forkedAt: forkRun.id });
-  } catch (error) { sendError(res, error); }
+  } catch (error) {
+    // Failed fork must not leave a half-visible universe or orphaned copied chapters.
+    const failedId = createdUniverseId ?? "";
+    if (failedId && /^u-[a-f0-9]{16}$/.test(failedId)) {
+      await Promise.all([
+        rm(worldDir(failedId), { recursive: true, force: true }),
+        rm(path.resolve(".output", failedId), { recursive: true, force: true }),
+        rm(path.join(path.resolve("worlds"), ".staging-" + failedId), { recursive: true, force: true })
+      ]).catch(() => undefined);
+    }
+    sendError(res, error);
+  }
 });
 
 // ── 当前滚动式多章节 Story Arc ─────────────────────────────
