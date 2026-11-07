@@ -1,6 +1,6 @@
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { readStoryAnalysis, type StoryAnalysisSnapshot } from "./database.js";
+import { listNovelBeats, readStoryAnalysis, type StoryAnalysisSnapshot } from "./database.js";
 
 function strings(value: unknown): string[] {
   if (Array.isArray(value)) return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0);
@@ -24,7 +24,7 @@ function section(title: string, rows: Array<Record<string, unknown>>, render: (r
 }
 
 /** Render a human-readable dossier only from this world's completed, bounded SQLite snapshot. */
-export function renderAsOfDossier(snapshot: StoryAnalysisSnapshot): Record<string, string> {
+export function renderAsOfDossier(snapshot: StoryAnalysisSnapshot, beats: Array<Record<string, unknown>> = []): Record<string, string> {
   if (!snapshot.complete) throw new Error("Story analysis snapshot is incomplete; refusing to publish a partial dossier.");
   const preface = [
     "# 历史时点分析资料",
@@ -58,6 +58,21 @@ export function renderAsOfDossier(snapshot: StoryAnalysisSnapshot): Record<strin
     list("相关人物", row.relatedCharacters),
     chapters(row)
   ].filter(Boolean).join("\n\n"));
+  const relationships = section("人物关系", snapshot.relations ?? [], row => [
+    value(row, "from") + " → " + value(row, "to"),
+    value(row, "label"),
+    value(row, "dynamic") ? "关系动态：" + value(row, "dynamic") : "",
+    value(row, "change") ? "变化：" + value(row, "change") : "",
+    list("互动时刻", row.interactionMoments),
+    value(row, "evidence") ? "原文证据：" + value(row, "evidence") : "",
+    chapters(row)
+  ].filter(Boolean).join("\n\n"));
+  const timeline = "## 章节时间线\n\n" + (beats.length
+    ? [...beats].sort((a, b) => Number(a.chapterOrdinal ?? 0) - Number(b.chapterOrdinal ?? 0)).map(row =>
+      "### 第 " + value(row, "chapterOrdinal") + " 章 · " + value(row, "chapterId") + "\n\n" +
+      value(row, "summary") + (strings(row.actors).length ? "\n\n人物：" + strings(row.actors).join("、") : "")
+    ).join("\n\n")
+    : "当前时点没有可用的逐章事件摘要。");
   const foreshadowings = section("伏笔", snapshot.foreshadowings, row => [
     value(row, "firstAppearance") ? "首次出现：" + value(row, "firstAppearance") : "",
     value(row, "possibleMeaning") ? "可能含义：" + value(row, "possibleMeaning") : "",
@@ -95,6 +110,8 @@ export function renderAsOfDossier(snapshot: StoryAnalysisSnapshot): Record<strin
   ].filter(Boolean).join("\n\n"));
   return {
     "story-analysis.md": preface + [plot, core].join("\n\n"),
+    "relationships.md": preface + relationships,
+    "timeline.md": preface + timeline,
     "characters.md": preface + characters,
     "foreshadowing.md": preface + foreshadowings,
     "macguffins.md": preface + macguffins,
@@ -106,7 +123,8 @@ export async function exportAsOfDossier(worldId: string, worldDir: string): Prom
   const snapshot = readStoryAnalysis(worldDir, worldId);
   if (!snapshot) throw new Error("No completed bounded story-analysis snapshot exists for this universe.");
   if (snapshot.worldId !== worldId) throw new Error("Story-analysis snapshot belongs to another universe.");
-  const files = renderAsOfDossier(snapshot);
+  const beats = listNovelBeats(worldDir, worldId, { limit: 10000 });
+  const files = renderAsOfDossier(snapshot, beats as Array<Record<string, unknown>>);
   const directory = join(worldDir, "as-of-analysis");
   await mkdir(directory, { recursive: true });
   for (const [name, content] of Object.entries(files)) {
