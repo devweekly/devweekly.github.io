@@ -152,7 +152,7 @@
 - 原文检索：宇宙有自己的按起点截断 library/index.json；source-canon.json 只记录来源身份，不授权读取父项目全书索引。CLI 与 API 共用 resolveWorldLibraryDir，历史索引缺失时 fail closed。
 - SQLite：Create/Fork 生成宇宙自己的 novel.db 历史快照，按章节 ordinal 截断并重绑定 worldId；全书聚合表和未知表不继承。写作状态库、Story State、Story Arc、Story Plan、运行记录与输出独立。
 - 分析目录：Create/Fork 从 bounded library 重建本宇宙 analysis/<worldId>/chapter-index.json，不复制源项目未来章节元数据或分析摘要。
-- 自动知识重建：Create/Fork 发布后默认异步启动八步任务：analyze-story、export-asof-dossier、analyze-arcs、ensure-style-profile、analyze-profiles、analyze-character-states、analyze-corpus-craft、vane-index。任务状态在 Workbench 展示，可重试；写作、分叉、归档与知识构建通过单进程 per-world 队列和活动任务锁协调。
+- 自动知识重建：Create/Fork 发布后默认异步启动八步任务：analyze-story、analyze-arcs、ensure-style-profile、analyze-profiles、analyze-character-states、analyze-corpus-craft、export-asof-dossier、vane-index。任务状态在 Workbench 展示，可重试；写作、分叉、归档与知识构建通过单进程 per-world 队列和活动任务锁协调。
 - 历史资料：export-asof-dossier 只从当前宇宙完整 SQLite 快照导出人物、人物关系、逐章时间线、主线、伏笔、MacGuffin、故事核心和发展可能性，写入 worlds/<worldId>/as-of-analysis/。该目录在下一次 Create/Fork 时明确排除。Style Profile 缺失时从 bounded library 取样重建，不覆盖已有人工资料。
 - 原文大文件：Create/Fork 优先使用 copy-on-write reflink，保证 inode 独立；不支持时普通复制回退。不得使用共享 hard-link，避免任一分支修改原文时污染其他分支。
 - 上下文隔离：章节生成的 common prompt 已抽取为可测试函数；测试同时覆盖实际 BM25 检索、Story Analysis Context、Corpus Craft、Writing Brief 与最终公共章节 Prompt 的时点 marker 排除。Vane manifest 必须匹配当前 worldId。
