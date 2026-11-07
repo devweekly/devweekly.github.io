@@ -239,3 +239,4 @@ CLI 命令（均经 `npm run dev --`）：
 
 - Knowledge build is never a chapter-generation prerequisite. `novel.db` (analysis) and `story.db` (chapter state) are separate; do not reintroduce a whole-build lock on writing.
 - Historical universe reuse must remain chapter-bounded: only reuse source Story Analysis records whose complete chapter provenance is at or before the branch entry; discard unbounded whole-book aggregates and future-touching records.
+- Legacy universes must backfill a missing bounded v6 Story Analysis from their `sourceWorldId` before the first chapter is launched; apply the same cutoff filter and never copy the source snapshot verbatim.
