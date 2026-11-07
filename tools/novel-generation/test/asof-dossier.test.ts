@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { renderAsOfDossier } from "../src/asof-dossier.js";
+import { exportAsOfDossier, renderAsOfDossier } from "../src/asof-dossier.js";
+import { saveStoryAnalysis } from "../src/database.js";
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import type { StoryAnalysisSnapshot } from "../src/database.js";
 
 const snapshot: StoryAnalysisSnapshot = {
@@ -48,4 +52,24 @@ test("as-of dossier falls back to the consolidated story core when observations 
     storyCoreObservations: []
   });
   assert.match(files["story-analysis.md"]!, /秩序与自由的冲突/);
+});
+
+
+test("as-of dossier publishes a complete directory and removes stale generated files", async () => {
+  const root = await mkdtemp(join(tmpdir(), "asof-dossier-publish-"));
+  const worldDir = join(root, "worlds", "u-child");
+  try {
+    await mkdir(join(worldDir, "as-of-analysis"), { recursive: true });
+    await writeFile(join(worldDir, "as-of-analysis", "stale-old-section.md"), "stale");
+    saveStoryAnalysis(worldDir, "u-child", snapshot);
+    const result = await exportAsOfDossier("u-child", worldDir);
+    assert.ok(result.files.includes("characters.md"));
+    const published = await readdir(join(worldDir, "as-of-analysis"));
+    assert.deepEqual(published.sort(), [...result.files].sort());
+    assert.match(await readFile(join(worldDir, "as-of-analysis", "characters.md"), "utf8"), /人物甲/);
+    const leftovers = (await readdir(worldDir)).filter(name => name.startsWith(".as-of-analysis."));
+    assert.deepEqual(leftovers, []);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
