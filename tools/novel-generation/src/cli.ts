@@ -648,12 +648,14 @@ async function main(): Promise<void> {
     let processed = 0;
     let failed = 0;
     let remaining = 0;
+    let unattempted = 0;
     let batches = 0;
     do {
       const result = await analyzeLibrary(libraryDir, worldId, process.argv.includes("--all") ? batchSize : limit, arg("--model"), timeoutMs);
       processed += result.processed;
       failed += result.failed;
       remaining = result.remaining;
+      unattempted = result.unattempted;
       batches++;
       console.log("[analyze] batch " + batches + " · processed " + result.processed + " · failed " + result.failed + " · unattempted " + result.unattempted + " · remaining " + result.remaining);
       if (!process.argv.includes("--all") || remaining === 0 || (result.processed === 0 && unattempted === 0)) break;
