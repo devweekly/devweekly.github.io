@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "worldId": "replace-with-world-id",
+  "queries": [
+    {
+      "id": "character-action-001",
+      "query": "人物甲第一次主动违抗组织命令发生在什么情境？",
+      "relevantChunkIds": ["replace-with-a-real-library-chunk-id"]
+    },
+    {
+      "id": "world-custom-001",
+      "query": "商旅进入城镇时需要遵守哪些登记或验货习俗？",
+      "relevantChunkIds": ["replace-with-a-real-library-chunk-id"]
+    }
+  ]
+}
