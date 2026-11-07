@@ -71,7 +71,7 @@ export function antiAiEditPrompt(input: {
 export function shouldRunAntiAiEdit(diagnosis: string): boolean {
   const text = diagnosis.trim();
   if (!text) return false;
-  const cleanConclusion = /^(?:结论|总体判断)?\\s*[:：]?\\s*(?:未发现值得修改的地方|没有明确需要修改(?:的问题)?|无需修改|无须修改)[。！.!]?\\s*$/m;
+  const cleanConclusion = /^(?:结论|总体判断)?\s*[:：]?\s*(?:未发现值得修改的地方|没有明确需要修改(?:的问题)?|无需修改|无须修改)[。！.!]?\s*$/m;
   return !cleanConclusion.test(text);
 }
 
