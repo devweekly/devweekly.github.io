@@ -31,6 +31,8 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
   await writeFile(join(source, "vane-index", "manifest.json"), JSON.stringify({ future: "未来 Vane 泄漏标记" }));
   await mkdir(join(source, "style-references"), { recursive: true });
   await writeFile(join(source, "style-references", "future.md"), "未来风格样本泄漏标记");
+  await mkdir(join(source, "as-of-analysis"), { recursive: true });
+  await writeFile(join(source, "as-of-analysis", "characters.md"), "未来分支人物资料泄漏标记");
   await mkdir(join(source, "analysis"), { recursive: true });
   await writeFile(join(source, "analysis", "whole-book.json"), "未来素材泄漏标记");
   await mkdir(join(root, "analysis", "source-world", "corpus-craft", "chapters"), { recursive: true });
@@ -143,7 +145,7 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     assert.equal(await readFile(join(universeDir, "timeline.md"), "utf8").catch(() => ""), "");
     for (const relative of [
       "style-profile.md", "story-arc.md", "story-plan.json", "story-state.json",
-      "vane-index/manifest.json", "style-references/future.md"
+      "vane-index/manifest.json", "style-references/future.md", "as-of-analysis/characters.md"
     ]) {
       assert.equal(await readFile(join(universeDir, relative), "utf8").catch(() => ""), "", relative + " must not be inherited");
     }
