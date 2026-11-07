@@ -101,6 +101,7 @@ function usage(): never {
     "  npm run dev -- analyze-arcs --world conghuoniao [--model model] [--force]",
     "  npm run dev -- analyze-profiles --world conghuoniao [--top 24] [--names 李阎,查小刀] [--model model] [--force]",
     "  npm run dev -- story-kb --world conghuoniao [--type overview|arcs|characters|threads|foreshadowings|beats|export] [--query 关键词] [--status 状态] [--from 1] [--to 100] [--limit 50]",
+    "  npm run dev -- story-state --world conghuoniao [--type overview|characters|events|threads|relationships|foreshadowings|macguffins] [--query 关键词] [--limit 100]",
     "  npm run dev -- analyze-world --world conghuoniao --phase prepare|status|collect [--source original.txt] [--model model] [--timeout-ms 90000] [--evidence-review] [--evidence-window 2]",
     "  npm run dev -- db-status --world conghuoniao",
     "  npm run dev -- models",
@@ -145,7 +146,7 @@ function resolveWorldOutputPath(requested: string | undefined, worldId: string, 
 
 async function main(): Promise<void> {
   const command = process.argv[2];
-  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-story" && command !== "index-story" && command !== "story-kb" && command !== "analyze-arcs" && command !== "analyze-profiles" && command !== "analyze-world" && command !== "models" && command !== "check-runtime" && command !== "db-status" && command !== "plan-story" && command !== "distill-style" && command !== "style-regress" && command !== "roleplay-sandbox") usage();
+  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-story" && command !== "index-story" && command !== "story-kb" && command !== "story-state" && command !== "analyze-arcs" && command !== "analyze-profiles" && command !== "analyze-world" && command !== "models" && command !== "check-runtime" && command !== "db-status" && command !== "plan-story" && command !== "distill-style" && command !== "style-regress" && command !== "roleplay-sandbox") usage();
 
   const worldId = safeWorldId(arg("--world") ?? "conghuoniao");
   const libraryDir = resolve("worlds", worldId, "library");
@@ -236,6 +237,36 @@ async function main(): Promise<void> {
       failed: result.failed,
       skipped: result.skipped
     }, null, 2));
+    return;
+  }
+
+  if (command === "story-state") {
+    const worldDir = resolve("worlds", worldId);
+    const state = await loadStoryState(resolve(worldDir, "story-state.json"), worldId);
+    const type = arg("--type") ?? "overview";
+    const query = (arg("--query") ?? "").trim().toLocaleLowerCase();
+    const limit = Number(arg("--limit") ?? 100);
+    if (!Number.isInteger(limit) || limit < 1 || limit > 5000) throw new Error("--limit must be between 1 and 5000.");
+    const matches = (value: unknown): boolean => !query || JSON.stringify(value).toLocaleLowerCase().includes(query);
+    const take = <T,>(items: T[]): T[] => items.filter(matches).slice(0, limit);
+    if (type === "overview") {
+      console.log(JSON.stringify({
+        worldId: state.worldId, updatedAt: state.updatedAt, currentPosition: state.currentPosition,
+        counts: {
+          characters: state.characters.length, events: state.events.length, plotThreads: state.plotThreads.length,
+          relationshipUpdates: state.relationshipUpdates?.length ?? 0,
+          foreshadowingUpdates: state.foreshadowingUpdates?.length ?? 0,
+          macguffinUpdates: state.macguffinUpdates?.length ?? 0,
+          arcMilestones: state.characters.reduce((sum, character) => sum + (character.arcMilestones?.length ?? 0), 0)
+        }
+      }, null, 2));
+    } else if (type === "characters") console.log(JSON.stringify({ characters: take(state.characters) }, null, 2));
+    else if (type === "events") console.log(JSON.stringify({ events: take(state.events) }, null, 2));
+    else if (type === "threads") console.log(JSON.stringify({ plotThreads: take(state.plotThreads) }, null, 2));
+    else if (type === "relationships") console.log(JSON.stringify({ relationshipUpdates: take(state.relationshipUpdates ?? []) }, null, 2));
+    else if (type === "foreshadowings") console.log(JSON.stringify({ foreshadowingUpdates: take(state.foreshadowingUpdates ?? []) }, null, 2));
+    else if (type === "macguffins") console.log(JSON.stringify({ macguffinUpdates: take(state.macguffinUpdates ?? []) }, null, 2));
+    else throw new Error("--type must be overview, characters, events, threads, relationships, foreshadowings or macguffins.");
     return;
   }
 
