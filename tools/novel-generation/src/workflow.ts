@@ -253,14 +253,14 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   // 不把旧计划当合同；已发生正文和事实优先，文学性优先于计划完成率。
   const previousArc = input.storyArcText?.trim() ?? "";
   const storyArc = await cachedCall("story-arc", "00-story-arc.md", "plan", [
-    "角色：中期故事架构师。为接下来约 5–8 章设计一个连贯但可调整的故事阶段；若现有阶段尚未自然结束，延续并修订它，不要无故另起炉灶。",
+    "角色：中期故事架构师。为接下来一段故事设计可调整的方向，跨度由当前情节自然决定；若现有阶段尚未自然结束，延续并修订它，不要无故另起炉灶。",
     common,
     "既有 Story Arc（可能为空）：", previousArc || "尚无中期故事阶段，请从当前局势自然推演。",
     characterArcRetrospective ? "跨章人物弧光回顾（仅供创意启发）：\\n" + characterArcRetrospective : "",
     CREATIVE_FREEDOM_RULES,
     "结合已发生事件、人物目标与选择、资源/信息变化、开放情节线，设计一段可供连续写作的故事推进。只记录真正值得预先考虑的少数阶段节点，不要求凑足章节数，也不要求每个节点都包含冲突、关系变化或悬念。可指出哪些人物/伏笔/主线可以暂时不推进、哪些章节可以只是日常或过渡、可能的意外转折空间，以及下一章自然可能从哪里开始。不要强制人物弧光，不要把人物固定为善恶标签，不要预先写死角色选择；节点可以合并、拆分、跳过或被正文发展推翻。",
     "文学性、文笔、艺术风格高于其他。故事规划只为因果连续性服务，不是待完成清单。"
-  ], output => { if (!output.trim() || output.trim().length < 300) throw new Error("Story Arc is empty or implausibly short."); });
+  ], output => { if (!output.trim()) throw new Error("Story Arc is empty."); });
   if (previousArc) await saveStage(input.outputDir, "00-story-arc-previous.md", previousArc);
   await saveStage(input.outputDir, "00-story-arc.md", storyArc);
   if (input.worldDir) await writeFile(resolve(input.worldDir, "story-arc.md"), storyArc.trim() + "\n", "utf8");
@@ -302,7 +302,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     CREATIVE_FREEDOM_RULES, LIVING_VOICE_RULES, common, "最终章节蓝图：", plan,
     "目标篇幅约 " + input.maxWords + " 个中文字符，仅作整体预期，不是必须命中的配额。重要事件可以充分展开；日常、过渡和重复过程可以自然概述。不要为了达到字数而添加场景、动作、心理解释或对白。",
     "像小说家一样写，不要像舞台监督一样执行蓝图。蓝图中的建议可以合并、替换、省略或发展出新方向，只要不破坏已发生事实和必要连续性。不是每个场景都要推进情节或制造悬念；不要把普通生活强行解释成伏笔、成长或象征。叙事锋利来自准确选择，不来自每段都要有意义的压力。",
-    "同一动作只写到足以让读者看清并感受到后果；不要把准备、迟疑、伸手、触碰、收手拆成一串没有新增信息的句子。不要在对白/动作已呈现潜台词后，再替读者解释一遍。每段都要有自己的推进或质感，不能靠反复否定和静物收束拖长。",
+    "同一动作只写到足以让读者看清并感受到后果；不要把准备、迟疑、伸手、触碰、收手拆成一串没有新增信息的句子。不要在对白/动作已呈现潜台词后，再替读者解释一遍。段落可以承担推进、质感、停留、过渡或留白，不要求每段都产生信息增量；不要靠反复否定和静物收束拖长。",
     RHYTHM_RULE
   ]);
   await saveStage(input.outputDir, "04-scene-draft.md", initialDraft);
