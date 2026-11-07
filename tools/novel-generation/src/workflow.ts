@@ -15,6 +15,33 @@ import { LONG_CHAPTER_SOURCE_TAIL_CHARS } from "./constants.js";
 import { buildWorldSituationContext } from "./world-situation.js";
 import { LIVING_VOICE_RULES, antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, readerExperiencePrompt } from "./literary-edit.js";
 import { buildStyleRegressionPrompt, loadStyleRegressionReferences } from "./style-regression.js";
+/**
+ * Build a compact retrospective from body-evidenced character milestones.
+ * It is creative context for the rolling planner, never a personality constraint.
+ */
+export function buildCharacterArcRetrospective(state: StoryState, taskText: string): string {
+  const candidates = state.characters
+    .filter(character => (character.arcMilestones?.length ?? 0) > 0)
+    .filter(character => taskText.includes(character.name));
+  const selected = (candidates.length ? candidates : state.characters.filter(character => (character.arcMilestones?.length ?? 0) > 0)).slice(0, 8);
+  if (!selected.length) return "";
+  const sections = selected.map(character => {
+    const rows = (character.arcMilestones ?? []).slice(-8).map(item => [
+      "- " + item.chapter + "：" + item.change,
+      item.choice ? "选择：" + item.choice : "",
+      item.pressure ? "压力：" + item.pressure : "",
+      item.cost ? "代价：" + item.cost : "",
+      "正文证据：" + item.evidence
+    ].filter(Boolean).join("；"));
+    return "### " + character.name + "\n" + rows.join("\n");
+  });
+  return [
+    "以下是从已完成章节正文中提取、带原文证据的跨章人物变化记录。请把它们当作理解人物历史的材料，而不是性格模板或后续剧情合同。",
+    ...sections,
+    "请留意人物行为中的反复、矛盾、转向、关系变化、选择代价和尚未解决的内在张力；可以提出反常但可信的下一步、意外选择或高光时刻，也可以判断人物需要停留、退缩或暂时不发展。不要强行安排成长，不要为了保持一致而禁止改变，更不能把可能性写成已发生事实。"
+  ].join("\n\n");
+}
+
 
 export interface WriteWorkflowInput {
   worldId: string;
@@ -181,6 +208,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   // 创意发散不需要逐条原文证据，编辑阶段也不应反复携带整份语料与续写材料。
   const taskText = [input.brief, input.contextText, input.writingBrief, input.storyPlanText, worldSituation].filter(Boolean).join("\n");
   const relevantCharacters = state.characters.filter(character => taskText.includes(character.name));
+  const characterArcRetrospective = buildCharacterArcRetrospective(state, taskText);
   const relevantThreads = state.plotThreads.filter(thread =>
     taskText.includes(thread.title) || taskText.includes(thread.id)
   );
@@ -219,6 +247,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     "角色：中期故事架构师。为接下来约 5–8 章设计一个连贯但可调整的故事阶段；若现有阶段尚未自然结束，延续并修订它，不要无故另起炉灶。",
     common,
     "既有 Story Arc（可能为空）：", previousArc || "尚无中期故事阶段，请从当前局势自然推演。",
+    characterArcRetrospective ? "跨章人物弧光回顾（仅供创意启发）：\\n" + characterArcRetrospective : "",
     "结合已发生事件、人物目标与选择、资源/信息变化、开放情节线，设计一段可供连续写作的故事推进。输出 Markdown，至少包含：阶段核心冲突与阶段性结果；5–8 个有因果关系的章节节点（每个写清事件推进、关键人物行动/选择、冲突或关系变化、结尾留下的局面）；哪些人物/伏笔/主线可以暂时不推进；可能的意外转折空间；当前下一章应从哪里自然开始。不要强制每章都发生人物弧光，不要把人物固定为善恶标签，不要预先写死角色选择。章节节点可以合并、拆分、跳过或因正文发展而改写。",
     "文学性、文笔、艺术风格高于其他。故事规划只为因果连续性服务，不是待完成清单。"
   ], output => { if (!output.trim() || output.trim().length < 300) throw new Error("Story Arc is empty or implausibly short."); });
