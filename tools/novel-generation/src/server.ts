@@ -341,6 +341,40 @@ async function readCanonChapters(sourceWorldId: string): Promise<Array<{ title: 
   });
 }
 
+
+/**
+ * Story analysis and Corpus Craft require the chapter catalog as well as library chunks.
+ * The source catalog is full-book metadata, so write a universe-local copy filtered to
+ * the same as-of chapter boundary. Never fall back to the parent's unbounded catalog.
+ */
+async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targetDir: string, universeId: string, entryIndex: number): Promise<void> {
+  const sourcePath = path.resolve("analysis", sourceWorldId, "chapter-index.json");
+  try {
+    const source = JSON.parse(await readFile(sourcePath, "utf8")) as {
+      schemaVersion?: number; totalLines?: number;
+      volumes?: Array<{ volume: number; chapters?: Array<Record<string, unknown>>; [key: string]: unknown }>;
+      chapters?: Array<Record<string, unknown>>;
+      [key: string]: unknown;
+    };
+    const library = JSON.parse(await readFile(path.join(targetDir, "library", "index.json"), "utf8")) as { chunks?: Array<{ chapter: string }> };
+    const allowed = new Set([...new Set((library.chunks ?? []).map(chunk => chunk.chapter))]);
+    const snapshot = { ...source };
+    if (Array.isArray(source.volumes)) {
+      snapshot.volumes = source.volumes
+        .map(volume => ({ ...volume, chapters: (volume.chapters ?? []).filter(chapter => allowed.has(String(chapter.title ?? ""))) }))
+        .filter(volume => (volume.chapters ?? []).length > 0);
+    }
+    if (Array.isArray(source.chapters)) snapshot.chapters = source.chapters.filter(chapter => allowed.has(String(chapter.title ?? "")));
+    const remaining = (snapshot.volumes ?? []).reduce((sum, volume) => sum + (volume.chapters?.length ?? 0), 0) + (snapshot.volumes?.length ? 0 : (snapshot.chapters?.length ?? 0));
+    if (!remaining) return; // Missing/incompatible source catalog remains absent; analysis fails closed.
+    const directory = path.resolve("analysis", universeId);
+    await mkdir(directory, { recursive: true });
+    await writeFile(path.join(directory, "chapter-index.json"), JSON.stringify(snapshot, null, 2) + "\n", "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw error;
+  }
+}
 async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: string, universeId: string, entryIndex: number): Promise<void> {
   const sourceIndexPath = path.join(worldDir(sourceWorldId), "library", "index.json");
   const source = JSON.parse(await readFile(sourceIndexPath, "utf8")) as {
@@ -456,6 +490,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     await writeFile(path.join(stagingDir, "universe-entry.md"), selectedChapter.text + "\n", "utf8");
     await writeFile(path.join(stagingDir, "universe-origin-context.md"), originContext + "\n", "utf8");
     await writeUniverseLibrarySnapshot(rootSourceId, stagingDir, id, selectedIndex);
+    await writeUniverseAnalysisCatalogSnapshot(rootSourceId, stagingDir, id, selectedIndex);
     await writeFile(path.join(stagingDir, "source-canon-as-of.json"), JSON.stringify({ sourceWorldId: rootSourceId, entryChapter, entryOrdinal, policy: "chapter-scoped-evidence-only", fullBookAggregates: "excluded" }, null, 2) + "\n", "utf8");
     await rename(stagingDir, targetDir);
     res.status(201).json({ universe });
@@ -553,6 +588,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     const parentEntryIndex = parentCanonChapters.findIndex(chapter => chapter.title === parent.entryChapter);
     if (parentEntryIndex < 0) throw new Error("父宇宙的原文起点已无法在共享章节目录中定位，拒绝创建可能泄漏未来剧情的分支。");
     await writeUniverseLibrarySnapshot(parent.sourceWorldId, stagingDir, id, parentEntryIndex);
+    await writeUniverseAnalysisCatalogSnapshot(parent.sourceWorldId, stagingDir, id, parentEntryIndex);
 
     const forkState = rebaseStoryState(state, parentId, id);
     await writeFile(path.join(stagingDir, "story-state.json"), JSON.stringify(forkState, null, 2) + "\n", "utf8");
