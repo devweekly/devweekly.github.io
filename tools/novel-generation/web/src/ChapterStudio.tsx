@@ -5,6 +5,7 @@ const { Title, Text, Paragraph } = Typography;
 type Run = { id:string; kind?:string; status:string; createdAt:string; updatedAt:string; error?:string; outputDir?:string; chapterPath?:string; previousChapterPath?:string };
 type Preview = { storyArc:string; chapterPlan:string; chapter:string };
 type Universe = { id:string; sourceWorldId:string; name:string; type:string; entryChapter:string; brief:string; createdAt:string };
+type ForkableRun = Run & { chapterTitle:string };
 async function api<T>(url:string, init?:RequestInit):Promise<T>{const response=await fetch(url,{headers:{"Content-Type":"application/json",...(init?.headers??{})},...init});const body=await response.json();if(!response.ok)throw new Error(body.error??response.statusText);return body as T;}
 const emptyPreview:Preview={storyArc:"",chapterPlan:"",chapter:""};
 export default function ChapterStudio({worldId}:{worldId:string}){
@@ -20,7 +21,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [forkOpen,setForkOpen]=useState(false);
  const [forkName,setForkName]=useState("");
  const [forkRunId,setForkRunId]=useState<string>();
- const [forkableRuns,setForkableRuns]=useState<Run[]>([]);
+ const [forkableRuns,setForkableRuns]=useState<ForkableRun[]>([]);
  const [forking,setForking]=useState(false);
  const [run,setRun]=useState<Run|null>(null);
  const [starting,setStarting]=useState(false);
@@ -75,7 +76,11 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   try{
    const data=await api<{runs:Run[]}>("/api/worlds/"+activeWorldId+"/runs");
    const completed=data.runs.filter(x=>x.kind==="chapter"&&x.status==="completed"&&x.chapterPath&&x.outputDir);
-   setForkableRuns(completed);setForkRunId(completed[0]?.id);setForkName("");setForkOpen(true);
+   const enriched=await Promise.all(completed.map(async item=>{
+    try{const preview=await api<Preview>("/api/runs/"+item.id+"/preview?worldId="+activeWorldId);const title=preview.chapter.split("\\n").map(line=>line.trim()).find(Boolean)??"未命名章节";return {...item,chapterTitle:title.slice(0,80)};}
+    catch{return {...item,chapterTitle:new Date(item.createdAt).toLocaleString()};}
+   }));
+   setForkableRuns(enriched);setForkRunId(enriched[0]?.id);setForkName("");setForkOpen(true);
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
  };
  const createFork=async()=>{
@@ -138,7 +143,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   <Modal title="从历史章节创建分支" open={forkOpen} onCancel={()=>setForkOpen(false)} onOk={()=>void createFork()} confirmLoading={forking} okText="创建分支" okButtonProps={{disabled:!forkRunId||!forkName.trim()}}>
    <Space direction="vertical" style={{width:"100%"}} size="middle">
     <Input placeholder="新宇宙名称" value={forkName} onChange={e=>setForkName(e.target.value)} />
-    <Select style={{width:"100%"}} showSearch optionFilterProp="label" placeholder="选择分叉章节" value={forkRunId} onChange={setForkRunId} options={forkableRuns.map((item,index)=>({value:item.id,label:"第 "+(forkableRuns.length-index)+" 个已完成章节 · "+new Date(item.createdAt).toLocaleString()}))} notFoundContent="当前宇宙还没有可分叉的已完成章节。" />
+    <Select style={{width:"100%"}} showSearch optionFilterProp="label" placeholder="选择分叉章节" value={forkRunId} onChange={setForkRunId} options={forkableRuns.map((item,index)=>({value:item.id,label:item.chapterTitle+" · "+new Date(item.createdAt).toLocaleString()}))} notFoundContent="当前宇宙还没有可分叉的已完成章节。" />
     <Text type="secondary">新宇宙会恢复所选章节完成时的 Story State 和 Story Arc，并复制截至该章的正文与运行历史。之后的剧情、人物状态和规划独立演进。</Text>
    </Space>
   </Modal>
