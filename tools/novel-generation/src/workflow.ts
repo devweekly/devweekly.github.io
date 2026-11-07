@@ -277,8 +277,8 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
       "行动应有可信原因和可能代价，但不要套用游戏数值、回合制或固定的目标—阻力—选择—后果模板。只标出确实不能改变的已知事实，不要把创意写成分析报告。"
     ]),
     cachedCall("creative", "02-creative-options.md", "creative", [
-      "角色：创意发散 Agent。只负责提出有戏剧价值的备选创意，不负责决定正史。",
-      creativeContext,
+      "角色：创意发散 Agent。提出不同方向的创作可能性，不负责决定正史，也不要求每个点子都服务主线。",
+      CREATIVE_FREEDOM_RULES, creativeContext,
       "自由发散若干真正不同、鲜活、有戏剧性的可能性，可以大胆、怪异、温柔、残酷或出人意料。不要为了数量凑点子，也不必把每个点子拆成固定字段。关注它能带来什么人物互动、情绪、冲突或故事惊喜；不要写正文，不要把建议当作已发生事实。"
     ])
   ]);
@@ -286,7 +286,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   await saveStage(input.outputDir, "02-creative-options.md", ideas);
 
   const plan = await cachedCall("plan", "03-chapter-plan.md", "plan", [
-    "角色：主编 Agent。整合中期 Story Arc、主线架构师方案和创意发散建议，决定本章唯一执行方案。",
+    "角色：小说主编。整合中期方向、主线构思和创意备选，提供本章可偏离的创作蓝图，不替小说家决定每个场景的具体走向。",
     "中期 Story Arc：", storyArc,
     common,
     "主线方案：", plotPlan, "创意备选：", ideas,
