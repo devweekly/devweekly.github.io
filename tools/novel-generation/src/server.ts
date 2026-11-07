@@ -410,7 +410,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
         if (!relative.length || relative[0] === "") return true;
         const first = relative[0];
         if (!first) return true;
-        if (["story.db", "story-state.json", "story-arc.md", "story-plan.json", ".output", "universes", "library"].includes(first)) return false;
+        if (["story.db", "story-state.json", "story-arc.md", "story-plan.json", ".output", "universes", "library", "vane-index"].includes(first)) return false;
         if (first === "universe.json") return false;
         return true;
       }
@@ -511,7 +511,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
         if (!relative.length || relative[0] === "") return true;
         const first = relative[0];
         if (!first) return true;
-        return !["story.db", "story-state.json", "story-arc.md", "story-plan.json", ".output", "universes", "library"].includes(first);
+        return !["story.db", "story-state.json", "story-arc.md", "story-plan.json", ".output", "universes", "library", "vane-index"].includes(first);
       }
     });
     rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
