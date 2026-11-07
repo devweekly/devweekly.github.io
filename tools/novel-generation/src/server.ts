@@ -362,13 +362,14 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
     const active = (await listRuns(id)).find(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"));
     if (active) return void res.status(409).json({ error: "已有章节正在生成。", run: active });
     const now = new Date().toISOString();
-    const run: WorkbenchRun = { id: randomUUID(), worldId: id, kind: "chapter", status: "queued", createdAt: now, updatedAt: now }; await saveRun(run);
-    const args = ["--import", "tsx", "src/cli.ts", "write", "--world", id, "--brief", "沿当前故事状态自然续写下一章。自动确定本章切入点、人物行动、场景推进和结尾悬念；优先保证文学性、文笔与艺术风格，不要求逐项兑现分析建议。", "--max-words", "3000"];
+    const outputDir = path.resolve(".output", id, "chapter-" + randomUUID());
+    const run: WorkbenchRun = { id: randomUUID(), worldId: id, kind: "chapter", status: "queued", createdAt: now, updatedAt: now, outputDir }; await saveRun(run);
+    const args = ["--import", "tsx", "src/cli.ts", "write", "--world", id, "--brief", "沿当前故事状态自然续写下一章。自动确定本章切入点、人物行动、场景推进和结尾悬念；优先保证文学性、文笔与艺术风格，不要求逐项兑现分析建议。", "--max-words", "3000", "--resume-dir", outputDir];
     const child = spawn(process.execPath, args, { cwd: process.cwd(), env: process.env, stdio: ["ignore", "pipe", "pipe"] }); let output = ""; let errors = "";
     child.stdout.setEncoding("utf8").on("data", chunk => { output += chunk; }); child.stderr.setEncoding("utf8").on("data", chunk => { errors += chunk; });
     await saveRun({ ...run, status: "running", updatedAt: new Date().toISOString() });
     child.on("error", error => { void saveRun({ ...run, status: "failed", error: error.message, updatedAt: new Date().toISOString() }); });
-    child.on("close", code => { const saved = output.match(/Saved chapter:\s*(.+)/)?.[1]?.trim(); const outputDir = saved ? path.dirname(saved) : undefined; const completed = code === 0 && Boolean(saved); void saveRun({ ...run, status: completed ? "completed" : "failed", ...(outputDir ? { outputDir, chapterPath: saved } : {}), ...(!completed ? { error: (errors || output || "章节生成进程异常退出，exit code=" + code).slice(-5000) } : {}), updatedAt: new Date().toISOString() }); });
+    child.on("close", code => { const saved = output.match(/Saved chapter:\s*(.+)/)?.[1]?.trim(); const outputDir = saved ? path.dirname(saved) : undefined; const completed = code === 0 && Boolean(saved); void saveRun({ ...run, status: completed ? "completed" : "failed", ...(saved ? { chapterPath: saved } : {}), ...(!completed ? { error: (errors || output || "章节生成进程异常退出，exit code=" + code).slice(-5000) } : {}), updatedAt: new Date().toISOString() }); });
     res.status(202).json({ run });
   } catch (error) { sendError(res, error); }
 });
