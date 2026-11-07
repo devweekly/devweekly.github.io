@@ -5,7 +5,7 @@ import express, { type Request, type Response, type NextFunction } from "express
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { cp, mkdir, readFile, readdir, rename, rm, writeFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { existsSync, rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { loadStoryPlan, saveStoryPlan, generateStoryPlan } from "./story-plan.js";
@@ -264,7 +264,7 @@ function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: string,
 
 /** Synchronous best-effort cleanup for an unsafe copied database. */
 function rmSyncIfExists(filePath: string): void {
-  try { require("node:fs").rmSync(filePath, { force: true }); } catch { /* missing or unavailable */ }
+  try { rmSync(filePath, { force: true }); } catch { /* missing or unavailable */ }
 }
 
 async function readUniverse(id: string): Promise<StoryUniverse | null> {
