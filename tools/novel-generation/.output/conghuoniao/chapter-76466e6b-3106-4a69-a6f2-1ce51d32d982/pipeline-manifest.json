@@ -60,6 +60,18 @@
       "outputFile": "07-review-round-1-raw.txt",
       "outputHash": "11ed2c4881b3fe1fb5bbf120d13f0bdcb432a784610c2bef7cbf29fc08110b60",
       "completedAt": "2026-11-07T06:01:41.170Z"
+    },
+    "style-regression": {
+      "inputHash": "91a8f7e4d72da6d45f4f9631182561310112a6817e057a3cc191189580947d03",
+      "outputFile": "11-style-regression.md",
+      "outputHash": "6b7075e83c6f2cce94560ef439a24b0b7588bbb54aa0ef6e129be6049b3b9f38",
+      "completedAt": "2026-11-07T06:02:57.923Z"
+    },
+    "reader-experience": {
+      "inputHash": "3c6a043acecc611b62ae1078af03f24d90b13a297fa78ba567791ef04002d342",
+      "outputFile": "10-reader-experience.md",
+      "outputHash": "6d8e6861c5d1b919a3065f28299e3b36d5781015af98821d848ccb165bf6618a",
+      "completedAt": "2026-11-07T06:03:27.570Z"
     }
   }
 }

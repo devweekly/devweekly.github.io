@@ -1,0 +1,40 @@
+First attempt: Error: Character arc evidence is not present in the final chapter: 李阎 / M-LIYAN-01\nRetry: [
+  {
+    "code": "invalid_value",
+    "values": [
+      "planted",
+      "reinforced",
+      "misdirected",
+      "partially_revealed",
+      "revealed",
+      "resolved",
+      "abandoned",
+      "uncertain"
+    ],
+    "path": [
+      "foreshadowingUpdates",
+      0,
+      "status"
+    ],
+    "message": "Invalid option: expected one of \"planted\"|\"reinforced\"|\"misdirected\"|\"partially_revealed\"|\"revealed\"|\"resolved\"|\"abandoned\"|\"uncertain\""
+  },
+  {
+    "code": "invalid_value",
+    "values": [
+      "planted",
+      "reinforced",
+      "misdirected",
+      "partially_revealed",
+      "revealed",
+      "resolved",
+      "abandoned",
+      "uncertain"
+    ],
+    "path": [
+      "foreshadowingUpdates",
+      1,
+      "status"
+    ],
+    "message": "Invalid option: expected one of \"planted\"|\"reinforced\"|\"misdirected\"|\"partially_revealed\"|\"revealed\"|\"resolved\"|\"abandoned\"|\"uncertain\""
+  }
+]\n\n
