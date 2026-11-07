@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import test from "node:test";
 import { exportAsOfDossier, renderAsOfDossier } from "../src/asof-dossier.js";
 import { saveStoryAnalysis } from "../src/database.js";
@@ -67,10 +68,28 @@ test("as-of dossier publishes a complete directory and removes stale generated f
   try {
     await mkdir(join(worldDir, "as-of-analysis"), { recursive: true });
     await writeFile(join(worldDir, "as-of-analysis", "stale-old-section.md"), "stale");
+    const chapterText = "第一章正文：先验货籍，再放车马入城。";
+    await mkdir(join(worldDir, "library"), { recursive: true });
+    await writeFile(join(worldDir, "library", "index.json"), JSON.stringify({
+      schemaVersion: 1, worldId: "u-child", createdAt: "2026-11-07T00:00:00.000Z",
+      updatedAt: "2026-11-07T00:00:00.000Z",
+      chunks: [
+        { id: "chunk-1", source: "original.txt", chapter: "第一章", chunkIndex: 0, start: 0, end: chapterText.length, chapterStart: 0, text: chapterText },
+        { id: "chunk-2", source: "original.txt", chapter: "第二章", chunkIndex: 0, start: 0, end: 10, chapterStart: 100, text: "第二章正文" }
+      ]
+    }));
+    await mkdir(join(root, "analysis", "u-child"), { recursive: true });
+    await writeFile(join(root, "analysis", "u-child", "chapter-index.json"), JSON.stringify({
+      schemaVersion: 2, totalLines: 200, volumes: [{ volume: 1, chapters: [
+        { sequenceInVolume: 1, printedNumber: 1, title: "第一章", label: "第一章", line: 1 },
+        { sequenceInVolume: 2, printedNumber: 2, title: "第二章", label: "第二章", line: 100 }
+      ] }]
+    }));
     const craftDir = join(root, "analysis", "u-child", "corpus-craft", "chapters");
     await mkdir(craftDir, { recursive: true });
-    await writeFile(join(craftDir, "chapter-1.json"), JSON.stringify({
-      worldId: "u-child", chapterId: "ch-1", title: "第一章", ordinal: 1,
+    await writeFile(join(craftDir, "V01-C001.json"), JSON.stringify({
+      worldId: "u-child", chapterId: "V01-C001", title: "第一章", ordinal: 1,
+      sourceHash: createHash("sha256").update(chapterText).digest("hex"),
       worldDetails: [{ category: "礼俗", detail: "城门关亭查验货籍", context: "商队入城", evidence: "先验货籍，再放车马入城。" }]
     }));
     await writeFile(join(root, "analysis", "u-child", "corpus-craft", "manifest.json"), JSON.stringify({
