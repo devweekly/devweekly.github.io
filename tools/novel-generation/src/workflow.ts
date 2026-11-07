@@ -15,7 +15,7 @@ import { LONG_CHAPTER_SOURCE_TAIL_CHARS } from "./constants.js";
 import { buildWorldSituationContext } from "./world-situation.js";
 import { LIVING_VOICE_RULES, antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, readerExperiencePrompt } from "./literary-edit.js";
 import { buildStyleRegressionPrompt, loadStyleRegressionReferences } from "./style-regression.js";
-import { buildStyleTrendPrompt, collectStyleRegressionReports } from "./style-trend.js";
+import { buildStyleTrendPrompt, collectStyleRegressionReports, countStyleRegressionReports } from "./style-trend.js";
 /**
  * Build a compact retrospective from body-evidenced character milestones.
  * It is creative context for the rolling planner, never a personality constraint.
@@ -407,11 +407,13 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
       await saveStage(input.outputDir, "11-style-regression.md", report);
       // Every fifth completed chapter produces a lightweight longitudinal review.
       // It is observational only and is isolated from chapter acceptance and prose.
-      const trendReports = await collectStyleRegressionReports(resolve(".output", input.worldId), 1000);
-      if (trendReports.length >= 5 && trendReports.length % 5 === 0) {
+      const trendRoot = resolve(".output", input.worldId);
+      const totalStyleReports = await countStyleRegressionReports(trendRoot);
+      const trendReports = await collectStyleRegressionReports(trendRoot, 30);
+      if (totalStyleReports >= 5 && totalStyleReports % 5 === 0) {
         try {
           const trend = await cachedCall("style-regression-trend", "12-style-regression-trend.md", "styleDistill", [
-            buildStyleTrendPrompt({ styleProfile: input.styleProfile, reports: trendReports.slice(0, 30) })
+            buildStyleTrendPrompt({ styleProfile: input.styleProfile, reports: trendReports })
           ], output => { if (!output.trim()) throw new Error("Style trend returned an empty report."); });
           await saveStage(input.outputDir, "12-style-regression-trend.md", trend);
         } catch (trendError) {
