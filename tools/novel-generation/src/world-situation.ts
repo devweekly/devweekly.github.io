@@ -141,7 +141,33 @@ export function buildWorldSituationContext(state: StoryState, query: string, max
   const eventById = new Map(state.events.map(event => [event.id, event]));
   const threadById = new Map(state.plotThreads.map(thread => [thread.id, thread]));
 
+  const latestByKey = <T,>(items: T[], key: (item: T) => string): T[] => {
+    const latest = new Map<string, T>();
+    for (const item of items) latest.set(key(item), item);
+    return [...latest.values()];
+  };
+  const latestClues = latestByKey(state.foreshadowingUpdates ?? [], item => item.clueId)
+    .map(item => ({ item, score: relevance(source, [item.clue, item.change, item.status]) }))
+    .filter(row => row.score > 0 && !["resolved", "abandoned"].includes(row.item.status))
+    .sort((a, b) => b.score - a.score).slice(0, 5);
+  const latestMacguffins = latestByKey(state.macguffinUpdates ?? [], item => item.macguffinId)
+    .map(item => ({ item, score: relevance(source, [item.name, item.change, item.holder ?? "", item.location ?? "", item.status]) }))
+    .filter(row => row.score > 0 && !["destroyed", "irrelevant"].includes(row.item.status))
+    .sort((a, b) => b.score - a.score).slice(0, 4);
+
   const sections = [
+    latestClues.length
+      ? "## 本章相关伏笔的最新状态（只记录正文有证据的变化）\\n" + latestClues.map(({ item }) =>
+          "- " + item.clue + "（" + item.status + "，" + item.chapter + "）：" + item.change + "；证据：" + item.evidence
+        ).join("\\n")
+      : "",
+    latestMacguffins.length
+      ? "## 本章相关关键目标/物件/信息的最新状态\\n" + latestMacguffins.map(({ item }) =>
+          "- " + item.name + "（" + item.status + "，" + item.chapter + "）：" + item.change +
+          (item.holder ? "；持有者：" + item.holder : "") + (item.location ? "；位置：" + item.location : "") +
+          "；证据：" + item.evidence
+        ).join("\\n")
+      : "",
     characterRows.length
       ? "## 本章相关人物的当前状态\n" + characterRows.map(renderCharacter).join("\n\n")
       : "",
@@ -168,7 +194,7 @@ export function buildWorldSituationContext(state: StoryState, query: string, max
   const header = [
     "以下是当前故事状态中与本次创作任务相关的有限上下文，不是模拟结论。",
     "人物的已知信息表示其知识边界；不得把作者、读者或其他人物掌握的信息自动赋予该人物。",
-    "事件及因果关联是已经记录的故事事实；可能的发展仍须由规划和正文决定，不能直接当成已发生事件。",
+    "事件及因果关联是已经记录的故事事实；可能的发展仍须由规划和正文决定，不能直接当成已发生事件。伏笔和 MacGuffin 只提供最近一次有正文证据的状态，不代表必须在本章推进或回收。",
     "只考虑对本章有价值的人物和局势。主角不介入时世界可以继续变化，但不要求每个角色都行动，也不必为了证明世界在运转而添加支线。"
   ].join("\n");
   const rendered = header + "\n\n" + sections.join("\n\n");
