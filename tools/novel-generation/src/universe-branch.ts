@@ -122,7 +122,7 @@ export function buildUniverseWorldBible(input: UniverseWorldBibleInput): string 
     "",
     "本宇宙是独立的历史分支。原著只读背景严格截止于上述起点，不得读取、推断或引用起点之后的原文剧情作为本宇宙已发生事实。",
     "",
-    "理解起点时，优先阅读本目录的 universe-entry.md；需要前情时阅读 universe-origin-context.md。两者是本宇宙经过时点截断的原文材料。",
+    "理解起点时，优先阅读本目录的 universe-entry.md；需要前情时阅读 universe-origin-context.md。两者是本宇宙经过时点截断的原文材料。知识构建完成后，可进一步参考本目录 as-of-analysis/ 下的人物、关系、时间线和 world-details.md；这些是截至本宇宙起点的证据整理，不是新增正史。",
     "",
     "## 本宇宙正史",
     "",
