@@ -121,7 +121,7 @@ function sendError(res: Response, error: unknown): void {
 const worldQueues = new Map<string, Promise<void>>();
 const worldMutationLocks = new Set<string>();
 
-type KnowledgeBuildStep = "story-analysis" | "character-profiles" | "character-states" | "corpus-craft" | "vane-index";
+type KnowledgeBuildStep = "story-analysis" | "volume-arcs" | "character-profiles" | "character-states" | "corpus-craft" | "vane-index";
 type KnowledgeBuildState = {
   worldId: string; status: "queued" | "running" | "completed" | "partial" | "failed";
   startedAt: string; updatedAt: string; completedAt?: string;
@@ -145,6 +145,7 @@ async function writeKnowledgeBuild(state: KnowledgeBuildState): Promise<void> {
 }
 const KNOWLEDGE_BUILD_STEPS: Array<{ name: KnowledgeBuildStep; command: string[] }> = [
   { name: "story-analysis", command: ["analyze-story"] },
+  { name: "volume-arcs", command: ["analyze-arcs"] },
   { name: "character-profiles", command: ["analyze-profiles"] },
   { name: "character-states", command: ["analyze-character-states"] },
   { name: "corpus-craft", command: ["analyze-corpus-craft"] },
