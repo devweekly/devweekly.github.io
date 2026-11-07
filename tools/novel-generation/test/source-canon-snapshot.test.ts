@@ -4,7 +4,7 @@ import { mkdtempSync, rmSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { restrictKnowledgeDatabaseToEntry } from "../src/source-canon-snapshot.js";
+import { importBoundedStoryAnalysisSnapshot, restrictKnowledgeDatabaseToEntry } from "../src/source-canon-snapshot.js";
 
 function fixture(): { dir: string; databasePath: string; close: () => void } {
   const dir = mkdtempSync(join(tmpdir(), "novel-canon-snapshot-"));
@@ -16,9 +16,9 @@ function fixture(): { dir: string; databasePath: string; close: () => void } {
     INSERT INTO world_meta VALUES('world_id','source-world');
     CREATE TABLE novel_kb_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
     INSERT INTO novel_kb_meta VALUES('schema','8');
-    CREATE TABLE novel_chapters(chapter_id TEXT PRIMARY KEY, title TEXT NOT NULL, ordinal INTEGER NOT NULL);
+    CREATE TABLE novel_chapters(chapter_id TEXT PRIMARY KEY, title TEXT NOT NULL, ordinal INTEGER NOT NULL, volume INTEGER NOT NULL);
     INSERT INTO novel_chapters VALUES
-      ('c1','第一章',1),('c2','第二章',2),('c3','第三章',3);
+      ('c1','第一章',1,1),('c2','第二章',2,2),('c3','第三章',3,3);
     CREATE TABLE novel_mentions(chapter_id TEXT NOT NULL,name TEXT NOT NULL,count INTEGER NOT NULL,
       PRIMARY KEY(chapter_id,name),FOREIGN KEY(chapter_id) REFERENCES novel_chapters(chapter_id));
     INSERT INTO novel_mentions VALUES ('c1','甲',2),('c2','乙',3),('c3','丙',4);
@@ -28,10 +28,14 @@ function fixture(): { dir: string; databasePath: string; close: () => void } {
     INSERT INTO novel_relations VALUES ('r1',1,'before'),('r2',2,'entry'),('r3',3,'future');
     CREATE TABLE novel_character_chapter_states(id TEXT PRIMARY KEY,chapter_ordinal INTEGER,character_name TEXT,state TEXT);
     INSERT INTO novel_character_chapter_states VALUES ('s1',1,'甲','before'),('s2',2,'乙','entry'),('s3',3,'丙','future');
-    CREATE TABLE story_analysis(singleton INTEGER PRIMARY KEY,payload_json TEXT);
-    INSERT INTO story_analysis VALUES (1,'{"future":"spoiler"}');
-    CREATE TABLE novel_characters(character_id TEXT PRIMARY KEY,name TEXT,bio TEXT);
-    INSERT INTO novel_characters VALUES ('char1','全书人物画像','包含未来剧情');
+    CREATE TABLE story_analysis(singleton INTEGER PRIMARY KEY,world_id TEXT,source_hash TEXT,analyzed_at TEXT,payload_json TEXT);
+    INSERT INTO story_analysis VALUES (1,'source-world','full-book','2026-11-07T00:00:00.000Z','{"worldId":"source-world","sourceHash":"full-book","analysisVersion":6,"complete":true,"chapters":3,"characters":[{"name":"甲","chapterKeys":["c1"],"shortBio":"安全人物"},{"name":"未来人物","chapterKeys":["c3"],"shortBio":"未来剧情"}],"plotThreads":[{"title":"安全主线","chapterKeys":["c1","c2"]},{"title":"未来主线","chapterKeys":["c3"]}],"storyCore":{"centralConflict":"包含未来剧情"},"storyCoreObservations":[{"centralQuestion":"安全问题","chapterKeys":["c1","c2"]},{"centralQuestion":"未来问题","chapterKeys":["c3"]}],"storyGraph":{"nodes":[{"id":"safe","type":"character","label":"甲","data":{},"sourceRefs":[{"chapterId":"c1"}]},{"id":"future","type":"character","label":"未来人物","data":{},"sourceRefs":[{"chapterId":"c3"}]}],"edges":[]}}');
+    CREATE TABLE novel_characters(character_id TEXT PRIMARY KEY,name TEXT,bio TEXT,first_chapter INTEGER,last_chapter INTEGER);
+    INSERT INTO novel_characters VALUES ('char1','安全人物画像','截至第二章',1,2),('char2','未来人物画像','包含未来剧情',2,3);
+    CREATE TABLE novel_plot_threads(thread_id TEXT PRIMARY KEY,title TEXT,summary TEXT,first_chapter INTEGER,last_chapter INTEGER);
+    INSERT INTO novel_plot_threads VALUES ('thread1','安全剧情线','截至第二章',1,2),('thread2','未来剧情线','包含未来剧情',2,3);
+    CREATE TABLE novel_arcs(volume INTEGER PRIMARY KEY,title TEXT,summary TEXT);
+    INSERT INTO novel_arcs VALUES (1,'前卷','已完成前卷'),(2,'当前卷','包含起点之后的剧情');
     CREATE TABLE future_aggregate(id TEXT PRIMARY KEY,summary TEXT);
     INSERT INTO future_aggregate VALUES ('f1','未知表也必须清空');
   `);
@@ -59,11 +63,40 @@ test("historical snapshot retains only chapter evidence through the selected ent
     assert.deepEqual(rows(f.databasePath, "SELECT id FROM novel_beats ORDER BY id"), [{ id: "b1" }, { id: "b2" }]);
     assert.deepEqual(rows(f.databasePath, "SELECT id FROM novel_relations ORDER BY id"), [{ id: "r1" }, { id: "r2" }]);
     assert.deepEqual(rows(f.databasePath, "SELECT id FROM novel_character_chapter_states ORDER BY id"), [{ id: "s1" }, { id: "s2" }]);
-    assert.equal(rows(f.databasePath, "SELECT * FROM story_analysis").length, 0);
-    assert.equal(rows(f.databasePath, "SELECT * FROM novel_characters").length, 0);
+    const analysis = JSON.parse(String(rows(f.databasePath, "SELECT payload_json FROM story_analysis")[0]?.payload_json)) as Record<string, any>;
+    assert.equal(analysis.worldId, "universe-one");
+    assert.equal(analysis.asOfEntryChapter, "第二章");
+    assert.equal(analysis.chapters, 2);
+    assert.deepEqual(analysis.characters.map((item: any) => item.name), ["甲"]);
+    assert.deepEqual(analysis.plotThreads.map((item: any) => item.title), ["安全主线"]);
+    assert.deepEqual(analysis.storyCoreObservations.map((item: any) => item.centralQuestion), ["安全问题"]);
+    assert.deepEqual(analysis.storyCore.observations.map((item: any) => item.centralQuestion), ["安全问题"]);
+    assert.deepEqual(analysis.storyGraph.nodes.map((item: any) => item.id), ["safe"]);
+    assert.deepEqual(rows(f.databasePath, "SELECT character_id FROM novel_characters"), [{ character_id: "char1" }]);
+    assert.deepEqual(rows(f.databasePath, "SELECT thread_id FROM novel_plot_threads"), [{ thread_id: "thread1" }]);
+    assert.deepEqual(rows(f.databasePath, "SELECT volume FROM novel_arcs"), [{ volume: 1 }]);
     assert.equal(rows(f.databasePath, "SELECT * FROM future_aggregate").length, 0);
     assert.deepEqual(rows(f.databasePath, "SELECT value FROM world_meta WHERE key='world_id'"), [{ value: "universe-one" }]);
   } finally { f.close(); }
+});
+
+test("an existing universe can backfill its source project's offline analysis with the same cutoff filter", () => {
+  const source = fixture();
+  const target = fixture();
+  try {
+    const sourceSnapshot = JSON.parse(String(rows(source.databasePath, "SELECT payload_json FROM story_analysis")[0]?.payload_json)) as Record<string, unknown>;
+    const targetDb = new DatabaseSync(target.databasePath);
+    try { targetDb.prepare("DELETE FROM story_analysis").run(); } finally { targetDb.close(); }
+    assert.equal(importBoundedStoryAnalysisSnapshot(target.databasePath, "universe-two", "第二章", sourceSnapshot), true);
+    const imported = JSON.parse(String(rows(target.databasePath, "SELECT payload_json FROM story_analysis")[0]?.payload_json)) as Record<string, any>;
+    assert.equal(imported.worldId, "universe-two");
+    assert.equal(imported.asOfEntryChapter, "第二章");
+    assert.deepEqual(imported.characters.map((item: any) => item.name), ["甲"]);
+    assert.deepEqual(imported.storyCore.observations.map((item: any) => item.centralQuestion), ["安全问题"]);
+  } finally {
+    source.close();
+    target.close();
+  }
 });
 
 test("unresolvable entry chapter deletes the copied database instead of retaining full canon", () => {

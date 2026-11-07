@@ -152,7 +152,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   </Card>
   {activeUniverse&&<Card title="原著知识与语料构建" style={{marginBottom:18}}>
    <Space direction="vertical" style={{width:"100%"}} size="middle">
-    <Paragraph type="secondary" style={{marginBottom:0}}>按当前宇宙的历史起点，重建人物画像、人物逐章状态、主线与伏笔分析、Corpus Craft 素材和 Vane 检索索引。所有输入均来自该宇宙自己的截断原文资料，不继承父宇宙的后续剧情。此任务是可选增强，不是开始写作的前置条件。</Paragraph>
+    <Paragraph type="secondary" style={{marginBottom:0}}>优先复用原著已有的离线分析，并按当前宇宙起点过滤；只补齐缺失的人物画像、人物逐章状态、主线与伏笔分析、Corpus Craft 素材和 Vane 检索索引。所有输入均来自该宇宙自己的截断原文资料，不继承起点之后的剧情。此任务在后台运行，不是开始写作的前置条件。</Paragraph>
     <Space wrap>
      <Tag color={knowledgeBuild?.status==="completed"?"success":knowledgeBuild?.status==="failed"?"error":knowledgeBuild?.status==="partial"?"warning":knowledgeBuild?.status==="running"||knowledgeBuild?.status==="queued"?"processing":"default"}>
       {knowledgeBuild?.status==="completed"?"已完成":knowledgeBuild?.status==="failed"?"构建失败":knowledgeBuild?.status==="partial"?"部分完成":knowledgeBuild?.status==="running"?"正在构建":knowledgeBuild?.status==="queued"?"排队中":"尚未构建"}
@@ -160,7 +160,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
      {knowledgeBuild?.currentStep&&<Text type="secondary">当前步骤：{knowledgeBuild.currentStep}</Text>}
      {knowledgeBuild?.updatedAt&&<Text type="secondary">更新于 {new Date(knowledgeBuild.updatedAt).toLocaleString()}</Text>}
     </Space>
-    <Button onClick={()=>void startKnowledgeBuild()} loading={startingKnowledgeBuild} disabled={busy||startingKnowledgeBuild||knowledgeBuild?.status==="queued"||knowledgeBuild?.status==="running"}>
+    <Button onClick={()=>void startKnowledgeBuild()} loading={startingKnowledgeBuild} disabled={startingKnowledgeBuild||knowledgeBuild?.status==="queued"||knowledgeBuild?.status==="running"}>
      {knowledgeBuild?.status==="failed"||knowledgeBuild?.status==="partial"?"重新构建知识资料":"构建知识资料"}
     </Button>
     {knowledgeBuild && knowledgeBuild.steps.length > 0 && <Space direction="vertical" style={{width:"100%"}} size="small">
