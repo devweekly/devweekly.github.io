@@ -40,3 +40,12 @@ test("as-of dossier exports all major story dimensions from a completed bounded 
 test("as-of dossier refuses incomplete or foreign-universe analysis snapshots", () => {
   assert.throws(() => renderAsOfDossier({ ...snapshot, complete: false }), /incomplete/);
 });
+
+test("as-of dossier falls back to the consolidated story core when observations are absent", () => {
+  const files = renderAsOfDossier({
+    ...snapshot,
+    storyCore: { centralConflict: "秩序与自由的冲突", centralQuestion: "谁有权决定命运" },
+    storyCoreObservations: []
+  });
+  assert.match(files["story-analysis.md"]!, /秩序与自由的冲突/);
+});
