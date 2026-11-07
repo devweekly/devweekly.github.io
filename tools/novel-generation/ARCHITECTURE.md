@@ -435,3 +435,21 @@ Roleplay Sandbox 已读取当前人物动态、长期人物观察和任务相关
 原著图谱来自完整 v6 `story_analysis.storyGraph`，通过 `story-kb --type graph` 查询；续写动态图谱由 `src/story-state-graph.ts` 从 Story State 即时派生：人物、事件、情节线、伏笔、MacGuffin 为节点，参与、因果、关联剧情线和人物关系为边；不增加图数据库或重复存储表。`story-state --type graph` 可查看续写图谱或按关键词查询一跳邻接节点。实体只按稳定 ID/明确姓名连接，不做模糊合并。
 
 原著分析快照（`story_analysis` / `novel_*`）与续写运行状态（`story.db`）保持分离。普通章节和长章节终审后，状态管理员可追加有最终正文逐字证据的伏笔生命周期、MacGuffin 状态和人物关系变化更新；稳定 ID 保证 checkpoint 恢复幂等。规划上下文按任务相关性读取每个对象/关系的最新更新，终审只核对明确事实冲突，不要求每章推进或回收。人物弧光、伏笔解释和故事方向仍允许反复、误导和意外变化。
+
+## 10. 原文创作素材分析与 Vane 检索
+
+项目目标是续写小说，当前首先服务《从姑获鸟开始》，同时允许后续 world 复用同一套离线分析流程。新增 analyze-corpus-craft 不替代 analyze-story、人物逐章状态或 Story Graph，而是补充更贴近场景写作的原文素材：
+
+- 场景与叙事节拍：场景边界、人物、视角、目标、冲突、转折、结果和情绪变化。
+- 人物声音与对白范例：保存原文中的短对白片段及说话人/关系/情绪；抽象观察必须有逐字证据，不以性格标签替代实际语言。
+- 事件因果与人物知识：区分因果、动机、条件和单纯先后；记录人物在当时知道什么及其信息来源。
+- 世界日常细节：称谓、习俗、阶层、组织、交易、器物、民俗与超自然规则在生活中的呈现。
+- 叙事手法观察：视角、节奏、信息揭示、悬念和留白，仅作描述，不生成句长配额或风格硬约束。
+
+每章独立缓存到 analysis/<world>/corpus-craft/chapters/<chapterId>.json，按正文哈希和提示版本增量跳过；支持 --limit、--shard、--force。每条素材的 evidence 必须是本章原文连续子串，不匹配的条目直接丢弃。分析失败不覆盖已有成功文件。当前分析单元复用 novel-kb.ts 的去重章节文本与章节目录，因而需要先运行 build-corpus-index.mjs、ingest。
+
+普通章节与长章节 CLI 在构造任务检索查询后，自动从离线素材中选取少量相关章节素材，附加到现有 storyAnalysisContext；不新增 Agent、不改变生成阶段顺序，也不把分析资料当作正史、剧情清单或审查门禁。章节缓存指纹会随上下文变化自然失效。
+
+Vane 是可选的第二检索索引，不是数据库替代品：SQLite 仍保存权威结构化数据和故事状态；原文索引与创作素材 JSON 是可重建来源；Vane 只提供原文片段/分析素材的 BM25 或向量+BM25 检索。通过 vane-index 构建 worlds/<world>/vane-index。Node binding @vane-rs/node 按需安装；未安装时自动跳过，Vane 索引不可用时写作继续使用既有 SQLite/BM25。Vane 本身不生成 embedding；配置 VANE_EMBEDDING_BASE_URL、VANE_EMBEDDING_MODEL、VANE_EMBEDDING_DIM 后才启用混合语义检索，否则仅使用文本 BM25。Node binding 当前未暴露 metadata filter，因此本项目不依赖 Vane 查询过滤，world 隔离由独立索引目录保证。
+
+重要边界：这套离线分析的价值是让写作 Agent 找回“具体发生过什么、人物当时怎么说、他们知道什么、场景如何转折”，不是要求新章节复刻原文统计规律。文学性、文笔和艺术风格始终优先。
