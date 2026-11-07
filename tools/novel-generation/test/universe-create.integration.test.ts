@@ -59,7 +59,7 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     const response = await fetch(`http://127.0.0.1:${address.port}/api/worlds/source-world/universes`, {
       method: "POST",
       headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
-      body: JSON.stringify({ name: "第二章分支", entryChapter: "第二章", type: "free", brief: "测试" })
+      body: JSON.stringify({ name: "第二章分支", entryChapter: "第二章", type: "free", brief: "测试", buildKnowledge: false })
     });
     const responseBody = await response.text();
     assert.equal(response.status, 201, responseBody);
