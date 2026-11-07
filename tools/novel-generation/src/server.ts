@@ -482,7 +482,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
       ]).catch(() => undefined);
     }
     sendError(res, error);
-  }
+  } finally { release?.(); }
 });
 
 // ── 当前滚动式多章节 Story Arc ─────────────────────────────
