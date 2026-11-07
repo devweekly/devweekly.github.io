@@ -520,3 +520,12 @@ CLI `write` 同样读取活动 Story Arc；没有旧 Arc 时首次生成自动�
 章节运行只有在退出码为 0、最终正文存在、`09-quality-summary.json` 为 passed、`08-state-update.json` 有效且 CLI 明确报告 Story State 自动提交后，才标记 completed。stdout/stderr 和 `process-result.json` 保存在本次 `.output` 运行目录。此规则避免终审或状态回写缺失时出现“章节已完成”的假成功。
 
 当前 Story Arc 以 Markdown 文件作为可读的滚动规划快照；尚未将 Arc/Chapter/Scene 计划规范化为 SQLite 多表及显式版本迁移。该项保留为后续增强，不阻塞第一阶段自动连载闭环。
+
+
+## 故事宇宙管理与分支树
+
+- `GET /api/worlds/:worldId/universes` 返回同一原文来源下全部宇宙，包含已归档宇宙；`parentUniverseId` / `forkPoint` 用于恢复分支树关系。
+- Chapter Studio 将宇宙按父子关系缩进展示，可直接切换到任意分支；归档宇宙仍保留在分支树中并标记“已归档”。
+- `PATCH /api/worlds/:worldId/universe-archive` 使用 `{ archived: true|false }` 归档或恢复宇宙。该操作不删除任何文件；若存在 queued/running 章节任务则拒绝执行。
+- 已归档宇宙禁止生成下一章和继续分叉，恢复后可继续创作。
+- 起点前情的字符预算优先分配给距离所选起点最近的章节，再按原文顺序组合，避免较早章节耗尽上下文预算。
