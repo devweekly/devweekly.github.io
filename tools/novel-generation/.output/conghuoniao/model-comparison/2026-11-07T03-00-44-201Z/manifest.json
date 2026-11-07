@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "runId": "2026-11-07T03-00-44-201Z",
+  "world": "conghuoniao",
+  "createdAt": "2026-11-07T03:00:44.302Z",
+  "host": {
+    "platform": "darwin",
+    "arch": "arm64",
+    "node": "v24.14.1",
+    "os": "27.2.0",
+    "totalMemoryBytes": 17179869184
+  },
+  "settings": {
+    "localBaseUrl": "http://127.0.0.1:1234/v1",
+    "localModel": "qwen3.8-9b-distill-slerp-f451-pro-writer-uncensored",
+    "deepseekModel": "deepseek-v4.1-flash",
+    "maxChars": 12000,
+    "timeoutMs": 300000,
+    "maxTokens": 6000,
+    "localTemperature": 0.2,
+    "deepseekSampling": "CodeBuddy SDK defaults; temperature not exposed"
+  },
+  "localModelsVisibleAtStart": [
+    "nomic-ai/nomic-embed-text-v1.5-GGUF",
+    "qwen3.8-9b-distill-slerp-f451-pro-writer-uncensored",
+    "text-embedding-nomic-embed-text-v1.5"
+  ],
+  "chapters": [
+    {
+      "chapterId": "V01-C001",
+      "title": "第一章 大枪落幕",
+      "local": {
+        "error": "LM Studio 未返回文本。"
+      },
+      "deepseek": {
+        "jsonValid": true,
+        "categoryCounts": {
+          "characters": 1,
+          "relationships": 3,
+          "plotEvents": 5,
+          "foreshadowings": 6,
+          "macguffins": 2,
+          "worldDetails": 7,
+          "narrativeCraft": 8
+        },
+        "evidenceCount": 53,
+        "groundedEvidenceCount": 51,
+        "evidenceGroundingRate": 0.9623,
+        "styleAnalysisPresent": true,
+        "uncertaintyCount": 5
+      }
+    },
+    {
+      "chapterId": "V05-C052",
+      "title": "第四十八章 武子弄险",
+      "local": {
+        "error": "LM Studio 未返回文本。"
+      },
+      "deepseek": {
+        "jsonValid": true,
+        "categoryCounts": {
+          "characters": 6,
+          "relationships": 4,
+          "plotEvents": 5,
+          "foreshadowings": 6,
+          "macguffins": 6,
+          "worldDetails": 4,
+          "narrativeCraft": 5
+        },
+        "evidenceCount": 44,
+        "groundedEvidenceCount": 39,
+        "evidenceGroundingRate": 0.8864,
+        "styleAnalysisPresent": true,
+        "uncertaintyCount": 5
+      }
+    },
+    {
+      "chapterId": "V09-C022",
+      "title": "第二十一章 事态明朗",
+      "local": {
+        "error": "LM Studio 未返回文本。"
+      },
+      "deepseek": {
+        "jsonValid": true,
+        "categoryCounts": {
+          "characters": 2,
+          "relationships": 2,
+          "plotEvents": 4,
+          "foreshadowings": 4,
+          "macguffins": 2,
+          "worldDetails": 4,
+          "narrativeCraft": 4
+        },
+        "evidenceCount": 28,
+        "groundedEvidenceCount": 28,
+        "evidenceGroundingRate": 1,
+        "styleAnalysisPresent": true,
+        "uncertaintyCount": 3
+      }
+    },
+    {
+      "chapterId": "V11-C081",
+      "title": "第八十一章 连根拔起",
+      "local": {
+        "error": "HTTP 400: {\"error\":\"Engine protocol predict request returned 400: {\\\"error\\\":{\\\"code\\\":400,\\\"message\\\":\\\"request (4737 tokens) exceeds the available context size (4096 tokens), try increasing it\\\",\\\"type\\\":\\\"exceed_context_size_error\\\",\\\"n_prompt_tokens\\\":4737,\\\"n_ctx\\\":4096}}\"}"
+      },
+      "deepseek": {
+        "jsonValid": true,
+        "categoryCounts": {
+          "characters": 6,
+          "relationships": 7,
+          "plotEvents": 11,
+          "foreshadowings": 7,
+          "macguffins": 5,
+          "worldDetails": 6,
+          "narrativeCraft": 6
+        },
+        "evidenceCount": 78,
+        "groundedEvidenceCount": 76,
+        "evidenceGroundingRate": 0.9744,
+        "styleAnalysisPresent": true,
+        "uncertaintyCount": 5
+      }
+    },
+    {
+      "chapterId": "V14-C025",
+      "title": "第二十五章 真君五皂",
+      "local": {
+        "error": "LM Studio 未返回文本。"
+      },
+      "deepseek": {
+        "jsonValid": true,
+        "categoryCounts": {
+          "characters": 6,
+          "relationships": 4,
+          "plotEvents": 3,
+          "foreshadowings": 5,
+          "macguffins": 2,
+          "worldDetails": 4,
+          "narrativeCraft": 6
+        },
+        "evidenceCount": 36,
+        "groundedEvidenceCount": 35,
+        "evidenceGroundingRate": 0.9722,
+        "styleAnalysisPresent": true,
+        "uncertaintyCount": 5
+      }
+    },
+    {
+      "chapterId": "V17-C030",
+      "title": "第二十八章 此土佛法不足言（上）",
+      "local": {
+        "error": "LM Studio 未返回文本。"
+      },
+      "deepseek": {
+        "jsonValid": true,
+        "categoryCounts": {
+          "characters": 5,
+          "relationships": 4,
+          "plotEvents": 5,
+          "foreshadowings": 5,
+          "macguffins": 2,
+          "worldDetails": 6,
+          "narrativeCraft": 6
+        },
+        "evidenceCount": 40,
+        "groundedEvidenceCount": 38,
+        "evidenceGroundingRate": 0.95,
+        "styleAnalysisPresent": true,
+        "uncertaintyCount": 5
+      }
+    }
+  ]
+}
