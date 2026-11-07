@@ -1,0 +1,26 @@
+# 本地模型与 DeepSeek 离线分析对比
+
+在原著已完成 ingest、章节索引，且 LM Studio 已启动并加载 Writer 模型的机器上执行：
+
+```bash
+cd tools/novel-generation
+lms server start --port 1234
+npm run compare-models
+```
+
+默认均匀抽取 6 个章节。若 LM Studio 当前有多个模型，使用 API 返回的模型 ID 指定目标：
+
+```bash
+npm run compare-models -- --local-model "LM Studio model id"
+npm run compare-models -- --chapters 8 --max-chars 12000
+npm run compare-models -- --chapter-ids V01-C001,V02-C005,V04-C010
+npm run compare-models -- --deepseek-model deepseek-v4.1-flash --timeout-ms 300000
+```
+
+环境变量：LM_STUDIO_BASE_URL（默认 http://127.0.0.1:1234/v1）、LM_STUDIO_MODEL、LM_API_TOKEN（仅当 LM Studio 开启鉴权时）。DeepSeek 通过项目现有 CodeBuddy SDK 登录和模型目录调用，不在命令行或诊断包中保存密钥。
+
+输出位于 .output/<world>/model-comparison/<run-id>/，自动生成 ZIP。每章 JSON 包含原文摘录、相同 prompt、两个模型的原始输出、耗时、LM Studio usage（若接口返回）和自动检查。诊断包不包含完整原著、数据库或密钥，但包含被抽样章节摘录以便复核 evidence。
+
+自动检查只验证 JSON 是否可解析，以及 evidence 是否为输入文本中的逐字连续片段；它不是分析质量评分。人工重点是人物理解、因果判断、伏笔克制、关系变化、世界细节和文学风格洞察。文学性高于字段覆盖，分析只为续写服务，不成为人物和剧情的硬约束。
+
+LM Studio 调用设置 temperature=0.2；现有 CodeBuddy SDK 封装不暴露等价 temperature 参数，因此采样参数并非完全相同。模型调用失败会记录在对应章节中，不会伪装为成功。
