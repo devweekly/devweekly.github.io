@@ -352,7 +352,7 @@ async function readCanonChapters(sourceWorldId: string): Promise<Array<{ title: 
  * The source catalog is full-book metadata, so write a universe-local copy filtered to
  * the same as-of chapter boundary. Never fall back to the parent's unbounded catalog.
  */
-async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targetDir: string, universeId: string): Promise<void> {
+async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targetDir: string, universeId: string, entryIndex: number): Promise<void> {
   const sourcePath = path.resolve("analysis", sourceWorldId, "chapter-index.json");
   try {
     const source = JSON.parse(await readFile(sourcePath, "utf8")) as {
@@ -361,7 +361,7 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
       chapters?: Array<Record<string, unknown>>;
     };
     const library = JSON.parse(await readFile(path.join(targetDir, "library", "index.json"), "utf8")) as { chunks?: Array<{ chapter: string }> };
-    const allowed = new Set([...new Set((library.chunks ?? []).map(chunk => chunk.chapter))]);
+    const boundedChapterCount = [...new Set((library.chunks ?? []).map(chunk => chunk.chapter))].length;
     const safeChapter = (chapter: Record<string, unknown>) => ({
       ...(typeof chapter.sequenceInVolume === "number" ? { sequenceInVolume: chapter.sequenceInVolume } : {}),
       ...(typeof chapter.printedNumber === "number" || chapter.printedNumber === null ? { printedNumber: chapter.printedNumber } : {}),
@@ -369,8 +369,10 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
       label: String(chapter.label ?? chapter.title ?? ""),
       ...(typeof chapter.line === "number" ? { line: chapter.line } : {})
     });
+    let remaining = Math.min(entryIndex + 1, boundedChapterCount);
     const safeVolumes = (source.volumes ?? []).map(volume => {
-      const chapters = (volume.chapters ?? []).filter(chapter => allowed.has(String(chapter.title ?? ""))).map(safeChapter);
+      const chapters = (volume.chapters ?? []).slice(0, remaining).map(safeChapter);
+      remaining -= chapters.length;
       if (!chapters.length) return null;
       const lastLine = [...chapters].reverse().find(chapter => typeof chapter.line === "number")?.line;
       return {
@@ -383,7 +385,7 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
         chapters
       };
     }).filter((volume): volume is NonNullable<typeof volume> => volume !== null);
-    const safeChapters = (source.chapters ?? []).filter(chapter => allowed.has(String(chapter.title ?? ""))).map(safeChapter);
+    const safeChapters = (source.chapters ?? []).slice(0, entryIndex + 1).map(safeChapter);
     const retainedLines = [
       ...safeVolumes.flatMap(volume => volume.chapters.map(chapter => chapter.line ?? 0)),
       ...safeChapters.map(chapter => chapter.line ?? 0)
@@ -530,7 +532,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     await writeFile(path.join(stagingDir, "universe-entry.md"), selectedChapter.text + "\n", "utf8");
     await writeFile(path.join(stagingDir, "universe-origin-context.md"), originContext + "\n", "utf8");
     await writeUniverseLibrarySnapshot(rootSourceId, stagingDir, id, selectedIndex);
-    await writeUniverseAnalysisCatalogSnapshot(rootSourceId, stagingDir, id);
+    await writeUniverseAnalysisCatalogSnapshot(rootSourceId, stagingDir, id, selectedIndex);
     await writeFile(path.join(stagingDir, "source-canon-as-of.json"), JSON.stringify({ sourceWorldId: rootSourceId, entryChapter, entryOrdinal, policy: "chapter-scoped-evidence-only", fullBookAggregates: "excluded" }, null, 2) + "\n", "utf8");
     await rename(stagingDir, targetDir);
     res.status(201).json({ universe });
@@ -629,7 +631,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     const parentEntryIndex = parentCanonChapters.findIndex(chapter => chapter.title === parent.entryChapter);
     if (parentEntryIndex < 0) throw new Error("父宇宙的原文起点已无法在共享章节目录中定位，拒绝创建可能泄漏未来剧情的分支。");
     await writeUniverseLibrarySnapshot(parent.sourceWorldId, stagingDir, id, parentEntryIndex);
-    await writeUniverseAnalysisCatalogSnapshot(parent.sourceWorldId, stagingDir, id);
+    await writeUniverseAnalysisCatalogSnapshot(parent.sourceWorldId, stagingDir, id, parentEntryIndex);
 
     const forkState = rebaseStoryState(state, parentId, id);
     await writeFile(path.join(stagingDir, "story-state.json"), JSON.stringify(forkState, null, 2) + "\n", "utf8");
