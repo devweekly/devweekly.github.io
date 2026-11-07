@@ -30,7 +30,7 @@ test("anti-ai editor protects literary intent and permits zero-change output", (
   assert.match(prompt, /不得改变剧情事实/);
   assert.match(prompt, /不得制造错字/);
   assert.match(prompt, /合并重复动作/);
-  assert.match(prompt, /不来自短句堆叠/);
+  assert.match(prompt, /短句数量、断行数量/);
   const withDiagnosis = antiAiEditPrompt({
     brief: "写两个人久别重逢", blueprint: "两人相见", diagnosis: "某处可能解释过度",
     chapter: "他没有说话。"
