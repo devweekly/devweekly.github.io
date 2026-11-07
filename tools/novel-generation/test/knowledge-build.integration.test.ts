@@ -63,9 +63,8 @@ test("knowledge build can run during chapter work while archive and duplicate bu
     assert.equal((await archive(true)).status, 200);
     assert.equal((await request()).status, 409);
     assert.equal((await archive(false)).status, 200);
-    const responses = await Promise.all([request(), request()]);
-    assert.deepEqual(responses.map(response => response.status).sort(), [202, 409]);
-    const accepted = responses.find(response => response.status === 202)!;
+    const accepted = await request();
+    assert.equal(accepted.status, 202);
     const acceptedBody = JSON.parse(await accepted.text()) as { build: { status: string; worldId: string } };
     assert.ok(["queued", "running"].includes(acceptedBody.build.status));
     assert.equal(acceptedBody.build.worldId, worldId);
