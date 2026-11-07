@@ -429,6 +429,6 @@ Roleplay Sandbox 已读取当前人物动态、长期人物观察和任务相关
 
 ## 续写动态故事状态
 
-动态续写图谱由 `src/story-state-graph.ts` 从 Story State 即时派生：人物、事件、情节线、伏笔、MacGuffin 为节点，参与、因果、关联剧情线和人物关系为边；不增加图数据库或重复存储表。`story-state --type graph` 可查看完整图谱或按关键词查询一跳邻接节点。实体只按稳定 ID/明确姓名连接，不做模糊合并。
+原著图谱来自完整 v6 `story_analysis.storyGraph`，通过 `story-kb --type graph` 查询；续写动态图谱由 `src/story-state-graph.ts` 从 Story State 即时派生：人物、事件、情节线、伏笔、MacGuffin 为节点，参与、因果、关联剧情线和人物关系为边；不增加图数据库或重复存储表。`story-state --type graph` 可查看续写图谱或按关键词查询一跳邻接节点。实体只按稳定 ID/明确姓名连接，不做模糊合并。
 
 原著分析快照（`story_analysis` / `novel_*`）与续写运行状态（`story.db`）保持分离。普通章节和长章节终审后，状态管理员可追加有最终正文逐字证据的伏笔生命周期、MacGuffin 状态和人物关系变化更新；稳定 ID 保证 checkpoint 恢复幂等。规划上下文按任务相关性读取每个对象/关系的最新更新，终审只核对明确事实冲突，不要求每章推进或回收。人物弧光、伏笔解释和故事方向仍允许反复、误导和意外变化。
