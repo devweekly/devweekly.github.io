@@ -50,8 +50,9 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
       headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
       body: JSON.stringify({ name: "第二章分支", entryChapter: "第二章", type: "free", brief: "测试" })
     });
-    assert.equal(response.status, 201, await response.text());
-    const payload = await response.json() as { universe: { id: string; entryChapter: string } };
+    const responseBody = await response.text();
+    assert.equal(response.status, 201, responseBody);
+    const payload = JSON.parse(responseBody) as { universe: { id: string; entryChapter: string } };
     const universeDir = join(root, "worlds", payload.universe.id);
     assert.equal(payload.universe.entryChapter, "第二章");
 
