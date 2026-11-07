@@ -365,7 +365,7 @@ export function listNovelCharacterChapterStateHashes(worldDir:string,worldId:str
   const rows=db.prepare("SELECT character_id,chapter_id,source_hash,payload_json FROM novel_character_chapter_states").all() as Array<{character_id:string;chapter_id:string;source_hash:string;payload_json:string}>;
   return new Map(rows.map(row=>{
    let contextHash="";try{contextHash=String((JSON.parse(row.payload_json) as {contextHash?:string}).contextHash??"");}catch{/* legacy payload is reanalyzed once */}
-   return [row.character_id+"\\0"+row.chapter_id,{sourceHash:row.source_hash,contextHash}];
+   return [row.character_id+"\\0"+row.chapter_id,{sourceHash:row.source_hash,contextHash}] as const;
   }));
  }finally{db.close();}
 }
