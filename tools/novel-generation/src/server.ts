@@ -372,6 +372,17 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
     res.status(202).json({ run });
   } catch (error) { sendError(res, error); }
 });
+app.get("/api/runs/:runId/preview", async (req, res) => {
+  try {
+    const id = worldIdOf(req.query.worldId); const run = await getRun(id, recordId(req.params.runId));
+    if (!run || run.kind !== "chapter" || !run.outputDir) return void res.json({ chapterPlan: "", chapter: "" });
+    const root = path.resolve(".output", id) + path.sep; const outputDir = path.resolve(run.outputDir);
+    if (!outputDir.startsWith(root)) return void res.status(400).json({ error: "Invalid chapter output path." });
+    const readOptionalText = async (name: string): Promise<string> => readFile(path.join(outputDir, name), "utf8").catch(error => { if ((error as NodeJS.ErrnoException).code === "ENOENT") return ""; throw error; });
+    const [chapterPlan, sceneBlueprint, chapter] = await Promise.all([readOptionalText("03-chapter-plan.md"), readOptionalText("01-scene-blueprint.md"), readOptionalText("chapter.md")]);
+    res.json({ chapterPlan: chapterPlan || sceneBlueprint, chapter });
+  } catch (error) { sendError(res, error); }
+});
 // ── Story Plan 生成（异步任务） ──────────────────────────────
 
 /** 反斜杠以外的路径成分统一替换成下划线，历史文件名用它保证合法。 */
