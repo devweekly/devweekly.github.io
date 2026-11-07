@@ -281,6 +281,8 @@ app.get("/api/worlds/:worldId/universes", async (req, res) => {
 app.patch("/api/worlds/:worldId/universe-archive", async (req, res) => {
   let release: (() => void) | null = null;
   try {
+    const lockId = worldIdOf(req.params.worldId);
+    await serializeWorld(lockId, async () => {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
     release = acquireWorldMutation(id);
     if (!release) return void res.status(409).json({ error: "当前宇宙正在执行创建、分叉或归档操作，请稍后重试。" });
@@ -297,12 +299,15 @@ app.patch("/api/worlds/:worldId/universe-archive", async (req, res) => {
     await writeFile(tempPath, JSON.stringify(updated, null, 2) + "\n", "utf8");
     await rename(tempPath, path.join(worldDir(id), "universe.json"));
     res.json({ universe: updated });
+    });
   } catch (error) { sendError(res, error); }
   finally { release?.(); }
 });
 
 app.post("/api/worlds/:worldId/universes", async (req, res) => {
   try {
+    const lockId = worldIdOf(req.params.worldId);
+    await serializeWorld(lockId, async () => {
     const sourceId = worldIdOf(req.params.worldId); assertInsideWorld(sourceId);
     const sourceUniverse = await readUniverse(sourceId);
     if (sourceUniverse) return void res.status(409).json({ error: "当前版本的新建入口只从原文项目创建独立宇宙；从已有宇宙的历史时点分叉将在后续版本提供。" });
@@ -353,6 +358,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     await writeFile(path.join(stagingDir, "universe-origin-context.md"), originContext + "\n", "utf8");
     await rename(stagingDir, targetDir);
     res.status(201).json({ universe });
+    });
   } catch (error) { sendError(res, error); }
 });
 
@@ -383,6 +389,8 @@ app.get("/api/worlds/:worldId/forkable-chapters", async (req, res) => {
 app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
   let createdUniverseId: string | null = null;
   try {
+    const lockId = worldIdOf(req.params.worldId);
+    await serializeWorld(lockId, async () => {
     const parentId = worldIdOf(req.params.worldId); assertInsideWorld(parentId);
     const parent = await readUniverse(parentId);
     if (!parent) return void res.status(409).json({ error: "只能从已有故事宇宙创建分叉。" });
@@ -462,6 +470,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     }
     await rename(stagingDir, targetDir);
     res.status(201).json({ universe, forkedAt: forkRun.id });
+    });
   } catch (error) {
     // Failed fork must not leave a half-visible universe or orphaned copied chapters.
     const failedId = createdUniverseId ?? "";
@@ -678,6 +687,8 @@ app.get("/api/runs/:runId", async (req, res) => {
 // ── 一键续写下一章 ────────────────────────────────────────────
 app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
   try {
+    const lockId = worldIdOf(req.params.worldId);
+    await serializeWorld(lockId, async () => {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id); const dir = worldDir(id);
     try { await readFile(path.join(dir, "world-bible.md"), "utf8"); } catch { return void res.status(409).json({ error: "缺少 worlds/" + id + "/world-bible.md。请先建立世界设定；这是续写不可自动猜测的基础资料。" }); }
     const canonWorldId = (await readUniverse(id))?.sourceWorldId ?? id;
@@ -778,6 +789,7 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
       });
     });
     res.status(202).json({ run });
+    });
   } catch (error) { sendError(res, error); }
 });
 app.get("/api/runs/:runId/preview", async (req, res) => {
