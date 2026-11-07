@@ -33,6 +33,14 @@ test("knowledge build API reserves one task, persists status, and permits retry 
       headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
       body: "{}"
     });
+    const archive = (archived: boolean) => fetch(`http://127.0.0.1:${address.port}/api/worlds/${worldId}/universe-archive`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
+      body: JSON.stringify({ archived })
+    });
+    assert.equal((await archive(true)).status, 200);
+    assert.equal((await request()).status, 409);
+    assert.equal((await archive(false)).status, 200);
     const blocked = await request();
     assert.equal(blocked.status, 409);
     await saveRun({
