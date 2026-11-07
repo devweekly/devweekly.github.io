@@ -77,7 +77,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
    const data=await api<{runs:Run[]}>("/api/worlds/"+activeWorldId+"/runs");
    const completed=data.runs.filter(x=>x.kind==="chapter"&&x.status==="completed"&&x.chapterPath&&x.outputDir);
    const enriched=await Promise.all(completed.map(async item=>{
-    try{const preview=await api<Preview>("/api/runs/"+item.id+"/preview?worldId="+activeWorldId);const title=preview.chapter.split("\\n").map(line=>line.trim()).find(Boolean)??"未命名章节";return {...item,chapterTitle:title.slice(0,80)};}
+    try{const preview=await api<Preview>("/api/runs/"+item.id+"/preview?worldId="+activeWorldId);const title=preview.chapter.split("\n").map(line=>line.trim()).find(Boolean)??"未命名章节";return {...item,chapterTitle:title.slice(0,80)};}
     catch{return {...item,chapterTitle:new Date(item.createdAt).toLocaleString()};}
    }));
    setForkableRuns(enriched);setForkRunId(enriched[0]?.id);setForkName("");setForkOpen(true);
