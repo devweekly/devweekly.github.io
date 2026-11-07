@@ -4,7 +4,7 @@ import { PlayCircleOutlined, ReloadOutlined } from "@ant-design/icons";
 const { Title, Text, Paragraph } = Typography;
 type Run = { id:string; kind?:string; status:string; createdAt:string; updatedAt:string; error?:string; outputDir?:string; chapterPath?:string; previousChapterPath?:string };
 type Preview = { storyArc:string; chapterPlan:string; chapter:string };
-type Universe = { id:string; sourceWorldId:string; name:string; type:string; entryChapter:string; brief:string; createdAt:string };
+type Universe = { id:string; sourceWorldId:string; name:string; type:string; entryChapter:string; brief:string; createdAt:string; parentUniverseId?:string; forkPoint?:string; archivedAt?:string };
 type ForkableRun = { id:string; chapterTitle:string; createdAt:string };
 async function api<T>(url:string, init?:RequestInit):Promise<T>{const response=await fetch(url,{headers:{"Content-Type":"application/json",...(init?.headers??{})},...init});const body=await response.json();if(!response.ok)throw new Error(body.error??response.statusText);return body as T;}
 const emptyPreview:Preview={storyArc:"",chapterPlan:"",chapter:""};
@@ -62,6 +62,20 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   catch(e){const text=e instanceof Error?e.message:String(e);setNotice(text);message.error(text);}
   finally{setStarting(false);}
  };
+ const activeUniverse=universes.find(item=>item.id===activeWorldId);
+ const changeArchive=async(archived:boolean)=>{
+  if(!activeUniverse)return;
+  try{
+   const result=await api<{universe:Universe}>("/api/worlds/"+activeWorldId+"/universe-archive",{method:"PATCH",body:JSON.stringify({archived})});
+   setUniverses(current=>current.map(item=>item.id===activeWorldId?result.universe:item));
+   message.success(archived?"故事宇宙已归档。":"故事宇宙已恢复。");
+  }catch(e){message.error(e instanceof Error?e.message:String(e));}
+ };
+ const universeDepth=(item:Universe):number=>{
+  let depth=0;let parent=item.parentUniverseId;const seen=new Set<string>();
+  while(parent&&!seen.has(parent)&&depth<20){seen.add(parent);const found=universes.find(x=>x.id===parent);if(!found)break;depth++;parent=found.parentUniverseId;}
+  return depth;
+ };
  const createUniverse=async()=>{
   setCreatingUniverse(true);
   try{
@@ -94,14 +108,27 @@ export default function ChapterStudio({worldId}:{worldId:string}){
    <Title level={2}>继续写下一章</Title>
    <Paragraph type="secondary">系统先维护一个有因果关系的中期故事阶段，再从中选择下一章。每章完成后自动更新人物、事件和后续计划；正文可以推动计划调整，不需要人工审批。</Paragraph>
    <Space wrap>
-    <Select style={{minWidth:220}} value={activeWorldId} onChange={setActiveWorldId} options={[{value:worldId,label:"原文项目（现有续写）"},...universes.map(u=>({value:u.id,label:u.name+" · 从"+u.entryChapter+"开始"}))]} />
+    <Select style={{minWidth:220}} value={activeWorldId} onChange={setActiveWorldId} options={[{value:worldId,label:"原文项目（现有续写）"},...universes.map(u=>({value:u.id,label:(u.archivedAt?"[已归档] ":"")+u.name+" · 从"+u.entryChapter+"开始"}))]} />
     <Button onClick={()=>setCreateOpen(true)}>新建故事宇宙</Button>
     {activeWorldId!==worldId&&<Button onClick={()=>void openFork()}>从本宇宙分叉</Button>}
-    <Button type="primary" size="large" className="chapter-action" icon={<PlayCircleOutlined/>} loading={starting||Boolean(busy)} disabled={!activeWorldId||Boolean(busy)} onClick={()=>void generate()}>生成下一章</Button>
+    {activeUniverse&&(activeUniverse.archivedAt?<Button onClick={()=>void changeArchive(false)}>恢复宇宙</Button>:<Button danger onClick={()=>void changeArchive(true)} disabled={Boolean(busy)}>归档当前宇宙</Button>)}
+    <Button type="primary" size="large" className="chapter-action" icon={<PlayCircleOutlined/>} loading={starting||Boolean(busy)} disabled={!activeWorldId||Boolean(busy)||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generate()}>生成下一章</Button>
     <Button icon={<ReloadOutlined/>} loading={loading} onClick={()=>void refresh()}>刷新状态</Button>
     {busy&&<Tag color="processing">正在自动创作</Tag>}
    </Space>
   </section>
+  <Card title="故事宇宙分支" style={{marginBottom:18}}>
+   {universes.length===0?<Empty description="还没有独立故事宇宙。可以从原文项目选择章节创建。"/>:
+    <Space direction="vertical" style={{width:"100%"}} size="small">
+     {universes.map(item=><div key={item.id} style={{display:"flex",alignItems:"center",gap:10,padding:"7px 10px",paddingLeft:10+universeDepth(item)*22,borderLeft:"2px solid #d9d9d9",background:item.id===activeWorldId?"#f5f7fa":"transparent",borderRadius:4}}>
+      <div style={{flex:1,minWidth:0}}>
+       <Space wrap size={6}><Text strong>{item.name}</Text>{item.archivedAt&&<Tag>已归档</Tag>}{item.parentUniverseId&&<Tag color="blue">分叉</Tag>}</Space>
+       <div><Text type="secondary" style={{fontSize:12}}>起点：{item.entryChapter}{item.forkPoint?" · 分叉点："+item.forkPoint.slice(0,8):""}</Text></div>
+      </div>
+      <Button size="small" type={item.id===activeWorldId?"primary":"default"} onClick={()=>setActiveWorldId(item.id)}>{item.id===activeWorldId?"当前":"打开"}</Button>
+     </div>)}
+    </Space>}
+  </Card>
   {notice&&<Alert type="warning" showIcon message="本次任务未能启动" description={notice} style={{marginBottom:18}}/>}
   <Card title="当前故事阶段" style={{marginBottom:18}}>
    {preview.storyArc||activeArc?<Paragraph style={{whiteSpace:"pre-wrap",marginBottom:0}}>{preview.storyArc||activeArc}</Paragraph>:<Empty description="首次生成时自动推演一个中期故事阶段（约 5–8 章），不需要单独启动规划任务。"/>}
