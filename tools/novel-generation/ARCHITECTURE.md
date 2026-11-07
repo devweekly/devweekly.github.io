@@ -550,3 +550,8 @@ CLI `write` 同样读取活动 Story Arc；没有旧 Arc 时首次生成自动�
 Fork 复制历史章节产物时，不仅重映射 WorkbenchRun 的 outputDir、chapterPath 和 previousChapterPath，还必须逐个校验并重绑定产物内的 08-state-update.json。否则子宇宙虽然能读取复制的正文，却无法把这些历史章节作为下一次分叉点。状态快照缺失时保留历史正文但不提供该章节的分叉能力；快照存在但身份不匹配或结构非法时，整个 fork staging 失败并清理，不得将父宇宙状态混入子宇宙。
 
 知识构建子进程必须兼容开发与构建后运行：开发环境通过 tsx 执行 src/cli.ts，生产环境直接执行 dist/cli.js，不依赖生产环境安装开发依赖。两种方式共用相同命令参数和 worldId，确保任务始终在当前宇宙目录运行。
+
+
+### 历史宇宙的 world-bible 启动底稿
+
+复制策略明确排除源项目的全书 world-bible.md，避免其汇总了起点之后的事件、人物状态和世界变化。但章节写作入口要求每个宇宙都有本地 world-bible.md，因此 Create/Fork 在 staging 中生成独立的最小底稿：记录原文起点、宇宙/父分支身份、正史边界和创作方向，并指向 bounded universe-entry.md 与 universe-origin-context.md。底稿不声称拥有完整世界设定；详细人物和剧情参考由后续可选知识构建任务从截断语料重建。
