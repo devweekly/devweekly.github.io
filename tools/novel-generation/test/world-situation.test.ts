@@ -20,7 +20,8 @@ test("world situation injects only the latest relevant clue and MacGuffin lifecy
   const context = buildWorldSituationContext(state, "三道刻痕 铜匣 李玄 守门人");
   assert.match(context, /reinforced/);
   assert.match(context, /第2章/);
-  assert.match(context, /李玄/);\n  assert.match(context, /暂时合作/);\n  assert.doesNotMatch(context, /互相提防/);
+  assert.match(context, /李玄/);
+  assert.match(context, /暂时合作/);\n  assert.doesNotMatch(context, /互相提防/);
   assert.doesNotMatch(context, /首次出现/);
 });
 
