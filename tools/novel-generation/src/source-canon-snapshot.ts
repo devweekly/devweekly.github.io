@@ -135,7 +135,6 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
             const bounded: Record<string, unknown> = {
               ...source,
               worldId,
-              complete: source.complete === true && !requiresReanalysis,
               sourceHash: createHash("sha256").update(JSON.stringify({ sourceHash: source.sourceHash, entryChapter, entryChapterId: chapter.chapter_id, cutoff })).digest("hex"),
               asOfEntryChapter: entryChapter,
               asOfEntryChapterId: chapter.chapter_id,
@@ -164,6 +163,8 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
                 ) : []
               } : undefined
             };
+            // Set completeness only after every field has been checked for unsafe provenance.
+            bounded.complete = source.complete === true && !requiresReanalysis;
             // Reconstruct a bounded core only from chapter-provenanced observations.
             db.prepare("UPDATE story_analysis SET payload_json=? WHERE singleton=1").run(JSON.stringify(bounded));
           } catch {
