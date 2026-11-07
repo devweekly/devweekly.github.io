@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Button, Card, Empty, Input, List, Space, Spin, Tag, Typography, message } from "antd";
-import { ArchiveOutlined, ReloadOutlined, SaveOutlined } from "@ant-design/icons";
+import { FolderAddOutlined, ReloadOutlined, SaveOutlined } from "@ant-design/icons";
 
 const { Text, Paragraph } = Typography;
 type ActiveReference = { name: string; chars: number; updatedAt: string };
@@ -91,7 +91,7 @@ export default function StyleReferencesPanel({ worldId }: { worldId: string }) {
               dataSource={data.active}
               renderItem={item => (
                 <List.Item
-                  actions={[<Button key="edit" type="link" onClick={() => void loadActive(item)}>编辑</Button>, <Button key="archive" danger type="text" icon={<ArchiveOutlined />} onClick={() => void archive(item.name)}>归档</Button>]}
+                  actions={[<Button key="edit" type="link" onClick={() => void loadActive(item)}>编辑</Button>, <Button key="archive" danger type="text" icon={<FolderAddOutlined />} onClick={() => void archive(item.name)}>归档</Button>]}
                 >
                   <List.Item.Meta
                     title={<Text strong>{item.name}</Text>}

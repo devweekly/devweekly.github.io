@@ -1,7 +1,7 @@
 import { readFile, mkdir, writeFile } from "node:fs/promises";
 import { databaseStatus, readAnnotationsByChunkIds, readStoryAnalysis, listNovelCharacters, listNovelThreads, listNovelForeshadowings, listNovelBeats, readNovelKbMeta, novelKnowledgeOverview, exportNovelKnowledge, listNovelCharacterProfiles, listNovelCharacterChapterStates } from "./database.js";
 import { basename, dirname, join, resolve, sep } from "node:path";
-import { generateStory, type GenerationMode } from "./generate.js";
+import { generateStory, runAgentText, type GenerationMode } from "./generate.js";
 import { ingestFiles, listTextFiles, searchLibrary } from "./library.js";
 import { writeChapter } from "./workflow.js";
 import { loadStoryState } from "./story-state.js";
@@ -152,9 +152,16 @@ function resolveWorldOutputPath(requested: string | undefined, worldId: string, 
   return output;
 }
 
+const COMMANDS = new Set([
+  "generate", "write", "write-long", "regress", "ingest", "search", "analyze", "analyze-story",
+  "index-story", "story-kb", "story-state", "analyze-arcs", "analyze-profiles", "analyze-character-states",
+  "analyze-world", "models", "check-runtime", "db-status", "verify-world", "plan-story", "distill-style",
+  "style-regress", "roleplay-sandbox", "style-reference", "style-trend"
+]);
+
 async function main(): Promise<void> {
   const command = process.argv[2];
-  if (command !== "generate" && command !== "write" && command !== "write-long" && command !== "regress" && command !== "ingest" && command !== "search" && command !== "analyze" && command !== "analyze-story" && command !== "index-story" && command !== "story-kb" && command !== "story-state" && command !== "analyze-arcs" && command !== "analyze-profiles" && command !== "analyze-character-states" && command !== "analyze-world" && command !== "models" && command !== "check-runtime" && command !== "db-status" && command !== "verify-world" && command !== "plan-story" && command !== "distill-style" && command !== "style-regress" && command !== "roleplay-sandbox") usage();
+  if (!COMMANDS.has(command as string)) usage();
 
   const worldId = safeWorldId(arg("--world") ?? "conghuoniao");
   const libraryDir = resolve("worlds", worldId, "library");
@@ -295,7 +302,7 @@ async function main(): Promise<void> {
     const shardArg = arg("--shard");
     let shard: { index: number; count: number } | undefined;
     if (shardArg) {
-      const match = shardArg.match(/^(\\d+)\\/(\\d+)$/);
+      const match = shardArg.match(/^(\d+)\/(\d+)$/);
       if (!match) throw new Error("--shard must look like 0/4.");
       shard = { index: Number(match[1]), count: Number(match[2]) };
     }

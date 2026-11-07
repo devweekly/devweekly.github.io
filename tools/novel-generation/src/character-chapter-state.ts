@@ -101,7 +101,7 @@ export async function analyzeCharacterChapterStates(
   const allCharacters = listNovelCharacters(worldDir, worldId, { limit: 100000 });
   const wanted = options.names?.length ? new Set(options.names) : undefined;
   const characters = allCharacters.filter(character => !wanted || wanted.has(character.name));
-  const existing = options.force ? new Map<string, string>() : listNovelCharacterChapterStateHashes(worldDir, worldId);
+  const existing = options.force ? new Map<string, { sourceHash: string; contextHash: string }>() : listNovelCharacterChapterStateHashes(worldDir, worldId);
   const priorStates = listNovelCharacterChapterStates(worldDir, worldId, { limit: 1000000 });
   const statesByCharacter = new Map<string, NovelCharacterChapterStateRow[]>();
   for (const state of priorStates) { const list = statesByCharacter.get(state.characterId) ?? []; list.push(state); statesByCharacter.set(state.characterId, list); }

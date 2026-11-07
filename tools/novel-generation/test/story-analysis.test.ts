@@ -69,7 +69,7 @@ test("version 1 world databases upgrade to include story analysis storage", asyn
     db.exec("PRAGMA user_version=1");
     db.close();
     const status = databaseStatus(worldDir, "test-world");
-    assert.equal(status.schemaVersion, 7);
+    assert.equal(status.schemaVersion, 8);
     assert.equal(status.storyAnalysis, 0);
   } finally {
     await rm(root, { recursive: true, force: true });
@@ -88,7 +88,7 @@ test("upgrading a database that still holds a chunk copy drops it", async () => 
     db.prepare("INSERT INTO library_chunks(id,text) VALUES('a','x')").run();
     db.exec("PRAGMA user_version=5");
     db.close();
-    assert.equal(databaseStatus(worldDir, "test-world").schemaVersion, 7);
+    assert.equal(databaseStatus(worldDir, "test-world").schemaVersion, 8);
     const check = new DatabaseSync(join(worldDir, "novel.db"));
     try {
       assert.equal(check.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='library_chunks'").get(), undefined, "重复的分片表应已删除");
@@ -119,7 +119,7 @@ test("upgrading a database drops the graph tables and keeps the graph in the sna
     db.exec("PRAGMA user_version=6");
     db.close();
 
-    assert.equal(databaseStatus(worldDir, "test-world").schemaVersion, 7);
+    assert.equal(databaseStatus(worldDir, "test-world").schemaVersion, 8);
     assert.equal(readStoryAnalysis(worldDir, "test-world")?.storyGraph?.nodes?.[0]?.label, "林岚", "图仍保存在快照里");
     const check = new DatabaseSync(join(worldDir, "novel.db"));
     try {

@@ -49,7 +49,7 @@ test("graph keyword query returns exactly one hop and reports truncation", () =>
   state.characters = [{ name: "李玄", status: "行动中" }];
   state.plotThreads = [{ id: "thread-1", title: "旧城失踪案", status: "active", lastUpdated: "第1章", notes: "追查中" }];
   state.events = [{
-    id: "event-1", summary: "李玄发现旧城密道", position: "第1章",
+    id: "event-1", summary: "发现旧城密道", position: "第1章",
     participants: ["李玄"], consequences: [], relatedPlotThreads: ["thread-1"]
   }];
   const graph = buildStoryStateGraph(state);

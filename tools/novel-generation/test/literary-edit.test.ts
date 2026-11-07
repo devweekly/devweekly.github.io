@@ -12,7 +12,7 @@ test("anti-ai diagnosis uses concrete reading evidence, not AI detection", () =>
   assert.match(prompt, /不判断文本是否由 AI 生成/);
   assert.match(prompt, /每项必须引用短片段/);
   assert.match(prompt, /未发现值得修改的地方/);
-  assert.match(prompt, /文学性、文笔、艺术风格高于一切/);
+  assert.match(prompt, /文学性、文笔、艺术风格高于其他一切/);
 });
 
 test("anti-ai editor protects literary intent and permits zero-change output", () => {

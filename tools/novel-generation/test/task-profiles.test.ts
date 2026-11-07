@@ -15,7 +15,7 @@ test("planning, review and prose stages think; extraction stages stay off", () =
   assert.equal(profiles.scene.thinkingMode, "adaptive");
   assert.equal(profiles.scene.effort, "medium");
   assert.equal(profiles.state.thinkingMode, "disabled");
-  assert.equal(STAGE_KEYS.length, 9);
+  assert.equal(STAGE_KEYS.length, 12);
 });
 
 test("invalid profile values fall back to stage defaults", () => {
