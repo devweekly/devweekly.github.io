@@ -157,16 +157,16 @@ export function buildWorldSituationContext(state: StoryState, query: string, max
 
   const sections = [
     latestClues.length
-      ? "## 本章相关伏笔的最新状态（只记录正文有证据的变化）\\n" + latestClues.map(({ item }) =>
+      ? "## 本章相关伏笔的最新状态（只记录正文有证据的变化）\n" + latestClues.map(({ item }) =>
           "- " + item.clue + "（" + item.status + "，" + item.chapter + "）：" + item.change + "；证据：" + item.evidence
-        ).join("\\n")
+        ).join("\n")
       : "",
     latestMacguffins.length
-      ? "## 本章相关关键目标/物件/信息的最新状态\\n" + latestMacguffins.map(({ item }) =>
+      ? "## 本章相关关键目标/物件/信息的最新状态\n" + latestMacguffins.map(({ item }) =>
           "- " + item.name + "（" + item.status + "，" + item.chapter + "）：" + item.change +
           (item.holder ? "；持有者：" + item.holder : "") + (item.location ? "；位置：" + item.location : "") +
           "；证据：" + item.evidence
-        ).join("\\n")
+        ).join("\n")
       : "",
     characterRows.length
       ? "## 本章相关人物的当前状态\n" + characterRows.map(renderCharacter).join("\n\n")
