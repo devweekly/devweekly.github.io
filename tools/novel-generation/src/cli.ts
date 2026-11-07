@@ -171,7 +171,17 @@ async function main(): Promise<void> {
   if (!COMMANDS.has(command as string)) usage();
 
   const worldId = safeWorldId(arg("--world") ?? "conghuoniao");
-  const libraryDir = resolve("worlds", worldId, "library");
+  let canonWorldId = worldId;
+  try {
+    const pointer = JSON.parse(await readFile(resolve("worlds", worldId, "source-canon.json"), "utf8")) as { sourceWorldId?: string; readOnly?: boolean };
+    if (pointer.readOnly && typeof pointer.sourceWorldId === "string") canonWorldId = safeWorldId(pointer.sourceWorldId);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  const libraryDir = resolve("worlds", canonWorldId, "library");
+  if (canonWorldId !== worldId && command === "ingest") {
+    throw new Error("故事宇宙共享原文资料库为只读；请回到原文项目导入或更新原文。");
+  }
 
   if (command === "roleplay-sandbox") {
     const brief = arg("--brief");
