@@ -162,6 +162,20 @@ export async function exportAsOfDossier(worldId: string, worldDir: string): Prom
   }
   worldDetails.sort((a, b) => Number(a.ordinal ?? 0) - Number(b.ordinal ?? 0));
   const files = renderAsOfDossier(snapshot, beats as Array<Record<string, unknown>>, worldDetails);
+  let corpusCoverage = "未找到 Corpus Craft manifest；世界细节尚未完成覆盖分析。";
+  try {
+    const manifest = JSON.parse(await readFile(resolve(worldDir, "..", "..", "analysis", worldId, "corpus-craft", "manifest.json"), "utf8")) as {
+      totalSelected?: number; processed?: number; failed?: number; updatedAt?: string;
+    };
+    corpusCoverage = [
+      "计划分析章节：" + Number(manifest.totalSelected ?? 0),
+      "已完成/缓存章节：" + Number(manifest.processed ?? 0),
+      "失败章节：" + Number(manifest.failed ?? 0),
+      "有效世界细节条目：" + worldDetails.length,
+      manifest.updatedAt ? "分析更新时间：" + manifest.updatedAt : ""
+    ].filter(Boolean).join("；");
+  } catch { /* retain explicit unavailable coverage note */ }
+  files["world-details.md"] += "\n\n## 资料覆盖状态\n\n" + corpusCoverage + "\n";
   const directory = join(worldDir, "as-of-analysis");
   await mkdir(worldDir, { recursive: true });
   const staging = await mkdtemp(join(worldDir, ".as-of-analysis.staging-"));
