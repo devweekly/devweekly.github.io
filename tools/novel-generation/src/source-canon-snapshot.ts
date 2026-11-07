@@ -1,4 +1,5 @@
 import { existsSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 
 /** Remove an unsafe copied knowledge database rather than leave unfiltered canon behind. */
@@ -40,7 +41,7 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
     try {
       // Explicit allow-list: an unfamiliar table may contain a new whole-book
       // aggregate. Preserve only metadata and chapter-addressable evidence.
-      const safeTables = new Set(["world_meta","novel_kb_meta","novel_chapters","novel_mentions","novel_beats","novel_relations","novel_character_chapter_states"]);
+      const safeTables = new Set(["world_meta","novel_kb_meta","novel_chapters","novel_mentions","novel_beats","novel_relations","novel_character_chapter_states","story_analysis"]);
       for (const table of tables) {
         if (!safeTables.has(table)) db.exec("DELETE FROM \"" + table.replace(/"/g, "\"\"") + "\"");
       }
@@ -67,6 +68,66 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
       }
       if (has("novel_mentions") && columns("novel_mentions").has("chapter_id")) {
         db.prepare("DELETE FROM novel_mentions WHERE chapter_id NOT IN (SELECT chapter_id FROM novel_chapters WHERE ordinal<=?)").run(cutoff);
+      }
+
+      // Reuse completed offline analysis only when every cited chapter is within
+      // this branch's boundary. Future-touching aggregates are dropped whole.
+      const chapterRows = db.prepare("SELECT chapter_id,title FROM novel_chapters WHERE ordinal<=?").all(cutoff) as Array<{chapter_id:string;title:string}>;
+      const allowedKeys = new Set(chapterRows.flatMap(row => [row.chapter_id, row.title]));
+      if (has("story_analysis") && columns("story_analysis").has("payload_json")) {
+        const row = db.prepare("SELECT singleton,payload_json FROM story_analysis WHERE singleton=1").get() as {singleton:number;payload_json:string} | undefined;
+        if (row) {
+          try {
+            const source = JSON.parse(row.payload_json) as Record<string, unknown>;
+            const boundedItems = (value: unknown): Array<Record<string, unknown>> => Array.isArray(value)
+              ? value.filter((item): item is Record<string, unknown> => {
+                  if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+                  const keys = Array.isArray(item.chapterKeys) ? item.chapterKeys.filter((key): key is string => typeof key === "string") : [];
+                  return keys.length > 0 && keys.every(key => allowedKeys.has(key));
+                })
+              : [];
+            const boundedRefs = (value: unknown): boolean => Array.isArray(value) && value.length > 0 && value.every(ref => {
+              if (!ref || typeof ref !== "object" || Array.isArray(ref)) return false;
+              const item = ref as Record<string, unknown>;
+              const key = String(item.chapterId ?? item.chunkId ?? item.chapter ?? "");
+              return Boolean(key && allowedKeys.has(key));
+            });
+            const graph = source.storyGraph && typeof source.storyGraph === "object"
+              ? source.storyGraph as {nodes?:unknown;edges?:unknown}
+              : undefined;
+            const bounded: Record<string, unknown> = {
+              ...source,
+              sourceHash: createHash("sha256").update(JSON.stringify({ sourceHash: source.sourceHash, entryChapter, cutoff })).digest("hex"),
+              asOfEntryChapter: entryChapter,
+              chapters: chapterRows.length,
+              characters: boundedItems(source.characters),
+              plotThreads: boundedItems(source.plotThreads),
+              foreshadowings: boundedItems(source.foreshadowings),
+              developmentPossibilities: boundedItems(source.developmentPossibilities),
+              relations: boundedItems(source.relations),
+              storyCoreObservations: boundedItems(source.storyCoreObservations),
+              macguffins: boundedItems(source.macguffins),
+              beats: Array.isArray(source.beats) ? source.beats.filter(item => {
+                if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+                const key = String((item as Record<string, unknown>).chapterKey ?? "");
+                return Boolean(key && allowedKeys.has(key));
+              }) : [],
+              storyGraph: graph ? {
+                nodes: Array.isArray(graph.nodes) ? graph.nodes.filter(node =>
+                  Boolean(node && typeof node === "object" && boundedRefs((node as Record<string, unknown>).sourceRefs))
+                ) : [],
+                edges: Array.isArray(graph.edges) ? graph.edges.filter(edge =>
+                  Boolean(edge && typeof edge === "object" && boundedRefs((edge as Record<string, unknown>).sourceRefs))
+                ) : []
+              } : undefined
+            };
+            // Whole-book storyCore has no chapter provenance and is unsafe to reuse.
+            delete bounded.storyCore;
+            db.prepare("UPDATE story_analysis SET payload_json=? WHERE singleton=1").run(JSON.stringify(bounded));
+          } catch {
+            db.prepare("DELETE FROM story_analysis").run();
+          }
+        }
       }
       db.prepare("DELETE FROM novel_chapters WHERE ordinal>?").run(cutoff);
       if (has("world_meta") && columns("world_meta").has("key") && columns("world_meta").has("value")) {
