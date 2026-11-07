@@ -597,6 +597,9 @@ npm run dev -- story-kb --world conghuoniao --type character-states --query 李�
 # 查看当前知识库和状态库的表行数/Schema 版本
 npm run dev -- db-status --world conghuoniao
 
+# 一次性核验 v6 原著图谱合并、annotations 覆盖率、人物逐章状态行数，并输出缺失项的下一条命令
+npm run dev -- verify-world --world conghuoniao
+
 # 全量逐片段 annotations；每批落盘，失败记录保留，重新执行会继续未完成项并在无进展时停止
 npm run dev -- analyze --world conghuoniao --all --batch-size 20
 ```
