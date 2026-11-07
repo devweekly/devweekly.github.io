@@ -5,7 +5,7 @@
 ```bash
 cd tools/novel-generation
 lms server start --port 1234
-npm run compare-models
+npm run compare-models -- --local-model "qwen3.8-9b-distill-slerp-f451-pro-writer-uncensored"
 ```
 
 默认均匀抽取 6 个章节。请先在 LM Studio 的模型加载设置中将 Writer 模型 Context Length 调整到至少 8192，建议 16384；4096 通常不足以容纳分析 Prompt 和章节摘录。脚本不会单独缩短某一模型的输入，保证两边使用同一份 Prompt。若 LM Studio 当前有多个模型，使用 API 返回的模型 ID 指定目标：
