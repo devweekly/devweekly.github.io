@@ -50,7 +50,7 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
   let server: ReturnType<typeof createServer> | undefined;
   try {
     process.chdir(root);
-    server = createServer(createApp());
+    server = createServer(createApp({ backgroundUniverseAnalysis: false }));
     await new Promise<void>(resolve => server!.listen(0, "127.0.0.1", resolve));
     const address = server.address();
     assert.ok(address && typeof address === "object");
