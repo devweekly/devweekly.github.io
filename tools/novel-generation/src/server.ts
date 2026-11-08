@@ -1127,8 +1127,14 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
   };
   await mkdir(outputDir, { recursive: true });
   await saveRun(run);
-  await createStoryStateSnapshot(worldId, storyUnitId, runId);
-  await onRunStarted?.(run);
+  try {
+    await createStoryStateSnapshot(worldId, storyUnitId, runId);
+    await onRunStarted?.(run);
+  } catch (error) {
+    await restoreStoryStateSnapshot(worldId, run).catch(() => false);
+    await saveRun({ ...run, status: "failed", updatedAt: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) });
+    throw error;
+  }
   const mode = previousChapterPath ? "continuation" : "derivative";
   const args = [
     ...buildCliEntryArgs(["write"]), "--world", worldId, "--mode", mode,
