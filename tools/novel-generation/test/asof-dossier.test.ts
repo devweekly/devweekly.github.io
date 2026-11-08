@@ -73,7 +73,7 @@ test("as-of dossier publishes a complete directory and removes stale generated f
     await writeFile(join(worldDir, "as-of-analysis", "stale-old-section.md"), "stale");
     const chapterText = "第一章正文：先验货籍，再放车马入城。";
     const canonLines = Array.from({ length: 100 }, (_, index) => index === 0 ? chapterText : index === 99 ? "第二章正文" : "");
-    const originalText = canonLines.join("\\n");
+    const originalText = canonLines.join("\n");
     const sourceHash = createHash("sha256").update(originalText, "utf8").digest("hex");
     const secondChapterStart = originalText.indexOf("第二章正文");
     await writeFile(join(worldDir, "original.txt"), originalText, "utf8");
