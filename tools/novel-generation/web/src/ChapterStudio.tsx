@@ -78,7 +78,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
    if(historyScope==="current"&&chosen){
      try{const result=await api<{storyUnit:StoryUnit}>("/api/worlds/"+activeWorldId+"/story-units/"+chosen);if(!cancelled)setStoryUnit(result.storyUnit);}
      catch{if(!cancelled)setStoryUnit(null);}
-   }else if(!cancelled)setStoryUnit(null);
+   }
   }).catch(()=>{if(!cancelled){setStoryUnit(null);setStoryUnits([]);setSelectedStoryUnitId(undefined);setStoryExecution(null);}});
   return()=>{cancelled=true;};},[activeWorldId,selectedStoryUnitId,historyScope]);
  useEffect(()=>{
