@@ -36,6 +36,23 @@ test("repeated chapter titles resolve positionally instead of collapsing across 
   assert.deepEqual(assignment.chapters.map(item => item.charCount), [2, 1, 1, 1]);
 });
 
+test("non-catalog author notes are not attached to the preceding chapter", () => {
+  const catalog = [
+    catalogChapter(1, 1, "第一章 开端"),
+    catalogChapter(1, 2, "第二章 转折")
+  ];
+  const chunks = [
+    chunk("s:1", "第一章 开端", "正式正文", 0),
+    chunk("s:note", "作者说明", "作者说明不得成为章节正文", 1),
+    chunk("s:2", "第二章 转折", "后续正文", 2)
+  ];
+  const assignment = assignChapters(chunks, catalog);
+  assert.equal(assignment.chunkChapter.has("s:note"), false);
+  assert.equal(assignment.chunkChapter.get("s:1")?.charCount, 4);
+  assert.equal(assignment.chunkChapter.get("s:2")?.chapterId, "V01-C002");
+  assert.deepEqual(assignment.unmatchedLabels, ["作者说明"]);
+});
+
 test("repeated canon titles without source positions fail closed", () => {
   const catalog = [
     catalogChapter(1, 1, "第一章 开端"),
