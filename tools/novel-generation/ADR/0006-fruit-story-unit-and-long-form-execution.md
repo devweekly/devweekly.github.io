@@ -117,3 +117,19 @@ Story Unit 先建立完整故事的因果骨架和结局方向，再按叙事需
 - 人物发展评估只记录正文与 Story State 能够支持的变化，并将观察结果、所属章节及开放的后续可能写入 Story Unit 执行历史。人物弧光仍是创作可能性，不是必须兑现的任务。
 - Story Execution 持久化有界事件时间线，记录任务创建/恢复、章节开始/完成、故事评估、暂停、停滞、失败、取消和自然收束。Workbench 可以展开查看事件时间、说明及关联 Run ID。事件历史最多保留最近 500 条，避免任务长期运行造成无界增长。
 - 事件时间线是诊断与审计辅助，不替代章节正文、终审结果和 Story State。
+
+
+### 多 Story Unit 存储基础（2026-11-08）
+
+为支持同一 World 内多个独立故事单元，新增 `.story-units/index.json` 与 `.story-units/<storyUnitId>.json` 的文件存储约定。Story Unit 增加稳定 UUID identity；索引只保存 ID、标题和更新时间，完整设计保存在独立 JSON 文件。读取时对旧版 `story-unit.json` 做惰性迁移：生成一个稳定的新 ID、写入新存储，同时保留旧文件不做破坏性改写。存储层拒绝跨 World 读写，并以临时文件 + rename 原子替换。
+
+已提供存储模块、列表/读取/生成 API，以及两个单元互不覆盖和 legacy 惰性迁移测试。Story Execution schema 已增加可选的 `storyUnitId` 字段，为旧任务保留兼容性。
+
+**尚未完成的执行隔离，不得误认为多故事端到端已经可用：**
+
+- 当前长篇 worker 仍使用 legacy `story-unit.json` 路径；创建的新 Story Unit 尚未成为可独立执行的任务目标。
+- 章节 Run、Story State、Story Arc、人物状态与章节导航仍主要以 World 为边界。仅给 Story Execution 写入 storyUnitId 不足以阻止跨故事污染。
+- Workbench 尚未提供完整的多 Story Unit 切换与执行界面。
+- 在章节、状态和 Arc 均完成 storyUnitId 过滤/隔离，并验证同一 World 下交替执行与恢复互不串线之前，不得开放多个 Story Unit 的并行执行入口。
+
+下一阶段必须先让章节运行记录携带 Story Unit identity，并让写作 pipeline 的 Story State 读取/提交及 Arc 上下文限定到当前单元；随后再接入 worker 的创建、暂停、恢复和重规划。多个单元可以在同一 World 下保存，但在隔离链路完成前只能作为独立设计资料管理。
