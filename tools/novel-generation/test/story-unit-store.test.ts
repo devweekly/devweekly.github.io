@@ -48,7 +48,7 @@ test("regenerating a Story Unit can preserve immutable, separately listed design
     assert.equal(versions[0]?.title, "雾河镇");
     assert.equal(versions[0]?.storyCore, "河雾保存声音");
     assert.equal((await getStoredStoryUnitVersion(root, "world-a", unit.id, archived.versionId))?.storyCore, "河雾保存声音");
-    assert.equal(await getStoredStoryUnitVersion(root, "another-world", unit.id, archived.versionId), undefined);
+    await assert.rejects(() => getStoredStoryUnitVersion(root, "another-world", unit.id, archived.versionId), /ownership mismatch/i);
     assert.equal((await getStoredStoryUnit(root, "world-a", unit.id))?.storyCore, "河雾吞没活人的记忆");
     assert.deepEqual(await listStoredStoryUnitVersions(root, "another-world", unit.id), []);
   } finally { await rm(root, { recursive: true, force: true }); }
