@@ -322,7 +322,9 @@ test("universe creation uses catalog order and stable chapter IDs despite extra 
 
     // Missing text in any prior chapter must block creation even when the
     // selected chapter itself has a valid chunk.
-    await rm(join(source, "original.txt"), { force: true });
+    const incompleteCatalog = JSON.parse(JSON.stringify(catalog)) as { volumes: Array<{ chapters: Array<{ line: number | null }> }> };
+    incompleteCatalog.volumes[0]!.chapters[0]!.line = null;
+    await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify(incompleteCatalog));
     const withoutPrior = JSON.parse(await readFile(join(source, "library", "index.json"), "utf8")) as { chunks: Array<{ chapter: string }> };
     withoutPrior.chunks = withoutPrior.chunks.filter(chunk => chunk.chapter !== "第一章");
     await writeFile(join(source, "library", "index.json"), JSON.stringify(withoutPrior));
@@ -335,7 +337,11 @@ test("universe creation uses catalog order and stable chapter IDs despite extra 
     });
     assert.equal(incompletePastResponse.status, 400);
     assert.match(await incompletePastResponse.text(), /起点及之前的原著章节缺少可验证正文/);
-    await writeFile(join(source, "original.txt"), originalText, "utf8");
+    await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify(catalog));
+    await writeFile(join(source, "library", "index.json"), JSON.stringify({
+      schemaVersion: 1, worldId: "source-world", createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z", chunks
+    }));
 
     // The chunkless catalog row is reconstructed only in the staged universe;
     // the source knowledge database remains unchanged.
