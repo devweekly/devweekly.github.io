@@ -25,6 +25,7 @@ const valid = {
 test("validates a complete story unit with open-ended chapter scope", () => {
   const unit = validateStoryUnit(valid, "world-a");
   assert.equal(unit.storySpine.length, 4);
+  assert.equal(unit.storySpine[0]?.status, "planned");
   assert.equal(unit.cast[0]?.status, "existing");
   assert.equal(unit.execution.status, "not_started");
   assert.deepEqual(unit.execution.completedChapterIds, []);
