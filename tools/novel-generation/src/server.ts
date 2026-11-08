@@ -1025,7 +1025,7 @@ app.post("/api/worlds/:worldId/story-units/generate", async (req, res) => {
       let unit: Record<string, unknown>;
       if (previous) {
         // Keep every prior design immutable so regeneration is reversible and inspectable.
-        await archiveStoredStoryUnitVersion(dir, previous);
+        await archiveStoredStoryUnitVersion(dir, { ...previous, id: previousId! });
         unit = { ...generated, id: previous.id };
         await saveStoredStoryUnit(dir, unit as never);
       } else {
