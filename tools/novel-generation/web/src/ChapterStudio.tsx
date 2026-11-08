@@ -66,7 +66,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  useEffect(()=>{setActiveWorldId(worldId);setRun(null);setPreview(emptyPreview);void refresh();void Promise.all([api<{universes:Universe[]}>("/api/worlds/"+worldId+"/universes"),api<{chapters:Array<{id:number;title:string;label:string}>}>("/api/worlds/"+worldId+"/source-chapters"),api<{storyUnit:StoryUnit|null}>("/api/worlds/"+worldId+"/story-unit")]).then(([u,c,s])=>{setUniverses(u.universes);setSourceChapters(c.chapters);setStoryUnit(s.storyUnit);}).catch(()=>{setUniverses([]);setSourceChapters([]);setStoryUnit(null);});},[worldId]);
  useEffect(()=>{void refresh();},[activeWorldId,selectedStoryUnitId]);
  useEffect(()=>{if(!activeWorldId)return;void Promise.all([
-  api<{storyUnit:StoryUnit|null}>("/api/worlds/"+activeWorldId+"/story-unit"),
+  api<{storyUnits:Array<{id:string;title:string;updatedAt:string}>}>("/api/worlds/"+activeWorldId+"/story-units"),
   api<{executions:StoryExecution[]}>("/api/worlds/"+activeWorldId+"/story-executions")
  ]).then(([units,tasks])=>{
    setStoryUnits(units.storyUnits);
@@ -132,15 +132,15 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const generateStoryUnit=async()=>{
   setGeneratingStoryUnit(true);
   try{
-   const result=await api<{storyUnit:StoryUnit}>("/api/worlds/"+activeWorldId+"/story-units/generate",{method:"POST",body:JSON.stringify({})});
-   setStoryUnit(result.storyUnit);message.success("完整故事单元设计已生成并保存。");
+   const result=await api<{storyUnit:StoryUnit}>("/api/worlds/"+activeWorldId+"/story-units/generate",{method:"POST",body:JSON.stringify({storyUnitId:selectedStoryUnitId})});
+   setStoryUnit(result.storyUnit);if(result.storyUnit.id)setSelectedStoryUnitId(result.storyUnit.id);void api<{storyUnits:Array<{id:string;title:string;updatedAt:string}>}>("/api/worlds/"+activeWorldId+"/story-units").then(x=>setStoryUnits(x.storyUnits));message.success("完整故事单元设计已生成并保存。");
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
   finally{setGeneratingStoryUnit(false);}
  };
  const startCompleteStory=async()=>{
   setStartingStoryExecution(true);
   try{
-   const result=await api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/story-executions",{method:"POST",body:JSON.stringify({})});
+   const result=await api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/story-executions",{method:"POST",body:JSON.stringify({storyUnitId:selectedStoryUnitId})});
    setStoryExecution(result.execution);message.success("完整故事已交给服务端执行；关闭页面不会中断任务。");
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
   finally{setStartingStoryExecution(false);}
