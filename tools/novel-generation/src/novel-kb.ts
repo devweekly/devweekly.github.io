@@ -2,7 +2,6 @@
 // 被算成两次事件），同步 novel_* 知识表；同时提供目录扫描与语料画像入口。
 // 语料重新导入后派生分析必须失效重建，本模块导出失效钩子供 library 调用。
 import { readFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
 import {
   ANALYSIS_BATCH_CHARS,
   ANALYSIS_DEDUPE_MAX_OVERLAP_CHARS,
@@ -18,6 +17,7 @@ import {
   type NovelChapterRow
 } from "./database.js";
 import { loadLibraryChunks, type LibraryChunk } from "./library.js";
+import { selectCanonSourceChunks } from "./canon-chapters.js";
 
 export interface CatalogChapter {
   volume: number;
@@ -78,11 +78,8 @@ export async function prepareCanonIndexInputs(worldDir: string, catalog: Catalog
   let originalText: string | undefined;
   try { originalText = await readFile(join(worldDir, "original.txt"), "utf8"); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-  const sourceHash = originalText === undefined ? undefined : createHash("sha256").update(originalText, "utf8").digest("hex");
-  const canonChunks = chunks.filter(chunk => {
-    if (chunk.sourceHash) return sourceHash !== undefined && chunk.sourceHash === sourceHash;
-    return /(?:^|\/)original\.txt$/i.test(chunk.source);
-  });
+  const sourceHash = originalText === undefined ? undefined : (await import("node:crypto")).createHash("sha256").update(originalText, "utf8").digest("hex");
+  const canonChunks = selectCanonSourceChunks(chunks, sourceHash);
   const chapterStartOffsets: Array<number | undefined> = [];
   if (originalText !== undefined) {
     const lines = originalText.split(/\r?\n/);
