@@ -243,3 +243,14 @@ CLI 命令（均经 `npm run dev --`）：
 
 - Historical universe creation must pass a stable chapter index and resolve it to the exact `novel_chapters.chapter_id` plus ordinal. Never use a chapter title as a unique key; repeated titles, catalog/database count mismatches, missing IDs, or unresolved boundaries must fail closed before publishing the universe. Persist `entryChapterId`, `entryChapterIndex`, and `entryOrdinal` through forks.
 - For bounded v6 analysis reuse, prefer complete cached analysis batches whose every chapter is at or before the entry ordinal. Never reuse a batch crossing the cutoff. Fall back to conservative merged-snapshot filtering only when safe batch reuse is unavailable; never retain unbounded `storyCore` text or count marker-only/empty snapshots as reusable.
+
+
+## 完整故事单元与长篇执行（ADR 0006）
+
+- 完整故事单元（Story Unit）位于长期 Story Plan 与滚动 Story Arc 之间，围绕果实、地域/场景、历史事件、人物旅程等独立故事核心组织。
+- Story Unit 需要覆盖故事核心、果实规则、地方历史与社会情境、文化民俗、禁忌、怪谈、已出场与新人物、人物关系和发展可能、事件因果链、高潮与自然收尾。
+- 故事规模由情节复杂度决定。任何章节数（包括 30 章）都只是示例，不是默认模板、硬上限或完整故事完成条件。
+- 长篇完整故事必须由服务端持久化任务驱动，逐章串行复用现有写作 pipeline；每章通过终审并提交状态后才开始下一章。不得用浏览器循环调用单章接口冒充可恢复的完整故事执行。
+- 生成的规划是活资料，不是剧情合同。已发生事实和正文优先；人物弧光、民俗设定、伏笔和结局方向均不得强制牺牲文学性。
+- 章节历史必须可导航；生成新章不能使之前正文从 UI 消失。
+- 详细设计和验收标准见 `ADR/0006-fruit-story-unit-and-long-form-execution.md`。实现状态以代码为准，不能把 ADR 中的目标描述当作已实现功能。
