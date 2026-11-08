@@ -80,6 +80,31 @@ function worldDir(id: string): string {
   return path.resolve("worlds", id);
 }
 
+/**
+ * The canonical corpus is the project-root original.txt (intentionally gitignored).
+ * Older imports may still keep a world-local copy, so retain that as a fallback.
+ * A child universe already owns a bounded worlds/<id>/original.txt and must use it.
+ */
+async function resolveOriginalCanonPath(id: string): Promise<string> {
+  const localPath = path.join(worldDir(id), "original.txt");
+  try {
+    const localInfo = await stat(localPath);
+    if (localInfo.isFile()) return localPath;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  const projectPath = path.resolve("original.txt");
+  try {
+    const projectInfo = await stat(projectPath);
+    if (projectInfo.isFile()) return projectPath;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  throw Object.assign(new Error(
+    "找不到原著全文。已检查 " + localPath + " 和 " + projectPath + "；请确认 original.txt 位于 novel-generation 项目根目录。"
+  ), { code: "ENOENT" });
+}
+
 /** 双保险：即便 ID 校验规则未来放宽，也不允许解析到 worlds 之外。 */
 function assertInsideWorld(id: string): void {
   if (!worldDir(id).startsWith(path.resolve("worlds") + path.sep)) {
@@ -525,13 +550,23 @@ interface CanonChapterEntry {
 async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEntry[]> {
   const catalog = await loadChapterCatalog(sourceWorldId);
   if (!catalog) throw new Error("原著章节目录不存在，无法安全创建故事宇宙。请先构建 chapter-index.json。");
-  const index = JSON.parse(await readFile(path.join(worldDir(sourceWorldId), "library", "index.json"), "utf8")) as { chunks?: CanonChapterChunk[] };
+  let chunks: CanonChapterChunk[] = [];
+  try {
+    const index = JSON.parse(await readFile(path.join(worldDir(sourceWorldId), "library", "index.json"), "utf8")) as { chunks?: CanonChapterChunk[] };
+    chunks = index.chunks ?? [];
+  } catch (error) {
+    // The full text + chapter catalog are sufficient to populate the selector.
+    // The retrieval index is a derived cache and must not make the canon disappear.
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
   let originalText: string | undefined;
   let originalLines: string[] | undefined;
+  let originalPath: string | undefined;
   const ensureOriginalText = async (): Promise<boolean> => {
     if (originalText !== undefined) return true;
     try {
-      originalText = await readFile(path.join(worldDir(sourceWorldId), "original.txt"), "utf8");
+      originalPath = await resolveOriginalCanonPath(sourceWorldId);
+      originalText = await readFile(originalPath, "utf8");
       originalLines = originalText.split(/\r?\n/);
       return true;
     } catch (error) {
@@ -553,7 +588,7 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
   await ensureOriginalText();
   const chapterStartOffsets = catalog.map(chapter => chapter.line == null ? undefined : lineStartOffset(chapter.line));
   const originalSourceHash = originalText === undefined ? undefined : createHash("sha256").update(originalText, "utf8").digest("hex");
-  const canonChunks = selectCanonSourceChunks(index.chunks ?? [], originalSourceHash);
+  const canonChunks = selectCanonSourceChunks(chunks, originalSourceHash);
   const aligned = alignCanonChapterGroups(catalog, canonChunks, chapterStartOffsets);
   const readOriginalText = async (catalogIndex: number): Promise<string> =>
     originalLines ? readCatalogChapterText(catalog, originalLines, catalogIndex) : "";
@@ -638,15 +673,23 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
  * filesystem cannot clone, keep the ordinary copy produced by cp().
  */
 async function cloneOriginalCanon(sourceDir: string, targetDir: string): Promise<boolean> {
-  const source = path.join(sourceDir, "original.txt");
-  const target = path.join(targetDir, "original.txt");
+  const localSource = path.join(sourceDir, "original.txt");
+  let source = localSource;
   try {
-    const info = await stat(source);
+    const info = await stat(localSource);
     if (!info.isFile()) return false;
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
-    throw error;
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    // Only a source project may fall back to the project-root corpus. A child
+    // universe must clone its own bounded copy, never the parent's full book.
+    try {
+      source = await resolveOriginalCanonPath(path.basename(sourceDir));
+    } catch (resolveError) {
+      if ((resolveError as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw resolveError;
+    }
   }
+  const target = path.join(targetDir, "original.txt");
   const temporary = target + ".reflink-" + process.pid;
   try {
     await copyFile(source, temporary, fsConstants.COPYFILE_FICLONE_FORCE);
@@ -661,14 +704,23 @@ async function cloneOriginalCanon(sourceDir: string, targetDir: string): Promise
 }
 
 async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: string, universeId: string, entryIndex: number): Promise<void> {
-  const sourceIndexPath = path.join(worldDir(sourceWorldId), "library", "index.json");
-  const source = JSON.parse(await readFile(sourceIndexPath, "utf8")) as {
-    schemaVersion: number; createdAt: string; updatedAt: string;
-    chunks: Array<CanonChapterChunk & { [key: string]: unknown }>;
+  let source: { schemaVersion: number; createdAt: string; updatedAt: string; chunks: Array<CanonChapterChunk & { [key: string]: unknown }> } = {
+    schemaVersion: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), chunks: []
   };
+  try {
+    source = JSON.parse(await readFile(path.join(worldDir(sourceWorldId), "library", "index.json"), "utf8")) as typeof source;
+  } catch (error) {
+    // The library index is rebuildable. Reconstruct bounded chunks from the
+    // canonical full text below instead of treating a missing cache as no canon.
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
   const catalog = await loadChapterCatalog(sourceWorldId);
   if (!catalog) throw new Error("原著章节目录不存在，无法创建有边界的知识切片快照。");
-  const originalText = await readFile(path.join(worldDir(sourceWorldId), "original.txt"), "utf8").catch(error => { if ((error as NodeJS.ErrnoException).code === "ENOENT") return ""; throw error; });
+  const originalPath = await resolveOriginalCanonPath(sourceWorldId).catch(error => {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  });
+  const originalText = originalPath ? await readFile(originalPath, "utf8") : "";
   const originalSourceLines = originalText ? originalText.split(/\r?\n/) : [];
   const offsets = catalog.map(chapter => {
     if (!originalText || chapter.line == null || chapter.line < 1) return undefined;
@@ -680,11 +732,11 @@ async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: st
   const sourceHash = originalText ? createHash("sha256").update(originalText, "utf8").digest("hex") : undefined;
   const canonChunks = selectCanonSourceChunks(source.chunks, sourceHash);
   const aligned = alignCanonChapterGroups(catalog, canonChunks, offsets);
-  const sourceKey = path.relative(process.cwd(), path.join(worldDir(sourceWorldId), "original.txt")).split(path.sep).join("/");
+  const sourceKey = originalPath ? path.relative(process.cwd(), originalPath).split(path.sep).join("/") : path.relative(process.cwd(), path.join(worldDir(sourceWorldId), "original.txt")).split(path.sep).join("/");
   const chunks = aligned.filter(item => item.catalogIndex <= entryIndex).flatMap(item => {
     if (item.chunks.length) return item.chunks;
     const chapterText = readCatalogChapterText(catalog, originalSourceLines, item.catalogIndex);
-    if (!chapterText) throw new Error("无法为历史宇宙补齐原著章节切片：" + item.chapter.title + "。请先修复原文目录行号或原文文件。");
+    if (!chapterText) throw new Error("无法为历史宇宙补齐原著章节切片：" + item.chapter.title + "。全文不可读且该章没有有效原文切片。");
     const parts = chunkText(chapterText);
     return parts.map((part, chunkIndex) => ({
       id: sourceKey + ":catalog:" + catalogChapterId(item.chapter.volume, item.chapter.sequenceInVolume) + ":" + chunkIndex,
