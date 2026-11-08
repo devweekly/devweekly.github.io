@@ -1108,8 +1108,8 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
         idleChapterCount: assessment.nextDirection === unit.execution.nextDirection && assessment.unresolvedCoreThreads.join("|") === unit.execution.lastUnresolvedCoreThreads.join("|") ? task.idleChapterCount + 1 : 0,
         updatedAt: completedAt
       };
-      const naturallyComplete = task.completedChapters.length >= 2 && assessment.coreConflictResolved &&
-        assessment.endingFeelsNatural && assessment.confidence === "high" && assessment.unresolvedCoreThreads.length === 0;
+      const naturallyComplete = assessment.coreConflictResolved && assessment.endingFeelsNatural &&
+        assessment.confidence === "high" && assessment.unresolvedCoreThreads.length === 0 && assessment.unrealizedMajorBeats.length === 0;
       unit = {
         ...unit, updatedAt: completedAt,
         execution: {
