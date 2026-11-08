@@ -4,6 +4,7 @@ import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:http";
+import { createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { createApp } from "../src/server.js";
 import { buildStoryAnalysisContext } from "../src/story-analysis-context.js";
@@ -211,10 +212,12 @@ test("universe creation uses catalog order and stable chapter IDs despite extra 
   await mkdir(join(source, "library"), { recursive: true });
   await mkdir(join(root, "analysis", "source-world"), { recursive: true });
   await writeFile(join(source, "world-bible.md"), "# Test World\n");
-  await writeFile(join(source, "original.txt"), [
+  const originalText = [
     "第一章 卷一", "卷一第一章正文", "第二章 卷一", "卷一第二章正文",
     "第一章 卷二", "卷二第一章正文", "第二章 卷二", "卷二第二章正文"
-  ].join("\n"), "utf8");
+  ].join("\n");
+  const canonSourceHash = createHash("sha256").update(originalText, "utf8").digest("hex");
+  await writeFile(join(source, "original.txt"), originalText, "utf8");
   const catalog = {
     schemaVersion: 2,
     totalLines: 8,
@@ -239,13 +242,13 @@ test("universe creation uses catalog order and stable chapter IDs despite extra 
   const lineSix = "卷二第一章正文";
   const volumeTwoSecondChapterStart = [lineOne, lineTwo, lineThree, lineFour, lineFive, lineSix].reduce((sum, line) => sum + line.length + 1, 0);
   const chunks = [
-    { chapter: "前置内容", chunkIndex: 0, start: 0, end: 5, chapterStart: 0, text: "前置内容泄漏" },
-    { chapter: "第一章", chunkIndex: 0, start: 0, end: 7, chapterStart: 0, text: "卷一第一章正文" },
-    { chapter: "第二章", chunkIndex: 0, start: 0, end: 7, chapterStart: lineOne.length + lineTwo.length + 2, text: "卷一第二章正文" },
-    { chapter: "作者说明", chunkIndex: 0, start: 0, end: 5, chapterStart: lineOne.length + lineTwo.length + lineThree.length + lineFour.length + 4, text: "作者说明泄漏" },
+    { source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "前置内容", chunkIndex: 0, start: 0, end: 5, chapterStart: 0, text: "前置内容泄漏" },
+    { source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第一章", chunkIndex: 0, start: 0, end: 7, chapterStart: 0, text: "卷一第一章正文" },
+    { source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第二章", chunkIndex: 0, start: 0, end: 7, chapterStart: lineOne.length + lineTwo.length + 2, text: "卷一第二章正文" },
+    { source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "作者说明", chunkIndex: 0, start: 0, end: 5, chapterStart: lineOne.length + lineTwo.length + lineThree.length + lineFour.length + 4, text: "作者说明泄漏" },
     // Volume 2's first chapter intentionally has no chunk. The catalog line
     // boundary must provide its source text without shifting the next chapter.
-    { chapter: "第二章", chunkIndex: 0, start: 0, end: 7, chapterStart: volumeTwoSecondChapterStart, text: "卷二第二章正文" }
+    { source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第二章", chunkIndex: 0, start: 0, end: 7, chapterStart: volumeTwoSecondChapterStart, text: "卷二第二章正文" }
   ];
   await writeFile(join(source, "library", "index.json"), JSON.stringify({
     schemaVersion: 1, worldId: "source-world", createdAt: "2026-01-01T00:00:00.000Z",
