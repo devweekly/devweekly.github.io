@@ -670,6 +670,7 @@ app.patch("/api/worlds/:worldId/universe-archive", async (req, res) => {
     const lockId = worldIdOf(req.params.worldId);
     await serializeWorld(lockId, async () => {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    if (activeStoryExecutions.has(id) || storyExecutionReservations.has(id) || chapterGenerationReservations.has(id)) return void res.status(409).json({ error: "章节或长篇任务正在执行或启动，不能归档或恢复宇宙。" });
     release = acquireWorldMutation(id);
     if (!release) return void res.status(409).json({ error: "当前宇宙正在执行创建、分叉或归档操作，请稍后重试。" });
     const universe = await readUniverse(id);
@@ -811,6 +812,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     const lockId = worldIdOf(req.params.worldId);
     await serializeWorld(lockId, async () => {
     const parentId = worldIdOf(req.params.worldId); assertInsideWorld(parentId);
+    if (activeStoryExecutions.has(parentId) || storyExecutionReservations.has(parentId) || chapterGenerationReservations.has(parentId)) return void res.status(409).json({ error: "章节或长篇任务正在执行或启动，不能从当前状态分叉。" });
     release = acquireWorldMutation(parentId);
     if (!release) return void res.status(409).json({ error: "当前宇宙正在执行创建、分叉或归档操作，请稍后重试。" });
     const parent = await readUniverse(parentId);
