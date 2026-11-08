@@ -262,7 +262,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   </Card>}
   {notice&&<Alert type="warning" showIcon message="本次任务未能启动" description={notice} style={{marginBottom:18}}/>}
   <Card title="完整故事单元" style={{marginBottom:18}}>
-   {!storyUnit?<Empty description="尚未建立完整故事单元。先生成果实/场景、文化民俗、怪谈、人物群像与完整故事因果设计。"/>:<Space direction="vertical" style={{width:"100%"}} size="middle">
+   {!storyUnit?<Space direction="vertical" style={{width:"100%"}}><Empty description="尚未建立完整故事单元。先生成果实/场景、文化民俗、怪谈、人物群像与完整故事因果设计。"/><Button type="primary" onClick={()=>void generateStoryUnit()} loading={generatingStoryUnit} disabled={generatingStoryUnit||Boolean(busy)||Boolean(activeUniverse?.archivedAt)}>生成完整故事设计</Button></Space>:<Space direction="vertical" style={{width:"100%"}} size="middle">
     <Title level={4}>{storyUnit.title}</Title>
     <Paragraph>{storyUnit.storyCore}</Paragraph>
     <Paragraph type="secondary">核心矛盾：{storyUnit.centralConflict}</Paragraph>
