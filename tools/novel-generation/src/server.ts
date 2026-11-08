@@ -1053,6 +1053,7 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
     let unit = validateStoryUnit(JSON.parse(await readFile(unitPath, "utf8")), worldId);
     const universe = await readUniverse(worldId);
     if (universe?.archivedAt) throw new Error("当前故事宇宙已归档。");
+    if (universe) await ensureUniverseStoryAnalysis(worldId, universe);
     await readFile(path.join(dir, "world-bible.md"), "utf8");
     const libraryDir = await resolveWorldLibraryDir(worldId, path.resolve("worlds"));
     await readFile(path.join(libraryDir, "index.json"), "utf8");
