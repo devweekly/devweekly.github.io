@@ -133,3 +133,11 @@ Story Unit 先建立完整故事的因果骨架和结局方向，再按叙事需
 - 在章节、状态和 Arc 均完成 storyUnitId 过滤/隔离，并验证同一 World 下交替执行与恢复互不串线之前，不得开放多个 Story Unit 的并行执行入口。
 
 下一阶段必须先让章节运行记录携带 Story Unit identity，并让写作 pipeline 的 Story State 读取/提交及 Arc 上下文限定到当前单元；随后再接入 worker 的创建、暂停、恢复和重规划。多个单元可以在同一 World 下保存，但在隔离链路完成前只能作为独立设计资料管理。
+
+
+### Story Unit 执行记录隔离的基础补充（2026-11-08）
+
+- `WorkbenchRun` 增加可选 `storyUnitId`，章节运行记录具备明确归属字段；旧记录保持兼容。
+- `listStoryExecutions(worldId, storyUnitId?)` 支持按 Story Unit 过滤，并增加同一 World 两个 Story Unit 的隔离查询测试。
+- 这只是执行记录的数据模型与查询基础，不代表 worker 已经完成隔离。当前长篇 worker 仍通过旧 `story-unit.json` 读写单一故事设计，章节 CLI 仍共享 World 级 Story State；创建任务的 API/UI 也尚未贯通所选 Story Unit。
+- 因此当前版本仍不得将多 Story Unit 描述为可独立执行。下一阶段必须先把 `storyUnitId` 贯穿任务创建、worker、章节 Run、检查点恢复和 Story State 持久化，再开放 Workbench 多单元切换入口。
