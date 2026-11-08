@@ -46,3 +46,26 @@ test("story execution rejects invalid lifecycle states and malformed checkpoint 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+
+test("fixed chapter batches accept story-sized counts without a 30 chapter cap", async () => {
+  const original = process.cwd();
+  const root = await mkdtemp(join(tmpdir(), "story-batch-"));
+  process.chdir(root);
+  try {
+    const now = new Date().toISOString();
+    const task = {
+      id: "9e2ad4d2-8b6f-4a9f-a4c4-8e49f6d08a61", worldId: "world-a", storyUnitTitle: "雾河镇",
+      mode: "fixed_batch" as const, targetChapterCount: 37, status: "queued" as const,
+      createdAt: now, updatedAt: now, completedChapters: [], brief: "",
+      idleChapterCount: 0, pauseRequested: false, cancelRequested: false, resumeCount: 0
+    };
+    await saveStoryExecution(task);
+    const saved = await getStoryExecution("world-a", task.id);
+    assert.equal(saved?.mode, "fixed_batch");
+    assert.equal(saved?.targetChapterCount, 37);
+  } finally {
+    process.chdir(original);
+    await rm(root, { recursive: true, force: true });
+  }
+});
