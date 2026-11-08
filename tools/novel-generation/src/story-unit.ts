@@ -21,6 +21,7 @@ const BeatSchema = z.object({
 }).strict();
 
 const StoryUnitSchema = z.object({
+  id: z.string().uuid().optional(),
   schemaVersion: z.literal(1), worldId: z.string().min(1), updatedAt: z.string().min(1),
   title: z.string().min(1), storyCore: z.string().min(1), readerExperience: z.string().default(""),
   openingSituation: z.string().default(""), centralConflict: z.string().default(""),
