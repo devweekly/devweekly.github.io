@@ -43,6 +43,8 @@ export default function GraphExplorer({ worldId }: { worldId: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    setSelectedStoryUnitId("legacy");
+    setStoryUnits([]);
     fetch(`/api/worlds/${encodeURIComponent(worldId)}/story-units`).then(async response => {
       const body = await response.json() as {storyUnits?:Array<{id:string;title:string}>;error?:string};
       if (!response.ok) throw new Error(body.error ?? response.statusText);
