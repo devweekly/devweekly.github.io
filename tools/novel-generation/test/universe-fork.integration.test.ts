@@ -46,6 +46,10 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
         { sequenceInVolume: 3, printedNumber: 3, title: "原文第三章", label: "原文第三章", line: 200 }
       ] }]
     }));
+    await writeFile(join(parentDir, "original.txt"), "原文第一章\n原文第二章\n原文第三章", "utf8");
+    const parentDb = new DatabaseSync(join(parentDir, "novel.db"));
+    parentDb.exec(`CREATE TABLE world_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL); INSERT INTO world_meta VALUES('world_id','parent-universe'); CREATE TABLE novel_chapters(chapter_id TEXT PRIMARY KEY,title TEXT NOT NULL,ordinal INTEGER NOT NULL,volume INTEGER NOT NULL DEFAULT 1); INSERT INTO novel_chapters VALUES('c1','原文第一章',1,1),('c2','原文第二章',2,1),('c3','原文第三章',3,1);`);
+    parentDb.close();
     await writeFile(join(parentDir, "world-bible.md"), "# Test universe\n");
     await writeFile(join(parentDir, "universe.json"), JSON.stringify({
       id: parentId, sourceWorldId: "source-world", name: "父宇宙", type: "free",
