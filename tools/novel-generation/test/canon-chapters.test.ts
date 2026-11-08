@@ -47,3 +47,19 @@ test("chunk joining removes overlap without changing chapter boundaries", () => 
     { ...chunk("第一章", "丙丁戊", 0), chunkIndex: 1, start: 2, end: 5 }
   ]), "甲乙丙丁戊");
 });
+
+test("repeated chapter titles without source offsets fail closed", () => {
+  assert.throws(() => alignCanonChapterGroups(catalog, [
+    { chapter: "第一章", chunkIndex: 0, start: 0, end: 5, text: "无法判断属于哪一卷" }
+  ]), /缺少 chapterStart 原文位置/);
+});
+
+test("a repeated title group is matched by its exact original source offset", () => {
+  const aligned = alignCanonChapterGroups(catalog, [
+    chunk("第一章", "卷二第一章", 20),
+    chunk("第二章", "卷二第二章", 30)
+  ], [0, 10, 20, 30]);
+  assert.deepEqual(aligned.map(item => item.chunks.map(row => row.text)), [
+    [], [], ["卷二第一章"], ["卷二第二章"]
+  ]);
+});
