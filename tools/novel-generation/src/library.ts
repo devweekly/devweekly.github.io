@@ -64,7 +64,7 @@ function splitChapters(text: string, source: string): Array<{ title: string; tex
   return chapters;
 }
 
-function chunkText(text: string, maxChars = LIBRARY_CHUNK_MAX_CHARS, overlap = LIBRARY_CHUNK_OVERLAP_CHARS): Array<{ text: string; start: number; end: number }> {
+export function chunkText(text: string, maxChars = LIBRARY_CHUNK_MAX_CHARS, overlap = LIBRARY_CHUNK_OVERLAP_CHARS): Array<{ text: string; start: number; end: number }> {
   const chunks: Array<{ text: string; start: number; end: number }> = [];
   let start = 0;
   while (start < text.length) {
