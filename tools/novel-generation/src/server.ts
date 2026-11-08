@@ -987,7 +987,7 @@ async function saveExecutionStoryUnit(unit: Awaited<ReturnType<typeof generateSt
 }
 
 /** Run one ordinary chapter through the existing CLI pipeline and its existing quality/state gates. */
-async function executeStoryUnitChapter(worldId: string, previousChapterPath: string | undefined, brief: string, model?: string): Promise<WorkbenchRun> {
+async function executeStoryUnitChapter(worldId: string, previousChapterPath: string | undefined, brief: string, model?: string, onRunStarted?: (run: WorkbenchRun) => Promise<void>): Promise<WorkbenchRun> {
   const dir = worldDir(worldId);
   const universe = await readUniverse(worldId);
   if (universe?.archivedAt) throw new Error("当前故事宇宙已归档，不能继续完整故事执行。");
@@ -1000,6 +1000,7 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
     outputDir, ...(previousChapterPath ? { previousChapterPath } : {})
   };
   await saveRun(run);
+  await onRunStarted?.(run);
   const mode = previousChapterPath ? "continuation" : "derivative";
   const args = [
     ...buildCliEntryArgs(["write"]), "--world", worldId, "--mode", mode,
@@ -1088,7 +1089,10 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
         "完整故事结局方向：" + unit.endingAndAftermath,
         task.brief
       ].filter(Boolean).join("\n\n");
-      const chapterRun = await executeStoryUnitChapter(worldId, previousChapterPath, brief, task.model);
+      const chapterRun = await executeStoryUnitChapter(worldId, previousChapterPath, brief, task.model, async currentRun => {
+        task = { ...task, currentRunId: currentRun.id, updatedAt: new Date().toISOString() };
+        await saveStoryExecution(task);
+      });
       if (chapterRun.status !== "completed" || !chapterRun.chapterPath) {
         task = { ...task, status: "failed", error: "章节未通过现有终审或 Story State 提交门禁。修复该章节后可从最后一个已完成检查点恢复。"+(chapterRun.error?" "+chapterRun.error:""), updatedAt: new Date().toISOString(), currentRunId: undefined };
         await saveStoryExecution(task); return;
