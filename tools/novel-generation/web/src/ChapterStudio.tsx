@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Collapse, Empty, Input, InputNumber, Modal, Progress, Select, Space, Tag, Typography, message } from "antd";
 import { PlayCircleOutlined, ReloadOutlined } from "@ant-design/icons";
 const { Title, Text, Paragraph } = Typography;
@@ -44,25 +44,27 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [startingStoryExecution,setStartingStoryExecution]=useState(false);
  const [generatingStoryUnit,setGeneratingStoryUnit]=useState(false);
  const [startingKnowledgeBuild,setStartingKnowledgeBuild]=useState(false);
+ const refreshGeneration=useRef(0);
  const busy=run?.status==="queued"||run?.status==="running";
  const batchRunning=storyExecution?.mode==="fixed_batch"&&["queued","running"].includes(storyExecution.status);
  const storyTaskBlocksWrites=Boolean(storyExecution&&["queued","running","paused","failed","stalled"].includes(storyExecution.status));
  const batchProgress={completed:storyExecution?.completedChapters.length??0,total:storyExecution?.targetChapterCount??0};
  const refresh=async()=>{
-  if(!activeWorldId)return;setLoading(true);
+  if(!activeWorldId)return;const requestId=++refreshGeneration.current;setLoading(true);
   try{
    const [runs,arc]=await Promise.all([
     api<{runs:Run[]}>("/api/worlds/"+activeWorldId+"/runs?storyUnitId="+(historyScope==="legacy"?"legacy":selectedStoryUnitId??"legacy")),
     api<{storyArc:string}>("/api/worlds/"+activeWorldId+"/story-arc?storyUnitId="+(historyScope==="legacy"?"legacy":selectedStoryUnitId??"legacy"))
    ]);
+   if(requestId!==refreshGeneration.current)return;
    setActiveArc(arc.storyArc);
    const chapters=runs.runs.filter(x=>x.kind==="chapter").sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
    setChapterRuns(chapters);
    const latest=chapters.at(-1)??null;setRun(latest);
-   if(latest){const p=await api<Preview>("/api/runs/"+latest.id+"/preview?worldId="+activeWorldId);setPreview(p);}
-   else setPreview(emptyPreview);
-  }catch(e){message.error(e instanceof Error?e.message:String(e));}
-  finally{setLoading(false);}
+   if(latest){const p=await api<Preview>("/api/runs/"+latest.id+"/preview?worldId="+activeWorldId);if(requestId===refreshGeneration.current)setPreview(p);}
+   else if(requestId===refreshGeneration.current)setPreview(emptyPreview);
+  }catch(e){if(requestId===refreshGeneration.current)message.error(e instanceof Error?e.message:String(e));}
+  finally{if(requestId===refreshGeneration.current)setLoading(false);}
  };
  useEffect(()=>{setActiveWorldId(worldId);setRun(null);setPreview(emptyPreview);void refresh();void Promise.all([api<{universes:Universe[]}>("/api/worlds/"+worldId+"/universes"),api<{chapters:Array<{id:number;title:string;label:string}>}>("/api/worlds/"+worldId+"/source-chapters")]).then(([u,c])=>{setUniverses(u.universes);setSourceChapters(c.chapters);}).catch(()=>{setUniverses([]);setSourceChapters([]);setStoryUnit(null);});},[worldId]);
  useEffect(()=>{void refresh();},[activeWorldId,selectedStoryUnitId,historyScope]);
