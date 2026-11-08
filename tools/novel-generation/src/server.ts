@@ -1232,7 +1232,7 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
     const libraryDir = await resolveWorldLibraryDir(worldId, path.resolve("worlds"));
     await readFile(path.join(libraryDir, "index.json"), "utf8");
     const runs = await listRuns(worldId);
-    const previous = runs.filter(run => run.kind === "chapter" && (!task.storyUnitId || run.storyUnitId === task.storyUnitId) && run.status === "completed" && run.chapterPath)
+    const previous = runs.filter(run => run.kind === "chapter" && storyExecutionOwnsRun(task.storyUnitId, run.storyUnitId) && run.status === "completed" && run.chapterPath)
       .sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0];
     let previousChapterPath = task.completedChapters.at(-1)?.chapterPath
       ? path.resolve(task.completedChapters.at(-1)!.chapterPath)
@@ -1405,7 +1405,7 @@ app.post("/api/worlds/:worldId/story-executions", async (req, res) => {
     reservedId = id;
     const requestedUnitId = typeof req.body?.storyUnitId === "string" ? recordId(req.body.storyUnitId) : undefined;
     const runs = await listRuns(id);
-    const activeChapter = runs.find(run => run.kind === "chapter" && (!requestedUnitId || run.storyUnitId === requestedUnitId) && (run.status === "queued" || run.status === "running"));
+    const activeChapter = runs.find(run => run.kind === "chapter" && storyExecutionOwnsRun(requestedUnitId, run.storyUnitId) && (run.status === "queued" || run.status === "running"));
     if (activeChapter) return void res.status(409).json({ error: "当前已有单章任务运行，请完成后再启动完整故事。" });
     const unit = await loadExecutionStoryUnit(id, requestedUnitId);
     const universe = await readUniverse(id);
