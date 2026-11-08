@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 export interface StoredStoryUnit {
@@ -116,7 +116,7 @@ export async function listStoredStoryUnitVersions(worldDir: string, worldId: str
   assertId(storyUnitId);
   const directory = versionDirectory(worldDir, storyUnitId);
   let names: string[];
-  try { names = await (await import("node:fs/promises")).readdir(directory); }
+  try { names = await readdir(directory); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
   const versions: StoredStoryUnitVersion[] = [];
   for (const name of names.filter(value => /^[0-9a-f-]{36}\\.json$/i.test(value))) {
