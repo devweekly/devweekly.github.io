@@ -2,10 +2,10 @@ import { useEffect, useState } from "react";
 import { Alert, Button, Card, Collapse, Empty, Input, InputNumber, Modal, Progress, Select, Space, Tag, Typography, message } from "antd";
 import { PlayCircleOutlined, ReloadOutlined } from "@ant-design/icons";
 const { Title, Text, Paragraph } = Typography;
-type Run = { id:string; kind?:string; status:string; createdAt:string; updatedAt:string; error?:string; outputDir?:string; chapterPath?:string; previousChapterPath?:string };
+type Run = { id:string; storyUnitId?:string; kind?:string; status:string; createdAt:string; updatedAt:string; error?:string; outputDir?:string; chapterPath?:string; previousChapterPath?:string };
 type Preview = { storyArc:string; chapterPlan:string; chapter:string };
 type StoryExecution = {id:string;worldId:string;storyUnitTitle:string;mode:"complete_story"|"fixed_batch";targetChapterCount?:number;status:"queued"|"running"|"paused"|"completed"|"failed"|"cancelled"|"stalled";createdAt:string;updatedAt:string;completedAt?:string;currentRunId?:string;completedChapters:Array<{runId:string;chapterPath:string;completedAt:string}>;events?:Array<{at:string;type:string;message:string;runId?:string}>;lastAssessment?:string;nextDirection?:string;error?:string;brief:string;resumeCount:number};
-type StoryUnit = { execution:{status:"not_started"|"in_progress"|"completed";completedChapterIds:string[];lastAssessment?:string;nextDirection?:string;assessedAt?:string;completedAt?:string}; title:string; storyCore:string; readerExperience:string; openingSituation:string; centralConflict:string; fruitOrSetting:{name:string;premise:string;abilitiesAndRules:string[];costsAndLimits:string[];historicalContext:string;geographyAndDailyLife:string;powerAndSocialRelations:string}; cultureAndFolklore:Array<{name:string;practice:string;originOrBelief:string;socialFunction:string;storyUse:string}>; taboosAndGhostStories:Array<{name:string;versions:string[];underlyingTruthOptions:string[];consequences:string;scenePotential:string}>; cast:Array<{name:string;role:string;status:string;desire:string;fearOrSecret:string;relationships:string[];possibleDevelopment:string[]}>; relationshipDynamics:string[]; storySpine:Array<{title:string;function:string;causalChange:string;involvedCharacters:string[];possibleArcs:string[]}>; subplots:string[]; climax:string; endingAndAftermath:string; unresolvedQuestions:string[]; creativePossibilities:string[] };
+type StoryUnit = { id?:string; execution:{status:"not_started"|"in_progress"|"completed";completedChapterIds:string[];lastAssessment?:string;nextDirection?:string;assessedAt?:string;completedAt?:string}; title:string; storyCore:string; readerExperience:string; openingSituation:string; centralConflict:string; fruitOrSetting:{name:string;premise:string;abilitiesAndRules:string[];costsAndLimits:string[];historicalContext:string;geographyAndDailyLife:string;powerAndSocialRelations:string}; cultureAndFolklore:Array<{name:string;practice:string;originOrBelief:string;socialFunction:string;storyUse:string}>; taboosAndGhostStories:Array<{name:string;versions:string[];underlyingTruthOptions:string[];consequences:string;scenePotential:string}>; cast:Array<{name:string;role:string;status:string;desire:string;fearOrSecret:string;relationships:string[];possibleDevelopment:string[]}>; relationshipDynamics:string[]; storySpine:Array<{title:string;function:string;causalChange:string;involvedCharacters:string[];possibleArcs:string[]}>; subplots:string[]; climax:string; endingAndAftermath:string; unresolvedQuestions:string[]; creativePossibilities:string[] };
 type Universe = { id:string; sourceWorldId:string; name:string; type:string; entryChapter:string; entryChapterId?:string; entryOrdinal?:number; brief:string; createdAt:string; parentUniverseId?:string; forkPoint?:string; archivedAt?:string };
 type ForkableRun = { id:string; chapterTitle:string; createdAt:string };
 type KnowledgeBuild = { worldId:string; status:"queued"|"running"|"completed"|"partial"|"failed"; currentStep?:string; updatedAt:string; completedAt?:string; steps:Array<{name:string;status:"running"|"completed"|"failed"|"skipped";exitCode?:number|null;output?:string;error?:string}> };
@@ -37,6 +37,8 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [notice,setNotice]=useState("");
  const [knowledgeBuild,setKnowledgeBuild]=useState<KnowledgeBuild|null>(null);
  const [storyUnit,setStoryUnit]=useState<StoryUnit|null>(null);
+ const [storyUnits,setStoryUnits]=useState<Array<{id:string;title:string;updatedAt:string}>>([]);
+ const [selectedStoryUnitId,setSelectedStoryUnitId]=useState<string|undefined>();
  const [storyExecution,setStoryExecution]=useState<StoryExecution|null>(null);
  const [startingStoryExecution,setStartingStoryExecution]=useState(false);
  const [generatingStoryUnit,setGeneratingStoryUnit]=useState(false);
@@ -53,7 +55,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
     api<{storyArc:string}>("/api/worlds/"+activeWorldId+"/story-arc")
    ]);
    setActiveArc(arc.storyArc);
-   const chapters=runs.runs.filter(x=>x.kind==="chapter").sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
+   const chapters=runs.runs.filter(x=>x.kind==="chapter"&&(!selectedStoryUnitId||x.storyUnitId===selectedStoryUnitId)).sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
    setChapterRuns(chapters);
    const latest=chapters.at(-1)??null;setRun(latest);
    if(latest){const p=await api<Preview>("/api/runs/"+latest.id+"/preview?worldId="+activeWorldId);setPreview(p);}
@@ -66,14 +68,14 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  useEffect(()=>{if(!activeWorldId)return;void Promise.all([
   api<{storyUnit:StoryUnit|null}>("/api/worlds/"+activeWorldId+"/story-unit"),
   api<{executions:StoryExecution[]}>("/api/worlds/"+activeWorldId+"/story-executions")
- ]).then(([unit,tasks])=>{setStoryUnit(unit.storyUnit);setStoryExecution(tasks.executions[0]??null);}).catch(()=>{setStoryUnit(null);setStoryExecution(null);});},[activeWorldId]);
+ ]).then(([unit,tasks])=>{setStoryUnit(unit.storyUnit);setStoryExecution(tasks.executions[0]??null);}).catch(()=>{setStoryUnit(null);setStoryUnits([]);setSelectedStoryUnitId(undefined);setStoryExecution(null);});},[activeWorldId]);
  useEffect(()=>{
   if(!activeWorldId||!storyExecution||!["queued","running"].includes(storyExecution.status))return;
   const timer=window.setInterval(()=>void api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/story-executions/"+storyExecution.id)
-   .then(result=>{setStoryExecution(result.execution);if(["completed","failed","paused","cancelled","stalled"].includes(result.execution.status)){void refresh();void api<{storyUnit:StoryUnit|null}>("/api/worlds/"+activeWorldId+"/story-unit").then(x=>setStoryUnit(x.storyUnit));}})
+   .then(result=>{setStoryExecution(result.execution);if(["completed","failed","paused","cancelled","stalled"].includes(result.execution.status)){void refresh();if(selectedStoryUnitId)void api<{storyUnit:StoryUnit}>("/api/worlds/"+activeWorldId+"/story-units/"+selectedStoryUnitId).then(x=>setStoryUnit(x.storyUnit));}})
    .catch(()=>{}),2500);
   return()=>window.clearInterval(timer);
- },[activeWorldId,storyExecution?.id,storyExecution?.status]);
+ },[activeWorldId,selectedStoryUnitId,storyExecution?.id,storyExecution?.status]);
  useEffect(()=>{
   if(!busy||!run)return;
   const timer=window.setInterval(()=>{
@@ -104,7 +106,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   if(batchRunning||busy)return;
   setStartingStoryExecution(true);
   try{
-   const result=await api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/chapter-batches",{method:"POST",body:JSON.stringify({chapterCount:batchCount})});
+   const result=await api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/chapter-batches",{method:"POST",body:JSON.stringify({chapterCount:batchCount,storyUnitId:selectedStoryUnitId})});
    setStoryExecution(result.execution);
    message.success("连续生成任务已交给服务端；刷新或关闭页面不会中断。");
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
@@ -123,7 +125,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const generateStoryUnit=async()=>{
   setGeneratingStoryUnit(true);
   try{
-   const result=await api<{storyUnit:StoryUnit}>("/api/worlds/"+activeWorldId+"/story-unit/generate",{method:"POST",body:JSON.stringify({})});
+   const result=await api<{storyUnit:StoryUnit}>("/api/worlds/"+activeWorldId+"/story-units/generate",{method:"POST",body:JSON.stringify({})});
    setStoryUnit(result.storyUnit);message.success("完整故事单元设计已生成并保存。");
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
   finally{setGeneratingStoryUnit(false);}
@@ -248,6 +250,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   </Card>}
   {notice&&<Alert type="warning" showIcon message="本次任务未能启动" description={notice} style={{marginBottom:18}}/>}
   <Card title="完整故事单元" style={{marginBottom:18}}>
+   <Space wrap style={{marginBottom:14}}><Text strong>当前故事单元</Text><Select style={{minWidth:280}} value={selectedStoryUnitId} placeholder="选择故事单元" options={storyUnits.map(x=>({value:x.id,label:x.title}))} onChange={value=>{setSelectedStoryUnitId(value);setStoryExecution(null);setRun(null);setPreview(emptyPreview);}}/><Button onClick={()=>{setSelectedStoryUnitId(undefined);setStoryUnit(null);void generateStoryUnit();}} disabled={generatingStoryUnit||Boolean(busy)}>新建故事单元</Button></Space>
    {!storyUnit?<Space direction="vertical" style={{width:"100%"}}><Empty description="尚未建立完整故事单元。先生成果实/场景、文化民俗、怪谈、人物群像与完整故事因果设计。"/><Button type="primary" onClick={()=>void generateStoryUnit()} loading={generatingStoryUnit} disabled={generatingStoryUnit||Boolean(busy)||Boolean(activeUniverse?.archivedAt)}>生成完整故事设计</Button></Space>:<Space direction="vertical" style={{width:"100%"}} size="middle">
     <Title level={4}>{storyUnit.title}</Title>
     <Paragraph>{storyUnit.storyCore}</Paragraph>
