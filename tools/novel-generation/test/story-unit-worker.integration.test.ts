@@ -91,8 +91,17 @@ console.log("Story state automatically updated: " + stateFile);
     const headers = { host: `127.0.0.1:${address.port}`, "content-type": "application/json" };
 
     const runBatch = async (storyUnitId: string) => {
-      const created = await fetch(base + "/chapter-batches", { method: "POST", headers, body: JSON.stringify({ storyUnitId, chapterCount: 1 }) });
-      if (created.status !== 202) throw new Error("Batch creation failed: " + await created.text());
+      let created: Response | undefined;
+      for (let attempt = 0; attempt < 100; attempt++) {
+        created = await fetch(base + "/chapter-batches", { method: "POST", headers, body: JSON.stringify({ storyUnitId, chapterCount: 1 }) });
+        if (created.status !== 409) break;
+        const reason = await created.clone().json().catch(() => ({})) as {error?:string};
+        if (!reason.error?.includes("已有章节或长篇任务") && !reason.error?.includes("已有章节正在生成") && !reason.error?.includes("已有长篇任务")) {
+          throw new Error("Batch creation rejected: " + JSON.stringify(reason));
+        }
+        await new Promise(resolveWait => setTimeout(resolveWait, 50));
+      }
+      if (!created || created.status !== 202) throw new Error("Batch creation failed: " + (created ? await created.text() : "no response"));
       const body = await created.json() as { execution: { id: string } };
       for (let attempt = 0; attempt < 200; attempt++) {
         const response = await fetch(base + "/story-executions/" + body.execution.id, { headers });
