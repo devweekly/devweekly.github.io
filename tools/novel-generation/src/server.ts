@@ -26,7 +26,7 @@ import { buildUniverseOriginContext, buildUniverseWorldBible, rebaseStoryState, 
 import { importBoundedStoryAnalysisSnapshot, restrictKnowledgeDatabaseToEntry } from "./source-canon-snapshot.js";
 import { importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
-import { assessStoryUnitProgress, generateStoryUnit, validateStoryUnit } from "./story-unit.js";
+import { assessStoryUnitProgress, generateStoryUnit, isStoryUnitNaturallyComplete, validateStoryUnit } from "./story-unit.js";
 import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, type StoryExecution } from "./story-execution.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
@@ -1117,8 +1117,7 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
         idleChapterCount: assessment.nextDirection === unit.execution.nextDirection && assessment.unresolvedCoreThreads.join("|") === unit.execution.lastUnresolvedCoreThreads.join("|") ? task.idleChapterCount + 1 : 0,
         updatedAt: assessedAt
       };
-      const naturallyComplete = assessment.coreConflictResolved && assessment.endingFeelsNatural &&
-        assessment.confidence === "high" && assessment.unresolvedCoreThreads.length === 0 && assessment.unrealizedMajorBeats.length === 0;
+      const naturallyComplete = isStoryUnitNaturallyComplete(assessment);
       unit = {
         ...unit, updatedAt: assessedAt,
         execution: {
