@@ -197,3 +197,16 @@ Story Unit 先建立完整故事的因果骨架和结局方向，再按叙事需
 - 章节工作台移除重复的 Story Unit 选择器，并提供明确的当前单元 / legacy 章节历史切换。legacy 任务历史与当前单元执行状态分别查询，查看旧记录不会改变当前创作目标。
 - 批量章节执行的上一章选择必须按 Story Unit 过滤，与完整故事执行保持一致，不能从同一 World 的其他单元继承最近章节。
 - 人物工作台同时展示共享原著人物档案和所选 Story Unit 的续写人物快照、人物弧光及近期事件；切换单元时取消迟到响应，避免旧请求覆盖当前视图。
+
+
+### 端到端恢复与工作台收尾（2026-11-08，第七阶段）
+
+- 连续章节批次与完整故事执行均使用精确 Story Unit 归属判断；指定的 Story Unit 不存在时返回 404，不得静默回退到 Legacy。
+- 恢复任务的 POST 在读取和更新任务前同步占用 World 级 reservation，防止并发双击恢复产生两个 Worker，或任务被写成 queued 却没有 Worker 接管。
+- Worker 开始执行时重新读取持久化的 pause/cancel 标志，避免任务刚入队时用户立即暂停或取消，却被 Worker 初始化逻辑覆盖。
+- 每章执行前对该 Story Unit 的权威 SQLite（story.db）、WAL/SHM、JSON 状态镜像、滚动 Story Arc 和 Story Unit 记录建立快照。章节只有通过终审并完成 Story State 提交后才保留新状态；失败章节恢复快照。
+- 服务重启时，先恢复所有中断章节的前置状态，再将 Run 和 Story Execution 标记为可恢复状态。若快照归属不匹配或回滚失败，停止自动续写并保留错误，不允许带着不确定状态继续生成。
+- 恢复 Story Execution 前逐一核对已提交检查点对应的 Run：必须是 completed chapter、属于同一个 Story Unit（Legacy 只匹配 Legacy），章节路径一致且位于当前 World 输出目录。
+- Workbench 任务历史增加可选任务列表；可查看同一 Story Unit 或 Legacy 的历史任务。任务显示选择与 World 级执行互斥分开，查看旧任务不会错误覆盖当前活动任务锁。
+- 切换 World、Story Unit 或 Legacy 历史范围时清理过期 UI 状态；人物面板在切换 World 时清除旧 Story Unit 选择和加载状态。
+- 补充启动恢复测试和队列立即暂停/取消控制标志测试。
