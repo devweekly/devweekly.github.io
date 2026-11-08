@@ -88,6 +88,17 @@ test("available original file still requires an exact source hash", () => {
   ], "current");
   assert.deepEqual(selected.map(item => item.text), ["当前原文切片"]);
 });
+test("a unique catalog chapter can use indexed original chunks without a local full-text file", () => {
+  const oneChapter: CatalogChapter[] = [
+    { volume: 1, sequenceInVolume: 1, printedNumber: 1, title: "第一章 大枪落幕", label: "大枪落幕", line: 9 }
+  ];
+  const selected = selectCanonSourceChunks([
+    { ...chunk("第一章 大枪落幕", "可验证的原文切片正文", 120), source: "worlds/conghuoniao/original.txt", sourceHash: "sha256-from-ingest" }
+  ]);
+  const aligned = alignCanonChapterGroups(oneChapter, selected);
+  assert.equal(joinCanonChunkText(aligned[0]!.chunks), "可验证的原文切片正文");
+});
+
 test("legacy source paths retain original.txt chunks but reject auxiliary files", () => {
   const selected = selectCanonSourceChunks([
     { ...chunk("第一章", "原文", 0), source: "worlds/book/original.txt" },
