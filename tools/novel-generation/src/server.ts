@@ -1099,6 +1099,8 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
         storyState: state, model: task.model
       });
       const completedAt = new Date().toISOString();
+      const latestTaskState = await getStoryExecution(worldId, task.id);
+      if (latestTaskState) task = { ...task, pauseRequested: latestTaskState.pauseRequested, cancelRequested: latestTaskState.cancelRequested };
       task = {
         ...task, completedChapters: [...task.completedChapters, {runId:chapterRun.id,chapterPath:chapterRun.chapterPath,completedAt}],
         currentRunId: undefined, lastAssessment: assessment.rationale, nextDirection: assessment.nextDirection,
