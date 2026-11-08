@@ -1122,8 +1122,9 @@ async function reconcileStoryExecutionCurrentRun(input: StoryExecution): Promise
     }
     await readFile(chapterPath, "utf8");
     const checkpoint = { runId: run.id, chapterPath: run.chapterPath, completedAt: run.updatedAt };
-    const recovered = { ...input, completedChapters: [...input.completedChapters, checkpoint],
-      currentRunId: undefined, updatedAt: new Date().toISOString() };
+    const recoveredAt = new Date().toISOString();
+    const recovered = appendStoryExecutionEvent({ ...input, completedChapters: [...input.completedChapters, checkpoint],
+      currentRunId: undefined, updatedAt: recoveredAt }, { at: recoveredAt, type: "chapter_completed", message: "恢复时补齐已完成章节检查点", runId: run.id });
     await saveStoryExecution(recovered);
     return recovered;
   }
@@ -1193,7 +1194,8 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
         await saveStoryExecution(task);
       });
       if (chapterRun.status !== "completed" || !chapterRun.chapterPath) {
-        task = { ...task, status: "failed", error: "章节未通过现有终审或 Story State 提交门禁。修复该章节后可从最后一个已完成检查点恢复。"+(chapterRun.error?" "+chapterRun.error:""), updatedAt: new Date().toISOString(), currentRunId: undefined };
+        const failedAt = new Date().toISOString();
+        task = appendStoryExecutionEvent({ ...task, status: "failed", error: "章节未通过现有终审或 Story State 提交门禁。修复该章节后可从最后一个已完成检查点恢复。"+(chapterRun.error?" "+chapterRun.error:""), updatedAt: failedAt, currentRunId: undefined }, { at: failedAt, type: "failed", message: "章节未通过终审或状态提交门禁" });
         await saveStoryExecution(task); return;
       }
       previousChapterPath = chapterRun.chapterPath;
@@ -1274,7 +1276,8 @@ async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> 
         await saveStoryExecution(task);
       });
       if (chapterRun.status !== "completed" || !chapterRun.chapterPath) {
-        task = { ...task, status: "failed", error: "第 " + chapterNumber + " 章未通过终审或 Story State 提交门禁。可修复后从已完成检查点恢复。" + (chapterRun.error ? " " + chapterRun.error : ""), updatedAt: new Date().toISOString(), currentRunId: undefined };
+        const failedAt = new Date().toISOString();
+        task = appendStoryExecutionEvent({ ...task, status: "failed", error: "第 " + chapterNumber + " 章未通过终审或 Story State 提交门禁。可修复后从已完成检查点恢复。" + (chapterRun.error ? " " + chapterRun.error : ""), updatedAt: failedAt, currentRunId: undefined }, { at: failedAt, type: "failed", message: "第 " + chapterNumber + " 章未通过终审或状态提交门禁" });
         await saveStoryExecution(task); return;
       }
       previousChapterPath = chapterRun.chapterPath;
