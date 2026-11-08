@@ -19,6 +19,7 @@ import {
 } from "./database.js";
 import { loadLibraryChunks, type LibraryChunk } from "./library.js";
 import { selectCanonSourceChunks } from "./canon-chapters.js";
+import { resolveOriginalCanonPath } from "./canon-source.js";
 
 export interface CatalogChapter {
   volume: number;
@@ -77,8 +78,15 @@ interface CanonIndexInputs {
 /** Align indexing to the exact original.txt bytes, not similarly named auxiliary imports. */
 export async function prepareCanonIndexInputs(worldDir: string, catalog: CatalogChapter[], chunks: LibraryChunk[]): Promise<CanonIndexInputs> {
   let originalText: string | undefined;
-  try { originalText = await readFile(join(worldDir, "original.txt"), "utf8"); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  try {
+    const originalPath = await resolveOriginalCanonPath(worldId, {
+      projectRoot: resolve(worldDir, "..", ".."),
+      worldDir
+    });
+    originalText = await readFile(originalPath, "utf8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
   const sourceHash = originalText === undefined ? undefined : createHash("sha256").update(originalText, "utf8").digest("hex");
   const canonChunks = selectCanonSourceChunks(chunks, sourceHash);
   const chapterStartOffsets: Array<number | undefined> = [];
