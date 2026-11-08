@@ -210,11 +210,11 @@ test("universe creation uses catalog order and stable chapter IDs despite extra 
   const source = join(root, "worlds", "source-world");
   await mkdir(join(source, "library"), { recursive: true });
   await mkdir(join(root, "analysis", "source-world"), { recursive: true });
-  await writeFile(join(source, "world-bible.md"), "# Test World\\n");
+  await writeFile(join(source, "world-bible.md"), "# Test World\n");
   await writeFile(join(source, "original.txt"), [
     "第一章 卷一", "卷一第一章正文", "第二章 卷一", "卷一第二章正文",
     "第一章 卷二", "卷二第一章正文", "第二章 卷二", "卷二第二章正文"
-  ].join("\\n"), "utf8");
+  ].join("\n"), "utf8");
   const catalog = {
     schemaVersion: 2,
     totalLines: 8,
