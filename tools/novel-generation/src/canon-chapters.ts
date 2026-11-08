@@ -36,11 +36,17 @@ export function alignCanonChapterGroups(
 
   let groupIndex = 0;
   return catalog.map((chapter, catalogIndex) => {
-    while (groupIndex < groups.length && groups[groupIndex]!.title !== chapter.title) {
+    // Skip only labels that are not present later in the formal catalog. If a
+    // later formal title appears before this chapter's label, this chapter is
+    // genuinely missing from the chunk index; do not steal the later chapter's
+    // text just because its title happens to be the next available group.
+    const laterTitles = new Set(catalog.slice(catalogIndex + 1).map(item => item.title));
+    while (groupIndex < groups.length && groups[groupIndex]!.title !== chapter.title &&
+      !laterTitles.has(groups[groupIndex]!.title)) {
       groupIndex++;
     }
     const group = groups[groupIndex];
-    if (group) {
+    if (group?.title === chapter.title) {
       group.chunks.sort((a, b) => a.chunkIndex - b.chunkIndex);
       groupIndex++;
       return { chapter, catalogIndex, chunks: group.chunks };
