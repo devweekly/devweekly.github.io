@@ -1040,7 +1040,8 @@ function storyStateSnapshotDir(worldId: string, runId: string): string {
 }
 
 /** Snapshot the authoritative SQLite state and its JSON/arc mirrors before a chapter can mutate them. */
-async function createStoryStateSnapshot(worldId: string, storyUnitId: string | undefined, runId: string): Promise<void> {
+async function createStoryStateSnapshot(worldId: string, storyUnitIdInput: string | undefined, runId: string): Promise<void> {
+  const storyUnitId = storyUnitIdInput ? recordId(storyUnitIdInput) : undefined;
   const stateDir = storyUnitId ? path.join(worldDir(worldId), ".story-units", storyUnitId) : worldDir(worldId);
   const statePath = path.join(stateDir, "story-state.json");
   await loadStoryState(statePath, worldId);
@@ -1062,14 +1063,15 @@ async function createStoryStateSnapshot(worldId: string, storyUnitId: string | u
 
 /** Roll back a chapter whose process died or failed before all final gates passed. */
 async function restoreStoryStateSnapshot(worldId: string, run: WorkbenchRun): Promise<boolean> {
+  const storyUnitId = run.storyUnitId ? recordId(run.storyUnitId) : undefined;
   const snapshotDir = storyStateSnapshotDir(worldId, run.id);
   let manifest: {version?:number;worldId?:string;storyUnitId?:string|null;files?:Record<string,boolean>};
   try { manifest = JSON.parse(await readFile(path.join(snapshotDir, "manifest.json"), "utf8")); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return false; throw error; }
-  if (manifest.version !== 1 || manifest.worldId !== worldId || manifest.storyUnitId !== (run.storyUnitId ?? null) || !manifest.files) {
+  if (manifest.version !== 1 || manifest.worldId !== worldId || manifest.storyUnitId !== (storyUnitId ?? null) || !manifest.files) {
     throw new Error("章节状态快照归属不匹配，拒绝恢复到其他故事宇宙。");
   }
-  const stateDir = run.storyUnitId ? path.join(worldDir(worldId), ".story-units", run.storyUnitId) : worldDir(worldId);
+  const stateDir = storyUnitId ? path.join(worldDir(worldId), ".story-units", storyUnitId) : worldDir(worldId);
   await mkdir(stateDir, { recursive: true });
   for (const name of STORY_STATE_SNAPSHOT_FILES) {
     const target = path.join(stateDir, name);
@@ -1081,7 +1083,7 @@ async function restoreStoryStateSnapshot(worldId: string, run: WorkbenchRun): Pr
       await rm(target, { force: true });
     }
   }
-  const unitFile = storyExecutionUnitPath(worldId, run.storyUnitId);
+  const unitFile = storyExecutionUnitPath(worldId, storyUnitId);
   if (manifest.files["story-unit-record.json"]) {
     const temporary = unitFile + "." + randomUUID() + ".restore";
     await copyFile(path.join(snapshotDir, "story-unit-record.json"), temporary);
