@@ -1946,11 +1946,11 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
       "--max-words", "3000", "--resume-dir", outputDir
     ];
     await mkdir(outputDir, { recursive: true });
+    await saveRun({ ...run, status: "running", updatedAt: new Date().toISOString() });
     const child = spawn(process.execPath, args, { cwd: process.cwd(), env: process.env, stdio: ["ignore", "pipe", "pipe"] });
     let output = ""; let errors = ""; let settled = false;
     child.stdout.setEncoding("utf8").on("data", chunk => { output += chunk; });
     child.stderr.setEncoding("utf8").on("data", chunk => { errors += chunk; });
-    await saveRun({ ...run, status: "running", updatedAt: new Date().toISOString() });
     child.on("error", error => {
       if (settled) return; settled = true;
       void (async () => {
