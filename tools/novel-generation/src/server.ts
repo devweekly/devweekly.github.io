@@ -26,6 +26,7 @@ import { buildUniverseOriginContext, buildUniverseWorldBible, rebaseStoryState, 
 import { importBoundedStoryAnalysisSnapshot, restrictKnowledgeDatabaseToEntry } from "./source-canon-snapshot.js";
 import { importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
+import { generateStoryUnit, validateStoryUnit } from "./story-unit.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
 // noUncheckedIndexedAccess 放宽成 string | undefined。
@@ -931,6 +932,45 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     }
     sendError(res, error);
   } finally { releaseWorldMutation(release); }
+});
+
+// ── 完整故事单元（果实/场景/人物群像/完整因果线） ────────────
+function storyUnitPath(id: string): string { return path.join(worldDir(id), "story-unit.json"); }
+app.get("/api/worlds/:worldId/story-unit", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    try {
+      const unit = validateStoryUnit(JSON.parse(await readFile(storyUnitPath(id), "utf8")), id);
+      res.json({ storyUnit: unit });
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return void res.json({ storyUnit: null });
+      throw error;
+    }
+  } catch (error) { sendError(res, error); }
+});
+app.post("/api/worlds/:worldId/story-unit/generate", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    await serializeWorld(id, async () => {
+      const dir = worldDir(id);
+      const worldBible = await readFile(path.join(dir, "world-bible.md"), "utf8");
+      const state = await loadStoryState(path.join(dir, "story-state.json"), id);
+      const previous = await readFile(storyUnitPath(id), "utf8").then(raw => validateStoryUnit(JSON.parse(raw), id)).catch(error => {
+        if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+        throw error;
+      });
+      const query = [state.currentPosition, ...state.plotThreads.map(x => x.title), ...state.characters.slice(0, STORY_ANALYSIS_QUERY_CHARACTERS).map(x => x.name)].join("\n");
+      const storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(dir, id), query);
+      const brief = typeof req.body?.brief === "string" ? req.body.brief.trim().slice(0, 8000) : "";
+      const model = typeof req.body?.model === "string" ? req.body.model : undefined;
+      const unit = await generateStoryUnit({ worldId: id, worldBible, state, storyAnalysisContext, previous, brief, model });
+      const target = storyUnitPath(id);
+      const temporary = target + "." + randomUUID() + ".tmp";
+      await writeFile(temporary, JSON.stringify(unit, null, 2) + "\n", "utf8");
+      await rename(temporary, target);
+      res.json({ storyUnit: unit });
+    });
+  } catch (error) { sendError(res, error); }
 });
 
 // ── 当前滚动式多章节 Story Arc ─────────────────────────────
