@@ -956,7 +956,8 @@ app.get("/api/worlds/:worldId/story-units/:storyUnitId", async (req, res) => {
 app.post("/api/worlds/:worldId/story-units/generate", async (req, res) => {
   try {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
-    if (activeStoryExecutions.has(id)) return void res.status(409).json({ error: "完整故事执行期间不能创建或重写故事单元。" });
+    if (activeStoryExecutions.has(id) || storyExecutionReservations.has(id) || chapterGenerationReservations.has(id)) return void res.status(409).json({ error: "章节或完整故事执行期间不能创建或重写故事单元。" });
+    if ((await listRuns(id)).some(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"))) return void res.status(409).json({ error: "当前仍有章节正在执行，不能同时重写故事单元。" });
     await serializeWorld(id, async () => {
       const dir = worldDir(id);
       const worldBible = await readFile(path.join(dir, "world-bible.md"), "utf8");
@@ -999,7 +1000,8 @@ app.get("/api/worlds/:worldId/story-unit", async (req, res) => {
 app.post("/api/worlds/:worldId/story-unit/generate", async (req, res) => {
   try {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
-    if (activeStoryExecutions.has(id)) return void res.status(409).json({ error: "完整故事执行期间不能重写故事单元设计。" });
+    if (activeStoryExecutions.has(id) || storyExecutionReservations.has(id) || chapterGenerationReservations.has(id)) return void res.status(409).json({ error: "章节或完整故事执行期间不能重写故事单元设计。" });
+    if ((await listRuns(id)).some(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"))) return void res.status(409).json({ error: "当前仍有章节正在执行，不能同时重写故事单元设计。" });
     await serializeWorld(id, async () => {
       const dir = worldDir(id);
       const worldBible = await readFile(path.join(dir, "world-bible.md"), "utf8");
