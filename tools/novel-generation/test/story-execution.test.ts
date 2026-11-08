@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, mergeStoryExecutionControlFlags } from "../src/story-execution.js";
+import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, mergeStoryExecutionControlFlags, storyRunStateWasRolledBack } from "../src/story-execution.js";
 
 test("story execution checkpoints survive restart and resume from completed chapters", async () => {
   const original = process.cwd();
@@ -147,4 +147,12 @@ test("queued worker startup preserves pause and cancel requests written after en
   const cancel = mergeStoryExecutionControlFlags(queued, { ...queued, cancelRequested: true });
   assert.equal(cancel.cancelRequested, true);
   assert.equal(mergeStoryExecutionControlFlags(queued).pauseRequested, false);
+});
+
+
+test("startup recovery rollback marker is recognized in both worker and startup recovery messages", () => {
+  assert.equal(storyRunStateWasRolledBack("rolled back to the pre-chapter snapshot"), true);
+  assert.equal(storyRunStateWasRolledBack("服务重启后已回滚到章节开始前的 Story State 快照。"), true);
+  assert.equal(storyRunStateWasRolledBack("旧版任务没有事务快照，无法证明状态安全。"), false);
+  assert.equal(storyRunStateWasRolledBack(undefined), false);
 });
