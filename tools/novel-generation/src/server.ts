@@ -1341,7 +1341,8 @@ async function reconcileStoryExecutionCurrentRun(input: StoryExecution): Promise
   }
   if (!input.currentRunId) return input;
   const run = await getRun(input.worldId, input.currentRunId);
-  if (run && (run.kind !== "chapter" || !storyExecutionOwnsRun(input.storyUnitId, run.storyUnitId))) {
+  if (!run) throw new Error("中断任务引用的当前章节 Run 不存在，无法确认章节是否已完成或状态是否已回滚；已停止自动恢复。");
+  if (run.kind !== "chapter" || !storyExecutionOwnsRun(input.storyUnitId, run.storyUnitId)) {
     throw new Error("中断任务的当前 Run 属于其他故事单元，拒绝恢复。");
   }
   if (run?.status === "failed") {
