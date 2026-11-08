@@ -83,3 +83,29 @@ export async function generateStoryUnit(input: {
   const raw = await runAgentText(prompt, input.model, DEFAULT_AGENT_TIMEOUT_MS, readTaskProfiles().plot, true);
   return StoryUnitSchema.parse({ ...parseJsonObject(raw), schemaVersion: 1, worldId: input.worldId, updatedAt: new Date().toISOString() });
 }
+
+/** 供章节写作检索与上下文使用的紧凑故事方向；不把创作可能性转成强制任务。 */
+export function formatStoryUnit(unit: StoryUnit | undefined): string {
+  if (!unit) return "";
+  const lines = [
+    "当前完整故事单元（活的创作方向，不是剧情合同；已发生事实和正文优先）：",
+    "标题：" + unit.title,
+    "故事核心：" + unit.storyCore,
+    "开端：" + unit.openingSituation,
+    "核心矛盾：" + unit.centralConflict,
+    "果实/场景：" + unit.fruitOrSetting.name + "；" + unit.fruitOrSetting.premise,
+    "历史与社会：" + unit.fruitOrSetting.historicalContext + "；" + unit.fruitOrSetting.geographyAndDailyLife + "；" + unit.fruitOrSetting.powerAndSocialRelations,
+    "规则及代价：" + [...unit.fruitOrSetting.abilitiesAndRules, ...unit.fruitOrSetting.costsAndLimits].join("；"),
+    "文化民俗：" + unit.cultureAndFolklore.map(x => x.name + "：" + x.practice + "；" + x.storyUse).join(" / "),
+    "禁忌怪谈：" + unit.taboosAndGhostStories.map(x => x.name + "：" + x.versions.join("、") + "；场景潜力：" + x.scenePotential).join(" / "),
+    "人物群像：" + unit.cast.map(x => x.name + (x.status === "existing" ? "（已出场）" : "（新人物）") + "：" + x.role + "；欲望：" + x.desire + "；关系：" + x.relationships.join("、") + "；发展可能：" + x.possibleDevelopment.join("、")).join(" / "),
+    "人物关系变化可能：" + unit.relationshipDynamics.join("；"),
+    "完整故事因果脊柱：" + unit.storySpine.map((x, i) => (i + 1) + "." + x.title + "：" + x.function + "；" + x.causalChange).join(" / "),
+    "支线：" + unit.subplots.join("；"),
+    "高潮方向：" + unit.climax,
+    "结局与余韵方向：" + unit.endingAndAftermath,
+    "开放问题：" + unit.unresolvedQuestions.join("；"),
+    "创作可能性仅供启发，可根据人物行动和正文自然调整；不得为了兑现规划而牺牲人物生命力和文学表达。"
+  ];
+  return lines.join("\n").slice(0, 16000);
+}
