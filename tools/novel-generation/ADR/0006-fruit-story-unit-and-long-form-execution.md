@@ -224,3 +224,24 @@ Story Unit 先建立完整故事的因果骨架和结局方向，再按叙事需
 - 对部署事务快照功能之前遗留的中断 Run，不伪造“状态已恢复”的结论：如果当前检查点没有前置快照，恢复流程会停止自动续写并明确提示核对 Story State，避免把可能已部分提交的章节重复生成。
 - Story Unit 的 `completedChapterIds` 在恢复时从已验证的 Story Execution 检查点幂等补齐；普通单章成功后也登记 Run ID。完整故事自然收束后，单章和批量入口均拒绝继续写入该单元。
 - 归档、分叉、Story Unit 设计重推演和恢复操作都检查 World 级未结束任务；暂停中的任务同样占用逻辑写入锁，避免任务暂停期间改写它的创作上下文。
+
+
+### 最终补齐记录（2026-11-08，第八阶段；本节覆盖并更新前文的阶段性“仍未完成”说明）
+
+前文第三至第七阶段中的“仍未完成”描述是当时的阶段记录，不能作为当前状态。后续实现以本节及 STORY-UNIT-ACCEPTANCE-2026-11.md 为准。
+
+- **Story Unit 设计版本**：每次重推演前，将当前完整设计作为不可变快照写入 .story-units/{id}/versions/{versionId}.json；新增版本列表 API、版本读取和恢复 API。恢复旧版前会先归档当前版本，因此恢复操作本身也可逆。版本读取同时校验 World 与 Story Unit identity。
+- **重推演上下文边界**：重推演已有 Story Unit 时，使用该单元自己的 .story-units/{id}/story-state.json，不再误读 World 根目录的 Legacy Story State。新建 Story Unit 才以 World/Legacy 状态作为初始上下文。
+- **阶段可视化**：Story Spine 在 Workbench 展示 planned / in_progress / completed / replaced 状态；同时展示最近评估、下一步方向和有证据的人物发展记录。章节数量仍由故事实际发展决定。
+- **人物状态视图**：按 Story State schema 展示人物动机、目标、压力、弧光转折及证据、剧情事件后果、关系变化、伏笔、MacGuffin 和主要情节线。切换 Story Unit 或 World 时先清除旧视图，再加载新状态。
+- **异步 UI 请求**：章节正文预览增加独立请求序号；快速切换章节时，旧预览不能覆盖新选择。World 切换时清理旧 Story Unit、版本列表、章节和预览状态。GraphExplorer、人物状态和章节执行轮询均使用取消/代次保护。
+- **恢复回滚标记修复**：启动恢复将 Run 标记为已回滚时使用中文说明；任务恢复原先只识别英文回滚标记，会将已成功回滚的章节误判为缺少事务快照。现在统一识别两种标记。若 currentRunId 指向的 Run 已不存在，恢复会失败关闭，不再静默清除指针。
+- **真实 Worker 集成覆盖**：新增确定性 fake CLI 的 Service 集成测试，仍执行真实 Express API、批量 Worker、Run Store、Story Execution、Story State SQLite/JSON 持久化及检查点逻辑。按 A → B → A 顺序交替执行，验证 A 的第二章只接续 A 的第一章，A/B 人物状态和滚动 Story Arc 不串线。该测试替代模型调用，不评价真实模型的文学质量。
+
+**自动化与人工验收边界：**
+
+- 自动化覆盖 API 隔离、版本归档/恢复、Story Unit 存储迁移、Worker A/B/A 交替执行、Run 前章选择、状态隔离、执行检查点及恢复标记。
+- CI 的 typecheck、test、build 通过只能证明代码和确定性执行路径通过，不代表真实模型生成质量或真实浏览器视觉交互已经验收。
+- 真实模型端到端仍需在具备模型凭证的运行环境执行至少一次完整故事和一次中断恢复；应检查正文终审、Story State 提交、Story Spine 滚动重规划和自然收束。
+- 浏览器交互需按验收文档检查 World / Story Unit / Legacy 切换、章节预览、任务暂停恢复、版本恢复和人物面板。当前仓库没有引入 Playwright 浏览器测试依赖，不把 TypeScript 构建冒充浏览器 E2E。
+
