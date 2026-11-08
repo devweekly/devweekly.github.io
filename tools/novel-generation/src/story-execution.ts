@@ -35,14 +35,18 @@ export async function getStoryExecution(worldId: string, id: string): Promise<St
   try { return StoryExecutionSchema.parse(JSON.parse(await readFile(filePath(worldId, id), "utf8"))); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
 }
-export async function listStoryExecutions(worldId: string, storyUnitId?: string): Promise<StoryExecution[]> {
+export function storyExecutionOwnsRun(storyUnitId: string | undefined, runStoryUnitId: string | undefined): boolean {
+  return storyUnitId === runStoryUnitId;
+}
+
+export async function listStoryExecutions(worldId: string, storyUnitId?: string | null): Promise<StoryExecution[]> {
   try {
     const names = await readdir(directory(worldId));
     const values = await Promise.all(names.filter(name => name.endsWith(".json")).map(async name => {
       try { return StoryExecutionSchema.parse(JSON.parse(await readFile(join(directory(worldId), name), "utf8"))); }
       catch { return undefined; }
     }));
-    return values.filter((value): value is StoryExecution => value !== undefined && (!storyUnitId || value.storyUnitId === storyUnitId)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+    return values.filter((value): value is StoryExecution => value !== undefined && (storyUnitId === undefined || storyExecutionOwnsRun(storyUnitId ?? undefined, value.storyUnitId))).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
 }
 /** A process restart preserves the checkpoint and marks the task resumable, never falsely completed. */
