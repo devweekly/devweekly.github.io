@@ -1738,6 +1738,7 @@ app.get("/api/runs/:runId", async (req, res) => {
 // ── 一键续写下一章 ────────────────────────────────────────────
 app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
   try {
+    const requestedStoryUnitId = typeof req.body?.storyUnitId === "string" ? recordId(req.body.storyUnitId) : undefined;
     const lockId = worldIdOf(req.params.worldId);
     if (activeStoryExecutions.has(lockId)) return void res.status(409).json({ error: "完整故事任务正在执行，请暂停或取消后再单独生成章节。" });
     const pendingStoryTask = (await listStoryExecutions(lockId)).find(task => ["queued","running","paused"].includes(task.status));
@@ -1751,13 +1752,15 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
     } catch (error) {
       return void res.status(409).json({ error: error instanceof Error ? error.message : "原著资料库尚未建立。请先导入原著并执行 ingest；其余分析资料可以在续写时按需补齐。" });
     }
-    const runs = await listRuns(id);
-    const active = runs.find(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"));
+    if (requestedStoryUnitId && !await getStoredStoryUnit(dir, id, requestedStoryUnitId)) return void res.status(404).json({ error: "Story Unit not found." });
+    const allRuns = await listRuns(id);
+    const runs = allRuns.filter(run => run.kind === "chapter" && (requestedStoryUnitId ? run.storyUnitId === requestedStoryUnitId : !run.storyUnitId));
+    const active = runs.find(run => run.status === "queued" || run.status === "running");
     if (active) return void res.status(409).json({ error: "已有章节正在生成。", run: active });
 
     // 连载默认接续最近一章成功成稿；第一章才从当前世界状态开启新故事。
     const previous = runs
-      .filter(run => run.kind === "chapter" && run.status === "completed" && run.chapterPath)
+      .filter(run => run.status === "completed" && run.chapterPath)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
     let previousChapterPath: string | undefined;
     if (previous?.chapterPath) {
@@ -1778,13 +1781,14 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
     const runId = randomUUID(); const outputDir = path.resolve(".output", id, "chapter-" + runId);
     const mode = previousChapterPath ? "continuation" : "derivative";
     const run: WorkbenchRun = {
-      id: runId, worldId: id, kind: "chapter", status: "queued",
+      id: runId, worldId: id, kind: "chapter", status: "queued", ...(requestedStoryUnitId ? { storyUnitId: requestedStoryUnitId } : {}),
       createdAt: now, updatedAt: now, outputDir,
       ...(previousChapterPath ? { previousChapterPath } : {})
     };
     await saveRun(run);
     const args = [
       ...buildCliEntryArgs(["write"]), "--world", id,
+      ...(requestedStoryUnitId ? ["--state-file", path.join(dir, ".story-units", requestedStoryUnitId, "story-state.json"), "--story-unit-file", storyExecutionUnitPath(id, requestedStoryUnitId), "--story-arc-file", path.join(dir, ".story-units", requestedStoryUnitId, "story-arc.md")] : []),
       "--mode", mode,
       ...(previousChapterPath ? ["--source", previousChapterPath] : universeEntryPath ? ["--source", universeEntryPath] : []),
       ...(!previousChapterPath && universe ? ["--context", path.join(dir, "universe-origin-context.md")] : []),
