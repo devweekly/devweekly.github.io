@@ -1150,9 +1150,82 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
   }
 }
 
+
+async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> {
+  let task = initial;
+  const worldId = task.worldId;
+  try {
+    const dir = worldDir(worldId);
+    const universe = await readUniverse(worldId);
+    if (universe?.archivedAt) throw new Error("当前故事宇宙已归档。");
+    if (universe) await ensureUniverseStoryAnalysis(worldId, universe);
+    await readFile(path.join(dir, "world-bible.md"), "utf8");
+    const libraryDir = await resolveWorldLibraryDir(worldId, path.resolve("worlds"));
+    await readFile(path.join(libraryDir, "index.json"), "utf8");
+    const runs = await listRuns(worldId);
+    const previous = runs.filter(run => run.kind === "chapter" && run.status === "completed" && run.chapterPath)
+      .sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0];
+    let previousChapterPath = previous?.chapterPath ? path.resolve(previous.chapterPath) : undefined;
+    if (previousChapterPath) {
+      const outputRoot = path.resolve(".output", worldId) + path.sep;
+      if (!previousChapterPath.startsWith(outputRoot)) throw new Error("最近章节正文路径不属于当前故事输出目录，已停止以避免串线。");
+      await readFile(previousChapterPath, "utf8");
+    }
+    task = { ...task, status: "running", startedAt: task.startedAt ?? new Date().toISOString(), updatedAt: new Date().toISOString(), pauseRequested: false, cancelRequested: false, resumeCount: task.resumeCount + (task.startedAt ? 1 : 0), error: undefined };
+    await saveStoryExecution(task);
+    while (task.completedChapters.length < (task.targetChapterCount ?? 1)) {
+      task = (await getStoryExecution(worldId, task.id)) ?? task;
+      if (task.cancelRequested) {
+        task = { ...task, status: "cancelled", completedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), currentRunId: undefined };
+        await saveStoryExecution(task); return;
+      }
+      if (task.pauseRequested) {
+        task = { ...task, status: "paused", updatedAt: new Date().toISOString(), currentRunId: undefined };
+        await saveStoryExecution(task); return;
+      }
+      const chapterNumber = task.completedChapters.length + 1;
+      const brief = [
+        "这是一个用户指定数量的连续章节任务，第 " + chapterNumber + " / " + task.targetChapterCount + " 章。",
+        "严格接续已完成正文和 Story State；本批次数量只控制本次执行章数，不代表完整故事结束。",
+        "保持人物、事件和因果连续性，不要为了凑数量注水，也不要提前强行收尾。",
+        task.brief
+      ].filter(Boolean).join("\n\n");
+      const chapterRun = await executeStoryUnitChapter(worldId, previousChapterPath, brief, task.model, async currentRun => {
+        task = { ...task, currentRunId: currentRun.id, updatedAt: new Date().toISOString() };
+        await saveStoryExecution(task);
+      });
+      if (chapterRun.status !== "completed" || !chapterRun.chapterPath) {
+        task = { ...task, status: "failed", error: "第 " + chapterNumber + " 章未通过终审或 Story State 提交门禁。可修复后从已完成检查点恢复。" + (chapterRun.error ? " " + chapterRun.error : ""), updatedAt: new Date().toISOString(), currentRunId: undefined };
+        await saveStoryExecution(task); return;
+      }
+      previousChapterPath = chapterRun.chapterPath;
+      const completedAt = new Date().toISOString();
+      const latestTask = await getStoryExecution(worldId, task.id);
+      if (latestTask) task = { ...task, pauseRequested: latestTask.pauseRequested, cancelRequested: latestTask.cancelRequested };
+      task = { ...task, completedChapters: [...task.completedChapters, {runId:chapterRun.id,chapterPath:chapterRun.chapterPath,completedAt}], currentRunId: undefined, updatedAt: completedAt };
+      await saveStoryExecution(task);
+      try {
+        const unit = validateStoryUnit(JSON.parse(await readFile(storyExecutionUnitPath(worldId), "utf8")), worldId);
+        await saveExecutionStoryUnit({ ...unit, updatedAt: completedAt, execution: { ...unit.execution, status: unit.execution.status === "completed" ? "completed" : "in_progress", completedChapterIds: unit.execution.completedChapterIds.includes(chapterRun.id) ? unit.execution.completedChapterIds : [...unit.execution.completedChapterIds, chapterRun.id] } });
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      }
+      if (task.completedChapters.length >= (task.targetChapterCount ?? 1)) {
+        task = { ...task, status: "completed", completedAt, updatedAt: completedAt, nextDirection: "本次指定数量的连续章节已完成；不代表完整故事已经结束。" };
+        await saveStoryExecution(task); return;
+      }
+      await saveStoryExecution(task);
+    }
+  } catch (error) {
+    task = { ...task, status: "failed", error: error instanceof Error ? error.message : String(error), updatedAt: new Date().toISOString(), currentRunId: undefined };
+    await saveStoryExecution(task).catch(() => undefined);
+  }
+}
+
 function startStoryUnitExecution(task: StoryExecution): void {
   if (activeStoryExecutions.has(task.worldId)) return;
-  const promise = executeStoryUnitTask(task).finally(() => activeStoryExecutions.delete(task.worldId));
+  const worker = task.mode === "fixed_batch" ? executeFixedChapterBatch(task) : executeStoryUnitTask(task);
+  const promise = worker.finally(() => activeStoryExecutions.delete(task.worldId));
   activeStoryExecutions.set(task.worldId, promise);
 }
 
