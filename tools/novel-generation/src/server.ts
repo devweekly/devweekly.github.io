@@ -27,7 +27,7 @@ import { importBoundedStoryAnalysisSnapshot, restrictKnowledgeDatabaseToEntry } 
 import { importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
 import { assessStoryUnitProgress, generateStoryUnit, isStoryUnitNaturallyComplete, validateStoryUnit } from "./story-unit.js";
-import { createStoredStoryUnit, getStoredStoryUnit, listStoredStoryUnits, saveStoredStoryUnit } from "./story-unit-store.js";
+import { archiveStoredStoryUnitVersion, createStoredStoryUnit, getStoredStoryUnit, listStoredStoryUnitVersions, listStoredStoryUnits, saveStoredStoryUnit } from "./story-unit-store.js";
 import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, mergeStoryExecutionControlFlags, storyRunStateWasRolledBack, type StoryExecution } from "./story-execution.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
@@ -950,6 +950,14 @@ app.get("/api/worlds/:worldId/story-units", async (req, res) => {
     res.json({ storyUnits: units.map(unit => validateStoryUnit(unit, id)) });
   } catch (error) { sendError(res, error); }
 });
+app.get("/api/worlds/:worldId/story-units/:storyUnitId/versions", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    const storyUnitId = recordId(req.params.storyUnitId);
+    if (!await getStoredStoryUnit(worldDir(id), id, storyUnitId)) return void res.status(404).json({ error: "Story Unit not found." });
+    res.json({ versions: await listStoredStoryUnitVersions(worldDir(id), id, storyUnitId) });
+  } catch (error) { sendError(res, error); }
+});
 app.get("/api/worlds/:worldId/story-units/:storyUnitId", async (req, res) => {
   try {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
@@ -988,6 +996,8 @@ app.post("/api/worlds/:worldId/story-units/generate", async (req, res) => {
       const generated = await generateStoryUnit({ worldId: id, worldBible, state, storyAnalysisContext, previous, brief, model });
       let unit: Record<string, unknown>;
       if (previous) {
+        // Keep every prior design immutable so regeneration is reversible and inspectable.
+        await archiveStoredStoryUnitVersion(dir, previous);
         unit = { ...generated, id: previous.id };
         await saveStoredStoryUnit(dir, unit as never);
       } else {
