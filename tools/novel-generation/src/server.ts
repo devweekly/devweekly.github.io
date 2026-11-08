@@ -28,7 +28,7 @@ import { importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
 import { assessStoryUnitProgress, generateStoryUnit, isStoryUnitNaturallyComplete, validateStoryUnit } from "./story-unit.js";
 import { createStoredStoryUnit, getStoredStoryUnit, listStoredStoryUnits, saveStoredStoryUnit } from "./story-unit-store.js";
-import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, mergeStoryExecutionControlFlags, type StoryExecution } from "./story-execution.js";
+import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, mergeStoryExecutionControlFlags, storyRunStateWasRolledBack, type StoryExecution } from "./story-execution.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
 // noUncheckedIndexedAccess 放宽成 string | undefined。
@@ -1346,7 +1346,7 @@ async function reconcileStoryExecutionCurrentRun(input: StoryExecution): Promise
   }
   if (run?.status === "failed") {
     const restored = await restoreStoryStateSnapshot(input.worldId, run);
-    if (!restored && !/rolled back to the pre-chapter snapshot/i.test(run.error ?? "")) {
+    if (!restored && !storyRunStateWasRolledBack(run.error)) {
       throw new Error("当前检查点来自没有事务快照保护的旧版中断章节，无法证明 Story State 未被部分提交。为避免重复或错乱剧情，已停止自动恢复；需要先人工核对该章节的 Story State。");
     }
   }
