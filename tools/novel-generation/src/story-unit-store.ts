@@ -77,7 +77,7 @@ export async function saveStoredStoryUnit(worldDir: string, unit: StoredStoryUni
   } satisfies StoryUnitIndex);
 }
 
-export async function createStoredStoryUnit(worldDir: string, input: Omit<StoredStoryUnit, "id">): Promise<StoredStoryUnit> {
+export async function createStoredStoryUnit(worldDir: string, input: { worldId: string; title: string; updatedAt: string; [key: string]: unknown }): Promise<StoredStoryUnit> {
   const unit = { ...input, id: randomUUID() };
   await saveStoredStoryUnit(worldDir, unit);
   return unit;
