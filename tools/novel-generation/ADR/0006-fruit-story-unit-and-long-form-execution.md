@@ -154,3 +154,13 @@ Story Unit 先建立完整故事的因果骨架和结局方向，再按叙事需
 - Story Execution 列表 API 支持 ?storyUnitId= 过滤；创建完整故事和批量章节任务 API 接受 storyUnitId。
 
 **仍未完成：** Workbench 尚未提供 Story Unit 选择和切换 UI；单章生成、旧版 /story-unit API、部分世界级分析/卷级 Arc 仍保留旧路径或 World 级语义。当前 Worker 按 Story Unit 隔离的是长篇/批量执行路径，不应扩大解释为整个 Workbench 已完成多单元隔离。并发执行仍按 World 串行，避免共享知识构建和现有 World 级写操作互相竞争。
+
+### Workbench 多 Story Unit 入口与滚动故事阶段隔离（2026-11-08，第三阶段）
+
+- Workbench 增加当前 Story Unit 选择器和新建入口；切换时重新加载该单元的故事设计、执行任务和章节历史。
+- 完整故事与批量章节请求显式携带 storyUnitId；执行列表按当前单元过滤。
+- Story Unit 的滚动 Story Arc 改为 .story-units/{id}/story-arc.md；CLI 可通过 --story-arc-file 指定上下文文件，避免将另一个故事单元的滚动阶段作为当前故事的写作依据。
+- /story-arc API 支持 storyUnitId 查询，Workbench 显示当前单元的滚动阶段。
+- 原著卷级梗概和 World Bible 仍是 World 共享的原著知识，不属于 Story Unit 的剧情进度；不复制、不改写原著事实。
+
+注意：旧版单章生成入口仍使用 World 级路径，尚未完整接入 Story Unit；切换单元后应优先使用完整故事执行或批量章节执行。Story Arc 仅完成上下文读取隔离，卷级原著 Arc 仍然是共享资料。需要继续完成单章生成入口、人物/伏笔图谱写入边界及跨单元暂停恢复集成测试。
