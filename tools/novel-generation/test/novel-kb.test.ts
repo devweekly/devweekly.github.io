@@ -57,23 +57,28 @@ test("canon index inputs use original source hash and exact line offsets", async
     const hash = createHash("sha256").update(original, "utf8").digest("hex");
     const first = original.indexOf("第一章");
     const second = original.lastIndexOf("第一章");
+    const middleStart = original.indexOf("第二章 转折");
     const inputs = await prepareCanonIndexInputs(world, [
       { ...catalogChapter(1, 1, "第一章 开端"), line: 2 },
+      { ...catalogChapter(1, 2, "第二章 转折"), line: 4 },
       { ...catalogChapter(2, 1, "第一章 开端"), line: 6 }
     ], [
       { ...chunk("canon:1", "第一章 开端", "正文甲", 0), source: "world/original.txt", sourceHash: hash, chapterStart: first },
-      { ...chunk("notes:1", "第一章 开端", "错误辅助资料", 1), source: "world/notes.txt", sourceHash: "f".repeat(64), chapterStart: first }
+      { ...chunk("notes:1", "第一章 开端", "错误辅助资料", 1), source: "world/notes.txt", sourceHash: "f".repeat(64), chapterStart: first },
+      { ...chunk("canon:2", "第二章 转折", "正文乙", 2), source: "world/original.txt", sourceHash: hash, chapterStart: middleStart }
     ]);
-    assert.deepEqual(inputs.chunks.map(item => item.id), ["canon:1"]);
-    assert.deepEqual(inputs.chapterStartOffsets, [first, second]);
+    assert.deepEqual(inputs.chunks.map(item => item.id), ["canon:1", "canon:2"]);
+    assert.deepEqual(inputs.chapterStartOffsets, [first, middleStart, second]);
     const assignment = assignChapters([
       { ...inputs.chunks[0]!, chapter: "第一章 开端" },
-      { ...chunk("canon:2", "第一章 开端", "正文丙", 1), source: "world/original.txt", sourceHash: hash, chapterStart: second }
+      { ...inputs.chunks[1]!, chapter: "第二章 转折" },
+      { ...chunk("canon:3", "第一章 开端", "正文丙", 3), source: "world/original.txt", sourceHash: hash, chapterStart: second }
     ], [
       { ...catalogChapter(1, 1, "第一章 开端"), line: 2 },
+      { ...catalogChapter(1, 2, "第二章 转折"), line: 4 },
       { ...catalogChapter(2, 1, "第一章 开端"), line: 6 }
     ], inputs.chapterStartOffsets);
-    assert.deepEqual(assignment.chapters.map(item => item.chapterId), ["V01-C001", "V02-C001"]);
+    assert.deepEqual(assignment.chapters.map(item => item.chapterId), ["V01-C001", "V01-C002", "V02-C001"]);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
