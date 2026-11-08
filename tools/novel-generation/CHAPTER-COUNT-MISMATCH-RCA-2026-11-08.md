@@ -85,13 +85,13 @@
 | B 放宽校验 | 去掉数量相等判断，改按标题查 `chapter_id` | 让创建流程通过 | 标题去重后少 4 条，`matches.length === 1` 会拒绝；若强行取第一条，等于放弃防泄漏保证 |
 | C 统一到目录骨架 | 以 `chapter-index.json` 为唯一章节列表，`readCanonChapters` 按目录序号取切片正文，`/source-chapters` 返回 catalog 序号，Create Universe 用序号或稳定 `chapter_id` 定位 | 数量口径、下标错位、重复标题歧义 | 需改动目录构造、API 返回语义与前端 `entryChapterIndex`；必须补回归测试 |
 
-推荐 C。A 只能掩盖第一层，B 会把现有的起点保护降级。C 的改动集中在三处：`readCanonChapters()` 改为以 catalog 标题序列为骨架并按顺序对齐 library 分组（跳过 `unmatchedLabels`），`/source-chapters` 返回 catalog 序号，`server.ts:748-750` 的数量校验改为与 `catalog.chapterCount` 比较并改用稳定 `chapter_id` 定位。
+推荐 C。A 只能掩盖第一层，B 会把现有的起点保护降级。C 的改动集中在目录构造、切片位置对齐、`/source-chapters` 返回语义和数据库稳定 ID 定位。切片不能只按标题顺序匹配：同名章节可能跨卷重复，且某一卷可能缺少切片，因此还必须利用 `chapterStart` 与原文目录行号计算出的字符偏移进行二次确认；旧切片缺少位置证据且标题重复时必须失败关闭。
 
 改动前需要确认两件事。一是 `chaptersWithoutChunks: 1` 指向哪一章、它是否应出现在可选起点里；二是已有宇宙的 `entryChapterIndex` 存的是旧目录下标，改语义后不能影响已创建宇宙的读取。后者可以通过不改已存字段、只在创建路径使用新序号来规避。
 
 ## 执行步骤与验收
 
-按 C 实施的顺序如下，每步都有可核对的结果：
+以下是实施前的计划步骤，实际落地结果见后文「修复实施」；不能把计划中的数量断言理解为当前实现。
 
 1. 备份 `worlds/conghuoniao/novel.db` 与 `library/index.json`，记录当前 `SELECT COUNT(*) FROM novel_chapters` 为 753。
 2. 修改 `readCanonChapters()` 与 `/source-chapters`，用 `chapter-index.json` 的 `volumes[].chapters` 作为章节列表；断言新目录长度为 753，且每个标题都能在 library 分组中定位到切片。
@@ -106,7 +106,7 @@
 
 按方案 C 完成实现，正式章节集合以 `analysis/<world>/chapter-index.json` 为唯一骨架：
 
-1. 新增 `src/canon-chapters.ts`，把连续切片组按正式目录顺序对齐。前置内容、卷间作者说明等不属于目录的分组会被跳过；重复的「第一章」按目录顺序逐卷匹配，不再按标题去重。
+1. 新增 `src/canon-chapters.ts`，把连续切片组按正式目录顺序对齐。前置内容、卷间作者说明等不属于目录的分组会被跳过；重复标题通过 `chapterStart` 对照原文目录行号计算出的字符偏移精确匹配，不再只凭标题或数组位置猜测。
 2. 对于目录中没有检索切片的章节，保留其目录位置，并按 `line` 边界从 `original.txt` 读取正文。若正文不可用，创建流程拒绝使用空章节，不会把后续章节的切片挪给它。
 3. `/api/worlds/:id/source-chapters` 返回正式目录的 0-based 序号，序号语义与 `entryChapterIndex` 保持一致。已有宇宙的 `entryChapterIndex` 不做迁移或重写。
 4. Create Universe 不再用 `COUNT(*) === canonChapters.length` 作为唯一映射，也不再使用 `ORDER BY ordinal LIMIT 1 OFFSET ?`。服务端通过目录元数据计算稳定 ID（`Vxx-Cxxx`），逐条核对数据库中已有的正式章节 ID、ordinal、volume、title，再用 `WHERE chapter_id=?` 取得起点。
@@ -114,9 +114,9 @@
 6. 子宇宙的 library 快照同样按目录对齐后截断；不再按原始切片分组数量截断。分析目录快照直接按正式目录序号截断，不再以切片分组数量估算边界。
 7. 错误提示明确要求执行 `index-story`，并提醒不要重新执行 `ingest`，避免再次清空派生索引。
 
-新增测试覆盖：非章节分组过滤、跨卷重复标题、目录章节无切片、无切片章节从原文回退、稳定章节 ID 起点、知识库快照只保留起点及之前的正式章节。测试不会用标题相等或 OFFSET 推测起点。
+新增测试覆盖：非章节分组过滤、跨卷重复标题、通过原文字符偏移匹配重复标题、缺失切片章节保留原目录位置、缺失位置证据时失败关闭、无切片章节从原文回退、稳定章节 ID 起点、源数据库不被补写、知识库快照只保留起点及之前的正式章节。测试不会用标题相等或 OFFSET 推测起点。
 
-**重要边界：** 缺少切片的章节仅在能够从原始全文按目录行号恢复正文、且其余数据库目录行均能与正式目录精确核对时才可补入 staging 快照。不能从原文恢复正文、数据库完全未建立正式章节索引、或存在无法解释的额外/错位章节 ID 时，仍然失败关闭。
+**重要边界：** 缺少切片的章节仅在能够从原始全文按目录行号恢复正文、且其余数据库目录行均能与正式目录精确核对时才可补入 staging 快照。重复标题必须同时具备 `chapterStart` 位置证据；旧索引缺少该字段时，不能降级为标题匹配。不能从原文恢复正文、数据库完全未建立正式章节索引、或存在无法解释的额外/错位章节 ID 时，仍然失败关闭。
 
 ## 证据边界与未验证项
 
