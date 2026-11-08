@@ -107,7 +107,7 @@
 按方案 C 完成实现，正式章节集合以 `analysis/<world>/chapter-index.json` 为唯一骨架：
 
 1. 新增 `src/canon-chapters.ts`，把连续切片组按正式目录顺序对齐。先按 `original.txt` 完整 SHA-256 / `sourceHash` 排除辅助导入文件，再跳过前置内容、卷间作者说明等非章节分组；重复标题通过 `chapterStart` 对照原文目录行号计算出的字符偏移精确匹配，不再只凭标题或数组位置猜测。
-2. 对于目录中没有检索切片的章节，保留其目录位置，并按 `line` 边界从 `original.txt` 读取正文。若正文不可用，创建流程拒绝使用空章节，不会把后续章节的切片挪给它。
+2. 对于目录中没有检索切片的章节，保留其目录位置，并按 `line` 边界从 `original.txt` 读取正文。若正文不可用，创建流程拒绝使用空章节；并且从第一章到所选起点之间任何一章缺少可验证正文，都会拒绝创建，不会以残缺前情启动新宇宙，也不会把后续章节的切片挪给它。
 3. `/api/worlds/:id/source-chapters` 返回正式目录的 0-based 序号，序号语义与 `entryChapterIndex` 保持一致。已有宇宙的 `entryChapterIndex` 不做迁移或重写。
 4. Create Universe 不再用 `COUNT(*) === canonChapters.length` 作为唯一映射，也不再使用 `ORDER BY ordinal LIMIT 1 OFFSET ?`。服务端通过目录元数据计算稳定 ID（`Vxx-Cxxx`），逐条核对数据库中已有的正式章节 ID、ordinal、volume、title，再用 `WHERE chapter_id=?` 取得起点。
 5. 允许数据库中存在索引流程产生的 `V00-C000` 前置内容行，但它不计入正式章节目录。若正式目录章节确实没有切片、数据库也没有对应行，且能从原文目录行边界取得正文，则只在新宇宙 staging 数据库中补建该章节目录行；源项目的 `novel.db` 不会被修改。若数据库完全没有正式章节索引，或缺失的是已有切片的章节，则明确要求执行 `index-story`。
