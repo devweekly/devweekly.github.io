@@ -1127,6 +1127,19 @@ async function saveExecutionStoryUnit(unit: Awaited<ReturnType<typeof generateSt
   await rename(temporary, target);
 }
 
+/** Reconcile Story Unit progress counters from durable execution checkpoints after crash recovery. */
+async function syncStoryUnitCheckpointIds(
+  worldId: string, task: StoryExecution, unitInput?: Awaited<ReturnType<typeof generateStoryUnit>>
+): Promise<Awaited<ReturnType<typeof generateStoryUnit>> | undefined> {
+  if (!task.storyUnitId) return unitInput;
+  const unit = unitInput ?? await loadExecutionStoryUnit(worldId, task.storyUnitId);
+  const completedChapterIds = [...new Set([...unit.execution.completedChapterIds, ...task.completedChapters.map(item => item.runId)])];
+  if (completedChapterIds.length === unit.execution.completedChapterIds.length) return unit;
+  const updated = { ...unit, updatedAt: new Date().toISOString(), execution: { ...unit.execution, completedChapterIds } };
+  await saveExecutionStoryUnit(updated);
+  return updated;
+}
+
 /** Run one ordinary chapter through the existing CLI pipeline and its existing quality/state gates. */
 async function executeStoryUnitChapter(worldId: string, previousChapterPath: string | undefined, brief: string, model?: string, storyUnitId?: string, onRunStarted?: (run: WorkbenchRun) => Promise<void>): Promise<WorkbenchRun> {
   const dir = worldDir(worldId);
@@ -1250,7 +1263,9 @@ async function assessStoryExecutionCheckpoint(
   const unit = {
     ...unitInput, storySpine: revisedSpine, updatedAt: assessedAt,
     execution: {
-      ...unitInput.execution, status: naturallyComplete ? "completed" as const : "in_progress" as const,
+      ...unitInput.execution,
+      completedChapterIds: unitInput.execution.completedChapterIds.includes(checkpoint.runId) ? unitInput.execution.completedChapterIds : [...unitInput.execution.completedChapterIds, checkpoint.runId],
+      status: naturallyComplete ? "completed" as const : "in_progress" as const,
       lastAssessedChapterId: checkpoint.runId,
       lastUnresolvedCoreThreads: assessment.unresolvedCoreThreads,
       lastAssessment: assessment.rationale, nextDirection: assessment.nextDirection,
@@ -1324,6 +1339,7 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
     task = await reconcileStoryExecutionCurrentRun(task);
     const dir = worldDir(worldId);
     let unit = await loadExecutionStoryUnit(worldId, task.storyUnitId);
+    unit = await syncStoryUnitCheckpointIds(worldId, task, unit) ?? unit;
     if (task.mode === "complete_story" && unit.execution.status === "completed") {
       task = { ...task, status: "completed", completedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), nextDirection: "故事已自然收束。" };
       await saveStoryExecution(task); return;
@@ -1408,6 +1424,7 @@ async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> 
   const worldId = task.worldId;
   try {
     task = await reconcileStoryExecutionCurrentRun(task);
+    await syncStoryUnitCheckpointIds(worldId, task);
     const dir = worldDir(worldId);
     const universe = await readUniverse(worldId);
     if (universe?.archivedAt) throw new Error("当前故事宇宙已归档。");
