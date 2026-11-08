@@ -47,13 +47,14 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [generatingStoryUnit,setGeneratingStoryUnit]=useState(false);
  const [startingKnowledgeBuild,setStartingKnowledgeBuild]=useState(false);
  const refreshGeneration=useRef(0);
+ const previewGeneration=useRef(0);
  const busy=run?.status==="queued"||run?.status==="running";
  const activeStoryExecution=worldStoryExecutions.find(item=>["queued","running","paused"].includes(item.status));
  const batchRunning=activeStoryExecution?.mode==="fixed_batch"&&["queued","running"].includes(activeStoryExecution.status);
  const storyTaskBlocksWrites=Boolean(activeStoryExecution);
  const batchProgress={completed:activeStoryExecution?.completedChapters.length??0,total:activeStoryExecution?.targetChapterCount??0};
  const refresh=async()=>{
-  if(!activeWorldId)return;const requestId=++refreshGeneration.current;setLoading(true);
+  if(!activeWorldId)return;const requestId=++refreshGeneration.current;const previewRequestId=++previewGeneration.current;setLoading(true);
   try{
    const [runs,arc]=await Promise.all([
     api<{runs:Run[]}>("/api/worlds/"+activeWorldId+"/runs?storyUnitId="+(historyScope==="legacy"?"legacy":selectedStoryUnitId??"legacy")),
@@ -64,12 +65,12 @@ export default function ChapterStudio({worldId}:{worldId:string}){
    const chapters=runs.runs.filter(x=>x.kind==="chapter").sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
    setChapterRuns(chapters);
    const latest=chapters.at(-1)??null;setRun(latest);
-   if(latest){const p=await api<Preview>("/api/runs/"+latest.id+"/preview?worldId="+activeWorldId);if(requestId===refreshGeneration.current)setPreview(p);}
-   else if(requestId===refreshGeneration.current)setPreview(emptyPreview);
+   if(latest){const p=await api<Preview>("/api/runs/"+latest.id+"/preview?worldId="+activeWorldId);if(requestId===refreshGeneration.current&&previewRequestId===previewGeneration.current)setPreview(p);}
+   else if(requestId===refreshGeneration.current&&previewRequestId===previewGeneration.current)setPreview(emptyPreview);
   }catch(e){if(requestId===refreshGeneration.current)message.error(e instanceof Error?e.message:String(e));}
   finally{if(requestId===refreshGeneration.current)setLoading(false);}
  };
- useEffect(()=>{setActiveWorldId(worldId);setSelectedStoryUnitId(undefined);setHistoryScope("current");setStoryExecution(null);setStoryExecutionHistory([]);setWorldStoryExecutions([]);setRun(null);setPreview(emptyPreview);void refresh();void Promise.all([api<{universes:Universe[]}>("/api/worlds/"+worldId+"/universes"),api<{chapters:Array<{id:number;title:string;label:string}>}>("/api/worlds/"+worldId+"/source-chapters")]).then(([u,c])=>{setUniverses(u.universes);setSourceChapters(c.chapters);}).catch(()=>{setUniverses([]);setSourceChapters([]);setStoryUnit(null);});},[worldId]);
+ useEffect(()=>{setActiveWorldId(worldId);setSelectedStoryUnitId(undefined);setHistoryScope("current");setStoryExecution(null);setStoryExecutionHistory([]);setWorldStoryExecutions([]);setRun(null);setPreview(emptyPreview);++refreshGeneration.current;++previewGeneration.current;void Promise.all([api<{universes:Universe[]}>("/api/worlds/"+worldId+"/universes"),api<{chapters:Array<{id:number;title:string;label:string}>}>("/api/worlds/"+worldId+"/source-chapters")]).then(([u,c])=>{setUniverses(u.universes);setSourceChapters(c.chapters);}).catch(()=>{setUniverses([]);setSourceChapters([]);setStoryUnit(null);});},[worldId]);
  useEffect(()=>{void refresh();},[activeWorldId,selectedStoryUnitId,historyScope]);
  useEffect(()=>{if(!activeWorldId)return;let cancelled=false;void Promise.all([
   api<{storyUnits:Array<{id:string;title:string;updatedAt:string}>}>("/api/worlds/"+activeWorldId+"/story-units"),
@@ -122,9 +123,10 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  },[busy,run?.id,activeWorldId,selectedStoryUnitId,historyScope]);
  const selectChapter=async(id:string)=>{
   const selected=chapterRuns.find(item=>item.id===id);if(!selected)return;
-  setRun(selected);
-  try{setPreview(await api<Preview>("/api/runs/"+selected.id+"/preview?worldId="+activeWorldId));}
-  catch(e){message.error(e instanceof Error?e.message:String(e));}
+  const requestId=++previewGeneration.current;
+  setRun(selected);setPreview(emptyPreview);
+  try{const preview=await api<Preview>("/api/runs/"+selected.id+"/preview?worldId="+activeWorldId);if(requestId===previewGeneration.current)setPreview(preview);}
+  catch(e){if(requestId===previewGeneration.current)message.error(e instanceof Error?e.message:String(e));}
  };
  const moveChapter=(offset:number)=>{
   if(!run)return;const ordered=chapterRuns.filter(item=>item.status==="completed"||item.id===run.id);
