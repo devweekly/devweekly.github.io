@@ -8,6 +8,19 @@ import { createApp } from "../src/server.js";
 import { archiveStoredStoryUnitVersion, createStoredStoryUnit, saveStoredStoryUnit } from "../src/story-unit-store.js";
 import { emptyStoryState, saveStoryState } from "../src/story-state.js";
 
+
+function validStoryUnit(worldId: string, title: string, storyCore: string, centralConflict: string) {
+  return {
+    schemaVersion: 1 as const, worldId, title, storyCore, centralConflict, updatedAt: new Date().toISOString(),
+    readerExperience: "", openingSituation: "故事开端",
+    fruitOrSetting: {},
+    storySpine: [
+      { title: "开端" }, { title: "发展" }, { title: "转折" }, { title: "结局" }
+    ],
+    climax: "关键选择", endingAndAftermath: "故事余韵"
+  };
+}
+
 test("graph and character-state APIs return only the requested Story Unit, with a separate legacy scope", async () => {
   const original = process.cwd();
   const root = await mkdtemp(join(tmpdir(), "story-unit-api-"));
@@ -17,8 +30,8 @@ test("graph and character-state APIs return only the requested Story Unit, with 
   await mkdir(worldDir, { recursive: true });
   const server = createServer(createApp());
   try {
-    const unitA = await createStoredStoryUnit(worldDir, { worldId, title: "雾河镇", storyCore: "河雾保存声音", centralConflict: "谁偷走了亡者的声音", updatedAt: new Date().toISOString() });
-    const unitB = await createStoredStoryUnit(worldDir, { worldId, title: "山中驿站", updatedAt: new Date().toISOString() });
+    const unitA = await createStoredStoryUnit(worldDir, validStoryUnit(worldId, "雾河镇", "河雾保存声音", "谁偷走了亡者的声音"));
+    const unitB = await createStoredStoryUnit(worldDir, validStoryUnit(worldId, "山中驿站", "驿站里的失踪案", "谁纵火烧了驿站"));
     const archivedDesign = await archiveStoredStoryUnitVersion(worldDir, unitA);
     await saveStoredStoryUnit(worldDir, { ...unitA, title: "雾河镇·夜潮", storyCore: "河雾吞没活人的记忆", updatedAt: new Date().toISOString() });
     const stateA = emptyStoryState(worldId);
