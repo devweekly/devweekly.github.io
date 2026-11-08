@@ -27,6 +27,7 @@ import { importBoundedStoryAnalysisSnapshot, restrictKnowledgeDatabaseToEntry } 
 import { importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
 import { assessStoryUnitProgress, generateStoryUnit, isStoryUnitNaturallyComplete, validateStoryUnit } from "./story-unit.js";
+import { createStoredStoryUnit, getStoredStoryUnit, listStoredStoryUnits, saveStoredStoryUnit } from "./story-unit-store.js";
 import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, type StoryExecution } from "./story-execution.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
@@ -933,6 +934,52 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     }
     sendError(res, error);
   } finally { releaseWorldMutation(release); }
+});
+
+// ── 同一世界下的独立 Story Unit 资料管理 ────────────────────
+app.get("/api/worlds/:worldId/story-units", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    const units = await listStoredStoryUnits(worldDir(id), id);
+    res.json({ storyUnits: units.map(unit => validateStoryUnit(unit, id)) });
+  } catch (error) { sendError(res, error); }
+});
+app.get("/api/worlds/:worldId/story-units/:storyUnitId", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    const unitId = recordId(req.params.storyUnitId);
+    const unit = await getStoredStoryUnit(worldDir(id), id, unitId);
+    if (!unit) return void res.status(404).json({ error: "Story Unit not found." });
+    res.json({ storyUnit: validateStoryUnit(unit, id) });
+  } catch (error) { sendError(res, error); }
+});
+app.post("/api/worlds/:worldId/story-units/generate", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    if (activeStoryExecutions.has(id)) return void res.status(409).json({ error: "完整故事执行期间不能创建或重写故事单元。" });
+    await serializeWorld(id, async () => {
+      const dir = worldDir(id);
+      const worldBible = await readFile(path.join(dir, "world-bible.md"), "utf8");
+      const state = await loadStoryState(path.join(dir, "story-state.json"), id);
+      const previousId = typeof req.body?.storyUnitId === "string" ? recordId(req.body.storyUnitId) : undefined;
+      const previousRaw = previousId ? await getStoredStoryUnit(dir, id, previousId) : undefined;
+      if (previousId && !previousRaw) throw Object.assign(new Error("Story Unit not found."), { status: 404 });
+      const previous = previousRaw ? validateStoryUnit(previousRaw, id) : undefined;
+      const query = [state.currentPosition, ...state.plotThreads.map(x => x.title), ...state.characters.slice(0, STORY_ANALYSIS_QUERY_CHARACTERS).map(x => x.name)].join("\n");
+      const storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(dir, id), query);
+      const brief = typeof req.body?.brief === "string" ? req.body.brief.trim().slice(0, 8000) : "";
+      const model = typeof req.body?.model === "string" ? req.body.model : undefined;
+      const generated = await generateStoryUnit({ worldId: id, worldBible, state, storyAnalysisContext, previous, brief, model });
+      let unit: Record<string, unknown>;
+      if (previous) {
+        unit = { ...generated, id: previous.id };
+        await saveStoredStoryUnit(dir, unit as never);
+      } else {
+        unit = await createStoredStoryUnit(dir, generated as never);
+      }
+      res.json({ storyUnit: validateStoryUnit(unit, id) });
+    });
+  } catch (error) { sendError(res, error); }
 });
 
 // ── 完整故事单元（果实/场景/人物群像/完整因果线） ────────────
