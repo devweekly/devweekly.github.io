@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun } from "../src/story-execution.js";
+import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit } from "../src/story-execution.js";
 
 test("story execution checkpoints survive restart and resume from completed chapters", async () => {
   const original = process.cwd();
@@ -117,4 +117,17 @@ test("checkpoint ownership never crosses Story Units and preserves legacy owners
   assert.equal(storyExecutionOwnsRun(a, undefined), false);
   assert.equal(storyExecutionOwnsRun(undefined, undefined), true);
   assert.equal(storyExecutionOwnsRun(undefined, b), false);
+});
+
+
+test("latest completed chapter selection keeps Story Unit and legacy histories disjoint", () => {
+  const runs = [
+    { id: "unit-a-old", kind: "chapter", storyUnitId: "unit-a", status: "completed", chapterPath: "a-old.md", createdAt: "2026-11-01T00:00:00.000Z" },
+    { id: "unit-b-new", kind: "chapter", storyUnitId: "unit-b", status: "completed", chapterPath: "b-new.md", createdAt: "2026-11-03T00:00:00.000Z" },
+    { id: "legacy-mid", kind: "chapter", status: "completed", chapterPath: "legacy.md", createdAt: "2026-11-02T00:00:00.000Z" },
+    { id: "unit-a-running", kind: "chapter", storyUnitId: "unit-a", status: "running", chapterPath: "a-running.md", createdAt: "2026-11-04T00:00:00.000Z" }
+  ];
+  assert.equal(latestCompletedChapterForStoryUnit(runs, "unit-a")?.id, "unit-a-old");
+  assert.equal(latestCompletedChapterForStoryUnit(runs, "unit-b")?.id, "unit-b-new");
+  assert.equal(latestCompletedChapterForStoryUnit(runs, undefined)?.id, "legacy-mid");
 });
