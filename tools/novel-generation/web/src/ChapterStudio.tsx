@@ -3,7 +3,7 @@ import { Alert, Button, Card, Collapse, Empty, Input, InputNumber, Modal, Progre
 import { PlayCircleOutlined, ReloadOutlined } from "@ant-design/icons";
 const { Title, Text, Paragraph } = Typography;
 type Run = { id:string; kind?:string; status:string; createdAt:string; updatedAt:string; error?:string; outputDir?:string; chapterPath?:string; previousChapterPath?:string };
-type Preview = { storyArc:string; chapterPlan:string; chapter:string };
+type Preview = { storyArc:string; chapterPlan:string; chapter:string };\ntype StoryUnit = { title:string; storyCore:string; readerExperience:string; openingSituation:string; centralConflict:string; fruitOrSetting:{name:string;premise:string;abilitiesAndRules:string[];costsAndLimits:string[];historicalContext:string;geographyAndDailyLife:string;powerAndSocialRelations:string}; cultureAndFolklore:Array<{name:string;practice:string;originOrBelief:string;socialFunction:string;storyUse:string}>; taboosAndGhostStories:Array<{name:string;versions:string[];underlyingTruthOptions:string[];consequences:string;scenePotential:string}>; cast:Array<{name:string;role:string;status:string;desire:string;fearOrSecret:string;relationships:string[];possibleDevelopment:string[]}>; relationshipDynamics:string[]; storySpine:Array<{title:string;function:string;causalChange:string;involvedCharacters:string[];possibleArcs:string[]}>; subplots:string[]; climax:string; endingAndAftermath:string; unresolvedQuestions:string[]; creativePossibilities:string[] };
 type Universe = { id:string; sourceWorldId:string; name:string; type:string; entryChapter:string; entryChapterId?:string; entryOrdinal?:number; brief:string; createdAt:string; parentUniverseId?:string; forkPoint?:string; archivedAt?:string };
 type ForkableRun = { id:string; chapterTitle:string; createdAt:string };
 type KnowledgeBuild = { worldId:string; status:"queued"|"running"|"completed"|"partial"|"failed"; currentStep?:string; updatedAt:string; completedAt?:string; steps:Array<{name:string;status:"running"|"completed"|"failed"|"skipped";exitCode?:number|null;output?:string;error?:string}> };
@@ -35,7 +35,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [preview,setPreview]=useState<Preview>(emptyPreview);
  const [activeArc,setActiveArc]=useState("");
  const [notice,setNotice]=useState("");
- const [knowledgeBuild,setKnowledgeBuild]=useState<KnowledgeBuild|null>(null);
+ const [knowledgeBuild,setKnowledgeBuild]=useState<KnowledgeBuild|null>(null);\n const [storyUnit,setStoryUnit]=useState<StoryUnit|null>(null);\n const [generatingStoryUnit,setGeneratingStoryUnit]=useState(false);
  const [startingKnowledgeBuild,setStartingKnowledgeBuild]=useState(false);
  const busy=run?.status==="queued"||run?.status==="running";
  const refresh=async()=>{
@@ -54,7 +54,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
   finally{setLoading(false);}
  };
- useEffect(()=>{setActiveWorldId(worldId);setRun(null);setPreview(emptyPreview);void refresh();void Promise.all([api<{universes:Universe[]}>("/api/worlds/"+worldId+"/universes"),api<{chapters:Array<{id:number;title:string;label:string}>}>("/api/worlds/"+worldId+"/source-chapters")]).then(([u,c])=>{setUniverses(u.universes);setSourceChapters(c.chapters);}).catch(()=>{setUniverses([]);setSourceChapters([]);});},[worldId]);
+ useEffect(()=>{setActiveWorldId(worldId);setRun(null);setPreview(emptyPreview);void refresh();void Promise.all([api<{universes:Universe[]}>("/api/worlds/"+worldId+"/universes"),api<{chapters:Array<{id:number;title:string;label:string}>}>("/api/worlds/"+worldId+"/source-chapters"),api<{storyUnit:StoryUnit|null}>("/api/worlds/"+worldId+"/story-unit")]).then(([u,c,s])=>{setUniverses(u.universes);setSourceChapters(c.chapters);setStoryUnit(s.storyUnit);}).catch(()=>{setUniverses([]);setSourceChapters([]);setStoryUnit(null);});},[worldId]);
  useEffect(()=>{void refresh();},[activeWorldId]);
  useEffect(()=>{
   if(!busy||!run)return;
@@ -107,6 +107,14 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   const timer=window.setInterval(load,2000);
   return()=>{disposed=true;window.clearInterval(timer);};
  },[activeWorldId,activeUniverse?.id]);
+ const generateStoryUnit=async()=>{
+  setGeneratingStoryUnit(true);
+  try{
+   const result=await api<{storyUnit:StoryUnit}>("/api/worlds/"+activeWorldId+"/story-unit/generate",{method:"POST",body:JSON.stringify({})});
+   setStoryUnit(result.storyUnit);message.success("完整故事单元设计已生成并保存。");
+  }catch(e){message.error(e instanceof Error?e.message:String(e));}
+  finally{setGeneratingStoryUnit(false);}
+ };
  const startKnowledgeBuild=async()=>{
   setStartingKnowledgeBuild(true);
   try{
