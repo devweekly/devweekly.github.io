@@ -52,7 +52,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   try{
    const [runs,arc]=await Promise.all([
     api<{runs:Run[]}>("/api/worlds/"+activeWorldId+"/runs"),
-    api<{storyArc:string}>("/api/worlds/"+activeWorldId+"/story-arc")
+    api<{storyArc:string}>("/api/worlds/"+activeWorldId+"/story-arc"+(selectedStoryUnitId?"?storyUnitId="+selectedStoryUnitId:""))
    ]);
    setActiveArc(arc.storyArc);
    const chapters=runs.runs.filter(x=>x.kind==="chapter"&&(!selectedStoryUnitId||x.storyUnitId===selectedStoryUnitId)).sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
@@ -89,7 +89,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
    void Promise.all([
     api<{run:Run}>("/api/runs/"+run.id+"?worldId="+activeWorldId),
     api<Preview>("/api/runs/"+run.id+"/preview?worldId="+activeWorldId)
-   ]).then(([r,p])=>{setRun(r.run);setPreview(p);if(r.run.status==="completed"||r.run.status==="failed"){void Promise.all([api<{storyArc:string}>("/api/worlds/"+activeWorldId+"/story-arc"),api<{runs:Run[]}>("/api/worlds/"+activeWorldId+"/runs")]).then(([arc,runs])=>{setActiveArc(arc.storyArc);setChapterRuns(runs.runs.filter(x=>x.kind==="chapter").sort((a,b)=>a.createdAt.localeCompare(b.createdAt)));});}}).catch(()=>{});
+   ]).then(([r,p])=>{setRun(r.run);setPreview(p);if(r.run.status==="completed"||r.run.status==="failed"){void Promise.all([api<{storyArc:string}>("/api/worlds/"+activeWorldId+"/story-arc"+(selectedStoryUnitId?"?storyUnitId="+selectedStoryUnitId:"")),api<{runs:Run[]}>("/api/worlds/"+activeWorldId+"/runs")]).then(([arc,runs])=>{setActiveArc(arc.storyArc);setChapterRuns(runs.runs.filter(x=>x.kind==="chapter").sort((a,b)=>a.createdAt.localeCompare(b.createdAt)));});}}).catch(()=>{});
   },2000);
   return()=>window.clearInterval(timer);
  },[busy,run?.id,activeWorldId]);
