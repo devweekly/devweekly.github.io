@@ -977,6 +977,7 @@ app.post("/api/worlds/:worldId/story-unit/generate", async (req, res) => {
 
 
 const activeStoryExecutions = new Map<string, Promise<void>>();
+const storyExecutionReservations = new Set<string>();
 function storyExecutionUnitPath(id: string): string { return path.join(worldDir(id), "story-unit.json"); }
 async function saveExecutionStoryUnit(unit: Awaited<ReturnType<typeof generateStoryUnit>>): Promise<void> {
   const target = storyExecutionUnitPath(unit.worldId);
@@ -1159,7 +1160,8 @@ app.get("/api/worlds/:worldId/story-executions", async (req, res) => {
 app.post("/api/worlds/:worldId/story-executions", async (req, res) => {
   try {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
-    if (activeStoryExecutions.has(id)) return void res.status(409).json({ error: "当前世界已有完整故事任务正在执行。" });
+    if (activeStoryExecutions.has(id) || storyExecutionReservations.has(id)) return void res.status(409).json({ error: "当前世界已有完整故事任务正在执行或启动。" });
+    storyExecutionReservations.add(id);
     const runs = await listRuns(id);
     const activeChapter = runs.find(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"));
     if (activeChapter) return void res.status(409).json({ error: "当前已有单章任务运行，请完成后再启动完整故事。" });
@@ -1179,6 +1181,7 @@ app.post("/api/worlds/:worldId/story-executions", async (req, res) => {
     startStoryUnitExecution(task);
     res.status(202).json({ execution: task });
   } catch (error) { sendError(res, error); }
+  finally { storyExecutionReservations.delete(worldIdOf(req.params.worldId)); }
 });
 app.get("/api/worlds/:worldId/story-executions/:executionId", async (req, res) => {
   try {
