@@ -74,7 +74,7 @@ interface CanonIndexInputs {
 }
 
 /** Align indexing to the exact original.txt bytes, not similarly named auxiliary imports. */
-async function prepareCanonIndexInputs(worldDir: string, catalog: CatalogChapter[], chunks: LibraryChunk[]): Promise<CanonIndexInputs> {
+export async function prepareCanonIndexInputs(worldDir: string, catalog: CatalogChapter[], chunks: LibraryChunk[]): Promise<CanonIndexInputs> {
   let originalText: string | undefined;
   try { originalText = await readFile(join(worldDir, "original.txt"), "utf8"); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
