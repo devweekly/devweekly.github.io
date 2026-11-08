@@ -309,6 +309,23 @@ test("universe creation uses catalog order and stable chapter IDs despite extra 
         { chapter_id: "V02-C001", ordinal: 3 }
       ]);
     } finally { snapshot.close(); }
+
+    // The chunkless catalog row is reconstructed only in the staged universe;
+    // the source knowledge database remains unchanged.
+    const sourceDb = new DatabaseSync(join(source, "novel.db"));
+    try {
+      assert.equal(sourceDb.prepare("SELECT COUNT(*) AS count FROM novel_chapters WHERE chapter_id='V02-C001'").get()?.count, 0);
+      sourceDb.prepare("DELETE FROM novel_chapters").run();
+    } finally { sourceDb.close(); }
+    const emptyIndexResponse = await fetch(base + "/api/worlds/source-world/universes", {
+      method: "POST", headers,
+      body: JSON.stringify({
+        name: "缺少章节索引时必须失败", entryChapter: "第一章", entryChapterIndex: 0,
+        type: "free", brief: "失败关闭", buildKnowledge: false
+      })
+    });
+    assert.equal(emptyIndexResponse.status, 500);
+    assert.match(await emptyIndexResponse.text(), /index-story/);
   } finally {
     if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
     process.chdir(previousCwd);
