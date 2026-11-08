@@ -1390,7 +1390,7 @@ function startStoryUnitExecution(task: StoryExecution): void {
 
 
 app.get("/api/worlds/:worldId/story-executions", async (req, res) => {
-  try { const id = worldIdOf(req.params.worldId); assertInsideWorld(id); res.json({ executions: await listStoryExecutions(id) }); }
+  try { const id = worldIdOf(req.params.worldId); assertInsideWorld(id); res.json({ executions: await listStoryExecutions(id, typeof req.query.storyUnitId === "string" ? recordId(req.query.storyUnitId) : undefined) }); }
   catch (error) { sendError(res, error); }
 });
 app.post("/api/worlds/:worldId/story-executions", async (req, res) => {
@@ -1400,22 +1400,24 @@ app.post("/api/worlds/:worldId/story-executions", async (req, res) => {
     if (activeStoryExecutions.has(id) || storyExecutionReservations.has(id)) return void res.status(409).json({ error: "当前世界已有完整故事任务正在执行或启动。" });
     storyExecutionReservations.add(id);
     reservedId = id;
+    const requestedUnitId = typeof req.body?.storyUnitId === "string" ? recordId(req.body.storyUnitId) : undefined;
     const runs = await listRuns(id);
-    const activeChapter = runs.find(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"));
+    const activeChapter = runs.find(run => run.kind === "chapter" && (!requestedUnitId || run.storyUnitId === requestedUnitId) && (run.status === "queued" || run.status === "running"));
     if (activeChapter) return void res.status(409).json({ error: "当前已有单章任务运行，请完成后再启动完整故事。" });
-    const unit = validateStoryUnit(JSON.parse(await readFile(storyExecutionUnitPath(id), "utf8")), id);
+    const requestedUnitId = typeof req.body?.storyUnitId === "string" ? recordId(req.body.storyUnitId) : undefined;
+    const unit = await loadExecutionStoryUnit(id, requestedUnitId);
     const universe = await readUniverse(id);
     if (universe?.archivedAt) return void res.status(409).json({error:"当前故事宇宙已归档，不能启动完整故事执行。"});
     await readFile(path.join(worldDir(id), "world-bible.md"), "utf8");
     const retrievalDir = await resolveWorldLibraryDir(id, path.resolve("worlds"));
     await readFile(path.join(retrievalDir, "index.json"), "utf8");
     if (unit.execution.status === "completed") return void res.status(409).json({ error: "当前故事单元已自然收束。若要创作新故事，请创建新的故事单元或复制一个新宇宙。" });
-    const previousTasks = await listStoryExecutions(id);
+    const previousTasks = await listStoryExecutions(id, unit.id);
     const latest = previousTasks.find(item => item.status === "running" || item.status === "queued" || item.status === "paused");
     if (latest) return void res.status(409).json({ error: "已有完整故事任务，请恢复或取消现有任务。", execution: latest });
     const now = new Date().toISOString();
     const task: StoryExecution = {
-      id: randomUUID(), worldId: id, storyUnitTitle: unit.title, mode: "complete_story", status: "queued", createdAt: now, updatedAt: now,
+      id: randomUUID(), worldId: id, ...(unit.id ? {storyUnitId: unit.id} : {}), storyUnitTitle: unit.title, mode: "complete_story", status: "queued", createdAt: now, updatedAt: now,
       completedChapters: [], events: [{ at: now, type: "created", message: "创建完整故事执行任务" }], brief: typeof req.body?.brief === "string" ? req.body.brief.trim().slice(0, 8000) : "",
       ...(typeof req.body?.model === "string" ? {model:req.body.model} : {}),
       idleChapterCount: 0, pauseRequested: false, cancelRequested: false, resumeCount: 0
@@ -1443,18 +1445,18 @@ app.post("/api/worlds/:worldId/chapter-batches", async (req, res) => {
     await readFile(path.join(worldDir(id), "world-bible.md"), "utf8");
     const retrievalDir = await resolveWorldLibraryDir(id, path.resolve("worlds"));
     await readFile(path.join(retrievalDir, "index.json"), "utf8");
-    const previousTasks = await listStoryExecutions(id);
+    const previousTasks = await listStoryExecutions(id, requestedUnitId);
     const latest = previousTasks.find(item => ["running","queued","paused"].includes(item.status));
     if (latest) return void res.status(409).json({error:"已有长篇任务，请恢复或取消后再启动批量任务。",execution:latest});
     let title = "连续章节批次";
     try {
-      const unit = validateStoryUnit(JSON.parse(await readFile(storyExecutionUnitPath(id),"utf8")),id);
+      const unit = await loadExecutionStoryUnit(id, requestedUnitId);
       if (unit.execution.status === "completed") return void res.status(409).json({error:"当前完整故事已经自然收束，请创建新的故事单元后再继续生成。"});
       title = unit.title;
     } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     const now = new Date().toISOString();
     const task: StoryExecution = {
-      id: randomUUID(), worldId: id, storyUnitTitle: title, mode: "fixed_batch", targetChapterCount: count,
+      id: randomUUID(), worldId: id, ...(requestedUnitId ? {storyUnitId: requestedUnitId} : {}), storyUnitTitle: title, mode: "fixed_batch", targetChapterCount: count,
       status: "queued", createdAt: now, updatedAt: now, completedChapters: [], events: [{ at: now, type: "created", message: "创建连续章节批次任务" }],
       brief: typeof req.body?.brief === "string" ? req.body.brief.trim().slice(0,8000) : "",
       ...(typeof req.body?.model === "string" ? {model:req.body.model} : {}),
