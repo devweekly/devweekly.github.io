@@ -43,6 +43,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [startingKnowledgeBuild,setStartingKnowledgeBuild]=useState(false);
  const busy=run?.status==="queued"||run?.status==="running";
  const batchRunning=storyExecution?.mode==="fixed_batch"&&["queued","running"].includes(storyExecution.status);
+ const storyTaskBlocksWrites=Boolean(storyExecution&&["queued","running","paused","failed","stalled"].includes(storyExecution.status));
  const batchProgress={completed:storyExecution?.completedChapters.length??0,total:storyExecution?.targetChapterCount??0};
  const refresh=async()=>{
   if(!activeWorldId)return;setLoading(true);
@@ -200,8 +201,8 @@ export default function ChapterStudio({worldId}:{worldId:string}){
     <Button onClick={()=>setCreateOpen(true)}>新建故事宇宙</Button>
     {activeWorldId!==worldId&&!activeUniverse?.archivedAt&&<Button onClick={()=>void openFork()}>从本宇宙分叉</Button>}
     {activeUniverse&&(activeUniverse.archivedAt?<Button onClick={()=>void changeArchive(false)}>恢复宇宙</Button>:<Button danger onClick={()=>void changeArchive(true)} disabled={Boolean(busy)}>归档当前宇宙</Button>)}
-    <Button type="primary" size="large" className="chapter-action" icon={<PlayCircleOutlined/>} loading={starting||Boolean(busy)} disabled={!activeWorldId||Boolean(busy)||batchRunning||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generate()}>生成下一章</Button>
-    <Space.Compact><InputNumber min={1} value={batchCount} onChange={value=>setBatchCount(value??1)} disabled={batchRunning||Boolean(busy)} style={{width:76}}/><Button loading={batchRunning||startingStoryExecution&&storyExecution?.mode==="fixed_batch"} disabled={!activeWorldId||Boolean(busy)||batchRunning||startingStoryExecution||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generateBatch()}>连续生成多章</Button></Space.Compact>
+    <Button type="primary" size="large" className="chapter-action" icon={<PlayCircleOutlined/>} loading={starting||Boolean(busy)} disabled={!activeWorldId||Boolean(busy)||batchRunning||storyTaskBlocksWrites||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generate()}>生成下一章</Button>
+    <Space.Compact><InputNumber min={1} value={batchCount} onChange={value=>setBatchCount(value??1)} disabled={batchRunning||Boolean(busy)||storyTaskBlocksWrites} style={{width:76}}/><Button loading={batchRunning||startingStoryExecution&&storyExecution?.mode==="fixed_batch"} disabled={!activeWorldId||Boolean(busy)||batchRunning||storyTaskBlocksWrites||startingStoryExecution||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generateBatch()}>连续生成多章</Button></Space.Compact>
     <Button icon={<ReloadOutlined/>} loading={loading} onClick={()=>void refresh()}>刷新状态</Button>
     {busy&&<Tag color="processing">正在自动创作</Tag>}
     {batchRunning&&<Tag color="processing">批量进度 {batchProgress.completed}/{batchProgress.total}</Tag>}
