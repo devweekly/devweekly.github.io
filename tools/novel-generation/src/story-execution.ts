@@ -42,7 +42,7 @@ export async function listStoryExecutions(worldId: string, storyUnitId?: string)
       try { return StoryExecutionSchema.parse(JSON.parse(await readFile(join(directory(worldId), name), "utf8"))); }
       catch { return undefined; }
     }));
-    return values.filter((value): value is StoryExecution => Boolean(value) && (!storyUnitId || value.storyUnitId === storyUnitId)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+    return values.filter((value): value is StoryExecution => value !== undefined && (!storyUnitId || value.storyUnitId === storyUnitId)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
 }
 /** A process restart preserves the checkpoint and marks the task resumable, never falsely completed. */
