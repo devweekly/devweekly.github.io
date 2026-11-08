@@ -39,7 +39,7 @@ const StoryUnitSchema = z.object({
   subplots: z.array(z.string()).default([]),
   climax: z.string().min(1), endingAndAftermath: z.string().min(1),
   unresolvedQuestions: z.array(z.string()).default([]), creativePossibilities: z.array(z.string()).default([]),
-  execution: z.object({ status: z.enum(["not_started", "in_progress", "completed"]).default("not_started"), completedChapterIds: z.array(z.string()).default([]), lastUnresolvedCoreThreads: z.array(z.string()).default([]), lastAssessment: z.string().optional(), nextDirection: z.string().optional(), assessedAt: z.string().optional(), completedAt: z.string().optional() }).default({ status: "not_started", completedChapterIds: [], lastUnresolvedCoreThreads: [] })
+  execution: z.object({ status: z.enum(["not_started", "in_progress", "completed"]).default("not_started"), completedChapterIds: z.array(z.string()).default([]), lastUnresolvedCoreThreads: z.array(z.string()).default([]), lastAssessedChapterId: z.string().optional(), lastAssessment: z.string().optional(), nextDirection: z.string().optional(), assessedAt: z.string().optional(), completedAt: z.string().optional() }).default({ status: "not_started", completedChapterIds: [], lastUnresolvedCoreThreads: [] })
 }).strict();
 
 export type StoryUnit = z.infer<typeof StoryUnitSchema>;
