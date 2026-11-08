@@ -115,6 +115,8 @@ export default function CharactersPanel({
   useEffect(() => {
     let cancelled = false;
     setStoryState(null);
+    setStoryUnits([]);
+    setSelectedStoryUnitId(undefined);
     fetch(`/api/worlds/${encodeURIComponent(worldId)}/story-units`).then(async response => {
       const body = await response.json() as {storyUnits?:Array<{id:string;title:string}>;error?:string};
       if (!response.ok) throw new Error(body.error ?? response.statusText);
