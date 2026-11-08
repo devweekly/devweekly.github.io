@@ -26,7 +26,8 @@ import { buildUniverseOriginContext, buildUniverseWorldBible, rebaseStoryState, 
 import { importBoundedStoryAnalysisSnapshot, restrictKnowledgeDatabaseToEntry } from "./source-canon-snapshot.js";
 import { importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
-import { generateStoryUnit, validateStoryUnit } from "./story-unit.js";
+import { assessStoryUnitProgress, generateStoryUnit, validateStoryUnit } from "./story-unit.js";
+import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, type StoryExecution } from "./story-execution.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
 // noUncheckedIndexedAccess 放宽成 string | undefined。
@@ -972,6 +973,171 @@ app.post("/api/worlds/:worldId/story-unit/generate", async (req, res) => {
     });
   } catch (error) { sendError(res, error); }
 });
+
+
+const activeStoryExecutions = new Map<string, Promise<void>>();
+function storyExecutionUnitPath(id: string): string { return path.join(worldDir(id), "story-unit.json"); }
+async function saveExecutionStoryUnit(unit: Awaited<ReturnType<typeof generateStoryUnit>>): Promise<void> {
+  const target = storyExecutionUnitPath(unit.worldId);
+  const temporary = target + "." + randomUUID() + ".tmp";
+  await writeFile(temporary, JSON.stringify(unit, null, 2) + "\n", "utf8");
+  await rename(temporary, target);
+}
+
+/** Run one ordinary chapter through the existing CLI pipeline and its existing quality/state gates. */
+async function executeStoryUnitChapter(worldId: string, previousChapterPath: string | undefined, brief: string, model?: string): Promise<WorkbenchRun> {
+  const dir = worldDir(worldId);
+  const universe = await readUniverse(worldId);
+  if (universe?.archivedAt) throw new Error("当前故事宇宙已归档，不能继续完整故事执行。");
+  const universeEntryPath = universe ? path.join(dir, "universe-entry.md") : undefined;
+  const now = new Date().toISOString();
+  const runId = randomUUID();
+  const outputDir = path.resolve(".output", worldId, "chapter-" + runId);
+  const run: WorkbenchRun = {
+    id: runId, worldId, kind: "chapter", status: "queued", createdAt: now, updatedAt: now,
+    outputDir, ...(previousChapterPath ? { previousChapterPath } : {})
+  };
+  await saveRun(run);
+  const mode = previousChapterPath ? "continuation" : "derivative";
+  const args = [
+    ...buildCliEntryArgs(["write"]), "--world", worldId, "--mode", mode,
+    ...(previousChapterPath ? ["--source", previousChapterPath] : universeEntryPath ? ["--source", universeEntryPath] : []),
+    ...(!previousChapterPath && universe ? ["--context", path.join(dir, "universe-origin-context.md")] : []),
+    "--brief", brief, ...(model ? ["--model", model] : []),
+    "--max-words", "3000", "--resume-dir", outputDir
+  ];
+  await mkdir(outputDir, { recursive: true });
+  await saveRun({ ...run, status: "running", updatedAt: new Date().toISOString() });
+  const result = await new Promise<{ code: number | null; output: string; errors: string }>(resolveResult => {
+    const child = spawn(process.execPath, args, { cwd: process.cwd(), env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+    let output = "", errors = "", settled = false;
+    child.stdout.setEncoding("utf8").on("data", chunk => { output += chunk; });
+    child.stderr.setEncoding("utf8").on("data", chunk => { errors += chunk; });
+    child.on("error", error => { if (!settled) { settled = true; resolveResult({ code: null, output, errors: errors + error.message }); } });
+    child.on("close", code => { if (!settled) { settled = true; resolveResult({ code, output, errors }); } });
+  });
+  const saved = result.output.match(/Saved chapter:\s*(.+)/)?.[1]?.trim();
+  const chapterPath = saved ? path.resolve(saved) : undefined;
+  const outputRoot = path.resolve(".output", worldId) + path.sep;
+  let finalChapterExists = false, qualityPassed = false, stateCommitted = false;
+  if (chapterPath && chapterPath.startsWith(outputRoot)) {
+    try { finalChapterExists = (await readFile(chapterPath, "utf8")).trim().length > 0; } catch { /* no final chapter */ }
+  }
+  try { qualityPassed = (JSON.parse(await readFile(path.join(outputDir, "09-quality-summary.json"), "utf8")) as {status?:string}).status === "passed"; } catch { /* missing gate */ }
+  try {
+    const update = JSON.parse(await readFile(path.join(outputDir, "08-state-update.json"), "utf8")) as {worldId?:string};
+    stateCommitted = update.worldId === worldId && /Story state automatically updated:/i.test(result.output);
+  } catch { /* missing state commit */ }
+  const completed = result.code === 0 && finalChapterExists && qualityPassed && stateCommitted;
+  await Promise.all([
+    writeFile(path.join(outputDir, "process.stdout.log"), result.output, "utf8"),
+    writeFile(path.join(outputDir, "process.stderr.log"), result.errors, "utf8"),
+    writeFile(path.join(outputDir, "process-result.json"), JSON.stringify({exitCode:result.code,chapterPath:chapterPath??null,finalChapterExists,qualityPassed,stateCommitted,completed},null,2)+"\n","utf8")
+  ]);
+  const finished: WorkbenchRun = {
+    ...run, status: completed ? "completed" : "failed", updatedAt: new Date().toISOString(),
+    ...(chapterPath && finalChapterExists ? {chapterPath} : {}),
+    ...(!completed ? {error:("章节流程未完成：exit="+result.code+"；正文="+finalChapterExists+"；终审="+qualityPassed+"；状态提交="+stateCommitted+"\n"+(result.errors||result.output).slice(-5000))} : {})
+  };
+  await saveRun(finished);
+  return finished;
+}
+
+async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
+  const worldId = initial.worldId;
+  let task = initial;
+  try {
+    const dir = worldDir(worldId);
+    const unitPath = storyExecutionUnitPath(worldId);
+    let unit = validateStoryUnit(JSON.parse(await readFile(unitPath, "utf8")), worldId);
+    const universe = await readUniverse(worldId);
+    if (universe?.archivedAt) throw new Error("当前故事宇宙已归档。");
+    await readFile(path.join(dir, "world-bible.md"), "utf8");
+    const libraryDir = await resolveWorldLibraryDir(worldId, path.resolve("worlds"));
+    await readFile(path.join(libraryDir, "index.json"), "utf8");
+    const runs = await listRuns(worldId);
+    const previous = runs.filter(run => run.kind === "chapter" && run.status === "completed" && run.chapterPath)
+      .sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0];
+    let previousChapterPath = previous?.chapterPath ? path.resolve(previous.chapterPath) : undefined;
+    if (previousChapterPath) {
+      const outputRoot = path.resolve(".output", worldId) + path.sep;
+      if (!previousChapterPath.startsWith(outputRoot)) throw new Error("最近章节正文路径不属于当前故事输出目录，已停止以避免串线。");
+      await readFile(previousChapterPath, "utf8");
+    }
+    task = { ...task, status: "running", startedAt: task.startedAt ?? new Date().toISOString(), updatedAt: new Date().toISOString(), pauseRequested: false, cancelRequested: false, resumeCount: task.resumeCount + (task.startedAt ? 1 : 0), error: undefined };
+    unit = { ...unit, execution: { ...unit.execution, status: "in_progress" } };
+    await saveStoryExecution(task); await saveExecutionStoryUnit(unit);
+    while (true) {
+      task = (await getStoryExecution(worldId, task.id)) ?? task;
+      if (task.cancelRequested) {
+        task = { ...task, status: "cancelled", completedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), currentRunId: undefined };
+        await saveStoryExecution(task); return;
+      }
+      if (task.pauseRequested) {
+        task = { ...task, status: "paused", updatedAt: new Date().toISOString(), currentRunId: undefined };
+        await saveStoryExecution(task); return;
+      }
+      const nextDirection = unit.execution.nextDirection || "根据当前人物行动与故事因果自然推进，避免重复前章内容。";
+      const brief = [
+        "这是一个完整故事单元的连续创作。必须紧接上一章已发生的事实、人物位置、认知和未完成行动。",
+        "当前故事核心：" + unit.storyCore,
+        "本阶段推进方向（可根据正文自然修正，不是机械任务清单）：" + nextDirection,
+        "完整故事结局方向：" + unit.endingAndAftermath,
+        task.brief
+      ].filter(Boolean).join("\n\n");
+      const chapterRun = await executeStoryUnitChapter(worldId, previousChapterPath, brief, task.model);
+      if (chapterRun.status !== "completed" || !chapterRun.chapterPath) {
+        task = { ...task, status: "failed", error: "章节未通过现有终审或 Story State 提交门禁。修复该章节后可从最后一个已完成检查点恢复。"+(chapterRun.error?" "+chapterRun.error:""), updatedAt: new Date().toISOString(), currentRunId: undefined };
+        await saveStoryExecution(task); return;
+      }
+      previousChapterPath = chapterRun.chapterPath;
+      const chapterText = await readFile(chapterRun.chapterPath, "utf8");
+      const chapterTitle = chapterText.split("\n").find(line => /^#\s+/.test(line))?.replace(/^#\s+/,"").trim() || "章节";
+      const state = await loadStoryState(path.join(dir, "story-state.json"), worldId);
+      const assessment = await assessStoryUnitProgress({
+        unit, chapterText, chapterTitle, completedChapterCount: task.completedChapters.length + 1,
+        storyState: state, model: task.model
+      });
+      const completedAt = new Date().toISOString();
+      task = {
+        ...task, completedChapters: [...task.completedChapters, {runId:chapterRun.id,chapterPath:chapterRun.chapterPath,completedAt}],
+        currentRunId: undefined, lastAssessment: assessment.rationale, nextDirection: assessment.nextDirection,
+        idleChapterCount: assessment.nextDirection === unit.execution.nextDirection && assessment.unresolvedCoreThreads.join("|") === (unit.execution.lastAssessment ?? "") ? task.idleChapterCount + 1 : 0,
+        updatedAt: completedAt
+      };
+      const naturallyComplete = task.completedChapters.length >= 2 && assessment.coreConflictResolved &&
+        assessment.endingFeelsNatural && assessment.confidence === "high" && assessment.unresolvedCoreThreads.length === 0;
+      unit = {
+        ...unit, updatedAt: completedAt,
+        execution: {
+          status: naturallyComplete ? "completed" : "in_progress",
+          completedChapterIds: [...unit.execution.completedChapterIds, chapterRun.id],
+          lastAssessment: assessment.rationale, nextDirection: assessment.nextDirection,
+          assessedAt: completedAt, ...(naturallyComplete ? {completedAt} : {})
+        }
+      };
+      await saveExecutionStoryUnit(unit);
+      if (naturallyComplete) {
+        task = { ...task, status: "completed", completedAt, updatedAt: completedAt, nextDirection: "故事已自然收束。" };
+        await saveStoryExecution(task); return;
+      }
+      if (task.idleChapterCount >= 4) {
+        task = { ...task, status: "stalled", error: "连续章节未推动核心冲突，任务已暂停而非误判为完成。请修订 Story Unit 的下一步方向后恢复。", updatedAt: completedAt };
+        await saveStoryExecution(task); return;
+      }
+      await saveStoryExecution(task);
+    }
+  } catch (error) {
+    task = { ...task, status: "failed", error: error instanceof Error ? error.message : String(error), updatedAt: new Date().toISOString(), currentRunId: undefined };
+    await saveStoryExecution(task).catch(() => undefined);
+  }
+}
+
+function startStoryUnitExecution(task: StoryExecution): void {
+  if (activeStoryExecutions.has(task.worldId)) return;
+  const promise = executeStoryUnitTask(task).finally(() => activeStoryExecutions.delete(task.worldId));
+  activeStoryExecutions.set(task.worldId, promise);
+}
 
 // ── 当前滚动式多章节 Story Arc ─────────────────────────────
 app.get("/api/worlds/:worldId/story-arc", async (req, res) => {
