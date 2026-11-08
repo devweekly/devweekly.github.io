@@ -72,13 +72,18 @@ test("as-of dossier publishes a complete directory and removes stale generated f
     await mkdir(join(worldDir, "as-of-analysis"), { recursive: true });
     await writeFile(join(worldDir, "as-of-analysis", "stale-old-section.md"), "stale");
     const chapterText = "第一章正文：先验货籍，再放车马入城。";
+    const canonLines = Array.from({ length: 100 }, (_, index) => index === 0 ? chapterText : index === 99 ? "第二章正文" : "");
+    const originalText = canonLines.join("\\n");
+    const sourceHash = createHash("sha256").update(originalText, "utf8").digest("hex");
+    const secondChapterStart = originalText.indexOf("第二章正文");
+    await writeFile(join(worldDir, "original.txt"), originalText, "utf8");
     await mkdir(join(worldDir, "library"), { recursive: true });
     await writeFile(join(worldDir, "library", "index.json"), JSON.stringify({
       schemaVersion: 1, worldId: "u-child", createdAt: "2026-11-07T00:00:00.000Z",
       updatedAt: "2026-11-07T00:00:00.000Z",
       chunks: [
-        { id: "chunk-1", source: "original.txt", chapter: "第一章", chunkIndex: 0, start: 0, end: chapterText.length, chapterStart: 0, text: chapterText },
-        { id: "chunk-2", source: "original.txt", chapter: "第二章", chunkIndex: 0, start: 0, end: 10, chapterStart: 100, text: "第二章正文" }
+        { id: "chunk-1", source: "original.txt", sourceHash, chapter: "第一章", chunkIndex: 0, start: 0, end: chapterText.length, chapterStart: 0, text: chapterText },
+        { id: "chunk-2", source: "original.txt", sourceHash, chapter: "第二章", chunkIndex: 0, start: 0, end: 10, chapterStart: secondChapterStart, text: "第二章正文" }
       ]
     }));
     await mkdir(join(root, "analysis", "u-child"), { recursive: true });
