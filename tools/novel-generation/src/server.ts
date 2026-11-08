@@ -1240,6 +1240,15 @@ async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> 
     }
     task = { ...task, status: "running", startedAt: task.startedAt ?? new Date().toISOString(), updatedAt: new Date().toISOString(), pauseRequested: false, cancelRequested: false, resumeCount: task.resumeCount + (task.startedAt ? 1 : 0), error: undefined };
     await saveStoryExecution(task);
+    // A crash may happen after the final chapter run completes but before the
+    // batch task is marked completed. Reconciliation above restores that checkpoint.
+    if (task.completedChapters.length >= (task.targetChapterCount ?? 1)) {
+      const completedAt = new Date().toISOString();
+      task = { ...task, status: "completed", completedAt, updatedAt: completedAt,
+        nextDirection: "本次指定数量的连续章节已完成；不代表完整故事已经结束。" };
+      await saveStoryExecution(task);
+      return;
+    }
     while (task.completedChapters.length < (task.targetChapterCount ?? 1)) {
       task = (await getStoryExecution(worldId, task.id)) ?? task;
       if (task.cancelRequested) {
