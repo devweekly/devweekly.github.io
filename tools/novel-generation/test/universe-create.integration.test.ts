@@ -373,3 +373,45 @@ test("universe creation uses catalog order and stable chapter IDs despite extra 
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test("source chapter catalog reads project-root original.txt without a world-local copy or library index", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-universe-root-canon-"));
+  const previousCwd = process.cwd();
+  await mkdir(join(root, "worlds", "source-world"), { recursive: true });
+  await mkdir(join(root, "analysis", "source-world"), { recursive: true });
+  const originalText = [
+    "第一章 大枪落幕",
+    "第一章正文：李阎走进雨里。",
+    "第二章 貘与姑获鸟",
+    "第二章正文：夜色压下来。"
+  ].join("\n");
+  await writeFile(join(root, "original.txt"), originalText, "utf8");
+  await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify({
+    schemaVersion: 2,
+    totalLines: 4,
+    volumes: [{ volume: 1, chapters: [
+      { sequenceInVolume: 1, printedNumber: 1, title: "第一章 大枪落幕", label: "大枪落幕", line: 1 },
+      { sequenceInVolume: 2, printedNumber: 2, title: "第二章 貘与姑获鸟", label: "貘与姑获鸟", line: 3 }
+    ] }]
+  }));
+  let server: ReturnType<typeof createServer> | undefined;
+  try {
+    process.chdir(root);
+    server = createServer(createApp());
+    await new Promise<void>(resolve => server!.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/worlds/source-world/source-chapters`, {
+      headers: { host: `127.0.0.1:${address.port}` }
+    });
+    const body = await response.text();
+    assert.equal(response.status, 200, body);
+    const payload = JSON.parse(body) as { chapters: Array<{ id: number; title: string }> };
+    assert.deepEqual(payload.chapters.map(chapter => chapter.title), ["第一章 大枪落幕", "第二章 貘与姑获鸟"]);
+  } finally {
+    if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
+    process.chdir(previousCwd);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
