@@ -907,7 +907,7 @@ async function main(): Promise<void> {
     const state = await loadRunStoryState(statePath, worldId, outputDir, "write");
     const storyPlanText = [formatStoryPlan(await loadStoryPlan(resolve("worlds", worldId, "story-plan.json"), worldId)), formatStoryUnit(await readOptional(resolve(arg("--story-unit-file") ?? resolve("worlds", worldId, "story-unit.json"))).then(raw => raw ? validateStoryUnit(JSON.parse(raw), worldId) : undefined))].filter(Boolean).join("\n\n");
     let storyArcText = "";
-    try { storyArcText = await readFile(resolve("worlds", worldId, "story-arc.md"), "utf8"); }
+    try { storyArcText = await readFile(resolve(arg("--story-arc-file") ?? resolve("worlds", worldId, "story-arc.md")), "utf8"); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     const activeThreads = state.plotThreads
       .filter(thread => thread.status === "open" || thread.status === "active")
