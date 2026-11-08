@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit } from "../src/story-execution.js";
+import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, mergeStoryExecutionControlFlags } from "../src/story-execution.js";
 
 test("story execution checkpoints survive restart and resume from completed chapters", async () => {
   const original = process.cwd();
@@ -130,4 +130,21 @@ test("latest completed chapter selection keeps Story Unit and legacy histories d
   assert.equal(latestCompletedChapterForStoryUnit(runs, "unit-a")?.id, "unit-a-old");
   assert.equal(latestCompletedChapterForStoryUnit(runs, "unit-b")?.id, "unit-b-new");
   assert.equal(latestCompletedChapterForStoryUnit(runs, undefined)?.id, "legacy-mid");
+});
+
+
+test("queued worker startup preserves pause and cancel requests written after enqueue", () => {
+  const now = new Date().toISOString();
+  const queued = {
+    id: "a4d9a0ef-5a4b-4a7d-9b7f-2b0bfc2d3a11", worldId: "world-a", storyUnitTitle: "雾河镇",
+    mode: "complete_story" as const, status: "queued" as const, createdAt: now, updatedAt: now,
+    completedChapters: [], events: [], brief: "", idleChapterCount: 0,
+    pauseRequested: false, cancelRequested: false, resumeCount: 0
+  };
+  const pause = mergeStoryExecutionControlFlags(queued, { ...queued, pauseRequested: true });
+  assert.equal(pause.pauseRequested, true);
+  assert.equal(pause.cancelRequested, false);
+  const cancel = mergeStoryExecutionControlFlags(queued, { ...queued, cancelRequested: true });
+  assert.equal(cancel.cancelRequested, true);
+  assert.equal(mergeStoryExecutionControlFlags(queued).pauseRequested, false);
 });
