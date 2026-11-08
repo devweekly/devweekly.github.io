@@ -1102,9 +1102,36 @@ async function assessStoryExecutionCheckpoint(
   return {task,unit,terminal:false};
 }
 
+/**
+ * Recover the narrow crash window after a chapter run completed but before its
+ * story-execution checkpoint was persisted. currentRunId is the durable pointer
+ * to that run; never infer ownership from the globally newest chapter.
+ */
+async function reconcileStoryExecutionCurrentRun(input: StoryExecution): Promise<StoryExecution> {
+  if (!input.currentRunId) return input;
+  const run = await getRun(input.worldId, input.currentRunId);
+  if (run?.kind === "chapter" && run.status === "completed" && run.chapterPath &&
+      !input.completedChapters.some(item => item.runId === run.id)) {
+    const chapterPath = path.resolve(run.chapterPath);
+    const outputRoot = path.resolve(".output", input.worldId) + path.sep;
+    if (!chapterPath.startsWith(outputRoot)) {
+      throw new Error("中断任务指向的已完成章节不属于当前世界输出目录，拒绝恢复。");
+    }
+    await readFile(chapterPath, "utf8");
+    const checkpoint = { runId: run.id, chapterPath: run.chapterPath, completedAt: run.updatedAt };
+    const recovered = { ...input, completedChapters: [...input.completedChapters, checkpoint],
+      currentRunId: undefined, updatedAt: new Date().toISOString() };
+    await saveStoryExecution(recovered);
+    return recovered;
+  }
+  const cleared = { ...input, currentRunId: undefined, updatedAt: new Date().toISOString() };
+  await saveStoryExecution(cleared);
+  return cleared;
+}
+
 async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
   const worldId = initial.worldId;
-  let task = initial;
+  let task = await reconcileStoryExecutionCurrentRun(initial);
   try {
     const dir = worldDir(worldId);
     const unitPath = storyExecutionUnitPath(worldId);
@@ -1122,7 +1149,9 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
     const runs = await listRuns(worldId);
     const previous = runs.filter(run => run.kind === "chapter" && run.status === "completed" && run.chapterPath)
       .sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0];
-    let previousChapterPath = previous?.chapterPath ? path.resolve(previous.chapterPath) : undefined;
+    let previousChapterPath = task.completedChapters.at(-1)?.chapterPath
+      ? path.resolve(task.completedChapters.at(-1)!.chapterPath)
+      : previous?.chapterPath ? path.resolve(previous.chapterPath) : undefined;
     if (previousChapterPath) {
       const outputRoot = path.resolve(".output", worldId) + path.sep;
       if (!previousChapterPath.startsWith(outputRoot)) throw new Error("最近章节正文路径不属于当前故事输出目录，已停止以避免串线。");
@@ -1186,7 +1215,7 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
 
 
 async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> {
-  let task = initial;
+  let task = await reconcileStoryExecutionCurrentRun(initial);
   const worldId = task.worldId;
   try {
     const dir = worldDir(worldId);
@@ -1199,7 +1228,9 @@ async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> 
     const runs = await listRuns(worldId);
     const previous = runs.filter(run => run.kind === "chapter" && run.status === "completed" && run.chapterPath)
       .sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0];
-    let previousChapterPath = previous?.chapterPath ? path.resolve(previous.chapterPath) : undefined;
+    let previousChapterPath = task.completedChapters.at(-1)?.chapterPath
+      ? path.resolve(task.completedChapters.at(-1)!.chapterPath)
+      : previous?.chapterPath ? path.resolve(previous.chapterPath) : undefined;
     if (previousChapterPath) {
       const outputRoot = path.resolve(".output", worldId) + path.sep;
       if (!previousChapterPath.startsWith(outputRoot)) throw new Error("最近章节正文路径不属于当前故事输出目录，已停止以避免串线。");
