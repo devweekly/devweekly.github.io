@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { access, mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { recoverWorkbenchRuns } from "../src/server.js";
@@ -85,7 +85,7 @@ test("startup recovery restores the pre-chapter Story Unit SQLite and state mirr
       createdAt: now, updatedAt: now, outputDir: join(root, ".output", worldId, "chapter-" + runId)
     });
     await recoverWorkbenchRuns();
-    assert.equal(await (await import("node:fs/promises")).readFile(join(unitDir, "story.db"), "utf8"), "checkpoint-db");
+    assert.equal(await readFile(join(unitDir, "story.db"), "utf8"), "checkpoint-db");
     assert.equal(await (await import("node:fs/promises")).readFile(join(unitDir, "story-state.json"), "utf8"), "checkpoint-state");
     assert.equal(await (await import("node:fs/promises")).readFile(join(unitDir, "story-arc.md"), "utf8"), "checkpoint-arc");
     assert.equal(await (await import("node:fs/promises")).readFile(join(root, "worlds", worldId, ".story-units", unitId + ".json"), "utf8"), "checkpoint-unit");
