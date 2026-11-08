@@ -77,8 +77,10 @@ export async function getRun(worldId: string, id: string): Promise<WorkbenchRun 
   return readJson<WorkbenchRun | undefined>(runPath(worldId, id), undefined);
 }
 
-export async function listRuns(worldId: string): Promise<WorkbenchRun[]> {
-  return listRecords<WorkbenchRun>(join(root(worldId), "runs"));
+export async function listRuns(worldId: string, storyUnitId?: string | null): Promise<WorkbenchRun[]> {
+  const runs = await listRecords<WorkbenchRun>(join(root(worldId), "runs"));
+  if (storyUnitId === undefined) return runs;
+  return runs.filter(run => storyUnitId === null ? !run.storyUnitId : run.storyUnitId === storyUnitId);
 }
 
 // ── 候选版本 ────────────────────────────────────────────────
