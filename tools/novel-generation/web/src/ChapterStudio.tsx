@@ -39,7 +39,8 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [notice,setNotice]=useState("");
  const [knowledgeBuild,setKnowledgeBuild]=useState<KnowledgeBuild|null>(null);
  const [storyUnit,setStoryUnit]=useState<StoryUnit|null>(null);
- const [storyExecution,setStoryExecution]=useState<StoryExecution|null>(null);\n const [startingStoryExecution,setStartingStoryExecution]=useState(false);
+ const [storyExecution,setStoryExecution]=useState<StoryExecution|null>(null);
+ const [startingStoryExecution,setStartingStoryExecution]=useState(false);
  const [generatingStoryUnit,setGeneratingStoryUnit]=useState(false);
  const [startingKnowledgeBuild,setStartingKnowledgeBuild]=useState(false);
  const busy=run?.status==="queued"||run?.status==="running";
