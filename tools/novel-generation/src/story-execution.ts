@@ -39,6 +39,11 @@ export function storyExecutionOwnsRun(storyUnitId: string | undefined, runStoryU
   return storyUnitId === runStoryUnitId;
 }
 
+/** True only when recovery already durably recorded that the pre-chapter snapshot was restored. */
+export function storyRunStateWasRolledBack(error?: string): boolean {
+  return /rolled back to the pre-chapter snapshot|已回滚到章节开始前的 Story State 快照/i.test(error ?? "");
+}
+
 /** Preserve pause/cancel requests made after a worker was queued but before it began. */
 export function mergeStoryExecutionControlFlags(task: StoryExecution, latest?: StoryExecution): StoryExecution {
   if (!latest) return task;
