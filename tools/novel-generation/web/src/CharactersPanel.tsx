@@ -129,7 +129,7 @@ export default function CharactersPanel({
   }, [worldId]);
 
   useEffect(() => {
-    if (!selectedStoryUnitId) { setStoryState(null); return; }
+    if (!selectedStoryUnitId) { setStoryState(null); setStoryStateLoading(false); return; }
     let cancelled = false;
     setStoryStateLoading(true);
     fetch(`/api/worlds/${encodeURIComponent(worldId)}/story-units/${encodeURIComponent(selectedStoryUnitId)}/state`)
@@ -279,9 +279,9 @@ export default function CharactersPanel({
   return (
     <Space direction="vertical" size={16} style={{width:"100%"}}>
     <Card title="当前续写人物与关系状态" extra={<Select allowClear placeholder="选择故事单元" style={{minWidth:220}} value={selectedStoryUnitId} onChange={setSelectedStoryUnitId} options={storyUnits.map(unit=>({value:unit.id,label:unit.title}))}/>}>
-      {storyStateLoading ? <Spin/> : !storyUnits.length ? <Empty description="尚未建立故事单元。原著人物档案仍可在下方查看。"/> : !storyState ? <Empty description="当前单元还没有已提交的续写人物状态。"/> : <Space direction="vertical" style={{width:"100%"}} size="middle">
+      {storyStateLoading ? <Spin/> : !storyUnits.length ? <Empty description="尚未建立故事单元。原著人物档案仍可在下方查看。"/> : !selectedStoryUnitId ? <Empty description="请选择一个故事单元。"/> : !storyState ? <Empty description="当前单元还没有已提交的续写人物状态。"/> : <Space direction="vertical" style={{width:"100%"}} size="middle">
         <Text type="secondary">{storyState.storyUnitTitle} · {storyState.state.currentPosition || "尚未推进剧情"}</Text>
-        {storyState.state.characters.length ? <List size="small" dataSource={storyState.state.characters} renderItem={person=><List.Item><List.Item.Meta title={person.name} description={<Space direction="vertical" size={2}><Text>{person.status}{person.location ? " · "+person.location : ""}</Text>{person.profile?.arc ? <Text type="secondary">人物弧光：{person.profile.arc}</Text> : null}{person.arcMilestones?.length ? <Text type="secondary">关键转折：{person.arcMilestones.map(item=>item.change).join("；")}</Text> : null}</Space>}/></List.Item>}/> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前单元尚无人​​物状态"/>}
+        {storyState.state.characters.length ? <List size="small" dataSource={storyState.state.characters} renderItem={person=><List.Item><List.Item.Meta title={person.name} description={<Space direction="vertical" size={2}><Text>{person.status}{person.location ? " · "+person.location : ""}</Text>{person.profile?.arc ? <Text type="secondary">人物弧光：{person.profile.arc}</Text> : null}{person.arcMilestones?.length ? <Text type="secondary">关键转折：{person.arcMilestones.map(item=>item.change).join("；")}</Text> : null}</Space>}/></List.Item>}/> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前单元尚无人物状态"/>}
         <Row gutter={[12,12]}>{[[ "关系变化",storyState.state.relationshipUpdates?.length??0 ],["剧情事件",storyState.state.events.length],["伏笔",storyState.state.foreshadowingUpdates?.length??0],["关键物件",storyState.state.macguffinUpdates?.length??0]].map(([label,count])=><Col xs={12} md={6} key={String(label)}><Statistic title={String(label)} value={Number(count)}/></Col>)}</Row>
         {storyState.state.events.slice(-5).reverse().map(event=><div key={event.id}><Text strong>{event.position} · {event.summary}</Text><div><Text type="secondary">{event.participants.join("、")}</Text></div></div>)}
         {!!storyState.state.relationshipUpdates?.length && <div><Text strong>近期关系变化</Text>{storyState.state.relationshipUpdates.slice(-5).reverse().map((item,index)=><div key={item.from+item.to+item.chapter+index}><Text>{item.from} —{item.label}→ {item.to}</Text><div><Text type="secondary">{item.chapter} · {item.change}</Text></div></div>)}</div>}
