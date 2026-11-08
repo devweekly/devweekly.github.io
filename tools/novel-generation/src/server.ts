@@ -1094,39 +1094,47 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
       previousChapterPath = chapterRun.chapterPath;
       const chapterText = await readFile(chapterRun.chapterPath, "utf8");
       const chapterTitle = chapterText.split("\n").find(line => /^#\s+/.test(line))?.replace(/^#\s+/,"").trim() || "章节";
-      const state = await loadStoryState(path.join(dir, "story-state.json"), worldId);
-      const assessment = await assessStoryUnitProgress({
-        unit, chapterText, chapterTitle, completedChapterCount: task.completedChapters.length + 1,
-        storyState: state, model: task.model
-      });
+      // Persist the successful chapter checkpoint before the separate LLM closure assessment.
+      // If assessment times out or the server restarts, this chapter remains counted and is not lost.
       const completedAt = new Date().toISOString();
       const latestTaskState = await getStoryExecution(worldId, task.id);
       if (latestTaskState) task = { ...task, pauseRequested: latestTaskState.pauseRequested, cancelRequested: latestTaskState.cancelRequested };
+      task = { ...task, completedChapters: [...task.completedChapters, {runId:chapterRun.id,chapterPath:chapterRun.chapterPath,completedAt}], currentRunId: undefined, updatedAt: completedAt };
+      unit = { ...unit, execution: { ...unit.execution, status: "in_progress", completedChapterIds: [...unit.execution.completedChapterIds, chapterRun.id] }, updatedAt: completedAt };
+      await saveStoryExecution(task);
+      await saveExecutionStoryUnit(unit);
+      const state = await loadStoryState(path.join(dir, "story-state.json"), worldId);
+      const assessment = await assessStoryUnitProgress({
+        unit, chapterText, chapterTitle, completedChapterCount: task.completedChapters.length,
+        storyState: state, model: task.model
+      });
+      const assessedAt = new Date().toISOString();
+      const latestAfterAssessment = await getStoryExecution(worldId, task.id);
+      if (latestAfterAssessment) task = { ...task, pauseRequested: latestAfterAssessment.pauseRequested, cancelRequested: latestAfterAssessment.cancelRequested };
       task = {
-        ...task, completedChapters: [...task.completedChapters, {runId:chapterRun.id,chapterPath:chapterRun.chapterPath,completedAt}],
-        currentRunId: undefined, lastAssessment: assessment.rationale, nextDirection: assessment.nextDirection,
+        ...task, currentRunId: undefined, lastAssessment: assessment.rationale, nextDirection: assessment.nextDirection,
         idleChapterCount: assessment.nextDirection === unit.execution.nextDirection && assessment.unresolvedCoreThreads.join("|") === unit.execution.lastUnresolvedCoreThreads.join("|") ? task.idleChapterCount + 1 : 0,
-        updatedAt: completedAt
+        updatedAt: assessedAt
       };
       const naturallyComplete = assessment.coreConflictResolved && assessment.endingFeelsNatural &&
         assessment.confidence === "high" && assessment.unresolvedCoreThreads.length === 0 && assessment.unrealizedMajorBeats.length === 0;
       unit = {
-        ...unit, updatedAt: completedAt,
+        ...unit, updatedAt: assessedAt,
         execution: {
           status: naturallyComplete ? "completed" : "in_progress",
           completedChapterIds: [...unit.execution.completedChapterIds, chapterRun.id],
           lastUnresolvedCoreThreads: assessment.unresolvedCoreThreads,
           lastAssessment: assessment.rationale, nextDirection: assessment.nextDirection,
-          assessedAt: completedAt, ...(naturallyComplete ? {completedAt} : {})
+          assessedAt: assessedAt, ...(naturallyComplete ? {completedAt: assessedAt} : {})
         }
       };
       await saveExecutionStoryUnit(unit);
       if (naturallyComplete) {
-        task = { ...task, status: "completed", completedAt, updatedAt: completedAt, nextDirection: "故事已自然收束。" };
+        task = { ...task, status: "completed", completedAt: assessedAt, updatedAt: assessedAt, nextDirection: "故事已自然收束。" };
         await saveStoryExecution(task); return;
       }
       if (task.idleChapterCount >= 4) {
-        task = { ...task, status: "stalled", error: "连续章节未推动核心冲突，任务已暂停而非误判为完成。请修订 Story Unit 的下一步方向后恢复。", updatedAt: completedAt };
+        task = { ...task, status: "stalled", error: "连续章节未推动核心冲突，任务已暂停而非误判为完成。请修订 Story Unit 的下一步方向后恢复。", updatedAt: assessedAt };
         await saveStoryExecution(task); return;
       }
       await saveStoryExecution(task);
