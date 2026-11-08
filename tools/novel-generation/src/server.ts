@@ -28,7 +28,7 @@ import { importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
 import { assessStoryUnitProgress, generateStoryUnit, isStoryUnitNaturallyComplete, validateStoryUnit } from "./story-unit.js";
 import { createStoredStoryUnit, getStoredStoryUnit, listStoredStoryUnits, saveStoredStoryUnit } from "./story-unit-store.js";
-import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, type StoryExecution } from "./story-execution.js";
+import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, type StoryExecution } from "./story-execution.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
 // noUncheckedIndexedAccess 放宽成 string | undefined。
@@ -1232,8 +1232,7 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
     const libraryDir = await resolveWorldLibraryDir(worldId, path.resolve("worlds"));
     await readFile(path.join(libraryDir, "index.json"), "utf8");
     const runs = await listRuns(worldId);
-    const previous = runs.filter(run => run.kind === "chapter" && storyExecutionOwnsRun(task.storyUnitId, run.storyUnitId) && run.status === "completed" && run.chapterPath)
-      .sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0];
+    const previous = latestCompletedChapterForStoryUnit(runs, task.storyUnitId);
     let previousChapterPath = task.completedChapters.at(-1)?.chapterPath
       ? path.resolve(task.completedChapters.at(-1)!.chapterPath)
       : previous?.chapterPath ? path.resolve(previous.chapterPath) : undefined;
@@ -1313,8 +1312,7 @@ async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> 
     const libraryDir = await resolveWorldLibraryDir(worldId, path.resolve("worlds"));
     await readFile(path.join(libraryDir, "index.json"), "utf8");
     const runs = await listRuns(worldId);
-    const previous = runs.filter(run => run.kind === "chapter" && (!task.storyUnitId || run.storyUnitId === task.storyUnitId) && run.status === "completed" && run.chapterPath)
-      .sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0];
+    const previous = latestCompletedChapterForStoryUnit(runs, task.storyUnitId);
     let previousChapterPath = task.completedChapters.at(-1)?.chapterPath
       ? path.resolve(task.completedChapters.at(-1)!.chapterPath)
       : previous?.chapterPath ? path.resolve(previous.chapterPath) : undefined;
