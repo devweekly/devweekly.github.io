@@ -522,13 +522,13 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
     const entry = catalog[catalogIndex];
     if (!entry || !Number.isSafeInteger(entry.line) || (entry.line ?? 0) < 1) return "";
     if (!originalLines) {
-      try { originalLines = (await readFile(path.join(worldDir(sourceWorldId), "original.txt"), "utf8")).split(/\\r?\\n/); }
+      try { originalLines = (await readFile(path.join(worldDir(sourceWorldId), "original.txt"), "utf8")).split(/\r?\n/); }
       catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return ""; throw error; }
     }
     const start = (entry.line as number) - 1;
     const nextLine = catalog.slice(catalogIndex + 1).find(item => Number.isSafeInteger(item.line) && (item.line ?? 0) > (entry.line ?? 0))?.line;
     const end = typeof nextLine === "number" ? Math.max(start, nextLine - 1) : originalLines.length;
-    return originalLines.slice(start, end).join("\\n").trim();
+    return originalLines.slice(start, end).join("\n").trim();
   };
   const result: CanonChapterEntry[] = [];
   for (const item of aligned) {
@@ -775,9 +775,6 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
       // A catalog chapter may legitimately have no retrieval chunks. If its
       // original.txt range is available, reconstruct only its directory row in
       // the staged copy; never mutate the source novel.db.
-      const insertMissing = sourceDb.prepare(
-        "INSERT INTO novel_chapters(chapter_id,world_id,ordinal,volume,printed_number,title,label,start_line,char_count,chunk_start,chunk_end) VALUES(?,?,?,?,?,?,?,?,?,?,?)"
-      );
       for (const chapter of canonChapters) {
         const row = rowsById.get(chapter.chapterId);
         if (row) {
@@ -786,7 +783,9 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
           }
         } else {
           if (!chapter.text.trim() || chapter.hasChunks) throw new Error("无法安全补齐缺失的章节目录记录：" + chapter.title + "。");
-          insertMissing.run(chapter.chapterId, id, chapter.ordinal, chapter.volume, null, chapter.title, chapter.title,
+          sourceDb.prepare(
+            "INSERT INTO novel_chapters(chapter_id,world_id,ordinal,volume,printed_number,title,label,start_line,char_count,chunk_start,chunk_end) VALUES(?,?,?,?,?,?,?,?,?,?,?)"
+          ).run(chapter.chapterId, id, chapter.ordinal, chapter.volume, null, chapter.title, chapter.title,
             null, chapter.text.length, 0, -1);
         }
       }
