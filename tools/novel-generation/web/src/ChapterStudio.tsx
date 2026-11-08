@@ -373,6 +373,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   </Card>
   <Modal title="创建独立故事宇宙" open={createOpen} onCancel={()=>setCreateOpen(false)} onOk={()=>void createUniverse()} confirmLoading={creatingUniverse} okButtonProps={{disabled:sourceChapters.length===0||entryChapterIndex===undefined}} okText="创建宇宙">
    <Space direction="vertical" style={{width:"100%"}} size="middle">
+    {sourceChapterError&&<Alert type="error" showIcon message="原文目录加载失败" description={sourceChapterError}/>}
     <Input placeholder="宇宙名称" value={universeName} onChange={e=>setUniverseName(e.target.value)} />
     <Select showSearch optionFilterProp="label" style={{width:"100%"}} placeholder="选择原文起始章节" value={entryChapterIndex} onChange={index=>{setEntryChapterIndex(index);setEntryChapter(sourceChapters.find(chapter=>chapter.id===index)?.title??"");}} options={sourceChapters.map(chapter=>({value:chapter.id,label:chapter.label+" · "+chapter.title}))} notFoundContent="原文目录为空，请先导入并建立原文索引。" />
     <Select style={{width:"100%"}} value={universeType} onChange={setUniverseType} options={[{value:"mainline",label:"原著主线延续"},{value:"side-story",label:"原著支线扩展"},{value:"character",label:"人物独立故事"},{value:"parallel",label:"平行发展"},{value:"free",label:"自由续写"}]} />
