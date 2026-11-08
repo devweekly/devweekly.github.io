@@ -1,6 +1,10 @@
 import test from "node:test";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import assert from "node:assert/strict";
-import { emptyStoryState, normalizeStoryStateProvenance, parseStoryStateUpdate, validateStoryState } from "../src/story-state.js";
+import { emptyStoryState, loadStoryState, normalizeStoryStateProvenance, parseStoryStateUpdate, saveStoryState, validateStoryState } from "../src/story-state.js";
+import { buildStoryStateGraph } from "../src/story-state-graph.js";
 import { dedupeContinuityNotes, mergeStoryState } from "../src/workflow.js";
 
 test("character profile is stable metadata while current character fields are replaceable snapshots", () => {
@@ -230,4 +234,47 @@ test("legacy generated-continuation facts are downgraded without changing source
   assert.equal(normalized.canonFacts.find(item => item.id === "canon")?.confidence, "confirmed");
   assert.equal(normalized.canonFacts.find(item => item.id === "generated")?.confidence, "original");
   assert.equal(normalized.events[0]?.origin, "original");
+});
+
+
+test("two Story Units in one World persist independent character, event, relationship, clue and MacGuffin graphs", async () => {
+  const root = await mkdtemp(join(tmpdir(), "story-state-unit-isolation-"));
+  try {
+    const unitAPath = join(root, ".story-units", "unit-a", "story-state.json");
+    const unitBPath = join(root, ".story-units", "unit-b", "story-state.json");
+    const a = emptyStoryState("shared-world");
+    a.currentPosition = "Unit A / 第三章";
+    a.characters.push({ name: "李玄", status: "持有铜匣", location: "雾河镇" });
+    a.events.push({ id: "a-event", summary: "雾河镇交接铜匣", position: "第三章", participants: ["李玄"], consequences: ["铜匣易主"] });
+    a.relationshipUpdates?.push({ id: "a-relation", relationId: "a-relation", from: "李玄", to: "守门人", label: "暂时合作", chapter: "第三章", change: "共同隐瞒铜匣", evidence: "李玄把后背交给守门人" });
+    a.foreshadowingUpdates?.push({ id: "a-clue", clueId: "a-clue", clue: "三道刻痕", status: "planted", chapter: "第三章", change: "首次出现", relatedThreadIds: [], evidence: "墙上有三道刻痕" });
+    a.macguffinUpdates?.push({ id: "a-object", macguffinId: "a-object", name: "铜匣", status: "held", chapter: "第三章", change: "由李玄持有", holder: "李玄", location: "雾河镇", relatedThreadIds: [], evidence: "李玄收起铜匣" });
+
+    const b = emptyStoryState("shared-world");
+    b.currentPosition = "Unit B / 第一章";
+    b.characters.push({ name: "沈七", status: "被困", location: "山中驿站" });
+    b.events.push({ id: "b-event", summary: "驿站失火", position: "第一章", participants: ["沈七"], consequences: ["道路中断"] });
+    b.relationshipUpdates?.push({ id: "b-relation", relationId: "b-relation", from: "沈七", to: "驿卒", label: "敌对", chapter: "第一章", change: "互相猜疑", evidence: "沈七没有接过驿卒递来的刀" });
+    b.foreshadowingUpdates?.push({ id: "b-clue", clueId: "b-clue", clue: "焦黑门牌", status: "planted", chapter: "第一章", change: "留下线索", relatedThreadIds: [], evidence: "门牌背面仍有字迹" });
+    b.macguffinUpdates?.push({ id: "b-object", macguffinId: "b-object", name: "黑木牌", status: "introduced", chapter: "第一章", change: "首次出现", holder: "驿卒", location: "山中驿站", relatedThreadIds: [], evidence: "驿卒把黑木牌压在桌上" });
+
+    await saveStoryState(unitAPath, a);
+    await saveStoryState(unitBPath, b);
+    const loadedA = await loadStoryState(unitAPath, "shared-world");
+    const loadedB = await loadStoryState(unitBPath, "shared-world");
+    assert.deepEqual(loadedA.characters.map(x => x.name), ["李玄"]);
+    assert.deepEqual(loadedB.characters.map(x => x.name), ["沈七"]);
+    assert.deepEqual(loadedA.events.map(x => x.id), ["a-event"]);
+    assert.deepEqual(loadedB.events.map(x => x.id), ["b-event"]);
+    assert.deepEqual(loadedA.relationshipUpdates?.map(x => x.relationId), ["a-relation"]);
+    assert.deepEqual(loadedB.relationshipUpdates?.map(x => x.relationId), ["b-relation"]);
+    assert.deepEqual(loadedA.foreshadowingUpdates?.map(x => x.clueId), ["a-clue"]);
+    assert.deepEqual(loadedB.foreshadowingUpdates?.map(x => x.clueId), ["b-clue"]);
+    assert.deepEqual(loadedA.macguffinUpdates?.map(x => x.macguffinId), ["a-object"]);
+    assert.deepEqual(loadedB.macguffinUpdates?.map(x => x.macguffinId), ["b-object"]);
+    assert.deepEqual(buildStoryStateGraph(loadedA).nodes.filter(x => x.type === "event").map(x => x.id), ["event:a-event"]);
+    assert.deepEqual(buildStoryStateGraph(loadedB).nodes.filter(x => x.type === "event").map(x => x.id), ["event:b-event"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
