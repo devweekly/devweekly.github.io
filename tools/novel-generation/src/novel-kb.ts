@@ -2,6 +2,7 @@
 // 被算成两次事件），同步 novel_* 知识表；同时提供目录扫描与语料画像入口。
 // 语料重新导入后派生分析必须失效重建，本模块导出失效钩子供 library 调用。
 import { readFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import {
   ANALYSIS_BATCH_CHARS,
   ANALYSIS_DEDUPE_MAX_OVERLAP_CHARS,
@@ -67,6 +68,41 @@ export async function loadChapterCatalog(worldId: string, catalogPath?: string):
   return rows;
 }
 
+interface CanonIndexInputs {
+  chunks: LibraryChunk[];
+  chapterStartOffsets: Array<number | undefined>;
+}
+
+/** Align indexing to the exact original.txt bytes, not similarly named auxiliary imports. */
+async function prepareCanonIndexInputs(worldDir: string, catalog: CatalogChapter[], chunks: LibraryChunk[]): Promise<CanonIndexInputs> {
+  let originalText: string | undefined;
+  try { originalText = await readFile(join(worldDir, "original.txt"), "utf8"); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  const sourceHash = originalText === undefined ? undefined : createHash("sha256").update(originalText, "utf8").digest("hex");
+  const canonChunks = chunks.filter(chunk => {
+    if (chunk.sourceHash && sourceHash) return chunk.sourceHash === sourceHash;
+    return /(?:^|\\/)original\\.txt$/i.test(chunk.source);
+  });
+  const chapterStartOffsets: Array<number | undefined> = [];
+  if (originalText !== undefined) {
+    const lines = originalText.split(/\\r?\\n/);
+    const starts: number[] = [];
+    let offset = 0;
+    for (const line of lines) {
+      starts.push(offset + line.length - line.trimStart().length);
+      offset += line.length;
+      if (originalText[offset] === "\\r" && originalText[offset + 1] === "\\n") offset += 2;
+      else if (offset < originalText.length) offset++;
+    }
+    for (const chapter of catalog) {
+      chapterStartOffsets.push(chapter.line == null ? undefined : starts[chapter.line - 1]);
+    }
+  } else {
+    chapterStartOffsets.push(...catalog.map(() => undefined));
+  }
+  return { chunks: canonChunks, chapterStartOffsets };
+}
+
 export function chapterId(volume: number, sequence: number): string {
   return `V${String(volume).padStart(2, "0")}-C${String(sequence).padStart(3, "0")}`;
 }
@@ -76,7 +112,7 @@ export function chapterId(volume: number, sequence: number): string {
  * Chapter titles repeat across volumes ("第一章" appears 17 times), so matching
  * must be positional; a label search from the current pointer disambiguates.
  */
-export function assignChapters(chunks: LibraryChunk[], catalog: CatalogChapter[]): ChapterAssignment {
+export function assignChapters(chunks: LibraryChunk[], catalog: CatalogChapter[], chapterStartOffsets: Array<number | undefined> = []): ChapterAssignment {
   const chapters: NovelChapterRow[] = [];
   const chunkChapter = new Map<string, NovelChapterRow>();
   const unmatchedLabels: string[] = [];
@@ -97,8 +133,19 @@ export function assignChapters(chunks: LibraryChunk[], catalog: CatalogChapter[]
     if (chunk.chapter !== currentLabel) {
       currentLabel = chunk.chapter;
       let found = -1;
+      const candidates: number[] = [];
       for (let scan = pointer; scan < catalog.length && scan < pointer + CATALOG_SCAN_WINDOW; scan++) {
-        if (catalog[scan]?.title === chunk.chapter) { found = scan; break; }
+        if (catalog[scan]?.title === chunk.chapter) candidates.push(scan);
+      }
+      if (chunk.chapterStart !== undefined) {
+        found = candidates.find(scan => chapterStartOffsets[scan] === chunk.chapterStart) ?? -1;
+        if (found < 0 && candidates.length && candidates.some(scan => chapterStartOffsets[scan] !== undefined)) {
+          throw new Error("原著切片章节位置与 chapter-index.json 不一致：" + chunk.chapter + "（chapterStart=" + chunk.chapterStart + "）。请检查原文是否已变化，并重建章节索引。");
+        }
+      } else if (candidates.length > 1) {
+        throw new Error("原著切片包含重复章节标题「" + chunk.chapter + "」，但缺少 chapterStart 原文位置，无法安全建立 novel.db。请先备份数据库，再按语料重建流程补齐切片位置元数据。");
+      } else if (candidates.length === 1) {
+        found = candidates[0]!;
       }
       if (found >= 0) {
         pointer = found + 1;
@@ -279,11 +326,14 @@ export async function buildAnalysisUnits(
   options: { worldDir?: string; catalogPath?: string } = {}
 ): Promise<{ units: AnalysisUnit[]; assignment: ChapterAssignment }> {
   const worldDir = options.worldDir ?? resolve("worlds", worldId);
-  const chunks = await loadLibraryChunks(join(worldDir, "library"), worldId);
-  if (!chunks.length) throw new Error("No indexed text found. Run ingest first.");
+  const rawChunks = await loadLibraryChunks(join(worldDir, "library"), worldId);
+  if (!rawChunks.length) throw new Error("No indexed text found. Run ingest first.");
   const catalog = await loadChapterCatalog(worldId, options.catalogPath);
   if (!catalog) throw new Error("No chapter catalog. Run the corpus index script or pass --catalog.");
-  const assignment = assignChapters(chunks, catalog);
+  const prepared = await prepareCanonIndexInputs(worldDir, catalog, rawChunks);
+  const chunks = prepared.chunks;
+  if (!chunks.length) throw new Error("No chunks from original.txt were found in the library index.");
+  const assignment = assignChapters(chunks, catalog, prepared.chapterStartOffsets);
   const texts = new Map<string, string[]>();
   for (const chunk of chunks) {
     const chapter = assignment.chunkChapter.get(chunk.id);
@@ -367,12 +417,15 @@ export async function indexNovelStructure(
   options: { worldDir?: string; catalogPath?: string; characters?: CharacterDictionaryEntry[] } = {}
 ): Promise<StoryIndexResult> {
   const worldDir = options.worldDir ?? resolve("worlds", worldId);
-  const chunks = await loadLibraryChunks(join(worldDir, "library"), worldId);
-  if (!chunks.length) throw new Error("No indexed text found. Run ingest before index-story.");
+  const rawChunks = await loadLibraryChunks(join(worldDir, "library"), worldId);
+  if (!rawChunks.length) throw new Error("No indexed text found. Run ingest before index-story.");
 
   const catalog = await loadChapterCatalog(worldId, options.catalogPath);
   if (!catalog) throw new Error("No chapter catalog. Run the corpus index script or pass --catalog.");
-  const assignment = assignChapters(chunks, catalog);
+  const prepared = await prepareCanonIndexInputs(worldDir, catalog, rawChunks);
+  const chunks = prepared.chunks;
+  if (!chunks.length) throw new Error("No chunks from original.txt were found in the library index.");
+  const assignment = assignChapters(chunks, catalog, prepared.chapterStartOffsets);
   syncNovelChapters(worldDir, worldId, assignment.chapters);
 
   const seeds = (options.characters ?? await readSeedCharacters(worldDir))
