@@ -1104,6 +1104,10 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
     const dir = worldDir(worldId);
     const unitPath = storyExecutionUnitPath(worldId);
     let unit = validateStoryUnit(JSON.parse(await readFile(unitPath, "utf8")), worldId);
+    if (task.mode === "complete_story" && unit.execution.status === "completed") {
+      task = { ...task, status: "completed", completedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), nextDirection: "故事已自然收束。" };
+      await saveStoryExecution(task); return;
+    }
     const universe = await readUniverse(worldId);
     if (universe?.archivedAt) throw new Error("当前故事宇宙已归档。");
     if (universe) await ensureUniverseStoryAnalysis(worldId, universe);
