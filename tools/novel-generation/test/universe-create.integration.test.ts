@@ -415,3 +415,89 @@ test("source chapter catalog reads project-root original.txt without a world-loc
   }
 });
 
+test("universe creation rebuilds bounded offline assets from project-root original.txt without a world-local corpus or library index", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-universe-root-corpus-"));
+  const previousCwd = process.cwd();
+  const source = join(root, "worlds", "source-world");
+  await mkdir(source, { recursive: true });
+  await mkdir(join(root, "analysis", "source-world"), { recursive: true });
+  await writeFile(join(source, "world-bible.md"), "# Test World\n");
+  const originalText = [
+    "第一章 大枪落幕",
+    "李阎在雨里走过长街。",
+    "第二章 貘与姑获鸟",
+    "夜色压住了城寨。",
+    "第三章 后续",
+    "THIS IS FUTURE PLOT THAT MUST NOT LEAK"
+  ].join("\n");
+  await writeFile(join(root, "original.txt"), originalText, "utf8");
+  await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify({
+    schemaVersion: 2, totalLines: 6,
+    volumes: [{ volume: 1, chapters: [
+      { sequenceInVolume: 1, printedNumber: 1, title: "第一章 大枪落幕", label: "大枪落幕", line: 1 },
+      { sequenceInVolume: 2, printedNumber: 2, title: "第二章 貘与姑获鸟", label: "貘与姑获鸟", line: 3 },
+      { sequenceInVolume: 3, printedNumber: 3, title: "第三章 后续", label: "后续", line: 5 }
+    ] }]
+  }));
+  const db = new DatabaseSync(join(source, "novel.db"));
+  db.exec(`
+    CREATE TABLE world_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+    INSERT INTO world_meta VALUES('world_id','source-world');
+    CREATE TABLE novel_chapters(
+      chapter_id TEXT PRIMARY KEY,world_id TEXT NOT NULL,ordinal INTEGER NOT NULL,volume INTEGER NOT NULL,
+      printed_number INTEGER,title TEXT NOT NULL,label TEXT NOT NULL,start_line INTEGER,
+      char_count INTEGER NOT NULL,chunk_start INTEGER NOT NULL,chunk_end INTEGER NOT NULL
+    );
+    INSERT INTO novel_chapters VALUES
+      ('V01-C001','source-world',1,1,1,'第一章 大枪落幕','大枪落幕',1,20,0,0),
+      ('V01-C002','source-world',2,1,2,'第二章 貘与姑获鸟','貘与姑获鸟',3,20,1,1),
+      ('V01-C003','source-world',3,1,3,'第三章 后续','后续',5,20,2,2);
+  `);
+  db.close();
+
+  let server: ReturnType<typeof createServer> | undefined;
+  try {
+    process.chdir(root);
+    server = createServer(createApp());
+    await new Promise<void>(resolve => server!.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const base = `http://127.0.0.1:${address.port}`;
+    const headers = { "content-type": "application/json", host: `127.0.0.1:${address.port}` };
+
+    const directoryResponse = await fetch(base + "/api/worlds/source-world/source-chapters", { headers });
+    const directoryBody = await directoryResponse.text();
+    assert.equal(directoryResponse.status, 200, directoryBody);
+    const directory = JSON.parse(directoryBody) as { chapters: Array<{ id: number; title: string }> };
+    assert.equal(directory.chapters.length, 3);
+
+    const response = await fetch(base + "/api/worlds/source-world/universes", {
+      method: "POST", headers,
+      body: JSON.stringify({
+        name: "根目录原文测试宇宙", entryChapter: "第二章 貘与姑获鸟", entryChapterIndex: 1,
+        type: "free", brief: "验证离线原文路径", buildKnowledge: false
+      })
+    });
+    const body = await response.text();
+    assert.equal(response.status, 201, body);
+    const payload = JSON.parse(body) as { universe: { id: string } };
+    const universeDir = join(root, "worlds", payload.universe.id);
+
+    assert.equal(await readFile(join(universeDir, "original.txt"), "utf8"), originalText,
+      "root original.txt must be copied into the universe even when reflink is unavailable");
+    const bounded = JSON.parse(await readFile(join(universeDir, "library", "index.json"), "utf8")) as {
+      chunks: Array<{ chapter: string; source: string; sourceHash?: string; text: string }>;
+    };
+    assert.ok(bounded.chunks.some(chunk => chunk.text.includes("李阎在雨里走过长街。")));
+    assert.ok(bounded.chunks.some(chunk => chunk.text.includes("夜色压住了城寨。")));
+    assert.ok(!JSON.stringify(bounded).includes("THIS IS FUTURE PLOT"));
+    assert.ok(bounded.chunks.every(chunk => chunk.source.endsWith("original.txt")));
+    assert.ok(bounded.chunks.every(chunk => chunk.sourceHash === createHash("sha256").update(originalText, "utf8").digest("hex")));
+    assert.equal(await readFile(join(root, "original.txt"), "utf8"), originalText, "source corpus must remain unchanged");
+  } finally {
+    if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
+    process.chdir(previousCwd);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
