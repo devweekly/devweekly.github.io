@@ -1,4 +1,5 @@
 import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { dirname, join } from "node:path";
 import { z } from "zod";
 
@@ -24,7 +25,7 @@ export async function saveStoryExecution(value: StoryExecution): Promise<void> {
   const task = StoryExecutionSchema.parse(value);
   const target = filePath(task.worldId, task.id);
   await mkdir(dirname(target), { recursive: true });
-  const temporary = target + "." + process.pid + ".tmp";
+  const temporary = target + "." + process.pid + "." + randomUUID() + ".tmp";
   await writeFile(temporary, JSON.stringify(task, null, 2) + "\n", "utf8");
   await rename(temporary, target);
 }
