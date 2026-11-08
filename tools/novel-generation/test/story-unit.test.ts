@@ -49,4 +49,5 @@ test("natural completion requires story closure and no unrealized major beats", 
   assert.equal(isStoryUnitNaturallyComplete({ ...assessment, unrealizedMajorBeats: ["高潮尚未发生"] }), false);
   assert.equal(isStoryUnitNaturallyComplete({ ...assessment, confidence: "medium" }), false);
   assert.equal(isStoryUnitNaturallyComplete({ ...assessment, unresolvedCoreThreads: ["核心人物尚未作出选择"] }), false);
+  assert.equal(isStoryUnitNaturallyComplete({ ...assessment, remainingStoryWork: ["还需要写出人物选择带来的后果"] }), false);
 });
