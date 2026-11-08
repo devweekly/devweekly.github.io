@@ -16,7 +16,8 @@ const CultureSchema = z.object({
 }).strict();
 const BeatSchema = z.object({
   title: z.string().min(1), function: z.string().default(""), causalChange: z.string().default(""),
-  involvedCharacters: z.array(z.string()).default([]), possibleArcs: z.array(z.string()).default([])
+  involvedCharacters: z.array(z.string()).default([]), possibleArcs: z.array(z.string()).default([]),
+  status: z.enum(["planned", "in_progress", "completed", "replaced"]).default("planned")
 }).strict();
 
 const StoryUnitSchema = z.object({
@@ -62,7 +63,7 @@ export async function generateStoryUnit(input: {
     taboosAndGhostStories: [{ name: "禁忌或怪谈", versions: ["民间不同版本"], underlyingTruthOptions: ["可能解释"], consequences: "后果", scenePotential: "场景潜力" }],
     cast: [{ name: "人物", role: "角色位置", status: "existing", desire: "欲望", fearOrSecret: "恐惧或秘密", relationships: ["关系"], possibleDevelopment: ["发展可能"] }],
     relationshipDynamics: ["人物关系变化可能"],
-    storySpine: [{ title: "阶段", function: "叙事功能", causalChange: "因果变化", involvedCharacters: ["人物"], possibleArcs: ["人物变化可能"] }],
+    storySpine: [{ title: "阶段", function: "叙事功能", causalChange: "因果变化", involvedCharacters: ["人物"], possibleArcs: ["人物变化可能"], status: "planned" }],
     subplots: ["支线"], climax: "高潮", endingAndAftermath: "结局与余韵",
     unresolvedQuestions: ["有意保留的问题"], creativePossibilities: ["可探索但不强制的创意方向"]
   };
@@ -92,7 +93,9 @@ const StoryProgressAssessmentSchema = z.object({
   coreConflictResolved: z.boolean(), endingFeelsNatural: z.boolean(),
   confidence: z.enum(["low", "medium", "high"]),
   unresolvedCoreThreads: z.array(z.string()), unrealizedMajorBeats: z.array(z.string()), remainingStoryWork: z.array(z.string()),
-  nextDirection: z.string(), rationale: z.string()
+  nextDirection: z.string(), rationale: z.string(),
+  revisedStorySpine: z.array(BeatSchema).default([]),
+  characterArcUpdates: z.array(z.object({ name: z.string().min(1), observedChange: z.string().default(""), futurePossibilities: z.array(z.string()).default([]) }).strict()).default([])
 }).strict();
 export type StoryProgressAssessment = z.infer<typeof StoryProgressAssessmentSchema>;
 
@@ -118,14 +121,18 @@ export async function assessStoryUnitProgress(input: {
     "只有当本 Story Unit 的核心戏剧问题已得到有意义的回答、主要因果冲突已解决或完成有意的开放式收束、人物关键选择产生了后果、结尾自然成立，并且没有仍需本故事回答的核心问题时，才可把 coreConflictResolved 和 endingFeelsNatural 都设为 true。",
     "允许保留世界谜团、余韵和明确属于后续故事的问题；不要把这些误判为本故事未完成。区分核心故事线与可留白的世界设定。",
     "逐项对照 storySpine：若任何重要阶段尚未发生，也没有被正文中更好的叙事发展自然替代，列入 unrealizedMajorBeats 并判定未完成。不要机械兑现细节，但必须确认故事从开端到主要冲突升级、关键转折、高潮和收束已经真正发生。",
+    "每章结束后必须做滚动重规划：返回 revisedStorySpine，重新审视后续阶段。已经在正文中发生的阶段标记 completed；正在展开的标记 in_progress；尚未发生的标记 planned；若实际剧情自然产生了更好的发展，可以将原阶段标记 replaced，并新增更贴合当前因果的阶段。至少保留完整的开端—发展—高潮—收束结构，但不得让原计划凌驾于已发生正文。",
+    "返回 characterArcUpdates：只记录正文和 Story State 有证据支持的人物变化，并提出开放的后续可能，不强制人物必须按某条弧光发展。不得虚构未发生的心理变化。",
+
     "若证据不足，必须保守判定 false。completedChapterCount 只是上下文，不得作为完成条件或最低章数门槛。",
     "JSON 结构：",
-    JSON.stringify({ coreConflictResolved: false, endingFeelsNatural: false, confidence: "medium", unresolvedCoreThreads: ["尚未收束的核心线"], unrealizedMajorBeats: ["尚未发生的主要故事阶段"], remainingStoryWork: ["下一步具体需要写的内容"], nextDirection: "下一章最自然的推进方向", rationale: "依据实际正文说明" }, null, 2),
+    JSON.stringify({ coreConflictResolved: false, endingFeelsNatural: false, confidence: "medium", unresolvedCoreThreads: ["尚未收束的核心线"], unrealizedMajorBeats: ["尚未发生的主要故事阶段"], remainingStoryWork: ["下一步具体需要写的内容"], nextDirection: "下一章最自然的推进方向", rationale: "依据实际正文说明", revisedStorySpine: [], characterArcUpdates: [] }, null, 2),
     "故事单元：", JSON.stringify(input.unit),
     "已完成章节数（仅供上下文，不作阈值）：", String(input.completedChapterCount),
     "刚完成章节标题：", input.chapterTitle,
     "刚完成章节正文：", input.chapterText.slice(-18000),
-    "已提交 Story State：", JSON.stringify(input.storyState)
+    "已提交 Story State：", JSON.stringify(input.storyState),
+    "请在 revisedStorySpine 中输出重规划后的完整阶段列表；如果没有必要改变结构，可返回原列表并更新 status。"
   ].join("\n\n");
   const raw = await runAgentText(prompt, input.model, DEFAULT_AGENT_TIMEOUT_MS, readTaskProfiles().plot, true);
   return StoryProgressAssessmentSchema.parse(parseJsonObject(raw));
