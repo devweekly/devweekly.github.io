@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { validateStoryUnit } from "../src/story-unit.js";
+import { isStoryUnitNaturallyComplete, validateStoryUnit } from "../src/story-unit.js";
 
 const valid = {
   schemaVersion: 1, worldId: "world-a", updatedAt: "2026-11-08T00:00:00.000Z",
@@ -36,4 +36,17 @@ test("rejects a story unit without a complete causal spine", () => {
 
 test("rejects cross-world story unit data", () => {
   assert.throws(() => validateStoryUnit(valid, "another-world"));
+});
+
+
+test("natural completion requires story closure and no unrealized major beats", () => {
+  const assessment = {
+    coreConflictResolved: true, endingFeelsNatural: true, confidence: "high" as const,
+    unresolvedCoreThreads: [], unrealizedMajorBeats: [], remainingStoryWork: [],
+    nextDirection: "收束余韵", rationale: "核心冲突已解决，结尾自然。"
+  };
+  assert.equal(isStoryUnitNaturallyComplete(assessment), true);
+  assert.equal(isStoryUnitNaturallyComplete({ ...assessment, unrealizedMajorBeats: ["高潮尚未发生"] }), false);
+  assert.equal(isStoryUnitNaturallyComplete({ ...assessment, confidence: "medium" }), false);
+  assert.equal(isStoryUnitNaturallyComplete({ ...assessment, unresolvedCoreThreads: ["核心人物尚未作出选择"] }), false);
 });
