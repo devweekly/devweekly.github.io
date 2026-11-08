@@ -72,6 +72,13 @@ test("canon alignment excludes chunks from auxiliary source files", () => {
   assert.deepEqual(selected.map(item => item.text), ["原文正文"]);
 });
 
+test("source selection rejects missing provenance and unverifiable source hashes", () => {
+  const selected = selectCanonSourceChunks([
+    chunk("第一章", "没有来源证据", 0),
+    { ...chunk("第一章", "无法校验 hash", 0), source: "worlds/book/original.txt", sourceHash: "stale" }
+  ]);
+  assert.deepEqual(selected, []);
+});
 test("legacy source paths retain original.txt chunks but reject auxiliary files", () => {
   const selected = selectCanonSourceChunks([
     { ...chunk("第一章", "原文", 0), source: "worlds/book/original.txt" },
