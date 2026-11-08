@@ -67,7 +67,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   }catch(e){if(requestId===refreshGeneration.current)message.error(e instanceof Error?e.message:String(e));}
   finally{if(requestId===refreshGeneration.current)setLoading(false);}
  };
- useEffect(()=>{setActiveWorldId(worldId);setRun(null);setPreview(emptyPreview);void refresh();void Promise.all([api<{universes:Universe[]}>("/api/worlds/"+worldId+"/universes"),api<{chapters:Array<{id:number;title:string;label:string}>}>("/api/worlds/"+worldId+"/source-chapters")]).then(([u,c])=>{setUniverses(u.universes);setSourceChapters(c.chapters);}).catch(()=>{setUniverses([]);setSourceChapters([]);setStoryUnit(null);});},[worldId]);
+ useEffect(()=>{setActiveWorldId(worldId);setSelectedStoryUnitId(undefined);setHistoryScope("current");setStoryExecution(null);setStoryExecutionHistory([]);setRun(null);setPreview(emptyPreview);void refresh();void Promise.all([api<{universes:Universe[]}>("/api/worlds/"+worldId+"/universes"),api<{chapters:Array<{id:number;title:string;label:string}>}>("/api/worlds/"+worldId+"/source-chapters")]).then(([u,c])=>{setUniverses(u.universes);setSourceChapters(c.chapters);}).catch(()=>{setUniverses([]);setSourceChapters([]);setStoryUnit(null);});},[worldId]);
  useEffect(()=>{void refresh();},[activeWorldId,selectedStoryUnitId,historyScope]);
  useEffect(()=>{if(!activeWorldId)return;let cancelled=false;void Promise.all([
   api<{storyUnits:Array<{id:string;title:string;updatedAt:string}>}>("/api/worlds/"+activeWorldId+"/story-units"),
@@ -269,7 +269,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   {notice&&<Alert type="warning" showIcon message="本次任务未能启动" description={notice} style={{marginBottom:18}}/>}
   <Card title="完整故事单元" style={{marginBottom:18}}>
    <Text type="secondary">选择具体故事单元后，完整故事和连续章节任务会使用该单元独立的剧情状态与滚动阶段。单章续写、批量生成和完整故事执行均绑定当前选中的故事单元。</Text>
-    <Space wrap style={{marginBottom:14}}><Text strong>当前故事单元</Text><Select allowClear style={{minWidth:280}} value={selectedStoryUnitId} placeholder="选择故事单元" options={storyUnits.map(x=>({value:x.id,label:x.title}))} onChange={value=>{setSelectedStoryUnitId(value);setStoryExecution(null);setStoryUnit(null);setRun(null);setPreview(emptyPreview);}}/><Button onClick={()=>{setSelectedStoryUnitId(undefined);setStoryUnit(null);void generateStoryUnit(true);}} disabled={generatingStoryUnit||Boolean(busy)}>新建故事单元</Button></Space>
+    <Space wrap style={{marginBottom:14}}><Text strong>当前故事单元</Text><Select allowClear style={{minWidth:280}} value={selectedStoryUnitId} placeholder="选择故事单元" options={storyUnits.map(x=>({value:x.id,label:x.title}))} onChange={value=>{setSelectedStoryUnitId(value);setStoryExecution(null);setStoryExecutionHistory([]);setStoryUnit(null);setRun(null);setPreview(emptyPreview);}}/><Button onClick={()=>{setSelectedStoryUnitId(undefined);setStoryUnit(null);void generateStoryUnit(true);}} disabled={generatingStoryUnit||Boolean(busy)}>新建故事单元</Button></Space>
    {!storyUnit?<Space direction="vertical" style={{width:"100%"}}><Empty description="尚未建立完整故事单元。先生成果实/场景、文化民俗、怪谈、人物群像与完整故事因果设计。"/><Button type="primary" onClick={()=>void generateStoryUnit()} loading={generatingStoryUnit} disabled={generatingStoryUnit||Boolean(busy)||Boolean(activeUniverse?.archivedAt)}>生成完整故事设计</Button></Space>:<Space direction="vertical" style={{width:"100%"}} size="middle">
     <Title level={4}>{storyUnit.title}</Title>
     <Paragraph>{storyUnit.storyCore}</Paragraph>
@@ -310,7 +310,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   <Card title="下一章创作蓝图" style={{marginBottom:18}}>
    {preview.chapterPlan?<Paragraph style={{whiteSpace:"pre-wrap",marginBottom:0}}>{preview.chapterPlan}</Paragraph>:<Text type="secondary">生成过程中自动出现。蓝图只供查看，不是审批项。</Text>}
   </Card>
-  <Card title="章节历史" extra={<Select size="small" value={historyScope} onChange={setHistoryScope} options={[{value:"current",label:"当前故事单元"},{value:"legacy",label:"旧版历史（Legacy）"}]}/>} style={{marginBottom:18}}>
+  <Card title="章节历史" extra={<Select size="small" value={historyScope} onChange={value=>{setHistoryScope(value);setStoryExecution(null);setStoryExecutionHistory([]);}} options={[{value:"current",label:"当前故事单元"},{value:"legacy",label:"旧版历史（Legacy）"}]}/>} style={{marginBottom:18}}>
    {chapterRuns.length===0?<Empty description="尚无章节历史。"/>:<Space wrap>
     <Button disabled={!run||chapterRuns.filter(x=>x.status==="completed").findIndex(x=>x.id===run.id)<=0} onClick={()=>moveChapter(-1)}>上一章</Button>
     <Select style={{minWidth:300}} value={run?.id} onChange={value=>void selectChapter(value)} options={chapterRuns.map((item,index)=>({value:item.id,label:(index+1)+". "+(item.status==="completed"?"已完成":item.status==="failed"?"失败":item.status==="running"?"生成中":"排队中")+" · "+new Date(item.createdAt).toLocaleString()}))}/>
