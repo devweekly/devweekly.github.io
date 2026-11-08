@@ -39,6 +39,7 @@ test("fixed-batch worker keeps alternating Story Unit chapter history and Story 
   let serverStarted = false;
   try {
     process.chdir(root);
+    await writeFile(join(root, "package.json"), JSON.stringify({ type: "module" }), "utf8");
     process.env.NOVEL_TEST_SOURCE_ROOT = projectRoot;
     await mkdir(worldDir, { recursive: true });
     await mkdir(join(worldDir, "library"), { recursive: true });
