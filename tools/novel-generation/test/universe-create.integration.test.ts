@@ -20,7 +20,13 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
   const source = join(root, "worlds", "source-world");
   await mkdir(join(source, "library"), { recursive: true });
   await writeFile(join(source, "world-bible.md"), "# Test World\n");
-  await writeFile(join(source, "original.txt"), "第一章正文\\n第二章正文\\n未来剧情泄漏标记", "utf8");
+  const canonLines = Array.from({ length: 200 }, (_, index) =>
+    index === 0 ? "第一章正文" : index === 99 ? "第二章正文" : index === 199 ? "未来剧情泄漏标记" : ""
+  );
+  const originalText = canonLines.join("\n");
+  const canonSourceHash = createHash("sha256").update(originalText, "utf8").digest("hex");
+  const chapterStarts = [originalText.indexOf("第一章正文"), originalText.indexOf("第二章正文"), originalText.indexOf("未来剧情泄漏标记")];
+  await writeFile(join(source, "original.txt"), originalText, "utf8");
   await writeFile(join(source, "world-bible-full.md"), "source setting");
   await writeFile(join(source, "characters.md"), "全书人物画像：未来剧情泄漏标记");
   await writeFile(join(source, "timeline.md"), "未来时间线泄漏标记");
@@ -55,9 +61,9 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     schemaVersion: 1, worldId: "source-world", createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     chunks: [
-      { chapter: "第一章", chunkIndex: 0, start: 0, end: 8, chapterStart: 0, text: "第一章正文" },
-      { chapter: "第二章", chunkIndex: 0, start: 0, end: 8, chapterStart: 100, text: "第二章正文" },
-      { chapter: "第三章", chunkIndex: 0, start: 0, end: 8, chapterStart: 200, text: "未来剧情泄漏标记" }
+      { id: "canon:1", source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第一章", chunkIndex: 0, start: 0, end: 8, chapterStart: chapterStarts[0], text: "第一章正文" },
+      { id: "canon:2", source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第二章", chunkIndex: 0, start: 0, end: 8, chapterStart: chapterStarts[1], text: "第二章正文" },
+      { id: "canon:3", source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第三章", chunkIndex: 0, start: 0, end: 8, chapterStart: chapterStarts[2], text: "未来剧情泄漏标记" }
     ]
   }));
   const db = new DatabaseSync(join(source, "novel.db"));
@@ -91,8 +97,6 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     const universeCanonStat = await stat(join(universeDir, "original.txt"));
     assert.notEqual(universeCanonStat.ino, sourceCanonStat.ino, "source canon must not share a mutable inode across universes");
     assert.equal(await readFile(join(universeDir, "original.txt"), "utf8"), await readFile(join(source, "original.txt"), "utf8"));
-    await writeFile(join(universeDir, "original.txt"), "子宇宙私有修改");
-    assert.equal(await readFile(join(source, "original.txt"), "utf8"), "第一章正文\\n第二章正文\\n未来剧情泄漏标记", "child edits must never mutate source canon");
     assert.equal(payload.universe.entryChapter, "第二章");
 
     const archiveResponse = await fetch(`http://127.0.0.1:${address.port}/api/worlds/${payload.universe.id}/universe-archive`, {
@@ -161,6 +165,8 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     assert.ok(!writingBrief.includes("未来剧情泄漏标记"));
     assert.equal(await readFile(join(universeDir, "characters.md"), "utf8").catch(() => ""), "");
     assert.equal(await readFile(join(universeDir, "timeline.md"), "utf8").catch(() => ""), "");
+    await writeFile(join(universeDir, "original.txt"), "子宇宙私有修改");
+    assert.equal(await readFile(join(source, "original.txt"), "utf8"), originalText, "child edits must never mutate source canon");
     for (const relative of [
       "style-profile.md", "story-arc.md", "story-plan.json", "story-state.json",
       "vane-index/manifest.json", "style-references/future.md", "as-of-analysis/characters.md"
