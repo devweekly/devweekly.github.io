@@ -12,7 +12,7 @@ test("story execution checkpoints survive restart and resume from completed chap
   try {
     const now = new Date().toISOString();
     const task = {
-      id: "5e4a83c8-51aa-4cc3-8db1-b93f27f4c5a2", worldId: "world-a", storyUnitTitle: "雾河镇",
+      id: "5e4a83c8-51aa-4cc3-8db1-b93f27f4c5a2", worldId: "world-a", storyUnitTitle: "雾河镇", mode: "complete_story" as const,
       status: "running" as const, createdAt: now, updatedAt: now, startedAt: now,
       completedChapters: [{ runId: "7ab0f4d0-99e0-4f6d-8c1b-1a0e8b7f3c19", chapterPath: ".output/world-a/chapter-one/chapter.md", completedAt: now }],
       brief: "", idleChapterCount: 0, pauseRequested: false, cancelRequested: false, resumeCount: 0
@@ -38,7 +38,7 @@ test("story execution rejects invalid lifecycle states and malformed checkpoint 
   try {
     const now = new Date().toISOString();
     await assert.rejects(() => saveStoryExecution({
-      id: "not-a-uuid", worldId: "world-a", storyUnitTitle: "x", status: "running", createdAt: now, updatedAt: now,
+      id: "not-a-uuid", worldId: "world-a", storyUnitTitle: "x", mode: "complete_story", status: "running", createdAt: now, updatedAt: now,
       completedChapters: [], brief: "", idleChapterCount: 0, pauseRequested: false, cancelRequested: false, resumeCount: 0
     } as never));
   } finally {
