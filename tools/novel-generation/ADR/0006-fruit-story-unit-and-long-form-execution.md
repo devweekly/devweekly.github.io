@@ -187,3 +187,13 @@ Story Unit 先建立完整故事的因果骨架和结局方向，再按叙事需
 - 新增测试覆盖 Unit A、Unit B、legacy 三类任务列表，以及同单元、跨单元、legacy/新单元之间的检查点归属判断。
 - Story State SQLite 按传入的 state-file 所在目录打开；Story Unit 的 state-file 位于各自 `.story-units/{id}/` 目录，因此人物当前状态、关系变化、剧情事件、伏笔与 MacGuffin 更新，以及由该状态构建的 Story State Graph，均随单元数据库隔离。原著人物档案、原著人物逐章状态、原著卷级梗概仍保留在 World 共享的 `novel.db`，不得把原著知识误认为某个续写单元的状态。
 - 这一步没有把 World 级原著分析表复制到每个单元，也没有将其改造成 Story Unit 私有数据。后续若新增跨单元衍生分析，必须显式标注数据来源与作用域，不能把不同单元的生成事实合并进原著语料或共享知识库。
+
+
+### Service / Workbench 闭环补齐（2026-11-08，第六阶段）
+
+- 续写动态图谱 API 支持 `storyUnitId`，从对应单元目录的 Story State 派生图谱；`storyUnitId=legacy` 只读取旧 World 根目录状态。指定 UUID 必须先验证属于当前 World，不能通过任意路径读取。
+- 新增 Story Unit 状态只读 API，向人物工作台提供该单元已提交的人物状态、人物弧光里程碑、关系变化、剧情事件、伏笔和 MacGuffin；原著人物档案仍由共享原著数据库提供，两者在 UI 中分开展示。
+- 图谱工作台在查看续写动态状态时提供 Story Unit 选择器和 legacy 入口；原著全文图谱仍然是 World 共享知识，不受 Story Unit 选择器影响。
+- 章节工作台移除重复的 Story Unit 选择器，并提供明确的当前单元 / legacy 章节历史切换。legacy 任务历史与当前单元执行状态分别查询，查看旧记录不会改变当前创作目标。
+- 批量章节执行的上一章选择必须按 Story Unit 过滤，与完整故事执行保持一致，不能从同一 World 的其他单元继承最近章节。
+- 人物工作台同时展示共享原著人物档案和所选 Story Unit 的续写人物快照、人物弧光及近期事件；切换单元时取消迟到响应，避免旧请求覆盖当前视图。
