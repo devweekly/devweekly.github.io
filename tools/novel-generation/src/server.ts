@@ -3,7 +3,7 @@
 // 不得在路由层复制 prompt 或 schema 逻辑。
 import express, { type Request, type Response, type NextFunction } from "express";
 import { spawn } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { cp, copyFile, mkdir, readFile, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { constants as fsConstants } from "node:fs";
 import { existsSync, rmSync } from "node:fs";
@@ -18,7 +18,7 @@ import {
   WORKBENCH_BODY_LIMIT
 } from "./constants.js";
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
-import { alignCanonChapterGroups, joinCanonChunkText, type CanonChunk } from "./canon-chapters.js";
+import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks, type CanonChunk } from "./canon-chapters.js";
 import { chapterId as catalogChapterId, loadChapterCatalog } from "./novel-kb.js";
 import { buildStoryStateGraph, filterGraph } from "./story-state-graph.js";
 import { archiveStyleReference, listStyleReferenceHistory, listStyleReferences, putStyleReference, readActiveStyleReference, readStyleReferenceVersion } from "./style-references.js";
@@ -542,7 +542,9 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
   };
   await ensureOriginalText();
   const chapterStartOffsets = catalog.map(chapter => chapter.line == null ? undefined : lineStartOffset(chapter.line));
-  const aligned = alignCanonChapterGroups(catalog, index.chunks ?? [], chapterStartOffsets);
+  const originalSourceHash = originalText === undefined ? undefined : createHash("sha256").update(originalText, "utf8").digest("hex");
+  const canonChunks = selectCanonSourceChunks(index.chunks ?? [], originalSourceHash);
+  const aligned = alignCanonChapterGroups(catalog, canonChunks, chapterStartOffsets);
   const readOriginalText = async (catalogIndex: number): Promise<string> => {
     const entry = catalog[catalogIndex];
     if (!entry || !originalLines || !Number.isSafeInteger(entry.line) || (entry.line ?? 0) < 1) return "";
@@ -671,7 +673,9 @@ async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: st
     const lineText = originalSourceLines[chapter.line - 1] ?? "";
     return offset + lineText.length - lineText.trimStart().length;
   });
-  const aligned = alignCanonChapterGroups(catalog, source.chunks, offsets);
+  const sourceHash = originalText ? createHash("sha256").update(originalText, "utf8").digest("hex") : undefined;
+  const canonChunks = selectCanonSourceChunks(source.chunks, sourceHash);
+  const aligned = alignCanonChapterGroups(catalog, canonChunks, offsets);
   const allowedGroups = new Set(aligned.filter(item => item.catalogIndex <= entryIndex && item.chunks.length > 0).map(item => item.chunks));
   const chunks = aligned.filter(item => allowedGroups.has(item.chunks)).flatMap(item => item.chunks);
   const snapshot = {
