@@ -71,3 +71,11 @@ test("canon alignment excludes chunks from auxiliary source files", () => {
   ], "canon");
   assert.deepEqual(selected.map(item => item.text), ["原文正文"]);
 });
+
+test("legacy source paths retain original.txt chunks but reject auxiliary files", () => {
+  const selected = selectCanonSourceChunks([
+    { ...chunk("第一章", "原文", 0), source: "worlds/book/original.txt" },
+    { ...chunk("第一章", "笔记", 0), source: "worlds/book/notes.txt" }
+  ]);
+  assert.deepEqual(selected.map(item => item.text), ["原文"]);
+});
