@@ -1071,7 +1071,7 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
   const mode = previousChapterPath ? "continuation" : "derivative";
   const args = [
     ...buildCliEntryArgs(["write"]), "--world", worldId, "--mode", mode,
-    "--state-file", storyUnitId ? path.join(dir, ".story-units", storyUnitId + ".story-state.json") : path.join(dir, "story-state.json"),
+    "--state-file", storyUnitId ? path.join(dir, ".story-units", storyUnitId, "story-state.json") : path.join(dir, "story-state.json"),
     "--story-unit-file", storyExecutionUnitPath(worldId, storyUnitId),
     ...(previousChapterPath ? ["--source", previousChapterPath] : universeEntryPath ? ["--source", universeEntryPath] : []),
     ...(!previousChapterPath && universe ? ["--context", path.join(dir, "universe-origin-context.md")] : []),
@@ -1128,7 +1128,7 @@ async function assessStoryExecutionCheckpoint(
   }
   const chapterText = await readFile(chapterPath, "utf8");
   const chapterTitle = chapterText.split("\n").find(line => /^#\s+/.test(line))?.replace(/^#\s+/,"").trim() || "章节";
-  const state = await loadStoryState(taskInput.storyUnitId ? path.join(dir, ".story-units", taskInput.storyUnitId + ".story-state.json") : path.join(dir, "story-state.json"), worldId);
+  const state = await loadStoryState(taskInput.storyUnitId ? path.join(dir, ".story-units", taskInput.storyUnitId, "story-state.json") : path.join(dir, "story-state.json"), worldId);
   const assessment = await assessStoryUnitProgress({
     unit: unitInput, chapterText, chapterTitle, completedChapterCount: taskInput.completedChapters.length,
     storyState: state, model: taskInput.model
