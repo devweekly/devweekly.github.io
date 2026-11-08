@@ -67,7 +67,7 @@ const { loadStoryState, saveStoryState } = await import(sourceRoot + "/src/story
 await mkdir(outputDir, { recursive: true });
 const state = await loadStoryState(stateFile, worldId);
 state.currentPosition = unitId + " / generated chapter";
-state.characters.push({ name: unitId, status: "active", location: "test location" });
+state.characters.push({ name: unitId + "-" + state.events.length, status: "active", location: "test location" });
 state.events.push({ id: unitId + "-" + state.events.length, summary: "worker generated", position: state.currentPosition, participants: [unitId], consequences: [] });
 await saveStoryState(stateFile, state);
 await mkdir(dirname(storyArcFile), { recursive: true });
@@ -124,8 +124,8 @@ console.log("Story state automatically updated: " + stateFile);
     const stateB = await stateBResponse.json() as { state: { characters:Array<{name:string}>; events:Array<{id:string}> } };
     assert.equal(stateA.state.characters.length, 2);
     assert.equal(stateB.state.characters.length, 1);
-    assert.ok(stateA.state.characters.every(person => person.name === unitA.id));
-    assert.ok(stateB.state.characters.every(person => person.name === unitB.id));
+    assert.ok(stateA.state.characters.every(person => person.name.startsWith(unitA.id + "-")));
+    assert.ok(stateB.state.characters.every(person => person.name.startsWith(unitB.id + "-")));
     assert.equal((await readFile(join(worldDir, ".story-units", unitA.id, "story-arc.md"), "utf8")).trim(), "arc:" + unitA.id);
     assert.equal((await readFile(join(worldDir, ".story-units", unitB.id, "story-arc.md"), "utf8")).trim(), "arc:" + unitB.id);
   } finally {
