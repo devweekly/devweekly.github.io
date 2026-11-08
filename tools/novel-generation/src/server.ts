@@ -87,18 +87,20 @@ function worldDir(id: string): string {
  */
 async function resolveOriginalCanonPath(id: string): Promise<string> {
   const localPath = path.join(worldDir(id), "original.txt");
-  try {
-    const localInfo = await stat(localPath);
-    if (localInfo.isFile()) return localPath;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  }
   const projectPath = path.resolve("original.txt");
-  try {
-    const projectInfo = await stat(projectPath);
-    if (projectInfo.isFile()) return projectPath;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  let isUniverse = false;
+  try { isUniverse = (await stat(path.join(worldDir(id), "universe.json"))).isFile(); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  // Source projects use the root corpus by convention; child universes must
+  // remain pinned to their own bounded local copy.
+  const candidates = isUniverse ? [localPath, projectPath] : [projectPath, localPath];
+  for (const candidate of candidates) {
+    try {
+      const info = await stat(candidate);
+      if (info.isFile()) return candidate;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
   }
   throw Object.assign(new Error(
     "找不到原著全文。已检查 " + localPath + " 和 " + projectPath + "；请确认 original.txt 位于 novel-generation 项目根目录。"
@@ -561,11 +563,10 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
   }
   let originalText: string | undefined;
   let originalLines: string[] | undefined;
-  let originalPath: string | undefined;
   const ensureOriginalText = async (): Promise<boolean> => {
     if (originalText !== undefined) return true;
     try {
-      originalPath = await resolveOriginalCanonPath(sourceWorldId);
+      const originalPath = await resolveOriginalCanonPath(sourceWorldId);
       originalText = await readFile(originalPath, "utf8");
       originalLines = originalText.split(/\r?\n/);
       return true;
@@ -673,21 +674,12 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
  * filesystem cannot clone, keep the ordinary copy produced by cp().
  */
 async function cloneOriginalCanon(sourceDir: string, targetDir: string): Promise<boolean> {
-  const localSource = path.join(sourceDir, "original.txt");
-  let source = localSource;
+  let source: string;
   try {
-    const info = await stat(localSource);
-    if (!info.isFile()) return false;
+    source = await resolveOriginalCanonPath(path.basename(sourceDir));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    // Only a source project may fall back to the project-root corpus. A child
-    // universe must clone its own bounded copy, never the parent's full book.
-    try {
-      source = await resolveOriginalCanonPath(path.basename(sourceDir));
-    } catch (resolveError) {
-      if ((resolveError as NodeJS.ErrnoException).code === "ENOENT") return false;
-      throw resolveError;
-    }
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
   }
   const target = path.join(targetDir, "original.txt");
   const temporary = target + ".reflink-" + process.pid;
