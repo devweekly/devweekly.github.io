@@ -39,6 +39,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [storyUnit,setStoryUnit]=useState<StoryUnit|null>(null);
  const [storyUnits,setStoryUnits]=useState<Array<{id:string;title:string;updatedAt:string}>>([]);
  const [selectedStoryUnitId,setSelectedStoryUnitId]=useState<string|undefined>();
+ const [historyScope,setHistoryScope]=useState<"current"|"legacy">("current");
  const [storyExecution,setStoryExecution]=useState<StoryExecution|null>(null);
  const [startingStoryExecution,setStartingStoryExecution]=useState(false);
  const [generatingStoryUnit,setGeneratingStoryUnit]=useState(false);
@@ -51,11 +52,11 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   if(!activeWorldId)return;setLoading(true);
   try{
    const [runs,arc]=await Promise.all([
-    api<{runs:Run[]}>("/api/worlds/"+activeWorldId+"/runs"+(selectedStoryUnitId?"?storyUnitId="+selectedStoryUnitId:"")),
-    api<{storyArc:string}>("/api/worlds/"+activeWorldId+"/story-arc"+(selectedStoryUnitId?"?storyUnitId="+selectedStoryUnitId:""))
+    api<{runs:Run[]}>("/api/worlds/"+activeWorldId+"/runs?storyUnitId="+(historyScope==="legacy"?"legacy":selectedStoryUnitId??"legacy")),
+    api<{storyArc:string}>("/api/worlds/"+activeWorldId+"/story-arc?storyUnitId="+(historyScope==="legacy"?"legacy":selectedStoryUnitId??"legacy"))
    ]);
    setActiveArc(arc.storyArc);
-   const chapters=runs.runs.filter(x=>x.kind==="chapter"&&(!selectedStoryUnitId||x.storyUnitId===selectedStoryUnitId)).sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
+   const chapters=runs.runs.filter(x=>x.kind==="chapter").sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
    setChapterRuns(chapters);
    const latest=chapters.at(-1)??null;setRun(latest);
    if(latest){const p=await api<Preview>("/api/runs/"+latest.id+"/preview?worldId="+activeWorldId);setPreview(p);}
@@ -64,7 +65,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   finally{setLoading(false);}
  };
  useEffect(()=>{setActiveWorldId(worldId);setRun(null);setPreview(emptyPreview);void refresh();void Promise.all([api<{universes:Universe[]}>("/api/worlds/"+worldId+"/universes"),api<{chapters:Array<{id:number;title:string;label:string}>}>("/api/worlds/"+worldId+"/source-chapters")]).then(([u,c])=>{setUniverses(u.universes);setSourceChapters(c.chapters);}).catch(()=>{setUniverses([]);setSourceChapters([]);setStoryUnit(null);});},[worldId]);
- useEffect(()=>{void refresh();},[activeWorldId,selectedStoryUnitId]);
+ useEffect(()=>{void refresh();},[activeWorldId,selectedStoryUnitId,historyScope]);
  useEffect(()=>{if(!activeWorldId)return;void Promise.all([
   api<{storyUnits:Array<{id:string;title:string;updatedAt:string}>}>("/api/worlds/"+activeWorldId+"/story-units"),
   api<{executions:StoryExecution[]}>("/api/worlds/"+activeWorldId+"/story-executions")
@@ -89,7 +90,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
    void Promise.all([
     api<{run:Run}>("/api/runs/"+run.id+"?worldId="+activeWorldId),
     api<Preview>("/api/runs/"+run.id+"/preview?worldId="+activeWorldId)
-   ]).then(([r,p])=>{setRun(r.run);setPreview(p);if(r.run.status==="completed"||r.run.status==="failed"){void Promise.all([api<{storyArc:string}>("/api/worlds/"+activeWorldId+"/story-arc"+(selectedStoryUnitId?"?storyUnitId="+selectedStoryUnitId:"")),api<{runs:Run[]}>("/api/worlds/"+activeWorldId+"/runs"+(selectedStoryUnitId?"?storyUnitId="+selectedStoryUnitId:""))]).then(([arc,runs])=>{setActiveArc(arc.storyArc);setChapterRuns(runs.runs.filter(x=>x.kind==="chapter").sort((a,b)=>a.createdAt.localeCompare(b.createdAt)));});}}).catch(()=>{});
+   ]).then(([r,p])=>{setRun(r.run);setPreview(p);if(r.run.status==="completed"||r.run.status==="failed"){void Promise.all([api<{storyArc:string}>("/api/worlds/"+activeWorldId+"/story-arc?storyUnitId="+(historyScope==="legacy"?"legacy":selectedStoryUnitId??"legacy")),api<{runs:Run[]}>("/api/worlds/"+activeWorldId+"/runs?storyUnitId="+(historyScope==="legacy"?"legacy":selectedStoryUnitId??"legacy"))]).then(([arc,runs])=>{setActiveArc(arc.storyArc);setChapterRuns(runs.runs.filter(x=>x.kind==="chapter").sort((a,b)=>a.createdAt.localeCompare(b.createdAt)));});}}).catch(()=>{});
   },2000);
   return()=>window.clearInterval(timer);
  },[busy,run?.id,activeWorldId]);
@@ -258,8 +259,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   {notice&&<Alert type="warning" showIcon message="本次任务未能启动" description={notice} style={{marginBottom:18}}/>}
   <Card title="完整故事单元" style={{marginBottom:18}}>
    <Text type="secondary">选择具体故事单元后，完整故事和连续章节任务会使用该单元独立的剧情状态与滚动阶段。单章续写、批量生成和完整故事执行均绑定当前选中的故事单元。</Text>
-   <Space wrap style={{marginBottom:14}}><Text strong>当前故事单元</Text><Select allowClear style={{minWidth:280}} value={selectedStoryUnitId} placeholder="选择故事单元" options={storyUnits.map(x=>({value:x.id,label:x.title}))} onChange={value=>{setSelectedStoryUnitId(value);setStoryExecution(null);setRun(null);setPreview(emptyPreview);}}/><Button onClick={()=>{setSelectedStoryUnitId(undefined);setStoryUnit(null);void generateStoryUnit(true);}} disabled={generatingStoryUnit||Boolean(busy)}>新建故事单元</Button></Space>
-   <Space wrap style={{marginBottom:14}}><Text strong>当前故事单元</Text><Select style={{minWidth:280}} value={selectedStoryUnitId} placeholder="选择故事单元" options={storyUnits.map(x=>({value:x.id,label:x.title}))} onChange={value=>{setSelectedStoryUnitId(value);setStoryExecution(null);setRun(null);setPreview(emptyPreview);}}/><Button onClick={()=>{setSelectedStoryUnitId(undefined);setStoryUnit(null);void generateStoryUnit();}} disabled={generatingStoryUnit||Boolean(busy)}>新建故事单元</Button></Space>
+    <Space wrap style={{marginBottom:14}}><Text strong>当前故事单元</Text><Select allowClear style={{minWidth:280}} value={selectedStoryUnitId} placeholder="选择故事单元" options={storyUnits.map(x=>({value:x.id,label:x.title}))} onChange={value=>{setSelectedStoryUnitId(value);setStoryExecution(null);setStoryUnit(null);setRun(null);setPreview(emptyPreview);}}/><Button onClick={()=>{setSelectedStoryUnitId(undefined);setStoryUnit(null);void generateStoryUnit(true);}} disabled={generatingStoryUnit||Boolean(busy)}>新建故事单元</Button></Space>
    {!storyUnit?<Space direction="vertical" style={{width:"100%"}}><Empty description="尚未建立完整故事单元。先生成果实/场景、文化民俗、怪谈、人物群像与完整故事因果设计。"/><Button type="primary" onClick={()=>void generateStoryUnit()} loading={generatingStoryUnit} disabled={generatingStoryUnit||Boolean(busy)||Boolean(activeUniverse?.archivedAt)}>生成完整故事设计</Button></Space>:<Space direction="vertical" style={{width:"100%"}} size="middle">
     <Title level={4}>{storyUnit.title}</Title>
     <Paragraph>{storyUnit.storyCore}</Paragraph>
@@ -300,7 +300,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   <Card title="下一章创作蓝图" style={{marginBottom:18}}>
    {preview.chapterPlan?<Paragraph style={{whiteSpace:"pre-wrap",marginBottom:0}}>{preview.chapterPlan}</Paragraph>:<Text type="secondary">生成过程中自动出现。蓝图只供查看，不是审批项。</Text>}
   </Card>
-  <Card title="章节历史" style={{marginBottom:18}}>
+  <Card title="章节历史" extra={<Select size="small" value={historyScope} onChange={setHistoryScope} options={[{value:"current",label:"当前故事单元"},{value:"legacy",label:"旧版历史（Legacy）"}]}/>} style={{marginBottom:18}}>
    {chapterRuns.length===0?<Empty description="尚无章节历史。"/>:<Space wrap>
     <Button disabled={!run||chapterRuns.filter(x=>x.status==="completed").findIndex(x=>x.id===run.id)<=0} onClick={()=>moveChapter(-1)}>上一章</Button>
     <Select style={{minWidth:300}} value={run?.id} onChange={value=>void selectChapter(value)} options={chapterRuns.map((item,index)=>({value:item.id,label:(index+1)+". "+(item.status==="completed"?"已完成":item.status==="failed"?"失败":item.status==="running"?"生成中":"排队中")+" · "+new Date(item.createdAt).toLocaleString()}))}/>
