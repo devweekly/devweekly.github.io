@@ -21,8 +21,9 @@ const labels: Record<string, string> = { character: "人物", event: "事件", "
 /** 详情面板里展示节点原始 data：字符串直接显示，其余走格式化 JSON。 */
 const pretty = (value: unknown) => (typeof value === "string" ? value : JSON.stringify(value, null, 2) ?? "");
 
-async function loadGraph(worldId: string, source: string, q: string): Promise<GraphResponse> {
-  const response = await fetch(`/api/worlds/${encodeURIComponent(worldId)}/graph?source=${source}&q=${encodeURIComponent(q)}&limit=700`);
+async function loadGraph(worldId: string, source: string, q: string, storyUnitId: string): Promise<GraphResponse> {
+  const scope = source === "sequel" ? `&storyUnitId=${encodeURIComponent(storyUnitId)}` : "";
+  const response = await fetch(`/api/worlds/${encodeURIComponent(worldId)}/graph?source=${source}&q=${encodeURIComponent(q)}&limit=700${scope}`);
   const body = (await response.json()) as GraphResponse & { error?: string };
   if (!response.ok) throw new Error(body.error ?? response.statusText);
   return body;
@@ -37,6 +38,22 @@ export default function GraphExplorer({ worldId }: { worldId: string }) {
   const [error, setError] = useState("");
   const [revision, setRevision] = useState(0);
   const [selected, setSelected] = useState<string>("");
+  const [storyUnits, setStoryUnits] = useState<Array<{id:string;title:string}>>([]);
+  const [selectedStoryUnitId, setSelectedStoryUnitId] = useState("legacy");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/worlds/${encodeURIComponent(worldId)}/story-units`).then(async response => {
+      const body = await response.json() as {storyUnits?:Array<{id:string;title:string}>;error?:string};
+      if (!response.ok) throw new Error(body.error ?? response.statusText);
+      if (!cancelled) {
+        const units = body.storyUnits ?? [];
+        setStoryUnits(units);
+        setSelectedStoryUnitId(current => current !== "legacy" && units.some(unit => unit.id === current) ? current : units[0]?.id ?? "legacy");
+      }
+    }).catch(e => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); });
+    return () => { cancelled = true; };
+  }, [worldId]);
 
   // 拉取图谱数据；submitted / revision 是两个独立触发源：搜索与手动刷新。
   // 迟到响应通过 cancelled 标记丢弃，避免快速切换后旧结果覆盖新状态。
@@ -44,7 +61,7 @@ export default function GraphExplorer({ worldId }: { worldId: string }) {
     let cancelled = false;
     setLoading(true);
     setError("");
-    loadGraph(worldId, source, submitted)
+    loadGraph(worldId, source, submitted, selectedStoryUnitId)
       .then(result => {
         if (!cancelled) {
           setData(result);
@@ -54,7 +71,7 @@ export default function GraphExplorer({ worldId }: { worldId: string }) {
       .catch(e => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [worldId, source, submitted, revision]);
+  }, [worldId, source, submitted, revision, selectedStoryUnitId]);
 
   // 圆环摆位：第一个节点在最上方，其余沿顺时针均匀展开；半径按节点数自适应。
   const positions = useMemo(() => {
