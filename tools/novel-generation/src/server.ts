@@ -1382,11 +1382,12 @@ async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> 
   }
 }
 
-function startStoryUnitExecution(task: StoryExecution): void {
-  if (activeStoryExecutions.has(task.worldId)) return;
+function startStoryUnitExecution(task: StoryExecution): boolean {
+  if (activeStoryExecutions.has(task.worldId)) return false;
   const worker = task.mode === "fixed_batch" ? executeFixedChapterBatch(task) : executeStoryUnitTask(task);
   const promise = worker.finally(() => activeStoryExecutions.delete(task.worldId));
   activeStoryExecutions.set(task.worldId, promise);
+  return true;
 }
 
 
@@ -1439,7 +1440,7 @@ app.post("/api/worlds/:worldId/chapter-batches", async (req, res) => {
     const count = Number(req.body?.chapterCount);
     if (!Number.isSafeInteger(count) || count < 1) return void res.status(400).json({error:"chapterCount 必须是大于 0 的整数。"});
     const runs = await listRuns(id);
-    const activeChapter = runs.find(run => run.kind === "chapter" && (!requestedUnitId || run.storyUnitId === requestedUnitId) && (run.status === "queued" || run.status === "running"));
+    const activeChapter = runs.find(run => run.kind === "chapter" && storyExecutionOwnsRun(requestedUnitId, run.storyUnitId) && (run.status === "queued" || run.status === "running"));
     if (activeChapter) return void res.status(409).json({error:"当前已有章节正在生成，请完成后再启动批量任务。"});
     const universe = await readUniverse(id);
     if (universe?.archivedAt) return void res.status(409).json({error:"当前故事宇宙已归档。"});
@@ -1450,11 +1451,17 @@ app.post("/api/worlds/:worldId/chapter-batches", async (req, res) => {
     const latest = previousTasks.find(item => ["running","queued","paused"].includes(item.status));
     if (latest) return void res.status(409).json({error:"已有长篇任务，请恢复或取消后再启动批量任务。",execution:latest});
     let title = "连续章节批次";
-    try {
+    if (requestedUnitId) {
       const unit = await loadExecutionStoryUnit(id, requestedUnitId);
       if (unit.execution.status === "completed") return void res.status(409).json({error:"当前完整故事已经自然收束，请创建新的故事单元后再继续生成。"});
       title = unit.title;
-    } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    } else {
+      try {
+        const unit = await loadExecutionStoryUnit(id);
+        if (unit.execution.status === "completed") return void res.status(409).json({error:"当前完整故事已经自然收束，请创建新的故事单元后再继续生成。"});
+        title = unit.title;
+      } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    }
     const now = new Date().toISOString();
     const task: StoryExecution = {
       id: randomUUID(), worldId: id, ...(requestedUnitId ? {storyUnitId: requestedUnitId} : {}), storyUnitTitle: title, mode: "fixed_batch", targetChapterCount: count,
@@ -1488,16 +1495,21 @@ app.post("/api/worlds/:worldId/story-executions/:executionId/pause", async (req,
   } catch (error) { sendError(res, error); }
 });
 app.post("/api/worlds/:worldId/story-executions/:executionId/resume", async (req, res) => {
+  let reservedId: string | undefined;
   try {
     const id = worldIdOf(req.params.worldId); const executionId = recordId(req.params.executionId);
+    if (activeStoryExecutions.has(id) || storyExecutionReservations.has(id)) return void res.status(409).json({error:"当前世界已有故事任务正在执行或启动。"});
+    storyExecutionReservations.add(id); reservedId = id;
     const task = await getStoryExecution(id, executionId);
     if (!task) return void res.status(404).json({error:"Story execution not found."});
     if (!["paused","failed","stalled"].includes(task.status)) return void res.status(409).json({error:"当前任务不可恢复。",execution:task});
-    if (activeStoryExecutions.has(id)) return void res.status(409).json({error:"当前世界已有故事任务正在执行。"});
     const resumedAt = new Date().toISOString();
     const updated = appendStoryExecutionEvent({...task,status:"queued" as const,pauseRequested:false,cancelRequested:false,error:undefined,completedAt:undefined,updatedAt:resumedAt}, { at: resumedAt, type: "resumed", message: "恢复任务执行" });
-    await saveStoryExecution(updated); startStoryUnitExecution(updated); res.status(202).json({execution:updated});
+    await saveStoryExecution(updated);
+    startStoryUnitExecution(updated);
+    res.status(202).json({execution:updated});
   } catch (error) { sendError(res, error); }
+  finally { if (reservedId) storyExecutionReservations.delete(reservedId); }
 });
 app.post("/api/worlds/:worldId/story-executions/:executionId/cancel", async (req, res) => {
   try {
