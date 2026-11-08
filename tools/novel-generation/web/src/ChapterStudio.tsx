@@ -85,21 +85,23 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   return()=>{cancelled=true;};},[activeWorldId,selectedStoryUnitId,historyScope]);
  useEffect(()=>{
   if(!activeWorldId||!storyExecution||!["queued","running"].includes(storyExecution.status))return;
+  let cancelled=false;
   const timer=window.setInterval(()=>void api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/story-executions/"+storyExecution.id)
-   .then(result=>{setStoryExecution(result.execution);if(["completed","failed","paused","cancelled","stalled"].includes(result.execution.status)){void refresh();if(selectedStoryUnitId)void api<{storyUnit:StoryUnit}>("/api/worlds/"+activeWorldId+"/story-units/"+selectedStoryUnitId).then(x=>setStoryUnit(x.storyUnit));}})
+   .then(result=>{if(cancelled)return;setStoryExecution(result.execution);if(["completed","failed","paused","cancelled","stalled"].includes(result.execution.status)){void refresh();if(selectedStoryUnitId)void api<{storyUnit:StoryUnit}>("/api/worlds/"+activeWorldId+"/story-units/"+selectedStoryUnitId).then(x=>{if(!cancelled)setStoryUnit(x.storyUnit);});}})
    .catch(()=>{}),2500);
-  return()=>window.clearInterval(timer);
+  return()=>{cancelled=true;window.clearInterval(timer);};
  },[activeWorldId,selectedStoryUnitId,storyExecution?.id,storyExecution?.status]);
  useEffect(()=>{
   if(!busy||!run)return;
+  let cancelled=false;
   const timer=window.setInterval(()=>{
    void Promise.all([
     api<{run:Run}>("/api/runs/"+run.id+"?worldId="+activeWorldId),
     api<Preview>("/api/runs/"+run.id+"/preview?worldId="+activeWorldId)
-   ]).then(([r,p])=>{setRun(r.run);setPreview(p);if(r.run.status==="completed"||r.run.status==="failed"){void Promise.all([api<{storyArc:string}>("/api/worlds/"+activeWorldId+"/story-arc?storyUnitId="+(historyScope==="legacy"?"legacy":selectedStoryUnitId??"legacy")),api<{runs:Run[]}>("/api/worlds/"+activeWorldId+"/runs?storyUnitId="+(historyScope==="legacy"?"legacy":selectedStoryUnitId??"legacy"))]).then(([arc,runs])=>{setActiveArc(arc.storyArc);setChapterRuns(runs.runs.filter(x=>x.kind==="chapter").sort((a,b)=>a.createdAt.localeCompare(b.createdAt)));});}}).catch(()=>{});
+   ]).then(([r,p])=>{if(cancelled)return;setRun(r.run);setPreview(p);if(r.run.status==="completed"||r.run.status==="failed"){void Promise.all([api<{storyArc:string}>("/api/worlds/"+activeWorldId+"/story-arc?storyUnitId="+(historyScope==="legacy"?"legacy":selectedStoryUnitId??"legacy")),api<{runs:Run[]}>("/api/worlds/"+activeWorldId+"/runs?storyUnitId="+(historyScope==="legacy"?"legacy":selectedStoryUnitId??"legacy"))]).then(([arc,runs])=>{if(cancelled)return;setActiveArc(arc.storyArc);setChapterRuns(runs.runs.filter(x=>x.kind==="chapter").sort((a,b)=>a.createdAt.localeCompare(b.createdAt)));});}}).catch(()=>{});
   },2000);
-  return()=>window.clearInterval(timer);
- },[busy,run?.id,activeWorldId]);
+  return()=>{cancelled=true;window.clearInterval(timer);};
+ },[busy,run?.id,activeWorldId,selectedStoryUnitId,historyScope]);
  const selectChapter=async(id:string)=>{
   const selected=chapterRuns.find(item=>item.id===id);if(!selected)return;
   setRun(selected);
