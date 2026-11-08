@@ -177,3 +177,13 @@ Story Unit 先建立完整故事的因果骨架和结局方向，再按叙事需
 - 增加 Workbench Store 测试，验证 Unit A、Unit B 和 legacy 运行历史互不混淆。
 
 说明：World 级任务锁仍然串行化同一 World 的写入；这是为了保护共享原著索引、World Bible 等资料，不代表不同 Story Unit 共用故事状态。
+
+
+### 执行历史 legacy 边界与恢复归属校验（2026-11-08，第五阶段）
+
+- Story Execution 列表过滤现在区分三种查询：不传 `storyUnitId` 表示全部；传具体 UUID 只返回该单元；传 `storyUnitId=legacy` 只返回未归属单元的旧任务。旧任务不会被默认并入新建 Story Unit。
+- 检查点 Run 归属比较抽为显式规则：两个 ID 相同才属于同一单元；两个值都缺失时仅视为 legacy 对 legacy；一个缺失、一个存在，或两个不同 UUID，均不匹配。恢复流程不得把其他单元的已完成章节补入当前任务。
+- Story Execution API 增加 legacy 查询入口，与章节 Run 历史保持一致。
+- 新增测试覆盖 Unit A、Unit B、legacy 三类任务列表，以及同单元、跨单元、legacy/新单元之间的检查点归属判断。
+- Story State SQLite 按传入的 state-file 所在目录打开；Story Unit 的 state-file 位于各自 `.story-units/{id}/` 目录，因此人物当前状态、关系变化、剧情事件、伏笔与 MacGuffin 更新，以及由该状态构建的 Story State Graph，均随单元数据库隔离。原著人物档案、原著人物逐章状态、原著卷级梗概仍保留在 World 共享的 `novel.db`，不得把原著知识误认为某个续写单元的状态。
+- 这一步没有把 World 级原著分析表复制到每个单元，也没有将其改造成 Story Unit 私有数据。后续若新增跨单元衍生分析，必须显式标注数据来源与作用域，不能把不同单元的生成事实合并进原著语料或共享知识库。
