@@ -81,17 +81,18 @@ async function prepareCanonIndexInputs(worldDir: string, catalog: CatalogChapter
   const sourceHash = originalText === undefined ? undefined : createHash("sha256").update(originalText, "utf8").digest("hex");
   const canonChunks = chunks.filter(chunk => {
     if (chunk.sourceHash && sourceHash) return chunk.sourceHash === sourceHash;
-    return /(?:^|\\/)original\\.txt$/i.test(chunk.source);
+    return /(?:^|\/)original\.txt$/i.test(chunk.source);
   });
   const chapterStartOffsets: Array<number | undefined> = [];
   if (originalText !== undefined) {
-    const lines = originalText.split(/\\r?\\n/);
+    const lines = originalText.split(/\r?\n/);
     const starts: number[] = [];
     let offset = 0;
     for (const line of lines) {
       starts.push(offset + line.length - line.trimStart().length);
       offset += line.length;
-      if (originalText[offset] === "\\r" && originalText[offset + 1] === "\\n") offset += 2;
+      if (originalText[offset] === "" && originalText[offset + 1] === "
+") offset += 2;
       else if (offset < originalText.length) offset++;
     }
     for (const chapter of catalog) {
