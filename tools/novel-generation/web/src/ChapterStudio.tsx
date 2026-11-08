@@ -129,10 +129,10 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   const timer=window.setInterval(load,2000);
   return()=>{disposed=true;window.clearInterval(timer);};
  },[activeWorldId,activeUniverse?.id]);
- const generateStoryUnit=async()=>{
+ const generateStoryUnit=async(createNew=false)=>{
   setGeneratingStoryUnit(true);
   try{
-   const result=await api<{storyUnit:StoryUnit}>("/api/worlds/"+activeWorldId+"/story-units/generate",{method:"POST",body:JSON.stringify({storyUnitId:selectedStoryUnitId})});
+   const result=await api<{storyUnit:StoryUnit}>("/api/worlds/"+activeWorldId+"/story-units/generate",{method:"POST",body:JSON.stringify({storyUnitId:createNew?undefined:selectedStoryUnitId})});
    setStoryUnit(result.storyUnit);if(result.storyUnit.id)setSelectedStoryUnitId(result.storyUnit.id);void api<{storyUnits:Array<{id:string;title:string;updatedAt:string}>}>("/api/worlds/"+activeWorldId+"/story-units").then(x=>setStoryUnits(x.storyUnits));message.success("完整故事单元设计已生成并保存。");
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
   finally{setGeneratingStoryUnit(false);}
@@ -257,7 +257,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   </Card>}
   {notice&&<Alert type="warning" showIcon message="本次任务未能启动" description={notice} style={{marginBottom:18}}/>}
   <Card title="完整故事单元" style={{marginBottom:18}}>
-   <Space wrap style={{marginBottom:14}}><Text strong>当前故事单元</Text><Select allowClear style={{minWidth:280}} value={selectedStoryUnitId} placeholder="选择故事单元" options={storyUnits.map(x=>({value:x.id,label:x.title}))} onChange={value=>{setSelectedStoryUnitId(value);setStoryExecution(null);setRun(null);setPreview(emptyPreview);}}/><Button onClick={()=>{setSelectedStoryUnitId(undefined);setStoryUnit(null);void generateStoryUnit();}} disabled={generatingStoryUnit||Boolean(busy)}>新建故事单元</Button></Space>
+   <Space wrap style={{marginBottom:14}}><Text strong>当前故事单元</Text><Select allowClear style={{minWidth:280}} value={selectedStoryUnitId} placeholder="选择故事单元" options={storyUnits.map(x=>({value:x.id,label:x.title}))} onChange={value=>{setSelectedStoryUnitId(value);setStoryExecution(null);setRun(null);setPreview(emptyPreview);}}/><Button onClick={()=>{setSelectedStoryUnitId(undefined);setStoryUnit(null);void generateStoryUnit(true);}} disabled={generatingStoryUnit||Boolean(busy)}>新建故事单元</Button></Space>
    <Space wrap style={{marginBottom:14}}><Text strong>当前故事单元</Text><Select style={{minWidth:280}} value={selectedStoryUnitId} placeholder="选择故事单元" options={storyUnits.map(x=>({value:x.id,label:x.title}))} onChange={value=>{setSelectedStoryUnitId(value);setStoryExecution(null);setRun(null);setPreview(emptyPreview);}}/><Button onClick={()=>{setSelectedStoryUnitId(undefined);setStoryUnit(null);void generateStoryUnit();}} disabled={generatingStoryUnit||Boolean(busy)}>新建故事单元</Button></Space>
    {!storyUnit?<Space direction="vertical" style={{width:"100%"}}><Empty description="尚未建立完整故事单元。先生成果实/场景、文化民俗、怪谈、人物群像与完整故事因果设计。"/><Button type="primary" onClick={()=>void generateStoryUnit()} loading={generatingStoryUnit} disabled={generatingStoryUnit||Boolean(busy)||Boolean(activeUniverse?.archivedAt)}>生成完整故事设计</Button></Space>:<Space direction="vertical" style={{width:"100%"}} size="middle">
     <Title level={4}>{storyUnit.title}</Title>
