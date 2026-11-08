@@ -1131,8 +1131,9 @@ async function reconcileStoryExecutionCurrentRun(input: StoryExecution): Promise
 
 async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
   const worldId = initial.worldId;
-  let task = await reconcileStoryExecutionCurrentRun(initial);
+  let task = initial;
   try {
+    task = await reconcileStoryExecutionCurrentRun(task);
     const dir = worldDir(worldId);
     const unitPath = storyExecutionUnitPath(worldId);
     let unit = validateStoryUnit(JSON.parse(await readFile(unitPath, "utf8")), worldId);
@@ -1215,9 +1216,10 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
 
 
 async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> {
-  let task = await reconcileStoryExecutionCurrentRun(initial);
+  let task = initial;
   const worldId = task.worldId;
   try {
+    task = await reconcileStoryExecutionCurrentRun(task);
     const dir = worldDir(worldId);
     const universe = await readUniverse(worldId);
     if (universe?.archivedAt) throw new Error("当前故事宇宙已归档。");
