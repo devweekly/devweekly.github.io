@@ -1181,7 +1181,7 @@ app.post("/api/worlds/:worldId/story-executions", async (req, res) => {
     startStoryUnitExecution(task);
     res.status(202).json({ execution: task });
   } catch (error) { sendError(res, error); }
-  finally { storyExecutionReservations.delete(worldIdOf(req.params.worldId)); }
+  finally { storyExecutionReservations.delete(req.params.worldId); }
 });
 app.get("/api/worlds/:worldId/story-executions/:executionId", async (req, res) => {
   try {
