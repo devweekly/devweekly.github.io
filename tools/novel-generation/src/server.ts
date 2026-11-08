@@ -1139,6 +1139,75 @@ function startStoryUnitExecution(task: StoryExecution): void {
   activeStoryExecutions.set(task.worldId, promise);
 }
 
+
+app.get("/api/worlds/:worldId/story-executions", async (req, res) => {
+  try { const id = worldIdOf(req.params.worldId); assertInsideWorld(id); res.json({ executions: await listStoryExecutions(id) }); }
+  catch (error) { sendError(res, error); }
+});
+app.post("/api/worlds/:worldId/story-executions", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    if (activeStoryExecutions.has(id)) return void res.status(409).json({ error: "当前世界已有完整故事任务正在执行。" });
+    const runs = await listRuns(id);
+    const activeChapter = runs.find(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"));
+    if (activeChapter) return void res.status(409).json({ error: "当前已有单章任务运行，请完成后再启动完整故事。" });
+    const unit = validateStoryUnit(JSON.parse(await readFile(storyExecutionUnitPath(id), "utf8")), id);
+    if (unit.execution.status === "completed") return void res.status(409).json({ error: "当前故事单元已自然收束。若要创作新故事，请创建新的故事单元或复制一个新宇宙。" });
+    const previousTasks = await listStoryExecutions(id);
+    const latest = previousTasks.find(item => item.status === "running" || item.status === "queued" || item.status === "paused");
+    if (latest) return void res.status(409).json({ error: "已有完整故事任务，请恢复或取消现有任务。", execution: latest });
+    const now = new Date().toISOString();
+    const task: StoryExecution = {
+      id: randomUUID(), worldId: id, storyUnitTitle: unit.title, status: "queued", createdAt: now, updatedAt: now,
+      completedChapters: [], brief: typeof req.body?.brief === "string" ? req.body.brief.trim().slice(0, 8000) : "",
+      ...(typeof req.body?.model === "string" ? {model:req.body.model} : {}),
+      idleChapterCount: 0, pauseRequested: false, cancelRequested: false, resumeCount: 0
+    };
+    await saveStoryExecution(task);
+    startStoryUnitExecution(task);
+    res.status(202).json({ execution: task });
+  } catch (error) { sendError(res, error); }
+});
+app.get("/api/worlds/:worldId/story-executions/:executionId", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    const execution = await getStoryExecution(id, recordId(req.params.executionId));
+    if (!execution) return void res.status(404).json({error:"Story execution not found."});
+    res.json({execution});
+  } catch (error) { sendError(res, error); }
+});
+app.post("/api/worlds/:worldId/story-executions/:executionId/pause", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); const executionId = recordId(req.params.executionId);
+    const task = await getStoryExecution(id, executionId);
+    if (!task) return void res.status(404).json({error:"Story execution not found."});
+    if (task.status !== "running" && task.status !== "queued") return void res.status(409).json({error:"当前任务不在运行状态。",execution:task});
+    const updated = {...task,pauseRequested:true,updatedAt:new Date().toISOString()};
+    await saveStoryExecution(updated); res.json({execution:updated});
+  } catch (error) { sendError(res, error); }
+});
+app.post("/api/worlds/:worldId/story-executions/:executionId/resume", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); const executionId = recordId(req.params.executionId);
+    const task = await getStoryExecution(id, executionId);
+    if (!task) return void res.status(404).json({error:"Story execution not found."});
+    if (!["paused","failed","stalled"].includes(task.status)) return void res.status(409).json({error:"当前任务不可恢复。",execution:task});
+    if (activeStoryExecutions.has(id)) return void res.status(409).json({error:"当前世界已有故事任务正在执行。"});
+    const updated = {...task,status:"queued" as const,pauseRequested:false,cancelRequested:false,error:undefined,completedAt:undefined,updatedAt:new Date().toISOString()};
+    await saveStoryExecution(updated); startStoryUnitExecution(updated); res.status(202).json({execution:updated});
+  } catch (error) { sendError(res, error); }
+});
+app.post("/api/worlds/:worldId/story-executions/:executionId/cancel", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); const executionId = recordId(req.params.executionId);
+    const task = await getStoryExecution(id, executionId);
+    if (!task) return void res.status(404).json({error:"Story execution not found."});
+    if (!["running","queued","paused"].includes(task.status)) return void res.status(409).json({error:"当前任务不能取消。",execution:task});
+    const updated = {...task,cancelRequested:true,updatedAt:new Date().toISOString()};
+    await saveStoryExecution(updated); res.json({execution:updated});
+  } catch (error) { sendError(res, error); }
+});
+
 // ── 当前滚动式多章节 Story Arc ─────────────────────────────
 app.get("/api/worlds/:worldId/story-arc", async (req, res) => {
   try {
