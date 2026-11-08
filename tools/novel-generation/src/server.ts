@@ -1033,6 +1033,65 @@ function storyExecutionUnitPath(worldId: string, storyUnitId?: string): string {
     ? path.join(worldDir(worldId), ".story-units", recordId(storyUnitId) + ".json")
     : path.join(worldDir(worldId), "story-unit.json");
 }
+
+const STORY_STATE_SNAPSHOT_FILES = ["story.db", "story.db-wal", "story.db-shm", "story-state.json", "story-arc.md"] as const;
+function storyStateSnapshotDir(worldId: string, runId: string): string {
+  return path.resolve(".output", worldId, "workbench", "state-snapshots", recordId(runId));
+}
+
+/** Snapshot the authoritative SQLite state and its JSON/arc mirrors before a chapter can mutate them. */
+async function createStoryStateSnapshot(worldId: string, storyUnitId: string | undefined, runId: string): Promise<void> {
+  const stateDir = storyUnitId ? path.join(worldDir(worldId), ".story-units", storyUnitId) : worldDir(worldId);
+  const statePath = path.join(stateDir, "story-state.json");
+  await loadStoryState(statePath, worldId);
+  const db = new DatabaseSync(path.join(stateDir, "story.db"));
+  try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } finally { db.close(); }
+  const snapshotDir = storyStateSnapshotDir(worldId, runId);
+  await rm(snapshotDir, { recursive: true, force: true });
+  await mkdir(snapshotDir, { recursive: true });
+  const files: Record<string, boolean> = {};
+  for (const name of STORY_STATE_SNAPSHOT_FILES) {
+    try { await copyFile(path.join(stateDir, name), path.join(snapshotDir, name)); files[name] = true; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; files[name] = false; }
+  }
+  const unitFile = storyExecutionUnitPath(worldId, storyUnitId);
+  try { await copyFile(unitFile, path.join(snapshotDir, "story-unit-record.json")); files["story-unit-record.json"] = true; }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; files["story-unit-record.json"] = false; }
+  await writeFile(path.join(snapshotDir, "manifest.json"), JSON.stringify({ version: 1, worldId, storyUnitId: storyUnitId ?? null, files }, null, 2) + "\n", "utf8");
+}
+
+/** Roll back a chapter whose process died or failed before all final gates passed. */
+async function restoreStoryStateSnapshot(worldId: string, run: WorkbenchRun): Promise<boolean> {
+  const snapshotDir = storyStateSnapshotDir(worldId, run.id);
+  let manifest: {version?:number;worldId?:string;storyUnitId?:string|null;files?:Record<string,boolean>};
+  try { manifest = JSON.parse(await readFile(path.join(snapshotDir, "manifest.json"), "utf8")); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return false; throw error; }
+  if (manifest.version !== 1 || manifest.worldId !== worldId || manifest.storyUnitId !== (run.storyUnitId ?? null) || !manifest.files) {
+    throw new Error("章节状态快照归属不匹配，拒绝恢复到其他故事宇宙。");
+  }
+  const stateDir = run.storyUnitId ? path.join(worldDir(worldId), ".story-units", run.storyUnitId) : worldDir(worldId);
+  await mkdir(stateDir, { recursive: true });
+  for (const name of STORY_STATE_SNAPSHOT_FILES) {
+    const target = path.join(stateDir, name);
+    if (manifest.files[name]) {
+      const temporary = target + "." + randomUUID() + ".restore";
+      await copyFile(path.join(snapshotDir, name), temporary);
+      await rename(temporary, target);
+    } else {
+      await rm(target, { force: true });
+    }
+  }
+  const unitFile = storyExecutionUnitPath(worldId, run.storyUnitId);
+  if (manifest.files["story-unit-record.json"]) {
+    const temporary = unitFile + "." + randomUUID() + ".restore";
+    await copyFile(path.join(snapshotDir, "story-unit-record.json"), temporary);
+    await rename(temporary, unitFile);
+  } else {
+    await rm(unitFile, { force: true });
+  }
+  await rm(snapshotDir, { recursive: true, force: true });
+  return true;
+}
 async function loadExecutionStoryUnit(worldId: string, storyUnitId?: string): Promise<Awaited<ReturnType<typeof generateStoryUnit>>> {
   const dir = worldDir(worldId);
   if (storyUnitId) {
@@ -1066,7 +1125,9 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
     id: runId, worldId, ...(storyUnitId ? {storyUnitId} : {}), kind: "chapter", status: "queued", createdAt: now, updatedAt: now,
     outputDir, ...(previousChapterPath ? { previousChapterPath } : {})
   };
+  await mkdir(outputDir, { recursive: true });
   await saveRun(run);
+  await createStoryStateSnapshot(worldId, storyUnitId, runId);
   await onRunStarted?.(run);
   const mode = previousChapterPath ? "continuation" : "derivative";
   const args = [
@@ -1079,7 +1140,6 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
     "--brief", brief, ...(model ? ["--model", model] : []),
     "--max-words", "3000", "--resume-dir", outputDir
   ];
-  await mkdir(outputDir, { recursive: true });
   await saveRun({ ...run, status: "running", updatedAt: new Date().toISOString() });
   const result = await new Promise<{ code: number | null; output: string; errors: string }>(resolveResult => {
     const child = spawn(process.execPath, args, { cwd: process.cwd(), env: process.env, stdio: ["ignore", "pipe", "pipe"] });
@@ -1102,6 +1162,11 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
     stateCommitted = update.worldId === worldId && /Story state automatically updated:/i.test(result.output);
   } catch { /* missing state commit */ }
   const completed = result.code === 0 && finalChapterExists && qualityPassed && stateCommitted;
+  let rollbackError = "";
+  if (!completed) {
+    try { await restoreStoryStateSnapshot(worldId, run); }
+    catch (error) { rollbackError = error instanceof Error ? error.message : String(error); }
+  }
   await Promise.all([
     writeFile(path.join(outputDir, "process.stdout.log"), result.output, "utf8"),
     writeFile(path.join(outputDir, "process.stderr.log"), result.errors, "utf8"),
@@ -1112,8 +1177,9 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
     ...(chapterPath && finalChapterExists ? {chapterPath} : {}),
     ...(!completed ? {error:("章节流程未完成：exit="+result.code+"；正文="+finalChapterExists+"；终审="+qualityPassed+"；状态提交="+stateCommitted+"\n"+(result.errors||result.output).slice(-5000))} : {})
   };
-  await saveRun(finished);
-  return finished;
+  await saveRun(rollbackError ? { ...finished, error: (finished.error ?? "章节未通过最终门禁。") + "\\n状态回滚失败：" + rollbackError } : finished);
+  if (completed || !rollbackError) await rm(storyStateSnapshotDir(worldId, runId), { recursive: true, force: true });
+  return rollbackError ? { ...finished, error: (finished.error ?? "章节未通过最终门禁。") + "\\n状态回滚失败：" + rollbackError } : finished;
 }
 
 
