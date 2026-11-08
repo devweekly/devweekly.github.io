@@ -27,7 +27,7 @@ import { importBoundedStoryAnalysisSnapshot, restrictKnowledgeDatabaseToEntry } 
 import { importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
 import { assessStoryUnitProgress, generateStoryUnit, isStoryUnitNaturallyComplete, validateStoryUnit } from "./story-unit.js";
-import { archiveStoredStoryUnitVersion, createStoredStoryUnit, getStoredStoryUnit, listStoredStoryUnitVersions, listStoredStoryUnits, saveStoredStoryUnit } from "./story-unit-store.js";
+import { archiveStoredStoryUnitVersion, createStoredStoryUnit, getStoredStoryUnit, getStoredStoryUnitVersion, listStoredStoryUnitVersions, listStoredStoryUnits, saveStoredStoryUnit } from "./story-unit-store.js";
 import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, mergeStoryExecutionControlFlags, storyRunStateWasRolledBack, type StoryExecution } from "./story-execution.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
@@ -949,6 +949,34 @@ app.get("/api/worlds/:worldId/story-units", async (req, res) => {
     const units = await listStoredStoryUnits(worldDir(id), id);
     res.json({ storyUnits: units.map(unit => validateStoryUnit(unit, id)) });
   } catch (error) { sendError(res, error); }
+});
+app.post("/api/worlds/:worldId/story-units/:storyUnitId/versions/:versionId/restore", async (req, res) => {
+  const id = worldIdOf(req.params.worldId);
+  let reserved = false;
+  try {
+    assertInsideWorld(id);
+    if (chapterGenerationReservations.has(id) || storyExecutionReservations.has(id) || activeStoryExecutions.has(id)) {
+      return void res.status(409).json({ error: "章节或完整故事执行期间不能恢复故事设计版本。" });
+    }
+    chapterGenerationReservations.add(id); reserved = true;
+    await serializeWorld(id, async () => {
+      if ((await listRuns(id)).some(run => run.kind === "chapter" && ["queued","running"].includes(run.status)) ||
+          (await listStoryExecutions(id)).some(task => ["queued","running","paused"].includes(task.status))) {
+        return void res.status(409).json({ error: "当前仍有未结束的章节或故事任务，不能恢复故事设计版本。" });
+      }
+      const storyUnitId = recordId(req.params.storyUnitId);
+      const versionId = recordId(req.params.versionId);
+      const current = await getStoredStoryUnit(worldDir(id), id, storyUnitId);
+      if (!current) return void res.status(404).json({ error: "Story Unit not found." });
+      const historical = await getStoredStoryUnitVersion(worldDir(id), id, storyUnitId, versionId);
+      if (!historical) return void res.status(404).json({ error: "Story Unit version not found." });
+      await archiveStoredStoryUnitVersion(worldDir(id), current);
+      const restored = { ...historical, id: storyUnitId, worldId: id, updatedAt: new Date().toISOString() };
+      await saveStoredStoryUnit(worldDir(id), restored);
+      res.json({ storyUnit: validateStoryUnit(restored, id) });
+    });
+  } catch (error) { sendError(res, error); }
+  finally { if (reserved) chapterGenerationReservations.delete(id); }
 });
 app.get("/api/worlds/:worldId/story-units/:storyUnitId/versions", async (req, res) => {
   try {
