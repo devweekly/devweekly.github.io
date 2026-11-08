@@ -248,10 +248,15 @@ test("universe creation uses catalog order and stable chapter IDs despite extra 
   db.exec(`
     CREATE TABLE world_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
     INSERT INTO world_meta VALUES('world_id','source-world');
-    CREATE TABLE novel_chapters(chapter_id TEXT PRIMARY KEY,title TEXT NOT NULL,ordinal INTEGER NOT NULL,volume INTEGER NOT NULL);
+    CREATE TABLE novel_chapters(
+      chapter_id TEXT PRIMARY KEY,world_id TEXT NOT NULL,ordinal INTEGER NOT NULL,volume INTEGER NOT NULL,
+      printed_number INTEGER,title TEXT NOT NULL,label TEXT NOT NULL,start_line INTEGER,
+      char_count INTEGER NOT NULL,chunk_start INTEGER NOT NULL,chunk_end INTEGER NOT NULL
+    );
     INSERT INTO novel_chapters VALUES
-      ('V01-C001','第一章',1,1),('V01-C002','第二章',2,1),
-      ('V02-C001','第一章',3,2),('V02-C002','第二章',4,2);
+      ('V01-C001','source-world',1,1,1,'第一章','第一章',1,7,0,0),
+      ('V01-C002','source-world',2,1,2,'第二章','第二章',3,7,1,1),
+      ('V02-C002','source-world',4,2,2,'第二章','第二章',7,7,2,2);
   `);
   db.close();
 
