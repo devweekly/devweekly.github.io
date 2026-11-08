@@ -202,3 +202,111 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     await rm(root, { recursive: true, force: true });
   }
 });
+
+
+test("universe creation uses catalog order and stable chapter IDs despite extra groups, repeated titles, and a chapter without chunks", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-universe-catalog-"));
+  const previousCwd = process.cwd();
+  const source = join(root, "worlds", "source-world");
+  await mkdir(join(source, "library"), { recursive: true });
+  await mkdir(join(root, "analysis", "source-world"), { recursive: true });
+  await writeFile(join(source, "world-bible.md"), "# Test World\\n");
+  await writeFile(join(source, "original.txt"), [
+    "第一章 卷一", "卷一第一章正文", "第二章 卷一", "卷一第二章正文",
+    "第一章 卷二", "卷二第一章正文", "第二章 卷二", "卷二第二章正文"
+  ].join("\\n"), "utf8");
+  const catalog = {
+    schemaVersion: 2,
+    totalLines: 8,
+    chapterCount: 4,
+    volumes: [
+      { volume: 1, chapters: [
+        { sequenceInVolume: 1, printedNumber: 1, title: "第一章", label: "第一章", line: 1 },
+        { sequenceInVolume: 2, printedNumber: 2, title: "第二章", label: "第二章", line: 3 }
+      ] },
+      { volume: 2, chapters: [
+        { sequenceInVolume: 1, printedNumber: 1, title: "第一章", label: "第一章", line: 5 },
+        { sequenceInVolume: 2, printedNumber: 2, title: "第二章", label: "第二章", line: 7 }
+      ] }
+    ]
+  };
+  await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify(catalog));
+  const chunks = [
+    { chapter: "前置内容", chunkIndex: 0, start: 0, end: 5, text: "前置内容泄漏" },
+    { chapter: "第一章", chunkIndex: 0, start: 0, end: 7, text: "卷一第一章正文" },
+    { chapter: "第二章", chunkIndex: 0, start: 0, end: 7, text: "卷一第二章正文" },
+    { chapter: "作者说明", chunkIndex: 0, start: 0, end: 5, text: "作者说明泄漏" },
+    // Volume 2's first chapter intentionally has no chunk. The catalog line
+    // boundary must provide its source text without shifting the next chapter.
+    { chapter: "第二章", chunkIndex: 0, start: 0, end: 7, text: "卷二第二章正文" }
+  ];
+  await writeFile(join(source, "library", "index.json"), JSON.stringify({
+    schemaVersion: 1, worldId: "source-world", createdAt: "2026-01-01T00:00:00.000Z",
+    updatedAt: "2026-01-01T00:00:00.000Z", chunks
+  }));
+  const db = new DatabaseSync(join(source, "novel.db"));
+  db.exec(`
+    CREATE TABLE world_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+    INSERT INTO world_meta VALUES('world_id','source-world');
+    CREATE TABLE novel_chapters(chapter_id TEXT PRIMARY KEY,title TEXT NOT NULL,ordinal INTEGER NOT NULL,volume INTEGER NOT NULL);
+    INSERT INTO novel_chapters VALUES
+      ('V01-C001','第一章',1,1),('V01-C002','第二章',2,1),
+      ('V02-C001','第一章',3,2),('V02-C002','第二章',4,2);
+  `);
+  db.close();
+
+  let server: ReturnType<typeof createServer> | undefined;
+  try {
+    process.chdir(root);
+    server = createServer(createApp());
+    await new Promise<void>(resolve => server!.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const base = `http://127.0.0.1:${address.port}`;
+    const headers = { "content-type": "application/json", host: `127.0.0.1:${address.port}` };
+
+    const directoryResponse = await fetch(base + "/api/worlds/source-world/source-chapters", { headers });
+    assert.equal(directoryResponse.status, 200);
+    const directory = JSON.parse(await directoryResponse.text()) as { chapters: Array<{ id: number; title: string }> };
+    assert.deepEqual(directory.chapters.map(item => [item.id, item.title]), [
+      [0, "第一章"], [1, "第二章"], [2, "第一章"], [3, "第二章"]
+    ]);
+
+    const response = await fetch(base + "/api/worlds/source-world/universes", {
+      method: "POST", headers,
+      body: JSON.stringify({
+        name: "卷二第一章分支", entryChapter: "第一章", entryChapterIndex: 2,
+        type: "free", brief: "稳定章节 ID 映射", buildKnowledge: false
+      })
+    });
+    const body = await response.text();
+    assert.equal(response.status, 201, body);
+    const payload = JSON.parse(body) as { universe: { id: string; entryChapterId: string; entryOrdinal: number; entryChapterIndex: number } };
+    assert.equal(payload.universe.entryChapterId, "V02-C001");
+    assert.equal(payload.universe.entryOrdinal, 3);
+    assert.equal(payload.universe.entryChapterIndex, 2);
+
+    const universeDir = join(root, "worlds", payload.universe.id);
+    assert.ok((await readFile(join(universeDir, "universe-entry.md"), "utf8")).includes("卷二第一章正文"));
+    const boundedLibrary = JSON.parse(await readFile(join(universeDir, "library", "index.json"), "utf8")) as { chunks: Array<{ chapter: string; text: string }> };
+    assert.deepEqual(boundedLibrary.chunks.map(item => item.chapter), ["第一章", "第二章"]);
+    assert.ok(!JSON.stringify(boundedLibrary).includes("前置内容泄漏"));
+    assert.ok(!JSON.stringify(boundedLibrary).includes("作者说明泄漏"));
+
+    const boundedCatalog = JSON.parse(await readFile(join(root, "analysis", payload.universe.id, "chapter-index.json"), "utf8")) as { volumes: Array<{ chapters: Array<{ title: string }> }> };
+    assert.deepEqual(boundedCatalog.volumes.flatMap(volume => volume.chapters.map(item => item.title)), ["第一章", "第二章", "第一章"]);
+
+    const snapshot = new DatabaseSync(join(universeDir, "novel.db"));
+    try {
+      assert.deepEqual((snapshot.prepare("SELECT chapter_id,ordinal FROM novel_chapters ORDER BY ordinal").all() as Array<{ chapter_id: string; ordinal: number }>), [
+        { chapter_id: "V01-C001", ordinal: 1 },
+        { chapter_id: "V01-C002", ordinal: 2 },
+        { chapter_id: "V02-C001", ordinal: 3 }
+      ]);
+    } finally { snapshot.close(); }
+  } finally {
+    if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
+    process.chdir(previousCwd);
+    await rm(root, { recursive: true, force: true });
+  }
+});
