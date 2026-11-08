@@ -971,11 +971,16 @@ app.post("/api/worlds/:worldId/story-units/generate", async (req, res) => {
       await serializeWorld(id, async () => {
       const dir = worldDir(id);
       const worldBible = await readFile(path.join(dir, "world-bible.md"), "utf8");
-      const state = await loadStoryState(path.join(dir, "story-state.json"), id);
       const previousId = typeof req.body?.storyUnitId === "string" ? recordId(req.body.storyUnitId) : undefined;
       const previousRaw = previousId ? await getStoredStoryUnit(dir, id, previousId) : undefined;
       if (previousId && !previousRaw) throw Object.assign(new Error("Story Unit not found."), { status: 404 });
       const previous = previousRaw ? validateStoryUnit(previousRaw, id) : undefined;
+      // Re-thinking an existing unit must use that unit's committed story state.
+      // Only a brand-new unit starts from the legacy/world-level continuation state.
+      const statePath = previousId
+        ? path.join(dir, ".story-units", previousId, "story-state.json")
+        : path.join(dir, "story-state.json");
+      const state = await loadStoryState(statePath, id);
       const query = [state.currentPosition, ...state.plotThreads.map(x => x.title), ...state.characters.slice(0, STORY_ANALYSIS_QUERY_CHARACTERS).map(x => x.name)].join("\n");
       const storyAnalysisContext = buildStoryAnalysisContext(readStoryAnalysis(dir, id), query);
       const brief = typeof req.body?.brief === "string" ? req.body.brief.trim().slice(0, 8000) : "";
