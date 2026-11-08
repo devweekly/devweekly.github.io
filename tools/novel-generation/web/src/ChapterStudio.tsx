@@ -87,7 +87,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
      try{const result=await api<{storyUnit:StoryUnit}>("/api/worlds/"+activeWorldId+"/story-units/"+chosen);if(!cancelled)setStoryUnit(result.storyUnit);}
      catch{if(!cancelled)setStoryUnit(null);}
    }
-  }).catch(()=>{if(!cancelled){setStoryUnit(null);setStoryUnits([]);setSelectedStoryUnitId(undefined);setStoryExecution(null);}});
+  }).catch(()=>{if(!cancelled){setStoryUnit(null);setStoryUnits([]);setSelectedStoryUnitId(undefined);setStoryExecution(null);setStoryExecutionHistory([]);setWorldStoryExecutions([]);}});
   return()=>{cancelled=true;};},[activeWorldId,selectedStoryUnitId,historyScope]);
  useEffect(()=>{
   if(!activeWorldId||!storyExecution||!["queued","running"].includes(storyExecution.status))return;
@@ -164,7 +164,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   if(!storyExecution)return;
   try{
    const result=await api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/story-executions/"+storyExecution.id+"/"+action,{method:"POST",body:"{}"});
-   setStoryExecution(result.execution);setStoryExecutionHistory(items=>items.map(item=>item.id===result.execution.id?result.execution:item));
+   setStoryExecution(result.execution);setStoryExecutionHistory(items=>items.map(item=>item.id===result.execution.id?result.execution:item));setWorldStoryExecutions(items=>items.map(item=>item.id===result.execution.id?result.execution:item));
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
  };
  const startKnowledgeBuild=async()=>{
