@@ -6,6 +6,7 @@ export interface CanonChunk {
   start: number;
   end: number;
   text: string;
+  chapterStart?: number;
 }
 
 export interface AlignedCanonChapter {
@@ -22,7 +23,8 @@ export interface AlignedCanonChapter {
  */
 export function alignCanonChapterGroups(
   catalog: CatalogChapter[],
-  chunks: CanonChunk[]
+  chunks: CanonChunk[],
+  chapterStartOffsets: Array<number | undefined> = []
 ): AlignedCanonChapter[] {
   const groups: Array<{ title: string; chunks: CanonChunk[] }> = [];
   for (const chunk of chunks) {
@@ -36,17 +38,31 @@ export function alignCanonChapterGroups(
 
   let groupIndex = 0;
   return catalog.map((chapter, catalogIndex) => {
-    // Skip only labels that are not present later in the formal catalog. If a
-    // later formal title appears before this chapter's label, this chapter is
-    // genuinely missing from the chunk index; do not steal the later chapter's
-    // text just because its title happens to be the next available group.
-    const laterTitles = new Set(catalog.slice(catalogIndex + 1).map(item => item.title));
-    while (groupIndex < groups.length && groups[groupIndex]!.title !== chapter.title &&
-      !laterTitles.has(groups[groupIndex]!.title)) {
+    const expectedStart = chapterStartOffsets[catalogIndex];
+    const remainingSameTitle = catalog.slice(catalogIndex).filter(item => item.title === chapter.title).length;
+    const groupMatches = (group: { title: string; chunks: CanonChunk[] } | undefined): boolean => {
+      if (!group || group.title !== chapter.title) return false;
+      const positions = group.chunks.map(item => item.chapterStart).filter((value): value is number => Number.isSafeInteger(value));
+      if (expectedStart !== undefined && positions.length) return positions.every(value => value === expectedStart);
+      // Repeated titles without positional evidence cannot be safely aligned.
+      if (remainingSameTitle > 1) {
+        throw new Error("原著切片包含重复章节标题「" + chapter.title + "」，但缺少 chapterStart 原文位置，无法安全映射。请重新 ingest 原文后重试。");
+      }
+      return true;
+    };
+    // Skip only groups that cannot belong to this or any later catalog entry.
+    // A same-title group at another source position belongs to a later repeated
+    // chapter and must not be consumed by the current chapter.
+    while (groupIndex < groups.length && !groupMatches(groups[groupIndex])) {
+      const candidate = groups[groupIndex]!;
+      const laterCandidates = catalog.slice(catalogIndex + 1).filter(item => item.title === candidate.title);
+      const candidatePosition = candidate.chunks[0]?.chapterStart;
+      if (candidate.title === chapter.title && laterCandidates.length && candidatePosition !== undefined) break;
+      if (catalog.slice(catalogIndex + 1).some(item => item.title === candidate.title)) break;
       groupIndex++;
     }
     const group = groups[groupIndex];
-    if (group?.title === chapter.title) {
+    if (groupMatches(group)) {
       group.chunks.sort((a, b) => a.chunkIndex - b.chunkIndex);
       groupIndex++;
       return { chapter, catalogIndex, chunks: group.chunks };
