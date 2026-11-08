@@ -15,6 +15,7 @@ test("story execution checkpoints survive restart and resume from completed chap
       id: "5e4a83c8-51aa-4cc3-8db1-b93f27f4c5a2", worldId: "world-a", storyUnitTitle: "雾河镇", mode: "complete_story" as const,
       status: "running" as const, createdAt: now, updatedAt: now, startedAt: now,
       completedChapters: [{ runId: "7ab0f4d0-99e0-4f6d-8c1b-1a0e8b7f3c19", chapterPath: ".output/world-a/chapter-one/chapter.md", completedAt: now }],
+      events: [{ at: now, type: "created", message: "created" }],
       currentRunId: "8c7f50f1-8e9d-4a20-b6d0-a7a4c4c8d9a1",
       brief: "", idleChapterCount: 0, pauseRequested: false, cancelRequested: false, resumeCount: 0
     };
@@ -41,7 +42,7 @@ test("story execution rejects invalid lifecycle states and malformed checkpoint 
     const now = new Date().toISOString();
     await assert.rejects(() => saveStoryExecution({
       id: "not-a-uuid", worldId: "world-a", storyUnitTitle: "x", mode: "complete_story", status: "running", createdAt: now, updatedAt: now,
-      completedChapters: [], brief: "", idleChapterCount: 0, pauseRequested: false, cancelRequested: false, resumeCount: 0
+      completedChapters: [], events: [], brief: "", idleChapterCount: 0, pauseRequested: false, cancelRequested: false, resumeCount: 0
     } as never));
   } finally {
     process.chdir(original);
@@ -59,7 +60,7 @@ test("fixed chapter batches accept story-sized counts without a 30 chapter cap",
     const task = {
       id: "9e2ad4d2-8b6f-4a9f-a4c4-8e49f6d08a61", worldId: "world-a", storyUnitTitle: "雾河镇",
       mode: "fixed_batch" as const, targetChapterCount: 37, status: "queued" as const,
-      createdAt: now, updatedAt: now, completedChapters: [], brief: "",
+      createdAt: now, updatedAt: now, completedChapters: [], events: [], brief: "",
       idleChapterCount: 0, pauseRequested: false, cancelRequested: false, resumeCount: 0
     };
     await saveStoryExecution(task);
