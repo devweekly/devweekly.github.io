@@ -1519,13 +1519,26 @@ app.post("/api/worlds/:worldId/story-executions/:executionId/cancel", async (req
 app.get("/api/worlds/:worldId/story-arc", async (req, res) => {
   try {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
-    const storyUnitId = typeof req.query.storyUnitId === "string" ? recordId(req.query.storyUnitId) : undefined;
+    const rawUnitId = req.query.storyUnitId;
+    const storyUnitId = typeof rawUnitId === "string" && rawUnitId !== "legacy" ? recordId(rawUnitId) : undefined;
+    if (storyUnitId && !await getStoredStoryUnit(worldDir(id), id, storyUnitId)) return void res.status(404).json({ error: "Story Unit not found." });
     const arcPath = storyUnitId ? path.join(worldDir(id), ".story-units", storyUnitId, "story-arc.md") : path.join(worldDir(id), "story-arc.md");
     const content = await readFile(arcPath, "utf8").catch(error => {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
       throw error;
     });
     res.json({ storyArc: content });
+  } catch (error) { sendError(res, error); }
+});
+
+app.get("/api/worlds/:worldId/story-units/:storyUnitId/state", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    const storyUnitId = recordId(req.params.storyUnitId);
+    const unit = await getStoredStoryUnit(worldDir(id), id, storyUnitId);
+    if (!unit) return void res.status(404).json({ error: "Story Unit not found." });
+    const state = await loadStoryState(path.join(worldDir(id), ".story-units", storyUnitId, "story-state.json"), id);
+    res.json({ storyUnitId, storyUnitTitle: unit.title, state, graph: buildStoryStateGraph(state) });
   } catch (error) { sendError(res, error); }
 });
 
@@ -1562,9 +1575,12 @@ function graphPendingResponse(source: string, worldId: string): GraphPendingResp
 }
 
 /** 续写图谱由 Story State 实时派生；不落第二份存储。 */
-async function sequelGraphResponse(source: "sequel", id: string, dir: string, query: string, limit: number): Promise<GraphResponse> {
-  const state: StoryState = await loadStoryState(path.join(dir, "story-state.json"), id);
-  return { source, available: true, ...filterGraph(buildStoryStateGraph(state), query, limit) };
+async function sequelGraphResponse(source: "sequel", id: string, dir: string, query: string, limit: number, storyUnitId?: string | null): Promise<GraphResponse> {
+  const statePath = storyUnitId
+    ? path.join(dir, ".story-units", storyUnitId, "story-state.json")
+    : path.join(dir, "story-state.json");
+  const state: StoryState = await loadStoryState(statePath, id);
+  return { source, scope: storyUnitId ? "story-unit" : "legacy", storyUnitId: storyUnitId ?? null, available: true, ...filterGraph(buildStoryStateGraph(state), query, limit) };
 }
 
 /** 原著图谱只读完整 v6 story_analysis 快照；缺版本或不完整时返回占位结果。 */
@@ -1584,7 +1600,15 @@ async function graphHandler(req: Request<WorldIdParams>, res: Response): Promise
   const limit = graphQueryLimit(req.query.limit);
   const dir = worldDir(id);
   if (source === "sequel") {
-    res.json(await sequelGraphResponse(source, id, dir, query, limit));
+    const rawUnitId = req.query.storyUnitId;
+    let storyUnitId: string | null | undefined;
+    if (rawUnitId === "legacy") storyUnitId = null;
+    else if (typeof rawUnitId === "string") {
+      storyUnitId = recordId(rawUnitId);
+      const unit = await getStoredStoryUnit(dir, id, storyUnitId);
+      if (!unit) return void res.status(404).json({ error: "Story Unit not found." });
+    }
+    res.json(await sequelGraphResponse(source, id, dir, query, limit, storyUnitId));
     return;
   }
   res.json(originalGraphResponse(source, id, dir, query, limit));
