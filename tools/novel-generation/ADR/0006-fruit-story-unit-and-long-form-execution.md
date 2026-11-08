@@ -166,3 +166,14 @@ Story Unit 先建立完整故事的因果骨架和结局方向，再按叙事需
 注意：旧版单章生成入口仍使用 World 级路径，尚未完整接入 Story Unit；切换单元后应优先使用完整故事执行或批量章节执行。Story Arc 仅完成上下文读取隔离，卷级原著 Arc 仍然是共享资料。需要继续完成单章生成入口、人物/伏笔图谱写入边界及跨单元暂停恢复集成测试。
 
 - Workbench 选中 Story Unit 时禁用旧版 World 级「生成下一章」按钮，避免用户从旧入口写入共享状态；使用单元级完整故事或连续章节执行。未选择单元时保留旧版兼容入口。
+
+### 单章生成与章节历史的 Story Unit 归属（2026-11-08，第四阶段）
+
+- `POST /api/worlds/:worldId/chapters/generate` 接受 `storyUnitId`，并校验该单元确实属于当前 World。
+- 单章 Run 写入 `storyUnitId`；上一章选择、活跃章节冲突检测均限制在同一 Story Unit 内。
+- 单章 CLI 与长篇 Worker 一致，传入单元级 `--state-file`、`--story-unit-file`、`--story-arc-file`，避免单章入口绕过隔离。
+- `/runs` API 支持 `storyUnitId` 过滤；`storyUnitId=legacy` 查询尚未归属 Story Unit 的旧记录。存储层 `listRuns(worldId, storyUnitId)` 提供同样的过滤语义。
+- Workbench 单章续写按钮现在可以在选中单元时使用，并向 API 传递当前 `storyUnitId`。
+- 增加 Workbench Store 测试，验证 Unit A、Unit B 和 legacy 运行历史互不混淆。
+
+说明：World 级任务锁仍然串行化同一 World 的写入；这是为了保护共享原著索引、World Bible 等资料，不代表不同 Story Unit 共用故事状态。
