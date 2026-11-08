@@ -141,3 +141,16 @@ Story Unit 先建立完整故事的因果骨架和结局方向，再按叙事需
 - `listStoryExecutions(worldId, storyUnitId?)` 支持按 Story Unit 过滤，并增加同一 World 两个 Story Unit 的隔离查询测试。
 - 这只是执行记录的数据模型与查询基础，不代表 worker 已经完成隔离。当前长篇 worker 仍通过旧 `story-unit.json` 读写单一故事设计，章节 CLI 仍共享 World 级 Story State；创建任务的 API/UI 也尚未贯通所选 Story Unit。
 - 因此当前版本仍不得将多 Story Unit 描述为可独立执行。下一阶段必须先把 `storyUnitId` 贯穿任务创建、worker、章节 Run、检查点恢复和 Story State 持久化，再开放 Workbench 多单元切换入口。
+
+### Story Unit 执行链路隔离（2026-11-08，第二阶段）
+
+本阶段把 storyUnitId 从任务元数据推进到实际章节生成链路：
+
+- 长篇 Worker 和固定章节批次 Worker 按任务的 storyUnitId 加载、更新对应 .story-units/{id}.json，不再默认读写 story-unit.json。
+- 章节 Run 写入 storyUnitId；长篇 Worker 选择上一章时只考虑同一 Story Unit 的章节。
+- 恢复时，currentRunId 指向的 Run 必须与任务的 storyUnitId 一致；不匹配时不会将该章节补入当前任务检查点。
+- 章节 CLI 的 write 命令增加 --state-file 和 --story-unit-file 参数。长篇 Worker 为每个 Story Unit 使用独立的 .story-units/{id}/story-state.json。该目录也作为 Story State SQLite 的根目录，避免多个单元共享同一份 SQLite 状态。
+- 进度评估读取当前 Story Unit 自己的 Story State。世界 Bible、原著语料、检索索引仍是 World 共享知识，不应与故事单元自己的剧情进度混为一谈。
+- Story Execution 列表 API 支持 ?storyUnitId= 过滤；创建完整故事和批量章节任务 API 接受 storyUnitId。
+
+**仍未完成：** Workbench 尚未提供 Story Unit 选择和切换 UI；单章生成、旧版 /story-unit API、部分世界级分析/卷级 Arc 仍保留旧路径或 World 级语义。当前 Worker 按 Story Unit 隔离的是长篇/批量执行路径，不应扩大解释为整个 Workbench 已完成多单元隔离。并发执行仍按 World 串行，避免共享知识构建和现有 World 级写操作互相竞争。
