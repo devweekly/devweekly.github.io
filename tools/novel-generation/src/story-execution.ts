@@ -50,8 +50,10 @@ export async function recoverStoryExecutions(worldId: string): Promise<number> {
   let recovered = 0;
   for (const task of tasks) {
     if (task.status !== "running" && task.status !== "queued") continue;
+    // Keep currentRunId: on resume the worker reconciles whether that exact run
+    // completed just before the process stopped, closing the checkpoint write gap.
     await saveStoryExecution({ ...task, status: "paused", pauseRequested: false, cancelRequested: false,
-      currentRunId: undefined, updatedAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
       error: "Workbench restarted. Completed chapters and story state are preserved; resume this story execution to continue." });
     recovered++;
   }
