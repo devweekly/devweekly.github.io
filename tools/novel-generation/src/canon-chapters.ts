@@ -75,7 +75,7 @@ export function alignCanonChapterGroups(
 
 
 /** Keep only chunks from the immutable original.txt source, never auxiliary imports. */
-export function selectCanonSourceChunks(chunks: CanonChunk[], originalSourceHash?: string): CanonChunk[] {
+export function selectCanonSourceChunks<T extends CanonChunk>(chunks: T[], originalSourceHash?: string): T[] {
   return chunks.filter(chunk => {
     const isCanonicalPath = typeof chunk.source === "string" && /(?:^|\/)original\.txt$/i.test(chunk.source);
     if (!isCanonicalPath) return false;
