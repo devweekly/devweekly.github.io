@@ -1916,6 +1916,14 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
       ...(previousChapterPath ? { previousChapterPath } : {})
     };
     await saveRun(run);
+    try {
+      await mkdir(outputDir, { recursive: true });
+      await createStoryStateSnapshot(id, requestedStoryUnitId, runId);
+    } catch (error) {
+      await restoreStoryStateSnapshot(id, run).catch(() => false);
+      await saveRun({ ...run, status: "failed", error: error instanceof Error ? error.message : String(error), updatedAt: new Date().toISOString() });
+      throw error;
+    }
     const args = [
       ...buildCliEntryArgs(["write"]), "--world", id,
       ...(requestedStoryUnitId ? ["--state-file", path.join(dir, ".story-units", requestedStoryUnitId, "story-state.json"), "--story-unit-file", storyExecutionUnitPath(id, requestedStoryUnitId), "--story-arc-file", path.join(dir, ".story-units", requestedStoryUnitId, "story-arc.md")] : []),
@@ -1938,6 +1946,7 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
     child.on("error", error => {
       if (settled) return; settled = true;
       void (async () => {
+        await restoreStoryStateSnapshot(id, run).catch(() => false);
         await Promise.all([
           writeFile(path.join(outputDir, "process.stdout.log"), output, "utf8"),
           writeFile(path.join(outputDir, "process.stderr.log"), errors + "\n" + error.stack, "utf8"),
@@ -1965,7 +1974,12 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
           stateCommitted = update.worldId === id && /Story state automatically updated:/i.test(output);
         } catch { /* missing/invalid state update is a failed run */ }
         const completed = code === 0 && finalChapterExists && qualityPassed && stateCommitted;
-        const result = { exitCode: code, chapterPath: chapterPath ?? null, finalChapterExists, qualityPassed, stateCommitted, completed };
+        let rollbackError = "";
+        if (!completed) {
+          try { await restoreStoryStateSnapshot(id, run); }
+          catch (error) { rollbackError = error instanceof Error ? error.message : String(error); }
+        }
+        const result = { exitCode: code, chapterPath: chapterPath ?? null, finalChapterExists, qualityPassed, stateCommitted, completed, rollbackError: rollbackError || undefined };
         await Promise.all([
           writeFile(path.join(outputDir, "process.stdout.log"), output, "utf8"),
           writeFile(path.join(outputDir, "process.stderr.log"), errors, "utf8"),
@@ -1974,11 +1988,14 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
         await saveRun({
           ...run, status: completed ? "completed" : "failed",
           ...(chapterPath && finalChapterExists ? { chapterPath } : {}),
-          ...(!completed ? { error: ("章节流程未完成：exit=" + code + "；正文=" + finalChapterExists + "；终审=" + qualityPassed + "；状态提交=" + stateCommitted + "\n" + (errors || output).slice(-5000)) } : {}),
+          ...(!completed ? { error: ("章节流程未完成：exit=" + code + "；正文=" + finalChapterExists + "；终审=" + qualityPassed + "；状态提交=" + stateCommitted + "\n" + (errors || output).slice(-5000) + (rollbackError ? "\n状态回滚失败：" + rollbackError : "")) } : {}),
           updatedAt: new Date().toISOString()
         });
-      })().catch(error => {
-        void saveRun({ ...run, status: "failed", error: "Finalizing chapter run failed: " + String(error), updatedAt: new Date().toISOString() });
+        if (completed || !rollbackError) await rm(storyStateSnapshotDir(id, runId), { recursive: true, force: true }).catch(() => undefined);
+      })().catch(async error => {
+        let rollbackError = "";
+        try { await restoreStoryStateSnapshot(id, run); } catch (cause) { rollbackError = cause instanceof Error ? cause.message : String(cause); }
+        await saveRun({ ...run, status: "failed", error: "Finalizing chapter run failed: " + String(error) + (rollbackError ? "; state rollback failed: " + rollbackError : ""), updatedAt: new Date().toISOString() });
       });
     });
     res.status(202).json({ run });
