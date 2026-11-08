@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution } from "../src/story-execution.js";
+import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun } from "../src/story-execution.js";
 
 test("story execution checkpoints survive restart and resume from completed chapters", async () => {
   const original = process.cwd();
@@ -92,8 +92,29 @@ test("story execution listing can isolate one Story Unit within a shared world",
     assert.equal((await listStoryExecutions("world-a")).length, 2);
     assert.deepEqual((await listStoryExecutions("world-a", first.storyUnitId)).map(x => x.id), [first.id]);
     assert.deepEqual((await listStoryExecutions("world-a", second.storyUnitId)).map(x => x.id), [second.id]);
+    const legacy = { ...base, id: "a8a2b5b4-3f9d-4c61-9a3a-1a2b3c4d5e6f", storyUnitTitle: "旧故事" };
+    await saveStoryExecution(legacy);
+    assert.equal((await listStoryExecutions("world-a", null)).length, 1);
+    assert.deepEqual((await listStoryExecutions("world-a", null)).map(x => x.id), [legacy.id]);
+    assert.equal((await listStoryExecutions("world-a")).length, 3);
+    assert.equal(storyExecutionOwnsRun(first.storyUnitId, first.storyUnitId), true);
+    assert.equal(storyExecutionOwnsRun(first.storyUnitId, second.storyUnitId), false);
+    assert.equal(storyExecutionOwnsRun(first.storyUnitId, undefined), false);
+    assert.equal(storyExecutionOwnsRun(undefined, undefined), true);
+    assert.equal(storyExecutionOwnsRun(undefined, second.storyUnitId), false);
   } finally {
     process.chdir(original);
     await rm(root, { recursive: true, force: true });
   }
+});
+
+
+test("checkpoint ownership never crosses Story Units and preserves legacy ownership", () => {
+  const a = "5e4a83c8-51aa-4cc3-8db1-b93f27f4c5a2";
+  const b = "8c7f50f1-8e9d-4a20-b6d0-a7a4c4c8d9a1";
+  assert.equal(storyExecutionOwnsRun(a, a), true);
+  assert.equal(storyExecutionOwnsRun(a, b), false);
+  assert.equal(storyExecutionOwnsRun(a, undefined), false);
+  assert.equal(storyExecutionOwnsRun(undefined, undefined), true);
+  assert.equal(storyExecutionOwnsRun(undefined, b), false);
 });
