@@ -1,6 +1,6 @@
 // Workbench 人物页：人物列表与详情（档案、逐章状态历史）。数据只读自服务端 API，
 // 面板不写正史；条目是否可信仍以证据等级与来源为准，展示层不做二次合并。
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert, Avatar, Badge, Button, Card, Col, Descriptions, Divider, Empty, Flex, Input,
   List, Row, Space, Spin, Statistic, Tabs, Tag, Timeline, Typography
@@ -66,6 +66,7 @@ export type CharacterDetail = {
 };
 
 export interface CharactersPanelProps {
+  worldId: string;
   characters: Character[];
   query: string;
   onQueryChange: (value: string) => void;
@@ -100,10 +101,41 @@ const SectionLabel = ({ children }: { children: React.ReactNode }): React.ReactN
   <Text type="secondary" className="section-label">{children}</Text>
 );
 
+type StoryUnitStateView = { storyUnitId:string; storyUnitTitle:string; state:{ currentPosition:string; characters:Array<{name:string;status:string;location?:string;profile?:{arc?:string;coreTraits?:string[];contradictions?:string[]};arcMilestones?:Array<{chapter:string;change:string;evidence:string}>}>; events:Array<{id:string;summary:string;position:string;participants:string[]}>; relationshipUpdates?:Array<{from:string;to:string;label:string;chapter:string;change:string}>; foreshadowingUpdates?:Array<{clue:string;status:string;chapter:string;change:string}>; macguffinUpdates?:Array<{name:string;status:string;chapter:string;holder?:string;location?:string}> } };
+
 export default function CharactersPanel({
-  characters, query, onQueryChange, selected, onSelect, detail, total, loading, onRefresh
+  worldId, characters, query, onQueryChange, selected, onSelect, detail, total, loading, onRefresh
 }: CharactersPanelProps) {
   const [aliasExpanded, setAliasExpanded] = useState(false);
+  const [storyUnits, setStoryUnits] = useState<Array<{id:string;title:string}>>([]);
+  const [selectedStoryUnitId, setSelectedStoryUnitId] = useState<string>();
+  const [storyState, setStoryState] = useState<StoryUnitStateView | null>(null);
+  const [storyStateLoading, setStoryStateLoading] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setStoryState(null);
+    fetch(`/api/worlds/${encodeURIComponent(worldId)}/story-units`).then(async response => {
+      const body = await response.json() as {storyUnits?:Array<{id:string;title:string}>;error?:string};
+      if (!response.ok) throw new Error(body.error ?? response.statusText);
+      if (cancelled) return;
+      const units = body.storyUnits ?? [];
+      setStoryUnits(units);
+      setSelectedStoryUnitId(current => current && units.some(unit => unit.id === current) ? current : units[0]?.id);
+    }).catch(() => { if (!cancelled) { setStoryUnits([]); setSelectedStoryUnitId(undefined); } });
+    return () => { cancelled = true; };
+  }, [worldId]);
+
+  useEffect(() => {
+    if (!selectedStoryUnitId) { setStoryState(null); return; }
+    let cancelled = false;
+    setStoryStateLoading(true);
+    fetch(`/api/worlds/${encodeURIComponent(worldId)}/story-units/${encodeURIComponent(selectedStoryUnitId)}/state`)
+      .then(async response => { const body = await response.json() as StoryUnitStateView & {error?:string}; if (!response.ok) throw new Error(body.error ?? response.statusText); if (!cancelled) setStoryState(body); })
+      .catch(() => { if (!cancelled) setStoryState(null); })
+      .finally(() => { if (!cancelled) setStoryStateLoading(false); });
+    return () => { cancelled = true; };
+  }, [worldId, selectedStoryUnitId]);
   const aliases = detail?.character.aliases ?? [];
 
   const dossier = detail ? (
@@ -243,6 +275,15 @@ export default function CharactersPanel({
   ) : null;
 
   return (
+    <Space direction="vertical" size={16} style={{width:"100%"}}>
+    <Card title="当前续写人物与关系状态" extra={<Select allowClear placeholder="选择故事单元" style={{minWidth:220}} value={selectedStoryUnitId} onChange={setSelectedStoryUnitId} options={storyUnits.map(unit=>({value:unit.id,label:unit.title}))}/>}>
+      {storyStateLoading ? <Spin/> : !storyUnits.length ? <Empty description="尚未建立故事单元。原著人物档案仍可在下方查看。"/> : !storyState ? <Empty description="当前单元还没有已提交的续写人物状态。"/> : <Space direction="vertical" style={{width:"100%"}} size="middle">
+        <Text type="secondary">{storyState.storyUnitTitle} · {storyState.state.currentPosition || "尚未推进剧情"}</Text>
+        {storyState.state.characters.length ? <List size="small" dataSource={storyState.state.characters} renderItem={person=><List.Item><List.Item.Meta title={person.name} description={<Space direction="vertical" size={2}><Text>{person.status}{person.location ? " · "+person.location : ""}</Text>{person.profile?.arc ? <Text type="secondary">人物弧光：{person.profile.arc}</Text> : null}{person.arcMilestones?.length ? <Text type="secondary">关键转折：{person.arcMilestones.map(item=>item.change).join("；")}</Text> : null}</Space>}/></List.Item>}/> : <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description="当前单元尚无人​​物状态"/>}
+        <Row gutter={[12,12]}>{[[ "关系变化",storyState.state.relationshipUpdates?.length??0 ],["剧情事件",storyState.state.events.length],["伏笔",storyState.state.foreshadowingUpdates?.length??0],["关键物件",storyState.state.macguffinUpdates?.length??0]].map(([label,count])=><Col xs={12} md={6} key={String(label)}><Statistic title={String(label)} value={Number(count)}/></Col>)}</Row>
+        {storyState.state.events.slice(-5).reverse().map(event=><div key={event.id}><Text strong>{event.position} · {event.summary}</Text><div><Text type="secondary">{event.participants.join("、")}</Text></div></div>)}
+      </Space>}
+    </Card>
     <Row gutter={[16, 16]} align="top">
       <Col xs={24} md={9} xl={8}>
         <Card
@@ -415,5 +456,6 @@ export default function CharactersPanel({
         </Spin>
       </Col>
     </Row>
+    </Space>
   );
 }
