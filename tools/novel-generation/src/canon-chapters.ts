@@ -62,7 +62,7 @@ export function alignCanonChapterGroups(
       groupIndex++;
     }
     const group = groups[groupIndex];
-    if (groupMatches(group)) {
+    if (group && groupMatches(group)) {
       group.chunks.sort((a, b) => a.chunkIndex - b.chunkIndex);
       groupIndex++;
       return { chapter, catalogIndex, chunks: group.chunks };
