@@ -38,7 +38,8 @@ const StoryUnitSchema = z.object({
   storySpine: z.array(BeatSchema).min(4),
   subplots: z.array(z.string()).default([]),
   climax: z.string().min(1), endingAndAftermath: z.string().min(1),
-  unresolvedQuestions: z.array(z.string()).default([]), creativePossibilities: z.array(z.string()).default([])
+  unresolvedQuestions: z.array(z.string()).default([]), creativePossibilities: z.array(z.string()).default([]),
+  execution: z.object({ status: z.enum(["not_started", "in_progress", "completed"]).default("not_started"), completedChapterIds: z.array(z.string()).default([]), lastAssessment: z.string().optional(), nextDirection: z.string().optional(), assessedAt: z.string().optional(), completedAt: z.string().optional() }).default({ status: "not_started", completedChapterIds: [] })
 }).strict();
 
 export type StoryUnit = z.infer<typeof StoryUnitSchema>;
@@ -86,6 +87,39 @@ export async function generateStoryUnit(input: {
 }
 
 /** 供章节写作检索与上下文使用的紧凑故事方向；不把创作可能性转成强制任务。 */
+
+const StoryProgressAssessmentSchema = z.object({
+  coreConflictResolved: z.boolean(), endingFeelsNatural: z.boolean(),
+  confidence: z.enum(["low", "medium", "high"]),
+  unresolvedCoreThreads: z.array(z.string()), remainingStoryWork: z.array(z.string()),
+  nextDirection: z.string(), rationale: z.string()
+}).strict();
+export type StoryProgressAssessment = z.infer<typeof StoryProgressAssessmentSchema>;
+
+/** Judge narrative closure from actual completed text and committed story state, never chapter count. */
+export async function assessStoryUnitProgress(input: {
+  unit: StoryUnit; chapterText: string; chapterTitle: string; completedChapterCount: number;
+  storyState: StoryState; model?: string;
+}): Promise<StoryProgressAssessment> {
+  const prompt = [
+    "你是长篇小说的责任编辑，判断当前完整故事是否真正写完。只输出 JSON。",
+    "最高原则：文学性、文笔、艺术风格高于其他一切。不要为了结构完整强迫人物或剧情。",
+    "这不是章节数量判断。章节数没有固定目标、上限或完成阈值。不要因为出现高潮、反派暂时失败、章节有收尾感就判定故事结束。",
+    "只有当本 Story Unit 的核心戏剧问题已得到有意义的回答、主要因果冲突已解决或完成有意的开放式收束、人物关键选择产生了后果、结尾自然成立，并且没有仍需本故事回答的核心问题时，才可把 coreConflictResolved 和 endingFeelsNatural 都设为 true。",
+    "允许保留世界谜团、余韵和明确属于后续故事的问题；不要把这些误判为本故事未完成。区分核心故事线与可留白的世界设定。",
+    "若证据不足，必须保守判定 false。completedChapterCount 仅用于确认已经有连续正文，不是完成标准。至少已有两章正文后才允许判定完成。",
+    "JSON 结构：",
+    JSON.stringify({ coreConflictResolved: false, endingFeelsNatural: false, confidence: "medium", unresolvedCoreThreads: ["尚未收束的核心线"], remainingStoryWork: ["下一步具体需要写的内容"], nextDirection: "下一章最自然的推进方向", rationale: "依据实际正文说明" }, null, 2),
+    "故事单元：", JSON.stringify(input.unit),
+    "已完成章节数（仅供上下文，不作阈值）：", String(input.completedChapterCount),
+    "刚完成章节标题：", input.chapterTitle,
+    "刚完成章节正文：", input.chapterText.slice(-18000),
+    "已提交 Story State：", JSON.stringify(input.storyState)
+  ].join("\n\n");
+  const raw = await runAgentText(prompt, input.model, DEFAULT_AGENT_TIMEOUT_MS, readTaskProfiles().plot, true);
+  return StoryProgressAssessmentSchema.parse(parseJsonObject(raw));
+}
+
 export function formatStoryUnit(unit: StoryUnit | undefined): string {
   if (!unit) return "";
   const lines = [
@@ -101,7 +135,7 @@ export function formatStoryUnit(unit: StoryUnit | undefined): string {
     "禁忌怪谈：" + unit.taboosAndGhostStories.map(x => x.name + "：" + x.versions.join("、") + "；场景潜力：" + x.scenePotential).join(" / "),
     "人物群像：" + unit.cast.map(x => x.name + (x.status === "existing" ? "（已出场）" : "（新人物）") + "：" + x.role + "；欲望：" + x.desire + "；关系：" + x.relationships.join("、") + "；发展可能：" + x.possibleDevelopment.join("、")).join(" / "),
     "人物关系变化可能：" + unit.relationshipDynamics.join("；"),
-    "完整故事因果脊柱：" + unit.storySpine.map((x, i) => (i + 1) + "." + x.title + "：" + x.function + "；" + x.causalChange).join(" / "),
+    "执行状态：" + unit.execution.status + "；已完成章节：" + unit.execution.completedChapterIds.length,\n    unit.execution.lastAssessment ? "最近进展判断：" + unit.execution.lastAssessment : "",\n    unit.execution.nextDirection ? "下一步自然推进方向：" + unit.execution.nextDirection : "",\n    "完整故事因果脊柱：" + unit.storySpine.map((x, i) => (i + 1) + "." + x.title + "：" + x.function + "；" + x.causalChange).join(" / "),
     "支线：" + unit.subplots.join("；"),
     "高潮方向：" + unit.climax,
     "结局与余韵方向：" + unit.endingAndAftermath,
