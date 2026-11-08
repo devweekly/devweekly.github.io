@@ -1028,6 +1028,7 @@ function appendStoryExecutionEvent(task: StoryExecution, event: StoryExecution["
 }
 const activeStoryExecutions = new Map<string, Promise<void>>();
 const storyExecutionReservations = new Set<string>();
+const chapterGenerationReservations = new Set<string>();
 function storyExecutionUnitPath(worldId: string, storyUnitId?: string): string {
   return storyUnitId
     ? path.join(worldDir(worldId), ".story-units", recordId(storyUnitId) + ".json")
@@ -1491,7 +1492,7 @@ app.post("/api/worlds/:worldId/story-executions", async (req, res) => {
   let reservedId: string | undefined;
   try {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
-    if (activeStoryExecutions.has(id) || storyExecutionReservations.has(id)) return void res.status(409).json({ error: "当前世界已有完整故事任务正在执行或启动。" });
+    if (activeStoryExecutions.has(id) || storyExecutionReservations.has(id) || chapterGenerationReservations.has(id)) return void res.status(409).json({ error: "当前世界已有章节或故事任务正在执行或启动。" });
     storyExecutionReservations.add(id);
     reservedId = id;
     const requestedUnitId = typeof req.body?.storyUnitId === "string" ? recordId(req.body.storyUnitId) : undefined;
@@ -1526,7 +1527,7 @@ app.post("/api/worlds/:worldId/chapter-batches", async (req, res) => {
   let reservedId: string | undefined;
   try {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
-    if (activeStoryExecutions.has(id) || storyExecutionReservations.has(id)) return void res.status(409).json({error:"当前世界已有长篇或批量章节任务正在执行。"});
+    if (activeStoryExecutions.has(id) || storyExecutionReservations.has(id) || chapterGenerationReservations.has(id)) return void res.status(409).json({error:"当前世界已有章节或长篇任务正在执行。"});
     storyExecutionReservations.add(id); reservedId = id;
     const requestedUnitId = typeof req.body?.storyUnitId === "string" ? recordId(req.body.storyUnitId) : undefined;
     const count = Number(req.body?.chapterCount);
@@ -1590,7 +1591,7 @@ app.post("/api/worlds/:worldId/story-executions/:executionId/resume", async (req
   let reservedId: string | undefined;
   try {
     const id = worldIdOf(req.params.worldId); const executionId = recordId(req.params.executionId);
-    if (activeStoryExecutions.has(id) || storyExecutionReservations.has(id)) return void res.status(409).json({error:"当前世界已有故事任务正在执行或启动。"});
+    if (activeStoryExecutions.has(id) || storyExecutionReservations.has(id) || chapterGenerationReservations.has(id)) return void res.status(409).json({error:"当前世界已有章节或故事任务正在执行或启动。"});
     storyExecutionReservations.add(id); reservedId = id;
     const task = await getStoryExecution(id, executionId);
     if (!task) return void res.status(404).json({error:"Story execution not found."});
@@ -1870,7 +1871,10 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
   try {
     const requestedStoryUnitId = typeof req.body?.storyUnitId === "string" ? recordId(req.body.storyUnitId) : undefined;
     const lockId = worldIdOf(req.params.worldId);
-    if (activeStoryExecutions.has(lockId)) return void res.status(409).json({ error: "完整故事任务正在执行，请暂停或取消后再单独生成章节。" });
+    if (chapterGenerationReservations.has(lockId)) return void res.status(409).json({ error: "当前世界已有单章任务正在启动。" });
+    chapterGenerationReservations.add(lockId);
+    try {
+    if (activeStoryExecutions.has(lockId) || storyExecutionReservations.has(lockId)) return void res.status(409).json({ error: "完整故事任务正在执行或启动，请暂停或取消后再单独生成章节。" });
     const pendingStoryTask = (await listStoryExecutions(lockId)).find(task => ["queued","running","paused"].includes(task.status));
     if (pendingStoryTask) return void res.status(409).json({ error: "当前完整故事任务尚未结束，请恢复或取消后再单独生成章节。", execution: pendingStoryTask });
     await serializeWorld(lockId, async () => {
@@ -2000,6 +2004,7 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
     });
     res.status(202).json({ run });
     });
+    } finally { chapterGenerationReservations.delete(lockId); }
   } catch (error) { sendError(res, error); }
 });
 app.get("/api/runs/:runId/preview", async (req, res) => {
