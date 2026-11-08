@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../src/server.js";
-import { createStoredStoryUnit } from "../src/story-unit-store.js";
+import { archiveStoredStoryUnitVersion, createStoredStoryUnit, saveStoredStoryUnit } from "../src/story-unit-store.js";
 import { emptyStoryState, saveStoryState } from "../src/story-state.js";
 
 test("graph and character-state APIs return only the requested Story Unit, with a separate legacy scope", async () => {
@@ -17,8 +17,10 @@ test("graph and character-state APIs return only the requested Story Unit, with 
   await mkdir(worldDir, { recursive: true });
   const server = createServer(createApp());
   try {
-    const unitA = await createStoredStoryUnit(worldDir, { worldId, title: "雾河镇", updatedAt: new Date().toISOString() });
+    const unitA = await createStoredStoryUnit(worldDir, { worldId, title: "雾河镇", storyCore: "河雾保存声音", centralConflict: "谁偷走了亡者的声音", updatedAt: new Date().toISOString() });
     const unitB = await createStoredStoryUnit(worldDir, { worldId, title: "山中驿站", updatedAt: new Date().toISOString() });
+    const archivedDesign = await archiveStoredStoryUnitVersion(worldDir, unitA);
+    await saveStoredStoryUnit(worldDir, { ...unitA, title: "雾河镇·夜潮", storyCore: "河雾吞没活人的记忆", updatedAt: new Date().toISOString() });
     const stateA = emptyStoryState(worldId);
     stateA.currentPosition = "雾河镇 / 第三章";
     stateA.characters.push({ name: "李玄", status: "持有铜匣", location: "雾河镇" });
@@ -33,6 +35,7 @@ test("graph and character-state APIs return only the requested Story Unit, with 
     const address = server.address();
     if (!address || typeof address === "string") throw new Error("Test server did not bind to a TCP port.");
     const base = `http://127.0.0.1:${address.port}/api/worlds/${worldId}`;
+    const post = async (url: string) => fetch(url, { method: "POST", headers: { host: `127.0.0.1:${address.port}`, "content-type": "application/json" }, body: "{}" });
     const get = async (url: string) => {
       const response = await fetch(url, { headers: { host: `127.0.0.1:${address.port}` } });
       if (!response.ok) throw new Error(await response.text());
@@ -45,6 +48,14 @@ test("graph and character-state APIs return only the requested Story Unit, with 
     assert.deepEqual(graphA.nodes.filter(node => node.type === "character").map(node => node.label), ["李玄"]);
     assert.deepEqual(graphB.nodes.filter(node => node.type === "character").map(node => node.label), ["沈七"]);
     assert.equal(graphLegacy.nodes.length, 0);
+    const restoredResponse = await post(`${base}/story-units/${unitA.id}/versions/${archivedDesign.versionId}/restore`);
+    if (!restoredResponse.ok) throw new Error(await restoredResponse.text());
+    const restoredBody = await restoredResponse.json() as {storyUnit:{storyCore:string}};
+    assert.equal(restoredBody.storyUnit.storyCore, "河雾保存声音");
+    const versionsResponse = await get(`${base}/story-units/${unitA.id}/versions`);
+    assert.equal((versionsResponse.versions as unknown[]).length, 2);
+    const missingUnit = await fetch(`${base}/story-units/00000000-0000-4000-8000-000000000000/state`, { headers: { host: `127.0.0.1:${address.port}` } });
+    assert.equal(missingUnit.status, 404);
     const detailA = await get(`${base}/story-units/${unitA.id}/state`);
     const detailB = await get(`${base}/story-units/${unitB.id}/state`);
     assert.deepEqual(detailA.state.characters.map((person: {name:string}) => person.name), ["李玄"]);
