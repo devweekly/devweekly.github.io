@@ -1258,8 +1258,23 @@ async function assessStoryExecutionCheckpoint(
  * to that run; never infer ownership from the globally newest chapter.
  */
 async function reconcileStoryExecutionCurrentRun(input: StoryExecution): Promise<StoryExecution> {
+  const outputRoot = path.resolve(".output", input.worldId) + path.sep;
+  for (const checkpoint of input.completedChapters) {
+    const savedRun = await getRun(input.worldId, checkpoint.runId);
+    if (!savedRun || savedRun.kind !== "chapter" || savedRun.status !== "completed" ||
+        !storyExecutionOwnsRun(input.storyUnitId, savedRun.storyUnitId) ||
+        !savedRun.chapterPath || path.resolve(savedRun.chapterPath) !== path.resolve(checkpoint.chapterPath)) {
+      throw new Error("故事执行检查点与章节 Run 的归属或完成状态不一致，拒绝跨单元恢复。");
+    }
+    const chapterPath = path.resolve(checkpoint.chapterPath);
+    if (!chapterPath.startsWith(outputRoot)) throw new Error("故事执行检查点的章节路径不属于当前世界输出目录，拒绝恢复。");
+    await readFile(chapterPath, "utf8");
+  }
   if (!input.currentRunId) return input;
   const run = await getRun(input.worldId, input.currentRunId);
+  if (run && (run.kind !== "chapter" || !storyExecutionOwnsRun(input.storyUnitId, run.storyUnitId))) {
+    throw new Error("中断任务的当前 Run 属于其他故事单元，拒绝恢复。");
+  }
   if (run?.kind === "chapter" && storyExecutionOwnsRun(input.storyUnitId, run.storyUnitId) && run.status === "completed" && run.chapterPath &&
       !input.completedChapters.some(item => item.runId === run.id)) {
     const chapterPath = path.resolve(run.chapterPath);
