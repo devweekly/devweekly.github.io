@@ -96,6 +96,11 @@ const StoryProgressAssessmentSchema = z.object({
 }).strict();
 export type StoryProgressAssessment = z.infer<typeof StoryProgressAssessmentSchema>;
 
+export function isStoryUnitNaturallyComplete(assessment: StoryProgressAssessment): boolean {
+  return assessment.coreConflictResolved && assessment.endingFeelsNatural && assessment.confidence === "high" &&
+    assessment.unresolvedCoreThreads.length === 0 && assessment.unrealizedMajorBeats.length === 0;
+}
+
 /** Judge narrative closure from actual completed text and committed story state, never chapter count. */
 export async function assessStoryUnitProgress(input: {
   unit: StoryUnit; chapterText: string; chapterTitle: string; completedChapterCount: number;
