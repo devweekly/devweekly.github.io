@@ -1632,6 +1632,7 @@ app.post("/api/worlds/:worldId/story-executions/:executionId/resume", async (req
     const id = worldIdOf(req.params.worldId); const executionId = recordId(req.params.executionId);
     if (activeStoryExecutions.has(id) || storyExecutionReservations.has(id) || chapterGenerationReservations.has(id)) return void res.status(409).json({error:"当前世界已有章节或故事任务正在执行或启动。"});
     storyExecutionReservations.add(id); reservedId = id;
+    if ((await listRuns(id)).some(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"))) return void res.status(409).json({error:"当前仍有章节正在执行，不能同时恢复长篇任务。"});
     const task = await getStoryExecution(id, executionId);
     if (!task) return void res.status(404).json({error:"Story execution not found."});
     if (!["paused","failed","stalled"].includes(task.status)) return void res.status(409).json({error:"当前任务不可恢复。",execution:task});
