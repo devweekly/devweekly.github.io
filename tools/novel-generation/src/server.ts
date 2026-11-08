@@ -1046,6 +1046,57 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
   return finished;
 }
 
+
+async function assessStoryExecutionCheckpoint(
+  worldId: string, taskInput: StoryExecution, unitInput: Awaited<ReturnType<typeof generateStoryUnit>>,
+  checkpoint: StoryExecution["completedChapters"][number]
+): Promise<{task:StoryExecution;unit:Awaited<ReturnType<typeof generateStoryUnit>>;terminal:boolean}> {
+  const dir = worldDir(worldId);
+  const chapterText = await readFile(checkpoint.chapterPath, "utf8");
+  const chapterTitle = chapterText.split("\n").find(line => /^#\s+/.test(line))?.replace(/^#\s+/,"").trim() || "章节";
+  const state = await loadStoryState(path.join(dir, "story-state.json"), worldId);
+  const assessment = await assessStoryUnitProgress({
+    unit: unitInput, chapterText, chapterTitle, completedChapterCount: taskInput.completedChapters.length,
+    storyState: state, model: taskInput.model
+  });
+  const assessedAt = new Date().toISOString();
+  const latestTask = await getStoryExecution(worldId, taskInput.id);
+  let task: StoryExecution = latestTask
+    ? { ...taskInput, pauseRequested: latestTask.pauseRequested, cancelRequested: latestTask.cancelRequested }
+    : taskInput;
+  task = {
+    ...task, currentRunId: undefined, lastAssessment: assessment.rationale, nextDirection: assessment.nextDirection,
+    idleChapterCount: assessment.nextDirection === unitInput.execution.nextDirection &&
+      assessment.unresolvedCoreThreads.join("|") === unitInput.execution.lastUnresolvedCoreThreads.join("|")
+      ? task.idleChapterCount + 1 : 0,
+    updatedAt: assessedAt
+  };
+  const naturallyComplete = isStoryUnitNaturallyComplete(assessment);
+  const unit = {
+    ...unitInput, updatedAt: assessedAt,
+    execution: {
+      ...unitInput.execution, status: naturallyComplete ? "completed" as const : "in_progress" as const,
+      lastAssessedChapterId: checkpoint.runId,
+      lastUnresolvedCoreThreads: assessment.unresolvedCoreThreads,
+      lastAssessment: assessment.rationale, nextDirection: assessment.nextDirection,
+      assessedAt, ...(naturallyComplete ? {completedAt: assessedAt} : {})
+    }
+  };
+  await saveExecutionStoryUnit(unit);
+  if (naturallyComplete) {
+    task = { ...task, status: "completed", completedAt: assessedAt, updatedAt: assessedAt, nextDirection: "故事已自然收束。" };
+    await saveStoryExecution(task);
+    return {task,unit,terminal:true};
+  }
+  if (task.idleChapterCount >= 4) {
+    task = { ...task, status: "stalled", error: "连续章节未推动核心冲突，任务已暂停而非误判为完成。请修订 Story Unit 的下一步方向后恢复。", updatedAt: assessedAt };
+    await saveStoryExecution(task);
+    return {task,unit,terminal:true};
+  }
+  await saveStoryExecution(task);
+  return {task,unit,terminal:false};
+}
+
 async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
   const worldId = initial.worldId;
   let task = initial;
