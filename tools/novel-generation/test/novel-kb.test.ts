@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
-  assignChapters, buildCharacterDictionary, countMentions, dedupeChunkTexts, groupAnalysisUnits,
+  assignChapters, buildCharacterDictionary, countMentions, dedupeChunkTexts, groupAnalysisUnits, prepareCanonIndexInputs,
   isUsableCharacterName, normalizeCharacterName, type CatalogChapter
 } from "../src/novel-kb.js";
 import { databaseStatus, syncNovelChapters, syncNovelMentions } from "../src/database.js";
@@ -22,17 +23,61 @@ test("repeated chapter titles resolve positionally instead of collapsing across 
     catalogChapter(1, 1, "第一章 开端"), catalogChapter(1, 2, "第二章 转折"),
     catalogChapter(2, 1, "第一章 开端"), catalogChapter(2, 2, "第二章 转折")
   ];
+  const offsets = [10, 30, 50, 70];
   const chunks = [
     chunk("s:0", "前置内容", "书名", 0),
-    chunk("s:1", "第一章 开端", "甲", 1),
-    chunk("s:2", "第二章 转折", "乙", 2),
-    chunk("s:3", "第一章 开端", "丙", 3),
-    chunk("s:4", "第二章 转折", "丁", 4)
+    { ...chunk("s:1", "第一章 开端", "甲", 1), chapterStart: offsets[0] },
+    { ...chunk("s:2", "第二章 转折", "乙", 2), chapterStart: offsets[1] },
+    { ...chunk("s:3", "第一章 开端", "丙", 3), chapterStart: offsets[2] },
+    { ...chunk("s:4", "第二章 转折", "丁", 4), chapterStart: offsets[3] }
   ];
-  const assignment = assignChapters(chunks, catalog);
+  const assignment = assignChapters(chunks, catalog, offsets);
   assert.deepEqual(assignment.chapters.map(item => item.chapterId), ["V00-C000", "V01-C001", "V01-C002", "V02-C001", "V02-C002"]);
   assert.equal(assignment.chunkChapter.get("s:3")?.volume, 2);
   assert.deepEqual(assignment.chapters.map(item => item.charCount), [2, 1, 1, 1, 1]);
+});
+
+test("repeated canon titles without source positions fail closed", () => {
+  const catalog = [
+    catalogChapter(1, 1, "第一章 开端"),
+    catalogChapter(2, 1, "第一章 开端")
+  ];
+  assert.throws(
+    () => assignChapters([chunk("s:0", "第一章 开端", "正文", 0)], catalog, [0, 100]),
+    /缺少 chapterStart 原文位置/
+  );
+});
+
+test("canon index inputs use original source hash and exact line offsets", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-canon-index-"));
+  try {
+    const world = join(root, "world");
+    await mkdir(world, { recursive: true });
+    const original = "序言\\n第一章 开端\\n正文甲\\n第二章 转折\\n正文乙\\n第一章 开端\\n正文丙";
+    await writeFile(join(world, "original.txt"), original, "utf8");
+    const hash = createHash("sha256").update(original, "utf8").digest("hex");
+    const first = original.indexOf("第一章");
+    const second = original.lastIndexOf("第一章");
+    const inputs = await prepareCanonIndexInputs(world, [
+      { ...catalogChapter(1, 1, "第一章 开端"), line: 2 },
+      { ...catalogChapter(2, 1, "第一章 开端"), line: 6 }
+    ], [
+      { ...chunk("canon:1", "第一章 开端", "正文甲", 0), source: "world/original.txt", sourceHash: hash, chapterStart: first },
+      { ...chunk("notes:1", "第一章 开端", "错误辅助资料", 1), source: "world/notes.txt", sourceHash: "f".repeat(64), chapterStart: first }
+    ]);
+    assert.deepEqual(inputs.chunks.map(item => item.id), ["canon:1"]);
+    assert.deepEqual(inputs.chapterStartOffsets, [first, second]);
+    const assignment = assignChapters([
+      { ...inputs.chunks[0]!, chapter: "第一章 开端" },
+      { ...chunk("canon:2", "第一章 开端", "正文丙", 1), source: "world/original.txt", sourceHash: hash, chapterStart: second }
+    ], [
+      { ...catalogChapter(1, 1, "第一章 开端"), line: 2 },
+      { ...catalogChapter(2, 1, "第一章 开端"), line: 6 }
+    ], inputs.chapterStartOffsets);
+    assert.deepEqual(assignment.chapters.map(item => item.chapterId), ["V01-C001", "V02-C001"]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
 });
 
 test("overlapping retrieval chunks are joined once", () => {
