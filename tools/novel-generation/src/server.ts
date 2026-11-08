@@ -1198,7 +1198,7 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
     ...(chapterPath && finalChapterExists ? {chapterPath} : {}),
     ...(!completed ? {error:("章节流程未完成：exit="+result.code+"；正文="+finalChapterExists+"；终审="+qualityPassed+"；状态提交="+stateCommitted+"\n"+(result.errors||result.output).slice(-5000))} : {})
   };
-  await saveRun(rollbackError ? { ...finished, error: (finished.error ?? "章节未通过最终门禁。") + "\\n状态回滚失败：" + rollbackError } : finished);
+  await saveRun(rollbackError ? { ...finished, error: (finished.error ?? "章节未通过最终门禁。") + "；状态回滚失败：" + rollbackError } : finished);
   if (completed || !rollbackError) await rm(storyStateSnapshotDir(worldId, runId), { recursive: true, force: true }).catch(() => undefined);
   return rollbackError ? { ...finished, error: (finished.error ?? "章节未通过最终门禁。") + "\\n状态回滚失败：" + rollbackError } : finished;
 }
