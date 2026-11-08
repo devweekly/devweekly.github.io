@@ -39,6 +39,12 @@ export function storyExecutionOwnsRun(storyUnitId: string | undefined, runStoryU
   return storyUnitId === runStoryUnitId;
 }
 
+/** Preserve pause/cancel requests made after a worker was queued but before it began. */
+export function mergeStoryExecutionControlFlags(task: StoryExecution, latest?: StoryExecution): StoryExecution {
+  if (!latest) return task;
+  return { ...task, pauseRequested: latest.pauseRequested, cancelRequested: latest.cancelRequested };
+}
+
 export interface StoryExecutionChapterRun {
   kind?: string;
   storyUnitId?: string;
