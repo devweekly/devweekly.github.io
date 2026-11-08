@@ -128,3 +128,20 @@ export async function listStoredStoryUnitVersions(worldDir: string, worldId: str
   }
   return versions.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
+
+
+/** Read one immutable design snapshot after validating both world and Story Unit ownership. */
+export async function getStoredStoryUnitVersion(worldDir: string, worldId: string, storyUnitId: string, versionId: string): Promise<StoredStoryUnit | undefined> {
+  assertId(storyUnitId);
+  assertId(versionId);
+  try {
+    const record = JSON.parse(await readFile(join(versionDirectory(worldDir, storyUnitId), versionId + ".json"), "utf8")) as {schemaVersion?:number;versionId?:string;storyUnitId?:string;worldId?:string;unit?:StoredStoryUnit};
+    if (record.schemaVersion !== 1 || record.versionId !== versionId || record.storyUnitId !== storyUnitId || record.worldId !== worldId || record.unit?.id !== storyUnitId || record.unit.worldId !== worldId) {
+      throw new Error("Story Unit version ownership mismatch.");
+    }
+    return record.unit;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
