@@ -1172,6 +1172,11 @@ app.post("/api/worlds/:worldId/story-executions", async (req, res) => {
     const activeChapter = runs.find(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"));
     if (activeChapter) return void res.status(409).json({ error: "当前已有单章任务运行，请完成后再启动完整故事。" });
     const unit = validateStoryUnit(JSON.parse(await readFile(storyExecutionUnitPath(id), "utf8")), id);
+    const universe = await readUniverse(id);
+    if (universe?.archivedAt) return void res.status(409).json({error:"当前故事宇宙已归档，不能启动完整故事执行。"});
+    await readFile(path.join(worldDir(id), "world-bible.md"), "utf8");
+    const retrievalDir = await resolveWorldLibraryDir(id, path.resolve("worlds"));
+    await readFile(path.join(retrievalDir, "index.json"), "utf8");
     if (unit.execution.status === "completed") return void res.status(409).json({ error: "当前故事单元已自然收束。若要创作新故事，请创建新的故事单元或复制一个新宇宙。" });
     const previousTasks = await listStoryExecutions(id);
     const latest = previousTasks.find(item => item.status === "running" || item.status === "queued" || item.status === "paused");
