@@ -1052,7 +1052,12 @@ async function assessStoryExecutionCheckpoint(
   checkpoint: StoryExecution["completedChapters"][number]
 ): Promise<{task:StoryExecution;unit:Awaited<ReturnType<typeof generateStoryUnit>>;terminal:boolean}> {
   const dir = worldDir(worldId);
-  const chapterText = await readFile(checkpoint.chapterPath, "utf8");
+  const chapterPath = path.resolve(checkpoint.chapterPath);
+  const outputRoot = path.resolve(".output", worldId) + path.sep;
+  if (!chapterPath.startsWith(outputRoot)) {
+    throw new Error("故事执行检查点的章节路径不属于当前世界输出目录，拒绝读取外部或其他宇宙的正文。");
+  }
+  const chapterText = await readFile(chapterPath, "utf8");
   const chapterTitle = chapterText.split("\n").find(line => /^#\s+/.test(line))?.replace(/^#\s+/,"").trim() || "章节";
   const state = await loadStoryState(path.join(dir, "story-state.json"), worldId);
   const assessment = await assessStoryUnitProgress({
