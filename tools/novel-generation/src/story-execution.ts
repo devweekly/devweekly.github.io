@@ -1,0 +1,57 @@
+import { mkdir, readFile, readdir, rename, writeFile } from "node:fs/promises";
+import { dirname, join } from "node:path";
+import { z } from "zod";
+
+export const StoryExecutionSchema = z.object({
+  id: z.string().uuid(), worldId: z.string().min(1), storyUnitTitle: z.string().min(1),
+  status: z.enum(["queued", "running", "paused", "completed", "failed", "cancelled", "stalled"]),
+  createdAt: z.string(), updatedAt: z.string(), startedAt: z.string().optional(), completedAt: z.string().optional(),
+  completedChapters: z.array(z.object({ runId: z.string().uuid(), chapterPath: z.string(), completedAt: z.string() })),
+  currentRunId: z.string().uuid().optional(), lastAssessment: z.string().optional(), nextDirection: z.string().optional(),
+  idleChapterCount: z.number().int().nonnegative().default(0), error: z.string().optional(),
+  brief: z.string().default(""), model: z.string().optional(), pauseRequested: z.boolean().default(false),
+  cancelRequested: z.boolean().default(false), resumeCount: z.number().int().nonnegative().default(0)
+}).strict();
+
+export type StoryExecution = z.infer<typeof StoryExecutionSchema>;
+
+function directory(worldId: string): string {
+  return join(process.cwd(), ".output", worldId, "workbench", "story-executions");
+}
+function filePath(worldId: string, id: string): string { return join(directory(worldId), id + ".json"); }
+
+export async function saveStoryExecution(value: StoryExecution): Promise<void> {
+  const task = StoryExecutionSchema.parse(value);
+  const target = filePath(task.worldId, task.id);
+  await mkdir(dirname(target), { recursive: true });
+  const temporary = target + "." + process.pid + ".tmp";
+  await writeFile(temporary, JSON.stringify(task, null, 2) + "\n", "utf8");
+  await rename(temporary, target);
+}
+export async function getStoryExecution(worldId: string, id: string): Promise<StoryExecution | undefined> {
+  try { return StoryExecutionSchema.parse(JSON.parse(await readFile(filePath(worldId, id), "utf8"))); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined; throw error; }
+}
+export async function listStoryExecutions(worldId: string): Promise<StoryExecution[]> {
+  try {
+    const names = await readdir(directory(worldId));
+    const values = await Promise.all(names.filter(name => name.endsWith(".json")).map(async name => {
+      try { return StoryExecutionSchema.parse(JSON.parse(await readFile(join(directory(worldId), name), "utf8"))); }
+      catch { return undefined; }
+    }));
+    return values.filter((value): value is StoryExecution => Boolean(value)).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
+}
+/** A process restart preserves the checkpoint and marks the task resumable, never falsely completed. */
+export async function recoverStoryExecutions(worldId: string): Promise<number> {
+  const tasks = await listStoryExecutions(worldId);
+  let recovered = 0;
+  for (const task of tasks) {
+    if (task.status !== "running" && task.status !== "queued") continue;
+    await saveStoryExecution({ ...task, status: "paused", pauseRequested: false, cancelRequested: false,
+      currentRunId: undefined, updatedAt: new Date().toISOString(),
+      error: "Workbench restarted. Completed chapters and story state are preserved; resume this story execution to continue." });
+    recovered++;
+  }
+  return recovered;
+}
