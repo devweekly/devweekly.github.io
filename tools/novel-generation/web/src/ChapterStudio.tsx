@@ -63,7 +63,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
   finally{setLoading(false);}
  };
- useEffect(()=>{setActiveWorldId(worldId);setRun(null);setPreview(emptyPreview);void refresh();void Promise.all([api<{universes:Universe[]}>("/api/worlds/"+worldId+"/universes"),api<{chapters:Array<{id:number;title:string;label:string}>}>("/api/worlds/"+worldId+"/source-chapters"),api<{storyUnit:StoryUnit|null}>("/api/worlds/"+worldId+"/story-unit")]).then(([u,c,s])=>{setUniverses(u.universes);setSourceChapters(c.chapters);setStoryUnit(s.storyUnit);}).catch(()=>{setUniverses([]);setSourceChapters([]);setStoryUnit(null);});},[worldId]);
+ useEffect(()=>{setActiveWorldId(worldId);setRun(null);setPreview(emptyPreview);void refresh();void Promise.all([api<{universes:Universe[]}>("/api/worlds/"+worldId+"/universes"),api<{chapters:Array<{id:number;title:string;label:string}>}>("/api/worlds/"+worldId+"/source-chapters")]).then(([u,c])=>{setUniverses(u.universes);setSourceChapters(c.chapters);}).catch(()=>{setUniverses([]);setSourceChapters([]);setStoryUnit(null);});},[worldId]);
  useEffect(()=>{void refresh();},[activeWorldId,selectedStoryUnitId]);
  useEffect(()=>{if(!activeWorldId)return;void Promise.all([
   api<{storyUnits:Array<{id:string;title:string;updatedAt:string}>}>("/api/worlds/"+activeWorldId+"/story-units"),
@@ -75,7 +75,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
    setStoryExecution(tasks.executions.find(x=>x.storyUnitId===chosen)??null);
    if(chosen)void api<{storyUnit:StoryUnit}>("/api/worlds/"+activeWorldId+"/story-units/"+chosen).then(x=>setStoryUnit(x.storyUnit));
    else setStoryUnit(null);
-  }).catch(()=>{setStoryUnit(null);setStoryUnits([]);setSelectedStoryUnitId(undefined);setStoryExecution(null);});},[activeWorldId]);
+  }).catch(()=>{setStoryUnit(null);setStoryUnits([]);setSelectedStoryUnitId(undefined);setStoryExecution(null);});},[activeWorldId,selectedStoryUnitId]);
  useEffect(()=>{
   if(!activeWorldId||!storyExecution||!["queued","running"].includes(storyExecution.status))return;
   const timer=window.setInterval(()=>void api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/story-executions/"+storyExecution.id)
