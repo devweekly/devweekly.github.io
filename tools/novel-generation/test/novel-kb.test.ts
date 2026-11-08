@@ -53,7 +53,7 @@ test("canon index inputs use original source hash and exact line offsets", async
   try {
     const world = join(root, "world");
     await mkdir(world, { recursive: true });
-    const original = "序言\\n第一章 开端\\n正文甲\\n第二章 转折\\n正文乙\\n第一章 开端\\n正文丙";
+    const original = "序言\n第一章 开端\n正文甲\n第二章 转折\n正文乙\n第一章 开端\n正文丙";
     await writeFile(join(world, "original.txt"), original, "utf8");
     const hash = createHash("sha256").update(original, "utf8").digest("hex");
     const first = original.indexOf("第一章");
