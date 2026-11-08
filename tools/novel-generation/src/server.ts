@@ -677,6 +677,8 @@ app.patch("/api/worlds/:worldId/universe-archive", async (req, res) => {
     if (!universe) return void res.status(409).json({ error: "原文项目不能归档为故事宇宙。" });
     const archive = req.body?.archived === true;
     if (knowledgeBuilds.has(id)) return void res.status(409).json({ error: "当前宇宙正在构建知识资料，完成后再归档或恢复。" });
+    const pendingStoryTask = (await listStoryExecutions(id)).find(task => ["queued","running","paused"].includes(task.status));
+    if (pendingStoryTask) return void res.status(409).json({ error: "当前宇宙仍有长篇任务未结束，请先完成、取消或处理恢复状态。" });
     const runs = await listRuns(id);
     if (runs.some(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"))) {
       return void res.status(409).json({ error: "当前宇宙仍有章节正在生成，结束后再归档或恢复。" });
@@ -819,6 +821,8 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     if (!parent) return void res.status(409).json({ error: "只能从已有故事宇宙创建分叉。" });
     if (parent.archivedAt) return void res.status(409).json({ error: "已归档的故事宇宙不能继续分叉，请先恢复。" });
     if (knowledgeBuilds.has(parentId)) return void res.status(409).json({ error: "当前宇宙正在构建知识资料，完成后再分叉。" });
+    const pendingStoryTask = (await listStoryExecutions(parentId)).find(task => ["queued","running","paused"].includes(task.status));
+    if (pendingStoryTask) return void res.status(409).json({ error: "当前宇宙仍有长篇任务未结束，请先完成、取消或处理恢复状态。" });
     const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";
     const chapterRunId = recordId(req.body?.chapterRunId);
     if (!name || name.length > 80) return void res.status(400).json({ error: "分支名称必填，且不能超过 80 个字符。" });
@@ -1547,7 +1551,7 @@ app.post("/api/worlds/:worldId/story-executions", async (req, res) => {
     const retrievalDir = await resolveWorldLibraryDir(id, path.resolve("worlds"));
     await readFile(path.join(retrievalDir, "index.json"), "utf8");
     if (unit.execution.status === "completed") return void res.status(409).json({ error: "当前故事单元已自然收束。若要创作新故事，请创建新的故事单元或复制一个新宇宙。" });
-    const previousTasks = await listStoryExecutions(id, unit.id);
+    const previousTasks = await listStoryExecutions(id);
     const latest = previousTasks.find(item => item.status === "running" || item.status === "queued" || item.status === "paused");
     if (latest) return void res.status(409).json({ error: "已有完整故事任务，请恢复或取消现有任务。", execution: latest });
     const now = new Date().toISOString();
@@ -1581,7 +1585,7 @@ app.post("/api/worlds/:worldId/chapter-batches", async (req, res) => {
     await readFile(path.join(worldDir(id), "world-bible.md"), "utf8");
     const retrievalDir = await resolveWorldLibraryDir(id, path.resolve("worlds"));
     await readFile(path.join(retrievalDir, "index.json"), "utf8");
-    const previousTasks = await listStoryExecutions(id, requestedUnitId);
+    const previousTasks = await listStoryExecutions(id);
     const latest = previousTasks.find(item => ["running","queued","paused"].includes(item.status));
     if (latest) return void res.status(409).json({error:"已有长篇任务，请恢复或取消后再启动批量任务。",execution:latest});
     let title = "连续章节批次";
@@ -1638,6 +1642,8 @@ app.post("/api/worlds/:worldId/story-executions/:executionId/resume", async (req
     const task = await getStoryExecution(id, executionId);
     if (!task) return void res.status(404).json({error:"Story execution not found."});
     if (!["paused","failed","stalled"].includes(task.status)) return void res.status(409).json({error:"当前任务不可恢复。",execution:task});
+    const otherPending = (await listStoryExecutions(id)).find(item => item.id !== task.id && ["queued","running","paused"].includes(item.status));
+    if (otherPending) return void res.status(409).json({error:"当前世界还有其他未结束的故事任务，请先处理该任务。",execution:otherPending});
     const resumedAt = new Date().toISOString();
     const updated = appendStoryExecutionEvent({...task,status:"queued" as const,pauseRequested:false,cancelRequested:false,error:undefined,completedAt:undefined,updatedAt:resumedAt}, { at: resumedAt, type: "resumed", message: "恢复任务执行" });
     await saveStoryExecution(updated);
