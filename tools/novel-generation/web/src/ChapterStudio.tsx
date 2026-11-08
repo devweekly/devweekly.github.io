@@ -41,6 +41,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [selectedStoryUnitId,setSelectedStoryUnitId]=useState<string|undefined>();
  const [historyScope,setHistoryScope]=useState<"current"|"legacy">("current");
  const [storyExecution,setStoryExecution]=useState<StoryExecution|null>(null);
+ const [storyExecutionHistory,setStoryExecutionHistory]=useState<StoryExecution[]>([]);
  const [startingStoryExecution,setStartingStoryExecution]=useState(false);
  const [generatingStoryUnit,setGeneratingStoryUnit]=useState(false);
  const [startingKnowledgeBuild,setStartingKnowledgeBuild]=useState(false);
@@ -76,7 +77,8 @@ export default function ChapterStudio({worldId}:{worldId:string}){
    setStoryUnits(units.storyUnits);
    const chosen=selectedStoryUnitId&&units.storyUnits.some(x=>x.id===selectedStoryUnitId)?selectedStoryUnitId:units.storyUnits[0]?.id;
    if(historyScope==="current"&&chosen!==selectedStoryUnitId){setSelectedStoryUnitId(chosen);return;}
-   setStoryExecution(tasks.executions[0]??null);
+   setStoryExecutionHistory(tasks.executions);
+   setStoryExecution(current=>current&&tasks.executions.some(item=>item.id===current.id)?tasks.executions.find(item=>item.id===current.id)??null:tasks.executions[0]??null);
    if(historyScope==="current"&&chosen){
      try{const result=await api<{storyUnit:StoryUnit}>("/api/worlds/"+activeWorldId+"/story-units/"+chosen);if(!cancelled)setStoryUnit(result.storyUnit);}
      catch{if(!cancelled)setStoryUnit(null);}
@@ -87,7 +89,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   if(!activeWorldId||!storyExecution||!["queued","running"].includes(storyExecution.status))return;
   let cancelled=false;
   const timer=window.setInterval(()=>void api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/story-executions/"+storyExecution.id)
-   .then(result=>{if(cancelled)return;setStoryExecution(result.execution);if(["completed","failed","paused","cancelled","stalled"].includes(result.execution.status)){void refresh();if(selectedStoryUnitId)void api<{storyUnit:StoryUnit}>("/api/worlds/"+activeWorldId+"/story-units/"+selectedStoryUnitId).then(x=>{if(!cancelled)setStoryUnit(x.storyUnit);});}})
+   .then(result=>{if(cancelled)return;setStoryExecution(result.execution);setStoryExecutionHistory(items=>items.map(item=>item.id===result.execution.id?result.execution:item));if(["completed","failed","paused","cancelled","stalled"].includes(result.execution.status)){void refresh();if(selectedStoryUnitId)void api<{storyUnit:StoryUnit}>("/api/worlds/"+activeWorldId+"/story-units/"+selectedStoryUnitId).then(x=>{if(!cancelled)setStoryUnit(x.storyUnit);});}})
    .catch(()=>{}),2500);
   return()=>{cancelled=true;window.clearInterval(timer);};
  },[activeWorldId,selectedStoryUnitId,storyExecution?.id,storyExecution?.status]);
@@ -123,7 +125,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   setStartingStoryExecution(true);
   try{
    const result=await api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/chapter-batches",{method:"POST",body:JSON.stringify({chapterCount:batchCount,storyUnitId:selectedStoryUnitId})});
-   setStoryExecution(result.execution);
+   setStoryExecution(result.execution);setStoryExecutionHistory(items=>[result.execution,...items.filter(item=>item.id!==result.execution.id)]);
    message.success("连续生成任务已交给服务端；刷新或关闭页面不会中断。");
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
   finally{setStartingStoryExecution(false);}
@@ -150,7 +152,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   setStartingStoryExecution(true);
   try{
    const result=await api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/story-executions",{method:"POST",body:JSON.stringify({storyUnitId:selectedStoryUnitId})});
-   setStoryExecution(result.execution);message.success("完整故事已交给服务端执行；关闭页面不会中断任务。");
+   setStoryExecution(result.execution);setStoryExecutionHistory(items=>[result.execution,...items.filter(item=>item.id!==result.execution.id)]);message.success("完整故事已交给服务端执行；关闭页面不会中断任务。");
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
   finally{setStartingStoryExecution(false);}
  };
@@ -158,7 +160,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   if(!storyExecution)return;
   try{
    const result=await api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/story-executions/"+storyExecution.id+"/"+action,{method:"POST",body:"{}"});
-   setStoryExecution(result.execution);
+   setStoryExecution(result.execution);setStoryExecutionHistory(items=>items.map(item=>item.id===result.execution.id?result.execution:item));
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
  };
  const startKnowledgeBuild=async()=>{
@@ -286,7 +288,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
     </Space>
    </Space>}
   </Card>
-  {storyExecution&&<Card title={storyExecution.mode==="fixed_batch"?"连续生成任务":"完整故事执行任务"} style={{marginBottom:18}}>
+  {storyExecution&&<Card title={storyExecution.mode==="fixed_batch"?"连续生成任务":"完整故事执行任务"} extra={<Select size="small" style={{minWidth:250}} value={storyExecution.id} onChange={id=>{const selected=storyExecutionHistory.find(item=>item.id===id);if(selected)setStoryExecution(selected);}} options={storyExecutionHistory.map(item=>({value:item.id,label:`${item.mode==="fixed_batch"?"批量":"完整故事"} · ${item.storyUnitTitle} · ${new Date(item.createdAt).toLocaleString()} · ${item.status}`}))}/>} style={{marginBottom:18}}>
    <Space direction="vertical" style={{width:"100%"}} size="middle">
     <Space wrap><Tag color={storyExecution.status==="completed"?"success":storyExecution.status==="failed"||storyExecution.status==="stalled"?"error":storyExecution.status==="running"?"processing":"default"}>{storyExecution.mode==="fixed_batch"&&storyExecution.status==="completed"?"批量章节完成":({queued:"排队中",running:storyExecution.mode==="fixed_batch"?"连续生成中":"执行中",paused:"已暂停",completed:"自然收束",failed:"执行失败",cancelled:"已取消",stalled:"推进停滞"})[storyExecution.status]}</Tag><Text type="secondary">任务 {storyExecution.id.slice(0,8)} · 归属：{storyExecution.storyUnitId?storyExecution.storyUnitTitle:"Legacy（旧版）"} · 已完成 {storyExecution.completedChapters.length}{storyExecution.mode==="fixed_batch"?" / "+storyExecution.targetChapterCount:""} 章 · 恢复 {storyExecution.resumeCount} 次{storyExecution.currentRunId?" · 当前章节任务 "+storyExecution.currentRunId.slice(0,8):""}</Text></Space>
     {storyExecution.status==="running"&&<Progress percent={undefined} status="active" showInfo={false}/>}
