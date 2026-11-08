@@ -91,7 +91,7 @@ export async function generateStoryUnit(input: {
 const StoryProgressAssessmentSchema = z.object({
   coreConflictResolved: z.boolean(), endingFeelsNatural: z.boolean(),
   confidence: z.enum(["low", "medium", "high"]),
-  unresolvedCoreThreads: z.array(z.string()), remainingStoryWork: z.array(z.string()),
+  unresolvedCoreThreads: z.array(z.string()), unrealizedMajorBeats: z.array(z.string()), remainingStoryWork: z.array(z.string()),
   nextDirection: z.string(), rationale: z.string()
 }).strict();
 export type StoryProgressAssessment = z.infer<typeof StoryProgressAssessmentSchema>;
@@ -107,9 +107,9 @@ export async function assessStoryUnitProgress(input: {
     "这不是章节数量判断。章节数没有固定目标、上限或完成阈值。不要因为出现高潮、反派暂时失败、章节有收尾感就判定故事结束。",
     "只有当本 Story Unit 的核心戏剧问题已得到有意义的回答、主要因果冲突已解决或完成有意的开放式收束、人物关键选择产生了后果、结尾自然成立，并且没有仍需本故事回答的核心问题时，才可把 coreConflictResolved 和 endingFeelsNatural 都设为 true。",
     "允许保留世界谜团、余韵和明确属于后续故事的问题；不要把这些误判为本故事未完成。区分核心故事线与可留白的世界设定。",
-    "若证据不足，必须保守判定 false。completedChapterCount 仅用于确认已经有连续正文，不是完成标准。至少已有两章正文后才允许判定完成。",
+    "逐项对照 storySpine：若任何重要阶段尚未发生，也没有被正文中更好的叙事发展自然替代，列入 unrealizedMajorBeats 并判定未完成。不要机械兑现细节，但必须确认故事从开端到主要冲突升级、关键转折、高潮和收束已经真正发生。",\n    "若证据不足，必须保守判定 false。completedChapterCount 只是上下文，不得作为完成条件或最低章数门槛。",
     "JSON 结构：",
-    JSON.stringify({ coreConflictResolved: false, endingFeelsNatural: false, confidence: "medium", unresolvedCoreThreads: ["尚未收束的核心线"], remainingStoryWork: ["下一步具体需要写的内容"], nextDirection: "下一章最自然的推进方向", rationale: "依据实际正文说明" }, null, 2),
+    JSON.stringify({ coreConflictResolved: false, endingFeelsNatural: false, confidence: "medium", unresolvedCoreThreads: ["尚未收束的核心线"], unrealizedMajorBeats: ["尚未发生的主要故事阶段"], remainingStoryWork: ["下一步具体需要写的内容"], nextDirection: "下一章最自然的推进方向", rationale: "依据实际正文说明" }, null, 2),
     "故事单元：", JSON.stringify(input.unit),
     "已完成章节数（仅供上下文，不作阈值）：", String(input.completedChapterCount),
     "刚完成章节标题：", input.chapterTitle,
