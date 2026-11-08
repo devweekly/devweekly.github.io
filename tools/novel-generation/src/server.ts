@@ -516,15 +516,35 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
   const catalog = await loadChapterCatalog(sourceWorldId);
   if (!catalog) throw new Error("原著章节目录不存在，无法安全创建故事宇宙。请先构建 chapter-index.json。");
   const index = JSON.parse(await readFile(path.join(worldDir(sourceWorldId), "library", "index.json"), "utf8")) as { chunks?: CanonChapterChunk[] };
-  const aligned = alignCanonChapterGroups(catalog, index.chunks ?? []);
+  let originalText: string | undefined;
   let originalLines: string[] | undefined;
+  const ensureOriginalText = async (): Promise<boolean> => {
+    if (originalText !== undefined) return true;
+    try {
+      originalText = await readFile(path.join(worldDir(sourceWorldId), "original.txt"), "utf8");
+      originalLines = originalText.split(/\r?\n/);
+      return true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+      throw error;
+    }
+  };
+  const lineStartOffset = (line: number): number | undefined => {
+    if (!originalText || !Number.isSafeInteger(line) || line < 1) return undefined;
+    let offset = 0;
+    for (let current = 1; current < line; current++) {
+      const newline = originalText.indexOf("\n", offset);
+      if (newline < 0) return undefined;
+      offset = newline + 1;
+    }
+    return offset;
+  };
+  await ensureOriginalText();
+  const chapterStartOffsets = catalog.map(chapter => chapter.line == null ? undefined : lineStartOffset(chapter.line));
+  const aligned = alignCanonChapterGroups(catalog, index.chunks ?? [], chapterStartOffsets);
   const readOriginalText = async (catalogIndex: number): Promise<string> => {
     const entry = catalog[catalogIndex];
-    if (!entry || !Number.isSafeInteger(entry.line) || (entry.line ?? 0) < 1) return "";
-    if (!originalLines) {
-      try { originalLines = (await readFile(path.join(worldDir(sourceWorldId), "original.txt"), "utf8")).split(/\r?\n/); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return ""; throw error; }
-    }
+    if (!entry || !originalLines || !Number.isSafeInteger(entry.line) || (entry.line ?? 0) < 1) return "";
     const start = (entry.line as number) - 1;
     const nextLine = catalog.slice(catalogIndex + 1).find(item => Number.isSafeInteger(item.line) && (item.line ?? 0) > (entry.line ?? 0))?.line;
     const end = typeof nextLine === "number" ? Math.max(start, nextLine - 1) : originalLines.length;
@@ -641,7 +661,14 @@ async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: st
   };
   const catalog = await loadChapterCatalog(sourceWorldId);
   if (!catalog) throw new Error("原著章节目录不存在，无法创建有边界的知识切片快照。");
-  const aligned = alignCanonChapterGroups(catalog, source.chunks);
+  const originalText = await readFile(path.join(worldDir(sourceWorldId), "original.txt"), "utf8").catch(error => { if ((error as NodeJS.ErrnoException).code === "ENOENT") return ""; throw error; });
+  const offsets = catalog.map(chapter => {
+    if (!originalText || chapter.line == null || chapter.line < 1) return undefined;
+    let offset = 0;
+    for (let line = 1; line < chapter.line; line++) { const next = originalText.indexOf("\n", offset); if (next < 0) return undefined; offset = next + 1; }
+    return offset;
+  });
+  const aligned = alignCanonChapterGroups(catalog, source.chunks, offsets);
   const allowedGroups = new Set(aligned.filter(item => item.catalogIndex <= entryIndex && item.chunks.length > 0).map(item => item.chunks));
   const chunks = aligned.filter(item => allowedGroups.has(item.chunks)).flatMap(item => item.chunks);
   const snapshot = {
