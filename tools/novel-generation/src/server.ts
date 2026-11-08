@@ -1288,8 +1288,11 @@ app.post("/api/worlds/:worldId/chapter-batches", async (req, res) => {
     const latest = previousTasks.find(item => ["running","queued","paused"].includes(item.status));
     if (latest) return void res.status(409).json({error:"已有长篇任务，请恢复或取消后再启动批量任务。",execution:latest});
     let title = "连续章节批次";
-    try { title = validateStoryUnit(JSON.parse(await readFile(storyExecutionUnitPath(id),"utf8")),id).title; }
-    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    try {
+      const unit = validateStoryUnit(JSON.parse(await readFile(storyExecutionUnitPath(id),"utf8")),id);
+      if (unit.execution.status === "completed") return void res.status(409).json({error:"当前完整故事已经自然收束，请创建新的故事单元后再继续生成。"});
+      title = unit.title;
+    } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     const now = new Date().toISOString();
     const task: StoryExecution = {
       id: randomUUID(), worldId: id, storyUnitTitle: title, mode: "fixed_batch", targetChapterCount: count,
