@@ -276,7 +276,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
      <Tag color={storyUnit.execution.status==="completed"?"success":storyUnit.execution.status==="in_progress"?"processing":"default"}>{storyUnit.execution.status==="completed"?"故事已收束":storyUnit.execution.status==="in_progress"?"正在执行":"尚未执行"}</Tag>
      <Text type="secondary">已完成 {storyUnit.execution.completedChapterIds.length} 章；章节数由故事发展决定</Text>
      <Button onClick={()=>void generateStoryUnit()} loading={generatingStoryUnit} disabled={generatingStoryUnit||storyExecution?.status==="running"||storyExecution?.status==="queued"}>重新推演故事设计</Button>
-     <Button type="primary" onClick={()=>void startCompleteStory()} loading={startingStoryExecution} disabled={startingStoryExecution||!["not_started","in_progress"].includes(storyUnit.execution.status)||["queued","running","paused"].includes(storyExecution?.status??"")||Boolean(activeUniverse?.archivedAt)}>自动完成整个故事</Button>
+     <Button type="primary" onClick={()=>void startCompleteStory()} loading={startingStoryExecution} disabled={startingStoryExecution||!["not_started","in_progress"].includes(storyUnit.execution.status)||["queued","running","paused","failed","stalled"].includes(storyExecution?.status??"")||Boolean(activeUniverse?.archivedAt)}>自动完成整个故事</Button>
     </Space>
    </Space>}
   </Card>
