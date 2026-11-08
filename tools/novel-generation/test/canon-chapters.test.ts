@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { alignCanonChapterGroups, joinCanonChunkText } from "../src/canon-chapters.js";
+import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks } from "../src/canon-chapters.js";
 import type { CatalogChapter } from "../src/novel-kb.js";
 
 const catalog: CatalogChapter[] = [
@@ -62,4 +62,12 @@ test("a repeated title group is matched by its exact original source offset", ()
   assert.deepEqual(aligned.map(item => item.chunks.map(row => row.text)), [
     [], [], ["卷二第一章"], ["卷二第二章"]
   ]);
+});
+
+test("canon alignment excludes chunks from auxiliary source files", () => {
+  const selected = selectCanonSourceChunks([
+    { ...chunk("第一章", "原文正文", 0), source: "worlds/book/original.txt", sourceHash: "canon" },
+    { ...chunk("第一章", "辅助文档内容", 0), source: "worlds/book/notes.txt", sourceHash: "notes" }
+  ], "canon");
+  assert.deepEqual(selected.map(item => item.text), ["原文正文"]);
 });
