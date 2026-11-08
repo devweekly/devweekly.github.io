@@ -168,9 +168,10 @@ export function assignChapters(chunks: LibraryChunk[], catalog: CatalogChapter[]
         current = frontMatter;
         chapters.push(frontMatter);
       } else {
-        // Unknown label after a known chapter: keep the text attached to the
-        // previous chapter instead of inventing a new one.
+        // Non-catalog groups (front matter, author notes, volume commentary)
+        // must not leak into the preceding formal chapter.
         unmatchedLabels.push(chunk.chapter);
+        current = undefined;
       }
     }
     if (!current) return;
