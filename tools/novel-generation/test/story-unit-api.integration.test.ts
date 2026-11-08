@@ -35,7 +35,8 @@ test("graph and character-state APIs return only the requested Story Unit, with 
     const base = `http://127.0.0.1:${address.port}/api/worlds/${worldId}`;
     const get = async (url: string) => {
       const response = await fetch(url, { headers: { host: `127.0.0.1:${address.port}` } });
-      assert.equal(response.status, 200, await response.text());
+      if (!response.ok) throw new Error(await response.text());
+      assert.equal(response.status, 200);
       return response.json() as Promise<Record<string, any>>;
     };
     const graphA = await get(`${base}/graph?source=sequel&storyUnitId=${unitA.id}`);
