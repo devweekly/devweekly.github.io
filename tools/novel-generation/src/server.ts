@@ -537,7 +537,8 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
       if (newline < 0) return undefined;
       offset = newline + 1;
     }
-    return offset;
+    const lineText = originalLines?.[line - 1] ?? "";
+    return offset + lineText.length - lineText.trimStart().length;
   };
   await ensureOriginalText();
   const chapterStartOffsets = catalog.map(chapter => chapter.line == null ? undefined : lineStartOffset(chapter.line));
@@ -666,7 +667,8 @@ async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: st
     if (!originalText || chapter.line == null || chapter.line < 1) return undefined;
     let offset = 0;
     for (let line = 1; line < chapter.line; line++) { const next = originalText.indexOf("\n", offset); if (next < 0) return undefined; offset = next + 1; }
-    return offset;
+    const lineText = originalText.split(/\r?\n/)[chapter.line - 1] ?? "";
+    return offset + lineText.length - lineText.trimStart().length;
   });
   const aligned = alignCanonChapterGroups(catalog, source.chunks, offsets);
   const allowedGroups = new Set(aligned.filter(item => item.catalogIndex <= entryIndex && item.chunks.length > 0).map(item => item.chunks));
