@@ -1073,6 +1073,7 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
     ...buildCliEntryArgs(["write"]), "--world", worldId, "--mode", mode,
     "--state-file", storyUnitId ? path.join(dir, ".story-units", storyUnitId, "story-state.json") : path.join(dir, "story-state.json"),
     "--story-unit-file", storyExecutionUnitPath(worldId, storyUnitId),
+    "--story-arc-file", storyUnitId ? path.join(dir, ".story-units", storyUnitId, "story-arc.md") : path.join(dir, "story-arc.md"),
     ...(previousChapterPath ? ["--source", previousChapterPath] : universeEntryPath ? ["--source", universeEntryPath] : []),
     ...(!previousChapterPath && universe ? ["--context", path.join(dir, "universe-origin-context.md")] : []),
     "--brief", brief, ...(model ? ["--model", model] : []),
@@ -1518,7 +1519,9 @@ app.post("/api/worlds/:worldId/story-executions/:executionId/cancel", async (req
 app.get("/api/worlds/:worldId/story-arc", async (req, res) => {
   try {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
-    const content = await readFile(path.join(worldDir(id), "story-arc.md"), "utf8").catch(error => {
+    const storyUnitId = typeof req.query.storyUnitId === "string" ? recordId(req.query.storyUnitId) : undefined;
+    const arcPath = storyUnitId ? path.join(worldDir(id), ".story-units", storyUnitId, "story-arc.md") : path.join(worldDir(id), "story-arc.md");
+    const content = await readFile(arcPath, "utf8").catch(error => {
       if ((error as NodeJS.ErrnoException).code === "ENOENT") return "";
       throw error;
     });
