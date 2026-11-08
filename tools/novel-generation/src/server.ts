@@ -1028,8 +1028,25 @@ function appendStoryExecutionEvent(task: StoryExecution, event: StoryExecution["
 }
 const activeStoryExecutions = new Map<string, Promise<void>>();
 const storyExecutionReservations = new Set<string>();
-function storyExecutionUnitPath(id: string): string { return path.join(worldDir(id), "story-unit.json"); }
+function storyExecutionUnitPath(worldId: string, storyUnitId?: string): string {
+  return storyUnitId
+    ? path.join(worldDir(worldId), ".story-units", recordId(storyUnitId) + ".json")
+    : path.join(worldDir(worldId), "story-unit.json");
+}
+async function loadExecutionStoryUnit(worldId: string, storyUnitId?: string): Promise<Awaited<ReturnType<typeof generateStoryUnit>>> {
+  const dir = worldDir(worldId);
+  if (storyUnitId) {
+    const unit = await getStoredStoryUnit(dir, worldId, storyUnitId);
+    if (!unit) throw Object.assign(new Error("Story Unit not found: " + storyUnitId), { status: 404 });
+    return validateStoryUnit(unit, worldId);
+  }
+  return validateStoryUnit(JSON.parse(await readFile(storyExecutionUnitPath(worldId), "utf8")), worldId);
+}
 async function saveExecutionStoryUnit(unit: Awaited<ReturnType<typeof generateStoryUnit>>): Promise<void> {
+  if (unit.id) {
+    await saveStoredStoryUnit(worldDir(unit.worldId), unit as Awaited<ReturnType<typeof generateStoryUnit>> & {id:string;title:string;updatedAt:string});
+    return;
+  }
   const target = storyExecutionUnitPath(unit.worldId);
   const temporary = target + "." + randomUUID() + ".tmp";
   await writeFile(temporary, JSON.stringify(unit, null, 2) + "\n", "utf8");
@@ -1037,7 +1054,7 @@ async function saveExecutionStoryUnit(unit: Awaited<ReturnType<typeof generateSt
 }
 
 /** Run one ordinary chapter through the existing CLI pipeline and its existing quality/state gates. */
-async function executeStoryUnitChapter(worldId: string, previousChapterPath: string | undefined, brief: string, model?: string, onRunStarted?: (run: WorkbenchRun) => Promise<void>): Promise<WorkbenchRun> {
+async function executeStoryUnitChapter(worldId: string, previousChapterPath: string | undefined, brief: string, model?: string, storyUnitId?: string, onRunStarted?: (run: WorkbenchRun) => Promise<void>): Promise<WorkbenchRun> {
   const dir = worldDir(worldId);
   const universe = await readUniverse(worldId);
   if (universe?.archivedAt) throw new Error("当前故事宇宙已归档，不能继续完整故事执行。");
@@ -1046,7 +1063,7 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
   const runId = randomUUID();
   const outputDir = path.resolve(".output", worldId, "chapter-" + runId);
   const run: WorkbenchRun = {
-    id: runId, worldId, kind: "chapter", status: "queued", createdAt: now, updatedAt: now,
+    id: runId, worldId, ...(storyUnitId ? {storyUnitId} : {}), kind: "chapter", status: "queued", createdAt: now, updatedAt: now,
     outputDir, ...(previousChapterPath ? { previousChapterPath } : {})
   };
   await saveRun(run);
@@ -1200,8 +1217,7 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
   try {
     task = await reconcileStoryExecutionCurrentRun(task);
     const dir = worldDir(worldId);
-    const unitPath = storyExecutionUnitPath(worldId);
-    let unit = validateStoryUnit(JSON.parse(await readFile(unitPath, "utf8")), worldId);
+    let unit = await loadExecutionStoryUnit(worldId, task.storyUnitId);
     if (task.mode === "complete_story" && unit.execution.status === "completed") {
       task = { ...task, status: "completed", completedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), nextDirection: "故事已自然收束。" };
       await saveStoryExecution(task); return;
@@ -1250,7 +1266,7 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
         "完整故事结局方向：" + unit.endingAndAftermath,
         task.brief
       ].filter(Boolean).join("\n\n");
-      const chapterRun = await executeStoryUnitChapter(worldId, previousChapterPath, brief, task.model, async currentRun => {
+      const chapterRun = await executeStoryUnitChapter(worldId, previousChapterPath, brief, task.model, task.storyUnitId, async currentRun => {
         task = appendStoryExecutionEvent({ ...task, currentRunId: currentRun.id, updatedAt: new Date().toISOString() }, { at: new Date().toISOString(), type: "chapter_started", message: "开始生成新章节", runId: currentRun.id });
         await saveStoryExecution(task);
       });
@@ -1332,7 +1348,7 @@ async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> 
         "保持人物、事件和因果连续性，不要为了凑数量注水，也不要提前强行收尾。",
         task.brief
       ].filter(Boolean).join("\n\n");
-      const chapterRun = await executeStoryUnitChapter(worldId, previousChapterPath, brief, task.model, async currentRun => {
+      const chapterRun = await executeStoryUnitChapter(worldId, previousChapterPath, brief, task.model, task.storyUnitId, async currentRun => {
         task = appendStoryExecutionEvent({ ...task, currentRunId: currentRun.id, updatedAt: new Date().toISOString() }, { at: new Date().toISOString(), type: "chapter_started", message: "批量任务开始生成第 " + (task.completedChapters.length + 1) + " 章", runId: currentRun.id });
         await saveStoryExecution(task);
       });
@@ -1348,7 +1364,7 @@ async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> 
       task = appendStoryExecutionEvent({ ...task, completedChapters: [...task.completedChapters, {runId:chapterRun.id,chapterPath:chapterRun.chapterPath,completedAt}], currentRunId: undefined, updatedAt: completedAt }, { at: completedAt, type: "chapter_completed", message: "批量章节通过终审并提交 Story State", runId: chapterRun.id });
       await saveStoryExecution(task);
       try {
-        const unit = validateStoryUnit(JSON.parse(await readFile(storyExecutionUnitPath(worldId), "utf8")), worldId);
+        const unit = await loadExecutionStoryUnit(worldId, task.storyUnitId);
         await saveExecutionStoryUnit({ ...unit, updatedAt: completedAt, execution: { ...unit.execution, status: unit.execution.status === "completed" ? "completed" : "in_progress", completedChapterIds: unit.execution.completedChapterIds.includes(chapterRun.id) ? unit.execution.completedChapterIds : [...unit.execution.completedChapterIds, chapterRun.id] } });
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
