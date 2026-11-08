@@ -80,7 +80,7 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     const response = await fetch(`http://127.0.0.1:${address.port}/api/worlds/source-world/universes`, {
       method: "POST",
       headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
-      body: JSON.stringify({ name: "第二章分支", entryChapter: "第二章", type: "free", brief: "测试", buildKnowledge: false })
+      body: JSON.stringify({ name: "第二章分支", entryChapter: "第二章", entryChapterIndex: 1, type: "free", brief: "测试", buildKnowledge: false })
     });
     const responseBody = await response.text();
     assert.equal(response.status, 201, responseBody);
@@ -189,7 +189,7 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     const failedCreate = await fetch(`http://127.0.0.1:${address.port}/api/worlds/source-world/universes`, {
       method: "POST",
       headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
-      body: JSON.stringify({ name: "应回滚的宇宙", entryChapter: "第二章", type: "free", brief: "故障注入", buildKnowledge: false })
+      body: JSON.stringify({ name: "应回滚的宇宙", entryChapter: "第二章", entryChapterIndex: 1, type: "free", brief: "故障注入", buildKnowledge: false })
     });
     assert.equal(failedCreate.status, 500);
     const remainingWorlds = (await readdir(join(root, "worlds"))).sort();
