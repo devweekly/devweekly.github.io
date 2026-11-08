@@ -1080,13 +1080,27 @@ async function assessStoryExecutionCheckpoint(
     updatedAt: assessedAt
   }, { at: assessedAt, type: "assessment", message: assessment.rationale.slice(0, 1200) });
   const naturallyComplete = isStoryUnitNaturallyComplete(assessment);
+  const revisedSpine = assessment.revisedStorySpine.length >= 4
+    ? assessment.revisedStorySpine.map(beat => {
+        const previousBeat = unitInput.storySpine.find(item => item.title === beat.title);
+        return previousBeat?.status === "completed" ? { ...beat, status: "completed" as const } : beat;
+      })
+    : unitInput.storySpine;
+  const characterArcHistory = [
+    ...(unitInput.execution.characterArcHistory ?? []),
+    ...assessment.characterArcUpdates.filter(update => update.observedChange.trim()).map(update => ({
+      chapterId: checkpoint.runId, name: update.name, observedChange: update.observedChange,
+      futurePossibilities: update.futurePossibilities, recordedAt: assessedAt
+    }))
+  ].slice(-200);
   const unit = {
-    ...unitInput, updatedAt: assessedAt,
+    ...unitInput, storySpine: revisedSpine, updatedAt: assessedAt,
     execution: {
       ...unitInput.execution, status: naturallyComplete ? "completed" as const : "in_progress" as const,
       lastAssessedChapterId: checkpoint.runId,
       lastUnresolvedCoreThreads: assessment.unresolvedCoreThreads,
       lastAssessment: assessment.rationale, nextDirection: assessment.nextDirection,
+      characterArcHistory,
       assessedAt, ...(naturallyComplete ? {completedAt: assessedAt} : {})
     }
   };
