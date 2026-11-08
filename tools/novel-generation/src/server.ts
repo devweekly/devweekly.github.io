@@ -1050,6 +1050,8 @@ async function createStoryStateSnapshot(worldId: string, storyUnitIdInput: strin
   await loadStoryState(statePath, worldId);
   const db = new DatabaseSync(path.join(stateDir, "story.db"));
   try { db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); } finally { db.close(); }
+  await rm(path.join(stateDir, "story.db-wal"), { force: true });
+  await rm(path.join(stateDir, "story.db-shm"), { force: true });
   const snapshotDir = storyStateSnapshotDir(worldId, runId);
   await rm(snapshotDir, { recursive: true, force: true });
   await mkdir(snapshotDir, { recursive: true });
