@@ -39,6 +39,21 @@ export function storyExecutionOwnsRun(storyUnitId: string | undefined, runStoryU
   return storyUnitId === runStoryUnitId;
 }
 
+export interface StoryExecutionChapterRun {
+  kind?: string;
+  storyUnitId?: string;
+  status?: string;
+  chapterPath?: string;
+  createdAt: string;
+}
+
+/** Select the latest completed chapter only from the exact execution scope, including legacy. */
+export function latestCompletedChapterForStoryUnit<T extends StoryExecutionChapterRun>(runs: T[], storyUnitId?: string): T | undefined {
+  return runs
+    .filter(run => run.kind === "chapter" && storyExecutionOwnsRun(storyUnitId, run.storyUnitId) && run.status === "completed" && Boolean(run.chapterPath))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+}
+
 export async function listStoryExecutions(worldId: string, storyUnitId?: string | null): Promise<StoryExecution[]> {
   try {
     const names = await readdir(directory(worldId));
