@@ -1716,7 +1716,10 @@ app.post("/api/worlds/:worldId/knowledge-build", async (req, res) => {
   } catch (error) { sendError(res, error); }
 });
 app.get("/api/worlds/:worldId/runs", async (req, res) => {
-  try { res.json({ runs: await listRuns(worldIdOf(req.params.worldId)) }); } catch (error) { sendError(res, error); }
+  try {
+    const storyUnitId = typeof req.query.storyUnitId === "string" ? recordId(req.query.storyUnitId) : req.query.storyUnitId === "legacy" ? null : undefined;
+    res.json({ runs: await listRuns(worldIdOf(req.params.worldId), storyUnitId) });
+  } catch (error) { sendError(res, error); }
 });
 app.get("/api/candidates/:candidateId", async (req, res) => {
   try {
