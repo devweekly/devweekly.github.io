@@ -304,7 +304,9 @@ test("universe creation uses catalog order and stable chapter IDs despite extra 
     const universeDir = join(root, "worlds", payload.universe.id);
     assert.ok((await readFile(join(universeDir, "universe-entry.md"), "utf8")).includes("卷二第一章正文"));
     const boundedLibrary = JSON.parse(await readFile(join(universeDir, "library", "index.json"), "utf8")) as { chunks: Array<{ chapter: string; text: string }> };
-    assert.deepEqual(boundedLibrary.chunks.map(item => item.chapter), ["第一章", "第二章"]);
+    assert.deepEqual(boundedLibrary.chunks.map(item => item.chapter), ["第一章", "第二章", "第一章"]);
+    assert.ok(boundedLibrary.chunks.some(item => item.text.includes("卷二第一章正文")), "missing catalog chapter must be reconstructed as a searchable library chunk");
+    assert.ok(!JSON.stringify(boundedLibrary).includes("卷二第二章正文"), "chapter after the selected entry must not enter the snapshot");
     assert.ok(!JSON.stringify(boundedLibrary).includes("前置内容泄漏"));
     assert.ok(!JSON.stringify(boundedLibrary).includes("作者说明泄漏"));
 
