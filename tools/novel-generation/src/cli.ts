@@ -895,7 +895,7 @@ async function main(): Promise<void> {
   if (command === "write") {
     const runId = new Date().toISOString().replace(/[:.]/g, "-");
     const outputDir = resolveRunOutputDir(worldId, "write", resolve(".output", worldId, runId));
-    const statePath = resolve("worlds", worldId, "story-state.json");
+    const statePath = resolve(arg("--state-file") ?? resolve("worlds", worldId, "story-state.json"));
     const mode = (arg("--mode") ?? (sourceText ? "continuation" : "derivative")) as GenerationMode;
     if (mode !== "derivative" && mode !== "continuation") throw new Error("Unsupported mode: " + mode);
     if (mode === "continuation" && !sourceText) throw new Error("Continuation mode requires --source with text you provide or are authorized to use.");
@@ -905,7 +905,7 @@ async function main(): Promise<void> {
       throw new Error("--retrieval-limit must be between 1 and 20.");
     }
     const state = await loadRunStoryState(statePath, worldId, outputDir, "write");
-    const storyPlanText = [formatStoryPlan(await loadStoryPlan(resolve("worlds", worldId, "story-plan.json"), worldId)), formatStoryUnit(await readOptional(resolve("worlds", worldId, "story-unit.json")).then(raw => raw ? validateStoryUnit(JSON.parse(raw), worldId) : undefined))].filter(Boolean).join("\n\n");
+    const storyPlanText = [formatStoryPlan(await loadStoryPlan(resolve("worlds", worldId, "story-plan.json"), worldId)), formatStoryUnit(await readOptional(resolve(arg("--story-unit-file") ?? resolve("worlds", worldId, "story-unit.json"))).then(raw => raw ? validateStoryUnit(JSON.parse(raw), worldId) : undefined))].filter(Boolean).join("\n\n");
     let storyArcText = "";
     try { storyArcText = await readFile(resolve("worlds", worldId, "story-arc.md"), "utf8"); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
