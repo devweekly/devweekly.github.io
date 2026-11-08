@@ -35,7 +35,7 @@ test("catalog alignment keeps a formal chapter with no library chunks in its exa
     chunk("第二章", "卷一第二章", 10),
     chunk("作者说明", "卷间作者说明", 15),
     chunk("第二章", "卷二第二章", 30)
-  ]);
+  ], [0, 10, 20, 30]);
   assert.deepEqual(aligned.map(item => item.chunks.length), [1, 1, 0, 1]);
   assert.equal(aligned[2]?.chapter.title, "第一章");
   assert.equal(aligned[2]?.chapter.volume, 2);
