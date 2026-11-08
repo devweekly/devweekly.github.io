@@ -767,7 +767,13 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     }
     const selectedIndex = entryChapterIndex as number;
     const selectedChapter = canonChapters[selectedIndex];
-    if (!selectedChapter?.text.trim() || selectedChapter.title !== entryChapter) return void res.status(400).json({ error: "所选章节索引、标题或正文不匹配，请刷新原文目录后重试。" });
+    if (!selectedChapter || selectedChapter.title !== entryChapter) return void res.status(400).json({ error: "所选章节索引或标题不匹配，请刷新原文目录后重试。" });
+    const incompletePast = canonChapters.slice(0, selectedIndex + 1).find(chapter => !chapter.text.trim());
+    if (incompletePast) {
+      return void res.status(400).json({
+        error: "起点及之前的原著章节缺少可验证正文（" + incompletePast.title + "）。请先修复原文切片或目录行号，不能在缺失前情的状态下创建宇宙。"
+      });
+    }
     // 起点前情属于原著只读背景，不是新宇宙已发生的续写事实。
     const originContext = buildUniverseOriginContext(canonChapters, selectedIndex);
     const id = "u-" + randomUUID().replace(/-/g, "").slice(0, 16);
