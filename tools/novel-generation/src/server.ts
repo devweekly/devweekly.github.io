@@ -952,6 +952,7 @@ app.get("/api/worlds/:worldId/story-unit", async (req, res) => {
 app.post("/api/worlds/:worldId/story-unit/generate", async (req, res) => {
   try {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    if (activeStoryExecutions.has(id)) return void res.status(409).json({ error: "完整故事执行期间不能重写故事单元设计。" });
     await serializeWorld(id, async () => {
       const dir = worldDir(id);
       const worldBible = await readFile(path.join(dir, "world-bible.md"), "utf8");
@@ -1433,6 +1434,7 @@ app.get("/api/runs/:runId", async (req, res) => {
 app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
   try {
     const lockId = worldIdOf(req.params.worldId);
+    if (activeStoryExecutions.has(lockId)) return void res.status(409).json({ error: "完整故事任务正在执行，请暂停或取消后再单独生成章节。" });
     await serializeWorld(lockId, async () => {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id); const dir = worldDir(id);
     try { await readFile(path.join(dir, "world-bible.md"), "utf8"); } catch { return void res.status(409).json({ error: "缺少 worlds/" + id + "/world-bible.md。请先建立世界设定；这是续写不可自动猜测的基础资料。" }); }
