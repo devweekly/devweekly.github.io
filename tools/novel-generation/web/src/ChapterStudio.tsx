@@ -4,7 +4,7 @@ import { PlayCircleOutlined, ReloadOutlined } from "@ant-design/icons";
 const { Title, Text, Paragraph } = Typography;
 type Run = { id:string; kind?:string; status:string; createdAt:string; updatedAt:string; error?:string; outputDir?:string; chapterPath?:string; previousChapterPath?:string };
 type Preview = { storyArc:string; chapterPlan:string; chapter:string };
-type StoryExecution = {id:string;worldId:string;storyUnitTitle:string;status:"queued"|"running"|"paused"|"completed"|"failed"|"cancelled"|"stalled";createdAt:string;updatedAt:string;completedAt?:string;currentRunId?:string;completedChapters:Array<{runId:string;chapterPath:string;completedAt:string}>;lastAssessment?:string;nextDirection?:string;error?:string;brief:string;resumeCount:number};
+type StoryExecution = {id:string;worldId:string;storyUnitTitle:string;mode:"complete_story"|"fixed_batch";targetChapterCount?:number;status:"queued"|"running"|"paused"|"completed"|"failed"|"cancelled"|"stalled";createdAt:string;updatedAt:string;completedAt?:string;currentRunId?:string;completedChapters:Array<{runId:string;chapterPath:string;completedAt:string}>;lastAssessment?:string;nextDirection?:string;error?:string;brief:string;resumeCount:number};
 type StoryUnit = { execution:{status:"not_started"|"in_progress"|"completed";completedChapterIds:string[];lastAssessment?:string;nextDirection?:string;assessedAt?:string;completedAt?:string}; title:string; storyCore:string; readerExperience:string; openingSituation:string; centralConflict:string; fruitOrSetting:{name:string;premise:string;abilitiesAndRules:string[];costsAndLimits:string[];historicalContext:string;geographyAndDailyLife:string;powerAndSocialRelations:string}; cultureAndFolklore:Array<{name:string;practice:string;originOrBelief:string;socialFunction:string;storyUse:string}>; taboosAndGhostStories:Array<{name:string;versions:string[];underlyingTruthOptions:string[];consequences:string;scenePotential:string}>; cast:Array<{name:string;role:string;status:string;desire:string;fearOrSecret:string;relationships:string[];possibleDevelopment:string[]}>; relationshipDynamics:string[]; storySpine:Array<{title:string;function:string;causalChange:string;involvedCharacters:string[];possibleArcs:string[]}>; subplots:string[]; climax:string; endingAndAftermath:string; unresolvedQuestions:string[]; creativePossibilities:string[] };
 type Universe = { id:string; sourceWorldId:string; name:string; type:string; entryChapter:string; entryChapterId?:string; entryOrdinal?:number; brief:string; createdAt:string; parentUniverseId?:string; forkPoint?:string; archivedAt?:string };
 type ForkableRun = { id:string; chapterTitle:string; createdAt:string };
@@ -30,8 +30,6 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [run,setRun]=useState<Run|null>(null);
  const [chapterRuns,setChapterRuns]=useState<Run[]>([]);
  const [batchCount,setBatchCount]=useState<number>(5);
- const [batchRunning,setBatchRunning]=useState(false);
- const [batchProgress,setBatchProgress]=useState({completed:0,total:0});
  const [starting,setStarting]=useState(false);
  const [loading,setLoading]=useState(false);
  const [preview,setPreview]=useState<Preview>(emptyPreview);
@@ -44,6 +42,8 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [generatingStoryUnit,setGeneratingStoryUnit]=useState(false);
  const [startingKnowledgeBuild,setStartingKnowledgeBuild]=useState(false);
  const busy=run?.status==="queued"||run?.status==="running";
+ const batchRunning=storyExecution?.mode==="fixed_batch"&&["queued","running"].includes(storyExecution.status);
+ const batchProgress={completed:storyExecution?.completedChapters.length??0,total:storyExecution?.targetChapterCount??0};
  const refresh=async()=>{
   if(!activeWorldId)return;setLoading(true);
   try{
@@ -101,28 +101,13 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  };
  const generateBatch=async()=>{
   if(batchRunning||busy)return;
-  const total=Math.max(1,Math.floor(batchCount||1));
-  setBatchRunning(true);setBatchProgress({completed:0,total});
+  setStartingStoryExecution(true);
   try{
-   for(let index=0;index<total;index++){
-    const started=await api<{run:Run}>("/api/worlds/"+activeWorldId+"/chapters/generate",{method:"POST",body:"{}"});
-    let current=started.run;
-    setRun(current);
-    while(current.status==="queued"||current.status==="running"){
-     await new Promise(resolve=>window.setTimeout(resolve,2000));
-     const [status,previewResult]=await Promise.all([
-      api<{run:Run}>("/api/runs/"+current.id+"?worldId="+activeWorldId),
-      api<Preview>("/api/runs/"+current.id+"/preview?worldId="+activeWorldId)
-     ]);
-     current=status.run;setRun(current);setPreview(previewResult);
-    }
-    await refresh();
-    setBatchProgress({completed:index+1,total});
-    if(current.status!=="completed")throw new Error("第 "+(index+1)+" 章生成失败，已停止批量任务；已完成章节保留，可修复后继续。"+(current.error?" "+current.error:""));
-   }
-   message.success("本次连续生成 "+total+" 章已完成。");
+   const result=await api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/chapter-batches",{method:"POST",body:JSON.stringify({chapterCount:batchCount})});
+   setStoryExecution(result.execution);
+   message.success("连续生成任务已交给服务端；刷新或关闭页面不会中断。");
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
-  finally{setBatchRunning(false);void refresh();}
+  finally{setStartingStoryExecution(false);}
  };
  const activeUniverse=universes.find(item=>item.id===activeWorldId);
  useEffect(()=>{
@@ -216,7 +201,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
     {activeWorldId!==worldId&&!activeUniverse?.archivedAt&&<Button onClick={()=>void openFork()}>从本宇宙分叉</Button>}
     {activeUniverse&&(activeUniverse.archivedAt?<Button onClick={()=>void changeArchive(false)}>恢复宇宙</Button>:<Button danger onClick={()=>void changeArchive(true)} disabled={Boolean(busy)}>归档当前宇宙</Button>)}
     <Button type="primary" size="large" className="chapter-action" icon={<PlayCircleOutlined/>} loading={starting||Boolean(busy)} disabled={!activeWorldId||Boolean(busy)||batchRunning||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generate()}>生成下一章</Button>
-    <Space.Compact><InputNumber min={1} value={batchCount} onChange={value=>setBatchCount(value??1)} disabled={batchRunning||Boolean(busy)} style={{width:76}}/><Button loading={batchRunning} disabled={!activeWorldId||Boolean(busy)||batchRunning||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generateBatch()}>连续生成多章</Button></Space.Compact>
+    <Space.Compact><InputNumber min={1} value={batchCount} onChange={value=>setBatchCount(value??1)} disabled={batchRunning||Boolean(busy)} style={{width:76}}/><Button loading={batchRunning||startingStoryExecution&&storyExecution?.mode==="fixed_batch"} disabled={!activeWorldId||Boolean(busy)||batchRunning||startingStoryExecution||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generateBatch()}>连续生成多章</Button></Space.Compact>
     <Button icon={<ReloadOutlined/>} loading={loading} onClick={()=>void refresh()}>刷新状态</Button>
     {busy&&<Tag color="processing">正在自动创作</Tag>}
     {batchRunning&&<Tag color="processing">批量进度 {batchProgress.completed}/{batchProgress.total}</Tag>}
@@ -276,13 +261,13 @@ export default function ChapterStudio({worldId}:{worldId:string}){
      <Tag color={storyUnit.execution.status==="completed"?"success":storyUnit.execution.status==="in_progress"?"processing":"default"}>{storyUnit.execution.status==="completed"?"故事已收束":storyUnit.execution.status==="in_progress"?"正在执行":"尚未执行"}</Tag>
      <Text type="secondary">已完成 {storyUnit.execution.completedChapterIds.length} 章；章节数由故事发展决定</Text>
      <Button onClick={()=>void generateStoryUnit()} loading={generatingStoryUnit} disabled={generatingStoryUnit||storyExecution?.status==="running"||storyExecution?.status==="queued"}>重新推演故事设计</Button>
-     <Button type="primary" onClick={()=>void startCompleteStory()} loading={startingStoryExecution} disabled={startingStoryExecution||!["not_started","in_progress"].includes(storyUnit.execution.status)||["queued","running","paused","failed","stalled"].includes(storyExecution?.status??"")||Boolean(activeUniverse?.archivedAt)}>自动完成整个故事</Button>
+     <Button type="primary" onClick={()=>void startCompleteStory()} loading={startingStoryExecution} disabled={startingStoryExecution||batchRunning||busy||!["not_started","in_progress"].includes(storyUnit.execution.status)||["queued","running","paused","failed","stalled"].includes(storyExecution?.status??"")||Boolean(activeUniverse?.archivedAt)}>自动完成整个故事</Button>
     </Space>
    </Space>}
   </Card>
-  {storyExecution&&<Card title="完整故事执行任务" style={{marginBottom:18}}>
+  {storyExecution&&<Card title={storyExecution.mode==="fixed_batch"?"连续生成任务":"完整故事执行任务"} style={{marginBottom:18}}>
    <Space direction="vertical" style={{width:"100%"}} size="middle">
-    <Space wrap><Tag color={storyExecution.status==="completed"?"success":storyExecution.status==="failed"||storyExecution.status==="stalled"?"error":storyExecution.status==="running"?"processing":"default"}>{({queued:"排队中",running:"执行中",paused:"已暂停",completed:"自然收束",failed:"执行失败",cancelled:"已取消",stalled:"推进停滞"})[storyExecution.status]}</Tag><Text type="secondary">任务 {storyExecution.id.slice(0,8)} · 已完成 {storyExecution.completedChapters.length} 章 · 恢复 {storyExecution.resumeCount} 次{storyExecution.currentRunId?" · 当前章节任务 "+storyExecution.currentRunId.slice(0,8):""}</Text></Space>
+    <Space wrap><Tag color={storyExecution.status==="completed"?"success":storyExecution.status==="failed"||storyExecution.status==="stalled"?"error":storyExecution.status==="running"?"processing":"default"}>{storyExecution.mode==="fixed_batch"&&storyExecution.status==="completed"?"批量章节完成":({queued:"排队中",running:storyExecution.mode==="fixed_batch"?"连续生成中":"执行中",paused:"已暂停",completed:"自然收束",failed:"执行失败",cancelled:"已取消",stalled:"推进停滞"})[storyExecution.status]}</Tag><Text type="secondary">任务 {storyExecution.id.slice(0,8)} · 已完成 {storyExecution.completedChapters.length}{storyExecution.mode==="fixed_batch"?" / "+storyExecution.targetChapterCount:""} 章 · 恢复 {storyExecution.resumeCount} 次{storyExecution.currentRunId?" · 当前章节任务 "+storyExecution.currentRunId.slice(0,8):""}</Text></Space>
     {storyExecution.status==="running"&&<Progress percent={undefined} status="active" showInfo={false}/>}
     {storyExecution.lastAssessment&&<Paragraph>最近进展判断：{storyExecution.lastAssessment}</Paragraph>}
     {storyExecution.nextDirection&&<Paragraph type="secondary">下一步：{storyExecution.nextDirection}</Paragraph>}
