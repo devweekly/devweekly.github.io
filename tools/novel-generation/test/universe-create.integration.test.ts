@@ -303,7 +303,7 @@ test("universe creation uses catalog order and stable chapter IDs despite extra 
 
     const snapshot = new DatabaseSync(join(universeDir, "novel.db"));
     try {
-      assert.deepEqual((snapshot.prepare("SELECT chapter_id,ordinal FROM novel_chapters ORDER BY ordinal").all() as Array<{ chapter_id: string; ordinal: number }>), [
+      assert.deepEqual((snapshot.prepare("SELECT chapter_id,ordinal FROM novel_chapters ORDER BY ordinal").all().map(row => ({ ...(row as { chapter_id: string; ordinal: number }) })) as Array<{ chapter_id: string; ordinal: number }>), [
         { chapter_id: "V01-C001", ordinal: 1 },
         { chapter_id: "V01-C002", ordinal: 2 },
         { chapter_id: "V02-C001", ordinal: 3 }
