@@ -1215,7 +1215,10 @@ app.post("/api/worlds/:worldId/story-executions/:executionId/cancel", async (req
     const task = await getStoryExecution(id, executionId);
     if (!task) return void res.status(404).json({error:"Story execution not found."});
     if (!["running","queued","paused"].includes(task.status)) return void res.status(409).json({error:"当前任务不能取消。",execution:task});
-    const updated = {...task,cancelRequested:true,updatedAt:new Date().toISOString()};
+    const now = new Date().toISOString();
+    const updated = task.status === "paused"
+      ? {...task,status:"cancelled" as const,cancelRequested:true,completedAt:now,updatedAt:now}
+      : {...task,cancelRequested:true,updatedAt:now};
     await saveStoryExecution(updated); res.json({execution:updated});
   } catch (error) { sendError(res, error); }
 });
@@ -1443,6 +1446,8 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
   try {
     const lockId = worldIdOf(req.params.worldId);
     if (activeStoryExecutions.has(lockId)) return void res.status(409).json({ error: "完整故事任务正在执行，请暂停或取消后再单独生成章节。" });
+    const pendingStoryTask = (await listStoryExecutions(lockId)).find(task => ["queued","running","paused"].includes(task.status));
+    if (pendingStoryTask) return void res.status(409).json({ error: "当前完整故事任务尚未结束，请恢复或取消后再单独生成章节。", execution: pendingStoryTask });
     await serializeWorld(lockId, async () => {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id); const dir = worldDir(id);
     try { await readFile(path.join(dir, "world-bible.md"), "utf8"); } catch { return void res.status(409).json({ error: "缺少 worlds/" + id + "/world-bible.md。请先建立世界设定；这是续写不可自动猜测的基础资料。" }); }
