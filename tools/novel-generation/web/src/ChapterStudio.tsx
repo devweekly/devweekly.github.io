@@ -80,7 +80,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
    const chosen=selectedStoryUnitId&&units.storyUnits.some(x=>x.id===selectedStoryUnitId)?selectedStoryUnitId:units.storyUnits[0]?.id;
    if(historyScope==="current"&&chosen!==selectedStoryUnitId){setSelectedStoryUnitId(chosen);return;}
    setWorldStoryExecutions(tasks.executions);
-   const scopedExecutions=tasks.executions.filter(item=>historyScope==="legacy"?!item.storyUnitId:item.storyUnitId===chosen);
+   const scopedExecutions=tasks.executions.filter(item=>historyScope==="legacy"?!item.storyUnitId:Boolean(chosen)&&item.storyUnitId===chosen);
    setStoryExecutionHistory(scopedExecutions);
    setStoryExecution(current=>current&&scopedExecutions.some(item=>item.id===current.id)?scopedExecutions.find(item=>item.id===current.id)??null:scopedExecutions[0]??null);
    if(historyScope==="current"&&chosen){
@@ -119,6 +119,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   const index=ordered.findIndex(item=>item.id===run.id);const target=ordered[index+offset];if(target)void selectChapter(target.id);
  };
  const generate=async()=>{
+  setHistoryScope(selectedStoryUnitId?"current":"legacy");
   setNotice("");setStarting(true);
   try{const data=await api<{run:Run}>("/api/worlds/"+activeWorldId+"/chapters/generate",{method:"POST",body:JSON.stringify({storyUnitId:selectedStoryUnitId})});setRun(data.run);message.success("已启动：自动检查、滚动规划、续写、终审和状态更新。");}
   catch(e){const text=e instanceof Error?e.message:String(e);setNotice(text);message.error(text);}
@@ -126,6 +127,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  };
  const generateBatch=async()=>{
   if(batchRunning||busy)return;
+  setHistoryScope(selectedStoryUnitId?"current":"legacy");
   setStartingStoryExecution(true);
   try{
    const result=await api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/chapter-batches",{method:"POST",body:JSON.stringify({chapterCount:batchCount,storyUnitId:selectedStoryUnitId})});
@@ -153,6 +155,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   finally{setGeneratingStoryUnit(false);}
  };
  const startCompleteStory=async()=>{
+  setHistoryScope(selectedStoryUnitId?"current":"legacy");
   setStartingStoryExecution(true);
   try{
    const result=await api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/story-executions",{method:"POST",body:JSON.stringify({storyUnitId:selectedStoryUnitId})});
