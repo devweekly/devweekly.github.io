@@ -72,12 +72,21 @@ test("canon alignment excludes chunks from auxiliary source files", () => {
   assert.deepEqual(selected.map(item => item.text), ["原文正文"]);
 });
 
-test("source selection rejects missing provenance and unverifiable source hashes", () => {
+test("source path remains usable when the full original file is stored externally", () => {
   const selected = selectCanonSourceChunks([
     chunk("第一章", "没有来源证据", 0),
-    { ...chunk("第一章", "无法校验 hash", 0), source: "worlds/book/original.txt", sourceHash: "stale" }
+    { ...chunk("第一章", "原文切片", 0), source: "worlds/book/original.txt", sourceHash: "indexed-source-hash" },
+    { ...chunk("第一章", "辅助文档", 0), source: "worlds/book/notes.txt", sourceHash: "notes-hash" }
   ]);
-  assert.deepEqual(selected, []);
+  assert.deepEqual(selected.map(item => item.text), ["原文切片"]);
+});
+
+test("available original file still requires an exact source hash", () => {
+  const selected = selectCanonSourceChunks([
+    { ...chunk("第一章", "旧原文切片", 0), source: "worlds/book/original.txt", sourceHash: "stale" },
+    { ...chunk("第一章", "当前原文切片", 0), source: "worlds/book/original.txt", sourceHash: "current" }
+  ], "current");
+  assert.deepEqual(selected.map(item => item.text), ["当前原文切片"]);
 });
 test("legacy source paths retain original.txt chunks but reject auxiliary files", () => {
   const selected = selectCanonSourceChunks([
