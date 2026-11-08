@@ -1071,6 +1071,8 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
   const mode = previousChapterPath ? "continuation" : "derivative";
   const args = [
     ...buildCliEntryArgs(["write"]), "--world", worldId, "--mode", mode,
+    "--state-file", storyUnitId ? path.join(dir, ".story-units", storyUnitId + ".story-state.json") : path.join(dir, "story-state.json"),
+    "--story-unit-file", storyExecutionUnitPath(worldId, storyUnitId),
     ...(previousChapterPath ? ["--source", previousChapterPath] : universeEntryPath ? ["--source", universeEntryPath] : []),
     ...(!previousChapterPath && universe ? ["--context", path.join(dir, "universe-origin-context.md")] : []),
     "--brief", brief, ...(model ? ["--model", model] : []),
