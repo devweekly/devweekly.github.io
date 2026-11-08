@@ -77,11 +77,8 @@ export function alignCanonChapterGroups(
 /** Keep only chunks from the immutable original.txt source, never auxiliary imports. */
 export function selectCanonSourceChunks(chunks: CanonChunk[], originalSourceHash?: string): CanonChunk[] {
   return chunks.filter(chunk => {
-    if (chunk.sourceHash && originalSourceHash) return chunk.sourceHash === originalSourceHash;
-    if (chunk.source) return /(?:^|\/)original\.txt$/i.test(chunk.source);
-    // Older synthetic/legacy indexes may omit source metadata. They remain
-    // usable only when positional metadata can disambiguate repeated titles.
-    return true;
+    if (chunk.sourceHash) return originalSourceHash !== undefined && chunk.sourceHash === originalSourceHash;
+    return typeof chunk.source === "string" && /(?:^|\/)original\.txt$/i.test(chunk.source);
   });
 }
 
