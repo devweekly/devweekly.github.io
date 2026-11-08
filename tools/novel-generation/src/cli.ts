@@ -61,6 +61,7 @@ import { readTaskProfiles, STAGE_KEYS } from "./task-profiles.js";
 import { writeLongChapter, chineseChars } from "./long-chapter.js";
 import { loadChapters, runRegression } from "./regression.js";
 import { formatStoryPlan, generateStoryPlan, loadStoryPlan, saveStoryPlan } from "./story-plan.js";
+import { formatStoryUnit, validateStoryUnit } from "./story-unit.js";
 import { buildStyleDistillationPrompt } from "./style-distillation.js";
 import { ensureAsOfStyleProfile } from "./asof-style-profile.js";
 import { exportAsOfDossier } from "./asof-dossier.js";
@@ -904,7 +905,7 @@ async function main(): Promise<void> {
       throw new Error("--retrieval-limit must be between 1 and 20.");
     }
     const state = await loadRunStoryState(statePath, worldId, outputDir, "write");
-    const storyPlanText = formatStoryPlan(await loadStoryPlan(resolve("worlds", worldId, "story-plan.json"), worldId));
+    const storyPlanText = [formatStoryPlan(await loadStoryPlan(resolve("worlds", worldId, "story-plan.json"), worldId)), formatStoryUnit(await readOptional(resolve("worlds", worldId, "story-unit.json")).then(raw => raw ? validateStoryUnit(JSON.parse(raw), worldId) : undefined))].filter(Boolean).join("\n\n");
     let storyArcText = "";
     try { storyArcText = await readFile(resolve("worlds", worldId, "story-arc.md"), "utf8"); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
@@ -966,7 +967,7 @@ async function main(): Promise<void> {
     const outputDir = resolveRunOutputDir(worldId, "write-long", resolve(".output", worldId, "long-" + runId));
     const statePath = resolve("worlds", worldId, "story-state.json");
     const longState = await loadRunStoryState(statePath, worldId, outputDir, "write-long");
-    const storyPlanText = formatStoryPlan(await loadStoryPlan(resolve("worlds", worldId, "story-plan.json"), worldId));
+    const storyPlanText = [formatStoryPlan(await loadStoryPlan(resolve("worlds", worldId, "story-plan.json"), worldId)), formatStoryUnit(await readOptional(resolve("worlds", worldId, "story-unit.json")).then(raw => raw ? validateStoryUnit(JSON.parse(raw), worldId) : undefined))].filter(Boolean).join("\n\n");
     // 检索查询按优先级拼装：本次 brief / 主线方向 / 传统衍生文尾段 / 原著定位句、
     // 活跃情节线标题与有限人数。顺序影响 BM25 召回，不要随意调换。
     const storyAnalysisQuery = [
