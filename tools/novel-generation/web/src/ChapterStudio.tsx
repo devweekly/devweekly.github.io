@@ -15,6 +15,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [activeWorldId,setActiveWorldId]=useState(worldId);
  const [universes,setUniverses]=useState<Universe[]>([]);
  const [sourceChapters,setSourceChapters]=useState<Array<{id:number;title:string;label:string}>>([]);
+ const [sourceChapterError,setSourceChapterError]=useState("");
  const [entryChapterIndex,setEntryChapterIndex]=useState<number|undefined>();
  const [createOpen,setCreateOpen]=useState(false);
  const [universeName,setUniverseName]=useState("");
@@ -71,7 +72,10 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   }catch(e){if(requestId===refreshGeneration.current)message.error(e instanceof Error?e.message:String(e));}
   finally{if(requestId===refreshGeneration.current)setLoading(false);}
  };
- useEffect(()=>{setActiveWorldId(worldId);setSelectedStoryUnitId(undefined);setStoryUnit(null);setStoryUnitVersions([]);setStoryUnits([]);setHistoryScope("current");setStoryExecution(null);setStoryExecutionHistory([]);setWorldStoryExecutions([]);setRun(null);setPreview(emptyPreview);++refreshGeneration.current;++previewGeneration.current;void Promise.all([api<{universes:Universe[]}>("/api/worlds/"+worldId+"/universes"),api<{chapters:Array<{id:number;title:string;label:string}>}>("/api/worlds/"+worldId+"/source-chapters")]).then(([u,c])=>{setUniverses(u.universes);setSourceChapters(c.chapters);}).catch(()=>{setUniverses([]);setSourceChapters([]);setStoryUnit(null);});},[worldId]);
+ useEffect(()=>{setActiveWorldId(worldId);setSelectedStoryUnitId(undefined);setStoryUnit(null);setStoryUnitVersions([]);setStoryUnits([]);setHistoryScope("current");setStoryExecution(null);setStoryExecutionHistory([]);setWorldStoryExecutions([]);setRun(null);setPreview(emptyPreview);setSourceChapterError("");++refreshGeneration.current;++previewGeneration.current;
+  void api<{universes:Universe[]}>("/api/worlds/"+worldId+"/universes").then(result=>setUniverses(result.universes)).catch(error=>{setUniverses([]);message.error(error instanceof Error?error.message:String(error));});
+  void api<{chapters:Array<{id:number;title:string;label:string}>}>("/api/worlds/"+worldId+"/source-chapters").then(result=>{setSourceChapters(result.chapters);setSourceChapterError("");}).catch(error=>{setSourceChapters([]);setSourceChapterError(error instanceof Error?error.message:String(error));});
+ },[worldId]);
  useEffect(()=>{void refresh();},[activeWorldId,selectedStoryUnitId,historyScope]);
  useEffect(()=>{if(!activeWorldId||!storyUnit?.id){setStoryUnitVersions([]);return;}let cancelled=false;fetch("/api/worlds/"+activeWorldId+"/story-units/"+storyUnit.id+"/versions").then(async response=>{const body=await response.json() as {versions?:Array<{versionId:string;createdAt:string;title:string;storyCore:string;centralConflict:string}>;error?:string};if(!response.ok)throw new Error(body.error??response.statusText);if(!cancelled)setStoryUnitVersions(body.versions??[]);}).catch(()=>{if(!cancelled)setStoryUnitVersions([]);});return()=>{cancelled=true;};},[activeWorldId,storyUnit?.id,storyUnit?.updatedAt]);
  useEffect(()=>{if(!activeWorldId)return;let cancelled=false;void Promise.all([
@@ -367,7 +371,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
      {run.outputDir&&<Collapse ghost style={{marginTop:12}} items={[{key:"diagnostics",label:"运行诊断（中间产物与日志）",children:<Text type="secondary">{run.outputDir}。完整过程日志、质量审查、状态更新和阶段缓存均保存在该目录。</Text>}]}/>}
     </div>}
   </Card>
-  <Modal title="创建独立故事宇宙" open={createOpen} onCancel={()=>setCreateOpen(false)} onOk={()=>void createUniverse()} confirmLoading={creatingUniverse} okText="创建宇宙">
+  <Modal title="创建独立故事宇宙" open={createOpen} onCancel={()=>setCreateOpen(false)} onOk={()=>void createUniverse()} confirmLoading={creatingUniverse} okButtonProps={{disabled:sourceChapters.length===0||entryChapterIndex===undefined}} okText="创建宇宙">
    <Space direction="vertical" style={{width:"100%"}} size="middle">
     <Input placeholder="宇宙名称" value={universeName} onChange={e=>setUniverseName(e.target.value)} />
     <Select showSearch optionFilterProp="label" style={{width:"100%"}} placeholder="选择原文起始章节" value={entryChapterIndex} onChange={index=>{setEntryChapterIndex(index);setEntryChapter(sourceChapters.find(chapter=>chapter.id===index)?.title??"");}} options={sourceChapters.map(chapter=>({value:chapter.id,label:chapter.label+" · "+chapter.title}))} notFoundContent="原文目录为空，请先导入并建立原文索引。" />
