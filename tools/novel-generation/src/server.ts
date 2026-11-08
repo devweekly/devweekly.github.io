@@ -1963,8 +1963,8 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
     }
     const allRuns = await listRuns(id);
     const runs = allRuns.filter(run => run.kind === "chapter" && (requestedStoryUnitId ? run.storyUnitId === requestedStoryUnitId : !run.storyUnitId));
-    const active = runs.find(run => run.status === "queued" || run.status === "running");
-    if (active) return void res.status(409).json({ error: "已有章节正在生成。", run: active });
+    const active = allRuns.find(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"));
+    if (active) return void res.status(409).json({ error: "当前世界已有章节正在生成；为保护共享索引和 Story Unit 元数据，同一 World 同时只运行一个章节任务。", run: active });
 
     // 连载默认接续最近一章成功成稿；第一章才从当前世界状态开启新故事。
     const previous = runs
