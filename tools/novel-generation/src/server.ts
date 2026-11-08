@@ -510,6 +510,7 @@ interface CanonChapterEntry {
   sequenceInVolume: number;
   chapterId: string;
   ordinal: number;
+  hasChunks: boolean;
 }
 async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEntry[]> {
   const catalog = await loadChapterCatalog(sourceWorldId);
@@ -538,7 +539,8 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
       volume: item.chapter.volume,
       sequenceInVolume: item.chapter.sequenceInVolume,
       chapterId: catalogChapterId(item.chapter.volume, item.chapter.sequenceInVolume),
-      ordinal: item.catalogIndex + 1
+      ordinal: item.catalogIndex + 1,
+      hasChunks: item.chunks.length > 0
     });
   }
   return result;
@@ -756,19 +758,42 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     let entryRecord: { chapter_id:string; ordinal:number; volume:number; title:string } | undefined;
     try {
       const chapterRows = sourceDb.prepare("SELECT chapter_id,ordinal,volume,title FROM novel_chapters ORDER BY ordinal").all() as Array<{chapter_id:string;ordinal:number;volume:number;title:string}>;
-      if (chapterRows.length !== canonChapters.length) {
-        throw new Error("novel.db 正式章节目录未完成同步（目录 " + canonChapters.length + " 章，知识库 " + chapterRows.length + " 章）。请先执行 index-story；不要重新 ingest，以免清空派生索引。");
+      const rowsById = new Map(chapterRows.map(row => [row.chapter_id, row]));
+      const catalogIds = new Set(canonChapters.map(chapter => chapter.chapterId));
+      const unexpected = chapterRows.filter(row => row.chapter_id !== "V00-C000" && !catalogIds.has(row.chapter_id));
+      if (unexpected.length) {
+        throw new Error("novel.db 含有不属于当前 chapter-index.json 的章节 ID（" + unexpected[0]!.chapter_id + "），拒绝猜测章节映射。请执行 index-story 后重试。");
       }
-      for (const [index, chapter] of canonChapters.entries()) {
-        const row = chapterRows[index];
-        if (!row || row.chapter_id !== chapter.chapterId || Number(row.ordinal) !== chapter.ordinal ||
-            Number(row.volume) !== chapter.volume || row.title !== chapter.title) {
-          throw new Error("novel.db 章节目录与 chapter-index.json 不一致，首个差异位于第 " + (index + 1) + " 章（" + chapter.title + "）。请执行 index-story 后重试。");
+      if (!chapterRows.some(row => row.chapter_id !== "V00-C000")) {
+        throw new Error("novel.db 尚无正式章节索引。请先执行 index-story；不要重新 ingest，以免再次清空派生索引。");
+      }
+      const missingWithoutChunks = canonChapters.filter(chapter => !rowsById.has(chapter.chapterId) && chapter.hasChunks);
+      if (missingWithoutChunks.length) {
+        const first = missingWithoutChunks[0]!;
+        throw new Error("novel.db 缺少已有切片的正式章节记录（" + first.title + "，" + first.chapterId + "）。请执行 index-story 后重试。");
+      }
+      // A catalog chapter may legitimately have no retrieval chunks. If its
+      // original.txt range is available, reconstruct only its directory row in
+      // the staged copy; never mutate the source novel.db.
+      const insertMissing = sourceDb.prepare(
+        "INSERT INTO novel_chapters(chapter_id,world_id,ordinal,volume,printed_number,title,label,start_line,char_count,chunk_start,chunk_end) VALUES(?,?,?,?,?,?,?,?,?,?,?)"
+      );
+      for (const chapter of canonChapters) {
+        const row = rowsById.get(chapter.chapterId);
+        if (row) {
+          if (Number(row.ordinal) !== chapter.ordinal || Number(row.volume) !== chapter.volume || row.title !== chapter.title) {
+            throw new Error("novel.db 章节目录与 chapter-index.json 不一致，差异位于第 " + chapter.ordinal + " 章（" + chapter.title + "）。请执行 index-story 后重试。");
+          }
+        } else {
+          if (!chapter.text.trim() || chapter.hasChunks) throw new Error("无法安全补齐缺失的章节目录记录：" + chapter.title + "。");
+          insertMissing.run(chapter.chapterId, id, chapter.ordinal, chapter.volume, null, chapter.title, chapter.title,
+            null, chapter.text.length, 0, -1);
         }
       }
       entryRecord = sourceDb.prepare("SELECT chapter_id,ordinal,volume,title FROM novel_chapters WHERE chapter_id=?").get(selectedChapter.chapterId) as {chapter_id:string;ordinal:number;volume:number;title:string} | undefined;
-      if (entryRecord && (Number(entryRecord.ordinal) !== selectedChapter.ordinal || Number(entryRecord.volume) !== selectedChapter.volume || entryRecord.title !== selectedChapter.title)) {
-        throw new Error("所选章节的稳定 ID 与目录元数据不匹配，已终止创建。");
+      if (!entryRecord || Number(entryRecord.ordinal) !== selectedChapter.ordinal ||
+          Number(entryRecord.volume) !== selectedChapter.volume || entryRecord.title !== selectedChapter.title) {
+        throw new Error("所选章节的稳定 ID 与原著知识库记录不匹配，已终止创建。");
       }
     } finally { sourceDb.close(); }
     if (!entryRecord?.chapter_id || !Number.isSafeInteger(Number(entryRecord.ordinal))) throw new Error("无法将所选章节映射到 novel.db 的稳定 chapter_id，已终止创建。");
