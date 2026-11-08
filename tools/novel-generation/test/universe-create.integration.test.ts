@@ -236,7 +236,8 @@ test("universe creation uses catalog order and stable chapter IDs despite extra 
   const lineThree = "第二章 卷一";
   const lineFour = "卷一第二章正文";
   const lineFive = "第一章 卷二";
-  const volumeTwoSecondChapterStart = [lineOne, lineTwo, lineThree, lineFour, lineFive].reduce((sum, line) => sum + line.length + 1, 0);
+  const lineSix = "卷二第一章正文";
+  const volumeTwoSecondChapterStart = [lineOne, lineTwo, lineThree, lineFour, lineFive, lineSix].reduce((sum, line) => sum + line.length + 1, 0);
   const chunks = [
     { chapter: "前置内容", chunkIndex: 0, start: 0, end: 5, chapterStart: 0, text: "前置内容泄漏" },
     { chapter: "第一章", chunkIndex: 0, start: 0, end: 7, chapterStart: 0, text: "卷一第一章正文" },
