@@ -41,3 +41,17 @@ test("marks queued and running work as interrupted after restart", async () => {
   assert.ok(runs.every(run => run.status === "failed"));
   assert.ok(runs.every(run => run.error?.includes("Server restarted")));
 });
+
+test("filters chapter runs by Story Unit without mixing legacy history", async () => {
+  const worldId = "story-unit-run-filter";
+  const now = new Date().toISOString();
+  const base = { worldId, kind: "chapter" as const, status: "completed" as const, createdAt: now, updatedAt: now };
+  await saveRun({ ...base, id: "legacy-run" });
+  await saveRun({ ...base, id: "unit-a-run", storyUnitId: "unit-a" });
+  await saveRun({ ...base, id: "unit-b-run", storyUnitId: "unit-b" });
+
+  assert.deepEqual((await listRuns(worldId, "unit-a")).map(run => run.id), ["unit-a-run"]);
+  assert.deepEqual((await listRuns(worldId, "unit-b")).map(run => run.id), ["unit-b-run"]);
+  assert.deepEqual((await listRuns(worldId, null)).map(run => run.id), ["legacy-run"]);
+  assert.equal((await listRuns(worldId)).length, 3);
+});
