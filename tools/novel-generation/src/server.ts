@@ -1158,10 +1158,12 @@ app.get("/api/worlds/:worldId/story-executions", async (req, res) => {
   catch (error) { sendError(res, error); }
 });
 app.post("/api/worlds/:worldId/story-executions", async (req, res) => {
+  let reservedId: string | undefined;
   try {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
     if (activeStoryExecutions.has(id) || storyExecutionReservations.has(id)) return void res.status(409).json({ error: "当前世界已有完整故事任务正在执行或启动。" });
     storyExecutionReservations.add(id);
+    reservedId = id;
     const runs = await listRuns(id);
     const activeChapter = runs.find(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"));
     if (activeChapter) return void res.status(409).json({ error: "当前已有单章任务运行，请完成后再启动完整故事。" });
@@ -1181,7 +1183,7 @@ app.post("/api/worlds/:worldId/story-executions", async (req, res) => {
     startStoryUnitExecution(task);
     res.status(202).json({ execution: task });
   } catch (error) { sendError(res, error); }
-  finally { storyExecutionReservations.delete(req.params.worldId); }
+  finally { if (reservedId) storyExecutionReservations.delete(reservedId); }
 });
 app.get("/api/worlds/:worldId/story-executions/:executionId", async (req, res) => {
   try {
