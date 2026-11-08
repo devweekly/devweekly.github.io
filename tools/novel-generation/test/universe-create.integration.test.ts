@@ -335,6 +335,7 @@ test("universe creation uses catalog order and stable chapter IDs despite extra 
     });
     assert.equal(incompletePastResponse.status, 400);
     assert.match(await incompletePastResponse.text(), /起点及之前的原著章节缺少可验证正文/);
+    await writeFile(join(source, "original.txt"), originalText, "utf8");
 
     // The chunkless catalog row is reconstructed only in the staged universe;
     // the source knowledge database remains unchanged.
