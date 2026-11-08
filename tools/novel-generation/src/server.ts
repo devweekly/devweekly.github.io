@@ -663,11 +663,12 @@ async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: st
   const catalog = await loadChapterCatalog(sourceWorldId);
   if (!catalog) throw new Error("原著章节目录不存在，无法创建有边界的知识切片快照。");
   const originalText = await readFile(path.join(worldDir(sourceWorldId), "original.txt"), "utf8").catch(error => { if ((error as NodeJS.ErrnoException).code === "ENOENT") return ""; throw error; });
+  const originalSourceLines = originalText ? originalText.split(/\r?\n/) : [];
   const offsets = catalog.map(chapter => {
     if (!originalText || chapter.line == null || chapter.line < 1) return undefined;
     let offset = 0;
     for (let line = 1; line < chapter.line; line++) { const next = originalText.indexOf("\n", offset); if (next < 0) return undefined; offset = next + 1; }
-    const lineText = originalText.split(/\r?\n/)[chapter.line - 1] ?? "";
+    const lineText = originalSourceLines[chapter.line - 1] ?? "";
     return offset + lineText.length - lineText.trimStart().length;
   });
   const aligned = alignCanonChapterGroups(catalog, source.chunks, offsets);
