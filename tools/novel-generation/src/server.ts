@@ -1659,6 +1659,7 @@ export async function recoverWorkbenchRuns(): Promise<void> {
   const ids = entries.filter(id => /^[a-z0-9][a-z0-9-]*$/i.test(id));
   await Promise.all(ids.map(async id => {
     await recoverInterruptedRuns(id);
+    await recoverStoryExecutions(id);
     const build = await readKnowledgeBuild(id);
     if (build && (build.status === "queued" || build.status === "running")) {
       build.status = "failed";
