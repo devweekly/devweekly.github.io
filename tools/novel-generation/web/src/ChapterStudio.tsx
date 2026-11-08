@@ -4,7 +4,8 @@ import { PlayCircleOutlined, ReloadOutlined } from "@ant-design/icons";
 const { Title, Text, Paragraph } = Typography;
 type Run = { id:string; kind?:string; status:string; createdAt:string; updatedAt:string; error?:string; outputDir?:string; chapterPath?:string; previousChapterPath?:string };
 type Preview = { storyArc:string; chapterPlan:string; chapter:string };
-type StoryUnit = { title:string; storyCore:string; readerExperience:string; openingSituation:string; centralConflict:string; fruitOrSetting:{name:string;premise:string;abilitiesAndRules:string[];costsAndLimits:string[];historicalContext:string;geographyAndDailyLife:string;powerAndSocialRelations:string}; cultureAndFolklore:Array<{name:string;practice:string;originOrBelief:string;socialFunction:string;storyUse:string}>; taboosAndGhostStories:Array<{name:string;versions:string[];underlyingTruthOptions:string[];consequences:string;scenePotential:string}>; cast:Array<{name:string;role:string;status:string;desire:string;fearOrSecret:string;relationships:string[];possibleDevelopment:string[]}>; relationshipDynamics:string[]; storySpine:Array<{title:string;function:string;causalChange:string;involvedCharacters:string[];possibleArcs:string[]}>; subplots:string[]; climax:string; endingAndAftermath:string; unresolvedQuestions:string[]; creativePossibilities:string[] };
+type StoryExecution = {id:string;worldId:string;storyUnitTitle:string;status:"queued"|"running"|"paused"|"completed"|"failed"|"cancelled"|"stalled";createdAt:string;updatedAt:string;completedAt?:string;completedChapters:Array<{runId:string;chapterPath:string;completedAt:string}>;lastAssessment?:string;nextDirection?:string;error?:string;brief:string;resumeCount:number};
+type StoryUnit = { execution:{status:"not_started"|"in_progress"|"completed";completedChapterIds:string[];lastAssessment?:string;nextDirection?:string;assessedAt?:string;completedAt?:string}; title:string; storyCore:string; readerExperience:string; openingSituation:string; centralConflict:string; fruitOrSetting:{name:string;premise:string;abilitiesAndRules:string[];costsAndLimits:string[];historicalContext:string;geographyAndDailyLife:string;powerAndSocialRelations:string}; cultureAndFolklore:Array<{name:string;practice:string;originOrBelief:string;socialFunction:string;storyUse:string}>; taboosAndGhostStories:Array<{name:string;versions:string[];underlyingTruthOptions:string[];consequences:string;scenePotential:string}>; cast:Array<{name:string;role:string;status:string;desire:string;fearOrSecret:string;relationships:string[];possibleDevelopment:string[]}>; relationshipDynamics:string[]; storySpine:Array<{title:string;function:string;causalChange:string;involvedCharacters:string[];possibleArcs:string[]}>; subplots:string[]; climax:string; endingAndAftermath:string; unresolvedQuestions:string[]; creativePossibilities:string[] };
 type Universe = { id:string; sourceWorldId:string; name:string; type:string; entryChapter:string; entryChapterId?:string; entryOrdinal?:number; brief:string; createdAt:string; parentUniverseId?:string; forkPoint?:string; archivedAt?:string };
 type ForkableRun = { id:string; chapterTitle:string; createdAt:string };
 type KnowledgeBuild = { worldId:string; status:"queued"|"running"|"completed"|"partial"|"failed"; currentStep?:string; updatedAt:string; completedAt?:string; steps:Array<{name:string;status:"running"|"completed"|"failed"|"skipped";exitCode?:number|null;output?:string;error?:string}> };
@@ -37,7 +38,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [activeArc,setActiveArc]=useState("");
  const [notice,setNotice]=useState("");
  const [knowledgeBuild,setKnowledgeBuild]=useState<KnowledgeBuild|null>(null);
- const [storyUnit,setStoryUnit]=useState<StoryUnit|null>(null);
+ const [storyUnit,setStoryUnit]=useState<StoryUnit|null>(null);\n const [storyExecution,setStoryExecution]=useState<StoryExecution|null>(null);\n const [startingStoryExecution,setStartingStoryExecution]=useState(false);
  const [generatingStoryUnit,setGeneratingStoryUnit]=useState(false);
  const [startingKnowledgeBuild,setStartingKnowledgeBuild]=useState(false);
  const busy=run?.status==="queued"||run?.status==="running";
@@ -59,7 +60,17 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  };
  useEffect(()=>{setActiveWorldId(worldId);setRun(null);setPreview(emptyPreview);void refresh();void Promise.all([api<{universes:Universe[]}>("/api/worlds/"+worldId+"/universes"),api<{chapters:Array<{id:number;title:string;label:string}>}>("/api/worlds/"+worldId+"/source-chapters"),api<{storyUnit:StoryUnit|null}>("/api/worlds/"+worldId+"/story-unit")]).then(([u,c,s])=>{setUniverses(u.universes);setSourceChapters(c.chapters);setStoryUnit(s.storyUnit);}).catch(()=>{setUniverses([]);setSourceChapters([]);setStoryUnit(null);});},[worldId]);
  useEffect(()=>{void refresh();},[activeWorldId]);
- useEffect(()=>{if(!activeWorldId)return;void api<{storyUnit:StoryUnit|null}>("/api/worlds/"+activeWorldId+"/story-unit").then(result=>setStoryUnit(result.storyUnit)).catch(()=>setStoryUnit(null));},[activeWorldId]);
+ useEffect(()=>{if(!activeWorldId)return;void Promise.all([
+  api<{storyUnit:StoryUnit|null}>("/api/worlds/"+activeWorldId+"/story-unit"),
+  api<{executions:StoryExecution[]}>("/api/worlds/"+activeWorldId+"/story-executions")
+ ]).then(([unit,tasks])=>{setStoryUnit(unit.storyUnit);setStoryExecution(tasks.executions[0]??null);}).catch(()=>{setStoryUnit(null);setStoryExecution(null);});},[activeWorldId]);
+ useEffect(()=>{
+  if(!activeWorldId||!storyExecution||!["queued","running"].includes(storyExecution.status))return;
+  const timer=window.setInterval(()=>void api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/story-executions/"+storyExecution.id)
+   .then(result=>{setStoryExecution(result.execution);if(["completed","failed","paused","cancelled","stalled"].includes(result.execution.status)){void refresh();void api<{storyUnit:StoryUnit|null}>("/api/worlds/"+activeWorldId+"/story-unit").then(x=>setStoryUnit(x.storyUnit));}})
+   .catch(()=>{}),2500);
+  return()=>window.clearInterval(timer);
+ },[activeWorldId,storyExecution?.id,storyExecution?.status]);
  useEffect(()=>{
   if(!busy||!run)return;
   const timer=window.setInterval(()=>{
@@ -128,6 +139,21 @@ export default function ChapterStudio({worldId}:{worldId:string}){
    setStoryUnit(result.storyUnit);message.success("完整故事单元设计已生成并保存。");
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
   finally{setGeneratingStoryUnit(false);}
+ };
+ const startCompleteStory=async()=>{
+  setStartingStoryExecution(true);
+  try{
+   const result=await api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/story-executions",{method:"POST",body:JSON.stringify({})});
+   setStoryExecution(result.execution);message.success("完整故事已交给服务端执行；关闭页面不会中断任务。");
+  }catch(e){message.error(e instanceof Error?e.message:String(e));}
+  finally{setStartingStoryExecution(false);}
+ };
+ const controlStoryExecution=async(action:"pause"|"resume"|"cancel")=>{
+  if(!storyExecution)return;
+  try{
+   const result=await api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/story-executions/"+storyExecution.id+"/"+action,{method:"POST",body:"{}"});
+   setStoryExecution(result.execution);
+  }catch(e){message.error(e instanceof Error?e.message:String(e));}
  };
  const startKnowledgeBuild=async()=>{
   setStartingKnowledgeBuild(true);
@@ -233,6 +259,40 @@ export default function ChapterStudio({worldId}:{worldId:string}){
    </Space>
   </Card>}
   {notice&&<Alert type="warning" showIcon message="本次任务未能启动" description={notice} style={{marginBottom:18}}/>}
+  <Card title="完整故事单元" style={{marginBottom:18}}>
+   {!storyUnit?<Empty description="尚未建立完整故事单元。先生成果实/场景、文化民俗、怪谈、人物群像与完整故事因果设计。"/>:<Space direction="vertical" style={{width:"100%"}} size="middle">
+    <Title level={4}>{storyUnit.title}</Title>
+    <Paragraph>{storyUnit.storyCore}</Paragraph>
+    <Paragraph type="secondary">核心矛盾：{storyUnit.centralConflict}</Paragraph>
+    <Collapse items={[
+     {key:"world",label:"果实、场景与社会生活",children:<div><Paragraph>{storyUnit.fruitOrSetting.premise}</Paragraph><Paragraph>历史：{storyUnit.fruitOrSetting.historicalContext}</Paragraph><Paragraph>地理与日常：{storyUnit.fruitOrSetting.geographyAndDailyLife}</Paragraph><Paragraph>社会关系：{storyUnit.fruitOrSetting.powerAndSocialRelations}</Paragraph><Paragraph>规则：{storyUnit.fruitOrSetting.abilitiesAndRules.join("；")}</Paragraph><Paragraph>代价：{storyUnit.fruitOrSetting.costsAndLimits.join("；")}</Paragraph></div>},
+     {key:"folk",label:"地方文化、民俗、禁忌与怪谈",children:<div>{storyUnit.cultureAndFolklore.map((x,i)=><div key={i}><Text strong>{x.name}</Text><Paragraph>{x.practice}。由来：{x.originOrBelief}。社会作用：{x.socialFunction}。剧情入口：{x.storyUse}</Paragraph></div>)}{storyUnit.taboosAndGhostStories.map((x,i)=><div key={"ghost"+i}><Text strong>{x.name}</Text><Paragraph>传说：{x.versions.join("；")}。可能解释：{x.underlyingTruthOptions.join("；")}。后果：{x.consequences}。场景：{x.scenePotential}</Paragraph></div>)}</div>},
+     {key:"people",label:"已出场人物与新人物",children:<div>{storyUnit.cast.map((x,i)=><div key={i}><Space><Text strong>{x.name}</Text><Tag>{x.status==="existing"?"已出场":"新人物"}</Tag></Space><Paragraph>{x.role}。欲望：{x.desire}。秘密/恐惧：{x.fearOrSecret}。关系：{x.relationships.join("；")}。发展可能：{x.possibleDevelopment.join("；")}</Paragraph></div>)}<Paragraph>{storyUnit.relationshipDynamics.join("；")}</Paragraph></div>},
+     {key:"spine",label:"从开端到高潮与结局",children:<div>{storyUnit.storySpine.map((x,i)=><div key={i}><Text strong>{i+1}. {x.title}</Text><Paragraph>{x.function}。因果变化：{x.causalChange}。人物：{x.involvedCharacters.join("、")}。发展可能：{x.possibleArcs.join("；")}</Paragraph></div>)}<Paragraph>支线：{storyUnit.subplots.join("；")}</Paragraph><Paragraph>高潮：{storyUnit.climax}</Paragraph><Paragraph>结局与余韵：{storyUnit.endingAndAftermath}</Paragraph></div>}
+    ]}/>
+    <Space wrap>
+     <Tag color={storyUnit.execution.status==="completed"?"success":storyUnit.execution.status==="in_progress"?"processing":"default"}>{storyUnit.execution.status==="completed"?"故事已收束":storyUnit.execution.status==="in_progress"?"正在执行":"尚未执行"}</Tag>
+     <Text type="secondary">已完成 {storyUnit.execution.completedChapterIds.length} 章；章节数由故事发展决定</Text>
+     <Button onClick={()=>void generateStoryUnit()} loading={generatingStoryUnit} disabled={generatingStoryUnit||storyExecution?.status==="running"||storyExecution?.status==="queued"}>重新推演故事设计</Button>
+     <Button type="primary" onClick={()=>void startCompleteStory()} loading={startingStoryExecution} disabled={startingStoryExecution||!["not_started","in_progress"].includes(storyUnit.execution.status)||["queued","running","paused"].includes(storyExecution?.status??"")||Boolean(activeUniverse?.archivedAt)}>自动完成整个故事</Button>
+    </Space>
+   </Space>}
+  </Card>
+  {storyExecution&&<Card title="完整故事执行任务" style={{marginBottom:18}}>
+   <Space direction="vertical" style={{width:"100%"}} size="middle">
+    <Space wrap><Tag color={storyExecution.status==="completed"?"success":storyExecution.status==="failed"||storyExecution.status==="stalled"?"error":storyExecution.status==="running"?"processing":"default"}>{({queued:"排队中",running:"执行中",paused:"已暂停",completed:"自然收束",failed:"执行失败",cancelled:"已取消",stalled:"推进停滞"})[storyExecution.status]}</Tag><Text type="secondary">任务 {storyExecution.id.slice(0,8)} · 已完成 {storyExecution.completedChapters.length} 章 · 恢复 {storyExecution.resumeCount} 次</Text></Space>
+    {storyExecution.status==="running"&&<Progress percent={undefined} status="active" showInfo={false}/>}
+    {storyExecution.lastAssessment&&<Paragraph>最近进展判断：{storyExecution.lastAssessment}</Paragraph>}
+    {storyExecution.nextDirection&&<Paragraph type="secondary">下一步：{storyExecution.nextDirection}</Paragraph>}
+    {storyExecution.error&&<Alert type={storyExecution.status==="stalled"?"warning":"error"} showIcon message={storyExecution.error}/>}
+    <Space wrap>
+     {["queued","running"].includes(storyExecution.status)&&<Button onClick={()=>void controlStoryExecution("pause")}>暂停（当前章节结束后生效）</Button>}
+     {["paused","failed","stalled"].includes(storyExecution.status)&&<Button type="primary" onClick={()=>void controlStoryExecution("resume")}>从检查点恢复</Button>}
+     {["queued","running","paused"].includes(storyExecution.status)&&<Button danger onClick={()=>void controlStoryExecution("cancel")}>取消任务</Button>}
+    </Space>
+    <Text type="secondary">任务由服务端执行。刷新或关闭浏览器不会中断；服务重启后任务转为暂停状态，可从最后一个已终审并提交状态的章节恢复。章节数没有固定上限，完成依据是故事自然收束。</Text>
+   </Space>
+  </Card>}
   <Card title="当前故事阶段" style={{marginBottom:18}}>
    {preview.storyArc||activeArc?<Paragraph style={{whiteSpace:"pre-wrap",marginBottom:0}}>{preview.storyArc||activeArc}</Paragraph>:<Empty description="首次生成时自动推演一个中期故事阶段（约 5–8 章），不需要单独启动规划任务。"/>}
   </Card>
