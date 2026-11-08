@@ -82,3 +82,49 @@ export async function createStoredStoryUnit(worldDir: string, input: { worldId: 
   await saveStoredStoryUnit(worldDir, unit);
   return unit;
 }
+
+
+export interface StoredStoryUnitVersion {
+  versionId: string;
+  storyUnitId: string;
+  worldId: string;
+  createdAt: string;
+  title: string;
+  storyCore: string;
+  centralConflict: string;
+}
+function versionDirectory(worldDir: string, id: string): string {
+  assertId(id);
+  return join(root(worldDir), id, "versions");
+}
+
+/** Preserve the exact previous design before a regeneration overwrites the active Story Unit. */
+export async function archiveStoredStoryUnitVersion(worldDir: string, unit: StoredStoryUnit): Promise<StoredStoryUnitVersion> {
+  assertId(unit.id);
+  const versionId = randomUUID();
+  const createdAt = new Date().toISOString();
+  const record = { schemaVersion: 1, versionId, storyUnitId: unit.id, worldId: unit.worldId, createdAt, unit };
+  await atomicWrite(join(versionDirectory(worldDir, unit.id), versionId + ".json"), record);
+  return {
+    versionId, storyUnitId: unit.id, worldId: unit.worldId, createdAt,
+    title: unit.title, storyCore: String(unit.storyCore ?? ""), centralConflict: String(unit.centralConflict ?? "")
+  };
+}
+
+/** Return compact metadata only; full historical snapshots remain separately addressable. */
+export async function listStoredStoryUnitVersions(worldDir: string, worldId: string, storyUnitId: string): Promise<StoredStoryUnitVersion[]> {
+  assertId(storyUnitId);
+  const directory = versionDirectory(worldDir, storyUnitId);
+  let names: string[];
+  try { names = await (await import("node:fs/promises")).readdir(directory); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
+  const versions: StoredStoryUnitVersion[] = [];
+  for (const name of names.filter(value => /^[0-9a-f-]{36}\\.json$/i.test(value))) {
+    try {
+      const record = JSON.parse(await readFile(join(directory, name), "utf8")) as {schemaVersion?:number;versionId?:string;storyUnitId?:string;worldId?:string;createdAt?:string;unit?:StoredStoryUnit};
+      if (record.schemaVersion !== 1 || record.versionId !== name.slice(0, -5) || record.storyUnitId !== storyUnitId || record.worldId !== worldId || record.unit?.id !== storyUnitId || record.unit.worldId !== worldId) continue;
+      versions.push({ versionId: record.versionId, storyUnitId, worldId, createdAt: String(record.createdAt ?? ""), title: record.unit.title, storyCore: String(record.unit.storyCore ?? ""), centralConflict: String(record.unit.centralConflict ?? "") });
+    } catch { /* Ignore an incomplete/corrupt historical snapshot; never affect the active unit. */ }
+  }
+  return versions.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
