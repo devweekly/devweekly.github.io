@@ -1193,7 +1193,7 @@ async function assessStoryExecutionCheckpoint(
 async function reconcileStoryExecutionCurrentRun(input: StoryExecution): Promise<StoryExecution> {
   if (!input.currentRunId) return input;
   const run = await getRun(input.worldId, input.currentRunId);
-  if (run?.kind === "chapter" && run.status === "completed" && run.chapterPath &&
+  if (run?.kind === "chapter" && run.storyUnitId === input.storyUnitId && run.status === "completed" && run.chapterPath &&
       !input.completedChapters.some(item => item.runId === run.id)) {
     const chapterPath = path.resolve(run.chapterPath);
     const outputRoot = path.resolve(".output", input.worldId) + path.sep;
