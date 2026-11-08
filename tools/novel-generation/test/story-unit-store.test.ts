@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createStoredStoryUnit, getStoredStoryUnit, listStoredStoryUnits, saveStoredStoryUnit } from "../src/story-unit-store.js";
+import { archiveStoredStoryUnitVersion, createStoredStoryUnit, getStoredStoryUnit, listStoredStoryUnitVersions, listStoredStoryUnits, saveStoredStoryUnit } from "../src/story-unit-store.js";
 
 test("multiple Story Units persist independently within one world", async () => {
   const root = await mkdtemp(join(tmpdir(), "story-units-"));
@@ -32,5 +32,22 @@ test("legacy story-unit.json is lazily migrated once and preserved", async () =>
     assert.equal(first[0]?.id, second[0]?.id);
     assert.equal(first[0]?.storyCore, "旧数据");
     assert.deepEqual(JSON.parse(await readFile(join(root, "story-unit.json"), "utf8")), legacy);
+  } finally { await rm(root, { recursive: true, force: true }); }
+});
+
+
+test("regenerating a Story Unit can preserve immutable, separately listed design versions", async () => {
+  const root = await mkdtemp(join(tmpdir(), "story-units-versions-"));
+  try {
+    const unit = await createStoredStoryUnit(root, { worldId: "world-a", title: "雾河镇", updatedAt: "2026-11-08T00:00:00.000Z", storyCore: "河雾保存声音", centralConflict: "谁偷走了亡者的声音" });
+    const archived = await archiveStoredStoryUnitVersion(root, unit);
+    await saveStoredStoryUnit(root, { ...unit, title: "雾河镇·夜潮", storyCore: "河雾吞没活人的记忆", updatedAt: "2026-11-08T00:05:00.000Z" });
+    const versions = await listStoredStoryUnitVersions(root, "world-a", unit.id);
+    assert.equal(versions.length, 1);
+    assert.equal(versions[0]?.versionId, archived.versionId);
+    assert.equal(versions[0]?.title, "雾河镇");
+    assert.equal(versions[0]?.storyCore, "河雾保存声音");
+    assert.equal((await getStoredStoryUnit(root, "world-a", unit.id))?.storyCore, "河雾吞没活人的记忆");
+    assert.deepEqual(await listStoredStoryUnitVersions(root, "another-world", unit.id), []);
   } finally { await rm(root, { recursive: true, force: true }); }
 });
