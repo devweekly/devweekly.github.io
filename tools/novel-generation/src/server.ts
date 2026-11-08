@@ -1112,6 +1112,7 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
         execution: {
           status: naturallyComplete ? "completed" : "in_progress",
           completedChapterIds: [...unit.execution.completedChapterIds, chapterRun.id],
+          lastUnresolvedCoreThreads: assessment.unresolvedCoreThreads,
           lastAssessment: assessment.rationale, nextDirection: assessment.nextDirection,
           assessedAt: completedAt, ...(naturallyComplete ? {completedAt} : {})
         }
