@@ -320,6 +320,22 @@ test("universe creation uses catalog order and stable chapter IDs despite extra 
       ]);
     } finally { snapshot.close(); }
 
+    // Missing text in any prior chapter must block creation even when the
+    // selected chapter itself has a valid chunk.
+    await rm(join(source, "original.txt"), { force: true });
+    const withoutPrior = JSON.parse(await readFile(join(source, "library", "index.json"), "utf8")) as { chunks: Array<{ chapter: string }> };
+    withoutPrior.chunks = withoutPrior.chunks.filter(chunk => chunk.chapter !== "第一章");
+    await writeFile(join(source, "library", "index.json"), JSON.stringify(withoutPrior));
+    const incompletePastResponse = await fetch(base + "/api/worlds/source-world/universes", {
+      method: "POST", headers,
+      body: JSON.stringify({
+        name: "前情缺失必须失败", entryChapter: "第二章", entryChapterIndex: 1,
+        type: "free", brief: "前情不完整", buildKnowledge: false
+      })
+    });
+    assert.equal(incompletePastResponse.status, 400);
+    assert.match(await incompletePastResponse.text(), /起点及之前的原著章节缺少可验证正文/);
+
     // The chunkless catalog row is reconstructed only in the staged universe;
     // the source knowledge database remains unchanged.
     const sourceDb = new DatabaseSync(join(source, "novel.db"));
