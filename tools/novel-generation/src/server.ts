@@ -1126,7 +1126,7 @@ async function assessStoryExecutionCheckpoint(
   }
   const chapterText = await readFile(chapterPath, "utf8");
   const chapterTitle = chapterText.split("\n").find(line => /^#\s+/.test(line))?.replace(/^#\s+/,"").trim() || "章节";
-  const state = await loadStoryState(path.join(dir, "story-state.json"), worldId);
+  const state = await loadStoryState(taskInput.storyUnitId ? path.join(dir, ".story-units", taskInput.storyUnitId + ".story-state.json") : path.join(dir, "story-state.json"), worldId);
   const assessment = await assessStoryUnitProgress({
     unit: unitInput, chapterText, chapterTitle, completedChapterCount: taskInput.completedChapters.length,
     storyState: state, model: taskInput.model
@@ -1229,7 +1229,7 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
     const libraryDir = await resolveWorldLibraryDir(worldId, path.resolve("worlds"));
     await readFile(path.join(libraryDir, "index.json"), "utf8");
     const runs = await listRuns(worldId);
-    const previous = runs.filter(run => run.kind === "chapter" && run.status === "completed" && run.chapterPath)
+    const previous = runs.filter(run => run.kind === "chapter" && (!task.storyUnitId || run.storyUnitId === task.storyUnitId) && run.status === "completed" && run.chapterPath)
       .sort((a,b)=>b.createdAt.localeCompare(a.createdAt))[0];
     let previousChapterPath = task.completedChapters.at(-1)?.chapterPath
       ? path.resolve(task.completedChapters.at(-1)!.chapterPath)
