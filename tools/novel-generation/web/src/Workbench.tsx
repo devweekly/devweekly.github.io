@@ -1,7 +1,7 @@
 // Workbench 主界面：看板、长期主线、人物、故事图谱、文风样本与运行记录。
 // 本组件只做导航与数据展示；各面板的细节逻辑在各自的 *Panel 组件里，
 // API 响应结构由 src/server.ts 定义，两边的字段保持一一对应。
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Alert, App as AntApp, Button, Card, Col, Descriptions, Empty, Layout, List, Menu,
   Row, Select, Space, Spin, Statistic, Tag, Typography
@@ -77,6 +77,7 @@ export default function Workbench() {
   const [characterDetail, setCharacterDetail] = useState<CharacterDetail | null>(null);
   const [characterLoading, setCharacterLoading] = useState(false);
   const [characterTotal, setCharacterTotal] = useState(0);
+  const characterRequest = useRef(0);
 
   const currentWorld = worlds.find(x => x.id === worldId);
   const plan = dashboard?.storyPlan;
@@ -97,17 +98,19 @@ export default function Workbench() {
   /** 人物列表按查询词拉取；当前选中项被过滤掉时清空选择，避免详情页悬挂。 */
   const refreshCharacters = useCallback(async (id = worldId, q = characterQuery) => {
     if (!id) return;
+    const requestId = ++characterRequest.current;
     try {
       const data = await api<{ characters: Character[]; total: number }>(
         `/api/worlds/${id}/characters?q=${encodeURIComponent(q)}`
       );
+      if (requestId !== characterRequest.current) return;
       setCharacters(data.characters);
       setCharacterTotal(data.total ?? data.characters.length);
       if (selectedCharacter && !data.characters.some(x => x.name === selectedCharacter)) {
         setSelectedCharacter("");
       }
     } catch (e) {
-      message.error(e instanceof Error ? e.message : String(e));
+      if (requestId === characterRequest.current) message.error(e instanceof Error ? e.message : String(e));
     }
   }, [worldId, characterQuery, selectedCharacter, message]);
 
