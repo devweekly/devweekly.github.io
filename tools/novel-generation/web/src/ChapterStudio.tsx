@@ -66,17 +66,21 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  };
  useEffect(()=>{setActiveWorldId(worldId);setRun(null);setPreview(emptyPreview);void refresh();void Promise.all([api<{universes:Universe[]}>("/api/worlds/"+worldId+"/universes"),api<{chapters:Array<{id:number;title:string;label:string}>}>("/api/worlds/"+worldId+"/source-chapters")]).then(([u,c])=>{setUniverses(u.universes);setSourceChapters(c.chapters);}).catch(()=>{setUniverses([]);setSourceChapters([]);setStoryUnit(null);});},[worldId]);
  useEffect(()=>{void refresh();},[activeWorldId,selectedStoryUnitId,historyScope]);
- useEffect(()=>{if(!activeWorldId)return;void Promise.all([
+ useEffect(()=>{if(!activeWorldId)return;let cancelled=false;void Promise.all([
   api<{storyUnits:Array<{id:string;title:string;updatedAt:string}>}>("/api/worlds/"+activeWorldId+"/story-units"),
-  api<{executions:StoryExecution[]}>("/api/worlds/"+activeWorldId+"/story-executions")
- ]).then(([units,tasks])=>{
+  api<{executions:StoryExecution[]}>("/api/worlds/"+activeWorldId+"/story-executions?storyUnitId="+(historyScope==="legacy"?"legacy":selectedStoryUnitId??"legacy"))
+ ]).then(async([units,tasks])=>{
+   if(cancelled)return;
    setStoryUnits(units.storyUnits);
    const chosen=selectedStoryUnitId&&units.storyUnits.some(x=>x.id===selectedStoryUnitId)?selectedStoryUnitId:units.storyUnits[0]?.id;
-   setSelectedStoryUnitId(chosen);
-   setStoryExecution(tasks.executions.find(x=>x.storyUnitId===chosen)??null);
-   if(chosen)void api<{storyUnit:StoryUnit}>("/api/worlds/"+activeWorldId+"/story-units/"+chosen).then(x=>setStoryUnit(x.storyUnit));
-   else setStoryUnit(null);
-  }).catch(()=>{setStoryUnit(null);setStoryUnits([]);setSelectedStoryUnitId(undefined);setStoryExecution(null);});},[activeWorldId,selectedStoryUnitId]);
+   if(historyScope==="current"&&chosen!==selectedStoryUnitId){setSelectedStoryUnitId(chosen);return;}
+   setStoryExecution(tasks.executions[0]??null);
+   if(historyScope==="current"&&chosen){
+     try{const result=await api<{storyUnit:StoryUnit}>("/api/worlds/"+activeWorldId+"/story-units/"+chosen);if(!cancelled)setStoryUnit(result.storyUnit);}
+     catch{if(!cancelled)setStoryUnit(null);}
+   }else if(!cancelled)setStoryUnit(null);
+  }).catch(()=>{if(!cancelled){setStoryUnit(null);setStoryUnits([]);setSelectedStoryUnitId(undefined);setStoryExecution(null);}});
+  return()=>{cancelled=true;};},[activeWorldId,selectedStoryUnitId,historyScope]);
  useEffect(()=>{
   if(!activeWorldId||!storyExecution||!["queued","running"].includes(storyExecution.status))return;
   const timer=window.setInterval(()=>void api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/story-executions/"+storyExecution.id)
