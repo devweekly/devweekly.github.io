@@ -5,6 +5,7 @@ import { z } from "zod";
 
 export const StoryExecutionSchema = z.object({
   id: z.string().uuid(), worldId: z.string().min(1), storyUnitTitle: z.string().min(1),
+  mode: z.enum(["complete_story", "fixed_batch"]).default("complete_story"), targetChapterCount: z.number().int().positive().optional(),
   status: z.enum(["queued", "running", "paused", "completed", "failed", "cancelled", "stalled"]),
   createdAt: z.string(), updatedAt: z.string(), startedAt: z.string().optional(), completedAt: z.string().optional(),
   completedChapters: z.array(z.object({ runId: z.string().uuid(), chapterPath: z.string(), completedAt: z.string() })),
