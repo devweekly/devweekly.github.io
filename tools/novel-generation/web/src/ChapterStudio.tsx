@@ -56,6 +56,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  };
  useEffect(()=>{setActiveWorldId(worldId);setRun(null);setPreview(emptyPreview);void refresh();void Promise.all([api<{universes:Universe[]}>("/api/worlds/"+worldId+"/universes"),api<{chapters:Array<{id:number;title:string;label:string}>}>("/api/worlds/"+worldId+"/source-chapters"),api<{storyUnit:StoryUnit|null}>("/api/worlds/"+worldId+"/story-unit")]).then(([u,c,s])=>{setUniverses(u.universes);setSourceChapters(c.chapters);setStoryUnit(s.storyUnit);}).catch(()=>{setUniverses([]);setSourceChapters([]);setStoryUnit(null);});},[worldId]);
  useEffect(()=>{void refresh();},[activeWorldId]);
+ useEffect(()=>{if(!activeWorldId)return;void api<{storyUnit:StoryUnit|null}>("/api/worlds/"+activeWorldId+"/story-unit").then(result=>setStoryUnit(result.storyUnit)).catch(()=>setStoryUnit(null));},[activeWorldId]);
  useEffect(()=>{
   if(!busy||!run)return;
   const timer=window.setInterval(()=>{
