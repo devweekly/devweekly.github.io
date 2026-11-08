@@ -74,7 +74,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  };
  const generateBatch=async()=>{
   if(batchRunning||busy)return;
-  const total=Math.max(1,Math.min(20,Math.floor(batchCount||1)));
+  const total=Math.max(1,Math.min(1000,Math.floor(batchCount||1)));
   setBatchRunning(true);setBatchProgress({completed:0,total});
   try{
    for(let index=0;index<total;index++){
@@ -165,7 +165,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
     <Button onClick={()=>setCreateOpen(true)}>新建故事宇宙</Button>
     {activeWorldId!==worldId&&!activeUniverse?.archivedAt&&<Button onClick={()=>void openFork()}>从本宇宙分叉</Button>}
     {activeUniverse&&(activeUniverse.archivedAt?<Button onClick={()=>void changeArchive(false)}>恢复宇宙</Button>:<Button danger onClick={()=>void changeArchive(true)} disabled={Boolean(busy)}>归档当前宇宙</Button>)}
-    <Button type="primary" size="large" className="chapter-action" icon={<PlayCircleOutlined/>} loading={starting||Boolean(busy)} disabled={!activeWorldId||Boolean(busy)||batchRunning||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generate()}>生成下一章</Button>\n    <Space.Compact><InputNumber min={1} max={20} value={batchCount} onChange={value=>setBatchCount(value??1)} disabled={batchRunning||Boolean(busy)} style={{width:76}}/><Button loading={batchRunning} disabled={!activeWorldId||Boolean(busy)||batchRunning||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generateBatch()}>连续生成多章</Button></Space.Compact>
+    <Button type="primary" size="large" className="chapter-action" icon={<PlayCircleOutlined/>} loading={starting||Boolean(busy)} disabled={!activeWorldId||Boolean(busy)||batchRunning||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generate()}>生成下一章</Button>\n    <Space.Compact><InputNumber min={1} max={1000} value={batchCount} onChange={value=>setBatchCount(value??1)} disabled={batchRunning||Boolean(busy)} style={{width:76}}/><Button loading={batchRunning} disabled={!activeWorldId||Boolean(busy)||batchRunning||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generateBatch()}>连续生成多章</Button></Space.Compact>
     <Button icon={<ReloadOutlined/>} loading={loading} onClick={()=>void refresh()}>刷新状态</Button>
     {busy&&<Tag color="processing">正在自动创作</Tag>}\n    {batchRunning&&<Tag color="processing">批量进度 {batchProgress.completed}/{batchProgress.total}</Tag>}
    </Space>
