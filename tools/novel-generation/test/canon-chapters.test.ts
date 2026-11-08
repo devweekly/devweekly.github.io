@@ -33,6 +33,7 @@ test("catalog alignment keeps a formal chapter with no library chunks in its exa
   const aligned = alignCanonChapterGroups(catalog, [
     chunk("第一章", "卷一第一章"),
     chunk("第二章", "卷一第二章"),
+    chunk("作者说明", "卷间作者说明"),
     chunk("第二章", "卷二第二章")
   ]);
   assert.deepEqual(aligned.map(item => item.chunks.length), [1, 1, 0, 1]);
