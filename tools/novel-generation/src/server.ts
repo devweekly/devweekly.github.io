@@ -28,7 +28,7 @@ import { importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
 import { assessStoryUnitProgress, generateStoryUnit, isStoryUnitNaturallyComplete, validateStoryUnit } from "./story-unit.js";
 import { createStoredStoryUnit, getStoredStoryUnit, listStoredStoryUnits, saveStoredStoryUnit } from "./story-unit-store.js";
-import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, type StoryExecution } from "./story-execution.js";
+import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, type StoryExecution } from "./story-execution.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
 // noUncheckedIndexedAccess 放宽成 string | undefined。
@@ -1194,7 +1194,7 @@ async function assessStoryExecutionCheckpoint(
 async function reconcileStoryExecutionCurrentRun(input: StoryExecution): Promise<StoryExecution> {
   if (!input.currentRunId) return input;
   const run = await getRun(input.worldId, input.currentRunId);
-  if (run?.kind === "chapter" && run.storyUnitId === input.storyUnitId && run.status === "completed" && run.chapterPath &&
+  if (run?.kind === "chapter" && storyExecutionOwnsRun(input.storyUnitId, run.storyUnitId) && run.status === "completed" && run.chapterPath &&
       !input.completedChapters.some(item => item.runId === run.id)) {
     const chapterPath = path.resolve(run.chapterPath);
     const outputRoot = path.resolve(".output", input.worldId) + path.sep;
@@ -1393,7 +1393,7 @@ function startStoryUnitExecution(task: StoryExecution): void {
 
 
 app.get("/api/worlds/:worldId/story-executions", async (req, res) => {
-  try { const id = worldIdOf(req.params.worldId); assertInsideWorld(id); res.json({ executions: await listStoryExecutions(id, typeof req.query.storyUnitId === "string" ? recordId(req.query.storyUnitId) : undefined) }); }
+  try { const id = worldIdOf(req.params.worldId); assertInsideWorld(id); const query = req.query.storyUnitId; const storyUnitId = typeof query === "string" ? query === "legacy" ? null : recordId(query) : undefined; res.json({ executions: await listStoryExecutions(id, storyUnitId) }); }
   catch (error) { sendError(res, error); }
 });
 app.post("/api/worlds/:worldId/story-executions", async (req, res) => {
