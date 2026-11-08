@@ -1079,6 +1079,11 @@ async function createStoryStateSnapshot(worldId: string, storyUnitIdInput: strin
   const unitFile = storyExecutionUnitPath(worldId, storyUnitId);
   try { await copyFile(unitFile, path.join(snapshotDir, "story-unit-record.json")); files["story-unit-record.json"] = true; }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; files["story-unit-record.json"] = false; }
+  if (storyUnitId) {
+    const indexFile = path.join(worldDir(worldId), ".story-units", "index.json");
+    try { await copyFile(indexFile, path.join(snapshotDir, "story-units-index.json")); files["story-units-index.json"] = true; }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; files["story-units-index.json"] = false; }
+  }
   await writeFile(path.join(snapshotDir, "manifest.json"), JSON.stringify({ version: 1, worldId, storyUnitId: storyUnitId ?? null, files }, null, 2) + "\n", "utf8");
 }
 
@@ -1111,6 +1116,16 @@ async function restoreStoryStateSnapshot(worldId: string, run: WorkbenchRun): Pr
     await rename(temporary, unitFile);
   } else {
     await rm(unitFile, { force: true });
+  }
+  if (storyUnitId) {
+    const indexFile = path.join(worldDir(worldId), ".story-units", "index.json");
+    if (manifest.files["story-units-index.json"]) {
+      const temporary = indexFile + "." + randomUUID() + ".restore";
+      await copyFile(path.join(snapshotDir, "story-units-index.json"), temporary);
+      await rename(temporary, indexFile);
+    } else {
+      await rm(indexFile, { force: true });
+    }
   }
   await rm(snapshotDir, { recursive: true, force: true });
   return true;
