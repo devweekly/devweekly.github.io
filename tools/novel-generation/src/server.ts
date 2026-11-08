@@ -28,7 +28,7 @@ import { importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
 import { assessStoryUnitProgress, generateStoryUnit, isStoryUnitNaturallyComplete, validateStoryUnit } from "./story-unit.js";
 import { createStoredStoryUnit, getStoredStoryUnit, listStoredStoryUnits, saveStoredStoryUnit } from "./story-unit-store.js";
-import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, type StoryExecution } from "./story-execution.js";
+import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, mergeStoryExecutionControlFlags, type StoryExecution } from "./story-execution.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
 // noUncheckedIndexedAccess 放宽成 string | undefined。
@@ -1241,7 +1241,8 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
       if (!previousChapterPath.startsWith(outputRoot)) throw new Error("最近章节正文路径不属于当前故事输出目录，已停止以避免串线。");
       await readFile(previousChapterPath, "utf8");
     }
-    task = { ...task, status: "running", startedAt: task.startedAt ?? new Date().toISOString(), updatedAt: new Date().toISOString(), pauseRequested: false, cancelRequested: false, resumeCount: task.resumeCount + (task.startedAt ? 1 : 0), error: undefined };
+    task = mergeStoryExecutionControlFlags(task, await getStoryExecution(worldId, task.id));
+    task = { ...task, status: "running", startedAt: task.startedAt ?? new Date().toISOString(), updatedAt: new Date().toISOString(), resumeCount: task.resumeCount + (task.startedAt ? 1 : 0), error: undefined };
     unit = { ...unit, execution: { ...unit.execution, status: "in_progress" } };
     await saveStoryExecution(task); await saveExecutionStoryUnit(unit);
     const pendingAssessment = task.completedChapters.at(-1);
@@ -1321,7 +1322,8 @@ async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> 
       if (!previousChapterPath.startsWith(outputRoot)) throw new Error("最近章节正文路径不属于当前故事输出目录，已停止以避免串线。");
       await readFile(previousChapterPath, "utf8");
     }
-    task = { ...task, status: "running", startedAt: task.startedAt ?? new Date().toISOString(), updatedAt: new Date().toISOString(), pauseRequested: false, cancelRequested: false, resumeCount: task.resumeCount + (task.startedAt ? 1 : 0), error: undefined };
+    task = mergeStoryExecutionControlFlags(task, await getStoryExecution(worldId, task.id));
+    task = { ...task, status: "running", startedAt: task.startedAt ?? new Date().toISOString(), updatedAt: new Date().toISOString(), resumeCount: task.resumeCount + (task.startedAt ? 1 : 0), error: undefined };
     await saveStoryExecution(task);
     // A crash may happen after the final chapter run completes but before the
     // batch task is marked completed. Reconciliation above restores that checkpoint.
