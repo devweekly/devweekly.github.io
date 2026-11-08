@@ -1,0 +1,85 @@
+import { z } from "zod";
+import { runAgentText } from "./generate.js";
+import { parseJsonObject } from "./model-json.js";
+import { DEFAULT_AGENT_TIMEOUT_MS } from "./constants.js";
+import { readTaskProfiles } from "./task-profiles.js";
+import type { StoryState } from "./story-state.js";
+
+const PersonSchema = z.object({
+  name: z.string().min(1), role: z.string().default(""), status: z.enum(["existing", "new"]).default("new"),
+  desire: z.string().default(""), fearOrSecret: z.string().default(""), relationships: z.array(z.string()).default([]),
+  possibleDevelopment: z.array(z.string()).default([])
+}).strict();
+const CultureSchema = z.object({
+  name: z.string().min(1), practice: z.string().default(""), originOrBelief: z.string().default(""),
+  socialFunction: z.string().default(""), storyUse: z.string().default("")
+}).strict();
+const BeatSchema = z.object({
+  title: z.string().min(1), function: z.string().default(""), causalChange: z.string().default(""),
+  involvedCharacters: z.array(z.string()).default([]), possibleArcs: z.array(z.string()).default([])
+}).strict();
+
+const StoryUnitSchema = z.object({
+  schemaVersion: z.literal(1), worldId: z.string().min(1), updatedAt: z.string().min(1),
+  title: z.string().min(1), storyCore: z.string().min(1), readerExperience: z.string().default(""),
+  openingSituation: z.string().default(""), centralConflict: z.string().default(""),
+  fruitOrSetting: z.object({
+    name: z.string().default(""), premise: z.string().default(""), abilitiesAndRules: z.array(z.string()).default([]),
+    costsAndLimits: z.array(z.string()).default([]), historicalContext: z.string().default(""),
+    geographyAndDailyLife: z.string().default(""), powerAndSocialRelations: z.string().default("")
+  }).strict(),
+  cultureAndFolklore: z.array(CultureSchema).default([]),
+  taboosAndGhostStories: z.array(z.object({
+    name: z.string().min(1), versions: z.array(z.string()).default([]), underlyingTruthOptions: z.array(z.string()).default([]),
+    consequences: z.string().default(""), scenePotential: z.string().default("")
+  }).strict()).default([]),
+  cast: z.array(PersonSchema).default([]),
+  relationshipDynamics: z.array(z.string()).default([]),
+  storySpine: z.array(BeatSchema).min(4),
+  subplots: z.array(z.string()).default([]),
+  climax: z.string().min(1), endingAndAftermath: z.string().min(1),
+  unresolvedQuestions: z.array(z.string()).default([]), creativePossibilities: z.array(z.string()).default([])
+}).strict();
+
+export type StoryUnit = z.infer<typeof StoryUnitSchema>;
+
+export function validateStoryUnit(value: unknown, worldId?: string): StoryUnit {
+  const unit = StoryUnitSchema.parse(value);
+  if (worldId && unit.worldId !== worldId) throw new Error("Story Unit world mismatch.");
+  return unit;
+}
+
+export async function generateStoryUnit(input: {
+  worldId: string; worldBible: string; state: StoryState; storyAnalysisContext?: string;
+  previous?: StoryUnit; brief?: string; model?: string;
+}): Promise<StoryUnit> {
+  const shape = {
+    title: "故事单元标题", storyCore: "独立而完整的故事核心", readerExperience: "希望读者经历的情绪与阅读体验",
+    openingSituation: "故事开端的具体局面", centralConflict: "核心矛盾",
+    fruitOrSetting: { name: "果实/场景名称", premise: "独特情境", abilitiesAndRules: ["规则"], costsAndLimits: ["代价"], historicalContext: "历史背景", geographyAndDailyLife: "地理与日常生活", powerAndSocialRelations: "权力与社会关系" },
+    cultureAndFolklore: [{ name: "习俗", practice: "具体做法", originOrBelief: "由来/信念", socialFunction: "社会作用", storyUse: "如何进入人物生活与剧情" }],
+    taboosAndGhostStories: [{ name: "禁忌或怪谈", versions: ["民间不同版本"], underlyingTruthOptions: ["可能解释"], consequences: "后果", scenePotential: "场景潜力" }],
+    cast: [{ name: "人物", role: "角色位置", status: "existing|new", desire: "欲望", fearOrSecret: "恐惧或秘密", relationships: ["关系"], possibleDevelopment: ["发展可能"] }],
+    relationshipDynamics: ["人物关系变化可能"],
+    storySpine: [{ title: "阶段", function: "叙事功能", causalChange: "因果变化", involvedCharacters: ["人物"], possibleArcs: ["人物变化可能"] }],
+    subplots: ["支线"], climax: "高潮", endingAndAftermath: "结局与余韵",
+    unresolvedQuestions: ["有意保留的问题"], creativePossibilities: ["可探索但不强制的创意方向"]
+  };
+  const prompt = [
+    "你是具有文学判断力的长篇小说总构思编辑。请为一个独立完整的故事单元建立可供持续创作的故事设计，不写章节正文。",
+    "只输出符合下列结构的 JSON，不要 Markdown：", JSON.stringify(shape, null, 2),
+    "最高原则：文学性、文笔、艺术风格高于其他一切。设计必须具体、可写、有人间烟火和真实社会关系，不要空泛堆设定。",
+    "若故事围绕果实/副本，必须设计其独特规则、代价、历史社会背景、地方地理、生产生活、习俗、仪式、禁忌和怪谈。民俗必须说明由来、社会功能、不同人群如何理解，以及如何自然进入具体场景和人物冲突；不要把民俗当设定词条清单。",
+    "人物既包括原文/当前故事已经出场的人物，也包括有必要引入的新人物。说明人物各自欲望、利益、认知边界、秘密、关系和可能变化。人物弧光只能是可能性，允许反复、矛盾、意外转向，不得将人物固定为标签或强制兑现路线。",
+    "故事脊柱必须形成完整因果推进：开端、局面展开、冲突升级、关键转折、高潮、结局与余韵。至少四个阶段，但不要按固定三幕模板硬套。支线必须与人物或核心冲突发生真实联系。",
+    "不要预设章节数量。之后会根据故事复杂度动态拆成若干 Story Arc 和章节；不得把 30 章当作目标或上限。结尾必须能使核心故事获得有意义的收束，同时允许留白、开放问题和更大世界的后续空间。",
+    "区分已发生事实与创作可能性。不要编造原著事实；未知内容可以作为多种可能性保留。避免套路化反转、宏大阴谋和为伏笔而伏笔。",
+    "世界设定：", input.worldBible,
+    "当前故事状态（已发生事实）：", JSON.stringify(input.state),
+    input.storyAnalysisContext || "暂无可用的原著故事分析资料。",
+    input.brief ? "本次故事方向补充：" + input.brief : "",
+    input.previous ? "上一版故事设计（保留仍有效部分，按已发生事实修订）： " + JSON.stringify(input.previous) : "首次建立故事设计。"
+  ].filter(Boolean).join("\n\n");
+  const raw = await runAgentText(prompt, input.model, DEFAULT_AGENT_TIMEOUT_MS, readTaskProfiles().plot, true);
+  return StoryUnitSchema.parse({ ...parseJsonObject(raw), schemaVersion: 1, worldId: input.worldId, updatedAt: new Date().toISOString() });
+}
