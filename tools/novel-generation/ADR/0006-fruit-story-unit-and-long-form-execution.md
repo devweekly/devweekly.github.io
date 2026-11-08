@@ -264,3 +264,10 @@ Story Unit 先建立完整故事的因果骨架和结局方向，再按叙事需
 
 本规则是历史宇宙防止未来剧情泄漏的安全边界。任何目录映射失败都应终止创建，不能通过放宽标题唯一性或退回 OFFSET 方式“修复”。
 
+### 原文项目根目录语料解析与派生索引恢复（2026-11-09）
+
+- 原文项目的 canonical corpus 按项目约定位于 `original.txt`，不要求复制到 `worlds/<world>/original.txt`。服务端原文路径解析优先读取项目根目录全文，并兼容旧 world-local 布局。
+- 子宇宙是例外：它必须使用自己的 `worlds/<universe>/original.txt` bounded copy，绝不能因为项目根目录存在全文而回退读取全书，避免未来剧情泄漏。
+- `library/index.json` 是检索派生缓存，不是章节目录存在的前提。缺失时允许用 `analysis/<world>/chapter-index.json` 的正式目录和原文行号重建章节正文与 bounded chunks；损坏的 JSON 或不一致的位置证据仍应报错，不做静默猜测。
+- Workbench 必须区分“目录为空”和“目录 API 加载失败”。加载错误要展示实际错误信息，且不能因章节接口失败清空已成功加载的宇宙列表。
+- 回归测试覆盖根目录原文文件存在、world-local 原文和 library index 均不存在的章节目录加载场景。
