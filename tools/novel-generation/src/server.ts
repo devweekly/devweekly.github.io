@@ -1329,7 +1329,12 @@ async function reconcileStoryExecutionCurrentRun(input: StoryExecution): Promise
   if (run && (run.kind !== "chapter" || !storyExecutionOwnsRun(input.storyUnitId, run.storyUnitId))) {
     throw new Error("中断任务的当前 Run 属于其他故事单元，拒绝恢复。");
   }
-  if (run?.status === "failed") await restoreStoryStateSnapshot(input.worldId, run);
+  if (run?.status === "failed") {
+    const restored = await restoreStoryStateSnapshot(input.worldId, run);
+    if (!restored && !/rolled back to the pre-chapter snapshot/i.test(run.error ?? "")) {
+      throw new Error("当前检查点来自没有事务快照保护的旧版中断章节，无法证明 Story State 未被部分提交。为避免重复或错乱剧情，已停止自动恢复；需要先人工核对该章节的 Story State。");
+    }
+  }
   if (run?.kind === "chapter" && storyExecutionOwnsRun(input.storyUnitId, run.storyUnitId) && run.status === "completed" && run.chapterPath &&
       !input.completedChapters.some(item => item.runId === run.id)) {
     const chapterPath = path.resolve(run.chapterPath);
@@ -2185,8 +2190,9 @@ export async function recoverWorkbenchRuns(): Promise<void> {
     for (const run of recoverableChapters) {
       try {
         const restored = await restoreStoryStateSnapshot(id, run);
-        if (restored && run.status === "failed") {
-          await saveRun({ ...run, updatedAt: new Date().toISOString(), error: (run.error ?? "章节执行失败。") + "；已在启动恢复时重新应用章节前状态快照。" });
+        if (restored) {
+          await saveRun({ ...run, status: "failed", updatedAt: new Date().toISOString(),
+            error: (run.error ?? "服务重启前章节未完成。") + "；已回滚到章节开始前的 Story State 快照。" });
         }
       } catch (error) {
         await saveRun({ ...run, status: "failed", updatedAt: new Date().toISOString(),
