@@ -3,7 +3,8 @@ import { Alert, Button, Card, Collapse, Empty, Input, InputNumber, Modal, Progre
 import { PlayCircleOutlined, ReloadOutlined } from "@ant-design/icons";
 const { Title, Text, Paragraph } = Typography;
 type Run = { id:string; kind?:string; status:string; createdAt:string; updatedAt:string; error?:string; outputDir?:string; chapterPath?:string; previousChapterPath?:string };
-type Preview = { storyArc:string; chapterPlan:string; chapter:string };\ntype StoryUnit = { title:string; storyCore:string; readerExperience:string; openingSituation:string; centralConflict:string; fruitOrSetting:{name:string;premise:string;abilitiesAndRules:string[];costsAndLimits:string[];historicalContext:string;geographyAndDailyLife:string;powerAndSocialRelations:string}; cultureAndFolklore:Array<{name:string;practice:string;originOrBelief:string;socialFunction:string;storyUse:string}>; taboosAndGhostStories:Array<{name:string;versions:string[];underlyingTruthOptions:string[];consequences:string;scenePotential:string}>; cast:Array<{name:string;role:string;status:string;desire:string;fearOrSecret:string;relationships:string[];possibleDevelopment:string[]}>; relationshipDynamics:string[]; storySpine:Array<{title:string;function:string;causalChange:string;involvedCharacters:string[];possibleArcs:string[]}>; subplots:string[]; climax:string; endingAndAftermath:string; unresolvedQuestions:string[]; creativePossibilities:string[] };
+type Preview = { storyArc:string; chapterPlan:string; chapter:string };
+type StoryUnit = { title:string; storyCore:string; readerExperience:string; openingSituation:string; centralConflict:string; fruitOrSetting:{name:string;premise:string;abilitiesAndRules:string[];costsAndLimits:string[];historicalContext:string;geographyAndDailyLife:string;powerAndSocialRelations:string}; cultureAndFolklore:Array<{name:string;practice:string;originOrBelief:string;socialFunction:string;storyUse:string}>; taboosAndGhostStories:Array<{name:string;versions:string[];underlyingTruthOptions:string[];consequences:string;scenePotential:string}>; cast:Array<{name:string;role:string;status:string;desire:string;fearOrSecret:string;relationships:string[];possibleDevelopment:string[]}>; relationshipDynamics:string[]; storySpine:Array<{title:string;function:string;causalChange:string;involvedCharacters:string[];possibleArcs:string[]}>; subplots:string[]; climax:string; endingAndAftermath:string; unresolvedQuestions:string[]; creativePossibilities:string[] };
 type Universe = { id:string; sourceWorldId:string; name:string; type:string; entryChapter:string; entryChapterId?:string; entryOrdinal?:number; brief:string; createdAt:string; parentUniverseId?:string; forkPoint?:string; archivedAt?:string };
 type ForkableRun = { id:string; chapterTitle:string; createdAt:string };
 type KnowledgeBuild = { worldId:string; status:"queued"|"running"|"completed"|"partial"|"failed"; currentStep?:string; updatedAt:string; completedAt?:string; steps:Array<{name:string;status:"running"|"completed"|"failed"|"skipped";exitCode?:number|null;output?:string;error?:string}> };
@@ -35,7 +36,9 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [preview,setPreview]=useState<Preview>(emptyPreview);
  const [activeArc,setActiveArc]=useState("");
  const [notice,setNotice]=useState("");
- const [knowledgeBuild,setKnowledgeBuild]=useState<KnowledgeBuild|null>(null);\n const [storyUnit,setStoryUnit]=useState<StoryUnit|null>(null);\n const [generatingStoryUnit,setGeneratingStoryUnit]=useState(false);
+ const [knowledgeBuild,setKnowledgeBuild]=useState<KnowledgeBuild|null>(null);
+ const [storyUnit,setStoryUnit]=useState<StoryUnit|null>(null);
+ const [generatingStoryUnit,setGeneratingStoryUnit]=useState(false);
  const [startingKnowledgeBuild,setStartingKnowledgeBuild]=useState(false);
  const busy=run?.status==="queued"||run?.status==="running";
  const refresh=async()=>{
@@ -67,7 +70,17 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   },2000);
   return()=>window.clearInterval(timer);
  },[busy,run?.id,activeWorldId]);
- const selectChapter=async(id:string)=>{\n  const selected=chapterRuns.find(item=>item.id===id);if(!selected)return;\n  setRun(selected);\n  try{setPreview(await api<Preview>("/api/runs/"+selected.id+"/preview?worldId="+activeWorldId));}\n  catch(e){message.error(e instanceof Error?e.message:String(e));}\n };\n const moveChapter=(offset:number)=>{\n  if(!run)return;const ordered=chapterRuns.filter(item=>item.status==="completed"||item.id===run.id);\n  const index=ordered.findIndex(item=>item.id===run.id);const target=ordered[index+offset];if(target)void selectChapter(target.id);\n };\n const generate=async()=>{
+ const selectChapter=async(id:string)=>{
+  const selected=chapterRuns.find(item=>item.id===id);if(!selected)return;
+  setRun(selected);
+  try{setPreview(await api<Preview>("/api/runs/"+selected.id+"/preview?worldId="+activeWorldId));}
+  catch(e){message.error(e instanceof Error?e.message:String(e));}
+ };
+ const moveChapter=(offset:number)=>{
+  if(!run)return;const ordered=chapterRuns.filter(item=>item.status==="completed"||item.id===run.id);
+  const index=ordered.findIndex(item=>item.id===run.id);const target=ordered[index+offset];if(target)void selectChapter(target.id);
+ };
+ const generate=async()=>{
   setNotice("");setStarting(true);
   try{const data=await api<{run:Run}>("/api/worlds/"+activeWorldId+"/chapters/generate",{method:"POST",body:"{}"});setRun(data.run);message.success("已启动：自动检查、滚动规划、续写、终审和状态更新。");}
   catch(e){const text=e instanceof Error?e.message:String(e);setNotice(text);message.error(text);}
@@ -174,9 +187,11 @@ export default function ChapterStudio({worldId}:{worldId:string}){
     <Button onClick={()=>setCreateOpen(true)}>新建故事宇宙</Button>
     {activeWorldId!==worldId&&!activeUniverse?.archivedAt&&<Button onClick={()=>void openFork()}>从本宇宙分叉</Button>}
     {activeUniverse&&(activeUniverse.archivedAt?<Button onClick={()=>void changeArchive(false)}>恢复宇宙</Button>:<Button danger onClick={()=>void changeArchive(true)} disabled={Boolean(busy)}>归档当前宇宙</Button>)}
-    <Button type="primary" size="large" className="chapter-action" icon={<PlayCircleOutlined/>} loading={starting||Boolean(busy)} disabled={!activeWorldId||Boolean(busy)||batchRunning||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generate()}>生成下一章</Button>\n    <Space.Compact><InputNumber min={1} max={1000} value={batchCount} onChange={value=>setBatchCount(value??1)} disabled={batchRunning||Boolean(busy)} style={{width:76}}/><Button loading={batchRunning} disabled={!activeWorldId||Boolean(busy)||batchRunning||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generateBatch()}>连续生成多章</Button></Space.Compact>
+    <Button type="primary" size="large" className="chapter-action" icon={<PlayCircleOutlined/>} loading={starting||Boolean(busy)} disabled={!activeWorldId||Boolean(busy)||batchRunning||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generate()}>生成下一章</Button>
+    <Space.Compact><InputNumber min={1} max={1000} value={batchCount} onChange={value=>setBatchCount(value??1)} disabled={batchRunning||Boolean(busy)} style={{width:76}}/><Button loading={batchRunning} disabled={!activeWorldId||Boolean(busy)||batchRunning||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generateBatch()}>连续生成多章</Button></Space.Compact>
     <Button icon={<ReloadOutlined/>} loading={loading} onClick={()=>void refresh()}>刷新状态</Button>
-    {busy&&<Tag color="processing">正在自动创作</Tag>}\n    {batchRunning&&<Tag color="processing">批量进度 {batchProgress.completed}/{batchProgress.total}</Tag>}
+    {busy&&<Tag color="processing">正在自动创作</Tag>}
+    {batchRunning&&<Tag color="processing">批量进度 {batchProgress.completed}/{batchProgress.total}</Tag>}
    </Space>
   </section>
   <Card title="故事宇宙分支" style={{marginBottom:18}}>
@@ -224,7 +239,14 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   <Card title="下一章创作蓝图" style={{marginBottom:18}}>
    {preview.chapterPlan?<Paragraph style={{whiteSpace:"pre-wrap",marginBottom:0}}>{preview.chapterPlan}</Paragraph>:<Text type="secondary">生成过程中自动出现。蓝图只供查看，不是审批项。</Text>}
   </Card>
-  <Card title="章节历史" style={{marginBottom:18}}>\n   {chapterRuns.length===0?<Empty description="尚无章节历史。"/>:<Space wrap>\n    <Button disabled={!run||chapterRuns.filter(x=>x.status==="completed").findIndex(x=>x.id===run.id)<=0} onClick={()=>moveChapter(-1)}>上一章</Button>\n    <Select style={{minWidth:300}} value={run?.id} onChange={value=>void selectChapter(value)} options={chapterRuns.map((item,index)=>({value:item.id,label:(index+1)+". "+(item.status==="completed"?"已完成":item.status==="failed"?"失败":item.status==="running"?"生成中":"排队中")+" · "+new Date(item.createdAt).toLocaleString()}))}/>\n    <Button disabled={!run||chapterRuns.filter(x=>x.status==="completed").findIndex(x=>x.id===run.id)<0||chapterRuns.filter(x=>x.status==="completed").findIndex(x=>x.id===run.id)>=chapterRuns.filter(x=>x.status==="completed").length-1} onClick={()=>moveChapter(1)}>下一章</Button>\n   </Space>}\n  </Card>\n  <Card title="章节正文" style={{marginBottom:18}}>
+  <Card title="章节历史" style={{marginBottom:18}}>
+   {chapterRuns.length===0?<Empty description="尚无章节历史。"/>:<Space wrap>
+    <Button disabled={!run||chapterRuns.filter(x=>x.status==="completed").findIndex(x=>x.id===run.id)<=0} onClick={()=>moveChapter(-1)}>上一章</Button>
+    <Select style={{minWidth:300}} value={run?.id} onChange={value=>void selectChapter(value)} options={chapterRuns.map((item,index)=>({value:item.id,label:(index+1)+". "+(item.status==="completed"?"已完成":item.status==="failed"?"失败":item.status==="running"?"生成中":"排队中")+" · "+new Date(item.createdAt).toLocaleString()}))}/>
+    <Button disabled={!run||chapterRuns.filter(x=>x.status==="completed").findIndex(x=>x.id===run.id)<0||chapterRuns.filter(x=>x.status==="completed").findIndex(x=>x.id===run.id)>=chapterRuns.filter(x=>x.status==="completed").length-1} onClick={()=>moveChapter(1)}>下一章</Button>
+   </Space>}
+  </Card>
+  <Card title="章节正文" style={{marginBottom:18}}>
    {preview.chapter?<Paragraph style={{whiteSpace:"pre-wrap",marginBottom:0}}>{preview.chapter}</Paragraph>:<Empty description="正文生成后显示在这里。"/>}
   </Card>
   <Card title="运行状态">
