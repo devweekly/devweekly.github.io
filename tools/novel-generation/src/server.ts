@@ -1140,6 +1140,16 @@ async function syncStoryUnitCheckpointIds(
   return updated;
 }
 
+async function recordSingleChapterCompletion(worldId: string, storyUnitId: string, runId: string): Promise<void> {
+  const unit = await loadExecutionStoryUnit(worldId, storyUnitId);
+  if (unit.execution.completedChapterIds.includes(runId)) return;
+  const updatedAt = new Date().toISOString();
+  await saveExecutionStoryUnit({
+    ...unit, updatedAt,
+    execution: { ...unit.execution, status: "in_progress", completedChapterIds: [...unit.execution.completedChapterIds, runId] }
+  });
+}
+
 /** Run one ordinary chapter through the existing CLI pipeline and its existing quality/state gates. */
 async function executeStoryUnitChapter(worldId: string, previousChapterPath: string | undefined, brief: string, model?: string, storyUnitId?: string, onRunStarted?: (run: WorkbenchRun) => Promise<void>): Promise<WorkbenchRun> {
   const dir = worldDir(worldId);
@@ -1916,6 +1926,10 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
       return void res.status(409).json({ error: error instanceof Error ? error.message : "原著资料库尚未建立。请先导入原著并执行 ingest；其余分析资料可以在续写时按需补齐。" });
     }
     if (requestedStoryUnitId && !await getStoredStoryUnit(dir, id, requestedStoryUnitId)) return void res.status(404).json({ error: "Story Unit not found." });
+    if (requestedStoryUnitId) {
+      const unit = await loadExecutionStoryUnit(id, requestedStoryUnitId);
+      if (unit.execution.status === "completed") return void res.status(409).json({ error: "当前故事单元已经自然收束；如需继续创作，请创建新的 Story Unit。" });
+    }
     const allRuns = await listRuns(id);
     const runs = allRuns.filter(run => run.kind === "chapter" && (requestedStoryUnitId ? run.storyUnitId === requestedStoryUnitId : !run.storyUnitId));
     const active = runs.find(run => run.status === "queued" || run.status === "running");
@@ -2018,6 +2032,7 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
           writeFile(path.join(outputDir, "process.stderr.log"), errors, "utf8"),
           writeFile(path.join(outputDir, "process-result.json"), JSON.stringify(result, null, 2) + "\n", "utf8")
         ]);
+        if (completed && requestedStoryUnitId) await recordSingleChapterCompletion(id, requestedStoryUnitId, runId);
         await saveRun({
           ...run, status: completed ? "completed" : "failed",
           ...(chapterPath && finalChapterExists ? { chapterPath } : {}),
