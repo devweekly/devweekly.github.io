@@ -19,7 +19,8 @@ import {
 } from "./constants.js";
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
 import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks, type CanonChunk } from "./canon-chapters.js";
-import { chapterId as catalogChapterId, loadChapterCatalog } from "./novel-kb.js";
+import { chunkText } from "./library.js";
+import { chapterId as catalogChapterId, loadChapterCatalog, type CatalogChapter } from "./novel-kb.js";
 import { buildStoryStateGraph, filterGraph } from "./story-state-graph.js";
 import { archiveStyleReference, listStyleReferenceHistory, listStyleReferences, putStyleReference, readActiveStyleReference, readStyleReferenceVersion } from "./style-references.js";
 import { getCandidate, getRun, listCandidates, listRuns, recoverInterruptedRuns, saveCandidate, saveRun, type StoryPlanCandidate, type WorkbenchRun } from "./workbench-store.js";
@@ -502,6 +503,15 @@ async function listUniverses(sourceWorldId: string): Promise<StoryUniverse[]> {
   return items.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
+function readCatalogChapterText(catalog: CatalogChapter[], lines: string[], catalogIndex: number): string {
+  const entry = catalog[catalogIndex];
+  if (!entry || !Number.isSafeInteger(entry.line) || (entry.line ?? 0) < 1) return "";
+  const start = (entry.line as number) - 1;
+  const nextLine = catalog.slice(catalogIndex + 1).find(item => Number.isSafeInteger(item.line) && (item.line ?? 0) > (entry.line ?? 0))?.line;
+  const end = typeof nextLine === "number" ? Math.max(start, nextLine - 1) : lines.length;
+  return lines.slice(start, end).join("\n").trim();
+}
+
 interface CanonChapterChunk extends CanonChunk {}
 interface CanonChapterEntry {
   title: string;
@@ -545,14 +555,8 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
   const originalSourceHash = originalText === undefined ? undefined : createHash("sha256").update(originalText, "utf8").digest("hex");
   const canonChunks = selectCanonSourceChunks(index.chunks ?? [], originalSourceHash);
   const aligned = alignCanonChapterGroups(catalog, canonChunks, chapterStartOffsets);
-  const readOriginalText = async (catalogIndex: number): Promise<string> => {
-    const entry = catalog[catalogIndex];
-    if (!entry || !originalLines || !Number.isSafeInteger(entry.line) || (entry.line ?? 0) < 1) return "";
-    const start = (entry.line as number) - 1;
-    const nextLine = catalog.slice(catalogIndex + 1).find(item => Number.isSafeInteger(item.line) && (item.line ?? 0) > (entry.line ?? 0))?.line;
-    const end = typeof nextLine === "number" ? Math.max(start, nextLine - 1) : originalLines.length;
-    return originalLines.slice(start, end).join("\n").trim();
-  };
+  const readOriginalText = async (catalogIndex: number): Promise<string> =>
+    originalLines ? readCatalogChapterText(catalog, originalLines, catalogIndex) : "";
   const result: CanonChapterEntry[] = [];
   for (const item of aligned) {
     const text = joinCanonChunkText(item.chunks) || await readOriginalText(item.catalogIndex);
@@ -676,8 +680,24 @@ async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: st
   const sourceHash = originalText ? createHash("sha256").update(originalText, "utf8").digest("hex") : undefined;
   const canonChunks = selectCanonSourceChunks(source.chunks, sourceHash);
   const aligned = alignCanonChapterGroups(catalog, canonChunks, offsets);
-  const allowedGroups = new Set(aligned.filter(item => item.catalogIndex <= entryIndex && item.chunks.length > 0).map(item => item.chunks));
-  const chunks = aligned.filter(item => allowedGroups.has(item.chunks)).flatMap(item => item.chunks);
+  const sourceKey = path.relative(process.cwd(), path.join(worldDir(sourceWorldId), "original.txt")).split(path.sep).join("/");
+  const chunks = aligned.filter(item => item.catalogIndex <= entryIndex).flatMap(item => {
+    if (item.chunks.length) return item.chunks;
+    const chapterText = readCatalogChapterText(catalog, originalSourceLines, item.catalogIndex);
+    if (!chapterText) throw new Error("无法为历史宇宙补齐原著章节切片：" + item.chapter.title + "。请先修复原文目录行号或原文文件。");
+    const parts = chunkText(chapterText);
+    return parts.map((part, chunkIndex) => ({
+      id: sourceKey + ":catalog:" + catalogChapterId(item.chapter.volume, item.chapter.sequenceInVolume) + ":" + chunkIndex,
+      source: sourceKey,
+      chapter: item.chapter.title,
+      chunkIndex,
+      start: part.start,
+      end: part.end,
+      text: part.text,
+      ...(sourceHash ? { sourceHash } : {}),
+      ...(offsets[item.catalogIndex] !== undefined ? { chapterStart: offsets[item.catalogIndex] } : {})
+    }));
+  });
   const snapshot = {
     schemaVersion: source.schemaVersion,
     worldId: universeId,
