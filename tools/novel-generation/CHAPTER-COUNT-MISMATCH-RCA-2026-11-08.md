@@ -168,3 +168,20 @@
 node --import tsx src/cli.ts index-story --world conghuoniao
 python3 -c "import sqlite3; print(sqlite3.connect('worlds/conghuoniao/novel.db').execute('SELECT COUNT(*) FROM novel_chapters').fetchone())"
 ```
+
+### 原文目录误报为空：项目根目录全文与派生索引路径不一致（2026-11-09）
+
+用户确认全文实际位于 `tools/novel-generation/original.txt`。该文件是项目约定的唯一原始语料，并在 `.gitignore` 中明确忽略；章节目录 `analysis/<world>/chapter-index.json` 的 `sourceFile` 也指向 `original.txt`。但故事宇宙创建路径此前只读取 `worlds/<world>/original.txt`，并且在读取全文前无条件要求 `worlds/<world>/library/index.json` 存在。项目根目录全文存在，并不意味着这两个 world-local 路径也存在。
+
+第二个问题放大了第一个问题：`ChapterStudio` 加载 `/source-chapters` 失败后，catch 分支把章节数组清空，却没有显示 API 错误。UI 因此把文件路径错误、索引缺失、JSON 解析异常等所有失败都显示成“原文目录为空”。这不是目录数据本身的判断。
+
+修复：
+
+1. 新增原文路径解析：原文项目优先读取项目根目录 `original.txt`，兼容旧的 `worlds/<world>/original.txt`；已有 `universe.json` 的子宇宙必须优先读取自己的 bounded local copy，不能误读根目录全书。
+2. `readCanonChapters()` 将 `library/index.json` 视为可重建的派生检索缓存。索引文件缺失时，以正式章节目录 + 原文全文行号恢复章节正文并正常提供章节选择器；索引 JSON 损坏等非缺失错误仍明确报错。
+3. 创建宇宙的 bounded library snapshot 同样支持缺失 library index 时从全文按目录边界重建切片，不再在 UI 修好后又于创建阶段失败。
+4. 克隆原文资产时，原文项目从根目录复制全文到新宇宙；分叉子宇宙则继续复制其自身 bounded local copy。
+5. 前端将 universes 与 source-chapters 分开加载；章节接口失败时显示真实错误，不再清空其他数据并伪装成空目录。无章节或未选择起点时禁用创建。
+6. 新增回归测试：只有项目根目录 `original.txt`、有 `chapter-index.json`、没有 world-local 全文和 `library/index.json` 时，`/source-chapters` 仍返回完整章节列表。
+
+这次问题与章节数量、标题去重或 `chapterStart` 对齐无关；此前的严格 hash / 重复标题位置验证仍然保留。
