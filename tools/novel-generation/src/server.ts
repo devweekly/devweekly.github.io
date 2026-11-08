@@ -976,6 +976,9 @@ app.post("/api/worlds/:worldId/story-unit/generate", async (req, res) => {
 });
 
 
+function appendStoryExecutionEvent(task: StoryExecution, event: StoryExecution["events"][number]): StoryExecution {
+  return { ...task, events: [...(task.events ?? []), event].slice(-500) };
+}
 const activeStoryExecutions = new Map<string, Promise<void>>();
 const storyExecutionReservations = new Set<string>();
 function storyExecutionUnitPath(id: string): string { return path.join(worldDir(id), "story-unit.json"); }
@@ -1069,13 +1072,13 @@ async function assessStoryExecutionCheckpoint(
   let task: StoryExecution = latestTask
     ? { ...taskInput, pauseRequested: latestTask.pauseRequested, cancelRequested: latestTask.cancelRequested }
     : taskInput;
-  task = {
+  task = appendStoryExecutionEvent({
     ...task, currentRunId: undefined, lastAssessment: assessment.rationale, nextDirection: assessment.nextDirection,
     idleChapterCount: assessment.nextDirection === unitInput.execution.nextDirection &&
       assessment.unresolvedCoreThreads.join("|") === unitInput.execution.lastUnresolvedCoreThreads.join("|")
       ? task.idleChapterCount + 1 : 0,
     updatedAt: assessedAt
-  };
+  }, { at: assessedAt, type: "assessment", message: assessment.rationale.slice(0, 1200) });
   const naturallyComplete = isStoryUnitNaturallyComplete(assessment);
   const unit = {
     ...unitInput, updatedAt: assessedAt,
@@ -1089,12 +1092,12 @@ async function assessStoryExecutionCheckpoint(
   };
   await saveExecutionStoryUnit(unit);
   if (naturallyComplete) {
-    task = { ...task, status: "completed", completedAt: assessedAt, updatedAt: assessedAt, nextDirection: "故事已自然收束。" };
+    task = appendStoryExecutionEvent({ ...task, status: "completed", completedAt: assessedAt, updatedAt: assessedAt, nextDirection: "故事已自然收束。" }, { at: assessedAt, type: "completed", message: "完整故事达到自然收束条件" });
     await saveStoryExecution(task);
     return {task,unit,terminal:true};
   }
   if (task.idleChapterCount >= 4) {
-    task = { ...task, status: "stalled", error: "连续章节未推动核心冲突，任务已暂停而非误判为完成。请修订 Story Unit 的下一步方向后恢复。", updatedAt: assessedAt };
+    task = appendStoryExecutionEvent({ ...task, status: "stalled", error: "连续章节未推动核心冲突，任务已暂停而非误判为完成。请修订 Story Unit 的下一步方向后恢复。", updatedAt: assessedAt }, { at: assessedAt, type: "stalled", message: "连续章节没有推动故事方向，已暂停等待调整" });
     await saveStoryExecution(task);
     return {task,unit,terminal:true};
   }
@@ -1170,11 +1173,11 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
     while (true) {
       task = (await getStoryExecution(worldId, task.id)) ?? task;
       if (task.cancelRequested) {
-        task = { ...task, status: "cancelled", completedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), currentRunId: undefined };
+        task = appendStoryExecutionEvent({ ...task, status: "cancelled", completedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), currentRunId: undefined }, { at: new Date().toISOString(), type: "cancelled", message: "任务已取消" });
         await saveStoryExecution(task); return;
       }
       if (task.pauseRequested) {
-        task = { ...task, status: "paused", updatedAt: new Date().toISOString(), currentRunId: undefined };
+        task = appendStoryExecutionEvent({ ...task, status: "paused", updatedAt: new Date().toISOString(), currentRunId: undefined }, { at: new Date().toISOString(), type: "paused", message: "用户请求暂停，已在章节边界停止" });
         await saveStoryExecution(task); return;
       }
       const nextDirection = unit.execution.nextDirection || "根据当前人物行动与故事因果自然推进，避免重复前章内容。";
@@ -1186,7 +1189,7 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
         task.brief
       ].filter(Boolean).join("\n\n");
       const chapterRun = await executeStoryUnitChapter(worldId, previousChapterPath, brief, task.model, async currentRun => {
-        task = { ...task, currentRunId: currentRun.id, updatedAt: new Date().toISOString() };
+        task = appendStoryExecutionEvent({ ...task, currentRunId: currentRun.id, updatedAt: new Date().toISOString() }, { at: new Date().toISOString(), type: "chapter_started", message: "开始生成新章节", runId: currentRun.id });
         await saveStoryExecution(task);
       });
       if (chapterRun.status !== "completed" || !chapterRun.chapterPath) {
@@ -1198,7 +1201,7 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
       const latestTaskState = await getStoryExecution(worldId, task.id);
       if (latestTaskState) task = { ...task, pauseRequested: latestTaskState.pauseRequested, cancelRequested: latestTaskState.cancelRequested };
       const checkpoint = {runId:chapterRun.id,chapterPath:chapterRun.chapterPath,completedAt};
-      task = { ...task, completedChapters: [...task.completedChapters, checkpoint], currentRunId: undefined, updatedAt: completedAt };
+      task = appendStoryExecutionEvent({ ...task, completedChapters: [...task.completedChapters, checkpoint], currentRunId: undefined, updatedAt: completedAt }, { at: completedAt, type: "chapter_completed", message: "章节通过终审并提交 Story State", runId: chapterRun.id });
       unit = { ...unit, execution: { ...unit.execution, status: "in_progress", completedChapterIds: [...unit.execution.completedChapterIds, chapterRun.id] }, updatedAt: completedAt };
       // Commit the chapter checkpoint before assessment so a failed assessment can be retried on resume.
       await saveStoryExecution(task);
@@ -1209,7 +1212,7 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
       await saveStoryExecution(task);
     }
   } catch (error) {
-    task = { ...task, status: "failed", error: error instanceof Error ? error.message : String(error), updatedAt: new Date().toISOString(), currentRunId: undefined };
+    task = appendStoryExecutionEvent({ ...task, status: "failed", error: error instanceof Error ? error.message : String(error), updatedAt: new Date().toISOString(), currentRunId: undefined }, { at: new Date().toISOString(), type: "failed", message: (error instanceof Error ? error.message : String(error)).slice(0, 1200) });
     await saveStoryExecution(task).catch(() => undefined);
   }
 }
@@ -1333,7 +1336,7 @@ app.post("/api/worlds/:worldId/story-executions", async (req, res) => {
     const now = new Date().toISOString();
     const task: StoryExecution = {
       id: randomUUID(), worldId: id, storyUnitTitle: unit.title, mode: "complete_story", status: "queued", createdAt: now, updatedAt: now,
-      completedChapters: [], brief: typeof req.body?.brief === "string" ? req.body.brief.trim().slice(0, 8000) : "",
+      completedChapters: [], events: [{ at: now, type: "created", message: "创建完整故事执行任务" }], brief: typeof req.body?.brief === "string" ? req.body.brief.trim().slice(0, 8000) : "",
       ...(typeof req.body?.model === "string" ? {model:req.body.model} : {}),
       idleChapterCount: 0, pauseRequested: false, cancelRequested: false, resumeCount: 0
     };
@@ -1372,7 +1375,7 @@ app.post("/api/worlds/:worldId/chapter-batches", async (req, res) => {
     const now = new Date().toISOString();
     const task: StoryExecution = {
       id: randomUUID(), worldId: id, storyUnitTitle: title, mode: "fixed_batch", targetChapterCount: count,
-      status: "queued", createdAt: now, updatedAt: now, completedChapters: [],
+      status: "queued", createdAt: now, updatedAt: now, completedChapters: [], events: [{ at: now, type: "created", message: "创建连续章节批次任务" }],
       brief: typeof req.body?.brief === "string" ? req.body.brief.trim().slice(0,8000) : "",
       ...(typeof req.body?.model === "string" ? {model:req.body.model} : {}),
       idleChapterCount: 0, pauseRequested: false, cancelRequested: false, resumeCount: 0
@@ -1408,7 +1411,8 @@ app.post("/api/worlds/:worldId/story-executions/:executionId/resume", async (req
     if (!task) return void res.status(404).json({error:"Story execution not found."});
     if (!["paused","failed","stalled"].includes(task.status)) return void res.status(409).json({error:"当前任务不可恢复。",execution:task});
     if (activeStoryExecutions.has(id)) return void res.status(409).json({error:"当前世界已有故事任务正在执行。"});
-    const updated = {...task,status:"queued" as const,pauseRequested:false,cancelRequested:false,error:undefined,completedAt:undefined,updatedAt:new Date().toISOString()};
+    const resumedAt = new Date().toISOString();
+    const updated = appendStoryExecutionEvent({...task,status:"queued" as const,pauseRequested:false,cancelRequested:false,error:undefined,completedAt:undefined,updatedAt:resumedAt}, { at: resumedAt, type: "resumed", message: "恢复任务执行" });
     await saveStoryExecution(updated); startStoryUnitExecution(updated); res.status(202).json({execution:updated});
   } catch (error) { sendError(res, error); }
 });
