@@ -83,7 +83,7 @@ export async function generateStoryUnit(input: {
   ].filter(Boolean).join("\n\n");
   const raw = await runAgentText(prompt, input.model, DEFAULT_AGENT_TIMEOUT_MS, readTaskProfiles().plot, true);
   const parsed = parseJsonObject(raw) as Record<string, unknown>;
-  return StoryUnitSchema.parse({ ...parsed, schemaVersion: 1, worldId: input.worldId, updatedAt: new Date().toISOString() });
+  return StoryUnitSchema.parse({ ...parsed, ...(input.previous ? { execution: input.previous.execution } : {}), schemaVersion: 1, worldId: input.worldId, updatedAt: new Date().toISOString() });
 }
 
 /** 供章节写作检索与上下文使用的紧凑故事方向；不把创作可能性转成强制任务。 */
