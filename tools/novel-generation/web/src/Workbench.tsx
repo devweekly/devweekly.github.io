@@ -392,6 +392,7 @@ export default function Workbench() {
     if (active === "characters") {
       return (
         <CharactersPanel
+          worldId={worldId}
           characters={characters}
           query={characterQuery}
           onQueryChange={setCharacterQuery}
