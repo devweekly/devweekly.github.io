@@ -51,7 +51,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const activeStoryExecution=worldStoryExecutions.find(item=>["queued","running","paused"].includes(item.status));
  const batchRunning=activeStoryExecution?.mode==="fixed_batch"&&["queued","running"].includes(activeStoryExecution.status);
  const storyTaskBlocksWrites=Boolean(activeStoryExecution);
- const batchProgress={completed:storyExecution?.completedChapters.length??0,total:storyExecution?.targetChapterCount??0};
+ const batchProgress={completed:activeStoryExecution?.completedChapters.length??0,total:activeStoryExecution?.targetChapterCount??0};
  const refresh=async()=>{
   if(!activeWorldId)return;const requestId=++refreshGeneration.current;setLoading(true);
   try{
@@ -90,13 +90,25 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   }).catch(()=>{if(!cancelled){setStoryUnit(null);setStoryUnits([]);setSelectedStoryUnitId(undefined);setStoryExecution(null);setStoryExecutionHistory([]);setWorldStoryExecutions([]);}});
   return()=>{cancelled=true;};},[activeWorldId,selectedStoryUnitId,historyScope]);
  useEffect(()=>{
-  if(!activeWorldId||!storyExecution||!["queued","running"].includes(storyExecution.status))return;
+  if(!activeWorldId||!activeStoryExecution||!["queued","running"].includes(activeStoryExecution.status))return;
   let cancelled=false;
-  const timer=window.setInterval(()=>void api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/story-executions/"+storyExecution.id)
-   .then(result=>{if(cancelled)return;setStoryExecution(result.execution);setStoryExecutionHistory(items=>items.map(item=>item.id===result.execution.id?result.execution:item));setWorldStoryExecutions(items=>items.map(item=>item.id===result.execution.id?result.execution:item));if(["completed","failed","paused","cancelled","stalled"].includes(result.execution.status)){void refresh();if(selectedStoryUnitId)void api<{storyUnit:StoryUnit}>("/api/worlds/"+activeWorldId+"/story-units/"+selectedStoryUnitId).then(x=>{if(!cancelled)setStoryUnit(x.storyUnit);});}})
-   .catch(()=>{}),2500);
+  const executionId=activeStoryExecution.id;
+  const timer=window.setInterval(()=>void api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/story-executions/"+executionId)
+   .then(result=>{
+    if(cancelled)return;
+    setStoryExecution(current=>current?.id===executionId?result.execution:current);
+    setStoryExecutionHistory(items=>items.map(item=>item.id===executionId?result.execution:item));
+    setWorldStoryExecutions(items=>items.map(item=>item.id===executionId?result.execution:item));
+    if(["completed","failed","paused","cancelled","stalled"].includes(result.execution.status)){
+     const belongsToVisibleScope=historyScope==="legacy"?!result.execution.storyUnitId:result.execution.storyUnitId===selectedStoryUnitId;
+     if(belongsToVisibleScope)void refresh();
+     if(result.execution.storyUnitId&&result.execution.storyUnitId===selectedStoryUnitId){
+      void api<{storyUnit:StoryUnit}>("/api/worlds/"+activeWorldId+"/story-units/"+selectedStoryUnitId).then(x=>{if(!cancelled)setStoryUnit(x.storyUnit);});
+     }
+    }
+   }).catch(()=>{}),2500);
   return()=>{cancelled=true;window.clearInterval(timer);};
- },[activeWorldId,selectedStoryUnitId,storyExecution?.id,storyExecution?.status]);
+ },[activeWorldId,selectedStoryUnitId,historyScope,activeStoryExecution?.id,activeStoryExecution?.status]);
  useEffect(()=>{
   if(!busy||!run)return;
   let cancelled=false;
