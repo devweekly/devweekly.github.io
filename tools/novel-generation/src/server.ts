@@ -1717,7 +1717,8 @@ app.post("/api/worlds/:worldId/knowledge-build", async (req, res) => {
 });
 app.get("/api/worlds/:worldId/runs", async (req, res) => {
   try {
-    const storyUnitId = typeof req.query.storyUnitId === "string" ? recordId(req.query.storyUnitId) : req.query.storyUnitId === "legacy" ? null : undefined;
+    const storyUnitQuery = req.query.storyUnitId;
+    const storyUnitId = typeof storyUnitQuery === "string" ? storyUnitQuery === "legacy" ? null : recordId(storyUnitQuery) : undefined;
     res.json({ runs: await listRuns(worldIdOf(req.params.worldId), storyUnitId) });
   } catch (error) { sendError(res, error); }
 });
