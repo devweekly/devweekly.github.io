@@ -80,7 +80,7 @@ async function prepareCanonIndexInputs(worldDir: string, catalog: CatalogChapter
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   const sourceHash = originalText === undefined ? undefined : createHash("sha256").update(originalText, "utf8").digest("hex");
   const canonChunks = chunks.filter(chunk => {
-    if (chunk.sourceHash && sourceHash) return chunk.sourceHash === sourceHash;
+    if (chunk.sourceHash) return sourceHash !== undefined && chunk.sourceHash === sourceHash;
     return /(?:^|\/)original\.txt$/i.test(chunk.source);
   });
   const chapterStartOffsets: Array<number | undefined> = [];
@@ -91,9 +91,8 @@ async function prepareCanonIndexInputs(worldDir: string, catalog: CatalogChapter
     for (const line of lines) {
       starts.push(offset + line.length - line.trimStart().length);
       offset += line.length;
-      if (originalText[offset] === "" && originalText[offset + 1] === "
-") offset += 2;
-      else if (offset < originalText.length) offset++;
+      if (originalText[offset] === "\r") offset++;
+      if (originalText[offset] === "\n") offset++;
     }
     for (const chapter of catalog) {
       chapterStartOffsets.push(chapter.line == null ? undefined : starts[chapter.line - 1]);
