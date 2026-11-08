@@ -2128,10 +2128,14 @@ export async function recoverWorkbenchRuns(): Promise<void> {
   } catch { /* no worlds yet */ }
   const ids = entries.filter(id => /^[a-z0-9][a-z0-9-]*$/i.test(id));
   await Promise.all(ids.map(async id => {
-    const interrupted = (await listRuns(id)).filter(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"));
-    for (const run of interrupted) {
-      try { await restoreStoryStateSnapshot(id, run); }
-      catch (error) {
+    const recoverableChapters = (await listRuns(id)).filter(run => run.kind === "chapter" && ["queued","running","failed"].includes(run.status));
+    for (const run of recoverableChapters) {
+      try {
+        const restored = await restoreStoryStateSnapshot(id, run);
+        if (restored && run.status === "failed") {
+          await saveRun({ ...run, updatedAt: new Date().toISOString(), error: (run.error ?? "章节执行失败。") + "；已在启动恢复时重新应用章节前状态快照。" });
+        }
+      } catch (error) {
         await saveRun({ ...run, status: "failed", updatedAt: new Date().toISOString(),
           error: "服务重启后恢复章节前状态失败，已停止自动续写以避免剧情状态不一致：" + (error instanceof Error ? error.message : String(error)) });
       }
