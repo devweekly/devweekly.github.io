@@ -1499,7 +1499,7 @@ app.post("/api/worlds/:worldId/story-executions", async (req, res) => {
     reservedId = id;
     const requestedUnitId = typeof req.body?.storyUnitId === "string" ? recordId(req.body.storyUnitId) : undefined;
     const runs = await listRuns(id);
-    const activeChapter = runs.find(run => run.kind === "chapter" && storyExecutionOwnsRun(requestedUnitId, run.storyUnitId) && (run.status === "queued" || run.status === "running"));
+    const activeChapter = runs.find(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"));
     if (activeChapter) return void res.status(409).json({ error: "当前已有单章任务运行，请完成后再启动完整故事。" });
     const unit = await loadExecutionStoryUnit(id, requestedUnitId);
     const universe = await readUniverse(id);
@@ -1535,7 +1535,7 @@ app.post("/api/worlds/:worldId/chapter-batches", async (req, res) => {
     const count = Number(req.body?.chapterCount);
     if (!Number.isSafeInteger(count) || count < 1) return void res.status(400).json({error:"chapterCount 必须是大于 0 的整数。"});
     const runs = await listRuns(id);
-    const activeChapter = runs.find(run => run.kind === "chapter" && storyExecutionOwnsRun(requestedUnitId, run.storyUnitId) && (run.status === "queued" || run.status === "running"));
+    const activeChapter = runs.find(run => run.kind === "chapter" && (run.status === "queued" || run.status === "running"));
     if (activeChapter) return void res.status(409).json({error:"当前已有章节正在生成，请完成后再启动批量任务。"});
     const universe = await readUniverse(id);
     if (universe?.archivedAt) return void res.status(409).json({error:"当前故事宇宙已归档。"});
