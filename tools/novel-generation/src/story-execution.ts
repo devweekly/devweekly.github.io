@@ -9,6 +9,7 @@ export const StoryExecutionSchema = z.object({
   status: z.enum(["queued", "running", "paused", "completed", "failed", "cancelled", "stalled"]),
   createdAt: z.string(), updatedAt: z.string(), startedAt: z.string().optional(), completedAt: z.string().optional(),
   completedChapters: z.array(z.object({ runId: z.string().uuid(), chapterPath: z.string(), completedAt: z.string() })),
+  events: z.array(z.object({ at: z.string(), type: z.enum(["created","resumed","chapter_started","chapter_completed","assessment","paused","completed","failed","cancelled","stalled"]), message: z.string(), runId: z.string().uuid().optional() }).strict()).default([]),
   currentRunId: z.string().uuid().optional(), lastAssessment: z.string().optional(), nextDirection: z.string().optional(),
   idleChapterCount: z.number().int().nonnegative().default(0), error: z.string().optional(),
   brief: z.string().default(""), model: z.string().optional(), pauseRequested: z.boolean().default(false),
