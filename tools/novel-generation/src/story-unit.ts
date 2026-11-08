@@ -97,8 +97,13 @@ const StoryProgressAssessmentSchema = z.object({
 export type StoryProgressAssessment = z.infer<typeof StoryProgressAssessmentSchema>;
 
 export function isStoryUnitNaturallyComplete(assessment: StoryProgressAssessment): boolean {
+  // remainingStoryWork is the editor's explicit list of narrative work still required.
+  // It must be empty as well: otherwise a model could mark the central conflict resolved
+  // while leaving essential consequences, character choices, or closure unwritten.
   return assessment.coreConflictResolved && assessment.endingFeelsNatural && assessment.confidence === "high" &&
-    assessment.unresolvedCoreThreads.length === 0 && assessment.unrealizedMajorBeats.length === 0;
+    assessment.unresolvedCoreThreads.length === 0 &&
+    assessment.unrealizedMajorBeats.length === 0 &&
+    assessment.remainingStoryWork.length === 0;
 }
 
 /** Judge narrative closure from actual completed text and committed story state, never chapter count. */
