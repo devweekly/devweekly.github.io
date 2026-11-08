@@ -12,7 +12,7 @@ import {
   MIN_ANALYSIS_BATCH_CHARS
 } from "./constants.js";
 import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import {
   syncNovelChapters, syncNovelMentions, writeNovelKbMeta, upsertSeedCharacters, listNovelCharacters,
   type NovelChapterRow
@@ -79,7 +79,7 @@ interface CanonIndexInputs {
 export async function prepareCanonIndexInputs(worldDir: string, catalog: CatalogChapter[], chunks: LibraryChunk[]): Promise<CanonIndexInputs> {
   let originalText: string | undefined;
   try {
-    const originalPath = await resolveOriginalCanonPath(worldId, {
+    const originalPath = await resolveOriginalCanonPath(basename(worldDir), {
       projectRoot: resolve(worldDir, "..", ".."),
       worldDir
     });
