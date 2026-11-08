@@ -6,19 +6,19 @@
 
 ## 结论
 
-`原文目录与 novel.db 章节数量不一致，拒绝猜测章节映射。请重新导入并构建索引。` 这条报错由 `src/server.ts:749` 的防泄漏校验触发。校验本身按设计工作：当它无法确认「用户在目录里选的章节」对应知识库里的哪一行时，拒绝创建宇宙，避免新宇宙读到起点之后的剧情。触发它的不是用户操作失误，而是两条独立失效链叠加。
+`原文目录与 novel.db 章节数量不一致，拒绝猜测章节映射。请重新导入并构建索引。` 这条报错由 `src/server.ts:749` 的防泄漏校验触发。校验本身按设计工作：当它无法确认「用户在目录里选的章节」对应知识库里的哪一行时，拒绝创建宇宙，避免新宇宙读到起点之后的剧情。触发它的不是章节切分错误，而是数据与代码两条独立失效链叠加。
 
 第一条是数据生命周期：`ingest` 会清空 `novel.db` 的派生表，但清空后必须另跑 `index-story` 才能把章节表填回来。故障发生时 `novel_chapters` 为 0 行，而目录有 754 项，校验必然失败。第二条是代码口径：`readCanonChapters()` 从 `library/index.json` 按连续标题分组得到 754 项，`index-story` 依据 `chapter-index.json` 写入 753 行，两者本来就不相等。即使把数据补齐，这条数量校验仍会失败。
 
 已执行 `index-story` 回填，`novel_chapters` 恢复为 753 行。这只解决了第一条失效链。报错文案建议「重新导入并构建索引」有误导性：重新执行 `ingest` 会再次触发清空，把状态退回原点。
 
-修复代码口径涉及宇宙起点的定位边界。改错会让新宇宙包含起点之后的正文，属于不可逆的创作数据污染，因此本文给出方案与验收办法，未直接改动映射逻辑。
+修复代码口径会触及宇宙起点的定位边界：改错会让新宇宙包含起点之后的正文，属于不可逆的创作数据污染。下文给出方案、适用条件与验收办法，映射逻辑尚未修改。
 
 ## 故障表现与触发条件
 
-报错来自创建独立故事宇宙的 POST 处理（`src/server.ts:711` 起）。该流程先调用 `readCanonChapters(rootSourceId)` 取得原文目录，用 `entryChapterIndex` 取出用户所选章节的标题与正文，再复制源世界目录、重绑知识库身份，随后在 `server.ts:745-751` 打开 `novel.db`，把 `novel_chapters` 的行数与目录长度比较，并用 `ORDER BY ordinal LIMIT 1 OFFSET ?` 取出 `chapter_id` 和 `ordinal`。`chapter_id` 之后传给 `restrictKnowledgeDatabaseToEntry()`，用于按起点截断整份知识快照。
+报错来自创建独立故事宇宙的 POST 处理（`src/server.ts:697` 起）。该流程先调用 `readCanonChapters(rootSourceId)` 取得原文目录，用 `entryChapterIndex` 取出用户所选章节的标题与正文，再复制源世界目录、重绑知识库身份，随后在 `server.ts:745-751` 打开 `novel.db`，把 `novel_chapters` 的行数与目录长度比较，并用 `ORDER BY ordinal LIMIT 1 OFFSET ?` 取出 `chapter_id` 和 `ordinal`。`chapter_id` 之后传给 `restrictKnowledgeDatabaseToEntry()`，用于按起点截断整份知识快照。
 
-因此触发条件是：目录长度与 `novel_chapters` 行数不等。这个条件与语料内容无关，只取决于两份数据是否同步。
+触发条件只有一个：目录长度与 `novel_chapters` 行数不等。它与语料内容无关，只取决于两份数据是否同步。
 
 ## 实测证据
 
@@ -55,7 +55,7 @@
 
 重建并不在同一条命令里。`syncNovelChapters()`（`src/database.ts:505-518`）由 `indexNovelStructure()` 调用（`src/novel-kb.ts:376`），对应 CLI 命令 `index-story`。它按 `chapter-index.json` 重新写入 `novel_chapters` 并补充人物提及统计。也就是说，`ingest` 与 `index-story` 之间是一个「已清空、未重建」的中间态；只要在这个状态下创建宇宙，校验就会以 0 对 754 失败。
 
-报错文案把用户指向「重新导入」，恰好会让流程再走一次清空。当前库里 `novel.db` 仍有 12 MB 文件体积但派生表为空，也符合 SQLite 删除数据后不自动收缩文件的行为。
+报错文案把用户指向「重新导入」，恰好会让流程再走一次清空。故障时库文件约 12 MB 而派生表几乎全空，符合 SQLite 删除数据后不自动收缩文件的行为。
 
 ## 第二条失效链：目录与知识库采用两套章节口径
 
@@ -65,9 +65,9 @@
 
 于是 `server.ts:749` 比较的是两个不同集合的大小。这不是偶发的数据偏差，在 `conghuoniao` 语料上是稳定复现的 754 对 753。
 
-更值得关注的是 `server.ts:750` 的取行方式。它用 `LIMIT 1 OFFSET selectedIndex` 把下拉框的数组下标当作 `novel_chapters` 的行偏移。目录开头多了「前置内容」，中间多了一段作者单章，所以从第一处额外项之后，下标与行偏移至少错位 1，第二处之后错位 2。用户选择「第一章」时，取到的可能是相邻章节的 `chapter_id`。
+`server.ts:750` 的取行方式引入另一类风险。它用 `LIMIT 1 OFFSET selectedIndex` 把下拉框的数组下标当作 `novel_chapters` 的行偏移。目录开头多了「前置内容」，中间多了一段作者单章，所以从第一处额外项之后，下标与行偏移至少错位 1，第二处之后错位 2。用户选择「第一章」时，取到的可能是相邻章节的 `chapter_id`。
 
-`restrictKnowledgeDatabaseToEntry()` 对重复标题本来有保护（`src/source-canon-snapshot.ts:29-40`）：按标题查询时要求 `matches.length === 1`，多于一条就报错并要求稳定章节 ID；`test/source-canon-snapshot.test.ts` 中「duplicate chapter titles require a stable chapter id」等用例覆盖了这一点。但该保护只在按标题查询时生效。上游一旦通过 OFFSET 取到了一个合法但错误的 `chapter_id`，后续走的是 `chapter_id=?` 分支，查询恰好唯一，保护不会被触发，起点会被安静地定位到错误章节。753 个标题里只有 749 个唯一值，重复标题确实存在，这条路径不是纯理论风险。
+`restrictKnowledgeDatabaseToEntry()` 对重复标题本来有保护（`src/source-canon-snapshot.ts:29-40`）：按标题查询时要求 `matches.length === 1`，多于一条就报错并要求稳定章节 ID；`test/source-canon-snapshot.test.ts` 中「duplicate chapter titles require a stable chapter id」等用例覆盖了这一点。但该保护只在按标题查询时生效。上游一旦通过 OFFSET 取到了一个合法但错误的 `chapter_id`，后续走的是 `chapter_id=?` 分支，查询恰好唯一，保护不会被触发，起点可能被定位到错误章节而不报错。753 个标题去重后只有 749 个，重复标题确实存在，这条路径不是纯理论风险。该推断基于静态代码阅读，未做端到端复现。
 
 从 git 历史看，`1aebd72f`（2026-11-06，`原文分片只留 index.json，删掉库里重复的那份`）调整了切片与库的职责边界。把「重构遗留」作为这处不一致的成因属于推断：提交信息与当前代码依赖方向一致，但没有逐行比对重构前后的 diff，也没有证据表明作者当时有意让 Create Universe 继续按旧口径比较。这一点应作为推断而非事实记录。
 
@@ -82,7 +82,7 @@
 | 方案 | 做法 | 能解决 | 代价与风险 |
 |---|---|---|---|
 | A 只补数据 | 每次 ingest 后跑 `index-story` | 仅 0 对 754 的场景 | 754 对 753 仍失败；依赖人工记住顺序 |
-| B 放宽校验 | 去掉数量相等判断，改按标题查 `chapter_id` | 让创建流程通过 | 重复标题有 4 处，`matches.length === 1` 会拒绝；若强行取第一条，等于放弃防泄漏保证 |
+| B 放宽校验 | 去掉数量相等判断，改按标题查 `chapter_id` | 让创建流程通过 | 标题去重后少 4 条，`matches.length === 1` 会拒绝；若强行取第一条，等于放弃防泄漏保证 |
 | C 统一到目录骨架 | 以 `chapter-index.json` 为唯一章节列表，`readCanonChapters` 按目录序号取切片正文，`/source-chapters` 返回 catalog 序号，Create Universe 用序号或稳定 `chapter_id` 定位 | 数量口径、下标错位、重复标题歧义 | 需改动目录构造、API 返回语义与前端 `entryChapterIndex`；必须补回归测试 |
 
 推荐 C。A 只能掩盖第一层，B 会把现有的起点保护降级。C 的改动集中在三处：`readCanonChapters()` 改为以 catalog 标题序列为骨架并按顺序对齐 library 分组（跳过 `unmatchedLabels`），`/source-chapters` 返回 catalog 序号，`server.ts:748-750` 的数量校验改为与 `catalog.chapterCount` 比较并改用稳定 `chapter_id` 定位。
@@ -91,7 +91,7 @@
 
 ## 执行步骤与验收
 
-按 C 实施时，建议按以下顺序推进，每步都有可核对的结果：
+按 C 实施的顺序如下，每步都有可核对的结果：
 
 1. 备份 `worlds/conghuoniao/novel.db` 与 `library/index.json`，记录当前 `SELECT COUNT(*) FROM novel_chapters` 为 753。
 2. 修改 `readCanonChapters()` 与 `/source-chapters`，用 `chapter-index.json` 的 `volumes[].chapters` 作为章节列表；断言新目录长度为 753，且每个标题都能在 library 分组中定位到切片。
@@ -100,13 +100,13 @@
 5. 跑 `node --import tsx --test test/source-canon-snapshot.test.ts test/universe-create.integration.test.ts test/universe-branch.test.ts`，再跑 `npm run build`。
 6. 端到端验证：选卷 1 第一章创建宇宙，检查 `universe.json` 的 `entryChapterId` 对应 `novel_chapters` 中 ordinal 最小的正式章节；再选卷 3 的同名「第一章」，确认拿到的是卷 3 的 `chapter_id`，且快照中不含起点之后的章节证据。
 
-验收后需要长期观察的信号是 `index-story` 每次输出的 `chapterCount`、`chunksMapped`、`unmatchedLabels` 与 `chaptersWithoutChunks`。任一值变化都意味着目录口径变了，应重新核对 Create Universe 的映射。若 C 上线后出现起点定位错误，回滚方式是还原这三处代码并重新执行 `index-story`；已经按错误起点创建的宇宙需要废弃重建，不能靠补数据修正。
+验收后需要长期观察的信号是 `index-story` 每次输出的 `chapterCount`、`chunksMapped`、`unmatchedLabels` 与 `chaptersWithoutChunks`。任一值变化都需要重新核对 Create Universe 的映射。若 C 上线后出现起点定位错误，回滚方式是还原这三处代码并重新执行 `index-story`；已经按错误起点创建的宇宙需要废弃重建，不能靠补数据修正。
 
 ## 证据边界与未验证项
 
 本文的数据层结论来自对 SQLite、JSON 与源码的直接测量，属于可复核事实；「清空与重建被拆成两个命令」「两套章节口径」由调用链与实测数字共同支持；「重构遗留」为推断，依据 git 提交信息与依赖方向，未做逐行 diff 比对。
 
-未验证的事项需要明确列出：没有实际发起一次宇宙创建来复现完整报错栈，结论依赖对 `server.ts:711-751` 的静态阅读；没有确认 `chaptersWithoutChunks: 1` 对应哪一章，也没有确认 `MIN/MAX(ordinal) = 0/753` 中跳号的具体位置；没有验证其他语料是否同样包含非章节分组，因此 754 与 753 这两个数字只适用于 `conghuoniao`；全量测试套件未执行，报告只引用了与本问题直接相关的测试文件与构建状态。
+以下事项未验证：没有实际发起一次宇宙创建来复现完整报错栈，结论依赖对 `server.ts:697-755` 的静态阅读；没有确认 `chaptersWithoutChunks: 1` 对应哪一章，也没有确认 `MIN/MAX(ordinal) = 0/753` 中跳号的具体位置；没有验证其他语料是否同样包含非章节分组，754 与 753 这两个数字只适用于 `conghuoniao`；全量测试套件未执行，报告只引用了与本问题直接相关的测试文件与构建状态。
 
 `src/server.ts` 在本项目里存在并发修改历史。实施 C 之前应重新读取该文件，确认 `readCanonChapters()`、数量校验与 `OFFSET` 三处仍未变化。
 
@@ -117,7 +117,7 @@
 | 清空派生数据 | `src/library.ts:181` → `src/database.ts:263-273`、`498-503` |
 | 回填章节表 | `src/novel-kb.ts:365-376` → `src/database.ts:505-518` |
 | 目录构造 | `src/server.ts:504-528`，`src/server.ts:647-655` |
-| 数量校验与起点定位 | `src/server.ts:718-755` |
+| 数量校验与起点定位 | `src/server.ts:745-755` |
 | 按起点截断快照 | `src/source-canon-snapshot.ts:17-40` |
 | 章节目录数据 | `analysis/conghuoniao/chapter-index.json` |
 | 切片数据 | `worlds/conghuoniao/library/index.json` |
@@ -126,6 +126,5 @@
 
 ```bash
 node --import tsx src/cli.ts index-story --world conghuoniao
-python3 -c "import sqlite3; c=sqlite3.connect('worlds/conghuoniao/novel.db'); \
-  print(c.execute('SELECT COUNT(*) FROM novel_chapters').fetchone())"
+python3 -c "import sqlite3; print(sqlite3.connect('worlds/conghuoniao/novel.db').execute('SELECT COUNT(*) FROM novel_chapters').fetchone())"
 ```
