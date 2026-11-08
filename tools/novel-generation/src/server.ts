@@ -1247,19 +1247,19 @@ async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> 
     // batch task is marked completed. Reconciliation above restores that checkpoint.
     if (task.completedChapters.length >= (task.targetChapterCount ?? 1)) {
       const completedAt = new Date().toISOString();
-      task = { ...task, status: "completed", completedAt, updatedAt: completedAt,
-        nextDirection: "本次指定数量的连续章节已完成；不代表完整故事已经结束。" };
+      task = appendStoryExecutionEvent({ ...task, status: "completed", completedAt, updatedAt: completedAt,
+        nextDirection: "本次指定数量的连续章节已完成；不代表完整故事已经结束。" }, { at: completedAt, type: "completed", message: "指定数量的章节已全部完成；不代表完整故事自然收束" });
       await saveStoryExecution(task);
       return;
     }
     while (task.completedChapters.length < (task.targetChapterCount ?? 1)) {
       task = (await getStoryExecution(worldId, task.id)) ?? task;
       if (task.cancelRequested) {
-        task = { ...task, status: "cancelled", completedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), currentRunId: undefined };
+        task = appendStoryExecutionEvent({ ...task, status: "cancelled", completedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), currentRunId: undefined }, { at: new Date().toISOString(), type: "cancelled", message: "批量任务已取消" });
         await saveStoryExecution(task); return;
       }
       if (task.pauseRequested) {
-        task = { ...task, status: "paused", updatedAt: new Date().toISOString(), currentRunId: undefined };
+        task = appendStoryExecutionEvent({ ...task, status: "paused", updatedAt: new Date().toISOString(), currentRunId: undefined }, { at: new Date().toISOString(), type: "paused", message: "批量任务已暂停" });
         await saveStoryExecution(task); return;
       }
       const chapterNumber = task.completedChapters.length + 1;
@@ -1270,7 +1270,7 @@ async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> 
         task.brief
       ].filter(Boolean).join("\n\n");
       const chapterRun = await executeStoryUnitChapter(worldId, previousChapterPath, brief, task.model, async currentRun => {
-        task = { ...task, currentRunId: currentRun.id, updatedAt: new Date().toISOString() };
+        task = appendStoryExecutionEvent({ ...task, currentRunId: currentRun.id, updatedAt: new Date().toISOString() }, { at: new Date().toISOString(), type: "chapter_started", message: "批量任务开始生成第 " + (task.completedChapters.length + 1) + " 章", runId: currentRun.id });
         await saveStoryExecution(task);
       });
       if (chapterRun.status !== "completed" || !chapterRun.chapterPath) {
@@ -1281,7 +1281,7 @@ async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> 
       const completedAt = new Date().toISOString();
       const latestTask = await getStoryExecution(worldId, task.id);
       if (latestTask) task = { ...task, pauseRequested: latestTask.pauseRequested, cancelRequested: latestTask.cancelRequested };
-      task = { ...task, completedChapters: [...task.completedChapters, {runId:chapterRun.id,chapterPath:chapterRun.chapterPath,completedAt}], currentRunId: undefined, updatedAt: completedAt };
+      task = appendStoryExecutionEvent({ ...task, completedChapters: [...task.completedChapters, {runId:chapterRun.id,chapterPath:chapterRun.chapterPath,completedAt}], currentRunId: undefined, updatedAt: completedAt }, { at: completedAt, type: "chapter_completed", message: "批量章节通过终审并提交 Story State", runId: chapterRun.id });
       await saveStoryExecution(task);
       try {
         const unit = validateStoryUnit(JSON.parse(await readFile(storyExecutionUnitPath(worldId), "utf8")), worldId);
@@ -1296,7 +1296,7 @@ async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> 
       await saveStoryExecution(task);
     }
   } catch (error) {
-    task = { ...task, status: "failed", error: error instanceof Error ? error.message : String(error), updatedAt: new Date().toISOString(), currentRunId: undefined };
+    task = appendStoryExecutionEvent({ ...task, status: "failed", error: error instanceof Error ? error.message : String(error), updatedAt: new Date().toISOString(), currentRunId: undefined }, { at: new Date().toISOString(), type: "failed", message: (error instanceof Error ? error.message : String(error)).slice(0, 1200) });
     await saveStoryExecution(task).catch(() => undefined);
   }
 }
