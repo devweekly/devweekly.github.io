@@ -26,6 +26,8 @@ test("validates a complete story unit with open-ended chapter scope", () => {
   const unit = validateStoryUnit(valid, "world-a");
   assert.equal(unit.storySpine.length, 4);
   assert.equal(unit.cast[0]?.status, "existing");
+  assert.equal(unit.execution.status, "not_started");
+  assert.deepEqual(unit.execution.completedChapterIds, []);
 });
 
 test("rejects a story unit without a complete causal spine", () => {
