@@ -5,7 +5,7 @@ import express, { type Request, type Response, type NextFunction } from "express
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { cp, copyFile, mkdir, readFile, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
-import { constants as fsConstants } from "node:fs";
+
 import { existsSync, rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
@@ -29,6 +29,7 @@ import { buildUniverseOriginContext, buildUniverseWorldBible, rebaseStoryState, 
 import { importBoundedStoryAnalysisSnapshot, restrictKnowledgeDatabaseToEntry } from "./source-canon-snapshot.js";
 import { importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
+import { copyOriginalCanonToUniverse, resolveOriginalCanonPath } from "./canon-source.js";
 import { assessStoryUnitProgress, generateStoryUnit, isStoryUnitNaturallyComplete, validateStoryUnit } from "./story-unit.js";
 import { archiveStoredStoryUnitVersion, createStoredStoryUnit, getStoredStoryUnit, getStoredStoryUnitVersion, listStoredStoryUnitVersions, listStoredStoryUnits, saveStoredStoryUnit } from "./story-unit-store.js";
 import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, mergeStoryExecutionControlFlags, storyRunStateWasRolledBack, type StoryExecution } from "./story-execution.js";
@@ -78,33 +79,6 @@ function recordId(value: unknown): string {
 
 function worldDir(id: string): string {
   return path.resolve("worlds", id);
-}
-
-/**
- * The canonical corpus is the project-root original.txt (intentionally gitignored).
- * Older imports may still keep a world-local copy, so retain that as a fallback.
- * A child universe already owns a bounded worlds/<id>/original.txt and must use it.
- */
-async function resolveOriginalCanonPath(id: string): Promise<string> {
-  const localPath = path.join(worldDir(id), "original.txt");
-  const projectPath = path.resolve("original.txt");
-  let isUniverse = false;
-  try { isUniverse = (await stat(path.join(worldDir(id), "universe.json"))).isFile(); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-  // Source projects use the root corpus by convention; child universes must
-  // remain pinned to their own bounded local copy.
-  const candidates = isUniverse ? [localPath, projectPath] : [projectPath, localPath];
-  for (const candidate of candidates) {
-    try {
-      const info = await stat(candidate);
-      if (info.isFile()) return candidate;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
-  }
-  throw Object.assign(new Error(
-    "找不到原著全文。已检查 " + localPath + " 和 " + projectPath + "；请确认 original.txt 位于 novel-generation 项目根目录。"
-  ), { code: "ENOENT" });
 }
 
 /** 双保险：即便 ID 校验规则未来放宽，也不允许解析到 worlds 之外。 */
@@ -668,33 +642,6 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
   }
 }
 
-/**
- * original.txt is immutable source canon. Prefer a copy-on-write reflink so
- * branches share physical blocks without sharing a mutable inode. If the
- * filesystem cannot clone, keep the ordinary copy produced by cp().
- */
-async function cloneOriginalCanon(sourceDir: string, targetDir: string): Promise<boolean> {
-  let source: string;
-  try {
-    source = await resolveOriginalCanonPath(path.basename(sourceDir));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
-    throw error;
-  }
-  const target = path.join(targetDir, "original.txt");
-  const temporary = target + ".reflink-" + process.pid;
-  try {
-    await copyFile(source, temporary, fsConstants.COPYFILE_FICLONE_FORCE);
-    await rename(temporary, target);
-    return true;
-  } catch (error) {
-    await rm(temporary, { force: true }).catch(() => undefined);
-    const code = (error as NodeJS.ErrnoException).code;
-    if (["EXDEV", "EPERM", "EACCES", "ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EINVAL"].includes(code ?? "")) return false;
-    throw error;
-  }
-}
-
 async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: string, universeId: string, entryIndex: number): Promise<void> {
   let source: { schemaVersion: number; createdAt: string; updatedAt: string; chunks: Array<CanonChapterChunk & { [key: string]: unknown }> } = {
     schemaVersion: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), chunks: []
@@ -853,7 +800,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
         return shouldCopyUniverseAsset(path.relative(sourceDir, source));
       }
     });
-    await cloneOriginalCanon(sourceDir, stagingDir);
+    await copyOriginalCanonToUniverse(rootSourceId, stagingDir, path.resolve("."));
     // novel.db 是原著分析只读快照的初期副本；重置其世界身份，防止数据库身份校验误认为属于源项目。
     rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
     const knowledgePath = path.join(stagingDir, "novel.db");
@@ -1009,7 +956,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
         return shouldCopyUniverseAsset(path.relative(parentDir, source));
       }
     });
-    await cloneOriginalCanon(parentDir, stagingDir);
+    await copyOriginalCanonToUniverse(parentId, stagingDir, path.resolve("."));
     rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
     restrictKnowledgeDatabaseToEntry(path.join(stagingDir, "novel.db"), id, parent.entryChapter, parent.entryChapterId);
     const universe: StoryUniverse = {
