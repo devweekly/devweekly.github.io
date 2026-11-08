@@ -119,7 +119,7 @@ export async function listStoredStoryUnitVersions(worldDir: string, worldId: str
   try { names = await readdir(directory); }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
   const versions: StoredStoryUnitVersion[] = [];
-  for (const name of names.filter(value => /^[0-9a-f-]{36}\\.json$/i.test(value))) {
+  for (const name of names.filter(value => /^[0-9a-f-]{36}\.json$/i.test(value))) {
     try {
       const record = JSON.parse(await readFile(join(directory, name), "utf8")) as {schemaVersion?:number;versionId?:string;storyUnitId?:string;worldId?:string;createdAt?:string;unit?:StoredStoryUnit};
       if (record.schemaVersion !== 1 || record.versionId !== name.slice(0, -5) || record.storyUnitId !== storyUnitId || record.worldId !== worldId || record.unit?.id !== storyUnitId || record.unit.worldId !== worldId) continue;
