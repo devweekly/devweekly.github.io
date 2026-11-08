@@ -77,8 +77,13 @@ export function alignCanonChapterGroups(
 /** Keep only chunks from the immutable original.txt source, never auxiliary imports. */
 export function selectCanonSourceChunks(chunks: CanonChunk[], originalSourceHash?: string): CanonChunk[] {
   return chunks.filter(chunk => {
-    if (chunk.sourceHash) return originalSourceHash !== undefined && chunk.sourceHash === originalSourceHash;
-    return typeof chunk.source === "string" && /(?:^|\/)original\.txt$/i.test(chunk.source);
+    const isCanonicalPath = typeof chunk.source === "string" && /(?:^|\/)original\.txt$/i.test(chunk.source);
+    if (!isCanonicalPath) return false;
+    // If original.txt is available, require an exact hash. If it is stored
+    // outside the project tree, the explicit source path is the remaining
+    // provenance; repeated titles still require chapterStart evidence.
+    if (originalSourceHash !== undefined && chunk.sourceHash) return chunk.sourceHash === originalSourceHash;
+    return true;
   });
 }
 
