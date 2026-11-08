@@ -5,6 +5,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../src/server.js";
+import { DatabaseSync } from "node:sqlite";
 import { emptyStoryState } from "../src/story-state.js";
 import { saveRun, type WorkbenchRun } from "../src/workbench-store.js";
 
@@ -23,6 +24,10 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
     await mkdir(join(parentDir, "library"), { recursive: true });
     await mkdir(join(root, "worlds", "source-world", "library"), { recursive: true });
     await mkdir(join(root, "analysis", "source-world"), { recursive: true });
+    await writeFile(join(root, "worlds", "source-world", "original.txt"), "原文第一章\n原文第二章\n原文第三章", "utf8");
+    const canonDb = new DatabaseSync(join(root, "worlds", "source-world", "novel.db"));
+    canonDb.exec(`CREATE TABLE world_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL); INSERT INTO world_meta VALUES('world_id','source-world'); CREATE TABLE novel_chapters(chapter_id TEXT PRIMARY KEY,title TEXT NOT NULL,ordinal INTEGER NOT NULL,volume INTEGER NOT NULL DEFAULT 1); INSERT INTO novel_chapters VALUES('c1','原文第一章',1,1),('c2','原文第二章',2,1),('c3','原文第三章',3,1);`);
+    canonDb.close();
     await mkdir(outputDir, { recursive: true });
     await writeFile(join(root, "worlds", "source-world", "library", "index.json"), JSON.stringify({
       schemaVersion: 1, worldId: "source-world", createdAt: "2026-11-01T00:00:00.000Z",
@@ -44,7 +49,7 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
     await writeFile(join(parentDir, "world-bible.md"), "# Test universe\n");
     await writeFile(join(parentDir, "universe.json"), JSON.stringify({
       id: parentId, sourceWorldId: "source-world", name: "父宇宙", type: "free",
-      entryChapter: "原文第二章", brief: "测试", createdAt: "2026-11-01T00:00:00.000Z"
+      entryChapter: "原文第二章", entryChapterId: "c2", entryChapterIndex: 1, entryOrdinal: 2, brief: "测试", createdAt: "2026-11-01T00:00:00.000Z"
     }));
     await writeFile(join(parentDir, "source-canon.json"), JSON.stringify({ sourceWorldId: "source-world", readOnly: true }));
     await writeFile(join(parentDir, "library", "index.json"), JSON.stringify({
