@@ -40,7 +40,7 @@ const StoryUnitSchema = z.object({
   subplots: z.array(z.string()).default([]),
   climax: z.string().min(1), endingAndAftermath: z.string().min(1),
   unresolvedQuestions: z.array(z.string()).default([]), creativePossibilities: z.array(z.string()).default([]),
-  execution: z.object({ status: z.enum(["not_started", "in_progress", "completed"]).default("not_started"), completedChapterIds: z.array(z.string()).default([]), lastUnresolvedCoreThreads: z.array(z.string()).default([]), lastAssessedChapterId: z.string().optional(), lastAssessment: z.string().optional(), nextDirection: z.string().optional(), assessedAt: z.string().optional(), completedAt: z.string().optional() }).default({ status: "not_started", completedChapterIds: [], lastUnresolvedCoreThreads: [] })
+  execution: z.object({ status: z.enum(["not_started", "in_progress", "completed"]).default("not_started"), completedChapterIds: z.array(z.string()).default([]), lastUnresolvedCoreThreads: z.array(z.string()).default([]), lastAssessedChapterId: z.string().optional(), lastAssessment: z.string().optional(), nextDirection: z.string().optional(), assessedAt: z.string().optional(), completedAt: z.string().optional(), characterArcHistory: z.array(z.object({ chapterId: z.string(), name: z.string(), observedChange: z.string(), futurePossibilities: z.array(z.string()), recordedAt: z.string() }).strict()).default([]) }).default({ status: "not_started", completedChapterIds: [], lastUnresolvedCoreThreads: [], characterArcHistory: [] })
 }).strict();
 
 export type StoryUnit = z.infer<typeof StoryUnitSchema>;
@@ -155,6 +155,7 @@ export function formatStoryUnit(unit: StoryUnit | undefined): string {
     "人物关系变化可能：" + unit.relationshipDynamics.join("；"),
     "执行状态：" + unit.execution.status + "；已完成章节：" + unit.execution.completedChapterIds.length,
     unit.execution.lastAssessment ? "最近进展判断：" + unit.execution.lastAssessment : "",
+    unit.execution.characterArcHistory.length ? "人物发展记录：" + unit.execution.characterArcHistory.slice(-20).map(x => x.name + "（" + x.chapterId + "）：" + x.observedChange + "；后续可能：" + x.futurePossibilities.join("、")).join(" / ") : "",
     unit.execution.nextDirection ? "下一步自然推进方向：" + unit.execution.nextDirection : "",
     "完整故事因果脊柱：" + unit.storySpine.map((x, i) => (i + 1) + "." + x.title + "：" + x.function + "；" + x.causalChange).join(" / "),
     "支线：" + unit.subplots.join("；"),
