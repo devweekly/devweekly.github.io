@@ -18,7 +18,7 @@ import {
   type NovelChapterRow
 } from "./database.js";
 import { loadLibraryChunks, type LibraryChunk } from "./library.js";
-import { selectCanonSourceChunks } from "./canon-chapters.js";
+import { selectCanonSourceChunks, validateCanonCatalogAgainstText } from "./canon-chapters.js";
 import { ensureBoundedUniverseCanonAssets, resolveOriginalCanonPath } from "./canon-source.js";
 
 export interface CatalogChapter {
@@ -87,6 +87,7 @@ export async function prepareCanonIndexInputs(worldDir: string, catalog: Catalog
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
+  if (originalText !== undefined) validateCanonCatalogAgainstText(catalog, originalText);
   const sourceHash = originalText === undefined ? undefined : createHash("sha256").update(originalText, "utf8").digest("hex");
   const canonChunks = selectCanonSourceChunks(chunks, sourceHash);
   const chapterStartOffsets: Array<number | undefined> = [];
