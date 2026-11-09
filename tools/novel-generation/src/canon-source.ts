@@ -45,10 +45,15 @@ export async function resolveOriginalCanonPath(
 }
 
 /** Return the original prefix ending immediately before a chapter heading line. */
-export function truncateCanonAtLine(text: string, endBeforeLine?: number): string {
+export function truncateCanonAtLine(text: string, endBeforeLine?: number, allowAlreadyBounded = false): string {
   if (endBeforeLine === undefined) return text;
   if (!Number.isSafeInteger(endBeforeLine) || endBeforeLine < 2) {
     throw new Error("原文时点边界行号无效，拒绝生成未截断的故事宇宙原文副本。");
+  }
+  const lineCount = text.split(/\\r?\\n/).length;
+  if (endBeforeLine > lineCount) {
+    if (allowAlreadyBounded) return text;
+    throw new Error("原文时点边界超出全文范围，无法安全截断。");
   }
   let offset = 0;
   for (let line = 1; line < endBeforeLine; line++) {
@@ -71,7 +76,8 @@ export async function copyOriginalCanonToUniverse(
   sourceWorldId: string,
   targetDir: string,
   projectRoot = process.cwd(),
-  endBeforeLine?: number
+  endBeforeLine?: number,
+  allowAlreadyBounded = false
 ): Promise<boolean> {
   let source: string;
   try {
@@ -81,7 +87,7 @@ export async function copyOriginalCanonToUniverse(
     throw error;
   }
   const text = await readFile(source, "utf8");
-  const boundedText = truncateCanonAtLine(text, endBeforeLine);
+  const boundedText = truncateCanonAtLine(text, endBeforeLine, allowAlreadyBounded);
   await writeFile(path.join(targetDir, "original.txt"), boundedText, "utf8");
   return true;
 }
