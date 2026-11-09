@@ -20,7 +20,7 @@ import {
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
 import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks, splitCanonLines, type CanonChunk } from "./canon-chapters.js";
 import { chunkText, ensurePrivateLibraryIsolation } from "./library.js";
-import { chapterId as catalogChapterId, loadChapterCatalog, loadChapterCatalogDocument, prepareCanonIndexInputs, type CatalogChapter } from "./novel-kb.js";
+import { chapterId as catalogChapterId, ensureSourceCanonLibraryIndex, indexNovelStructure, loadChapterCatalog, loadChapterCatalogDocument, prepareCanonIndexInputs, type CatalogChapter } from "./novel-kb.js";
 import { buildStoryStateGraph, filterGraph } from "./story-state-graph.js";
 import { archiveStyleReference, listStyleReferenceHistory, listStyleReferences, putStyleReference, readActiveStyleReference, readStyleReferenceVersion } from "./style-references.js";
 import { getCandidate, getRun, listCandidates, listRuns, recoverInterruptedRuns, saveCandidate, saveRun, type StoryPlanCandidate, type WorkbenchRun } from "./workbench-store.js";
@@ -525,12 +525,45 @@ interface CanonChapterEntry {
   ordinal: number;
   hasChunks: boolean;
 }
+async function ensureSourceChapterDatabase(
+  sourceWorldId: string,
+  sourceDir: string,
+  chapters: CanonChapterEntry[]
+): Promise<void> {
+  const databasePath = path.join(sourceDir, "novel.db");
+  let rows: Array<{ chapter_id: string; ordinal: number; volume: number; title: string }> = [];
+  if (existsSync(databasePath)) {
+    const db = new DatabaseSync(databasePath);
+    try {
+      rows = db.prepare("SELECT chapter_id,ordinal,volume,title FROM novel_chapters ORDER BY ordinal")
+        .all() as typeof rows;
+    } catch (error) {
+      if (!(error instanceof Error) || !/no such table|no such column/i.test(error.message)) throw error;
+    } finally {
+      db.close();
+    }
+  }
+  const canonicalRows = rows.filter(row => row.chapter_id !== "V00-C000");
+  const complete = canonicalRows.length === chapters.length && chapters.every((chapter, index) => {
+    const row = canonicalRows[index];
+    return row?.chapter_id === chapter.chapterId &&
+      Number(row.ordinal) === chapter.ordinal &&
+      Number(row.volume) === chapter.volume &&
+      row.title === chapter.title;
+  });
+  if (!complete) {
+    // A missing or legacy chapter directory is a rebuildable derivative. Use
+    // the verified offline corpus/catalog to materialize stable Vxx-Cxxx IDs.
+    await indexNovelStructure(sourceWorldId, { worldDir: sourceDir });
+  }
+}
+
 async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEntry[]> {
   const catalogDocument = await loadChapterCatalogDocument(sourceWorldId);
   const catalog = catalogDocument?.chapters;
   if (!catalog) throw new Error("原著章节目录不存在，无法安全创建故事宇宙。请先构建 chapter-index.json。");
   const libraryDir = path.join(worldDir(sourceWorldId), "library");
-  await ensurePrivateLibraryIsolation(libraryDir, sourceWorldId);
+  await ensureSourceCanonLibraryIndex(sourceWorldId, worldDir(sourceWorldId));
   let chunks: CanonChapterChunk[] = [];
   try {
     const index = JSON.parse(await readFile(path.join(libraryDir, "index.json"), "utf8")) as { worldId?: string; chunks?: CanonChapterChunk[] };
@@ -631,7 +664,7 @@ async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: st
     schemaVersion: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), chunks: []
   };
   const sourceLibraryDir = path.join(worldDir(sourceWorldId), "library");
-  await ensurePrivateLibraryIsolation(sourceLibraryDir, sourceWorldId);
+  await ensureSourceCanonLibraryIndex(sourceWorldId, worldDir(sourceWorldId));
   try {
     source = JSON.parse(await readFile(path.join(sourceLibraryDir, "index.json"), "utf8")) as typeof source & { worldId?: string };
     if (source.worldId !== sourceWorldId || !Array.isArray(source.chunks)) {
@@ -826,6 +859,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     if (!allowedTypes.includes(type)) return void res.status(400).json({ error: "Invalid universe type." });
     await readFile(path.join(sourceDir, "world-bible.md"), "utf8");
     const canonChapters = await readCanonChapters(rootSourceId);
+    await ensureSourceChapterDatabase(rootSourceId, sourceDir, canonChapters);
     if (!Number.isSafeInteger(entryChapterIndex) || entryChapterIndex < 0 || entryChapterIndex >= canonChapters.length) {
       return void res.status(400).json({ error: "必须通过章节目录提供有效的章节索引，不能只提交可能重复的章节标题。" });
     }
