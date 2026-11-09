@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { CatalogChapter } from "./novel-kb.js";
 
 export interface CanonChunk {
@@ -98,8 +99,15 @@ export function canonLineStartOffsets(text: string): number[] {
 export function validateCanonCatalogAgainstText(
   catalog: CatalogChapter[],
   originalText: string,
-  expectedTotalLines?: number
+  expectedTotalLines?: number,
+  expectedSourceHash?: string
 ): void {
+  if (expectedSourceHash) {
+    const actualHash = createHash("sha256").update(originalText, "utf8").digest("hex");
+    if (actualHash !== expectedSourceHash) {
+      throw Object.assign(new Error("chapter-index.json 的 sourceHash 与当前 original.txt 不一致。请重新运行 node analysis/build-corpus-index.mjs；不能使用旧目录解释新原文。"), { status: 400 });
+    }
+  }
   const lines = splitCanonLines(originalText);
   if (expectedTotalLines !== undefined && lines.length !== expectedTotalLines) {
     throw Object.assign(new Error("chapter-index.json 的 totalLines 与 original.txt 不一致（目录 " + expectedTotalLines + " 行，原文 " + lines.length + " 行）。请重新运行 node analysis/build-corpus-index.mjs。"), { status: 400 });
