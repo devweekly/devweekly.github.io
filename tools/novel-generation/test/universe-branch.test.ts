@@ -78,7 +78,8 @@ test("historical universe asset policy excludes full-book and derived data from 
     "character-profiles.md", "plot-summary.md", "foreshadowing.md",
     "analysis/chapter-index.json", "corpus-craft/chapters/1.json",
     "vane-index/index.json", "style-references/active.json",
-    "library/index.json", "private-library/index.json", "story-state.json", ".output/run/chapter.md"
+    "library/index.json", "private-library/index.json", "story-state.json", ".output/run/chapter.md",
+    "chapters/chapter-001.md", "chapters/continuity-review-001.md", "laws.json"
   ]) {
     assert.equal(shouldCopyUniverseAsset(file), false, file);
   }
