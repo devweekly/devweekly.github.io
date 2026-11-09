@@ -437,7 +437,8 @@ export async function buildAnalysisUnits(
   if (!options.catalogPath) await ensureSourceCanonLibraryIndex(worldId, worldDir);
   const rawChunks = await loadLibraryChunks(join(worldDir, "library"), worldId);
   if (!rawChunks.length) throw new Error("No indexed text found. Run ingest first.");
-  const catalogDocument = await loadChapterCatalogDocument(worldId, options.catalogPath);
+  const catalogPath = options.catalogPath ?? join(resolve(worldDir, "..", ".."), "analysis", worldId, "chapter-index.json");
+  const catalogDocument = await loadChapterCatalogDocument(worldId, catalogPath);
   const catalog = catalogDocument?.chapters;
   if (!catalog) throw new Error("No chapter catalog. Run the corpus index script or pass --catalog.");
   const prepared = await prepareCanonIndexInputs(worldDir, catalog, rawChunks, catalogDocument.totalLines);
