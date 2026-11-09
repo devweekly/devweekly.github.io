@@ -746,7 +746,7 @@ async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: st
   // Rebind provenance to the bounded file that is actually stored in this
   // universe. Keeping the parent's full-book hash would make index-story reject
   // every child chunk after the original copy is correctly truncated.
-  const sourceKey = path.relative(process.cwd(), path.join(worldDir(universeId), "original.txt")).split(path.sep).join("/");
+  const sourceKey = "worlds/" + universeId + "/original.txt";
   const chunks = aligned.filter(item => item.catalogIndex <= entryIndex).flatMap(item => {
     if (item.chunks.length) return item.chunks.map(chunk => ({
       ...chunk, source: sourceKey, sourceHash,
@@ -815,7 +815,7 @@ async function writeForkedUniverseCanonSnapshots(parentId: string, targetDir: st
   const parentCatalogPath = path.resolve("analysis", parentId, "chapter-index.json");
   const parentCatalogText = await readFile(parentCatalogPath, "utf8");
 
-  const sourceKey = path.relative(process.cwd(), path.join(worldDir(universeId), "original.txt")).split(path.sep).join("/");
+  const sourceKey = "worlds/" + universeId + "/original.txt";
   const libraryDir = path.join(targetDir, "library");
   await mkdir(libraryDir, { recursive: true });
   const childLibrary = {
