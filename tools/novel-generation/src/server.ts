@@ -537,6 +537,7 @@ interface CanonChapterEntry {
 }
 async function ensureStagedChapterDatabase(
   universeId: string,
+  sourceWorldId: string,
   stagedDir: string,
   chapters: CanonChapterEntry[]
 ): Promise<void> {
@@ -554,6 +555,13 @@ async function ensureStagedChapterDatabase(
     }
   }
   const canonicalRows = rows.filter(row => row.chapter_id !== "V00-C000");
+  if (chapters.length > 0 && canonicalRows.length === 0) {
+    throw new Error(
+      "原文 novel.db 缺少正式章节目录记录，无法证明知识库与原文目录的稳定 ID 映射。" +
+      "请先对原文项目执行 node --import tsx src/cli.ts index-story --world " + sourceWorldId +
+      "，再创建故事宇宙；不要通过 ingest 重新导入来修复。"
+    );
+  }
   const complete = canonicalRows.length === chapters.length && chapters.every((chapter, index) => {
     const row = canonicalRows[index];
     return row?.chapter_id === chapter.chapterId &&
@@ -963,7 +971,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     // novel.db is copied into staging and rebound. If it is missing, legacy,
     // or incomplete, rebuild the chapter directory from the bounded local text.
     rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
-    await ensureStagedChapterDatabase(id, stagingDir, boundedCanonChapters);
+    await ensureStagedChapterDatabase(id, rootSourceId, stagingDir, boundedCanonChapters);
     const knowledgePath = path.join(stagingDir, "novel.db");
     const sourceDb = new DatabaseSync(knowledgePath);
     let entryRecord: { chapter_id:string; ordinal:number; volume:number; title:string } | undefined;
