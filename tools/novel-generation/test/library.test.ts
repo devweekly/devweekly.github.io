@@ -92,18 +92,24 @@ test("private and external source files are stored only in ignored private-libra
     const library = join(worldDir, "library");
     await mkdir(privateDir, { recursive: true });
     await writeFile(join(privateDir, "notes.txt"), "第1章 私人线索\n只有本机可以检索的秘密证据。", "utf8");
+    const externalRoot = await mkdtemp(join(tmpdir(), "novel-library-external-"));
+    await writeFile(join(externalRoot, "external.txt"), "第1章 外部私有资料\n项目目录之外的文件也只能进入本机私有索引。", "utf8");
 
-    const count = await ingestFiles("test-world", [join(privateDir, "notes.txt")], library);
+    const count = await ingestFiles("test-world", [join(privateDir, "notes.txt"), join(externalRoot, "external.txt")], library);
     assert.ok(count > 0);
     const publicIndex = JSON.parse(await readFile(join(library, "index.json"), "utf8")) as { chunks: Array<{ text: string }> };
     const privateIndex = JSON.parse(await readFile(join(worldDir, "private-library", "index.json"), "utf8")) as { chunks: Array<{ text: string }> };
     assert.equal(publicIndex.chunks.length, 0);
     assert.ok(privateIndex.chunks.some(chunk => chunk.text.includes("只有本机可以检索的秘密证据")));
+    assert.ok(privateIndex.chunks.some(chunk => chunk.text.includes("项目目录之外的文件也只能进入本机私有索引")));
     assert.ok(!JSON.stringify(publicIndex).includes("只有本机可以检索的秘密证据"));
     assert.equal((await loadLibraryChunks(library, "test-world")).length, 0,
       "private material must not enter canonical indexing or public analysis");
     const hits = await searchLibrary(library, "私人线索 秘密证据", 5);
     assert.ok(hits.some(hit => hit.text.includes("只有本机可以检索的秘密证据")));
+    const externalHits = await searchLibrary(library, "外部私有资料", 5);
+    assert.ok(externalHits.some(hit => hit.text.includes("项目目录之外的文件也只能进入本机私有索引")));
+    await rm(externalRoot, { recursive: true, force: true });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
