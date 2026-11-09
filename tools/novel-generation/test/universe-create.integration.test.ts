@@ -50,7 +50,7 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
   }));
   await mkdir(join(root, "analysis", "source-world"), { recursive: true });
   await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify({
-    schemaVersion: 2, totalLines: 300,
+    schemaVersion: 2, totalLines: 200,
     volumes: [{ volume: 1, chapters: [
       { sequenceInVolume: 1, printedNumber: 1, title: "第一章正文", label: "第一章", line: 1 },
       { sequenceInVolume: 2, printedNumber: 2, title: "第二章正文", label: "第二章", line: 100 },
@@ -346,7 +346,7 @@ test("universe creation uses catalog order and stable chapter IDs despite extra 
       })
     });
     assert.equal(incompletePastResponse.status, 400);
-    assert.match(await incompletePastResponse.text(), /起点及之前的原著章节缺少可验证正文/);
+    assert.match(await incompletePastResponse.text(), /章节行号缺失、越界或顺序异常/);
     await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify(catalog));
     await writeFile(join(source, "library", "index.json"), JSON.stringify({
       schemaVersion: 1, worldId: "source-world", createdAt: "2026-01-01T00:00:00.000Z",
