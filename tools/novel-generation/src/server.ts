@@ -137,7 +137,7 @@ const worldQueues = new Map<string, Promise<void>>();
 type KnowledgeBuildStep = "story-analysis" | "as-of-dossier" | "volume-arcs" | "style-profile" | "character-profiles" | "character-states" | "corpus-craft" | "vane-index";
 type KnowledgeBuildProgress = { current: number; total: number; label: string };
 type KnowledgeBuildState = {
-  worldId: string; status: "queued" | "running" | "completed" | "partial" | "failed" | "interrupted";
+  worldId: string; status: "queued" | "running" | "completed" | "partial" | "failed" | "interrupted" | "cancelled";
   startedAt: string; updatedAt: string; completedAt?: string;
   currentStep?: KnowledgeBuildStep;
   /** 当前步骤的实时进度，从子进程 stdout 解析。步骤内可能持续数分钟，
