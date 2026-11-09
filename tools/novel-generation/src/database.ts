@@ -45,7 +45,11 @@ function execWithRetry(db: DatabaseSync, sql: string): void {
   retryBusy(() => db.exec(sql));
 }
 
-/** IMMEDIATE 事务 + 外层忙等回滚；提交失败时事务可能已结束，回滚静默放过。 */
+/**
+ * IMMEDIATE 事务先取得写保留锁，再执行同步 DB callback。只重试 BEGIN/COMMIT；
+ * 不在同一事务里重放 work()，因为它可能已执行部分写入或修改闭包状态。work 失败时
+ * 整体回滚并交给调用方处理；需要业务级重试时必须重试整个幂等操作，而不是 callback。
+ */
 function transaction<T>(db: DatabaseSync, work: () => T): T {
   retryBusy(() => db.exec("BEGIN IMMEDIATE"));
   try {
