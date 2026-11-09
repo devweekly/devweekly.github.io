@@ -375,16 +375,16 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   const reviewed = await reviewAndRepair({
     initialChapter: antiAiDraft,
     maxRepairRounds: 2,
-    review: (candidate, correction) => {
+    review: async (candidate, correction) => {
       const round = reviewHistory.length + 1;
-      return cachedCall("quality-review-" + round + (correction ? "-retry" : ""), "07-review-round-" + round + (correction ? "-retry" : "") + "-raw.txt", "review", [
+      let parsed: ReturnType<typeof parseChapterReview> | undefined;
+      await cachedCall("quality-review-" + round + (correction ? "-retry" : ""), "07-review-round-" + round + (correction ? "-retry" : "") + "-raw.txt", "review", [
         reviewPrompt({ context: common, blueprint: plan, chapter: candidate, correction })
-      ], output => parseChapterReview(output, candidate)).then(raw => {
-        // 数值、位阶这类能机器判定的硬约束先于模型意见进入必改项。
-        const parsed = parseChapterReview(raw, candidate);
-        const lawIssues = ironLawIssues(checkIronLaws(candidate, laws));
-        return JSON.stringify(withDeterministicIssues(parsed, lawIssues));
-      });
+      ], output => { parsed = parseChapterReview(output, candidate); });
+      if (!parsed) throw new Error("Quality review produced no parsed result.");
+      // 数值、位阶这类能机器判定的硬约束先于模型意见进入必改项。
+      const lawIssues = ironLawIssues(checkIronLaws(candidate, laws));
+      return JSON.stringify(withDeterministicIssues(parsed, lawIssues));
     },
     repair: (candidate, issues, round) => cachedCall("quality-repair-" + round, "07-repaired-round-" + round + ".md", "final", [
       "角色：主编修复 Agent。根据结构化审查结果执行最小范围修复，只输出完整章节正文。不得借修复之名增加戏剧性、补齐场景结构或推动原本无需推进的情节。",
