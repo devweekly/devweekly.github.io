@@ -17,7 +17,7 @@ import { promisify } from "node:util";
 import { basename, join, relative, resolve } from "node:path";
 import {
   syncNovelChapters, syncNovelMentions, writeNovelKbMeta, upsertSeedCharacters, listNovelCharacters,
-  invalidateStoryAnalysis, readNovelKbMeta, syncAnnotations, type NovelChapterRow
+  invalidateStoryAnalysis, syncAnnotations, type NovelChapterRow
 } from "./database.js";
 import { chunkText, ensurePrivateLibraryIsolation, loadLibraryChunks, type LibraryChunk } from "./library.js";
 import { alignCanonChapterGroups, canonLineStartOffsets, selectCanonSourceChunks, splitCanonLines, validateCanonCatalogAgainstText, validateCanonChunksAgainstText } from "./canon-chapters.js";
