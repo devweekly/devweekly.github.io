@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { alignCanonChapterGroups, canonLineStartOffsets, selectCanonSourceChunks, splitCanonLines, validateCanonCatalogAgainstText, type CanonChunk } from "./canon-chapters.js";
+import { alignCanonChapterGroups, canonLineStartOffsets, selectCanonSourceChunks, splitCanonLines, validateCanonCatalogAgainstText, validateCanonChunksAgainstText, type CanonChunk } from "./canon-chapters.js";
 import { chunkText } from "./library.js";
 import path from "node:path";
 
@@ -268,6 +268,7 @@ export async function ensureBoundedUniverseCanonAssets(
   validateCanonCatalogAgainstText(prefixCatalog, boundedText);
   const offsets = prefixCatalog.map(chapter => chapter.line == null ? undefined : starts[chapter.line - 1]);
   const aligned = alignCanonChapterGroups(prefixCatalog, canonical, offsets);
+  validateCanonChunksAgainstText(aligned, boundedText, offsets);
   const boundedChunks = aligned.flatMap((item, index) => {
     if (item.chunks.length) return item.chunks.map(chunk => ({
       ...chunk, source: sourceKey, sourceHash: boundedHash
