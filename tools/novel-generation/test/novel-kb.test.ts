@@ -202,7 +202,7 @@ test("missing source Library is reconstructed from project-root original.txt and
     const worldDir = join(root, "worlds", "source-world");
     await mkdir(worldDir, { recursive: true });
     await mkdir(join(root, "analysis", "source-world"), { recursive: true });
-    const original = ["第一章 大枪落幕", "李阎走进雨里。", "第二章 貘与姑获鸟", "夜色压住城寨。"].join("\\n");
+    const original = ["第一章 大枪落幕", "李阎走进雨里。", "第二章 貘与姑获鸟", "夜色压住城寨。"].join("\n");
     await writeFile(join(root, "original.txt"), original, "utf8");
     await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify({
       schemaVersion: 2, totalLines: 4,
@@ -229,4 +229,4 @@ test("missing source Library is reconstructed from project-root original.txt and
     await rm(root, { recursive: true, force: true });
   }
 });
-\n
+
