@@ -102,7 +102,7 @@ function extractJson(text: string): unknown {
 
 function normalizeStateText(value: string): string {
   return value.normalize("NFKC").toLocaleLowerCase()
-    .replace(/[\s"'“”‘’「」『』，。！？、；：,.!?;:（）()【】\[\]《》]/g, "");
+      .replace(/[\s"'“”‘’「」『』，。！？、；：,.!?;:（）()【】\[\]《》]/g, "");
 }
 
 export const MAX_ACTIVE_CONTINUITY_NOTES = 40;
