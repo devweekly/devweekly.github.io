@@ -176,7 +176,7 @@ export function validateCanonChunksAgainstText(
       previousIndex = chunk.chunkIndex;
     }
     if (ordered[0]?.start !== 0 || previousEnd !== chapterText.length) {
-      throw new Error("原著切片未完整覆盖目录章节：" + item.chapter.title + "。请重新 ingest original.txt 后执行 index-story。");
+      throw new Error("原著切片在从 original.txt 自动重建后仍未完整覆盖目录章节：" + item.chapter.title + "。请检查该章节目录行号、下一章边界，以及 original.txt 是否与 chapter-index.json 对应同一版本。");
     }
   }
 }
