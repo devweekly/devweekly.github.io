@@ -115,7 +115,13 @@ export async function ensureSourceCanonLibraryIndex(
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
 
-  const originalPath = await resolveOriginalCanonPath(worldId, { projectRoot, worldDir: absoluteWorldDir });
+  let originalPath: string;
+  try {
+    originalPath = await resolveOriginalCanonPath(worldId, { projectRoot, worldDir: absoluteWorldDir });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
   const originalInfo = await stat(originalPath);
   let indexInfo: Awaited<ReturnType<typeof stat>> | undefined;
   try { indexInfo = await stat(indexPath); }
@@ -125,7 +131,7 @@ export async function ensureSourceCanonLibraryIndex(
 
   const originalText = await readFile(originalPath, "utf8");
   const catalogDocument = await loadChapterCatalogDocument(worldId, join(projectRoot, "analysis", worldId, "chapter-index.json"));
-  if (!catalogDocument) throw new Error("缺少 analysis/" + worldId + "/chapter-index.json，无法从离线原文重建 Library。");
+  if (!catalogDocument) return false;
   validateCanonCatalogAgainstText(catalogDocument.chapters, originalText, catalogDocument.totalLines);
   const sourceHash = createHash("sha256").update(originalText, "utf8").digest("hex");
   const isCanonicalSource = (source: string) => {
@@ -156,11 +162,12 @@ export async function ensureSourceCanonLibraryIndex(
       throw new Error("原文目录缺少有效行号，无法重建章节切片：" + chapter.title);
     }
     const startLine = chapter.line as number;
-    const nextLine = catalogDocument.chapters[item.catalogIndex + 1]?.line;
-    if (nextLine !== undefined && (!Number.isSafeInteger(nextLine) || nextLine <= startLine)) {
+    const nextChapter = catalogDocument.chapters[item.catalogIndex + 1];
+    const nextLine = nextChapter?.line;
+    if (nextChapter && (!Number.isSafeInteger(nextLine) || Number(nextLine) <= startLine)) {
       throw new Error("原文目录章节行号顺序异常：" + chapter.title);
     }
-    const chapterText = lines.slice(startLine - 1, nextLine === undefined ? lines.length : nextLine - 1).join("\n").trim();
+    const chapterText = lines.slice(startLine - 1, nextChapter ? Number(nextLine) - 1 : lines.length).join("\n").trim();
     if (!chapterText) throw new Error("原文目录章节没有正文，无法重建切片：" + chapter.title);
     const lineText = lines[startLine - 1] ?? "";
     const chapterStart = (lineStarts[startLine - 1] ?? 0) + lineText.length - lineText.trimStart().length;
