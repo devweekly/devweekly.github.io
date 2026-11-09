@@ -91,7 +91,7 @@ test("private and external source files are stored only in ignored private-libra
     const worldDir = join(root, "worlds", "test-world");
     const library = join(worldDir, "library");
     await mkdir(privateDir, { recursive: true });
-    await writeFile(join(privateDir, "notes.txt"), "第1章 私人线索\\n只有本机可以检索的秘密证据。", "utf8");
+    await writeFile(join(privateDir, "notes.txt"), "第1章 私人线索\n只有本机可以检索的秘密证据。", "utf8");
 
     const count = await ingestFiles("test-world", [join(privateDir, "notes.txt")], library);
     assert.ok(count > 0);
