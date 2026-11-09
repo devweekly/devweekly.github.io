@@ -320,22 +320,25 @@ export async function loadLibraryChunks(libraryDir: string, worldId: string): Pr
   return index.chunks;
 }
 
-async function loadSearchIndex(indexPath: string): Promise<CachedSearchIndex> {
+async function loadSearchIndex(indexPath: string, includePrivate: boolean): Promise<CachedSearchIndex> {
   const libraryDir = dirname(indexPath);
   const initial = JSON.parse(await readFile(indexPath, "utf8")) as LibraryIndex;
   await ensurePrivateLibraryIsolation(libraryDir, initial.worldId);
   const info = await stat(indexPath);
   const privateIndexPath = join(dirname(libraryDir), "private-library", "index.json");
   let privateInfo: Awaited<ReturnType<typeof stat>> | undefined;
-  try { privateInfo = await stat(privateIndexPath); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-  const cached = searchCache.get(indexPath);
+  if (includePrivate) {
+    try { privateInfo = await stat(privateIndexPath); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  }
+  const cacheKey = indexPath + (includePrivate ? "::private" : "::public");
+  const cached = searchCache.get(cacheKey);
   if (cached && cached.mtimeMs === info.mtimeMs && cached.size === info.size &&
       cached.privateMtimeMs === (privateInfo ? Number(privateInfo.mtimeMs) : undefined) &&
       cached.privateSize === (privateInfo ? Number(privateInfo.size) : undefined)) return cached;
 
   const index = JSON.parse(await readFile(indexPath, "utf8")) as LibraryIndex;
-  const privateIndex = privateInfo
+  const privateIndex = includePrivate && privateInfo
     ? JSON.parse(await readFile(privateIndexPath, "utf8")) as LibraryIndex
     : undefined;
   if (privateIndex && privateIndex.worldId !== index.worldId) throw new Error("Private library index world mismatch: " + index.worldId);
@@ -353,15 +356,20 @@ async function loadSearchIndex(indexPath: string): Promise<CachedSearchIndex> {
     privateSize: privateInfo ? Number(privateInfo.size) : undefined,
     total: Math.max(1, documents.length), documentFrequency, documents
   };
-  searchCache.set(indexPath, next);
+  searchCache.set(cacheKey, next);
   return next;
 }
 
-export async function searchLibrary(libraryDir: string, query: string, limit = 6): Promise<SearchHit[]> {
+export async function searchLibrary(
+  libraryDir: string,
+  query: string,
+  limit = 6,
+  options: { includePrivate?: boolean } = {}
+): Promise<SearchHit[]> {
   const indexPath = join(libraryDir, "index.json");
   let index: CachedSearchIndex;
   try {
-    index = await loadSearchIndex(indexPath);
+    index = await loadSearchIndex(indexPath, options.includePrivate !== false);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
     throw error;
