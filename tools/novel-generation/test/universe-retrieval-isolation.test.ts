@@ -85,7 +85,7 @@ test("a universe record without source-canon metadata cannot be treated as a sou
     await writeFile(join(childDir, "universe.json"), JSON.stringify({
       id: "u-historical", sourceWorldId: "source-world", entryChapter: "第一章", entryChapterIndex: 0
     }));
-    await writeFile(join(childDir, "library", "index.json"), JSON.stringify({ worldId: "u-historical", chunks: [] }));
+    await writeFile(join(childDir, "library", "index.json"), JSON.stringify({ schemaVersion: 1, worldId: "u-historical", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), chunks: [] }));
     await assert.rejects(() => resolveWorldLibraryDir("u-historical", worlds), /缺少有效的只读 source-canon.json/);
   } finally {
     await rm(root, { recursive: true, force: true });
