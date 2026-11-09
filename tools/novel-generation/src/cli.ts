@@ -1,9 +1,10 @@
 // 唯一 CLI 入口：参数解析、worldId 校验（^[a-z0-9][a-z0-9-]*$）、命令分派，以及把
-// brief / 故事当前位置 / 未结情节线 / 人物组装成检索查询。所有路径经 resolve() 锚定 CWD，
-// 必须在 tools/novel-generation 目录运行，换目录会把 worlds/、.output/、analysis/ 读写到错误位置。
+// brief / 故事当前位置 / 未结情节线 / 人物组装成检索查询。CLI 启动时将 CWD 锚定到项目根目录，
+// 直接运行 dist/cli.js 或从其他目录调用时也不会把 worlds/、.output/、analysis/ 写到错误位置。
 import { access, readFile, mkdir, writeFile } from "node:fs/promises";
 import { databaseStatus, readAnnotationsByChunkIds, readStoryAnalysis, listNovelCharacters, listNovelThreads, listNovelForeshadowings, listNovelBeats, readNovelKbMeta, novelKnowledgeOverview, exportNovelKnowledge, listNovelCharacterProfiles, listNovelCharacterChapterStates } from "./database.js";
 import { basename, dirname, join, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { generateStory, runAgentText, type GenerationMode } from "./generate.js";
 import { ingestFiles, listTextFiles, searchLibrary } from "./library.js";
 import { writeChapter } from "./workflow.js";
@@ -174,6 +175,8 @@ const COMMANDS = new Set([
 ]);
 
 async function main(): Promise<void> {
+  const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  process.chdir(projectRoot);
   const command = process.argv[2];
   if (!COMMANDS.has(command as string)) usage();
 
