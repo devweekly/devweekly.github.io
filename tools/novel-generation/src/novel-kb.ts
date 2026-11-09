@@ -149,6 +149,9 @@ async function ensureSourceCanonLibraryIndexUnlocked(
   const projectRoot = resolve(absoluteWorldDir, "..", "..");
   const libraryDir = join(absoluteWorldDir, "library");
   const indexPath = join(libraryDir, "index.json");
+  // Isolate legacy private material before taking the snapshot that will be
+  // used to construct the replacement public index.
+  await ensurePrivateLibraryIsolation(libraryDir, worldId);
   let existing: { schemaVersion: number; worldId: string; createdAt: string; updatedAt: string; chunks: LibraryChunk[] } | undefined;
   try {
     existing = JSON.parse(await readFile(indexPath, "utf8")) as typeof existing;
@@ -168,7 +171,6 @@ async function ensureSourceCanonLibraryIndexUnlocked(
       throw error;
     }
   }
-  await ensurePrivateLibraryIsolation(libraryDir, worldId);
 
   let originalPath: string;
   try {
