@@ -227,3 +227,16 @@ node --import tsx --test test/corpus-index-script.test.ts test/canon-source.test
 ```
 
 生成后应核对 `analysis/conghuoniao/chapter-index.json` 的 `chapterCount`、`totalLines`、`sourceHash`，再执行 `index-story --world conghuoniao`。不要通过重新 `ingest` 来修复目录，因为 `ingest` 会使派生知识表失效。
+
+
+### 自动恢复与 staging 资产身份修复（2026-11-09，追加核查）
+
+继续跑完整回归后又发现两处此前测试未覆盖的真实问题，已一并修复：
+
+1. **缺少派生目录时不再要求用户手工补文件。** Workbench 读取原文目录时，如果 `chapter-index.json` 缺失、JSON 损坏或没有有效章节，且 canonical `original.txt` 可读，会自动调用 `analysis/build-corpus-index.mjs` 重建。并发请求共用同一个构建任务；损坏目录先改名保留，不会被直接覆盖。生成器通过 `NOVEL_WORLD_ID` 写入对应的 `analysis/<worldId>/chapter-index.json`，不再把输出目录固定为 `conghuoniao`。如果全文也不存在，仍明确失败，不会伪造空目录。
+2. **staging 目录不能成为永久来源身份。** Create Universe 在 staging 中运行 `index-story` 时，`ensureBoundedUniverseCanonAssets()` 曾把切片来源记录为 `worlds/.staging-<id>/original.txt`。目录 rename 后该来源路径失效。现在无论在 staging 还是正式目录重建，来源指纹都绑定到最终的 `worlds/<universeId>/original.txt`。
+3. **旧 SQLite 章节表结构需要显式迁移。** 旧版 `novel.db` 的 `novel_chapters` 可能只有基础列；`CREATE TABLE IF NOT EXISTS` 不会为既有表补列。知识库 schema 升至 v9，打开数据库时幂等补齐 `world_id`、`printed_number`、`label`、`start_line`、字符数和切片范围列，并回填世界身份与显示标签。
+4. **区分“数据库不存在”和“已有数据库但章节目录被清空”。** 前者可在 staging 中从已验证的 bounded 原文和目录建立新库；后者不能静默猜测，必须先对源项目执行 `index-story`。两者不再混为同一种空表状态。
+5. **宇宙 staging 继续严格 allow-list。** 普通笔记、图片和未知文件也不会被递归复制；只有 `novel.db` 进入专门的 as-of 过滤流程，原文全文则经 bounded-copy 单独写入。相应测试已改为验证这一实际隔离规则。
+
+验证：GitHub Actions 的 Novel generation checks 已在提交 `091f7b49e81284295f6a63f4610551ca9de83795` 通过 `npm run typecheck`、`npm test` 和 `npm run build`。测试覆盖自动目录重建、SHA-256、根目录原文、staging 来源路径、旧 SQLite schema 迁移、空章节库失败关闭和 bounded snapshot。
