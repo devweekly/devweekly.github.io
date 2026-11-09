@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Checkbox, Collapse, Empty, Input, InputNumber, Modal, Progress, Select, Space, Tag, Typography, message } from "antd";
 import { PlayCircleOutlined, ReloadOutlined } from "@ant-design/icons";
-import { selectVisibleStoryExecution, shouldPollStoryExecution } from "./story-execution-state.js";
+import { getStoryExecutionActions, selectVisibleStoryExecution, shouldPollStoryExecution } from "./story-execution-state.js";
 const { Title, Text, Paragraph } = Typography;
 type Run = { id:string; storyUnitId?:string; kind?:string; status:string; createdAt:string; updatedAt:string; error?:string; outputDir?:string; chapterPath?:string; previousChapterPath?:string };
 type Preview = { storyArc:string; chapterPlan:string; chapter:string };
@@ -308,6 +308,20 @@ export default function ChapterStudio({worldId}:{worldId:string}){
     {batchRunning&&<Tag color="processing">批量进度 {batchProgress.completed}/{batchProgress.total}</Tag>}
    </Space>
   </section>
+  {visibleStoryExecution&&["queued","running","paused"].includes(visibleStoryExecution.status)&&<Alert
+   style={{marginBottom:18}}
+   type={visibleStoryExecution.status==="paused"?"warning":"info"}
+   showIcon
+   message={visibleStoryExecution.status==="paused"?"故事任务已暂停，当前写入锁由该任务持有":"当前故事任务正在执行，单章和批量写入暂不可启动"}
+   description={visibleStoryExecution.status==="paused"
+    ?"服务重启后任务已安全停在检查点。可以从检查点恢复，也可以取消残留任务以释放写入锁。知识构建状态与此锁相互独立。"
+    :`任务：${visibleStoryExecution.storyUnitTitle} · 已完成 ${visibleStoryExecution.completedChapters.length} 章。可在此暂停或取消。`}
+   action={<Space wrap>
+    {getStoryExecutionActions(visibleStoryExecution.status).includes("resume")&&<Button size="small" type="primary" onClick={()=>void controlStoryExecution("resume")}>从检查点恢复</Button>}
+    {getStoryExecutionActions(visibleStoryExecution.status).includes("pause")&&<Button size="small" onClick={()=>void controlStoryExecution("pause")}>暂停</Button>}
+    {getStoryExecutionActions(visibleStoryExecution.status).includes("cancel")&&<Button size="small" danger onClick={()=>void controlStoryExecution("cancel")}>取消并释放写入锁</Button>}
+   </Space>}
+  />}
   <Card title="故事宇宙分支" style={{marginBottom:18}}>
    {universes.length===0?<Empty description="还没有独立故事宇宙。可以从原文项目选择章节创建。"/>:
     <Space direction="vertical" style={{width:"100%"}} size="small">
@@ -388,9 +402,9 @@ export default function ChapterStudio({worldId}:{worldId:string}){
     {visibleStoryExecution.error&&<Alert type={visibleStoryExecution.status==="stalled"?"warning":"error"} showIcon message={visibleStoryExecution.error}/>}
     {!!visibleStoryExecution.events?.length&&<Collapse size="small" items={[{key:"timeline",label:"执行时间线（"+visibleStoryExecution.events.length+" 条）",children:<Space direction="vertical" style={{width:"100%"}}>{[...visibleStoryExecution.events].reverse().map((event,index)=><div key={event.at+event.type+index}><Text type="secondary">{new Date(event.at).toLocaleString()}</Text><Text strong style={{marginLeft:8}}>{({created:"创建任务",resumed:"恢复执行",chapter_started:"章节开始",chapter_completed:"章节完成",assessment:"故事进展评估",paused:"已暂停",completed:visibleStoryExecution.mode==="fixed_batch"?"批次完成":"故事收束",failed:"执行失败",cancelled:"已取消",stalled:"推进停滞"} as Record<string,string>)[event.type]??event.type}</Text><div>{event.message}</div>{event.runId&&<Text type="secondary">Run: {event.runId}</Text>}</div>)}</Space>}]}/>}
     <Space wrap>
-     {["queued","running"].includes(visibleStoryExecution.status)&&<Button disabled={Boolean(activeStoryExecution&&activeStoryExecution.id!==visibleStoryExecution.id)} onClick={()=>void controlStoryExecution("pause")}>暂停（当前章节结束后生效）</Button>}
-     {["paused","failed","stalled"].includes(visibleStoryExecution.status)&&<Button type="primary" disabled={Boolean(activeStoryExecution&&activeStoryExecution.id!==visibleStoryExecution.id)} onClick={()=>void controlStoryExecution("resume")}>从检查点恢复</Button>}
-     {["queued","running","paused"].includes(visibleStoryExecution.status)&&<Button danger onClick={()=>void controlStoryExecution("cancel")}>取消任务</Button>}
+     {getStoryExecutionActions(visibleStoryExecution.status).includes("pause")&&<Button disabled={Boolean(activeStoryExecution&&activeStoryExecution.id!==visibleStoryExecution.id)} onClick={()=>void controlStoryExecution("pause")}>暂停（当前章节结束后生效）</Button>}
+     {getStoryExecutionActions(visibleStoryExecution.status).includes("resume")&&<Button type="primary" disabled={Boolean(activeStoryExecution&&activeStoryExecution.id!==visibleStoryExecution.id)} onClick={()=>void controlStoryExecution("resume")}>从检查点恢复</Button>}
+     {getStoryExecutionActions(visibleStoryExecution.status).includes("cancel")&&<Button danger onClick={()=>void controlStoryExecution("cancel")}>取消任务</Button>}
     </Space>
     <Text type="secondary">任务由服务端执行。刷新或关闭浏览器不会中断；服务重启后任务转为暂停状态，可从最后一个已终审并提交状态的章节恢复。章节数没有固定上限，完成依据是故事自然收束。</Text>
    </Space>
