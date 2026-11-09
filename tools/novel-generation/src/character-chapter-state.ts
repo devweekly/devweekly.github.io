@@ -152,7 +152,10 @@ export async function analyzeCharacterChapterStates(
       try {
         const cached = JSON.parse(await readFile(cachePath, "utf8")) as unknown;
         states = ResponseSchema.parse(cached).states;
-      } catch {
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          console.warn("[character-chapter-state] 缓存损坏或版本不兼容，重新生成 " + cachePath, error);
+        }
         const raw = await runAgentText(
           promptForChapter({ chapter, characters: pending, previousStates }), model,
           options.timeoutMs ?? 180000, readTaskProfiles().state
