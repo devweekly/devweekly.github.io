@@ -52,18 +52,18 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
   await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify({
     schemaVersion: 2, totalLines: 300,
     volumes: [{ volume: 1, chapters: [
-      { sequenceInVolume: 1, printedNumber: 1, title: "第一章", label: "第一章", line: 1 },
-      { sequenceInVolume: 2, printedNumber: 2, title: "第二章", label: "第二章", line: 100 },
-      { sequenceInVolume: 3, printedNumber: 3, title: "第三章", label: "第三章", line: 200, futureMarker: "未来剧情泄漏标记" }
+      { sequenceInVolume: 1, printedNumber: 1, title: "第一章正文", label: "第一章", line: 1 },
+      { sequenceInVolume: 2, printedNumber: 2, title: "第二章正文", label: "第二章", line: 100 },
+      { sequenceInVolume: 3, printedNumber: 3, title: "第三章 未来剧情泄漏标记", label: "第三章", line: 200, futureMarker: "未来剧情泄漏标记" }
     ] }]
   }));
   await writeFile(join(source, "library", "index.json"), JSON.stringify({
     schemaVersion: 1, worldId: "source-world", createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     chunks: [
-      { id: "canon:1", source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第一章", chunkIndex: 0, start: 0, end: 8, chapterStart: chapterStarts[0], text: "第一章正文" },
-      { id: "canon:2", source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第二章", chunkIndex: 0, start: 0, end: 8, chapterStart: chapterStarts[1], text: "第二章正文" },
-      { id: "canon:3", source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第三章", chunkIndex: 0, start: 0, end: 8, chapterStart: chapterStarts[2], text: "未来剧情泄漏标记" }
+      { id: "canon:1", source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第一章正文", chunkIndex: 0, start: 0, end: 6, chapterStart: chapterStarts[0], text: "第一章正文" },
+      { id: "canon:2", source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第二章正文", chunkIndex: 0, start: 0, end: 6, chapterStart: chapterStarts[1], text: "第二章正文" },
+      { id: "canon:3", source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第三章 未来剧情泄漏标记", chunkIndex: 0, start: 0, end: 15, chapterStart: chapterStarts[2], text: "第三章 未来剧情泄漏标记" }
     ]
   }));
   const db = new DatabaseSync(join(source, "novel.db"));
@@ -71,7 +71,7 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     CREATE TABLE world_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
     INSERT INTO world_meta VALUES('world_id','source-world');
     CREATE TABLE novel_chapters(chapter_id TEXT PRIMARY KEY,title TEXT NOT NULL,ordinal INTEGER NOT NULL,volume INTEGER NOT NULL DEFAULT 1);
-    INSERT INTO novel_chapters(chapter_id,title,ordinal,volume) VALUES('V01-C001','第一章',1,1),('V01-C002','第二章',2,1),('V01-C003','第三章',3,1);
+    INSERT INTO novel_chapters(chapter_id,title,ordinal,volume) VALUES('V01-C001','第一章正文',1,1),('V01-C002','第二章正文',2,1),('V01-C003','第三章 未来剧情泄漏标记',3,1);
     CREATE TABLE story_analysis(singleton INTEGER PRIMARY KEY,world_id TEXT NOT NULL,payload_json TEXT);
     INSERT INTO story_analysis VALUES(1,'source-world','未来剧情泄漏标记');
   `);
@@ -87,7 +87,7 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     const response = await fetch(`http://127.0.0.1:${address.port}/api/worlds/source-world/universes`, {
       method: "POST",
       headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
-      body: JSON.stringify({ name: "第二章分支", entryChapter: "第二章", entryChapterIndex: 1, type: "free", brief: "测试", buildKnowledge: false })
+      body: JSON.stringify({ name: "第二章分支", entryChapter: "第二章正文", entryChapterIndex: 1, type: "free", brief: "测试", buildKnowledge: false })
     });
     const responseBody = await response.text();
     assert.equal(response.status, 201, responseBody);
@@ -99,7 +99,7 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     const expectedBoundedCanon = canonLines.slice(0, 199).join("\n");
     assert.equal(await readFile(join(universeDir, "original.txt"), "utf8"), expectedBoundedCanon);
     assert.ok(!expectedBoundedCanon.includes("未来剧情泄漏标记"));
-    assert.equal(payload.universe.entryChapter, "第二章");
+    assert.equal(payload.universe.entryChapter, "第二章正文");
 
     const archiveResponse = await fetch(`http://127.0.0.1:${address.port}/api/worlds/${payload.universe.id}/universe-archive`, {
       method: "PATCH", headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
@@ -117,16 +117,16 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     const restoredPayload = JSON.parse(await restoreResponse.text()) as { universe: { archivedAt?: string } };
     assert.equal(restoredPayload.universe.archivedAt, undefined);
     const localBible = await readFile(join(universeDir, "world-bible.md"), "utf8");
-    assert.ok(localBible.includes("第二章"));
+    assert.ok(localBible.includes("第二章正文"));
     assert.ok(localBible.includes("原文边界"));
     assert.ok(!localBible.includes("未来剧情泄漏标记"));
     const bootstrapBible = await readFile(join(universeDir, "world-bible.md"), "utf8");
-    assert.ok(bootstrapBible.includes("第二章"));
+    assert.ok(bootstrapBible.includes("第二章正文"));
     assert.ok(bootstrapBible.includes("不得读取、推断或引用起点之后的原文剧情作为本宇宙已发生事实"));
     assert.ok(!bootstrapBible.includes("未来剧情泄漏标记"));
 
     const boundedIndex = JSON.parse(await readFile(join(universeDir, "library", "index.json"), "utf8")) as { chunks: Array<{ chapter: string; text: string }> };
-    assert.deepEqual(boundedIndex.chunks.map(chunk => chunk.chapter), ["第一章", "第二章"]);
+    assert.deepEqual(boundedIndex.chunks.map(chunk => chunk.chapter), ["第一章正文", "第二章正文"]);
     assert.ok(!JSON.stringify(boundedIndex).includes("未来剧情泄漏标记"));
     const boundedCatalog = JSON.parse(await readFile(join(root, "analysis", payload.universe.id, "chapter-index.json"), "utf8")) as { volumes: Array<{ chapters: Array<{ title: string; futureMarker?: string }> }> };
     assert.deepEqual(boundedCatalog.volumes.flatMap(volume => volume.chapters.map(chapter => chapter.title)), ["第一章", "第二章"]);
@@ -221,8 +221,8 @@ test("universe creation uses catalog order and stable chapter IDs despite extra 
   await mkdir(join(root, "analysis", "source-world"), { recursive: true });
   await writeFile(join(source, "world-bible.md"), "# Test World\n");
   const originalText = [
-    "第一章 卷一", "卷一第一章正文", "第二章 卷一", "卷一第二章正文",
-    "第一章 卷二", "卷二第一章正文", "第二章 卷二", "卷二第二章正文"
+    "第一章", "卷一第一章正文", "第二章", "卷一第二章正文",
+    "第一章", "卷二第一章正文", "第二章", "卷二第二章正文"
   ].join("\n");
   const canonSourceHash = createHash("sha256").update(originalText, "utf8").digest("hex");
   await writeFile(join(source, "original.txt"), originalText, "utf8");
@@ -242,11 +242,11 @@ test("universe creation uses catalog order and stable chapter IDs despite extra 
     ]
   };
   await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify(catalog));
-  const lineOne = "第一章 卷一";
+  const lineOne = "第一章";
   const lineTwo = "卷一第一章正文";
-  const lineThree = "第二章 卷一";
+  const lineThree = "第二章";
   const lineFour = "卷一第二章正文";
-  const lineFive = "第一章 卷二";
+  const lineFive = "第一章";
   const lineSix = "卷二第一章正文";
   const volumeTwoSecondChapterStart = [lineOne, lineTwo, lineThree, lineFour, lineFive, lineSix].reduce((sum, line) => sum + line.length + 1, 0);
   const chunks = [
