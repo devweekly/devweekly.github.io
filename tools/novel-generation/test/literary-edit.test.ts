@@ -127,8 +127,8 @@ test("literary patches apply only unique exact anchors and reject ambiguous edit
   const chapter = "他站着，没动，也没人跟他说话。\\n门外有人经过。";
   const result = applyLiteraryPatches(chapter, [
     { before: "门外有人经过。", after: "门外传来脚步声。", reason: "减少重复" },
-    { before: "他站着", after: "他静静站着", reason: "风格偏好" },
-    { before: "有人", after: "一个人", reason: "锚点重复" }
+    { before: "。", after: "！", reason: "锚点不唯一" },
+    { before: "不存在的原文", after: "替换", reason: "锚点缺失" }
   ]);
   assert.equal(result.chapter, "他站着，没动，也没人跟他说话。\\n门外传来脚步声。");
   assert.equal(result.applied.length, 1);
