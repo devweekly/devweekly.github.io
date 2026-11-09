@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { alignCanonChapterGroups, selectCanonSourceChunks, type CanonChunk } from "./canon-chapters.js";
+import { chunkText } from "./library.js";
 import path from "node:path";
 
 export interface CanonSourcePaths {
@@ -226,10 +227,32 @@ export async function ensureBoundedUniverseCanonAssets(
     const prefixCatalog = catalog.slice(0, entryIndex + 1);
     const offsets = prefixCatalog.map(chapter => chapter.line == null ? undefined : starts[chapter.line - 1]);
     const aligned = alignCanonChapterGroups(prefixCatalog, canonical, offsets);
-    const boundedChunks = aligned.flatMap(item => item.chunks).map(chunk => ({
-      ...chunk, source: sourceKey, sourceHash: boundedHash
-    }));
-    if (!boundedChunks.length) throw new Error("故事宇宙原文切片无法映射到正式章节目录，拒绝发布空检索索引。");
+    const boundedChunks = aligned.flatMap((item, index) => {
+      if (item.chunks.length) return item.chunks.map(chunk => ({
+        ...chunk, source: sourceKey, sourceHash: boundedHash
+      }));
+      const startLine = item.chapter.line;
+      const nextLine = prefixCatalog[index + 1]?.line;
+      if (!Number.isSafeInteger(startLine) || Number(startLine) < 1) {
+        throw new Error("故事宇宙章节「" + item.chapter.title + "」缺少原文行号，无法重建时点切片。");
+      }
+      const chapterText = boundedLines.slice(Number(startLine) - 1, nextLine === undefined ? boundedLines.length : Number(nextLine) - 1).join("\\n").trim();
+      if (!chapterText) throw new Error("故事宇宙章节「" + item.chapter.title + "」在 bounded original.txt 中没有正文。");
+      const volume = String(item.chapter.volume).padStart(2, "0");
+      const sequence = String(item.chapter.sequenceInVolume).padStart(3, "0");
+      return chunkText(chapterText).map((part, chunkIndex) => ({
+        id: sourceKey + ":rebuild:V" + volume + "-C" + sequence + ":" + chunkIndex,
+        source: sourceKey,
+        sourceHash: boundedHash,
+        chapter: item.chapter.title,
+        chunkIndex,
+        start: part.start,
+        end: part.end,
+        text: part.text,
+        ...(offsets[index] !== undefined ? { chapterStart: offsets[index] } : {})
+      }));
+    });
+    if (!boundedChunks.length) throw new Error("故事宇宙原文切片无法映射或重建，拒绝发布空检索索引。");
     const nextLibrary = { ...library, worldId, updatedAt: new Date().toISOString(), chunks: boundedChunks };
     const temporary = libraryIndexPath + ".bounded.tmp";
     await writeFile(temporary, JSON.stringify(nextLibrary, null, 2) + "\n", "utf8");
