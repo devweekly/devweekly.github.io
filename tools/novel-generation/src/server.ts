@@ -175,6 +175,20 @@ async function readKnowledgeBuild(id: string): Promise<KnowledgeBuildState | nul
   try { return JSON.parse(await readFile(knowledgeBuildPath(id), "utf8")) as KnowledgeBuildState; }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
 }
+
+const WRITING_READINESS_STEPS: KnowledgeBuildStep[] = [
+  "style-profile", "character-profiles", "character-states", "as-of-dossier"
+];
+
+/** Start or resume required knowledge preparation without holding the HTTP request open. */
+async function ensureWritingKnowledgeBuildStarted(worldId: string): Promise<void> {
+  const state = await readKnowledgeBuild(worldId);
+  const ready = Boolean(state && WRITING_READINESS_STEPS.every(name =>
+    state.steps.some(step => step.name === name && (step.status === "completed" || step.status === "skipped"))
+  ));
+  if (!ready && !knowledgeBuilds.has(worldId)) await startKnowledgeBuild(worldId);
+}
+
 async function writeKnowledgeBuild(state: KnowledgeBuildState): Promise<void> {
   const target = knowledgeBuildPath(state.worldId);
   await mkdir(path.dirname(target), { recursive: true });
@@ -2299,6 +2313,7 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
     const universe = await readUniverse(id);
     if (universe?.archivedAt) return void res.status(409).json({ error: "当前故事宇宙已归档，请先恢复后再生成章节。" });
     if (universe) await ensureUniverseStoryAnalysis(id, universe);
+    if (universe) await ensureWritingKnowledgeBuildStarted(id);
     const universeEntryPath = universe ? path.join(dir, "universe-entry.md") : undefined;
     const now = new Date().toISOString();
     const runId = randomUUID(); const outputDir = path.resolve(".output", id, "chapter-" + runId);

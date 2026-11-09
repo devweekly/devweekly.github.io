@@ -182,6 +182,35 @@ const COMMANDS = new Set([
   "style-regress", "roleplay-sandbox", "style-reference", "style-trend", "analyze-corpus-craft", "vane-index", "ensure-style-profile", "export-asof-dossier"
 ]);
 
+async function waitForWritingKnowledgeReadiness(worldId: string): Promise<void> {
+  const statusPath = resolve(".output", worldId, "workbench", "knowledge-build.json");
+  const required = ["style-profile", "character-profiles", "character-states", "as-of-dossier"];
+  const deadline = Date.now() + 30 * 60 * 1000;
+  let sawStatus = false;
+  while (Date.now() < deadline) {
+    let state: { status?: string; steps?: Array<{ name?: string; status?: string }> };
+    try {
+      state = JSON.parse(await readFile(statusPath, "utf8")) as { status?: string; steps?: Array<{ name?: string; status?: string }> };
+      sawStatus = true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+      return; // Ordinary worlds without an automatic universe knowledge build.
+    }
+    const ready = required.every(name => state?.steps?.some(step =>
+      step.name === name && (step.status === "completed" || step.status === "skipped")
+    ));
+    if (ready) return;
+    if (state?.status === "completed" || state?.status === "partial" || state?.status === "failed" || state?.status === "interrupted") {
+      const missing = required.filter(name => !state?.steps?.some(step =>
+        step.name === name && (step.status === "completed" || step.status === "skipped")
+      ));
+      throw new Error("新宇宙写作知识准备未完成：" + missing.join("、") + "。后台任务已自动执行；请从 knowledge-build.json 的失败步骤恢复，不能在空上下文下继续写作。");
+    }
+    await new Promise(resolveDelay => setTimeout(resolveDelay, 1000));
+  }
+  if (sawStatus) throw new Error("新宇宙写作知识准备超过 30 分钟，已停止本次写作；已完成步骤和缓存均保留，可自动恢复。");
+}
+
 async function main(): Promise<void> {
   const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
   process.chdir(projectRoot);
@@ -202,7 +231,8 @@ async function main(): Promise<void> {
   }
 
   if (command === "roleplay-sandbox") {
-    const brief = arg("--brief");
+
+  const brief = arg("--brief");
     const names = (arg("--characters") ?? "").split(",").map(name => name.trim()).filter(Boolean);
     if (!brief || !names.length) usage();
     const worldDir = resolve("worlds", worldId);
@@ -905,6 +935,7 @@ async function main(): Promise<void> {
   const sourceText = sourcePath ? await readFile(resolve(sourcePath), "utf8") : undefined;
   const contextText = contextPath ? await readFile(resolve(contextPath), "utf8") : undefined;
   const worldBible = await readFile(resolve("worlds", worldId, "world-bible.md"), "utf8");
+  if (command === "write") await waitForWritingKnowledgeReadiness(worldId);
   let styleProfile: string | undefined;
   try { styleProfile = await readFile(resolve("worlds", worldId, "style-profile.md"), "utf8"); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }

@@ -79,7 +79,7 @@ npm run dev -- analyze-world --world conghuoniao --phase collect --evidence-revi
 
 ## 5. 多阶段章节写作
 
-`write` 会结合当前故事位置、未解决情节线和人物名单，从本地资料库检索相关片段；如果已经运行 `analyze`，也会把命中片段对应的人物、事件和关系标注一并交给写作流程。规划阶段提供主线方向和创意备选，但不要求每章推进主线，也不要求每个场景制造冲突、揭示信息或改变人物关系；主编蓝图只标记必要事实与少量重要锚点，允许 Writer 偏离。Writer 生成正文后，由一次整体文学编辑修整对白和叙事声音，再执行有问题才编辑的 Anti-AI 阶段。最终审查只挑读者会认定「不可能」的硬伤：人物知道了没有渠道知道的信息、用了没有的能力、出现在不可能的位置，世界规则被打破，或时间因果断裂到读不懂。其余问题——措辞、用字、称谓、节奏、伏笔、偏好、需要复算或对照文档才能确认的疑点——一律不报。主编按必改项修复，最多两轮，每轮修复后重新审查。只有最终复查通过，状态管理员才提取并校验故事状态，默认自动写入 SQLite 和兼容快照 `story-state.json`。篇幅只作预期，不会因为单个场景偏短而自动扩写。
+`write` 会结合当前故事位置、未解决情节线和人物名单，从本地资料库检索相关片段；如果已经运行 `analyze`，也会把命中片段对应的人物、事件和关系标注一并交给写作流程。规划阶段提供主线方向和创意备选，但不要求每章推进主线，也不要求每个场景制造冲突、揭示信息或改变人物关系；主编蓝图只标记必要事实与少量重要锚点，允许 Writer 偏离。Writer 生成正文后，执行一次保守的局部文学 Patch：默认保留初稿，只允许针对唯一原文锚点做小范围修改；不再先整章重写，再运行 Anti-AI 诊断、改写和复核。最终审查只挑读者会认定「不可能」的硬伤：人物知道了没有渠道知道的信息、用了没有的能力、出现在不可能的位置，世界规则被打破，或时间因果断裂到读不懂。其余问题——措辞、用字、称谓、节奏、伏笔、偏好、需要复算或对照文档才能确认的疑点——一律不报。主编按必改项做一次有界修复，修复后重新审查。只有最终复查通过，状态管理员才提取并校验故事状态，默认自动写入 SQLite 和兼容快照 `story-state.json`。篇幅只作预期，不会因为单个场景偏短而自动扩写。
 
 ```bash
 npm run dev -- write --world conghuoniao --mode continuation \
@@ -97,19 +97,19 @@ npm run dev -- write --world conghuoniao --mode continuation \
   --resume-dir .output/conghuoniao/<原 run-id>
 ```
 
-终审两轮后仍有必改项时，本次运行安全失败：最新成稿保留为 `chapter-blocked.md`，诊断写入质量摘要（状态为 `blocked`），故事状态不更新。系统不会提供人工批准绕过硬伤的开关；修复输入或问题后可从 checkpoint 恢复或重新运行。`--strict-model` 禁止失败时回退到备用模型，保证成稿模型来源可追踪。
+终审一次自动修复后仍有必改项时，本次运行安全失败：最新成稿保留为 `chapter-blocked.md`，诊断写入质量摘要（状态为 `blocked`），故事状态不更新。系统不会提供人工批准绕过硬伤的开关；修复输入或问题后可从 checkpoint 恢复或重新运行。`--strict-model` 禁止失败时回退到备用模型，保证成稿模型来源可追踪。
 
 每次运行生成：
 - `00-retrieval.md`：命中的原文片段、来源位置和抽取标注
 - `01-main-plot.md`、`02-creative-options.md`：主线方案与创意备选
 - `03-chapter-plan.md`：主编确定的章节蓝图
 - `04-scene-draft.md`、`05-dialogue-edited.md`、`06-voice-edited.md`：正文、对白修订和叙事声音统一
-- `06a-anti-ai-diagnosis.md`、`06b-anti-ai-edited.md`、`06c-anti-ai-verification.json`：Anti-AI 证据诊断、编辑稿与保守复核
+- `05-literary-patches-raw.json` / `05-literary-patches-applied.json`（长章节为 `06-literary-patches-raw.json` / `06-literary-patches-applied.json`）：模型原始 Patch 与逐条应用结果；`05-literary-edited.md` / `06b-anti-ai-edited.md` 为应用后的正文
 - `07-continuity-review.md`：终审必改清单；没有必改项时只有一行结论
 - `chapter.md`：最终复查通过后的章节
 - `08-state-update.json`：合并后的下一章状态（默认已自动持久化）
 - `07-review-round-*-raw.txt`、`07-continuity-review-round-N.json`、`09-quality-summary.json`：终审原始输出、结构化复查结果与修复轮数
-- `chapter-blocked.md`：终审两轮后仍有明确硬伤时保留的最新成稿；本次运行失败且故事状态不更新
+- `chapter-blocked.md`：终审一轮自动修复后仍有明确硬伤时保留的最新成稿；本次运行失败且故事状态不更新
 
 章节生成成功后，状态管理员会提取人物、事件、正史事实和情节线变化，并自动写入 SQLite 权威状态及兼容 JSON 快照，供下一章直接使用。只有模型对照、盲测等需要候选互相隔离的场景才传 `--no-apply-state`；普通续写不要使用该参数。状态提取或持久化失败会使本次命令失败，不能把状态未更新的章节当作可继续写作的成功结果。`continuation` 模式的 `--source` 必须是你提供或有权使用的文本，本地 `private/` 不入库。
 
@@ -126,7 +126,7 @@ npm run dev -- write-long --world conghuoniao --mode continuation \
   --max-words 10000 --scenes 8 --retrieval-limit 4 --timeout-ms 180000
 ```
 
-流程：按情节自然需要生成场景蓝图，`--scenes` 是场景数量上限而非必须凑齐的配额；不会为了满足数字拆开连贯情节。格式错误自动修正一次 → 按场检索并注入相关人物当前状态 → 逐场成文，后续场景携带本章已生成正文的滚动上下文 → 逐场对白/文风修订 → 全章 Anti-AI 诊断（只有发现具体问题才编辑；无问题或诊断失败时跳过整章改写）→ 全章跨场硬伤终审 → 对必改项定位到受影响场景并最多自动修复两轮，每轮重新复查；发生修复时追加只读文风回归观察，不再自动润色 → 最终章节与节奏指标 → 从最终完整正文提取并校验状态 → SQLite 和 JSON 自动持久化。盲读 Reader 默认关闭，可用 `--reader-experience` 显式启用。最终复查未通过或状态提取/保存失败时命令失败，不会提交未通过章节的故事状态。仅隔离实验使用 `--no-apply-state`。
+流程：按情节自然需要生成场景蓝图，`--scenes` 是场景数量上限而非必须凑齐的配额；不会为了满足数字拆开连贯情节。格式错误自动修正一次 → 按场检索并注入相关人物当前状态 → 逐场成文，后续场景携带本章已生成正文的滚动上下文 → 逐场对白/文风修订 → 一次局部 Patch 编辑（默认保留原文，不再整章诊断/改写/复核）→ 全章跨场硬伤终审 → 对必改项定位到受影响场景并最多自动修复一轮，随后重新复查 → 最终章节与节奏指标 → 从最终完整正文提取并校验状态 → SQLite 和 JSON 自动持久化。盲读 Reader 默认关闭，可用 `--reader-experience` 显式启用。最终复查未通过或状态提取/保存失败时命令失败，不会提交未通过章节的故事状态。仅隔离实验使用 `--no-apply-state`。
 
 `analysis/conghuoniao/style-rhythm.md` 是离线语料观察资料，不是续写目标。正式写作不要求接近原著句长、段落或对白统计，也不会根据这些数字自动改写正文。`06-rhythm-metrics.json` 只保存诊断数据，供事后观察；不能据此判断小说好坏。
 
@@ -529,9 +529,9 @@ D&D Campaign 的借鉴仅限世界设定、人物自主行动、有限局势推�
 
 ## Living Voice、Anti-AI 与读者体验
 
-普通章节和万字章节在叙事声音修订后，都会执行共享的 Living Voice / Anti-AI 编辑。它只处理真正损害阅读体验的模板化表达，不以 AI 检测分数、禁词、连接词频率、句长或段落长度驱动改写。原稿成立时可以零修改；编辑不得改变剧情事实、人物决定、信息揭示、视角和场景顺序。
+普通章节和万字章节在正文/逐场修订后，只运行一次保守的局部文学 Patch 编辑。编辑默认保留原文；只有存在明确、可定位的语病、无意重复、重复解释、人物对白失真、视角错误或因果表达不清时才修改。Patch 必须使用唯一的逐字原文锚点，按条应用；锚点缺失、重复或重叠的修改单独拒绝，不触发整章回滚。
 
-写作、对白、叙事声音和编辑阶段共享 Living Voice 原则。Editorial Review 前的 Anti-AI 阶段依次生成 `06a-anti-ai-diagnosis.md`、`06b-anti-ai-edited.md` 和 `06c-anti-ai-verification.json`：诊断只报告有具体文本证据的阅读问题，不判断文本是否由 AI 生成；只有明确发现值得修改的问题才编辑，空诊断、无问题或诊断失败均跳过整章改写；独立复核只有确认编辑有明确收益且没有损害原文时才保留编辑稿，否则恢复原稿。编辑失败或复核失败均保留安全的上一阶段正文并继续终审。终审若执行过自动修复，还会生成 `10-post-review-literary-check.md`，只读比较修复前后文本，检查修复是否引入模板化表达；不再次改写、不阻断章节。没有修复则跳过。Reader 以不读取人物档案、蓝图和剧情摘要的盲读方式生成 `10-reader-experience.md`，普通章节和长章节均需通过 `--reader-experience` 显式启用；Reader 不负责硬伤审查、不输出必改项、不触发自动修复，也不影响章节通过和状态提交。相关设计见 [ARCHITECTURE.md 第 10 节](./ARCHITECTURE.md) 与 [ADR 0004](./ADR/0004-living-voice-and-anti-ai-editing.md)。
+不再运行“整章文学重写 → Anti-AI 诊断 → 整章 Anti-AI 改写 → 独立整章复核”的重复链路，也不在每章后追加只读 Style Regression / Post-review 文风观察。这些步骤增加模型调用，却不改变正文或验收结果。Style Regression 保留为专项评估工具；Reader 盲读仍可通过 `--reader-experience` 显式启用，且不影响章节通过。硬伤终审只检查事实、因果、人物知识边界和世界规则；最多自动修复一轮，再复查一次。技术完整性检查、状态 schema 校验和状态持久化仍保留。相关设计见 [ADR 0007](./ADR/0007-conservative-literary-patches-and-review-simplification.md)。
 
 
 ### 提炼项目风格资料
@@ -550,7 +550,7 @@ npm run dev -- distill-style --world conghuoniao \
 
 `--out` 只能写入当前 world 的 `.output/<world>/`，避免误覆盖正史或项目文件。默认样本总量上限为 80,000 字符，可通过 `--max-sample-chars` 调整（最高 160,000）。提炼结果描述叙事距离、节奏、视角、对白、意象、情绪表达和场景差异等抽象特征，不输出长段原文或可直接套用的句式模板。候选文件需要作者自行检查。显式使用 `--activate` 才会更新 `worlds/<world>/style-profile.md`；旧版本会先归档到 `.output/<world>/style-profile-history/`。正式写作自动读取激活后的风格资料，并把抽象风格资料注入剧情规划、正文写作、对白与叙事声音编辑等相关阶段。
 
-**正式小说生成 Pipeline 会自动执行风格回归观察**，不需要每章手动运行。普通章节和长章节通过终审后，自动读取激活的 `style-profile.md`，并尝试读取 `worlds/<world>/style-references/` 下最多 4 个经认可的 `.md` / `.txt` 样本，生成 `11-style-regression.md`。参考样本只需维护一次，后续每次写作自动使用。没有参考样本时，仍以 Style Profile 做有限观察，并明确标记证据不足。
+正式小说生成 Pipeline 不再每章自动执行只读风格回归。需要对某章或一组候选做风格专项评估时，显式运行 `style-regress`；它不会自动改写或阻断正文。
 
 认可样本通过 CLI 管理，替换和移除都会保留历史版本，历史目录不会被正式写作读取：
 
@@ -708,9 +708,9 @@ POST /api/worlds/<universe-id>/knowledge-build
 GET  /api/worlds/<universe-id>/knowledge-build
 ```
 
-任务按顺序运行 `analyze-story`、`analyze-arcs`、`ensure-style-profile`、`analyze-profiles`、`analyze-character-states`、`analyze-corpus-craft`、`export-asof-dossier` 和 `vane-index`。如果原著项目已有完整 v6 故事分析，Create/Fork 会将其按章节来源严格截断后写入新宇宙；起点一致且快照完整时直接复用，跳过耗时的全文 LLM 分析。旧版本已创建的宇宙在首次续写或手动启动知识构建时，也会从 `sourceWorldId` 回填同一份时点安全快照。`ensure-style-profile` 只在当前宇宙缺少 Style Profile 时，从本宇宙按起点截断的章节样本重建，不覆盖用户已有的人工风格资料。Create/Fork 默认自动启动该后台任务，创建接口可通过 `buildKnowledge:false` 显式关闭；知识构建与章节生成可并行：知识库写入 `novel.db`，章节状态提交写入独立的 `story.db`，不再以整套知识资料完成作为写作前置条件。状态与各步骤日志摘要保存在 `.output/<world>/workbench/knowledge-build.json`。任务重启中断会被标记为失败，可重新触发。Vane 原生包未安装时，知识构建将该可选步骤标记为 skipped，而不是把整个知识构建标成失败；已配置 embedding endpoint 但请求失败或维度不匹配时，该步骤明确失败。两种情况都不影响 SQLite/BM25 写作路径。
+任务按顺序运行 `analyze-story`、`analyze-arcs`、`ensure-style-profile`、`analyze-profiles`、`analyze-character-states`、`analyze-corpus-craft`、`export-asof-dossier` 和 `vane-index`。如果原著项目已有完整 v6 故事分析，Create/Fork 会将其按章节来源严格截断后写入新宇宙；起点一致且快照完整时直接复用，跳过耗时的全文 LLM 分析。旧版本已创建的宇宙在首次续写或手动启动知识构建时，也会从 `sourceWorldId` 回填同一份时点安全快照。`ensure-style-profile` 只在当前宇宙缺少 Style Profile 时，从本宇宙按起点截断的章节样本重建，不覆盖用户已有的人工风格资料。Create/Fork 默认自动启动该后台任务，创建接口可通过 `buildKnowledge:false` 显式关闭；知识构建与章节生成进程可以并行启动，但新宇宙第一章的 CLI 写作进程会等待 `style-profile`、`character-profiles`、`character-states`、`as-of-dossier` 四项最低写作上下文就绪；等待发生在后台运行任务内，创建/生成 API 不需要用户手动等待。可选的 corpus-craft 与 Vane 索引不阻塞写作。若准备失败则安全停止，保留已完成阶段缓存；重新触发构建时可续用缓存，不会用空上下文生成第一章。知识库写入 `novel.db`，章节状态提交写入独立的 `story.db`。状态与各步骤日志摘要保存在 `.output/<world>/workbench/knowledge-build.json`。任务重启中断会被标记为失败，可重新触发。Vane 原生包未安装时，知识构建将该可选步骤标记为 skipped，而不是把整个知识构建标成失败；已配置 embedding endpoint 但请求失败或维度不匹配时，该步骤明确失败。两种情况都不影响 SQLite/BM25 写作路径。
 
-Chapter Studio 已提供显式构建入口和逐步骤状态面板，并每 2 秒轮询任务状态。Create/Fork 默认自动触发后台构建；构建期间仍可直接生成章节。分析写入 novel.db，章节状态写入独立的 story.db，因此不需要等待分析完成。归档和 fork 仍与构建互斥，避免复制或变更正在写入的宇宙目录。
+Chapter Studio 已提供显式构建入口和逐步骤状态面板，并每 2 秒轮询任务状态。Create/Fork 默认自动触发后台构建；章节生成 API 可先返回任务，但新宇宙第一章的 CLI 子进程会等待最低写作上下文就绪，不会与 Style Profile/人物档案构建竞态。知识准备失败时安全停止，已完成阶段缓存保留，重新触发可续跑。分析写入 novel.db，章节状态写入独立的 story.db。归档和 fork 仍与构建互斥，避免复制或变更正在写入的宇宙目录。
 
 
 历史宇宙不会复制原文项目的全书 world-bible.md。Create/Fork 会为每个宇宙生成自己的最小 world-bible.md，记录原文起点、父宇宙/分叉信息、正史边界和创作方向，并明确指向本地截断后的 universe-entry.md 与 universe-origin-context.md。这样既避免全书设定中的未来剧情泄漏，也满足章节生成流程对 world-bible.md 的运行要求。
