@@ -217,8 +217,17 @@ export async function ensureSourceCanonLibraryIndex(
 export async function prepareCanonIndexInputs(worldDir: string, catalog: CatalogChapter[], chunks: LibraryChunk[], expectedTotalLines?: number, expectedSourceHash?: string): Promise<CanonIndexInputs> {
   let originalText: string | undefined;
   let originalPath: string | undefined;
+  let resolverWorldId = basename(worldDir);
+  // Universe creation indexes its staging directory before the final rename;
+  // the directory basename is ".staging-<id>", so use the persisted universe ID.
   try {
-    originalPath = await resolveOriginalCanonPath(basename(worldDir), {
+    const universe = JSON.parse(await readFile(join(worldDir, "universe.json"), "utf8")) as { id?: string };
+    if (typeof universe.id === "string" && /^[a-z0-9][a-z0-9-]*$/i.test(universe.id)) resolverWorldId = universe.id;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  try {
+    originalPath = await resolveOriginalCanonPath(resolverWorldId, {
       projectRoot: resolve(worldDir, "..", ".."),
       worldDir
     });
