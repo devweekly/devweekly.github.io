@@ -347,6 +347,7 @@ export async function ensureBoundedUniverseCanonAssets(
   const catalogSnapshot = {
     schemaVersion: 2,
     totalLines: boundedLines.length,
+    sourceHash: boundedHash,
     ...(safeVolumes.length ? { volumes: safeVolumes } : {
       chapters: (sourceCatalog.chapters ?? []).slice(0, entryIndex + 1).map(chapter => ({
         ...(typeof chapter.sequenceInVolume === "number" ? { sequenceInVolume: chapter.sequenceInVolume } : {}),
