@@ -589,7 +589,7 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
  * The source catalog is full-book metadata, so write a universe-local copy filtered to
  * the same as-of chapter boundary. Never fall back to the parent's unbounded catalog.
  */
-async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targetDir: string, universeId: string, entryIndex: number): Promise<void> {
+async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targetDir: string, universeId: string, entryIndex: number, boundedTotalLines: number): Promise<void> {
   const sourcePath = path.resolve("analysis", sourceWorldId, "chapter-index.json");
   try {
     const source = JSON.parse(await readFile(sourcePath, "utf8")) as {
@@ -613,7 +613,7 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
       return {
         volume: volume.volume,
         ...(typeof volume.startLine === "number" ? { startLine: volume.startLine } : {}),
-        ...(typeof lastLine === "number" ? { endLine: lastLine } : {}),
+        endLine: Math.min(typeof volume.endLine === "number" ? volume.endLine : boundedTotalLines, boundedTotalLines),
         chapterCount: chapters.length,
         openingChapter: chapters[0]!.title,
         closingChapter: chapters[chapters.length - 1]!.title,
@@ -621,11 +621,7 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
       };
     }).filter((volume): volume is NonNullable<typeof volume> => volume !== null);
     const safeChapters = (source.chapters ?? []).slice(0, entryIndex + 1).map(safeChapter);
-    const retainedLines = [
-      ...safeVolumes.flatMap(volume => volume.chapters.map(chapter => chapter.line ?? 0)),
-      ...safeChapters.map(chapter => chapter.line ?? 0)
-    ];
-    const totalLines = Math.max(1, ...retainedLines);
+    const totalLines = Math.max(1, boundedTotalLines);
     const snapshot = {
       ...(typeof source.schemaVersion === "number" ? { schemaVersion: source.schemaVersion } : {}),
       totalLines,
