@@ -577,6 +577,36 @@ async function ensureStagedChapterDatabase(
   }
 }
 
+const chapterCatalogBuilds = new Map<string, Promise<void>>();
+
+async function rebuildOfflineChapterCatalog(sourceWorldId: string, projectRoot: string): Promise<void> {
+  const running = chapterCatalogBuilds.get(sourceWorldId);
+  if (running) return running;
+  const task = new Promise<void>((resolveBuild, rejectBuild) => {
+    const scriptPath = path.join(projectRoot, "analysis", "build-corpus-index.mjs");
+    const child = spawn(process.execPath, [scriptPath], {
+      cwd: projectRoot,
+      env: { ...process.env, NOVEL_WORLD_ID: sourceWorldId },
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", chunk => { stdout += String(chunk); });
+    child.stderr?.on("data", chunk => { stderr += String(chunk); });
+    child.once("error", rejectBuild);
+    child.once("close", code => {
+      if (code === 0) resolveBuild();
+      else rejectBuild(new Error(
+        "从 original.txt 自动重建章节目录失败（exit " + String(code) + "）。" +
+        (stderr.trim() || stdout.trim() || "请检查原文标题格式和文件权限。")
+      ));
+    });
+  });
+  chapterCatalogBuilds.set(sourceWorldId, task);
+  try { await task; }
+  finally { if (chapterCatalogBuilds.get(sourceWorldId) === task) chapterCatalogBuilds.delete(sourceWorldId); }
+}
+
 async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEntry[]> {
   // Resolve every offline asset from the Workbench project root, not from a
   // caller's incidental current working directory.
@@ -593,24 +623,32 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
   }
 
   let catalogDocument;
+  let rebuildCatalog = false;
   try {
     catalogDocument = await loadChapterCatalogDocument(sourceWorldId, catalogPath);
+    rebuildCatalog = !catalogDocument;
   } catch (error) {
-    if (error instanceof Error && /Chapter catalog has no chapters/.test(error.message)) {
-      throw new Error(
-        "原文目录文件存在但没有有效章节：" + catalogPath +
-        (originalPath ? "；已找到原文全文：" + originalPath : "；同时未找到 original.txt") +
-        "。请检查目录 JSON，或在 tools/novel-generation 下运行 node analysis/build-corpus-index.mjs 重建目录。"
-      );
+    if (error instanceof SyntaxError || (error instanceof Error && /Chapter catalog has no chapters/.test(error.message))) {
+      rebuildCatalog = true;
+      // Keep the invalid derived file for diagnosis; never destroy the only copy.
+      if (existsSync(catalogPath)) {
+        await rename(catalogPath, catalogPath + ".invalid-" + Date.now());
+      }
+    } else {
+      throw error;
     }
-    throw error;
+  }
+  if (rebuildCatalog && originalPath) {
+    await rebuildOfflineChapterCatalog(sourceWorldId, sourceProjectRoot);
+    catalogDocument = await loadChapterCatalogDocument(sourceWorldId, catalogPath);
   }
   const catalog = catalogDocument?.chapters;
   if (!catalogDocument || !catalog) {
     throw new Error(
       "找不到有效的原著章节目录：" + catalogPath +
-      (originalPath ? "；已找到原文全文：" + originalPath : "；未找到 original.txt") +
-      (originalPath ? "。原文存在但目录是独立派生文件，请运行 node analysis/build-corpus-index.mjs 重建 chapter-index.json。" : "。请先将 original.txt 放在项目根目录，再构建 chapter-index.json。")
+      (originalPath
+        ? "；已找到原文全文：" + originalPath + "，但自动重建后仍没有有效章节，请检查 original.txt 中的章节标题格式。"
+        : "；未找到 original.txt，无法从离线全文重建目录。")
     );
   }
   const libraryDir = path.join(worldDir(sourceWorldId), "library");
