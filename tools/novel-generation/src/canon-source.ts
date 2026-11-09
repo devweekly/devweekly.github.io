@@ -289,12 +289,14 @@ export async function ensureBoundedUniverseCanonAssets(
       ...chunk, source: sourceKey, sourceHash: boundedHash,
       ...(offsets[index] !== undefined ? { chapterStart: offsets[index] } : {})
     }));
-    const startLine = item.chapter.line;
-    const nextLine = prefixCatalog[index + 1]?.line;
-    if (!Number.isSafeInteger(startLine) || Number(startLine) < 1) {
-      throw new Error("故事宇宙章节「" + item.chapter.title + "」缺少原文行号，无法重建时点切片。");
+    const chapterStart = offsets[index];
+    const nextStart = offsets[index + 1] ?? boundedText.length;
+    if (!Number.isSafeInteger(chapterStart) || nextStart <= Number(chapterStart)) {
+      throw new Error("故事宇宙章节「" + item.chapter.title + "」缺少有效原文偏移，无法重建时点切片。");
     }
-    const chapterText = boundedLines.slice(Number(startLine) - 1, nextLine === undefined ? boundedLines.length : Number(nextLine) - 1).join("\n").trim();
+    // Slice the original bytes by the already verified offsets. Joining lines
+    // here would silently normalize CRLF/CR files and create false mismatches.
+    const chapterText = boundedText.slice(Number(chapterStart), nextStart).trim();
     if (!chapterText) throw new Error("故事宇宙章节「" + item.chapter.title + "」在 bounded original.txt 中没有正文。");
     const volume = String(item.chapter.volume).padStart(2, "0");
     const sequence = String(item.chapter.sequenceInVolume).padStart(3, "0");
