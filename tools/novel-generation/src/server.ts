@@ -513,7 +513,7 @@ function readCatalogChapterText(catalog: CatalogChapter[], lines: string[], cata
   return lines.slice(start, end).join("\n").trim();
 }
 
-interface CanonChapterChunk extends CanonChunk {}
+interface CanonChapterChunk extends CanonChunk { id: string }
 interface CanonChapterEntry {
   title: string;
   text: string;
