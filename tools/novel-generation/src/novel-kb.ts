@@ -41,11 +41,17 @@ interface ChapterCatalog {
   chapters: CatalogChapter[];
 }
 
+export interface ChapterCatalogDocument {
+  chapters: CatalogChapter[];
+  totalLines?: number;
+}
+
 /** Reads the volume/chapter index produced by analysis/build-corpus-index.mjs. */
-export async function loadChapterCatalog(worldId: string, catalogPath?: string): Promise<CatalogChapter[] | undefined> {
+export async function loadChapterCatalogDocument(worldId: string, catalogPath?: string): Promise<ChapterCatalogDocument | undefined> {
   const path = catalogPath ?? resolve("analysis", worldId, "chapter-index.json");
   if (!existsSync(path)) return undefined;
   const raw = JSON.parse(await readFile(path, "utf8")) as {
+    totalLines?: number;
     volumes?: Array<{ volume: number; chapters?: Array<Record<string, unknown>> }>;
     chapters?: Array<Record<string, unknown>>;
   };
@@ -67,7 +73,14 @@ export async function loadChapterCatalog(worldId: string, catalogPath?: string):
   }
   if (!rows.length) for (const chapter of raw.chapters ?? []) push(chapter, Number(chapter.volume ?? 1));
   if (!rows.length) throw new Error("Chapter catalog has no chapters: " + path);
-  return rows;
+  return {
+    chapters: rows,
+    ...(Number.isSafeInteger(raw.totalLines) && Number(raw.totalLines) > 0 ? { totalLines: Number(raw.totalLines) } : {})
+  };
+}
+
+export async function loadChapterCatalog(worldId: string, catalogPath?: string): Promise<CatalogChapter[] | undefined> {
+  return (await loadChapterCatalogDocument(worldId, catalogPath))?.chapters;
 }
 
 interface CanonIndexInputs {
@@ -76,7 +89,7 @@ interface CanonIndexInputs {
 }
 
 /** Align indexing to the exact original.txt bytes, not similarly named auxiliary imports. */
-export async function prepareCanonIndexInputs(worldDir: string, catalog: CatalogChapter[], chunks: LibraryChunk[]): Promise<CanonIndexInputs> {
+export async function prepareCanonIndexInputs(worldDir: string, catalog: CatalogChapter[], chunks: LibraryChunk[], expectedTotalLines?: number): Promise<CanonIndexInputs> {
   let originalText: string | undefined;
   try {
     const originalPath = await resolveOriginalCanonPath(basename(worldDir), {
@@ -87,7 +100,7 @@ export async function prepareCanonIndexInputs(worldDir: string, catalog: Catalog
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
-  if (originalText !== undefined) validateCanonCatalogAgainstText(catalog, originalText);
+  if (originalText !== undefined) validateCanonCatalogAgainstText(catalog, originalText, expectedTotalLines);
   const sourceHash = originalText === undefined ? undefined : createHash("sha256").update(originalText, "utf8").digest("hex");
   const canonChunks = selectCanonSourceChunks(chunks, sourceHash);
   const chapterStartOffsets: Array<number | undefined> = [];
@@ -337,9 +350,10 @@ export async function buildAnalysisUnits(
   await ensureBoundedUniverseCanonAssets(worldId, { projectRoot: resolve(worldDir, "..", ".."), worldDir });
   const rawChunks = await loadLibraryChunks(join(worldDir, "library"), worldId);
   if (!rawChunks.length) throw new Error("No indexed text found. Run ingest first.");
-  const catalog = await loadChapterCatalog(worldId, options.catalogPath);
+  const catalogDocument = await loadChapterCatalogDocument(worldId, options.catalogPath);
+  const catalog = catalogDocument?.chapters;
   if (!catalog) throw new Error("No chapter catalog. Run the corpus index script or pass --catalog.");
-  const prepared = await prepareCanonIndexInputs(worldDir, catalog, rawChunks);
+  const prepared = await prepareCanonIndexInputs(worldDir, catalog, rawChunks, catalogDocument.totalLines);
   const chunks = prepared.chunks;
   if (!chunks.length) throw new Error("No chunks from original.txt were found in the library index.");
   const assignment = assignChapters(chunks, catalog, prepared.chapterStartOffsets);

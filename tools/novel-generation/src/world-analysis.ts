@@ -4,6 +4,8 @@
 import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { searchLibrary } from "./library.js";
+import { loadChapterCatalog } from "./novel-kb.js";
+import { validateCanonCatalogAgainstText } from "./canon-chapters.js";
 import { ensureBoundedUniverseCanonAssets, resolveOriginalCanonPath } from "./canon-source.js";
 import { runAgentText } from "./generate.js";
 import { parseJsonObject } from "./model-json.js";
@@ -438,14 +440,16 @@ const COMMON_RULES = [
   "不复制章节正文，不改写原句充当自己的表达；引用只保留必要的极短片段。",
   "中文成稿，以连贯段落为主；列表只用于真正独立、可逐项检查的事项，不写「引入句 + 多点列表 + 加粗总结」的模板结构。",
   "不写对话应答语、工作过程、版本说明或空泛过渡句；不使用模板化排比和夸大结论。",
-  "文件末尾数行为空行，证据行号必须指向有内容的行；末卷最后有效行是 L118087。",
+  "文件末尾空行不作为证据；行号范围以当前宇宙的 chapter-index.json 与 bounded original.txt 为准，不沿用原文项目的全书行号。",
   "区分事实、人物判断和本 Agent 的分析；本 Agent 提出的创作建议一律标为项目原创。"
 ].join("\n");
 
 function buildInput(worldId: string, role: AnalysisRole, index: ChapterIndexFile, hits: Awaited<ReturnType<typeof searchLibrary>>, outputPath: string): string {
-  const ranges = role.lineRanges.map(([start, end], position) =>
-    `- L${start}–L${end}：${role.rangeNotes[position] ?? "建议精读"}`
+  const ranges = role.lineRanges.flatMap(([start, end], position) =>
+    start > index.totalLines ? [] : [`- L${start}–L${Math.min(end, index.totalLines)}：${role.rangeNotes[position] ?? "建议精读"}`]
   ).join("\n");
+  const availableVolumes = new Set(index.volumes.map(volume => volume.volume));
+  const focusVolumes = role.focusVolumes.filter(volume => availableVolumes.has(volume));
   const hitRows = hits.map((hit, position) =>
     `| ${position + 1} | ${hit.chapter} | ${hit.start}–${hit.end} | ${hit.score.toFixed(1)} | ${hit.text.slice(0, 46).replace(/\|/g, "\\|").replace(/\s+/g, " ")}… |`
   ).join("\n");
@@ -475,7 +479,7 @@ function buildInput(worldId: string, role: AnalysisRole, index: ChapterIndexFile
     "",
     ranges,
     "",
-    `重点卷：${role.focusVolumes.join("、")}。区间只是起点，允许按线索自行扩展检索。`,
+    `重点卷：${focusVolumes.join("、") || "当前起点范围内无预设重点卷"}。区间只是起点，允许按线索在当前 bounded 原文范围内自行扩展检索。`,
     "",
     "## 本地检索命中（章节定位用，摘要不构成证据）",
     "",
@@ -529,6 +533,11 @@ export async function prepareWorldAnalysis(worldId: string): Promise<PrepareResu
   const analysisDir = resolve("analysis", worldId, "agent-analysis");
   const libraryDir = resolve("worlds", worldId, "library");
   const index = await loadChapterIndex(analysisDir);
+  const canonicalSourcePath = await resolveOriginalCanonPath(worldId);
+  const canonicalText = await readFile(canonicalSourcePath, "utf8");
+  const catalog = await loadChapterCatalog(worldId);
+  if (!catalog) throw new Error("缺少当前世界的 chapter-index.json，不能生成引用行号输入包。");
+  validateCanonCatalogAgainstText(catalog, canonicalText, index.totalLines);
   await mkdir(analysisDir, { recursive: true });
   await writeFile(join(analysisDir, "PROTOCOL.md"), PROTOCOL, "utf8");
 
@@ -583,11 +592,18 @@ export async function collectWorldAnalysis(
     }
   }
   const sourcePath = options.sourcePath ? resolve(options.sourcePath) : canonicalSourcePath;
+  let sourceText: string | undefined;
   let sourceLines: string[] | undefined;
   try {
-    sourceLines = (await readFile(sourcePath, "utf8")).split(/\r?\n/);
+    sourceText = await readFile(sourcePath, "utf8");
+    sourceLines = sourceText.split(/\r?\n/);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  if (sourceText !== undefined) {
+    const catalog = await loadChapterCatalog(worldId);
+    if (!catalog) throw new Error("缺少当前世界的 chapter-index.json，不能核验分析引用。");
+    validateCanonCatalogAgainstText(catalog, sourceText, index.totalLines);
   }
   const entries: CollectEntry[] = [];
 

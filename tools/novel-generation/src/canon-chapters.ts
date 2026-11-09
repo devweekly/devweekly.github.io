@@ -83,21 +83,21 @@ export function validateCanonCatalogAgainstText(
   const normalized = originalText.replace(/^\uFEFF/, "");
   const lines = normalized.split(/\r?\n/);
   if (expectedTotalLines !== undefined && lines.length !== expectedTotalLines) {
-    throw new Error("chapter-index.json 的 totalLines 与 original.txt 不一致（目录 " + expectedTotalLines + " 行，原文 " + lines.length + " 行）。请重新运行 node analysis/build-corpus-index.mjs。");
+    throw Object.assign(new Error("chapter-index.json 的 totalLines 与 original.txt 不一致（目录 " + expectedTotalLines + " 行，原文 " + lines.length + " 行）。请重新运行 node analysis/build-corpus-index.mjs。"), { status: 400 });
   }
   let previousLine = 0;
   const identities = new Set<string>();
   for (const chapter of catalog) {
     const line = chapter.line;
     if (!Number.isSafeInteger(line) || (line ?? 0) <= previousLine || (line ?? 0) > lines.length) {
-      throw new Error("chapter-index.json 的章节行号缺失、越界或顺序异常：" + chapter.title + "。请重新生成原文目录。");
+      throw Object.assign(new Error("chapter-index.json 的章节行号缺失、越界或顺序异常：" + chapter.title + "。请重新生成原文目录。"), { status: 400 });
     }
     const actual = (lines[(line as number) - 1] ?? "").trim();
     if (actual !== chapter.title.trim()) {
-      throw new Error("chapter-index.json 的章节行号已过期：" + chapter.title + " 应位于 L" + line + "，但原文该行是「" + actual.slice(0, 80) + "」。请重新运行 node analysis/build-corpus-index.mjs。");
+      throw Object.assign(new Error("chapter-index.json 的章节行号已过期：" + chapter.title + " 应位于 L" + line + "，但原文该行是「" + actual.slice(0, 80) + "」。请重新运行 node analysis/build-corpus-index.mjs。"), { status: 400 });
     }
     const identity = chapter.volume + ":" + chapter.sequenceInVolume;
-    if (identities.has(identity)) throw new Error("chapter-index.json 存在重复章节身份：" + identity + "。请重新生成原文目录。");
+    if (identities.has(identity)) throw Object.assign(new Error("chapter-index.json 存在重复章节身份：" + identity + "。请重新生成原文目录。"), { status: 400 });
     identities.add(identity);
     previousLine = line as number;
   }

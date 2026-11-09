@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks } from "../src/canon-chapters.js";
+import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks, validateCanonCatalogAgainstText } from "../src/canon-chapters.js";
 import type { CatalogChapter } from "../src/novel-kb.js";
 
 const catalog: CatalogChapter[] = [
@@ -105,4 +105,37 @@ test("legacy source paths retain original.txt chunks but reject auxiliary files"
     { ...chunk("第一章", "笔记", 0), source: "worlds/book/notes.txt" }
   ]);
   assert.deepEqual(selected.map(item => item.text), ["原文"]);
+});
+
+
+test("available original text rejects catalog line numbers that no longer point to their headings", () => {
+  const text = ["序言", "第一章", "正文", "第二章", "正文二"].join("\n");
+  assert.doesNotThrow(() => validateCanonCatalogAgainstText([
+    { volume: 1, sequenceInVolume: 1, printedNumber: 1, title: "第一章", label: "第一章", line: 2 },
+    { volume: 1, sequenceInVolume: 2, printedNumber: 2, title: "第二章", label: "第二章", line: 4 }
+  ], text, 5));
+  assert.throws(() => validateCanonCatalogAgainstText([
+    { volume: 1, sequenceInVolume: 1, printedNumber: 1, title: "第一章", label: "第一章", line: 3 },
+    { volume: 1, sequenceInVolume: 2, printedNumber: 2, title: "第二章", label: "第二章", line: 4 }
+  ], text, 5), /章节行号已过期/);
+  assert.throws(() => validateCanonCatalogAgainstText([
+    { volume: 1, sequenceInVolume: 1, printedNumber: 1, title: "第一章", label: "第一章", line: 2 }
+  ], text, 6), /totalLines 与 original.txt 不一致/);
+});
+
+test("an available source hash rejects legacy chunks without a verifiable hash", () => {
+  const selected = selectCanonSourceChunks([
+    { ...chunk("第一章", "无 hash 的旧切片", 0), source: "worlds/book/original.txt" },
+    { ...chunk("第一章", "hash 不匹配", 0), source: "worlds/book/original.txt", sourceHash: "stale" },
+    { ...chunk("第一章", "当前切片", 0), source: "worlds/book/original.txt", sourceHash: "current" }
+  ], "current");
+  assert.deepEqual(selected.map(item => item.text), ["当前切片"]);
+});
+
+test("Windows source paths are normalized and private original.txt is never canonical", () => {
+  const selected = selectCanonSourceChunks([
+    { ...chunk("第一章", "canonical", 0), source: "worlds\\book\\original.txt", sourceHash: "current" },
+    { ...chunk("第一章", "private", 0), source: "private\\original.txt", sourceHash: "current" }
+  ], "current");
+  assert.deepEqual(selected.map(item => item.text), ["canonical"]);
 });

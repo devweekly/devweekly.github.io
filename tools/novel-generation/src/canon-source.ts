@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { alignCanonChapterGroups, selectCanonSourceChunks, type CanonChunk } from "./canon-chapters.js";
+import { alignCanonChapterGroups, selectCanonSourceChunks, validateCanonCatalogAgainstText, type CanonChunk } from "./canon-chapters.js";
 import { chunkText } from "./library.js";
 import path from "node:path";
 
@@ -23,10 +23,12 @@ export async function resolveOriginalCanonPath(
   const worldDir = path.resolve(options.worldDir ?? path.join(projectRoot, "worlds", worldId));
 
   let isUniverse = false;
-  try {
-    isUniverse = (await stat(path.join(worldDir, "universe.json"))).isFile();
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  for (const marker of ["universe.json", "source-canon.json"]) {
+    try {
+      if ((await stat(path.join(worldDir, marker))).isFile()) { isUniverse = true; break; }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
   }
 
   const localPath = path.join(worldDir, "original.txt");
@@ -117,14 +119,30 @@ export async function ensureBoundedUniverseCanonAssets(
   const projectRoot = path.resolve(options.projectRoot ?? process.cwd());
   const worldDir = path.resolve(options.worldDir ?? path.join(projectRoot, "worlds", worldId));
   const universePath = path.join(worldDir, "universe.json");
-  let universe: { sourceWorldId?: string; entryChapter?: string; entryChapterIndex?: number } | undefined;
+  let universe: { sourceWorldId?: string; entryChapter?: string; entryChapterIndex?: number; entryChapterId?: string } | undefined;
   try { universe = JSON.parse(await readFile(universePath, "utf8")) as typeof universe; }
   catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
-    throw error;
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    try {
+      await stat(path.join(worldDir, "source-canon.json"));
+      throw new Error("检测到 source-canon.json，但缺少 universe.json。该目录是损坏的故事宇宙，不能按原文项目回退读取完整原著。");
+    } catch (markerError) {
+      if (markerError instanceof Error && markerError.message.includes("损坏的故事宇宙")) throw markerError;
+      if ((markerError as NodeJS.ErrnoException).code !== "ENOENT") throw markerError;
+    }
+    return false;
   }
   if (!universe?.sourceWorldId || !/^[a-z0-9][a-z0-9-]*$/i.test(universe.sourceWorldId)) {
     throw new Error("故事宇宙缺少有效的原文来源身份，无法验证本地原文边界。");
+  }
+  let sourcePointer: { sourceWorldId?: string; readOnly?: boolean };
+  try { sourcePointer = JSON.parse(await readFile(path.join(worldDir, "source-canon.json"), "utf8")) as typeof sourcePointer; }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new Error("故事宇宙缺少 source-canon.json，拒绝把它当作普通原文项目处理。");
+    throw error;
+  }
+  if (sourcePointer.readOnly !== true || sourcePointer.sourceWorldId !== universe.sourceWorldId) {
+    throw new Error("universe.json 与 source-canon.json 的原文来源身份不一致，拒绝读取或重建时点语料。");
   }
 
   const sourceCatalogPath = path.join(projectRoot, "analysis", universe.sourceWorldId, "chapter-index.json");
@@ -172,6 +190,14 @@ export async function ensureBoundedUniverseCanonAssets(
   if (catalog[entryIndex]?.title !== universe.entryChapter) {
     throw new Error("故事宇宙记录的起点章节与原文目录索引不一致，拒绝猜测时点边界。");
   }
+  const entry = catalog[entryIndex]!;
+  const expectedEntryId = "V" + String(entry.volume).padStart(2, "0") + "-C" + String(entry.sequenceInVolume).padStart(3, "0");
+  // New universes store the stable catalog ID. Older worlds may carry a
+  // database-local legacy ID; those remain governed by the persisted index
+  // plus exact title/line evidence rather than being misread as catalog IDs.
+  if (universe.entryChapterId && /^V\d{2}-C\d{3}$/.test(universe.entryChapterId) && universe.entryChapterId !== expectedEntryId) {
+    throw new Error("故事宇宙 entryChapterId 与原文目录中的稳定章节身份不一致，拒绝猜测起点。");
+  }
   for (let index = 0; index <= entryIndex; index++) {
     const line = catalog[index]?.line;
     if (!Number.isSafeInteger(line) || Number(line) < 1 || (index > 0 && Number(line) <= Number(catalog[index - 1]?.line))) {
@@ -215,13 +241,11 @@ export async function ensureBoundedUniverseCanonAssets(
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   const existingChunks = library?.chunks ?? [];
+  // Hashless legacy chunks cannot be proven to match the local snapshot.
+  // Rebuild them from the bounded text instead of blessing unknown content.
   const canonical = selectCanonSourceChunks(existingChunks).filter(chunk =>
-    !chunk.sourceHash || chunk.sourceHash === originalHash || chunk.sourceHash === boundedHash
+    chunk.sourceHash === originalHash || chunk.sourceHash === boundedHash
   );
-  const hasCanonicalPath = existingChunks.some(chunk => /(?:^|\/)original\.txt$/i.test(chunk.source ?? ""));
-  if (hasCanonicalPath && !canonical.length) {
-    throw new Error("故事宇宙原文切片 hash 与本地原文不匹配，拒绝把不明来源切片重绑到时点副本。");
-  }
   const starts: Array<number | undefined> = [];
   let offset = 0;
   for (const line of boundedLines) {
@@ -231,6 +255,7 @@ export async function ensureBoundedUniverseCanonAssets(
     if (boundedText[offset] === "\n") offset++;
   }
   const prefixCatalog = catalog.slice(0, entryIndex + 1);
+  validateCanonCatalogAgainstText(prefixCatalog, boundedText);
   const offsets = prefixCatalog.map(chapter => chapter.line == null ? undefined : starts[chapter.line - 1]);
   const aligned = alignCanonChapterGroups(prefixCatalog, canonical, offsets);
   const boundedChunks = aligned.flatMap((item, index) => {
@@ -260,17 +285,20 @@ export async function ensureBoundedUniverseCanonAssets(
   });
   if (!boundedChunks.length) throw new Error("故事宇宙原文切片无法映射或重建，拒绝发布空检索索引。");
   const now = new Date().toISOString();
+  const sameChunks = JSON.stringify(library?.chunks ?? []) === JSON.stringify(boundedChunks);
   const nextLibrary = {
     schemaVersion: library?.schemaVersion ?? 1,
     worldId,
     createdAt: library?.createdAt ?? now,
-    updatedAt: now,
+    updatedAt: sameChunks && library ? library.updatedAt : now,
     chunks: boundedChunks
   };
-  await mkdir(path.dirname(libraryIndexPath), { recursive: true });
-  const temporary = libraryIndexPath + ".bounded.tmp";
-  await writeFile(temporary, JSON.stringify(nextLibrary, null, 2) + "\n", "utf8");
-  await rename(temporary, libraryIndexPath);
+  if (!sameChunks || !library) {
+    await mkdir(path.dirname(libraryIndexPath), { recursive: true });
+    const temporary = libraryIndexPath + ".bounded.tmp";
+    await writeFile(temporary, JSON.stringify(nextLibrary, null, 2) + "\n", "utf8");
+    await rename(temporary, libraryIndexPath);
+  }
 
   // Rebuild only the bounded catalog metadata; do not copy full-book totals.
   let remaining = entryIndex + 1;
@@ -309,9 +337,14 @@ export async function ensureBoundedUniverseCanonAssets(
       }))
     })
   };
-  const catalogTemporary = childCatalogPath + ".bounded.tmp";
-  await writeFile(catalogTemporary, JSON.stringify(catalogSnapshot, null, 2) + "\n", "utf8");
-  await rename(catalogTemporary, childCatalogPath);
+  let existingCatalog: unknown;
+  try { existingCatalog = JSON.parse(await readFile(childCatalogPath, "utf8")); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  if (JSON.stringify(existingCatalog) !== JSON.stringify(catalogSnapshot)) {
+    const catalogTemporary = childCatalogPath + ".bounded.tmp";
+    await writeFile(catalogTemporary, JSON.stringify(catalogSnapshot, null, 2) + "\n", "utf8");
+    await rename(catalogTemporary, childCatalogPath);
+  }
 
   if (localOriginalText !== boundedText) {
     const temporary = localOriginalPath + ".bounded.tmp";

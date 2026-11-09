@@ -72,34 +72,29 @@ test("as-of dossier publishes a complete directory and removes stale generated f
     await mkdir(join(worldDir, "as-of-analysis"), { recursive: true });
     await writeFile(join(worldDir, "as-of-analysis", "stale-old-section.md"), "stale");
     const chapterText = "第一章正文：先验货籍，再放车马入城。";
-    // chapter-index.json line numbers must point at the exact heading line,
-    // matching what analysis/build-corpus-index.mjs emits for the real corpus.
-    const canonLines = Array.from({ length: 101 }, (_, index) =>
-      index === 0 ? "第一章" : index === 1 ? chapterText :
-      index === 99 ? "第二章" : index === 100 ? "第二章正文" : ""
-    );
+    const canonLines = Array.from({ length: 100 }, (_, index) => index === 0 ? chapterText : index === 99 ? "第二章正文" : "");
     const originalText = canonLines.join("\n");
     const sourceHash = createHash("sha256").update(originalText, "utf8").digest("hex");
-    const secondChapterStart = originalText.indexOf("第二章");
+    const secondChapterStart = originalText.indexOf("第二章正文");
     await writeFile(join(worldDir, "original.txt"), originalText, "utf8");
     await mkdir(join(worldDir, "library"), { recursive: true });
     await writeFile(join(worldDir, "library", "index.json"), JSON.stringify({
       schemaVersion: 1, worldId: "u-child", createdAt: "2026-11-07T00:00:00.000Z",
       updatedAt: "2026-11-07T00:00:00.000Z",
       chunks: [
-        { id: "chunk-1", source: "original.txt", sourceHash, chapter: "第一章", chunkIndex: 0, start: 0, end: chapterText.length, chapterStart: 0, text: chapterText },
-        { id: "chunk-2", source: "original.txt", sourceHash, chapter: "第二章", chunkIndex: 0, start: 0, end: 10, chapterStart: secondChapterStart, text: "第二章正文" }
+        { id: "chunk-1", source: "original.txt", sourceHash, chapter: chapterText, chunkIndex: 0, start: 0, end: chapterText.length, chapterStart: 0, text: chapterText },
+        { id: "chunk-2", source: "original.txt", sourceHash, chapter: "第二章正文", chunkIndex: 0, start: 0, end: 10, chapterStart: secondChapterStart, text: "第二章正文" }
       ]
     }));
     await mkdir(join(root, "analysis", "u-child"), { recursive: true });
     await writeFile(join(root, "analysis", "u-child", "chapter-index.json"), JSON.stringify({
-      schemaVersion: 2, totalLines: 200, volumes: [{ volume: 1, chapters: [
-        { sequenceInVolume: 1, printedNumber: 1, title: "第一章", label: "第一章", line: 1 },
-        { sequenceInVolume: 2, printedNumber: 2, title: "第二章", label: "第二章", line: 100 }
+      schemaVersion: 2, totalLines: 100, volumes: [{ volume: 1, chapters: [
+        { sequenceInVolume: 1, printedNumber: 1, title: chapterText, label: "第一章", line: 1 },
+        { sequenceInVolume: 2, printedNumber: 2, title: "第二章正文", label: "第二章", line: 100 }
       ] }]
     }));
     const { units } = await buildAnalysisUnits("u-child", { worldDir });
-    const firstChapter = units.find(unit => unit.title === "第一章");
+    const firstChapter = units.find(unit => unit.title === chapterText);
     assert.ok(firstChapter, "bounded chapter catalog must produce the first chapter unit");
     const craftDir = join(root, "analysis", "u-child", "corpus-craft", "chapters");
     await mkdir(craftDir, { recursive: true });

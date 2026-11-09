@@ -19,8 +19,8 @@ import {
 } from "./constants.js";
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
 import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks, validateCanonCatalogAgainstText, type CanonChunk } from "./canon-chapters.js";
-import { chunkText } from "./library.js";
-import { chapterId as catalogChapterId, loadChapterCatalog, type CatalogChapter } from "./novel-kb.js";
+import { chunkText, ensurePrivateLibraryIsolation } from "./library.js";
+import { chapterId as catalogChapterId, loadChapterCatalog, loadChapterCatalogDocument, type CatalogChapter } from "./novel-kb.js";
 import { buildStoryStateGraph, filterGraph } from "./story-state-graph.js";
 import { archiveStyleReference, listStyleReferenceHistory, listStyleReferences, putStyleReference, readActiveStyleReference, readStyleReferenceVersion } from "./style-references.js";
 import { getCandidate, getRun, listCandidates, listRuns, recoverInterruptedRuns, saveCandidate, saveRun, type StoryPlanCandidate, type WorkbenchRun } from "./workbench-store.js";
@@ -524,12 +524,18 @@ interface CanonChapterEntry {
   hasChunks: boolean;
 }
 async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEntry[]> {
-  const catalog = await loadChapterCatalog(sourceWorldId);
+  const catalogDocument = await loadChapterCatalogDocument(sourceWorldId);
+  const catalog = catalogDocument?.chapters;
   if (!catalog) throw new Error("原著章节目录不存在，无法安全创建故事宇宙。请先构建 chapter-index.json。");
   let chunks: CanonChapterChunk[] = [];
+  const libraryDir = path.join(worldDir(sourceWorldId), "library");
+  await ensurePrivateLibraryIsolation(libraryDir, sourceWorldId);
   try {
-    const index = JSON.parse(await readFile(path.join(worldDir(sourceWorldId), "library", "index.json"), "utf8")) as { chunks?: CanonChapterChunk[] };
-    chunks = index.chunks ?? [];
+    const index = JSON.parse(await readFile(path.join(libraryDir, "index.json"), "utf8")) as { worldId?: string; chunks?: CanonChapterChunk[] };
+    if (index.worldId !== sourceWorldId || !Array.isArray(index.chunks)) {
+      throw new Error("原文 library/index.json 的世界身份或结构不匹配：" + sourceWorldId);
+    }
+    chunks = index.chunks;
   } catch (error) {
     // The full text + chapter catalog are sufficient to populate the selector.
     // The retrieval index is a derived cache and must not make the canon disappear.
@@ -561,7 +567,7 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
     return offset + lineText.length - lineText.trimStart().length;
   };
   await ensureOriginalText();
-  if (originalText !== undefined) validateCanonCatalogAgainstText(catalog, originalText);
+  if (originalText !== undefined) validateCanonCatalogAgainstText(catalog, originalText, catalogDocument.totalLines);
   const chapterStartOffsets = catalog.map(chapter => chapter.line == null ? undefined : lineStartOffset(chapter.line));
   const originalSourceHash = originalText === undefined ? undefined : createHash("sha256").update(originalText, "utf8").digest("hex");
   const canonChunks = selectCanonSourceChunks(chunks, originalSourceHash);
@@ -646,11 +652,16 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
  * prevents future chapters from leaking into the universe's local corpus.
  */
 async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: string, universeId: string, entryIndex: number): Promise<number> {
-  let source: { schemaVersion: number; createdAt: string; updatedAt: string; chunks: Array<CanonChapterChunk & { [key: string]: unknown }> } = {
+  let source: { schemaVersion: number; worldId?: string; createdAt: string; updatedAt: string; chunks: Array<CanonChapterChunk & { [key: string]: unknown }> } = {
     schemaVersion: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), chunks: []
   };
+  const sourceLibraryDir = path.join(worldDir(sourceWorldId), "library");
+  await ensurePrivateLibraryIsolation(sourceLibraryDir, sourceWorldId);
   try {
-    source = JSON.parse(await readFile(path.join(worldDir(sourceWorldId), "library", "index.json"), "utf8")) as typeof source;
+    source = JSON.parse(await readFile(path.join(sourceLibraryDir, "index.json"), "utf8")) as typeof source & { worldId?: string };
+    if (source.worldId !== sourceWorldId || !Array.isArray(source.chunks)) {
+      throw new Error("原文 library/index.json 的世界身份或结构不匹配：" + sourceWorldId);
+    }
   } catch (error) {
     // The library index is rebuildable. Reconstruct bounded chunks from the
     // canonical full text below instead of treating a missing cache as no canon.
