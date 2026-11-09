@@ -5,8 +5,9 @@ import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { searchLibrary } from "./library.js";
 import { loadChapterCatalog } from "./novel-kb.js";
-import { validateCanonCatalogAgainstText } from "./canon-chapters.js";
+import { splitCanonLines, validateCanonCatalogAgainstText } from "./canon-chapters.js";
 import { ensureBoundedUniverseCanonAssets, resolveOriginalCanonPath } from "./canon-source.js";
+import { resolveWorldLibraryDir } from "./universe-library.js";
 import { runAgentText } from "./generate.js";
 import { parseJsonObject } from "./model-json.js";
 import { z } from "zod";
@@ -531,7 +532,7 @@ export async function prepareWorldAnalysis(worldId: string): Promise<PrepareResu
   const worldDir = resolve("worlds", worldId);
   await ensureBoundedUniverseCanonAssets(worldId, { projectRoot: resolve("."), worldDir });
   const analysisDir = resolve("analysis", worldId, "agent-analysis");
-  const libraryDir = resolve("worlds", worldId, "library");
+  const libraryDir = await resolveWorldLibraryDir(worldId, resolve("worlds"));
   const index = await loadChapterIndex(analysisDir);
   const canonicalSourcePath = await resolveOriginalCanonPath(worldId);
   const canonicalText = await readFile(canonicalSourcePath, "utf8");
@@ -596,7 +597,7 @@ export async function collectWorldAnalysis(
   let sourceLines: string[] | undefined;
   try {
     sourceText = await readFile(sourcePath, "utf8");
-    sourceLines = sourceText.split(/\r?\n/);
+    sourceLines = splitCanonLines(sourceText);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
