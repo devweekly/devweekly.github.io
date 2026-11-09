@@ -877,6 +877,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     const sourceCanonText = await readFile(canonicalPath, "utf8");
     const sourceCanonHash = createHash("sha256").update(sourceCanonText, "utf8").digest("hex");
     const selectedChapter = canonChapters[selectedIndex];
+    const boundedCanonChapters = canonChapters.slice(0, selectedIndex + 1);
     if (!selectedChapter || selectedChapter.title !== entryChapter) return void res.status(400).json({ error: "所选章节索引或标题不匹配，请刷新原文目录后重试。" });
     const incompletePast = canonChapters.slice(0, selectedIndex + 1).find(chapter => !chapter.text.trim());
     if (incompletePast) {
@@ -930,21 +931,21 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     // novel.db is copied into staging and rebound. If it is missing, legacy,
     // or incomplete, rebuild the chapter directory from the bounded local text.
     rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
-    await ensureStagedChapterDatabase(id, stagingDir, canonChapters);
+    await ensureStagedChapterDatabase(id, stagingDir, boundedCanonChapters);
     const knowledgePath = path.join(stagingDir, "novel.db");
     const sourceDb = new DatabaseSync(knowledgePath);
     let entryRecord: { chapter_id:string; ordinal:number; volume:number; title:string } | undefined;
     try {
       const chapterRows = sourceDb.prepare("SELECT chapter_id,ordinal,volume,title FROM novel_chapters ORDER BY ordinal").all() as Array<{chapter_id:string;ordinal:number;volume:number;title:string}>;
       const rowsById = new Map(chapterRows.map(row => [row.chapter_id, row]));
-      const catalogIds = new Set(canonChapters.map(chapter => chapter.chapterId));
+      const catalogIds = new Set(boundedCanonChapters.map(chapter => chapter.chapterId));
       const unexpected = chapterRows.filter(row => row.chapter_id !== "V00-C000" && !catalogIds.has(row.chapter_id));
       if (unexpected.length) {
         throw new Error("staging novel.db 含有不属于 bounded chapter-index.json 的章节 ID（" + unexpected[0]!.chapter_id + "），拒绝猜测章节映射。");
       }
-      const missing = canonChapters.find(chapter => !rowsById.has(chapter.chapterId));
+      const missing = boundedCanonChapters.find(chapter => !rowsById.has(chapter.chapterId));
       if (missing) throw new Error("staging novel.db 重建后仍缺少章节记录：" + missing.title + "。");
-      for (const chapter of canonChapters) {
+      for (const chapter of boundedCanonChapters) {
         const row = rowsById.get(chapter.chapterId);
         if (!row || Number(row.ordinal) !== chapter.ordinal || Number(row.volume) !== chapter.volume || row.title !== chapter.title) {
           throw new Error("staging novel.db 章节目录与 bounded chapter-index.json 不一致：" + chapter.title + "。");
