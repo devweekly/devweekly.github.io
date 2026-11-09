@@ -18,7 +18,7 @@ import {
   WORKBENCH_BODY_LIMIT
 } from "./constants.js";
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
-import { alignCanonChapterGroups, joinCanonChunkText, splitCanonLines, type CanonChunk } from "./canon-chapters.js";
+import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks, splitCanonLines, type CanonChunk } from "./canon-chapters.js";
 import { chunkText, ensurePrivateLibraryIsolation } from "./library.js";
 import { chapterId as catalogChapterId, loadChapterCatalog, loadChapterCatalogDocument, prepareCanonIndexInputs, type CatalogChapter } from "./novel-kb.js";
 import { buildStoryStateGraph, filterGraph } from "./story-state-graph.js";
@@ -542,8 +542,13 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
     // The full text + chapter catalog are sufficient to populate the selector.
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
-  const prepared = await prepareCanonIndexInputs(worldDir(sourceWorldId), catalog, chunks, catalogDocument.totalLines);
+  const prepared = await prepareCanonIndexInputs(worldDir(sourceWorldId), catalog, chunks, catalogDocument.totalLines, catalogDocument.sourceHash);
   const aligned = alignCanonChapterGroups(catalog, prepared.chunks, prepared.chapterStartOffsets);
+  const sourceHash = prepared.originalText === undefined
+    ? undefined
+    : createHash("sha256").update(prepared.originalText, "utf8").digest("hex");
+  const persistedCanon = selectCanonSourceChunks(chunks, sourceHash);
+  const persistedAligned = alignCanonChapterGroups(catalog, persistedCanon, prepared.chapterStartOffsets);
   const originalLines = prepared.originalText === undefined ? undefined : splitCanonLines(prepared.originalText);
   const result: CanonChapterEntry[] = [];
   for (const item of aligned) {
@@ -556,7 +561,10 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
       sequenceInVolume: item.chapter.sequenceInVolume,
       chapterId: catalogChapterId(item.chapter.volume, item.chapter.sequenceInVolume),
       ordinal: item.catalogIndex + 1,
-      hasChunks: item.chunks.length > 0
+      // Distinguish real persisted retrieval coverage from chunks reconstructed
+      // in memory. The source novel.db may legitimately lack rows for chapters
+      // whose derived Library chunks have not yet been materialized.
+      hasChunks: (persistedAligned[item.catalogIndex]?.chunks.length ?? 0) > 0
     });
   }
   return result;
