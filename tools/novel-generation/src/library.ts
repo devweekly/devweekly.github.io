@@ -191,8 +191,10 @@ export async function ensurePrivateLibraryIsolation(libraryDir: string, worldId:
     }
   }
   if (privateChunks.length || hasPrivateAnnotations) {
-    searchCache.delete(indexPath);
-    searchCache.delete(privateIndexPath);
+    searchCache.delete(indexPath + "::public");
+    searchCache.delete(indexPath + "::private");
+    searchCache.delete(privateIndexPath + "::public");
+    searchCache.delete(privateIndexPath + "::private");
     return true;
   }
   return false;
@@ -292,8 +294,10 @@ export async function ingestFiles(worldId: string, inputPaths: string[], library
     }
   }
 
-  searchCache.delete(indexPath);
-  searchCache.delete(privateIndexPath);
+  searchCache.delete(indexPath + "::public");
+  searchCache.delete(indexPath + "::private");
+  searchCache.delete(privateIndexPath + "::public");
+  searchCache.delete(privateIndexPath + "::private");
   return chunks.length;
 }
 
@@ -395,6 +399,13 @@ export async function searchLibrary(
 
 export async function listTextFiles(paths: string[]): Promise<string[]> {
   const result: string[] = [];
+  // Directory input is convenient for a corpus folder, but a project-root
+  // input must never recursively ingest generated outputs, indexes or runtime
+  // dependencies as if they were source material.
+  const excludedDirectories = new Set([
+    ".git", ".output", ".cache", ".next", "node_modules", "dist", "coverage",
+    "analysis", "worlds", "private-library", "vane-index"
+  ]);
   const visit = async (path: string): Promise<void> => {
     const ext = extname(path).toLowerCase();
     if ([".txt", ".md"].includes(ext)) {
@@ -403,6 +414,7 @@ export async function listTextFiles(paths: string[]): Promise<string[]> {
     }
     const entries = await readdir(path, { withFileTypes: true });
     for (const entry of entries) {
+      if (entry.isDirectory() && excludedDirectories.has(entry.name)) continue;
       const child = join(path, entry.name);
       if (entry.isDirectory()) await visit(child);
       else if (entry.isFile() && [".txt", ".md"].includes(extname(entry.name).toLowerCase())) result.push(child);
