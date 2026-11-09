@@ -1,7 +1,7 @@
 // 语料知识库批处理：把 library 切片组成定长批次（相邻批次做重叠去重，避免同一段落
 // 被算成两次事件），同步 novel_* 知识表；同时提供目录扫描与语料画像入口。
 // 语料重新导入后派生分析必须失效重建，本模块导出失效钩子供 library 调用。
-import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
+import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import {
   ANALYSIS_BATCH_CHARS,
@@ -89,9 +89,11 @@ interface CanonIndexInputs {
   originalText?: string;
 }
 
+const canonLibraryValidationCache = new Map<string, string>();
+
 /**
- * Reconstruct a missing source Library index from the canonical offline text
- * and its verified chapter catalog. Existing auxiliary imports are preserved.
+ * Reconstruct missing chapter chunks from the canonical offline text and its
+ * verified catalog. Existing auxiliary imports and valid chapter chunks remain.
  */
 export async function ensureSourceCanonLibraryIndex(
   worldId: string,
@@ -113,33 +115,48 @@ export async function ensureSourceCanonLibraryIndex(
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
 
-  const isCanonicalSource = (source: string) => {
-    const normalized = source.replace(/\\/g, "/");
-    return normalized.split("/").at(-1)?.toLowerCase() === "original.txt" && !normalized.split("/").includes("private");
-  };
-  const canonicalExisting = (existing?.chunks ?? []).filter(chunk => isCanonicalSource(chunk.source));
-  // Existing canonical chunks are checked against the source hash and exact
-  // text offsets by prepareCanonIndexInputs at indexing/creation boundaries.
-  // Do not re-read the full corpus on every ordinary retrieval request.
-  if (canonicalExisting.length) return false;
-
   const originalPath = await resolveOriginalCanonPath(worldId, { projectRoot, worldDir: absoluteWorldDir });
+  const originalInfo = await stat(originalPath);
+  let indexInfo: Awaited<ReturnType<typeof stat>> | undefined;
+  try { indexInfo = await stat(indexPath); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  const signature = [originalInfo.size, originalInfo.mtimeMs, indexInfo?.size ?? "missing", indexInfo?.mtimeMs ?? "missing"].join(":");
+  if (indexInfo && canonLibraryValidationCache.get(indexPath) === signature) return false;
+
   const originalText = await readFile(originalPath, "utf8");
   const catalogDocument = await loadChapterCatalogDocument(worldId, join(projectRoot, "analysis", worldId, "chapter-index.json"));
   if (!catalogDocument) throw new Error("缺少 analysis/" + worldId + "/chapter-index.json，无法从离线原文重建 Library。");
   validateCanonCatalogAgainstText(catalogDocument.chapters, originalText, catalogDocument.totalLines);
   const sourceHash = createHash("sha256").update(originalText, "utf8").digest("hex");
+  const isCanonicalSource = (source: string) => {
+    const normalized = source.replace(/\\/g, "/");
+    return normalized.split("/").at(-1)?.toLowerCase() === "original.txt" && !normalized.split("/").includes("private");
+  };
+  const canonicalExisting = (existing?.chunks ?? []).filter(chunk => isCanonicalSource(chunk.source));
+  if (canonicalExisting.some(chunk => chunk.sourceHash !== sourceHash)) {
+    throw new Error("Library 中已有 original.txt 切片，但 sourceHash 与当前离线原文不一致。请先备份，再执行 ingest --input original.txt，随后执行 index-story；不能混用新旧语料。");
+  }
+
+  const prepared = await prepareCanonIndexInputs(absoluteWorldDir, catalogDocument.chapters, canonicalExisting, catalogDocument.totalLines);
+  const aligned = alignCanonChapterGroups(catalogDocument.chapters, prepared.chunks, prepared.chapterStartOffsets);
+  validateCanonChunksAgainstText(aligned, originalText, prepared.chapterStartOffsets);
+  const missing = aligned.filter(item => item.chunks.length === 0);
+  if (!missing.length) {
+    canonLibraryValidationCache.set(indexPath, signature);
+    return false;
+  }
+
   const lines = splitCanonLines(originalText);
   const lineStarts = canonLineStartOffsets(originalText);
   const sourceKey = relative(projectRoot, originalPath).replace(/\\/g, "/");
-  const chunks: LibraryChunk[] = [];
-  for (let index = 0; index < catalogDocument.chapters.length; index++) {
-    const chapter = catalogDocument.chapters[index]!;
+  const rebuilt: LibraryChunk[] = [];
+  for (const item of missing) {
+    const chapter = item.chapter;
     if (!Number.isSafeInteger(chapter.line) || (chapter.line ?? 0) < 1) {
       throw new Error("原文目录缺少有效行号，无法重建章节切片：" + chapter.title);
     }
     const startLine = chapter.line as number;
-    const nextLine = catalogDocument.chapters[index + 1]?.line;
+    const nextLine = catalogDocument.chapters[item.catalogIndex + 1]?.line;
     if (nextLine !== undefined && (!Number.isSafeInteger(nextLine) || nextLine <= startLine)) {
       throw new Error("原文目录章节行号顺序异常：" + chapter.title);
     }
@@ -148,24 +165,26 @@ export async function ensureSourceCanonLibraryIndex(
     const lineText = lines[startLine - 1] ?? "";
     const chapterStart = (lineStarts[startLine - 1] ?? 0) + lineText.length - lineText.trimStart().length;
     const stableId = chapterId(chapter.volume, chapter.sequenceInVolume);
-    chunkText(chapterText).forEach((part, chunkIndex) => chunks.push({
+    chunkText(chapterText).forEach((part, chunkIndex) => rebuilt.push({
       id: sourceKey + ":catalog:" + stableId + ":" + chunkIndex,
       source: sourceKey, chapter: chapter.title, chunkIndex,
       start: part.start, end: part.end, text: part.text,
       sourceHash, chapterStart
     }));
   }
-  if (!chunks.length) throw new Error("从 original.txt 重建后没有得到任何章节切片。");
+  if (!rebuilt.length) throw new Error("从 original.txt 重建后没有得到任何章节切片。");
   const now = new Date().toISOString();
   await mkdir(libraryDir, { recursive: true });
   const next = {
     schemaVersion: 1 as const, worldId,
     createdAt: existing?.createdAt ?? now, updatedAt: now,
-    chunks: [...(existing?.chunks ?? []), ...chunks]
+    chunks: [...(existing?.chunks ?? []), ...rebuilt]
   };
   const temporary = indexPath + ".canon-rebuild.tmp";
   await writeFile(temporary, JSON.stringify(next, null, 2) + "\n", "utf8");
   await rename(temporary, indexPath);
+  const writtenInfo = await stat(indexPath);
+  canonLibraryValidationCache.set(indexPath, [originalInfo.size, originalInfo.mtimeMs, writtenInfo.size, writtenInfo.mtimeMs].join(":"));
   return true;
 }
 
