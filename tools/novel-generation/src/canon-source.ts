@@ -160,11 +160,13 @@ export async function ensureBoundedUniverseCanonAssets(
   }
   if (!catalog.length) throw new Error("原文项目章节目录为空，无法修复故事宇宙的原文时点边界。");
 
-  let entryIndex = universe.entryChapterIndex;
-  if (!Number.isSafeInteger(entryIndex) || Number(entryIndex) < 0 || Number(entryIndex) >= catalog.length) {
+  let entryIndex: number;
+  if (Number.isSafeInteger(universe.entryChapterIndex) && Number(universe.entryChapterIndex) >= 0 && Number(universe.entryChapterIndex) < catalog.length) {
+    entryIndex = Number(universe.entryChapterIndex);
+  } else {
     const matches = catalog.flatMap((chapter, index) => chapter.title === universe?.entryChapter ? [index] : []);
     if (matches.length !== 1) throw new Error("旧故事宇宙缺少可唯一验证的原文起点索引，拒绝猜测并读取完整原著。");
-    entryIndex = matches[0];
+    entryIndex = matches[0]!;
   }
   const nextChapter = catalog[entryIndex + 1];
   const endBeforeLine = nextChapter?.line ?? undefined;
