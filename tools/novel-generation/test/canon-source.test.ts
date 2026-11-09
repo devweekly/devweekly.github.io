@@ -41,7 +41,7 @@ test("universe copy creates an independent local copy from the root corpus", asy
     const target = join(root, "worlds", "u-1234567890abcdef");
     await mkdir(source, { recursive: true });
     await mkdir(target, { recursive: true });
-    const original = "canonical root corpus\\nfuture chapter";
+    const original = "canonical root corpus\nfuture chapter";
     await writeFile(join(root, "original.txt"), original, "utf8");
     assert.equal(await copyOriginalCanonToUniverse("source-world", target, root, 2), true);
     assert.equal(await readFile(join(target, "original.txt"), "utf8"), "canonical root corpus");
@@ -53,8 +53,8 @@ test("universe copy creates an independent local copy from the root corpus", asy
 });
 
 test("canon truncation excludes the next chapter heading and handles CRLF", () => {
-  assert.equal(truncateCanonAtLine("第一章\\r\\n正文\\r\\n第二章\\r\\n未来", 3), "第一章\\r\\n正文");
-  assert.equal(truncateCanonAtLine("第一章\\n正文\\n第二章", undefined), "第一章\\n正文\\n第二章");
+  assert.equal(truncateCanonAtLine("第一章\\r\n正文\\r\n第二章\\r\n未来", 3), "第一章\\r\n正文");
+  assert.equal(truncateCanonAtLine("第一章\n正文\n第二章", undefined), "第一章\n正文\n第二章");
   assert.throws(() => truncateCanonAtLine("只有一行", 3), /超出全文范围/);
 });
 
@@ -69,7 +69,7 @@ test("legacy universe repair truncates full local canon and rebinds library hash
     await mkdir(join(universeDir, "library"), { recursive: true });
     await mkdir(join(root, "analysis", sourceId), { recursive: true });
     await mkdir(join(root, "analysis", universeId), { recursive: true });
-    const fullText = ["第一章", "正文一", "第二章", "正文二", "第三章", "未来剧情"].join("\\n");
+    const fullText = ["第一章", "正文一", "第二章", "正文二", "第三章", "未来剧情"].join("\n");
     const fullHash = createHash("sha256").update(fullText, "utf8").digest("hex");
     const starts = [fullText.indexOf("第一章"), fullText.indexOf("第二章"), fullText.indexOf("第三章")];
     const catalog = {
@@ -98,7 +98,7 @@ test("legacy universe repair truncates full local canon and rebinds library hash
     await writeFile(join(root, "analysis", universeId, "chapter-index.json"), JSON.stringify(catalog));
 
     assert.equal(await ensureBoundedUniverseCanonAssets(universeId, { projectRoot: root }), true);
-    const boundedText = ["第一章", "正文一", "第二章", "正文二"].join("\\n");
+    const boundedText = ["第一章", "正文一", "第二章", "正文二"].join("\n");
     assert.equal(await readFile(join(universeDir, "original.txt"), "utf8"), boundedText);
     const index = JSON.parse(await readFile(join(universeDir, "library", "index.json"), "utf8")) as {
       chunks: Array<{ id: string; source: string; sourceHash: string }>;
@@ -126,7 +126,7 @@ test("legacy universe repair reconstructs a missing local copy only as a bounded
     const universeDir = join(root, "worlds", universeId);
     await mkdir(universeDir, { recursive: true });
     await mkdir(join(root, "analysis", sourceId), { recursive: true });
-    await writeFile(join(root, "original.txt"), "第一章\\n正文一\\n第二章\\n正文二\\n第三章\\n未来剧情", "utf8");
+    await writeFile(join(root, "original.txt"), "第一章\n正文一\n第二章\n正文二\n第三章\n未来剧情", "utf8");
     await writeFile(join(root, "analysis", sourceId, "chapter-index.json"), JSON.stringify({
       volumes: [{ volume: 1, chapters: [
         { sequenceInVolume: 1, title: "第一章", label: "第一章", line: 1 },
@@ -138,7 +138,7 @@ test("legacy universe repair reconstructs a missing local copy only as a bounded
       id: universeId, sourceWorldId: sourceId, entryChapter: "第二章", entryChapterIndex: 1
     }));
     assert.equal(await ensureBoundedUniverseCanonAssets(universeId, { projectRoot: root }), true);
-    assert.equal(await readFile(join(universeDir, "original.txt"), "utf8"), "第一章\\n正文一\\n第二章\\n正文二");
+    assert.equal(await readFile(join(universeDir, "original.txt"), "utf8"), "第一章\n正文一\n第二章\n正文二");
     assert.ok(!(await readFile(join(universeDir, "original.txt"), "utf8")).includes("未来剧情"));
   } finally {
     await rm(root, { recursive: true, force: true });
