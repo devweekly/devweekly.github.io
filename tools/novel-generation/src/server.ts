@@ -609,7 +609,6 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
       const chapters = (volume.chapters ?? []).slice(0, remaining).map(safeChapter);
       remaining -= chapters.length;
       if (!chapters.length) return null;
-      const lastLine = [...chapters].reverse().find(chapter => typeof chapter.line === "number")?.line;
       return {
         volume: volume.volume,
         ...(typeof volume.startLine === "number" ? { startLine: volume.startLine } : {}),
@@ -809,7 +808,14 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
         return shouldCopyUniverseAsset(path.relative(sourceDir, source));
       }
     });
-    await copyOriginalCanonToUniverse(rootSourceId, stagingDir, path.resolve("."));
+    const sourceCatalog = await loadChapterCatalog(rootSourceId);
+    if (!sourceCatalog) throw new Error("原著章节目录不存在，无法建立安全的时点原文副本。");
+    const nextChapterLine = sourceCatalog[selectedIndex + 1]?.line;
+    if (sourceCatalog[selectedIndex + 1] && (!Number.isSafeInteger(nextChapterLine) || Number(nextChapterLine) < 2)) {
+      throw new Error("所选章节之后的目录缺少有效行号，无法截断原文未来剧情。");
+    }
+    const copiedCanon = await copyOriginalCanonToUniverse(rootSourceId, stagingDir, path.resolve("."), nextChapterLine);
+    if (!copiedCanon) throw new Error("无法读取原著全文并建立独立的时点原文副本；拒绝创建可能暴露未来剧情的故事宇宙。");
     // novel.db 是原著分析只读快照的初期副本；重置其世界身份，防止数据库身份校验误认为属于源项目。
     rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
     const knowledgePath = path.join(stagingDir, "novel.db");
@@ -868,8 +874,8 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     await writeFile(path.join(stagingDir, "source-canon.json"), JSON.stringify({ sourceWorldId: rootSourceId, readOnly: true }, null, 2) + "\n", "utf8");
     await writeFile(path.join(stagingDir, "universe-entry.md"), selectedChapter.text + "\n", "utf8");
     await writeFile(path.join(stagingDir, "universe-origin-context.md"), originContext + "\n", "utf8");
-    await writeUniverseLibrarySnapshot(rootSourceId, stagingDir, id, selectedIndex);
-    await writeUniverseAnalysisCatalogSnapshot(rootSourceId, stagingDir, id, selectedIndex);
+    const boundedTotalLines = await writeUniverseLibrarySnapshot(rootSourceId, stagingDir, id, selectedIndex);
+    await writeUniverseAnalysisCatalogSnapshot(rootSourceId, stagingDir, id, selectedIndex, boundedTotalLines);
     await writeFile(path.join(stagingDir, "source-canon-as-of.json"), JSON.stringify({ sourceWorldId: rootSourceId, entryChapter, entryChapterId, entryChapterIndex: selectedIndex, entryOrdinal, policy: "chapter-scoped-evidence-only", fullBookAggregates: "excluded" }, null, 2) + "\n", "utf8");
     await rename(stagingDir, targetDir);
     const knowledgeBuild = req.body?.buildKnowledge === false ? null : await serializeWorld(id, () => startKnowledgeBuild(id));
@@ -965,7 +971,8 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
         return shouldCopyUniverseAsset(path.relative(parentDir, source));
       }
     });
-    await copyOriginalCanonToUniverse(parentId, stagingDir, path.resolve("."));
+    const copiedCanon = await copyOriginalCanonToUniverse(parentId, stagingDir, path.resolve("."));
+    if (!copiedCanon) throw new Error("父宇宙缺少自己的时点原文副本，拒绝创建分支；不能回退读取完整原著。");
     rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
     restrictKnowledgeDatabaseToEntry(path.join(stagingDir, "novel.db"), id, parent.entryChapter, parent.entryChapterId);
     const universe: StoryUniverse = {
@@ -987,8 +994,8 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
       ? parent.entryChapterIndex!
       : matchingParentIndexes.length === 1 ? matchingParentIndexes[0]! : -1;
     if (parentEntryIndex < 0 || parentEntryIndex >= parentCanonChapters.length) throw new Error("父宇宙的原文起点无法通过稳定章节索引唯一定位，拒绝创建可能泄漏未来剧情的分支。");
-    await writeUniverseLibrarySnapshot(parent.sourceWorldId, stagingDir, id, parentEntryIndex);
-    await writeUniverseAnalysisCatalogSnapshot(parent.sourceWorldId, stagingDir, id, parentEntryIndex);
+    const boundedTotalLines = await writeUniverseLibrarySnapshot(parent.sourceWorldId, stagingDir, id, parentEntryIndex);
+    await writeUniverseAnalysisCatalogSnapshot(parent.sourceWorldId, stagingDir, id, parentEntryIndex, boundedTotalLines);
 
     const forkState = rebaseStoryState(state, parentId, id);
     await writeFile(path.join(stagingDir, "story-state.json"), JSON.stringify(forkState, null, 2) + "\n", "utf8");
