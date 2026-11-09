@@ -303,3 +303,5 @@ Story Unit 先建立完整故事的因果骨架和结局方向，再按叙事需
 - 故事宇宙保存创建时完整源语料的 `sourceCanonHash`，分叉继承。根原文版本变化后，旧宇宙不能被静默改写；旧宇宙缺少本地 bounded 副本且没有源指纹时必须失败关闭。
 - 宇宙 staging 使用显式文件 allow-list，只复制 checkpoint 后的 `novel.db`。根目录全文必须经 bounded-copy 专用路径写入；未知文件、私人笔记、全书派生文档不随目录复制。
 - 故事宇宙自己的 `original.txt`、`chapter-index.json`、`library/index.json` 必须互相匹配同一个 bounded hash。任何检索、分析和续写路径都必须使用当前 world 的本地 bounded 资产，不得回退到根目录全书。
+
+- 离线目录生成器必须对原始 `original.txt` 计算 SHA-256，并将其写入 `chapter-index.json`。生成器的脚本级回归测试必须真实执行脚本，而不是只测试章节解析函数；这样可以捕获输出组装阶段的未定义变量、路径错误和文件写入失败。目录缺失或损坏不能仅凭全文存在就伪造目录成功，必须运行可验证的目录构建流程并校验章节行号。
