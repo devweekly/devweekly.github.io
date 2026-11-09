@@ -1,0 +1,294 @@
+{
+  "currentPosition": "李阎从空置多年的河间李氏祖屋出发，经由黑石砖房间抵达一处湿热、地面渗水、空气中混着烂木头与咸水气味的新地点，站立未动，等待眼睛适应黑暗。",
+  "canonFacts": [
+    {
+      "id": "fact-qi-yu-fu-zhou-20",
+      "fact": "气愈符咒对李阎共二十次，一次无效。",
+      "source": "chapter-final",
+      "confidence": "original"
+    },
+    {
+      "id": "fact-lie-dan-list-trade",
+      "fact": "黑石砖房间中的列单可用某种点数兑换热武器弹药与手榴弹，本次兑换后点数仍有剩余。",
+      "source": "chapter-final",
+      "confidence": "original"
+    },
+    {
+      "id": "fact-kill-count-87",
+      "fact": "列单上“杀人如麻”一栏数值为八十七，本章未变。",
+      "source": "chapter-final",
+      "confidence": "original"
+    },
+    {
+      "id": "fact-beast-mark-on-chest",
+      "fact": "李阎胸骨偏左处有一只七窍渗血的猛兽印记，皮下有活动感，非普通纹身。",
+      "source": "chapter-final",
+      "confidence": "original"
+    },
+    {
+      "id": "fact-li-clan-house-empty",
+      "fact": "河间李氏分家后祖屋长期锁闭，表兄弟各有去处、无人回来居住，李阎独自用半个多月重新布置了练武房。",
+      "source": "chapter-final",
+      "confidence": "original"
+    }
+  ],
+  "characters": [
+    {
+      "name": "李阎",
+      "profile": {
+        "coreTraits": [
+          "寡言，习惯独处",
+          "行事有条理，凡事先清点再动身",
+          "对已无望之事不追问，直接切断"
+        ],
+        "values": [
+          "把该做的准备做完，不指望别人",
+          "不与过去的人事纠缠"
+        ],
+        "contradictions": [
+          "数着弹匣与呼吸打发最后的等待，却又推开手机不让自己联系旧人",
+          "明知有人在等一顿饭，选择不解释、不赴约"
+        ],
+        "voice": "短句，少形容，把话停在事实层面",
+        "boundaries": [
+          "不会主动联系嫁到山东的张道静",
+          "不会打电话改口赴约，也不解释缺席"
+        ],
+        "arc": "从做完准备、切断旧日牵连，走向独自进入不可知之地"
+      },
+      "status": "已抵达新地点，衣物被湿气浸透，站立观察，尚未行动",
+      "location": "湿热、地面渗水、远处有汽笛声的未知地点",
+      "abilities": [
+        "使用柯尔特手枪与手榴弹等热武器",
+        "以环龙剑为随身武器",
+        "胸口猛兽印记（性质未明）"
+      ],
+      "knowledge": [
+        "知道黑石砖房间里两扇门的用途：一扇半掩，后面楼梯是回去的路（来自本章）",
+        "知道列单可以兑换热武器弹药，且自己点数仍有剩余（来自本章）",
+        "知道胖子这次没有出现（来自本章）",
+        "知道气愈符咒二十次全部无效（来自本章）"
+      ],
+      "goals": [
+        "抵达并弄清眼前这个湿热之地"
+      ],
+      "motivation": "两个月的准备已全部做完，祖屋中再无可做的事，只能按既定的路走进来。",
+      "resources": [
+        "柯尔特手枪与十个弹匣（其中一个装七颗）",
+        "一包二十颗手榴弹",
+        "环龙剑",
+        "列单中剩余未用的点数",
+        "怀中的半张糊血残页"
+      ],
+      "constraints": [
+        "气愈符咒二十次全部无效，无治疗手段",
+        "眼下的湿热与黑暗使视力尚未适应",
+        "黑石砖房间里那扇锁链门无法进入"
+      ],
+      "currentPressure": [
+        "身处完全陌生的湿热环境，脚下的地面不稳",
+        "胖子缺席，无人交代情况"
+      ],
+      "decisionHistory": [
+        "把手机推进桌里、不带走，也不打电话改口赴约",
+        "拨快祖父留下的慢钟，按自己的表核对时间",
+        "花半个月重新布置祖屋，最终背起帆布包出发",
+        "在黑石砖房间没有等到胖子，也未去碰那扇锁链门"
+      ],
+      "relationships": [
+        "张道静：嫁到山东，多年未打听，本章想起后亦无意打听",
+        "胖子：以往会突然出现的同行者，本章未现身",
+        "周末要见面的人：被李阎单方面放弃，未告知",
+        "河间李氏表兄弟：已各自散去，无人回来居住"
+      ],
+      "arcMilestones": [
+        {
+          "id": "milestone-cut-off-weekend",
+          "chapter": "chapter-final",
+          "change": "明知有人在等一顿周末的饭，选择不再打电话改口，让这件事自然过去。",
+          "evidence": "这会儿坐在这儿，他知道自己到不了，也没打算再打电话改口。那桌菜会做好，会有人等他，等不着就骂两句，把菜放冰箱，第二天热了吃。这事就算过去了。"
+        },
+        {
+          "id": "milestone-leave-phone",
+          "chapter": "chapter-final",
+          "change": "把手机推到帆布包后头，主动切断与旧日世界的联络通道后再动身。",
+          "evidence": "桌上扣着的手机黑着。他把它往桌里推了推，推到帆布包后头，省得走的时候顺手揣上。"
+        },
+        {
+          "id": "milestone-arrive-wet-place",
+          "chapter": "chapter-final",
+          "change": "经过黑石砖房间抵达一处湿热未知之地，独自站定。",
+          "evidence": "再睁眼时，热气先扑上来。"
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "id": "event-final-preparation-in-ancestral-house",
+      "summary": "李阎在河间祖屋练武房压弹匣、装手榴弹、试环龙、拨快挂钟，等完最后三个多钟头后出发。",
+      "position": "出发前夕，时间未知地点的最后几小时",
+      "participants": [
+        "李阎"
+      ],
+      "causes": [
+        "河间李氏分家，祖屋已空置闲置",
+        "李阎需要在动身前清点并备齐武器"
+      ],
+      "consequences": [
+        "手机被留下，与旧日人事彻底断开",
+        "只带武器与残页，独自前往黑石砖房间"
+      ],
+      "relatedPlotThreads": [
+        "thread-li-yan-solo-departure"
+      ],
+      "origin": "original",
+      "source": "chapter-final"
+    },
+    {
+      "id": "event-final-arrive-black-brick-room",
+      "summary": "李阎在黑石砖房间等待胖子未果，用列单补足弹药与手榴弹，点数仍有剩余，随后被“时间到了”的感觉带走。",
+      "position": "紧接祖屋出发之后",
+      "participants": [
+        "李阎"
+      ],
+      "causes": [
+        "李阎按既定路线动身",
+        "列单可用点数兑换热武器"
+      ],
+      "consequences": [
+        "弹药补给完成，剩余点数保留未动",
+        "未获任何来自胖子的情报或提示"
+      ],
+      "relatedPlotThreads": [
+        "thread-li-yan-solo-departure"
+      ],
+      "origin": "original",
+      "source": "chapter-final"
+    },
+    {
+      "id": "event-final-arrive-wet-hot-place",
+      "summary": "李阎再次睁眼落到一处湿热、地面渗水、混着烂木头与咸水气味、远处有汽笛声的未知地点。",
+      "position": "章节结尾",
+      "participants": [
+        "李阎"
+      ],
+      "causes": [
+        "黑石砖房间中“时间到了”的感觉触发转移"
+      ],
+      "consequences": [
+        "李阎处于视力未适应、衣服被湿气浸透的状态",
+        "新的行动环境尚未探明"
+      ],
+      "relatedPlotThreads": [
+        "thread-li-yan-solo-departure"
+      ],
+      "origin": "original",
+      "source": "chapter-final"
+    }
+  ],
+  "plotThreads": [
+    {
+      "id": "thread-li-yan-solo-departure",
+      "title": "李阎只身赴未知之地",
+      "status": "active",
+      "lastUpdated": "chapter-final",
+      "notes": "祖屋准备完成，切断旧日联络，经黑石砖房间补给弹药后落到湿热未知地点，同伴未出现。"
+    }
+  ],
+  "foreshadowingUpdates": [
+    {
+      "id": "clue-half-page-blood-stain:chapter-final",
+      "clueId": "clue-half-page-blood-stain",
+      "clue": "怀中半张糊血的残页",
+      "status": "reinforced",
+      "chapter": "chapter-final",
+      "change": "明确残页仍贴身携带，两个月内翻看过两回都没看明白，本章也未再想起。",
+      "relatedThreadIds": [
+        "thread-li-yan-solo-departure"
+      ],
+      "evidence": "怀里那半张糊血的残页贴着他的肋，纸硬得硌人。这两个月他翻出来看过两回，一回也没看明白，就塞了回去。这会儿也没想起来。"
+    },
+    {
+      "id": "clue-locked-door-chain:chapter-final",
+      "clueId": "clue-locked-door-chain",
+      "clue": "黑石砖房间里被铁链绕门框两道、锁头锈红的那扇门",
+      "status": "reinforced",
+      "chapter": "chapter-final",
+      "change": "李阎这次主动站到门前观察铁链与无标记锁头，走到离铁链一尺多便停住，未尝试开启；门缝里的黑与房内暗不同。",
+      "relatedThreadIds": [
+        "thread-li-yan-solo-departure"
+      ],
+      "evidence": "上一次他没多看那扇门，这一次站到了它前面。铁链绷得不紧，垂下来一截，锁头上没有任何标记。门缝里是黑的，和房间里的暗不是一种——一种里外不通的黑。他往前半步就站住了，离铁链还有一尺多。"
+    },
+    {
+      "id": "clue-beast-mark-movement:chapter-final",
+      "clueId": "clue-beast-mark-movement",
+      "clue": "胸口七窍渗血猛兽印记下的活动感",
+      "status": "reinforced",
+      "chapter": "chapter-final",
+      "change": "印记外观不像画上去，按压时皮肉硬而底下有东西翻身，李阎注意到但未追问。",
+      "relatedThreadIds": [
+        "thread-li-yan-solo-departure"
+      ],
+      "evidence": "他抬手按了一下，皮肉是硬的，底下却有什么东西轻轻翻了个身。"
+    }
+  ],
+  "macguffinUpdates": [
+    {
+      "id": "macguffin-list-points:chapter-final",
+      "macguffinId": "macguffin-list-points",
+      "name": "列单上的可用点数",
+      "status": "held",
+      "chapter": "chapter-final",
+      "change": "兑换了几匣子弹与手榴弹后点数被划掉一截，仍有余量；李阎选择不再动用剩余部分。",
+      "holder": "李阎",
+      "relatedThreadIds": [
+        "thread-li-yan-solo-departure"
+      ],
+      "evidence": "他扫了一遍，大半是他没见过的。热武器那一栏还在，价格没变。他加了几匣子弹，又添了些手榴弹，点数划掉一截，剩的还多。剩下的他没动，留在那儿，留着踏实。"
+    },
+    {
+      "id": "macguffin-colt-ammo:chapter-final",
+      "macguffinId": "macguffin-colt-ammo",
+      "name": "柯尔特手枪及十个弹匣",
+      "status": "held",
+      "chapter": "chapter-final",
+      "change": "祖屋中压满十个弹匣（最后一匣七颗），列单补足弹药后随身带走；到新地点时仍背在身上。",
+      "holder": "李阎",
+      "evidence": "十个弹匣排成一排，旁边是那把柯尔特，枪口朝墙。"
+    },
+    {
+      "id": "macguffin-grenade-bag:chapter-final",
+      "macguffinId": "macguffin-grenade-bag",
+      "name": "他爹年轻时背过的旧帆布包与二十颗手榴弹",
+      "status": "held",
+      "chapter": "chapter-final",
+      "change": "手榴弹码入旧帆布包，与环龙一起随身携带到新地点，落地后仍搁在脚边。",
+      "holder": "李阎",
+      "evidence": "他拉开拉链，把二十颗手榴弹一颗一颗码进去，码完往下按了按，听有没有硬碰硬的响。"
+    }
+  ],
+  "relationshipUpdates": [
+    {
+      "id": "rel-li-yan-pangzi:chapter-final",
+      "relationId": "rel-li-yan-pangzi",
+      "from": "李阎",
+      "to": "胖子",
+      "label": "旧识／同行者",
+      "chapter": "chapter-final",
+      "change": "李阎在黑石砖房间等了约一百下呼吸，胖子始终没有出现，这一缺席让李阎第一次明确感到该有人说话却什么都没有。",
+      "evidence": "这回没有。他等了大概一百下呼吸，该想的都想了一遍，还是没人来。"
+    }
+  ],
+  "continuityNotes": [
+    "李阎已在黑石砖房间完成弹药补给，列单点数尚有余量且刻意保留未动。",
+    "柯尔特手枪与十个弹匣、二十颗手榴弹、环龙剑、怀中半张糊血残页均随李阎抵达新地点。",
+    "手机留在祖屋，李阎已主动切断与旧日人事的联系，周末的约定被他单方面放弃且未告知对方。",
+    "张道静嫁到山东，李阎未打听也不打算打听。",
+    "黑石砖房间：一扇门后楼梯为回去的路，另一扇被铁链锁住，门缝为“里外不通的黑”，李阎未尝试开启。",
+    "胖子在黑石砖房间缺席，未提供任何情报。",
+    "李阎胸口七窍渗血猛兽印记皮下有活动感，气愈符咒二十次全部无效。",
+    "当前所在：湿热、地面渗水、空气混着烂木头与咸水及甜腥味、远处有汽笛声的未知地点，李阎刚刚落地尚未行动。"
+  ]
+}

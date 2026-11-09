@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "stages": {
+    "story-arc": {
+      "inputHash": "1b57322fb582180d8a0563c6addc8eb1c5623ab74631fad0f283dd9c3983f6f8",
+      "outputFile": "00-story-arc.md",
+      "outputHash": "3a27914e942d9298de4b50b12ffcfeea3c780b6abe69a20112d7d4092c7c319c",
+      "completedAt": "2026-11-09T12:12:24.281Z"
+    },
+    "plot": {
+      "inputHash": "4e8e5c01dee628271e50e58f8ced594b14e462a731b6d10595a36050159d7388",
+      "outputFile": "01-main-plot.md",
+      "outputHash": "d7a9cad281f991aa100bd58f5d31c53398d3db15f2b3f62396765b3f59b632f4",
+      "completedAt": "2026-11-09T12:14:00.184Z"
+    }
+  }
+}
