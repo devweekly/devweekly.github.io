@@ -175,7 +175,16 @@ export async function ensureBoundedUniverseCanonAssets(
   }
 
   const localOriginalPath = path.join(worldDir, "original.txt");
-  const originalText = await readFile(localOriginalPath, "utf8");
+  let localOriginalText: string | undefined;
+  try { localOriginalText = await readFile(localOriginalPath, "utf8"); }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  // Repair older universes whose reflink/copy step failed: read the source
+  // corpus only inside this migration, then materialize a bounded local copy.
+  const originalText = localOriginalText ?? await readFile(
+    await resolveOriginalCanonPath(universe.sourceWorldId, { projectRoot }), "utf8"
+  );
   const originalHash = createHash("sha256").update(originalText, "utf8").digest("hex");
   const boundedText = truncateCanonAtLine(originalText, endBeforeLine, true);
   const boundedLines = boundedText.split(/\r?\n/);
@@ -260,7 +269,7 @@ export async function ensureBoundedUniverseCanonAssets(
   await writeFile(catalogTemporary, JSON.stringify(catalogSnapshot, null, 2) + "\n", "utf8");
   await rename(catalogTemporary, childCatalogPath);
 
-  if (boundedText !== originalText) {
+  if (localOriginalText !== boundedText) {
     const temporary = localOriginalPath + ".bounded.tmp";
     await writeFile(temporary, boundedText, "utf8");
     await rename(temporary, localOriginalPath);
