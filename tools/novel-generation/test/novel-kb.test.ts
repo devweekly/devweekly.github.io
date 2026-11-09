@@ -170,6 +170,14 @@ test("partially indexed canon chapters are rebuilt completely from original.txt"
     };
     assert.ok(restored.chunks.some(item => item.text.includes("正文第二段")));
     assert.ok(restored.chunks.every(item => !item.text.includes("正文第贰段")));
+
+    await writeFile(indexPath, "{ malformed json", "utf8");
+    assert.equal(await ensureSourceCanonLibraryIndex("source-world", world), true);
+    const recoveredFromInvalidJson = JSON.parse(await readFile(indexPath, "utf8")) as {
+      chunks: Array<{ chapter: string }>;
+    };
+    assert.ok(recoveredFromInvalidJson.chunks.some(item => item.chapter === "第一章 忍·土"));
+    assert.ok(recoveredFromInvalidJson.chunks.some(item => item.chapter === "第二章 后续"));
   } finally {
     process.chdir(previousCwd);
     await rm(root, { recursive: true, force: true });
