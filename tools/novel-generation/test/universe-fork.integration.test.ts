@@ -40,9 +40,9 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
       schemaVersion: 1, worldId: "source-world", createdAt: "2026-11-01T00:00:00.000Z",
       updatedAt: "2026-11-01T00:00:00.000Z",
       chunks: [
-        { id: "source:1", source: "worlds/source-world/original.txt", sourceHash, chapter: "原文第一章", chunkIndex: 0, start: 0, end: "原文第一章\\n此前正文".length, chapterStart: sourceChapterStarts[0], text: "原文第一章\\n此前正文" },
-        { id: "source:2", source: "worlds/source-world/original.txt", sourceHash, chapter: "原文第二章", chunkIndex: 0, start: 0, end: "原文第二章\\n起点正文".length, chapterStart: sourceChapterStarts[1], text: "原文第二章\\n起点正文" },
-        { id: "source:3", source: "worlds/source-world/original.txt", sourceHash, chapter: "原文第三章", chunkIndex: 0, start: 0, end: "原文第三章\\n未来原文".length, chapterStart: sourceChapterStarts[2], text: "原文第三章\\n未来原文" }
+        { id: "source:1", source: "worlds/source-world/original.txt", sourceHash, chapter: "原文第一章", chunkIndex: 0, start: 0, end: "原文第一章\n此前正文".length, chapterStart: sourceChapterStarts[0], text: "原文第一章\n此前正文" },
+        { id: "source:2", source: "worlds/source-world/original.txt", sourceHash, chapter: "原文第二章", chunkIndex: 0, start: 0, end: "原文第二章\n起点正文".length, chapterStart: sourceChapterStarts[1], text: "原文第二章\n起点正文" },
+        { id: "source:3", source: "worlds/source-world/original.txt", sourceHash, chapter: "原文第三章", chunkIndex: 0, start: 0, end: "原文第三章\n未来原文".length, chapterStart: sourceChapterStarts[2], text: "原文第三章\n未来原文" }
       ]
     }));
     await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify({
