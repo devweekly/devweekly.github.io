@@ -524,7 +524,8 @@ interface CanonChapterEntry {
   hasChunks: boolean;
 }
 async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEntry[]> {
-  const catalog = await loadChapterCatalog(sourceWorldId);
+  const catalogDocument = await loadChapterCatalogDocument(sourceWorldId);
+  const catalog = catalogDocument?.chapters;
   if (!catalog) throw new Error("原著章节目录不存在，无法安全创建故事宇宙。请先构建 chapter-index.json。");
   let chunks: CanonChapterChunk[] = [];
   try {
@@ -561,7 +562,7 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
     return offset + lineText.length - lineText.trimStart().length;
   };
   await ensureOriginalText();
-  if (originalText !== undefined) validateCanonCatalogAgainstText(catalog, originalText);
+  if (originalText !== undefined) validateCanonCatalogAgainstText(catalog, originalText, catalogDocument.totalLines);
   const chapterStartOffsets = catalog.map(chapter => chapter.line == null ? undefined : lineStartOffset(chapter.line));
   const originalSourceHash = originalText === undefined ? undefined : createHash("sha256").update(originalText, "utf8").digest("hex");
   const canonChunks = selectCanonSourceChunks(chunks, originalSourceHash);
