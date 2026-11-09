@@ -2092,7 +2092,7 @@ app.post("/api/worlds/:worldId/story-executions/:executionId/cancel", async (req
     const now = new Date().toISOString();
     // A worker only exists in this process. After a restart, an orphaned queued/running
     // record must be cancellable immediately instead of waiting for a worker that no longer exists.
-    const workerIsAlive = activeStoryExecutions.has(id);
+    const workerIsAlive = storyExecutionControllers.has(task.id);
     const cancelImmediately = shouldCancelStoryExecutionImmediately(task.status, workerIsAlive);
     const updated = cancelImmediately
       ? appendStoryExecutionEvent({
