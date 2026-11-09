@@ -33,6 +33,7 @@ import { copyOriginalCanonToUniverse, ensureBoundedUniverseCanonAssets, resolveO
 import { assessStoryUnitProgress, generateStoryUnit, isStoryUnitNaturallyComplete, validateStoryUnit } from "./story-unit.js";
 import { archiveStoredStoryUnitVersion, createStoredStoryUnit, getStoredStoryUnit, getStoredStoryUnitVersion, listStoredStoryUnitVersions, listStoredStoryUnits, saveStoredStoryUnit } from "./story-unit-store.js";
 import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, mergeStoryExecutionControlFlags, storyRunStateWasRolledBack, type StoryExecution } from "./story-execution.js";
+import { canCancelStoryExecution, reusableKnowledgeBuildStepNames, shouldCancelStoryExecutionImmediately } from "./pipeline-state.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
 // noUncheckedIndexedAccess 放宽成 string | undefined。
@@ -136,7 +137,7 @@ const worldQueues = new Map<string, Promise<void>>();
 type KnowledgeBuildStep = "story-analysis" | "as-of-dossier" | "volume-arcs" | "style-profile" | "character-profiles" | "character-states" | "corpus-craft" | "vane-index";
 type KnowledgeBuildProgress = { current: number; total: number; label: string };
 type KnowledgeBuildState = {
-  worldId: string; status: "queued" | "running" | "completed" | "partial" | "failed" | "interrupted";
+  worldId: string; status: "queued" | "running" | "completed" | "partial" | "failed" | "interrupted" | "cancelled";
   startedAt: string; updatedAt: string; completedAt?: string;
   currentStep?: KnowledgeBuildStep;
   /** 当前步骤的实时进度，从子进程 stdout 解析。步骤内可能持续数分钟，
@@ -168,6 +169,7 @@ export function classifyKnowledgeBuildStepResult(
 }
 
 const knowledgeBuilds = new Set<string>();
+const knowledgeBuildControllers = new Map<string, AbortController>();
 function knowledgeBuildPath(id: string): string {
   return path.resolve(".output", id, "workbench", "knowledge-build.json");
 }
@@ -221,14 +223,35 @@ function parseBatchProgress(text: string): KnowledgeBuildProgress | undefined {
 async function runKnowledgeBuildStep(
   worldId: string,
   command: string[],
-  onProgress?: (progress: KnowledgeBuildProgress) => void
+  onProgress?: (progress: KnowledgeBuildProgress) => void,
+  signal?: AbortSignal
 ): Promise<{ exitCode: number | null; output: string; error: string }> {
+  if (signal?.aborted) return { exitCode: null, output: "", error: "任务已取消。" };
   return await new Promise(resolve => {
     const cliArgs = [...buildCliEntryArgs(command), "--world", worldId];
     const child = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", ...cliArgs], {
-      cwd: process.cwd(), env: process.env, stdio: ["ignore", "pipe", "pipe"]
+      cwd: process.cwd(), env: process.env, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32"
     });
     let output = "", error = "", settled = false, lastCurrent = 0;
+    const finish = (result: { exitCode: number | null; output: string; error: string }) => {
+      if (settled) return;
+      settled = true; signal?.removeEventListener("abort", abort); resolve(result);
+    };
+    let forceKillTimer: NodeJS.Timeout | undefined;
+    const abort = () => {
+      if (child.pid && process.platform !== "win32") {
+        try { process.kill(-child.pid, "SIGTERM"); } catch { child.kill("SIGTERM"); }
+      } else child.kill("SIGTERM");
+      forceKillTimer = setTimeout(() => {
+        if (settled) return;
+        if (child.pid && process.platform !== "win32") {
+          try { process.kill(-child.pid, "SIGKILL"); } catch { child.kill("SIGKILL"); }
+        } else child.kill("SIGKILL");
+      }, 5000);
+    };
+    child.once("close", () => { if (forceKillTimer) clearTimeout(forceKillTimer); });
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
     child.stdout.setEncoding("utf8").on("data", chunk => {
       output += chunk;
       if (!onProgress) return;
@@ -236,8 +259,8 @@ async function runKnowledgeBuildStep(
       if (progress && progress.current !== lastCurrent) { lastCurrent = progress.current; onProgress(progress); }
     });
     child.stderr.setEncoding("utf8").on("data", chunk => { error += chunk; });
-    child.on("error", cause => { if (settled) return; settled = true; resolve({ exitCode: null, output, error: error + cause.message }); });
-    child.on("close", code => { if (settled) return; settled = true; resolve({ exitCode: code, output, error }); });
+    child.on("error", cause => finish({ exitCode: null, output, error: error + cause.message }));
+    child.on("close", code => finish({ exitCode: code, output, error }));
   });
 }
 async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState> {
@@ -247,12 +270,17 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
     throw Object.assign(new Error("该宇宙已有知识构建任务正在运行。"), { status: 409 });
   }
   knowledgeBuilds.add(worldId);
+  const controller = new AbortController();
+  knowledgeBuildControllers.set(worldId, controller);
   try {
     // 落盘状态不参与互斥判定：服务重启后它可能是上一次构建的残留 running，
     // 仅凭它会把「重新构建」永久挡在 409。真正的互斥由内存 Set 负责，
     // 残留状态由 recoverKnowledgeBuilds() 在启动时标记为 interrupted。
     const now = new Date().toISOString();
-    const state: KnowledgeBuildState = { worldId, status: "queued", startedAt: now, updatedAt: now, steps: [] };
+    const previousState = await readKnowledgeBuild(worldId);
+    const reusableSteps = reusableKnowledgeBuildStepNames(previousState?.steps ?? []);
+    const state: KnowledgeBuildState = { worldId, status: "queued", startedAt: now, updatedAt: now,
+      steps: (previousState?.steps ?? []).filter(step => reusableSteps.has(step.name)) };
     await writeKnowledgeBuild(state);
     void (async () => {
       let failed = 0;
@@ -266,7 +294,16 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
       // Use the same semantic validity predicate as backfill. A marker-only or
       // empty storyCore:{observations:[]} snapshot must never suppress analysis.
       const reusableBoundedAnalysis = Boolean(universe && hasBoundedStoryAnalysis(existingAnalysis, universe));
+      if (!reusableBoundedAnalysis) {
+        const staleAnalysisIndex = state.steps.findIndex(step => step.name === "story-analysis");
+        if (staleAnalysisIndex >= 0) state.steps.splice(staleAnalysisIndex, 1);
+      }
       for (const step of KNOWLEDGE_BUILD_STEPS) {
+        if (controller.signal.aborted) {
+          state.status = "cancelled"; state.completedAt = new Date().toISOString(); state.updatedAt = state.completedAt;
+          delete state.currentStep; delete state.progress; await writeKnowledgeBuild(state); return;
+        }
+        if (reusableSteps.has(step.name) && (step.name !== "story-analysis" || reusableBoundedAnalysis)) continue;
         if (step.name === "story-analysis" && reusableBoundedAnalysis) {
           const now = new Date().toISOString();
           state.steps.push({ name: step.name, status: "skipped", startedAt: now, completedAt: now, output: "Reused the existing complete, entry-bounded v6 story analysis snapshot." });
@@ -285,8 +322,13 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
           state.updatedAt = new Date().toISOString();
           // 串行链式写，避免批次密集时多个 tmp+rename 交错。
           progressWrite = progressWrite.then(() => writeKnowledgeBuild(state)).catch(() => undefined);
-        });
+        }, controller.signal);
         await progressWrite;
+        if (controller.signal.aborted) {
+          record.status = "failed"; record.completedAt = new Date().toISOString(); record.error = "用户取消构建；当前步骤已终止，后续步骤未启动。";
+          state.status = "cancelled"; state.completedAt = record.completedAt; state.updatedAt = record.completedAt;
+          delete state.currentStep; delete state.progress; await writeKnowledgeBuild(state); return;
+        }
         record.exitCode = result.exitCode;
         // stderr is diagnostic output, not automatically a failed step. Node 24's
         // SQLite ExperimentalWarning is suppressed at the child runtime; retain any
@@ -299,19 +341,19 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
         state.updatedAt = new Date().toISOString();
         await writeKnowledgeBuild(state);
       }
-      state.status = failed === 0 ? "completed" : failed === state.steps.length ? "failed" : "partial";
+      state.status = controller.signal.aborted ? "cancelled" : failed === 0 ? "completed" : failed === state.steps.length ? "failed" : "partial";
       state.completedAt = new Date().toISOString(); state.updatedAt = state.completedAt;
       delete state.currentStep; delete state.progress;
       await writeKnowledgeBuild(state);
     })().catch(async error => {
-      state.status = "failed"; state.completedAt = new Date().toISOString(); state.updatedAt = state.completedAt;
+      state.status = controller.signal.aborted ? "cancelled" : "failed"; state.completedAt = new Date().toISOString(); state.updatedAt = state.completedAt;
       state.steps.push({ name: state.currentStep ?? "story-analysis", status: "failed", startedAt: state.updatedAt, completedAt: state.completedAt, error: String(error) });
       delete state.currentStep; delete state.progress;
       await writeKnowledgeBuild(state).catch(() => undefined);
-    }).finally(() => knowledgeBuilds.delete(worldId));
+    }).finally(() => { knowledgeBuilds.delete(worldId); knowledgeBuildControllers.delete(worldId); });
     return state;
   } catch (error) {
-    knowledgeBuilds.delete(worldId);
+    knowledgeBuilds.delete(worldId); knowledgeBuildControllers.delete(worldId);
     throw error;
   }
 }
@@ -1376,6 +1418,7 @@ function appendStoryExecutionEvent(task: StoryExecution, event: StoryExecution["
   return { ...task, events: [...(task.events ?? []), event].slice(-500) };
 }
 const activeStoryExecutions = new Map<string, Promise<void>>();
+const storyExecutionControllers = new Map<string, AbortController>();
 const storyExecutionReservations = new Set<string>();
 const chapterGenerationReservations = new Set<string>();
 function storyExecutionUnitPath(worldId: string, storyUnitId?: string): string {
@@ -1505,7 +1548,7 @@ async function recordSingleChapterCompletion(worldId: string, storyUnitId: strin
 }
 
 /** Run one ordinary chapter through the existing CLI pipeline and its existing quality/state gates. */
-async function executeStoryUnitChapter(worldId: string, previousChapterPath: string | undefined, brief: string, model?: string, storyUnitId?: string, onRunStarted?: (run: WorkbenchRun) => Promise<void>): Promise<WorkbenchRun> {
+async function executeStoryUnitChapter(worldId: string, previousChapterPath: string | undefined, brief: string, model?: string, storyUnitId?: string, onRunStarted?: (run: WorkbenchRun) => Promise<void>, signal?: AbortSignal): Promise<WorkbenchRun> {
   const dir = worldDir(worldId);
   const universe = await readUniverse(worldId);
   if (universe?.archivedAt) throw new Error("当前故事宇宙已归档，不能继续完整故事执行。");
@@ -1540,12 +1583,31 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
   ];
   await saveRun({ ...run, status: "running", updatedAt: new Date().toISOString() });
   const result = await new Promise<{ code: number | null; output: string; errors: string }>(resolveResult => {
-    const child = spawn(process.execPath, args, { cwd: process.cwd(), env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(process.execPath, args, { cwd: process.cwd(), env: process.env, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
     let output = "", errors = "", settled = false;
+    const finish = (result: { code: number | null; output: string; errors: string }) => {
+      if (settled) return;
+      settled = true; signal?.removeEventListener("abort", abort); resolveResult(result);
+    };
+    let forceKillTimer: NodeJS.Timeout | undefined;
+    const abort = () => {
+      if (child.pid && process.platform !== "win32") {
+        try { process.kill(-child.pid, "SIGTERM"); } catch { child.kill("SIGTERM"); }
+      } else child.kill("SIGTERM");
+      forceKillTimer = setTimeout(() => {
+        if (settled) return;
+        if (child.pid && process.platform !== "win32") {
+          try { process.kill(-child.pid, "SIGKILL"); } catch { child.kill("SIGKILL"); }
+        } else child.kill("SIGKILL");
+      }, 5000);
+    };
+    child.once("close", () => { if (forceKillTimer) clearTimeout(forceKillTimer); });
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
     child.stdout.setEncoding("utf8").on("data", chunk => { output += chunk; });
     child.stderr.setEncoding("utf8").on("data", chunk => { errors += chunk; });
-    child.on("error", error => { if (!settled) { settled = true; resolveResult({ code: null, output, errors: errors + error.message }); } });
-    child.on("close", code => { if (!settled) { settled = true; resolveResult({ code, output, errors }); } });
+    child.on("error", error => finish({ code: null, output, errors: errors + error.message }));
+    child.on("close", code => finish({ code, output, errors }));
   });
   const saved = result.output.match(/Saved chapter:\s*(.+)/)?.[1]?.trim();
   const chapterPath = saved ? path.resolve(saved) : undefined;
@@ -1702,7 +1764,7 @@ async function reconcileStoryExecutionCurrentRun(input: StoryExecution): Promise
   return cleared;
 }
 
-async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
+async function executeStoryUnitTask(initial: StoryExecution, signal?: AbortSignal): Promise<void> {
   const worldId = initial.worldId;
   let task = initial;
   try {
@@ -1761,8 +1823,14 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
       const chapterRun = await executeStoryUnitChapter(worldId, previousChapterPath, brief, task.model, task.storyUnitId, async currentRun => {
         task = appendStoryExecutionEvent({ ...task, currentRunId: currentRun.id, updatedAt: new Date().toISOString() }, { at: new Date().toISOString(), type: "chapter_started", message: "开始生成新章节", runId: currentRun.id });
         await saveStoryExecution(task);
-      });
+      }, signal);
       if (chapterRun.status !== "completed" || !chapterRun.chapterPath) {
+        const latestControl = await getStoryExecution(worldId, task.id);
+        if (signal?.aborted || latestControl?.cancelRequested) {
+          const cancelledAt = new Date().toISOString();
+          task = appendStoryExecutionEvent({ ...task, status: "cancelled", cancelRequested: true, completedAt: cancelledAt, updatedAt: cancelledAt, currentRunId: undefined }, { at: cancelledAt, type: "cancelled", message: "用户取消任务；当前未完成章节已终止并回滚 Story State" });
+          await saveStoryExecution(task); return;
+        }
         const failedAt = new Date().toISOString();
         task = appendStoryExecutionEvent({ ...task, status: "failed", error: "章节未通过现有终审或 Story State 提交门禁。修复该章节后可从最后一个已完成检查点恢复。"+(chapterRun.error?" "+chapterRun.error:""), updatedAt: failedAt, currentRunId: chapterRun.error?.includes("状态回滚失败") ? chapterRun.id : undefined }, { at: failedAt, type: "failed", message: "章节未通过终审或状态提交门禁" });
         await saveStoryExecution(task); return;
@@ -1789,7 +1857,7 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
 }
 
 
-async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> {
+async function executeFixedChapterBatch(initial: StoryExecution, signal?: AbortSignal): Promise<void> {
   let task = initial;
   const worldId = task.worldId;
   try {
@@ -1844,8 +1912,14 @@ async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> 
       const chapterRun = await executeStoryUnitChapter(worldId, previousChapterPath, brief, task.model, task.storyUnitId, async currentRun => {
         task = appendStoryExecutionEvent({ ...task, currentRunId: currentRun.id, updatedAt: new Date().toISOString() }, { at: new Date().toISOString(), type: "chapter_started", message: "批量任务开始生成第 " + (task.completedChapters.length + 1) + " 章", runId: currentRun.id });
         await saveStoryExecution(task);
-      });
+      }, signal);
       if (chapterRun.status !== "completed" || !chapterRun.chapterPath) {
+        const latestControl = await getStoryExecution(worldId, task.id);
+        if (signal?.aborted || latestControl?.cancelRequested) {
+          const cancelledAt = new Date().toISOString();
+          task = appendStoryExecutionEvent({ ...task, status: "cancelled", cancelRequested: true, completedAt: cancelledAt, updatedAt: cancelledAt, currentRunId: undefined }, { at: cancelledAt, type: "cancelled", message: "用户取消批量任务；当前未完成章节已终止并回滚 Story State" });
+          await saveStoryExecution(task); return;
+        }
         const failedAt = new Date().toISOString();
         task = appendStoryExecutionEvent({ ...task, status: "failed", error: "第 " + chapterNumber + " 章未通过终审或 Story State 提交门禁。可修复后从已完成检查点恢复。" + (chapterRun.error ? " " + chapterRun.error : ""), updatedAt: failedAt, currentRunId: undefined }, { at: failedAt, type: "failed", message: "第 " + chapterNumber + " 章未通过终审或状态提交门禁" });
         await saveStoryExecution(task); return;
@@ -1876,8 +1950,15 @@ async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> 
 
 function startStoryUnitExecution(task: StoryExecution): boolean {
   if (activeStoryExecutions.has(task.worldId)) return false;
-  const worker = task.mode === "fixed_batch" ? executeFixedChapterBatch(task) : executeStoryUnitTask(task);
-  const promise = worker.finally(() => activeStoryExecutions.delete(task.worldId));
+  const controller = new AbortController();
+  storyExecutionControllers.set(task.id, controller);
+  const worker = task.mode === "fixed_batch"
+    ? executeFixedChapterBatch(task, controller.signal)
+    : executeStoryUnitTask(task, controller.signal);
+  const promise = worker.finally(() => {
+    activeStoryExecutions.delete(task.worldId);
+    storyExecutionControllers.delete(task.id);
+  });
   activeStoryExecutions.set(task.worldId, promise);
   return true;
 }
@@ -2011,19 +2092,21 @@ app.post("/api/worlds/:worldId/story-executions/:executionId/cancel", async (req
     const id = worldIdOf(req.params.worldId); const executionId = recordId(req.params.executionId);
     const task = await getStoryExecution(id, executionId);
     if (!task) return void res.status(404).json({error:"Story execution not found."});
-    if (!["running","queued","paused"].includes(task.status)) return void res.status(409).json({error:"当前任务不能取消。",execution:task});
+    if (!canCancelStoryExecution(task.status)) return void res.status(409).json({error:"当前任务不能取消。",execution:task});
     const now = new Date().toISOString();
     // A worker only exists in this process. After a restart, an orphaned queued/running
     // record must be cancellable immediately instead of waiting for a worker that no longer exists.
-    const workerIsAlive = activeStoryExecutions.has(id);
-    const cancelImmediately = task.status === "paused" || !workerIsAlive;
+    const workerIsAlive = storyExecutionControllers.has(task.id);
+    const cancelImmediately = shouldCancelStoryExecutionImmediately(task.status, workerIsAlive);
     const updated = cancelImmediately
       ? appendStoryExecutionEvent({
           ...task, status:"cancelled" as const, cancelRequested:true,
           completedAt:now, updatedAt:now
         }, { at:now, type:"cancelled", message:workerIsAlive ? "已取消暂停任务。" : "任务没有活动执行器，已清理残留执行状态。" })
       : {...task,cancelRequested:true,updatedAt:now};
-    await saveStoryExecution(updated); res.json({execution:updated});
+    await saveStoryExecution(updated);
+    storyExecutionControllers.get(task.id)?.abort();
+    res.status(cancelImmediately ? 200 : 202).json({execution:updated,cancelling:!cancelImmediately});
   } catch (error) { sendError(res, error); }
 });
 
@@ -2249,6 +2332,24 @@ app.post("/api/worlds/:worldId/knowledge-build", async (req, res) => {
       // They can run concurrently, so analysis completion is never a writing prerequisite.
       res.status(202).json({ build: await startKnowledgeBuild(id) });
     });
+  } catch (error) { sendError(res, error); }
+});
+app.post("/api/worlds/:worldId/knowledge-build/cancel", async (req, res) => {
+  try {
+    const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
+    const state = await readKnowledgeBuild(id);
+    if (!state) return void res.status(404).json({ error: "当前宇宙没有知识构建记录。" });
+    if (!["queued", "running", "interrupted"].includes(state.status)) return void res.status(409).json({ error: "当前知识构建任务已结束。", build: state });
+    const controller = knowledgeBuildControllers.get(id);
+    if (controller) {
+      controller.abort();
+      return void res.status(202).json({ build: state, cancelling: true });
+    }
+    const now = new Date().toISOString();
+    const cancelled = { ...state, status: "cancelled" as const, completedAt: now, updatedAt: now };
+    delete cancelled.currentStep; delete cancelled.progress;
+    await writeKnowledgeBuild(cancelled);
+    res.json({ build: cancelled, cancelling: false });
   } catch (error) { sendError(res, error); }
 });
 app.get("/api/worlds/:worldId/runs", async (req, res) => {

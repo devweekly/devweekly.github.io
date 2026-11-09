@@ -5,12 +5,12 @@ import { getStoryExecutionActions, selectVisibleStoryExecution, shouldPollStoryE
 const { Title, Text, Paragraph } = Typography;
 type Run = { id:string; storyUnitId?:string; kind?:string; status:string; createdAt:string; updatedAt:string; error?:string; outputDir?:string; chapterPath?:string; previousChapterPath?:string };
 type Preview = { storyArc:string; chapterPlan:string; chapter:string };
-type StoryExecution = {id:string;worldId:string;storyUnitId?:string;storyUnitTitle:string;mode:"complete_story"|"fixed_batch";targetChapterCount?:number;status:"queued"|"running"|"paused"|"completed"|"failed"|"cancelled"|"stalled";createdAt:string;updatedAt:string;completedAt?:string;currentRunId?:string;completedChapters:Array<{runId:string;chapterPath:string;completedAt:string}>;events?:Array<{at:string;type:string;message:string;runId?:string}>;lastAssessment?:string;nextDirection?:string;error?:string;brief:string;resumeCount:number};
+type StoryExecution = {id:string;worldId:string;storyUnitId?:string;storyUnitTitle:string;mode:"complete_story"|"fixed_batch";targetChapterCount?:number;status:"queued"|"running"|"paused"|"completed"|"failed"|"cancelled"|"stalled";cancelRequested?:boolean;createdAt:string;updatedAt:string;completedAt?:string;currentRunId?:string;completedChapters:Array<{runId:string;chapterPath:string;completedAt:string}>;events?:Array<{at:string;type:string;message:string;runId?:string}>;lastAssessment?:string;nextDirection?:string;error?:string;brief:string;resumeCount:number};
 type StoryUnit = { id?:string; updatedAt?:string; execution:{status:"not_started"|"in_progress"|"completed";completedChapterIds:string[];lastAssessment?:string;nextDirection?:string;assessedAt?:string;completedAt?:string;characterArcHistory?:Array<{chapterId:string;name:string;observedChange:string;futurePossibilities:string[];recordedAt:string}>}; title:string; storyCore:string; readerExperience:string; openingSituation:string; centralConflict:string; fruitOrSetting:{name:string;premise:string;abilitiesAndRules:string[];costsAndLimits:string[];historicalContext:string;geographyAndDailyLife:string;powerAndSocialRelations:string}; cultureAndFolklore:Array<{name:string;practice:string;originOrBelief:string;socialFunction:string;storyUse:string}>; taboosAndGhostStories:Array<{name:string;versions:string[];underlyingTruthOptions:string[];consequences:string;scenePotential:string}>; cast:Array<{name:string;role:string;status:string;desire:string;fearOrSecret:string;relationships:string[];possibleDevelopment:string[]}>; relationshipDynamics:string[]; storySpine:Array<{title:string;function:string;causalChange:string;involvedCharacters:string[];possibleArcs:string[];status?:"planned"|"in_progress"|"completed"|"replaced"}>; subplots:string[]; climax:string; endingAndAftermath:string; unresolvedQuestions:string[]; creativePossibilities:string[] };
 type Universe = { id:string; sourceWorldId:string; name:string; type:string; entryChapter:string; entryChapterId?:string; entryOrdinal?:number; brief:string; createdAt:string; parentUniverseId?:string; forkPoint?:string; archivedAt?:string };
 type ForkableRun = { id:string; chapterTitle:string; createdAt:string };
 type BuildProgress = { current:number; total:number; label:string };
-type KnowledgeBuild = { worldId:string; status:"queued"|"running"|"completed"|"partial"|"failed"|"interrupted"; currentStep?:string; updatedAt:string; completedAt?:string; progress?:BuildProgress; steps:Array<{name:string;status:"running"|"completed"|"failed"|"skipped";exitCode?:number|null;output?:string;error?:string;progress?:BuildProgress}> };
+type KnowledgeBuild = { worldId:string; status:"queued"|"running"|"completed"|"partial"|"failed"|"interrupted"|"cancelled"; currentStep?:string; updatedAt:string; completedAt?:string; progress?:BuildProgress; steps:Array<{name:string;status:"running"|"completed"|"failed"|"skipped";exitCode?:number|null;output?:string;error?:string;progress?:BuildProgress}> };
 async function api<T>(url:string, init?:RequestInit):Promise<T>{const response=await fetch(url,{headers:{"Content-Type":"application/json",...(init?.headers??{})},...init});const body=await response.json();if(!response.ok)throw new Error(body.error??response.statusText);return body as T;}
 const emptyPreview:Preview={storyArc:"",chapterPlan:"",chapter:""};
 export default function ChapterStudio({worldId}:{worldId:string}){
@@ -52,6 +52,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [startingStoryExecution,setStartingStoryExecution]=useState(false);
  const [generatingStoryUnit,setGeneratingStoryUnit]=useState(false);
  const [startingKnowledgeBuild,setStartingKnowledgeBuild]=useState(false);
+ const [cancellingKnowledgeBuild,setCancellingKnowledgeBuild]=useState(false);
  const refreshGeneration=useRef(0);
  const previewGeneration=useRef(0);
  const autoStoryUnitWorlds=useRef(new Set<string>());
@@ -214,7 +215,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   let disposed=false;
   if(!activeUniverse){setKnowledgeBuild(null);return;}
   const load=()=>api<{build:KnowledgeBuild|null}>("/api/worlds/"+activeWorldId+"/knowledge-build")
-   .then(result=>{if(!disposed)setKnowledgeBuild(result.build);}).catch(()=>{});
+   .then(result=>{if(!disposed){setKnowledgeBuild(result.build);if(result.build?.status==="cancelled")setCancellingKnowledgeBuild(false);}}).catch(()=>{});
   void load();
   const timer=window.setInterval(load,2000);
   return()=>{disposed=true;window.clearInterval(timer);};
@@ -252,12 +253,22 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  };
  const startKnowledgeBuild=async()=>{
   setStartingKnowledgeBuild(true);
+  setCancellingKnowledgeBuild(false);
   try{
    const result=await api<{build:KnowledgeBuild}>("/api/worlds/"+activeWorldId+"/knowledge-build",{method:"POST",body:"{}"});
    setKnowledgeBuild(result.build);
    message.success("知识构建任务已在后台启动。");
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
   finally{setStartingKnowledgeBuild(false);}
+ };
+ const cancelKnowledgeBuild=async()=>{
+  setCancellingKnowledgeBuild(true);
+  try{
+   const result=await api<{build:KnowledgeBuild;cancelling?:boolean}>("/api/worlds/"+activeWorldId+"/knowledge-build/cancel",{method:"POST",body:"{}"});
+   setKnowledgeBuild(result.build);
+   if(!result.cancelling){setCancellingKnowledgeBuild(false);message.success("知识构建已取消。");}
+   else message.info("正在终止当前构建步骤；已完成步骤会保留。");
+  }catch(e){setCancellingKnowledgeBuild(false);message.error(e instanceof Error?e.message:String(e));}
  };
  const changeArchive=async(archived:boolean)=>{
   if(!activeUniverse)return;
@@ -347,7 +358,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
     <Paragraph type="secondary" style={{marginBottom:0}}>优先复用原著已有的离线分析，并按当前宇宙起点过滤；只补齐缺失的人物画像、人物逐章状态、主线与伏笔分析、Corpus Craft 素材和 Vane 检索索引。所有输入均来自该宇宙自己的截断原文资料，不继承起点之后的剧情。此任务在后台运行，不是开始写作的前置条件。</Paragraph>
     <Space wrap>
      <Tag color={knowledgeBuild?.status==="completed"?"success":knowledgeBuild?.status==="failed"?"error":knowledgeBuild?.status==="partial"||knowledgeBuild?.status==="interrupted"?"warning":knowledgeBuild?.status==="running"||knowledgeBuild?.status==="queued"?"processing":"default"}>
-      {knowledgeBuild?.status==="completed"?"已完成":knowledgeBuild?.status==="failed"?"构建失败":knowledgeBuild?.status==="partial"?"部分完成":knowledgeBuild?.status==="interrupted"?"已中断（服务重启）":knowledgeBuild?.status==="running"?"正在构建":knowledgeBuild?.status==="queued"?"排队中":"尚未构建"}
+      {knowledgeBuild?.status==="completed"?"已完成":knowledgeBuild?.status==="failed"?"构建失败":knowledgeBuild?.status==="partial"?"部分完成":knowledgeBuild?.status==="interrupted"?"已中断（服务重启）":knowledgeBuild?.status==="cancelled"?"已取消":knowledgeBuild?.status==="running"?"正在构建":knowledgeBuild?.status==="queued"?"排队中":"尚未构建"}
      </Tag>
      {knowledgeBuild?.currentStep&&<Text type="secondary">当前步骤：{knowledgeBuild.currentStep}</Text>}
      {knowledgeBuild?.updatedAt&&<Text type="secondary">更新于 {new Date(knowledgeBuild.updatedAt).toLocaleString()}</Text>}
@@ -357,9 +368,12 @@ export default function ChapterStudio({worldId}:{worldId:string}){
      status="active"
      format={()=>`${knowledgeBuild.progress?.label??"进度"} ${knowledgeBuild.progress?.current??0}/${knowledgeBuild.progress?.total??0}`}
     />}
-    <Button onClick={()=>void startKnowledgeBuild()} loading={startingKnowledgeBuild} disabled={startingKnowledgeBuild||knowledgeBuild?.status==="queued"||knowledgeBuild?.status==="running"}>
-     {knowledgeBuild?.status==="failed"||knowledgeBuild?.status==="partial"||knowledgeBuild?.status==="interrupted"?"重新构建知识资料":"构建知识资料"}
-    </Button>
+    <Space wrap>
+     <Button onClick={()=>void startKnowledgeBuild()} loading={startingKnowledgeBuild} disabled={startingKnowledgeBuild||knowledgeBuild?.status==="queued"||knowledgeBuild?.status==="running"||cancellingKnowledgeBuild}>
+      {knowledgeBuild?.status==="failed"||knowledgeBuild?.status==="partial"||knowledgeBuild?.status==="interrupted"||knowledgeBuild?.status==="cancelled"?"从检查点继续构建":"构建知识资料"}
+     </Button>
+     {["queued","running","interrupted"].includes(knowledgeBuild?.status??"")&&<Button danger loading={cancellingKnowledgeBuild} disabled={cancellingKnowledgeBuild} onClick={()=>void cancelKnowledgeBuild()}>{knowledgeBuild?.status==="interrupted"?"清理中断任务":"取消构建"}</Button>}
+    </Space>
      {knowledgeBuild && knowledgeBuild.steps.length > 0 && <Space direction="vertical" style={{width:"100%"}} size="small">
      {knowledgeBuild.steps.map((step,index)=><div key={step.name+"-"+index} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
       <Tag color={step.status==="completed"?"success":step.status==="failed"?"error":step.status==="running"?"processing":"default"}>{step.status==="completed"?"完成":step.status==="failed"?"失败":step.status==="running"?"执行中":"跳过"}</Tag>
@@ -372,7 +386,8 @@ export default function ChapterStudio({worldId}:{worldId:string}){
     </Space>}
     {knowledgeBuild?.status==="partial"&&<Alert type="warning" showIcon message="部分资料未能构建" description="已成功的分析结果仍可使用；修复失败步骤后可重新构建。"/>}
     {knowledgeBuild?.status==="failed"&&<Alert type="error" showIcon message="知识构建未完成" description="章节写作仍可继续；修复失败步骤后可重新构建。"/>}
-    {knowledgeBuild?.status==="interrupted"&&<Alert type="warning" showIcon message="上次构建被服务重启中断" description="已完成的批次缓存仍在磁盘上，点击「重新构建知识资料」会直接复用，不会从头再来。"/>}
+    {knowledgeBuild?.status==="interrupted"&&<Alert type="warning" showIcon message="上次构建被服务重启中断" description="已完成步骤会从检查点保留；继续构建只会重试中断步骤及后续未完成步骤。"/>}
+    {knowledgeBuild?.status==="cancelled"&&<Alert type="info" showIcon message="知识构建已取消" description="已完成步骤保留；再次启动将从第一个未完成步骤继续。"/>}
    </Space>
   </Card>}
   {notice&&<Alert type="warning" showIcon message="本次任务未能启动" description={notice} style={{marginBottom:18}}/>}
@@ -408,11 +423,12 @@ export default function ChapterStudio({worldId}:{worldId:string}){
     {visibleStoryExecution.lastAssessment&&<Paragraph>最近进展判断：{visibleStoryExecution.lastAssessment}</Paragraph>}
     {visibleStoryExecution.nextDirection&&<Paragraph type="secondary">下一步：{visibleStoryExecution.nextDirection}</Paragraph>}
     {visibleStoryExecution.error&&<Alert type={visibleStoryExecution.status==="stalled"?"warning":"error"} showIcon message={visibleStoryExecution.error}/>}
+    {visibleStoryExecution.cancelRequested&&<Alert type="info" showIcon message="正在终止当前章节并回滚未提交状态；已完成章节和检查点会保留。"/>}
     {!!visibleStoryExecution.events?.length&&<Collapse size="small" items={[{key:"timeline",label:"执行时间线（"+visibleStoryExecution.events.length+" 条）",children:<Space direction="vertical" style={{width:"100%"}}>{[...visibleStoryExecution.events].reverse().map((event,index)=><div key={event.at+event.type+index}><Text type="secondary">{new Date(event.at).toLocaleString()}</Text><Text strong style={{marginLeft:8}}>{({created:"创建任务",resumed:"恢复执行",chapter_started:"章节开始",chapter_completed:"章节完成",assessment:"故事进展评估",paused:"已暂停",completed:visibleStoryExecution.mode==="fixed_batch"?"批次完成":"故事收束",failed:"执行失败",cancelled:"已取消",stalled:"推进停滞"} as Record<string,string>)[event.type]??event.type}</Text><div>{event.message}</div>{event.runId&&<Text type="secondary">Run: {event.runId}</Text>}</div>)}</Space>}]}/>}
     <Space wrap>
      {getStoryExecutionActions(visibleStoryExecution.status).includes("pause")&&<Button disabled={Boolean(activeStoryExecution&&activeStoryExecution.id!==visibleStoryExecution.id)} onClick={()=>void controlStoryExecution("pause")}>暂停（当前章节结束后生效）</Button>}
      {getStoryExecutionActions(visibleStoryExecution.status).includes("resume")&&<Button type="primary" disabled={Boolean(activeStoryExecution&&activeStoryExecution.id!==visibleStoryExecution.id)} onClick={()=>void controlStoryExecution("resume")}>从检查点恢复</Button>}
-     {getStoryExecutionActions(visibleStoryExecution.status).includes("cancel")&&<Button danger onClick={()=>void controlStoryExecution("cancel")}>取消任务</Button>}
+     {getStoryExecutionActions(visibleStoryExecution.status).includes("cancel")&&<Button danger loading={Boolean(visibleStoryExecution.cancelRequested)} disabled={Boolean(visibleStoryExecution.cancelRequested)} onClick={()=>void controlStoryExecution("cancel")}>{visibleStoryExecution.cancelRequested?"正在取消…":"取消任务"}</Button>}
     </Space>
     <Text type="secondary">任务由服务端执行。刷新或关闭浏览器不会中断；服务重启后任务转为暂停状态，可从最后一个已终审并提交状态的章节恢复。章节数没有固定上限，完成依据是故事自然收束。</Text>
    </Space>
