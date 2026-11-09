@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:http";
 import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { createApp } from "../src/server.js";
 import { buildStoryAnalysisContext } from "../src/story-analysis-context.js";
@@ -424,6 +425,11 @@ test("source chapter catalog is rebuilt automatically from project-root original
   const root = await mkdtemp(join(tmpdir(), "novel-universe-auto-catalog-"));
   const previousCwd = process.cwd();
   await mkdir(join(root, "worlds", "source-world"), { recursive: true });
+  await mkdir(join(root, "analysis"), { recursive: true });
+  await copyFile(
+    fileURLToPath(new URL("../analysis/build-corpus-index.mjs", import.meta.url)),
+    join(root, "analysis", "build-corpus-index.mjs")
+  );
   const originalText = [
     "第一章 大枪落幕",
     "李阎走进雨里。",
