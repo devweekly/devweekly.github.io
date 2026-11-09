@@ -76,3 +76,19 @@ test("historical universe fails closed when bounded index is missing", async () 
     await rm(root, { recursive: true, force: true });
   }
 });
+test("a universe record without source-canon metadata cannot be treated as a source world", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-universe-missing-pointer-"));
+  try {
+    const worlds = join(root, "worlds");
+    const childDir = join(worlds, "u-historical");
+    await mkdir(join(childDir, "library"), { recursive: true });
+    await writeFile(join(childDir, "universe.json"), JSON.stringify({
+      id: "u-historical", sourceWorldId: "source-world", entryChapter: "第一章", entryChapterIndex: 0
+    }));
+    await writeFile(join(childDir, "library", "index.json"), JSON.stringify({ worldId: "u-historical", chunks: [] }));
+    await assert.rejects(() => resolveWorldLibraryDir("u-historical", worlds), /缺少有效的只读 source-canon.json/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
