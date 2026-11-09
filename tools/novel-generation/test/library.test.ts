@@ -107,6 +107,8 @@ test("private and external source files are stored only in ignored private-libra
       "private material must not enter canonical indexing or public analysis");
     const hits = await searchLibrary(library, "私人线索 秘密证据", 5);
     assert.ok(hits.some(hit => hit.text.includes("只有本机可以检索的秘密证据")));
+    const publicOnlyHits = await searchLibrary(library, "私人线索 秘密证据", 5, { includePrivate: false });
+    assert.ok(publicOnlyHits.every(hit => !hit.text.includes("只有本机可以检索的秘密证据")));
     const externalHits = await searchLibrary(library, "外部私有资料", 5);
     assert.ok(externalHits.some(hit => hit.text.includes("项目目录之外的文件也只能进入本机私有索引")));
     await rm(externalRoot, { recursive: true, force: true });
@@ -159,6 +161,21 @@ test("legacy private chunks and annotations are migrated out of tracked public a
       assert.equal((verifyDb.prepare("SELECT COUNT(*) AS count FROM entities").get() as { count: number }).count, 0);
       assert.equal((verifyDb.prepare("SELECT COUNT(*) AS count FROM entity_mentions").get() as { count: number }).count, 0);
     } finally { verifyDb.close(); }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("recursive corpus discovery skips generated and derived project directories", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-library-skip-generated-"));
+  try {
+    for (const directory of [".output", "analysis", "worlds", "node_modules", "dist", "private", "chapters"]) {
+      await mkdir(join(root, directory), { recursive: true });
+      await writeFile(join(root, directory, "nested.txt"), directory + " content", "utf8");
+    }
+    await writeFile(join(root, "original.txt"), "canonical corpus", "utf8");
+    const files = await listTextFiles([root]);
+    assert.deepEqual(files.map(file => file.slice(root.length + 1)).sort(), ["original.txt", "private/nested.txt", "chapters/nested.txt"].sort());
   } finally {
     await rm(root, { recursive: true, force: true });
   }
