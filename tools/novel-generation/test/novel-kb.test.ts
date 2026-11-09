@@ -185,8 +185,8 @@ test("canon index validation reads project-root original.txt when world-local co
       { ...catalogChapter(1, 1, "第一章 开端"), line: 1 },
       { ...catalogChapter(1, 2, "第二章 转折"), line: 3 }
     ], [
-      { ...chunk("canon:1", "第一章 开端", "正文甲", 0), source: "original.txt", sourceHash: hash, chapterStart: firstStart },
-      { ...chunk("canon:2", "第二章 转折", "正文乙", 1), source: "original.txt", sourceHash: hash, chapterStart: secondStart }
+      { ...chunk("canon:1", "第一章 开端", original.slice(firstStart, secondStart).trim(), 0), start: 0, end: original.slice(firstStart, secondStart).trim().length, source: "original.txt", sourceHash: hash, chapterStart: firstStart },
+      { ...chunk("canon:2", "第二章 转折", original.slice(secondStart).trim(), 0), start: 0, end: original.slice(secondStart).trim().length, source: "original.txt", sourceHash: hash, chapterStart: secondStart }
     ]);
     assert.deepEqual(inputs.chunks.map(item => item.id), ["canon:1", "canon:2"]);
     assert.deepEqual(inputs.chapterStartOffsets, [firstStart, secondStart]);
