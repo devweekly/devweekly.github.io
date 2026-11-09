@@ -50,7 +50,7 @@ export function shouldCopyUniverseAsset(relativePath: string): boolean {
   const first = parts[0]!;
   if ([
     "story.db", "story-state.json", "story-arc.md", "story-plan.json",
-    ".output", "universes", "library", "vane-index", "analysis",
+    ".output", "universes", "library", "private-library", "vane-index", "analysis",
     "corpus-craft", "style-references", "style-reference-history", "as-of-analysis", "universe.json"
   ].includes(first)) return false;
   if (parts.length === 1 && [
