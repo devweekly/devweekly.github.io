@@ -135,11 +135,10 @@ async function writeLibraryIndex(indexPath: string, index: LibraryIndex): Promis
  * index. Private annotations may already have reached annotations.json and
  * novel.db in older versions, so clear that mixed annotation registry too.
  */
-async function ensurePrivateLibraryIsolation(libraryDir: string, worldId: string): Promise<boolean> {
+export async function ensurePrivateLibraryIsolation(libraryDir: string, worldId: string): Promise<boolean> {
   const indexPath = join(libraryDir, "index.json");
   const publicIndex = await readOptionalLibraryIndex(indexPath, worldId);
-  if (!publicIndex) return false;
-  const privateChunks = publicIndex.chunks.filter(chunk => isPrivateSource(chunk.source));
+  const privateChunks = (publicIndex?.chunks ?? []).filter(chunk => isPrivateSource(chunk.source));
   const privateDir = join(dirname(libraryDir), "private-library");
   const privateIndexPath = join(privateDir, "index.json");
   if (privateChunks.length) {
@@ -152,9 +151,11 @@ async function ensurePrivateLibraryIsolation(libraryDir: string, worldId: string
       createdAt: existingPrivate?.createdAt ?? now, updatedAt: now,
       chunks: [...byId.values()]
     });
-    publicIndex.chunks = publicIndex.chunks.filter(chunk => !isPrivateSource(chunk.source));
-    publicIndex.updatedAt = now;
-    await writeLibraryIndex(indexPath, publicIndex);
+    if (publicIndex) {
+      publicIndex.chunks = publicIndex.chunks.filter(chunk => !isPrivateSource(chunk.source));
+      publicIndex.updatedAt = now;
+      await writeLibraryIndex(indexPath, publicIndex);
+    }
   }
 
   let hasPrivateAnnotations = false;
