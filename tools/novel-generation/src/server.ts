@@ -180,39 +180,15 @@ const WRITING_READINESS_STEPS: KnowledgeBuildStep[] = [
   "style-profile", "character-profiles", "character-states", "as-of-dossier"
 ];
 
-/**
- * First chapters in a new universe must not race the background knowledge build.
- * Wait for the minimum writing context; retry an incomplete build once using its
- * existing stage caches. Optional corpus/VANE indexing is deliberately excluded.
- */
-async function waitForWritingReadiness(worldId: string): Promise<void> {
-  const isReady = (state: KnowledgeBuildState | null) =>
-    Boolean(state && WRITING_READINESS_STEPS.every(name =>
-      state.steps.some(step => step.name === name && (step.status === "completed" || step.status === "skipped"))
-    ));
-  const waitOnce = async (): Promise<boolean> => {
-    const deadline = Date.now() + 30 * 60 * 1000;
-    while (Date.now() < deadline) {
-      const state = await readKnowledgeBuild(worldId);
-      if (isReady(state)) return true;
-      if (!knowledgeBuilds.has(worldId)) return isReady(state);
-      await new Promise(resolve => setTimeout(resolve, 1000));
-    }
-    throw Object.assign(new Error("新宇宙的写作知识准备超过 30 分钟；任务已安全停止，可从已有阶段缓存恢复。"), { status: 503 });
-  };
-
-  if (isReady(await readKnowledgeBuild(worldId))) return;
-  if (!knowledgeBuilds.has(worldId)) await startKnowledgeBuild(worldId);
-  if (await waitOnce()) return;
-  // One automatic retry: completed steps are reused through their own caches.
-  if (!knowledgeBuilds.has(worldId)) await startKnowledgeBuild(worldId);
-  if (await waitOnce()) return;
+/** Start or resume required knowledge preparation without holding the HTTP request open. */
+async function ensureWritingKnowledgeBuildStarted(worldId: string): Promise<void> {
   const state = await readKnowledgeBuild(worldId);
-  const missing = WRITING_READINESS_STEPS.filter(name =>
-    !state?.steps.some(step => step.name === name && (step.status === "completed" || step.status === "skipped"))
-  );
-  throw Object.assign(new Error("新宇宙缺少必要的写作上下文，已自动重试一次仍未就绪：" + missing.join("、") + "。请检查知识构建记录；不会在空上下文下生成第一章。"), { status: 503 });
+  const ready = Boolean(state && WRITING_READINESS_STEPS.every(name =>
+    state.steps.some(step => step.name === name && (step.status === "completed" || step.status === "skipped"))
+  ));
+  if (!ready && !knowledgeBuilds.has(worldId)) await startKnowledgeBuild(worldId);
 }
+
 async function writeKnowledgeBuild(state: KnowledgeBuildState): Promise<void> {
   const target = knowledgeBuildPath(state.worldId);
   await mkdir(path.dirname(target), { recursive: true });
@@ -2337,7 +2313,7 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
     const universe = await readUniverse(id);
     if (universe?.archivedAt) return void res.status(409).json({ error: "当前故事宇宙已归档，请先恢复后再生成章节。" });
     if (universe) await ensureUniverseStoryAnalysis(id, universe);
-    if (universe) await waitForWritingReadiness(id);
+    if (universe) await ensureWritingKnowledgeBuildStarted(id);
     const universeEntryPath = universe ? path.join(dir, "universe-entry.md") : undefined;
     const now = new Date().toISOString();
     const runId = randomUUID(); const outputDir = path.resolve(".output", id, "chapter-" + runId);
