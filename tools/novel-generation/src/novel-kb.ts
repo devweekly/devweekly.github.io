@@ -693,7 +693,7 @@ export async function indexNovelStructure(
   const catalogDocument = await loadChapterCatalogDocument(worldId, catalogPath);
   const catalog = catalogDocument?.chapters;
   if (!catalog) throw new Error("No chapter catalog. Run the corpus index script or pass --catalog.");
-  const prepared = await prepareCanonIndexInputs(worldDir, catalog, rawChunks, catalogDocument.totalLines);
+  const prepared = await prepareCanonIndexInputs(worldDir, catalog, rawChunks, catalogDocument.totalLines, catalogDocument.sourceHash);
   const chunks = prepared.chunks;
   if (!chunks.length) throw new Error("No chunks from original.txt were found in the library index.");
   const assignment = assignChapters(chunks, catalog, prepared.chapterStartOffsets);
