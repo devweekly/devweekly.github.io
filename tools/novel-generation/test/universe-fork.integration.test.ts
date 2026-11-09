@@ -26,7 +26,7 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
     await mkdir(join(root, "worlds", "source-world", "library"), { recursive: true });
     await mkdir(join(root, "analysis", "source-world"), { recursive: true });
     const sourceLines = Array.from({ length: 200 }, (_, index) =>
-      index === 0 ? "原文第一章" : index === 99 ? "原文第二章" : index === 199 ? "原文第三章" : ""
+      index === 0 ? "原文第一章" : index === 1 ? "此前正文" : index === 99 ? "原文第二章" : index === 100 ? "起点正文" : index === 199 ? "原文第三章" : index === 200 ? "未来原文" : ""
     );
     const sourceOriginalText = sourceLines.join("\n");
     const sourceHash = createHash("sha256").update(sourceOriginalText, "utf8").digest("hex");
@@ -40,9 +40,9 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
       schemaVersion: 1, worldId: "source-world", createdAt: "2026-11-01T00:00:00.000Z",
       updatedAt: "2026-11-01T00:00:00.000Z",
       chunks: [
-        { id: "source:1", source: "worlds/source-world/original.txt", sourceHash, chapter: "原文第一章", chunkIndex: 0, start: 0, end: 6, chapterStart: sourceChapterStarts[0], text: "此前正文" },
-        { id: "source:2", source: "worlds/source-world/original.txt", sourceHash, chapter: "原文第二章", chunkIndex: 0, start: 0, end: 6, chapterStart: sourceChapterStarts[1], text: "起点正文" },
-        { id: "source:3", source: "worlds/source-world/original.txt", sourceHash, chapter: "原文第三章", chunkIndex: 0, start: 0, end: 6, chapterStart: sourceChapterStarts[2], text: "未来原文" }
+        { id: "source:1", source: "worlds/source-world/original.txt", sourceHash, chapter: "原文第一章", chunkIndex: 0, start: 0, end: "原文第一章\\n此前正文".length, chapterStart: sourceChapterStarts[0], text: "原文第一章\\n此前正文" },
+        { id: "source:2", source: "worlds/source-world/original.txt", sourceHash, chapter: "原文第二章", chunkIndex: 0, start: 0, end: "原文第二章\\n起点正文".length, chapterStart: sourceChapterStarts[1], text: "原文第二章\\n起点正文" },
+        { id: "source:3", source: "worlds/source-world/original.txt", sourceHash, chapter: "原文第三章", chunkIndex: 0, start: 0, end: "原文第三章\\n未来原文".length, chapterStart: sourceChapterStarts[2], text: "原文第三章\\n未来原文" }
       ]
     }));
     await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify({
