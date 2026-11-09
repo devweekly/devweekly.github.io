@@ -116,7 +116,7 @@ export async function ensureBoundedUniverseCanonAssets(
   const projectRoot = path.resolve(options.projectRoot ?? process.cwd());
   const worldDir = path.resolve(options.worldDir ?? path.join(projectRoot, "worlds", worldId));
   const universePath = path.join(worldDir, "universe.json");
-  let universe: { sourceWorldId?: string; entryChapter?: string; entryChapterIndex?: number; entryChapterId?: string } | undefined;
+  let universe: { sourceWorldId?: string; entryChapter?: string; entryChapterIndex?: number; entryChapterId?: string; sourceCanonHash?: string } | undefined;
   try { universe = JSON.parse(await readFile(universePath, "utf8")) as typeof universe; }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
@@ -145,6 +145,7 @@ export async function ensureBoundedUniverseCanonAssets(
   const sourceCatalogPath = path.join(projectRoot, "analysis", universe.sourceWorldId, "chapter-index.json");
   const sourceCatalog = JSON.parse(await readFile(sourceCatalogPath, "utf8")) as {
     totalLines?: number;
+    sourceHash?: string;
     volumes?: Array<{ volume: number; startLine?: number; endLine?: number; chapters?: Array<Record<string, unknown>> }>;
     chapters?: Array<Record<string, unknown>>;
   };
@@ -225,7 +226,14 @@ export async function ensureBoundedUniverseCanonAssets(
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   if (sourceFullText !== undefined) {
-    validateCanonCatalogAgainstText(catalog, sourceFullText, sourceCatalog.totalLines);
+    const currentSourceHash = createHash("sha256").update(sourceFullText, "utf8").digest("hex");
+    if (universe.sourceCanonHash && universe.sourceCanonHash !== currentSourceHash) {
+      throw new Error("原文项目 original.txt 已变化，与该故事宇宙创建时记录的 sourceCanonHash 不一致。为保护历史时点，拒绝用新原文覆盖旧宇宙。");
+    }
+    if (!universe.sourceCanonHash && localOriginalText === undefined) {
+      throw new Error("旧故事宇宙没有 sourceCanonHash，且本地 bounded original.txt 丢失；无法证明当前项目原文就是创建时版本，拒绝自动重建。");
+    }
+    validateCanonCatalogAgainstText(catalog, sourceFullText, sourceCatalog.totalLines, sourceCatalog.sourceHash);
     const expectedBounded = truncateCanonAtLine(sourceFullText, endBeforeLine);
     if (localOriginalText !== undefined && localOriginalText !== sourceFullText && localOriginalText !== expectedBounded) {
       throw new Error("故事宇宙本地 original.txt 与当前原文项目的时点副本不一致。原文可能已变更或本地副本损坏；拒绝自动覆盖。");
@@ -233,7 +241,7 @@ export async function ensureBoundedUniverseCanonAssets(
   }
   const originalText = sourceFullText ?? localOriginalText;
   if (originalText === undefined) {
-    throw new Error("故事宇宙缺少本地 bounded original.txt，且原文项目全文不可用；无法验证或修复离线语料。");
+    throw new Error("找不到原著全文：故事宇宙缺少本地 bounded original.txt，且原文项目全文不可用；无法验证或修复离线语料。");
   }
   const originalHash = createHash("sha256").update(originalText, "utf8").digest("hex");
   const boundedText = truncateCanonAtLine(originalText, endBeforeLine, true);
