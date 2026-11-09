@@ -105,6 +105,60 @@ test("canon index inputs use original source hash and exact line offsets", async
   }
 });
 
+test("partially indexed canon chapters are rebuilt completely from original.txt", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-canon-partial-rebuild-"));
+  const previousCwd = process.cwd();
+  try {
+    const world = join(root, "worlds", "source-world");
+    const libraryDir = join(world, "library");
+    await mkdir(libraryDir, { recursive: true });
+    await mkdir(join(root, "analysis", "source-world"), { recursive: true });
+    const original = "第一章 忍·土\\n正文第一段。\\n正文第二段。\\n第二章 后续\\n后续正文。";
+    await writeFile(join(root, "original.txt"), original, "utf8");
+    const chapterStart = original.indexOf("第一章 忍·土");
+    const chapterEnd = original.indexOf("第二章 后续");
+    const firstChapter = original.slice(chapterStart, chapterEnd).trim();
+    const partialEnd = firstChapter.indexOf("正文第二段");
+    const sourceHash = createHash("sha256").update(original, "utf8").digest("hex");
+    await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify({
+      totalLines: 5,
+      volumes: [{ volume: 1, chapters: [
+        { sequenceInVolume: 1, printedNumber: 1, title: "第一章 忍·土", label: "忍·土", line: 1 },
+        { sequenceInVolume: 2, printedNumber: 2, title: "第二章 后续", label: "后续", line: 4 }
+      ] }]
+    }));
+    await writeFile(join(libraryDir, "index.json"), JSON.stringify({
+      schemaVersion: 1, worldId: "source-world", createdAt: "2026-01-01T00:00:00.000Z",
+      updatedAt: "2026-01-01T00:00:00.000Z",
+      chunks: [{
+        id: "legacy-partial-first-chapter",
+        source: "worlds/source-world/original.txt",
+        chapter: "第一章 忍·土",
+        chunkIndex: 0,
+        start: 0,
+        end: partialEnd,
+        text: firstChapter.slice(0, partialEnd),
+        sourceHash,
+        chapterStart
+      }]
+    }));
+    process.chdir(root);
+    assert.equal(await ensureSourceCanonLibraryIndex("source-world", world), true);
+    const repaired = JSON.parse(await readFile(join(libraryDir, "index.json"), "utf8")) as {
+      chunks: Array<{ chapter: string; text: string; start: number; end: number }>;
+    };
+    const firstChapterChunks = repaired.chunks.filter(item => item.chapter === "第一章 忍·土");
+    assert.ok(firstChapterChunks.length > 0);
+    assert.equal(firstChapterChunks[0]!.start, 0);
+    assert.equal(firstChapterChunks.at(-1)!.end, firstChapter.length);
+    assert.equal(firstChapterChunks.map(item => item.text).join(""), firstChapter);
+    assert.ok(repaired.chunks.some(item => item.chapter === "第二章 后续"));
+  } finally {
+    process.chdir(previousCwd);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("overlapping retrieval chunks are joined once", () => {
   const overlap = "重叠部分甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉";
   const first = "开头一段完整的内容，用来测试去重。" + overlap;

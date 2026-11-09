@@ -27,7 +27,8 @@ export interface AlignedCanonChapter {
 export function alignCanonChapterGroups(
   catalog: CatalogChapter[],
   chunks: CanonChunk[],
-  chapterStartOffsets: Array<number | undefined> = []
+  chapterStartOffsets: Array<number | undefined> = [],
+  allowUnpositionedRepeatedTitles = false
 ): AlignedCanonChapter[] {
   const groups: Array<{ title: string; chunks: CanonChunk[] }> = [];
   for (const chunk of chunks) {
@@ -42,13 +43,15 @@ export function alignCanonChapterGroups(
   let groupIndex = 0;
   return catalog.map((chapter, catalogIndex) => {
     const expectedStart = chapterStartOffsets[catalogIndex];
-    const remainingSameTitle = catalog.slice(catalogIndex).filter(item => item.title === chapter.title).length;
+    const repeatedTitle = catalog.some((item, index) => index !== catalogIndex && item.title === chapter.title);
     const groupMatches = (group: { title: string; chunks: CanonChunk[] } | undefined): boolean => {
       if (!group || group.title !== chapter.title) return false;
       const positions = group.chunks.map(item => item.chapterStart).filter((value): value is number => Number.isSafeInteger(value));
       if (expectedStart !== undefined && positions.length) return positions.every(value => value === expectedStart);
-      // Repeated titles without positional evidence cannot be safely aligned.
-      if (remainingSameTitle > 1) {
+      // A legacy group without source offsets is ambiguous at every occurrence
+      // of a repeated title, including the final occurrence in the catalog.
+      if (repeatedTitle && !positions.length) {
+        if (allowUnpositionedRepeatedTitles) return false;
         throw new Error("原著切片包含重复章节标题「" + chapter.title + "」，但缺少 chapterStart 原文位置，无法安全映射。请先备份 novel.db，再按语料重建流程补齐 chapterStart；ingest 会使派生分析失效，随后必须重跑 index-story 和分析构建。");
       }
       return true;
@@ -176,7 +179,7 @@ export function validateCanonChunksAgainstText(
       previousIndex = chunk.chunkIndex;
     }
     if (ordered[0]?.start !== 0 || previousEnd !== chapterText.length) {
-      throw new Error("原著切片未完整覆盖目录章节：" + item.chapter.title + "。请重新 ingest original.txt 后执行 index-story。");
+      throw new Error("原著切片在从 original.txt 自动重建后仍未完整覆盖目录章节：" + item.chapter.title + "。请检查该章节目录行号、下一章边界，以及 original.txt 是否与 chapter-index.json 对应同一版本。");
     }
   }
 }

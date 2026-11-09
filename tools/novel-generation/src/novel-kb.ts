@@ -107,8 +107,8 @@ interface CanonIndexInputs {
 const canonLibraryValidationCache = new Map<string, string>();
 
 /**
- * Reconstruct missing chapter chunks from the canonical offline text and its
- * verified catalog. Existing auxiliary imports and valid chapter chunks remain.
+ * Reconstruct missing or incomplete chapter chunks from the canonical offline
+ * text and its verified catalog. Existing auxiliary imports and valid chapter chunks remain.
  */
 export async function ensureSourceCanonLibraryIndex(
   worldId: string,
@@ -280,13 +280,24 @@ export async function prepareCanonIndexInputs(worldDir: string, catalog: Catalog
       chapterStartOffsets.push(lineIndex < 0 ? undefined :
         (starts[lineIndex] ?? 0) + line.length - line.trimStart().length);
     }
-    const aligned = alignCanonChapterGroups(catalog, canonChunks, chapterStartOffsets);
-    validateCanonChunksAgainstText(aligned, originalText, chapterStartOffsets);
-    const missing = aligned.filter(item => item.chunks.length === 0);
-    if (missing.length) {
+    const aligned = alignCanonChapterGroups(catalog, canonChunks, chapterStartOffsets, true);
+    // A chapter is rebuildable not only when it has no chunks, but also when
+    // its existing group is partial, has gaps, or carries invalid offsets.
+    // Validate each group independently so one damaged chapter does not
+    // prevent recovery from the authoritative original.txt.
+    const needsRebuild = aligned.filter(item => {
+      if (!item.chunks.length) return true;
+      try {
+        validateCanonChunksAgainstText([item], originalText, chapterStartOffsets);
+        return false;
+      } catch {
+        return true;
+      }
+    });
+    if (needsRebuild.length) {
       const sourceKey = relative(resolve(worldDir, "..", ".."), originalPath!).replace(/\\/g, "/");
       const rebuiltByCatalogIndex = new Map<number, LibraryChunk[]>();
-      for (const item of missing) {
+      for (const item of needsRebuild) {
         const start = chapterStartOffsets[item.catalogIndex];
         const end = chapterStartOffsets[item.catalogIndex + 1] ?? originalText.length;
         if (start === undefined || end <= start) {
@@ -313,10 +324,10 @@ export async function prepareCanonIndexInputs(worldDir: string, catalog: Catalog
       // with repeated titles already have valid chunks.
       const completed = aligned.map(item => ({
         ...item,
-        chunks: [
-          ...item.chunks,
-          ...(rebuiltByCatalogIndex.get(item.catalogIndex) ?? [])
-        ].sort((a, b) => a.chunkIndex - b.chunkIndex)
+        // Replace a damaged chapter as a whole. Appending a full-text rebuild
+        // to a partial old group would duplicate content or preserve bad ranges.
+        chunks: rebuiltByCatalogIndex.get(item.catalogIndex) ??
+          [...item.chunks].sort((a, b) => a.chunkIndex - b.chunkIndex)
       }));
       validateCanonChunksAgainstText(completed, originalText, chapterStartOffsets);
       const stillMissing = completed.find(item => item.chunks.length === 0);
@@ -682,7 +693,7 @@ export async function indexNovelStructure(
   const catalogDocument = await loadChapterCatalogDocument(worldId, catalogPath);
   const catalog = catalogDocument?.chapters;
   if (!catalog) throw new Error("No chapter catalog. Run the corpus index script or pass --catalog.");
-  const prepared = await prepareCanonIndexInputs(worldDir, catalog, rawChunks, catalogDocument.totalLines);
+  const prepared = await prepareCanonIndexInputs(worldDir, catalog, rawChunks, catalogDocument.totalLines, catalogDocument.sourceHash);
   const chunks = prepared.chunks;
   if (!chunks.length) throw new Error("No chunks from original.txt were found in the library index.");
   const assignment = assignChapters(chunks, catalog, prepared.chapterStartOffsets);
