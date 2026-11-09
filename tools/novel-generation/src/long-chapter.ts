@@ -407,7 +407,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
           currentPlans = revisedPlans.map((plan, index) => affectedScenes.includes(index + 1) ? plan : scenePlans[index]!);
           blueprint = currentPlans.join("\n\n");
           await saveStage(input.outputDir, "01-scene-blueprint-revision.md", blueprint);
-          console.error("[write-long] 已在大纲层修订蓝图：场景 " + affectedScenes.join("、"));
+          console.log("[write-long] 已在大纲层修订蓝图：场景 " + affectedScenes.join("、"));
         }
       }
       for (const sceneNumber of affectedScenes) {
@@ -475,7 +475,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   }
   const metrics = { target: input.maxWords, scenes: polished.length, ...rhythmMetrics(chapter) };
   await saveStage(input.outputDir, "06-rhythm-metrics.json", JSON.stringify(metrics, null, 2));
-  console.error("[write-long] 成稿 " + metrics.chars + " 汉字 · 均句长 " + metrics.mean + " · 长句 " + (metrics.long * 100).toFixed(1) + "% · 自动修复 " + reviewed.repairRounds + " 轮");
+  console.log("[write-long] 成稿 " + metrics.chars + " 汉字 · 均句长 " + metrics.mean + " · 长句 " + (metrics.long * 100).toFixed(1) + "% · 自动修复 " + reviewed.repairRounds + " 轮");
 
   // 状态提取的 JSON 结构示例，发给模型作字段说明；写全每字段的取值约定，避免模型自造含义。
   const statePrompt = [
