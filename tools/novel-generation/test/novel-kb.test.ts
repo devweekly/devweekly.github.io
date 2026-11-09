@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, mkdir, readdir, writeFile, readFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, readdir, writeFile, readFile, stat, utimes } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -153,6 +153,23 @@ test("partially indexed canon chapters are rebuilt completely from original.txt"
     assert.equal(firstChapterChunks.at(-1)!.end, firstChapter.length);
     assert.equal(firstChapterChunks.map(item => item.text).join(""), firstChapter);
     assert.ok(repaired.chunks.some(item => item.chapter === "第二章 后续"));
+
+    // A same-size index replacement with the old mtime must invalidate the
+    // in-memory validation cache and trigger another automatic repair.
+    const indexPath = join(libraryDir, "index.json");
+    const before = await stat(indexPath);
+    const serialized = await readFile(indexPath, "utf8");
+    const damaged = serialized.replace("正文第一段", "正文第一段");
+    const damagedWithCorruption = damaged.replace("正文第二段", "正文第贰段");
+    assert.equal(damagedWithCorruption.length, serialized.length);
+    await writeFile(indexPath, damagedWithCorruption, "utf8");
+    await utimes(indexPath, before.atime, before.mtime);
+    assert.equal(await ensureSourceCanonLibraryIndex("source-world", world), true);
+    const restored = JSON.parse(await readFile(indexPath, "utf8")) as {
+      chunks: Array<{ chapter: string; text: string }>;
+    };
+    assert.ok(restored.chunks.some(item => item.text.includes("正文第二段")));
+    assert.ok(restored.chunks.every(item => !item.text.includes("正文第贰段")));
   } finally {
     process.chdir(previousCwd);
     await rm(root, { recursive: true, force: true });
