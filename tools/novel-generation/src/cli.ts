@@ -91,6 +91,14 @@ async function readOptional(path: string): Promise<string | undefined> {
   }
 }
 
+function parseJsonDocument(raw: string, filePath: string): unknown {
+  try {
+    return JSON.parse(raw) as unknown;
+  } catch (error) {
+    throw new Error("JSON 文件格式损坏：" + filePath + "；" + (error instanceof Error ? error.message : String(error)));
+  }
+}
+
 function valuesAfter(name: string): string[] {
   const i = process.argv.indexOf(name);
   if (i < 0) return [];
@@ -920,7 +928,7 @@ async function main(): Promise<void> {
       throw new Error("--retrieval-limit must be between 1 and 20.");
     }
     const state = await loadRunStoryState(statePath, worldId, outputDir, "write");
-    const storyPlanText = [formatStoryPlan(await loadStoryPlan(resolve("worlds", worldId, "story-plan.json"), worldId)), formatStoryUnit(await readOptional(resolve(arg("--story-unit-file") ?? resolve("worlds", worldId, "story-unit.json"))).then(raw => raw ? validateStoryUnit(JSON.parse(raw), worldId) : undefined))].filter(Boolean).join("\n\n");
+    const storyPlanText = [formatStoryPlan(await loadStoryPlan(resolve("worlds", worldId, "story-plan.json"), worldId)), formatStoryUnit(await readOptional(resolve(arg("--story-unit-file") ?? resolve("worlds", worldId, "story-unit.json"))).then(raw => raw ? validateStoryUnit(parseJsonDocument(raw, resolve(arg("--story-unit-file") ?? resolve("worlds", worldId, "story-unit.json"))), worldId) : undefined))].filter(Boolean).join("\n\n");
     let storyArcText = "";
     try { storyArcText = await readFile(resolve(arg("--story-arc-file") ?? resolve("worlds", worldId, "story-arc.md")), "utf8"); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
