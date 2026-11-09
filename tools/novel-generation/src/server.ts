@@ -645,7 +645,7 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
 }
 
 async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: string, universeId: string, entryIndex: number): Promise<number> {
-  let source: { schemaVersion: number; createdAt: string; updatedAt: string; chunks: Array<CanonChapterChunk & { [key: string]: unknown }> } = {
+  let source: { schemaVersion: number; worldId?: string; createdAt: string; updatedAt: string; chunks: Array<CanonChapterChunk & { [key: string]: unknown }> } = {
     schemaVersion: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), chunks: []
   };
   const sourceLibraryDir = path.join(worldDir(sourceWorldId), "library");
