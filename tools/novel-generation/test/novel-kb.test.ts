@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, mkdir, writeFile } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, readdir, writeFile, readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -228,6 +228,36 @@ test("missing source Library is reconstructed from project-root original.txt and
     assert.ok(built.units[0]!.text.includes("李阎走进雨里。"));
     assert.ok(built.units[1]!.text.includes("夜色压住城寨。"));
     assert.equal(await ensureSourceCanonLibraryIndex("source-world", worldDir), false);
+  } finally {
+    process.chdir(previousCwd);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("corrupt derived library index is preserved and rebuilt from the offline source", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-kb-corrupt-library-"));
+  const previousCwd = process.cwd();
+  try {
+    const worldDir = join(root, "worlds", "source-world");
+    const libraryDir = join(worldDir, "library");
+    await mkdir(libraryDir, { recursive: true });
+    await mkdir(join(root, "analysis", "source-world"), { recursive: true });
+    const original = ["第一章 大枪落幕", "李阎走进雨里。", "第二章 貘与姑获鸟", "夜色压住城寨。"].join("\\n");
+    await writeFile(join(root, "original.txt"), original, "utf8");
+    await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify({
+      schemaVersion: 2, totalLines: 4,
+      volumes: [{ volume: 1, chapters: [
+        { sequenceInVolume: 1, printedNumber: 1, title: "第一章 大枪落幕", label: "大枪落幕", line: 1 },
+        { sequenceInVolume: 2, printedNumber: 2, title: "第二章 貘与姑获鸟", label: "貘与姑获鸟", line: 3 }
+      ] }]
+    }));
+    await writeFile(join(libraryDir, "index.json"), "{ malformed library index", "utf8");
+    process.chdir(root);
+    assert.equal(await ensureSourceCanonLibraryIndex("source-world", worldDir), true);
+    const index = JSON.parse(await readFile(join(libraryDir, "index.json"), "utf8")) as { chunks: Array<{ chapter: string; text: string }> };
+    assert.deepEqual(index.chunks.map(chunk => chunk.chapter), ["第一章 大枪落幕", "第二章 貘与姑获鸟"]);
+    assert.ok(index.chunks.some(chunk => chunk.text.includes("李阎走进雨里。")));
+    assert.ok((await readdir(libraryDir)).some(name => /^index\\.json\\.corrupt-/.test(name)), "corrupt bytes remain available for diagnosis");
   } finally {
     process.chdir(previousCwd);
     await rm(root, { recursive: true, force: true });
