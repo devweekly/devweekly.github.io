@@ -413,7 +413,29 @@ export function assignChapters(chunks: LibraryChunk[], catalog: CatalogChapter[]
     const id = chapterId(entry.volume, entry.sequenceInVolume);
     if (!covered.has(id)) chaptersWithoutChunks.push(index + 1);
   });
-  return { chapters, chunkChapter, unmatchedLabels: [...new Set(unmatchedLabels)], chaptersWithoutChunks };
+
+  // The catalog is the chapter directory of record. A chapter with no
+  // retrieval chunk still needs a stable novel_chapters row (e.g. a source
+  // slice that was absent and has not yet been rebuilt). Keep it in ordinal
+  // order with an empty chunk range rather than silently omitting the chapter.
+  const frontMatterRow = chapters.find(chapter => chapter.chapterId === "V00-C000");
+  const mappedById = new Map(chapters
+    .filter(chapter => chapter.chapterId !== "V00-C000")
+    .map(chapter => [chapter.chapterId, chapter]));
+  const catalogRows = catalog.map((entry, index): NovelChapterRow => mappedById.get(chapterId(entry.volume, entry.sequenceInVolume)) ?? ({
+    chapterId: chapterId(entry.volume, entry.sequenceInVolume),
+    ordinal: index + 1,
+    volume: entry.volume,
+    printedNumber: entry.printedNumber,
+    title: entry.title,
+    label: entry.label,
+    startLine: entry.line,
+    charCount: 0,
+    chunkStart: 0,
+    chunkEnd: -1
+  }));
+  const orderedChapters = frontMatterRow ? [frontMatterRow, ...catalogRows] : catalogRows;
+  return { chapters: orderedChapters, chunkChapter, unmatchedLabels: [...new Set(unmatchedLabels)], chaptersWithoutChunks };
 }
 
 const STOP_NAMES = new Set([
