@@ -88,20 +88,20 @@ function assertInsideWorld(id: string): void {
   }
 }
 
-/** 遍历 worlds/ 下合法目录，读取世界标题与 Story Plan 存在标记；无效目录静默跳过。 */
+/** 遍历 worlds/ 下合法目录；各世界元数据并行读取，单个目录损坏不影响其余列表。 */
 async function listWorlds(): Promise<Array<{ id: string; title: string; hasStoryPlan: boolean }>> {
   const root = path.resolve("worlds");
   let entries: string[];
   try {
     entries = await readdir(root);
-  } catch {
-    return [];
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return [];
+    throw error;
   }
   const validId = (x: string) => /^[a-z0-9][a-z0-9-]*$/i.test(x);
-  const result: Array<{ id: string; title: string; hasStoryPlan: boolean }> = [];
-  for (const id of entries.filter(validId)) {
+  const worlds = await Promise.all(entries.filter(validId).map(async id => {
     try {
-      if (await readUniverse(id)) continue; // 宇宙是原文项目的分支，不重复列为独立原文项目。
+      if (await readUniverse(id)) return null; // 宇宙是原文项目的分支，不重复列为独立原文项目。
       const bible = await readFile(path.join(root, id, "world-bible.md"), "utf8");
       let plan;
       try {
@@ -110,12 +110,15 @@ async function listWorlds(): Promise<Array<{ id: string; title: string; hasStory
         console.warn("[workbench] Invalid Story Plan for " + id, error);
       }
       const title = bible.split("\n").find(line => line.startsWith("# "))?.slice(2).trim() || id;
-      result.push({ id, title, hasStoryPlan: Boolean(plan) });
-    } catch {
-      /* 非世界目录或缺失元数据，不进列表。 */
+      return { id, title, hasStoryPlan: Boolean(plan) };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+        console.warn("[workbench] Unable to list world " + id, error);
+      }
+      return null;
     }
-  }
-  return result;
+  }));
+  return worlds.filter((world): world is { id: string; title: string; hasStoryPlan: boolean } => world !== null);
 }
 
 /** 业务异常的 status 字段直接映射成 HTTP 状态；其余一律按 500 处理。 */
@@ -129,7 +132,6 @@ function sendError(res: Response, error: unknown): void {
  * 各世界独立排队；队列尾部只保留最新任务，避免长链引用堆积。
  */
 const worldQueues = new Map<string, Promise<void>>();
-const worldMutationLocks = new Set<string>();
 
 type KnowledgeBuildStep = "story-analysis" | "as-of-dossier" | "volume-arcs" | "style-profile" | "character-profiles" | "character-states" | "corpus-craft" | "vane-index";
 type KnowledgeBuildProgress = { current: number; total: number; label: string };
@@ -323,25 +325,13 @@ export async function recoverKnowledgeBuilds(): Promise<void> {
 }
 
 
-/** Reserve the short metadata mutation window synchronously, before the first await. */
-function acquireWorldMutation(worldId: string): (() => void) | null {
-  if (worldMutationLocks.has(worldId)) return null;
-  worldMutationLocks.add(worldId);
-  return () => worldMutationLocks.delete(worldId);
-}
-
-/** Release callbacks are assigned inside async queue callbacks; isolate invocation from outer control-flow narrowing. */
-function releaseWorldMutation(release: (() => void) | null): void {
-  if (release) release();
-}
-
 async function serializeWorld<T>(worldId: string, task: () => Promise<T>): Promise<T> {
   const previous = worldQueues.get(worldId) ?? Promise.resolve();
   let release!: () => void;
   const current = new Promise<void>(resolve => { release = resolve; });
-  const tail = previous.then(() => current);
+  const tail = previous.catch(() => undefined).then(() => current);
   worldQueues.set(worldId, tail);
-  await previous;
+  await previous.catch(() => undefined);
   try {
     return await task();
   } finally {
@@ -904,14 +894,11 @@ app.get("/api/worlds/:worldId/universes", async (req, res) => {
 });
 
 app.patch("/api/worlds/:worldId/universe-archive", async (req, res) => {
-  let release: (() => void) | null = null;
   try {
     const lockId = worldIdOf(req.params.worldId);
     await serializeWorld(lockId, async () => {
     const id = worldIdOf(req.params.worldId); assertInsideWorld(id);
     if (activeStoryExecutions.has(id) || storyExecutionReservations.has(id) || chapterGenerationReservations.has(id)) return void res.status(409).json({ error: "章节或长篇任务正在执行或启动，不能归档或恢复宇宙。" });
-    release = acquireWorldMutation(id);
-    if (!release) return void res.status(409).json({ error: "当前宇宙正在执行创建、分叉或归档操作，请稍后重试。" });
     const universe = await readUniverse(id);
     if (!universe) return void res.status(409).json({ error: "原文项目不能归档为故事宇宙。" });
     const archive = req.body?.archived === true;
@@ -930,7 +917,6 @@ app.patch("/api/worlds/:worldId/universe-archive", async (req, res) => {
     res.json({ universe: updated });
     });
   } catch (error) { sendError(res, error); }
-  finally { releaseWorldMutation(release); }
 });
 
 app.post("/api/worlds/:worldId/universes", async (req, res) => {
@@ -1095,8 +1081,6 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     await serializeWorld(lockId, async () => {
     const parentId = worldIdOf(req.params.worldId); assertInsideWorld(parentId);
     if (activeStoryExecutions.has(parentId) || storyExecutionReservations.has(parentId) || chapterGenerationReservations.has(parentId)) return void res.status(409).json({ error: "章节或长篇任务正在执行或启动，不能从当前状态分叉。" });
-    release = acquireWorldMutation(parentId);
-    if (!release) return void res.status(409).json({ error: "当前宇宙正在执行创建、分叉或归档操作，请稍后重试。" });
     const parent = await readUniverse(parentId);
     if (!parent) return void res.status(409).json({ error: "只能从已有故事宇宙创建分叉。" });
     if (parent.archivedAt) return void res.status(409).json({ error: "已归档的故事宇宙不能继续分叉，请先恢复。" });
@@ -1226,7 +1210,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
       await rm(forkStagingPath, { recursive: true, force: true }).catch(() => undefined);
     }
     sendError(res, error);
-  } finally { releaseWorldMutation(release); }
+  }
 });
 
 // ── 同一世界下的独立 Story Unit 资料管理 ────────────────────
