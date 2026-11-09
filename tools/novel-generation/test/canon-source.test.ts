@@ -156,7 +156,7 @@ test("legacy universe repair replaces partially covered chapter slices from the 
     const sourceId = "source-world";
     const universeId = "u-1234567890abcdef";
     const universeDir = join(root, "worlds", universeId);
-    const fullText = "第一章\\r\\n正文一\\r\\n正文二\\r\\n第二章\\r\\n正文三";
+    const fullText = "第一章\r\n正文一\r\n正文二\r\n第二章\r\n正文三";
     const fullHash = createHash("sha256").update(fullText, "utf8").digest("hex");
     const firstStart = fullText.indexOf("第一章");
     const secondStart = fullText.indexOf("第二章");
@@ -182,11 +182,11 @@ test("legacy universe repair replaces partially covered chapter slices from the 
       schemaVersion: 1, worldId: universeId, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
       chunks: [
         { id: "partial-first", source: "worlds/source-world/original.txt", sourceHash: fullHash,
-          chapter: "第一章", chunkIndex: 0, start: 0, end: "第一章\\r\\n正文一".length,
-          chapterStart: firstStart, text: "第一章\\r\\n正文一" },
+          chapter: "第一章", chunkIndex: 0, start: 0, end: "第一章\r\n正文一".length,
+          chapterStart: firstStart, text: "第一章\r\n正文一" },
         { id: "complete-second", source: "worlds/source-world/original.txt", sourceHash: fullHash,
-          chapter: "第二章", chunkIndex: 0, start: 0, end: "第二章\\r\\n正文三".length,
-          chapterStart: secondStart, text: "第二章\\r\\n正文三" }
+          chapter: "第二章", chunkIndex: 0, start: 0, end: "第二章\r\n正文三".length,
+          chapterStart: secondStart, text: "第二章\r\n正文三" }
       ]
     }));
     assert.equal(await ensureBoundedUniverseCanonAssets(universeId, { projectRoot: root }), true);
