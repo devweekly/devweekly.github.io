@@ -244,7 +244,7 @@ function ensureNovelChapterSchema(db: DatabaseSync, worldId: string): void {
     if (!columns.has(name)) db.exec("ALTER TABLE novel_chapters ADD COLUMN " + name + " " + declaration);
   }
   db.prepare("UPDATE novel_chapters SET world_id=? WHERE world_id IS NULL OR world_id=''").run(worldId);
-  if (columns.has("title") || additions.some(([name]) => name === "label")) {
+  if (columns.has("title")) {
     db.exec("UPDATE novel_chapters SET label=title WHERE label IS NULL OR label=''");
   }
 }
