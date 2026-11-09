@@ -271,7 +271,8 @@ export async function ensureBoundedUniverseCanonAssets(
   validateCanonChunksAgainstText(aligned, boundedText, offsets);
   const boundedChunks = aligned.flatMap((item, index) => {
     if (item.chunks.length) return item.chunks.map(chunk => ({
-      ...chunk, source: sourceKey, sourceHash: boundedHash
+      ...chunk, source: sourceKey, sourceHash: boundedHash,
+      ...(offsets[index] !== undefined ? { chapterStart: offsets[index] } : {})
     }));
     const startLine = item.chapter.line;
     const nextLine = prefixCatalog[index + 1]?.line;
