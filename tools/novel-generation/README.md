@@ -692,7 +692,7 @@ npm run benchmark-local-models
 
 创建新宇宙或从历史章节 fork 时，系统使用宇宙本地的截断原文索引，并对原著 SQLite 知识库执行章节截止过滤。无法证明按章节安全的全书聚合表、未知表会被排除。
 
-同样重要的是，历史分支不会复制可能包含全书未来剧情的根级汇总文件（包括 world-bible、人物、时间线、世界设定汇总和 style profile），也不会复制 analysis、Corpus Craft、Vane 与 Style Reference 派生目录。Create/Fork 会建立安全启动底稿，并默认从 bounded SQLite/library 重建分析资料；Corpus Craft 世界细节会保留逐字证据。原文章节正文仍通过 bounded library 和起点前情上下文提供。
+同样重要的是，历史分支不会复制可能包含全书未来剧情的根级汇总文件（包括 world-bible、人物、时间线、世界设定汇总和 style profile），也不会复制 analysis、Corpus Craft、Vane 与 Style Reference 派生目录。Create/Fork 会建立安全启动底稿，并默认从 bounded SQLite/library 重建分析资料；Corpus Craft 世界细节会保留逐字证据。原文章节正文通过 bounded `original.txt`、library 和起点前情上下文提供。Create/Fork 不会把完整原著复制进历史宇宙：本地原文副本在所选章节之后的下一正式章节标题之前截断；library 的 `source` 与 `sourceHash` 重绑定到这份本地副本；章节目录的 `totalLines` 与实际副本行数一致。旧版本宇宙第一次使用本地检索或分析入口时会幂等修复完整原文副本、缺失副本、旧 library hash/source 和章节目录；如果起点或原文行号无法验证，则停止使用，不回退读取项目根目录完整原著。
 
 当前已增加真实 SQLite 快照测试、Create/Fork API + 文件系统集成测试、连续分叉回归，以及按起点过滤的 universe-local chapter catalog。Workbench 已提供后台知识重建入口和逐步骤状态；Create/Fork 默认异步启动八步时点知识重建。新增 `export-asof-dossier`，在 `analyze-corpus-craft` 后把人物、人物关系、逐章时间线、主线、伏笔、MacGuffin、故事核心、发展可能性及逐字证据支持的世界细节/习俗从当前宇宙 bounded SQLite 与 Corpus Craft 资料导出到 `worlds/<world>/as-of-analysis/`；不复制父宇宙资料，且再次分叉时明确排除该目录。写作检索路径统一使用 fail-closed 的 universe-local bounded index，Vane manifest 也必须与当前 worldId 匹配；集成测试实际执行章节单元构建、SQLite 分析上下文、Corpus Craft 与 Writing Brief 的历史 marker 泄漏检查。仍需在具体原著语料上做 LLM 生成结果抽样与并发故障注入压力验收。
 
