@@ -127,9 +127,11 @@ async function ensureSourceCanonLibraryIndexUnlocked(
       throw new Error("Library index schema/world mismatch: " + worldId);
     }
   } catch (error) {
-    if (error instanceof SyntaxError) {
-      // Preserve a damaged derived cache for diagnosis, then rebuild it from
-      // the canonical offline text. Never silently parse partial JSON.
+    const invalidIndex = error instanceof SyntaxError ||
+      (error instanceof Error && error.message.startsWith("Library index schema/world mismatch:"));
+    if (invalidIndex) {
+      // The index is a disposable derived cache. Preserve invalid bytes for
+      // diagnosis, then rebuild from the canonical offline text.
       const backupPath = indexPath + ".corrupt-" + Date.now();
       await rename(indexPath, backupPath);
       existing = undefined;
