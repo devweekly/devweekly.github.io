@@ -8,6 +8,7 @@ import { generateStory, runAgentText, type GenerationMode } from "./generate.js"
 import { ingestFiles, listTextFiles, searchLibrary } from "./library.js";
 import { writeChapter } from "./workflow.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
+import { resolveOriginalCanonPath } from "./canon-source.js";
 import { loadStoryState } from "./story-state.js";
 import { buildStoryStateGraph, filterGraph, filterStoryStateGraph } from "./story-state-graph.js";
 import { loadRunStoryState } from "./stage-cache.js";
@@ -489,8 +490,19 @@ async function main(): Promise<void> {
       if (!Number.isInteger(timeoutMs) || timeoutMs < MIN_AGENT_TIMEOUT_MS || timeoutMs > MAX_AGENT_TIMEOUT_MS) {
         throw new Error("--timeout-ms must be an integer between " + MIN_AGENT_TIMEOUT_MS + " and " + MAX_AGENT_TIMEOUT_MS + ".");
       }
+      const canonicalSourcePath = await resolveOriginalCanonPath(worldId);
+      const requestedSourcePath = arg("--source");
+      if (requestedSourcePath && resolve(requestedSourcePath) !== resolve(canonicalSourcePath)) {
+        try {
+          await access(resolve("worlds", worldId, "universe.json"));
+          throw new Error("历史故事宇宙只能使用自己的时点原文副本进行引用核验，不能通过 --source 指向完整原著或其他文件。");
+        } catch (error) {
+          if (error instanceof Error && error.message.includes("只能使用自己的时点原文副本")) throw error;
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        }
+      }
       const result = await collectWorldAnalysis(worldId, {
-        sourcePath: arg("--source") ?? "original.txt",
+        sourcePath: requestedSourcePath ? resolve(requestedSourcePath) : canonicalSourcePath,
         model: arg("--model"),
         timeoutMs,
         evidenceReview: process.argv.includes("--evidence-review"),
@@ -608,7 +620,7 @@ async function main(): Promise<void> {
     const runId = new Date().toISOString().replace(/[:.]/g, "-");
     const result = await runRegression({
       worldId,
-      corpusPath: resolve("original.txt"),
+      corpusPath: await resolveOriginalCanonPath(worldId),
       chapters,
       chapterIndex,
       contextLines,
