@@ -57,6 +57,10 @@ export async function loadChapterCatalogDocument(worldId: string, catalogPath?: 
     volumes?: Array<{ volume: number; chapters?: Array<Record<string, unknown>> }>;
     chapters?: Array<Record<string, unknown>>;
   };
+  if (raw.sourceHash !== undefined &&
+      (typeof raw.sourceHash !== "string" || !/^[a-f0-9]{64}$/i.test(raw.sourceHash))) {
+    throw new Error("chapter-index.json 的 sourceHash 格式无效：" + path);
+  }
   const rows: CatalogChapter[] = [];
   const push = (item: Record<string, unknown>, volume: number) => {
     const title = String(item.title ?? "").trim();
@@ -137,6 +141,22 @@ export async function ensureSourceCanonLibraryIndex(
   const catalogDocument = await loadChapterCatalogDocument(worldId, join(projectRoot, "analysis", worldId, "chapter-index.json"));
   if (!catalogDocument) return false;
   validateCanonCatalogAgainstText(catalogDocument.chapters, originalText, catalogDocument.totalLines, catalogDocument.sourceHash);
+  if (!catalogDocument.sourceHash) {
+    // Older catalogs predate corpus fingerprints. Once their line count and
+    // every chapter heading have been verified against the local full text,
+    // pin this exact source generation so same-shape text replacements cannot
+    // silently reuse the catalog later.
+    const catalogPath = join(projectRoot, "analysis", worldId, "chapter-index.json");
+    const rawCatalog = JSON.parse(await readFile(catalogPath, "utf8")) as Record<string, unknown>;
+    if (rawCatalog.sourceHash === undefined) {
+      rawCatalog.sourceHash = originalHash;
+      const temporaryCatalogPath = catalogPath + ".source-hash.tmp";
+      await writeFile(temporaryCatalogPath, JSON.stringify(rawCatalog, null, 2) + "\n", "utf8");
+      await rename(temporaryCatalogPath, catalogPath);
+    } else {
+      throw new Error("chapter-index.json 已有无效 sourceHash，拒绝自动覆盖：" + catalogPath);
+    }
+  }
 
   let indexInfo: Awaited<ReturnType<typeof stat>> | undefined;
   try { indexInfo = await stat(indexPath); }
