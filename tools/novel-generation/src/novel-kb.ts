@@ -115,7 +115,7 @@ export async function ensureSourceCanonLibraryIndex(
 
   const originalPath = await resolveOriginalCanonPath(worldId, { projectRoot, worldDir: absoluteWorldDir });
   const originalText = await readFile(originalPath, "utf8");
-  const catalogDocument = await loadChapterCatalogDocument(worldId);
+  const catalogDocument = await loadChapterCatalogDocument(worldId, join(projectRoot, "analysis", worldId, "chapter-index.json"));
   if (!catalogDocument) throw new Error("缺少 analysis/" + worldId + "/chapter-index.json，无法从离线原文重建 Library。");
   validateCanonCatalogAgainstText(catalogDocument.chapters, originalText, catalogDocument.totalLines);
   const sourceHash = createHash("sha256").update(originalText, "utf8").digest("hex");
