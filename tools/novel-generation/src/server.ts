@@ -20,7 +20,7 @@ import {
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
 import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks, validateCanonCatalogAgainstText, type CanonChunk } from "./canon-chapters.js";
 import { chunkText } from "./library.js";
-import { chapterId as catalogChapterId, loadChapterCatalog, type CatalogChapter } from "./novel-kb.js";
+import { chapterId as catalogChapterId, loadChapterCatalog, loadChapterCatalogDocument, type CatalogChapter } from "./novel-kb.js";
 import { buildStoryStateGraph, filterGraph } from "./story-state-graph.js";
 import { archiveStyleReference, listStyleReferenceHistory, listStyleReferences, putStyleReference, readActiveStyleReference, readStyleReferenceVersion } from "./style-references.js";
 import { getCandidate, getRun, listCandidates, listRuns, recoverInterruptedRuns, saveCandidate, saveRun, type StoryPlanCandidate, type WorkbenchRun } from "./workbench-store.js";
