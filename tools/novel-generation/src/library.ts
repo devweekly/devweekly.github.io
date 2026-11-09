@@ -183,11 +183,11 @@ export async function ensurePrivateLibraryIsolation(libraryDir: string, worldId:
   if (hasPrivateAnnotations || privateChunks.length) {
     // Older analyze runs persisted private evidence in both JSON and SQLite.
     // Delete the mixed registry rather than risk retaining a private quote.
+    syncAnnotations(databaseWorldDirFromLibrary(libraryDir), worldId, [], null);
     for (const name of ["annotations.json", "entities.json"]) {
       try { await unlink(join(libraryDir, name)); }
       catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     }
-    syncAnnotations(databaseWorldDirFromLibrary(libraryDir), worldId, [], null);
   }
   if (privateChunks.length || hasPrivateAnnotations) {
     searchCache.delete(indexPath);
