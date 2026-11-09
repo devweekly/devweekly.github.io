@@ -140,7 +140,7 @@ export function validateCanonCatalogAgainstText(
     if (headingPattern.test(line) && !catalogLines.has(index + 1)) missingHeadings.push(index + 1);
   }
   if (missingHeadings.length) {
-    throw Object.assign(new Error("chapter-index.json 不完整：原文第 " + missingHeadings.slice(0, 8).join("、") + " 行存在未登记章节标题。请重新运行 node analysis/build-corpus-index.mjs；在目录完整前拒绝创建时点副本。"), { status: 400 });
+    throw Object.assign(new Error("原文目录不完整：chapter-index.json 在原文第 " + missingHeadings.slice(0, 8).join("、") + " 行存在未登记章节标题。请重新运行 node analysis/build-corpus-index.mjs；在目录完整前拒绝创建时点副本。"), { status: 400 });
   }
 }
 
