@@ -483,16 +483,24 @@ test("universe creation rebuilds bounded offline assets from project-root origin
     const payload = JSON.parse(body) as { universe: { id: string } };
     const universeDir = join(root, "worlds", payload.universe.id);
 
-    assert.equal(await readFile(join(universeDir, "original.txt"), "utf8"), originalText,
-      "root original.txt must be copied into the universe even when reflink is unavailable");
+    const boundedOriginalText = originalText.split("\\n").slice(0, 4).join("\\n");
+    assert.equal(await readFile(join(universeDir, "original.txt"), "utf8"), boundedOriginalText,
+      "universe original.txt must stop immediately before the next canon chapter");
+    assert.ok(!(await readFile(join(universeDir, "original.txt"), "utf8")).includes("THIS IS FUTURE PLOT"));
     const bounded = JSON.parse(await readFile(join(universeDir, "library", "index.json"), "utf8")) as {
       chunks: Array<{ chapter: string; source: string; sourceHash?: string; text: string }>;
     };
     assert.ok(bounded.chunks.some(chunk => chunk.text.includes("李阎在雨里走过长街。")));
     assert.ok(bounded.chunks.some(chunk => chunk.text.includes("夜色压住了城寨。")));
     assert.ok(!JSON.stringify(bounded).includes("THIS IS FUTURE PLOT"));
-    assert.ok(bounded.chunks.every(chunk => chunk.source.endsWith("original.txt")));
-    assert.ok(bounded.chunks.every(chunk => chunk.sourceHash === createHash("sha256").update(originalText, "utf8").digest("hex")));
+    assert.ok(bounded.chunks.every(chunk => chunk.source === `worlds/${payload.universe.id}/original.txt`));
+    const boundedHash = createHash("sha256").update(boundedOriginalText, "utf8").digest("hex");
+    assert.ok(bounded.chunks.every(chunk => chunk.sourceHash === boundedHash));
+    const units = await buildAnalysisUnits(payload.universe.id, { worldDir: universeDir });
+    assert.equal(units.units.length, 2, "index-story analysis must accept the bounded source hash");
+    assert.ok(!units.units.some(unit => unit.text.includes("THIS IS FUTURE PLOT")));
+    const boundedCatalog = JSON.parse(await readFile(join(root, "analysis", payload.universe.id, "chapter-index.json"), "utf8")) as { totalLines: number };
+    assert.equal(boundedCatalog.totalLines, boundedOriginalText.split("\\n").length);
     assert.equal(await readFile(join(root, "original.txt"), "utf8"), originalText, "source corpus must remain unchanged");
   } finally {
     if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
