@@ -221,6 +221,15 @@ test("continuity notes deduplicate only formatting and punctuation variants", ()
 });
 
 
+test("continuity notes retain only the newest bounded active snapshot", () => {
+  const notes = Array.from({ length: 55 }, (_, index) => "第" + (index + 1) + "条仍有效的连续性约束");
+  const bounded = dedupeContinuityNotes(notes);
+  assert.equal(bounded.length, 40);
+  assert.equal(bounded[0], "第16条仍有效的连续性约束");
+  assert.equal(bounded.at(-1), "第55条仍有效的连续性约束");
+  assert.deepEqual(dedupeContinuityNotes([...notes, notes[54]]), bounded);
+});
+
 test("legacy generated-continuation facts are downgraded without changing sourced canon facts", () => {
   const state = emptyStoryState("test-world");
   state.canonFacts = [
