@@ -158,7 +158,8 @@ test("legacy universe repair reconstructs a missing local copy only as a bounded
     const universeDir = join(root, "worlds", universeId);
     await mkdir(universeDir, { recursive: true });
     await mkdir(join(root, "analysis", sourceId), { recursive: true });
-    await writeFile(join(root, "original.txt"), "第一章\n正文一\n第二章\n正文二\n第三章\n未来剧情", "utf8");
+    const fullText = "第一章\n正文一\n第二章\n正文二\n第三章\n未来剧情";
+    await writeFile(join(root, "original.txt"), fullText, "utf8");
     await writeFile(join(root, "analysis", sourceId, "chapter-index.json"), JSON.stringify({
       volumes: [{ volume: 1, chapters: [
         { sequenceInVolume: 1, title: "第一章", label: "第一章", line: 1 },
@@ -167,7 +168,8 @@ test("legacy universe repair reconstructs a missing local copy only as a bounded
       ] }]
     }));
     await writeFile(join(universeDir, "universe.json"), JSON.stringify({
-      id: universeId, sourceWorldId: sourceId, entryChapter: "第二章", entryChapterIndex: 1
+      id: universeId, sourceWorldId: sourceId, entryChapter: "第二章", entryChapterIndex: 1,
+      sourceCanonHash: createHash("sha256").update(fullText, "utf8").digest("hex")
     }));
     await writeFile(join(universeDir, "source-canon.json"), JSON.stringify({ sourceWorldId: sourceId, readOnly: true }));
     assert.equal(await resolveWorldLibraryDir(universeId, join(root, "worlds")), join(universeDir, "library"));
