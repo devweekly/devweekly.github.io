@@ -112,7 +112,7 @@ export function dedupeContinuityNotes(notes: string[]): string[] {
   const result: string[] = [];
   for (const note of notes) {
     const normalized = note.normalize("NFKC").toLocaleLowerCase()
-      .replace(/[\\s"'“”‘’「」『』，。！？、；：,.!?;:（）()【】\\[\\]《》]/g, "");
+      .replace(/[\s"'“”‘’「」『』，。！？、；：,.!?;:（）()【】\[\]《》]/g, "");
     if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
     result.push(note.trim());
