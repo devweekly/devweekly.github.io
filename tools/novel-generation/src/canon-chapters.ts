@@ -76,7 +76,7 @@ export function alignCanonChapterGroups(
 
 /** Split offline corpus text consistently for LF, CRLF and legacy CR files. */
 export function splitCanonLines(text: string): string[] {
-  return text.split(/\\r\\n|\\n|\\r/);
+  return text.split(/\r\n|\n|\r/);
 }
 
 /** Return UTF-16 offsets for each physical line without normalizing source bytes. */
@@ -84,10 +84,10 @@ export function canonLineStartOffsets(text: string): number[] {
   const starts = [0];
   for (let index = 0; index < text.length; index++) {
     const char = text[index];
-    if (char === "\\r") {
-      if (text[index + 1] === "\\n") index++;
+    if (char === "\r") {
+      if (text[index + 1] === "\n") index++;
       starts.push(index + 1);
-    } else if (char === "\\n") {
+    } else if (char === "\n") {
       starts.push(index + 1);
     }
   }
@@ -112,7 +112,7 @@ export function validateCanonCatalogAgainstText(
     if (!Number.isSafeInteger(line) || (line ?? 0) <= previousLine || (line ?? 0) > lines.length) {
       throw Object.assign(new Error("chapter-index.json 的章节行号缺失、越界或顺序异常：" + chapter.title + "。请重新生成原文目录。"), { status: 400 });
     }
-    const actual = (lines[(line as number) - 1] ?? "").replace(/^\\uFEFF/, "").trim();
+    const actual = (lines[(line as number) - 1] ?? "").replace(/^\uFEFF/, "").trim();
     if (actual !== chapter.title.trim()) {
       throw Object.assign(new Error("chapter-index.json 的章节行号已过期：" + chapter.title + " 应位于 L" + line + "，但原文该行是「" + actual.slice(0, 80) + "」。请重新运行 node analysis/build-corpus-index.mjs。"), { status: 400 });
     }
@@ -125,10 +125,10 @@ export function validateCanonCatalogAgainstText(
 
   // Keep this expression in sync with analysis/build-corpus-index.mjs. A catalog
   // that silently omits a later chapter cannot define a safe end-of-book boundary.
-  const headingPattern = /^[ \\t\\u3000]*第([〇零一二三四五六七八九十百千万两0-9０-９]+)章[ \\t\\u3000]*(.*)$/;
+  const headingPattern = /^[ \t\u3000]*第([〇零一二三四五六七八九十百千万两0-9０-９]+)章[ \t\u3000]*(.*)$/;
   const missingHeadings: number[] = [];
   for (let index = 0; index < lines.length; index++) {
-    const line = (lines[index] ?? "").replace(/^\\uFEFF/, "");
+    const line = (lines[index] ?? "").replace(/^\uFEFF/, "");
     if (headingPattern.test(line) && !catalogLines.has(index + 1)) missingHeadings.push(index + 1);
   }
   if (missingHeadings.length) {
