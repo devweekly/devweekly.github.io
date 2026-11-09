@@ -294,12 +294,16 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
       // Use the same semantic validity predicate as backfill. A marker-only or
       // empty storyCore:{observations:[]} snapshot must never suppress analysis.
       const reusableBoundedAnalysis = Boolean(universe && hasBoundedStoryAnalysis(existingAnalysis, universe));
+      if (!reusableBoundedAnalysis) {
+        const staleAnalysisIndex = state.steps.findIndex(step => step.name === "story-analysis");
+        if (staleAnalysisIndex >= 0) state.steps.splice(staleAnalysisIndex, 1);
+      }
       for (const step of KNOWLEDGE_BUILD_STEPS) {
         if (controller.signal.aborted) {
           state.status = "cancelled"; state.completedAt = new Date().toISOString(); state.updatedAt = state.completedAt;
           delete state.currentStep; delete state.progress; await writeKnowledgeBuild(state); return;
         }
-        if (reusableSteps.has(step.name)) continue;
+        if (reusableSteps.has(step.name) && (step.name !== "story-analysis" || reusableBoundedAnalysis)) continue;
         if (step.name === "story-analysis" && reusableBoundedAnalysis) {
           const now = new Date().toISOString();
           state.steps.push({ name: step.name, status: "skipped", startedAt: now, completedAt: now, output: "Reused the existing complete, entry-bounded v6 story analysis snapshot." });
