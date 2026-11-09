@@ -2546,16 +2546,5 @@ export async function recoverWorkbenchRuns(): Promise<void> {
     }
     await recoverInterruptedRuns(id);
     await recoverStoryExecutions(id);
-    const build = await readKnowledgeBuild(id);
-    if (build && (build.status === "queued" || build.status === "running")) {
-      build.status = "failed";
-      build.completedAt = new Date().toISOString();
-      build.updatedAt = build.completedAt;
-      build.steps = build.steps.map(step => step.status === "running"
-        ? { ...step, status: "failed" as const, completedAt: build.completedAt, error: "Workbench restarted before this step completed. Start a new knowledge build to retry." }
-        : step);
-      delete build.currentStep;
-      await writeKnowledgeBuild(build);
-    }
   }));
 }
