@@ -650,7 +650,8 @@ async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: st
   }
   const catalog = await loadChapterCatalog(sourceWorldId);
   if (!catalog) throw new Error("原著章节目录不存在，无法创建有边界的知识切片快照。");
-  const nextChapterLine = catalog[entryIndex + 1]?.line;
+  const nextChapterLineValue = catalog[entryIndex + 1]?.line;
+  const nextChapterLine = typeof nextChapterLineValue === "number" ? nextChapterLineValue : undefined;
   if (catalog[entryIndex + 1] && (!Number.isSafeInteger(nextChapterLine) || Number(nextChapterLine) < 2)) {
     throw new Error("所选起点之后的原文目录缺少有效行号，无法安全截断未来章节。");
   }
@@ -810,7 +811,8 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     });
     const sourceCatalog = await loadChapterCatalog(rootSourceId);
     if (!sourceCatalog) throw new Error("原著章节目录不存在，无法建立安全的时点原文副本。");
-    const nextChapterLine = sourceCatalog[selectedIndex + 1]?.line;
+    const nextChapterLineValue = sourceCatalog[selectedIndex + 1]?.line;
+    const nextChapterLine = typeof nextChapterLineValue === "number" ? nextChapterLineValue : undefined;
     if (sourceCatalog[selectedIndex + 1] && (!Number.isSafeInteger(nextChapterLine) || Number(nextChapterLine) < 2)) {
       throw new Error("所选章节之后的目录缺少有效行号，无法截断原文未来剧情。");
     }
@@ -995,7 +997,8 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     if (parentEntryIndex < 0 || parentEntryIndex >= parentCanonChapters.length) throw new Error("父宇宙的原文起点无法通过稳定章节索引唯一定位，拒绝创建可能泄漏未来剧情的分支。");
     const sourceCatalog = await loadChapterCatalog(parent.sourceWorldId);
     if (!sourceCatalog) throw new Error("原文章节目录不存在，无法安全截断分支原文副本。");
-    const nextChapterLine = sourceCatalog[parentEntryIndex + 1]?.line;
+    const nextChapterLineValue = sourceCatalog[parentEntryIndex + 1]?.line;
+    const nextChapterLine = typeof nextChapterLineValue === "number" ? nextChapterLineValue : undefined;
     if (sourceCatalog[parentEntryIndex + 1] && (!Number.isSafeInteger(nextChapterLine) || Number(nextChapterLine) < 2)) {
       throw new Error("父宇宙起点之后的目录缺少有效行号，无法安全截断分支原文。");
     }
