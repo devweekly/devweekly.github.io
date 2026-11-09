@@ -43,13 +43,14 @@ export function alignCanonChapterGroups(
   let groupIndex = 0;
   return catalog.map((chapter, catalogIndex) => {
     const expectedStart = chapterStartOffsets[catalogIndex];
-    const remainingSameTitle = catalog.slice(catalogIndex).filter(item => item.title === chapter.title).length;
+    const repeatedTitle = catalog.some((item, index) => index !== catalogIndex && item.title === chapter.title);
     const groupMatches = (group: { title: string; chunks: CanonChunk[] } | undefined): boolean => {
       if (!group || group.title !== chapter.title) return false;
       const positions = group.chunks.map(item => item.chapterStart).filter((value): value is number => Number.isSafeInteger(value));
       if (expectedStart !== undefined && positions.length) return positions.every(value => value === expectedStart);
-      // Repeated titles without positional evidence cannot be safely aligned.
-      if (remainingSameTitle > 1) {
+      // A legacy group without source offsets is ambiguous at every occurrence
+      // of a repeated title, including the final occurrence in the catalog.
+      if (repeatedTitle && !positions.length) {
         if (allowUnpositionedRepeatedTitles) return false;
         throw new Error("原著切片包含重复章节标题「" + chapter.title + "」，但缺少 chapterStart 原文位置，无法安全映射。请先备份 novel.db，再按语料重建流程补齐 chapterStart；ingest 会使派生分析失效，随后必须重跑 index-story 和分析构建。");
       }
