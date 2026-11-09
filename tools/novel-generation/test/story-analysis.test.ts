@@ -119,7 +119,7 @@ test("upgrading a database drops the graph tables and keeps the graph in the sna
     db.exec("PRAGMA user_version=6");
     db.close();
 
-    assert.equal(databaseStatus(worldDir, "test-world").schemaVersion, 8);
+    assert.equal(databaseStatus(worldDir, "test-world").schemaVersion, 9);
     assert.equal(readStoryAnalysis(worldDir, "test-world")?.storyGraph?.nodes?.[0]?.label, "林岚", "图仍保存在快照里");
     const check = new DatabaseSync(join(worldDir, "novel.db"));
     try {
