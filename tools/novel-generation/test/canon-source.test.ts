@@ -53,7 +53,7 @@ test("universe copy creates an independent local copy from the root corpus", asy
 });
 
 test("canon truncation excludes the next chapter heading and handles CRLF", () => {
-  assert.equal(truncateCanonAtLine("第一章\\r\n正文\\r\n第二章\\r\n未来", 3), "第一章\\r\n正文");
+  assert.equal(truncateCanonAtLine("第一章\r\n正文\r\n第二章\r\n未来", 3), "第一章\r\n正文");
   assert.equal(truncateCanonAtLine("第一章\n正文\n第二章", undefined), "第一章\n正文\n第二章");
   assert.throws(() => truncateCanonAtLine("只有一行", 3), /超出全文范围/);
 });
