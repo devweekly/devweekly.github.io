@@ -1,11 +1,11 @@
 // 语料存储与检索层：导入按中文章节标题切章、带重叠切片，BM25 词面打分（中文二元组），
 // 非向量语义检索。切片记录来源 SHA-256 与章节内字符偏移，供证据逐字定位。
 // 重复导入同一 source 会替换全部旧切片并使对应 annotations 失效——语料变化后旧证据不能沿用。
-import { mkdir, readFile, readdir, stat, unlink, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, stat, unlink, writeFile } from "node:fs/promises";
 import { LIBRARY_CHUNK_MAX_CHARS, LIBRARY_CHUNK_OVERLAP_CHARS } from "./constants.js";
 import { invalidateDerivedAnalysis, syncAnnotations, databaseWorldDirFromLibrary } from "./database.js";
 import { createHash } from "node:crypto";
-import { basename, extname, join, relative, resolve, sep } from "node:path";
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from "node:path";
 
 export interface LibraryChunk {
   id: string;
@@ -105,6 +105,87 @@ function terms(text: string): string[] {
   return [...result].filter(term => term.length >= 2);
 }
 
+function isPrivateSource(source: string): boolean {
+  const normalized = source.replace(/\\\\/g, "/");
+  return normalized.startsWith("../") || isAbsolute(source) || normalized.split("/").includes("private");
+}
+
+async function readOptionalLibraryIndex(indexPath: string, worldId: string): Promise<LibraryIndex | undefined> {
+  try {
+    const index = JSON.parse(await readFile(indexPath, "utf8")) as LibraryIndex;
+    if (index.schemaVersion !== 1 || index.worldId !== worldId || !Array.isArray(index.chunks)) {
+      throw new Error("Library index schema/world mismatch.");
+    }
+    return index;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+    throw error;
+  }
+}
+
+async function writeLibraryIndex(indexPath: string, index: LibraryIndex): Promise<void> {
+  await mkdir(dirname(indexPath), { recursive: true });
+  const temporary = indexPath + ".tmp";
+  await writeFile(temporary, JSON.stringify(index, null, 2) + "\\n", "utf8");
+  await rename(temporary, indexPath);
+}
+
+/**
+ * Move any legacy private/ or external-file chunks out of the tracked public
+ * index. Private annotations may already have reached annotations.json and
+ * novel.db in older versions, so clear that mixed annotation registry too.
+ */
+async function ensurePrivateLibraryIsolation(libraryDir: string, worldId: string): Promise<boolean> {
+  const indexPath = join(libraryDir, "index.json");
+  const publicIndex = await readOptionalLibraryIndex(indexPath, worldId);
+  if (!publicIndex) return false;
+  const privateChunks = publicIndex.chunks.filter(chunk => isPrivateSource(chunk.source));
+  const privateDir = join(dirname(libraryDir), "private-library");
+  const privateIndexPath = join(privateDir, "index.json");
+  if (privateChunks.length) {
+    const existingPrivate = await readOptionalLibraryIndex(privateIndexPath, worldId);
+    const byId = new Map((existingPrivate?.chunks ?? []).map(chunk => [chunk.id, chunk]));
+    for (const chunk of privateChunks) byId.set(chunk.id, chunk);
+    const now = new Date().toISOString();
+    await writeLibraryIndex(privateIndexPath, {
+      schemaVersion: 1, worldId,
+      createdAt: existingPrivate?.createdAt ?? now, updatedAt: now,
+      chunks: [...byId.values()]
+    });
+    publicIndex.chunks = publicIndex.chunks.filter(chunk => !isPrivateSource(chunk.source));
+    publicIndex.updatedAt = now;
+    await writeLibraryIndex(indexPath, publicIndex);
+  }
+
+  let hasPrivateAnnotations = false;
+  const annotationsPath = join(libraryDir, "annotations.json");
+  try {
+    const annotations = JSON.parse(await readFile(annotationsPath, "utf8")) as {
+      annotations?: Array<{ source?: string }>;
+      failures?: Array<{ chunkId?: string }>;
+    };
+    hasPrivateAnnotations = (annotations.annotations ?? []).some(item => isPrivateSource(item.source ?? "")) ||
+      (annotations.failures ?? []).some(item => isPrivateSource(item.chunkId ?? ""));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  if (hasPrivateAnnotations || privateChunks.length) {
+    // Older analyze runs persisted private evidence in both JSON and SQLite.
+    // Delete the mixed registry rather than risk retaining a private quote.
+    for (const name of ["annotations.json", "entities.json"]) {
+      try { await unlink(join(libraryDir, name)); }
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+    }
+    syncAnnotations(databaseWorldDirFromLibrary(libraryDir), worldId, [], null);
+  }
+  if (privateChunks.length || hasPrivateAnnotations) {
+    searchCache.delete(indexPath);
+    searchCache.delete(privateIndexPath);
+    return true;
+  }
+  return false;
+}
+
 export async function ingestFiles(worldId: string, inputPaths: string[], libraryDir: string): Promise<number> {
   const chunks: LibraryChunk[] = [];
   for (const inputPath of inputPaths) {
@@ -136,54 +217,71 @@ export async function ingestFiles(worldId: string, inputPaths: string[], library
   }
 
   await mkdir(libraryDir, { recursive: true });
+  await ensurePrivateLibraryIsolation(libraryDir, worldId);
   const indexPath = join(libraryDir, "index.json");
-  let existing: LibraryChunk[] = [];
-  try {
-    const previous = JSON.parse(await readFile(indexPath, "utf8")) as LibraryIndex;
-    if (previous.schemaVersion !== 1 || previous.worldId !== worldId) throw new Error("Library index schema/world mismatch.");
-    existing = previous.chunks;
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  }
-  const ingestedSources = new Set(chunks.map(chunk => chunk.source));
-  const byId = new Map(existing.filter(chunk => !ingestedSources.has(chunk.source)).map(chunk => [chunk.id, chunk]));
-  for (const chunk of chunks) byId.set(chunk.id, chunk);
+  const privateIndexPath = join(dirname(libraryDir), "private-library", "index.json");
+  const publicChunks = chunks.filter(chunk => !isPrivateSource(chunk.source));
+  const privateChunks = chunks.filter(chunk => isPrivateSource(chunk.source));
+  const existingPublic = await readOptionalLibraryIndex(indexPath, worldId);
+  const existingPrivate = await readOptionalLibraryIndex(privateIndexPath, worldId);
   const now = new Date().toISOString();
-  const index: LibraryIndex = {
-    schemaVersion: 1, worldId, createdAt: now, updatedAt: now, chunks: [...byId.values()]
-  };
-  const temporary = indexPath + ".tmp";
-  await writeFile(temporary, JSON.stringify(index, null, 2) + "\n", "utf8");
-  const { rename } = await import("node:fs/promises");
-  await rename(temporary, indexPath);
 
-  const annotationsPath = join(libraryDir, "annotations.json");
-  try {
-    const annotations = JSON.parse(await readFile(annotationsPath, "utf8")) as {
-      schemaVersion: number; worldId: string; annotations: Array<{ source: string }>;
-      failures: Array<{ chunkId: string }>; updatedAt?: string;
-    };
-    if (annotations.schemaVersion === 1 && annotations.worldId === worldId) {
-      const filtered = {
-        ...annotations,
-        updatedAt: now,
-        annotations: annotations.annotations.filter(item => !ingestedSources.has(item.source)),
-        failures: annotations.failures.filter(item => ![...ingestedSources].some(source => item.chunkId.startsWith(source + ":")))
+  const publicSources = new Set(publicChunks.map(chunk => chunk.source));
+  const publicById = new Map((existingPublic?.chunks ?? [])
+    .filter(chunk => !publicSources.has(chunk.source))
+    .map(chunk => [chunk.id, chunk]));
+  for (const chunk of publicChunks) publicById.set(chunk.id, chunk);
+  await writeLibraryIndex(indexPath, {
+    schemaVersion: 1, worldId,
+    createdAt: existingPublic?.createdAt ?? now, updatedAt: now,
+    chunks: [...publicById.values()]
+  });
+
+  if (privateChunks.length || existingPrivate) {
+    const privateSources = new Set(privateChunks.map(chunk => chunk.source));
+    const privateById = new Map((existingPrivate?.chunks ?? [])
+      .filter(chunk => !privateSources.has(chunk.source))
+      .map(chunk => [chunk.id, chunk]));
+    for (const chunk of privateChunks) privateById.set(chunk.id, chunk);
+    await writeLibraryIndex(privateIndexPath, {
+      schemaVersion: 1, worldId,
+      createdAt: existingPrivate?.createdAt ?? now, updatedAt: now,
+      chunks: [...privateById.values()]
+    });
+  }
+
+  if (publicChunks.length) {
+    const ingestedSources = new Set(publicSources);
+    const annotationsPath = join(libraryDir, "annotations.json");
+    try {
+      const annotations = JSON.parse(await readFile(annotationsPath, "utf8")) as {
+        schemaVersion: number; worldId: string; annotations: Array<{ source: string }>;
+        failures: Array<{ chunkId: string }>; updatedAt?: string;
       };
-      const annotationTemp = annotationsPath + ".tmp";
-      await writeFile(annotationTemp, JSON.stringify(filtered, null, 2) + "\n", "utf8");
-      await rename(annotationTemp, annotationsPath);
-      syncAnnotations(databaseWorldDirFromLibrary(libraryDir), worldId, filtered.annotations as unknown as Array<{ chunkId: string; source: string; chapter?: string; extractedAt?: string }>, null);
+      if (annotations.schemaVersion === 1 && annotations.worldId === worldId) {
+        const filtered = {
+          ...annotations,
+          updatedAt: now,
+          annotations: annotations.annotations.filter(item => !ingestedSources.has(item.source)),
+          failures: annotations.failures.filter(item => ![...ingestedSources].some(source => item.chunkId.startsWith(source + ":")))
+        };
+        const annotationTemp = annotationsPath + ".tmp";
+        await writeFile(annotationTemp, JSON.stringify(filtered, null, 2) + "\\n", "utf8");
+        await rename(annotationTemp, annotationsPath);
+        syncAnnotations(databaseWorldDirFromLibrary(libraryDir), worldId, filtered.annotations as unknown as Array<{ chunkId: string; source: string; chapter?: string; extractedAt?: string }>, null);
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
     }
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    invalidateDerivedAnalysis(databaseWorldDirFromLibrary(libraryDir), worldId);
+    try { await unlink(join(libraryDir, "entities.json")); }
+    catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
   }
-  invalidateDerivedAnalysis(databaseWorldDirFromLibrary(libraryDir), worldId);
+
   searchCache.delete(indexPath);
-  try { await unlink(join(libraryDir, "entities.json")); }
-  catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-  }
+  searchCache.delete(privateIndexPath);
   return chunks.length;
 }
 
