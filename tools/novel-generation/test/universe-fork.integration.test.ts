@@ -46,7 +46,7 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
       ]
     }));
     await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify({
-      schemaVersion: 1, totalLines: 300,
+      schemaVersion: 1, totalLines: 200,
       volumes: [{ volume: 1, chapters: [
         { sequenceInVolume: 1, printedNumber: 1, title: "原文第一章", label: "原文第一章", line: 1 },
         { sequenceInVolume: 2, printedNumber: 2, title: "原文第二章", label: "原文第二章", line: 100 },
