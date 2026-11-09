@@ -72,10 +72,15 @@ test("as-of dossier publishes a complete directory and removes stale generated f
     await mkdir(join(worldDir, "as-of-analysis"), { recursive: true });
     await writeFile(join(worldDir, "as-of-analysis", "stale-old-section.md"), "stale");
     const chapterText = "第一章正文：先验货籍，再放车马入城。";
-    const canonLines = Array.from({ length: 100 }, (_, index) => index === 0 ? chapterText : index === 99 ? "第二章正文" : "");
+    // chapter-index.json line numbers must point at the exact heading line,
+    // matching what analysis/build-corpus-index.mjs emits for the real corpus.
+    const canonLines = Array.from({ length: 101 }, (_, index) =>
+      index === 0 ? "第一章" : index === 1 ? chapterText :
+      index === 99 ? "第二章" : index === 100 ? "第二章正文" : ""
+    );
     const originalText = canonLines.join("\n");
     const sourceHash = createHash("sha256").update(originalText, "utf8").digest("hex");
-    const secondChapterStart = originalText.indexOf("第二章正文");
+    const secondChapterStart = originalText.indexOf("第二章");
     await writeFile(join(worldDir, "original.txt"), originalText, "utf8");
     await mkdir(join(worldDir, "library"), { recursive: true });
     await writeFile(join(worldDir, "library", "index.json"), JSON.stringify({

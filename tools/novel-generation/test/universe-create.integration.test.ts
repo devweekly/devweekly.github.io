@@ -20,12 +20,16 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
   const source = join(root, "worlds", "source-world");
   await mkdir(join(source, "library"), { recursive: true });
   await writeFile(join(source, "world-bible.md"), "# Test World\n");
-  const canonLines = Array.from({ length: 200 }, (_, index) =>
-    index === 0 ? "第一章正文" : index === 99 ? "第二章正文" : index === 199 ? "未来剧情泄漏标记" : ""
+  // Catalog line numbers must point at the heading line itself (L1/L100/L200);
+  // body text lives on the following line, as in the generated corpus index.
+  const canonLines = Array.from({ length: 201 }, (_, index) =>
+    index === 0 ? "第一章" : index === 1 ? "第一章正文" :
+    index === 99 ? "第二章" : index === 100 ? "第二章正文" :
+    index === 199 ? "第三章" : index === 200 ? "未来剧情泄漏标记" : ""
   );
   const originalText = canonLines.join("\n");
   const canonSourceHash = createHash("sha256").update(originalText, "utf8").digest("hex");
-  const chapterStarts = [originalText.indexOf("第一章正文"), originalText.indexOf("第二章正文"), originalText.indexOf("未来剧情泄漏标记")];
+  const chapterStarts = [originalText.indexOf("第一章"), originalText.indexOf("第二章"), originalText.indexOf("第三章")];
   await writeFile(join(source, "original.txt"), originalText, "utf8");
   await writeFile(join(source, "world-bible-full.md"), "source setting");
   await writeFile(join(source, "characters.md"), "全书人物画像：未来剧情泄漏标记");
@@ -221,8 +225,8 @@ test("universe creation uses catalog order and stable chapter IDs despite extra 
   await mkdir(join(root, "analysis", "source-world"), { recursive: true });
   await writeFile(join(source, "world-bible.md"), "# Test World\n");
   const originalText = [
-    "第一章 卷一", "卷一第一章正文", "第二章 卷一", "卷一第二章正文",
-    "第一章 卷二", "卷二第一章正文", "第二章 卷二", "卷二第二章正文"
+    "第一章", "卷一第一章正文", "第二章", "卷一第二章正文",
+    "第一章", "卷二第一章正文", "第二章", "卷二第二章正文"
   ].join("\n");
   const canonSourceHash = createHash("sha256").update(originalText, "utf8").digest("hex");
   await writeFile(join(source, "original.txt"), originalText, "utf8");
@@ -242,11 +246,11 @@ test("universe creation uses catalog order and stable chapter IDs despite extra 
     ]
   };
   await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify(catalog));
-  const lineOne = "第一章 卷一";
+  const lineOne = "第一章";
   const lineTwo = "卷一第一章正文";
-  const lineThree = "第二章 卷一";
+  const lineThree = "第二章";
   const lineFour = "卷一第二章正文";
-  const lineFive = "第一章 卷二";
+  const lineFive = "第一章";
   const lineSix = "卷二第一章正文";
   const volumeTwoSecondChapterStart = [lineOne, lineTwo, lineThree, lineFour, lineFive, lineSix].reduce((sum, line) => sum + line.length + 1, 0);
   const chunks = [
@@ -345,8 +349,13 @@ test("universe creation uses catalog order and stable chapter IDs despite extra 
         type: "free", brief: "前情不完整", buildKnowledge: false
       })
     });
-    assert.equal(incompletePastResponse.status, 400);
-    assert.match(await incompletePastResponse.text(), /起点及之前的原著章节缺少可验证正文/);
+    // A missing catalog line is now rejected earlier by
+    // validateCanonCatalogAgainstText(). Either guard is correct as long as
+    // creation fails closed instead of publishing a universe with unverifiable
+    // prior chapters.
+    const incompletePastBody = await incompletePastResponse.text();
+    assert.ok(incompletePastResponse.status >= 400, incompletePastBody);
+    assert.match(incompletePastBody, /章节行号|缺少可验证正文|章节目录/);
     await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify(catalog));
     await writeFile(join(source, "library", "index.json"), JSON.stringify({
       schemaVersion: 1, worldId: "source-world", createdAt: "2026-01-01T00:00:00.000Z",

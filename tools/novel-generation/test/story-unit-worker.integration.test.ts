@@ -46,7 +46,7 @@ test("fixed-batch worker keeps alternating Story Unit chapter history and Story 
     await mkdir(cliDir, { recursive: true });
     await symlink(join(projectRoot, "node_modules"), join(root, "node_modules"), "dir");
     await writeFile(join(worldDir, "world-bible.md"), "# Worker Test World\n", "utf8");
-    await writeFile(join(worldDir, "library", "index.json"), JSON.stringify({ schemaVersion: 1, worldId, chunks: [] }), "utf8");
+    await writeFile(join(worldDir, "library", "index.json"), JSON.stringify({ schemaVersion: 1, worldId, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), chunks: [] }), "utf8");
 
     // A deterministic fake CLI replaces only the model-backed chapter pipeline.
     // The real Express routes, worker, Run store, Story State store and checkpoint

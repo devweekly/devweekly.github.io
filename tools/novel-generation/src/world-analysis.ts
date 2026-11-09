@@ -535,7 +535,7 @@ export async function prepareWorldAnalysis(worldId: string): Promise<PrepareResu
   for (const role of ANALYSIS_ROLES) {
     const roleDir = join(analysisDir, role.id);
     await mkdir(roleDir, { recursive: true });
-    const hits = await searchLibrary(libraryDir, role.query, 6);
+    const hits = await searchLibrary(libraryDir, role.query, 6, { includePrivate: false });
     const outputPath = `analysis/${worldId}/agent-analysis/${role.id}/output.md`;
     await writeFile(join(roleDir, "input.md"), buildInput(worldId, role, index, hits, outputPath), "utf8");
   }
