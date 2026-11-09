@@ -31,7 +31,6 @@ test("catalog alignment skips non-chapter groups and preserves repeated titles b
 
 test("same chapter title repeated within one volume remains two source-positioned groups", () => {
   const text = ["第八章 爻", "第一段正文", "第八章 爻", "第二段正文", "第九章 后续", "后续正文"].join("\n");
-  const lines = splitCanonLines(text);
   const starts = canonLineStartOffsets(text);
   const firstStart = starts[0]!;
   const secondStart = starts[2]!;
