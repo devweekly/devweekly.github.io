@@ -305,3 +305,7 @@ Story Unit 先建立完整故事的因果骨架和结局方向，再按叙事需
 - 故事宇宙自己的 `original.txt`、`chapter-index.json`、`library/index.json` 必须互相匹配同一个 bounded hash。任何检索、分析和续写路径都必须使用当前 world 的本地 bounded 资产，不得回退到根目录全书。
 
 - 离线目录生成器必须对原始 `original.txt` 计算 SHA-256，并将其写入 `chapter-index.json`。生成器的脚本级回归测试必须真实执行脚本，而不是只测试章节解析函数；这样可以捕获输出组装阶段的未定义变量、路径错误和文件写入失败。目录缺失或损坏不能仅凭全文存在就伪造目录成功，必须运行可验证的目录构建流程并校验章节行号。
+
+- Workbench 读取 source-chapters 时，若派生 `chapter-index.json` 缺失、损坏或为空，而 canonical `original.txt` 存在，则自动执行离线目录生成器；并发请求共享单一构建任务，损坏文件保留诊断副本。目录生成器按 `NOVEL_WORLD_ID` 写入对应 world，不能将语料 ID 固定在生成脚本中。
+- Universe staging 内重建的 Library provenance 必须指向 rename 后的最终路径 `worlds/<universeId>/original.txt`，禁止把 `.staging-<id>` 写入持久索引。
+- Novel DB schema v9 为旧版 `novel_chapters` 补齐稳定章节目录和来源字段。若数据库文件不存在，可在 staging 中从 bounded canon 重建；若数据库文件存在但正式章节行全部缺失，必须失败关闭并要求对源项目执行 `index-story`。
