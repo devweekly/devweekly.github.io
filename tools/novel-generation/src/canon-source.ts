@@ -1,5 +1,4 @@
-import { copyFile, rename, rm, stat } from "node:fs/promises";
-import { constants as fsConstants } from "node:fs";
+import { copyFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export interface CanonSourcePaths {
@@ -9,11 +8,8 @@ export interface CanonSourcePaths {
 
 /**
  * Resolve the canonical full text for a source world or historical universe.
- *
- * Source projects use <projectRoot>/original.txt as the canonical corpus,
- * with worlds/<id>/original.txt retained only for legacy installations.
- * Historical universes are different: they must have their own bounded copy.
- * A missing bounded copy is an error, never permission to read the full source.
+ * Source projects use <projectRoot>/original.txt, with a world-local legacy
+ * fallback. Historical universes must use their own bounded local copy only.
  */
 export async function resolveOriginalCanonPath(
   worldId: string,
@@ -22,8 +18,6 @@ export async function resolveOriginalCanonPath(
   if (!/^[a-z0-9][a-z0-9-]*$/i.test(worldId)) throw new Error("Invalid world id.");
   const projectRoot = path.resolve(options.projectRoot ?? process.cwd());
   const worldDir = path.resolve(options.worldDir ?? path.join(projectRoot, "worlds", worldId));
-  const expectedWorldDir = path.join(projectRoot, "worlds", worldId);
-  if (options.worldDir === undefined && worldDir !== expectedWorldDir) throw new Error("Invalid world path.");
 
   let isUniverse = false;
   try {
@@ -50,11 +44,34 @@ export async function resolveOriginalCanonPath(
   throw Object.assign(new Error(message), { code: "ENOENT" });
 }
 
-/** Copy a canonical corpus into a universe, preferring reflink but always falling back to a real copy. */
+/** Return the original prefix ending immediately before a chapter heading line. */
+export function truncateCanonAtLine(text: string, endBeforeLine?: number): string {
+  if (endBeforeLine === undefined) return text;
+  if (!Number.isSafeInteger(endBeforeLine) || endBeforeLine < 2) {
+    throw new Error("原文时点边界行号无效，拒绝生成未截断的故事宇宙原文副本。");
+  }
+  let offset = 0;
+  for (let line = 1; line < endBeforeLine; line++) {
+    const newline = text.indexOf("\n", offset);
+    if (newline < 0) throw new Error("原文时点边界超出全文范围，无法安全截断。");
+    offset = newline + 1;
+  }
+  // Remove the line break immediately before the excluded chapter heading.
+  let end = offset;
+  if (end > 0 && text[end - 1] === "\n") end--;
+  if (end > 0 && text[end - 1] === "\r") end--;
+  return text.slice(0, end);
+}
+
+/**
+ * Create an independent, as-of copy for a universe. The source project may
+ * store original.txt outside worlds/<id>; never assume cp(worldDir) included it.
+ */
 export async function copyOriginalCanonToUniverse(
   sourceWorldId: string,
   targetDir: string,
-  projectRoot = process.cwd()
+  projectRoot = process.cwd(),
+  endBeforeLine?: number
 ): Promise<boolean> {
   let source: string;
   try {
@@ -63,20 +80,8 @@ export async function copyOriginalCanonToUniverse(
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
     throw error;
   }
-
-  const target = path.join(targetDir, "original.txt");
-  const temporary = target + ".reflink-" + process.pid;
-  try {
-    await copyFile(source, temporary, fsConstants.COPYFILE_FICLONE_FORCE);
-    await rename(temporary, target);
-    return true;
-  } catch (error) {
-    await rm(temporary, { force: true }).catch(() => undefined);
-    const code = (error as NodeJS.ErrnoException).code;
-    if (!["EXDEV", "EPERM", "EACCES", "ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EINVAL"].includes(code ?? "")) throw error;
-    // Do not rely on cp(sourceWorldDir, stagingDir): the canonical file may
-    // live at the project root and therefore is not inside sourceWorldDir.
-    await copyFile(source, target);
-    return true;
-  }
+  const text = await import("node:fs/promises").then(fs => fs.readFile(source, "utf8"));
+  const boundedText = truncateCanonAtLine(text, endBeforeLine);
+  await writeFile(path.join(targetDir, "original.txt"), boundedText, "utf8");
+  return true;
 }
