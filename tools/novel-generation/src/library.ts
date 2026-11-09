@@ -169,6 +169,16 @@ async function ensurePrivateLibraryIsolation(libraryDir: string, worldId: string
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
+  try {
+    const registry = JSON.parse(await readFile(join(libraryDir, "entities.json"), "utf8")) as {
+      entities?: Array<{ mentions?: Array<{ source?: string }> }>;
+    };
+    hasPrivateAnnotations ||= (registry.entities ?? []).some(entity =>
+      (entity.mentions ?? []).some(mention => isPrivateSource(mention.source ?? ""))
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
   if (hasPrivateAnnotations || privateChunks.length) {
     // Older analyze runs persisted private evidence in both JSON and SQLite.
     // Delete the mixed registry rather than risk retaining a private quote.
