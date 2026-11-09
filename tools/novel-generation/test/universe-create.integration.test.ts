@@ -444,21 +444,6 @@ test("universe creation rebuilds bounded offline assets from project-root origin
       { sequenceInVolume: 3, printedNumber: 3, title: "第三章 后续", label: "后续", line: 5 }
     ] }]
   }));
-  const db = new DatabaseSync(join(source, "novel.db"));
-  db.exec(`
-    CREATE TABLE world_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
-    INSERT INTO world_meta VALUES('world_id','source-world');
-    CREATE TABLE novel_chapters(
-      chapter_id TEXT PRIMARY KEY,world_id TEXT NOT NULL,ordinal INTEGER NOT NULL,volume INTEGER NOT NULL,
-      printed_number INTEGER,title TEXT NOT NULL,label TEXT NOT NULL,start_line INTEGER,
-      char_count INTEGER NOT NULL,chunk_start INTEGER NOT NULL,chunk_end INTEGER NOT NULL
-    );
-    INSERT INTO novel_chapters VALUES
-      ('V01-C001','source-world',1,1,1,'第一章 大枪落幕','大枪落幕',1,20,0,0),
-      ('V01-C002','source-world',2,1,2,'第二章 貘与姑获鸟','貘与姑获鸟',3,20,1,1),
-      ('V01-C003','source-world',3,1,3,'第三章 后续','后续',5,20,2,2);
-  `);
-  db.close();
 
   let server: ReturnType<typeof createServer> | undefined;
   try {
