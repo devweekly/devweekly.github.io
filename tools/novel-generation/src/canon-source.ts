@@ -65,8 +65,8 @@ export function truncateCanonAtLine(text: string, endBeforeLine?: number, allowA
   if (boundary === undefined) throw new Error("原文时点边界超出全文范围，无法安全截断。");
   // Exclude the line separator immediately before the next chapter heading.
   let end = boundary;
-  if (end > 0 && text[end - 1] === "\\n") end--;
-  if (end > 0 && text[end - 1] === "\\r") end--;
+  if (end > 0 && text[end - 1] === "\n") end--;
+  if (end > 0 && text[end - 1] === "\r") end--;
   return text.slice(0, end);
 }
 
