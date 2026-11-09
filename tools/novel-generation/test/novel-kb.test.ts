@@ -159,6 +159,30 @@ test("partially indexed canon chapters are rebuilt completely from original.txt"
   }
 });
 
+test("stale canonical slices are discarded and rebuilt automatically from original.txt", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-canon-stale-rebuild-"));
+  try {
+    const world = join(root, "worlds", "source-world");
+    await mkdir(world, { recursive: true });
+    const original = "第一章 忍·土\\n正文完整内容。\\n第二章 后续\\n后续正文。";
+    await writeFile(join(root, "original.txt"), original, "utf8");
+    const hash = createHash("sha256").update(original, "utf8").digest("hex");
+    const stale = { ...chunk("legacy:0", "第一章 忍·土", "旧版本正文", 0),
+      source: "worlds/source-world/original.txt", sourceHash: "0".repeat(64), chapterStart: 0 };
+    const prepared = await prepareCanonIndexInputs(world, [
+      { ...catalogChapter(1, 1, "第一章 忍·土"), line: 1 },
+      { ...catalogChapter(1, 2, "第二章 后续"), line: 3 }
+    ], [stale]);
+    const first = prepared.chunks.filter(item => item.chapter === "第一章 忍·土");
+    assert.ok(first.length > 0);
+    assert.equal(first.map(item => item.text).join(""), "第一章 忍·土\\n正文完整内容。");
+    assert.ok(first.every(item => item.sourceHash === hash));
+    assert.ok(prepared.chunks.some(item => item.chapter === "第二章 后续"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("overlapping retrieval chunks are joined once", () => {
   const overlap = "重叠部分甲乙丙丁戊己庚辛壬癸子丑寅卯辰巳午未申酉";
   const first = "开头一段完整的内容，用来测试去重。" + overlap;
