@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, mkdir, readdir, writeFile, readFile, stat, utimes } from "node:fs/promises";
+import { mkdtemp, rm, mkdir, readdir, writeFile, readFile, stat, utimes, copyFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
@@ -172,6 +172,36 @@ test("partially indexed canon chapters are rebuilt completely from original.txt"
     assert.ok(restored.chunks.every(item => !item.text.includes("正文第贰段")));
   } finally {
     process.chdir(previousCwd);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("missing source chapter catalog is generated automatically from original.txt", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-canon-catalog-rebuild-"));
+  try {
+    const world = join(root, "worlds", "source-world");
+    const analysisDir = join(root, "analysis");
+    const libraryDir = join(world, "library");
+    await mkdir(libraryDir, { recursive: true });
+    await mkdir(analysisDir, { recursive: true });
+    await copyFile(resolve("analysis", "build-corpus-index.mjs"), join(analysisDir, "build-corpus-index.mjs"));
+    await writeFile(join(root, "original.txt"),
+      "第一章 开端\\n正文甲。\\n第二章 转折\\n正文乙。", "utf8");
+
+    assert.equal(await ensureSourceCanonLibraryIndex("source-world", world), true);
+    const catalog = JSON.parse(await readFile(join(analysisDir, "source-world", "chapter-index.json"), "utf8")) as {
+      sourceHash: string; volumes: Array<{ chapters: Array<{ title: string }> }>;
+    };
+    assert.ok(/^[a-f0-9]{64}$/.test(catalog.sourceHash));
+    assert.deepEqual(catalog.volumes.flatMap(volume => volume.chapters.map(chapter => chapter.title)), [
+      "第一章 开端", "第二章 转折"
+    ]);
+    const index = JSON.parse(await readFile(join(libraryDir, "index.json"), "utf8")) as {
+      chunks: Array<{ chapter: string }>;
+    };
+    assert.ok(index.chunks.some(item => item.chapter === "第一章 开端"));
+    assert.ok(index.chunks.some(item => item.chapter === "第二章 转折"));
+  } finally {
     await rm(root, { recursive: true, force: true });
   }
 });
