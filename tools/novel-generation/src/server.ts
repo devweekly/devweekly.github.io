@@ -652,7 +652,8 @@ async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: st
   const sourceKey = path.relative(process.cwd(), path.join(worldDir(universeId), "original.txt")).split(path.sep).join("/");
   const chunks = aligned.filter(item => item.catalogIndex <= entryIndex).flatMap(item => {
     if (item.chunks.length) return item.chunks.map(chunk => ({
-      ...chunk, source: sourceKey, sourceHash
+      ...chunk, source: sourceKey, sourceHash,
+      ...(offsets[item.catalogIndex] !== undefined ? { chapterStart: offsets[item.catalogIndex] } : {})
     }));
     const chapterText = readCatalogChapterText(catalog, originalSourceLines, item.catalogIndex);
     if (!chapterText) throw new Error("无法为历史宇宙补齐原著章节切片：" + item.chapter.title + "。原文全文缺失或目录行号无效。");
@@ -725,7 +726,12 @@ async function writeForkedUniverseCanonSnapshots(parentId: string, targetDir: st
     worldId: universeId,
     createdAt: parentLibrary.createdAt,
     updatedAt: new Date().toISOString(),
-    chunks: parentChunks.map(chunk => ({ ...chunk, source: sourceKey, sourceHash }))
+    chunks: alignedParent.flatMap(item => item.chunks.map(chunk => ({
+      ...chunk, source: sourceKey, sourceHash,
+      ...(prepared.chapterStartOffsets[item.catalogIndex] !== undefined
+        ? { chapterStart: prepared.chapterStartOffsets[item.catalogIndex] }
+        : {})
+    })))
   };
   await writeFile(path.join(libraryDir, "index.json"), JSON.stringify(childLibrary, null, 2) + "\n", "utf8");
 
