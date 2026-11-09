@@ -237,8 +237,8 @@ export async function ensureSourceCanonLibraryIndex(
     try { await unlink(join(libraryDir, name)); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   }
-  const writtenInfo = await stat(indexPath);
-  canonLibraryValidationCache.set(indexPath, [originalHash, writtenInfo.size, writtenInfo.mtimeMs].join(":"));
+  const writtenIndexHash = createHash("sha256").update(await readFile(indexPath)).digest("hex");
+  canonLibraryValidationCache.set(indexPath, [originalHash, catalogHash, writtenIndexHash, "canon-chunker-v2"].join(":"));
   return true;
 }
 
