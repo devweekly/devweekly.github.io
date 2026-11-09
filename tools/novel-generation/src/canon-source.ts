@@ -168,9 +168,18 @@ export async function ensureBoundedUniverseCanonAssets(
     if (matches.length !== 1) throw new Error("旧故事宇宙缺少可唯一验证的原文起点索引，拒绝猜测并读取完整原著。");
     entryIndex = matches[0]!;
   }
+  if (catalog[entryIndex]?.title !== universe.entryChapter) {
+    throw new Error("故事宇宙记录的起点章节与原文目录索引不一致，拒绝猜测时点边界。");
+  }
+  for (let index = 0; index <= entryIndex; index++) {
+    const line = catalog[index]?.line;
+    if (!Number.isSafeInteger(line) || Number(line) < 1 || (index > 0 && Number(line) <= Number(catalog[index - 1]?.line))) {
+      throw new Error("故事宇宙起点之前的原文目录行号缺失或顺序异常，无法验证本地原文边界。");
+    }
+  }
   const nextChapter = catalog[entryIndex + 1];
   const endBeforeLine = nextChapter?.line ?? undefined;
-  if (nextChapter && (!Number.isSafeInteger(endBeforeLine) || Number(endBeforeLine) < 2)) {
+  if (nextChapter && (!Number.isSafeInteger(endBeforeLine) || Number(endBeforeLine) <= Number(catalog[entryIndex]?.line))) {
     throw new Error("故事宇宙起点之后的原文章节缺少有效行号，无法验证未来剧情边界。");
   }
 
