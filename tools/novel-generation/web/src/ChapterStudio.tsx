@@ -53,6 +53,9 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [startingKnowledgeBuild,setStartingKnowledgeBuild]=useState(false);
  const refreshGeneration=useRef(0);
  const previewGeneration=useRef(0);
+ const autoStoryUnitWorlds=useRef(new Set<string>());
+ const knowledgeBuildActive=startingKnowledgeBuild||knowledgeBuild?.status==="queued"||knowledgeBuild?.status==="running";
+ const storyUnitReady=Boolean(selectedStoryUnitId&&storyUnit?.id);
  const busy=run?.status==="queued"||run?.status==="running";
  const activeStoryExecution=worldStoryExecutions.find(item=>["queued","running","paused"].includes(item.status));
  const batchRunning=activeStoryExecution?.mode==="fixed_batch"&&["queued","running"].includes(activeStoryExecution.status);
@@ -96,6 +99,21 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  ]).then(async([units,tasks])=>{
    if(cancelled)return;
    setStoryUnits(units.storyUnits);
+   if(activeWorldId!==worldId&&units.storyUnits.length===0&&!universes.find(item=>item.id===activeWorldId)?.archivedAt&&!autoStoryUnitWorlds.current.has(activeWorldId)){
+     autoStoryUnitWorlds.current.add(activeWorldId);
+     setGeneratingStoryUnit(true);
+     try{
+       const created=await api<{storyUnit:StoryUnit}>("/api/worlds/"+activeWorldId+"/story-units/generate",{method:"POST",body:"{}"});
+       if(cancelled)return;
+       setStoryUnit(created.storyUnit);
+       if(created.storyUnit.id)setSelectedStoryUnitId(created.storyUnit.id);
+       setStoryUnits([{id:created.storyUnit.id!,title:created.storyUnit.title,updatedAt:created.storyUnit.updatedAt??new Date().toISOString()}]);
+     }catch(error){
+       autoStoryUnitWorlds.current.delete(activeWorldId);
+       if(!cancelled)message.error("自动建立完整故事单元失败："+(error instanceof Error?error.message:String(error)));
+     }finally{if(!cancelled)setGeneratingStoryUnit(false);}
+     return;
+   }
    const chosen=selectedStoryUnitId&&units.storyUnits.some(x=>x.id===selectedStoryUnitId)?selectedStoryUnitId:units.storyUnits[0]?.id;
    if(historyScope==="current"&&chosen!==selectedStoryUnitId){setSelectedStoryUnitId(chosen);return;}
    setWorldStoryExecutions(tasks.executions);
@@ -266,9 +284,9 @@ export default function ChapterStudio({worldId}:{worldId:string}){
     <Select style={{minWidth:220}} value={activeWorldId} onChange={setActiveWorldId} options={[{value:worldId,label:"原文项目（现有续写）"},...universes.map(u=>({value:u.id,label:(u.archivedAt?"[已归档] ":"")+u.name+" · 从"+u.entryChapter+"开始"}))]} />
     <Button onClick={()=>setCreateOpen(true)}>新建故事宇宙</Button>
     {activeWorldId!==worldId&&!activeUniverse?.archivedAt&&<Button onClick={()=>void openFork()} disabled={Boolean(busy)||storyTaskBlocksWrites}>从本宇宙分叉</Button>}
-    {activeUniverse&&(activeUniverse.archivedAt?<Button onClick={()=>void changeArchive(false)} disabled={storyTaskBlocksWrites||Boolean(busy)}>恢复宇宙</Button>:<Button danger onClick={()=>void changeArchive(true)} disabled={Boolean(busy)||storyTaskBlocksWrites}>归档当前宇宙</Button>)}
-    <Button type="primary" size="large" className="chapter-action" icon={<PlayCircleOutlined/>} loading={starting||Boolean(busy)} disabled={!activeWorldId||Boolean(busy)||batchRunning||storyTaskBlocksWrites||storyUnit?.execution.status==="completed"||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generate()}>生成下一章</Button>
-    <Space.Compact><InputNumber min={1} value={batchCount} onChange={value=>setBatchCount(value??1)} disabled={batchRunning||Boolean(busy)||storyTaskBlocksWrites||storyUnit?.execution.status==="completed"} style={{width:76}}/><Button loading={batchRunning||startingStoryExecution&&activeStoryExecution?.mode==="fixed_batch"} disabled={!activeWorldId||Boolean(busy)||batchRunning||storyTaskBlocksWrites||storyUnit?.execution.status==="completed"||startingStoryExecution||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generateBatch()}>连续生成多章</Button></Space.Compact>
+    {activeUniverse&&(activeUniverse.archivedAt?<Button onClick={()=>void changeArchive(false)} disabled={storyTaskBlocksWrites||Boolean(busy)||knowledgeBuildActive}>恢复宇宙</Button>:<Button danger onClick={()=>void changeArchive(true)} disabled={Boolean(busy)||storyTaskBlocksWrites||knowledgeBuildActive}>归档当前宇宙</Button>)}
+    <Button type="primary" size="large" className="chapter-action" icon={<PlayCircleOutlined/>} loading={starting||Boolean(busy)} disabled={!activeWorldId||Boolean(busy)||batchRunning||storyTaskBlocksWrites||generatingStoryUnit||(activeWorldId!==worldId&&!storyUnitReady)||storyUnit?.execution.status==="completed"||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generate()}>生成下一章</Button>
+    <Space.Compact><InputNumber min={1} value={batchCount} onChange={value=>setBatchCount(value??1)} disabled={batchRunning||Boolean(busy)||storyTaskBlocksWrites||storyUnit?.execution.status==="completed"} style={{width:76}}/><Button loading={batchRunning||startingStoryExecution&&activeStoryExecution?.mode==="fixed_batch"} disabled={!activeWorldId||Boolean(busy)||batchRunning||storyTaskBlocksWrites||generatingStoryUnit||(activeWorldId!==worldId&&!storyUnitReady)||storyUnit?.execution.status==="completed"||startingStoryExecution||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generateBatch()}>连续生成多章</Button></Space.Compact>
     <Button icon={<ReloadOutlined/>} loading={loading} onClick={()=>void refresh()}>刷新状态</Button>
     {busy&&<Tag color="processing">正在自动创作</Tag>}
     {batchRunning&&<Tag color="processing">批量进度 {batchProgress.completed}/{batchProgress.total}</Tag>}
