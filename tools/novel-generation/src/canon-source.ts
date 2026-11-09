@@ -50,7 +50,7 @@ export function truncateCanonAtLine(text: string, endBeforeLine?: number, allowA
   if (!Number.isSafeInteger(endBeforeLine) || endBeforeLine < 2) {
     throw new Error("原文时点边界行号无效，拒绝生成未截断的故事宇宙原文副本。");
   }
-  const lineCount = text.split(/\\r?\\n/).length;
+  const lineCount = text.split(/\r?\n/).length;
   if (endBeforeLine > lineCount) {
     if (allowAlreadyBounded) return text;
     throw new Error("原文时点边界超出全文范围，无法安全截断。");
