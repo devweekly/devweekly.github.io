@@ -18,7 +18,7 @@ import {
   WORKBENCH_BODY_LIMIT
 } from "./constants.js";
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
-import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks, splitCanonLines, type CanonChunk } from "./canon-chapters.js";
+import { alignCanonChapterGroups, joinCanonChunkText, splitCanonLines, type CanonChunk } from "./canon-chapters.js";
 import { chunkText, ensurePrivateLibraryIsolation } from "./library.js";
 import { chapterId as catalogChapterId, loadChapterCatalog, loadChapterCatalogDocument, prepareCanonIndexInputs, type CatalogChapter } from "./novel-kb.js";
 import { buildStoryStateGraph, filterGraph } from "./story-state-graph.js";
