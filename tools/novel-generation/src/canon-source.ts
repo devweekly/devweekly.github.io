@@ -250,7 +250,7 @@ export async function ensureBoundedUniverseCanonAssets(
     throw new Error("故事宇宙本地原文副本在起点之前就已截断，不能安全恢复；请从原文项目重新创建该宇宙。");
   }
   const boundedHash = createHash("sha256").update(boundedText, "utf8").digest("hex");
-  const sourceKey = path.relative(projectRoot, localOriginalPath).split(path.sep).join("/");
+  const sourceKey = path.relative(projectRoot, path.join(projectRoot, "worlds", worldId, "original.txt")).split(path.sep).join("/");
 
   const libraryIndexPath = path.join(worldDir, "library", "index.json");
   let library: { schemaVersion: number; worldId: string; createdAt: string; updatedAt: string; chunks: Array<CanonChunk & { id: string; sourceHash?: string }> } | undefined;
