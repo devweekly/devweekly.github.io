@@ -82,19 +82,19 @@ test("as-of dossier publishes a complete directory and removes stale generated f
       schemaVersion: 1, worldId: "u-child", createdAt: "2026-11-07T00:00:00.000Z",
       updatedAt: "2026-11-07T00:00:00.000Z",
       chunks: [
-        { id: "chunk-1", source: "original.txt", sourceHash, chapter: "第一章", chunkIndex: 0, start: 0, end: chapterText.length, chapterStart: 0, text: chapterText },
-        { id: "chunk-2", source: "original.txt", sourceHash, chapter: "第二章", chunkIndex: 0, start: 0, end: 10, chapterStart: secondChapterStart, text: "第二章正文" }
+        { id: "chunk-1", source: "original.txt", sourceHash, chapter: chapterText, chunkIndex: 0, start: 0, end: chapterText.length, chapterStart: 0, text: chapterText },
+        { id: "chunk-2", source: "original.txt", sourceHash, chapter: "第二章正文", chunkIndex: 0, start: 0, end: 10, chapterStart: secondChapterStart, text: "第二章正文" }
       ]
     }));
     await mkdir(join(root, "analysis", "u-child"), { recursive: true });
     await writeFile(join(root, "analysis", "u-child", "chapter-index.json"), JSON.stringify({
-      schemaVersion: 2, totalLines: 200, volumes: [{ volume: 1, chapters: [
-        { sequenceInVolume: 1, printedNumber: 1, title: "第一章", label: "第一章", line: 1 },
-        { sequenceInVolume: 2, printedNumber: 2, title: "第二章", label: "第二章", line: 100 }
+      schemaVersion: 2, totalLines: 100, volumes: [{ volume: 1, chapters: [
+        { sequenceInVolume: 1, printedNumber: 1, title: chapterText, label: "第一章", line: 1 },
+        { sequenceInVolume: 2, printedNumber: 2, title: "第二章正文", label: "第二章", line: 100 }
       ] }]
     }));
     const { units } = await buildAnalysisUnits("u-child", { worldDir });
-    const firstChapter = units.find(unit => unit.title === "第一章");
+    const firstChapter = units.find(unit => unit.title === chapterText);
     assert.ok(firstChapter, "bounded chapter catalog must produce the first chapter unit");
     const craftDir = join(root, "analysis", "u-child", "corpus-craft", "chapters");
     await mkdir(craftDir, { recursive: true });
