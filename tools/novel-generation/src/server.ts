@@ -33,6 +33,7 @@ import { copyOriginalCanonToUniverse, ensureBoundedUniverseCanonAssets, resolveO
 import { assessStoryUnitProgress, generateStoryUnit, isStoryUnitNaturallyComplete, validateStoryUnit } from "./story-unit.js";
 import { archiveStoredStoryUnitVersion, createStoredStoryUnit, getStoredStoryUnit, getStoredStoryUnitVersion, listStoredStoryUnitVersions, listStoredStoryUnits, saveStoredStoryUnit } from "./story-unit-store.js";
 import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, mergeStoryExecutionControlFlags, storyRunStateWasRolledBack, type StoryExecution } from "./story-execution.js";
+import { canCancelStoryExecution, reusableKnowledgeBuildStepNames, shouldCancelStoryExecutionImmediately } from "./pipeline-state.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
 // noUncheckedIndexedAccess 放宽成 string | undefined。
@@ -268,8 +269,9 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
     // 残留状态由 recoverKnowledgeBuilds() 在启动时标记为 interrupted。
     const now = new Date().toISOString();
     const previousState = await readKnowledgeBuild(worldId);
+    const reusableSteps = reusableKnowledgeBuildStepNames(previousState?.steps ?? []);
     const state: KnowledgeBuildState = { worldId, status: "queued", startedAt: now, updatedAt: now,
-      steps: (previousState?.steps ?? []).filter(step => step.status === "completed" || step.status === "skipped") };
+      steps: (previousState?.steps ?? []).filter(step => reusableSteps.has(step.name)) };
     await writeKnowledgeBuild(state);
     void (async () => {
       let failed = 0;
@@ -288,7 +290,7 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
           state.status = "cancelled"; state.completedAt = new Date().toISOString(); state.updatedAt = state.completedAt;
           delete state.currentStep; delete state.progress; await writeKnowledgeBuild(state); return;
         }
-        if (state.steps.some(existing => existing.name === step.name && (existing.status === "completed" || existing.status === "skipped"))) continue;
+        if (reusableSteps.has(step.name)) continue;
         if (step.name === "story-analysis" && reusableBoundedAnalysis) {
           const now = new Date().toISOString();
           state.steps.push({ name: step.name, status: "skipped", startedAt: now, completedAt: now, output: "Reused the existing complete, entry-bounded v6 story analysis snapshot." });
@@ -2070,12 +2072,12 @@ app.post("/api/worlds/:worldId/story-executions/:executionId/cancel", async (req
     const id = worldIdOf(req.params.worldId); const executionId = recordId(req.params.executionId);
     const task = await getStoryExecution(id, executionId);
     if (!task) return void res.status(404).json({error:"Story execution not found."});
-    if (!["running","queued","paused"].includes(task.status)) return void res.status(409).json({error:"当前任务不能取消。",execution:task});
+    if (!canCancelStoryExecution(task.status)) return void res.status(409).json({error:"当前任务不能取消。",execution:task});
     const now = new Date().toISOString();
     // A worker only exists in this process. After a restart, an orphaned queued/running
     // record must be cancellable immediately instead of waiting for a worker that no longer exists.
     const workerIsAlive = activeStoryExecutions.has(id);
-    const cancelImmediately = task.status === "paused" || !workerIsAlive;
+    const cancelImmediately = shouldCancelStoryExecutionImmediately(task.status, workerIsAlive);
     const updated = cancelImmediately
       ? appendStoryExecutionEvent({
           ...task, status:"cancelled" as const, cancelRequested:true,
