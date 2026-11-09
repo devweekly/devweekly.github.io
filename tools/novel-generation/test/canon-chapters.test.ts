@@ -29,6 +29,31 @@ test("catalog alignment skips non-chapter groups and preserves repeated titles b
   assert.deepEqual(aligned.map(item => item.chapter.volume), [1, 1, 2, 2]);
 });
 
+test("same chapter title repeated within one volume remains two source-positioned groups", () => {
+  const text = ["第八章 爻", "第一段正文", "第八章 爻", "第二段正文", "第九章 后续", "后续正文"].join("\n");
+  const starts = canonLineStartOffsets(text);
+  const firstStart = starts[0]!;
+  const secondStart = starts[2]!;
+  const nextStart = starts[4]!;
+  const repeatedCatalog: CatalogChapter[] = [
+    { volume: 5, sequenceInVolume: 8, printedNumber: 8, title: "第八章 爻", label: "爻", line: 1 },
+    { volume: 5, sequenceInVolume: 9, printedNumber: 8, title: "第八章 爻", label: "爻", line: 3 },
+    { volume: 5, sequenceInVolume: 10, printedNumber: 9, title: "第九章 后续", label: "后续", line: 5 }
+  ];
+  const firstText = text.slice(firstStart, secondStart).trim();
+  const secondText = text.slice(secondStart, nextStart).trim();
+  const nextText = text.slice(nextStart).trim();
+  const aligned = alignCanonChapterGroups(repeatedCatalog, [
+    { ...chunk("第八章 爻", firstText, firstStart), chunkIndex: 0, start: 0, end: firstText.length },
+    { ...chunk("第八章 爻", secondText, secondStart), chunkIndex: 0, start: 0, end: secondText.length },
+    { ...chunk("第九章 后续", nextText, nextStart), chunkIndex: 0, start: 0, end: nextText.length }
+  ], [firstStart, secondStart, nextStart]);
+  assert.deepEqual(aligned.map(item => item.chunks.map(row => row.text)), [
+    [firstText], [secondText], [nextText]
+  ]);
+  assert.doesNotThrow(() => validateCanonChunksAgainstText(aligned, text, [firstStart, secondStart, nextStart]));
+});
+
 test("catalog alignment keeps a formal chapter with no library chunks in its exact position", () => {
   const aligned = alignCanonChapterGroups(catalog, [
     chunk("第一章", "卷一第一章", 0),
