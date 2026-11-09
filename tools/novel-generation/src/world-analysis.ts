@@ -1,9 +1,10 @@
 // 多 Agent 文本分析（analyze-world）：默认纯文件交接、运行时不调模型——prepare 生成各角色
 // input.md，Agent 写 output.md，collect 用确定性校验核对字数、L#### 引用与标题结构，
 // 并对照 original.txt 真实行数。--evidence-review 才逐句调模型核验具体事实；解析失败批次二分重试。
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { searchLibrary } from "./library.js";
+import { ensureBoundedUniverseCanonAssets, resolveOriginalCanonPath } from "./canon-source.js";
 import { runAgentText } from "./generate.js";
 import { parseJsonObject } from "./model-json.js";
 import { z } from "zod";
@@ -523,6 +524,8 @@ const PROTOCOL = [
 export interface PrepareResult { roles: number; dir: string; }
 
 export async function prepareWorldAnalysis(worldId: string): Promise<PrepareResult> {
+  const worldDir = resolve("worlds", worldId);
+  await ensureBoundedUniverseCanonAssets(worldId, { projectRoot: resolve("."), worldDir });
   const analysisDir = resolve("analysis", worldId, "agent-analysis");
   const libraryDir = resolve("worlds", worldId, "library");
   const index = await loadChapterIndex(analysisDir);
@@ -566,8 +569,20 @@ export async function collectWorldAnalysis(
   options: { sourcePath?: string; model?: string; timeoutMs?: number; evidenceReview?: boolean; evidenceWindow?: number } = {}
 ): Promise<CollectResult> {
   const analysisDir = resolve("analysis", worldId, "agent-analysis");
+  const worldDir = resolve("worlds", worldId);
+  await ensureBoundedUniverseCanonAssets(worldId, { projectRoot: resolve("."), worldDir });
   const index = await loadChapterIndex(analysisDir);
-  const sourcePath = resolve(options.sourcePath ?? "original.txt");
+  const canonicalSourcePath = await resolveOriginalCanonPath(worldId);
+  if (options.sourcePath && resolve(options.sourcePath) !== resolve(canonicalSourcePath)) {
+    try {
+      await access(join(worldDir, "universe.json"));
+      throw new Error("历史故事宇宙只能使用自己的时点原文副本进行引用核验，不能覆盖为完整原著或其他文件。");
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("只能使用自己的时点原文副本")) throw error;
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+  const sourcePath = options.sourcePath ? resolve(options.sourcePath) : canonicalSourcePath;
   let sourceLines: string[] | undefined;
   try {
     sourceLines = (await readFile(sourcePath, "utf8")).split(/\r?\n/);
