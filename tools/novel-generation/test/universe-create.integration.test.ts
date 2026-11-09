@@ -136,7 +136,7 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
       worldDir: universeDir,
       catalogPath: join(root, "analysis", payload.universe.id, "chapter-index.json")
     });
-    assert.ok(units.units.some(unit => unit.title === "第二章"), "analysis input must include the selected entry chapter");
+    assert.ok(units.units.some(unit => unit.title === "第二章正文"), "analysis input must include the selected entry chapter");
     assert.ok(!JSON.stringify(units.units).includes("未来剧情泄漏标记"));
 
     const storyAnalysisContext = buildStoryAnalysisContext(
