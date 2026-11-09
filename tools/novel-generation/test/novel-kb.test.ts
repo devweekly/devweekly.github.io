@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import {
-  assignChapters, buildCharacterDictionary, countMentions, dedupeChunkTexts, groupAnalysisUnits, prepareCanonIndexInputs,
+  assignChapters, buildAnalysisUnits, buildCharacterDictionary, countMentions, dedupeChunkTexts, ensureSourceCanonLibraryIndex, groupAnalysisUnits, prepareCanonIndexInputs,
   isUsableCharacterName, normalizeCharacterName, type CatalogChapter
 } from "../src/novel-kb.js";
 import { databaseStatus, syncNovelChapters, syncNovelMentions } from "../src/database.js";
@@ -80,9 +80,9 @@ test("canon index inputs use original source hash and exact line offsets", async
       { ...catalogChapter(1, 2, "第二章 转折"), line: 4 },
       { ...catalogChapter(2, 1, "第一章 开端"), line: 6 }
     ], [
-      { ...chunk("canon:1", "第一章 开端", "正文甲", 0), source: "world/original.txt", sourceHash: hash, chapterStart: first },
+      { ...chunk("canon:1", "第一章 开端", original.slice(first, middleStart).trim(), 0), end: original.slice(first, middleStart).trim().length, source: "world/original.txt", sourceHash: hash, chapterStart: first },
       { ...chunk("notes:1", "第一章 开端", "错误辅助资料", 1), source: "world/notes.txt", sourceHash: "f".repeat(64), chapterStart: first },
-      { ...chunk("canon:2", "第二章 转折", "正文乙", 2), source: "world/original.txt", sourceHash: hash, chapterStart: middleStart }
+      { ...chunk("canon:2", "第二章 转折", original.slice(middleStart, second).trim(), 0), end: original.slice(middleStart, second).trim().length, source: "world/original.txt", sourceHash: hash, chapterStart: middleStart }
     ]);
     assert.deepEqual(inputs.chunks.map(item => item.id), ["canon:1", "canon:2"]);
     assert.deepEqual(inputs.chapterStartOffsets, [first, middleStart, second]);
@@ -195,3 +195,38 @@ test("canon index validation reads project-root original.txt when world-local co
   }
 });
 
+test("missing source Library is reconstructed from project-root original.txt and chapter catalog", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-kb-offline-rebuild-"));
+  const previousCwd = process.cwd();
+  try {
+    const worldDir = join(root, "worlds", "source-world");
+    await mkdir(worldDir, { recursive: true });
+    await mkdir(join(root, "analysis", "source-world"), { recursive: true });
+    const original = ["第一章 大枪落幕", "李阎走进雨里。", "第二章 貘与姑获鸟", "夜色压住城寨。"].join("\\n");
+    await writeFile(join(root, "original.txt"), original, "utf8");
+    await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify({
+      schemaVersion: 2, totalLines: 4,
+      volumes: [{ volume: 1, chapters: [
+        { sequenceInVolume: 1, printedNumber: 1, title: "第一章 大枪落幕", label: "大枪落幕", line: 1 },
+        { sequenceInVolume: 2, printedNumber: 2, title: "第二章 貘与姑获鸟", label: "貘与姑获鸟", line: 3 }
+      ] }]
+    }));
+    process.chdir(root);
+    assert.equal(await ensureSourceCanonLibraryIndex("source-world", worldDir), true);
+    const library = JSON.parse(await readFile(join(worldDir, "library", "index.json"), "utf8")) as {
+      worldId: string; chunks: Array<{ chapter: string; sourceHash: string; chapterStart: number; text: string }>;
+    };
+    assert.equal(library.worldId, "source-world");
+    assert.deepEqual(library.chunks.map(item => item.chapter), ["第一章 大枪落幕", "第二章 貘与姑获鸟"]);
+    assert.ok(library.chunks.every(item => item.sourceHash === createHash("sha256").update(original, "utf8").digest("hex")));
+    const built = await buildAnalysisUnits("source-world", { worldDir });
+    assert.deepEqual(built.units.map(item => item.title), ["第一章 大枪落幕", "第二章 貘与姑获鸟"]);
+    assert.ok(built.units[0]!.text.includes("李阎走进雨里。"));
+    assert.ok(built.units[1]!.text.includes("夜色压住城寨。"));
+    assert.equal(await ensureSourceCanonLibraryIndex("source-world", worldDir), false);
+  } finally {
+    process.chdir(previousCwd);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+\n
