@@ -110,10 +110,9 @@ const canonLibraryValidationCache = new Map<string, string>();
 const execFileAsync = promisify(execFile);
 
 /**
- * The chapter catalog is also derived data. For a source world, regenerate it
- * from the authoritative root original.txt when it is missing, malformed, or
- * bound to a different source generation. Never use the full-book script for
- * a historical universe's bounded local copy.
+ * The chapter catalog is also derived data. Regenerate it from the exact
+ * original file resolved for this world. Historical universes therefore use
+ * only their bounded local copy and can never leak future chapters.
  */
 async function rebuildSourceChapterCatalog(
   worldId: string,
@@ -121,7 +120,6 @@ async function rebuildSourceChapterCatalog(
   originalPath: string,
   catalogPath: string
 ): Promise<ChapterCatalogDocument | undefined> {
-  if (resolve(originalPath) !== resolve(projectRoot, "original.txt")) return undefined;
   const scriptPath = join(projectRoot, "analysis", "build-corpus-index.mjs");
   if (!existsSync(scriptPath)) return undefined;
   try {
@@ -131,7 +129,7 @@ async function rebuildSourceChapterCatalog(
   }
   await execFileAsync(process.execPath, [scriptPath], {
     cwd: projectRoot,
-    env: { ...process.env, NOVEL_WORLD_ID: worldId }
+    env: { ...process.env, NOVEL_WORLD_ID: worldId, NOVEL_ORIGINAL_PATH: originalPath }
   });
   return loadChapterCatalogDocument(worldId, catalogPath);
 }
