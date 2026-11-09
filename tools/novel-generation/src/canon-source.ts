@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { alignCanonChapterGroups, selectCanonSourceChunks, validateCanonCatalogAgainstText, type CanonChunk } from "./canon-chapters.js";
+import { alignCanonChapterGroups, canonLineStartOffsets, selectCanonSourceChunks, splitCanonLines, validateCanonCatalogAgainstText, validateCanonChunksAgainstText, type CanonChunk } from "./canon-chapters.js";
 import { chunkText } from "./library.js";
 import path from "node:path";
 
@@ -55,19 +55,16 @@ export function truncateCanonAtLine(text: string, endBeforeLine?: number, allowA
   if (!Number.isSafeInteger(endBeforeLine) || endBeforeLine < 2) {
     throw new Error("原文时点边界行号无效，拒绝生成未截断的故事宇宙原文副本。");
   }
-  const lineCount = text.split(/\r?\n/).length;
-  if (endBeforeLine > lineCount) {
+  const lines = splitCanonLines(text);
+  if (endBeforeLine > lines.length) {
     if (allowAlreadyBounded) return text;
     throw new Error("原文时点边界超出全文范围，无法安全截断。");
   }
-  let offset = 0;
-  for (let line = 1; line < endBeforeLine; line++) {
-    const newline = text.indexOf("\n", offset);
-    if (newline < 0) throw new Error("原文时点边界超出全文范围，无法安全截断。");
-    offset = newline + 1;
-  }
-  // Remove the line break immediately before the excluded chapter heading.
-  let end = offset;
+  const starts = canonLineStartOffsets(text);
+  const boundary = starts[endBeforeLine - 1];
+  if (boundary === undefined) throw new Error("原文时点边界超出全文范围，无法安全截断。");
+  // Exclude the line separator immediately before the next chapter heading.
+  let end = boundary;
   if (end > 0 && text[end - 1] === "\n") end--;
   if (end > 0 && text[end - 1] === "\r") end--;
   return text.slice(0, end);
@@ -119,7 +116,7 @@ export async function ensureBoundedUniverseCanonAssets(
   const projectRoot = path.resolve(options.projectRoot ?? process.cwd());
   const worldDir = path.resolve(options.worldDir ?? path.join(projectRoot, "worlds", worldId));
   const universePath = path.join(worldDir, "universe.json");
-  let universe: { sourceWorldId?: string; entryChapter?: string; entryChapterIndex?: number; entryChapterId?: string } | undefined;
+  let universe: { sourceWorldId?: string; entryChapter?: string; entryChapterIndex?: number; entryChapterId?: string; sourceCanonHash?: string } | undefined;
   try { universe = JSON.parse(await readFile(universePath, "utf8")) as typeof universe; }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
@@ -147,6 +144,8 @@ export async function ensureBoundedUniverseCanonAssets(
 
   const sourceCatalogPath = path.join(projectRoot, "analysis", universe.sourceWorldId, "chapter-index.json");
   const sourceCatalog = JSON.parse(await readFile(sourceCatalogPath, "utf8")) as {
+    totalLines?: number;
+    sourceHash?: string;
     volumes?: Array<{ volume: number; startLine?: number; endLine?: number; chapters?: Array<Record<string, unknown>> }>;
     chapters?: Array<Record<string, unknown>>;
   };
@@ -216,19 +215,42 @@ export async function ensureBoundedUniverseCanonAssets(
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
-  // Repair older universes whose reflink/copy step failed: read the source
-  // corpus only inside this migration, then materialize a bounded local copy.
-  const originalText = localOriginalText ?? await readFile(
-    await resolveOriginalCanonPath(universe.sourceWorldId, { projectRoot }), "utf8"
-  );
+  // Read the root corpus only to verify or repair a bounded local snapshot.
+  // It is never returned to retrieval or writing contexts for a historical universe.
+  let sourceFullText: string | undefined;
+  try {
+    sourceFullText = await readFile(
+      await resolveOriginalCanonPath(universe.sourceWorldId, { projectRoot }), "utf8"
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  if (sourceFullText !== undefined) {
+    const currentSourceHash = createHash("sha256").update(sourceFullText, "utf8").digest("hex");
+    if (universe.sourceCanonHash && universe.sourceCanonHash !== currentSourceHash) {
+      throw new Error("原文项目 original.txt 已变化，与该故事宇宙创建时记录的 sourceCanonHash 不一致。为保护历史时点，拒绝用新原文覆盖旧宇宙。");
+    }
+    if (!universe.sourceCanonHash && localOriginalText === undefined) {
+      throw new Error("旧故事宇宙没有 sourceCanonHash，且本地 bounded original.txt 丢失；无法证明当前项目原文就是创建时版本，拒绝自动重建。");
+    }
+    validateCanonCatalogAgainstText(catalog, sourceFullText, sourceCatalog.totalLines, sourceCatalog.sourceHash);
+    const expectedBounded = truncateCanonAtLine(sourceFullText, endBeforeLine);
+    if (localOriginalText !== undefined && localOriginalText !== sourceFullText && localOriginalText !== expectedBounded) {
+      throw new Error("故事宇宙本地 original.txt 与当前原文项目的时点副本不一致。原文可能已变更或本地副本损坏；拒绝自动覆盖。");
+    }
+  }
+  const originalText = sourceFullText ?? localOriginalText;
+  if (originalText === undefined) {
+    throw new Error("找不到原著全文：故事宇宙缺少本地 bounded original.txt，且原文项目全文不可用；无法验证或修复离线语料。");
+  }
   const originalHash = createHash("sha256").update(originalText, "utf8").digest("hex");
   const boundedText = truncateCanonAtLine(originalText, endBeforeLine, true);
-  const boundedLines = boundedText.split(/\r?\n/);
+  const boundedLines = splitCanonLines(boundedText);
   if (endBeforeLine !== undefined && boundedLines.length < endBeforeLine - 1) {
     throw new Error("故事宇宙本地原文副本在起点之前就已截断，不能安全恢复；请从原文项目重新创建该宇宙。");
   }
   const boundedHash = createHash("sha256").update(boundedText, "utf8").digest("hex");
-  const sourceKey = path.relative(projectRoot, localOriginalPath).split(path.sep).join("/");
+  const sourceKey = path.relative(projectRoot, path.join(projectRoot, "worlds", worldId, "original.txt")).split(path.sep).join("/");
 
   const libraryIndexPath = path.join(worldDir, "library", "index.json");
   let library: { schemaVersion: number; worldId: string; createdAt: string; updatedAt: string; chunks: Array<CanonChunk & { id: string; sourceHash?: string }> } | undefined;
@@ -246,21 +268,19 @@ export async function ensureBoundedUniverseCanonAssets(
   const canonical = selectCanonSourceChunks(existingChunks).filter(chunk =>
     chunk.sourceHash === originalHash || chunk.sourceHash === boundedHash
   );
-  const starts: Array<number | undefined> = [];
-  let offset = 0;
-  for (const line of boundedLines) {
-    starts.push(offset + line.length - line.trimStart().length);
-    offset += line.length;
-    if (boundedText[offset] === "\r") offset++;
-    if (boundedText[offset] === "\n") offset++;
-  }
+  const rawLineStarts = canonLineStartOffsets(boundedText);
+  const starts: Array<number | undefined> = boundedLines.map((line, index) =>
+    (rawLineStarts[index] ?? 0) + line.length - line.trimStart().length
+  );
   const prefixCatalog = catalog.slice(0, entryIndex + 1);
   validateCanonCatalogAgainstText(prefixCatalog, boundedText);
   const offsets = prefixCatalog.map(chapter => chapter.line == null ? undefined : starts[chapter.line - 1]);
   const aligned = alignCanonChapterGroups(prefixCatalog, canonical, offsets);
+  validateCanonChunksAgainstText(aligned, boundedText, offsets);
   const boundedChunks = aligned.flatMap((item, index) => {
     if (item.chunks.length) return item.chunks.map(chunk => ({
-      ...chunk, source: sourceKey, sourceHash: boundedHash
+      ...chunk, source: sourceKey, sourceHash: boundedHash,
+      ...(offsets[index] !== undefined ? { chapterStart: offsets[index] } : {})
     }));
     const startLine = item.chapter.line;
     const nextLine = prefixCatalog[index + 1]?.line;
@@ -327,6 +347,7 @@ export async function ensureBoundedUniverseCanonAssets(
   const catalogSnapshot = {
     schemaVersion: 2,
     totalLines: boundedLines.length,
+    sourceHash: boundedHash,
     ...(safeVolumes.length ? { volumes: safeVolumes } : {
       chapters: (sourceCatalog.chapters ?? []).slice(0, entryIndex + 1).map(chapter => ({
         ...(typeof chapter.sequenceInVolume === "number" ? { sequenceInVolume: chapter.sequenceInVolume } : {}),

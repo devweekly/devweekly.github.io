@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { CatalogChapter } from "./novel-kb.js";
 
 export interface CanonChunk {
@@ -74,32 +75,109 @@ export function alignCanonChapterGroups(
 }
 
 
-/** Verify that chapter line numbers still point at the exact headings in the offline corpus. */
+/** Split offline corpus text consistently for LF, CRLF and legacy CR files. */
+export function splitCanonLines(text: string): string[] {
+  return text.split(/\r\n|\n|\r/);
+}
+
+/** Return UTF-16 offsets for each physical line without normalizing source bytes. */
+export function canonLineStartOffsets(text: string): number[] {
+  const starts = [0];
+  for (let index = 0; index < text.length; index++) {
+    const char = text[index];
+    if (char === "\r") {
+      if (text[index + 1] === "\n") index++;
+      starts.push(index + 1);
+    } else if (char === "\n") {
+      starts.push(index + 1);
+    }
+  }
+  return starts;
+}
+
+/** Verify catalog line numbers and completeness against the actual offline corpus. */
 export function validateCanonCatalogAgainstText(
   catalog: CatalogChapter[],
   originalText: string,
-  expectedTotalLines?: number
+  expectedTotalLines?: number,
+  expectedSourceHash?: string
 ): void {
-  const normalized = originalText.replace(/^\uFEFF/, "");
-  const lines = normalized.split(/\r?\n/);
+  if (expectedSourceHash) {
+    const actualHash = createHash("sha256").update(originalText, "utf8").digest("hex");
+    if (actualHash !== expectedSourceHash) {
+      throw Object.assign(new Error("chapter-index.json 的 sourceHash 与当前 original.txt 不一致。请重新运行 node analysis/build-corpus-index.mjs；不能使用旧目录解释新原文。"), { status: 400 });
+    }
+  }
+  const lines = splitCanonLines(originalText);
   if (expectedTotalLines !== undefined && lines.length !== expectedTotalLines) {
     throw Object.assign(new Error("chapter-index.json 的 totalLines 与 original.txt 不一致（目录 " + expectedTotalLines + " 行，原文 " + lines.length + " 行）。请重新运行 node analysis/build-corpus-index.mjs。"), { status: 400 });
   }
   let previousLine = 0;
   const identities = new Set<string>();
+  const catalogLines = new Set<number>();
   for (const chapter of catalog) {
     const line = chapter.line;
     if (!Number.isSafeInteger(line) || (line ?? 0) <= previousLine || (line ?? 0) > lines.length) {
       throw Object.assign(new Error("chapter-index.json 的章节行号缺失、越界或顺序异常：" + chapter.title + "。请重新生成原文目录。"), { status: 400 });
     }
-    const actual = (lines[(line as number) - 1] ?? "").trim();
+    const actual = (lines[(line as number) - 1] ?? "").replace(/^\uFEFF/, "").trim();
     if (actual !== chapter.title.trim()) {
       throw Object.assign(new Error("chapter-index.json 的章节行号已过期：" + chapter.title + " 应位于 L" + line + "，但原文该行是「" + actual.slice(0, 80) + "」。请重新运行 node analysis/build-corpus-index.mjs。"), { status: 400 });
     }
     const identity = chapter.volume + ":" + chapter.sequenceInVolume;
     if (identities.has(identity)) throw Object.assign(new Error("chapter-index.json 存在重复章节身份：" + identity + "。请重新生成原文目录。"), { status: 400 });
     identities.add(identity);
+    catalogLines.add(line as number);
     previousLine = line as number;
+  }
+
+  // Keep this expression in sync with analysis/build-corpus-index.mjs. A catalog
+  // that silently omits a later chapter cannot define a safe end-of-book boundary.
+  const headingPattern = /^[ \t\u3000]*第([〇零一二三四五六七八九十百千万两0-9０-９]+)章[ \t\u3000]*(.*)$/;
+  const missingHeadings: number[] = [];
+  for (let index = 0; index < lines.length; index++) {
+    const line = (lines[index] ?? "").replace(/^\uFEFF/, "");
+    if (headingPattern.test(line) && !catalogLines.has(index + 1)) missingHeadings.push(index + 1);
+  }
+  if (missingHeadings.length) {
+    throw Object.assign(new Error("原文目录不完整：chapter-index.json 在原文第 " + missingHeadings.slice(0, 8).join("、") + " 行存在未登记章节标题。请重新运行 node analysis/build-corpus-index.mjs；在目录完整前拒绝创建时点副本。"), { status: 400 });
+  }
+}
+
+/** Verify every indexed chunk's payload against its exact location in original.txt. */
+export function validateCanonChunksAgainstText(
+  aligned: AlignedCanonChapter[],
+  originalText: string,
+  chapterStartOffsets: Array<number | undefined>
+): void {
+  for (const item of aligned) {
+    if (!item.chunks.length) continue; // Full-text fallback is allowed when a derived index is absent.
+    const chapterStart = chapterStartOffsets[item.catalogIndex];
+    const nextStart = chapterStartOffsets[item.catalogIndex + 1] ?? originalText.length;
+    const chapterText = chapterStart === undefined ? "" : originalText.slice(chapterStart, nextStart).trim();
+    const ordered = [...item.chunks].sort((a, b) => a.chunkIndex - b.chunkIndex);
+    let previousEnd = 0;
+    let previousIndex = -1;
+    for (const chunk of ordered) {
+      if (chapterStart === undefined || !Number.isSafeInteger(chunk.chunkIndex) ||
+          chunk.chunkIndex !== previousIndex + 1 || !Number.isSafeInteger(chunk.start) ||
+          !Number.isSafeInteger(chunk.end) || chunk.start < 0 || chunk.end <= chunk.start ||
+          chunk.end > chapterText.length || chunk.start > previousEnd) {
+        throw new Error("原著切片缺少连续、可验证的正文偏移：" + item.chapter.title + " / chunk " + chunk.chunkIndex + "。请重新从 original.txt 建立索引。");
+      }
+      if (chunk.chapterStart !== undefined && chunk.chapterStart !== chapterStart) {
+        throw new Error("原著切片 chapterStart 与 original.txt 不一致：" + item.chapter.title + "。请重新从 original.txt 建立索引。");
+      }
+      const expected = chapterText.slice(chunk.start, chunk.end);
+      if (expected !== chunk.text) {
+        throw new Error("原著切片正文与 original.txt 的声明位置不一致：" + item.chapter.title + " / chunk " + chunk.chunkIndex + "。切片可能已损坏或被修改，请重新 ingest original.txt 后执行 index-story。");
+      }
+      previousEnd = Math.max(previousEnd, chunk.end);
+      previousIndex = chunk.chunkIndex;
+    }
+    if (ordered[0]?.start !== 0 || previousEnd !== chapterText.length) {
+      throw new Error("原著切片未完整覆盖目录章节：" + item.chapter.title + "。请重新 ingest original.txt 后执行 index-story。");
+    }
   }
 }
 

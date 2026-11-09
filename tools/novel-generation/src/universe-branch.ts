@@ -47,18 +47,9 @@ export function remapForkedRun(
 export function shouldCopyUniverseAsset(relativePath: string): boolean {
   const parts = relativePath.split(/[\\/]+/).filter(Boolean);
   if (parts.length === 0) return true;
-  const first = parts[0]!;
-  if ([
-    "story.db", "story-state.json", "story-arc.md", "story-plan.json",
-    ".output", "universes", "library", "private-library", "vane-index", "analysis",
-    "corpus-craft", "style-references", "style-reference-history", "as-of-analysis", "universe.json"
-  ].includes(first)) return false;
-  if (parts.length === 1 && [
-    "world-bible.md", "characters.md", "timeline.md", "fruit-worlds.md",
-    "yanfu-system.md", "style-profile.md", "story-analysis.md",
-    "character-profiles.md", "plot-summary.md", "foreshadowing.md"
-  ].includes(first)) return false;
-  return true;
+  // Universe staging is an allow-list, not a broad copy with a growing deny-list.
+  // The full original text is copied separately through the bounded-corpus path.
+  return parts.length === 1 && parts[0] === "novel.db";
 }
 
 export interface CanonChapterText { title: string; text: string; }

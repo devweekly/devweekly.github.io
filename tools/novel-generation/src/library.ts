@@ -33,7 +33,7 @@ export interface SearchHit extends LibraryChunk {
   score: number;
 }
 
-const HEADING = /^[ \t\u3000]*(第[〇零一二三四五六七八九十百千万0-9０-９]+[章节回卷部篇].*|序章.*|楔子.*|引子.*|尾声.*|终章.*|番外.*|后记.*)[ \t]*$/gm;
+const HEADING = /^\uFEFF?[ \t\u3000]*(第[〇零一二三四五六七八九十百千万0-9０-９]+[章节回卷部篇].*|序章.*|楔子.*|引子.*|尾声.*|终章.*|番外.*|后记.*)[ \t]*$/gm;
 
 function splitChapters(text: string, source: string): Array<{ title: string; text: string; start: number }> {
   const matches = [...text.matchAll(HEADING)];
@@ -119,6 +119,12 @@ async function readOptionalLibraryIndex(indexPath: string, worldId: string): Pro
     }
     return index;
   } catch (error) {
+    if (error instanceof SyntaxError) {
+      // Library indexes are derived caches. Preserve the damaged bytes for
+      // diagnosis and let the canonical-corpus repair path rebuild the index.
+      await rename(indexPath, indexPath + ".corrupt-" + Date.now());
+      return undefined;
+    }
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
   }
@@ -169,17 +175,24 @@ export async function ensurePrivateLibraryIsolation(libraryDir: string, worldId:
     hasPrivateAnnotations = (annotations.annotations ?? []).some(item => isPrivateSource(item.source ?? "")) ||
       (annotations.failures ?? []).some(item => isPrivateSource(item.chunkId ?? ""));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    if (error instanceof SyntaxError) {
+      await rename(annotationsPath, annotationsPath + ".corrupt-" + Date.now());
+      hasPrivateAnnotations = true;
+    } else if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
+  const entitiesPath = join(libraryDir, "entities.json");
   try {
-    const registry = JSON.parse(await readFile(join(libraryDir, "entities.json"), "utf8")) as {
+    const registry = JSON.parse(await readFile(entitiesPath, "utf8")) as {
       entities?: Array<{ mentions?: Array<{ source?: string }> }>;
     };
     hasPrivateAnnotations ||= (registry.entities ?? []).some(entity =>
       (entity.mentions ?? []).some(mention => isPrivateSource(mention.source ?? ""))
     );
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    if (error instanceof SyntaxError) {
+      await rename(entitiesPath, entitiesPath + ".corrupt-" + Date.now());
+      hasPrivateAnnotations = true;
+    } else if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   if (hasPrivateAnnotations || privateChunks.length) {
     // Older analyze runs persisted private evidence in both JSON and SQLite.

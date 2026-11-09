@@ -78,7 +78,8 @@ test("historical universe asset policy excludes full-book and derived data from 
     "character-profiles.md", "plot-summary.md", "foreshadowing.md",
     "analysis/chapter-index.json", "corpus-craft/chapters/1.json",
     "vane-index/index.json", "style-references/active.json",
-    "library/index.json", "private-library/index.json", "story-state.json", ".output/run/chapter.md"
+    "library/index.json", "private-library/index.json", "story-state.json", ".output/run/chapter.md",
+    "chapters/chapter-001.md", "chapters/continuity-review-001.md", "laws.json"
   ]) {
     assert.equal(shouldCopyUniverseAsset(file), false, file);
   }
@@ -86,10 +87,25 @@ test("historical universe asset policy excludes full-book and derived data from 
   assert.equal(shouldCopyUniverseAsset("novel.db"), true);
 });
 
-test("historical universe asset policy retains ordinary source material and nested non-derived assets", () => {
+test("historical universe asset policy excludes arbitrary files from staging", () => {
+  // Staging is a strict allow-list: even ordinary source notes and images are
+  // not copied implicitly. Only novel.db enters the explicit bounded-snapshot
+  // pipeline; original.txt is copied separately after its future boundary is cut.
   for (const file of [
     "source-notes/folklore.txt", "images/map.png", "research/period-customs.md"
   ]) {
-    assert.equal(shouldCopyUniverseAsset(file), true, file);
+    assert.equal(shouldCopyUniverseAsset(file), false, file);
   }
 });
+
+test("universe staging copies only the SQLite knowledge database", () => {
+  assert.equal(shouldCopyUniverseAsset(""), true);
+  assert.equal(shouldCopyUniverseAsset("novel.db"), true);
+  assert.equal(shouldCopyUniverseAsset("original.txt"), false);
+  assert.equal(shouldCopyUniverseAsset("library/index.json"), false);
+  assert.equal(shouldCopyUniverseAsset("analysis/chapter-index.json"), false);
+  assert.equal(shouldCopyUniverseAsset("private-library/index.json"), false);
+  assert.equal(shouldCopyUniverseAsset(".env"), false);
+  assert.equal(shouldCopyUniverseAsset("custom-private-notes.md"), false);
+});
+

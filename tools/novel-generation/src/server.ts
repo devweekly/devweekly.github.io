@@ -18,9 +18,9 @@ import {
   WORKBENCH_BODY_LIMIT
 } from "./constants.js";
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
-import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks, validateCanonCatalogAgainstText, type CanonChunk } from "./canon-chapters.js";
+import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks, splitCanonLines, type CanonChunk } from "./canon-chapters.js";
 import { chunkText, ensurePrivateLibraryIsolation } from "./library.js";
-import { chapterId as catalogChapterId, loadChapterCatalog, loadChapterCatalogDocument, type CatalogChapter } from "./novel-kb.js";
+import { chapterId as catalogChapterId, ensureSourceCanonLibraryIndex, indexNovelStructure, loadChapterCatalog, loadChapterCatalogDocument, prepareCanonIndexInputs, type CatalogChapter } from "./novel-kb.js";
 import { buildStoryStateGraph, filterGraph } from "./story-state-graph.js";
 import { archiveStyleReference, listStyleReferenceHistory, listStyleReferences, putStyleReference, readActiveStyleReference, readStyleReferenceVersion } from "./style-references.js";
 import { getCandidate, getRun, listCandidates, listRuns, recoverInterruptedRuns, saveCandidate, saveRun, type StoryPlanCandidate, type WorkbenchRun } from "./workbench-store.js";
@@ -397,11 +397,23 @@ interface StoryUniverse {
   entryChapterId?: string;
   entryChapterIndex?: number;
   entryOrdinal?: number;
+  /** SHA-256 of the full source corpus at universe creation; prevents silent repair from a changed book. */
+  sourceCanonHash?: string;
   brief: string;
   parentUniverseId?: string;
   forkPoint?: string;
   createdAt: string;
   archivedAt?: string;
+}
+
+function checkpointKnowledgeDatabase(databasePath: string): void {
+  if (!existsSync(databasePath)) return;
+  const db = new DatabaseSync(databasePath);
+  try {
+    db.exec("PRAGMA busy_timeout=5000; PRAGMA wal_checkpoint(TRUNCATE);");
+  } finally {
+    db.close();
+  }
 }
 
 function rebindKnowledgeDatabase(databasePath: string, worldId: string): void {
@@ -513,7 +525,7 @@ function readCatalogChapterText(catalog: CatalogChapter[], lines: string[], cata
   return lines.slice(start, end).join("\n").trim();
 }
 
-interface CanonChapterChunk extends CanonChunk {}
+interface CanonChapterChunk extends CanonChunk { id: string; source: string }
 interface CanonChapterEntry {
   title: string;
   text: string;
@@ -523,13 +535,125 @@ interface CanonChapterEntry {
   ordinal: number;
   hasChunks: boolean;
 }
+async function ensureStagedChapterDatabase(
+  universeId: string,
+  sourceWorldId: string,
+  stagedDir: string,
+  chapters: CanonChapterEntry[]
+): Promise<void> {
+  const databasePath = path.join(stagedDir, "novel.db");
+  let rows: Array<{ chapter_id: string; ordinal: number; volume: number; title: string }> = [];
+  const databaseExists = existsSync(databasePath);
+  if (databaseExists) {
+    const db = new DatabaseSync(databasePath);
+    try {
+      rows = db.prepare("SELECT chapter_id,ordinal,volume,title FROM novel_chapters ORDER BY ordinal")
+        .all() as typeof rows;
+    } catch (error) {
+      if (!(error instanceof Error) || !/no such table|no such column/i.test(error.message)) throw error;
+    } finally {
+      db.close();
+    }
+  }
+  const canonicalRows = rows.filter(row => row.chapter_id !== "V00-C000");
+  if (databaseExists && chapters.length > 0 && canonicalRows.length === 0) {
+    throw new Error(
+      "原文 novel.db 缺少正式章节目录记录，无法证明知识库与原文目录的稳定 ID 映射。" +
+      "请先对原文项目执行 node --import tsx src/cli.ts index-story --world " + sourceWorldId +
+      "，再创建故事宇宙；不要通过 ingest 重新导入来修复。"
+    );
+  }
+  const complete = canonicalRows.length === chapters.length && chapters.every((chapter, index) => {
+    const row = canonicalRows[index];
+    return row?.chapter_id === chapter.chapterId &&
+      Number(row.ordinal) === chapter.ordinal &&
+      Number(row.volume) === chapter.volume &&
+      row.title === chapter.title;
+  });
+  if (!complete) {
+    // Rebuild only the staged copy. Universe creation must never mutate the
+    // source project's novel.db just to repair missing/legacy chapter rows.
+    await indexNovelStructure(universeId, { worldDir: stagedDir });
+  }
+}
+
+const chapterCatalogBuilds = new Map<string, Promise<void>>();
+
+async function rebuildOfflineChapterCatalog(sourceWorldId: string, projectRoot: string): Promise<void> {
+  const running = chapterCatalogBuilds.get(sourceWorldId);
+  if (running) return running;
+  const task = new Promise<void>((resolveBuild, rejectBuild) => {
+    const scriptPath = path.join(projectRoot, "analysis", "build-corpus-index.mjs");
+    const child = spawn(process.execPath, [scriptPath], {
+      cwd: projectRoot,
+      env: { ...process.env, NOVEL_WORLD_ID: sourceWorldId },
+      stdio: ["ignore", "pipe", "pipe"]
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout?.on("data", chunk => { stdout += String(chunk); });
+    child.stderr?.on("data", chunk => { stderr += String(chunk); });
+    child.once("error", rejectBuild);
+    child.once("close", code => {
+      if (code === 0) resolveBuild();
+      else rejectBuild(new Error(
+        "从 original.txt 自动重建章节目录失败（exit " + String(code) + "）。" +
+        (stderr.trim() || stdout.trim() || "请检查原文标题格式和文件权限。")
+      ));
+    });
+  });
+  chapterCatalogBuilds.set(sourceWorldId, task);
+  try { await task; }
+  finally { if (chapterCatalogBuilds.get(sourceWorldId) === task) chapterCatalogBuilds.delete(sourceWorldId); }
+}
+
 async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEntry[]> {
-  const catalogDocument = await loadChapterCatalogDocument(sourceWorldId);
+  // Resolve every offline asset from the Workbench project root, not from a
+  // caller's incidental current working directory.
+  const sourceProjectRoot = path.resolve(worldDir(sourceWorldId), "..", "..");
+  const catalogPath = path.join(sourceProjectRoot, "analysis", sourceWorldId, "chapter-index.json");
+  let originalPath: string | undefined;
+  try {
+    originalPath = await resolveOriginalCanonPath(sourceWorldId, {
+      projectRoot: sourceProjectRoot,
+      worldDir: worldDir(sourceWorldId)
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+
+  let catalogDocument;
+  let rebuildCatalog = false;
+  try {
+    catalogDocument = await loadChapterCatalogDocument(sourceWorldId, catalogPath);
+    rebuildCatalog = !catalogDocument;
+  } catch (error) {
+    if (error instanceof SyntaxError || (error instanceof Error && /Chapter catalog has no chapters/.test(error.message))) {
+      rebuildCatalog = true;
+      // Keep the invalid derived file for diagnosis; never destroy the only copy.
+      if (existsSync(catalogPath)) {
+        await rename(catalogPath, catalogPath + ".invalid-" + Date.now());
+      }
+    } else {
+      throw error;
+    }
+  }
+  if (rebuildCatalog && originalPath) {
+    await rebuildOfflineChapterCatalog(sourceWorldId, sourceProjectRoot);
+    catalogDocument = await loadChapterCatalogDocument(sourceWorldId, catalogPath);
+  }
   const catalog = catalogDocument?.chapters;
-  if (!catalog) throw new Error("原著章节目录不存在，无法安全创建故事宇宙。请先构建 chapter-index.json。");
-  let chunks: CanonChapterChunk[] = [];
+  if (!catalogDocument || !catalog) {
+    throw new Error(
+      "找不到有效的原著章节目录：" + catalogPath +
+      (originalPath
+        ? "；已找到原文全文：" + originalPath + "，但自动重建后仍没有有效章节，请检查 original.txt 中的章节标题格式。"
+        : "；未找到 original.txt，无法从离线全文重建目录。")
+    );
+  }
   const libraryDir = path.join(worldDir(sourceWorldId), "library");
-  await ensurePrivateLibraryIsolation(libraryDir, sourceWorldId);
+  await ensureSourceCanonLibraryIndex(sourceWorldId, worldDir(sourceWorldId));
+  let chunks: CanonChapterChunk[] = [];
   try {
     const index = JSON.parse(await readFile(path.join(libraryDir, "index.json"), "utf8")) as { worldId?: string; chunks?: CanonChapterChunk[] };
     if (index.worldId !== sourceWorldId || !Array.isArray(index.chunks)) {
@@ -538,45 +662,20 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
     chunks = index.chunks;
   } catch (error) {
     // The full text + chapter catalog are sufficient to populate the selector.
-    // The retrieval index is a derived cache and must not make the canon disappear.
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
-  let originalText: string | undefined;
-  let originalLines: string[] | undefined;
-  const ensureOriginalText = async (): Promise<boolean> => {
-    if (originalText !== undefined) return true;
-    try {
-      const originalPath = await resolveOriginalCanonPath(sourceWorldId);
-      originalText = await readFile(originalPath, "utf8");
-      originalLines = originalText.split(/\r?\n/);
-      return true;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
-      throw error;
-    }
-  };
-  const lineStartOffset = (line: number): number | undefined => {
-    if (!originalText || !Number.isSafeInteger(line) || line < 1) return undefined;
-    let offset = 0;
-    for (let current = 1; current < line; current++) {
-      const newline = originalText.indexOf("\n", offset);
-      if (newline < 0) return undefined;
-      offset = newline + 1;
-    }
-    const lineText = originalLines?.[line - 1] ?? "";
-    return offset + lineText.length - lineText.trimStart().length;
-  };
-  await ensureOriginalText();
-  if (originalText !== undefined) validateCanonCatalogAgainstText(catalog, originalText, catalogDocument.totalLines);
-  const chapterStartOffsets = catalog.map(chapter => chapter.line == null ? undefined : lineStartOffset(chapter.line));
-  const originalSourceHash = originalText === undefined ? undefined : createHash("sha256").update(originalText, "utf8").digest("hex");
-  const canonChunks = selectCanonSourceChunks(chunks, originalSourceHash);
-  const aligned = alignCanonChapterGroups(catalog, canonChunks, chapterStartOffsets);
-  const readOriginalText = async (catalogIndex: number): Promise<string> =>
-    originalLines ? readCatalogChapterText(catalog, originalLines, catalogIndex) : "";
+  const prepared = await prepareCanonIndexInputs(worldDir(sourceWorldId), catalog, chunks, catalogDocument.totalLines, catalogDocument.sourceHash);
+  const aligned = alignCanonChapterGroups(catalog, prepared.chunks, prepared.chapterStartOffsets);
+  const sourceHash = prepared.originalText === undefined
+    ? undefined
+    : createHash("sha256").update(prepared.originalText, "utf8").digest("hex");
+  const persistedCanon = selectCanonSourceChunks(chunks, sourceHash);
+  const persistedAligned = alignCanonChapterGroups(catalog, persistedCanon, prepared.chapterStartOffsets);
+  const originalLines = prepared.originalText === undefined ? undefined : splitCanonLines(prepared.originalText);
   const result: CanonChapterEntry[] = [];
   for (const item of aligned) {
-    const text = joinCanonChunkText(item.chunks) || await readOriginalText(item.catalogIndex);
+    const text = joinCanonChunkText(item.chunks) ||
+      (originalLines ? readCatalogChapterText(catalog, originalLines, item.catalogIndex) : "");
     result.push({
       title: item.chapter.title,
       text,
@@ -584,12 +683,14 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
       sequenceInVolume: item.chapter.sequenceInVolume,
       chapterId: catalogChapterId(item.chapter.volume, item.chapter.sequenceInVolume),
       ordinal: item.catalogIndex + 1,
-      hasChunks: item.chunks.length > 0
+      // Distinguish real persisted retrieval coverage from chunks reconstructed
+      // in memory. The source novel.db may legitimately lack rows for chapters
+      // whose derived Library chunks have not yet been materialized.
+      hasChunks: (persistedAligned[item.catalogIndex]?.chunks.length ?? 0) > 0
     });
   }
   return result;
 }
-
 
 /**
  * Story analysis and Corpus Craft require the chapter catalog as well as library chunks.
@@ -628,9 +729,12 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
     }).filter((volume): volume is NonNullable<typeof volume> => volume !== null);
     const safeChapters = (source.chapters ?? []).slice(0, entryIndex + 1).map(safeChapter);
     const totalLines = Math.max(1, boundedTotalLines);
+    const boundedText = await readFile(path.join(targetDir, "original.txt"), "utf8");
+    const boundedSourceHash = createHash("sha256").update(boundedText, "utf8").digest("hex");
     const snapshot = {
       ...(typeof source.schemaVersion === "number" ? { schemaVersion: source.schemaVersion } : {}),
       totalLines,
+      sourceHash: boundedSourceHash,
       ...(safeVolumes.length ? { volumes: safeVolumes } : {}),
       ...(!safeVolumes.length && safeChapters.length ? { chapters: safeChapters } : {})
     };
@@ -656,7 +760,7 @@ async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: st
     schemaVersion: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), chunks: []
   };
   const sourceLibraryDir = path.join(worldDir(sourceWorldId), "library");
-  await ensurePrivateLibraryIsolation(sourceLibraryDir, sourceWorldId);
+  await ensureSourceCanonLibraryIndex(sourceWorldId, worldDir(sourceWorldId));
   try {
     source = JSON.parse(await readFile(path.join(sourceLibraryDir, "index.json"), "utf8")) as typeof source & { worldId?: string };
     if (source.worldId !== sourceWorldId || !Array.isArray(source.chunks)) {
@@ -667,8 +771,10 @@ async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: st
     // canonical full text below instead of treating a missing cache as no canon.
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
-  const catalog = await loadChapterCatalog(sourceWorldId);
+  const catalogDocument = await loadChapterCatalogDocument(sourceWorldId);
+  const catalog = catalogDocument?.chapters;
   if (!catalog) throw new Error("原著章节目录不存在，无法创建有边界的知识切片快照。");
+  const prepared = await prepareCanonIndexInputs(worldDir(sourceWorldId), catalog, source.chunks, catalogDocument.totalLines);
   const nextChapterLineValue = catalog[entryIndex + 1]?.line;
   const nextChapterLine = typeof nextChapterLineValue === "number" ? nextChapterLineValue : undefined;
   if (catalog[entryIndex + 1] && (!Number.isSafeInteger(nextChapterLine) || Number(nextChapterLine) < 2)) {
@@ -677,29 +783,19 @@ async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: st
   const originalPath = await resolveOriginalCanonPath(sourceWorldId);
   const originalText = await readFile(originalPath, "utf8");
   const boundedOriginalText = truncateCanonAtLine(originalText, nextChapterLine);
-  const originalSourceLines = originalText.split(/\r?\n/);
-  const boundedLineCount = boundedOriginalText.split(/\r?\n/).length;
-  const offsets = catalog.map(chapter => {
-    if (chapter.line == null || chapter.line < 1) return undefined;
-    let offset = 0;
-    for (let line = 1; line < chapter.line; line++) {
-      const next = originalText.indexOf("\n", offset);
-      if (next < 0) return undefined;
-      offset = next + 1;
-    }
-    const lineText = originalSourceLines[chapter.line - 1] ?? "";
-    return offset + lineText.length - lineText.trimStart().length;
-  });
+  const originalSourceLines = splitCanonLines(originalText);
+  const boundedLineCount = splitCanonLines(boundedOriginalText).length;
+  const offsets = prepared.chapterStartOffsets;
   const sourceHash = createHash("sha256").update(boundedOriginalText, "utf8").digest("hex");
-  const canonChunks = selectCanonSourceChunks(source.chunks, createHash("sha256").update(originalText, "utf8").digest("hex"));
-  const aligned = alignCanonChapterGroups(catalog, canonChunks, offsets);
+  const aligned = alignCanonChapterGroups(catalog, prepared.chunks, offsets);
   // Rebind provenance to the bounded file that is actually stored in this
   // universe. Keeping the parent's full-book hash would make index-story reject
   // every child chunk after the original copy is correctly truncated.
-  const sourceKey = path.relative(process.cwd(), path.join(worldDir(universeId), "original.txt")).split(path.sep).join("/");
+  const sourceKey = "worlds/" + universeId + "/original.txt";
   const chunks = aligned.filter(item => item.catalogIndex <= entryIndex).flatMap(item => {
     if (item.chunks.length) return item.chunks.map(chunk => ({
-      ...chunk, source: sourceKey, sourceHash
+      ...chunk, source: sourceKey, sourceHash,
+      ...(offsets[item.catalogIndex] !== undefined ? { chapterStart: offsets[item.catalogIndex] } : {})
     }));
     const chapterText = readCatalogChapterText(catalog, originalSourceLines, item.catalogIndex);
     if (!chapterText) throw new Error("无法为历史宇宙补齐原著章节切片：" + item.chapter.title + "。原文全文缺失或目录行号无效。");
@@ -734,7 +830,7 @@ async function writeForkedUniverseCanonSnapshots(parentId: string, targetDir: st
   const parentOriginalPath = await resolveOriginalCanonPath(parentId);
   const parentOriginalText = await readFile(parentOriginalPath, "utf8");
   const sourceHash = createHash("sha256").update(parentOriginalText, "utf8").digest("hex");
-  const lineCount = parentOriginalText.split(/\r?\n/).length;
+  const lineCount = splitCanonLines(parentOriginalText).length;
   const parentLibrary = JSON.parse(await readFile(path.join(worldDir(parentId), "library", "index.json"), "utf8")) as {
     schemaVersion: number; createdAt: string; updatedAt: string; worldId: string;
     chunks: Array<CanonChapterChunk & { sourceHash?: string }>;
@@ -742,29 +838,29 @@ async function writeForkedUniverseCanonSnapshots(parentId: string, targetDir: st
   if (parentLibrary.worldId !== parentId || !Array.isArray(parentLibrary.chunks) || !parentLibrary.chunks.length) {
     throw new Error("父宇宙没有可验证的时点原文切片，无法安全分叉。");
   }
-  const parentChunks = selectCanonSourceChunks(parentLibrary.chunks, sourceHash);
+  const parentCatalogDocument = await loadChapterCatalogDocument(parentId);
+  if (!parentCatalogDocument) throw new Error("父宇宙缺少 bounded chapter-index.json，拒绝分叉。");
+  if (parentCatalogDocument.totalLines !== lineCount) {
+    throw new Error("父宇宙章节目录 totalLines 与本地 bounded original.txt 不一致，拒绝分叉。");
+  }
+  const prepared = await prepareCanonIndexInputs(worldDir(parentId), parentCatalogDocument.chapters, parentLibrary.chunks, parentCatalogDocument.totalLines);
+  const parentChunks = prepared.chunks;
   if (parentChunks.length !== parentLibrary.chunks.length || parentChunks.some(chunk => chunk.sourceHash !== sourceHash)) {
     throw new Error("父宇宙 library 的 source/sourceHash 与本地时点原文不一致，拒绝复制不确定的分支检索数据。");
   }
-
-  const parentCatalogPath = path.resolve("analysis", parentId, "chapter-index.json");
-  const parentCatalogText = await readFile(parentCatalogPath, "utf8");
-  const parentCatalog = JSON.parse(parentCatalogText) as {
-    schemaVersion: number; totalLines: number;
-    volumes?: Array<{ chapters?: Array<{ title?: string }> }>;
-    chapters?: Array<{ title?: string }>;
-  };
-  if (parentCatalog.totalLines !== lineCount) {
-    throw new Error("父宇宙章节目录 totalLines 与本地 bounded original.txt 不一致，拒绝分叉。");
+  const alignedParent = alignCanonChapterGroups(parentCatalogDocument.chapters, parentChunks, prepared.chapterStartOffsets);
+  if (alignedParent.some(item => item.chunks.length === 0)) {
+    throw new Error("父宇宙 library 缺少正式章节切片，拒绝创建不完整的分支检索快照。");
   }
-  const catalogTitles = parentCatalog.volumes?.length
-    ? parentCatalog.volumes.flatMap(volume => (volume.chapters ?? []).map(chapter => chapter.title ?? ""))
-    : (parentCatalog.chapters ?? []).map(chapter => chapter.title ?? "");
+  const catalogTitles = parentCatalogDocument.chapters.map(chapter => chapter.title);
   if (!catalogTitles.length || parentChunks.some(chunk => !catalogTitles.includes(chunk.chapter))) {
     throw new Error("父宇宙 library 存在章节目录之外的切片，拒绝分叉以防止未来剧情泄漏。");
   }
 
-  const sourceKey = path.relative(process.cwd(), path.join(worldDir(universeId), "original.txt")).split(path.sep).join("/");
+  const parentCatalogPath = path.resolve("analysis", parentId, "chapter-index.json");
+  const parentCatalogText = await readFile(parentCatalogPath, "utf8");
+
+  const sourceKey = "worlds/" + universeId + "/original.txt";
   const libraryDir = path.join(targetDir, "library");
   await mkdir(libraryDir, { recursive: true });
   const childLibrary = {
@@ -772,7 +868,12 @@ async function writeForkedUniverseCanonSnapshots(parentId: string, targetDir: st
     worldId: universeId,
     createdAt: parentLibrary.createdAt,
     updatedAt: new Date().toISOString(),
-    chunks: parentChunks.map(chunk => ({ ...chunk, source: sourceKey, sourceHash }))
+    chunks: alignedParent.flatMap(item => item.chunks.map(chunk => ({
+      ...chunk, source: sourceKey, sourceHash,
+      ...(prepared.chapterStartOffsets[item.catalogIndex] !== undefined
+        ? { chapterStart: prepared.chapterStartOffsets[item.catalogIndex] }
+        : {})
+    })))
   };
   await writeFile(path.join(libraryDir, "index.json"), JSON.stringify(childLibrary, null, 2) + "\n", "utf8");
 
@@ -858,7 +959,11 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
       return void res.status(400).json({ error: "必须通过章节目录提供有效的章节索引，不能只提交可能重复的章节标题。" });
     }
     const selectedIndex = entryChapterIndex as number;
+    const canonicalPath = await resolveOriginalCanonPath(rootSourceId, { projectRoot: path.resolve("."), worldDir: sourceDir });
+    const sourceCanonText = await readFile(canonicalPath, "utf8");
+    const sourceCanonHash = createHash("sha256").update(sourceCanonText, "utf8").digest("hex");
     const selectedChapter = canonChapters[selectedIndex];
+    const boundedCanonChapters = canonChapters.slice(0, selectedIndex + 1);
     if (!selectedChapter || selectedChapter.title !== entryChapter) return void res.status(400).json({ error: "所选章节索引或标题不匹配，请刷新原文目录后重试。" });
     const incompletePast = canonChapters.slice(0, selectedIndex + 1).find(chapter => !chapter.text.trim());
     if (incompletePast) {
@@ -874,7 +979,9 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     const stagingDir = path.join(path.resolve("worlds"), ".staging-" + id);
     stagingPath = stagingDir;
     await mkdir(stagingDir, { recursive: true });
-    // 只复制原文只读资产和基础世界资料；所有派生状态、计划、输出与运行记录从空白开始。
+    // Checkpoint SQLite before copying its main file; WAL sidecars and arbitrary
+    // source-world files are deliberately not copied into a new universe.
+    checkpointKnowledgeDatabase(path.join(sourceDir, "novel.db"));
     await cp(sourceDir, stagingDir, {
       recursive: true,
       filter: source => {
@@ -890,57 +997,13 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     }
     const copiedCanon = await copyOriginalCanonToUniverse(rootSourceId, stagingDir, path.resolve("."), nextChapterLine);
     if (!copiedCanon) throw new Error("无法读取原著全文并建立独立的时点原文副本；拒绝创建可能暴露未来剧情的故事宇宙。");
-    // novel.db 是原著分析只读快照的初期副本；重置其世界身份，防止数据库身份校验误认为属于源项目。
-    rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
-    const knowledgePath = path.join(stagingDir, "novel.db");
-    if (!existsSync(knowledgePath)) throw new Error("原著 novel.db 不存在，无法建立无未来剧情泄漏的历史宇宙。请先完成原著索引与知识库构建。");
-    const sourceDb = new DatabaseSync(knowledgePath);
-    let entryRecord: { chapter_id:string; ordinal:number; volume:number; title:string } | undefined;
-    try {
-      const chapterRows = sourceDb.prepare("SELECT chapter_id,ordinal,volume,title FROM novel_chapters ORDER BY ordinal").all() as Array<{chapter_id:string;ordinal:number;volume:number;title:string}>;
-      const rowsById = new Map(chapterRows.map(row => [row.chapter_id, row]));
-      const catalogIds = new Set(canonChapters.map(chapter => chapter.chapterId));
-      const unexpected = chapterRows.filter(row => row.chapter_id !== "V00-C000" && !catalogIds.has(row.chapter_id));
-      if (unexpected.length) {
-        throw new Error("novel.db 含有不属于当前 chapter-index.json 的章节 ID（" + unexpected[0]!.chapter_id + "），拒绝猜测章节映射。请执行 index-story 后重试。");
-      }
-      if (!chapterRows.some(row => row.chapter_id !== "V00-C000")) {
-        throw new Error("novel.db 尚无正式章节索引。请先执行 index-story；不要重新 ingest，以免再次清空派生索引。");
-      }
-      const missingWithoutChunks = canonChapters.filter(chapter => !rowsById.has(chapter.chapterId) && chapter.hasChunks);
-      if (missingWithoutChunks.length) {
-        const first = missingWithoutChunks[0]!;
-        throw new Error("novel.db 缺少已有切片的正式章节记录（" + first.title + "，" + first.chapterId + "）。请执行 index-story 后重试。");
-      }
-      // A catalog chapter may legitimately have no retrieval chunks. If its
-      // original.txt range is available, reconstruct only its directory row in
-      // the staged copy; never mutate the source novel.db.
-      for (const chapter of canonChapters) {
-        const row = rowsById.get(chapter.chapterId);
-        if (row) {
-          if (Number(row.ordinal) !== chapter.ordinal || Number(row.volume) !== chapter.volume || row.title !== chapter.title) {
-            throw new Error("novel.db 章节目录与 chapter-index.json 不一致，差异位于第 " + chapter.ordinal + " 章（" + chapter.title + "）。请执行 index-story 后重试。");
-          }
-        } else {
-          if (!chapter.text.trim() || chapter.hasChunks) throw new Error("无法安全补齐缺失的章节目录记录：" + chapter.title + "。");
-          sourceDb.prepare(
-            "INSERT INTO novel_chapters(chapter_id,world_id,ordinal,volume,printed_number,title,label,start_line,char_count,chunk_start,chunk_end) VALUES(?,?,?,?,?,?,?,?,?,?,?)"
-          ).run(chapter.chapterId, id, chapter.ordinal, chapter.volume, null, chapter.title, chapter.title,
-            null, chapter.text.length, 0, -1);
-        }
-      }
-      entryRecord = sourceDb.prepare("SELECT chapter_id,ordinal,volume,title FROM novel_chapters WHERE chapter_id=?").get(selectedChapter.chapterId) as {chapter_id:string;ordinal:number;volume:number;title:string} | undefined;
-      if (!entryRecord || Number(entryRecord.ordinal) !== selectedChapter.ordinal ||
-          Number(entryRecord.volume) !== selectedChapter.volume || entryRecord.title !== selectedChapter.title) {
-        throw new Error("所选章节的稳定 ID 与原著知识库记录不匹配，已终止创建。");
-      }
-    } finally { sourceDb.close(); }
-    if (!entryRecord?.chapter_id || !Number.isSafeInteger(Number(entryRecord.ordinal))) throw new Error("无法将所选章节映射到 novel.db 的稳定 chapter_id，已终止创建。");
-    const entryChapterId = entryRecord.chapter_id;
-    const entryOrdinal = restrictKnowledgeDatabaseToEntry(knowledgePath, id, entryChapter, entryChapterId);
-    if (entryOrdinal !== Number(entryRecord.ordinal)) throw new Error("章节起点 ordinal 校验失败，已终止创建。");
+    // 先写入宇宙身份和 bounded 离线资产，再在 staging 副本中修复章节数据库。
+    // 这样即使源项目没有 novel.db 或章节 ID 已过期，也不会修改源项目。
+    const entryChapterId = selectedChapter.chapterId;
     const universe: StoryUniverse = {
-      id, sourceWorldId: rootSourceId, name, type, entryChapter, entryChapterId, entryChapterIndex: selectedIndex, entryOrdinal, brief,
+      id, sourceWorldId: rootSourceId, name, type, entryChapter, entryChapterId,
+      entryChapterIndex: selectedIndex, entryOrdinal: selectedChapter.ordinal, brief,
+      sourceCanonHash,
       createdAt: new Date().toISOString()
     };
     await writeFile(path.join(stagingDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
@@ -950,7 +1013,38 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     await writeFile(path.join(stagingDir, "universe-origin-context.md"), originContext + "\n", "utf8");
     const boundedTotalLines = await writeUniverseLibrarySnapshot(rootSourceId, stagingDir, id, selectedIndex);
     await writeUniverseAnalysisCatalogSnapshot(rootSourceId, stagingDir, id, selectedIndex, boundedTotalLines);
-    await writeFile(path.join(stagingDir, "source-canon-as-of.json"), JSON.stringify({ sourceWorldId: rootSourceId, entryChapter, entryChapterId, entryChapterIndex: selectedIndex, entryOrdinal, policy: "chapter-scoped-evidence-only", fullBookAggregates: "excluded" }, null, 2) + "\n", "utf8");
+
+    // novel.db is copied into staging and rebound. If it is missing, legacy,
+    // or incomplete, rebuild the chapter directory from the bounded local text.
+    rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
+    await ensureStagedChapterDatabase(id, rootSourceId, stagingDir, boundedCanonChapters);
+    const knowledgePath = path.join(stagingDir, "novel.db");
+    const sourceDb = new DatabaseSync(knowledgePath);
+    let entryRecord: { chapter_id:string; ordinal:number; volume:number; title:string } | undefined;
+    try {
+      const chapterRows = sourceDb.prepare("SELECT chapter_id,ordinal,volume,title FROM novel_chapters ORDER BY ordinal").all() as Array<{chapter_id:string;ordinal:number;volume:number;title:string}>;
+      const rowsById = new Map(chapterRows.map(row => [row.chapter_id, row]));
+      const catalogIds = new Set(boundedCanonChapters.map(chapter => chapter.chapterId));
+      const unexpected = chapterRows.filter(row => row.chapter_id !== "V00-C000" && !catalogIds.has(row.chapter_id));
+      if (unexpected.length) {
+        throw new Error("staging novel.db 含有不属于 bounded chapter-index.json 的章节 ID（" + unexpected[0]!.chapter_id + "），拒绝猜测章节映射。");
+      }
+      const missing = boundedCanonChapters.find(chapter => !rowsById.has(chapter.chapterId));
+      if (missing) throw new Error("staging novel.db 重建后仍缺少章节记录：" + missing.title + "。");
+      for (const chapter of boundedCanonChapters) {
+        const row = rowsById.get(chapter.chapterId);
+        if (!row || Number(row.ordinal) !== chapter.ordinal || Number(row.volume) !== chapter.volume || row.title !== chapter.title) {
+          throw new Error("staging novel.db 章节目录与 bounded chapter-index.json 不一致：" + chapter.title + "。");
+        }
+      }
+      entryRecord = rowsById.get(selectedChapter.chapterId);
+    } finally { sourceDb.close(); }
+    if (!entryRecord?.chapter_id || !Number.isSafeInteger(Number(entryRecord.ordinal))) throw new Error("无法将所选章节映射到 staging novel.db 的稳定 chapter_id，已终止创建。");
+    const entryOrdinal = restrictKnowledgeDatabaseToEntry(knowledgePath, id, entryChapter, entryChapterId);
+    if (entryOrdinal !== selectedChapter.ordinal || entryOrdinal !== Number(entryRecord.ordinal)) {
+      throw new Error("章节起点 ordinal 校验失败，已终止创建。");
+    }
+    await writeFile(path.join(stagingDir, "source-canon-as-of.json"), JSON.stringify({ sourceWorldId: rootSourceId, sourceCanonHash, entryChapter, entryChapterId, entryChapterIndex: selectedIndex, entryOrdinal, policy: "chapter-scoped-evidence-only", fullBookAggregates: "excluded" }, null, 2) + "\n", "utf8");
     await rename(stagingDir, targetDir);
     const knowledgeBuild = req.body?.buildKnowledge === false ? null : await serializeWorld(id, () => startKnowledgeBuild(id));
     res.status(201).json({ universe, ...(knowledgeBuild ? { knowledgeBuild } : {}) });
@@ -1040,6 +1134,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     await mkdir(stagingDir, { recursive: true });
     const parentDir = worldDir(parentId);
     await ensureBoundedUniverseCanonAssets(parentId, { projectRoot: path.resolve("."), worldDir: parentDir });
+    checkpointKnowledgeDatabase(path.join(parentDir, "novel.db"));
     await cp(parentDir, stagingDir, {
       recursive: true,
       filter: source => {
@@ -1066,6 +1161,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
       entryChapterId: parent.entryChapterId,
       entryChapterIndex: parentEntryIndex,
       entryOrdinal: parent.entryOrdinal,
+      ...(parent.sourceCanonHash ? { sourceCanonHash: parent.sourceCanonHash } : {}),
       brief: parent.brief,
       parentUniverseId: parent.id, forkPoint: forkRun.id,
       createdAt: new Date().toISOString()

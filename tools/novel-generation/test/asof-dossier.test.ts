@@ -83,7 +83,7 @@ test("as-of dossier publishes a complete directory and removes stale generated f
       updatedAt: "2026-11-07T00:00:00.000Z",
       chunks: [
         { id: "chunk-1", source: "original.txt", sourceHash, chapter: chapterText, chunkIndex: 0, start: 0, end: chapterText.length, chapterStart: 0, text: chapterText },
-        { id: "chunk-2", source: "original.txt", sourceHash, chapter: "第二章正文", chunkIndex: 0, start: 0, end: 10, chapterStart: secondChapterStart, text: "第二章正文" }
+        { id: "chunk-2", source: "original.txt", sourceHash, chapter: "第二章正文", chunkIndex: 0, start: 0, end: "第二章正文".length, chapterStart: secondChapterStart, text: "第二章正文" }
       ]
     }));
     await mkdir(join(root, "analysis", "u-child"), { recursive: true });

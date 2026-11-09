@@ -1,10 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { copyFile, mkdtemp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:http";
 import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
 import { DatabaseSync } from "node:sqlite";
 import { createApp } from "../src/server.js";
 import { buildStoryAnalysisContext } from "../src/story-analysis-context.js";
@@ -63,9 +64,9 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     schemaVersion: 1, worldId: "source-world", createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     chunks: [
-      { id: "canon:1", source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第一章正文", chunkIndex: 0, start: 0, end: 6, chapterStart: chapterStarts[0], text: "第一章正文" },
-      { id: "canon:2", source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第二章正文", chunkIndex: 0, start: 0, end: 6, chapterStart: chapterStarts[1], text: "第二章正文" },
-      { id: "canon:3", source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第三章 未来剧情泄漏标记", chunkIndex: 0, start: 0, end: 15, chapterStart: chapterStarts[2], text: "第三章 未来剧情泄漏标记" }
+      { id: "canon:1", source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第一章正文", chunkIndex: 0, start: 0, end: "第一章正文".length, chapterStart: chapterStarts[0], text: "第一章正文" },
+      { id: "canon:2", source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第二章正文", chunkIndex: 0, start: 0, end: "第二章正文".length, chapterStart: chapterStarts[1], text: "第二章正文" },
+      { id: "canon:3", source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第三章 未来剧情泄漏标记", chunkIndex: 0, start: 0, end: "第三章 未来剧情泄漏标记".length, chapterStart: chapterStarts[2], text: "第三章 未来剧情泄漏标记" }
     ]
   }));
   const db = new DatabaseSync(join(source, "novel.db"));
@@ -197,14 +198,17 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
 
     // Inject a post-staging failure while building the bounded library snapshot.
     await writeFile(join(source, "library", "index.json"), "{ malformed json");
-    const failedCreate = await fetch(`http://127.0.0.1:${address.port}/api/worlds/source-world/universes`, {
+    const recoveredCreate = await fetch(`http://127.0.0.1:${address.port}/api/worlds/source-world/universes`, {
       method: "POST",
       headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
-      body: JSON.stringify({ name: "应回滚的宇宙", entryChapter: "第二章", entryChapterIndex: 1, type: "free", brief: "故障注入", buildKnowledge: false })
+      body: JSON.stringify({ name: "损坏索引自动恢复", entryChapter: "第二章正文", entryChapterIndex: 1, type: "free", brief: "从离线全文重建派生索引", buildKnowledge: false })
     });
-    assert.equal(failedCreate.status, 500);
+    const recoveredBody = await recoveredCreate.text();
+    assert.equal(recoveredCreate.status, 201, recoveredBody);
+    const recoveredPayload = JSON.parse(recoveredBody) as { universe: { id: string } };
+    assert.ok(await readFile(join(root, "worlds", recoveredPayload.universe.id, "original.txt"), "utf8"));
     const remainingWorlds = (await readdir(join(root, "worlds"))).sort();
-    assert.deepEqual(remainingWorlds, ["source-world", payload.universe.id].sort());
+    assert.deepEqual(remainingWorlds, ["source-world", payload.universe.id, recoveredPayload.universe.id].sort());
     assert.equal(remainingWorlds.some(name => name.startsWith(".staging-")), false);
 
   } finally {
@@ -253,12 +257,12 @@ test("universe creation uses catalog order and stable chapter IDs despite extra 
   const volumeTwoSecondChapterStart = [lineOne, lineTwo, lineThree, lineFour, lineFive, lineSix].reduce((sum, line) => sum + line.length + 1, 0);
   const chunks = [
     { source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "前置内容", chunkIndex: 0, start: 0, end: 5, chapterStart: 0, text: "前置内容泄漏" },
-    { source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第一章", chunkIndex: 0, start: 0, end: 7, chapterStart: 0, text: "卷一第一章正文" },
-    { source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第二章", chunkIndex: 0, start: 0, end: 7, chapterStart: lineOne.length + lineTwo.length + 2, text: "卷一第二章正文" },
+    { source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第一章", chunkIndex: 0, start: 0, end: "第一章\n卷一第一章正文".length, chapterStart: 0, text: "第一章\n卷一第一章正文" },
+    { source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第二章", chunkIndex: 0, start: 0, end: "第二章\n卷一第二章正文".length, chapterStart: lineOne.length + lineTwo.length + 2, text: "第二章\n卷一第二章正文" },
     { source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "作者说明", chunkIndex: 0, start: 0, end: 5, chapterStart: lineOne.length + lineTwo.length + lineThree.length + lineFour.length + 4, text: "作者说明泄漏" },
     // Volume 2's first chapter intentionally has no chunk. The catalog line
     // boundary must provide its source text without shifting the next chapter.
-    { source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第二章", chunkIndex: 0, start: 0, end: 7, chapterStart: volumeTwoSecondChapterStart, text: "卷二第二章正文" }
+    { source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第二章", chunkIndex: 0, start: 0, end: "第二章\n卷二第二章正文".length, chapterStart: volumeTwoSecondChapterStart, text: "第二章\n卷二第二章正文" }
   ];
   await writeFile(join(source, "library", "index.json"), JSON.stringify({
     schemaVersion: 1, worldId: "source-world", createdAt: "2026-01-01T00:00:00.000Z",
@@ -389,9 +393,9 @@ test("source chapter catalog reads project-root original.txt without a world-loc
   await writeFile(join(root, "worlds", "source-world", "world-bible.md"), "# Whole-book bible\n", "utf8");
   const originalText = [
     "第一章 大枪落幕",
-    "第一章正文：李阎走进雨里。",
+    "李阎走进雨里。",
     "第二章 貘与姑获鸟",
-    "第二章正文：夜色压下来。"
+    "夜色压下来。"
   ].join("\n");
   await writeFile(join(root, "original.txt"), originalText, "utf8");
   await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify({
@@ -449,6 +453,60 @@ test("source chapter catalog reads project-root original.txt without a world-loc
   }
 });
 
+test("source chapter catalog is rebuilt automatically from project-root original.txt when the derived catalog is missing", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-universe-auto-catalog-"));
+  const previousCwd = process.cwd();
+  await mkdir(join(root, "worlds", "source-world"), { recursive: true });
+  await mkdir(join(root, "analysis"), { recursive: true });
+  await copyFile(
+    fileURLToPath(new URL("../analysis/build-corpus-index.mjs", import.meta.url)),
+    join(root, "analysis", "build-corpus-index.mjs")
+  );
+  const originalText = [
+    "第一章 大枪落幕",
+    "李阎走进雨里。",
+    "第二章 貘与姑获鸟",
+    "夜色压下来。"
+  ].join("\n");
+  await writeFile(join(root, "original.txt"), originalText, "utf8");
+  let server: ReturnType<typeof createServer> | undefined;
+  try {
+    process.chdir(root);
+    server = createServer(createApp());
+    await new Promise<void>(resolve => server!.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/worlds/source-world/source-chapters`, {
+      headers: { host: `127.0.0.1:${address.port}` }
+    });
+    const body = await response.text();
+    assert.equal(response.status, 200, body);
+    const payload = JSON.parse(body) as { chapters: Array<{ id: number; title: string }> };
+    assert.deepEqual(payload.chapters.map(chapter => [chapter.id, chapter.title]), [
+      [0, "第一章 大枪落幕"], [1, "第二章 貘与姑获鸟"]
+    ]);
+    const catalog = JSON.parse(await readFile(join(root, "analysis", "source-world", "chapter-index.json"), "utf8")) as {
+      sourceHash: string;
+      totalLines: number;
+      chapterCount: number;
+    };
+    assert.equal(catalog.sourceHash, createHash("sha256").update(originalText, "utf8").digest("hex"));
+    assert.equal(catalog.totalLines, 4);
+    assert.equal(catalog.chapterCount, 2);
+    const library = JSON.parse(await readFile(join(root, "worlds", "source-world", "library", "index.json"), "utf8")) as {
+      chunks: Array<{ chapter: string; sourceHash?: string }>;
+    };
+    assert.deepEqual([...new Set(library.chunks.map(chunk => chunk.chapter))], [
+      "第一章 大枪落幕", "第二章 貘与姑获鸟"
+    ]);
+    assert.ok(library.chunks.every(chunk => chunk.sourceHash === catalog.sourceHash));
+  } finally {
+    if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
+    process.chdir(previousCwd);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("universe creation rebuilds bounded offline assets from project-root original.txt without a world-local corpus or library index", async () => {
   const root = await mkdtemp(join(tmpdir(), "novel-universe-root-corpus-"));
   const previousCwd = process.cwd();
@@ -473,21 +531,6 @@ test("universe creation rebuilds bounded offline assets from project-root origin
       { sequenceInVolume: 3, printedNumber: 3, title: "第三章 后续", label: "后续", line: 5 }
     ] }]
   }));
-  const db = new DatabaseSync(join(source, "novel.db"));
-  db.exec(`
-    CREATE TABLE world_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
-    INSERT INTO world_meta VALUES('world_id','source-world');
-    CREATE TABLE novel_chapters(
-      chapter_id TEXT PRIMARY KEY,world_id TEXT NOT NULL,ordinal INTEGER NOT NULL,volume INTEGER NOT NULL,
-      printed_number INTEGER,title TEXT NOT NULL,label TEXT NOT NULL,start_line INTEGER,
-      char_count INTEGER NOT NULL,chunk_start INTEGER NOT NULL,chunk_end INTEGER NOT NULL
-    );
-    INSERT INTO novel_chapters VALUES
-      ('V01-C001','source-world',1,1,1,'第一章 大枪落幕','大枪落幕',1,20,0,0),
-      ('V01-C002','source-world',2,1,2,'第二章 貘与姑获鸟','貘与姑获鸟',3,20,1,1),
-      ('V01-C003','source-world',3,1,3,'第三章 后续','后续',5,20,2,2);
-  `);
-  db.close();
 
   let server: ReturnType<typeof createServer> | undefined;
   try {
@@ -527,7 +570,7 @@ test("universe creation rebuilds bounded offline assets from project-root origin
     assert.ok(bounded.chunks.some(chunk => chunk.text.includes("李阎在雨里走过长街。")));
     assert.ok(bounded.chunks.some(chunk => chunk.text.includes("夜色压住了城寨。")));
     assert.ok(!JSON.stringify(bounded).includes("THIS IS FUTURE PLOT"));
-    assert.ok(bounded.chunks.every(chunk => chunk.source === `worlds/${payload.universe.id}/original.txt`));
+    assert.ok(bounded.chunks.every(chunk => chunk.source === `worlds/${payload.universe.id}/original.txt`), JSON.stringify(bounded.chunks.map(chunk => chunk.source)));
     const boundedHash = createHash("sha256").update(boundedOriginalText, "utf8").digest("hex");
     assert.ok(bounded.chunks.every(chunk => chunk.sourceHash === boundedHash));
     const units = await buildAnalysisUnits(payload.universe.id, { worldDir: universeDir });

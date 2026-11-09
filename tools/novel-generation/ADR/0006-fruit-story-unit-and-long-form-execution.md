@@ -292,3 +292,20 @@ Story Unit 先建立完整故事的因果骨架和结局方向，再按叙事需
 - 旧版本可能把 `private/` 或外部路径的切片写入公共 library，并把引文证据写入 `annotations.json`、`entities.json` 和 `novel.db`。首次启动 Workbench、解析 library 或导入文件时执行迁移：将私有切片移入 private-library，从公共 index 删除，并清除可能混入私有引文的标注/实体 JSON 与 SQLite 表。公共标注可重新运行 `analyze`。
 - `private-library/` 目录必须被 `.gitignore` 排除；不得因创建宇宙、分叉或打包审核资料而复制。
 
+### 离线语料文件生命周期与故事宇宙隔离（2026-11-09）
+
+**决定：** 将原著全文视为唯一 canonical source；章节目录、检索切片、SQLite 章节目录和故事宇宙快照均为有明确来源指纹的派生资产。派生资产可从 canonical source 重建，但不得反向覆盖或伪装成原始文本。
+
+- Source project 使用项目根目录 `original.txt`，兼容历史 world-local 文件；`original.txt` 不提交 Git。章节目录保存全文 SHA-256；旧目录只在行数、标题和位置验证通过后自动补写指纹。
+- `library/index.json` 缺失或 JSON 损坏时可以从全文和目录重建；损坏原文件先保留诊断备份。hashless 旧切片不再信任；hash 不一致时禁止混合新旧文本。
+- 重建章节切片必须按 catalog 顺序插入，不能把缺失中间章追加到数组尾部后再按重复标题猜测。所有正式目录章节必须在 `novel_chapters` 中有稳定 ID，即使该章当前没有检索切片。
+- 创建宇宙时，先复制并截断原文，再写入 bounded catalog / Library；SQLite 数据库如缺失或不完整，只能在 staging 副本中从 bounded 资产重建。不得为了创建一个分支而改写源项目数据库。
+- 故事宇宙保存创建时完整源语料的 `sourceCanonHash`，分叉继承。根原文版本变化后，旧宇宙不能被静默改写；旧宇宙缺少本地 bounded 副本且没有源指纹时必须失败关闭。
+- 宇宙 staging 使用显式文件 allow-list，只复制 checkpoint 后的 `novel.db`。根目录全文必须经 bounded-copy 专用路径写入；未知文件、私人笔记、全书派生文档不随目录复制。
+- 故事宇宙自己的 `original.txt`、`chapter-index.json`、`library/index.json` 必须互相匹配同一个 bounded hash。任何检索、分析和续写路径都必须使用当前 world 的本地 bounded 资产，不得回退到根目录全书。
+
+- 离线目录生成器必须对原始 `original.txt` 计算 SHA-256，并将其写入 `chapter-index.json`。生成器的脚本级回归测试必须真实执行脚本，而不是只测试章节解析函数；这样可以捕获输出组装阶段的未定义变量、路径错误和文件写入失败。目录缺失或损坏不能仅凭全文存在就伪造目录成功，必须运行可验证的目录构建流程并校验章节行号。
+
+- Workbench 读取 source-chapters 时，若派生 `chapter-index.json` 缺失、损坏或为空，而 canonical `original.txt` 存在，则自动执行离线目录生成器；并发请求共享单一构建任务，损坏文件保留诊断副本。目录生成器按 `NOVEL_WORLD_ID` 写入对应 world，不能将语料 ID 固定在生成脚本中。
+- Universe staging 内重建的 Library provenance 必须指向 rename 后的最终路径 `worlds/<universeId>/original.txt`，禁止把 `.staging-<id>` 写入持久索引。
+- Novel DB schema v9 为旧版 `novel_chapters` 补齐稳定章节目录和来源字段。若数据库文件不存在，可在 staging 中从 bounded canon 重建；若数据库文件存在但正式章节行全部缺失，必须失败关闭并要求对源项目执行 `index-story`。

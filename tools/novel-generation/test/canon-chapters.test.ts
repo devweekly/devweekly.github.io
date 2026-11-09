@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks, validateCanonCatalogAgainstText } from "../src/canon-chapters.js";
+import { alignCanonChapterGroups, canonLineStartOffsets, joinCanonChunkText, selectCanonSourceChunks, splitCanonLines, validateCanonCatalogAgainstText, validateCanonChunksAgainstText } from "../src/canon-chapters.js";
 import type { CatalogChapter } from "../src/novel-kb.js";
 
 const catalog: CatalogChapter[] = [
@@ -138,4 +138,32 @@ test("Windows source paths are normalized and private original.txt is never cano
     { ...chunk("第一章", "private", 0), source: "private\\original.txt", sourceHash: "current" }
   ], "current");
   assert.deepEqual(selected.map(item => item.text), ["canonical"]);
+});
+
+
+test("catalog validation rejects omitted chapter headings after the last indexed chapter", () => {
+  const text = ["第一章", "正文一", "第二章", "未来正文"].join("\n");
+  assert.throws(() => validateCanonCatalogAgainstText([
+    { volume: 1, sequenceInVolume: 1, printedNumber: 1, title: "第一章", label: "第一章", line: 1 }
+  ], text, 4), /目录不完整.*未登记章节标题/);
+});
+
+test("chunk payload must exactly match the source range even when sourceHash matches", () => {
+  const text = "第一章\n原文正文";
+  const chapterStart = 0;
+  const aligned = alignCanonChapterGroups([
+    { volume: 1, sequenceInVolume: 1, printedNumber: 1, title: "第一章", label: "第一章", line: 1 }
+  ], [{
+    chapter: "第一章", chunkIndex: 0, start: 0, end: text.length,
+    chapterStart, source: "original.txt", sourceHash: "matching-hash", text: "篡改后的正文"
+  }], [chapterStart]);
+  assert.throws(() => validateCanonChunksAgainstText(aligned, text, [chapterStart]), /正文与 original.txt.*不一致/);
+});
+
+test("offline line handling supports BOM, LF, CRLF and CR without shifting offsets", () => {
+  for (const text of ["\uFEFF第一章\n正文\n第二章", "第一章\r\n正文\r\n第二章", "第一章\r正文\r第二章"]) {
+    assert.deepEqual(splitCanonLines(text).map(line => line.replace(/^\uFEFF/, "")), ["第一章", "正文", "第二章"]);
+    const starts = canonLineStartOffsets(text);
+    assert.equal(text.slice(starts[2]).trim(), "第二章");
+  }
 });

@@ -64,7 +64,7 @@ const KNOWLEDGE_DATABASE_FILE = "novel.db";
 const STATE_DATABASE_FILE = "story.db";
 
 /** 知识库结构版本：只有 ingest / analyze 会改它。 */
-const KNOWLEDGE_SCHEMA_VERSION = 8;
+const KNOWLEDGE_SCHEMA_VERSION = 9;
 /** v6 之前的库把分片文本整份复制进来，与 library/index.json 重复；升级时删掉。 */
 const LEGACY_CHUNK_TABLES = ["library_chunks"];
 /** 图谱是快照 `storyGraph` 的规范化副本，只被写入、没有任何读者；v7 起只保留快照里的那份。 */
@@ -220,11 +220,41 @@ const KNOWLEDGE_TABLES = [
   "CREATE TABLE IF NOT EXISTS novel_arcs(volume INTEGER PRIMARY KEY,title TEXT NOT NULL DEFAULT '',summary TEXT NOT NULL DEFAULT '',key_turns_json TEXT NOT NULL DEFAULT '[]',characters_json TEXT NOT NULL DEFAULT '[]',generated_at TEXT NOT NULL)"
 ].join(";\n") + ";";
 
+/**
+ * Older novel.db files may contain a minimal novel_chapters table created
+ * before stable catalog IDs and full chapter provenance were introduced.
+ * CREATE TABLE IF NOT EXISTS does not evolve an existing SQLite table, so
+ * explicitly add the columns required by the current indexer.
+ */
+function ensureNovelChapterSchema(db: DatabaseSync, worldId: string): void {
+  if (!tableExists(db, "novel_chapters")) return;
+  const columns = new Set(
+    (db.prepare("PRAGMA table_info(novel_chapters)").all() as Array<{ name: string }>).map(column => column.name)
+  );
+  const additions: Array<[string, string]> = [
+    ["world_id", "TEXT NOT NULL DEFAULT ''"],
+    ["printed_number", "INTEGER"],
+    ["label", "TEXT NOT NULL DEFAULT ''"],
+    ["start_line", "INTEGER"],
+    ["char_count", "INTEGER NOT NULL DEFAULT 0"],
+    ["chunk_start", "INTEGER NOT NULL DEFAULT 0"],
+    ["chunk_end", "INTEGER NOT NULL DEFAULT 0"]
+  ];
+  for (const [name, declaration] of additions) {
+    if (!columns.has(name)) db.exec("ALTER TABLE novel_chapters ADD COLUMN " + name + " " + declaration);
+  }
+  db.prepare("UPDATE novel_chapters SET world_id=? WHERE world_id IS NULL OR world_id=''").run(worldId);
+  if (columns.has("title")) {
+    db.exec("UPDATE novel_chapters SET label=title WHERE label IS NULL OR label=''");
+  }
+}
+
 function openKnowledgeDatabase(worldDir: string, worldId: string): DatabaseSync {
   mkdirSync(worldDir, { recursive: true });
   const db = new DatabaseSync(join(worldDir, KNOWLEDGE_DATABASE_FILE));
   execWithRetry(db, "PRAGMA busy_timeout=5000; PRAGMA foreign_keys=ON; PRAGMA journal_mode=WAL;");
   execWithRetry(db, KNOWLEDGE_TABLES);
+  ensureNovelChapterSchema(db, worldId);
   const version = Number((db.prepare("PRAGMA user_version").get() as { user_version: number }).user_version);
   if (version > KNOWLEDGE_SCHEMA_VERSION) {
     db.close();
@@ -260,6 +290,19 @@ export function openStoryStateDatabase(worldDir: string, worldId: string): Datab
  * 语料变更后，按旧文本算出来的章节切分与分析全部作废。
  * 只清派生数据，不动 novel.db 里那份权威快照之外的任何东西。
  */
+/** Invalidate corpus-derived analysis while preserving the stable chapter directory. */
+export function invalidateStoryAnalysis(worldDir: string, worldId: string): void {
+  const db = openKnowledgeDatabase(worldDir, worldId);
+  try {
+    transaction(db, () => {
+      db.exec("DELETE FROM story_analysis;");
+      clearNovelAnalysis(db);
+    });
+  } finally {
+    db.close();
+  }
+}
+
 export function invalidateDerivedAnalysis(worldDir: string, worldId: string): void {
   const db = openKnowledgeDatabase(worldDir, worldId);
   try {
