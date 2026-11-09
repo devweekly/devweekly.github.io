@@ -218,7 +218,7 @@ export async function ensureBoundedUniverseCanonAssets(
   const canonical = selectCanonSourceChunks(existingChunks).filter(chunk =>
     !chunk.sourceHash || chunk.sourceHash === originalHash || chunk.sourceHash === boundedHash
   );
-  const hasCanonicalPath = existingChunks.some(chunk => /(?:^|\\/)original\\.txt$/i.test(chunk.source ?? ""));
+  const hasCanonicalPath = existingChunks.some(chunk => /(?:^|\/)original\.txt$/i.test(chunk.source ?? ""));
   if (hasCanonicalPath && !canonical.length) {
     throw new Error("故事宇宙原文切片 hash 与本地原文不匹配，拒绝把不明来源切片重绑到时点副本。");
   }
