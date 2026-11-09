@@ -173,7 +173,9 @@ export async function ensureSourceCanonLibraryIndex(
   // preserved/coarse mtime must never reuse a previous successful validation.
   let indexHash = "missing";
   if (indexInfo) indexHash = createHash("sha256").update(await readFile(indexPath)).digest("hex");
-  const signature = [originalHash, indexHash].join(":");
+  const catalogPath = join(projectRoot, "analysis", worldId, "chapter-index.json");
+  const catalogHash = createHash("sha256").update(await readFile(catalogPath)).digest("hex");
+  const signature = [originalHash, catalogHash, indexHash, "canon-chunker-v2"].join(":");
   if (indexInfo && canonLibraryValidationCache.get(indexPath) === signature) return false;
 
   const isCanonicalSource = (source: string) => {
@@ -184,11 +186,6 @@ export async function ensureSourceCanonLibraryIndex(
   const allChunks = existing?.chunks ?? [];
   const canonicalExisting = allChunks.filter(chunk => isCanonicalSource(chunk.source));
   const staleCanonical = canonicalExisting.some(chunk => chunk.sourceHash !== undefined && chunk.sourceHash !== originalHash);
-  const existingMeta = existsSync(join(absoluteWorldDir, "novel.db"))
-    ? readNovelKbMeta(absoluteWorldDir, worldId)
-    : {};
-  const staleDerivedAnalysis = staleCanonical ||
-    (typeof existingMeta.source_hash === "string" && existingMeta.source_hash !== originalHash);
   // A stale or hashless chunk is not trusted. Rebuild from the canonical text
   // rather than mixing old evidence into the current corpus.
   const trustedCanonical = staleCanonical ? [] : canonicalExisting.filter(chunk => chunk.sourceHash === originalHash);
@@ -231,7 +228,9 @@ export async function ensureSourceCanonLibraryIndex(
   // Derived analysis and annotations point at old chunk IDs/text. Clear them
   // only after the replacement index has been committed.
   if (existsSync(join(absoluteWorldDir, "novel.db"))) {
-    if (staleDerivedAnalysis) invalidateStoryAnalysis(absoluteWorldDir, worldId);
+    // Even same-source repairs (duplicate IDs, gaps, truncated tails) can
+    // change chunk-to-chapter mappings. Derived analysis must be rebuilt.
+    invalidateStoryAnalysis(absoluteWorldDir, worldId);
     syncAnnotations(absoluteWorldDir, worldId, [], null);
   }
   for (const name of ["annotations.json", "entities.json"]) {
