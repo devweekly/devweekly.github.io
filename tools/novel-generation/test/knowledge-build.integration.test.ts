@@ -4,7 +4,7 @@ import { createServer } from "node:http";
 import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { classifyKnowledgeBuildStepResult, createApp, recoverWorkbenchRuns } from "../src/server.js";
+import { classifyKnowledgeBuildStepResult, createApp, recoverKnowledgeBuilds, recoverWorkbenchRuns } from "../src/server.js";
 import { saveRun } from "../src/workbench-store.js";
 
 test("knowledge build can run during chapter work while archive and duplicate builds remain guarded", async () => {
@@ -96,7 +96,7 @@ test("knowledge build can run during chapter work while archive and duplicate bu
 });
 
 
-test("workbench restart marks an interrupted knowledge build failed and retryable", async () => {
+test("workbench restart marks an interrupted knowledge build interrupted and retryable", async () => {
   const root = await mkdtemp(join(tmpdir(), "novel-knowledge-recovery-"));
   const previousCwd = process.cwd();
   const worldId = "recovery-universe";
@@ -118,14 +118,15 @@ test("workbench restart marks an interrupted knowledge build failed and retryabl
       ]
     }));
     await recoverWorkbenchRuns();
+    await recoverKnowledgeBuilds();
     const recovered = JSON.parse(await readFile(join(workbenchDir, "knowledge-build.json"), "utf8")) as {
       status: string; currentStep?: string; steps: Array<{ name: string; status: string; error?: string }>
     };
-    assert.equal(recovered.status, "failed");
+    assert.equal(recovered.status, "interrupted");
     assert.equal(recovered.currentStep, undefined);
     assert.equal(recovered.steps[0]?.status, "completed");
     assert.equal(recovered.steps[1]?.status, "failed");
-    assert.match(recovered.steps[1]?.error ?? "", /restarted/i);
+    assert.match(recovered.steps[1]?.error ?? "", /服务重启.*被中断/);
   } finally {
     process.chdir(previousCwd);
     await rm(root, { recursive: true, force: true });

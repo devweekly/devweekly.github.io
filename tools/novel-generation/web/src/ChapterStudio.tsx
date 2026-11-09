@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Checkbox, Collapse, Empty, Input, InputNumber, Modal, Progress, Select, Space, Tag, Typography, message } from "antd";
 import { PlayCircleOutlined, ReloadOutlined } from "@ant-design/icons";
+import { selectVisibleStoryExecution, shouldPollStoryExecution } from "./story-execution-state.js";
 const { Title, Text, Paragraph } = Typography;
 type Run = { id:string; storyUnitId?:string; kind?:string; status:string; createdAt:string; updatedAt:string; error?:string; outputDir?:string; chapterPath?:string; previousChapterPath?:string };
 type Preview = { storyArc:string; chapterPlan:string; chapter:string };
@@ -57,15 +58,23 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const batchRunning=activeStoryExecution?.mode==="fixed_batch"&&["queued","running"].includes(activeStoryExecution.status);
  const storyTaskBlocksWrites=Boolean(activeStoryExecution);
  const batchProgress={completed:activeStoryExecution?.completedChapters.length??0,total:activeStoryExecution?.targetChapterCount??0};
+ const visibleStoryExecution=selectVisibleStoryExecution(worldStoryExecutions,storyExecution);
+ const visibleStoryExecutionHistory=visibleStoryExecution?[visibleStoryExecution,...storyExecutionHistory.filter(item=>item.id!==visibleStoryExecution.id)]:storyExecutionHistory;
  const refresh=async()=>{
   if(!activeWorldId)return;const requestId=++refreshGeneration.current;const previewRequestId=++previewGeneration.current;setLoading(true);
   try{
-   const [runs,arc]=await Promise.all([
+   const [runs,arc,tasks]=await Promise.all([
     api<{runs:Run[]}>("/api/worlds/"+activeWorldId+"/runs?storyUnitId="+(historyScope==="legacy"?"legacy":selectedStoryUnitId??"legacy")),
-    api<{storyArc:string}>("/api/worlds/"+activeWorldId+"/story-arc?storyUnitId="+(historyScope==="legacy"?"legacy":selectedStoryUnitId??"legacy"))
+    api<{storyArc:string}>("/api/worlds/"+activeWorldId+"/story-arc?storyUnitId="+(historyScope==="legacy"?"legacy":selectedStoryUnitId??"legacy")),
+    api<{executions:StoryExecution[]}>("/api/worlds/"+activeWorldId+"/story-executions")
    ]);
    if(requestId!==refreshGeneration.current)return;
    setActiveArc(arc.storyArc);
+   setWorldStoryExecutions(tasks.executions);
+   const chosen=selectedStoryUnitId;
+   const scopedExecutions=tasks.executions.filter(item=>historyScope==="legacy"?!item.storyUnitId:Boolean(chosen)&&item.storyUnitId===chosen);
+   setStoryExecutionHistory(scopedExecutions);
+   setStoryExecution(current=>current&&scopedExecutions.some(item=>item.id===current.id)?scopedExecutions.find(item=>item.id===current.id)??null:scopedExecutions[0]??null);
    const chapters=runs.runs.filter(x=>x.kind==="chapter").sort((a,b)=>a.createdAt.localeCompare(b.createdAt));
    setChapterRuns(chapters);
    const latest=chapters.at(-1)??null;setRun(latest);
@@ -100,7 +109,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   }).catch(()=>{if(!cancelled){setStoryUnit(null);setStoryUnits([]);setSelectedStoryUnitId(undefined);setStoryExecution(null);setStoryExecutionHistory([]);setWorldStoryExecutions([]);}});
   return()=>{cancelled=true;};},[activeWorldId,selectedStoryUnitId,historyScope]);
  useEffect(()=>{
-  if(!activeWorldId||!activeStoryExecution||!["queued","running"].includes(activeStoryExecution.status))return;
+  if(!activeWorldId||!activeStoryExecution||!shouldPollStoryExecution(activeStoryExecution.status))return;
   let cancelled=false;
   const executionId=activeStoryExecution.id;
   const timer=window.setInterval(()=>void api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/story-executions/"+executionId)
@@ -193,9 +202,10 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   finally{setStartingStoryExecution(false);}
  };
  const controlStoryExecution=async(action:"pause"|"resume"|"cancel")=>{
-  if(!storyExecution)return;
-  try{
-   const result=await api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/story-executions/"+storyExecution.id+"/"+action,{method:"POST",body:"{}"});
+   const target=visibleStoryExecution;
+   if(!target)return;
+   try{
+    const result=await api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/story-executions/"+target.id+"/"+action,{method:"POST",body:"{}"});
    setStoryExecution(result.execution);setStoryExecutionHistory(items=>items.map(item=>item.id===result.execution.id?result.execution:item));setWorldStoryExecutions(items=>items.map(item=>item.id===result.execution.id?result.execution:item));
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
  };
@@ -335,18 +345,18 @@ export default function ChapterStudio({worldId}:{worldId:string}){
     </Space>
    </Space>}
   </Card>
-  {storyExecution&&<Card title={storyExecution.mode==="fixed_batch"?"连续生成任务":"完整故事执行任务"} extra={<Select size="small" style={{minWidth:250}} value={storyExecution.id} onChange={id=>{const selected=storyExecutionHistory.find(item=>item.id===id);if(selected)setStoryExecution(selected);}} options={storyExecutionHistory.map(item=>({value:item.id,label:`${item.mode==="fixed_batch"?"批量":"完整故事"} · ${item.storyUnitTitle} · ${new Date(item.createdAt).toLocaleString()} · ${{queued:"排队中",running:"执行中",paused:"已暂停",completed:"已完成",failed:"失败",cancelled:"已取消",stalled:"推进停滞"}[item.status]}`}))}/>} style={{marginBottom:18}}>
+  {visibleStoryExecution&&<Card title={visibleStoryExecution.mode==="fixed_batch"?"连续生成任务":"完整故事执行任务"} extra={<Select size="small" style={{minWidth:250}} value={visibleStoryExecution.id} onChange={id=>{const selected=storyExecutionHistory.find(item=>item.id===id);if(selected)setStoryExecution(selected);}} options={visibleStoryExecutionHistory.map(item=>({value:item.id,label:`${item.mode==="fixed_batch"?"批量":"完整故事"} · ${item.storyUnitTitle} · ${new Date(item.createdAt).toLocaleString()} · ${{queued:"排队中",running:"执行中",paused:"已暂停",completed:"已完成",failed:"失败",cancelled:"已取消",stalled:"推进停滞"}[item.status]}`}))}/>} style={{marginBottom:18}}>
    <Space direction="vertical" style={{width:"100%"}} size="middle">
-    <Space wrap><Tag color={storyExecution.status==="completed"?"success":storyExecution.status==="failed"||storyExecution.status==="stalled"?"error":storyExecution.status==="running"?"processing":"default"}>{storyExecution.mode==="fixed_batch"&&storyExecution.status==="completed"?"批量章节完成":({queued:"排队中",running:storyExecution.mode==="fixed_batch"?"连续生成中":"执行中",paused:"已暂停",completed:"自然收束",failed:"执行失败",cancelled:"已取消",stalled:"推进停滞"})[storyExecution.status]}</Tag><Text type="secondary">任务 {storyExecution.id.slice(0,8)} · 归属：{storyExecution.storyUnitId?storyExecution.storyUnitTitle:"Legacy（旧版）"} · 已完成 {storyExecution.completedChapters.length}{storyExecution.mode==="fixed_batch"?" / "+storyExecution.targetChapterCount:""} 章 · 恢复 {storyExecution.resumeCount} 次{storyExecution.currentRunId?" · 当前章节任务 "+storyExecution.currentRunId.slice(0,8):""}</Text></Space>
-    {storyExecution.status==="running"&&<Progress percent={undefined} status="active" showInfo={false}/>}
-    {storyExecution.lastAssessment&&<Paragraph>最近进展判断：{storyExecution.lastAssessment}</Paragraph>}
-    {storyExecution.nextDirection&&<Paragraph type="secondary">下一步：{storyExecution.nextDirection}</Paragraph>}
-    {storyExecution.error&&<Alert type={storyExecution.status==="stalled"?"warning":"error"} showIcon message={storyExecution.error}/>}
-    {!!storyExecution.events?.length&&<Collapse size="small" items={[{key:"timeline",label:"执行时间线（"+storyExecution.events.length+" 条）",children:<Space direction="vertical" style={{width:"100%"}}>{[...storyExecution.events].reverse().map((event,index)=><div key={event.at+event.type+index}><Text type="secondary">{new Date(event.at).toLocaleString()}</Text><Text strong style={{marginLeft:8}}>{({created:"创建任务",resumed:"恢复执行",chapter_started:"章节开始",chapter_completed:"章节完成",assessment:"故事进展评估",paused:"已暂停",completed:storyExecution.mode==="fixed_batch"?"批次完成":"故事收束",failed:"执行失败",cancelled:"已取消",stalled:"推进停滞"} as Record<string,string>)[event.type]??event.type}</Text><div>{event.message}</div>{event.runId&&<Text type="secondary">Run: {event.runId}</Text>}</div>)}</Space>}]}/>}
+    <Space wrap><Tag color={visibleStoryExecution.status==="completed"?"success":visibleStoryExecution.status==="failed"||visibleStoryExecution.status==="stalled"?"error":visibleStoryExecution.status==="running"?"processing":"default"}>{visibleStoryExecution.mode==="fixed_batch"&&visibleStoryExecution.status==="completed"?"批量章节完成":({queued:"排队中",running:visibleStoryExecution.mode==="fixed_batch"?"连续生成中":"执行中",paused:"已暂停",completed:"自然收束",failed:"执行失败",cancelled:"已取消",stalled:"推进停滞"})[visibleStoryExecution.status]}</Tag><Text type="secondary">任务 {visibleStoryExecution.id.slice(0,8)} · 归属：{visibleStoryExecution.storyUnitId?visibleStoryExecution.storyUnitTitle:"Legacy（旧版）"} · 已完成 {visibleStoryExecution.completedChapters.length}{visibleStoryExecution.mode==="fixed_batch"?" / "+visibleStoryExecution.targetChapterCount:""} 章 · 恢复 {visibleStoryExecution.resumeCount} 次{visibleStoryExecution.currentRunId?" · 当前章节任务 "+visibleStoryExecution.currentRunId.slice(0,8):""}</Text></Space>
+    {visibleStoryExecution.status==="running"&&<Progress percent={undefined} status="active" showInfo={false}/>}
+    {visibleStoryExecution.lastAssessment&&<Paragraph>最近进展判断：{visibleStoryExecution.lastAssessment}</Paragraph>}
+    {visibleStoryExecution.nextDirection&&<Paragraph type="secondary">下一步：{visibleStoryExecution.nextDirection}</Paragraph>}
+    {visibleStoryExecution.error&&<Alert type={visibleStoryExecution.status==="stalled"?"warning":"error"} showIcon message={visibleStoryExecution.error}/>}
+    {!!visibleStoryExecution.events?.length&&<Collapse size="small" items={[{key:"timeline",label:"执行时间线（"+visibleStoryExecution.events.length+" 条）",children:<Space direction="vertical" style={{width:"100%"}}>{[...visibleStoryExecution.events].reverse().map((event,index)=><div key={event.at+event.type+index}><Text type="secondary">{new Date(event.at).toLocaleString()}</Text><Text strong style={{marginLeft:8}}>{({created:"创建任务",resumed:"恢复执行",chapter_started:"章节开始",chapter_completed:"章节完成",assessment:"故事进展评估",paused:"已暂停",completed:visibleStoryExecution.mode==="fixed_batch"?"批次完成":"故事收束",failed:"执行失败",cancelled:"已取消",stalled:"推进停滞"} as Record<string,string>)[event.type]??event.type}</Text><div>{event.message}</div>{event.runId&&<Text type="secondary">Run: {event.runId}</Text>}</div>)}</Space>}]}/>}
     <Space wrap>
-     {["queued","running"].includes(storyExecution.status)&&<Button disabled={Boolean(activeStoryExecution&&activeStoryExecution.id!==storyExecution.id)} onClick={()=>void controlStoryExecution("pause")}>暂停（当前章节结束后生效）</Button>}
-     {["paused","failed","stalled"].includes(storyExecution.status)&&<Button type="primary" disabled={Boolean(activeStoryExecution&&activeStoryExecution.id!==storyExecution.id)} onClick={()=>void controlStoryExecution("resume")}>从检查点恢复</Button>}
-     {["queued","running","paused"].includes(storyExecution.status)&&<Button danger onClick={()=>void controlStoryExecution("cancel")}>取消任务</Button>}
+     {["queued","running"].includes(visibleStoryExecution.status)&&<Button disabled={Boolean(activeStoryExecution&&activeStoryExecution.id!==visibleStoryExecution.id)} onClick={()=>void controlStoryExecution("pause")}>暂停（当前章节结束后生效）</Button>}
+     {["paused","failed","stalled"].includes(visibleStoryExecution.status)&&<Button type="primary" disabled={Boolean(activeStoryExecution&&activeStoryExecution.id!==visibleStoryExecution.id)} onClick={()=>void controlStoryExecution("resume")}>从检查点恢复</Button>}
+     {["queued","running","paused"].includes(visibleStoryExecution.status)&&<Button danger onClick={()=>void controlStoryExecution("cancel")}>取消任务</Button>}
     </Space>
     <Text type="secondary">任务由服务端执行。刷新或关闭浏览器不会中断；服务重启后任务转为暂停状态，可从最后一个已终审并提交状态的章节恢复。章节数没有固定上限，完成依据是故事自然收束。</Text>
    </Space>
