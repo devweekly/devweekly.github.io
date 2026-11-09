@@ -710,6 +710,59 @@ async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: st
   return boundedLineCount;
 }
 
+
+async function writeForkedUniverseCanonSnapshots(parentId: string, targetDir: string, universeId: string): Promise<number> {
+  const parentOriginalPath = await resolveOriginalCanonPath(parentId);
+  const parentOriginalText = await readFile(parentOriginalPath, "utf8");
+  const sourceHash = createHash("sha256").update(parentOriginalText, "utf8").digest("hex");
+  const lineCount = parentOriginalText.split(/\r?\n/).length;
+  const parentLibrary = JSON.parse(await readFile(path.join(worldDir(parentId), "library", "index.json"), "utf8")) as {
+    schemaVersion: number; createdAt: string; updatedAt: string; worldId: string;
+    chunks: Array<CanonChapterChunk & { sourceHash?: string }>;
+  };
+  if (parentLibrary.worldId !== parentId || !Array.isArray(parentLibrary.chunks) || !parentLibrary.chunks.length) {
+    throw new Error("父宇宙没有可验证的时点原文切片，无法安全分叉。");
+  }
+  const parentChunks = selectCanonSourceChunks(parentLibrary.chunks, sourceHash);
+  if (parentChunks.length !== parentLibrary.chunks.length || parentChunks.some(chunk => chunk.sourceHash !== sourceHash)) {
+    throw new Error("父宇宙 library 的 source/sourceHash 与本地时点原文不一致，拒绝复制不确定的分支检索数据。");
+  }
+
+  const parentCatalogPath = path.resolve("analysis", parentId, "chapter-index.json");
+  const parentCatalogText = await readFile(parentCatalogPath, "utf8");
+  const parentCatalog = JSON.parse(parentCatalogText) as {
+    schemaVersion: number; totalLines: number;
+    volumes?: Array<{ chapters?: Array<{ title?: string }> }>;
+    chapters?: Array<{ title?: string }>;
+  };
+  if (parentCatalog.totalLines !== lineCount) {
+    throw new Error("父宇宙章节目录 totalLines 与本地 bounded original.txt 不一致，拒绝分叉。");
+  }
+  const catalogTitles = parentCatalog.volumes?.length
+    ? parentCatalog.volumes.flatMap(volume => (volume.chapters ?? []).map(chapter => chapter.title ?? ""))
+    : (parentCatalog.chapters ?? []).map(chapter => chapter.title ?? "");
+  if (!catalogTitles.length || parentChunks.some(chunk => !catalogTitles.includes(chunk.chapter))) {
+    throw new Error("父宇宙 library 存在章节目录之外的切片，拒绝分叉以防止未来剧情泄漏。");
+  }
+
+  const sourceKey = path.relative(process.cwd(), path.join(worldDir(universeId), "original.txt")).split(path.sep).join("/");
+  const libraryDir = path.join(targetDir, "library");
+  await mkdir(libraryDir, { recursive: true });
+  const childLibrary = {
+    schemaVersion: parentLibrary.schemaVersion,
+    worldId: universeId,
+    createdAt: parentLibrary.createdAt,
+    updatedAt: new Date().toISOString(),
+    chunks: parentChunks.map(chunk => ({ ...chunk, source: sourceKey, sourceHash }))
+  };
+  await writeFile(path.join(libraryDir, "index.json"), JSON.stringify(childLibrary, null, 2) + "\n", "utf8");
+
+  const childCatalogDir = path.resolve("analysis", universeId);
+  await mkdir(childCatalogDir, { recursive: true });
+  await writeFile(path.join(childCatalogDir, "chapter-index.json"), parentCatalogText, "utf8");
+  return lineCount;
+}
+
 app.get("/api/worlds/:worldId/source-chapters", async (req, res) => {
   try {
     const sourceId = worldIdOf(req.params.worldId); assertInsideWorld(sourceId);
