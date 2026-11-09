@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, readerExperiencePrompt, CREATIVE_FREEDOM_RULES, LIVING_VOICE_RULES, postReviewLiteraryCheckPrompt, shouldRunAntiAiEdit } from "../src/literary-edit.js";
+import { antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, readerExperiencePrompt, CREATIVE_FREEDOM_RULES, LIVING_VOICE_RULES, postReviewLiteraryCheckPrompt, shouldRunAntiAiEdit, parseLiteraryPatchResult, applyLiteraryPatches, literaryPatchPrompt } from "../src/literary-edit.js";
 import { STAGE_KEYS } from "../src/task-profiles.js";
 
 test("creative freedom prevents scene checklists and padding", () => {
@@ -100,4 +100,37 @@ test("post-review literary check is observational and cannot trigger rewriting",
   assert.match(prompt, /这是只读诊断/);
   assert.match(prompt, /不得输出重写正文/);
   assert.match(prompt, /不得改变章节通过状态/);
+});
+
+
+test("literary patch editor preserves effective silence and does not expand it", () => {
+  const prompt = literaryPatchPrompt({
+    brief: "人物进入陌生环境",
+    blueprint: "结尾保持人物孤立感",
+    chapter: "他站着，没动，也没人跟他说话。"
+  });
+  assert.match(prompt, /没有明确问题就 preserve/);
+  assert.match(prompt, /不要把“不描写”当成缺陷/);
+  assert.match(prompt, /不要主动补充动作、心理、环境/);
+  assert.match(prompt, /输出局部 Patch/);
+});
+
+test("literary patch parser supports preserve and rejects malformed patches", () => {
+  assert.deepEqual(parseLiteraryPatchResult('{"decision":"preserve","reason":"原文有效","edits":[]}'), {
+    decision: "preserve", reason: "原文有效", edits: []
+  });
+  assert.throws(() => parseLiteraryPatchResult('{"decision":"edit","reason":"x","edits":[]}'));
+  assert.throws(() => parseLiteraryPatchResult('{"decision":"preserve","reason":"x","edits":[{"before":"a","after":"b","reason":"x"}]}'));
+});
+
+test("literary patches apply only unique exact anchors and reject ambiguous edits", () => {
+  const chapter = "他站着，没动，也没人跟他说话。\\n门外有人经过。";
+  const result = applyLiteraryPatches(chapter, [
+    { before: "门外有人经过。", after: "门外传来脚步声。", reason: "减少重复" },
+    { before: "他站着", after: "他静静站着", reason: "风格偏好" },
+    { before: "有人", after: "一个人", reason: "锚点重复" }
+  ]);
+  assert.equal(result.chapter, "他站着，没动，也没人跟他说话。\\n门外传来脚步声。");
+  assert.equal(result.applied.length, 1);
+  assert.equal(result.rejected.length, 2);
 });
