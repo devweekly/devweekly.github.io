@@ -27,7 +27,8 @@ export interface AlignedCanonChapter {
 export function alignCanonChapterGroups(
   catalog: CatalogChapter[],
   chunks: CanonChunk[],
-  chapterStartOffsets: Array<number | undefined> = []
+  chapterStartOffsets: Array<number | undefined> = [],
+  allowUnpositionedRepeatedTitles = false
 ): AlignedCanonChapter[] {
   const groups: Array<{ title: string; chunks: CanonChunk[] }> = [];
   for (const chunk of chunks) {
@@ -49,6 +50,7 @@ export function alignCanonChapterGroups(
       if (expectedStart !== undefined && positions.length) return positions.every(value => value === expectedStart);
       // Repeated titles without positional evidence cannot be safely aligned.
       if (remainingSameTitle > 1) {
+        if (allowUnpositionedRepeatedTitles) return false;
         throw new Error("原著切片包含重复章节标题「" + chapter.title + "」，但缺少 chapterStart 原文位置，无法安全映射。请先备份 novel.db，再按语料重建流程补齐 chapterStart；ingest 会使派生分析失效，随后必须重跑 index-story 和分析构建。");
       }
       return true;
