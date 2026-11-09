@@ -420,6 +420,55 @@ test("source chapter catalog reads project-root original.txt without a world-loc
   }
 });
 
+test("source chapter catalog is rebuilt automatically from project-root original.txt when the derived catalog is missing", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-universe-auto-catalog-"));
+  const previousCwd = process.cwd();
+  await mkdir(join(root, "worlds", "source-world"), { recursive: true });
+  const originalText = [
+    "第一章 大枪落幕",
+    "李阎走进雨里。",
+    "第二章 貘与姑获鸟",
+    "夜色压下来。"
+  ].join("\n");
+  await writeFile(join(root, "original.txt"), originalText, "utf8");
+  let server: ReturnType<typeof createServer> | undefined;
+  try {
+    process.chdir(root);
+    server = createServer(createApp());
+    await new Promise<void>(resolve => server!.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === "object");
+    const response = await fetch(`http://127.0.0.1:${address.port}/api/worlds/source-world/source-chapters`, {
+      headers: { host: `127.0.0.1:${address.port}` }
+    });
+    const body = await response.text();
+    assert.equal(response.status, 200, body);
+    const payload = JSON.parse(body) as { chapters: Array<{ id: number; title: string }> };
+    assert.deepEqual(payload.chapters.map(chapter => [chapter.id, chapter.title]), [
+      [0, "第一章 大枪落幕"], [1, "第二章 貘与姑获鸟"]
+    ]);
+    const catalog = JSON.parse(await readFile(join(root, "analysis", "source-world", "chapter-index.json"), "utf8")) as {
+      sourceHash: string;
+      totalLines: number;
+      chapterCount: number;
+    };
+    assert.equal(catalog.sourceHash, createHash("sha256").update(originalText, "utf8").digest("hex"));
+    assert.equal(catalog.totalLines, 4);
+    assert.equal(catalog.chapterCount, 2);
+    const library = JSON.parse(await readFile(join(root, "worlds", "source-world", "library", "index.json"), "utf8")) as {
+      chunks: Array<{ chapter: string; sourceHash?: string }>;
+    };
+    assert.deepEqual([...new Set(library.chunks.map(chunk => chunk.chapter))], [
+      "第一章 大枪落幕", "第二章 貘与姑获鸟"
+    ]);
+    assert.ok(library.chunks.every(chunk => chunk.sourceHash === catalog.sourceHash));
+  } finally {
+    if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
+    process.chdir(previousCwd);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("universe creation rebuilds bounded offline assets from project-root original.txt without a world-local corpus or library index", async () => {
   const root = await mkdtemp(join(tmpdir(), "novel-universe-root-corpus-"));
   const previousCwd = process.cwd();
