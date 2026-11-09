@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../src/server.js";
@@ -93,6 +93,10 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
     };
     await saveRun(run);
 
+    // A fork must use the parent's bounded local corpus; it must not reopen
+    // the source project's full original.txt.
+    await unlink(join(root, "worlds", "source-world", "original.txt"));
+
     server = createServer(createApp());
     await new Promise<void>(resolve => server!.listen(0, "127.0.0.1", resolve));
     const address = server.address();
@@ -111,6 +115,9 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
     const childId = payload.universe.id;
     const childDir = join(root, "worlds", childId);
     const childOutput = join(root, ".output", childId, "chapter-001");
+    const childCanon = await readFile(join(childDir, "original.txt"), "utf8");
+    assert.ok(!childCanon.includes("原文第三章"), "fork must preserve the parent's bounded corpus");
+    assert.ok(!childCanon.includes("未来原文"));
 
     assert.equal(payload.universe.parentUniverseId, parentId);
     assert.equal(payload.universe.forkPoint, runId);
