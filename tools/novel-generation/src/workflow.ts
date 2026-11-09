@@ -105,17 +105,21 @@ function normalizeStateText(value: string): string {
     .replace(/[\s"'“”‘’「」『』，。！？、；：,.!?;:（）()【】\[\]《》]/g, "");
 }
 
+export const MAX_ACTIVE_CONTINUITY_NOTES = 40;
+
 export function dedupeContinuityNotes(notes: string[]): string[] {
   const seen = new Set<string>();
   const result: string[] = [];
   for (const note of notes) {
     const normalized = note.normalize("NFKC").toLocaleLowerCase()
-      .replace(/[\s"'“”‘’「」『』，。！？、；：,.!?;:（）()【】\[\]《》]/g, "");
+      .replace(/[\\s"'“”‘’「」『』，。！？、；：,.!?;:（）()【】\\[\\]《》]/g, "");
     if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
     result.push(note.trim());
   }
-  return result;
+  // continuityNotes is the active writing snapshot, not an audit history.
+  // Keep the newest unique constraints so older notes cannot crowd out current facts.
+  return result.slice(-MAX_ACTIVE_CONTINUITY_NOTES);
 }
 
 export function mergeStoryState(current: StoryState, update: Partial<StoryState>): StoryState {
