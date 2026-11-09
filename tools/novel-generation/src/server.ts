@@ -237,10 +237,19 @@ async function runKnowledgeBuildStep(
       if (settled) return;
       settled = true; signal?.removeEventListener("abort", abort); resolve(result);
     };
+    let forceKillTimer: NodeJS.Timeout | undefined;
     const abort = () => {
-      if (child.pid && process.platform !== "win32") { try { process.kill(-child.pid, "SIGTERM"); return; } catch { /* direct-child fallback */ } }
-      child.kill("SIGTERM");
+      if (child.pid && process.platform !== "win32") {
+        try { process.kill(-child.pid, "SIGTERM"); } catch { child.kill("SIGTERM"); }
+      } else child.kill("SIGTERM");
+      forceKillTimer = setTimeout(() => {
+        if (settled) return;
+        if (child.pid && process.platform !== "win32") {
+          try { process.kill(-child.pid, "SIGKILL"); } catch { child.kill("SIGKILL"); }
+        } else child.kill("SIGKILL");
+      }, 5000);
     };
+    child.once("close", () => { if (forceKillTimer) clearTimeout(forceKillTimer); });
     signal?.addEventListener("abort", abort, { once: true });
     if (signal?.aborted) abort();
     child.stdout.setEncoding("utf8").on("data", chunk => {
@@ -1576,12 +1585,19 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
       if (settled) return;
       settled = true; signal?.removeEventListener("abort", abort); resolveResult(result);
     };
+    let forceKillTimer: NodeJS.Timeout | undefined;
     const abort = () => {
       if (child.pid && process.platform !== "win32") {
-        try { process.kill(-child.pid, "SIGTERM"); return; } catch { /* direct-child fallback */ }
-      }
-      child.kill("SIGTERM");
+        try { process.kill(-child.pid, "SIGTERM"); } catch { child.kill("SIGTERM"); }
+      } else child.kill("SIGTERM");
+      forceKillTimer = setTimeout(() => {
+        if (settled) return;
+        if (child.pid && process.platform !== "win32") {
+          try { process.kill(-child.pid, "SIGKILL"); } catch { child.kill("SIGKILL"); }
+        } else child.kill("SIGKILL");
+      }, 5000);
     };
+    child.once("close", () => { if (forceKillTimer) clearTimeout(forceKillTimer); });
     signal?.addEventListener("abort", abort, { once: true });
     if (signal?.aborted) abort();
     child.stdout.setEncoding("utf8").on("data", chunk => { output += chunk; });
