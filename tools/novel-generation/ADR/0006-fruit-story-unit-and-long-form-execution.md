@@ -284,3 +284,11 @@ Story Unit 先建立完整故事的因果骨架和结局方向，再按叙事需
 - `index-story` / `buildAnalysisUnits` 在加载 library chunks 之前执行上述迁移，避免先读入旧 hash、后截断文件导致内存中的旧切片全部被过滤。CLI 的 `analyze-world collect` 与 `regress` 也必须读取宇宙本地 bounded 原文；历史宇宙不能通过 `--source` 覆盖为完整原著。
 - 回归测试覆盖：根目录原文且 world-local 原文/library index 缺失；新宇宙原文与切片均只到起点；切片 source/hash 与本地 bounded 文件一致；`buildAnalysisUnits` 能在截断后重建；旧宇宙完整副本迁移与缺失副本重建；重复迁移幂等；历史宇宙缺少本地副本时绝不静默回退完整原著。
 
+### 私有导入资料与可提交知识库隔离（2026-11-09）
+
+- `private/` 路径下的导入文件，以及项目根目录之外的导入文件，按本机私有资料处理。其切片只写入被 Git 忽略的 `worlds/<world>/private-library/index.json`；不能混入可提交的 `library/index.json`。
+- 运行时 `searchLibrary` 将公共索引与本机 private-library 合并检索，因此私有资料仍可辅助写作；`loadLibraryChunks`、`index-story`、`analyze`、`analyze-story` 和 Story Unit 正史分析只读取公共索引，不把私有文件写入共享章节目录、人物图谱或知识库。
+- 私有切片不生成公共 `annotations.json`、`entities.json` 或 `novel.db` 标注/实体证据。私有索引不参与 Create/Fork 继承，子宇宙不会继承父世界本机私有资料。
+- 旧版本可能把 `private/` 或外部路径的切片写入公共 library，并把引文证据写入 `annotations.json`、`entities.json` 和 `novel.db`。首次启动 Workbench、解析 library 或导入文件时执行迁移：将私有切片移入 private-library，从公共 index 删除，并清除可能混入私有引文的标注/实体 JSON 与 SQLite 表。公共标注可重新运行 `analyze`。
+- `private-library/` 目录必须被 `.gitignore` 排除；不得因创建宇宙、分叉或打包审核资料而复制。
+
