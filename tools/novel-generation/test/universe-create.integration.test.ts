@@ -21,11 +21,11 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
   await mkdir(join(source, "library"), { recursive: true });
   await writeFile(join(source, "world-bible.md"), "# Test World\n");
   const canonLines = Array.from({ length: 200 }, (_, index) =>
-    index === 0 ? "第一章正文" : index === 99 ? "第二章正文" : index === 199 ? "未来剧情泄漏标记" : ""
+    index === 0 ? "第一章正文" : index === 99 ? "第二章正文" : index === 199 ? "第三章 未来剧情泄漏标记" : ""
   );
   const originalText = canonLines.join("\n");
   const canonSourceHash = createHash("sha256").update(originalText, "utf8").digest("hex");
-  const chapterStarts = [originalText.indexOf("第一章正文"), originalText.indexOf("第二章正文"), originalText.indexOf("未来剧情泄漏标记")];
+  const chapterStarts = [originalText.indexOf("第一章正文"), originalText.indexOf("第二章正文"), originalText.indexOf("第三章 未来剧情泄漏标记")];
   await writeFile(join(source, "original.txt"), originalText, "utf8");
   await writeFile(join(source, "world-bible-full.md"), "source setting");
   await writeFile(join(source, "characters.md"), "全书人物画像：未来剧情泄漏标记");
