@@ -261,9 +261,9 @@ export async function prepareCanonIndexInputs(worldDir: string, catalog: Catalog
       validateCanonChunksAgainstText(completed, originalText, chapterStartOffsets);
       const stillMissing = completed.find(item => item.chunks.length === 0);
       if (stillMissing) throw new Error("从离线 original.txt 重建后仍缺少章节切片：" + stillMissing.chapter.title);
-      canonChunks = completed.flatMap(item => [...item.chunks].sort((a, b) => a.chunkIndex - b.chunkIndex));
+      canonChunks = completed.flatMap(item => [...item.chunks].sort((a, b) => a.chunkIndex - b.chunkIndex)) as LibraryChunk[];
     } else {
-      canonChunks = aligned.flatMap(item => [...item.chunks].sort((a, b) => a.chunkIndex - b.chunkIndex));
+      canonChunks = aligned.flatMap(item => [...item.chunks].sort((a, b) => a.chunkIndex - b.chunkIndex)) as LibraryChunk[];
     }
   } else {
     chapterStartOffsets.push(...catalog.map(() => undefined));
