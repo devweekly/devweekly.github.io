@@ -525,12 +525,12 @@ interface CanonChapterEntry {
   ordinal: number;
   hasChunks: boolean;
 }
-async function ensureSourceChapterDatabase(
-  sourceWorldId: string,
-  sourceDir: string,
+async function ensureStagedChapterDatabase(
+  universeId: string,
+  stagedDir: string,
   chapters: CanonChapterEntry[]
 ): Promise<void> {
-  const databasePath = path.join(sourceDir, "novel.db");
+  const databasePath = path.join(stagedDir, "novel.db");
   let rows: Array<{ chapter_id: string; ordinal: number; volume: number; title: string }> = [];
   if (existsSync(databasePath)) {
     const db = new DatabaseSync(databasePath);
@@ -552,9 +552,9 @@ async function ensureSourceChapterDatabase(
       row.title === chapter.title;
   });
   if (!complete) {
-    // A missing or legacy chapter directory is a rebuildable derivative. Use
-    // the verified offline corpus/catalog to materialize stable Vxx-Cxxx IDs.
-    await indexNovelStructure(sourceWorldId, { worldDir: sourceDir });
+    // Rebuild only the staged copy. Universe creation must never mutate the
+    // source project's novel.db just to repair missing/legacy chapter rows.
+    await indexNovelStructure(universeId, { worldDir: stagedDir });
   }
 }
 
@@ -859,7 +859,6 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     if (!allowedTypes.includes(type)) return void res.status(400).json({ error: "Invalid universe type." });
     await readFile(path.join(sourceDir, "world-bible.md"), "utf8");
     const canonChapters = await readCanonChapters(rootSourceId);
-    await ensureSourceChapterDatabase(rootSourceId, sourceDir, canonChapters);
     if (!Number.isSafeInteger(entryChapterIndex) || entryChapterIndex < 0 || entryChapterIndex >= canonChapters.length) {
       return void res.status(400).json({ error: "必须通过章节目录提供有效的章节索引，不能只提交可能重复的章节标题。" });
     }
@@ -899,57 +898,12 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     }
     const copiedCanon = await copyOriginalCanonToUniverse(rootSourceId, stagingDir, path.resolve("."), nextChapterLine);
     if (!copiedCanon) throw new Error("无法读取原著全文并建立独立的时点原文副本；拒绝创建可能暴露未来剧情的故事宇宙。");
-    // novel.db 是原著分析只读快照的初期副本；重置其世界身份，防止数据库身份校验误认为属于源项目。
-    rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
-    const knowledgePath = path.join(stagingDir, "novel.db");
-    if (!existsSync(knowledgePath)) throw new Error("原著 novel.db 不存在，无法建立无未来剧情泄漏的历史宇宙。请先完成原著索引与知识库构建。");
-    const sourceDb = new DatabaseSync(knowledgePath);
-    let entryRecord: { chapter_id:string; ordinal:number; volume:number; title:string } | undefined;
-    try {
-      const chapterRows = sourceDb.prepare("SELECT chapter_id,ordinal,volume,title FROM novel_chapters ORDER BY ordinal").all() as Array<{chapter_id:string;ordinal:number;volume:number;title:string}>;
-      const rowsById = new Map(chapterRows.map(row => [row.chapter_id, row]));
-      const catalogIds = new Set(canonChapters.map(chapter => chapter.chapterId));
-      const unexpected = chapterRows.filter(row => row.chapter_id !== "V00-C000" && !catalogIds.has(row.chapter_id));
-      if (unexpected.length) {
-        throw new Error("novel.db 含有不属于当前 chapter-index.json 的章节 ID（" + unexpected[0]!.chapter_id + "），拒绝猜测章节映射。请执行 index-story 后重试。");
-      }
-      if (!chapterRows.some(row => row.chapter_id !== "V00-C000")) {
-        throw new Error("novel.db 尚无正式章节索引。请先执行 index-story；不要重新 ingest，以免再次清空派生索引。");
-      }
-      const missingWithoutChunks = canonChapters.filter(chapter => !rowsById.has(chapter.chapterId) && chapter.hasChunks);
-      if (missingWithoutChunks.length) {
-        const first = missingWithoutChunks[0]!;
-        throw new Error("novel.db 缺少已有切片的正式章节记录（" + first.title + "，" + first.chapterId + "）。请执行 index-story 后重试。");
-      }
-      // A catalog chapter may legitimately have no retrieval chunks. If its
-      // original.txt range is available, reconstruct only its directory row in
-      // the staged copy; never mutate the source novel.db.
-      for (const chapter of canonChapters) {
-        const row = rowsById.get(chapter.chapterId);
-        if (row) {
-          if (Number(row.ordinal) !== chapter.ordinal || Number(row.volume) !== chapter.volume || row.title !== chapter.title) {
-            throw new Error("novel.db 章节目录与 chapter-index.json 不一致，差异位于第 " + chapter.ordinal + " 章（" + chapter.title + "）。请执行 index-story 后重试。");
-          }
-        } else {
-          if (!chapter.text.trim() || chapter.hasChunks) throw new Error("无法安全补齐缺失的章节目录记录：" + chapter.title + "。");
-          sourceDb.prepare(
-            "INSERT INTO novel_chapters(chapter_id,world_id,ordinal,volume,printed_number,title,label,start_line,char_count,chunk_start,chunk_end) VALUES(?,?,?,?,?,?,?,?,?,?,?)"
-          ).run(chapter.chapterId, id, chapter.ordinal, chapter.volume, null, chapter.title, chapter.title,
-            null, chapter.text.length, 0, -1);
-        }
-      }
-      entryRecord = sourceDb.prepare("SELECT chapter_id,ordinal,volume,title FROM novel_chapters WHERE chapter_id=?").get(selectedChapter.chapterId) as {chapter_id:string;ordinal:number;volume:number;title:string} | undefined;
-      if (!entryRecord || Number(entryRecord.ordinal) !== selectedChapter.ordinal ||
-          Number(entryRecord.volume) !== selectedChapter.volume || entryRecord.title !== selectedChapter.title) {
-        throw new Error("所选章节的稳定 ID 与原著知识库记录不匹配，已终止创建。");
-      }
-    } finally { sourceDb.close(); }
-    if (!entryRecord?.chapter_id || !Number.isSafeInteger(Number(entryRecord.ordinal))) throw new Error("无法将所选章节映射到 novel.db 的稳定 chapter_id，已终止创建。");
-    const entryChapterId = entryRecord.chapter_id;
-    const entryOrdinal = restrictKnowledgeDatabaseToEntry(knowledgePath, id, entryChapter, entryChapterId);
-    if (entryOrdinal !== Number(entryRecord.ordinal)) throw new Error("章节起点 ordinal 校验失败，已终止创建。");
+    // 先写入宇宙身份和 bounded 离线资产，再在 staging 副本中修复章节数据库。
+    // 这样即使源项目没有 novel.db 或章节 ID 已过期，也不会修改源项目。
+    const entryChapterId = selectedChapter.chapterId;
     const universe: StoryUniverse = {
-      id, sourceWorldId: rootSourceId, name, type, entryChapter, entryChapterId, entryChapterIndex: selectedIndex, entryOrdinal, brief,
+      id, sourceWorldId: rootSourceId, name, type, entryChapter, entryChapterId,
+      entryChapterIndex: selectedIndex, entryOrdinal: selectedChapter.ordinal, brief,
       sourceCanonHash,
       createdAt: new Date().toISOString()
     };
@@ -960,6 +914,37 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     await writeFile(path.join(stagingDir, "universe-origin-context.md"), originContext + "\n", "utf8");
     const boundedTotalLines = await writeUniverseLibrarySnapshot(rootSourceId, stagingDir, id, selectedIndex);
     await writeUniverseAnalysisCatalogSnapshot(rootSourceId, stagingDir, id, selectedIndex, boundedTotalLines);
+
+    // novel.db is copied into staging and rebound. If it is missing, legacy,
+    // or incomplete, rebuild the chapter directory from the bounded local text.
+    rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
+    await ensureStagedChapterDatabase(id, stagingDir, canonChapters);
+    const knowledgePath = path.join(stagingDir, "novel.db");
+    const sourceDb = new DatabaseSync(knowledgePath);
+    let entryRecord: { chapter_id:string; ordinal:number; volume:number; title:string } | undefined;
+    try {
+      const chapterRows = sourceDb.prepare("SELECT chapter_id,ordinal,volume,title FROM novel_chapters ORDER BY ordinal").all() as Array<{chapter_id:string;ordinal:number;volume:number;title:string}>;
+      const rowsById = new Map(chapterRows.map(row => [row.chapter_id, row]));
+      const catalogIds = new Set(canonChapters.map(chapter => chapter.chapterId));
+      const unexpected = chapterRows.filter(row => row.chapter_id !== "V00-C000" && !catalogIds.has(row.chapter_id));
+      if (unexpected.length) {
+        throw new Error("staging novel.db 含有不属于 bounded chapter-index.json 的章节 ID（" + unexpected[0]!.chapter_id + "），拒绝猜测章节映射。");
+      }
+      const missing = canonChapters.find(chapter => !rowsById.has(chapter.chapterId));
+      if (missing) throw new Error("staging novel.db 重建后仍缺少章节记录：" + missing.title + "。");
+      for (const chapter of canonChapters) {
+        const row = rowsById.get(chapter.chapterId);
+        if (!row || Number(row.ordinal) !== chapter.ordinal || Number(row.volume) !== chapter.volume || row.title !== chapter.title) {
+          throw new Error("staging novel.db 章节目录与 bounded chapter-index.json 不一致：" + chapter.title + "。");
+        }
+      }
+      entryRecord = rowsById.get(selectedChapter.chapterId);
+    } finally { sourceDb.close(); }
+    if (!entryRecord?.chapter_id || !Number.isSafeInteger(Number(entryRecord.ordinal))) throw new Error("无法将所选章节映射到 staging novel.db 的稳定 chapter_id，已终止创建。");
+    const entryOrdinal = restrictKnowledgeDatabaseToEntry(knowledgePath, id, entryChapter, entryChapterId);
+    if (entryOrdinal !== selectedChapter.ordinal || entryOrdinal !== Number(entryRecord.ordinal)) {
+      throw new Error("章节起点 ordinal 校验失败，已终止创建。");
+    }
     await writeFile(path.join(stagingDir, "source-canon-as-of.json"), JSON.stringify({ sourceWorldId: rootSourceId, sourceCanonHash, entryChapter, entryChapterId, entryChapterIndex: selectedIndex, entryOrdinal, policy: "chapter-scoped-evidence-only", fullBookAggregates: "excluded" }, null, 2) + "\n", "utf8");
     await rename(stagingDir, targetDir);
     const knowledgeBuild = req.body?.buildKnowledge === false ? null : await serializeWorld(id, () => startKnowledgeBuild(id));
