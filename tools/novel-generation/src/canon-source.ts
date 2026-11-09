@@ -1,6 +1,6 @@
 import { mkdir, readFile, rename, stat, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { alignCanonChapterGroups, selectCanonSourceChunks, validateCanonCatalogAgainstText, type CanonChunk } from "./canon-chapters.js";
+import { alignCanonChapterGroups, canonLineStartOffsets, selectCanonSourceChunks, splitCanonLines, validateCanonCatalogAgainstText, type CanonChunk } from "./canon-chapters.js";
 import { chunkText } from "./library.js";
 import path from "node:path";
 
@@ -55,21 +55,18 @@ export function truncateCanonAtLine(text: string, endBeforeLine?: number, allowA
   if (!Number.isSafeInteger(endBeforeLine) || endBeforeLine < 2) {
     throw new Error("原文时点边界行号无效，拒绝生成未截断的故事宇宙原文副本。");
   }
-  const lineCount = text.split(/\r?\n/).length;
-  if (endBeforeLine > lineCount) {
+  const lines = splitCanonLines(text);
+  if (endBeforeLine > lines.length) {
     if (allowAlreadyBounded) return text;
     throw new Error("原文时点边界超出全文范围，无法安全截断。");
   }
-  let offset = 0;
-  for (let line = 1; line < endBeforeLine; line++) {
-    const newline = text.indexOf("\n", offset);
-    if (newline < 0) throw new Error("原文时点边界超出全文范围，无法安全截断。");
-    offset = newline + 1;
-  }
-  // Remove the line break immediately before the excluded chapter heading.
-  let end = offset;
-  if (end > 0 && text[end - 1] === "\n") end--;
-  if (end > 0 && text[end - 1] === "\r") end--;
+  const starts = canonLineStartOffsets(text);
+  const boundary = starts[endBeforeLine - 1];
+  if (boundary === undefined) throw new Error("原文时点边界超出全文范围，无法安全截断。");
+  // Exclude the line separator immediately before the next chapter heading.
+  let end = boundary;
+  if (end > 0 && text[end - 1] === "\\n") end--;
+  if (end > 0 && text[end - 1] === "\\r") end--;
   return text.slice(0, end);
 }
 
@@ -223,7 +220,7 @@ export async function ensureBoundedUniverseCanonAssets(
   );
   const originalHash = createHash("sha256").update(originalText, "utf8").digest("hex");
   const boundedText = truncateCanonAtLine(originalText, endBeforeLine, true);
-  const boundedLines = boundedText.split(/\r?\n/);
+  const boundedLines = splitCanonLines(boundedText);
   if (endBeforeLine !== undefined && boundedLines.length < endBeforeLine - 1) {
     throw new Error("故事宇宙本地原文副本在起点之前就已截断，不能安全恢复；请从原文项目重新创建该宇宙。");
   }
@@ -246,14 +243,10 @@ export async function ensureBoundedUniverseCanonAssets(
   const canonical = selectCanonSourceChunks(existingChunks).filter(chunk =>
     chunk.sourceHash === originalHash || chunk.sourceHash === boundedHash
   );
-  const starts: Array<number | undefined> = [];
-  let offset = 0;
-  for (const line of boundedLines) {
-    starts.push(offset + line.length - line.trimStart().length);
-    offset += line.length;
-    if (boundedText[offset] === "\r") offset++;
-    if (boundedText[offset] === "\n") offset++;
-  }
+  const rawLineStarts = canonLineStartOffsets(boundedText);
+  const starts: Array<number | undefined> = boundedLines.map((line, index) =>
+    (rawLineStarts[index] ?? 0) + line.length - line.trimStart().length
+  );
   const prefixCatalog = catalog.slice(0, entryIndex + 1);
   validateCanonCatalogAgainstText(prefixCatalog, boundedText);
   const offsets = prefixCatalog.map(chapter => chapter.line == null ? undefined : starts[chapter.line - 1]);
