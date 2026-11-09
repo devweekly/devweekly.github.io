@@ -1027,13 +1027,25 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
         return shouldCopyUniverseAsset(path.relative(parentDir, source));
       }
     });
+    const parentCatalog = await loadChapterCatalog(parentId);
+    if (!parentCatalog?.length) throw new Error("父宇宙缺少可验证的 bounded 原文目录，无法分叉。");
+    const matchingParentIndexes = parentCatalog.flatMap((chapter, index) => chapter.title === parent.entryChapter ? [index] : []);
+    const parentEntryIndex = Number.isSafeInteger(parent.entryChapterIndex) &&
+      parent.entryChapterIndex! >= 0 && parent.entryChapterIndex! < parentCatalog.length
+      ? parent.entryChapterIndex!
+      : matchingParentIndexes.length === 1 ? matchingParentIndexes[0]! : -1;
+    if (parentEntryIndex < 0 || parentCatalog[parentEntryIndex]?.title !== parent.entryChapter) {
+      throw new Error("父宇宙的原文起点无法通过 bounded 章节目录唯一定位，拒绝创建可能泄漏未来剧情的分支。");
+    }
+    const copiedCanon = await copyOriginalCanonToUniverse(parentId, stagingDir, path.resolve("."));
+    if (!copiedCanon) throw new Error("父宇宙缺少自己的时点原文副本，拒绝创建分支；不能回退读取完整原著。");
     rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
     restrictKnowledgeDatabaseToEntry(path.join(stagingDir, "novel.db"), id, parent.entryChapter, parent.entryChapterId);
     const universe: StoryUniverse = {
       id, sourceWorldId: parent.sourceWorldId, name, type: parent.type,
       entryChapter: parent.entryChapter,
       entryChapterId: parent.entryChapterId,
-      entryChapterIndex: parent.entryChapterIndex,
+      entryChapterIndex: parentEntryIndex,
       entryOrdinal: parent.entryOrdinal,
       brief: parent.brief,
       parentUniverseId: parent.id, forkPoint: forkRun.id,
@@ -1042,23 +1054,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     await writeFile(path.join(stagingDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
     await writeFile(path.join(stagingDir, "world-bible.md"), buildUniverseWorldBible(universe), "utf8");
     await writeFile(path.join(stagingDir, "source-canon.json"), JSON.stringify({ sourceWorldId: parent.sourceWorldId, readOnly: true }, null, 2) + "\n", "utf8");
-    const parentCanonChapters = await readCanonChapters(parent.sourceWorldId);
-    const matchingParentIndexes = parentCanonChapters.flatMap((chapter, index) => chapter.title === parent.entryChapter ? [index] : []);
-    const parentEntryIndex = Number.isSafeInteger(parent.entryChapterIndex)
-      ? parent.entryChapterIndex!
-      : matchingParentIndexes.length === 1 ? matchingParentIndexes[0]! : -1;
-    if (parentEntryIndex < 0 || parentEntryIndex >= parentCanonChapters.length) throw new Error("父宇宙的原文起点无法通过稳定章节索引唯一定位，拒绝创建可能泄漏未来剧情的分支。");
-    const sourceCatalog = await loadChapterCatalog(parent.sourceWorldId);
-    if (!sourceCatalog) throw new Error("原文章节目录不存在，无法安全截断分支原文副本。");
-    const nextChapterLineValue = sourceCatalog[parentEntryIndex + 1]?.line;
-    const nextChapterLine = typeof nextChapterLineValue === "number" ? nextChapterLineValue : undefined;
-    if (sourceCatalog[parentEntryIndex + 1] && (!Number.isSafeInteger(nextChapterLine) || Number(nextChapterLine) < 2)) {
-      throw new Error("父宇宙起点之后的目录缺少有效行号，无法安全截断分支原文。");
-    }
-    const copiedCanon = await copyOriginalCanonToUniverse(parentId, stagingDir, path.resolve("."), nextChapterLine, true);
-    if (!copiedCanon) throw new Error("父宇宙缺少自己的时点原文副本，拒绝创建分支；不能回退读取完整原著。");
-    const boundedTotalLines = await writeUniverseLibrarySnapshot(parent.sourceWorldId, stagingDir, id, parentEntryIndex);
-    await writeUniverseAnalysisCatalogSnapshot(parent.sourceWorldId, stagingDir, id, parentEntryIndex, boundedTotalLines);
+    await writeForkedUniverseCanonSnapshots(parentId, stagingDir, id);
 
     const forkState = rebaseStoryState(state, parentId, id);
     await writeFile(path.join(stagingDir, "story-state.json"), JSON.stringify(forkState, null, 2) + "\n", "utf8");
