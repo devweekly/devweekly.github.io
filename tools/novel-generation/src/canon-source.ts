@@ -275,7 +275,7 @@ export async function ensureBoundedUniverseCanonAssets(
   const prefixCatalog = catalog.slice(0, entryIndex + 1);
   validateCanonCatalogAgainstText(prefixCatalog, boundedText);
   const offsets = prefixCatalog.map(chapter => chapter.line == null ? undefined : starts[chapter.line - 1]);
-  const aligned = alignCanonChapterGroups(prefixCatalog, canonical, offsets);
+  const aligned = alignCanonChapterGroups(prefixCatalog, canonical, offsets, true);
   const boundedChunks = aligned.flatMap((item, index) => {
     // Partial or damaged chapter groups must be rebuilt from the bounded
     // canonical text just like entirely missing groups. Do not let validation
