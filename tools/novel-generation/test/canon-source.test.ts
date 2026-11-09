@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { createHash } from "node:crypto";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { copyOriginalCanonToUniverse, ensureBoundedUniverseCanonAssets, resolveOriginalCanonPath, truncateCanonAtLine } from "../src/canon-source.js";
@@ -27,6 +27,22 @@ test("historical universes never fall back to the full project-root corpus", asy
     await mkdir(universe, { recursive: true });
     await writeFile(join(root, "original.txt"), "FULL BOOK WITH FUTURE PLOT", "utf8");
     await writeFile(join(universe, "universe.json"), JSON.stringify({ id: "u-1234567890abcdef" }), "utf8");
+    await assert.rejects(
+      resolveOriginalCanonPath("u-1234567890abcdef", { projectRoot: root }),
+      (error: NodeJS.ErrnoException) => error.code === "ENOENT" && /拒绝回退到项目根目录/.test(error.message ?? "")
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a source-canon marker prevents fallback when universe.json is missing", async () => {
+  const root = await mkdtemp(join(tmpdir(), "canon-source-broken-universe-"));
+  try {
+    const universe = join(root, "worlds", "u-1234567890abcdef");
+    await mkdir(universe, { recursive: true });
+    await writeFile(join(root, "original.txt"), "FULL BOOK WITH FUTURE PLOT", "utf8");
+    await writeFile(join(universe, "source-canon.json"), JSON.stringify({ sourceWorldId: "source-world", readOnly: true }));
     await assert.rejects(
       resolveOriginalCanonPath("u-1234567890abcdef", { projectRoot: root }),
       (error: NodeJS.ErrnoException) => error.code === "ENOENT" && /拒绝回退到项目根目录/.test(error.message ?? "")
@@ -113,8 +129,17 @@ test("legacy universe repair truncates full local canon and rebinds library hash
     };
     assert.equal(childCatalog.totalLines, 4);
     assert.deepEqual(childCatalog.volumes.flatMap(volume => volume.chapters.map(chapter => chapter.title)), ["第一章", "第二章"]);
-    // A second call is idempotent.
+    // A second call is idempotent: content and file timestamps stay unchanged.
+    const libraryPath = join(universeDir, "library", "index.json");
+    const catalogPath = join(root, "analysis", universeId, "chapter-index.json");
+    const firstLibrary = JSON.parse(await readFile(libraryPath, "utf8")) as { updatedAt: string };
+    const firstLibraryStat = await stat(libraryPath);
+    const firstCatalogStat = await stat(catalogPath);
     assert.equal(await ensureBoundedUniverseCanonAssets(universeId, { projectRoot: root }), true);
+    const secondLibrary = JSON.parse(await readFile(libraryPath, "utf8")) as { updatedAt: string };
+    assert.equal(secondLibrary.updatedAt, firstLibrary.updatedAt);
+    assert.equal((await stat(libraryPath)).mtimeMs, firstLibraryStat.mtimeMs);
+    assert.equal((await stat(catalogPath)).mtimeMs, firstCatalogStat.mtimeMs);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
