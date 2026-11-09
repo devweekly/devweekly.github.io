@@ -259,3 +259,14 @@ CLI 命令（均经 `npm run dev --`）：
 - 每章后使用实际章节正文与已提交 Story State 评估核心冲突、自然结尾和未解决核心线；章节数量不参与完成判定。连续推进停滞时标记 stalled，不误报 completed。
 - 指定数量的连续章节已改为服务端持久化 fixed-batch 任务，逐章串行、逐章保存检查点，支持暂停/恢复/取消；数量没有 30 章上限。批量完成只表示本次指定数量完成，不表示完整故事自然收束。
 - 详细设计和验收标准见 `ADR/0006-fruit-story-unit-and-long-form-execution.md`。实现状态以代码为准，不能把 ADR 中的目标描述当作已实现功能。
+
+
+## 2026-11-10 流水线减负与局部文学编辑（ADR 0007，覆盖本文件旧版相关描述）
+
+- 普通章节与长章节统一采用一次局部 Patch 编辑；不再运行整章 Literary Rewrite + Anti-AI 诊断 + 整章 Anti-AI 改写 + 独立整章复核的重复链路。
+- Patch 默认 preserve。只有明确损害阅读体验的问题才可修改；必须使用唯一、逐字匹配的原文锚点。缺失、重复、重叠锚点的 Patch 单独拒绝，不允许整章回滚。
+- 有效留白、沉默、短句、长句、口语、闲笔、有意重复和自然收束均受保护。不得主动补充环境、动作、心理、气味、湿度、光线、声音或修辞来“增加文学性”。
+- 普通章节与长章节硬伤终审均最多自动修复一轮；只检查事实、因果、人物知识边界、世界规则等真正影响故事成立的问题。技术完整性、状态 schema 与持久化校验保留。
+- 每章不再自动运行只读 Style Regression 和 Post-review Literary Check；它们不改稿、不影响验收，移至专项评估。Reader 仍为显式可选的盲读观察。
+- 新宇宙章节生成自动等待最低知识准备：style-profile、character-profiles、character-states、as-of-dossier。等待在 CLI 子进程内进行，API 先返回 queued/running 任务；可选 corpus-craft/Vane 不阻塞。失败利用阶段缓存自动重试一次，仍不就绪则安全停止。
+- 相关实现以 `src/literary-edit.ts`、`src/workflow.ts`、`src/long-chapter.ts`、`src/cli.ts`、`src/server.ts` 和 ADR 0007 为准。旧版关于每章 Anti-AI 三阶段、每章自动 Style Regression、两轮终审修复的描述已被 ADR 0007 取代。
