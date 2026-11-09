@@ -1,5 +1,5 @@
-// 普通章节多阶段写作流水线：主线架构师/创意发散并行 → 主编蓝图 → 正文 → 整体文学编辑 →
-// 有问题才执行 Anti-AI 编辑 → 硬伤终审与最多两轮修复 → 修复后只读文风观察 → 可选 Reader → 状态提交。
+// 普通章节流水线：主线架构师/创意发散并行 → 主编蓝图 → 正文 → 保守局部文学 Patch →
+// 一次硬伤终审与最多一轮修复 → 可选 Reader → 状态提交。
 // 各阶段按职责裁剪上下文：创意阶段不给逐条证据，对白编辑只看人物状态，只有事实核对类
 // 阶段才保留证据材料。每阶段走 stage-cache 指纹缓存；未通过终审不写 Story State。
 import { mkdir, writeFile } from "node:fs/promises";
@@ -311,13 +311,13 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
 
   // 单次、局部、可验证的文学编辑。默认保留正文，不再运行整章重写、
   // Anti-AI 诊断、整章 Anti-AI 改写和整章复核这四个互相叠加的环节。
-  const patchRaw = await cachedCall("literary-patches", "05-literary-patches.json", "voice", [
+  const patchRaw = await cachedCall("literary-patches", "05-literary-patches-raw.json", "voice", [
     literaryPatchPrompt({ brief: input.brief, blueprint: plan, styleProfile: input.styleProfile, chapter: initialDraft })
   ], output => { parseLiteraryPatchResult(output); });
   const patchResult = parseLiteraryPatchResult(patchRaw);
   const patchApplication = applyLiteraryPatches(initialDraft, patchResult.edits);
   const literaryDraft = patchApplication.chapter;
-  await saveStage(input.outputDir, "05-literary-patches.json", JSON.stringify({
+  await saveStage(input.outputDir, "05-literary-patches-applied.json", JSON.stringify({
     decision: patchResult.decision,
     reason: patchResult.reason,
     applied: patchApplication.applied,
