@@ -72,6 +72,7 @@ test("universe copy creates an independent local copy from the root corpus", asy
 
 test("canon truncation excludes the next chapter heading and handles CRLF", () => {
   assert.equal(truncateCanonAtLine("第一章\r\n正文\r\n第二章\r\n未来", 3), "第一章\r\n正文");
+  assert.equal(truncateCanonAtLine("第一章\r正文\r第二章\r未来", 3), "第一章\r正文");
   assert.equal(truncateCanonAtLine("第一章\n正文\n第二章", undefined), "第一章\n正文\n第二章");
   assert.throws(() => truncateCanonAtLine("只有一行", 3), /超出全文范围/);
 });
@@ -108,8 +109,8 @@ test("legacy universe repair truncates full local canon and rebinds library hash
     await writeFile(join(universeDir, "library", "index.json"), JSON.stringify({
       schemaVersion: 1, worldId: universeId, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
       chunks: [
-        { id: "c1", source: "worlds/source-world/original.txt", sourceHash: fullHash, chapter: "第一章", chunkIndex: 0, start: 0, end: 3, chapterStart: starts[0], text: "正文一" },
-        { id: "c2", source: "worlds/source-world/original.txt", sourceHash: fullHash, chapter: "第二章", chunkIndex: 0, start: 0, end: 3, chapterStart: starts[1], text: "正文二" },
+        { id: "c1", source: "worlds/source-world/original.txt", sourceHash: fullHash, chapter: "第一章", chunkIndex: 0, start: 0, end: "第一章\n正文一".length, chapterStart: starts[0], text: "第一章\n正文一" },
+        { id: "c2", source: "worlds/source-world/original.txt", sourceHash: fullHash, chapter: "第二章", chunkIndex: 0, start: 0, end: "第二章\n正文二".length, chapterStart: starts[1], text: "第二章\n正文二" },
         { id: "c3", source: "worlds/source-world/original.txt", sourceHash: fullHash, chapter: "第三章", chunkIndex: 0, start: 0, end: 4, chapterStart: starts[2], text: "未来剧情" }
       ]
     }));
