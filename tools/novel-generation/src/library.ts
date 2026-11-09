@@ -331,7 +331,8 @@ async function loadSearchIndex(indexPath: string): Promise<CachedSearchIndex> {
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   const cached = searchCache.get(indexPath);
   if (cached && cached.mtimeMs === info.mtimeMs && cached.size === info.size &&
-      cached.privateMtimeMs === privateInfo?.mtimeMs && cached.privateSize === privateInfo?.size) return cached;
+      cached.privateMtimeMs === (privateInfo ? Number(privateInfo.mtimeMs) : undefined) &&
+      cached.privateSize === (privateInfo ? Number(privateInfo.size) : undefined)) return cached;
 
   const index = JSON.parse(await readFile(indexPath, "utf8")) as LibraryIndex;
   const privateIndex = privateInfo
@@ -348,7 +349,8 @@ async function loadSearchIndex(indexPath: string): Promise<CachedSearchIndex> {
   });
   const next = {
     mtimeMs: info.mtimeMs, size: info.size,
-    privateMtimeMs: privateInfo?.mtimeMs, privateSize: privateInfo?.size,
+    privateMtimeMs: privateInfo ? Number(privateInfo.mtimeMs) : undefined,
+    privateSize: privateInfo ? Number(privateInfo.size) : undefined,
     total: Math.max(1, documents.length), documentFrequency, documents
   };
   searchCache.set(indexPath, next);
