@@ -125,6 +125,6 @@ if (ordered[0]?.start !== 0 || previousEnd !== chapterText.length) {
 本次代码提交：
 - `7f4771d8c7733e1f06d6e7509885e83a3c338151` — 修复同名章节分组。
 - `3cca5f691a67baf5b18e76cf5ab43b7dd7c5ddd7` — 增加重复标题回归测试。
-- ` ${tu.result.commit_sha} ` — 清理测试 fixture。
+- `043e6b1b464aefd36a0b377d2835e9b8f3f784cb` — 清理测试 fixture。
 
 测试尚未在仓库环境执行；GitHub Actions 状态需另行确认。
