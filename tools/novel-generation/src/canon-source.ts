@@ -236,7 +236,7 @@ export async function ensureBoundedUniverseCanonAssets(
       if (!Number.isSafeInteger(startLine) || Number(startLine) < 1) {
         throw new Error("故事宇宙章节「" + item.chapter.title + "」缺少原文行号，无法重建时点切片。");
       }
-      const chapterText = boundedLines.slice(Number(startLine) - 1, nextLine === undefined ? boundedLines.length : Number(nextLine) - 1).join("\\n").trim();
+      const chapterText = boundedLines.slice(Number(startLine) - 1, nextLine === undefined ? boundedLines.length : Number(nextLine) - 1).join("\n").trim();
       if (!chapterText) throw new Error("故事宇宙章节「" + item.chapter.title + "」在 bounded original.txt 中没有正文。");
       const volume = String(item.chapter.volume).padStart(2, "0");
       const sequence = String(item.chapter.sequenceInVolume).padStart(3, "0");
