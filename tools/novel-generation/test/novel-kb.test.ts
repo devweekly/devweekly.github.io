@@ -84,7 +84,11 @@ test("canon index inputs use original source hash and exact line offsets", async
       { ...chunk("notes:1", "第一章 开端", "错误辅助资料", 1), source: "world/notes.txt", sourceHash: "f".repeat(64), chapterStart: first },
       { ...chunk("canon:2", "第二章 转折", original.slice(middleStart, second).trim(), 0), end: original.slice(middleStart, second).trim().length, source: "world/original.txt", sourceHash: hash, chapterStart: middleStart }
     ]);
-    assert.deepEqual(inputs.chunks.map(item => item.id), ["canon:1", "canon:2"]);
+    assert.deepEqual(inputs.chunks.slice(0, 2).map(item => item.id), ["canon:1", "canon:2"]);
+    assert.equal(inputs.chunks.length, 3, "the missing repeated-title chapter is rebuilt from original.txt");
+    assert.equal(inputs.chunks[2]!.chapter, "第一章 开端");
+    assert.equal(inputs.chunks[2]!.chapterStart, second);
+    assert.equal(inputs.chunks[2]!.text, "第一章 开端\\n正文丙");
     assert.deepEqual(inputs.chapterStartOffsets, [first, middleStart, second]);
     const assignment = assignChapters([
       { ...inputs.chunks[0]!, chapter: "第一章 开端" },
