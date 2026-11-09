@@ -88,7 +88,7 @@ test("canon index inputs use original source hash and exact line offsets", async
     assert.equal(inputs.chunks.length, 3, "the missing repeated-title chapter is rebuilt from original.txt");
     assert.equal(inputs.chunks[2]!.chapter, "第一章 开端");
     assert.equal(inputs.chunks[2]!.chapterStart, second);
-    assert.equal(inputs.chunks[2]!.text, "第一章 开端\\n正文丙");
+    assert.equal(inputs.chunks[2]!.text, "第一章 开端\n正文丙");
     assert.deepEqual(inputs.chapterStartOffsets, [first, middleStart, second]);
     const assignment = assignChapters([
       { ...inputs.chunks[0]!, chapter: "第一章 开端" },
