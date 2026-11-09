@@ -19,7 +19,7 @@ import {
 } from "./database.js";
 import { loadLibraryChunks, type LibraryChunk } from "./library.js";
 import { selectCanonSourceChunks } from "./canon-chapters.js";
-import { resolveOriginalCanonPath } from "./canon-source.js";
+import { ensureBoundedUniverseCanonAssets, resolveOriginalCanonPath } from "./canon-source.js";
 
 export interface CatalogChapter {
   volume: number;
@@ -333,6 +333,7 @@ export async function buildAnalysisUnits(
   options: { worldDir?: string; catalogPath?: string } = {}
 ): Promise<{ units: AnalysisUnit[]; assignment: ChapterAssignment }> {
   const worldDir = options.worldDir ?? resolve("worlds", worldId);
+  await ensureBoundedUniverseCanonAssets(worldId, { projectRoot: resolve(worldDir, "..", ".."), worldDir });
   const rawChunks = await loadLibraryChunks(join(worldDir, "library"), worldId);
   if (!rawChunks.length) throw new Error("No indexed text found. Run ingest first.");
   const catalog = await loadChapterCatalog(worldId, options.catalogPath);
@@ -424,6 +425,7 @@ export async function indexNovelStructure(
   options: { worldDir?: string; catalogPath?: string; characters?: CharacterDictionaryEntry[] } = {}
 ): Promise<StoryIndexResult> {
   const worldDir = options.worldDir ?? resolve("worlds", worldId);
+  await ensureBoundedUniverseCanonAssets(worldId, { projectRoot: resolve(worldDir, "..", ".."), worldDir });
   const rawChunks = await loadLibraryChunks(join(worldDir, "library"), worldId);
   if (!rawChunks.length) throw new Error("No indexed text found. Run ingest before index-story.");
 
