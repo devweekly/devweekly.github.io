@@ -110,9 +110,11 @@ const canonLibraryValidationCache = new Map<string, string>();
  * Reconstruct missing or incomplete chapter chunks from the canonical offline
  * text and its verified catalog. Existing auxiliary imports and valid chapter chunks remain.
  */
-export async function ensureSourceCanonLibraryIndex(
+const canonLibraryRepairLocks = new Map<string, Promise<boolean>>();
+
+async function ensureSourceCanonLibraryIndexUnlocked(
   worldId: string,
-  worldDir = resolve("worlds", worldId)
+  worldDir: string
 ): Promise<boolean> {
   const absoluteWorldDir = resolve(worldDir);
   const projectRoot = resolve(absoluteWorldDir, "..", "..");
@@ -221,7 +223,7 @@ export async function ensureSourceCanonLibraryIndex(
     chunks: [...allChunks.filter(chunk => !isCanonicalSource(chunk.source)), ...prepared.chunks]
   };
   await mkdir(libraryDir, { recursive: true });
-  const temporary = indexPath + ".canon-rebuild.tmp";
+  const temporary = indexPath + ".canon-rebuild." + process.pid + "." + Date.now() + ".tmp";
   await writeFile(temporary, JSON.stringify(next, null, 2) + "\n", "utf8");
   await rename(temporary, indexPath);
 
@@ -240,6 +242,28 @@ export async function ensureSourceCanonLibraryIndex(
   const writtenIndexHash = createHash("sha256").update(await readFile(indexPath)).digest("hex");
   canonLibraryValidationCache.set(indexPath, [originalHash, catalogHash, writtenIndexHash, "canon-chunker-v2"].join(":"));
   return true;
+}
+
+/**
+ * Serialize automatic repairs per world. Multiple API/CLI entry points may
+ * discover the same damaged derived index concurrently; they must share one
+ * rebuild rather than race over the same temporary file.
+ */
+export async function ensureSourceCanonLibraryIndex(
+  worldId: string,
+  worldDir = resolve("worlds", worldId)
+): Promise<boolean> {
+  const absoluteWorldDir = resolve(worldDir);
+  const key = join(absoluteWorldDir, "library", "index.json");
+  const active = canonLibraryRepairLocks.get(key);
+  if (active) return active;
+  const repair = ensureSourceCanonLibraryIndexUnlocked(worldId, absoluteWorldDir);
+  canonLibraryRepairLocks.set(key, repair);
+  try {
+    return await repair;
+  } finally {
+    if (canonLibraryRepairLocks.get(key) === repair) canonLibraryRepairLocks.delete(key);
+  }
 }
 
 /** Align indexing to the exact original.txt bytes, not similarly named auxiliary imports. */
