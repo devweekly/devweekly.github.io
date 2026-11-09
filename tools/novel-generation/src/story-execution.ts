@@ -69,8 +69,15 @@ export async function listStoryExecutions(worldId: string, storyUnitId?: string 
   try {
     const names = await readdir(directory(worldId));
     const values = await Promise.all(names.filter(name => name.endsWith(".json")).map(async name => {
-      try { return StoryExecutionSchema.parse(JSON.parse(await readFile(join(directory(worldId), name), "utf8"))); }
-      catch { return undefined; }
+      const filePath = join(directory(worldId), name);
+      try {
+        return StoryExecutionSchema.parse(JSON.parse(await readFile(filePath, "utf8")));
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+          console.warn("[story-execution] 忽略损坏的执行记录 " + filePath, error);
+        }
+        return undefined;
+      }
     }));
     return values.filter((value): value is StoryExecution => value !== undefined && (storyUnitId === undefined || storyExecutionOwnsRun(storyUnitId ?? undefined, value.storyUnitId))).sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
   } catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return []; throw error; }
