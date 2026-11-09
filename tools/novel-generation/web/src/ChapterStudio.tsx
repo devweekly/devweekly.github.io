@@ -215,7 +215,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   let disposed=false;
   if(!activeUniverse){setKnowledgeBuild(null);return;}
   const load=()=>api<{build:KnowledgeBuild|null}>("/api/worlds/"+activeWorldId+"/knowledge-build")
-   .then(result=>{if(!disposed)setKnowledgeBuild(result.build);}).catch(()=>{});
+   .then(result=>{if(!disposed){setKnowledgeBuild(result.build);if(result.build?.status==="cancelled")setCancellingKnowledgeBuild(false);}}).catch(()=>{});
   void load();
   const timer=window.setInterval(load,2000);
   return()=>{disposed=true;window.clearInterval(timer);};
