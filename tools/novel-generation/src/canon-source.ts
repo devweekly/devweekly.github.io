@@ -1,4 +1,4 @@
-import { copyFile, stat, writeFile } from "node:fs/promises";
+import { readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 export interface CanonSourcePaths {
@@ -80,7 +80,7 @@ export async function copyOriginalCanonToUniverse(
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
     throw error;
   }
-  const text = await import("node:fs/promises").then(fs => fs.readFile(source, "utf8"));
+  const text = await readFile(source, "utf8");
   const boundedText = truncateCanonAtLine(text, endBeforeLine);
   await writeFile(path.join(targetDir, "original.txt"), boundedText, "utf8");
   return true;
