@@ -119,8 +119,10 @@ async function readOptionalLibraryIndex(indexPath: string, worldId: string): Pro
     }
     return index;
   } catch (error) {
-    if (error instanceof SyntaxError) {
-      // Library indexes are derived caches. Preserve the damaged bytes for
+    const invalidIndex = error instanceof SyntaxError ||
+      (error instanceof Error && error.message.startsWith("Library index schema/world mismatch."));
+    if (invalidIndex) {
+      // Library indexes are derived caches. Preserve invalid bytes for
       // diagnosis and let the canonical-corpus repair path rebuild the index.
       await rename(indexPath, indexPath + ".corrupt-" + Date.now());
       return undefined;
