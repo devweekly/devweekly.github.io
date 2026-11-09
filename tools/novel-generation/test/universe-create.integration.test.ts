@@ -483,7 +483,7 @@ test("universe creation rebuilds bounded offline assets from project-root origin
     assert.ok(bounded.chunks.some(chunk => chunk.text.includes("李阎在雨里走过长街。")));
     assert.ok(bounded.chunks.some(chunk => chunk.text.includes("夜色压住了城寨。")));
     assert.ok(!JSON.stringify(bounded).includes("THIS IS FUTURE PLOT"));
-    assert.ok(bounded.chunks.every(chunk => chunk.source === `worlds/${payload.universe.id}/original.txt`));
+    assert.ok(bounded.chunks.every(chunk => chunk.source === `worlds/${payload.universe.id}/original.txt`), JSON.stringify(bounded.chunks.map(chunk => chunk.source)));
     const boundedHash = createHash("sha256").update(boundedOriginalText, "utf8").digest("hex");
     assert.ok(bounded.chunks.every(chunk => chunk.sourceHash === boundedHash));
     const units = await buildAnalysisUnits(payload.universe.id, { worldDir: universeDir });
