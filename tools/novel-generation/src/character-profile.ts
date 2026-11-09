@@ -253,8 +253,15 @@ async function readCached(path: string): Promise<z.infer<typeof ProfileSchema> |
   if (!existsSync(path)) return undefined;
   try {
     const parsed = ProfileSchema.safeParse(JSON.parse(await readFile(path, "utf8")) as unknown);
-    return parsed.success ? parsed.data : undefined;
-  } catch {
+    if (!parsed.success) {
+      console.warn("[character-profile] 人物档案结构无效，跳过 " + path, parsed.error.issues);
+      return undefined;
+    }
+    return parsed.data;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      console.warn("[character-profile] 人物档案无法读取，跳过 " + path, error);
+    }
     return undefined;
   }
 }
