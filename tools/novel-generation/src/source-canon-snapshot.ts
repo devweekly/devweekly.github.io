@@ -6,7 +6,9 @@ import { DatabaseSync } from "node:sqlite";
 
 /** Remove an unsafe copied knowledge database rather than leave unfiltered canon behind. */
 function removeUnsafeDatabase(filePath: string): void {
-  try { rmSync(filePath, { force: true }); } catch { /* missing or unavailable */ }
+  // force:true already treats a missing file as success. Permission/I/O errors
+  // must propagate: continuing with an unfiltered database would leak future canon.
+  rmSync(filePath, { force: true });
 }
 
 /**
