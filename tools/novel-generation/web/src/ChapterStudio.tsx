@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Alert, Button, Card, Checkbox, Collapse, Empty, Input, InputNumber, Modal, Progress, Select, Space, Tag, Typography, message } from "antd";
 import { PlayCircleOutlined, ReloadOutlined } from "@ant-design/icons";
+import { selectVisibleStoryExecution, shouldPollStoryExecution } from "./story-execution-state.js";
 const { Title, Text, Paragraph } = Typography;
 type Run = { id:string; storyUnitId?:string; kind?:string; status:string; createdAt:string; updatedAt:string; error?:string; outputDir?:string; chapterPath?:string; previousChapterPath?:string };
 type Preview = { storyArc:string; chapterPlan:string; chapter:string };
@@ -57,7 +58,8 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const batchRunning=activeStoryExecution?.mode==="fixed_batch"&&["queued","running"].includes(activeStoryExecution.status);
  const storyTaskBlocksWrites=Boolean(activeStoryExecution);
  const batchProgress={completed:activeStoryExecution?.completedChapters.length??0,total:activeStoryExecution?.targetChapterCount??0};
- const visibleStoryExecution=activeStoryExecution??storyExecution;
+ const visibleStoryExecution=selectVisibleStoryExecution(worldStoryExecutions,storyExecution);
+ const visibleStoryExecutionHistory=visibleStoryExecution?[visibleStoryExecution,...storyExecutionHistory.filter(item=>item.id!==visibleStoryExecution.id)]:storyExecutionHistory;
  const refresh=async()=>{
   if(!activeWorldId)return;const requestId=++refreshGeneration.current;const previewRequestId=++previewGeneration.current;setLoading(true);
   try{
@@ -107,7 +109,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   }).catch(()=>{if(!cancelled){setStoryUnit(null);setStoryUnits([]);setSelectedStoryUnitId(undefined);setStoryExecution(null);setStoryExecutionHistory([]);setWorldStoryExecutions([]);}});
   return()=>{cancelled=true;};},[activeWorldId,selectedStoryUnitId,historyScope]);
  useEffect(()=>{
-  if(!activeWorldId||!activeStoryExecution||!["queued","running","paused"].includes(activeStoryExecution.status))return;
+  if(!activeWorldId||!activeStoryExecution||!shouldPollStoryExecution(activeStoryExecution.status))return;
   let cancelled=false;
   const executionId=activeStoryExecution.id;
   const timer=window.setInterval(()=>void api<{execution:StoryExecution}>("/api/worlds/"+activeWorldId+"/story-executions/"+executionId)
@@ -343,7 +345,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
     </Space>
    </Space>}
   </Card>
-  {visibleStoryExecution&&<Card title={visibleStoryExecution.mode==="fixed_batch"?"连续生成任务":"完整故事执行任务"} extra={<Select size="small" style={{minWidth:250}} value={visibleStoryExecution.id} onChange={id=>{const selected=storyExecutionHistory.find(item=>item.id===id);if(selected)setStoryExecution(selected);}} options={storyExecutionHistory.map(item=>({value:item.id,label:`${item.mode==="fixed_batch"?"批量":"完整故事"} · ${item.storyUnitTitle} · ${new Date(item.createdAt).toLocaleString()} · ${{queued:"排队中",running:"执行中",paused:"已暂停",completed:"已完成",failed:"失败",cancelled:"已取消",stalled:"推进停滞"}[item.status]}`}))}/>} style={{marginBottom:18}}>
+  {visibleStoryExecution&&<Card title={visibleStoryExecution.mode==="fixed_batch"?"连续生成任务":"完整故事执行任务"} extra={<Select size="small" style={{minWidth:250}} value={visibleStoryExecution.id} onChange={id=>{const selected=storyExecutionHistory.find(item=>item.id===id);if(selected)setStoryExecution(selected);}} options={visibleStoryExecutionHistory.map(item=>({value:item.id,label:`${item.mode==="fixed_batch"?"批量":"完整故事"} · ${item.storyUnitTitle} · ${new Date(item.createdAt).toLocaleString()} · ${{queued:"排队中",running:"执行中",paused:"已暂停",completed:"已完成",failed:"失败",cancelled:"已取消",stalled:"推进停滞"}[item.status]}`}))}/>} style={{marginBottom:18}}>
    <Space direction="vertical" style={{width:"100%"}} size="middle">
     <Space wrap><Tag color={visibleStoryExecution.status==="completed"?"success":visibleStoryExecution.status==="failed"||visibleStoryExecution.status==="stalled"?"error":visibleStoryExecution.status==="running"?"processing":"default"}>{visibleStoryExecution.mode==="fixed_batch"&&visibleStoryExecution.status==="completed"?"批量章节完成":({queued:"排队中",running:visibleStoryExecution.mode==="fixed_batch"?"连续生成中":"执行中",paused:"已暂停",completed:"自然收束",failed:"执行失败",cancelled:"已取消",stalled:"推进停滞"})[visibleStoryExecution.status]}</Tag><Text type="secondary">任务 {visibleStoryExecution.id.slice(0,8)} · 归属：{visibleStoryExecution.storyUnitId?visibleStoryExecution.storyUnitTitle:"Legacy（旧版）"} · 已完成 {visibleStoryExecution.completedChapters.length}{visibleStoryExecution.mode==="fixed_batch"?" / "+visibleStoryExecution.targetChapterCount:""} 章 · 恢复 {visibleStoryExecution.resumeCount} 次{visibleStoryExecution.currentRunId?" · 当前章节任务 "+visibleStoryExecution.currentRunId.slice(0,8):""}</Text></Space>
     {visibleStoryExecution.status==="running"&&<Progress percent={undefined} status="active" showInfo={false}/>}
