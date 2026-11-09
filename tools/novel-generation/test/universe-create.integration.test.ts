@@ -129,7 +129,7 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     assert.deepEqual(boundedIndex.chunks.map(chunk => chunk.chapter), ["第一章正文", "第二章正文"]);
     assert.ok(!JSON.stringify(boundedIndex).includes("未来剧情泄漏标记"));
     const boundedCatalog = JSON.parse(await readFile(join(root, "analysis", payload.universe.id, "chapter-index.json"), "utf8")) as { volumes: Array<{ chapters: Array<{ title: string; futureMarker?: string }> }> };
-    assert.deepEqual(boundedCatalog.volumes.flatMap(volume => volume.chapters.map(chapter => chapter.title)), ["第一章", "第二章"]);
+    assert.deepEqual(boundedCatalog.volumes.flatMap(volume => volume.chapters.map(chapter => chapter.title)), ["第一章正文", "第二章正文"]);
     assert.ok(!JSON.stringify(boundedCatalog).includes("未来剧情泄漏标记"));
     // Exercise the same chapter-unit and context assemblers used by analysis/write.
     const units = await buildAnalysisUnits(payload.universe.id, {
@@ -179,7 +179,7 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
 
     const snapshot = new DatabaseSync(join(universeDir, "novel.db"));
     try {
-      assert.deepEqual((snapshot.prepare("SELECT title FROM novel_chapters ORDER BY ordinal").all() as Array<{ title: string }>).map(row => row.title), ["第一章", "第二章"]);
+      assert.deepEqual((snapshot.prepare("SELECT title FROM novel_chapters ORDER BY ordinal").all() as Array<{ title: string }>).map(row => row.title), ["第一章正文", "第二章正文"]);
       assert.equal(snapshot.prepare("SELECT * FROM story_analysis").all().length, 0);
       assert.equal((snapshot.prepare("SELECT value FROM world_meta WHERE key='world_id'").get() as { value: string }).value, payload.universe.id);
     } finally { snapshot.close(); }
