@@ -107,7 +107,7 @@ function terms(text: string): string[] {
 
 function isPrivateSource(source: string): boolean {
   const normalized = source.replace(/\\/g, "/");
-  return normalized.startsWith("../") || normalized.startsWith("/") || /^[a-z]:\\//i.test(normalized) ||
+  return normalized.startsWith("../") || normalized.startsWith("/") || /^[a-z]:\//i.test(normalized) ||
     isAbsolute(source) || normalized.split("/").includes("private");
 }
 
