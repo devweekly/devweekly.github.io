@@ -227,7 +227,7 @@ export async function ensureBoundedUniverseCanonAssets(
   for (const line of boundedLines) {
     starts.push(offset + line.length - line.trimStart().length);
     offset += line.length;
-    if (boundedText[offset] === "\\r") offset++;
+    if (boundedText[offset] === "\r") offset++;
     if (boundedText[offset] === "\n") offset++;
   }
   const prefixCatalog = catalog.slice(0, entryIndex + 1);
