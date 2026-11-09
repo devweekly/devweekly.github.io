@@ -61,9 +61,9 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     schemaVersion: 1, worldId: "source-world", createdAt: "2026-01-01T00:00:00.000Z",
     updatedAt: "2026-01-01T00:00:00.000Z",
     chunks: [
-      { id: "canon:1", source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第一章正文", chunkIndex: 0, start: 0, end: 6, chapterStart: chapterStarts[0], text: "第一章正文" },
-      { id: "canon:2", source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第二章正文", chunkIndex: 0, start: 0, end: 6, chapterStart: chapterStarts[1], text: "第二章正文" },
-      { id: "canon:3", source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第三章 未来剧情泄漏标记", chunkIndex: 0, start: 0, end: 15, chapterStart: chapterStarts[2], text: "第三章 未来剧情泄漏标记" }
+      { id: "canon:1", source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第一章正文", chunkIndex: 0, start: 0, end: "第一章正文".length, chapterStart: chapterStarts[0], text: "第一章正文" },
+      { id: "canon:2", source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第二章正文", chunkIndex: 0, start: 0, end: "第二章正文".length, chapterStart: chapterStarts[1], text: "第二章正文" },
+      { id: "canon:3", source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第三章 未来剧情泄漏标记", chunkIndex: 0, start: 0, end: "第三章 未来剧情泄漏标记".length, chapterStart: chapterStarts[2], text: "第三章 未来剧情泄漏标记" }
     ]
   }));
   const db = new DatabaseSync(join(source, "novel.db"));
@@ -383,9 +383,9 @@ test("source chapter catalog reads project-root original.txt without a world-loc
   await mkdir(join(root, "analysis", "source-world"), { recursive: true });
   const originalText = [
     "第一章 大枪落幕",
-    "第一章正文：李阎走进雨里。",
+    "李阎走进雨里。",
     "第二章 貘与姑获鸟",
-    "第二章正文：夜色压下来。"
+    "夜色压下来。"
   ].join("\n");
   await writeFile(join(root, "original.txt"), originalText, "utf8");
   await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify({
