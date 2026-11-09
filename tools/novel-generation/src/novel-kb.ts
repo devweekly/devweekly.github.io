@@ -15,7 +15,7 @@ import { existsSync } from "node:fs";
 import { basename, join, relative, resolve } from "node:path";
 import {
   syncNovelChapters, syncNovelMentions, writeNovelKbMeta, upsertSeedCharacters, listNovelCharacters,
-  invalidateDerivedAnalysis, syncAnnotations, type NovelChapterRow
+  invalidateStoryAnalysis, readNovelKbMeta, syncAnnotations, type NovelChapterRow
 } from "./database.js";
 import { chunkText, ensurePrivateLibraryIsolation, loadLibraryChunks, type LibraryChunk } from "./library.js";
 import { alignCanonChapterGroups, canonLineStartOffsets, selectCanonSourceChunks, splitCanonLines, validateCanonCatalogAgainstText, validateCanonChunksAgainstText } from "./canon-chapters.js";
@@ -106,8 +106,6 @@ export async function ensureSourceCanonLibraryIndex(
   const projectRoot = resolve(absoluteWorldDir, "..", "..");
   const libraryDir = join(absoluteWorldDir, "library");
   const indexPath = join(libraryDir, "index.json");
-  await ensurePrivateLibraryIsolation(libraryDir, worldId);
-
   let existing: { schemaVersion: number; worldId: string; createdAt: string; updatedAt: string; chunks: LibraryChunk[] } | undefined;
   try {
     existing = JSON.parse(await readFile(indexPath, "utf8")) as typeof existing;
@@ -115,8 +113,17 @@ export async function ensureSourceCanonLibraryIndex(
       throw new Error("Library index schema/world mismatch: " + worldId);
     }
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    if (error instanceof SyntaxError) {
+      // Preserve a damaged derived cache for diagnosis, then rebuild it from
+      // the canonical offline text. Never silently parse partial JSON.
+      const backupPath = indexPath + ".corrupt-" + Date.now();
+      await rename(indexPath, backupPath);
+      existing = undefined;
+    } else if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw error;
+    }
   }
+  await ensurePrivateLibraryIsolation(libraryDir, worldId);
 
   let originalPath: string;
   try {
@@ -147,6 +154,11 @@ export async function ensureSourceCanonLibraryIndex(
   const allChunks = existing?.chunks ?? [];
   const canonicalExisting = allChunks.filter(chunk => isCanonicalSource(chunk.source));
   const staleCanonical = canonicalExisting.some(chunk => chunk.sourceHash !== undefined && chunk.sourceHash !== originalHash);
+  const existingMeta = existsSync(join(absoluteWorldDir, "novel.db"))
+    ? readNovelKbMeta(absoluteWorldDir, worldId)
+    : {};
+  const staleDerivedAnalysis = staleCanonical ||
+    (typeof existingMeta.source_hash === "string" && existingMeta.source_hash !== originalHash);
   // A stale or hashless chunk is not trusted. Rebuild from the canonical text
   // rather than mixing old evidence into the current corpus.
   const trustedCanonical = staleCanonical ? [] : canonicalExisting.filter(chunk => chunk.sourceHash === originalHash);
@@ -188,7 +200,7 @@ export async function ensureSourceCanonLibraryIndex(
 
   // Derived analysis and annotations point at old chunk IDs/text. Clear them
   // only after the replacement index has been committed.
-  invalidateDerivedAnalysis(absoluteWorldDir, worldId);
+  if (staleDerivedAnalysis) invalidateStoryAnalysis(absoluteWorldDir, worldId);
   syncAnnotations(absoluteWorldDir, worldId, [], null);
   for (const name of ["annotations.json", "entities.json"]) {
     try { await unlink(join(libraryDir, name)); }
@@ -636,6 +648,7 @@ export async function indexNovelStructure(
   syncNovelMentions(worldDir, worldId, mentions);
   writeNovelKbMeta(worldDir, worldId, {
     indexed_at: new Date().toISOString(),
+    source_hash: prepared.originalText ? createHash("sha256").update(prepared.originalText, "utf8").digest("hex") : "",
     chapters: String(assignment.chapters.length),
     chunks: String(chunks.length),
     dictionary: String(dictionary.size)
