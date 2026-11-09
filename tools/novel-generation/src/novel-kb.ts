@@ -246,7 +246,7 @@ export async function prepareCanonIndexInputs(worldDir: string, catalog: Catalog
     const missing = aligned.filter(item => item.chunks.length === 0);
     if (missing.length) {
       const sourceKey = relative(resolve(worldDir, "..", ".."), originalPath!).replace(/\\/g, "/");
-      const rebuilt: LibraryChunk[] = [];
+      const rebuiltByCatalogIndex = new Map<number, LibraryChunk[]>();
       for (const item of missing) {
         const start = chapterStartOffsets[item.catalogIndex];
         const end = chapterStartOffsets[item.catalogIndex + 1] ?? originalText.length;
@@ -256,7 +256,7 @@ export async function prepareCanonIndexInputs(worldDir: string, catalog: Catalog
         const chapterText = originalText.slice(start, end).trim();
         if (!chapterText) throw new Error("原文目录章节没有正文，无法重建切片：" + item.chapter.title);
         const stableId = chapterId(item.chapter.volume, item.chapter.sequenceInVolume);
-        chunkText(chapterText).forEach((part, chunkIndex) => rebuilt.push({
+        const rebuilt = chunkText(chapterText).map((part, chunkIndex) => ({
           id: sourceKey + ":catalog:" + stableId + ":" + chunkIndex,
           source: sourceKey,
           chapter: item.chapter.title,
@@ -267,13 +267,22 @@ export async function prepareCanonIndexInputs(worldDir: string, catalog: Catalog
           sourceHash,
           chapterStart: start
         }));
+        rebuiltByCatalogIndex.set(item.catalogIndex, rebuilt);
       }
-      canonChunks = [...canonChunks, ...rebuilt];
-      const completed = alignCanonChapterGroups(catalog, canonChunks, chapterStartOffsets);
+      // Insert reconstructed groups at their catalog positions. Appending them
+      // to the end would misalign a missing middle chapter when later chapters
+      // with repeated titles already have valid chunks.
+      const completed = aligned.map(item => ({
+        ...item,
+        chunks: [
+          ...item.chunks,
+          ...(rebuiltByCatalogIndex.get(item.catalogIndex) ?? [])
+        ].sort((a, b) => a.chunkIndex - b.chunkIndex)
+      }));
       validateCanonChunksAgainstText(completed, originalText, chapterStartOffsets);
       const stillMissing = completed.find(item => item.chunks.length === 0);
       if (stillMissing) throw new Error("从离线 original.txt 重建后仍缺少章节切片：" + stillMissing.chapter.title);
-      canonChunks = completed.flatMap(item => [...item.chunks].sort((a, b) => a.chunkIndex - b.chunkIndex)) as LibraryChunk[];
+      canonChunks = completed.flatMap(item => item.chunks) as LibraryChunk[];
     } else {
       canonChunks = aligned.flatMap(item => [...item.chunks].sort((a, b) => a.chunkIndex - b.chunkIndex)) as LibraryChunk[];
     }
