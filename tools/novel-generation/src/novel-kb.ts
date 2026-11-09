@@ -1,7 +1,7 @@
 // 语料知识库批处理：把 library 切片组成定长批次（相邻批次做重叠去重，避免同一段落
 // 被算成两次事件），同步 novel_* 知识表；同时提供目录扫描与语料画像入口。
 // 语料重新导入后派生分析必须失效重建，本模块导出失效钩子供 library 调用。
-import { readFile } from "node:fs/promises";
+import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
 import {
   ANALYSIS_BATCH_CHARS,
@@ -201,6 +201,9 @@ export async function prepareCanonIndexInputs(worldDir: string, catalog: Catalog
     }
     const aligned = alignCanonChapterGroups(catalog, canonChunks, chapterStartOffsets);
     validateCanonChunksAgainstText(aligned, originalText, chapterStartOffsets);
+    for (const item of aligned) {
+      if (!item.chunks.length) throw new Error("Library 缺少原文目录章节切片：" + item.chapter.title + "。请执行 ingest --input original.txt 后再执行 index-story。");
+    }
   } else {
     chapterStartOffsets.push(...catalog.map(() => undefined));
   }
