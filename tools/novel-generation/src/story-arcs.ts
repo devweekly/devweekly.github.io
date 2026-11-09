@@ -141,7 +141,9 @@ export async function buildVolumeArcs(
         const parsed = ArcSchema.parse(parseJsonObject(await readFile(path, "utf8")));
         arc = { volume: digest.volume, title: parsed.title, summary: parsed.summary, keyTurns: parsed.keyTurns, characters: parsed.characters };
         cached++;
-      } catch { /* not cached or invalid: regenerate */ }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") console.warn("[story-arcs] 缓存无效，将重新生成 " + path, error);
+      }
     }
     if (!arc) {
       if (!digest.beats.length) continue;
