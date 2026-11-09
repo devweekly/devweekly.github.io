@@ -113,7 +113,7 @@ test("partially indexed canon chapters are rebuilt completely from original.txt"
     const libraryDir = join(world, "library");
     await mkdir(libraryDir, { recursive: true });
     await mkdir(join(root, "analysis", "source-world"), { recursive: true });
-    const original = "第一章 忍·土\\n正文第一段。\\n正文第二段。\\n第二章 后续\\n后续正文。";
+    const original = "第一章 忍·土\n正文第一段。\n正文第二段。\n第二章 后续\n后续正文。";
     await writeFile(join(root, "original.txt"), original, "utf8");
     const chapterStart = original.indexOf("第一章 忍·土");
     const chapterEnd = original.indexOf("第二章 后续");
