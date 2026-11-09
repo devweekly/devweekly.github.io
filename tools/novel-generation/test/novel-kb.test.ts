@@ -257,7 +257,7 @@ test("corrupt derived library index is preserved and rebuilt from the offline so
     const index = JSON.parse(await readFile(join(libraryDir, "index.json"), "utf8")) as { chunks: Array<{ chapter: string; text: string }> };
     assert.deepEqual(index.chunks.map(chunk => chunk.chapter), ["第一章 大枪落幕", "第二章 貘与姑获鸟"]);
     assert.ok(index.chunks.some(chunk => chunk.text.includes("李阎走进雨里。")));
-    assert.ok((await readdir(libraryDir)).some(name => /^index\\.json\\.corrupt-/.test(name)), "corrupt bytes remain available for diagnosis");
+    assert.ok((await readdir(libraryDir)).some(name => /^index\.json\.corrupt-/.test(name)), "corrupt bytes remain available for diagnosis");
   } finally {
     process.chdir(previousCwd);
     await rm(root, { recursive: true, force: true });
