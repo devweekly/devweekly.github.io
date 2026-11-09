@@ -30,11 +30,18 @@ export function alignCanonChapterGroups(
   chapterStartOffsets: Array<number | undefined> = [],
   allowUnpositionedRepeatedTitles = false
 ): AlignedCanonChapter[] {
-  const groups: Array<{ title: string; chunks: CanonChunk[] }> = [];
+  const groups: Array<{ title: string; chapterStart?: number; chunks: CanonChunk[] }> = [];
   for (const chunk of chunks) {
     let group = groups[groups.length - 1];
-    if (!group || group.title !== chunk.chapter) {
-      group = { title: chunk.chapter, chunks: [] };
+    // A title is not a chapter identity: the same printed heading can occur
+    // more than once in one volume. Preserve separate groups whenever their
+    // verified absolute source offsets differ.
+    const sameSourceChapter = group &&
+      (group.chapterStart === undefined && chunk.chapterStart === undefined
+        ? true
+        : group.chapterStart === chunk.chapterStart);
+    if (!group || group.title !== chunk.chapter || !sameSourceChapter) {
+      group = { title: chunk.chapter, chapterStart: chunk.chapterStart, chunks: [] };
       groups.push(group);
     }
     group.chunks.push(chunk);
