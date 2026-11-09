@@ -1,6 +1,7 @@
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { ensureBoundedUniverseCanonAssets } from "./canon-source.js";
+import { ensurePrivateLibraryIsolation } from "./library.js";
 
 /**
  * Resolve the only legal retrieval corpus for a world.
@@ -12,6 +13,7 @@ export async function resolveWorldLibraryDir(worldId: string, worldsRoot = path.
   const absoluteWorldsRoot = path.resolve(worldsRoot);
   const worldDir = path.resolve(absoluteWorldsRoot, worldId);
   const pointerPath = path.join(worldDir, "source-canon.json");
+  await ensurePrivateLibraryIsolation(path.join(worldDir, "library"), worldId);
   let pointer: { sourceWorldId?: string; readOnly?: boolean } | undefined;
   try { pointer = JSON.parse(await readFile(pointerPath, "utf8")) as { sourceWorldId?: string; readOnly?: boolean }; }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
