@@ -483,7 +483,7 @@ test("universe creation rebuilds bounded offline assets from project-root origin
     const payload = JSON.parse(body) as { universe: { id: string } };
     const universeDir = join(root, "worlds", payload.universe.id);
 
-    const boundedOriginalText = originalText.split("\\n").slice(0, 4).join("\\n");
+    const boundedOriginalText = originalText.split("\n").slice(0, 4).join("\n");
     assert.equal(await readFile(join(universeDir, "original.txt"), "utf8"), boundedOriginalText,
       "universe original.txt must stop immediately before the next canon chapter");
     assert.ok(!(await readFile(join(universeDir, "original.txt"), "utf8")).includes("THIS IS FUTURE PLOT"));
@@ -500,7 +500,7 @@ test("universe creation rebuilds bounded offline assets from project-root origin
     assert.equal(units.units.length, 2, "index-story analysis must accept the bounded source hash");
     assert.ok(!units.units.some(unit => unit.text.includes("THIS IS FUTURE PLOT")));
     const boundedCatalog = JSON.parse(await readFile(join(root, "analysis", payload.universe.id, "chapter-index.json"), "utf8")) as { totalLines: number };
-    assert.equal(boundedCatalog.totalLines, boundedOriginalText.split("\\n").length);
+    assert.equal(boundedCatalog.totalLines, boundedOriginalText.split("\n").length);
     assert.equal(await readFile(join(root, "original.txt"), "utf8"), originalText, "source corpus must remain unchanged");
   } finally {
     if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
