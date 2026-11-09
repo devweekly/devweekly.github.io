@@ -262,7 +262,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     // A short scene is not evidence that it is incomplete; never pad it automatically.
     sceneTexts.push(text.trim());
     await saveStage(input.outputDir, `02-scene-${String(index + 1).padStart(2, "0")}.md`, text);
-    console.error(`[write-long] 场景 ${index + 1}/${scenePlans.length} · ${chineseChars(text)} 汉字`);
+    console.log(`[write-long] 场景 ${index + 1}/${scenePlans.length} · ${chineseChars(text)} 汉字`);
   }
 
   const draft = sceneTexts.join("\n\n---\n\n");
@@ -281,7 +281,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     ]);
     polished.push(text.trim());
     await saveStage(input.outputDir, `05-polish-${String(index + 1).padStart(2, "0")}.md`, text);
-    console.error(`[write-long] 修订 ${index + 1}/${sceneTexts.length} · ${chineseChars(text)} 汉字`);
+    console.log(`[write-long] 修订 ${index + 1}/${sceneTexts.length} · ${chineseChars(text)} 汉字`);
   }
 
   const polishDiagnostics = sceneTexts.map((before, index) => {
@@ -368,16 +368,16 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     initialChapter: antiAiChapter,
     sceneCount: sceneTexts.length,
     maxRepairRounds: 2,
-    review: (candidate, correction) => {
+    review: async (candidate, correction) => {
       const round = reviewHistory.length + 1;
-      return cachedCall("final-review-" + round + (correction ? "-retry" : ""), "08-final-review-round-" + round + (correction ? "-retry" : "") + "-raw.txt", "review", [
+      let parsed: ReturnType<typeof parseChapterReview> | undefined;
+      await cachedCall("final-review-" + round + (correction ? "-retry" : ""), "08-final-review-round-" + round + (correction ? "-retry" : "") + "-raw.txt", "review", [
         reviewPrompt({ context: writingContext, blueprint, chapter: candidate, sceneCount: sceneTexts.length, correction })
-      ], output => parseChapterReview(output, candidate, sceneTexts.length)).then(raw => {
-        const parsed = parseChapterReview(raw, candidate, sceneTexts.length);
-        // 分场做硬约束检查，命中项带场景号，修复阶段才能定位。
-        const lawIssues = polished.flatMap((text, index) => ironLawIssues(checkIronLaws(text, laws), [index + 1]));
-        return JSON.stringify(withDeterministicIssues(parsed, lawIssues));
-      });
+      ], output => { parsed = parseChapterReview(output, candidate, sceneTexts.length); });
+      if (!parsed) throw new Error("Final review produced no parsed result.");
+      // 分场做硬约束检查，命中项带场景号，修复阶段才能定位。
+      const lawIssues = polished.flatMap((text, index) => ironLawIssues(checkIronLaws(text, laws), [index + 1]));
+      return JSON.stringify(withDeterministicIssues(parsed, lawIssues));
     },
     repair: async (_candidate, issues, round) => {
       const affectedScenes = [...new Set(issues.flatMap(issue => issue.scenes))].sort((a, b) => a - b);
