@@ -406,6 +406,16 @@ interface StoryUniverse {
   archivedAt?: string;
 }
 
+function checkpointKnowledgeDatabase(databasePath: string): void {
+  if (!existsSync(databasePath)) return;
+  const db = new DatabaseSync(databasePath);
+  try {
+    db.exec("PRAGMA busy_timeout=5000; PRAGMA wal_checkpoint(TRUNCATE);");
+  } finally {
+    db.close();
+  }
+}
+
 function rebindKnowledgeDatabase(databasePath: string, worldId: string): void {
   if (!existsSync(databasePath)) return;
   const db = new DatabaseSync(databasePath);
@@ -882,7 +892,9 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     const stagingDir = path.join(path.resolve("worlds"), ".staging-" + id);
     stagingPath = stagingDir;
     await mkdir(stagingDir, { recursive: true });
-    // 只复制原文只读资产和基础世界资料；所有派生状态、计划、输出与运行记录从空白开始。
+    // Checkpoint SQLite before copying its main file; WAL sidecars and arbitrary
+    // source-world files are deliberately not copied into a new universe.
+    checkpointKnowledgeDatabase(path.join(sourceDir, "novel.db"));
     await cp(sourceDir, stagingDir, {
       recursive: true,
       filter: source => {
@@ -1035,6 +1047,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     await mkdir(stagingDir, { recursive: true });
     const parentDir = worldDir(parentId);
     await ensureBoundedUniverseCanonAssets(parentId, { projectRoot: path.resolve("."), worldDir: parentDir });
+    checkpointKnowledgeDatabase(path.join(parentDir, "novel.db"));
     await cp(parentDir, stagingDir, {
       recursive: true,
       filter: source => {
