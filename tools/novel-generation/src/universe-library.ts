@@ -1,6 +1,7 @@
 import { access, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { ensureBoundedUniverseCanonAssets } from "./canon-source.js";
+import { ensureSourceCanonLibraryIndex } from "./novel-kb.js";
 import { ensurePrivateLibraryIsolation } from "./library.js";
 
 /**
@@ -22,6 +23,10 @@ export async function resolveWorldLibraryDir(worldId: string, worldsRoot = path.
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   if (!pointer?.readOnly) {
     if (hasUniverseRecord) throw new Error("检测到 universe.json，但缺少有效的只读 source-canon.json 指针。拒绝把故事宇宙当作原文项目检索。");
+    // The source project's offline original.txt is authoritative. If its
+    // derived Library index is absent, reconstruct it from the verified catalog
+    // instead of returning an empty retrieval corpus.
+    await ensureSourceCanonLibraryIndex(worldId, worldDir);
     return path.join(worldDir, "library");
   }
   if (!pointer.sourceWorldId || !/^[a-z0-9][a-z0-9-]*$/i.test(pointer.sourceWorldId)) {
