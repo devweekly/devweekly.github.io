@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm, mkdir, readdir, writeFile, readFile, stat, utimes, copyFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { tmpdir } from "node:os";
 import {
   assignChapters, buildAnalysisUnits, buildCharacterDictionary, countMentions, dedupeChunkTexts, ensureSourceCanonLibraryIndex, groupAnalysisUnits, prepareCanonIndexInputs,
