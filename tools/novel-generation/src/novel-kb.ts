@@ -533,10 +533,11 @@ export async function indexNovelStructure(
   const rawChunks = await loadLibraryChunks(join(worldDir, "library"), worldId);
   if (!rawChunks.length) throw new Error("No indexed text found. Run ingest before index-story.");
 
-  const catalogDocument = await loadChapterCatalogDocument(worldId, options.catalogPath);
+  const catalogPath = options.catalogPath ?? join(resolve(worldDir, "..", ".."), "analysis", worldId, "chapter-index.json");
+  const catalogDocument = await loadChapterCatalogDocument(worldId, catalogPath);
   const catalog = catalogDocument?.chapters;
   if (!catalog) throw new Error("No chapter catalog. Run the corpus index script or pass --catalog.");
-  const prepared = await prepareCanonIndexInputs(worldDir, catalog, rawChunks, catalogDocument?.totalLines);
+  const prepared = await prepareCanonIndexInputs(worldDir, catalog, rawChunks, catalogDocument.totalLines);
   const chunks = prepared.chunks;
   if (!chunks.length) throw new Error("No chunks from original.txt were found in the library index.");
   const assignment = assignChapters(chunks, catalog, prepared.chapterStartOffsets);
