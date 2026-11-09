@@ -18,7 +18,7 @@ import {
   WORKBENCH_BODY_LIMIT
 } from "./constants.js";
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
-import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks, type CanonChunk } from "./canon-chapters.js";
+import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks, validateCanonCatalogAgainstText, type CanonChunk } from "./canon-chapters.js";
 import { chunkText } from "./library.js";
 import { chapterId as catalogChapterId, loadChapterCatalog, type CatalogChapter } from "./novel-kb.js";
 import { buildStoryStateGraph, filterGraph } from "./story-state-graph.js";
@@ -561,6 +561,7 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
     return offset + lineText.length - lineText.trimStart().length;
   };
   await ensureOriginalText();
+  if (originalText !== undefined) validateCanonCatalogAgainstText(catalog, originalText);
   const chapterStartOffsets = catalog.map(chapter => chapter.line == null ? undefined : lineStartOffset(chapter.line));
   const originalSourceHash = originalText === undefined ? undefined : createHash("sha256").update(originalText, "utf8").digest("hex");
   const canonChunks = selectCanonSourceChunks(chunks, originalSourceHash);
