@@ -22,7 +22,7 @@
 
 一个原文项目可以创建多个独立故事宇宙。原文是只读来源；每个宇宙有自己的 worldId、Story State、Story Arc、Story Plan、章节输出和运行历史。创建宇宙时指定任意原文章节和创作方向，第一章以该起点为准，不默认从原文末尾开始。
 
-第一阶段采用隔离目录与保守时点快照：创建时复制必要的非派生资产，生成宇宙本地、截至起点章节的 library/index.json，并对 novel.db 执行显式表白名单与章节截止过滤。未知表和不能证明可按章过滤的全书聚合表不进入快照；具有明确章节来源的记录按起点保守截断后复用。创建与 fork 都排除 analysis、Corpus Craft、Vane、Style Reference 目录，以及 world-bible.md、characters.md、timeline.md、fruit-worlds.md、yanfu-system.md、style-profile.md 等可能由全书分析生成的根级汇总文件；这些资料不从父宇宙继承；当前优先复用原著项目已有的完整 v6 Story Analysis，并按章节来源截断；无法安全复用的部分再通过后台知识构建补齐人物/关系/主线/伏笔等分析资料，并生成安全启动底稿与 as-of-analysis 文档，因此不会让未来剧情通过父宇宙设定文件绕过 SQLite/library 截止。原文目录只读；`original.txt` 在 Create/Fork 中优先使用 copy-on-write reflink 共享物理数据块并保持独立 inode，文件系统不支持时退回普通复制。按起点裁剪的 library 索引和 SQLite 快照仍必须独立保存，不能直接共享完整父级索引/数据库。
+第一阶段采用隔离目录与保守时点快照：创建时复制必要的非派生资产，生成宇宙本地、截至起点章节的 library/index.json，并对 novel.db 执行显式表白名单与章节截止过滤。未知表和不能证明可按章过滤的全书聚合表不进入快照；具有明确章节来源的记录按起点保守截断后复用。创建与 fork 都排除 analysis、Corpus Craft、Vane、Style Reference 目录，以及 world-bible.md、characters.md、timeline.md、fruit-worlds.md、yanfu-system.md、style-profile.md 等可能由全书分析生成的根级汇总文件；这些资料不从父宇宙继承；当前优先复用原著项目已有的完整 v6 Story Analysis，并按章节来源截断；无法安全复用的部分再通过后台知识构建补齐人物/关系/主线/伏笔等分析资料，并生成安全启动底稿与 as-of-analysis 文档，因此不会让未来剧情通过父宇宙设定文件绕过 SQLite/library 截止。原文目录只读；Create/Fork 必须把 `original.txt` 实际内容截断到所选章节之后的下一章标题之前，再写入宇宙本地副本。不得把完整原著通过 reflink、普通复制或其他方式留在历史宇宙目录中。子宇宙 library 的每条原文切片必须将 `source` 重绑定到本地 `worlds/<universe>/original.txt`，并将 `sourceHash` 重算为截断文件的 SHA-256；`chapterStart` 保持原文前缀偏移。子宇宙 `chapter-index.json` 的 `totalLines` 必须等于本地截断文件的真实行数。Fork 只能从父宇宙自己的 bounded original.txt 复制；缺失时可从原文项目重建 bounded prefix，但绝不允许把全书副本直接回退给子宇宙。
 
 宇宙元数据保存在各自目录的 universe.json：sourceWorldId、name、type、entryChapter、brief、createdAt。工作台支持列出、创建和切换宇宙；章节生成的首章 brief 会携带所选起始章节和创作方向。支持的类型包括原著主线、支线、人物故事、平行发展和自由续写，它们共用同一生成流水线。
 
