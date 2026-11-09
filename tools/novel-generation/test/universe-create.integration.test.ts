@@ -444,7 +444,7 @@ test("source chapter catalog reads project-root original.txt without a world-loc
     assert.equal(createResponse.status, 201, createBody);
     const created = JSON.parse(createBody) as { universe: { id: string } };
     const universeCanon = await readFile(join(root, "worlds", created.universe.id, "original.txt"), "utf8");
-    assert.equal(universeCanon, "第一章 大枪落幕\n第一章正文：李阎走进雨里。", "universe must own a chapter-bounded copy of the project-root canon");
+    assert.equal(universeCanon, "第一章 大枪落幕\n李阎走进雨里。", "universe must own a chapter-bounded copy of the project-root canon");
     assert.ok(!universeCanon.includes("第二章"), "future chapters must not leak into the universe's local corpus");
   } finally {
     if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
