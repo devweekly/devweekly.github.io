@@ -77,7 +77,7 @@ export async function runCachedStage(input: {
       if (hash(cached) === previous.outputHash && cached.trim()) {
         const value = cached.trimEnd();
         try { input.validate?.(value); return value; }
-        catch { /* Regenerate hash-valid but semantically invalid checkpoints. */ }
+        catch (error) { console.warn("[stage-cache] 阶段缓存语义校验失败，重新执行 " + input.key, error); }
       }
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
