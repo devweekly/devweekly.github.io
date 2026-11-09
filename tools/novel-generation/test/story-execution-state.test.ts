@@ -17,3 +17,14 @@ test("queued, running and paused executions are polled so external cancellation 
   for (const status of ["queued", "running", "paused"]) assert.equal(shouldPollStoryExecution(status), true);
   for (const status of ["completed", "failed", "cancelled", "stalled"]) assert.equal(shouldPollStoryExecution(status), false);
 });
+
+import { getStoryExecutionActions } from "../web/src/story-execution-state.js";
+
+test("execution controls always match the persisted lifecycle state", () => {
+  assert.deepEqual(getStoryExecutionActions("queued"), ["pause", "cancel"]);
+  assert.deepEqual(getStoryExecutionActions("running"), ["pause", "cancel"]);
+  assert.deepEqual(getStoryExecutionActions("paused"), ["resume", "cancel"]);
+  assert.deepEqual(getStoryExecutionActions("failed"), ["resume"]);
+  assert.deepEqual(getStoryExecutionActions("stalled"), ["resume"]);
+  for (const status of ["completed", "cancelled"]) assert.deepEqual(getStoryExecutionActions(status), []);
+});

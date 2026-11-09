@@ -2013,8 +2013,15 @@ app.post("/api/worlds/:worldId/story-executions/:executionId/cancel", async (req
     if (!task) return void res.status(404).json({error:"Story execution not found."});
     if (!["running","queued","paused"].includes(task.status)) return void res.status(409).json({error:"当前任务不能取消。",execution:task});
     const now = new Date().toISOString();
-    const updated = task.status === "paused"
-      ? {...task,status:"cancelled" as const,cancelRequested:true,completedAt:now,updatedAt:now}
+    // A worker only exists in this process. After a restart, an orphaned queued/running
+    // record must be cancellable immediately instead of waiting for a worker that no longer exists.
+    const workerIsAlive = activeStoryExecutions.has(id);
+    const cancelImmediately = task.status === "paused" || !workerIsAlive;
+    const updated = cancelImmediately
+      ? appendStoryExecutionEvent({
+          ...task, status:"cancelled" as const, cancelRequested:true,
+          completedAt:now, updatedAt:now
+        }, { at:now, type:"cancelled", message:workerIsAlive ? "已取消暂停任务。" : "任务没有活动执行器，已清理残留执行状态。" })
       : {...task,cancelRequested:true,updatedAt:now};
     await saveStoryExecution(updated); res.json({execution:updated});
   } catch (error) { sendError(res, error); }
