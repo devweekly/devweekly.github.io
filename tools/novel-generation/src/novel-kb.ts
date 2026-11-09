@@ -12,6 +12,8 @@ import {
   MIN_ANALYSIS_BATCH_CHARS
 } from "./constants.js";
 import { existsSync } from "node:fs";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { basename, join, relative, resolve } from "node:path";
 import {
   syncNovelChapters, syncNovelMentions, writeNovelKbMeta, upsertSeedCharacters, listNovelCharacters,
@@ -105,6 +107,35 @@ interface CanonIndexInputs {
 }
 
 const canonLibraryValidationCache = new Map<string, string>();
+const execFileAsync = promisify(execFile);
+
+/**
+ * The chapter catalog is also derived data. For a source world, regenerate it
+ * from the authoritative root original.txt when it is missing, malformed, or
+ * bound to a different source generation. Never use the full-book script for
+ * a historical universe's bounded local copy.
+ */
+async function rebuildSourceChapterCatalog(
+  worldId: string,
+  projectRoot: string,
+  originalPath: string,
+  catalogPath: string
+): Promise<ChapterCatalogDocument | undefined> {
+  if (resolve(originalPath) !== resolve(projectRoot, "original.txt")) return undefined;
+  const scriptPath = join(projectRoot, "analysis", "build-corpus-index.mjs");
+  if (!existsSync(scriptPath)) return undefined;
+  try {
+    await rename(catalogPath, catalogPath + ".corrupt-" + Date.now());
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  await execFileAsync(process.execPath, [scriptPath], {
+    cwd: projectRoot,
+    env: { ...process.env, NOVEL_WORLD_ID: worldId }
+  });
+  return loadChapterCatalogDocument(worldId, catalogPath);
+}
+
 
 /**
  * Reconstruct missing or incomplete chapter chunks from the canonical offline
@@ -150,15 +181,28 @@ async function ensureSourceCanonLibraryIndexUnlocked(
   }
   const originalText = await readFile(originalPath, "utf8");
   const originalHash = createHash("sha256").update(originalText, "utf8").digest("hex");
-  const catalogDocument = await loadChapterCatalogDocument(worldId, join(projectRoot, "analysis", worldId, "chapter-index.json"));
-  if (!catalogDocument) return false;
-  validateCanonCatalogAgainstText(catalogDocument.chapters, originalText, catalogDocument.totalLines, catalogDocument.sourceHash);
+  const catalogPath = join(projectRoot, "analysis", worldId, "chapter-index.json");
+  let catalogDocument: ChapterCatalogDocument | undefined;
+  try {
+    catalogDocument = await loadChapterCatalogDocument(worldId, catalogPath);
+    if (catalogDocument) {
+      validateCanonCatalogAgainstText(catalogDocument.chapters, originalText, catalogDocument.totalLines, catalogDocument.sourceHash);
+    }
+  } catch {
+    // A stale/malformed chapter catalog is recoverable derived state when the
+    // root original.txt and deterministic catalog builder are both available.
+    catalogDocument = undefined;
+  }
+  if (!catalogDocument) {
+    catalogDocument = await rebuildSourceChapterCatalog(worldId, projectRoot, originalPath, catalogPath);
+    if (!catalogDocument) return false;
+    validateCanonCatalogAgainstText(catalogDocument.chapters, originalText, catalogDocument.totalLines, catalogDocument.sourceHash);
+  }
   if (!catalogDocument.sourceHash) {
     // Older catalogs predate corpus fingerprints. Once their line count and
     // every chapter heading have been verified against the local full text,
     // pin this exact source generation so same-shape text replacements cannot
     // silently reuse the catalog later.
-    const catalogPath = join(projectRoot, "analysis", worldId, "chapter-index.json");
     const rawCatalog = JSON.parse(await readFile(catalogPath, "utf8")) as Record<string, unknown>;
     if (rawCatalog.sourceHash === undefined) {
       rawCatalog.sourceHash = originalHash;
