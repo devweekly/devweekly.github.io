@@ -597,7 +597,7 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
     throw error;
   }
   const catalog = catalogDocument?.chapters;
-  if (!catalog) {
+  if (!catalogDocument || !catalog) {
     throw new Error(
       "找不到有效的原著章节目录：" + catalogPath +
       (originalPath ? "；已找到原文全文：" + originalPath : "；未找到 original.txt") +
