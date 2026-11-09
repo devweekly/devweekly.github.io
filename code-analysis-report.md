@@ -90,3 +90,48 @@
 5. **P5** 其余可读性/性能改进按需推进。
 
 > 以上为分析报告，未修改任何代码。
+
+
+---
+
+## 五、修复实施记录（2026-11-09）
+
+本节按当前 `main` 的实现核对原报告。原报告基于 `d6a85559`，行号和部分判断已过时；以下是本轮实际修改结果，而不是把原建议全部照单全收。
+
+### 已修复
+
+| 原报告项 | 当前处理 | 结果 |
+|---|---|---|
+| 1. world 队列拒绝传播 | 队列前序 Promise 增加 rejection isolation。补充说明：当前队列 tail 实际代表 release gate，不直接承接 task rejection，因此原报告描述的失败传播路径在当前实现中并未复现；防御性隔离仍保留。 | 已处理 |
+| 2 / 15. 双重 world mutation 锁 | 删除 `worldMutationLocks` Set、`acquireWorldMutation` / `releaseWorldMutation`。归档、创建、分叉统一使用同一 `serializeWorld` 队列，不再维护两套互斥状态。 | 已处理 |
+| 4. 未保护 JSON.parse | 章节目录损坏错误带文件路径；故事单元 CLI JSON 解析带路径上下文；卷级情节的数据库 JSON 数组校验带 volume/column；损坏缓存有明确诊断。 | 已处理 |
+| 5. 静默吞错 | 执行记录、人物档案、人物章节状态缓存、阶段缓存、卷级情节缓存记录损坏原因；bounded library 区分文件缺失与访问错误。移除不安全知识库失败清理的静默 catch：删除失败必须中止，不能继续使用可能包含未来剧情的数据库。 | 已处理 |
+| 6. Anti-AI 产物与最终稿不一致 | 当前普通章节和长章节均在复核决策完成后，把最终选用的稿件写回 `06b-anti-ai-edited.md`；restore 时该文件已经是恢复后的正文。该问题在本轮前已由后续代码修复，本轮核对确认，无需重复修改。 | 已解决 |
+| 7. review 双重解析 | 普通章节和长章节改为 async review callback，在缓存校验时解析一次并复用解析结果。 | 已处理 |
+| 8. 连续性备注增长 | 保留已有去重逻辑；增加 `MAX_ACTIVE_CONTINUITY_NOTES = 40`，只保留最近 40 条有效备注。新增 55 条输入的边界回归测试。 | 已处理 |
+| 9. canonFacts 来源标记 | 当前已使用 `confidence: confirmed / inferred / original` 表达来源等级；状态合并会把续写新增事实强制标为 `original`，已有回归测试覆盖模型误报 confirmed 的情况。无需再添加重复的 `origin` 字段。 | 已解决 |
+| 12. listWorlds 串行读取 | 世界目录元数据改为 `Promise.all` 并行读取；单个目录损坏只跳过该目录并留下日志。 | 已处理 |
+| 13. 正常进度使用 stderr | 长章节的场景、修订、蓝图修订和成稿统计改为 stdout；真正的错误仍走 stderr。 | 已处理 |
+
+### 经核查不应按原建议直接修改
+
+1. **SQLite transaction work() 不做原地 busy retry。** `BEGIN IMMEDIATE` 先获取写保留锁；如果 work callback 已经执行了部分 SQL，直接在同一事务里重放 callback 可能重复执行写入或闭包副作用。当前只对 BEGIN/COMMIT 做 busy retry，work 失败时整体 rollback。已在代码中明确该重试边界。若未来需要业务级重试，应重试整个幂等事务，而不是在打开的事务里重放 callback。
+2. **canonFacts 不需要额外 origin 字段。** 当前 `confidence=original` 已是写作状态事实的来源标记，且有迁移和测试保障；事件则使用独立的 `origin` 字段。增加第二个来源字段会制造双重事实来源。
+3. **Anti-AI 文件名问题已经修复。** 两条写作流水线都在复核后保存最终选用稿，未再保留“文件名像编辑稿、内容实际是恢复稿”的状态。
+4. **writing-brief 事实包为空不能仅凭一次运行改词面匹配。** 它取决于当前知识库是否有可用人物档案、情节线、伏笔和章节事件，以及这些内容是否与本次任务相关。扩大匹配会把无关资料塞入写作上下文，不能为追求非零字数而牺牲相关性。应结合知识库数据和多章运行记录再决定是否调整。
+
+### 暂缓的低优先级重构
+
+- `long-chapter.ts` 当前约 620 行。它确实混合场景规划、生成、审查和状态更新，但本轮先修正跨两条流水线的共享问题；大规模拆分会扩大回归面，且不直接改善当前功能正确性。后续应以明确的模块接口逐步提取，而不是机械按行数拆文件。
+- `iron-laws.ts` / `runtime-check.ts` 的同步小文件 I/O 目前不是已证实的性能瓶颈；将其异步化会扩散到调用接口，暂不值得。
+- 不改变 writing-brief 的相关性算法，直到有真实多章样本证明它系统性漏掉应注入的事实。
+
+### 验证
+
+- 最新提交：`8f1eec66196567f0d41d148caf6110ea2e650378`
+- `npm run typecheck`：通过
+- `npm test`：283 / 283 通过
+- `npm run build`：通过
+- GitHub Actions：Novel generation checks 成功
+
+CI：<https://github.com/devweekly/devweekly.github.io/actions/runs/42580045392>
