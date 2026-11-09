@@ -87,17 +87,32 @@ export function syncVolumeArcs(worldDir: string, worldId: string, arcs: VolumeAr
   }
 }
 
+function parseArcStringArray(value: unknown, column: string, volume: number): string[] {
+  try {
+    const parsed: unknown = JSON.parse(String(value));
+    if (!Array.isArray(parsed) || parsed.some(item => typeof item !== "string")) {
+      throw new Error("expected a JSON string array");
+    }
+    return parsed;
+  } catch (error) {
+    throw new Error("novel_arcs." + column + " is invalid for volume " + volume + ": " + String(error));
+  }
+}
+
 export function listVolumeArcs(worldDir: string, worldId: string): VolumeArc[] {
   const db = openWorldDatabase(worldDir, worldId);
   try {
     const exists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='novel_arcs'").get();
     if (!exists) return [];
     const rows = db.prepare("SELECT volume,title,summary,key_turns_json,characters_json FROM novel_arcs ORDER BY volume").all() as Array<Record<string, string | number>>;
-    return rows.map(row => ({
-      volume: Number(row.volume), title: String(row.title), summary: String(row.summary),
-      keyTurns: JSON.parse(String(row.key_turns_json)) as string[],
-      characters: JSON.parse(String(row.characters_json)) as string[]
-    }));
+    return rows.map(row => {
+      const volume = Number(row.volume);
+      return {
+        volume, title: String(row.title), summary: String(row.summary),
+        keyTurns: parseArcStringArray(row.key_turns_json, "key_turns_json", volume),
+        characters: parseArcStringArray(row.characters_json, "characters_json", volume)
+      };
+    });
   } finally {
     db.close();
   }
