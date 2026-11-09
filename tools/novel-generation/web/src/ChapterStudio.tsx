@@ -70,7 +70,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
   generatingStoryUnit?"正在准备完整故事单元":
   activeWorldId!==worldId&&!storyUnitReady?"当前宇宙尚未准备好完整故事单元，系统正在自动创建；若失败，请在下方重新生成":
   storyUnit?.execution.status==="completed"?"当前故事单元已经自然收束，请创建新的故事单元继续":
-  activeUniverse?.archivedAt?"当前宇宙已归档，请先恢复宇宙":"";
+  universes.find(item=>item.id===activeWorldId)?.archivedAt?"当前宇宙已归档，请先恢复宇宙":"";
  const refresh=async()=>{
   if(!activeWorldId)return;const requestId=++refreshGeneration.current;const previewRequestId=++previewGeneration.current;setLoading(true);
   try{
