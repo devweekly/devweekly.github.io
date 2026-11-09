@@ -211,3 +211,19 @@ python3 -c "import sqlite3; print(sqlite3.connect('worlds/conghuoniao/novel.db')
 - 原著结构化章节库：`worlds/<sourceWorldId>/novel.db`，章节目录与分析数据；新建宇宙不会为了补齐它而修改源数据库。
 - 每个故事宇宙：`worlds/<universeId>/original.txt` 必须是起点边界内的 bounded copy；配套 `analysis/<universeId>/chapter-index.json` 与 `library/index.json` 的 hash 都绑定到该 bounded 文件。
 - 故事宇宙不得在本地副本缺失时回退读取根目录全文；这是防止未来剧情泄漏的硬边界。
+
+
+### 离线目录生成器自身故障（2026-11-09，追加核查）
+
+本次继续核查发现，目录生成脚本存在一个独立的确定性缺陷：`analysis/build-corpus-index.mjs` 已导入 `createHash`，并在输出对象中引用 `sourceHash`，但此前没有计算和声明该变量。执行脚本会在写出目录前触发 `ReferenceError: sourceHash is not defined`。因此，用户即使确认 `original.txt` 存在，也无法通过该脚本重新生成与当前全文绑定的章节目录；磁盘上可能继续保留旧版 `chapter-index.json`，让后续路径校验表现为目录缺失、目录过期或来源指纹缺失。
+
+已修复：读取原文后立即对原始 UTF-8 内容计算 SHA-256，并将该值写入 `chapter-index.json`。哈希基于原始文件字节对应的 UTF-8 字符串计算，不对 CRLF/LF 换行归一化后的内容计算，避免目录指纹与实际 `original.txt` 不一致。新增 `test/corpus-index-script.test.ts`，在隔离临时目录中真实执行生成脚本，验证脚本成功退出、卷章目录正确、行数正确，且 `sourceHash` 与原文 SHA-256 完全相等。
+
+该修复解决的是「目录生成器无法正常重建」这一确定缺陷；它不等于已在用户本机验证了未提交的 `original.txt`。本机验收仍应在 `tools/novel-generation` 目录执行：
+
+```bash
+node analysis/build-corpus-index.mjs
+node --import tsx --test test/corpus-index-script.test.ts test/canon-source.test.ts test/novel-kb.test.ts test/universe-create.integration.test.ts
+```
+
+生成后应核对 `analysis/conghuoniao/chapter-index.json` 的 `chapterCount`、`totalLines`、`sourceHash`，再执行 `index-story --world conghuoniao`。不要通过重新 `ingest` 来修复目录，因为 `ingest` 会使派生知识表失效。
