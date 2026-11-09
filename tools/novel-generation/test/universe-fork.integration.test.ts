@@ -25,7 +25,7 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
     await mkdir(join(parentDir, "library"), { recursive: true });
     await mkdir(join(root, "worlds", "source-world", "library"), { recursive: true });
     await mkdir(join(root, "analysis", "source-world"), { recursive: true });
-    const sourceLines = Array.from({ length: 200 }, (_, index) =>
+    const sourceLines = Array.from({ length: 201 }, (_, index) =>
       index === 0 ? "原文第一章" : index === 1 ? "此前正文" : index === 99 ? "原文第二章" : index === 100 ? "起点正文" : index === 199 ? "原文第三章" : index === 200 ? "未来原文" : ""
     );
     const sourceOriginalText = sourceLines.join("\n");
@@ -46,7 +46,7 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
       ]
     }));
     await writeFile(join(root, "analysis", "source-world", "chapter-index.json"), JSON.stringify({
-      schemaVersion: 1, totalLines: 200,
+      schemaVersion: 1, totalLines: 201,
       volumes: [{ volume: 1, chapters: [
         { sequenceInVolume: 1, printedNumber: 1, title: "原文第一章", label: "原文第一章", line: 1 },
         { sequenceInVolume: 2, printedNumber: 2, title: "原文第二章", label: "原文第二章", line: 100 },
