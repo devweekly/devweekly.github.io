@@ -276,9 +276,16 @@ export async function ensureBoundedUniverseCanonAssets(
   validateCanonCatalogAgainstText(prefixCatalog, boundedText);
   const offsets = prefixCatalog.map(chapter => chapter.line == null ? undefined : starts[chapter.line - 1]);
   const aligned = alignCanonChapterGroups(prefixCatalog, canonical, offsets);
-  validateCanonChunksAgainstText(aligned, boundedText, offsets);
   const boundedChunks = aligned.flatMap((item, index) => {
-    if (item.chunks.length) return item.chunks.map(chunk => ({
+    // Partial or damaged chapter groups must be rebuilt from the bounded
+    // canonical text just like entirely missing groups. Do not let validation
+    // throw before the recovery path gets a chance to replace them.
+    let existingGroupIsComplete = item.chunks.length > 0;
+    if (existingGroupIsComplete) {
+      try { validateCanonChunksAgainstText([item], boundedText, offsets); }
+      catch { existingGroupIsComplete = false; }
+    }
+    if (existingGroupIsComplete) return item.chunks.map(chunk => ({
       ...chunk, source: sourceKey, sourceHash: boundedHash,
       ...(offsets[index] !== undefined ? { chapterStart: offsets[index] } : {})
     }));
@@ -304,6 +311,10 @@ export async function ensureBoundedUniverseCanonAssets(
     }));
   });
   if (!boundedChunks.length) throw new Error("故事宇宙原文切片无法映射或重建，拒绝发布空检索索引。");
+  const verifiedBounded = alignCanonChapterGroups(prefixCatalog, boundedChunks, offsets);
+  validateCanonChunksAgainstText(verifiedBounded, boundedText, offsets);
+  const missingBounded = verifiedBounded.find(item => !item.chunks.length);
+  if (missingBounded) throw new Error("故事宇宙原文切片重建后仍缺少章节：" + missingBounded.chapter.title);
   const now = new Date().toISOString();
   const sameChunks = JSON.stringify(library?.chunks ?? []) === JSON.stringify(boundedChunks);
   const nextLibrary = {
