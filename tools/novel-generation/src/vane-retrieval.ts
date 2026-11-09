@@ -6,7 +6,8 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rename, rm } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { loadLibraryChunks } from "./library.js";
-import { buildAnalysisUnits } from "./novel-kb.js";
+import { buildAnalysisUnits, ensureSourceCanonLibraryIndex } from "./novel-kb.js";
+import { ensureBoundedUniverseCanonAssets } from "./canon-source.js";
 import type { CorpusCraftChapter } from "./corpus-craft.js";
 
 type VaneCollection = {
@@ -91,6 +92,8 @@ export async function publishVaneIndexDirectory(staging: string, indexDir: strin
 }
 
 export async function rebuildVaneIndex(worldId:string,worldDir=resolve("worlds",worldId)):Promise<{documents:number;vectorMode:boolean}> {
+  await ensureBoundedUniverseCanonAssets(worldId, { projectRoot: resolve(worldDir, "..", ".."), worldDir });
+  await ensureSourceCanonLibraryIndex(worldId, worldDir);
   const dim=Number(process.env.VANE_EMBEDDING_DIM??8);
   if(!Number.isInteger(dim)||dim<1||dim>4096)throw new Error("VANE_EMBEDDING_DIM must be an integer between 1 and 4096.");
   const indexDir=resolve(worldDir,"vane-index");
