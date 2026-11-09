@@ -41,7 +41,7 @@ test("universe copy creates an independent local copy from the root corpus", asy
     const target = join(root, "worlds", "u-1234567890abcdef");
     await mkdir(source, { recursive: true });
     await mkdir(target, { recursive: true });
-    const original = "canonical root corpus";
+    const original = "canonical root corpus\\nfuture chapter";
     await writeFile(join(root, "original.txt"), original, "utf8");
     assert.equal(await copyOriginalCanonToUniverse("source-world", target, root, 2), true);
     assert.equal(await readFile(join(target, "original.txt"), "utf8"), "canonical root corpus");
