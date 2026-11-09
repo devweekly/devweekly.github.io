@@ -74,15 +74,47 @@ export function alignCanonChapterGroups(
 }
 
 
+/** Verify that chapter line numbers still point at the exact headings in the offline corpus. */
+export function validateCanonCatalogAgainstText(
+  catalog: CatalogChapter[],
+  originalText: string,
+  expectedTotalLines?: number
+): void {
+  const normalized = originalText.replace(/^\uFEFF/, "");
+  const lines = normalized.split(/\r?\n/);
+  if (expectedTotalLines !== undefined && lines.length !== expectedTotalLines) {
+    throw new Error("chapter-index.json 的 totalLines 与 original.txt 不一致（目录 " + expectedTotalLines + " 行，原文 " + lines.length + " 行）。请重新运行 node analysis/build-corpus-index.mjs。");
+  }
+  let previousLine = 0;
+  const identities = new Set<string>();
+  for (const chapter of catalog) {
+    const line = chapter.line;
+    if (!Number.isSafeInteger(line) || (line ?? 0) <= previousLine || (line ?? 0) > lines.length) {
+      throw new Error("chapter-index.json 的章节行号缺失、越界或顺序异常：" + chapter.title + "。请重新生成原文目录。");
+    }
+    const actual = (lines[(line as number) - 1] ?? "").trim();
+    if (actual !== chapter.title.trim()) {
+      throw new Error("chapter-index.json 的章节行号已过期：" + chapter.title + " 应位于 L" + line + "，但原文该行是「" + actual.slice(0, 80) + "」。请重新运行 node analysis/build-corpus-index.mjs。");
+    }
+    const identity = chapter.volume + ":" + chapter.sequenceInVolume;
+    if (identities.has(identity)) throw new Error("chapter-index.json 存在重复章节身份：" + identity + "。请重新生成原文目录。");
+    identities.add(identity);
+    previousLine = line as number;
+  }
+}
+
 /** Keep only chunks from the immutable original.txt source, never auxiliary imports. */
 export function selectCanonSourceChunks<T extends CanonChunk>(chunks: T[], originalSourceHash?: string): T[] {
   return chunks.filter(chunk => {
-    const isCanonicalPath = typeof chunk.source === "string" && /(?:^|\/)original\.txt$/i.test(chunk.source);
+    const source = typeof chunk.source === "string" ? chunk.source.replace(/\\/g, "/") : "";
+    const parts = source.split("/").filter(Boolean);
+    const isCanonicalPath = parts.at(-1)?.toLowerCase() === "original.txt" && !parts.includes("private");
     if (!isCanonicalPath) return false;
-    // If original.txt is available, require an exact hash. If it is stored
-    // outside the project tree, the explicit source path is the remaining
-    // provenance; repeated titles still require chapterStart evidence.
-    if (originalSourceHash !== undefined && chunk.sourceHash) return chunk.sourceHash === originalSourceHash;
+    // When the full source is available, a missing hash is not evidence of
+    // freshness. Old unverified chunks must yield to the exact local corpus.
+    if (originalSourceHash !== undefined) return chunk.sourceHash === originalSourceHash;
+    // If the source file is unavailable, an explicit original.txt path is the
+    // only remaining provenance; repeated titles still require chapterStart.
     return true;
   });
 }
