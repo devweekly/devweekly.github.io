@@ -164,7 +164,7 @@ test("stale canonical slices are discarded and rebuilt automatically from origin
   try {
     const world = join(root, "worlds", "source-world");
     await mkdir(world, { recursive: true });
-    const original = "第一章 忍·土\\n正文完整内容。\\n第二章 后续\\n后续正文。";
+    const original = "第一章 忍·土\n正文完整内容。\n第二章 后续\n后续正文。";
     await writeFile(join(root, "original.txt"), original, "utf8");
     const hash = createHash("sha256").update(original, "utf8").digest("hex");
     const stale = { ...chunk("legacy:0", "第一章 忍·土", "旧版本正文", 0),
@@ -175,7 +175,7 @@ test("stale canonical slices are discarded and rebuilt automatically from origin
     ], [stale]);
     const first = prepared.chunks.filter(item => item.chapter === "第一章 忍·土");
     assert.ok(first.length > 0);
-    assert.equal(first.map(item => item.text).join(""), "第一章 忍·土\\n正文完整内容。");
+    assert.equal(first.map(item => item.text).join(""), "第一章 忍·土\n正文完整内容。");
     assert.ok(first.every(item => item.sourceHash === hash));
     assert.ok(prepared.chunks.some(item => item.chapter === "第二章 后续"));
   } finally {
