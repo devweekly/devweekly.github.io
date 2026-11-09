@@ -212,8 +212,8 @@ export async function ensureBoundedUniverseCanonAssets(
     const canonical = selectCanonSourceChunks(library.chunks).filter(chunk =>
       !chunk.sourceHash || chunk.sourceHash === originalHash || chunk.sourceHash === boundedHash
     );
-    if (library.chunks.some(chunk => /(?:^|\/)original\.txt$/i.test(chunk.source ?? "")) && !canonical.length) {
-      throw new Error("故事宇宙原文切片 hash 与本地原文不匹配，拒绝把不明来源切片重绑到时点副本。");
+    if (!canonical.length) {
+      throw new Error("故事宇宙没有可验证的 original.txt 原文切片，无法安全迁移检索索引；请从原文项目重新建立该宇宙的时点索引。");
     }
     const starts: Array<number | undefined> = [];
     let offset = 0;
@@ -229,6 +229,7 @@ export async function ensureBoundedUniverseCanonAssets(
     const boundedChunks = aligned.flatMap(item => item.chunks).map(chunk => ({
       ...chunk, source: sourceKey, sourceHash: boundedHash
     }));
+    if (!boundedChunks.length) throw new Error("故事宇宙原文切片无法映射到正式章节目录，拒绝发布空检索索引。");
     const nextLibrary = { ...library, worldId, updatedAt: new Date().toISOString(), chunks: boundedChunks };
     const temporary = libraryIndexPath + ".bounded.tmp";
     await writeFile(temporary, JSON.stringify(nextLibrary, null, 2) + "\n", "utf8");
