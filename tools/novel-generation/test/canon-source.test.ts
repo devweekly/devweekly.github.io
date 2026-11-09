@@ -101,7 +101,7 @@ test("legacy universe repair truncates full local canon and rebinds library hash
     await writeFile(join(root, "original.txt"), fullText, "utf8");
     await writeFile(join(root, "analysis", sourceId, "chapter-index.json"), JSON.stringify(catalog));
     await writeFile(join(universeDir, "universe.json"), JSON.stringify({
-      id: universeId, sourceWorldId: sourceId, entryChapter: "第二章", entryChapterIndex: 1
+      id: universeId, sourceWorldId: sourceId, entryChapter: "第二章", entryChapterIndex: 1, entryChapterId: "V01-C002"
     }));
     await writeFile(join(universeDir, "original.txt"), fullText, "utf8");
     await writeFile(join(universeDir, "source-canon.json"), JSON.stringify({ sourceWorldId: sourceId, readOnly: true }));
@@ -140,6 +140,10 @@ test("legacy universe repair truncates full local canon and rebinds library hash
     assert.equal(secondLibrary.updatedAt, firstLibrary.updatedAt);
     assert.equal((await stat(libraryPath)).mtimeMs, firstLibraryStat.mtimeMs);
     assert.equal((await stat(catalogPath)).mtimeMs, firstCatalogStat.mtimeMs);
+    await writeFile(join(universeDir, "universe.json"), JSON.stringify({
+      id: universeId, sourceWorldId: sourceId, entryChapter: "第二章", entryChapterIndex: 1, entryChapterId: "V01-C003"
+    }));
+    await assert.rejects(() => ensureBoundedUniverseCanonAssets(universeId, { projectRoot: root }), /稳定章节身份不一致/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
