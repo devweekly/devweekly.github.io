@@ -225,7 +225,7 @@ async function runKnowledgeBuildStep(
 ): Promise<{ exitCode: number | null; output: string; error: string }> {
   return await new Promise(resolve => {
     const cliArgs = [...buildCliEntryArgs(command), "--world", worldId];
-    const child = spawn(process.execPath, cliArgs, {
+    const child = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", ...cliArgs], {
       cwd: process.cwd(), env: process.env, stdio: ["ignore", "pipe", "pipe"]
     });
     let output = "", error = "", settled = false, lastCurrent = 0;
@@ -288,8 +288,11 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
         });
         await progressWrite;
         record.exitCode = result.exitCode;
-        record.output = result.output.slice(-12000);
-        record.error = result.error.slice(-6000);
+        // stderr is diagnostic output, not automatically a failed step. Node 24's
+        // SQLite ExperimentalWarning is suppressed at the child runtime; retain any
+        // remaining stderr in diagnostic output without painting successful steps red.
+        record.output = [result.output, result.error].filter(Boolean).join("\n").slice(-12000);
+        record.error = result.exitCode === 0 ? undefined : result.error.slice(-6000);
         record.completedAt = new Date().toISOString();
         record.status = classifyKnowledgeBuildStepResult(step.name, result.exitCode, result.output);
         if (record.status === "failed") failed++;
