@@ -54,6 +54,13 @@ test("repeated chapter titles without source offsets fail closed", () => {
   ]), /缺少 chapterStart 原文位置/);
 });
 
+test("legacy repeated-title chunks without offsets are left for full-text reconstruction", () => {
+  const aligned = alignCanonChapterGroups(catalog, [
+    { chapter: "第一章", chunkIndex: 0, start: 0, end: 5, text: "无法判断属于哪一卷" }
+  ], [0, 10, 20, 30], true);
+  assert.deepEqual(aligned.map(item => item.chunks.length), [0, 0, 0, 0]);
+});
+
 test("a repeated title group is matched by its exact original source offset", () => {
   const aligned = alignCanonChapterGroups(catalog, [
     chunk("第一章", "卷二第一章", 20),
