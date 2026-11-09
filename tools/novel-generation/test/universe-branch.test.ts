@@ -94,3 +94,15 @@ test("historical universe asset policy retains ordinary source material and nest
     assert.equal(shouldCopyUniverseAsset(file), true, file);
   }
 });
+
+test("universe staging copies only the SQLite knowledge database", () => {
+  assert.equal(shouldCopyUniverseAsset(""), true);
+  assert.equal(shouldCopyUniverseAsset("novel.db"), true);
+  assert.equal(shouldCopyUniverseAsset("original.txt"), false);
+  assert.equal(shouldCopyUniverseAsset("library/index.json"), false);
+  assert.equal(shouldCopyUniverseAsset("analysis/chapter-index.json"), false);
+  assert.equal(shouldCopyUniverseAsset("private-library/index.json"), false);
+  assert.equal(shouldCopyUniverseAsset(".env"), false);
+  assert.equal(shouldCopyUniverseAsset("custom-private-notes.md"), false);
+});
+
