@@ -107,8 +107,8 @@ interface CanonIndexInputs {
 const canonLibraryValidationCache = new Map<string, string>();
 
 /**
- * Reconstruct missing chapter chunks from the canonical offline text and its
- * verified catalog. Existing auxiliary imports and valid chapter chunks remain.
+ * Reconstruct missing or incomplete chapter chunks from the canonical offline
+ * text and its verified catalog. Existing auxiliary imports and valid chapter chunks remain.
  */
 export async function ensureSourceCanonLibraryIndex(
   worldId: string,
