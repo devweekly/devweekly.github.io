@@ -397,6 +397,8 @@ interface StoryUniverse {
   entryChapterId?: string;
   entryChapterIndex?: number;
   entryOrdinal?: number;
+  /** SHA-256 of the full source corpus at universe creation; prevents silent repair from a changed book. */
+  sourceCanonHash?: string;
   brief: string;
   parentUniverseId?: string;
   forkPoint?: string;
@@ -817,6 +819,9 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
       return void res.status(400).json({ error: "必须通过章节目录提供有效的章节索引，不能只提交可能重复的章节标题。" });
     }
     const selectedIndex = entryChapterIndex as number;
+    const canonicalPath = await resolveOriginalCanonPath(rootSourceId, { projectRoot: path.resolve("."), worldDir: sourceDir });
+    const sourceCanonText = await readFile(canonicalPath, "utf8");
+    const sourceCanonHash = createHash("sha256").update(sourceCanonText, "utf8").digest("hex");
     const selectedChapter = canonChapters[selectedIndex];
     if (!selectedChapter || selectedChapter.title !== entryChapter) return void res.status(400).json({ error: "所选章节索引或标题不匹配，请刷新原文目录后重试。" });
     const incompletePast = canonChapters.slice(0, selectedIndex + 1).find(chapter => !chapter.text.trim());
@@ -900,6 +905,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     if (entryOrdinal !== Number(entryRecord.ordinal)) throw new Error("章节起点 ordinal 校验失败，已终止创建。");
     const universe: StoryUniverse = {
       id, sourceWorldId: rootSourceId, name, type, entryChapter, entryChapterId, entryChapterIndex: selectedIndex, entryOrdinal, brief,
+      sourceCanonHash,
       createdAt: new Date().toISOString()
     };
     await writeFile(path.join(stagingDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
@@ -909,7 +915,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     await writeFile(path.join(stagingDir, "universe-origin-context.md"), originContext + "\n", "utf8");
     const boundedTotalLines = await writeUniverseLibrarySnapshot(rootSourceId, stagingDir, id, selectedIndex);
     await writeUniverseAnalysisCatalogSnapshot(rootSourceId, stagingDir, id, selectedIndex, boundedTotalLines);
-    await writeFile(path.join(stagingDir, "source-canon-as-of.json"), JSON.stringify({ sourceWorldId: rootSourceId, entryChapter, entryChapterId, entryChapterIndex: selectedIndex, entryOrdinal, policy: "chapter-scoped-evidence-only", fullBookAggregates: "excluded" }, null, 2) + "\n", "utf8");
+    await writeFile(path.join(stagingDir, "source-canon-as-of.json"), JSON.stringify({ sourceWorldId: rootSourceId, sourceCanonHash, entryChapter, entryChapterId, entryChapterIndex: selectedIndex, entryOrdinal, policy: "chapter-scoped-evidence-only", fullBookAggregates: "excluded" }, null, 2) + "\n", "utf8");
     await rename(stagingDir, targetDir);
     const knowledgeBuild = req.body?.buildKnowledge === false ? null : await serializeWorld(id, () => startKnowledgeBuild(id));
     res.status(201).json({ universe, ...(knowledgeBuild ? { knowledgeBuild } : {}) });
@@ -1025,6 +1031,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
       entryChapterId: parent.entryChapterId,
       entryChapterIndex: parentEntryIndex,
       entryOrdinal: parent.entryOrdinal,
+      ...(parent.sourceCanonHash ? { sourceCanonHash: parent.sourceCanonHash } : {}),
       brief: parent.brief,
       parentUniverseId: parent.id, forkPoint: forkRun.id,
       createdAt: new Date().toISOString()
