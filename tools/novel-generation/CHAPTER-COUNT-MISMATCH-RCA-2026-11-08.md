@@ -185,3 +185,29 @@ python3 -c "import sqlite3; print(sqlite3.connect('worlds/conghuoniao/novel.db')
 6. 新增回归测试：只有项目根目录 `original.txt`、有 `chapter-index.json`、没有 world-local 全文和 `library/index.json` 时，`/source-chapters` 仍返回完整章节列表。
 
 这次问题与章节数量、标题去重或 `chapterStart` 对齐无关；此前的严格 hash / 重复标题位置验证仍然保留。
+
+### 离线语料链路二次审计与完整修复（2026-11-09）
+
+本次不是单点修路径，而是从原文文件、章节目录、检索切片、SQLite 章节表、故事宇宙快照到分叉恢复逐段审计。审计发现并修复了以下遗漏：
+
+1. **缺失切片的重建顺序错误。** 之前将重建切片追加到切片数组末尾，再按标题重新对齐。若缺失的是中间章节，而后续卷中存在同名章节，后续章节会先被消费，导致中间章节仍显示缺失。现在按 catalogIndex 将重建组插入原目录位置，再验证完整正文覆盖。
+2. **章节数据库没有目录级完整性。** `assignChapters()` 以前只为存在检索切片的章节写 `novel_chapters` 行，合法的无切片章节没有稳定 ID 记录。现在每个正式目录章节都会写入稳定的 `Vxx-Cxxx` 行；无切片章节使用空 chunk range，`chaptersWithoutChunks` 仍明确报告检索覆盖缺口。
+3. **创建宇宙曾修复源数据库。** 为补齐源数据库章节行，旧流程会在源世界执行 `indexNovelStructure()`，导致创建一个新宇宙也修改原著项目的数据库。现在只在 staging 副本中重建 bounded `novel.db`，并只验证起点及之前的章节目录；源项目数据库不因创建分支而改写。
+4. **staging 路径不是正式 worldId。** staging 目录名是 `.staging-<id>`，不能直接当作 worldId 传给原文路径解析器。准备切片时现在优先读取 staging 中 `universe.json` 的正式 ID，并仍以 staging 本地 bounded `original.txt` 为实际正文来源。
+5. **宇宙 catalog 快照读取了错误目录。** 写入阶段目录快照时，旧代码从最终 `worlds/<id>` 读取原文，而文件实际仍在 staging 目录，ENOENT 被当成可忽略缺失，造成宇宙有正文和 Library 却没有自己的 `chapter-index.json`。现在从 staging targetDir 读取。
+6. **离线目录缺少源指纹。** `build-corpus-index.mjs` 现在将全文 SHA-256 写入 `chapter-index.json`。旧目录第一次经过完整行数和标题验证后，会自动补写当前原文 hash。后续即使全文行数和标题不变，只要正文内容变化，也会识别为不同语料版本。
+7. **派生缓存损坏恢复。** 缺失或 JSON 语法损坏的 `library/index.json` 会从离线原文和目录重建；损坏文件保留为 `index.json.corrupt-<timestamp>` 供诊断。hashless 旧切片不被信任，直接从全文重建；明确 hash 不匹配时不混用旧文本。损坏的 annotations/entities JSON 同样隔离并清理对应派生注释。
+8. **缓存校验指纹不充分。** 原来只用文件大小和 mtime，可能漏掉同长度替换。现在校验缓存包含原文 SHA-256。
+9. **宇宙可能从已变化的根原文重建旧历史。** 新宇宙在创建时保存完整原著 `sourceCanonHash`，分叉继承该指纹。若根原文变化，不能用新全文覆盖旧宇宙；旧宇宙如果本地 bounded 副本丢失且没有创建时指纹，也拒绝猜测恢复。
+10. **宇宙复制采用显式 allow-list。** staging 只复制 SQLite `novel.db`（复制前 checkpoint WAL）；不再把未知文件、全书 `original.txt`、任意私人笔记或其他派生文件一并复制。bounded 原文、Library、目录和 as-of 分析由专门快照流程重新生成。
+
+验证覆盖新增/调整的回归场景：根目录全文存在但 world-local 全文和 Library 都不存在；Library 缺失或 JSON 损坏；重复标题中间章节缺切片；目录存在但章节数据库缺失；创建宇宙时源数据库保持不变；staging 生成自己的 bounded catalog 和数据库；分叉时只使用父宇宙 bounded 本地全文；根原文变化后旧宇宙拒绝被静默改写。
+
+### 最终离线文件约定
+
+- 原著项目全文：`tools/novel-generation/original.txt`，本地文件，不提交 Git。
+- 原著目录：`analysis/<sourceWorldId>/chapter-index.json`，记录总行数、章节顺序、行号和全文 hash。
+- 原著检索切片：`worlds/<sourceWorldId>/library/index.json`，是可重建派生缓存，不是原文存在的前提。
+- 原著结构化章节库：`worlds/<sourceWorldId>/novel.db`，章节目录与分析数据；新建宇宙不会为了补齐它而修改源数据库。
+- 每个故事宇宙：`worlds/<universeId>/original.txt` 必须是起点边界内的 bounded copy；配套 `analysis/<universeId>/chapter-index.json` 与 `library/index.json` 的 hash 都绑定到该 bounded 文件。
+- 故事宇宙不得在本地副本缺失时回退读取根目录全文；这是防止未来剧情泄漏的硬边界。
