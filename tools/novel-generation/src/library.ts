@@ -292,6 +292,8 @@ interface CachedDocument {
 interface CachedSearchIndex {
   mtimeMs: number;
   size: number;
+  privateMtimeMs?: number;
+  privateSize?: number;
   total: number;
   documentFrequency: Map<string, number>;
   documents: CachedDocument[];
@@ -299,6 +301,7 @@ interface CachedSearchIndex {
 const searchCache = new Map<string, CachedSearchIndex>();
 
 export async function loadLibraryChunks(libraryDir: string, worldId: string): Promise<LibraryChunk[]> {
+  await ensurePrivateLibraryIsolation(libraryDir, worldId);
   const indexPath = join(libraryDir, "index.json");
   const index = JSON.parse(await readFile(indexPath, "utf8")) as LibraryIndex;
   if (index.worldId !== worldId) throw new Error("Library index world mismatch: " + worldId);
@@ -306,19 +309,36 @@ export async function loadLibraryChunks(libraryDir: string, worldId: string): Pr
 }
 
 async function loadSearchIndex(indexPath: string): Promise<CachedSearchIndex> {
+  const libraryDir = dirname(indexPath);
+  const initial = JSON.parse(await readFile(indexPath, "utf8")) as LibraryIndex;
+  await ensurePrivateLibraryIsolation(libraryDir, initial.worldId);
   const info = await stat(indexPath);
+  const privateIndexPath = join(dirname(libraryDir), "private-library", "index.json");
+  let privateInfo: Awaited<ReturnType<typeof stat>> | undefined;
+  try { privateInfo = await stat(privateIndexPath); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
   const cached = searchCache.get(indexPath);
-  if (cached && cached.mtimeMs === info.mtimeMs && cached.size === info.size) return cached;
+  if (cached && cached.mtimeMs === info.mtimeMs && cached.size === info.size &&
+      cached.privateMtimeMs === privateInfo?.mtimeMs && cached.privateSize === privateInfo?.size) return cached;
 
   const index = JSON.parse(await readFile(indexPath, "utf8")) as LibraryIndex;
+  const privateIndex = privateInfo
+    ? JSON.parse(await readFile(privateIndexPath, "utf8")) as LibraryIndex
+    : undefined;
+  if (privateIndex && privateIndex.worldId !== index.worldId) throw new Error("Private library index world mismatch: " + index.worldId);
+  const chunks = [...index.chunks, ...(privateIndex?.chunks ?? [])];
   const documentFrequency = new Map<string, number>();
-  const documents = index.chunks.map(chunk => {
+  const documents = chunks.map(chunk => {
     const counts = new Map<string, number>();
     for (const term of terms(chunk.text)) counts.set(term, (counts.get(term) ?? 0) + 1);
     for (const term of counts.keys()) documentFrequency.set(term, (documentFrequency.get(term) ?? 0) + 1);
     return { chunk, counts };
   });
-  const next = { mtimeMs: info.mtimeMs, size: info.size, total: Math.max(1, documents.length), documentFrequency, documents };
+  const next = {
+    mtimeMs: info.mtimeMs, size: info.size,
+    privateMtimeMs: privateInfo?.mtimeMs, privateSize: privateInfo?.size,
+    total: Math.max(1, documents.length), documentFrequency, documents
+  };
   searchCache.set(indexPath, next);
   return next;
 }
