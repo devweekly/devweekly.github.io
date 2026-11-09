@@ -104,12 +104,12 @@ npm run dev -- write --world conghuoniao --mode continuation \
 - `01-main-plot.md`、`02-creative-options.md`：主线方案与创意备选
 - `03-chapter-plan.md`：主编确定的章节蓝图
 - `04-scene-draft.md`、`05-dialogue-edited.md`、`06-voice-edited.md`：正文、对白修订和叙事声音统一
-- `05-literary-patches.json`（长章节为 `06-literary-patches.json`）：编辑决策、逐条应用的 Patch 与被拒绝原因；`05-literary-edited.md` / `06b-anti-ai-edited.md` 为应用后的正文
+- `05-literary-patches-raw.json` / `05-literary-patches-applied.json`（长章节为 `06-literary-patches-raw.json` / `06-literary-patches-applied.json`）：模型原始 Patch 与逐条应用结果；`05-literary-edited.md` / `06b-anti-ai-edited.md` 为应用后的正文
 - `07-continuity-review.md`：终审必改清单；没有必改项时只有一行结论
 - `chapter.md`：最终复查通过后的章节
 - `08-state-update.json`：合并后的下一章状态（默认已自动持久化）
 - `07-review-round-*-raw.txt`、`07-continuity-review-round-N.json`、`09-quality-summary.json`：终审原始输出、结构化复查结果与修复轮数
-- `chapter-blocked.md`：终审两轮后仍有明确硬伤时保留的最新成稿；本次运行失败且故事状态不更新
+- `chapter-blocked.md`：终审一轮自动修复后仍有明确硬伤时保留的最新成稿；本次运行失败且故事状态不更新
 
 章节生成成功后，状态管理员会提取人物、事件、正史事实和情节线变化，并自动写入 SQLite 权威状态及兼容 JSON 快照，供下一章直接使用。只有模型对照、盲测等需要候选互相隔离的场景才传 `--no-apply-state`；普通续写不要使用该参数。状态提取或持久化失败会使本次命令失败，不能把状态未更新的章节当作可继续写作的成功结果。`continuation` 模式的 `--source` 必须是你提供或有权使用的文本，本地 `private/` 不入库。
 
@@ -710,7 +710,7 @@ GET  /api/worlds/<universe-id>/knowledge-build
 
 任务按顺序运行 `analyze-story`、`analyze-arcs`、`ensure-style-profile`、`analyze-profiles`、`analyze-character-states`、`analyze-corpus-craft`、`export-asof-dossier` 和 `vane-index`。如果原著项目已有完整 v6 故事分析，Create/Fork 会将其按章节来源严格截断后写入新宇宙；起点一致且快照完整时直接复用，跳过耗时的全文 LLM 分析。旧版本已创建的宇宙在首次续写或手动启动知识构建时，也会从 `sourceWorldId` 回填同一份时点安全快照。`ensure-style-profile` 只在当前宇宙缺少 Style Profile 时，从本宇宙按起点截断的章节样本重建，不覆盖用户已有的人工风格资料。Create/Fork 默认自动启动该后台任务，创建接口可通过 `buildKnowledge:false` 显式关闭；知识构建与章节生成进程可以并行启动，但新宇宙第一章的 CLI 写作进程会等待 `style-profile`、`character-profiles`、`character-states`、`as-of-dossier` 四项最低写作上下文就绪；等待发生在后台运行任务内，创建/生成 API 不需要用户手动等待。可选的 corpus-craft 与 Vane 索引不阻塞写作。若准备失败，会自动利用阶段缓存重试一次，仍失败则安全停止，不会用空上下文生成第一章。知识库写入 `novel.db`，章节状态提交写入独立的 `story.db`。状态与各步骤日志摘要保存在 `.output/<world>/workbench/knowledge-build.json`。任务重启中断会被标记为失败，可重新触发。Vane 原生包未安装时，知识构建将该可选步骤标记为 skipped，而不是把整个知识构建标成失败；已配置 embedding endpoint 但请求失败或维度不匹配时，该步骤明确失败。两种情况都不影响 SQLite/BM25 写作路径。
 
-Chapter Studio 已提供显式构建入口和逐步骤状态面板，并每 2 秒轮询任务状态。Create/Fork 默认自动触发后台构建；构建期间仍可直接生成章节。分析写入 novel.db，章节状态写入独立的 story.db，因此不需要等待分析完成。归档和 fork 仍与构建互斥，避免复制或变更正在写入的宇宙目录。
+Chapter Studio 已提供显式构建入口和逐步骤状态面板，并每 2 秒轮询任务状态。Create/Fork 默认自动触发后台构建；章节生成 API 可先返回任务，但新宇宙第一章的 CLI 子进程会等待最低写作上下文就绪，不会与 Style Profile/人物档案构建竞态。知识准备失败时安全停止，已完成阶段缓存保留，重新触发可续跑。分析写入 novel.db，章节状态写入独立的 story.db。归档和 fork 仍与构建互斥，避免复制或变更正在写入的宇宙目录。
 
 
 历史宇宙不会复制原文项目的全书 world-bible.md。Create/Fork 会为每个宇宙生成自己的最小 world-bible.md，记录原文起点、父宇宙/分叉信息、正史边界和创作方向，并明确指向本地截断后的 universe-entry.md 与 universe-origin-context.md。这样既避免全书设定中的未来剧情泄漏，也满足章节生成流程对 world-bible.md 的运行要求。
