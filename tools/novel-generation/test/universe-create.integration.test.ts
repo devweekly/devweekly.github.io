@@ -195,14 +195,17 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
 
     // Inject a post-staging failure while building the bounded library snapshot.
     await writeFile(join(source, "library", "index.json"), "{ malformed json");
-    const failedCreate = await fetch(`http://127.0.0.1:${address.port}/api/worlds/source-world/universes`, {
+    const recoveredCreate = await fetch(`http://127.0.0.1:${address.port}/api/worlds/source-world/universes`, {
       method: "POST",
       headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
-      body: JSON.stringify({ name: "应回滚的宇宙", entryChapter: "第二章", entryChapterIndex: 1, type: "free", brief: "故障注入", buildKnowledge: false })
+      body: JSON.stringify({ name: "损坏索引自动恢复", entryChapter: "第二章正文", entryChapterIndex: 1, type: "free", brief: "从离线全文重建派生索引", buildKnowledge: false })
     });
-    assert.equal(failedCreate.status, 500);
+    const recoveredBody = await recoveredCreate.text();
+    assert.equal(recoveredCreate.status, 201, recoveredBody);
+    const recoveredPayload = JSON.parse(recoveredBody) as { universe: { id: string } };
+    assert.ok(await readFile(join(root, "worlds", recoveredPayload.universe.id, "original.txt"), "utf8"));
     const remainingWorlds = (await readdir(join(root, "worlds"))).sort();
-    assert.deepEqual(remainingWorlds, ["source-world", payload.universe.id].sort());
+    assert.deepEqual(remainingWorlds, ["source-world", payload.universe.id, recoveredPayload.universe.id].sort());
     assert.equal(remainingWorlds.some(name => name.startsWith(".staging-")), false);
 
   } finally {
