@@ -64,6 +64,13 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const batchProgress={completed:activeStoryExecution?.completedChapters.length??0,total:activeStoryExecution?.targetChapterCount??0};
  const visibleStoryExecution=selectVisibleStoryExecution(worldStoryExecutions,storyExecution);
  const visibleStoryExecutionHistory=visibleStoryExecution?[visibleStoryExecution,...storyExecutionHistory.filter(item=>item.id!==visibleStoryExecution.id)]:storyExecutionHistory;
+ const generationBlockReason=!activeWorldId?"请选择一个故事宇宙":
+  storyTaskBlocksWrites?"存在尚未结束的完整故事任务；请先在页面顶部恢复或取消该任务":
+  busy?"当前宇宙有章节任务正在执行，请等待完成":
+  generatingStoryUnit?"正在准备完整故事单元":
+  activeWorldId!==worldId&&!storyUnitReady?"当前宇宙尚未准备好完整故事单元，系统正在自动创建；若失败，请在下方重新生成":
+  storyUnit?.execution.status==="completed"?"当前故事单元已经自然收束，请创建新的故事单元继续":
+  activeUniverse?.archivedAt?"当前宇宙已归档，请先恢复宇宙":"";
  const refresh=async()=>{
   if(!activeWorldId)return;const requestId=++refreshGeneration.current;const previewRequestId=++previewGeneration.current;setLoading(true);
   try{
@@ -322,6 +329,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
     {getStoryExecutionActions(visibleStoryExecution.status).includes("cancel")&&<Button size="small" danger onClick={()=>void controlStoryExecution("cancel")}>取消并释放写入锁</Button>}
    </Space>}
   />}
+  {!visibleStoryExecution&&generationBlockReason&&<Alert style={{marginBottom:18}} type="warning" showIcon message="当前不能启动下一章" description={generationBlockReason}/>}
   <Card title="故事宇宙分支" style={{marginBottom:18}}>
    {universes.length===0?<Empty description="还没有独立故事宇宙。可以从原文项目选择章节创建。"/>:
     <Space direction="vertical" style={{width:"100%"}} size="small">
