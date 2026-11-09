@@ -569,9 +569,41 @@ async function ensureStagedChapterDatabase(
 }
 
 async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEntry[]> {
-  const catalogDocument = await loadChapterCatalogDocument(sourceWorldId);
+  // Resolve every offline asset from the Workbench project root, not from a
+  // caller's incidental current working directory.
+  const sourceProjectRoot = path.resolve(worldDir(sourceWorldId), "..", "..");
+  const catalogPath = path.join(sourceProjectRoot, "analysis", sourceWorldId, "chapter-index.json");
+  let originalPath: string | undefined;
+  try {
+    originalPath = await resolveOriginalCanonPath(sourceWorldId, {
+      projectRoot: sourceProjectRoot,
+      worldDir: worldDir(sourceWorldId)
+    });
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+
+  let catalogDocument;
+  try {
+    catalogDocument = await loadChapterCatalogDocument(sourceWorldId, catalogPath);
+  } catch (error) {
+    if (error instanceof Error && /Chapter catalog has no chapters/.test(error.message)) {
+      throw new Error(
+        "原文目录文件存在但没有有效章节：" + catalogPath +
+        (originalPath ? "；已找到原文全文：" + originalPath : "；同时未找到 original.txt") +
+        "。请检查目录 JSON，或在 tools/novel-generation 下运行 node analysis/build-corpus-index.mjs 重建目录。"
+      );
+    }
+    throw error;
+  }
   const catalog = catalogDocument?.chapters;
-  if (!catalog) throw new Error("原著章节目录不存在，无法安全创建故事宇宙。请先构建 chapter-index.json。");
+  if (!catalog) {
+    throw new Error(
+      "找不到有效的原著章节目录：" + catalogPath +
+      (originalPath ? "；已找到原文全文：" + originalPath : "；未找到 original.txt") +
+      (originalPath ? "。原文存在但目录是独立派生文件，请运行 node analysis/build-corpus-index.mjs 重建 chapter-index.json。" : "。请先将 original.txt 放在项目根目录，再构建 chapter-index.json。")
+    );
+  }
   const libraryDir = path.join(worldDir(sourceWorldId), "library");
   await ensureSourceCanonLibraryIndex(sourceWorldId, worldDir(sourceWorldId));
   let chunks: CanonChapterChunk[] = [];
