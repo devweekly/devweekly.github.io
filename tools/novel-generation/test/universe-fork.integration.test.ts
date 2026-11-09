@@ -60,7 +60,7 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
     await writeFile(join(parentDir, "world-bible.md"), "# Test universe\n");
     await writeFile(join(parentDir, "universe.json"), JSON.stringify({
       id: parentId, sourceWorldId: "source-world", name: "父宇宙", type: "free",
-      entryChapter: "原文第二章", entryChapterId: "V01-C002", entryChapterIndex: 1, entryOrdinal: 2, brief: "测试", createdAt: "2026-11-01T00:00:00.000Z"
+      entryChapter: "原文第二章", entryChapterId: "c2", entryChapterIndex: 1, entryOrdinal: 2, brief: "测试", createdAt: "2026-11-01T00:00:00.000Z"
     }));
     await writeFile(join(parentDir, "source-canon.json"), JSON.stringify({ sourceWorldId: "source-world", readOnly: true }));
     await writeFile(join(parentDir, "library", "index.json"), JSON.stringify({
