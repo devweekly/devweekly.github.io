@@ -280,7 +280,7 @@ export async function prepareCanonIndexInputs(worldDir: string, catalog: Catalog
       chapterStartOffsets.push(lineIndex < 0 ? undefined :
         (starts[lineIndex] ?? 0) + line.length - line.trimStart().length);
     }
-    const aligned = alignCanonChapterGroups(catalog, canonChunks, chapterStartOffsets);
+    const aligned = alignCanonChapterGroups(catalog, canonChunks, chapterStartOffsets, true);
     // A chapter is rebuildable not only when it has no chunks, but also when
     // its existing group is partial, has gaps, or carries invalid offsets.
     // Validate each group independently so one damaged chapter does not
