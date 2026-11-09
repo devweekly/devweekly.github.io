@@ -150,6 +150,59 @@ test("legacy universe repair truncates full local canon and rebinds library hash
   }
 });
 
+test("legacy universe repair replaces partially covered chapter slices from the bounded original", async () => {
+  const root = await mkdtemp(join(tmpdir(), "canon-source-partial-repair-"));
+  try {
+    const sourceId = "source-world";
+    const universeId = "u-1234567890abcdef";
+    const universeDir = join(root, "worlds", universeId);
+    const fullText = "第一章\\n正文一\\n正文二\\n第二章\\n正文三";
+    const fullHash = createHash("sha256").update(fullText, "utf8").digest("hex");
+    const firstStart = fullText.indexOf("第一章");
+    const secondStart = fullText.indexOf("第二章");
+    const firstChapter = fullText.slice(firstStart, secondStart).trim();
+    await mkdir(join(root, "worlds", sourceId), { recursive: true });
+    await mkdir(join(universeDir, "library"), { recursive: true });
+    await mkdir(join(root, "analysis", sourceId), { recursive: true });
+    await writeFile(join(root, "original.txt"), fullText, "utf8");
+    await writeFile(join(root, "analysis", sourceId, "chapter-index.json"), JSON.stringify({
+      totalLines: 5,
+      volumes: [{ volume: 1, chapters: [
+        { sequenceInVolume: 1, title: "第一章", label: "第一章", line: 1 },
+        { sequenceInVolume: 2, title: "第二章", label: "第二章", line: 4 }
+      ] }]
+    }));
+    await writeFile(join(universeDir, "universe.json"), JSON.stringify({
+      id: universeId, sourceWorldId: sourceId, entryChapter: "第二章", entryChapterIndex: 1,
+      entryChapterId: "V01-C002", sourceCanonHash: fullHash
+    }));
+    await writeFile(join(universeDir, "source-canon.json"), JSON.stringify({ sourceWorldId: sourceId, readOnly: true }));
+    await writeFile(join(universeDir, "original.txt"), fullText, "utf8");
+    await writeFile(join(universeDir, "library", "index.json"), JSON.stringify({
+      schemaVersion: 1, worldId: universeId, createdAt: "2026-01-01T00:00:00.000Z", updatedAt: "2026-01-01T00:00:00.000Z",
+      chunks: [
+        { id: "partial-first", source: "worlds/source-world/original.txt", sourceHash: fullHash,
+          chapter: "第一章", chunkIndex: 0, start: 0, end: "第一章\\n正文一".length,
+          chapterStart: firstStart, text: "第一章\\n正文一" },
+        { id: "complete-second", source: "worlds/source-world/original.txt", sourceHash: fullHash,
+          chapter: "第二章", chunkIndex: 0, start: 0, end: "第二章\\n正文三".length,
+          chapterStart: secondStart, text: "第二章\\n正文三" }
+      ]
+    }));
+    assert.equal(await ensureBoundedUniverseCanonAssets(universeId, { projectRoot: root }), true);
+    const repaired = JSON.parse(await readFile(join(universeDir, "library", "index.json"), "utf8")) as {
+      chunks: Array<{ chapter: string; text: string; start: number; end: number }>;
+    };
+    const firstChunks = repaired.chunks.filter(item => item.chapter === "第一章");
+    assert.equal(firstChunks[0]!.start, 0);
+    assert.equal(firstChunks.at(-1)!.end, firstChapter.length);
+    assert.equal(firstChunks.map(item => item.text).join(""), firstChapter);
+    assert.ok(repaired.chunks.some(item => item.chapter === "第二章"));
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("legacy universe repair reconstructs a missing local copy only as a bounded prefix", async () => {
   const root = await mkdtemp(join(tmpdir(), "canon-source-recover-"));
   try {
