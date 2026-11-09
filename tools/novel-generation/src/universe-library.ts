@@ -33,6 +33,9 @@ export async function resolveWorldLibraryDir(worldId: string, worldsRoot = path.
     throw new Error("故事宇宙的 Source Canon 指针无效；为避免检索到其他世界的剧情，已停止检索。");
   }
   await ensureBoundedUniverseCanonAssets(worldId, { projectRoot: path.dirname(absoluteWorldsRoot), worldDir });
+  // The universe-local original.txt is already bounded. Validate and repair
+  // its derived catalog/library before any retrieval caller can read it.
+  await ensureSourceCanonLibraryIndex(worldId, worldDir);
   const boundedLibraryDir = path.join(worldDir, "library");
   try {
     await access(path.join(boundedLibraryDir, "index.json"));
