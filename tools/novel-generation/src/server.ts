@@ -18,9 +18,9 @@ import {
   WORKBENCH_BODY_LIMIT
 } from "./constants.js";
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
-import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks, validateCanonCatalogAgainstText, type CanonChunk } from "./canon-chapters.js";
+import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks, splitCanonLines, type CanonChunk } from "./canon-chapters.js";
 import { chunkText, ensurePrivateLibraryIsolation } from "./library.js";
-import { chapterId as catalogChapterId, loadChapterCatalog, loadChapterCatalogDocument, type CatalogChapter } from "./novel-kb.js";
+import { chapterId as catalogChapterId, loadChapterCatalog, loadChapterCatalogDocument, prepareCanonIndexInputs, type CatalogChapter } from "./novel-kb.js";
 import { buildStoryStateGraph, filterGraph } from "./story-state-graph.js";
 import { archiveStyleReference, listStyleReferenceHistory, listStyleReferences, putStyleReference, readActiveStyleReference, readStyleReferenceVersion } from "./style-references.js";
 import { getCandidate, getRun, listCandidates, listRuns, recoverInterruptedRuns, saveCandidate, saveRun, type StoryPlanCandidate, type WorkbenchRun } from "./workbench-store.js";
@@ -527,9 +527,9 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
   const catalogDocument = await loadChapterCatalogDocument(sourceWorldId);
   const catalog = catalogDocument?.chapters;
   if (!catalog) throw new Error("原著章节目录不存在，无法安全创建故事宇宙。请先构建 chapter-index.json。");
-  let chunks: CanonChapterChunk[] = [];
   const libraryDir = path.join(worldDir(sourceWorldId), "library");
   await ensurePrivateLibraryIsolation(libraryDir, sourceWorldId);
+  let chunks: CanonChapterChunk[] = [];
   try {
     const index = JSON.parse(await readFile(path.join(libraryDir, "index.json"), "utf8")) as { worldId?: string; chunks?: CanonChapterChunk[] };
     if (index.worldId !== sourceWorldId || !Array.isArray(index.chunks)) {
@@ -538,45 +538,15 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
     chunks = index.chunks;
   } catch (error) {
     // The full text + chapter catalog are sufficient to populate the selector.
-    // The retrieval index is a derived cache and must not make the canon disappear.
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
-  let originalText: string | undefined;
-  let originalLines: string[] | undefined;
-  const ensureOriginalText = async (): Promise<boolean> => {
-    if (originalText !== undefined) return true;
-    try {
-      const originalPath = await resolveOriginalCanonPath(sourceWorldId);
-      originalText = await readFile(originalPath, "utf8");
-      originalLines = originalText.split(/\r?\n/);
-      return true;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
-      throw error;
-    }
-  };
-  const lineStartOffset = (line: number): number | undefined => {
-    if (!originalText || !Number.isSafeInteger(line) || line < 1) return undefined;
-    let offset = 0;
-    for (let current = 1; current < line; current++) {
-      const newline = originalText.indexOf("\n", offset);
-      if (newline < 0) return undefined;
-      offset = newline + 1;
-    }
-    const lineText = originalLines?.[line - 1] ?? "";
-    return offset + lineText.length - lineText.trimStart().length;
-  };
-  await ensureOriginalText();
-  if (originalText !== undefined) validateCanonCatalogAgainstText(catalog, originalText, catalogDocument.totalLines);
-  const chapterStartOffsets = catalog.map(chapter => chapter.line == null ? undefined : lineStartOffset(chapter.line));
-  const originalSourceHash = originalText === undefined ? undefined : createHash("sha256").update(originalText, "utf8").digest("hex");
-  const canonChunks = selectCanonSourceChunks(chunks, originalSourceHash);
-  const aligned = alignCanonChapterGroups(catalog, canonChunks, chapterStartOffsets);
-  const readOriginalText = async (catalogIndex: number): Promise<string> =>
-    originalLines ? readCatalogChapterText(catalog, originalLines, catalogIndex) : "";
+  const prepared = await prepareCanonIndexInputs(worldDir(sourceWorldId), catalog, chunks, catalogDocument.totalLines);
+  const aligned = alignCanonChapterGroups(catalog, prepared.chunks, prepared.chapterStartOffsets);
+  const originalLines = prepared.originalText === undefined ? undefined : splitCanonLines(prepared.originalText);
   const result: CanonChapterEntry[] = [];
   for (const item of aligned) {
-    const text = joinCanonChunkText(item.chunks) || await readOriginalText(item.catalogIndex);
+    const text = joinCanonChunkText(item.chunks) ||
+      (originalLines ? readCatalogChapterText(catalog, originalLines, item.catalogIndex) : "");
     result.push({
       title: item.chapter.title,
       text,
@@ -589,7 +559,6 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
   }
   return result;
 }
-
 
 /**
  * Story analysis and Corpus Craft require the chapter catalog as well as library chunks.
@@ -660,8 +629,10 @@ async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: st
     // canonical full text below instead of treating a missing cache as no canon.
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
-  const catalog = await loadChapterCatalog(sourceWorldId);
+  const catalogDocument = await loadChapterCatalogDocument(sourceWorldId);
+  const catalog = catalogDocument?.chapters;
   if (!catalog) throw new Error("原著章节目录不存在，无法创建有边界的知识切片快照。");
+  const prepared = await prepareCanonIndexInputs(worldDir(sourceWorldId), catalog, source.chunks, catalogDocument.totalLines);
   const nextChapterLineValue = catalog[entryIndex + 1]?.line;
   const nextChapterLine = typeof nextChapterLineValue === "number" ? nextChapterLineValue : undefined;
   if (catalog[entryIndex + 1] && (!Number.isSafeInteger(nextChapterLine) || Number(nextChapterLine) < 2)) {
@@ -670,22 +641,11 @@ async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: st
   const originalPath = await resolveOriginalCanonPath(sourceWorldId);
   const originalText = await readFile(originalPath, "utf8");
   const boundedOriginalText = truncateCanonAtLine(originalText, nextChapterLine);
-  const originalSourceLines = originalText.split(/\r?\n/);
-  const boundedLineCount = boundedOriginalText.split(/\r?\n/).length;
-  const offsets = catalog.map(chapter => {
-    if (chapter.line == null || chapter.line < 1) return undefined;
-    let offset = 0;
-    for (let line = 1; line < chapter.line; line++) {
-      const next = originalText.indexOf("\n", offset);
-      if (next < 0) return undefined;
-      offset = next + 1;
-    }
-    const lineText = originalSourceLines[chapter.line - 1] ?? "";
-    return offset + lineText.length - lineText.trimStart().length;
-  });
+  const originalSourceLines = splitCanonLines(originalText);
+  const boundedLineCount = splitCanonLines(boundedOriginalText).length;
+  const offsets = prepared.chapterStartOffsets;
   const sourceHash = createHash("sha256").update(boundedOriginalText, "utf8").digest("hex");
-  const canonChunks = selectCanonSourceChunks(source.chunks, createHash("sha256").update(originalText, "utf8").digest("hex"));
-  const aligned = alignCanonChapterGroups(catalog, canonChunks, offsets);
+  const aligned = alignCanonChapterGroups(catalog, prepared.chunks, offsets);
   // Rebind provenance to the bounded file that is actually stored in this
   // universe. Keeping the parent's full-book hash would make index-story reject
   // every child chunk after the original copy is correctly truncated.
