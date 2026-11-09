@@ -192,7 +192,10 @@ export async function ensureBoundedUniverseCanonAssets(
   }
   const entry = catalog[entryIndex]!;
   const expectedEntryId = "V" + String(entry.volume).padStart(2, "0") + "-C" + String(entry.sequenceInVolume).padStart(3, "0");
-  if (universe.entryChapterId && universe.entryChapterId !== expectedEntryId) {
+  // New universes store the stable catalog ID. Older worlds may carry a
+  // database-local legacy ID; those remain governed by the persisted index
+  // plus exact title/line evidence rather than being misread as catalog IDs.
+  if (universe.entryChapterId && /^V\\d{2}-C\\d{3}$/.test(universe.entryChapterId) && universe.entryChapterId !== expectedEntryId) {
     throw new Error("故事宇宙 entryChapterId 与原文目录中的稳定章节身份不一致，拒绝猜测起点。");
   }
   for (let index = 0; index <= entryIndex; index++) {
