@@ -186,7 +186,7 @@ test("missing source chapter catalog is generated automatically from original.tx
     await mkdir(analysisDir, { recursive: true });
     await copyFile(resolve("analysis", "build-corpus-index.mjs"), join(analysisDir, "build-corpus-index.mjs"));
     await writeFile(join(root, "original.txt"),
-      "第一章 开端\\n正文甲。\\n第二章 转折\\n正文乙。", "utf8");
+      "第一章 开端\n正文甲。\n第二章 转折\n正文乙。", "utf8");
 
     assert.equal(await ensureSourceCanonLibraryIndex("source-world", world), true);
     const catalog = JSON.parse(await readFile(join(analysisDir, "source-world", "chapter-index.json"), "utf8")) as {
