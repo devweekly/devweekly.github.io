@@ -1376,6 +1376,7 @@ function appendStoryExecutionEvent(task: StoryExecution, event: StoryExecution["
   return { ...task, events: [...(task.events ?? []), event].slice(-500) };
 }
 const activeStoryExecutions = new Map<string, Promise<void>>();
+const storyExecutionControllers = new Map<string, AbortController>();
 const storyExecutionReservations = new Set<string>();
 const chapterGenerationReservations = new Set<string>();
 function storyExecutionUnitPath(worldId: string, storyUnitId?: string): string {
@@ -1505,7 +1506,7 @@ async function recordSingleChapterCompletion(worldId: string, storyUnitId: strin
 }
 
 /** Run one ordinary chapter through the existing CLI pipeline and its existing quality/state gates. */
-async function executeStoryUnitChapter(worldId: string, previousChapterPath: string | undefined, brief: string, model?: string, storyUnitId?: string, onRunStarted?: (run: WorkbenchRun) => Promise<void>): Promise<WorkbenchRun> {
+async function executeStoryUnitChapter(worldId: string, previousChapterPath: string | undefined, brief: string, model?: string, storyUnitId?: string, onRunStarted?: (run: WorkbenchRun) => Promise<void>, signal?: AbortSignal): Promise<WorkbenchRun> {
   const dir = worldDir(worldId);
   const universe = await readUniverse(worldId);
   if (universe?.archivedAt) throw new Error("当前故事宇宙已归档，不能继续完整故事执行。");
@@ -1540,12 +1541,24 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
   ];
   await saveRun({ ...run, status: "running", updatedAt: new Date().toISOString() });
   const result = await new Promise<{ code: number | null; output: string; errors: string }>(resolveResult => {
-    const child = spawn(process.execPath, args, { cwd: process.cwd(), env: process.env, stdio: ["ignore", "pipe", "pipe"] });
+    const child = spawn(process.execPath, args, { cwd: process.cwd(), env: process.env, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
     let output = "", errors = "", settled = false;
+    const finish = (result: { code: number | null; output: string; errors: string }) => {
+      if (settled) return;
+      settled = true; signal?.removeEventListener("abort", abort); resolveResult(result);
+    };
+    const abort = () => {
+      if (child.pid && process.platform !== "win32") {
+        try { process.kill(-child.pid, "SIGTERM"); return; } catch { /* direct-child fallback */ }
+      }
+      child.kill("SIGTERM");
+    };
+    signal?.addEventListener("abort", abort, { once: true });
+    if (signal?.aborted) abort();
     child.stdout.setEncoding("utf8").on("data", chunk => { output += chunk; });
     child.stderr.setEncoding("utf8").on("data", chunk => { errors += chunk; });
-    child.on("error", error => { if (!settled) { settled = true; resolveResult({ code: null, output, errors: errors + error.message }); } });
-    child.on("close", code => { if (!settled) { settled = true; resolveResult({ code, output, errors }); } });
+    child.on("error", error => finish({ code: null, output, errors: errors + error.message }));
+    child.on("close", code => finish({ code, output, errors }));
   });
   const saved = result.output.match(/Saved chapter:\s*(.+)/)?.[1]?.trim();
   const chapterPath = saved ? path.resolve(saved) : undefined;
@@ -1702,7 +1715,7 @@ async function reconcileStoryExecutionCurrentRun(input: StoryExecution): Promise
   return cleared;
 }
 
-async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
+async function executeStoryUnitTask(initial: StoryExecution, signal?: AbortSignal): Promise<void> {
   const worldId = initial.worldId;
   let task = initial;
   try {
@@ -1761,8 +1774,14 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
       const chapterRun = await executeStoryUnitChapter(worldId, previousChapterPath, brief, task.model, task.storyUnitId, async currentRun => {
         task = appendStoryExecutionEvent({ ...task, currentRunId: currentRun.id, updatedAt: new Date().toISOString() }, { at: new Date().toISOString(), type: "chapter_started", message: "开始生成新章节", runId: currentRun.id });
         await saveStoryExecution(task);
-      });
+      }, signal);
       if (chapterRun.status !== "completed" || !chapterRun.chapterPath) {
+        const latestControl = await getStoryExecution(worldId, task.id);
+        if (signal?.aborted || latestControl?.cancelRequested) {
+          const cancelledAt = new Date().toISOString();
+          task = appendStoryExecutionEvent({ ...task, status: "cancelled", cancelRequested: true, completedAt: cancelledAt, updatedAt: cancelledAt, currentRunId: undefined }, { at: cancelledAt, type: "cancelled", message: "用户取消任务；当前未完成章节已终止并回滚 Story State" });
+          await saveStoryExecution(task); return;
+        }
         const failedAt = new Date().toISOString();
         task = appendStoryExecutionEvent({ ...task, status: "failed", error: "章节未通过现有终审或 Story State 提交门禁。修复该章节后可从最后一个已完成检查点恢复。"+(chapterRun.error?" "+chapterRun.error:""), updatedAt: failedAt, currentRunId: chapterRun.error?.includes("状态回滚失败") ? chapterRun.id : undefined }, { at: failedAt, type: "failed", message: "章节未通过终审或状态提交门禁" });
         await saveStoryExecution(task); return;
@@ -1789,7 +1808,7 @@ async function executeStoryUnitTask(initial: StoryExecution): Promise<void> {
 }
 
 
-async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> {
+async function executeFixedChapterBatch(initial: StoryExecution, signal?: AbortSignal): Promise<void> {
   let task = initial;
   const worldId = task.worldId;
   try {
@@ -1844,8 +1863,14 @@ async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> 
       const chapterRun = await executeStoryUnitChapter(worldId, previousChapterPath, brief, task.model, task.storyUnitId, async currentRun => {
         task = appendStoryExecutionEvent({ ...task, currentRunId: currentRun.id, updatedAt: new Date().toISOString() }, { at: new Date().toISOString(), type: "chapter_started", message: "批量任务开始生成第 " + (task.completedChapters.length + 1) + " 章", runId: currentRun.id });
         await saveStoryExecution(task);
-      });
+      }, signal);
       if (chapterRun.status !== "completed" || !chapterRun.chapterPath) {
+        const latestControl = await getStoryExecution(worldId, task.id);
+        if (signal?.aborted || latestControl?.cancelRequested) {
+          const cancelledAt = new Date().toISOString();
+          task = appendStoryExecutionEvent({ ...task, status: "cancelled", cancelRequested: true, completedAt: cancelledAt, updatedAt: cancelledAt, currentRunId: undefined }, { at: cancelledAt, type: "cancelled", message: "用户取消批量任务；当前未完成章节已终止并回滚 Story State" });
+          await saveStoryExecution(task); return;
+        }
         const failedAt = new Date().toISOString();
         task = appendStoryExecutionEvent({ ...task, status: "failed", error: "第 " + chapterNumber + " 章未通过终审或 Story State 提交门禁。可修复后从已完成检查点恢复。" + (chapterRun.error ? " " + chapterRun.error : ""), updatedAt: failedAt, currentRunId: undefined }, { at: failedAt, type: "failed", message: "第 " + chapterNumber + " 章未通过终审或状态提交门禁" });
         await saveStoryExecution(task); return;
@@ -1876,8 +1901,15 @@ async function executeFixedChapterBatch(initial: StoryExecution): Promise<void> 
 
 function startStoryUnitExecution(task: StoryExecution): boolean {
   if (activeStoryExecutions.has(task.worldId)) return false;
-  const worker = task.mode === "fixed_batch" ? executeFixedChapterBatch(task) : executeStoryUnitTask(task);
-  const promise = worker.finally(() => activeStoryExecutions.delete(task.worldId));
+  const controller = new AbortController();
+  storyExecutionControllers.set(task.id, controller);
+  const worker = task.mode === "fixed_batch"
+    ? executeFixedChapterBatch(task, controller.signal)
+    : executeStoryUnitTask(task, controller.signal);
+  const promise = worker.finally(() => {
+    activeStoryExecutions.delete(task.worldId);
+    storyExecutionControllers.delete(task.id);
+  });
   activeStoryExecutions.set(task.worldId, promise);
   return true;
 }
@@ -2023,7 +2055,9 @@ app.post("/api/worlds/:worldId/story-executions/:executionId/cancel", async (req
           completedAt:now, updatedAt:now
         }, { at:now, type:"cancelled", message:workerIsAlive ? "已取消暂停任务。" : "任务没有活动执行器，已清理残留执行状态。" })
       : {...task,cancelRequested:true,updatedAt:now};
-    await saveStoryExecution(updated); res.json({execution:updated});
+    await saveStoryExecution(updated);
+    storyExecutionControllers.get(task.id)?.abort();
+    res.status(cancelImmediately ? 200 : 202).json({execution:updated,cancelling:!cancelImmediately});
   } catch (error) { sendError(res, error); }
 });
 
