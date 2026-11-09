@@ -1,8 +1,10 @@
 import { readFile, rename, writeFile } from "node:fs/promises";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { loadLibraryChunks, type LibraryChunk } from "./library.js";
 import { buildStyleDistillationPrompt } from "./style-distillation.js";
 import { runAgentText } from "./generate.js";
+import { ensureSourceCanonLibraryIndex } from "./novel-kb.js";
+import { ensureBoundedUniverseCanonAssets } from "./canon-source.js";
 
 export interface AsOfStyleSample { label: string; text: string; }
 
@@ -36,6 +38,8 @@ export async function ensureAsOfStyleProfile(
   worldDir: string,
   model?: string
 ): Promise<{ created: boolean; samples: number }> {
+  await ensureBoundedUniverseCanonAssets(worldId, { projectRoot: resolve(worldDir, "..", ".."), worldDir });
+  await ensureSourceCanonLibraryIndex(worldId, worldDir);
   const target = join(worldDir, "style-profile.md");
   try {
     const existing = (await readFile(target, "utf8")).trim();
