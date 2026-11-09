@@ -119,6 +119,12 @@ async function readOptionalLibraryIndex(indexPath: string, worldId: string): Pro
     }
     return index;
   } catch (error) {
+    if (error instanceof SyntaxError) {
+      // Library indexes are derived caches. Preserve the damaged bytes for
+      // diagnosis and let the canonical-corpus repair path rebuild the index.
+      await rename(indexPath, indexPath + ".corrupt-" + Date.now());
+      return undefined;
+    }
     if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
     throw error;
   }
@@ -169,17 +175,24 @@ export async function ensurePrivateLibraryIsolation(libraryDir: string, worldId:
     hasPrivateAnnotations = (annotations.annotations ?? []).some(item => isPrivateSource(item.source ?? "")) ||
       (annotations.failures ?? []).some(item => isPrivateSource(item.chunkId ?? ""));
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    if (error instanceof SyntaxError) {
+      await rename(annotationsPath, annotationsPath + ".corrupt-" + Date.now());
+      hasPrivateAnnotations = true;
+    } else if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
+  const entitiesPath = join(libraryDir, "entities.json");
   try {
-    const registry = JSON.parse(await readFile(join(libraryDir, "entities.json"), "utf8")) as {
+    const registry = JSON.parse(await readFile(entitiesPath, "utf8")) as {
       entities?: Array<{ mentions?: Array<{ source?: string }> }>;
     };
     hasPrivateAnnotations ||= (registry.entities ?? []).some(entity =>
       (entity.mentions ?? []).some(mention => isPrivateSource(mention.source ?? ""))
     );
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    if (error instanceof SyntaxError) {
+      await rename(entitiesPath, entitiesPath + ".corrupt-" + Date.now());
+      hasPrivateAnnotations = true;
+    } else if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
   if (hasPrivateAnnotations || privateChunks.length) {
     // Older analyze runs persisted private evidence in both JSON and SQLite.
