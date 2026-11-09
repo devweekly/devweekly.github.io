@@ -33,6 +33,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [forking,setForking]=useState(false);
  const [run,setRun]=useState<Run|null>(null);
  const [chapterRuns,setChapterRuns]=useState<Run[]>([]);
+ const [worldActiveChapterRun,setWorldActiveChapterRun]=useState<Run|null>(null);
  const [batchCount,setBatchCount]=useState<number>(5);
  const [starting,setStarting]=useState(false);
  const [loading,setLoading]=useState(false);
@@ -56,7 +57,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const autoStoryUnitWorlds=useRef(new Set<string>());
  const knowledgeBuildActive=startingKnowledgeBuild||knowledgeBuild?.status==="queued"||knowledgeBuild?.status==="running";
  const storyUnitReady=Boolean(selectedStoryUnitId&&storyUnit?.id);
- const busy=run?.status==="queued"||run?.status==="running";
+ const busy=run?.status==="queued"||run?.status==="running"||worldActiveChapterRun?.status==="queued"||worldActiveChapterRun?.status==="running";
  const activeStoryExecution=worldStoryExecutions.find(item=>["queued","running","paused"].includes(item.status));
  const batchRunning=activeStoryExecution?.mode==="fixed_batch"&&["queued","running"].includes(activeStoryExecution.status);
  const storyTaskBlocksWrites=Boolean(activeStoryExecution);
@@ -66,14 +67,16 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const refresh=async()=>{
   if(!activeWorldId)return;const requestId=++refreshGeneration.current;const previewRequestId=++previewGeneration.current;setLoading(true);
   try{
-   const [runs,arc,tasks]=await Promise.all([
+   const [runs,arc,tasks,allRuns]=await Promise.all([
     api<{runs:Run[]}>("/api/worlds/"+activeWorldId+"/runs?storyUnitId="+(historyScope==="legacy"?"legacy":selectedStoryUnitId??"legacy")),
     api<{storyArc:string}>("/api/worlds/"+activeWorldId+"/story-arc?storyUnitId="+(historyScope==="legacy"?"legacy":selectedStoryUnitId??"legacy")),
-    api<{executions:StoryExecution[]}>("/api/worlds/"+activeWorldId+"/story-executions")
+    api<{executions:StoryExecution[]}>("/api/worlds/"+activeWorldId+"/story-executions"),
+    api<{runs:Run[]}>("/api/worlds/"+activeWorldId+"/runs")
    ]);
    if(requestId!==refreshGeneration.current)return;
    setActiveArc(arc.storyArc);
    setWorldStoryExecutions(tasks.executions);
+   setWorldActiveChapterRun(allRuns.runs.find(item=>item.kind==="chapter"&&["queued","running"].includes(item.status))??null);
    const chosen=selectedStoryUnitId;
    const scopedExecutions=tasks.executions.filter(item=>historyScope==="legacy"?!item.storyUnitId:Boolean(chosen)&&item.storyUnitId===chosen);
    setStoryExecutionHistory(scopedExecutions);
@@ -146,6 +149,19 @@ export default function ChapterStudio({worldId}:{worldId:string}){
    }).catch(()=>{}),2500);
   return()=>{cancelled=true;window.clearInterval(timer);};
  },[activeWorldId,selectedStoryUnitId,historyScope,activeStoryExecution?.id,activeStoryExecution?.status]);
+ useEffect(()=>{
+  if(!activeWorldId||!worldActiveChapterRun)return;
+  let cancelled=false;
+  const id=worldActiveChapterRun.id;
+  const timer=window.setInterval(()=>void api<{run:Run}>("/api/runs/"+id+"?worldId="+activeWorldId)
+   .then(result=>{
+    if(cancelled)return;
+    const active=["queued","running"].includes(result.run.status)?result.run:null;
+    setWorldActiveChapterRun(active);
+    if(!active)void refresh();
+   }).catch(()=>{}),2000);
+  return()=>{cancelled=true;window.clearInterval(timer);};
+ },[activeWorldId,worldActiveChapterRun?.id,worldActiveChapterRun?.status]);
  useEffect(()=>{
   if(!busy||!run)return;
   let cancelled=false;
@@ -288,7 +304,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
     <Button type="primary" size="large" className="chapter-action" icon={<PlayCircleOutlined/>} loading={starting||Boolean(busy)} disabled={!activeWorldId||Boolean(busy)||batchRunning||storyTaskBlocksWrites||generatingStoryUnit||(activeWorldId!==worldId&&!storyUnitReady)||storyUnit?.execution.status==="completed"||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generate()}>生成下一章</Button>
     <Space.Compact><InputNumber min={1} value={batchCount} onChange={value=>setBatchCount(value??1)} disabled={batchRunning||Boolean(busy)||storyTaskBlocksWrites||storyUnit?.execution.status==="completed"} style={{width:76}}/><Button loading={batchRunning||startingStoryExecution&&activeStoryExecution?.mode==="fixed_batch"} disabled={!activeWorldId||Boolean(busy)||batchRunning||storyTaskBlocksWrites||generatingStoryUnit||(activeWorldId!==worldId&&!storyUnitReady)||storyUnit?.execution.status==="completed"||startingStoryExecution||Boolean(activeUniverse?.archivedAt)} onClick={()=>void generateBatch()}>连续生成多章</Button></Space.Compact>
     <Button icon={<ReloadOutlined/>} loading={loading} onClick={()=>void refresh()}>刷新状态</Button>
-    {busy&&<Tag color="processing">正在自动创作</Tag>}
+    {busy&&<Tag color="processing">{worldActiveChapterRun&&worldActiveChapterRun.storyUnitId!==selectedStoryUnitId?"当前宇宙另一故事单元正在生成":"正在自动创作"}</Tag>}
     {batchRunning&&<Tag color="processing">批量进度 {batchProgress.completed}/{batchProgress.total}</Tag>}
    </Space>
   </section>
