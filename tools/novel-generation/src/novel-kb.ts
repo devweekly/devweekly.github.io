@@ -200,8 +200,10 @@ export async function ensureSourceCanonLibraryIndex(
 
   // Derived analysis and annotations point at old chunk IDs/text. Clear them
   // only after the replacement index has been committed.
-  if (staleDerivedAnalysis) invalidateStoryAnalysis(absoluteWorldDir, worldId);
-  syncAnnotations(absoluteWorldDir, worldId, [], null);
+  if (existsSync(join(absoluteWorldDir, "novel.db"))) {
+    if (staleDerivedAnalysis) invalidateStoryAnalysis(absoluteWorldDir, worldId);
+    syncAnnotations(absoluteWorldDir, worldId, [], null);
+  }
   for (const name of ["annotations.json", "entities.json"]) {
     try { await unlink(join(libraryDir, name)); }
     catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
