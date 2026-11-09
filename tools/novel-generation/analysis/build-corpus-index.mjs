@@ -9,7 +9,10 @@ import { dirname, resolve, join } from "node:path";
 const here = dirname(fileURLToPath(import.meta.url));
 const root = resolve(here, "..");
 const inputPath = resolve(root, "original.txt");
-const outDir = join(root, "analysis", "conghuoniao");
+const worldId = process.env.NOVEL_WORLD_ID ?? "conghuoniao";
+const workName = process.env.NOVEL_WORK_NAME ?? (worldId === "conghuoniao" ? "从姑获鸟开始" : worldId);
+const authorName = process.env.NOVEL_AUTHOR ?? (worldId === "conghuoniao" ? "活儿该" : "未知");
+const outDir = join(root, "analysis", worldId);
 
 const raw = await readFile(inputPath, "utf8");
 // Bind every derived catalog artifact to the exact UTF-8 source bytes.
@@ -110,8 +113,8 @@ const publicSurvey = {
 
 const chapterIndex = {
   schemaVersion: 2,
-  work: "从姑获鸟开始",
-  author: "活儿该",
+  work: workName,
+  author: authorName,
   sourceFile: "original.txt",
   sourceType: "user-provided local full text",
   sourceHash,
