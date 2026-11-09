@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+import { access, readFile, stat } from "node:fs/promises";
 import path from "node:path";
 import { ensureBoundedUniverseCanonAssets } from "./canon-source.js";
 import { ensurePrivateLibraryIsolation } from "./library.js";
@@ -17,7 +17,13 @@ export async function resolveWorldLibraryDir(worldId: string, worldsRoot = path.
   let pointer: { sourceWorldId?: string; readOnly?: boolean } | undefined;
   try { pointer = JSON.parse(await readFile(pointerPath, "utf8")) as { sourceWorldId?: string; readOnly?: boolean }; }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-  if (!pointer?.readOnly) return path.join(worldDir, "library");
+  let hasUniverseRecord = false;
+  try { hasUniverseRecord = (await stat(path.join(worldDir, "universe.json"))).isFile(); }
+  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
+  if (!pointer?.readOnly) {
+    if (hasUniverseRecord) throw new Error("检测到 universe.json，但缺少有效的只读 source-canon.json 指针。拒绝把故事宇宙当作原文项目检索。");
+    return path.join(worldDir, "library");
+  }
   if (!pointer.sourceWorldId || !/^[a-z0-9][a-z0-9-]*$/i.test(pointer.sourceWorldId)) {
     throw new Error("故事宇宙的 Source Canon 指针无效；为避免检索到其他世界的剧情，已停止检索。");
   }
