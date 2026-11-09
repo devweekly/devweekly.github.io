@@ -90,3 +90,18 @@ if (ordered[0]?.start !== 0 || previousEnd !== chapterText.length) {
 - 短期恢复：删除 `worlds/conghuoniao/library/index.json`（及 `annotations.json`/`entities.json`），重新 `ingest original.txt` + `index-story`。
 
 > 以上为分析报告，未修改任何代码。
+
+## 8. 自动恢复改造记录（2026-11-09）
+
+上述分析指出的问题不应由写作者通过手工删除索引、重新 ingest 或重新运行 index-story 来处理。当前实现已增加以下自动恢复路径：
+
+1. `ensureSourceCanonLibraryIndex()` 将缺失、部分覆盖、重复 chunk 序号、偏移错误、正文不匹配、尾部截断及旧 sourceHash 切片统一视为派生索引损坏；只要当前世界的权威 `original.txt` 可读且目录行号可验证，就从原文重建受影响章节。
+2. 重建以完整章节组为单位替换，不把新切片追加到旧组；写入采用临时文件加原子 rename，保留非 canonical 用户导入。
+3. 同一世界的并发修复会合并为一个 repair promise，避免 API/CLI 同时触发时互相覆盖临时文件。
+4. 缺失、JSON 损坏、schema/world 不匹配或与当前原文 hash 不一致的章节目录，会调用 `analysis/build-corpus-index.mjs` 从该世界实际解析到的 `original.txt` 自动重建。历史宇宙只把自己的 bounded `original.txt` 传给构建脚本，不会读取父项目完整原著生成目录。
+5. 修复缓存同时指纹化原文、章节目录、索引文件内容和 chunker 版本；相同大小且保留 mtime 的索引损坏也不会命中旧缓存。
+6. 任何 canonical 索引修复都会使依赖旧 chunk 映射的派生故事分析与 annotations 失效，避免新旧数据混用。
+
+仍然必须 fail closed 的情况只有权威输入本身无法安全恢复，例如 `original.txt` 不存在/不可读、目录标题无法在原文中验证、章节边界行号无法确定，或故事宇宙的历史起点无法证明。此时系统不能猜测正文或放宽时点隔离；错误应明确指出缺失的权威输入，而不是要求用户盲目重新 ingest。
+
+本节记录的是代码改造范围，不代表 GitHub Actions 已通过；需要在仓库运行测试套件后确认。
