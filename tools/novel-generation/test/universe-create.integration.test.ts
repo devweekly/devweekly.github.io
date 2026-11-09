@@ -251,12 +251,12 @@ test("universe creation uses catalog order and stable chapter IDs despite extra 
   const volumeTwoSecondChapterStart = [lineOne, lineTwo, lineThree, lineFour, lineFive, lineSix].reduce((sum, line) => sum + line.length + 1, 0);
   const chunks = [
     { source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "前置内容", chunkIndex: 0, start: 0, end: 5, chapterStart: 0, text: "前置内容泄漏" },
-    { source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第一章", chunkIndex: 0, start: 0, end: "第一章\\n卷一第一章正文".length, chapterStart: 0, text: "第一章\\n卷一第一章正文" },
-    { source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第二章", chunkIndex: 0, start: 0, end: "第二章\\n卷一第二章正文".length, chapterStart: lineOne.length + lineTwo.length + 2, text: "第二章\\n卷一第二章正文" },
+    { source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第一章", chunkIndex: 0, start: 0, end: "第一章\n卷一第一章正文".length, chapterStart: 0, text: "第一章\n卷一第一章正文" },
+    { source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第二章", chunkIndex: 0, start: 0, end: "第二章\n卷一第二章正文".length, chapterStart: lineOne.length + lineTwo.length + 2, text: "第二章\n卷一第二章正文" },
     { source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "作者说明", chunkIndex: 0, start: 0, end: 5, chapterStart: lineOne.length + lineTwo.length + lineThree.length + lineFour.length + 4, text: "作者说明泄漏" },
     // Volume 2's first chapter intentionally has no chunk. The catalog line
     // boundary must provide its source text without shifting the next chapter.
-    { source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第二章", chunkIndex: 0, start: 0, end: "第二章\\n卷二第二章正文".length, chapterStart: volumeTwoSecondChapterStart, text: "第二章\\n卷二第二章正文" }
+    { source: "worlds/source-world/original.txt", sourceHash: canonSourceHash, chapter: "第二章", chunkIndex: 0, start: 0, end: "第二章\n卷二第二章正文".length, chapterStart: volumeTwoSecondChapterStart, text: "第二章\n卷二第二章正文" }
   ];
   await writeFile(join(source, "library", "index.json"), JSON.stringify({
     schemaVersion: 1, worldId: "source-world", createdAt: "2026-01-01T00:00:00.000Z",
