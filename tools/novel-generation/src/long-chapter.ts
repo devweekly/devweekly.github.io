@@ -316,13 +316,13 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   const chapterTitle = "# " + (input.mode === "continuation" ? "续写章节" : "衍生章节") + "\n\n";
   const buildChapter = (): string => chapterTitle + polished.join("\n\n---\n\n") + "\n";
   const originalChapter = buildChapter();
-  const patchRaw = await cachedCall("literary-patches", "06-literary-patches.json", "voice", [
+  const patchRaw = await cachedCall("literary-patches", "06-literary-patches-raw.json", "voice", [
     literaryPatchPrompt({ brief: input.brief, blueprint, styleProfile: input.styleProfile, chapter: originalChapter })
   ], output => { parseLiteraryPatchResult(output); });
   const patchResult = parseLiteraryPatchResult(patchRaw);
   const patchApplication = applyLiteraryPatches(originalChapter, patchResult.edits);
   const antiAiChapter = patchApplication.chapter;
-  await saveStage(input.outputDir, "06-literary-patches.json", JSON.stringify({
+  await saveStage(input.outputDir, "06-literary-patches-applied.json", JSON.stringify({
     decision: patchResult.decision,
     reason: patchResult.reason,
     applied: patchApplication.applied,
