@@ -29,7 +29,7 @@ import { buildUniverseOriginContext, buildUniverseWorldBible, rebaseStoryState, 
 import { importBoundedStoryAnalysisSnapshot, restrictKnowledgeDatabaseToEntry } from "./source-canon-snapshot.js";
 import { importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
-import { copyOriginalCanonToUniverse, resolveOriginalCanonPath } from "./canon-source.js";
+import { copyOriginalCanonToUniverse, resolveOriginalCanonPath, truncateCanonAtLine } from "./canon-source.js";
 import { assessStoryUnitProgress, generateStoryUnit, isStoryUnitNaturallyComplete, validateStoryUnit } from "./story-unit.js";
 import { archiveStoredStoryUnitVersion, createStoredStoryUnit, getStoredStoryUnit, getStoredStoryUnitVersion, listStoredStoryUnitVersions, listStoredStoryUnits, saveStoredStoryUnit } from "./story-unit-store.js";
 import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, mergeStoryExecutionControlFlags, storyRunStateWasRolledBack, type StoryExecution } from "./story-execution.js";
@@ -642,7 +642,7 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
   }
 }
 
-async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: string, universeId: string, entryIndex: number): Promise<void> {
+async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: string, universeId: string, entryIndex: number): Promise<number> {
   let source: { schemaVersion: number; createdAt: string; updatedAt: string; chunks: Array<CanonChapterChunk & { [key: string]: unknown }> } = {
     schemaVersion: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), chunks: []
   };
@@ -655,37 +655,49 @@ async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: st
   }
   const catalog = await loadChapterCatalog(sourceWorldId);
   if (!catalog) throw new Error("原著章节目录不存在，无法创建有边界的知识切片快照。");
-  const originalPath = await resolveOriginalCanonPath(sourceWorldId).catch(error => {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw error;
-  });
-  const originalText = originalPath ? await readFile(originalPath, "utf8") : "";
-  const originalSourceLines = originalText ? originalText.split(/\r?\n/) : [];
+  const nextChapterLine = catalog[entryIndex + 1]?.line;
+  if (catalog[entryIndex + 1] && (!Number.isSafeInteger(nextChapterLine) || Number(nextChapterLine) < 2)) {
+    throw new Error("所选起点之后的原文目录缺少有效行号，无法安全截断未来章节。");
+  }
+  const originalPath = await resolveOriginalCanonPath(sourceWorldId);
+  const originalText = await readFile(originalPath, "utf8");
+  const boundedOriginalText = truncateCanonAtLine(originalText, nextChapterLine);
+  const originalSourceLines = originalText.split(/\r?\n/);
+  const boundedLineCount = boundedOriginalText.split(/\r?\n/).length;
   const offsets = catalog.map(chapter => {
-    if (!originalText || chapter.line == null || chapter.line < 1) return undefined;
+    if (chapter.line == null || chapter.line < 1) return undefined;
     let offset = 0;
-    for (let line = 1; line < chapter.line; line++) { const next = originalText.indexOf("\n", offset); if (next < 0) return undefined; offset = next + 1; }
+    for (let line = 1; line < chapter.line; line++) {
+      const next = originalText.indexOf("\n", offset);
+      if (next < 0) return undefined;
+      offset = next + 1;
+    }
     const lineText = originalSourceLines[chapter.line - 1] ?? "";
     return offset + lineText.length - lineText.trimStart().length;
   });
-  const sourceHash = originalText ? createHash("sha256").update(originalText, "utf8").digest("hex") : undefined;
-  const canonChunks = selectCanonSourceChunks(source.chunks, sourceHash);
+  const sourceHash = createHash("sha256").update(boundedOriginalText, "utf8").digest("hex");
+  const canonChunks = selectCanonSourceChunks(source.chunks, createHash("sha256").update(originalText, "utf8").digest("hex"));
   const aligned = alignCanonChapterGroups(catalog, canonChunks, offsets);
-  const sourceKey = originalPath ? path.relative(process.cwd(), originalPath).split(path.sep).join("/") : path.relative(process.cwd(), path.join(worldDir(sourceWorldId), "original.txt")).split(path.sep).join("/");
+  // Rebind provenance to the bounded file that is actually stored in this
+  // universe. Keeping the parent's full-book hash would make index-story reject
+  // every child chunk after the original copy is correctly truncated.
+  const sourceKey = path.relative(process.cwd(), path.join(worldDir(universeId), "original.txt")).split(path.sep).join("/");
   const chunks = aligned.filter(item => item.catalogIndex <= entryIndex).flatMap(item => {
-    if (item.chunks.length) return item.chunks;
+    if (item.chunks.length) return item.chunks.map(chunk => ({
+      ...chunk, source: sourceKey, sourceHash
+    }));
     const chapterText = readCatalogChapterText(catalog, originalSourceLines, item.catalogIndex);
-    if (!chapterText) throw new Error("无法为历史宇宙补齐原著章节切片：" + item.chapter.title + "。全文不可读且该章没有有效原文切片。");
+    if (!chapterText) throw new Error("无法为历史宇宙补齐原著章节切片：" + item.chapter.title + "。原文全文缺失或目录行号无效。");
     const parts = chunkText(chapterText);
     return parts.map((part, chunkIndex) => ({
       id: sourceKey + ":catalog:" + catalogChapterId(item.chapter.volume, item.chapter.sequenceInVolume) + ":" + chunkIndex,
       source: sourceKey,
+      sourceHash,
       chapter: item.chapter.title,
       chunkIndex,
       start: part.start,
       end: part.end,
       text: part.text,
-      ...(sourceHash ? { sourceHash } : {}),
       ...(offsets[item.catalogIndex] !== undefined ? { chapterStart: offsets[item.catalogIndex] } : {})
     }));
   });
@@ -699,6 +711,7 @@ async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: st
   const libraryDir = path.join(targetDir, "library");
   await mkdir(libraryDir, { recursive: true });
   await writeFile(path.join(libraryDir, "index.json"), JSON.stringify(snapshot, null, 2) + "\n", "utf8");
+  return boundedLineCount;
 }
 
 app.get("/api/worlds/:worldId/source-chapters", async (req, res) => {
