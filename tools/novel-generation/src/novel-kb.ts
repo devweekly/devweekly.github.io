@@ -51,12 +51,20 @@ export interface ChapterCatalogDocument {
 export async function loadChapterCatalogDocument(worldId: string, catalogPath?: string): Promise<ChapterCatalogDocument | undefined> {
   const path = catalogPath ?? resolve("analysis", worldId, "chapter-index.json");
   if (!existsSync(path)) return undefined;
-  const raw = JSON.parse(await readFile(path, "utf8")) as {
+  let raw: {
     totalLines?: number;
     sourceHash?: string;
     volumes?: Array<{ volume: number; chapters?: Array<Record<string, unknown>> }>;
     chapters?: Array<Record<string, unknown>>;
   };
+  try {
+    raw = JSON.parse(await readFile(path, "utf8")) as typeof raw;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    const contextual = new SyntaxError("chapter-index.json 格式损坏：" + path + "；" + detail);
+    (contextual as SyntaxError & { cause?: unknown }).cause = error;
+    throw contextual;
+  }
   if (raw.sourceHash !== undefined &&
       (typeof raw.sourceHash !== "string" || !/^[a-f0-9]{64}$/i.test(raw.sourceHash))) {
     throw new Error("chapter-index.json 的 sourceHash 格式无效：" + path);
