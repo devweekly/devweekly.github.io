@@ -106,7 +106,7 @@ function terms(text: string): string[] {
 }
 
 function isPrivateSource(source: string): boolean {
-  const normalized = source.replace(/\\\\/g, "/");
+  const normalized = source.replace(/\\/g, "/");
   return normalized.startsWith("../") || isAbsolute(source) || normalized.split("/").includes("private");
 }
 
@@ -126,7 +126,7 @@ async function readOptionalLibraryIndex(indexPath: string, worldId: string): Pro
 async function writeLibraryIndex(indexPath: string, index: LibraryIndex): Promise<void> {
   await mkdir(dirname(indexPath), { recursive: true });
   const temporary = indexPath + ".tmp";
-  await writeFile(temporary, JSON.stringify(index, null, 2) + "\\n", "utf8");
+  await writeFile(temporary, JSON.stringify(index, null, 2) + "\n", "utf8");
   await rename(temporary, indexPath);
 }
 
@@ -266,7 +266,7 @@ export async function ingestFiles(worldId: string, inputPaths: string[], library
           failures: annotations.failures.filter(item => ![...ingestedSources].some(source => item.chunkId.startsWith(source + ":")))
         };
         const annotationTemp = annotationsPath + ".tmp";
-        await writeFile(annotationTemp, JSON.stringify(filtered, null, 2) + "\\n", "utf8");
+        await writeFile(annotationTemp, JSON.stringify(filtered, null, 2) + "\n", "utf8");
         await rename(annotationTemp, annotationsPath);
         syncAnnotations(databaseWorldDirFromLibrary(libraryDir), worldId, filtered.annotations as unknown as Array<{ chunkId: string; source: string; chapter?: string; extractedAt?: string }>, null);
       }
