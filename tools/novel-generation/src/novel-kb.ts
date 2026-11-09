@@ -64,7 +64,7 @@ export async function loadChapterCatalogDocument(worldId: string, catalogPath?: 
       sequenceInVolume: Number(item.sequenceInVolume ?? rows.length + 1),
       printedNumber: item.printedNumber === null || item.printedNumber === undefined ? null : Number(item.printedNumber),
       title,
-      label: String(item.label ?? title.replace(/^第[^\\s]+?[章节回]\\s*/, "")).trim(),
+      label: String(item.label ?? title.replace(/^第[^\s]+?[章节回]\s*/, "")).trim(),
       line: item.line === null || item.line === undefined ? null : Number(item.line)
     });
   };
