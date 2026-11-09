@@ -143,7 +143,7 @@ export async function ensureSourceCanonLibraryIndex(
     if (nextLine !== undefined && (!Number.isSafeInteger(nextLine) || nextLine <= startLine)) {
       throw new Error("原文目录章节行号顺序异常：" + chapter.title);
     }
-    const chapterText = lines.slice(startLine - 1, nextLine === undefined ? lines.length : nextLine - 1).join("\\n").trim();
+    const chapterText = lines.slice(startLine - 1, nextLine === undefined ? lines.length : nextLine - 1).join("\n").trim();
     if (!chapterText) throw new Error("原文目录章节没有正文，无法重建切片：" + chapter.title);
     const lineText = lines[startLine - 1] ?? "";
     const chapterStart = (lineStarts[startLine - 1] ?? 0) + lineText.length - lineText.trimStart().length;
@@ -164,7 +164,7 @@ export async function ensureSourceCanonLibraryIndex(
     chunks: [...(existing?.chunks ?? []), ...chunks]
   };
   const temporary = indexPath + ".canon-rebuild.tmp";
-  await writeFile(temporary, JSON.stringify(next, null, 2) + "\\n", "utf8");
+  await writeFile(temporary, JSON.stringify(next, null, 2) + "\n", "utf8");
   await rename(temporary, indexPath);
   return true;
 }
