@@ -15,3 +15,13 @@ export function selectVisibleStoryExecution<T extends StoryExecutionState>(
 export function shouldPollStoryExecution(status: string): boolean {
   return POLLED_STORY_EXECUTION_STATUSES.has(status);
 }
+
+export type StoryExecutionAction = "pause" | "resume" | "cancel";
+
+/** Derive controls from the persisted lifecycle state, never from transient UI loading flags. */
+export function getStoryExecutionActions(status: string): StoryExecutionAction[] {
+  if (status === "queued" || status === "running") return ["pause", "cancel"];
+  if (status === "paused") return ["resume", "cancel"];
+  if (status === "failed" || status === "stalled") return ["resume"];
+  return [];
+}
