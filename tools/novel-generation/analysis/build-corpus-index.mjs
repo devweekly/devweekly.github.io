@@ -12,6 +12,8 @@ const inputPath = resolve(root, "original.txt");
 const outDir = join(root, "analysis", "conghuoniao");
 
 const raw = await readFile(inputPath, "utf8");
+// Bind every derived catalog artifact to the exact UTF-8 source bytes.
+const sourceHash = createHash("sha256").update(raw, "utf8").digest("hex");
 const lines = raw.replace(/^\uFEFF/, "").replace(/\r\n?/g, "\n").split("\n");
 const totalChars = raw.replace(/\s/g, "").length;
 
