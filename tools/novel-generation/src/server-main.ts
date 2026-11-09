@@ -9,13 +9,15 @@ import { createApp, recoverWorkbenchRuns, recoverKnowledgeBuilds } from "./serve
 import { WORKBENCH_DEFAULT_PORT, WORKBENCH_MAX_PORT } from "./constants.js";
 
 const here=path.dirname(fileURLToPath(import.meta.url));
-const webRoot=path.resolve(here,"../web");
+const projectRoot=path.resolve(here,"..");
+const webRoot=path.join(projectRoot,"web");
 const host=process.env.HOST??"127.0.0.1";
 const port=Number(process.env.PORT??WORKBENCH_DEFAULT_PORT);
 if(!["127.0.0.1","localhost","::1"].includes(host))throw new Error("Novel Generation Workbench must bind to loopback; set HOST=127.0.0.1.");
 if(!Number.isInteger(port)||port<1||port>WORKBENCH_MAX_PORT)throw new Error("PORT must be between 1 and " + WORKBENCH_MAX_PORT + ".");
 
 async function main():Promise<void>{
+ process.chdir(projectRoot);
  await recoverWorkbenchRuns();
  await recoverKnowledgeBuilds();
  const app=createApp();
