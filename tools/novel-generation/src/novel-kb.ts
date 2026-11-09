@@ -221,7 +221,6 @@ async function ensureSourceCanonLibraryIndexUnlocked(
   // preserved/coarse mtime must never reuse a previous successful validation.
   let indexHash = "missing";
   if (indexInfo) indexHash = createHash("sha256").update(await readFile(indexPath)).digest("hex");
-  const catalogPath = join(projectRoot, "analysis", worldId, "chapter-index.json");
   const catalogHash = createHash("sha256").update(await readFile(catalogPath)).digest("hex");
   const signature = [originalHash, catalogHash, indexHash, "canon-chunker-v2"].join(":");
   if (indexInfo && canonLibraryValidationCache.get(indexPath) === signature) return false;
