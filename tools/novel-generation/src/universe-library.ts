@@ -34,8 +34,12 @@ export async function resolveWorldLibraryDir(worldId: string, worldsRoot = path.
   }
   await ensureBoundedUniverseCanonAssets(worldId, { projectRoot: path.dirname(absoluteWorldsRoot), worldDir });
   const boundedLibraryDir = path.join(worldDir, "library");
-  try { await access(path.join(boundedLibraryDir, "index.json")); }
-  catch {
+  try {
+    await access(path.join(boundedLibraryDir, "index.json"));
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") {
+      throw new Error("无法读取故事宇宙的时点检索索引：" + boundedLibraryDir, { cause: error });
+    }
     throw new Error("该故事宇宙缺少按起点章节截断的原文检索索引。为避免检索到起点之后的剧情，拒绝回退到原文项目的全书索引。请重新创建宇宙或修复时点索引。");
   }
   return boundedLibraryDir;
