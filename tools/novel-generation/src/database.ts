@@ -260,6 +260,19 @@ export function openStoryStateDatabase(worldDir: string, worldId: string): Datab
  * 语料变更后，按旧文本算出来的章节切分与分析全部作废。
  * 只清派生数据，不动 novel.db 里那份权威快照之外的任何东西。
  */
+/** Invalidate corpus-derived analysis while preserving the stable chapter directory. */
+export function invalidateStoryAnalysis(worldDir: string, worldId: string): void {
+  const db = openKnowledgeDatabase(worldDir, worldId);
+  try {
+    transaction(db, () => {
+      db.exec("DELETE FROM story_analysis;");
+      clearNovelAnalysis(db);
+    });
+  } finally {
+    db.close();
+  }
+}
+
 export function invalidateDerivedAnalysis(worldDir: string, worldId: string): void {
   const db = openKnowledgeDatabase(worldDir, worldId);
   try {
