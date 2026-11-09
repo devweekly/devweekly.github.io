@@ -44,6 +44,7 @@ interface ChapterCatalog {
 export interface ChapterCatalogDocument {
   chapters: CatalogChapter[];
   totalLines?: number;
+  sourceHash?: string;
 }
 
 /** Reads the volume/chapter index produced by analysis/build-corpus-index.mjs. */
@@ -52,6 +53,7 @@ export async function loadChapterCatalogDocument(worldId: string, catalogPath?: 
   if (!existsSync(path)) return undefined;
   const raw = JSON.parse(await readFile(path, "utf8")) as {
     totalLines?: number;
+    sourceHash?: string;
     volumes?: Array<{ volume: number; chapters?: Array<Record<string, unknown>> }>;
     chapters?: Array<Record<string, unknown>>;
   };
@@ -132,7 +134,7 @@ export async function ensureSourceCanonLibraryIndex(
   const originalText = await readFile(originalPath, "utf8");
   const catalogDocument = await loadChapterCatalogDocument(worldId, join(projectRoot, "analysis", worldId, "chapter-index.json"));
   if (!catalogDocument) return false;
-  validateCanonCatalogAgainstText(catalogDocument.chapters, originalText, catalogDocument.totalLines);
+  validateCanonCatalogAgainstText(catalogDocument.chapters, originalText, catalogDocument.totalLines, catalogDocument.sourceHash);
   const sourceHash = createHash("sha256").update(originalText, "utf8").digest("hex");
   const isCanonicalSource = (source: string) => {
     const normalized = source.replace(/\\/g, "/");
@@ -143,7 +145,7 @@ export async function ensureSourceCanonLibraryIndex(
     throw new Error("Library 中已有 original.txt 切片，但 sourceHash 与当前离线原文不一致。请先备份，再执行 ingest --input original.txt，随后执行 index-story；不能混用新旧语料。");
   }
 
-  const prepared = await prepareCanonIndexInputs(absoluteWorldDir, catalogDocument.chapters, canonicalExisting, catalogDocument.totalLines);
+  const prepared = await prepareCanonIndexInputs(absoluteWorldDir, catalogDocument.chapters, canonicalExisting, catalogDocument.totalLines, catalogDocument.sourceHash);
   const aligned = alignCanonChapterGroups(catalogDocument.chapters, prepared.chunks, prepared.chapterStartOffsets);
   validateCanonChunksAgainstText(aligned, originalText, prepared.chapterStartOffsets);
   const missing = aligned.filter(item => item.chunks.length === 0);
@@ -196,7 +198,7 @@ export async function ensureSourceCanonLibraryIndex(
 }
 
 /** Align indexing to the exact original.txt bytes, not similarly named auxiliary imports. */
-export async function prepareCanonIndexInputs(worldDir: string, catalog: CatalogChapter[], chunks: LibraryChunk[], expectedTotalLines?: number): Promise<CanonIndexInputs> {
+export async function prepareCanonIndexInputs(worldDir: string, catalog: CatalogChapter[], chunks: LibraryChunk[], expectedTotalLines?: number, expectedSourceHash?: string): Promise<CanonIndexInputs> {
   let originalText: string | undefined;
   try {
     const originalPath = await resolveOriginalCanonPath(basename(worldDir), {
@@ -207,7 +209,7 @@ export async function prepareCanonIndexInputs(worldDir: string, catalog: Catalog
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
-  if (originalText !== undefined) validateCanonCatalogAgainstText(catalog, originalText, expectedTotalLines);
+  if (originalText !== undefined) validateCanonCatalogAgainstText(catalog, originalText, expectedTotalLines, expectedSourceHash);
   const sourceHash = originalText === undefined ? undefined : createHash("sha256").update(originalText, "utf8").digest("hex");
   const sourceCandidates = selectCanonSourceChunks(chunks);
   if (sourceHash !== undefined && sourceCandidates.some(chunk => chunk.sourceHash !== sourceHash)) {
@@ -467,7 +469,7 @@ export async function buildAnalysisUnits(
   const catalogDocument = await loadChapterCatalogDocument(worldId, catalogPath);
   const catalog = catalogDocument?.chapters;
   if (!catalog) throw new Error("No chapter catalog. Run the corpus index script or pass --catalog.");
-  const prepared = await prepareCanonIndexInputs(worldDir, catalog, rawChunks, catalogDocument.totalLines);
+  const prepared = await prepareCanonIndexInputs(worldDir, catalog, rawChunks, catalogDocument.totalLines, catalogDocument.sourceHash);
   const chunks = prepared.chunks;
   if (!chunks.length) throw new Error("No chunks from original.txt were found in the library index.");
   const assignment = assignChapters(chunks, catalog, prepared.chapterStartOffsets);
