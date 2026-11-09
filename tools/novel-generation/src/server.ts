@@ -687,7 +687,7 @@ async function writeForkedUniverseCanonSnapshots(parentId: string, targetDir: st
   const parentOriginalPath = await resolveOriginalCanonPath(parentId);
   const parentOriginalText = await readFile(parentOriginalPath, "utf8");
   const sourceHash = createHash("sha256").update(parentOriginalText, "utf8").digest("hex");
-  const lineCount = parentOriginalText.split(/\r?\n/).length;
+  const lineCount = splitCanonLines(parentOriginalText).length;
   const parentLibrary = JSON.parse(await readFile(path.join(worldDir(parentId), "library", "index.json"), "utf8")) as {
     schemaVersion: number; createdAt: string; updatedAt: string; worldId: string;
     chunks: Array<CanonChapterChunk & { sourceHash?: string }>;
@@ -695,27 +695,27 @@ async function writeForkedUniverseCanonSnapshots(parentId: string, targetDir: st
   if (parentLibrary.worldId !== parentId || !Array.isArray(parentLibrary.chunks) || !parentLibrary.chunks.length) {
     throw new Error("父宇宙没有可验证的时点原文切片，无法安全分叉。");
   }
-  const parentChunks = selectCanonSourceChunks(parentLibrary.chunks, sourceHash);
+  const parentCatalogDocument = await loadChapterCatalogDocument(parentId);
+  if (!parentCatalogDocument) throw new Error("父宇宙缺少 bounded chapter-index.json，拒绝分叉。");
+  if (parentCatalogDocument.totalLines !== lineCount) {
+    throw new Error("父宇宙章节目录 totalLines 与本地 bounded original.txt 不一致，拒绝分叉。");
+  }
+  const prepared = await prepareCanonIndexInputs(worldDir(parentId), parentCatalogDocument.chapters, parentLibrary.chunks, parentCatalogDocument.totalLines);
+  const parentChunks = prepared.chunks;
   if (parentChunks.length !== parentLibrary.chunks.length || parentChunks.some(chunk => chunk.sourceHash !== sourceHash)) {
     throw new Error("父宇宙 library 的 source/sourceHash 与本地时点原文不一致，拒绝复制不确定的分支检索数据。");
+  }
+  const alignedParent = alignCanonChapterGroups(parentCatalogDocument.chapters, parentChunks, prepared.chapterStartOffsets);
+  if (alignedParent.some(item => item.chunks.length === 0)) {
+    throw new Error("父宇宙 library 缺少正式章节切片，拒绝创建不完整的分支检索快照。");
+  }
+  const catalogTitles = parentCatalogDocument.chapters.map(chapter => chapter.title);
+  if (!catalogTitles.length || parentChunks.some(chunk => !catalogTitles.includes(chunk.chapter))) {
+    throw new Error("父宇宙 library 存在章节目录之外的切片，拒绝分叉以防止未来剧情泄漏。");
   }
 
   const parentCatalogPath = path.resolve("analysis", parentId, "chapter-index.json");
   const parentCatalogText = await readFile(parentCatalogPath, "utf8");
-  const parentCatalog = JSON.parse(parentCatalogText) as {
-    schemaVersion: number; totalLines: number;
-    volumes?: Array<{ chapters?: Array<{ title?: string }> }>;
-    chapters?: Array<{ title?: string }>;
-  };
-  if (parentCatalog.totalLines !== lineCount) {
-    throw new Error("父宇宙章节目录 totalLines 与本地 bounded original.txt 不一致，拒绝分叉。");
-  }
-  const catalogTitles = parentCatalog.volumes?.length
-    ? parentCatalog.volumes.flatMap(volume => (volume.chapters ?? []).map(chapter => chapter.title ?? ""))
-    : (parentCatalog.chapters ?? []).map(chapter => chapter.title ?? "");
-  if (!catalogTitles.length || parentChunks.some(chunk => !catalogTitles.includes(chunk.chapter))) {
-    throw new Error("父宇宙 library 存在章节目录之外的切片，拒绝分叉以防止未来剧情泄漏。");
-  }
 
   const sourceKey = path.relative(process.cwd(), path.join(worldDir(universeId), "original.txt")).split(path.sep).join("/");
   const libraryDir = path.join(targetDir, "library");
