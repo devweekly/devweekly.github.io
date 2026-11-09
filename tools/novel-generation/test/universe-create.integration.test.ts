@@ -96,7 +96,9 @@ test("create universe builds a bounded canon and excludes whole-book derived fil
     const sourceCanonStat = await stat(join(source, "original.txt"));
     const universeCanonStat = await stat(join(universeDir, "original.txt"));
     assert.notEqual(universeCanonStat.ino, sourceCanonStat.ino, "source canon must not share a mutable inode across universes");
-    assert.equal(await readFile(join(universeDir, "original.txt"), "utf8"), await readFile(join(source, "original.txt"), "utf8"));
+    const expectedBoundedCanon = canonLines.slice(0, 199).join("\n");
+    assert.equal(await readFile(join(universeDir, "original.txt"), "utf8"), expectedBoundedCanon);
+    assert.ok(!expectedBoundedCanon.includes("未来剧情泄漏标记"));
     assert.equal(payload.universe.entryChapter, "第二章");
 
     const archiveResponse = await fetch(`http://127.0.0.1:${address.port}/api/worlds/${payload.universe.id}/universe-archive`, {
