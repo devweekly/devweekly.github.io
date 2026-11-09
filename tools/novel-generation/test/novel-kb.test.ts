@@ -170,3 +170,28 @@ test("model JSON with raw control characters and trailing commas still parses", 
   assert.deepEqual(parsed.characters[0]?.aliases, ["阎哥"]);
   assert.equal(parsed.beats[0]?.chapterKey, "V01-C001");
 });
+
+test("canon index validation reads project-root original.txt when world-local copy is absent", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-canon-root-source-"));
+  try {
+    const world = join(root, "worlds", "source-world");
+    await mkdir(join(world, "library"), { recursive: true });
+    const original = "第一章 开端\n正文甲\n第二章 转折\n正文乙";
+    await writeFile(join(root, "original.txt"), original, "utf8");
+    const hash = createHash("sha256").update(original, "utf8").digest("hex");
+    const firstStart = original.indexOf("第一章");
+    const secondStart = original.indexOf("第二章");
+    const inputs = await prepareCanonIndexInputs(world, [
+      { ...catalogChapter(1, 1, "第一章 开端"), line: 1 },
+      { ...catalogChapter(1, 2, "第二章 转折"), line: 3 }
+    ], [
+      { ...chunk("canon:1", "第一章 开端", "正文甲", 0), source: "original.txt", sourceHash: hash, chapterStart: firstStart },
+      { ...chunk("canon:2", "第二章 转折", "正文乙", 1), source: "original.txt", sourceHash: hash, chapterStart: secondStart }
+    ]);
+    assert.deepEqual(inputs.chunks.map(item => item.id), ["canon:1", "canon:2"]);
+    assert.deepEqual(inputs.chapterStartOffsets, [firstStart, secondStart]);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+

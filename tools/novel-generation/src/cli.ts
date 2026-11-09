@@ -1,13 +1,15 @@
 // 唯一 CLI 入口：参数解析、worldId 校验（^[a-z0-9][a-z0-9-]*$）、命令分派，以及把
-// brief / 故事当前位置 / 未结情节线 / 人物组装成检索查询。所有路径经 resolve() 锚定 CWD，
-// 必须在 tools/novel-generation 目录运行，换目录会把 worlds/、.output/、analysis/ 读写到错误位置。
+// brief / 故事当前位置 / 未结情节线 / 人物组装成检索查询。CLI 启动时将 CWD 锚定到项目根目录，
+// 直接运行 dist/cli.js 或从其他目录调用时也不会把 worlds/、.output/、analysis/ 写到错误位置。
 import { access, readFile, mkdir, writeFile } from "node:fs/promises";
 import { databaseStatus, readAnnotationsByChunkIds, readStoryAnalysis, listNovelCharacters, listNovelThreads, listNovelForeshadowings, listNovelBeats, readNovelKbMeta, novelKnowledgeOverview, exportNovelKnowledge, listNovelCharacterProfiles, listNovelCharacterChapterStates } from "./database.js";
 import { basename, dirname, join, resolve, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { generateStory, runAgentText, type GenerationMode } from "./generate.js";
 import { ingestFiles, listTextFiles, searchLibrary } from "./library.js";
 import { writeChapter } from "./workflow.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
+import { resolveOriginalCanonPath } from "./canon-source.js";
 import { loadStoryState } from "./story-state.js";
 import { buildStoryStateGraph, filterGraph, filterStoryStateGraph } from "./story-state-graph.js";
 import { loadRunStoryState } from "./stage-cache.js";
@@ -173,6 +175,8 @@ const COMMANDS = new Set([
 ]);
 
 async function main(): Promise<void> {
+  const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+  process.chdir(projectRoot);
   const command = process.argv[2];
   if (!COMMANDS.has(command as string)) usage();
 
@@ -489,8 +493,19 @@ async function main(): Promise<void> {
       if (!Number.isInteger(timeoutMs) || timeoutMs < MIN_AGENT_TIMEOUT_MS || timeoutMs > MAX_AGENT_TIMEOUT_MS) {
         throw new Error("--timeout-ms must be an integer between " + MIN_AGENT_TIMEOUT_MS + " and " + MAX_AGENT_TIMEOUT_MS + ".");
       }
+      const canonicalSourcePath = await resolveOriginalCanonPath(worldId);
+      const requestedSourcePath = arg("--source");
+      if (requestedSourcePath && resolve(requestedSourcePath) !== resolve(canonicalSourcePath)) {
+        try {
+          await access(resolve("worlds", worldId, "universe.json"));
+          throw new Error("历史故事宇宙只能使用自己的时点原文副本进行引用核验，不能通过 --source 指向完整原著或其他文件。");
+        } catch (error) {
+          if (error instanceof Error && error.message.includes("只能使用自己的时点原文副本")) throw error;
+          if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        }
+      }
       const result = await collectWorldAnalysis(worldId, {
-        sourcePath: arg("--source") ?? "original.txt",
+        sourcePath: requestedSourcePath ? resolve(requestedSourcePath) : canonicalSourcePath,
         model: arg("--model"),
         timeoutMs,
         evidenceReview: process.argv.includes("--evidence-review"),
@@ -608,7 +623,7 @@ async function main(): Promise<void> {
     const runId = new Date().toISOString().replace(/[:.]/g, "-");
     const result = await runRegression({
       worldId,
-      corpusPath: resolve("original.txt"),
+      corpusPath: await resolveOriginalCanonPath(worldId),
       chapters,
       chapterIndex,
       contextLines,

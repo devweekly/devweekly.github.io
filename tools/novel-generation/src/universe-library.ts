@@ -1,5 +1,7 @@
 import { access, readFile } from "node:fs/promises";
 import path from "node:path";
+import { ensureBoundedUniverseCanonAssets } from "./canon-source.js";
+import { ensurePrivateLibraryIsolation } from "./library.js";
 
 /**
  * Resolve the only legal retrieval corpus for a world.
@@ -8,8 +10,10 @@ import path from "node:path";
  */
 export async function resolveWorldLibraryDir(worldId: string, worldsRoot = path.resolve("worlds")): Promise<string> {
   if (!/^[a-z0-9][a-z0-9-]*$/i.test(worldId)) throw new Error("Invalid world id.");
-  const worldDir = path.resolve(worldsRoot, worldId);
+  const absoluteWorldsRoot = path.resolve(worldsRoot);
+  const worldDir = path.resolve(absoluteWorldsRoot, worldId);
   const pointerPath = path.join(worldDir, "source-canon.json");
+  await ensurePrivateLibraryIsolation(path.join(worldDir, "library"), worldId);
   let pointer: { sourceWorldId?: string; readOnly?: boolean } | undefined;
   try { pointer = JSON.parse(await readFile(pointerPath, "utf8")) as { sourceWorldId?: string; readOnly?: boolean }; }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
@@ -17,6 +21,7 @@ export async function resolveWorldLibraryDir(worldId: string, worldsRoot = path.
   if (!pointer.sourceWorldId || !/^[a-z0-9][a-z0-9-]*$/i.test(pointer.sourceWorldId)) {
     throw new Error("故事宇宙的 Source Canon 指针无效；为避免检索到其他世界的剧情，已停止检索。");
   }
+  await ensureBoundedUniverseCanonAssets(worldId, { projectRoot: path.dirname(absoluteWorldsRoot), worldDir });
   const boundedLibraryDir = path.join(worldDir, "library");
   try { await access(path.join(boundedLibraryDir, "index.json")); }
   catch {

@@ -1,9 +1,10 @@
 // 多 Agent 文本分析（analyze-world）：默认纯文件交接、运行时不调模型——prepare 生成各角色
 // input.md，Agent 写 output.md，collect 用确定性校验核对字数、L#### 引用与标题结构，
 // 并对照 original.txt 真实行数。--evidence-review 才逐句调模型核验具体事实；解析失败批次二分重试。
-import { mkdir, readFile, writeFile } from "node:fs/promises";
+import { access, mkdir, readFile, writeFile } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { searchLibrary } from "./library.js";
+import { ensureBoundedUniverseCanonAssets, resolveOriginalCanonPath } from "./canon-source.js";
 import { runAgentText } from "./generate.js";
 import { parseJsonObject } from "./model-json.js";
 import { z } from "zod";
@@ -441,7 +442,7 @@ const COMMON_RULES = [
   "区分事实、人物判断和本 Agent 的分析；本 Agent 提出的创作建议一律标为项目原创。"
 ].join("\n");
 
-function buildInput(role: AnalysisRole, index: ChapterIndexFile, hits: Awaited<ReturnType<typeof searchLibrary>>, outputPath: string): string {
+function buildInput(worldId: string, role: AnalysisRole, index: ChapterIndexFile, hits: Awaited<ReturnType<typeof searchLibrary>>, outputPath: string): string {
   const ranges = role.lineRanges.map(([start, end], position) =>
     `- L${start}–L${end}：${role.rangeNotes[position] ?? "建议精读"}`
   ).join("\n");
@@ -463,9 +464,9 @@ function buildInput(role: AnalysisRole, index: ChapterIndexFile, hits: Awaited<R
     "## 证据源与边界",
     "",
     `- 原文：\`original.txt\`，共 ${index.totalLines} 行；可用 Grep / Read 按行号核对。`,
-    "- 检索库：`worlds/conghuoniao/library/index.json`（带重叠的全文切片）。",
-    "- 已有分析：`analysis/conghuoniao/volumes.md`、`analysis/conghuoniao/analysis-report.md`。",
-    "- 世界资料：`worlds/conghuoniao/` 下的 `world-bible.md`、`yanfu-system.md`、`fruit-worlds.md`、`characters.md`、`timeline.md`。",
+    `- 检索库：` + "`worlds/" + worldId + "/library/index.json`（仅当前世界可用的切片）。",
+    `- 已有分析：` + "`analysis/" + worldId + "/volumes.md`、`analysis/" + worldId + "/analysis-report.md`（文件存在时再读取）。",
+    `- 世界资料：` + "`worlds/" + worldId + "/` 下实际存在的世界资料；故事宇宙只使用其本地时点资料。",
     "- 这些文档是索引，不是正史；与原文冲突时以原文为准，并把冲突写进结论。",
     "",
     COMMON_RULES,
@@ -523,6 +524,8 @@ const PROTOCOL = [
 export interface PrepareResult { roles: number; dir: string; }
 
 export async function prepareWorldAnalysis(worldId: string): Promise<PrepareResult> {
+  const worldDir = resolve("worlds", worldId);
+  await ensureBoundedUniverseCanonAssets(worldId, { projectRoot: resolve("."), worldDir });
   const analysisDir = resolve("analysis", worldId, "agent-analysis");
   const libraryDir = resolve("worlds", worldId, "library");
   const index = await loadChapterIndex(analysisDir);
@@ -534,7 +537,7 @@ export async function prepareWorldAnalysis(worldId: string): Promise<PrepareResu
     await mkdir(roleDir, { recursive: true });
     const hits = await searchLibrary(libraryDir, role.query, 6);
     const outputPath = `analysis/${worldId}/agent-analysis/${role.id}/output.md`;
-    await writeFile(join(roleDir, "input.md"), buildInput(role, index, hits, outputPath), "utf8");
+    await writeFile(join(roleDir, "input.md"), buildInput(worldId, role, index, hits, outputPath), "utf8");
   }
   return { roles: ANALYSIS_ROLES.length, dir: analysisDir };
 }
@@ -566,8 +569,20 @@ export async function collectWorldAnalysis(
   options: { sourcePath?: string; model?: string; timeoutMs?: number; evidenceReview?: boolean; evidenceWindow?: number } = {}
 ): Promise<CollectResult> {
   const analysisDir = resolve("analysis", worldId, "agent-analysis");
+  const worldDir = resolve("worlds", worldId);
+  await ensureBoundedUniverseCanonAssets(worldId, { projectRoot: resolve("."), worldDir });
   const index = await loadChapterIndex(analysisDir);
-  const sourcePath = resolve(options.sourcePath ?? "original.txt");
+  const canonicalSourcePath = await resolveOriginalCanonPath(worldId);
+  if (options.sourcePath && resolve(options.sourcePath) !== resolve(canonicalSourcePath)) {
+    try {
+      await access(join(worldDir, "universe.json"));
+      throw new Error("历史故事宇宙只能使用自己的时点原文副本进行引用核验，不能覆盖为完整原著或其他文件。");
+    } catch (error) {
+      if (error instanceof Error && error.message.includes("只能使用自己的时点原文副本")) throw error;
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+  }
+  const sourcePath = options.sourcePath ? resolve(options.sourcePath) : canonicalSourcePath;
   let sourceLines: string[] | undefined;
   try {
     sourceLines = (await readFile(sourcePath, "utf8")).split(/\r?\n/);

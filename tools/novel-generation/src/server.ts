@@ -4,8 +4,8 @@
 import express, { type Request, type Response, type NextFunction } from "express";
 import { spawn } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
-import { cp, copyFile, mkdir, readFile, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
-import { constants as fsConstants } from "node:fs";
+import { cp, copyFile, mkdir, readFile, readdir, rename, rm, unlink, writeFile } from "node:fs/promises";
+
 import { existsSync, rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
@@ -29,6 +29,7 @@ import { buildUniverseOriginContext, buildUniverseWorldBible, rebaseStoryState, 
 import { importBoundedStoryAnalysisSnapshot, restrictKnowledgeDatabaseToEntry } from "./source-canon-snapshot.js";
 import { importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
+import { copyOriginalCanonToUniverse, ensureBoundedUniverseCanonAssets, resolveOriginalCanonPath, truncateCanonAtLine } from "./canon-source.js";
 import { assessStoryUnitProgress, generateStoryUnit, isStoryUnitNaturallyComplete, validateStoryUnit } from "./story-unit.js";
 import { archiveStoredStoryUnitVersion, createStoredStoryUnit, getStoredStoryUnit, getStoredStoryUnitVersion, listStoredStoryUnitVersions, listStoredStoryUnits, saveStoredStoryUnit } from "./story-unit-store.js";
 import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, mergeStoryExecutionControlFlags, storyRunStateWasRolledBack, type StoryExecution } from "./story-execution.js";
@@ -78,33 +79,6 @@ function recordId(value: unknown): string {
 
 function worldDir(id: string): string {
   return path.resolve("worlds", id);
-}
-
-/**
- * The canonical corpus is the project-root original.txt (intentionally gitignored).
- * Older imports may still keep a world-local copy, so retain that as a fallback.
- * A child universe already owns a bounded worlds/<id>/original.txt and must use it.
- */
-async function resolveOriginalCanonPath(id: string): Promise<string> {
-  const localPath = path.join(worldDir(id), "original.txt");
-  const projectPath = path.resolve("original.txt");
-  let isUniverse = false;
-  try { isUniverse = (await stat(path.join(worldDir(id), "universe.json"))).isFile(); }
-  catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-  // Source projects use the root corpus by convention; child universes must
-  // remain pinned to their own bounded local copy.
-  const candidates = isUniverse ? [localPath, projectPath] : [projectPath, localPath];
-  for (const candidate of candidates) {
-    try {
-      const info = await stat(candidate);
-      if (info.isFile()) return candidate;
-    } catch (error) {
-      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-    }
-  }
-  throw Object.assign(new Error(
-    "找不到原著全文。已检查 " + localPath + " 和 " + projectPath + "；请确认 original.txt 位于 novel-generation 项目根目录。"
-  ), { code: "ENOENT" });
 }
 
 /** 双保险：即便 ID 校验规则未来放宽，也不允许解析到 worlds 之外。 */
@@ -615,7 +589,7 @@ async function readCanonChapters(sourceWorldId: string): Promise<CanonChapterEnt
  * The source catalog is full-book metadata, so write a universe-local copy filtered to
  * the same as-of chapter boundary. Never fall back to the parent's unbounded catalog.
  */
-async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targetDir: string, universeId: string, entryIndex: number): Promise<void> {
+async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targetDir: string, universeId: string, entryIndex: number, boundedTotalLines: number): Promise<void> {
   const sourcePath = path.resolve("analysis", sourceWorldId, "chapter-index.json");
   try {
     const source = JSON.parse(await readFile(sourcePath, "utf8")) as {
@@ -635,11 +609,10 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
       const chapters = (volume.chapters ?? []).slice(0, remaining).map(safeChapter);
       remaining -= chapters.length;
       if (!chapters.length) return null;
-      const lastLine = [...chapters].reverse().find(chapter => typeof chapter.line === "number")?.line;
       return {
         volume: volume.volume,
         ...(typeof volume.startLine === "number" ? { startLine: volume.startLine } : {}),
-        ...(typeof lastLine === "number" ? { endLine: lastLine } : {}),
+        endLine: Math.min(typeof volume.endLine === "number" ? volume.endLine : boundedTotalLines, boundedTotalLines),
         chapterCount: chapters.length,
         openingChapter: chapters[0]!.title,
         closingChapter: chapters[chapters.length - 1]!.title,
@@ -647,11 +620,7 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
       };
     }).filter((volume): volume is NonNullable<typeof volume> => volume !== null);
     const safeChapters = (source.chapters ?? []).slice(0, entryIndex + 1).map(safeChapter);
-    const retainedLines = [
-      ...safeVolumes.flatMap(volume => volume.chapters.map(chapter => chapter.line ?? 0)),
-      ...safeChapters.map(chapter => chapter.line ?? 0)
-    ];
-    const totalLines = Math.max(1, ...retainedLines);
+    const totalLines = Math.max(1, boundedTotalLines);
     const snapshot = {
       ...(typeof source.schemaVersion === "number" ? { schemaVersion: source.schemaVersion } : {}),
       totalLines,
@@ -669,49 +638,13 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
 }
 
 /**
- * Give every universe its own copy of the canonical corpus. Prefer a
- * copy-on-write reflink so branches share physical blocks without sharing a
- * mutable inode; fall back to an ordinary copy when the filesystem does not
- * implement FICLONE_FORCE (APFS returns ENOSYS on this machine).
- *
- * The copy is mandatory, not an optimisation: cp(sourceDir -> staging) only
- * walks worlds/<sourceId>/, while the canon lives at the project-root
- * original.txt. Without it prepareCanonIndexInputs() cannot compute
- * chapterStartOffsets, and analyze-story collapses the whole bounded corpus
- * into a single ordinal=0 front-matter pseudo-chapter.
- *
- * Note this is the full book, kept so the catalog's absolute line numbers stay
- * valid. The chapter boundary is enforced by library/index.json and
- * analysis/<id>/chapter-index.json, never by reading this file end to end.
+ * The local cloneOriginalCanon() reflink helper was replaced by the shared
+ * canon-source.ts implementation: copyOriginalCanonToUniverse() reads the
+ * project-root canon and writes a chapter-bounded original.txt, which both
+ * guarantees the universe owns the file (FICLONE_FORCE is ENOSYS on APFS) and
+ * prevents future chapters from leaking into the universe's local corpus.
  */
-async function cloneOriginalCanon(sourceDir: string, targetDir: string): Promise<boolean> {
-  let source: string;
-  try {
-    source = await resolveOriginalCanonPath(path.basename(sourceDir));
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
-    throw error;
-  }
-  const target = path.join(targetDir, "original.txt");
-  const temporary = target + ".clone-" + process.pid;
-  try {
-    try {
-      await copyFile(source, temporary, fsConstants.COPYFILE_FICLONE_FORCE);
-    } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code;
-      const cloneUnsupported = ["EXDEV", "EPERM", "EACCES", "ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EINVAL"].includes(code ?? "");
-      if (!cloneUnsupported) throw error;
-      await copyFile(source, temporary);
-    }
-    await rename(temporary, target);
-    return true;
-  } catch (error) {
-    await rm(temporary, { force: true }).catch(() => undefined);
-    throw error;
-  }
-}
-
-async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: string, universeId: string, entryIndex: number): Promise<void> {
+async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: string, universeId: string, entryIndex: number): Promise<number> {
   let source: { schemaVersion: number; createdAt: string; updatedAt: string; chunks: Array<CanonChapterChunk & { [key: string]: unknown }> } = {
     schemaVersion: 1, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), chunks: []
   };
@@ -724,37 +657,50 @@ async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: st
   }
   const catalog = await loadChapterCatalog(sourceWorldId);
   if (!catalog) throw new Error("原著章节目录不存在，无法创建有边界的知识切片快照。");
-  const originalPath = await resolveOriginalCanonPath(sourceWorldId).catch(error => {
-    if ((error as NodeJS.ErrnoException).code === "ENOENT") return undefined;
-    throw error;
-  });
-  const originalText = originalPath ? await readFile(originalPath, "utf8") : "";
-  const originalSourceLines = originalText ? originalText.split(/\r?\n/) : [];
+  const nextChapterLineValue = catalog[entryIndex + 1]?.line;
+  const nextChapterLine = typeof nextChapterLineValue === "number" ? nextChapterLineValue : undefined;
+  if (catalog[entryIndex + 1] && (!Number.isSafeInteger(nextChapterLine) || Number(nextChapterLine) < 2)) {
+    throw new Error("所选起点之后的原文目录缺少有效行号，无法安全截断未来章节。");
+  }
+  const originalPath = await resolveOriginalCanonPath(sourceWorldId);
+  const originalText = await readFile(originalPath, "utf8");
+  const boundedOriginalText = truncateCanonAtLine(originalText, nextChapterLine);
+  const originalSourceLines = originalText.split(/\r?\n/);
+  const boundedLineCount = boundedOriginalText.split(/\r?\n/).length;
   const offsets = catalog.map(chapter => {
-    if (!originalText || chapter.line == null || chapter.line < 1) return undefined;
+    if (chapter.line == null || chapter.line < 1) return undefined;
     let offset = 0;
-    for (let line = 1; line < chapter.line; line++) { const next = originalText.indexOf("\n", offset); if (next < 0) return undefined; offset = next + 1; }
+    for (let line = 1; line < chapter.line; line++) {
+      const next = originalText.indexOf("\n", offset);
+      if (next < 0) return undefined;
+      offset = next + 1;
+    }
     const lineText = originalSourceLines[chapter.line - 1] ?? "";
     return offset + lineText.length - lineText.trimStart().length;
   });
-  const sourceHash = originalText ? createHash("sha256").update(originalText, "utf8").digest("hex") : undefined;
-  const canonChunks = selectCanonSourceChunks(source.chunks, sourceHash);
+  const sourceHash = createHash("sha256").update(boundedOriginalText, "utf8").digest("hex");
+  const canonChunks = selectCanonSourceChunks(source.chunks, createHash("sha256").update(originalText, "utf8").digest("hex"));
   const aligned = alignCanonChapterGroups(catalog, canonChunks, offsets);
-  const sourceKey = originalPath ? path.relative(process.cwd(), originalPath).split(path.sep).join("/") : path.relative(process.cwd(), path.join(worldDir(sourceWorldId), "original.txt")).split(path.sep).join("/");
+  // Rebind provenance to the bounded file that is actually stored in this
+  // universe. Keeping the parent's full-book hash would make index-story reject
+  // every child chunk after the original copy is correctly truncated.
+  const sourceKey = path.relative(process.cwd(), path.join(worldDir(universeId), "original.txt")).split(path.sep).join("/");
   const chunks = aligned.filter(item => item.catalogIndex <= entryIndex).flatMap(item => {
-    if (item.chunks.length) return item.chunks;
+    if (item.chunks.length) return item.chunks.map(chunk => ({
+      ...chunk, source: sourceKey, sourceHash
+    }));
     const chapterText = readCatalogChapterText(catalog, originalSourceLines, item.catalogIndex);
-    if (!chapterText) throw new Error("无法为历史宇宙补齐原著章节切片：" + item.chapter.title + "。全文不可读且该章没有有效原文切片。");
+    if (!chapterText) throw new Error("无法为历史宇宙补齐原著章节切片：" + item.chapter.title + "。原文全文缺失或目录行号无效。");
     const parts = chunkText(chapterText);
     return parts.map((part, chunkIndex) => ({
       id: sourceKey + ":catalog:" + catalogChapterId(item.chapter.volume, item.chapter.sequenceInVolume) + ":" + chunkIndex,
       source: sourceKey,
+      sourceHash,
       chapter: item.chapter.title,
       chunkIndex,
       start: part.start,
       end: part.end,
       text: part.text,
-      ...(sourceHash ? { sourceHash } : {}),
       ...(offsets[item.catalogIndex] !== undefined ? { chapterStart: offsets[item.catalogIndex] } : {})
     }));
   });
@@ -768,6 +714,60 @@ async function writeUniverseLibrarySnapshot(sourceWorldId: string, targetDir: st
   const libraryDir = path.join(targetDir, "library");
   await mkdir(libraryDir, { recursive: true });
   await writeFile(path.join(libraryDir, "index.json"), JSON.stringify(snapshot, null, 2) + "\n", "utf8");
+  return boundedLineCount;
+}
+
+
+async function writeForkedUniverseCanonSnapshots(parentId: string, targetDir: string, universeId: string): Promise<number> {
+  const parentOriginalPath = await resolveOriginalCanonPath(parentId);
+  const parentOriginalText = await readFile(parentOriginalPath, "utf8");
+  const sourceHash = createHash("sha256").update(parentOriginalText, "utf8").digest("hex");
+  const lineCount = parentOriginalText.split(/\r?\n/).length;
+  const parentLibrary = JSON.parse(await readFile(path.join(worldDir(parentId), "library", "index.json"), "utf8")) as {
+    schemaVersion: number; createdAt: string; updatedAt: string; worldId: string;
+    chunks: Array<CanonChapterChunk & { sourceHash?: string }>;
+  };
+  if (parentLibrary.worldId !== parentId || !Array.isArray(parentLibrary.chunks) || !parentLibrary.chunks.length) {
+    throw new Error("父宇宙没有可验证的时点原文切片，无法安全分叉。");
+  }
+  const parentChunks = selectCanonSourceChunks(parentLibrary.chunks, sourceHash);
+  if (parentChunks.length !== parentLibrary.chunks.length || parentChunks.some(chunk => chunk.sourceHash !== sourceHash)) {
+    throw new Error("父宇宙 library 的 source/sourceHash 与本地时点原文不一致，拒绝复制不确定的分支检索数据。");
+  }
+
+  const parentCatalogPath = path.resolve("analysis", parentId, "chapter-index.json");
+  const parentCatalogText = await readFile(parentCatalogPath, "utf8");
+  const parentCatalog = JSON.parse(parentCatalogText) as {
+    schemaVersion: number; totalLines: number;
+    volumes?: Array<{ chapters?: Array<{ title?: string }> }>;
+    chapters?: Array<{ title?: string }>;
+  };
+  if (parentCatalog.totalLines !== lineCount) {
+    throw new Error("父宇宙章节目录 totalLines 与本地 bounded original.txt 不一致，拒绝分叉。");
+  }
+  const catalogTitles = parentCatalog.volumes?.length
+    ? parentCatalog.volumes.flatMap(volume => (volume.chapters ?? []).map(chapter => chapter.title ?? ""))
+    : (parentCatalog.chapters ?? []).map(chapter => chapter.title ?? "");
+  if (!catalogTitles.length || parentChunks.some(chunk => !catalogTitles.includes(chunk.chapter))) {
+    throw new Error("父宇宙 library 存在章节目录之外的切片，拒绝分叉以防止未来剧情泄漏。");
+  }
+
+  const sourceKey = path.relative(process.cwd(), path.join(worldDir(universeId), "original.txt")).split(path.sep).join("/");
+  const libraryDir = path.join(targetDir, "library");
+  await mkdir(libraryDir, { recursive: true });
+  const childLibrary = {
+    schemaVersion: parentLibrary.schemaVersion,
+    worldId: universeId,
+    createdAt: parentLibrary.createdAt,
+    updatedAt: new Date().toISOString(),
+    chunks: parentChunks.map(chunk => ({ ...chunk, source: sourceKey, sourceHash }))
+  };
+  await writeFile(path.join(libraryDir, "index.json"), JSON.stringify(childLibrary, null, 2) + "\n", "utf8");
+
+  const childCatalogDir = path.resolve("analysis", universeId);
+  await mkdir(childCatalogDir, { recursive: true });
+  await writeFile(path.join(childCatalogDir, "chapter-index.json"), parentCatalogText, "utf8");
+  return lineCount;
 }
 
 app.get("/api/worlds/:worldId/source-chapters", async (req, res) => {
@@ -869,7 +869,15 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
         return shouldCopyUniverseAsset(path.relative(sourceDir, source));
       }
     });
-    await cloneOriginalCanon(sourceDir, stagingDir);
+    const sourceCatalog = await loadChapterCatalog(rootSourceId);
+    if (!sourceCatalog) throw new Error("原著章节目录不存在，无法建立安全的时点原文副本。");
+    const nextChapterLineValue = sourceCatalog[selectedIndex + 1]?.line;
+    const nextChapterLine = typeof nextChapterLineValue === "number" ? nextChapterLineValue : undefined;
+    if (sourceCatalog[selectedIndex + 1] && (!Number.isSafeInteger(nextChapterLine) || Number(nextChapterLine) < 2)) {
+      throw new Error("所选章节之后的目录缺少有效行号，无法截断原文未来剧情。");
+    }
+    const copiedCanon = await copyOriginalCanonToUniverse(rootSourceId, stagingDir, path.resolve("."), nextChapterLine);
+    if (!copiedCanon) throw new Error("无法读取原著全文并建立独立的时点原文副本；拒绝创建可能暴露未来剧情的故事宇宙。");
     // novel.db 是原著分析只读快照的初期副本；重置其世界身份，防止数据库身份校验误认为属于源项目。
     rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
     const knowledgePath = path.join(stagingDir, "novel.db");
@@ -928,8 +936,8 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     await writeFile(path.join(stagingDir, "source-canon.json"), JSON.stringify({ sourceWorldId: rootSourceId, readOnly: true }, null, 2) + "\n", "utf8");
     await writeFile(path.join(stagingDir, "universe-entry.md"), selectedChapter.text + "\n", "utf8");
     await writeFile(path.join(stagingDir, "universe-origin-context.md"), originContext + "\n", "utf8");
-    await writeUniverseLibrarySnapshot(rootSourceId, stagingDir, id, selectedIndex);
-    await writeUniverseAnalysisCatalogSnapshot(rootSourceId, stagingDir, id, selectedIndex);
+    const boundedTotalLines = await writeUniverseLibrarySnapshot(rootSourceId, stagingDir, id, selectedIndex);
+    await writeUniverseAnalysisCatalogSnapshot(rootSourceId, stagingDir, id, selectedIndex, boundedTotalLines);
     await writeFile(path.join(stagingDir, "source-canon-as-of.json"), JSON.stringify({ sourceWorldId: rootSourceId, entryChapter, entryChapterId, entryChapterIndex: selectedIndex, entryOrdinal, policy: "chapter-scoped-evidence-only", fullBookAggregates: "excluded" }, null, 2) + "\n", "utf8");
     await rename(stagingDir, targetDir);
     const knowledgeBuild = req.body?.buildKnowledge === false ? null : await serializeWorld(id, () => startKnowledgeBuild(id));
@@ -1019,20 +1027,32 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     forkStagingPath = stagingDir;
     await mkdir(stagingDir, { recursive: true });
     const parentDir = worldDir(parentId);
+    await ensureBoundedUniverseCanonAssets(parentId, { projectRoot: path.resolve("."), worldDir: parentDir });
     await cp(parentDir, stagingDir, {
       recursive: true,
       filter: source => {
         return shouldCopyUniverseAsset(path.relative(parentDir, source));
       }
     });
-    await cloneOriginalCanon(parentDir, stagingDir);
+    const parentCatalog = await loadChapterCatalog(parentId);
+    if (!parentCatalog?.length) throw new Error("父宇宙缺少可验证的 bounded 原文目录，无法分叉。");
+    const matchingParentIndexes = parentCatalog.flatMap((chapter, index) => chapter.title === parent.entryChapter ? [index] : []);
+    const parentEntryIndex = Number.isSafeInteger(parent.entryChapterIndex) &&
+      parent.entryChapterIndex! >= 0 && parent.entryChapterIndex! < parentCatalog.length
+      ? parent.entryChapterIndex!
+      : matchingParentIndexes.length === 1 ? matchingParentIndexes[0]! : -1;
+    if (parentEntryIndex < 0 || parentCatalog[parentEntryIndex]?.title !== parent.entryChapter) {
+      throw new Error("父宇宙的原文起点无法通过 bounded 章节目录唯一定位，拒绝创建可能泄漏未来剧情的分支。");
+    }
+    const copiedCanon = await copyOriginalCanonToUniverse(parentId, stagingDir, path.resolve("."));
+    if (!copiedCanon) throw new Error("父宇宙缺少自己的时点原文副本，拒绝创建分支；不能回退读取完整原著。");
     rebindKnowledgeDatabase(path.join(stagingDir, "novel.db"), id);
     restrictKnowledgeDatabaseToEntry(path.join(stagingDir, "novel.db"), id, parent.entryChapter, parent.entryChapterId);
     const universe: StoryUniverse = {
       id, sourceWorldId: parent.sourceWorldId, name, type: parent.type,
       entryChapter: parent.entryChapter,
       entryChapterId: parent.entryChapterId,
-      entryChapterIndex: parent.entryChapterIndex,
+      entryChapterIndex: parentEntryIndex,
       entryOrdinal: parent.entryOrdinal,
       brief: parent.brief,
       parentUniverseId: parent.id, forkPoint: forkRun.id,
@@ -1041,14 +1061,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     await writeFile(path.join(stagingDir, "universe.json"), JSON.stringify(universe, null, 2) + "\n", "utf8");
     await writeFile(path.join(stagingDir, "world-bible.md"), buildUniverseWorldBible(universe), "utf8");
     await writeFile(path.join(stagingDir, "source-canon.json"), JSON.stringify({ sourceWorldId: parent.sourceWorldId, readOnly: true }, null, 2) + "\n", "utf8");
-    const parentCanonChapters = await readCanonChapters(parent.sourceWorldId);
-    const matchingParentIndexes = parentCanonChapters.flatMap((chapter, index) => chapter.title === parent.entryChapter ? [index] : []);
-    const parentEntryIndex = Number.isSafeInteger(parent.entryChapterIndex)
-      ? parent.entryChapterIndex!
-      : matchingParentIndexes.length === 1 ? matchingParentIndexes[0]! : -1;
-    if (parentEntryIndex < 0 || parentEntryIndex >= parentCanonChapters.length) throw new Error("父宇宙的原文起点无法通过稳定章节索引唯一定位，拒绝创建可能泄漏未来剧情的分支。");
-    await writeUniverseLibrarySnapshot(parent.sourceWorldId, stagingDir, id, parentEntryIndex);
-    await writeUniverseAnalysisCatalogSnapshot(parent.sourceWorldId, stagingDir, id, parentEntryIndex);
+    await writeForkedUniverseCanonSnapshots(parentId, stagingDir, id);
 
     const forkState = rebaseStoryState(state, parentId, id);
     await writeFile(path.join(stagingDir, "story-state.json"), JSON.stringify(forkState, null, 2) + "\n", "utf8");

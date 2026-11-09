@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rm, unlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../src/server.js";
@@ -57,7 +57,7 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
         { sequenceInVolume: 3, printedNumber: 3, title: "原文第三章", label: "原文第三章", line: 200 }
       ] }]
     }));
-    await writeFile(join(parentDir, "original.txt"), "原文第一章\n原文第二章\n原文第三章", "utf8");
+    await writeFile(join(parentDir, "original.txt"), sourceOriginalText, "utf8");
     const parentDb = new DatabaseSync(join(parentDir, "novel.db"));
     parentDb.exec(`CREATE TABLE world_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL); INSERT INTO world_meta VALUES('world_id','parent-universe'); CREATE TABLE novel_chapters(chapter_id TEXT PRIMARY KEY,title TEXT NOT NULL,ordinal INTEGER NOT NULL,volume INTEGER NOT NULL DEFAULT 1); INSERT INTO novel_chapters VALUES('c1','原文第一章',1,1),('c2','原文第二章',2,1),('c3','原文第三章',3,1);`);
     parentDb.close();
@@ -71,9 +71,9 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
       schemaVersion: 1, worldId: parentId, createdAt: "2026-11-01T00:00:00.000Z",
       updatedAt: "2026-11-01T00:00:00.000Z",
       chunks: [
-        { chapter: "原文第一章", chunkIndex: 0, start: 0, end: 6, text: "此前正文" },
-        { chapter: "原文第二章", chunkIndex: 0, start: 0, end: 6, text: "起点正文" },
-        { chapter: "原文第三章", chunkIndex: 0, start: 0, end: 6, text: "未来原文" }
+        { id: "parent:1", source: "worlds/source-world/original.txt", sourceHash, chapter: "原文第一章", chunkIndex: 0, start: 0, end: 6, chapterStart: sourceChapterStarts[0], text: "此前正文" },
+        { id: "parent:2", source: "worlds/source-world/original.txt", sourceHash, chapter: "原文第二章", chunkIndex: 0, start: 0, end: 6, chapterStart: sourceChapterStarts[1], text: "起点正文" },
+        { id: "parent:3", source: "worlds/source-world/original.txt", sourceHash, chapter: "原文第三章", chunkIndex: 0, start: 0, end: 6, chapterStart: sourceChapterStarts[2], text: "未来原文" }
       ]
     }));
     await writeFile(join(parentDir, "characters.md"), "不应继承的全书人物画像");
@@ -97,6 +97,10 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
     };
     await saveRun(run);
 
+    // A fork must use the parent's bounded local corpus; it must not reopen
+    // the source project's full original.txt.
+    await unlink(join(root, "worlds", "source-world", "original.txt"));
+
     server = createServer(createApp());
     await new Promise<void>(resolve => server!.listen(0, "127.0.0.1", resolve));
     const address = server.address();
@@ -115,6 +119,9 @@ test("fork universe restores a completed chapter snapshot and isolates copied hi
     const childId = payload.universe.id;
     const childDir = join(root, "worlds", childId);
     const childOutput = join(root, ".output", childId, "chapter-001");
+    const childCanon = await readFile(join(childDir, "original.txt"), "utf8");
+    assert.ok(!childCanon.includes("原文第三章"), "fork must preserve the parent's bounded corpus");
+    assert.ok(!childCanon.includes("未来原文"));
 
     assert.equal(payload.universe.parentUniverseId, parentId);
     assert.equal(payload.universe.forkPoint, runId);

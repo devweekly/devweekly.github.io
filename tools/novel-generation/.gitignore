@@ -15,6 +15,8 @@ worlds/*/story-kb.json
 
 # 本地覆盖与私有笔记：目录名即约定，需要共享时把文件移到 worlds/<world>/
 private/
+# 私有导入切片永远不进入可提交的公共 library 或知识库
+worlds/*/private-library/
 
 # 审核包是可从已提交内容重新生成的二进制产物
 .output/*.zip

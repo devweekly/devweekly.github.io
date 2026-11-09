@@ -154,13 +154,13 @@
 - 分析目录：Create/Fork 从 bounded library 重建本宇宙 analysis/<worldId>/chapter-index.json，不复制源项目未来章节元数据或分析摘要。
 - 自动知识重建：Create/Fork 发布后默认异步启动八步任务：analyze-story、analyze-arcs、ensure-style-profile、analyze-profiles、analyze-character-states、analyze-corpus-craft、export-asof-dossier、vane-index。任务状态在 Workbench 展示，可重试；写作、分叉、归档与知识构建通过单进程 per-world 队列和活动任务锁协调。
 - 历史资料：export-asof-dossier 只从当前宇宙完整 SQLite 快照导出人物、人物关系、逐章时间线、主线、伏笔、MacGuffin、故事核心和发展可能性，写入 worlds/<worldId>/as-of-analysis/。该目录在下一次 Create/Fork 时明确排除。Style Profile 缺失时从 bounded library 取样重建，不覆盖已有人工资料。
-- 原文大文件：Create/Fork 优先使用 copy-on-write reflink，保证 inode 独立；不支持时普通复制回退。不得使用共享 hard-link，避免任一分支修改原文时污染其他分支。
+- 原文文件：Create/Fork 只在 staging 中物化截至起点的 bounded `original.txt` 前缀；不得把完整原著留在历史宇宙目录。父宇宙分叉只复制父宇宙已有的 bounded copy；旧版本若误存完整全文，必须先按根目录章节目录迁移截断，再发布分支。
 - 上下文隔离：章节生成的 common prompt 已抽取为可测试函数；测试同时覆盖实际 BM25 检索、Story Analysis Context、Corpus Craft、Writing Brief 与最终公共章节 Prompt 的时点 marker 排除。Vane manifest 必须匹配当前 worldId。
 
 ### 当前明确边界
 
 - 起点粒度当前为章节级，不支持章节内任意段落/字符偏移；UI 不应暗示更细粒度。
-- novel.db 与 bounded library 索引仍为每个宇宙保留时点安全副本；不能直接共享完整索引或全书聚合库。原始 original.txt 的 reflink 是可选物理优化，不是逻辑共享依赖。
+- novel.db、bounded library 索引、bounded original.txt 与 bounded chapter-index 均为每个宇宙独立保存的时点安全资产；library 的 source/sourceHash 必须指向本地 bounded original.txt。完整原著只存在于原文项目，不得以 reflink 或复制方式暴露给历史宇宙。
 - 自动分析是 LLM 对时点证据的解释，系统通过输入截断、证据引用和数据结构校验降低错误，但不能保证文学分析绝对正确。必须在真实作品上抽样核验人物关系、伏笔状态、MacGuffin 和主线判断。
 - 当前队列/锁只覆盖单个 Workbench 进程；多进程部署仍需文件锁或数据库级协调。
 - 质量验收不应把 Style Regression 或人物画像变成创作 gate；文学性、文笔、艺术风格优先，人物变化和剧情反转必须保留自由度。
