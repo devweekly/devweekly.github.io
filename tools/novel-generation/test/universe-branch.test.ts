@@ -87,11 +87,14 @@ test("historical universe asset policy excludes full-book and derived data from 
   assert.equal(shouldCopyUniverseAsset("novel.db"), true);
 });
 
-test("historical universe asset policy retains ordinary source material and nested non-derived assets", () => {
+test("historical universe asset policy excludes arbitrary files from staging", () => {
+  // Staging is a strict allow-list: even ordinary source notes and images are
+  // not copied implicitly. Only novel.db enters the explicit bounded-snapshot
+  // pipeline; original.txt is copied separately after its future boundary is cut.
   for (const file of [
     "source-notes/folklore.txt", "images/map.png", "research/period-customs.md"
   ]) {
-    assert.equal(shouldCopyUniverseAsset(file), true, file);
+    assert.equal(shouldCopyUniverseAsset(file), false, file);
   }
 });
 
