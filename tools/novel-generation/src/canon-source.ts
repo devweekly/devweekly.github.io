@@ -144,6 +144,7 @@ export async function ensureBoundedUniverseCanonAssets(
 
   const sourceCatalogPath = path.join(projectRoot, "analysis", universe.sourceWorldId, "chapter-index.json");
   const sourceCatalog = JSON.parse(await readFile(sourceCatalogPath, "utf8")) as {
+    totalLines?: number;
     volumes?: Array<{ volume: number; startLine?: number; endLine?: number; chapters?: Array<Record<string, unknown>> }>;
     chapters?: Array<Record<string, unknown>>;
   };
@@ -213,11 +214,27 @@ export async function ensureBoundedUniverseCanonAssets(
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
   }
-  // Repair older universes whose reflink/copy step failed: read the source
-  // corpus only inside this migration, then materialize a bounded local copy.
-  const originalText = localOriginalText ?? await readFile(
-    await resolveOriginalCanonPath(universe.sourceWorldId, { projectRoot }), "utf8"
-  );
+  // Read the root corpus only to verify or repair a bounded local snapshot.
+  // It is never returned to retrieval or writing contexts for a historical universe.
+  let sourceFullText: string | undefined;
+  try {
+    sourceFullText = await readFile(
+      await resolveOriginalCanonPath(universe.sourceWorldId, { projectRoot }), "utf8"
+    );
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  if (sourceFullText !== undefined) {
+    validateCanonCatalogAgainstText(catalog, sourceFullText, sourceCatalog.totalLines);
+    const expectedBounded = truncateCanonAtLine(sourceFullText, endBeforeLine);
+    if (localOriginalText !== undefined && localOriginalText !== sourceFullText && localOriginalText !== expectedBounded) {
+      throw new Error("故事宇宙本地 original.txt 与当前原文项目的时点副本不一致。原文可能已变更或本地副本损坏；拒绝自动覆盖。");
+    }
+  }
+  const originalText = sourceFullText ?? localOriginalText;
+  if (originalText === undefined) {
+    throw new Error("故事宇宙缺少本地 bounded original.txt，且原文项目全文不可用；无法验证或修复离线语料。");
+  }
   const originalHash = createHash("sha256").update(originalText, "utf8").digest("hex");
   const boundedText = truncateCanonAtLine(originalText, endBeforeLine, true);
   const boundedLines = splitCanonLines(boundedText);
