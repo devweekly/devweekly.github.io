@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Alert, Button, Card, Collapse, Empty, Input, InputNumber, Modal, Progress, Select, Space, Tag, Typography, message } from "antd";
+import { Alert, Button, Card, Checkbox, Collapse, Empty, Input, InputNumber, Modal, Progress, Select, Space, Tag, Typography, message } from "antd";
 import { PlayCircleOutlined, ReloadOutlined } from "@ant-design/icons";
 const { Title, Text, Paragraph } = Typography;
 type Run = { id:string; storyUnitId?:string; kind?:string; status:string; createdAt:string; updatedAt:string; error?:string; outputDir?:string; chapterPath?:string; previousChapterPath?:string };
@@ -8,7 +8,8 @@ type StoryExecution = {id:string;worldId:string;storyUnitId?:string;storyUnitTit
 type StoryUnit = { id?:string; updatedAt?:string; execution:{status:"not_started"|"in_progress"|"completed";completedChapterIds:string[];lastAssessment?:string;nextDirection?:string;assessedAt?:string;completedAt?:string;characterArcHistory?:Array<{chapterId:string;name:string;observedChange:string;futurePossibilities:string[];recordedAt:string}>}; title:string; storyCore:string; readerExperience:string; openingSituation:string; centralConflict:string; fruitOrSetting:{name:string;premise:string;abilitiesAndRules:string[];costsAndLimits:string[];historicalContext:string;geographyAndDailyLife:string;powerAndSocialRelations:string}; cultureAndFolklore:Array<{name:string;practice:string;originOrBelief:string;socialFunction:string;storyUse:string}>; taboosAndGhostStories:Array<{name:string;versions:string[];underlyingTruthOptions:string[];consequences:string;scenePotential:string}>; cast:Array<{name:string;role:string;status:string;desire:string;fearOrSecret:string;relationships:string[];possibleDevelopment:string[]}>; relationshipDynamics:string[]; storySpine:Array<{title:string;function:string;causalChange:string;involvedCharacters:string[];possibleArcs:string[];status?:"planned"|"in_progress"|"completed"|"replaced"}>; subplots:string[]; climax:string; endingAndAftermath:string; unresolvedQuestions:string[]; creativePossibilities:string[] };
 type Universe = { id:string; sourceWorldId:string; name:string; type:string; entryChapter:string; entryChapterId?:string; entryOrdinal?:number; brief:string; createdAt:string; parentUniverseId?:string; forkPoint?:string; archivedAt?:string };
 type ForkableRun = { id:string; chapterTitle:string; createdAt:string };
-type KnowledgeBuild = { worldId:string; status:"queued"|"running"|"completed"|"partial"|"failed"; currentStep?:string; updatedAt:string; completedAt?:string; steps:Array<{name:string;status:"running"|"completed"|"failed"|"skipped";exitCode?:number|null;output?:string;error?:string}> };
+type BuildProgress = { current:number; total:number; label:string };
+type KnowledgeBuild = { worldId:string; status:"queued"|"running"|"completed"|"partial"|"failed"|"interrupted"; currentStep?:string; updatedAt:string; completedAt?:string; progress?:BuildProgress; steps:Array<{name:string;status:"running"|"completed"|"failed"|"skipped";exitCode?:number|null;output?:string;error?:string;progress?:BuildProgress}> };
 async function api<T>(url:string, init?:RequestInit):Promise<T>{const response=await fetch(url,{headers:{"Content-Type":"application/json",...(init?.headers??{})},...init});const body=await response.json();if(!response.ok)throw new Error(body.error??response.statusText);return body as T;}
 const emptyPreview:Preview={storyArc:"",chapterPlan:"",chapter:""};
 export default function ChapterStudio({worldId}:{worldId:string}){
@@ -23,6 +24,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const [universeBrief,setUniverseBrief]=useState("");
  const [universeType,setUniverseType]=useState("free");
  const [creatingUniverse,setCreatingUniverse]=useState(false);
+ const [buildKnowledgeOnCreate,setBuildKnowledgeOnCreate]=useState(true);
  const [forkOpen,setForkOpen]=useState(false);
  const [forkName,setForkName]=useState("");
  const [forkRunId,setForkRunId]=useState<string>();
@@ -221,8 +223,8 @@ export default function ChapterStudio({worldId}:{worldId:string}){
  const createUniverse=async()=>{
   setCreatingUniverse(true);
   try{
-   const result=await api<{universe:Universe}>("/api/worlds/"+worldId+"/universes",{method:"POST",body:JSON.stringify({name:universeName,entryChapter,entryChapterIndex,brief:universeBrief,type:universeType})});
-   setUniverses(current=>[...current,result.universe]);setActiveWorldId(result.universe.id);setCreateOpen(false);
+   const result=await api<{universe:Universe;knowledgeBuild?:KnowledgeBuild|null}>("/api/worlds/"+worldId+"/universes",{method:"POST",body:JSON.stringify({name:universeName,entryChapter,entryChapterIndex,brief:universeBrief,type:universeType,buildKnowledge:buildKnowledgeOnCreate})});
+   setUniverses(current=>[...current,result.universe]);setKnowledgeBuild(result.knowledgeBuild??null);setActiveWorldId(result.universe.id);setCreateOpen(false);
    setUniverseName("");setEntryChapter("");setEntryChapterIndex(undefined);setUniverseBrief("");setUniverseType("free");
    message.success("独立故事宇宙已创建。");
   }catch(e){message.error(e instanceof Error?e.message:String(e));}
@@ -277,26 +279,33 @@ export default function ChapterStudio({worldId}:{worldId:string}){
    <Space direction="vertical" style={{width:"100%"}} size="middle">
     <Paragraph type="secondary" style={{marginBottom:0}}>优先复用原著已有的离线分析，并按当前宇宙起点过滤；只补齐缺失的人物画像、人物逐章状态、主线与伏笔分析、Corpus Craft 素材和 Vane 检索索引。所有输入均来自该宇宙自己的截断原文资料，不继承起点之后的剧情。此任务在后台运行，不是开始写作的前置条件。</Paragraph>
     <Space wrap>
-     <Tag color={knowledgeBuild?.status==="completed"?"success":knowledgeBuild?.status==="failed"?"error":knowledgeBuild?.status==="partial"?"warning":knowledgeBuild?.status==="running"||knowledgeBuild?.status==="queued"?"processing":"default"}>
-      {knowledgeBuild?.status==="completed"?"已完成":knowledgeBuild?.status==="failed"?"构建失败":knowledgeBuild?.status==="partial"?"部分完成":knowledgeBuild?.status==="running"?"正在构建":knowledgeBuild?.status==="queued"?"排队中":"尚未构建"}
+     <Tag color={knowledgeBuild?.status==="completed"?"success":knowledgeBuild?.status==="failed"?"error":knowledgeBuild?.status==="partial"||knowledgeBuild?.status==="interrupted"?"warning":knowledgeBuild?.status==="running"||knowledgeBuild?.status==="queued"?"processing":"default"}>
+      {knowledgeBuild?.status==="completed"?"已完成":knowledgeBuild?.status==="failed"?"构建失败":knowledgeBuild?.status==="partial"?"部分完成":knowledgeBuild?.status==="interrupted"?"已中断（服务重启）":knowledgeBuild?.status==="running"?"正在构建":knowledgeBuild?.status==="queued"?"排队中":"尚未构建"}
      </Tag>
      {knowledgeBuild?.currentStep&&<Text type="secondary">当前步骤：{knowledgeBuild.currentStep}</Text>}
      {knowledgeBuild?.updatedAt&&<Text type="secondary">更新于 {new Date(knowledgeBuild.updatedAt).toLocaleString()}</Text>}
     </Space>
+    {knowledgeBuild?.progress&&["queued","running"].includes(knowledgeBuild.status)&&<Progress
+     percent={Math.round(knowledgeBuild.progress.current/Math.max(1,knowledgeBuild.progress.total)*100)}
+     status="active"
+     format={()=>`${knowledgeBuild.progress?.label??"进度"} ${knowledgeBuild.progress?.current??0}/${knowledgeBuild.progress?.total??0}`}
+    />}
     <Button onClick={()=>void startKnowledgeBuild()} loading={startingKnowledgeBuild} disabled={startingKnowledgeBuild||knowledgeBuild?.status==="queued"||knowledgeBuild?.status==="running"}>
-     {knowledgeBuild?.status==="failed"||knowledgeBuild?.status==="partial"?"重新构建知识资料":"构建知识资料"}
+     {knowledgeBuild?.status==="failed"||knowledgeBuild?.status==="partial"||knowledgeBuild?.status==="interrupted"?"重新构建知识资料":"构建知识资料"}
     </Button>
-    {knowledgeBuild && knowledgeBuild.steps.length > 0 && <Space direction="vertical" style={{width:"100%"}} size="small">
-     {knowledgeBuild.steps.map(step=><div key={step.name} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+     {knowledgeBuild && knowledgeBuild.steps.length > 0 && <Space direction="vertical" style={{width:"100%"}} size="small">
+     {knowledgeBuild.steps.map((step,index)=><div key={step.name+"-"+index} style={{display:"flex",gap:10,alignItems:"flex-start"}}>
       <Tag color={step.status==="completed"?"success":step.status==="failed"?"error":step.status==="running"?"processing":"default"}>{step.status==="completed"?"完成":step.status==="failed"?"失败":step.status==="running"?"执行中":"跳过"}</Tag>
       <div style={{flex:1,minWidth:0}}>
        <Text>{step.name}</Text>
+       {step.progress&&<Text type="secondary" style={{fontSize:12}}> · {step.progress.current}/{step.progress.total} {step.progress.label}</Text>}
        {step.error&&<Paragraph type="danger" style={{fontSize:12,whiteSpace:"pre-wrap",marginBottom:4}}>{step.error}</Paragraph>}
       </div>
      </div>)}
     </Space>}
     {knowledgeBuild?.status==="partial"&&<Alert type="warning" showIcon message="部分资料未能构建" description="已成功的分析结果仍可使用；修复失败步骤后可重新构建。"/>}
     {knowledgeBuild?.status==="failed"&&<Alert type="error" showIcon message="知识构建未完成" description="章节写作仍可继续；修复失败步骤后可重新构建。"/>}
+    {knowledgeBuild?.status==="interrupted"&&<Alert type="warning" showIcon message="上次构建被服务重启中断" description="已完成的批次缓存仍在磁盘上，点击「重新构建知识资料」会直接复用，不会从头再来。"/>}
    </Space>
   </Card>}
   {notice&&<Alert type="warning" showIcon message="本次任务未能启动" description={notice} style={{marginBottom:18}}/>}
@@ -378,6 +387,7 @@ export default function ChapterStudio({worldId}:{worldId:string}){
     <Select showSearch optionFilterProp="label" style={{width:"100%"}} placeholder="选择原文起始章节" value={entryChapterIndex} onChange={index=>{setEntryChapterIndex(index);setEntryChapter(sourceChapters.find(chapter=>chapter.id===index)?.title??"");}} options={sourceChapters.map(chapter=>({value:chapter.id,label:chapter.label+" · "+chapter.title}))} notFoundContent="原文目录为空，请先导入并建立原文索引。" />
     <Select style={{width:"100%"}} value={universeType} onChange={setUniverseType} options={[{value:"mainline",label:"原著主线延续"},{value:"side-story",label:"原著支线扩展"},{value:"character",label:"人物独立故事"},{value:"parallel",label:"平行发展"},{value:"free",label:"自由续写"}]} />
     <Input.TextArea rows={3} placeholder="创作方向（可选）：人物、支线、关键事件或希望探索的剧情" value={universeBrief} onChange={e=>setUniverseBrief(e.target.value)} />
+    <Checkbox checked={buildKnowledgeOnCreate} onChange={e=>setBuildKnowledgeOnCreate(e.target.checked)}>创建后立即构建知识资料（后台运行，耗时较长；取消勾选可稍后手动启动）</Checkbox>
     <Text type="secondary">原文资料作为只读来源；新宇宙从空白续写状态开始，拥有独立的主线、人物状态、伏笔和章节记录。</Text>
    </Space>
   </Modal>

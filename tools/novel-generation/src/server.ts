@@ -669,9 +669,20 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
 }
 
 /**
- * original.txt is immutable source canon. Prefer a copy-on-write reflink so
- * branches share physical blocks without sharing a mutable inode. If the
- * filesystem cannot clone, keep the ordinary copy produced by cp().
+ * Give every universe its own copy of the canonical corpus. Prefer a
+ * copy-on-write reflink so branches share physical blocks without sharing a
+ * mutable inode; fall back to an ordinary copy when the filesystem does not
+ * implement FICLONE_FORCE (APFS returns ENOSYS on this machine).
+ *
+ * The copy is mandatory, not an optimisation: cp(sourceDir -> staging) only
+ * walks worlds/<sourceId>/, while the canon lives at the project-root
+ * original.txt. Without it prepareCanonIndexInputs() cannot compute
+ * chapterStartOffsets, and analyze-story collapses the whole bounded corpus
+ * into a single ordinal=0 front-matter pseudo-chapter.
+ *
+ * Note this is the full book, kept so the catalog's absolute line numbers stay
+ * valid. The chapter boundary is enforced by library/index.json and
+ * analysis/<id>/chapter-index.json, never by reading this file end to end.
  */
 async function cloneOriginalCanon(sourceDir: string, targetDir: string): Promise<boolean> {
   let source: string;
@@ -682,15 +693,20 @@ async function cloneOriginalCanon(sourceDir: string, targetDir: string): Promise
     throw error;
   }
   const target = path.join(targetDir, "original.txt");
-  const temporary = target + ".reflink-" + process.pid;
+  const temporary = target + ".clone-" + process.pid;
   try {
-    await copyFile(source, temporary, fsConstants.COPYFILE_FICLONE_FORCE);
+    try {
+      await copyFile(source, temporary, fsConstants.COPYFILE_FICLONE_FORCE);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      const cloneUnsupported = ["EXDEV", "EPERM", "EACCES", "ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EINVAL"].includes(code ?? "");
+      if (!cloneUnsupported) throw error;
+      await copyFile(source, temporary);
+    }
     await rename(temporary, target);
     return true;
   } catch (error) {
     await rm(temporary, { force: true }).catch(() => undefined);
-    const code = (error as NodeJS.ErrnoException).code;
-    if (["EXDEV", "EPERM", "EACCES", "ENOTSUP", "EOPNOTSUPP", "ENOSYS", "EINVAL"].includes(code ?? "")) return false;
     throw error;
   }
 }
@@ -812,7 +828,7 @@ app.post("/api/worlds/:worldId/universes", async (req, res) => {
     await serializeWorld(lockId, async () => {
     const sourceId = worldIdOf(req.params.worldId); assertInsideWorld(sourceId);
     const sourceUniverse = await readUniverse(sourceId);
-    if (sourceUniverse) return void res.status(409).json({ error: "当前版本的新建入口只从原文项目创建独立宇宙；从已有宇宙的历史时点分叉将在后续版本提供。" });
+    if (sourceUniverse) return void res.status(409).json({ error: "新建独立宇宙只能从原文项目发起；若要接着当前宇宙的某个历史章节继续，请使用「从本宇宙分叉」。" });
     const rootSourceId = sourceId;
     const sourceDir = worldDir(rootSourceId);
     const name = typeof req.body?.name === "string" ? req.body.name.trim() : "";

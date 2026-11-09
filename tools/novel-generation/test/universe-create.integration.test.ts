@@ -379,6 +379,7 @@ test("source chapter catalog reads project-root original.txt without a world-loc
   const previousCwd = process.cwd();
   await mkdir(join(root, "worlds", "source-world"), { recursive: true });
   await mkdir(join(root, "analysis", "source-world"), { recursive: true });
+  await writeFile(join(root, "worlds", "source-world", "world-bible.md"), "# Whole-book bible\n", "utf8");
   const originalText = [
     "第一章 大枪落幕",
     "第一章正文：李阎走进雨里。",
@@ -408,6 +409,30 @@ test("source chapter catalog reads project-root original.txt without a world-loc
     assert.equal(response.status, 200, body);
     const payload = JSON.parse(body) as { chapters: Array<{ id: number; title: string }> };
     assert.deepEqual(payload.chapters.map(chapter => chapter.title), ["第一章 大枪落幕", "第二章 貘与姑获鸟"]);
+
+    // Regression: the canon lives at the project root, not in worlds/<source>/.
+    // cp(sourceDir -> staging) therefore cannot supply it. COPYFILE_FICLONE_FORCE
+    // is unimplemented on APFS (ENOSYS), so cloneOriginalCanon must fall back to
+    // a plain copy. Without the file, prepareCanonIndexInputs() loses every
+    // chapterStartOffset and analyze-story collapses the corpus into ordinal 0.
+    const db = new DatabaseSync(join(root, "worlds", "source-world", "novel.db"));
+    db.exec(`
+      CREATE TABLE world_meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
+      INSERT INTO world_meta VALUES('world_id','source-world');
+      CREATE TABLE novel_chapters(chapter_id TEXT PRIMARY KEY,title TEXT NOT NULL,ordinal INTEGER NOT NULL,volume INTEGER NOT NULL DEFAULT 1);
+      INSERT INTO novel_chapters VALUES('V01-C001','第一章 大枪落幕',1,1),('V01-C002','第二章 貘与姑获鸟',2,1);
+    `);
+    db.close();
+    const createResponse = await fetch(`http://127.0.0.1:${address.port}/api/worlds/source-world/universes`, {
+      method: "POST",
+      headers: { "content-type": "application/json", host: `127.0.0.1:${address.port}` },
+      body: JSON.stringify({ name: "根原文分支", entryChapter: "第一章 大枪落幕", entryChapterIndex: 0, type: "free", brief: "", buildKnowledge: false })
+    });
+    const createBody = await createResponse.text();
+    assert.equal(createResponse.status, 201, createBody);
+    const created = JSON.parse(createBody) as { universe: { id: string } };
+    const universeCanon = await readFile(join(root, "worlds", created.universe.id, "original.txt"), "utf8");
+    assert.equal(universeCanon, originalText, "universe must own a copy of the project-root canon");
   } finally {
     if (server) await new Promise<void>(resolve => server!.close(() => resolve()));
     process.chdir(previousCwd);

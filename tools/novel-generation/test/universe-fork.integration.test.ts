@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
-import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createApp } from "../src/server.js";
@@ -11,7 +11,11 @@ import { emptyStoryState } from "../src/story-state.js";
 import { saveRun, type WorkbenchRun } from "../src/workbench-store.js";
 
 test("fork universe restores a completed chapter snapshot and isolates copied history", async () => {
-  const root = await mkdtemp(join(tmpdir(), "novel-universe-fork-"));
+  // macOS tmpdir is /var/... which is a symlink to /private/var/...; process.cwd()
+  // resolves the symlink while mkdtemp() does not. The fork guard compares an
+  // absolute run.outputDir against path.resolve(".output", ...), so the fixture
+  // root must be the canonical path or the guard rejects every fixture run.
+  const root = await realpath(await mkdtemp(join(tmpdir(), "novel-universe-fork-")));
   const previousCwd = process.cwd();
   const parentId = "parent-universe";
   const parentDir = join(root, "worlds", parentId);
