@@ -607,9 +607,12 @@ async function writeUniverseAnalysisCatalogSnapshot(sourceWorldId: string, targe
     }).filter((volume): volume is NonNullable<typeof volume> => volume !== null);
     const safeChapters = (source.chapters ?? []).slice(0, entryIndex + 1).map(safeChapter);
     const totalLines = Math.max(1, boundedTotalLines);
+    const boundedText = await readFile(path.join(worldDir(universeId), "original.txt"), "utf8");
+    const boundedSourceHash = createHash("sha256").update(boundedText, "utf8").digest("hex");
     const snapshot = {
       ...(typeof source.schemaVersion === "number" ? { schemaVersion: source.schemaVersion } : {}),
       totalLines,
+      sourceHash: boundedSourceHash,
       ...(safeVolumes.length ? { volumes: safeVolumes } : {}),
       ...(!safeVolumes.length && safeChapters.length ? { chapters: safeChapters } : {})
     };
