@@ -2,6 +2,7 @@
 // 运行：node analysis/build-corpus-index.mjs
 // 输入只读取本地文件，输出只写 analysis/conghuoniao/ 下的 JSON 与 Markdown。
 import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
 
@@ -111,6 +112,7 @@ const chapterIndex = {
   author: "活儿该",
   sourceFile: "original.txt",
   sourceType: "user-provided local full text",
+  sourceHash,
   generatedAt: new Date().toISOString(),
   totalLines: lines.length,
   totalChars,
