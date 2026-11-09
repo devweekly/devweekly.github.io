@@ -5,6 +5,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { copyOriginalCanonToUniverse, ensureBoundedUniverseCanonAssets, resolveOriginalCanonPath, truncateCanonAtLine } from "../src/canon-source.js";
+import { resolveWorldLibraryDir } from "../src/universe-library.js";
 
 test("source worlds resolve project-root original.txt before legacy world-local copies", async () => {
   const root = await mkdtemp(join(tmpdir(), "canon-source-root-"));
@@ -98,7 +99,7 @@ test("legacy universe repair truncates full local canon and rebinds library hash
     }));
     await writeFile(join(root, "analysis", universeId, "chapter-index.json"), JSON.stringify(catalog));
 
-    assert.equal(await ensureBoundedUniverseCanonAssets(universeId, { projectRoot: root }), true);
+    assert.equal(await resolveWorldLibraryDir(universeId, join(root, "worlds")), join(universeDir, "library"));
     const boundedText = ["第一章", "正文一", "第二章", "正文二"].join("\n");
     assert.equal(await readFile(join(universeDir, "original.txt"), "utf8"), boundedText);
     const index = JSON.parse(await readFile(join(universeDir, "library", "index.json"), "utf8")) as {
@@ -138,7 +139,8 @@ test("legacy universe repair reconstructs a missing local copy only as a bounded
     await writeFile(join(universeDir, "universe.json"), JSON.stringify({
       id: universeId, sourceWorldId: sourceId, entryChapter: "第二章", entryChapterIndex: 1
     }));
-    assert.equal(await ensureBoundedUniverseCanonAssets(universeId, { projectRoot: root }), true);
+    await writeFile(join(universeDir, "source-canon.json"), JSON.stringify({ sourceWorldId: sourceId, readOnly: true }));
+    assert.equal(await resolveWorldLibraryDir(universeId, join(root, "worlds")), join(universeDir, "library"));
     const boundedText = "第一章\n正文一\n第二章\n正文二";
     assert.equal(await readFile(join(universeDir, "original.txt"), "utf8"), boundedText);
     assert.ok(!(await readFile(join(universeDir, "original.txt"), "utf8")).includes("未来剧情"));
