@@ -169,9 +169,11 @@ export async function ensureSourceCanonLibraryIndex(
   let indexInfo: Awaited<ReturnType<typeof stat>> | undefined;
   try { indexInfo = await stat(indexPath); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
-  // Include the content hash: size + mtime can miss same-size replacements on
-  // filesystems with coarse timestamp resolution.
-  const signature = [originalHash, indexInfo?.size ?? "missing", indexInfo?.mtimeMs ?? "missing"].join(":");
+  // Hash the index bytes as well as the source. A same-size replacement with a
+  // preserved/coarse mtime must never reuse a previous successful validation.
+  let indexHash = "missing";
+  if (indexInfo) indexHash = createHash("sha256").update(await readFile(indexPath)).digest("hex");
+  const signature = [originalHash, indexHash].join(":");
   if (indexInfo && canonLibraryValidationCache.get(indexPath) === signature) return false;
 
   const isCanonicalSource = (source: string) => {
@@ -266,8 +268,13 @@ export async function prepareCanonIndexInputs(worldDir: string, catalog: Catalog
   if (originalText !== undefined) validateCanonCatalogAgainstText(catalog, originalText, expectedTotalLines, expectedSourceHash);
   const sourceHash = originalText === undefined ? undefined : createHash("sha256").update(originalText, "utf8").digest("hex");
   const sourceCandidates = selectCanonSourceChunks(chunks);
-  if (sourceHash !== undefined && sourceCandidates.some(chunk => chunk.sourceHash !== undefined && chunk.sourceHash !== sourceHash)) {
-    throw new Error("Library 中存在与当前离线 original.txt 不一致的旧切片。为避免混用不同版本语料，已拒绝读取；请备份后重建原文索引。");
+  const staleCandidates = sourceHash === undefined ? [] :
+    sourceCandidates.filter(chunk => chunk.sourceHash !== undefined && chunk.sourceHash !== sourceHash);
+  // A stale generation is derived data, not a reason to block the workflow.
+  // When the authoritative text is available, discard stale slices and rebuild
+  // every affected chapter below. Without the source text, fail closed.
+  if (staleCandidates.length && originalText === undefined) {
+    throw new Error("原文切片属于旧版本，且当前无法读取 original.txt 自动修复；请恢复原文文件后重试。");
   }
   let canonChunks = selectCanonSourceChunks(chunks, sourceHash);
   const chapterStartOffsets: Array<number | undefined> = [];
