@@ -143,19 +143,32 @@ export function validateCanonChunksAgainstText(
   chapterStartOffsets: Array<number | undefined>
 ): void {
   for (const item of aligned) {
+    if (!item.chunks.length) continue; // Full-text fallback is allowed when a derived index is absent.
     const chapterStart = chapterStartOffsets[item.catalogIndex];
-    for (const chunk of item.chunks) {
-      if (chapterStart === undefined || !Number.isSafeInteger(chunk.start) ||
-          !Number.isSafeInteger(chunk.end) || chunk.start < 0 || chunk.end <= chunk.start) {
-        throw new Error("原著切片缺少可验证的正文偏移：" + item.chapter.title + " / chunk " + chunk.chunkIndex + "。请重新从 original.txt 建立索引。");
+    const nextStart = chapterStartOffsets[item.catalogIndex + 1] ?? originalText.length;
+    const chapterText = chapterStart === undefined ? "" : originalText.slice(chapterStart, nextStart).trim();
+    const ordered = [...item.chunks].sort((a, b) => a.chunkIndex - b.chunkIndex);
+    let previousEnd = 0;
+    let previousIndex = -1;
+    for (const chunk of ordered) {
+      if (chapterStart === undefined || !Number.isSafeInteger(chunk.chunkIndex) ||
+          chunk.chunkIndex !== previousIndex + 1 || !Number.isSafeInteger(chunk.start) ||
+          !Number.isSafeInteger(chunk.end) || chunk.start < 0 || chunk.end <= chunk.start ||
+          chunk.end > chapterText.length || chunk.start > previousEnd) {
+        throw new Error("原著切片缺少连续、可验证的正文偏移：" + item.chapter.title + " / chunk " + chunk.chunkIndex + "。请重新从 original.txt 建立索引。");
       }
       if (chunk.chapterStart !== undefined && chunk.chapterStart !== chapterStart) {
         throw new Error("原著切片 chapterStart 与 original.txt 不一致：" + item.chapter.title + "。请重新从 original.txt 建立索引。");
       }
-      const expected = originalText.slice(chapterStart + chunk.start, chapterStart + chunk.end);
+      const expected = chapterText.slice(chunk.start, chunk.end);
       if (expected !== chunk.text) {
         throw new Error("原著切片正文与 original.txt 的声明位置不一致：" + item.chapter.title + " / chunk " + chunk.chunkIndex + "。切片可能已损坏或被修改，请重新 ingest original.txt 后执行 index-story。");
       }
+      previousEnd = Math.max(previousEnd, chunk.end);
+      previousIndex = chunk.chunkIndex;
+    }
+    if (ordered[0]?.start !== 0 || previousEnd !== chapterText.length) {
+      throw new Error("原著切片未完整覆盖目录章节：" + item.chapter.title + "。请重新 ingest original.txt 后执行 index-story。");
     }
   }
 }
