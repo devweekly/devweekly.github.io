@@ -13,9 +13,7 @@ import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
 import { parseJsonObject } from "./model-json.js";
 import { LONG_CHAPTER_SOURCE_TAIL_CHARS } from "./constants.js";
 import { buildWorldSituationContext } from "./world-situation.js";
-import { CREATIVE_FREEDOM_RULES, LIVING_VOICE_RULES, antiAiDiagnosticPrompt, antiAiEditPrompt, antiAiVerificationPrompt, parseAntiAiVerification, postReviewLiteraryCheckPrompt, readerExperiencePrompt, shouldRunAntiAiEdit } from "./literary-edit.js";
-import { buildStyleRegressionPrompt, loadStyleRegressionReferences } from "./style-regression.js";
-import { buildStyleTrendPrompt, collectStyleRegressionReports, countStyleRegressionReports } from "./style-trend.js";
+import { CREATIVE_FREEDOM_RULES, LIVING_VOICE_RULES, literaryPatchPrompt, parseLiteraryPatchResult, applyLiteraryPatches, readerExperiencePrompt } from "./literary-edit.js";
 /**
  * Build a compact retrospective from body-evidenced character milestones.
  * It is creative context for the rolling planner, never a personality constraint.
@@ -311,70 +309,29 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   ]);
   await saveStage(input.outputDir, "04-scene-draft.md", initialDraft);
 
-  // 对白与叙事声音属于同一轮整体文学编辑：减少一次完整章节重写，
-  // 同时检查人物声音、潜台词、叙述距离和节奏，避免两个编辑 Agent 相互覆盖。
-  const literaryDraft = await cachedCall("literary-edit", "05-literary-edited.md", "voice", [
-    "角色：小说文学编辑。一次性检查并修整人物对白与全章叙事声音；这是整体编辑，不是重写剧情。",
-    CREATIVE_FREEDOM_RULES, LIVING_VOICE_RULES, dialogueContext, voiceContext,
-    "章节蓝图：", plan, "当前正文：", initialDraft,
-    "对白方面：检查人物词汇、句长、表达习惯、身份关系、情绪和已知信息；删掉解释性过强、所有角色都像同一个人的对白，让潜台词通过停顿、回避、误解和行动体现。",
-    "叙事方面：统一叙述视角、时态、叙述距离和段落节奏；检查全章是否反复使用同一种停顿、否定式收束、动作切片或静物结尾。删并不增加信息/压力/判断的重复动作与解释，保留真正改变人物关系、信息差和情绪走向的细节。不要把“短、冷、克制”当作风格目标，不要把每个动作写成慢镜头，也不要把读者已经看懂的潜台词再解释一遍。保持句式和段落自然变化，允许准确的长句、直接判断和粗粝表达。",
-    "不得改变剧情事实、场景顺序、人物决定和信息揭示；不能删掉有效的人物互动、动作、意象、信息或情绪落点。原文已经成立时可以原样保留。不得复刻特定作者的独特句式。",
-    RHYTHM_RULE, "输出完整修订正文。文学表达优先，不以保持字数为目标。"
-  ], output => { if (!output.trim()) throw new Error("Literary edit returned an empty chapter."); });
+  // 单次、局部、可验证的文学编辑。默认保留正文，不再运行整章重写、
+  // Anti-AI 诊断、整章 Anti-AI 改写和整章复核这四个互相叠加的环节。
+  const patchRaw = await cachedCall("literary-patches", "05-literary-patches.json", "voice", [
+    literaryPatchPrompt({ brief: input.brief, blueprint: plan, styleProfile: input.styleProfile, chapter: initialDraft })
+  ], output => { parseLiteraryPatchResult(output); });
+  const patchResult = parseLiteraryPatchResult(patchRaw);
+  const patchApplication = applyLiteraryPatches(initialDraft, patchResult.edits);
+  const literaryDraft = patchApplication.chapter;
+  await saveStage(input.outputDir, "05-literary-patches.json", JSON.stringify({
+    decision: patchResult.decision,
+    reason: patchResult.reason,
+    applied: patchApplication.applied,
+    rejected: patchApplication.rejected
+  }, null, 2));
   await saveStage(input.outputDir, "05-literary-edited.md", literaryDraft);
-  // 保留旧文件名作为诊断兼容副本，但不再运行第二个独立的 voice Agent。
   await saveStage(input.outputDir, "05-dialogue-edited.md", literaryDraft);
   await saveStage(input.outputDir, "06-voice-edited.md", literaryDraft);
-  const voiceDraft = literaryDraft;
-
-  // Anti-AI is a restrained literary edit, never a detector-driven rewrite.
-  // If the optional editor call fails, preserve the already valid voice-edited draft.
-  let antiAiDraft = voiceDraft;
-  let antiAiDiagnosis = "";
-  try {
-    antiAiDiagnosis = await cachedCall("anti-ai-diagnosis", "06a-anti-ai-diagnosis.md", "antiAi", [
-      antiAiDiagnosticPrompt({ brief: input.brief, blueprint: plan, styleProfile: input.styleProfile, chapter: voiceDraft })
-    ], output => { if (!output.trim()) throw new Error("Anti-AI diagnosis returned an empty report."); });
-  } catch (error) {
-    await saveStage(input.outputDir, "06a-anti-ai-diagnosis-error.txt", String(error));
-    console.error("[write] Anti-AI 诊断未完成；跳过无依据的整章改写，保留上阶段正文继续终审。");
-  }
-  const needsAntiAiEdit = shouldRunAntiAiEdit(antiAiDiagnosis);
-  if (needsAntiAiEdit) {
-    try {
-      antiAiDraft = await cachedCall("anti-ai-edit", "06b-anti-ai-edited.md", "antiAi", [
-        antiAiEditPrompt({ brief: input.brief, blueprint: plan, styleProfile: input.styleProfile, diagnosis: antiAiDiagnosis, chapter: voiceDraft })
-      ], output => { if (!output.trim()) throw new Error("Anti-AI editor returned an empty chapter."); });
-    } catch (error) {
-      await saveStage(input.outputDir, "06b-anti-ai-error.txt", String(error));
-      console.error("[write] Anti-AI 编辑阶段失败，保留整体文学编辑稿继续终审。");
-    }
-  } else {
-    await saveStage(input.outputDir, "06b-anti-ai-skipped.json", JSON.stringify({ skipped: true, reason: antiAiDiagnosis.trim() ? "诊断未发现值得修改的问题。" : "诊断不可用，避免无依据改写。" }, null, 2));
-  }
-  if (antiAiDraft !== voiceDraft) {
-    try {
-      const verificationRaw = await cachedCall("anti-ai-verification", "06c-anti-ai-verification.json", "antiAi", [
-        antiAiVerificationPrompt({ original: voiceDraft, edited: antiAiDraft })
-      ], output => { parseAntiAiVerification(output); });
-      const verification = parseAntiAiVerification(verificationRaw);
-      await saveStage(input.outputDir, "06c-anti-ai-verification.json", JSON.stringify(verification, null, 2));
-      if (verification.decision === "restore") antiAiDraft = voiceDraft;
-    } catch (error) {
-      await saveStage(input.outputDir, "06c-anti-ai-verification-error.txt", String(error));
-      antiAiDraft = voiceDraft;
-      console.error("[write] Anti-AI 复核未能确认编辑收益，恢复原稿。");
-    }
-  } else {
-    await saveStage(input.outputDir, "06c-anti-ai-verification.json", JSON.stringify({ decision: "keep", reason: "编辑阶段未改变正文。" }, null, 2));
-  }
-  await saveStage(input.outputDir, "06b-anti-ai-edited.md", antiAiDraft);
+  const antiAiDraft = literaryDraft;
 
   const reviewHistory: string[] = [];
   const reviewed = await reviewAndRepair({
     initialChapter: antiAiDraft,
-    maxRepairRounds: 2,
+    maxRepairRounds: 1,
     review: async (candidate, correction) => {
       const round = reviewHistory.length + 1;
       let parsed: ReturnType<typeof parseChapterReview> | undefined;
@@ -416,35 +373,11 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     reviews: reviewed.reviews
   }, null, 2));
 
-  // Automatic style regression is observational: never rewrites or blocks prose.
-  if (input.styleProfile?.trim()) {
-    try {
-      const references = await loadStyleRegressionReferences(input.worldDir ?? resolve("worlds", input.worldId));
-      const report = await cachedCall("style-regression", "11-style-regression.md", "styleDistill", [
-        buildStyleRegressionPrompt({ styleProfile: input.styleProfile, references, candidates: [{ label: "本次最终章节", text: chapter }] })
-      ], output => { if (!output.trim()) throw new Error("Style regression returned an empty report."); });
-      await saveStage(input.outputDir, "11-style-regression.md", report);
-      // Every fifth completed chapter produces a lightweight longitudinal review.
-      // It is observational only and is isolated from chapter acceptance and prose.
-      const trendRoot = resolve(".output", input.worldId);
-      const totalStyleReports = await countStyleRegressionReports(trendRoot);
-      const trendReports = await collectStyleRegressionReports(trendRoot, 30);
-      if (totalStyleReports >= 5 && totalStyleReports % 5 === 0) {
-        try {
-          const trend = await cachedCall("style-regression-trend", "12-style-regression-trend.md", "styleDistill", [
-            buildStyleTrendPrompt({ styleProfile: input.styleProfile, reports: trendReports })
-          ], output => { if (!output.trim()) throw new Error("Style trend returned an empty report."); });
-          await saveStage(input.outputDir, "12-style-regression-trend.md", trend);
-        } catch (trendError) {
-          await saveStage(input.outputDir, "12-style-regression-trend-error.txt", String(trendError));
-          console.error("[write] 跨章节风格趋势观察未完成；不影响正文与状态提交。");
-        }
-      }
-    } catch (error) {
-      await saveStage(input.outputDir, "11-style-regression-error.txt", String(error));
-      console.error("[write] 风格回归观察未完成；不改动正文，也不影响章节状态提交。");
-    }
-  }
+  // 每章不再额外调用只读 Style Regression：它既不修订也不影响验收，
+  // 造成重复模型开销。需要专项风格评估时使用独立回归工具。
+  await saveStage(input.outputDir, "11-style-regression-skipped.json", JSON.stringify({
+    skipped: true, reason: "常规章节生成不运行只读风格审核；风格评估应在专项回归中执行。"
+  }, null, 2));
 
   // Blind-reader feedback is useful for deliberate evaluation, but is not required for every chapter.
   if (input.readerExperience) try {
@@ -569,26 +502,6 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     await saveStage(input.outputDir, "08-state-update-error.txt", String(error) + "\n\n" + stateText);
     throw new Error("Chapter was generated, but story-state persistence failed. See 08-state-update-error.txt; do not start the next chapter.");
   }
-  // Only inspect post-review prose when a hard-fact repair actually changed it.
-  // This is diagnostic-only: never launch another full-chapter rewrite after acceptance.
-  if (reviewed.repairRounds > 0) {
-    try {
-      const report = await cachedCall("post-review-literary-check", "10-post-review-literary-check.md", "antiAi", [
-        postReviewLiteraryCheckPrompt({
-          beforeReview: antiAiDraft,
-          finalChapter: chapter,
-          reviewHistory: reviewHistory.join("\n\n---\n\n")
-        })
-      ], output => { if (!output.trim()) throw new Error("Post-review literary check returned an empty report."); });
-      await saveStage(input.outputDir, "10-post-review-literary-check.md", report);
-    } catch (error) {
-      await saveStage(input.outputDir, "10-post-review-literary-check-error.txt", String(error));
-      console.error("[write] 终审后的文风观察未完成；不改动正文，也不影响章节提交。");
-    }
-  } else {
-    await saveStage(input.outputDir, "10-post-review-literary-check-skipped.json", JSON.stringify({
-      skipped: true, reason: "终审没有修复正文，无需重复检查文风回归。"
-    }, null, 2));
-  }
+  // 不再在硬伤修复后重复启动只读文风审核；硬伤修复范围由 review artifacts 留痕。
   return chapter;
 }
