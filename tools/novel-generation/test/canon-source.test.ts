@@ -139,8 +139,16 @@ test("legacy universe repair reconstructs a missing local copy only as a bounded
       id: universeId, sourceWorldId: sourceId, entryChapter: "第二章", entryChapterIndex: 1
     }));
     assert.equal(await ensureBoundedUniverseCanonAssets(universeId, { projectRoot: root }), true);
-    assert.equal(await readFile(join(universeDir, "original.txt"), "utf8"), "第一章\n正文一\n第二章\n正文二");
+    const boundedText = "第一章\n正文一\n第二章\n正文二";
+    assert.equal(await readFile(join(universeDir, "original.txt"), "utf8"), boundedText);
     assert.ok(!(await readFile(join(universeDir, "original.txt"), "utf8")).includes("未来剧情"));
+    const library = JSON.parse(await readFile(join(universeDir, "library", "index.json"), "utf8")) as {
+      chunks: Array<{ source: string; sourceHash: string; text: string }>;
+    };
+    assert.equal(library.chunks.length, 2, "missing legacy library index must be rebuilt from bounded original text");
+    assert.ok(library.chunks.every(chunk => chunk.source === `worlds/${universeId}/original.txt`));
+    assert.ok(library.chunks.every(chunk => chunk.sourceHash === createHash("sha256").update(boundedText, "utf8").digest("hex")));
+    assert.ok(!JSON.stringify(library).includes("未来剧情"));
   } finally {
     await rm(root, { recursive: true, force: true });
   }
