@@ -119,7 +119,7 @@ export async function ensureBoundedUniverseCanonAssets(
   const projectRoot = path.resolve(options.projectRoot ?? process.cwd());
   const worldDir = path.resolve(options.worldDir ?? path.join(projectRoot, "worlds", worldId));
   const universePath = path.join(worldDir, "universe.json");
-  let universe: { sourceWorldId?: string; entryChapter?: string; entryChapterIndex?: number } | undefined;
+  let universe: { sourceWorldId?: string; entryChapter?: string; entryChapterIndex?: number; entryChapterId?: string } | undefined;
   try { universe = JSON.parse(await readFile(universePath, "utf8")) as typeof universe; }
   catch (error) {
     if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
@@ -134,6 +134,15 @@ export async function ensureBoundedUniverseCanonAssets(
   }
   if (!universe?.sourceWorldId || !/^[a-z0-9][a-z0-9-]*$/i.test(universe.sourceWorldId)) {
     throw new Error("故事宇宙缺少有效的原文来源身份，无法验证本地原文边界。");
+  }
+  let sourcePointer: { sourceWorldId?: string; readOnly?: boolean };
+  try { sourcePointer = JSON.parse(await readFile(path.join(worldDir, "source-canon.json"), "utf8")) as typeof sourcePointer; }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") throw new Error("故事宇宙缺少 source-canon.json，拒绝把它当作普通原文项目处理。");
+    throw error;
+  }
+  if (sourcePointer.readOnly !== true || sourcePointer.sourceWorldId !== universe.sourceWorldId) {
+    throw new Error("universe.json 与 source-canon.json 的原文来源身份不一致，拒绝读取或重建时点语料。");
   }
 
   const sourceCatalogPath = path.join(projectRoot, "analysis", universe.sourceWorldId, "chapter-index.json");
@@ -180,6 +189,11 @@ export async function ensureBoundedUniverseCanonAssets(
   }
   if (catalog[entryIndex]?.title !== universe.entryChapter) {
     throw new Error("故事宇宙记录的起点章节与原文目录索引不一致，拒绝猜测时点边界。");
+  }
+  const entry = catalog[entryIndex]!;
+  const expectedEntryId = "V" + String(entry.volume).padStart(2, "0") + "-C" + String(entry.sequenceInVolume).padStart(3, "0");
+  if (universe.entryChapterId && universe.entryChapterId !== expectedEntryId) {
+    throw new Error("故事宇宙 entryChapterId 与原文目录中的稳定章节身份不一致，拒绝猜测起点。");
   }
   for (let index = 0; index <= entryIndex; index++) {
     const line = catalog[index]?.line;
