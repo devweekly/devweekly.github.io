@@ -2,11 +2,13 @@
 // 默认只绑回环 127.0.0.1——Agent 服务持有本地模型凭据，绝不能默认暴露到局域网。
 import { createServer as createHttpServer } from "node:http";
 import path from "node:path";
+import { readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import express, { type RequestHandler } from "express";
 import { createServer as createViteServer, type ViteDevServer } from "vite";
 import { createApp, recoverWorkbenchRuns, recoverKnowledgeBuilds } from "./server.js";
 import { WORKBENCH_DEFAULT_PORT, WORKBENCH_MAX_PORT } from "./constants.js";
+import { ensurePrivateLibraryIsolation } from "./library.js";
 
 const here=path.dirname(fileURLToPath(import.meta.url));
 const projectRoot=path.resolve(here,"..");
@@ -18,6 +20,13 @@ if(!Number.isInteger(port)||port<1||port>WORKBENCH_MAX_PORT)throw new Error("POR
 
 async function main():Promise<void>{
  process.chdir(projectRoot);
+ const worldsRoot=path.join(projectRoot,"worlds");
+ const worlds=await readdir(worldsRoot,{withFileTypes:true}).catch(error=>{if((error as NodeJS.ErrnoException).code==="ENOENT")return [];throw error;});
+ for(const entry of worlds){
+  if(entry.isDirectory()&&!entry.name.startsWith(".")){
+   await ensurePrivateLibraryIsolation(path.join(worldsRoot,entry.name,"library"),entry.name);
+  }
+ }
  await recoverWorkbenchRuns();
  await recoverKnowledgeBuilds();
  const app=createApp();
