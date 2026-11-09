@@ -543,7 +543,8 @@ async function ensureStagedChapterDatabase(
 ): Promise<void> {
   const databasePath = path.join(stagedDir, "novel.db");
   let rows: Array<{ chapter_id: string; ordinal: number; volume: number; title: string }> = [];
-  if (existsSync(databasePath)) {
+  const databaseExists = existsSync(databasePath);
+  if (databaseExists) {
     const db = new DatabaseSync(databasePath);
     try {
       rows = db.prepare("SELECT chapter_id,ordinal,volume,title FROM novel_chapters ORDER BY ordinal")
@@ -555,7 +556,7 @@ async function ensureStagedChapterDatabase(
     }
   }
   const canonicalRows = rows.filter(row => row.chapter_id !== "V00-C000");
-  if (chapters.length > 0 && canonicalRows.length === 0) {
+  if (databaseExists && chapters.length > 0 && canonicalRows.length === 0) {
     throw new Error(
       "原文 novel.db 缺少正式章节目录记录，无法证明知识库与原文目录的稳定 ID 映射。" +
       "请先对原文项目执行 node --import tsx src/cli.ts index-story --world " + sourceWorldId +
