@@ -29,7 +29,7 @@ import { buildUniverseOriginContext, buildUniverseWorldBible, rebaseStoryState, 
 import { importBoundedStoryAnalysisSnapshot, restrictKnowledgeDatabaseToEntry } from "./source-canon-snapshot.js";
 import { importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
-import { copyOriginalCanonToUniverse, resolveOriginalCanonPath, truncateCanonAtLine } from "./canon-source.js";
+import { copyOriginalCanonToUniverse, ensureBoundedUniverseCanonAssets, resolveOriginalCanonPath, truncateCanonAtLine } from "./canon-source.js";
 import { assessStoryUnitProgress, generateStoryUnit, isStoryUnitNaturallyComplete, validateStoryUnit } from "./story-unit.js";
 import { archiveStoredStoryUnitVersion, createStoredStoryUnit, getStoredStoryUnit, getStoredStoryUnitVersion, listStoredStoryUnitVersions, listStoredStoryUnits, saveStoredStoryUnit } from "./story-unit-store.js";
 import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, mergeStoryExecutionControlFlags, storyRunStateWasRolledBack, type StoryExecution } from "./story-execution.js";
@@ -965,6 +965,7 @@ app.post("/api/worlds/:worldId/universes/fork", async (req, res) => {
     forkStagingPath = stagingDir;
     await mkdir(stagingDir, { recursive: true });
     const parentDir = worldDir(parentId);
+    await ensureBoundedUniverseCanonAssets(parentId, { projectRoot: path.resolve("."), worldDir: parentDir });
     await cp(parentDir, stagingDir, {
       recursive: true,
       filter: source => {
