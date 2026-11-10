@@ -2,7 +2,7 @@
 // brief / 故事当前位置 / 未结情节线 / 人物组装成检索查询。CLI 启动时将 CWD 锚定到项目根目录，
 // 直接运行 dist/cli.js 或从其他目录调用时也不会把 worlds/、.output/、analysis/ 写到错误位置。
 import { access, readFile, mkdir, writeFile } from "node:fs/promises";
-import { databaseStatus, readAnnotationsByChunkIds, readStoryAnalysis, listNovelCharacters, listNovelThreads, listNovelForeshadowings, listNovelBeats, readNovelKbMeta, novelKnowledgeOverview, exportNovelKnowledge, listNovelCharacterProfiles, listNovelCharacterChapterStates } from "./database.js";
+import { databaseStatus, readAnnotationsByChunkIds, readStoryAnalysis, saveStoryAnalysis, listNovelCharacters, listNovelThreads, listNovelForeshadowings, listNovelBeats, readNovelKbMeta, novelKnowledgeOverview, exportNovelKnowledge, listNovelCharacterProfiles, listNovelCharacterChapterStates } from "./database.js";
 import { basename, dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { generateStory, runAgentText, type GenerationMode } from "./generate.js";
@@ -904,6 +904,21 @@ async function main(): Promise<void> {
       catalogPath: arg("--catalog")
     });
     const snapshot = result.snapshot;
+    if (snapshot) {
+      const universeRaw = await readOptional(resolve("worlds", worldId, "universe.json"));
+      if (universeRaw !== undefined) {
+        const universe = parseJsonDocument(universeRaw, resolve("worlds", worldId, "universe.json")) as {
+          sourceWorldId?: string; entryChapter?: string; entryChapterId?: string;
+        };
+        const bounded = snapshot as typeof snapshot & {
+          sourceWorldId?: string; asOfEntryChapter?: string; asOfEntryChapterId?: string;
+        };
+        bounded.sourceWorldId = universe.sourceWorldId;
+        bounded.asOfEntryChapter = universe.entryChapter;
+        bounded.asOfEntryChapterId = universe.entryChapterId;
+        saveStoryAnalysis(resolve("worlds", worldId), worldId, bounded);
+      }
+    }
     console.log(JSON.stringify({
       batches: result.batches,
       processed: result.processed,
