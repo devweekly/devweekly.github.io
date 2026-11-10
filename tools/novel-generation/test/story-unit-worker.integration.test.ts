@@ -148,7 +148,7 @@ console.log("Story state automatically updated: " + stateFile);
     assert.equal(stateA.state.characters.length, 3);
     assert.equal(stateB.state.characters.length, 1);
     assert.ok(stateA.state.characters.every(person => person.name.startsWith(unitA.id + "-")));
-    const unitARecord = JSON.parse(await readFile(join(worldDir, ".story-units", unitA.id, "story-unit.json"), "utf8")) as { execution: { lastAssessedChapterId?: string; cumulativeStorySummary?: string } };
+    const unitARecord = JSON.parse(await readFile(join(worldDir, ".story-units", unitA.id + ".json"), "utf8")) as { execution: { lastAssessedChapterId?: string; cumulativeStorySummary?: string } };
     assert.equal(unitARecord.execution.lastAssessedChapterId, a2.completedChapters[0]?.runId);
     assert.match(unitARecord.execution.cumulativeStorySummary ?? "", /人物作出新的选择/);
     assert.ok(stateB.state.characters.every(person => person.name.startsWith(unitB.id + "-")));
