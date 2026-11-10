@@ -130,7 +130,7 @@ test("merge-only restores a complete legacy batch directory without calling the 
     assert.equal(result.processed, 0, "merge-only must not invoke the model");
     assert.equal(result.snapshot?.complete, true);
     assert.equal(result.snapshot?.chapters, 2);
-    assert.equal(result.snapshot?.analysisModel, model);
+    assert.equal((result.snapshot as (typeof result.snapshot & { analysisModel?: string }) | undefined)?.analysisModel, model);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
