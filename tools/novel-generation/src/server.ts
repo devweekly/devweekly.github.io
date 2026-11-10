@@ -1747,7 +1747,7 @@ async function ensureStoryExecutionCheckpointAssessed(
   }
   const assessedAt = unitInput.execution.assessedAt ?? new Date().toISOString();
   const hasEvent = taskInput.events.some(event => event.type === "assessment" && event.runId === checkpoint.runId);
-  let task = {
+  let task: StoryExecution = {
     ...taskInput,
     currentRunId: undefined,
     lastAssessment: unitInput.execution.lastAssessment ?? taskInput.lastAssessment,
