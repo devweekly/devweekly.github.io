@@ -2,7 +2,7 @@
 // 不复用 SDK session；场景之间靠落盘的原文结尾与事实清单显式交接，可逐场重跑。
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { parseStoryStateUpdate, saveStoryState } from "./story-state.js";
+import { commitStoryStateAndArc, parseStoryStateUpdate } from "./story-state.js";
 
 import { runAgentText, resolveModelAttempts, type GenerationMode } from "./generate.js";
 import { readTaskProfiles, type StageKey } from "./task-profiles.js";
@@ -35,6 +35,8 @@ export interface LongChapterInput {
   storyAnalysisContext?: string;
   writingBrief?: string;
   storyPlanText?: string;
+  storyArcText?: string;
+  storyArcPath?: string;
   model?: string;
   strictModel?: boolean;
   maxWords: number;
@@ -160,6 +162,21 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   const situationQuery = [input.brief, state.currentPosition, input.contextText, input.sourceText?.slice(-LONG_CHAPTER_SOURCE_TAIL_CHARS), input.writingBrief, input.storyPlanText, input.storyAnalysisContext].filter(Boolean).join("\n");
   const worldSituation = buildWorldSituationContext(state, situationQuery);
   if (worldSituation) await saveStage(input.outputDir, "00-world-situation-context.md", worldSituation);
+  const previousArc = input.storyArcText?.trim() ?? "";
+  const storyArc = await cachedCall("story-arc", "00-story-arc.md", "plan", [
+    "角色：中期故事架构师。为当前故事阶段校准可调整的中期方向；不要把章节计划当成剧情合同。",
+    "世界设定：", input.worldBible,
+    "当前位置：", state.currentPosition,
+    "已有事实与连续性：", facts,
+    input.storyPlanText ?? "",
+    "既有 Story Arc：", previousArc || "尚无中期故事阶段，请从当前局势自然推演。",
+    worldSituation,
+    input.storyAnalysisContext ?? "",
+    "本次长章节任务：", input.brief,
+    "结合已发生正文、人物选择、因果和未解决问题，形成适合连续写作的中期方向。只保留真正值得关注的少数阶段节点；允许日常、过渡、关系戏和暂不推进主线。不得凑章节数、强制人物弧光、预写人物选择或把可能性写成正史。文学性、文笔、艺术风格高于其他一切。"
+  ], output => { if (!output.trim()) throw new Error("Story Arc is empty."); });
+  if (previousArc) await saveStage(input.outputDir, "00-story-arc-previous.md", previousArc);
+  await saveStage(input.outputDir, "00-story-arc.md", storyArc);
   const writingContext = [
     "世界设定（辅助索引，未知内容不得写成原著事实）：", input.worldBible,
     "当前位置：", state.currentPosition,
@@ -168,6 +185,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     input.contextText ? "前文与连续性摘要：\n" + input.contextText : "",
     input.writingBrief ? "全书知识库（已经写成的事实与未收线，优先于分析参考）：\n" + input.writingBrief : "",
     input.storyPlanText ? input.storyPlanText : "",
+    "当前滚动式多章节 Story Arc（方向性参考，可根据正文自然偏离）：\n" + storyArc,
     input.storyAnalysisContext ? "既有小说分析参考（仅供启发，不是正史或写作清单）：\n" + input.storyAnalysisContext : "",
     input.sourceText ? "用户提供且有权使用的续写起点（只用于承接，不得整段复制）：\n" + input.sourceText : "",
     input.styleProfile ? "叙事风格参考：\n" + input.styleProfile + "\n风格参考不能凌驾于当前人物、场景需要和文学表达。" : "",
@@ -419,9 +437,6 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     repairRounds: reviewed.repairRounds,
     reviews: reviewed.reviews
   }, null, 2));
-  await saveStage(input.outputDir, "11-style-regression-skipped.json", JSON.stringify({
-    skipped: true, reason: "常规章节生成不运行只读风格审核；风格评估应在专项回归中执行。"
-  }, null, 2));
   if (input.readerExperience) try {
     const readerReport = await cachedCall("reader-experience", "10-reader-experience.md", "reader", [
       readerExperiencePrompt({ brief: input.brief, chapter })
@@ -548,8 +563,8 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   }
   const nextState = mergeStoryState(state, update);
   try {
-    if (input.applyState) await saveStoryState(input.statePath, nextState);
     await saveStage(input.outputDir, "07-state-update.json", JSON.stringify(nextState, null, 2));
+    await commitStoryStateAndArc({ statePath: input.statePath, previousState: state, nextState, applyState: input.applyState, storyArcPath: input.storyArcPath, storyArcText: storyArc });
   } catch (error) {
     await saveStage(input.outputDir, "07-state-update-error.txt", String(error) + "\n\n" + stateText);
     throw new Error("Chapter was generated, but story-state persistence failed. See 07-state-update-error.txt; do not start the next chapter.");

@@ -4,7 +4,7 @@
 // 阶段才保留证据材料。每阶段走 stage-cache 指纹缓存；未通过终审不写 Story State。
 import { mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { parseStoryStateUpdate, saveStoryState, type StoryState } from "./story-state.js";
+import { commitStoryStateAndArc, parseStoryStateUpdate, type StoryState } from "./story-state.js";
 import { runAgentText, resolveModelAttempts, type GenerationMode } from "./generate.js";
 import { readTaskProfiles, type StageKey } from "./task-profiles.js";
 import { formatReview, parseChapterReview, reviewAndRepair, reviewPrompt, withDeterministicIssues } from "./chapter-review.js";
@@ -85,6 +85,7 @@ export interface WriteWorkflowInput {
   maxWords: number;
   outputDir: string;
   statePath: string;
+  storyArcPath?: string;
   applyState: boolean;
   /** Optional blind-reader feedback; disabled in normal one-click chapter generation. */
   readerExperience?: boolean;
@@ -258,14 +259,13 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     "角色：中期故事架构师。为接下来一段故事设计可调整的方向，跨度由当前情节自然决定；若现有阶段尚未自然结束，延续并修订它，不要无故另起炉灶。",
     common,
     "既有 Story Arc（可能为空）：", previousArc || "尚无中期故事阶段，请从当前局势自然推演。",
-    characterArcRetrospective ? "跨章人物弧光回顾（仅供创意启发）：\\n" + characterArcRetrospective : "",
+    characterArcRetrospective ? "跨章人物弧光回顾（仅供创意启发）：\n" + characterArcRetrospective : "",
     CREATIVE_FREEDOM_RULES,
     "结合已发生事件、人物目标与选择、资源/信息变化、开放情节线，设计一段可供连续写作的故事推进。只记录真正值得预先考虑的少数阶段节点，不要求凑足章节数，也不要求每个节点都包含冲突、关系变化或悬念。可指出哪些人物/伏笔/主线可以暂时不推进、哪些章节可以只是日常或过渡、可能的意外转折空间，以及下一章自然可能从哪里开始。不要强制人物弧光，不要把人物固定为善恶标签，不要预先写死角色选择；节点可以合并、拆分、跳过或被正文发展推翻。",
     "文学性、文笔、艺术风格高于其他。故事规划只为因果连续性服务，不是待完成清单。"
   ], output => { if (!output.trim()) throw new Error("Story Arc is empty."); });
   if (previousArc) await saveStage(input.outputDir, "00-story-arc-previous.md", previousArc);
   await saveStage(input.outputDir, "00-story-arc.md", storyArc);
-  if (input.worldDir) await writeFile(resolve(input.worldDir, "story-arc.md"), storyArc.trim() + "\n", "utf8");
 
   const [plotPlan, ideas] = await Promise.all([
     cachedCall("plot", "01-main-plot.md", "plot", [
@@ -326,13 +326,10 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     rejected: patchApplication.rejected
   }, null, 2));
   await saveStage(input.outputDir, "05-literary-edited.md", literaryDraft);
-  await saveStage(input.outputDir, "05-dialogue-edited.md", literaryDraft);
-  await saveStage(input.outputDir, "06-voice-edited.md", literaryDraft);
-  const antiAiDraft = literaryDraft;
 
   const reviewHistory: string[] = [];
   const reviewed = await reviewAndRepair({
-    initialChapter: antiAiDraft,
+    initialChapter: literaryDraft,
     maxRepairRounds: 1,
     review: async (candidate, correction) => {
       const round = reviewHistory.length + 1;
@@ -373,12 +370,6 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     status: "passed",
     repairRounds: reviewed.repairRounds,
     reviews: reviewed.reviews
-  }, null, 2));
-
-  // 每章不再额外调用只读 Style Regression：它既不修订也不影响验收，
-  // 造成重复模型开销。需要专项风格评估时使用独立回归工具。
-  await saveStage(input.outputDir, "11-style-regression-skipped.json", JSON.stringify({
-    skipped: true, reason: "常规章节生成不运行只读风格审核；风格评估应在专项回归中执行。"
   }, null, 2));
 
   // Blind-reader feedback is useful for deliberate evaluation, but is not required for every chapter.
@@ -491,15 +482,15 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
       ], validateStateUpdate);
       update = validateStateUpdate(stateText);
     } catch (retryError) {
-      await saveStage(input.outputDir, "08-state-update-error.txt", "First attempt: " + String(firstError) + "\\nRetry: " + String(retryError) + "\\n\\n" + stateText);
+      await saveStage(input.outputDir, "08-state-update-error.txt", "First attempt: " + String(firstError) + "\nRetry: " + String(retryError) + "\n\n" + stateText);
       throw new Error("Chapter was generated, but story-state extraction failed twice. See 08-state-update-error.txt; do not start the next chapter.");
     }
   }
   const nextState = mergeStoryState(state, update);
   try {
     // 默认自动提交状态；仅在显式隔离/试写模式下保留为本次运行提案。
-    if (input.applyState) await saveStoryState(input.statePath, nextState);
     await saveStage(input.outputDir, "08-state-update.json", JSON.stringify(nextState, null, 2));
+    await commitStoryStateAndArc({ statePath: input.statePath, previousState: state, nextState, applyState: input.applyState, storyArcPath: input.storyArcPath, storyArcText: storyArc });
   } catch (error) {
     await saveStage(input.outputDir, "08-state-update-error.txt", String(error) + "\n\n" + stateText);
     throw new Error("Chapter was generated, but story-state persistence failed. See 08-state-update-error.txt; do not start the next chapter.");

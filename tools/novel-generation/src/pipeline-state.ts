@@ -27,3 +27,9 @@ export function shouldCancelStoryExecutionImmediately(status: StoryExecutionLife
 export function reusableKnowledgeBuildStepNames<T extends { name: string; status: KnowledgeBuildStepLifecycle }>(steps: readonly T[]): Set<string> {
   return new Set(steps.filter(step => step.status === "completed" || step.status === "skipped").map(step => step.name));
 }
+
+/** Failed counts apply only to steps executed in this attempt, not reused checkpoints. */
+export function knowledgeBuildAttemptStatus(failed: number, attempted: number): "completed" | "failed" | "partial" {
+  if (failed <= 0) return "completed";
+  return failed >= attempted ? "failed" : "partial";
+}

@@ -1,6 +1,5 @@
-// 章节终审复查：Zod 校验模型返回的硬伤列表（严重程度、逐字证据、多场景受影响编号），
-// 内部再做确定性证据探针核对。证据不能逐字定位或结构与严重程度冲突时自动重试一次，
-// 仍无效则失败关闭——终审结果直接决定是否提交 Story State，放水等于把硬伤写进正史。
+// 章节终审复查：Zod 校验模型返回的硬伤列表，并用确定性探针辅助定位证据。
+// 证据用于定位而非逐字门槛；无法定位时保留问题并提示按场景号核对，不因此判整份审查无效。
 import { z } from "zod";
 import { parseJsonObject } from "./model-json.js";
 import {
@@ -37,7 +36,7 @@ export const MUST_FIX_RULE = [
   "三、时间或因果断裂到读者看不懂：同一事件在不同段落有两个互斥版本，时间倒流，结果先于原因。",
   "以下一律不报：措辞、用字、称谓是否统一、节奏与句长、标点、伏笔是否回收、场景转换是否顺滑、人物是否讨喜，以及任何「可以更好」的建议。",
   "需要复算、需要对照另一份文档才能确认的疑点不报；不能确定是有意留白、人物误判、隐瞒或刻意反转的，不报。",
-  "上限 3 条；没有就返回空数组，不要为了显得尽责凑数。"
+  `上限 ${MAX_REVIEW_ISSUES} 条；没有就返回空数组，不要为了显得尽责凑数。`
 ].join("\n");
 
 function extractObject(raw: string): unknown {
@@ -104,7 +103,7 @@ export function reviewPrompt(input: {
     input.sceneCount !== undefined
       ? "跨场问题列出所有受影响场景号；每条至少给一个场景号。"
       : "不需要填写场景编号。",
-    "evidence 只用于定位，引用不超过 15 字，可加省略号，不要求逐字命中。",
+    `evidence 只用于定位，引用不超过 ${REVIEW_EVIDENCE_MAX_CHARS} 字，可加省略号，不要求逐字命中。`,
     "problem 写清读者会在哪一步觉得不可能，不写「建议加强」。repair 给最小改动，不重写整段。",
     "输出严格 JSON，不要 Markdown 围栏或其他文字：",
     JSON.stringify({
@@ -112,7 +111,7 @@ export function reviewPrompt(input: {
       summary: "一句话结论；没有硬伤时写「未发现读者会认定不可能的硬伤」",
       issues: [{
         scenes: input.sceneCount !== undefined ? [1] : [],
-        evidence: "不超过 15 字的定位引用",
+        evidence: `不超过 ${REVIEW_EVIDENCE_MAX_CHARS} 字的定位引用`,
         problem: "读者会在哪一步认为不可能",
         repair: "最小改动"
       }]

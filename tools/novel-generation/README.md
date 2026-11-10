@@ -99,17 +99,18 @@ npm run dev -- write --world conghuoniao --mode continuation \
 
 终审一次自动修复后仍有必改项时，本次运行安全失败：最新成稿保留为 `chapter-blocked.md`，诊断写入质量摘要（状态为 `blocked`），故事状态不更新。系统不会提供人工批准绕过硬伤的开关；修复输入或问题后可从 checkpoint 恢复或重新运行。`--strict-model` 禁止失败时回退到备用模型，保证成稿模型来源可追踪。
 
-每次运行生成：
-- `00-retrieval.md`：命中的原文片段、来源位置和抽取标注
+每次普通章节运行生成的主要产物：
+- `00-story-arc.md`：本次滚动中期故事方向候选；只有终审通过且 Story State 提交成功后，才发布到活动 Story Arc 文件
 - `01-main-plot.md`、`02-creative-options.md`：主线方案与创意备选
 - `03-chapter-plan.md`：主编确定的章节蓝图
-- `04-scene-draft.md`、`05-dialogue-edited.md`、`06-voice-edited.md`：正文、对白修订和叙事声音统一
-- `05-literary-patches-raw.json` / `05-literary-patches-applied.json`（长章节为 `06-literary-patches-raw.json` / `06-literary-patches-applied.json`）：模型原始 Patch 与逐条应用结果；`05-literary-edited.md` / `06b-anti-ai-edited.md` 为应用后的正文
-- `07-continuity-review.md`：终审必改清单；没有必改项时只有一行结论
+- `04-scene-draft.md`：初稿正文
+- `05-literary-patches-raw.json`、`05-literary-patches-applied.json`：Patch 原始响应与逐条应用结果
+- `05-literary-edited.md`：Patch 应用后的正文
+- `07-review-round-*-raw.txt`、`07-continuity-review-round-*.json`、`07-continuity-review.md`：终审原始输出、结构化复查与修复记录
 - `chapter.md`：最终复查通过后的章节
-- `08-state-update.json`：合并后的下一章状态（默认已自动持久化）
-- `07-review-round-*-raw.txt`、`07-continuity-review-round-N.json`、`09-quality-summary.json`：终审原始输出、结构化复查结果与修复轮数
-- `chapter-blocked.md`：终审一轮自动修复后仍有明确硬伤时保留的最新成稿；本次运行失败且故事状态不更新
+- `08-state-update.json`、`09-quality-summary.json`：状态提案和质量摘要
+
+不会再生成内容完全相同的 `05-dialogue-edited.md` / `06-voice-edited.md`，也不会生成表示未执行阶段的 `11-style-regression-skipped.json`。阶段文件只代表实际执行过的阶段；专项风格回归由独立命令执行。
 
 章节生成成功后，状态管理员会提取人物、事件、正史事实和情节线变化，并自动写入 SQLite 权威状态及兼容 JSON 快照，供下一章直接使用。只有模型对照、盲测等需要候选互相隔离的场景才传 `--no-apply-state`；普通续写不要使用该参数。状态提取或持久化失败会使本次命令失败，不能把状态未更新的章节当作可继续写作的成功结果。`continuation` 模式的 `--source` 必须是你提供或有权使用的文本，本地 `private/` 不入库。
 
@@ -126,7 +127,7 @@ npm run dev -- write-long --world conghuoniao --mode continuation \
   --max-words 10000 --scenes 8 --retrieval-limit 4 --timeout-ms 180000
 ```
 
-流程：按情节自然需要生成场景蓝图，`--scenes` 是场景数量上限而非必须凑齐的配额；不会为了满足数字拆开连贯情节。格式错误自动修正一次 → 按场检索并注入相关人物当前状态 → 逐场成文，后续场景携带本章已生成正文的滚动上下文 → 逐场对白/文风修订 → 一次局部 Patch 编辑（默认保留原文，不再整章诊断/改写/复核）→ 全章跨场硬伤终审 → 对必改项定位到受影响场景并最多自动修复一轮，随后重新复查 → 最终章节与节奏指标 → 从最终完整正文提取并校验状态 → SQLite 和 JSON 自动持久化。盲读 Reader 默认关闭，可用 `--reader-experience` 显式启用。最终复查未通过或状态提取/保存失败时命令失败，不会提交未通过章节的故事状态。仅隔离实验使用 `--no-apply-state`。
+流程：先滚动校准 Story Arc（与普通章节共用同一中期规划层），按情节自然需要生成场景蓝图，`--scenes` 是场景数量上限而非必须凑齐的配额；不会为了满足数字拆开连贯情节。格式错误自动修正一次 → 按场检索并注入相关人物当前状态 → 逐场成文，后续场景携带本章已生成正文的滚动上下文 → 逐场对白/文风修订 → 一次局部 Patch 编辑（默认保留原文，不再整章诊断/改写/复核）→ 全章跨场硬伤终审 → 对必改项定位到受影响场景并最多自动修复一轮，随后重新复查 → 最终章节与节奏指标 → 从最终完整正文提取并校验状态 → Story State 与对应 Story Arc 协调提交到 SQLite/文件快照。新宇宙的普通章节和长章节都必须等待 style-profile、character-profiles、character-states、as-of-dossier 四项最低知识准备；可选 corpus-craft/Vane 不阻塞。盲读 Reader 默认关闭，可用 `--reader-experience` 显式启用。最终复查未通过或状态提取/保存失败时命令失败，不会提交未通过章节的故事状态。仅隔离实验使用 `--no-apply-state`。
 
 `analysis/conghuoniao/style-rhythm.md` 是离线语料观察资料，不是续写目标。正式写作不要求接近原著句长、段落或对白统计，也不会根据这些数字自动改写正文。`06-rhythm-metrics.json` 只保存诊断数据，供事后观察；不能据此判断小说好坏。
 
