@@ -1079,7 +1079,7 @@ export async function importBoundedStoryAnalysisFromBatchCache(
       legacyCacheKeyFor(candidate, units, maxChars),
       legacyCacheKeyFor(candidate, units, maxChars, true),
       cacheKeyFor(candidate, units, maxChars)
-    ].some(key => existsSync(resolve(root, key)));
+    ].some(key => existsSync(join(root, key, "batch-0000.json")));
   }) ?? sourceSnapshot.analysisModel ?? configuredModel;
   const allBatches = groupAnalysisUnits(units, maxChars).map((chapters, index) => ({
     index, chapters, chars: chapters.reduce((sum, chapter) => sum + chapter.charCount, 0)
