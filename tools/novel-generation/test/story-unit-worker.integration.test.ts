@@ -40,6 +40,7 @@ test("fixed-batch worker keeps alternating Story Unit chapter history and Story 
   let serverStarted = false;
   let assessmentCount = 0;
   let completeStoryMode = false;
+  let forceNoProgress = false;
   let completeStoryAssessmentCount = 0;
   setStoryProgressAssessorForTests(async input => {
     assessmentCount++;
@@ -52,7 +53,7 @@ test("fixed-batch worker keeps alternating Story Unit chapter history and Story 
       remainingStoryWork: naturallyComplete ? [] : ["继续推进人物选择及其后果"],
       nextDirection: naturallyComplete ? "故事自然收束" : "让人物选择带来新的局面变化",
       rationale: naturallyComplete ? "核心冲突已解决，人物选择产生后果，结尾自然。" : "测试用的逐章进展评估",
-      meaningfulProgress: true, progressEvidence: "Worker chapter",
+      meaningfulProgress: !forceNoProgress, progressEvidence: forceNoProgress ? "" : "Worker chapter",
       cumulativeStorySummary: (input.unit.execution.cumulativeStorySummary ? input.unit.execution.cumulativeStorySummary + "\\n" : "") + input.chapterTitle + "：人物作出新的选择",
       revisedStorySpine: naturallyComplete ? input.unit.storySpine.map((beat, index) => ({ ...beat, status: index === input.unit.storySpine.length - 1 ? "completed" as const : "completed" as const })) : input.unit.storySpine,
       characterArcUpdates: []
@@ -110,6 +111,7 @@ console.log("Story state automatically updated: " + stateFile);
     const unitA = await createStoredStoryUnit(worldDir, storyUnit(worldId, "故事 A"));
     const unitB = await createStoredStoryUnit(worldDir, storyUnit(worldId, "故事 B"));
     const unitC = await createStoredStoryUnit(worldDir, storyUnit(worldId, "故事 C"));
+    const unitD = await createStoredStoryUnit(worldDir, storyUnit(worldId, "故事 D"));
     await new Promise<void>((resolveListen, reject) => server.listen(0, "127.0.0.1", error => error ? reject(error) : resolveListen()));
     serverStarted = true;
     const address = server.address();
@@ -197,6 +199,15 @@ console.log("Story state automatically updated: " + stateFile);
     const completedUnitB = JSON.parse(await readFile(join(worldDir, ".story-units", unitB.id + ".json"), "utf8")) as { execution: { status: string; completedChapterIds: string[] } };
     assert.equal(completedUnitB.execution.status, "completed");
     assert.equal(completedUnitB.execution.completedChapterIds.length, 3);
+
+    // Stall history is Story Unit state, not scoped to one task: starting a
+    // second fixed batch must continue the previous batch's no-progress count.
+    forceNoProgress = true;
+    await runBatch(unitD.id);
+    await runBatch(unitD.id);
+    const unitDRecord = JSON.parse(await readFile(join(worldDir, ".story-units", unitD.id + ".json"), "utf8")) as { execution: { idleChapterCount: number } };
+    assert.equal(unitDRecord.execution.idleChapterCount, 2);
+    forceNoProgress = false;
 
     // A failed chapter whose rollback manifest is missing must retain currentRunId;
     // recovery must stop rather than silently continue from uncertain Story State.
