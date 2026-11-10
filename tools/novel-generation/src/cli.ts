@@ -297,13 +297,16 @@ async function main(): Promise<void> {
       annotationFailures = (store.failures ?? []).length;
     } catch { /* report missing annotation store below */ }
     const v6Complete = Boolean(snapshot && snapshot.analysisVersion === 6 && snapshot.complete === true && snapshot.storyGraph);
+    const isUniverse = (await readOptional(resolve(worldDir, "universe.json"))) !== undefined;
     const annotationsComplete = chunks > 0 && reviewedAnnotations === chunks && status.annotations === reviewedAnnotations && annotationFailures === 0;
     console.log(JSON.stringify({
       worldId, database: status,
       originalStoryGraph: {
         complete: v6Complete, analysisVersion: snapshot?.analysisVersion ?? null,
         sourceHash: snapshot?.sourceHash ?? null, analyzedAt: snapshot?.analyzedAt ?? null,
-        nextStep: v6Complete ? null : "npm run dev -- analyze-story --world " + worldId + " --delta --merge-only"
+        nextStep: v6Complete ? null : isUniverse
+          ? "该目录是独立故事宇宙；禁止在此重新分析原著。请检查来源原著的 story_analysis 与批次缓存，再重新运行 Workbench 知识构建。"
+          : "npm run dev -- analyze-story --world " + worldId
       },
       annotations: {
         libraryChunks: chunks, reviewed: reviewedAnnotations, failures: annotationFailures,
@@ -513,7 +516,7 @@ async function main(): Promise<void> {
       const snapshot = readStoryAnalysis(worldDir, worldId);
       const graph = snapshot?.storyGraph;
       if (!snapshot || !graph || snapshot.analysisVersion !== 6 || snapshot.complete !== true) {
-        throw new Error("A complete v6 original story graph is not available. Finish all analyze-story v6 batches, then run --delta --merge-only before querying the graph.");
+        throw new Error("A complete v6 story graph is not available. For an original world, finish analyze-story; for a universe, restore the bounded snapshot from its source world's existing analysis instead of re-analyzing the canon.");
       }
       const query = arg("--query") ?? "";
       console.log(JSON.stringify({
