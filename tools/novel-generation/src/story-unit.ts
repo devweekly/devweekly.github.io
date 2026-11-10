@@ -41,7 +41,7 @@ const StoryUnitSchema = z.object({
   subplots: z.array(z.string()).default([]),
   climax: z.string().min(1), endingAndAftermath: z.string().min(1),
   unresolvedQuestions: z.array(z.string()).default([]), creativePossibilities: z.array(z.string()).default([]),
-  execution: z.object({ status: z.enum(["not_started", "in_progress", "completed"]).default("not_started"), completedChapterIds: z.array(z.string()).default([]), lastUnresolvedCoreThreads: z.array(z.string()).default([]), lastAssessedChapterId: z.string().optional(), lastAssessment: z.string().optional(), nextDirection: z.string().optional(), assessedAt: z.string().optional(), completedAt: z.string().optional(), characterArcHistory: z.array(z.object({ chapterId: z.string(), name: z.string(), observedChange: z.string(), futurePossibilities: z.array(z.string()), recordedAt: z.string() }).strict()).default([]) }).default({ status: "not_started", completedChapterIds: [], lastUnresolvedCoreThreads: [], characterArcHistory: [] })
+  execution: z.object({ status: z.enum(["not_started", "in_progress", "completed"]).default("not_started"), completedChapterIds: z.array(z.string()).default([]), lastUnresolvedCoreThreads: z.array(z.string()).default([]), lastAssessedChapterId: z.string().optional(), lastAssessment: z.string().optional(), nextDirection: z.string().optional(), cumulativeStorySummary: z.string().default(""), assessedAt: z.string().optional(), completedAt: z.string().optional(), characterArcHistory: z.array(z.object({ chapterId: z.string(), name: z.string(), observedChange: z.string(), futurePossibilities: z.array(z.string()), recordedAt: z.string() }).strict()).default([]) }).default({ status: "not_started", completedChapterIds: [], lastUnresolvedCoreThreads: [], characterArcHistory: [] })
 }).strict();
 
 export type StoryUnit = z.infer<typeof StoryUnitSchema>;
@@ -95,10 +95,17 @@ const StoryProgressAssessmentSchema = z.object({
   confidence: z.enum(["low", "medium", "high"]),
   unresolvedCoreThreads: z.array(z.string()), unrealizedMajorBeats: z.array(z.string()), remainingStoryWork: z.array(z.string()),
   nextDirection: z.string(), rationale: z.string(),
+  meaningfulProgress: z.boolean().default(false), progressEvidence: z.string().default(""),
+  cumulativeStorySummary: z.string().default(""),
   revisedStorySpine: z.array(BeatSchema).default([]),
   characterArcUpdates: z.array(z.object({ name: z.string().min(1), observedChange: z.string().default(""), futurePossibilities: z.array(z.string()).default([]) }).strict()).default([])
 }).strict();
 export type StoryProgressAssessment = z.infer<typeof StoryProgressAssessmentSchema>;
+
+export function hasVerifiableStoryProgress(assessment: StoryProgressAssessment, chapterText: string): boolean {
+  const evidence = assessment.progressEvidence.trim();
+  return assessment.meaningfulProgress && evidence.length >= 4 && chapterText.includes(evidence);
+}
 
 export function isStoryUnitNaturallyComplete(assessment: StoryProgressAssessment): boolean {
   // remainingStoryWork is the editor's explicit list of narrative work still required.
@@ -126,12 +133,15 @@ export async function assessStoryUnitProgress(input: {
     "返回 characterArcUpdates：只记录正文和 Story State 有证据支持的人物变化，并提出开放的后续可能，不强制人物必须按某条弧光发展。不得虚构未发生的心理变化。",
 
     "若证据不足，必须保守判定 false。completedChapterCount 只是上下文，不得作为完成条件或最低章数门槛。",
+    "判断本章是否产生了可验证的实质推进：只有核心冲突、人物选择及代价、利益格局、关系或因果局面确有变化才 meaningfulProgress=true；必须提供本章正文中的连续原文 progressEvidence（至少 4 字），不能引用泛泛描写。没有推进则为 false、证据留空。",
+    "每章更新 cumulativeStorySummary：在既有摘要基础上增量维护已发生的关键事件、因果变化、人物选择及后果、人物认知与关系变化、仍有效的冲突。只写正文和已提交 Story State 能支持的事实，明确保留不确定性；不要变成剧情复述或设定百科，建议控制在 3000 中文字以内。",
     "JSON 结构：",
-    JSON.stringify({ coreConflictResolved: false, endingFeelsNatural: false, confidence: "medium", unresolvedCoreThreads: ["尚未收束的核心线"], unrealizedMajorBeats: ["尚未发生的主要故事阶段"], remainingStoryWork: ["下一步具体需要写的内容"], nextDirection: "下一章最自然的推进方向", rationale: "依据实际正文说明", revisedStorySpine: [], characterArcUpdates: [] }, null, 2),
+    JSON.stringify({ coreConflictResolved: false, endingFeelsNatural: false, confidence: "medium", unresolvedCoreThreads: ["尚未收束的核心线"], unrealizedMajorBeats: ["尚未发生的主要故事阶段"], remainingStoryWork: ["下一步具体需要写的内容"], nextDirection: "下一章最自然的推进方向", rationale: "依据实际正文说明", meaningfulProgress: true, progressEvidence: "本章正文中的连续原文", cumulativeStorySummary: "截至本章的累计故事事实与因果摘要", revisedStorySpine: [], characterArcUpdates: [] }, null, 2),
     "故事单元：", JSON.stringify(input.unit),
     "已完成章节数（仅供上下文，不作阈值）：", String(input.completedChapterCount),
     "刚完成章节标题：", input.chapterTitle,
     "刚完成章节正文：", input.chapterText.slice(-18000),
+    "此前累计故事记忆：", input.unit.execution.cumulativeStorySummary || "尚无累计摘要，这是第一章。",
     "已提交 Story State：", JSON.stringify(input.storyState),
     "请在 revisedStorySpine 中输出重规划后的完整阶段列表；如果没有必要改变结构，可返回原列表并更新 status。"
   ].join("\n\n");
