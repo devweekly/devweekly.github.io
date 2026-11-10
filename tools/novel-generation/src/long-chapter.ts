@@ -19,7 +19,7 @@ import {
   WORLD_SITUATION_FIELD_DEFAULT_LIMIT,
   WRITE_LONG_RETRIEVAL_LIMIT
 } from "./constants.js";
-import { buildWorldSituationContext } from "./world-situation.js";
+import { buildRecentEventContinuityContext, buildWorldSituationContext } from "./world-situation.js";
 import { CREATIVE_FREEDOM_RULES, LIVING_VOICE_RULES, literaryPatchPrompt, parseLiteraryPatchResult, applyLiteraryPatches, readerExperiencePrompt } from "./literary-edit.js";
 
 export interface LongChapterInput {
@@ -161,7 +161,9 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   ].join("\n");
   const situationQuery = [input.brief, state.currentPosition, input.contextText, input.sourceText?.slice(-LONG_CHAPTER_SOURCE_TAIL_CHARS), input.writingBrief, input.storyPlanText, input.storyAnalysisContext].filter(Boolean).join("\n");
   const worldSituation = buildWorldSituationContext(state, situationQuery);
+  const recentEventContext = buildRecentEventContinuityContext(state);
   if (worldSituation) await saveStage(input.outputDir, "00-world-situation-context.md", worldSituation);
+  if (recentEventContext) await saveStage(input.outputDir, "00-recent-event-context.md", recentEventContext);
   const previousArc = input.storyArcText?.trim() ?? "";
   const storyArc = await cachedCall("story-arc", "00-story-arc.md", "plan", [
     "角色：中期故事架构师。为当前故事阶段校准可调整的中期方向；不要把章节计划当成剧情合同。",
@@ -171,6 +173,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     input.storyPlanText ?? "",
     "既有 Story Arc：", previousArc || "尚无中期故事阶段，请从当前局势自然推演。",
     worldSituation,
+    recentEventContext,
     input.storyAnalysisContext ?? "",
     "本次长章节任务：", input.brief,
     "结合已发生正文、人物选择、因果和未解决问题，形成适合连续写作的中期方向。只保留真正值得关注的少数阶段节点；允许日常、过渡、关系戏和暂不推进主线。不得凑章节数、强制人物弧光、预写人物选择或把可能性写成正史。文学性、文笔、艺术风格高于其他一切。"
@@ -182,6 +185,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     "当前位置：", state.currentPosition,
     "事实来源与当前连续性信息：", facts,
     worldSituation ? "本章相关人物、已发生事件与局势上下文：\n" + worldSituation : "",
+    recentEventContext,
     input.contextText ? "前文与连续性摘要：\n" + input.contextText : "",
     input.writingBrief ? "全书知识库（已经写成的事实与未收线，优先于分析参考）：\n" + input.writingBrief : "",
     input.storyPlanText ? input.storyPlanText : "",
