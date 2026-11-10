@@ -556,7 +556,13 @@ async function ensureUniverseStoryAnalysis(worldId: string, universe: StoryUnive
           };
           snapshot.asOfEntryChapter = universe.entryChapter;
           snapshot.asOfEntryChapterId = universe.entryChapterId;
-          snapshot.asOfEntryOrdinal = universe.entryChapterIndex + 1;
+          if (universe.entryChapterId) {
+            const db = new DatabaseSync(path.join(targetDir, "novel.db"));
+            try {
+              const row = db.prepare("SELECT ordinal FROM novel_chapters WHERE chapter_id=?").get(universe.entryChapterId) as { ordinal?: number } | undefined;
+              if (Number.isSafeInteger(Number(row?.ordinal))) snapshot.asOfEntryOrdinal = Number(row?.ordinal);
+            } finally { db.close(); }
+          }
           snapshot.sourceWorldId = universe.sourceWorldId;
           saveStoryAnalysis(targetDir, worldId, snapshot);
           imported = true;
