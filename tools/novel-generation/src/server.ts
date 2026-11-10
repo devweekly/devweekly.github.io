@@ -1571,9 +1571,13 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
     await createStoryStateSnapshot(worldId, storyUnitId, runId);
     await onRunStarted?.(run);
   } catch (error) {
-    await restoreStoryStateSnapshot(worldId, run).catch(() => false);
-    await saveRun({ ...run, status: "failed", updatedAt: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) });
-    throw error;
+    let rollbackError = "";
+    try { await restoreStoryStateSnapshot(worldId, run); }
+    catch (cause) { rollbackError = cause instanceof Error ? cause.message : String(cause); }
+    const message = (error instanceof Error ? error.message : String(error)) +
+      (rollbackError ? "；状态回滚失败：" + rollbackError : "；已恢复章节开始前的 Story State 快照。");
+    await saveRun({ ...run, status: "failed", updatedAt: new Date().toISOString(), error: message });
+    throw new Error(message);
   }
   const mode = previousChapterPath ? "continuation" : "derivative";
   const args = [
@@ -1679,10 +1683,11 @@ async function assessStoryExecutionCheckpoint(
     : taskInput;
   task = appendStoryExecutionEvent({
     ...task, currentRunId: undefined, lastAssessment: assessment.rationale, nextDirection: assessment.nextDirection,
-    idleChapterCount: hasVerifiableStoryProgress(assessment, chapterText) ? 0 : task.idleChapterCount + 1,
+    idleChapterCount,
     updatedAt: assessedAt
-  }, { at: assessedAt, type: "assessment", message: assessment.rationale.slice(0, 1200) });
+  }, { at: assessedAt, type: "assessment", message: assessment.rationale.slice(0, 1200), runId: checkpoint.runId });
   const naturallyComplete = isStoryUnitNaturallyComplete(assessment);
+  const idleChapterCount = hasVerifiableStoryProgress(assessment, chapterText) ? 0 : task.idleChapterCount + 1;
   const revisedSpine = assessment.revisedStorySpine.length >= 4
     ? assessment.revisedStorySpine.map(beat => {
         const previousBeat = unitInput.storySpine.find(item => item.title === beat.title);
@@ -1705,6 +1710,7 @@ async function assessStoryExecutionCheckpoint(
       lastAssessedChapterId: checkpoint.runId,
       lastUnresolvedCoreThreads: assessment.unresolvedCoreThreads,
       lastAssessment: assessment.rationale, nextDirection: assessment.nextDirection,
+      idleChapterCount,
       cumulativeStorySummary: assessment.cumulativeStorySummary.trim() || unitInput.execution.cumulativeStorySummary,
       characterArcHistory,
       assessedAt, ...(naturallyComplete ? {completedAt: assessedAt} : {})
@@ -1723,6 +1729,44 @@ async function assessStoryExecutionCheckpoint(
   }
   await saveStoryExecution(task);
   return {task,unit,terminal:false};
+}
+
+/**
+ * Recover the narrow crash window after a chapter run completed but before its
+ * story-execution checkpoint was persisted. currentRunId is the durable pointer
+ * to that run; never infer ownership from the globally newest chapter.
+ */
+async function ensureStoryExecutionCheckpointAssessed(
+  worldId: string, taskInput: StoryExecution, unitInput: Awaited<ReturnType<typeof generateStoryUnit>>,
+  checkpoint: StoryExecution["completedChapters"][number]
+): Promise<{task:StoryExecution;unit:Awaited<ReturnType<typeof generateStoryUnit>>;terminal:boolean}> {
+  if (unitInput.execution.lastAssessedChapterId !== checkpoint.runId) {
+    return assessStoryExecutionCheckpoint(worldId, taskInput, unitInput, checkpoint);
+  }
+  const assessedAt = unitInput.execution.assessedAt ?? new Date().toISOString();
+  const hasEvent = taskInput.events.some(event => event.type === "assessment" && event.runId === checkpoint.runId);
+  let task = {
+    ...taskInput,
+    currentRunId: undefined,
+    lastAssessment: unitInput.execution.lastAssessment ?? taskInput.lastAssessment,
+    nextDirection: unitInput.execution.nextDirection ?? taskInput.nextDirection,
+    idleChapterCount: unitInput.execution.idleChapterCount ?? taskInput.idleChapterCount,
+    updatedAt: assessedAt
+  };
+  if (!hasEvent) {
+    task = appendStoryExecutionEvent(task, { at: assessedAt, type: "assessment", message: (unitInput.execution.lastAssessment ?? "已恢复已提交的章节进展评估").slice(0, 1200), runId: checkpoint.runId });
+  }
+  const naturallyComplete = unitInput.execution.status === "completed";
+  const stalled = !naturallyComplete && task.idleChapterCount >= 4;
+  if (naturallyComplete) {
+    task = appendStoryExecutionEvent({ ...task, status: "completed", completedAt: unitInput.execution.completedAt ?? assessedAt, updatedAt: assessedAt, nextDirection: "故事已自然收束。" },
+      { at: assessedAt, type: "completed", message: "恢复已提交的自然收束评估" });
+  } else if (stalled) {
+    task = appendStoryExecutionEvent({ ...task, status: "stalled", error: "连续章节未推动核心冲突，任务已暂停而非误判为完成。请修订 Story Unit 的下一步方向后恢复。", updatedAt: assessedAt },
+      { at: assessedAt, type: "stalled", message: "恢复已提交的停滞判断" });
+  }
+  if (!hasEvent || naturallyComplete || stalled) await saveStoryExecution(task);
+  return { task, unit: unitInput, terminal: naturallyComplete || stalled };
 }
 
 /**
@@ -1809,7 +1853,7 @@ async function executeStoryUnitTask(initial: StoryExecution, signal?: AbortSigna
     await saveStoryExecution(task); await saveExecutionStoryUnit(unit);
     const pendingAssessment = task.completedChapters.at(-1);
     if (pendingAssessment && unit.execution.lastAssessedChapterId !== pendingAssessment.runId) {
-      const recoveredAssessment = await assessStoryExecutionCheckpoint(worldId, task, unit, pendingAssessment);
+      const recoveredAssessment = await ensureStoryExecutionCheckpointAssessed(worldId, task, unit, pendingAssessment);
       task = recoveredAssessment.task; unit = recoveredAssessment.unit;
       if (recoveredAssessment.terminal) return;
     }
@@ -1897,7 +1941,7 @@ async function executeFixedChapterBatch(initial: StoryExecution, signal?: AbortS
     await saveStoryExecution(task);
     const pendingAssessment = task.completedChapters.at(-1);
     if (pendingAssessment && unit.execution.lastAssessedChapterId !== pendingAssessment.runId) {
-      const recoveredAssessment = await assessStoryExecutionCheckpoint(worldId, task, unit, pendingAssessment);
+      const recoveredAssessment = await ensureStoryExecutionCheckpointAssessed(worldId, task, unit, pendingAssessment);
       task = recoveredAssessment.task; unit = recoveredAssessment.unit;
       if (recoveredAssessment.terminal) return;
     }
@@ -1959,7 +2003,7 @@ async function executeFixedChapterBatch(initial: StoryExecution, signal?: AbortS
       await saveExecutionStoryUnit(unit);
       // Fixed-count execution limits only how many chapters this task runs.
       // It must not skip the same narrative progress review used by complete_story.
-      const assessed = await assessStoryExecutionCheckpoint(worldId, task, unit, task.completedChapters.at(-1)!);
+      const assessed = await ensureStoryExecutionCheckpointAssessed(worldId, task, unit, task.completedChapters.at(-1)!);
       task = assessed.task; unit = assessed.unit;
       if (assessed.terminal) return;
       if (task.completedChapters.length >= (task.targetChapterCount ?? 1)) {
