@@ -105,8 +105,9 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
           try {
             const source = JSON.parse(row.payload_json) as Record<string, unknown>;
             // A mixed-provenance aggregate cannot be safely sliced at the cutoff.
-            // Drop it, but mark the snapshot incomplete so knowledge build re-analyzes
-            // the already-bounded corpus instead of mistaking a partial snapshot for full coverage.
+            // Drop it and mark the snapshot incomplete. The caller must restore missing
+            // information from source batch caches; it must never silently re-analyze the
+            // bounded universe from chapter one.
             let requiresReanalysis = false;
             const boundedItems = (value: unknown): Array<Record<string, unknown>> => Array.isArray(value)
               ? value.filter((item): item is Record<string, unknown> => {
@@ -196,9 +197,9 @@ export function restrictKnowledgeDatabaseToEntry(databasePath: string, worldId: 
 
 
 /**
- * Backfill an already-created universe from its source project's offline v6
- * snapshot. The target novel.db already contains only bounded chapter rows;
- * a temporary minimal database reuses the exact same fail-closed filter above.
+ * Conservative fallback for an already-created universe: filter an existing
+ * source snapshot using immutable chapter provenance. Mixed-provenance records
+ * make the result incomplete; the caller must then recover from source batches.
  */
 export function importBoundedStoryAnalysisSnapshot(
   targetDatabasePath: string,
