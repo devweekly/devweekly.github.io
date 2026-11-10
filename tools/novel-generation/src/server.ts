@@ -1852,7 +1852,7 @@ async function executeStoryUnitTask(initial: StoryExecution, signal?: AbortSigna
     unit = { ...unit, execution: { ...unit.execution, status: "in_progress" } };
     await saveStoryExecution(task); await saveExecutionStoryUnit(unit);
     const pendingAssessment = task.completedChapters.at(-1);
-    if (pendingAssessment && unit.execution.lastAssessedChapterId !== pendingAssessment.runId) {
+    if (pendingAssessment) {
       const recoveredAssessment = await ensureStoryExecutionCheckpointAssessed(worldId, task, unit, pendingAssessment);
       task = recoveredAssessment.task; unit = recoveredAssessment.unit;
       if (recoveredAssessment.terminal) return;
@@ -1940,7 +1940,7 @@ async function executeFixedChapterBatch(initial: StoryExecution, signal?: AbortS
     task = { ...task, status: "running", startedAt: task.startedAt ?? new Date().toISOString(), updatedAt: new Date().toISOString(), resumeCount: task.resumeCount + (task.startedAt ? 1 : 0), error: undefined };
     await saveStoryExecution(task);
     const pendingAssessment = task.completedChapters.at(-1);
-    if (pendingAssessment && unit.execution.lastAssessedChapterId !== pendingAssessment.runId) {
+    if (pendingAssessment) {
       const recoveredAssessment = await ensureStoryExecutionCheckpointAssessed(worldId, task, unit, pendingAssessment);
       task = recoveredAssessment.task; unit = recoveredAssessment.unit;
       if (recoveredAssessment.terminal) return;
