@@ -663,19 +663,22 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
     let analysis = await readBatchCache(path, batch, model, maxChars,
       options.delta ? undefined : legacyExactPath(batch), options.delta);
     if (!analysis && !options.delta) {
+      const deltaStablePath = join(
+        resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, maxChars, true)),
+        "batch-" + String(batch.index).padStart(4, "0") + ".json"
+      );
       const legacyDeltaPath = join(
         resolve(".output", worldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars, true)),
         "batch-" + String(batch.index).padStart(4, "0") + ".json"
       );
-      const legacyDelta = await readCached(legacyDeltaPath);
-      if (legacyDelta) {
-        analysis = legacyDelta;
+      analysis = await readBatchCache(deltaStablePath, batch, model, maxChars, legacyDeltaPath, true);
+      if (analysis) {
         const temporary = path + ".migrate.tmp";
         await writeFile(temporary, JSON.stringify(analysis, null, 2) + "\n", "utf8");
         await rename(temporary, path);
         const metaTemporary = path + ".meta.json.tmp";
         await writeFile(metaTemporary, JSON.stringify({
-          fingerprint: batchFingerprint(batch, model, maxChars, false), migratedFrom: legacyDeltaPath
+          fingerprint: batchFingerprint(batch, model, maxChars, false), migratedFrom: deltaStablePath
         }, null, 2) + "\n", "utf8");
         await rename(metaTemporary, path + ".meta.json");
       }
@@ -1078,7 +1081,8 @@ export async function importBoundedStoryAnalysisFromBatchCache(
     return [
       legacyCacheKeyFor(candidate, units, maxChars),
       legacyCacheKeyFor(candidate, units, maxChars, true),
-      cacheKeyFor(candidate, units, maxChars)
+      cacheKeyFor(candidate, units, maxChars),
+      cacheKeyFor(candidate, units, maxChars, true)
     ].some(key => existsSync(join(root, key, "batch-0000.json")));
   }) ?? sourceSnapshot.analysisModel ?? configuredModel;
   const allBatches = groupAnalysisUnits(units, maxChars).map((chapters, index) => ({
@@ -1096,13 +1100,14 @@ export async function importBoundedStoryAnalysisFromBatchCache(
     const legacyPath = join(legacyDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
     let analysis = await readBatchCache(path, batch, model, maxChars, legacyPath);
     if (!analysis) {
+      const deltaStableDir = resolve(".output", sourceWorldId, "story-analysis", cacheKeyFor(model, units, maxChars, true));
+      const deltaStablePath = join(deltaStableDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
       const legacyDeltaPath = join(legacyDeltaDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
-      const legacyDelta = await readCached(legacyDeltaPath);
-      if (legacyDelta) {
-        analysis = legacyDelta;
+      analysis = await readBatchCache(deltaStablePath, batch, model, maxChars, legacyDeltaPath, true);
+      if (analysis) {
         await writeFile(path, JSON.stringify(analysis, null, 2) + "\n", "utf8");
         await writeFile(path + ".meta.json", JSON.stringify({
-          fingerprint: batchFingerprint(batch, model, maxChars, false), migratedFrom: legacyDeltaPath
+          fingerprint: batchFingerprint(batch, model, maxChars, false), migratedFrom: deltaStablePath
         }, null, 2) + "\n", "utf8");
       }
     }
