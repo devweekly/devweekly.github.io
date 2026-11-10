@@ -11,7 +11,7 @@ import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { loadStoryPlan, saveStoryPlan, generateStoryPlan } from "./story-plan.js";
 import { loadStoryState, validateStoryState } from "./story-state.js";
-import { readStoryAnalysis, listNovelCharacters, countNovelCharacters, readNovelCharacterWorkbenchDetail } from "./database.js";
+import { readStoryAnalysis, saveStoryAnalysis, listNovelCharacters, countNovelCharacters, readNovelCharacterWorkbenchDetail } from "./database.js";
 import {
   CHARACTER_LIST_MAX_LIMIT, CHARACTER_LIST_DEFAULT_LIMIT, DASHBOARD_PLAN_VERSIONS_LIMIT, DASHBOARD_RECENT_RUNS_LIMIT,
   STORY_ANALYSIS_QUERY_CHARACTERS,
@@ -27,7 +27,7 @@ import { getCandidate, getRun, listCandidates, listRuns, recoverInterruptedRuns,
 import type { StoryState } from "./story-state.js";
 import { buildUniverseOriginContext, buildUniverseWorldBible, rebaseStoryState, remapForkedRun, shouldCopyUniverseAsset } from "./universe-branch.js";
 import { importBoundedStoryAnalysisSnapshot, restrictKnowledgeDatabaseToEntry } from "./source-canon-snapshot.js";
-import { importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
+import { analyzeStoryCorpus, importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
 import { copyOriginalCanonToUniverse, ensureBoundedUniverseCanonAssets, resolveOriginalCanonPath, truncateCanonAtLine } from "./canon-source.js";
 import { assessStoryUnitProgress, generateStoryUnit, hasVerifiableStoryProgress, isStoryUnitNaturallyComplete, mergeStorySpinePreservingCompleted, validateStoryUnit } from "./story-unit.js";
@@ -524,27 +524,74 @@ async function ensureUniverseStoryAnalysis(worldId: string, universe: StoryUnive
   const active = universeAnalysisBackfills.get(worldId);
   if (active) return active;
   const task = (async () => {
-    const current = readStoryAnalysis(worldDir(worldId), worldId) as (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined;
+    const current = readStoryAnalysis(worldDir(worldId), worldId) as
+      (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined;
     if (hasBoundedStoryAnalysis(current, universe)) return;
-    if (!existsSync(path.join(worldDir(universe.sourceWorldId), "novel.db"))) return;
-    const source = readStoryAnalysis(worldDir(universe.sourceWorldId), universe.sourceWorldId);
-    if (!source || source.analysisVersion !== 6 || source.complete !== true) return;
+
     const targetDir = worldDir(worldId);
-    const reusedBatches = universe.entryChapterId
-      ? await importBoundedStoryAnalysisFromBatchCache(
+    let imported = false;
+
+    // Prefer complete batch files already produced for this universe. They
+    // are keyed to its exact bounded original.txt and can be merged without
+    // any new model calls.
+    try {
+      const localCache = await analyzeStoryCorpus(worldId, { worldDir: targetDir, mergeOnly: true });
+      if (localCache.snapshot) {
+        const snapshot = localCache.snapshot as typeof localCache.snapshot & {
+          asOfEntryChapter?: string; asOfEntryChapterId?: string; asOfEntryOrdinal?: number; sourceWorldId?: string;
+        };
+        snapshot.asOfEntryChapter = universe.entryChapter;
+        snapshot.asOfEntryChapterId = universe.entryChapterId;
+        if (universe.entryChapterId) {
+          const db = new DatabaseSync(path.join(targetDir, "novel.db"));
+          try {
+            const row = db.prepare("SELECT ordinal FROM novel_chapters WHERE chapter_id=?").get(universe.entryChapterId) as { ordinal?: number } | undefined;
+            if (Number.isSafeInteger(Number(row?.ordinal))) snapshot.asOfEntryOrdinal = Number(row?.ordinal);
+          } finally { db.close(); }
+        }
+        snapshot.sourceWorldId = universe.sourceWorldId;
+        saveStoryAnalysis(targetDir, worldId, snapshot);
+        imported = true;
+      }
+    } catch (error) {
+      console.info("[workbench] no complete local universe batch cache to merge; trying source-world batches:", String(error));
+    }
+
+    const sourceDbPath = path.join(worldDir(universe.sourceWorldId), "novel.db");
+    const source = existsSync(sourceDbPath)
+      ? readStoryAnalysis(worldDir(universe.sourceWorldId), universe.sourceWorldId)
+      : undefined;
+
+    // Batch caches are an independent recovery source. Do not require a
+    // complete SQLite snapshot before attempting them: the snapshot is only
+    // the merged output of those durable batch artifacts.
+    if (!imported && universe.entryChapterId) {
+      try {
+        imported = await importBoundedStoryAnalysisFromBatchCache(
           universe.sourceWorldId, worldId, targetDir, universe.entryChapterId, universe.entryChapter
-        ).catch(error => {
-          console.warn("[workbench] bounded batch-cache reuse failed; falling back to filtered merged snapshot", error);
-          return false;
-        })
-      : false;
-    if (!reusedBatches) {
-      importBoundedStoryAnalysisSnapshot(
+        );
+      } catch (error) {
+        console.warn("[workbench] source-world batch reuse failed; checking filtered snapshot fallback:", String(error));
+      }
+    }
+
+    // A whole-source snapshot is the final fallback, and only when it is
+    // complete and current. Its absence must not block batch-cache recovery.
+    if (!imported && source?.analysisVersion === 6 && source.complete === true) {
+      imported = importBoundedStoryAnalysisSnapshot(
         path.join(targetDir, "novel.db"),
         worldId,
         universe.entryChapter,
         source as unknown as Record<string, unknown>,
         universe.entryChapterId
+      );
+    }
+
+    const bounded = readStoryAnalysis(targetDir, worldId) as
+      (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string; asOfEntryChapterId?: string }) | undefined;
+    if (!imported || !hasBoundedStoryAnalysis(bounded, universe)) {
+      throw new Error(
+        "无法从已有分析安全构建当前章节时点的知识快照。已停止知识构建，不会在新宇宙从第一章重新分析。请检查当前宇宙的旧批次缓存、来源原著批次缓存，以及所选章节 ID 是否与原著目录一致。"
       );
     }
   })();

@@ -1,20 +1,20 @@
 // 全文分析（analyze-story）：自动读取 SQLite 全部已索引片段，按上下文长度分批调 Agent SDK，
 // 分析人物小传/主线/伏笔/后续发展并按 chapterKeys 精确关联来源。批次失败保留失败状态可
-// 重跑，不计入完整快照；缓存指纹覆盖模型、语料哈希、批次布局与 Prompt 版本。完整成功后
-// 一次性把结构化快照写入 SQLite story_analysis（当前 v6）。
+// 重跑，不计入完整快照；缓存目录按分析契约稳定命名，每批用章节正文指纹独立校验。完整成功后
+// 一次性把结构化快照写入 SQLite story_analysis（数据 Schema v6，缓存协议 v7）。
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { existsSync, readdirSync, statSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import {
-  saveStoryAnalysis, syncNovelBeats, syncNovelCharacters, syncNovelForeshadowings, syncNovelThreads, writeNovelKbMeta,
+  readStoryAnalysis, saveStoryAnalysis, syncNovelBeats, syncNovelCharacters, syncNovelForeshadowings, syncNovelThreads, writeNovelKbMeta,
   type NovelBeatRow, type NovelCharacterRow, type NovelForeshadowingRow, type NovelRelationRow, type NovelSourceRef,
   type NovelThreadRow, type StoryAnalysisSnapshot
 } from "./database.js";
 import { buildAnalysisUnits, groupAnalysisUnits, isUsableAlias, isUsableCharacterName, normalizeCharacterName, type AnalysisUnit } from "./novel-kb.js";
 import { runAgentText } from "./generate.js";
-import { resolveAgentModel } from "./agent-runtime.js";
+import { readModelCatalog, resolveAgentModel } from "./agent-runtime.js";
 import { readTaskProfiles } from "./task-profiles.js";
 import { parseJsonObject } from "./model-json.js";
 import {
@@ -127,6 +127,32 @@ export interface AnalysisBatch {
   index: number;
   chapters: AnalysisUnit[];
   chars: number;
+}
+
+export interface BoundedAnalysisBatchSelection {
+  reusable: AnalysisBatch[];
+  boundary?: AnalysisBatch;
+}
+
+/** Select only batches at/before an as-of chapter; truncate the one crossing batch. */
+export function selectBatchesThroughOrdinal(batches: AnalysisBatch[], entryOrdinal: number): BoundedAnalysisBatchSelection {
+  const reusable: AnalysisBatch[] = [];
+  let boundary: AnalysisBatch | undefined;
+  for (const batch of batches) {
+    const chapters = batch.chapters.filter(chapter => chapter.ordinal <= entryOrdinal);
+    if (!chapters.length) break;
+    if (chapters.length === batch.chapters.length) {
+      reusable.push(batch);
+      continue;
+    }
+    boundary = {
+      index: batch.index,
+      chapters,
+      chars: chapters.reduce((sum, chapter) => sum + chapter.charCount, 0)
+    };
+    break;
+  }
+  return { reusable, ...(boundary ? { boundary } : {}) };
 }
 
 export interface StoryAnalysisOptions {
@@ -407,19 +433,14 @@ function deltaKey(value: unknown): string {
   return String(value ?? "").replace(/\s/gu, "").toLocaleLowerCase();
 }
 
-/** 旧缓存目录名是旧版指纹；按 batch 文件数匹配，取最近修改的一个。 */
-function findLegacyCacheDir(worldId: string, expectedBatches: number, excludeDir: string): string {
+/** Only the exact old full-corpus key is eligible for delta migration; never guess by batch count. */
+function findLegacyCacheDir(worldId: string, model: string, units: AnalysisUnit[], maxChars: number, excludeDir: string): string {
   const root = resolve(".output", worldId, "story-analysis");
-  if (!existsSync(root)) throw new Error("No legacy analysis cache under " + root + "; run analyze-story without --delta.");
-  const matches = readdirSync(root, { withFileTypes: true })
-    .filter(entry => entry.isDirectory())
-    .map(entry => join(root, entry.name))
-    .filter(dir => dir !== excludeDir)
-    .map(dir => ({ dir, count: readdirSync(dir).filter(name => /^batch-\d{4}\.json$/u.test(name)).length, mtime: statSync(dir).mtimeMs }))
-    .filter(item => item.count === expectedBatches)
-    .sort((a, b) => b.mtime - a.mtime);
-  if (!matches.length) throw new Error(`No legacy cache with ${expectedBatches} batches under ${root}; run analyze-story without --delta.`);
-  return matches[0]!.dir;
+  const exact = resolve(root, legacyCacheKeyFor(model, units, maxChars, false));
+  if (exact === excludeDir || !existsSync(exact)) {
+    throw new Error("No exact v6 source cache is available for delta upgrade. Refusing to select an unrelated directory by batch count.");
+  }
+  return exact;
 }
 
 function withBatchKeys(items: Item[], chapterKeys: string[]): Item[] {
@@ -529,12 +550,61 @@ export function applyDelta(legacy: BatchAnalysis, delta: DeltaAnalysis, batch: A
   } as unknown as BatchAnalysis;
 }
 
-function cacheKeyFor(model: string, units: AnalysisUnit[], maxChars: number, delta = false): string {
+const STORY_ANALYSIS_PROMPT_TAG = "story-graph-core-macguffin-interactions-v2";
+const STORY_ANALYSIS_DELTA_PROMPT_TAG = "delta-fields-v1";
+
+/** Stable cache namespace; exact chapter content is checked by each batch manifest. */
+export function storyAnalysisCacheNamespace(model: string, maxChars: number, delta = false): string {
+  const version = delta ? "story-analysis-delta-v2" : "story-analysis-v7";
+  const promptTag = delta ? STORY_ANALYSIS_DELTA_PROMPT_TAG : STORY_ANALYSIS_PROMPT_TAG;
+  return createHash("sha256").update(version + "\nprompt=" + promptTag + "\nmodel=" + model + "\nmaxChars=" + maxChars).digest("hex");
+}
+
+function cacheKeyFor(model: string, _units: AnalysisUnit[], maxChars: number, delta = false): string {
+  return storyAnalysisCacheNamespace(model, maxChars, delta);
+}
+
+/** Exact v6 directory identity, used only to migrate an unchanged legacy corpus. */
+function legacyCacheKeyFor(model: string, units: AnalysisUnit[], maxChars: number, delta = false): string {
   const sourceHash = createHash("sha256").update(units.map(unit => unit.chapterId + ":" + unit.text).join("\n")).digest("hex");
   const batchLayout = groupAnalysisUnits(units, maxChars).map(chapters => chapters.map(chapter => chapter.chapterId).join(",")).join("|");
   const version = delta ? "story-analysis-delta-v1" : "story-analysis-v6";
-  const promptTag = delta ? "delta-fields-v1" : "story-graph-core-macguffin-interactions-v2";
+  const promptTag = delta ? "delta-fields-v1" : STORY_ANALYSIS_PROMPT_TAG;
   return createHash("sha256").update(version + "\nprompt=" + promptTag + "\nmodel=" + model + "\nmaxChars=" + maxChars + "\nbatches=" + batchLayout + "\nsource=" + sourceHash).digest("hex");
+}
+
+export function batchFingerprint(batch: AnalysisBatch, model: string, maxChars: number, delta = false): string {
+  return createHash("sha256").update(JSON.stringify({
+    version: delta ? STORY_ANALYSIS_DELTA_PROMPT_TAG : STORY_ANALYSIS_PROMPT_TAG,
+    model, maxChars,
+    chapters: batch.chapters.map(chapter => [chapter.chapterId, chapter.text])
+  })).digest("hex");
+}
+
+async function readBatchCache(
+  path: string, batch: AnalysisBatch, model: string, maxChars: number,
+  legacyPath?: string, delta = false
+): Promise<BatchAnalysis | undefined> {
+  const expected = batchFingerprint(batch, model, maxChars, delta);
+  try {
+    const manifest = JSON.parse(await readFile(path + ".meta.json", "utf8")) as { fingerprint?: string };
+    return manifest.fingerprint === expected ? await readCached(path) : undefined;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") return undefined;
+  }
+  // Legacy cache has no per-batch manifest. It is trusted only through the old
+  // directory key, which embeds the exact complete-corpus fingerprint.
+  if (!legacyPath) return undefined;
+  const legacy = await readCached(legacyPath);
+  if (!legacy) return undefined;
+  await mkdir(dirname(path), { recursive: true });
+  const temporary = path + ".migrate.tmp";
+  await writeFile(temporary, JSON.stringify(legacy, null, 2) + "\n", "utf8");
+  await rename(temporary, path);
+  const metaTemporary = path + ".meta.json.tmp";
+  await writeFile(metaTemporary, JSON.stringify({ fingerprint: expected, migratedFrom: legacyPath }, null, 2) + "\n", "utf8");
+  await rename(metaTemporary, path + ".meta.json");
+  return legacy;
 }
 
 async function readCached(path: string): Promise<BatchAnalysis | undefined> {
@@ -555,22 +625,55 @@ export function stripUnclassifiedAliases(analysis: BatchAnalysis): BatchAnalysis
 
 export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysisOptions = {}): Promise<StoryAnalysisResult> {
   const worldDir = options.worldDir ?? resolve("worlds", worldId);
+  const isUniverse = existsSync(join(worldDir, "universe.json"));
+  if (isUniverse && !options.mergeOnly) {
+    throw new Error("历史故事宇宙禁止重新分析原著。仅允许 --merge-only 合并该宇宙已有的完整批次缓存；正常分析必须在原著来源世界执行。");
+  }
   const { units } = await buildAnalysisUnits(worldId, { worldDir, catalogPath: options.catalogPath });
   if (!units.length) throw new Error("No chapter text found. Run ingest and index-story before analyze-story.");
-  const model = resolveAgentModel(options.model).model;
-  const batches = groupAnalysisUnits(units, options.maxChars ?? ANALYSIS_BATCH_CHARS).map((chapters, index) => ({ index, chapters, chars: chapters.reduce((sum, chapter) => sum + chapter.charCount, 0) }));
+  const maxChars = options.maxChars ?? ANALYSIS_BATCH_CHARS;
+  const batches = groupAnalysisUnits(units, maxChars).map((chapters, index) => ({ index, chapters, chars: chapters.reduce((sum, chapter) => sum + chapter.charCount, 0) }));
   const totalBatches = batches.length;
   if (options.limit !== undefined) {
     if (!Number.isInteger(options.limit) || options.limit < 1) throw new Error("--limit must be a positive integer.");
     batches.length = Math.min(batches.length, options.limit);
   }
-  const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, options.maxChars ?? ANALYSIS_BATCH_CHARS, options.delta));
+  const configuredModel = resolveAgentModel(options.model).model;
+  const existingSnapshot = options.mergeOnly
+    ? readStoryAnalysis(worldDir, worldId) as (StoryAnalysisSnapshot & { analysisModel?: string }) | undefined
+    : undefined;
+  const modelCandidates = options.model
+    ? [configuredModel]
+    : [...new Set([existingSnapshot?.analysisModel, configuredModel, ...readModelCatalog().map(item => item.id)]
+      .filter((value): value is string => Boolean(value)))];
+  const hasCompleteCacheSet = (candidate: string): boolean => {
+    const root = resolve(".output", worldId, "story-analysis");
+    const directories = [
+      cacheKeyFor(candidate, units, maxChars, options.delta),
+      legacyCacheKeyFor(candidate, units, maxChars, options.delta),
+      cacheKeyFor(candidate, units, maxChars, !options.delta),
+      legacyCacheKeyFor(candidate, units, maxChars, !options.delta)
+    ];
+    return batches.every((_, index) => directories.some(key =>
+      existsSync(join(root, key, "batch-" + String(index).padStart(4, "0") + ".json"))
+    ));
+  };
+  const model = options.mergeOnly && !options.model
+    ? modelCandidates.find(hasCompleteCacheSet) ?? configuredModel
+    : configuredModel;
+  const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, maxChars, options.delta));
   await mkdir(cacheDir, { recursive: true });
-  const legacyDir = options.delta ? findLegacyCacheDir(worldId, totalBatches, cacheDir) : undefined;
+  const legacyExactDir = resolve(".output", worldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars, options.delta));
+  const legacyDeltaExactDir = resolve(".output", worldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars, true));
+  let legacyDir: string | undefined;
+  if (options.delta) {
+    try { legacyDir = findLegacyCacheDir(worldId, model, units, maxChars, cacheDir); }
+    catch { /* Existing v7 delta batches can still be merged without the v6 source cache. */ }
+  }
   if (legacyDir) console.log("[story-analysis] delta mode · legacy batches from " + legacyDir);
-  // v6 adds evolving relationship dynamics and main/subplot classification.
-  // Older batch responses cannot satisfy its schema semantically; keep them untouched and re-analyze.
   const cachePath = (batch: AnalysisBatch): string => join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
+  const legacyExactPath = (batch: AnalysisBatch): string => join(legacyExactDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
+  const legacyDeltaExactPath = (batch: AnalysisBatch): string => join(legacyDeltaExactDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
   const shard = options.shard;
   if (shard && (!Number.isInteger(shard.count) || shard.count < 1 || shard.count > 16 || !Number.isInteger(shard.index) || shard.index < 0 || shard.index >= shard.count)) {
     throw new Error("--shard must be i/n with 0 <= i < n <= 16.");
@@ -583,7 +686,29 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
   for (const batch of batches) {
     if (shard && batch.index % shard.count !== shard.index) { skipped++; continue; }
     const path = cachePath(batch);
-    let analysis = await readCached(path);
+    let analysis = await readBatchCache(path, batch, model, maxChars,
+      options.delta ? legacyDeltaExactPath(batch) : legacyExactPath(batch), options.delta);
+    if (!analysis && !options.delta) {
+      const deltaStablePath = join(
+        resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, maxChars, true)),
+        "batch-" + String(batch.index).padStart(4, "0") + ".json"
+      );
+      const legacyDeltaPath = join(
+        resolve(".output", worldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars, true)),
+        "batch-" + String(batch.index).padStart(4, "0") + ".json"
+      );
+      analysis = await readBatchCache(deltaStablePath, batch, model, maxChars, legacyDeltaPath, true);
+      if (analysis) {
+        const temporary = path + ".migrate.tmp";
+        await writeFile(temporary, JSON.stringify(analysis, null, 2) + "\n", "utf8");
+        await rename(temporary, path);
+        const metaTemporary = path + ".meta.json.tmp";
+        await writeFile(metaTemporary, JSON.stringify({
+          fingerprint: batchFingerprint(batch, model, maxChars, false), migratedFrom: deltaStablePath
+        }, null, 2) + "\n", "utf8");
+        await rename(metaTemporary, path + ".meta.json");
+      }
+    }
     if (analysis) {
       cached++;
       console.log(`[story-analysis] batch ${batch.index + 1}/${totalBatches} · cache hit`);
@@ -593,6 +718,9 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
       try {
         const timeoutMs = options.timeoutMs ?? DEFAULT_AGENT_TIMEOUT_MS;
         const profile = readTaskProfiles().state;
+        if (options.delta && !legacyDir) {
+          throw new Error("Delta upgrade requires the exact legacy v6 batch cache for this source, model and batch layout; no unrelated cache will be selected.");
+        }
         if (legacyDir) {
           const legacy = await loadLegacyBatch(legacyDir, batch);
           if (!legacy) throw new Error("Legacy batch #" + (batch.index + 1) + " is missing or invalid.");
@@ -632,6 +760,14 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
       const temporary = path + ".tmp";
       await writeFile(temporary, JSON.stringify(analysis, null, 2) + "\n", "utf8");
       await rename(temporary, path);
+      const metaTemporary = path + ".meta.json.tmp";
+      await writeFile(metaTemporary, JSON.stringify({
+        fingerprint: batchFingerprint(batch, model, maxChars, options.delta),
+        model, maxChars, promptVersion: options.delta ? STORY_ANALYSIS_DELTA_PROMPT_TAG : STORY_ANALYSIS_PROMPT_TAG,
+        chapterIds: batch.chapters.map(chapter => chapter.chapterId),
+        chapterHashes: batch.chapters.map(chapter => createHash("sha256").update(chapter.text).digest("hex"))
+      }, null, 2) + "\n", "utf8");
+      await rename(metaTemporary, path + ".meta.json");
       processed++;
     }
     results.push({ analysis, chapters: batch.chapters });
@@ -649,7 +785,12 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
     throw new Error(`Cannot merge: ${results.length}/${totalBatches} batches available, ${skipped} skipped. Refusing to persist a partial snapshot.`);
   }
 
-  const snapshot = mergeAndPersist(worldId, worldDir, units, results, totalBatches, options.delta);
+  const snapshot = mergeAndPersist(worldId, worldDir, units, results, totalBatches, options.delta) as
+    StoryAnalysisSnapshot & { malformedBeats?: number; analysisModel?: string; analysisMaxChars?: number; analysisPromptTag?: string };
+  snapshot.analysisModel = model;
+  snapshot.analysisMaxChars = maxChars;
+  snapshot.analysisPromptTag = options.delta ? STORY_ANALYSIS_DELTA_PROMPT_TAG : STORY_ANALYSIS_PROMPT_TAG;
+  saveStoryAnalysis(worldDir, worldId, snapshot);
   return { snapshot, batches: totalBatches, processed, cached, failed: [], pending, skipped, malformedBeats: Number(snapshot.malformedBeats ?? 0) };
 }
 
@@ -934,10 +1075,9 @@ function mergeAndPersist(
 
 
 /**
- * Rebuild an as-of snapshot from already completed source batch caches.
- * A batch is reusable only when every chapter in it is at/before the boundary.
- * If a batch straddles the boundary, or any earlier batch is missing/invalid,
- * return false rather than mixing future context into the historical universe.
+ * Rebuild an as-of snapshot from the source world's completed batch caches.
+ * Complete prior batches are reused. If the entry falls inside a batch, only
+ * that batch's prefix is re-analyzed; no later chapter is sent to the model.
  */
 export async function importBoundedStoryAnalysisFromBatchCache(
   sourceWorldId: string,
@@ -952,29 +1092,108 @@ export async function importBoundedStoryAnalysisFromBatchCache(
   const entry = units.find(unit => unit.chapterId === entryChapterId);
   if (!entry) return false;
   const boundedUnits = units.filter(unit => unit.ordinal <= entry.ordinal);
-  const maxChars = options.maxChars ?? ANALYSIS_BATCH_CHARS;
-  const model = resolveAgentModel(options.model).model;
-  const batches = groupAnalysisUnits(units, maxChars).map((chapters, index) => ({ index, chapters, chars: chapters.reduce((sum, chapter) => sum + chapter.charCount, 0) }));
-  const reusable = batches.filter(batch => batch.chapters.every(chapter => chapter.ordinal <= entry.ordinal));
-  const covered = new Set(reusable.flatMap(batch => batch.chapters.map(chapter => chapter.chapterId)));
-  if (boundedUnits.some(unit => !covered.has(unit.chapterId))) return false;
-  const cacheDir = resolve(".output", sourceWorldId, "story-analysis", cacheKeyFor(model, units, maxChars));
+
+  // The SQLite snapshot is a derived merge product, not a prerequisite for
+  // reading durable batch artifacts. It may be absent after a DB rebuild or
+  // partial restore while the original batch caches are still intact.
+  const sourceSnapshot = readStoryAnalysis(sourceWorldDir, sourceWorldId) as
+    (StoryAnalysisSnapshot & { analysisModel?: string; analysisMaxChars?: number }) | undefined;
+  const maxChars = options.maxChars ?? sourceSnapshot?.analysisMaxChars ?? ANALYSIS_BATCH_CHARS;
+  const allBatches = groupAnalysisUnits(units, maxChars).map((chapters, index) => ({
+    index, chapters, chars: chapters.reduce((sum, chapter) => sum + chapter.charCount, 0)
+  }));
+  const selection = selectBatchesThroughOrdinal(allBatches, entry.ordinal);
+  const configuredModel = resolveAgentModel(options.model).model;
+  const modelCandidates = options.model
+    ? [configuredModel]
+    : [...new Set([sourceSnapshot?.analysisModel, configuredModel, ...readModelCatalog().map(item => item.id)]
+      .filter((value): value is string => Boolean(value)))];
+
+  const cacheRoot = resolve(".output", sourceWorldId, "story-analysis");
   const results: Array<{ analysis: BatchAnalysis; chapters: AnalysisUnit[] }> = [];
-  for (const batch of reusable) {
-    const analysis = await readCached(join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json"));
-    if (!analysis) return false;
-    results.push({ analysis, chapters: batch.chapters });
+  let selectedModel: string | undefined;
+
+  // Try each known model and validate actual cache contents, not just filenames.
+  // Normal v6 and delta-upgraded v6 batches are both complete BatchAnalysis
+  // payloads; delta caches can therefore restore the merged snapshot directly.
+  for (const candidate of modelCandidates) {
+    const normalDir = resolve(cacheRoot, cacheKeyFor(candidate, units, maxChars));
+    const legacyNormalDir = resolve(cacheRoot, legacyCacheKeyFor(candidate, units, maxChars));
+    const deltaDir = resolve(cacheRoot, cacheKeyFor(candidate, units, maxChars, true));
+    const legacyDeltaDir = resolve(cacheRoot, legacyCacheKeyFor(candidate, units, maxChars, true));
+    const candidateResults: Array<{ analysis: BatchAnalysis; chapters: AnalysisUnit[] }> = [];
+    let complete = true;
+
+    for (const batch of selection.reusable) {
+      const filename = "batch-" + String(batch.index).padStart(4, "0") + ".json";
+      const normalPath = join(normalDir, filename);
+      let analysis = await readBatchCache(
+        normalPath, batch, candidate, maxChars, join(legacyNormalDir, filename)
+      );
+      if (!analysis) {
+        const deltaPath = join(deltaDir, filename);
+        analysis = await readBatchCache(
+          deltaPath, batch, candidate, maxChars, join(legacyDeltaDir, filename), true
+        );
+        if (analysis) {
+          // Normalize the validated delta result into the stable normal cache
+          // namespace so later consumers do not need to rediscover its origin.
+          await mkdir(dirname(normalPath), { recursive: true });
+          const temporary = normalPath + ".migrate.tmp";
+          await writeFile(temporary, JSON.stringify(analysis, null, 2) + "\n", "utf8");
+          await rename(temporary, normalPath);
+          const metaTemporary = normalPath + ".meta.json.tmp";
+          await writeFile(metaTemporary, JSON.stringify({
+            fingerprint: batchFingerprint(batch, candidate, maxChars, false),
+            migratedFrom: join(deltaDir, filename)
+          }, null, 2) + "\n", "utf8");
+          await rename(metaTemporary, normalPath + ".meta.json");
+        }
+      }
+      if (!analysis) { complete = false; break; }
+      candidateResults.push({ analysis, chapters: batch.chapters });
+    }
+
+    if (complete) {
+      selectedModel = candidate;
+      results.push(...candidateResults);
+      break;
+    }
   }
-  if (!results.length) return false;
-  const snapshot = mergeAndPersist(targetWorldId, targetWorldDir, boundedUnits, results, results.length);
-  const boundedSnapshot = {
-    ...snapshot,
-    asOfEntryChapter: entryChapter,
-    asOfEntryChapterId: entry.chapterId,
-    asOfEntryOrdinal: entry.ordinal,
-    sourceWorldId
+
+  // A boundary-only entry has no reusable full batch; in that case use the
+  // source snapshot's recorded model when available, otherwise current config.
+  const model = selectedModel ?? sourceSnapshot?.analysisModel ?? configuredModel;
+  if (selection.reusable.length && !selectedModel) return false;
+
+  if (selection.boundary) {
+    // Re-analyze only the prefix through the entry chapter. The future tail of
+    // the original batch is never included in the prompt or persisted refs.
+    const boundaryBatch = selection.boundary;
+    const raw = await runAgentText(
+      buildAnalysisPrompt(boundaryBatch), model, DEFAULT_AGENT_TIMEOUT_MS, readTaskProfiles().state
+    );
+    results.push({ analysis: parseModelJson(raw), chapters: boundaryBatch.chapters });
+  }
+
+  if (!results.length || boundedUnits.some(unit =>
+    !results.some(result => result.chapters.some(chapter => chapter.chapterId === unit.chapterId))
+  )) return false;
+
+  const snapshot = mergeAndPersist(
+    targetWorldId, targetWorldDir, boundedUnits, results, results.length
+  ) as StoryAnalysisSnapshot & {
+    asOfEntryChapter?: string; asOfEntryChapterId?: string; asOfEntryOrdinal?: number;
+    sourceWorldId?: string; analysisModel?: string; analysisMaxChars?: number; analysisPromptTag?: string;
   };
-  saveStoryAnalysis(targetWorldDir, targetWorldId, boundedSnapshot as unknown as StoryAnalysisSnapshot);
+  snapshot.asOfEntryChapter = entryChapter;
+  snapshot.asOfEntryChapterId = entry.chapterId;
+  snapshot.asOfEntryOrdinal = entry.ordinal;
+  snapshot.sourceWorldId = sourceWorldId;
+  snapshot.analysisModel = model;
+  snapshot.analysisMaxChars = maxChars;
+  snapshot.analysisPromptTag = STORY_ANALYSIS_PROMPT_TAG;
+  saveStoryAnalysis(targetWorldDir, targetWorldId, snapshot);
   return true;
 }
 
@@ -982,11 +1201,18 @@ export async function storyAnalysisCacheStatus(worldId: string, options: StoryAn
   const worldDir = options.worldDir ?? resolve("worlds", worldId);
   const { units } = await buildAnalysisUnits(worldId, { worldDir, catalogPath: options.catalogPath });
   const model = resolveAgentModel(options.model).model;
-  const batches = groupAnalysisUnits(units, options.maxChars ?? ANALYSIS_BATCH_CHARS);
-  const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, options.maxChars ?? ANALYSIS_BATCH_CHARS));
+  const maxChars = options.maxChars ?? ANALYSIS_BATCH_CHARS;
+  const batches = groupAnalysisUnits(units, maxChars).map((chapters, index) => ({
+    index, chapters, chars: chapters.reduce((sum, chapter) => sum + chapter.charCount, 0)
+  }));
+  const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, maxChars));
+  const legacyDir = resolve(".output", worldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars));
+  await mkdir(cacheDir, { recursive: true });
   let cached = 0;
-  batches.forEach((_, index) => {
-    if (existsSync(join(cacheDir, "batch-" + String(index).padStart(4, "0") + ".json"))) cached++;
-  });
+  for (const batch of batches) {
+    const path = join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
+    if (await readBatchCache(path, batch, model, maxChars,
+      join(legacyDir, "batch-" + String(batch.index).padStart(4, "0") + ".json"))) cached++;
+  }
   return { batches: batches.length, cached, directory: cacheDir };
 }

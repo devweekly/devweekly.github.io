@@ -4,10 +4,221 @@ import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
+import { createHash } from "node:crypto";
 import { databaseStatus, invalidateDerivedAnalysis, readStoryAnalysis, saveStoryAnalysis } from "../src/database.js";
-import { groupAnalysisUnits } from "../src/novel-kb.js";
-import { assertMergeOptions, buildAnalysisPrompt, cleanCharacterAliases, filterCharacterAliasEvidence, parseModelJson, plotThreadId, plotThreadMergeKey, stripUnclassifiedAliases } from "../src/story-analysis.js";
+import { buildAnalysisUnits, groupAnalysisUnits } from "../src/novel-kb.js";
+import { resolveAgentModel } from "../src/agent-runtime.js";
+import { analyzeStoryCorpus, assertMergeOptions, batchFingerprint, buildAnalysisPrompt, cleanCharacterAliases, filterCharacterAliasEvidence, importBoundedStoryAnalysisFromBatchCache, parseModelJson, plotThreadId, plotThreadMergeKey, selectBatchesThroughOrdinal, storyAnalysisCacheNamespace, stripUnclassifiedAliases } from "../src/story-analysis.js";
 import { loadLibraryChunks } from "../src/library.js";
+
+test("analyze-story refuses to rebuild the original canon inside a historical universe", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-universe-no-full-analysis-"));
+  try {
+    await writeFile(join(root, "universe.json"), JSON.stringify({
+      id: "u-test", sourceWorldId: "conghuoniao", entryChapter: "第二十章"
+    }));
+    await assert.rejects(
+      analyzeStoryCorpus("u-test", { worldDir: root }),
+      /历史故事宇宙禁止重新分析原著.*仅允许 --merge-only/
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("story-analysis cache namespace is stable across corpus edits while each batch fingerprint is content-addressed", () => {
+  const batch = {
+    index: 0, chars: 12,
+    chapters: [{
+      chapterId: "V01-C001", ordinal: 1, volume: 1, title: "第一章", label: "1",
+      text: "原文正文", charCount: 4
+    }]
+  };
+  const namespace = storyAnalysisCacheNamespace("deepseek-v4.1-flash", 14000);
+  assert.equal(namespace, storyAnalysisCacheNamespace("deepseek-v4.1-flash", 14000),
+    "unrelated corpus changes must not create a different cache namespace");
+  assert.notEqual(namespace, storyAnalysisCacheNamespace("glm-5.3-flash", 14000),
+    "changing model must isolate incompatible analysis");
+  assert.notEqual(namespace, storyAnalysisCacheNamespace("deepseek-v4.1-flash", 16000),
+    "changing batch budget must isolate a different batch layout");
+  const fingerprint = batchFingerprint(batch, "deepseek-v4.1-flash", 14000);
+  assert.equal(fingerprint, batchFingerprint(batch, "deepseek-v4.1-flash", 14000));
+  assert.notEqual(fingerprint, batchFingerprint({
+    ...batch, chapters: [{ ...batch.chapters[0]!, text: "修改后的正文", charCount: 6 }]
+  }, "deepseek-v4.1-flash", 14000), "only the batch containing changed source text should be invalidated");
+});
+
+test("historical universe reuses complete prior batches and re-analyzes only the entry-crossing prefix", () => {
+  const units = Array.from({ length: 6 }, (_, index) => ({
+    chapterId: "V01-C00" + (index + 1), ordinal: index + 1, volume: 1,
+    title: "第" + (index + 1) + "章", label: String(index + 1),
+    text: "章节正文" + (index + 1), charCount: 5
+  }));
+  const batches = [
+    { index: 0, chapters: units.slice(0, 2), chars: 10 },
+    { index: 1, chapters: units.slice(2, 4), chars: 10 },
+    { index: 2, chapters: units.slice(4, 6), chars: 10 }
+  ];
+  const selected = selectBatchesThroughOrdinal(batches, 3);
+  assert.deepEqual(selected.reusable.map(batch => batch.chapters.map(chapter => chapter.chapterId)), [
+    ["V01-C001", "V01-C002"]
+  ]);
+  assert.deepEqual(selected.boundary?.chapters.map(chapter => chapter.chapterId), ["V01-C003"]);
+  assert.ok(selected.boundary);
+  const boundaryPrompt = buildAnalysisPrompt(selected.boundary);
+  assert.match(boundaryPrompt, /章节正文3/);
+  assert.doesNotMatch(boundaryPrompt, /章节正文4|章节正文5|章节正文6/,
+    "future chapters must never be included in the boundary model input");
+  assert.ok(!JSON.stringify(selected).includes("V01-C004"), "entry-after chapters must not enter boundary analysis");
+  assert.ok(!JSON.stringify(selected).includes("V01-C005"), "future batches must be excluded");
+  const exactBoundary = selectBatchesThroughOrdinal(batches, 4);
+  assert.equal(exactBoundary.reusable.length, 2);
+  assert.equal(exactBoundary.boundary, undefined, "an entry at a batch end needs no extra model call");
+});
+
+test("merge-only restores a complete legacy batch directory without calling the model", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-story-analysis-legacy-cache-"));
+  const previousCwd = process.cwd();
+  const worldId = "cache-world";
+  const worldDir = join(root, "worlds", worldId);
+  const libraryDir = join(worldDir, "library");
+  const catalogPath = join(root, "analysis", worldId, "chapter-index.json");
+  const originalText = "第一章\n正文一\n第二章\n正文二";
+  const sourceHash = createHash("sha256").update(originalText, "utf8").digest("hex");
+  const firstText = "第一章\n正文一";
+  const secondText = "第二章\n正文二";
+  const model = resolveAgentModel("deepseek-v4.1-flash").model;
+  const maxChars = 14000;
+  try {
+    process.chdir(root);
+    await mkdir(libraryDir, { recursive: true });
+    await mkdir(join(root, "analysis", worldId), { recursive: true });
+    await writeFile(join(worldDir, "original.txt"), originalText, "utf8");
+    await writeFile(catalogPath, JSON.stringify({
+      schemaVersion: 2, totalLines: 4, sourceHash,
+      volumes: [{ volume: 1, chapters: [
+        { sequenceInVolume: 1, printedNumber: 1, title: "第一章", label: "第一章", line: 1 },
+        { sequenceInVolume: 2, printedNumber: 2, title: "第二章", label: "第二章", line: 3 }
+      ] }]
+    }), "utf8");
+    await writeFile(join(libraryDir, "index.json"), JSON.stringify({
+      schemaVersion: 1, worldId, createdAt: "2026-11-11T00:00:00.000Z", updatedAt: "2026-11-11T00:00:00.000Z",
+      chunks: [
+        { id: "canon:1", source: "worlds/" + worldId + "/original.txt", sourceHash, chapter: "第一章", chunkIndex: 0, start: 0, end: firstText.length, chapterStart: 0, text: firstText },
+        { id: "canon:2", source: "worlds/" + worldId + "/original.txt", sourceHash, chapter: "第二章", chunkIndex: 0, start: 0, end: secondText.length, chapterStart: originalText.indexOf("第二章"), text: secondText }
+      ]
+    }), "utf8");
+
+    const { units } = await buildAnalysisUnits(worldId, { worldDir, catalogPath });
+    const grouped = groupAnalysisUnits(units, maxChars);
+    assert.equal(grouped.length, 1);
+    const layout = grouped.map(batch => batch.map(chapter => chapter.chapterId).join(",")).join("|");
+    const corpusHash = createHash("sha256").update(units.map(unit => unit.chapterId + ":" + unit.text).join("\n")).digest("hex");
+    const legacyKey = createHash("sha256").update(
+      "story-analysis-v6\nprompt=story-graph-core-macguffin-interactions-v2\nmodel=" + model +
+      "\nmaxChars=" + maxChars + "\nbatches=" + layout + "\nsource=" + corpusHash
+    ).digest("hex");
+    const legacyDir = join(root, ".output", worldId, "story-analysis", legacyKey);
+    await mkdir(legacyDir, { recursive: true });
+    await writeFile(join(legacyDir, "batch-0000.json"), JSON.stringify({
+      characters: [{ chapterKeys: ["V01-C001"], name: "人物甲", shortBio: "在第一章出场" }],
+      beats: [
+        { chapterKey: "V01-C001", summary: "人物甲抵达", actors: ["人物甲"] },
+        { chapterKey: "V01-C002", summary: "人物甲遇到阻碍", actors: ["人物甲"] }
+      ],
+      plotThreads: [{ chapterKeys: ["V01-C001", "V01-C002"], title: "寻找失物", summary: "寻找失物的过程" }],
+      storyCoreObservations: [{ chapterKeys: ["V01-C001"], centralConflict: "寻找失物", centralQuestion: "失物在哪里" }]
+    }), "utf8");
+
+    const result = await analyzeStoryCorpus(worldId, {
+      worldDir, catalogPath, model, maxChars, mergeOnly: true
+    });
+    assert.equal(result.cached, 1);
+    assert.equal(result.processed, 0, "merge-only must not invoke the model");
+    assert.equal(result.snapshot?.complete, true);
+    assert.equal(result.snapshot?.chapters, 2);
+    assert.equal((result.snapshot as (typeof result.snapshot & { analysisModel?: string }) | undefined)?.analysisModel, model);
+  } finally {
+    process.chdir(previousCwd);
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("bounded import restores source delta batches when the source SQLite snapshot is missing", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-bounded-cache-without-snapshot-"));
+  const previousCwd = process.cwd();
+  const sourceWorldId = "source-world";
+  const targetWorldId = "bounded-world";
+  const sourceDir = join(root, "worlds", sourceWorldId);
+  const targetDir = join(root, "worlds", targetWorldId);
+  const libraryDir = join(sourceDir, "library");
+  const catalogPath = join(root, "analysis", sourceWorldId, "chapter-index.json");
+  const originalText = "第一章\n正文一\n第二章\n正文二";
+  const sourceHash = createHash("sha256").update(originalText, "utf8").digest("hex");
+  const firstText = "第一章\n正文一";
+  const secondText = "第二章\n正文二";
+  const model = resolveAgentModel("deepseek-v4.1-flash").model;
+  const maxChars = 14000;
+  try {
+    process.chdir(root);
+    await mkdir(libraryDir, { recursive: true });
+    await mkdir(join(root, "analysis", sourceWorldId), { recursive: true });
+    await mkdir(targetDir, { recursive: true });
+    await writeFile(join(sourceDir, "original.txt"), originalText, "utf8");
+    await writeFile(catalogPath, JSON.stringify({
+      schemaVersion: 2, totalLines: 4, sourceHash,
+      volumes: [{ volume: 1, chapters: [
+        { sequenceInVolume: 1, printedNumber: 1, title: "第一章", label: "第一章", line: 1 },
+        { sequenceInVolume: 2, printedNumber: 2, title: "第二章", label: "第二章", line: 3 }
+      ] }]
+    }), "utf8");
+    await writeFile(join(libraryDir, "index.json"), JSON.stringify({
+      schemaVersion: 1, worldId: sourceWorldId,
+      createdAt: "2026-11-11T00:00:00.000Z", updatedAt: "2026-11-11T00:00:00.000Z",
+      chunks: [
+        { id: "canon:1", source: "worlds/" + sourceWorldId + "/original.txt", sourceHash, chapter: "第一章", chunkIndex: 0, start: 0, end: firstText.length, chapterStart: 0, text: firstText },
+        { id: "canon:2", source: "worlds/" + sourceWorldId + "/original.txt", sourceHash, chapter: "第二章", chunkIndex: 0, start: 0, end: secondText.length, chapterStart: originalText.indexOf("第二章"), text: secondText }
+      ]
+    }), "utf8");
+
+    const { units } = await buildAnalysisUnits(sourceWorldId, { worldDir: sourceDir, catalogPath });
+    const grouped = groupAnalysisUnits(units, maxChars);
+    assert.equal(grouped.length, 1);
+    const layout = grouped.map(batch => batch.map(chapter => chapter.chapterId).join(",")).join("|");
+    const corpusHash = createHash("sha256").update(units.map(unit => unit.chapterId + ":" + unit.text).join("\n")).digest("hex");
+    const deltaKey = createHash("sha256").update(
+      "story-analysis-delta-v1\nprompt=delta-fields-v1\nmodel=" + model +
+      "\nmaxChars=" + maxChars + "\nbatches=" + layout + "\nsource=" + corpusHash
+    ).digest("hex");
+    const cacheDir = join(root, ".output", sourceWorldId, "story-analysis", deltaKey);
+    await mkdir(cacheDir, { recursive: true });
+    await writeFile(join(cacheDir, "batch-0000.json"), JSON.stringify({
+      characters: [{ chapterKeys: ["V01-C001"], name: "人物甲", shortBio: "在第一章出场" }],
+      relations: [], plotThreads: [], foreshadowings: [], beats: [],
+      developmentPossibilities: [],
+      storyCoreObservations: [{ chapterKeys: ["V01-C001", "V01-C002"], centralConflict: "寻找失物", centralQuestion: "失物在哪里" }],
+      macguffins: [{ chapterKeys: ["V01-C002"], name: "旧钥匙", kind: "物件", significance: "开启密室" }]
+    }), "utf8");
+
+    // Deliberately create no source story_analysis row: the batch cache is the
+    // recovery source, and the target database is only the merge destination.
+    databaseStatus(targetDir, targetWorldId);
+    const restored = await importBoundedStoryAnalysisFromBatchCache(
+      sourceWorldId, targetWorldId, targetDir, "V01-C002", "第二章"
+    );
+    assert.equal(restored, true);
+    const snapshot = readStoryAnalysis(targetDir, targetWorldId) as
+      (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapterId?: string; sourceWorldId?: string }) | undefined;
+    assert.equal(snapshot?.complete, true);
+    assert.equal(snapshot?.asOfEntryChapterId, "V01-C002");
+    assert.equal(snapshot?.sourceWorldId, sourceWorldId);
+    assert.equal(snapshot?.chapters, 2);
+    assert.ok(snapshot?.macguffins?.some(item => item.name === "旧钥匙"));
+  } finally {
+    process.chdir(previousCwd);
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("story analysis batches preserve every chapter in order without splitting one", () => {
   const units = [0, 1, 2].map(index => ({
@@ -29,6 +240,7 @@ test("story analysis snapshot is persisted and replaced atomically as one databa
     const snapshot = {
       worldId: "test-world", sourceHash: "b".repeat(64), analyzedAt: "2026-11-05T00:00:00.000Z",
       analysisVersion: 6, complete: true, batches: 2,
+      analysisModel: "deepseek-v4.1-flash", analysisMaxChars: 14000,
       characters: [{ name: "林岚", shortBio: "一个复杂的人物", sourceRefs: [{ chunkId: "c1", source: "s.txt", chapter: "第一章" }] }],
       plotThreads: [{ title: "失踪案", summary: "仍未解决" }],
       foreshadowings: [{ clue: "墙上的旧照片", confidence: "可能线索" }],

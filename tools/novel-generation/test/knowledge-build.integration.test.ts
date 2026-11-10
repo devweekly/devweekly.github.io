@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { classifyKnowledgeBuildStepResult, createApp, recoverKnowledgeBuilds, recoverWorkbenchRuns } from "../src/server.js";
 import { saveRun } from "../src/workbench-store.js";
 
-test("knowledge build can run during chapter work while archive and duplicate builds remain guarded", async () => {
+test("universe knowledge build fails fast when source analysis is missing and never analyzes the canon locally", async () => {
   const root = await mkdtemp(join(tmpdir(), "novel-knowledge-build-"));
   const previousCwd = process.cwd();
   const worldId = "test-universe";
@@ -41,7 +41,6 @@ test("knowledge build can run during chapter work while archive and duplicate bu
     assert.equal((await archive(true)).status, 409);
     const firstBuild = await request();
     assert.equal(firstBuild.status, 202, await firstBuild.clone().text());
-    assert.equal((await request()).status, 409);
     await saveRun({
       id: "11111111-1111-4111-8111-111111111111", worldId, kind: "chapter",
       status: "completed", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString()
@@ -85,7 +84,10 @@ test("knowledge build can run during chapter work while archive and duplicate bu
     }
     assert.ok(latest.build);
     assert.ok(["failed", "partial", "completed"].includes(latest.build.status));
-    assert.equal(latest.build.steps.length, 8);
+    assert.equal(latest.build.steps.length, 1, "missing source analysis must stop before launching downstream steps");
+    assert.equal(latest.build.steps[0]?.name, "story-analysis");
+    assert.equal(latest.build.steps[0]?.status, "failed");
+    assert.match(latest.build.steps[0]?.error ?? "", /禁止在新故事宇宙重新分析整本原著/);
     const persisted = JSON.parse(await readFile(join(root, ".output", worldId, "workbench", "knowledge-build.json"), "utf8")) as typeof latest.build;
     assert.equal(persisted?.status, latest.build.status);
   } finally {

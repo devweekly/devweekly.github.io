@@ -487,11 +487,11 @@ npm run dev -- db-status --world conghuoniao
 
 `--delta` 用于把旧版快照升级到 `analysisVersion=6`：它复用磁盘上已有的旧批次长文本分析（人物小传、情节线摘要、伏笔、章级事件等），只对每批重新抽取 v6 新增字段——故事核心观察、MacGuffin、情节线主线/支线分类与关联人物、关系动态与互动时刻、伏笔关联情节线、别名分类与原文证据。章节原文仍需重新喂给模型，因为新增字段要带 `chapterKeys` 才能回查；省的是输出，不是输入。旧条目没有 `chapterKeys`，升级时补成本批章节集合，保持旧版原有的「整批来源」粒度，不伪装成逐条精确引用。
 
-增量缓存用独立指纹 `story-analysis-delta-v1`，不覆盖旧批次缓存。命令会打印它选用的旧缓存目录。只有全部 196 批成功、且确实产出了 v4 不可能有的新字段时，才写入 `analysisVersion=6`；否则抛错并保持原快照不变，避免「填空数组 + 改版本号」式的伪造升级。分片跑完后用 `--delta --merge-only` 合并（合并时不带 `--shard`）。
+v6 数据快照与 v7 批次缓存协议分离。缓存目录按模型、Prompt 版本和批次字符预算稳定命名；每个批次有独立 manifest，校验章节 ID 与正文哈希。追加或修改原文时，只使正文指纹变化的批次失效，不会因为整本 sourceHash 变化而丢弃所有旧批次。旧 v6 整书哈希缓存只在完整语料、模型和批次布局精确匹配时迁移；旧 delta 缓存也可迁移为普通批次缓存。禁止按批次数量或最近修改时间猜测旧缓存。分片跑完后用 `--merge-only` 合并；该模式只读缓存，缺失批次时报 pending，不调用模型。
 
 分析单元是**章**，不是检索片段：每章文本先去重叠，再按约 14,000 字装箱，一章不跨批拆开。提示词用 `chapterKey`（如 `V11-C045`）标注每章，模型返回的章级事件必须带上同一个 key，写入时用它对齐 `novel_chapters`，出处因此是「第几卷第几章」而不是片段 ID。全书约 196 批。
 
-每批结果缓存到 `.output/<world>/story-analysis/<cache-key>/`，中断后重跑会跳过已完成批次；`--shard i/n` 让多个进程各跑一片，互不写同一文件。全部批次成功后才合并写入 `worlds/<world>/novel.db`：`story_analysis` 保留完整快照供写作上下文检索，`novel_characters`、`novel_plot_threads`、`novel_foreshadowings`、`novel_beats`、`novel_relations` 存规范化结果供查询。中途失败不会用半成品覆盖上一次完整结果；单批失败会记录并继续，其余批次仍会入缓存；JSON/schema 解析失败会保留原始响应并自动做一次结构修复重试，仍失败的批次不会写入成功缓存，后续可重跑。
+每批结果缓存到 `.output/<world>/story-analysis/<cache-namespace>/batch-xxxx.json`，旁边的 `.meta.json` 保存精确章节指纹。中断后重跑跳过未变化且校验通过的批次；`--shard i/n` 让多个进程各跑一片。全部批次成功后才合并写入 `worlds/<world>/novel.db`：`story_analysis` 保留完整快照供写作上下文检索，`novel_characters`、`novel_plot_threads`、`novel_foreshadowings`、`novel_beats`、`novel_relations` 存规范化结果供查询。中途失败不会用半成品覆盖上一次完整结果；单批失败会记录并继续，其余批次仍会入缓存；JSON/schema 解析失败会保留原始响应并自动做一次结构修复重试，仍失败的批次不会写入成功缓存，后续可重跑。
 
 跨批人物只按规范姓名合并；带原文证据的个人化名/别称可作为检索别名，但不用于自动合并人物。称号、职位、传承、能力和身份分别分类；共享别名不参与人物关系解析。姓名不合中文人名形态（含虚词、泛称、超长短语）的条目会被丢弃。章级事件按 `chapterKey + 摘要` 去重；情节线与伏笔的 `status` 归一为「进行中 / 已收束 / 悬置」和「埋设 / 已回收 / 未判断」，便于按状态查询。每项分析附带其来源章的键，便于回到原文核对；这是上下文来源范围，不表示批内每章都直接支持该项。
 
@@ -709,7 +709,7 @@ POST /api/worlds/<universe-id>/knowledge-build
 GET  /api/worlds/<universe-id>/knowledge-build
 ```
 
-任务按顺序运行 `analyze-story`、`analyze-arcs`、`ensure-style-profile`、`analyze-profiles`、`analyze-character-states`、`analyze-corpus-craft`、`export-asof-dossier` 和 `vane-index`。如果原著项目已有完整 v6 故事分析，Create/Fork 会将其按章节来源严格截断后写入新宇宙；起点一致且快照完整时直接复用，跳过耗时的全文 LLM 分析。旧版本已创建的宇宙在首次续写或手动启动知识构建时，也会从 `sourceWorldId` 回填同一份时点安全快照。`ensure-style-profile` 只在当前宇宙缺少 Style Profile 时，从本宇宙按起点截断的章节样本重建，不覆盖用户已有的人工风格资料。Create/Fork 默认自动启动该后台任务，创建接口可通过 `buildKnowledge:false` 显式关闭；知识构建与章节生成进程可以并行启动，但新宇宙第一章的 CLI 写作进程会等待 `style-profile`、`character-profiles`、`character-states`、`as-of-dossier` 四项最低写作上下文就绪；等待发生在后台运行任务内，创建/生成 API 不需要用户手动等待。可选的 corpus-craft 与 Vane 索引不阻塞写作。若准备失败则安全停止，保留已完成阶段缓存；重新触发构建时可续用缓存，不会用空上下文生成第一章。知识库写入 `novel.db`，章节状态提交写入独立的 `story.db`。状态与各步骤日志摘要保存在 `.output/<world>/workbench/knowledge-build.json`。任务重启中断会被标记为失败，可重新触发。Vane 原生包未安装时，知识构建将该可选步骤标记为 skipped，而不是把整个知识构建标成失败；已配置 embedding endpoint 但请求失败或维度不匹配时，该步骤明确失败。两种情况都不影响 SQLite/BM25 写作路径。
+任务按顺序运行 `analyze-story`、`analyze-arcs`、`ensure-style-profile`、`analyze-profiles`、`analyze-character-states`、`analyze-corpus-craft`、`export-asof-dossier` 和 `vane-index`。Create/Fork 或旧宇宙恢复时，先尝试合并该宇宙自己已有的完整批次缓存（包括旧版 `.output/<universe>/story-analysis/<hash>/batch-xxxx.json`，只做缓存校验和合并，不调用模型）；本地缓存不完整时，再从来源世界复用入口之前的完整批次，入口落在某批中间时只对该批入口前缀重新分析。入口之后的章节不会进入模型输入或子宇宙快照。旧版本已创建的宇宙在首次续写或手动启动知识构建时，也会从 `sourceWorldId` 回填同一份时点安全快照。若当前宇宙本地缓存无法完整合并，且来源原著分析或所需来源批次也不可用，知识构建会明确失败并停止后续步骤；不会在新宇宙从第一章重跑原著分析。直接对包含 `universe.json` 的目录执行普通 `analyze-story` 会被拒绝；如需手动恢复该宇宙已有的旧批次，可执行 `npm run dev -- analyze-story --world <universe> --merge-only`，只做缓存校验与合并，不会调用模型。`ensure-style-profile` 只在当前宇宙缺少 Style Profile 时，从本宇宙按起点截断的章节样本重建，不覆盖用户已有的人工风格资料。Create/Fork 默认自动启动该后台任务，创建接口可通过 `buildKnowledge:false` 显式关闭；知识构建与章节生成进程可以并行启动，但新宇宙第一章的 CLI 写作进程会等待 `style-profile`、`character-profiles`、`character-states`、`as-of-dossier` 四项最低写作上下文就绪；等待发生在后台运行任务内，创建/生成 API 不需要用户手动等待。可选的 corpus-craft 与 Vane 索引不阻塞写作。若准备失败则安全停止，保留已完成阶段缓存；重新触发构建时可续用缓存，不会用空上下文生成第一章。知识库写入 `novel.db`，章节状态提交写入独立的 `story.db`。状态与各步骤日志摘要保存在 `.output/<world>/workbench/knowledge-build.json`。任务重启中断会被标记为失败，可重新触发。Vane 原生包未安装时，知识构建将该可选步骤标记为 skipped，而不是把整个知识构建标成失败；已配置 embedding endpoint 但请求失败或维度不匹配时，该步骤明确失败。两种情况都不影响 SQLite/BM25 写作路径。
 
 Chapter Studio 已提供显式构建入口和逐步骤状态面板，并每 2 秒轮询任务状态。Create/Fork 默认自动触发后台构建；章节生成 API 可先返回任务，但新宇宙第一章的 CLI 子进程会等待最低写作上下文就绪，不会与 Style Profile/人物档案构建竞态。知识准备失败时安全停止，已完成阶段缓存保留，重新触发可续跑。分析写入 novel.db，章节状态写入独立的 story.db。归档和 fork 仍与构建互斥，避免复制或变更正在写入的宇宙目录。
 
