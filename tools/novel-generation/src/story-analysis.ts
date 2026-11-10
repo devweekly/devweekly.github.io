@@ -4,7 +4,7 @@
 // 一次性把结构化快照写入 SQLite story_analysis（当前 v6）。
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
-import { existsSync, readdirSync, statSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { z } from "zod";
 import {
@@ -621,6 +621,16 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
     const path = cachePath(batch);
     let analysis = await readBatchCache(path, batch, model, maxChars,
       options.delta ? undefined : legacyExactPath(batch), options.delta);
+    if (!analysis && !options.delta) {
+      const legacyDeltaPath = join(resolve(".output", worldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars, true)),
+        "batch-" + String(batch.index).padStart(4, "0") + ".json");
+      const legacyDelta = await readCached(legacyDeltaPath);
+      if (legacyDelta) {
+        analysis = legacyDelta;
+        await writeFile(path, JSON.stringify(analysis, null, 2) + "\n", "utf8");
+        await writeFile(path + ".meta.json", JSON.stringify({ fingerprint: batchFingerprint(batch, model, maxChars, false), migratedFrom: legacyDeltaPath }, null, 2) + "\n", "utf8");
+      }
+    }
     if (!analysis && options.delta && legacyDir) {
       const legacy = await loadLegacyBatch(legacyDir, batch);
       if (legacy) {
@@ -703,7 +713,12 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
     throw new Error(`Cannot merge: ${results.length}/${totalBatches} batches available, ${skipped} skipped. Refusing to persist a partial snapshot.`);
   }
 
-  const snapshot = mergeAndPersist(worldId, worldDir, units, results, totalBatches, options.delta);
+  const snapshot = mergeAndPersist(worldId, worldDir, units, results, totalBatches, options.delta) as
+    StoryAnalysisSnapshot & { malformedBeats?: number; analysisModel?: string; analysisMaxChars?: number; analysisPromptTag?: string };
+  snapshot.analysisModel = model;
+  snapshot.analysisMaxChars = maxChars;
+  snapshot.analysisPromptTag = options.delta ? STORY_ANALYSIS_DELTA_PROMPT_TAG : STORY_ANALYSIS_PROMPT_TAG;
+  saveStoryAnalysis(worldDir, worldId, snapshot);
   return { snapshot, batches: totalBatches, processed, cached, failed: [], pending, skipped, malformedBeats: Number(snapshot.malformedBeats ?? 0) };
 }
 
@@ -1028,7 +1043,14 @@ export async function importBoundedStoryAnalysisFromBatchCache(
       let analysis = await readBatchCache(path, batch, model, maxChars, legacyPath);
       if (!analysis) {
         const legacyDeltaPath = join(legacyDeltaDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
-        analysis = await readBatchCache(path, batch, model, maxChars, legacyDeltaPath, true);
+        const legacyDelta = await readCached(legacyDeltaPath);
+        if (legacyDelta) {
+          analysis = legacyDelta;
+          await writeFile(path, JSON.stringify(analysis, null, 2) + "\n", "utf8");
+          await writeFile(path + ".meta.json", JSON.stringify({
+            fingerprint: batchFingerprint(batch, model, maxChars, false), migratedFrom: legacyDeltaPath
+          }, null, 2) + "\n", "utf8");
+        }
       }
       if (!analysis) return false;
       results.push({ analysis, chapters: batch.chapters });
