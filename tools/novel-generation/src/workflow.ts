@@ -12,7 +12,7 @@ import { checkIronLaws, ironLawIssues, loadIronLaws } from "./iron-laws.js";
 import { loadRunStoryState, runCachedStage } from "./stage-cache.js";
 import { parseJsonObject } from "./model-json.js";
 import { LONG_CHAPTER_SOURCE_TAIL_CHARS } from "./constants.js";
-import { buildWorldSituationContext } from "./world-situation.js";
+import { buildRecentEventContinuityContext, buildWorldSituationContext } from "./world-situation.js";
 import { CREATIVE_FREEDOM_RULES, LIVING_VOICE_RULES, literaryPatchPrompt, parseLiteraryPatchResult, applyLiteraryPatches, readerExperiencePrompt } from "./literary-edit.js";
 /**
  * Build a compact retrospective from body-evidenced character milestones.
@@ -212,13 +212,16 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
   if (input.retrievedContext) await saveStage(input.outputDir, "00-retrieval.md", input.retrievedContext);
   const situationQuery = [input.brief, state.currentPosition, input.contextText, input.sourceText?.slice(-LONG_CHAPTER_SOURCE_TAIL_CHARS), input.retrievedContext, input.writingBrief, input.storyPlanText, input.storyAnalysisContext].filter(Boolean).join("\n");
   const worldSituation = buildWorldSituationContext(state, situationQuery);
+  const recentEventContext = buildRecentEventContinuityContext(state);
   if (worldSituation) await saveStage(input.outputDir, "00-world-situation-context.md", worldSituation);
+  if (recentEventContext) await saveStage(input.outputDir, "00-recent-event-context.md", recentEventContext);
+  const planningSituation = [worldSituation, recentEventContext].filter(Boolean).join("\n\n");
 
-  const common = buildCommonWritingContext(input, state, worldSituation);
+  const common = buildCommonWritingContext(input, state, planningSituation);
 
   // 不同阶段只接收完成当前任务所需的上下文。完整事实包仍用于规划、正文和终审；
   // 创意发散不需要逐条原文证据，编辑阶段也不应反复携带整份语料与续写材料。
-  const taskText = [input.brief, input.contextText, input.writingBrief, input.storyPlanText, worldSituation].filter(Boolean).join("\n");
+  const taskText = [input.brief, input.contextText, input.writingBrief, input.storyPlanText, planningSituation].filter(Boolean).join("\n");
   const relevantCharacters = state.characters.filter(character => taskText.includes(character.name));
   const characterArcRetrospective = buildCharacterArcRetrospective(state, taskText);
   const relevantThreads = state.plotThreads.filter(thread =>
@@ -239,7 +242,7 @@ export async function writeChapter(input: WriteWorkflowInput): Promise<string> {
     "当前位置：", state.currentPosition,
     "本章涉及的人物当前状态：", JSON.stringify(relevantCharacters, null, 2),
     "本章涉及的情节线：", JSON.stringify(relevantThreads, null, 2),
-    worldSituation ? "当前局势与相关事件：\n" + worldSituation : "",
+    planningSituation ? "当前局势、已发生事件与重复情节提醒：\n" + planningSituation : "",
     "当前有效连续性备注：", state.continuityNotes.join("\n"),
     input.contextText ? "必要前情：\n" + input.contextText : "",
     input.writingBrief ? "相关人物、关系与既成事实：\n" + input.writingBrief : "",
