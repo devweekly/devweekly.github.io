@@ -58,8 +58,8 @@
 | 世界设定 | `worlds/<world>/world-bible.md` 等 | 保存世界规则、人物和时间线的可读参考；不能把人物推断升级成正史 |
 | 章节状态 | `src/story-state.ts`、`src/database.ts` | SQLite 权威存储；JSON 为兼容快照；状态按人物/事件/情节线 ID 合并；人物 arcMilestones 按 ID 追加并验证正文证据 |
 | 成书知识库 | `src/novel-kb.ts`、`src/story-analysis.ts` | 章目录映射、去重叠重建章节文本、人物出场统计；分片调用模型抽取人物/情节/伏笔/章级事件，合并后写 `novel_*` 表 |
-| 普通章节流水线 | `src/workflow.ts` | 主线与创意并行、主编规划、正文、对白、叙事声音、共享 Anti-AI 编辑、硬伤终审、Reader 观察与状态提取 |
-| 万字章节流水线 | `src/long-chapter.ts` | 场景蓝图、逐场检索与生成、场间上下文交接、逐场修订、共享 Anti-AI 编辑、一次全章硬伤终审与可选 Reader 观察 |
+| 普通章节流水线 | `src/workflow.ts` | Story Arc、主线与创意并行、主编规划、正文、单次保守文学 Patch、硬伤终审、可选 Reader、协调提交 Story State 与 Story Arc |
+| 万字章节流水线 | `src/long-chapter.ts` | Story Arc、场景蓝图、逐场检索与生成、场间上下文交接、逐场修订、单次保守文学 Patch、一次全章硬伤终审与可选 Reader 观察 |
 | 质量回归 | `src/regression.ts`、`scripts/compare-models.mjs` | 节奏量化、候选盲评和模型对照；不属于每次正式续写的人工审批步骤 |
 | 质量门禁 | `src/chapter-review.ts` | 审查 JSON schema、正文证据、严重程度与多场景定位；有限自动修复和复查 |
 | 文学编辑原则 | `src/literary-edit.ts`、`src/style-distillation.ts`、`src/style-regression.ts`、`src/style-trend.ts`、`src/style-references.ts` | Writer/编辑共享 Living Voice；Anti-AI 诊断、克制编辑与保守复核；盲读 Reader；逐章风格回归、跨章节趋势观察与认可样本版本归档 |
@@ -78,30 +78,28 @@
 2. 检索相关原文及已有的人物/事件/关系标注。
 3. 主线剧情与创意发散并行提出方案。
 4. 主编选定唯一章节蓝图。
-5. 生成正文；随后由一次整体文学编辑统一处理对白、叙述声音和节奏，避免对白编辑与声音编辑连续整章重写。
-6. Editorial Review 前执行文学去 AI 味：先输出带文本证据的诊断，仅在确有问题时编辑；独立复核确认收益后才保留，否则恢复原稿。诊断为空、明确无问题或失败时跳过编辑。
-7. Editorial Review 对最终采用的正文进行结构化硬伤审查，只处理明确硬伤；文学偏好和 AI 味不进入硬伤门禁。
-8. 对 blocker/major 做最小修复，最多两轮；每轮重新审查。修复成功并提交故事状态后，追加只读文风回归观察；没有修复则跳过。
-9. 通过后自动执行只读 Style Regression；Reader 体验报告仅在显式启用 `--reader-experience` 时运行，两者失败均不阻塞成功路径。
-10. 提取并校验状态，自动提交 SQLite 和兼容快照，保存正文、质量摘要和阶段产物。
+5. 生成正文并执行一次保守局部文学 Patch；默认 preserve，不再拆成对白、叙事声音和 Anti-AI 多轮整章阶段。
+6. 对最终正文执行一次结构化硬伤终审，只处理明确事实、因果、人物知识边界和世界规则问题。
+7. 对 blocker/major 做最小范围修复，最多一轮；修复后重新审查。仍未通过则安全失败，不提交状态。
+8. Reader 体验报告仅在显式启用 `--reader-experience` 时运行；失败不阻塞成功路径。
+9. 从最终正文提取并校验 Story State；运行提案先落盘，再协调提交 Story State 与对应 Story Arc。任一提交失败均使本次任务失败。
 
 主要阶段文件：
 
 | 文件 | 内容 |
 |---|---|
+| `00-story-arc.md` | 本次中期故事方向候选；通过后才发布为活动规划 |
 | `00-retrieval.md` | 检索证据和命中标注 |
 | `01-main-plot.md` / `02-creative-options.md` | 并行提出的主线方案与创意备选 |
 | `03-chapter-plan.md` | 主编选定的章节蓝图 |
 | `04-scene-draft.md` | 初稿 |
-| `05-dialogue-edited.md` | 对白修订 |
-| `06-voice-edited.md` | 叙事声音修订 |
-| `06b-anti-ai-edited.md` | Living Voice / Anti-AI 克制编辑后的正文 |
-| `07-continuity-review.md` | 结构化最终审查与自动修复记录 |
-| `10-reader-experience.md` | 独立读者体验观察；不影响章节状态 |
-| `10-post-review-literary-check.md` | 仅在终审修复后生成的文风回归观察；只读、不改稿、不阻断 |
-| `11-style-regression.md` | 自动对照激活的 Style Profile 和可选认可样本，观察风格漂移；不改稿、不阻断 |
+| `05-literary-patches-raw.json` / `05-literary-patches-applied.json` | Patch 原始响应与逐条应用结果 |
+| `05-literary-edited.md` | Patch 应用后的正文 |
+| `07-continuity-review.md`、`07-review-round-*-raw.txt`、`07-continuity-review-round-*.json` | 终审原始输出、结构化复查与修复记录 |
 | `chapter.md` | 最终复查通过后的章节 |
-| `08-state-update.json` | 合并后的下一章状态 |
+| `08-state-update.json` / `09-quality-summary.json` | 状态提案与质量摘要 |
+
+不会再生成内容相同的 `05-dialogue-edited.md` / `06-voice-edited.md`，也不会生成表示未执行阶段的 `11-style-regression-skipped.json`。
 
 ## 4. 万字章节：当前执行流程
 
@@ -130,7 +128,7 @@
 2. 无 blocker/major 时接受章节；minor 只记录。
 3. 有 blocker/major 时定位到章节或场景，按最小范围修复。
 4. 重新检查被修复问题及相邻/关联场景，确认没有引入新硬伤。
-5. 最多两轮仍未通过时停止并保留现场，不提交故事状态。
+5. 一轮修复后仍未通过时停止并保留现场，不提交故事状态。
 6. 通过后才提取、校验并提交故事状态。
 
 自动修复必须遵循以下边界：
@@ -158,7 +156,7 @@
 | 人物性格、关系和弧光 | profile 保存稳定画像；arcMilestones 按 ID 追加正文中自然呈现的关键变化和证据，选择/压力/代价为可选 | 基础追踪已实现；不将人物锁定为固定标签 |
 | 对白与叙事声音 | 普通章节分两个修订阶段；长章节逐场修订 | 一致，但人物声音主要依赖当前状态文本和 prompt |
 | 连续性审查 | 普通章节结构化审查最终正文；长章节在逐场修订后审查完整章节 | 一致 |
-| 终审与问题修复 | 两条正式流程均按证据修复 blocker/major，最多两轮并复查 | 一致 |
+| 终审与问题修复 | 两条正式流程均按证据修复 blocker/major，最多一轮并复查 | 一致 |
 | 修复后复查 | 每轮修复后重新审查；多场景流程复查完整章节 | 一致 |
 | 自动更新故事状态 | 已改为默认自动提交 SQLite 和兼容 JSON 快照；实验可用 `--no-apply-state` 隔离 | 一致（本次修改） |
 | 场景蓝图格式错误 | `write-long` 现在会自动要求主编修正一次；第二次仍不合格才停止并保留第一次输出 | 一致（本次修改） |
@@ -182,7 +180,7 @@
 2. 新增反向开关 `--no-apply-state`，只供模型对照等隔离实验使用。
 3. `scripts/compare-models.mjs` 显式传入 `--no-apply-state`，保证每个候选读取相同的初始状态。
 4. 两条流程均在最终正文通过复查后才提取状态；模型输出经过 Zod 校验，弧光里程碑证据必须逐字存在于最终正文。
-5. 普通章节和长章节均使用最多两轮的 blocker/major 自动修复；长章节修复定位到具体场景并复查全章。
+5. 普通章节和长章节均使用最多一轮的 blocker/major 自动修复；长章节修复定位到具体场景并复查全章。
 6. 阶段输入指纹记录实际解析模型及回退链；结构化阶段输出通过 schema/业务校验后才写入有效 checkpoint。哈希正确但结构无效的缓存会重新生成。连续性备注按当前有效状态快照替换，避免已解决的旧备注永久成为后续章节约束。初始状态快照支持 `--resume-dir` 恢复。
 
 ### 仍然存在的边界
@@ -421,32 +419,18 @@ Living Voice 不是一个独立的正文改写 Agent，而是写作与编辑阶�
 
 ### 10.9 当前代码落地状态
 
-ADR 0004 的第一阶段已接入两条正式写作链：
+ADR 0007 已取代旧版整章 Anti-AI 多阶段链路。当前正式写作实现如下：
 
-- `src/literary-edit.ts` 提供共享 Living Voice、Anti-AI 诊断/编辑/复核、终审后文风回归观察和盲读 Reader 提示。
-- 普通章节在 `06-voice-edited.md` 后依次生成 `06a-anti-ai-diagnosis.md`、`06b-anti-ai-edited.md`、`06c-anti-ai-verification.json`，再进入现有最终硬伤审查；复核不通过或失败时恢复 `06-voice-edited.md`。
-- 长章节在逐场 `05-polish-XX.md` 汇总后生成相同的 `06a/06b/06c` 诊断、编辑和复核产物，再进入现有跨场终审；诊断无问题或失败时跳过编辑，复核不通过或失败时恢复逐场修订稿。
-- Anti-AI 编辑调用失败时保留上一阶段正文，写入错误诊断并继续终审；不会因辅助编辑失败丢失已经生成的章节。
-- 两条写作链均支持显式启用盲读 Reader（`--reader-experience`）；默认不增加该模型调用。Reader 失败只保存错误诊断，不影响章节通过和 Story State 持久化。
-- 新增 `antiAi` 与 `reader` 阶段配置，沿用现有 task profile 和阶段缓存；无新增依赖、数据库表或常驻 Agent。
-- 新增 `distill-style` 命令和 `src/style-distillation.ts`，从授权样本提炼全局与场景级风格候选，默认写入 `.output/<world>/style-profile-candidate.md`；显式 `--activate` 才更新正式风格资料，并先归档旧版本。候选输出路径限制在当前 world 的 `.output/`。
-- 新增 `roleplay-sandbox` 命令和 `src/roleplay-sandbox.ts`，推演注入 Story State 人物动态、成书知识库人物长期观察和任务相关故事图谱；支持作者接受、修改方向、补充信息、重演或结束；所有结果只写入当前 world 的 `.output/`，不进入正史或 Story State。
+- 普通章节：Story Arc → Plot/Ideas → Chapter Plan → Writer Draft → 一次保守局部 Literary Patch → 一次硬伤终审 → 最多一轮修复与复查 → Story State/Story Arc 协调提交。
+- 长章节：Story Arc → Scene Blueprint → 逐场生成与修订 → 一次保守局部 Literary Patch → 一次全章硬伤终审 → 最多一轮定向修复与复查 → Story State/Story Arc 协调提交。
+- Patch 默认 preserve，只接受唯一、逐字匹配且不重叠的原文锚点；无效 Patch 单独拒绝，不触发整章回滚。
+- 不再生成对白编辑、叙事声音编辑的重复副本，不再生成虚构的 Anti-AI 诊断/验证或 Style Regression skipped 阶段产物。
+- Reader 仅在 `--reader-experience` 显式启用时运行；失败不影响章节通过。
+- Style Regression 只由专项命令触发，不属于普通章节或长章节默认链路。
+- Story Arc 只在终审通过、状态提取成功且 Story State 提交成功后发布；`--no-apply-state` 实验不会污染活动 Story Arc。
+- 新宇宙的 `write` 与 `write-long` 都必须等待 style-profile、character-profiles、character-states、as-of-dossier 四项最低知识准备；可选 corpus-craft/Vane 不阻塞。普通原文世界不受该门禁影响。
 
-Roleplay Sandbox 已读取当前人物动态、长期人物观察和任务相关故事图谱，输出仍与正史隔离。Style Distillation 已提供候选提炼与显式激活/旧版归档；正式章节流水线在每章终审通过后自动执行风格回归，`style-regress` 另用于任意文件专项对照。仍未实现样本版本管理、跨章节自动批量趋势分析和 CI 风格门禁。
-
-
-### 10.10 五项能力的当前实际落地
-
-- **Anti-AI**：普通章节与长章节均执行诊断（`06a`）→ 有问题才编辑（`06b`）→ 保守复核（`06c`）。诊断只报告有具体证据的阅读问题，不判断 AI 概率；空诊断、无问题或诊断失败均跳过整章改写；复核格式错误或调用失败时恢复原稿。Editorial Review 发生修复时追加 `10-post-review-literary-check.md` 只读观察，检查修复是否引入 AI 腔，不再次改稿、不阻断交付。
-- **Creative Freedom + Living Voice**：共享创作自由原则进入普通/长章节的规划与 Writer；不是每个场景都必须推进主线、制造冲突或改变关系。长章节只保留整体篇幅预期，不再分配单场字数配额，也不自动扩写短场景，避免为凑字数注水。Living Voice 继续进入正文与文学编辑。
-- **场景蓝图**：只记录必要事实、自然起点和少量不可丢失的锚点；场景可以是日常、闲谈、观察、过渡或没有明确结果的相处，不要求每场都具备冲突/选择/结果。
-- **Style Distillation**：`distill-style` 提炼授权样本的全局与场景级抽象特征；候选默认隔离，`--activate` 显式激活并归档旧版。正式写作每章自动生成只读 Style Regression 报告；仍未建设样本版本管理、跨章节自动批量趋势分析和 CI 风格门禁。
-- **Reader**：可选的盲读观察；默认不运行，普通章节和长章节均通过 `--reader-experience` 显式启用。启用后只读取最终正文，不预先接收人物档案、世界设定、蓝图或创作任务；只生成观察报告，不影响质量门禁和 Story State。
-- **Style Regression**：普通/长章节终审通过后自动读取 Style Profile 和 `worlds/<world>/style-references/` 下最多四份认可样本，生成 `11-style-regression.md`；无样本时只对照抽象 Style Profile 并说明证据不足。它不改稿、不打分、不阻断。
-- **Roleplay Sandbox**：读取人物当前动态状态、长期人物观察和任务相关故事图谱；交互记录只写入当前 world 的 `.output/`，自定义输出路径也受限，不会覆盖正史文件。
-
-以上能力共享现有模型运行时与阶段缓存，没有新增数据库表、常驻 Agent 或人工审批门禁。手动 `style-regress` 仍可用于任意文件的专项对照；正式写作已自动执行回归观察。尚未建设的是样本版本管理、自动基准集治理和趋势分析，不是每章自动观察本身。
-
+`distill-style` 生成隔离候选；只有显式 `--activate` 才更新正式风格资料并归档旧版。Roleplay Sandbox 的交互记录仍只写入当前 world 的 `.output/`，不进入正史或 Story State。
 
 ## 续写动态故事状态
 
