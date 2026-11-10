@@ -210,6 +210,7 @@ CLI 命令（均经 `npm run dev --`）：
 ## Literary workflow implementation invariants
 
 - 普通章节与长章节的规划器和 Writer 必须注入 `CREATIVE_FREEDOM_RULES`，正文编辑继续注入 `LIVING_VOICE_RULES`。不是每个场景都必须推进主线、制造冲突、揭示信息或改变关系；不得因单场篇幅不足自动扩写。事实连续性是约束，蓝图不是逐项执行合同。
+- 创意发散阶段优先提出最多三个机制真正不同的方向（事件机制、人物选择、信息差或冲突来源不同）；有价值的方向不足时允许少于三个，不为数量凑点子。至少探索一个不沿最显然大纲路径发展的可能性，但必须符合人物知识、欲望、资源与处境。主编可组合、改造或全部否决。普通章节与长章节 Writer 都应把相关原文检索片段作为叙事方法参考，而非句子模板；避免重复解释、人物对白复述共有信息、对称总结和警句式收尾。文学 Patch 先检查全章累积问题，只做可定位且确实改善阅读体验的局部修改。
 - 常规流程不再执行整章 Anti-AI 诊断/改写/复核，改用保守局部 Patch；旧提示函数仅供兼容或专项实验，不得重新接回默认链路。
 - Patch 原始 JSON 与应用结果分别保存在 `05/06-literary-patches-raw.json`、`05/06-literary-patches-applied.json`；原始缓存文件不得被应用记录覆盖。
 - Reader 只能盲读最终正文，不得注入章节蓝图、人物档案、世界设定或创作任务；它只输出观察报告，不进入门禁、不更新 Story State。
@@ -221,7 +222,7 @@ CLI 命令（均经 `npm run dev --`）：
 ## Style Profile and regression workflow
 
 - `worlds/<world>/style-profile.md` 是正式写作的活动风格资料。CLI 必须在每次 `write` / `write-long` 时自动加载，并注入规划、正文、对白和叙事声音相关阶段；不得要求作者每章手工指定。
-- 可选的认可样本放在 `worlds/<world>/style-references/`，每次正式写作自动读取最多四个 Markdown/TXT 样本，作为风格回归观察的对照材料。
+- 可选的认可样本放在 `worlds/<world>/style-references/`，供 Style Regression 对照使用；不要把整份样本文件无差别塞进每次 Writer 上下文。正式写作中的原文场景参考优先复用当前任务的本地检索结果，先核实事实，也可观察相关片段的叙述距离、信息释放、动作/对白组织和场景节奏；不得复制原句或近义改写。
 - Style Regression 仅由 `style-regress` 专项触发，不进入普通章节和长章节默认链路。
 - 风格回归是只读诊断，不是写作门禁或自动修订指令；报告失败不得影响成稿、Reader 或 Story State 提交。
 - Story State 的 `foreshadowingUpdates` / `macguffinUpdates` / `relationshipUpdates` 是续写动态生命周期与关系变化日志，只能记录最终正文明确发生的变化并附逐字证据；按稳定 ID 幂等追加，不得将分析猜测写成事实。
