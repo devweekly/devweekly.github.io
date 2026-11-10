@@ -30,6 +30,10 @@ export const DEFAULT_PROBE_TIMEOUT_MS = 90_000;
 
 /** Knowledge Build 子进程无 stdout/stderr 活动的最长间隔；长任务可持续运行，但必须持续有可观测进展。 */
 export const KNOWLEDGE_BUILD_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
+/** CLI 等待新宇宙最低知识准备的总时限；单个构建步骤另有无输出心跳超时。 */
+export const KNOWLEDGE_BUILD_WAIT_TIMEOUT_MS = 30 * 60 * 1000;
+/** CLI 读取知识构建状态文件的轮询间隔。 */
+export const KNOWLEDGE_BUILD_POLL_INTERVAL_MS = 1_000;
 /** 取消或心跳超时后，给子进程组的优雅退出时间。 */
 export const CHILD_PROCESS_KILL_GRACE_MS = 5_000;
 
