@@ -1571,11 +1571,11 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
     await createStoryStateSnapshot(worldId, storyUnitId, runId);
     await onRunStarted?.(run);
   } catch (error) {
-    let rollbackError = "";
-    try { await restoreStoryStateSnapshot(worldId, run); }
+    let rollbackError = "", restored = false;
+    try { restored = await restoreStoryStateSnapshot(worldId, run); }
     catch (cause) { rollbackError = cause instanceof Error ? cause.message : String(cause); }
     const message = (error instanceof Error ? error.message : String(error)) +
-      (rollbackError ? "；状态回滚失败：" + rollbackError : "；已恢复章节开始前的 Story State 快照。");
+      (rollbackError ? "；状态回滚失败：" + rollbackError : restored ? "；已回滚到章节开始前的 Story State 快照。" : "；章节子进程尚未启动，Story State 未发生修改。");
     await saveRun({ ...run, status: "failed", updatedAt: new Date().toISOString(), error: message });
     throw new Error(message);
   }
@@ -1633,8 +1633,10 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
   const completed = result.code === 0 && finalChapterExists && qualityPassed && stateCommitted;
   let rollbackError = "";
   if (!completed) {
-    try { await restoreStoryStateSnapshot(worldId, run); }
-    catch (error) { rollbackError = error instanceof Error ? error.message : String(error); }
+    try {
+      const restored = await restoreStoryStateSnapshot(worldId, run);
+      if (!restored) throw new Error("未找到章节开始前的事务快照，无法证明 Story State 已恢复。");
+    } catch (error) { rollbackError = error instanceof Error ? error.message : String(error); }
   }
   await Promise.all([
     writeFile(path.join(outputDir, "process.stdout.log"), result.output, "utf8"),
