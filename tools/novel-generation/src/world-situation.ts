@@ -66,8 +66,9 @@ export function buildRecentEventContinuityContext(
   limit = RECENT_EVENT_CONTEXT_LIMIT,
   maxChars = RECENT_EVENT_CONTEXT_MAX_CHARS
 ): string {
-  const count = Math.max(0, Math.floor(limit));
-  if (!count || maxChars <= 0 || !state.events.length) return "";
+  const count = Math.max(0, Math.min(RECENT_EVENT_CONTEXT_LIMIT, Math.floor(limit)));
+  const budget = Math.max(0, Math.min(RECENT_EVENT_CONTEXT_MAX_CHARS, Math.floor(maxChars)));
+  if (!count || !budget || !state.events.length) return "";
   const recent = state.events.slice(-count);
   const eventLines = recent.map(event => {
     const details = [
@@ -88,9 +89,10 @@ export function buildRecentEventContinuityContext(
     "## 重复情节与有效呼应",
     ...guidance
   ].join("\n");
-  if (rendered.length <= maxChars) return rendered;
+  if (rendered.length <= budget) return rendered;
   const suffix = "\n（近期事件摘要已按预算截断。）";
-  return rendered.slice(0, Math.max(0, maxChars - suffix.length)) + suffix;
+  if (budget <= suffix.length) return rendered.slice(0, budget);
+  return rendered.slice(0, budget - suffix.length) + suffix;
 }
 
 function renderCharacter(character: Character): string {
