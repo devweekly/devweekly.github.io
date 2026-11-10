@@ -167,6 +167,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   const previousArc = input.storyArcText?.trim() ?? "";
   const storyArc = await cachedCall("story-arc", "00-story-arc.md", "plan", [
     "角色：中期故事架构师。为当前故事阶段校准可调整的中期方向；不要把章节计划当成剧情合同。",
+    "分层展开：如果长期 Story Plan 提供了重大节点，先结合当前已发生事实识别正在推进或最近的未完成节点，只把当前节点及必要的相邻因果展开成近期 Story Arc；更远节点保留方向性摘要，不预先细化成整串章节。若当前剧情已自然偏离某节点，以已提交事实为准，调整未来路径，不得 retcon。",
     "世界设定：", input.worldBible,
     "当前位置：", state.currentPosition,
     "已有事实与连续性：", facts,
