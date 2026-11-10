@@ -14,7 +14,7 @@ import {
 } from "./database.js";
 import { buildAnalysisUnits, groupAnalysisUnits, isUsableAlias, isUsableCharacterName, normalizeCharacterName, type AnalysisUnit } from "./novel-kb.js";
 import { runAgentText } from "./generate.js";
-import { resolveAgentModel } from "./agent-runtime.js";
+import { readModelCatalog, resolveAgentModel } from "./agent-runtime.js";
 import { readTaskProfiles } from "./task-profiles.js";
 import { parseJsonObject } from "./model-json.js";
 import {
@@ -1068,8 +1068,19 @@ export async function importBoundedStoryAnalysisFromBatchCache(
   const currentSourceHash = createHash("sha256").update(units.map(unit => unit.chapterId + ":" + unit.text).join("\n")).digest("hex");
   if (!sourceSnapshot || sourceSnapshot.analysisVersion !== 6 || sourceSnapshot.complete !== true ||
       sourceSnapshot.sourceHash !== currentSourceHash) return false;
-  const model = options.model ?? sourceSnapshot.analysisModel ?? resolveAgentModel().model;
-  const maxChars = options.maxChars ?? sourceSnapshot?.analysisMaxChars ?? ANALYSIS_BATCH_CHARS;
+  const maxChars = options.maxChars ?? sourceSnapshot.analysisMaxChars ?? ANALYSIS_BATCH_CHARS;
+  const configuredModel = resolveAgentModel(options.model).model;
+  const modelCandidates = options.model
+    ? [configuredModel]
+    : [...new Set([sourceSnapshot.analysisModel, configuredModel, ...readModelCatalog().map(item => item.id)].filter((value): value is string => Boolean(value)))];
+  const model = modelCandidates.find(candidate => {
+    const root = resolve(".output", sourceWorldId, "story-analysis");
+    return [
+      legacyCacheKeyFor(candidate, units, maxChars),
+      legacyCacheKeyFor(candidate, units, maxChars, true),
+      cacheKeyFor(candidate, units, maxChars)
+    ].some(key => existsSync(resolve(root, key)));
+  }) ?? sourceSnapshot.analysisModel ?? configuredModel;
   const allBatches = groupAnalysisUnits(units, maxChars).map((chapters, index) => ({
     index, chapters, chars: chapters.reduce((sum, chapter) => sum + chapter.charCount, 0)
   }));
