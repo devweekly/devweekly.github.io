@@ -1064,7 +1064,6 @@ async function main(): Promise<void> {
       worldId, worldDir: resolve("worlds", worldId), mode, brief, worldBible, styleProfile, sourceText, contextText, storyAnalysisContext, writingBrief, storyPlanText, storyArcText, storyArcPath, model,
       strictModel: process.argv.includes("--strict-model"),
       maxWords, scenes, timeoutMs, outputDir, statePath, libraryDir, retrievalLimit,
-      storyArcPath,
       applyState: !process.argv.includes("--no-apply-state"),
       readerExperience: process.argv.includes("--reader-experience")
     });
