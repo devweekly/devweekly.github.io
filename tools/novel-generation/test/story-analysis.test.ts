@@ -6,8 +6,23 @@ import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { databaseStatus, invalidateDerivedAnalysis, readStoryAnalysis, saveStoryAnalysis } from "../src/database.js";
 import { groupAnalysisUnits } from "../src/novel-kb.js";
-import { assertMergeOptions, batchFingerprint, buildAnalysisPrompt, cleanCharacterAliases, filterCharacterAliasEvidence, parseModelJson, plotThreadId, plotThreadMergeKey, selectBatchesThroughOrdinal, storyAnalysisCacheNamespace, stripUnclassifiedAliases } from "../src/story-analysis.js";
+import { analyzeStoryCorpus, assertMergeOptions, batchFingerprint, buildAnalysisPrompt, cleanCharacterAliases, filterCharacterAliasEvidence, parseModelJson, plotThreadId, plotThreadMergeKey, selectBatchesThroughOrdinal, storyAnalysisCacheNamespace, stripUnclassifiedAliases } from "../src/story-analysis.js";
 import { loadLibraryChunks } from "../src/library.js";
+
+test("analyze-story refuses to rebuild the original canon inside a historical universe", async () => {
+  const root = await mkdtemp(join(tmpdir(), "novel-universe-no-full-analysis-"));
+  try {
+    await writeFile(join(root, "universe.json"), JSON.stringify({
+      id: "u-test", sourceWorldId: "conghuoniao", entryChapter: "第二十章"
+    }));
+    await assert.rejects(
+      analyzeStoryCorpus("u-test", { worldDir: root }),
+      /只能在原著来源世界执行.*禁止在子宇宙从第一章重新分析原著/
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test("story-analysis cache namespace is stable across corpus edits while each batch fingerprint is content-addressed", () => {
   const batch = {
