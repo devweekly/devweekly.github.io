@@ -640,6 +640,7 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
   const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, maxChars, options.delta));
   await mkdir(cacheDir, { recursive: true });
   const legacyExactDir = resolve(".output", worldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars, options.delta));
+  const legacyDeltaExactDir = resolve(".output", worldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars, true));
   let legacyDir: string | undefined;
   if (options.delta) {
     try { legacyDir = findLegacyCacheDir(worldId, model, units, maxChars, cacheDir); }
@@ -648,6 +649,7 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
   if (legacyDir) console.log("[story-analysis] delta mode · legacy batches from " + legacyDir);
   const cachePath = (batch: AnalysisBatch): string => join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
   const legacyExactPath = (batch: AnalysisBatch): string => join(legacyExactDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
+  const legacyDeltaExactPath = (batch: AnalysisBatch): string => join(legacyDeltaExactDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
   const shard = options.shard;
   if (shard && (!Number.isInteger(shard.count) || shard.count < 1 || shard.count > 16 || !Number.isInteger(shard.index) || shard.index < 0 || shard.index >= shard.count)) {
     throw new Error("--shard must be i/n with 0 <= i < n <= 16.");
@@ -661,7 +663,7 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
     if (shard && batch.index % shard.count !== shard.index) { skipped++; continue; }
     const path = cachePath(batch);
     let analysis = await readBatchCache(path, batch, model, maxChars,
-      options.delta ? undefined : legacyExactPath(batch), options.delta);
+      options.delta ? legacyDeltaExactPath(batch) : legacyExactPath(batch), options.delta);
     if (!analysis && !options.delta) {
       const deltaStablePath = join(
         resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, maxChars, true)),
