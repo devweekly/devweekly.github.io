@@ -41,7 +41,7 @@ const StoryUnitSchema = z.object({
   subplots: z.array(z.string()).default([]),
   climax: z.string().min(1), endingAndAftermath: z.string().min(1),
   unresolvedQuestions: z.array(z.string()).default([]), creativePossibilities: z.array(z.string()).default([]),
-  execution: z.object({ status: z.enum(["not_started", "in_progress", "completed"]).default("not_started"), completedChapterIds: z.array(z.string()).default([]), lastUnresolvedCoreThreads: z.array(z.string()).default([]), idleChapterCount: z.number().int().nonnegative().default(0), lastAssessedChapterId: z.string().optional(), lastAssessment: z.string().optional(), nextDirection: z.string().optional(), cumulativeStorySummary: z.string().max(12000).default(""), assessedAt: z.string().optional(), completedAt: z.string().optional(), characterArcHistory: z.array(z.object({ chapterId: z.string(), name: z.string(), observedChange: z.string(), futurePossibilities: z.array(z.string()), recordedAt: z.string() }).strict()).default([]) }).default({ status: "not_started", completedChapterIds: [], lastUnresolvedCoreThreads: [], characterArcHistory: [] })
+  execution: z.object({ status: z.enum(["not_started", "in_progress", "completed"]).default("not_started"), completedChapterIds: z.array(z.string()).default([]), lastUnresolvedCoreThreads: z.array(z.string()).default([]), idleChapterCount: z.number().int().nonnegative().default(0), lastAssessedChapterId: z.string().optional(), lastAssessment: z.string().optional(), nextDirection: z.string().optional(), cumulativeStorySummary: z.string().max(12000).default(""), assessedAt: z.string().optional(), completedAt: z.string().optional(), characterArcHistory: z.array(z.object({ chapterId: z.string(), name: z.string(), observedChange: z.string(), futurePossibilities: z.array(z.string()), recordedAt: z.string() }).strict()).default([]) }).default({ status: "not_started", completedChapterIds: [], lastUnresolvedCoreThreads: [], idleChapterCount: 0, cumulativeStorySummary: "", characterArcHistory: [] })
 }).strict();
 
 export type StoryUnit = z.infer<typeof StoryUnitSchema>;
@@ -96,7 +96,7 @@ const StoryProgressAssessmentSchema = z.object({
   unresolvedCoreThreads: z.array(z.string()), unrealizedMajorBeats: z.array(z.string()), remainingStoryWork: z.array(z.string()),
   nextDirection: z.string(), rationale: z.string(),
   meaningfulProgress: z.boolean().default(false), progressEvidence: z.string().default(""),
-  cumulativeStorySummary: z.string().default(""),
+  cumulativeStorySummary: z.string().max(12000).default(""),
   revisedStorySpine: z.array(BeatSchema).default([]),
   characterArcUpdates: z.array(z.object({ name: z.string().min(1), observedChange: z.string().default(""), futurePossibilities: z.array(z.string()).default([]) }).strict()).default([])
 }).strict();
