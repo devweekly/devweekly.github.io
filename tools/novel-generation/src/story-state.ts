@@ -256,7 +256,7 @@ export async function commitStoryStateAndArc(input: {
   const temporary = target + "." + process.pid + "." + Date.now() + ".tmp";
   await mkdir(dirname(target), { recursive: true });
   try {
-    await writeFile(temporary, input.storyArcText.trim() + "\\n", "utf8");
+    await writeFile(temporary, input.storyArcText.trim() + "\n", "utf8");
     await rename(temporary, target);
   } catch (error) {
     try {
