@@ -1,7 +1,7 @@
 // Story State 的加载/保存层：SQLite 是权威存储，story-state.json 只是可读快照。
 // saveStoryState 写入前校验完整状态；章节未过终审或状态提取失败时不会走到保存，
 // 保持「未通过审查的状态永不进正史」这条单向门。
-import { readFile, mkdir, writeFile, rename } from "node:fs/promises";
+import { readFile, mkdir, writeFile, rename, unlink } from "node:fs/promises";
 import { readStoryState as readDatabaseStoryState, syncStoryState } from "./database.js";
 import { dirname } from "node:path";
 import { z } from "zod";
@@ -234,4 +234,46 @@ export async function saveStoryState(path: string, state: StoryState): Promise<v
   syncStoryState(dirname(path), next);
   await writeFile(temporaryPath, JSON.stringify(next, null, 2) + "\n", "utf8");
   await rename(temporaryPath, path);
+}
+
+/**
+ * Commit the authoritative Story State first, then atomically publish its matching
+ * Story Arc snapshot. If publishing the Arc fails, restore the previous state so
+ * the next chapter cannot observe a new state paired with an old plan.
+ */
+export async function commitStoryStateAndArc(input: {
+  statePath: string;
+  previousState: StoryState;
+  nextState: StoryState;
+  applyState: boolean;
+  storyArcPath?: string;
+  storyArcText?: string;
+}): Promise<void> {
+  if (!input.applyState) return;
+  try {
+    await saveStoryState(input.statePath, input.nextState);
+  } catch (error) {
+    try {
+      await saveStoryState(input.statePath, input.previousState);
+    } catch (rollbackError) {
+      throw new AggregateError([error, rollbackError], "Story State persistence failed and rollback also failed; inspect the run artifacts before continuing.");
+    }
+    throw error;
+  }
+  if (!input.storyArcPath || input.storyArcText === undefined) return;
+  const target = input.storyArcPath;
+  const temporary = target + "." + process.pid + "." + Date.now() + ".tmp";
+  try {
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(temporary, input.storyArcText.trim() + "\n", "utf8");
+    await rename(temporary, target);
+  } catch (error) {
+    await unlink(temporary).catch(() => undefined);
+    try {
+      await saveStoryState(input.statePath, input.previousState);
+    } catch (rollbackError) {
+      throw new AggregateError([error, rollbackError], "Story Arc publication failed and Story State rollback also failed; inspect the run artifacts before continuing.");
+    }
+    throw new Error("Story Arc publication failed; Story State was rolled back: " + String(error));
+  }
 }

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   canCancelStoryExecution,
+  knowledgeBuildAttemptStatus,
   canResumeStoryExecution,
   isStoryExecutionBlocking,
   reusableKnowledgeBuildStepNames,
@@ -35,4 +36,12 @@ test("knowledge build retries preserve completed checkpoints but rerun failed an
     { name: "character-profiles", status: "skipped" as const }
   ]);
   assert.deepEqual([...reusable].sort(), ["character-profiles", "story-analysis"]);
+});
+
+test("knowledge build retry status counts only steps executed in the current attempt", () => {
+  assert.equal(knowledgeBuildAttemptStatus(0, 3), "completed");
+  assert.equal(knowledgeBuildAttemptStatus(3, 3), "failed");
+  assert.equal(knowledgeBuildAttemptStatus(2, 3), "partial");
+  // Five old successful checkpoints do not turn three newly failed attempts into partial.
+  assert.equal(knowledgeBuildAttemptStatus(3, 3), "failed");
 });

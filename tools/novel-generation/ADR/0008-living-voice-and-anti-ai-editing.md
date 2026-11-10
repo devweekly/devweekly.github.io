@@ -1,4 +1,4 @@
-# ADR 0004：Living Voice、Anti-AI 编辑与读者体验
+# ADR 0008：Living Voice、Anti-AI 编辑与读者体验
 
 - 状态：Accepted
 - 日期：2026-11-06

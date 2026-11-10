@@ -309,3 +309,14 @@ Story Unit 先建立完整故事的因果骨架和结局方向，再按叙事需
 - Workbench 读取 source-chapters 时，若派生 `chapter-index.json` 缺失、损坏或为空，而 canonical `original.txt` 存在，则自动执行离线目录生成器；并发请求共享单一构建任务，损坏文件保留诊断副本。目录生成器按 `NOVEL_WORLD_ID` 写入对应 world，不能将语料 ID 固定在生成脚本中。
 - Universe staging 内重建的 Library provenance 必须指向 rename 后的最终路径 `worlds/<universeId>/original.txt`，禁止把 `.staging-<id>` 写入持久索引。
 - Novel DB schema v9 为旧版 `novel_chapters` 补齐稳定章节目录和来源字段。若数据库文件不存在，可在 staging 中从 bounded canon 重建；若数据库文件存在但正式章节行全部缺失，必须失败关闭并要求对源项目执行 `index-story`。
+
+
+### 逐章评估一致性与恢复事务补充（2026-11-10）
+
+- `complete_story` 与 `fixed_batch` 不再采用两套章节后处理。每章通过正文、终审和 Story State 提交门禁后，均调用同一故事进展评估：滚动重规划 Story Spine、记录有证据的人物弧光、更新累计故事事实/因果摘要，并判断核心冲突是否自然收束。
+- 固定批次的章节数只控制本次执行范围，不代表故事完成；但固定批次也不能跳过故事进展评估。若评估确认自然收束，完整故事单元可以提前结束；若连续章节没有可验证的实质推进，则进入 stalled。
+- 停滞判断不再比较 `nextDirection` 字符串是否相同。评估必须提供本章正文中的连续原文 `progressEvidence`，并明确 `meaningfulProgress`；证据无法在正文中定位时按无实质推进处理。
+- Story Unit 保存累计故事事实与因果摘要，后续评估以此前摘要、最近章节和已提交 Story State 为依据增量更新，减少长篇执行只依赖最近章节的风险。摘要是连续性记忆，不是剧情合同；文学性和正文已发生事实优先。
+- Story Unit 评估提交和 Story Execution 任务事件属于两个持久化文件，无法做跨文件原子事务。提交顺序固定为先保存 Story Unit 的 `lastAssessedChapterId`、`idleChapterCount` 与评估结果，再保存任务事件；恢复时若发现 Story Unit 已评估该检查点，则从其权威字段幂等补齐任务状态，避免重复评估或漏掉下一步方向。
+- 章节状态快照缺失、回滚失败或无法证明回滚成功时，必须保留 `currentRunId`，并停止自动续写。不得清除恢复指针后把不确定状态当作安全检查点。
+- 确定性 Worker 集成测试覆盖 A→B→A 多单元隔离、多章固定批次逐章评估、完整故事自然收束，以及回滚快照损坏时保留 `currentRunId`。这些测试替代模型调用，不代表真实模型的文学质量验收；真实模型长篇端到端仍需在隔离故事宇宙执行。

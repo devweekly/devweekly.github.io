@@ -16,6 +16,8 @@ import {
   WORLD_SITUATION_MAX_CHARS,
   WORLD_SITUATION_NAME_HIT_SCORE,
   WORLD_SITUATION_PARTICIPANT_BONUS,
+  RECENT_EVENT_CONTEXT_LIMIT,
+  RECENT_EVENT_CONTEXT_MAX_CHARS,
   WORLD_SITUATION_THREAD_LIMIT,
   WORLD_SITUATION_THREAD_LINK_BONUS
 } from "./constants.js";
@@ -52,6 +54,45 @@ function relevance(query: string, values: string[]): number {
 
 function strings(values: string[] | undefined, limit: number): string {
   return (values ?? []).filter(Boolean).slice(0, limit).join("；");
+}
+
+/**
+ * A compact chronological reminder for planners. This is deliberately advisory:
+ * repeated events are discouraged, but meaningful callbacks and reinterpretations
+ * remain valid narrative choices.
+ */
+export function buildRecentEventContinuityContext(
+  state: StoryState,
+  limit = RECENT_EVENT_CONTEXT_LIMIT,
+  maxChars = RECENT_EVENT_CONTEXT_MAX_CHARS
+): string {
+  const count = Math.max(0, Math.min(RECENT_EVENT_CONTEXT_LIMIT, Math.floor(limit)));
+  const budget = Math.max(0, Math.min(RECENT_EVENT_CONTEXT_MAX_CHARS, Math.floor(maxChars)));
+  if (!count || !budget || !state.events.length) return "";
+  const recent = state.events.slice(-count);
+  const eventLines = recent.map(event => {
+    const details = [
+      event.position,
+      event.summary,
+      event.consequences.length ? "后果：" + strings(event.consequences, 2) : ""
+    ].filter(Boolean);
+    return ("- " + details.join("；")).slice(0, 140);
+  });
+  const guidance = [
+    "规划时先对照这些已发生事件，避免只换人物、地点或措辞，却再次安排相同的发现、解释、冲突和解决过程。",
+    "旧事件可以再次产生作用，但应带来新的信息、意义、代价、关系变化或局势后果；揭示旧误解、改变人物对往事的理解、让旧选择产生新后果，都属于有效呼应。",
+    "不要为了去重而禁止伏笔回响、冲突升级或人物反复面对同一问题；也不要求每章必须引入新事件。"
+  ];
+  const rendered = [
+    "## 重复情节与有效呼应",
+    ...guidance,
+    "## 最近已发生的事件（按 Story State 记录顺序）",
+    ...eventLines
+  ].join("\n");
+  if (rendered.length <= budget) return rendered;
+  const suffix = "\n（近期事件摘要已按预算截断。）";
+  if (budget <= suffix.length) return rendered.slice(0, budget);
+  return rendered.slice(0, budget - suffix.length) + suffix;
 }
 
 function renderCharacter(character: Character): string {

@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { isStoryUnitNaturallyComplete, validateStoryUnit } from "../src/story-unit.js";
+import { hasVerifiableStoryProgress, isStoryUnitNaturallyComplete, mergeStorySpinePreservingCompleted, validateStoryUnit } from "../src/story-unit.js";
 
 const valid = {
   schemaVersion: 1, worldId: "world-a", updatedAt: "2026-11-08T00:00:00.000Z",
@@ -44,11 +44,41 @@ test("natural completion requires story closure and no unrealized major beats", 
   const assessment = {
     coreConflictResolved: true, endingFeelsNatural: true, confidence: "high" as const,
     unresolvedCoreThreads: [], unrealizedMajorBeats: [], remainingStoryWork: [],
-    nextDirection: "收束余韵", rationale: "核心冲突已解决，结尾自然。"
+    nextDirection: "收束余韵", rationale: "核心冲突已解决，结尾自然。", meaningfulProgress: false, progressEvidence: "", cumulativeStorySummary: ""
   };
   assert.equal(isStoryUnitNaturallyComplete(assessment), true);
   assert.equal(isStoryUnitNaturallyComplete({ ...assessment, unrealizedMajorBeats: ["高潮尚未发生"] }), false);
   assert.equal(isStoryUnitNaturallyComplete({ ...assessment, confidence: "medium" }), false);
   assert.equal(isStoryUnitNaturallyComplete({ ...assessment, unresolvedCoreThreads: ["核心人物尚未作出选择"] }), false);
   assert.equal(isStoryUnitNaturallyComplete({ ...assessment, remainingStoryWork: ["还需要写出人物选择带来的后果"] }), false);
+});
+
+
+test("stall detection requires verifiable narrative progress rather than direction-string changes", () => {
+  const assessment = {
+    coreConflictResolved: false, endingFeelsNatural: false, confidence: "medium" as const,
+    unresolvedCoreThreads: ["核心冲突"], unrealizedMajorBeats: ["高潮"], remainingStoryWork: ["继续推进"],
+    nextDirection: "继续推进", rationale: "局面变化", meaningfulProgress: true,
+    progressEvidence: "沈砚拔刀", cumulativeStorySummary: "沈砚作出选择。"
+  };
+  assert.equal(hasVerifiableStoryProgress(assessment, "沈砚拔刀，拦住了船帮。"), true);
+  assert.equal(hasVerifiableStoryProgress(assessment, "沈砚仍站在原地。"), false);
+  assert.equal(hasVerifiableStoryProgress({ ...assessment, meaningfulProgress: false }, "沈砚拔刀"), false);
+  assert.equal(hasVerifiableStoryProgress({ ...assessment, progressEvidence: "泛泛的总结" }, "沈砚拔刀"), false);
+});
+
+
+test("rolling Story Spine replanning never drops or reopens completed beats", () => {
+  const unit = validateStoryUnit(valid, "world-a");
+  const previous = unit.storySpine.map((beat, index) => ({ ...beat, status: index < 2 ? "completed" as const : beat.status }));
+  const proposed = [
+    { ...previous[1]!, status: "planned" as const },
+    previous[2]!,
+    previous[3]!,
+    { title: "新的余韵", function: "留下后果", causalChange: "人物关系发生变化", involvedCharacters: [], possibleArcs: [], status: "planned" as const }
+  ];
+  const merged = mergeStorySpinePreservingCompleted(previous, proposed);
+  assert.equal(merged[0]?.title, previous[0]?.title);
+  assert.equal(merged.find(beat => beat.title === previous[1]?.title)?.status, "completed");
+  assert.equal(merged.find(beat => beat.title === "新的余韵")?.status, "planned");
 });

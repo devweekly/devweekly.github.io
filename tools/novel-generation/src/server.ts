@@ -15,7 +15,7 @@ import { readStoryAnalysis, listNovelCharacters, countNovelCharacters, readNovel
 import {
   CHARACTER_LIST_MAX_LIMIT, CHARACTER_LIST_DEFAULT_LIMIT, DASHBOARD_PLAN_VERSIONS_LIMIT, DASHBOARD_RECENT_RUNS_LIMIT,
   STORY_ANALYSIS_QUERY_CHARACTERS,
-  WORKBENCH_BODY_LIMIT
+  WORKBENCH_BODY_LIMIT, KNOWLEDGE_BUILD_IDLE_TIMEOUT_MS, CHILD_PROCESS_KILL_GRACE_MS
 } from "./constants.js";
 import { buildStoryAnalysisContext } from "./story-analysis-context.js";
 import { alignCanonChapterGroups, joinCanonChunkText, selectCanonSourceChunks, splitCanonLines, type CanonChunk } from "./canon-chapters.js";
@@ -30,10 +30,11 @@ import { importBoundedStoryAnalysisSnapshot, restrictKnowledgeDatabaseToEntry } 
 import { importBoundedStoryAnalysisFromBatchCache } from "./story-analysis.js";
 import { resolveWorldLibraryDir } from "./universe-library.js";
 import { copyOriginalCanonToUniverse, ensureBoundedUniverseCanonAssets, resolveOriginalCanonPath, truncateCanonAtLine } from "./canon-source.js";
-import { assessStoryUnitProgress, generateStoryUnit, isStoryUnitNaturallyComplete, validateStoryUnit } from "./story-unit.js";
+import { assessStoryUnitProgress, generateStoryUnit, hasVerifiableStoryProgress, isStoryUnitNaturallyComplete, mergeStorySpinePreservingCompleted, validateStoryUnit } from "./story-unit.js";
 import { archiveStoredStoryUnitVersion, createStoredStoryUnit, getStoredStoryUnit, getStoredStoryUnitVersion, listStoredStoryUnitVersions, listStoredStoryUnits, saveStoredStoryUnit } from "./story-unit-store.js";
 import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, mergeStoryExecutionControlFlags, storyRunStateWasRolledBack, type StoryExecution } from "./story-execution.js";
-import { canCancelStoryExecution, reusableKnowledgeBuildStepNames, shouldCancelStoryExecutionImmediately } from "./pipeline-state.js";
+import { canCancelStoryExecution, knowledgeBuildAttemptStatus, reusableKnowledgeBuildStepNames, shouldCancelStoryExecutionImmediately } from "./pipeline-state.js";
+import { isWritingKnowledgeReady } from "./pipeline-readiness.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
 // noUncheckedIndexedAccess 放宽成 string | undefined。
@@ -178,16 +179,10 @@ async function readKnowledgeBuild(id: string): Promise<KnowledgeBuildState | nul
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
 }
 
-const WRITING_READINESS_STEPS: KnowledgeBuildStep[] = [
-  "style-profile", "character-profiles", "character-states", "as-of-dossier"
-];
-
 /** Start or resume required knowledge preparation without holding the HTTP request open. */
 async function ensureWritingKnowledgeBuildStarted(worldId: string): Promise<void> {
   const state = await readKnowledgeBuild(worldId);
-  const ready = Boolean(state && WRITING_READINESS_STEPS.every(name =>
-    state.steps.some(step => step.name === name && (step.status === "completed" || step.status === "skipped"))
-  ));
+  const ready = Boolean(state && isWritingKnowledgeReady(state.steps));
   if (!ready && !knowledgeBuilds.has(worldId)) await startKnowledgeBuild(worldId);
 }
 
@@ -232,13 +227,14 @@ async function runKnowledgeBuildStep(
     const child = spawn(process.execPath, ["--disable-warning=ExperimentalWarning", ...cliArgs], {
       cwd: process.cwd(), env: process.env, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32"
     });
-    let output = "", error = "", settled = false, lastCurrent = 0;
+    let output = "", error = "", settled = false, lastCurrent = 0, timedOut = false;
+    let idleTimer: NodeJS.Timeout | undefined, forceKillTimer: NodeJS.Timeout | undefined;
+    const clearTimers = () => { if (idleTimer) clearTimeout(idleTimer); if (forceKillTimer) clearTimeout(forceKillTimer); };
     const finish = (result: { exitCode: number | null; output: string; error: string }) => {
       if (settled) return;
-      settled = true; signal?.removeEventListener("abort", abort); resolve(result);
+      settled = true; clearTimers(); signal?.removeEventListener("abort", abort); resolve(result);
     };
-    let forceKillTimer: NodeJS.Timeout | undefined;
-    const abort = () => {
+    const terminate = () => {
       if (child.pid && process.platform !== "win32") {
         try { process.kill(-child.pid, "SIGTERM"); } catch { child.kill("SIGTERM"); }
       } else child.kill("SIGTERM");
@@ -247,20 +243,28 @@ async function runKnowledgeBuildStep(
         if (child.pid && process.platform !== "win32") {
           try { process.kill(-child.pid, "SIGKILL"); } catch { child.kill("SIGKILL"); }
         } else child.kill("SIGKILL");
-      }, 5000);
+      }, CHILD_PROCESS_KILL_GRACE_MS);
     };
-    child.once("close", () => { if (forceKillTimer) clearTimeout(forceKillTimer); });
+    const resetIdleTimer = () => {
+      if (idleTimer) clearTimeout(idleTimer);
+      idleTimer = setTimeout(() => {
+        timedOut = true;
+        error += "\n知识构建步骤超过 " + Math.round(KNOWLEDGE_BUILD_IDLE_TIMEOUT_MS / 60000) + " 分钟没有输出，已终止子进程组。";
+        terminate();
+      }, KNOWLEDGE_BUILD_IDLE_TIMEOUT_MS);
+    };
+    const abort = () => { if (idleTimer) clearTimeout(idleTimer); terminate(); };
     signal?.addEventListener("abort", abort, { once: true });
-    if (signal?.aborted) abort();
+    if (signal?.aborted) abort(); else resetIdleTimer();
     child.stdout.setEncoding("utf8").on("data", chunk => {
-      output += chunk;
+      resetIdleTimer(); output += chunk;
       if (!onProgress) return;
       const progress = parseBatchProgress(output.slice(-4096));
       if (progress && progress.current !== lastCurrent) { lastCurrent = progress.current; onProgress(progress); }
     });
-    child.stderr.setEncoding("utf8").on("data", chunk => { error += chunk; });
+    child.stderr.setEncoding("utf8").on("data", chunk => { resetIdleTimer(); error += chunk; });
     child.on("error", cause => finish({ exitCode: null, output, error: error + cause.message }));
-    child.on("close", code => finish({ exitCode: code, output, error }));
+    child.on("close", code => finish({ exitCode: timedOut ? null : code, output, error }));
   });
 }
 async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState> {
@@ -283,7 +287,7 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
       steps: (previousState?.steps ?? []).filter(step => reusableSteps.has(step.name)) };
     await writeKnowledgeBuild(state);
     void (async () => {
-      let failed = 0;
+      let failed = 0, attempted = 0;
       state.status = "running";
       const universe = await readUniverse(worldId);
       let existingAnalysis = readStoryAnalysis(worldDir(worldId), worldId) as (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined;
@@ -315,6 +319,7 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
         state.currentStep = step.name; state.steps.push(record); state.updatedAt = new Date().toISOString();
         delete state.progress;
         await writeKnowledgeBuild(state);
+        attempted++;
         let progressWrite: Promise<unknown> = Promise.resolve();
         const result = await runKnowledgeBuildStep(worldId, step.command, progress => {
           state.progress = progress;
@@ -341,7 +346,7 @@ async function startKnowledgeBuild(worldId: string): Promise<KnowledgeBuildState
         state.updatedAt = new Date().toISOString();
         await writeKnowledgeBuild(state);
       }
-      state.status = controller.signal.aborted ? "cancelled" : failed === 0 ? "completed" : failed === state.steps.length ? "failed" : "partial";
+      state.status = controller.signal.aborted ? "cancelled" : knowledgeBuildAttemptStatus(failed, attempted);
       state.completedAt = new Date().toISOString(); state.updatedAt = state.completedAt;
       delete state.currentStep; delete state.progress;
       await writeKnowledgeBuild(state);
@@ -1421,6 +1426,22 @@ const activeStoryExecutions = new Map<string, Promise<void>>();
 const storyExecutionControllers = new Map<string, AbortController>();
 const storyExecutionReservations = new Set<string>();
 const chapterGenerationReservations = new Set<string>();
+async function findUnresolvedStoryRecovery(worldId: string): Promise<{task?: StoryExecution; run?: WorkbenchRun} | undefined> {
+  const tasks = await listStoryExecutions(worldId);
+  const task = tasks.find(item => Boolean(item.currentRunId));
+  if (task) return { task };
+  const runs = await listRuns(worldId);
+  const run = runs.find(item => item.kind === "chapter" && item.status === "failed" && /(状态回滚失败|state rollback failed|rollback failed)/i.test(item.error ?? ""));
+  return run ? { run } : undefined;
+}
+function unresolvedStoryRecoveryResponse(recovery: {task?: StoryExecution; run?: WorkbenchRun}): {error: string; execution?: StoryExecution; run?: WorkbenchRun} {
+  return {
+    error: "检测到上一次章节的 Story State 回滚尚未得到确认。为避免在不确定的正史状态上继续写作，已阻止启动新任务；请先恢复原任务或核对该 Run 的事务快照与 Story State。",
+    ...(recovery.task ? { execution: recovery.task } : {}),
+    ...(recovery.run ? { run: recovery.run } : {})
+  };
+}
+
 function storyExecutionUnitPath(worldId: string, storyUnitId?: string): string {
   return storyUnitId
     ? path.join(worldDir(worldId), ".story-units", recordId(storyUnitId) + ".json")
@@ -1566,9 +1587,13 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
     await createStoryStateSnapshot(worldId, storyUnitId, runId);
     await onRunStarted?.(run);
   } catch (error) {
-    await restoreStoryStateSnapshot(worldId, run).catch(() => false);
-    await saveRun({ ...run, status: "failed", updatedAt: new Date().toISOString(), error: error instanceof Error ? error.message : String(error) });
-    throw error;
+    let rollbackError = "", restored = false;
+    try { restored = await restoreStoryStateSnapshot(worldId, run); }
+    catch (cause) { rollbackError = cause instanceof Error ? cause.message : String(cause); }
+    const message = (error instanceof Error ? error.message : String(error)) +
+      (rollbackError ? "；状态回滚失败：" + rollbackError : restored ? "；已回滚到章节开始前的 Story State 快照。" : "；章节子进程尚未启动，Story State 未发生修改。");
+    await saveRun({ ...run, status: "failed", updatedAt: new Date().toISOString(), error: message });
+    throw new Error(message);
   }
   const mode = previousChapterPath ? "continuation" : "derivative";
   const args = [
@@ -1624,8 +1649,10 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
   const completed = result.code === 0 && finalChapterExists && qualityPassed && stateCommitted;
   let rollbackError = "";
   if (!completed) {
-    try { await restoreStoryStateSnapshot(worldId, run); }
-    catch (error) { rollbackError = error instanceof Error ? error.message : String(error); }
+    try {
+      const restored = await restoreStoryStateSnapshot(worldId, run);
+      if (!restored) throw new Error("未找到章节开始前的事务快照，无法证明 Story State 已恢复。");
+    } catch (error) { rollbackError = error instanceof Error ? error.message : String(error); }
   }
   await Promise.all([
     writeFile(path.join(outputDir, "process.stdout.log"), result.output, "utf8"),
@@ -1643,6 +1670,13 @@ async function executeStoryUnitChapter(worldId: string, previousChapterPath: str
 }
 
 
+let storyProgressAssessor: typeof assessStoryUnitProgress = assessStoryUnitProgress;
+
+/** Dependency seam for deterministic Worker integration tests; production uses the real model assessor. */
+export function setStoryProgressAssessorForTests(assessor: typeof assessStoryUnitProgress): void {
+  storyProgressAssessor = assessor;
+}
+
 async function assessStoryExecutionCheckpoint(
   worldId: string, taskInput: StoryExecution, unitInput: Awaited<ReturnType<typeof generateStoryUnit>>,
   checkpoint: StoryExecution["completedChapters"][number]
@@ -1656,7 +1690,7 @@ async function assessStoryExecutionCheckpoint(
   const chapterText = await readFile(chapterPath, "utf8");
   const chapterTitle = chapterText.split("\n").find(line => /^#\s+/.test(line))?.replace(/^#\s+/,"").trim() || "章节";
   const state = await loadStoryState(taskInput.storyUnitId ? path.join(dir, ".story-units", taskInput.storyUnitId, "story-state.json") : path.join(dir, "story-state.json"), worldId);
-  const assessment = await assessStoryUnitProgress({
+  const assessment = await storyProgressAssessor({
     unit: unitInput, chapterText, chapterTitle, completedChapterCount: taskInput.completedChapters.length,
     storyState: state, model: taskInput.model
   });
@@ -1665,20 +1699,14 @@ async function assessStoryExecutionCheckpoint(
   let task: StoryExecution = latestTask
     ? { ...taskInput, pauseRequested: latestTask.pauseRequested, cancelRequested: latestTask.cancelRequested }
     : taskInput;
+  const naturallyComplete = isStoryUnitNaturallyComplete(assessment);
+  const idleChapterCount = hasVerifiableStoryProgress(assessment, chapterText) ? 0 : task.idleChapterCount + 1;
   task = appendStoryExecutionEvent({
     ...task, currentRunId: undefined, lastAssessment: assessment.rationale, nextDirection: assessment.nextDirection,
-    idleChapterCount: assessment.nextDirection === unitInput.execution.nextDirection &&
-      assessment.unresolvedCoreThreads.join("|") === unitInput.execution.lastUnresolvedCoreThreads.join("|")
-      ? task.idleChapterCount + 1 : 0,
+    idleChapterCount,
     updatedAt: assessedAt
-  }, { at: assessedAt, type: "assessment", message: assessment.rationale.slice(0, 1200) });
-  const naturallyComplete = isStoryUnitNaturallyComplete(assessment);
-  const revisedSpine = assessment.revisedStorySpine.length >= 4
-    ? assessment.revisedStorySpine.map(beat => {
-        const previousBeat = unitInput.storySpine.find(item => item.title === beat.title);
-        return previousBeat?.status === "completed" ? { ...beat, status: "completed" as const } : beat;
-      })
-    : unitInput.storySpine;
+  }, { at: assessedAt, type: "assessment", message: assessment.rationale.slice(0, 1200), runId: checkpoint.runId });
+  const revisedSpine = mergeStorySpinePreservingCompleted(unitInput.storySpine, assessment.revisedStorySpine);
   const characterArcHistory = [
     ...(unitInput.execution.characterArcHistory ?? []),
     ...assessment.characterArcUpdates.filter(update => update.observedChange.trim()).map(update => ({
@@ -1695,6 +1723,8 @@ async function assessStoryExecutionCheckpoint(
       lastAssessedChapterId: checkpoint.runId,
       lastUnresolvedCoreThreads: assessment.unresolvedCoreThreads,
       lastAssessment: assessment.rationale, nextDirection: assessment.nextDirection,
+      idleChapterCount,
+      cumulativeStorySummary: assessment.cumulativeStorySummary.trim() || unitInput.execution.cumulativeStorySummary,
       characterArcHistory,
       assessedAt, ...(naturallyComplete ? {completedAt: assessedAt} : {})
     }
@@ -1712,6 +1742,44 @@ async function assessStoryExecutionCheckpoint(
   }
   await saveStoryExecution(task);
   return {task,unit,terminal:false};
+}
+
+/**
+ * Recover the narrow crash window after a chapter run completed but before its
+ * story-execution checkpoint was persisted. currentRunId is the durable pointer
+ * to that run; never infer ownership from the globally newest chapter.
+ */
+async function ensureStoryExecutionCheckpointAssessed(
+  worldId: string, taskInput: StoryExecution, unitInput: Awaited<ReturnType<typeof generateStoryUnit>>,
+  checkpoint: StoryExecution["completedChapters"][number]
+): Promise<{task:StoryExecution;unit:Awaited<ReturnType<typeof generateStoryUnit>>;terminal:boolean}> {
+  if (unitInput.execution.lastAssessedChapterId !== checkpoint.runId) {
+    return assessStoryExecutionCheckpoint(worldId, taskInput, unitInput, checkpoint);
+  }
+  const assessedAt = unitInput.execution.assessedAt ?? new Date().toISOString();
+  const hasEvent = taskInput.events.some(event => event.type === "assessment" && event.runId === checkpoint.runId);
+  let task: StoryExecution = {
+    ...taskInput,
+    currentRunId: undefined,
+    lastAssessment: unitInput.execution.lastAssessment ?? taskInput.lastAssessment,
+    nextDirection: unitInput.execution.nextDirection ?? taskInput.nextDirection,
+    idleChapterCount: unitInput.execution.idleChapterCount ?? taskInput.idleChapterCount,
+    updatedAt: assessedAt
+  };
+  if (!hasEvent) {
+    task = appendStoryExecutionEvent(task, { at: assessedAt, type: "assessment", message: (unitInput.execution.lastAssessment ?? "已恢复已提交的章节进展评估").slice(0, 1200), runId: checkpoint.runId });
+  }
+  const naturallyComplete = unitInput.execution.status === "completed";
+  const stalled = !naturallyComplete && task.idleChapterCount >= 4;
+  if (naturallyComplete) {
+    task = appendStoryExecutionEvent({ ...task, status: "completed", completedAt: unitInput.execution.completedAt ?? assessedAt, updatedAt: assessedAt, nextDirection: "故事已自然收束。" },
+      { at: assessedAt, type: "completed", message: "恢复已提交的自然收束评估" });
+  } else if (stalled) {
+    task = appendStoryExecutionEvent({ ...task, status: "stalled", error: "连续章节未推动核心冲突，任务已暂停而非误判为完成。请修订 Story Unit 的下一步方向后恢复。", updatedAt: assessedAt },
+      { at: assessedAt, type: "stalled", message: "恢复已提交的停滞判断" });
+  }
+  if (!hasEvent || naturallyComplete || stalled) await saveStoryExecution(task);
+  return { task, unit: unitInput, terminal: naturallyComplete || stalled };
 }
 
 /**
@@ -1772,10 +1840,6 @@ async function executeStoryUnitTask(initial: StoryExecution, signal?: AbortSigna
     const dir = worldDir(worldId);
     let unit = await loadExecutionStoryUnit(worldId, task.storyUnitId);
     unit = await syncStoryUnitCheckpointIds(worldId, task, unit) ?? unit;
-    if (task.mode === "complete_story" && unit.execution.status === "completed") {
-      task = { ...task, status: "completed", completedAt: new Date().toISOString(), updatedAt: new Date().toISOString(), nextDirection: "故事已自然收束。" };
-      await saveStoryExecution(task); return;
-    }
     const universe = await readUniverse(worldId);
     if (universe?.archivedAt) throw new Error("当前故事宇宙已归档。");
     if (universe) await ensureUniverseStoryAnalysis(worldId, universe);
@@ -1797,10 +1861,16 @@ async function executeStoryUnitTask(initial: StoryExecution, signal?: AbortSigna
     unit = { ...unit, execution: { ...unit.execution, status: "in_progress" } };
     await saveStoryExecution(task); await saveExecutionStoryUnit(unit);
     const pendingAssessment = task.completedChapters.at(-1);
-    if (pendingAssessment && unit.execution.lastAssessedChapterId !== pendingAssessment.runId) {
-      const recoveredAssessment = await assessStoryExecutionCheckpoint(worldId, task, unit, pendingAssessment);
+    if (pendingAssessment) {
+      const recoveredAssessment = await ensureStoryExecutionCheckpointAssessed(worldId, task, unit, pendingAssessment);
       task = recoveredAssessment.task; unit = recoveredAssessment.unit;
       if (recoveredAssessment.terminal) return;
+    }
+    if (task.mode === "complete_story" && unit.execution.status === "completed") {
+      task = appendStoryExecutionEvent({ ...task, status: "completed", completedAt: unit.execution.completedAt ?? new Date().toISOString(),
+        updatedAt: new Date().toISOString(), lastAssessment: unit.execution.lastAssessment ?? task.lastAssessment,
+        nextDirection: "故事已自然收束。" }, { at: new Date().toISOString(), type: "completed", message: "故事单元已在前次评估中自然收束" });
+      await saveStoryExecution(task); return;
     }
     while (true) {
       task = (await getStoryExecution(worldId, task.id)) ?? task;
@@ -1862,7 +1932,8 @@ async function executeFixedChapterBatch(initial: StoryExecution, signal?: AbortS
   const worldId = task.worldId;
   try {
     task = await reconcileStoryExecutionCurrentRun(task);
-    await syncStoryUnitCheckpointIds(worldId, task);
+    let unit = await loadExecutionStoryUnit(worldId, task.storyUnitId);
+    unit = await syncStoryUnitCheckpointIds(worldId, task, unit) ?? unit;
     const dir = worldDir(worldId);
     const universe = await readUniverse(worldId);
     if (universe?.archivedAt) throw new Error("当前故事宇宙已归档。");
@@ -1883,6 +1954,12 @@ async function executeFixedChapterBatch(initial: StoryExecution, signal?: AbortS
     task = mergeStoryExecutionControlFlags(task, await getStoryExecution(worldId, task.id));
     task = { ...task, status: "running", startedAt: task.startedAt ?? new Date().toISOString(), updatedAt: new Date().toISOString(), resumeCount: task.resumeCount + (task.startedAt ? 1 : 0), error: undefined };
     await saveStoryExecution(task);
+    const pendingAssessment = task.completedChapters.at(-1);
+    if (pendingAssessment) {
+      const recoveredAssessment = await ensureStoryExecutionCheckpointAssessed(worldId, task, unit, pendingAssessment);
+      task = recoveredAssessment.task; unit = recoveredAssessment.unit;
+      if (recoveredAssessment.terminal) return;
+    }
     // A crash may happen after the final chapter run completes but before the
     // batch task is marked completed. Reconciliation above restores that checkpoint.
     if (task.completedChapters.length >= (task.targetChapterCount ?? 1)) {
@@ -1921,7 +1998,7 @@ async function executeFixedChapterBatch(initial: StoryExecution, signal?: AbortS
           await saveStoryExecution(task); return;
         }
         const failedAt = new Date().toISOString();
-        task = appendStoryExecutionEvent({ ...task, status: "failed", error: "第 " + chapterNumber + " 章未通过终审或 Story State 提交门禁。可修复后从已完成检查点恢复。" + (chapterRun.error ? " " + chapterRun.error : ""), updatedAt: failedAt, currentRunId: undefined }, { at: failedAt, type: "failed", message: "第 " + chapterNumber + " 章未通过终审或状态提交门禁" });
+        task = appendStoryExecutionEvent({ ...task, status: "failed", error: "第 " + chapterNumber + " 章未通过终审或 Story State 提交门禁。可修复后从已完成检查点恢复。" + (chapterRun.error ? " " + chapterRun.error : ""), updatedAt: failedAt, currentRunId: chapterRun.error?.includes("状态回滚失败") ? chapterRun.id : undefined }, { at: failedAt, type: "failed", message: "第 " + chapterNumber + " 章未通过终审或状态提交门禁" });
         await saveStoryExecution(task); return;
       }
       previousChapterPath = chapterRun.chapterPath;
@@ -1930,12 +2007,20 @@ async function executeFixedChapterBatch(initial: StoryExecution, signal?: AbortS
       if (latestTask) task = { ...task, pauseRequested: latestTask.pauseRequested, cancelRequested: latestTask.cancelRequested };
       task = appendStoryExecutionEvent({ ...task, completedChapters: [...task.completedChapters, {runId:chapterRun.id,chapterPath:chapterRun.chapterPath,completedAt}], currentRunId: undefined, updatedAt: completedAt }, { at: completedAt, type: "chapter_completed", message: "批量章节通过终审并提交 Story State", runId: chapterRun.id });
       await saveStoryExecution(task);
-      try {
-        const unit = await loadExecutionStoryUnit(worldId, task.storyUnitId);
-        await saveExecutionStoryUnit({ ...unit, updatedAt: completedAt, execution: { ...unit.execution, status: unit.execution.status === "completed" ? "completed" : "in_progress", completedChapterIds: unit.execution.completedChapterIds.includes(chapterRun.id) ? unit.execution.completedChapterIds : [...unit.execution.completedChapterIds, chapterRun.id] } });
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
-      }
+      unit = {
+        ...unit, updatedAt: completedAt,
+        execution: {
+          ...unit.execution, status: "in_progress",
+          completedChapterIds: unit.execution.completedChapterIds.includes(chapterRun.id)
+            ? unit.execution.completedChapterIds : [...unit.execution.completedChapterIds, chapterRun.id]
+        }
+      };
+      await saveExecutionStoryUnit(unit);
+      // Fixed-count execution limits only how many chapters this task runs.
+      // It must not skip the same narrative progress review used by complete_story.
+      const assessed = await ensureStoryExecutionCheckpointAssessed(worldId, task, unit, task.completedChapters.at(-1)!);
+      task = assessed.task; unit = assessed.unit;
+      if (assessed.terminal) return;
       if (task.completedChapters.length >= (task.targetChapterCount ?? 1)) {
         task = { ...task, status: "completed", completedAt, updatedAt: completedAt, nextDirection: "本次指定数量的连续章节已完成；不代表完整故事已经结束。" };
         await saveStoryExecution(task); return;
@@ -1943,7 +2028,7 @@ async function executeFixedChapterBatch(initial: StoryExecution, signal?: AbortS
       await saveStoryExecution(task);
     }
   } catch (error) {
-    task = appendStoryExecutionEvent({ ...task, status: "failed", error: error instanceof Error ? error.message : String(error), updatedAt: new Date().toISOString(), currentRunId: undefined }, { at: new Date().toISOString(), type: "failed", message: (error instanceof Error ? error.message : String(error)).slice(0, 1200) });
+    task = appendStoryExecutionEvent({ ...task, status: "failed", error: error instanceof Error ? error.message : String(error), updatedAt: new Date().toISOString() }, { at: new Date().toISOString(), type: "failed", message: (error instanceof Error ? error.message : String(error)).slice(0, 1200) });
     await saveStoryExecution(task).catch(() => undefined);
   }
 }
@@ -1986,6 +2071,8 @@ app.post("/api/worlds/:worldId/story-executions", async (req, res) => {
     const retrievalDir = await resolveWorldLibraryDir(id, path.resolve("worlds"));
     await readFile(path.join(retrievalDir, "index.json"), "utf8");
     if (unit.execution.status === "completed") return void res.status(409).json({ error: "当前故事单元已自然收束。若要创作新故事，请创建新的故事单元或复制一个新宇宙。" });
+    const unresolvedRecovery = await findUnresolvedStoryRecovery(id);
+    if (unresolvedRecovery) return void res.status(409).json(unresolvedStoryRecoveryResponse(unresolvedRecovery));
     const previousTasks = await listStoryExecutions(id);
     const latest = previousTasks.find(item => item.status === "running" || item.status === "queued" || item.status === "paused");
     if (latest) return void res.status(409).json({ error: "已有完整故事任务，请恢复或取消现有任务。", execution: latest });
@@ -1994,7 +2081,7 @@ app.post("/api/worlds/:worldId/story-executions", async (req, res) => {
       id: randomUUID(), worldId: id, ...(unit.id ? {storyUnitId: unit.id} : {}), storyUnitTitle: unit.title, mode: "complete_story", status: "queued", createdAt: now, updatedAt: now,
       completedChapters: [], events: [{ at: now, type: "created", message: "创建完整故事执行任务" }], brief: typeof req.body?.brief === "string" ? req.body.brief.trim().slice(0, 8000) : "",
       ...(typeof req.body?.model === "string" ? {model:req.body.model} : {}),
-      idleChapterCount: 0, pauseRequested: false, cancelRequested: false, resumeCount: 0
+      idleChapterCount: unit.execution.idleChapterCount, pauseRequested: false, cancelRequested: false, resumeCount: 0
     };
     await saveStoryExecution(task);
     startStoryUnitExecution(task);
@@ -2020,19 +2107,24 @@ app.post("/api/worlds/:worldId/chapter-batches", async (req, res) => {
     await readFile(path.join(worldDir(id), "world-bible.md"), "utf8");
     const retrievalDir = await resolveWorldLibraryDir(id, path.resolve("worlds"));
     await readFile(path.join(retrievalDir, "index.json"), "utf8");
+    const unresolvedRecovery = await findUnresolvedStoryRecovery(id);
+    if (unresolvedRecovery) return void res.status(409).json(unresolvedStoryRecoveryResponse(unresolvedRecovery));
     const previousTasks = await listStoryExecutions(id);
     const latest = previousTasks.find(item => ["running","queued","paused"].includes(item.status));
     if (latest) return void res.status(409).json({error:"已有长篇任务，请恢复或取消后再启动批量任务。",execution:latest});
     let title = "连续章节批次";
+    let initialIdleChapterCount = 0;
     if (requestedUnitId) {
       const unit = await loadExecutionStoryUnit(id, requestedUnitId);
       if (unit.execution.status === "completed") return void res.status(409).json({error:"当前完整故事已经自然收束，请创建新的故事单元后再继续生成。"});
       title = unit.title;
+      initialIdleChapterCount = unit.execution.idleChapterCount;
     } else {
       try {
         const unit = await loadExecutionStoryUnit(id);
         if (unit.execution.status === "completed") return void res.status(409).json({error:"当前完整故事已经自然收束，请创建新的故事单元后再继续生成。"});
         title = unit.title;
+        initialIdleChapterCount = unit.execution.idleChapterCount;
       } catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
     }
     const now = new Date().toISOString();
@@ -2041,7 +2133,7 @@ app.post("/api/worlds/:worldId/chapter-batches", async (req, res) => {
       status: "queued", createdAt: now, updatedAt: now, completedChapters: [], events: [{ at: now, type: "created", message: "创建连续章节批次任务" }],
       brief: typeof req.body?.brief === "string" ? req.body.brief.trim().slice(0,8000) : "",
       ...(typeof req.body?.model === "string" ? {model:req.body.model} : {}),
-      idleChapterCount: 0, pauseRequested: false, cancelRequested: false, resumeCount: 0
+      idleChapterCount: initialIdleChapterCount, pauseRequested: false, cancelRequested: false, resumeCount: 0
     };
     await saveStoryExecution(task); startStoryUnitExecution(task);
     res.status(202).json({execution:task});
@@ -2329,7 +2421,7 @@ app.post("/api/worlds/:worldId/knowledge-build", async (req, res) => {
       if (!universe) return void res.status(409).json({ error: "该入口用于独立故事宇宙；原文项目请使用现有分析命令。" });
       if (universe.archivedAt) return void res.status(409).json({ error: "已归档的故事宇宙不能启动知识构建，请先恢复。" });
       // Knowledge data lives in novel.db; chapter state commits live in story.db.
-      // They can run concurrently, so analysis completion is never a writing prerequisite.
+      // The API queues generation immediately; the CLI waits for mandatory knowledge steps before writing.
       res.status(202).json({ build: await startKnowledgeBuild(id) });
     });
   } catch (error) { sendError(res, error); }
@@ -2385,6 +2477,8 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
     chapterGenerationReservations.add(lockId);
     try {
     if (activeStoryExecutions.has(lockId) || storyExecutionReservations.has(lockId)) return void res.status(409).json({ error: "完整故事任务正在执行或启动，请暂停或取消后再单独生成章节。" });
+    const unresolvedRecovery = await findUnresolvedStoryRecovery(lockId);
+    if (unresolvedRecovery) return void res.status(409).json(unresolvedStoryRecoveryResponse(unresolvedRecovery));
     const pendingStoryTask = (await listStoryExecutions(lockId)).find(task => ["queued","running","paused"].includes(task.status));
     if (pendingStoryTask) return void res.status(409).json({ error: "当前完整故事任务尚未结束，请恢复或取消后再单独生成章节。", execution: pendingStoryTask });
     await serializeWorld(lockId, async () => {
@@ -2465,13 +2559,18 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
     child.on("error", error => {
       if (settled) return; settled = true;
       void (async () => {
-        await restoreStoryStateSnapshot(id, run).catch(() => false);
+        let rollbackError = "";
+        try {
+          const restored = await restoreStoryStateSnapshot(id, run);
+          if (!restored) throw new Error("未找到章节开始前的事务快照，无法证明 Story State 已恢复。");
+        } catch (cause) { rollbackError = cause instanceof Error ? cause.message : String(cause); }
+        const message = error.message + (rollbackError ? "；状态回滚失败：" + rollbackError : "");
         await Promise.all([
           writeFile(path.join(outputDir, "process.stdout.log"), output, "utf8"),
           writeFile(path.join(outputDir, "process.stderr.log"), errors + "\n" + error.stack, "utf8"),
-          writeFile(path.join(outputDir, "process-result.json"), JSON.stringify({ exitCode: null, error: error.message, completed: false }, null, 2) + "\n", "utf8")
+          writeFile(path.join(outputDir, "process-result.json"), JSON.stringify({ exitCode: null, error: message, completed: false, rollbackError: rollbackError || undefined }, null, 2) + "\n", "utf8")
         ]);
-        await saveRun({ ...run, status: "failed", error: error.message, updatedAt: new Date().toISOString() });
+        await saveRun({ ...run, status: "failed", error: message, updatedAt: new Date().toISOString() });
       })().catch(console.error);
     });
     child.on("close", code => {
@@ -2495,8 +2594,10 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
         const completed = code === 0 && finalChapterExists && qualityPassed && stateCommitted;
         let rollbackError = "";
         if (!completed) {
-          try { await restoreStoryStateSnapshot(id, run); }
-          catch (error) { rollbackError = error instanceof Error ? error.message : String(error); }
+          try {
+            const restored = await restoreStoryStateSnapshot(id, run);
+            if (!restored) throw new Error("未找到章节开始前的事务快照，无法证明 Story State 已恢复。");
+          } catch (error) { rollbackError = error instanceof Error ? error.message : String(error); }
         }
         const result = { exitCode: code, chapterPath: chapterPath ?? null, finalChapterExists, qualityPassed, stateCommitted, completed, rollbackError: rollbackError || undefined };
         await Promise.all([
@@ -2514,7 +2615,10 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
         if (completed || !rollbackError) await rm(storyStateSnapshotDir(id, runId), { recursive: true, force: true }).catch(() => undefined);
       })().catch(async error => {
         let rollbackError = "";
-        try { await restoreStoryStateSnapshot(id, run); } catch (cause) { rollbackError = cause instanceof Error ? cause.message : String(cause); }
+        try {
+          const restored = await restoreStoryStateSnapshot(id, run);
+          if (!restored) throw new Error("Missing transaction snapshot; Story State rollback cannot be verified.");
+        } catch (cause) { rollbackError = cause instanceof Error ? cause.message : String(cause); }
         await saveRun({ ...run, status: "failed", error: "Finalizing chapter run failed: " + String(error) + (rollbackError ? "; state rollback failed: " + rollbackError : ""), updatedAt: new Date().toISOString() });
       });
     });

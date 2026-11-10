@@ -190,7 +190,8 @@ CLI 命令（均经 `npm run dev --`）：
 - The existing plot/planner call performs any optional situation reasoning. Do not add a dedicated DM/WorldSimulation agent or another model call just to restate current state.
 - Distinguish recorded events from possible developments. Never persist planner speculation as Story State; only the final chapter state extractor may write facts.
 - Expand event-cause IDs and related plot-thread IDs into readable summaries/titles when building context. Preserve unknown references as-is instead of inventing relationships.
-- Story Plan participates in retrieval/context selection so long-term direction can surface relevant existing people, threads and foreshadowings. It remains a direction, not a chapter contract.
+- Both ordinary and long-chapter planning reuse `buildRecentEventContinuityContext`: inject a bounded recent-event digest and distinguish redundant repetition from meaningful callbacks. This is advisory prompt context, not a deterministic ban or an extra model call; callbacks that add information, reinterpretation, consequences or relationship changes remain valid.
+- Story Plan participates in retrieval/context selection so long-term direction can surface relevant existing people, threads and foreshadowings. The rolling Story Arc expands only the active/nearest unfinished milestone and necessary adjacent causal links; distant milestones stay high-level, never pre-expanded into a fixed chapter list. It remains a direction, not a chapter contract.
 - See `ACTION-PLAN.md` for the implemented scope.
 
 
@@ -203,12 +204,13 @@ CLI 命令（均经 `npm run dev --`）：
 - 编辑不得改变剧情事实、因果、人物决定、信息揭示、叙事视角、人物关系或场景顺序，不得新增剧情事实。编辑前后版本必须保留并经过最终硬伤审查。
 - Reader 体验评估是独立观察产物，不进入 blocker/major 门禁，不触发自动修复，不更新 Story State。
 - 角色推演沙盘是作者主动调用的工具；所有推演均为候选创作素材，不自动成为正史。
-- 详见 `ARCHITECTURE.md` 第 10 节与 `ADR/0004-living-voice-and-anti-ai-editing.md`。
+- 详见 `ARCHITECTURE.md` 第 10 节与 `ADR/0008-living-voice-and-anti-ai-editing.md`。
 
 
 ## Literary workflow implementation invariants
 
 - 普通章节与长章节的规划器和 Writer 必须注入 `CREATIVE_FREEDOM_RULES`，正文编辑继续注入 `LIVING_VOICE_RULES`。不是每个场景都必须推进主线、制造冲突、揭示信息或改变关系；不得因单场篇幅不足自动扩写。事实连续性是约束，蓝图不是逐项执行合同。
+- 创意发散阶段优先提出最多三个机制真正不同的方向（事件机制、人物选择、信息差或冲突来源不同）；有价值的方向不足时允许少于三个，不为数量凑点子。至少探索一个不沿最显然大纲路径发展的可能性，但必须符合人物知识、欲望、资源与处境。主编可组合、改造或全部否决。普通章节与长章节 Writer 都应把相关原文检索片段作为叙事方法参考，而非句子模板；避免重复解释、人物对白复述共有信息、对称总结和警句式收尾。文学 Patch 先检查全章累积问题，只做可定位且确实改善阅读体验的局部修改。
 - 常规流程不再执行整章 Anti-AI 诊断/改写/复核，改用保守局部 Patch；旧提示函数仅供兼容或专项实验，不得重新接回默认链路。
 - Patch 原始 JSON 与应用结果分别保存在 `05/06-literary-patches-raw.json`、`05/06-literary-patches-applied.json`；原始缓存文件不得被应用记录覆盖。
 - Reader 只能盲读最终正文，不得注入章节蓝图、人物档案、世界设定或创作任务；它只输出观察报告，不进入门禁、不更新 Story State。
@@ -220,7 +222,7 @@ CLI 命令（均经 `npm run dev --`）：
 ## Style Profile and regression workflow
 
 - `worlds/<world>/style-profile.md` 是正式写作的活动风格资料。CLI 必须在每次 `write` / `write-long` 时自动加载，并注入规划、正文、对白和叙事声音相关阶段；不得要求作者每章手工指定。
-- 可选的认可样本放在 `worlds/<world>/style-references/`，每次正式写作自动读取最多四个 Markdown/TXT 样本，作为风格回归观察的对照材料。
+- 可选的认可样本放在 `worlds/<world>/style-references/`，供 Style Regression 对照使用；不要把整份样本文件无差别塞进每次 Writer 上下文。正式写作中的原文场景参考优先复用当前任务的本地检索结果，先核实事实，也可观察相关片段的叙述距离、信息释放、动作/对白组织和场景节奏；不得复制原句或近义改写。
 - Style Regression 仅由 `style-regress` 专项触发，不进入普通章节和长章节默认链路。
 - 风格回归是只读诊断，不是写作门禁或自动修订指令；报告失败不得影响成稿、Reader 或 Story State 提交。
 - Story State 的 `foreshadowingUpdates` / `macguffinUpdates` / `relationshipUpdates` 是续写动态生命周期与关系变化日志，只能记录最终正文明确发生的变化并附逐字证据；按稳定 ID 幂等追加，不得将分析猜测写成事实。
@@ -237,7 +239,7 @@ CLI 命令（均经 `npm run dev --`）：
 - 没有真实认可参考样本时，Style Regression 不能判断与原著的距离，也不能得出“没有风格漂移”的结论。
 
 
-- Knowledge build is never a chapter-generation prerequisite. `novel.db` (analysis) and `story.db` (chapter state) are separate; do not reintroduce a whole-build lock on writing.
+- New story universes must complete the mandatory writing knowledge steps (`style-profile`, `character-profiles`, `character-states`, `as-of-dossier`) before either `write` or `write-long` starts model generation. The Workbench API queues the request immediately; the CLI waits in the child process. Optional `corpus-craft` and Vane indexing never block writing. Ordinary source worlds without `universe.json` do not need this gate. `novel.db` (analysis) and `story.db` (chapter state) remain separate stores.
 - Historical universe reuse must remain chapter-bounded: only reuse source Story Analysis records whose complete chapter provenance is at or before the branch entry; discard unbounded whole-book aggregates and future-touching records.
 - Legacy universes must backfill a missing bounded v6 Story Analysis from their `sourceWorldId` before the first chapter is launched; apply the same cutoff filter and never copy the source snapshot verbatim.
 
@@ -256,8 +258,8 @@ CLI 命令（均经 `npm run dev --`）：
 - `src/story-unit.ts` 定义并校验完整故事单元，`worlds/<world>/story-unit.json` 保存当前版本；CLI 普通章节与长章节将其作为方向性上下文注入。WorkBench 提供生成与查看入口。
 - `src/story-execution.ts` 持久化完整故事任务、逐章检查点与生命周期；服务重启将 running/queued 任务恢复为 paused，保留已通过终审并提交状态的章节。
 - Workbench 完整故事执行 API/界面支持启动、暂停、恢复、取消和进度查询。每章串行执行现有 CLI `write` pipeline，正文、质量终审、Story State 提交三项全部成功才记入检查点。
-- 每章后使用实际章节正文与已提交 Story State 评估核心冲突、自然结尾和未解决核心线；章节数量不参与完成判定。连续推进停滞时标记 stalled，不误报 completed。
-- 指定数量的连续章节已改为服务端持久化 fixed-batch 任务，逐章串行、逐章保存检查点，支持暂停/恢复/取消；数量没有 30 章上限。批量完成只表示本次指定数量完成，不表示完整故事自然收束。
+- 完整故事与固定数量批次共用逐章进展评估：每章通过终审和状态提交后，都必须重审 Story Spine、核心冲突、人物弧光，并更新累计故事事实/因果摘要。重规划必须保留已完成阶段，不得因模型改名或漏列而删除、重开已发生的因果节点。固定批次只限制本次执行章数，不得跳过故事评估；自然收束仍由完整故事条件判断。
+- 指定数量的连续章节已改为服务端持久化 fixed-batch 任务，逐章串行、逐章保存检查点，支持暂停/恢复/取消；数量没有 30 章上限。批量完成只表示本次指定数量完成，不表示完整故事自然收束。每章进展评估与 complete_story 完全一致。
 - 详细设计和验收标准见 `ADR/0006-fruit-story-unit-and-long-form-execution.md`。实现状态以代码为准，不能把 ADR 中的目标描述当作已实现功能。
 
 

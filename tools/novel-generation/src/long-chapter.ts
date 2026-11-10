@@ -2,7 +2,7 @@
 // 不复用 SDK session；场景之间靠落盘的原文结尾与事实清单显式交接，可逐场重跑。
 import { appendFile, mkdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { parseStoryStateUpdate, saveStoryState } from "./story-state.js";
+import { commitStoryStateAndArc, parseStoryStateUpdate } from "./story-state.js";
 
 import { runAgentText, resolveModelAttempts, type GenerationMode } from "./generate.js";
 import { readTaskProfiles, type StageKey } from "./task-profiles.js";
@@ -19,7 +19,7 @@ import {
   WORLD_SITUATION_FIELD_DEFAULT_LIMIT,
   WRITE_LONG_RETRIEVAL_LIMIT
 } from "./constants.js";
-import { buildWorldSituationContext } from "./world-situation.js";
+import { buildRecentEventContinuityContext, buildWorldSituationContext } from "./world-situation.js";
 import { CREATIVE_FREEDOM_RULES, LIVING_VOICE_RULES, literaryPatchPrompt, parseLiteraryPatchResult, applyLiteraryPatches, readerExperiencePrompt } from "./literary-edit.js";
 
 export interface LongChapterInput {
@@ -35,6 +35,8 @@ export interface LongChapterInput {
   storyAnalysisContext?: string;
   writingBrief?: string;
   storyPlanText?: string;
+  storyArcText?: string;
+  storyArcPath?: string;
   model?: string;
   strictModel?: boolean;
   maxWords: number;
@@ -159,15 +161,36 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   ].join("\n");
   const situationQuery = [input.brief, state.currentPosition, input.contextText, input.sourceText?.slice(-LONG_CHAPTER_SOURCE_TAIL_CHARS), input.writingBrief, input.storyPlanText, input.storyAnalysisContext].filter(Boolean).join("\n");
   const worldSituation = buildWorldSituationContext(state, situationQuery);
+  const recentEventContext = buildRecentEventContinuityContext(state);
   if (worldSituation) await saveStage(input.outputDir, "00-world-situation-context.md", worldSituation);
+  if (recentEventContext) await saveStage(input.outputDir, "00-recent-event-context.md", recentEventContext);
+  const previousArc = input.storyArcText?.trim() ?? "";
+  const storyArc = await cachedCall("story-arc", "00-story-arc.md", "plan", [
+    "角色：中期故事架构师。为当前故事阶段校准可调整的中期方向；不要把章节计划当成剧情合同。",
+    "分层展开：如果长期 Story Plan 提供了重大节点，先结合当前已发生事实识别正在推进或最近的未完成节点，只把当前节点及必要的相邻因果展开成近期 Story Arc；更远节点保留方向性摘要，不预先细化成整串章节。若当前剧情已自然偏离某节点，以已提交事实为准，调整未来路径，不得 retcon。",
+    "世界设定：", input.worldBible,
+    "当前位置：", state.currentPosition,
+    "已有事实与连续性：", facts,
+    input.storyPlanText ?? "",
+    "既有 Story Arc：", previousArc || "尚无中期故事阶段，请从当前局势自然推演。",
+    worldSituation,
+    recentEventContext,
+    input.storyAnalysisContext ?? "",
+    "本次长章节任务：", input.brief,
+    "结合已发生正文、人物选择、因果和未解决问题，形成适合连续写作的中期方向。只保留真正值得关注的少数阶段节点；允许日常、过渡、关系戏和暂不推进主线。不得凑章节数、强制人物弧光、预写人物选择或把可能性写成正史。文学性、文笔、艺术风格高于其他一切。"
+  ], output => { if (!output.trim()) throw new Error("Story Arc is empty."); });
+  if (previousArc) await saveStage(input.outputDir, "00-story-arc-previous.md", previousArc);
+  await saveStage(input.outputDir, "00-story-arc.md", storyArc);
   const writingContext = [
     "世界设定（辅助索引，未知内容不得写成原著事实）：", input.worldBible,
     "当前位置：", state.currentPosition,
     "事实来源与当前连续性信息：", facts,
     worldSituation ? "本章相关人物、已发生事件与局势上下文：\n" + worldSituation : "",
+    recentEventContext,
     input.contextText ? "前文与连续性摘要：\n" + input.contextText : "",
     input.writingBrief ? "全书知识库（已经写成的事实与未收线，优先于分析参考）：\n" + input.writingBrief : "",
     input.storyPlanText ? input.storyPlanText : "",
+    "当前滚动式多章节 Story Arc（方向性参考，可根据正文自然偏离）：\n" + storyArc,
     input.storyAnalysisContext ? "既有小说分析参考（仅供启发，不是正史或写作清单）：\n" + input.storyAnalysisContext : "",
     input.sourceText ? "用户提供且有权使用的续写起点（只用于承接，不得整段复制）：\n" + input.sourceText : "",
     input.styleProfile ? "叙事风格参考：\n" + input.styleProfile + "\n风格参考不能凌驾于当前人物、场景需要和文学表达。" : "",
@@ -180,6 +203,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     writingContext,
     `按情节自然需要划分场景，最多 ${input.scenes} 个；可以少于这个数量，不要为了凑数拆开本来连贯的情节。每个场景用单独一行 "## 场景 N" 开头（N 从 1 开始连续编号）。场景条目只需说明从哪里开始、人物大致处境，以及确实不能丢失的事实或锚点。只有本场自然存在时才写欲望、压力、冲突、信息差、选择和后果；允许日常、闲谈、观察、过渡、氛围或没有明确结果的场景。不要替小说家编排逐帧动作、比喻、心理解释或句子；其他细节留给正文自然发现。`,
     CREATIVE_FREEDOM_RULES,
+    "形成蓝图前，先在内部考虑至少两种事件机制或人物选择不同的可能路径，再选最有生命力的一种；不要只沿当前大纲最显然的方向展开。允许组合或改造不同路径，但不要为展示发散过程输出分析报告，也不要强行加入反转。新方向必须符合人物实际知识、欲望、资源和处境。",
     "结合当前人物状态和已发生事件理解局势。人物和势力可以有自己的目标与行动理由，但不必每次都采取有效行动，也不必每个目标都在本章推进；资料不足时保留未知，不补造组织结构或关系。",
     "如确有叙事价值，可在场景列表之前增加“## 局势推演（尚未发生）”，写一至数项可能的发展或主角不介入时的变化；没有价值时省略。局势推演只是创作参考，不是正史，不能写成已发生事实，不要模拟整个世界或强迫每个 NPC 行动。",
 `全章目标篇幅约 ${input.maxWords} 个汉字，只是整体预期，不是填充任务。不要机械平均分配场景篇幅；根据情节、情绪和场景需要决定每场长短，场景自然结束时不为字数续写。`,
@@ -248,13 +272,14 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       characterState ? "本场相关人物的当前状态（仅帮助承接，不是人物行为边界）：\n" + characterState : "",
       sceneSituation ? "本场相关人物与事件的当前局势（可能性不是正史）：\n" + sceneSituation : "",
       `本场蓝图：`, scenePlans[index]!,
-      "本场相关原文证据（只用于核实事实，不得照搬）：", sceneEvidence,
+      "本场相关原文参考：先用于核实事实；同时观察其中与本场相近的叙事方法，例如视角距离、信息释放、动作与对白如何衔接、场景如何起落。只学习抽象方法，不复制原句、不做近义改写，也不把参考片段当作必须复现的情节模板：", sceneEvidence,
       "上一场正文的连续性上下文（重点承接人物位置、已知信息、关系变化、道具归属、未完成动作与场景结果，不得重复）：", previous,
       "写出自然完整的场景；人物可以行动、闲谈、观察、犹豫、误判或暂时无所事事。场景不必制造冲突、改变关系或推进主线；如果已经自然结束，就停在最合适的位置。",
       CREATIVE_FREEDOM_RULES,
       RHYTHM_RULE,
       "让句子和段落服从当前场景，不要为了场景之间看起来均衡而调整节奏。",
       "像小说家一样写，不要逐项执行蓝图。允许偏离场景预设，允许人物绕路、闲谈、误判、改变主意或做出当下看来无用的事；不要替每个细节安排象征意义或后续用途。叙事锋利来自准确的信息选择，不来自每段都要有冲突和结果。同一动作不必逐帧拆解，也不要在对白/动作已呈现潜台词后再解释一遍。",
+      "避免模型化表达：不要替读者总结刚发生的事，不要重复解释动作已经表达的情绪，不要让人物把全部动机和背景讲清楚；避免每段都用对称句、抽象判断或警句式收尾。语言可以直接、粗粝、平实或舒展，不必句句显得漂亮。",
       "不复制原文句子，不以近义词替换改写原文；不写「未完待续」「本场结束」等标记。"
     ];
     let text = await cachedCall("scene-" + (index + 1), "02-scene-" + String(index + 1).padStart(2, "0") + ".md", "scene", scenePrompt);
@@ -274,7 +299,7 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
       CREATIVE_FREEDOM_RULES, LIVING_VOICE_RULES,
       writingContext, "全章蓝图：", blueprint,
       `第 ${index + 1} 场当前正文：`, sceneTexts[index]!,
-      "校准人物语气与知识边界，删解释性过强、所有人同一腔调的对白；统一视角与叙述距离。检查全章是否反复使用同一种停顿、否定式收束、动作切片或静物结尾；删并不增加信息/压力/判断的重复动作与解释。不要把“短、冷、克制”当作目标，允许准确的长句、直接判断和粗粝表达。",
+      "校准人物语气与知识边界，删解释性过强、所有人同一腔调的对白；统一视角与叙述距离。检查全章是否反复使用同一种停顿、否定式收束、动作切片或静物结尾；删并不增加信息/压力/判断的重复动作与解释。检查相邻句是否重复交代同一动作、心理是否被动作和旁白解释两次、对白是否把双方都知道的信息重新讲给读者。不要把“短、冷、克制”当作目标，允许准确的长句、直接判断和粗粝表达。",
       RHYTHM_RULE,
       "输出本场完整修订正文。以逐句、逐段编辑为主，不得为了让文字显得更丰富而扩写；不要新增原稿没有的情节节点、人物互动、对白轮次、动作链、背景设定或解释。只有原稿确有表达断裂、读者无法理解或必要情绪落点缺失时才补写。可以精简重复或解释过度的内容，但不能删掉有效动作、信息、人物互动或情绪落点；保留长句、清单与放慢段落，不得把全章改成短促腔。原文已经成立时可以原样保留，不得新增标题或创作说明。"
     ]);
@@ -419,9 +444,6 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
     repairRounds: reviewed.repairRounds,
     reviews: reviewed.reviews
   }, null, 2));
-  await saveStage(input.outputDir, "11-style-regression-skipped.json", JSON.stringify({
-    skipped: true, reason: "常规章节生成不运行只读风格审核；风格评估应在专项回归中执行。"
-  }, null, 2));
   if (input.readerExperience) try {
     const readerReport = await cachedCall("reader-experience", "10-reader-experience.md", "reader", [
       readerExperiencePrompt({ brief: input.brief, chapter })
@@ -548,8 +570,8 @@ export async function writeLongChapter(input: LongChapterInput): Promise<string>
   }
   const nextState = mergeStoryState(state, update);
   try {
-    if (input.applyState) await saveStoryState(input.statePath, nextState);
     await saveStage(input.outputDir, "07-state-update.json", JSON.stringify(nextState, null, 2));
+    await commitStoryStateAndArc({ statePath: input.statePath, previousState: state, nextState, applyState: input.applyState, storyArcPath: input.storyArcPath, storyArcText: storyArc });
   } catch (error) {
     await saveStage(input.outputDir, "07-state-update-error.txt", String(error) + "\n\n" + stateText);
     throw new Error("Chapter was generated, but story-state persistence failed. See 07-state-update-error.txt; do not start the next chapter.");
