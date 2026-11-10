@@ -34,7 +34,7 @@ import { assessStoryUnitProgress, generateStoryUnit, isStoryUnitNaturallyComplet
 import { archiveStoredStoryUnitVersion, createStoredStoryUnit, getStoredStoryUnit, getStoredStoryUnitVersion, listStoredStoryUnitVersions, listStoredStoryUnits, saveStoredStoryUnit } from "./story-unit-store.js";
 import { getStoryExecution, listStoryExecutions, recoverStoryExecutions, saveStoryExecution, storyExecutionOwnsRun, latestCompletedChapterForStoryUnit, mergeStoryExecutionControlFlags, storyRunStateWasRolledBack, type StoryExecution } from "./story-execution.js";
 import { canCancelStoryExecution, reusableKnowledgeBuildStepNames, shouldCancelStoryExecutionImmediately } from "./pipeline-state.js";
-import { isWritingKnowledgeReady, REQUIRED_WRITING_KNOWLEDGE_STEPS } from "./pipeline-readiness.js";
+import { isWritingKnowledgeReady } from "./pipeline-readiness.js";
 
 // 路由参数类型：显式列出各路由的参数名，避免向索引签名退化后被
 // noUncheckedIndexedAccess 放宽成 string | undefined。
@@ -178,8 +178,6 @@ async function readKnowledgeBuild(id: string): Promise<KnowledgeBuildState | nul
   try { return JSON.parse(await readFile(knowledgeBuildPath(id), "utf8")) as KnowledgeBuildState; }
   catch (error) { if ((error as NodeJS.ErrnoException).code === "ENOENT") return null; throw error; }
 }
-
-const WRITING_READINESS_STEPS: KnowledgeBuildStep[] = [...REQUIRED_WRITING_KNOWLEDGE_STEPS];
 
 /** Start or resume required knowledge preparation without holding the HTTP request open. */
 async function ensureWritingKnowledgeBuildStarted(worldId: string): Promise<void> {
