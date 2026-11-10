@@ -528,15 +528,6 @@ async function ensureUniverseStoryAnalysis(worldId: string, universe: StoryUnive
       (ReturnType<typeof readStoryAnalysis> & { asOfEntryChapter?: string }) | undefined;
     if (hasBoundedStoryAnalysis(current, universe)) return;
 
-    const sourceDbPath = path.join(worldDir(universe.sourceWorldId), "novel.db");
-    if (!existsSync(sourceDbPath)) {
-      throw new Error("原著项目缺少 novel.db，无法复用原著分析。请先在原著项目完成一次知识分析；禁止在新故事宇宙重新分析整本原著。");
-    }
-    const source = readStoryAnalysis(worldDir(universe.sourceWorldId), universe.sourceWorldId);
-    if (!source || source.analysisVersion !== 6 || source.complete !== true) {
-      throw new Error("原著项目没有完整的 v6 story-analysis 快照。请在原著项目完成缺失分析后再创建/恢复故事宇宙；新宇宙不会从第一章重新分析原著。");
-    }
-
     const targetDir = worldDir(worldId);
     let imported = false;
 
@@ -566,6 +557,18 @@ async function ensureUniverseStoryAnalysis(worldId: string, universe: StoryUnive
       console.info("[workbench] no complete local universe batch cache to merge; trying source-world batches:", String(error));
     }
 
+    let source: ReturnType<typeof readStoryAnalysis> | undefined;
+    if (!imported) {
+      const sourceDbPath = path.join(worldDir(universe.sourceWorldId), "novel.db");
+      if (!existsSync(sourceDbPath)) {
+        throw new Error("原著项目缺少 novel.db，当前宇宙也没有可合并的完整本地批次缓存。请先在原著项目完成一次知识分析；禁止在新故事宇宙重新分析整本原著。");
+      }
+      source = readStoryAnalysis(worldDir(universe.sourceWorldId), universe.sourceWorldId);
+      if (!source || source.analysisVersion !== 6 || source.complete !== true) {
+        throw new Error("原著项目没有完整的 v6 story-analysis 快照，且当前宇宙没有可合并的完整本地批次缓存。请在原著项目完成缺失分析；新宇宙不会从第一章重新分析原著。");
+      }
+    }
+
     // If no local cache exists, reuse the source world's earlier complete
     // batches and analyze only the single batch crossing the entry boundary.
     if (!imported && universe.entryChapterId) {
@@ -574,7 +577,7 @@ async function ensureUniverseStoryAnalysis(worldId: string, universe: StoryUnive
       );
     }
 
-    if (!imported) {
+    if (!imported && source) {
       imported = importBoundedStoryAnalysisSnapshot(
         path.join(targetDir, "novel.db"),
         worldId,
