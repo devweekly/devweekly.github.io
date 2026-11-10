@@ -89,6 +89,7 @@ test("story analysis snapshot is persisted and replaced atomically as one databa
     const snapshot = {
       worldId: "test-world", sourceHash: "b".repeat(64), analyzedAt: "2026-11-05T00:00:00.000Z",
       analysisVersion: 6, complete: true, batches: 2,
+      analysisModel: "deepseek-v4.1-flash", analysisMaxChars: 14000,
       characters: [{ name: "林岚", shortBio: "一个复杂的人物", sourceRefs: [{ chunkId: "c1", source: "s.txt", chapter: "第一章" }] }],
       plotThreads: [{ title: "失踪案", summary: "仍未解决" }],
       foreshadowings: [{ clue: "墙上的旧照片", confidence: "可能线索" }],
