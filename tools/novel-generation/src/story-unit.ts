@@ -102,6 +102,20 @@ const StoryProgressAssessmentSchema = z.object({
 }).strict();
 export type StoryProgressAssessment = z.infer<typeof StoryProgressAssessmentSchema>;
 
+export function mergeStorySpinePreservingCompleted(
+  previous: StoryUnit["storySpine"], proposed: StoryUnit["storySpine"]
+): StoryUnit["storySpine"] {
+  if (proposed.length < 4) return previous;
+  const merged = proposed.map(beat => {
+    const prior = previous.find(item => item.title === beat.title);
+    return prior?.status === "completed" ? { ...beat, status: "completed" as const } : beat;
+  });
+  const omittedCompleted = previous.filter(item =>
+    item.status === "completed" && !merged.some(beat => beat.title === item.title)
+  );
+  return [...omittedCompleted, ...merged];
+}
+
 export function hasVerifiableStoryProgress(assessment: StoryProgressAssessment, chapterText: string): boolean {
   const evidence = assessment.progressEvidence.trim();
   return assessment.meaningfulProgress && evidence.length >= 4 && chapterText.includes(evidence);
