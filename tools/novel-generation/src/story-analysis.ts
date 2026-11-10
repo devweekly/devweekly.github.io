@@ -5,7 +5,7 @@
 import { createHash } from "node:crypto";
 import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { z } from "zod";
 import {
   readStoryAnalysis, saveStoryAnalysis, syncNovelBeats, syncNovelCharacters, syncNovelForeshadowings, syncNovelThreads, writeNovelKbMeta,
@@ -597,6 +597,7 @@ async function readBatchCache(
   if (!legacyPath) return undefined;
   const legacy = await readCached(legacyPath);
   if (!legacy) return undefined;
+  await mkdir(dirname(path), { recursive: true });
   const temporary = path + ".migrate.tmp";
   await writeFile(temporary, JSON.stringify(legacy, null, 2) + "\n", "utf8");
   await rename(temporary, path);
