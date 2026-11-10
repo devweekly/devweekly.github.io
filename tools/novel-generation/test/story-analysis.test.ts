@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { databaseStatus, invalidateDerivedAnalysis, readStoryAnalysis, saveStoryAnalysis } from "../src/database.js";
 import { groupAnalysisUnits } from "../src/novel-kb.js";
-import { assertMergeOptions, batchFingerprint, buildAnalysisPrompt, cleanCharacterAliases, filterCharacterAliasEvidence, parseModelJson, plotThreadId, plotThreadMergeKey, storyAnalysisCacheNamespace, stripUnclassifiedAliases } from "../src/story-analysis.js";
+import { assertMergeOptions, batchFingerprint, buildAnalysisPrompt, cleanCharacterAliases, filterCharacterAliasEvidence, parseModelJson, plotThreadId, plotThreadMergeKey, selectBatchesThroughOrdinal, storyAnalysisCacheNamespace, stripUnclassifiedAliases } from "../src/story-analysis.js";
 import { loadLibraryChunks } from "../src/library.js";
 
 test("story-analysis cache namespace is stable across corpus edits while each batch fingerprint is content-addressed", () => {
@@ -29,6 +29,29 @@ test("story-analysis cache namespace is stable across corpus edits while each ba
   assert.notEqual(fingerprint, batchFingerprint({
     ...batch, chapters: [{ ...batch.chapters[0]!, text: "修改后的正文", charCount: 6 }]
   }, "deepseek-v4.1-flash", 14000), "only the batch containing changed source text should be invalidated");
+});
+
+test("historical universe reuses complete prior batches and re-analyzes only the entry-crossing prefix", () => {
+  const units = Array.from({ length: 6 }, (_, index) => ({
+    chapterId: "V01-C00" + (index + 1), ordinal: index + 1, volume: 1,
+    title: "第" + (index + 1) + "章", label: String(index + 1),
+    text: "章节正文" + (index + 1), charCount: 5
+  }));
+  const batches = [
+    { index: 0, chapters: units.slice(0, 2), chars: 10 },
+    { index: 1, chapters: units.slice(2, 4), chars: 10 },
+    { index: 2, chapters: units.slice(4, 6), chars: 10 }
+  ];
+  const selected = selectBatchesThroughOrdinal(batches, 3);
+  assert.deepEqual(selected.reusable.map(batch => batch.chapters.map(chapter => chapter.chapterId)), [
+    ["V01-C001", "V01-C002"]
+  ]);
+  assert.deepEqual(selected.boundary?.chapters.map(chapter => chapter.chapterId), ["V01-C003"]);
+  assert.ok(!JSON.stringify(selected).includes("V01-C004"), "entry-after chapters must not enter boundary analysis");
+  assert.ok(!JSON.stringify(selected).includes("V01-C005"), "future batches must be excluded");
+  const exactBoundary = selectBatchesThroughOrdinal(batches, 4);
+  assert.equal(exactBoundary.reusable.length, 2);
+  assert.equal(exactBoundary.boundary, undefined, "an entry at a batch end needs no extra model call");
 });
 
 test("story analysis batches preserve every chapter in order without splitting one", () => {
