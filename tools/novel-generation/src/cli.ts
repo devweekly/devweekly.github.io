@@ -46,6 +46,8 @@ import {
   WRITE_LONG_RETRIEVAL_LIMIT,
   MAX_WRITE_RETRIEVAL_LIMIT,
   MAX_WRITE_LONG_RETRIEVAL_LIMIT,
+  KNOWLEDGE_BUILD_WAIT_TIMEOUT_MS,
+  KNOWLEDGE_BUILD_POLL_INTERVAL_MS,
   PROFILE_DEFAULT_TOP,
   DEFAULT_CONTEXT_LINES,
   MIN_CONTEXT_LINES,
@@ -187,7 +189,7 @@ const COMMANDS = new Set([
 
 async function waitForWritingKnowledgeReadiness(worldId: string): Promise<void> {
   const statusPath = resolve(".output", worldId, "workbench", "knowledge-build.json");
-  const deadline = Date.now() + 30 * 60 * 1000;
+  const deadline = Date.now() + KNOWLEDGE_BUILD_WAIT_TIMEOUT_MS;
   let sawStatus = false;
   while (Date.now() < deadline) {
     let state: { status?: string; steps?: Array<{ name?: string; status?: string }> };
@@ -209,7 +211,7 @@ async function waitForWritingKnowledgeReadiness(worldId: string): Promise<void> 
       const missing = missingWritingKnowledgeSteps(state?.steps);
       throw new Error("新宇宙写作知识准备未完成：" + missing.join("、") + "。后台任务已自动执行；请从 knowledge-build.json 的失败步骤恢复，不能在空上下文下继续写作。");
     }
-    await new Promise(resolveDelay => setTimeout(resolveDelay, 1000));
+    await new Promise(resolveDelay => setTimeout(resolveDelay, KNOWLEDGE_BUILD_POLL_INTERVAL_MS));
   }
   if (sawStatus) throw new Error("新宇宙写作知识准备超过 30 分钟，已停止本次写作；已完成步骤和缓存均保留，可自动恢复。");
 }
@@ -670,8 +672,8 @@ async function main(): Promise<void> {
       contextLines,
       targetWords,
       brief: arg("--brief") ?? "承接前文，在同一时空里推进一条已有的情节线：写具体的人在做具体的事，遇到阻力、做出选择并承担后果。",
-      model: arg("--model") ?? "deepseek-v4.1-flash",
-      reviewModel: arg("--review-model") ?? "glm-5.3-flash",
+      model: arg("--model") ?? DEFAULT_MODEL_ID,
+      reviewModel: arg("--review-model") ?? DEFAULT_MODEL_ID,
       timeoutMs,
       styleProfile,
       styleRhythm,
