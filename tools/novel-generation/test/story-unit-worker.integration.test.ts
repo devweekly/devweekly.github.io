@@ -5,7 +5,7 @@ import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from "node:fs/promis
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createApp } from "../src/server.js";
+import { createApp, setStoryProgressAssessorForTests } from "../src/server.js";
 import { createStoredStoryUnit } from "../src/story-unit-store.js";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -37,6 +37,19 @@ test("fixed-batch worker keeps alternating Story Unit chapter history and Story 
   const cliDir = join(root, "src");
   const server = createServer(createApp());
   let serverStarted = false;
+  let assessmentCount = 0;
+  setStoryProgressAssessorForTests(async input => {
+    assessmentCount++;
+    return {
+      coreConflictResolved: false, endingFeelsNatural: false, confidence: "medium",
+      unresolvedCoreThreads: ["核心选择仍在推进"], unrealizedMajorBeats: ["高潮尚未发生"],
+      remainingStoryWork: ["继续推进人物选择及其后果"],
+      nextDirection: "让人物选择带来新的局面变化", rationale: "测试用的逐章进展评估",
+      meaningfulProgress: true, progressEvidence: "Worker chapter",
+      cumulativeStorySummary: (input.unit.execution.cumulativeStorySummary ? input.unit.execution.cumulativeStorySummary + "\\n" : "") + input.chapterTitle + "：人物作出新的选择",
+      revisedStorySpine: input.unit.storySpine, characterArcUpdates: []
+    };
+  });
   try {
     process.chdir(root);
     await writeFile(join(root, "package.json"), JSON.stringify({ type: "module" }), "utf8");
@@ -90,10 +103,10 @@ console.log("Story state automatically updated: " + stateFile);
     const base = `http://127.0.0.1:${address.port}/api/worlds/${worldId}`;
     const headers = { host: `127.0.0.1:${address.port}`, "content-type": "application/json" };
 
-    const runBatch = async (storyUnitId: string) => {
+    const runBatch = async (storyUnitId: string, chapterCount = 1) => {
       let created: Response | undefined;
       for (let attempt = 0; attempt < 100; attempt++) {
-        created = await fetch(base + "/chapter-batches", { method: "POST", headers, body: JSON.stringify({ storyUnitId, chapterCount: 1 }) });
+        created = await fetch(base + "/chapter-batches", { method: "POST", headers, body: JSON.stringify({ storyUnitId, chapterCount }) });
         if (created.status !== 409) break;
         const reason = await created.clone().json().catch(() => ({})) as {error?:string};
         if (!reason.error?.includes("已有章节或长篇任务") && !reason.error?.includes("已有章节正在生成") && !reason.error?.includes("已有长篇任务")) {
@@ -113,16 +126,17 @@ console.log("Story state automatically updated: " + stateFile);
       throw new Error("Timed out waiting for deterministic worker completion.");
     };
 
-    const a1 = await runBatch(unitA.id);
+    const a1 = await runBatch(unitA.id, 2);
     const b1 = await runBatch(unitB.id);
     const a2 = await runBatch(unitA.id);
-    assert.equal(a1.completedChapters.length, 1);
+    assert.equal(a1.completedChapters.length, 2);
     assert.equal(b1.completedChapters.length, 1);
     assert.equal(a2.completedChapters.length, 1);
+    assert.equal(assessmentCount, 4);
 
     const runsResponse = await fetch(base + "/runs?storyUnitId=" + unitA.id, { headers });
     const runsA = await runsResponse.json() as { runs: Array<{ id:string; previousChapterPath?:string; chapterPath?:string }> };
-    const a1Run = runsA.runs.find(run => run.id === a1.completedChapters[0]?.runId);
+    const a1Run = runsA.runs.find(run => run.id === a1.completedChapters[1]?.runId);
     const a2Run = runsA.runs.find(run => run.id === a2.completedChapters[0]?.runId);
     assert.ok(a1Run?.chapterPath);
     assert.equal(a2Run?.previousChapterPath, a1Run?.chapterPath);
@@ -131,13 +145,17 @@ console.log("Story state automatically updated: " + stateFile);
     const stateBResponse = await fetch(base + "/story-units/" + unitB.id + "/state", { headers });
     const stateA = await stateAResponse.json() as { state: { characters:Array<{name:string}>; events:Array<{id:string}> } };
     const stateB = await stateBResponse.json() as { state: { characters:Array<{name:string}>; events:Array<{id:string}> } };
-    assert.equal(stateA.state.characters.length, 2);
+    assert.equal(stateA.state.characters.length, 3);
     assert.equal(stateB.state.characters.length, 1);
     assert.ok(stateA.state.characters.every(person => person.name.startsWith(unitA.id + "-")));
+    const unitARecord = JSON.parse(await readFile(join(worldDir, ".story-units", unitA.id, "story-unit.json"), "utf8")) as { execution: { lastAssessedChapterId?: string; cumulativeStorySummary?: string } };
+    assert.equal(unitARecord.execution.lastAssessedChapterId, a2.completedChapters[0]?.runId);
+    assert.match(unitARecord.execution.cumulativeStorySummary ?? "", /人物作出新的选择/);
     assert.ok(stateB.state.characters.every(person => person.name.startsWith(unitB.id + "-")));
     assert.equal((await readFile(join(worldDir, ".story-units", unitA.id, "story-arc.md"), "utf8")).trim(), "arc:" + unitA.id);
     assert.equal((await readFile(join(worldDir, ".story-units", unitB.id, "story-arc.md"), "utf8")).trim(), "arc:" + unitB.id);
   } finally {
+    setStoryProgressAssessorForTests((await import("../src/story-unit.js")).assessStoryUnitProgress);
     if (serverStarted) await new Promise<void>(resolveClose => server.close(() => resolveClose()));
     process.chdir(originalCwd);
     if (previousSourceRoot === undefined) delete process.env.NOVEL_TEST_SOURCE_ROOT;
