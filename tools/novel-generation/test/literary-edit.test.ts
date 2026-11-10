@@ -113,6 +113,9 @@ test("literary patch editor preserves effective silence and does not expand it",
   assert.match(prompt, /不要把“不描写”当成缺陷/);
   assert.match(prompt, /不要主动补充动作、心理、环境/);
   assert.match(prompt, /输出局部 Patch/);
+  assert.match(prompt, /先从整章阅读体验检查累积问题/);
+  assert.match(prompt, /人物是否把彼此都知道的背景说给读者听/);
+  assert.match(prompt, /保留有意重复、节奏性复沓/);
 });
 
 test("literary patch parser supports preserve and rejects malformed patches", () => {
