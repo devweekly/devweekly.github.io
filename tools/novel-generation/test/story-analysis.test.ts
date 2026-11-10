@@ -73,6 +73,7 @@ test("historical universe reuses complete prior batches and re-analyzes only the
 
 test("merge-only restores a complete legacy batch directory without calling the model", async () => {
   const root = await mkdtemp(join(tmpdir(), "novel-story-analysis-legacy-cache-"));
+  const previousCwd = process.cwd();
   const worldId = "cache-world";
   const worldDir = join(root, "worlds", worldId);
   const libraryDir = join(worldDir, "library");
@@ -84,6 +85,7 @@ test("merge-only restores a complete legacy batch directory without calling the 
   const model = resolveAgentModel("deepseek-v4.1-flash").model;
   const maxChars = 14000;
   try {
+    process.chdir(root);
     await mkdir(libraryDir, { recursive: true });
     await mkdir(join(root, "analysis", worldId), { recursive: true });
     await writeFile(join(worldDir, "original.txt"), originalText, "utf8");
@@ -132,6 +134,7 @@ test("merge-only restores a complete legacy batch directory without calling the 
     assert.equal(result.snapshot?.chapters, 2);
     assert.equal((result.snapshot as (typeof result.snapshot & { analysisModel?: string }) | undefined)?.analysisModel, model);
   } finally {
+    process.chdir(previousCwd);
     await rm(root, { recursive: true, force: true });
   }
 });
