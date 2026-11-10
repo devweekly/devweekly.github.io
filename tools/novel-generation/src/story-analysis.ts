@@ -611,7 +611,11 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
   const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, maxChars, options.delta));
   await mkdir(cacheDir, { recursive: true });
   const legacyExactDir = resolve(".output", worldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars, options.delta));
-  const legacyDir = options.delta ? findLegacyCacheDir(worldId, model, units, maxChars, cacheDir) : undefined;
+  let legacyDir: string | undefined;
+  if (options.delta) {
+    try { legacyDir = findLegacyCacheDir(worldId, model, units, maxChars, cacheDir); }
+    catch { /* Existing v7 delta batches can still be merged without the v6 source cache. */ }
+  }
   if (legacyDir) console.log("[story-analysis] delta mode · legacy batches from " + legacyDir);
   const cachePath = (batch: AnalysisBatch): string => join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
   const legacyExactPath = (batch: AnalysisBatch): string => join(legacyExactDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
@@ -629,16 +633,6 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
     const path = cachePath(batch);
     let analysis = await readBatchCache(path, batch, model, maxChars,
       options.delta ? undefined : legacyExactPath(batch), options.delta);
-    if (!analysis && !options.delta) {
-      const legacyDeltaPath = join(resolve(".output", worldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars, true)),
-        "batch-" + String(batch.index).padStart(4, "0") + ".json");
-      const legacyDelta = await readCached(legacyDeltaPath);
-      if (legacyDelta) {
-        analysis = legacyDelta;
-        await writeFile(path, JSON.stringify(analysis, null, 2) + "\n", "utf8");
-        await writeFile(path + ".meta.json", JSON.stringify({ fingerprint: batchFingerprint(batch, model, maxChars, false), migratedFrom: legacyDeltaPath }, null, 2) + "\n", "utf8");
-      }
-    }
     if (!analysis && options.delta && legacyDir) {
       const legacy = await loadLegacyBatch(legacyDir, batch);
       if (legacy) {
@@ -657,6 +651,9 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
       try {
         const timeoutMs = options.timeoutMs ?? DEFAULT_AGENT_TIMEOUT_MS;
         const profile = readTaskProfiles().state;
+        if (options.delta && !legacyDir) {
+          throw new Error("Delta upgrade requires the exact legacy v6 batch cache for this source, model and batch layout; no unrelated cache will be selected.");
+        }
         if (legacyDir) {
           const legacy = await loadLegacyBatch(legacyDir, batch);
           if (!legacy) throw new Error("Legacy batch #" + (batch.index + 1) + " is missing or invalid.");
