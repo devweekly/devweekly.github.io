@@ -1426,6 +1426,22 @@ const activeStoryExecutions = new Map<string, Promise<void>>();
 const storyExecutionControllers = new Map<string, AbortController>();
 const storyExecutionReservations = new Set<string>();
 const chapterGenerationReservations = new Set<string>();
+async function findUnresolvedStoryRecovery(worldId: string): Promise<{task?: StoryExecution; run?: WorkbenchRun} | undefined> {
+  const tasks = await listStoryExecutions(worldId);
+  const task = tasks.find(item => Boolean(item.currentRunId));
+  if (task) return { task };
+  const runs = await listRuns(worldId);
+  const run = runs.find(item => item.kind === "chapter" && item.status === "failed" && /状态回滚失败/.test(item.error ?? ""));
+  return run ? { run } : undefined;
+}
+function unresolvedStoryRecoveryResponse(recovery: {task?: StoryExecution; run?: WorkbenchRun}): {error: string; execution?: StoryExecution; run?: WorkbenchRun} {
+  return {
+    error: "检测到上一次章节的 Story State 回滚尚未得到确认。为避免在不确定的正史状态上继续写作，已阻止启动新任务；请先恢复原任务或核对该 Run 的事务快照与 Story State。",
+    ...(recovery.task ? { execution: recovery.task } : {}),
+    ...(recovery.run ? { run: recovery.run } : {})
+  };
+}
+
 function storyExecutionUnitPath(worldId: string, storyUnitId?: string): string {
   return storyUnitId
     ? path.join(worldDir(worldId), ".story-units", recordId(storyUnitId) + ".json")
@@ -2060,6 +2076,8 @@ app.post("/api/worlds/:worldId/story-executions", async (req, res) => {
     const retrievalDir = await resolveWorldLibraryDir(id, path.resolve("worlds"));
     await readFile(path.join(retrievalDir, "index.json"), "utf8");
     if (unit.execution.status === "completed") return void res.status(409).json({ error: "当前故事单元已自然收束。若要创作新故事，请创建新的故事单元或复制一个新宇宙。" });
+    const unresolvedRecovery = await findUnresolvedStoryRecovery(id);
+    if (unresolvedRecovery) return void res.status(409).json(unresolvedStoryRecoveryResponse(unresolvedRecovery));
     const previousTasks = await listStoryExecutions(id);
     const latest = previousTasks.find(item => item.status === "running" || item.status === "queued" || item.status === "paused");
     if (latest) return void res.status(409).json({ error: "已有完整故事任务，请恢复或取消现有任务。", execution: latest });
@@ -2094,6 +2112,8 @@ app.post("/api/worlds/:worldId/chapter-batches", async (req, res) => {
     await readFile(path.join(worldDir(id), "world-bible.md"), "utf8");
     const retrievalDir = await resolveWorldLibraryDir(id, path.resolve("worlds"));
     await readFile(path.join(retrievalDir, "index.json"), "utf8");
+    const unresolvedRecovery = await findUnresolvedStoryRecovery(id);
+    if (unresolvedRecovery) return void res.status(409).json(unresolvedStoryRecoveryResponse(unresolvedRecovery));
     const previousTasks = await listStoryExecutions(id);
     const latest = previousTasks.find(item => ["running","queued","paused"].includes(item.status));
     if (latest) return void res.status(409).json({error:"已有长篇任务，请恢复或取消后再启动批量任务。",execution:latest});
@@ -2459,6 +2479,8 @@ app.post("/api/worlds/:worldId/chapters/generate", async (req, res) => {
     chapterGenerationReservations.add(lockId);
     try {
     if (activeStoryExecutions.has(lockId) || storyExecutionReservations.has(lockId)) return void res.status(409).json({ error: "完整故事任务正在执行或启动，请暂停或取消后再单独生成章节。" });
+    const unresolvedRecovery = await findUnresolvedStoryRecovery(lockId);
+    if (unresolvedRecovery) return void res.status(409).json(unresolvedStoryRecoveryResponse(unresolvedRecovery));
     const pendingStoryTask = (await listStoryExecutions(lockId)).find(task => ["queued","running","paused"].includes(task.status));
     if (pendingStoryTask) return void res.status(409).json({ error: "当前完整故事任务尚未结束，请恢复或取消后再单独生成章节。", execution: pendingStoryTask });
     await serializeWorld(lockId, async () => {
