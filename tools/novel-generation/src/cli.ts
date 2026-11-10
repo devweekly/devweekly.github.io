@@ -44,6 +44,8 @@ import {
   DEFAULT_SCENES,
   WRITE_RETRIEVAL_LIMIT,
   WRITE_LONG_RETRIEVAL_LIMIT,
+  MAX_WRITE_RETRIEVAL_LIMIT,
+  MAX_WRITE_LONG_RETRIEVAL_LIMIT,
   PROFILE_DEFAULT_TOP,
   DEFAULT_CONTEXT_LINES,
   MIN_CONTEXT_LINES,
@@ -73,6 +75,7 @@ import { addStyleReference, archiveStyleReference, listStyleReferences, listStyl
 import { runRoleplaySandbox } from "./roleplay-sandbox.js";
 import { analyzeCorpusCraft, buildCorpusCraftContext } from "./corpus-craft.js";
 import { rebuildVaneIndex, searchVane } from "./vane-retrieval.js";
+import { isWritingKnowledgeReady, missingWritingKnowledgeSteps } from "./pipeline-readiness.js";
 
 /** `--model --evidence-review` 这种漏值不该把下一个开关当成取值。 */
 function arg(name: string): string | undefined {
@@ -184,7 +187,6 @@ const COMMANDS = new Set([
 
 async function waitForWritingKnowledgeReadiness(worldId: string): Promise<void> {
   const statusPath = resolve(".output", worldId, "workbench", "knowledge-build.json");
-  const required = ["style-profile", "character-profiles", "character-states", "as-of-dossier"];
   const deadline = Date.now() + 30 * 60 * 1000;
   let sawStatus = false;
   while (Date.now() < deadline) {
@@ -196,14 +198,10 @@ async function waitForWritingKnowledgeReadiness(worldId: string): Promise<void> 
       if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
       return; // Ordinary worlds without an automatic universe knowledge build.
     }
-    const ready = required.every(name => state?.steps?.some(step =>
-      step.name === name && (step.status === "completed" || step.status === "skipped")
-    ));
+    const ready = isWritingKnowledgeReady(state?.steps);
     if (ready) return;
-    if (state?.status === "completed" || state?.status === "partial" || state?.status === "failed" || state?.status === "interrupted") {
-      const missing = required.filter(name => !state?.steps?.some(step =>
-        step.name === name && (step.status === "completed" || step.status === "skipped")
-      ));
+    if (state?.status === "completed" || state?.status === "partial" || state?.status === "failed" || state?.status === "interrupted" || state?.status === "cancelled") {
+      const missing = missingWritingKnowledgeSteps(state?.steps);
       throw new Error("新宇宙写作知识准备未完成：" + missing.join("、") + "。后台任务已自动执行；请从 knowledge-build.json 的失败步骤恢复，不能在空上下文下继续写作。");
     }
     await new Promise(resolveDelay => setTimeout(resolveDelay, 1000));
@@ -914,6 +912,10 @@ async function main(): Promise<void> {
         database: resolve("worlds", worldId, "novel.db")
       } : {})
     }, null, 2));
+    if (result.failed.length > 0) {
+      process.exitCode = 1;
+      console.error("[analyze-story] " + result.failed.length + " 批失败；已保存成功批次缓存，重新运行可续跑。");
+    }
     return;
   }
 
@@ -935,7 +937,7 @@ async function main(): Promise<void> {
   const sourceText = sourcePath ? await readFile(resolve(sourcePath), "utf8") : undefined;
   const contextText = contextPath ? await readFile(resolve(contextPath), "utf8") : undefined;
   const worldBible = await readFile(resolve("worlds", worldId, "world-bible.md"), "utf8");
-  if (command === "write") await waitForWritingKnowledgeReadiness(worldId);
+  if (command === "write" || command === "write-long") await waitForWritingKnowledgeReadiness(worldId);
   let styleProfile: string | undefined;
   try { styleProfile = await readFile(resolve("worlds", worldId, "style-profile.md"), "utf8"); }
   catch (error) { if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error; }
@@ -955,8 +957,8 @@ async function main(): Promise<void> {
     if (mode === "continuation" && !sourceText) throw new Error("Continuation mode requires --source with text you provide or are authorized to use.");
 
     const retrievalLimit = Number(arg("--retrieval-limit") ?? WRITE_RETRIEVAL_LIMIT);
-    if (!Number.isInteger(retrievalLimit) || retrievalLimit < 1 || retrievalLimit > 20) {
-      throw new Error("--retrieval-limit must be between 1 and 20.");
+    if (!Number.isInteger(retrievalLimit) || retrievalLimit < 1 || retrievalLimit > MAX_WRITE_RETRIEVAL_LIMIT) {
+      throw new Error("--retrieval-limit must be between 1 and " + MAX_WRITE_RETRIEVAL_LIMIT + ".");
     }
     const state = await loadRunStoryState(statePath, worldId, outputDir, "write");
     const storyPlanText = [formatStoryPlan(await loadStoryPlan(resolve("worlds", worldId, "story-plan.json"), worldId)), formatStoryUnit(await readOptional(resolve(arg("--story-unit-file") ?? resolve("worlds", worldId, "story-unit.json"))).then(raw => raw ? validateStoryUnit(parseJsonDocument(raw, resolve(arg("--story-unit-file") ?? resolve("worlds", worldId, "story-unit.json"))), worldId) : undefined))].filter(Boolean).join("\n\n");
@@ -998,7 +1000,7 @@ async function main(): Promise<void> {
       worldId, worldDir: resolve("worlds", worldId), mode, brief, worldBible, styleProfile, sourceText, contextText, retrievedContext, storyAnalysisContext, writingBrief, storyPlanText, storyArcText, model,
       strictModel: process.argv.includes("--strict-model"),
       maxWords,
-      outputDir, statePath, applyState, readerExperience: process.argv.includes("--reader-experience")
+      outputDir, statePath, storyArcPath: resolve(arg("--story-arc-file") ?? resolve("worlds", worldId, "story-arc.md")), applyState, readerExperience: process.argv.includes("--reader-experience")
     });
     console.log("\nSaved chapter: " + resolve(outputDir, "chapter.md"));
     console.log("State proposal: " + resolve(outputDir, "08-state-update.json"));
@@ -1019,9 +1021,12 @@ async function main(): Promise<void> {
     if (mode === "continuation" && !sourceText) throw new Error("Continuation mode requires --source with text you provide or are authorized to use.");
     const runId = new Date().toISOString().replace(/[:.]/g, "-");
     const outputDir = resolveRunOutputDir(worldId, "write-long", resolve(".output", worldId, "long-" + runId));
-    const statePath = resolve("worlds", worldId, "story-state.json");
+    const statePath = resolve(arg("--state-file") ?? resolve("worlds", worldId, "story-state.json"));
+    const storyUnitPath = resolve(arg("--story-unit-file") ?? resolve("worlds", worldId, "story-unit.json"));
+    const storyArcPath = resolve(arg("--story-arc-file") ?? resolve("worlds", worldId, "story-arc.md"));
     const longState = await loadRunStoryState(statePath, worldId, outputDir, "write-long");
-    const storyPlanText = [formatStoryPlan(await loadStoryPlan(resolve("worlds", worldId, "story-plan.json"), worldId)), formatStoryUnit(await readOptional(resolve("worlds", worldId, "story-unit.json")).then(raw => raw ? validateStoryUnit(JSON.parse(raw), worldId) : undefined))].filter(Boolean).join("\n\n");
+    const storyPlanText = [formatStoryPlan(await loadStoryPlan(resolve("worlds", worldId, "story-plan.json"), worldId)), formatStoryUnit(await readOptional(storyUnitPath).then(raw => raw ? validateStoryUnit(parseJsonDocument(raw, storyUnitPath), worldId) : undefined))].filter(Boolean).join("\n\n");
+    const storyArcText = await readOptional(storyArcPath) ?? "";
     // 检索查询按优先级拼装：本次 brief / 主线方向 / 传统衍生文尾段 / 原著定位句、
     // 活跃情节线标题与有限人数。顺序影响 BM25 召回，不要随意调换。
     const storyAnalysisQuery = [
@@ -1045,13 +1050,14 @@ async function main(): Promise<void> {
     const writingBrief = buildWritingBrief({ worldDir: resolve("worlds", worldId), worldId, query: storyAnalysisQuery });
     console.error("[write-long] 注入：事实包 " + writingBrief.length + " 字 / 分析参考 " + storyAnalysisContext.length + " 字");
     const retrievalLimit = Number(arg("--retrieval-limit") ?? WRITE_LONG_RETRIEVAL_LIMIT);
-    if (!Number.isInteger(retrievalLimit) || retrievalLimit < 1 || retrievalLimit > 12) {
-      throw new Error("--retrieval-limit must be an integer between 1 and 12.");
+    if (!Number.isInteger(retrievalLimit) || retrievalLimit < 1 || retrievalLimit > MAX_WRITE_LONG_RETRIEVAL_LIMIT) {
+      throw new Error("--retrieval-limit must be an integer between 1 and " + MAX_WRITE_LONG_RETRIEVAL_LIMIT + ".");
     }
     const chapter = await writeLongChapter({
-      worldId, worldDir: resolve("worlds", worldId), mode, brief, worldBible, styleProfile, sourceText, contextText, storyAnalysisContext, writingBrief, storyPlanText, model,
+      worldId, worldDir: resolve("worlds", worldId), mode, brief, worldBible, styleProfile, sourceText, contextText, storyAnalysisContext, writingBrief, storyPlanText, storyArcText, storyArcPath, model,
       strictModel: process.argv.includes("--strict-model"),
       maxWords, scenes, timeoutMs, outputDir, statePath, libraryDir, retrievalLimit,
+      storyArcPath,
       applyState: !process.argv.includes("--no-apply-state"),
       readerExperience: process.argv.includes("--reader-experience")
     });
