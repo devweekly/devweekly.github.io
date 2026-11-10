@@ -408,18 +408,13 @@ function deltaKey(value: unknown): string {
 }
 
 /** 旧缓存目录名是旧版指纹；按 batch 文件数匹配，取最近修改的一个。 */
-function findLegacyCacheDir(worldId: string, expectedBatches: number, excludeDir: string): string {
+function findLegacyCacheDir(worldId: string, model: string, units: AnalysisUnit[], maxChars: number, excludeDir: string): string {
   const root = resolve(".output", worldId, "story-analysis");
-  if (!existsSync(root)) throw new Error("No legacy analysis cache under " + root + "; run analyze-story without --delta.");
-  const matches = readdirSync(root, { withFileTypes: true })
-    .filter(entry => entry.isDirectory())
-    .map(entry => join(root, entry.name))
-    .filter(dir => dir !== excludeDir)
-    .map(dir => ({ dir, count: readdirSync(dir).filter(name => /^batch-\d{4}\.json$/u.test(name)).length, mtime: statSync(dir).mtimeMs }))
-    .filter(item => item.count === expectedBatches)
-    .sort((a, b) => b.mtime - a.mtime);
-  if (!matches.length) throw new Error(`No legacy cache with ${expectedBatches} batches under ${root}; run analyze-story without --delta.`);
-  return matches[0]!.dir;
+  const exact = resolve(root, legacyCacheKeyFor(model, units, maxChars, false));
+  if (exact === excludeDir || !existsSync(exact)) {
+    throw new Error("No exact v6 source cache is available for delta upgrade. Refusing to select an unrelated directory by batch count.");
+  }
+  return exact;
 }
 
 function withBatchKeys(items: Item[], chapterKeys: string[]): Item[] {
@@ -608,7 +603,7 @@ export async function analyzeStoryCorpus(worldId: string, options: StoryAnalysis
   const cacheDir = resolve(".output", worldId, "story-analysis", cacheKeyFor(model, units, maxChars, options.delta));
   await mkdir(cacheDir, { recursive: true });
   const legacyExactDir = resolve(".output", worldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars, options.delta));
-  const legacyDir = options.delta ? findLegacyCacheDir(worldId, totalBatches, cacheDir) : undefined;
+  const legacyDir = options.delta ? findLegacyCacheDir(worldId, model, units, maxChars, cacheDir) : undefined;
   if (legacyDir) console.log("[story-analysis] delta mode · legacy batches from " + legacyDir);
   const cachePath = (batch: AnalysisBatch): string => join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
   const legacyExactPath = (batch: AnalysisBatch): string => join(legacyExactDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
@@ -1021,6 +1016,7 @@ export async function importBoundedStoryAnalysisFromBatchCache(
   const results: Array<{ analysis: BatchAnalysis; chapters: AnalysisUnit[] }> = [];
   const cacheDir = resolve(".output", sourceWorldId, "story-analysis", cacheKeyFor(model, units, maxChars));
   const legacyDir = resolve(".output", sourceWorldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars));
+  const legacyDeltaDir = resolve(".output", sourceWorldId, "story-analysis", legacyCacheKeyFor(model, units, maxChars, true));
   await mkdir(cacheDir, { recursive: true });
 
   for (const batch of allBatches) {
@@ -1029,7 +1025,11 @@ export async function importBoundedStoryAnalysisFromBatchCache(
     const path = join(cacheDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
     const legacyPath = join(legacyDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
     if (safeChapters.length === batch.chapters.length) {
-      const analysis = await readBatchCache(path, batch, model, maxChars, legacyPath);
+      let analysis = await readBatchCache(path, batch, model, maxChars, legacyPath);
+      if (!analysis) {
+        const legacyDeltaPath = join(legacyDeltaDir, "batch-" + String(batch.index).padStart(4, "0") + ".json");
+        analysis = await readBatchCache(path, batch, model, maxChars, legacyDeltaPath, true);
+      }
       if (!analysis) return false;
       results.push({ analysis, chapters: batch.chapters });
       continue;
